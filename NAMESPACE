@@ -1,0 +1,6 @@
+exportPattern("^[[:alpha:]]+")
+import(MASS)
+import(Matrix)
+import(boot)
+import(lpSolveAPI)
+useDynLib(spaMM)
