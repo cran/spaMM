@@ -2,7 +2,7 @@ locoptim <-
 function(init.optim,LowUp,anyOptim.args,trace,optim.method,optim.args) {
     initvec <- unlist(init.optim)
     if (length(initvec)>1) {
-      parscale <- rep(1,length(LowUp$lower))
+      parscale <- rep(1,length(unlist(LowUp$lower))) ## unlist because some list elements may have length >1 (eg if rho has several components)
       ## optim uses par (vector) AND lower, upper
       anyOptim.args$lower <- unlist(LowUp$lower)
       anyOptim.args$upper <- unlist(LowUp$upper)

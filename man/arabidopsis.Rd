@@ -25,14 +25,18 @@
 \source{
 The data were retrieved from \url{http://bergelson.uchicago.edu/regmap-data/climate-genome-scan} on 22 February 2013.
 }
+\details{
+  The  response is binary so \dQuote{HLmethod="PQL/L"} seems warranted (see Rousset and Ferdy, 2014).  
+}
 \references{
  Fournier-Level A, Korte A., Cooper M. D., Nordborg M., Schmitt J., Wilczek AM (2011). A map of local adaptation in Arabidopsis thaliana. Science 334: 86-89.
 
  Hancock, A. M., Brachi, B., Faure, N., Horton, M. W., Jarymowycz, L. B., Sperone, F. G., Toomajian, C., Roux, F., and Bergelson, J. 2011. 
  Adaptation to climate across the Arabidopsis thaliana genome, Science 334, 83-86.
-}
-\details{
-  The  response is binary so a \dQuote{PQL/L} analysis seems warranted (see HLmethod argument in \code{\link{HLfit}}).  
+ 
+  Rousset F., Ferdy, J.-B. (2014) Testing environmental and genetic effects in the presence of spatial autocorrelation. Ecography, in press.
+    \url{http://dx.doi.org/10.1111/ecog.00566}
+ 
 }
 \examples{
 data(arabidopsis)

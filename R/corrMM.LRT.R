@@ -1,22 +1,23 @@
 corrMM.LRT <-
-function(null.predictor=NULL,predictor,
+function(null.formula=NULL,formula,
+                       null.predictor=null.formula,predictor=formula, ## simple back compat code...
                        null.disp=list(),REMLformula=NULL,
-                       method=corrHLfit,boot.repl=0,
+                       method="corrHLfit",boot.repl=0,
                        which.iterative=c(),
                        trace=F, ## T means lead to calls of corrHLfit(... trace=list(<file name>,<over/append>))
-                       control=list(), ## profiles=Inf,REMLfits=T,optimFits,restarts,maxit...
-                       control.boot=list(), ## REMLfits=F,optimFits=T,profiles=0
-                       verbose=c(F,F),  
+                       control=list(), ## profiles=Inf,prefits=T,optimFits,restarts,maxit...
+                       control.boot=list(), ## prefits=F,optimFits,profiles=0
+                       verbose=c(F,F),
+                       test.obj=NULL, ## 01/2014 to override default behaviour (experimental)  
                        ...) {
   ##################################################                     
   ## methods handled:
   ## RE<...> (ie. 'REML', 'RE(0,1)'...) => REML fits using the iterative algorithm, both with design matrix from full models; a bit slow...
   ## Other methods: no REML correction but the same REML fits are still possible to provide starting values for other fits
   ## if an init.corrHLfit argument is provided, then there is no REML estimation of the given parameter, even if the given method is RE<...>
-  ## Original PQL would be RE(0,0)
-  ## monPQL was ML(0,1)
+  ## 12/2013: PQL now identified to REPQL. At some stage there was 'monPQL' which was ML(0,1)
   ## my HL(...) were ML(...) because of init.corrHLfit, but would otherwise be RE(...)
-  ## FR->FR still problems ML(...) + REML formula
+  ## FR->FR cmmentaire non daté suggerait problèmes persistants ML(...) + REML formula. Pt etre pas un cas int
   ##################################################                     
   profiles <- control$profiles
   if (is.null(profiles)) profiles <- Inf
@@ -24,35 +25,44 @@ function(null.predictor=NULL,predictor,
   if (is.null(restarts)) restarts <- TRUE
   maxit <- control$maxit
   if (is.null(maxit)) maxit <- 1
-  # added 10/2013
-  bootcontrol <- list()
-  bootcontrol$REMLfits <- control.boot$REMLfits
-  if (is.null(bootcontrol$REMLfits)) bootcontrol$REMLfits <- FALSE
-  bootcontrol$optimFits <- control.boot$optimFits 
-  if (is.null(bootcontrol$optimFits)) bootcontrol$optimFits <- TRUE
-  bootcontrol$profiles <- control.boot$profiles
-  if (is.null(bootcontrol$profiles)) bootcontrol$profiles <- 0
+  REMLfits <- control$REMLfits
+  if ( ! is.null(REMLfits)) { ## back compat code for change of name
+    control$prefits <- REMLfits
+    control$REMLfits <- NULL
+  }
+  # added 10/2013 probably in anticipation for direct uses of corrMM.LRT
+  # the prefits are F by default
+  # I should be able to use boot.control directly 
+  bootcontrol <- list(prefits=FALSE,profiles=0) ## corrMM/LRT defaults (optimFits defaults controlled elsewhere)
+  bootcontrol[names(control.boot)] <- control.boot ## overrriden by user input
   #
   bootFix <- control$bootFix
   if (is.null(bootFix)) bootFix <- c()
-  if (class(predictor)=="formula") predictor <- Predictor(predictor)
-  form <- predictor$formula
+  if (! "predictor" %in% class(predictor)) predictor <- Predictor(predictor)
+  form <- predictor
   dotlist <-list(...)
-  dotlist$minimalOutput <- NULL ## FR->FR no longer used 
+#  if (!is.null(dotlist[["always.prof.fixed"]])) { ## option completement obsolete mais indicative du  script publie ECOGRAPHY hence hack:
+#    dotlist$control.HLfit$version <- "1.0"
+#    dotlist[["always.prof.fixed"]] <- NULL ## et un petit menage au passage
+#  }
   if (!is.null(dotlist$LamFix)) {
-    dotlist$ranFix$lambda <- dotlist$LamFix
+      dotlist$ranFix$lambda <- dotlist$LamFix
     dotlist$LamFix <- NULL
   }
   if (!is.null(dotlist$PhiFix)) {
     dotlist$ranFix$phi <- dotlist$PhiFix
     dotlist$PhiFix <- NULL
   }  
-  dotlist$predictor <- predictor ## this is here so that the user sees 'predictor' as an argument
+  dotlist$formula <- predictor 
   dotlist$verbose <- verbose 
-  if (is.null(dotlist$objective)) { ## implements default objective function
-    if ( ! is.null(null.predictor)) {dotlist$objective <- "p_v"} else {dotlist$objective <- "p_bv"}
-  }
+  if (method=="corrHLfit") {
+    if (is.null(dotlist$objective)) { ## implements default objective function
+      if ( ! is.null(null.predictor)) {dotlist$objective <- "p_v"} else {dotlist$objective <- "p_bv"}
+    }
+  } else dotlist$objective <- NULL
   ## do not change dotlist afterwards !
+  trace.info <- NULL
+  nullm.list <- dotlist
   fullm.list <- dotlist
   ####
   which.iterative.fit <-character(0)
@@ -68,27 +78,39 @@ function(null.predictor=NULL,predictor,
   }
   if ( ! "rho" %in% names(dotlist$ranFix)) which.optim.fit <- c(which.optim.fit,"rho")
   if ( ! "nu" %in% names(dotlist$ranFix)) which.optim.fit <- c(which.optim.fit,"nu")
-  if ( ! "Nugget" %in% names(dotlist$ranFix)) which.optim.fit <- c(which.optim.fit,"Nugget") ## currently not operative
+  if ( ! "Nugget" %in% names(dotlist$ranFix)) which.optim.fit <- c(which.optim.fit,"Nugget") ## by default not operative
   ######## Determines iterativeFits, optimFits and the corresponding REML formulas
   ## *by default* the iterative fits are more REML than the optim fits; true REML is possible only through the iterative fits.
   #### optimREMLformula is a (false, typically ML) REML formula for nullfit, fullfit, not for REML fits
-  if (dotlist$HLmethod %in% c("ML","PQL","PQL/L")) { ## corrMM.LRT assumes a non-standard form of PQL
-    iterativeFits <- control$REMLfits ## FR->FR 'REMLfits' should become obsolete syntax
+  if (is.null(dotlist$HLmethod)) stop("Argument 'HLmethod' missing with no default in corrMM.LRT") ## Devrait pas venir de la dotlist... codage bouseux mais bon.
+  if (dotlist$HLmethod %in% c("ML","PQL/L") || substr(dotlist$HLmethod,0,2) == "ML") { ## 
+    iterativeFits <- control$prefits ## performs an iterative prefit for dispersion params that have afterwards fitted using optim
     optimFits <- control$optimFits ## 
     if (is.null(optimFits)) optimFits <- TRUE 
-    if (optimFits) optimREMLformula <- NULL  ## HLfit (translate...) will reject any non null input REMLformula and reconstruct it internally  
-  } else if (substr(dotlist$HLmethod,0,2) == "RE") { ## explicit request for REML; only iterativeFits should be run and optimREMLformula shoul not be used 
+    if (optimFits) optimREMLformula <- NULL  ## for ML preprocess will reject any non null input REML formula and reconstruct it internally  
+  } else { ## RE, HL, EQL... will skip the loop; for consistency with RE in v1.0, and by lack of interest otherwise.  
     iterativeFits <- TRUE
-    optimFits <- FALSE
-  } else {  ## HL<...>: in corrMM.LRT, this is interpreted as ML fits; although this is also non-standard   
-    iterativeFits <- control$REMLfits ## FR->FR 'REMLfits' should become obsolete syntax
-    bars <- findbarsMM(form)  ## extract random effects
-    lhs <- paste(form[[2]]) ## extract response
-    ## build formula with only random effects
-    optimFits <- control$optimFits ## 
-    if (is.null(optimFits)) optimFits <- TRUE 
-    if (optimFits) optimREMLformula <- as.formula(paste(lhs,"~",paste(paste("(",as.character(bars),")"),collapse="+"))) ## ML in iterative fit
-  }
+    optimFits <- FALSE ## hence profiles not possible
+  } 
+  if ( (!optimFits) && profiles>0 ) {stop("Profiles not possible with HLmethod other than 'ML...' or 'PQL/L'.")}
+  ## v1.0 had:
+#  if (dotlist$HLmethod %in% c("ML","PQL/L") || substr(dotlist$HLmethod,0,2) == "ML") { ## 
+#    iterativeFits <- control$prefits 
+#    optimFits <- control$optimFits ## 
+#    if (is.null(optimFits)) optimFits <- TRUE 
+#    if (optimFits) optimREMLformula <- NULL  ## for ML preprocess will reject any non null input REMLformula and reconstruct it internally  
+#  } else if (substr(dotlist$HLmethod,0,2) %in% c("RE")) { ## explicit request for REML; only iterativeFits should be run and optimREMLformula shoul not be used 
+#    iterativeFits <- TRUE
+#    optimFits <- FALSE
+#  } else {  ## HL<...>: or EQL. In corrMM.LRT, this was interpreted as ML fits. But this is reversed as non-standard in v1.1.   
+#    iterativeFits <- control$prefits 
+#    bars <- findbarsMM(form)  ## extract random effects
+#    lhs <- paste(form[[2]]) ## extract response
+#    ## build formula with only random effects
+#    optimFits <- control$optimFits ## 
+#    if (is.null(optimFits)) optimFits <- TRUE 
+#    if (optimFits) optimREMLformula <- as.formula(paste(lhs,"~",paste(paste("(",as.character(bars),")"),collapse="+"))) ## ML in iterative fit
+#  }
   ####
   if (is.null(iterativeFits)) { ## ie default for non RE<...>
     if (length(which.iterative)==0) {
@@ -101,28 +123,38 @@ function(null.predictor=NULL,predictor,
   ####
   #### REMLformula for iterativeFits is a false (by default full-model formula) REML formula for both iterative fits; that makes them *somewhat* more suitable for LR tests
   if (iterativeFits) {
-    if (is.null(REMLformula)) { ## default
-      ## this one is the formula for the true REML full fit and the hacked (nullm.list$REMLformula=full...) REML null fit that serve to initiate the later ML fits
-      fullm.list$REMLformula <- fullm.list$predictor$formula ## REML correction by default under full model (this is also the HLfit default)
-    } else { ## allows alternative choice, but still the same *both* the full and the null fit
-      fullm.list$REMLformula <- REMLformula
+    ## check fullm.list$REMLformula, which will be copied into nullm in all cases of fixed LRTs
+    if (dotlist$HLmethod %in% c("ML","PQL/L")) {
+      fullm.list$REMLformula <- NULL
+      nullm.list$REMLformula <- NULL
+    } else { ## an REML variant
+      if (is.null(REMLformula)) { ## default
+        fullm.list$REMLformula <- NULL ## so far this is the HLfit default
+        nullm.list$REMLformula <- fullm.list$formula ## so far this is the HLfit default
+      } else { ## allows alternative choice, but still the same *both* the full and the null fit
+        fullm.list$REMLformula <- REMLformula
+        nullm.list$REMLformula <- REMLformula
+      }
       namesinit <- names(fullm.list$init.corrHLfit)
-      if ( ! is.null(namesinit)) {
+      namesinit <- setdiff(namesinit,c("rho","nu","Nugget"))
+      len <- length(namesinit)
+      if ( len>0 && optimFits) {
+        if (len > 1) namesinit <- paste(c(paste(namesinit[-len],collapse=", "),namesinit[len]),collapse=" and ")
         message("Argument 'init.corrHLfit' is used in such a way that")
         message(paste("  ",namesinit," will be estimated by maximization of p_v.",sep=""))
         message("  'REMLformula' will be inoperative if all dispersion")
         message("  and correlation parameters are estimated in this way.")
       }
-    }  
+    }
   }
   if (verbose[1]) {
     if (iterativeFits) {
       cat("corrMM.LRT will perform iterative fits of dispersion parameters with REML formula ")
-      print(fullm.list$REMLformula,showEnv=F)
+      print(fullm.list$REMLformula)
     } else print("corrMM.LRT will not perform iterative fits of dispersion parameters.")  
     if (optimFits) {
       cat("corrMM.LRT will perform generic optimization fits of dispersion parameters with REML formula ")
-      print(optimREMLformula,showEnv=F)
+      print(optimREMLformula)
     } else print("corrMM.LRT will not perform generic optimization fits of dispersion parameters.")
   }
   #########
@@ -194,20 +226,16 @@ function(null.predictor=NULL,predictor,
      }      
     return(to.arglist)
   }  
-  ##
-  trace.info <- NULL
-  nullm.list <- dotlist
   ####
   #### ALWAYS p_v for testing fixed effects, p_bv for random effects 
   if ( ! is.null(null.predictor)) { ## ie if test effet fixe
     testFix <- T
-    test.obj <- "p_v"
-    if (class(null.predictor) == "formula") null.predictor <- Predictor(null.predictor)
-    nullm.list$predictor <- null.predictor
-    nullm.list$REMLformula <- fullm.list$REMLformula ## REML correction still under full model
+    if (is.null(test.obj)) test.obj <- "p_v"
+    if (! "predictor" %in% class(null.predictor)) null.predictor <- Predictor(null.predictor)
+    nullm.list$formula <- null.predictor
   } else if ( length(null.disp)>0 ) { ## test disp/corr param
     testFix <- F
-    test.obj <- "p_bv"
+    if (is.null(test.obj)) test.obj <- "p_bv"
     #
     mess <- pastefrom("changes to objective fn required to renullfit or refull fit computation.")
     stop(mess)
@@ -223,10 +251,11 @@ function(null.predictor=NULL,predictor,
   ## FIRST NULL FIT; iterative then optim
   if (iterativeFits) { ## user requested not iterative (default), but in this case the algo still tries something for iterative lambda 
     nullREML.list <- nullm.list
-    if (nullREML.list$HLmethod=="ML") nullREML.list$HLmethod <- "REML" ## but do not over write more explicit HL(.,.) statements 
-    if (nullREML.list$HLmethod %in% c("PQL","PQL/L")) nullREML.list$HLmethod <- "REPQL" ## but do not over write more explicit HL(.,.) statements 
+    if (nullREML.list$HLmethod=="ML") { nullREML.list$HLmethod <- "REML" ## but do not over write more explicit HL(.,.) statements 
+    } else if (substr(nullREML.list$HLmethod,0,2) == "ML") { nullREML.list$HLmethod <- paste("RE",substring(nullREML.list$HLmethod,3),sep="") ##  
+    } else if (nullREML.list$HLmethod %in% c("PQL/L")) nullREML.list$HLmethod <- "REPQL" ## but do not over write more explicit HL(.,.) statements 
     nullREML.list$init.corrHLfit$lambda <- NULL 
-    nullREML.list$init.corrHLfit$phi <- NULL ## 21/02/2013... changes something only for LMMs, which are not an issue
+    nullREML.list$init.corrHLfit$phi <- NULL ## 21/02/2013
     nullREML.list$control.HLfit$conv.threshold <- 1e-04 
     if (trace) nullREML.list$trace <- list(file="trace.lamREMLnullfit.txt",append=F)
     lamREMLnullfit <- do.call(method,nullREML.list)$hlfit ## must return something that simulate() can manipulate
@@ -268,7 +297,7 @@ function(null.predictor=NULL,predictor,
   if (iterativeFits ) { ## in which case still tries somethng for iterative lambda 
     REML.list <- fullm.list
     if (REML.list$HLmethod=="ML") REML.list$HLmethod <- "REML" ## but do not over write more explicit HL(.,.) statements 
-    if (REML.list$HLmethod %in% c("PQL","PQL/L")) REML.list$HLmethod <- "REPQL" ## but do not over write more explicit HL(.,.) statements 
+    if (REML.list$HLmethod %in% c("PQL/L")) REML.list$HLmethod <- "REPQL" ## but do not over write more explicit HL(.,.) statements 
     REML.list$init.corrHLfit$lambda <- NULL 
     REML.list$init.corrHLfit$phi <- NULL ## 21/02/2013
     REML.list$control.HLfit$conv.threshold <- 1e-04 
@@ -307,13 +336,14 @@ function(null.predictor=NULL,predictor,
   profileVars <- which( ! fullnamesX %in% nullnamesX) ## les parametres testes
   profileX <- fullfit$X[,profileVars,drop=F]
   locit <- 1
-  if (dotlist$HLmethod %in% c("REML","REPQL")) {
-    conv <- 0 ## will skip the loop
+  if (! (optimFits && locit <= maxit) ) { ## will not enter the loop => LRTori ici
     LRTori <- 2*(fullfit$APHLs[[test.obj]]-nullfit$APHLs[[test.obj]])
-  } else  conv <- 1e08
+    conv <- 0 ## will skip the loop
+  } else  conv <- 1e08 ## LRTori will be computed at first iteration of the loop
   newnull <- T; newfull <- T; 
   newforprof <- T
   LRTprof <- NA
+  ## must *enter* the loop *iff* (optimFits)
   while ( optimFits && conv>0.001 && (newnull || newfull) && locit <= maxit ) { ## optimFits required since the later fits use optimREMLformula; but the premise could be reconsidered
     ####### this loop aims to ensure that maximal nullfit and fullfit are found
     ## currently implemented only in cases where some random effect parameters are fit
@@ -409,7 +439,7 @@ if (restarts) {
         } 
       }
       if ( fullfit$APHLs[[test.obj]] < nullfit$APHLs[[test.obj]] ) { ## if previous heuristic attemptS not good enough
-        ##FR->FR formally a call to corrHLfit, but all optim parameters are fixed. This is is only an HLCor call, and it generates no valid output in the trace file
+        ## Formally a call to corrHLfit, but all optim parameters are fixed. Hence this is only an HLCor call, and it generates no valid output in the trace file
         fullm.con.list <- fullm.list
         fullm.con.list <- init.fixed.ranefpars(from.fit=nullfit,to.arglist=fullm.con.list)
         fullm.con.list <- update.ranef.pars(from.fit=nullfit,to.arglist=fullm.con.list,which.pars=c("v_h"))
@@ -458,29 +488,45 @@ if (restarts) {
           try(unlink("trace.profile.txt")) ## the file is written in by HLCor()                   
           prof.list$trace <- list(file="trace.profile.txt",append=T)
         }
-        profilize <- function(offset) {
-          prof.list$predictor$offset <- profileX %*% offset ## semble marcher pour scalaire comme pour vecteur
+        profilize <- function(offsetbeta) {
+          addOffset <- profileX %*% offsetbeta ## semble marcher pour scalaire comme pour vecteur
+          offset <- attr(prof.list$formula,"offset")
+          if ( is.null(offset)) offset <- 0
+          attr(prof.list$formula,"offset") <- offset + addOffset
           prof.fit <- do.call(method,prof.list)$hlfit ## 
           return(prof.fit$APHLs[[test.obj]])
         }
         if (length(profileVars)>1) {
           ## optim syntax
           ## uses last full fit here:
-          lowup <- fullfit$fixef[profileVars] %*% t(c(-1,5)/2) ## should be of dim [,2]
-          lowup <- apply(lowup,1,sort) ## should be of dim [2,]
+          # lowup <- fullfit$fixef[profileVars] %*% t(c(-1,5)/2) ## should be of dim [,2]
+          # lowup <- apply(lowup,1,sort) ##  ncol=2
+          lowup <- fullfit$fixef[profileVars] + fullfit$fixef_se[profileVars] %*% t(c(-2,2)) ## ncol=2
+          lowp <- lowup[,1]; upp <- lowup[,2]
+          ## if we are here because nullfit > fullfit, nullfit should be in the interval  
+          lowp[lowp>0] <- - (fullfit$fixef_se[profileVars])[lowp>0]
+          upp[upp<0] <- (fullfit$fixef_se[profileVars])[upp<0]
           stop("optim call missing 'here' in corrMM.LRT")
           profmax <- optim(par=fullfit$fixef[profileVars],
-                              fn=profilize,lower=lowup[1,],upper=lowup[2,],
+                              fn=profilize,lower=lowp,upper=upp,
                               control=list(fnscale=-1),method="L-BFGS-B")
           mess <- pastefrom("code needed here for optim output.")
           stop(mess)
         } else {
           ## one dim optimize syntax
-          if (fullfit$fixef[profileVars] != 0) { ## if fullfit sufficiently different from null fit
-            interval <- sort(fullfit$fixef[profileVars]*c(-1,5)/2)
-          } else interval <- 0.001*c(-1,1) ##FR->FR very quick ad hoc patch
+## ad hoc code of test versions <= 1.0
+#          if (fullfit$fixef[profileVars] != 0) { ## if fullfit sufficiently different from null fit
+#            interval <- sort(fullfit$fixef[profileVars]*c(-1,5)/2)
+#          } else interval <- 0.001*c(-1,1) ## very quick ad hoc patch
+          interval <- fullfit$fixef[profileVars]+c(-2,2)*fullfit$fixef_se[profileVars]   
+          ## if we are here because nullfit > fullfit, nullfit should be in the interval  
+          if (interval[1]>0) interval[1] <- - fullfit$fixef_se[profileVars]
+          if (interval[2]<0) interval[2] <- fullfit$fixef_se[profileVars]
           profmax <- optimize(profilize,interval=interval,maximum=T)
-          prof.list$predictor$offset <- profileX %*% profmax$maximum 
+          addOffset <- profileX %*% profmax$maximum
+          offset <- attr(prof.list$formula,"offset")
+          if ( is.null(offset)) offset <- 0 ## ? FR->FR code repetitif, creer update.offset
+          attr(prof.list$formula,"offset") <- offset + addOffset
           proffit <- do.call(method,prof.list)$hlfit ## to recover the ranef parameters etc
           if ( proffit$APHLs[[test.obj]] > fullfit$APHLs[[test.obj]] ) { ## if profile max should improve fullfit
             trace.info <- rbind(trace.info,data.frame(iter=locit,step="proffit (+)",obj=proffit$APHLs[[test.obj]]))
@@ -523,14 +569,21 @@ if (restarts) {
   ## BOOTSTRAP
   if ( ! is.na(testFix)) {
     if (boot.repl>0) {
+      ## the following prevents a bug when we change "this" function name (but works only for certain calls...)
+      thisFnName <- as.character(sys.call()[[1]]) 
       bootlist <- dotlist ## copies ranFix
       bootlist$control <- bootcontrol ## (a list)
       bootlist <- c(bootlist,list(null.predictor=null.predictor,null.disp=null.disp,REMLformula=REMLformula,method=method)) ## unchanged user REMLformula forwarded
       bootlist$verbose <- c(FALSE,FALSE)
       bootlist$trace <- FALSE 
       bootlist$boot.repl <- 0 ## avoids recursive call of bootstrap
-      ## Give known simulated valus as starting values
-      all.optim.vars <- c(which.optim.fit,which.iterative.fit)
+      ## all.optim.vars <- c(which.optim.fit,which.iterative.fit) ## looks suspect, but is correct because if there is no dispersion estimate in  
+      ## init.corrHLfit from the corrMM call, then optimFits has been set to F, 
+      ## and then we perform only iterativeFits which takes out the dispersion estimates from init.corrHLfit.
+      ## A more transparent code is:
+      if (optimFits) {
+        all.optim.vars <- c(which.optim.fit,which.iterative.fit)
+      } else all.optim.vars <- which.optim.fit
       for (st in all.optim.vars) {
         if ( st %in% names(nullfit$corrPars)) {
           bootlist$init.corrHLfit[st] <- nullfit$corrPars[st]
@@ -539,15 +592,13 @@ if (restarts) {
         } ## it's also possible that st is nowhere (10/2013: currently for Nugget)
       }
       bootreps<-matrix(,nrow=boot.repl,ncol=2) 
-      if (testFix) {
-        colnames(bootreps) <- c("full.p_v","null.p_v")
-      } else colnames(bootreps) <- c("full.p_bv","null.p_bv")
+      colnames(bootreps) <- paste(c("full.","null."),test.obj,sep="")
       cat("bootstrap replicates: ")
       simbData <- nullfit$data
       if (tolower(nullfit$family$family)=="binomial") {
-        form <- nullfit$predictor$oriFormula ## this must exists...  
+        form <- attr(nullfit$predictor,"oriFormula") ## this must exists...  
         if (is.null(form)) {
-          mess <- pastefrom("a processed binomial model formula must have an 'oriFormula' member.",prefix="(!) From ")
+          mess <- pastefrom("a 'predictor' object must have an 'oriFormula' member.",prefix="(!) From ")
           stop(mess)
         }
       }
@@ -557,11 +608,20 @@ if (restarts) {
         repeat { ## for each ii!
           newy <- simulate(nullfit) ## cannot simulate all samples in one block since some may not be analyzable  
           if (tolower(nullfit$family$family)=="binomial") {
-            simbData[[as.character(form[[2]][[2]])]] <- newy
-            simbData[[as.character(form[[2]][[3]])]] <- nullfit$weights - newy    
-          } else {simbData[[as.character(nullfit$predictor$formula[[2]])]] <- newy}
+            ## c'est bouseux: soit j'ai (pos, neg) et le remplacement est possible
+            ##    soit j'ai (pos,ntot -pos) et le 2e remplacment n'est pas poss (et pas necess)
+            ##    aussi (ntot - pos, pos) ...
+            ## would be simple if always ntot-pos, but how to control this ? 
+            ## simbData[[as.character(form[[2]][[2]])]] <- newy
+            ## simbData[[as.character(form[[2]][[3]])]] <- nullfit$weights - newy    
+            exprL <- as.character(form[[2]][[2]]) 
+            exprR <- as.character(form[[2]][[3]]) 
+            if (length(exprL)==1) simbData[[exprL]] <- newy 
+            if (length(exprR)==1) simbData[[exprR]] <- nullfit$weights - newy                    
+            ## if (length(exprR)! =1) exprRdoes not correspond to a column in the data;frmae so there is no column to replace                     
+          } else {simbData[[as.character(nullfit$predictor[[2]])]] <- newy}
           bootlist$data <- simbData
-          bootrepl <- try(do.call(corrMM.LRT,bootlist))
+          bootrepl <- try(do.call(thisFnName,bootlist))  ################# CALL ################# 
           if (class(bootrepl)[1] != "try-error") { ## eg separation in binomial models... alternatively, test it here (require full and null X.pv... )
             bootreps[ii,] <- c(bootrepl$fullfit$APHLs[[test.obj]],bootrepl$nullfit$APHLs[[test.obj]])
             break ## replicate performed, breaks the repeat

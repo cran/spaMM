@@ -13,14 +13,14 @@ A Bartlett correction of the LR statistic can be estimated using the bootstrap.
 
 }
 \usage{
-fixedLRT(null.predictor,predictor,data,HLmethod,REMLformula=NULL,boot.repl=0,
+fixedLRT(null.formula,formula,data,HLmethod,REMLformula=NULL,boot.repl=0,
           control=list(),control.boot=list(),...)  
 }
 \arguments{
-  \item{null.predictor}{
+  \item{null.formula}{
 Either a \code{formula} (as in \code{glm}) or a \code{predictor} (see \code{Predictor}) for the null model.
 }
-  \item{predictor}{
+  \item{formula}{
 Either a \code{formula} or a \code{predictor} for the full model.
 }
   \item{data}{A data frame containing the variables in the model.}
@@ -30,9 +30,8 @@ Either a \code{formula} or a \code{predictor} for the full model.
    The two most meaningful values of \code{HLmethod} in \code{fixedLRT} calls are: 
    \code{'ML'} for an LRT based on ML fits (generally recommended); and
    \code{'PQL/L'} for an LRT based on PQL/L fits (recommended for spatial binary data). 
-
    
-   Also feasible, but more tricky, and not really recommended (see Rousset and Ferdy, ms), is \code{'REML'}. 
+   Also feasible, but more tricky, and not really recommended (see Rousset and Ferdy, 2014), is \code{'REML'}. 
    This will perform an LRT based on two REML fits of the data, *both* of which use the  
    same conditional (or \dQuote{restricted}) likelihood of residuals for estimating dispersion parameters \eqn{\lambda} and \eqn{\phi} (see \code{REMLformula} argument). 
    Further, REML will not be effective on a given dispersion parameter if a non-trivial init.corrHLfit value is provided for this parameter.  
@@ -46,13 +45,13 @@ Either a \code{formula} or a \code{predictor} for the full model.
   the number of bootstrap replicates.
 }
   \item{control}{
-  A set of control parameter for the fits of the data, mostly for development purposes. However, the ML fits may be slightly improved if initiated with the dispersion parameters estimates of an REML fit, in which case the option \code{control=list(REMLfits=TRUE)} may be useful (the effect appears small, however).   
+  A set of control parameter for the fits of the data, mostly for development purposes. However, if an initial value is provided for a dispersion parameter, a better one may be sought if further \code{control=list(prefits=TRUE)} (the effect appears small, however).   
 }
   \item{control.boot}{
-  Same as \code{control}, but for the fits of the bootstrap replicates. Again, the option \code{control.boot=list(REMLfits=TRUE)} may yield a small improvement in the fits, at the expense of more computation time.   
+  Same as \code{control}, but for the fits of the bootstrap replicates. Again, the option \code{control.boot=list(prefits=TRUE)} may yield a small improvement in the fits, at the expense of more computation time.   
 }
   \item{...}{
-  Additional arguments passed to \code{corrHLfit}, including mandatory ones such as \code{data} and those ultimately passed to \code{designL.from.Corr}. With respect to the latter, note in particular that \code{try.chol} affects the simulation of samples for the parametric bootstrap, and although utlimate 
+  Additional arguments passed to \code{corrHLfit}, including mandatory ones such as \code{data} and those ultimately passed to \code{designL.from.Corr}. With respect to the latter, note in particular that \code{try.chol} affects the simulation of samples for the parametric bootstrap, and although ultimate 
   differences in performance may be small, \code{try.chol=FALSE} may be slightly better.
 }
 }
@@ -74,7 +73,8 @@ An object of class \code{fixedLRT}, actually a list with typical elements (depen
 \references{
   Bartlett, M. S. 1937. Properties of sufficiency and statistical tests. Proceedings of the Royal Society (London) A 160: 268-282.
 
-  Rousset F., Ferdy, J.-B. (ms) Testing environmental and genetic effects in the presence of spatial autocorrelation.
+  Rousset F., Ferdy, J.-B. (2014) Testing environmental and genetic effects in the presence of spatial autocorrelation. Ecography, in press.
+    \url{http://dx.doi.org/10.1111/ecog.00566}
 
   Welham, S. J., and Thompson, R. 1997. Likelihood ratio tests for fixed model
   terms using residual maximum likelihood, J. R. Stat. Soc. B 59, 701-714.
@@ -87,13 +87,13 @@ See also \code{\link{corrHLfit}}.
 data(blackcap)
 \dontrun{
 ## result comparable to the corrHLfit examples based on blackcap
-fixedLRT(null.predictor=migStatus ~ 1 + Matern(1|latitude+longitude),
-       predictor=migStatus ~ means + Matern(1|latitude+longitude), 
+fixedLRT(null.formula=migStatus ~ 1 + Matern(1|latitude+longitude),
+       formula=migStatus ~ means + Matern(1|latitude+longitude), 
        HLmethod='ML',data=blackcap)
 
 ## longer version with bootstrap
-fixedLRT(null.predictor=migStatus ~ 1 + Matern(1|latitude+longitude),
-       predictor=migStatus ~ means + Matern(1|latitude+longitude), 
+fixedLRT(null.formula=migStatus ~ 1 + Matern(1|latitude+longitude),
+       formula=migStatus ~ means + Matern(1|latitude+longitude), 
        HLmethod='ML',data=blackcap, boot.repl=100) 
 }
 }

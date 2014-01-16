@@ -2,18 +2,26 @@ preprocess <-
 function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predictor,REMLformula,data,family,BinomialDen=BinomialDen,rand.family) {
     processed <- list()
     ## algorithms (control of defaults remains in the HLfit code)
-    processed$vUpdating <- control.HLfit$vUpdating
     processed$LevenbergM <-control.HLfit$LevenbergM ## 
-    processed$spam <-control.HLfit$spam ##  
     stop.on.error <-control.HLfit$stop.on.error ##  
-    if (is.null(stop.on.error)) stop.on.error <- F
+    if (is.null(stop.on.error)) stop.on.error <- FALSE
     processed$stop.on.error <- stop.on.error ##  
     AIC <-control.HLfit$AIC ##  
-    if (is.null(AIC)) AIC <- F
+    if (is.null(AIC)) AIC <- FALSE
     processed$AIC <- AIC ##  
     essai <-control.HLfit$essai ##  
-    if (is.null(essai)) essai <- F
+    if (is.null(essai)) essai <- FALSE
     processed$essai <- essai ##  
+    betaFirst <-control.HLfit$betaFirst ##  
+    if (is.null(betaFirst)) betaFirst <- FALSE
+    processed$betaFirst <- betaFirst ##
+    ## FR->FR code to set LevenbergM to FALSE when some option is in HLfit. could be moved here if LMMbool code was too   
+    version <-control.HLfit$version ##  
+    if (is.null(version)) version <- "current"
+    processed$version <- version ##
+    useSparseQR <-control.HLfit$useSparseQR ##  
+    if (is.null(useSparseQR)) useSparseQR <- FALSE
+    processed$useSparseQR <- useSparseQR ##  
     ## numerical control parameters 
     conv.threshold <-control.HLfit$conv.threshold ## 
     if (is.null(conv.threshold)) conv.threshold <- 1e-05
@@ -42,10 +50,26 @@ function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predictor,REMLformu
       mess <- pastefrom("'data' is not a data.frame.",prefix="(!) From ")
       stop(mess)
     }
-    if (class(predictor)=="formula") predictor <- Predictor(predictor) 
+    if (! "predictor" %in% class(predictor)) predictor <- Predictor(predictor) 
+    MeanFrames <- HLframes(formula=predictor,data=data) ## design matrix X, Y, fixef names
+    ## in particular, $mf contains values of expl.vars and levels (indices) of ranefs for all observations. Indices are/should be ordered as uniqueGeo in ULI()
+    # MODIFICATION of formula and offset (but not oriFormula)     
+    off <- model.offset(MeanFrames$mf) ## Predictor has checked that there was either an offset term XOR an $offset 
+    if ( is.null(off) ) { ## no offset formula term
+      off <- attr(predictor,"offset") 
+    } else predictor <- noOffset(predictor)
+    if (is.null(off)) off <- rep(0,nrow(data)) ## model.frame.default(formula = locform, offset = off,...) expects a vector....
+    attr(predictor,"offset") <- off ## subtly, will be of length 1 if original offset was a constant...
+    processed$predictor <- predictor  
     #
-    if (class(resid.predictor)=="formula") resid.predictor <- Predictor(resid.predictor)
-    if (length(resid.predictor$formula)==2) resid.predictor$formula <- as.formula(paste('"phi"',paste(resid.predictor$formula,collapse=" ")))
+    if (! "predictor" %in% class(resid.predictor)) resid.predictor <- Predictor(resid.predictor)
+#    if (length(resid.predictor)==2) resid.predictor <- as.formula(paste('"phi"',paste(resid.predictor,collapse=" ")))
+    roff <- model.offset(model.frame(resid.predictor,data=data)) ## Predictor has checked that there was either an offset term XOR an $offset 
+    if ( is.null(roff) ) { ## no offset formula term
+      roff <- attr(resid.predictor,"offset") 
+    } else resid.predictor <- noOffset(resid.predictor)
+    if (is.null(roff)) roff <- rep(0,nrow(data))
+    attr(resid.predictor,"offset") <-roff
     processed$resid.predictor <- resid.predictor  
     #
    # comme l'EQL est dans un monde quasi gaussien, il se ramene aux LMM et utilise les leverage standard,
@@ -58,11 +82,12 @@ function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predictor,REMLformu
     ## Alternatively, the response can be a matrix where the first column shows the number of "successes" and the second column shows the number of "failures". 
     ## In this case R adds the two columns together to produce the correct binomial denominator. 
     if (family$family=="binomial") {
-      if ( ! is.null(predictor$BinDenForm)) { ## the cbind syntax was used in the formula 
-        BinomialDen <- eval(parse(text=predictor$BinDenForm),envir=data)
+      BinDenForm <- attr(predictor,"BinDenForm")
+      if ( ! is.null(BinDenForm)) { ## the cbind syntax was used in the formula 
+        BinomialDen <- eval(parse(text=BinDenForm),envir=data)
         ## la suite ducode suppose que pas cbind => ie essentially obsolete syntax 
       } else if (missing(BinomialDen) || is.null(BinomialDen)) { ## then this should be a binary response
-        checkResp <- eval(parse(text=as.character(predictor$formula[2])),envir=data) ## 'positives'
+        checkResp <- eval(parse(text=as.character(predictor[2])),envir=data) ## 'positives'
         if (any(checkResp>1)) {
           mess <- pastefrom("binomial, non-binary response. Please use the",prefix="(!) From ")
           message(mess)
@@ -83,28 +108,29 @@ function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predictor,REMLformu
     }
     processed$BinomialDen <- BinomialDen  
     ## conversion from user-friendly format to standard 'XX(...)' format
-    ## first index is for (0) h / (1) p_v(h) / (2) p^s_v(h)
-    ## second index is for no (0) or yes (1) D log Det / d log lambda correction (2) further p^s_bv correction
-    ## third index is for use of (0) QL deviance residuals (this affects the leverages) or not (1)
+    ## first index is for (0) h / (1) p_v(h) / (2) p^s_v(h) ie whether h lik or marginal lik is used for fixed effect estimation
+    ## Other components determine three options wrt to leverages, some for ReML correction, some for notEQL.
+    ## ML() vs HL() determines whether the hatval leverages are computed ie whether some basic ReML correction in applied
+    ## second index is for further ReML correction: no (0) or yes (1) D log Det / d log lambda correction (2) further p^s_bv correction
+    ## third index is for use of (0) EQL deviance residuals (this affects the leverages) or not (1) (this is not an ReML correction... but impatcs only dispersion estimation..)
+    ## thus overall we have <ReML/not>( <h/l> , <more ReML/not> , <not/EQL> )
     ## NohL07 table 1 has interesting terminology and further tables show even more cases
     if (HLmethod=="ML") {
-       if (family$family=="binomial" && mean(BinomialDen)<HL2.threshold) {
-         HLmethod <- "ML(1,1,1)" ## back to routine (1,1)
-       } else {HLmethod <- "ML(1,1,1)"} ## that makes a log det correction on the log det of p_v, not p_bv...
-       ## the 'ML' part is used only locally to determine the REMLformula ## this could be done !here! in the code
+      HLmethod <- "ML(1,1,1)" ## here there could be a special hack for (family$family=="binomial" && mean(BinomialDen)<HL2.threshold) 
     } else if (HLmethod=="REML") {
-      if (family$family=="binomial" && mean(BinomialDen)<HL2.threshold) {
-         HLmethod <- "HL(1,1,1)" ## back to routine (1,1)
-      } else {HLmethod <- "HL(1,1,1)"} 
-    } else if (HLmethod=="REPQL") { ## (0,0 : no D log Det / d log lambda correction NohL07 table 7; ,1): does not use quasi deviance residuals
-      HLmethod <- "HL(0,0,1)" ## currently no distinction between PQL and REPQL here
-    } else if (HLmethod=="PQL/L") { ## was HL(0,0,1); again no D log Det / d log lambda correction
-      HLmethod <- "ML(0,0,1)" 
-    } else if (HLmethod=="PQL") { 
-      message("Old-style 'PQL' is ambiguous, and is interpreted as 'PQL/L'; better use 'REPQL' or 'PQL/L' ")
-      HLmethod <- "ML(0,0,1)" 
-    } else if (HLmethod=="EQL") { ## tentative interpretation EQ has leverage corr hence is an 'HL' method
-      HLmethod <- "HL(0,0,0)" ## (0,...): gaussianise everything, hence no a(1) correction ## there is no HL(1) a(1) correction in GLM.MME
+      HLmethod <- "HL(1,1,1)" ## here there could be a special hack for (family$family=="binomial" && mean(BinomialDen)<HL2.threshold) 
+    } else if (HLmethod=="REPQL" || HLmethod=="PQL") {
+      if (rand.family$family!="gaussian") stop("PQL is not defined for HGLMs in general. Do you mean 'EQL-'?")
+      HLmethod <- "HL(0,0,1)" ## (=REPQL, equivalent to HL(0,0,0) ie EQL- for GLMMs )
+    } else if (HLmethod=="PQL/L") { ## again no D log Det / d log lambda correction
+      if (rand.family$family!="gaussian") stop("PQL is not defined for HGLMs in general. Do you mean 'ML(0,0)'? ")
+      HLmethod <- "ML(0,0,1)" ## (equivalent to ML(0,0,0) for GLMMs)
+    } else if (HLmethod=="EQL-") { ## version LeeNP06 p.212 incomplete 1st order ## probably hglm package
+      ## thus overall we have <ReML->HL >( <h->0> , <not more ReML->0> , <EQL -> 0> )
+      HLmethod <- "HL(0,0,0)" ## 
+    } else if (HLmethod=="EQL+") { ## version LeeN01 complete 1st order
+      ## thus overall we have <ReML->HL >( <h->0> , <more ReML->1> , <EQL -> 0> )
+      HLmethod <- "HL(0,1,0)" ## (0,...): gaussianise everything, hence no a(1) correction ## there is no HL(1) a(1) correction in GLM.MME
     }
     HL <- eval(parse(text=paste("c",substr(HLmethod,3,100),sep=""))) ## extracts the (...) part into a vector
     if (length(HL)==2) HL <- c(HL,1)
@@ -114,16 +140,16 @@ function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predictor,REMLformu
         message("Confusing combination of arguments: 'HLmethod=ML(...)' with non-null 'REMLformula'.")
         stop("  Make sure what you mean and simplify the arguments.")
       }
-      bars <- findbarsMM(predictor$formula)  ## extract random effects
-      lhs <- paste(predictor$formula)[[2]] ## extract response, either cbind or not
-      ## build formula with only random effects
-      REMLformula <- as.formula(paste(lhs,"~",paste(paste("(",as.character(bars),")"),collapse="+")))
+      bars <- findbarsMM(predictor)  ## extract random effects
+      lhs <- paste(predictor)[[2]] ## extract response, either cbind or not
+      if ( ! is.null(bars)) {
+        ## build formula with only random effects
+        REMLformula <- as.formula(paste(lhs,"~",paste(paste("(",as.character(bars),")"),collapse="+")))
+      } else REMLformula <- as.formula(paste(lhs,"~ 0")) 
     }
     processed$REMLformula <- REMLformula  
     #
     processed$loglfn.fix <- selectLoglfn(family$family)
-    MeanFrames <- HLframes(formula=predictor$formula,data=data) ## design matrix X, Y, fixef names
-    ## in particular, $mf contains values of expl.vars and levels (indices) of ranefs for all observations. Indices are/should be ordered as uniqueGeo in ULI()
     X.pv <- MeanFrames$X  
     colnames(X.pv) <- names(MeanFrames$fixef)
 #   namesX <- names(MeanFrames$fixef)
@@ -174,19 +200,25 @@ function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predictor,REMLformu
     #
     models <- c(eta="",lambda="",phi="")
     #
-    list_ranefs<-findbarsMM(predictor$formula) ## a list with the random effect terms in the mean formula
-    if (!is.null(list_ranefs)) { ## Design matriCES for v, typically a match between the levels of v and the observ. Ie Z, not ZL 
+    list_ranefs<-findbarsMM(predictor) ## a list with the random effect terms in the mean formula
+    if (!is.null(list_ranefs)) { ## Design matriCES for v, typically a match between the levels of v and the observ. Ie Z, not ZAL 
       models[["eta"]] <- "etaHGLM" 
-      FL <- spMMFactorList(predictor$formula, MeanFrames$mf, 0L, 0L) ## this uses the spatial information in the formula, ieven if an explicit distm was used elsewhere
+      FL <- spMMFactorList(predictor, MeanFrames$mf, 0L, 0L) ## this uses the spatial information in the formula, even if an explicit distMatrix was used elsewhere
       namesRE <- FL$namesRE
-      Zlist <- FL$Design ## : Zlist is a list of design matrices 
+      ZAlist <- FL$Design ## : is a list of design matrices (temporarily only Z)
+      AMatrix <- attr(predictor,"AMatrix")
+      if (!is.null(AMatrix)) {
+        ## logic is Z[nresp,nUniqueRespLoc].A[nUniqueRespLoc,nHiddenv].L[nHiddenv,nHiddenv]
+        for (iMat in seq(length(ZAlist))) {ZAlist[[iMat]] <- ZAlist[[iMat]] %*% AMatrix[[iMat]]}
+      }
     } else { ## if is.null(random.mean): no random effect in linear predictor
       models[["eta"]] <- "etaGLM"
       namesRE <- NULL
-      Zlist <- NULL
+      ZAlist <- NULL
+      ## rand.family <- NULL ## FR->FR on aimerait declarer qq chose comme ca assez tot mais passe pas pour l'instant
     } ## end if (!is.null(random.mean)) ... else ... endif
     processed$namesRE <- namesRE ## not sure what is the best way to pass this info
-    processed$Zlist <- Zlist
+    processed$ZAlist <- ZAlist
     #
     nrand <- length(list_ranefs)
     if (nrand>0) {   
@@ -207,25 +239,25 @@ function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predictor,REMLformu
       } else { ## the day we have true 'data' for lambda we could avoid the following ad hoc code
         formulaLambda <- "lambda" ~ 1 
         models[["lambda"]] <- "lamScal"
-        q <- rep(0, nrand)
-        for (i in 1:nrand) q[i] <- ncol(Zlist[[i]]) ## (=nrow) of each design matrix = nb realizations each ranef
-        qcum <- cumsum(c(0, q)) ## if two ranef,  with q=(3,3), this is 0,3,6. qcum[nrand+1] is then 6, the total # of realizations
-        X_lambda <- matrix(0,qcum[nrand+1L],nrand)
+        n_u_h <- rep(0, nrand)
+        for (i in 1:nrand) n_u_h[i] <- ncol(ZAlist[[i]]) ## (=nrow) of each design matrix = nb realizations each ranef
+        cum_h_u_h <- cumsum(c(0, n_u_h)) ## if two ranef,  with n_u_h=(3,3), this is 0,3,6. cum_h_u_h[nrand+1] is then 6, the total # of realizations
+        X_lambda <- matrix(0,cum_h_u_h[nrand+1L],nrand)
         colnames(X_lambda) <- rep("(Intercept)",nrand)
         for (i in seq(nrand)) {
           if (i==1) {
-            X_lambda[1:q[i],i]<-1 ## design X_lambda is a column of 1
+            X_lambda[1:n_u_h[i],i]<-1 ## design X_lambda is a column of 1
           } else { ## the design X_lambda has two columns, each containing a block of 0's and one of 1's
             ## so that the two lambda estimates are obtained through one fit
-            X_lambda[(qcum[i]+1L):qcum[i+1L],i]<-1L
+            X_lambda[(cum_h_u_h[i]+1L):cum_h_u_h[i+1L],i]<-1L
           }
         }
       }
-    }
+    } else X_lambda <- NULL
     processed$X_lambda <- X_lambda
     #
     if ( is.null(phi.Fix)) {
-         formulaDisp <- resid.predictor$formula
+         formulaDisp <- resid.predictor
          fr_disp <- HLframes(formula=formulaDisp,data=data) 
          X_disp <- fr_disp$X
          namesX_disp <- names(fr_disp$fixef)
@@ -248,21 +280,17 @@ function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predictor,REMLformu
       processed$X_disp <- X_disp
     } 
     #
-    Offset<-predictor$offset
-    if (is.null(Offset)) {
-       off <- rep(0,nrow(data)) ## model.frame.default(formula = locform, offset = off, drop.unused.levels = TRUE) expects a vector...
-    } else {off <- Offset}
-    processed$off <- off
-    #
     processed$models <- models
     if (class(rand.family)=="family") { ## then check what is feasible
           RandDist<-tolower(rand.family$family) ## tolower once and for all
           oklink <- F
+          ## cases where g(u)=th(u)
           if (RandDist=="gaussian" && rand.family$link=="identity") oklink <- T          
           if (RandDist=="gamma" && rand.family$link=="log") oklink <- T          
-          if (RandDist=="inverse.gamma" && rand.family$link=="log") oklink <- T
           if (RandDist=="inverse.gamma" && rand.family$link=="-1/mu") oklink <- T
           if (RandDist=="beta" && rand.family$link=="logit") oklink <- T
+          ## cases where g(u)!=th(u)
+          if (RandDist=="inverse.gamma" && rand.family$link=="log") oklink <- T 
           if ( ! oklink) stop("(!) Link not handled for rand.family")
     } else { ## rand.family is a string ## for private use only...
           RandDist<-tolower(rand.family) ## tolower once and for all

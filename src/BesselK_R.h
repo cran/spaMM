@@ -1,4 +1,14 @@
 /***************************************************************************
+© F. Rousset 2013-
+francois.rousset@univ-montp2.fr
+
+
+This file is part of spaMM. This software is a computer program
+whose purpose is to perform statistical analyses.
+This software is governed by the CeCILL-2 license.
+
+This file include bits of code from the R library and from the Numerical Recipes.
+It is a copy with little changes of an older code with the following copyright note:
 © F. Rousset 2005-
 francois.rousset@univ-montp2.fr
 
@@ -42,7 +52,7 @@ knowledge of the CeCILL license and that you accept its terms.
 #undef DBL_MAX
 #endif*/
 
-#include <cmath> //floor, ceil
+#include <cmath> //floor, ceil // here Ripley pointed that isnan() is not C++98 (although it is in g++)
 
 #include <cstdio>
 #include <limits>
@@ -636,6 +646,7 @@ Type bessel_k(Type x, Type alpha, double expo)
 //#ifdef IEEE_754
     /* NaNs propagated correctly */
     if (ISNAN(x) || ISNAN(alpha)) return x + alpha;
+    // here Ripley pointed that isnan() is not C++98 (although it is in g++)
     //if (std::isnan(x) || std::isnan(alpha)) return(std::numeric_limits<Type>::quiet_NaN());
 //#endif
     if (x < 0) {
@@ -650,7 +661,7 @@ Type bessel_k(Type x, Type alpha, double expo)
     if(alpha < 0)
 	alpha = -alpha; /// K_{-nu} = K_nu
 	if (alpha >1000) alpha=1000; /// this is quick patch for addressing problems with glmmPQL -> nlminb -> reaches 'here' with huge nu values -> pb with the calloc /// FR 250113
-	/** not vigette of http://cran.r-project.org/web/packages/Bessel/ . But the source code is not appealing, and for large nu in particular **/
+	/** note vignette of http://cran.r-project.org/web/packages/Bessel/ . But the source code is not appealing, and for large nu in particular **/
     nb = 1+ (long)floor(alpha);/* nb-1 <= |alpha| < nb */
     alpha -= (nb-1);
 #ifdef MATHLIB_STANDALONE

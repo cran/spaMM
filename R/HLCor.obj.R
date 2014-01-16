@@ -1,6 +1,5 @@
 HLCor.obj <-
 function(ranefParsVec,skeleton,HLCor.obj.value="p_bv",trace=NULL,...) { ## name of first arg MUST differ from names in dotlist...
-#browser()
   dotlist <- list(...)
   HLCor.formals <- names(formals(HLCor))
   HLfit.formals <- names(formals(HLfit))
@@ -16,7 +15,6 @@ function(ranefParsVec,skeleton,HLCor.obj.value="p_bv",trace=NULL,...) { ## name 
   }
   hlfit <- do.call(HLCor,HLCor.args)$hlfit
   aphls <- hlfit$APHLs
-#print(aphls)
   resu <- aphls[[HLCor.obj.value]]
   verif <- c(unlist(aphls),hlfit$lambda,hlfit$phi,ranefParsVec) ## hlfit$phi may be NULL
   if (is.character(trace)) {

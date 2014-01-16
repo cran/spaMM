@@ -1,21 +1,20 @@
 \name{HLCor}
 \alias{HLCor}
 \title{
-                    Fits a correlated mixed model, for given correlation parameters 
+                    Fits a (spatially) correlated mixed model, for given correlation parameters 
 }
 \description{
 A convenient interface for \code{\link{HLfit}}, constructing the correlation matrix of random effects from the arguments, 
 then estimating fixed effects and dispersion parameters using \code{HLfit}.
 }
 \usage{
-HLCor(predictor,ranPars,data,distm,uniqueGeo,adjMatrix,
-      return.corrMat=FALSE,verbose=rep(FALSE,3),...)
+HLCor(formula,ranPars,data,distMatrix,uniqueGeo,adjMatrix,
+      corrMatrix,verbose=rep(FALSE,3),...)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
-  \item{predictor}{
-    A \code{\link{Predictor}} including a \code{\link{formula}}, 
-    or possibly simply a \code{formula} if an offset is not required.
+  \item{formula}{
+   A \code{predictor}, i.e. a formula with attributes (see \code{\link{Predictor}}), or possibly simply a simple \code{formula} if an offset is not required.
   }
   \item{ranPars}{
   A list of values for correlation parameters (some of which are mandatory), and possibly also dispersion parameters 
@@ -29,7 +28,7 @@ HLCor(predictor,ranPars,data,distm,uniqueGeo,adjMatrix,
   \item{data}{
    The data frame to be analyzed.
   }
-  \item{distm}{
+  \item{distMatrix}{
     A distance matrix between geographic locations, forwarded to \code{Matern.corr}
 }
   \item{uniqueGeo}{
@@ -37,17 +36,16 @@ HLCor(predictor,ranPars,data,distm,uniqueGeo,adjMatrix,
     a scaled distance matrix has to be reconstructed from \code{uniqueGeo} and \code{rho}. 
 }
   \item{adjMatrix}{
-    An adjacency matrix, used is the spatial random effects are of the form\cr
+    An adjacency matrix, used if the spatial random effects are of the form\cr
     \code{y ~ adjacency(1|<location index>)}. 
     Its rows and columns must be ordered as increasing values of the levels of the geographic 
     location index specifying the spatial random effect. For example, if the model formula 
     is\cr 
     \code{y ~ adjacency(1|geo.loc)} and \code{<data>$geo.loc} is 2,4,3,1,... the first row/column of the matrix refers to the fourth row of the data. 
 }
-  \item{return.corrMat}{
-    Whether to include or not in the return value the correlation matrix 'C' of random effects among spatial locations and its \dQuote{square root} 
-    'L' defined such that such that \code{C = L \%*\% t(L)}. However, the \code{hlfit$ZLmatrix} in the returned object may already contain this information. See
-    Details in \code{\link{HLfit}} for possible differences between the 'L' and 'ZL' matrices.
+  \item{corrMatrix}{
+    A arbitrary (valid) correlation matrix, which each row correspond to levels of a variable <stuff> for the random effect (1|<stuff>) given in the model formula.
+    This allows to analyze non-spatial model by giving for example a matrix of genetic correlations. \code{corrMatrix} will determine the \code{Lmatrix} in a Predictor object, which may be modified by additional matrices taking into account e.g. block effects as described in \code{\link{Predictor}}.
 }
   \item{verbose}{
     A vector of up to three booleans, the first of which controls printed output from HLCor (currently not very useful), 
@@ -58,8 +56,9 @@ HLCor(predictor,ranPars,data,distm,uniqueGeo,adjMatrix,
 }
 }
 \details{
-  Correlated random effects are specified using either the declarations (not functions!) \code{Matern(<...>)} or \code{adjacency(<...>)} (see Examples). 
-  \code{Matern} will construct a correlation matrix according to the Matern correlation function (see \code{\link{Matern.corr}}). 
+  The correlation matrix for random effects can be specified using either the formula terms (not functions!) \code{Matern(1|<...>)} or \code{adjacency(1|<...>)} using the spatial coordinates in \code{<...>} (see Examples), or a user-provided distance matrix \code{distMatrix} to which the Matérn function is applied, or a user-provided correlation matrix \code{corrMatrix}.
+  
+  \code{Matern} will construct a correlation matrix according to the Matérn correlation function (see \code{\link{Matern.corr}}). 
   \code{adjacency} will construct a correlation matrix according to a conditional autoregressive (CAR) model, using the \code{adjMatrix}. 
   In the latter case the correlation matrix has the form (\bold{I}\eqn{-\rho}\code{adjMatrix})\eqn{^{-1}}. 
    This was implemented for comparison purposes as it is widely used, but is not really recommended for irregular lattices
@@ -76,8 +75,8 @@ the CAR and SAR models: Journal of Statistical Planning and Inference 121: 311-3
   A list with elements
   \item{hlfit}{The return value of the \code{HLfit} call}  
   \item{call}{the HLCor call}  
-  \item{corrMat}{(if \code{return.corrMat=TRUE}) the spatial correlation matrix between unique geographic locations}  
-  \item{Lunique}{(if \code{return.corrMat=TRUE}) The 'L' matrix such that the above correlation matrix is \code{L \%*\% t(L)}.}  
+  \item{HLCor.info}{A list with optional additional information. May include the names of the coordinates used to compute the spatial 
+                    correlation matrix between unique geographic locations.}  
 }
 
 \seealso{
@@ -86,7 +85,7 @@ the CAR and SAR models: Journal of Statistical Planning and Inference 121: 311-3
 }
 \examples{
 
-#### Examples with Matern correlations
+#### Examples with Matérn correlations
 data(Loaloa)
 HLCor(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
               +Matern(1|longitude+latitude),data=Loaloa,
@@ -95,8 +94,8 @@ HLCor(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
 \dontrun{
 #### example with an adjacency matrix (autoregressive model)
 data(scotlip) 
-HLCor(predictor=Predictor(cases~I(prop.ag/10) +adjacency(1|gridcode),
-      offset=log(scotlip$expec)),ranPars=list(rho=0.174),
+HLCor(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(scotlip$expec)),
+      ranPars=list(rho=0.174),
       adjMatrix=Nmatrix,family=poisson(),data=scotlip)
 }
 

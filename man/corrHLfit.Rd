@@ -8,18 +8,18 @@
   \code{corrHLfit} performs the joint estimation of correlation parameters, fixed effect and dispersion parameters. 
 }
 \usage{
-corrHLfit(predictor,data,init.corrHLfit=list(),ranFix=list(),lower=list(),upper=list(),
+corrHLfit(formula,data,init.corrHLfit=list(),ranFix=list(),lower=list(),upper=list(),
           trace=list(file=NULL,append=T),objective="p_bv",control.corrHLfit=list(),...)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
-  \item{predictor}{
-Either a \code{formula} (as in \code{glm}) or a \code{predictor} (see \code{\link{Predictor}}), but including a spatial random effect (see examples).
+  \item{formula}{
+Either a linear model \code{\link{formula}} (as handled  by various fitting functions) or a \code{predictor}, i.e. a formula with attributes (see \code{\link{Predictor}} and examples below).
 }
-  \item{data}{A data frame containing the variables in the model.}
+  \item{data}{A data frame containing the variables in the response and the model formula.}
   \item{init.corrHLfit}{
 An optional list of initial values for correlation and/or dispersion parameters, e.g. 
-\code{list(rho=1,nu=1,lambda=1,phi=1)} where \code{rho} and \code{nu} are parameters of the Matern family, and 
+\code{list(rho=1,nu=1,lambda=1,phi=1)} where \code{rho} and \code{nu} are parameters of the Matérn family, and 
 \code{lambda} and \code{phi} are dispersion parameters (see Details in \code{\link{spaMM}} for the meaning of these parameters). 
  All are optional, but giving values for 
 a dispersion parameter changes the ways it is estimated (see Details).
@@ -44,21 +44,24 @@ parameters in the HLCor call. Information about the variables is printed at the 
 }
   \item{objective}{
 The objective function maximized for estimation of parameters by \code{optim}. 
-Typically either \code{"p_bv"} or \code{"p_v"}.
+Either \code{"p_bv"} for restricted likelihood or \code{"p_v"} for marginal likelihood.
 }
   \item{control.corrHLfit}{
    Only for development purposes, not documented.
 }
   \item{...}{
-Optional arguments passed to \code{\link{HLCor}}, \code{\link{HLfit}} or  \code{\link{designL.from.Corr}}, for example the \code{distm} argument 
-of \code{HLCor}. Arguments hat do not fit within these functions are detected and a warning is issued.
+Optional arguments passed to \code{\link{HLCor}}, \code{\link{HLfit}} or  \code{\link{designL.from.Corr}}, for example the \code{distMatrix} argument 
+of \code{HLCor}. Arguments that do not fit within these functions are detected and a warning is issued.
 }
 }
 \details{
-  Under the Matern correlation model, corrHLfit typically performs a optimization over the \eqn{\rho} and \eqn{\nu} parameters, 
+  Under the Matérn correlation model, corrHLfit typically performs a optimization over the \eqn{\rho} and \eqn{\nu} parameters, 
   with maximum possible values as set by \code{\link{spaMM.options}}.\cr 
 
-  The higher level function \code{\link{fixedLRT}} is a safe interface for likelihood ratio tests based on this function.  
+  By default \code{corrHLfit} will estimate correlation parameters by maximizing the \code{objective} value returned by \code{HLCor} calls wherein the dispersion parameters are estimated jointly with fixed effects for given correlation parameters. If dispersion parameters are specified in \code{init.corrHLfit}, they will also be estimated by maximizing the \code{objective} value, and \code{HLCor calls} will not estimate them jointly with fixed effects. This means that in general the fixed effect estimates may vary depending on \code{init.corrHLfit} when any form of REML correction is applied. 
+  
+  Correctly using \code{corrHLfit} for likelihood ratio tests
+  of fixed effects may then by tricky. It is safe to perform full ML fits of all parameters (using \code{objective="p_v",HLmethod="ML"}) for such tests (see Examples).   The higher level function \code{\link{fixedLRT}} is a safe interface for likelihood ratio tests using some form of REML estimation in \code{corrHLfit}.  
 }
 \value{
 A list with currently a single element \code{hlfit}, which is the HLfit object returned by 
@@ -73,12 +76,12 @@ values are included in \code{hlfit} as  its \code{$corrPars} member.
 \examples{
 #### example with an adjacency matrix (autoregressive model)
 data(scotlip)
-corrHLfit(Predictor(cases~I(prop.ag/10) +adjacency(1|gridcode),offset=log(scotlip$expec)),
+corrHLfit(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(scotlip$expec)),
                data=scotlip,family=poisson(),
                adjMatrix=Nmatrix,lower=list(rho=0),upper=list(rho=0.1745))
 
 
-#### Examples with Matern correlations
+#### Examples with Matérn correlations
 ## A likelihood ratio test based on the ML fits of a full and of a null model.
 \dontrun{
 data(blackcap)

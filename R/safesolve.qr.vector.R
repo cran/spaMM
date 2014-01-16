@@ -1,6 +1,9 @@
 safesolve.qr.vector <-
 function(qr.a,b,silent=T,stop.on.error=T) { ## solve.qr with fall-back; qr.a should be a qr object, b must be a vector
-  ## there was a 'Matrix' subcode prior to 10/03/2013
+  if (class(qr.a)=="sparseQR") { ## pas de 'essai' en var locale !
+    ## there was a 'Matrix' subcode prior to 10/03/2013; another try on 11/2013
+    res <- qr.coef(qr.a,b)
+  } else {
     res <- try(solve.qr(qr.a,b),silent=silent)
     if (class(res)=="try-error") {   ## then some weird code, but...
       ## we try to solve(<original 'a' matrix>) using the QR decomp... this may work when solve.qr fails !
@@ -17,5 +20,6 @@ function(qr.a,b,silent=T,stop.on.error=T) { ## solve.qr with fall-back; qr.a sho
         } else return(res) ## passes control to calling function
       } 
     }  
+  }
   return(res)
 }

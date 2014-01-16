@@ -1,11 +1,10 @@
 \name{corMatern}
 \alias{corMatern}
-\encoding{latin1}
 %- Also NEED an '\alias' for EACH other topic documented here.
 \title{Matern Correlation Structure as a corSpatial object}
 \description{
-  This implements the Matern correlation structure for use with \code{lme} or \code{glmmPQL}. Usage is as for others \code{corSpatial} objects 
-  such as \code{corGaus} or \code{corExp}, except that the Matern family
+  This implements the Matérn correlation structure for use with \code{lme} or \code{glmmPQL}. Usage is as for others \code{corSpatial} objects 
+  such as \code{corGaus} or \code{corExp}, except that the Matérn family
   has an additional parameter. This function was defined for comparing
   results obtained with \code{corrHLfit} to those produced by \code{lme} and \code{glmmmPQL}. There
   are problems in fitting (G)LMMs in the latter way, so it is not a
@@ -22,7 +21,7 @@ corMatern(value = c(1, 0.5), form = ~1, nugget = FALSE, nuScaled = FALSE,
    If \code{nugget} is \code{FALSE}, \code{value} can
    have two elements, corresponding to the "range" \eqn{\rho} (or
    "1/scale" ) and the "smoothness" \eqn{\nu} of the
-   Mat?rn correlation structure. If \code{value} has zero length, 
+   Matérn correlation structure. If \code{value} has zero length, 
    the default is a range of 90\% of the minimum distance and a
    smoothness of 0.5 (exponential correlation).
    
@@ -74,16 +73,16 @@ corMatern(value = c(1, 0.5), form = ~1, nugget = FALSE, nuScaled = FALSE,
 }
 \details{
   This function is a constructor for the \code{corMatern} class,
-  representing a Matern spatial correlation structure. See
-   \code{\link{Matern.corr}} for details on the Matern family. 
+  representing a Matérn spatial correlation structure. See
+   \code{\link{Matern.corr}} for details on the Matérn family. 
 }
 \value{
   an object of class \code{corMatern}, also inheriting from class
-  \code{corSpatial}, representing a Mat?rn spatial correlation
+  \code{corSpatial}, representing a Matérn spatial correlation
   structure.
 }
 \references{
-Mixed-Effects Models in S and S-PLUS, Jos? C. Pinheiro and Douglas M. Bates, Statistics and Computing Series, Springer-Verlag, New York, NY, 2000.
+Mixed-Effects Models in S and S-PLUS, José C. Pinheiro and Douglas M. Bates, Statistics and Computing Series, Springer-Verlag, New York, NY, 2000.
 }
 \seealso{
   \code{\link{glmmPQL}}, \code{\link{lme}}
