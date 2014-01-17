@@ -126,7 +126,7 @@ static void matern_fact(double *par, double *dist, longint *n, longint *nug, lon
 //    F77_CALL(chol) (mat, n, n, mat, &info);
     dpofa(mat,(*n),(*n));  // cholesky
 #else
-    F77_CALL(chol) (mat, n, work, &zero, &zero, &info); //FR: should no longer work with R >= 3.0.0, but nt used
+    F77_CALL(chol) (mat, n, work, &zero, &zero, &info); //FR: should no longer work with R >= 3.0.0, but not used
 #endif
     for(i = 0; i < *n; i++) {
 	work1[i * np1] = 1;

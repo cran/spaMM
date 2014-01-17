@@ -40,11 +40,11 @@ By default the Nugget is set to 0. See one of the examples on data set \code{\li
 for a fit including the estimation of the Nugget.
 }
 \examples{
-## The Matern function can be used in Euclidian spaces of any dimension:
+## The Matérn function can be used in Euclidian spaces of any dimension:
 set.seed(123)
 randpts <- matrix(rnorm(20),nrow=5)
-distm <- as.matrix(dist(randpts))
-Matern.corr(distm,nu=2)
+distMatrix <- as.matrix(dist(randpts))
+Matern.corr(distMatrix,nu=2)
 }
 % Add one or more standard keywords, see file 'KEYWORDS' in the
 % R documentation directory.

@@ -1,4 +1,4 @@
-\name{spatialMM-internal}
+\name{spaMM-internal}
 
 \alias{Bartlett.robust} 
 \alias{Beta} 
@@ -27,9 +27,12 @@
 \alias{dispFn}
 \alias{dispGammaGLM} 
 \alias{dispInv} 
+\alias{findOffset} 
 \alias{findSpatial} 
+\alias{findSpatialOrNot} 
 \alias{findbarsMM} 
 \alias{findplus}
+\alias{formula.HLfit}
 \alias{generateFileName} 
 \alias{generateName} 
 \alias{getCovariate.corMatern} 
@@ -39,12 +42,16 @@
 \alias{make.scaled.dist} 
 \alias{muetafn}
 \alias{nobarsMM} 
+\alias{nobarsNooffset} 
+\alias{noOffset} 
 \alias{nuFn} 
 \alias{nuInv} 
 \alias{pastefrom} 
 \alias{plotdhglm} 
 \alias{preprocess}
+\alias{predict.HL}
 \alias{print.arglist}
+\alias{print.predictor}
 \alias{recalc.corMatern} 
 \alias{rhoFn} 
 \alias{rhoInv}
@@ -53,6 +60,7 @@
 \alias{selectLoglfn}
 \alias{separator} 
 \alias{slashTerms} 
+\alias{spaMMLRT} 
 \alias{spMMFactorList} 
 \alias{spMMexpandSlash}
 \alias{subbarsMM} 
@@ -62,9 +70,9 @@
 \alias{updateWranef}
 
 
-\title{Internal spatialMM Functions}
+\title{Internal spaMM Functions}
 \description{
-  Internal spatialMM functions
+  Internal spaMM functions
 }
 \details{
   These are not to be called by the user, or are waiting for documentation to be written.

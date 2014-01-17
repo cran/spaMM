@@ -14,14 +14,14 @@ spaMM.getOption(x)
 
 }
 \arguments{
-  \item{\dots}{Anything consistent with stadard format for function arguments. However, only the following ones
+  \item{\dots}{Anything consistent with standard format for function arguments. However, only the following ones
     are used in \code{spaMM}:
 
   \describe{
 
-\item{\code{RHOMAX=100000}:}{Maximum value of the scale parameter  \eqn{\rho} of the Matern correlation function}
+\item{\code{RHOMAX=100000}:}{Maximum value of the scale parameter  \eqn{\rho} of the Matérn correlation function}
 
-\item{\code{NUMAX=50}:}{Maximum value of the smoothness parameter  \eqn{\nu} of the Matern correlation function}
+\item{\code{NUMAX=50}:}{Maximum value of the smoothness parameter  \eqn{\nu} of the Matérn correlation function}
 
 \item{\code{TRACE.UNLINK=FALSE}:}{Whether to delete preexisting files named as \code{HLCor.args.*.RData} when the 
        trace option is used in corrHLfit or HLCor.}
@@ -42,11 +42,11 @@ spaMM.getOption(x)
 
   Internally, the options are kept in the list \code{.SpaMM}.\cr
 
-  spaMM.options() provides an interface for changing maximal values of parameters of the Matern correlation function. However, 
-  currently it is not recommended to change these values. Errors may occur if too low valeus are chosen.
+  spaMM.options() provides an interface for changing maximal values of parameters of the Matérn correlation function. However, 
+  currently it is not recommended to change these values. Errors may occur if too low values are chosen as these may conflit with default initial values for the parameters.
 }
 \value{
-  For \code{spam.getOption}, the current value set for option \code{x}, or
+  For \code{spaMM.getOption}, the current value set for option \code{x}, or
   \code{NULL} if the option is unset.
 
   For \code{spaMM.options()}, a list of all set options sorted by category.  For

@@ -24,7 +24,7 @@
     \item{cases}{number of lip cancer cases diagnosed 1975 - 1980.}
     \item{population}{total person years at risk 1975 - 1980.}
     \item{prop.ag}{percent of the population engaged in outdoor industry.}
-    \item{expec}{offsets considered by Breslow and Clayton and Kaldor (1993, Table 6, 'Exp' variable)}
+    \item{expec}{offsets considered by Breslow and Clayton (1993, Table 6, 'Exp' variable)}
   }
   The rows are ordered according to \code{gridcode}, so that they match the rows of \code{Nmatrix}.
 }
@@ -36,7 +36,7 @@ Journal of the American Statistical Association: 88 9-25.
 }
 \examples{
 data(scotlip)
-scfit <- HLCor(Predictor(cases~I(prop.ag/10)+adjacency(1|gridcode),offset=log(scotlip$expec)),
+scfit <- HLCor(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(scotlip$expec)),
       ranPars=list(rho=0.174),adjMatrix=Nmatrix,family=poisson(),data=scotlip)
 summary(scfit)
 plot(scfit)

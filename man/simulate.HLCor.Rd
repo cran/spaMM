@@ -9,9 +9,9 @@
 }
 \description{
   From an HLfit object, \code{simulate.HLfit} function generates new samples given the estimated fixed effects 
-  and dispersion parameters, and given the design matrix for random effects (hence, given the correlation parameters).
+  and dispersion parameters, and given the design matrix for random effects (hence, given the correlation parameters and spatial locations, if relevant).
   \code{simulate.HLCor} and \code{simulate.corrHLfit} are wrapper functions that extract from their respective input objects the HLfit object 
-  and apply \code{simulate.HLfit} to it.  
+  and apply \code{simulate.HLfit} to it. 
 }
 \usage{
 \method{simulate}{HLfit}(object, nsim = 1, seed = NULL, ...)

@@ -1,11 +1,11 @@
 summary.fixedLRT <-
 function(object,verbose=TRUE,...) {
   if (verbose) {
+    cat(" ========      'full' model:     ========\n")    
     summary(object$fullfit,...) 
-    cat("\n")
+    cat(" ========      'null' model:     ========\n")    
     summary(object$nullfit,...) 
-    cat("\n")
-    cat(" ======== Likelihood ratio test  ========\n")    
+    cat(" ======== Likelihood ratio test: ========\n")    
   }
   outst <- paste(" LR statistic (",object$df," df): ",signif(object$LRTori,3),sep="")    
   cat(outst)

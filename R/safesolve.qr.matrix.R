@@ -2,7 +2,7 @@ safesolve.qr.matrix <-
 function(qr.a,B,silent=T,stop.on.error=T) { ## solve.qr with fall-back; qr.a should be a qr object, B a matrix
   ## there was a 'Matrix' subcode prior to 10/03/2013
     res <- try(solve.qr(qr.a,B),silent=silent)
-    if (class(res)=="try-error") { ##FR->FR omprendre pourquoi c'est utile (systematique pour blackcap... )
+    if (class(res)=="try-error") { ##FR->FR omprendre pourquoi c'est utile (systematique pour blackcap... Re: phi -> 0 ? )
       pivI <- sort.list(qr.a$pivot)
       solveA <- try(solve(qr.R(qr.a)[,pivI])%*%t(qr.Q(qr.a)),silent=silent)  
       ## solveA is solve(<original 'a' matrix>) using the QR decomp... but this may work when solve.qr fails !

@@ -48,8 +48,7 @@ designL.from.Corr(m,try.chol=TRUE,try.eigen=FALSE,threshold=1e-06,debug=FALSE)
 \dontrun{
 #### using HLCor
 data(scotlip)
-HLCor(predictor=Predictor(cases~prop.ag +adjacency(1|gridcode),
-                          offset=log(scotlip$expec)),
+HLCor(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(scotlip$expec)),
       ranPars=list(rho=0.174),adjMatrix=Nmatrix,family=poisson(),
       data=scotlip,try.chol=FALSE)
 }
