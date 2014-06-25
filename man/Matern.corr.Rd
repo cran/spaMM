@@ -43,7 +43,7 @@ for a fit including the estimation of the Nugget.
 ## The Matérn function can be used in Euclidian spaces of any dimension:
 set.seed(123)
 randpts <- matrix(rnorm(20),nrow=5)
-distMatrix <- as.matrix(dist(randpts))
+distMatrix <- as.matrix(proxy::dist(randpts))
 Matern.corr(distMatrix,nu=2)
 }
 % Add one or more standard keywords, see file 'KEYWORDS' in the

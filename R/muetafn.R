@@ -1,8 +1,8 @@
 muetafn <-
-function(family,eta,BinomialDen) { ## note outer var BinomialDen 
+function(family,eta,BinomialDen,priorWeights=1) { ## note outer var BinomialDen 
   ## a patch for large eta in poisson case
   if (family$family=="poisson" && family$link =="log") {
-    eta[eta>100] <- 100 ## mu = 2.688117e+43
+    eta <- pmin(30,eta) ## 100 -> mu = 2.688117e+43 ; 30 -> 1.068647e+13
   }
   mu <- family$linkinv(eta) ## linkinv(eta) is FREQS for binomial, COUNTS for poisson...
   if (family$link %in% c("logit","probit","cloglog")) {
@@ -16,7 +16,13 @@ function(family,eta,BinomialDen) { ## note outer var BinomialDen
       mu <- mu *BinomialDen
       dmudeta <- dmudeta * BinomialDen
   } 
-  GLMweights <-dmudeta^2 /Vmu ## must be O(n) in binomial cases
-  if (any(is.nan(GLMweights))) stop("NaN GLMweights generated in 'muetafn'")
-  return(list(mu=mu,dmudeta=dmudeta,Vmu=Vmu,GLMweights=GLMweights))
+  GLMweights <- priorWeights * dmudeta^2 /Vmu ## must be O(n) in binomial cases
+  if (any(is.nan(GLMweights))) {
+#    calls <- sys.calls()
+#    ncalls <- length(calls)
+#    HLfitcall <- calls[[ncalls-1]]
+#    save(HLfitcall,file=generateFileName("HLfitcall")) ## FR->FR debug  code, not for package
+    stop("NaN GLMweights generated in 'muetafn'")
+  }
+return(list(mu=mu,dmudeta=dmudeta,Vmu=Vmu,GLMweights=GLMweights))
 }

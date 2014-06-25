@@ -5,14 +5,14 @@
   Computation of \dQuote{square root} of correlation matrix
 }
 \description{
-  For given correlation matrix \bold{C}, this computes a \dQuote{design matrix} \bold{L} such that \bold{C} = \bold{L} * t(\bold{L}). 
-  This function is normally not directly called by users, but they may need to pass options through higher-level functions (see Examples).
+  This function is not usually directly called by users, but arguments may be passed to it through higher-level calls (see Examples).  
+  For given correlation matrix  \bold{C}, it computes a \dQuote{design matrix} \bold{L} such that \bold{C} = \bold{L} * t(\bold{L}). 
   \code{chol} (Cholesky factorization) is a fast method for this computation, but it is not robust numerically and may even return an error, 
   in which cases other methods (\code{eigen} or \code{svd}) are used. Note that these methods differ by much more than simply numerical accuracy,
   and in particular that this will affect the simulation of samples for the parametric bootstrap implemented in \code{fixedLRT}. 
 }
 \usage{
-designL.from.Corr(m,try.chol=TRUE,try.eigen=FALSE,threshold=1e-06,debug=FALSE)
+designL.from.Corr(m,try.chol=TRUE,try.eigen=FALSE,threshold=1e-06,debug=FALSE,SVDfix=1/10)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -34,11 +34,20 @@ designL.from.Corr(m,try.chol=TRUE,try.eigen=FALSE,threshold=1e-06,debug=FALSE)
   \item{debug}{ 
   Not documented, only for development purposes.
 }
+  \item{SVDfix}{ 
+  A solution to failures of \code{svd}: see Details.
+}
 }
 \value{
-  The \dQuote{square root of the input matrix}. Its rows andcolumns are labelled according to the columns of the original matrix.
+  The \dQuote{square root of the input matrix}. Its rows and columns are labelled according to the columns of the original matrix.
 }
-
+\details{
+  Singular value decomposition (SVD) of a matrix \bold{M} using \code{\link{svd}} may encounter problems resulting in \dQuote{error code 1 from Lapack routine 'dgesdd'} (cf. unhelpful discussions on R forums). This can be circumvented by computing the SVD of \eqn{(1-x)}\bold{I}\eqn{+x}\bold{M} and deducing the 
+  singular values of \bold{M} in a trivial way. The \eqn{x} value is here provided by the \code{SVDfix} argument.
+  
+  \code{svd} errors have occurred for correlation matrices that were close to the identity matrix except for a few large non-diagonal elements. Such matrices may occur in particular for low \eqn{\nu}, high \eqn{\rho}, and if some samples are spatially close. Then, an alternative fix to the \code{svd} problem may be to restrict the \eqn{\nu} and/or \eqn{\rho} ranges, using the \code{lower} and \code{upper} arguments of \code{corrHLfit}, although one should make sure that this has no bearing on the inferences. 
+  
+}
 
 \examples{
 ## try.chol argument passed to designL.from.Corr 

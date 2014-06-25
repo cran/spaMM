@@ -1,6 +1,7 @@
 locoptim <-
-function(init.optim,LowUp,anyOptim.args,trace,optim.method,optim.args) {
-    initvec <- unlist(init.optim)
+function(init.optim,LowUp,anyOptim.args,trace,Optimizer,optimizers.args,corners=TRUE) {
+#browser()
+  initvec <- unlist(init.optim)
     if (length(initvec)>1) {
       parscale <- rep(1,length(unlist(LowUp$lower))) ## unlist because some list elements may have length >1 (eg if rho has several components)
       ## optim uses par (vector) AND lower, upper
@@ -10,48 +11,52 @@ function(init.optim,LowUp,anyOptim.args,trace,optim.method,optim.args) {
       anyHLCor.args <- anyOptim.args
       anyHLCor.args$ranefParsVec <- initvec ## logscale, inherits names from init.optim
       if (is.character(trace$file)) write("## Call for initial values",file=trace$file,append=T)   
-      init.obj <- do.call(HLCor.obj,anyHLCor.args)
-      ###### look in the corners 
-      ## L-BFGS-B tends to find the local max closest to the initial point. Search for good initial point:
-      byvar <- t(rbind(unlist(LowUp$lower),unlist(LowUp$upper))) ## HLCor expects trLambda...
-      ### only the optim target variables are retained from the REML fit, although the lambda valuefrom this fit might be the most useful.  
-      ## But if corrHLfit was called with an ranFix, we do want this (as part of ranPars) in the HLCor.obj calls. 
-      byvar <- 0.999 * byvar + 0.001 *rowMeans(byvar)
-      grillelist <- list()
-      gridSteps <- floor(35^(1.05/length(initvec))) ## 6 for 2 pars,  3 for 3 pars, then 2  2  1  1 
-      gridSteps <- max(2,gridSteps)
-      for(name in rownames(byvar)) {grillelist[[name]] <- seq(byvar[name,1],byvar[name,2],length.out=gridSteps)}
-      corners <- expand.grid(grillelist)
-      ## ranefParsVec corresponds to ranPars but as vector, not as list
-      ## uses HLCor.obj because of the return value...
-      if (is.character(trace$file)) write("## Calls for 'corners'",file=trace$file,append=T)   
-      corners.obj <- apply(corners,1,function(v) {
-        anyHLCor.args$ranefParsVec <- v
-        do.call(HLCor.obj,anyHLCor.args) ## this reconstructs a list of the form of initvec, then adds it to other anyHLCor$ranPars information
-      })
-      if (max(corners.obj) > init.obj) {
-        initvec <- corners[which.max(corners.obj),] 
+      if (corners) {      
+        init.obj <- do.call(HLCor.obj,anyHLCor.args)
+        ###### look in the corners 
+        ## L-BFGS-B tends to find the local max closest to the initial point. Search for good initial point:
+        byvar <- t(rbind(unlist(LowUp$lower),unlist(LowUp$upper))) ## HLCor expects trLambda...
+        ### only the optim target variables are retained from the REML fit, although the lambda valuefrom this fit might be the most useful.  
+        ## But if corrHLfit was called with an ranFix, we do want this (as part of ranPars) in the HLCor.obj calls. 
+        byvar <- 0.999 * byvar + 0.001 *rowMeans(byvar)
+        grillelist <- list()
+        gridSteps <- floor(35^(1.05/length(initvec))) ## 6 for 2 pars,  3 for 3 pars, then 2  2  1  1 
+        gridSteps <- max(2,gridSteps)
+        for(name in rownames(byvar)) {grillelist[[name]] <- seq(byvar[name,1],byvar[name,2],length.out=gridSteps)}
+        corners <- expand.grid(grillelist)
+        ## ranefParsVec corresponds to ranPars but as vector, not as list
+        ## uses HLCor.obj because of the return value...
+        if (is.character(trace$file)) write("## Calls for 'corners'",file=trace$file,append=T)   
+        corners.obj <- apply(corners,1,function(v) {
+          anyHLCor.args$ranefParsVec <- v
+          do.call(HLCor.obj,anyHLCor.args) ## this reconstructs a list of the form of initvec, then adds it to other anyHLCor$ranPars information
+        })
+        if (max(corners.obj) > init.obj) {
+          initvec <- corners[which.max(corners.obj),] 
+        }
       }
       ## Search for good initial point done. 
+      anyHLCor.args$ranefParsVec <- NULL ## removes this for optimization! otherwise fatal for nlminb! 
       if (is.character(trace$file)) write("## Optimization call",file=trace$file,append=T)   
-      if (optim.method=="nlminb") {
+      if (Optimizer=="nlminb") {
         ## nlminb code
-        nlminbArgs <- anyHLCor.args ## not tested since long...
+        nlminbArgs <- anyHLCor.args 
         nlminbArgs$skeleton <- init.optim
         nlminbArgs$objective <- function(...) {-HLCor.obj(...)}
         nlminbArgs$start <- initvec    
         nlminbArgs$lower <- unlist(LowUp$lower)
         nlminbArgs$upper <- unlist(LowUp$upper)
         nlminbArgs$scale <- 1/(anyOptim.args$upper - anyOptim.args$lower)
+        nlminbArgs$control <- optimizers.args$nlminb$control
         optr <- do.call(nlminb,nlminbArgs) ## optimize 'HLCor.obj.value <- objective' (p_bv by default...?)
       } else {
-        ndepsFac <- optim.args$ndepsFac
+        ndepsFac <- optimizers.args$optim$ndepsFac
         if (is.null(ndepsFac)) ndepsFac <- 2000 ## was 10000 up to 060213
         ndeps <- (anyOptim.args$upper - anyOptim.args$lower)/ndepsFac
         control <- list(fnscale=-1,parscale=parscale,factr=1e9,ndeps=ndeps) ## default values... factr was the stricter 1e8 up to 23/01/13
-        control[names(optim.args$control)] <- optim.args$control ## ...which may be overwritten 
-        anyOptim.args <- c(anyOptim.args,list(par=initvec,control=control,method=optim.method))
-        optr <- do.call(optim,anyOptim.args) ## optimize 'HLCor.obj.value <- objective' (p_bv by default...?)
+        control[names(optimizers.args$optim$control)] <- optimizers.args$optim$control ## ...which may be overwritten 
+        anyOptim.args <- c(anyOptim.args,list(par=initvec,control=control,method=Optimizer))
+        optr <- do.call(optim,c(anyOptim.args,list(fn=HLCor.obj))) ## optimize 'HLCor.obj.value <- objective' (p_bv by default...)
       }
       optPars <- relist(optr$par,init.optim)
       ## HLCor.args$ranPars[names(optPars)] <- optPars 
@@ -75,8 +80,9 @@ function(init.optim,LowUp,anyOptim.args,trace,optim.method,optim.args) {
         intervupper <- min(unlist(LowUp$upper),corners[corners>initvec])
         anyOptim.args$interval <-c(intervlower,intervupper)
         anyOptim.args <- c(anyOptim.args,list(maximum=T))
+        anyOptim.args$tol <- optimizers.args$optimize$tol
         if (is.character(trace$file)) write("## Optimization call",file=trace$file,append=T)   
-        optr <- do.call(optimize,anyOptim.args)  ## optimize p_bv
+        optr <- do.call(optimize,c(anyOptim.args,list(f=HLCor.obj)))  ## optimize p_bv
         optPars <- relist(optr$maximum,init.optim)
         ## HLCor.args$ranPars[names(optPars)] <- optPars 
     } else { ## nothing to optimize

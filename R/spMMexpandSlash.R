@@ -9,7 +9,7 @@ function (bb) {
 ## 'original' code was          
 #            return(lapply(unlist(makeInteraction(trms)), function(trm) substitute(foo | 
 #                bar, list(foo = x[[2]], bar = trm))))
-## but this requires lem4 and was never tested
+## but this requires lme4 and was never tested
         }        
         x
     }))

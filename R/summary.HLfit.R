@@ -1,16 +1,23 @@
 summary.HLfit <-
 function(object, ...) {
   MLmess <-function() {
-    if (famfam=="gaussian" && randfamfam=="gaussian") { 
+    if (object$models[["eta"]]=="etaGLM") {
+      cat("by ML.\n")
+    } else if (famfam=="gaussian" && lcrandfamfam=="gaussian") { 
       cat("by ML.\n") 
     } else {
-      if (object$HL[1]==1)  {
+      if (object$HL[1]=='SEM')  {
+        cat("by stochastic EM.\n")
+      } else if (object$HL[1]==1)  {
         cat("by ML approximation (p_v).\n")
       } else if (object$HL[1]==0)  cat("by h-likelihood approximation.\n") 
     }
   }
+  ## FR->FR il faudrait distinguer EQL approx of REML ?
   REMLmess <-function() {
-    if (famfam=="gaussian" && randfamfam=="gaussian") { 
+    if (object$HL[1]=='SEM')  {
+      cat("by stochastic EM.\n")
+    } else if (famfam=="gaussian" && lcrandfamfam=="gaussian") { 
       cat("by REML.\n") 
     } else {
       cat("by REML approximation (p_bv).\n")
@@ -19,8 +26,10 @@ function(object, ...) {
   models<-object$models
   lambda.object<-object$lambda.object
   phi.object<-object$phi.object
-  famfam <- object$family$family
-  randfamfam <- object$rand.family$family
+  famfam <- object$family$family ## response !
+  lcrandfamfam <- unlist(lapply(object$rand.families,function(rf) {tolower(rf$family)}))
+  randfamfamlinks <- unlist(lapply(object$rand.families,function(rf) {paste(rf$family,"(",rf$link,")",sep="")}))
+  randfamlinks <- unlist(lapply(object$rand.families,function(rf) {rf$link}))
   summ <- list()
   cat("formula: ")
   form <- attr(object$predictor,"oriFormula")
@@ -41,12 +50,17 @@ function(object, ...) {
   iterativeEsts<-character(0)
   optimEsts<-character(0)
   ## What the HLfit call says:
-  if (models[2] !="") {
+  if (any(object$models[["lambda"]] != "")) {
     if (is.null(lambda.object$lambda.fix)) {iterativeEsts <- c(iterativeEsts,"lambda")} else {optimEsts <- c(optimEsts,"lambda")}
   }
   ## c("binomial","poisson"): phi is 1, not NULL
   if (is.null(phi.object$phi.Fix)) {iterativeEsts <- c(iterativeEsts,"phi")} else {if (! (famfam %in% c("binomial","poisson"))) optimEsts <- c(optimEsts,"phi")}
-  ranFixNames <- object$ranFixNames 
+  ## better conceived code for corrPars:
+  corrPars <- object$corrPars
+  iterativeEsts <- c(iterativeEsts,names(which(attr(corrPars,"type")=="var")))
+  optimEsts <- c(optimEsts,names(which(attr(corrPars,"type")=="fix")))
+  ## 
+  ranFixNames <- attr(object,"ranFixNames") 
   if ( ! is.null(ranFixNames) ) { ## we take info from corrHLfit to know which were really fixed in the corrHLfit analysis
     optimEsts <- optimEsts[!optimEsts %in% ranFixNames] ## ie those not fixed in the corrHLfit call
   }
@@ -76,16 +90,15 @@ function(object, ...) {
     objective <- object$objective  
     if ( ! is.null(objective) ) { 
       objString <- switch(objective,
-                          p_bv= "'outer' REML",
-                          p_v= "'outer' ML",
+                          p_bv= "'outer' REML, maximizing p_bv",
+                          p_v= "'outer' ML, maximizing p_v",
                           paste("'outer' maximization of",objString)
       )
       outst <- paste("Estimation of ",optimEsts," by ",objString,".\n",sep="")
       cat(outst) 
     } ## else no outer optimization
   }
-  cat("Family:", famfam, "\n")
-  cat("Link function:", object$family$link, "\n") ## this is print.family without some of the spaces...
+  cat("Family:", famfam, "( link =", object$family$link,")\n")
   summ$family <- object$family
   if (length(object$fixef)==0) {
     cat("No fixed effect\n")
@@ -93,43 +106,76 @@ function(object, ...) {
     cat(" ------- Fixed effects (beta) -------\n")    
     fixef_z<-object$fixef/object$fixef_se
     beta_table<-cbind(object$fixef,object$fixef_se,fixef_z)
-    colnames(beta_table) <- c("Estimate", "Std. Error", "t-value")
-    rownames(beta_table) <- colnames(object$X)
+    colnames(beta_table) <- c("Estimate", "Cond. SE", "t-value")
+    rownames(beta_table) <- names(object$fixef)
     print(beta_table,4)
     summ$beta_table <- beta_table
   }
-  if (models[1]=="etaHGLM") {
-    cat(" ---------- Random effects ----------\n")    
-    cat("Family:", randfamfam, "\n")
-    cat("Link function:", object$rand.family$link, "\n") ## this is print.family wihtout some of the spaces...
-    cP <- unlist(object$corrPars)
+  if (models[["eta"]]=="etaHGLM") {
+    cat(" ---------- Random effects ----------\n") 
+    urff <- unique(lcrandfamfam)
+    urffl <- unique(randfamfamlinks)
+    if (length(urffl)==1) { 
+      cat("Family:", urff , "( link =", object$rand.families[[1]]$link,")\n") 
+    } else {
+      cat("Families(links):", paste(randfamfamlinks,collapse=", "), "\n")
+    }
+    cP <- unlist(corrPars)
     if ( ! is.null(cP) ) {
       cat("Correlation parameters:\n")
       print(cP)
     }
-    if (models[2]=="lamHGLM") { 
+    if (any(object$models[["lambda"]] == "lamHGLM")) { 
       stop("voir ici dans summary.HL")
     } else if (is.null(lambda.object$lambda.fix)) {
-      lambda_table<-cbind(lambda.object$linkscale.lambda,lambda.object$lambda_se)
-      colnames(lambda_table) <- c("Estimate", "Std. Error")
-      rownames(lambda_table) <- lambda.object$namesRE ## that is for different '(1|namesRE)' terms
+      namesTerms <- lambda.object$namesTerms
+      repGroupNames <- unlist(lapply(seq_len(length(namesTerms)),function(it) {
+        names(namesTerms[[it]]) <- rep(names(namesTerms)[it],length(namesTerms[[it]]))
+      })) ## makes group identifiers unique (names of coeffs are unchanged)
+      coefficients <- unlist(lambda.object$namesTerms)
+      lambda_table <- data.frame(Group=repGroupNames,Term=coefficients,
+                                 Estimate=lambda.object$linkscale.lambda,"Cond.SE"=lambda.object$lambda_se)
+      cov.mats <- object$cov.mats
+      if ( ! is.null(cov.mats)) {
+        nrand <- length(namesTerms)
+        nrows <- unlist(lapply(namesTerms,length))
+        cum_nrows <- cumsum(c(0,nrows))
+        maxnrow <- cum_nrows[nrand+1] ## should be nrow(lambda_table)
+        blob <- data.frame(matrix("",ncol=max(nrows-1),nrow=maxnrow),stringsAsFactors=FALSE)
+        variances <- data.frame(matrix("",ncol=1,nrow=maxnrow),stringsAsFactors=FALSE)
+        for (mt in length(cov.mats)) { ## assumes cov.mats for all effects
+          m <- cov.mats[[mt]]
+          variances[(cum_nrows[mt]+1):cum_nrows[mt+1],1] <- paste(signif(lambdas <- diag(m),4))
+          covtocorr <- diag(1/sqrt(lambdas))
+          m <- covtocorr %*% m %*% covtocorr
+          for (it in (2:nrow(m))) {
+            for (jt in (1:(it-1))) {
+              blob[cum_nrows[mt]+it,jt] <- paste(signif(m[it,jt],4))
+            }
+          }
+        }
+        colnames(blob) <- rep("Corr.",ncol(blob))
+        colnames(variances) <- "Var."
+        lambda_table <- cbind(lambda_table,variances,blob)
+      }
       summ$lambda_table <- lambda_table
-      if (object$rand.family$family=="Beta") {
-#        cat("Coefficients for log[ lambda ] for u ~ Beta(1/(2lambda),1/(2lambda))\n")
-        cat("Coefficients for log[ lambda = 4 var(u)/(1 - 4 var(u)) ]:\n")
-      } else if (object$rand.family$family=="inverse.Gamma") {
-#        cat("Coefficients for log[ lambda ] for  u ~ I-Gamma(1+1/lambda,1/lambda)\n")
-        cat("Coefficients for log[ lambda = var(u)/(1 + var(u)) ]:\n")
-      } else if (object$rand.family$family=="Gamma") {
-#        cat("Coefficients for log[ lambda = var(u) ] for  u ~ Gamma(lambda,1/lambda)\n")
-        cat("Coefficients for log[ lambda = var(u) ]:\n")
-      } else cat("Coefficients for log[ lambda = var(u) ]: \n") 
-      print(lambda_table,4)
-      if (length(lambda.object$namesX_lambda)==1 && lambda.object$namesX_lambda[1]=="(Intercept)") {
+      legend_lambda(urff)
+      print(lambda_table,digits=4,row.names=FALSE)
+      if (length(lambda.object$namesX_lamres)==1 && lambda.object$namesX_lamres[1]=="(Intercept)") {
         cat(paste("Estimate of lambda: ",signif(exp(lambda.object$linkscale.lambda),4),"\n"))
       } 
+      wa <-attr(lambda.object,"warning")
+      if ( ! is.null(wa)) {
+        if (wa=="glm.fit: algorithm did not converge") {
+          cat("glm.fit for estimation of lambda SE did not converge; this suggests\n")
+          cat(" non-identifiability of some lambda (and possibly also phi) coefficients.\n")
+        } else {
+          cat("warning in glm.fit for estimation of lambda SE: \n")
+          cat(wa,"\n")
+        }
+      }
     } else {
-      cat(paste("lambda was fixed to",signif(lambda.object$lambda.fix,6),"\n"))
+      cat(paste("lambda was fixed to",paste(signif(lambda.object$lambda.fix,6),collapse=","),"\n"))
       summ$lambda.fix <- lambda.object$lambda.fix
     }        
   }
@@ -141,16 +187,16 @@ function(object, ...) {
       } else  cat(paste("phi was fixed.\n"))
       summ$phi.Fix <- phi.object$phi.Fix
     } else {
-      if (models[3]=="phiHGLM") {
+      if (models[["phi"]]=="phiHGLM") {
         stop("From summary.HL: phiHGLM code not ready")
       } else {
         phi_table<-cbind(phi.object$linkscale.phi,phi.object$phi_se)
-        colnames(phi_table) <- c("Estimate", "Std. Error")
+        colnames(phi_table) <- c("Estimate", "Cond. SE")
         rownames(phi_table) <- phi.object$namesX_disp
         summ$phi_table <- phi_table
         cat("phi formula: ")
         phiform <- attr(object$resid.predictor,"oriFormula")
-        if (length(phiform)==2) phiform <- as.formula(paste('"phi"',paste(phiform,collapse=" ")))
+        if (length(phiform)==2) phiform <- as.formula(paste('"phi"',paste(phiform,collapse=" "))) ##FR->FR how does _dglm_ deal with this
         print(phiform,showEnv=FALSE)
         # cat("Link: "); cat(object$RespLink_disp) # not useful, the cat already says it is log
         if (object$family$family=="Gamma") {
@@ -158,24 +204,34 @@ function(object, ...) {
         } else cat("Coefficients for log[ phi= residual var ]\n")
         print(phi_table,4)
         if (length(phi.object$namesX_disp)==1 && phi.object$namesX_disp[1]=="(Intercept)") {
-          cat(paste("Estimate of phi=residual var: ",signif(exp(phi.object$linkscale.phi),4),"\n"))
-          
+          if (object$family$family=="Gamma") {
+            cat(paste("Estimate of phi: ",signif(exp(phi.object$linkscale.phi),4)," (residual var = phi * mu^2)\n"))
+            ## la var c'est phi mu^2...
+          } else cat(paste("Estimate of phi=residual var: ",signif(exp(phi.object$linkscale.phi),4),"\n"))
         } 
       }                                                 
     }
   } ## else binomial or poisson, no dispersion param
-  if ( models[1]=="etaHGLM") {
+  if ( models[["eta"]]=="etaHGLM") {
     likelihoods <- c("p_v(h) (marginal L):"=object$APHLs$p_v,"  p_beta,v(h) (ReL):"=object$APHLs$p_bv)
   } else {
     likelihoods <- c("p(h)   (Likelihood):"=object$APHLs$p_v,"  p_beta(h)   (ReL):"=object$APHLs$p_bv)
   }
+  if (!is.null(object$APHLs$estlogL)) likelihoods <- c(likelihoods," Smoothed marginal L: "=object$APHLs$estlogL)
   if (!is.null(object$APHLs$cAIC)) likelihoods <- c(likelihoods,"               cAIC:"=object$APHLs$cAIC)
   cat(" -------- Likelihood values  --------\n")    
   astable <- as.matrix(likelihoods);colnames(astable)<-"logLik";
   print(astable)
+  ranFixNames <- attr(object,"ranFixNames")
+  if (! is.null(ranFixNames)) {
+    cat("The fixed random-effect parameter(s) were ")
+    cat("(",paste(ranFixNames,collapse=","),")")
+    cat("\n")
+  }
   summ$likelihoods <- likelihoods
   if (length(object$warnings)>0 ) { 
     silent<-sapply(length(object$warnings),function(i) {cat(object$warnings[[i]]);cat("\n")}) 
   }
+
   invisible(summ)
 }

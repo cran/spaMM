@@ -3,15 +3,39 @@ function(null.formula=NULL,formula,
                      null.disp=list(),REMLformula=NULL,
                      method="corrHLfit",boot.repl=0,
                      ## currently trace always false; this is not an argument t be forwarded as is to corrHLfit! 
-                     trace=F, ## T means lead to calls of corrHLfit(... trace=list(<file name>,<over/append>))
-                     verbose=c(F,F),  
+                     trace=FALSE, ## T means lead to calls of corrHLfit(... trace=list(<file name>,<over/append>))
+                     verbose=c(trace=FALSE,warn=NA,summary=FALSE),  
                      ...) {
+  if (is.na(verbose["trace"])) verbose["trace"] <- FALSE
+  if (is.na(verbose["warn"])) verbose["warn"] <- FALSE ## will be unconditionally ignored by the final fit in corrHLfit  
+  if (is.na(verbose["summary"])) verbose["summary"] <- FALSE ## this is for HLCor
+  dotlist <-list(...)
+  ## birth pangs :
+  if ("predictor" %in% names(dotlist)) {
+    stop("'spaMMLRT' called with 'predictor' argument which should be 'formula'" )
+  }
+  if ("null.predictor" %in% names(dotlist)) {
+    stop("'spaMMLRT' called with 'null.predictor' argument which should be 'null.formula'" )
+  }
+  ## here we makes sure that *predictor variables* are available for all data to be used under both models
+  data <- dotlist$data
+  if ( inherits(data,"list")) {
+    data <- lapply(data,function(dt) {
+      null.validrows <- validRows(formula=null.formula[-2],resid.formula=dotlist$resid.formula,data=dt) ## will remove rows with NA's in required variables
+      full.validrows <- validRows(formula=formula[-2],resid.formula=dotlist$resid.formula,data=dt) ## will remove rows with NA's in required variables
+      dt[intersect(null.validrows,full.validrows),,drop=FALSE]     
+    })
+  } else {
+    null.validrows <- validRows(formula=null.formula[-2],resid.formula=dotlist$resid.formula,data=data) ## will remove rows with NA's in required variables
+    full.validrows <- validRows(formula=formula[-2],resid.formula=dotlist$resid.formula,data=data) ## will remove rows with NA's in required variables
+    data <- data[intersect(null.validrows,full.validrows),,drop=FALSE]     
+  }  
+  dotlist$data <- data
   predictor <- formula   
   if (! "predictor" %in% class(formula)) predictor <- Predictor(formula)
   null.predictor <- null.formula   
   if (! "predictor" %in% class(null.formula)) null.predictor <- Predictor(null.formula)
   form <- predictor
-  dotlist <-list(...)
   if (!is.null(dotlist$LamFix)) {
     dotlist$ranFix$lambda <- dotlist$LamFix
     dotlist$LamFix <- NULL
@@ -31,7 +55,7 @@ function(null.formula=NULL,formula,
   fullm.list <- dotlist
   nullm.list <- dotlist
   fullm.list$formula <- predictor
-  #### 01/2014: limited use, for initializing bootstrap replicates:
+  #### "limited use, for initializing bootstrap replicates:"
   which.iterative.fit <-character(0)
   which.optim.fit <-character(0)
   if ( ! is.null(dotlist$init.corrHLfit$lambda) ) {
@@ -46,13 +70,16 @@ function(null.formula=NULL,formula,
   if (method=="corrHLfit") {
     if ( ! "rho" %in% names(dotlist$ranFix)) which.optim.fit <- c(which.optim.fit,"rho")
     if ( ! "nu" %in% names(dotlist$ranFix)) which.optim.fit <- c(which.optim.fit,"nu")
+    if ( ! "ARphi" %in% names(dotlist$ranFix)) which.optim.fit <- c(which.optim.fit,"ARphi") # mpf
     if ( ! "Nugget" %in% names(dotlist$ranFix)) which.optim.fit <- c(which.optim.fit,"Nugget") ## by default not operative given later code and init.optim$Nugget is NULL
   }
   if ( ! is.null(null.predictor)) { ## ie if test effet fixe
     testFix <- T
-    test.obj <- "p_v"
+    if (dotlist$HLmethod =="SEM") {
+      test.obj <- "estlogL"
+    } else test.obj <- "p_v"
     ## check fullm.list$REMLformula, which will be copied into nullm in all cases of fixed LRTs
-    if (dotlist$HLmethod %in% c("ML","PQL/L") || substr(dotlist$HLmethod,0,2) == "ML") {
+    if (dotlist$HLmethod %in% c("ML","PQL/L","SEM") || substr(dotlist$HLmethod,0,2) == "ML") {
       fullm.list$REMLformula <- NULL
       nullm.list$REMLformula <- NULL
     } else { ## an REML variant
@@ -64,7 +91,7 @@ function(null.formula=NULL,formula,
         nullm.list$REMLformula <- REMLformula
       }
       namesinit <- names(fullm.list$init.corrHLfit)
-      namesinit <- setdiff(namesinit,c("rho","nu","Nugget"))
+      namesinit <- setdiff(namesinit,c("rho","nu","Nugget","ARphi"))
       len <- length(namesinit)
       if ( len>0) {
         if (len > 1) namesinit <- paste(c(paste(namesinit[-len],collapse=", "),namesinit[len]),collapse=" and ")
@@ -93,17 +120,25 @@ function(null.formula=NULL,formula,
 #  trace.info <- NULL
   fullfit <- do.call(method,fullm.list)
   nullfit <- do.call(method,nullm.list)
-  if (method != "HLfit") {
-    fullfit <- fullfit$hlfit
-    nullfit <- nullfit$hlfit
-  }  
-  LRTori <- 2*(fullfit$APHLs[[test.obj]]-nullfit$APHLs[[test.obj]])
+  if (testFix) {df <- length(fullfit$fixef)-length(nullfit$fixef)} else {df <- length(null.disp)}
+  if (df<0) {
+    tmp <- fullfit
+    fullfit <- nullfit
+    nullfit <- tmp
+  }
+  if (inherits(fullfit,"HLfitlist")) {
+    fullL <- attr(fullfit,"APHLs")[[test.obj]]
+  } else fullL <- fullfit$APHLs[[test.obj]]
+  if (inherits(nullfit,"HLfitlist")) {
+    nullL <- attr(nullfit,"APHLs")[[test.obj]]
+  } else nullL <- nullfit$APHLs[[test.obj]]
+  LRTori <- 2*(fullL-nullL)
   ## BOOTSTRAP
   if ( ! is.na(testFix)) {
     if (boot.repl>0) {
       bootlist <- dotlist ## copies ranFix
-      bootlist <- c(bootlist,list(null.predictor=null.predictor,null.disp=null.disp,REMLformula=REMLformula,method=method)) ## unchanged user REMLformula forwarded
-      bootlist$verbose <- c(FALSE,FALSE)
+      bootlist <- c(bootlist,list(null.formula=null.predictor,null.disp=null.disp,REMLformula=REMLformula,method=method)) ## unchanged user REMLformula forwarded
+      bootlist$verbose <- c(trace=FALSE,summary=FALSE)
       bootlist$trace <- FALSE 
       bootlist$boot.repl <- 0 ## avoids recursive call of bootstrap
       all.estim.ranvars <- c(which.optim.fit) ## FR->FR to be modified if optimFits are reintroduced, see corresponding code in corrMM.LRT 
@@ -123,10 +158,9 @@ function(null.formula=NULL,formula,
       bootreps<-matrix(,nrow=boot.repl,ncol=2) 
       colnames(bootreps) <- paste(c("full.","null."),test.obj,sep="")
       cat("bootstrap replicates: ")
-      cat("bootstrap replicates: ")
       simbData <- nullfit$data
       if (tolower(nullfit$family$family)=="binomial") {
-        form <- attr(nullfit$formula,"oriFormula") ## this must exists...  
+        form <- attr(nullfit$predictor,"oriFormula") ## this must exists...  
         if (is.null(form)) {
           mess <- pastefrom("a 'predictor' object must have an 'oriFormula' member.",prefix="(!) From ")
           stop(mess)
@@ -150,10 +184,16 @@ function(null.formula=NULL,formula,
             if (length(exprL)==1) simbData[[exprL]] <- newy 
             if (length(exprR)==1) simbData[[exprR]] <- nullfit$weights - newy                    
             ## if (length(exprR)! =1) exprRdoes not correspond to a column in the data;frmae so there is no column to replace                     
-          } else {simbData[[as.character(nullfit$formula[[2]])]] <- newy}
+          } else {simbData[[as.character(nullfit$predictor[[2]])]] <- newy}
           bootlist$data <- simbData
           bootrepl <- try(do.call(thisFnName,bootlist)) ###################### CALL ##################
           if (class(bootrepl)[1] != "try-error") { ## eg separation in binomial models... alternatively, test it here (require full and null X.pv... )
+            if (inherits(bootrepl$fullfit,"HLfitlist")) {
+              fullL <- attr(bootrepl$fullfit,"APHLs")[[test.obj]]
+            } else fullL <- bootrepl$fullfit$APHLs[[test.obj]]
+            if (inherits(bootrepl$nullfit,"HLfitlist")) {
+              fullL <- attr(bootrepl$nullfit,"APHLs")[[test.obj]]
+            } else fullL <- bootrepl$nullfit$APHLs[[test.obj]]
             bootreps[ii,] <- c(bootrepl$fullfit$APHLs[[test.obj]],bootrepl$nullfit$APHLs[[test.obj]])
             break ## replicate performed, breaks the repeat
           } else { ## there was one error

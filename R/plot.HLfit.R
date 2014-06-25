@@ -25,7 +25,8 @@ function(x, which=c("mean","ranef"),
   if (is.null(pcol)) pcol <- "blue"  
   lcol <- control$lcol  
   if (is.null(lcol)) lcol <- "red" 
-  for (i in seq(length(which))) {
+  if (interactive()) par(ask=TRUE) 
+  for (i in seq_len(length(which))) {
     typ <- which[i]
     if (i > 1) dev.new() ## =: meaning of having different elements in 'which'  
 		if (typ =="mean") { ## diagnostic plots for mean model => 4 subplots
@@ -59,5 +60,6 @@ function(x, which=c("mean","ranef"),
 		  title(titles$ranef$outer,outer=TRUE)
 		} 
   }
-  invisible(x)
+	par(ask=FALSE) 
+	invisible(x)
 }

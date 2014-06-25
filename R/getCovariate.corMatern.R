@@ -9,7 +9,7 @@ function(object, form = formula(object), data)
     if (length(all.vars(covForm)) > 0) { # covariate present
       if (attr(terms(covForm), "intercept") == 1) {
 	covForm <-
-          eval(parse(text = paste("~", deparse(covForm[[2]]),"-1",sep="")))
+          eval(parse(text = paste("~", DEPARSE(covForm[[2]]),"-1",sep="")))
       }
       covar <-
           as.data.frame(unclass(model.matrix(covForm,
@@ -23,13 +23,13 @@ function(object, form = formula(object), data)
       grps <- getGroups(object, data = data)
       if (is.null(covar)) {
 	covar <- lapply(split(grps, grps),
-                        function(x) as.vector(dist(1:length(x))))
+                        function(x) as.vector(proxy::dist(1:length(x))))
       } else {
 	covar <- lapply(split(covar, grps),
 			function(el, metric) {
                           el <- as.matrix(el)
                           if (nrow(el) > 1) {
-                            as.vector(dist(el, metric))
+                            as.vector(proxy::dist(el, metric))
                           } else {
                             numeric(0)
                           }
@@ -38,9 +38,9 @@ function(object, form = formula(object), data)
       covar <- covar[sapply(covar, length) > 0]  # no 1-obs groups
     } else {				# no groups
       if (is.null(covar)) {
-	covar <- as.vector(dist(1:nrow(data)))
+	covar <- as.vector(proxy::dist(1:nrow(data)))
       } else {
-	covar <- as.vector(dist(as.matrix(covar),
+	covar <- as.vector(proxy::dist(as.matrix(covar),
                                 method = attr(object, "metric")))
       }
     }

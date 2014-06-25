@@ -1,37 +1,33 @@
 \name{summary.HLfit}
 \alias{summary}
 \alias{summary.HLfit}
-\alias{summary.HLCor}
-\alias{summary.corrHLfit}
+\alias{summary.HLfitlist}
 \alias{summary.fixedLRT}
 \alias{print}
 \alias{print.HLfit}
-\alias{print.HLCor}
-\alias{print.corrHLfit}
+\alias{print.HLfitlist}
 \alias{print.fixedLRT}
 
 \title{
   Summary and print methods for fit and test results.
 }
 \description{
-  Summary and print methods for results from HLfit / HLCor / corrHLfit / fixedLRT.  
+  Summary and print methods for results from HLfit or related functions.  
 }
 \usage{
 \method{summary}{HLfit}(object,...)
-\method{summary}{HLCor}(object,...)
-\method{summary}{corrHLfit}(object,...)
+\method{summary}{HLfitlist}(object,...)
 \method{summary}{fixedLRT}(object,verbose=TRUE,...)
 \method{print}{HLfit}(x,...)
-\method{print}{HLCor}(x,...)
-\method{print}{corrHLfit}(x,...)
+\method{print}{HLfitlist}(x,...)
 \method{print}{fixedLRT}(x,...)
 }
 \arguments{
   \item{object}{
-  The return object of an HLCor / HLfit / corrHLfit call.
+  The return object of HLfit or related functions.
 }
   \item{x}{
-  The return object of an HLCor / HLfit / corrHLfit call.
+  The return object of HLfit or related functions.
 }
   \item{verbose}{
   for \code{summary.fixedLRT}, whether to print the model fits or not.

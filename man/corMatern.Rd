@@ -49,11 +49,11 @@ corMatern(value = c(1, 0.5), form = ~1, nugget = FALSE, nuScaled = FALSE,
 }
   \item{nuScaled}{
     If \code{nuScaled} is set to \code{TRUE} the "range" parameter
-    \eqn{\rho} is divided by \eqn{2 \sqrt{\nu}}. With this option and
+    \eqn{\rho} is divided by \eqn{2 \sqrt\nu}. With this option and
     for large values of \eqn{\nu}, \code{corMatern} reproduces the
     calculation of \code{corGaus}. Defaults to \code{FALSE}, in which
     case the function compares to \code{corGaus} with range parameter
-    \eqn{2*\sqrt{\nu}*\rho} when \eqn{\nu} is large.
+    \eqn{2(\sqrt\nu)\rho} when \eqn{\nu} is large.
 }
   \item{metric}{
    (Pasted from corSpatial) an optional character string specifying the distance

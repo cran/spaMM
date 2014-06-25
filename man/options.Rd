@@ -26,9 +26,14 @@ spaMM.getOption(x)
 \item{\code{TRACE.UNLINK=FALSE}:}{Whether to delete preexisting files named as \code{HLCor.args.*.RData} when the 
        trace option is used in corrHLfit or HLCor.}
 
+\item{\code{MESSAGES.FULL.STACK=TRUE}:}{Whether to give information on the stack of calls in some warning messages.}
+
 \item{\code{INIT.HLFITNAME=NA}:}{Something users should not care about.}
 
-\item{\code{TMPNAME=NA}:}{Something users should not care about.}
+\item{\code{USEEIGEN=TRUE}:}{Whether to use the Eigen C++ library for some matrix computations.}
+
+\item{\code{maxLambda=1e10}:}{The maximum value of lambda: higher fitted 
+ lambda values in HLfit are reduced to this.}
 
 }
   }
@@ -43,7 +48,7 @@ spaMM.getOption(x)
   Internally, the options are kept in the list \code{.SpaMM}.\cr
 
   spaMM.options() provides an interface for changing maximal values of parameters of the Matérn correlation function. However, 
-  currently it is not recommended to change these values. Errors may occur if too low values are chosen as these may conflit with default initial values for the parameters.
+  it is not recommended to change these values unless a spaMM message specifically suggests so. Errors may occur if too low values are chosen as these may conflit with default initial values for the parameters.
 }
 \value{
   For \code{spaMM.getOption}, the current value set for option \code{x}, or
@@ -57,5 +62,8 @@ spaMM.getOption(x)
 }
 \examples{
   spaMM.options()
+  \dontrun{
+  spaMM.options(maxLambda=1e06)
+  }
 }
 

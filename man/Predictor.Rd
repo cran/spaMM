@@ -23,7 +23,7 @@ Predictor(formula, offset=NULL, LMatrix = NULL, AMatrix = NULL, ZALMatrix = NULL
   offset formula term (see \code{\link{scotlip}} example), in particular for later use with \code{\link{predict}} where the formula can be reevaluated on new data. 
 }
   \item{LMatrix}{
-  The \dQuote{square root} of the correlation matrix beteen unique locations, see Details.
+  The \dQuote{square root} of the correlation matrix between unique locations, see Details.
 }
   \item{AMatrix}{
   A matrix that relates observed (unique) locations to unobserved locations, see Details.

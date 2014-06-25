@@ -8,13 +8,14 @@
   \code{corrHLfit} performs the joint estimation of correlation parameters, fixed effect and dispersion parameters. 
 }
 \usage{
-corrHLfit(formula,data,init.corrHLfit=list(),ranFix=list(),lower=list(),upper=list(),
-          trace=list(file=NULL,append=T),objective="p_bv",control.corrHLfit=list(),...)
+corrHLfit(formula,data,init.corrHLfit=list(),init.HLfit=list(),ranFix=list(),
+          lower=list(),upper=list(),trace=list(file=NULL,append=T),objective="p_bv", 
+          rho.mapping,control.corrHLfit=list(),processed=NULL,family=gaussian(),...)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
   \item{formula}{
-Either a linear model \code{\link{formula}} (as handled  by various fitting functions) or a \code{predictor}, i.e. a formula with attributes (see \code{\link{Predictor}} and examples below).
+Either a linear model \code{\link{formula}} (as handled  by various fitting functions) or a \code{predictor}, i.e. a formula with attributes (see \code{\link{Predictor}} and examples below). See Details in \code{\link{spaMM}} for allowed terms in the formula.
 }
   \item{data}{A data frame containing the variables in the response and the model formula.}
   \item{init.corrHLfit}{
@@ -24,6 +25,10 @@ An optional list of initial values for correlation and/or dispersion parameters,
  All are optional, but giving values for 
 a dispersion parameter changes the ways it is estimated (see Details).
 }
+  \item{init.HLfit}{
+    See identically named \code{\link{HLfit}} argument.
+%- FR->FR more to say (if corr estim within HLfit becomes public ?)...
+  }
   \item{ranFix}{
 A list similar to \code{initpar}, but specifying fixed values of the parameters not estimated. 
 }
@@ -46,9 +51,17 @@ parameters in the HLCor call. Information about the variables is printed at the 
 The objective function maximized for estimation of parameters by \code{optim}. 
 Either \code{"p_bv"} for restricted likelihood or \code{"p_v"} for marginal likelihood.
 }
+  \item{rho.mapping}{
+   A set of indices controlling which elements of the \code{rho} scale vector scales which dimension(s) of the space in which (spatial) 
+   correlation matrices of random effects are computed. See same argument in \code{\link{make.scaled.dist}} for details and examples.   
+}
   \item{control.corrHLfit}{
    Only for development purposes, not documented.
 }
+  \item{processed}{For programming purposes, not documented.
+  }
+  \item{family}{Either a \code{\link{family}} or a \code{\link{multi}} value.  
+  }
   \item{...}{
 Optional arguments passed to \code{\link{HLCor}}, \code{\link{HLfit}} or  \code{\link{designL.from.Corr}}, for example the \code{distMatrix} argument 
 of \code{HLCor}. Arguments that do not fit within these functions are detected and a warning is issued.
@@ -64,9 +77,8 @@ of \code{HLCor}. Arguments that do not fit within these functions are detected a
   of fixed effects may then by tricky. It is safe to perform full ML fits of all parameters (using \code{objective="p_v",HLmethod="ML"}) for such tests (see Examples).   The higher level function \code{\link{fixedLRT}} is a safe interface for likelihood ratio tests using some form of REML estimation in \code{corrHLfit}.  
 }
 \value{
-A list with currently a single element \code{hlfit}, which is the HLfit object returned by 
-\code{HLCor} for the estimated correlation parameter values. These correlation parameter 
-values are included in \code{hlfit} as  its \code{$corrPars} member.
+The HLfit object returned by \code{HLCor} for the estimated correlation parameter values. These correlation parameters 
+values are included in this object as its \code{$corrPars} member.
 }
 %% ~Make other sections like Warning with \section{Warning }{....} ~
 \seealso{
@@ -86,13 +98,13 @@ corrHLfit(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(scotlip$expec)),
 \dontrun{
 data(blackcap)
 fullfit <- corrHLfit(migStatus ~ means+ Matern(1|latitude+longitude),data=blackcap,
-                    objective="p_v",HLmethod="ML") ## takes ~ 6s
+                    HLmethod="ML") ## takes ~ 6s
 summary(fullfit)
 nullfit <- corrHLfit(migStatus ~ 1 + Matern(1|latitude+longitude),data=blackcap,
-                    objective="p_v",HLmethod="ML") ## takes ~ 3s
+                    HLmethod="ML") ## takes ~ 3s
 summary(nullfit)
 ## p-value:
-1-pchisq(2*(fullfit$hlfit$APHLs$p_v-nullfit$hlfit$APHLs$p_v),df=1)
+1-pchisq(2*(fullfit$APHLs$p_v-nullfit$APHLs$p_v),df=1)
 }
 
 ## see data set Loaloa for additional examples

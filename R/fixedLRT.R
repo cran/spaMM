@@ -16,12 +16,12 @@ function(null.formula,formula,data,HLmethod,REMLformula=NULL,boot.repl=0,
   ## we have a potential backward compatiblity problem, since the simulation scripts 
   ## for the Ecography paper assume that the package automatically interpret the model as spatial, even if findSpatial returns NULL
   ## and we no longer want such a behaviour
-  ## but fixed.LRT is not used in these scripts, so it can make a different assumption
+  ## but fixedLRT is not used in these scripts, so it can make a different assumption
   spatial <- findSpatial(formula)
   if ( ! is.null(spatial)) {
     mc$method <- "corrHLfit" ## useful for spaMMLRT call but not for corrMM.LRT where it is the default
     ## both will use p_v for the optim steps, we need to distinguish whether some REML correction is used in iterative algo :
-    if ( HLmethod %in% c("ML","PQL/L") || substr(HLmethod,0,2) == "ML") {
+    if ( HLmethod %in% c("ML","PQL/L","SEM") || substr(HLmethod,0,2) == "ML") {
       mc[[1L]] <- as.name("spaMMLRT") ## does not (yet) handles well other HLmethod's  when eg init.corrHLfit contains lambda
       ## there's no profile etc in spaMMLRT... 
     } else { ## EQL, REPQL or REML variants: profiles then not allowed within corrMM.LRT!

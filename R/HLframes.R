@@ -1,7 +1,7 @@
 HLframes <-
-function (formula, data, vnms = character(0)) {
+function (formula, data) {
     ## m gives either the position of the matched term in the matched call 'mc', or 0
-    formula <- asStandardFormula(formula) ## strips out the spatial information
+    formula <- asStandardFormula(formula) ## strips out the spatial information, retaining the variables
     if (is.character(formula[[2]])) { ## implies that the var designated by a string (phi, for example) should not be in the data frame 
        respname <- formula[[2]]
        if (is.null(data[[respname]])) {
@@ -19,13 +19,10 @@ function (formula, data, vnms = character(0)) {
        data[validname] <- 1 ## adds a column $phi of 1 
        formula[[2]] <- as.name(validname) ## now the formula is standard
     }
+    ####### first construct a mf for all variables required by the formula (NA would be removed here if they had not been by a previous call to validRows)
     mf <- call("model.frame",data=data) ## it adds the formula argument below....
     frame.form <- subbarsMM(formula) ## this comes from lme4 and converts (...|...) terms to some "+" form
-    if (length(vnms) > 0) 
-        frame.form[[3]] <- substitute(foo + bar, list(foo = parse(text = paste(vnms, 
-            collapse = " + "))[[1]], bar = frame.form[[3]]))
-    norand.form <- nobarsMM(formula) ## nobars removes the (...|...) terms...
-    environment(norand.form) <- environment(frame.form) <- environment(formula)
+    environment(frame.form) <- environment(formula)
     mf$formula <- frame.form
     mf$drop.unused.levels <- TRUE
     fe <- mf ## copy before further modif of mf
@@ -34,31 +31,23 @@ function (formula, data, vnms = character(0)) {
     if (! is.null(Y)) {
       ## if binomial Y (may be) a numeric vector and length(dim(Y)) = length(NULL) = 0 
       ## if poisson Y (may be) an integer(!) vector and length(dim(Y)) = length(NULL) = 0
-      ## The following looks like an exception
-      # if (length(dim(Y)) == 1) { ## 1-D array ? conversion to numeric with problem of keeping the name. 
-      ## But as.matrix does this anyway 
-      #  nm <- rownames(Y)
-      #  dim(Y) <- NULL
-      #  if (!is.null(nm)) names(Y) <- nm
-      #}
-      Y <- as.matrix(Y) ## also useful in binomial case because preprocess tests ncol(Y) later. Revise...
+      Y <- as.matrix(Y) ## also useful in binomial case because preprocess tests ncol(Y) later. FR->FR Revise...
     }
+    ####### Then constructs the design X by evaluating the model frame (fe) with fe$formula <- fixef.form
     fixef.form <- nobarsNooffset(formula) ## nobars removes the (...|...) terms...
-    if (inherits(fixef.form, "name")) { ## either a var name of a math expression to evaluate, but not cbind...
-       X <- matrix(, NROW(Y), 0)
-    } else {
+    if (inherits(fixef.form, "formula")) {
        fe$formula <- fixef.form
        fe <- eval(fe)
        mt <- attr(fe, "terms")
        if (mt[[length(mt)]]==0) { 
-    	     X <- matrix(nrow=nrow(mf),ncol=0) ## model without fixed effects, not even an Intercept 
+    	   X <- matrix(nrow=nrow(mf),ncol=0) ## model without fixed effects, not even an Intercept 
        } else if (!is.empty.model(mt)) {
-          X <- model.matrix(mt, mf, contrasts)
+         X <- model.matrix(mt, mf, contrasts) ## contrasts is a function from the stats package
        } else {
          mess <- pastefrom("no variables identified. Check model formula.",prefix="(!) From ")
          stop(mess)
        }
-    }
+    } else X <- matrix(, NROW(Y), 0)
     storage.mode(X) <- "double" ## not clear what for...
     fixef <- numeric(ncol(X))
     names(fixef) <- colnames(X)

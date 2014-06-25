@@ -5,25 +5,26 @@
 %- Also NEED an '\alias' for EACH other topic documented here.
 \title{Fit mixed models with given correlation matrix}
 \description{
-  This fonction fits a class of GLMMs as well as some hierarchical generalized linear models (HGLM; Lee and Nelder 2001).
+  This fonction fits GLMMs as well as some hierarchical generalized linear models (HGLM; Lee and Nelder 2001).
   HLfit fits both fixed effects parameters, and dispersion parameters i.e. the variance of the random effects 
   and the variance of the residual error. The linear predictor is of the 
   standard form \code{offset+ X beta + Z v}, where 
-  X is the design matrix of fixed effects and Z is a design matrix of random effects. 
+  X is the design matrix of fixed effects and Z is a design matrix of random effects.   
   The function also handles a linear predictor (with only fixed effects) for the residual variance. 
 }
 \usage{
 HLfit(formula, data, family = gaussian(), rand.family = gaussian(), 
-      resid.formula = ~1, REMLformula = NULL, verbose = c(F, F), 
+      resid.formula = ~1, REMLformula = NULL, 
+      verbose=c(warn=TRUE,trace=FALSE,summary=FALSE),
       HLmethod = "HL(1,1)", control.HLfit = list(), init.HLfit = list(), 
-      ranFix = list(), etaFix = list(), processed = NULL)
+      ranFix = list(), etaFix = list(), prior.weights = rep(1, nobs), processed = NULL)
 ## see 'rand.family' argument for inverse.Gamma
 ## see 'control.HLfit' argument for AIC
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
   \item{formula}{
-  A \code{\link{formula}}; or a \code{predictor}, i.e. a formula with attributes created by \code{\link{Predictor}}, if design matrices for random effects have to be provided.
+  A \code{\link{formula}}; or a \code{predictor}, i.e. a formula with attributes created by \code{\link{Predictor}}, if design matrices for random effects have to be provided. See Details in \code{\link{spaMM}} for allowed terms in the formula (except spatial ones).
 }
   \item{data}{
      A data frame containing the variables named in the model formula.  
@@ -35,11 +36,13 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
    (see \code{\link{family}}).
 }
   \item{rand.family}{
-  A \code{family} object describing the distribution of the random effect. Possible options are
+  A \code{family} object describing the distribution of the random effect, or a \code{list} of 
+  family objects for different random effects (see Examples). Possible options are
   \code{gaussian()}, \code{Gamma(log)}, \code{Beta(logit)}, \code{inverse.Gamma(-1/mu)}, and \code{inverse.Gamma(log)}.
   For discussion of these alternatives see Lee and Nelder 2001 or Lee et al. 2006, p. 178-.
   Here the family gives the distribution of a random effect \eqn{u} 
-  and the link gives \code{v} as function of \eqn{u} (see Details).      
+  and the link gives \code{v} as function of \eqn{u} (see Details).
+  If there are several random effects and only one family is given, this family holds for all random effects.
 }
   \item{resid.formula}{
   A formula (without left-hand side) for the variance \code{phi} of the residual error. Currently can only contain fixed effects. 
@@ -53,8 +56,9 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
   \code{HLmethod="ML"} and leaving \code{REMLformula} at its default NULL value.
 }
   \item{verbose}{
-    A pair of booleans. The first controls messages about the results of the fit, the second controls messages about 
-    the iterations.
+    A vector of booleans. \code{trace} controls various diagnostic (possibly messy) messages about the iterations.
+    \code{summary} controls whether a summary of the fit is called by \code{HLfit}.
+    \code{warn} is for programming purposes and best ignored.
   }
   \item{HLmethod}{
   Allowed values are \code{"REML"}, \code{"ML"}, \code{"EQL-"} and \code{"EQL+"} for all models;  
@@ -70,12 +74,15 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
   PQL can be seen as the version of EQL- for GLMMs.
   PQL/L is PQL without the standard leverage corrections for REML.
   
+  For \bold{GLMs}, the default is still REML. For binomial and Poisson GLMs, this cannot be distinguished from an exact ML fit. 
+  Note that the \code{\link{glm}} function performs an EQL analysis, which will differ from the REML (and ML) one for Gaussian and Gamma GLMs.  
+  
   See Details for the more general syntax.
 }
   \item{control.HLfit}{
   A list of parameters controlling (1) AIC computation; and (2) the fitting algorithms.
 
-  \code{AIC=TRUE} provides the corrected AIC of Ha et al. 2007, 
+  \code{AIC=TRUE} provides the corrected AIC of Ha et al. 2007 [i.e., AIC(D*) in their eq. 7], 
   but the default is \code{FALSE} to (modestly) encourage users to think twice before applying model selection automatically, which is no better although more fashionable than misuses of simple null hypothesis testing. Also, alternative procedures for model choice can be considered (e.g. Cox and Donnelly, 2011, p. 130-131). 
 
   Controls for the fitting algorithms should be ignored in routine use. They are
@@ -85,10 +92,10 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
    linear predictor terms (fixed effects and inferred random effects), and dispersion parameter estimates have converged. Defaults to 1e-05;
 %
   \code{iter.mean.dispFix}, the number of iterations of the iterative algorithm for coefficients of the linear predictor,
-       if no dispersion parameters are estimated by the iterative algorithm. Defaults to 40; 
+       if no dispersion parameters are estimated by the iterative algorithm. Defaults to 200; 
 %
   \code{iter.mean.dispVar}, the number of iterations of the iterative algorithm for coefficients of the linear predictor,
-       if some dispersion parameter(s) is estimated by the iterative algorithm. Defaults to 20;  
+       if some dispersion parameter(s) is estimated by the iterative algorithm. Defaults to 50;  
 %
   \code{max.iter}, the number of iterations of the iterative algorithm for joint estimation of dispersion parameters and
         of coefficients of the linear predictor. Defaults to 200. This is typically much more than necessary, 
@@ -112,6 +119,9 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
   \item{etaFix}{
    A list of fixed values of the coefficients of the linear predictor, with possible elements \code{beta} and \code{v_h} or \code{u_h}. 
  }
+  \item{prior.weights}{
+   An optional vector of prior weights as in \code{\link{glm}}. This fits the data to a model with residual variance \code{phi/prior.weights}, so that increasing the    weights by a constant factor \emph{f} will yield estimates of \code{phi} also increased by \emph{f}. Note that this is what \code{glm} does, but that some other widely used packages can behave differently (and obscurely) 
+ }
   \item{processed}{
     A list of preprocessed arguments, for programming purposes only (as in \code{corrHLfit} code).
  }
@@ -131,9 +141,11 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
   is used to estimate dispersion parameters, including the dv/d tau term specifically discussed by Lee & Nelder 2001, p. 997
   (a '0' would instead mean that these terms are ignored).
   
-  It is possible to enforce the EQL approximation for estimation of dispersion parameter by adding a third index with value 0. For a GLM, 
-  this will reproduce the behaviour of the base package function \code{\link{glm}}, which also uses a quasi-likelihood approximation. 
-  \code{"HL(0,1,0)"} is Lee & Nelder's (2001) method, I.e. \code{"EQL+"}.
+  It is possible to enforce the EQL approximation for estimation of dispersion parameter by adding a third index with value 0. 
+  \code{"HL(0,1,0)"} is Lee & Nelder's (2001) method, i.e. \code{"EQL+"}.
+  
+  For a Gamma GLM with log link, ML and EQL results will differ in their phi estimates, and the EQL estimate will match that from the \code{\link{glm}} function. 
+  
 
   \bold{Random effects} are constructed in several steps. first, a vector \bold{u} of independent and identically distributed (iid) random effects is drawn from some distribution;
  second, a transformation v=f(u) is applied to each element (this defines \bold{v} which elements are still iid); third, correlated random effects are obtained as \bold{Lv} 
@@ -148,16 +160,19 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
  \item{Gaussian}{with zero mean, unit variance, and identity link;} 
  \item{Beta}{Beta-distributed random effects, where (\eqn{u ~ B(1/(2\lambda),1/(2\lambda))} 
     (mean=1/2, var\eqn{=\lambda/[4(1+\lambda)]}), with logit link \code{v=logit(u)})}
- \item{Gamma}{Gamma-distributed random effects, where \eqn{u ~ \Gamma(\lambda,1/\lambda)}, so u
-   has mean 1 and variance \eqn{\lambda}. With a log link (\eqn{v=log(u ~ \Gamma)}), v has mean zero.} 
+ \item{Gamma}{Gamma-distributed random effects, where \eqn{u ~ \Gamma(1/\lambda,\lambda)}, so u
+   has mean 1 and variance \eqn{\lambda}. 
+  } 
  \item{Inverse-Gamma}{inverse-Gamma distributed random effects, where \eqn{u ~ }inverse-Gamma\eqn{(1+1/\lambda,1/\lambda)}
     (mean=1, var=\eqn{\lambda/(1-\lambda))}, with \code{v=log(u)} or \code{v=-1/u}.}
  }  
 
+  \bold{The standard errors} reported may sometimes be misleading. For each set of parameters among \eqn{beta}, \eqn{lambda}, and \eqn{phi} parameters these are computed assuming that the other parameters are known without error. This is why they are labelled \code{Cond. SE} (conditional standard error). This is most uninformative if \eqn{lambda} and \eqn{phi} are not separately estimable parameters.  
 
 }
 \value{
-An object of class \code{HLfit}, actually a list with many elements, many of which represent input arguments. The \code{summary.HLfit} function 
+An object of class \code{HLfit}, actually a list with many elements, several of which represent input arguments. 
+Some elements may be undocumented. The \code{summary.HLfit} function 
 normally formats this nicely, so that the following information is useful mainly if one wants to extract any of the elements of the object. 
 These elements include, first, variables describing the fit:  
 
@@ -202,7 +217,7 @@ and in (possibly reformatted) input arguments
 }
 \references{
 Breslow, NE, Clayton, DG. (1993). Approximate Inference in Generalized Linear Mixed Models.
-Journal of the American Statistical Association: 88 9-25.
+Journal of the American Statistical Association 88, 9-25.
 
 Cox, D. R. and Donnelly C. A. (2011) Principles of Applied Statistics. Cambridge Univ. Press.
 
@@ -232,5 +247,5 @@ HLfit(y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch),family=Gamma(log),
 HLfit(y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch),family=Gamma(log),
           HLmethod="HL(1,1)",rand.family=inverse.Gamma(log),
           resid.formula = ~ X3+I(X3^2) ,data=wafers)
-}
+}          
 \keyword{ model }

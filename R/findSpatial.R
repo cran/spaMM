@@ -10,7 +10,7 @@ function (term) { ## derived from findbars
         return(NULL)
     if (length(term) == 2) {
       term1 <- as.character(term[[1]])
-      if (term1 %in% c("adjacency","Matern","corMatern")) {
+      if (term1 %in% c("adjacency","Matern","corMatern","AR1","corrMatrix")) {
         return(term) 
       } else return(NULL) 
      }

@@ -1,8 +1,6 @@
 \name{plot.HLfit}
 \alias{plot}
 \alias{plot.HLfit}
-\alias{plot.HLCor}
-\alias{plot.corrHLfit}
 \title{
 Model checking plots for mixed models
 }
@@ -23,9 +21,6 @@ each random deviate divided by \eqn{\sqrt(1-q)} where \eqn{q} is the correspondi
           levlambda=expression(paste("Leverages for ",lambda))) 
         ), 
       control= list(), ...)
-\method{plot}{HLCor}(x,...)
-\method{plot}{corrHLfit}(x,...)
-
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -49,6 +44,8 @@ each random deviate divided by \eqn{\sqrt(1-q)} where \eqn{q} is the correspondi
 \details{
   The standardized deviance residuals are defined as the deviance residuals divided by \eqn{\phi\sqrt(1-q)}, 
   where \eqn{q} is the corresponding leverage for \eqn{\phi}, and the deviance residuals are defined as for a GLM. The leverages are zero for ML methods. Otherwise, they depend on the fitting method used, as defined in the Details of \code{\link{HLfit}}. The \code{PQL} and \code{EQL-} method use leverages obtained as diagonal elements of the \dQuote{hat} matrix; more elaborate methods will introduce corrections for non-Gaussian response and for non-Gaussian random effects; and \dQuote{(.,1)} methods will add another correction taking into account the variation of the GLM weights in the logdet Hessian term of restricted likelihood. 
+  
+  In principle the deviance residuals should have a nearly Gaussian distribution hence form a nearly straight line on a Q-Q plot. However this is (trivially) not so for well-specified binomial response data nor even for well-specified Poisson response data with moderate expectations. Hence these plots are not so useful.  
 }
 \value{
   Returns the input object invisibly.

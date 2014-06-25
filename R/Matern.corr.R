@@ -4,10 +4,7 @@ function (d, rho=1, smoothness, nu=smoothness, Nugget=0L) { ## rho is alpha in f
     if (any(d < 0)) 
         stop("distance argument must be nonnegative")
     dscal <- d * rho
-    dscal[d == 0L] <- 1e-10 ## avoids errors on distance =0; but the resulting corrvals can be visibly < 1 for small nu 
-    #con <- (2^(nu - 1)) * gamma(nu) ## overflow for nu > 151
-    #con <- 1/con
-    #corrvals <- con * (dscal^nu) * besselK(dscal, nu) ## besselK overflows for small x
+    dscal[d == 0L] <- 1e-10 ## avoids errors on distance =0; but the resulting corrvals can be visibly < 1 for small nu ## FR->FR make value dependent on rho, nu ?
     logcon <- (nu - 1)*log(2)+ lgamma(nu) 
     corrvals <- - logcon + nu*log(dscal)+ bessel_lnKnu(x=dscal, nu=nu) ## 
 ##    corrvals <- - logcon + nu*log(dscal)+ log(besselK(x=dscal, nu=nu)) ## function from package gsl

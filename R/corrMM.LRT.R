@@ -7,9 +7,12 @@ function(null.formula=NULL,formula,
                        trace=F, ## T means lead to calls of corrHLfit(... trace=list(<file name>,<over/append>))
                        control=list(), ## profiles=Inf,prefits=T,optimFits,restarts,maxit...
                        control.boot=list(), ## prefits=F,optimFits,profiles=0
-                       verbose=c(F,F),
+                       verbose=c(trace=FALSE,warn=NA,summary=FALSE),  
                        test.obj=NULL, ## 01/2014 to override default behaviour (experimental)  
                        ...) {
+  if (is.na(verbose["trace"])) verbose["trace"] <- FALSE
+  if (is.na(verbose["warn"])) verbose["warn"] <- FALSE ## will be unconditionally ignored by the final fit in corrHLfit  
+  if (is.na(verbose["summary"])) verbose["summary"] <- FALSE ## 
   ##################################################                     
   ## methods handled:
   ## RE<...> (ie. 'REML', 'RE(0,1)'...) => REML fits using the iterative algorithm, both with design matrix from full models; a bit slow...
@@ -17,7 +20,7 @@ function(null.formula=NULL,formula,
   ## if an init.corrHLfit argument is provided, then there is no REML estimation of the given parameter, even if the given method is RE<...>
   ## 12/2013: PQL now identified to REPQL. At some stage there was 'monPQL' which was ML(0,1)
   ## my HL(...) were ML(...) because of init.corrHLfit, but would otherwise be RE(...)
-  ## FR->FR cmmentaire non daté suggerait problèmes persistants ML(...) + REML formula. Pt etre pas un cas int
+  ## FR->FR cmmentaire non daté << v1.1 suggerait problèmes persistants ML(...) + REML formula. Pt etre pas un cas int
   ##################################################                     
   profiles <- control$profiles
   if (is.null(profiles)) profiles <- Inf
@@ -79,7 +82,8 @@ function(null.formula=NULL,formula,
   if ( ! "rho" %in% names(dotlist$ranFix)) which.optim.fit <- c(which.optim.fit,"rho")
   if ( ! "nu" %in% names(dotlist$ranFix)) which.optim.fit <- c(which.optim.fit,"nu")
   if ( ! "Nugget" %in% names(dotlist$ranFix)) which.optim.fit <- c(which.optim.fit,"Nugget") ## by default not operative
-  ######## Determines iterativeFits, optimFits and the corresponding REML formulas
+  if ( ! "ARphi" %in% names(dotlist$ranFix)) which.optim.fit <- c(which.optim.fit,"ARphi") ## hmf
+######## Determines iterativeFits, optimFits and the corresponding REML formulas
   ## *by default* the iterative fits are more REML than the optim fits; true REML is possible only through the iterative fits.
   #### optimREMLformula is a (false, typically ML) REML formula for nullfit, fullfit, not for REML fits
   if (is.null(dotlist$HLmethod)) stop("Argument 'HLmethod' missing with no default in corrMM.LRT") ## Devrait pas venir de la dotlist... codage bouseux mais bon.
@@ -136,7 +140,7 @@ function(null.formula=NULL,formula,
         nullm.list$REMLformula <- REMLformula
       }
       namesinit <- names(fullm.list$init.corrHLfit)
-      namesinit <- setdiff(namesinit,c("rho","nu","Nugget"))
+      namesinit <- setdiff(namesinit,c("rho","nu","Nugget","ARphi"))
       len <- length(namesinit)
       if ( len>0 && optimFits) {
         if (len > 1) namesinit <- paste(c(paste(namesinit[-len],collapse=", "),namesinit[len]),collapse=" and ")
@@ -147,7 +151,7 @@ function(null.formula=NULL,formula,
       }
     }
   }
-  if (verbose[1]) {
+  if (verbose["trace"]) {
     if (iterativeFits) {
       cat("corrMM.LRT will perform iterative fits of dispersion parameters with REML formula ")
       print(fullm.list$REMLformula)
@@ -178,9 +182,14 @@ function(null.formula=NULL,formula,
         }
      }
      if ("rho" %in% which.pars) {
-        if ("rho" %in% which.optim.fit )  { ## always by ML whether user provided initial values or not
-          to.arglist$init.corrHLfit$rho <- from.fit$corrPars$rho   
-        }    
+       if ("rho" %in% which.optim.fit )  { ## always by ML whether user provided initial values or not
+         to.arglist$init.corrHLfit$rho <- from.fit$corrPars$rho   
+       }    
+     }  
+     if ("ARphi" %in% which.pars) {
+       if ("ARphi" %in% which.optim.fit )  { ## always by ML whether user provided initial values or not
+         to.arglist$init.corrHLfit$ARphi <- from.fit$corrPars$ARphi   
+       }    
      }  
      if ("nu" %in% which.pars) {
         if ("nu" %in% which.optim.fit) { ## always by ML whether user provided initial values or not
@@ -258,7 +267,7 @@ function(null.formula=NULL,formula,
     nullREML.list$init.corrHLfit$phi <- NULL ## 21/02/2013
     nullREML.list$control.HLfit$conv.threshold <- 1e-04 
     if (trace) nullREML.list$trace <- list(file="trace.lamREMLnullfit.txt",append=F)
-    lamREMLnullfit <- do.call(method,nullREML.list)$hlfit ## must return something that simulate() can manipulate
+    lamREMLnullfit <- do.call(method,nullREML.list) ## must return something that simulate() can manipulate
     trace.info <- data.frame(iter=0,step="lamREMLnullfit",obj=lamREMLnullfit$APHLs[[test.obj]])
     ## for ML 
     nullm.list <- update.ranef.pars(from.fit=lamREMLnullfit,to.arglist=nullm.list) 
@@ -271,7 +280,7 @@ function(null.formula=NULL,formula,
     if ("lambda" %in% which.iterative) nullm.list$init.corrHLfit$lambda <- NULL
     nullm.list$REMLformula <- optimREMLformula ## ie ML fit... always the case anyway but needed if iterative...
     if (trace) nullm.list$trace <- list(file="trace.nullfit.txt",append=F)
-    nullfit <- do.call(method,nullm.list)$hlfit ## must return something that simulate() can manipulate
+    nullfit <- do.call(method,nullm.list) ## must return something that simulate() can manipulate
     if ( ! is.null(lamREMLnullfit)) { ## if an iterative fit was performed, we check whether it provided a better fit
         ## since lamREMLnullfit use full model formula and nullfit uses ML, one should not compare their p_v
         ## instead we fix the ranPars [since HLCor, not corrHLfit, call] and refit by ML
@@ -280,7 +289,7 @@ function(null.formula=NULL,formula,
         MLforREMLranPars$REMLformula <- optimREMLformula
         MLforREMLranPars$ranPars<- with(lamREMLnullfit,c(corrPars,list(phi=phi,lambda=lambda)))
         MLforREMLranPars$coordinates <- dotlist$coordinates
-        gnrf <- do.call(HLCor,MLforREMLranPars)$hlfit$APHLs[[test.obj]]
+        gnrf <- do.call(HLCor,MLforREMLranPars)$APHLs[[test.obj]]
         if (gnrf > nullfit$APHLs[[test.obj]]) { ## annoying as it means ML has failed to maximize p_v, but can occur
           trace.info <- rbind(trace.info,data.frame(iter=0,step="(!) nullfit (-)",obj=nullfit$APHLs[[test.obj]]))
           nullfit <-lamREMLnullfit ## step back
@@ -302,7 +311,7 @@ function(null.formula=NULL,formula,
     REML.list$init.corrHLfit$phi <- NULL ## 21/02/2013
     REML.list$control.HLfit$conv.threshold <- 1e-04 
     if (trace) REML.list$trace <- list(file="trace.lamREMLfullfit.txt",append=F)
-    lamREMLfullfit <- do.call(method,REML.list)$hlfit ## this performs an REML fit for lambda, provide the initial value for the ML fit
+    lamREMLfullfit <- do.call(method,REML.list) ## this performs an REML fit for lambda, provide the initial value for the ML fit
     trace.info <- rbind(trace.info,data.frame(iter=0,step="lamREMLfullfit",obj=lamREMLfullfit$APHLs[[test.obj]]))
     ## for ML
     fullm.list <- update.ranef.pars(from.fit=lamREMLfullfit,to.arglist=fullm.list)  
@@ -313,14 +322,14 @@ function(null.formula=NULL,formula,
     if ("lambda" %in% which.iterative) fullm.list$init.corrHLfit$lambda <- NULL
     fullm.list$REMLformula <- optimREMLformula ## ie ML fit... always the case anyway but needed if iterative...
     if (trace) fullm.list$trace <- list(file="trace.fullfit.txt",append=F)
-    fullfit <- do.call(method,fullm.list)$hlfit ## must return something that simulate() can manipulate
+    fullfit <- do.call(method,fullm.list) ## must return something that simulate() can manipulate
     if ( ! is.null(lamREMLfullfit)) { ## if an iterative fit was performed, we check whether it provided a better fit
         MLforREMLranPars <- REML.list
         MLforREMLranPars$ranFix <- NULL
         MLforREMLranPars$REMLformula <- optimREMLformula
         MLforREMLranPars$ranPars<- with(lamREMLfullfit,c(corrPars,list(phi=phi,lambda=lambda)))
         MLforREMLranPars$coordinates <- dotlist$coordinates
-        gnrf <- do.call(HLCor,MLforREMLranPars)$hlfit$APHLs[[test.obj]]
+        gnrf <- do.call(HLCor,MLforREMLranPars)$APHLs[[test.obj]]
         if (gnrf > fullfit$APHLs[[test.obj]]) { ## annoying as it means ML has failed to maximize p_v, but can occur
           trace.info <- rbind(trace.info,data.frame(iter=0,step="(!) fullfit (-)",obj=fullfit$APHLs[[test.obj]]))
           fullfit <-lamREMLfullfit
@@ -376,7 +385,7 @@ if (restarts) {
         renullm.list <- update.ranef.pars(from.fit=fullfit,to.arglist=renullm.list)
         if ("phi" %in% which.iterative) renullm.list$init.corrHLfit$phi <- NULL
         if ("lambda" %in% which.iterative) renullm.list$init.corrHLfit$lambda <- NULL
-        renullfit <- do.call(method,renullm.list)$hlfit 
+        renullfit <- do.call(method,renullm.list) 
         if (renullfit$APHLs[[test.obj]] > nullfit$APHLs[[test.obj]]) {
           conv <- conv + renullfit$APHLs[[test.obj]] - nullfit$APHLs[[test.obj]]
           nullfit <-renullfit
@@ -390,7 +399,7 @@ if (restarts) {
         ############################ renullm.list$control.HLfit$iter.mean.dispFix <- 10
         if ("phi" %in% which.iterative) renullm.list$init.corrHLfit$phi <- NULL
         if ("lambda" %in% which.iterative) renullm.list$init.corrHLfit$lambda <- NULL
-        renullfit <- do.call(method,renullm.list)$hlfit 
+        renullfit <- do.call(method,renullm.list) 
         if (renullfit$APHLs[[test.obj]] > nullfit$APHLs[[test.obj]]) {
           conv <- conv + renullfit$APHLs[[test.obj]] - nullfit$APHLs[[test.obj]]
           nullfit <-renullfit
@@ -412,7 +421,7 @@ if (restarts) {
         refullm.list$init.HLfit$fixef[nullVarsPos] <- as.numeric(mean(nullfit$eta)) 
         if ("phi" %in% which.iterative) refullm.list$init.corrHLfit$phi <- NULL
         if ("lambda" %in% which.iterative) refullm.list$init.corrHLfit$lambda <- NULL
-        refullfit <- do.call(method,refullm.list)$hlfit
+        refullfit <- do.call(method,refullm.list)
         if ( refullfit$APHLs[[test.obj]] > fullfit$APHLs[[test.obj]] ) { ## 
           conv <- conv + refullfit$APHLs[[test.obj]] - fullfit$APHLs[[test.obj]] ## only D(FULL)
           fullfit <- refullfit
@@ -429,7 +438,7 @@ if (restarts) {
         ################## refullm.list$control.HLfit$iter.mean.dispFix <- 10
         if ("phi" %in% which.iterative) refullm.list$init.corrHLfit$phi <- NULL
         if ("lambda" %in% which.iterative) refullm.list$init.corrHLfit$lambda <- NULL
-        refullfit <- do.call(method,refullm.list)$hlfit
+        refullfit <- do.call(method,refullm.list)
         if ( refullfit$APHLs[[test.obj]] > fullfit$APHLs[[test.obj]] ) { ## 
           conv <- conv + refullfit$APHLs[[test.obj]] - fullfit$APHLs[[test.obj]] ## only D(FULL)
           fullfit <- refullfit
@@ -449,7 +458,7 @@ if (restarts) {
         if ("phi" %in% which.iterative) refullm.list$init.corrHLfit$phi <- NULL
         if ("lambda" %in% which.iterative) refullm.list$init.corrHLfit$lambda <- NULL
         if (trace) fullm.con.list$trace <- list(file="trace.refullfit.txt",append=T)
-        refullfit <- do.call(method,fullm.con.list)$hlfit
+        refullfit <- do.call(method,fullm.con.list)
         if ( refullfit$APHLs[[test.obj]] > fullfit$APHLs[[test.obj]] ) { ## but not necess better than nullfit
           conv <- conv + refullfit$APHLs[[test.obj]] - fullfit$APHLs[[test.obj]] ## only D(FULL)
           fullfit <- refullfit
@@ -493,7 +502,7 @@ if (restarts) {
           offset <- attr(prof.list$formula,"offset")
           if ( is.null(offset)) offset <- 0
           attr(prof.list$formula,"offset") <- offset + addOffset
-          prof.fit <- do.call(method,prof.list)$hlfit ## 
+          prof.fit <- do.call(method,prof.list) ## 
           return(prof.fit$APHLs[[test.obj]])
         }
         if (length(profileVars)>1) {
@@ -527,7 +536,7 @@ if (restarts) {
           offset <- attr(prof.list$formula,"offset")
           if ( is.null(offset)) offset <- 0 ## ? FR->FR code repetitif, creer update.offset
           attr(prof.list$formula,"offset") <- offset + addOffset
-          proffit <- do.call(method,prof.list)$hlfit ## to recover the ranef parameters etc
+          proffit <- do.call(method,prof.list) ## to recover the ranef parameters etc
           if ( proffit$APHLs[[test.obj]] > fullfit$APHLs[[test.obj]] ) { ## if profile max should improve fullfit
             trace.info <- rbind(trace.info,data.frame(iter=locit,step="proffit (+)",obj=proffit$APHLs[[test.obj]]))
             conv <- conv + proffit$APHLs[[test.obj]] - fullfit$APHLs[[test.obj]]
@@ -540,7 +549,7 @@ if (restarts) {
             refullm.list$init.HLfit$v_h <- proffit$v_h 
             if ("phi" %in% which.iterative) refullm.list$init.corrHLfit$phi <- NULL
             if ("lambda" %in% which.iterative) refullm.list$init.corrHLfit$lambda <- NULL
-            refullfit <- do.call(method,refullm.list)$hlfit 
+            refullfit <- do.call(method,refullm.list) 
             if ( refullfit$APHLs[[test.obj]] > fullfit$APHLs[[test.obj]] ) { ## if confirmed improvement of fullfit 
               conv <- conv + refullfit$APHLs[[test.obj]] - fullfit$APHLs[[test.obj]]
               fullfit <- refullfit
@@ -574,7 +583,7 @@ if (restarts) {
       bootlist <- dotlist ## copies ranFix
       bootlist$control <- bootcontrol ## (a list)
       bootlist <- c(bootlist,list(null.predictor=null.predictor,null.disp=null.disp,REMLformula=REMLformula,method=method)) ## unchanged user REMLformula forwarded
-      bootlist$verbose <- c(FALSE,FALSE)
+      bootlist$verbose <- c(summary=FALSE)
       bootlist$trace <- FALSE 
       bootlist$boot.repl <- 0 ## avoids recursive call of bootstrap
       ## all.optim.vars <- c(which.optim.fit,which.iterative.fit) ## looks suspect, but is correct because if there is no dispersion estimate in  

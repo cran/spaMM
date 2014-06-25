@@ -1,44 +1,58 @@
 \name{predict}
-%- \alias{predict.HL}
+\alias{predict.HLfit}
 \alias{predict}
-\alias{predict.HLfit} 
-\alias{predict.HLCor}
-\alias{predict.corrHLfit}
 
 \title{
   Prediction from a model fit.
 }
 \description{
-  Predictions of the response variable in different locations and/or different values of the predictor variables for fixed effects, based on random effects inferred by HLCor / corrHLfit.  
+  Predictions of the response variable, based on given values of the predictor variables for fixed effects, and/or 
+  on predicted random effects.   
 }
 \usage{
-%- \method{predict}{HL}(object,newX = NULL,coeffs=NULL,...)
-\method{predict}{HLfit}(object,newX = NULL,...)
-\method{predict}{HLCor}(object,newX = NULL,coeffs=NULL,...)
-\method{predict}{corrHLfit}(object,newX = NULL,coeffs=NULL,...)
+\method{predict}{HLfit}(
+                 object,newX = NULL,coeffs=NULL,
+                 predVar=FALSE, re.form= NULL,
+                 binding = if(is.vector(newX)) {FALSE} else {"fitted"},...)
 }
 \arguments{
   \item{object}{
-  The return object of an HLfit / HLCor / corrHLfit call.
+  The return object of an HLfit or similar function.
 }
   \item{newX}{
-  A data frame containing new locations and values of the predictor variables for fixed effects and of any variable required to compute an offset. Its column names must match those of the originally fitted data. If \code{NULL}, the original data are reused. If not \code{NULL}, then the original fit should not be based on an adjacency matrix. 
+  \bold{Either} a matrix or data frame containing all required variables for evaluating fixed and random effects, including an offset. If \code{NULL}, the original data are reused.  
+  
+  \bold{or} a numeric vector, which names (if any) are ignored. This makes it easier to use \code{predict} as an objective function for an 
+  optimization procedure such as \code{optim}, which calls the objective function on unnamed vectors. However, one must make sure that the order of elements in the vector is  the order of first occurrence of the variables in the model formula. This order can be checked in the error message returned when calling \code{predict} on a \code{newX} vector of clearly wrong size, e.g. \code{predict(<object>,newX=numeric(0))}.
 }
  \item{coeffs}{
   Precomputed coefficients for the prediction (see Details).
+ }
+ \item{predVar}{
+  If this is TRUE, the (co)variance matrix of the predicted random effects is included as attribute \code{"predVar"} of the return value.
+ }
+ \item{re.form}{
+  formula for random effects to include.  If NULL, include all
+          random effects; if NA, include no random effects
+ }
+ \item{binding}{
+  If \code{binding} is a valid variable name for a data frame, the predicted values are bound (under the given name) 
+  with the date frame used for prediction and the resulting frame is returned.
+  If \code{binding} is \code{FALSE}, The predicted values are returned as a matrix and the data frame used for prediction is returned as an attribute
+  (unless it was \code{NULL}).
  }
 \item{\dots}{
   further arguments passed to or from other methods. 
 }
 }
 \value{
-  A data frame including the locations and the expected value (\code{fv=}\eqn{\mu}) of the response variable. 
+  A matrix or data frame (according to the \code{binding} argument), with optionally a prediction (co)variance matrix as attribute.  
 }
 \details{
-  If  \code{newX} is NULL, \code{predict} only returns the fitted responses from the object.
-  Otherwise it constructs a correlation matrix \bold{C} between new locations and locations in the original fit. Then it infers the random effects in the new locations as 
-  \bold{C} [t(\bold{L})]^{-1} \bold{v} (see \code{\link{spaMM}} for notation). The fixed effects and offset (if any) are added. If the predictor is used many times, it may be useful to precompute [t(\bold{L})]^{-1} \bold{v} and to provide this vector through the \code{coeffs} argument (see Examples).  
-
+  If  \code{newX} is NULL, \code{predict} only returns the fitted responses, including random effects, from the object. 
+  Otherwise it computes new predictions including random effects as far as possible.   
+  For spatial random effects it constructs a correlation matrix \bold{C} between new locations and locations in the original fit. Then it infers the random effects in the new locations as   \bold{C} [t(\bold{L})]^{-1} \bold{v} (see \code{\link{spaMM}} for notation). If the predictor is used many times, it may be useful to precompute [t(\bold{L})]^{-1} \bold{v} and to provide this vector through the \code{coeffs} argument (see Examples).  
+  For non-spatial random effects, it checks whether any group (i.e., level of a random effect) in the new data was represented in the original data, and it adds the inferred random effect for this group to the prediction for individuals in this group.
 }
 
 \examples{
@@ -47,7 +61,7 @@ fitobject <- corrHLfit(migStatus ~ 1 + Matern(1|latitude+longitude),data=blackca
                        ranFix=list(nu=4,rho=0.4,phi=0.05))
 predict(fitobject)
 ## same result using precomputed 'coeffs':
-coeffs <- with(fitobject$hlfit,solve(t(attr(predictor,"LMatrix")),v_h))
+coeffs <- with(fitobject,solve(t(attr(predictor,"LMatrix")),v_h))
 predict(fitobject,blackcap,coeffs=coeffs)
 
 \dontrun{

@@ -6,31 +6,22 @@
 
 \title{Inference in spatial GLMMs (and other non-spatial mixed models)}
 
-\description{spaMM has been designed to fit spatial mixed models.
-This package can fit a wider class of non-spatial mixed models (see Examples), but has not been optimized for that purpose. 
-The random effects are either Gaussian (which defines GLMMs), or other distributions (which defines the wider class of hierarchical GLMs), or simply absent (which makes a GLM).  
+\description{spaMM has been first designed to fit spatial mixed models. It can also fit a wider class of non-spatial mixed models. The random effects are either Gaussian (which defines GLMMs), or other distributions (which defines the wider class of hierarchical GLMs), or simply absent (which makes a GLM).  
 }
 
 \details{
-   The models are fit via Laplace approximations to compute (1) the marginal likelihood with respect to random effects and (2) the restricted likelihoods (as in REML), 
-     i.e conditional likelihoods with respect to fixed effect estimates. 
 
-  The package has been thoroughly tested mainly for analysis of spatial GLMMs, 
-  where the random effects are Gaussian. The alternative of Beta-distributed, Gamma and inverse-Gamma distributed random effects 
-  have been implemented as detailed in the \code{\link{HLfit}} documentation and checked against literature results, 
-  but they are not recommended for spatial models.    
+  The standard (G)LMM response families \code{gaussian}, \code{binomial}, \code{poisson}, and \code{Gamma} are handled, as well as \code{\link{multinomial}} response (with some constraints) and negative binomial response (see Examples). GLMMs and HGLMs are fit via Laplace approximations for (1) the marginal likelihood with respect to random effects and (2) the restricted likelihood (as in REML), i.e the likelihood of random effect parameters given the fixed effect estimates. 
 
-  The variance of random effects is denoted \eqn{\lambda} and that of residual error is denoted \eqn{\phi}.
-  A fixed-effects linear predictor for \eqn{\phi}, modeling heteroskedasticity, can be considered (see Examples). Fixed effects are described in the standard form \bold{X}\eqn{\beta}
-  where \bold{X} is the design matrix of fixed effects and \eqn{\beta} a vector of fixed effect parameters. 
+  The package fits spatial models following either a Matérn correlation model or an adjacency matrix model. It also handles a number of non-spatial models. It accepts several random effects including one degree of nesting, and crossed ones (see Examples). Only one of these can be a spatial random effect. 
   
-  The high-level functions of the package make it easy to incorporate spatial correlations in the model, following either a 
-  Matérn correlation model or an adjacency matrix model. 
+Consistently with the documentation for \code{\link{formula}}, nested effects can be fit using the syntax \code{(1| <a> \%in\% <b>)} for the inner effect (see Examples; other syntaxes may not yet be correctly handled). The spaMM code has not been optimized for speed in these models. 
   
-  For more complex applications, the structure of the random effects can be described by the following steps. 
-  First, independent and  identically distributed (iid) random effects \eqn{u} are drawn from some distribution;
-  second, a transformation \bold{v}\eqn{=f}(\bold{u}) is applied (\bold{v} elements are still iid); third, correlated random effects are obtained as \bold{Mv}, where  
-  \bold{M} can describe spatial correlation between observed locations, block effects (or repeated observations in given locations), and correlations involving unobserved locations. See Details in \code{\link{Predictor}} for further details.   
+  The variance(s) of random effects (\eqn{u}) is (are) denoted \eqn{\lambda} (\code{lambda} in input and output) and that of residual error is denoted \eqn{\phi} (\code{phi}). A fixed-effects linear predictor for \eqn{\phi}, modeling heteroskedasticity, can be considered (see Examples). Fixed effects are described in the standard form \bold{X}\eqn{\beta} where \bold{X} is the design matrix of fixed effects and \eqn{\beta} (\code{beta}) is a vector of fixed effect parameters. 
+
+  The structure of the random effects can generally be described by the following steps. First, independent and  identically distributed (iid) random effects \eqn{u} are drawn from one of the following distributions: gaussian, Beta-distributed, Gamma and   inverse-Gamma distributed random effects, implemented as detailed in the \code{\link{HLfit}} documentation. Second, a transformation \bold{v}\eqn{=f}(\bold{u}) is applied (\bold{v} elements are still iid). Third, correlated random effects are obtained as \bold{Mv}, where the matrix \bold{M} can describe spatial correlation between observed locations, block effects (or repeated observations in given locations), and correlations involving unobserved locations. See Details in \code{\link{Predictor}} for the general form of \bold{M}. In most cases \bold{M} is determined from the model formula, but it can also be input directly (e.g., to describe genetic correlations).     
+
+  The package has been extensively tested mainly for analysis of spatial GLMMs (Rousset and Ferdy 2014), where the random effects are Gaussian. Other models have been checked against literature results and a few simulations.
  
 }
 \author{\enc{François}{Francois} Rousset and Jean-Baptiste Ferdy}
@@ -40,26 +31,35 @@ h-likelihood. Chapman & Hall: London.
 }
 \seealso{
 spaMM is designed to be used through the high-level functions 
-\code{\link{corrHLfit}}, \code{\link{HLCor}}, \code{\link{HLfit}},  \code{\link{Predictor}}, \code{\link{fixedLRT}}
+\code{\link{corrHLfit}}, \code{\link{HLCor}}, \code{\link{HLfit}}, and \code{\link{fixedLRT}}
 }
 
 \examples{
 ## Fit a Poisson GLMM with adjacency correlation model
 
 \dontrun{
-data(scotlip) ## loads scotlip data frame, and Nmatrix
+data(scotlip) ## loads 'scotlip' data frame, but also 'Nmatrix'
 corrHLfit(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(scotlip$expec)),
           data=scotlip,family=poisson(),
           adjMatrix=Nmatrix,lower=list(rho=0),upper=list(rho=0.1745))
+          
+## Adding a Gamma random effect to fit a negative-binomial response:
+corrHLfit(cases~I(prop.ag/10) +(1|gridcode)+adjacency(1|gridcode)
+                +offset(log(scotlip$expec)),
+          data=scotlip,family=poisson(),rand.family=list(Gamma(log),gaussian()),
+          adjMatrix=Nmatrix,lower=list(rho=0),upper=list(rho=0.1745))
 }
 
-## fit a non-spatial, Beta-binomial model:
-data(Loaloa)
-idx  <-as.factor(seq(nrow(Loaloa)))
-fLoaloa <- cbind(Loaloa,idx)
-HLfit(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
-                   +(1|idx),HLmethod="HL(1,1)",
-            data=fLoaloa,family=binomial(),rand.family=Beta()) 
+## fit non-spatial crossed random effects with distinct families
+data(salamander)
+HLfit(cbind(Mate,1-Mate)~1+(1|Female)+(1|Male),family=binomial(),
+        rand.family=list(gaussian(),Beta(logit)),data=salamander,HLmethod="ML")
+
+\dontrun{
+## Nested effects
+HLfit(cbind(Mate,1-Mate)~1+(1|Female)+(1|Male %in% Female),
+       family=binomial(),rand.family=Beta(logit),data=salamander,HLmethod="ML")
+}
 
 ## fit a non-spatial, Gamma GLMM:
 data(wafers)
@@ -70,6 +70,11 @@ HLfit(y ~X1*X3+X2*X3+I(X2^2)+(1|batch),family=Gamma(log),
 ## ( = structured-dispersion model):
 HLfit(y ~X1*X3+X2*X3+I(X2^2)+(1|batch),family=Gamma(log),
           resid.formula = ~ X3+I(X3^2) ,data=wafers)
+
+\dontrun{
+## Random-slope model (mind the output!)        
+HLfit(y~X1+(X2|batch),data=wafers)
+}
 
 ## fit a GLM (not mixed) with structured dispersion:
 HLfit( y ~X1+X2+X1*X3+X2*X3+I(X2^2),family=Gamma(log),
