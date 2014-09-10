@@ -1,10 +1,11 @@
 HLCor <-
-function(formula,ranPars, ## all dispersion and correlation params ideally provided through ranPars
+function(formula,
+                  ranPars, ## all dispersion and correlation params ideally provided through ranPars
                   data,
                   distMatrix,uniqueGeo=NULL,adjMatrix,corrMatrix,
                   verbose=c(warn=TRUE,trace=FALSE,summary=FALSE),
                   ...) { 
-  mc <- match.call() ## potentially used by getCall(object) in update.HL...
+  mc <- match.call() ## potentially used by getCallHL(object) in update.HL...
   if (is.na(verbose["trace"])) verbose["trace"] <- FALSE
   if (is.na(verbose["warn"])) verbose["warn"] <- TRUE
   if (is.na(verbose["summary"])) {
@@ -14,6 +15,8 @@ function(formula,ranPars, ## all dispersion and correlation params ideally provi
   ## either these two lines, or a family argument and   HL.info$family <- family
   dotlist <- list(...)
   family <- dotlist$family
+  family <- checkRespFam(family)
+  dotlist$family <- family
   famfam <- family$family
   if ( ! is.null(famfam) && famfam=="multi") {
     if ( ! inherits(data,"list")) {
@@ -56,9 +59,11 @@ function(formula,ranPars, ## all dispersion and correlation params ideally provi
   processed <- dotlist$processed ## FR->FR suggests we should add it as argument of HLCor...
   if ( ! is.null(processed)) {
     predictor <- processed$predictor 
-  } else { ## preprocess has not been called hence validRows probably not called before preprocess...
-    validrows <- validRows(formula=formula,resid.formula=dotlist$resid.formula,data=data) ## will remove rows with NA's in required variables
-    data <- data[validrows,,drop=FALSE] ## ## before Predictor is called and an LMatrix is added, etc.
+  } else { ## preprocess has not been called hence validData probably not called before preprocess...
+    validdata <- validData(formula=formula,resid.formula=dotlist$resid.formula,data=data) ## will remove rows with NA's in required variables
+    if (!inherits(data,"environment")) {
+      data <- data[rownames(validdata),,drop=FALSE] ##     before Predictor is called and an LMatrix is added, etc. 
+    } else data <- validdata
     predictor <- formula
     if (! "predictor" %in% class(predictor)) predictor <- Predictor(formula) 
   }
@@ -74,41 +79,14 @@ function(formula,ranPars, ## all dispersion and correlation params ideally provi
     } ## ELSE more generic message: 
     stop("Call to 'HLCor' without a spatial term in the formula is suspect.")
   }
-  trueCorrpars <- list()
-  if (corr.model %in% c("Matern","corMatern")) {
-    if (!is.null(ranPars$trNu)) { ## either we have nu,rho or trNu,trRho 
-        ranPars$nu <- nuInv(ranPars$trNu,ranPars$trRho) ## before trRho is removed...
-        ranPars$trNu <- NULL
-        attr(ranPars,"type")$nu <- attr(ranPars,"type")$trNu
-        attr(ranPars,"type")$trNu <- NULL
-    } 
-    nu <- ranPars$nu
-    if (is.null(nu)) {
-      mess <- pastefrom("nu missing from ranPars (or correlation model mis-identified).",prefix="(!) From ")
-      stop(mess)
-    }
-    trueCorrpars$nu <- nu 
-  } 
-  if (corr.model=="AR1") {
-    ARphi <- ranPars$ARphi
-    if (is.null(ARphi)) {
-      mess <- pastefrom("ARphi missing from ranPars.",prefix="(!) From ")
-      stop(mess)
-    }
-    trueCorrpars$ARphi <- ARphi    
-  } else if (corr.model != "corrMatrix") { ## all models with a 'rho' parameter
-    if (!is.null(ranPars$trRho)) {
-      ranPars$rho <- rhoInv(ranPars$trRho)
-      ranPars$trRho <- NULL
-      attr(ranPars,"type")$rho <- attr(ranPars,"type")$trRho
-      attr(ranPars,"type")$trRho <- NULL
-    } ## else there may simply be rho rather than trRho (including for adjacency model through optim procedure !)
+  ## convert back ranPars to canonical scale:
+  if (corr.model== "corrMatrix") {
+    ranPars <- NULL
+  } else {
+    rpblob <- toCanonical(ranPars=ranPars,corr.model=corr.model) 
+    ranPars <- rpblob$ranPars
+    trueCorrpars <- rpblob$trueCorrpars
     rho <- ranPars$rho
-    if (is.null(rho)) {
-      mess <- pastefrom("rho missing from ranPars.",prefix="(!) From ")
-      stop(mess)
-    }
-    trueCorrpars$rho <- rho
   }
   coordinates <- NULL
   ##
@@ -116,7 +94,7 @@ function(formula,ranPars, ## all dispersion and correlation params ideally provi
     if (corr.model %in% c("BreslowC93","adjacency")) { 
       ## no nugget in the adjacency model...
       if ( missing(adjMatrix) ) stop("missing 'adjMatrix' for adjacency model")
-      m<-solve(diag(rep(1,nrow(adjMatrix)))-rho*(adjMatrix))
+      m <- solve(diag(rep(1,nrow(adjMatrix)))-rho*(adjMatrix))
     }  else if (corr.model=="AR1") {
       coordinates <- extract.check.coords(spatial.model=spatial.model,datanames=names(data))
       uniqueGeo <- unique(data[,coordinates,drop=F]) ## keeps the names of first instances of the coordinates in data
@@ -152,10 +130,8 @@ function(formula,ranPars, ## all dispersion and correlation params ideally provi
       m <- do.call("make.scaled.dist",msd.arglist)
       ## at this point is a single location, m should be dist(0) and make.scaled.dist was modified to that effect
       if ( nrow(m)>1 ) { ## >1 locations
-        Nugget <- ranPars$Nugget
-        if (! is.null(Nugget)) trueCorrpars$Nugget <- Nugget ## else trueCorrpars keeps its default nu value
-        nunu <- trueCorrpars; nunu$rho <- NULL ## because the Matern.corr input will be an already scaled distance 'm'
-        m <- do.call(Matern.corr,args=c(nunu,list(d=m)))        
+        norho <- trueCorrpars; norho$rho <- NULL ## because the Matern.corr input will be an already scaled distance 'm'
+        m <- do.call(Matern.corr,args=c(norho,list(d=m)))        
       } 
     } else if (corr.model== "corrMatrix") {
       if (missing(corrMatrix)) {
@@ -163,7 +139,6 @@ function(formula,ranPars, ## all dispersion and correlation params ideally provi
         stop(mess)
       } ## ELSE:
       m <- corrMatrix
-      ranPars <- NULL
     } 
     if (verbose["trace"] && length(trueCorrpars)>0) { 
       print(unlist(trueCorrpars))
@@ -202,30 +177,13 @@ function(formula,ranPars, ## all dispersion and correlation params ideally provi
     stop("argument PhiFix of HLCor is obsolete")
   }  
 ##
-  if (!is.null(ranPars$trPhi)) {
-    ranPars$phi <- dispInv(ranPars$trPhi)
-    ranPars$trPhi <- NULL
-    attr(ranPars,"type")$phi <- attr(ranPars,"type")$trPhi
-    attr(ranPars,"type")$trPhi <- NULL
-  } else if (!is.null(ranPars$logphi)) { ## debug code
-    ## HL.info$ranFix$phi <- exp(ranPars$logphi)
-    stop("logphi in HLCor...")
-  } #####################  else HL.info$ranFix$phi <- ranPars$phi ## y st deja !?
-  if (!is.null(ranPars$trLambda)) {## 
-    ranPars$lambda <- dispInv(ranPars$trLambda)
-    ranPars$trLambda <- NULL
-    attr(ranPars,"type")$lambda <- attr(ranPars,"type")$trLambda
-    attr(ranPars,"type")$trLambda <- NULL
-  } else if (!is.null(ranPars$loglambda)) { ## debug code
-    stop("loglambda in HLCor...")
-  } ##################### else HL.info$ranFix$lambda <- ranPars$lambda
   ## convert ranPars to ranFix + init.HLfit
   ## allows log and not log:
   varNames <- names(which(attr(ranPars,"type")=="var"))
   HL.info$init.HLfit[varNames] <- ranPars[varNames]
   fixNames <- setdiff(names(ranPars),varNames) ## names(which(attr(ranPars,"type")=="fix")) pas correct si pas d'attribute (appel direct HLCor) -> on suppose que c'est fix
   HL.info$ranFix[fixNames] <- ranPars[fixNames]
-  hlfit <- do.call(HLfit,HL.info) ## with a _list_ of arguments -> do.call ## perhaps should create a list of unevaluated arguments ???? 
+  hlfit <- do.call("HLfit",HL.info) ## with a _list_ of arguments -> do.call ## perhaps should create a list of unevaluated arguments ???? 
   if ( ! is.null(hlfit$error)) {
     errfile <- generateFileName("HLfitCall")
     errfile <- paste(errfile,".RData",sep="")
@@ -237,7 +195,7 @@ function(formula,ranPars, ## all dispersion and correlation params ideally provi
     stop("I exit.")
   } ## ELSE:
   attr(hlfit,"info.uniqueGeo") <- uniqueGeo ## more spatial info is to be found in hlfit$predictor (Lunique = corrmat^1/2) and hlfit$ZALMatrix
-  # attr(hlfit,"call") <- mc
+  attr(hlfit,"HLCorcall") <- mc
   if (verbose["HLCorSummary"]) { ## useful in final call from corrHLfit
     summary(hlfit) ## input corr pars have been printed at the beginning...   
   }

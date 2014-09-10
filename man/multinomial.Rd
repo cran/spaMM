@@ -2,7 +2,6 @@
 \alias{multinomial}
 \alias{binomialize}
 \alias{multi}
-\alias{fitted}
 \alias{fitted.HLfitlist}
 %- Also NEED an '\alias' for EACH other topic documented here.
 \title{Analyzing multinomial data}
@@ -92,3 +91,4 @@ corrHLfit(cbind(npos,nneg)~1+Matern(1|x+y),data=genoInSpace,
 }
 \keyword{ family }
 \keyword{ model }
+\keyword{ manip }

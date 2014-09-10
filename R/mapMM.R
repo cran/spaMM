@@ -84,9 +84,12 @@ function (fitobject,coordinates=NULL,xrange=NULL,yrange=NULL,margin=1/20,add.map
        axes=FALSE, ## to retain control in later call
        col=ZColor[zscaled[topontop]],lwd=2)
   if (is.logical(add.map)) {
-    if(add.map) map(,xlim=xrange,ylim=yrange,add=TRUE) 
-  } else eval(add.map)
-  
+    if(add.map) {
+      if (require(maps)) {
+        maps::map(,xlim=xrange,ylim=yrange,add=TRUE)  ## require + :: is the way for objects from packages in Suggests:
+      } else message("Package 'maps' not available, 'add.map' is ignored.")
+    } 
+  } else eval(add.map) ## the user may have included a map() in it but it's his problem...
   if (missing(plot.axes)) {
     if (axes) {
       title(main = "", xlab = "", ylab = "")

@@ -1,4 +1,4 @@
-validRows <-
+validData <-
 function(formula,resid.formula=NULL,data) {
   formula <- asStandardFormula(formula) ## removes spatial tags
   frame.form <- subbarsMM(formula) ## this comes from lme4 and converts (...|...) terms to some "+" form
@@ -13,5 +13,5 @@ function(formula,resid.formula=NULL,data) {
   mf$formula <- frame.form
   mf$drop.unused.levels <- TRUE
   mf <- eval(mf) ## data.frame with many attributes
-  return(rownames(mf))
+  return(mf)
 }

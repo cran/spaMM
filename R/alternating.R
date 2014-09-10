@@ -1,5 +1,5 @@
 alternating <-
-function(init.optim,LowUp,anyOptim.args,maxIter,ranPars,HLCor.args,trace,Optimizer,optimizers.args,corners) {
+function(init.optim,LowUp,anyOptim.args,maxIter,ranPars,HLCor.args,trace,Optimizer="L-BFGS-B",optimizers.args,corners) {
   nam <- names(init.optim)
   if (any(c("trPhi","trLambda") %in% nam )) {
     mess <- pastefrom("Dispersion parameters non allowed in 'init.corrHLfit' with alternating algorithm.",prefix="(!) From ")
@@ -26,14 +26,16 @@ function(init.optim,LowUp,anyOptim.args,maxIter,ranPars,HLCor.args,trace,Optimiz
       zut <- paste(unlist(initcorr),collapse="")  
       save(HLCor.args,file=paste("HLCor.args.",zut,".RData",sep="")) ## for replicating the problem
     }
-    givencorr <- do.call(HLCor,HLCor.args) ## optim disp and beta given corr param
+    givencorr <- do.call("HLCor",HLCor.args) ## optim disp and beta given corr param
     currentLik <- givencorr$APHLs$p_v ## iterations maximize p_v
     conv <- currentLik-oldLik
     anycorrOptim.args$ranPars$lambda <- givencorr$lambda
     anycorrOptim.args$ranPars$phi <- givencorr$phi
     #### anycorrOptim.args$etaFix <- list(beta=givencorr$fixef,v_h=givencorr$v_h) ## that's what LeeN01sm say, but this does not work
     anycorrOptim.args$etaFix <- list(beta=givencorr$fixef) 
-    initcorr <- locoptim(initcorr,corrLowUp,anyOptim.args=anycorrOptim.args,trace,Optimizer=Optimizer,optimizers.args=optimizers.args,corners=corners) 
+    loclist <- list(initcorr,corrLowUp,anyObjfnCall.args=anycorrOptim.args,trace,Optimizer=Optimizer,
+                    optimizers.args=optimizers.args,corners=corners,maximize=TRUE) 
+    initcorr <- do.call("locoptim",loclist) 
     iter <- iter+1
   }
   optPars <- c(initcorr,givencorr$lambda,givencorr$phi)

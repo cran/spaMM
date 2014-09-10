@@ -45,7 +45,7 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
   If there are several random effects and only one family is given, this family holds for all random effects.
 }
   \item{resid.formula}{
-  A formula (without left-hand side) for the variance \code{phi} of the residual error. Currently can only contain fixed effects. 
+  A formula (without left-hand side) for the variance \code{phi} of the residual error. Currently can only contain fixed effects, including an offset. A log link is assumed by default, but an identity link can be used (see \code{control.HLfit}). 
 }
   \item{REMLformula}{
   A model \code{formula} that allows the estimation of dispersion parameters, and 
@@ -83,7 +83,9 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
   A list of parameters controlling (1) AIC computation; and (2) the fitting algorithms.
 
   \code{AIC=TRUE} provides the corrected AIC of Ha et al. 2007 [i.e., AIC(D*) in their eq. 7], 
-  but the default is \code{FALSE} to (modestly) encourage users to think twice before applying model selection automatically, which is no better although more fashionable than misuses of simple null hypothesis testing. Also, alternative procedures for model choice can be considered (e.g. Cox and Donnelly, 2011, p. 130-131). 
+  but the default is \code{FALSE} to (modestly) encourage users to think twice before applying model selection automatically, which is no better although more fashionable than misuses of simple null hypothesis testing. Also, alternative procedures for model choice can be considered (e.g. Cox and Donnelly, 2011, p. 130-131).
+  
+  \code{resid.family} allows one to change the link for modeling of residual variance \eqn{\phi}, which is \code{"log"} by default. The family is always Gamma, so the non-default possible values of\code{resid.family} are \code{Gamma(identity)} or \code{Gamma(inverse)}. Only the default value ensures that the fitted \eqn{\phi} is positive.     
 
   Controls for the fitting algorithms should be ignored in routine use. They are
 %
@@ -167,29 +169,30 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
     (mean=1, var=\eqn{\lambda/(1-\lambda))}, with \code{v=log(u)} or \code{v=-1/u}.}
  }  
 
-  \bold{The standard errors} reported may sometimes be misleading. For each set of parameters among \eqn{beta}, \eqn{lambda}, and \eqn{phi} parameters these are computed assuming that the other parameters are known without error. This is why they are labelled \code{Cond. SE} (conditional standard error). This is most uninformative if \eqn{lambda} and \eqn{phi} are not separately estimable parameters.  
+  \bold{The standard errors} reported may sometimes be misleading. For each set of parameters among \eqn{beta}, \eqn{lambda}, and \eqn{phi} parameters these are computed assuming that the other parameters are known without error. This is why they are labelled \code{Cond. SE} (conditional standard error). This is most uninformative in the unusual case where \eqn{lambda} and \eqn{phi} are not separately estimable parameters. Further, the SEs for \eqn{lambda} and \eqn{phi} are rough approximations as discussed in particular by Smyth et al. (2001; \eqn{V_1} method).    
 
 }
 \value{
 An object of class \code{HLfit}, actually a list with many elements, several of which represent input arguments. 
 Some elements may be undocumented. The \code{summary.HLfit} function 
-normally formats this nicely, so that the following information is useful mainly if one wants to extract any of the elements of the object. 
+formats this nicely, and a few other extractor functions are available (see \code{\link{extractors}}). 
+The following information will be useful for extracting further elements of the object. 
 These elements include, first, variables describing the fit:  
+\item{fixef}{The fixed effects coefficients, \eqn{\beta} (returned by the \code{fixef} function)}
+\item{ranef}{The random effects \eqn{u} (returned by the \code{ranef} function)}
+\item{fv}{Fitted values (\eqn{\mu=}<inverse-link>(\eqn{\eta})) of the response variable (returned by the \code{fitted} function)}
 
 \item{APHLs}{A list with usually four elements, the conditional likelihood, 
    the h-likelihood, and the two adjusted profile h-likelihoods:
    the (approximate) marginal likelihood \code{p_v} and the (approximate) restricted likelihood \code{p_bv}.
 }
-\item{fixef}{The fixed effects coefficients, \eqn{\beta}}
-\item{fixef_se}{Estimates of standard errors for \eqn{\beta} estimates}
-\item{ranef}{The random effects \eqn{u}}
+\item{beta_cov}{Covariance matrix of \eqn{\beta} estimates}
 \item{v_h}{The random effects on the linear scale, \eqn{v}}
 \item{phi}{The residual variance \eqn{\phi}}
 \item{phi.object}{A possibly more complex object describing \eqn{\phi}}
 \item{lambda}{The random effects (\eqn{u}) variance \eqn{\lambda}}
 \item{lambda.object}{A possibly more complex object describing \eqn{\lambda}}
 \item{eta}{Fitted values on the linear scale  (including the predicted random effects)}
-\item{fv}{Fitted values (\eqn{\mu=}<inverse-link>(\eqn{\eta})) of the response variable }
 
 It may also be worth checking the following elements 
 
@@ -208,7 +211,7 @@ and in (possibly reformatted) input arguments
 \item{rand.family }{a \code{\link{family}} object corresponding to the \code{rand.family} input}
 \item{y}{the response vector; for binomial data, the frequency response}
 \item{formulaDisp}{Model formula for dispersion response}
-\item{RespLink_disp}{Link for dispersion response}
+\item{resid.family}{Family for estimation of dispersion from residuals}
 \item{X}{The design matrix for fixed effects}
 \item{ranFix}{A \code{ranFix} input}
 \item{corrPars}{Additional information on correlation parameters, not necessarily used by HLfit itself but in upper calling functions such as HLCor or corrHLfit}
@@ -232,6 +235,8 @@ h-likelihood. Chapman & Hall: London.
 
 Noh, M., and Lee, Y. (2007). REML estimation for binary data in GLMMs, J.
 Multivariate Anal. 98, 896-915.
+
+Smyth GK, Huele AF, Verbyla AP (2001). Exact and approximate REML for heteroscedastic regression. Statistical Modelling 1, 161-175. 
 }
 \seealso{
 \code{\link{HLCor}} for estimation with given spatial correlation parameters;
@@ -240,9 +245,12 @@ Multivariate Anal. 98, 896-915.
 
 \examples{
 data(wafers)
+\donttest{
 ## Gamma GLMM with log link
 HLfit(y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch),family=Gamma(log),
           resid.formula = ~ X3+I(X3^2) ,data=wafers)
+}
+%- : tested in update.Rd
 ## Gamma - inverseGamma HGLM with log link
 HLfit(y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch),family=Gamma(log),
           HLmethod="HL(1,1)",rand.family=inverse.Gamma(log),

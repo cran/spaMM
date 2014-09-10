@@ -5,7 +5,7 @@ function (formula, offset=NULL, LMatrix = NULL,  AMatrix = NULL, ZALMatrix = NUL
   }
   oriFormula <- formula
   if (substr((as.character(formula[2])),1,5)=="cbind") { 
-    ## FR->FR note that e.g. strsplit("cbind(npos,ntot-npos)","[(,)-]") gives a list which [[1]] is "cbind" "npos"  "ntot"  "npos"
+    ## FR->FR e.g. strsplit("cbind(npos,ntot-npos)","[(,)-]") gives a list which element [[1]] is "cbind" "npos"  "ntot"  "npos"
     positives <- strsplit(strsplit(as.character(formula[2]),"\\(")[[1]][2],",")[[1]][1] ## names of variables
     negatives <- strsplit(strsplit(as.character(formula[2]),",")[[1]][2],"\\)")[[1]][1] ## names of variables
     if (length(positives)>1 && length(negatives)>1) {
@@ -18,7 +18,7 @@ function (formula, offset=NULL, LMatrix = NULL,  AMatrix = NULL, ZALMatrix = NUL
   } else {BinDenForm <-NULL}
   if ( ! ( is.null(AMatrix) || is.list(AMatrix)) ) {
     ## assumes any of a number of matrix classes. Not clear how to test compactly for the soup of Matrix classes
-    AMatrix <- list(AMatrix) ## further code espects a list (should ultimately be the same for all matrices...) 
+    AMatrix <- list(AMatrix) ## further code expects a list (should ultimately be the same for all matrices...) 
   }
   if ( ! is.null(offset) ) {
     offterm <- findOffset(formula)

@@ -1,2 +1,2 @@
 print.arglist <-
-function(x,...) {summary(x,...)}
+function(x,...) {print(summary(x,...))}

@@ -15,7 +15,7 @@ function(bar,formula,data,fill=0) {
       ## et rajouter du code pour obtenir le blockdiagonal object ?
     } else if (relationAschar=="%in%") {
       st <- paste(bar)[[3]]
-      st <- gsub("%in%","/",st) ## FR->FR 06/2014: but try ':' since a %in% b <=> b:a
+      st <- gsub("%in%","/",st) ## FR->FR 06/2014: but try ':' since a %in% b <=> a:b
       fakeform <- as.formula(paste("~",st)) ## so that getGroups can be used
       ## FR->FR mais ce code doit pouvoir etre nettoye pusque getGroups est maintenant evite
       mf <- model.frame(formula=fakeform,data=data) 
@@ -44,7 +44,7 @@ function(bar,formula,data,fill=0) {
         rownames(value) <- colnames(value) <- rownames(xx)
         value
       })
-      attr(bd,"rowNames") <- rowNames  
+      attr(bd,"rowNames") <- rowNames          
     }
   attr(bd,"cumsum") <- cumsum(c(0,unlist(lapply(bd,ncol)))) 
   attr(bd,"fill") <- fill

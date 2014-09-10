@@ -1,6 +1,20 @@
 preprocess <-
 function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predictor,REMLformula,data,family,
                        BinomialDen,rand.families) {
+  callargs <- match.call() ## to make easy to change these arguments in a later fit
+  #####################################################################
+  if (inherits(data,"list")) {
+    locargs <- as.list(callargs)
+    famfam <- family$family
+    processed <- lapply(data,function(dd) {
+      locargs$data <- dd
+      if ( ! is.null(famfam) && famfam=="multi") locargs$family <- family$binfamily  
+      eval(as.call(locargs))
+    })
+    attr(processed,"multiple") <- TRUE ## but NULL otherwise hence test it as not null  
+    return(processed)
+  }
+  #####################################################################
   processed <- list()
   ## algorithms (control of defaults remains in the HLfit code)
   processed$LevenbergM <-control.HLfit$LevenbergM ## 
@@ -10,6 +24,11 @@ function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predictor,REMLformu
   AIC <-control.HLfit$AIC ##  
   if (is.null(AIC)) AIC <- FALSE
   processed$AIC <- AIC ##  
+  resid.family <-control.HLfit$resid.family ##  
+  if (is.null(resid.family)) {
+    resid.family <- Gamma(log)
+  } else if (resid.family$family!= "Gamma") stop("resid.family must be Gamma.")
+  processed$resid.family <- resid.family ##  
   essai <-control.HLfit$essai ##  
   if (is.null(essai)) essai <- FALSE
   processed$essai <- essai ##  
@@ -79,8 +98,8 @@ function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predictor,REMLformu
   attr(predictor,"offset") <- off ## subtly, will be of length 1 if original offset was a constant...
   processed$predictor <- predictor  
   #
-  if (is.null(roff)) roff <- rep(0,nobs)
-  attr(resid.predictor,"offset") <-roff
+  # if (is.null(roff)) roff <- rep(0,nobs)
+  attr(resid.predictor,"offset") <- roff # may remain NULL
   processed$resid.predictor <- resid.predictor  
   #
   # comme l'EQL est dans un monde quasi gaussien, il se ramene aux LMM et utilise les leverage standard,
@@ -127,16 +146,39 @@ function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predictor,REMLformu
   ## thus overall we have <ReML/not>( <h/l> , <more ReML/not> , <not/EQL> )
   ## NohL07 table 1 has interesting terminology and further tables show even more cases
   terms_ranefs <- findSpatialOrNot(predictor) ## a vector of char strings
-  nrand <- length(terms_ranefs)
+  nbars <- length(terms_ranefs) ## not nbars != nrand because nested effects will be further expanded
+  models <- list(eta="",lambda="",phi="")
+  if (nbars>0) {
+    processed$lambdaFamily <- Gamma(link="log")
+    models[["eta"]] <- "etaHGLM" 
+    FL <- spMMFactorList(predictor, MeanFrames$mf, 0L, 0L) ## this uses the spatial information in the formula, even if an explicit distMatrix was used elsewhere
+    ZAlist <- FL$Design ## : is a list of design matrices (temporarily only Z)
+    attr(ZAlist,"ranefs") <- terms_ranefs
+    attr(ZAlist,"Groupings") <- FL$Groupings
+    attr(ZAlist,"namesTerms") <- FL$namesTerms
+    AMatrix <- attr(predictor,"AMatrix")
+    if (!is.null(AMatrix)) {
+      ## logic is Z[nresp,nUniqueRespLoc].A[nUniqueRespLoc,nHiddenv].L[nHiddenv,nHiddenv]
+      for (iMat in seq(length(ZAlist))) {
+        ZAlist[[iMat]] <- ZAlist[[iMat]] %*% AMatrix[[iMat]]
+      }
+    }
+  } else {
+    models[["eta"]] <- "etaGLM" 
+    ZAlist <- NULL
+  }
+  processed$ZAlist <- ZAlist
+  nrand <- length(ZAlist)
+  #
   if (inherits(rand.families,"family")) rand.families <- list(rand.families) ## I should pass rand.families to preprocess
-  if (nrand>1 && length(rand.families)==1) rand.families <- rep(rand.families,nrand) 
-  lcrandfamfam <- checkLinkS(rand.families)  
+  if (nrand != 1 && length(rand.families)==1) rand.families <- rep(rand.families,nrand) 
+  lcrandfamfam <- checkRandLinkS(rand.families)  
   if (HLmethod=="ML") {
     HLmethod <- "ML(1,1,1)" ## here there could be a special hack for (family$family=="binomial" && mean(BinomialDen)<HL2.threshold) 
   } else if (HLmethod=="SEM") {
     HLmethod <- "ML('SEM',NA,NA)"  
     SEMseed <-control.HLfit$SEMseed ##  
-    if (is.null(SEMseed)) SEMseed <- 123 ## OK pour SEM unique mais voir locoptimthroughSmooth
+    if (is.null(SEMseed)) SEMseed <- 123 ## OK pour SEM *unique* mais remplace par NULL dans locoptimthroughSmooth
     processed$SEMseed <- SEMseed ##
     nMCint <-control.HLfit$nMCint ##  
     #      if (is.null(nMCint)) nMCint <- 10000
@@ -165,20 +207,18 @@ function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predictor,REMLformu
   }
   HL <- eval(parse(text=paste("c",substr(HLmethod,3,100),sep=""))) ## extracts the (...) part into a vector
   if (length(HL)==2) HL <- c(HL,1)
+  ## HLmethod is not a member of the return object
   processed$HL <- HL  
-  if (substr(HLmethod,0,2)=="ML" && HL[1]!="SEM") {
+  if (substr(HLmethod,0,2)=="ML" && HL[1]!="SEM") { ## FR->FR c'est bizarre d'exclure le SEM là... p_bv est il vraiment utilisé ?
     if ( ! is.null(REMLformula)) {
       message("Confusing combination of arguments: 'HLmethod=ML(...)' with non-null 'REMLformula'.")
       stop("  Make sure what you mean and simplify the arguments.")
     }
-#    barsplus <- findSpatialOrNot(predictor)  ## extract random effects... is terms_ranefs
-#    if (length(predictor)>1) {
-      lhs <- paste(predictor)[[2]] ## extract response, either cbind or not
-      if ( ! is.null(terms_ranefs)) {
-        ## build formula with only random effects
-        REMLformula <- as.formula(paste(lhs,"~",paste(terms_ranefs,collapse="+")))
-      } else REMLformula <- as.formula(paste(lhs,"~ 0")) 
-#    } else REMLformula <- as.formula(paste(predictor,"~ 0")) ## we have only an offset on RHS; but it is possitble to write ~0+offset()
+    lhs <- paste(predictor)[[2]] ## extract response, either cbind or not
+    if ( ! is.null(terms_ranefs)) {
+      ## build formula with only random effects
+      REMLformula <- as.formula(paste(lhs,"~",paste(terms_ranefs,collapse="+")))
+    } else REMLformula <- as.formula(paste(lhs,"~ 0")) 
   }
   processed$REMLformula <- REMLformula  
   #
@@ -228,54 +268,27 @@ function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predictor,REMLformu
     canonicalLink <- TRUE
   }
   processed$canonicalLink <- canonicalLink  
-  if (family$family=="gaussian" && all(lcrandfamfam=="gaussian") && canonicalLink) {
+  if (nrand>0 && family$family=="gaussian" && all(lcrandfamfam=="gaussian") && canonicalLink) {
     LMMbool <- TRUE
+    ## identifiability checks cf modular.R -> checkNlevels() in lmer:
+    ## FR->FR one could also add an isNested check as in https://github.com/lme4/lme4/blob/master/R/utilities.R, but presumably not here
+    LMatrix <- attr(predictor,"LMatrix")
+    for (iMat in seq(length(ZAlist))) {
+      nc <- ncol(ZAlist[[iMat]])
+      if (nc < 2 && is.null(phi.Fix)) {
+        mess <- paste("Only ",nc," level for random effect ",terms_ranefs[iMat],
+                      ";\n   this model cannot be fit unless phi is fixed.",sep="")
+        warning(mess)
+      }
+      if (is.null(LMatrix) && substr(terms_ranefs[iMat], 1, 1)=="(" && nc == nobs && is.null(phi.Fix)) {
+        mess <- paste("Number of levels = number of observations \n   for random effect ",
+                      terms_ranefs[iMat],
+                      ";\n   this model cannot be fit unless phi is fixed\n   or a correlation matrix is given.",sep="")
+        stop(mess)
+      }
+    }
   } else LMMbool <- FALSE
   processed$LMMbool <- LMMbool
-  models <- list(eta="",lambda="",phi="")
-  #
-  if (nrand>0) { ## Design matriCES for v, typically a match between the levels of v and the observ. Ie Z, not ZAL 
-    models[["eta"]] <- "etaHGLM" 
-    processed$lambdaFamily <- Gamma(link="log")
-    FL <- spMMFactorList(predictor, MeanFrames$mf, 0L, 0L) ## this uses the spatial information in the formula, even if an explicit distMatrix was used elsewhere
-    ZAlist <- FL$Design ## : is a list of design matrices (temporarily only Z)
-    attr(ZAlist,"ranefs") <- terms_ranefs
-    attr(ZAlist,"Groupings") <- FL$Groupings
-    attr(ZAlist,"namesTerms") <- FL$namesTerms
-    AMatrix <- attr(predictor,"AMatrix")
-    if (!is.null(AMatrix)) {
-      ## logic is Z[nresp,nUniqueRespLoc].A[nUniqueRespLoc,nHiddenv].L[nHiddenv,nHiddenv]
-      for (iMat in seq(length(ZAlist))) {
-        ZA <- ZAlist[[iMat]] %*% AMatrix[[iMat]]
-      }
-    }
-    if (LMMbool) { ## identifiability checks cf modular.R -> checkNlevels() in lmer 
-      LMatrix <- attr(predictor,"LMatrix")
-      for (iMat in seq(length(ZAlist))) {
-        nc <- ncol(ZAlist[[iMat]])
-        if (nc < 2 && is.null(phi.Fix)) {
-          mess <- paste("Only ",nc," level for random effect ",terms_ranefs[iMat],
-                        ";\n   this model cannot be fit unless phi is fixed.",sep="")
-          warning(mess)
-        }
-        if (is.null(LMatrix) && substr(terms_ranefs[iMat], 1, 1)=="(" && nc == nobs && is.null(phi.Fix)) {
-          mess <- paste("Number of levels = number of observations \n   for random effect ",
-                        terms_ranefs[iMat],
-                        ";\n   this model cannot be fit unless phi is fixed\n   or a correlation matrix is given.",sep="")
-          stop(mess)
-        }
-      }
-    }
-  } else { ## if is.null(random.mean): no random effect in linear predictor
-    models[["eta"]] <- "etaGLM"
-    ZAlist <- NULL
-  } ## end if (!is.null(random.mean)) ... else ... endif
-  for (iMat in seq_len(length(ZAlist))) {
-    attr(ZAlist[[iMat]],"identityMatrix") <- is.identity(ZAlist[[iMat]])
-    attr(ZAlist[[iMat]],"nlevels") <- ncol(ZAlist[[iMat]])
-    attr(ZAlist[[iMat]],"colnames") <- colnames(ZAlist[[iMat]])
-  }
-  processed$ZAlist <- ZAlist
   #
   if (nrand>0) {   
     nrand_lambda <- 0
@@ -355,6 +368,7 @@ function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predictor,REMLformu
   processed$models <- models
   processed$lcrandfamfam <- lcrandfamfam
   processed$rand.families <- rand.families
+  processed$callargs <- callargs
   class(processed) <- c("arglist","list")
   return(processed)
 }

@@ -1,6 +1,6 @@
 calc.tXinvS <-
 function(Sig,X.pv,stop.on.error,lambda_est,ranFix) { ## slow... 
-  #  qr.Sig <- qr(Sig) ## FR->FR SLOW
+  #  qr.Sig <- qr(Sig) ## SLOW
   #  XinvS <- safesolve.qr.matrix(qr.Sig,X.pv,stop.on.error=stop.on.error) ## invSig %*% X.pv
   qr.Sig <- Rcpp_QR(Sig) ## FR->FR still SLOW
   XinvS <- solveWrap.matrix(qr.Sig,X.pv,stop.on.error=stop.on.error) ## invSig %*% X.pv

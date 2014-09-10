@@ -21,16 +21,15 @@ Its contents are suitable for use with \code{\link{polypath}}: they define diffe
 }
 \examples{
 data(seaMask)
-\dontrun{
-require(maps)
 ## plot of predictions of behaviour for a land bird:
-data(blackcap)
-bfit <- corrHLfit(migStatus ~ means+ Matern(1|longitude+latitude),data=blackcap,
+if (require(maps)){
+ data(blackcap)
+ bfit <- corrHLfit(migStatus ~ means+ Matern(1|longitude+latitude),data=blackcap,
                   HLmethod="ML",
                   ranFix=list(lambda=0.5537,phi=1.376e-05,rho=0.0544740,nu=0.6286311))
-## We add small masks to the points on small islands to see the predictions there
-ll <- blackcap[,c("longitude","latitude")]
-pointmask <- function(xy,r=1,npts=12) {
+ ## We add small masks to the points on small islands to see the predictions there
+ ll <- blackcap[,c("longitude","latitude")]
+ pointmask <- function(xy,r=1,npts=12) {
   theta <- 2*pi/npts *seq(npts)
   hexas <- lapply(seq(nrow(xy)),function(li){
     p <- as.numeric(xy[li,])
@@ -38,9 +37,9 @@ pointmask <- function(xy,r=1,npts=12) {
     rbind(rep(NA,2),hexa) ## inital NA before each polygon
   })
   do.call(rbind,hexas)
-}
-pmasks <- pointmask(ll[c(2,4,5,6,7),],r=0.8) ## small islands only
-filled.mapMM(bfit,add.map=TRUE,
+ }
+ pmasks <- pointmask(ll[c(2,4,5,6,7),],r=0.8) ## small islands only
+ filled.mapMM(bfit,add.map=TRUE,
              plot.title=title(main="Inferred migration propensity of blackcaps",
                                xlab="longitude",ylab="latitude"),
              add.points=quote(points(pred[,coordinates],cex=1,pch="+")),

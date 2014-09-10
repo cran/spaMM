@@ -50,4 +50,4 @@ HLC <- HLCor(cbind(npos,ntot-npos)~Matern(1|longitude+latitude),
            ranPars=list(lambda=1,nu=0.5,rho=1/0.7)) 
 simulate(HLC,nsim=2)
 }
-\keyword{ distribution }
+\keyword{ datagen }

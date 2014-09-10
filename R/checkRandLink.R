@@ -1,4 +1,4 @@
-checkLink <-
+checkRandLink <-
 function(rand.family) {
   if (class(rand.family)=="family") { ## then check what is feasible
     lcrandfamfam <- tolower(rand.family$family) ## tolower once and for all
@@ -20,7 +20,7 @@ function(rand.family) {
       mess <- paste("(!) rand.family/link combination not handled;\nallowed link(s) for rand.family '",rand.family$family,"' ",allowed,sep="")
       stop(mess)
     }
-  } else { ## rand.family is a string ## for private use only... ## FR->FR should be moved elsewhere to be useful
+  } else { ## rand.family is a string ## preprocess -> checkRandLinkS -> here : OK
     lcrandfamfam<-tolower(rand.family) ## tolower once and for all
     rand.family <- switch(lcrandfamfam,
                           gaussian = gaussian(),

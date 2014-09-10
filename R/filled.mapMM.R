@@ -42,12 +42,20 @@ function(fitobject,coordinates,xrange=NULL,yrange=NULL,
   #  yname <- paste(attr(predictor,"oriFormula"))[[2]]
   #  newX[[yname]] <- 0 
   gridpred <- predict(smooobject,newX = newX) # uses predictor of interpolation of predictor from orginal fit...
-#  gridpred <- gridpred*blackcapMask #mask ## le test c'est blackcapMask 
+#  gridpred <- gridpred*blackcapMask #mask ## le test c'est blackcapMask
+  if (is.logical(add.map)) {
+    if(add.map) {
+      if (require(maps)) {
+        add.map <- quote(maps::map(,xlim=xrange,ylim=yrange,add=TRUE))
+      } else {
+        message("Package 'maps' not available, 'add.map' is ignored.")
+        add.map <- quote(NULL)
+      }  
+    } else add.map <- quote(NULL) 
+  } else add.map <- quote(add.map)
   spaMM.filled.contour(x=xGrid,y=yGrid,z=matrix(gridpred[,"fitted"],ncol=gridSteps),
                        plot.axes={plot.axes;
                                   eval(add.points);
-                                  if (is.logical(add.map)) {
-                                    if(add.map) map(,xlim=xrange,ylim=yrange,add=TRUE)
-                                  } else eval(add.map)
+                                  eval(add.map)
                        },map.asp=map.asp,...)  
 }

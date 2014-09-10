@@ -1,21 +1,25 @@
 \name{spaMM-internal}
 
-
+\alias{\%id*id\%}
 \alias{alternating}
 \alias{Bartlett.robust} 
 \alias{Beta} 
-\alias{checkLink}
-\alias{checkLinkS}
+\alias{checkRandLinkS}
+\alias{checkRandLink}
+\alias{checkRespFam}
+\alias{compare.model.structures}
 \alias{compute.ZALlist} 
 \alias{CondNormfn} 
 \alias{Dim.corMatern} 
+\alias{eval.update.call}
 \alias{GammaForDispGammaGLM}
+\alias{getCallHL}
+\alias{getHLfit}
 \alias{HLCor.obj} 
 \alias{HL_process.args} 
 \alias{HL_strictify} 
 \alias{HLframes}
 \alias{Initialize.corMatern} 
-\alias{LR.HL} 
 \alias{LRT.corrHL} 
 \alias{Matern.local} 
 \alias{ULI}
@@ -48,6 +52,7 @@
 \alias{generateName} 
 \alias{getCovariate.corMatern} 
 \alias{getgroups} 
+\alias{getProcessed}
 \alias{is.square.diagonal} 
 \alias{is.identity} 
 \alias{largeLambdaMessages} 
@@ -60,6 +65,7 @@
 \alias{loglfn.ranU} 
 \alias{makeCheckGeoMatrices}
 \alias{makeCovEst} 
+\alias{makeLowerUpper}
 \alias{muetafn}
 \alias{newetaFix}
 \alias{nextPoints}
@@ -73,7 +79,6 @@
 \alias{plotdhglm} 
 \alias{post.process.ZALlist}
 \alias{preprocess}
-%- \alias{predict.HL}
 \alias{print.arglist}
 \alias{print.predictor}
 \alias{recalc.corMatern} 
@@ -86,7 +91,9 @@
 \alias{sampleGridFromLowUp}
 \alias{selectLoglfn}
 \alias{separator} 
+\alias{setProcessed}
 \alias{slashTerms} 
+\alias{solveCov}
 \alias{solveWrap.matrix}
 \alias{solveWrap.vector}
 \alias{spaMMLRT} 
@@ -96,10 +103,11 @@
 \alias{theta.mu.canonical}
 \alias{theta.mu.conjugate} 
 \alias{thetaMuDerivs} 
+\alias{toCanonical} 
 \alias{tryCatch.W.E}
 \alias{updateWranef}
 \alias{updateW_ranefS}
-\alias{validRows}
+\alias{validData}
 \alias{volTriangulation} %~ could become public later : cf le .Rd.true.txt
 \alias{rvolTriangulation} %~ could become public later
 

@@ -7,10 +7,8 @@
 }
 \description{
 \code{fixedLRT} performs a likelihood ratio (LR) test between two models, the ``full'' and the ``null'' models, 
-currently differing only in their fixed effects. This is the recommended interface to \code{corrHLfit} for performing such tests.
-Both models are fit in same way, i.e. by ML, or allowing some REML correction for the estimation of dispersion parameters. 
-A Bartlett correction of the LR statistic can be estimated using the bootstrap.
-
+currently differing only in their fixed effects. Parametric bootstrap p-values can be computed, either using the raw bootstrap distribution of the likelihood ratio, or a a bootstrap estimate of the Bartlett correction of the LR statistic.
+This function differ from \code{LRT} in its arguments (model fits for \code{LRT}, but all arguments required to fit the models for \code{fixedLRT}), and in the format of its return value. 
 }
 \usage{
 fixedLRT(null.formula,formula,data,HLmethod,REMLformula=NULL,boot.repl=0,
@@ -45,24 +43,25 @@ Either a \code{formula} or a \code{predictor} for the full model.
   the number of bootstrap replicates.
 }
   \item{control}{
-  A set of control parameter for the fits of the data, mostly for development purposes. However, if an initial value is provided for a dispersion parameter, a better one may be sought if further \code{control=list(prefits=TRUE)} (the effect appears small, however).   
+  A set of control parameters for the fits of the data, mostly for development purposes. However, if an initial value is provided for a dispersion parameter, a better one may be sought if further \code{control=list(prefits=TRUE)} (the effect appears small, however).   
 }
   \item{control.boot}{
   Same as \code{control}, but for the fits of the bootstrap replicates. Again, the option \code{control.boot=list(prefits=TRUE)} may yield a small improvement in the fits, at the expense of more computation time.   
 }
-  \item{...}{
-  Additional arguments passed to \code{corrHLfit}, including mandatory ones such as \code{data} and those ultimately passed to \code{designL.from.Corr}. With respect to the latter, note in particular that \code{try.chol} affects the simulation of samples for the parametric bootstrap, and although ultimate 
-  differences in performance may be small, \code{try.chol=FALSE} may be slightly better.
+  \item{\dots}{
+  Further arguments passed to or from other methods; in particular, additional arguments passed to \code{corrHLfit}, including mandatory ones such as \code{data} and those ultimately passed to \code{designL.from.Corr}. With respect to the latter, note that \code{try.chol} affects the simulation of samples for the parametric bootstrap, and although ultimate differences in performance may be small, \code{try.chol=FALSE} may be slightly better.
 }
 }
 \details{
   Comparison of REML fits is a priori not suitable for performing likelihood ratio tests. Nevertheless, it is possible to contrive them 
-  for testing purposes (Wehlam & Thompson 1997). This function generalizes some of Wehlam & Thompson's methods to GLMMs. It further provides a Bartlett correction for the likelihood ratio test in small sample. According to this correction, the mean value \eqn{m} of the likelihood ratio statistic under the null hypothesis is computed (here estimated by a parametric bootstrap) and the original LR statistic is multiplied by \eqn{n/m} where \eqn{n} is the number of degrees of freedom of the test.
+  for testing purposes (Wehlam & Thompson 1997). This function generalizes some of Wehlam & Thompson's methods to GLMMs. 
+  
+  See Details in \code{\link{LRT}} for details of the bootstrap procedures.
 }
 \value{
-An object of class \code{fixedLRT}, actually a list with typical elements (depending on the options)
-\item{fullfit}{the HLfit objects for the full model,} 
-\item{nullfit}{the HLfit objects for the null model,} 
+An object of class \code{fixedLRT}, actually a list with as-yet unstable format, but here with  typical elements (depending on the options)
+\item{fullfit}{the HLfit object for the full model;} 
+\item{nullfit}{the HLfit object for the null model;}
 \item{LRTori}{A likelihood ratio chi-square statistic} 
 \item{LRTprof}{Another likelihood ratio chi-square statistic, after a profiling step, if any. }
 \item{df}{the number of degrees of freedom of the test.}
@@ -70,27 +69,27 @@ An object of class \code{fixedLRT}, actually a list with typical elements (depen
 \item{bootreps}{A table of fitted likelihoods for bootstrap replicates.  }
 \item{meanbootLRT}{The mean likelihood ratio chi-square statistic for boostrap replicates.  }
 }
-\references{
-  Bartlett, M. S. 1937. Properties of sufficiency and statistical tests. Proceedings of the Royal Society (London) A 160: 268-282.
 
-  Rousset F., Ferdy, J.-B. (2014) Testing environmental and genetic effects in the presence of spatial autocorrelation. Ecography, in press.
+\references{
+  Rousset F., Ferdy, J.-B. (2014) Testing environmental and genetic effects in the presence of spatial autocorrelation. Ecography, 37: 781-790.
     \url{http://dx.doi.org/10.1111/ecog.00566}
 
-  Welham, S. J., and Thompson, R. 1997. Likelihood ratio tests for fixed model
+  Welham, S. J., and Thompson, R. (1997) Likelihood ratio tests for fixed model
   terms using residual maximum likelihood, J. R. Stat. Soc. B 59, 701-714.
 }
 %% ~Make other sections like Warning with \section{Warning }{....} ~
 \seealso{
-See also \code{\link{corrHLfit}}.
+See also \code{\link{corrHLfit}} and \code{\link{LRT}}.
 }
 \examples{
+\donttest{
 data(blackcap)
-\dontrun{
 ## result comparable to the corrHLfit examples based on blackcap
 fixedLRT(null.formula=migStatus ~ 1 + Matern(1|latitude+longitude),
        formula=migStatus ~ means + Matern(1|latitude+longitude), 
        HLmethod='ML',data=blackcap)
-
+}
+\dontrun{
 ## longer version with bootstrap
 fixedLRT(null.formula=migStatus ~ 1 + Matern(1|latitude+longitude),
        formula=migStatus ~ means + Matern(1|latitude+longitude), 

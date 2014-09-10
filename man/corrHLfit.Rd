@@ -62,7 +62,7 @@ Either \code{"p_bv"} for restricted likelihood or \code{"p_v"} for marginal like
   }
   \item{family}{Either a \code{\link{family}} or a \code{\link{multi}} value.  
   }
-  \item{...}{
+  \item{\dots}{
 Optional arguments passed to \code{\link{HLCor}}, \code{\link{HLfit}} or  \code{\link{designL.from.Corr}}, for example the \code{distMatrix} argument 
 of \code{HLCor}. Arguments that do not fit within these functions are detected and a warning is issued.
 }
@@ -77,8 +77,7 @@ of \code{HLCor}. Arguments that do not fit within these functions are detected a
   of fixed effects may then by tricky. It is safe to perform full ML fits of all parameters (using \code{objective="p_v",HLmethod="ML"}) for such tests (see Examples).   The higher level function \code{\link{fixedLRT}} is a safe interface for likelihood ratio tests using some form of REML estimation in \code{corrHLfit}.  
 }
 \value{
-The HLfit object returned by \code{HLCor} for the estimated correlation parameter values. These correlation parameters 
-values are included in this object as its \code{$corrPars} member.
+The return value of an \code{HLCor} call, with additional attributes. The \code{HLCor} call is evaluated at the estimated correlation parameter values. These values are included in the return object as its \code{$corrPars} member. The attributes added by \code{corrHLfit} include the orignal call of the function (\code{corrHLfitcall}), and the \code{objective} function used by \code{optim} (see Details). 
 }
 %% ~Make other sections like Warning with \section{Warning }{....} ~
 \seealso{
@@ -95,7 +94,7 @@ corrHLfit(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(scotlip$expec)),
 
 #### Examples with Matérn correlations
 ## A likelihood ratio test based on the ML fits of a full and of a null model.
-\dontrun{
+\donttest{
 data(blackcap)
 fullfit <- corrHLfit(migStatus ~ means+ Matern(1|latitude+longitude),data=blackcap,
                     HLmethod="ML") ## takes ~ 6s

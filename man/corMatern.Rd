@@ -17,13 +17,16 @@ corMatern(value = c(1, 0.5), form = ~1, nugget = FALSE, nuScaled = FALSE,
 %- maybe also 'usage' for other objects documented here.
 \arguments{
   \item{value}{
-   An optional vector with the parameter values, with three possible elements in contrast to other \code{corSpatial} objects. 
-   If \code{nugget} is \code{FALSE}, \code{value} can
-   have two elements, corresponding to the "range" \eqn{\rho} (or
-   "1/scale" ) and the "smoothness" \eqn{\nu} of the
+   An optional vector of parameter values, with serves as initial values or as fixed values depending on the \code{fixed} argument. 
+   It has either two or three elements, depending on the \code{nugget} argument.
+
+If \code{nugget} is \code{FALSE}, \code{value} should have
+   two elements, corresponding to the "range" and the "smoothness" \eqn{\nu} of the
    Matérn correlation structure. If \code{value} has zero length, 
    the default is a range of 90\% of the minimum distance and a
-   smoothness of 0.5 (exponential correlation).
+   smoothness of 0.5 (exponential correlation). 
+   \bold{Warning}: the range parameter used in \code{corSpatial} objects is the inverse of the scale 
+   parameter used in \code{\link{Matern.corr}} and thus they have opposite meaning despite both being denoted \eqn{\rho} elsewhere in this package or in \code{nlme} literature. 
    
    If \code{nugget} is \code{TRUE}, meaning that a nugget effect
    is present, \code{value} can contain two or three elements, the first
@@ -89,6 +92,7 @@ Mixed-Effects Models in S and S-PLUS, José C. Pinheiro and Douglas M. Bates, St
 }
 \examples{
 ## LMM
+\donttest{
 data(blackcap)
 blackcapD <-cbind(blackcap,dummy=1) ## obscure, isn't it? 
 require(nlme)
@@ -97,6 +101,7 @@ require(nlme)
 lme(fixed = migStatus ~ means, data = blackcapD, random = ~ 1 | dummy, 
     correlation = corMatern(form = ~ longitude+latitude  | dummy), 
     method = "ML")
+}
 
 ## Binomial GLMM
 \dontrun{

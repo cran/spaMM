@@ -7,18 +7,21 @@ function(formula,data, ## matches minimal call of HLfit
                       trace=list(file=NULL,append=T),
                       objective="p_bv", ## return value of HLCor.obj for optim calls... FR->FR meaningless for full SEM
                       rho.mapping,
-                      control.corrHLfit=list(), ## optim.scale, Optimizer, optimizer.args, maxIter, corners
+                      control.corrHLfit=list(), ## alternating, optim.scale, Optimizer, optimizer.args, maxIter, corners, 
+                      ## nlminb, optim, optimize,
+                      ## smooth.resid.family, smooth.resid.formula, initSmooth, dit
                       processed=NULL, ## added 2014/02 for programming purposes
                       family=gaussian(),
                       ... ## pb est risque de passer des args mvs genre HL.method et non HLmethod...
 ) { 
+  mc <- match.call() 
   init.optim <- init.corrHLfit
   alternating <- control.corrHLfit$alternating 
   if (is.null(alternating)) alternating <- FALSE
   optim.scale <- control.corrHLfit$optim.scale 
   if (is.null(optim.scale)) optim.scale="transformed" ## currently no public alternative
-  Optimizer <- control.corrHLfit$Optimizer 
-  if (is.null(Optimizer)) Optimizer="L-BFGS-B" ## either "nlminb" or one of the methods of optim()
+  Optimizer <- control.corrHLfit$Optimizer ## either "nlminb" or one of the methods of optim()
+  if (is.null(Optimizer)) Optimizer="L-BFGS-B" ## default for locoptim but still requested for "Optimizer=Optimizer"
   optimizers.args <- control.corrHLfit[c("nlminb","optim","optimize")] 
   corners <- control.corrHLfit$corners 
   if (is.null(corners)) corners <- TRUE 
@@ -113,6 +116,7 @@ function(formula,data, ## matches minimal call of HLfit
     }
   } ## 
   #########################################################
+  family <- checkRespFam(family)
   famfam <- family$family
   if ( ! is.null(famfam) && famfam=="multi") {
     if ( ! inherits(data,"list")) {
@@ -124,12 +128,14 @@ function(formula,data, ## matches minimal call of HLfit
   }
   if ( inherits(data,"list")) {
     data <- lapply(data,function(dt) {
-      validrows <- validRows(formula=formula,resid.formula=dotlist$resid.formula,data=dt) ## will remove rows with NA's in required variables
-      dt[validrows,,drop=FALSE] ## ## before Predictor is called and an LMatrix is added, etc.
+      validdata <- validData(formula=formula,resid.formula=dotlist$resid.formula,data=dt) ## will remove rows with NA's in required variables
+      dt[rownames(validdata),,drop=FALSE] ## ## before Predictor is called and an LMatrix is added, etc.
     })
   } else {
-    validrows <- validRows(formula=formula,resid.formula=dotlist$resid.formula,data=data) ## will remove rows with NA's in required variables
-    data <- data[validrows,,drop=FALSE] ## 
+    validdata <- validData(formula=formula,resid.formula=dotlist$resid.formula,data=data) ## will remove rows with NA's in required variables
+    if (!inherits(data,"environment")) {
+      data <- data[rownames(validdata),,drop=FALSE] ## 
+    } else data <- validdata
   }
   HLCor.args$family <- family
   HLCor.args$data <- data
@@ -149,6 +155,7 @@ function(formula,data, ## matches minimal call of HLfit
       if (is.null(init$rho)) init$rho <- (lower$rho+upper$rho)/2 
       init.optim$rho <- init$rho
     }
+    nbUnique <- NULL
   } else { ## if (corr.model %in% c("Matern","corMatern","AR1"))
     geoMats <- makeCheckGeoMatrices(data,dotlist$distMatrix,HLCor.args$uniqueGeo,coordinates)
     nbUnique <- geoMats$nbUnique  
@@ -282,79 +289,16 @@ function(formula,data, ## matches minimal call of HLfit
       && is.null(init$lambda)) {
     stop("'lambda' in 'lower' or 'upper' has no effect if absent from 'init.corrHLfit'.")
   }
-  lower <- init.optim; upper <- init.optim ## initialization with the right variables but wrong values
-  if (corr.model=="adjacency") { ## adjacency model
-    ## no default value, user values are required 
-    lower$rho <- user.lower$rho ## no transfo for adjacency model
-    upper$rho <- user.upper$rho ## idem
-  } else {
-    if (corr.model=="AR1") {
-      if ( ! is.null(init$ARphi)) {
-        ARphi <- user.lower$ARphi
-        if (is.null(ARphi)) ARphi <- -0.999999
-        lower$ARphi <- ARphi
-        ARphi <- user.upper$ARphi
-        if (is.null(ARphi)) ARphi <- 0.999999
-        upper$ARphi <- ARphi
-      }    
-    } else { ## then Matern model....
-      if (! is.null(init$rho)) {
-        rho <- user.lower$rho
-        if (is.null(rho)) rho <- init$rho/150
-        if (optim.scale=="transformed") {
-          lower$trRho <- rhoFn(rho)
-        } else lower$rho <- rho
-        rho <- user.upper$rho
-        if (is.null(rho)) {
-          if (inherits(nbUnique,"list")) nbUnique <- mean(unlist(nbUnique))
-          rho <- init$rho*2*nbUnique ## The following was a bit too low for experiments with nu=0.5 : 1/(maxrange/(2*nbUnique)) ## nb => unique rows !
-          if (optim.scale=="transformed") rho <- rho*.SpaMM$RHOMAX/(1+rho) ## so that it does not exceed RHOMAX
-        }
-        if (optim.scale=="transformed") {
-          upper$trRho <- rhoFn(rho) 
-        } else upper$rho <- rho
-        rhoForNu <- init$rho
-      } else rhoForNu <-ranFix$rho
-      if (! is.null(init$nu)) {
-        nu <- user.lower$nu
-        if (is.null(nu)) nu <- init$nu/100
-        if (optim.scale=="transformed") {
-          lower$trNu <- nuFn(nu,rhoForNu)
-          #print(c(rhoForNu,nu,lower$trNu))
-        } else lower$nu <-nu
-        nu <- user.upper$nu
-        if (is.null(nu)) nu <- init$nu*.SpaMM$NUMAX/(1+init$nu) ## nu should not diverge otherwise it will diverge in Bessel_lnKnu, whatever the transformation used
-        if (optim.scale=="transformed") {
-          upper$trNu <- nuFn(nu,rhoForNu)
-        } else upper$nu <- nu
-        #print(c(rhoForNu,nu,upper$trNu))
-      }
-    } 
-    ##### common to the different models except adjacency (because there are several places where NUgget+adjacency is not handled)
-    if ( ! is.null(init$Nugget)) {
-      lower$Nugget <- 0
-      upper$Nugget <- 0.999999
-    }
-  }
-  if (! is.null(init$phi)) {
-    phi <- user.lower$phi
-    if (is.null(phi)) phi <- init$phi/1000
-    lower$trPhi <- dispFn(phi)
-    phi <- user.upper$phi
-    if (is.null(phi)) phi <- init$phi*1000
-    ## if phi is badly initialized then it gets a default which may cause hard to catch problems in the bootstrap...
-    upper$trPhi <- dispFn(phi)
-  }
-  if (! is.null(init$lambda)) {
-    lambda <- user.lower$lambda
-    if (is.null(lambda)) lambda <- init$lambda/1000
-    lower$trLambda <- dispFn(lambda)
-    lambda <- user.upper$lambda
-    if (is.null(lambda)) lambda <- init$lambda*1000
-    upper$trLambda <- dispFn(lambda)
-  }
   ################
-  LowUp <- list(lower=lower,upper=upper) ## inherits names from init.optim, must be logscale as init.optim is by construction
+  LowUp <- makeLowerUpper(canon.init=init,
+                          lower=init.optim, upper=init.optim, ## initially with right transformed variables but wrong values
+                          user.lower=user.lower,user.upper=user.upper,
+                             corr.model=corr.model,nbUnique=nbUnique,
+                          ranFix=ranFix,
+                          optim.scale=optim.scale)
+  ## LowUp: a list with elements lower and upper that inherits names from init.optim, must be optim.scale as init.optim is by construction
+  lower <- LowUp$lower ## list ! which elements may have length >1 !
+  upper <- LowUp$upper ## list !
   varNames <- names(init.HLfit)
   ranPars[varNames] <- init.HLfit[varNames] ## FR->FR duplicat (?) qui montre qu'un attribute serait mieux
   attr(ranPars,"type")[varNames] <- "var"  
@@ -377,22 +321,14 @@ function(formula,data, ## matches minimal call of HLfit
         stop(mess)
       }
     } 
-    preprocess.formal.args$phi.Fix <- phi.Fix 
-    if (inherits(data,"list")) {
-      processed <- lapply(data,function(dd) {
-        locargs <- preprocess.formal.args
-        locargs$data <- dd
-        if ( ! is.null(famfam) && famfam=="multi") {
-          locargs$family <- family$binfamily ## only local. multinomial family will be passed to HLCor.obj 
-        }
-        do.call(preprocess,locargs)}
-      )
-      for (st in names(processed[[1]])) HLCor.args[st] <- NULL ## this keeps the data as they are not returned in processed, but predictor is suppressed
-    } else {
-      processed <- do.call(preprocess,preprocess.formal.args)
-      for (st in names(processed)) HLCor.args[st] <- NULL ## this keeps the data as they are not returned in processed, but predictor is suppressed
-    }
-  }
+    preprocess.formal.args$phi.Fix <- phi.Fix
+    processed <- do.call("preprocess",preprocess.formal.args)
+    if ( ! is.null(attr(processed,"multiple"))) {
+      pnames <- names(processed[[1]])
+    } else pnames <- names(processed)
+    for (st in pnames) HLCor.args[st] <- NULL ## this keeps the data in HLCor.args as they are not returned in processed, but predictor is suppressed
+    HLCor.args$HLmethod <- NULL ## because the processed<...>$HL element must be used 
+  } else preprocess.formal.args <- as.list(getProcessed(processed,"callargs"))[-1] ## we'll use them in SEM code
   HLCor.args$processed <- processed
   HLCor.args$ranPars <- ranPars
   anyOptim.args <- HLCor.args
@@ -401,38 +337,53 @@ function(formula,data, ## matches minimal call of HLfit
   attr(anyOptim.args$skeleton,"type") <- list() 
   attr(anyOptim.args$skeleton,"type")[names(init.optim)] <- "fix" 
 ##################  anyOptim.args$fn <- HLCor.obj ##### that is the function optimized 
-  anyOptim.args$HLCor.obj.value <- objective ## moved here 25/11/2012                    
-  ## optim/optimize specific code
+  anyOptim.args$`HLCor.obj.value` <- objective ## p_v when fixedLRT-> corrHLfit; can vary below for SE, despite name "anyOptim.args"
+## optim/optimize specific code
   initvec <- unlist(init.optim)
   ####    tmpName <- generateName("HLtmp") ## tmpName is a string such as "HLtmp0"
   #    anyOptim.args$init.HLfit <- tmpName 
   ####    assign(tmpName,list(),pos=".GlobalEnv") ## sets HLtmp0 (or a similarly named variable) at the global level
-  processedHL1 <- processed$HL[1] ## don't assume an HLmethod argument here... although that should be valid
+  processedHL1 <- getProcessed(processed,"HL[1]") ## there's also HLmethod in processed<[[]]>$callargs
   if (!is.null(processedHL1) && processedHL1=="SEM" && length(lower)>0) {## FR->FR il faudra integrer length lower = 0 dans la function pour homogénéiser le code.
     pargrid <- sampleGridFromLowUp(LowUp,n=init.corrHLfit$nSmoothed) ## n may be NULL
     ## using PQL to find a good starting region
-    PQLarglist <- list(pargrid=pargrid,anyHLCor.args=anyOptim.args)
-    ## PQLarglist$anyHLCor.args$HLmethod <- "PQL/L" ## does not work since the HLmethod info has already been processed
-    ###### 
-    PQLarglist$anyHLCor.args$processed$HL <- c(0,0,1)
-    # this will perform an RE PQL fit; it is difficult to have more control wihtout reprocessing the arguments, which implies that 
-    # the call to corrHLfit ditd not involve preprocessed arguments...
+    PQLarglist <- list(pargrid=pargrid,anyHLCor.args=anyOptim.args) ## copies anyOptim.args$`HLCor.obj.value` = objective
+    locargs <- preprocess.formal.args
+    locargs$HLmethod <- "PQL/L"
+    PQLarglist$anyHLCor.args$processed <- do.call("preprocess",locargs)
     ###### 
     PQLoptr <- do.call(locoptimthroughSmooth,PQLarglist)
     Krigobj <- PQLoptr$Krigobj
     predVar <- as.numeric(attr(predict(Krigobj,newX=PQLoptr$par,predVar=TRUE),"predVar"))
-    oldpredVar <- 0
-    ## new sampling for SEM guided by the PQL results
+    prevPredVars <- 0
+    ## new sampling **************for SEM**************** guided by the PQL results
     blocksize <- 30
-    nextpoints <- sampleNextPoints(n=blocksize,optr=PQLoptr,minPtNbr=3,expand=1,D.resp=sqrt(predVar)/2) ## random sample
+    ## expand = 1 uses the fact that PQL is informative even if the smoothing must be redone.
+    nextpoints <- sampleNextPoints(n=blocksize,optr=PQLoptr,minPtNbr=3,expand=1, 
+                                   D.resp=sqrt(predVar)/2) ## random sample
     info <- attr(nextpoints,"info") ## only used if diagnostic plot but removed by the rbind
     nearbypts <- sampleNearby(nextpoints,n=6,stepsizes=(unlist(upper)-unlist(lower))/100)      
     nextpoints <- rbind(nextpoints,nearbypts)
     ## diagnostic plot for previous and next computation
     if (interactive() && length(lower)==2) {
       zut <- signif(unlist(Krigobj$corrPars$rho),4)
-      titlemain <- bquote(paste("PQL initialization: ",rho[f(rho)],"=",.(zut[1]),", ",rho[f(nu)],"=",.(zut[2]),"; predVar=",.(signif(predVar,4))))
-      mapMM(Krigobj,plot.title=title(main=titlemain),
+      predi <- getProcessed(processed,"predictor")
+      Xpv <- getProcessed(processed,"X.pv")
+      titlemain <- bquote(paste(.(DEPARSE(predi))))
+      if (nchar(eval(titlemain))>57) {
+        titlemain <- bquote(paste(.(DEPARSE(nobarsNooffset(predi))),"+..."))
+      }
+      if (nchar(eval(titlemain))>57) {
+        titlemain <- bquote(paste(.(substr(aschar,0,42)),"+... [length(",beta,")=",.(ncol(Xpv)),"]"))
+      }
+      if (length(zut)>1) {
+        titlesub <- bquote(paste("PQL initialization: ",rho[f(rho)],"=",.(zut[1]),", ",rho[f(nu)],"=",.(zut[2]),"; predVar=",.(signif(predVar,4))))
+      } else titlesub <- bquote(paste("PQL initialization: ",rho,"=",.(zut),"; predVar=",.(signif(predVar,4))))
+      mapMM(Krigobj,
+            plot.title={
+              title(main=titlemain,line=2) ## default cex.main=1.2, line ~1.7
+              title(main=titlesub,line=0.8,cex.main=1.1) ## 
+            },
             decorations= {
               points(nextpoints,pch=15,cex=0.4);
               apply(info$simplicesTable,1,function(v){
@@ -444,64 +395,89 @@ function(formula,data, ## matches minimal call of HLfit
     }
     ## now the SEM computations
     pargrid <- rbind(pargrid,nextpoints)
-    arglist <- list(pargrid=pargrid,anyHLCor.args=anyOptim.args)
-    arglist[["control.smooth"]]$nrepl <- 20 ## number of points for which replicate estimates of likelihood are computed (modified later)
+    allsmooths <- list(initSmooth=control.corrHLfit$initSmooth, ## NULL by default
+                       resid.family=control.corrHLfit[["smooth.resid.family"]], ## NULL by default -> default controlled by locoptimthroughSmooth 
+                       resid.formula=control.corrHLfit[["smooth.resid.formula"]] ## idem
+                       )  
+    control.smooth <- allsmooths ## distinction between what goes in allsmooths and others is important ! nrepl will vary
+    control.smooth$nrepl <- 20 ## number of points for which replicate estimates of likelihood are computed (modified later)
+    if(processedHL1 =="SEM") anyOptim.args$`HLCor.obj.value` <- "logLapp"
+    arglist <- list(pargrid=pargrid,anyHLCor.args=anyOptim.args,control.smooth=control.smooth)
     optr <- do.call(locoptimthroughSmooth,arglist)    
+    ##
     smoothingOK <- FALSE
-    control.smooth <- list()
+    dit <- control.corrHLfit$dit ## NULL by default
+    if (is.null(dit)) dit <- 0 ## default: controls test predVar < prevPredVars[it-dit] for smoothingOK or not
     it <- 1
     continue <- TRUE
-    while ( continue ) {
-      oldpredVar <- predVar
+    while ( continue ) { ## note that some SEM results have already been analyzed previous to the loop
+      control.smooth <- allsmooths ## reinitialize with constant part 
+      prevPredVars <- c(prevPredVars,predVar) ## has length it+1
       Krigobj <- optr$Krigobj
       predVar <- as.numeric(attr(predict(Krigobj,newX=optr$par,predVar=TRUE),"predVar"))
-      if (interactive() ) {cat(it," ");print(paste("(",paste(signif(optr$value,4),collapse=","),")",signif(optr$value,4),
+      if (interactive() ) {cat(it," ");print(paste(signif(optr$value,4),
                                                    "+/-",signif(sqrt(predVar),4),
                                                    "; n_points=",nrow(Krigobj$data),
-                                                   "; lambda=",signif(Krigobj$lambda,4),sep=""))} 
+                                                   "; smooth.lambda=",signif(Krigobj$lambda,4),sep=""))} 
       prevPtls <- optr$forSmooth
       smoothRho <- unlist(Krigobj$corrPars$rho)
       ## tests whether some correlation structure has been detected and adjust smoothing controls accordingly:
-      if ( predVar < oldpredVar && predVar < Krigobj$lambda /80 ){ # nrow(Krigobj$data) ) {
+      # ... the best way it to perform some LRT on the smoothing parameters...
+      smoothtest <- as.list(attr(Krigobj,"HLCorcall"))
+      smoothrho <- smoothtest$ranPars$rho
+      ## there is trRho or rho whether smoothing was performed or not ## FR->FR how to ensure info is in only one place ???  
+      if (is.null(smoothrho)) {
+        smoothtest$ranPars$trRho <- rhoFn(rhoInv(smoothtest$ranPars$trRho)*2)
+      } else smoothtest$ranPars$rho <- smoothrho*2
+      smoothtest <- eval(as.call(smoothtest))
+      nextpoints <- sampleNextPoints(n=6,optr=optr,expand=1,D.resp=sqrt(predVar)/2) ## always these 22/08/2014     
+      if ( it > dit
+           &&
+           predVar < prevPredVars[it-dit] ## ie for iter it-1-dit; for default dit=0, penultimate value 
+           &&
+           Krigobj$APHLs$p_bv> (smoothtest$APHLs$p_bv+1.92) ## test of information about rho_smooth 
+           ){ 
         smoothingOK <- TRUE 
-        trysize <- blocksize <- 1
-        expand <- 1
+        info <- attr(nextpoints,"info") ## only used if diagnostic plot but removed by the rbind
+        nextpoints <- rbind(nextpoints,optr$par,optr$par) ## inferred maximum added in nextpoints ## 22/08/2014 
+        control.smooth$nrepl <- 0 ## the above enforces duplicate of optr$par
         control.smooth$ranFix <- Krigobj$corrPars
-        control.smooth$nrepl <- 1 
       } else {
         smoothingOK <- FALSE
-        trysize <- 90
-        blocksize <- 30
-        expand <- min(it,2)
+        trysize <- 180 ## a set from which blocksize points will be chosen for likelihood computation
+        blocksize <- 18
+        ## get rid of some possibly aberrant points that prevent good smoothing 
+        prevPtls <- prevPtls[order(prevPtls$logLobj)[-c(1:2)],] ## FR->FR but aberrant points may not be the lowest... 
+        trypoints <- sampleNextPoints(n=trysize,optr=optr,expand=Inf,D.resp=sqrt(predVar)/2) ## random sample
+        info <- attr(trypoints,"info") ## might not be useful in this case (?)
+        ###### selection of points by improvement function with measurement error BinghamRW14 p. 121
+        obspred <- predict(Krigobj,predVar=TRUE)
+        obsSE <- attr(obspred,"predVar")
+        obsSE[obsSE<0] <- 0
+        obsSE <- sqrt(obsSE)
+        Qmax <- max(predict(Krigobj)$fitted+1.96 * obsSE) ## best improvement function for already computed points 
+        # 
+        trypred <- predict(Krigobj,trypoints,predVar=TRUE)
+        trySE <- attr(trypred,"predVar")
+        trySE[trySE<0] <- 0
+        trySE <- sqrt(trySE)
+        tryQ <- trypred$fitted + 1.96*trySE ## improvement function for candidate points
+        #
+        expectedImprovement <- trySE*dnorm((Qmax-tryQ)/trySE)+(tryQ-Qmax)*pnorm((tryQ-Qmax)/trySE) ## 7.5 p. 121
+        trypoints <- cbind(trypoints,EI=expectedImprovement)
+        trypoints <- trypoints[order(trypoints[,"EI"],decreasing=TRUE)[seq_len(blocksize)],,drop=FALSE]
+        trypoints <- trypoints[which(trypoints[,"EI"]>0),names(lower),drop=FALSE] ## maybe no point...
+        nextpoints <- rbind(nextpoints,trypoints)
+        ## 
+        ## need close pairs to estimate better the smoothing parameters
+        nearbypts <- sampleNearby(nextpoints,n=min(nrow(nextpoints),6),stepsizes=(unlist(upper)-unlist(lower))/(100*smoothRho))     
+        ## FR->FR problem: nearbypts may extrapolate... particularly for small smoothRho. We correct:
+        for (ii in seq_len(length(lower))) {
+          nearbypts[,ii] <- pmax(nearbypts[,ii],lower[[ii]])
+          nearbypts[,ii] <- pmin(nearbypts[,ii],upper[[ii]])
+        }
         control.smooth$ranFix <- Krigobj$corrPars["nu"] 
         control.smooth$nrepl <- ceiling(20/it - 0.0001)
-        ## get rid of some possibly aberrant points that prevent good smoothing 
-        prevPtls <- prevPtls[order(prevPtls$logL)[-c(1:2)],] ## FR->FR but aberrant points may not be the lowest... 
-      }
-      trypoints <- sampleNextPoints(n=trysize,optr=optr,expand=expand,D.resp=sqrt(predVar)/2) ## random sample
-      info <- attr(trypoints,"info") ## only used if diagnostic plot but removed by the rbind
-      ###### selection of points
-      obspred <- predict(Krigobj,predVar=TRUE)
-      obsSE <- diag(attr(obspred,"predVar"))
-      obsSE[obsSE<0] <- 0
-      obsSE <- sqrt(obsSE)
-      Qmax <- max(predict(Krigobj)$fitted+1.96 * obsSE)
-      #
-      trypred <- predict(Krigobj,trypoints,predVar=TRUE)
-      trySE <- diag(attr(trypred,"predVar"))
-      trySE[trySE<0] <- 0
-      trySE <- sqrt(trySE)
-      tryQ <- trypred$fitted + 1.96*trySE
-      #
-      expectedImprovement <- trySE*dnorm((Qmax-tryQ)/trySE)+(tryQ-Qmax)*pnorm((tryQ-Qmax)/trySE)
-      trypoints <- cbind(trypoints,EI=expectedImprovement)
-      trypoints <- trypoints[order(trypoints[,"EI"],decreasing=TRUE)[seq_len(blocksize)],,drop=FALSE]
-      nextpoints <- trypoints[which(trypoints[,"EI"]>0),names(lower),drop=FALSE] ## maybe no point...
-      ## 
-      if(nrow(nextpoints)==0) nextpoints <- rbind(nextpoints,optr$par)
-      if( ! smoothingOK) { ## need close pairs to estimate better the smoothing parameters
-        ## FR->FR problem the following points may extrapolate... particularly for small smoothRho
-        nearbypts <- sampleNearby(nextpoints,n=min(nrow(nextpoints),6),stepsizes=(unlist(upper)-unlist(lower))/(100*smoothRho))     
         nextpoints <- rbind(nextpoints,nearbypts)
       }
       ## and a bit of extrapolation
@@ -519,18 +495,20 @@ function(formula,data, ## matches minimal call of HLfit
       #         nextpoints <- rbind(nextpoints,extrap)
       #       }
       ##
-      if (interactive() && length(lower)==2 && 
-            ! smoothingOK) {
+      if (interactive() && length(lower)==2 ## && ! smoothingOK
+          ) {
         zut <- signif(smoothRho,4)
-        titlemain <- bquote(paste(.(DEPARSE(processed$predictor)),", iter=",.(it)))
+        titlemain <- bquote(paste(.(DEPARSE(predi)),", iter=",.(it)))
         if (nchar(eval(titlemain))>50) {
-          titlemain <- bquote(paste(.(DEPARSE(nobarsNooffset(processed$predictor))),"+..., iter=",.(it)))
+          titlemain <- bquote(paste(.(DEPARSE(nobarsNooffset(predi))),"+..., iter=",.(it)))
         }
         if (nchar(eval(titlemain))>50) {
-          titlemain <- bquote(paste(.(substr(aschar,0,35)),"+... [length(",beta,")=",.(ncol(processed$X.pv)),"], iter=",.(it)))
+          titlemain <- bquote(paste(.(substr(aschar,0,35)),"+... [length(",beta,")=",.(ncol(Xpv)),"], iter=",.(it)))
         }
-        titlesub <- bquote(paste(rho[f(rho)],"=",.(zut[1]),", ",rho[f(nu)],"=",.(zut[2]),
-                                  "; max=",.(signif(optr$value,4)),"; predVar=",.(signif(predVar,4))))
+        if (length(zut)>1) {
+          titlesub <- bquote(paste(rho[f(rho)],"=",.(zut[1]),", ",rho[f(nu)],"=",.(zut[2]),
+                                   "; max=",.(signif(optr$value,4)),"; predVar=",.(signif(predVar,4))))
+        } else titlesub <- bquote(paste(rho[smooth],"=",.(zut),"; max=",.(signif(optr$value,4)),"; predVar=",.(signif(predVar,4))))
         mapMM(Krigobj,plot.title={
           ## inconsistent behaviour: one can title(main=<bquote stuff> ...) 
           ## but not title(main=<eval(bquote ...) stuff>) => error : cannot evaluate f in f(rho), f(nu)
@@ -539,7 +517,7 @@ function(formula,data, ## matches minimal call of HLfit
         }, 
               decorations= {
                 points(nextpoints,pch=15,cex=0.4);
-                apply(info$simplicesTable,1,function(v){
+                if( smoothingOK) apply(info$simplicesTable,1,function(v){
                   polygon(info$vertices[v,])
                 });
                 points(matrix(optr$par,nrow=1),pch="+",col="red");
@@ -552,17 +530,19 @@ function(formula,data, ## matches minimal call of HLfit
       it <- it+1
       ## terminates if either of these two considtions are reached *...* :
       if (predVar < 0.02) continue <- FALSE
-      if (it > 50) continue <- FALSE
+      if (nrow(Krigobj$data) > 1000) continue <- FALSE ## FR->FR an only be tempo
       ## ... UNLESS one of these conditions are true
       if (it < 10) continue <- TRUE
-      if (predVar> oldpredVar) continue <- TRUE
+      if (predVar> prevPredVars[it]) continue <- TRUE
     } ## end 'while' loop
     Krigobj <- optr$Krigobj
     predVar <- as.numeric(attr(predict(Krigobj,newX=optr$par,predVar=TRUE),"predVar"))
     if (interactive() && length(lower)==2) {
       zut <- signif(unlist(Krigobj$corrPars$rho),4)
-      titlemain <- bquote(paste(rho[f(rho)],"=",.(zut[1]),", ",rho[f(nu)],"=",.(zut[2]),
-                                "; max=",.(signif(optr$value,4)),"; predVar=",.(signif(predVar,4))))
+      if (length(zut)>1) {
+        titlemain <- bquote(paste(rho[f(rho)],"=",.(zut[1]),", ",rho[f(nu)],"=",.(zut[2]),
+                                  "; max=",.(signif(optr$value,4)),"; predVar=",.(signif(predVar,4))))
+      } else titlemain <- bquote(paste(rho[smooth],"=",.(zut),"; max=",.(signif(optr$value,4)),"; predVar=",.(signif(predVar,4))))
       mapMM(Krigobj,plot.title=title(main=titlemain),
             decorations= {
               points(matrix(optr$par,nrow=1),pch="+");
@@ -577,7 +557,8 @@ function(formula,data, ## matches minimal call of HLfit
                            optimizers.args=optimizers.args,corners=corners)
     if (!is.null(optPars)) attr(optPars,"method") <-"alternating"
   } else {
-    optPars <- locoptim(init.optim,LowUp,anyOptim.args=anyOptim.args,trace,Optimizer=Optimizer,optimizers.args=optimizers.args,corners=corners) 
+    loclist<-list(init.optim,LowUp,anyObjfnCall.args=anyOptim.args,trace,Optimizer=Optimizer,optimizers.args=optimizers.args,corners=corners,maximize=TRUE) 
+    optPars <- do.call("locoptim",loclist)
     if (!is.null(optPars)) attr(optPars,"method") <-"locoptim"
   }
   ranPars[names(optPars)] <- optPars
@@ -585,27 +566,31 @@ function(formula,data, ## matches minimal call of HLfit
   HLCor.args$ranPars <- ranPars
   verbose["warn"] <- TRUE ## important!
   HLCor.args$verbose <- verbose ##
-  hlcor <- do.call(HLCor,HLCor.args) ## recomputation post optimization
+  hlcor <- do.call("HLCor",HLCor.args) ## recomputation post optimization
   if ( is.null(HLCor.args$adjMatrix) && is.null(attr(hlcor,"info.uniqueGeo")) ) { ## typically if DistMatrix was passed to HLCor...
     attr(hlcor,"info.uniqueGeo") <- uniqueGeo ## uniqueGeo should have been computed in all relevant cases where this is NULL (tricky)
   }
-  attr(hlcor,"objective") <- objective
+  attr(hlcor,"objective") <- anyOptim.args$`HLCor.obj.value` 
   attr(hlcor,"ranFixNames") <- names(ranFix)
+  attr(hlcor,"corrHLfitcall") <- mc
+  ## 
+  attr(hlcor,"optimInfo") <- list(optim.pars=optPars, 
+                                  #canon.init=init,
+                                  init.optim=init.optim,
+                                  user.lower=user.lower,user.upper=user.upper)
   if ( ( ! is.null(optPars)) && attr(optPars,"method")== "locoptimthroughSmooth") {
     attr(optr$value,"predVar") <- predVar
-    APHLs$estlogL <- optr$value
+    hlcor$APHLs$logLsmooth <- optr$value
   }
   if (is.character(trace$file)) {
     ## crude display of variable names in the trace file
-    traceNames <- paste(paste(names(hlcor$APHLs),collapse=" "))
+    traceNames <- paste("# ",paste(names(hlcor$APHLs),collapse=" "))
     traceNames <- paste(traceNames,"lambda",sep=" ")
     if ( ! is.null(hlcor$phi)) traceNames <- paste(traceNames,"phi",sep=" ")
     traceNames <- paste(traceNames,paste(names(anyOptim.args$skeleton),collapse=" "),sep=" ")
+    traceNames <- paste(traceNames," and optim parameters in canonical scale  ",sep=" ")
     write(traceNames,file=trace$file,append=T)   
   }
-  #    ranPars <- HLCor.args$ranPars
-  #    class(ranPars) <- c("ranPars",class(ranPars)) ## ready for a print.ranPars method 
-  #  }
   ####  rm(list=c(tmpName),pos=".GlobalEnv") ## removes HLtmp0 at the global level
-  return(hlcor)
+  return(hlcor) ## it's the call which says it was returned by corrHLfit
 }

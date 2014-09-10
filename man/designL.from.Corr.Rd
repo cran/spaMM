@@ -50,12 +50,10 @@ designL.from.Corr(m,try.chol=TRUE,try.eigen=FALSE,threshold=1e-06,debug=FALSE,SV
 }
 
 \examples{
+\dontrun{
 ## try.chol argument passed to designL.from.Corr 
 ## through the '...' argument of higher-level functions
 ## such as HLCor, corrHLfit, fixedLRT:
-
-\dontrun{
-#### using HLCor
 data(scotlip)
 HLCor(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(scotlip$expec)),
       ranPars=list(rho=0.174),adjMatrix=Nmatrix,family=poisson(),

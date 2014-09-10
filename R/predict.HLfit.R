@@ -1,6 +1,9 @@
 predict.HLfit <-
 function(object,newX = NULL,coeffs=NULL,predVar=FALSE,re.form = NULL,
                           binding = if(is.vector(newX)) {FALSE} else {"fitted"},...) { ## but not new Y
+  if (predVar == "Cov") {
+    predVar <- TRUE; predCov=TRUE
+  } else predCov <- FALSE
   predictor <- object$predictor
   spatial.terms <- findSpatial(predictor)
   spatial.model <- spatial.terms[[1]] 
@@ -17,63 +20,37 @@ function(object,newX = NULL,coeffs=NULL,predVar=FALSE,re.form = NULL,
       stop(paste("(!) newX has incorrect length. It should match the following variables:\n",paste(allvars,collapse=" ")))
     }
   } 
-  
   ## it is important that newX remains NULL if it was so initially because it is tested below
+  if (is.null(newX)) {
+    locdata <- object$data
+  } else locdata <- newX
+  locform <- attr(predictor,"oriFormula")
+  if (noReForm(re.form)) locform <- nobarsMM(locform)
+  allFrames <- HLframes(formula=locform[-2],data=locdata)
   if ( ( ! is.null(newX) ) || predVar || noReForm(re.form)) {
-    if (is.null(newX)) {
-      newetaX <- newetaFix(object,object$data)       
-    } else {
-      newetaX <- newetaFix(object,newX)       
-    }
+    etaFix <- newetaFix(object,allFrames)       
     oldLMatrix <- attr(predictor,"LMatrix") ## may be NULL
     if (noReForm(re.form)) {
       nrand <- 0
     } else {
       nrand <- length(attr(object$ZAlist,"ranefs"))
+      spatialOne <- which(attr(object$ZAlist,"ranefs") == spatial.model) ## strictly a spatial one, not other correlated ones
     }
     if ( ! is.null(attr(predictor,"AMatrix"))) {
       stop("No appropriate code for prediction with an 'AMatrix'.")
     }
     if ( ! is.null(attr(predictor,"ZALMatrix"))) {
-      stop("No appropriate code for prediction with an 'ZALMatrix'.")
+      stop("No appropriate code for prediction with a 'ZALMatrix'.")
     }
   }  
   if (predVar) { ## then we need X.pv; if newX present then we also compute etaFix 
     if (is.null(oldLMatrix)) {stop("no predVar code for models without spatial effects")} 
-    X.pv <- newetaX$newMeanFrames$X  
+    X.pv <- allFrames$X  
   } else X.pv <- NULL
   if (is.null(newX)) {
     locdata <- object$data[,allvars,drop=FALSE]
   } else {
     locdata <- newX
-    ## new a new design matrix for random effects, which columns do not match the predicted v_h
-    allFrames <- HLframes(formula=attr(predictor,"oriFormula")[-2],data=locdata)
-    FL <- spMMFactorList(predictor, allFrames$mf, 0L, 0L) 
-    tempZAlist <- FL$Design 
-    ## next we convert these to design matrices matching the predicted v_h 
-    spatialOnes <- which(attr(object$ZAlist,"ranefs") %in% attr(oldLMatrix,"ranefs"))
-    newZAlist <- lapply(seq_len(length(tempZAlist)),function(it) {
-      newlevels <- colnames(tempZAlist[[it]])
-      if (it %in% spatialOnes) { ## quick patch which makes newZA an identity matrix
-        #oldlevels <- newlevels 
-        #template <- data.frame(matrix(rep(0,nrow(locdata)),nrow=1)) ## Cnewold
-        newZA <- diag(nrow(locdata))
-        ## note that running the next algo on 41*41 locations is slow...
-      } else {
-        oldlevels <- colnames(object$ZAlist[[it]])
-        template <- data.frame(matrix(rep(0,ncol(object$ZAlist[[it]])),nrow=1))
-        newZA <- apply(tempZAlist[[it]],1, function(ro) {
-          nonzero <- which(ro!=0)## only one 
-          whichcol <- which(oldlevels==newlevels[nonzero]) ## identifies column in old ZAlist <=> level of v_h
-          template[whichcol] <- ro[nonzero] ## local modif of template
-          template
-        })
-        newZA <- do.call(rbind,newZA) 
-        colnames(newZA) <- oldlevels ## 06/2014 not used...
-      }
-      as.matrix(newZA)
-    })
-    attr(newZAlist,"ranefs") <- attr(object$ZAlist,"ranefs") 
   }
   if ( ! is.null(spatial.model)) {
     if (! is.null(newX) && spatial.model[[1]]=="adjacency") {
@@ -82,14 +59,15 @@ function(object,newX = NULL,coeffs=NULL,predVar=FALSE,re.form = NULL,
   } 
   if ( ( ! is.null(newX)  && ! is.null(spatial.model)) 
       || predVar) { ## all cases where we need distance matrices
-    newgeo <- locdata[,geonames,drop=FALSE] ## not unique       
+    newgeo <- locdata[,geonames,drop=FALSE] ## not unique
+    newuniqueGeo <- unique(newgeo) ## It is essential that it keeps the same order as spMMfactorlist -> ULI -> unique. 
     rho <- object$ranFix$rho
     if (length(rho)==1) {
       oldgeoScal <- olduniqueGeo * rho 
-      newgeoScal <- newgeo * rho 
+      newgeoScal <- newuniqueGeo * rho 
     } else if (ncol(olduniqueGeo)==length(rho)) {
       oldgeoScal <-t(t(olduniqueGeo) * rho) ## valid for vectorial rho...
-      newgeoScal <-t(t(newgeo) * rho) ## valid for vectorial rho...
+      newgeoScal <-t(t(newuniqueGeo) * rho) ## valid for vectorial rho...
     } else {
       mess <- pastefrom("invalid length(rho).",prefix="(!) From ")
       stop(mess)
@@ -97,44 +75,65 @@ function(object,newX = NULL,coeffs=NULL,predVar=FALSE,re.form = NULL,
     ## rows from newgeo cols from olduniqueGeo:
     ## very slow: Cnew <-apply(as.matrix(oldgeoScal),1,function(v) {apply(newgeoScal,1,function(vv){ sqrt(sum((v-vv)^2))}) })
     ## faster but assumesvector: Cnew <- sqrt(colSums((apply(oldgeoScal,1,function(v){v-as.numeric(newgeoScal)}))^2))
-    Cnewold <- proxy::dist(newgeoScal,oldgeoScal) ## 
-    if (predVar) Cnewnew <- proxy::dist(newgeoScal,newgeoScal)
+    uuCnewold <- proxy::dist(newgeoScal,oldgeoScal) ## unique, unique
+    if (predCov) {
+      Cnewnew <- proxy::dist(newgeoScal,newgeoScal) ## dist matrix and then call to correl fn
+    } else if (predVar) Cnewnew <-diag(rep(1,nrow(newgeoScal))) ## directly "corr" of u_h with itself at zero distance
     if (spatial.model[[1]]=="AR1") {
       args <-object$ranFix[which(names(object$ranFix) %in% c("ARphi"))]
-      Cnewold <- args$ARphi^Cnewold  
-      if (predVar) Cnewnew <- args$ARphi^Cnewnew  
+      uuCnewold <- args$ARphi^uuCnewold  
+      if (predCov) Cnewnew <- args$ARphi^Cnewnew  
     } else {
       args <-object$ranFix[which(names(object$ranFix) %in% c("nu","Nugget"))]
-      Cnewold <- do.call(Matern.corr,args=c(args,list(d=Cnewold)))  
-      if (predVar) Cnewnew <- do.call(Matern.corr,args=c(args,list(d=Cnewnew)))  
+      uuCnewold <- do.call(Matern.corr,args=c(args,list(d=uuCnewold)))  
+      if (predCov) Cnewnew <- do.call(Matern.corr,args=c(args,list(d=Cnewnew)))  
     }
-    attr(Cnewold,"ranefs") <- attr(oldLMatrix,"ranefs")  ## includes replicate locations !
+    attr(uuCnewold,"ranefs") <- attr(oldLMatrix,"ranefs")  ## includes replicate locations !
   } 
   ## (1) computes fv (2) compute predVar
   ##### fv
-  if (is.null(newX)) {
+  if (noReForm(re.form)) {
+    fv <- object$family$linkinv(etaFix) 
+  } else if (is.null(newX)) {
     fv <- object$fv ## same length including replicates
+    newZAlist <- object$ZAlist ## useful if predVar
   } else { ## 
     if ( nrand==0 ) {
-      eta <- newetaX$etaFix 
+      eta <- etaFix 
     } else {
-      etaFix <- newetaX$etaFix ## 
-      v_h_coeffs <- object$v_h ## v_h for non spatial and will later contain coeffs for spatial 
+      FL <- spMMFactorList(locform, allFrames$mf, 0L, 0L) 
+      tempZAlist <- FL$Design 
+      ## next we convert these to design matrices matching the predicted v_h 
+      newZAlist <- lapply(seq_len(length(tempZAlist)),function(it) {
+        newlevels <- colnames(tempZAlist[[it]])
+        if (it == spatialOne) { ## avoids running the next algo which is slow on large matrices
+          newZA <- tempZAlist[[it]]
+        } else {
+          oldlevels <- colnames(object$ZAlist[[it]])
+          template <- data.frame(matrix(rep(0,ncol(object$ZAlist[[it]])),nrow=1))
+          newZA <- apply(tempZAlist[[it]],1, function(ro) {
+            nonzero <- which(ro!=0)## only one 
+            whichcol <- which(oldlevels==newlevels[nonzero]) ## identifies column in old ZAlist <=> level of v_h
+            template[whichcol] <- ro[nonzero] ## local modif of template
+            template
+          })
+          newZA <- do.call(rbind,newZA) 
+          attr(newZA,"identityMatrix") <- is.identity(newZA)
+          colnames(newZA) <- oldlevels ## 06/2014 not used...
+        }
+        as.matrix(newZA)
+      })
+      attr(newZAlist,"ranefs") <- attr(object$ZAlist,"ranefs") 
       if ( is.null(spatial.model)) {
+        v_h_coeffs <- object$v_h ## v_h for non spatial and will later contain coeffs for spatial 
         ZALlist <- compute.ZALlist(LMatrix=NULL,ZAlist=newZAlist,Groupings=FL$Groupings)
       } else {
-        ZALlist <- compute.ZALlist(LMatrix=Cnewold,ZAlist=newZAlist,Groupings=FL$Groupings)
         #### precomputation of coeffs
         ## on the gaussian scale, L.v_ori ~ lam C (lam C + phi I)^{-1}y 
         ## new random autocorr term ~ lam c (lam C + phi I)^{-1}y = c C^{-1} L_ori.v_ori = c [t(L_ori)]^{-1} v_ori
-        ## FR->FR [t(L_ori)]^{-1} v_ori could be computed once for all predictions
-        vec_n_u_h <- attr(object$lambda,"n_u_h")
-        cum_n_u_h <- cumsum(c(0,vec_n_u_h))
-        for (spit in spatialOnes) {
-          u.range <- (cum_n_u_h[spit]+1L):(cum_n_u_h[spit+1L])
-          if (is.null(coeffs)) coeffs <- solve(t(oldLMatrix),v_h_coeffs[u.range])   
-          v_h_coeffs[u.range] <- coeffs 
-        }
+        ## [t(L_ori)]^{-1} v_ori can be computed once for all predictions => 'coeffs' argument
+        v_h_coeffs <- predictionCoeffs(object)
+        ZALlist <- compute.ZALlist(LMatrix=uuCnewold,ZAlist=newZAlist,Groupings=FL$Groupings)
       }  
       if (nrand>1) {
         ZAL <- do.call(cbind,ZALlist)
@@ -153,7 +152,6 @@ function(object,newX = NULL,coeffs=NULL,predVar=FALSE,re.form = NULL,
   }
   ##### (2) predVar
   if(predVar) {
-    Corr <- tcrossprodCpp(oldLMatrix)
     if (is.null(spatial.model)) {
       stop("No code for predVar without spatial random effects.")
     }
@@ -163,8 +161,15 @@ function(object,newX = NULL,coeffs=NULL,predVar=FALSE,re.form = NULL,
       stop("No code for predVar with non-spatial random effects.")
     }
     oldX.pv <- object$X ## the X.pv of the fit of the original data ## FR->FR confusing names: X for X.pv (desgin fixed) et newX for new geo coord+pred vars
-    predVar <- calcPredVar(object$phi,object$lambda,Corr,t(Cnewold),Cnewnew,oldX.pv,X.pv,ZA)
-    attr(resu,"predVar") <- predVar
+    ZAL <- ZA %id*id% oldLMatrix
+    Sig <- ZWZt(ZAL,1/object$w.ranef) + diag(1/object$w.resid)  ## same as in HLfit
+    loclist <- list(phi=object$phi,lambda=object$lambda,Coldnew=t(uuCnewold),
+                    Cnewnew=Cnewnew,oldX.pv=oldX.pv,X.pv=X.pv,ZA=ZA,newZA=newZAlist[[spatialOne]],
+                    beta_cov=object$beta_cov,Sig=Sig)
+    predVarMat <- do.call(calcPredVar,loclist)
+    if (predCov) {
+      attr(resu,"predVar") <- predVarMat
+    } else attr(resu,"predVar") <- diag(predVarMat) ## only the diag is correct
   } ## else attr(resu,"predVar") will be NULL  
   return(resu)
 }

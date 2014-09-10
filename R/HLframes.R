@@ -19,7 +19,7 @@ function (formula, data) {
        data[validname] <- 1 ## adds a column $phi of 1 
        formula[[2]] <- as.name(validname) ## now the formula is standard
     }
-    ####### first construct a mf for all variables required by the formula (NA would be removed here if they had not been by a previous call to validRows)
+    ####### first construct a mf for all variables required by the formula (NA would be removed here if they had not been by a previous call to validData)
     mf <- call("model.frame",data=data) ## it adds the formula argument below....
     frame.form <- subbarsMM(formula) ## this comes from lme4 and converts (...|...) terms to some "+" form
     environment(frame.form) <- environment(formula)

@@ -32,8 +32,10 @@ McCullagh, P. and Nelder, J.A. (1989). Generalized Linear Models, 2nd edition. L
 Molas, M., Lesaffre, E. (2011) Hierarchical Generalized Linear Models: The R Package HGLMMM. Journal of Statistical Software 39, 1-20.
 }
 \examples{
+\donttest{
 data(salamander)
 HLfit(cbind(Mate,1-Mate)~TypeF+TypeM+TypeF*TypeM+(1|Female)+(1|Male),
     family=binomial(),data=salamander,HLmethod="ML")
+}
 }
 \keyword{datasets}

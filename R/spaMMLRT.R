@@ -21,14 +21,14 @@ function(null.formula=NULL,formula,
   data <- dotlist$data
   if ( inherits(data,"list")) {
     data <- lapply(data,function(dt) {
-      null.validrows <- validRows(formula=null.formula[-2],resid.formula=dotlist$resid.formula,data=dt) ## will remove rows with NA's in required variables
-      full.validrows <- validRows(formula=formula[-2],resid.formula=dotlist$resid.formula,data=dt) ## will remove rows with NA's in required variables
-      dt[intersect(null.validrows,full.validrows),,drop=FALSE]     
+      null.validdata <- validData(formula=null.formula[-2],resid.formula=dotlist$resid.formula,data=dt) ## will remove rows with NA's in required variables
+      full.validdata <- validData(formula=formula[-2],resid.formula=dotlist$resid.formula,data=dt) ## will remove rows with NA's in required variables
+      dt[intersect(rownames(null.validdata),rownames(full.validdata)),,drop=FALSE]     
     })
   } else {
-    null.validrows <- validRows(formula=null.formula[-2],resid.formula=dotlist$resid.formula,data=data) ## will remove rows with NA's in required variables
-    full.validrows <- validRows(formula=formula[-2],resid.formula=dotlist$resid.formula,data=data) ## will remove rows with NA's in required variables
-    data <- data[intersect(null.validrows,full.validrows),,drop=FALSE]     
+    null.validdata <- validData(formula=null.formula[-2],resid.formula=dotlist$resid.formula,data=data) ## will remove rows with NA's in required variables
+    full.validdata <- validData(formula=formula[-2],resid.formula=dotlist$resid.formula,data=data) ## will remove rows with NA's in required variables
+    data <- data[intersect(rownames(null.validdata),rownames(full.validdata)),,drop=FALSE]     
   }  
   dotlist$data <- data
   predictor <- formula   
@@ -76,7 +76,7 @@ function(null.formula=NULL,formula,
   if ( ! is.null(null.predictor)) { ## ie if test effet fixe
     testFix <- T
     if (dotlist$HLmethod =="SEM") {
-      test.obj <- "estlogL"
+      test.obj <- "logLsmooth"
     } else test.obj <- "p_v"
     ## check fullm.list$REMLformula, which will be copied into nullm in all cases of fixed LRTs
     if (dotlist$HLmethod %in% c("ML","PQL/L","SEM") || substr(dotlist$HLmethod,0,2) == "ML") {
@@ -157,7 +157,10 @@ function(null.formula=NULL,formula,
       }        
       bootreps<-matrix(,nrow=boot.repl,ncol=2) 
       colnames(bootreps) <- paste(c("full.","null."),test.obj,sep="")
-      cat("bootstrap replicates: ")
+      msg <- "bootstrap replicates: "
+      msglength <- nchar(msg)
+      cat(msg)
+      t0 <- proc.time()["user.self"]
       simbData <- nullfit$data
       if (tolower(nullfit$family$family)=="binomial") {
         form <- attr(nullfit$predictor,"oriFormula") ## this must exists...  
@@ -203,11 +206,20 @@ function(null.formula=NULL,formula,
             } ## otherwise repeat!
           }
         } 
-        cat(ii);cat(" ")
-        if ((ii %% 50)==0) cat("\n")
-      } ## end main bootstrap loop
-      cat("\n") ##  
-    } ## end bootstrap 
+        tused <- proc.time()["user.self"]-t0
+        ttotal <- tused* boot.repl/ii
+        if (interactive()) {
+          for (bidon in 1:msglength) cat("\b")
+          msg <- paste("Estimated time remaining for bootstrap: ",signif(ttotal-tused,2)," s.",sep="")
+          msglength <- nchar(msg)
+          cat(msg)
+        } else {
+          cat(ii);cat(" ")
+          if ((ii %% 40)==0) cat("\n")
+        }
+      }
+      cat("\n")
+    } ## end main bootstrap loop
   } else { ## nothing operativ yet
     bootreps<-matrix(,nrow=boot.repl,ncol=length(unlist(fullfit$APHLs))) 
     colnames(bootreps) <- names(unlist(fullfit$APHLs))
@@ -220,9 +232,12 @@ function(null.formula=NULL,formula,
     resu <- list(fullfit=fullfit,nullfit=nullfit)
     LRTinfo <- list(df=df,LRTori = LRTori)
     if (boot.repl>0) {
-      meanbootLRT <- 2*mean(bootreps[,1]-bootreps[,2])  
+      bootdL <- bootreps[,1]-bootreps[,2]
+      meanbootLRT <- 2*mean(bootdL)  
+      LRTinfo$rawPvalue <- (1+sum(bootdL>=LRTori/2))/(boot.repl+1) ## DavisonH, p.141
       LRTinfo$meanbootLRT <- meanbootLRT
       LRTinfo$bootreps <- bootreps
+      LRTinfo$LRTcorr <- LRTori*df/meanbootLRT
     }
   } else {
     resu <- list(fullfit=fullfit)

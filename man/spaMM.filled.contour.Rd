@@ -106,6 +106,8 @@ the y/x aspect ratio of the 2D plot area (not of the full figure including the s
   and \code{\link[lattice]{levelplot}} from package \code{lattice}.
 }
 \examples{
+\donttest{
+
 spaMM.filled.contour(volcano, color = spaMM.colors) # simple
 
 ## Comparing the layout with that of filled.contour:
@@ -135,5 +137,7 @@ filled.contour(x, y, volcano, color = terrain.colors,
     key.axes = axis(4, seq(90, 190, by = 10)))  # maybe also asp = 1
 mtext(paste("filled.contour(.) from", R.version.string),
       side = 1, line = 4, adj = 1, cex = .66)
+
+}
 
 }

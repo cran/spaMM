@@ -14,7 +14,8 @@ spaMM.getOption(x)
 
 }
 \arguments{
-  \item{\dots}{Anything consistent with standard format for function arguments. However, only the following ones
+  \item{x}{a character string holding an option name.}
+  \item{\dots}{A named value or a list of named values. The following values, with their defaults, 
     are used in \code{spaMM}:
 
   \describe{
@@ -38,7 +39,6 @@ spaMM.getOption(x)
 }
   }
 
-  \item{x}{a character string holding an option name.}
 }
 \details{
    

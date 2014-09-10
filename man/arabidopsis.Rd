@@ -32,9 +32,9 @@ The data were retrieved from \url{http://bergelson.uchicago.edu/regmap-data/clim
  Fournier-Level A, Korte A., Cooper M. D., Nordborg M., Schmitt J., Wilczek AM (2011). A map of local adaptation in Arabidopsis thaliana. Science 334: 86-89.
 
  Hancock, A. M., Brachi, B., Faure, N., Horton, M. W., Jarymowycz, L. B., Sperone, F. G., Toomajian, C., Roux, F., and Bergelson, J. 2011. 
- Adaptation to climate across the Arabidopsis thaliana genome, Science 334, 83-86.
+ Adaptation to climate across the Arabidopsis thaliana genome, Science 334: 83-86.
  
-  Rousset F., Ferdy, J.-B. (2014) Testing environmental and genetic effects in the presence of spatial autocorrelation. Ecography, in press.
+  Rousset F., Ferdy, J.-B. (2014) Testing environmental and genetic effects in the presence of spatial autocorrelation. Ecography, 37: 781-790.
     \url{http://dx.doi.org/10.1111/ecog.00566}
  
 }

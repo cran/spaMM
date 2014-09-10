@@ -153,7 +153,7 @@ SEXP selfAdjointSolverCpp( SEXP AA ){
  return List::create(Named("u") = es.eigenvectors(),Named("d")=es.eigenvalues());
 }
 
-//FR->FR unfortunately useless:
+// unfortunately useless:
 // [[Rcpp::export]]
 SEXP LevPerturbedQCpp( SEXP perturbedwAugX, SEXP pforREML, SEXP RpRu, SEXP RpRd, SEXP lamOverLam0, SEXP phiOverPhi0 ){
  const Map<MatrixXd> A(as<Map<MatrixXd> >(perturbedwAugX));

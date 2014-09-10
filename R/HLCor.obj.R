@@ -2,13 +2,6 @@ HLCor.obj <-
 function(ranefParsVec,skeleton,HLCor.obj.value="p_bv",trace=NULL,family=gaussian(),...) { ## name of first arg MUST differ from names in dotlist...
   mc <- match.call(expand.dots=TRUE) ## (1) expand.dots added 11/04/2014 for the mutlinomial... eval 
   dotlist <- list(...)
-  ## (2) (written long before (1)and (3) )
-  ## potentially used by getCall(object) in update.HL... if HLfit was called by HLCor through a do.call() this contains the body of the function 
-  ## Pour resoudre le probleme de memoire (mais pas du programmeur): 
-  ## In that case HLCor removes this from the HLfit object and gives its own call. Otherwise we can improve a bit by 
-  ## mc[[1]] <-  call("HLfit")[[1]] ## replace the body with the call; eval(mc) will still work
-  ## but all other arguments are still evaluated... cf HLCor
-  ## (3) quand la fonction est appelee par optim there is no appropriate info about the called objective function in mc... samefor function argument
   if ( inherits(mc$data,"list")) {
     ## then processed should already be a list
     family <- mc$family
@@ -44,10 +37,11 @@ function(ranefParsVec,skeleton,HLCor.obj.value="p_bv",trace=NULL,family=gaussian
     zut <- paste(ranefParsVec,collapse="")  
     save(HLCor.args,file=paste("HLCor.args.",zut,".RData",sep="")) ## for replicating the problem
   }
-  hlfit <- do.call(HLCor,HLCor.args)
+  hlfit <- do.call("HLCor",HLCor.args)
   aphls <- hlfit$APHLs
   resu <- aphls[[HLCor.obj.value]]
-  verif <- c(unlist(aphls),hlfit$lambda,hlfit$phi,ranefParsVec) ## hlfit$phi may be NULL
+  readable <- unlist(toCanonical(ranPars=forGiven,corr.model=dotlist$`corr.model`,checkComplete=FALSE)$ranPars) ## FR->FR use of dotlist...
+  verif <- c(unlist(aphls),hlfit$lambda,hlfit$phi,readable,ranefParsVec) ## hlfit$phi may be NULL
   if (is.character(trace)) {
     write(verif,file=trace,ncolumns=length(verif),append=T) ## the file is unlink'ed in corrHLfit()  
   }

@@ -25,8 +25,9 @@ function(object, nsim = 1, seed = NULL, newX=NULL, sizes=object$weights,...) { #
     eta <- eta + attr(object$predictor,"offset") ## $offset not NULL in a processed predictor  
   } else {
     nobs <- nrow(newX)
-    eta_and_Frames <- newetaFix(object,newX)
-    eta <- eta_and_Frames$eta
+    ## [-2] so that HLframes does not try to find the response variables  
+    allFrames <- HLframes(formula=attr(object$predictor,"oriFormula")[-2],data=newX) ## may need to reconstruct offset using formula term
+    eta <- newetaFix(object,newMeanFrames=allFrames)
   }
   ##
   if (any(object$models[["lambda"]] != "")) { ## i.e. not a GLM
@@ -34,7 +35,7 @@ function(object, nsim = 1, seed = NULL, newX=NULL, sizes=object$weights,...) { #
       ZAL <- object$ZALMatrix
       vec_n_u_h <- attr(object$lambda,"n_u_h")
     } else {
-      FL <- spMMFactorList(object$predictor, eta_and_Frames$newMeanFrames$mf, 0L, 0L) 
+      FL <- spMMFactorList(object$predictor, allFrames$mf, 0L, 0L) 
       ZALlist <- compute.ZALlist(LMatrix=NULL,ZAlist=FL$Design,Groupings=FL$Groupings)
       nrand <- length(ZALlist)
       vec_n_u_h <- rep(0, nrand)

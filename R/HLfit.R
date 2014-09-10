@@ -19,6 +19,7 @@ function(formula,
   # locfn2 <- fn() {... modif mu; locfn1()}
   # => locfn2->locfn1-> lit mu global pas local a locfn2
   #####################################################################
+  family <- checkRespFam(family)
   multiHLfit <- function() {
     fitlist <- lapply(data,function(dt){
       locmc <- mc
@@ -46,6 +47,7 @@ function(formula,
   ## In that case HLCor removes this from the HLfit object and gives its own call. Otherwise we can improve a bit by 
   ## mc[[1]] <-  call("HLfit")[[1]] ## replace the body with the call; eval(mc) will still work
   ## but all other arguments are still evaluated... cf HLCor
+  ################# family multi  #########################################
   if (missing(data)) data <- environment(formula)
   if (family$family=="multi") {
     if ( ! inherits(data,"list")) {
@@ -60,7 +62,10 @@ function(formula,
   ################# data LIST ##############################################
   if ( inherits(data,"list")) return(multiHLfit())
   ##########################################################################
-  corrNames <- intersect(c("nu","rho","Nugget","ARphi"),names(init.HLfit))
+  corrFixNames <- intersect(names(ranFix),c("nu","rho","Nugget","ARphi"))
+  corrPars <- ranFix[corrFixNames] ## as for functions in corrMM.LRT that always look in phi, lambda, rather than .Fix. 
+  ## corrPars is only for info in messages() and return value, contrary to the following one:
+  corrNames <- intersect(c("nu","rho","Nugget","ARphi"),names(init.HLfit)) ## the ones optimized within HLfit (confusing name)
   if (length(corrNames)>0) {
     corr_est <- init.HLfit[corrNames]
   } else corr_est <- NULL
@@ -83,11 +88,14 @@ function(formula,
     }
   } ## immediately used in preprocess call:
   if (is.null(processed)) {
-    validrows <- validRows(formula=formula,resid.formula=resid.formula,data=data) ## will remove rows with NA's in required variables
-    data <- data[validrows,,drop=FALSE] ## ## before Predictor is called and an LMatrix is added, etc.
-    processed <- preprocess(control.HLfit=control.HLfit,HLmethod=HLmethod,predictor=formula,phi.Fix=phi.Fix,
-                            resid.predictor=resid.formula,REMLformula=REMLformula,data=data,family=family,
-                            BinomialDen=BinomialDen,rand.families=rand.family)
+    validdata <- validData(formula=formula,resid.formula=resid.formula,data=data) ## will remove rows with NA's in required variables
+    if (!inherits(data,"environment")) {
+      data <- data[rownames(validdata),,drop=FALSE] ##     before Predictor is called and an LMatrix is added, etc. 
+    } else data <- validdata
+    loclist <- list(control.HLfit=control.HLfit,HLmethod=HLmethod,predictor=formula,phi.Fix=phi.Fix,
+                    resid.predictor=resid.formula,REMLformula=REMLformula,data=data,family=family,
+                    rand.families=rand.family) ## BinomialDen always missing here
+    processed <- do.call("preprocess",loclist)
   } 
   predictor <- processed$predictor
   rand.families <- processed$rand.families
@@ -156,7 +164,9 @@ function(formula,
   ZALI <- rbind(ZAL,I) 
   ###
   X_lamres <- processed$X_lamres
+  next_cov12_est <- NULL ## will be tested
   X_disp <- processed$X_disp ## may be NULL
+  p_phi <- ncol(X_disp) 
   off <- attr(processed$predictor,"offset")
   ##################
   if (is.character(init.HLfit)) { ## at this point init.HLfit is a string or not. Elsewhere it can be a list
@@ -202,16 +212,31 @@ function(formula,
   ##mais processed controle le default nMCint
   ## all per-iteration stats are taken from gibbsSample
   ## and all final stats are the means, from iterations SAEMsample, of the per-iteration stats 
+  resize.lambda <- function(lambda) {
+    if  (length(lambda)==nrand) {
+      lambda_est <- rep(lambda,vec_n_u_h)
+    } else if (length(lambda)==1) { ## typically what the current default resglm provides even for nrand>1
+      lambda_est <- rep(lambda,cum_n_u_h[nrand+1L])
+    } else if (length(lambda)==cum_n_u_h[nrand+1L]) {
+      lambda_est <- lambda
+    } else {stop("Initial lambda cannot be mapped to levels of the random effect(s).")}
+    lambda_est
+  }
+  
   SEMbetalambda <- function(beta_eta,nSEMiter=100,ngibbs=20,nMCint=10000,SEMseed=NULL,SAEMsample=NULL){ ## beta_eta as explicit argument so that the iterative aspect is explicit
     if (nSEMiter<10) stop("(!) In 'SEMbetalambda', 'nSEMiter' should be >9")
     if (is.null(SAEMsample)) SAEMsample <- (nSEMiter/2):nSEMiter
-    if(!is.null(SEMseed)) set.seed(SEMseed) ## comment ne pas avoir a retirer les memes nombres XXXX fois ?
+    if(!is.null(SEMseed)) {
+      set.seed(SEMseed) ## so that estimates of beta,lambda are repeatable ## comment ne pas avoir a retirer les memes nombres XXXX fois ?
+#      cat("SEMseed not null")
+    } #else {cat("NULL SEMseed")}
     betaMat <- matrix(0,nrow=nSEMiter,ncol=ncol(X.pv))
+    colnames(betaMat) <- colnames(X.pv) 
     EuGivenY=matrix(0,nrow=nSEMiter,ncol=length(y))
     lambdaVec <- numeric(nSEMiter)
     betaMat[1,] <- beta_eta
     lambdaVec[1] <- unique(lambda_est)
-    condVar=rep(0,nSEMiter)
+    condVar <- rep(0,nSEMiter)
     condVar[1] <- lambdaVec[1]
     ZA <- ZAlist[[1]] ## FR->FR ad hoc
     if ( ! attr(ZA,"identityMatrix")) {
@@ -278,33 +303,52 @@ function(formula,
         condMeans[k,] <- condMean
         lambdas[k] <- mean((invLMatrix %*% rvGivenObs)^2)
       } ## end ngibbs loop
-      EuGivenY[i,] <- colMeans(condMeans[gibbsSample,])
+      EuGivenY[i,] <- colMeans(condMeans[gibbsSample,,drop=FALSE])
       # M part of the SEM algorithm
       # determination of beta by standard least square #betaMat[i,] <- lm((z-Lvs)~X.pv-1)$coeff
       betaMat[i,] <- solveWrap.vector( qr.XtX , t(X.pv) %*% (augY-EuGivenY[i,]-off) ,stop.on.error=stop.on.error) 
       if (is.null(lambda.Fix)) {
         lambdaVec[i] <- mean(lambdas[gibbsSample])
-        #if(ZAisI) {
-        #  CondNorm <- CondNormfn(LMatrix,lambdaVec[i])
-        #} 
       } else lambdaVec[i] <- lambda.Fix
     }  ## end nSEMiter loop
     beta_eta <- colMeans(betaMat[SAEMsample,,drop=FALSE]) ## SAEMsample no longer useful ?
-    lambda_est <- mean(lambdaVec[SAEMsample])
-    ## simulate final likelihood(with high variance...)
+    lambda <- mean(lambdaVec[SAEMsample]) ## lambda_est will be given a different length
+    v_h <- colMeans(EuGivenY[SAEMsample,,drop=FALSE])
+#browser()
+## simulate final likelihood(with high variance...)
     fix <- X.pv %*% beta_eta + off
     binLikcond <- numeric(nrow(ZAL))
     logtotLikcond <- numeric(nMCint)
-    Lik <- 0
-    for (it in 1:nMCint) {
-      eta <- fix + sqrt(lambda_est) * (ZAL %*% rnorm(n_u_h,0))
-      mu <- family$linkinv(eta) ## ou pnorm()
-      binLikcond <- (1-mu)* (whichy0)+ mu*(whichy1)
-      logtotLikcond[it] <- sum(log(binLikcond))
-    }
-    maxlogtotLikcond <- max(logtotLikcond)
-    logLik <- log(mean(exp(logtotLikcond-maxlogtotLikcond)))+maxlogtotLikcond
-    return(list(beta_eta=beta_eta,lambda_est=lambda_est,v_h=colMeans(EuGivenY[SAEMsample,]),p_v=logLik))
+    if (nMCint==0) { ## use standard Laplace approx for estimating the likelihood
+      ## HACK
+      arglist <- as.list(mc) ## of which [[1]] is "HLfit"
+      proc <- arglist$processed 
+      if (! is.null(proc)) arglist$processed <- eval.update.call(proc$callargs,HLmethod="PQL/L") 
+      arglist$HLmethod <- NULL ## for clarity; should be ignored anyway
+      arglist$etaFix$beta <- beta_eta
+      #      arglist$etaFix$v_h <- v_h ## interestingly, disastrous.
+      arglist$ranFix$lambda <- lambda
+      logLapp <- eval(as.call(arglist))$APHLs$p_v
+      attr(logLapp,"method") <- "p_v(h) (marginal L):"
+    } else {
+      Lik <- 0
+      for (it in 1:nMCint) {
+        eta <- fix + sqrt(lambda) * (ZAL %*% rnorm(n_u_h,0))
+        mu <- family$linkinv(eta) ## ou pnorm()
+        binLikcond <- (1-mu)* (whichy0)+ mu*(whichy1)
+        logtotLikcond[it] <- sum(log(binLikcond))
+      }
+      maxlogtotLikcond <- max(logtotLikcond)
+      rel <- exp(logtotLikcond-maxlogtotLikcond)
+      logLapp <- log(mean(rel))+maxlogtotLikcond
+      seInt <- sqrt(var(log(colMeans(matrix(rel,ncol=50)))/50))
+      attr(logLapp,"method") <- "  logL (MC estimate)" ## directly usable for screen output
+    } 
+    # if (lambda>20) {
+    #       cat("\a\a\a")
+    #       browser()
+    # }
+    return(list(beta_eta=beta_eta,lambda=lambda,v_h=v_h,logLapp=logLapp,seInt=seInt))
   } ## end local def of SEMbetalambda
   
   u_h_from_v_h <- function(v_h) {
@@ -333,12 +377,21 @@ function(formula,
     return(u_h)
   }
 
+  `calc.w.resid` <- function(GLMweights,phi_est) {
+    phi_est[phi_est<1e-12] <- 1e-11 ## 2014/09/04 local correction, cf comment in calc.p_v
+    as.vector(GLMweights/phi_est)
+  }
+    
+
   `calc.p_v` <- function(returnLad=FALSE,only.h=FALSE) { 
     theta <- theta.mu.canonical(mu/BinomialDen,family$family)  
     if (family$family=="binomial") {
       clik <- sum(loglfn.fix(theta,y/BinomialDen,BinomialDen,1/(phi_est))) ## freq a revoir
     } else {
-      #browser()
+      phi_est[phi_est<1e-12] <- 1e-10 ## 2014/09/04 local correction, has to be finer than any test for convergence 
+      ## creates upper bias on clik but should be more than compensated by the lad
+      ## correcting the lad makes an overall upper bias for small (y-theta) at "constant" corrected phi 
+      ## this can be compensated by correcting the lad LESS.
       clik <- sum(loglfn.fix(theta,y,prior.weights/phi_est)) ## note (prior) weights meaningful only for gauss/ Gamma 
     }
     if (models[[1]]!="etaHGLM" && models[3]!="phiHGLM") return(list(clik=clik,p_v=clik))
@@ -468,13 +521,13 @@ function(formula,
       v_h <- etaFix$v_h
       u_h <- etaFix$u_h
       if (is.null(u_h)) {u_h <- u_h_from_v_h(v_h)}
-      lambda_est <- lambda.Fix
+      lambda_est <- resize.lambda(lambda.Fix)
       eta <- eta + ZAL %*% etaFix$v_h ## updated at each iteration
     } ## FREQS
     ## conversion to mean of response variable (COUNTS for binomial)
     blob <- muetafn(family=family,eta=eta,BinomialDen=BinomialDen,priorWeights=prior.weights) 
     mu <- blob$mu ## if Bin/Pois, O(n): facteur BinomialDen dans la transfo mu -> eta ## nonstandard mu des COUNTS
-    w.resid<-as.vector(blob$GLMweights /phi_est) ## 'weinu', must be O(n) in all cases
+    w.resid <- calc.w.resid(blob$GLMweights,phi_est) ## 'weinu', must be O(n) in all cases
     if (models[[1]]=="etaHGLM") { ## linear predictor for mean with ranef
       wranefblob <- updateW_ranefS(cum_n_u_h,rand.families,lambda_est,u_h,v_h) ## no fit, likelihood computation
       dvdu <- wranefblob$dvdu
@@ -488,7 +541,7 @@ function(formula,
   ##########################################################################################
   ##########################################################################################
   
-  `provide.resglm` <- function() { 
+  `provide.resglm` <- function() { ## family,y,pforpv,off,prior.weights
     if (family$family=="binomial" && ncol(y)==1) { 
       ##  && ncol(y)==1: attempt to implement the cbind() for y itself syntax throughout. But fails later on 'y - mu'...
       begform <-"cbind(y,BinomialDen-y)~"  
@@ -502,13 +555,15 @@ function(formula,
       } else {endform <- "0"}
     }
     locform <- as.formula(paste(begform, endform))
-    resglm<-glm(locform,family=family,offset=off,weights=prior.weights) ## warning "glm.fit: fitted probabilities numerically 0 or 1 occurred" => separation or large offset
+    resglm <- glm(locform,family=family,offset=off,weights=prior.weights) 
     if (pforpv>0) {
-      if (max(abs(c(resglm$coefficients)),na.rm=TRUE)>1e10) { ## na.rm v1.2 pour param non estimables (cas normal)
+      ## Two potential problems (1) NA's pour param non estimables (cas normal); 
+      ## (2) "glm.fit: fitted probabilities numerically 0 or 1 occurred" which implies separation or large offset
+      if (max(abs(c(coefficients(resglm))),na.rm=TRUE)>1e10) { ## na.rm v1.2 
         message("(!) Apparent divergence of estimates in a *glm* analysis of the data.")
         message("    Check your data for separation or bad offset values.")
         stop("    I exit.") 
-      } else names(resglm$coefficients) <- colnames(X.pv) ## because this if unfortunately not the case... 
+      } 
     } 
     return(resglm)
   }
@@ -523,7 +578,7 @@ function(formula,
         # then account for non gaussian(id) rand families
         # (1)
         if (family$family=="binomial" && family$link=="logit") {
-          fv<-fitted(resglm)
+          fv <- fitted(resglm)
           init.lambda <- sum((resid(resglm)^2)/(resglm$prior.weights*fv*(1-fv)))/resglm$df.residual
         } else {
           resdisp <-as.numeric(deviance(resglm)/resglm$df.residual) 
@@ -672,32 +727,32 @@ function(formula,
   
   ##############################################################################################
   ######### Initial estimates for mu by GLM ####################
-  ## FR->FR UGLY: to fit a GLM, glm() is called here... 
   if ( ( pforpv>0 && is.null(init.HLfit$fixef)) || is.null(phi.Fix) || is.null(init.HLfit$v_h) || is.null(lambda.Fix) ) { 
     ## all cases where an initial resglm is needed (even when pforpv=0, may be needed to provide init phi or init lambda)
     resglm <- provide.resglm()   
   }
+  beta_eta <- numeric(pforpv)
   if (pforpv>0) { 
-    beta_eta <- numeric(ncol(X.pv))
     beta_eta <- init.HLfit$fixef
     if (is.null(beta_eta) ) {
-      beta_eta<-c(resglm$coefficients)[1:pforpv] ## FR->FR peut-on legitimement avoir NA ici ?
+      beta_eta<-c(coefficients(resglm)) ## this may include NA's. Testcase: HLfit(Strength ~ Material*Preheating+Method,data=weld)
+      names(beta_eta) <- unlist(lapply(names(beta_eta),substring,first=5)) ## removes "X.pv" without guessing any order or length
     } 
     beta_eta[names(etaFix$beta)] <- etaFix$beta
-  } else {
-    beta_eta <- numeric(0)
-    se_beta <-numeric(0)
-  }
-  if(FALSE && any(is.na(beta_eta))) { # FR->FR note FALSE in the if... 
-    ## FR->FR das preprocess en utilisant lm pour faire le boulot simplement ? 
-    ## stop("(!) Some coefficients of the predictor are not estimable. Check that all predictor 'variables' are variable.")
+  } 
+  if (any(is.na(beta_eta))) {   
+    ## FR->FR das preprocess en utilisant lm ? mais l'interet et de montrerles NA explicites dans la sortie comme par glm()
     XpvOri <- X.pv
     pforpvori <- pforpv
     beta_etaOri <- beta_eta
-    X.pv <- X.pv[,which(!is.na(beta_eta)),drop=F]
+    X.pv <- X.pv[,which(!is.na(beta_eta)),drop=FALSE]
     pforpv <- ncol(X.pv)
     beta_eta <- beta_eta[which(!is.na(beta_eta))]
   } else beta_etaOri <- NULL
+  if (!is.null(control.HLfit$intervalInfo)) {
+    parmcol <- attr(control.HLfit$intervalInfo$parm,"col")
+    beta_eta[parmcol] <- control.HLfit$intervalInfo$init 
+  }  
   ## Initial estimate for phi ####
   if (is.null(phi.Fix)) { ## at this point, means that not poisson nor binomial
     phi_est <- init.HLfit$phi ## must be a list of 'predictor' values not linear coefficients of predictor 
@@ -747,13 +802,7 @@ function(formula,
     if (!is.null(checkv_h)) v_h <- checkv_h
     init.lambda <- generateInitLambda()
     ## one could imagine fixing some of then but not others...  
-    if  (length(init.lambda)==nrand) {
-      lambda_est <- rep(init.lambda,vec_n_u_h)
-    } else if (length(init.lambda)==1) { ## typically what the current default resglm provides even for nrand>1
-      lambda_est <- rep(init.lambda,cum_n_u_h[nrand+1L])
-    } else if (length(init.lambda)==cum_n_u_h[nrand+1L]) {
-      lambda_est <- init.lambda
-    } else {stop("Initial lambda cannot be mapped to levels of the random effect(s).")}
+    lambda_est <- resize.lambda(init.lambda)
   }
   if (models[[3]]=="phiHGLM") {
     stop("random effects in predictor or residual variance (phi) not yet implemented")
@@ -769,7 +818,7 @@ function(formula,
   mu <- blob$mu ## if Bin/Pois, O(n): facteur BinomialDen dans la transfo mu -> eta ## nonstandard mu des COUNTS
   dmudeta<- blob$dmudeta ## if Bin/Pois, must be O(n)
   Vmu <- blob$Vmu ## if Bin/Pois, O(n)
-  w.resid<-as.vector(blob$GLMweights /phi_est) ## 'weinu', must be O(n) in all cases
+  w.resid <- calc.w.resid(blob$GLMweights,phi_est) ## 'weinu', must be O(n) in all cases
   
   if (models[[1]]=="etaHGLM") {
     wranefblob <- updateW_ranefS(cum_n_u_h,rand.families,lambda_est,u_h,v_h) ## initilization !
@@ -817,13 +866,14 @@ function(formula,
   ########################################
   if (HL[1]=="SEM") { ## specif probit
     n_u_h <- vec_n_u_h[1] ## ugly but coherent handling of info # levels ranef
-    qr.XtX <- QRwrap(crossprod(X.pv)) ##qr(t(X.pv)%*%X.pv) ## FR->FR facilement recodable Rcpp
+    qr.XtX <- QRwrap(crossprod(X.pv)) ##FR->FR qr(t(X.pv)%*%X.pv) ## FR->FR facilement recodable Rcpp
     SEMargs$beta_eta <- beta_eta
     betalambda <- do.call(SEMbetalambda,SEMargs)
     beta_eta <- betalambda$beta_eta
-    lambda_est <- betalambda$lambda_est
+    lambda_est <- resize.lambda(betalambda$lambda)
     u_h <- v_h <- betalambda$vs
-    p_v <- betalambda$p_v
+    logLapp <- betalambda$logLapp
+    attr(logLapp,"seInt") <- betalambda$seInt ## may be NULL
     tXinvS <- NULL
   } else while ( TRUE ) { ##the main loop with steps: new linear predictor, new leverages, new phi, new w.resid, new lambda, new fn(lambda)
     if (models[[1]]=="etaHGLM") {
@@ -932,10 +982,10 @@ function(formula,
           } else if(version=="1.0") { ## using control.hlfit$version... 
             Augz <- c(z1-a,z2) ## better lik for corrHLfit scotlip than the LeeL12 algo... innocent car petit de toute façon
           } else { ## solution of augmented system
-            ## (1)the first operation in LevenbergMstep is to substract (eta^0,v^0): LM_wAugz <- wAugz - wAugX %*% betaV
-            ##    so we keep (eta^0,v^0) here
-            ## (2) what's needed here is the factor of T w on the RHS, not the factor of XinvS in the direct eqns above
+            ## (1) what's needed here is the factor of T w on the RHS, not the factor of XinvS in the direct eqns above
             ##    As proven this gives z1-a in one algo and z1- sscaled in the other (!= version 1.0)
+            ## (2) the first operation in LevenbergMstep is to substract (eta^0,v^0): LM_wAugz <- wAugz - wAugX %*% betaV
+            ##    so we keep (eta^0,v^0) here
             Augz <- c(z1- sscaled,
                       z2+ ((1/w.ranef) * t(ZAL)) %*% (sscaled * w.resid ))  ## 
             ## z2 correction  constructed from eqs (3)(4) of LeeL12 App. p5 and consistent with eq B1 MolasL:
@@ -963,8 +1013,47 @@ function(formula,
             #  ## les leverages sont diag(crossprod(forwardsolve(slmfit$chol, t(wAugX))))
             #} else {
             if (.SpaMM$USEEIGEN) {
-              betaVQ <- lmwithQ(wAugX,wAugz)
-              betaV <- betaVQ$coef   
+              if ( !is.null(control.HLfit$intervalInfo)) {
+                currentp_v <- calc.p_v()$p_v
+#if (currentp_v>176) browser()                
+                #print((control.HLfit$intervalInfo$fitp_v-currentp_v)/(control.HLfit$intervalInfo$MLparm-old_betaV[parmcol]))
+                if (FALSE) { ## crude  implementation of VenzonM's algo
+                  oldgrad <- t(wAugX) %*% (wAugz - wAugX %*% old_betaV) ## recovering the gradient of p_v
+                  #print(oldgrad)
+                  essaiMat <- crossprod(wAugX)
+                  essaiMat[parmcol,] <- - oldgrad
+                  essaiVec <- oldgrad
+                  essaiVec[parmcol] <- currentp_v - control.HLfit$intervalInfo$targetp_v
+                  essaiSol <- (old_betaV -solve(essaiMat) %*% essaiVec)
+                  # print(essaiSol) ## to show that this is reasonably consistent with the other algo when the latter has converged (but see "not fully exact step" here:)
+                  betaVQ <- lmwithQ(wAugX,wAugz)  ## for Q; not fully exact but enough for check
+                  betaV <- essaiSol
+                } ## but intermediate steps are divergent, dso that this easily fails.
+                if (TRUE) { ## more robust algo:
+                  ## updates according to a quadratic form of lik near max
+                  ## then target.dX = (current.dX)*sqrt(target.dY/current.dY) where dX,dY are relative to the ML x and y 
+                  ## FR->FR more secure method ?
+                  ## A nice thing of this conception is that if the target lik cannot be approached, 
+                  ##   the inferred x converges to the ML x => this x won't be recognized as a CI bound (important for locoptim) 
+                  currentDx <- (old_betaV[parmcol]-control.HLfit$intervalInfo$MLparm)
+                  targetDy <- (control.HLfit$intervalInfo$fitp_v-control.HLfit$intervalInfo$targetp_v)
+                  currentDy <- (control.HLfit$intervalInfo$fitp_v-currentp_v)
+                  if (currentDy <0) {
+                    message("An higher likelihood was found than for the original fit.\nThis suggests the original fit did not fully maximize the likelihood.")
+                    if (length(corrPars)>0) message(paste("Current correlation parameters are ",
+                                                          paste(names(corrPars),"=",signif(unlist(corrPars),6),collapse=", ")))
+                    message("Current likelihood is p_v=",currentp_v)                    
+                  } else {
+                    betaV[parmcol] <- control.HLfit$intervalInfo$MLparm + currentDx*sqrt(targetDy/currentDy)
+                  }
+                  betaVQ <- lmwithQ(wAugX[,-parmcol,drop=FALSE],wAugz-wAugX[,parmcol]*betaV[parmcol])
+                  betaV[-parmcol] <- betaVQ$coef
+                  #print(c(betaV[parmcol],control.HLfit$intervalInfo$targetp_v,calc.p_v()$p_v))
+                }
+              } else {
+                betaVQ <- lmwithQ(wAugX,wAugz)
+                betaV <- betaVQ$coef   
+              }
               #if (any(is.nan(betaV))) browser()
               levQ <- betaVQ$Q[,seq_len(ncol(wAugX))] ## Eigen's HouseholderQ returns a square matrix...
             } else {
@@ -1000,7 +1089,7 @@ function(formula,
         dmudeta<-blob$dmudeta
         Vmu <- blob$Vmu ## if Bin/Pois, O(n)
         ## update functions of v_h -> blob
-        w.resid<-as.vector(blob$GLMweights /phi_est) ## 'weinu', must be O(n) in all cases
+        w.resid <- calc.w.resid(blob$GLMweights,phi_est) ## 'weinu', must be O(n) in all cases
         #### update fns of v_h -> blob -> w.resid
         if ( LevenbergM ) { ## for LMM, d2hdv2 is constant // mu, hence it is constant over LevenbergMarquardt iterations
           if (pforpv>0) keep_Sig <- Sig
@@ -1097,7 +1186,7 @@ function(formula,
           dmudeta<-blob$dmudeta
           Vmu <- blob$Vmu ## if Bin/Pois, O(n)
           ## update functions of v_h -> blob
-          w.resid <- as.vector(blob$GLMweights /phi_est) ## 'weinu', must be O(n) in all cases
+          w.resid <- calc.w.resid(blob$GLMweights,phi_est) ## 'weinu', must be O(n) in all cases
           Sig <- diag(1/w.resid) ## ZAL %*% diag(1/w.ranef) %*% t(ZAL) + diag(1/w.resid) ## update v_h -> blob$GLMweights -> w.resid -> Sig -> next beta estimate
           ########## nearly done with one inner iteration
           if (verbose["trace"]) {
@@ -1287,33 +1376,44 @@ function(formula,
       ## d h/ d !log! phi correction (zero for gaussian residual error, no phi for other distribs)
       ## exact correction for not using the deviance residuals as approx for the likelihood of the residual error. It's not specifically ReML ! 
       ## this is a trick for still using deviances residuals in the Gamma GLM
-      notEQL <- 1+2*(log(phi_est)+digamma(1/phi_est))/phi_est ## LNP p. 89 and as in HGLMMM IWLS_Gamma; en jouant sur HL[3] on voit que ca ameliore les estim
+      phiscaled <- phi_est*prior.weights ## 08/2014
+      notEQL <- 1+2*(log(phiscaled)+digamma(1/phiscaled))/phiscaled ## LNP p. 89 and as in HGLMMM IWLS_Gamma; en jouant sur HL[3] on voit que ca ameliore les estim
       lev_phi <- lev_phi + notEQL   
     }    
     ## compute deviance_residuals 
     ## updated residuals from updated mu must be used (LeeNP p.161) [not so in dhglmfit !!]
     deviance_residual <- family$dev.resids(y,mu,wt=1) 
     ######### Dispersion Estimates for phi #####################
-    RespLink_disp<-"log"  ## currently not under user control
+    resid.family <- processed$resid.family
+    phifam <- GammaForDispGammaGLM(resid.family$link)
     if (is.null(phi.Fix)) { ## if phi is estimated (phi.Fix set to 1 for Poisson, Binomial)
       ## leverages have been computed before the  inner loop, which did not change the design matrices 
-      Offset_disp <- attr(resid.predictor,"offset") 
-      if (models[[3]]=="phiScal") {
-        next_phi_est <- sum(deviance_residual*prior.weights)/sum((1-lev_phi)) ## NOT in linkscale
-        if (next_phi_est<1e-8) next_phi_est <- 1e-8 # e-10 not high enough (d2hdv2 -> lad -> p_v unstable)
+      Offset_disp <- attr(resid.predictor,"offset") ## may be NULL
+      locmethod <- "glm" ## the method should not matter here
+      if (models[[3]]=="phiScal") { ## 
+        if ( !is.null(Offset_disp)) {
+          resglm_phi <- dispGammaGLM(dev.res=deviance_residual*prior.weights,lev=lev_phi,
+                                     X=X_disp,offset=Offset_disp,family=phifam,method=locmethod)
+          beta_phi <- resglm_phi$beta_disp
+          next_phi_est <- resglm_phi$next_disp_est
+        } else { ## one case where we can easily avoid an explicit call to a glm (but one will be used to compute SEs later) 
+          next_phi_est <- sum(deviance_residual*prior.weights)/sum(1-lev_phi) ## NOT in linkscale
+          beta_phi <- c("(Intercept)"=phifam$linkfun(next_phi_est)) ## linkscale value
+          resglm_phi <- NULL
+        }
         if (verbose["trace"]) {print(paste("phi_est=",signif(next_phi_est,4)),quote=F)}
       } else if (models[[3]]=="phiGLM") { ## there is a phi predictor to estimate but no ranef in this predictor
-        resglm_phi <- dispGammaGLM(dev.res=deviance_residual*prior.weights,lev=lev_phi,X=X_disp,offset=Offset_disp)
+        resglm_phi <- dispGammaGLM(dev.res=deviance_residual*prior.weights,lev=lev_phi,
+                                   X=X_disp,offset=Offset_disp,family=phifam,method=locmethod)
         # glm(I(deviance_residual/(1-lev_phi))~X_disp-1,weights=(1-lev_phi)/2,family=Gamma(log))
-        if (verbose["trace"]) {print(paste("phi coefficients=",paste(signif(resglm_phi$coefficients,4),collapse=", ")),quote=F)}
-        next_phi_est <- resglm_phi$fitted.values
-        lowphi <- which(next_phi_est < 1e-08)
-        next_phi_est[lowphi] <- 1e-08 ## to avoid problems with nearly singular matrices
+        beta_phi <- resglm_phi$beta_disp
+        next_phi_est <- resglm_phi$next_disp_est
       } else if (models[[3]]=="phiHGLM") { ## random effect(s) in predictor for phi
         stop("random effects in predictor or residual variance (phi) not yet implemented")
         ## there is a template code with comments in version 260812 of HLfit
         reshglm_phi <- list()
       } 
+      #lowphi <- which(next_phi_est < 1e-08); next_phi_est[lowphi] <- 1e-08 ## 2014/09/04 better correction in calc.p_v
       if (all(abs(next_phi_est-phi_est) < conv.threshold* (phi_est+0.1)) ) { ## ie 1e-6 ~ 1e-5*(1e-6+0.1)
         conv.phi <- TRUE ## 'weak convergence'... 
       } else conv.phi <- FALSE
@@ -1338,17 +1438,21 @@ function(formula,
           LMatricesBlob <- makeCovEst(u_h,ZAlist=ZAlist,cum_n_u_h=cum_n_u_h
                                       ,X_lamres=X_lamres,prev_LMatrices=next_LMatrices,
                                       userLfixeds=attr(ZALlist,"userLfixeds"),
-                                      lev_lambda=lev_lambda)
+                                      lev_lambda=lev_lambda,
+                                      levQ ## for off-diagonal terms
+                                      )
           next_LMatrices <- LMatricesBlob$next_LMatrices ## a list of matrices with NULL elements for non-random-slope terms
           next_lambda_est <- LMatricesBlob$next_lambda_est ## a full-length vector with values only in the appropriate u ranges 
-          ## FR->FR code a nettoyer en appliquant CovEst a chaque u.range...
+          ## only for testing convergence: 
+          cov12_est <- next_cov12_est
+          next_cov12_est <- LMatricesBlob$latest.unique.cov
         } else next_lambda_est <- numeric(length(u_h)) ## next_LMatrices remains an empty list()
         ## then fill all missing values 
         for (it in seq_len(nrand)) {
           if (attr(X_lamres,"Xi_cols")[it]==1) {
             u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
             unique.lambda <- sum(resp_lambda[u.range])/sum(1-lev_lambda[u.range]) ## NOT in linkscale 
-            unique.lambda <- pmax(unique.lambda,1e-8) # as for phi
+            unique.lambda <- pmax(unique.lambda,1e-8) # FR->FR still corrected
             unique.lambda <- pmin(unique.lambda,.SpaMM$maxLambda)  
             if (verbose["trace"]) {print(paste("lambda=",signif(unique.lambda,4)),quote=F)}
             next_lambda_est[u.range] <- rep(unique.lambda,length(u.range))
@@ -1361,9 +1465,9 @@ function(formula,
         reshglm_lambda <- list()
       } else { ## any mixture of lamScal and lamGLM and we can use a single X_lamres for all of them
         stop("Linear predictor for ranef variance (lambda) not yet implemented")
-        ## FR->FR code non teste
+        ## FR->FR code non operationnel
         resglm_lambda <- dispGammaGLM(dev.res=resp_lambda,lev=lev_lambda,X=X_lamres)
-        next_lambda_est <- resglm_lambda$fitted.values ## $fitted.value is NOT in linkscale, contrairement a $coefficients
+        next_lambda_est <- resglm_lambda$next_disp_est ## $fitted.value is NOT in linkscale, contrairement a $coefficients
         lowlambda <- which(next_lambda_est < 1e-08)
         next_lambda_est[lowlambda] <- 1e-08 ## to avoid problems with nearly singular matrices
       }
@@ -1379,7 +1483,7 @@ function(formula,
       # lambda_est remains = lambda.Fix
       conv.lambda <- TRUE
     } ## end if null lambda.Fix else ...
-    if (! is.null(corr_est)) {
+    if (! is.null(corr_est)) { ## this code does not apply for the random slope model
       corrEst.args$formula <- Predictor(formula=corrEst.form,offset=off + X.pv %*% beta_eta) ## FR->FR ugly input for offset...
       corrEst.args$init.corrHLfit <- corr_est ## this entails use of optim() (or another Optimizer) on these parameters
       if (nrand>1) stop("code needed for corr Estim within HLfit with multiple lambda parameters") ## FR->FR
@@ -1400,12 +1504,16 @@ function(formula,
       #FR->FR maybe conv_threshold a bit strict here...
       if (all(abs(log(unlist(next_corr_est)/unlist(corr_est))) < conv.threshold) ) { ## 
         conv.corr <- TRUE ## this is the simplest, best case. ## but if slow geometric decrease to 0, this is never true 
-      } else 
-      if (all(abs(unlist(next_corr_est)-unlist(corr_est)) < conv.threshold* (unlist(corr_est)+0.1)) ) { ## ie 1e-6 ~ 1e-5*(1e-6+0.1)
+      } else if (all(abs(unlist(next_corr_est)-unlist(corr_est)) < conv.threshold* (unlist(corr_est)+0.1)) ) { ## ie 1e-6 ~ 1e-5*(1e-6+0.1)
         conv.corr <- TRUE ## 'weak convergence'... 
       } else conv.corr <- FALSE
     } else {
-      conv.corr <- TRUE
+      if (!is.null(next_cov12_est)) {
+        if (iter>1 && abs(cov12_est-next_cov12_est) < conv.threshold ) { ## FR->FR pas top, devrait tester le corr coeff plutot que la cov
+          conv.corr <- TRUE 
+        } else conv.corr - FALSE       
+      } else conv.corr <- TRUE
+##      print(cov12_est-next_cov12_est)
     }
     iter<-iter+1 ## here first from 0 to 1
     ## We need to make sure either that convergence of lambda occurred on a relative log scale ( loop not stopping at max.iter !) so that the v_h are very accurate on same scale
@@ -1419,22 +1527,16 @@ function(formula,
       #if(length(beta_eta)>0) browser()
       if ( is.null(phi.Fix)) {
         phi_est <- next_phi_est
-        w.resid <- as.vector(blob$GLMweights /phi_est) ## 'weinu', must be O(n) in all cases; blob was updated when eta was
+        w.resid <- calc.w.resid(blob$GLMweights,phi_est) ## 'weinu', must be O(n) in all cases; blob was updated when eta was
       }
-      if (length(next_LMatrices)>0) {
-        ZALlist <- compute.ZALlist(LMatrix=next_LMatrices,ZAlist=ZAlist,Groupings=Groupings)
-        ## meme block que pour corr.est
-        ZAL <- post.process.ZALlist(ZALlist,predictor=predictor)
-        TT <- rbind(cbind(X.pv,ZAL),cbind(OO1,I))  ## aug design matrix
-        ZALI <- rbind(ZAL,I) 
-        if (distinct.X.ReML) {
-          TTleve<-rbind(cbind(X.Re,ZAL),cbind(OO1leve,I))
+      if (length(next_LMatrices)>0 || ! is.null(corr_est) ) {
+        if (length(next_LMatrices)>0) {
+          ZALlist <- compute.ZALlist(LMatrix=next_LMatrices,ZAlist=ZAlist,Groupings=Groupings)
+        } else if (! is.null(corr_est)) {
+          corr_est <- next_corr_est 
+          LMatrix <- attr(pff$predictor,"LMatrix")
+          ZALlist <- compute.ZALlist(LMatrix=LMatrix,ZAlist=ZAlist,Groupings=Groupings)
         }
-      }
-      if ( ! is.null(corr_est)) {
-        corr_est <- next_corr_est 
-        LMatrix <- attr(pff$predictor,"LMatrix")
-        ZALlist <- compute.ZALlist(LMatrix=LMatrix,ZAlist=ZAlist,Groupings=Groupings)
         ZAL <- post.process.ZALlist(ZALlist,predictor=predictor)
         TT <- rbind(cbind(X.pv,ZAL),cbind(OO1,I))  ## aug design matrix
         ZALI <- rbind(ZAL,I) 
@@ -1489,35 +1591,47 @@ function(formula,
   if (pforpv>0 && max.iter >0) { ## condition on max.iter <=> some params have been fitted
     if (is.null(tXinvS)) tXinvS <- calc.tXinvS(Sig,X.pv,stop.on.error,lambda_est,ranFix) ## slow when phi ->0 ...     
     if (class(tXinvS)=="try-error") {
-      beta_se <- rep(Inf,pforpv) ## maybe...
+#      beta_se <- rep(Inf,pforpv) ## maybe...
+      beta_cov <- matrix(Inf,ncol=pforpv,nrow=pforpv) ## maybe...
     } else {
       beta_cov <- try(solve(tXinvS%*%X.pv),silent=TRUE) ## solve(small matrix !)
       if (class(beta_cov)=="try-error") {
-        beta_se <- rep(Inf,pforpv) ## maybe...
+#        beta_se <- rep(Inf,pforpv) ## maybe...
+        beta_cov <- matrix(Inf,ncol=pforpv,nrow=pforpv) ## maybe...
       } else {
-        beta_se <- diag(beta_cov)
-        if (any(beta_se<0)) { ## divergence of tXinvS%*%X.pv leads to negative variance estimates
-          beta_se <- rep(Inf,pforpv) ## maybe... 
-        } else beta_se <- sqrt(beta_se)
+#        beta_se <- diag(beta_cov)
+        if (any(diag(beta_cov)<0)) { ## divergence of tXinvS%*%X.pv leads to negative variance estimates
+#          beta_se <- rep(Inf,pforpv) ## maybe... 
+          beta_cov <- matrix(Inf,ncol=pforpv,nrow=pforpv) ## maybe...
+        } #else beta_se <- sqrt(beta_se)
       }
     }
     #    if (any(is.infinite(beta_se))) {
     #      message("Suspected divergence of lambda estimates. Check model formula (wrong offset for example),")
     #      message(" otherwise try increasing control.HLfit$iter.mean.dispVar")
     #    }
-  } else beta_se <- NULL 
+  } else {#beta_se <- NULL
+    beta_cov <- NULL
+  } 
   ######################
   ######################
   ######################
   ##### LAMBDA
-  if ((HL[1]!="SEM") && models[[1]]=="etaHGLM" && is.null(lambda.Fix)) {
+  if (HL[1]!="SEM" && models[[1]]=="etaHGLM" && is.null(lambda.Fix)) {
     if (all(models[[2]]=="lamScal")) { ## there is a single X_lamres for all lambda's
       ## to compute the se we need the GLM residuals etc. So if the GLM has not been previously used it's better to use it here
       resglm_lambda <- dispGammaGLM(dev.res=resp_lambda,lev=lev_lambda,X=X_lamres)
-      summ_glm_lambda <- summary(resglm_lambda,dispersion=2) ## 2 dispersion=for the gamma GLM, probably 
-      p_lambda <- ncol(X_lamres) 
-      linkscale.lambda <- summ_glm_lambda$coefficients[1:p_lambda]
-      lambda_se <- summ_glm_lambda$coefficients[(p_lambda+1L):(2L*p_lambda)] ## ici probleme de transfo log      
+      linkscale.lambda <- resglm_lambda$beta_disp
+      p_lambda <- ncolX_lam <- ncol(X_lamres) ## to be modifie
+      lambda_se <- summary(resglm_lambda$resglm,dispersion=1)$coefficients[(ncolX_lam+1L):(2L*ncolX_lam)]       
+      if (! is.null(next_LMatrices)) {
+        ## lignes suiv supposent que L_matrix decrit random slope model
+        p_corr <- sum(unlist(lapply(next_LMatrices,function(mat) {
+          dimL <- nrow(attr(mat,"Lcompact"))
+          (dimL-1)*dimL/2
+        })))
+        p_lambda <- p_lambda+p_corr
+      }
       if (any(attr(X_lamres,"Xi_cols")>1)) { ## 
         ## here dispGammaGLM has reestimated the (log of) the lambda_est given as $d by random slope procedure
         ## so we can use this; but we need to display the corrmat...
@@ -1526,32 +1640,33 @@ function(formula,
       stop("From HLfit: 'lamHGLM' and 'lamGLM' not fully implemented.")
       ## there is a template code with comments in version 260812 of HLfit
     }
-  }       
+  } else p_lambda <- 0       
   ##### PHI
   if ( is.null(phi.Fix)) {
     if (models[[3]]=="phiHGLM") {
       ## there is a template code with comments in version 260812 of HLfit
+      stop("HGLM for phi not implemented")
     } else {
-      #          if (models[[3]]=="phiScal") {
-      ## We need the $coefficients. So if the GLM has not been previously called it's better to call it here
-      resglm_phi <- dispGammaGLM(dev.res=deviance_residual*prior.weights,lev=lev_phi,X=X_disp,offset=Offset_disp)
-      res2<-summary(resglm_phi)
-      #          }
-      p_disp<-ncol(X_disp) 
-      linkscale.phi <- res2$coefficients[1:p_disp]
-      phi_se <- res2$coefficients[(p_disp+1L):(2L*p_disp)]
+      if (is.null(resglm_phi)) resglm_phi <- dispGammaGLM(dev.res=deviance_residual*prior.weights,lev=lev_phi,
+                                 X=X_disp,offset=Offset_disp,family=phifam)
+      phi_se <- summary(resglm_phi$resglm,dispersion=1)$coefficients[(p_phi+1L):(2L*p_phi)]       
+      ## note dispersion set to 1 to match SmythHV's 'V_1' method, which for a log link has steps:
+      #SmythHVsigd <- as.vector(sqrt(2)*phi_est);SmythHVG <- as.vector(phi_est); tmp <- SmythHVG / SmythHVsigd ## tmp is here sqrt(2) !
+      #if (length(tmp)>1) {SmythHVZstar <- diag(tmp) %*% X_disp} else SmythHVZstar <- tmp * X_disp
+      #SmythHVcovmat <- solve(ZtWZ(SmythHVZstar,(1-lev_phi))); phi_se <- sqrt(diag(SmythHVcovmat)) print(phi_se)
     }
   } 
   ########## LIKELIHOODS
   #    theta<-theta.mu.canonical(mu/BinomialDen,family$family)  
   if (HL[1]=="SEM") {
-    APHLs <- list(p_v=p_v,p_bv=p_v) ## FR->FR attributes ?
+    APHLs <- list(logLapp=logLapp) ## keeps attributes
   } else {
     if (models[[1]]=="etaHGLM" && pforpv==0) { 
       d2hdv2 <- calcDhDv2(ZAL,w.resid,w.ranef) ##  - t(ZAL) %*% diag(w.resid) %*% ZAL - diag(w.ranef)
     }
     calcpv <- calc.p_v(returnLad=TRUE)
     if (models[[1]] != "etaHGLM" && models[3] != "phiHGLM") { ## ie GLM, not HGLM
+      ## note that p_v=p_bv here, whether an REML estimation of phi is used or not... 
       ml <- calcpv$clik ## vanilla likelihood
       d2hdx2 <- - ZtWZ(X.Re,w.resid)  ## t(X.Re)%*%Wresid%*%X.Re ## X should be the one for leverages
       if (.SpaMM$USEEIGEN) {
@@ -1569,21 +1684,17 @@ function(formula,
         p_v <- calcpv$p_v 
         ## see readable account of aic in HaLM07
         if (ncol(X.Re)>0) {
-          d2hdbv2 <-rbind(cbind(ZtWZ(X.Re,w.resid), crossprod(X.Re,sweep(ZAL,MARGIN=1,w.resid,`*`))),
+          Md2hdbv2 <- rbind(cbind(ZtWZ(X.Re,w.resid), crossprod(X.Re,sweep(ZAL,MARGIN=1,w.resid,`*`))),
                           cbind(crossprod(ZAL,sweep(X.Re,MARGIN=1,w.resid,`*`)), - d2hdv2))
-          #         d2hdbv2 <-rbind(cbind((t(X.Re)%*%Wresid%*%X.Re),(t(X.Re)%*%Wresid%*%ZAL)),
-          #                         cbind((t(ZAL)%*%Wresid%*%X.Re),(-1*d2hdv2)))
           if (.SpaMM$USEEIGEN) {
-            ladbv <- LogAbsDetCpp(d2hdbv2/(2*pi))
-          } else ladbv <- determinant(d2hdbv2/(2*pi))$modulus[1]
-        } else {
-          d2hdbv2 <- d2hdv2
+            ladbv <- LogAbsDetCpp(Md2hdbv2/(2*pi))
+          } else ladbv <- determinant(Md2hdbv2/(2*pi))$modulus[1]
+        } else { ## fit ML: p_bv=p_v hence d2hdpbv reduces to d2hdv2
+          Md2hdbv2 <- - d2hdv2 
           ladbv <- calcpv$lad
         }
         if (AIC) { ## diff de d2hdbv2 slmt dans dernier bloc
-          # d2clikdbv2 <-rbind(cbind((t(X.Re)%*%Wresid%*%X.Re),(t(X.Re)%*%Wresid%*%ZAL)),
-          #                  cbind((t(ZAL)%*%Wresid%*%X.Re),(t(ZAL)%*%Wresid%*%ZAL)))
-          d2clikdbv2 <-rbind(cbind(ZtWZ(X.Re,w.resid), crossprod(X.Re,sweep(ZAL,MARGIN=1,w.resid,`*`))),
+          Md2clikdbv2 <- rbind(cbind(ZtWZ(X.Re,w.resid), crossprod(X.Re,sweep(ZAL,MARGIN=1,w.resid,`*`))),
                                 cbind(crossprod(ZAL,sweep(X.Re,MARGIN=1,w.resid,`*`)), ZtWZ(ZAL,w.resid)))
         }
       } 
@@ -1598,26 +1709,25 @@ function(formula,
     } else hv20<-0 ## idem
     #### distinct handling of AIC and p_bv (L-BFGS-B requires a non trivial value):
     if (is.nan(ladbv) || AIC ) { 
-      eigvals <- eigen(d2hdbv2/(2*pi),only.values = T)$values
+      eigvals <- eigen(Md2hdbv2/(2*pi),only.values = T)$values
+      eigvals <- pmax(eigvals,1e-12)
     }
-    if (is.nan(ladbv)) { 
-      zut <- abs(eigvals) ## 05/01/13
-      zut[zut<1e-12] <- 1e-12
-      ladbv <- sum(log(zut)) ## 
-    }
+    if (is.nan(ladbv)) ladbv <- sum(log(eigvals)) 
     p_bv <- hlik-(hv10+hv20+ladbv/2)  
     if ( ! is.null(calcpv$second.corr)) p_bv <- p_bv + calcpv$second.corr
+    dAIC <- -2*p_bv + 2 * (p_lambda+p_phi) ## HaLM (10) focussed for dispersion params
     if ( AIC ) {
       # a debugging issue is that options(error=recover) acts before tryCatch gets the return value
       # from its first argument. So a tryCatch on solve is not a good idea.
-      if (min(eigvals)>1e-12) {
-        qr.d2hdbv2 <- QRwrap(d2hdbv2)
-        pd <- sum(diag(solveWrap.matrix(qr.d2hdbv2,d2clikdbv2,stop.on.error=stop.on.error)))
+      if (min(eigvals)>1e-11) {
+        qr.Md2hdbv2 <- QRwrap(Md2hdbv2)
+        pd <- sum(diag(solveWrap.matrix(qr.Md2hdbv2,Md2clikdbv2,stop.on.error=stop.on.error)))
         if (class(pd)=="try-error") {
-          warning("Computation of cAIC failed because the 'd2hdbv2' matrix appears singular")
+          warning("Computation of cAIC/GoF df's failed because the 'd2hdbv2' matrix appears singular")
           pd <- NA
         }
       } else pd <- Inf
+      GoFdf <- nobs - pd
       ## eqs 4,7 in HaLM07
       cAIC <- -2*clik + 2*pd ## 
       # there is also a "focussed" AIC in HaLM07 that would be   
@@ -1625,11 +1735,13 @@ function(formula,
       ## that would be used to select among different dispersion models 
       # discussion in section 7 of the paper suggests using an AIC based on p_v for selection among different fixed effect component models
       # but Yu and Yau then suggest caicc <- -2*clik + ... where ... involves d2h/db d[disp params] and d2h/d[disp params]2
-    } else {cAIC <-NULL}
+    } else {cAIC <-NULL; GoFdf <- NULL}
     if (models[[1]] != "etaHGLM") {
       APHLs <- list(p_v=ml,p_bv=p_bv) ## FR->FR rename ?
     } else APHLs <- c(calcpv,list(p_bv=p_bv))
     APHLs$cAIC <- cAIC
+    APHLs$dAIC <- dAIC
+    APHLs$GoFdf <- GoFdf    
   }
   ###################
   ###################
@@ -1656,8 +1768,6 @@ function(formula,
   res$family <- family
   res$X <- X.pv
   res$ranFix <- ranFix ## currently as a uniform template consistent with projected changes ; excpt that lamFix, phiFix info is now in lambda.object, etc
-  corrFixNames <- intersect(names(ranFix),c("nu","rho","Nugget","ARphi"))
-  corrPars <- ranFix[corrFixNames] ## idem. cf functions in corrMM.LRT that always look in phi, lambda, rather than .Fix. 
   typelist <- list()
   typelist[corrFixNames] <- "fix"
   corrPars[corrNames] <- corr_est[corrNames]
@@ -1687,13 +1797,17 @@ function(formula,
     names(beta_etaOri) <- colnames(XpvOri) 
     beta_etaOri[names(beta_eta)] <- beta_eta ## keeps the original NA's
     res$fixef <- beta_etaOri
-    se <- beta_etaOri ## also put NA's
-    se[names(beta_se)] <- beta_se 
-    res$fixef_se <- se
+#    se <- beta_etaOri ## also put NA's
+#    se[names(beta_eta)] <- beta_se ## assumes that beta_eta and beta_se havesame order (the latter has no names)
+#    res$fixef_se <- se
+    betaOri_cov <- matrix(0,ncol=ncol(XpvOri),nrow=ncol(XpvOri))
+    betaOri_cov[names(beta_eta),names(beta_eta)] <- beta_cov
+    res$beta_cov <- betaOri_cov
   } else {
     names(beta_eta) <- colnames(X.pv)
     res$fixef <- beta_eta
-    res$fixef_se <- beta_se
+#    res$fixef_se <- beta_se
+    res$beta_cov <- beta_cov
   }
   res$eta <- eta ## convenient for defining starting values...
   ###################
@@ -1706,8 +1820,8 @@ function(formula,
     }
     if (is.null(lambda.Fix)) res$lev_lambda <- lev_lambda
   }  
-  if (HL[1]!="SEM") {
-    res$RespLink_disp <- RespLink_disp
+  if (is.null(phi.Fix)) {  
+    res$resid.family <- resid.family  ## summary will use link and linkinv...
   }
   if ( distinct.X.ReML ) res$X.Re <- X.Re
   ###################
@@ -1717,6 +1831,8 @@ function(formula,
   ##
   res$ranef <- u_h
   res$v_h <- v_h
+  res$w.resid <- w.resid ## useful to reconstruct Sig in predVar
+  if (models[[1]]=="etaHGLM") res$w.ranef <- w.ranef ## useful to reconstruct Sig in predVar
   if (nrand>0) {
     print_lambda <- lapply(seq(nrand), function(it) {
       if (models[[2]][it]=="lamScal") {
@@ -1735,10 +1851,10 @@ function(formula,
   res$fittedLambda <- lambda_est
   if (models[[1]]=="etaHGLM") {
     if (is.null(lambda.Fix)) {
+      namesTerms <- attr(ZAlist,"namesTerms") ## for each random term, the names of the coefficients fitted
       if (HL[1]=="SEM") {
-        lambda.object <- list(linkscale.lambda=log(lambda_est),lambda_se=NA,namesX_lamres="(Intercept)",namesTerms=NULL)
+        lambda.object <- list(linkscale.lambda=log(print_lambda),lambda_se=NA,namesX_lamres="(Intercept)",namesTerms=namesTerms)
       } else {
-        namesTerms <- attr(ZAlist,"namesTerms") ## for each random term, the names of the coefficients fitted
         namesnames <- unlist(lapply(names(namesTerms),function(st) {
           if (nchar(st)>10) st <- paste(substr(st,0,9),".",sep="")
           st
@@ -1754,7 +1870,7 @@ function(formula,
         }
       }
     } else {
-      lambda.object <- list(lambda.fix=lambda.Fix)
+      lambda.object <- list(lambda.fix=lambda.Fix) ## la distinction lambda.fix doit être maintenue (summary, df des LRTs...)
     }
     res$lambda.object <- lambda.object
   }
@@ -1768,7 +1884,7 @@ function(formula,
   }
   res$phi <- phi_est
   if (is.null(phi.Fix)) {
-    res$phi.object <- list(linkscale.phi=linkscale.phi,phi_se=phi_se,namesX_disp=colnames(X_disp))
+    res$phi.object <- list(beta_phi=beta_phi,phi_se=phi_se,namesX_disp=colnames(X_disp))
   } else {
     res$phi.object <- list(phi.Fix=phi.Fix)
   }

@@ -29,7 +29,8 @@
   Precomputed coefficients for the prediction (see Details).
  }
  \item{predVar}{
-  If this is TRUE, the (co)variance matrix of the predicted random effects is included as attribute \code{"predVar"} of the return value.
+  Either a boolean or \code{"Cov"}. If this is \code{TRUE}, the prediction variances are computed. If this is \code{"Cov"}, the full
+  covariance matrix is computed. In both cases, the result is included as attribute \code{"predVar"} of the return value. See Details for how prediction variances are computed. 
  }
  \item{re.form}{
   formula for random effects to include.  If NULL, include all
@@ -46,13 +47,18 @@
 }
 }
 \value{
-  A matrix or data frame (according to the \code{binding} argument), with optionally a prediction (co)variance matrix as attribute.  
+  A matrix or data frame (according to the \code{binding} argument), with optionally a prediction variance vector or (co)variance matrix as attribute.  
 }
 \details{
   If  \code{newX} is NULL, \code{predict} only returns the fitted responses, including random effects, from the object. 
   Otherwise it computes new predictions including random effects as far as possible.   
-  For spatial random effects it constructs a correlation matrix \bold{C} between new locations and locations in the original fit. Then it infers the random effects in the new locations as   \bold{C} [t(\bold{L})]^{-1} \bold{v} (see \code{\link{spaMM}} for notation). If the predictor is used many times, it may be useful to precompute [t(\bold{L})]^{-1} \bold{v} and to provide this vector through the \code{coeffs} argument (see Examples).  
+  For spatial random effects it constructs a correlation matrix \bold{C} between new locations and locations in the original fit. Then it infers the random effects in the new locations as   \bold{C} (\bold{L}'\eqn{)^{-1}} \bold{v} (see \code{\link{spaMM}} for notation). If the predictor is used many times, it may be useful to precompute (\bold{L}'\eqn{)^{-1}} \bold{v} and to provide this vector through the \code{coeffs} argument (see Examples).  
   For non-spatial random effects, it checks whether any group (i.e., level of a random effect) in the new data was represented in the original data, and it adds the inferred random effect for this group to the prediction for individuals in this group.
+  
+  The \bold{prediction variance} is the variance of the linear predictor (\eqn{\eta}). It accounts for the uncertainty in prediction of the random effects. In addition, it accounts for uncertainty in estimation of \eqn{\beta}. It is computed as described in Gotway and Wolfinger (2003). 
+}
+\references{
+  Gotway, C.A., Wolfinger, R.D. (2003) Spatial prediction of counts and rates. Statistics in Medicine 22: 1415-1432. 
 }
 
 \examples{
@@ -60,16 +66,20 @@ data(blackcap)
 fitobject <- corrHLfit(migStatus ~ 1 + Matern(1|latitude+longitude),data=blackcap,
                        ranFix=list(nu=4,rho=0.4,phi=0.05))
 predict(fitobject)
+
+predict(fitobject,blackcap) ## same computation, different format 
+
 ## same result using precomputed 'coeffs':
-coeffs <- with(fitobject,solve(t(attr(predictor,"LMatrix")),v_h))
-predict(fitobject,blackcap,coeffs=coeffs)
+coeffs <- predictionCoeffs(fitobject) ## using dedicated extractor function
+predict(fitobject,coeffs=coeffs,predVar=TRUE)
+attr(.Last.value,"predVar")
 
 \dontrun{
 ## Effects of numerically singular correlation matrix C:
 fitobject <- corrHLfit(migStatus ~ 1 + Matern(1|latitude+longitude),data=blackcap,
                        ranFix=list(nu=10,rho=0.001)) ## numerically singular C
 predict(fitobject) ## predicted mu computed as X beta + L v 
-predict(fitobject,newX=blackcap) ## predicted mu computed as X beta + C.solve(t(L),v) 
+predict(fitobject,newX=blackcap) ## predicted mu computed as X beta + C %*% solve(t(L),v) 
 }
 }
 %- \keyword{ print }

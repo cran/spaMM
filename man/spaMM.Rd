@@ -13,9 +13,7 @@
 
   The standard (G)LMM response families \code{gaussian}, \code{binomial}, \code{poisson}, and \code{Gamma} are handled, as well as \code{\link{multinomial}} response (with some constraints) and negative binomial response (see Examples). GLMMs and HGLMs are fit via Laplace approximations for (1) the marginal likelihood with respect to random effects and (2) the restricted likelihood (as in REML), i.e the likelihood of random effect parameters given the fixed effect estimates. 
 
-  The package fits spatial models following either a Matérn correlation model or an adjacency matrix model. It also handles a number of non-spatial models. It accepts several random effects including one degree of nesting, and crossed ones (see Examples). Only one of these can be a spatial random effect. 
-  
-Consistently with the documentation for \code{\link{formula}}, nested effects can be fit using the syntax \code{(1| <a> \%in\% <b>)} for the inner effect (see Examples; other syntaxes may not yet be correctly handled). The spaMM code has not been optimized for speed in these models. 
+  The package fits spatial models following either a Matérn correlation model or an adjacency matrix model. It also handles a number of non-spatial models. It accepts several nested or crossed random effects (see Examples). Only one of these can be a spatial random effect. The spaMM code has not been optimized for speed in these models. 
   
   The variance(s) of random effects (\eqn{u}) is (are) denoted \eqn{\lambda} (\code{lambda} in input and output) and that of residual error is denoted \eqn{\phi} (\code{phi}). A fixed-effects linear predictor for \eqn{\phi}, modeling heteroskedasticity, can be considered (see Examples). Fixed effects are described in the standard form \bold{X}\eqn{\beta} where \bold{X} is the design matrix of fixed effects and \eqn{\beta} (\code{beta}) is a vector of fixed effect parameters. 
 
@@ -24,10 +22,17 @@ Consistently with the documentation for \code{\link{formula}}, nested effects ca
   The package has been extensively tested mainly for analysis of spatial GLMMs (Rousset and Ferdy 2014), where the random effects are Gaussian. Other models have been checked against literature results and a few simulations.
  
 }
-\author{\enc{François}{Francois} Rousset and Jean-Baptiste Ferdy}
+\author{\enc{François}{Francois} Rousset and Jean-Baptiste Ferdy.
+
+The syntax of formula terms mostly matches the one in the \code{lme4} package, so bits of the \code{lme4} code for parsing formulas has been recycled in \code{spaMM}. 
+}
 \references{
 Lee, Y., Nelder, J. A. and Pawitan, Y. (2006). Generalised linear models with random effects: unified analysis via
 h-likelihood. Chapman & Hall: London.
+
+Rousset F., Ferdy, J.-B. (2014) Testing environmental and genetic effects in the presence of spatial autocorrelation. Ecography, 37: 781-790.
+    \url{http://dx.doi.org/10.1111/ecog.00566}
+
 }
 \seealso{
 spaMM is designed to be used through the high-level functions 
@@ -37,7 +42,7 @@ spaMM is designed to be used through the high-level functions
 \examples{
 ## Fit a Poisson GLMM with adjacency correlation model
 
-\dontrun{
+\donttest{
 data(scotlip) ## loads 'scotlip' data frame, but also 'Nmatrix'
 corrHLfit(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(scotlip$expec)),
           data=scotlip,family=poisson(),
@@ -50,13 +55,18 @@ corrHLfit(cases~I(prop.ag/10) +(1|gridcode)+adjacency(1|gridcode)
           adjMatrix=Nmatrix,lower=list(rho=0),upper=list(rho=0.1745))
 }
 
+\donttest{
 ## fit non-spatial crossed random effects with distinct families
 data(salamander)
 HLfit(cbind(Mate,1-Mate)~1+(1|Female)+(1|Male),family=binomial(),
         rand.family=list(gaussian(),Beta(logit)),data=salamander,HLmethod="ML")
 
-\dontrun{
 ## Nested effects
+# lmer syntax allowing several degrees of nesting
+HLfit(cbind(Mate,1-Mate)~1+(1|Female/Male),
+       family=binomial(),rand.family=Beta(logit),data=salamander,HLmethod="ML")
+
+# A syntax described in ?formula
 HLfit(cbind(Mate,1-Mate)~1+(1|Female)+(1|Male %in% Female),
        family=binomial(),rand.family=Beta(logit),data=salamander,HLmethod="ML")
 }
@@ -71,10 +81,8 @@ HLfit(y ~X1*X3+X2*X3+I(X2^2)+(1|batch),family=Gamma(log),
 HLfit(y ~X1*X3+X2*X3+I(X2^2)+(1|batch),family=Gamma(log),
           resid.formula = ~ X3+I(X3^2) ,data=wafers)
 
-\dontrun{
 ## Random-slope model (mind the output!)        
 HLfit(y~X1+(X2|batch),data=wafers)
-}
 
 ## fit a GLM (not mixed) with structured dispersion:
 HLfit( y ~X1+X2+X1*X3+X2*X3+I(X2^2),family=Gamma(log),

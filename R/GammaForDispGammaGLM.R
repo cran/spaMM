@@ -41,7 +41,7 @@ function (link = "inverse") {
         if (any(wts != 1)) 
             message("using weights as shape parameters")
         ftd <- fitted(object)
-        shape <- MASS::gamma.shape(object)$alpha * wts ## MASS:::gamma.shape.glm
+        shape <- MASS::gamma.shape(object)$alpha * wts 
         rgamma(nsim * length(ftd), shape = shape, rate = shape/ftd)
     }
     structure(list(family = "Gamma", link = linktemp, linkfun = stats$linkfun, 

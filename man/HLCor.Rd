@@ -64,9 +64,9 @@ HLCor(formula,ranPars,data,distMatrix,uniqueGeo,adjMatrix,
     \item{Matérn model with given distance matrix}{\code{Matern(1|<...>)} with \code{distMatrix} and \code{ranPars} argument;}
     \item{Given correlation matrix}{\code{corrMatrix(1|<...>)} with \code{corrMatrix} argument;}
     \item{CAR model with given adjacency matrix}{\code{adjacency(1|<...>)} with \code{adjMatrix} and \code{ranPars} argument. This will construct the 
-    correlation matrix \bold{I}\eqn{-\rho}\code{adjMatrix})\eqn{^{-1}} for a conditional autoregressive (CAR) model. 
+    correlation matrix (\bold{I}\eqn{-\rho} \code{adjMatrix}\eqn{)^{-1}} for a conditional autoregressive (CAR) model. 
     This was implemented for comparison purposes as it is widely used, but is not really recommended for irregular lattices
-    (see Wall, 2004 and Martellosio, 2012 for some insights on the implications of autoregressive models).}
+    (see Wall, 2004 and Martellosio, 2012 for some insights on the implications of autoregressive models). Accordingly, tricks for faster analysis that are specific to CAR models were not implemented.}
   }
 }
 \references{
@@ -78,7 +78,7 @@ the CAR and SAR models: Journal of Statistical Planning and Inference 121: 311-3
 
 \value{
   The return value of an \code{HLfit} call, with the following additional attributes: 
-  \item{call}{the HLCor call}  
+  \item{HLCorcall}{the HLCor call}  
   \item{info.uniqueGeo}{Unique geographic locations.}  
 }
 
@@ -88,13 +88,16 @@ the CAR and SAR models: Journal of Statistical Planning and Inference 121: 311-3
 }
 \examples{
 
-#### Examples with Matérn correlations
+\donttest{
+#### Matérn correlation using only the Matern() syntax
 data(Loaloa)
 HLCor(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
               +Matern(1|longitude+latitude),data=Loaloa,
       family=binomial(),ranPars=list(nu=0.5,rho=1/0.7)) ## takes ~ 6s
+}
+%- : tested in simulate.HLCor.Rd
 
-#### Using a corrMatrix
+#### Using a corrMatrix (not necessarily Matérn)
 data(blackcap) 
 ## Here we manually reconstruct the correlation matrix 
 ##  of the ML fit produced by corrHLfit:
@@ -102,9 +105,15 @@ MLcorMat <- Matern.corr(proxy::dist(blackcap[,c("latitude","longitude")]),
                         nu=0.6285603,rho=0.0544659)
 HLCor(migStatus ~ means+ corrMatrix(1|latitude+longitude),data=blackcap,
       corrMatrix=MLcorMat,HLmethod="ML")
+      
+#### Matérn correlation using a distMatrix
+MLdistMat <- as.matrix(proxy::dist(blackcap[,c("latitude","longitude")]))
+HLCor(migStatus ~ means+ Matern(1|latitude+longitude),data=blackcap,
+      distMatrix=MLdistMat,HLmethod="ML",ranPars=list(nu=0.6285603,rho=0.0544659))
 
-\dontrun{
+\donttest{
 #### example with an adjacency matrix (autoregressive model)
+data(scotlip)
 HLCor(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(scotlip$expec)),
       ranPars=list(rho=0.174),
       adjMatrix=Nmatrix,family=poisson(),data=scotlip)

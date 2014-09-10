@@ -40,34 +40,30 @@ the prediction of Loa loa risk: decision making under uncertainty, Ann.
 Trop. Med. Parasitol. 101, 499-509.
 }
 \examples{
+
+\dontrun{
 data(Loaloa)
 ## Variations on the model fit by Diggle et al. on a subset of these data
 
 ## With HLmethod=HL(0,1), this takes ~35s on a recent laptop
-\dontrun{
+
 corrHLfit(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
                    +Matern(1|longitude+latitude),HLmethod="HL(0,1)",
                  data=Loaloa,family=binomial(),ranFix=list(nu=0.5)) 
 ## nu=0.5 is the exponential correlation     
-}
 
 ## the following fits take ~ 1 -- 5 minutes each.
 
-\dontrun{
 corrHLfit(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
             +Matern(1|longitude+latitude),
               data=Loaloa,family=binomial(),ranFix=list(nu=0.5)) 
-}
 
 ## Diggle and Ribeiro (2007) assumed (in this package notation) Nugget=2/7:
-\dontrun{
 corrHLfit(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
            +Matern(1|longitude+latitude),
              data=Loaloa,family=binomial(),ranFix=list(nu=0.5,Nugget=2/7))
-}
 
 ## with nugget estimation:
-\dontrun{
 corrHLfit(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
            +Matern(1|longitude+latitude),
              data=Loaloa,family=binomial(),

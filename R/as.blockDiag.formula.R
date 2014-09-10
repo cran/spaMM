@@ -16,15 +16,15 @@ function(formula,data,fill=0) {
       form <- as.formula(paste("~",paste(reExpr[[reidx]])[[3]])) ## formula of the RHS of the | expr
       mf <- model.frame(formula=formula,data=data) 
       stop("more code needed for nested groups ./. in as.blockDiag") 
-      grps <- getGroups(mf, form) ## nlme:::getGroups.data.frame voir le resultat et essayer de l'obtenir sans getGroups (voir %in% ci dessous)
+      grps <- getGroups(mf, form) ## nlme:::getGroups.data.frame voir le resultat et essayer de l'obtenir sans getGroups (voir %in% ci dessous) FR->FR
       ## et rajouter du code pour obtenir le blockdiagonal object ?
     } else if (relationAschar=="%in%") {
       st <- paste(reExpr[[reidx]])[[3]]
       st <- gsub("%in%","/",st)
       fakeform <- as.formula(paste("~",st)) ## so that getGroups can be used
-## FR->FR mais ce code doit pouvoir etre nettoye pusque getGroups est maintenant evite
+      ## FR->FR mais ce code doit pouvoir etre nettoye pusque getGroups est maintenant evite
       mf <- model.frame(formula=fakeform,data=data) 
-#      grps <- getGroups(mf, fakeform) ## this returns factors and the distance between factors won't be appropriate    
+      #      grps <- getGroups(mf, fakeform) ## this returns factors and the distance between factors won't be appropriate    
       varlist <-   as.list(unlist(strsplit(paste(reExpr[[reidx]])[[3]],"%in%",fixed=TRUE))) 
       formlist <- lapply(varlist,function(st){as.formula(paste("~",st))})
       names(formlist) <- unlist(lapply(formlist, function(el) DEPARSE(el[[length(el)]]))) ## important !

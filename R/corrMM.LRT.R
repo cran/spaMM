@@ -289,7 +289,7 @@ function(null.formula=NULL,formula,
         MLforREMLranPars$REMLformula <- optimREMLformula
         MLforREMLranPars$ranPars<- with(lamREMLnullfit,c(corrPars,list(phi=phi,lambda=lambda)))
         MLforREMLranPars$coordinates <- dotlist$coordinates
-        gnrf <- do.call(HLCor,MLforREMLranPars)$APHLs[[test.obj]]
+        gnrf <- do.call("HLCor",MLforREMLranPars)$APHLs[[test.obj]]
         if (gnrf > nullfit$APHLs[[test.obj]]) { ## annoying as it means ML has failed to maximize p_v, but can occur
           trace.info <- rbind(trace.info,data.frame(iter=0,step="(!) nullfit (-)",obj=nullfit$APHLs[[test.obj]]))
           nullfit <-lamREMLnullfit ## step back
@@ -329,7 +329,7 @@ function(null.formula=NULL,formula,
         MLforREMLranPars$REMLformula <- optimREMLformula
         MLforREMLranPars$ranPars<- with(lamREMLfullfit,c(corrPars,list(phi=phi,lambda=lambda)))
         MLforREMLranPars$coordinates <- dotlist$coordinates
-        gnrf <- do.call(HLCor,MLforREMLranPars)$APHLs[[test.obj]]
+        gnrf <- do.call("HLCor",MLforREMLranPars)$APHLs[[test.obj]]
         if (gnrf > fullfit$APHLs[[test.obj]]) { ## annoying as it means ML has failed to maximize p_v, but can occur
           trace.info <- rbind(trace.info,data.frame(iter=0,step="(!) fullfit (-)",obj=fullfit$APHLs[[test.obj]]))
           fullfit <-lamREMLfullfit
@@ -505,16 +505,17 @@ if (restarts) {
           prof.fit <- do.call(method,prof.list) ## 
           return(prof.fit$APHLs[[test.obj]])
         }
+        beta_se <- sqrt(diag(fullfit$beta_cov))
         if (length(profileVars)>1) {
           ## optim syntax
           ## uses last full fit here:
           # lowup <- fullfit$fixef[profileVars] %*% t(c(-1,5)/2) ## should be of dim [,2]
           # lowup <- apply(lowup,1,sort) ##  ncol=2
-          lowup <- fullfit$fixef[profileVars] + fullfit$fixef_se[profileVars] %*% t(c(-2,2)) ## ncol=2
+          lowup <- fullfit$fixef[profileVars] + beta_se[profileVars] %*% t(c(-2,2)) ## ncol=2
           lowp <- lowup[,1]; upp <- lowup[,2]
           ## if we are here because nullfit > fullfit, nullfit should be in the interval  
-          lowp[lowp>0] <- - (fullfit$fixef_se[profileVars])[lowp>0]
-          upp[upp<0] <- (fullfit$fixef_se[profileVars])[upp<0]
+          lowp[lowp>0] <- - (beta_se[profileVars])[lowp>0]
+          upp[upp<0] <- (beta_se[profileVars])[upp<0]
           stop("optim call missing 'here' in corrMM.LRT")
           profmax <- optim(par=fullfit$fixef[profileVars],
                               fn=profilize,lower=lowp,upper=upp,
@@ -527,10 +528,10 @@ if (restarts) {
 #          if (fullfit$fixef[profileVars] != 0) { ## if fullfit sufficiently different from null fit
 #            interval <- sort(fullfit$fixef[profileVars]*c(-1,5)/2)
 #          } else interval <- 0.001*c(-1,1) ## very quick ad hoc patch
-          interval <- fullfit$fixef[profileVars]+c(-2,2)*fullfit$fixef_se[profileVars]   
+          interval <- fullfit$fixef[profileVars]+c(-2,2)*beta_se[profileVars]   
           ## if we are here because nullfit > fullfit, nullfit should be in the interval  
-          if (interval[1]>0) interval[1] <- - fullfit$fixef_se[profileVars]
-          if (interval[2]<0) interval[2] <- fullfit$fixef_se[profileVars]
+          if (interval[1]>0) interval[1] <- - beta_se[profileVars]
+          if (interval[2]<0) interval[2] <- beta_se[profileVars]
           profmax <- optimize(profilize,interval=interval,maximum=T)
           addOffset <- profileX %*% profmax$maximum
           offset <- attr(prof.list$formula,"offset")

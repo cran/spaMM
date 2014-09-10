@@ -1,9 +1,11 @@
 newetaFix <-
-function(object,newX) {
-  ## [-2] so that HLframes does not try to find the response variables  
-  newMeanFrames <- HLframes(formula=attr(object$predictor,"oriFormula")[-2],data=newX) ## may need to reconstruct offset using formula term
+function(object,newMeanFrames) {
   X.pv <- newMeanFrames$X  
-  if (ncol(X.pv)>0) {etaFix <- X.pv %*% object$fixef} else {etaFix <- rep(0,nrow(newX))} 
+  if (ncol(X.pv)>0) {
+    etaFix <- X.pv %*% object$fixef
+  } else {
+    etaFix <- rep(0,nrow(newMeanFrames$mf)) ## nrow(X.pv)=0
+  } 
   ## newX -> offset must be recomputed
   off <- model.offset(newMeanFrames$mf) ## Predictor has checked that there was either an offset term XOR an $offset 
   if ( is.null(off) ) { ## no offset oriFormula term
@@ -13,5 +15,5 @@ function(object,newX) {
       message("Prediction in new design points with an offset from original design points is suspect.")
     }
   } else etaFix <- etaFix + off ## we add a non-trivial offset from the offset formula   
-  list(etaFix=etaFix,newMeanFrames=newMeanFrames)
+  return(etaFix)
 }

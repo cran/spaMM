@@ -21,7 +21,7 @@ function(family,eta,BinomialDen,priorWeights=1) { ## note outer var BinomialDen
 #    calls <- sys.calls()
 #    ncalls <- length(calls)
 #    HLfitcall <- calls[[ncalls-1]]
-#    save(HLfitcall,file=generateFileName("HLfitcall")) ## FR->FR debug  code, not for package
+#    save(HLfitcall,file=generateFileName("HLfitcall")) ## debug  code, not for package
     stop("NaN GLMweights generated in 'muetafn'")
   }
 return(list(mu=mu,dmudeta=dmudeta,Vmu=Vmu,GLMweights=GLMweights))

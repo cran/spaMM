@@ -1,7 +1,7 @@
 update.HLfit <-
 function (object, formula., ..., evaluate = TRUE) 
 {
-  if (is.null(call <- getCall(object))) 
+  if (is.null(call <- getCallHL(object))) 
     stop("need an object with call component")
   extras <- match.call(expand.dots = FALSE)$...
   if (!missing(formula.)) {
