@@ -1,5 +1,4 @@
-plot.HLfit <-
-function(x, which=c("mean","ranef"),
+`plot.HLfit` <- function(x, which=c("mean","ranef"),
                          titles = list(
                            meanmodel=list(outer="Mean model",devres="Deviance residuals", absdevres="|Deviance residuals|",
                                           resq="Residual quantiles", devreshist="Deviance residuals"),
@@ -63,3 +62,5 @@ function(x, which=c("mean","ranef"),
 	par(ask=FALSE) 
 	invisible(x)
 }
+
+

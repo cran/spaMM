@@ -1,5 +1,10 @@
-inverse.Gamma <-
-function (link = "-1/mu") { ## v=-1/u, p.181, the sign of v must matter...
+## InverseGammaDistribution[1 + \[Nu], \[Nu] \[Mu]] (NOT linear exp family member)
+## a family pseudo-definition
+## see standard families in
+## https://svn.r-project.org/R/trunk/src/library/stats/R/family.R
+## https://svn.r-project.org/R/trunk/src/library/stats/src/family.c
+## note that hglm defines `inverse.gamma`, with an "inverse" link. Not clear how they use $linkinv
+`inverse.Gamma` <-function (link = "-1/mu") { ## v=-1/u, p.181, the sign of v must matter...
     linktemp <- substitute(link)
     if (!is.character(linktemp))
         linktemp <- deparse(linktemp)
@@ -31,4 +36,4 @@ function (link = "-1/mu") { ## v=-1/u, p.181, the sign of v must matter...
 		   valideta = stats$valideta,
                    simulate = NULL),
 	class = "family")
-}
+} 

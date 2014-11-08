@@ -15,3 +15,4 @@ function (OUTPUT, type="mean", random=NULL) {
     qqnorm(StudentResidual); qqline(StudentResidual) # Q-Q plot
     hist(StudentResidual)
 }
+

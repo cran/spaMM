@@ -10,6 +10,7 @@
 \alias{chol.blockDiag} 
 \alias{findblocks}
 \alias{t.blockDiag}
+\alias{t.identityMatrix}
 
 \title{Internal spaMM Functions}
 \description{

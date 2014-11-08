@@ -1,5 +1,68 @@
-preprocess <-
-function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predictor,REMLformula,data,family,
+checkRandLink <- function(rand.family) {
+  if (class(rand.family)=="family") { ## then check what is feasible
+    lcrandfamfam <- tolower(rand.family$family) ## tolower once and for all
+    oklink <- F
+    ## cases where g(u)=th(u)
+    if (lcrandfamfam=="gaussian" && rand.family$link=="identity") oklink <- T          
+    if (lcrandfamfam=="gamma" && rand.family$link=="log") oklink <- T          
+    if (lcrandfamfam=="inverse.gamma" && rand.family$link=="-1/mu") oklink <- T
+    if (lcrandfamfam=="beta" && rand.family$link=="logit") oklink <- T
+    ## cases where g(u)!=th(u)
+    if (lcrandfamfam=="inverse.gamma" && rand.family$link=="log") oklink <- T 
+    if ( ! oklink) {
+      allowed <- switch(lcrandfamfam,
+                        gaussian= "is 'identity'",
+                        gamma= "is 'log'",
+                        beta= "is 'logit'",
+                        "inverse.gamma" = "are '-1/mu' and 'log'"
+                        )
+      mess <- paste("(!) rand.family/link combination not handled;\nallowed link(s) for rand.family '",rand.family$family,"' ",allowed,sep="")
+      stop(mess)
+    }
+  } else { ## rand.family is a string ## preprocess -> checkRandLinkS -> here : OK
+    lcrandfamfam<-tolower(rand.family) ## tolower once and for all
+    rand.family <- switch(lcrandfamfam,
+                          gaussian = gaussian(),
+                          gamma = Gamma(link=log), ## NOT the default link
+                          beta = Beta(), 
+                          "inverse.gamma" = inverse.Gamma(),
+                          stop("rand.family argument not valid")
+    )
+  }
+  lcrandfamfam
+}
+
+checkRespFam <- function(family) {
+  ## four lines from glm()
+  if (is.character(family)) 
+    family <- get(family, mode = "function", envir = parent.frame())
+  if (is.function(family)) 
+    family <- family()
+  family
+}
+
+checkRandLinkS <- function(rand.families) {
+  unlist(lapply(rand.families,checkRandLink)) ## a vector of lcrandfamfam := tolower(rand.family$family)
+}
+
+getProcessed <- function(object,element,idx=1) {
+  if ( ! is.null(attr(object,"multiple"))) object <- object[[idx]]  
+  eval(parse(text=paste("object$",element,sep="")))
+}
+
+setProcessed <- function(object,element,value=1) {
+  if ( ! is.null(attr(object,"multiple"))) {
+    for (nam in names(object)) {
+      eval(parse(text=paste("object[[",nam,"]]$",element," <- ",value,sep="")))
+    }
+  } else eval(parse(text=paste("object$",element," <- ",value,sep="")))
+  return(object)
+}
+
+################# translate HLfit.args from user input to directly manipulated variables
+## if called without non(default=NULL) phi.Fix (ie outside HLFit) => processes formulaDisp
+## if called with nonNULL phi.Fix, then no need to process formulaDisp
+preprocess <- function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predictor,REMLformula,data,family,
                        BinomialDen,rand.families) {
   callargs <- match.call() ## to make easy to change these arguments in a later fit
   #####################################################################
@@ -16,8 +79,6 @@ function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predictor,REMLformu
   }
   #####################################################################
   processed <- list()
-  ## algorithms (control of defaults remains in the HLfit code)
-  processed$LevenbergM <-control.HLfit$LevenbergM ## 
   stop.on.error <-control.HLfit$stop.on.error ##  
   if (is.null(stop.on.error)) stop.on.error <- FALSE
   processed$stop.on.error <- stop.on.error ##  
@@ -32,16 +93,6 @@ function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predictor,REMLformu
   essai <-control.HLfit$essai ##  
   if (is.null(essai)) essai <- FALSE
   processed$essai <- essai ##  
-  betaFirst <-control.HLfit$betaFirst ##  
-  if (is.null(betaFirst)) betaFirst <- FALSE
-  processed$betaFirst <- betaFirst ##
-  ## FR->FR code (to set LevenbergM to FALSE when some option) is in HLfit. could be moved here if LMMbool code was too   
-  version <-control.HLfit$version ##  
-  if (is.null(version)) version <- "current"
-  processed$version <- version ##
-  useSparseQR <-control.HLfit$useSparseQR ##  
-  if (is.null(useSparseQR)) useSparseQR <- FALSE
-  processed$useSparseQR <- useSparseQR ##  
   ## numerical control parameters 
   conv.threshold <-control.HLfit$conv.threshold ## 
   if (is.null(conv.threshold)) conv.threshold <- 1e-05
@@ -61,7 +112,7 @@ function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predictor,REMLformu
   if (is.null(iter.mean.dispVar)) iter.mean.dispVar <- 50 ## control of inner loop when some disp param is estimated  ## was 20, 06/2014
   processed$iter.mean.dispVar <- iter.mean.dispVar  
   #
-  max.iter <-control.HLfit$max.iter  ## control of outer loop 
+  max.iter <- control.HLfit$max.iter  ## control of outer loop 
   if (is.null(max.iter)) max.iter <-200
   processed$max.iter <- max.iter  
   #
@@ -78,28 +129,42 @@ function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predictor,REMLformu
     stop("(!) var(response) = 0.")
   }  
   X.pv <- MeanFrames$X
-  off <- model.offset(MeanFrames$mf) ## Predictor has checked that there was either an offset term XOR an $offset 
-  if ( is.null(off) ) { ## no offset formula term
-    off <- attr(predictor,"offset") ## may remain NULL
-  } else predictor <- noOffset(predictor)
+  off <- model.offset(MeanFrames$mf) ## look for offset from (ori)Formula 
+  if ( is.null(off) ) { ## no offset (ori)Formula term. Check attribute (Predictor ensures offset is not both in formula and attr)
+    off <- attr(predictor,"offsetObj")$vector 
+  } else {
+    keepOriForm <- attr(predictor,"oriFormula")
+    predictor <- noOffset(predictor)
+    attr(predictor,"oriFormula") <- keepOriForm
+  }
   if (!is.null(off)) {
     off <- pmax(log(.Machine$double.xmin),off) ## handling log(0) ## but if input off were NULL, output off would be is numeric(0) where it should remain NULL
   }
-  roff <- model.offset(model.frame(resid.predictor,data=data)) ## Predictor has checked that there was either an offset term XOR an $offset 
-  if ( is.null(roff) ) { ## no offset formula term
-    roff <- attr(resid.predictor,"offset") 
-  } else resid.predictor <- noOffset(resid.predictor)
+  roff <- model.offset(model.frame(resid.predictor,data=data)) ## look for offset from (ori)Formula 
+  if ( is.null(roff) ) { ## ## no offset (ori)Formula term. Check attribute (Predictor ensures offset is not both in formula and attr)
+    roff <- attr(resid.predictor,"offsetObj")$vector 
+  } else {
+    keepOriForm <- attr(resid.predictor,"oriFormula")
+    resid.predictor <- noOffset(resid.predictor)
+    attr(resid.predictor,"oriFormula") <- keepOriForm
+  }
   colnames(X.pv) <- names(MeanFrames$fixef)
-  processed$X.pv <- X.pv
+  processed$X.pv <- X.pv ## further modified in HLfit...
   ## in particular, $mf contains values of expl.vars and levels (indices) of ranefs for all observations. Indices are/should be ordered as uniqueGeo in ULI()
   nobs <- NROW(MeanFrames$Y)
   # MODIFICATION of formula and offset (but not oriFormula)     
-  if (is.null(off)) off <- rep(0,nobs) ## model.frame.default(formula = locform, offset = off,...) expects a vector....
-  attr(predictor,"offset") <- off ## subtly, will be of length 1 if original offset was a constant...
+  if (is.null(off)) { ## model.frame.default(formula = locform, offset = off,...) expects a vector....
+    attr(predictor,"offsetObj") <- list(vector=rep(0,nobs),nonZeroInfo=FALSE)
+  } else {
+    attr(predictor,"offsetObj") <- list(vector=off,nonZeroInfo=TRUE) ## subtly, will be of length 1 if   original offset was a constant...
+  }
   processed$predictor <- predictor  
   #
-  # if (is.null(roff)) roff <- rep(0,nobs)
-  attr(resid.predictor,"offset") <- roff # may remain NULL
+  if (is.null(roff)) { ## model.frame.default(formula = locform, offset = off,...) expects a vector....
+    attr(resid.predictor,"offsetObj") <- list(vector=rep(0,nobs),nonZeroInfo=FALSE)
+  } else {
+    attr(resid.predictor,"offsetObj") <- list(vector=roff,nonZeroInfo=TRUE) ## subtly, will be of length 1 if   original offset was a constant...
+  }
   processed$resid.predictor <- resid.predictor  
   #
   # comme l'EQL est dans un monde quasi gaussien, il se ramene aux LMM et utilise les leverage standard,
@@ -145,13 +210,13 @@ function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predictor,REMLformu
   ## third index is for use of (0) EQL deviance residuals (this affects the leverages) or not (1) (this is not an ReML correction... but impatcs only dispersion estimation..)
   ## thus overall we have <ReML/not>( <h/l> , <more ReML/not> , <not/EQL> )
   ## NohL07 table 1 has interesting terminology and further tables show even more cases
-  terms_ranefs <- findSpatialOrNot(predictor) ## a vector of char strings
+  terms_ranefs <- parseBars(predictor) ## a vector of char strings
   nbars <- length(terms_ranefs) ## not nbars != nrand because nested effects will be further expanded
   models <- list(eta="",lambda="",phi="")
   if (nbars>0) {
     processed$lambdaFamily <- Gamma(link="log")
     models[["eta"]] <- "etaHGLM" 
-    FL <- spMMFactorList(predictor, MeanFrames$mf, 0L, 0L) ## this uses the spatial information in the formula, even if an explicit distMatrix was used elsewhere
+    FL <- spMMFactorList(predictor, MeanFrames$mf, 0L, drop=TRUE) ## this uses the spatial information in the formula, even if an explicit distMatrix was used elsewhere
     ZAlist <- FL$Design ## : is a list of design matrices (temporarily only Z)
     attr(ZAlist,"ranefs") <- terms_ranefs
     attr(ZAlist,"Groupings") <- FL$Groupings
@@ -289,6 +354,28 @@ function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predictor,REMLformu
     }
   } else LMMbool <- FALSE
   processed$LMMbool <- LMMbool
+  ## algorithms (control of defaults remains in the HLfit code)
+  betaFirst <-control.HLfit$betaFirst ##  
+  if (is.null(betaFirst)) {
+    betaFirst <- FALSE
+  } else if (betaFirst && HL[1]=="SEM") {
+    message("betaFirst && HLmethod= SEM: betaFirst turned to FALSE")
+    betaFirst <- FALSE
+  }
+  processed$betaFirst <- betaFirst ##
+  LevenbergM <- control.HLfit$LevenbergM ## 
+  if (is.null(LevenbergM)) { 
+    if (HL[1]=="SEM") {
+      LevenbergM <- FALSE 
+    } else if (betaFirst) {
+      LevenbergM <- FALSE 
+    } else {
+      if (LMMbool) {  
+        LevenbergM <- FALSE ## because no reweighting when beta_eta changes => no IRWLS necess   
+      } else LevenbergM <- TRUE
+    }
+  }
+  processed$LevenbergM <- LevenbergM
   #
   if (nrand>0) {   
     nrand_lambda <- 0
@@ -349,7 +436,7 @@ function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predictor,REMLformu
     colnames(X_disp) <- namesX_disp
     random_dispersion<-findbarsMM(formulaDisp) ## random effect in mean predictor of dispersion phi
     if (!is.null(random_dispersion)) {
-      FL_disp <- spMMFactorList(formulaDisp, fr_disp$mf, 0L, 0L)
+      FL_disp <- spMMFactorList(formulaDisp, fr_disp$mf, 0L, drop=TRUE)
       namesRE_disp <- FL_disp$Groupings
       Z_disp <- FL_disp$Design
       models[["phi"]] <- "phiHGLM"
@@ -366,9 +453,16 @@ function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predictor,REMLformu
   } 
   #
   processed$models <- models
-  processed$lcrandfamfam <- lcrandfamfam
+  attr(rand.families,"lcrandfamfam") <- lcrandfamfam
   processed$rand.families <- rand.families
   processed$callargs <- callargs
   class(processed) <- c("arglist","list")
   return(processed)
+}
+
+eval.update.call <- function(mc,...) {
+  mc <- as.list(mc)
+  dotlist <- list(...)
+  # mc[names(dotlist)] <- dotlist
+  eval(as.call(mc))  
 }

@@ -3,19 +3,22 @@
 \alias{binomialize}
 \alias{multi}
 \alias{fitted.HLfitlist}
+\alias{logLik.HLfitlist}
 %- Also NEED an '\alias' for EACH other topic documented here.
 \title{Analyzing multinomial data}
 \description{
   These functions facilite the conversion and analysis of multinomial data as as series of nested binomial data.
   The main function is \code{multi}, to be used in the \code{family} argument of the fitting  functions.
-  It calls \code{binomialize}, which can be called directly to chack how the data are converted to nested binomial data.
+  It calls \code{binomialize}, which can be called directly to check how the data are converted to nested binomial data.
   The \code{fitted.HLfitlist} method of the \code{fitted} generic function returns a matrix of fitted multinomial probabilities.
+  The \code{logLik.HLfitlist} method of the \code{logLik} generic function returns a log-likelihood for the joint fits.
 }
 \usage{
 multi(binResponse=c("npos","nneg"),binfamily=binomial(),input="types",...)
 binomialize(data,responses,sortedTypes=NULL,binResponse=c("npos","nneg"),
              depth=Inf,input="types")
 \method{fitted}{HLfitlist}(object,...)
+\method{logLik}{HLfitlist}(object,REML,...)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -44,6 +47,7 @@ binomialize(data,responses,sortedTypes=NULL,binResponse=c("npos","nneg"),
   If \code{input="types"}, then the \code{responses} columns must contain factor levels of the binomial response.
   If \code{input="counts"}, then the \code{responses} columns must contain counts of different factor levels, and the column names are the types.
   }
+  \item{REML}{If \code{TRUE}, the function returns the log restricted likelihood (exact or approximated).}
   \item{\dots}{
     Other arguments passed from or to other functions.
   } 

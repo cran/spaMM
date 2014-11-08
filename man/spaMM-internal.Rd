@@ -2,16 +2,21 @@
 
 \alias{\%id*id\%}
 \alias{alternating}
+\alias{auglinmodfit}
 \alias{Bartlett.robust} 
 \alias{Beta} 
+\alias{calc.p_v}
+\alias{calc.w.resid}
 \alias{checkRandLinkS}
 \alias{checkRandLink}
 \alias{checkRespFam}
 \alias{compare.model.structures}
 \alias{compute.ZALlist} 
 \alias{CondNormfn} 
+\alias{corr.notEQL.lambda}
 \alias{Dim.corMatern} 
 \alias{eval.update.call}
+\alias{eval.corrEst.args}
 \alias{GammaForDispGammaGLM}
 \alias{getCallHL}
 \alias{getHLfit}
@@ -19,8 +24,10 @@
 \alias{HL_process.args} 
 \alias{HL_strictify} 
 \alias{HLframes}
-\alias{Initialize.corMatern} 
+\alias{Initialize.corMatern}
+\alias{intervalStep}
 \alias{LRT.corrHL} 
+\alias{loglfn.ranU}
 \alias{Matern.local} 
 \alias{ULI}
 \alias{Variogram.corMatern} 
@@ -28,7 +35,9 @@
 \alias{bessel_lnKnu} 
 \alias{calc.tXinvS}
 \alias{calcDhDv2}
+\alias{calcNewCorrs}
 \alias{calcPredVar}
+\alias{calcResidVar}
 \alias{clean_cs} 
 \alias{checkDistMatrix} 
 \alias{coef.corMatern} 
@@ -44,7 +53,7 @@
 \alias{extract.check.coords} 
 \alias{findOffset} 
 \alias{findSpatial} 
-\alias{findSpatialOrNot} 
+\alias{parseBars} 
 \alias{findbarsMM} 
 \alias{findplus}
 \alias{formula.HLfit}
@@ -52,6 +61,7 @@
 \alias{generateName} 
 \alias{getCovariate.corMatern} 
 \alias{getgroups} 
+\alias{getPar}
 \alias{getProcessed}
 \alias{is.square.diagonal} 
 \alias{is.identity} 
@@ -62,6 +72,7 @@
 \alias{locoptim}
 \alias{locoptimthroughSmooth}
 \alias{logDet.corMatern} 
+\alias{LogAbsDetWrap}
 \alias{loglfn.ranU} 
 \alias{makeCheckGeoMatrices}
 \alias{makeCovEst} 
@@ -81,6 +92,7 @@
 \alias{preprocess}
 \alias{print.arglist}
 \alias{print.predictor}
+\alias{print.ranef}
 \alias{recalc.corMatern} 
 \alias{rhoFn} 
 \alias{rhoInv}
@@ -93,7 +105,6 @@
 \alias{separator} 
 \alias{setProcessed}
 \alias{slashTerms} 
-\alias{solveCov}
 \alias{solveWrap.matrix}
 \alias{solveWrap.vector}
 \alias{spaMMLRT} 
@@ -105,6 +116,7 @@
 \alias{thetaMuDerivs} 
 \alias{toCanonical} 
 \alias{tryCatch.W.E}
+\alias{u_h_from_v_h}
 \alias{updateWranef}
 \alias{updateW_ranefS}
 \alias{validData}

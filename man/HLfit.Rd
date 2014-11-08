@@ -65,17 +65,17 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
   \code{"PQL"} (=\code{"REPQL"}) and \code{"PQL/L"} for GLMMs only;
   and (only for those curious to experiment) expressions of the 
   form \code{"HL(<...>)"}, \code{"ML(<...>)"} and \code{"RE(<...>)"}. HL and RE are equivalent.   
-  The default behaviour is RE(1,1), which by default perform REML but can also perform non-standard forms of REML 
-  (indeed including ML), according to \code{REMLformula}; 
-  \bold{the joint default for these two arguments performs a standard REML}.
+  The default behaviour is RE(1,1), which \bold{by default performs REML} (standard REML for LMMs, 
+  an extended definition for other models). But it can also perform non-standard forms of REML 
+  (indeed including ML), depending on the \code{REMLformula} given.
 
   EQL stands for the EQL method of Lee and Nelder (2001). The '+' version includes the d v/ d tau correction 
   described p. 997 of that paper, and the '-' version ignores it.
   PQL can be seen as the version of EQL- for GLMMs.
-  PQL/L is PQL without the standard leverage corrections for REML.
+  PQL/L is PQL without the leverage corrections that define REML estimation of random-effect parameters.
   
   For \bold{GLMs}, the default is still REML. For binomial and Poisson GLMs, this cannot be distinguished from an exact ML fit. 
-  Note that the \code{\link{glm}} function performs an EQL analysis, which will differ from the REML (and ML) one for Gaussian and Gamma GLMs.  
+  Note that the \code{\link{glm}} function performs an EQL analysis, which will differ from the REML (and ML) one for Gamma GLMs.  
   
   See Details for the more general syntax.
 }
@@ -85,7 +85,7 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
   \code{AIC=TRUE} provides the corrected AIC of Ha et al. 2007 [i.e., AIC(D*) in their eq. 7], 
   but the default is \code{FALSE} to (modestly) encourage users to think twice before applying model selection automatically, which is no better although more fashionable than misuses of simple null hypothesis testing. Also, alternative procedures for model choice can be considered (e.g. Cox and Donnelly, 2011, p. 130-131).
   
-  \code{resid.family} allows one to change the link for modeling of residual variance \eqn{\phi}, which is \code{"log"} by default. The family is always Gamma, so the non-default possible values of\code{resid.family} are \code{Gamma(identity)} or \code{Gamma(inverse)}. Only the default value ensures that the fitted \eqn{\phi} is positive.     
+  \code{resid.family} allows one to change the link for modeling of residual variance \eqn{\phi}, which is \code{"log"} by default. The family is always Gamma, so the non-default possible values of \code{resid.family} are \code{Gamma(identity)} or \code{Gamma(inverse)}. Only the default value ensures that the fitted \eqn{\phi} is positive.     
 
   Controls for the fitting algorithms should be ignored in routine use. They are
 %
@@ -102,9 +102,6 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
   \code{max.iter}, the number of iterations of the iterative algorithm for joint estimation of dispersion parameters and
         of coefficients of the linear predictor. Defaults to 200. This is typically much more than necessary, 
         unless there is little information to separately estimate \eqn{\lambda} and \eqn{\phi} parameters.
-%
-  \code{useSparseQR}. If \code{TRUE}, a sparse QR algorithm from the \code{\link{Matrix}} package is used in some computations. This may reduce some computation times, but the first tests were not impressive in this respect. The \code{spaMM} code using this option may not be as well protected from numerical issues as the default \code{spaMM} code.  
-
 }
   \item{init.HLfit}{
   A list of initial values for the iterative algorithm, with possible elements of the list are 
@@ -122,7 +119,7 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
    A list of fixed values of the coefficients of the linear predictor, with possible elements \code{beta} and \code{v_h} or \code{u_h}. 
  }
   \item{prior.weights}{
-   An optional vector of prior weights as in \code{\link{glm}}. This fits the data to a model with residual variance \code{phi/prior.weights}, so that increasing the    weights by a constant factor \emph{f} will yield estimates of \code{phi} also increased by \emph{f}. Note that this is what \code{glm} does, but that some other widely used packages can behave differently (and obscurely) 
+   An optional vector of prior weights as in \code{\link{glm}}. This fits the data to a model with residual variance \code{phi/prior.weights}, so that increasing the    weights by a constant factor \emph{f} will yield estimates of \code{phi} also increased by \emph{f}. Note that this is what \code{glm} does, but that some other widely used packages can behave differently (and obscurely). 
  }
   \item{processed}{
     A list of preprocessed arguments, for programming purposes only (as in \code{corrHLfit} code).
@@ -174,17 +171,20 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
 }
 \value{
 An object of class \code{HLfit}, actually a list with many elements, several of which represent input arguments. 
-Some elements may be undocumented. The \code{summary.HLfit} function 
-formats this nicely, and a few other extractor functions are available (see \code{\link{extractors}}). 
-The following information will be useful for extracting further elements of the object. 
-These elements include, first, variables describing the fit:  
+Some elements may be undocumented. 
+
+A few extractor functions are available (see \code{\link{extractors}}), 
+and should be used as far as possible as they should be backward-compatible from version 1.4 onwards, while the structure of the return object may still evolve (to further deal with this, the return object includes a version tag as element \code{spaMM.version}). The following information will be useful for extracting further elements of the object.
+
+Elements describing the fit include:  
 \item{fixef}{The fixed effects coefficients, \eqn{\beta} (returned by the \code{fixef} function)}
 \item{ranef}{The random effects \eqn{u} (returned by the \code{ranef} function)}
 \item{fv}{Fitted values (\eqn{\mu=}<inverse-link>(\eqn{\eta})) of the response variable (returned by the \code{fitted} function)}
 
 \item{APHLs}{A list with usually four elements, the conditional likelihood, 
    the h-likelihood, and the two adjusted profile h-likelihoods:
-   the (approximate) marginal likelihood \code{p_v} and the (approximate) restricted likelihood \code{p_bv}.
+   the (approximate) marginal likelihood \code{p_v} and the (approximate) restricted likelihood \code{p_bv} (the latter two available
+   through the \code{logLik} function).
 }
 \item{beta_cov}{Covariance matrix of \eqn{\beta} estimates}
 \item{v_h}{The random effects on the linear scale, \eqn{v}}

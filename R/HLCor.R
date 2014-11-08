@@ -1,5 +1,81 @@
-HLCor <-
-function(formula,
+`extract.check.coords` <- function(spatial.model,datanames) {
+  if ( ! is.null(spatial.model)) {
+    bars <- spatial.model[[2]] 
+    coordinates <- DEPARSE(bars[[3]]) ## "x + y"
+    coordinates <-  strsplit(coordinates," ")[[1]]
+    coordinates <- setdiff(coordinates,c("+","%in%",":","/"))
+  } else {
+    stop("Call to 'HLCor' without a spatial term in the formula is suspect.")
+    ## very old code handling old syntax with (1|pos) and default values of the coordinates argument
+    coordinates <- c("x","y") ## back compat
+  }
+  coordcols <- which(datanames %in% coordinates)
+  if ( length(coordcols) != length(coordinates) ) {
+    stop("variables 'coordinates' not all found in the 'data'")
+  }
+  return(coordinates) ## should be ordered as bars[[3]] (important for predict)
+}
+
+toCanonical <- function(ranPars,corr.model,checkComplete=TRUE) {
+  trueCorrpars <- list()
+  if (corr.model %in% c("Matern","corMatern")) {
+    if (!is.null(ranPars$trNu)) { ## either we have nu,rho or trNu,trRho 
+      ranPars$nu <- nuInv(ranPars$trNu,ranPars$trRho) ## before trRho is removed...
+      ranPars$trNu <- NULL
+      attr(ranPars,"type")$nu <- attr(ranPars,"type")$trNu
+      attr(ranPars,"type")$trNu <- NULL
+    } 
+    nu <- ranPars$nu
+    if (is.null(nu) && checkComplete) {
+      mess <- pastefrom("nu missing from ranPars (or correlation model mis-identified).",prefix="(!) From ")
+      stop(mess)
+    }
+    trueCorrpars$nu <- nu 
+  } 
+  if (corr.model=="AR1") {
+    ARphi <- ranPars$ARphi
+    if (is.null(ARphi) && checkComplete) {
+      mess <- pastefrom("ARphi missing from ranPars.",prefix="(!) From ")
+      stop(mess)
+    }
+    trueCorrpars$ARphi <- ARphi    
+  } else if (corr.model != "corrMatrix") { ## all models with a 'rho' parameter
+    if (!is.null(ranPars$trRho)) {
+      ranPars$rho <- rhoInv(ranPars$trRho)
+      ranPars$trRho <- NULL
+      attr(ranPars,"type")$rho <- attr(ranPars,"type")$trRho
+      attr(ranPars,"type")$trRho <- NULL
+    } ## else there may simply be rho rather than trRho (including for adjacency model through optim procedure !)
+    rho <- ranPars$rho
+    if (is.null(rho) && checkComplete) {
+      mess <- pastefrom("rho missing from ranPars.",prefix="(!) From ")
+      stop(mess)
+    }
+    trueCorrpars$rho <- rho
+  }
+  Nugget <- ranPars$Nugget
+  if (! is.null(Nugget)) trueCorrpars$Nugget <- Nugget 
+  if (!is.null(ranPars$trPhi)) {
+    ranPars$phi <- dispInv(ranPars$trPhi)
+    ranPars$trPhi <- NULL
+    attr(ranPars,"type")$phi <- attr(ranPars,"type")$trPhi
+    attr(ranPars,"type")$trPhi <- NULL
+  } else if (!is.null(ranPars$logphi)) { ## debug code
+    ## HL.info$ranFix$phi <- exp(ranPars$logphi)
+    stop("logphi in HLCor...")
+  } #####################  else HL.info$ranFix$phi <- ranPars$phi ## y st deja !?
+  if (!is.null(ranPars$trLambda)) {## 
+    ranPars$lambda <- dispInv(ranPars$trLambda)
+    ranPars$trLambda <- NULL
+    attr(ranPars,"type")$lambda <- attr(ranPars,"type")$trLambda
+    attr(ranPars,"type")$trLambda <- NULL
+  } else if (!is.null(ranPars$loglambda)) { ## debug code
+    stop("loglambda in HLCor...")
+  } ##################### else HL.info$ranFix$lambda <- ranPars$lambda
+  return(list(trueCorrpars=trueCorrpars,ranPars=ranPars))
+}
+
+HLCor <- function(formula,
                   ranPars, ## all dispersion and correlation params ideally provided through ranPars
                   data,
                   distMatrix,uniqueGeo=NULL,adjMatrix,corrMatrix,
@@ -94,7 +170,12 @@ function(formula,
     if (corr.model %in% c("BreslowC93","adjacency")) { 
       ## no nugget in the adjacency model...
       if ( missing(adjMatrix) ) stop("missing 'adjMatrix' for adjacency model")
-      m <- solve(diag(rep(1,nrow(adjMatrix)))-rho*(adjMatrix))
+      decomp <- attr(adjMatrix,"symSVD")
+      if (is.null(decomp)) {
+        m <- solve(diag(rep(1,nrow(adjMatrix)))-rho*(adjMatrix))
+      } else {
+        m <- ZWZt(decomp$u,1/(1-rho*decomp$d))
+      }
     }  else if (corr.model=="AR1") {
       coordinates <- extract.check.coords(spatial.model=spatial.model,datanames=names(data))
       uniqueGeo <- unique(data[,coordinates,drop=F]) ## keeps the names of first instances of the coordinates in data
@@ -201,3 +282,56 @@ function(formula,
   }
   return(hlfit) ## 
 }
+
+
+## wrapper for HLCor, suitable input and output for optimization
+`HLCor.obj` <- function(ranefParsVec,skeleton,HLCor.obj.value="p_bv",trace=NULL,family=gaussian(),...) { ## name of first arg MUST differ from names in dotlist...
+  mc <- match.call(expand.dots=TRUE) ## (1) expand.dots added 11/04/2014 for the mutlinomial... eval 
+  dotlist <- list(...)
+  if ( inherits(mc$data,"list")) {
+    ## then processed should already be a list
+    family <- mc$family
+    fitlist <- lapply(seq_len(length(mc$data)),function(it){
+      locmc <- mc
+      locmc[[1L]] <- as.name("HLCor.obj") ## replaces "f" !
+      locmc$ranefParsVec <- ranefParsVec ## replaces "arg" !
+      if (family$family=="multi") locmc$family <- family$binfamily
+      locmc$distMatrix <- mc$distMatrix[[it]]
+      locmc$uniqueGeo <- mc$uniqueGeo[[it]]
+      locmc$data <- mc$data[[it]]
+      locmc$processed <- mc$processed[[it]]
+      eval(locmc) ## this will execute all the code below starting from dotlist <- list(...) 
+    })
+    resu <- sum(unlist(fitlist))
+    if (is.character(trace)) {
+      verif <- paste("#global:",ranefParsVec,resu) 
+      write(verif,file=trace,append=T) ## the file is unlink'ed in corrHLfit()  
+    }
+    return(resu)
+  }
+  HLCor.formals <- names(formals(HLCor))
+  HLfit.formals <- names(formals(HLfit))
+  designL.formals <- names(formals(designL.from.Corr))
+  makescaled.formals <- names(formals(make.scaled.dist))
+  HLnames <- (c(HLCor.formals,HLfit.formals,designL.formals,makescaled.formals))  ## cf parallel code in corrHLfit
+  HLCor.args <- dotlist[intersect(names(dotlist),HLnames)]
+  forGiven <- relist(ranefParsVec,skeleton) ## given values of the optimized variables
+  HLCor.args$ranPars[names(forGiven)] <- forGiven ## do not wipe out other fixed, non optimized variables
+  HLCor.args$family <- family 
+  if (is.character(trace)) {
+    if(.spaMM.data$options$TRACE.UNLINK) unlink("HLCor.args.*.RData")
+    zut <- paste(ranefParsVec,collapse="")  
+    save(HLCor.args,file=paste("HLCor.args.",zut,".RData",sep="")) ## for replicating the problem
+  }
+  hlfit <- do.call("HLCor",HLCor.args)
+  aphls <- hlfit$APHLs
+  resu <- aphls[[HLCor.obj.value]]
+  readable <- unlist(toCanonical(ranPars=forGiven,corr.model=dotlist$`corr.model`,checkComplete=FALSE)$ranPars) ## FR->FR use of dotlist...
+  verif <- c(unlist(aphls),hlfit$lambda,hlfit$phi,readable,ranefParsVec) ## hlfit$phi may be NULL
+  if (is.character(trace)) {
+    write(verif,file=trace,ncolumns=length(verif),append=T) ## the file is unlink'ed in corrHLfit()  
+  }
+  return(resu) #
+}
+
+

@@ -1,5 +1,9 @@
-ordinaryKrigingCoefs <-
-function(xy,nuniquerows,covfnparamA=NA,lambdaA=NA,hglmLambdaA=NA,hglmPhiA=NA,optimise=F,method="GCV",smoothnessRange){
+## was CKrigcoefs in Rmigraine
+# xy should have attribute fittedPars
+# smoothnessRange is a new argument, no default to catch future problems  in assembling code => smoothnessRange=c(minSmoothness,maxSmoothness)
+# nuniquerows was given by selectFn
+
+ordinaryKrigingCoefs <- function(xy,nuniquerows,covfnparamA=NA,lambdaA=NA,hglmLambdaA=NA,hglmPhiA=NA,optimise=F,method="GCV",smoothnessRange){
   nrowxy<-nrow(xy)
   ncolxy<-ncol(xy)
   c<-rep(0,nuniquerows)
@@ -115,4 +119,4 @@ function(xy,nuniquerows,covfnparamA=NA,lambdaA=NA,hglmLambdaA=NA,hglmPhiA=NA,opt
       CKrigidx=blob[[15]]
     )) # is a list
   }
-}
+} ## end def ordinaryKrigingCoefs

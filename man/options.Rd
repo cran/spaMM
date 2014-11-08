@@ -1,7 +1,7 @@
 \name{options}
 \alias{spaMM.options}
 \alias{spaMM.getOption}
-\alias{.SpaMM}
+%~ \alias{.SpaMM}
 \title{spaMM options settings}
 \description{
   Allow the user to set and examine a variety of \emph{options}
@@ -35,8 +35,8 @@ spaMM.getOption(x)
 
 \item{\code{maxLambda=1e10}:}{The maximum value of lambda: higher fitted 
  lambda values in HLfit are reduced to this.}
-
-}
+} 
+and possibly other undocumented values for development purposes.
   }
 
 }
@@ -45,7 +45,7 @@ spaMM.getOption(x)
   Invoking \code{spaMM.options()} with no arguments returns a list with the
   current values of the options. Invoking \code{spaMM.getOption(<option name>)} returns the value of the option rather than a list.
 
-  Internally, the options are kept in the list \code{.SpaMM}.\cr
+%~  Internally, the options are kept in the list \code{.SpaMM}.\cr
 
   spaMM.options() provides an interface for changing maximal values of parameters of the Matérn correlation function. However, 
   it is not recommended to change these values unless a spaMM message specifically suggests so. Errors may occur if too low values are chosen as these may conflit with default initial values for the parameters.
@@ -62,6 +62,7 @@ spaMM.getOption(x)
 }
 \examples{
   spaMM.options()
+  spaMM.getOption("NUMAX")
   \dontrun{
   spaMM.options(maxLambda=1e06)
   }

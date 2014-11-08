@@ -1,4 +1,4 @@
-Beta <-
+`Beta` <-
 function(link="logit"){
 
  linktemp <- substitute(link)
@@ -43,3 +43,4 @@ structure(list(family = "Beta", link = linktemp, linkfun = stats$linkfun,
         linkinv = stats$linkinv, variance = variance, dev.resids = dev.resids, mu.eta = stats$mu.eta),
         class = "family")
 }
+

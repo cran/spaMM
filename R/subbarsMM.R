@@ -13,3 +13,4 @@ function (term)
     for (j in 2:length(term)) term[[j]] <- subbarsMM(term[[j]])
     term
 }
+

@@ -66,7 +66,7 @@ HLCor(formula,ranPars,data,distMatrix,uniqueGeo,adjMatrix,
     \item{CAR model with given adjacency matrix}{\code{adjacency(1|<...>)} with \code{adjMatrix} and \code{ranPars} argument. This will construct the 
     correlation matrix (\bold{I}\eqn{-\rho} \code{adjMatrix}\eqn{)^{-1}} for a conditional autoregressive (CAR) model. 
     This was implemented for comparison purposes as it is widely used, but is not really recommended for irregular lattices
-    (see Wall, 2004 and Martellosio, 2012 for some insights on the implications of autoregressive models). Accordingly, tricks for faster analysis that are specific to CAR models were not implemented.}
+    (see Wall, 2004 and Martellosio, 2012 for some insights on the implications of autoregressive models). Accordingly, tricks that allow faster analysis of CAR models were not implemented.}
   }
 }
 \references{

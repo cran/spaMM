@@ -1,5 +1,14 @@
-separator <-
-function(x, y, method = c("primal", "dual"), purpose = c("test", "find"),
+## CODE FROM THE safeBinaryRegression PACKAGE
+## does not import all package to prevent interference between glm fns and different error handling 
+
+##FR See also Zorn, A Solution to Separation in Binary Response Models, Political Analysis (2005) 13:157–170
+##FR see also http://www.ats.ucla.edu/stat/mult_pkg/faq/general/complete_separation_logit_models.htm
+##FR there is a Firth method for dealing with this (and a package, brglm... brglm(locform,offset=Offset) ).
+
+## test for and/or find the direction of separation
+## x a design matrix and y a 0-1 binary response vector
+
+separator <- function(x, y, method = c("primal", "dual"), purpose = c("test", "find"),
                       tol = 1e-3)
 {
   n <- dim(x)[1]
@@ -114,3 +123,5 @@ function(x, y, method = c("primal", "dual"), purpose = c("test", "find"),
 
   ans
 }
+
+

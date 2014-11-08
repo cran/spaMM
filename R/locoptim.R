@@ -1,8 +1,19 @@
-locoptim <-
-function(init.optim,LowUp,anyObjfnCall.args,trace=list(file=NULL,append=T),Optimizer="L-BFGS-B",optimizers.args,corners=TRUE,objfn=HLCor.obj,maximize=FALSE) {
+## this function 'optimize' and by default minimizes its function
+##    it wraps optim, optimize and nlminb
+##    and performs by default a grid search before calling there
+## It can be turned back to maximization  (minimization used only in confint 29/08/2014)
+## the objective function 'objfn' is by default the objective function HLCor.obj (currently not by name bc do.call(optimize,...name)) fails)
+##   the first arg of this fn must be ranefParsVec
+## with respect to the variable in the LIST init.optim
+## within bounds given by LowUp
+## by first evaluating the objfn in selected points before running optimize (1D case) or 
+## nlminb/one of the methods in optim depending on the 0ptimizer argument
+## anyOptim.args contains arguments common to all optimizers, and arguments for the objective function
+## optimizers.args contains arguments specific to the given optimizer
+locoptim <- function(init.optim,LowUp,anyObjfnCall.args,trace=list(file=NULL,append=T),Optimizer="L-BFGS-B",optimizers.args,corners=TRUE,objfn=HLCor.obj,maximize=FALSE) {
   processedHL1 <- getProcessed(anyObjfnCall.args$processed,"HL[1]") ## there's also HLmethod in processed<[[]]>$callargs
   initvec <- unlist(init.optim)
-  if ( ! is.null(anyObjfnCall.args$ranefParsVec) ) stop("! is.null(anyObjfnCall.args$ranefParsVec)") ## FR->FR tempo debugging
+  if ( ! is.null(anyObjfnCall.args$ranefParsVec) ) stop("! is.null(anyObjfnCall.args$ranefParsVec)") ## FR->FR catch programming errors
   ## anyObjfnCall.args$ranefParsVec <- NULL ## removes this for optimization! otherwise fatal for nlminb! ## but should become obsolete ?
   optimizerObjfnCall.args <- notoptimObjfnCall.args <- anyObjfnCall.args
   notoptimObjfnCall.args$ranefParsVec <- initvec ## logscale, inherits names from init.optim
@@ -32,7 +43,7 @@ function(init.optim,LowUp,anyObjfnCall.args,trace=list(file=NULL,append=T),Optim
         scorners <- split(corners,rownames(corners))
         ll <- lapply(scorners,function(v) {
           notoptimObjfnCall.args$ranefParsVec <- v
-          ## FR->FR serait mieux de pouvoir supprimer que certain warnings
+          ## FR->FR il serait mieux de pouvoir ne supprimer que certain warnings
           bla <- suppressWarnings(do.call(objfn,notoptimObjfnCall.args)) 
           c(bla,attr(bla,"info"))
         })
@@ -41,7 +52,7 @@ function(init.optim,LowUp,anyObjfnCall.args,trace=list(file=NULL,append=T),Optim
       } else {
         corners.obj <- apply(corners,1,function(v) {
           notoptimObjfnCall.args$ranefParsVec <- v
-          ## FR->FR serait mieux de pouvoir supprimer que certain warnings
+          ## FR->FR il serait mieux de pouvoir ne supprimer que certain warnings
           suppressWarnings(do.call(objfn,notoptimObjfnCall.args)) 
         })
       }
@@ -112,11 +123,13 @@ function(init.optim,LowUp,anyObjfnCall.args,trace=list(file=NULL,append=T),Optim
     anyOptimize.args$tol <- optimizers.args$optimize$tol
     if (is.character(trace$file)) write("## Optimization call",file=trace$file,append=T)   
     optr <- do.call(optimize,c(anyOptimize.args,list(f=objfn)))  ## optimize p_bv
-    optPars <- relist(optr$maximum,init.optim)
+    if(maximize) {
+      optPars <- relist(optr$maximum,init.optim)
+    } else optPars <- relist(optr$minimum,init.optim)
     ## HLCor.args$ranPars[names(optPars)] <- optPars 
   } else { ## nothing to optimize
     ## HLCor.args$ranPars should already contain all it needs
     optPars <- NULL
   }
   return(optPars)
-}
+} ## end def locoptim

@@ -1,5 +1,214 @@
-corrHLfit <-
-function(formula,data, ## matches minimal call of HLfit
+dispFn <- function(x,xref=1) {log(x+xref)}
+dispInv <- function(x,xref=1) {exp(x)-xref}
+### transfos useful (test Vn phiFix...)
+## for rho/trRho: rho=0 exactly is meaningful in adjacency model. rhoFn and rhoInv should be used only for other models.
+rhoFn <- function(x) {log(x/(.spaMM.data$options$RHOMAX-x))} ## rho should be constrained to <RHOMAX and trRho should diverge as rho approaches RHOMAX
+rhoInv <- function(trRho) {.spaMM.data$options$RHOMAX*exp(trRho)/(1+exp(trRho))} 
+nuFn <- function(nu,rho) {log(nu/(.spaMM.data$options$NUMAX-nu))} ## nu should be constrained to <NUMAX and trNu should diverge as nu approaches NUMAX
+nuInv <- function(trNu,trRho) {.spaMM.data$options$NUMAX*exp(trNu)/(1+exp(trNu))}
+## FR->FR rho/sqrt(nu) scaling => should be fixed nu and transformed rho to handle vectorial rho
+## thus nu fns should be indep of nu and rho fns should be functions of nu ! :
+if (FALSE) {
+ futurerhoFn <- function(rho,nu) {
+  rhosc <- rho/sqrt(nu)
+  log(rhosc/(.spaMM.data$options$RHOMAX-rhosc))
+ }
+ futurerhoInv <- function(trRhosc,trNu) {
+  nu <- .spaMM.data$options$NUMAX*exp(trNu)/(1+exp(trNu))
+  rhosc <- .spaMM.data$options$RHOMAX*exp(trRhosc)/(1+exp(trRhosc))
+  rhosc*sqrt(nu)
+ }
+}
+
+
+makeLowerUpper <- function(canon.init, ## cf calls: ~ in user scale, must be a full list of relevant params
+                           lower,upper, ## ~in transformed scale
+                           user.lower=list(),user.upper=list(),
+                           corr.model="Matern",nbUnique,ranFix=list(),
+                           lowerbound=list(),upperbound=list(),
+                           optim.scale) {
+  ## init.optim not further used...
+  if (corr.model=="adjacency") { ## adjacency model
+    ## no default value, user values are required 
+    lower$rho <- user.lower$rho ## no transfo for adjacency model
+    if (is.null(lower$rho)) lower$rho <- lowerbound$rho
+    upper$rho <- user.upper$rho ## no transfo again
+    if (is.null(upper$rho)) upper$rho <- upperbound$rho
+  } else {
+    if (corr.model=="AR1") {
+      if ( ! is.null(canon.init$ARphi)) {
+        ARphi <- user.lower$ARphi
+        if (is.null(ARphi)) ARphi <- -0.999999
+        lower$ARphi <- ARphi
+        ARphi <- user.upper$ARphi
+        if (is.null(ARphi)) ARphi <- 0.999999
+        upper$ARphi <- ARphi
+      }    
+    } else { ## then Matern model....
+      if (! is.null(canon.init$rho)) {
+        rho <- user.lower$rho
+        if (is.null(rho)) rho <- canon.init$rho/150
+        if (optim.scale=="transformed") {
+          lower$trRho <- rhoFn(rho)
+        } else lower$rho <- rho
+        rho <- user.upper$rho
+        if (is.null(rho)) {
+          if (inherits(nbUnique,"list")) nbUnique <- mean(unlist(nbUnique))
+          rho <- canon.init$rho*2*nbUnique ## The following was a bit too low for experiments with nu=0.5 : 1/(maxrange/(2*nbUnique)) ## nb => unique rows !
+          if (optim.scale=="transformed") rho <- rho*.spaMM.data$options$RHOMAX/(1+rho) ## so that it does not exceed RHOMAX
+        }
+        if (optim.scale=="transformed") {
+          upper$trRho <- rhoFn(rho) 
+        } else upper$rho <- rho
+        rhoForNu <- canon.init$rho
+      } else rhoForNu <- getPar(ranFix,"rho")
+      if (! is.null(canon.init$nu)) {
+        nu <- user.lower$nu
+        if (is.null(nu)) nu <- canon.init$nu/100
+        if (optim.scale=="transformed") {
+          lower$trNu <- nuFn(nu,rhoForNu)
+          #print(c(rhoForNu,nu,lower$trNu))
+        } else lower$nu <-nu
+        nu <- user.upper$nu
+        if (is.null(nu)) nu <- canon.init$nu*.spaMM.data$options$NUMAX/(1+canon.init$nu) ## nu should not diverge otherwise it will diverge in Bessel_lnKnu, whatever the transformation used
+        if (optim.scale=="transformed") {
+          upper$trNu <- nuFn(nu,rhoForNu)
+        } else upper$nu <- nu
+        #print(c(rhoForNu,nu,upper$trNu))
+      }
+    } 
+    ##### common to the different models except adjacency (because there are several places where NUgget+adjacency is not handled)
+    if ( ! is.null(canon.init$Nugget)) {
+      lower$Nugget <- 0
+      upper$Nugget <- 0.999999
+    }
+  }
+  if (! is.null(canon.init$phi)) {
+    phi <- user.lower$phi
+    if (is.null(phi)) phi <- canon.init$phi/1000
+    lower$trPhi <- dispFn(phi)
+    phi <- user.upper$phi
+    if (is.null(phi)) phi <- canon.init$phi*1000
+    ## if phi is badly initialized then it gets a default which may cause hard to catch problems in the bootstrap...
+    upper$trPhi <- dispFn(phi)
+  }
+  if (! is.null(canon.init$lambda)) {
+    lambda <- user.lower$lambda
+    if (is.null(lambda)) lambda <- canon.init$lambda/1000
+    lower$trLambda <- dispFn(lambda)
+    lambda <- user.upper$lambda
+    if (is.null(lambda)) lambda <- canon.init$lambda*1000
+    upper$trLambda <- dispFn(lambda)
+  }
+  return(list(lower=lower,upper=upper))
+}
+
+checkDistMatrix <- function(distMatrix,data,coordinates) {
+  classDistm <- class(distMatrix)
+  if ( ! classDistm %in% c("matrix","dist")) {
+    message(paste("(!) 'distMatrix' argument appears to be a '",classDistm,"',",sep=""))
+    stop("not a 'matrix' or 'dist'. Check the input. I exit.")
+  }
+  ## chol() fails on distances matrices with repeated locations (which are pos SD)... but chol() not used by default
+  ## the following code assumes that distMatrix deals only with unique locations, and checks this
+  ## HENCE ******* distMatrix must refer to unique values of a grouping variable *********
+  usernames <- rownames(distMatrix)
+  checknames <- all(sapply(usernames,function(v) {v %in% rownames(data)})) ## 
+  if (!checknames) {
+    warning("The rownames of 'distMatrix' are not rownames of the 'data'. Further checking of 'distMatrix' is not possible.")
+    nbUnique <- NA
+  } else {
+    uniqueGeo <- unique(data[usernames,coordinates,drop=FALSE]) ## check that this corresponds to unique locations
+    nbUnique <- nrow(uniqueGeo)
+    if (nbUnique != nrow(distMatrix)) {
+      stop("The dimension of 'distMatrix' does not match the number of levels of the grouping variable")
+    } else { ## check order
+      redondGeo <- data[,coordinates,drop=F]
+      designRU <- apply(redondGeo,1,function(v) {which(apply(v==t(uniqueGeo),2,all))}) ## has no names
+      ## eg 1 1 2 2 3 2 3 4 is valid for 8 obs, 4 unique locations
+      designRU <- unique(as.vector(designRU)) ## should then be 1 2 3 4
+      ## but if distMatrix in reverse order, the first row of redondGeo would match the 4th of uniqueGeo and then the following test is FALSE:
+      if ( ! all (designRU==seq_len(length(designRU))) ) {
+        stop("The rows of 'distMatrix' are not ordered as rows of the 'data'.")
+      }
+    } 
+  }
+  nbUnique ## if stop() did not occur
+}
+
+makeCheckGeoMatrices <- function(data,distMatrix=NULL,uniqueGeo=NULL,coordinates) {
+  isListData <- inherits(data,"list")
+  if (is.null(distMatrix)) { 
+    if ( is.null(uniqueGeo) ) { ## then construct it from the data ## this should be the routine case
+      if (isListData) {
+        uniqueGeo <- lapply(data,function(dd) {unique(dd[,coordinates,drop=FALSE])})
+        nbUnique <- lapply(uniqueGeo,nrow) 
+      } else {
+        uniqueGeo <- unique(data[,coordinates,drop=FALSE])
+        nbUnique <- nrow(uniqueGeo) 
+      }
+    } 
+    ## (2): we need distMatrix *here* in all cases for the check
+    if (isListData) {
+      distMatrix <- lapply(uniqueGeo,proxy::dist)
+    } else distMatrix <- proxy::dist(uniqueGeo)
+  } else { ## there is a distMatrix, this is what will be used by HLCor
+    if (isListData) {
+      nbUnique <- lapply(seq_len(length(data)),function(dd) {checkDistMatrix(distMatrix,dd,coordinates)})
+    } else nbUnique <- checkDistMatrix(distMatrix,data,coordinates)
+    ## stops if problems, otherwise checkDistMatrix has no useful return value
+  }
+  return(list(nbUnique=nbUnique,uniqueGeo=uniqueGeo,distMatrix=distMatrix))
+}
+
+
+
+
+alternating <-function(init.optim,LowUp,anyOptim.args,maxIter,ranPars,HLCor.args,trace,Optimizer="L-BFGS-B",optimizers.args,corners) {
+  nam <- names(init.optim)
+  if (any(c("trPhi","trLambda") %in% nam )) {
+    mess <- pastefrom("Dispersion parameters non allowed in 'init.corrHLfit' with alternating algorithm.",prefix="(!) From ")
+    stop(mess)
+  }
+  initcorr <- init.optim[nam %in% c("trRho","trNu","Nugget","ARphi")]
+  HLfitLowUp <- LowUp
+  HLfitLowUp$lower[c("trRho","trNu","Nugget","ARphi")] <- NULL
+  HLfitLowUp$upper[c("trRho","trNu","Nugget","ARphi")] <- NULL
+  corrLowUp <- LowUp
+  corrLowUp$lower[c("trPhi","trLambda")] <- NULL
+  corrLowUp$upper[c("trPhi","trLambda")] <- NULL
+  anycorrOptim.args <- anyOptim.args
+  iter <- 0
+  conv <- 1
+  currentLik <- -Inf
+  while (iter < maxIter && conv > 1e-5 ) { ## if alternating: alternate HLCor and locoptim
+    ranPars[names(initcorr)] <- initcorr
+    attr(ranPars,"type")[names(initcorr)] <- "var"
+    HLCor.args$ranPars <- ranPars
+    oldLik <- currentLik
+    if (is.character(trace$file)) {
+      if(.spaMM.data$options$TRACE.UNLINK) unlink("HLCor.args.*.RData")
+      zut <- paste(unlist(initcorr),collapse="")  
+      save(HLCor.args,file=paste("HLCor.args.",zut,".RData",sep="")) ## for replicating the problem
+    }
+    givencorr <- do.call("HLCor",HLCor.args) ## optim disp and beta given corr param
+    currentLik <- givencorr$APHLs$p_v ## iterations maximize p_v
+    conv <- currentLik-oldLik
+    anycorrOptim.args$ranPars$lambda <- givencorr$lambda
+    anycorrOptim.args$ranPars$phi <- givencorr$phi
+    #### anycorrOptim.args$etaFix <- list(beta=givencorr$fixef,v_h=givencorr$v_h) ## that's what LeeN01sm say, but this does not work
+    anycorrOptim.args$etaFix <- list(beta=givencorr$fixef) 
+    loclist <- list(initcorr,corrLowUp,anyObjfnCall.args=anycorrOptim.args,trace,Optimizer=Optimizer,
+                    optimizers.args=optimizers.args,corners=corners,maximize=TRUE) 
+    initcorr <- do.call("locoptim",loclist) 
+    iter <- iter+1
+  }
+  optPars <- c(initcorr,givencorr$lambda,givencorr$phi)
+  optPars
+}
+
+## wrapper for optimization of HLCor.obj
+corrHLfit <- function(formula,data, ## matches minimal call of HLfit
                       init.corrHLfit=list(),
                       init.HLfit=list(),
                       ranFix=list(), 
@@ -31,16 +240,17 @@ function(formula,data, ## matches minimal call of HLfit
     mess <- pastefrom("invalid value of the 'objective' argument.",prefix="(!) From ")
     stop(mess)
   }
-  if ( (! is.null(ranFix$rho)) && (! is.null(init.corrHLfit$rho)) ) {
+  Fixrho <- getPar(ranFix,"rho")
+  if ( (! is.null(Fixrho)) && (! is.null(init.corrHLfit$rho)) ) {
     stop("(!) 'rho' given as element of both 'ranFix' and 'init.corrHLfit'. Check call.")    
-  } else rho.size <- max(length(ranFix$rho),length(init.corrHLfit$rho))
-  if ( (! is.null(ranFix$nu)) && (! is.null(init.corrHLfit$nu)) ) {
+  } else rho.size <- max(length(Fixrho),length(init.corrHLfit$rho))
+  if ( (! is.null(getPar(ranFix,"nu"))) && (! is.null(init.corrHLfit$nu)) ) {
     stop("(!) 'nu' given as element of both 'ranFix' and 'init.corrHLfit'. Check call.")    
   }
-  if ( (! is.null(ranFix$ARphi)) && (! is.null(init.corrHLfit$ARphi)) ) {
+  if ( (! is.null(getPar(ranFix,"ARphi"))) && (! is.null(init.corrHLfit$ARphi)) ) {
     stop("(!) 'ARphi' given as element of both 'ranFix' and 'init.corrHLfit'. Check call.")    
   }
-  if ( (! is.null(ranFix$Nugget)) && (! is.null(init.corrHLfit$Nugget)) ) {
+  if ( (! is.null(getPar(ranFix,"Nugget"))) && (! is.null(init.corrHLfit$Nugget)) ) {
     stop("(!) 'Nugget' given as element of both 'ranFix' and 'init.corrHLfit'. Check call.")    
   }
   if (length(trace)>0 && ! all(names(trace) %in% c("file","append"))) {
@@ -104,6 +314,13 @@ function(formula,data, ## matches minimal call of HLfit
   ############### (almost) always check geo info ###################
   if (corr.model=="adjacency") {
     if ( is.null(HLCor.args$adjMatrix) ) stop("missing 'adjMatrix' for adjacency model")
+    if (isSymmetric(HLCor.args$adjMatrix)) {
+      decomp <- selfAdjointSolverCpp(HLCor.args$adjMatrix)
+      attr(HLCor.args$adjMatrix,"symSVD") <- decomp
+      rhorange <- range(decomp$d)
+      lowerbound <- list(rho=1/rhorange[2])
+      upperbound <- list(rho=1/rhorange[1])
+    } else stop("'adjMatrix' is not symmetric") ## => invalid cov mat for MVN
   } else {
     if ( is.null(spatial.model)) {
       stop("An obsolete syntax for the adjacency model appears to be used.")
@@ -141,18 +358,16 @@ function(formula,data, ## matches minimal call of HLfit
   HLCor.args$data <- data
   ## fills init.optim with all necessary values. There must be values for all parameters that are to be optimized 
   init <- list() ## will keep the initial values in untransformed scale
-  if ( ! is.null(HLCor.args$adjMatrix) ) { ## NEIGHBOR MODEL there is a explicit adjMatrix provided but then users must provide bounds for rho for non-euclidian models...
-    if (is.null(ranFix$rho)) {
-      if (is.null(lower$rho)) {
-        mess <- pastefrom("lower$rho required.",prefix="(!) From ")
-        stop(mess)
-      }
-      if (is.null(upper$rho)) {
-        mess <- pastefrom("upper$rho required.",prefix="(!) From ")
-        stop(mess)
-      }
+  if ( corr.model=="adjacency" ) { ## NEIGHBOR MODEL there is a explicit adjMatrix provided but then users must provide bounds for rho for non-euclidian models...
+    if (is.null(getPar(ranFix,"rho"))) {
       init$rho <- init.optim$rho 
-      if (is.null(init$rho)) init$rho <- (lower$rho+upper$rho)/2 
+      if (is.null(init$rho)) {
+        lr <- lower$rho
+        if (is.null(lr)) lr <- lowerbound$rho 
+        ur <- upper$rho
+        if (is.null(ur)) ur <- upperbound$rho 
+        init$rho <- (lr+ur)/2
+      }
       init.optim$rho <- init$rho
     }
     nbUnique <- NULL
@@ -167,7 +382,7 @@ function(formula,data, ## matches minimal call of HLfit
       HLCor.args$uniqueGeo <- uniqueGeo 
     }
     if (corr.model=="AR1") {
-      if (is.null(ranFix$ARphi) && (! is.numeric(init.HLfit$ARphi))) { 
+      if (is.null(getPar(ranFix,"ARphi")) && (! is.numeric(init.HLfit$ARphi))) { 
         init$ARphi <- init.optim$ARphi 
         if (is.null(init$ARphi)) init$ARphi <- 0. 
         if (! is.null(init.HLfit$ARphi)) {
@@ -218,7 +433,7 @@ function(formula,data, ## matches minimal call of HLfit
         maxrange <- unlist(maxrange)
         HLCor.args$`rho.mapping` <- rho.mapping
       }
-      if (is.null(ranFix$rho) && (! is.numeric(init.HLfit$rho))) {
+      if (is.null(getPar(ranFix,"rho")) && (! is.numeric(init.HLfit$rho))) {
         init$rho <- init.optim$rho 
         if (is.null(init$rho)) init$rho <- 30/(2*maxrange) 
         if (! is.null(init.HLfit$rho)) {
@@ -234,16 +449,17 @@ function(formula,data, ## matches minimal call of HLfit
         init.HLfit$rho <- init.optim$rho
         init.optim$rho <- NULL
       }
-      if (is.null(ranFix$nu) && (! is.numeric(init.HLfit$nu))) { 
+      if (is.null(getPar(ranFix,"nu")) && (! is.numeric(init.HLfit$nu))) { 
         init$nu <- init.optim$nu 
         if (is.null(init$nu)) init$nu <- 0.5 
         if (! is.null(init.HLfit$nu)) {
           init.HLfit$nu <- init$nu ## avant transformation
         } else {
           if (optim.scale=="transformed") {
-            if (is.null(ranFix$rho)) { 
+            Fixrho <- getPar(ranFix,"rho")
+            if (is.null(Fixrho)) { 
               init.optim$trNu <- nuFn(init$nu,init$rho) 
-            } else init.optim$trNu <- nuFn(init$nu,ranFix$rho)
+            } else init.optim$trNu <- nuFn(init$nu,Fixrho)
             init.optim$nu <- NULL
           } else init.optim$nu <- init$nu
         }
@@ -253,9 +469,9 @@ function(formula,data, ## matches minimal call of HLfit
         init.optim$nu <- NULL
       }
     }
-    if (is.null(ranFix$Nugget)) { init$Nugget <- init.optim$Nugget }  ## this may be null, but in this case we leave it so and the Nugget keeps its default value through all computations
+    if (is.null(getPar(ranFix,"Nugget"))) { init$Nugget <- init.optim$Nugget }  ## this may be null, but in this case we leave it so and the Nugget keeps its default value through all computations
   }
-  if (is.null(ranFix$lambda)) { ## no ranFix$lambda: process init.optim
+  if (is.null(getPar(ranFix,"lambda"))) { ## no ranFix$lambda: process init.optim
     init$lambda <- init.optim$lambda 
     if (!is.null(init$lambda)) {
       if (init$lambda<1e-4) init$lambda <- 1e-4
@@ -265,7 +481,7 @@ function(formula,data, ## matches minimal call of HLfit
   } else { ## ranFix$lambda present, do NOT put it in init.optim
     if (!is.null(init.optim$lambda)) stop("(!) Arguments 'ranFix$lambda' and 'init.corrHLfit$lambda' conflict with each other.")  
   } 
-  if (is.null(ranFix$phi)) {
+  if (is.null(getPar(ranFix,"phi"))) {
     init$phi <- init.optim$phi 
     if (!is.null(init$phi)) {
       if (init$phi<1e-4) init$phi <- 1e-4
@@ -290,12 +506,17 @@ function(formula,data, ## matches minimal call of HLfit
     stop("'lambda' in 'lower' or 'upper' has no effect if absent from 'init.corrHLfit'.")
   }
   ################
-  LowUp <- makeLowerUpper(canon.init=init,
-                          lower=init.optim, upper=init.optim, ## initially with right transformed variables but wrong values
-                          user.lower=user.lower,user.upper=user.upper,
-                             corr.model=corr.model,nbUnique=nbUnique,
-                          ranFix=ranFix,
-                          optim.scale=optim.scale)
+  LUarglist <- list(canon.init=init,
+                    lower=init.optim, upper=init.optim, ## initially with right transformed variables but wrong values
+                    user.lower=user.lower,user.upper=user.upper,
+                    corr.model=corr.model,nbUnique=nbUnique,
+                    ranFix=ranFix,
+                    optim.scale=optim.scale)
+  if (corr.model=="adjacency") {
+    LUarglist$lowerbound <- lowerbound
+    LUarglist$upperbound <- upperbound
+  }
+  LowUp <- do.call("makeLowerUpper",LUarglist)
   ## LowUp: a list with elements lower and upper that inherits names from init.optim, must be optim.scale as init.optim is by construction
   lower <- LowUp$lower ## list ! which elements may have length >1 !
   upper <- LowUp$upper ## list !
@@ -315,7 +536,7 @@ function(formula,data, ## matches minimal call of HLfit
     if (family$family %in% c("poisson","binomial")) {
       phi.Fix <- 1 
     } else {
-      phi.Fix <- ranFix$phi
+      phi.Fix <- getPar(ranFix,"phi")
       if (any(phi.Fix==0)) {
         mess <- pastefrom("phi cannot be fixed to 0.",prefix="(!) From ")
         stop(mess)
@@ -575,8 +796,8 @@ function(formula,data, ## matches minimal call of HLfit
   attr(hlcor,"corrHLfitcall") <- mc
   ## 
   attr(hlcor,"optimInfo") <- list(optim.pars=optPars, 
-                                  #canon.init=init,
                                   init.optim=init.optim,
+                                  lower=lower,upper=upper,
                                   user.lower=user.lower,user.upper=user.upper)
   if ( ( ! is.null(optPars)) && attr(optPars,"method")== "locoptimthroughSmooth") {
     attr(optr$value,"predVar") <- predVar
@@ -594,3 +815,5 @@ function(formula,data, ## matches minimal call of HLfit
   ####  rm(list=c(tmpName),pos=".GlobalEnv") ## removes HLtmp0 at the global level
   return(hlcor) ## it's the call which says it was returned by corrHLfit
 }
+
+    

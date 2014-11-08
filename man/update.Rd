@@ -51,16 +51,16 @@ betavals <- c(5.55,0.08,-0.14,-0.21,-0.08,-0.09,-0.09)
 # reconstruct fitted phi value from predictor for log(phi)
 Xphi <- with(wafers,cbind(1,X3,X3^2)) ## design matrix
 phifit <- exp(Xphi \%*\% c(-2.90,0.1,0.95))
-update(wFit,formula.= . ~ offset(wFit$X \%*\% betavals)+(1|batch),
+update(wFit,formula.= . ~ offset(wFit$`X.pv` \%*\% betavals)+(1|batch),
        ranFix=list(lambda=exp(-3.67),phi=phifit))
 
 ## There are subtlety in performing REML fits of constrained models: 
-update(wFit,formula.= . ~ offset(wFit$X \%*\% betavals)+(1|batch))
+update(wFit,formula.= . ~ offset(wFit$`X.pv` \%*\% betavals)+(1|batch))
 ## ... changes the REML correction. Consider instead
-update(wFit,formula.= . ~ offset(wFit$X \%*\% betavals)+(1|batch),
+update(wFit,formula.= . ~ offset(wFit$`X.pv` \%*\% betavals)+(1|batch),
        REMLformula=wFit$predictor)
 ## Alternatively, show original wFit as differences from betavals:  
-update(wFit,formula.= . ~ . +offset(wFit$X \%*\% betavals))
+update(wFit,formula.= . ~ . +offset(wFit$`X.pv` \%*\% betavals))
 
 }
 % Add one or more standard keywords, see file 'KEYWORDS' in the

@@ -33,7 +33,7 @@ a dispersion parameter changes the ways it is estimated (see Details).
 A list similar to \code{initpar}, but specifying fixed values of the parameters not estimated. 
 }
   \item{lower}{
-An optional list of values of parameters specified through \code{initpar}, used as lower values in calls to \code{optim}
+An optional list of values of parameters specified through \code{initpar}, used as lower values in calls to \code{optim}. See Details for default values.
 }
   \item{upper}{
 Same as \code{lower}, but upper values.
@@ -75,9 +75,11 @@ of \code{HLCor}. Arguments that do not fit within these functions are detected a
   
   Correctly using \code{corrHLfit} for likelihood ratio tests
   of fixed effects may then by tricky. It is safe to perform full ML fits of all parameters (using \code{objective="p_v",HLmethod="ML"}) for such tests (see Examples).   The higher level function \code{\link{fixedLRT}} is a safe interface for likelihood ratio tests using some form of REML estimation in \code{corrHLfit}.  
+  
+  \code{attr(<fitted object>,"optimInfo")$lower} and ...\code{$upper} gives the lower and upper bounds for optimization of correlation parameters. These are the default values if the user did not provide explicit values. For the adjacency model, the default values are the inverse of the maximum and minimum eigenvalues of the \code{adjMatrix}. For the Matérn model, these values are not so easily summarized. They are intended to cover the range of values for which there is statistical information to distinguish among them.
 }
 \value{
-The return value of an \code{HLCor} call, with additional attributes. The \code{HLCor} call is evaluated at the estimated correlation parameter values. These values are included in the return object as its \code{$corrPars} member. The attributes added by \code{corrHLfit} include the orignal call of the function (\code{corrHLfitcall}), and the \code{objective} function used by \code{optim} (see Details). 
+The return value of an \code{HLCor} call, with additional attributes. The \code{HLCor} call is evaluated at the estimated correlation parameter values. These values are included in the return object as its \code{$corrPars} member. The attributes added by \code{corrHLfit} include the original call of the function (\code{corrHLfitcall}), and various informations about the optimization call within \code{corrHLfit}. 
 }
 %% ~Make other sections like Warning with \section{Warning }{....} ~
 \seealso{
@@ -89,7 +91,7 @@ The return value of an \code{HLCor} call, with additional attributes. The \code{
 data(scotlip)
 corrHLfit(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(scotlip$expec)),
                data=scotlip,family=poisson(),
-               adjMatrix=Nmatrix,lower=list(rho=0),upper=list(rho=0.1745))
+               adjMatrix=Nmatrix)
 
 
 #### Examples with Matérn correlations
@@ -103,7 +105,7 @@ nullfit <- corrHLfit(migStatus ~ 1 + Matern(1|latitude+longitude),data=blackcap,
                     HLmethod="ML") ## takes ~ 3s
 summary(nullfit)
 ## p-value:
-1-pchisq(2*(fullfit$APHLs$p_v-nullfit$APHLs$p_v),df=1)
+1-pchisq(2*(logLik(fullfit)-logLik(nullfit)),df=1)
 }
 
 ## see data set Loaloa for additional examples

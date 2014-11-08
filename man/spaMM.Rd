@@ -67,7 +67,7 @@ HLfit(cbind(Mate,1-Mate)~1+(1|Female/Male),
        family=binomial(),rand.family=Beta(logit),data=salamander,HLmethod="ML")
 
 # A syntax described in ?formula
-HLfit(cbind(Mate,1-Mate)~1+(1|Female)+(1|Male %in% Female),
+HLfit(cbind(Mate,1-Mate)~1+(1|Female)+(1|Male \%in\% Female),
        family=binomial(),rand.family=Beta(logit),data=salamander,HLmethod="ML")
 }
 
