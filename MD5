@@ -1,9 +1,9 @@
-fa0d0944215170144824e8570f49da1c *DESCRIPTION
+2042a505a6d329c823b7e43cbcbeb713 *DESCRIPTION
 750776a7dc1ebcf5bad186c71ccb6c09 *NAMESPACE
 5f44c519f15a45e9dec7732b42276954 *R/Beta.R
-6ee213f9cda4cf800a4730e2056a0caa *R/HLCor.R
+f2e67cec6f1a33d76e215dc1f25b5deb *R/HLCor.R
 d4fcc9e4f9da4027a37cdc90451e92ee *R/HLFactorList.R
-04bcfdb898d3ffb44f3100f0419eb0c0 *R/HLfit.R
+45c71cf8121236ffd92dd7b063141b2a *R/HLfit.R
 01234a5db9d90446ea3280b2427b6fa9 *R/HLframes.R
 6c2a69ae6e3a3324d92b91576ec258d6 *R/LR.R
 9187601ac2ee3a24eceae89adfd53e04 *R/LevenbergMstep.R
@@ -13,7 +13,7 @@ e32415258dc71567b8e23f7c17f4de97 *R/auglinmodfit.R
 5a512fc416e44559f67554ed5b0029c0 *R/calc.p_v.R
 d2775ebb516d1cc287cd532f6b9ca2c5 *R/confint.R
 2ef0b1a9c68b7d1dcea20d3a9d7ef134 *R/corMatern.R
-965c4813b40f66b3e46dfb31e417cc5c *R/corrHLfit.R
+2193ec3a1e17f1d31f08bbca5ccdff7d *R/corrHLfit.R
 ee6d7b3433f560b4fb04f25b7bedf110 *R/corrMM.LRT.R
 1124f15c1967561c2a74433930a70563 *R/correlationFns.R
 dacb1cc851698cab000b2a7b3b5cf813 *R/expandSlash.R
@@ -22,7 +22,7 @@ b3dcc332db22319d740c58a0f464fb1a *R/findplus.R
 b992e6997b6061fcaacf7b934a706be8 *R/generateName.R
 9a725c27825cdf4b4930808f22af2cfe *R/inverse.Gamma.R
 c8ed62f9218274138597a3eaabdd40a1 *R/is.diagonal.R
-6d695016f45a7524a176165d2fc71b35 *R/locoptim.R
+200a5ee47a1b0f17699a6fc01030af4c *R/locoptim.R
 a4c7ee6577d0e48eeb72bb93a87e4fd8 *R/locoptimthroughsmooth.R
 5a03c65034bdf36d956f4038d8c0eaf2 *R/mapMM.R
 616639cfb9e5bab04ccb516b8d55bbc0 *R/migraineLike.R
@@ -40,7 +40,7 @@ ba7014e53a99be05318b8b88b679ea79 *R/simulate.HL.R
 56f16495a0186027b0ff03b02f6d1796 *R/slashTerms.R
 b18e0143a2ba2dc5a1903bdccbe138b3 *R/spaMM.data.R
 82f39ad9c7f2b05c4c32b5b30b49ce31 *R/subbarsMM.R
-b4074d8a9890410254dd0f15edbb5071 *R/summary.HL.R
+0a8c8d1fd7208808fe85f2abaae4328b *R/summary.HL.R
 94285b7fced8393ce39a4bd4fd299154 *R/update.HL.R
 043a5f5d69fbb418076be71fb5e0f866 *R/utils.R
 56d66e24acf90f3447ad4f022b750d74 *data/Loaloa.RData
@@ -102,14 +102,14 @@ bbf7a642786fa4d081612d4d4a884b8d *src/gsl_bessel.cpp
 707ff838f6761d8cb2910323aabeda0e *src/gsl_bessel.h
 634683a4efef33a82af88b1228fc237c *src/spaMM_linear.cpp
 ed9e059a5063c0bb432742c5a99b250c *src/spaMM_linear.h
-ac39da29ed25d8baefab0d6029cbc7a0 *tests/test-all.R
 f056af99f689a7286cbf5299e27edf21 *tests/testthat/test-HLCor.R
 950ac7f70b6bb8fb81c2a6edc4ddb4cf *tests/testthat/test-HLfit.R
+2d78046ecf8123fdf8806443b5289bad *tests/testthat/test-Nugget.R
 856831f08b0e441fb0bb1d38f52291d8 *tests/testthat/test-confint.R
-28c008f3a645a416ec135407ffa9e9a9 *tests/testthat/test-corMatern.R
+f0cb043c89b541d10a55c1ea8a8996d4 *tests/testthat/test-corMatern.R
 e8f223947f154fb79be1c7d5a8c09ef7 *tests/testthat/test-filled.mapMM.R
 f70b97796ca5f20fb521d1ec9291d81c *tests/testthat/test-fixedLRT.R
-ae499a76819365cf9c352d6c627a7d0a *tests/testthat/test-inverse.Gamma.R
+aa70c588a14b595de06f099f7ce67644 *tests/testthat/test-inverse.Gamma.R
 c6d38121cd91926f50c9b5bc59326cca *tests/testthat/test-random-slope.R
 1fe755f8f93f677519c4584e1e7c97ee *tests/testthat/test-salamander.R
 08c38c5bef3345a385ca1c624fc88ffc *tests/testthat/test-sp-nsp.R

@@ -187,9 +187,9 @@ summary.HLfitlist <- function(object, ...) {
     if ( ! is.null(cP) ) {
       cat("Correlation parameters:")
       #corrFixNames <- intersect(ranFixNames,names(cP))
-      corrFixNames <- unlist(corrPars[which(attr(corrPars,"type")=="fix")])
-      if (length(corrFixNames)>2) {
-        cat(" [(",paste(corrFixNames,collapse=",")," were fixed]",sep="")
+      corrFixNames <- names(unlist(corrPars[which(attr(corrPars,"type")=="fix")]))
+      if (length(corrFixNames)>1) {
+        cat(" [",paste(corrFixNames,collapse=",")," were fixed]",sep="")
       } else if (length(corrFixNames)==1) cat(" [",corrFixNames," was fixed]",sep="")
       cat("\n")
       print(cP)

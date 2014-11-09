@@ -179,7 +179,6 @@ HLCor <- function(formula,
     }  else if (corr.model=="AR1") {
       coordinates <- extract.check.coords(spatial.model=spatial.model,datanames=names(data))
       uniqueGeo <- unique(data[,coordinates,drop=F]) ## keeps the names of first instances of the coordinates in data
-      #browser()
       txt <- paste(spatial.model[[2]][[3]]) ## the RHS of the ( . | . ) 
       if (length(grep("%in%",txt))>0) {
         scaled.dist <- as.blockDiag.bar(spatial.model[[2]],formula,data=uniqueGeo)
@@ -262,8 +261,17 @@ HLCor <- function(formula,
   ## allows log and not log:
   varNames <- names(which(attr(ranPars,"type")=="var"))
   HL.info$init.HLfit[varNames] <- ranPars[varNames]
-  fixNames <- setdiff(names(ranPars),varNames) ## names(which(attr(ranPars,"type")=="fix")) pas correct si pas d'attribute (appel direct HLCor) -> on suppose que c'est fix
-  HL.info$ranFix[fixNames] <- ranPars[fixNames]
+  fixNames <- setdiff(names(ranPars),varNames) 
+  if (!is.null(fixNames)) { ## could be NULL for corrMatrix case
+    ranFix <- ranPars[fixNames] ## 11/2014 as there is no other source for ranFix
+    typelist <- list() 
+    typelist[fixNames] <- "fix" 
+    if (!is.null(rPtype <- attr(ranPars,"type"))) { ## it may not exist, or elements may be "fix" or "outer"
+      typelist[names(rPtype)] <- rPtype
+    }
+    attr(ranFix,"type") <- typelist 
+    HL.info$ranFix <- ranFix
+  }
   hlfit <- do.call("HLfit",HL.info) ## with a _list_ of arguments -> do.call ## perhaps should create a list of unevaluated arguments ???? 
   if ( ! is.null(hlfit$error)) {
     errfile <- generateFileName("HLfitCall")

@@ -706,6 +706,10 @@ HLfit <- function(formula,
   corrPars[corrNames_in_init_HLfit] <- NA ## will be filled at the end of the fit
   typelist <- list()
   typelist[corrNames_in_ranFix] <- "fix"
+  if (!is.null(rFtype <- attr(ranFix,"type"))) { 
+    corrNames_in_ranFix_type <- intersect(corrNames_in_ranFix,names(rFtype))
+    typelist[corrNames_in_ranFix_type] <- rFtype[corrNames_in_ranFix_type]
+  }
   typelist[corrNames_in_init_HLfit] <- "var"
   attr(corrPars,"type") <- typelist
   ###################################################
@@ -1091,7 +1095,6 @@ HLfit <- function(formula,
         lowerb <- lowerb[lowerbloc]
         parscale <- (upperb-lowerb)        
         ################# OPTIM
-        #browser()
         optr <- optim(init,objfn,lower=lowerb,upper=upperb,method="L-BFGS-B",
                       control=list(parscale=parscale,fnscale=-1))
         ################# 

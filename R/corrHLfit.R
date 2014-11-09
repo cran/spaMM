@@ -783,7 +783,7 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
     if (!is.null(optPars)) attr(optPars,"method") <-"locoptim"
   }
   ranPars[names(optPars)] <- optPars
-  attr(ranPars,"type")[names(optPars)] <- "fix" ## fix dans HLfit !
+  attr(ranPars,"type")[names(optPars)] <- "outer" ##  
   HLCor.args$ranPars <- ranPars
   verbose["warn"] <- TRUE ## important!
   HLCor.args$verbose <- verbose ##
