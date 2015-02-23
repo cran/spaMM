@@ -1,25 +1,11 @@
-##' Create the list of model matrices from the random-effects terms in
-##' the formula and the model frame.
-##' 
-##' @param formula model formula
-##' @param mf model frame
-##' @param rmInt logical scalar - should the `(Intercept)` column
-##'        be removed before creating Zt
-##' @param drop logical scalar indicating if elements with numeric
-##'        value 0 should be dropped from the sparse model matrices 
-##'
-
-## FR->FR this is no longer such a function in lme4...but see mkReTrms next time 
-
+## derived from lmerFactorList or so. Now see mkReTrms 
 
 spMMFactorList <- function (formula, mf, rmInt, drop) {
-  ##(lme4) record dimensions and algorithm settings
-  ##(lme4) create factor list for the random effects
   ## drop=TRUE elimine des niveaux spurious (test: fit cbind(Mate,1-Mate)~1+(1|Female/Male) ....)
   ## avec des consequences ultimes sur tailles des objets dans dispGammaGLM
-  bars <- spMMexpandSlash(findbarsMM(formula[[length(formula)]])) ## lme4::: refs removed
+  bars <- spMMexpandSlash(findbarsMM(formula[[length(formula)]]))
   if (!length(bars)) stop("No random effects terms specified in formula")
-  names(bars) <- unlist(lapply(bars, function(x) DEPARSE(x[[3]]))) 
+  names(bars) <- unlist(lapply(bars, function(x) DEPARSE(x[[3]])))
   #######
   locfn <- function(x) {
     ## le bidule suivant evalue le bout de formule x[[3]] et en fait un facteur. Useless for spatial effects like longitude + latitude
@@ -32,18 +18,21 @@ spMMFactorList <- function (formula, mf, rmInt, drop) {
       rhs <- as.formula(paste("~",splittxt[1],":",splittxt[2]))[[2]]
       txt <- DEPARSE(rhs)
     }
-    if (length(grep("\\+",txt))>0) { ## coordinates is a vector with a single string; grep is 1 if  + was found in this single string and numeric(0) otherwise
-      aslocator <- parse(text=paste("ULI(",gsub("\\+", "\\,", txt),")"))
+    #    if (length(grep("\\+",txt))>0) { ## coordinates is a vector with a single string; grep is 1 if  + was found in this single string and numeric(0) otherwise
+    if (! is.null(attr(x,"type"))){ ## Any term with a 'spatial' keyword; cf comment in last case
+      ## note that later ZALlist has an attr(attr(.,"ranefs"),"type") where non-spatial types are NOT null
       ## evaluating expression(ULI(...)) serves as a way to identify unique combinations of its arguments
+      aslocator <- parse(text=paste("ULI(",gsub("\\+", "\\,", txt),")")) ## handles for (| ...+...) 
       ff <- as.factor(eval(expr=aslocator,envir=mf))
-      ## old trick using ULI to interpret %in%  
-      #} else if (length(grep("%in%",txt))>0) { ## 
-      #  aslocator <- parse(text=paste("ULI(",gsub("%in%", "\\,", txt),")")) ## spaMM hack using ULI 
-      #  ff <- as.factor(eval(expr=aslocator,envir=mf))
     } else if (length(grep("c\\(\\w*\\)",txt))>0) { ## c(...,...) was used (actually detects ...c(...)....) 
       aslocator <-  parse(text=gsub("c\\(", "ULI(", txt)) ## slow pcq ULI() est slow
       ff <- as.factor(eval(expr=aslocator,envir=mf))
-    } else { ## standard ( | ) rhs (if a single variables, it does not matter whether it is spatial or not )
+    } else { ## standard ( | ) rhs 
+      ## Je pensais que "(if a single variable, it does not matter whether it is spatial or not )"
+      # mais ce n'est pas vrai: s'il y a une seule variable spatiale,
+      # le fait d'en faire un facteur va mener à creer une matrice Zt (puis ZA) avec des cols réordonnées comme les niveaux du factor
+      # alors que cov mats / LMatrix ne sont pas réordonnées...
+      # le probleme devient visible avec im <- as(ff... qui cree une matrice non diagsi on est passé par ce bloc
       mfloc <- mf
       ## automatically converts grouping variables to factors as in lme4::mkBlist (10/2014)
       makeFac <- function(x) if (!is.factor(x)) factor(x) else x
@@ -51,7 +40,6 @@ spMMFactorList <- function (formula, mf, rmInt, drop) {
         if (!is.null(curf <- mfloc[[i]]))
           mfloc[[i]] <- makeFac(curf)
       }
-      ## ff <- eval( expr = substitute(as.factor(fac)[, drop = drop], list(fac = rhs)), envir = mfloc)  ## older code (from lme4::MkReTrm ? )
       if (is.null(ff <- tryCatch(eval(substitute(makeFac(fac),
                                                  list(fac = rhs)), mfloc),
                                  error=function(e) NULL))) {
@@ -68,7 +56,9 @@ spMMFactorList <- function (formula, mf, rmInt, drop) {
       if (drop) ff <- droplevels(ff)
       ## note additional code in lme4::mkBlist for handling lhs in particular
     }
-    im <- as(ff, "sparseMatrix") ##FR->FR slow step; but creates S4 objects with slots as assumed in following code
+    ## *******back to code common to all cases********. 
+    ## This is building Z(A) not Z(A)L hence reasonably sparse even in spatial models
+    im <- as(ff, "sparseMatrix") ##FR->FR slow step; but creates S4 objects with required slots
     ##(lme4) Could well be that we should rather check earlier .. :
     if (!isTRUE(validObject(im, test = TRUE))) {
       stop("invalid conditioning factor in random effect: ", format(rhs))
@@ -78,8 +68,7 @@ spMMFactorList <- function (formula, mf, rmInt, drop) {
     if (rmInt) {
       if (is.na(icol <- match("(Intercept)", colnames(mm)))) {
         ## break  ##FR "break may be used in wrong context: no loop is visible"
-        ## but the break was in lmer code ! 
-        ##FR: introduced the 'else'  
+        ## but the break was in lmer code ! ... introduced the 'else'  
       } else {
         if (ncol(mm) < 2) 
           stop("lhs of a random-effects term cannot be an intercept only")
@@ -89,11 +78,12 @@ spMMFactorList <- function (formula, mf, rmInt, drop) {
     ##FR at this point the code diverges from lmerFactorList  
     ans <- list(f = ff, 
                 A = do.call(rBind, lapply(seq_len(ncol(mm)),function(j) im)),
+                ## Zt is desing obs <-> levels of ranef, either dgCMatrix (sparse) or dgeMatrix (dense)
                 Zt = do.call(rBind, lapply(seq_len(ncol(mm)), 
                                            function(j) {
                                              im@x <- mm[, j]
                                              im
-                                           })), ## obs <-> levels of ranef
+                                           })), 
                 ST = matrix(0, ncol(mm), ncol(mm), dimnames = list(colnames(mm), 
                                                                    colnames(mm))),
                 lambda_X=mm ## design matrix for predictor of lambda
@@ -115,20 +105,29 @@ spMMFactorList <- function (formula, mf, rmInt, drop) {
   for (i in 1:length(fl)) {
     termsModels[i] <- "lamScal" ## FR->FR tempo fix because it's not here that this should be determined
     Subject[[i]] <- as.factor(fl[[i]]$f) # levels of grouping var for all obs
-    Design[[i]] <- as.matrix(Matrix::t(fl[[i]]$Zt)) ## nobs *(nr*npar) matrix => used to compute *ZAL* not a model matrix from a formula for lambda 
-    ## colnames cannot match the names of uniqueGeo <- unique(data[,coordinates,drop=F]) because input argument do not contain info about the rownames of the data
+    Zt <- fl[[i]]$Zt
+    ## ALL Design[[i]] are (dg)*C*matrix ie a Compressed *C*olumn Storage (CCS) matrix 
+    ##  (see http://netlib.org/linalg/html_templates/node92.html#SECTION00931200000000000000)
+    ##  @x must contain the nonzero elements
+    ##  @i must contain the row indices of nonzero elements
+    ##  @p[c] must contain the index _in x_ of the first nonzero element of column c, x[p[c]] in col c and row i[p[c]])  
+    if (is.identity(Zt)) {
+      Design[[i]] <- Diagonal(n=ncol(Zt)) ## diagonal matrix (ddiMatrix) with @diag = "U"
+      colnames(Design[[i]]) <- rownames(Zt) ## used e.g. in prediction (no more the case ?)
+      rownames(Design[[i]]) <- colnames(Zt) ## with transposition col/row names
+    } else Design[[i]] <- t(Zt) ## 
     nt <- colnames(fl[[i]]$ST) ## length=npar
     namesTerms[[i]] <- nt ## eg intercept of slope... possibly several variables
     names(namesTerms)[i] <- GrpNames[i] ## eg intercept of slope... possibly several variables
   }
+  ## FR->FR !!!!! following is called by predict(), not necess useful; 
+  ##     is.identity -> is.square.diagonal takes memory for 10000 points to predict
   for (iMat in seq_len(length(Design))) {
-    if (is.identity(Design[[iMat]])) class(Design[[iMat]]) <- c("identityMatrix",class(Design[[iMat]]))
     attr(Design[[iMat]],"nlevels") <- ncol(Design[[iMat]])
     attr(Design[[iMat]],"colnames") <- colnames(Design[[iMat]])
   }
   ## to each (.|.) corresponds a Grouping (not necess distinct) and an element of namesTerms each identifying one or more terms
   list(Design = Design, Subject = Subject, Groupings = GrpNames,namesTerms=namesTerms,termsModels=termsModels
-       #,lambda_Xs=lambda_Xs
   )
 }
 

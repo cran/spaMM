@@ -26,10 +26,10 @@ makeLowerUpper <- function(canon.init, ## cf calls: ~ in user scale, must be a f
                            user.lower=list(),user.upper=list(),
                            corr.model="Matern",nbUnique,ranFix=list(),
                            lowerbound=list(),upperbound=list(),
+                           control.dist=list(),
                            optim.scale) {
   ## init.optim not further used...
   if (corr.model=="adjacency") { ## adjacency model
-    ## no default value, user values are required 
     lower$rho <- user.lower$rho ## no transfo for adjacency model
     if (is.null(lower$rho)) lower$rho <- lowerbound$rho
     upper$rho <- user.upper$rho ## no transfo again
@@ -70,7 +70,11 @@ makeLowerUpper <- function(canon.init, ## cf calls: ~ in user scale, must be a f
           #print(c(rhoForNu,nu,lower$trNu))
         } else lower$nu <-nu
         nu <- user.upper$nu
-        if (is.null(nu)) nu <- canon.init$nu*.spaMM.data$options$NUMAX/(1+canon.init$nu) ## nu should not diverge otherwise it will diverge in Bessel_lnKnu, whatever the transformation used
+        if (is.null(nu)) {
+          if ( ! is.null(dm <- control.dist$`dist.method`) && dm=="Geodesic") {
+            nu <- 0.5
+          } else nu <- .spaMM.data$options$NUMAX*canon.init$nu/(1+canon.init$nu) ## nu should not diverge otherwise it will diverge in Bessel_lnKnu, whatever the transformation used
+        }
         if (optim.scale=="transformed") {
           upper$trNu <- nuFn(nu,rhoForNu)
         } else upper$nu <- nu
@@ -136,7 +140,7 @@ checkDistMatrix <- function(distMatrix,data,coordinates) {
   nbUnique ## if stop() did not occur
 }
 
-makeCheckGeoMatrices <- function(data,distMatrix=NULL,uniqueGeo=NULL,coordinates) {
+makeCheckGeoMatrices <- function(data,distMatrix=NULL,uniqueGeo=NULL,coordinates,dist.method="Euclidean") {
   isListData <- inherits(data,"list")
   if (is.null(distMatrix)) { 
     if ( is.null(uniqueGeo) ) { ## then construct it from the data ## this should be the routine case
@@ -150,8 +154,8 @@ makeCheckGeoMatrices <- function(data,distMatrix=NULL,uniqueGeo=NULL,coordinates
     } 
     ## (2): we need distMatrix *here* in all cases for the check
     if (isListData) {
-      distMatrix <- lapply(uniqueGeo,proxy::dist)
-    } else distMatrix <- proxy::dist(uniqueGeo)
+      distMatrix <- lapply(uniqueGeo,proxy::dist,method=dist.method)
+    } else distMatrix <- proxy::dist(uniqueGeo,method=dist.method)
   } else { ## there is a distMatrix, this is what will be used by HLCor
     if (isListData) {
       nbUnique <- lapply(seq_len(length(data)),function(dd) {checkDistMatrix(distMatrix,dd,coordinates)})
@@ -215,7 +219,7 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
                       lower=list(),upper=list(),
                       trace=list(file=NULL,append=T),
                       objective="p_bv", ## return value of HLCor.obj for optim calls... FR->FR meaningless for full SEM
-                      rho.mapping,
+                      control.dist=list(),
                       control.corrHLfit=list(), ## alternating, optim.scale, Optimizer, optimizer.args, maxIter, corners, 
                       ## nlminb, optim, optimize,
                       ## smooth.resid.family, smooth.resid.formula, initSmooth, dit
@@ -224,7 +228,7 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
                       ... ## pb est risque de passer des args mvs genre HL.method et non HLmethod...
 ) { 
   mc <- match.call() 
-  init.optim <- init.corrHLfit
+  init.optim <- init.corrHLfit ## usages of init.corrHLfit$rho, etc. must be tracked through init.optim too  
   alternating <- control.corrHLfit$alternating 
   if (is.null(alternating)) alternating <- FALSE
   optim.scale <- control.corrHLfit$optim.scale 
@@ -262,6 +266,9 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
   }  ## the file is written in by HLCor()                   
   dotlist <-list(...) 
   ## Preventing obsolete options
+  if (!is.null(dotlist$rho.mapping)) {
+    stop("'rho.mapping' is obsolete. Use control.dist$rho.mapping instead.")
+  }
   if (!is.null(dotlist$ranPars)) {
     stop("incorrect 'ranPars' argument in corrHLfit call. Use ranFix (ranPars is for HLCor only)")
   }
@@ -280,7 +287,7 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
   } else {
     # corr.model <- "Matern" ## up to v 1.0; for the defective syntax of the scripts for the Ecography paper
     stop("spatial correlation model not specified in 'formula': was valid in version 1.0 but not later.")
-  }
+  } ## FR->FR ce test n'a peut être plsu de sens
   if (!is.null(HLmethod <- dotlist$HLmethod)) {
       if (HLmethod=="SEM") dotlist$`try.chol` <- FALSE
   } ## FR->FR ??? why not handled by preprocess ? actuellement longue construction de HLCor.args puis copie dans anyOptim.args apres preprocess
@@ -372,10 +379,14 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
     }
     nbUnique <- NULL
   } else { ## if (corr.model %in% c("Matern","corMatern","AR1"))
-    geoMats <- makeCheckGeoMatrices(data,dotlist$distMatrix,HLCor.args$uniqueGeo,coordinates)
+    locarglist<- list(data=data,distMatrix=dotlist$distMatrix,
+                      uniqueGeo=HLCor.args$uniqueGeo,coordinates=coordinates)
+    if(!is.null(dist.method <- control.dist$dist.method)) locarglist$dist.method <- dist.method
+    geoMats <- do.call(makeCheckGeoMatrices,locarglist)
     nbUnique <- geoMats$nbUnique  
     distMatrix <- geoMats$distMatrix   
     uniqueGeo <- geoMats$uniqueGeo   
+    rho.mapping <- control.dist$rho.mapping ## may be NULL
     if (rho.size<2) { ## can be 0 if no explicit rho in the input  
       HLCor.args$distMatrix <- distMatrix   
     } else {
@@ -396,42 +407,42 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
         init.optim$ARphi <- NULL
       }      
     } else { ## there is a scale (rho) parameter
-      if (rho.size==0) {
-        if ( ! missing(rho.mapping)) {rho.size <- length(unique(rho.mapping))}
+      if (rho.size==0L) {
+        if ( ! is.null(rho.mapping)) {rho.size <- length(unique(rho.mapping))}
       }
-      if (rho.size<2) { ## can be 0 if no explicit rho in the input  
+      if (rho.size<2L) { ## can be 0 if no explicit rho in the input  
         if (inherits(distMatrix,"list")) {
           maxrange <- max(unlist(lapply(distMatrix,function(dd) max(c(-Inf,dd))))) ## les Inf to handle dist(0)...
                      -min(unlist(lapply(distMatrix,function(dd) min(c( Inf,dd)))))
         } else maxrange <- max(distMatrix)-min(distMatrix)        
       } else { ## rho.size >1
         if (inherits(uniqueGeo,"list")) {
-          if (missing(rho.mapping)) {
+          if (is.null(rho.mapping)) {
             if (ncol(uniqueGeo[[1]])==rho.size) { ## ncol>1, rho of length ncol
               rho.mapping <- seq_len(rho.size)           
-            } else stop("'rho.mapping' missing with no obvious default from the other arguments.")
+            } else stop("'control.dist$rho.mapping' missing with no obvious default from the other arguments.")
           }
           maxrange <- lapply(unique(rho.mapping), function(idx) {
             ranges <- matrix(unlist(lapply(uniqueGeo,function(uu){
               if (nrow(uu)>1) {
-                range(proxy::dist(uu[,rho.mapping==idx]))
+                range(proxy::dist(uu[,rho.mapping==idx],method=dist.method))
               } else c(Inf,-Inf) ## encore des Inf to handle dist(0)...
               })),ncol=2)
             max(ranges[,2])-min(ranges[,1]) 
           })
         } else { ## single data set
-          if (missing(rho.mapping)) {
+          if (is.null(rho.mapping)) {
             if (ncol(uniqueGeo)==rho.size) {
               rho.mapping <- seq_len(rho.size)           
             } else stop("'rho.mapping' missing with no obvious default from the other arguments.")
           }
           maxrange <- lapply(unique(rho.mapping), function(idx) {
-            rng <- range(proxy::dist(uniqueGeo[,rho.mapping==idx]))
+            rng <- range(proxy::dist(uniqueGeo[,rho.mapping==idx],method=dist.method))
             rng[2]-rng[1] 
           })
         }  
         maxrange <- unlist(maxrange)
-        HLCor.args$`rho.mapping` <- rho.mapping
+        HLCor.args$`control.dist` <- control.dist
       }
       if (is.null(getPar(ranFix,"rho")) && (! is.numeric(init.HLfit$rho))) {
         init$rho <- init.optim$rho 
@@ -510,7 +521,7 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
                     lower=init.optim, upper=init.optim, ## initially with right transformed variables but wrong values
                     user.lower=user.lower,user.upper=user.upper,
                     corr.model=corr.model,nbUnique=nbUnique,
-                    ranFix=ranFix,
+                    ranFix=ranFix,control.dist=control.dist,
                     optim.scale=optim.scale)
   if (corr.model=="adjacency") {
     LUarglist$lowerbound <- lowerbound
@@ -552,6 +563,7 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
   } else preprocess.formal.args <- as.list(getProcessed(processed,"callargs"))[-1] ## we'll use them in SEM code
   HLCor.args$processed <- processed
   HLCor.args$ranPars <- ranPars
+  HLCor.args$control.dist <- control.dist
   anyOptim.args <- HLCor.args
   ## HLCor.obj uses a vector + skeleton
   anyOptim.args$skeleton <- init.optim ## logscale, only used by HLCor.obj
@@ -575,12 +587,12 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
     ###### 
     PQLoptr <- do.call(locoptimthroughSmooth,PQLarglist)
     Krigobj <- PQLoptr$Krigobj
-    predVar <- as.numeric(attr(predict(Krigobj,newX=PQLoptr$par,predVar=TRUE),"predVar"))
+    predVar <- as.numeric(attr(predict(Krigobj,newdata=PQLoptr$par,predVar=TRUE),"predVar"))
     prevPredVars <- 0
     ## new sampling **************for SEM**************** guided by the PQL results
     blocksize <- 30
     ## expand = 1 uses the fact that PQL is informative even if the smoothing must be redone.
-    nextpoints <- sampleNextPoints(n=blocksize,optr=PQLoptr,minPtNbr=3,expand=1, 
+    nextpoints <- sampleNextPoints(n=blocksize,Xpredy=PQLoptr$predictions,minPtNbr=3,expand=1, 
                                    D.resp=sqrt(predVar)/2) ## random sample
     info <- attr(nextpoints,"info") ## only used if diagnostic plot but removed by the rbind
     nearbypts <- sampleNearby(nextpoints,n=6,stepsizes=(unlist(upper)-unlist(lower))/100)      
@@ -635,7 +647,7 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
       control.smooth <- allsmooths ## reinitialize with constant part 
       prevPredVars <- c(prevPredVars,predVar) ## has length it+1
       Krigobj <- optr$Krigobj
-      predVar <- as.numeric(attr(predict(Krigobj,newX=optr$par,predVar=TRUE),"predVar"))
+      predVar <- as.numeric(attr(predict(Krigobj,newdata=optr$par,predVar=TRUE),"predVar"))
       if (interactive() ) {cat(it," ");print(paste(signif(optr$value,4),
                                                    "+/-",signif(sqrt(predVar),4),
                                                    "; n_points=",nrow(Krigobj$data),
@@ -651,7 +663,7 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
         smoothtest$ranPars$trRho <- rhoFn(rhoInv(smoothtest$ranPars$trRho)*2)
       } else smoothtest$ranPars$rho <- smoothrho*2
       smoothtest <- eval(as.call(smoothtest))
-      nextpoints <- sampleNextPoints(n=6,optr=optr,expand=1,D.resp=sqrt(predVar)/2) ## always these 22/08/2014     
+      nextpoints <- sampleNextPoints(n=6,Xpredy=optr$predictions,expand=1,D.resp=sqrt(predVar)/2) ## always these 22/08/2014     
       if ( it > dit
            &&
            predVar < prevPredVars[it-dit] ## ie for iter it-1-dit; for default dit=0, penultimate value 
@@ -669,20 +681,20 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
         blocksize <- 18
         ## get rid of some possibly aberrant points that prevent good smoothing 
         prevPtls <- prevPtls[order(prevPtls$logLobj)[-c(1:2)],] ## FR->FR but aberrant points may not be the lowest... 
-        trypoints <- sampleNextPoints(n=trysize,optr=optr,expand=Inf,D.resp=sqrt(predVar)/2) ## random sample
+        trypoints <- sampleNextPoints(n=trysize,Xpredy=optr$predictions,expand=Inf,D.resp=sqrt(predVar)/2) ## random sample
         info <- attr(trypoints,"info") ## might not be useful in this case (?)
         ###### selection of points by improvement function with measurement error BinghamRW14 p. 121
         obspred <- predict(Krigobj,predVar=TRUE)
         obsSE <- attr(obspred,"predVar")
         obsSE[obsSE<0] <- 0
         obsSE <- sqrt(obsSE)
-        Qmax <- max(predict(Krigobj)$fitted+1.96 * obsSE) ## best improvement function for already computed points 
+        Qmax <- max(obspred[,1]+1.96 * obsSE) ## best improvement function for already computed points 
         # 
         trypred <- predict(Krigobj,trypoints,predVar=TRUE)
         trySE <- attr(trypred,"predVar")
         trySE[trySE<0] <- 0
         trySE <- sqrt(trySE)
-        tryQ <- trypred$fitted + 1.96*trySE ## improvement function for candidate points
+        tryQ <- trypred[,1] + 1.96*trySE ## improvement function for candidate points
         #
         expectedImprovement <- trySE*dnorm((Qmax-tryQ)/trySE)+(tryQ-Qmax)*pnorm((tryQ-Qmax)/trySE) ## 7.5 p. 121
         trypoints <- cbind(trypoints,EI=expectedImprovement)
@@ -757,7 +769,7 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
       if (predVar> prevPredVars[it]) continue <- TRUE
     } ## end 'while' loop
     Krigobj <- optr$Krigobj
-    predVar <- as.numeric(attr(predict(Krigobj,newX=optr$par,predVar=TRUE),"predVar"))
+    predVar <- as.numeric(attr(predict(Krigobj,newdata=optr$par,predVar=TRUE),"predVar"))
     if (interactive() && length(lower)==2) {
       zut <- signif(unlist(Krigobj$corrPars$rho),4)
       if (length(zut)>1) {

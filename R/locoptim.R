@@ -96,7 +96,7 @@ locoptim <- function(init.optim,LowUp,anyObjfnCall.args,trace=list(file=NULL,app
     }
     optPars <- relist(optr$par,init.optim)
     ## HLCor.args$ranPars[names(optPars)] <- optPars 
-  } else if (length(initvec)==1) { ## one-dimensional optimization
+  } else if (length(initvec)==1L) { ## one-dimensional optimization
     byvar <- c(lower,upper) ## HLCor expects trLambda...
     byvar <- 0.999 * byvar + 0.001 *mean(byvar)
     corners <- seq(byvar[1],byvar[2],length.out=11)

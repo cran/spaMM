@@ -6,13 +6,14 @@
 spaMM.filled.contour(x = seq(0, 1, length.out = nrow(z)),
                y = seq(0, 1, length.out = ncol(z)),
                z,
-               xlim = range(x, finite = TRUE),
-               ylim = range(y, finite = TRUE),
-               zlim = range(z, finite = TRUE),
-               levels = pretty(zlim, nlevels), nlevels = 20,
+               xrange = range(x, finite = TRUE),
+               yrange = range(y, finite = TRUE),
+               zrange = range(z, finite = TRUE),
+               margin=1/20,
+               levels = pretty(zrange, nlevels), nlevels = 20,
                color.palette = spaMM.colors,
                col = color.palette(length(levels) - 1),
-               plot.title, plot.axes, key.title, key.axes,
+               plot.title, plot.axes, key.title=NULL, key.axes=NULL,
                map.asp = NULL, xaxs = "i", yaxs = "i", las = 1,
                axes = TRUE, frame.plot = axes, \dots)
 
@@ -27,9 +28,13 @@ spaMM.filled.contour(x = seq(0, 1, length.out = nrow(z)),
    \code{z} this is used for \code{z}.}
  \item{z}{a numeric matrix containing the values to be plotted..  Note that
    \code{x} can be used instead of \code{z} for convenience.}
- \item{xlim}{x limits for the plot.}
- \item{ylim}{y limits for the plot.}
- \item{zlim}{z limits for the plot.}
+ \item{xrange}{x range of the plot.}
+ \item{yrange}{y range of the plot.}
+ \item{zrange}{z range of the plot.}
+\item{margin}{
+   This controls how far (in relative terms) the plot extends beyond the x and y ranges 
+   of the analyzed points, and is overriden by explicit \code{xrange} and \code{yrange} arguments.  
+ }
  \item{levels}{a set of levels which are used to partition the range
     of \code{z}.  Must be \bold{strictly} increasing (and finite).  Areas
     with \code{z} values between consecutive levels are painted with the
@@ -106,12 +111,10 @@ the y/x aspect ratio of the 2D plot area (not of the full figure including the s
   and \code{\link[lattice]{levelplot}} from package \code{lattice}.
 }
 \examples{
-\donttest{
-
 spaMM.filled.contour(volcano, color = spaMM.colors) # simple
 
 ## Comparing the layout with that of filled.contour:
-#  (except that it does not achieve the intended effect 
+#  (except that it does not always achieve the intended effect 
 #  in RStudio Plots pane). 
 
 x <- 10*1:nrow(volcano)
@@ -137,7 +140,5 @@ filled.contour(x, y, volcano, color = terrain.colors,
     key.axes = axis(4, seq(90, 190, by = 10)))  # maybe also asp = 1
 mtext(paste("filled.contour(.) from", R.version.string),
       side = 1, line = 4, adj = 1, cex = .66)
-
-}
 
 }

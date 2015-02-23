@@ -42,7 +42,7 @@ Predictor(formula, offset=NULL, LMatrix = NULL, AMatrix = NULL, ZALMatrix = NULL
   Several observations may be taken in the same location, and a matrix \bold{Z} (usually automatically constructed) tells which element of 
   \bold{Lv} affects each observation. The linear predictor then contains \bold{ZLv}, where \code{dim(Z)} is (number of observations,number of locations). 
   
-  Finally, in some applications the realized random effects in response locations may be viewed as linear combinations \bold{ALv} of random effects \bold{Lv} in distinct locations. In that case the dimension of \bold{L} is the number of such distinct locations, \bold{A} maps them to the observed locations, and \bold{Z} again maps them to possiby repeated observations in observed locations.
+  Finally, in some applications the realized random effects in response locations may be viewed as linear combinations \bold{ALv} of random effects \bold{Lv} in distinct locations. In that case the dimension of \bold{L} is the number of such distinct locations, \bold{A} maps them to the observed locations, and \bold{Z} again maps them to possibly repeated observations in observed locations.
   
   Thus, in general the random term in the linear predictor is written \bold{Mv}, where  \bold{M=ZAL} is reconstructed from the element matrices (usually automatically constructed if needed), unless \bold{ZAL} is given as argument.
   

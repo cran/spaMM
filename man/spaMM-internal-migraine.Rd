@@ -8,7 +8,6 @@
 \alias{extrapolhull}
 %~ 'old':
 \alias{old.nextPoints} 
-\alias{ordinaryKrigingCoefs}
 \alias{rtnorm.copy}
 \alias{sampleNearby}
 \alias{sampleNextPoints}

@@ -13,7 +13,7 @@ Matern.corr(d, rho = 1, smoothness, nu = smoothness, Nugget = 0L)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
-  \item{d}{A distance, typically an Euclidian distance}
+  \item{d}{A distance, typically an Euclidean distance}
   \item{rho}{A scaling factor for distance. The 'range' considered in some 
             formulations is the reciprocal of this scaling factor}
   \item{smoothness}{The smoothness parameter, >0. \eqn{\nu=0.5} corresponds to the exponential correlation function, 
@@ -40,7 +40,7 @@ By default the Nugget is set to 0. See one of the examples on data set \code{\li
 for a fit including the estimation of the Nugget.
 }
 \examples{
-## The Matérn function can be used in Euclidian spaces of any dimension:
+## The Matérn function can be used in Euclidean spaces of any dimension:
 set.seed(123)
 randpts <- matrix(rnorm(20),nrow=5)
 distMatrix <- as.matrix(proxy::dist(randpts))

@@ -3,7 +3,7 @@ confint.HLfit <- function(object,parm,level=0.95,verbose=TRUE,...) {
   znorm <- qnorm((1+level)/2)
   if (is.character(parm)) {
     whichcol <- which(names(object$fixef)==parm)
-    if (length(whichcol)==0) stop("Parameter not in the model")
+    if (length(whichcol)==0L) stop("Parameter not in the model")
     attr(parm,"col") <- whichcol 
   } else {
     parmcol <- parm
@@ -24,7 +24,7 @@ confint.HLfit <- function(object,parm,level=0.95,verbose=TRUE,...) {
   lc$control.HLfit$intervalInfo$init <- (object$fixef-znorm* beta_se)[parm]
   if (llc[[1]]=="corrHLfit") {
     olc <- lc
-    ## good starting values are important... important to use toCanonical as in HLCor
+    ## good starting values are important... important to use canonizeRanPars as in HLCor
     trTemplate <- attr(object,"optimInfo")$`optim.pars`
     objfn <- function(ranefParsVec) { 
       ## FR->FR bc currently locoptim expects a fn with first arg ranefParsVec
@@ -37,7 +37,7 @@ confint.HLfit <- function(object,parm,level=0.95,verbose=TRUE,...) {
       ## attribute lost by optim but otherwise useful for debugging 
       return(resu)
     }
-    canonTemplate <- toCanonical(ranPars=trTemplate,
+    canonTemplate <- canonizeRanPars(ranPars=trTemplate,
                                  corr.model=lc$`corr.model`,
                                  checkComplete=FALSE
     )$ranPars

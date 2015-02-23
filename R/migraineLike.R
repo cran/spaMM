@@ -1,14 +1,9 @@
-#load("../predictions.Rdata")
-#attr(predictions,"fittedPars") <- colnames(predictions)[1:2]
-#attr(predictions,"respName") <- colnames(predictions)[3]
-#attr(predictions,"RMSy") <- 2
-
 #require(geometry) ## delaunayn,convhulln
 
 
 upperPoints <- function(Xpredy,minPtNbr=1#sqrt(nrow(Xpredy)+1)
                         ,D.resp) {
-  respName <- attr(Xpredy,"respName")
+  respName <- attr(Xpredy,"fittedName")
   orderResp <- order(Xpredy[,respName], decreasing = TRUE)
   orderedXy <- Xpredy[orderResp,]
   Dy <- orderedXy[1,respName]-orderedXy[,respName]
@@ -21,7 +16,7 @@ upperPoints <- function(Xpredy,minPtNbr=1#sqrt(nrow(Xpredy)+1)
 elim.redundant.V <- function(vertices) { ## removes redundant vertices
   if (nrow(vertices)<=ncol(vertices)) { ## convhulln crashes!
     minimalvertices<-vertices ## stupid case, should never occur
-  } else if (ncol(vertices)==1) {
+  } else if (ncol(vertices)==1L) {
     minimalvertices<-array(c(min(vertices),max(vertices)),dim=c(2,1))
   } else {
     minimalvertices<-vertices[unique(as.numeric(convhulln(vertices, "Pp"))),] ## removes redundant vertices
@@ -33,30 +28,44 @@ elim.redundant.V <- function(vertices) { ## removes redundant vertices
 #mvH <- elim.redundant.V(nH)
 
 volTriangulation <- function(vertices) { ## by contrast to barycenter of vertices
+  if (is.data.frame(vertices)) vertices <- as.matrix(vertices)
   tc <- delaunayn(vertices,"Pp") ## triangulation by simplices
   pmul <- cbind(-1,diag(rep(1,ncol(vertices))))
+  factorialdim <- factorial(ncol(vertices)) 
   vb <- apply(tc,1,function(v){
     simplex <- vertices[v,,drop=FALSE]
     # pmul %*% simplex is simplex[-1,]-simplex[1,] for each simplex
-    # abs(det()) is its volume up to a scaling factor constant among simplices
-    vol <- abs(det(pmul %*% simplex))
+    # volume = abs(det())/ dim!
+    vol <- abs(det(pmul %*% simplex))/factorialdim
     bary <- colMeans(simplex)
     c(vol,bary) ## volume, and barycenter \n\
   }) 
-  resu <- list(vol=vb[1,],vertices=vertices,simplicesTable=tc)
+  resu <- list(vol=vb[1,], ## a vector
+               bary=t(vb[-1,,drop=FALSE]), ## matrix
+               vertices=vertices,simplicesTable=tc)
   class(resu) <- c("volTriangulation",class(resu))
   resu
 }
-
 #vT <- volTriangulation(mvH)
 
-rsimplex <-function(simplex) { ## to sample uniformly wrt volume within a simplex, not uniformly wrt perimeter
+## 'simplices' are indices
+# originally named subset.volTriangulation but subset is a generic with a different usage
+subsimplices.volTriangulation <- function(x,simplices,...) {
+  vT <- x
+  vT$vol <- vT$vol[simplices]
+  vT$bary <- vT$bary[simplices,]
+  vT$simplicesTable <- vT$simplicesTable[simplices,]
+  # vT$simplicesTable refers to original point indices => $vertices is unchanged
+  vT
+}
+
+rsimplex <-function(simplex,bary=NULL,u=NULL) { ## to sample uniformly[if u is null] wrt volume within a simplex, not uniformly wrt perimeter
   ## even extrapolated values have a high chance of falling into an adjacent simplex
-  bary <- colMeans(simplex) ## OK pour bary de d-dim simplex avec densité uniforme 
+  if (is.null(bary)) bary <- colMeans(simplex) ## OK pour bary de d-dim simplex avec densité uniforme 
   #simplex <- t(extrapol*(t(simplex)-bary)+ bary)  ## bary+ extrapol*(v-bary)
   d <- NROW(simplex)-1 ## 2 pour triangle
   if(NCOL(simplex)!= d) {stop("(!) From 'rsimplex': simplex should have one more row than columns.")}
-  u <- runif(d)
+  if (is.null(u)) u <- runif(d)
   upow <- u^(1/seq(d,1)) ## u_1^{1/2},u_2
   ## loop eliminates one dimension at each step:
   for(it in seq_len(d)) simplex <- t(upow[it]*(t(simplex[-1,,drop=FALSE])-simplex[1,])+ simplex[1,])  ## v_1+ upow[it](v[-1]-v_1)
@@ -76,9 +85,9 @@ rvolTriangulation <- function(n=1,volTriangulationObj,replace=TRUE) {
   if (ncol(vertices)==1L) {
     resu <- as.matrix(resu)
   } else resu <- t(resu)
-#  colnames(resu) <- colnames(vertices) ## currently no name info in the arguments of rvolTriangulation!
+  colnames(resu) <- colnames(vertices,do.NULL=FALSE) 
   return(resu)
-} ## end def rvolDelaunayn
+} ## end def rvolTriangulation
 
 #rvolTriangulation(10,vT)
 #plot(vT$vertices)
@@ -95,7 +104,7 @@ old.nextPoints <- function(n=1,optr,replace=TRUE) { ## random sampling of volume
 }
 
 
-# Retruns sampled locations
+# Returns sampled locations
 # attribute "info" contains 
 #    the original $vertices (indices), 
 #    $upperVertexIndices the indices of the best points, 
@@ -103,9 +112,8 @@ old.nextPoints <- function(n=1,optr,replace=TRUE) { ## random sampling of volume
 #    $vol the volumes of subset of simplices involving the best points
 # default minPtNbr affect exploration of (provisionally) suboptimal peaks
 # expand=2 allows expansion at least towards a local peak
-sampleNextPoints <- function(n=1,optr,minPtNbr=1,##sqrt(nrow(Xpredy)+1),
+sampleNextPoints <- function(n=1,Xpredy,minPtNbr=1,##sqrt(nrow(Xpredy)+1),
                              D.resp=NULL,replace=TRUE,expand=1) { ## different conception, more adaptive
-  Xpredy <- optr$predictions
   fittedPars <- attr(Xpredy,"fittedPars")
   vT <- volTriangulation(as.matrix(Xpredy[,fittedPars])) 
   if (is.infinite(expand)) {
@@ -121,11 +129,10 @@ sampleNextPoints <- function(n=1,optr,minPtNbr=1,##sqrt(nrow(Xpredy)+1),
       upperSimplices <- apply(vT$simplicesTable,1,function(v) { any(v %in% innerVertexIndices)}) ## indices !    
     }
   }
-  subvT <- vT
+  subvT <- vT ## keep the original $vertices since the subvT$simplicesTable still refer to original rows
   subvT$innerVertexIndices <- innerVertexIndices
   subvT$simplicesTable <- vT$simplicesTable[upperSimplices,]
-  subvT$vol <- vT$vol[upperSimplices]
-  ## but keep the original $vertices since the subvT$simplicesTable still refer to original rows 
+  subvT$vol <- vT$vol[upperSimplices] 
   resu <- rvolTriangulation(n=n,subvT,replace=replace)
   colnames(resu) <- fittedPars
   resu <- data.frame(resu)

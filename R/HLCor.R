@@ -16,7 +16,8 @@
   return(coordinates) ## should be ordered as bars[[3]] (important for predict)
 }
 
-toCanonical <- function(ranPars,corr.model,checkComplete=TRUE) {
+## better for development to avoir name conflicts with OKsmooth :toCanonical and :canonize
+canonizeRanPars <- function(ranPars,corr.model,checkComplete=TRUE) {
   trueCorrpars <- list()
   if (corr.model %in% c("Matern","corMatern")) {
     if (!is.null(ranPars$trNu)) { ## either we have nu,rho or trNu,trRho 
@@ -79,7 +80,7 @@ HLCor <- function(formula,
                   ranPars, ## all dispersion and correlation params ideally provided through ranPars
                   data,
                   distMatrix,uniqueGeo=NULL,adjMatrix,corrMatrix,
-                  verbose=c(warn=TRUE,trace=FALSE,summary=FALSE),
+                  verbose=c(warn=TRUE,trace=FALSE,summary=FALSE),control.dist=list(),
                   ...) { 
   mc <- match.call() ## potentially used by getCallHL(object) in update.HL...
   if (is.na(verbose["trace"])) verbose["trace"] <- FALSE
@@ -159,7 +160,7 @@ HLCor <- function(formula,
   if (corr.model== "corrMatrix") {
     ranPars <- NULL
   } else {
-    rpblob <- toCanonical(ranPars=ranPars,corr.model=corr.model) 
+    rpblob <- canonizeRanPars(ranPars=ranPars,corr.model=corr.model) 
     ranPars <- rpblob$ranPars
     trueCorrpars <- rpblob$trueCorrpars
     rho <- ranPars$rho
@@ -181,8 +182,9 @@ HLCor <- function(formula,
       uniqueGeo <- unique(data[,coordinates,drop=F]) ## keeps the names of first instances of the coordinates in data
       txt <- paste(spatial.model[[2]][[3]]) ## the RHS of the ( . | . ) 
       if (length(grep("%in%",txt))>0) {
-        scaled.dist <- as.blockDiag.bar(spatial.model[[2]],formula,data=uniqueGeo)
-        test.in <- TRUE
+        stop("HLCor code should be allowed again to handle blockDiag objects")
+        #scaled.dist <- as.blockDiag.bar(spatial.model[[2]],formula,data=uniqueGeo)
+        #test.in <- TRUE
       } else scaled.dist <- proxy::dist(uniqueGeo)
       m <- trueCorrpars$ARphi^scaled.dist
     } else  if (corr.model %in% c("Matern","corMatern")) {
@@ -198,12 +200,20 @@ HLCor <- function(formula,
       } 
       ## then compute scaled distances from unscaled info, for HLfit call
       msd.arglist <- list(rho = rho)
-      if (length(rho)>1) {
+      if ( ! is.null(dist.method <- control.dist$`dist.method`)) {
+        msd.arglist$`dist.method` <- dist.method
+      }
+      
+      if (length(rho)>1L) {
         msd.arglist <- c(msd.arglist,list(uniqueGeo=uniqueGeo))
-        if ( ! is.null(dotlist$`rho.mapping`)) msd.arglist <- c(msd.arglist,list(`rho.mapping`=dotlist$`rho.mapping`))
+        if ( ! is.null(rho.mapping <- control.dist$`rho.mapping`)) {
+          msd.arglist$`rho.mapping` <- rho.mapping
+        }
       } else {
         if ( missing(distMatrix)) { 
-          distMatrix <- proxy::dist(uniqueGeo)
+          dist.arglist <- list(x=uniqueGeo)
+          if(!is.null(dist.method <- control.dist$dist.method)) dist.arglist$method <- dist.method
+          distMatrix <- do.call(proxy::dist,dist.arglist)
         }
         msd.arglist <- c(msd.arglist,list(distMatrix=distMatrix))
       }
@@ -283,7 +293,10 @@ HLCor <- function(formula,
     message("'HL.info' is saved in the ",errfile," file",sep="")
     stop("I exit.")
   } ## ELSE:
+  hlfit$control.dist <- control.dist
   attr(hlfit,"info.uniqueGeo") <- uniqueGeo ## more spatial info is to be found in hlfit$predictor (Lunique = corrmat^1/2) and hlfit$ZALMatrix
+  if (corr.model %in% c("Matern","corMatern")) attr(hlfit,"msd.arglist") <- msd.arglist ## more organized, easier to reuse. 
+  ## FR->FR but info.uniqueGeo more general (eg AR1) -> a revoir
   attr(hlfit,"HLCorcall") <- mc
   if (verbose["HLCorSummary"]) { ## useful in final call from corrHLfit
     summary(hlfit) ## input corr pars have been printed at the beginning...   
@@ -334,7 +347,7 @@ HLCor <- function(formula,
   hlfit <- do.call("HLCor",HLCor.args)
   aphls <- hlfit$APHLs
   resu <- aphls[[HLCor.obj.value]]
-  readable <- unlist(toCanonical(ranPars=forGiven,corr.model=dotlist$`corr.model`,checkComplete=FALSE)$ranPars) ## FR->FR use of dotlist...
+  readable <- unlist(canonizeRanPars(ranPars=forGiven,corr.model=dotlist$`corr.model`,checkComplete=FALSE)$ranPars) ## FR->FR use of dotlist...
   verif <- c(unlist(aphls),hlfit$lambda,hlfit$phi,readable,ranefParsVec) ## hlfit$phi may be NULL
   if (is.character(trace)) {
     write(verif,file=trace,ncolumns=length(verif),append=T) ## the file is unlink'ed in corrHLfit()  

@@ -1,4 +1,4 @@
-print("test spaMM.Rd donttest examples:")
+print("test spaMM.Rd old donttest examples:")
 # spaMM
 
 data(scotlip) ## loads 'scotlip' data frame, but also 'Nmatrix'
@@ -31,7 +31,7 @@ hl <- HLfit(cbind(Mate,1-Mate)~1+(1|Female/Male),
 
 expect_equal(hl$APHLs$p_v,-243.6668,tolerance=1e-4)
 
-# A syntax described in ?formula
+# A syntax described in ?formula ## removed from the example()
 hl <- HLfit(cbind(Mate,1-Mate)~1+(1|Female)+(1|Male %in% Female),
       family=binomial(),rand.family=Beta(logit),data=salamander,HLmethod="ML")
 

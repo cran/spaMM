@@ -42,33 +42,30 @@ spaMM is designed to be used through the high-level functions
 \examples{
 ## Fit a Poisson GLMM with adjacency correlation model
 
-\donttest{
-data(scotlip) ## loads 'scotlip' data frame, but also 'Nmatrix'
-corrHLfit(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(scotlip$expec)),
+if (spaMM.getOption("example_maxtime")>75) {
+ data(scotlip) ## loads 'scotlip' data frame, but also 'Nmatrix'
+ corrHLfit(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(scotlip$expec)),
           data=scotlip,family=poisson(),
           adjMatrix=Nmatrix,lower=list(rho=0),upper=list(rho=0.1745))
           
-## Adding a Gamma random effect to fit a negative-binomial response:
-corrHLfit(cases~I(prop.ag/10) +(1|gridcode)+adjacency(1|gridcode)
+ ## Adding a Gamma random effect to fit a negative-binomial response:
+ corrHLfit(cases~I(prop.ag/10) +(1|gridcode)+adjacency(1|gridcode)
                 +offset(log(scotlip$expec)),
           data=scotlip,family=poisson(),rand.family=list(Gamma(log),gaussian()),
           adjMatrix=Nmatrix,lower=list(rho=0),upper=list(rho=0.1745))
 }
 
-\donttest{
-## fit non-spatial crossed random effects with distinct families
-data(salamander)
-HLfit(cbind(Mate,1-Mate)~1+(1|Female)+(1|Male),family=binomial(),
+if (spaMM.getOption("example_maxtime")>38) {
+ ## fit non-spatial crossed random effects with distinct families
+ data(salamander)
+ HLfit(cbind(Mate,1-Mate)~1+(1|Female)+(1|Male),family=binomial(),
         rand.family=list(gaussian(),Beta(logit)),data=salamander,HLmethod="ML")
 
-## Nested effects
-# lmer syntax allowing several degrees of nesting
-HLfit(cbind(Mate,1-Mate)~1+(1|Female/Male),
+ ## Nested effects
+ # lmer syntax allowing several degrees of nesting
+ HLfit(cbind(Mate,1-Mate)~1+(1|Female/Male),
        family=binomial(),rand.family=Beta(logit),data=salamander,HLmethod="ML")
-
-# A syntax described in ?formula
-HLfit(cbind(Mate,1-Mate)~1+(1|Female)+(1|Male \%in\% Female),
-       family=binomial(),rand.family=Beta(logit),data=salamander,HLmethod="ML")
+ # [ also allowed is cbind(Mate,1-Mate)~1+(1|Female)+(1|Male \%in\% Female) ]
 }
 
 ## fit a non-spatial, Gamma GLMM:

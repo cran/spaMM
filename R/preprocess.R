@@ -211,7 +211,7 @@ preprocess <- function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predi
   ## thus overall we have <ReML/not>( <h/l> , <more ReML/not> , <not/EQL> )
   ## NohL07 table 1 has interesting terminology and further tables show even more cases
   terms_ranefs <- parseBars(predictor) ## a vector of char strings
-  nbars <- length(terms_ranefs) ## not nbars != nrand because nested effects will be further expanded
+  nbars <- length(terms_ranefs) ## NOTE THAT nbars != nrand because nested effects will be further expanded (eg 2 matrices, 1 ranef pour Female/Male)
   models <- list(eta="",lambda="",phi="")
   if (nbars>0) {
     processed$lambdaFamily <- Gamma(link="log")
@@ -236,7 +236,7 @@ preprocess <- function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predi
   nrand <- length(ZAlist)
   #
   if (inherits(rand.families,"family")) rand.families <- list(rand.families) ## I should pass rand.families to preprocess
-  if (nrand != 1 && length(rand.families)==1) rand.families <- rep(rand.families,nrand) 
+  if (nrand != 1L && length(rand.families)==1L) rand.families <- rep(rand.families,nrand) 
   lcrandfamfam <- checkRandLinkS(rand.families)  
   if (HLmethod=="ML") {
     HLmethod <- "ML(1,1,1)" ## here there could be a special hack for (family$family=="binomial" && mean(BinomialDen)<HL2.threshold) 
@@ -300,7 +300,6 @@ preprocess <- function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predi
   }
   if ( family$family == "binomial" && ncol(y)==2) y <- y[,1,drop=F] ## that is, we have the cbind syntax up to this fn
   ## code derived from the glm() function in the safeBinaryRegression package
-  #    if(family$family == "binomial" && length(unique(y)) == 2 && require(lpSolveAPI)) {
   if(family$family == "binomial" && length(unique(y)) == 2 && ncol(X.pv)>0) {
     separation <- separator(X.pv, as.numeric(y), purpose = "test")$separation
     if(separation) {
@@ -372,7 +371,7 @@ preprocess <- function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predi
     } else {
       if (LMMbool) {  
         LevenbergM <- FALSE ## because no reweighting when beta_eta changes => no IRWLS necess   
-      } else LevenbergM <- TRUE
+      } else LevenbergM <- .spaMM.data$options$LevenbergM
     }
   }
   processed$LevenbergM <- LevenbergM
@@ -431,14 +430,14 @@ preprocess <- function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predi
     fr_disp <- HLframes(formula=formulaDisp,data=data) 
     X_disp <- fr_disp$X
     ## if formula= ~1 and data is an environment, there is no info about nobs, => X_disp has zero rows, which is a problem later 
-    if(nrow(X_disp)==0) X_disp=matrix(1,nrow=nobs)
+    if(nrow(X_disp)==0L) X_disp=matrix(1,nrow=nobs)
     namesX_disp <- names(fr_disp$fixef)
     colnames(X_disp) <- namesX_disp
     random_dispersion<-findbarsMM(formulaDisp) ## random effect in mean predictor of dispersion phi
     if (!is.null(random_dispersion)) {
       FL_disp <- spMMFactorList(formulaDisp, fr_disp$mf, 0L, drop=TRUE)
       namesRE_disp <- FL_disp$Groupings
-      Z_disp <- FL_disp$Design
+      Z_disp <- FL_disp$Design  ## now Matrix...
       models[["phi"]] <- "phiHGLM"
       mess <- pastefrom("LIKELY missing code to handle random effect for linear predictor for phi.")
       stop(mess)

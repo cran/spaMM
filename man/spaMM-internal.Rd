@@ -7,6 +7,13 @@
 \alias{Beta} 
 \alias{calc.p_v}
 \alias{calc.w.resid}
+\alias{calc.hatval}
+\alias{calc.Pdiag}
+\alias{calc.plot.dims}
+\alias{calcDhDv2}
+\alias{CBIND}
+\alias{CBIND.matrix}
+\alias{CBIND.Matrix}
 \alias{checkRandLinkS}
 \alias{checkRandLink}
 \alias{checkRespFam}
@@ -28,6 +35,7 @@
 \alias{intervalStep}
 \alias{LRT.corrHL} 
 \alias{loglfn.ranU}
+\alias{makenewname}
 \alias{Matern.local} 
 \alias{ULI}
 \alias{Variogram.corMatern} 
@@ -38,6 +46,7 @@
 \alias{calcNewCorrs}
 \alias{calcPredVar}
 \alias{calcResidVar}
+\alias{canonizeRanPars} 
 \alias{clean_cs} 
 \alias{checkDistMatrix} 
 \alias{coef.corMatern} 
@@ -75,7 +84,7 @@
 \alias{LogAbsDetWrap}
 \alias{loglfn.ranU} 
 \alias{makeCheckGeoMatrices}
-\alias{makeCovEst} 
+\alias{makeCovEst2} 
 \alias{makeLowerUpper}
 \alias{muetafn}
 \alias{newetaFix}
@@ -88,12 +97,17 @@
 \alias{nuInv} 
 \alias{pastefrom} 
 \alias{plotdhglm} 
+\alias{plotScale}
 \alias{post.process.ZALlist}
 \alias{preprocess}
 \alias{print.arglist}
 \alias{print.predictor}
 \alias{print.ranef}
+\alias{RBIND}
+\alias{RBIND.matrix}
+\alias{RBIND.Matrix}
 \alias{recalc.corMatern} 
+\alias{recent.mapMM} %~ should disappear
 \alias{rhoFn} 
 \alias{rhoInv}
 \alias{rntneg} 
@@ -104,6 +118,7 @@
 \alias{selectLoglfn}
 \alias{separator} 
 \alias{setProcessed}
+\alias{Sigwrapper}
 \alias{slashTerms} 
 \alias{solveWrap.matrix}
 \alias{solveWrap.vector}
@@ -114,14 +129,16 @@
 \alias{theta.mu.canonical}
 \alias{theta.mu.conjugate} 
 \alias{thetaMuDerivs} 
-\alias{toCanonical} 
 \alias{tryCatch.W.E}
 \alias{u_h_from_v_h}
 \alias{updateWranef}
 \alias{updateW_ranefS}
 \alias{validData}
+\alias{ZWZtwrapper}
+\alias{ZtWZwrapper}
 \alias{volTriangulation} %~ could become public later : cf le .Rd.true.txt
 \alias{rvolTriangulation} %~ could become public later
+\alias{subsimplices.volTriangulation} %~ could become public later
 
 
 

@@ -1,4 +1,5 @@
 \name{mapMM}
+\alias{spaMMplot2D}
 \alias{mapMM}
 \alias{filled.mapMM} 
 
@@ -6,26 +7,43 @@
   Colorful plots of predicted responses in two-dimensional space. 
 }
 \description{
-  These functions provide either a map of predicted response in analyzed locations, or a predicted surface. The former is a straightforward representation of the analysis of the data, while the latter cope with the fact that all predictor variables may not be known in all locations on a fine spatial grid, but may involve questionable choices as a result (see \code{map.formula} argument). 
+  These functions provide either a map of predicted response in analyzed locations, or a predicted surface. \code{mapMM} is a straightforward representation of the analysis of the data, while \code{filled.mapMM} copes with the fact that all predictor variables may not be known in all locations on a fine spatial grid, but may involve questionable choices as a result (see \code{map.formula} argument). Both functions takes an \code{HLfit} object as input. \code{mapMM} calls \code{spaMMplot2D}, which is similar but takes a more conventional (x,y,z) input.  
 }
 \usage{
-mapMM(fitobject,coordinates=NULL,xrange=NULL,yrange=NULL,
+spaMMplot2D(x, y, z,xrange=range(x, finite = TRUE),
+      yrange=range(y, finite = TRUE),
       margin=1/20,add.map= FALSE, nlevels = 20, 
       color.palette = spaMM.colors,map.asp=NULL,
-      col = color.palette(length(levels) - 1), plot.title, 
-      plot.axes, decorations, key.title, key.axes, xaxs = "i", 
+      col = color.palette(length(levels) - 1), 
+      plot.title=NULL, plot.axes=NULL, decorations=NULL,
+      key.title=NULL, key.axes=NULL, xaxs = "i", 
       yaxs = "i", las = 1, axes = TRUE, frame.plot = axes, ...) 
-filled.mapMM(fitobject,coordinates,xrange=NULL,yrange=NULL,
+
+mapMM(fitobject,Ztransf=NULL,coordinates,
+      add.points,decorations=NULL,plot.title=NULL,plot.axes=NULL,envir=-3, ...)
+
+filled.mapMM(fitobject,Ztransf=NULL,coordinates,xrange=NULL,yrange=NULL,
              margin=1/20,map.formula,phi=1e-05,gridSteps=41,
-             add.points=quote(points(pred[,coordinates],cex=1,lwd=2)),
-             add.map=FALSE,axes = TRUE, plot.axes,map.asp=NULL,...)
+             decorations=quote(points(pred[,coordinates],cex=1,lwd=2)),
+             add.map=FALSE,axes = TRUE, plot.axes,map.asp=NULL,
+             variances=list(fixef=FALSE,linPred=FALSE,resid=FALSE,sum=FALSE),
+             var.contour.args=list(),
+             ...)
 }
 \arguments{
   \item{fitobject}{
   The return object of a corrHLfit call.
 %~ adjMatrix valid for mapMM ?
 }
-  \item{coordinates}{
+  \item{x,y,z}{
+  Three vectors of coordinates, with \code{z} being expectedly the response.
+%~ adjMatrix valid for mapMM ?
+}
+\item{Ztransf}{
+  A transformation of the response variable, given as a function with a single required matrix argument \code{Z} 
+  (as is appropriate for use in \code{do.call(Ztransf,list(Z=Zvalues))}).
+}
+\item{coordinates}{
   The geographical coordinates. By default they are deduced from the model formula. For example if this formula is \code{resp ~ 1 + Matern(1| x + y )} the default coordinates are c("x","y"). If this formula is \code{resp ~ 1 + Matern(1| x + y + z )}, the user must choose two of the three coordinates.
 }
  \item{xrange}{
@@ -43,7 +61,8 @@ filled.mapMM(fitobject,coordinates,xrange=NULL,yrange=NULL,
   This controls the phi valu assumed in the interpolation step. Ideally \code{phi} would be zero, but problems with numerically singular matrices may arise when \code{phi} is too small.
 }
 \item{gridSteps}{The number of levels of the grid of x and y values}
-\item{add.points}{Either a boolean or an explicit expression, enclosed in \code{quote} (the default value illustrates the latter syntax). This controls whether and how analyzed locations are represented on the map.}
+\item{variances}{Whether to plot some component of prediction variance, and which. Possible elements of this argument are the same as for the \code{variances} argument of \code{\link{predict.HLfit}}, except the \code{Cov} argument. This argument first operates as in \code{predict.HLfit}, so that either a single component  of prediction variance is computed, or a \code{sumVar} component is returned among other ones. Contour lines of either the \code{sumVar}, or the single component available, are then added to the plot.}
+\item{var.contour.args}{A list of control parameters for rendering of prediction variances. See \code{\link{contour}} for possible arguments (except \code{x}, \code{y}, \code{z} and \code{add}).}
 \item{add.map}{
   Either a boolean or an explicit expression, enclosed in \code{quote} (see Examples).
   If \code{TRUE}, the \code{map} function from the \code{maps} package (which much therefore the loaded) is used to add a map from its default \code{world} database. \code{xrange} and \code{yrange} are used to select the area, so it is most convenient if the \code{coordinates} are longitude and latitude (in this order and in standard units). An explicit expression can also be used for further control.  
@@ -52,7 +71,7 @@ filled.mapMM(fitobject,coordinates,xrange=NULL,yrange=NULL,
 a set of levels which are used to partition the range of z. Must be strictly increasing (and finite). Areas with z values between consecutive levels are painted with the same color.
 }
 \item{nlevels}{	
-if levels is not specified, the range of z, values is divided into approximately this many levels.
+if \code{levels} is not specified, the range of z, values is divided into *approximately* this many levels (a call to \code{\link{pretty}} determines the actual number of levels).
 }
 \item{color.palette}{	
 a color palette function to be used to assign colors in the plot.
@@ -69,9 +88,12 @@ statements which add titles to the main plot. If provided, further \code{...} ar
 \item{plot.axes}{	
 statements which draw axes (and a box) on the main plot. Default axes are drawn by default when this argument is missing, given \code{axes = TRUE}.
 }
-\item{decorations}{  
-Additional graphic statements (\code{points}, \code{polygon}, etc.).
+\item{decorations}{ Either NULL or Additional graphic statements (\code{points}, \code{polygon}, etc.), enclosed in \code{quote} (the default value illustrates the latter syntax).
+.
 }
+\item{add.points}{Obsolete, use \code{decorations} instead.}
+\item{envir}{Controls the environment in which \code{plot.title}, \code{plot.axes}, and 
+    \code{decorations} are evaluated. \code{mapMM} calls \code{spaMM2Dplot} from where these graphic arguments are evaluated, and the default value -3 means that they are evaluated within the environment from where \code{mapMM} was called.}
 \item{key.title}{	
 statements which add titles for the plot key.
 }
@@ -91,8 +113,7 @@ the style of labeling to be used. The default is to use horizontal labeling.
 logicals indicating if axes and a box should be drawn, as in plot.default.
 }
 \item{\dots}{
-  further arguments passed to or from other methods. For \code{mapMM}, currently only additional graphical parameters passed to \code{title()} (see Details).
-  For \code{filled.mapMM}, these parameters are those that can be passed to \code{\link{spaMM.filled.contour}}. 
+  further arguments passed to or from other methods. For \code{mapMM}, all such arguments are passed to \code{spaMMplot2D}; for \code{spaMMplot2D}, currently only additional graphical parameters passed to \code{title()} (see Details).  For \code{filled.mapMM}, these parameters are those that can be passed to \code{\link{spaMM.filled.contour}}. 
 }
 }
 \value{
@@ -100,7 +121,7 @@ logicals indicating if axes and a box should be drawn, as in plot.default.
 }
 \details{
 If you have values for all predictor variables in all locations of a fine spatial grid, \code{filled.mapMM} may not be a good choice.
-Rather, use \code{predict(<fitobject>,newX= <all predictor variables >)} to generate all predictions, and then either 
+Rather, use \code{predict(<fitobject>,newdata= <all predictor variables >)} to generate all predictions, and then either 
 \code{spaMM.filled.contour} or some other raster functions.
 
 These functions handle some of their arguments as \code{\link{filled.contour}} does. For \code{mapMM} in particular, this means that either
@@ -114,37 +135,34 @@ data(blackcap)
 bfit <- corrHLfit(migStatus ~ means+ Matern(1|longitude+latitude),data=blackcap,
                   HLmethod="ML",
                   ranFix=list(lambda=0.5537,phi=1.376e-05,rho=0.0544740,nu=0.6286311))
-mapMM(bfit,color.palette = function(n){spaMM.colors(n,redshift=1/2)})
+if (require(maps)) { ## required for add.map=TRUE 
+  mapMM(bfit,color.palette = function(n){spaMM.colors(n,redshift=1/2)},add.map=TRUE)
+}
 
-\donttest{
-## showing add.map
-filled.mapMM(bfit,add.map=TRUE,plot.axes={axis(1);axis(2)},
+if (spaMM.getOption("example_maxtime")>7) {
+ ## filled.mapMM takes a bit longer
+ # showing 'add.map', 'nlevels', and contour lines for 'variances'
+ if (require(maps)) { ## required for add.map=TRUE 
+  filled.mapMM(bfit,nlevels=30,add.map=TRUE,plot.axes={axis(1);axis(2)},
+             variances=list(sum=TRUE),
              plot.title=title(main="Inferred migration propensity of blackcaps",
                                xlab="longitude",ylab="latitude"))
-## filled.mapMM takes a bit longer
-filled.mapMM(bfit,nlevels=30,plot.axes={axis(1);axis(2)},
-              plot.title=title(main="Inferred migration propensity of blackcaps",
-                               xlab="longitude",ylab="latitude"))
+  }
 }
 
+if (spaMM.getOption("example_maxtime")>30) {
+ data(Loaloa)  
+ lfit <- corrHLfit(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
+                  +Matern(1|longitude+latitude),HLmethod="HL(0,1)",data=Loaloa,
+                  family=binomial(),ranFix=list(nu=0.5,rho=2.255197,lambda=1.075))   
 
-## showing more involved use of add.map
-data(Loaloa)  
-lfit <- corrHLfit(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
-                    +Matern(1|longitude+latitude),HLmethod="HL(0,1)",data=Loaloa,
-                    family=binomial(),ranFix=list(nu=0.5,rho=2.255197,lambda=1.075))   
-
-if(require(maps)) {
-  mapMM(lfit,add.map=quote(map(,xlim=xrange,ylim=yrange,add=TRUE)))
-}
-
-
-\donttest{
-## longer computation requiring interpolation of 197 points 
-filled.mapMM(lfit,add.map=TRUE,plot.axes={axis(1);axis(2)},
-             add.points=quote(points(pred[,coordinates],pch=15,cex=0.3)),
+ ## longer computation requiring interpolation of 197 points 
+ if (require(maps)) { ## required for add.map=TRUE 
+  filled.mapMM(lfit,add.map=TRUE,plot.axes={axis(1);axis(2)},
+             decorations=quote(points(pred[,coordinates],pch=15,cex=0.3)),
              plot.title=title(main="Inferred prevalence, North Cameroon",
                                 xlab="longitude",ylab="latitude"))
+  }
 }
 
 }

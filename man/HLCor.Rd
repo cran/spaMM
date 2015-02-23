@@ -9,7 +9,8 @@ then estimating fixed effects and dispersion parameters using \code{HLfit}.
 }
 \usage{
 HLCor(formula,ranPars,data,distMatrix,uniqueGeo,adjMatrix,
-      corrMatrix,verbose=c(warn=TRUE,trace=FALSE,summary=FALSE),...)
+      corrMatrix,verbose=c(warn=TRUE,trace=FALSE,summary=FALSE),
+      control.dist = list(),...)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -53,6 +54,14 @@ HLCor(formula,ranPars,data,distMatrix,uniqueGeo,adjMatrix,
     \code{summary} controls whether a summary of the fit is called by \code{HLfit}.
     \code{warn} is for programming purposes and best ignored.
 }
+  \item{control.dist}{
+   A list of arguments that control the computation of the distance argument of the correlation functions. Possible elements are
+   \describe{
+   \item{rho.mapping}{ a set of indices controlling which elements of the \code{rho} scale vector scales which dimension(s) of the space in which (spatial) 
+   correlation matrices of random effects are computed. See same argument in \code{\link{make.scaled.dist}} for details and examples.} 
+   \item{dist.method}{\code{method} argument of \code{proxy::dist} function (by default, \code{"Euclidean"}, but e.g. \code{"Geodesic"} can be used to compute spherical distances.)}
+   }
+}
   \item{\dots}{
     Further parameters passed to \code{HLfit} or to \code{designL.from.corr}.
 }
@@ -88,12 +97,12 @@ the CAR and SAR models: Journal of Statistical Planning and Inference 121: 311-3
 }
 \examples{
 
-\donttest{
 #### Matérn correlation using only the Matern() syntax
-data(Loaloa)
-HLCor(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
+if (spaMM.getOption("example_maxtime")>3) {
+ data(Loaloa)
+ HLCor(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
               +Matern(1|longitude+latitude),data=Loaloa,
-      family=binomial(),ranPars=list(nu=0.5,rho=1/0.7)) ## takes ~ 6s
+      family=binomial(),ranPars=list(nu=0.5,rho=1/0.7)) 
 }
 %- : tested in simulate.HLCor.Rd
 
@@ -111,13 +120,11 @@ MLdistMat <- as.matrix(proxy::dist(blackcap[,c("latitude","longitude")]))
 HLCor(migStatus ~ means+ Matern(1|latitude+longitude),data=blackcap,
       distMatrix=MLdistMat,HLmethod="ML",ranPars=list(nu=0.6285603,rho=0.0544659))
 
-\donttest{
 #### example with an adjacency matrix (autoregressive model)
 data(scotlip)
 HLCor(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(scotlip$expec)),
       ranPars=list(rho=0.174),
       adjMatrix=Nmatrix,family=poisson(),data=scotlip)
-}
 
 }
 \keyword{ model }

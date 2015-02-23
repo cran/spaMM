@@ -5,6 +5,10 @@ lmwithQ <- function(XX, yy) {
     .Call('spaMM_lmwithQ', PACKAGE = 'spaMM', XX, yy)
 }
 
+lmwithSparseQ <- function(XX, yy) {
+    .Call('spaMM_lmwithSparseQ', PACKAGE = 'spaMM', XX, yy)
+}
+
 leverages <- function(XX) {
     .Call('spaMM_leverages', PACKAGE = 'spaMM', XX)
 }
@@ -15,6 +19,10 @@ Rcpp_qr_Q <- function(XX) {
 
 Rcpp_QR <- function(XX) {
     .Call('spaMM_Rcpp_QR', PACKAGE = 'spaMM', XX)
+}
+
+Rcpp_sparseQR <- function(XX) {
+    .Call('spaMM_Rcpp_sparseQR', PACKAGE = 'spaMM', XX)
 }
 
 sweepZ1W <- function(ZZ, WW) {

@@ -92,24 +92,20 @@ Mixed-Effects Models in S and S-PLUS, José C. Pinheiro and Douglas M. Bates, St
 }
 \examples{
 ## LMM
-\donttest{
 data(blackcap)
 blackcapD <-cbind(blackcap,dummy=1) ## obscure, isn't it? 
-require(nlme)
 ## With method= 'ML' in lme, The correlated random effect is described 
 ##  as a correlated residual error and no extra residual variance is fitted:
-lme(fixed = migStatus ~ means, data = blackcapD, random = ~ 1 | dummy, 
+nlme::lme(fixed = migStatus ~ means, data = blackcapD, random = ~ 1 | dummy, 
     correlation = corMatern(form = ~ longitude+latitude  | dummy), 
     method = "ML")
-}
 
 ## Binomial GLMM
-\dontrun{
 ## ~54s. on a laptop
-data(Loaloa)
-LoaloaD <-cbind(Loaloa,dummy=1) 
-require(MASS)
-glmmPQL(fixed =cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI, 
+if (spaMM.getOption("example_maxtime")>50) {
+ data(Loaloa)
+ LoaloaD <-cbind(Loaloa,dummy=1) 
+ MASS::glmmPQL(fixed =cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI, 
         data = LoaloaD, random = ~ 1 | dummy,family=binomial, 
         correlation = corMatern(form = ~ longitude+latitude | dummy))
 }

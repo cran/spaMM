@@ -245,11 +245,9 @@ Smyth GK, Huele AF, Verbyla AP (2001). Exact and approximate REML for heterosced
 
 \examples{
 data(wafers)
-\donttest{
 ## Gamma GLMM with log link
 HLfit(y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch),family=Gamma(log),
           resid.formula = ~ X3+I(X3^2) ,data=wafers)
-}
 %- : tested in update.Rd
 ## Gamma - inverseGamma HGLM with log link
 HLfit(y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch),family=Gamma(log),

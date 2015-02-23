@@ -77,7 +77,8 @@ if (F) {
   if (try.chol) {
     if (.spaMM.data$options$USEEIGEN) {
       if (inherits(m,"blockDiag")) { 
-        trychol <- RcppChol.blockDiag(m) ## cf pb RcppEigen / generic
+        stop("designL.from.Corr code should be allowed again to handle blockDiag objects")
+        #trychol <- RcppChol.blockDiag(m) ## cf pb RcppEigen / generic
       } else trychol <- RcppChol(m)
       if (trychol$Status==TRUE) { ## if chol computation successful
         L <- trychol$L
@@ -186,34 +187,70 @@ CondNormfn <- function(LMatrix,lambda) {
   return(list(sqrtCondCovLv=sqrtCondCovLv,condLvReg=condLvReg))
 } 
 
-`make.scaled.dist` <- function(distMatrix,uniqueGeo,rho,rho.mapping=seq_len(length(rho))) {
-  if ( missing(distMatrix) ) { ## 
-     if ( missing(uniqueGeo) ) {
-       mess <- pastefrom("missing(distMatrix) && missing(uniqueGeo).",prefix="(!) From ")
-       stop(mess)
-     } else {
-        if (length(rho)==1) {
-           uniqueScal<-uniqueGeo * rho 
+`make.scaled.dist` <- function(uniqueGeo,uniqueGeo2=NULL,distMatrix,rho,rho.mapping=seq_len(length(rho)),
+                               dist.method="Euclidean") {
+  if (dist.method=="Euclidean") {
+    if ( missing(distMatrix) ) { ## 
+      if ( missing(uniqueGeo) ) {
+        mess <- pastefrom("missing(distMatrix) && missing(uniqueGeo).",prefix="(!) From ")
+        stop(mess)
+      } else {
+        if (length(rho)==1L) {
+          uniqueScal <- uniqueGeo * rho 
         } else if (ncol(uniqueGeo)==length(rho.mapping)) {
-           uniqueScal<-t(t(uniqueGeo) * rho[rho.mapping]) ## valid for vectorial rho...
+          uniqueScal <- t(t(uniqueGeo) * rho[rho.mapping]) ## valid for vectorial rho...
         } else {
           mess <- pastefrom("invalid length(rho[rho.mapping]).",prefix="(!) From ")
           print(mess)
           mess  <- paste("Length should be either 1 or",ncol(uniqueGeo))
           stop(mess)
         }
-     }
-     scaled.dist <- proxy::dist(uniqueScal) ## one can do a lot with a dist object !
-     ## here scaled.dist is always a dist object: if uniqueScal was a single row, it is dist(0) 
-  } else if (length(rho)==1) {
-     scaled.dist <- rho * distMatrix
-     ## here inconsistent behavior: scaled.dist is a dist object except if distMatrix was dist(0), scaled.dist is now numeric(0); we standardise it:
-     if ( identical(scaled.dist, numeric(0))) scaled.dist <- dist(0)
-  } else {
-    mess <- pastefrom("input 'distMatrix' but length(rho)!=1.",prefix="(!) From ")
-    stop(mess)
+        if (! is.null(uniqueGeo2)) {
+          if (length(rho)==1L) {
+            uniqueScal2 <-uniqueGeo2 * rho  
+          } else uniqueScal2 <- t(t(uniqueGeo2) * rho[rho.mapping]) 
+        } else uniqueScal2 <- NULL
+      }
+      scaled.dist <- proxy::dist(x=uniqueScal,y=uniqueScal2, method=dist.method) 
+      ## here scaled.dist is always a dist object: if uniqueScal was a single row, it is dist(0) 
+    } else if (length(rho)==1L) {
+      scaled.dist <- rho * distMatrix
+      ## here inconsistent behavior: scaled.dist is a dist object except if distMatrix was dist(0), scaled.dist is now numeric(0); we standardise it:
+      if ( identical(scaled.dist, numeric(0))) scaled.dist <- dist(0)
+    } else {
+      mess <- pastefrom("input 'distMatrix' but length(rho)!=1.",prefix="(!) From ")
+      stop(mess)
+    }
+  } else { ## rho length must be one
+    if (length(rho)>1L) {
+      mess <- pastefrom("'rho' length>1 not allowed for non-Euclidian distance.",prefix="(!) From ")
+      stop(mess)
+    }
+    if ( missing(distMatrix) ) { ## 
+      if ( missing(uniqueGeo) ) {
+        mess <- pastefrom("missing(distMatrix) && missing(uniqueGeo).",prefix="(!) From ")
+        stop(mess)
+      } 
+      scaled.dist <- rho * proxy::dist(uniqueGeo,y=uniqueGeo2,method=dist.method) 
+    } else {
+      scaled.dist <- rho * distMatrix
+      ## here inconsistent behavior: scaled.dist is a dist object except if distMatrix was dist(0), scaled.dist is now numeric(0); we standardise it:
+      if ( identical(scaled.dist, numeric(0))) scaled.dist <- dist(0)
+    } 
   }
   return(scaled.dist)
 }
 
+getDistMat <- function(object,scaled=FALSE) {
+  if (! is.null(msd.arglist <- attr(object,"msd.arglist"))) {
+    if ( ! scaled)  {
+      msd.arglist$rho <- 1 
+      msd.arglist$`rho.mapping` <- NULL 
+    }
+    return(do.call(make.scaled.dist,msd.arglist))
+  } else {
+    message("no Matern-correlated random effects")
+    return(NULL)
+  }
+}
 

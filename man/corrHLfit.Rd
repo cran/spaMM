@@ -10,7 +10,8 @@
 \usage{
 corrHLfit(formula,data,init.corrHLfit=list(),init.HLfit=list(),ranFix=list(),
           lower=list(),upper=list(),trace=list(file=NULL,append=T),objective="p_bv", 
-          rho.mapping,control.corrHLfit=list(),processed=NULL,family=gaussian(),...)
+          control.dist=list(),control.corrHLfit=list(),processed=NULL,
+          family=gaussian(),...)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -51,11 +52,8 @@ parameters in the HLCor call. Information about the variables is printed at the 
 The objective function maximized for estimation of parameters by \code{optim}. 
 Either \code{"p_bv"} for restricted likelihood or \code{"p_v"} for marginal likelihood.
 }
-  \item{rho.mapping}{
-   A set of indices controlling which elements of the \code{rho} scale vector scales which dimension(s) of the space in which (spatial) 
-   correlation matrices of random effects are computed. See same argument in \code{\link{make.scaled.dist}} for details and examples.   
-}
-  \item{control.corrHLfit}{
+\item{control.dist}{See \code{control.dist} in \code{\link{HLCor}}}
+\item{control.corrHLfit}{
    Only for development purposes, not documented.
 }
   \item{processed}{For programming purposes, not documented.
@@ -88,24 +86,25 @@ The return value of an \code{HLCor} call, with additional attributes. The \code{
 }
 \examples{
 #### example with an adjacency matrix (autoregressive model)
-data(scotlip)
-corrHLfit(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(scotlip$expec)),
+if (spaMM.getOption("example_maxtime")>4) {
+ data(scotlip)
+ corrHLfit(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(scotlip$expec)),
                data=scotlip,family=poisson(),
                adjMatrix=Nmatrix)
-
+}
 
 #### Examples with Matérn correlations
 ## A likelihood ratio test based on the ML fits of a full and of a null model.
-\donttest{
-data(blackcap)
-fullfit <- corrHLfit(migStatus ~ means+ Matern(1|latitude+longitude),data=blackcap,
-                    HLmethod="ML") ## takes ~ 6s
-summary(fullfit)
-nullfit <- corrHLfit(migStatus ~ 1 + Matern(1|latitude+longitude),data=blackcap,
-                    HLmethod="ML") ## takes ~ 3s
-summary(nullfit)
-## p-value:
-1-pchisq(2*(logLik(fullfit)-logLik(nullfit)),df=1)
+if (spaMM.getOption("example_maxtime")>18) {
+ data(blackcap)
+ fullfit <- corrHLfit(migStatus ~ means+ Matern(1|latitude+longitude),data=blackcap,
+                    HLmethod="ML") 
+ summary(fullfit)
+ nullfit <- corrHLfit(migStatus ~ 1 + Matern(1|latitude+longitude),data=blackcap,
+                    HLmethod="ML") 
+ summary(nullfit)
+ ## p-value:
+ 1-pchisq(2*(logLik(fullfit)-logLik(nullfit)),df=1)
 }
 
 ## see data set Loaloa for additional examples

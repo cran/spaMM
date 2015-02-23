@@ -253,8 +253,8 @@ spaMMLRT <- function(null.formula=NULL,formula,
             ## simbData[[as.character(form[[2]][[3]])]] <- nullfit$weights - newy    
             exprL <- as.character(form[[2]][[2]]) 
             exprR <- as.character(form[[2]][[3]]) 
-            if (length(exprL)==1) simbData[[exprL]] <- newy 
-            if (length(exprR)==1) simbData[[exprR]] <- nullfit$weights - newy                    
+            if (length(exprL)==1L) simbData[[exprL]] <- newy 
+            if (length(exprR)==1L) simbData[[exprR]] <- nullfit$weights - newy                    
             ## if (length(exprR)! =1) exprRdoes not correspond to a column in the data;frmae so there is no column to replace                     
           } else {simbData[[as.character(nullfit$predictor[[2]])]] <- newy}
           bootlist$data <- simbData
@@ -284,7 +284,7 @@ spaMMLRT <- function(null.formula=NULL,formula,
           cat(msg)
         } else {
           cat(ii);cat(" ")
-          if ((ii %% 40)==0) cat("\n")
+          if ((ii %% 40)==0L) cat("\n")
         }
       }
       cat("\n")
@@ -437,7 +437,7 @@ spaMMLRT <- function(null.formula=NULL,formula,
 #  }
   ####
   if (is.null(iterativeFits)) { ## ie default for non RE<...>
-    if (length(which.iterative)==0) {
+    if (length(which.iterative)==0L) {
       iterativeFits <- TRUE ## we can construct a non trivial iterative fit that usefully can be used to initiate the optim fits
     } else {
       iterativeFits <- FALSE ## then the optim fits are iterative wrt to lambda in *G*LMMs; then we usually don't need the REML fits to find a good starting lambda, 
@@ -802,7 +802,7 @@ if (restarts) {
         }
       }
 }     
-      if (locit==1) LRTori <- 2*(fullfit$APHLs[[test.obj]]-nullfit$APHLs[[test.obj]]) ## first iteration only       
+      if (locit==1L) LRTori <- 2*(fullfit$APHLs[[test.obj]]-nullfit$APHLs[[test.obj]]) ## first iteration only       
       if (newfull || newnull) {
         newforprof <- T ## T at initialization and after any 'unused' new full/null
       } else if (locit>1) trace.info <- rbind(trace.info,data.frame(iter=locit,step="no.new(f/n)ull",obj=fullfit$APHLs[[test.obj]]))
@@ -952,8 +952,8 @@ if (restarts) {
             ## simbData[[as.character(form[[2]][[3]])]] <- nullfit$weights - newy    
             exprL <- as.character(form[[2]][[2]]) 
             exprR <- as.character(form[[2]][[3]]) 
-            if (length(exprL)==1) simbData[[exprL]] <- newy 
-            if (length(exprR)==1) simbData[[exprR]] <- nullfit$weights - newy                    
+            if (length(exprL)==1L) simbData[[exprL]] <- newy 
+            if (length(exprR)==1L) simbData[[exprR]] <- nullfit$weights - newy                    
             ## if (length(exprR)! =1) exprRdoes not correspond to a column in the data;frmae so there is no column to replace                     
           } else {simbData[[as.character(nullfit$predictor[[2]])]] <- newy}
           bootlist$data <- simbData
@@ -969,7 +969,7 @@ if (restarts) {
           }
         } 
         cat(ii);cat(" ")
-        if ((ii %% 50)==0) cat("\n")
+        if ((ii %% 50)==0L) cat("\n")
       } ## end main bootstrap loop
       cat("\n") ##  
     } ## end bootstrap 

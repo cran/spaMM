@@ -14,3 +14,11 @@ tryCatch.W.E <- function(expr) {
 DEPARSE <- function(expr) {
   paste(deparse(expr),collapse="")
 }
+
+CBIND <- function(x,y) UseMethod("CBIND") 
+CBIND.matrix <- function(x,y) cbind(x,as.matrix(y))
+CBIND.Matrix <- function(x,y) cBind(x,y)
+
+RBIND <- function(x,y) UseMethod("RBIND") 
+RBIND.matrix <- function(x,y) rbind(x,as.matrix(y))
+RBIND.Matrix <- function(x,y) rBind(x,y)

@@ -82,18 +82,18 @@ An object of class \code{fixedLRT}, actually a list with as-yet unstable format,
 See also \code{\link{corrHLfit}} and \code{\link{LRT}}.
 }
 \examples{
-\donttest{
-data(blackcap)
-## result comparable to the corrHLfit examples based on blackcap
-fixedLRT(null.formula=migStatus ~ 1 + Matern(1|latitude+longitude),
+if (spaMM.getOption("example_maxtime")>18) {
+ data(blackcap)
+ ## result comparable to the corrHLfit examples based on blackcap
+ fixedLRT(null.formula=migStatus ~ 1 + Matern(1|latitude+longitude),
        formula=migStatus ~ means + Matern(1|latitude+longitude), 
        HLmethod='ML',data=blackcap)
 }
-\dontrun{
-## longer version with bootstrap
-fixedLRT(null.formula=migStatus ~ 1 + Matern(1|latitude+longitude),
+if (spaMM.getOption("example_maxtime")>1800) {
+ ## longer version with bootstrap
+ fixedLRT(null.formula=migStatus ~ 1 + Matern(1|latitude+longitude),
        formula=migStatus ~ means + Matern(1|latitude+longitude), 
        HLmethod='ML',data=blackcap, boot.repl=100) 
-}
+ }
 }
 \keyword{ htest }

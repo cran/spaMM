@@ -9,6 +9,9 @@
 	residuals <- x$std_dev_res 
  	fitted.values <- x$fv
   ## possible modif of 'which':
+  if (is.null(residuals)) {## possible if disp pars in ranFix
+    which <- setdiff(which,c("mean")) ## all 'mean' disagnostic plots involve these residuals
+  }
 	if ("ranef" %in% which) {
 	  if (x$family$family %in% c("poisson","binomial")) {
 	    lev_phi <- NULL  ## currently (10/2013) <HLfit>$lev_phi non-null even for poisson, binomial
@@ -16,7 +19,7 @@
 	  lev_lambda <- x$lev_lambda
 	  ranef <- x$ranef ## u
 	  nranplots <- length(c(which(length(lev_lambda)>0),which(length(lev_phi)>0),which(length(ranef)>0)))
-    if (nranplots==0) which <- which[which!="ranef"]
+    if (nranplots==0L) which <- which[which!="ranef"]
 	} 
   pch <- control$pch  
   if (is.null(pch)) pch <- "+"   
@@ -30,18 +33,22 @@
     if (i > 1) dev.new() ## =: meaning of having different elements in 'which'  
 		if (typ =="mean") { ## diagnostic plots for mean model => 4 subplots
 		  par(mfrow = c(2, 2), oma = c( 0, 0, 2, 0 ), pty = "s", ...) ## 4 subplots for mean !!
+      #
 		  loess.fit <- loess.smooth(fitted.values, residuals)
 			plot(fitted.values, residuals, xlab = "Fitted Values", 
 				 ylab = titles$meanmodel$devres, pch = pch, col = pcol, bty = "n", main = titles$meanmodel$devres)
 			lines(loess.fit$x, loess.fit$y, col = lcol)
-			loess.fit <- loess.smooth(fitted.values, abs(residuals))
+			#
+      loess.fit <- loess.smooth(fitted.values, abs(residuals))
 			plot(fitted.values, abs(residuals), xlab = "Fitted Values", 
 				 ylab = titles$meanmodel$absdevres, pch = pch, col = pcol, bty = "n", main = titles$meanmodel$absdevres)
 			lines(loess.fit$x, loess.fit$y, col = lcol)
-			qqnorm(residuals, col = pcol, pch = pch, bty = "n", 
+			#
+      qqnorm(residuals, col = pcol, pch = pch, bty = "n", 
 				   xlab = "Normal quantiles", ylab = titles$meanmodel$resq, main = titles$meanmodel$resd)
 			qqline(residuals, col = lcol)
-			hist(residuals, density = 15, xlab = titles$meanmodel$devreshist, main = "", col = pcol)
+			#
+      hist(residuals, density = 15, xlab = titles$meanmodel$devreshist, main = "", col = pcol)
             title(titles$meanmodel$outer,outer=TRUE)
 		}
 		if (typ == "ranef") {

@@ -27,10 +27,10 @@ fits \code{lowerfit} and \code{upperfit} giving the profile fits at the confiden
 This is returned invisibly.
 }
 \examples{
-\donttest{
-data(wafers)
-wfit <- HLfit(y ~X1+(1|batch),family=Gamma(log),data=wafers,HLmethod="ML")
-confint(wfit,"X1")
+if (spaMM.getOption("example_maxtime")>1) {
+ data(wafers)
+ wfit <- HLfit(y ~X1+(1|batch),family=Gamma(log),data=wafers,HLmethod="ML")
+ confint(wfit,"X1")
 }
 }
 % Add one or more standard keywords, see file 'KEYWORDS' in the

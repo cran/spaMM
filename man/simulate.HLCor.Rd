@@ -13,9 +13,9 @@
   This does not yet work for new locations in a mixed model involving both spatial and non-spatial random effects. 
 }
 \usage{
-\method{simulate}{HLfit}(object, nsim = 1, seed = NULL, newX=NULL, sizes=object$weights,...)
+\method{simulate}{HLfit}(object, nsim = 1, seed = NULL, newdata=NULL, sizes=object$weights,...)
 \method{simulate}{HLfitlist}(object, nsim = 1, seed = NULL, 
-                             newX=object[[1]]$data, sizes=object[[1]]$weights,...)
+                             newdata=object[[1]]$data, sizes=object[[1]]$weights,...)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -29,7 +29,7 @@
   A seed for \code{\link{set.seed}}. If such a value is provided, the initial state of the random number generator at a global level
   is restored on exit from simulate.
 }
-  \item{newX}{
+  \item{newdata}{
   A data frame closely matching the original data, except that response values are not needed. May provide new values of fixed predictor variables, new spatial locations, or new individuals within a block.   
 }
   \item{sizes}{

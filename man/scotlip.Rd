@@ -5,7 +5,7 @@
 \title{Lip cancer in Scotland 1975 - 1980}
 \description{
   This data set provides counts of lip cancer diagnoses made in Scottish districts from 1975 to 1980, 
-  and additional information relative to these data from Clayton and Kaldor (1987) and Clayton and Caldor (1993).
+  and additional information relative to these data from Clayton and Kaldor (1987) and Breslow and Clayton (1993).
   The data set contains (for each district) counts of disease events and estimates of the fraction of the population involved 
   in outdoor industry (agriculture, fishing, and forestry) which exposes it to sunlight. 
 

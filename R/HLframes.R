@@ -20,9 +20,7 @@ ULI<- function(...) {  ## Unique Location Index; '...' are simply names of varia
 # findbarsMM(~ 1 + (1|batch/cask))
 
 
-findbarsMM <-
-  function (term) 
-  {
+findbarsMM <-  function (term) {
     if (is.name(term) || !is.language(term)) 
       return(NULL)
     if (term[[1]] == as.name("(")) 
@@ -31,10 +29,19 @@ findbarsMM <-
       stop("term must be of class call")
     if (term[[1]] == as.name("|")) 
       return(term)
-    if (length(term) == 2) 
-      return(findbarsMM(term[[2]]))
+    if (length(term) == 2L) { ## 
+      term1 <- as.character(term[[1]])
+      if (term1 %in% c("adjacency","Matern","corMatern","AR1","corrMatrix")) {
+        res <- findbarsMM(term[[2]])
+        attr(res,"type") <- term1
+        return(res) 
+      } else return(findbarsMM(term[[2]])) 
+    }
     c(findbarsMM(term[[2]]), findbarsMM(term[[3]]))
   }
+
+
+
 
 ##' Remove the random-effects terms from a mixed-effects formula,
 nobarsMM <-
@@ -127,22 +134,36 @@ nobarsNooffset <-
 
 ## spaces should be as in parseBars because terms can be compared as strings in later code
 findSpatial <- function (term) { ## derived from findbars
-    if (is.name(term) || !is.language(term)) 
-        return(NULL)
-    if (term[[1]] == as.name("(")) ## i.e. (blob) but not ( | )  [update formula can add parenthese aroundspatial terms...]
-        return(findSpatial(term[[2]])) 
-    if (!is.call(term)) 
-        stop("term must be of class call")
-    if (term[[1]] == as.name("|")) ## i.e. ( | ) expression
-        return(NULL)
-    if (length(term) == 2) { ## assumes that the orginal formula is of length 3 otherwise the function terminates on enclosed return(NULL)
-      term1 <- as.character(term[[1]])
-      if (term1 %in% c("adjacency","Matern","corMatern","AR1","corrMatrix")) {
-        return(term) 
-      } else return(NULL) 
-     }
-    c(findSpatial(term[[2]]), findSpatial(term[[3]]))
+  if (inherits(term,"formula") && length(term) == 2L) 
+    return(findSpatial(term[[2]]))  ## process RHS
+  if (is.name(term) || !is.language(term)) 
+    return(NULL)
+  if (term[[1]] == as.name("(")) ## i.e. (blob) but not ( | )  [update formula can add parenthese aroundspatial terms...]
+    return(findSpatial(term[[2]])) 
+  if (!is.call(term)) 
+    stop("term must be of class call")
+  if (term[[1]] == as.name("|")) ## i.e. ( | ) expression
+    return(NULL)
+  if (length(term) == 2L) { 
+    term1 <- as.character(term[[1]])
+    if (term1 %in% c("adjacency","Matern","corMatern","AR1","corrMatrix")) {
+      return(term) 
+    } else return(NULL) 
+  }
+  c(findSpatial(term[[2]]), findSpatial(term[[3]]))
 }
+
+## folwoing is confusing; type attribute of findbarsMM should be sufficient to identify spatial terms
+# findNonSpatial <- function(formula) {
+#   aschar <- DEPARSE(formula)
+#   aschar <- gsub("adjacency([^\\|]+\\|[^)]+)","(0",aschar)
+#   aschar <- gsub("Matern([^\\|]+\\|[^)]+)","(0",aschar)
+#   aschar <- gsub("corMatern([^\\|]+\\|[^)]+)","(0",aschar)
+#   aschar <- gsub("AR1([^\\|]+\\|[^)]+)","(0",aschar)
+#   aschar <- gsub("corrMatrix([^\\|]+\\|[^)]+)","(0",aschar)
+#   formula <- as.formula(aschar)
+#   findbarsMM(formula)
+# }
 
 ## findSpatialOrNot replaced by parseBars 11/2014; old code in a R.txt file
 ## spaces should be as in findSpatial because terms can be compared as strings in later code
@@ -262,7 +283,7 @@ HLframes <- function (formula, data) {
        fe <- eval(fe)
        mt <- attr(fe, "terms")
        if (mt[[length(mt)]]==0) { 
-    	   X <- matrix(nrow=nrow(mf),ncol=0) ## model without fixed effects, not even an Intercept 
+    	   X <- matrix(nrow=nrow(mf),ncol=0L) ## model without fixed effects, not even an Intercept 
        } else if (!is.empty.model(mt)) {
          X <- model.matrix(mt, mf, contrasts) ## contrasts is a function from the stats package
        } else {

@@ -20,6 +20,8 @@ Its contents are suitable for use with \code{\link{polypath}}: they define diffe
 \code{polypath} requires polygons, while \code{map(interior=FALSE,plot=FALSE)} returns small segments. \code{landMask} is the result of reconnecting the segments into full coastlines of all land blocks. 
 }
 \examples{
+if (spaMM.getOption("example_maxtime")>2.5) {
+
 data(seaMask)
 ## plot of predictions of behaviour for a land bird:
 if (require(maps)){
@@ -42,11 +44,13 @@ if (require(maps)){
  filled.mapMM(bfit,add.map=TRUE,
              plot.title=title(main="Inferred migration propensity of blackcaps",
                                xlab="longitude",ylab="latitude"),
-             add.points=quote(points(pred[,coordinates],cex=1,pch="+")),
+             decorations=quote(points(pred[,coordinates],cex=1,pch="+")),
              plot.axes={axis(1);axis(2);
                         polypath(rbind(seaMask,pmasks),border=FALSE,
                                  col="grey", rule="evenodd")
              })
+}
+
 }
 }
 \keyword{datasets}

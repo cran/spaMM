@@ -37,7 +37,7 @@ spaMM.getOption <- function (x) {spaMM.options(x)[[1]]}
                           ## not sure this will always work and makes sense only for devel version :
                           # ", packaged ", utils::packageDescription("spaMM")$Packaged,
                         ") is loaded.", 
-    "\nType 'help(spaMM)' for a short introduction.")
+    "\nType 'help(spaMM)' for a short introduction,\nand news(packages='spaMM') for news.")
   #unlockBinding(".SpaMM", asNamespace("spaMM")) ## required when a .SpaMM list was used instead of an envir
 }
 

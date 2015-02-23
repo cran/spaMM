@@ -1,7 +1,7 @@
 ## FR->FR accessors : http://glmm.wikidot.com/pkg-comparison
 
 legend_lambda <- function(urff) {
-  if (length(urff)==1) {
+  if (length(urff)==1L) {
     if (urff=="beta") {
       #        cat("Coefficients for log[ lambda ] for u ~ Beta(1/(2lambda),1/(2lambda))\n")
       cat("Coefficients for log[ lambda = 4 var(u)/(1 - 4 var(u)) ]:\n")
@@ -43,9 +43,9 @@ summary.HLfitlist <- function(object, ...) {
     } else {
       if (object$HL[1]=='SEM')  {
         return("by stochastic EM.")
-      } else if (object$HL[1]==1)  {
+      } else if (object$HL[1]==1L)  {
         return("by ML approximation (p_v).")
-      } else if (object$HL[1]==0)  return("by h-likelihood approximation.") 
+      } else if (object$HL[1]==0L)  return("by h-likelihood approximation.") 
     }
   }
   ## FR->FR il faudrait distinguer EQL approx of REML ?
@@ -161,7 +161,7 @@ summary.HLfitlist <- function(object, ...) {
   }
   cat("Family:", famfam, "( link =", object$family$link,")\n")
   summ$family <- object$family
-  if (length(object$fixef)==0) {
+  if (length(object$fixef)==0L) {
     cat("No fixed effect\n")
   } else {
     cat(" ------- Fixed effects (beta) -------\n")
@@ -177,7 +177,7 @@ summary.HLfitlist <- function(object, ...) {
     cat(" ---------- Random effects ----------\n") 
     urff <- unique(lcrandfamfam)
     urffl <- unique(randfamfamlinks)
-    if (length(urffl)==1) { 
+    if (length(urffl)==1L) { 
       cat("Family:", urff , "( link =", object$rand.families[[1]]$link,")\n") 
     } else {
       cat("Families(links):", paste(randfamfamlinks,collapse=", "), "\n")
@@ -190,7 +190,7 @@ summary.HLfitlist <- function(object, ...) {
       corrFixNames <- names(unlist(corrPars[which(attr(corrPars,"type")=="fix")]))
       if (length(corrFixNames)>1) {
         cat(" [",paste(corrFixNames,collapse=",")," were fixed]",sep="")
-      } else if (length(corrFixNames)==1) cat(" [",corrFixNames," was fixed]",sep="")
+      } else if (length(corrFixNames)==1L) cat(" [",corrFixNames," was fixed]",sep="")
       cat("\n")
       print(cP)
     }
@@ -252,7 +252,7 @@ summary.HLfitlist <- function(object, ...) {
   if (object$family$family %in% c("gaussian","Gamma")) {
     cat(" -------- Residual variance  --------\n")    
     if ( ! is.null(phi.object$phi.Fix)) {
-      if (length(phi.object$phi.Fix)==1) {
+      if (length(phi.object$phi.Fix)==1L) {
         cat(paste("phi was fixed to",signif(phi.object$phi.Fix,6),"\n"))
       } else  cat(paste("phi was fixed.\n"))
       summ$phi.Fix <- phi.object$phi.Fix
@@ -279,7 +279,7 @@ summary.HLfitlist <- function(object, ...) {
         if (!is.null(dispoff)) dispoff <- unique(dispoff)
         if (length(phi.object$namesX_disp)==1 && phi.object$namesX_disp[1]=="(Intercept)" && length(dispoff)<2) {
           phi_est <- (phi.object$beta_phi)
-          if (length(dispoff)==1) phi_est <- phi_est+dispoff
+          if (length(dispoff)==1L) phi_est <- phi_est+dispoff
           phi_est <- object$resid.family$linkinv(phi_est)
           if (object$family$family=="Gamma") {
             cat(paste("Estimate of phi: ",signif(phi_est,4)," (residual var = phi * mu^2)\n"))

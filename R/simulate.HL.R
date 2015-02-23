@@ -13,7 +13,7 @@ newetaFix <- function(object,newMeanFrames) {
   } else {
     etaFix <- rep(0,nrow(newMeanFrames$mf)) ## nrow(X.pv)=0
   } 
-  ## newX -> offset must be recomputed. 
+  ## newdata -> offset must be recomputed. 
   off <- model.offset(newMeanFrames$mf) ### look for offset from (ori)Formula 
   if ( is.null(off) ) { ## ## no offset (ori)Formula term. Check attribute (Predictor ensures offset is not both in formula and attr)
     ## then we check that no non zero $offset was used. This would make prediction generally incorrect
@@ -27,9 +27,9 @@ newetaFix <- function(object,newMeanFrames) {
 
 
 
-# simulate.HLfit(fullm[[2]],newX=fullm[[1]]$data,size=fullm[[1]]$data$total) for multinomial avec binomial nichées de dimension différentes
+# simulate.HLfit(fullm[[2]],newdata=fullm[[1]]$data,size=fullm[[1]]$data$total) for multinomial avec binomial nichées de dimension différentes
 # FR->FR misses the computation of randoem effects for new spatial positions: cf comments in the code below
-simulate.HLfit <- function(object, nsim = 1, seed = NULL, newX=NULL, sizes=object$weights,...) { ## object must have class HLfit; corr pars are not used, but the ZAL matrix is.
+simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL, sizes=object$weights,...) { ## object must have class HLfit; corr pars are not used, but the ZAL matrix is.
   ## RNG stuff copied from simulate.lm
   if (!exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE))
     runif(1)
@@ -46,7 +46,7 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newX=NULL, sizes=objec
     message(" run simulate on each of the individual fit in the list")
     stop() ## FR->FR also some basic changes in fixedLRT but more would be needed 
   }  
-  if (is.null(newX)) {
+  if (is.null(newdata)) {
     # rebuild linear predictor in three steps eta= X . beta + off + ZAL . RANDOM v
     # hence do not use object$eta which contains PREDICTED V
     nobs <- length(object$y)
@@ -54,15 +54,15 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newX=NULL, sizes=objec
     ##
     eta <- eta + attr(object$predictor,"offsetObj")$vector ## a PROCESSED predictor or resid.predictor always has a non-NULL offset term  
   } else {
-    nobs <- nrow(newX)
+    nobs <- nrow(newdata)
     ## [-2] so that HLframes does not try to find the response variables  
-    allFrames <- HLframes(formula=attr(object$predictor,"oriFormula")[-2],data=newX) ## may need to reconstruct offset using formula term
+    allFrames <- HLframes(formula=attr(object$predictor,"oriFormula")[-2],data=newdata) ## may need to reconstruct offset using formula term
     eta <- newetaFix(object,newMeanFrames=allFrames) ## X . beta + off
   }
   ##
   if (any(object$models[["lambda"]] != "")) { ## i.e. not a GLM
-    if (is.null(newX)) {
-      ZAL <- object$ZALMatrix
+    if (is.null(newdata)) {
+      ZAL <- as.matrix(object$ZALMatrix)
       vec_n_u_h <- attr(object$lambda,"n_u_h")
     } else {
       FL <- spMMFactorList(object$predictor, allFrames$mf, 0L, drop=TRUE) 
@@ -73,18 +73,19 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newX=NULL, sizes=objec
       #         uuCnewold <- NULL
       #       } else {
       #         v_h_coeffs <- predictionCoeffs(object) ## changes the coefficients in the right u_range
-      #         blob <- calcNewCorrs(object=object,locdata=newX,predVar=FALSE,spatial.model=spatial.model)
+      #         blob <- calcNewCorrs(object=object,locdata=newdata,predVar=FALSE,spatial.model=spatial.model)
       #         uuCnewold <- blob$uuCnewold
       #       }
       #       ZALlist <- compute.ZALlist(CMatrix=uuCnewold,ZAlist=FL$Design,Groupings=FL$Groupings)
       #       (unfinished:) il faut rajouter la conditional variance comme dans le SEM => simuler comme dans le SEM ?
       ##### independent simulation ! : 
       # en fait il faut recycler du code de HLCor...
-      ##### the following code with NULL LMatrix ignores spatial effects with newX:
+      ##### the following code with NULL LMatrix ignores spatial effects with newdata:
       ZALlist <- compute.ZALlist(LMatrix=NULL,ZAlist=FL$Design,Groupings=FL$Groupings)
       nrand <- length(ZALlist)
       vec_n_u_h <- rep(0, nrand)
       for (i in 1:nrand) vec_n_u_h[i] <- ncol(ZALlist[[i]]) ## nb cols each design matrix = nb realizations each ranef
+      ZALlist <- lapply(seq_len(length(ZALlist)),as.matrix)
       ZAL <- do.call(cbind,ZALlist)
     }
     lcrandfamfam <- attr(object$rand.families,"lcrandfamfam") ## unlist(lapply(object$rand.families,function(rf) {tolower(rf$family)})) 
@@ -105,7 +106,7 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newX=NULL, sizes=objec
       object$rand.families[[it]]$linkfun(newU) 
     }) ## one multi-rand.family simulation
     newV <- do.call(rbind,newV) ## each column a simulation
-    if (nsim==1) {
+    if (nsim==1L) {
       eta <- eta + ZAL %*% newV 
     } else eta <-  matrix(rep(eta,nsim),ncol=nsim) + ZAL %*% newV ## nobs rows, nsim col
   }
@@ -130,7 +131,7 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newX=NULL, sizes=objec
 }
 
 
-simulate.HLfitlist <- function(object,nsim=1,seed=NULL,newX=object[[1]]$data,sizes=object[[1]]$weights,...) {
+simulate.HLfitlist <- function(object,nsim=1,seed=NULL,newdata=object[[1]]$data,sizes=object[[1]]$weights,...) {
   ## RNG stuff copied from simulate.lm
   if (!exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE))
     runif(1)
@@ -146,13 +147,13 @@ simulate.HLfitlist <- function(object,nsim=1,seed=NULL,newX=object[[1]]$data,siz
     allrownames <- unique(unlist(lapply(object,function(hl){rownames(hl$data)})))
     resu <- matrix(0,nrow=length(allrownames),ncol=length(object)) ## two cols if 3 types
     cumul <- 0
-    if (length(sizes) != nrow(newX)) {
-      mess <- pastefrom("length(sizes) != nrow(newX).",prefix="(!) From ")
+    if (length(sizes) != nrow(newdata)) {
+      mess <- pastefrom("length(sizes) != nrow(newdata).",prefix="(!) From ")
       stop(mess)
     }
     for (it in seq(ncol(resu))) {
       ## it = 1 se ramène à simulate(object[[1]])
-      resu[,it] <- simulate(object[[it]],newX=newX,sizes=sizes - cumul)
+      resu[,it] <- simulate(object[[it]],newdata=newdata,sizes=sizes - cumul)
       cumul <- rowSums(resu)  
     }
     resu <- cbind(resu,sizes - cumul) ## now 3 cols if 3 types

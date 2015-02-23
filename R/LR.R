@@ -4,10 +4,10 @@ compare.model.structures <- function(object,object2) {
   }
   X1 <- colnames(object$`X.pv`)
   X2 <- colnames(object2$`X.pv`)
-  if (length(X1)==0) {
+  if (length(X1)==0L) {
     REML1 <- NULL ## compatible with both ML or REML tests
   } else REML1 <- (object$APHLs$p_v != object$APHLs$p_bv)
-  if (length(X2)==0) {
+  if (length(X2)==0L) {
     REML2 <- NULL ## idem
   } else REML2 <- (object2$APHLs$p_v != object2$APHLs$p_bv)
   REML <- unique(c(REML1,REML2))
@@ -42,7 +42,7 @@ compare.model.structures <- function(object,object2) {
   } else Rnest <- NULL
   nest <- c(Xnest,Rnest)
   unest <- unique(nest)
-  if (length(nest)==0) { ## NULL,NULL
+  if (length(nest)==0L) { ## NULL,NULL
     stop("models to not appear different from each other") 
   } else if (length(unest)==2) {
     stop("Models not nested (opposite nestings for fixed and random terms). ")
@@ -135,8 +135,8 @@ LRT <- function(object,object2,boot.repl=0) { ## compare two HM objects
         ##    soit j'ai (pos,ntot -pos) et le 2e remplacment n'est pas poss (et pas necess)
         ##    aussi (ntot - pos, pos) ...
         ## would be simple if always ntot-pos, but how to control this ? 
-        if (length(exprL)==1) simbData[[exprL]] <- newy 
-        if (length(exprR)==1) simbData[[exprR]] <- nullm$weights - newy                    
+        if (length(exprL)==1L) simbData[[exprL]] <- newy 
+        if (length(exprR)==1L) simbData[[exprR]] <- nullm$weights - newy                    
         ## if (length(exprR)! =1) exprRdoes not correspond to a column in the data;frmae so there is no column to replace                     
       } else {simbData[[as.character(nullm$predictor[[2]])]] <- newy}
       ## analyze under both models
@@ -180,7 +180,7 @@ LRT <- function(object,object2,boot.repl=0) { ## compare two HM objects
         cat(msg)
       } else {
         cat(ii);cat(" ")
-        if ((ii %% 40)==0) cat("\n")
+        if ((ii %% 40)==0L) cat("\n")
       }
     }
     cat("\n")

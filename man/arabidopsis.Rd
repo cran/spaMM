@@ -23,7 +23,7 @@
   }
 }
 \source{
-The data were retrieved from \url{http://bergelson.uchicago.edu/regmap-data/climate-genome-scan} on 22 February 2013.
+The data were retrieved from \code{http://bergelson.uchicago.edu/regmap-data/climate-genome-scan} on 22 February 2013 (they may no longer be available from there).
 }
 \details{
   The  response is binary so \dQuote{HLmethod="PQL/L"} seems warranted (see Rousset and Ferdy, 2014).  

@@ -21,6 +21,22 @@ BEGIN_RCPP
     return __sexp_result;
 END_RCPP
 }
+// lmwithSparseQ
+SEXP lmwithSparseQ(SEXP XX, SEXP yy);
+RcppExport SEXP spaMM_lmwithSparseQ(SEXP XXSEXP, SEXP yySEXP) {
+BEGIN_RCPP
+    SEXP __sexp_result;
+    {
+        Rcpp::RNGScope __rngScope;
+        Rcpp::traits::input_parameter< SEXP >::type XX(XXSEXP );
+        Rcpp::traits::input_parameter< SEXP >::type yy(yySEXP );
+        SEXP __result = lmwithSparseQ(XX, yy);
+        PROTECT(__sexp_result = Rcpp::wrap(__result));
+    }
+    UNPROTECT(1);
+    return __sexp_result;
+END_RCPP
+}
 // leverages
 SEXP leverages(SEXP XX);
 RcppExport SEXP spaMM_leverages(SEXP XXSEXP) {
@@ -60,6 +76,21 @@ BEGIN_RCPP
         Rcpp::RNGScope __rngScope;
         Rcpp::traits::input_parameter< SEXP >::type XX(XXSEXP );
         SEXP __result = Rcpp_QR(XX);
+        PROTECT(__sexp_result = Rcpp::wrap(__result));
+    }
+    UNPROTECT(1);
+    return __sexp_result;
+END_RCPP
+}
+// Rcpp_sparseQR
+SEXP Rcpp_sparseQR(SEXP XX);
+RcppExport SEXP spaMM_Rcpp_sparseQR(SEXP XXSEXP) {
+BEGIN_RCPP
+    SEXP __sexp_result;
+    {
+        Rcpp::RNGScope __rngScope;
+        Rcpp::traits::input_parameter< SEXP >::type XX(XXSEXP );
+        SEXP __result = Rcpp_sparseQR(XX);
         PROTECT(__sexp_result = Rcpp::wrap(__result));
     }
     UNPROTECT(1);

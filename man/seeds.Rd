@@ -26,13 +26,11 @@ Crowder, M.J., 1978. Beta-binomial anova for proportions. Appl. Statist., 27, 34
 Y. Lee and J. A. Nelder. 1996. Hierarchical generalized linear models (with discussion). J. R. Statist. Soc. B, 58: 619-678. 
 }
 \examples{
-\donttest{
 data(seeds) 
 ## An extended quasi-likelihood (EQL) fit as considered by Lee and Nelder (1996):
 HLfit(cbind(r,n-r)~seed*extract+(1|plate),family=binomial(),
   rand.family=Beta(),
   HLmethod="HL(0,0)",
   data=seeds)
-}
 }
 \keyword{datasets}

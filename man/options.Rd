@@ -29,17 +29,20 @@ spaMM.getOption(x)
 
 \item{\code{MESSAGES.FULL.STACK=TRUE}:}{Whether to give information on the stack of calls in some warning messages.}
 
-\item{\code{INIT.HLFITNAME=NA}:}{Something users should not care about.}
+
+\item{\code{QRmethod}:}{To control the methods used in intensive matrix computations. Computations may be faster in simple block random effect models when this is set to \code{"Matrix::qr"}.}
 
 \item{\code{USEEIGEN=TRUE}:}{Whether to use the Eigen C++ library for some matrix computations.}
 
 \item{\code{maxLambda=1e10}:}{The maximum value of lambda: higher fitted 
- lambda values in HLfit are reduced to this.}
-} 
-and possibly other undocumented values for development purposes.
-  }
-
+ lambda values in HLfit are reduced to this.} 
+\item{\code{example_maxtime=2.5}:}{Used in the documentation to control whether the longer examples should be run. 
+The approximate running time of given examples on one author's laptop is compared to this value.} 
 }
+and possibly other undocumented values for development purposes.
+
+} % \item{\dots}{}
+} % arguments
 \details{
    
   Invoking \code{spaMM.options()} with no arguments returns a list with the

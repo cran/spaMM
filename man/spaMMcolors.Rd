@@ -11,7 +11,9 @@
 spaMM.colors(n = 64, redshift = 1)
 }
 \arguments{
-  \item{n}{Number of color levels.}
+  \item{n}{Number of color levels returned by the function. A calling graphic function with argument \code{nlevels} will typically 
+  take the first (i.e., bluest) \code{nlevels} color levels. If \code{n}<\code{nlevels}, the color levels are recycled
+  }
   \item{redshift}{The higher it is, the more the palette blushes....}
 }
 \value{

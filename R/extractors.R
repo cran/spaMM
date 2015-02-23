@@ -10,7 +10,7 @@ getPar <- function(parlist,name,which=NULL) {
     ll <- which(ll>0)
     if (length(ll)>1) {
       stop(paste("Found several instances of element '",name,"' in nested list: use 'which' to resolve this.",sep=""))
-    } else if (length(ll)==0) {
+    } else if (length(ll)==0L) {
       val <- NULL
     } else val <- vallist[[ll]]
   }
@@ -25,20 +25,22 @@ getPar <- function(parlist,name,which=NULL) {
 
 
 predictionCoeffs <- function(object) {
-  v_h_coeffs <- object$v_h ## v_h for non spatial and will later contain coeffs for spatial
-  LMatrix <- attr(object$predictor,"LMatrix") 
-  if ( ! is.null(LMatrix)) {
-    vec_n_u_h <- attr(object$lambda,"n_u_h")
-    cum_n_u_h <- cumsum(c(0,vec_n_u_h))  
-    ZAlist <- object$ZAlist 
-    if ( ! is.list(LMatrix)) LMatrix <- list(LMatrix)
-    for (Lit in seq_len(length(LMatrix))) {
-      lmatrix <- LMatrix[[Lit]]
-      affecteds <- which(attr(ZAlist,"ranefs") %in% attr(lmatrix,"ranefs"))
-      for (it in affecteds) {
-        u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
-        v_h_coeffs[u.range] <- solve(t(lmatrix),v_h_coeffs[u.range])   
-      }  
+  if ( is.null(v_h_coeffs <- object$predictionCoeffs)) {
+    v_h_coeffs <- object$v_h ## v_h for non spatial and will later contain coeffs for spatial
+    LMatrix <- attr(object$predictor,"LMatrix") 
+    if ( ! is.null(LMatrix)) {
+      vec_n_u_h <- attr(object$lambda,"n_u_h")
+      cum_n_u_h <- cumsum(c(0,vec_n_u_h))  
+      ranefs <- attr(object$ZAlist,"ranefs") 
+      if ( ! is.list(LMatrix)) LMatrix <- list(LMatrix)
+      for (Lit in seq_len(length(LMatrix))) {
+        lmatrix <- LMatrix[[Lit]]
+        affecteds <- which(ranefs %in% attr(lmatrix,"ranefs"))
+        for (it in affecteds) {
+          u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
+          v_h_coeffs[u.range] <- solve(t(lmatrix),v_h_coeffs[u.range])   
+        }  
+      }
     }
   }
   return(v_h_coeffs)
@@ -108,5 +110,15 @@ vcov.HLfit <- function(object,...) {
   object$beta_cov
 }
 
+# addition post 1.4.4
+Corr <- function(object,...) { ## compare ?VarCorr
+  if ( ! is.null(LMatrix <- attr(object$predictor,"LMatrix"))) {
+    Corr <- tcrossprodCpp(LMatrix)    
+  } else {
+    message("No 'non-trivial' correlation matrix of random effects")
+    Corr <- NA
+  }
+  return(Corr)
+}
 
 ## FR logLik ?

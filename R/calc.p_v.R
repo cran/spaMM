@@ -46,7 +46,7 @@
   hlik <- clik+likranV      
   if (only.h) return(list(hlik=hlik))
   ##### P_V
-  lad <- LogAbsDetWrap(d2hdv2/(2*pi))
+  lad <- LogAbsDetWrap(d2hdv2,logfac=-log(2*pi))
   if (is.nan(lad) || is.infinite(lad)){## because of determinant of nearly singular matrix
     zut <- abs(eigen(d2hdv2/(2*pi),only.values = T)$values) ## 05/01/13
     zut[zut<1e-12] <- 1e-12
@@ -63,23 +63,7 @@
     d3bTh <- BinomialDen * muFREQS*(1-muFREQS)*(1-2*muFREQS) ## b'''(th) ## BinomialDen * muFREQS*(1-muFREQS) doit etre les blob$GLMweights
     d4bTh <- BinomialDen * muFREQS*(1-muFREQS)*(1-6*muFREQS+6*muFREQS^2) ##b''''(th)=D[Log[1 + E^th], {th, 4}] /. {E^th -> p/(1 - p), E^(k_ th) :> (p/(1 - p))^k}
     ### ## code based on the notation of Appendix B of LeeL12 (last page of supp mat)   
-    ### initial version with qr. Slow. QR not useful here. 
-    #    if (is.null(qr.d2hdv2)) qr.d2hdv2 <- qr(d2hdv2) ## BUT best computed before the calc.p_v call, indeed will be needed for next HL(1) in *G*LMM, therefore not locally in this function
-    #    B <- try(solve.qr(qr.d2hdv2),silent=TRUE)   ## best for the sandwiches below would be a factorization CCt of this inverse... but directly!
-    #    if (class(B)=="try-error") {
-    #      second.corr <- - exp(700) ## drastically penalizes the likelihood when d2hdv2 is nearly singular 
-    #    } else { ## code based on the notation of Appendix B of LeeL12 (last page of supp mat)
-    #      B <- - B
-    #      ZBZt <- ZAL %*% B %*% t(ZAL) ## we need the full matrix for the last term...
-    #      diagZBZt <- diag(ZBZt)
-    #      HabcdBacBbd <- - sum(d4bTh*diagZBZt^2) ## minus added 040213 ...
-    #      b3.diagZBZT <- as.numeric(diagZBZt * d3bTh) ## inner product vector = vector
-    #      acoefs <- as.numeric(b3.diagZBZT %*% ZAL) ## vector which 'a'th element is Sum_i d3bTh_i * (ZBZt)_ii ZAL_ia
-    #      HabcHrstBarBbcBst <- acoefs %*% B %*% acoefs
-    #      ZBZtcube <- ZBZt * ZBZt * ZBZt
-    #      HabcHrstBarBbsBct <- d3bTh %*% ZBZtcube %*% d3bTh
-    #      second.corr <- HabcdBacBbd/8 + HabcHrstBarBbcBst/8 + HabcHrstBarBbsBct/12 ## - F/24
-    #    }
+    ### initial version with qr. Slow. in old versions prior to 1.5 
     L <- try(t(chol( - d2hdv2)),silent=TRUE) 
     if (class(L)=="try-error") { ## but fall back 
       L <- designL.from.Corr( - d2hdv2,try.chol=F) ## recycles code for 'square root'; but no longer triangular

@@ -157,8 +157,8 @@ locoptimthroughSmooth <- function(pargrid,anyHLCor.args,prevPtls=NULL,control.sm
   }
   ###
   ## ****** optimize in the predicted likelihood surface ******
-  predictions <- predict(Krigobj)
-  predictions <- predictions[order(predictions$fitted,decreasing=TRUE),]
+  predictions <- predict(Krigobj,binding="fitted")
+  predictions <- predictions[order(predictions[,1],decreasing=TRUE),]
   initvec <- predictions[1,names(lower)]
   ## redefines lower, upper, for maximization
   ranges <- apply(forSmooth[,names(lower),drop=FALSE],2,range)
@@ -167,19 +167,19 @@ locoptimthroughSmooth <- function(pargrid,anyHLCor.args,prevPtls=NULL,control.sm
   lower <- LowUp$lower
   upper <- LowUp$upper
   ##
-  if (length(initvec)==1) {
-    optr <- optimize(function(v) {predict(Krigobj,v)$fitted},maximum=TRUE,lower=unlist(lower),upper=unlist(upper)) 
+  if (length(initvec)==1L) {
+    optr <- optimize(function(v) {predict(Krigobj,v)[,1]},maximum=TRUE,lower=unlist(lower),upper=unlist(upper)) 
     optr$par <- optr$maximum
     optr$value <- optr$objective
     optr$maximum <- NULL
     optr$objective <- NULL
   } else { 
-    optr <- optim(initvec,function(v) {predict(Krigobj,v)$fitted},method="L-BFGS-B",
+    optr <- optim(initvec,function(v) {predict(Krigobj,v)[,1]},method="L-BFGS-B",
                   control=list(fnscale=-1),lower=unlist(lower),upper=unlist(upper))
   }
   names(optr$par) <- names(lower)
   attr(predictions,"fittedPars") <- names(lower) 
-  attr(predictions,"respName") <- "fitted" 
+  ####### #attr(predictions,"respName") <- "fitted" ## predict() has provided attribute "fittedName" (a bit confusing)
   attr(predictions,"MSy") <- Krigobj$phi ## FR->FR ecrire un extracteur pour phi... 
   optr$predictions <- predictions 
   #  ranges <- apply(uppersurf,2,range)
