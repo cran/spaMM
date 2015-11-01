@@ -26,7 +26,7 @@ If \code{nugget} is \code{FALSE}, \code{value} should have
    the default is a range of 90\% of the minimum distance and a
    smoothness of 0.5 (exponential correlation). 
    \bold{Warning}: the range parameter used in \code{corSpatial} objects is the inverse of the scale 
-   parameter used in \code{\link{Matern.corr}} and thus they have opposite meaning despite both being denoted \eqn{\rho} elsewhere in this package or in \code{nlme} literature. 
+   parameter used in \code{\link{MaternCorr}} and thus they have opposite meaning despite both being denoted \eqn{\rho} elsewhere in this package or in \code{nlme} literature. 
    
    If \code{nugget} is \code{TRUE}, meaning that a nugget effect
    is present, \code{value} can contain two or three elements, the first
@@ -77,8 +77,9 @@ If \code{nugget} is \code{FALSE}, \code{value} should have
 \details{
   This function is a constructor for the \code{corMatern} class,
   representing a Matérn spatial correlation structure. See
-   \code{\link{Matern.corr}} for details on the Matérn family. 
+   \code{\link{MaternCorr}} for details on the Matérn family. 
 }
+\note{The R and C code for the methods for \code{corMatern} objects builds on code for \code{corSpatial} objects, by D.M. Bates, J.C. Pinheiro and S. DebRoy, in a circa-2012 version of nlme.}
 \value{
   an object of class \code{corMatern}, also inheriting from class
   \code{corSpatial}, representing a Matérn spatial correlation

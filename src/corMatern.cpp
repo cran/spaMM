@@ -1,41 +1,36 @@
 /*
-   Routines dealing with correlation structures.
-
-   Copyright 1997-2005  Douglas M. Bates <bates@stat.wisc.edu>,
+ This file is part of the spaMM package for R, distributed under 
+ the terms of the Cecill-2 licence. 
+ 
+ It contains routines dealing with corMatern correlation structures.
+ 
+ It is derived from routines dealing with corSpatial correlation structures, 
+ that were part of a circa 2012 version of the nlme package for R,
+ made available under the terms of the GNU General Public
+ License, version 2, The authors of these routines were described as 
+  " Copyright 1997-2005  Douglas M. Bates <bates@stat.wisc.edu>,
 			Jose C. Pinheiro,
-			Saikat DebRoy
-
-   This file is part of the nlme package for R and related languages
-   and is made available under the terms of the GNU General Public
-   License, version 2, or at your option, any later version,
-   incorporated herein by reference.
-
-   This program is distributed in the hope that it will be
-   useful, but WITHOUT ANY WARRANTY; without even the implied
-   warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-   PURPOSE.  See the GNU General Public License for more
-   details.
-
-   You should have received a copy of the GNU General Public License
-   along with this program; if not, a copy is available at
-   http://www.r-project.org/Licenses/
+			Saikat DebRoy " in the source used in this way.
 
 */
 
-
 #include <limits>
-//#include "Bessel.h"
-#include "gsl_bessel.h"
-#include "BesselK_R.h"
 
+#include "R.h" // defines USING_R
+#include "Rmath.h" // bessel fns
 #include <R_ext/Linpack.h>
 #include <R_ext/Applic.h>
 
 #define longint int
 
-/* methods for the virtual class */
+double patched_bessel_k(double x, double alpha, double expo) {
+  if (alpha >1000) alpha=1000; /// this is quick patch for addressing problems with glmmPQL -> nlminb -> reaches 'here' with huge nu values -> pb with the calloc /// FR 250113
+  /** note vignette of http://cran.r-project.org/web/packages/Bessel/ . But the source code is not appealing, and for large nu in particular **/
+  return(bessel_k(x, alpha, expo));
+}
 
-#include "chol.h"
+
+/* methods for the virtual class */
 
 extern "C" { //computes Matérn correlation for one distance
   void matern_cor(double *par, double *dist, longint *nug, longint *nusc,double *cor)
@@ -57,7 +52,7 @@ extern "C" { //computes Matérn correlation for one distance
     cor[0] = ratio;                                               // correlation is one!
   } else {                                                        // distance > 0
     dscale = *dist * sc;                                           // distance / rho OR 2 sqrt(nu) distance/rho
-    aux = con*pow(dscale,par[1])*bessel_k(dscale,par[1],1.0);     // Matérn fonction, with nu = par[1]
+    aux = con*pow(dscale,par[1])*patched_bessel_k(dscale,par[1],1.0);     // Matérn fonction, with nu = par[1]
     cor[0] = ratio * aux;                                         // multiplies by (1-nugget)
   }
 #ifdef NO_R_CONSOLE
@@ -97,7 +92,7 @@ extern "C" {
 	    *(mat + i + j * (*n)) = *(mat + j + i * (*n)) = ratio;      // correlation is one!
 	  } else {                                                      // distance > 0
 	    dscale = *sdist * sc;                                       // distance / rho OR 2 sqrt(nu) distance/rho
-	    aux = con*pow(dscale,par[1])*bessel_k(dscale,par[1],1.0);   // Matérn fonction, with nu = par[1]
+	    aux = con*pow(dscale,par[1])*patched_bessel_k(dscale,par[1],1.0);   // Matérn fonction, with nu = par[1]
 	    *(mat + i + j * (*n)) = *(mat + j + i * (*n)) = ratio * aux;// multiplies by (1-nugget)
 	  }
 	}
@@ -123,14 +118,16 @@ static void matern_fact(double *par, double *dist, longint *n, longint *nug, lon
 #endif
     matern_mat(par, dist, n, nug, nusc, mat);
 #ifdef USING_R
-//    F77_CALL(chol) (mat, n, n, mat, &info);
-    dpofa(mat,(*n),(*n));  // cholesky
+    //F77_CALL(chol) (mat, n, n, mat, &info); // R < 3.0.0
+    //    dpofa(mat,(*n),(*n));  // cholesky via c++ port of dfopa, chol.cpp and chol.h removed from spaMM >= 1.6.2
+    F77_CALL(dpofa) (mat, n, n, &info); // direct call to linpack fn
+    // optimization wouldbe required if corMatern class were widely used.
 #else
     F77_CALL(chol) (mat, n, work, &zero, &zero, &info); //FR: should no longer work with R >= 3.0.0, but not used
 #endif
     for(i = 0; i < *n; i++) {
 	work1[i * np1] = 1;
-	F77_CALL(dtrsl) (mat, n, n, work1 + i * (*n), &job, &info);
+	F77_CALL(dtrsl) (mat, n, n, work1 + i * (*n), &job, &info); // linpack
 	*logdet -= log(fabs(mat[i * np1]));
     }
     Memcpy(mat, work1, nsq);

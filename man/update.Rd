@@ -9,6 +9,9 @@
 \code{update} will update and (by default) re-fit a model. It does this mostly by extracting the call stored in the object, updating the call and evaluating that call. 
 (however, currently the \code{predictor} argument is processed differently).
 }
+\note{
+\code{update}, as a general rule, is tricky. For example with \code{m1 <- glm(y~x + offset(<...>),<...>); m2 <- update(m1,.~.-x)}, \code{m2} will lose the intercept term, which would be retained in the absence of an offset. \code{update.HLfit} has the same behaviour.   
+}
 \usage{
 %- \method{update}{HLCor}(object,formula.,...)
 \method{update}{HLfit}(object, formula., ..., evaluate = TRUE)

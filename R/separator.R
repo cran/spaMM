@@ -1,7 +1,7 @@
 ## CODE FROM THE safeBinaryRegression PACKAGE
 ## does not import all package to prevent interference between glm fns and different error handling 
 
-##FR See also Zorn, A Solution to Separation in Binary Response Models, Political Analysis (2005) 13:157–170
+##FR See also Zorn, A Solution to Separation in Binary Response Models, Political Analysis (2005) 13:157-170
 ##FR see also http://www.ats.ucla.edu/stat/mult_pkg/faq/general/complete_separation_logit_models.htm
 ##FR there is a Firth method for dealing with this (and a package, brglm... brglm(locform,offset=Offset) ).
 

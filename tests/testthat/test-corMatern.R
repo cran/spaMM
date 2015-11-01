@@ -1,4 +1,4 @@
-print("test corMatern:")
+cat("\ntest corMatern:")
 
 data(blackcap)
 blackcapD <-cbind(blackcap,dummy=1) ## obscure, isn't it? 

@@ -29,7 +29,7 @@ sampleGridFromLowUp <- function(LowUp,n=NULL,gridSteps=NULL,sampling=NULL) {
   byvar <- 0.999 * byvar + 0.001 *rowMeans(byvar)
   grillelist <- list()
   if (is.null(gridSteps)) {
-    gridSteps <- c(20,6,4,3)[min(d,4)] ## => 20  36  64  81 243 729 points 
+    gridSteps <- c(10,6,4,3)[min(d,4)] ## => 10  36  64  81 243 729 points 
   }
   for(name in rownames(byvar)) {grillelist[[name]] <- seq(byvar[name,1],byvar[name,2],length.out=gridSteps)}
   pargrid <- expand.grid(grillelist)
@@ -42,9 +42,9 @@ sampleGridFromLowUp <- function(LowUp,n=NULL,gridSteps=NULL,sampling=NULL) {
     ## redefines a grid
     insides <- lapply(grillelist, function(v) {(v[2]-v[1])/2+v[-c(gridSteps)]}) ## 19 5 3 2 2 2...
     stepsizes <- unlist(lapply(insides, function(v) {v[2]-v[1]})) 
-    insides <- expand.grid(insides) ## 19 25 27 16 32 64 ...
+    insides <- expand.grid(insides) ## 9 25 27 16 32 64 ...
     randgrid <- sampleNearby(insides,n=nrow(insides),stepsizes=stepsizes) ## not really nearby given the large stepsizes
-    pargrid <- rbind(pargrid,randgrid) ## regular + random
+    pargrid <- rbind(pargrid,randgrid) ## regular + random = 19 61 91 97 275... (20 replicates typically added)
   }
   ##
   pargrid
@@ -71,8 +71,20 @@ sampleGridFromLowUp <- function(LowUp,n=NULL,gridSteps=NULL,sampling=NULL) {
 #
 #
 
-locoptimthroughSmooth <- function(pargrid,anyHLCor.args,prevPtls=NULL,control.smooth=list()) {
-  anyHLCor.args$processed <- setProcessed(anyHLCor.args$processed,"SEMseed",value="NULL") ## SEMseed bien pour controler individuellement un SEM mais pas une série 
+NAcleaning <- function(forSmooth,inPairs) {
+  isNAseInt <- is.na(forSmooth$seInt) ## after reordering !
+  misleadingPairs <- inPairs & (isNAseInt[-length(isNAseInt)] | isNAseInt[-1]) 
+  misleadingPairs <- c(FALSE,misleadingPairs) | c(misleadingPairs,FALSE) ## pairs with at least one NA 
+  NAcleaned <- forSmooth[ ! misleadingPairs,,drop=FALSE]
+  # NA may mean we have no info on seInt in which case we can fit phi using seInt
+  #  and then we should ideally check whether resid formula uses seInt to decide whether NA singletons should be removed 
+  #   (or to know whether they will automatically be removed by HLfit ?)
+  # but NA may have a more general meaning... let's be cautious
+  NAcleaned <- NAcleaned[ ! is.na(NAcleaned$seInt),,drop=FALSE] ## removes remaining NA's not from pairs
+  return(NAcleaned)
+}
+
+optimthroughSmooth <- function(pargrid,anyHLCor.args,prevPtls=NULL,control.smooth=list(),verbose=interactive()) {
   ranges <- apply(pargrid,2,range)
   LowUp <- apply(ranges,1,as.list)
   names(LowUp) <- c("lower","upper")
@@ -81,43 +93,50 @@ locoptimthroughSmooth <- function(pargrid,anyHLCor.args,prevPtls=NULL,control.sm
   ## 
   processedHL1 <- getProcessed(anyHLCor.args$processed,"HL[1]") ## there's also HLmethod in processed<[[]]>$callargs
   logLobj <- anyHLCor.args$`HLCor.obj.value`
-  grid.obj <- apply(pargrid,1,function(v) {
-    anyHLCor.args$ranPars[names(lower)] <- relist(v,lower)
-    hlcor <- do.call("HLCor",anyHLCor.args) ## this reconstructs a list of the form of initvec, then adds it to other anyHLCor$ranPars information
-    c("logLobj"=hlcor$APHLs[[logLobj]],lambda=hlcor$lambda,
-      seInt =attr(hlcor$APHLs[[logLobj]],"seInt")) ## seInt attr may be NULL then no seInt element
-  })
-  ## apply does not name things as oen would wish, and moreover has/had inconsistent behaviouris some R-devel version
-  rownames(grid.obj) <- c("logLobj","lambda","seInt")[seq_len(nrow(grid.obj))]
+  prevmsglength <- 0
+  ## eval nrepl
   nrepl <- control.smooth$nrepl
-  processedHL1 <- getProcessed(anyHLCor.args$processed,"HL[1]") ## there's also HLmethod in processed<[[]]>$callargs
   if (processedHL1 == "SEM") {
     if (is.null(nrepl)) {
       nrepl <- Inf ## default is to duplicate all simuls !
     }
-    if (nrepl == 0 && (length(control.smooth$ranFix) != length(lower))) {
-      message("(!) From locoptimthroughSmooth: suspect nrepl==0 for stochastic simulation with correlation parameters to be estimated.")
+    ## don't confuse 'lower' length (corresponding to the rho,nu of the spatial process): may be 1 or 2 depending eg on user's ranFix$nu  
+    ## an length of control.smooth$ranFix (for likelihood surface smoothing) ## which should be 2 (for fixed nu) if no smoothing params are to be reestimated
+    ## but length(control.smooth$ranFix) can meaningfully be compared to length (lower). Note that $ranFix will typically have rho, nu while lower has transformed params.
+    if (nrepl == 0 && length(control.smooth$ranFix$rho)!=length(lower)) {
+      message("(!) From optimthroughSmooth: suspect nrepl==0 for stochastic simulation\n  with likelihood surface correlation parameters to be estimated.")
     }
   } else {
-    if (is.null(nrepl)) {
-      nrepl <- 0
-    }
-    if (nrepl>0) message("(!) From locoptimthroughSmooth: suspect nrepl>0 for deterministic simulation.")
+    if (is.null(nrepl)) nrepl <- 0
+    if (nrepl>0) message("(!) From optimthroughSmooth: suspect nrepl>0 for deterministic simulation.")
   }  
-  if (nrepl>0) {
-    subpargrid <- pargrid[sample(nrow(pargrid),min(nrepl,nrow(pargrid))),,drop=FALSE]
-    subgrid.obj <- apply(subpargrid,1,function(v) {
-      anyHLCor.args$ranPars[names(lower)] <- relist(v,lower)
-      hlcor <- do.call("HLCor",anyHLCor.args) ## this reconstructs a list of the form of initvec, then adds it to other anyHLCor$ranPars information
-      c("logLobj"=hlcor$APHLs[[logLobj]],lambda=hlcor$lambda,
-        seInt =attr(hlcor$APHLs[[logLobj]],"seInt")) ## seInt attr may be NULL then no seInt element
-    })
-    rownames(subgrid.obj) <- c("logLobj","lambda","seInt")[seq_len(nrow(grid.obj))]
-    forSmooth <- cbind(rbind(pargrid,subpargrid),rbind(t(grid.obj),t(subgrid.obj)))      
-  } else {
-    forSmooth <- cbind(pargrid,t(grid.obj))      
+  #
+  subpargrid <- pargrid[sample(nrow(pargrid),min(nrepl,nrow(pargrid))),,drop=FALSE]
+  pargrid <- as.matrix(rbind(pargrid, subpargrid))
+  grid.obj <- matrix(NA,nrow=NROW(pargrid),ncol=4L)
+  colnames(grid.obj) <- c("logLobj","lambda","seInt","pmvnorm")
+  if (verbose) cat("\n") 
+  for (ii in seq_len(NROW(pargrid))) {
+    anyHLCor.args$ranPars[names(lower)] <- relist(pargrid[ii,],lower)
+    hlcor <- do.call("HLCor",anyHLCor.args) ## this reconstructs a list of the form of initvec, then adds it to other anyHLCor$ranPars information
+    vec <- c("logLobj"=hlcor$APHLs[[logLobj]],lambda=hlcor$lambda,
+      seInt =attr(hlcor$APHLs[[logLobj]],"seInt"), ## seInt attr may be NULL then no seInt element
+      pmvnorm = grepl("pmvnorm",attr(hlcor$APHLs[[logLobj]],"method"))
+      ) ## seInt attr may be NULL then no seInt element
+    grid.obj[ii,seq_len(length(vec))] <- vec
+    #     if (is.infinite(grid.obj[ii,"logLobj"])) { ## if underflow in estim of L (eg, pmvnorm)
+    #       # .Machine$double.xmin gives "the smallest non-zero normalized floating-point number" but smaller "denormalized" numbers are possible
+    #       # see Double-precision values in ?double 
+    #       grid.obj[ii,"logLobj"] <- - 745 ## log(4.940656e-324); a tooLow mechanism as in Infusion may be a better approach
+    #       grid.obj[ii,"seInt"] <- NA ## tag for removal from any fit using variable seInt (and a bit more analyses: see below)
+    #       ## Fr->FR en fait ce qu'il faut c'est un mecanisme remove.pairswithNas, cf un ecran plus bas ?
+    #     }
+    if (verbose) {
+      msg <- paste(ii,"simulations run out of", NROW(pargrid)," ")
+      prevmsglength <- overcat(msg, prevmsglength)
+    }
   }
-  forSmooth <- data.frame(forSmooth)
+  forSmooth <- data.frame(cbind(pargrid,grid.obj))
   if ( ! is.null(prevPtls)) forSmooth <- rbind(prevPtls,forSmooth) ## older points first!
   RHS <- paste(names(lower),collapse="+")
   form <- as.formula(paste("logLobj ~ 1+Matern(1|",RHS,")"))
@@ -128,24 +147,59 @@ locoptimthroughSmooth <- function(pargrid,anyHLCor.args,prevPtls=NULL,control.sm
   ## fortunately lambda may be roughly indep of the corrpars
   ## Further the IRLS in glm.fit is fussy... 
   ## et le fit des dev resids peut etre surprenant, cf plot(var explicative,log(resp)) dans dispGammaGLM -> glm(resp ~...)
-  #Krigobj <- corrHLfit(form,data=forSmooth,resid.formula= ~log(lambda),init.corrHLfit=list(rho=rep(1,length(lower))),ranFix=list(nu=4))
+  ## hence we dont use this residual.formula:
+  ###Krigobj <- corrHLfit(form,data=forSmooth,resid.formula= ~log(lambda),init.corrHLfit=list(rho=rep(1,length(lower))),ranFix=list(nu=4))
   ranFix <- list(nu=4)
-  processedHL1 <- getProcessed(anyHLCor.args$processed,"HL[1]") ## there's also HLmethod in processed<[[]]>$callargs
   if (processedHL1 != "SEM") ranFix$phi <- 1e-06 ## interpolation
   ranFix[names(control.smooth$ranFix)] <- control.smooth$ranFix
   initSmooth <- control.smooth$initSmooth ## corr pars du smoothing
   if (is.null(initSmooth)) initSmooth <- rep(1,length(lower))
   init.corrHLfit <- list(rho=initSmooth) ## important as it gives the length of rho to corrHLfit
   init.corrHLfit[names(ranFix)] <- NULL
-  if (is.null(forSmooth$seInt)) {
-    resid.formula <- ~1
-  } else {
-    resid.formula <- control.smooth[["resid.formula"]]
+  resid.family <- control.smooth[["resid.family"]] ## may be NULL; not that of the user-level model
+  resid.formula <- control.smooth[["resid.formula"]]
+  ## defaults:
+  if (is.null(forSmooth$seInt) 
+      || length(which(grid.obj[,"pmvnorm"]>0L))>20L ## enough successful pmvnorm, presumably at the top of the lik surf
+  ) {
+    if(is.null(resid.formula)) resid.formula <- ~ 1 
+    if(is.null(resid.family)) resid.family <- GammaForDispGammaGLM(log) 
+  } else { ## true GHK or failed pmvnorm
     if(is.null(resid.formula)) resid.formula <- ~1+offset(seInt^2) ## default... ######   ~log(seInt)+I(log(seInt)^2)
-  }  
-  resid.family <- control.smooth[["resid.family"]]
-  if(is.null(resid.family)) resid.family <- Gamma(identity) ## default
-  Krigobj <- corrHLfit(form,data=forSmooth,resid.formula= resid.formula ,init.corrHLfit=init.corrHLfit,ranFix=ranFix,
+    if(is.null(resid.family)) {
+      if (deparse(resid.formula[[2]]) == "1") {
+        resid.family <- GammaForDispGammaGLM(log)
+      } else resid.family <- GammaForDispGammaGLM(identity)  
+    }
+  } ## ## this makes ~1+offset(seInt^2) + identity the default for GHK, but the hyper-default is pmvnorm
+  ## logic: (if some trouble) {
+  ##  use subset of data to estimate corrPars , forCorrEst is not NULL
+  ## } ## else use all data, single corrHLfit sufficient, forCorrEst is NULL
+  if ( ! is.null(forSmooth$seInt) && any(is.na(forSmooth$seInt))) {
+    forSmooth <- forSmooth[do.call(order,forSmooth),]
+    inPairs <- apply(diff(as.matrix(forSmooth[,1:2,drop=FALSE]))==0,1,all)
+    ## cf Infusion:::remove.pairswithNas for detailed explanations of the test
+    forCorrEst <- NAcleaning(forSmooth) ## NULL if no NAs to clean
+  } else  forCorrEst <- NULL
+  if (! is.null(forCorrEst)) {
+    ## FR->FR note (temporary?) syntax resid.formula but control.HLfit$resid.family
+    Krigobj <- corrHLfit(form,data=forCorrEst,resid.formula= resid.formula ,
+                         init.corrHLfit=init.corrHLfit,ranFix=ranFix,
+                         control.HLfit=list(resid.family=resid.family))
+    ## now we can use "consistent NAs" in the following fit IF we can provide phi and lambda estimates...
+    if (deparse(resid.formula[[length(resid.formula)]]) == "1") {
+      inconsistentNAs <- inPairs & (diff(is.na(forSmooth$seInt)) != 0L)
+      misleadingPairs <- c(FALSE,inconsistentNAs) | c(inconsistentNAs,FALSE) ## pairs with only one NA 
+      forSmooth <- forSmooth[ ! misleadingPairs,,drop=FALSE]
+      ranFix$lambda <- Krigobj$lambda
+      ranFix$phi <- Krigobj$phi
+    } else forSmooth <- forCorrEst ## play safe
+    ## in all cases:
+    ranFix$rho <- Krigobj$corrPars$rho
+  }
+  init.corrHLfit[names(ranFix)] <- NULL
+  Krigobj <- corrHLfit(form,data=forSmooth,resid.formula= resid.formula ,
+                       init.corrHLfit=init.corrHLfit,ranFix=ranFix,
                        control.HLfit=list(resid.family=resid.family))
   ### quick check of variance of logL estimation:
   if (FALSE) {
@@ -158,7 +212,7 @@ locoptimthroughSmooth <- function(pargrid,anyHLCor.args,prevPtls=NULL,control.sm
   ###
   ## ****** optimize in the predicted likelihood surface ******
   predictions <- predict(Krigobj,binding="fitted")
-  predictions <- predictions[order(predictions[,1],decreasing=TRUE),]
+  predictions <- predictions[order(predictions[,attr(predictions,"fittedName")],decreasing=TRUE),]
   initvec <- predictions[1,names(lower)]
   ## redefines lower, upper, for maximization
   ranges <- apply(forSmooth[,names(lower),drop=FALSE],2,range)
@@ -167,27 +221,13 @@ locoptimthroughSmooth <- function(pargrid,anyHLCor.args,prevPtls=NULL,control.sm
   lower <- LowUp$lower
   upper <- LowUp$upper
   ##
-  if (length(initvec)==1L) {
-    optr <- optimize(function(v) {predict(Krigobj,v)[,1]},maximum=TRUE,lower=unlist(lower),upper=unlist(upper)) 
-    optr$par <- optr$maximum
-    optr$value <- optr$objective
-    optr$maximum <- NULL
-    optr$objective <- NULL
-  } else { 
-    optr <- optim(initvec,function(v) {predict(Krigobj,v)[,1]},method="L-BFGS-B",
-                  control=list(fnscale=-1),lower=unlist(lower),upper=unlist(upper))
-  }
+  optr <- optim(initvec,function(v) {predict(Krigobj,v)[,1]},method="L-BFGS-B",
+                control=list(fnscale=-1),lower=unlist(lower),upper=unlist(upper))
   names(optr$par) <- names(lower)
   attr(predictions,"fittedPars") <- names(lower) 
-  ####### #attr(predictions,"respName") <- "fitted" ## predict() has provided attribute "fittedName" (a bit confusing)
   attr(predictions,"MSy") <- Krigobj$phi ## FR->FR ecrire un extracteur pour phi... 
   optr$predictions <- predictions 
-  #  ranges <- apply(uppersurf,2,range)
-  #  nextLowUp <- apply(ranges,1,as.list)
-  #  names(nextLowUp) <- c("lower","upper")
-  ######
-  #  optr$nextLowUp <- nextLowUp
   optr$Krigobj <- Krigobj ## 
   optr$forSmooth <- forSmooth
   return(optr)
-} ## end def locoptimthroughSmooth
+} ## end def optimthroughSmooth

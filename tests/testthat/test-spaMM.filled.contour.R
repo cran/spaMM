@@ -1,4 +1,4 @@
-print("test spaMM.filled.contour:")
+cat("\ntest spaMM.filled.contour:")
 # spaMM.filled.contour
 
 spaMM.filled.contour(volcano, color = spaMM.colors) # simple

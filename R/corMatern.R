@@ -9,9 +9,7 @@ corMatern <- function(value = c(1,0.5), form = ~1, nugget=FALSE, nuScaled=FALSE,
     attr(value, "nuScaled") <- nuScaled
     attr(value, "metric") <- match.arg(metric)
     attr(value, "fixed") <- fixed
-    class(value) <- c("corMatern", "corStruct")
-    ##class(value) <- c("corMatern", "corSpatial", "corStruct")
-
+    class(value) <- c("corMatern", "corStruct") ## corSpatial removed
     value
 }
 
@@ -156,7 +154,9 @@ logDet.corMatern <-
 }
 
 corMatrix.corMatern <-
-    function(object, covariate = getCovariate(object), corr = TRUE, ...)
+    function(object, covariate = getCovariate(object), 
+             corr = TRUE, ## returns matrix, else returna cholesky factor + the logDet  
+             ...)
 {
 
   if (data.class(covariate) == "list") { ## groups are defined

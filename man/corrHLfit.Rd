@@ -25,16 +25,17 @@ An optional list of initial values for correlation and/or dispersion parameters,
 \code{lambda} and \code{phi} are dispersion parameters (see Details in \code{\link{spaMM}} for the meaning of these parameters). 
  All are optional, but giving values for 
 a dispersion parameter changes the ways it is estimated (see Details).
+\code{rho}  may be a vector (see \code{\link{make_scaled_dist}}) and, in that case, it is possible that some or all of its elements are \code{NA}, for which \code{corrHLfit} substitute automatically determined values.  
 }
   \item{init.HLfit}{
     See identically named \code{\link{HLfit}} argument.
 %- FR->FR more to say (if corr estim within HLfit becomes public ?)...
   }
   \item{ranFix}{
-A list similar to \code{initpar}, but specifying fixed values of the parameters not estimated. 
+A list similar to \code{init.corrHLfit}, but specifying fixed values of the parameters not estimated. 
 }
   \item{lower}{
-An optional list of values of parameters specified through \code{initpar}, used as lower values in calls to \code{optim}. See Details for default values.
+An optional list of values of parameters specified through \code{init.corrHLfit}, used as lower values in calls to \code{optim}. See Details for default values.
 }
   \item{upper}{
 Same as \code{lower}, but upper values.
@@ -85,13 +86,8 @@ The return value of an \code{HLCor} call, with additional attributes. The \code{
   See \code{\link{fixedLRT}} for likelihood ratio tests.
 }
 \examples{
-#### example with an adjacency matrix (autoregressive model)
-if (spaMM.getOption("example_maxtime")>4) {
- data(scotlip)
- corrHLfit(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(scotlip$expec)),
-               data=scotlip,family=poisson(),
-               adjMatrix=Nmatrix)
-}
+# Example with an adjacency matrix (autoregressive model):
+# see 'adjacency' documentation page
 
 #### Examples with Matérn correlations
 ## A likelihood ratio test based on the ML fits of a full and of a null model.

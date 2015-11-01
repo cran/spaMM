@@ -10,7 +10,11 @@
  	fitted.values <- x$fv
   ## possible modif of 'which':
   if (is.null(residuals)) {## possible if disp pars in ranFix
-    which <- setdiff(which,c("mean")) ## all 'mean' disagnostic plots involve these residuals
+    which <- setdiff(which,c("mean")) ## all 'mean' diagnostic plots involve these residuals
+  }
+  if ("predict" %in% which) {
+    plot(x$y,predict(x),xlab="Response",ylab="Predicted response",...)
+    abline(0,1)
   }
 	if ("ranef" %in% which) {
 	  if (x$family$family %in% c("poisson","binomial")) {

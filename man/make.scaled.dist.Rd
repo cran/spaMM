@@ -1,5 +1,5 @@
-\name{make.scaled.dist}
-\alias{make.scaled.dist}
+\name{make_scaled_dist}
+\alias{make_scaled_dist}
 %- Also NEED an '\alias' for EACH other topic documented here.
 \title{Scaled Euclidean distances between unique locations}
 \description{
@@ -7,9 +7,10 @@
   the parametrization of the scaling through \code{control.dist$rho.mapping}.
 }
 \usage{
-make.scaled.dist(uniqueGeo, uniqueGeo2=NULL, distMatrix, rho, 
+make_scaled_dist(uniqueGeo, uniqueGeo2=NULL, distMatrix, rho, 
                  rho.mapping=seq_len(length(rho)), 
-                 dist.method="Euclidean")
+                 dist.method="Euclidean",
+                 return_matrix=FALSE)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -33,6 +34,7 @@ make.scaled.dist(uniqueGeo, uniqueGeo2=NULL, distMatrix, rho,
   as (say) \code{(lat,long,env) *rho[c(1,1,2)]} so that the same scaling \code{rho[1]} applies for both geographical coordinates. In this case, \code{rho} should have length 2 and \code{rho.mapping} should be \code{c(1,1,2)}.
   }
   \item{dist.method}{\code{method} argument of \code{proxy::dist} function (by default, \code{"Euclidean"}, but e.g. \code{"Geodesic"} can be used to compute spherical distances.} 
+  \item{return_matrix}{Whether to return a \code{matrix} rather than a \code{proxy::dist} or \code{proxy::crossdist} object.}
 }
 \details{
  The function uses the \code{distMatrix} argument if provided, in which case rho must be a scalar. Vectorial \code{rho} (i.e., different scaling of different dimensions) is feasible only by providing \code{uniqueGeo}.

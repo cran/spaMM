@@ -1,4 +1,4 @@
-print("test spaMM.Rd old donttest examples:")
+cat("\ntest spaMM.Rd old donttest examples:")
 # spaMM
 
 data(scotlip) ## loads 'scotlip' data frame, but also 'Nmatrix'

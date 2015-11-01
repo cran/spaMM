@@ -4,16 +4,16 @@
 
 \docType{package}
 
-\title{Inference in spatial GLMMs (and other non-spatial mixed models)}
+\title{Inference in mixed models, in particular spatial GLMMs}
 
-\description{spaMM has been first designed to fit spatial mixed models. It can also fit a wider class of non-spatial mixed models. The random effects are either Gaussian (which defines GLMMs), or other distributions (which defines the wider class of hierarchical GLMs), or simply absent (which makes a GLM).  
+\description{Fits a range of mixed models, including those with spatially correlated random effects. The random effects are either Gaussian (which defines GLMMs), or other distributions (which defines the wider class of hierarchical GLMs), or simply absent (which makes a GLM).  
 }
 
 \details{
 
   The standard (G)LMM response families \code{gaussian}, \code{binomial}, \code{poisson}, and \code{Gamma} are handled, as well as \code{\link{multinomial}} response (with some constraints) and negative binomial response (see Examples). GLMMs and HGLMs are fit via Laplace approximations for (1) the marginal likelihood with respect to random effects and (2) the restricted likelihood (as in REML), i.e the likelihood of random effect parameters given the fixed effect estimates. 
 
-  The package fits spatial models following either a Matérn correlation model or an adjacency matrix model. It also handles a number of non-spatial models. It accepts several nested or crossed random effects (see Examples). Only one of these can be a spatial random effect. The spaMM code has not been optimized for speed in these models. 
+  The package fits models including several nested or crossed random effects, only one of which can be a spatial random effect. The spaMM code has not been optimized for speed in non-spatial models. It fits random effects following either a Matérn correlation model or an adjacency matrix model. See \code{\link{adjacency}} for details about the latter. 
   
   The variance(s) of random effects (\eqn{u}) is (are) denoted \eqn{\lambda} (\code{lambda} in input and output) and that of residual error is denoted \eqn{\phi} (\code{phi}). A fixed-effects linear predictor for \eqn{\phi}, modeling heteroskedasticity, can be considered (see Examples). Fixed effects are described in the standard form \bold{X}\eqn{\beta} where \bold{X} is the design matrix of fixed effects and \eqn{\beta} (\code{beta}) is a vector of fixed effect parameters. 
 
@@ -40,28 +40,31 @@ spaMM is designed to be used through the high-level functions
 }
 
 \examples{
-## Fit a Poisson GLMM with adjacency correlation model
+## Fit a Poisson GLMM with adjacency (CAR) correlation model
+# see ?adjacency for how to fit efficiently such model models 
+data(scotlip) ## loads 'scotlip' data frame, but also 'Nmatrix'
+HLCor(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(scotlip$expec)),
+          adjMatrix=Nmatrix,family=poisson(),data=scotlip) 
 
-if (spaMM.getOption("example_maxtime")>75) {
- data(scotlip) ## loads 'scotlip' data frame, but also 'Nmatrix'
- corrHLfit(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(scotlip$expec)),
-          data=scotlip,family=poisson(),
-          adjMatrix=Nmatrix,lower=list(rho=0),upper=list(rho=0.1745))
-          
+
+if (spaMM.getOption("example_maxtime")>2) {          
  ## Adding a Gamma random effect to fit a negative-binomial response:
- corrHLfit(cases~I(prop.ag/10) +(1|gridcode)+adjacency(1|gridcode)
+ HLCor(cases~I(prop.ag/10) +(1|gridcode)+adjacency(1|gridcode)
                 +offset(log(scotlip$expec)),
           data=scotlip,family=poisson(),rand.family=list(Gamma(log),gaussian()),
-          adjMatrix=Nmatrix,lower=list(rho=0),upper=list(rho=0.1745))
+          adjMatrix=Nmatrix)
 }
 
-if (spaMM.getOption("example_maxtime")>38) {
+if (spaMM.getOption("example_maxtime")>4) {
  ## fit non-spatial crossed random effects with distinct families
  data(salamander)
  HLfit(cbind(Mate,1-Mate)~1+(1|Female)+(1|Male),family=binomial(),
         rand.family=list(gaussian(),Beta(logit)),data=salamander,HLmethod="ML")
+}
 
  ## Nested effects
+ 
+if (spaMM.getOption("example_maxtime")>30) {
  # lmer syntax allowing several degrees of nesting
  HLfit(cbind(Mate,1-Mate)~1+(1|Female/Male),
        family=binomial(),rand.family=Beta(logit),data=salamander,HLmethod="ML")

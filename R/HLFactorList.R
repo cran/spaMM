@@ -3,7 +3,7 @@
 spMMFactorList <- function (formula, mf, rmInt, drop) {
   ## drop=TRUE elimine des niveaux spurious (test: fit cbind(Mate,1-Mate)~1+(1|Female/Male) ....)
   ## avec des consequences ultimes sur tailles des objets dans dispGammaGLM
-  bars <- spMMexpandSlash(findbarsMM(formula[[length(formula)]]))
+  bars <- spMMexpandSlash(findbarsMM(formula[[length(formula)]])) ## this is what expands a nested random effect
   if (!length(bars)) stop("No random effects terms specified in formula")
   names(bars) <- unlist(lapply(bars, function(x) DEPARSE(x[[3]])))
   #######
@@ -19,7 +19,7 @@ spMMFactorList <- function (formula, mf, rmInt, drop) {
       txt <- DEPARSE(rhs)
     }
     #    if (length(grep("\\+",txt))>0) { ## coordinates is a vector with a single string; grep is 1 if  + was found in this single string and numeric(0) otherwise
-    if (! is.null(attr(x,"type"))){ ## Any term with a 'spatial' keyword; cf comment in last case
+    if (! is.null(attr(x,"type"))){ ## Any term with a 'spatial' keyword (incl. corrMatrix); cf comment in last case
       ## note that later ZALlist has an attr(attr(.,"ranefs"),"type") where non-spatial types are NOT null
       ## evaluating expression(ULI(...)) serves as a way to identify unique combinations of its arguments
       aslocator <- parse(text=paste("ULI(",gsub("\\+", "\\,", txt),")")) ## handles for (| ...+...) 
@@ -30,7 +30,7 @@ spMMFactorList <- function (formula, mf, rmInt, drop) {
     } else { ## standard ( | ) rhs 
       ## Je pensais que "(if a single variable, it does not matter whether it is spatial or not )"
       # mais ce n'est pas vrai: s'il y a une seule variable spatiale,
-      # le fait d'en faire un facteur va mener à creer une matrice Zt (puis ZA) avec des cols réordonnées comme les niveaux du factor
+      # le fait d'en faire un facteur va mener a creer une matrice Zt (puis ZA) avec des cols réordonnées comme les niveaux du factor
       # alors que cov mats / LMatrix ne sont pas réordonnées...
       # le probleme devient visible avec im <- as(ff... qui cree une matrice non diagsi on est passé par ce bloc
       mfloc <- mf
@@ -104,6 +104,8 @@ spMMFactorList <- function (formula, mf, rmInt, drop) {
   GrpNames <- names(bars)
   for (i in 1:length(fl)) {
     termsModels[i] <- "lamScal" ## FR->FR tempo fix because it's not here that this should be determined
+    ## indeed for adjacency model namesTerms[[i]] <- nt is only Intercept even though two coeffs will be determined
+    ##   but this should not be determined here.
     Subject[[i]] <- as.factor(fl[[i]]$f) # levels of grouping var for all obs
     Zt <- fl[[i]]$Zt
     ## ALL Design[[i]] are (dg)*C*matrix ie a Compressed *C*olumn Storage (CCS) matrix 
@@ -120,15 +122,14 @@ spMMFactorList <- function (formula, mf, rmInt, drop) {
     namesTerms[[i]] <- nt ## eg intercept of slope... possibly several variables
     names(namesTerms)[i] <- GrpNames[i] ## eg intercept of slope... possibly several variables
   }
-  ## FR->FR !!!!! following is called by predict(), not necess useful; 
-  ##     is.identity -> is.square.diagonal takes memory for 10000 points to predict
+  ## One shoudl not check is.identity -> is.square.diagonal when 10000 points to predict... (FR->FR: modif def one of these functions ?)
   for (iMat in seq_len(length(Design))) {
     attr(Design[[iMat]],"nlevels") <- ncol(Design[[iMat]])
     attr(Design[[iMat]],"colnames") <- colnames(Design[[iMat]])
   }
+  attr(Design,"Groupings") <- GrpNames
   ## to each (.|.) corresponds a Grouping (not necess distinct) and an element of namesTerms each identifying one or more terms
-  list(Design = Design, Subject = Subject, Groupings = GrpNames,namesTerms=namesTerms,termsModels=termsModels
-  )
+  list(Design = Design, Subject = Subject, namesTerms=namesTerms,termsModels=termsModels)
 }
 
 getgroups <- function(formlist,data) { ## reduction extreme de nlme:::getGroups.data.frame

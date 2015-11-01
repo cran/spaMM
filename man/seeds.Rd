@@ -23,6 +23,7 @@ Crowder (1978), Table 3.
 }
 \references{
 Crowder, M.J., 1978. Beta-binomial anova for proportions. Appl. Statist., 27, 34-37. 
+
 Y. Lee and J. A. Nelder. 1996. Hierarchical generalized linear models (with discussion). J. R. Statist. Soc. B, 58: 619-678. 
 }
 \examples{

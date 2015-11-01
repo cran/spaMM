@@ -1,4 +1,4 @@
-print("test HLfit:")
+cat("\ntest HLfit:")
 # HLfit
 
 data(wafers)

@@ -27,9 +27,9 @@ each random deviate divided by \eqn{\sqrt(1-q)} where \eqn{q} is the correspondi
   \item{x}{
   The return object of an HLCor / HLfit / corrHLfit call.
   }
-  \item{which}{
-    By default, two types of are presented on different devices: diagnostic plots for mean values, and diagnostic plots for random effects.
-    Either one can be selected using this argument.
+  \item{which}{ A vector of keywords for different types of plots. 
+    By default, two types of plots are presented on different devices: diagnostic plots for mean values, and diagnostic plots for random effects.
+    Either one can be selected using this argument. Use keyword \code{"predict"} for a plot of predicted response against actual response.
   }
   \item{titles}{
     A list of the \code{main} (inner and outer) titles of the plots. See the default value for the format.
@@ -38,7 +38,7 @@ each random deviate divided by \eqn{\sqrt(1-q)} where \eqn{q} is the correspondi
     A list of default options for the plots. Defaults are \code{pch="+"} and \code{pcol="blue"} for points, and \code{lcol="red"} for curves.
   }
   \item{\dots}{
-    Options passed from \code{plot.HLfit} to \code{par}, or from \code{plot.HLCor} or \code{plot.corrHLfit} to \code{plot.HLfit}.  
+    Options passed from \code{plot.HLfit} to \code{par}.  
   }
 }
 \details{

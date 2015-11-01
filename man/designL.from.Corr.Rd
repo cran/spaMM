@@ -12,12 +12,16 @@
   and in particular that this will affect the simulation of samples for the parametric bootstrap implemented in \code{fixedLRT}. 
 }
 \usage{
-designL.from.Corr(m,try.chol=TRUE,try.eigen=FALSE,threshold=1e-06,debug=FALSE,SVDfix=1/10)
+designL.from.Corr(m, symSVD=NULL, try.chol=TRUE, try.eigen=FALSE, threshold=1e-06, 
+                  debug=FALSE, SVDfix=1/10)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
   \item{m}{
-  The matrix which 'root' is to be computed.
+  The matrix which 'root' is to be computed. This argument is ignored if \code{symSVD} is provided.
+}
+  \item{symSVD}{
+  A list representing the symmetric singular value decomposition of the matrix which 'root' is to be computed. Must have elements \code{$u}, a matrix of eigenvectors, and \code{$d}, a vector of eigenvalues. 
 }
   \item{try.chol}{
   If \code{try.chol=TRUE}, the Cholesky factorization will be tried. 
@@ -42,10 +46,10 @@ designL.from.Corr(m,try.chol=TRUE,try.eigen=FALSE,threshold=1e-06,debug=FALSE,SV
   The \dQuote{square root of the input matrix}. Its rows and columns are labelled according to the columns of the original matrix.
 }
 \details{
-  Singular value decomposition (SVD) of a matrix \bold{M} using \code{\link{svd}} may encounter problems resulting in \dQuote{error code 1 from Lapack routine 'dgesdd'} (cf. unhelpful discussions on R forums). This can be circumvented by computing the SVD of \eqn{(1-x)}\bold{I}\eqn{+x}\bold{M} and deducing the 
-  singular values of \bold{M} in a trivial way. The \eqn{x} value is here provided by the \code{SVDfix} argument.
+  The function may call \code{\link{svd}}, for singular value decomposition (SVD) of a matrix \bold{M}. \code{svd} may return \dQuote{error code 1 from Lapack routine 'dgesdd'} (cf. unhelpful discussions on R forums). This can be circumvented by computing the SVD of \eqn{(1-x)}\bold{I}\eqn{+x}\bold{M} and deducing the 
+  singular values of \bold{M} in a trivial way. The \eqn{x} value to be used in this fix is provided by the \code{SVDfix} argument.
   
-  \code{svd} errors have occurred for correlation matrices that were close to the identity matrix except for a few large non-diagonal elements. Such matrices may occur in particular for low \eqn{\nu}, high \eqn{\rho}, and if some samples are spatially close. Then, an alternative fix to the \code{svd} problem may be to restrict the \eqn{\nu} and/or \eqn{\rho} ranges, using the \code{lower} and \code{upper} arguments of \code{corrHLfit}, although one should make sure that this has no bearing on the inferences. 
+  \code{svd} errors have occurred for correlation matrices that were close to the identity matrix except for a few large non-diagonal elements. Such matrices may occur in particular for the Matérn correlation model with low \eqn{\nu}, high \eqn{\rho}, and if some samples are spatially close. Then, an alternative fix to the \code{svd} problem may be to restrict the \eqn{\nu} and/or \eqn{\rho} ranges, using the \code{lower} and \code{upper} arguments of \code{corrHLfit}, although one should make sure that this has no bearing on the inferences. 
   
 }
 

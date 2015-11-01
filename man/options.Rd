@@ -20,6 +20,8 @@ spaMM.getOption(x)
 
   \describe{
 
+\item{\code{ff_threshold}:}{Minimal number of matrix elements for some matrices to be stored on disk (using the \code{ff} package) rather than in memory}
+
 \item{\code{RHOMAX=100000}:}{Maximum value of the scale parameter  \eqn{\rho} of the Matérn correlation function}
 
 \item{\code{NUMAX=50}:}{Maximum value of the smoothness parameter  \eqn{\nu} of the Matérn correlation function}
@@ -29,10 +31,13 @@ spaMM.getOption(x)
 
 \item{\code{MESSAGES.FULL.STACK=TRUE}:}{Whether to give information on the stack of calls in some warning messages.}
 
-
 \item{\code{QRmethod}:}{To control the methods used in intensive matrix computations. Computations may be faster in simple block random effect models when this is set to \code{"Matrix::qr"}.}
 
 \item{\code{USEEIGEN=TRUE}:}{Whether to use the Eigen C++ library for some matrix computations.}
+
+\item{\code{USElmwithQ=FALSE}:}{Whether to use the Eigen C++ library for solving linear systems.}
+
+\item{\code{USEEIGEN_QR=TRUE}:}{Whether to use the Eigen C++ library for some other QR computations.}
 
 \item{\code{maxLambda=1e10}:}{The maximum value of lambda: higher fitted 
  lambda values in HLfit are reduced to this.} 

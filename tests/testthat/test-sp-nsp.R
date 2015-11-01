@@ -1,4 +1,4 @@
-print("test sp+nsp ranefs:")
+cat("\ntest sp+nsp ranefs:")
 data(blackcap)
 set.seed(123)
 somegrp <- cbind(blackcap,grp=sample(2,14,replace=TRUE))

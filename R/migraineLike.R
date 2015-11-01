@@ -29,6 +29,9 @@ elim.redundant.V <- function(vertices) { ## removes redundant vertices
 
 volTriangulation <- function(vertices) { ## by contrast to barycenter of vertices
   if (is.data.frame(vertices)) vertices <- as.matrix(vertices)
+  ## probleme with repeated vertices occurs sometimes:
+  vertices <- unique(vertices) 
+  ## ...otherwise it is possible that a vertex (from $vertices) is later selected, which is not in the $simplicesTable
   tc <- delaunayn(vertices,"Pp") ## triangulation by simplices
   pmul <- cbind(-1,diag(rep(1,ncol(vertices))))
   factorialdim <- factorial(ncol(vertices)) 
@@ -48,18 +51,19 @@ volTriangulation <- function(vertices) { ## by contrast to barycenter of vertice
 }
 #vT <- volTriangulation(mvH)
 
+
 ## 'simplices' are indices
 # originally named subset.volTriangulation but subset is a generic with a different usage
 subsimplices.volTriangulation <- function(x,simplices,...) {
   vT <- x
   vT$vol <- vT$vol[simplices]
   vT$bary <- vT$bary[simplices,]
-  vT$simplicesTable <- vT$simplicesTable[simplices,]
+  vT$simplicesTable <- vT$simplicesTable[simplices,,drop=FALSE]
   # vT$simplicesTable refers to original point indices => $vertices is unchanged
   vT
 }
 
-rsimplex <-function(simplex,bary=NULL,u=NULL) { ## to sample uniformly[if u is null] wrt volume within a simplex, not uniformly wrt perimeter
+rsimplex <- function(simplex,bary=NULL,u=NULL) { ## to sample uniformly[if u is null] wrt volume within a simplex, not uniformly wrt perimeter
   ## even extrapolated values have a high chance of falling into an adjacent simplex
   if (is.null(bary)) bary <- colMeans(simplex) ## OK pour bary de d-dim simplex avec densité uniforme 
   #simplex <- t(extrapol*(t(simplex)-bary)+ bary)  ## bary+ extrapol*(v-bary)
@@ -69,7 +73,7 @@ rsimplex <-function(simplex,bary=NULL,u=NULL) { ## to sample uniformly[if u is n
   upow <- u^(1/seq(d,1)) ## u_1^{1/2},u_2
   ## loop eliminates one dimension at each step:
   for(it in seq_len(d)) simplex <- t(upow[it]*(t(simplex[-1,,drop=FALSE])-simplex[1,])+ simplex[1,])  ## v_1+ upow[it](v[-1]-v_1)
-  simplex ## a point
+  simplex[1,] ## a point (named numeric vector)
 }
 
 
@@ -85,6 +89,7 @@ rvolTriangulation <- function(n=1,volTriangulationObj,replace=TRUE) {
   if (ncol(vertices)==1L) {
     resu <- as.matrix(resu)
   } else resu <- t(resu)
+  rownames(resu) <- NULL ## bc all rownames=parm when ncol=1
   colnames(resu) <- colnames(vertices,do.NULL=FALSE) 
   return(resu)
 } ## end def rvolTriangulation
@@ -129,10 +134,7 @@ sampleNextPoints <- function(n=1,Xpredy,minPtNbr=1,##sqrt(nrow(Xpredy)+1),
       upperSimplices <- apply(vT$simplicesTable,1,function(v) { any(v %in% innerVertexIndices)}) ## indices !    
     }
   }
-  subvT <- vT ## keep the original $vertices since the subvT$simplicesTable still refer to original rows
-  subvT$innerVertexIndices <- innerVertexIndices
-  subvT$simplicesTable <- vT$simplicesTable[upperSimplices,]
-  subvT$vol <- vT$vol[upperSimplices] 
+  subvT <- subsimplices.volTriangulation(vT,simplices=upperSimplices)
   resu <- rvolTriangulation(n=n,subvT,replace=replace)
   colnames(resu) <- fittedPars
   resu <- data.frame(resu)

@@ -36,7 +36,7 @@ function(link="logit"){
   }
   dev.resids<-function(y, mu, wt) {
     dev <- 2 * wt * (y*log( y/mu) +(1-y)*log((1-y)/(1-mu)))
-    return(dev)
+    return(pmax(dev,0)) ## resids(1/2,1/2,1) might be slightly negative...
   }
 
 structure(list(family = "Beta", link = linktemp, linkfun = stats$linkfun,

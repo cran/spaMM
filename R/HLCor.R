@@ -1,9 +1,19 @@
+## the following must match the'unique' method is ULI as explained there
+calcUniqueGeo <- function(data) {
+  redondGeo <- apply(data,1,paste,collapse=" ") ## creates character string
+  dfforunique <- cbind(data,redondGeo) ## associates rownames of data to redondGeo
+  uniqueGeo <- unique(dfforunique[,ncol(dfforunique),drop=FALSE]) ## keeps rownames of first instances
+  uniqueGeo <- data[rownames(uniqueGeo),,drop=FALSE] ## uses rownames, 'unique' numeric values based on character representations 
+  return(uniqueGeo)
+}
+
+
 `extract.check.coords` <- function(spatial.model,datanames) {
   if ( ! is.null(spatial.model)) {
     bars <- spatial.model[[2]] 
     coordinates <- DEPARSE(bars[[3]]) ## "x + y"
     coordinates <-  strsplit(coordinates," ")[[1]]
-    coordinates <- setdiff(coordinates,c("+","%in%",":","/"))
+    coordinates <- setdiff(coordinates,c("+","%in%",":","/","")) ## "" for hidden linebreaks (?)
   } else {
     stop("Call to 'HLCor' without a spatial term in the formula is suspect.")
     ## very old code handling old syntax with (1|pos) and default values of the coordinates argument
@@ -47,12 +57,16 @@ canonizeRanPars <- function(ranPars,corr.model,checkComplete=TRUE) {
       attr(ranPars,"type")$rho <- attr(ranPars,"type")$trRho
       attr(ranPars,"type")$trRho <- NULL
     } ## else there may simply be rho rather than trRho (including for adjacency model through optim procedure !)
-    rho <- ranPars$rho
-    if (is.null(rho) && checkComplete) {
-      mess <- pastefrom("rho missing from ranPars.",prefix="(!) From ")
-      stop(mess)
-    }
-    trueCorrpars$rho <- rho
+    trueCorrpars$rho <- rho <- ranPars$rho
+    if (is.null(rho)) {
+      if(corr.model=="adjacency") { ## then allow a direct call through HLCor 
+        ranPars$rho <- 0
+        attr(ranPars,"type")$rho <- "var"
+      } else if (checkComplete) {
+        mess <- pastefrom("rho missing from ranPars.",prefix="(!) From ")
+        stop(mess)
+      }
+    } 
   }
   Nugget <- ranPars$Nugget
   if (! is.null(Nugget)) trueCorrpars$Nugget <- Nugget 
@@ -77,13 +91,14 @@ canonizeRanPars <- function(ranPars,corr.model,checkComplete=TRUE) {
 }
 
 HLCor <- function(formula,
-                  ranPars, ## all dispersion and correlation params ideally provided through ranPars
+                  ranPars=NULL, ## all dispersion and correlation params ideally provided through ranPars
                   data,
                   distMatrix,uniqueGeo=NULL,adjMatrix,corrMatrix,
                   verbose=c(warn=TRUE,trace=FALSE,summary=FALSE),control.dist=list(),
                   ...) { 
   mc <- match.call() ## potentially used by getCallHL(object) in update.HL...
   if (is.na(verbose["trace"])) verbose["trace"] <- FALSE
+  if (is.na(verbose["SEM"])) verbose["SEM"] <- FALSE
   if (is.na(verbose["warn"])) verbose["warn"] <- TRUE
   if (is.na(verbose["summary"])) {
     verbose["HLCorSummary"] <- FALSE
@@ -157,36 +172,56 @@ HLCor <- function(formula,
     stop("Call to 'HLCor' without a spatial term in the formula is suspect.")
   }
   ## convert back ranPars to canonical scale:
-  if (corr.model== "corrMatrix") {
-    ranPars <- NULL
-  } else {
+  #if (corr.model== "corrMatrix") { ## spculatively removed 2015/06/02
+  #  ranPars <- NULL
+  #} else {
     rpblob <- canonizeRanPars(ranPars=ranPars,corr.model=corr.model) 
     ranPars <- rpblob$ranPars
     trueCorrpars <- rpblob$trueCorrpars
     rho <- ranPars$rho
-  }
+  #}
   coordinates <- NULL
   ##
   test.in <- FALSE
-    if (corr.model %in% c("BreslowC93","adjacency")) { 
-      ## no nugget in the adjacency model...
+  ### ensure LMatrix in predictor: 
+  ## if it is currently absent, first provide corr matrix or its symSVD, from which Lunique will be computed using designL.from.Corr
+  if (is.null(Lunique <- attr(predictor,"LMatrix"))) { 
+    symSVD <- NULL
+    if (corr.model %in% c("adjacency","ar1")) { ## "ar1" != "AR1" is a tempo name for a futur generic model  
       if ( missing(adjMatrix) ) stop("missing 'adjMatrix' for adjacency model")
-      decomp <- attr(adjMatrix,"symSVD")
-      if (is.null(decomp)) {
-        m <- solve(diag(rep(1,nrow(adjMatrix)))-rho*(adjMatrix))
-      } else {
-        m <- ZWZt(decomp$u,1/(1-rho*decomp$d))
+      ## no nugget in the adjacency model... ## (use additional ranef instead)      
+      symSVD <- attr(adjMatrix,"symSVD")
+      if (is.null(symSVD) && identical(attr(ranPars,"type")$rho,"var")) { ## can occur in direct call of HLCor ## identical() handles NULL args
+        if (isSymmetric(adjMatrix)) {
+          symSVD <- selfAdjointWrapper(adjMatrix)
+          attr(adjMatrix,"symSVD") <- symSVD
+        }             
       }
+      if (is.null(symSVD)) {
+        corrm <- solve(diag(rep(1,nrow(adjMatrix)))-rho*(adjMatrix))
+      } else {
+        symSVD$adjd <- symSVD$d
+        symSVD$d <- 1/(1-rho*symSVD$d) ## from adjMatrix to correlation matrix
+      }
+    }  else if (corr.model %in% c("SAR_WWt")) { ## "ar1" != "AR1" is a tempo name for a futur generic model  
+      if ( missing(adjMatrix) ) stop("missing 'adjMatrix' for adjacency model")
+      UDU. <- attr(adjMatrix,"UDU.")
+      if (is.null(UDU.)) {
+        corrm <- solve(diag(rep(1,nrow(adjMatrix)))-rho*(adjMatrix))
+      } else {
+        corrm <- UDU.$u %*% sweep(UDU.$u.,MARGIN=1,1/(1-rho*UDU.$d),`*`) 
+      }
+      corrm <- tcrossprodCpp(corrm)
     }  else if (corr.model=="AR1") {
       coordinates <- extract.check.coords(spatial.model=spatial.model,datanames=names(data))
-      uniqueGeo <- unique(data[,coordinates,drop=F]) ## keeps the names of first instances of the coordinates in data
+      uniqueGeo <- calcUniqueGeo(data=data[,coordinates,drop=FALSE])
       txt <- paste(spatial.model[[2]][[3]]) ## the RHS of the ( . | . ) 
       if (length(grep("%in%",txt))>0) {
         stop("HLCor code should be allowed again to handle blockDiag objects")
         #scaled.dist <- as.blockDiag.bar(spatial.model[[2]],formula,data=uniqueGeo)
         #test.in <- TRUE
       } else scaled.dist <- proxy::dist(uniqueGeo)
-      m <- trueCorrpars$ARphi^scaled.dist
+      corrm <- trueCorrpars$ARphi^scaled.dist
     } else  if (corr.model %in% c("Matern","corMatern")) {
       txt <- paste(spatial.model[[2]][[3]]) ## the RHS of the ( . | . ) 
       if (length(grep("%in%",txt))>0) {
@@ -196,7 +231,7 @@ HLCor <- function(formula,
       ## in a typical call from corrHLfit the following test should be FALSE because uniqueGeo and maybe distMatrix should have been precomputed
       if ((length(rho)>1 || missing(distMatrix)) && is.null(uniqueGeo)) { ## all cases where we need uniqueGeo
         coordinates <- extract.check.coords(spatial.model=spatial.model,datanames=names(data))
-        uniqueGeo <- unique(data[,coordinates,drop=F]) ## keeps the names of first instances of the coordinates in data
+        uniqueGeo <- calcUniqueGeo(data=data[,coordinates,drop=FALSE]) ## keeps the names of first instances of the coordinates in data
       } 
       ## then compute scaled distances from unscaled info, for HLfit call
       msd.arglist <- list(rho = rho)
@@ -217,41 +252,53 @@ HLCor <- function(formula,
         }
         msd.arglist <- c(msd.arglist,list(distMatrix=distMatrix))
       }
-      m <- do.call("make.scaled.dist",msd.arglist)
-      ## at this point is a single location, m should be dist(0) and make.scaled.dist was modified to that effect
-      if ( nrow(m)>1 ) { ## >1 locations
-        norho <- trueCorrpars; norho$rho <- NULL ## because the Matern.corr input will be an already scaled distance 'm'
-        m <- do.call(Matern.corr,args=c(norho,list(d=m)))        
+      corrm <- do.call("make_scaled_dist",msd.arglist)
+      ## at this point is a single location, corrm should be dist(0) and make_scaled_dist was modified to that effect
+      if ( nrow(corrm)>1 ) { ## >1 locations
+        norho <- trueCorrpars; norho$rho <- NULL ## because the MaternCorr input will be an already scaled distance 'corrm'
+        corrm <- do.call(MaternCorr,args=c(norho,list(corrm)))        
       } 
     } else if (corr.model== "corrMatrix") {
       if (missing(corrMatrix)) {
         mess <- pastefrom("missing(corrMatrix) argument despite corrMatrix term in formula.",prefix="(!) From ")
         stop(mess)
       } ## ELSE:
-      m <- corrMatrix
+      corrm <- corrMatrix
+      #browser()
+      Lunique <- attr(corrMatrix,"LMatrix") ## will typically be NULL, but super-users ;-) may have provided it
     } 
-    if (verbose["trace"] && length(trueCorrpars)>0) { 
-      print(unlist(trueCorrpars))
-    }
-    # print(paste("Correlation params in HLCor",paste(c(rho,nu),collapse=" ")))
-    argsfordesignL <- dotlist[intersect(names(dotlist),names(formals(designL.from.Corr)))] 
-    if ("dist" %in% class(m)) {
-      m <- as.matrix(m)
-      diag(m) <- 1L ## always a correlation matrix
-    }
-    if (is.null(attr(predictor,"LMatrix"))) { ## test FR 11/2013
-      Lunique <- try(do.call(designL.from.Corr,c(list(m=m),argsfordesignL)))
+    if (verbose["trace"] && length(trueCorrpars)>0) print(unlist(trueCorrpars))
+    ## call designL.from.Corr if Lunique not available
+    if (is.null(Lunique)) { ## test FR 11/2013 ## modif 2015/04. Noter un calcul de Lunique ci dessus
+      if ( ! is.null(symSVD)) {
+        Lunique <- try(designL.from.Corr(symSVD=symSVD))
+      } else { ## corrm must exist
+        argsfordesignL <- dotlist[intersect(names(dotlist),names(formals(designL.from.Corr)))] 
+        if ("dist" %in% class(corrm)) {
+          corrm <- as.matrix(corrm)
+          diag(corrm) <- 1L ## always a correlation matrix
+        }
+        Lunique <- try(do.call(designL.from.Corr,c(list(m=corrm),argsfordesignL)))
+      }
       if (class(Lunique)=="try-error") { 
         print("correlation parameters were:") ## makes sense if designL.from.Corr already issued some warning
         print(unlist(trueCorrpars))    
         stop()
       }
-      attr(Lunique,"ranefs") <- unlist(lapply(spatial.terms,DEPARSE))
-      attr(predictor,"LMatrix") <- Lunique
-      attr(predictor,"%in%") <- test.in
     }
-###
-  dotlist$verbose <- verbose[intersect(names(verbose),c("warn","trace","summary"))] ## all printing in HLfit is suppressed by default
+    attr(predictor,"%in%") <- test.in
+    attr(Lunique,"corr.model") <- corr.model
+    attr(Lunique,"ranefs") <- unlist(lapply(spatial.terms,DEPARSE)) ## essentiel pour la construction de ZAL!
+    if ( corr.model=="adjacency"
+         && ! is.null(attr(ranPars,"type")) ## ie through corrHLfit call
+         && "var" %in% attr(ranPars,"type")$rho ## then not a call for fixed rho => estim of rho within HLfit through SEM or augm GLM
+         ) { ## then define ZA.L as ZA. U(adjacency matrix)
+      Lunique[] <- attr(Lunique,"symsvd")$u ## "[]" keeps attributes
+    }
+    attr(predictor,"LMatrix") <- Lunique
+  }
+  ###
+  dotlist$verbose <- verbose[intersect(names(verbose),c("warn","trace","summary","SEM"))] ## all printing in HLfit is suppressed by default
   HLFormals <- names(formals(HLfit))
   HL.info <- dotlist[intersect(names(dotlist),HLFormals)]
   HL.info$data <- data
@@ -270,7 +317,7 @@ HLCor <- function(formula,
   ## convert ranPars to ranFix + init.HLfit
   ## allows log and not log:
   varNames <- names(which(attr(ranPars,"type")=="var"))
-  HL.info$init.HLfit[varNames] <- ranPars[varNames]
+  HL.info$init.HLfit[varNames] <- ranPars[varNames] ## inherits values from corrHLfit(...,init.HLfit(...))
   fixNames <- setdiff(names(ranPars),varNames) 
   if (!is.null(fixNames)) { ## could be NULL for corrMatrix case
     ranFix <- ranPars[fixNames] ## 11/2014 as there is no other source for ranFix
@@ -297,6 +344,7 @@ HLCor <- function(formula,
   attr(hlfit,"info.uniqueGeo") <- uniqueGeo ## more spatial info is to be found in hlfit$predictor (Lunique = corrmat^1/2) and hlfit$ZALMatrix
   if (corr.model %in% c("Matern","corMatern")) attr(hlfit,"msd.arglist") <- msd.arglist ## more organized, easier to reuse. 
   ## FR->FR but info.uniqueGeo more general (eg AR1) -> a revoir
+  hlfit$call <- "$call removed by HLCor. Consider the 'HLCorcall' attribute instead." ## instead of the $call with evaluated arguments
   attr(hlfit,"HLCorcall") <- mc
   if (verbose["HLCorSummary"]) { ## useful in final call from corrHLfit
     summary(hlfit) ## input corr pars have been printed at the beginning...   
@@ -333,7 +381,7 @@ HLCor <- function(formula,
   HLCor.formals <- names(formals(HLCor))
   HLfit.formals <- names(formals(HLfit))
   designL.formals <- names(formals(designL.from.Corr))
-  makescaled.formals <- names(formals(make.scaled.dist))
+  makescaled.formals <- names(formals(make_scaled_dist))
   HLnames <- (c(HLCor.formals,HLfit.formals,designL.formals,makescaled.formals))  ## cf parallel code in corrHLfit
   HLCor.args <- dotlist[intersect(names(dotlist),HLnames)]
   forGiven <- relist(ranefParsVec,skeleton) ## given values of the optimized variables

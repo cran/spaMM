@@ -1,4 +1,4 @@
-print("test HLCor:")
+cat("\ntest HLCor:")
 # HLCor
 
 data(Loaloa)

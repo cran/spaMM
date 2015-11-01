@@ -1,5 +1,5 @@
 # confint
-print("test confint:")
+cat("\ntest confint:")
 data(wafers)
 wfit <- HLfit(y ~X1+(1|batch),family=Gamma(log),data=wafers,HLmethod="ML")
 ci <- confint(wfit,"X1")

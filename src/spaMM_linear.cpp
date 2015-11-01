@@ -147,7 +147,7 @@ return wrap(swZ);
 
 
 // [[Rcpp::export]]
-SEXP RcppChol( SEXP AA ){
+SEXP RcppChol( SEXP AA ){ // returns t(R::chol)
   const Eigen::LLT<MatrixXd> llt(as<Map<MatrixXd> >(AA));
   int indic=0;
   switch(llt.info()) {

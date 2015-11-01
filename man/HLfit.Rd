@@ -82,8 +82,8 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
   \item{control.HLfit}{
   A list of parameters controlling (1) AIC computation; and (2) the fitting algorithms.
 
-  \code{AIC=TRUE} provides the corrected AIC of Ha et al. 2007 [i.e., AIC(D*) in their eq. 7], 
-  but the default is \code{FALSE} to (modestly) encourage users to think twice before applying model selection automatically, which is no better although more fashionable than misuses of simple null hypothesis testing. Also, alternative procedures for model choice can be considered (e.g. Cox and Donnelly, 2011, p. 130-131).
+  \code{AIC=TRUE} provides several information criteria and a related \dQuote{effective degrees of freedom} (see Details). 
+  The default is \code{FALSE} to (modestly) encourage users to think about these different criteria and to think twice before applying model selection automatically, which is no better although more fashionable than misuses of simple null hypothesis testing. Also, alternative procedures for model choice can be considered (e.g. Cox and Donnelly, 2011, p. 130-131).
   
   \code{resid.family} allows one to change the link for modeling of residual variance \eqn{\phi}, which is \code{"log"} by default. The family is always Gamma, so the non-default possible values of \code{resid.family} are \code{Gamma(identity)} or \code{Gamma(inverse)}. Only the default value ensures that the fitted \eqn{\phi} is positive.     
 
@@ -116,10 +116,10 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
   Inhibits the estimation of these parameters. 
  }
   \item{etaFix}{
-   A list of fixed values of the coefficients of the linear predictor, with possible elements \code{beta} and \code{v_h} or \code{u_h}. 
+   A list of fixed values of the coefficients of the linear predictor, with currently documented element \code{beta}. \code{etaFix$beta} should be a vector with names matching (a subset of) coefficient names of a fit without fixed values. It provides a convenient interface for fixing (some of) the fixed-effects coefficients (\eqn{\beta}). In contrast to an offset specification, it affects the REML correction for estimation of dispersion parameters, which depends only on which \eqn{\beta} coefficients are estimated. However, for non-standard use, REML can still be performed as if all \eqn{\beta} coefficients were estimated, by adding attribute \code{keepInREML=TRUE} to \code{etaFix$beta} (see Examples). These different behaviours will be overridden whenever a non-null \code{REMLformula} is provided.     
  }
   \item{prior.weights}{
-   An optional vector of prior weights as in \code{\link{glm}}. This fits the data to a model with residual variance \code{phi/prior.weights}, so that increasing the    weights by a constant factor \emph{f} will yield estimates of \code{phi} also increased by \emph{f}. Note that this is what \code{glm} does, but that some other widely used packages can behave differently (and obscurely). 
+   An optional vector of prior weights as in \code{\link{glm}}. This fits the data to a model with residual variance \code{phi/prior.weights}, so that increasing the    weights by a constant factor \emph{f} will yield (Intercept) estimates of \code{phi} also increased by \emph{f} (this effect cannot be generally achieved if a non-trivial \code{resid.formula} with log link). Note that this is what \code{glm} does, but that some other widely used packages can behave differently (and obscurely). 
  }
   \item{processed}{
     A list of preprocessed arguments, for programming purposes only (as in \code{corrHLfit} code).
@@ -163,11 +163,17 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
    has mean 1 and variance \eqn{\lambda}. 
   } 
  \item{Inverse-Gamma}{inverse-Gamma distributed random effects, where \eqn{u ~ }inverse-Gamma\eqn{(1+1/\lambda,1/\lambda)}
-    (mean=1, var=\eqn{\lambda/(1-\lambda))}, with \code{v=log(u)} or \code{v=-1/u}.}
+    (mean=1, var=\eqn{\lambda/(1-\lambda))}. The allowed links are \code{v=log(u)} and \code{v=-1/u}. With the latter one, \code{v} 
+    is Gamma-distributed with mean \eqn{\lambda} and variance \eqn{\lambda(\lambda+1)}.}
  }  
 
-  \bold{The standard errors} reported may sometimes be misleading. For each set of parameters among \eqn{beta}, \eqn{lambda}, and \eqn{phi} parameters these are computed assuming that the other parameters are known without error. This is why they are labelled \code{Cond. SE} (conditional standard error). This is most uninformative in the unusual case where \eqn{lambda} and \eqn{phi} are not separately estimable parameters. Further, the SEs for \eqn{lambda} and \eqn{phi} are rough approximations as discussed in particular by Smyth et al. (2001; \eqn{V_1} method).    
-
+  \bold{The standard errors} reported may sometimes be misleading. For each set of parameters among \eqn{\beta}, \eqn{\lambda}, and \eqn{\phi} parameters these are computed assuming that the other parameters are known without error. This is why they are labelled \code{Cond. SE} (conditional standard error). This is most uninformative in the unusual case where \eqn{\lambda} and \eqn{\phi} are not separately estimable parameters. Further, the SEs for \eqn{\lambda} and \eqn{\phi} are rough approximations as discussed in particular by Smyth et al. (2001; \eqn{V_1} method).    
+  
+  \bold{Effective degrees of freedom} for the random effects: this number (approximately) characterizes the expectation of a goodness of fit statistic discussed by Lee and Nelder (2001), which gave a general formula for it in HGLMs. It is computed if \code{AIC=TRUE} and returned as the object's \code{$APHLs$GoFdf}. 
+  
+  \bold{AIC}: The literature considers several information criteria for mixed models. The conditional AIC (Vaida and Blanchard 2005) is notable in involving the conditional likelihood and the effective degrees of freedom. Lee et al. (2006) and Ha et al (2007) similarly define a corrected AIC [i.e., AIC(D*) in their eq. 7]. The conditional AIC returned by \code{HLfit} includes both this effective df, df for estimated fixed effects, and df for estimated parameters of the variance of random effects. 
+% FR->FR If \code{HLfit} was called through \code{corrHLfit}, a correction for estimated correlation parameters may be added.  
+  \code{HLfit} will also return the classical AIC (\dQuote{marginal} AIC), and a focussed AIC for dispersion parameters, also discussed by Ha et al (2007; eq.10).
 }
 \value{
 An object of class \code{HLfit}, actually a list with many elements, several of which represent input arguments. 
@@ -237,6 +243,8 @@ Noh, M., and Lee, Y. (2007). REML estimation for binary data in GLMMs, J.
 Multivariate Anal. 98, 896-915.
 
 Smyth GK, Huele AF, Verbyla AP (2001). Exact and approximate REML for heteroscedastic regression. Statistical Modelling 1, 161-175. 
+
+Vaida, F., and Blanchard, S. 2005. Conditional Akaike information for mixed-effects models. Biometrika 92, 351-370.
 }
 \seealso{
 \code{\link{HLCor}} for estimation with given spatial correlation parameters;

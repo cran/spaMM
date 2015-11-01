@@ -1,5 +1,6 @@
 \name{HLCor}
 \alias{HLCor}
+\alias{corrMatrix}
 \title{
                     Fits a (spatially) correlated mixed model, for given correlation parameters 
 }
@@ -8,7 +9,8 @@ A convenient interface for \code{\link{HLfit}}, constructing the correlation mat
 then estimating fixed effects and dispersion parameters using \code{HLfit}.
 }
 \usage{
-HLCor(formula,ranPars,data,distMatrix,uniqueGeo,adjMatrix,
+HLCor(formula,ranPars=NULL,data,distMatrix,
+      uniqueGeo=NULL,adjMatrix,
       corrMatrix,verbose=c(warn=TRUE,trace=FALSE,summary=FALSE),
       control.dist = list(),...)
 }
@@ -20,17 +22,16 @@ HLCor(formula,ranPars,data,distMatrix,uniqueGeo,adjMatrix,
   \item{ranPars}{
   A list of values for correlation parameters (some of which are mandatory), and possibly also dispersion parameters 
   (optional, but passed to HLfit if present). 
-  By default, the \code{\link{Matern.corr}} model is assumed,
-  where the correlation parameters are \code{rho} (scale parameter(s)), \code{nu} (smoothness parameter), and (optional) \code{Nugget}. 
+  For the Matérn model, the correlation parameters are \code{rho} (scale parameter(s)), \code{nu} (smoothness parameter), and (optional) \code{Nugget}. 
   The \code{rho} parameter can itself be a vector with different values for different geographic coordinates.
-  If \code{corr.model} is \code{"adjacency"}, the only correlation parameter is a scalar \code{rho}.
+  For the \code{"adjacency"} model, the only correlation parameter is a scalar \code{rho}.
   The dispersion parameters are the random effect variance, \code{lambda}, and the residual variance, \code{phi}.
 }
   \item{data}{
    The data frame to be analyzed.
   }
   \item{distMatrix}{
-    A distance matrix between geographic locations, forwarded to \code{Matern.corr}
+    A distance matrix between geographic locations, forwarded to \code{MaternCorr}
 }
   \item{uniqueGeo}{
     A matrix of non-redundant geographic locations. This is useful if the \code{rho} parameter is a vector with different values for different geographic coordinates, in which case
@@ -58,7 +59,7 @@ HLCor(formula,ranPars,data,distMatrix,uniqueGeo,adjMatrix,
    A list of arguments that control the computation of the distance argument of the correlation functions. Possible elements are
    \describe{
    \item{rho.mapping}{ a set of indices controlling which elements of the \code{rho} scale vector scales which dimension(s) of the space in which (spatial) 
-   correlation matrices of random effects are computed. See same argument in \code{\link{make.scaled.dist}} for details and examples.} 
+   correlation matrices of random effects are computed. See same argument in \code{\link{make_scaled_dist}} for details and examples.} 
    \item{dist.method}{\code{method} argument of \code{proxy::dist} function (by default, \code{"Euclidean"}, but e.g. \code{"Geodesic"} can be used to compute spherical distances.)}
    }
 }
@@ -69,13 +70,13 @@ HLCor(formula,ranPars,data,distMatrix,uniqueGeo,adjMatrix,
 \details{
   The correlation matrix for random effects can be specified by various combination of formula terms and other arguments  (see Examples):
     \describe{
-    \item{Basic Matérn model}{\code{Matern(1|<...>)} with \code{ranPars} argument, using the spatial coordinates in \code{<...>}. This will construct a correlation matrix according to the Matérn correlation function (see \code{\link{Matern.corr}});}
+    \item{Basic Matérn model}{\code{Matern(1|<...>)} with \code{ranPars} argument, using the spatial coordinates in \code{<...>}. This will construct a correlation matrix according to the Matérn correlation function (see \code{\link{MaternCorr}});}
     \item{Matérn model with given distance matrix}{\code{Matern(1|<...>)} with \code{distMatrix} and \code{ranPars} argument;}
-    \item{Given correlation matrix}{\code{corrMatrix(1|<...>)} with \code{corrMatrix} argument;}
+    \item{Given correlation matrix}{\code{corrMatrix(1|<...>)} with \code{corrMatrix} argument. In this case, a single factor variable is constructed from all levels of the joint variables in \code{<...>}. For example, one might consider the case of 14 response values but of correlations between only 7 levels of a random effect, with two responses for each level. Then the matrix is of dimension 7x7, and the indexing variable may be \code{idx=rep(seq(7),2)}, but also \code{dummy=rep(sample(7),2)}. If \code{dummy[1]=6}, then 6 is the first encountered level of the variable and it identifies the first row/column of the matrix, not the 6th. Then \code{dummy[8]=6} also means that the 8th response is affected by the same level of the random effect as the 1st response; }
     \item{CAR model with given adjacency matrix}{\code{adjacency(1|<...>)} with \code{adjMatrix} and \code{ranPars} argument. This will construct the 
     correlation matrix (\bold{I}\eqn{-\rho} \code{adjMatrix}\eqn{)^{-1}} for a conditional autoregressive (CAR) model. 
     This was implemented for comparison purposes as it is widely used, but is not really recommended for irregular lattices
-    (see Wall, 2004 and Martellosio, 2012 for some insights on the implications of autoregressive models). Accordingly, tricks that allow faster analysis of CAR models were not implemented.}
+    (see Wall, 2004 and Martellosio, 2012 for some insights on the implications of autoregressive models). See \code{\link{adjacency}} documentation for more information on fitting such models.}
   }
 }
 \references{
@@ -92,13 +93,13 @@ the CAR and SAR models: Journal of Statistical Planning and Inference 121: 311-3
 }
 
 \seealso{
-\code{\link{Matern.corr}}, \code{\link{HLfit}}, \code{\link{corrHLfit}}
+\code{\link{MaternCorr}}, \code{\link{HLfit}}, \code{\link{corrHLfit}}
 % possibly the currently undocumented designL.from.Corr
 }
 \examples{
 
 #### Matérn correlation using only the Matern() syntax
-if (spaMM.getOption("example_maxtime")>3) {
+if (spaMM.getOption("example_maxtime")>2) {
  data(Loaloa)
  HLCor(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
               +Matern(1|longitude+latitude),data=Loaloa,
@@ -110,11 +111,16 @@ if (spaMM.getOption("example_maxtime")>3) {
 data(blackcap) 
 ## Here we manually reconstruct the correlation matrix 
 ##  of the ML fit produced by corrHLfit:
-MLcorMat <- Matern.corr(proxy::dist(blackcap[,c("latitude","longitude")]),
+MLcorMat <- MaternCorr(proxy::dist(blackcap[,c("latitude","longitude")]),
                         nu=0.6285603,rho=0.0544659)
+# simple but easily misunderstood syntax:                        
 HLCor(migStatus ~ means+ corrMatrix(1|latitude+longitude),data=blackcap,
       corrMatrix=MLcorMat,HLmethod="ML")
-      
+# An equivalent syntax worth understanding (see Details):      
+bcdummy <- cbind(blackcap,dummy=sample(nrow(blackcap))) 
+HLCor(migStatus ~ means+ corrMatrix(1|dummy),data=bcdummy,
+      corrMatrix=MLcorMat,HLmethod="ML")
+       
 #### Matérn correlation using a distMatrix
 MLdistMat <- as.matrix(proxy::dist(blackcap[,c("latitude","longitude")]))
 HLCor(migStatus ~ means+ Matern(1|latitude+longitude),data=blackcap,
@@ -123,7 +129,6 @@ HLCor(migStatus ~ means+ Matern(1|latitude+longitude),data=blackcap,
 #### example with an adjacency matrix (autoregressive model)
 data(scotlip)
 HLCor(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(scotlip$expec)),
-      ranPars=list(rho=0.174),
       adjMatrix=Nmatrix,family=poisson(),data=scotlip)
 
 }

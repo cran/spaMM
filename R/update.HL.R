@@ -15,7 +15,8 @@ update.HLfit <- function (object, formula., ..., evaluate = TRUE)
     if ("predictor" %in% class(predictor)) {
       form <- update.formula(attr(predictor,"oriFormula"),formula.) ## LOSES ALL ATTRIBUTES 
     } else  form <- update.formula(predictor,formula.) 
-    if (! is.null(findOffset(formula.))) {off <- NULL} else { off <- attr(predictor,"offsetObj")$vector }
+    ## !!!! FR->FR does not handle etaFix$beta !!!!
+    if (! is.null(findOffset(formula.))) {off <- NULL} else { off <- attr(predictor,"offsetObj")$total }
     predArgs <- list(formula=form,
                      LMatrix=attr(predictor,"LMatrix"),
                      AMatrix=attr(predictor,"AMatrix"),

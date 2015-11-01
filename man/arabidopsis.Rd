@@ -40,14 +40,12 @@ The data were retrieved from \code{http://bergelson.uchicago.edu/regmap-data/cli
 }
 \examples{
 data(arabidopsis)
-## takes about ~45 s. on a laptop. 
-\dontrun{
-HLCor(cbind(pos1046738,1-pos1046738)~seasonal+Matern(1|LAT+LONG),
+if (spaMM.getOption("example_maxtime")>3) {
+  HLCor(cbind(pos1046738,1-pos1046738)~seasonal+Matern(1|LAT+LONG),
             ranPars=list(rho=0.129,lambda=4.28,nu=0.291),
             family=binomial(),HLmethod="PQL/L",data=arabidopsis)
 }
-
-## the above ranPars are deduced from an hours-long analysis:
+## the above ranPars are deduced from an hour(s?)-long analysis:
 \dontrun{
 verylong <- corrHLfit(cbind(pos1046738,1-pos1046738)~seasonal+Matern(1|LAT+LONG),
               family=binomial(),HLmethod="PQL/L",data=arabidopsis)

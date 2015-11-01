@@ -1,5 +1,6 @@
-\name{Matern.corr}
-\alias{Matern.corr}
+\name{MaternCorr}
+\alias{MaternCorr}
+\alias{MaternCorr.default}
 %- Also NEED an '\alias' for EACH other topic documented here.
 \title{
 Matern correlation function.
@@ -9,7 +10,7 @@ Matern correlation function.
  (i.e. either smooth or rugged surfaces). Also includes a scaling and a 'nugget' parameter. 
 }
 \usage{
-Matern.corr(d, rho = 1, smoothness, nu = smoothness, Nugget = 0L)
+\method{MaternCorr}{default}(d, rho = 1, smoothness, nu = smoothness, Nugget = 0L)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -44,7 +45,7 @@ for a fit including the estimation of the Nugget.
 set.seed(123)
 randpts <- matrix(rnorm(20),nrow=5)
 distMatrix <- as.matrix(proxy::dist(randpts))
-Matern.corr(distMatrix,nu=2)
+MaternCorr(distMatrix,nu=2)
 }
 % Add one or more standard keywords, see file 'KEYWORDS' in the
 % R documentation directory.

@@ -15,13 +15,19 @@ confint.HLfit <- function(object,parm,level=0.95,verbose=TRUE,...) {
   if (llc[[1]]=="corrHLfit") {
     lc <- as.list(attr(object,"HLCorcall"))
   } else lc <- llc
-  lc$control.HLfit$intervalInfo$fitp_v <- object$APHLs$p_v
-  lc$control.HLfit$intervalInfo$targetp_v <- object$APHLs$p_v-dlogL
+  HL <- object$HL
+  lik <- switch(paste(HL[1]),
+                "0"="hlik",
+                "1"="p_v",
+                stop(paste("confint does not yet handle HLmethod",paste(HL,collapse=" "),"(or ",llc$HLmethod,").",sep=" ")))
+  lc$control.HLfit$intervalInfo$fitlik <- object$APHLs[[lik]]
+  lc$control.HLfit$intervalInfo$targetlik <- object$APHLs[[lik]]-dlogL
   lc$control.HLfit$intervalInfo$MLparm <- object$fixef[parm]
   lc$control.HLfit$intervalInfo$parm <- parm
-  lc$control.HLfit$LevenbergM <- FALSE ## tempo mais simple
+  lc$control.HLfit$LevenbergM <- FALSE ## simple... but read only in preprocess which will usually not be run...
+  if (! is.null(lc$processed)) lc$processed$LevenbergM <- FALSE ## same idea... (10/2015)
   beta_se <- sqrt(diag(object$beta_cov))
-  lc$control.HLfit$intervalInfo$init <- (object$fixef-znorm* beta_se)[parm]
+  lc$control.HLfit$intervalInfo$asympto_abs_Dparm <- asympto_abs_Dparm <- znorm* beta_se
   if (llc[[1]]=="corrHLfit") {
     olc <- lc
     ## good starting values are important... important to use canonizeRanPars as in HLCor
@@ -35,11 +41,11 @@ confint.HLfit <- function(object,parm,level=0.95,verbose=TRUE,...) {
       resu <- locfit$fixef[parm]
       attr(resu,"info") <- locfit$APHLs$p_v 
       ## attribute lost by optim but otherwise useful for debugging 
-      return(resu)
+      return(resu) ## return value to be optimized is a parameter value, not a likelihood
     }
     canonTemplate <- canonizeRanPars(ranPars=trTemplate,
-                                 corr.model=lc$`corr.model`,
-                                 checkComplete=FALSE
+                                     corr.model=lc$`corr.model`,
+                                     checkComplete=FALSE
     )$ranPars
     LUarglist <- list(canon.init=canonTemplate,
                       lower=attr(object,"optimInfo")$`init.optim`,
@@ -50,24 +56,55 @@ confint.HLfit <- function(object,parm,level=0.95,verbose=TRUE,...) {
                       ranFix=llc$ranFix,
                       optim.scale="transformed") ## FR->FR transformed is a guess
     LowUp <- do.call("makeLowerUpper",LUarglist)
-    loclist <- list(init.optim=trTemplate,LowUp=LowUp,objfn=objfn,anyObjfnCall.args=list(),corners=TRUE,optimizers.args=list())
-    optr <- do.call(locoptim,loclist) ## minimizes the confint parameter
-    ## recover HLCor fit for optimized params
-    olc$ranPars[names(trTemplate)] <- optr[names(trTemplate)] ## should be optr, but order ?
-    lowerfit <- eval(as.call(olc))
-    ##
-  } else lowerfit <- eval(as.call(lc))
+    loclist <- list(init.optim=trTemplate,LowUp=LowUp,objfn=objfn,anyObjfnCall.args=list(),optimizers.args=list())
+  }
+  ## lowerfit
+  fac <- 1L 
+  warnori <- options(warn=-1)
+  while(fac < 1e6) {
+    lc$control.HLfit$intervalInfo$init <- (object$fixef-asympto_abs_Dparm/fac)[parm]
+    if (llc[[1]]=="corrHLfit") {
+      olc <- lc
+      # The objective function 'objfn' returns the confint bound given the corr pars. Thus locptim maximizes the confint bound over the the corr pars
+      optr <- do.call(locoptim,loclist) 
+      ## recover HLCor fit for optimized params
+      olc$ranPars[names(trTemplate)] <- optr[names(trTemplate)]
+      lowerfit <- eval(as.call(olc))
+      ##
+    } else lowerfit <- eval(as.call(lc))
+    if (is.null(lowerfit$warnings$innerNotConv)) {
+      if (fac > 1.1 && verbose) overcat(" ...converged                                                          \n",prevmsglength) 
+      break
+    } else {
+      if (verbose) prevmsglength <- overcat("Convergence problem, trying another starting value for lower bound...",0L)
+      fac <- 2L*fac
+    }
+  }
+  options(warnori)
   ## upperfit:
-  lc$control.HLfit$intervalInfo$init <- (object$fixef+znorm* beta_se)[parm]
-  if (llc[[1]]=="corrHLfit") {
-    olc <- lc
-    loclist$maximize <- TRUE ## 
-    optr <- do.call(locoptim,loclist) ## maximizes the confint parameter
-    ## recover HLCor fit for optimized params
-    olc$ranPars[names(trTemplate)] <- optr[names(trTemplate)]
-    upperfit <- eval(as.call(olc))
-    ##
-  } else upperfit <- eval(as.call(lc))
+  fac <- 1L
+  warnori <- options(warn=-1)
+  while(fac < 1e6) {
+    lc$control.HLfit$intervalInfo$init <- (object$fixef+asympto_abs_Dparm/fac)[parm]
+    if (llc[[1]]=="corrHLfit") {
+      olc <- lc
+      loclist$maximize <- TRUE ## 
+      # The objective function returns the confint bound given the corr pars. Thus locptim maximizes the confint bound over the the corr pars
+      optr <- do.call(locoptim,loclist) 
+      ## recover HLCor fit for optimized params
+      olc$ranPars[names(trTemplate)] <- optr[names(trTemplate)]
+      upperfit <- eval(as.call(olc))
+      ##
+    } else upperfit <- eval(as.call(lc))
+    if (is.null(upperfit$warnings$innerNotConv)) {
+      if (fac > 1.1 && verbose) overcat(" ...converged                                                          \n",prevmsglength) 
+      break
+    } else {
+      if (verbose) prevmsglength <- overcat("Convergence problem, trying another starting value for upper bound...",0L)
+      fac <- 2L*fac
+    }
+  }
+  options(warnori)
   interval <- c(lowerfit$fixef[parm],upperfit$fixef[parm])
   names(interval) <- paste(c("lower","upper"),parm)
   if (verbose) print(interval)

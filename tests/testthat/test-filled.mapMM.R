@@ -1,4 +1,4 @@
-print("test filled.mapMM:")
+cat("\ntest filled.mapMM:")
 # filled.mapMM
 
 data(blackcap)

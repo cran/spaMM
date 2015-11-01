@@ -22,7 +22,7 @@ The study investigated the relationship between altitude, vegetation indices, an
     \item{elev1}{altitude, in m.}
     \item{elev2,elev3,elev4}{Additional altitude variables derived from the previous one, provided for convenience: 
            respectively, positive values of altitude-650, positive values of altitude-1000, and positive values of altitude-1300}
-    \item{maxNDVI1}{\code{maxNDVI1[maxNDVI1>0.8] <- 0.8}}
+    \item{maxNDVI1}{a copy of maxNDVI modified as \code{maxNDVI1[maxNDVI1>0.8] <- 0.8}}
   }
 }
 \source{
@@ -45,14 +45,14 @@ Trop. Med. Parasitol. 101, 499-509.
 data(Loaloa)
 ## Variations on the model fit by Diggle et al. on a subset of these data
 
-## With HLmethod=HL(0,1), this takes ~35s on a recent laptop
+## With HLmethod=HL(0,1), this takes ~12s on a recent laptop
 
 corrHLfit(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
                    +Matern(1|longitude+latitude),HLmethod="HL(0,1)",
                  data=Loaloa,family=binomial(),ranFix=list(nu=0.5)) 
 ## nu=0.5 is the exponential correlation     
 
-## the following fits take ~ 1 -- 5 minutes each.
+## the following fits take ~ 38s -- 2.5 minutes each.
 
 corrHLfit(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
             +Matern(1|longitude+latitude),

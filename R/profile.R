@@ -25,8 +25,6 @@ spaMM.options <- function(...) {
 spaMM.getOption <- function (x) {spaMM.options(x)[[1]]}
 
 
-#`.SpaMM` <- list(RHOMAX=100000,NUMAX=50,TRACE.UNLINK=FALSE,MESSAGES.FULL.STACK=TRUE,
-#                 INIT.HLFITNAME=NA,USEEIGEN=TRUE,maxLambda=1e10)
 ## large rho is not a problem
 ## large nu is a problem the more so when rho is small (=> 'small scaled distance gaussian')
 # lme did not manage to go beyond nu=17.48 in case Vn phiFix...
@@ -37,7 +35,7 @@ spaMM.getOption <- function (x) {spaMM.options(x)[[1]]}
                           ## not sure this will always work and makes sense only for devel version :
                           # ", packaged ", utils::packageDescription("spaMM")$Packaged,
                         ") is loaded.", 
-    "\nType 'help(spaMM)' for a short introduction,\nand news(packages='spaMM') for news.")
+    "\nType 'help(spaMM)' for a short introduction,\nand news(package='spaMM') for news.")
   #unlockBinding(".SpaMM", asNamespace("spaMM")) ## required when a .SpaMM list was used instead of an envir
 }
 
@@ -45,6 +43,11 @@ spaMM.getOption <- function (x) {spaMM.options(x)[[1]]}
 ".onLoad" <- function (lib, pkg) {
   .spaMM.data$Constants$Version <- utils::packageDescription("spaMM")$Version
 }  
+
+".onUnload" <- function (libpath) {
+  library.dynam.unload("spaMM", libpath)
+} ## testable by calling unloadNamespace("spaMM")
+#  pkgpath <- system.file(package="OKsmooth") # https://github.com/hadley/devtools/issues/119
 
 largeLambdaMessages <- function() {
   message("A too high lambda may indicate a very poorly fitting fixed-effect part of the model.")

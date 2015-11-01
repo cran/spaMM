@@ -1,25 +1,16 @@
 /*
- * Copyright (C) this program uses several pieces of code that are defined
- * in the GNU GSL library.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or (at
- * your option) any later version.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ This file is part of the spaMM package for R, distributed under 
+ the terms of the Cecill-2 licence. 
+
+ It contains routines dealing with evaluation of Bessel function.
+ 
+ These routines are taken, essentially verbatim, from a circa-2012 version of 
+ the GNU GSL library, distributed under the terms of the GPL, version 2 or later).
  */
 
 
 #include "gsl_bessel.h"
-#include "R.h"
+//#include "R.h"
 
 static inline int cheb_eval_e(const cheb_series * cs,
             const double x,
@@ -691,7 +682,7 @@ int gsl_sf_bessel_lnKnu_e(const double nu, const double x, gsl_sf_result * resul
 
 
 
-extern "C" { //computes Matérn correlation for one distance
+extern "C" { //computes log BesselK_nu
   void bessel_lnKnu_e(double *nu, double *x, int *len, double *val, double *err, int *status) {
 	int i;
 	gsl_sf_result result;

@@ -1,4 +1,4 @@
-print("test salamander:")
+cat("\ntest salamander:")
 # salamander
 
 data(salamander)

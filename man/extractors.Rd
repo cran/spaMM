@@ -1,6 +1,5 @@
 \name{extractors}
 \alias{extractors}
-\alias{predictionCoeffs}
 \alias{getDistMat}
 \alias{logLik}
 \alias{logLik.HLfit}
@@ -12,6 +11,9 @@
 \alias{ranef.HLfit}
 \alias{vcov}
 \alias{vcov.HLfit}
+\alias{deviance}
+\alias{deviance.HLfit}
+\alias{dev_resids}
 \alias{Corr}
 %- Also NEED an '\alias' for EACH other topic documented here.
 \title{
@@ -24,7 +26,6 @@ Functions to extract various components of a fit
 \code{ranef} extracts the predicted random effects, \eqn{u}.
 \code{vcov} returns the variance-covariance matrix of the fixed-effects coefficients.
 \code{Corr} returns a correlation matrix of random effects (with restrictions, see Details).
-\code{predictionCoeffs} extracts or precomputes coefficients for prediction (see \code{\link{predict}} for an example)
 \code{getDistMat} extracts a distance matrix for a Matérn correlation model.
 }
 \usage{
@@ -34,9 +35,10 @@ Functions to extract various components of a fit
 % \method{ranef}{HLfit}(object,ranef.class=TRUE,...)
 \method{ranef}{HLfit}(object,...)
 \method{vcov}{HLfit}(object,...)
-predictionCoeffs(object)
+\method{deviance}{HLfit}(object,...)
 getDistMat(object,scaled=FALSE)
 Corr(object,...)
+dev_resids(object,...)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -47,8 +49,9 @@ Corr(object,...)
   \item{\dots}{Other arguments that may be needed by some method.}
 }
 \value{
-Return values are numeric (for \code{logLik}), vectors (most cases), matrices (for \code{vcov}), matrices or dist objects (for \code{getDistMat}). \code{ranef} returns a vector with attributes, 
-which inherits from class \code{ranef} which has its own (undocumented) \code{print} method. 
+Return values are numeric (for \code{logLik}), vectors (most cases), matrices (for \code{vcov}), matrices or dist objects (for \code{getDistMat}). \code{ranef} returns a vector with attributes, which inherits from class \code{ranef} which has its own (undocumented) \code{print} method. 
+
+\code{dev_resids} returns a vector of deviance residuals. \code{deviance} returns the sum of these deviance residuals.
 
 \code{Corr} currently returns the correlation matrix of the random effects which are described as \bold{Lv} (see \code{\link{HLfit}})
 }
@@ -59,7 +62,6 @@ m1 <- HLfit(y ~X1+X2+(1|batch),
 fixef(m1)
 vcov(m1)
 ranef(m1)
-## see 'predict' for an example with predictionCoeffs and getDistMat
 }
 % Add one or more standard keywords, see file 'KEYWORDS' in the
 % R documentation directory.

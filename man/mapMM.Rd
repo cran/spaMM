@@ -40,8 +40,8 @@ filled.mapMM(fitobject,Ztransf=NULL,coordinates,xrange=NULL,yrange=NULL,
 %~ adjMatrix valid for mapMM ?
 }
 \item{Ztransf}{
-  A transformation of the response variable, given as a function with a single required matrix argument \code{Z} 
-  (as is appropriate for use in \code{do.call(Ztransf,list(Z=Zvalues))}).
+  A transformation of the predicted response, given as a function whose only required argument can be a one-column matrix. The name of this argument must be 
+   \code{Z} (not \code{x}), as is appropriate for use in \code{do.call(Ztransf,list(Z=Zvalues))}. 
 }
 \item{coordinates}{
   The geographical coordinates. By default they are deduced from the model formula. For example if this formula is \code{resp ~ 1 + Matern(1| x + y )} the default coordinates are c("x","y"). If this formula is \code{resp ~ 1 + Matern(1| x + y + z )}, the user must choose two of the three coordinates.
@@ -58,7 +58,7 @@ filled.mapMM(fitobject,Ztransf=NULL,coordinates,xrange=NULL,yrange=NULL,
 \item{map.formula}{Plotting a filled contour generally requires prediction in non-oberved locations, where predictor variables used in the original data analysis may be missing. In that case, the original model formula cannot be used and an alternative \code{map.formula} must be used to interpolate (not smooth) the predicted values in observed locations (these predictions still resulting from the original analysis based on predictor variables). As a result (1) \code{filled.mapMM} will be slower than a mere plotting function, since it involves the analysis of spatial data; (2) the results may have little useful meaning if the effects of the original predictor variables is not correctly represented by this interpolation step. For example, it may involve biases analogous to predicting temperature in non-oberved locations while ignoring effect of variation in altitude in such locations.     
 }
 \item{phi}{  
-  This controls the phi valu assumed in the interpolation step. Ideally \code{phi} would be zero, but problems with numerically singular matrices may arise when \code{phi} is too small.
+  This controls the phi value assumed in the interpolation step. Ideally \code{phi} would be zero, but problems with numerically singular matrices may arise when \code{phi} is too small.
 }
 \item{gridSteps}{The number of levels of the grid of x and y values}
 \item{variances}{Whether to plot some component of prediction variance, and which. Possible elements of this argument are the same as for the \code{variances} argument of \code{\link{predict.HLfit}}, except the \code{Cov} argument. This argument first operates as in \code{predict.HLfit}, so that either a single component  of prediction variance is computed, or a \code{sumVar} component is returned among other ones. Contour lines of either the \code{sumVar}, or the single component available, are then added to the plot.}
@@ -120,6 +120,8 @@ logicals indicating if axes and a box should be drawn, as in plot.default.
   No return value. Plots are produced as side-effects. 
 }
 \details{
+\code{filled.mapMM} interpolates the predicted response, with sometimes unpleasant effects. For example, if one interpolates probabilities, the result may not be within [0,1], and then (say) a logarithmic \code{Ztransf} may generate NaN values that would otherwise not occur.
+
 If you have values for all predictor variables in all locations of a fine spatial grid, \code{filled.mapMM} may not be a good choice.
 Rather, use \code{predict(<fitobject>,newdata= <all predictor variables >)} to generate all predictions, and then either 
 \code{spaMM.filled.contour} or some other raster functions.
@@ -129,7 +131,7 @@ These functions handle some of their arguments as \code{\link{filled.contour}} d
 
 A side effet is that \code{filled.mapMM}, like \code{filled.contour}, does not does not provide axis labels (\code{xlab} and \code{ylab}) by default. 
 }
-
+\seealso{\code{\link{raster}} for alternative plot procedures.}
 \examples{
 data(blackcap)
 bfit <- corrHLfit(migStatus ~ means+ Matern(1|longitude+latitude),data=blackcap,
@@ -139,7 +141,7 @@ if (require(maps)) { ## required for add.map=TRUE
   mapMM(bfit,color.palette = function(n){spaMM.colors(n,redshift=1/2)},add.map=TRUE)
 }
 
-if (spaMM.getOption("example_maxtime")>7) {
+if (spaMM.getOption("example_maxtime")>6) {
  ## filled.mapMM takes a bit longer
  # showing 'add.map', 'nlevels', and contour lines for 'variances'
  if (require(maps)) { ## required for add.map=TRUE 
@@ -150,7 +152,7 @@ if (spaMM.getOption("example_maxtime")>7) {
   }
 }
 
-if (spaMM.getOption("example_maxtime")>30) {
+if (spaMM.getOption("example_maxtime")>25) {
  data(Loaloa)  
  lfit <- corrHLfit(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
                   +Matern(1|longitude+latitude),HLmethod="HL(0,1)",data=Loaloa,

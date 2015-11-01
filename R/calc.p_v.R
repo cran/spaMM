@@ -16,7 +16,7 @@
 
 
 `calc.p_v` <- function(mu,u_h,dvdu,lambda_est,phi_est,d2hdv2,cum_n_u_h,lcrandfamfam,processed,family,prior.weights,
-                       ZAL=NULL, ## only for HL2 code
+                       ZAL=NULL, ## can work without it
                        returnLad=FALSE,only.h=FALSE) { 
   BinomialDen <- processed$BinomialDen
   loglfn.fix <- processed$loglfn.fix
@@ -46,12 +46,15 @@
   hlik <- clik+likranV      
   if (only.h) return(list(hlik=hlik))
   ##### P_V
+  ## w.resid and w.ranef not accessible in calc.p_v !!
+  #   if ( ! is.null(RZAL <- attr(ZAL,"RZAL"))) { ## should be true only when it is valid to use RZAL
+  #     lad <- 2* sum(log(abs(diag(RZAL)))) ## ou passer par eigen, only values ?
+  #     if (nrand==1L && lcrandfamfam[1L]=="gaussian") { ## =>we use that w.ranef has identical terms
+  #       vdvd <- w.ranef/eigen(RZAL %*% t(RZAL),only.values=TRUE)$values 
+  #     } else vdvd <- 1/eigen(RZAL %*% diag(1/w.ranef) %*% t(RZAL),only.values=TRUE)$values
+  #     lad <- lad + sum(log(abs(w.resid[1] + vdvd))) - nrow(RZAL)*log(2*pi) ## nrow -> # real ranef
+  #   } else 
   lad <- LogAbsDetWrap(d2hdv2,logfac=-log(2*pi))
-  if (is.nan(lad) || is.infinite(lad)){## because of determinant of nearly singular matrix
-    zut <- abs(eigen(d2hdv2/(2*pi),only.values = T)$values) ## 05/01/13
-    zut[zut<1e-12] <- 1e-12
-    lad <- sum(log(zut)) ## L-BFGS-B requires a non trivial value
-  }
   p_v <- hlik-lad/2
   resu <- list(clik=clik,hlik=hlik,p_v=p_v)
   if(returnLad) resu$lad <- lad
@@ -102,5 +105,6 @@
     
     ## print(c(p_v,ps_v))
   }
+#browser()  
   return(resu)
 }

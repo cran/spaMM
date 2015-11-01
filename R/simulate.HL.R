@@ -1,27 +1,28 @@
-## from the devel version of lme4:
-##' test for no-random-effect specification: TRUE if NA or ~0, other
-##' possibilities are NULL or a non-trivial formula
+## derived from the devel version of lme4:
+##' tests if argument implies a model without random effects or not
+##' TRUE if argument is NA or ~0, 
+##' FALSE if argument is NULL or a non-trivial formula
 noReForm <- function(re.form) {
   (!is.null(re.form) && !is(re.form,"formula") && is.na(re.form)) ||
-    (is(re.form,"formula") && length(re.form)==2 && identical(re.form[[2]],0))
+    (inherits(re.form,"formula") && length(re.form)==2 && identical(re.form[[2]],0))
 }
 
-newetaFix <- function(object,newMeanFrames) {
-  X.pv <- newMeanFrames$X  
-  if (ncol(X.pv)>0) {
-    etaFix <- X.pv %*% object$fixef
-  } else {
-    etaFix <- rep(0,nrow(newMeanFrames$mf)) ## nrow(X.pv)=0
-  } 
+newetaFix <- function(object, newMeanFrames) {
   ## newdata -> offset must be recomputed. 
-  off <- model.offset(newMeanFrames$mf) ### look for offset from (ori)Formula 
-  if ( is.null(off) ) { ## ## no offset (ori)Formula term. Check attribute (Predictor ensures offset is not both in formula and attr)
+  off <- model.offset( newMeanFrames$mf) ### look for offset from (ori)Formula 
+  if ( is.null(off) ) { ## ## no offset (ori)Formula term. 
     ## then we check that no non zero $offset was used. This would make prediction generally incorrect
-    off <- attr(object$predictor,"offsetObj")$vector ## a PROCESSED predictor or resid.predictor always has a non-NULL offset term 
-    if (any(range(off)!=c(0,0))) { ## that means there was a non trivial offset in the original call 
-      message("Prediction in new design points with an offset from original design points is suspect.")
-    }
-  } else etaFix <- etaFix + off ## we add a non-trivial offset from the offset formula   
+    if (! is.null(off <- attr(object$predictor,"offsetObj")$offsetArg)) { ## that means there was a non trivial offset argument in the original Predictor(formula...)  
+      message("Prediction in new design points from a fit with formula=Predictor(... non-NULL offset ...) is suspect.")
+    } ## but we still proceed with this dubious offset
+  }    
+  ## dans l'état actuel $fixef et complet,incluant les etaFix$beta: pas besoin de les séparer
+  if (ncol(newMeanFrames$X)>0) {
+    etaFix <-  newMeanFrames$X %*% object$fixef
+  } else {
+    etaFix <- 0 
+  }   
+  if ( ! is.null(off)) etaFix <- etaFix + off   
   return(etaFix)
 }
 
@@ -52,18 +53,19 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL, sizes=ob
     nobs <- length(object$y)
     if (ncol(object$`X.pv`)>0) {eta <- object$`X.pv` %*% object$fixef} else {eta <- rep(0,nobs)}
     ##
-    eta <- eta + attr(object$predictor,"offsetObj")$vector ## a PROCESSED predictor or resid.predictor always has a non-NULL offset term  
+    eta <- eta + attr(object$predictor,"offsetObj")$total ## a PROCESSED predictor or resid.predictor always has a non-NULL offset term  
   } else {
     nobs <- nrow(newdata)
     ## [-2] so that HLframes does not try to find the response variables  
     allFrames <- HLframes(formula=attr(object$predictor,"oriFormula")[-2],data=newdata) ## may need to reconstruct offset using formula term
-    eta <- newetaFix(object,newMeanFrames=allFrames) ## X . beta + off
+    eta <- newetaFix(object,allFrames) ## X . beta + off
   }
   ##
   if (any(object$models[["lambda"]] != "")) { ## i.e. not a GLM
     if (is.null(newdata)) {
       ZAL <- as.matrix(object$ZALMatrix)
-      vec_n_u_h <- attr(object$lambda,"n_u_h")
+      cum_n_u_h <- attr(object$lambda,"cum_n_u_h")
+      vec_n_u_h <- attr(cum_n_u_h,"vec_n_u_h")
     } else {
       FL <- spMMFactorList(object$predictor, allFrames$mf, 0L, drop=TRUE) 
       ##### simulation given the observed response ! :
@@ -73,23 +75,22 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL, sizes=ob
       #         uuCnewold <- NULL
       #       } else {
       #         v_h_coeffs <- predictionCoeffs(object) ## changes the coefficients in the right u_range
-      #         blob <- calcNewCorrs(object=object,locdata=newdata,predVar=FALSE,spatial.model=spatial.model)
+      #         blob <- calcNewCorrs(object=object,locdata=newdata,spatial.model=spatial.model)
       #         uuCnewold <- blob$uuCnewold
       #       }
-      #       ZALlist <- compute.ZALlist(CMatrix=uuCnewold,ZAlist=FL$Design,Groupings=FL$Groupings)
+      #       ZALlist <- computeZAXlist(XMatrix=uuCnewold,ZAlist=FL$Design)
       #       (unfinished:) il faut rajouter la conditional variance comme dans le SEM => simuler comme dans le SEM ?
       ##### independent simulation ! : 
       # en fait il faut recycler du code de HLCor...
       ##### the following code with NULL LMatrix ignores spatial effects with newdata:
-      ZALlist <- compute.ZALlist(LMatrix=NULL,ZAlist=FL$Design,Groupings=FL$Groupings)
+      ZALlist <- computeZAXlist(XMatrix=NULL,ZAlist=FL$Design)
       nrand <- length(ZALlist)
-      vec_n_u_h <- rep(0, nrand)
-      for (i in 1:nrand) vec_n_u_h[i] <- ncol(ZALlist[[i]]) ## nb cols each design matrix = nb realizations each ranef
+      vec_n_u_h <- unlist(lapply(ZALlist,ncol)) ## nb cols each design matrix = nb realizations each ranef
+      cum_n_u_h <- cumsum(c(0,vec_n_u_h))
       ZALlist <- lapply(seq_len(length(ZALlist)),as.matrix)
       ZAL <- do.call(cbind,ZALlist)
     }
     lcrandfamfam <- attr(object$rand.families,"lcrandfamfam") ## unlist(lapply(object$rand.families,function(rf) {tolower(rf$family)})) 
-    cum_n_u_h <- cumsum(c(0,vec_n_u_h))
     fittedLambda <- object$fittedLambda
     newV <- lapply(seq(length(vec_n_u_h)), function(it) {
       nr <- vec_n_u_h[it]

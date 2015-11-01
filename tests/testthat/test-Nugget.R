@@ -1,4 +1,4 @@
-print("test Nugget")
+cat("\ntest Nugget")
 
 data(Loaloa)
 ## use 1st 30 obs as this is slow:

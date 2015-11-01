@@ -38,27 +38,51 @@ bessel_lnKnu <- function (nu, x, give = FALSE, strict = TRUE) { ## from bessel_l
     }
 }
 
+"MaternCorr" <- function(d, rho=1, smoothness, nu=smoothness, Nugget=0L) UseMethod("MaternCorr") 
 
-`Matern.corr`<-function (d, rho=1, smoothness, nu=smoothness, Nugget=0L) { ## rho is alpha in fields
+Matern.corr <- MaternCorr ## for back compat as it is in spMMjob.R
+
+MaternCorr.ff <- function (d, rho=1, smoothness, nu=smoothness, Nugget=0L) { ## rho is alpha in fields
   ## ideally (but not necess) on a 'dist' so the diagonal is not  manipulated 
-    if (any(d < 0)) 
+    if (any(d[] < 0)) 
         stop("distance argument must be nonnegative")
-    dscal <- d * rho
-    dscal[d == 0L] <- 1e-10 ## avoids errors on distance =0; but the resulting corrvals can be visibly < 1 for small nu ## FR->FR make value dependent on rho, nu ?
+    dscal <- ff::ff(vmode="double",dim=dim(d))
+    dscal[] <- d[] * rho
+    isd0 <- d[] == 0L ## regular matrix
+    dscal[][isd0] <- 1e-10 ## avoids errors on distance =0; but the resulting corrvals can be visibly < 1 for small nu ## FR->FR make value dependent on rho, nu ?
     logcon <- (nu - 1)*log(2)+ lgamma(nu) 
-    corrvals <- - logcon + nu*log(dscal)+ bessel_lnKnu(x=dscal, nu=nu) ## 
-##    corrvals <- - logcon + nu*log(dscal)+ log(besselK(x=dscal, nu=nu)) ## function from package gsl
-    corrvals <- exp(corrvals) 
-    corrvals[d != 0L] <- (1-Nugget)* corrvals[d != 0L]
-    corrvals[d == 0L] <- 1 ## 
-    corrvals[corrvals < 1e-16] <- 0L ## an attempt to deal with problem in chol/ldl/svd which don't like 'nearly-identity' matrices
+    corrvals <- ff::ff(vmode="double",dim=dim(d))
+    ## bessel_lnKnu -> various local copies -> memory issues
+    for (it in seq(nrow(corrvals))) corrvals[it,] <- - logcon + nu*log(dscal[it,])+ bessel_lnKnu(x=dscal[it,], nu=nu) ## 
+    corrvals[] <- exp(corrvals[]) 
+    corrvals[][!isd0] <- (1-Nugget)* corrvals[][!isd0]
+    corrvals[][isd0] <- 1 ## 
+    corrvals[][corrvals[] < 1e-16] <- 0L ## an attempt to deal with problem in chol/ldl/svd which don't like 'nearly-identity' matrices
+    attr(corrvals,"corr.model") <- "Matern"
     return(corrvals)
 }
 
+MaternCorr.default <- function (d, rho=1, smoothness, nu=smoothness, Nugget=0L) { ## rho is alpha in fields
+  ## ideally (but not necess) on a 'dist' so the diagonal is not  manipulated 
+  if (any(d < 0)) 
+    stop("distance argument must be nonnegative")
+  dscal <- d * rho
+  isd0 <- d == 0L
+  dscal[isd0] <- 1e-10 ## avoids errors on distance =0; but the resulting corrvals can be visibly < 1 for small nu ## FR->FR make value dependent on rho, nu ?
+  logcon <- (nu - 1)*log(2)+ lgamma(nu) 
+  corrvals <- - logcon + nu*log(dscal)+ bessel_lnKnu(x=dscal, nu=nu) ## 
+  ##    corrvals <- - logcon + nu*log(dscal)+ log(besselK(x=dscal, nu=nu)) ## function from package gsl
+  corrvals <- exp(corrvals) 
+  corrvals[!isd0] <- (1-Nugget)* corrvals[!isd0]
+  corrvals[isd0] <- 1 ## 
+  corrvals[corrvals < 1e-16] <- 0L ## an attempt to deal with problem in chol/ldl/svd which don't like 'nearly-identity' matrices
+  attr(corrvals,"corr.model") <- "Matern"
+  return(corrvals)
+}
+
+
 ## ess <- function(nu,d) {exp(-(d/(2*sqrt(nu)))^2)} ...
 
-
-Matern.local <- Matern.corr   ## back.compatibility code
 
 #### demo
 if (F) {
@@ -72,9 +96,15 @@ if (F) {
  seL %*% t(seL)
 }
 
-`designL.from.Corr` <- function(m,try.chol=TRUE,try.eigen=FALSE,threshold=1e-06,debug=FALSE,SVDfix=1/10) {
+`designL.from.Corr` <- function(m=NULL,symSVD=NULL,try.chol=TRUE,try.eigen=FALSE,threshold=1e-06,debug=FALSE,SVDfix=1/10) {
+  ## cf return value: the code must compute 'L', and if the type of L is not chol, also 'corr d' and 'u'
   type <- NULL
-  if (try.chol) {
+  if ( ! is.null(symSVD)) {
+    u <- symSVD$u ## local copy needed for processing attributes at the end of the function
+    d <- symSVD$d ## of corr matrix !
+    L <- ZWZt(u,sqrt(d))  
+    type <- "symsvd"      
+  } else if (try.chol) {
     if (.spaMM.data$options$USEEIGEN) {
       if (inherits(m,"blockDiag")) { 
         stop("designL.from.Corr code should be allowed again to handle blockDiag objects")
@@ -103,7 +133,7 @@ if (F) {
       if (!is.null(type)) L<-t(cholR) ## such that L %*% t(L) = the correlation matrix in both cases        
     }    
   }
-  if ( is.null(type) ) { ## hence if none of the chol algos has been used 
+  if ( is.null(type) ) { ## hence if none of the chol algos (nor symSVD input) has been used 
     ## slower by more stable. Not triangular but should not be a pb
     if (try.eigen) {
       LDL <- try(eigen(m,symmetric=TRUE),silent=TRUE) ## may _hang_ in R2.15.2 on nearly-I matrices
@@ -159,11 +189,17 @@ if (F) {
       L <- ZWZt(u,sqrt(d))
     }
   } 
-  colnames(L) <- colnames(m)
-  rownames(L) <- colnames(m) ## for checks in HLfit
+  if ( ! is.null(m)) colnames(L) <- rownames(L) <- colnames(m) ## for checks in HLfit ## currently typically missing from symSVD   
   attr(L,"type") <- type
+  if ( ! is.null(symSVD)) {
+    attr(L,"corr.model") <- symSVD$corr.model
+  } else attr(L,"corr.model") <- attr(m,"corr.model")
   ## add the 'sanitized' matrix decomp as attribute of the L matrix
-  if (type != "chol") attr(L,type) <- list(u=u,d=d)
+  if (type != "chol") {
+    decomp <- list(u=u,d=d)
+    if ( ! is.null(symSVD)) decomp$adjd <- symSVD$adjd ## useful for SEM CAR; otherwise may be NULL
+    attr(L,type) <- decomp
+  }
   return(L)
 } 
 
@@ -172,11 +208,7 @@ if (F) {
 ##  It turns out that the two are identical : 
 ## If Corr= LDL', cov= lam LDL', we want  L [lam D - lam^2 D^2/(lam D+I)] L'
 ## =  L [lam D/(lam D +I)] L' 
-CondNormfn <- function(LMatrix,lambda) {
-  type <- attr(LMatrix,"type")
-  if (is.null(type)) {stop("'type' attribute needed for 'LMatrix' argument in 'CondNormfn'.")}
-  if (type=="chol") {stop("LMatrix argument in 'CondNormfn' is inadequate because its 'type' attribute is 'chol'.")}
-  decomp <- attr(LMatrix,type)
+CondNormfn <- function(decomp,lambda) {
   diago <- decomp$d/(decomp$d+1/lambda)
   sqrtCondCovLv <- sweep(decomp$u,2,sqrt(diago),`*`); ## so that cond Corr = this.t(this)
   condLvReg <- tcrossprodCpp(sqrtCondCovLv) ## conditional regr = cond Corr
@@ -187,10 +219,11 @@ CondNormfn <- function(LMatrix,lambda) {
   return(list(sqrtCondCovLv=sqrtCondCovLv,condLvReg=condLvReg))
 } 
 
-`make.scaled.dist` <- function(uniqueGeo,uniqueGeo2=NULL,distMatrix,rho,rho.mapping=seq_len(length(rho)),
-                               dist.method="Euclidean") {
+`make_scaled_dist` <- function(uniqueGeo,uniqueGeo2=NULL,distMatrix,rho,rho.mapping=seq_len(length(rho)),
+                               dist.method="Euclidean",return_matrix=FALSE) {
   if (dist.method=="Euclidean") {
     if ( missing(distMatrix) ) { ## 
+      scaled.dist <- NULL
       if ( missing(uniqueGeo) ) {
         mess <- pastefrom("missing(distMatrix) && missing(uniqueGeo).",prefix="(!) From ")
         stop(mess)
@@ -205,13 +238,26 @@ CondNormfn <- function(LMatrix,lambda) {
           mess  <- paste("Length should be either 1 or",ncol(uniqueGeo))
           stop(mess)
         }
+        distnrow <- nrow(uniqueScal)
         if (! is.null(uniqueGeo2)) {
           if (length(rho)==1L) {
             uniqueScal2 <-uniqueGeo2 * rho  
           } else uniqueScal2 <- t(t(uniqueGeo2) * rho[rho.mapping]) 
-        } else uniqueScal2 <- NULL
+          distncol <- nrow(uniqueScal2)
+        } else {
+          uniqueScal2 <- NULL
+          distncol <- 0L ## not the true ncol, but makes sure ff is not used (otherwise, need a mapping from half matrix to ff_matrix)  
+        }
       }
-      scaled.dist <- proxy::dist(x=uniqueScal,y=uniqueScal2, method=dist.method) 
+      if ( distnrow*distncol > spaMM.getOption("ff_threshold") ) {
+        if (requireNamespace("ff",quietly=TRUE)) {
+          scaled.dist <- ff::ff( vmode ="double", dim=c(distnrow,distncol))
+        } else message("Package 'ff' for large matrices may be needed but is not installed.")
+      }
+      if (inherits(scaled.dist,"ff_matrix")) {
+        scaled.dist[] <- proxy::dist(x=uniqueScal,y=uniqueScal2, method=dist.method) 
+        #row.names(scaled.dist) <- rownames(uniqueScal)
+      } else scaled.dist <- proxy::dist(x=uniqueScal,y=uniqueScal2, method=dist.method) 
       ## here scaled.dist is always a dist object: if uniqueScal was a single row, it is dist(0) 
     } else if (length(rho)==1L) {
       scaled.dist <- rho * distMatrix
@@ -230,13 +276,30 @@ CondNormfn <- function(LMatrix,lambda) {
       if ( missing(uniqueGeo) ) {
         mess <- pastefrom("missing(distMatrix) && missing(uniqueGeo).",prefix="(!) From ")
         stop(mess)
-      } 
-      scaled.dist <- rho * proxy::dist(uniqueGeo,y=uniqueGeo2,method=dist.method) 
+      } else distnrow <- nrow(uniqueGeo)
+      if (! is.null(uniqueGeo2)) {
+        distncol <- nrow(uniqueGeo2)
+      } else {
+        distncol <- 0L ## not the true ncol, but makes sure ff is not used (otherwise, need a mapping from half matrix to ff_matrix)  
+      }
+      if ( distnrow*distncol > spaMM.getOption("ff_threshold") ) {
+        if (requireNamespace("ff",quietly=TRUE)) {
+          scaled.dist <- ff::ff( vmode ="double", dim=c(distnrow,distncol))
+        } else message("Package 'ff' for large matrices may be needed but is not installed.")
+      }
+      if (inherits(scaled.dist,"ff_matrix")) {
+        scaled.dist[] <- rho * proxy::dist(uniqueGeo,y=uniqueGeo2,method=dist.method) 
+      } else scaled.dist <- rho * proxy::dist(uniqueGeo,y=uniqueGeo2,method=dist.method)  
     } else {
       scaled.dist <- rho * distMatrix
       ## here inconsistent behavior: scaled.dist is a dist object except if distMatrix was dist(0), scaled.dist is now numeric(0); we standardise it:
       if ( identical(scaled.dist, numeric(0))) scaled.dist <- dist(0)
     } 
+  }
+  if (return_matrix) {
+    if (inherits(scaled.dist,"dist")) {
+      scaled.dist <- matrix(scaled.dist,ncol=ncol(scaled.dist),nrow=nrow(scaled.dist))## as.matrix would produce a vector
+    } else if (inherits(scaled.dist,"crossdist")) scaled.dist <- scaled.dist[] ## []: same effect as what oen would expect from non-existent as.matrix.crossdist()
   }
   return(scaled.dist)
 }
@@ -247,7 +310,7 @@ getDistMat <- function(object,scaled=FALSE) {
       msd.arglist$rho <- 1 
       msd.arglist$`rho.mapping` <- NULL 
     }
-    return(do.call(make.scaled.dist,msd.arglist))
+    return(do.call(make_scaled_dist,msd.arglist))
   } else {
     message("no Matern-correlated random effects")
     return(NULL)

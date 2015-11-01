@@ -3,7 +3,7 @@
 \alias{confint}
 %- Also NEED an '\alias' for EACH other topic documented here.
 \title{
-Confidence intervals for fixed-effect parameters. 
+Confidence intervals for fixed-effect parameters 
 }
 \description{
 This computes confidence intervals for a given fixed effect parameter, based on the \code{p_v}-based approximation 

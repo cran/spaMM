@@ -1,12 +1,15 @@
-ULI<- function(...) {  ## Unique Location Index; '...' are simply names of variables in the data
- redondGeo<-cbind(...) ## always a matrix
- uniqueGeo<-unique(redondGeo) ## seems to preserve order
- ##FR->FR and I should in principle use a comparison of character (see ?unique)
- #### a 1 * nrow(redondGeo) matrix which nth element gives the index of the unique location in uniqueGeo :
- # designRU <- apply(redondGeo,1,function(v) {which(apply(v==t(uniqueGeo),2,all))}) ## this is slow; alternative using proxy:
- bla <- proxy::dist(uniqueGeo,redondGeo,method="Manhattan")
- designRU <- apply(bla,2,function(v){which(v==0L)})
- as.vector(designRU) ## has no names  
+
+
+ULI <- function(...) {  ## Unique Location Index; '...' are simply names of variables in the data
+  ## the behaviour of unique(<several columns>) is to compare character representations
+  ## ... but not the default behaviour is a single column
+  ## => we need to standardize this 
+  ## If this is modified then the computation ofuniqueGeo in HLCor needs to be modified 
+  redondGeo <- cbind(...) ## always a matrix
+  redondFac <- apply(redondGeo,1,paste,collapse=" ") ## always characters whatever the number of columns 
+  redondFac <- as.integer(as.factor(redondFac)) ## as.factor effectively distinguishes unique character strings 
+  uniqueFac <- unique(redondFac) ## seems to preserve order ## unique(<integer>) has unambiguous behaviour
+  sapply(redondFac, function(v) { which(v==uniqueFac) })
 }
 # old usage:     corrHLfit(migStatus ~ 1+ (1|ULI(latitude,longitude)),data=blackcap,objective="p_v")
 
@@ -31,7 +34,7 @@ findbarsMM <-  function (term) {
       return(term)
     if (length(term) == 2L) { ## 
       term1 <- as.character(term[[1]])
-      if (term1 %in% c("adjacency","Matern","corMatern","AR1","corrMatrix")) {
+      if (term1 %in% c("adjacency","Matern","corMatern","AR1","corrMatrix","ar1")) {
         res <- findbarsMM(term[[2]])
         attr(res,"type") <- term1
         return(res) 
@@ -40,6 +43,29 @@ findbarsMM <-  function (term) {
     c(findbarsMM(term[[2]]), findbarsMM(term[[3]]))
   }
 
+## Returns a formula without the non-spatial random-effects terms.
+#currently not used
+noNonSpatialbarsMM <- function (term) {
+  if (!("|" %in% all.names(term))) 
+    return(term)
+  if (is.call(term) && term[[1]] == as.name("|")) 
+    return(NULL) ## removes (|) but not Matern(|)
+  if (length(term) == 2L) {
+    term1 <- as.character(term[[1]])
+    if (term1 %in% c("adjacency","Matern","corMatern","AR1","corrMatrix","ar1")) {
+      return(term) 
+    } else return(noNonSpatialbarsMM(term[[2]])) 
+  }
+  nb2 <- noNonSpatialbarsMM(term[[2]])
+  nb3 <- noNonSpatialbarsMM(term[[3]])
+  if (is.null(nb2)) 
+    return(nb3)
+  if (is.null(nb3)) 
+    return(nb2)
+  term[[2]] <- nb2
+  term[[3]] <- nb3
+  term
+}
 
 
 
@@ -68,6 +94,9 @@ nobarsMM <-
     term[[3]] <- nb3
     term
   }
+
+
+
 
 noOffset <-
   function (term) 
@@ -135,7 +164,8 @@ nobarsNooffset <-
 ## spaces should be as in parseBars because terms can be compared as strings in later code
 findSpatial <- function (term) { ## derived from findbars
   if (inherits(term,"formula") && length(term) == 2L) 
-    return(findSpatial(term[[2]]))  ## process RHS
+    return(c(NULL,findSpatial(term[[2]])))  
+  ##       c(NULL,...) ensures that the result is always a list of language objects [critical case: term = ~ Matern() , without LHS nor other RHS terms]
   if (is.name(term) || !is.language(term)) 
     return(NULL)
   if (term[[1]] == as.name("(")) ## i.e. (blob) but not ( | )  [update formula can add parenthese aroundspatial terms...]
@@ -146,28 +176,19 @@ findSpatial <- function (term) { ## derived from findbars
     return(NULL)
   if (length(term) == 2L) { 
     term1 <- as.character(term[[1]])
-    if (term1 %in% c("adjacency","Matern","corMatern","AR1","corrMatrix")) {
+    if (term1 %in% c("adjacency","Matern","corMatern","AR1","corrMatrix","ar1")) {
       return(term) 
     } else return(NULL) 
   }
   c(findSpatial(term[[2]]), findSpatial(term[[3]]))
 }
 
-## folwoing is confusing; type attribute of findbarsMM should be sufficient to identify spatial terms
-# findNonSpatial <- function(formula) {
-#   aschar <- DEPARSE(formula)
-#   aschar <- gsub("adjacency([^\\|]+\\|[^)]+)","(0",aschar)
-#   aschar <- gsub("Matern([^\\|]+\\|[^)]+)","(0",aschar)
-#   aschar <- gsub("corMatern([^\\|]+\\|[^)]+)","(0",aschar)
-#   aschar <- gsub("AR1([^\\|]+\\|[^)]+)","(0",aschar)
-#   aschar <- gsub("corrMatrix([^\\|]+\\|[^)]+)","(0",aschar)
-#   formula <- as.formula(aschar)
-#   findbarsMM(formula)
-# }
 
 ## findSpatialOrNot replaced by parseBars 11/2014; old code in a R.txt file
 ## spaces should be as in findSpatial because terms can be compared as strings in later code
 parseBars <- function (term) { ## derived from findbars, ... return strings
+  if (inherits(term,"formula") && length(term) == 2L) ## added 2015/03/23
+    return(parseBars(term[[2]]))  ## process RHS
   if (is.name(term) || !is.language(term)) 
     return(NULL)
   if (term[[1]] == as.name("(")) ## i.e. (blob) but not ( | ) 
@@ -175,13 +196,14 @@ parseBars <- function (term) { ## derived from findbars, ... return strings
   if (!is.call(term)) 
     stop("term must be of class call")
   if (term[[1]] == as.name("|")) { ## i.e.  .|. expression
+    term <- spMMexpandSlash(term) ## 06/2015
     bT <- paste("(",c(term),")")
-    attr(bT,"type") <- "(.|.)" ## FR->FR but I need to be able to detect random-slope models
+    attr(bT,"type") <- rep("(.|.)",length(bT)) ## Random-slope models are not best identified here [(X2-1|block) is not randomslope].
     return(bT)
   } ## le c() donne .|. et non |..
   if (length(term) == 2) {
     term1 <- as.character(term[[1]])
-    if (term1 %in% c("adjacency","Matern","corMatern","AR1","corrMatrix")) {
+    if (term1 %in% c("adjacency","Matern","corMatern","AR1","corrMatrix","ar1")) {
       res <- paste(c(term))
       attr(res,"type") <- term1
       return(res) 
@@ -220,6 +242,7 @@ asStandardFormula <- function(formula) {
   aschar <- gsub("Matern(","(",aschar,fixed=T)
   aschar <- gsub("corMatern(","(",aschar,fixed=T)
   aschar <- gsub("AR1(","(",aschar,fixed=T)
+  aschar <- gsub("ar1(","(",aschar,fixed=T)
   aschar <- gsub("corrMatrix(","(",aschar,fixed=T)
   as.formula(aschar)
 }
@@ -294,7 +317,7 @@ HLframes <- function (formula, data) {
     storage.mode(X) <- "double" ## not clear what for...
     fixef <- numeric(ncol(X))
     names(fixef) <- colnames(X)
-    dimnames(X) <- NULL
+    ## dimnames(X) <- NULL ## why ?
     ## creates problem with non-gaussian ranef... because the format of <rand.family>$<member fn>(<matrix>) may be vector or matrix depending on <rand.family>
     ## on the other hand X.pv %*% <vector> is a matrix, so either we try to convert everything to vector (hum) or we just care where it matters...
     list(Y = Y, X = X, wts = NULL, off = NULL, 

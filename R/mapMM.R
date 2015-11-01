@@ -35,8 +35,86 @@
   rgb(temp[, 1], temp[, 2], temp[, 3], maxColorValue = 255)
 }
 
+## returns in canonical scale
+niceLabels <- function (x, log = FALSE, lpos, maxticks = Inf, axis, base = 10L,
+            ...)
+  {
+    if (log) {
+      if (missing(lpos)) {
+        lposwasmissing <- TRUE
+        lpos <- c(1, 2, 5)
+      }
+      else lposwasmissing <- FALSE
+      x <- x[x > 0]
+      fc <- floor(log(min(x), base)):ceiling(log(max(x), base))
+      tick <- as.vector(outer(lpos, base^fc, "*"))
+      mintick <- min(tick)
+      maxtick <- max(tick)
+      ft <- max(c(mintick, tick[tick < min(x)]))
+      lt <- min(c(maxtick, tick[tick > max(x)]))
+      tick <- tick[tick >= ft/1.00000001 & tick <= lt * 1.00000001]
+      if (lposwasmissing && length(tick) < 4) {
+        if (axis == 1) {
+          llpos <- c(1, 1.2, 1.5, 2, 3, 4, 5, 6, 8)
+        }
+        else llpos <- c(1, 1.2, 1.5, 2, 3, 4, 5, 6, 7, 8,
+                        9)
+        tick <- niceLabels(x, log = TRUE, axis = axis, lpos = llpos)
+      }
+      if (lposwasmissing && length(tick) > maxticks)
+        tick <- niceLabels(x, log = TRUE, axis = axis, lpos = c(1,
+                                                                3))
+      if (lposwasmissing && length(tick) > maxticks)
+        tick <- niceLabels(x, log = TRUE, axis = axis, lpos = c(1))
+      if (lposwasmissing && length(tick) > maxticks) {
+        base <- base * base
+        tick <- niceLabels(x, log = TRUE, axis = axis, base = base,
+                           lpos = c(1), maxticks = maxticks)
+      }
+    }
+    else {
+      tick <- pretty(x, high.u.bias = 0, ...)
+      if (axis %in% c(1, 3) && length(tick) > 7) {
+        check <- nchar(tick)
+        blob <- diff(check)
+        if (any(blob == 0 & check[-1] == 5)) {
+          tick <- pretty(x, high.u.bias = 1.5, ...)
+        }
+      }
+    }
+    return(tick)
+  }
 
 
+makeTicks <- function(x, ## in canonical scale... 
+                      axis, maxticks,scalefn=NULL,logticks,
+                      validRange=NULL
+                      ) {
+  labels <- niceLabels(x, log=logticks, axis=axis) ## in canonical scale
+  if( ! is.null(validRange)) {
+    labels <- pmax(validRange[1],labels)
+    labels <- pmin(validRange[2],labels)
+  }
+  if(logticks) {
+    phantomat <- niceLabels(c(min(labels)/10, max(labels)*10), log=TRUE, lpos=c(1:9)) ## smalltick marks without labels
+  } else phantomat <- NULL
+  if( ! is.null(validRange)) {
+    phantomat <- pmax(validRange[1],phantomat)
+    phantomat <- pmin(validRange[2],phantomat)
+  }
+  at <- labels
+  if( ! is.null(scalefn)) { ##not necess "log"
+    at <- sapply(at,scalefn)
+    invalidat <- (is.infinite(at) | is.nan(at))
+    at <- at[ ! invalidat]
+    labels <- labels[ ! invalidat]
+    phantomat <- sapply(phantomat,scalefn)
+    phantomat <- phantomat[ ! (is.infinite(phantomat) | is.nan(phantomat))]
+  }
+  return(list(labels=labels, at=at, phantomat=phantomat))
+}
+
+  
 
 
 `spaMM.filled.contour` <- function (x = seq(0, 1, length.out = nrow(z)), y = seq(0, 1, 
@@ -165,12 +243,15 @@ spaMMplot2D <- function (x,y,z,
                          plot.title=NULL, plot.axes=NULL, decorations=NULL,
                          key.title=NULL, key.axes=NULL, xaxs = "i", yaxs = "i", las = 1, 
                          axes = TRUE, frame.plot = axes,...) {
+  dotlist <- list(...)
+  ## attention,ne renvoit que ce qui correspond à l'input
+  par.orig <- par(c(dotlist[intersect(names(dotlist),names(par()))],c("mar", "las", "mfrow"))) 
+  on.exit(par(par.orig))
+  mar.orig <- par.orig$mar
   levels <- pretty(range(z), nlevels) ## moved up to here post 1.4.4 otherwise discrepancy between main plot and scale bar 
   nlevels <- length(levels)-1
   zscaled <- 1 + floor(nlevels*(0.000001+0.999998*(z-min(z))/(max(z)-min(z)))) ## makes sure its floor( ]1,nlevels+1[ ) 
   ZColor <- color.palette(n=nlevels) ## bug corrected (spaMM.colors -> color.palette) post 1.4.4  
-  mar.orig <- (par.orig <- par(c("mar", "las", "mfrow")))$mar
-  on.exit(par(par.orig))
   wmaphmap <- calc.plot.dims(x,y,xrange=xrange,yrange=yrange,margin=margin,map.asp=map.asp)  
   layout(matrix(c(2, 1), ncol = 2L), 
          widths = c(lcm(wmaphmap[1]),lcm(wmaphmap[3])),
@@ -207,7 +288,7 @@ spaMMplot2D <- function (x,y,z,
     } 
   } else eval(add.map) ## the user may have included a map() in it but it's his problem...
   if (is.null(plot.title)) {
-    do.call(title,list(...)) ## ... may contain xlab, ylab
+    do.call(title,dotlist[intersect(names(dotlist),names(formals(title)))]) ## ... may contain xlab, ylab
   } else plot.title
   if (is.null(plot.axes)) {
     if (axes) {
@@ -217,8 +298,6 @@ spaMMplot2D <- function (x,y,z,
   } else plot.axes
   if ( ! is.null(decorations)) decorations
   if (frame.plot) box()
-  
-  
   invisible()
 } ## end spaMMplot2D
 
@@ -243,7 +322,7 @@ recent.mapMM <- function (fitobject,Ztransf=NULL,coordinates,
   x <- pred[,coordinates[1]]
   y <- pred[,coordinates[2]]
   z <- pred[,attr(pred,"fittedName")]
-  if ( ! is.null(Ztransf)) {z <- do.call(Ztransf,list(Z=z))} # 12/2014
+  if ( ! is.null(Ztransf)) {z <- do.call(Ztransf,list(Z=z))} # 12/2014 ## triying to match the list to the arg name will fail on primitives such as log (cf formals(log))
   #
   levels <- pretty(range(z), nlevels) ## moved up to here post 1.4.4 otherwise discrepancy between main plot and scale bar 
   nlevels <- length(levels)-1
@@ -402,7 +481,11 @@ mapMM <- function (fitobject,Ztransf=NULL,coordinates,
   }
   else add.map <- quote(add.map)
   Zvalues <- matrix(gridpred, ncol = gridSteps)
-  if ( ! is.null(Ztransf)) {Zvalues <- do.call(Ztransf,list(Z=Zvalues))} # 12/2014
+  if ( ! is.null(Ztransf)) {
+    Zvalues <- do.call(Ztransf,list(Z=Zvalues))
+    if (any(is.nan(Zvalues))) stop("NaN in Ztransf'ormed values: see Details of 'filled.mapMM' documentation.")
+    if (any(is.infinite(Zvalues))) stop("+/-Inf in Ztransf'ormed values.")
+  } 
   spaMM.filled.contour(x = xGrid, y = yGrid, z = Zvalues, margin=margin, plot.axes = {
     eval(plot.axes) ## eval in the parent envir= that of filled.mapMM; 
     ## allows ref to internal var of filled.mapMM in the call of filled.mapMM... see ?filled.mapMM 

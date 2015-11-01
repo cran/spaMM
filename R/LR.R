@@ -16,6 +16,8 @@ compare.model.structures <- function(object,object2) {
   if (! identical(meth1,meth2) || length(REML)>1 ) {
     stop("object fitted by different methods cannot be compared")
   }
+  if ( ! is.null(X1)) X1 <- sapply(strsplit(X1,':'),function(x) paste(sort(x),collapse=':')) ## JBF 2015/02/23: sort variables in interaction terms before comparison
+  if ( ! is.null(X2)) X2 <- sapply(strsplit(X2,':'),function(x) paste(sort(x),collapse=':'))
   dX12 <- setdiff(X1,X2)
   dX21 <- setdiff(X2,X1)
   if (length(dX12)>0 && length(dX21)>0) {
@@ -51,14 +53,14 @@ compare.model.structures <- function(object,object2) {
     df2 <- length(X2)
     if (!is.null(Rnest)) {
       lambda.object <- object$lambda.object
-      if (!is.null(lambda.object)) df1 <- df1+nrow(lambda.object$linkscale.lambda)
+      if (!is.null(lambda.object)) df1 <- df1+nrow(lambda.object$coefficients_lambda)
       cov.mats <- object$cov.mats
       if ( ! is.null(cov.mats)) {
         nrows <- unlist(lapply(cov.mats,nrow))
         df1 <- df1+sum(nrows*(nrows-1)/2)
       }
       lambda.object <- object2$lambda.object
-      if (!is.null(lambda.object)) df2 <- df2+nrow(lambda.object$linkscale.lambda)
+      if (!is.null(lambda.object)) df2 <- df2+nrow(lambda.object$coefficients_lambda)
       cov.mats <- object2$cov.mats
       if ( ! is.null(cov.mats)) {
         nrows <- unlist(lapply(cov.mats,nrow))
@@ -157,7 +159,7 @@ LRT <- function(object,object2,boot.repl=0) { ## compare two HM objects
     msglength <- nchar(msg)
     cat(msg)
     t0 <- proc.time()["user.self"]
-    for (ii in 1:boot.repl) {
+    for (ii in seq_len(boot.repl)) {
       locitError <- 0
       repeat { ## for each ii!
         bootrep <- (computeBootRepl())

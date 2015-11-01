@@ -1,4 +1,4 @@
-print("test fixedLRT:")
+cat("\ntest fixedLRT:")
 # fixedLRT
 
 data(blackcap)

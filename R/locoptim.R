@@ -10,7 +10,7 @@
 ## nlminb/one of the methods in optim depending on the 0ptimizer argument
 ## anyOptim.args contains arguments common to all optimizers, and arguments for the objective function
 ## optimizers.args contains arguments specific to the given optimizer
-locoptim <- function(init.optim,LowUp,anyObjfnCall.args,trace=list(file=NULL,append=T),Optimizer="L-BFGS-B",optimizers.args,corners=TRUE,objfn=HLCor.obj,maximize=FALSE) {
+locoptim <- function(init.optim,LowUp,anyObjfnCall.args,trace=list(file=NULL,append=T),Optimizer="L-BFGS-B",optimizers.args,maxcorners=2^11,objfn=HLCor.obj,maximize=FALSE) {
   processedHL1 <- getProcessed(anyObjfnCall.args$processed,"HL[1]") ## there's also HLmethod in processed<[[]]>$callargs
   initvec <- unlist(init.optim)
   if ( ! is.null(anyObjfnCall.args$ranefParsVec) ) stop("! is.null(anyObjfnCall.args$ranefParsVec)") ## FR->FR catch programming errors
@@ -18,13 +18,11 @@ locoptim <- function(init.optim,LowUp,anyObjfnCall.args,trace=list(file=NULL,app
   optimizerObjfnCall.args <- notoptimObjfnCall.args <- anyObjfnCall.args
   notoptimObjfnCall.args$ranefParsVec <- initvec ## logscale, inherits names from init.optim
   lower <- unlist(LowUp$lower); upper <- unlist(LowUp$upper)
-  if (length(initvec)>1) {
+  if (length(initvec)>1) { ## FR->FR voirsi on peut dire >0car ca evite optimze failement bloque par un max local 
     ## old version before 2014/09/03
-    #parscale <- rep(1,length(unlist(LowUp$lower))) ## unlist because some list elements may have length >1 (eg if rho has several components)
-    ## new version 2014/09/03
     parscale <- (upper-lower) ## unlist because some list elements may have length >1 (eg if rho has several     ###### basic unrefined fit for initvec...
     if (is.character(trace$file)) write("## Call for initial values",file=trace$file,append=T)   
-    if (corners) {      
+    if (maxcorners) {      
       init.obj <- do.call(objfn,notoptimObjfnCall.args)
       ###### look in the corners 
       ## L-BFGS-B tends to find the local max closest to the initial point. Search for good initial point:
@@ -36,7 +34,12 @@ locoptim <- function(init.optim,LowUp,anyObjfnCall.args,trace=list(file=NULL,app
       gridSteps <- floor(35^(1.05/length(initvec))) ## 6 for 2 pars,  3 for 3 pars, then 2  2  1  1 
       gridSteps <- max(2,gridSteps)
       for(name in rownames(byvar)) {grillelist[[name]] <- seq(byvar[name,1],byvar[name,2],length.out=gridSteps)}
-      corners <- expand.grid(grillelist)
+      if ( (2^length(grillelist)) <= maxcorners ) {
+        corners <- expand.grid(grillelist)
+      } else { ## otherwise we cannot dream of allocating, say, 2^36 values...
+        corners <- replicate(maxcorners,unlist(lapply(grillelist,sample,size=1)))
+        corners <- t(corners)
+      }
       ## ranefParsVec corresponds to ranPars but as vector, not as list
       ## uses HLCor.obj because of the return value...
       if (is.character(trace$file)) write("## Calls for 'corners'",file=trace$file,append=T)  

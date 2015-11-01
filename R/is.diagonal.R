@@ -14,10 +14,9 @@ is.identity <- function( x, matrixcheck=FALSE, tol=1e-8 ) {
     ## hence now diagonal:
     return(max(abs(range(diag(x))-1))<tol)
   } else {
-    if (matrixcheck) return(ncol(x)==nrow(x) && max(abs(x- diag(ncol(x))))<tol)
-    ## if identity was previously checked and found to be true then x could 
-    ## have been converted to a (ddi) Matrix, or have inherited identityMatrix
-    return(inherits(x,"identityMatrix") )  ## FALSE if identityMatrix is no longer used  
+    if (matrixcheck) {
+      return(ncol(x)==nrow(x) && max(abs(x- diag(ncol(x))))<tol)
+    } else return(FALSE)  
   }
 }
 

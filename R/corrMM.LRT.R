@@ -145,7 +145,7 @@ spaMMLRT <- function(null.formula=NULL,formula,
   if ( ! is.null(null.predictor)) { ## ie if test effet fixe
     testFix <- T
     if (dotlist$HLmethod =="SEM") {
-      test.obj <- "logLsmooth"
+      test.obj <- "logLapp"
     } else test.obj <- "p_v"
     ## check fullm.list$REMLformula, which will be copied into nullm in all cases of fixed LRTs
     if (dotlist$HLmethod %in% c("ML","PQL/L","SEM") || substr(dotlist$HLmethod,0,2) == "ML") {
@@ -590,6 +590,8 @@ spaMMLRT <- function(null.formula=NULL,formula,
     } else if (substr(nullREML.list$HLmethod,0,2) == "ML") { nullREML.list$HLmethod <- paste("RE",substring(nullREML.list$HLmethod,3),sep="") ##  
     } else if (nullREML.list$HLmethod %in% c("PQL/L")) nullREML.list$HLmethod <- "REPQL" ## but do not over write more explicit HL(.,.) statements 
     nullREML.list$init.corrHLfit$lambda <- NULL 
+    nullREML.list$lower$lambda <- NULL ## 2015/09/14 
+    nullREML.list$upper$lambda <- NULL ## 2015/09/14 
     nullREML.list$init.corrHLfit$phi <- NULL ## 21/02/2013
     nullREML.list$control.HLfit$conv.threshold <- 1e-04 
     if (trace) nullREML.list$trace <- list(file="trace.lamREMLnullfit.txt",append=F)
@@ -634,6 +636,8 @@ spaMMLRT <- function(null.formula=NULL,formula,
     if (REML.list$HLmethod=="ML") REML.list$HLmethod <- "REML" ## but do not over write more explicit HL(.,.) statements 
     if (REML.list$HLmethod %in% c("PQL/L")) REML.list$HLmethod <- "REPQL" ## but do not over write more explicit HL(.,.) statements 
     REML.list$init.corrHLfit$lambda <- NULL 
+    REML.list$lower$lambda <- NULL ## 2015/09/14 
+    REML.list$upper$lambda <- NULL ## 2015/09/14 
     REML.list$init.corrHLfit$phi <- NULL ## 21/02/2013
     REML.list$control.HLfit$conv.threshold <- 1e-04 
     if (trace) REML.list$trace <- list(file="trace.lamREMLfullfit.txt",append=F)
@@ -825,9 +829,9 @@ if (restarts) {
         }
         profilize <- function(offsetbeta) {
           addOffset <- profileX %*% offsetbeta ## semble marcher pour scalaire comme pour vecteur
-          offset <- attr(prof.list$formula,"offsetObj")$vector
+          offset <- attr(prof.list$formula,"offsetObj")$total
           if ( is.null(offset)) stop("problem with offset in profiling code")
-          attr(prof.list$formula,"offsetObj") <- list(vector=offset + addOffset,nonZeroInfo=TRUE)
+          attr(prof.list$formula,"offsetObj") <- list(total=offset + addOffset,nonZeroInfo=TRUE)
           prof.fit <- do.call(method,prof.list) ## 
           return(prof.fit$APHLs[[test.obj]])
         }
@@ -858,11 +862,11 @@ if (restarts) {
           ## if we are here because nullfit > fullfit, nullfit should be in the interval  
           if (interval[1]>0) interval[1] <- - beta_se[profileVars]
           if (interval[2]<0) interval[2] <- beta_se[profileVars]
-          profmax <- optimize(profilize,interval=interval,maximum=T)
+          profmax <- optimize(profilize,interval=interval,maximum=T)  ## FR->FR optim avec un valuer init inteeligente ?
           addOffset <- profileX %*% profmax$maximum
           offset <- attr(prof.list$formula,"offsetObj")$offset
           if ( is.null(offset)) stop("problem with offset in profiling code") ## ? FR->FR code repetitif, creer update.offset
-          attr(prof.list$formula,"offsetObj") <- list(vector=offset + addOffset,nonZeroInfo=TRUE)
+          attr(prof.list$formula,"offsetObj") <- list(total=offset + addOffset,nonZeroInfo=TRUE)
           proffit <- do.call(method,prof.list) ## to recover the ranef parameters etc
           if ( proffit$APHLs[[test.obj]] > fullfit$APHLs[[test.obj]] ) { ## if profile max should improve fullfit
             trace.info <- rbind(trace.info,data.frame(iter=locit,step="proffit (+)",obj=proffit$APHLs[[test.obj]]))

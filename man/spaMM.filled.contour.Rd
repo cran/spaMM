@@ -92,8 +92,7 @@ the y/x aspect ratio of the 2D plot area (not of the full figure including the s
   \emph{Visualizing Data}.
   Summit, New Jersey: Hobart.
 }
-\author{Heavily based on filled.contour by Ross Ihaka and R-core.}
-\note{
+\note{Builds heavily on filled.contour by Ross Ihaka and R-core.
   \code{spaMM.filled.contour} uses the \code{\link{layout}} function and so is
   restricted to a full page display.
 

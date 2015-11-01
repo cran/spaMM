@@ -1,6 +1,6 @@
 ## initialiser offset a O ?? pas actuellement pcq bcp de tests qu'il est nul
 Predictor <- function (formula, offset=NULL, LMatrix = NULL,  AMatrix = NULL, ZALMatrix = NULL) {
-  if ("predictor" %in% class(formula)) {
+  if (inherits(formula,"predictor")) {
     pastefrom("Do not call 'Predictor' on a predictor object.",prefix="(!) From ")
   }
   oriFormula <- formula
@@ -25,7 +25,7 @@ Predictor <- function (formula, offset=NULL, LMatrix = NULL,  AMatrix = NULL, ZA
     if ( ! is.null(offterm) ) stop("in 'Predictor', offset should be given EITHER as $formula term OR as $offset element")
   } 
   if ( ! is.null(LMatrix)) {
-    if ( ! is.list(LMatrix)) LMatrix <- list(LMatrix)
+    if ( ! is.list(LMatrix)) LMatrix <- list(dummyid=LMatrix)
     LMatrix <- lapply(LMatrix, function(lmatrix) {
       ranefs <- attr(lmatrix,"ranefs")
       if (is.null(ranefs)) {
@@ -44,7 +44,7 @@ Predictor <- function (formula, offset=NULL, LMatrix = NULL,  AMatrix = NULL, ZA
   attr(res,"AMatrix") <- AMatrix
   attr(res,"BinDenForm") <- BinDenForm
   attr(res,"LMatrix") <- LMatrix
-  attr(res,"offsetObj") <- list(vector=offset,nonZeroInfo= !is.null(offset))
+  attr(res,"offsetObj") <- list(offsetArg=offset,nonZeroInfo= !is.null(offset))
   class(res) <- c("predictor",class(res))
   return(res)
 }
