@@ -280,7 +280,7 @@ HLCor <- function(formula,
         }
         Lunique <- try(do.call(designL.from.Corr,c(list(m=corrm),argsfordesignL)))
       }
-      if (class(Lunique)=="try-error") { 
+      if (inherits(Lunique,"try-error")) { 
         print("correlation parameters were:") ## makes sense if designL.from.Corr already issued some warning
         print(unlist(trueCorrpars))    
         stop()
@@ -354,7 +354,7 @@ HLCor <- function(formula,
 
 
 ## wrapper for HLCor, suitable input and output for optimization
-`HLCor.obj` <- function(ranefParsVec,skeleton,HLCor.obj.value="p_bv",trace=NULL,family=gaussian(),...) { ## name of first arg MUST differ from names in dotlist...
+`HLCor.obj` <- function(ranefParsVec,skeleton,HLCor.obj.value="p_bv",traceFileName=NULL,family=gaussian(),...) { ## name of first arg MUST differ from names in dotlist...
   mc <- match.call(expand.dots=TRUE) ## (1) expand.dots added 11/04/2014 for the mutlinomial... eval 
   dotlist <- list(...)
   if ( inherits(mc$data,"list")) {
@@ -372,9 +372,9 @@ HLCor <- function(formula,
       eval(locmc) ## this will execute all the code below starting from dotlist <- list(...) 
     })
     resu <- sum(unlist(fitlist))
-    if (is.character(trace)) {
+    if (is.character(traceFileName)) {
       verif <- paste("#global:",ranefParsVec,resu) 
-      write(verif,file=trace,append=T) ## the file is unlink'ed in corrHLfit()  
+      write(verif,file=traceFileName,append=T) ## the file is unlink'ed in corrHLfit()  
     }
     return(resu)
   }
@@ -387,7 +387,7 @@ HLCor <- function(formula,
   forGiven <- relist(ranefParsVec,skeleton) ## given values of the optimized variables
   HLCor.args$ranPars[names(forGiven)] <- forGiven ## do not wipe out other fixed, non optimized variables
   HLCor.args$family <- family 
-  if (is.character(trace)) {
+  if (is.character(traceFileName)) {
     if(.spaMM.data$options$TRACE.UNLINK) unlink("HLCor.args.*.RData")
     zut <- paste(ranefParsVec,collapse="")  
     save(HLCor.args,file=paste("HLCor.args.",zut,".RData",sep="")) ## for replicating the problem
@@ -397,8 +397,8 @@ HLCor <- function(formula,
   resu <- aphls[[HLCor.obj.value]]
   readable <- unlist(canonizeRanPars(ranPars=forGiven,corr.model=dotlist$`corr.model`,checkComplete=FALSE)$ranPars) ## FR->FR use of dotlist...
   verif <- c(unlist(aphls),hlfit$lambda,hlfit$phi,readable,ranefParsVec) ## hlfit$phi may be NULL
-  if (is.character(trace)) {
-    write(verif,file=trace,ncolumns=length(verif),append=T) ## the file is unlink'ed in corrHLfit()  
+  if (is.character(traceFileName)) {
+    write(verif,file=traceFileName,ncolumns=length(verif),append=T) ## the file is unlink'ed in corrHLfit()  
   }
   return(resu) #
 }

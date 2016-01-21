@@ -16,7 +16,7 @@
 
 
 `calc.p_v` <- function(mu,u_h,dvdu,lambda_est,phi_est,d2hdv2,cum_n_u_h,lcrandfamfam,processed,family,prior.weights,
-                       ZAL=NULL, ## can work without it
+                       ZAL=NULL, ## can work without it (second order corr)
                        returnLad=FALSE,only.h=FALSE) { 
   BinomialDen <- processed$BinomialDen
   loglfn.fix <- processed$loglfn.fix
@@ -32,7 +32,7 @@
     ## this can be compensated by correcting the lad LESS.
     clik <- sum(loglfn.fix(theta,y,prior.weights/phi_est)) ## note (prior) weights meaningful only for gauss/ Gamma 
   }
-  if (models[[1]]!="etaHGLM" && models[3]!="phiHGLM") return(list(clik=clik,p_v=clik))
+  if (models[[1]]!="etaHGLM" && models[["phi"]]!="phiHGLM") return(list(clik=clik,p_v=clik))
   ## ELSE
   nrand <- length(lcrandfamfam)
   likranU <- unlist(lapply(seq(nrand), function(it) {
@@ -68,9 +68,9 @@
     ### ## code based on the notation of Appendix B of LeeL12 (last page of supp mat)   
     ### initial version with qr. Slow. in old versions prior to 1.5 
     L <- try(t(chol( - d2hdv2)),silent=TRUE) 
-    if (class(L)=="try-error") { ## but fall back 
+    if (inherits(L,"try-error")) { ## but fall back 
       L <- designL.from.Corr( - d2hdv2,try.chol=F) ## recycles code for 'square root'; but no longer triangular
-      if (class(L)=="try-error") {
+      if (inherits(L,"try-error")) {
         second.corr <- - exp(700) ## drastically penalizes the likelihood when d2hdv2 is nearly singular 
       } else { ## code based on the notation of Appendix B of LeeL12 (last page of supp mat)
         invL.ZALt <- solve(L,t(ZAL)) ## L^{-1}.t(ZAL)

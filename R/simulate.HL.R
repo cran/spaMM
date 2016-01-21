@@ -91,7 +91,7 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL, sizes=ob
       ZAL <- do.call(cbind,ZALlist)
     }
     lcrandfamfam <- attr(object$rand.families,"lcrandfamfam") ## unlist(lapply(object$rand.families,function(rf) {tolower(rf$family)})) 
-    fittedLambda <- object$fittedLambda
+    fittedLambda <- object$lambda.object$lambda_est
     newV <- lapply(seq(length(vec_n_u_h)), function(it) {
       nr <- vec_n_u_h[it]
       u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])

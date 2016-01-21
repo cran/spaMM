@@ -1,5 +1,26 @@
 iterateSEMSmooth <- function(processed, anyHLCor_obj_args, LowUp, init.corrHLfit, preprocess.formal.args, 
                             control.corrHLfit,verbose=interactive()) {
+  
+  eval_smoothtest <- function(Krigobj) {
+    smoothtest <- as.list(attr(Krigobj,"HLCorcall"))
+    smoothrho <- smoothtest$ranPars$rho
+    ## there is trRho or rho whether smoothing was performed or not ## FR->FR how to ensure info is in only one place ???  
+    ## if both trRho and rho, trRho is used if HLCor call
+    if (is.null(smoothrho)) {
+      testedvalue <- rhoFn(rhoInv(smoothtest$ranPars$trRho)*2)
+      if (any(is.nan(testedvalue))) { ## *2 exceeds max value => no real smoothing
+        smoothtest <- FALSE
+      } else {
+        smoothtest <- eval(as.call(smoothtest))
+        smoothtest <- Krigobj$APHLs$p_bv> (smoothtest$APHLs$p_bv+1.92) ## test of information about rho_smooth ## FR->FR should p_bv be used here ? 
+      }
+    } else {
+      smoothtest$ranPars$rho <- smoothrho*2
+      smoothtest <- eval(as.call(smoothtest))
+      smoothtest <- Krigobj$APHLs$p_bv> (smoothtest$APHLs$p_bv+1.92) ## test of information about rho_smooth
+    } 
+  }
+  
   pargrid <- sampleGridFromLowUp(LowUp,n=init.corrHLfit$nSmoothed) ## n may be NULL
   ## bits of codes needed whether PQL is run or not
   prevPredVars <- predVar <- 0
@@ -23,8 +44,7 @@ iterateSEMSmooth <- function(processed, anyHLCor_obj_args, LowUp, init.corrHLfit
     ## new sampling **************for SEM**************** guided by the PQL results
     blocksize <- 30 ## FR->FR comparer à mes settings pour Infusion...
     ## expand = 1 uses the fact that PQL is informative even if the smoothing must be redone.
-    nextpoints <- sampleNextPoints(n=blocksize,Xpredy=PQLoptr$predictions,minPtNbr=3,expand=1, 
-                                   D.resp=sqrt(predVar)/2) ## random sample
+    nextpoints <- sampleNextPoints(n=blocksize,Xpredy=PQLoptr$predictions,minPtNbr=3,expand=1,D.resp=sqrt(predVar)/2) ## random sample
     info <- attr(nextpoints,"info") ## only used if diagnostic plot but removed by the rbind
     nearbypts <- sampleNearby(nextpoints,n=6,stepsizes=(unlist(upper)-unlist(lower))/100)      
     nextpoints <- rbind(nextpoints,nearbypts)
@@ -84,79 +104,100 @@ iterateSEMSmooth <- function(processed, anyHLCor_obj_args, LowUp, init.corrHLfit
     smoothRho <- unlist(Krigobj$corrPars$rho)
     ## tests whether some correlation structure has been detected and adjust smoothing controls accordingly:
     # ... the best way it to perform some LRT on the smoothing parameters...
-    smoothtest <- as.list(attr(Krigobj,"HLCorcall"))
-    smoothrho <- smoothtest$ranPars$rho
-    ## there is trRho or rho whether smoothing was performed or not ## FR->FR how to ensure info is in only one place ???  
-    ## if both trRho and rho, trRho is used if HLCor call
-    if (is.null(smoothrho)) {
-      testedvalue <- rhoFn(rhoInv(smoothtest$ranPars$trRho)*2)
-      if (is.nan(testedvalue)) { ## *2 exceeds max value => no real smoothing
-        smoothtest <- FALSE
-      } else {
-        smoothtest <- eval(as.call(smoothtest))
-        Krigobj$APHLs$p_bv> (smoothtest$APHLs$p_bv+1.92) ## test of information about rho_smooth 
-      }
-    } else {
-      smoothtest$ranPars$rho <- smoothrho*2
-      smoothtest <- eval(as.call(smoothtest))
-      Krigobj$APHLs$p_bv> (smoothtest$APHLs$p_bv+1.92) ## test of information about rho_smooth
-    } 
+    smoothtest <- eval_smoothtest(Krigobj)
     tests <- c( it > dit, 
                 predVar < prevPredVars[it-dit], ## ie for iter it-1-dit; for default dit=0, penultimate value 
                 smoothtest
                 )
-    nextpoints <- sampleNextPoints(n=6,Xpredy=optr$predictions,expand=1,D.resp=sqrt(predVar)/2) ## always these 22/08/2014     
-    if ( all(tests) ){ 
-      smoothingOK <- TRUE 
-      info <- attr(nextpoints,"info") ## only used if diagnostic plot but removed by the rbind
-      nextpoints <- rbind(nextpoints,optr$par,optr$par) ## inferred maximum added in nextpoints ## 22/08/2014 
-      control.smooth$nrepl <- 0 ## the above enforces duplicate of optr$par
-      control.smooth$ranFix <- Krigobj$corrPars
-    } else {
-      smoothingOK <- FALSE
-      if ( verbose) cat(" ",paste(c(paste("iter <=",dit),"high predvar","low LRT for scale parameters")[!tests], sep=" & "))
-      nextpoints <- rbind(nextpoints,optr$par) ## inferred maximum added in nextpoints (not trypointsas EI might not retain it) ## 04/2015 ...
-      trysize <- 180 ## a set from which blocksize points will be chosen for likelihood computation
-      blocksize <- 9
-      ## get rid of some possibly aberrant points that prevent good smoothing 
-      prevPtls <- prevPtls[order(prevPtls$logLobj)[-c(1:2)],] ## FR->FR but aberrant points may not be the lowest... 
-      trypoints <- sampleNextPoints(n=trysize,Xpredy=optr$predictions,expand=Inf,D.resp=sqrt(predVar)/2) ## random sample
-      #info <- attr(trypoints,"info") ## might not be useful in this case (?)
-      ## ... because otherwise algo may be fooled by incorrect maximum with high predVar, but missed by the EI procedure    
-      ## => keeps inferrinf this incorrect maximum with high predVar over iterations.  
-      ###### selection of points by improvement function with measurement error BinghamRW14 p. 121
-      obspred <- predict(Krigobj,predVar=TRUE)
-      obsSE <- attr(obspred,"predVar")
-      obsSE[obsSE<0] <- 0
-      obsSE <- sqrt(obsSE)
-      Qmax <- max(obspred[,1]+EIfac * obsSE) ## best improvement function for already computed points 
-      # 
-      trypred <- predict(Krigobj,trypoints,predVar=TRUE)
-      trySE <- attr(trypred,"predVar")
-      trySE[trySE<0] <- 0
-      trySE <- sqrt(trySE)
-      tryQ <- trypred[,1] + EIfac*trySE ## improvement function for candidate points
-      #
-      expectedImprovement <- trySE*dnorm((Qmax-tryQ)/trySE)+(tryQ-Qmax)*pnorm((tryQ-Qmax)/trySE) ## 7.5 p. 121
-      trypoints <- cbind(trypoints,EI=expectedImprovement)
-      trypoints <- trypoints[order(trypoints[,"EI"],decreasing=TRUE)[seq_len(blocksize)],,drop=FALSE]
-      trypoints <- trypoints[which(trypoints[,"EI"]>0),names(lower),drop=FALSE] ## maybe no point...
-      nextpoints <- rbind(nextpoints,trypoints)
-      ## need close pairs to estimate better the smoothing parameters
-      ulower <- unlist(lower)
-      uupper <- unlist(upper)
-      epsilon <- (uupper-ulower)/1000
-      ulower <- ulower+epsilon
-      uupper <- uupper-epsilon ##useful for pmin, pmax 
-      nearbypts <- sampleNearby(nextpoints,n=min(nrow(nextpoints),6),stepsizes=(uupper-ulower)/(100*smoothRho))     
-      ## FR->FR problem: nearbypts may extrapolate... particularly for small smoothRho. We correct:
-      for (ii in seq_len(length(ulower))) {
-        nearbypts[,ii] <- pmax(nearbypts[,ii],ulower[ii])
-        nearbypts[,ii] <- pmin(nearbypts[,ii],uupper[ii])
+    if (TRUE) {## new version 11/2015
+      if ( all(tests) ){ 
+        smoothingOK <- TRUE 
+        control.smooth$nrepl <- 0 ## only duplicate will be optr$par
+        control.smooth$ranFix <- Krigobj$corrPars
+        sizes <- c(6,3) ## 6 point in simplex around max, 6 points by EI (+ nu bounds)
+      } else {
+        smoothingOK <- FALSE
+        testMessages<-c(paste("iter <=",dit),  "high predvar",  "low LRT for scale parameters")
+        if ( verbose) cat(" ",paste(testMessages[!tests], collapse=" & "))
+        sizes <- c(6,6) ## 6 point in simplex around max, 6 points by EI (+ nu bounds)
+        ## Used below to get rid of some possibly aberrant points that prevent good smoothing 
+        prevPtls <- prevPtls[order(prevPtls$logLobj)[-c(1:2)],] ## FR->FR but aberrant points may not be the lowest... 
+        control.smooth$ranFix <- Krigobj$corrPars["nu"] ## passing original nu, fixed for this smoothing 
+        control.smooth$nrepl <- ceiling(10/it - 0.0001)
       }
-      control.smooth$ranFix <- Krigobj$corrPars["nu"] ## passing original nu, fixed for this smoothing 
-      control.smooth$nrepl <- ceiling(20/it - 0.0001)
-      nextpoints <- rbind(nextpoints,nearbypts)
+      nextpoints <- sampleNextPars(sizes=sizes,object=Krigobj,optr=optr,expand=1,D.resp=sqrt(predVar)/2) ## always a bit of extrap by EI
+      if (smoothingOK) {
+        nextpoints <- rbind(nextpoints,optrpar=optr$par,optrpar=optr$par)
+      } else {
+        nextpoints <- rbind(nextpoints,optrpar=optr$par)
+        ## need close pairs to estimate better the smoothing parameters
+        ulower <- unlist(lower)
+        uupper <- unlist(upper)
+        epsilon <- (uupper-ulower)/1000
+        ulower <- ulower+epsilon
+        uupper <- uupper-epsilon ##useful for pmin, pmax 
+        nearbypts <- sampleNearby(nextpoints,n=min(nrow(nextpoints),6),stepsizes=(uupper-ulower)/(100*smoothRho))     
+        ## FR->FR problem: nearbypts may extrapolate... particularly for small smoothRho. We correct:
+        for (ii in seq_len(length(ulower))) {
+          nearbypts[,ii] <- pmax(nearbypts[,ii],ulower[ii])
+          nearbypts[,ii] <- pmin(nearbypts[,ii],uupper[ii])
+        }
+        nextpoints <- rbind(nextpoints,nearbypts)
+      }
+    } else {
+      nextpoints <- sampleNextPoints(n=6,Xpredy=optr$predictions,expand=1,D.resp=sqrt(predVar)/2) ## always these 22/08/2014     
+      if ( all(tests) ){ 
+        smoothingOK <- TRUE 
+        info <- attr(nextpoints,"info") ## only used if diagnostic plot but removed by the rbind
+        nextpoints <- rbind(nextpoints,optr$par,optr$par) ## inferred maximum added in nextpoints ## 22/08/2014 
+        control.smooth$nrepl <- 0 ## the above enforces duplicate of optr$par
+        control.smooth$ranFix <- Krigobj$corrPars
+      } else {
+        smoothingOK <- FALSE
+        if ( verbose) cat(" ",paste(c(paste("iter <=",dit),"high predvar","low LRT for scale parameters")[!tests], sep=" & "))
+        nextpoints <- rbind(nextpoints,optr$par) ## inferred maximum added in nextpoints (not trypointsas EI might not retain it) ## 04/2015 ...
+        trysize <- 180 ## a set from which blocksize points will be chosen for likelihood computation
+        blocksize <- 9
+        ## get rid of some possibly aberrant points that prevent good smoothing 
+        prevPtls <- prevPtls[order(prevPtls$logLobj)[-c(1:2)],] ## FR->FR but aberrant points may not be the lowest... 
+        trypoints <- sampleNextPoints(n=trysize,Xpredy=optr$predictions,expand=Inf,D.resp=sqrt(predVar)/2) ## random sample
+        #info <- attr(trypoints,"info") ## might not be useful in this case (?)
+        ## ... because otherwise algo may be fooled by incorrect maximum with high predVar, but missed by the EI procedure    
+        ## => keeps inferrinf this incorrect maximum with high predVar over iterations.  
+        ###### selection of points by improvement function with measurement error BinghamRW14 p. 121
+        obspred <- predict(Krigobj,predVar=TRUE)
+        obsSE <- attr(obspred,"predVar")
+        obsSE[obsSE<0] <- 0
+        obsSE <- sqrt(obsSE)
+        Qmax <- max(obspred[,1]+EIfac * obsSE) ## best improvement function for already computed points 
+        # 
+        trypred <- predict(Krigobj,trypoints,predVar=TRUE)
+        trySE <- attr(trypred,"predVar")
+        trySE[trySE<0] <- 0
+        trySE <- sqrt(trySE)
+        tryQ <- trypred[,1] + EIfac*trySE ## improvement function for candidate points
+        #
+        expectedImprovement <- trySE*dnorm((Qmax-tryQ)/trySE)+(tryQ-Qmax)*pnorm((tryQ-Qmax)/trySE) ## 7.5 p. 121
+        trypoints <- cbind(trypoints,EI=expectedImprovement)
+        trypoints <- trypoints[order(trypoints[,"EI"],decreasing=TRUE)[seq_len(blocksize)],,drop=FALSE]
+        trypoints <- trypoints[which(trypoints[,"EI"]>0),names(lower),drop=FALSE] ## maybe no point...
+        nextpoints <- rbind(nextpoints,trypoints)
+        ## need close pairs to estimate better the smoothing parameters
+        ulower <- unlist(lower)
+        uupper <- unlist(upper)
+        epsilon <- (uupper-ulower)/1000
+        ulower <- ulower+epsilon
+        uupper <- uupper-epsilon ##useful for pmin, pmax 
+        nearbypts <- sampleNearby(nextpoints,n=min(nrow(nextpoints),6),stepsizes=(uupper-ulower)/(100*smoothRho))     
+        ## FR->FR problem: nearbypts may extrapolate... particularly for small smoothRho. We correct:
+        for (ii in seq_len(length(ulower))) {
+          nearbypts[,ii] <- pmax(nearbypts[,ii],ulower[ii])
+          nearbypts[,ii] <- pmin(nearbypts[,ii],uupper[ii])
+        }
+        control.smooth$ranFix <- Krigobj$corrPars["nu"] ## passing original nu, fixed for this smoothing 
+        control.smooth$nrepl <- ceiling(20/it - 0.0001)
+        nextpoints <- rbind(nextpoints,nearbypts)
+      }
     }
     ## and a bit of extrapolation
     #       if (it>1) {
@@ -197,7 +238,7 @@ iterateSEMSmooth <- function(processed, anyHLCor_obj_args, LowUp, init.corrHLfit
     it <- it+1
     optr <- do.call("optimthroughSmooth",arglist) ## it>1    ############## CALL (with screen outputs)
     ## terminates if either of these two considtions are reached *...* :
-    if (predVar < 0.02) continue <- FALSE
+    if (predVar < 0.02) continue <- FALSE    ## FR->FR arbitrary threshold 
     #if (nrow(Krigobj$data) > 1000) continue <- FALSE ## FR->FR can only be tempo
     ## ... UNLESS one of these conditions are true
     #if (it < 10) continue <- TRUE

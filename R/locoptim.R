@@ -86,11 +86,7 @@ locoptim <- function(init.optim,LowUp,anyObjfnCall.args,trace=list(file=NULL,app
       nlminbArgs$control <- optimizers.args$nlminb$control
       optr <- do.call(nlminb,nlminbArgs) ## optimize HLCor.obj.value (=objective=p_bv by default, except for SEM)
     } else {
-      ndepsFac <- optimizers.args$optim$ndepsFac
-      ## if (is.null(ndepsFac)) ndepsFac <- 2000 ## was 10000 up to 060213, then 2000 up to 04092014; then parscale was modified
-      ## length(unlist(LowUp$upper)) != length(LowUp$upper) because list elements may have length > 1
-      ndeps <- rep(1e-03,length(upper)) # this is actually optim's default ## previously was ( unlist(LowUp$upper) -  unlist(LowUp$lower))/ndepsFac until parscale was modified
-      control <- list(parscale=parscale,factr=1e9,ndeps=ndeps) ## default values... factr was the stricter 1e8 up to 23/01/13
+      control <- list(parscale=parscale,factr=1e9) ## factr was the stricter 1e8 up to 23/01/13
       if (maximize) control$fnscale <- -1     
       control[names(optimizers.args$optim$control)] <- optimizers.args$optim$control ## ...which may be overwritten 
       ## FR->FR lower and upper were missing 7/11/2014!
@@ -98,6 +94,7 @@ locoptim <- function(init.optim,LowUp,anyObjfnCall.args,trace=list(file=NULL,app
       optr <- do.call("optim",c(anyBaseOptim.args,list(fn=objfn))) ## optimize HLCor.obj.value (=p_bv by default, except for SEM)
     }
     optPars <- relist(optr$par,init.optim)
+    attr(optPars,"optr") <- optr
     ## HLCor.args$ranPars[names(optPars)] <- optPars 
   } else if (length(initvec)==1L) { ## one-dimensional optimization
     byvar <- c(lower,upper) ## HLCor expects trLambda...

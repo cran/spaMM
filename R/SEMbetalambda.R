@@ -288,14 +288,24 @@ SEMbetalambda <- function(beta_eta,lambda,
   #   # totally inefficient du to variance in estimation...
   
   if (verbose) cat(" SEM done.\n")
-  ## FR->FR to provide a conforming resglm_lambda to HLfit but also coefficients to be substituted to the coefficents of this resglm
   if (estimCARrho) {
-    resu$resglm_lambda <- CARdispGammaGLM(dev.res=condw2,lev=rep(0,n_u_h),data=locdf)
-    resu$resglm_lambda$coeffs_substitute <- c("(Intercept)"= 1/lambda,"adjd"= - corr_est[["rho"]]/lambda)
+    ## to provide a conforming glm to HLfit but also coefficients to be substituted to the coefficents of this glm
+    locdf$resp <- condw2
+    resu$glm_lambda <- calc_CARdispGammaGLM(data=locdf, lambda.Fix=lambda.Fix)
+    resu$glm_lambda$coeffs_substitute <- c("(Intercept)"= 1/lambda,"adjd"= - resu$corr_est[["rho"]]/lambda)
   } else {
-    # as.matrix in casethis is matrix
-    resu$resglm_lambda <- dispGammaGLM(dev.res=as.matrix(condv2),lev=rep(0,n_u_h),X=X_lamres,etastart=rep(log(lambda),n_u_h))
-    resu$resglm_lambda$coeffs_substitute <- c("(Intercept)"= log(lambda))
+    ## calc_dispGammaGLM needs 'data' evne if it has zero cols  
+    Intcol <- which(colnames(X_lamres)=="(Intercept)")
+    loclamdata <- data.frame(X_lamres[, - Intcol,drop=FALSE])
+    ## FR->FR in a later version the formula and 'data' should be provided by processed$ as X_lamres come from there
+    if (ncol(loclamdata)>0L) {
+      loclamformula <- as.formula(paste("~",paste(colnames(loclamdata),collapse="+")))
+    } else loclamformula <- ~1
+    resu$glm_lambda <- calc_dispGammaGLM(formula=loclamformula,dev.res=as.matrix(condv2),
+                                         lev=rep(0,n_u_h),
+                                         data=loclamdata, 
+                                         etastart=rep(log(lambda),n_u_h))
+    resu$glm_lambda$coeffs_substitute <- c("(Intercept)"= log(lambda))
   }
   ## output for prediction only: 
   resu$v_h <- invLMatrix %*% colMeans(EbGivenY[SEMsample,,drop=FALSE]) ## v iid from b not iid

@@ -30,24 +30,45 @@ calc_invL <- function(object) {
     cum_n_u_h <- attr(object$lambda,"cum_n_u_h")
     resu <- diag(cum_n_u_h[length(cum_n_u_h)])
     ranefs <- attr(object$ZAlist,"ranefs") 
-    if ( ! is.list(LMatrix)) LMatrix <- list(dummyid=LMatrix)
+    if ( ! is.list(LMatrix)) LMatrix <- list(dummyid=LMatrix) ## so that next loop works
     for (Lit in seq_len(length(LMatrix))) {
       lmatrix <- LMatrix[[Lit]]
       affecteds <- which(ranefs %in% attr(lmatrix,"ranefs"))
       invlmatrix <- solve(lmatrix) ## FR->FR hmf
       for (it in affecteds) {
         u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
-        resu[u.range,u.range] <- invlmatrix   
+        resu[u.range,u.range] <- invlmatrix   ## FR->FR it would be more eficcent to maintain a block structure here ?
+        # but this allows an lmatrix to affect several rand effects
       }  
     }
     return(resu)
   } else return(NULL)
 }
 
+calc_invColdoldList <- function(object) { ## returns a list
+  LMatrix <- attr(object$predictor,"LMatrix") 
+  if ( ! is.null(LMatrix)) {
+    cum_n_u_h <- attr(object$lambda,"cum_n_u_h")
+    resu <- list()
+    ranefs <- attr(object$ZAlist,"ranefs") 
+    vec_n_u_h <- attr(attr(object$lambda,"cum_n_u_h"),"vec_n_u_h") ## !
+    if ( ! is.list(LMatrix)) LMatrix <- list(dummyid=LMatrix) ## so that next loop works
+    for (it in seq(ranefs)) resu[[it]] <- Diagonal(vec_n_u_h[it]) 
+    for (Lit in seq_len(length(LMatrix))) {
+      lmatrix <- LMatrix[[Lit]]
+      affecteds <- which(ranefs %in% attr(lmatrix,"ranefs"))
+      invlmatrix <- solve(lmatrix) ## FR->FR hmf
+      for (aff in affecteds) resu[[aff]] <- t(invlmatrix) %*% (invlmatrix)   ## FR->FR à ameliorer
+    }
+    return(resu)
+  } else return(NULL)
+}
+
+
 ## fitted= X.beta + ZLv where we want to be able to write Lv as Cw = L.L'.w 
 # => w = inv(L').v
 calc_invL_coeffs <- function(object,newcoeffs) {
-  LMatrix <- attr(object$predictor,"LMatrix") 
+  LMatrix <- attr(object$predictor,"LMatrix") ## note transpose below
   if ( ! is.null(LMatrix)) {
     cum_n_u_h <- attr(object$lambda,"cum_n_u_h")
     ranefs <- attr(object$ZAlist,"ranefs") 
@@ -57,7 +78,7 @@ calc_invL_coeffs <- function(object,newcoeffs) {
       affecteds <- which(ranefs %in% attr(lmatrix,"ranefs"))
       for (it in affecteds) {
         u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
-        newcoeffs[u.range] <- solve(t(lmatrix),newcoeffs[u.range])   
+        newcoeffs[u.range] <- solve(t(lmatrix),newcoeffs[u.range])   ## transpose
       }  
     }
   }
@@ -116,21 +137,31 @@ fixef.HLfit <- function(object,...) {
   object$fixef    
 }
 
-logLik.HLfit <- function(object, REML = FALSE, ...) {
+logLik.HLfit <- function(object, which=NULL, ...) {
   object <- getHLfit(object)
-  logL <- object$APHLs$logLapp
-  if (is.null(logL)) {
-    if (REML) {
-      return(object$APHLs$p_bv)
-    } else {
-      return(object$APHLs$p_v)
-    }    
-  } else return(logL)
+  if (is.null(which)) {
+    mess <- REMLmess(object)
+    which <- switch(mess, 
+                    "by stochastic EM."= "logLapp",
+                    "by ML approximation (p_v)."= "p_v",
+                    "by h-likelihood approximation."= "p_v",
+                    "by ML."= "p_v",
+                    "by REML approximation (p_bv)."= "p_bv",
+                    "by REML."= "p_bv",
+                    "by non-standard REML"= "p_bv",
+                    stop(paste("No default '",which,"' value for '",mess,"' estimation method.",sep=""))
+                    ) 
+  }
+  resu  <- object$APHLs[[which]]
+  names(resu) <- which
+  return(resu)
 }
 
 vcov.HLfit <- function(object,...) {
   object <- getHLfit(object)
-  object$beta_cov
+  resu <- object$beta_cov
+  class(resu) <- c("vcov.HLfit",class(resu))
+  return(resu)
 }
 
 # addition post 1.4.4

@@ -9,7 +9,7 @@
 }
 \usage{
 corrHLfit(formula,data,init.corrHLfit=list(),init.HLfit=list(),ranFix=list(),
-          lower=list(),upper=list(),trace=list(file=NULL,append=T),objective="p_bv", 
+          lower=list(),upper=list(),trace=list(file=NULL,append=TRUE),objective="p_bv", 
           control.dist=list(),control.corrHLfit=list(),processed=NULL,
           family=gaussian(),...)
 }
@@ -55,7 +55,7 @@ Either \code{"p_bv"} for restricted likelihood or \code{"p_v"} for marginal like
 }
 \item{control.dist}{See \code{control.dist} in \code{\link{HLCor}}}
 \item{control.corrHLfit}{
-   Only for development purposes, not documented.
+  This may be used to provide control to the optimizer. In particular, \code{control.corrHLfit$optim} should be a list of arguments for optim, e.g. \code{control.corrHLfit = list(optim=list(control=list(ndeps=rep(2e-3,3))))}
 }
   \item{processed}{For programming purposes, not documented.
   }

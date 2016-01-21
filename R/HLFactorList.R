@@ -122,7 +122,7 @@ spMMFactorList <- function (formula, mf, rmInt, drop) {
     namesTerms[[i]] <- nt ## eg intercept of slope... possibly several variables
     names(namesTerms)[i] <- GrpNames[i] ## eg intercept of slope... possibly several variables
   }
-  ## One shoudl not check is.identity -> is.square.diagonal when 10000 points to predict... (FR->FR: modif def one of these functions ?)
+  ## One shoudl not check is.identity -> isDiagonal when 10000 points to predict... (FR->FR: modif def one of these functions ?)
   for (iMat in seq_len(length(Design))) {
     attr(Design[[iMat]],"nlevels") <- ncol(Design[[iMat]])
     attr(Design[[iMat]],"colnames") <- colnames(Design[[iMat]])

@@ -1,4 +1,4 @@
-`Bartlett.robust` <- function(LRTobject,robust=T,verbose=F) {
+`Bartlett.robust` <- function(LRTobject,robust=TRUE,verbose=F) {
       bootLRTS <- with(LRTobject,2*(bootreps[,1]-bootreps[,2]))## full -null but can be p_v or p_bv
       # plot(qchisq(ppoints(zut),1),sort(zut)) ## QQplot, MASS p. 108
       filter <- bootLRTS[bootLRTS>-1e-08]
@@ -9,7 +9,7 @@
         ## [[1]] to remove name which otherwise finishes as a rowname in a subsequent dataframe       
         # plot(qchisq(ppoints(filter),1),sort(filter)) ## QQplot, MASS p. 108
         # points(qchisq(ppoints(filter),1),robustMean * qchisq(ppoints(filter),1),pch=".")   
-        if (class(robustMean)=="try-error") {
+        if (inherits(robustMean,"try-error")) {
           resu$robustMean <- NA
           mess <- pastefrom("problem in computation of robustMean.")
           warning(mess)
@@ -101,9 +101,9 @@ spaMMLRT <- function(null.formula=NULL,formula,
   }  
   dotlist$data <- data
   predictor <- formula   
-  if (! "predictor" %in% class(formula)) predictor <- Predictor(formula)
+  if (! inherits(formula,"predictor")) predictor <- Predictor(formula)
   null.predictor <- null.formula   
-  if (! "predictor" %in% class(null.formula)) null.predictor <- Predictor(null.formula)
+  if (! inherits(null.formula,"predictor")) null.predictor <- Predictor(null.formula)
   form <- predictor
   if (!is.null(dotlist$LamFix)) {
     dotlist$ranFix$lambda <- dotlist$LamFix
@@ -259,7 +259,7 @@ spaMMLRT <- function(null.formula=NULL,formula,
           } else {simbData[[as.character(nullfit$predictor[[2]])]] <- newy}
           bootlist$data <- simbData
           bootrepl <- try(do.call(thisFnName,bootlist)) ###################### CALL ##################
-          if (class(bootrepl)[1] != "try-error") { ## eg separation in binomial models... alternatively, test it here (require full and null X.pv... )
+          if (! inherits(bootrepl,"try-error") ) { ## eg separation in binomial models... alternatively, test it here (require full and null X.pv... )
             if (inherits(bootrepl$fullfit,"HLfitlist")) {
               fullL <- attr(bootrepl$fullfit,"APHLs")[[test.obj]]
             } else fullL <- bootrepl$fullfit$APHLs[[test.obj]]
@@ -328,7 +328,7 @@ spaMMLRT <- function(null.formula=NULL,formula,
                        null.disp=list(),REMLformula=NULL,
                        method="corrHLfit",boot.repl=0,
                        which.iterative=c(),
-                       trace=F, ## T means lead to calls of corrHLfit(... trace=list(<file name>,<over/append>))
+                       trace=FALSE, ## T means lead to calls of corrHLfit(... trace=list(<file name>,<over/append>))
                        control=list(), ## profiles=Inf,prefits=T,optimFits,restarts,maxit...
                        control.boot=list(), ## prefits=F,optimFits,profiles=0
                        verbose=c(trace=FALSE,warn=NA,summary=FALSE),  
@@ -365,7 +365,7 @@ spaMMLRT <- function(null.formula=NULL,formula,
   #
   bootFix <- control$bootFix
   if (is.null(bootFix)) bootFix <- c()
-  if (! "predictor" %in% class(predictor)) predictor <- Predictor(predictor)
+  if (! inherits(predictor,"predictor")) predictor <- Predictor(predictor)
   form <- predictor
   dotlist <-list(...)
   if (!is.null(dotlist$LamFix)) {
@@ -566,7 +566,7 @@ spaMMLRT <- function(null.formula=NULL,formula,
   if ( ! is.null(null.predictor)) { ## ie if test effet fixe
     testFix <- T
     if (is.null(test.obj)) test.obj <- "p_v"
-    if (! "predictor" %in% class(null.predictor)) null.predictor <- Predictor(null.predictor)
+    if (! inherits(null.predictor,"predictor")) null.predictor <- Predictor(null.predictor)
     nullm.list$formula <- null.predictor
   } else if ( length(null.disp)>0 ) { ## test disp/corr param
     testFix <- F
@@ -962,7 +962,7 @@ if (restarts) {
           } else {simbData[[as.character(nullfit$predictor[[2]])]] <- newy}
           bootlist$data <- simbData
           bootrepl <- try(do.call(thisFnName,bootlist))  ################# CALL ################# 
-          if (class(bootrepl)[1] != "try-error") { ## eg separation in binomial models... alternatively, test it here (require full and null X.pv... )
+          if ( ! inherits(bootrepl,"try-error")) { ## eg separation in binomial models... alternatively, test it here (require full and null X.pv... )
             bootreps[ii,] <- c(bootrepl$fullfit$APHLs[[test.obj]],bootrepl$nullfit$APHLs[[test.obj]])
             break ## replicate performed, breaks the repeat
           } else { ## there was one error
@@ -1021,10 +1021,10 @@ summary.fixedLRT <- function(object,verbose=TRUE,...) {
   bootInfo <- object$bootInfo
   if (!is.null(bootInfo)) {
     cat(" ======== Bootstrap: ========\n")    
-    outst <- paste("Raw simulated p-value: ",signif(bootInfo$rawPvalue,3),sep="")    
+    outst <- paste("Raw simulated p-value: ",signif(bootInfo$rawBootLRT$pvalue,3),sep="")    
     cat(outst)
-    X2 <- bootInfo$LRTcorr
-    outst <- paste("\nBartlett-corrected LR statistic (",bootInfo$df," df): ",signif(X2,3),sep="")    
+    X2 <- bootInfo$BartBootLRT$LR2
+    outst <- paste("\nBartlett-corrected LR statistic (",bootInfo$BartBootLRT$df," df): ",signif(X2,3),sep="")    
     cat(outst)
   } 
 }

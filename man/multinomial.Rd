@@ -18,7 +18,7 @@ multi(binResponse=c("npos","nneg"),binfamily=binomial(),input="types",...)
 binomialize(data,responses,sortedTypes=NULL,binResponse=c("npos","nneg"),
              depth=Inf,input="types")
 \method{fitted}{HLfitlist}(object,...)
-\method{logLik}{HLfitlist}(object,REML,...)
+\method{logLik}{HLfitlist}(object,which,...)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -47,7 +47,7 @@ binomialize(data,responses,sortedTypes=NULL,binResponse=c("npos","nneg"),
   If \code{input="types"}, then the \code{responses} columns must contain factor levels of the binomial response.
   If \code{input="counts"}, then the \code{responses} columns must contain counts of different factor levels, and the column names are the types.
   }
-  \item{REML}{If \code{TRUE}, the function returns the log restricted likelihood (exact or approximated).}
+  \item{which}{Which element of the \code{APHLs} list to return. The default depends on the fitting method.In particular, if it was REML or one of its variants, the function returns the log restricted likelihood (exact or approximated).}
   \item{\dots}{
     Other arguments passed from or to other functions.
   } 

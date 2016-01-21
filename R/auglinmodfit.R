@@ -66,7 +66,7 @@ auglinmodfit <- function(TT,ZAL,lambda_est,wranefblob,d2hdv2,w.resid,beta_eta,
       # K2 is K2 matrix in LeeL appendix p. 4 and is -D in MolasL p. 3307 
       # W is Sigma^-1 ; TWT = t(ZALI)%*%W%*%ZALI = ZAL'.Wresid.ZAL+Wranef = -d2hdv2 !
       K2 <- solveWrap.matrix(qr.d2hdv2,tZAL,stop.on.error=stop.on.error) ## t(ZAL) missing in some implementations... no effect with Gaussian ranefs...  
-      if (class(K2)=="try-error") {
+      if (inherits(K2,"try-error")) {
         mess <- pastefrom("problem in 'K2' computation.",prefix="(!) From ") ## cf BB 877
         warning(mess)
         K2 <- ginv(d2hdv2) %*% tZAL            
@@ -171,11 +171,11 @@ auglinmodfit <- function(TT,ZAL,lambda_est,wranefblob,d2hdv2,w.resid,beta_eta,
       aa <- w.ranef * z2
       if (is.null(attr(d2hdv2,"qr"))) { 
         a <- try(solve(d2hdv2, - aa),silent=TRUE)
-        if (class(a)=="try-error") {
+        if (inherits(a,"try-error")) {
           attr(d2hdv2,"qr") <- QRwrap(d2hdv2,useEigen=TRUE)
           a <- solveWrap.vector(attr(d2hdv2,"qr"),  -aa,stop.on.error=stop.on.error)
           ## FR->FR patch: 
-          if (class(a)=="try-error") {
+          if (inherits(a,"try-error")) {
             mess <- pastefrom("the Hessian matrix appears singular. Extreme lambda/phi value and/or extremely correlated random effects?",
                               prefix="(!) From ")
             message(mess)
@@ -300,7 +300,8 @@ auglinmodfit <- function(TT,ZAL,lambda_est,wranefblob,d2hdv2,w.resid,beta_eta,
             ## matrix case not exclusive to Matrix case because of the latest subcase above 
             if (is.matrix(wAugX)) { 
               ## wAugX is matrix not Matrix (lmwithQ_denseZAL), with useEigen
-              if (.spaMM.data$options$USElmwithQ) {## FALSE bc lmwithQ is tragically slow
+              if (.spaMM.data$options$USElmwithQ) {## FALSE bc lmwithQ is 'slow' because it returns Q. 
+                # The bottleneck in fitting LMMs is gettingQ from the QR thing, here or letter, only for the leverage computation.
                 betaVQ <- lmwithQ(wAugX,wAugz) 
                 betaV <- betaVQ$coef
               } else {
@@ -314,7 +315,7 @@ auglinmodfit <- function(TT,ZAL,lambda_est,wranefblob,d2hdv2,w.resid,beta_eta,
           qrwAugX <- QRwrap(wAugX,useEigen=TRUE)
           betaV <- solveWrap.vector(qrwAugX, wAugz,stop.on.error=stop.on.error) ## qr.coef(qrwAugX, wAugz) ## vector
         }
-        if (class(betaV)=="try-error") betaV <- ginv(wAugX)%*% wAugz ## occurred with large lambda either as 'init.HLfit', or by the iterative algo
+        if (inherits(betaV,"try-error")) betaV <- ginv(wAugX)%*% wAugz ## occurred with large lambda either as 'init.HLfit', or by the iterative algo
         betaV <- as.numeric(betaV) #LevenbergM produces numeric/matrix...  but not necess LevenbergM here!
         if (maxit.mean > 1L) conv_dbetaV <- betaV - old_betaV
       } ## endif LevenbergM else...

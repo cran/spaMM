@@ -64,17 +64,18 @@
 
   \code{fixefVar} is the (co)variance of \bold{X}\eqn{\beta} (or \bold{X}[n]\eqn{\beta}), deduced from the asymptotic covariance matrix of \eqn{\beta} estimates. 
 
-  \code{predVar} is the prediction (co)variance of \eqn{\eta}=bold{X}\eqn{\beta}+\bold{ZL}\bold{v} (see \code{\link{HLfit}} Details for notation), or more generally of \bold{X}[n]\eqn{\beta}+\bold{Z}[n]\bold{L}[n]\bold{v}, by default computed for given dispersion parameters. It assumes that the covariance matrix of \eqn{\beta} and \bold{v} estimates is the inverse of the expected Hessian matrix (for given dispersion parameters) of the augmented linear model for \eqn{\beta} and \bold{v}. It thus takes into account the joint uncertainty in estimation of \eqn{\beta} and prediction of \bold{v}.
+  \code{predVar} is the prediction (co)variance of \eqn{\eta}=bold{X}\eqn{\beta}+\bold{ZL}\bold{v} (see \code{\link{HLfit}} Details for notation), or more generally of \bold{X}[n]\eqn{\beta}+\bold{Z}[n]\bold{L}[n]\bold{v}, by default computed for given dispersion parameters. 
+  
+  For levels of the random effects present in the original data, \code{predVar} computation assumes that the covariance matrix of \eqn{\beta} and \bold{v} estimates is the inverse of the expected Hessian matrix (for given dispersion parameters) of the augmented linear model for \eqn{\beta} and \bold{v}. It thus takes into account the joint uncertainty in estimation of \eqn{\beta} and prediction of \bold{v}. 
+  
+  For new levels of the random effects, \code{predVar} computation additionally takes into account unceratinty in prediction of \bold{v} for these new levels. For \bold{prediction covariance} with a new \bold{Z}[n], it matters whether a single or multiple new levels are used: see Examples.      
 
-For \bold{prediction covariance} with a new \bold{Z}[n], it matters whether a single or multiple new levels are used: see Examples.      
-
-If \code{variances$dispVar} is \code{TRUE}, it may also include a term accounting for uncertainty in \eqn{\phi} and \eqn{\lambda} (Booth and Hobert 1998, eq. 19). 
+If \code{variances$dispVar} is \code{TRUE}, prediction variance may also include a term accounting for uncertainty in \eqn{\phi} and \eqn{\lambda}, computed following Booth and Hobert (1998, eq. 19). This computation is currently implemented for models with a single random effect, and ignore uncertainties in spatial correlation parameters.
 
   For models with non-Gaussian response, the prediction covariance of the response is approximated by the prediction covariance of the linear predictor, 
   pre- and post-multiplied by \eqn{\partial\mu/\partial\eta}. 
   
-  These variance calculations are approximate except for LMMs, and ignore uncertainties in spatial correlation parameters, 
-  and thus cannot be garanteed to give accurate results.  
+  These variance calculations are approximate except for LMMs, and cannot be garanteed to give accurate results.  
 
 In the \bold{point prediction} of the linear predictor, the unconditional expected value of \eqn{u} is assigned to the realizations of \eqn{u} for unobserved levels of non-spatial random effects (it is zero in GLMMs but not for non-gaussian random effects), and the inferred value of \eqn{u} is assigned in all other cases. Corresponding values of \eqn{v} are then deduced. This computation yields the classical \dQuote{BLUP} or empirical Bayes predictor in LMMs, but otherwise it may yield less well characterized predictors, where \dQuote{unconditional} \eqn{v} may not be its expected value when the \code{rand.family} link is not identity. 
 }
@@ -87,7 +88,6 @@ data(blackcap)
 fitobject <- corrHLfit(migStatus ~ 1 + Matern(1|latitude+longitude),data=blackcap,
                        ranFix=list(nu=4,rho=0.4,phi=0.05))
 predict(fitobject)
-predict(fitobject,blackcap) ## same computation, different format 
 getDistMat(fitobject)
 
 #### multiple controls of prediction variances
@@ -117,7 +117,7 @@ fitobject <- corrHLfit(migStatus ~ 1 + Matern(1|latitude+longitude),data=blackca
 predict(fitobject) ## predicted mu computed as X beta + L v 
 predict(fitobject,newdata=blackcap) ## predicted mu computed as X beta + C %*% solve(t(L),v) 
 
-## prediction with new X and Z
+## point predictions and variances with new X and Z
 if(require("rsae", quietly = TRUE)) {
   data(landsat)
   fitobject <- HLfit(HACorn ~ PixelsCorn + PixelsSoybeans + (1|CountyName),

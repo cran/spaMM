@@ -52,7 +52,7 @@ volTriangulation <- function(vertices) { ## by contrast to barycenter of vertice
 #vT <- volTriangulation(mvH)
 
 
-## 'simplices' are indices
+## 'simplices' are indices kept, or subtracted if negative
 # originally named subset.volTriangulation but subset is a generic with a different usage
 subsimplices.volTriangulation <- function(x,simplices,...) {
   vT <- x
@@ -117,8 +117,7 @@ old.nextPoints <- function(n=1,optr,replace=TRUE) { ## random sampling of volume
 #    $vol the volumes of subset of simplices involving the best points
 # default minPtNbr affect exploration of (provisionally) suboptimal peaks
 # expand=2 allows expansion at least towards a local peak
-sampleNextPoints <- function(n=1,Xpredy,minPtNbr=1,##sqrt(nrow(Xpredy)+1),
-                             D.resp=NULL,replace=TRUE,expand=1) { ## different conception, more adaptive
+sampleNextPoints <- function(n=1,Xpredy,minPtNbr=1,replace=TRUE,expand=1,D.resp) { 
   fittedPars <- attr(Xpredy,"fittedPars")
   vT <- volTriangulation(as.matrix(Xpredy[,fittedPars])) 
   if (is.infinite(expand)) {
@@ -139,6 +138,191 @@ sampleNextPoints <- function(n=1,Xpredy,minPtNbr=1,##sqrt(nrow(Xpredy)+1),
   colnames(resu) <- fittedPars
   resu <- data.frame(resu)
   attr(resu,"info") <- subvT
+  return(resu)
+}
+
+spaMM_rhullByEI <- function(n, tryn=100*n ,vT, object, fixed=NULL, outputVars) {
+  ## so that oldXnew matrices will contain less than spaMM.getOption("ff_threshold")~1e7 elements,
+  maxn <- floor(spaMM.getOption("ff_threshold")/nrow(object$data))
+  if (maxn <= n) {
+    locmess <- paste("From spaMM_rhullByEI(): 'maxn': ",maxn,"<=",n," ('n'). 'n' reduced to")
+    n <- ceiling(maxn/10)
+    message(paste(locmess,n))
+  }
+  if (tryn > maxn) {
+    locmess <- paste("From spaMM_rhullByEI(): 'tryn' reduced from",tryn,"to",maxn)
+    message(locmess)
+    tryn <- maxn
+  }
+  trypoints <- data.frame(rvolTriangulation(tryn, vT))
+  colnames(trypoints) <- colnames(vT$vertices) ## supposeque non null...
+  if (! is.null(fixed)) trypoints <- cbind(trypoints, fixed)
+  colnames(trypoints) <- outputVars ## 'apply' feature
+  trypred <- predict(object, newdata=as.data.frame(trypoints), predVar=TRUE)
+  trySE <- attr(trypred, "predVar")
+  trySE[trySE<0] <- 0
+  trySE <- sqrt(trySE)
+  tryQ <- trypred + 1.96*trySE ## improvement function for candidate points
+  Qmax <- object$Qmax
+  expectedImprovement <- trySE*dnorm((Qmax-tryQ)/trySE)+(tryQ-Qmax)*pnorm((tryQ-Qmax)/trySE) ## 7.5 p. 121
+  trypoints <- trypoints[order(expectedImprovement, decreasing=TRUE)[seq_len(n)], outputVars, drop=FALSE]
+  return(trypoints) 
+}
+
+## FR->FR same as in blackbox
+locatePointinvT <- function(point, ## numeric (not matrix or data frame: see use of 'point' below)
+                            vT,fallback=TRUE) { ## in which simplex ? with fall back if 'numerically outside' vT (but quite distinct from minimal distance)
+  pmul <- cbind(-1,diag(rep(1,ncol(vT$vertices))))
+  minw <- apply(vT$simplicesTable,1,function(v) {
+    simplex <- vT$vertices[v,,drop=FALSE]
+    vM <- pmul %*% simplex # is simplex[-1,]-simplex[1,] for each simplex
+    vWeights <- try(solve(t(vM),point-simplex[1,]),silent=TRUE) ## as.numeric(point) would be required if point were a (1-row) matrix
+    # problem may occur if volume of simplex is nearly zero
+    if (inherits(vWeights,"try-error")) {vWeights <- ginv(t(vM)) %*% (point-simplex[1,])}
+    vWeights <- c(1-sum(vWeights),vWeights) ## weights for all vertices
+    min(vWeights) ## if the point is within/marginally outside/clearly outside the vT, this will return a positive/small negative/large negative value
+  })
+  resu <- which(minw>0)
+  if (length(resu)==0L && fallback) resu <- which.max(minw) ## if numerically outside...
+  return(resu)
+}
+
+spaMM_bounds1D <- function(object, optr, CIvar, precision) {
+  fittedNames <- names(optr$par)
+  np <- length(fittedNames)
+  profiledNames <- setdiff(fittedNames, CIvar) 
+  MLval <- optr$par[CIvar]
+  givenmax <- optr$value
+  lower <- apply(object$data,2,min)
+  upper <- apply(object$data,2,max)
+  lowval <- lower[CIvar]
+  lowval <- lowval+0.002*(MLval-lowval)
+  hival <- upper[CIvar]
+  hival <- hival-0.002*(hival-MLval)
+  ## def objectivefn
+  shift <- givenmax - precision
+  if(np==1L) {
+    objectivefn1D <- function(x) { ## defined to return 0 at the CI threshold
+      return(predict(object,x)+shift)
+    }
+    objectivefn <- objectivefn1D
+  } else {
+    argfixedlist <- eval(parse(text=paste("list(", CIvar, "=", NA, ")"))) ## je pourrais creer une list et nommer ensuite... mais cette syntaxe pourra resservir
+    parv <- optr$par
+    objectivefnmultiD <- function(x, return.optim=FALSE) { ## defined to return 0 at the CI threshold
+      parv[CIvar] <- x
+      objfn <- function(z) { 
+        parv[profiledNames] <- z
+        return(predict(object,parv))
+      }
+      locoptr <- optim(optr$par[profiledNames],fn=objfn,lower=lower[profiledNames],upper=upper[profiledNames],method="L-BFGS-B",
+                       control=list(fnscale=-1,parscale=(upper-lower)[profiledNames]))
+      if(return.optim) {
+        return(locoptr)
+      } else return(locoptr$value-shift) ## then returns shifted value for uniroot
+    }
+    objectivefn <- objectivefnmultiD
+  }
+  CIlo <- NA
+  CIpoints <- matrix(nrow=0, ncol=np)
+  fupper <- precision
+  if (abs(lowval-MLval)<abs(MLval*1e-08)) { ## not an error ## lowval==MLval if relative diff is <1e-16 in absolute value
+    # CIlo <- NA ## already so
+  } else {
+    flower <- objectivefn(lowval)
+    if (is.na(flower)) { ## abnormal case
+      stop("From spaMM_bounds1D: 'flower' is NA")
+    } else {
+      if (flower<0) {CIlo <- try((uniroot(objectivefn, interval=c(lowval, MLval),
+                                          f.lower=flower, f.upper=fupper))$root, TRUE)
+      }
+    }
+    if(inherits(CIlo,"try-error")) {
+      CIlo <- NA
+      errmsg <- paste("Bound", " for ", CIvar, " could not be computed (maybe out of sampled range)", sep="")
+      message(errmsg)
+    }
+    if ( ! is.na(CIlo)) {
+      CIpoint <- optr$par
+      CIpoint[CIvar] <- CIlo
+      if (length(profiledNames)>0) {
+        thisfit <- objectivefn(CIlo, return.optim=TRUE)
+        CIpoint[profiledNames] <- thisfit$par
+      }
+      CIpoints <- rbind(CIpoints, CIpoint)
+    }
+  }
+  CIup <- NA ## default values...
+  flower <- fupper
+  if (abs(hival-MLval)<abs(MLval*1e-08)) { ## not an error
+    ## CIup <- NA
+  } else {
+    fupper <- objectivefn(hival)
+    if (is.na(fupper)) { ## abnormal case
+      stop("From spaMM_bounds1D: 'fupper' is NA")
+    } else {
+      if (fupper<0) {CIup <- try((uniroot(objectivefn, c(MLval, hival),
+                                          f.lower=flower, f.upper=fupper))$root, TRUE)
+      }
+    }
+    if(inherits(CIup,"try-error")) {
+      CIup <- NA
+      errmsg <- paste("Bound", " for ", CIvar, " could not be computed (maybe out of sampled range)", sep="")
+      message(errmsg)
+    }
+    if ( ! is.na(CIup)) {
+      CIpoint <- optr$par
+      CIpoint[CIvar] <- CIup
+      if (length(profiledNames)>0) {
+        thisfit <- objectivefn(CIup, return.optim=TRUE)
+        CIpoint[profiledNames] <- thisfit$par
+      }
+      CIpoints <- rbind(CIpoints, CIpoint)
+    }
+  }
+  return(CIpoints=CIpoints)
+} ## end def bounds1D
+
+
+
+sampleNextPars <- function(sizes,object,optr,minPtNbr=1,replace=TRUE,expand=1,D.resp) {
+  ## derived from blackbox::sampleByResp, 2015/11
+  ###################### slow precomputation for EI
+  obspred <- predict(object, variances=list(linPred=TRUE))
+  obsSE <- attr(obspred, "predVar")
+  obsSE[obsSE<0] <- 0
+  object$Qmax <- max( obspred+1.96 * sqrt(obsSE)) ## best improvement function for already computed points
+  ######################
+  Xpredy <- optr$predictions
+  fittedPars <- attr(Xpredy,"fittedPars")
+  vT <- volTriangulation(as.matrix(Xpredy[,fittedPars,drop=FALSE])) 
+  if (is.infinite(expand)) {
+    upperSimplices <- seq_len(nrow(vT$simplicesTable))
+    innerVertexIndices <- seq_len(nrow(Xpredy)) 
+  } else {
+    ## seek simplices which involve 'interesting' points
+    innerVertexIndices <- upperPoints(Xpredy,minPtNbr=minPtNbr,D.resp=D.resp) ## indices; FR->FR maybe not most efficient as Xpredy is already sorted
+    ## the following defines a NON CONVEX set
+    upperSimplices <- apply(vT$simplicesTable,1,function(v) { any(v %in% innerVertexIndices)}) ## indices !
+    for (it in seq_len(expand-1)) {
+      innerVertexIndices <- unique(as.vector(vT$simplicesTable[upperSimplices,]))
+      upperSimplices <- apply(vT$simplicesTable,1,function(v) { any(v %in% innerVertexIndices)}) ## indices !    
+    }
+  }
+  subvT <- subsimplices.volTriangulation(vT,simplices=upperSimplices)
+  goodpoints <- data.frame(rvolTriangulation(n=sizes[1L],subvT,replace=replace))  ## because (rbind(matrix,..., data.frame)) can generate empty rownames...
+  ## some exploratory code; precision is here a shift on response (lik); fails if nu is fixed.
+  if (FALSE) {
+    nubounds1D <- spaMM_bounds1D(object, optr, "trNu", precision=0.1) ## FR->FR arbitrary threshold
+    goodpoints <- rbind(goodpoints,nubounds1D) 
+  }
+  ######################
+  subvT <- subsimplices.volTriangulation(vT, - upperSimplices)
+  candidates <- spaMM_rhullByEI(n=sizes[2L],vT=subvT,object=object,outputVars = fittedPars)
+  goodpoints <- rbind(goodpoints,candidates )
+  ###################### => optr$par (6) + EI (others)
+  resu <- data.frame(goodpoints)
+  #attr(resu,"info") <- vT
   return(resu)
 }
 

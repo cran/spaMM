@@ -9,14 +9,16 @@
 \alias{calc_beta_w_cov}
 \alias{calc.dlW_deta}
 \alias{calc.dvdloglamMat}
+\alias{calc_invS.X}
 \alias{calc.p_v}
 \alias{calc.w.resid}
 \alias{calc_wAugX}
-\alias{calc.hatval}
+\alias{calc_hatval}
 \alias{calc.Pdiag}
 \alias{calc.plot.dims}
 \alias{calcD2hDv2}
 \alias{calcPHI}
+\alias{calc_dispGammaGLM}
 \alias{calcRanefPars}
 \alias{calcTT}
 \alias{calcUniqueGeo}
@@ -60,6 +62,7 @@
 \alias{calcResidVar}
 \alias{calc_beta_cov}
 \alias{calc_dvdlogphiMat}
+\alias{calc_invColdoldList}
 \alias{calc_logdisp_cov}
 \alias{canonizeRanPars} 
 \alias{clean_cs} 
@@ -72,8 +75,7 @@
 \alias{d2mudeta2fn} 
 \alias{DEPARSE}
 \alias{dispFn}
-\alias{dispGammaGLM} 
-\alias{CARdispGammaGLM} 
+\alias{calc_CARdispGammaGLM} 
 \alias{dispInv} 
 \alias{extract.check.coords} 
 \alias{findOffset} 
@@ -84,12 +86,13 @@
 \alias{formula.HLfit}
 \alias{generateFileName} 
 \alias{generateName} 
+\alias{generateInitPhi}
 \alias{getCovariate.corMatern} 
 \alias{getgroups} 
 \alias{getPar}
 \alias{getProcessed}
+\alias{get_methods_ranefs}
 \alias{invscalefnfn}
-\alias{is.square.diagonal} 
 \alias{is.identity} 
 \alias{largeLambdaMessages} 
 \alias{legend_lambda}
@@ -99,6 +102,7 @@
 \alias{NAcleaning}
 \alias{optimthroughSmooth}
 \alias{labelfn}
+\alias{locatePointinvT}
 \alias{logDet.corMatern} 
 \alias{LogAbsDetWrap}
 \alias{loglfn.ranU} 
@@ -109,6 +113,7 @@
 \alias{makeTicks}
 \alias{MaternCorr.ff}
 \alias{Matern.corr} % back compat, should be deleted later
+\alias{MLmess}
 \alias{muetafn}
 \alias{newetaFix}
 \alias{nextPoints}
@@ -128,6 +133,7 @@
 \alias{preprocess}
 \alias{print.arglist}
 \alias{print.predictor}
+\alias{print.vcov.HLfit}
 \alias{print.predictions}
 \alias{print.ranef}
 \alias{process_resglm_list}
@@ -136,6 +142,7 @@
 \alias{RBIND.Matrix}
 \alias{recalc.corMatern} 
 \alias{recent.mapMM} %~ should disappear
+\alias{REMLmess}
 \alias{rhoFn} 
 \alias{rhoInv}
 \alias{rntneg} 
@@ -143,6 +150,7 @@
 \alias{safesolve.qr.matrix} 
 \alias{safesolve.qr.vector} 
 \alias{sampleGridFromLowUp}
+\alias{sampleNextPars}
 \alias{scalefnfn}
 \alias{selectLoglfn}
 \alias{SEMbetalambda}
@@ -150,16 +158,20 @@
 \alias{SEMdiagnosticPlot2D}
 \alias{separator} 
 \alias{setProcessed}
+\alias{setControl}
 \alias{Sigwrapper}
 \alias{slashTerms} 
 \alias{selfAdjointWrapper} 
 \alias{solveWrap.matrix}
 \alias{solveWrap.vector}
+\alias{spaMM_rhullByEI}
+\alias{spaMM_bounds1D}
 \alias{spaMMLRT} 
 \alias{spMMFactorList} 
 \alias{spMMexpandSlash}
 \alias{subbarsMM} 
 \alias{sweepZ1Wwrapper} 
+\alias{tcrossprodWrap}
 \alias{theta.mu.canonical}
 \alias{theta.mu.conjugate} 
 \alias{thetaMuDerivs} 

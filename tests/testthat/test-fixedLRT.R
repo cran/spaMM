@@ -7,4 +7,4 @@ fl <- fixedLRT(null.formula=migStatus ~ 1 + Matern(1|latitude+longitude),
          formula=migStatus ~ means + Matern(1|latitude+longitude), 
          HLmethod='ML',data=blackcap)
 
-expect_equal(fl$basicLRT$pvalue,0.008070489,tolerance=1e-5)
+expect_equal(fl$basicLRT$pvalue,0.008070582,tolerance=1e-5)

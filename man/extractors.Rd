@@ -29,7 +29,7 @@ Functions to extract various components of a fit
 \code{getDistMat} extracts a distance matrix for a Matérn correlation model.
 }
 \usage{
-\method{logLik}{HLfit}(object,REML,...)
+\method{logLik}{HLfit}(object,which,...)
 \method{fitted}{HLfit}(object,...)
 \method{fixef}{HLfit}(object,...)
 % \method{ranef}{HLfit}(object,ranef.class=TRUE,...)
@@ -43,7 +43,7 @@ dev_resids(object,...)
 %- maybe also 'usage' for other objects documented here.
 \arguments{
   \item{object}{The return object of an HLfit or similar function.}
-  \item{REML}{If \code{TRUE}, the function returns the log restricted likelihood (exact or approximated).}
+  \item{which}{Which element of the \code{APHLs} list to return. The default depends on the fitting method.In particular, if it was REML or one of its variants, the function returns the log restricted likelihood (exact or approximated).}
   \item{scaled}{If \code{FALSE}, the function ignores the scale parameter \eqn{rho} and returns unscaled distance.}
 %  \item{ranef.class}{If \code{TRUE}, the return value inherits from class \code{ranef}, so that the \code{print.ranef} method applies to it.}
   \item{\dots}{Other arguments that may be needed by some method.}

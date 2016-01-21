@@ -62,11 +62,37 @@ setProcessed <- function(object,element,value=1) {
   return(object)
 }
 
+generateInitPhi <- function(formula,data,family,weights=NULL) {
+  ## look for replicates to estimate phi
+  form <- subbarsMM(asStandardFormula(formula)) ## removes all random effect decorum (but retains its variables)
+  # lhs
+  mf <- model.frame(form,data=data)
+  Y <- model.response(mf) ## evaluated rhs (e.g. log(y) rather than y...)
+  # rhs
+  rhs_terms <- delete.response(terms(form))
+  mf <- model.frame(rhs_terms, data)
+  uli <- ULI(mf)
+  # selection of data for replicates
+  mf <- data.frame(y=Y,uli=as.factor(uli)) ## what's needed for both sides
+  tuli <- table(uli)
+  whichRows <- uli %in% which(tuli>1L)
+  mf <- mf[whichRows,] ## keep lines with replicates of all predictor variables
+  if (!is.null(weights)) weights <- weights[whichRows]
+  # estimation of residual var
+  if (NROW(mf)>1L) {
+    # formula must retain any operation on the lhs
+    locglm <- glm(formula= y ~ uli,data=mf,family=family,weights=weights)  
+    phi_est <- as.numeric(deviance(locglm)/locglm$df.residual)
+  } else phi_est <- NULL
+  return(phi_est)
+}
+
+
 ################# translate HLfit.args from user input to directly manipulated variables
 ## if called without non(default=NULL) phi.Fix (ie outside HLFit) => processes formulaDisp
 ## if called with nonNULL phi.Fix, then no need to process formulaDisp
 preprocess <- function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predictor,REMLformula,data,family,
-                       BinomialDen,rand.families,etaFix) {
+                       BinomialDen,rand.families,etaFix,prior.weights=NULL) {
   callargs <- match.call() ## to make easy to change these arguments in a later fit
   #####################################################################
   if (inherits(data,"list")) {
@@ -85,6 +111,9 @@ preprocess <- function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predi
   stop.on.error <-control.HLfit$stop.on.error ##  
   if (is.null(stop.on.error)) stop.on.error <- FALSE
   processed$stop.on.error <- stop.on.error ##  
+  break_conv_logL <- control.HLfit$break_conv_logL ##whether to stop if logL (p_v) appears to have converged  
+  if (is.null(break_conv_logL)) break_conv_logL <- FALSE
+  processed$break_conv_logL <- break_conv_logL ##  
   AIC <-control.HLfit$AIC ##  
   if (is.null(AIC)) AIC <- FALSE
   processed$AIC <- AIC ##  
@@ -129,7 +158,7 @@ preprocess <- function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predi
   }
   if (! "predictor" %in% class(predictor)) predictor <- Predictor(predictor) 
   if (! "predictor" %in% class(resid.predictor)) resid.predictor <- Predictor(resid.predictor)
-  MeanFrames <- HLframes(formula=predictor,data=data) ## design matrix X, Y, fixef names
+  MeanFrames <- HLframes(formula=predictor,data=data) ## design matrix X, Y...
   #
   y <- MeanFrames$Y
   if (var(y)==0) {
@@ -152,7 +181,7 @@ preprocess <- function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predi
   if (!is.null(off)) {
     off <- pmax(log(.Machine$double.xmin),off) ## handling log(0) ## but if input off were NULL, output off would be is numeric(0) where it should remain NULL
   }
-  colnames(X.pv) <- names(MeanFrames$fixef)
+  colnames(X.pv) <- colnames(MeanFrames$X)
   ## reimplementation of etaFix$beta (2015/03)
   X.Re <- X.pv ## can be overwritten according to etaFix and REMLformula
   namesOri <- colnames(X.pv)
@@ -358,7 +387,7 @@ preprocess <- function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predi
   processed$y <- y
   #
   if ( ! is.null(REMLformula) ) { ## differences affects only REML estimation of dispersion params, ie which p_bv is computed
-    REMLFrames <- HLframes(formula=REMLformula,data=data) ## design matrix X, Y, fixef names
+    REMLFrames <- HLframes(formula=REMLformula,data=data) ## design matrix X, Y...
     X.Re <- REMLFrames$X  
   } ## else keep previously computed X.Re 
   processed$X.Re <- X.Re
@@ -422,7 +451,7 @@ preprocess <- function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predi
     nrand_lambda <- 0
     models[["lambda"]] <- FL$termsModels
     ################################################################################
-    # for a random slope term X.v in X(beta+ v), the X went into the general ZAL matrix 
+    # for a random slope term, ie v= v_1+x v_2 , the x went into the general ZAL matrix 
     # (construction of ZAlist by spMMFactorList), and
     # we are still estimating the lambda's using a X_lamres with 0/1's only
     # unless there is a non-trivial model for the lambdas
@@ -441,7 +470,7 @@ preprocess <- function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predi
       colnames(X_lamres) <- unlist(FL$namesTerms)
       for (i in seq(nrand)) {
         for (j in (cum_Xi_cols[i]+1L):cum_Xi_cols[i+1L]) {
-          X_lamres[(cum_h_u_h[j]+1L):cum_h_u_h[j+1L],j] <- 1L ## this maps the deviance residuals to the lambda's to be estimated from them
+          X_lamres[(cum_h_u_h[j]+1L):cum_h_u_h[j+1L],j] <- 1L ## this maps the deviance residuals to the lambda's to be estimated from them. None of the random-slope columns is a constant full column because each dev res is used for estimating only one lambda. Nevertheless, the first col will be called "(Intercept)", and this makes a valid output.
         }
       } 
     } else {  ## linear predictor for variance of random effects (lambda) (lamGLM or lamHGLM) 
@@ -452,7 +481,7 @@ preprocess <- function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predi
           nrand_lambda <- length(lambda_ranefs)
           models[["lambda"]] <- list("lamHGLM")
         } else models[["lambda"]] <- list("lamGLM")  
-        colnames(X_lambda) <- names(fr_lambda$fixef)
+        colnames(X_lambda) <- colnames(fr_lambda$X) ## but code not effective, fr_lambda not computed
       } else { ## can use a single design matrix for all random effects, which is convenient.
         mess <- pastefrom("LIKELY missing code to handle linear predictor for lambda.")
         stop(mess)
@@ -473,7 +502,7 @@ preprocess <- function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predi
     X_disp <- fr_disp$X
     ## if formula= ~1 and data is an environment, there is no info about nobs, => X_disp has zero rows, which is a problem later 
     if(nrow(X_disp)==0L) X_disp=matrix(1,nrow=nobs)
-    namesX_disp <- names(fr_disp$fixef)
+    namesX_disp <- colnames(fr_disp$X)
     colnames(X_disp) <- namesX_disp
     random_dispersion<-findbarsMM(formulaDisp) ## random effect in mean predictor of dispersion phi
     if (!is.null(random_dispersion)) {
@@ -486,6 +515,7 @@ preprocess <- function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predi
     } else {
       if (length(namesX_disp)==1 && namesX_disp[1]=="(Intercept)") {
         models[["phi"]] <- "phiScal"
+        processed$init_phi <- generateInitPhi(formula=predictor,data=data,family=family,weights=prior.weights)
       } else { 
         models[["phi"]] <- "phiGLM"
       }
@@ -505,6 +535,8 @@ preprocess <- function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predi
   })
   processed$rand.families <- rand.families
   processed$callargs <- callargs
+  processed$fixef_terms <- MeanFrames$fixef_terms ## added 2015/12/09 for predict
+  processed$fixef_levels <- MeanFrames$fixef_levels ## added 2015/12/09 for predict
   class(processed) <- c("arglist","list")
   return(processed)
 }

@@ -124,11 +124,11 @@ if (F) {
       } 
     } else { ## chol de R
       cholR <- try(chol(m),silent=TRUE) ## dim -> unique geo coordinates
-      if (class(cholR)=="try-error") { ## attempt at regularization 050213
+      if (inherits(cholR,"try-error")) { ## attempt at regularization 050213
         mreg <- m *(1-1e-8)
         diag(mreg) <- diag(mreg) + 1e-8 
         cholR <- try(chol(mreg),silent=TRUE) 
-        if (class(cholR) != "try-error") type <- "chol"
+        if ( ! inherits(cholR,"try-error")) type <- "chol"
       } else type <- "chol"
       if (!is.null(type)) L<-t(cholR) ## such that L %*% t(L) = the correlation matrix in both cases        
     }    
@@ -137,9 +137,9 @@ if (F) {
     ## slower by more stable. Not triangular but should not be a pb
     if (try.eigen) {
       LDL <- try(eigen(m,symmetric=TRUE),silent=TRUE) ## may _hang_ in R2.15.2 on nearly-I matrices
-      if (class(LDL) != "try-error") d <- LDL$values 
+      if ( ! inherits(LDL,"try-error")) d <- LDL$values 
     }
-    if ( (! try.eigen) || class(LDL)=="try-error" || any(d < -1e-08)) {
+    if ( (! try.eigen) || inherits(LDL,"try-error") || any(d < -1e-08)) {
       if (.spaMM.data$options$USEEIGEN) {
         symSVD <- selfAdjointSolverCpp(m) ## such that v= t(u)without any sign issue  
         u <- symSVD$u
@@ -147,14 +147,14 @@ if (F) {
         type <- "symsvd"          
       } else {
         SVD <- try(svd(m)) ## "the SVD implementation of Eigen (...) is not a particularly fast SVD method." (RcppEigen vignette)
-        if (class(SVD)=="try-error") {
+        if (inherits(SVD,"try-error")) {
           print("spaMM retries SVD following 'svd' failure.") 
           ## numerically different but otherwise equivalent computation
           m <- diag(rep(1-SVDfix,ncol(m))) + m*SVDfix 
           SVD <- try(svd(m)) 
-          if (class(SVD)!="try-error") SVD$d <- 1+ (SVD$d-1)/SVDfix 
+          if (! inherits(SVD,"try-error") ) SVD$d <- 1+ (SVD$d-1)/SVDfix 
         } 
-        if (class(SVD)=="try-error") {
+        if (inherits(SVD,"try-error")) {
           ## typically m is I + a few large elements
           ## Most iformative post: http://r.789695.n4.nabble.com/Observations-on-SVD-linpack-errors-and-a-workaround-td837282.html
           ####################### aide sur le .Rdata :  zut <- as.list(attr(resu,"condition")$call) est un HLCor call
@@ -221,84 +221,58 @@ CondNormfn <- function(decomp,lambda) {
 
 `make_scaled_dist` <- function(uniqueGeo,uniqueGeo2=NULL,distMatrix,rho,rho.mapping=seq_len(length(rho)),
                                dist.method="Euclidean",return_matrix=FALSE) {
-  if (dist.method=="Euclidean") {
-    if ( missing(distMatrix) ) { ## 
-      scaled.dist <- NULL
-      if ( missing(uniqueGeo) ) {
-        mess <- pastefrom("missing(distMatrix) && missing(uniqueGeo).",prefix="(!) From ")
-        stop(mess)
+  if (length(rho)>1L && dist.method!="Euclidean") { 
+    mess <- pastefrom("'rho' length>1 not allowed for non-Euclidian distance.",prefix="(!) From ")
+    stop(mess)
+  }
+  if ( missing(distMatrix) ) { ## ## then provide it (most of this fn's code)
+    if ( missing(uniqueGeo) ) {
+      mess <- pastefrom("missing(distMatrix) && missing(uniqueGeo).",prefix="(!) From ")
+      stop(mess)
+    } 
+    distnrow <- nrow(uniqueGeo)
+    distncol <- NROW(uniqueGeo2)
+    scaled.dist <- NULL
+    if ( distnrow*distncol > spaMM.getOption("ff_threshold") ) {
+      if (requireNamespace("ff",quietly=TRUE)) {
+        scaled.dist <- ff::ff( vmode ="double", dim=c(distnrow,distncol))
+      } else message("Package 'ff' for large matrices may be needed but is not installed.")
+    }
+    if (dist.method=="Euclidean") {
+      if (length(rho)==1L) {
+        uniqueScal <- uniqueGeo * rho 
+      } else if (ncol(uniqueGeo)==length(rho.mapping)) {
+        uniqueScal <- t(t(uniqueGeo) * rho[rho.mapping]) ## valid for vectorial rho...
       } else {
-        if (length(rho)==1L) {
-          uniqueScal <- uniqueGeo * rho 
-        } else if (ncol(uniqueGeo)==length(rho.mapping)) {
-          uniqueScal <- t(t(uniqueGeo) * rho[rho.mapping]) ## valid for vectorial rho...
-        } else {
-          mess <- pastefrom("invalid length(rho[rho.mapping]).",prefix="(!) From ")
-          print(mess)
-          mess  <- paste("Length should be either 1 or",ncol(uniqueGeo))
-          stop(mess)
-        }
-        distnrow <- nrow(uniqueScal)
-        if (! is.null(uniqueGeo2)) {
-          if (length(rho)==1L) {
-            uniqueScal2 <-uniqueGeo2 * rho  
-          } else uniqueScal2 <- t(t(uniqueGeo2) * rho[rho.mapping]) 
-          distncol <- nrow(uniqueScal2)
-        } else {
-          uniqueScal2 <- NULL
-          distncol <- 0L ## not the true ncol, but makes sure ff is not used (otherwise, need a mapping from half matrix to ff_matrix)  
-        }
+        mess <- pastefrom("invalid length(rho[rho.mapping]).",prefix="(!) From ")
+        print(mess)
+        mess  <- paste("Length should be either 1 or",ncol(uniqueGeo))
+        stop(mess)
       }
-      if ( distnrow*distncol > spaMM.getOption("ff_threshold") ) {
-        if (requireNamespace("ff",quietly=TRUE)) {
-          scaled.dist <- ff::ff( vmode ="double", dim=c(distnrow,distncol))
-        } else message("Package 'ff' for large matrices may be needed but is not installed.")
+      if (! is.null(uniqueGeo2)) {
+        if (length(rho)==1L) {
+          uniqueScal2 <- uniqueGeo2 * rho  
+        } else uniqueScal2 <- t(t(uniqueGeo2) * rho[rho.mapping]) 
+      } else {
+        uniqueScal2 <- NULL
       }
       if (inherits(scaled.dist,"ff_matrix")) {
         scaled.dist[] <- proxy::dist(x=uniqueScal,y=uniqueScal2, method=dist.method) 
-        #row.names(scaled.dist) <- rownames(uniqueScal)
       } else scaled.dist <- proxy::dist(x=uniqueScal,y=uniqueScal2, method=dist.method) 
-      ## here scaled.dist is always a dist object: if uniqueScal was a single row, it is dist(0) 
-    } else if (length(rho)==1L) {
-      scaled.dist <- rho * distMatrix
-      ## here inconsistent behavior: scaled.dist is a dist object except if distMatrix was dist(0), scaled.dist is now numeric(0); we standardise it:
-      if ( identical(scaled.dist, numeric(0))) scaled.dist <- dist(0)
-    } else {
-      mess <- pastefrom("input 'distMatrix' but length(rho)!=1.",prefix="(!) From ")
-      stop(mess)
-    }
-  } else { ## rho length must be one
-    if (length(rho)>1L) {
-      mess <- pastefrom("'rho' length>1 not allowed for non-Euclidian distance.",prefix="(!) From ")
-      stop(mess)
-    }
-    if ( missing(distMatrix) ) { ## 
-      if ( missing(uniqueGeo) ) {
-        mess <- pastefrom("missing(distMatrix) && missing(uniqueGeo).",prefix="(!) From ")
-        stop(mess)
-      } else distnrow <- nrow(uniqueGeo)
-      if (! is.null(uniqueGeo2)) {
-        distncol <- nrow(uniqueGeo2)
-      } else {
-        distncol <- 0L ## not the true ncol, but makes sure ff is not used (otherwise, need a mapping from half matrix to ff_matrix)  
-      }
-      if ( distnrow*distncol > spaMM.getOption("ff_threshold") ) {
-        if (requireNamespace("ff",quietly=TRUE)) {
-          scaled.dist <- ff::ff( vmode ="double", dim=c(distnrow,distncol))
-        } else message("Package 'ff' for large matrices may be needed but is not installed.")
-      }
+    } else { ## not Euclidean
       if (inherits(scaled.dist,"ff_matrix")) {
         scaled.dist[] <- rho * proxy::dist(uniqueGeo,y=uniqueGeo2,method=dist.method) 
       } else scaled.dist <- rho * proxy::dist(uniqueGeo,y=uniqueGeo2,method=dist.method)  
-    } else {
-      scaled.dist <- rho * distMatrix
-      ## here inconsistent behavior: scaled.dist is a dist object except if distMatrix was dist(0), scaled.dist is now numeric(0); we standardise it:
-      if ( identical(scaled.dist, numeric(0))) scaled.dist <- dist(0)
-    } 
+    }
+  } else { ## distMatrix provided
+    scaled.dist <- rho * distMatrix
   }
+  ## Here proxy::dist always returns a dist object, maybe dist(0) 
+  ## but rho * dist(0) is numeric(0); we standardise it:
+  if ( identical(scaled.dist, numeric(0))) scaled.dist <- dist(0)
   if (return_matrix) {
     if (inherits(scaled.dist,"dist")) {
-      scaled.dist <- matrix(scaled.dist,ncol=ncol(scaled.dist),nrow=nrow(scaled.dist))## as.matrix would produce a vector
+      scaled.dist <- as.matrix(scaled.dist)
     } else if (inherits(scaled.dist,"crossdist")) scaled.dist <- scaled.dist[] ## []: same effect as what oen would expect from non-existent as.matrix.crossdist()
   }
   return(scaled.dist)

@@ -97,6 +97,8 @@ the CAR and SAR models: Journal of Statistical Planning and Inference 121: 311-3
 % possibly the currently undocumented designL.from.Corr
 }
 \examples{
+# Example with an adjacency matrix (autoregressive model):
+# see 'adjacency' documentation page
 
 #### Matérn correlation using only the Matern() syntax
 if (spaMM.getOption("example_maxtime")>2) {
@@ -125,11 +127,6 @@ HLCor(migStatus ~ means+ corrMatrix(1|dummy),data=bcdummy,
 MLdistMat <- as.matrix(proxy::dist(blackcap[,c("latitude","longitude")]))
 HLCor(migStatus ~ means+ Matern(1|latitude+longitude),data=blackcap,
       distMatrix=MLdistMat,HLmethod="ML",ranPars=list(nu=0.6285603,rho=0.0544659))
-
-#### example with an adjacency matrix (autoregressive model)
-data(scotlip)
-HLCor(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(scotlip$expec)),
-      adjMatrix=Nmatrix,family=poisson(),data=scotlip)
 
 }
 \keyword{ model }

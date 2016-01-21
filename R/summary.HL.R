@@ -1,5 +1,26 @@
 ## FR->FR accessors : http://glmm.wikidot.com/pkg-comparison
 
+get_methods_ranefs <- function(object) {
+  iterativeEsts<-character(0)
+  optimEsts<-character(0)
+  ## What the HLfit call says:
+  if (any(object$models[["lambda"]] != "")) {
+    if (is.null( object$lambda.object$lambda.fix)) {
+      iterativeEsts <- c(iterativeEsts,"lambda")
+    } else {optimEsts <- c(optimEsts,"lambda")}
+  }
+  ## c("binomial","poisson"): phi is 1, not NULL
+  if (is.null(object$phi.object$phi.Fix)) {iterativeEsts <- c(iterativeEsts,"phi")} else {
+    if (! (object$family$family %in% c("binomial","poisson"))) optimEsts <- c(optimEsts,"phi")
+  }
+  ## better conceived code for corrPars:
+  corrPars <- object$corrPars
+  iterativeEsts <- c(iterativeEsts,names(which(attr(corrPars,"type")=="var")))
+  optimEsts <- c(optimEsts,names(which(attr(corrPars,"type")=="fix")))
+  return(list(iterativeEsts=iterativeEsts,optimEsts=optimEsts))
+}
+
+
 legend_lambda<- function(object) {
   ## (1) analyse distributions
   randfams <- object$rand.families
@@ -45,6 +66,49 @@ legend_lambda<- function(object) {
 }
 
 
+MLmess <-function(object,ranef=FALSE) {
+  if (object$models[["eta"]]=="etaGLM") {
+    return("by ML.")
+  } else if (object$family$family=="gaussian" && all(attr(object$rand.families,"lcrandfamfam")=="gaussian")) { 
+    return("by ML.") 
+  } else {
+    if (object$HL[1]=='SEM')  {
+      return("by stochastic EM.")
+    } else if (object$HL[1]==1L)  {
+      return("by ML approximation (p_v).")
+    } else if (object$HL[1]==0L)  {
+      if (ranef) {
+        return("by ML approximation (p_v).")
+      } else return("by h-likelihood approximation.")
+    } 
+  }
+}
+## FR->FR il faudrait distinguer EQL approx of REML ?
+REMLmess <- function(object) {
+  if (is.null(object$REMLformula)) {
+    if (object$HL[1]=='SEM')  {
+      resu <- ("by stochastic EM.")
+    } else if (object$family$family !="gaussian" 
+               || (object$models[["eta"]]=="etaHGLM" && any(attr(object$rand.families,"lcrandfamfam")!="gaussian"))) { 
+      resu <- ("by REML approximation (p_bv).") 
+    } else {
+      resu <- ("by REML.")
+    }  
+  } else {
+    fixeformFromREMLform <- nobarsMM(object$REMLformula) 
+    if (length(fixeformFromREMLform)<2 ## ie 0 if original formula was  <~(.|.)> or 1 if ... <lhs~(.|.)>
+        || object$REMLformula[[3]]=="0" ## this is the whole RHS; for fixed effect models
+    ) {
+      resu <- (MLmess(object, ranef=TRUE))
+    } else { ## if nontrivial REML formula was used...
+      resu <- ("by non-standard REML")
+      attr(resu,"fixeformFromREMLform") <- nobarsMM(object$REMLformula)
+    }
+  }    
+  return(resu)
+}
+
+
 summary.HLfitlist <- function(object, ...) {
   sapply(object,summary.HLfit) ## because summary(list object) displays nothing (contrary to print(list.object)) => rather call summary(each HLfit object)
   cat(" -------- Global likelihood values  --------\n")    
@@ -55,36 +119,7 @@ summary.HLfitlist <- function(object, ...) {
 
 
 `summary.HLfit` <- function(object, ...) {
-  MLmess <-function(ranef=FALSE) {
-    if (object$models[["eta"]]=="etaGLM") {
-      return("by ML.")
-    } else if (famfam=="gaussian" && lcrandfamfam=="gaussian") { 
-      return("by ML.") 
-    } else {
-      if (object$HL[1]=='SEM')  {
-        return("by stochastic EM.")
-      } else if (object$HL[1]==1L)  {
-        return("by ML approximation (p_v).")
-      } else if (object$HL[1]==0L)  {
-        if (ranef) {
-          return("by ML approximation (p_v).")
-        } else return("by h-likelihood approximation.")
-      } 
-    }
-  }
-  ## FR->FR il faudrait distinguer EQL approx of REML ?
-  REMLmess <-function() {
-    if (object$HL[1]=='SEM')  {
-      return("by stochastic EM.")
-    } else if (famfam !="gaussian" 
-               || (object$models[["eta"]]=="etaHGLM" && lcrandfamfam!="gaussian")) { 
-      return("by REML approximation (p_bv).") 
-    } else {
-      return("by REML.")
-    }
-  }
   models <- object$models
-  lambda.object <- object$lambda.object
   phi.object <- object$phi.object
   famfam <- object$family$family ## response !
   lcrandfamfam <- attr(object$rand.families,"lcrandfamfam") ## unlist(lapply(object$rand.families,function(rf) {tolower(rf$family)}))
@@ -101,26 +136,14 @@ summary.HLfitlist <- function(object, ...) {
   #  HLchar <- paste(as.character(object$HL),collapse="")
   #  cat(paste("[code: ",HLchar,"]"," method: ",sep=""))
   messlist <- list()
-  if (length(object$fixef)>0) {
-    messlist["fixed"] <- MLmess()
-  }
+  if (length(object$fixef)>0) messlist["fixed"] <- MLmess(object)
+  messlist["ranef"] <- REMLmess(object)
   summ$formula <- object$formula
   summ$REMLformula <- object$REMLformula
   ## Distinguishing iterative algo within HLfit and numerical maximization outside HLfit 
-  iterativeEsts<-character(0)
-  optimEsts<-character(0)
-  ## What the HLfit call says:
-  if (any(object$models[["lambda"]] != "")) {
-    if (is.null(lambda.object$lambda.fix)) {iterativeEsts <- c(iterativeEsts,"lambda")} else {optimEsts <- c(optimEsts,"lambda")}
-  }
-  ## c("binomial","poisson"): phi is 1, not NULL
-  if (is.null(phi.object$phi.Fix)) {iterativeEsts <- c(iterativeEsts,"phi")} else {
-    if (! (famfam %in% c("binomial","poisson"))) optimEsts <- c(optimEsts,"phi")
-  }
-  ## better conceived code for corrPars:
-  corrPars <- object$corrPars
-  iterativeEsts <- c(iterativeEsts,names(which(attr(corrPars,"type")=="var")))
-  optimEsts <- c(optimEsts,names(which(attr(corrPars,"type")=="fix")))
+  locblob <- get_methods_ranefs(object)
+  iterativeEsts <- locblob$iterativeEsts
+  optimEsts <- locblob$optimEsts
   ## 
   ranFixNames <- names(object$ranFix) # attr(object,"ranFixNames") 
   if ( ! is.null(ranFixNames) ) { ## we take info from corrHLfit to know which were really fixed in the corrHLfit analysis
@@ -129,18 +152,7 @@ summary.HLfitlist <- function(object, ...) {
   len <- length(iterativeEsts)
   if (len > 1) iterativeEsts <- paste(c(paste(iterativeEsts[-len],collapse=", "),iterativeEsts[len]),collapse=" and ")
   if (len > 0) { 
-    if (is.null(object$REMLformula)) {
-      messlist["ranef"] <- REMLmess()
-    } else {
-      fixeformFromREMLform <- nobarsMM(object$REMLformula) 
-      if (length(fixeformFromREMLform)<2 ## ie 0 if original formula was  <~(.|.)> or 1 if ... <lhs~(.|.)>
-          || object$REMLformula[[3]]=="0" ## this is the whole RHS; for fixed effect models
-         ) {
-        messlist["ranef"] <- MLmess(ranef=TRUE)
-      } else { ## if nontrivial REML formula was used...
-        messlist["ranef"] <- "by non-standard REML"
-      }
-    }    
+    
   }
   if (len>0) {
     if (messlist[["ranef"]]=="by REML.") {## REMLmess has checked that this is a LMM
@@ -158,7 +170,7 @@ summary.HLfitlist <- function(object, ...) {
     cat(messlist[["ranef"]])
     if ( messlist[["ranef"]]=="by non-standard REML") {
       cat("\n");cat(tab);cat(" based on fixed-effects model: ")
-      print(fixeformFromREMLform) 
+      print(attr(messlist[["ranef"]],"fixeformFromREMLform")) 
     } else cat("\n") ## normal output for standard REML formula
     cat(tab)
   } 
@@ -210,6 +222,7 @@ summary.HLfitlist <- function(object, ...) {
     } else {
       cat("Families(links):", paste(randfamfamlinks,collapse=", "), "\n")
     }
+    corrPars <- object$corrPars
     cP <- unlist(corrPars)
     if ( ! is.null(cP) ) {
       cat("Correlation parameters:")
@@ -220,8 +233,9 @@ summary.HLfitlist <- function(object, ...) {
       cat("\n")
       print(cP)
     }
+    lambda.object <- object$lambda.object
     if (any(object$models[["lambda"]] == "lamHGLM")) { 
-      stop("voir ici dans summary.HL")
+      stop("voir ici dans summary.HLfit")
     } else if (is.null(lambda.object$lambda.fix)) {
       namesTerms <- lambda.object$namesTerms ## list of vectors of variable length
       coefficients <- unlist(namesTerms)
@@ -304,11 +318,11 @@ summary.HLfitlist <- function(object, ...) {
       summ$phi.Fix <- phi.object$phi.Fix
     } else {
       if (models[["phi"]]=="phiHGLM") {
-        stop("From summary.HL: phiHGLM code not ready")
+        stop("From summary.HLfit: phiHGLM code not ready")
       } else {
-        phi_table<-cbind(phi.object$beta_phi,phi.object$phi_se)
+        phi_table<-cbind(phi.object$fixef,phi.object$phi_se)
         colnames(phi_table) <- c("Estimate", "Cond. SE")
-        rownames(phi_table) <- phi.object$namesX_disp
+        rownames(phi_table) <- namesX_disp <- names(phi.object$fixef)
         summ$phi_table <- phi_table
         cat("phi formula: ")
         phiform <- attr(object$resid.predictor,"oriFormula")
@@ -323,8 +337,8 @@ summary.HLfitlist <- function(object, ...) {
         print(phi_table,4)
         dispoff <- attr(object$resid.predictor,"offsetObj")$total
         if (!is.null(dispoff)) dispoff <- unique(dispoff)
-        if (length(phi.object$namesX_disp)==1 && phi.object$namesX_disp[1]=="(Intercept)" && length(dispoff)<2) {
-          phi_est <- (phi.object$beta_phi)
+        if (length(namesX_disp)==1 && namesX_disp[1]=="(Intercept)" && length(dispoff)<2) {
+          phi_est <- (phi.object$fixef)
           if (length(dispoff)==1L) phi_est <- phi_est+dispoff
           phi_est <- object$resid.family$linkinv(phi_est)
           if (object$family$family=="Gamma") {

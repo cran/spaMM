@@ -10,9 +10,7 @@ makeCovEst1 <- function(u_h,ZAlist,cum_n_u_h,prev_LMatrices,
 ) {
   nrand <- length(ZAlist)
   X.Re <- processed$X.Re
-  locprocessed <- processed
-  locprocessed$ZAlist <- NULL
-  locprocessed$X_lamres <- NULL
+  locpredictor <- processed$predictor
   next_LMatrices <- prev_LMatrices
   Xi_cols <- attr(ZAlist,"Xi_cols")
   Lu <- u_h
@@ -69,8 +67,8 @@ makeCovEst1 <- function(u_h,ZAlist,cum_n_u_h,prev_LMatrices,
         next_LMatrices[[rt]] <- longLv
         attr(next_LMatrices[[rt]],"ranefs") <- attr(ZAlist,"ranefs")[[rt]] ## FR->FR  revoir pour matrices affectant +s termes ?
         ZALlist <- computeZAXlist(XMatrix=next_LMatrices,ZAlist=ZAlist)
-        locZAL <- post.process.ZALlist(ZALlist,predictor=locprocessed$predictor,trySparse=FALSE) ## no trySparse dans makeCovEst
-        attr(locprocessed$predictor,"ZALMatrix") <- locZAL
+        locZAL <- post.process.ZALlist(ZALlist,predictor=locpredictor,trySparse=FALSE) ## no trySparse dans makeCovEst
+        attr(locpredictor,"ZALMatrix") <- locZAL
         locTT <- cbind(Xpv001,attr(locZAL,"ZALI"))
         locw.ranefSblob <- updateW_ranefS(cum_n_u_h,processed$rand.families,lambda=loc_lambda_est,u_h,v_h) 
         auglinmodargs <- c(list(TT=locTT,ZAL=locZAL,lambda_est=loc_lambda_est,

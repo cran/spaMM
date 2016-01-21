@@ -92,6 +92,8 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
   \code{conv.threshold}, 
    a convergence threshold for the iterative algorithm, which controls whether 
    linear predictor terms (fixed effects and inferred random effects), and dispersion parameter estimates have converged. Defaults to 1e-05;
+   
+   \code{break_conv_logL}, a boolean specifying whether the iterative algorithm should terminate when log-likelihood appears to have convergence (roughly, when its relative variation over on iteration is lower than 1e-8). Default is FALSE.
 %
   \code{iter.mean.dispFix}, the number of iterations of the iterative algorithm for coefficients of the linear predictor,
        if no dispersion parameters are estimated by the iterative algorithm. Defaults to 200; 

@@ -3,10 +3,32 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
-\section{CHANGES UP TO VERSION 1.6}{
+\section{CHANGES UP TO VERSION 1.7}{
 \subsection{NEW FEATURES}{
 \itemize{
 %\item Stochastic Expectation-Maximization (SEM) algorithm for binary probit model (to be documented)
+\item Less inefficient code for fixed-effect models, faster and handling larger data sets.
+\item Changed default value of 'upper' argument of optim call() within corrHLfit(), and better reporting of issues with this call.
+}
+}
+\subsection{USER-LEVEL CHANGES}{
+\itemize{
+\item Argument 'which' replaces arguments 'REML' in logLik().
+\item New control 'break_conv_logL' in argument control.HLfit of function HLfit(). Mainly for development purposes.
+\item Improved reporting of convergence issues in HLfit().
+\item More comfortable print method for vcov() value.
+}
+}
+\subsection{BUGS}{
+\itemize{
+\item This new version includes several improvements of predict(), the most notable being a correction of prediction variances for new values of predictor variables, which were incorrect in CRAN version 1.6.2 (but not in CRAN version 1.5.1). Many other more trivial bugs or features of predict() have been corrected.   
+\item summary.fixedLRT() failed to display correctly the bootstrap results. This is corrected.
+}
+}
+}
+\section{CHANGES UP TO VERSION 1.6.2}{
+\subsection{NEW FEATURES}{
+\itemize{
 \item Prediction variance can now account for uncertainty is dispersion parameters (though not for all models; see Details of 'dispVar' in the 'predict' documentation).
 \item Now allows prediction for a large number of spatial positions by storing some large correlation matrices on disk rather than in memory (using the ff package, and as controlled by the spaMM option 'ff_threshold').
 \item Convenience extractor functions 'dev_resids' and 'deviance' have been added. 

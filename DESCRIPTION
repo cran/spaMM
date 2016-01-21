@@ -2,11 +2,12 @@ Package: spaMM
 Type: Package
 Title: Mixed Models, Particularly Spatial GLMMs
 Encoding: UTF-8
-Version: 1.6.2
-Date: 2015-10-31
+Version: 1.7.1
+Date: 2016-01-21
 Authors@R: c(person("François", "Rousset", role = c("aut", "cre", "cph"),
                      email = "francois.rousset@univ-montp2.fr"),
               person("Jean-Baptiste", "Ferdy", role = c("aut","cph")),
+              person("Alexandre", "Courtiol", role = "ctb"),
               person("GSL authors", role = "ctb", comment = "src/gsl_bessel.*")
               )
 Maintainer: François Rousset <francois.rousset@univ-montp2.fr>
@@ -20,9 +21,10 @@ Description: Inference in mixed models, including GLMMs with spatial correlation
 License: CeCILL-2
 URL: http://www.r-project.org,
         http://kimura.univ-montp2.fr/~rousset/spaMM.htm
-Packaged: 2015-11-01 13:51:28 UTC; rousset
+Packaged: 2016-01-20 23:53:28 UTC; rousset
 Author: François Rousset [aut, cre, cph],
   Jean-Baptiste Ferdy [aut, cph],
+  Alexandre Courtiol [ctb],
   GSL authors [ctb] (src/gsl_bessel.*)
 Repository: CRAN
-Date/Publication: 2015-11-01 18:00:29
+Date/Publication: 2016-01-21 17:57:49

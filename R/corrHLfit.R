@@ -55,7 +55,8 @@ makeLowerUpper <- function(canon.init, ## cf calls: ~ in user scale, must be a f
         if (is.null(rho)) {
           if (inherits(nbUnique,"list")) nbUnique <- mean(unlist(nbUnique))
           rho <- canon.init$rho*2*nbUnique ## The following was a bit too low for experiments with nu=0.5 : 1/(maxrange/(2*nbUnique)) ## nb => unique rows !
-          if (optim.scale=="transformed") rho <- rho*.spaMM.data$options$RHOMAX/(1+rho) ## so that it does not exceed RHOMAX
+          ## *modify* upper rho so that it does not exceed RHOMAX => /($RHOMAX+...)
+          if (optim.scale=="transformed") rho <- 2*rho * .spaMM.data$options$RHOMAX/(.spaMM.data$options$RHOMAX+2*rho)
         }
         if (optim.scale=="transformed") {
           upper$trRho <- rhoFn(rho) 
@@ -71,9 +72,13 @@ makeLowerUpper <- function(canon.init, ## cf calls: ~ in user scale, must be a f
         } else lower$nu <-nu
         nu <- user.upper$nu
         if (is.null(nu)) {
-          if ( ! is.null(dm <- control.dist$`dist.method`) && dm=="Geodesic") {
+          if ( ! is.null(dm <- control.dist$`dist.method`) && dm %in% c("Geodesic","Earth")) {
             nu <- 0.5
-          } else nu <- .spaMM.data$options$NUMAX*canon.init$nu/(1+canon.init$nu) ## nu should not diverge otherwise it will diverge in Bessel_lnKnu, whatever the transformation used
+          } else {
+            ## constructs upper nu from NUMAX => /(1+...)
+            ## nu should not diverge otherwise it will diverge in Bessel_lnKnu, whatever the transformation used
+            nu <- .spaMM.data$options$NUMAX * canon.init$nu/(1+canon.init$nu) 
+          }
         }
         if (optim.scale=="transformed") {
           upper$trNu <- nuFn(nu,rhoForNu)
@@ -293,12 +298,10 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
                       init.HLfit=list(),
                       ranFix=list(), 
                       lower=list(),upper=list(),
-                      trace=list(file=NULL,append=T),
+                      trace=list(file=NULL,append=TRUE),
                       objective="p_bv", ## return value of HLCor.obj for optim calls... FR->FR meaningless for full SEM
                       control.dist=list(),
                       control.corrHLfit=list(), ## alternating, optim.scale, Optimizer, optimizer.args, maxIter, maxcorners, 
-                      ## nlminb, optim, optimize,
-                      ## smooth.resid.family, smooth.resid.formula, initSmooth, dit
                       processed=NULL, ## added 2014/02 for programming purposes
                       family=gaussian(),
                       ... ## pb est risque de passer des args mvs genre HL.method et non HLmethod...
@@ -312,7 +315,10 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
   Optimizer <- control.corrHLfit$Optimizer ## either "nlminb" or one of the methods of optim()
   if (is.null(Optimizer)) Optimizer="L-BFGS-B" ## default for locoptim but still requested for "Optimizer=Optimizer"
   optimizers.args <- control.corrHLfit[c("nlminb","optim","optimize")] 
-  maxcorners <- control.corrHLfit$maxcorners 
+  maxcorners <- control.corrHLfit$maxcorners
+  ## 2015/12/24 : setting maxcorners to 0L till makes a difference for
+  # test-Nugget -> different p_v / p_bv compromise (!)
+  # nullfit of blackcap (test-fixedLRT) is better with the corners.
   if (is.null(maxcorners)) maxcorners <- 2^11 
   maxIter <- control.corrHLfit$maxIter 
   if (is.null(maxIter)) maxIter<- 10000
@@ -355,7 +361,7 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
     stop("obsolete PhiFix argument in corrHLfit call")
   }  
   predictor <- formula
-  if (! "predictor" %in% class(predictor)) predictor <- Predictor(formula) 
+  if (! inherits(predictor,"predictor")) predictor <- Predictor(formula) 
   spatial.terms <- findSpatial(predictor)
   spatial.model <- spatial.terms[[1]] 
   if ( ! is.null(spatial.model)) {
@@ -556,7 +562,11 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
       }
       if (is.null(getPar(ranFix,"nu")) && (! is.numeric(init.HLfit$nu))) { 
         init$nu <- init.optim$nu 
-        if (is.null(init$nu)) init$nu <- 0.5 
+        if (is.null(init$nu)) {
+          if ( ! is.null(dm <- control.dist$`dist.method`) && dm %in% c("Geodesic","Earth")) {
+            init$nu <- 0.25  
+          } else init$nu <- 0.5 
+        }
         if (! is.null(init.HLfit$nu)) {
           init.HLfit$nu <- init$nu ## avant transformation
         } else {
@@ -638,7 +648,7 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
     preprocess.formal.args$rand.families <- HLfit.formal.args$rand.family ## because preprocess expects $rand.families 
     preprocess.formal.args$predictor <- HLfit.formal.args$formula ## because preprocess stll expects $predictor 
     preprocess.formal.args$resid.predictor <- HLfit.formal.args$resid.formula ## because preprocess stll expects $predictor 
-    if (family$family %in% c("poisson","binomial")) {
+    if (family$family %in% c("poisson","binomial","multi")) { ## multi added 2015/12/12
       phi.Fix <- 1 
     } else {
       phi.Fix <- getPar(ranFix,"phi")
@@ -648,6 +658,7 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
       }
     } 
     preprocess.formal.args$phi.Fix <- phi.Fix
+    preprocess.formal.args$prior.weights <- dotlist$prior.weights
     processed <- do.call("preprocess",preprocess.formal.args)
     if ( ! is.null(attr(processed,"multiple"))) {
       pnames <- names(processed[[1]])
@@ -666,6 +677,7 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
   attr(anyHLCor_obj_args$skeleton,"type") <- list() 
   attr(anyHLCor_obj_args$skeleton,"type")[names(init.optim)] <- "fix" 
   anyHLCor_obj_args$`HLCor.obj.value` <- objective ## p_v when fixedLRT-> corrHLfit
+  anyHLCor_obj_args$traceFileName <- trace$file
   ## optim/optimize specific code
   initvec <- unlist(init.optim)
   ####    tmpName <- generateName("HLtmp") ## tmpName is a string such as "HLtmp0"
@@ -686,8 +698,8 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
                            ranPars=ranPars,HLCor.args=HLCor.args,trace=trace,Optimizer=Optimizer,
                            optimizers.args=optimizers.args,maxcorners=maxcorners)
     if (!is.null(optPars)) attr(optPars,"method") <-"alternating"
-  } else { ## this is called if length(lower)=0 by  (SEM or not) and optPars is then null 
-    loclist<-list(init.optim,LowUp,anyObjfnCall.args=anyHLCor_obj_args,trace,Optimizer=Optimizer,
+  } else { ## this is also called if length(lower)=0 by  (SEM or not) and optPars is then null 
+    loclist<-list(init.optim=init.optim,LowUp=LowUp,anyObjfnCall.args=anyHLCor_obj_args,trace=trace,Optimizer=Optimizer,
                   optimizers.args=optimizers.args,maxcorners=maxcorners,maximize=TRUE) 
     optPars <- do.call("locoptim",loclist)
     if (!is.null(optPars)) attr(optPars,"method") <- "locoptim"
@@ -699,7 +711,7 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
   HLCor.args$verbose <- verbose ##
   hlcor <- do.call("HLCor",HLCor.args) ## recomputation post optimization (or only computation, if length(lower)=0)
   if ( is.null(HLCor.args$adjMatrix) && is.null(attr(hlcor,"info.uniqueGeo")) ) { ## typically if DistMatrix was passed to HLCor...
-    attr(hlcor,"info.uniqueGeo") <- uniqueGeo ## uniqueGeo should have been computed in all relevant cases where this is NULL (tricky)
+    attr(hlcor,"info.uniqueGeo") <- uniqueGeo ## uniqueGeo should have been computed in all relevant cases where test is true (tricky)
   }
   attr(hlcor,"objective") <- anyHLCor_obj_args$`HLCor.obj.value` 
   attr(hlcor,"corrHLfitcall") <- mc
@@ -708,10 +720,54 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
                                   init.optim=init.optim,
                                   lower=lower,upper=upper,
                                   user.lower=user.lower,user.upper=user.upper)
+  if ( ! is.null(locoptr <- attr(optPars,"optr")) && locoptr$convergence>0L) {
+    hlcor$warnings$optimMessage <- paste("optim() message: ",locoptr$message," (convergence=",locoptr$convergence,")",sep="")
+  }
   if ( ( ! is.null(optPars)) && attr(optPars,"method")== "optimthroughSmooth") {
     # provide logL estimate from the smoothing, to be used rather than the hlcor logL :
-    hlcor$APHLs$logLapp <- optr$value
-    attr(hlcor$APHLs$logLapp,"method") <- "  logL (smoothed)" 
+    logLapp <- optr$value
+    attr(logLapp,"method") <- "  logL (smoothed)" 
+    if (FALSE) { ## essai correction biais
+      message("Trying to correct bias of SEM procedure...")
+      p_lambda <- NROW(hlcor$lambda.object$coefficients_lambda)
+      np <- NCOL(hlcor$`X.pv`) + p_lambda
+      lmframe <- replicate(4*((np+1)*(np+2)/2), {## ((np+1)*(np+2)/2) is number of params to be fitted
+        rephlcor <- do.call("HLCor",HLCor.args)
+        if (p_lambda==0L) {
+          c(fixef(rephlcor), logLik(rephlcor)[1])
+        } else if (p_lambda==1L) {
+          c(fixef(rephlcor), lambda=rephlcor$lambda, logLik(rephlcor)[1])
+        } else stop("code missing for p_lambda>0 for bias correction of SEM.")
+        ## FR->FR + problem if one of the predict vaiables in named logLapp
+      } )
+      lmframe <-as.data.frame(t(lmframe))
+      colnames(lmframe)[colnames(lmframe)=="(Intercept)"] <- "fixef.intercept" ## because "(Intercept)" does not work below
+      quadfit <- eval(parse(text=paste("lm(logLapp ~ polym(",
+                                       paste(colnames(lmframe)[1:np],collapse=","),
+                                       ", degree=2,raw=TRUE),data=lmframe)"))) ## predict does not work if raw=FALSE
+      lmlower <- apply(lmframe[,1:np,drop=FALSE],2,min)
+      lmupper <- apply(lmframe[,1:np,drop=FALSE],2,max)
+      parnames <- names(lmlower)
+      ## R issue: [.data.frame loses col name for single col.
+      ## => lmframe[which.max(lmframe$logLapp),1:np] is 1-row data.frame is np>1; is *unnamed* numeric if np=1 unless drop=FALSE; 
+      ##    where we would wish it to be named numeric in both cases
+      initpar <- unlist(lmframe[which.max(lmframe$logLapp),1:np,drop=FALSE]) 
+      optpolym <- optim(par=initpar, 
+                        fn=function(v) {
+                          v <- data.frame(matrix(v,nrow=1)) ## matrix() loses names... ## data.frame uses names as col or row names dependeing on length(v)...
+                          colnames(v) <- parnames ## hence give names as a last step; again drop=F will be needed for 1-col 
+                          predict(quadfit, newdata=v[c(1,1),,drop=FALSE])[1] ## [c(1,1),] is an awful patch for predict.poly
+                        }, 
+                        lower=lmlower,upper=lmupper,method="L-BFGS-B",
+                        control=list(fnscale=-1,parscale=lmupper-lmlower)) 
+      ## computation of dfs as in compare.model.structures
+      attr(logLapp,"optpolym") <- optpolym$value
+      attr(logLapp,"lmframe") <- lmframe
+      attr(logLapp,"replicates") <- replicate(20,logLik(do.call("HLCor",HLCor.args)))
+      attr(logLapp,"stddevres") <- ((predict(optr$Krigobj)-optr$Krigobj$data$logLobj)/(1-optr$Krigobj$lev_phi))
+      attr(logLapp,"df_replicates") <- np
+    }
+    hlcor$APHLs$logLapp <- logLapp
   }
   if (is.character(trace$file)) {
     ## crude display of variable names in the trace file

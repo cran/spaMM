@@ -50,7 +50,7 @@ SEXP leverages( SEXP XX ){
   const int c(X.cols()); 
   const Eigen::HouseholderQR<MatrixXd> QR(X);
   MatrixXd Qthin(MatrixXd(QR.householderQ()).leftCols(c)); // householderQ SLOW: main bottleneck for GLMMs
-  return wrap(VectorXd(Qthin.cwiseProduct(Qthin).rowwise().sum())); //returns vector of leverages rather than thin Q matrix
+  return wrap(VectorXd(Qthin.cwiseProduct(Qthin).rowwise().sum().col(1))); //returns vector of leverages rather than thin Q matrix
 }
 
 // [[Rcpp::export]]
@@ -135,14 +135,16 @@ return wrap(swZ);
 
 // [[Rcpp::export]]
 SEXP ZtWZ( SEXP ZZ, SEXP WW ){
-Map<MatrixXd> Z(as<Map<MatrixXd> >(ZZ));
-const Map<VectorXd> W(as<Map<VectorXd> >(WW));
-//return wrap(Z.adjoint() * W.asDiagonal() *Z);
-VectorXd sqrtW=W.array().sqrt();
-MatrixXd swZ= sqrtW.asDiagonal() *Z;
-const int n(swZ.cols());
-swZ = MatrixXd(n, n).setZero().selfadjointView<Lower>().rankUpdate(swZ.transpose());// as in crossprod
-return wrap(swZ); 
+  Map<MatrixXd> Z(as<Map<MatrixXd> >(ZZ));
+  if (Z.cols()==0) return(wrap(MatrixXd(0,0))); // which the alternative code would do, but with an UBSAN issue.
+  const Map<VectorXd> W(as<Map<VectorXd> >(WW));
+  //returns wrap(Z.adjoint() * W.asDiagonal() *Z):
+  VectorXd sqrtW=W.array().sqrt();
+  MatrixXd swZ= sqrtW.asDiagonal() *Z;
+  const int n(swZ.cols());
+  // *this.rankUpdate(u) performs this= this+ (alpha=1) uu*
+  swZ = MatrixXd(n, n).setZero().selfadjointView<Lower>().rankUpdate(swZ.transpose());// as in crossprod
+  return wrap(swZ); 
 }
 
 

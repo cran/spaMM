@@ -4,7 +4,6 @@
 \title{Raster plots of predicted responses}
 
 \description{This documentation provides an example of producing a map out of spatial predictions, using rasters and geographical projections. No attempt has been made to provide a function automating the whole process, but the example can be used as a template.}
-\note{This example was kindly provided by Alexandre Courtiol, Leibniz Instutite of Zoo and Wildlife Research, Berlin.}
 \examples{
 if (spaMM.getOption("example_maxtime")>10) {          
 ## using the Bonne projection for the fit *and* the plots
