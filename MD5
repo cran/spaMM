@@ -1,14 +1,14 @@
-fa9b6eb4ec642e089a17ade926720da9 *DESCRIPTION
+fc73932477d7f0e630ebe0847989f3bd *DESCRIPTION
 0d553f49d999f5b1dd7e4d884f1be56d *NAMESPACE
 aaf22c7f70e1526266dda0b7c1b7399d *R/Beta.R
 334b5781cd55d7290d9942e6898162a7 *R/HLCor.R
 48d8d91a7d5c65d9bc6544c25f720384 *R/HLFactorList.R
-e7c3cb8ef40de60d9d55ff64bd744293 *R/HLfit.R
-0c47e33b80e119b4d3bec282367d7afe *R/HLfit_Internals.R
+63d0871ed35da7270e32dd741f3c1a87 *R/HLfit.R
+3d7c2d450f1b15a052b4765739a0e2bf *R/HLfit_Internals.R
 c2d2af2157f76c6eb1e97c0689dd6709 *R/HLframes.R
 a7ad705e8fa5eb5c71a5ef9bc2420c37 *R/LR.R
 ffbdebf0df065254d13fcae700b198c3 *R/LevenbergMstep.R
-eb213426bdb6244086342837e8c1e163 *R/MakeCovEst.R
+f62c0f173e20b050859350cce0bff5e9 *R/MakeCovEst.R
 29dd2967fe8ddfb768951585dbacb07b *R/RcppExports.R
 82f76f5015a2add885dadf5f5c084124 *R/SEMbetalambda.R
 a63960a5f807560f3f926caf49036672 *R/auglinmodfit.R
@@ -59,7 +59,7 @@ e1f10c7ff65b860333b0b7175519eb54 *data/wafers.RData
 2160a87414edf88691129fab674a31e7 *data/welding.RData
 acb69d528614f3da680fd498f425f2d7 *data/worldcountries.RData
 d8854c2b53f67ddba3439380d3dc09c0 *inst/CITATION
-6cdeedd9104279708d5cb2e2430ce632 *inst/NEWS.Rd
+990eea3798cbfa3fad4cb939e6973d9b *inst/NEWS.Rd
 9077a1f1984dd68a06951dbe5c7e00d2 *man/GHK_oneside.Rd
 60d34ba6e3d90d64cf839062993d69b6 *man/HLCor.Rd
 5bb333bd19eddcef970a77b4cd7d4c79 *man/HLfit.Rd
@@ -91,7 +91,7 @@ b09261754b9f2cfa5244b2a727b04e54 *man/seeds.Rd
 22516fcb1e9a889a5b2dd405a13a3217 *man/spaMM-internal-Rcpp.Rd
 f61613525359310b2a74e667c888f8be *man/spaMM-internal-migraine.Rd
 57cf080acd7d7c1a4c8d0e5510141825 *man/spaMM-internal.Rd
-c6f850bc3765fafd91293ea136dea3f4 *man/spaMM.Rd
+47ca73c89b03fef1c0e43873023f0382 *man/spaMM.Rd
 38cd7e9809945bd20f25b9a13d894603 *man/spaMM.filled.contour.Rd
 0f5b6174066af0c3c82665c73834008f *man/spaMMcolors.Rd
 856b28492cdb055b62b88173f7f5be7a *man/summary.HL.Rd
@@ -105,7 +105,7 @@ c8192b6585e15164d65a93a0b486254f *src/Makevars.win
 1d0c8d169460121cbbf87ec5f7afa610 *src/ghk.cpp
 4753a50d3406861097680d7e52d8174a *src/gsl_bessel.cpp
 21e9ef61efcfdab84a899868bc39f423 *src/gsl_bessel.h
-5af93075170d505ddf62509d4480bf40 *src/spaMM_linear.cpp
+3600979d704b1e80fe189262d2c942d7 *src/spaMM_linear.cpp
 ed9e059a5063c0bb432742c5a99b250c *src/spaMM_linear.h
 56e9bd95cdeabac9b761678a152ccc72 *tests/test-all.R
 08b59a55ba482b15b8fc35c3eb896285 *tests/testthat/test-CAR.R

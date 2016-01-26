@@ -50,7 +50,8 @@ SEXP leverages( SEXP XX ){
   const int c(X.cols()); 
   const Eigen::HouseholderQR<MatrixXd> QR(X);
   MatrixXd Qthin(MatrixXd(QR.householderQ()).leftCols(c)); // householderQ SLOW: main bottleneck for GLMMs
-  return wrap(VectorXd(Qthin.cwiseProduct(Qthin).rowwise().sum().col(1))); //returns vector of leverages rather than thin Q matrix
+  // transpose -> 1-row matrx OK for return as VectorXd -> R vector 
+  return wrap(VectorXd(Qthin.cwiseProduct(Qthin).rowwise().sum().transpose())); //returns vector of leverages rather than thin Q matrix
 }
 
 // [[Rcpp::export]]

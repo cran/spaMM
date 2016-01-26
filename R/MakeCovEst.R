@@ -93,7 +93,7 @@ makeCovEst1 <- function(u_h,ZAlist,cum_n_u_h,prev_LMatrices,
           # lmer( y ~ 1 + x  +( x | group ), data = dat,REML="F") 
         } else { 
           hessnondiag <- crossprod(locZAL,sweep(X.Re,MARGIN=1,auglinmodblob$w.resid,`*`))  
-          Md2hdbv2 <- rbind(cbind(ZtWZ(X.Re,auglinmodblob$w.resid), t(hessnondiag)),
+          Md2hdbv2 <- rbind(cbind(ZtWZwrapper(X.Re,auglinmodblob$w.resid), t(hessnondiag)),
                             cbind(hessnondiag, - locd2hdv2)) 
           ladbv <- LogAbsDetWrap(Md2hdbv2,logfac=-log(2*pi))
         }
@@ -210,7 +210,7 @@ makeCovEst2 <- function(u_h,ZAlist,cum_n_u_h,prev_LMatrices,
         if (ncol(X.Re)==0L) { ## fit ML: p_bv=p_v hence d2hdpbv reduces to d2hdv2
           lad <- - LogAbsDetWrap( - locd2hdv2,logfac=-log(2*pi))
         } else { 
-          Md2hdbv2 <- rbind(cbind(ZtWZ(X.Re,w.resid), t(hessnondiag)),
+          Md2hdbv2 <- rbind(cbind(ZtWZwrapper(X.Re,w.resid), t(hessnondiag)),
                             cbind(hessnondiag, - locd2hdv2)) 
           lad <- - LogAbsDetWrap(Md2hdbv2,logfac=-log(2*pi))
         } ## le lad est OK = ladbv de la version standard

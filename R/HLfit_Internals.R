@@ -43,6 +43,8 @@ ZtWZwrapper <- function(ZAL,w) {
   } else if (inherits(ZAL,"Matrix")) {
     return(crossprod(ZAL, Diagonal(x=w) %*% ZAL))    
     #return(crossprod(Diagonal(x=sqrt(w)) %*% ZAL)) ## idem, bizarrement pas utile    
+  } else if (ncol(ZAL)==0L) {
+    return(matrix(NA,ncol=0,nrow=0))    
   } else return(ZtWZ(ZAL,w))
 }
 

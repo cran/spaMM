@@ -3,7 +3,7 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
-\section{CHANGES UP TO VERSION 1.7}{
+\section{CHANGES UP TO VERSION 1.7.2}{
 \subsection{NEW FEATURES}{
 \itemize{
 %\item Stochastic Expectation-Maximization (SEM) algorithm for binary probit model (to be documented)
@@ -23,6 +23,7 @@
 \itemize{
 \item This new version includes several improvements of predict(), the most notable being a correction of prediction variances for new values of predictor variables, which were incorrect in CRAN version 1.6.2 (but not in CRAN version 1.5.1). Many other more trivial bugs or features of predict() have been corrected.   
 \item summary.fixedLRT() failed to display correctly the bootstrap results. This is corrected.
+\item A bug in C++ code, introduced in version  1.7.1, has been corrected in version 1.7.2; and code applying some Eigen functions on a matrix with a dimension equal to zero (generating an UBSAN runtime error but a correct retrun value in other conditions) has been fixed.
 }
 }
 }

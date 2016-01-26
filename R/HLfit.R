@@ -717,7 +717,7 @@ HLfit <- function(formula,
       ranefEstargs <- list(u_h=u_h,ZAlist=ZAlist,cum_n_u_h=cum_n_u_h,
                            prev_LMatrices=next_LMatrices,
                            userLfixeds=attr(ZALlist,"userLfixeds"),
-                           hessUL=ZtWZ(X.Re,w.resid),
+                           hessUL=ZtWZwrapper(X.Re,w.resid),
                            hessFac=sweep(X.Re,MARGIN=1,w.resid,`*`),
                            w.resid=w.resid,
                            processed=processed)
@@ -1009,7 +1009,7 @@ HLfit <- function(formula,
     if (models[[1]] != "etaHGLM" && models[["phi"]] != "phiHGLM") { ## ie GLM, not HGLM
       ## note that p_v=p_bv here, whether an REML estimation of phi is used or not... 
       ml <- calcpv$clik ## vanilla likelihood
-      d2hdbv2 <- ZtWZ(X.Re,w.resid)  ## t(X.Re)%*%Wresid%*%X.Re ## X should be the one for leverages
+      d2hdbv2 <- ZtWZwrapper(X.Re,w.resid)  ## t(X.Re)%*%Wresid%*%X.Re ## X should be the one for leverages
       lad <- LogAbsDetWrap(- d2hdbv2,logfac=-log(2*pi))
       rl <- ml - lad/2
       if (AIC) mAIC <- -2*ml+2*pforpv
@@ -1024,11 +1024,11 @@ HLfit <- function(formula,
         if (ncol(X.Re)>0) {
           # X.Re is not Matrix and w.resid shouldn't =>sweep is fast
           hessnondiag <- crossprod(ZAL,sweep(X.Re,MARGIN=1,w.resid,`*`)) ## Matrix or matrix depending on ZAL
-          Md2hdbv2 <- as.matrix(rBind(cBind(ZtWZ(X.Re,w.resid), t(hessnondiag)),
+          Md2hdbv2 <- as.matrix(rBind(cBind(ZtWZwrapper(X.Re,w.resid), t(hessnondiag)),
                                       cBind(hessnondiag, - d2hdv2))) 
           ladbv <- LogAbsDetWrap(Md2hdbv2,logfac=-log(2*pi))
           if (AIC) { ## diff de d2hdbv2 slmt dans dernier bloc (FR->FR AIC on REML ????)
-            Md2clikdbv2 <- as.matrix(RBIND(CBIND(ZtWZ(X.Re,w.resid), t(hessnondiag)),
+            Md2clikdbv2 <- as.matrix(RBIND(CBIND(ZtWZwrapper(X.Re,w.resid), t(hessnondiag)),
                                  CBIND(hessnondiag, ZtWZwrapper(ZAL,w.resid))))            
           }
         } else { ## fit ML: p_bv=p_v hence d2hdpbv reduces to d2hdv2
