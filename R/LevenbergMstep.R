@@ -1,16 +1,15 @@
 LevenbergMstepCallingCpp <- function(wAugX,LM_wAugz,damping) {
   ## FR->FR perhaps http://eigen.tuxfamily.org/dox/unsupported/LMonestep_8h_source.html could be useful ???
-  rhs <- crossprod(wAugX,LM_wAugz) ## t(wAugX) %*% LM_wAugz ## backward: A'.z* ## rhs needed further below to assess gainratio
+  rhs <- drop(crossprod(wAugX,LM_wAugz)) ## t(wAugX) %*% LM_wAugz ## backward: A'.z* ## rhs needed further below to assess gainratio
   resu <- LevenbergMsolveCpp(wAugX, rhs, damping )
-  dbetaV <- as.matrix(resu$dbetaV)
-  dampDpD <- resu$dampDpD
-  return(list(dbetaV=dbetaV,rhs=rhs,dampDpD=dampDpD)) 
+  resu$rhs <- rhs
+  return(resu) 
 }  
 
 
 ## here version 1.5.3 has an interesting signed.wAugX concept
 LevenbergMstep <- function(wAugX,LM_wAugz,damping,stop.on.error=TRUE) {
-  rhs <- crossprod(wAugX,LM_wAugz) ## t(wAugX) %*% LM_wAugz ## backward: A'.z* ## rhs needed further below to assess gainratio
+  rhs <- drop(crossprod(wAugX,LM_wAugz)) ## t(wAugX) %*% LM_wAugz ## backward: A'.z* ## rhs needed further below to assess gainratio
   if (inherits(wAugX,"Matrix")) {
     ApAdDpD <- crossprod(wAugX)
   } else ApAdDpD <- crossprodCpp(wAugX) ## t(wAugX) %*% wAugX ## A'.A=R'.R     
@@ -29,6 +28,6 @@ LevenbergMstep <- function(wAugX,LM_wAugz,damping,stop.on.error=TRUE) {
   if (inherits(dbetaV,"try-error")) {
     dbetaV <- ginv(ApAdDpD) %*% rhs
   }
-  dbetaV <- as.numeric(dbetaV) ## may be dgeMatrix if wAugXwas dgCMatrix
+  dbetaV <- as.numeric(dbetaV) ## may be dgeMatrix if wAugX was dgCMatrix
   return(list(dbetaV=dbetaV,rhs=rhs,dampDpD=dampDpD))
 }

@@ -5,7 +5,7 @@ data(scotlip)
 corrHLfit(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(scotlip$expec)),
           data=scotlip,family=poisson(),
           adjMatrix=Nmatrix) ## 4 s.
-## same without optim: run in HLCor examples
+## same without optim: run in scotlip examples; cf also autoregressive.Rd for ML fits
 
 set.seed(124)
 ldl <- selfAdjointSolverCpp(Nmatrix)

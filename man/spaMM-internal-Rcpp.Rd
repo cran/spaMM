@@ -19,7 +19,7 @@
 \alias{tcrossprodCpp} 
 \alias{ZWZt} 
 \alias{ZtWZ} 
-
+\alias{Rcpp_pMVN}
 
 \title{Internal spaMM Functions using Rcpp/RcppEigen}
 \description{

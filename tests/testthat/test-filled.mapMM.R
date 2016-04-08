@@ -30,3 +30,11 @@ if (require(maps)) { ## required for add.map=TRUE
                               xlab="longitude",ylab="latitude"))
 }
 # test of syntax, no expect_ yet
+
+## local maximum issue
+# obj <- function(v) {logLik(corrHLfit(formula=migStatus ~ 1 + Matern(1|latitude+longitude),
+#                                      HLmethod='ML',data=blackcap,ranFix=as.list(v)))}
+# mygrid <- expand.grid(rho=seq(0.2,0.5,0.025),nu=seq(16))
+# apply(mygrid,1L,obj) -> blu
+# spaMM.filled.contour(x=seq(0.2,0.5,0.025),y=seq(16),z=matrix(blu,ncol=16))
+

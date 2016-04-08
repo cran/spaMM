@@ -11,14 +11,13 @@
 ## anyOptim.args contains arguments common to all optimizers, and arguments for the objective function
 ## optimizers.args contains arguments specific to the given optimizer
 locoptim <- function(init.optim,LowUp,anyObjfnCall.args,trace=list(file=NULL,append=T),Optimizer="L-BFGS-B",optimizers.args,maxcorners=2^11,objfn=HLCor.obj,maximize=FALSE) {
-  processedHL1 <- getProcessed(anyObjfnCall.args$processed,"HL[1]") ## there's also HLmethod in processed<[[]]>$callargs
+  processedHL1 <- getProcessed(anyObjfnCall.args$processed,"HL[1]",from=1L) ## there's also HLmethod in processed<[[]]>$callargs
   initvec <- unlist(init.optim)
-  if ( ! is.null(anyObjfnCall.args$ranefParsVec) ) stop("! is.null(anyObjfnCall.args$ranefParsVec)") ## FR->FR catch programming errors
-  ## anyObjfnCall.args$ranefParsVec <- NULL ## removes this for optimization! otherwise fatal for nlminb! ## but should become obsolete ?
+  if ( ! is.null(anyObjfnCall.args$ranefParsVec) ) stop("! is.null(anyObjfnCall.args$ranefParsVec)") ## catch programming errors
   optimizerObjfnCall.args <- notoptimObjfnCall.args <- anyObjfnCall.args
   notoptimObjfnCall.args$ranefParsVec <- initvec ## logscale, inherits names from init.optim
   lower <- unlist(LowUp$lower); upper <- unlist(LowUp$upper)
-  if (length(initvec)>1) { ## FR->FR voirsi on peut dire >0car ca evite optimze failement bloque par un max local 
+  if (length(initvec)>1) { ## FR->FR voir si on peut dire >0 car ca evite optimze failement bloque par un max local 
     ## old version before 2014/09/03
     parscale <- (upper-lower) ## unlist because some list elements may have length >1 (eg if rho has several     ###### basic unrefined fit for initvec...
     if (is.character(trace$file)) write("## Call for initial values",file=trace$file,append=T)   
@@ -26,19 +25,24 @@ locoptim <- function(init.optim,LowUp,anyObjfnCall.args,trace=list(file=NULL,app
       init.obj <- do.call(objfn,notoptimObjfnCall.args)
       ###### look in the corners 
       ## L-BFGS-B tends to find the local max closest to the initial point. Search for good initial point:
-      byvar <- t(rbind(lower,upper)) ## HLCor expects trLambda...
-      ### only the optim target variables are retained from the REML fit, although the lambda valuefrom this fit might be the most useful.  
-      ## But if corrHLfit was called with an ranFix, we do want this (as part of ranPars) in the HLCor.obj calls. 
+      byvar <- t(rbind(lower,upper)) 
       byvar <- 0.999 * byvar + 0.001 *rowMeans(byvar)
       grillelist <- list()
       gridSteps <- floor(35^(1.05/length(initvec))) ## 6 for 2 pars,  3 for 3 pars, then 2  2  1  1 
       gridSteps <- max(2,gridSteps)
-      for(name in rownames(byvar)) {grillelist[[name]] <- seq(byvar[name,1],byvar[name,2],length.out=gridSteps)}
-      if ( (2^length(grillelist)) <= maxcorners ) {
-        corners <- expand.grid(grillelist)
-      } else { ## otherwise we cannot dream of allocating, say, 2^36 values...
-        corners <- replicate(maxcorners,unlist(lapply(grillelist,sample,size=1)))
-        corners <- t(corners)
+      if (  setequal(sort(names(lower)),c("trNu","trRho")) ) {
+        ## special ad hoc case, transect trying to catch the likeliy trRho,trNu ridge
+        trRhoSeq <- seq(byvar["trRho",1L],byvar["trRho",2L],length.out=36)
+        trNuSeq <- seq(byvar["trNu",2L],byvar["trNu",1L],length.out=36)
+        corners <- cbind(trRho=trRhoSeq,trNu=trNuSeq)
+      } else { ## general case
+        for(name in rownames(byvar)) {grillelist[[name]] <- seq(byvar[name,1L],byvar[name,2L],length.out=gridSteps)}
+        if ( (2^length(grillelist)) <= maxcorners ) {
+          corners <- expand.grid(grillelist)
+        } else { ## otherwise we cannot dream of allocating, say, 2^36 values...
+          corners <- replicate(maxcorners,unlist(lapply(grillelist,sample,size=1)))
+          corners <- t(corners)
+        }
       }
       ## ranefParsVec corresponds to ranPars but as vector, not as list
       ## uses HLCor.obj because of the return value...
@@ -74,8 +78,7 @@ locoptim <- function(init.optim,LowUp,anyObjfnCall.args,trace=list(file=NULL,app
     if (is.character(trace$file)) write("## Optimization call",file=trace$file,append=T)   
     if (Optimizer=="nlminb") {
       ## nlminb code
-      nlminbArgs <- optimizerObjfnCall.args 
-      nlminbArgs$skeleton <- init.optim
+      nlminbArgs <- optimizerObjfnCall.args ## must include $skeleton avec son attr RHOMAX
       if (maximize) {
         nlminbArgs$objective <- function(...) {-objfn(...)}
       } else nlminbArgs$objective <- function(...) {objfn(...)}
@@ -89,7 +92,7 @@ locoptim <- function(init.optim,LowUp,anyObjfnCall.args,trace=list(file=NULL,app
       control <- list(parscale=parscale,factr=1e9) ## factr was the stricter 1e8 up to 23/01/13
       if (maximize) control$fnscale <- -1     
       control[names(optimizers.args$optim$control)] <- optimizers.args$optim$control ## ...which may be overwritten 
-      ## FR->FR lower and upper were missing 7/11/2014!
+      ## lower and upper were missing 7/11/2014!
       anyBaseOptim.args <- c(optimizerObjfnCall.args,list(par=initvec,lower=lower,upper=upper,control=control,method=Optimizer)) 
       optr <- do.call("optim",c(anyBaseOptim.args,list(fn=objfn))) ## optimize HLCor.obj.value (=p_bv by default, except for SEM)
     }

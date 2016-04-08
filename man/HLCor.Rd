@@ -9,10 +9,10 @@ A convenient interface for \code{\link{HLfit}}, constructing the correlation mat
 then estimating fixed effects and dispersion parameters using \code{HLfit}.
 }
 \usage{
-HLCor(formula,ranPars=NULL,data,distMatrix,
-      uniqueGeo=NULL,adjMatrix,
-      corrMatrix,verbose=c(warn=TRUE,trace=FALSE,summary=FALSE),
-      control.dist = list(),...)
+HLCor(formula, data, family = gaussian(), ranPars = NULL, distMatrix,
+      uniqueGeo = NULL, adjMatrix, corrMatrix,
+      verbose = c(warn=TRUE,trace=FALSE,summary=FALSE),
+      control.dist = list(), ...)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -29,6 +29,8 @@ HLCor(formula,ranPars=NULL,data,distMatrix,
 }
   \item{data}{
    The data frame to be analyzed.
+  }
+  \item{family}{A \code{family} object describing the distribution of the response variable. See \code{\link{HLfit}} for further information.
   }
   \item{distMatrix}{
     A distance matrix between geographic locations, forwarded to \code{MaternCorr}
@@ -64,7 +66,7 @@ HLCor(formula,ranPars=NULL,data,distMatrix,
    }
 }
   \item{\dots}{
-    Further parameters passed to \code{HLfit} or to \code{designL.from.corr}.
+    Further parameters passed to \code{HLfit} or to \code{designL.from.Corr}.
 }
 }
 \details{

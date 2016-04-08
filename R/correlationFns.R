@@ -2,7 +2,7 @@ HL_process.args <- function (...) { ## from gsl package
   a <- list(...)
   attr <- attributes(a[[which.max(unlist(lapply(a, length)))]])
   a <- lapply(a, as.vector)
-  out <- do.call("rbind", a)
+  out <- do.call(rbind, a)
   out <- list(`1`=out[1,],`2`=out[2,]) ## == out <- split(out, row(out)) but profiling shows the latter is slow
   names(out) <- paste("arg", 1:length(a), sep = "")
   return(c(out, attr = list(attr)))
@@ -96,6 +96,7 @@ if (F) {
  seL %*% t(seL)
 }
 
+## FR->FR we also use this function once on d2hdv2 in HLfit...
 `designL.from.Corr` <- function(m=NULL,symSVD=NULL,try.chol=TRUE,try.eigen=FALSE,threshold=1e-06,debug=FALSE,SVDfix=1/10) {
   ## cf return value: the code must compute 'L', and if the type of L is not chol, also 'corr d' and 'u'
   type <- NULL
@@ -140,7 +141,7 @@ if (F) {
       if ( ! inherits(LDL,"try-error")) d <- LDL$values 
     }
     if ( (! try.eigen) || inherits(LDL,"try-error") || any(d < -1e-08)) {
-      if (.spaMM.data$options$USEEIGEN) {
+      if (.spaMM.data$options$USEEIGEN) { ## see package irlba for SVD of sparse matrices
         symSVD <- selfAdjointSolverCpp(m) ## such that v= t(u)without any sign issue  
         u <- symSVD$u
         d <- symSVD$d  
@@ -156,12 +157,12 @@ if (F) {
         } 
         if (inherits(SVD,"try-error")) {
           ## typically m is I + a few large elements
-          ## Most iformative post: http://r.789695.n4.nabble.com/Observations-on-SVD-linpack-errors-and-a-workaround-td837282.html
+          ## Most informative post: http://r.789695.n4.nabble.com/Observations-on-SVD-linpack-errors-and-a-workaround-td837282.html
           ####################### aide sur le .Rdata :  zut <- as.list(attr(resu,"condition")$call) est un HLCor call
           print("Singular value decomposition failed.") 
           print(" See documentation of the 'SVDfix' argument of 'designL.from.Corr'")
           print("   for ways to handle this.")
-          return(try(stop(),silent=T)) ## passes control to calling function
+          return(try(stop(),silent=TRUE)) ## passes control to calling function
         } else {
           d <- SVD$d
           ## must be valid for sym (semi) PD matrices using U, V being eigenvectors of m %*% t(m)
@@ -183,9 +184,8 @@ if (F) {
       print(mess)
       return(try(stop(),silent=T)) ## passes control to calling function
     } else { ## we have a not-too-suspect decomp
-      # d[d< threshold]<- threshold ## no longer a corrMat
+      # d[d< threshold]<- threshold ## wrong for corrmats, would be OK for d2hdv2 computation which uses this function 
       if (any(d<threshold)) d <- threshold + (1-threshold) * d ## 17/05/2014
-      ## FR->FR but we also use this function once on d2hdv2 in HLfit...
       L <- ZWZt(u,sqrt(d))
     }
   } 
@@ -212,7 +212,7 @@ CondNormfn <- function(decomp,lambda) {
   diago <- decomp$d/(decomp$d+1/lambda)
   sqrtCondCovLv <- sweep(decomp$u,2,sqrt(diago),`*`); ## so that cond Corr = this.t(this)
   condLvReg <- tcrossprodCpp(sqrtCondCovLv) ## conditional regr = cond Corr
-  # FR->FR un probleme est que la repres sqrtCondCovLv est loin d'être "numerically unique". 
+  # Un probleme est que la repres sqrtCondCovLv est loin d'être "numerically unique". 
   # Donc même si on a des distrib equivalentes pour differents sqrtCondCovLv 
   # (en particulier des condLvReg equivalents)
   # on va avoir sqrtCondCovLv %*% rnorm nettement divergents sous linux vs Windows 

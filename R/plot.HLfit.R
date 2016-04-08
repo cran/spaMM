@@ -17,7 +17,7 @@
     abline(0,1)
   }
 	if ("ranef" %in% which) {
-	  if (x$family$family %in% c("poisson","binomial")) {
+	  if (x$family$family %in% c("poisson","binomial","COMPoisson")) {
 	    lev_phi <- NULL  ## currently (10/2013) <HLfit>$lev_phi non-null even for poisson, binomial
 	  } else lev_phi <- x$lev_phi
 	  lev_lambda <- x$lev_lambda

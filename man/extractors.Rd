@@ -58,7 +58,7 @@ Return values are numeric (for \code{logLik}), vectors (most cases), matrices (f
 \examples{
 data(wafers)
 m1 <- HLfit(y ~X1+X2+(1|batch),
-          resid.formula = ~ 1 ,data=wafers,HLmethod="ML")
+          resid.model = ~ 1 ,data=wafers,HLmethod="ML")
 fixef(m1)
 vcov(m1)
 ranef(m1)

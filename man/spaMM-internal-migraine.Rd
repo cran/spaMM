@@ -7,10 +7,9 @@
 \alias{connectedSets}
 \alias{extrapolhull}
 %~ 'old':
-\alias{old.nextPoints} 
+%\alias{old.nextPoints} 
 \alias{rtnorm.copy}
 \alias{sampleNearby}
-\alias{sampleNextPoints}
 
 \title{Internal spaMM Functions}
 \description{

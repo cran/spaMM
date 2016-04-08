@@ -11,8 +11,8 @@ update.HLfit <- function (object, formula., ..., evaluate = TRUE)
     stop("need an object with call component")
   extras <- match.call(expand.dots = FALSE)$...
   if (!missing(formula.)) {
-    predictor <- formula(object) ## get from $predictor, not from $call
-    if ("predictor" %in% class(predictor)) {
+    predictor <- formula(object) ## formula.default gets formula from $call, not from $predictor
+    if (inherits(predictor,"predictor")) {
       form <- update.formula(attr(predictor,"oriFormula"),formula.) ## LOSES ALL ATTRIBUTES 
     } else  form <- update.formula(predictor,formula.) 
     ## !!!! FR->FR does not handle etaFix$beta !!!!
@@ -20,7 +20,7 @@ update.HLfit <- function (object, formula., ..., evaluate = TRUE)
     predArgs <- list(formula=form,
                      LMatrix=attr(predictor,"LMatrix"),
                      AMatrix=attr(predictor,"AMatrix"),
-                     ZALMatrix=attr(predictor,"ZALMatrix"),
+                     ZALMatrix=attr(predictor,"ZALMatrix"), ## all again from $call, not from $predictor
                      offset=off)
     ## attributes BinDenForm and oriFormula will be reconstructed:
     call$formula <- do.call("Predictor",predArgs) ## reconstructs oriFormula... otherwise we have a predictor without it...

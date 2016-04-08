@@ -197,25 +197,33 @@ calc.plot.dims <- function(x,y,xrange=NULL,yrange=NULL,margin=1/20,map.asp=NULL)
   yspan <- (yrange[2]-yrange[1])
   margey <- yspan * margin
   yrange  <- yrange+margey*c(-1,1)
-  
-  if (is.null(map.asp)) map.asp <- yspan/xspan
-  
+
+  # consequences of par()
   wscale <- (3 + par("mar")[2]) * par("csi") * 2.54
   wmap <- par("din")[1]*2.54 - wscale
   Wmargin <- (par("din")[1]-par("pin")[1])*2.54
   wplotmap <- wmap - Wmargin  ## likely width of plot area
   Hmargin <- (par("din")[2]-par("pin")[2])*2.54
+  max_map.asp <- ( par("din")[2]*2.54 -Hmargin)/wplotmap
+  #print(paste("max_map.asp=",max_map.asp))
+  
+  if (is.null(map.asp)) map.asp <- yspan/xspan
+  map.asp <- min(map.asp,max_map.asp)
+  if (map.asp>4) map.asp <- 1
+  #print(paste("map.asp=",map.asp))
+  
   hmap <- wplotmap*map.asp + Hmargin
-  if (hmap>(par("din")[2]*2.54)) {
-    hmap <- (par("din")[2]*2.54)
-    #reduction <- (hmap-Hmargin)/wplotmap
-    wmap <- (hmap - Hmargin)/map.asp
-    ## this new wmap tries to keep the aspect ratio, but it may be too narrow (and if < Wmargin, may generate a 'figure margins too large' error)
-    if (wmap < Wmargin) {
-      message("Aspect ratio cannot respect x and y ranges. Use 'map.asp' argument to control it directly.")
-      wmap <- 1.05 * Wmargin ## 24/12/2014
-    }
-  }
+  #   if (hmap>(par("din")[2]*2.54)) {
+  #     #print("hmap>(par(\"din\")[2]*2.54)")
+  #     hmap <- (par("din")[2]*2.54)
+  #     #reduction <- (hmap-Hmargin)/wplotmap
+  #     wmap <- (hmap - Hmargin)/map.asp
+  #     ## this new wmap tries to keep the aspect ratio, but it may be too narrow (and if < Wmargin, may generate a 'figure margins too large' error)
+  #     if (wmap < Wmargin) {
+  #       message("Aspect ratio cannot respect x and y ranges. Use 'map.asp' argument to control it directly.")
+  #       wmap <- 1.05 * Wmargin ## 24/12/2014
+  #     }
+  #   }
   return(c(wmap,hmap,wscale))
 }
 
@@ -272,11 +280,11 @@ spaMMplot2D <- function (x,y,z,
   par(mar = mar)
   #  plot.new()
   ## main plot
-  plot.window(xrange, yrange, "", xaxs = xaxs, yaxs = yaxs)
   topontop <- order(zscaled,decreasing=FALSE) 
   plot(x=x[topontop],y=y[topontop], ## so that highest value will be printed last
        xlab="",ylab="", # give control to plot.title
        axes=FALSE, ## to retain control in later call
+       xlim=xrange,ylim=yrange,xaxs = xaxs, yaxs = yaxs,
        col=ZColor[zscaled[topontop]],lwd=2)
   if (is.logical(add.map)) {
     if(add.map) {
@@ -302,84 +310,6 @@ spaMMplot2D <- function (x,y,z,
 } ## end spaMMplot2D
 
 
-# what requires that plot.new has been called cannot be passed as argument to internal function 
-#  and should be run after the relevant plot has been drawn...
-recent.mapMM <- function (fitobject,Ztransf=NULL,coordinates, 
-                   ## : first the arguments that differ from spaMMplot2D
-                   xrange=range(x, finite = TRUE),yrange=range(y, finite = TRUE),
-                   margin=1/20,add.map= FALSE,
-                   nlevels = 20, color.palette = spaMM.colors, 
-                   map.asp=NULL,
-                   col = color.palette(length(levels) - 1), 
-                   plot.title, plot.axes, add.points, decorations,
-                   key.title=NULL, key.axes=NULL, xaxs = "i", yaxs = "i", las = 1, 
-                   axes = TRUE, frame.plot = axes,...) {
-  if (missing(coordinates)) coordinates <- colnames(attr(fitobject,"info.uniqueGeo"))
-  if (length(coordinates)!=2L) {
-    stop(paste("'mapMM' plots only 2D maps, while coordinates are of length ",length(coordinates),sep=""))
-  }
-  pred <- predict(fitobject,binding="fitted")
-  x <- pred[,coordinates[1]]
-  y <- pred[,coordinates[2]]
-  z <- pred[,attr(pred,"fittedName")]
-  if ( ! is.null(Ztransf)) {z <- do.call(Ztransf,list(Z=z))} # 12/2014 ## triying to match the list to the arg name will fail on primitives such as log (cf formals(log))
-  #
-  levels <- pretty(range(z), nlevels) ## moved up to here post 1.4.4 otherwise discrepancy between main plot and scale bar 
-  nlevels <- length(levels)-1
-  zscaled <- 1 + floor(nlevels*(0.000001+0.999998*(z-min(z))/(max(z)-min(z)))) ## makes sure its floor( ]1,nlevels+1[ ) 
-  ZColor <- color.palette(n=nlevels) ## bug corrected (spaMM.colors -> color.palette) post 1.4.4  
-  mar.orig <- (par.orig <- par(c("mar", "las", "mfrow")))$mar
-  on.exit(par(par.orig))
-  wmaphmap <- calc.plot.dims(x,y,xrange=xrange,yrange=yrange,margin=margin,map.asp=map.asp)  
-  layout(matrix(c(2, 1), ncol = 2L), 
-         widths = c(lcm(wmaphmap[1]),lcm(wmaphmap[3])),
-         heights=c(lcm(wmaphmap[2])),respect=TRUE)
-  ## respect=TRUE est crucial...
-  #  layout(matrix(c(2, 1), ncol = 2L), widths = c(wmap,wscale),heights=c(hmap),respect=TRUE)
-  par(las = las)
-  mar <- mar.orig
-  mar[4L] <- mar[2L]
-  mar[2L] <- 1
-  par(mar = mar)
-  ## SCALE
-  plot.new()
-  plotScale(z,levels,key.axes,key.title,axes,col)
-  #
-  mar <- mar.orig
-  mar[4L] <- 1
-  par(mar = mar)
-  #  plot.new()
-  ## MAP
-  plot.window(xrange, yrange, "", xaxs = xaxs, yaxs = yaxs)
-  topontop <- order(zscaled,decreasing=FALSE) 
-  plot(x=x[topontop],y=y[topontop], ## so that highest value will be printed last
-       xlab="",ylab="", # 06/2014: give control to plot.title
-       axes=FALSE, ## to retain control in later call
-       col=ZColor[zscaled[topontop]],lwd=2)
-  if (is.logical(add.map)) {
-    if(add.map) {
-      if (requireNamespace("maps",quietly=TRUE)) {
-        maps::map(,xlim=xrange,ylim=yrange,add=TRUE)  ## require + :: is the way for objects from packages in Suggests:
-      } else message("Package 'maps' not available, 'add.map' is ignored.")
-    } 
-  } else eval(add.map) ## the user may have included a map() in it but it's his problem...
-  if (missing(plot.title)) {
-    do.call(title,list(...)) ## ... may contain xlab, ylab
-  } else plot.title
-  if (missing(plot.axes)) {
-    if (axes) {
-      Axis(x, side = 1)
-      Axis(y, side = 2)
-    }
-  }
-  else plot.axes
-  ## currently add.points and decorations are equivalent:
-  if (missing(add.points)) {} else add.points
-  if ( ! missing(decorations)) decorations
-  if (frame.plot) box()
-  invisible()  
-}
-
 mapMM <- function (fitobject,Ztransf=NULL,coordinates,
                    add.points,decorations=NULL,plot.title=NULL,plot.axes=NULL,envir=-3,...) {
   ## currently add.points and decorations are equivalent:
@@ -395,11 +325,7 @@ mapMM <- function (fitobject,Ztransf=NULL,coordinates,
   if ( ! is.null(Ztransf)) {Zvalues <- do.call(Ztransf,list(Z=Zvalues))} # 12/2014
   #dotlist <- list(...) 
   #arglist <- c(list(x=x,y=y,z=Zvalues,add.points={eval(add.points,-2)}),dotlist)
-  #do.call("spaMMplot2D",arglist) # **** les eval ne passent pas dans une liste ****
-  #if(missing(add.points)) add.points <- NULL
-  #if(missing(decorations)) decorations <- NULL
-  #if(missing(plot.title)) plot.title <- NULL
-  #if(missing(plot.axes)) plot.axes <- NULL
+  #do.call("spaMMplot2D",arglist) # *** les eval ne passent pas dans une liste *** (PS: bc of "spaMMplot2D" instead of spaMMplot2D?)
   spaMMplot2D(x=x,y=y,z=Zvalues,
               decorations=eval(decorations,envir),
               plot.title=eval(plot.title,envir),
@@ -415,7 +341,7 @@ mapMM <- function (fitobject,Ztransf=NULL,coordinates,
                            margin = 1/20, map.formula, phi = 1e-05, gridSteps = 41, 
                            decorations = quote(points(pred[, coordinates], cex = 1, lwd = 2)), 
                            add.map = FALSE, axes = TRUE, plot.axes, map.asp = NULL,
-                           variances=list(fixef=FALSE,linPred=FALSE,resid=FALSE,sum=FALSE),
+                           variance=NULL,
                            var.contour.args=list(),
                            ...) 
 {
@@ -425,11 +351,13 @@ mapMM <- function (fitobject,Ztransf=NULL,coordinates,
     stop(paste("'map' plots only 2D maps, while coordinates are of length ", 
                length(coordinates), sep = ""))
   }
-  if ("cov" %in% names(variances)) {
-    message(" 'cov' in 'variances' argument is ignored")
-    variances$cov <- FALSE
+  if (length(variance)==0L) {
+    variance <- list()
+  } else {
+    if (length(variance)>1L) stop("'variance' argument should include a single name")
+    if (is.character(variance)) variance <- structure(list(TRUE),names=variance)
   }
-  pred <- predict(fitobject,variances=variances, binding="fitted")
+  pred <- predict(fitobject,variances=variance, binding="fitted")
   if (missing(map.formula)) 
     map.formula <- as.formula(paste(attr(pred,"fittedName"), " ~ 1 + ", paste(findSpatial(fitobject$predictor))))
   smooobject <- corrHLfit(map.formula, data = pred, ranFix = list(phi = phi))
@@ -457,11 +385,9 @@ mapMM <- function (fitobject,Ztransf=NULL,coordinates,
   yGrid <- seq(yrange[1], yrange[2], length.out = gridSteps)
   newdata <- expand.grid(xGrid, yGrid)
   colnames(newdata) <- coordinates
-  gridpred <- predict(smooobject, newdata = newdata,variances=variances)
-  varattr <- intersect(names(attributes(pred)),c("sumVar","fixefVar","predVar","residVar"))
-  if (length(varattr)>1) varattr <- "sumVar" ## must always exist when the test is true
-  if (length(varattr)>0) {
-    pvar <- attr(gridpred,varattr)  
+  gridpred <- predict(smooobject, newdata = newdata,variances=variance)
+  if (length(variance)==1L) {
+    pvar <- attr(gridpred,names(variance))  
     varz <- matrix(pvar,ncol=length(yGrid),nrow=length(xGrid))
     contourArgs <- c(list(x=xGrid,y=yGrid,z=varz,add=TRUE),var.contour.args)
     add.varcontour <- quote(do.call(contour,contourArgs))
@@ -492,7 +418,7 @@ mapMM <- function (fitobject,Ztransf=NULL,coordinates,
     ## plot.new() will be evaluated before these promises are evaluated
     ## does not work if plot.new() is called one level further in a call stack...
     eval(add.varcontour)
-    eval(decorations)
+    eval(decorations) ## evalbc it uses a local variable 'pred'
     eval(add.map)
   }, map.asp = map.asp, ...)
 }

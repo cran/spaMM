@@ -27,14 +27,15 @@ elim.redundant.V <- function(vertices) { ## removes redundant vertices
 
 #mvH <- elim.redundant.V(nH)
 
-volTriangulation <- function(vertices) { ## by contrast to barycenter of vertices
+volTriangulation <- function(vertices) { ## 
   if (is.data.frame(vertices)) vertices <- as.matrix(vertices)
   ## probleme with repeated vertices occurs sometimes:
   vertices <- unique(vertices) 
   ## ...otherwise it is possible that a vertex (from $vertices) is later selected, which is not in the $simplicesTable
   tc <- delaunayn(vertices,"Pp") ## triangulation by simplices
-  pmul <- cbind(-1,diag(rep(1,ncol(vertices))))
-  factorialdim <- factorial(ncol(vertices)) 
+  # cf blckbox::volTriangulationWrapper for cases where delaunayn fails
+  pmul <- cbind(-1,diag(ncol(vertices)))
+  factorialdim <- factorial(ncol(vertices)) ## which is not always try if only a subspace is sampled
   vb <- apply(tc,1,function(v){
     simplex <- vertices[v,,drop=FALSE]
     # pmul %*% simplex is simplex[-1,]-simplex[1,] for each simplex
@@ -63,29 +64,35 @@ subsimplices.volTriangulation <- function(x,simplices,...) {
   vT
 }
 
-rsimplex <- function(simplex,bary=NULL,u=NULL) { ## to sample uniformly[if u is null] wrt volume within a simplex, not uniformly wrt perimeter
-  ## even extrapolated values have a high chance of falling into an adjacent simplex
-  if (is.null(bary)) bary <- colMeans(simplex) ## OK pour bary de d-dim simplex avec densité uniforme 
-  #simplex <- t(extrapol*(t(simplex)-bary)+ bary)  ## bary+ extrapol*(v-bary)
+
+## to sample uniformly wrt volume within a simplex, not uniformly wrt perimeter
+# old complicated code with additional argument 'u' removed 04/2016
+#
+rsimplex <- function(simplex,
+                     expand=NULL, ## *volume* expansion 
+                     bary=NULL ## used for expansion
+) {   
   d <- NROW(simplex)-1 ## 2 pour triangle
   if(NCOL(simplex)!= d) {stop("(!) From 'rsimplex': simplex should have one more row than columns.")}
-  if (is.null(u)) u <- runif(d)
-  upow <- u^(1/seq(d,1)) ## u_1^{1/2},u_2
-  ## loop eliminates one dimension at each step:
-  for(it in seq_len(d)) simplex <- t(upow[it]*(t(simplex[-1,,drop=FALSE])-simplex[1,])+ simplex[1,])  ## v_1+ upow[it](v[-1]-v_1)
-  simplex[1,] ## a point (named numeric vector)
+  weights <- diff(sort(c(0, runif(n=d), 1))) ## Wilks 1962, p.238 in Rubin 1981
+  # http://cs.stackexchange.com/questions/3227/uniform-sampling-from-a-simplex for some more discussion
+  if ( ! is.null(expand)) {
+    if (is.null(bary)) bary <- colMeans(simplex) ## OK pour bary de d-dim simplex avec densité uniforme 
+    simplex <- bary + expand^(1/d) * sweep(simplex,2L,bary,`-`)
+  }
+  ws <- sweep(simplex,1L,weights,`*`)
+  return(colSums(ws))
 }
 
-
 ## ideally we would have a rvolume S3 generic with .volTriangulation and .data.frame methods
-rvolTriangulation <- function(n=1,volTriangulationObj,replace=TRUE) { 
+rvolTriangulation <- function(n=1,volTriangulationObj,replace=TRUE,expand=NULL) { 
   if (! inherits(volTriangulationObj,"volTriangulation")) stop("(!) From 'volTriangulation': input 'volTriangulationObj' is not a volTriangulation object.")
   simplexProbs <- volTriangulationObj$vol
   simplexProbs <- simplexProbs/sum(simplexProbs)
   whichSimplex <- sample(seq_len(length(simplexProbs)),n,prob=simplexProbs,replace=replace)
   vertices <- volTriangulationObj$vertices
   vI <- volTriangulationObj$simplicesTable
-  resu <- sapply(whichSimplex,function(idx) {rsimplex(vertices[vI[idx,],,drop=FALSE])})
+  resu <- sapply(whichSimplex,function(idx) {rsimplex(vertices[vI[idx,],,drop=FALSE],expand=expand)})
   if (ncol(vertices)==1L) {
     resu <- as.matrix(resu)
   } else resu <- t(resu)
@@ -94,54 +101,20 @@ rvolTriangulation <- function(n=1,volTriangulationObj,replace=TRUE) {
   return(resu)
 } ## end def rvolTriangulation
 
-#rvolTriangulation(10,vT)
-#plot(vT$vertices)
-#points(rvolTriangulation(1000,vT),col="red")
+
+# old.nextPoints <- function(n=1,optr,replace=TRUE) { ## random sampling of volume defined from previous fit
+#   uP <- upperPoints(optr$predictions) ## indices
+#   uP <- optr$predictions[uP,attr(optr$predictions,"fittedPars")]
+#   uP <- rbind(uP,optr$par) ## not sure this is useful for volumetric sampling
+#   erV <- elim.redundant.V(uP)  
+#   vT <- volTriangulation(erV)
+#   rvolTriangulation(n,vT,replace=replace)
+# }
 
 
-old.nextPoints <- function(n=1,optr,replace=TRUE) { ## random sampling of volume defined from previous fit
-  uP <- upperPoints(optr$predictions) ## indices
-  uP <- optr$predictions[uP,attr(optr$predictions,"fittedPars")]
-  uP <- rbind(uP,optr$par) ## not sure this is useful for volumetric sampling
-  erV <- elim.redundant.V(uP)  
-  vT <- volTriangulation(erV)
-  rvolTriangulation(n,vT,replace=replace)
-}
 
 
-# Returns sampled locations
-# attribute "info" contains 
-#    the original $vertices (indices), 
-#    $upperVertexIndices the indices of the best points, 
-#    $simplicesTable the subset of simplices involving the best points
-#    $vol the volumes of subset of simplices involving the best points
-# default minPtNbr affect exploration of (provisionally) suboptimal peaks
-# expand=2 allows expansion at least towards a local peak
-sampleNextPoints <- function(n=1,Xpredy,minPtNbr=1,replace=TRUE,expand=1,D.resp) { 
-  fittedPars <- attr(Xpredy,"fittedPars")
-  vT <- volTriangulation(as.matrix(Xpredy[,fittedPars])) 
-  if (is.infinite(expand)) {
-    upperSimplices <- seq_len(nrow(vT$simplicesTable))
-    innerVertexIndices <- seq_len(nrow(Xpredy)) 
-  } else {
-    ## seek simplices which involve 'interesting' points
-    innerVertexIndices <- upperPoints(Xpredy,minPtNbr=minPtNbr,D.resp=D.resp) ## indices; FR->FR maybe not most efficient as Xpredy is already sorted
-    ## the following defines a NON CONVEX set
-    upperSimplices <- apply(vT$simplicesTable,1,function(v) { any(v %in% innerVertexIndices)}) ## indices !
-    for (it in seq_len(expand-1)) {
-      innerVertexIndices <- unique(as.vector(vT$simplicesTable[upperSimplices,]))
-      upperSimplices <- apply(vT$simplicesTable,1,function(v) { any(v %in% innerVertexIndices)}) ## indices !    
-    }
-  }
-  subvT <- subsimplices.volTriangulation(vT,simplices=upperSimplices)
-  resu <- rvolTriangulation(n=n,subvT,replace=replace)
-  colnames(resu) <- fittedPars
-  resu <- data.frame(resu)
-  attr(resu,"info") <- subvT
-  return(resu)
-}
-
-spaMM_rhullByEI <- function(n, tryn=100*n ,vT, object, fixed=NULL, outputVars) {
+spaMM_rhullByEI <- function(n, tryn=100*n ,vT, object, fixed=NULL, outputVars,expand=NULL) {
   ## so that oldXnew matrices will contain less than spaMM.getOption("ff_threshold")~1e7 elements,
   maxn <- floor(spaMM.getOption("ff_threshold")/nrow(object$data))
   if (maxn <= n) {
@@ -154,17 +127,18 @@ spaMM_rhullByEI <- function(n, tryn=100*n ,vT, object, fixed=NULL, outputVars) {
     message(locmess)
     tryn <- maxn
   }
-  trypoints <- data.frame(rvolTriangulation(tryn, vT))
+  trypoints <- data.frame(rvolTriangulation(tryn, vT,expand=expand))
   colnames(trypoints) <- colnames(vT$vertices) ## supposeque non null...
   if (! is.null(fixed)) trypoints <- cbind(trypoints, fixed)
   colnames(trypoints) <- outputVars ## 'apply' feature
-  trypred <- predict(object, newdata=as.data.frame(trypoints), predVar=TRUE)
+  trypred <- predict(object, newdata=as.data.frame(trypoints), variances = list(linPred=TRUE))
   trySE <- attr(trypred, "predVar")
   trySE[trySE<0] <- 0
   trySE <- sqrt(trySE)
   tryQ <- trypred + 1.96*trySE ## improvement function for candidate points
   Qmax <- object$Qmax
   expectedImprovement <- trySE*dnorm((Qmax-tryQ)/trySE)+(tryQ-Qmax)*pnorm((tryQ-Qmax)/trySE) ## 7.5 p. 121
+  ## expected improvement (over current maximum) is never negative by def.
   trypoints <- trypoints[order(expectedImprovement, decreasing=TRUE)[seq_len(n)], outputVars, drop=FALSE]
   return(trypoints) 
 }
@@ -172,8 +146,8 @@ spaMM_rhullByEI <- function(n, tryn=100*n ,vT, object, fixed=NULL, outputVars) {
 ## FR->FR same as in blackbox
 locatePointinvT <- function(point, ## numeric (not matrix or data frame: see use of 'point' below)
                             vT,fallback=TRUE) { ## in which simplex ? with fall back if 'numerically outside' vT (but quite distinct from minimal distance)
-  pmul <- cbind(-1,diag(rep(1,ncol(vT$vertices))))
-  minw <- apply(vT$simplicesTable,1,function(v) {
+  pmul <- cbind(-1,diag(ncol(vT$vertices)))
+  minw <- apply(vT$simplicesTable[vT$vol>0,,drop=FALSE],1,function(v) {
     simplex <- vT$vertices[v,,drop=FALSE]
     vM <- pmul %*% simplex # is simplex[-1,]-simplex[1,] for each simplex
     vWeights <- try(solve(t(vM),point-simplex[1,]),silent=TRUE) ## as.numeric(point) would be required if point were a (1-row) matrix
@@ -284,19 +258,22 @@ spaMM_bounds1D <- function(object, optr, CIvar, precision) {
 } ## end def bounds1D
 
 
-
-sampleNextPars <- function(sizes,object,optr,minPtNbr=1,replace=TRUE,expand=1,D.resp) {
+# Returns sampled locations
+# default minPtNbr affect exploration of (provisionally) suboptimal peaks
+# networkExpand=2 allows expansion at least towards a local peak
+sampleNextPars <- function(sizes,optr,minPtNbr=1,replace=TRUE,networkExpand=1L,simplexExpand=NULL,D.resp) {
   ## derived from blackbox::sampleByResp, 2015/11
   ###################### slow precomputation for EI
-  obspred <- predict(object, variances=list(linPred=TRUE))
+  Krigobj <- optr$Krigobj
+  obspred <- predict(Krigobj, variances=list(linPred=TRUE))
   obsSE <- attr(obspred, "predVar")
   obsSE[obsSE<0] <- 0
-  object$Qmax <- max( obspred+1.96 * sqrt(obsSE)) ## best improvement function for already computed points
+  Krigobj$Qmax <- max( obspred+1.96 * sqrt(obsSE)) ## best improvement function for already computed points
   ######################
   Xpredy <- optr$predictions
   fittedPars <- attr(Xpredy,"fittedPars")
   vT <- volTriangulation(as.matrix(Xpredy[,fittedPars,drop=FALSE])) 
-  if (is.infinite(expand)) {
+  if (is.infinite(networkExpand)) {
     upperSimplices <- seq_len(nrow(vT$simplicesTable))
     innerVertexIndices <- seq_len(nrow(Xpredy)) 
   } else {
@@ -304,27 +281,33 @@ sampleNextPars <- function(sizes,object,optr,minPtNbr=1,replace=TRUE,expand=1,D.
     innerVertexIndices <- upperPoints(Xpredy,minPtNbr=minPtNbr,D.resp=D.resp) ## indices; FR->FR maybe not most efficient as Xpredy is already sorted
     ## the following defines a NON CONVEX set
     upperSimplices <- apply(vT$simplicesTable,1,function(v) { any(v %in% innerVertexIndices)}) ## indices !
-    for (it in seq_len(expand-1)) {
+    for (it in seq_len(networkExpand-1)) {
       innerVertexIndices <- unique(as.vector(vT$simplicesTable[upperSimplices,]))
       upperSimplices <- apply(vT$simplicesTable,1,function(v) { any(v %in% innerVertexIndices)}) ## indices !    
     }
   }
   subvT <- subsimplices.volTriangulation(vT,simplices=upperSimplices)
-  goodpoints <- data.frame(rvolTriangulation(n=sizes[1L],subvT,replace=replace))  ## because (rbind(matrix,..., data.frame)) can generate empty rownames...
+  goodpoints <- data.frame(rvolTriangulation(n=sizes[1L],subvT,replace=replace,expand=simplexExpand))  ## because (rbind(matrix,..., data.frame)) can generate empty rownames...
   ## some exploratory code; precision is here a shift on response (lik); fails if nu is fixed.
   if (FALSE) {
-    nubounds1D <- spaMM_bounds1D(object, optr, "trNu", precision=0.1) ## FR->FR arbitrary threshold
+    nubounds1D <- spaMM_bounds1D(Krigobj, optr, "trNu", precision=0.1) ## FR->FR arbitrary threshold
     goodpoints <- rbind(goodpoints,nubounds1D) 
   }
   ######################
   subvT <- subsimplices.volTriangulation(vT, - upperSimplices)
-  candidates <- spaMM_rhullByEI(n=sizes[2L],vT=subvT,object=object,outputVars = fittedPars)
+  candidates <- spaMM_rhullByEI(n=sizes[2L],vT=subvT,object=Krigobj,outputVars = fittedPars)
   goodpoints <- rbind(goodpoints,candidates )
   ###################### => optr$par (6) + EI (others)
   resu <- data.frame(goodpoints)
   #attr(resu,"info") <- vT
   return(resu)
 }
+# attribute "info" would contain 
+#    the original $vertices (indices), 
+#    $upperVertexIndices the indices of the best points, 
+#    $simplicesTable the subset of simplices involving the best points
+#    $vol the volumes of subset of simplices involving the best points
+
 
 connectedSets <- function(indices) {
   uI <- unique(as.vector(indices)) ## vertex indices

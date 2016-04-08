@@ -170,7 +170,6 @@ spaMMLRT <- function(null.formula=NULL,formula,
         message("  and correlation parameters are estimated in this way.")
       }
     }
-    ############## deja converti if (! "predictor" %in% class(null.formula)) null.predictor <- Predictor(null.predictor)
     nullm.list$formula <- null.predictor
   } else if ( length(null.disp)>0 ) { ## test disp/corr param
     testFix <- F
@@ -205,7 +204,7 @@ spaMMLRT <- function(null.formula=NULL,formula,
   ## BOOTSTRAP
   if ( ! is.na(testFix)) {
     if (boot.repl>0) {
-      bootlist <- dotlist ## copies ranFix
+      bootlist <- dotlist ## copies (full)formula and (optionally) ranFix
       bootlist <- c(bootlist,list(null.formula=null.predictor,null.disp=null.disp,REMLformula=REMLformula,method=method)) ## unchanged user REMLformula forwarded
       bootlist$verbose <- c(trace=FALSE,summary=FALSE)
       bootlist$trace <- FALSE 
@@ -232,31 +231,32 @@ spaMMLRT <- function(null.formula=NULL,formula,
       t0 <- proc.time()["user.self"]
       simbData <- nullfit$data
       if (tolower(nullfit$family$family)=="binomial") {
-        form <- attr(nullfit$predictor,"oriFormula") ## this must exists...  
-        if (is.null(form)) {
-          mess <- pastefrom("a 'predictor' object must have an 'oriFormula' member.",prefix="(!) From ")
-          stop(mess)
-        }
-      }
+        nform <- attr(nullfit$predictor,"oriFormula")  
+        if (is.null(nform)) stop("a 'predictor' object must have an 'oriFormula' member.")
+        if (paste(nform[[2L]])[[1L]]=="cbind") {
+          ## We have different possible (exprL,exprR) arguments in cbind(exprL,exprR), 
+          ## but in all case the predictor is that of exprL and exprR is $weights- exprL. We standardize: 
+          nposname <- makenewname("npos",names(data))
+          nnegname <- makenewname("nneg",names(data))
+          nform <- paste(nform)
+          nform[2L] <- paste("cbind(",nposname,",",nnegname,")",sep="")
+          bootlist$null.formula <- as.formula(paste(nform[c(2,1,3)],collapse=""))
+          fform <- paste(attr(fullfit$predictor,"oriFormula"))
+          fform[2L] <- nform[2L]
+          bootlist$formula <- as.formula(paste(fform[c(2,1,3)],collapse=""))
+          cbindTest <- TRUE
+        } else cbindTest <- FALSE
+      } else cbindTest <- FALSE
       ## the data contain any original variable not further used; e.g original random effect values in the simulation tests  
       thisFnName <- as.character(sys.call()[[1]]) ## prevents a bug when we change "this" function name
       for (ii in 1:boot.repl) {
         locitError <- 0
         repeat { ## for each ii!
           newy <- simulate(nullfit) ## cannot simulate all samples in one block since some may not be analyzable  
-          if (tolower(nullfit$family$family)=="binomial") {
-            ## c'est bouseux: soit j'ai (pos, neg) et le remplacement est possible
-            ##    soit j'ai (pos,ntot -pos) et le 2e remplacment n'est pas poss (et pas necess)
-            ##    aussi (ntot - pos, pos) ...
-            ## would be simple if always ntot-pos, but how to control this ? 
-            ## simbData[[as.character(form[[2]][[2]])]] <- newy
-            ## simbData[[as.character(form[[2]][[3]])]] <- nullfit$weights - newy    
-            exprL <- as.character(form[[2]][[2]]) 
-            exprR <- as.character(form[[2]][[3]]) 
-            if (length(exprL)==1L) simbData[[exprL]] <- newy 
-            if (length(exprR)==1L) simbData[[exprR]] <- nullfit$weights - newy                    
-            ## if (length(exprR)! =1) exprRdoes not correspond to a column in the data;frmae so there is no column to replace                     
-          } else {simbData[[as.character(nullfit$predictor[[2]])]] <- newy}
+          if (cbindTest) {
+            simbData[[nposname]] <- newy
+            simbData[[nnegname]] <- nullfit$weights - newy
+          } else {simbData[[as.character(nullfit$predictor[[2L]])]] <- newy} ## allows y~x syntax for binary response
           bootlist$data <- simbData
           bootrepl <- try(do.call(thisFnName,bootlist)) ###################### CALL ##################
           if (! inherits(bootrepl,"try-error") ) { ## eg separation in binomial models... alternatively, test it here (require full and null X.pv... )
@@ -948,6 +948,9 @@ if (restarts) {
         repeat { ## for each ii!
           newy <- simulate(nullfit) ## cannot simulate all samples in one block since some may not be analyzable  
           if (tolower(nullfit$family$family)=="binomial") {
+            ## We have different possible cbind(exprL,exprR) arguments, but in all case the predictor is that of exprL and 
+            #  exprR is $weights- exprL 
+            
             ## c'est bouseux: soit j'ai (pos, neg) et le remplacement est possible
             ##    soit j'ai (pos,ntot -pos) et le 2e remplacment n'est pas poss (et pas necess)
             ##    aussi (ntot - pos, pos) ...
@@ -958,7 +961,7 @@ if (restarts) {
             exprR <- as.character(form[[2]][[3]]) 
             if (length(exprL)==1L) simbData[[exprL]] <- newy 
             if (length(exprR)==1L) simbData[[exprR]] <- nullfit$weights - newy                    
-            ## if (length(exprR)! =1) exprRdoes not correspond to a column in the data;frmae so there is no column to replace                     
+            ## if (length(exprR)! =1) exprRdoes not correspond to a column in the data.frame so there is no column to replace                     
           } else {simbData[[as.character(nullfit$predictor[[2]])]] <- newy}
           bootlist$data <- simbData
           bootrepl <- try(do.call(thisFnName,bootlist))  ################# CALL ################# 
@@ -1021,10 +1024,10 @@ summary.fixedLRT <- function(object,verbose=TRUE,...) {
   bootInfo <- object$bootInfo
   if (!is.null(bootInfo)) {
     cat(" ======== Bootstrap: ========\n")    
-    outst <- paste("Raw simulated p-value: ",signif(bootInfo$rawBootLRT$pvalue,3),sep="")    
+    outst <- paste("Raw simulated p-value: ",signif(object$rawBootLRT$pvalue,3),sep="")    
     cat(outst)
-    X2 <- bootInfo$BartBootLRT$LR2
-    outst <- paste("\nBartlett-corrected LR statistic (",bootInfo$BartBootLRT$df," df): ",signif(X2,3),sep="")    
+    X2 <- object$BartBootLRT$LR2
+    outst <- paste("\nBartlett-corrected LR statistic (",object$BartBootLRT$df," df): ",signif(X2,3),sep="")    
     cat(outst)
   } 
 }

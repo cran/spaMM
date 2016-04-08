@@ -78,10 +78,10 @@ spMMFactorList <- function (formula, mf, rmInt, drop) {
     ##FR at this point the code diverges from lmerFactorList  
     ans <- list(f = ff, 
                 A = do.call(rBind, lapply(seq_len(ncol(mm)),function(j) im)),
-                ## Zt is desing obs <-> levels of ranef, either dgCMatrix (sparse) or dgeMatrix (dense)
+                ## Zt is design obs <-> levels of ranef, either dgCMatrix (sparse) or dgeMatrix (dense)
                 Zt = do.call(rBind, lapply(seq_len(ncol(mm)), 
                                            function(j) {
-                                             im@x <- mm[, j]
+                                             im@x <- mm[, j] ## mm stores (<this info>| ...) => numeric for random slope model 
                                              im
                                            })), 
                 ST = matrix(0, ncol(mm), ncol(mm), dimnames = list(colnames(mm), 

@@ -20,7 +20,7 @@ binomialize <- function(data,responses,sortedTypes=NULL,binResponse=c("npos","nn
   seq_sure_depth <- seq_len(sure_depth)
   if (input=="types") { ## contents are types
     resu <- lapply(seq_sure_depth, function(v){
-      npos <- apply(data[,responses,drop=FALSE]==sortedTypes[1],1,sum) ## FR->FR corrigé 1.2.1 21/07
+      npos <- apply(data[,responses,drop=FALSE]==sortedTypes[1],1,sum) ## 1.2.1 21/07
       nneg <- apply(data[,responses,drop=FALSE],c(1,2),function(v) {v  %in% sortedTypes[-1]})
       nneg <- apply(nneg,1,sum)    
       locdata <- cbind(npos,nneg,data) 
@@ -60,12 +60,12 @@ fitted.HLfitlist <- function(object,...) {
   allrownames <- unique(unlist(lapply(object,function(hl){rownames(hl$data)})))
   fv <- lapply(object,function(hl){
     fv <- fitted(hl,...)
-    rownames(fv) <- rownames(hl$data); fv
+    names(fv) <- rownames(hl$data); fv
   })
   resu <- matrix(0,nrow=length(allrownames),ncol=length(object))
   rownames(resu) <- allrownames
   for (it in seq_len(length(fv))) {
-    resu[rownames(fv[[it]]),it] <- fv[[it]]
+    resu[names(fv[[it]]),it] <- fv[[it]]
   }
   for (it in seq_len(ncol(resu)-1)) {
     for (col in (it+1):ncol(resu)) resu[,col] <- resu[,col] * (1-resu[,it])

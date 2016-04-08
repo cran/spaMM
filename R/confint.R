@@ -33,7 +33,7 @@ confint.HLfit <- function(object,parm,level=0.95,verbose=TRUE,...) {
     ## good starting values are important... important to use canonizeRanPars as in HLCor
     trTemplate <- attr(object,"optimInfo")$`optim.pars`
     objfn <- function(ranefParsVec) { 
-      ## FR->FR bc currently locoptim expects a fn with first arg ranefParsVec
+      ## bc locoptim expects a fn with first arg ranefParsVec
       ## ca serait mieux de pas avoir de contrainte la dessus et de pvr nommer l'arg trParsVec
       ## bc HLCor call uses transformed scale for ranPars
       olc$ranPars[names(trTemplate)] <- ranefParsVec 
@@ -55,7 +55,7 @@ confint.HLfit <- function(object,parm,level=0.95,verbose=TRUE,...) {
                       corr.model=lc$`corr.model`,nbUnique=attr(lc$distMatrix,"Size"),
                       ranFix=llc$ranFix,
                       optim.scale="transformed") ## FR->FR transformed is a guess
-    LowUp <- do.call("makeLowerUpper",LUarglist)
+    LowUp <- do.call(makeLowerUpper,LUarglist)
     loclist <- list(init.optim=trTemplate,LowUp=LowUp,objfn=objfn,anyObjfnCall.args=list(),optimizers.args=list())
   }
   ## lowerfit

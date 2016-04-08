@@ -83,6 +83,7 @@ f2 <- HLfit(cbind(npos,nneg)~1,data=genotypes, family=multi(responses=c("type1",
 fitted(f2)
 
 ## distinct fits for spatial data
+\dontrun{
 genoInSpace <- data.frame(type1=alleles[genecopy1],type2=alleles[genecopy2],x=runif(50),y=runif(50))
 ## Fitting distinct variances of random effects for each binomial response
 corrHLfit(cbind(npos,nneg)~1+Matern(1|x+y),data=genoInSpace, 
@@ -92,6 +93,7 @@ corrHLfit(cbind(npos,nneg)~1+Matern(1|x+y),data=genoInSpace,
 corrHLfit(cbind(npos,nneg)~1+Matern(1|x+y),data=genoInSpace, 
           family=multi(responses=c("type1","type2")),
           ranFix=list(rho=1,nu=0.5),init.corrHLfit=list(lambda=1))
+}
 }
 \keyword{ family }
 \keyword{ model }

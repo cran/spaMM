@@ -6,6 +6,35 @@
 
 using namespace Rcpp;
 
+// Rcpp_COMP_Z
+SEXP Rcpp_COMP_Z(int moment, double nu, double lambda, int maxn);
+RcppExport SEXP spaMM_Rcpp_COMP_Z(SEXP momentSEXP, SEXP nuSEXP, SEXP lambdaSEXP, SEXP maxnSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject __result;
+    Rcpp::RNGScope __rngScope;
+    Rcpp::traits::input_parameter< int >::type moment(momentSEXP);
+    Rcpp::traits::input_parameter< double >::type nu(nuSEXP);
+    Rcpp::traits::input_parameter< double >::type lambda(lambdaSEXP);
+    Rcpp::traits::input_parameter< int >::type maxn(maxnSEXP);
+    __result = Rcpp::wrap(Rcpp_COMP_Z(moment, nu, lambda, maxn));
+    return __result;
+END_RCPP
+}
+// Rcpp_pMVN
+SEXP Rcpp_pMVN(NumericMatrix& L, NumericVector& limits, IntegerVector& ismax, NumericMatrix& rand_seq, int nrep);
+RcppExport SEXP spaMM_Rcpp_pMVN(SEXP LSEXP, SEXP limitsSEXP, SEXP ismaxSEXP, SEXP rand_seqSEXP, SEXP nrepSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject __result;
+    Rcpp::RNGScope __rngScope;
+    Rcpp::traits::input_parameter< NumericMatrix& >::type L(LSEXP);
+    Rcpp::traits::input_parameter< NumericVector& >::type limits(limitsSEXP);
+    Rcpp::traits::input_parameter< IntegerVector& >::type ismax(ismaxSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix& >::type rand_seq(rand_seqSEXP);
+    Rcpp::traits::input_parameter< int >::type nrep(nrepSEXP);
+    __result = Rcpp::wrap(Rcpp_pMVN(L, limits, ismax, rand_seq, nrep));
+    return __result;
+END_RCPP
+}
 // lmwithQ
 SEXP lmwithQ(SEXP XX, SEXP yy);
 RcppExport SEXP spaMM_lmwithQ(SEXP XXSEXP, SEXP yySEXP) {

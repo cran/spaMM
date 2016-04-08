@@ -18,7 +18,7 @@ newetaFix <- function(object, newMeanFrames) {
   }    
   ## dans l'état actuel $fixef et complet,incluant les etaFix$beta: pas besoin de les séparer
   if (ncol(newMeanFrames$X)>0) {
-    etaFix <-  newMeanFrames$X %*% object$fixef
+    etaFix <-  drop(newMeanFrames$X %*% object$fixef)
   } else {
     etaFix <- 0 
   }   
@@ -63,7 +63,7 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL, sizes=ob
   ##
   if (any(object$models[["lambda"]] != "")) { ## i.e. not a GLM
     if (is.null(newdata)) {
-      ZAL <- as.matrix(object$ZALMatrix)
+      ZAL <- attr(object$predictor,"ZALMatrix")
       cum_n_u_h <- attr(object$lambda,"cum_n_u_h")
       vec_n_u_h <- attr(cum_n_u_h,"vec_n_u_h")
     } else {
@@ -108,19 +108,19 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL, sizes=ob
     }) ## one multi-rand.family simulation
     newV <- do.call(rbind,newV) ## each column a simulation
     if (nsim==1L) {
-      eta <- eta + ZAL %*% newV 
-    } else eta <-  matrix(rep(eta,nsim),ncol=nsim) + ZAL %*% newV ## nobs rows, nsim col
+      eta <- eta + ZAL %id*% newV 
+    } else eta <-  matrix(rep(eta,nsim),ncol=nsim) + ZAL %id*% newV ## nobs rows, nsim col
   }
   mu <- object$family$linkinv(eta) ## ! freqs for binomial, counts for poisson
   ## 
-  phiW <- object$phi/object$prior.weights ## cf syntax and meaning in Gamma()$simulate / GammaForDispGammaGLM()$simfun
+  phiW <- object$phi/object$prior.weights ## cf syntax and meaning in Gamma()$simulate / spaMM_Gamma$simfun
   famfam <- tolower(object$family$family)
 #  if (famfam=="binomial" && is.null(size)) size <- object$weights ## original sample size by default
   respv <- function(mu) {switch(famfam,
                                 gaussian = rnorm(nobs,mean=mu,sd=sqrt(phiW)),
                                 poisson = rpois(nobs,mu),
                                 binomial = rbinom(nobs,size=sizes,prob=mu),
-                                gamma = rgamma(nobs,shape= mu^2 / phiW, scale=phiW/mu), ## ie shape increase with prior weights, consistent with Gamma()$simulate / GammaForDispGammaGLM()$simfun
+                                gamma = rgamma(nobs,shape= mu^2 / phiW, scale=phiW/mu), ## ie shape increase with prior weights, consistent with Gamma()$simulate / spaMM_Gamma()$simfun
                                 stop("(!) random sample from given family not yet implemented")
   )} ## vector
   if (nsim>1) {

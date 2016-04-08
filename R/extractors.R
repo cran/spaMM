@@ -57,8 +57,13 @@ calc_invColdoldList <- function(object) { ## returns a list
     for (Lit in seq_len(length(LMatrix))) {
       lmatrix <- LMatrix[[Lit]]
       affecteds <- which(ranefs %in% attr(lmatrix,"ranefs"))
-      invlmatrix <- solve(lmatrix) ## FR->FR hmf
-      for (aff in affecteds) resu[[aff]] <- t(invlmatrix) %*% (invlmatrix)   ## FR->FR à ameliorer
+      if (attr(lmatrix,"type")=="chol") { ## lower triangular chol
+        for (aff in affecteds) resu[[aff]] <- chol2inv(t(lmatrix))
+      } else {
+        message("Possibly inefficient code in calc_invColdoldList() ") ## (why not chol ?)
+        invlmatrix <- solve(lmatrix) ## FR->FR hmf both slow and potentially inaccurate
+        for (aff in affecteds) resu[[aff]] <- crossprodCpp(invlmatrix) ## t(invlmatrix) %*% (invlmatrix)   ## FR->FR à ameliorer
+      }
     }
     return(resu)
   } else return(NULL)
@@ -187,3 +192,34 @@ deviance.HLfit <- function(object,...) {
   return(sum(dev_res2))
 }  
 
+get_fixefVar <- function(...) {
+  mc <- match.call(expand.dots = TRUE)
+  mc$variances$predVar <- TRUE
+  mc[[1L]] <- quote(spaMM::predict.HLfit)
+  attr(eval(mc,parent.frame()),"fixefVar")
+}
+
+get_predVar <- function(...) {
+  mc <- match.call(expand.dots = TRUE)
+  mc$variances$predVar <- TRUE
+  mc[[1L]] <- quote(spaMM::predict.HLfit)
+  attr(eval(mc,parent.frame()),"predVar")
+}
+
+get_residVar <- function(...) {
+  mc <- match.call(expand.dots = TRUE)
+  mc$variances$predVar <- TRUE
+  mc[[1L]] <- quote(spaMM::predict.HLfit)
+  attr(eval(mc,parent.frame()),"residVar")
+}
+
+get_respVar <- function(...) {
+  mc <- match.call(expand.dots = TRUE)
+  mc$variances$predVar <- TRUE
+  mc[[1L]] <- quote(spaMM::predict.HLfit)
+  attr(eval(mc,parent.frame()),"respVar")
+}
+
+
+
+# get_dispVar : dispVar in not a returned attribute

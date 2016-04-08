@@ -1,6 +1,20 @@
 
 \name{spaMM-internal}
 
+\alias{fitme}
+\alias{fitme_body}
+\alias{calc_maxrange}
+\alias{calc_init_dispPars}
+\alias{calc_inits_ARphi}
+\alias{calc_inits_nu}
+\alias{calc_inits_Auto_rho}
+\alias{calc_inits_geostat_rho}
+\alias{calc_inits}
+\alias{HLfit.obj}
+
+
+
+
 \alias{\%id*id\%}
 \alias{alternating}
 \alias{auglinmodfit}
@@ -37,9 +51,10 @@
 \alias{Dim.corMatern} 
 \alias{eval.update.call}
 \alias{eval.corrEst.args}
-\alias{GammaForDispGammaGLM}
+\alias{spaMM_Gamma} 
 \alias{getCallHL}
 \alias{getHLfit}
+\alias{get_valid_beta_coefs}
 \alias{HLCor.obj} 
 \alias{HL_process.args} 
 \alias{HL_strictify} 
@@ -52,6 +67,7 @@
 \alias{LRT.corrHL} 
 \alias{loglfn.ranU}
 \alias{makenewname}
+\alias{negbin}
 \alias{ULI}
 \alias{Variogram.corMatern} 
 \alias{asStandardFormula} 
@@ -71,6 +87,7 @@
 \alias{coef<-.corMatern} 
 \alias{corFactor.corMatern}
 \alias{corMatrix.corMatern} 
+\alias{corrHLfit_body}
 \alias{corrMM.LRT} 
 \alias{d2mudeta2fn} 
 \alias{DEPARSE}
@@ -79,11 +96,11 @@
 \alias{dispInv} 
 \alias{extract.check.coords} 
 \alias{findOffset} 
-\alias{findSpatial} 
+\alias{findSpatial}
 \alias{parseBars} 
 \alias{findbarsMM} 
 \alias{findplus}
-\alias{formula.HLfit}
+\alias{fullrho}
 \alias{generateFileName} 
 \alias{generateName} 
 \alias{generateInitPhi}
@@ -92,6 +109,9 @@
 \alias{getPar}
 \alias{getProcessed}
 \alias{get_methods_ranefs}
+\alias{glm.reformat}
+\alias{HLCor_body}
+\alias{HLfit_body}
 \alias{invscalefnfn}
 \alias{is.identity} 
 \alias{largeLambdaMessages} 
@@ -141,7 +161,7 @@
 \alias{RBIND.matrix}
 \alias{RBIND.Matrix}
 \alias{recalc.corMatern} 
-\alias{recent.mapMM} %~ should disappear
+\alias{reformat_verbose}
 \alias{REMLmess}
 \alias{rhoFn} 
 \alias{rhoInv}
@@ -154,12 +174,14 @@
 \alias{scalefnfn}
 \alias{selectLoglfn}
 \alias{SEMbetalambda}
+\alias{pMVN}
 \alias{SEMdiagnosticPlot}
 \alias{SEMdiagnosticPlot2D}
 \alias{separator} 
 \alias{setProcessed}
 \alias{setControl}
 \alias{Sigwrapper}
+\alias{singularSigmaMessagesStop}
 \alias{slashTerms} 
 \alias{selfAdjointWrapper} 
 \alias{solveWrap.matrix}

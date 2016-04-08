@@ -46,7 +46,8 @@ A matrix or \code{\link[proxy]{dist}} object. If there are two input matrices, r
 ## a biologically not very meaningful, but syntactically correct example of rho.mapping
 data(blackcap)
 corrHLfit(migStatus ~ 1 + Matern(1|latitude+longitude+means),data=blackcap,
-          objective="p_v",HLmethod="ML",ranFix=list(nu=0.5),init.corrHLfit=list(rho=c(1,1)),
+          objective="p_v",HLmethod="ML",ranFix=list(nu=0.5,phi=1e-6),
+          init.corrHLfit=list(rho=c(1,1)),
           control.dist=list(rho.mapping=c(1,1,2)))
 }
 \keyword{ model }

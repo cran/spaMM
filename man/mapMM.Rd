@@ -26,7 +26,7 @@ filled.mapMM(fitobject,Ztransf=NULL,coordinates,xrange=NULL,yrange=NULL,
              margin=1/20,map.formula,phi=1e-05,gridSteps=41,
              decorations=quote(points(pred[,coordinates],cex=1,lwd=2)),
              add.map=FALSE,axes = TRUE, plot.axes,map.asp=NULL,
-             variances=list(fixef=FALSE,linPred=FALSE,resid=FALSE,sum=FALSE),
+             variance=NULL,
              var.contour.args=list(),
              ...)
 }
@@ -61,7 +61,7 @@ filled.mapMM(fitobject,Ztransf=NULL,coordinates,xrange=NULL,yrange=NULL,
   This controls the phi value assumed in the interpolation step. Ideally \code{phi} would be zero, but problems with numerically singular matrices may arise when \code{phi} is too small.
 }
 \item{gridSteps}{The number of levels of the grid of x and y values}
-\item{variances}{Whether to plot some component of prediction variance, and which. Possible elements of this argument are the same as for the \code{variances} argument of \code{\link{predict.HLfit}}, except the \code{Cov} argument. This argument first operates as in \code{predict.HLfit}, so that either a single component  of prediction variance is computed, or a \code{sumVar} component is returned among other ones. Contour lines of either the \code{sumVar}, or the single component available, are then added to the plot.}
+\item{variance}{Either NULL, or the name of a component of prediction variance to be plotted. Must name one of the components that can be returned by \code{predict.HLfit}. \code{variance="predVar"} is suitable for uncertainty in point prediction.}
 \item{var.contour.args}{A list of control parameters for rendering of prediction variances. See \code{\link{contour}} for possible arguments (except \code{x}, \code{y}, \code{z} and \code{add}).}
 \item{add.map}{
   Either a boolean or an explicit expression, enclosed in \code{quote} (see Examples).
@@ -77,7 +77,7 @@ if \code{levels} is not specified, the range of z, values is divided into *appro
 a color palette function to be used to assign colors in the plot.
 }
 \item{map.asp}{  
-the y/x aspect ratio of the 2D plot area (not of the full figure including the scale). Default is (plotted y range)/(plotted x range) (i.e., scales for x are identical). 
+the y/x aspect ratio of the 2D plot area (not of the full figure including the scale). By default, the scales for x and y are identical unless the x and y ranges are too different. Namely, the scales are identical if (plotted y range)/(plotted x range) is 1/4 < . < 4, and map.asp is 1 otherwise. 
 }
 \item{col}{	
 an explicit set of colors to be used in the plot. This argument overrides any palette function specification. There should be one less color than levels
@@ -146,7 +146,7 @@ if (spaMM.getOption("example_maxtime")>6) {
  # showing 'add.map', 'nlevels', and contour lines for 'variances'
  if (require(maps)) { ## required for add.map=TRUE 
   filled.mapMM(bfit,nlevels=30,add.map=TRUE,plot.axes={axis(1);axis(2)},
-             variances=list(sum=TRUE),
+             variance="respVar",
              plot.title=title(main="Inferred migration propensity of blackcaps",
                                xlab="longitude",ylab="latitude"))
   }

@@ -44,13 +44,24 @@ checkRespFam <- function(family) {
     family <- get(family, mode = "function", envir = parent.frame())
   if (is.function(family)) 
     family <- family()
+  if (family$family=="Gamma") family <- spaMM_Gamma(family$link)
   family
 }
 
-getProcessed <- function(object,element,idx=1) {
-  if ( ! is.null(attr(object,"multiple"))) object <- object[[idx]]  
-  eval(parse(text=paste("object$",element,sep="")))
+getProcessed <- function(object,element,from=NULL) {
+  if ( ! is.null(attr(object,"multiple"))) {
+    if (is.null(from)) from <- seq_len(length(object))
+    if (length(from)>1L) {
+      resu <- lapply(from,function(id) {eval(parse(text=paste("object[[",id,"]]$",element,sep="")))})
+      names(resu) <- names(object[from])
+      return(resu) ## a list, e.g a data list
+    } else {
+      object <- object[[from]]
+    } 
+  } 
+  return(eval(parse(text=paste("object$",element,sep=""))))
 }
+
 
 setProcessed <- function(object,element,value=1) {
   if ( ! is.null(attr(object,"multiple"))) {
@@ -71,44 +82,68 @@ generateInitPhi <- function(formula,data,family,weights=NULL) {
   # rhs
   rhs_terms <- delete.response(terms(form))
   mf <- model.frame(rhs_terms, data)
-  uli <- ULI(mf)
+  # builds a model which indexes responses with identical predictor [ULI(mf)] 
+  # and retains data that are replicates for each level of this index [uli]
+  # but (g)lm complains about a model where uli has a single level [though this is meaningful]
+  uli <- ULI(mf) 
   # selection of data for replicates
   mf <- data.frame(y=Y,uli=as.factor(uli)) ## what's needed for both sides
   tuli <- table(uli)
-  whichRows <- uli %in% which(tuli>1L)
+  phiinfo <- which(tuli>1L) ## which levels of uli are informative
+  whichRows <- uli %in% phiinfo
   mf <- mf[whichRows,] ## keep lines with replicates of all predictor variables
   if (!is.null(weights)) weights <- weights[whichRows]
+  if (length(phiinfo)>1L) {
+    locform <- y ~ uli 
+  } else locform <- y ~ 1 ## only one level of uli had replicates
   # estimation of residual var
   if (NROW(mf)>1L) {
     # formula must retain any operation on the lhs
-    locglm <- glm(formula= y ~ uli,data=mf,family=family,weights=weights)  
+    locglm <- glm(formula=locform,data=mf,family=family,weights=weights)  
     phi_est <- as.numeric(deviance(locglm)/locglm$df.residual)
   } else phi_est <- NULL
   return(phi_est)
 }
 
 
-################# translate HLfit.args from user input to directly manipulated variables
-## if called without non(default=NULL) phi.Fix (ie outside HLFit) => processes formulaDisp
-## if called with nonNULL phi.Fix, then no need to process formulaDisp
-preprocess <- function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predictor,REMLformula,data,family,
-                       BinomialDen,rand.families,etaFix,prior.weights=NULL) {
+preprocess <- function(control.HLfit, ranFix=NULL, HLmethod, 
+                       predictor, resid.model,
+                       REMLformula, data, family,
+                       BinomialDen, rand.families, etaFix, prior.weights,
+                       control.glm ) {
   callargs <- match.call() ## to make easy to change these arguments in a later fit
-  #####################################################################
+  if ( ! is.list(resid.model)) resid.model <- list(formula=resid.model,family=control.HLfit$resid.family)
+
+  ################ handling list of data #######################
   if (inherits(data,"list")) {
+    #     data <- lapply(data,function(dt) {
+    #       validdata <- validData(formula=predictor,resid.formula=resid.model$formula,
+    #                              data=dt) ## will remove rows with NA's in required variables
+    #       dt[rownames(validdata),,drop=FALSE] ## ## before Predictor is called and an LMatrix is added, etc.
+    #     })
     locargs <- as.list(callargs)
     famfam <- family$family
     processed <- lapply(data,function(dd) {
       locargs$data <- dd
       if ( ! is.null(famfam) && famfam=="multi") locargs$family <- family$binfamily  
-      eval(as.call(locargs))
+      eval(as.call(locargs)) ## call("preprocess",...) on each data set
     })
     attr(processed,"multiple") <- TRUE ## but NULL otherwise hence test it as not null  
     return(processed)
   }
-  #####################################################################
-  processed <- list()
-  stop.on.error <-control.HLfit$stop.on.error ##  
+  ###############################################################
+  
+  # remove rows with NA's in required variables:
+  validdata <- validData(formula=predictor,resid.formula=resid.model$formula,
+                         data=data) 
+  if (!inherits(data,"environment")) {
+    data <- data[rownames(validdata),,drop=FALSE]  
+  } else data <- validdata
+  # add easily testable family name
+  famfam <- family$family
+  processed <- list(data=data,family=family)
+  #
+  stop.on.error <- control.HLfit$stop.on.error ##  
   if (is.null(stop.on.error)) stop.on.error <- FALSE
   processed$stop.on.error <- stop.on.error ##  
   break_conv_logL <- control.HLfit$break_conv_logL ##whether to stop if logL (p_v) appears to have converged  
@@ -117,14 +152,6 @@ preprocess <- function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predi
   AIC <-control.HLfit$AIC ##  
   if (is.null(AIC)) AIC <- FALSE
   processed$AIC <- AIC ##  
-  resid.family <- control.HLfit$resid.family ##  
-  if (is.null(resid.family)) {
-    resid.family <- GammaForDispGammaGLM(log)
-  } else {
-    if (resid.family$family!= "Gamma") stop("resid.family must be Gamma.")
-    resid.family <- GammaForDispGammaGLM(resid.family$link) ## we will need the returned link, not the promise 
-  }
-  processed$resid.family <- resid.family ##  
   essai <-control.HLfit$essai ##  
   if (is.null(essai)) essai <- FALSE
   processed$essai <- essai ##  
@@ -156,14 +183,23 @@ preprocess <- function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predi
     mess <- pastefrom("'data' is not a data.frame not an environment.",prefix="(!) From ")
     stop(mess)
   }
-  if (! "predictor" %in% class(predictor)) predictor <- Predictor(predictor) 
-  if (! "predictor" %in% class(resid.predictor)) resid.predictor <- Predictor(resid.predictor)
+  #
+  resid.family <- resid.model$family
+  if (is.null(resid.family)) {
+    resid.family <- spaMM_Gamma(log)
+  } else {
+    if (resid.family$family!= "Gamma") stop("resid.family must be Gamma.")
+    resid.family <- spaMM_Gamma(resid.family$link) ## we will need the returned link, not the promise 
+  }
+  processed$resid.family <- resid.family ## resid.predictor will also be returned
+  #
+  if (! inherits(predictor,"predictor")) predictor <- Predictor(predictor) 
   MeanFrames <- HLframes(formula=predictor,data=data) ## design matrix X, Y...
   #
   y <- MeanFrames$Y
-  if (var(y)==0) {
-    stop("(!) var(response) = 0.")
-  }  
+  if ( family$family == "binomial" && NCOL(y)==2L) y <- y[,1L,drop=FALSE] ## that is, we have the cbind syntax up to this fn
+  ## binomial denom determined later, not using y => FR->FR not clear why we need two column format up to this point.
+  processed$y <- y
   nobs <- NROW(y)
   #
   X.pv <- MeanFrames$X
@@ -219,6 +255,8 @@ preprocess <- function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predi
   processed$predictor <- predictor  
   processed$X.pv <- X.pv ## further modified in HLfit if non-estimable parameters
   # handling offset in *resid.predictor*
+  resid.predictor <- resid.model$formula
+  if (! inherits(resid.predictor,"predictor")) resid.predictor <- Predictor(resid.predictor)
   roff <- model.offset(model.frame(resid.predictor,data=data)) ## look for offset from (ori)Formula 
   if ( is.null(roff) ) { ## ## no offset (ori)Formula term. Check attribute (Predictor ensures offset is not both in formula and attr)
     roff <- attr(resid.predictor,"offsetObj")$total 
@@ -265,8 +303,14 @@ preprocess <- function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predi
     ## It's not really possible to remove data at this stage as this may not match the dimension of the distance matrices
     ## moreover one cannot simply remove rows of a matrix "root"...
     ## it _could_ be useful to be able to hand BinomilaDen=0 by the general code but...
+    if (var(y)==0 && var(BinomialDen)==0) {
+      warning("var(response) = 0.")
+    }  
   } else {
     BinomialDen <- rep(1,nobs)
+    if (var(y)==0) {
+      warning("var(response) = 0.")
+    }  
   }
   processed$BinomialDen <- BinomialDen  
   ## conversion from user-friendly format to standard 'XX(...)' format
@@ -318,8 +362,11 @@ preprocess <- function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predi
     if (is.null(SEMseed)) SEMseed <- 123 ## OK pour SEM *unique* mais remplace par NULL dans optimthroughSmooth
     SEMargs <- list(SEMseed=SEMseed)
     SEMargs$nMCint <- control.HLfit$nMCint ##  as is => SEM procedure must handle null value
+    SEMargs$control_pmvnorm$maxpts <- control.HLfit$pmvnorm_maxpts ##  as is => SEM procedure must handle null value
     SEMlogL <- control.HLfit$SEMlogL
-    if (is.null(SEMlogL)) SEMlogL <- "pmvnorm"
+    if (is.null(SEMlogL)) {
+      SEMlogL <- "pmvnorm"
+    }
     SEMargs$SEMlogL <- SEMlogL
     nSEMiter <- control.HLfit$nSEMiter ##  
     if ( (! is.null(nSEMiter)) && nSEMiter < 10) {
@@ -347,7 +394,7 @@ preprocess <- function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predi
   if (length(HL)==2) HL <- c(HL,1)
   ## HLmethod is not a member of the return object
   processed$HL <- HL  
-  if (substr(HLmethod,0,2)=="ML" && HL[1]!="SEM") { ## FR->FR c'est bizarre d'exclure le SEM là... p_bv est il vraiment utilisé ?
+  if (substr(HLmethod,0,2)=="ML") { # && HL[1]!="SEM") { ## FR->FR c'est bizarre d'exclure le SEM là... p_bv est il vraiment utilisé ?
     if ( ! is.null(REMLformula)) {
       message("Confusing combination of arguments: 'HLmethod=ML(...)' with non-null 'REMLformula'.")
       stop("  Make sure what you mean and simplify the arguments.")
@@ -360,20 +407,19 @@ preprocess <- function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predi
   }
   processed$REMLformula <- REMLformula  
   #
-  processed$loglfn.fix <- selectLoglfn(family$family)
-  if ( family$family %in% c("binomial","poisson")) {
+  processed$loglfn.fix <- selectLoglfn(family)
+  if ( family$family %in% c("binomial","poisson","COMPoisson")) {
     ## the response variable should always be Counts
     if (max(abs(y-as.integer(y)))>1e-05) {
       mess <- pastefrom("response variable should be integral values.",prefix="(!) From ")
       stop(mess)
     }
     if (DEPARSE(resid.predictor) != "~1") {
-      warning("resid.formula is ignored in binomial- or Poisson-response models")
+      warning(paste("resid.model is ignored in ",family$family,"-response models",sep=""))
     }
   }
-  if ( family$family == "binomial" && ncol(y)==2) y <- y[,1,drop=F] ## that is, we have the cbind syntax up to this fn
   ## code derived from the glm() function in the safeBinaryRegression package
-  if(family$family == "binomial" && length(unique(y)) == 2 && ncol(X.pv)>0) {
+  if(family$family == "binomial" && length(unique(y)) == 2L && ncol(X.pv)>0L) {
     separation <- separator(X.pv, as.numeric(y), purpose = "test")$separation
     if(separation) {
       message("Separation exists among the sample points.\n\tThis model cannot be fit by maximum likelihood.")
@@ -384,7 +430,6 @@ preprocess <- function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predi
       stop()
     }
   }
-  processed$y <- y
   #
   if ( ! is.null(REMLformula) ) { ## differences affects only REML estimation of dispersion params, ie which p_bv is computed
     REMLFrames <- HLframes(formula=REMLformula,data=data) ## design matrix X, Y...
@@ -401,29 +446,21 @@ preprocess <- function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predi
     canonicalLink <- TRUE
   } else if (family$family=="Gamma" && family$link=="inverse") {
     canonicalLink <- TRUE
+  } else if (family$family=="COMPoisson" && family$link=="loglambda") {
+    canonicalLink <- TRUE
   }
   processed$canonicalLink <- canonicalLink  
-  if (nrand>0 && family$family=="gaussian" && all(lcrandfamfam=="gaussian") && canonicalLink) {
-    LMMbool <- TRUE
-    ## identifiability checks cf modular.R -> checkNlevels() in lmer:
-    ## FR->FR one could also add an isNested check as in https://github.com/lme4/lme4/blob/master/R/utilities.R, but presumably not here
-    LMatrix <- attr(predictor,"LMatrix")
-    for (iMat in seq(length(ZAlist))) {
-      nc <- ncol(ZAlist[[iMat]])
-      if (nc < 2 && is.null(phi.Fix)) {
-        mess <- paste("Only ",nc," level for random effect ",terms_ranefs[iMat],
-                      ";\n   this model cannot be fit unless phi is fixed.",sep="")
-        warning(mess)
-      }
-      if (is.null(LMatrix) && substr(terms_ranefs[iMat], 1, 1)=="(" && nc == nobs && is.null(phi.Fix)) {
-        mess <- paste("Number of levels = number of observations \n   for random effect ",
-                      terms_ranefs[iMat],
-                      ";\n   this model cannot be fit unless phi is fixed\n   or a correlation matrix is given.",sep="")
-        stop(mess)
-      }
-    }
+  #
+  GLMMbool <- (nrand>0 && all(lcrandfamfam=="gaussian") )
+  if (GLMMbool) {
+    LMMbool <- (family$family=="gaussian" && canonicalLink)
   } else LMMbool <- FALSE
   processed$LMMbool <- LMMbool
+  processed$GLMMbool <- GLMMbool
+  #
+  if (is.null(prior.weights)) prior.weights <- rep(1,nobs)
+  attr(prior.weights,"unique") <- (length(unique(prior.weights))==1L) 
+  processed$prior.weights <- prior.weights
   ## algorithms (control of defaults remains in the HLfit code)
   betaFirst <-control.HLfit$betaFirst ##  
   if (is.null(betaFirst)) {
@@ -448,6 +485,7 @@ preprocess <- function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predi
   processed$LevenbergM <- LevenbergM
   #
   if (nrand>0) {   
+    processed$lambda.Fix <- getPar(ranFix,"lambda")
     nrand_lambda <- 0
     models[["lambda"]] <- FL$termsModels
     ################################################################################
@@ -496,6 +534,11 @@ preprocess <- function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predi
     attr(processed$ZAlist,"anyRandomSlope") <- any(Xi_cols>1L) ## used to handle random slope...
   } 
   #
+  phi.Fix <- getPar(ranFix,"phi")
+  if (is.null(phi.Fix)) {
+    if (family$family %in% c("poisson","binomial","COMPoisson")) phi.Fix <- 1 
+  } else if (any(phi.Fix==0)) stop("phi cannot be fixed to 0.")
+  processed$phi.Fix <- phi.Fix
   if ( is.null(phi.Fix)) {
     formulaDisp <- resid.predictor
     fr_disp <- HLframes(formula=formulaDisp,data=data) 
@@ -523,6 +566,26 @@ preprocess <- function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predi
     processed$X_disp <- X_disp
   } 
   #
+  if (LMMbool) {
+    ## identifiability checks cf modular.R -> checkNlevels() in lmer:
+    ## FR->FR one could also add an isNested check as in https://github.com/lme4/lme4/blob/master/R/utilities.R, but presumably not here
+    LMatrix <- attr(predictor,"LMatrix")
+    for (iMat in seq(length(ZAlist))) {
+      nc <- ncol(ZAlist[[iMat]])
+      if (nc < 2 && is.null(phi.Fix)) {
+        mess <- paste("Only ",nc," level for random effect ",terms_ranefs[iMat],
+                      ";\n   this model cannot be fit unless phi is fixed.",sep="")
+        warning(mess)
+      }
+      if (is.null(LMatrix) && substr(terms_ranefs[iMat], 1, 1)=="(" && nc == nobs && is.null(phi.Fix)) {
+        mess <- paste("Number of levels = number of observations \n   for random effect ",
+                      terms_ranefs[iMat],
+                      ";\n   this model cannot be fit unless phi is fixed\n   or a correlation matrix is given.",sep="")
+        stop(mess)
+      }
+    }
+  } 
+  #
   processed$models <- models
   attr(rand.families,"lcrandfamfam") <- lcrandfamfam
   attr(rand.families,"unique.psi_M") <- sapply(lcrandfamfam, function(v) {
@@ -537,6 +600,7 @@ preprocess <- function(control.HLfit,phi.Fix=NULL,HLmethod,predictor,resid.predi
   processed$callargs <- callargs
   processed$fixef_terms <- MeanFrames$fixef_terms ## added 2015/12/09 for predict
   processed$fixef_levels <- MeanFrames$fixef_levels ## added 2015/12/09 for predict
+  processed$control.glm <- do.call("glm.control", control.glm) ## added 04/2016
   class(processed) <- c("arglist","list")
   return(processed)
 }

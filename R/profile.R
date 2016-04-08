@@ -30,7 +30,7 @@ spaMM.getOption <- function (x) {spaMM.options(x)[[1]]}
 # lme did not manage to go beyond nu=17.48 in case Vn phiFix...
 
 ".onAttach" <- function (lib, pkg) {
-  version <- utils::packageDescription("spaMM")$Version
+  version <- utils::packageVersion("spaMM")
   packageStartupMessage("spaMM (version ", version, 
                           ## not sure this will always work and makes sense only for devel version :
                           # ", packaged ", utils::packageDescription("spaMM")$Packaged,
@@ -41,7 +41,7 @@ spaMM.getOption <- function (x) {spaMM.options(x)[[1]]}
 
 
 ".onLoad" <- function (lib, pkg) {
-  .spaMM.data$Constants$Version <- utils::packageDescription("spaMM")$Version
+  abyss <- suppressMessages(delaunayn(matrix(1,nrow=2,ncol=1))) # *sigh*
 }  
 
 ".onUnload" <- function (libpath) {
@@ -51,6 +51,7 @@ spaMM.getOption <- function (x) {spaMM.options(x)[[1]]}
 
 largeLambdaMessages <- function() {
   message("A too high lambda may indicate a very poorly fitting fixed-effect part of the model.")
+  message("In smoothing applications, it may indicate that the response is sharply varying in some point but smooth elsewhere.")
   message("To control the maximum lambda, use e.g. 'spaMM.options(maxLambda=1e06)'.")
   message("It may also indicate convergence issues, possibly improved by altering the initial value through the 'init.HLfit' argument.")
 }

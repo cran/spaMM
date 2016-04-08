@@ -686,6 +686,9 @@ extern "C" { //computes log BesselK_nu
   void bessel_lnKnu_e(double *nu, double *x, int *len, double *val, double *err, int *status) {
 	int i;
 	gsl_sf_result result;
+	result.val = 0;
+	result.err = 0; // both to avoid -Wuninitialized
+	
 //	gsl_set_error_handler_off();
 
 	for(i = 0; i< *len ; i++){

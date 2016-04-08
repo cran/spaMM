@@ -7,12 +7,15 @@ SEMbetalambda <- function(beta_eta,lambda,
                           ngibbs=20,
                           nMCint=10000, ## 10000 see notes from 11/05/2015
                           SEMseed=NULL,SEMsample=NULL,SEMlogL="pmvnorm",
+                          control_pmvnorm=list(),  ## 'for development purposes, not documented...'
+                          control_pMVN=list(),  ## 'for development purposes, not documented...'
                           ZA,X.pv,qr.XtX,
                           symSVD, ## 
                           ZAL,whichy1,off,
                           stop.on.error,
                           verbose=FALSE,
                           X_lamres,
+                          control.glm,
                           mc){ 
   if (FALSE) {
     adaptive <- TRUE
@@ -23,10 +26,10 @@ SEMbetalambda <- function(beta_eta,lambda,
     pilotLength <- nSEMiter
   }
   if (is.null(SEMsample)) SEMsample <- ceiling(nSEMiter/2):nSEMiter
-  if(!is.null(SEMseed)) {
+  if(!is.null(SEMseed)) { ## direct HLCor call
     set.seed(SEMseed) ## so that estimates of beta,lambda are repeatable ## comment ne pas avoir a retirer les memes nombres XXXX fois ?
     #      cat(paste("SEMseed=",SEMseed))
-  } # else {cat("NULL SEMseed")}
+  } # else HLCorobj call
   nobs <- nrow(X.pv)
   betaMat <- matrix(0,nrow=nSEMiter,ncol=ncol(X.pv))
   colnames(betaMat) <- colnames(X.pv) 
@@ -42,7 +45,6 @@ SEMbetalambda <- function(beta_eta,lambda,
   }
   n_u_h <- symSVD$dim[2L] ## locally true as implied by code below.
   EbGivenY <- matrix(0,nrow=nSEMiter,ncol=n_u_h)
-  # ZA <- ZAlist[[1]] ## FR->FR ad hoc protect against multiple ranefs or what ?
   decomp <- symSVD$symsvd
   if ( ! is.identity(ZA)) {
     ZAisI <- FALSE
@@ -156,8 +158,8 @@ SEMbetalambda <- function(beta_eta,lambda,
         #           covmat <- lr[1] * ZWZt(decomp$u,1/(1-lr[2]*decomp$adjd)) ## pour randbGivenObs
         #           dmvnorm(as.numeric(randbGivenObs), mean = rep(0, nrow(covmat)), sigma = covmat, log = TRUE)
         #         }        
-        #print(fixef(HLfit(v2 ~ 1+ adjd,family=GammaForDispGammaGLM("inverse"),prior.weights=rep(1/2,n_u_h),data=locdf)))
-        resglm <- suppressWarnings(glm(v2 ~ 1+ adjd,family=GammaForDispGammaGLM("inverse"),
+        #print(fixef(HLfit(v2 ~ 1+ adjd,family=spaMM_Gamma("inverse"),prior.weights=rep(1/2,n_u_h),data=locdf)))
+        resglm <- suppressWarnings(glm(v2 ~ 1+ adjd,family=spaMM_Gamma("inverse"),
                                        weights=rep(1/2,n_u_h),data=locdf,start=c(1/mean(locdf$v2),0))) ## is ML (no EQL issue)
         coeffs <- coefficients(resglm) 
         lambdaVec[i] <- 1/coeffs[1]
@@ -172,7 +174,7 @@ SEMbetalambda <- function(beta_eta,lambda,
       if ( estimCARrho ) {
         condw2 <- condw2/length(gibbsSample)
         locdf <- data.frame(v2=condw2,adjd=decomp$adjd) ## FR->FR hmf. adjd as part of an X_lamres computed by preprocess ?
-        resglm <- suppressWarnings(glm(v2 ~ adjd -1,offset=rep(1/lambda.Fix,nrow(locdf)),family=GammaForDispGammaGLM("inverse"),
+        resglm <- suppressWarnings(glm(v2 ~ adjd -1,offset=rep(1/lambda.Fix,nrow(locdf)),family=spaMM_Gamma("inverse"),
                                        weights=rep(1/2,n_u_h),data=locdf,start=c(0))) ## is ML (no EQL issue)
         coeffs <- coefficients(resglm) 
         lambdaVec[i] <- lambda.Fix
@@ -216,29 +218,49 @@ SEMbetalambda <- function(beta_eta,lambda,
     fix <- X.pv %*% beta_eta + off
     if (verbose) cat("Estimating the likelihood...")
     method <- SEMlogL
-    if (SEMlogL=="GHK") {
+    if (SEMlogL %in% c("halton","pMVN","pmvnorm")) { 
       ZALtZAL <- tcrossprodCpp(ZAL)
       pmvnorm.Sig <- lambda*ZALtZAL+diag(nobs)
+    }
+    if (SEMlogL=="pmvnorm") { 
+      pmvnorm_arglist <- c(control_pmvnorm,
+                           list(lower=pmvnorm.lower,upper=pmvnorm.upper,mean=as.vector(fix),sigma=pmvnorm.Sig,
+                                # mvt.f shows that the algo continues (within some limits) 
+                                #  if the error is higher than the MAX of the abseps and releps-induced constraints. 
+                                # For large negative logL, we can only control releps, and we must set set abseps=0 to control releps.
+                                abseps=0,releps=0.5))
+      if (is.null(pmvnorm_arglist$maxpts)) ##  postprocessing in corrHLfit provides a maxpts
+        pmvnorm_arglist$maxpts <- quote(1000L*nrow(pmvnorm.Sig)) ## "sensible ... to start with MAXPTS = 1000*N" (mvt.f)
+      ## but the default in optim through smooth is 250L*nrow(pmvnorm.Sig)
+      # CALL
+      Lapp <- do.call("pmvnorm",pmvnorm_arglist) 
+      # 
+      # pmvnorm may fail in various ways. Worst,
+      ## pmvnorm bug, difficult to replicate without control of seed:
+      ## Lapp my be NaN with "normal completion" message.
+      pmvnorm_fatal <- (is.na(Lapp) || Lapp[1]==0 || attr(Lapp,"error")==0) 
+      if ( (! pmvnorm_fatal) && attr(Lapp,"msg")=="Completion with error > abseps" ) {
+        ## we could increase $maxpts, but this does not appear useful (and must handle the quote object)
+        # we could now use $abseps > 0 but given the $releps=0.5 failed, it's not clear what this would improve
+        # => do nothing, keep the large Lapp error
+      }
+    } else pmvnorm_fatal <- FALSE
+    if (pmvnorm_fatal || SEMlogL %in% c("halton","pMVN")) { ## input rand_seq or default GHK method
       Lmat <- RcppChol(pmvnorm.Sig)$L ## t(R::chol)
-      blob <- GHK_oneside(Lmat,trunpt = as.vector(fix),above=whichy1,nMCint)
+      pMVN_arglist <- c(control_pMVN, 
+                    list(L=Lmat,limits = as.vector(fix),ismax=whichy1))
+      #if (SEMlogL=="halton") { ## but avoid the fatal qrng::ghalton() for dim > 360
+      #  pMVN_arglist$rand_seq <- randtoolbox::halton(4L*nrow(pmvnorm.Sig),d=nrow(pmvnorm.Sig),init=FALSE,usetime=FALSE)
+      #  pMVN_arglist$nrep <- NULL
+      #} else 
+      if (is.null(pMVN_arglist$nrep)) 
+        pMVN_arglist$nrep <- quote(200L*nrow(pmvnorm.Sig)) ## cf notes 22/03/2016
+      # CALL
+      blob <- do.call("pMVN",pMVN_arglist) ## GHK by default
+      # 
       logLapp <- blob$logInt
       seInt <- blob$seInt
       attr(logLapp,"method") <- "      logL (GHK)" ## directly usable for screen output
-    } else if (SEMlogL=="pmvnorm") { 
-      ZALtZAL <- tcrossprodCpp(as.matrix(ZAL))
-      pmvnorm.Sig <- lambda*ZALtZAL+diag(nobs)
-      Lapp <- pmvnorm(lower=pmvnorm.lower,upper=pmvnorm.upper,mean=as.vector(fix),sigma=pmvnorm.Sig) 
-      if (Lapp[1]==0) {
-        Lmat <- RcppChol(pmvnorm.Sig)$L ## t(R::chol)
-        blob <- GHK_oneside(Lmat,trunpt = as.vector(fix),above=whichy1,nMCint)
-        logLapp <- blob$logInt
-        seInt <- blob$seInt
-        attr(logLapp,"method") <- "      logL (GHK)" ## directly usable for screen output
-      } else {
-        logLapp <- log(Lapp[1])
-        seInt <- attr(Lapp,"error")/Lapp
-        attr(logLapp,"method") <- "  logL (pmvnorm)" ## directly usable for screen output
-      }
     } else if (SEMlogL=="p_v") { ## use standard Laplace approx for estimating the likelihood
       ## this appears to perform very poorly probably due to poor estim of lambda by Laplace estimation.
       ## HACK for performing the computation: extracts any 'processed' argument from the call, substitutes PQL/L to SEM in it, etc. 
@@ -257,23 +279,12 @@ SEMbetalambda <- function(beta_eta,lambda,
       logLapp <- eval(as.call(arglist))$APHLs$p_v
       seInt <- 0
       attr(logLapp,"method") <- "p_v(h) (marginal L):"
-    } else if (SEMlogL == "naiveMC") {
-      ## naive MC simulation of final likelihood(with high variance...)
-      binLikcond <- numeric(nrow(ZAL))
-      logtotLikcond <- numeric(nMCint)
-      Lik <- 0
-      for (it in 1:nMCint) {
-        eta <- fix + sqrt(lambda) * (ZAL %*% rnorm(n_u_h,0))
-        mu <- family$linkinv(eta) ## ou pnorm()
-        binLikcond <- (1-mu)* (whichy0)+ mu*(whichy1)
-        logtotLikcond[it] <- sum(log(binLikcond))
-      }
-      maxlogtotLikcond <- max(logtotLikcond)
-      rel <- exp(logtotLikcond-maxlogtotLikcond)
-      logLapp <- log(mean(rel))+maxlogtotLikcond
-      seInt <- sqrt(var(log(colMeans(matrix(rel,ncol=50)))/50))
-      attr(logLapp,"method") <- "  logL (MC estimate)" ## directly usable for screen output
+    } else if (SEMlogL=="pmvnorm") {
+      logLapp <- log(Lapp[1L])
+      seInt <- attr(Lapp,"error")/(2.575829*Lapp) ## = qnorm(0.995) because pmvnorm's error is def'ine'd as bound of 99% interval
+      attr(logLapp,"method") <- "  logL (pmvnorm)" ## directly usable for screen output
     } else stop(paste("Unknown integration method",SEMlogL,"requested"))
+    ## naive MC removed 04/2016, GHK is now reliable
     return(list(beta_eta=beta_eta,lambda=lambda,corr_est=corr_est,logLapp=logLapp,seInt=seInt))
   }
   
@@ -291,20 +302,24 @@ SEMbetalambda <- function(beta_eta,lambda,
   if (estimCARrho) {
     ## to provide a conforming glm to HLfit but also coefficients to be substituted to the coefficents of this glm
     locdf$resp <- condw2
-    resu$glm_lambda <- calc_CARdispGammaGLM(data=locdf, lambda.Fix=lambda.Fix)
+    resu$glm_lambda <- calc_CARdispGammaGLM(data=locdf, lambda.Fix=lambda.Fix,control=control.glm)
     resu$glm_lambda$coeffs_substitute <- c("(Intercept)"= 1/lambda,"adjd"= - resu$corr_est[["rho"]]/lambda)
   } else {
-    ## calc_dispGammaGLM needs 'data' evne if it has zero cols  
+    ## calc_dispGammaGLM needs 'data' even if 'data' has zero cols  
     Intcol <- which(colnames(X_lamres)=="(Intercept)")
     loclamdata <- data.frame(X_lamres[, - Intcol,drop=FALSE])
-    ## FR->FR in a later version the formula and 'data' should be provided by processed$ as X_lamres come from there
+    ## FR->FR in a "later" version the formula and 'data' should be provided by processed$ as X_lamres come from there
+    ## FR->FR could be tested now ?
     if (ncol(loclamdata)>0L) {
       loclamformula <- as.formula(paste("~",paste(colnames(loclamdata),collapse="+")))
     } else loclamformula <- ~1
-    resu$glm_lambda <- calc_dispGammaGLM(formula=loclamformula,dev.res=as.matrix(condv2),
-                                         lev=rep(0,n_u_h),
-                                         data=loclamdata, 
-                                         etastart=rep(log(lambda),n_u_h))
+    resu$glm_lambda <- calc_dispGammaGLM(
+      formula=loclamformula,
+      dev.res=as.matrix(condv2),
+      lev=rep(0,n_u_h),
+      data=loclamdata,
+      etastart=rep(log(lambda),n_u_h), 
+      control=control.glm)
     resu$glm_lambda$coeffs_substitute <- c("(Intercept)"= log(lambda))
   }
   ## output for prediction only: 

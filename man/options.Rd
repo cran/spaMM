@@ -19,15 +19,16 @@ spaMM.getOption(x)
     are used in \code{spaMM}:
 
   \describe{
-
 \item{\code{ff_threshold}:}{Minimal number of matrix elements for some matrices to be stored on disk (using the \code{ff} package) rather than in memory}
+  
 
-\item{\code{RHOMAX=100000}:}{Maximum value of the scale parameter  \eqn{\rho} of the Matérn correlation function}
+\item{\code{COMP_maxn}:}{Number of terms for truntion of infinite sums that are evaluated in the fitting of \code{\link{COMPoisson}} models.}
 
-\item{\code{NUMAX=50}:}{Maximum value of the smoothness parameter  \eqn{\nu} of the Matérn correlation function}
+%\item{\code{RHOMAX}:}{Maximum value of the scale parameter \eqn{\rho} of the Matérn correlation function. Reserved variable, not set by default, but set by \code{corrHLfit}.}
 
-\item{\code{TRACE.UNLINK=FALSE}:}{Whether to delete preexisting files named as \code{HLCor.args.*.RData} when the 
-       trace option is used in corrHLfit or HLCor.}
+%\item{\code{NUMAX=50}:}{Maximum value of the smoothness parameter  \eqn{\nu} of the Matérn correlation function}
+
+\item{\code{TRACE.UNLINK=FALSE}:}{Whether to delete preexisting files named as \code{HLCor.args.*.RData} when the trace option is used in corrHLfit or HLCor.}
 
 \item{\code{MESSAGES.FULL.STACK=TRUE}:}{Whether to give information on the stack of calls in some warning messages.}
 
@@ -70,7 +71,7 @@ and possibly other undocumented values for development purposes.
 }
 \examples{
   spaMM.options()
-  spaMM.getOption("NUMAX")
+  spaMM.getOption("example_maxtime")
   \dontrun{
   spaMM.options(maxLambda=1e06)
   }

@@ -1,6 +1,7 @@
 \name{spaMM}
 % ----- \Rdversion{1.1}
 \alias{spaMM}
+\alias{spaMM-package}
 
 \docType{package}
 
@@ -79,14 +80,16 @@ HLfit(y ~X1*X3+X2*X3+I(X2^2)+(1|batch),family=Gamma(log),
 ## Same with fixed-effects predictor for residual variance 
 ## ( = structured-dispersion model):
 HLfit(y ~X1*X3+X2*X3+I(X2^2)+(1|batch),family=Gamma(log),
-          resid.formula = ~ X3+I(X3^2) ,data=wafers)
+          resid.model = ~ X3+I(X3^2) ,data=wafers)
 
 ## Random-slope model (mind the output!)        
-HLfit(y~X1+(X2|batch),data=wafers)
+if (spaMM.getOption("example_maxtime")>2) {          
+  HLfit(y~X1+(X2|batch),data=wafers)
+}
 
 ## fit a GLM (not mixed) with structured dispersion:
 HLfit( y ~X1+X2+X1*X3+X2*X3+I(X2^2),family=Gamma(log),
-      resid.formula = ~ X3+I(X3^2) ,data=wafers)
+      resid.model = ~ X3+I(X3^2) ,data=wafers)
 
 ## Fit of binary data using PQL/L. See ?arabidopsis
 \dontrun{

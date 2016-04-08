@@ -7,10 +7,16 @@
 }
 \description{
 \code{update} will update and (by default) re-fit a model. It does this mostly by extracting the call stored in the object, updating the call and evaluating that call. 
-(however, currently the \code{predictor} argument is processed differently).
+(however, currently the \code{predictor} argument is processed differently). Using \code{update} is a risky programming style (see Note). 
 }
 \note{
-\code{update}, as a general rule, is tricky. For example with \code{m1 <- glm(y~x + offset(<...>),<...>); m2 <- update(m1,.~.-x)}, \code{m2} will lose the intercept term, which would be retained in the absence of an offset. \code{update.HLfit} has the same behaviour.   
+\code{update}, as a general rule, is tricky. For example with \code{m1 <- glm(y~x + offset(<...>),<...>); m2 <- update(m1,.~.-x)}, \code{m2} will lose the intercept term, which would be retained in the absence of an offset. \code{update.HLfit} has the same behaviour. Further, it is affected in a non-transparent way by changes in variables used in the original call. For example
+\code{
+foo <- rep(1,10)
+m <- lm(rnorm(10)~1, weights=foo)
+rm(foo)
+update(m, .~.) # Error
+}
 }
 \usage{
 %- \method{update}{HLCor}(object,formula.,...)
@@ -45,7 +51,7 @@ See also \code{\link{HLCor}},  \code{\link{HLfit}}.
 data(wafers)
 ## First the fit to be updated:
 wFit <- HLfit(y ~X1*X3+X2*X3+I(X2^2)+(1|batch),family=Gamma(log),
-          resid.formula = ~ X3+I(X3^2) ,data=wafers)
+          resid.model = ~ X3+I(X3^2) ,data=wafers)
 
 # For estimates given by Lee et al., Appl. Stochastic Models Bus. Ind. (2011) 27:  315-328:
 # Refit with given beta or/and phi values:

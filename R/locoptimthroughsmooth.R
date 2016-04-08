@@ -1,11 +1,15 @@
-sampleNearby <- function(focalPts,n=NULL,stepsizes) {
+sampleNearby <- function(focalPts,n=NULL,stepsizes,
+                         margin ## to avoid too close pairs of points
+                         ) {
   d <- ncol(focalPts)
   nr <- nrow(focalPts)
   if (n<nr) {
     subfocal <- focalPts[sample(seq_len(nr),n),,drop=FALSE]
   } else subfocal <- focalPts
+  rmax <- stepsizes/2
+  rmin <- margin*rmax
   randpts <- apply(subfocal,1,function(v) {
-    rdxy <- runif(d)* sample(c(-1,1),d,replace=TRUE)* stepsizes/2
+    rdxy <- sample(c(-1,1),d,replace=TRUE)* runif(d,min=rmin,max=rmax) 
     v + rdxy 
   })
   if (d==1L) {
@@ -43,7 +47,7 @@ sampleGridFromLowUp <- function(LowUp,n=NULL,gridSteps=NULL,sampling=NULL) {
     insides <- lapply(grillelist, function(v) {(v[2]-v[1])/2+v[-c(gridSteps)]}) ## 19 5 3 2 2 2...
     stepsizes <- unlist(lapply(insides, function(v) {v[2]-v[1]})) 
     insides <- expand.grid(insides) ## 9 25 27 16 32 64 ...
-    randgrid <- sampleNearby(insides,n=nrow(insides),stepsizes=stepsizes) ## not really nearby given the large stepsizes
+    randgrid <- sampleNearby(insides,n=nrow(insides),stepsizes=stepsizes,margin=1e-4) ## not really nearby given the large stepsizes
     pargrid <- rbind(pargrid,randgrid) ## regular + random = 19 61 91 97 275... (20 replicates typically added)
   }
   ##
@@ -58,7 +62,7 @@ sampleGridFromLowUp <- function(LowUp,n=NULL,gridSteps=NULL,sampling=NULL) {
 # prevPtls : previous points (fittedPars, respName, lambda)
 # control.smooth : smoothing parameters (typically $rho )and/or number of duplicates ($nrepl)
 #
-# This function estimates likelihod in the input points + a second estimate in nrepl of these points 
+# This function estimates likelihood in the input points + a second estimate in nrepl of these points 
 # The computes a smoothed likelihood surface (default $nu=4) by ordinary kriging
 # Then finds the maximum of this smoothed likelihood surface
 #
@@ -91,7 +95,7 @@ optimthroughSmooth <- function(pargrid,anyHLCor.args,prevPtls=NULL,control.smoot
   lower <- LowUp$lower
   upper <- LowUp$upper
   ## 
-  processedHL1 <- getProcessed(anyHLCor.args$processed,"HL[1]") ## there's also HLmethod in processed<[[]]>$callargs
+  processedHL1 <- getProcessed(anyHLCor.args$processed,"HL[1]",from=1L) ## there's also HLmethod in processed<[[]]>$callargs
   logLobj <- anyHLCor.args$`HLCor.obj.value`
   prevmsglength <- 0
   ## eval nrepl
@@ -116,8 +120,14 @@ optimthroughSmooth <- function(pargrid,anyHLCor.args,prevPtls=NULL,control.smoot
   grid.obj <- matrix(NA,nrow=NROW(pargrid),ncol=4L)
   colnames(grid.obj) <- c("logLobj","lambda","seInt","pmvnorm")
   if (verbose) cat("\n") 
+  skeleton <- anyHLCor.args$skeleton
   for (ii in seq_len(NROW(pargrid))) {
-    anyHLCor.args$ranPars[names(lower)] <- relist(pargrid[ii,],lower)
+    anyHLCor.args$ranPars[names(skeleton)] <- relist(pargrid[ii,],skeleton)
+    ## as in HLCor.obj:
+    attr(anyHLCor.args$ranPars,"RHOMAX") <- attr(skeleton,"RHOMAX")
+    attr(anyHLCor.args$ranPars,"NUMAX") <- attr(skeleton,"NUMAX")
+    types <- attr(skeleton,"type")
+    attr(anyHLCor.args$ranPars,"type")[names(types)] <- types
     hlcor <- do.call("HLCor",anyHLCor.args) ## this reconstructs a list of the form of initvec, then adds it to other anyHLCor$ranPars information
     vec <- c("logLobj"=hlcor$APHLs[[logLobj]],lambda=hlcor$lambda,
       seInt =attr(hlcor$APHLs[[logLobj]],"seInt"), ## seInt attr may be NULL then no seInt element
@@ -156,51 +166,57 @@ optimthroughSmooth <- function(pargrid,anyHLCor.args,prevPtls=NULL,control.smoot
   if (is.null(initSmooth)) initSmooth <- rep(1,length(lower))
   init.corrHLfit <- list(rho=initSmooth) ## important as it gives the length of rho to corrHLfit
   init.corrHLfit[names(ranFix)] <- NULL
-  resid.family <- control.smooth[["resid.family"]] ## may be NULL; not that of the user-level model
-  resid.formula <- control.smooth[["resid.formula"]]
+  # the data for the phi GLM contain controlled names (trRho trNu logLobj lambda seInt pmvnorm)
   ## defaults:
-  if (is.null(forSmooth$seInt) 
-      || length(which(grid.obj[,"pmvnorm"]>0L))>20L ## enough successful pmvnorm, presumably at the top of the lik surf
-  ) {
-    if(is.null(resid.formula)) resid.formula <- ~ 1 
-    if(is.null(resid.family)) resid.family <- GammaForDispGammaGLM(log) 
-  } else { ## true GHK or failed pmvnorm
-    if(is.null(resid.formula)) resid.formula <- ~1+offset(seInt^2) ## default... ######   ~log(seInt)+I(log(seInt)^2)
-    if(is.null(resid.family)) {
-      if (deparse(resid.formula[[2]]) == "1") {
-        resid.family <- GammaForDispGammaGLM(log)
-      } else resid.family <- GammaForDispGammaGLM(identity)  
-    }
-  } ## ## this makes ~1+offset(seInt^2) + identity the default for GHK, but the hyper-default is pmvnorm
+  resid.formula <- control.smooth[["resid.model"]]$formula
+  ## we look whether there is suspect variation in seInt
+  if(is.null(resid.formula)) {
+    ## Do not use seInt when there are enough pmvnorm, presumably at the top of the lik surf (even though seInt is available)
+    if ( is.null(forSmooth$seInt) ) { ## non-standard case
+      resid.formula <- ~ 1 
+    } else if (length(validSEs <- which(forSmooth[,"seInt"]>0L))>20L) { ## removes NaN's...
+      seInt <- forSmooth[validSEs,"seInt"]
+      seInt975 <- mean(seInt) + sqrt(var(seInt))* 1.96
+      if (forSmooth[which.max(forSmooth[,"logLobj"]),"seInt"] > seInt975) {
+        resid.formula <- ~1+offset(seInt^2) 
+      } else resid.formula <- ~ 1
+    } else resid.formula <- ~ 1 ## many NaN's [, or (oddly), many 0's from pmvnorm, if GHK is not called in that case]
+  }
+  resid.family <- control.smooth[["resid.model"]]$family ## may be NULL; not that of the user-level model
+  if(is.null(resid.family)) {
+    if (deparse(resid.formula[[2]]) == "1") {
+      resid.family <- spaMM_Gamma(log)
+    } else resid.family <- spaMM_Gamma(identity)  
+  }   ## this makes ~1+offset(seInt^2) + identity the default for GHK, but the hyper-default is ~1 with pmvnorm
+  resid.model <- list(formula=resid.formula, family=resid.family)
+  #
   ## logic: (if some trouble) {
   ##  use subset of data to estimate corrPars , forCorrEst is not NULL
   ## } ## else use all data, single corrHLfit sufficient, forCorrEst is NULL
-  if ( ! is.null(forSmooth$seInt) && any(is.na(forSmooth$seInt))) {
+  if ( ! is.null(forSmooth$seInt) && any(is.na(forSmooth$seInt))) { ## is.na(NaN) is TRUE
     forSmooth <- forSmooth[do.call(order,forSmooth),]
     inPairs <- apply(diff(as.matrix(forSmooth[,1:2,drop=FALSE]))==0,1,all)
     ## cf Infusion:::remove.pairswithNas for detailed explanations of the test
-    forCorrEst <- NAcleaning(forSmooth) ## NULL if no NAs to clean
+    forCorrEst <- NAcleaning(forSmooth,inPairs) ## NULL if no NAs/NaN to clean
   } else  forCorrEst <- NULL
   if (! is.null(forCorrEst)) {
-    ## FR->FR note (temporary?) syntax resid.formula but control.HLfit$resid.family
-    Krigobj <- corrHLfit(form,data=forCorrEst,resid.formula= resid.formula ,
-                         init.corrHLfit=init.corrHLfit,ranFix=ranFix,
-                         control.HLfit=list(resid.family=resid.family))
+    message("NA/NaN in SEs of likelihood estimates")
+    Krigobj <- corrHLfit(form,data=forCorrEst,resid.model= resid.model,
+                         init.corrHLfit=init.corrHLfit,ranFix=ranFix)
     ## now we can use "consistent NAs" in the following fit IF we can provide phi and lambda estimates...
     if (deparse(resid.formula[[length(resid.formula)]]) == "1") {
       inconsistentNAs <- inPairs & (diff(is.na(forSmooth$seInt)) != 0L)
       misleadingPairs <- c(FALSE,inconsistentNAs) | c(inconsistentNAs,FALSE) ## pairs with only one NA 
       forSmooth <- forSmooth[ ! misleadingPairs,,drop=FALSE]
       ranFix$lambda <- Krigobj$lambda
-      ranFix$phi <- Krigobj$phi
+      ranFix$phi <- Krigobj$phi ## *FR->FR ineffective for resid.predictor$formula= ~1 hence phi is refit below*
     } else forSmooth <- forCorrEst ## play safe
     ## in all cases:
     ranFix$rho <- Krigobj$corrPars$rho
   }
   init.corrHLfit[names(ranFix)] <- NULL
-  Krigobj <- corrHLfit(form,data=forSmooth,resid.formula= resid.formula ,
-                       init.corrHLfit=init.corrHLfit,ranFix=ranFix,
-                       control.HLfit=list(resid.family=resid.family))
+  Krigobj <- corrHLfit(form,data=forSmooth,resid.model= resid.model ,
+                       init.corrHLfit=init.corrHLfit,ranFix=ranFix)
   ### quick check of variance of logL estimation:
   if (FALSE) {
     essai <- forSmooth[do.call(order,forSmooth[,seq_len(length(lower))]),,drop=FALSE]

@@ -26,12 +26,13 @@ calcUniqueGeo <- function(data) {
   return(coordinates) ## should be ordered as bars[[3]] (important for predict)
 }
 
-## better for development to avoir name conflicts with OKsmooth :toCanonical and :canonize
-canonizeRanPars <- function(ranPars,corr.model,checkComplete=TRUE) {
+## better for development to avoid name conflicts with OKsmooth :toCanonical and :canonize
+canonizeRanPars <- function(ranPars, ## should have a RHOMAX attribute when trRho in input
+                            corr.model,checkComplete=TRUE) {
   trueCorrpars <- list()
-  if (corr.model %in% c("Matern","corMatern")) {
+  if (corr.model %in% c("Matern")) {
     if (!is.null(ranPars$trNu)) { ## either we have nu,rho or trNu,trRho 
-      ranPars$nu <- nuInv(ranPars$trNu,ranPars$trRho) ## before trRho is removed...
+      ranPars$nu <- nuInv(ranPars$trNu,ranPars$trRho,NUMAX=attr(ranPars,"NUMAX")) ## before trRho is removed...
       ranPars$trNu <- NULL
       attr(ranPars,"type")$nu <- attr(ranPars,"type")$trNu
       attr(ranPars,"type")$trNu <- NULL
@@ -52,7 +53,7 @@ canonizeRanPars <- function(ranPars,corr.model,checkComplete=TRUE) {
     trueCorrpars$ARphi <- ARphi    
   } else if (corr.model != "corrMatrix") { ## all models with a 'rho' parameter
     if (!is.null(ranPars$trRho)) {
-      ranPars$rho <- rhoInv(ranPars$trRho)
+      ranPars$rho <- rhoInv(ranPars$trRho,RHOMAX=attr(ranPars,"RHOMAX"))  
       ranPars$trRho <- NULL
       attr(ranPars,"type")$rho <- attr(ranPars,"type")$trRho
       attr(ranPars,"type")$trRho <- NULL
@@ -90,79 +91,118 @@ canonizeRanPars <- function(ranPars,corr.model,checkComplete=TRUE) {
   return(list(trueCorrpars=trueCorrpars,ranPars=ranPars))
 }
 
+
 HLCor <- function(formula,
+                  data,family=gaussian(),
                   ranPars=NULL, ## all dispersion and correlation params ideally provided through ranPars
-                  data,
                   distMatrix,uniqueGeo=NULL,adjMatrix,corrMatrix,
                   verbose=c(warn=TRUE,trace=FALSE,summary=FALSE),control.dist=list(),
                   ...) { 
-  mc <- match.call() ## potentially used by getCallHL(object) in update.HL...
-  if (is.na(verbose["trace"])) verbose["trace"] <- FALSE
-  if (is.na(verbose["SEM"])) verbose["SEM"] <- FALSE
-  if (is.na(verbose["warn"])) verbose["warn"] <- TRUE
-  if (is.na(verbose["summary"])) {
-    verbose["HLCorSummary"] <- FALSE
-  } else verbose["HLCorSummary"] <- verbose["summary"]
-  verbose["summary"] <- FALSE ## this is for HLfit
-  ## either these two lines, or a family argument and   HL.info$family <- family
-  dotlist <- list(...)
-  family <- dotlist$family
-  family <- checkRespFam(family)
-  dotlist$family <- family
-  famfam <- family$family
-  if ( ! is.null(famfam) && famfam=="multi") {
-    if ( ! inherits(data,"list")) {
-      if(family$binfamily$family=="binomial") {
-        familyargs <- family
-        familyargs$family <- NULL
-        familyargs$binfamily <- NULL
-        data <- do.call(binomialize,c(list(data=data),familyargs)) ## if data not already binomialized
-      }
-    }
-  }
-  ################# data LIST
-  if ( inherits(data,"list")) {
-    processed <- dotlist$processed
-    if ( ( ! is.null(processed) ) && ( ! inherits(processed,"list") ) ) {
-      stop("(!) 'processed' is not NULL but not a list, while data is a list.")
-    }
-    fitlist <- lapply(seq_len(length(data)),function(it){
-      locmc <- mc
-      if (family$family=="multi") locmc$family <- family$binfamily
-      locmc$data <- data[[it]]
-      locmc$distMatrix <- mc$distMatrix[[it]]
-      locmc$uniqueGeo <- mc$uniqueGeo[[it]]
-      if (inherits(processed,"list")) locmc$processed <- processed[[it]]
-      eval(locmc)
-    }) ## a pure list of HLCor objects
-    liks <- sapply(fitlist,function(v) {unlist(v$APHLs)})
-    liks<- apply(liks,1,sum)
-    attr(fitlist,"APHLs") <- as.list(liks)
-    class(fitlist) <- c("HLfitlist",class(fitlist)) 
-    return(fitlist) ## list of HLfit object + one attribute
-  }
-  ################# 
-  if ( ! is.null(dotlist$ranFix)) { ##debugging code will become obsolete some day
+  oricall <- mc <- match.call(expand.dots = TRUE) 
+  if ( ! is.null(mc$ranFix)) { ## avoiding user's confusion
     stop("!From HLCor: ranFix found in '...'. Make sure to use ranPars only")
   }
-  if (!is.null(HLmethod <- dotlist$HLmethod)) {
-    if (HLmethod=="SEM") dotlist$`try.chol` <- FALSE
+  if (!is.null(mc$LamFix)) {
+    stop("argument LamFix of HLCor is obsolete")
   }
-  processed <- dotlist$processed ## FR->FR suggests we should add it as argument of HLCor...
-  if ( ! is.null(processed)) {
-    predictor <- processed$predictor 
-  } else { ## preprocess has not been called hence validData probably not called before preprocess...
-    validdata <- validData(formula=formula,resid.formula=dotlist$resid.formula,data=data) ## will remove rows with NA's in required variables
-    if (!inherits(data,"environment")) {
-      data <- data[rownames(validdata),,drop=FALSE] ##     before Predictor is called and an LMatrix is added, etc. 
-    } else data <- validdata
-    predictor <- formula
-    if (! "predictor" %in% class(predictor)) predictor <- Predictor(formula) 
+  if (!is.null(mc$PhiFix)) {
+    stop("argument PhiFix of HLCor is obsolete")
+  }  
+  # frst steps as in HLFit: (no need to test missing(data) in several functions)
+  if (is.null(processed <- mc$processed)) { ## no 'processed'
+    ## FR->FR suggests we should add processed as argument of HLCor...
+    family <- checkRespFam(family)
+    if ( identical(family$family,"multi")) {
+      if ( ! inherits(data,"list")) {
+        if(family$binfamily$family=="binomial") {
+          familyargs <- family
+          familyargs$family <- NULL
+          familyargs$binfamily <- NULL
+          data <- do.call(binomialize,c(list(data=data),familyargs)) ## if data not already binomialized
+        }
+      }
+    }
+    if ( inherits(data,"list")) {
+      ## RUN THIS LOOP and return
+      fitlist <- lapply(seq_len(length(data)),function(it){
+        locmc <- mc
+        if (identical(family$family,"multi")) locmc$family <- family$binfamily
+        locmc$data <- data[[it]]
+        locmc$distMatrix <- mc$distMatrix[[it]]
+        locmc$uniqueGeo <- mc$uniqueGeo[[it]]
+        eval(locmc)
+      }) ## a pure list of HLCor objects
+      liks <- sapply(fitlist,function(v) {unlist(v$APHLs)})
+      liks <- apply(liks,1,sum)
+      attr(fitlist,"APHLs") <- as.list(liks)
+      class(fitlist) <- c("HLfitlist",class(fitlist)) 
+      return(fitlist) ## list of HLfit object + one attribute
+    } else {## there is a single data set, still without processed
+      FHF <- formals(HLfit) ## makes sure about default values 
+      names_FHF <- names(FHF)
+      if ( ! is.null(mc$resid.formula)) mc$resid.model <- mc$resid.formula
+      names_nondefault  <- intersect(names(mc),names_FHF) ## mc including dotlist
+      FHF[names_nondefault] <- mc[names_nondefault] ##  full HLfit args
+      preprocess.formal.args <- FHF[which(names_FHF %in% names(formals(preprocess)))] 
+      preprocess.formal.args$family <- family ## already checked 
+      preprocess.formal.args$rand.families <- FHF$rand.family ## because preprocess expects $rand.families 
+      preprocess.formal.args$predictor <- FHF$formula ## because preprocess stll expects $predictor 
+      preprocess.formal.args$ranFix <- ranPars ## because preprocess expects ranFix
+      mc$processed <- do.call(preprocess,preprocess.formal.args,envir=environment(formula))
+      # HLCor_body() called below
+    }
+  } else { ## 'processed' is available
+    multiple <- attr(processed,"multiple")
+    if ( ( ! is.null(multiple)) && multiple)  { ## "multiple" processed list 
+      ## RUN THIS LOOP and return
+      fitlist <- lapply(seq_len(length(processed)),function(it){
+        locmc <- mc
+        locmc$processed <- processed[[it]] ## The data are in processed !
+        locmc$distMatrix <- distMatrix[[it]] ## but the matrices are not HLfit args hence not in processed ! 
+        locmc$uniqueGeo <- uniqueGeo[[it]]
+        eval(locmc)
+      }) ## a pure list of HLCor objects
+      liks <- sapply(fitlist,function(v) {unlist(v$APHLs)})
+      liks <- apply(liks,1,sum)
+      attr(fitlist,"APHLs") <- as.list(liks)
+      class(fitlist) <- c("HLfitlist",class(fitlist)) 
+      return(fitlist) ## list of HLfit object + one attribute
+    } else { ## there is one processed for a single data set 
+      # HLCor_body() called below
+    }
   }
+  ################# single processed, single data analysis: 
+  mc$verbose <- reformat_verbose(mc$verbose,For="HLCor")
+  mc$data <- NULL
+  mc$family <- NULL
+  mc$formula <- NULL
+  mc$prior.weights <- NULL
+  mc$HLmethod <- NULL ## processed$HL  
+  mc$rand.family <- NULL ## processed$rand.families  
+  mc$resid.formula <- NULL ## mc$resid.model  
+  mc$REMLformula <- NULL 
+  mc[[1L]] <- quote(spaMM::HLCor_body)
+  hlcor <- eval(mc,parent.frame())
+  attr(hlcor,"HLCorcall") <- oricall ## potentially used by getCall(object) in update.HL 
+  if (mc$verbose["HLCorSummary"]) { ## useful in final call from corrHLfit
+    summary(hlcor) ## input corr pars have been printed at the beginning...   
+  }
+  return(hlcor)
+}
+
+HLCor_body <- function(processed,
+                  ranPars=NULL, ## all dispersion and correlation params ideally provided through ranPars
+                  distMatrix,uniqueGeo=NULL,adjMatrix,corrMatrix,
+                  verbose=c(warn=TRUE,trace=FALSE,summary=FALSE),control.dist=list(),
+                  ...) { 
+  dotlist <- list(...)
+  ################# 
+  data <- processed$data
+  predictor <- processed$predictor 
   spatial.terms <- findSpatial(predictor)
-  spatial.model <- spatial.terms[[1]] 
+  spatial.model <- spatial.terms[[1L]] 
   if ( ! is.null(spatial.model)) {
-    corr.model <- as.character(spatial.model[[1]]) 
+    corr.model <- as.character(spatial.model[[1L]]) 
   } else {
     if ( ! missing(corrMatrix)) {
       mess <- pastefrom("corrMatrix argument despite no corrMatrix term in formula:",prefix="(!) From ")
@@ -172,16 +212,12 @@ HLCor <- function(formula,
     stop("Call to 'HLCor' without a spatial term in the formula is suspect.")
   }
   ## convert back ranPars to canonical scale:
-  #if (corr.model== "corrMatrix") { ## spculatively removed 2015/06/02
-  #  ranPars <- NULL
-  #} else {
-    rpblob <- canonizeRanPars(ranPars=ranPars,corr.model=corr.model) 
-    ranPars <- rpblob$ranPars
-    trueCorrpars <- rpblob$trueCorrpars
-    rho <- ranPars$rho
-  #}
+  rpblob <- canonizeRanPars(ranPars=ranPars,corr.model=corr.model) 
+  ranPars <- rpblob$ranPars
+  trueCorrpars <- rpblob$trueCorrpars
+  rho <- ranPars$rho
+  #
   coordinates <- NULL
-  ##
   test.in <- FALSE
   ### ensure LMatrix in predictor: 
   ## if it is currently absent, first provide corr matrix or its symSVD, from which Lunique will be computed using designL.from.Corr
@@ -198,7 +234,7 @@ HLCor <- function(formula,
         }             
       }
       if (is.null(symSVD)) {
-        corrm <- solve(diag(rep(1,nrow(adjMatrix)))-rho*(adjMatrix))
+        corrm <- solve(diag(nrow(adjMatrix))-rho*(adjMatrix))
       } else {
         symSVD$adjd <- symSVD$d
         symSVD$d <- 1/(1-rho*symSVD$d) ## from adjMatrix to correlation matrix
@@ -207,7 +243,7 @@ HLCor <- function(formula,
       if ( missing(adjMatrix) ) stop("missing 'adjMatrix' for adjacency model")
       UDU. <- attr(adjMatrix,"UDU.")
       if (is.null(UDU.)) {
-        corrm <- solve(diag(rep(1,nrow(adjMatrix)))-rho*(adjMatrix))
+        corrm <- solve(diag(nrow(adjMatrix))-rho*(adjMatrix))
       } else {
         corrm <- UDU.$u %*% sweep(UDU.$u.,MARGIN=1,1/(1-rho*UDU.$d),`*`) 
       }
@@ -222,7 +258,7 @@ HLCor <- function(formula,
         #test.in <- TRUE
       } else scaled.dist <- proxy::dist(uniqueGeo)
       corrm <- trueCorrpars$ARphi^scaled.dist
-    } else  if (corr.model %in% c("Matern","corMatern")) {
+    } else  if (corr.model %in% c("Matern")) {
       txt <- paste(spatial.model[[2]][[3]]) ## the RHS of the ( . | . ) 
       if (length(grep("%in%",txt))>0) {
         stop("(!) Matern( . | <coord> %in% <grp>) is not yet handled.")
@@ -235,19 +271,14 @@ HLCor <- function(formula,
       } 
       ## then compute scaled distances from unscaled info, for HLfit call
       msd.arglist <- list(rho = rho)
-      if ( ! is.null(dist.method <- control.dist$`dist.method`)) {
-        msd.arglist$`dist.method` <- dist.method
-      }
-      
+      msd.arglist$`dist.method` <- control.dist$`dist.method` ## may be NULL
       if (length(rho)>1L) {
         msd.arglist <- c(msd.arglist,list(uniqueGeo=uniqueGeo))
-        if ( ! is.null(rho.mapping <- control.dist$`rho.mapping`)) {
-          msd.arglist$`rho.mapping` <- rho.mapping
-        }
+        msd.arglist$`rho.mapping` <- control.dist$`rho.mapping` ## may be NULL
       } else {
         if ( missing(distMatrix)) { 
           dist.arglist <- list(x=uniqueGeo)
-          if(!is.null(dist.method <- control.dist$dist.method)) dist.arglist$method <- dist.method
+          dist.arglist$method <- control.dist$dist.method ## may be NULL
           distMatrix <- do.call(proxy::dist,dist.arglist)
         }
         msd.arglist <- c(msd.arglist,list(distMatrix=distMatrix))
@@ -264,7 +295,6 @@ HLCor <- function(formula,
         stop(mess)
       } ## ELSE:
       corrm <- corrMatrix
-      #browser()
       Lunique <- attr(corrMatrix,"LMatrix") ## will typically be NULL, but super-users ;-) may have provided it
     } 
     if (verbose["trace"] && length(trueCorrpars)>0) print(unlist(trueCorrpars))
@@ -274,7 +304,8 @@ HLCor <- function(formula,
         Lunique <- try(designL.from.Corr(symSVD=symSVD))
       } else { ## corrm must exist
         argsfordesignL <- dotlist[intersect(names(dotlist),names(formals(designL.from.Corr)))] 
-        if ("dist" %in% class(corrm)) {
+        if (processed$HL[1L]=="SEM") argsfordesignL$try.chol <- FALSE
+        if (inherits(corrm,"dist")) {
           corrm <- as.matrix(corrm)
           diag(corrm) <- 1L ## always a correlation matrix
         }
@@ -297,23 +328,16 @@ HLCor <- function(formula,
     }
     attr(predictor,"LMatrix") <- Lunique
   }
+  processed$predictor <- predictor
   ###
-  dotlist$verbose <- verbose[intersect(names(verbose),c("warn","trace","summary","SEM"))] ## all printing in HLfit is suppressed by default
   HLFormals <- names(formals(HLfit))
-  HL.info <- dotlist[intersect(names(dotlist),HLFormals)]
-  HL.info$data <- data
-  if (! is.null(processed)) {
-    processed$predictor <- predictor
-    HL.info$processed <- processed
-  } else HL.info$formula <- predictor
-## this should become obsolete. see handling of ranPars below:
-  if (!is.null(dotlist$LamFix)) {
-    stop("argument LamFix of HLCor is obsolete")
-  }
-  if (!is.null(dotlist$PhiFix)) {
-    stop("argument PhiFix of HLCor is obsolete")
-  }  
-##
+  good_dotnames <- intersect(names(dotlist),HLFormals)
+  if (length(good_dotnames)>0L) {
+    HL.info <- dotlist[good_dotnames]
+  } else HL.info <- list()
+  ## all printing in HLfit is suppressed by default
+  HL.info$verbose <- verbose #[intersect(names(verbose),c("warn","trace","summary","SEM"))] 
+  HL.info$processed <- processed
   ## convert ranPars to ranFix + init.HLfit
   ## allows log and not log:
   varNames <- names(which(attr(ranPars,"type")=="var"))
@@ -341,64 +365,72 @@ HLCor <- function(formula,
     stop("I exit.")
   } ## ELSE:
   hlfit$control.dist <- control.dist
-  attr(hlfit,"info.uniqueGeo") <- uniqueGeo ## more spatial info is to be found in hlfit$predictor (Lunique = corrmat^1/2) and hlfit$ZALMatrix
-  if (corr.model %in% c("Matern","corMatern")) attr(hlfit,"msd.arglist") <- msd.arglist ## more organized, easier to reuse. 
+  attr(hlfit,"info.uniqueGeo") <- uniqueGeo ## more spatial info is in the hlfit$predictor's attributes (Lunique = corrmat^1/2, and ZALMatrix)
+  if (corr.model %in% c("Matern")) attr(hlfit,"msd.arglist") <- msd.arglist ## more organized, easier to reuse. 
+  # particulary for $rho.mapping:
+  #  should be NULL if length rho = 1 or if original control.dist$rho.mapping was NULL
   ## FR->FR but info.uniqueGeo more general (eg AR1) -> a revoir
   hlfit$call <- "$call removed by HLCor. Consider the 'HLCorcall' attribute instead." ## instead of the $call with evaluated arguments
-  attr(hlfit,"HLCorcall") <- mc
-  if (verbose["HLCorSummary"]) { ## useful in final call from corrHLfit
-    summary(hlfit) ## input corr pars have been printed at the beginning...   
-  }
   return(hlfit) ## 
 }
 
 
 ## wrapper for HLCor, suitable input and output for optimization
-`HLCor.obj` <- function(ranefParsVec,skeleton,HLCor.obj.value="p_bv",traceFileName=NULL,family=gaussian(),...) { ## name of first arg MUST differ from names in dotlist...
-  mc <- match.call(expand.dots=TRUE) ## (1) expand.dots added 11/04/2014 for the mutlinomial... eval 
-  dotlist <- list(...)
-  if ( inherits(mc$data,"list")) {
-    ## then processed should already be a list
-    family <- mc$family
-    fitlist <- lapply(seq_len(length(mc$data)),function(it){
-      locmc <- mc
-      locmc[[1L]] <- as.name("HLCor.obj") ## replaces "f" !
-      locmc$ranefParsVec <- ranefParsVec ## replaces "arg" !
-      if (family$family=="multi") locmc$family <- family$binfamily
-      locmc$distMatrix <- mc$distMatrix[[it]]
-      locmc$uniqueGeo <- mc$uniqueGeo[[it]]
-      locmc$data <- mc$data[[it]]
-      locmc$processed <- mc$processed[[it]]
-      eval(locmc) ## this will execute all the code below starting from dotlist <- list(...) 
-    })
-    resu <- sum(unlist(fitlist))
-    if (is.character(traceFileName)) {
-      verif <- paste("#global:",ranefParsVec,resu) 
-      write(verif,file=traceFileName,append=T) ## the file is unlink'ed in corrHLfit()  
+`HLCor.obj` <- function(ranefParsVec,skeleton,HLCor.obj.value="p_bv",traceFileName=NULL,...) { ## name of first arg MUST differ from names in dotlist...
+  mc <- match.call(expand.dots=TRUE) ## (1) expand.dots added 11/04/2014 for the multinomial... eval 
+  if (is.null(processed <- mc$processed)) {
+    stop("Call to HLCor.obj() without a 'processed' argument is invalid")
+  } else { ## 'processed' is available
+    multiple <- attr(processed,"multiple")
+    if ( ( ! is.null(multiple)) && multiple)  { ## "multiple" processed list 
+      ## RUN THIS LOOP and return
+      fitlist <- lapply(seq_len(length(processed)),function(it){
+        locmc <- mc
+        locmc[[1L]] <- as.name("HLCor.obj") ## replaces "f" !
+        locmc$ranefParsVec <- ranefParsVec ## replaces "arg" !
+        locmc$processed <- processed[[it]] ## The data are in processed !
+        locmc$distMatrix <- mc$distMatrix[[it]] ## but the matrices are not HLfit args hence not in processed ! 
+        locmc$uniqueGeo <- mc$uniqueGeo[[it]]
+        eval(locmc)
+      }) ## a pure list of HLCor objects
+      resu <- sum(unlist(fitlist))
+      if (is.character(traceFileName)) {
+        verif <- paste("#global:",ranefParsVec,resu) 
+        write(verif,file=traceFileName,append=T) ## the file is unlink'ed in corrHLfit()  
+      }
+      return(resu)
+    } else { ## there is one processed for a single data set 
+      family <- processed$family
+      data <- processed$data
     }
-    return(resu)
   }
+  
   HLCor.formals <- names(formals(HLCor))
-  HLfit.formals <- names(formals(HLfit))
+  names_formals_HLfit <- names(formals(HLfit))
   designL.formals <- names(formals(designL.from.Corr))
   makescaled.formals <- names(formals(make_scaled_dist))
-  HLnames <- (c(HLCor.formals,HLfit.formals,designL.formals,makescaled.formals))  ## cf parallel code in corrHLfit
-  HLCor.args <- dotlist[intersect(names(dotlist),HLnames)]
-  forGiven <- relist(ranefParsVec,skeleton) ## given values of the optimized variables
-  HLCor.args$ranPars[names(forGiven)] <- forGiven ## do not wipe out other fixed, non optimized variables
-  HLCor.args$family <- family 
+  HLnames <- (c(HLCor.formals,names_formals_HLfit,designL.formals,makescaled.formals))  ## cf parallel code in corrHLfit
+  HLCor.call <- mc[c(1,which(names(mc) %in% HLnames))] ## keep the call structure
+  HLCor.call[[1L]] <- quote(spaMM::HLCor)
+  forGiven <- relist(ranefParsVec,skeleton) ## given values of the optimized variables 
+  ## ... relist keeps the RHOMAX... attributes from the skeleton, but the partial copy into ranPars does not. 
+  HLCor.call$ranPars[names(forGiven)] <- forGiven ## do not wipe out other fixed, non optimized variables
+  attr(HLCor.call$ranPars,"RHOMAX") <- attr(skeleton,"RHOMAX")
+  attr(HLCor.call$ranPars,"NUMAX") <- attr(skeleton,"NUMAX")
+  types <- attr(skeleton,"type")
+  attr(HLCor.call$ranPars,"type")[names(types)] <- types
   if (is.character(traceFileName)) {
-    if(.spaMM.data$options$TRACE.UNLINK) unlink("HLCor.args.*.RData")
+    if(.spaMM.data$options$TRACE.UNLINK) unlink("HLCor.call*.RData")
     zut <- paste(ranefParsVec,collapse="")  
-    save(HLCor.args,file=paste("HLCor.args.",zut,".RData",sep="")) ## for replicating the problem
+    save(HLCor.call,file=paste("HLCor.call",zut,".RData",sep="")) ## for replicating the problem
   }
-  hlfit <- do.call("HLCor",HLCor.args)
+  hlfit <- eval(HLCor.call)
   aphls <- hlfit$APHLs
   resu <- aphls[[HLCor.obj.value]]
-  readable <- unlist(canonizeRanPars(ranPars=forGiven,corr.model=dotlist$`corr.model`,checkComplete=FALSE)$ranPars) ## FR->FR use of dotlist...
-  verif <- c(unlist(aphls),hlfit$lambda,hlfit$phi,readable,ranefParsVec) ## hlfit$phi may be NULL
   if (is.character(traceFileName)) {
-    write(verif,file=traceFileName,ncolumns=length(verif),append=T) ## the file is unlink'ed in corrHLfit()  
+    readable <- unlist(canonizeRanPars(ranPars=forGiven,corr.model=mc$`corr.model`,checkComplete=FALSE)$ranPars) 
+    verif <- c(unlist(aphls),hlfit$lambda,hlfit$phi,readable,ranefParsVec) ## hlfit$phi may be NULL
+    write(verif,file=traceFileName,ncolumns=length(verif),append=TRUE) ## the file is unlink'ed in corrHLfit()  
   }
   return(resu) #
 }

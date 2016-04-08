@@ -8,10 +8,12 @@
   \code{corrHLfit} performs the joint estimation of correlation parameters, fixed effect and dispersion parameters. 
 }
 \usage{
-corrHLfit(formula,data,init.corrHLfit=list(),init.HLfit=list(),ranFix=list(),
-          lower=list(),upper=list(),trace=list(file=NULL,append=TRUE),objective="p_bv", 
-          control.dist=list(),control.corrHLfit=list(),processed=NULL,
-          family=gaussian(),...)
+corrHLfit(formula, data, init.corrHLfit = list(), 
+          init.HLfit = list(), ranFix = list(), lower = list(), 
+          upper = list(), trace = list(file = NULL, append = TRUE),
+          objective = "p_bv", resid.model = ~1, resid.formula,
+          control.dist = list(), control.corrHLfit = list(),
+          processed = NULL, family = gaussian(), ...)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -27,19 +29,14 @@ An optional list of initial values for correlation and/or dispersion parameters,
 a dispersion parameter changes the ways it is estimated (see Details).
 \code{rho}  may be a vector (see \code{\link{make_scaled_dist}}) and, in that case, it is possible that some or all of its elements are \code{NA}, for which \code{corrHLfit} substitute automatically determined values.  
 }
-  \item{init.HLfit}{
-    See identically named \code{\link{HLfit}} argument.
+  \item{init.HLfit}{See identically named \code{\link{HLfit}} argument.
 %- FR->FR more to say (if corr estim within HLfit becomes public ?)...
   }
-  \item{ranFix}{
-A list similar to \code{init.corrHLfit}, but specifying fixed values of the parameters not estimated. 
-}
+  \item{ranFix}{A list similar to \code{init.corrHLfit}, but specifying fixed values of the parameters not estimated. }
   \item{lower}{
 An optional list of values of parameters specified through \code{init.corrHLfit}, used as lower values in calls to \code{optim}. See Details for default values.
 }
-  \item{upper}{
-Same as \code{lower}, but upper values.
-}
+  \item{upper}{Same as \code{lower}, but upper values.}
   \item{trace}{
 Not for normal use.
 If trace is of the form \code{trace=list(file=<filename>,append=F)}, some trace information is written in the file 'filename'. 
@@ -53,6 +50,7 @@ parameters in the HLCor call. Information about the variables is printed at the 
 The objective function maximized for estimation of parameters by \code{optim}. 
 Either \code{"p_bv"} for restricted likelihood or \code{"p_v"} for marginal likelihood.
 }
+  \item{resid.model, resid.formula}{See identically named \code{\link{HLfit}} arguments.}
 \item{control.dist}{See \code{control.dist} in \code{\link{HLCor}}}
 \item{control.corrHLfit}{
   This may be used to provide control to the optimizer. In particular, \code{control.corrHLfit$optim} should be a list of arguments for optim, e.g. \code{control.corrHLfit = list(optim=list(control=list(ndeps=rep(2e-3,3))))}

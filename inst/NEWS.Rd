@@ -3,10 +3,44 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
-\section{CHANGES UP TO VERSION 1.7.2}{
+\section{CHANGES UP TO VERSION 1.8.0}{
 \subsection{NEW FEATURES}{
 \itemize{
 %\item Stochastic Expectation-Maximization (SEM) algorithm for binary probit model (to be documented)
+\item predict.HLfit() can return prediction intervals.
+\item New spaMM_glm() and spaMM_glm.fit() functions provide a robust alternative (using the Levenberg-Marquardt algorithm) to glm.fit() when the latter diverges. They also circumvent the initial-value issues of glm().
+\item Slight general increase in speed. 
+\item The Conway-Maxwell-Poisson family is implemented.
+\item New extractor functions get_fixefVar(), get_predVar(), get_residVar() and get_respVar().
+\item Subsetting the result of a predict() call also subsets its variance attributes, thanks to a new internal 'Extract' method `[.predictions`.
+\item spaMM is protected from disturbing numerical problems of the Gamma()dev.resids() function, thanks to an internal redefinition of the Gamma family.
+\item New 'control.glm' argument of HLfit(), to control calls to spaMM_glm() within HLfit(). 
+}
+}
+\subsection{USER-LEVEL CHANGES}{
+\itemize{
+\item Once-again revamped 'variances' argument and documentation of predict.HLfit(). The 'variances' argument of filled.mapMM() is replaced by 'variance'.
+\item New argument 'resid.model' replaces 'resid.formula' and 'resid.family' specifications in the main fitting function.
+\item The default behaviour of mapMM() for argument 'map.asp=NULL' has been modified.
+\item The obscure control parameters 'RHOMAX' and 'NUMAX' previously accessible through spaMM.options() are no longer needed and have been removed.
+\item Better control of some plot margins.
+\item Fitting random-slope models may be substantially less slow (but still slow).
+}
+}
+\subsection{BUGS}{
+\itemize{
+\item Printing bug for non-standard REML formula in summary.HLfit() corrected. 
+\item Conditions where predict() return an object of class 'predictions' corrected to avoid a printing bug. 
+\item The 'xrange' and 'yrange' arguments of spaMMplot2D() were not effective. This is corrected.
+\item Printing bug in summary.fixedLRT() corrected
+\item spaMM.options(maxLambda=. . .) did not fully control extreme lambda estimates. The revised code is more effective, and also better bypasses some numerical problems that can occur for such values.
+\item Fitting phi using the corrHLfit() outer optimization mechanism was inefficiently implemented and could return some confusing output. This is corrected.  
+}
+}
+}
+\section{CHANGES UP TO VERSION 1.7.2}{
+\subsection{NEW FEATURES}{
+\itemize{
 \item Less inefficient code for fixed-effect models, faster and handling larger data sets.
 \item Changed default value of 'upper' argument of optim call() within corrHLfit(), and better reporting of issues with this call.
 }
@@ -30,7 +64,7 @@
 \section{CHANGES UP TO VERSION 1.6.2}{
 \subsection{NEW FEATURES}{
 \itemize{
-\item Prediction variance can now account for uncertainty is dispersion parameters (though not for all models; see Details of 'dispVar' in the 'predict' documentation).
+\item Prediction variance can now account for uncertainty is dispersion parameters (though not for all models; see Details of 'disp' in the 'predict' documentation).
 \item Now allows prediction for a large number of spatial positions by storing some large correlation matrices on disk rather than in memory (using the ff package, and as controlled by the spaMM option 'ff_threshold').
 \item Convenience extractor functions 'dev_resids' and 'deviance' have been added. 
 \item New data objects 'worldcountries' and 'oceanmask' added for better plots of spatial predictions (see the new documentation '?raster' for plot of spatial predictions using rasters and geographical projections). 

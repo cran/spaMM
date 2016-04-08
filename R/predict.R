@@ -27,11 +27,15 @@ calcPredVar <- function(Coldnew,X.pv,newZAC=NULL,newZA,beta_w_cov,
                         CnewnewList=NULL,
                         invColdoldList=NULL, ## may be null is no newdata.
                         lambda=NULL, ## may be null if no newdata.
-                        logdispObject=NULL,
+                        logdispObject=NULL, ## should remain NULL is disp not requested
                         covMatrix=FALSE,blockSize=100L) {
   nrX <-  nrow(X.pv)
-  if (!is.list(newZA)) newZA <- list(dummyid=newZA)
-  if (!is.list(Coldnew)) Coldnew <- list(dummyid=Coldnew)
+  if (is.matrix(Coldnew) || inherits(Coldnew,"Matrix") || inherits(Coldnew,"ff")) {
+    Coldnew <- list(dummyid=Coldnew)
+  } ## if (!is.list(Coldnew)) not valid bc ff objects inherit from list()
+  if (is.matrix(newZA) || inherits(newZA,"Matrix") || inherits(newZA,"ff")) {
+    newZA <- list(dummyid=newZA)
+  }
   if ( ( ! covMatrix ) && nrX > blockSize) {
     slices <- unique(c(seq(0L,nrX,blockSize),nrX))
     sliceVar <- function(it) {
@@ -67,7 +71,7 @@ calcPredVar <- function(Coldnew,X.pv,newZAC=NULL,newZA,beta_w_cov,
                   beta_w_cov=beta_w_cov,CnewnewList=locCnewnewList,
                   invColdoldList=invColdoldList, ## needed only if newdata in predict() call
                   lambda=lambda,
-                  logdispObject=logdispObject, ## FR->FR was NULL which was an undocumented limitation
+                  logdispObject=logdispObject,
                   covMatrix=covMatrix,blockSize=blockSize)
     }
     unlist(sapply(seq_len(length(slices)-1L),sliceVar))
@@ -89,7 +93,7 @@ calcPredVar <- function(Coldnew,X.pv,newZAC=NULL,newZA,beta_w_cov,
       return(Z[] %id*id% W[] %id*id% t(Z)[])
     } else {
       premul <- Z[] %id*id% W[]
-      return(rowSums(premul * Z[]))
+      return(rowSums(suppressMessages(premul * Z[]))) ## suppress message("method with signature...") [found by debug(message)]
     }
   }
   predVar <- calcZWZt_mat_or_diag(newAugX,beta_w_cov,covMatrix)
@@ -113,11 +117,11 @@ calcPredVar <- function(Coldnew,X.pv,newZAC=NULL,newZA,beta_w_cov,
     if (nrand>1L) {Evar <- Reduce("+",Evarlist)} else {Evar <- Evarlist[[1]]}
     predVar <- predVar + Evar
   } 
-  if (! is.null(logdispObject)) {
+  if (! is.null(logdispObject)) { ## ie if disp was requested
     # scan problems
     problems <- logdispObject$problems
     if (length(problems)>0L) {
-      warning("Some problems were encountered during the fit, affecting computation of dispVar:")
+      warning("Some problems were encountered, affecting computation of prediction variance component\n for uncertainty in dispersion parameters:")
       lapply(problems,warning)
     }
     #
@@ -135,19 +139,17 @@ calcPredVar <- function(Coldnew,X.pv,newZAC=NULL,newZA,beta_w_cov,
 
 
 
-
 calcResidVar <- function(object,newdata=NULL) {
   phi.object <- object$phi.object
-  if ( ! is.null(phi.object$phi.Fix)) {
-    if (length(phi.object$phi.Fix)==1L) {
-      residVar <- rep(phi.object$phi.Fix,nrow(newdata))
-    } else if (is.null(newdata)) {
-      residVar <- rep(phi.object$phi.Fix,nrow(phi.object$glm_phi$data))          
-    } else {
-      stop("Unable to compute 'residVar' given 'newdata' argument and given vector of phi values in fit object.")
-    }
-  } else {
+  if (is.null(phi_outer <- phi.object$phi_outer)) { ## valid whether newdata are NULL or not:
     residVar <- predict(phi.object$glm_phi, newdata=newdata, type="response")
+  } else { ## phi, but not glm_phi
+    if (length(phi_outer)==1L) {
+      if (is.null(newdata)) {
+        residVar <- rep(phi_outer,nrow(object$X.pv)) ## assumes (length(phi_outer)==1L)           
+      } else residVar <- rep(phi_outer,nrow(newdata))
+    } else stop("Unable to compute 'residVar' given length(phi_outer)!=1L.") ## and no glm_phi
+    ## FR->FR we could improve this if we get a glm_phi when phi was estimed by outer iterations
   }
   residVar
 }  
@@ -162,7 +164,9 @@ calcNewCorrs <- function(object,locdata,which,
     newuniqueGeo <- calcUniqueGeo(data=locdata[,geonames,drop=FALSE]) ## It is essential that it keeps the same order as spMMfactorlist -> ULI -> unique. 
     ### rho only used to compute scaled distances
     rho <- getPar(object$ranFix,"rho")
-    if( !is.null(rho.mapping <- object$control.dist$rho.mapping)) rho <- rho[rho.mapping] 
+    #if( !is.null(rho_mapping <- attr(object,"msd.arglist")$rho.mapping)) rho <- rho[rho_mapping] 
+    if ( ! is.null(rho_mapping <- attr(object,"msd.arglist")$rho.mapping)
+        && length(rho)>1L ) rho <- fullrho(rho=rho,coordinates=geonames,rho_mapping=rho_mapping)
     ## rows from newuniqueGeo, cols from olduniqueGeo:
     msd.arglist <- list(uniqueGeo=newuniqueGeo,uniqueGeo2=olduniqueGeo,
                         rho=rho,return_matrix=TRUE)
@@ -193,15 +197,17 @@ calcNewCorrs <- function(object,locdata,which,
 }
 
 
-makenewname <- function(base,varnames) { ## FR->FR post CRAN 1.4.1
+makenewname <- function(base,varnames) { ## post CRAN 1.4.1
   varnames <- varnames[which(substring(varnames,1,nchar(base))==base)] 
   allremainders <- substring(varnames,nchar(base)+1) 
   allnumericremainders <- as.numeric(allremainders[which( ! is.na(as.numeric(allremainders )))  ]) ## as.numeric("...")
-  ## FR->FR 2015/03/04
+  ## 2015/03/04
   if (length(allremainders) == 0L && length(allnumericremainders) == 0L) { ## if base = allremainders => length(allnumericremainders) == 0 not sufficient
     fvname <- base
   } else {
-    num <- max(allnumericremainders)+1
+    if (length(allnumericremainders)>0L) {
+      num <- max(allnumericremainders)+1L
+    } else num <- 1L
     fvname <-paste ( base , num , sep="") 
   }
   fvname
@@ -209,27 +215,41 @@ makenewname <- function(base,varnames) { ## FR->FR post CRAN 1.4.1
 
 ## (1) for surface prediction: (developed in InferentialSimulation/InferentialSimulation.R)
 ## (2) But also for generation of fixed effects in simulation of nested-effects models
-predict.HLfit <- function(object,newdata=newX,newX = NULL,re.form = NULL,
-                          variances=list(fixef=FALSE,linPred=FALSE,dispVar=FALSE,resid=FALSE,sum=FALSE,cov=FALSE),
-                          predVar=variances$linPred,residVar=variances$resid,
+predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
+                          variances=list(),
                           binding = FALSE, 
+                          intervals = NULL,
+                          level = 0.95,
                           ...) { ## but not new Y
   if ( ! is.null(variances$ranef)) {
     message("'variances$ranef' is obsolete: I interpret this as 'variances$linPred'.")
     variances$linPred <- variances$ranef
     variances$ranef <- NULL
   }
-  if (is.null(variances$sum)) variances$sum <- FALSE ## transient value; so that the following lines do not leave the lhs as NULL
-  if (is.null(variances$linPred)) variances$linPred <- variances$sum
-  if (is.null(variances$resid)) variances$resid <- variances$sum
-  if (is.null(variances$fixef)) variances$fixef <- FALSE ## 12/2014 post 1.4.4
+  if ( ! is.null(variances$sum)) {
+    message("'variances$sum' is obsolete: I interpret this as 'variances$respVar'.")
+    variances$respVar <- variances$sum
+    variances$sum <- NULL
+  }
+  ## the final components returned as attributes have names ...Var, other terms should be named differently
+  checkIntervals <- (substr(x=intervals, nchar(intervals)-2, nchar(intervals))=="Var")
+  if (any(!checkIntervals)) warning("Element(s)",intervals[!checkIntervals],"are suspect, not ending in 'Var'.")
+  # possible elements in return value: fixefVar, predVar, residVar, respVar
+  variances[intervals] <- TRUE 
+  # $respVar implies components
+  if (is.null(variances$predVar)) variances$predVar <- variances$respVar ## may still be NULL
+  if (is.null(variances$residVar)) variances$residVar <- variances$respVar ## may still be NULL
+  if (is.null(variances$respVar)) variances$respVar <- FALSE 
+  # $predVar implies components
+  if (is.null(variances$linPred)) variances$linPred <- variances$predVar ## may still be NULL
+  if (is.null(variances$disp)) variances$disp <- variances$predVar ## may still be NULL
+  if (is.null(variances$predVar)) variances$predVar <- FALSE 
+  # Do not let any component empty
+  if (is.null(variances$fixefVar)) variances$fixefVar <- FALSE 
+  if (is.null(variances$linPred)) variances$linPred <- FALSE 
+  if (is.null(variances$disp)) variances$disp <- FALSE ## uncertaintly on dispersion parameters
+  if (is.null(variances$residVar)) variances$residVar <- FALSE ## uncertaintly on dispersion parameters
   if (is.null(variances$cov)) variances$cov <- FALSE
-  if (is.null(variances$dispVar)) variances$dispVar <- FALSE ## uncertaintly on dispersion parameters
-  if ( ! is.null(residVar) && residVar) variances$resid <- TRUE
-  if (predVar == "Cov") {
-    variances$linPred <- TRUE; variances$cov <- TRUE
-  } else if ( ! is.null(predVar) && predVar) variances$linPred <- TRUE
-  variances$sum <- (variances$linPred && variances$resid)
   ##
   locform <- attr(object$predictor,"oriFormula")
   ## possible change of random effect terms
@@ -239,6 +259,7 @@ predict.HLfit <- function(object,newdata=newX,newX = NULL,re.form = NULL,
   # checking variables in the data
   if (length(locform)==3L) locform <- locform[-2] ## removes RHS for checking  vars on RHS etc
   allvars <- all.vars(locform) 
+  if (variances$residVar) allvars <- unique(c(allvars,all.vars(attr(object$resid.predictor,"oriFormula")))) ## but the 'newdata' may not contain the resid.predictor vars. 
   if (is.vector(newdata)) { ## ## less well controlled case, but useful for maximization
     binding <- binding ## :-) binding must be evaluated before newdata is modified
     newdata <- data.frame(matrix(newdata,nrow=1))
@@ -362,19 +383,19 @@ predict.HLfit <- function(object,newdata=newX,newX = NULL,re.form = NULL,
       })
       if (nrand>1L) {
         ZACw <- lapply(seq_len(nrand),function(it) {
-          as.matrix(newZAClist[[it]][] %*% augm_w_h_coeffs[[it]]) ## sapply preforms a cbind if everything is matrix (not Matrix)
+          drop(newZAClist[[it]][] %*% augm_w_h_coeffs[[it]]) ## sapply preforms a cbind if everything is matrix (not Matrix)
         }) ## not sapply which binds 1*1 matrices into a vector of length nrand  
         ZACw <- do.call(cbind,ZACw)
         ZACw <- rowSums(ZACw)
-      } else ZACw <- as.matrix(newZAClist[[1]][] %*% augm_w_h_coeffs[[1]])
+      } else ZACw <- drop(newZAClist[[1]][] %*% augm_w_h_coeffs[[1]])
       eta <- etaFix + ZACw ## (length(eta)) col vector from coeffs = length(eta) row vector...
     }
     # done with eta
     fv <- object$family$linkinv(eta) ## ! freqs for binomial, counts for poisson
   }
-  resu <- fv ## suitable for objective function of optim() etc ## matrix ! maybe more suitable than data frame as objective function
+  resu <- as.matrix(fv) ## suitable for objective function of optim() etc ## matrix ! maybe more suitable than data frame as objective function
   if ( ! is.logical(binding) ) { ## expecting a string
-    binding <- makenewname(base=binding,varnames=colnames(locdata)) ## FR->FR 09/11/2014 = posterior to CRAN 1.4.1 
+    binding <- makenewname(base=binding,varnames=colnames(locdata)) ## 09/11/2014 = posterior to CRAN 1.4.1 
     resu <- data.frame(resu)
     colnames(resu) <- binding
     resu <- cbind(locdata,resu) ## becomes a data frame !
@@ -440,42 +461,66 @@ predict.HLfit <- function(object,newdata=newX,newX = NULL,re.form = NULL,
         loclist$Coldnew <- oldnewClist
         loclist$newZA <- newZAlist
       }
-      if (variances$dispVar) loclist$logdispObject <- object$logdispObject
+      if (variances$disp) loclist$logdispObject <- object$get_logdispObject()
       if (variances$cov) {
-        sumVar <- as.matrix(do.call(calcPredVar,loclist)) ## matrix, not Matrix (assumed below)
-        rownames(sumVar) <- colnames(sumVar) <- rownames(locdata)
+        respVar <- as.matrix(do.call(calcPredVar,loclist)) ## matrix, not Matrix (assumed below)
+        rownames(respVar) <- colnames(respVar) <- rownames(locdata)
       } else {
-        sumVar <- do.call(calcPredVar,loclist) 
-        names(sumVar) <- rownames(locdata)
+        respVar <- do.call(calcPredVar,loclist) 
+        names(respVar) <- rownames(locdata)
       }
     } else {
       if (variances$cov) {
-        sumVar <- matrix(0,nrow=nrow(locdata),ncol=nrow(locdata))
-      } else sumVar <- rep(0,nrow(locdata))
+        respVar <- matrix(0,nrow=nrow(locdata),ncol=nrow(locdata))
+      } else respVar <- rep(0,nrow(locdata))
     }
-  } else sumVar <- rep(0,nrow(locdata))  
+  } else respVar <- rep(0,nrow(locdata))  
   if (! is.null(object$beta_cov)) {
-    if ( variances$fixef || (nrand==0L && variances$linPred) ) {
+    if ( variances$fixefVar || (nrand==0L && variances$linPred) ) {
       fixefcov <- newX.pv %*% object$beta_cov %*% t(newX.pv)
       if (variances$cov) {
         attr(resu,"fixefVar") <- fixefcov 
       } else attr(resu,"fixefVar") <- diag(fixefcov)
       if (nrand==0L) { ## otherwise there is already such a term in predVar
-        sumVar <- sumVar + attr(resu,"fixefVar") 
+        respVar <- respVar + attr(resu,"fixefVar") 
       }
     }
   }
-  attr(resu,"predVar") <- sumVar ## vector or matrix
-  if (variances$resid) {
-    if (object$family$family %in% c("poisson","binomial")) {
+  attr(resu,"predVar") <- respVar ## vector or matrix
+  if (variances$residVar) {
+    if (object$family$family %in% c("poisson","binomial","COMPoisson")) {
       attr(resu,"residVar") <- object$family$variance(fv)
     } else attr(resu,"residVar") <- calcResidVar(object,newdata=locdata) 
-    if (inherits(sumVar,"matrix")) {
-      diag(sumVar) <- diag(sumVar) + attr(resu,"residVar")
-    } else sumVar <- sumVar + attr(resu,"residVar")
+    if (inherits(respVar,"matrix")) {
+      diag(respVar) <- diag(respVar) + attr(resu,"residVar")
+    } else respVar <- respVar + attr(resu,"residVar")
   }
-  if (variances$sum) attr(resu,"sumVar") <- sumVar
-  if ( ! is.logical(binding) ) class(resu) <- c("predictions",class(resu)) ## for print.predictions method: expecting a 1-col matrix
+  if (variances$respVar) attr(resu,"respVar") <- respVar
+  if ( is.matrix(resu) && NCOL(resu)==1L) {
+    class(resu) <- c("predictions",class(resu))
+  } ## for print.predictions method which expects a 1-col matrix
+  # intervals
+  checkVar <- setdiff(intervals,names(attributes(resu)))
+  if (length(checkVar)>0L) {
+    warning(paste("Variances",paste(checkVar,collapse=", "),
+                  "not available for interval computation.\n Check arguments."))
+    intervals <- intersect(intervals,names(attributes(resu)))
+  } 
+  if(length(intervals)>0L) {
+    intervalresu <- NULL
+    for (st in intervals) {
+      varcomp <- attr(resu,st)
+      if (is.null(varcomp)) warning(paste("Prediction variance component",st,"requested but not available: check input."))
+      if (is.matrix(varcomp)) varcomp <- diag(varcomp)
+      eta <- object$family$linkfun(resu[,1L])
+      pv <- 1-(1-level)/2
+      sd <- qnorm(pv)*sqrt(varcomp)
+      interval <- cbind(object$family$linkinv(eta-sd),object$family$linkinv(eta+sd))
+      colnames(interval) <- paste(st,c(signif(1-pv,4),signif(pv,4)),sep="_")
+      intervalresu <- cbind(intervalresu,interval)
+    }
+    attr(resu,"intervals") <- intervalresu
+  }
   return(resu)
 }
 
@@ -518,14 +563,50 @@ print.vcov.HLfit <-function(x, expanded=FALSE, ...) {
   invisible() ## do not return x since it has lost a useful attribute
 }
 
-print.predictions <- function (x, expanded=FALSE, ...) 
-{
+
+`[.predictions` <- function (x, i, j, 
+                             drop = TRUE ## by default, this function will return scalar/vector  
+                             ) {
+  class(x) <- "matrix" ## removes "predictions" => set back later
+  #   if (is.data.frame(x)) {
+  #     resu <- x[i,j]
+  #   } else 
+  resu <- x[i,j,drop=drop]
+  if ( ! drop) {
+    fixefVar <- attr(x, "fixefVar")
+    if ( ! is.null(fixefVar)) {
+      if (is.null(dim(fixefVar))) {
+        fixefVar <- fixefVar[x]
+      } else fixefVar <- fixefVar[x,x,drop=FALSE]
+    }
+    predVar <- attr(x, "predVar")
+    if ( ! is.null(predVar)) {
+      if (is.null(dim(predVar))) {
+        predVar <- predVar[x]
+      } else predVar <- predVar[x,x,drop=FALSE]
+    }
+    frame <- attr(x, "frame")
+    if ( ! is.null(frame)) frame <- frame[x,] ## dataframe => nodrop
+    residVar <- attr(x, "residVar")
+    if ( ! is.null(frame)) residVar <- residVar[x,drop=FALSE]
+    respVar <- attr(x, "respVar")
+    if ( ! is.null(respVar)) {
+      if (is.null(dim(respVar))) {
+        respVar <- respVar[x]
+      } else respVar <- respVar[x,x,drop=FALSE]
+    }
+    class(resu) <- c("predictions","matrix")
+    structure(resu,fixefVar=fixefVar,predVar=predVar,residVar=residVar,frame=frame,fittedName=attr(x, "fittedName"))
+  } else return(resu)
+} # Use unlist() to remove attributes from the return value
+
+print.predictions <- function (x, expanded=FALSE, ...) {
   asvec <- as.vector(x)
   rnames <- rownames(x)
   toolong <- nchar(rnames)>9
   rnames[toolong] <- paste(substr(rnames[toolong],0,8),".",sep="")
   names(asvec) <- rnames
-  cat("\nPoint predictions:\n")
+  cat("Point predictions:\n")
   print(asvec)
   cat("*stored as* 1-col matrix with attributes:")
   std.attr <- c("names","dim","dimnames","class") ## attributes not to be shown

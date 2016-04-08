@@ -4,16 +4,6 @@
 ## summary alone would print nothing
 print.arglist <-function(x,...) {print(summary(x,...))}
 ##
-## GammaForDispGammaGLM function to correct a problem with the dev.resids function
-#####
-# in particular e.g Gamma()$dev.resids(1e10+2,1e10,1) is < 0
-# then (if all y=mu, sum(dev.resids) is <0) 
-# and sum(dev.resids) is used for the aic(call) in glm.fit
-# where it causes a warnings for NaN in dgamma.
-# We want to suppress these warnings. 
-# We're not interested in this AIC anyway.
-# cf also MASS p. 174...
-#####
 
 calcTT <- function(X001,ZAL) {
   if (inherits(ZAL,"Matrix")) {
@@ -29,40 +19,73 @@ sweepZ1Wwrapper <- function(ZZ,WW) {
   } else sweepZ1W(ZZ,WW)
 }
 
-ZWZtwrapper <- function(ZAL,w) {
-  if (is.identity(ZAL)) {
+## the following fns try to keep the input class in output, but are called with dense matrices (except irst tested case).
+# les Matrix::(t)crossprod  paraissent (parfois au moins) remarquablement inefficaces !!
+# idem pour Diagonal()
+ZWZtwrapper <- function(ZAL,w) { ## USED ONLY BY Sigwrapper !
+  if (inherits(ZAL,"ddiMatrix") && ZAL@diag=="U") {
     return(diag(w))
+  } else 
+    return(ZWZt(ZAL,w)) ## as of 1.7.34, either the previous test is TRUE or 
+  ## ZAL is _m_atrix and _m_atrix objects are not retested by is.identity()
+  
+  ## Hence this code is not used:
+
+  if (inherits(ZAL,"sparseMatrix")) {
+    return(as(ZWZt(as.matrix(ZAL),w),"sparseMatrix"))
   } else if (inherits(ZAL,"Matrix")) {
-    return(tcrossprod(ZAL %*% Diagonal(x=w),ZAL)) ## bizarrement forme sym tcrossprod(1 arg) pas utile sur sparse
+    return(as(ZWZt(as.matrix(ZAL),w),"Matrix"))
   } else return(ZWZt(ZAL,w))
+  #if (inherits(ZAL,"mpfrMatrix")) {
+  #  return(Rmpfr::tcrossprod(sweep(ZAL,2L,w,`*`),ZAL))
+  #} else 
 }
 
-ZtWZwrapper <- function(ZAL,w) {
-  if (is.identity(ZAL)) {
+ZtWZwrapper <- function(ZAL,w) { ## used in seval contexts
+  if (inherits(ZAL,"ddiMatrix") && ZAL@diag=="U") {
     return(diag(w))
-  } else if (inherits(ZAL,"Matrix")) {
-    return(crossprod(ZAL, Diagonal(x=w) %*% ZAL))    
-    #return(crossprod(Diagonal(x=sqrt(w)) %*% ZAL)) ## idem, bizarrement pas utile    
   } else if (ncol(ZAL)==0L) {
-    return(matrix(NA,ncol=0,nrow=0))    
+    return(matrix(NA,ncol=0L,nrow=0L))    
+  } else if (inherits(ZAL,"sparseMatrix")) {
+    return(as(ZtWZ(as.matrix(ZAL),w),"sparseMatrix"))
+  } else if (inherits(ZAL,"Matrix")) {
+    return(as(ZtWZ(as.matrix(ZAL),w),"Matrix"))
   } else return(ZtWZ(ZAL,w))
 }
 
-Sigwrapper <- function(ZAL,wa,wb,ZALtZAL=NULL) {
-#print(range(wb))
-  if (! is.null(ZALtZAL)) {
+Sigwrapper <- function(ZAL,wa,wb,ZALtZAL=NULL) { 
+  if (inherits(ZAL,"ddiMatrix") && ZAL@diag=="U") {
+    Sig <- diag( wa + wb )
+  } else if (! is.null(ZALtZAL)) { ## FR->FR currently always FALSE bc
+    # only for constant w.ranef (LMM with single ranef (CAR?)) this would be useful
     Sig <- ZALtZAL*wa[1] ## FR->FR valid only for constant wa; this is why it is not currently used 
     diag(Sig) <- diag(Sig) + wb 
-  }
-  if (is.identity(ZAL)) {
-    Sig <- diag( wa + wb )
-    class(Sig) <- c(class(Sig),"diagonalMatrix")
   } else { ## valid for matrix and Matrix
     Sig <- ZWZtwrapper(ZAL,wa)
     diag(Sig) <- diag(Sig) + wb 
   }
   return(Sig)
 }
+
+calcD2hDv2 <- function(ZAL,w.resid,w.ranef) {
+  ## Si Gamma(identity) avec lambda >1 et w.ranef approche de de -1e6, et si on dit phi <- 1e-06, w.resid = 1e6 
+  #    d2hdv2 peut etre une diag matrix with zome 0 elements => logabsdet=log(0)
+  if (inherits(ZAL,"ddiMatrix") && ZAL@diag=="U") {
+    d2hdv2 <- diag( - w.resid - w.ranef)
+  } else if (attr(w.resid,"unique")) {
+    d2hdv2 <- - w.resid[1L] * attr(ZAL,"crossprodZAL") #crossprod(ZAL)
+    diag(d2hdv2) <- diag(d2hdv2) - w.ranef 
+    ## ZAL is _m_atrix and _m_atrix objects are not retested by is.identity()
+    #} else if (is.identity(ZAL)) {
+    #  d2hdv2 <- diag( - w.resid - w.ranef) ## FR->FR or use Diagonal ?
+    #  class(d2hdv2) <- c(class(d2hdv2),"diagonalMatrix")
+  } else {
+    d2hdv2 <- - ZtWZwrapper(ZAL,w.resid) 
+    diag(d2hdv2) <- diag(d2hdv2) - w.ranef 
+  }
+  d2hdv2
+}
+
 
 ## uses either TTleve or wAugX, and may use (auglinmodblob$)qrwAugX si NOT $USEEIGEN
 ## interesting signed.wAugX concept of version 1.5.3 had not been extended to the leverage computations 
@@ -94,7 +117,9 @@ Sigwrapper <- function(ZAL,wa,wb,ZALtZAL=NULL) {
     } else {
       if(inherits(qrwAugX,"sparseQR")) {
         hatval <- rowSums(as.matrix(Matrix::qr.qy(qrwAugX, diag(1, nrow = nrow(wAugX), ncol = ncol(wAugX))))^2)
-      } else hatval <- rowSums(qr.qy(qrwAugX, diag(1, nrow = nrow(wAugX), ncol = ncol(wAugX)))^2) ## == but faster than rowSums(qr.Q(qrwAugX)^2) !
+      } else hatval <- rowSums(qr.qy(qrwAugX, diag(1, nrow = nrow(wAugX), ncol = ncol(wAugX)))^2) 
+      ## I once found rowSums(qr.qy(qrwAugX, diag(1, nrow = nrow(wAugX), ncol = ncol(wAugX)))^2) to be faster 
+      # that rowSums(qr.Q(qrwAugX)^2). Not always, yet (...,diag...) is the algo in stats::hat() [except for use of rank]
     }
     #cat("+")
   }
@@ -132,15 +157,16 @@ Sigwrapper <- function(ZAL,wa,wb,ZALtZAL=NULL) {
 
 
 calcRanefPars <- function(corrEstList=NULL, ## potentially a list...
-                               lev_lambda,
-                               ranefEstargs,
-                               lambda.Fix=NULL,
-                               rand.families,
-                               lcrandfamfam,
-                               psi_M,
-                               verbose,
-                               iter ## ajustement gamma(identity...)
-                               ) {
+                          lev_lambda,
+                          ranefEstargs,
+                          lambda.Fix=NULL,
+                          rand.families,
+                          lcrandfamfam,
+                          psi_M,
+                          verbose,
+                          control,
+                          iter ## ajustement gamma(identity...)
+) {
   ## Build pseudo response for lambda GLM/HGLM
   glm_lambda <- NULL
   next_LMatrices <- NULL
@@ -194,7 +220,7 @@ calcRanefPars <- function(corrEstList=NULL, ## potentially a list...
         u.range <- (cum_n_u_h[affected]+1L):cum_n_u_h[affected+1L]
         locdf$resp <- resp_lambda[u.range] <- u_h[u.range]^2
         ## here CAR allows REML conctrary to the SEM CAR, hence leverages
-        glm_lambda <- calc_CARdispGammaGLM(data=locdf, lambda.Fix=lambda.Fix, lev=lev_lambda[u.range])
+        glm_lambda <- calc_CARdispGammaGLM(data=locdf, lambda.Fix=lambda.Fix, lev=lev_lambda[u.range],control=control)
         attr(glm_lambda,"whichrand") <- affected
         next_lambda_est[u.range] <- fitted(glm_lambda) ## prediction of heteroscedastic variances
         coeffs <- coefficients(glm_lambda)
@@ -207,7 +233,7 @@ calcRanefPars <- function(corrEstList=NULL, ## potentially a list...
       } ## Matern remains undone
     } ## else (length(affected)=0), for previously processed random slope models
   }        
-  ### next the unstructured v_h (no L matrices or Matern model...):
+  ### next the ?? unstructured ?? v_h (??? odd comment: "no L matrices or Matern model..."):
   for (it in which( ! done )) {
     u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
     resp_lambda[u.range] <- rand.families[[it]]$dev.resids(u_h[u.range],psi_M[u.range],wt=1) ## must give d1 in table p 989 de LeeN01
@@ -288,15 +314,18 @@ process_resglm_list <- function(resglm_lambdaS, ## les 2 autres args for handlin
 calcPHI <- function(oriFormula, ## with offset
                     dev.res,family,data,
                     lev_phi,
-                    phimodel,verbose,method="glm",control.phi=list()) {
+                    phimodel,verbose,method="glm",control.phi=list(),
+                    control) {
   if (phimodel!="phiHGLM") {  
     if ( identical(deparse(oriFormula),"~1")) { ## one case where we can easily avoid an explicit call to a glm (but one will be used to compute SEs later) 
       next_phi_est <- sum(dev.res)/sum(1-lev_phi) ## NOT in linkscale
       beta_phi <- c("(Intercept)"=family$linkfun(next_phi_est)) ## linkscale value
       glm_phi <- NULL
     } else { ## which means that calcPHI cannot be used for final estim phi
-      glm_phi <- calc_dispGammaGLM(formula=oriFormula,dev.res=dev.res,data=data,lev=lev_phi,
-                              family=family,etastart=control.phi$etastart)
+      glm_phi <- calc_dispGammaGLM(formula=oriFormula, dev.res=dev.res,
+                                   data=data,lev=lev_phi, family=family,
+                                   etastart=control.phi$etastart, ## private, availabble, but NULL so far
+                                   control=control)
       beta_phi <- coefficients(glm_phi)
       next_phi_est <- fitted(glm_phi)
     }
@@ -313,28 +342,15 @@ calcPHI <- function(oriFormula, ## with offset
 }
 
 
-
-calcD2hDv2 <- function(ZAL,w.resid,w.ranef) {
-  ## Si Gamma(identity) avec lambda >1 et w.ranef approche de de -1e6, et si on dit phi <- 1e-06, w.resid = 1e6 
-  #    d2hdv2 peut etre une diag matrix with zome 0 elements => logabsdet=log(0)
-  if (is.identity(ZAL)) {
-    d2hdv2 <- diag( - w.resid - w.ranef)
-    class(d2hdv2) <- c(class(d2hdv2),"diagonalMatrix")
-  } else {
-    d2hdv2 <- - ZtWZwrapper(ZAL,w.resid)
-    diag(d2hdv2) <- diag(d2hdv2) - w.ranef ## small benefit that diag(w.ranef) not called on length-1 w.ranef which may occasionally be meaningful
-  }
-  d2hdv2
-}
-
-`calc.w.resid` <- function(GLMweights,phi_est) { ## On should not correct this phi_est argument by prior.weigths (checked)
+`calc.w.resid` <- function(GLMweights,phi_est) { ## One should not correct this phi_est argument by prior.weigths (checked)
   phi_est[phi_est<1e-12] <- 1e-11 ## 2014/09/04 local correction, cf comment in calc.p_v
-  as.vector(GLMweights/phi_est) 
+  structure(as.vector(GLMweights/phi_est),unique= (attr(GLMweights,"unique") && length(phi_est)==1L))
 }
 
 
-
-GammaForDispGammaGLM <- function (link = "inverse") {
+## spaMM_Gamma() fixes Gamma()$dev.resids(1e10+2,1e10,1) is < 0
+# dev.resids() must be >0 for coputation deviance_residual in fitting Gamma GLMM, and alos for $aic() computation.
+spaMM_Gamma <- function (link = "inverse") {
   linktemp <- substitute(link) ## does not evaluate
   if (!is.character(linktemp)) 
     linktemp <- deparse(linktemp) ## converts to char the unevaluated expression
@@ -362,7 +378,7 @@ GammaForDispGammaGLM <- function (link = "inverse") {
   dev.resids <- function(y, mu, wt) {
     if (any(mu < 0)) return(Inf) ## 2015/04/27; maybe not useful
     ## otherwise see deviance.gamma function locally defined in statmod::glmgam.fit
-    pmax(-2 * wt * (log(ifelse(y == 0, 1, y/mu)) - (y - mu)/mu),1e-16)  ## FR: added the pmax
+    pmax(-2 * wt * (log(ifelse(y == 0, 1, y/mu)) - (y - mu)/mu),.Machine$double.eps)  ## FR: added the pmax
   }
   aic <- function(y, n, mu, wt, dev) {
     n <- sum(wt)
@@ -385,7 +401,8 @@ GammaForDispGammaGLM <- function (link = "inverse") {
   }
   # linkinv <- function (eta) pmin(pmax(exp(eta), .Machine$double.eps), .Machine$double.xmax) 
   # : permet des plantages severes dans glm.fit ensuite (R CMD check en detecte) 
-  structure(list(family = "Gamma", link = linktemp, linkfun = stats$linkfun, 
+  structure(list(family =  structure("Gamma",patch="spaMM_Gamma"), 
+                 link = linktemp, linkfun = stats$linkfun, 
                  linkinv = stats$linkinv, 
                  variance = variance, dev.resids = dev.resids, 
                  aic = aic, mu.eta = stats$mu.eta, initialize = initialize, 
@@ -395,10 +412,11 @@ GammaForDispGammaGLM <- function (link = "inverse") {
 
 
 `selectLoglfn` <- function(family) {
-  family <- tolower(family)
-  switch(family,
+  famfam <- tolower(family$family)
+  # return value of each fn must be a vector if y is a vector
+  switch(famfam,
          gaussian = function(theta,y,nu) {nu*(theta*y-(theta^2)/2)- ((y^2)*nu+log(2*pi/nu))/2}, 
-         poisson = function(theta,y,nu) {
+         poisson = function(theta,y,nu) { ## theta = log(mu)
            res <- nu*(theta*y-exp(theta))   -  lfactorial(y)
            res[theta== -Inf & y==0] <- 1
            res
@@ -410,6 +428,16 @@ GammaForDispGammaGLM <- function (link = "inverse") {
            disp <- 1/nu
            mu <- -1/theta
            dgamma(y, shape=nu , scale = -1/(nu*theta), log = TRUE) ## from Gamma(log)$aic
+         },
+         compoisson = function(theta,y,nu) { ## theta = log(lambda) 
+           COMP_nu <- environment(family$aic)$nu
+           logLs <- sapply(seq(length(y)), function(i) {
+             comp_z <- COMP_Z(lambda=exp(theta[i]),nu=COMP_nu)
+             res <- nu[i]*(theta[i]*y[i]-comp_z[[1]]-log(comp_z[[2]])) - COMP_nu * lfactorial(y[i])
+             res
+           })
+           logLs[theta== -Inf & y==0] <- 1
+           logLs
          }
   )
 }
@@ -417,7 +445,10 @@ GammaForDispGammaGLM <- function (link = "inverse") {
 
 `theta.mu.canonical` <-function(mu,family) { 
   ## the (fixed) canonical link between theta and mu, not the family link between eta and mu 
-  switch(tolower(family),
+  if (inherits(family,"family")) {
+    famfam <- family$family
+  } else famfam <- family
+  switch(tolower(famfam),
          gaussian = mu ,
          poisson = log(mu) ,
          binomial = make.link("logit")$linkfun(mu),  # correct syntax, does not use 'non-public API' such as .Call to access code from dlls from the base packages...
@@ -429,6 +460,12 @@ GammaForDispGammaGLM <- function (link = "inverse") {
          #                    theta
          #                 },
          gamma = -1/mu, ## "-": McC&N p. 290
+         compoisson = {
+           if (is.null(lambda <- attr(mu,"lambda"))) {
+             lambda <-  family$linkfun(mu,log=FALSE)
+           }  
+           structure(log(lambda),mu=mu)
+         }
   )
 } ## returns values for given mu
 
@@ -453,14 +490,15 @@ GammaForDispGammaGLM <- function (link = "inverse") {
 #etadmu<-D(theta.mu.expr,"mu") ## a call; eval(dthetadmu) then suffices if mu has a value
 ### except that D(identity... does not work)
 
-thetaMuDerivs <-function(mu,BinomialDen,familyfam) {
+thetaMuDerivs <-function(mu,BinomialDen,familyfam) { ## used for non-canonical links 
   if (familyfam=="binomial") muFREQS <- mu/BinomialDen
   ## these definitions depend only on the canonical link
   Dtheta.Dmu <- switch(tolower(familyfam),
                        gaussian = rep(1,length(mu)) ,
                        poisson = 1/mu ,
                        binomial = 1/(muFREQS*(1-muFREQS)),
-                       gamma = 1/mu^2
+                       gamma = 1/mu^2                         
+                       # COMPoisson has no non-canonical link
   ) ## values for given mu
   if (familyfam=="binomial") Dtheta.Dmu <- Dtheta.Dmu/BinomialDen
   D2theta.Dmu2 <- switch(tolower(familyfam),
@@ -468,15 +506,19 @@ thetaMuDerivs <-function(mu,BinomialDen,familyfam) {
                          poisson = -1/mu^2 ,
                          binomial = -(1-2*muFREQS)/(muFREQS*(1-muFREQS))^2,
                          gamma = -2/mu^3
+                         # COMPoisson has no non-canonical link
   ) ## values for given mu
   if (familyfam=="binomial") D2theta.Dmu2 <- D2theta.Dmu2/(BinomialDen^2)
   return(list(Dtheta.Dmu=Dtheta.Dmu,D2theta.Dmu2=D2theta.Dmu2))
 }
 
-muetafn <- function(family,eta,BinomialDen,priorWeights=1) { ## note outer var BinomialDen 
+muetafn <- function(eta,BinomialDen,processed) { ## note outer var BinomialDen 
+  family <- processed$family
   ## a patch for large eta in poisson case
-  if (family$family=="poisson" && family$link =="log") {
+  if (family$family == "poisson" && family$link =="log") {
     eta <- pmin(30,eta) ## 100 -> mu = 2.688117e+43 ; 30 -> 1.068647e+13
+  } else if (family$family == "COMPoisson" && family$link =="loglambda") {
+    eta <- pmin(30*environment(family$aic)$nu,eta) ## using log(mu) ~ eta/nu for large nu
   }
   mu <- family$linkinv(eta) ## linkinv(eta) is FREQS for binomial, COUNTS for poisson...
   if (family$link %in% c("logit","probit","cloglog")) {
@@ -486,17 +528,17 @@ muetafn <- function(family,eta,BinomialDen,priorWeights=1) { ## note outer var B
   dmudeta <- family$mu.eta(eta) ## aberrant at hoc code for cloglog 'elsewhere'...
   Vmu <- family$variance(mu)
   if (family$family=="binomial") {
-    Vmu <- Vmu * BinomialDen ## not checked for probit et cloglog
-    mu <- mu *BinomialDen
+    Vmu <- Vmu * BinomialDen 
+    mu <- mu * BinomialDen
     dmudeta <- dmudeta * BinomialDen
   } 
-  GLMweights <- priorWeights * dmudeta^2 /Vmu ## must be O(n) in binomial cases
-  if (any(is.nan(GLMweights))) {
-    #    calls <- sys.calls()
-    #    ncalls <- length(calls)
-    #    HLfitcall <- calls[[ncalls-1]]
-    #    save(HLfitcall,file=generateFileName("HLfitcall")) ## debug  code, not for package
-    stop("NaN GLMweights generated in 'muetafn'")
+  if (processed$LMMbool) {
+    GLMweights <- processed$prior.weights ## with attr(.,"unique")
+  } else  if (family$family=="Gamma" && family$link=="log") {
+    GLMweights <- processed$prior.weights  ## with attr(.,"unique")
+  } else {
+    GLMweights <- processed$prior.weights * dmudeta^2 /Vmu ## must be O(n) in binomial cases
+    attr(GLMweights,"unique") <- FALSE ## might actually be true sometimes
   }
   return(list(mu=mu,dmudeta=dmudeta,Vmu=Vmu,GLMweights=GLMweights))
 } ## end local def muetafn
@@ -593,6 +635,34 @@ calc.dlW_deta <- function(dmudeta,family,mu,eta,BinomialDen,canonicalLink,calcCo
       ## numerator is D[D[-1/\[Eta], \[Eta]] /. {\[Eta] -> -1/\[Mu]}, \[Mu]] =2 mu 
       if (calcCoef1) coef1 <- 2*mu /dmudeta
       dlW_deta <- 2*mu
+    } else if (family$family=="COMPoisson") { 
+      COMP_nu <- environment(family$aic)$nu
+      lambdas <- exp(eta) ## pmin(exp(eta),.Machine$double.xmax) ##  FR->FR lambdas missing as mu attribute here ?
+      blob <- sapply(seq(length(lambdas)), function(i) {
+        lambdai <- lambdas[i]
+        mui <- mu[i]
+        compz <- COMP_Z(lambda=lambdai,nu=COMP_nu)
+        compzn <- COMP_Z_n(lambda=lambdai,nu=COMP_nu)
+        compzn2 <- COMP_Z_n2(lambda=lambdai,nu=COMP_nu)
+        compzn3 <- COMP_Z_n3(lambda=lambdai,nu=COMP_nu)
+        rn3 <- COMP_Z_ratio(compzn3,compz)
+        rn2 <- COMP_Z_ratio(compzn2,compz)
+        dmu.dlogLambda <- rn2 - mui^2 # =family$mu.eta() without repeating some computations
+        d2mu.dlogLambda2 <- rn3-mui*rn2-2*mui*dmu.dlogLambda
+        #         if (is.nan(dmu.dlogLambda) ) { 
+        #           if (COMP_nu<0.05 && lambdai<1) dmu.dlogLambda <- lambdai/(1-lambdai)^2
+        #         } ## geometric approx
+        #         if (is.nan(dmu.dlogLambda) ) { 
+        #           if (COMP_nu<0.05 && lambdai<1) {dmu.dlogLambda <- lambdai*(1+lambdai)/(1-lambdai)^3
+        #         } ## geometric approx
+        return(c(dmudeta=dmu.dlogLambda, d2mudeta2=d2mu.dlogLambda2))
+      })
+      dlW_deta <- blob["d2mudeta2",] / blob["dmudeta",]
+      if (family$family=="COMPoisson") dlW_deta[is.nan(dlW_deta)] <- 0 ## quick pathc for case that shouldhave low lik
+      if (calcCoef1) {
+        coef1 <- dlW_deta / blob["dmudeta",]
+        if (family$family=="COMPoisson") coef1[is.nan(coef1)] <- 0 ## idem
+      }
     } 
   } else if (family$family=="binomial" && family$link=="probit") { ## ad hoc non canonical case 
     muFREQS <- mu/BinomialDen
@@ -616,8 +686,7 @@ calc.dlW_deta <- function(dmudeta,family,mu,eta,BinomialDen,canonicalLink,calcCo
     dlW_deta <- d2mudeta2 / dmudeta + D2theta.Deta2_Dtheta.Deta
     if (calcCoef1) coef1 <- dlW_deta / (Dtheta.Dmu * dmudeta^2) ## note that coef2 is indep of the BinomialDen, but coef1 depends on it 
   }
-  
-  return(list(dlW_deta=dlW_deta,coef1=coef1)) ## dlW_deta equiv coef2
+  return(list(dlW_deta=as.numeric(dlW_deta),coef1=coef1)) ## dlW_deta equiv coef2
 }
 
 calc.dvdloglamMat <- function(dlogfthdth,cum_n_u_h,lcrandfamfam,rand.families,u_h,d2hdv2,stop.on.error) {
@@ -633,16 +702,19 @@ calc.dvdloglamMat <- function(dlogfthdth,cum_n_u_h,lcrandfamfam,rand.families,u_
       return(dlogfthdth[u.range]) ## (neg => -) (-)(psi_M-u)/lambda^2    *    lambda.... 
     } 
   }))
-  if (is.null(attr(d2hdv2,"qr"))) {
-    if (.spaMM.data$options$USEEIGEN) {
-      dvdloglamMat <- pseudoSolvediag(as.matrix(d2hdv2),as.vector(neg.d2f_dv_dloglam)) ## FR->FR dangereux car contient (Eigen:)solve(R)
+  if (is.null(attr(d2hdv2,"qr"))) { ## FR->FR would that be useful to precompute it in more cases ? 
+    if (inherits(d2hdv2,"sparseMatrix")) { ## preempts USEEIGEN !
+      dvdloglamMat <- solve(qr(d2hdv2),diag(as.vector(neg.d2f_dv_dloglam))) ## special case of below
     } else {
-      if (is.null(attr(d2hdv2,"qr"))) {attr(d2hdv2,"qr") <- QRwrap(d2hdv2)}
-      ## mff solve(A,diag(b)) est pareil que solve(A,diag(1)) * b ('*')  
-      dvdloglamMat <- solveWrap.matrix(attr(d2hdv2,"qr"), diag( as.vector(neg.d2f_dv_dloglam) ), stop.on.error=stop.on.error) # rXr       
+      if (.spaMM.data$options$USEEIGEN) {
+        dvdloglamMat <- pseudoSolvediag(d2hdv2,as.vector(neg.d2f_dv_dloglam)) ## FR->FR dangereux car contient (Eigen:)solve(R)
+      } else {
+        ## mff solve(A,diag(b)) est pareil que solve(A,diag(1)) * b ('*')  
+        dvdloglamMat <- solveWrap.matrix(QRwrap(d2hdv2), diag( as.vector(neg.d2f_dv_dloglam) ), stop.on.error=stop.on.error) # rXr  
+      }
     }
   } else {
-    dvdloglamMat <- solveWrap.matrix(attr(d2hdv2,"qr"), diag( as.vector(neg.d2f_dv_dloglam) ), stop.on.error=stop.on.error) # rXr                     
+    dvdloglamMat <- solveWrap.matrix(attr(d2hdv2,"qr"), diag( as.vector(neg.d2f_dv_dloglam) ), stop.on.error=stop.on.error) # rXr     
   }
   if (inherits(dvdloglamMat,"try-error")) {
     mess <- pastefrom("problem in dvdloglamMat computation.",prefix="(!) From ")
@@ -710,7 +782,7 @@ solveWrap.vector <- function(A,b,...) {
   }
   if (inherits(A,"Rcpp_QR")) { ## no pivoting, $R is upper triangular
     if (length(b)==0L) {return(A$Q)} ## appropriate dimensions wwith zero cols
-    dim(b) <- c(1,length(b)) ## conversion to "1-rwo matrix" without copy contrary to t(b)
+    dim(b) <- c(1,length(b)) ## conversion to "1-row matrix" without copy contrary to t(b)
     b <- b %*% (A$Q)
     dim(b) <- c(length(b),1) ## transposition without copy    
     solved <- try(backsolve(A$R,b),silent=TRUE)
@@ -741,6 +813,9 @@ solveWrap.matrix <- function(A,B,...) {
   if (inherits(A,"Rcpp_QR")) { ## no pivoting, $R is upper triangular
     if (is.identity(B,matrixcheck=FALSE)) {
       solved <- try(backsolve(A$R,t(A$Q)),silent=TRUE)
+#    } else if (inherits(B,"sparseMatrix")) { ## backsolve has no Matrix method and returns a matrix =>
+      # use solve on upper triangular sparse Matrix [http://r.789695.n4.nabble.com/backsolve-chol-Matrix-and-SparseM-td4712746.html]
+#      solved <- try(solve(as(A$R,"dtCMatrix"),t(A$Q) %*%B,sparse=TRUE),silent=TRUE)
     } else solved <- try(backsolve(A$R,t(A$Q) %*%B),silent=TRUE)
     return(solved) ## gives control to calling function 
   }
@@ -748,11 +823,15 @@ solveWrap.matrix <- function(A,B,...) {
     ## Q and R need not be sparse (even if stored as sparse matrices), can still be sparse in simple aplications
     if (is.identity(B,matrixcheck=FALSE)) {
       solved <- try(solve(A$R_ap,t(A$Q_ap))[A$pivI,],silent=TRUE)
-    } else solved <- try(solve(A$R_ap,t(A$Q_ap) %*% B)[A$pivI,],silent=TRUE)    
+#    } else if (inherits(B,"sparseMatrix")) { 
+#      solved <- try(solve(as(A$R_ap,"dtCMatrix"),t(A$Q_ap) %*% B,sparse=TRUE)[A$pivI,],silent=TRUE)
+    } else solved <- try(backsolve(A$R_ap,t(A$Q_ap) %*% B)[A$pivI,],silent=TRUE)    
     return(solved) ## gives control to calling function 
   }
-  ## next line should become obsolete ?
-  if (inherits(A,"sparseQR")) return(solve(A,B)) ## as produced by Matrix::qr; return value not documented (!), but sparse storage is used
+  ## calc_logdisp_cov -> calc_invS.X(Sig... -> here; suppress signature message;
+  if (inherits(A,"sparseQR")) { ## as produced by Matrix::qr; return value not documented (!), but sparse storage is used
+    return(suppressMessages(solve(A,B,sparse=inherits(B,"sparseMatrix")))) 
+  }
   ## all other cases
   safesolve.qr.matrix(A,B,...)
 }
@@ -766,8 +845,9 @@ QRwrap <- function(mat,
     class(QR) <- c("Rcpp_QR",class(QR)) ## means it must match the Rcpp_QR output  ## FR->FR alternatiely return adiagonalMatrix ?
   } else if (useEigen) {
     if (inherits(mat,"Matrix")) {
-      ## DEFAULT COMES LAST
-      if (.spaMM.data$options$processedQRmethod == "Matrix::qr") { ## overrides useEigen
+      if (TRUE) { ## DEFAULT COMES LAST
+        QR <- Matrix::qr(mat)
+      } else if (.spaMM.data$options$processedQRmethod == "Matrix::qr") { ## overrides useEigen
         QR <- Matrix::qr(mat)
       } else if (.spaMM.data$options$processedQRmethod == "lmwithSparseQ") {
         QR <- Rcpp_sparseQR(mat);  ## remplace Matrix::qr(mat)
@@ -819,6 +899,7 @@ Cholwrap <- function(mat) {
 } 
 
 LogAbsDetWrap <- function(mat,logfac=0) { 
+  if (ncol(mat)==0) return(0) ## GLM fitted by ML: d2hdbv2 is 0 X 0 matrix 
   # un piege est que mat/(2*pi) conserve les attributes de mat (telle qu'une décomp QR de mat...)
   # il nefaut  dont pas demander LogAbsDetWrap(mat/(2*pi))
   if ( ! is.null(qrmat <- attr(mat,"qr"))) { ## not often, but does happen (salamander tests)
@@ -840,33 +921,35 @@ LogAbsDetWrap <- function(mat,logfac=0) {
   return(lad)
 }
 
+singularSigmaMessagesStop <- function(lambda_est,phi_est,corrPars) {
+  message("the augmented 'Sigma' matrix appears singular.")
+  maxLambda <- max(lambda_est)
+  if (min(phi_est)/maxLambda < .Machine$double.eps) {
+    cat("This may occur because of small phi/lambda")
+    largeLambdaMessages()
+    cat(paste("max(lambda estimates)=",maxLambda))
+  }
+  if (length(corrPars)>0) {
+    cat("; correlation parameters=")
+    cat(paste(names(corrPars),"=",corrPars))
+  }
+  stop()
+}
+
 # returns t( Sig^{-1}.X )
 ## this serves mainly for the SEs of beta and disp param (but also in betaFirst)
 ## One needs Xt.InvS.X, a small matrix but InvS is the slow step.  
-calc_tXinvS <- function(Sig,X.pv,stop.on.error,lambda_est,ranFix) { ## slow... 
+calc_tXinvS <- function(Sig,X.pv,stop.on.error) { ## slow...
+  if (ncol(X.pv)==0L) return(matrix(nrow=0,ncol=0))
   invS.X <- calc_invS.X(Sig,X.pv,stop.on.error = stop.on.error) ## invSig %*% X.pv
   if (inherits(invS.X,"try-error")) {
-    if (stop.on.error) {
-      mess <- pastefrom("the augmented 'Sigma' matrix appears singular. Extreme lambda/phi value and/or extremely correlated random effects?",prefix="(!) From ")
-      message(mess)
-      cat(paste("max(lambda estimates)=",max(lambda_est)))
-      if (length(ranFix)>0) {
-        cat("; correlation parameters=")
-        cat(paste(names(ranFix),"=",ranFix))
-      }
-      largeLambdaMessages()
-      #      if (is.null(options()$error)) { ## default if not error=recover or error=stop
-      #        return(list(error="Singular augmented 'Sigma' matrix")) ## HLCor has code to handle return(list(error=...))
-      #      } else stop() ## will call options()$error i.e. (ideally) recover
-      stop()
-    } else {
-      return(invS.X) ## returns a try-error
-    }
+    return(invS.X) ## returns a try-error
   } else tXinvS <- t(invS.X) ## we have to transpose either this one or X.pv, which are of the same size 
   return(tXinvS)
 }
 
 `calc_invS.X` <- function(Sig,X.pv,stop.on.error) { ## slow... 
+  if (ncol(X.pv)==0L) return(X.pv)
   if (isDiagonal(Sig)) { ## matrix or Matrix
     if (inherits(Sig,"ddiMatrix") ) {
       invS.X <- solve(Sig,X.pv) ## efficient solve
@@ -877,7 +960,7 @@ calc_tXinvS <- function(Sig,X.pv,stop.on.error,lambda_est,ranFix) { ## slow...
     qr.Sig <- QRwrap(Sig) ## Cholwrap tested
     invS.X <- solveWrap.matrix(qr.Sig,X.pv,stop.on.error=stop.on.error) ## invSig %*% X.pv
   }
-  return(invS.X)
+  return(invS.X) ## may be a try-error. handling code outside as it requires additional info
 }
 
 
@@ -937,12 +1020,13 @@ calc_logdisp_cov <- function(object, dvdloglamMat=NULL, dvdlogphiMat=NULL, Sig, 
     }else {
       dvdloglam <- rowSums(dvdloglamMat) ## assuming each lambda_i = lambda
       dwdloglam <- calc_invL_coeffs(object,dvdloglam)
-      if (is.null(lambda.object$lambda.fix)) dispnames <- c(dispnames,"loglambda")
+      if ( ! identical(attr(lambda.object$lambda_outer,"type"),"fix")) dispnames <- c(dispnames,"loglambda")
     }
-  } # else no ranefs
+  } else lambda <- NULL # no ranefs
+  
   phimodel <- object$models["phi"]
-  if (phimodel=="phiScal") { ## semble impliquer pas phi.Fix...
-    phi_est <- object$phi
+  if (phimodel=="phiScal") { ## semble impliquer pas outer phi.Fix... => no need to test object$phi.object$phi_outer,"type")
+    phi_est <- object$phi ## no need to get object$phi.object$phi_outer
     if (length(phi_est)!=1L) problems$stopphi <- "From calc_logdisp_cov(): phimodel=\"phiScal\" but length(phi_est)!=1L."
     if ( ! is.null(dvdlogphiMat)) {
       dvdlogphi <- rowSums(dvdlogphiMat) ## using each phi_i = phi
@@ -962,8 +1046,12 @@ calc_logdisp_cov <- function(object, dvdloglamMat=NULL, dvdlogphiMat=NULL, Sig, 
   } else {
     # cf my documentation, based on McCullochSN08 6.62 and 6.74
     # lambda and phi factors enter in dV/dlog(.), computed instead of dV/d(.) to match dwdlog(.) vectors.
-    ZAL <- object$ZALMatrix
+    ZAL <- attr(object$predictor,"ZALMatrix")
     invV <- calc_invS.X(Sig,Diagonal(n=nrow(ZAL)),stop.on.error=stop.on.error) ## once for all next terms.
+    if (inherits(invV,"try-error")) {
+      #singularSigmaMessagesStop(lambda_est=lambda,phi_est=object$phi,corrPars=object$corrPars)
+      invV <- ginv(Sig) ## FR->FR quick patch at least
+    }
     logdispInfo <- matrix(NA,nrow=nrc,ncol=nrc)
     colnames(logdispInfo) <- rownames(logdispInfo) <- dispnames
     if ("loglambda" %in% dispnames) {
@@ -986,7 +1074,7 @@ calc_logdisp_cov <- function(object, dvdloglamMat=NULL, dvdlogphiMat=NULL, Sig, 
           logdispInfo["rho","loglambda"] <- lambda * sum(invV.dVdlam*t(invV.dVdrho))
       }
       } 
-    ## if (! is.null(dwdlogphi)) { ## surrently length(phi_est)==1L && ! is.null(dvdlogphiMat)
+    ## if (! is.null(dwdlogphi)) { ## surrently length(phi)==1L && ! is.null(dvdlogphiMat)
     if ("logphi" %in% dispnames) { ## more transparent, but error if mismatch of conditions
       ## next lines assume that  the design matrix for the residual error is I
       logdispInfo["logphi","logphi"] <- phi_est^2 * sum(invV^2)
@@ -1009,7 +1097,8 @@ calc_logdisp_cov <- function(object, dvdloglamMat=NULL, dvdlogphiMat=NULL, Sig, 
 
 calc_wAugX <- function(augX,sqrt.ww) {
   if (inherits(augX,"Matrix")) { 
-    wAugX <- Diagonal(x=sqrt.ww) %*% augX ## apparemment sweep vriament pas efficace sur Matrix
+    wAugX <- sweepZ1Wwrapper(as.matrix(augX),sqrt.ww) 
+    # wAugX <- Diagonal(x=sqrt.ww) %*% augX ## apparemment sweep vriament pas efficace sur Matrix
   } else wAugX <- sweepZ1Wwrapper(augX,sqrt.ww) # sweep(TT,MARGIN=1,sqrt.ww,`*`) # rWW %*%TT
   return(wAugX)
 }
@@ -1093,7 +1182,7 @@ computeZAXlist <- function(XMatrix,ZAlist) {
           if (nblocks>1) {
             locZA <- ZA
             for (bt in 1:nblocks) 
-              locZA[,locnr*(bt-1)+(1:locnr)] <- locZA[,locnr*(bt-1)+(1:locnr)] %*% lmatrix
+              locZA[,locnr*(bt-1)+(1:locnr)] <- locZA[,locnr*(bt-1)+(1:locnr)] %*% lmatrix[] ## [] to handle ff_matrix
             ZAX[[it]] <- locZA
           } else {
             ### it's difficult to make checks on names at this step because the colnames of ZA are not controlled.
@@ -1108,8 +1197,9 @@ computeZAXlist <- function(XMatrix,ZAlist) {
             ###
             ## With a proxy::dist or 'crossdist' matrix, it is likely that ZA was = I and we don't reach this code;
             ## However, exceptions can occur: cf Infusion with CIpoint = MLE => replicate in points where MSEs are to be estimated
-            ## Then the lmatrix must have been converted to a matrix
-            ZAX[[it]] <- ZA %*% lmatrix
+            ## Then the lmatrix must have been converted from proxy style to a matrix
+            ZAX[[it]] <- ZA %*% lmatrix[]
+            # rajout 02/2016: but in random slope models, lmatrix can be a Matrix
           }
         }
         attr(ZAX[[it]],"userLfixed") <- attr(lmatrix,"userLfixed") ## TRUE or NULL
@@ -1132,14 +1222,15 @@ post.process.ZALlist <- function(ZALlist,predictor,trySparse=FALSE) {
     if ( is.null(QRmethod <- .spaMM.data$options$QRmethod)) { ## if no user explicit method
       ## then there are certain calls where we want to absolutely prevent sparse
       if (trySparse) { 
-        if (nrand==1 && is.identity(ZALlist[[1]]) && ncol(ZALlist[[1]])>20) {
+        if (nrand==1L && is.identity(ZALlist[[1]])) {
           QRmethod <- "Matrix::qr"
-        } else if (nrand==1 && inherits(ZALlist[[1]],"Matrix") && length(ZALlist[[1]]@x)/prod(dim((ZALlist[[1]])))<1/133) {
+        } else if (nrand==1L && inherits(ZALlist[[1]],"sparseMatrix") && length(ZALlist[[1]]@x)/prod(dim((ZALlist[[1]])))<1/133) {
           QRmethod <- "Matrix::qr"
-        } else if (FALSE && all(unlist(lapply(ZALlist,inherits,what="dgCMatrix")))) { ## FALSE car pas bon cf Female/Male
+        } else if (all(unlist(lapply(ZALlist,inherits,what="sparseMatrix")))) { ## OK pour Female/Male si Pdiag util sparse
           totsize <- prod(colSums(do.call(rbind,lapply(ZALlist,dim))))
           nonzeros <- sum(unlist(lapply(ZALlist,function(spm) {length(spm@x)})))          
-          if (nonzeros/totsize<1/133) { ## of sparse class and effectively sparse
+          if (nonzeros/totsize<1/133) { ## of sparse class and effectively sparse 
+            ## without the test, double le temps de calcul de exemples:
             QRmethod <- "Matrix::qr"
           } else {
             QRmethod <- "lmwithQ_denseZAL" ## of sparse class but actually not so sparse
@@ -1172,9 +1263,9 @@ post.process.ZALlist <- function(ZALlist,predictor,trySparse=FALSE) {
     #     }
   }
   if (inherits(ZAL,"Matrix")) {
-    attr(ZAL,"ZALI") <- rBind(ZAL,Diagonal(ncol(ZAL)))
+    attr(ZAL,"ZALI") <- rBind(ZAL,diag(ncol(ZAL)))
   } else {
-    attr(ZAL,"ZALI") <- RBIND(as.matrix(ZAL), diag(rep(1,ncol(ZAL))))  ## FR->FR using dgCMatrix for ZALI requires several adaptations of later code ?
+    attr(ZAL,"ZALI") <- RBIND(as.matrix(ZAL), diag(ncol(ZAL)))  ## FR->FR using dgCMatrix for ZALI requires several adaptations of later code ?
   }
   return(ZAL)
 }
@@ -1332,11 +1423,14 @@ selfAdjointWrapper <- function(mat) {
   selfAdjointSolverCpp(mat)
 }
 
-GHK_oneside <- function (L, trunpt, above, nrep=1000) {
-  if (length(above) != length(trunpt)) {
-    stop("lengths of arguments 'trunpt' and 'above' are not identical in GHK_oneside")
-  } else dim <- length(above)
-  blob <- .C("GHK_oneside", as.double(L), as.double(trunpt), 
-             as.integer(above), as.integer(dim), as.integer(nrep), res = double(1), se= double(1))
-  return(list(logInt=blob$res,seInt=blob$se)) ## FR->FR NaN seInt's are produced... not necess harmful (try arasample with n=40 locations)
+pMVN <- function (L, limits, ismax, rand_seq=NULL,nrep=1000) {
+  if (length(ismax) != length(limits)) {
+    stop("lengths of arguments 'limits' and 'ismax' are not identical in pMVN()")
+  } else dim <- length(ismax)
+  if (nrow(L)!=dim) stop("nrow(L) != dim in pMVN()")
+  if (is.null(rand_seq)) {
+    rand_seq <- matrix(nrow=0L,ncol=0L)
+  } else if (ncol(rand_seq)!=dim) stop("ncol(rand_seq) != nrow(L) in pMVN()")
+  blob <- Rcpp_pMVN(L, limits, ismax, rand_seq=rand_seq, nrep=nrep)
+  return(blob) ## FR->FR NaN seInt's are produced... not necess harmful (try arasample with n=40 locations)
 }

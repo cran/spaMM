@@ -14,10 +14,11 @@
 }
 \usage{
 HLfit(formula, data, family = gaussian(), rand.family = gaussian(), 
-      resid.formula = ~1, REMLformula = NULL, 
-      verbose=c(warn=TRUE,trace=FALSE,summary=FALSE),
-      HLmethod = "HL(1,1)", control.HLfit = list(), init.HLfit = list(), 
-      ranFix = list(), etaFix = list(), prior.weights = rep(1, nobs), processed = NULL)
+      resid.model = ~1, resid.formula, REMLformula = NULL, 
+      verbose = c(warn = TRUE, trace = FALSE, summary = FALSE), 
+      HLmethod = "HL(1,1)", control.HLfit = list(), 
+      control.glm = list(), init.HLfit = list(), ranFix = list(), 
+      etaFix = list(), prior.weights = NULL, processed = NULL)
 ## see 'rand.family' argument for inverse.Gamma
 ## see 'control.HLfit' argument for AIC
 }
@@ -31,8 +32,9 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
 }
   \item{family}{
    A \code{family} object describing the distribution of the response variable. 
-   Possible values include the gaussian, poisson, binomial and Gamma families. Possible links are identity, log,
-   inverse, logit, probit, and cloglog. Possible combinations of family and link are those allowed by the family objects
+   Possible values include the \code{gaussian}, \code{poisson}, \code{binomial}, \code{Gamma} and 
+   \code{COMPoisson} families. 
+   Possible combinations of family and link are those allowed by the family objects
    (see \code{\link{family}}).
 }
   \item{rand.family}{
@@ -44,8 +46,13 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
   and the link gives \code{v} as function of \eqn{u} (see Details).
   If there are several random effects and only one family is given, this family holds for all random effects.
 }
+  \item{resid.model}{
+  \bold{Either} a formula (without left-hand side) for the variance \code{phi} of the residual error, \bold{or} a list 
+  with such a formula as element \code{formula}, and the optional element \code{family} for the model family of the residual model. 
+  Currently the formula can only contain fixed effects, including an offset. A log link is assumed by default, but an identity link can be requested by setting \code{resid.model$family} to \code{Gamma(identity)}. 
+}
   \item{resid.formula}{
-  A formula (without left-hand side) for the variance \code{phi} of the residual error. Currently can only contain fixed effects, including an offset. A log link is assumed by default, but an identity link can be used (see \code{control.HLfit}). 
+  Obsolete, for back-compatibility; will be deprecated. Same as formula in \code{resid.model}. 
 }
   \item{REMLformula}{
   A model \code{formula} that allows the estimation of dispersion parameters, and 
@@ -105,6 +112,10 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
         of coefficients of the linear predictor. Defaults to 200. This is typically much more than necessary, 
         unless there is little information to separately estimate \eqn{\lambda} and \eqn{\phi} parameters.
 }
+  \item{control.glm}{
+    List of parameters controlling GLM fits, passed to \code{glm.control}; e.g. \code{control.glm=list(maxit=100)}. See \code{\link{glm.control}} for further details.  
+  }
+
   \item{init.HLfit}{
   A list of initial values for the iterative algorithm, with possible elements of the list are 
   \code{fixef} for fixed effect estimates (beta),  
@@ -182,49 +193,47 @@ An object of class \code{HLfit}, actually a list with many elements, several of 
 Some elements may be undocumented. 
 
 A few extractor functions are available (see \code{\link{extractors}}), 
-and should be used as far as possible as they should be backward-compatible from version 1.4 onwards, while the structure of the return object may still evolve (to further deal with this, the return object includes a version tag as element \code{spaMM.version}). The following information will be useful for extracting further elements of the object.
+and should be used as far as possible as they should be backward-compatible from version 1.4 onwards, while the structure of the return object may still evolve. The following information will be useful for extracting further elements of the object.
 
-Elements describing the fit include:  
-\item{fixef}{The fixed effects coefficients, \eqn{\beta} (returned by the \code{fixef} function)}
-\item{ranef}{The random effects \eqn{u} (returned by the \code{ranef} function)}
-\item{fv}{Fitted values (\eqn{\mu=}<inverse-link>(\eqn{\eta})) of the response variable (returned by the \code{fitted} function)}
+Elements describing the fit include \bold{descriptors of the fit}:
 
+\item{eta}{Fitted values on the linear scale  (including the predicted random effects);}
+\item{fv}{Fitted values (\eqn{\mu=}<inverse-link>(\eqn{\eta})) of the response variable (returned by the \code{fitted} function);}
+\item{fixef}{The fixed effects coefficients, \eqn{\beta} (returned by the \code{fixef} function);}
+\item{ranef}{The random effects \eqn{u} (returned by the \code{ranef} function);}
+\item{v_h}{The random effects on the linear scale, \eqn{v};}
+\item{phi}{The residual variance \eqn{\phi};}
+\item{phi.object}{A possibly more complex object describing \eqn{\phi};}
+\item{lambda}{The random effects (\eqn{u}) variance \eqn{\lambda};}
+\item{lambda.object}{A possibly more complex object describing \eqn{\lambda};}
+\item{corrPars}{Agglomerates information on correlation parameters, either fixed, or estimated by \code{HLfit} or \code{corrHLfit};}
 \item{APHLs}{A list with usually four elements, the conditional likelihood, 
    the h-likelihood, and the two adjusted profile h-likelihoods:
    the (approximate) marginal likelihood \code{p_v} and the (approximate) restricted likelihood \code{p_bv} (the latter two available
-   through the \code{logLik} function).
+   through the \code{logLik} function);
 }
-\item{beta_cov}{Covariance matrix of \eqn{\beta} estimates}
-\item{v_h}{The random effects on the linear scale, \eqn{v}}
-\item{phi}{The residual variance \eqn{\phi}}
-\item{phi.object}{A possibly more complex object describing \eqn{\phi}}
-\item{lambda}{The random effects (\eqn{u}) variance \eqn{\lambda}}
-\item{lambda.object}{A possibly more complex object describing \eqn{\lambda}}
-\item{eta}{Fitted values on the linear scale  (including the predicted random effects)}
+\item{beta_cov}{Covariance matrix of \eqn{\beta} estimates.}
 
-It may also be worth checking the following elements 
+\bold{Information about the input} is contained in output elements named as \code{HLfit} or \code{corrHLfit} arguments (\code{data,family,resid.family,ranFix,prior.weights}), with the following notable exceptions or modifications:
 
-\item{HL}{A set of indices that characterize the approximations used for likelihood.}
+\item{predictor}{The linear predictor, including the \code{formula} (possibly reformatted) and several attributes such as \code{ZALMatrix} which is the design matrix for random effects;}
+\item{resid.predictor}{Analogous to \code{predictor}, for the residual variance;}
+\item{rand.families}{corresponding to the \code{rand.family} input;}
+
+\bold{Further miscellaneous diagnostics and descriptors of model structure:}
+
+\item{leve_phi,lev_lambda}{Leverages;}
+\item{ZAlist}{Components of the design matrix for random effects;}
+\item{X.pv}{The design matrix for fixed effects;}
+\item{fixef_terms,fixef_levels}{Futher information about fixed effect model;}
+\item{weights}{(binomial data only) the binomial denominators;}
+\item{y}{the response vector; for binomial data, the frequency response.}
+\item{models}{Additional information on model structure for \eqn{\eta}, \eqn{\lambda} and \eqn{\phi};}
+\item{HL}{A set of indices that characterize the approximations used for likelihood;}
 \item{warnings}{A list of warnings for events that may have occurred during the fit.}
 
-Additional information about the fit is contained in
+Finally, the object includes programming tools: \code{call, spaMM.version, get_w_h_coeffs, get_beta_w_cov, get_invColdoldList, get_logdispObject}.
 
-\item{ZALmatrix}{The design matrix for random effects (see Details).}
-
-and in (possibly reformatted) input arguments
-
-\item{predictor}{The response predictor.}
-\item{data}{The input data.}
-\item{family}{a \code{\link{family}} object corresponding to the \code{family} input}
-\item{rand.family }{a \code{\link{family}} object corresponding to the \code{rand.family} input}
-\item{y}{the response vector; for binomial data, the frequency response}
-\item{formulaDisp}{Model formula for dispersion response}
-\item{resid.family}{Family for estimation of dispersion from residuals}
-\item{X}{The design matrix for fixed effects}
-\item{ranFix}{A \code{ranFix} input}
-\item{corrPars}{Additional information on correlation parameters, not necessarily used by HLfit itself but in upper calling functions such as HLCor or corrHLfit}
-\item{models}{Additional information on model structure for \eqn{\eta}, \eqn{\lambda} and \eqn{\phi}}
-\item{weights}{(binomial data only) the binomial denominators}
 }
 \references{
 Breslow, NE, Clayton, DG. (1993). Approximate Inference in Generalized Linear Mixed Models.
@@ -257,11 +266,11 @@ Vaida, F., and Blanchard, S. 2005. Conditional Akaike information for mixed-effe
 data(wafers)
 ## Gamma GLMM with log link
 HLfit(y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch),family=Gamma(log),
-          resid.formula = ~ X3+I(X3^2) ,data=wafers)
+          resid.model = ~ X3+I(X3^2) ,data=wafers)
 %- : tested in update.Rd
 ## Gamma - inverseGamma HGLM with log link
 HLfit(y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch),family=Gamma(log),
           HLmethod="HL(1,1)",rand.family=inverse.Gamma(log),
-          resid.formula = ~ X3+I(X3^2) ,data=wafers)
+          resid.model = ~ X3+I(X3^2) ,data=wafers)
 }          
 \keyword{ model }

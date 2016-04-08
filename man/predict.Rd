@@ -1,23 +1,30 @@
 \name{predict}
 \alias{predict.HLfit}
 \alias{predict}
+\alias{get_fixefVar}
+\alias{get_predVar}
+\alias{get_residVar}
+\alias{get_respVar}
+\alias{intervals}
 
 \title{
   Prediction from a model fit.
 }
 \description{
-  Prediction of the response variable by its expected value obtained as (the inverse link transformation of) the linear predictor (\eqn{\eta}) and more generally for terms of the form \bold{X}[n]\eqn{\beta}+\bold{Z}[n]\bold{v}, for possibly new design matrices \bold{X}[n] and \bold{Z}[n].   
+  Prediction of the response variable by its expected value obtained as (the inverse link transformation of) the linear predictor (\eqn{\eta}) and more generally for terms of the form \bold{X}_n\eqn{\beta}+\bold{Z}_n\bold{L}\bold{v}, for new design matrices \bold{X}_n and \bold{Z}_n. Various components of prediction variances and predictions intervals can also be computed using \code{predict}. The \code{get_}... functions are convenient extractors for such components.   
 }
 \usage{
-\method{predict}{HLfit}(object,newdata = newX, newX=NULL, re.form= NULL,
-                 variances=list(fixef=FALSE, linPred=FALSE,dispVar=FALSE, 
-                                resid=FALSE, sum=FALSE, cov=FALSE),
-                 predVar=variances$linPred,residVar=variances$resid,
-                 binding = FALSE,...)
+\method{predict}{HLfit}(object, newdata = newX, newX = NULL, re.form = NULL,
+                          variances=list(), binding = FALSE, intervals = NULL,
+                          level = 0.95, ...)
+get_fixefVar(...)
+get_predVar(...)
+get_residVar(...)
+get_respVar(...)
 }
 \arguments{
   \item{object}{
-  The return object of an HLfit or similar function.
+  The return object of fitting functions \code{HLfit,corrHLfit,HLCor}... returning an object inheriting from \code{HLfit} class.
 }
   \item{newdata}{
   \bold{Either} a matrix or data frame containing all required variables for evaluating fixed and random effects, including an offset. If \code{NULL}, the original data are reused.  
@@ -30,50 +37,77 @@
   formula for random effects to include.  By default, it is NULL, in which case all random effects are included. If it is NA, no random effect is included. If it is a formula, only the random effects it contains are retained. The other variance components are removed from both point prediction and \code{variances} calculations. If you want to retain only the spatial effects in the point prediction, but all variances, either use re.form  and add missing variances (on linear predictor scale) manually, or ignore this argument and see Details and Examples for different ways of controlling variances.     
  }
  \item{variances}{
-   A list which elements control the computation of different estimated variances. \code{fixef=TRUE} will provide the variances of \bold{X}\eqn{\beta}; \code{linPred=TRUE} will provide the variance of the linear predictor \eqn{\eta} for given dispersion parameters (see Details); \code{resid=TRUE} will provide the residual variances (for Gaussian or Gamma responses). These different variances are returned as attributes \code{"fixefVar"}, \code{"predVar"}, and \code{"residVar"}, respectively. 
+ 
+   \code{list(linPred=TRUE,disp=TRUE)} is suitable for uncertainty in point prediction.   
+
+   A list which elements control the computation of different estimated variances. 
+   \code{predict} can return four components of prediction variance: 
+   \code{fixefVar}, \code{predVar}, \code{residVar} and \code{respVar}, 
+   all returned as attributes of the point predictions. The elements of \code{variances} 
+   specify how these components are constructed. By default, 
+   each component is a vector of variances. However, if \code{variances$cov=TRUE}, 
+   a covariance matrix is returned when applicable (i.e. not for \code{"residVar"}).
    
-   If \code{dispVar=TRUE}, \code{"predVar"} may include a component of prediction variance for uncertainty in dispersion parameter estimates. Currently, this option only handles a scalar residual variance (\eqn{\phi}) and a single random effect with a scalar variance (\eqn{\lambda}). 
+   \code{fixefVar} is the (co)variance of fixed effects (\bold{X}\eqn{\beta}) 
+   due to uncertainty in \eqn{\beta}. It is called by \code{variances$fixefVar=TRUE}.
    
-   \code{sum=TRUE} is equivalent to \code{resid=TRUE,linPred=TRUE}: in both cases \code{predVar}, \code{residVar}, and their sum (as attribute \code{"sumVar"}), are returned. If \code{cov=TRUE}, the full covariance matrices are returned for any of the requested terms (except for \code{"residVar"}, as the covariance matrix of the residuals is diagonal).     
+   \code{predVar} is the (co)variance of the linear predictor \eqn{\eta}. 
+   It is the most common measure of uncertainty in point prediction.
+   It accounts for uncertainty in fixed effects (\bold{X}\eqn{\beta}) and 
+   random effects (\bold{ZLv}) for given dispersion parameters (see Details), 
+   but it can also accounts for uncertainty in dispersion parameters 
+   (\eqn{\lambda} and \eqn{phi}) estimates if \code{variances$disp=TRUE}, 
+   for models in which the effect of uncertainty in dispersion parameters can be computed.  
+   Currently, this effect can be computed for a scalar residual variance (\eqn{\phi}) 
+   and a single random effect with a scalar variance (\eqn{\lambda}). 
+   \code{variances$predVar=TRUE} will return the sum of the two components, if available; 
+   otherwise it returns only the (co)variance for given \eqn{\lambda} and \eqn{phi}. 
+   The latter component can be requested by \code{variances$linPred=TRUE}. 
+   
+   \code{residVar} provides the residual variances (for Gaussian or Gamma responses). 
+   It is called by \code{variances$residVar=TRUE}.
+  
+  \code{respVar=TRUE} is the variance of the response, i.e. the sum of \code{predVar} and \code{residVar}.
+  It is called by \code{variances$respVar=TRUE}.
+    
+  Calling for one (co)variance implies that some of its components may be also returned.    
+
  }
- \item{predVar}{
- (for back-compatibility: \code{variances} should now be used)
- \code{predVar=TRUE} corresponds to \code{variances=list(linPred=TRUE)}, and 
- \code{predVar="Cov"} corresponds to \code{variances=list(linPred=TRUE,cov=TRUE)}. 
+ \item{intervals}{
+   (vector of) character string(s). Provides prediction intervals with (intended) level \code{level}, deduced from the given prediction variance term, e.g. \code{intervals="predVar"}. Currently only intervals from \code{fixefVar} and \code{predVar} (and for LMMs \code{respVar} including the residual variance) may have a probabilistic meaning. Intervals returned in other cases are (currently) meaningless. 
  }
- \item{residVar}{
- (for back-compatibility: \code{variances} should now be used)
-  \code{residVar=TRUE} corresponds to \code{variances=list(resid=TRUE)}.
- }
+ \item{level}{Coverage of the intervals.}
  \item{binding}{
   If \code{binding} is a character string, the predicted values are bound with the \code{newdata} and the result is returned as a data frame. The predicted values column name is the given \code{binding}, or a name based on it, if the \code{newdata} already include a variable with this name). 
   If \code{binding} is \code{FALSE}, The predicted values are returned as a matrix and the data frame used for prediction is returned as an attribute
   (unless it was \code{NULL}).
  }
 \item{\dots}{
-  further arguments passed to or from other methods. 
+  further arguments passed to or from other methods. For the code{get_}... functions, they are passed to \code{predict}. 
 }
 }
 \value{
-  A matrix or data frame (according to the \code{binding} argument), with optionally one or more prediction variance vector or (co)variance matrices as attributes. The further attribute \code{fittedName} contains the binding name, if any.  
+  For \code{predict}, a matrix or data frame (according to the \code{binding} argument), with optional attributes \code{frame}, \code{intervals}, \code{predVar}, \code{fixefVar}, \code{residVar}, and/or \code{respVar}, the last four holding one or more variance vector or covariance matrices. The further attribute \code{fittedName} contains the binding name, if any.  
+  
+  The \code{get_}... extractor functions call \code{predict} and extract from its result the attribute implied by the name of the extractor.   
 }
 \details{
   If  \code{newdata} is NULL, \code{predict} returns the fitted responses, including random effects, from the object. 
   Otherwise it computes new predictions including random effects as far as possible.   
   For spatial random effects it constructs a correlation matrix \bold{C} between new locations and locations in the original fit. Then it infers the random effects in the new locations as   \bold{C} (\bold{L}'\eqn{)^{-1}} \bold{v} (see \code{\link{spaMM}} for notation).   For non-spatial random effects, it checks whether any group (i.e., level of a random effect) in the new data was represented in the original data, and it adds the inferred random effect for this group to the prediction for individuals in this group. 
 
-  \code{fixefVar} is the (co)variance of \bold{X}\eqn{\beta} (or \bold{X}[n]\eqn{\beta}), deduced from the asymptotic covariance matrix of \eqn{\beta} estimates. 
+  \code{fixefVar} is the (co)variance of \bold{X}\eqn{\beta} (or \bold{X}_n\eqn{\beta}), deduced from the asymptotic covariance matrix of \eqn{\beta} estimates. 
 
-  \code{predVar} is the prediction (co)variance of \eqn{\eta}=bold{X}\eqn{\beta}+\bold{ZL}\bold{v} (see \code{\link{HLfit}} Details for notation), or more generally of \bold{X}[n]\eqn{\beta}+\bold{Z}[n]\bold{L}[n]\bold{v}, by default computed for given dispersion parameters. 
+  \code{predVar} is the prediction (co)variance of \eqn{\eta}=\bold{X}\eqn{\beta}+\bold{Z}\bold{v} (see \code{\link{HLfit}} Details for notation), or more generally of \bold{X}_n\eqn{\beta}+\bold{Z}_n\bold{L}\bold{v}, by default computed for given dispersion parameters. 
   
   For levels of the random effects present in the original data, \code{predVar} computation assumes that the covariance matrix of \eqn{\beta} and \bold{v} estimates is the inverse of the expected Hessian matrix (for given dispersion parameters) of the augmented linear model for \eqn{\beta} and \bold{v}. It thus takes into account the joint uncertainty in estimation of \eqn{\beta} and prediction of \bold{v}. 
   
-  For new levels of the random effects, \code{predVar} computation additionally takes into account unceratinty in prediction of \bold{v} for these new levels. For \bold{prediction covariance} with a new \bold{Z}[n], it matters whether a single or multiple new levels are used: see Examples.      
+  For new levels of the random effects, \code{predVar} computation additionally takes into account uncertainty in prediction of \bold{v} for these new levels. For \bold{prediction covariance} with a new \bold{Z}_n, it matters whether a single or multiple new levels are used: see Examples.      
 
-If \code{variances$dispVar} is \code{TRUE}, prediction variance may also include a term accounting for uncertainty in \eqn{\phi} and \eqn{\lambda}, computed following Booth and Hobert (1998, eq. 19). This computation is currently implemented for models with a single random effect, and ignore uncertainties in spatial correlation parameters.
+If \code{variances$disp} is \code{TRUE}, prediction variance may also include a term accounting for uncertainty in \eqn{\phi} and \eqn{\lambda}, computed following Booth and Hobert (1998, eq. 19). This computation is currently implemented for models with a single random effect, and ignore uncertainties in spatial correlation parameters.
 
   For models with non-Gaussian response, the prediction covariance of the response is approximated by the prediction covariance of the linear predictor, 
-  pre- and post-multiplied by \eqn{\partial\mu/\partial\eta}. 
+  pre- and post-multiplied by \eqn{\partial\mu/\partial\eta}{d\mu/d\eta}. 
   
   These variance calculations are approximate except for LMMs, and cannot be garanteed to give accurate results.  
 
@@ -103,11 +137,11 @@ predict(fitobject,re.form= ~ 1 +  Matern(1|latitude+longitude))
 moregroups <- grouped[1:5,]
 rownames(moregroups) <- paste("newloc",1:5,sep="")
 moregroups$grp <- rep(3,5) ## all new data belong to an unobserved third group 
-cov1 <- attr(predict(fitobject,newdata=moregroups,
-                     variances=list(linPred=TRUE,cov=TRUE)),"predVar")
+cov1 <- get_predVar(fitobject,newdata=moregroups,
+                     variances=list(linPred=TRUE,cov=TRUE))
 moregroups$grp <- 3:7 ## all new data belong to distinct unobserved groups
-cov2 <- attr(predict(fitobject,newdata=moregroups,
-                     variances=list(linPred=TRUE,cov=TRUE)),"predVar")
+cov2 <- get_predVar(fitobject,newdata=moregroups,
+                     variances=list(linPred=TRUE,cov=TRUE))
 cov1-cov2 ## the expected off-diagonal covariance due to the common group in the first fit.
 
 \dontrun{
@@ -125,7 +159,8 @@ if(require("rsae", quietly = TRUE)) {
   newXandZ <- unique(data.frame(PixelsCorn=landsat$MeanPixelsCorn,
                                 PixelsSoybeans=landsat$MeanPixelsSoybeans,
                                 CountyName=landsat$CountyName))
-  predict(fitobject,newdata=newXandZ,variances = list(linPred=TRUE,dispVar=TRUE))
+  predict(fitobject,newdata=newXandZ,variances = list(predVar=TRUE))
+  get_predVar(fitobject,newdata=newXandZ,variances = list(predVar=TRUE))
 }
 
 }

@@ -15,14 +15,15 @@
 }
 
 
-`calc.p_v` <- function(mu,u_h,dvdu,lambda_est,phi_est,d2hdv2,cum_n_u_h,lcrandfamfam,processed,family,prior.weights,
+`calc.p_v` <- function(mu,u_h,dvdu,lambda_est,phi_est,d2hdv2,cum_n_u_h,lcrandfamfam,processed,
                        ZAL=NULL, ## can work without it (second order corr)
                        returnLad=FALSE,only.h=FALSE) { 
   BinomialDen <- processed$BinomialDen
   loglfn.fix <- processed$loglfn.fix
   y <- processed$y
   models <- processed$models
-  theta <- theta.mu.canonical(mu/BinomialDen,family$family)  
+  family <- processed$family
+  theta <- theta.mu.canonical(mu/BinomialDen,family)  
   if (family$family=="binomial") {
     clik <- sum(loglfn.fix(theta,y/BinomialDen,BinomialDen,1/(phi_est))) ## freq a revoir
   } else {
@@ -30,7 +31,7 @@
     ## creates upper bias on clik but should be more than compensated by the lad
     ## correcting the lad makes an overall upper bias for small (y-theta) at "constant" corrected phi 
     ## this can be compensated by correcting the lad LESS.
-    clik <- sum(loglfn.fix(theta,y,prior.weights/phi_est)) ## note (prior) weights meaningful only for gauss/ Gamma 
+    clik <- sum(loglfn.fix(theta,y,processed$prior.weights/phi_est)) ## note (prior) weights meaningful only for gauss/ Gamma 
   }
   if (models[[1]]!="etaHGLM" && models[["phi"]]!="phiHGLM") return(list(clik=clik,p_v=clik))
   ## ELSE
@@ -39,7 +40,6 @@
     u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
     loglfn.ranU(lcrandfamfam[it],u_h[u.range],1/lambda_est[u.range])    
   }))
-  #if(returnLad) browser()
   log.du_dv <- - log(dvdu) 
   likranV <- sum(likranU + log.du_dv)
   ##### HLIK
@@ -69,7 +69,7 @@
     ### initial version with qr. Slow. in old versions prior to 1.5 
     L <- try(t(chol( - d2hdv2)),silent=TRUE) 
     if (inherits(L,"try-error")) { ## but fall back 
-      L <- designL.from.Corr( - d2hdv2,try.chol=F) ## recycles code for 'square root'; but no longer triangular
+      L <- designL.from.Corr( - d2hdv2,try.chol=FALSE) ## recycles code for 'square root'; but no longer triangular
       if (inherits(L,"try-error")) {
         second.corr <- - exp(700) ## drastically penalizes the likelihood when d2hdv2 is nearly singular 
       } else { ## code based on the notation of Appendix B of LeeL12 (last page of supp mat)
@@ -105,6 +105,5 @@
     
     ## print(c(p_v,ps_v))
   }
-#browser()  
   return(resu)
 }

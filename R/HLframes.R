@@ -34,7 +34,7 @@ findbarsMM <-  function (term) {
       return(term)
     if (length(term) == 2L) { ## 
       term1 <- as.character(term[[1]])
-      if (term1 %in% c("adjacency","Matern","corMatern","AR1","corrMatrix","ar1")) {
+      if (term1 %in% c("adjacency","Matern","AR1","corrMatrix","ar1")) {
         res <- findbarsMM(term[[2]])
         attr(res,"type") <- term1
         return(res) 
@@ -52,7 +52,7 @@ noNonSpatialbarsMM <- function (term) {
     return(NULL) ## removes (|) but not Matern(|)
   if (length(term) == 2L) {
     term1 <- as.character(term[[1]])
-    if (term1 %in% c("adjacency","Matern","corMatern","AR1","corrMatrix","ar1")) {
+    if (term1 %in% c("adjacency","Matern","AR1","corrMatrix","ar1")) {
       return(term) 
     } else return(noNonSpatialbarsMM(term[[2]])) 
   }
@@ -176,7 +176,7 @@ findSpatial <- function (term) { ## derived from findbars
     return(NULL)
   if (length(term) == 2L) { 
     term1 <- as.character(term[[1]])
-    if (term1 %in% c("adjacency","Matern","corMatern","AR1","corrMatrix","ar1")) {
+    if (term1 %in% c("adjacency","Matern","AR1","corrMatrix","ar1")) {
       return(term) 
     } else return(NULL) 
   }
@@ -203,7 +203,7 @@ parseBars <- function (term) { ## derived from findbars, ... return strings
   } ## le c() donne .|. et non |..
   if (length(term) == 2) {
     term1 <- as.character(term[[1]])
-    if (term1 %in% c("adjacency","Matern","corMatern","AR1","corrMatrix","ar1")) {
+    if (term1 %in% c("adjacency","Matern","AR1","corrMatrix","ar1")) {
       res <- paste(c(term))
       attr(res,"type") <- term1
       return(res) 
@@ -240,7 +240,6 @@ asStandardFormula <- function(formula) {
   aschar <- DEPARSE(formula)
   aschar <- gsub("adjacency(","(",aschar,fixed=T)
   aschar <- gsub("Matern(","(",aschar,fixed=T)
-  aschar <- gsub("corMatern(","(",aschar,fixed=T)
   aschar <- gsub("AR1(","(",aschar,fixed=T)
   aschar <- gsub("ar1(","(",aschar,fixed=T)
   aschar <- gsub("corrMatrix(","(",aschar,fixed=T)
@@ -294,11 +293,7 @@ HLframes <- function (formula, data,fitobject=NULL) {
   fe <- mf ## copy before further modif of mf
   mf <- eval(mf) ## will contain vars required for fixef and for ranef
   Y <- model.response(mf, "any")
-  if (! is.null(Y)) {
-    ## if binomial Y (may be) a numeric vector and length(dim(Y)) = length(NULL) = 0 
-    ## if poisson Y (may be) an integer(!) vector and length(dim(Y)) = length(NULL) = 0
-    Y <- as.matrix(Y) ## also useful in binomial case because preprocess tests ncol(Y) later. FR->FR Revise...
-  }
+  Y <- as.vector(Y) ## problem: Y is array1d here if input data frame contains array1d
   ####### Then constructs the design X by evaluating the model frame (fe) with fe$formula <- fixef.form
   fixef.form <- nobarsNooffset(formula) ## nobars removes the (...|...) terms...
   fixef_levels <- NULL
