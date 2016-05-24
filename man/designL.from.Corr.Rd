@@ -7,9 +7,8 @@
 \description{
   This function is not usually directly called by users, but arguments may be passed to it through higher-level calls (see Examples).  
   For given correlation matrix  \bold{C}, it computes a \dQuote{design matrix} \bold{L} such that \bold{C} = \bold{L} * t(\bold{L}). 
-  \code{chol} (Cholesky factorization) is a fast method for this computation, but it is not robust numerically and may even return an error, 
-  in which cases other methods (\code{eigen} or \code{svd}) are used. Note that these methods differ by much more than simply numerical accuracy,
-  and in particular that this will affect the simulation of samples for the parametric bootstrap implemented in \code{fixedLRT}. 
+  \code{t(chol(.))} (Cholesky factorization) is a fast method for this computation, but it is not robust numerically and may even return an error, 
+  in which cases more robust methods (\code{eigen} or \code{svd}) are used. Matrix roots are not unique (for example, they are lower triangular for \code{t(chol(.))}, and symmetric for \code{svd(.)}. As matrix roots are used to simulate samples under the fitted model (in particular in the parametric bootstrap implemented in \code{fixedLRT}), this implies that for given seed of random numbers, these samples will differ with these different methods (although their distribution should be identical). 
 }
 \usage{
 designL.from.Corr(m, symSVD=NULL, try.chol=TRUE, try.eigen=FALSE, threshold=1e-06, 

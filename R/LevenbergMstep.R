@@ -14,7 +14,9 @@ LevenbergMstep <- function(wAugX,LM_wAugz,damping,stop.on.error=TRUE) {
     ApAdDpD <- crossprod(wAugX)
   } else ApAdDpD <- crossprodCpp(wAugX) ## t(wAugX) %*% wAugX ## A'.A=R'.R     
   dampDpD <- damping * diag(ApAdDpD) ## faster than computing qr.R(qrwAugX ) and using it specially for this computation... ## vector
-  diag(ApAdDpD) <- diag(ApAdDpD) + dampDpD  ## A'.A + damping*diag(A'.A)
+  nc <- ncol(ApAdDpD)
+  diagPos <- seq.int(1L,nc^2,nc+1L)
+  ApAdDpD[diagPos] <- ApAdDpD[diagPos] + dampDpD ## A'.A + damping*diag(A'.A)
   ## ## code that oddly solved B y = rhs= A'z* for B:=(A'.A + damping*diag(A'.A)) by solving B'B y =B'(A'z*) is in version 040213. For damping=0, this solved A.A'.A'.A y= A.A'.A'z*...
   ### attempt to solve 'normal equations' directly ## LMcorrected useful only here or for the ginv() call
   dbetaV <- try(solve(ApAdDpD,rhs),silent=TRUE)

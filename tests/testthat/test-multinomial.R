@@ -1,6 +1,8 @@
 cat("\ntest multinomial:")
 # dontrun in multinomial.Rd
 
+# good for detecting when one has forgotten to use setProcessed...
+
 set.seed(123)
 genecopy1 <- sample(4,size=50,prob=c(1/2,1/4,1/8,1/8),replace=TRUE)
 genecopy2 <- sample(4,size=50,prob=c(1/2,1/4,1/8,1/8),replace=TRUE)

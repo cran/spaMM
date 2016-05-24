@@ -22,13 +22,13 @@ spaMMplot2D(x, y, z,xrange=range(x, finite = TRUE),
 mapMM(fitobject,Ztransf=NULL,coordinates,
       add.points,decorations=NULL,plot.title=NULL,plot.axes=NULL,envir=-3, ...)
 
-filled.mapMM(fitobject,Ztransf=NULL,coordinates,xrange=NULL,yrange=NULL,
-             margin=1/20,map.formula,phi=1e-05,gridSteps=41,
-             decorations=quote(points(pred[,coordinates],cex=1,lwd=2)),
-             add.map=FALSE,axes = TRUE, plot.axes,map.asp=NULL,
-             variance=NULL,
-             var.contour.args=list(),
-             ...)
+filled.mapMM(fitobject, Ztransf = NULL, coordinates, 
+             xrange = NULL, yrange = NULL, margin = 1/20, map.formula, 
+             phi = 1e-05, gridSteps = 41, 
+             decorations = quote(points(pred[,coordinates],cex=1,lwd=2)),
+             add.map = FALSE, axes = TRUE, plot.axes, map.asp = NULL,
+             variance = NULL, var.contour.args = list(), 
+             smoothObject = NULL, ...)
 }
 \arguments{
   \item{fitobject}{
@@ -100,27 +100,31 @@ statements which add titles for the plot key.
 \item{key.axes}{	
 statements which draw axes on the plot key. 
 }
-\item{xaxs}{	
-the x axis style. The default is to use internal labeling.
-}
-\item{yaxs}{	
-the y axis style. The default is to use internal labeling.
-}
-\item{las}{	
-the style of labeling to be used. The default is to use horizontal labeling.
-}
-\item{axes, frame.plot}{	
-logicals indicating if axes and a box should be drawn, as in plot.default.
-}
+
+\item{xaxs}{the x axis style. The default is to use internal labeling.}
+
+\item{yaxs}{the y axis style. The default is to use internal labeling.}
+
+\item{las}{the style of labeling to be used. The default is to use horizontal labeling.}
+
+\item{axes, frame.plot}{logicals indicating if axes and a box should be drawn, as in plot.default.}
+
+\item{smoothObject}{Either NULL, or an object inheriting from class \code{HLfit} (hence, an object on which \code{predict.HLfit} can be called), predicting the response surface in any coordinates. See Details for typical usages.}
+
 \item{\dots}{
   further arguments passed to or from other methods. For \code{mapMM}, all such arguments are passed to \code{spaMMplot2D}; for \code{spaMMplot2D}, currently only additional graphical parameters passed to \code{title()} (see Details).  For \code{filled.mapMM}, these parameters are those that can be passed to \code{\link{spaMM.filled.contour}}. 
 }
 }
 \value{
-  No return value. Plots are produced as side-effects. 
+  \code{filled.mapMM} returns invisibly a predictor of the response surface. \code{mapMM} has no return value. Plots are produced as side-effects. 
 }
 \details{
-\code{filled.mapMM} interpolates the predicted response, with sometimes unpleasant effects. For example, if one interpolates probabilities, the result may not be within [0,1], and then (say) a logarithmic \code{Ztransf} may generate NaN values that would otherwise not occur.
+
+The \code{smoothObject} argument may be used to redraw a figure faster by recycling the predictor of the response surface returned invisibly by a previous call to \code{filled.mapMM}.   
+
+For \code{smoothObject=NULL} (the default), \code{filled.mapMM} interpolates the predicted response, with sometimes unpleasant effects. For example, if one interpolates probabilities, the result may not be within [0,1], and then (say) a logarithmic \code{Ztransf} may generate NaN values that would otherwise not occur. The \code{smoothObject} argument may be used to overcome the default behaviour, by providing an alternative predictor. 
+
+
 
 If you have values for all predictor variables in all locations of a fine spatial grid, \code{filled.mapMM} may not be a good choice.
 Rather, use \code{predict(<fitobject>,newdata= <all predictor variables >)} to generate all predictions, and then either 

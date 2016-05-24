@@ -26,71 +26,6 @@ calcUniqueGeo <- function(data) {
   return(coordinates) ## should be ordered as bars[[3]] (important for predict)
 }
 
-## better for development to avoid name conflicts with OKsmooth :toCanonical and :canonize
-canonizeRanPars <- function(ranPars, ## should have a RHOMAX attribute when trRho in input
-                            corr.model,checkComplete=TRUE) {
-  trueCorrpars <- list()
-  if (corr.model %in% c("Matern")) {
-    if (!is.null(ranPars$trNu)) { ## either we have nu,rho or trNu,trRho 
-      ranPars$nu <- nuInv(ranPars$trNu,ranPars$trRho,NUMAX=attr(ranPars,"NUMAX")) ## before trRho is removed...
-      ranPars$trNu <- NULL
-      attr(ranPars,"type")$nu <- attr(ranPars,"type")$trNu
-      attr(ranPars,"type")$trNu <- NULL
-    } 
-    nu <- ranPars$nu
-    if (is.null(nu) && checkComplete) {
-      mess <- pastefrom("nu missing from ranPars (or correlation model mis-identified).",prefix="(!) From ")
-      stop(mess)
-    }
-    trueCorrpars$nu <- nu 
-  } 
-  if (corr.model=="AR1") {
-    ARphi <- ranPars$ARphi
-    if (is.null(ARphi) && checkComplete) {
-      mess <- pastefrom("ARphi missing from ranPars.",prefix="(!) From ")
-      stop(mess)
-    }
-    trueCorrpars$ARphi <- ARphi    
-  } else if (corr.model != "corrMatrix") { ## all models with a 'rho' parameter
-    if (!is.null(ranPars$trRho)) {
-      ranPars$rho <- rhoInv(ranPars$trRho,RHOMAX=attr(ranPars,"RHOMAX"))  
-      ranPars$trRho <- NULL
-      attr(ranPars,"type")$rho <- attr(ranPars,"type")$trRho
-      attr(ranPars,"type")$trRho <- NULL
-    } ## else there may simply be rho rather than trRho (including for adjacency model through optim procedure !)
-    trueCorrpars$rho <- rho <- ranPars$rho
-    if (is.null(rho)) {
-      if(corr.model=="adjacency") { ## then allow a direct call through HLCor 
-        ranPars$rho <- 0
-        attr(ranPars,"type")$rho <- "var"
-      } else if (checkComplete) {
-        mess <- pastefrom("rho missing from ranPars.",prefix="(!) From ")
-        stop(mess)
-      }
-    } 
-  }
-  Nugget <- ranPars$Nugget
-  if (! is.null(Nugget)) trueCorrpars$Nugget <- Nugget 
-  if (!is.null(ranPars$trPhi)) {
-    ranPars$phi <- dispInv(ranPars$trPhi)
-    ranPars$trPhi <- NULL
-    attr(ranPars,"type")$phi <- attr(ranPars,"type")$trPhi
-    attr(ranPars,"type")$trPhi <- NULL
-  } else if (!is.null(ranPars$logphi)) { ## debug code
-    ## HL.info$ranFix$phi <- exp(ranPars$logphi)
-    stop("logphi in HLCor...")
-  } #####################  else HL.info$ranFix$phi <- ranPars$phi ## y st deja !?
-  if (!is.null(ranPars$trLambda)) {## 
-    ranPars$lambda <- dispInv(ranPars$trLambda)
-    ranPars$trLambda <- NULL
-    attr(ranPars,"type")$lambda <- attr(ranPars,"type")$trLambda
-    attr(ranPars,"type")$trLambda <- NULL
-  } else if (!is.null(ranPars$loglambda)) { ## debug code
-    stop("loglambda in HLCor...")
-  } ##################### else HL.info$ranFix$lambda <- ranPars$lambda
-  return(list(trueCorrpars=trueCorrpars,ranPars=ranPars))
-}
-
 
 HLCor <- function(formula,
                   data,family=gaussian(),
@@ -172,7 +107,7 @@ HLCor <- function(formula,
     }
   }
   ################# single processed, single data analysis: 
-  mc$verbose <- reformat_verbose(mc$verbose,For="HLCor")
+  mc$verbose <- reformat_verbose(eval(mc$verbose),For="HLCor")
   mc$data <- NULL
   mc$family <- NULL
   mc$formula <- NULL
@@ -183,6 +118,9 @@ HLCor <- function(formula,
   mc$REMLformula <- NULL 
   mc[[1L]] <- quote(spaMM::HLCor_body)
   hlcor <- eval(mc,parent.frame())
+  if ( ! is.null(processed$only_objective)) {
+    return(hlcor)    ########################   R E T U R N   a list with $APHLs
+  }
   attr(hlcor,"HLCorcall") <- oricall ## potentially used by getCall(object) in update.HL 
   if (mc$verbose["HLCorSummary"]) { ## useful in final call from corrHLfit
     summary(hlcor) ## input corr pars have been printed at the beginning...   
@@ -223,7 +161,17 @@ HLCor_body <- function(processed,
   ## if it is currently absent, first provide corr matrix or its symSVD, from which Lunique will be computed using designL.from.Corr
   if (is.null(Lunique <- attr(predictor,"LMatrix"))) { 
     symSVD <- NULL
-    if (corr.model %in% c("adjacency","ar1")) { ## "ar1" != "AR1" is a tempo name for a futur generic model  
+    if (corr.model %in% c("ar1")) {
+      ## inv(corrmat) has a simple repres as Linv.tLinv <=> corrmat as R.tR
+      ARphi <- ranPars$ARphi
+      # equivalent to nlme's AR1_fact() in corStruct.c
+      tLinv <- Diagonal(x=c(rep(1,control.dist$ar1_tmax-1L),sqrt(1-ARphi^2))) 
+      diag(tLinv[,-1]) <- -ARphi 
+      # efficient solve on sparse matrix:
+      Lunique <- as.matrix(solve(tLinv/sqrt(1-ARphi^2))) ## corrmat is tcrossprod(Lunique): we keep tcrossprod but L' is tri.sup ! 
+      attr(Lunique,"type") <- "cholR_RRt" ## not equivalent to base::chol() which whould produce cholR_tRR 
+    }
+    if (corr.model %in% c("adjacency")) { ## "ar1" != "AR1" is a tempo name for a futur generic model  #!# "ar1"
       if ( missing(adjMatrix) ) stop("missing 'adjMatrix' for adjacency model")
       ## no nugget in the adjacency model... ## (use additional ranef instead)      
       symSVD <- attr(adjMatrix,"symSVD")
@@ -238,6 +186,7 @@ HLCor_body <- function(processed,
       } else {
         symSVD$adjd <- symSVD$d
         symSVD$d <- 1/(1-rho*symSVD$d) ## from adjMatrix to correlation matrix
+        # outer optim -> LMatrix recomputed from this for each rho  
       }
     }  else if (corr.model %in% c("SAR_WWt")) { ## "ar1" != "AR1" is a tempo name for a futur generic model  
       if ( missing(adjMatrix) ) stop("missing 'adjMatrix' for adjacency model")
@@ -280,13 +229,14 @@ HLCor_body <- function(processed,
           dist.arglist <- list(x=uniqueGeo)
           dist.arglist$method <- control.dist$dist.method ## may be NULL
           distMatrix <- do.call(proxy::dist,dist.arglist)
-        }
+        } 
         msd.arglist <- c(msd.arglist,list(distMatrix=distMatrix))
       }
       corrm <- do.call("make_scaled_dist",msd.arglist)
       ## at this point is a single location, corrm should be dist(0) and make_scaled_dist was modified to that effect
       if ( nrow(corrm)>1 ) { ## >1 locations
-        norho <- trueCorrpars; norho$rho <- NULL ## because the MaternCorr input will be an already scaled distance 'corrm'
+        norho <- trueCorrpars 
+        norho$rho <- NULL ## because the MaternCorr input will be an already scaled distance 'corrm'
         corrm <- do.call(MaternCorr,args=c(norho,list(corrm)))        
       } 
     } else if (corr.model== "corrMatrix") {
@@ -294,8 +244,29 @@ HLCor_body <- function(processed,
         mess <- pastefrom("missing(corrMatrix) argument despite corrMatrix term in formula.",prefix="(!) From ")
         stop(mess)
       } ## ELSE:
-      corrm <- corrMatrix
-      Lunique <- attr(corrMatrix,"LMatrix") ## will typically be NULL, but super-users ;-) may have provided it
+      if (inherits(corrMatrix,"dist")) {
+        corrnames <- labels(corrMatrix)
+      } else if (inherits(corrMatrix,"matrix")) {
+        corrnames <- rownames(corrMatrix)
+      } else message(paste("(!) 'corrMatrix' is neither a 'matrix' or 'dist' object. Check the input. I exit."))
+      whichranef <- which(attr(attr(processed$ZAlist,"ranefs"),"type")=="corrMatrix")
+      ZAnames <- colnames(processed$ZAlist[[whichranef]]) ## set by spMMFactorList(), with two cases for corrMatrix 
+      generator <- attr(processed$ZAlist[[whichranef]],"generator")
+      if ( length(setdiff(ZAnames,corrnames)) ==0L ) { ## i.e. all corrnames in ZAnames
+        ## : should be the case when generator = "as.factor"
+        if ( length(corrnames)>length(ZAnames) || any(corrnames!=ZAnames) ) { ## ...but superset, or not same order
+          if (inherits(corrMatrix,"dist")) {
+            corrm <- as.dist(as.matrix(corrMatrix)[ZAnames,ZAnames]) ## fairly ugly. package 'seriation' has (permute.dist-> C code)
+          } else if (inherits(corrMatrix,"matrix")) {
+            corrm <- corrMatrix[ZAnames,ZAnames]  
+          }   
+        } else corrm <- corrMatrix ## orders already match
+      } else {
+        ## : expected when generator = "ULI"
+        message("corrMatrix with complex grouping term: first grouping levels are matched\n  to first rows of corrMatrix, without further check. \n See help(\"corrMatrix\") for a safer syntax.")
+        corrm <- corrMatrix ## no clear reordering
+      }
+      # Lunique <- attr(corrMatrix,"LMatrix") ## will typically be NULL, but 'super-users' may have provided it
     } 
     if (verbose["trace"] && length(trueCorrpars)>0) print(unlist(trueCorrpars))
     ## call designL.from.Corr if Lunique not available
@@ -353,24 +324,18 @@ HLCor_body <- function(processed,
     attr(ranFix,"type") <- typelist 
     HL.info$ranFix <- ranFix
   }
-  hlfit <- do.call("HLfit",HL.info) ## with a _list_ of arguments -> do.call ## perhaps should create a list of unevaluated arguments ???? 
-  if ( ! is.null(hlfit$error)) {
-    errfile <- generateFileName("HLfitCall")
-    errfile <- paste(errfile,".RData",sep="")
-    save(HL.info,file=errfile)
-    mess <- pastefrom("'do.call(HLfit,HL.info)' failed:",prefix="(!) From ")
-    message(mess)
-    message(hlfit$error)
-    message("'HL.info' is saved in the ",errfile," file",sep="")
-    stop("I exit.")
-  } ## ELSE:
+  hlfit <- do.call("HLfit",HL.info) 
+  ## Here there was debug code that saved HL.info in case of error; before 1.8.5
+  if ( ! is.null(processed$only_objective)) {
+    return(hlfit)    ########################   R E T U R N   a list with $APHLs
+  }
   hlfit$control.dist <- control.dist
   attr(hlfit,"info.uniqueGeo") <- uniqueGeo ## more spatial info is in the hlfit$predictor's attributes (Lunique = corrmat^1/2, and ZALMatrix)
   if (corr.model %in% c("Matern")) attr(hlfit,"msd.arglist") <- msd.arglist ## more organized, easier to reuse. 
   # particulary for $rho.mapping:
   #  should be NULL if length rho = 1 or if original control.dist$rho.mapping was NULL
   ## FR->FR but info.uniqueGeo more general (eg AR1) -> a revoir
-  hlfit$call <- "$call removed by HLCor. Consider the 'HLCorcall' attribute instead." ## instead of the $call with evaluated arguments
+  hlfit$call <- "$call removed by HLCor. Use getCall() (HLfit method) to extract the call from the object." ## instead of the $call with evaluated arguments
   return(hlfit) ## 
 }
 
@@ -394,6 +359,7 @@ HLCor_body <- function(processed,
         eval(locmc)
       }) ## a pure list of HLCor objects
       resu <- sum(unlist(fitlist))
+      if(mc$verbose["objective"]) print(c(ranefParsVec,c(sum=resu)))
       if (is.character(traceFileName)) {
         verif <- paste("#global:",ranefParsVec,resu) 
         write(verif,file=traceFileName,append=T) ## the file is unlink'ed in corrHLfit()  
@@ -411,10 +377,11 @@ HLCor_body <- function(processed,
   makescaled.formals <- names(formals(make_scaled_dist))
   HLnames <- (c(HLCor.formals,names_formals_HLfit,designL.formals,makescaled.formals))  ## cf parallel code in corrHLfit
   HLCor.call <- mc[c(1,which(names(mc) %in% HLnames))] ## keep the call structure
-  HLCor.call[[1L]] <- quote(spaMM::HLCor)
   forGiven <- relist(ranefParsVec,skeleton) ## given values of the optimized variables 
   ## ... relist keeps the RHOMAX... attributes from the skeleton, but the partial copy into ranPars does not. 
-  HLCor.call$ranPars[names(forGiven)] <- forGiven ## do not wipe out other fixed, non optimized variables
+  notlambda <- setdiff(names(forGiven),"lambda")
+  HLCor.call$ranPars$lambda[names(forGiven$lambda)] <- forGiven$lambda
+  HLCor.call$ranPars[notlambda] <- forGiven[notlambda] ## do not wipe out other fixed, non optimized variables
   attr(HLCor.call$ranPars,"RHOMAX") <- attr(skeleton,"RHOMAX")
   attr(HLCor.call$ranPars,"NUMAX") <- attr(skeleton,"NUMAX")
   types <- attr(skeleton,"type")
@@ -424,12 +391,14 @@ HLCor_body <- function(processed,
     zut <- paste(ranefParsVec,collapse="")  
     save(HLCor.call,file=paste("HLCor.call",zut,".RData",sep="")) ## for replicating the problem
   }
+  HLCor.call[[1L]] <- quote(spaMM::HLCor)
   hlfit <- eval(HLCor.call)
   aphls <- hlfit$APHLs
   resu <- aphls[[HLCor.obj.value]]
+  if(mc$verbose["objective"]) print(c(ranefParsVec,resu))
   if (is.character(traceFileName)) {
     readable <- unlist(canonizeRanPars(ranPars=forGiven,corr.model=mc$`corr.model`,checkComplete=FALSE)$ranPars) 
-    verif <- c(unlist(aphls),hlfit$lambda,hlfit$phi,readable,ranefParsVec) ## hlfit$phi may be NULL
+    verif <- c(unlist(aphls),readable,ranefParsVec) ## hlfit$phi may be NULL
     write(verif,file=traceFileName,ncolumns=length(verif),append=TRUE) ## the file is unlink'ed in corrHLfit()  
   }
   return(resu) #

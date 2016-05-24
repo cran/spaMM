@@ -14,15 +14,15 @@
 \usage{
 spaMM_glm.fit(x, y, weights = rep(1, nobs), start = NULL, etastart = NULL, 
         mustart = NULL, offset = rep(0, nobs), family = gaussian(), 
-        control = list(), intercept = TRUE)
+        control = list(maxit=200), intercept = TRUE)
 spaMM_glm(formula, family = gaussian, data, weights, subset,
                 na.action, start = NULL, etastart, mustart, offset,
                 control = list(...), model = TRUE, method = "glm.fit",
-                x = FALSE, y = TRUE, contrasts = NULL, ...) 
+                x = FALSE, y = TRUE, contrasts = NULL, strict=FALSE, ...) 
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
-Most arguments operate as for \code{glm} and \code{glm.fit}, whose documentation is repeated  below. The \code{control} argument may operate differently.
+All arguments except \code{strict} are common to these functions and their \code{stats} package equivalents, \code{glm} and \code{glm.fit}. Most arguments operate as for the latter functions, whose documentation is repeated  below. The \code{control} argument may operate differently. 
 
 \item{formula}{an object of class \code{"\link{formula}"} (or one that
     can be coerced to that class): a symbolic description of the
@@ -69,8 +69,8 @@ Most arguments operate as for \code{glm} and \code{glm.fit}, whose documentation
     specified their sum is used.  See \code{\link{model.offset}}.}
 
   \item{control}{a list of parameters for controlling the fitting
-    process.  This is passed to code{\link{glm.control}}, as for \code{glm.fit}. 
-    When \code{spaMM_glm.fit} is called through \code{glm} without a non-default \code{control}, the default \code{glm.control} values apply(hence, formally, \code{$maxit} = 25 iterations are allowed). Because one can more reasonably assume that \code{spaMM_glm.fit} will converge than \code{glm.fit} does, \code{spaMM_glm.fit} allows more iterations by 8 times \code{$maxit} iterations, hence 200 by default.} 
+    process.  This is passed to \code{\link{glm.control}}, as for \code{glm.fit}. 
+    Because one can assume that \code{spaMM_glm.fit} will converge in many cases where \code{glm.fit} does not, \code{spaMM_glm.fit} allows more iterations (200) by default. However, if \code{spaMM_glm.fit} is called through \code{glm(. . ., method="spaMM_glm.fit")}, then the number of iterations is controlled by the \code{glm.control} call within \code{glm}, so that it is 25 by default, overriding the \code{spaMM_glm.fit} default. } 
     
   \item{model}{a logical value indicating whether \emph{model frame}
     should be included as a component of the returned value.}
@@ -102,6 +102,8 @@ Most arguments operate as for \code{glm} and \code{glm.fit}, whose documentation
     
   \item{intercept}{logical. Should an intercept be included in the
     \emph{null} model?}
+
+  \item{strict}{logical. Whether to perform a fit by \code{spaMM_glm.fit} if \code{glm.fit} returned the warning \code{"glm.fit: algorithm did not converge"}.}
     
   \item{\dots}{
     arguments to be used to form the default

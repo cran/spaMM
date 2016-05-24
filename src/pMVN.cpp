@@ -103,3 +103,4 @@ SEXP Rcpp_pMVN(NumericMatrix &L,
   return(List::create(_["logInt"]=res, _["seInt"]=se));
 }
 
+

@@ -1,13 +1,14 @@
-getCallHL <- function(object) {
-  if (is.null(call <- attr(object,"corrHLfitcall"))) {
-    if (is.null(call <- attr(object,"HLCorcall"))) call <- getCall(object)
-  }
-  call
+getCall.HLfit <- function(x,...) {
+  if ( ! is.null(call <- attr(x,"corrHLfitcall"))) return(call) 
+  if ( ! is.null(call <- attr(x,"fitmecall"))) return(call) 
+  if ( ! is.null(call <- attr(x,"HLCorcall"))) return(call) 
+  return(x$call)
+  # The [stats::: !]getCall.default method cannot be called b/c it is not exported from stats.
+  # stats::getCall() with only call getCall.HLfit in an infinite recursion.
 }
 
-update.HLfit <- function (object, formula., ..., evaluate = TRUE) 
-{
-  if (is.null(call <- getCallHL(object))) 
+update.HLfit <- function (object, formula., ..., evaluate = TRUE) {
+  if (is.null(call <- getCall(object))) 
     stop("need an object with call component")
   extras <- match.call(expand.dots = FALSE)$...
   if (!missing(formula.)) {

@@ -1,8 +1,6 @@
 \name{HLfit}
 \alias{HLfit}
 \alias{inverse.Gamma}
-\alias{AIC}
-%- Also NEED an '\alias' for EACH other topic documented here.
 \title{Fit mixed models with given correlation matrix}
 \description{
   This fonction fits GLMMs as well as some hierarchical generalized linear models (HGLM; Lee and Nelder 2001).
@@ -20,7 +18,6 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
       control.glm = list(), init.HLfit = list(), ranFix = list(), 
       etaFix = list(), prior.weights = NULL, processed = NULL)
 ## see 'rand.family' argument for inverse.Gamma
-## see 'control.HLfit' argument for AIC
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -32,15 +29,14 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
 }
   \item{family}{
    A \code{family} object describing the distribution of the response variable. 
-   Possible values include the \code{gaussian}, \code{poisson}, \code{binomial}, \code{Gamma} and 
-   \code{COMPoisson} families. 
-   Possible combinations of family and link are those allowed by the family objects
-   (see \code{\link{family}}).
+   Possible values include the \code{gaussian}, \code{poisson}, \code{binomial}, \code{Gamma}, \code{negbin} and 
+   \code{COMPoisson} families. Possible combinations of family and link are those allowed by each of these families
+   (see \code{\link{family}} for the first four, and specific documentation pages for the last two).
 }
   \item{rand.family}{
   A \code{family} object describing the distribution of the random effect, or a \code{list} of 
   family objects for different random effects (see Examples). Possible options are
-  \code{gaussian()}, \code{Gamma(log)}, \code{Beta(logit)}, \code{inverse.Gamma(-1/mu)}, and \code{inverse.Gamma(log)}.
+  \code{gaussian()}, \code{Gamma(log)}, \code{Gamma(identity)} (see Details), \code{Beta(logit)}, \code{inverse.Gamma(-1/mu)}, and \code{inverse.Gamma(log)}.
   For discussion of these alternatives see Lee and Nelder 2001 or Lee et al. 2006, p. 178-.
   Here the family gives the distribution of a random effect \eqn{u} 
   and the link gives \code{v} as function of \eqn{u} (see Details).
@@ -87,11 +83,8 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
   See Details for the more general syntax.
 }
   \item{control.HLfit}{
-  A list of parameters controlling (1) AIC computation; and (2) the fitting algorithms.
+  A list of parameters controlling the fitting algorithms.
 
-  \code{AIC=TRUE} provides several information criteria and a related \dQuote{effective degrees of freedom} (see Details). 
-  The default is \code{FALSE} to (modestly) encourage users to think about these different criteria and to think twice before applying model selection automatically, which is no better although more fashionable than misuses of simple null hypothesis testing. Also, alternative procedures for model choice can be considered (e.g. Cox and Donnelly, 2011, p. 130-131).
-  
   \code{resid.family} allows one to change the link for modeling of residual variance \eqn{\phi}, which is \code{"log"} by default. The family is always Gamma, so the non-default possible values of \code{resid.family} are \code{Gamma(identity)} or \code{Gamma(inverse)}. Only the default value ensures that the fitted \eqn{\phi} is positive.     
 
   Controls for the fitting algorithms should be ignored in routine use. They are
@@ -173,7 +166,7 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
  \item{Beta}{Beta-distributed random effects, where (\eqn{u ~ B(1/(2\lambda),1/(2\lambda))} 
     (mean=1/2, var\eqn{=\lambda/[4(1+\lambda)]}), with logit link \code{v=logit(u)})}
  \item{Gamma}{Gamma-distributed random effects, where \eqn{u ~ \Gamma(1/\lambda,\lambda)}, so u
-   has mean 1 and variance \eqn{\lambda}. 
+   has mean 1 and variance \eqn{\lambda}. Both the log (\eqn{v=log(u)}) and identity (\eqn{v=u}) links are possible, though in the latter case the variance of \eqn{u} is constrained below 1. Gamma-distributed random effects with higher variance can be fitted using \code{inverse.Gamma(-1/mu)}. 
   } 
  \item{Inverse-Gamma}{inverse-Gamma distributed random effects, where \eqn{u ~ }inverse-Gamma\eqn{(1+1/\lambda,1/\lambda)}
     (mean=1, var=\eqn{\lambda/(1-\lambda))}. The allowed links are \code{v=log(u)} and \code{v=-1/u}. With the latter one, \code{v} 
@@ -181,12 +174,8 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
  }  
 
   \bold{The standard errors} reported may sometimes be misleading. For each set of parameters among \eqn{\beta}, \eqn{\lambda}, and \eqn{\phi} parameters these are computed assuming that the other parameters are known without error. This is why they are labelled \code{Cond. SE} (conditional standard error). This is most uninformative in the unusual case where \eqn{\lambda} and \eqn{\phi} are not separately estimable parameters. Further, the SEs for \eqn{\lambda} and \eqn{\phi} are rough approximations as discussed in particular by Smyth et al. (2001; \eqn{V_1} method).    
-  
-  \bold{Effective degrees of freedom} for the random effects: this number (approximately) characterizes the expectation of a goodness of fit statistic discussed by Lee and Nelder (2001), which gave a general formula for it in HGLMs. It is computed if \code{AIC=TRUE} and returned as the object's \code{$APHLs$GoFdf}. 
-  
-  \bold{AIC}: The literature considers several information criteria for mixed models. The conditional AIC (Vaida and Blanchard 2005) is notable in involving the conditional likelihood and the effective degrees of freedom. Lee et al. (2006) and Ha et al (2007) similarly define a corrected AIC [i.e., AIC(D*) in their eq. 7]. The conditional AIC returned by \code{HLfit} includes both this effective df, df for estimated fixed effects, and df for estimated parameters of the variance of random effects. 
-% FR->FR If \code{HLfit} was called through \code{corrHLfit}, a correction for estimated correlation parameters may be added.  
-  \code{HLfit} will also return the classical AIC (\dQuote{marginal} AIC), and a focussed AIC for dispersion parameters, also discussed by Ha et al (2007; eq.10).
+
+The extractor function \code{\link{get_any_IC}} can compute information criteria (\dQuote{AIC}) and effective degrees of freedom from the HLfit results. See the \code{get_any_IC} documentation for more details. 
 }
 \value{
 An object of class \code{HLfit}, actually a list with many elements, several of which represent input arguments. 
@@ -207,10 +196,8 @@ Elements describing the fit include \bold{descriptors of the fit}:
 \item{lambda}{The random effects (\eqn{u}) variance \eqn{\lambda};}
 \item{lambda.object}{A possibly more complex object describing \eqn{\lambda};}
 \item{corrPars}{Agglomerates information on correlation parameters, either fixed, or estimated by \code{HLfit} or \code{corrHLfit};}
-\item{APHLs}{A list with usually four elements, the conditional likelihood, 
-   the h-likelihood, and the two adjusted profile h-likelihoods:
-   the (approximate) marginal likelihood \code{p_v} and the (approximate) restricted likelihood \code{p_bv} (the latter two available
-   through the \code{logLik} function);
+\item{APHLs}{A list which elements are various likelihood components and information criteria. ikelihood components include conditional likelihood, the h-likelihood, and the two adjusted profile h-likelihoods:
+   the (approximate) marginal likelihood \code{p_v} and the (approximate) restricted likelihood \code{p_bv} (the latter two available through the \code{logLik} function). Information criteria are described in Details and can be displayed by \code{\link{get_any_IC}};
 }
 \item{beta_cov}{Covariance matrix of \eqn{\beta} estimates.}
 

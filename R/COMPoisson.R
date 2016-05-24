@@ -148,7 +148,7 @@ dCOMP <- function(x, mu, nu,
   } else return(exp(logd))
 }
 
-COMPoisson <- function (nu = stop("'nu' must be specified"), 
+COMPoisson <- function (nu = stop("COMPoisson's 'nu' must be specified"), 
                         link = "loglambda" # eta <-> mu link, not the eta <-> lambda log link
                         ) {
   linktemp <- substitute(link)
@@ -215,7 +215,6 @@ COMPoisson <- function (nu = stop("'nu' must be specified"),
             lambda <- uniroot(objfn,interval=interval,f.lower = flower,f.upper = fupper)$root
           }
         }
-        #if(is.nan(lambda)) stop("is.nan(lambda)")
         return(lambda)
       })
     } else attributes(mu) <- NULL ## avoids 'mise en abime'
@@ -313,7 +312,7 @@ COMPoisson <- function (nu = stop("'nu' must be specified"),
     rpois(nsim * length(ftd), ftd)
   }
   structure(list(family = structure("COMPoisson",
-                                    withArgs=quote(paste("COMPoisson(",nu,")",sep=""))), 
+                                    withArgs=quote(paste("COMPoisson(nu=",signif(nu,4),")",sep=""))), 
                  link = linktemp, linkfun = linkfun, 
                  linkinv = linkinv, variance = variance, dev.resids = dev.resids, 
                  aic = aic, mu.eta = mu.eta, initialize = initialize, 

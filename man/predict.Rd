@@ -83,7 +83,7 @@ get_respVar(...)
   (unless it was \code{NULL}).
  }
 \item{\dots}{
-  further arguments passed to or from other methods. For the code{get_}... functions, they are passed to \code{predict}. 
+  further arguments passed to or from other methods. For the \code{get_}... functions, they are passed to \code{predict}. 
 }
 }
 \value{

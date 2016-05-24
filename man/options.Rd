@@ -22,7 +22,7 @@ spaMM.getOption(x)
 \item{\code{ff_threshold}:}{Minimal number of matrix elements for some matrices to be stored on disk (using the \code{ff} package) rather than in memory}
   
 
-\item{\code{COMP_maxn}:}{Number of terms for truntion of infinite sums that are evaluated in the fitting of \code{\link{COMPoisson}} models.}
+\item{\code{COMP_maxn}:}{Number of terms for truncation of infinite sums that are evaluated in the fitting of \code{\link{COMPoisson}} models.}
 
 %\item{\code{RHOMAX}:}{Maximum value of the scale parameter \eqn{\rho} of the Matérn correlation function. Reserved variable, not set by default, but set by \code{corrHLfit}.}
 

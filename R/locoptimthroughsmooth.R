@@ -133,6 +133,7 @@ optimthroughSmooth <- function(pargrid,anyHLCor.args,prevPtls=NULL,control.smoot
       seInt =attr(hlcor$APHLs[[logLobj]],"seInt"), ## seInt attr may be NULL then no seInt element
       pmvnorm = grepl("pmvnorm",attr(hlcor$APHLs[[logLobj]],"method"))
       ) ## seInt attr may be NULL then no seInt element
+    if ( ! identical(names(vec), colnames(grid.obj))) stop("! identical(names(vec), colnames(grid.obj))") ##
     grid.obj[ii,seq_len(length(vec))] <- vec
     #     if (is.infinite(grid.obj[ii,"logLobj"])) { ## if underflow in estim of L (eg, pmvnorm)
     #       # .Machine$double.xmin gives "the smallest non-zero normalized floating-point number" but smaller "denormalized" numbers are possible
@@ -146,6 +147,9 @@ optimthroughSmooth <- function(pargrid,anyHLCor.args,prevPtls=NULL,control.smoot
       prevmsglength <- overcat(msg, prevmsglength)
     }
   }
+  
+  
+  
   forSmooth <- data.frame(cbind(pargrid,grid.obj))
   if ( ! is.null(prevPtls)) forSmooth <- rbind(prevPtls,forSmooth) ## older points first!
   RHS <- paste(names(lower),collapse="+")
@@ -168,19 +172,22 @@ optimthroughSmooth <- function(pargrid,anyHLCor.args,prevPtls=NULL,control.smoot
   init.corrHLfit[names(ranFix)] <- NULL
   # the data for the phi GLM contain controlled names (trRho trNu logLobj lambda seInt pmvnorm)
   ## defaults:
-  resid.formula <- control.smooth[["resid.model"]]$formula
+  resid.formula <- control.smooth[["resid.model"]]$formula ## vient de control.corrHLfit[["smooth.resid.model"]]
   ## we look whether there is suspect variation in seInt
   if(is.null(resid.formula)) {
     ## Do not use seInt when there are enough pmvnorm, presumably at the top of the lik surf (even though seInt is available)
     if ( is.null(forSmooth$seInt) ) { ## non-standard case
       resid.formula <- ~ 1 
-    } else if (length(validSEs <- which(forSmooth[,"seInt"]>0L))>20L) { ## removes NaN's...
-      seInt <- forSmooth[validSEs,"seInt"]
-      seInt975 <- mean(seInt) + sqrt(var(seInt))* 1.96
-      if (forSmooth[which.max(forSmooth[,"logLobj"]),"seInt"] > seInt975) {
-        resid.formula <- ~1+offset(seInt^2) 
-      } else resid.formula <- ~ 1
-    } else resid.formula <- ~ 1 ## many NaN's [, or (oddly), many 0's from pmvnorm, if GHK is not called in that case]
+      # } else if (length(validSEs <- which(forSmooth[,"seInt"]>0L))>20L) { ## removes NaN's...
+      #   seInt <- forSmooth[validSEs,"seInt"]
+      #   seInt975 <- mean(seInt) + sqrt(var(seInt))* 1.96
+      #   if (forSmooth[which.max(forSmooth[,"logLobj"]),"seInt"] > seInt975) {
+      #     resid.formula <- 1+ I(seInt^2) # ~1+offset(seInt^2) # 12/04 1+ I(seInt^2) should be safe now
+      #   } else resid.formula <- ~ 1
+      # } else resid.formula <- ~ 1 ## many NaN's [, or (oddly), many 0's from pmvnorm, if GHK is not called in that case]
+    } else if (length(validSEs <- which( ! is.na(forSmooth[,"seInt"])))>20L) { ## removes NaN's...
+      resid.formula <- ~ 1+ I(seInt^2) # ~1+offset(seInt^2) # 12/04 1+ I(seInt^2) should be safe now
+    } else resid.formula <- ~ 1 ## many NaN's, not enough seInt for fit 
   }
   resid.family <- control.smooth[["resid.model"]]$family ## may be NULL; not that of the user-level model
   if(is.null(resid.family)) {

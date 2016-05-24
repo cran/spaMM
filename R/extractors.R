@@ -24,7 +24,7 @@ getPar <- function(parlist,name,which=NULL) {
 # getPar(list("1"=list(a=1,b=2),"2"=list(a=3,c=4)),"d") ## NULL
 
 
-calc_invL <- function(object) {
+calc_invL <- function(object) { ## computes inv(L) [not inv(Corr): see calc_invColdoldList]
   LMatrix <- attr(object$predictor,"LMatrix") 
   if ( ! is.null(LMatrix)) {
     cum_n_u_h <- attr(object$lambda,"cum_n_u_h")
@@ -34,7 +34,26 @@ calc_invL <- function(object) {
     for (Lit in seq_len(length(LMatrix))) {
       lmatrix <- LMatrix[[Lit]]
       affecteds <- which(ranefs %in% attr(lmatrix,"ranefs"))
-      invlmatrix <- solve(lmatrix) ## FR->FR hmf
+      condnum <- kappa(lmatrix,norm="1")
+      if (condnum>1e7) {
+        warning("calc_invL(): regularization required in inversion of chol factor.")
+        tLL <- crossprodCpp(lmatrix)
+        nc <- ncol(tLL)
+        diagPos <- seq.int(1L,nc^2,nc+1L)
+        tLL[diagPos] <- tLL[diagPos] + rep(1e-12,nc)  
+        invlmatrix <- solve(tLL) %*% t(lmatrix) ## regularized solve(lmatrix)
+      } else { ## end of designL.from.corr implies either type is cholL_LLt or we have decomp $u and $d 
+        type <-  attr(lmatrix,"type")
+        if (type=="cholL_LLt")  {
+          invlmatrix <- forwardsolve(lmatrix,diag(ncol(lmatrix)))
+        } else if (type!="svd") { ## see comments on svd in designL.from.corr
+          decomp <- attr(lmatrix,attr(lmatrix,"type")) ## of corr matrix !
+          invlmatrix <-  ZWZt(decomp$u,sqrt(1/decomp$d))
+        } else {
+          message(paste("Possibly inefficient code in calc_invL() for L of type",type))
+          invlmatrix <- solve(lmatrix)
+        }
+      }
       for (it in affecteds) {
         u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
         resu[u.range,u.range] <- invlmatrix   ## FR->FR it would be more eficcent to maintain a block structure here ?
@@ -45,7 +64,7 @@ calc_invL <- function(object) {
   } else return(NULL)
 }
 
-calc_invColdoldList <- function(object) { ## returns a list
+calc_invColdoldList <- function(object) { ## returns a list of inv(Corr) from the LMatrix
   LMatrix <- attr(object$predictor,"LMatrix") 
   if ( ! is.null(LMatrix)) {
     cum_n_u_h <- attr(object$lambda,"cum_n_u_h")
@@ -57,13 +76,30 @@ calc_invColdoldList <- function(object) { ## returns a list
     for (Lit in seq_len(length(LMatrix))) {
       lmatrix <- LMatrix[[Lit]]
       affecteds <- which(ranefs %in% attr(lmatrix,"ranefs"))
-      if (attr(lmatrix,"type")=="chol") { ## lower triangular chol
-        for (aff in affecteds) resu[[aff]] <- chol2inv(t(lmatrix))
+      ## end of designL.from.corr implies either type is cholL_LLt or we have decomp $u and $d 
+      type <-  attr(lmatrix,"type")
+      if (type=="cholL_LLt")  {
+        invCoo <- try(chol2inv(t(lmatrix)),silent=TRUE) ## ~standard chol2inv(R=chol(A) //  tRR=A)
+        ## chol2inv is rather robust to nonsingularity but using its value will still generate errors
+      } else if (type!="svd") { ## see comments on svd in designL.from.corr
+        decomp <- attr(lmatrix,attr(lmatrix,"type")) ## of corr matrix !
+        invCoo <-  ZWZt(decomp$u,1/decomp$d)
       } else {
-        message("Possibly inefficient code in calc_invColdoldList() ") ## (why not chol ?)
-        invlmatrix <- solve(lmatrix) ## FR->FR hmf both slow and potentially inaccurate
-        for (aff in affecteds) resu[[aff]] <- crossprodCpp(invlmatrix) ## t(invlmatrix) %*% (invlmatrix)   ## FR->FR à ameliorer
+        message(paste("Possibly inefficient code in calc_invColdoldList() for L of type",type)) 
+        invCoo <- try(solve(tcrossprodCpp(lmatrix)),silent=TRUE) 
       }
+      if (inherits(invCoo,"try-error")) {
+        invCoo <- NULL
+      } else if (kappa(invCoo,norm="1")>1e14) invCoo <- NULL
+      if (is.null(invCoo)) { ## regularisation
+        warning("calc_invColdoldList(): regularization required in inversion of correlation matrix.")
+        LLt <- tcrossprodCpp(lmatrix)
+        nc <- ncol(LLt)
+        diagPos <- seq.int(1L,nc^2,nc+1L)
+        LLt[diagPos] <- LLt[diagPos] + rep(1e-12,nc)  
+        invCoo <- solve(LLt)
+      } 
+      for (aff in affecteds) resu[[aff]] <- invCoo
     }
     return(resu)
   } else return(NULL)
@@ -220,6 +256,22 @@ get_respVar <- function(...) {
   attr(eval(mc,parent.frame()),"respVar")
 }
 
+get_any_IC <- function(object,...,verbose=interactive()) {
+  info_crits <- object$get_info_crits(object)
+  likelihoods <- numeric(0)
+  if (!is.null(info_crits$mAIC))  likelihoods <- c(likelihoods,"       marginal AIC:"=info_crits$mAIC)
+  if (!is.null(info_crits$cAIC))  likelihoods <- c(likelihoods,"    conditional AIC:"=info_crits$cAIC)
+  if (!is.null(info_crits$dAIC))  likelihoods <- c(likelihoods,"     dispersion AIC:"=info_crits$dAIC)
+  if (!is.null(info_crits$GoFdf)) likelihoods <- c(likelihoods,"       effective df:"=info_crits$GoFdf)
+  if (verbose) {
+    astable <- as.matrix(likelihoods)
+    write.table(format(astable, justify="right"), col.names=FALSE, quote=FALSE) 
+  }
+  invisible(likelihoods)
+}
 
+AIC.HLfit <- function(object, ..., k,verbose=interactive()) {
+  get_any_IC(object,...,verbose=verbose)
+}
 
 # get_dispVar : dispVar in not a returned attribute

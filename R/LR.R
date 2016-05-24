@@ -56,14 +56,14 @@ compare.model.structures <- function(object,object2) {
       if (!is.null(lambda.object)) df1 <- df1+nrow(lambda.object$coefficients_lambda)
       cov.mats <- object$cov.mats
       if ( ! is.null(cov.mats)) {
-        nrows <- unlist(lapply(cov.mats,nrow))
+        nrows <- unlist(lapply(cov.mats,NROW))
         df1 <- df1+sum(nrows*(nrows-1)/2)
       }
       lambda.object <- object2$lambda.object
       if (!is.null(lambda.object)) df2 <- df2+nrow(lambda.object$coefficients_lambda)
       cov.mats <- object2$cov.mats
       if ( ! is.null(cov.mats)) {
-        nrows <- unlist(lapply(cov.mats,nrow))
+        nrows <- unlist(lapply(cov.mats,NROW))
         df2 <- df2+sum(nrows*(nrows-1)/2)
       }
     }
@@ -107,6 +107,9 @@ compare.model.structures <- function(object,object2) {
 }
 
 LRT <- function(object,object2,boot.repl=0) { ## compare two HM objects
+  if (nrow(object$data)!=nrow(object2$data)) {
+    stop("models were not both fitted to the same size of dataset.")
+  }
   info <- compare.model.structures(object,object2)
   nullm <- info$nullm; fullm <- info$fullm; testlik <- info$testlik;df <- info$df
   LRTori <- 2*(fullm$APHLs[[testlik]]-nullm$APHLs[[testlik]])
@@ -124,10 +127,10 @@ LRT <- function(object,object2,boot.repl=0) { ## compare two HM objects
       exprR <- as.character(form[[2]][[3]]) 
     }
     if (boot.repl<100) print("It is recommended to set boot.repl>=100 for Bartlett correction",quote=FALSE)
-    aslistfull <- as.list(getCallHL(fullm)) 
+    aslistfull <- as.list(getCall(fullm)) 
     ## problem is for corrHLfit etc this is the call of the final HLfit call with $processed and a lot of missing original arguments  
     aslistfull$processed <- NULL ## may capture bugs 
-    aslistnull <- as.list(getCallHL(nullm))
+    aslistnull <- as.list(getCall(nullm))
     aslistnull$processed <- NULL ## may capture bugs
     computeBootRepl <- function() {
       ## draw sample

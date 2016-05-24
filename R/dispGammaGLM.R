@@ -8,7 +8,7 @@ calc_CARdispGammaGLM <-function(data,family=spaMM_Gamma("inverse"),lev=NULL,
     weights <- (1-lev)/2 
     loclist <- list(data=data, family=family, weights=weights)
   } else loclist <- list(data=data, family=family)
-  if (is.null(lambda.Fix)) {
+  if (is.na(lambda.Fix)) {
     loclist$formula <- resp~1+adjd
     loclist$start <- c(1/mean(data$resp),0)
   } else {

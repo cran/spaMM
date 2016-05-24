@@ -25,6 +25,7 @@
     # hold <- splint(x, rgb.tim[, k], xg) ## using fields
     ## can be replaced by:
     colorpts <- data.frame(x=x,y=rgb.tim[,k])
+    # fitme very slow on this 7/5/2016
     blob <- corrHLfit(y~ Matern(1|x),data=colorpts,ranFix=list(phi=1e-07,nu=4,rho=10)) ## use rho large...
     hold <- predict(blob,newdata=data.frame(x=xg))[,1] ## binding FALSE by default -> returns vector 
     ##
@@ -304,7 +305,7 @@ spaMMplot2D <- function (x,y,z,
       Axis(y, side = 2)
     }
   } else plot.axes
-  if ( ! is.null(decorations)) decorations
+  if ( ! is.null(decorations)) eval(decorations,envir=parent.frame())
   if (frame.plot) box()
   invisible()
 } ## end spaMMplot2D
@@ -343,6 +344,7 @@ mapMM <- function (fitobject,Ztransf=NULL,coordinates,
                            add.map = FALSE, axes = TRUE, plot.axes, map.asp = NULL,
                            variance=NULL,
                            var.contour.args=list(),
+                           smoothObject=NULL,
                            ...) 
 {
   if (missing(coordinates)) 
@@ -360,8 +362,8 @@ mapMM <- function (fitobject,Ztransf=NULL,coordinates,
   pred <- predict(fitobject,variances=variance, binding="fitted")
   if (missing(map.formula)) 
     map.formula <- as.formula(paste(attr(pred,"fittedName"), " ~ 1 + ", paste(findSpatial(fitobject$predictor))))
-  smooobject <- corrHLfit(map.formula, data = pred, ranFix = list(phi = phi))
-  smoo <- predict(smooobject,binding="dummy") ## response column does not appear to be used... 
+  if (is.null(smoothObject)) smoothObject <- fitme(map.formula, data = pred, fixed = list(phi = phi),method="REML")
+  smoo <- predict(smoothObject,binding="dummy") ## response column does not appear to be used... 
   x <- smoo[, coordinates[1]]
   y <- smoo[, coordinates[2]]
   if (is.null(xrange)) {
@@ -385,7 +387,7 @@ mapMM <- function (fitobject,Ztransf=NULL,coordinates,
   yGrid <- seq(yrange[1], yrange[2], length.out = gridSteps)
   newdata <- expand.grid(xGrid, yGrid)
   colnames(newdata) <- coordinates
-  gridpred <- predict(smooobject, newdata = newdata,variances=variance)
+  gridpred <- predict(smoothObject, newdata = newdata,variances=variance)
   if (length(variance)==1L) {
     pvar <- attr(gridpred,names(variance))  
     varz <- matrix(pvar,ncol=length(yGrid),nrow=length(xGrid))
@@ -421,4 +423,5 @@ mapMM <- function (fitobject,Ztransf=NULL,coordinates,
     eval(decorations) ## evalbc it uses a local variable 'pred'
     eval(add.map)
   }, map.asp = map.asp, ...)
+  invisible(smoothObject)
 }

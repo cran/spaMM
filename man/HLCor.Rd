@@ -1,6 +1,5 @@
 \name{HLCor}
 \alias{HLCor}
-\alias{corrMatrix}
 \title{
                     Fits a (spatially) correlated mixed model, for given correlation parameters 
 }
@@ -50,7 +49,7 @@ HLCor(formula, data, family = gaussian(), ranPars = NULL, distMatrix,
   \item{corrMatrix}{
     A arbitrary (valid) correlation matrix, used if a random effect term of the form\cr
     \code{corrMatrix(1|<stuff>)} is present. Each row corresponds to levels of a variable <stuff>.
-    This allows to analyze non-spatial model by giving for example a matrix of genetic correlations. Internally, \code{corrMatrix} will determine the \dQuote{\bold{L}} matrix, which may be modified by additional matrices (see Details in \code{\link{Predictor}}).
+    This allows to analyze non-spatial model by giving for example a matrix of genetic correlations. See \code{\link{corrMatrix}} for details.
 }
   \item{verbose}{
     A vector of booleans. \code{trace} controls various diagnostic (possibly messy) messages about the iterations.
@@ -74,7 +73,7 @@ HLCor(formula, data, family = gaussian(), ranPars = NULL, distMatrix,
     \describe{
     \item{Basic Matérn model}{\code{Matern(1|<...>)} with \code{ranPars} argument, using the spatial coordinates in \code{<...>}. This will construct a correlation matrix according to the Matérn correlation function (see \code{\link{MaternCorr}});}
     \item{Matérn model with given distance matrix}{\code{Matern(1|<...>)} with \code{distMatrix} and \code{ranPars} argument;}
-    \item{Given correlation matrix}{\code{corrMatrix(1|<...>)} with \code{corrMatrix} argument. In this case, a single factor variable is constructed from all levels of the joint variables in \code{<...>}. For example, one might consider the case of 14 response values but of correlations between only 7 levels of a random effect, with two responses for each level. Then the matrix is of dimension 7x7, and the indexing variable may be \code{idx=rep(seq(7),2)}, but also \code{dummy=rep(sample(7),2)}. If \code{dummy[1]=6}, then 6 is the first encountered level of the variable and it identifies the first row/column of the matrix, not the 6th. Then \code{dummy[8]=6} also means that the 8th response is affected by the same level of the random effect as the 1st response; }
+    \item{Given correlation matrix}{\code{corrMatrix(1|<...>)} with \code{corrMatrix} argument. See \code{\link{corrMatrix}} for further details.}
     \item{CAR model with given adjacency matrix}{\code{adjacency(1|<...>)} with \code{adjMatrix} and \code{ranPars} argument. This will construct the 
     correlation matrix (\bold{I}\eqn{-\rho} \code{adjMatrix}\eqn{)^{-1}} for a conditional autoregressive (CAR) model. 
     This was implemented for comparison purposes as it is widely used, but is not really recommended for irregular lattices
@@ -111,21 +110,8 @@ if (spaMM.getOption("example_maxtime")>2) {
 }
 %- : tested in simulate.HLCor.Rd
 
-#### Using a corrMatrix (not necessarily Matérn)
-data(blackcap) 
-## Here we manually reconstruct the correlation matrix 
-##  of the ML fit produced by corrHLfit:
-MLcorMat <- MaternCorr(proxy::dist(blackcap[,c("latitude","longitude")]),
-                        nu=0.6285603,rho=0.0544659)
-# simple but easily misunderstood syntax:                        
-HLCor(migStatus ~ means+ corrMatrix(1|latitude+longitude),data=blackcap,
-      corrMatrix=MLcorMat,HLmethod="ML")
-# An equivalent syntax worth understanding (see Details):      
-bcdummy <- cbind(blackcap,dummy=sample(nrow(blackcap))) 
-HLCor(migStatus ~ means+ corrMatrix(1|dummy),data=bcdummy,
-      corrMatrix=MLcorMat,HLmethod="ML")
-       
 #### Matérn correlation using a distMatrix
+data(blackcap)
 MLdistMat <- as.matrix(proxy::dist(blackcap[,c("latitude","longitude")]))
 HLCor(migStatus ~ means+ Matern(1|latitude+longitude),data=blackcap,
       distMatrix=MLdistMat,HLmethod="ML",ranPars=list(nu=0.6285603,rho=0.0544659))

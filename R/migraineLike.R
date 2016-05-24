@@ -78,7 +78,8 @@ rsimplex <- function(simplex,
   # http://cs.stackexchange.com/questions/3227/uniform-sampling-from-a-simplex for some more discussion
   if ( ! is.null(expand)) {
     if (is.null(bary)) bary <- colMeans(simplex) ## OK pour bary de d-dim simplex avec densité uniforme 
-    simplex <- bary + expand^(1/d) * sweep(simplex,2L,bary,`-`)
+    simplex <- expand^(1/d) * sweep(simplex,2L,bary,`-`)
+    simplex <- sweep(simplex,2L,bary,`+`)
   }
   ws <- sweep(simplex,1L,weights,`*`)
   return(colSums(ws))

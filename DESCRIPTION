@@ -2,18 +2,19 @@ Package: spaMM
 Type: Package
 Title: Mixed Models, Particularly Spatial GLMMs
 Encoding: UTF-8
-Version: 1.8.0
-Date: 2016-04-07
+Version: 1.9.0
+Date: 2016-05-24
 Authors@R: c(person("François", "Rousset", role = c("aut", "cre", "cph"),
                      email = "francois.rousset@umontpellier.fr"),
               person("Jean-Baptiste", "Ferdy", role = c("aut","cph")),
               person("Alexandre", "Courtiol", role = "ctb"),
+              person("Dirk", "Eddelbuettel", role = "ctb", comment = "ziggurat rnorm sources"),
               person("GSL authors", role = "ctb", comment = "src/gsl_bessel.*")
               )
 Maintainer: François Rousset <francois.rousset@umontpellier.fr>
 Imports: methods, stats, graphics, Matrix, MASS, lpSolveAPI (>=
-        5.5.0.14), proxy, geometry, Rcpp (>= 0.11.0), nlme, mvtnorm,
-        nloptr
+        5.5.0.14), proxy, geometry (>= 0.3.6), Rcpp (>= 0.11.0), nlme,
+        mvtnorm, nloptr
 LinkingTo: Rcpp, RcppEigen
 Suggests: maps, testthat, lme4, rsae, ff, rasterVis, rgdal, rcdd
 Depends: R (>= 3.1.0)
@@ -22,10 +23,11 @@ Description: Inference in mixed models, including GLMMs with spatial correlation
 License: CeCILL-2
 URL: http://www.r-project.org,
         http://kimura.univ-montp2.fr/~rousset/spaMM.htm
-Packaged: 2016-04-07 17:27:19 UTC; rousset
+Packaged: 2016-05-23 23:30:41 UTC; rousset
 Author: François Rousset [aut, cre, cph],
   Jean-Baptiste Ferdy [aut, cph],
   Alexandre Courtiol [ctb],
+  Dirk Eddelbuettel [ctb] (ziggurat rnorm sources),
   GSL authors [ctb] (src/gsl_bessel.*)
 Repository: CRAN
-Date/Publication: 2016-04-08 11:14:16
+Date/Publication: 2016-05-24 09:58:31

@@ -73,10 +73,10 @@ of \code{HLCor}. Arguments that do not fit within these functions are detected a
   Correctly using \code{corrHLfit} for likelihood ratio tests
   of fixed effects may then by tricky. It is safe to perform full ML fits of all parameters (using \code{objective="p_v",HLmethod="ML"}) for such tests (see Examples).   The higher level function \code{\link{fixedLRT}} is a safe interface for likelihood ratio tests using some form of REML estimation in \code{corrHLfit}.  
   
-  \code{attr(<fitted object>,"optimInfo")$lower} and ...\code{$upper} gives the lower and upper bounds for optimization of correlation parameters. These are the default values if the user did not provide explicit values. For the adjacency model, the default values are the inverse of the maximum and minimum eigenvalues of the \code{adjMatrix}. For the Matérn model, these values are not so easily summarized. They are intended to cover the range of values for which there is statistical information to distinguish among them.
+  \code{attr(<fitted object>,"optimInfo")$lower} and ...\code{$upper} gives the lower and upper bounds for optimization of correlation parameters. These are the default values if the user did not provide explicit values. For the adjacency model, the default values are the inverse of the maximum and minimum eigenvalues of the \code{adjMatrix}. For the Matérn model, the default values are not so easily summarized: they are intended to cover the range of values for which there is statistical information to distinguish among them.
 }
 \value{
-The return value of an \code{HLCor} call, with additional attributes. The \code{HLCor} call is evaluated at the estimated correlation parameter values. These values are included in the return object as its \code{$corrPars} member. The attributes added by \code{corrHLfit} include the original call of the function (\code{corrHLfitcall}), and various informations about the optimization call within \code{corrHLfit}. 
+The return value of an \code{HLCor} call, with additional attributes. The \code{HLCor} call is evaluated at the estimated correlation parameter values. These values are included in the return object as its \code{$corrPars} member. The attributes added by \code{corrHLfit} include the original call of the function (which can be retrived by \code{getCall}(<fitted object>), and information about the optimization call within \code{corrHLfit}. 
 }
 %% ~Make other sections like Warning with \section{Warning }{....} ~
 \seealso{

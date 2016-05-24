@@ -3,9 +3,36 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 1.9.0}{
+\subsection{NEW FEATURES}{
+\itemize{
+\item New fitme() function, intended to become the main fitting function in spaMM, can be substantially faster than HLfit() or corrHLfit(), particularly for large data sets, but can occasionally be slower.
+\item Some other moderate but noticeable improvements in speed. 
+\item Users no longer need to explicitly request AIC computation when calling the fit of a model. The new extractor function get_any_IC() (or its more conventionnally named alias, AIC()) can be used to compute them from a fitted model object.
+\item Negative binomial response models can be fitted by 'family=negbin()'.
+\item The syntax 'family=COMPoisson()', with unknown 'COMP_nu' parameter, works. This means that COMpoisson() models can now be fitted with unknown values of this parameter, by corrHLfit() or by the new fitme() function. The same is true for the parameter of the 'negbin' family. 
+\item Initial or fixed values of the variance of random effects can be controlled independently when there are several random effects.
+\item spaMM_glm() gains a new argument 'strict' for finer control. spaMM_glm.fit() has increased default 'control$maxit'.  
+\item filled.mapMM() now returns a predictor of the response surface. It also gains a new argument 'smoothObject' that takes such a predictor, allows for faster redrawing.   
+\item fixedLRT() gets a new argument 'fittingFunction' to select between corrHLfit() and fitme().
+}
+}
+\subsection{USER-LEVEL CHANGES}{
+\itemize{
+\item Revised usage of 'corrMatrix' argument of HLCor().
+}
+}
+\subsection{BUGS}{
+\itemize{
+\item 'spaMM', as well as 'RcppEigen', have become broken for Windows 32bit. See https://github.com/RcppCore/RcppEigen/issues/34 for details. A suitable compilation flag is now used to overcome this issue.   
+\item simulate.HLfit() could fail when a design matrix was stored as a _M_atrix. This is corrected.
+}
+}
+}
 \section{CHANGES UP TO VERSION 1.8.0}{
 \subsection{NEW FEATURES}{
 \itemize{
+% negative.binomial
 %\item Stochastic Expectation-Maximization (SEM) algorithm for binary probit model (to be documented)
 \item predict.HLfit() can return prediction intervals.
 \item New spaMM_glm() and spaMM_glm.fit() functions provide a robust alternative (using the Levenberg-Marquardt algorithm) to glm.fit() when the latter diverges. They also circumvent the initial-value issues of glm().

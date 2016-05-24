@@ -35,6 +35,77 @@ BEGIN_RCPP
     return __result;
 END_RCPP
 }
+// Rcpp_gibbs_iter
+SEXP Rcpp_gibbs_iter(SEXP fix, Rcpp::IntegerVector y, double lambda, int n_u_h, SEXP randbGivenObs, bool ZAisI, double eps, Rcpp::List CondNorm, SEXP ZA, Rcpp::List forV, SEXP LHSCorrblob, SEXP condL);
+RcppExport SEXP spaMM_Rcpp_gibbs_iter(SEXP fixSEXP, SEXP ySEXP, SEXP lambdaSEXP, SEXP n_u_hSEXP, SEXP randbGivenObsSEXP, SEXP ZAisISEXP, SEXP epsSEXP, SEXP CondNormSEXP, SEXP ZASEXP, SEXP forVSEXP, SEXP LHSCorrblobSEXP, SEXP condLSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject __result;
+    Rcpp::RNGScope __rngScope;
+    Rcpp::traits::input_parameter< SEXP >::type fix(fixSEXP);
+    Rcpp::traits::input_parameter< Rcpp::IntegerVector >::type y(ySEXP);
+    Rcpp::traits::input_parameter< double >::type lambda(lambdaSEXP);
+    Rcpp::traits::input_parameter< int >::type n_u_h(n_u_hSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type randbGivenObs(randbGivenObsSEXP);
+    Rcpp::traits::input_parameter< bool >::type ZAisI(ZAisISEXP);
+    Rcpp::traits::input_parameter< double >::type eps(epsSEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type CondNorm(CondNormSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type ZA(ZASEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type forV(forVSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type LHSCorrblob(LHSCorrblobSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type condL(condLSEXP);
+    __result = Rcpp::wrap(Rcpp_gibbs_iter(fix, y, lambda, n_u_h, randbGivenObs, ZAisI, eps, CondNorm, ZA, forV, LHSCorrblob, condL));
+    return __result;
+END_RCPP
+}
+// Rcpp_gibbs_debug
+SEXP Rcpp_gibbs_debug(SEXP fix, Rcpp::IntegerVector y, Rcpp::List decomp, bool estimCARrho, double lambda, int n_u_h, SEXP randbGivenObs, bool ZAisI, double eps, Rcpp::List CondNorm, SEXP ZA, Rcpp::List forV, SEXP LHSCorrblob, SEXP condL);
+RcppExport SEXP spaMM_Rcpp_gibbs_debug(SEXP fixSEXP, SEXP ySEXP, SEXP decompSEXP, SEXP estimCARrhoSEXP, SEXP lambdaSEXP, SEXP n_u_hSEXP, SEXP randbGivenObsSEXP, SEXP ZAisISEXP, SEXP epsSEXP, SEXP CondNormSEXP, SEXP ZASEXP, SEXP forVSEXP, SEXP LHSCorrblobSEXP, SEXP condLSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject __result;
+    Rcpp::RNGScope __rngScope;
+    Rcpp::traits::input_parameter< SEXP >::type fix(fixSEXP);
+    Rcpp::traits::input_parameter< Rcpp::IntegerVector >::type y(ySEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type decomp(decompSEXP);
+    Rcpp::traits::input_parameter< bool >::type estimCARrho(estimCARrhoSEXP);
+    Rcpp::traits::input_parameter< double >::type lambda(lambdaSEXP);
+    Rcpp::traits::input_parameter< int >::type n_u_h(n_u_hSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type randbGivenObs(randbGivenObsSEXP);
+    Rcpp::traits::input_parameter< bool >::type ZAisI(ZAisISEXP);
+    Rcpp::traits::input_parameter< double >::type eps(epsSEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type CondNorm(CondNormSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type ZA(ZASEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type forV(forVSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type LHSCorrblob(LHSCorrblobSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type condL(condLSEXP);
+    __result = Rcpp::wrap(Rcpp_gibbs_debug(fix, y, decomp, estimCARrho, lambda, n_u_h, randbGivenObs, ZAisI, eps, CondNorm, ZA, forV, LHSCorrblob, condL));
+    return __result;
+END_RCPP
+}
+// Rcpp_gibbs
+SEXP Rcpp_gibbs(int ngibbs, Rcpp::IntegerVector gibbsSample, bool estimCARrho, Rcpp::List decomp, SEXP fix, Rcpp::IntegerVector y, double lambda, int n_u_h, bool ZAisI, double eps, Rcpp::List CondNorm, SEXP ZA, Rcpp::List forV, SEXP LHSCorrblob, SEXP condL);
+RcppExport SEXP spaMM_Rcpp_gibbs(SEXP ngibbsSEXP, SEXP gibbsSampleSEXP, SEXP estimCARrhoSEXP, SEXP decompSEXP, SEXP fixSEXP, SEXP ySEXP, SEXP lambdaSEXP, SEXP n_u_hSEXP, SEXP ZAisISEXP, SEXP epsSEXP, SEXP CondNormSEXP, SEXP ZASEXP, SEXP forVSEXP, SEXP LHSCorrblobSEXP, SEXP condLSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject __result;
+    Rcpp::RNGScope __rngScope;
+    Rcpp::traits::input_parameter< int >::type ngibbs(ngibbsSEXP);
+    Rcpp::traits::input_parameter< Rcpp::IntegerVector >::type gibbsSample(gibbsSampleSEXP);
+    Rcpp::traits::input_parameter< bool >::type estimCARrho(estimCARrhoSEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type decomp(decompSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type fix(fixSEXP);
+    Rcpp::traits::input_parameter< Rcpp::IntegerVector >::type y(ySEXP);
+    Rcpp::traits::input_parameter< double >::type lambda(lambdaSEXP);
+    Rcpp::traits::input_parameter< int >::type n_u_h(n_u_hSEXP);
+    Rcpp::traits::input_parameter< bool >::type ZAisI(ZAisISEXP);
+    Rcpp::traits::input_parameter< double >::type eps(epsSEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type CondNorm(CondNormSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type ZA(ZASEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type forV(forVSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type LHSCorrblob(LHSCorrblobSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type condL(condLSEXP);
+    __result = Rcpp::wrap(Rcpp_gibbs(ngibbs, gibbsSample, estimCARrho, decomp, fix, y, lambda, n_u_h, ZAisI, eps, CondNorm, ZA, forV, LHSCorrblob, condL));
+    return __result;
+END_RCPP
+}
 // lmwithQ
 SEXP lmwithQ(SEXP XX, SEXP yy);
 RcppExport SEXP spaMM_lmwithQ(SEXP XXSEXP, SEXP yySEXP) {
@@ -44,18 +115,6 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< SEXP >::type XX(XXSEXP);
     Rcpp::traits::input_parameter< SEXP >::type yy(yySEXP);
     __result = Rcpp::wrap(lmwithQ(XX, yy));
-    return __result;
-END_RCPP
-}
-// lmwithSparseQ
-SEXP lmwithSparseQ(SEXP XX, SEXP yy);
-RcppExport SEXP spaMM_lmwithSparseQ(SEXP XXSEXP, SEXP yySEXP) {
-BEGIN_RCPP
-    Rcpp::RObject __result;
-    Rcpp::RNGScope __rngScope;
-    Rcpp::traits::input_parameter< SEXP >::type XX(XXSEXP);
-    Rcpp::traits::input_parameter< SEXP >::type yy(yySEXP);
-    __result = Rcpp::wrap(lmwithSparseQ(XX, yy));
     return __result;
 END_RCPP
 }
@@ -82,24 +141,13 @@ BEGIN_RCPP
 END_RCPP
 }
 // Rcpp_QR
-SEXP Rcpp_QR(SEXP XX);
+List Rcpp_QR(SEXP XX);
 RcppExport SEXP spaMM_Rcpp_QR(SEXP XXSEXP) {
 BEGIN_RCPP
     Rcpp::RObject __result;
     Rcpp::RNGScope __rngScope;
     Rcpp::traits::input_parameter< SEXP >::type XX(XXSEXP);
     __result = Rcpp::wrap(Rcpp_QR(XX));
-    return __result;
-END_RCPP
-}
-// Rcpp_sparseQR
-SEXP Rcpp_sparseQR(SEXP XX);
-RcppExport SEXP spaMM_Rcpp_sparseQR(SEXP XXSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject __result;
-    Rcpp::RNGScope __rngScope;
-    Rcpp::traits::input_parameter< SEXP >::type XX(XXSEXP);
-    __result = Rcpp::wrap(Rcpp_sparseQR(XX));
     return __result;
 END_RCPP
 }
@@ -136,6 +184,32 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< SEXP >::type ZZ(ZZSEXP);
     Rcpp::traits::input_parameter< SEXP >::type WW(WWSEXP);
     __result = Rcpp::wrap(ZtWZ(ZZ, WW));
+    return __result;
+END_RCPP
+}
+// Rcpp_Sig
+SEXP Rcpp_Sig(SEXP ZZ, SEXP WA, SEXP WB);
+RcppExport SEXP spaMM_Rcpp_Sig(SEXP ZZSEXP, SEXP WASEXP, SEXP WBSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject __result;
+    Rcpp::RNGScope __rngScope;
+    Rcpp::traits::input_parameter< SEXP >::type ZZ(ZZSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type WA(WASEXP);
+    Rcpp::traits::input_parameter< SEXP >::type WB(WBSEXP);
+    __result = Rcpp::wrap(Rcpp_Sig(ZZ, WA, WB));
+    return __result;
+END_RCPP
+}
+// Rcpp_d2hdv2
+SEXP Rcpp_d2hdv2(SEXP ZZ, SEXP WA, SEXP WB);
+RcppExport SEXP spaMM_Rcpp_d2hdv2(SEXP ZZSEXP, SEXP WASEXP, SEXP WBSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject __result;
+    Rcpp::RNGScope __rngScope;
+    Rcpp::traits::input_parameter< SEXP >::type ZZ(ZZSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type WA(WASEXP);
+    Rcpp::traits::input_parameter< SEXP >::type WB(WBSEXP);
+    __result = Rcpp::wrap(Rcpp_d2hdv2(ZZ, WA, WB));
     return __result;
 END_RCPP
 }
@@ -232,6 +306,17 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< SEXP >::type lamOverLam0(lamOverLam0SEXP);
     Rcpp::traits::input_parameter< SEXP >::type phiOverPhi0(phiOverPhi0SEXP);
     __result = Rcpp::wrap(LevPerturbedQCpp(perturbedwAugX, pforREML, RpRu, RpRd, lamOverLam0, phiOverPhi0));
+    return __result;
+END_RCPP
+}
+// zrnorm
+Rcpp::NumericVector zrnorm(int n);
+RcppExport SEXP spaMM_zrnorm(SEXP nSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject __result;
+    Rcpp::RNGScope __rngScope;
+    Rcpp::traits::input_parameter< int >::type n(nSEXP);
+    __result = Rcpp::wrap(zrnorm(n));
     return __result;
 END_RCPP
 }

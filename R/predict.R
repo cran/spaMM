@@ -3,6 +3,11 @@
   return(A %*% b)
 }
 
+`%*id%` <- function(a,B) {
+  if (is.identity(B)) return(a)
+  return(a %*% B)
+}
+
 
 `%id*id%` <- function(A,B) {
   if (is.identity(A)) return(B)
@@ -98,7 +103,7 @@ calcPredVar <- function(Coldnew,X.pv,newZAC=NULL,newZA,beta_w_cov,
   }
   predVar <- calcZWZt_mat_or_diag(newAugX,beta_w_cov,covMatrix)
   ## Second component of predVar:
-  # Evar: expect over distrib of (hat(beta),hat(v)) of variance of Xbeta+Zb given (hat(beta),hat(v))
+  # Evar: expect over distrib of (hat(beta),hat(v)) of [variance of Xbeta+Zb given (hat(beta),hat(v))]
   if (! is.null(CnewnewList) ) {
     nrand <- length(newZA) ## or of any other of the lists of matrices
     Evarlist <- lapply(seq_len(nrand), function(it) {
@@ -121,8 +126,9 @@ calcPredVar <- function(Coldnew,X.pv,newZAC=NULL,newZA,beta_w_cov,
     # scan problems
     problems <- logdispObject$problems
     if (length(problems)>0L) {
-      warning("Some problems were encountered, affecting computation of prediction variance component\n for uncertainty in dispersion parameters:")
-      lapply(problems,warning)
+      #warning("Some problems were encountered, affecting computation of prediction variance component\n for uncertainty in dispersion parameters:")
+      uproblems <-  unique(problems) ## unique(<list>) ## not documented but seems OK
+      sapply(uproblems,warning)
     }
     #
     newZACw <- newZAC %*% logdispObject$dwdlogdisp ## typically (nnew * n_u_h) %*% (n_u_h * 2) = nnew * 2 hence small 
@@ -293,7 +299,7 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
   spatial.model <- spatial.terms[[1]] ## one formula term, e.g Matern(1|...)
   if ( ! is.null(spatial.model)) { 
     if (! is.null(newdata) && as.character(spatial.model[[1]]) %in% c("adjacency","ar1")) {
-      stop("Prediction in newdata not implemented or not possible in the 'adjacency' model")
+      stop("Prediction in newdata not implemented or not possible in the autoregressive models")
     } ## FR->FR would be possible for new non-spatial predictor values in the original locations... il faudrait un test sur les elements de la distance matrix
   } 
   ## matching ranef terms of re.form
@@ -354,7 +360,7 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
       ## on the gaussian scale, L.v_ori ~ lam C (lam C + phi I)^{-1}y 
       ## new random autocorr term ~ lam c (lam C + phi I)^{-1}y = c C^{-1} L_ori.v_ori = c [t(L_ori)]^{-1} v_ori
       ## [t(L_ori)]^{-1} v_ori can be computed once for all predictions => 'w_h_coeffs'
-      w_h_coeffs <- object$get_w_h_coeffs() ## should work for nonspatial models 
+      w_h_coeffs <- object$get_w_h_coeffs(object) ## should work for nonspatial models 
       old_cum_n_u_h <- attr(object$lambda,"cum_n_u_h")
       lcrandfamfam <- attr(object$`rand.families`,"lcrandfamfam")[newinold]
       augm_w_h_coeffs <- lapply(seq_len(nrand),function(it) {
@@ -405,9 +411,9 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
   }
   ##### (2) predVar
   if(variances$linPred) {
-    beta_w_cov <- object$get_beta_w_cov()
+    beta_w_cov <- object$get_beta_w_cov(object)
     if ( ! is.null(newdata)) {
-      invColdoldList <- object$get_invColdoldList()
+      invColdoldList <- object$get_invColdoldList(object)
       ## list for Cnewnew, which enters in  newZA %*% Cnewnew %*% tnewZA, hence should not represent newZA itself 
       if (nrand>0L) newnewClist <- lapply(seq_len(nrand),function(it) {
         if ( it %in% spatialOne) { ## avoids running the next algo which is slow on large matrices
@@ -461,7 +467,7 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
         loclist$Coldnew <- oldnewClist
         loclist$newZA <- newZAlist
       }
-      if (variances$disp) loclist$logdispObject <- object$get_logdispObject()
+      if (variances$disp) loclist$logdispObject <- object$get_logdispObject(object)
       if (variances$cov) {
         respVar <- as.matrix(do.call(calcPredVar,loclist)) ## matrix, not Matrix (assumed below)
         rownames(respVar) <- colnames(respVar) <- rownames(locdata)
@@ -474,7 +480,9 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
         respVar <- matrix(0,nrow=nrow(locdata),ncol=nrow(locdata))
       } else respVar <- rep(0,nrow(locdata))
     }
-  } else respVar <- rep(0,nrow(locdata))  
+  } else if (any(unlist(variances))) {
+    respVar <- rep(0,nrow(locdata))
+  } else respVar <- NULL 
   if (! is.null(object$beta_cov)) {
     if ( variances$fixefVar || (nrand==0L && variances$linPred) ) {
       fixefcov <- newX.pv %*% object$beta_cov %*% t(newX.pv)
@@ -488,11 +496,13 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
   }
   attr(resu,"predVar") <- respVar ## vector or matrix
   if (variances$residVar) {
-    if (object$family$family %in% c("poisson","binomial","COMPoisson")) {
+    if (object$family$family %in% c("poisson","binomial","COMPoisson","negbin")) {
       attr(resu,"residVar") <- object$family$variance(fv)
     } else attr(resu,"residVar") <- calcResidVar(object,newdata=locdata) 
     if (inherits(respVar,"matrix")) {
-      diag(respVar) <- diag(respVar) + attr(resu,"residVar")
+      nc <- ncol(respVar)
+      diagPos <- seq.int(1L,nc^2,nc+1L)
+      respVar[diagPos] <- respVar[diagPos] + attr(resu,"residVar")
     } else respVar <- respVar + attr(resu,"residVar")
   }
   if (variances$respVar) attr(resu,"respVar") <- respVar

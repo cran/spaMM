@@ -5,19 +5,21 @@ get_methods_ranefs <- function(object) {
   optimEsts<-character(0)
   ## What the HLfit call says:
   if (any(object$models[["lambda"]] != "")) {
-    ## correct if both outer estim and inner re-estim (future possibility)
-    if ( identical(attr(object$lambda.object$lambda_outer,"type"),"var")) {optimEsts <- c(optimEsts,"lambda")
-    } else if ( ! is.null(object$lambda.object$namesTerms) ) iterativeEsts <- c(iterativeEsts,"lambda")
+    if ( any(object$lambda.object$type=="outer")) optimEsts <- c(optimEsts,"lambda")
+    if ( any(object$lambda.object$type=="inner")) iterativeEsts <- c(iterativeEsts,"lambda")
   }
-  ## c("binomial","poisson"): phi is 1, not NULL
-  if ( ! (object$family$family %in% c("binomial","poisson","COMPoisson"))) {
-    ## correct if both outer estim and glm_phi (future possibility)
-    if ( identical(attr(object$phi.object$phi_outer,"type"),"var")) {optimEsts <- c(optimEsts,"phi")
-    } else if ( ! is.null(object$phi.object$glm_phi) ) iterativeEsts <- c(iterativeEsts,"phi")
-  }
+  if ( ! is.null(object$phi.object$glm_phi) ) iterativeEsts <- c(iterativeEsts,"phi")
+  # ## c("binomial","poisson"): phi is 1, not NULL
+  # if ( ! (object$family$family %in% c("binomial","poisson","COMPoisson","negbin"))) {
+  #   ## correct if both outer estim and glm_phi (future possibility)
+  #   if ( identical(attr(object$phi.object$phi_outer,"type"),"var")) {optimEsts <- c(optimEsts,"phi")
+  #   } else if ( ! is.null(object$phi.object$glm_phi) ) iterativeEsts <- c(iterativeEsts,"phi")
+  # }
+  optimNames <- names(attr(object,"optimInfo")$LUarglist$canon.init)
+  optimEsts <- c(optimEsts,intersect(optimNames,c("COMP_nu","NB_shape","phi")))
   corrPars <- object$corrPars
-  iterativeEsts <- c(iterativeEsts,names(which(attr(corrPars,"type")=="var")))
-  optimEsts <- c(optimEsts,names(which(attr(corrPars,"type")=="fix")))
+  optimEsts <- c(optimEsts,intersect(names(corrPars),optimNames))
+  iterativeEsts <- c(iterativeEsts,setdiff(optimNames,names(corrPars)))
   return(list(iterativeEsts=iterativeEsts,optimEsts=optimEsts))
 }
 
@@ -34,7 +36,7 @@ legend_lambda<- function(object) {
     )
   })
   if ("adjd" %in% names(object$lambda.object$coefficients_lambda)) {
-    whichadj <- attr(attr(object$ZAlist,"ranefs"),"type")=="adjacency"  
+    whichadj <- attr(attr(object$ZAlist,"ranefs"),"type") %in% c("adjacency","ar1")  
     rfl[whichadj] <- "inverse[ lambda_i =var(V'u) ]"
     rff <- rff[!whichadj]
   }
@@ -145,58 +147,57 @@ summary.HLfitlist <- function(object, ...) {
   locblob <- get_methods_ranefs(object)
   iterativeEsts <- locblob$iterativeEsts
   optimEsts <- locblob$optimEsts
-  ## 
-  ranFixNames <- names(object$ranFix) # attr(object,"ranFixNames") 
-  if ( ! is.null(ranFixNames) ) { ## we take info from corrHLfit to know which were really fixed in the corrHLfit analysis
-    optimEsts <- optimEsts[!optimEsts %in% ranFixNames] ## ie those not fixed in the corrHLfit call
-  }
-  len <- length(iterativeEsts)
-  if (len > 1) iterativeEsts <- paste(c(paste(iterativeEsts[-len],collapse=", "),iterativeEsts[len]),collapse=" and ")
-  if (len > 0) { 
-    
-  }
-  if (len>0) {
+  RE_Ests <- unique(c(iterativeEsts,optimEsts))
+  len <- length(RE_Ests)
+  lenIt <- length(iterativeEsts) ## p_v maxim, or p_bv(X.Re)
+  lenOpt <- length(optimEsts) ## p_v maxim, or p_bv(X.Re)
+  if (lenIt > 1) iterativeEsts <- paste(c(paste(iterativeEsts[-lenIt],collapse=", "),iterativeEsts[lenIt]),collapse=" and ")
+  if (len > 1) RE_Ests <- paste(c(paste(RE_Ests[-len],collapse=", "),RE_Ests[len]),collapse=" and ")
+  if (lenIt>0) {
     if (messlist[["ranef"]]=="by REML.") {## REMLmess has checked that this is a LMM
       cat("REML: Estimation of ")
+      cat(RE_Ests);
       tab <- "      "
     } else if (messlist[["ranef"]]=="by ML.") {
       cat("ML: Estimation of ")      
+      cat(RE_Ests);
       tab <- "    "
     } else {
       cat("Estimation of ")
+      cat(RE_Ests);
       tab <-""
     }
-    cat(iterativeEsts);
+    ## the aim of the tab is to align "Estimation of..." vertically
     cat(" ")
     cat(messlist[["ranef"]])
     if ( messlist[["ranef"]]=="by non-standard REML") {
       cat("\n");cat(tab);cat(" based on fixed-effects model: ")
       print(attr(messlist[["ranef"]],"fixeformFromREMLform"),showEnv=FALSE) 
     } else cat("\n") ## normal output for standard REML formula
-    cat(tab)
-  } 
+  } else tab <- ""
   if (length(object$fixef)>0) {
+    cat(tab)
     cat("Estimation of fixed effects ")
     cat(messlist[["fixed"]]);
-  } else {
-    ## cat("No fixed effects.") ## not useful as the same message will appear just below in the output
+    cat("\n")
   }  
-  cat("\n")
-  len <- length(optimEsts)
-  if (len > 1) optimEsts <- paste(c(paste(optimEsts[-len],collapse=", "),optimEsts[len]),collapse=" and ")
-  if (len > 0) { 
-    objective <- object$objective  
-    if ( ! is.null(objective) ) { 
-      objString <- switch(objective,
-                          p_bv= "'outer' REML, maximizing p_bv",
-                          p_v= "'outer' ML, maximizing p_v",
-                          paste("'outer' maximization of",objString)
-      )
-      outst <- paste("Estimation of ",optimEsts," by ",objString,".\n",sep="")
-      cat(outst) 
-    } ## else no outer optimization
+  if (lenOpt > 1) optimEsts <- paste(c(paste(optimEsts[-lenOpt],collapse=", "),optimEsts[lenOpt]),collapse=" and ")
+  if (lenOpt > 0) { 
+    objective <- attr(object,"optimInfo")$objective  
+    objString <- switch(objective,
+                        p_bv= "'outer' REML, maximizing p_bv",
+                        p_v= "'outer' ML, maximizing p_v",
+                        paste("'outer' maximization of",objString)
+    )
+    outst <- paste("Estimation of ",optimEsts," by ",objString,".\n",sep="")
+    cat(outst) 
   }
-  cat("Family:", famfam, "( link =", object$family$link,")\n")
+  if ( ! is.null(withArgs <- attr(famfam,"withArgs"))) {
+    withArgs <- eval(withArgs,envir=environment(object$family$aic))
+    cat("Family:", withArgs, "( link =", object$family$link,")\n")
+  } else cat("Family:", famfam, "( link =", object$family$link,")\n")
+  #if (famfam=="COMPoisson") cat("COMPoisson's nu=",signif(environment(object$family$aic)$nu,4),"\n")
+  #if (famfam=="negbin") cat("neg.binomial's shape=",signif(environment(object$family$aic)$shape,4),"\n")
   summ$family <- object$family
   if (length(object$fixef)==0L) {
     cat("No fixed effect\n")
@@ -235,10 +236,12 @@ summary.HLfitlist <- function(object, ...) {
       print(cP)
     }
     lambda.object <- object$lambda.object
+    namesTerms <- lambda.object$namesTerms ## list of vectors of variable length
+    type <- lambda.object$type
     if (any(object$models[["lambda"]] == "lamHGLM")) { 
       stop("voir ici dans summary.HLfit")
     } else if ( ! is.null(coefficients_lambda <- lambda.object$coefficients_lambda)) {
-      namesTerms <- lambda.object$namesTerms ## list of vectors of variable length
+      # first construct a table including NA's for some coeeficients (not "inner" estimated), then remove these rows
       repGroupNames <- unlist(lapply(seq_len(length(namesTerms)),function(it) {
         names(namesTerms[[it]]) <- rep(names(namesTerms)[it],length(namesTerms[[it]]))
       })) ## makes group identifiers unique (names of coeffs are unchanged)
@@ -268,54 +271,55 @@ summary.HLfitlist <- function(object, ...) {
         colnames(variances) <- "Var."
         lambda_table <- cbind(lambda_table,variances,blob)
       }
+      lambda_table <- lambda_table[!is.na(lambda_table$Estimate),]
       summ$lambda_table <- lambda_table
       legend_lambda(object)
       print(lambda_table,digits=4,row.names=FALSE)
-      wa <-attr(lambda.object,"warning")
-      if ( ! is.null(wa)) {
-        if (wa=="glm.fit: algorithm did not converge") {
-          cat("glm.fit for estimation of lambda SE did not converge; this suggests\n")
-          cat(" non-identifiability of some lambda (and possibly also phi) coefficients.\n")
-        } else {
-          cat("warning in glm.fit for estimation of lambda SE: \n")
-          cat(wa,"\n")
-        }
-      } else {
-        linklam <- lambda.object$coefficients_lambda
-        locit <- 1L
-        # FR->FR still shows some imperfection in the object:
-        Xi_cols <- attr(object$ZAlist,"Xi_cols") ## rajout 02/2016 to identify random slope modelswith several params
-        for (it in seq_len(length(namesTerms))) {
-          if ("adjd" %in% namesTerms[[it]]) {
-            cat(paste("Estimate of rho (CAR): ",
-                      signif( - linklam[locit+1L]/linklam[locit],4),"\n"))
-            cat(paste("Estimate of lambda factor (CAR): ",
-                      with(lambda.object,signif(linkinvS[[rand_to_glm_map[it]]](linklam[locit]),4)),"\n"))
-            locit <-  locit+2L
-          } else {
-            if (Xi_cols[it]==1L) cat(paste("Estimate of lambda (",names(namesTerms[it]),"): ",
-                      with(lambda.object,signif(linkinvS[[rand_to_glm_map[it]]](linklam[locit]),4)),"\n"))
-            locit <-  locit+Xi_cols[it]
-          }
-        }
+      # wa <-attr(lambda.object,"warning")
+      # if ( ! is.null(wa)) {
+      #   if (wa=="glm.fit: algorithm did not converge") {
+      #     cat("glm.fit for estimation of lambda SE did not converge; this suggests\n")
+      #     cat(" non-identifiability of some lambda (and possibly also phi) coefficients.\n")
+      #   } else {
+      #     cat("warning in glm.fit for estimation of lambda SE: \n")
+      #     cat(wa,"\n")
+      #   }
+      # } 
+      innerlambda_pos <- which(type=="inner")
+      linklam <- lambda.object$coefficients_lambda
+      ncoeffs <- attr(object$ZAlist,"Xi_cols") ## RHS = 2 for random slope, else 1
+      for (it in seq_len(length(namesTerms))) if ("adjd" %in% namesTerms[[it]]) ncoeffs[it] <- 2
+      cum_ncoeffs <- c(0,cumsum(ncoeffs))
+      for (it in seq_len(length(namesTerms))) {
+        if ("adjd" %in% namesTerms[[it]]) {
+          namenames <- names(namesTerms[it])
+          pos <- cum_ncoeffs[it]+1L
+          cat(paste("Estimate of rho (",namenames,"CAR): ",
+                    signif( - linklam[pos+1L]/linklam[pos],4),"\n"))
+          cat(paste("Estimate of lambda factor (",namenames,"CAR): ",
+                    with(lambda.object,signif(linkinvS[[rand_to_glm_map[it]]](linklam[pos]),4)),"\n"))
+          innerlambda_pos <- setdiff(innerlambda_pos,it) ## remove from  generic innerlambda_pos printing below
+        } 
       }
-      cat(paste("# of obs: ",nrow(object$data),"; # of groups: ",
-                paste(names(namesTerms),", ",unlist(lapply(object$ZAlist,ncol)),
-                      collapse="; ",sep=""),
-                sep=""),"\n")
+      if (length(innerlambda_pos)>0L) cat(paste("Estimate of lambda (",
+                                                names(namesTerms)[innerlambda_pos],"): ", 
+                                                signif(lambda.object$lambda[innerlambda_pos],4)
+                                                ,collapse="\n"),"\n")
     } 
-    if ( ! is.null(lambda_outer <- lambda.object$lambda_outer)) {
-      if (attr(lambda_outer,"type")=="var") {
-        if (length(lambda_outer)>1L) {
-          cat(paste("Outer estimates of lambda's:",paste(signif(lambda_outer,6),collapse=", "),"\n"))        
-        } else cat(paste("Outer estimate of lambda:",signif(lambda_outer,6),"\n"))
-      } else {
-        if (length(lambda_outer)>1L) {
-          cat(paste("lambda's were fixed to",paste(signif(lambda_outer,6),collapse=", "),"\n"))        
-        } else cat(paste("lambda was fixed to",signif(lambda_outer,6),"\n"))
-      }
-      summ$lambda_outer <- lambda_outer
-    } 
+    outerlambda_pos <- which(type=="outer")
+    if (length(outerlambda_pos)>0L) cat(paste("Outer estimate of lambda (",
+                                              names(namesTerms)[outerlambda_pos],"): ", 
+                                              signif(lambda.object$lambda[outerlambda_pos],4)
+                                              ,collapse="\n"),"\n")
+    fixedlambda_pos <- which(type=="fix")
+    if (length(fixedlambda_pos)>0L) cat(paste("Fixed lambda value (",
+                                              names(namesTerms)[fixedlambda_pos],"): ", 
+                                              signif(lambda.object$lambda[fixedlambda_pos],4),
+                                              collapse="\n"),"\n")
+    cat(paste("# of obs: ",nrow(object$data),"; # of groups: ",
+              paste(names(namesTerms),", ",unlist(lapply(object$ZAlist,ncol)),
+                    collapse="; ",sep=""),
+              sep=""),"\n")
   }
   ##
   if (object$family$family %in% c("gaussian","Gamma")) {
@@ -388,10 +392,6 @@ summary.HLfitlist <- function(object, ...) {
     names(locli)[1] <- attr(logLapp,"method")
     likelihoods <- c(likelihoods,locli)
   }
-  #if (!is.null(object$APHLs$logLsmooth)) likelihoods <- c(likelihoods," Smoothed marginal L: "=object$APHLs$logLsmooth)
-  if (!is.null(object$APHLs$mAIC)) likelihoods <- c(likelihoods,"       marginal AIC:"=object$APHLs$mAIC)
-  if (!is.null(object$APHLs$cAIC)) likelihoods <- c(likelihoods,"    conditional AIC:"=object$APHLs$cAIC)
-  if (!is.null(object$APHLs$dAIC)) likelihoods <- c(likelihoods,"     dispersion AIC:"=object$APHLs$dAIC)
   cat(" -------- Likelihood values  --------\n")    
   astable <- as.matrix(likelihoods);colnames(astable)<-"logLik";
   print(astable)

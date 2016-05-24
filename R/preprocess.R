@@ -44,7 +44,7 @@ checkRespFam <- function(family) {
     family <- get(family, mode = "function", envir = parent.frame())
   if (is.function(family)) 
     family <- family()
-  if (family$family=="Gamma") family <- spaMM_Gamma(family$link)
+  if (family$family=="Gamma") family <- call("spaMM_Gamma",link=family$link) ## avoids display of family def in fit results
   family
 }
 
@@ -90,6 +90,10 @@ generateInitPhi <- function(formula,data,family,weights=NULL) {
   mf <- data.frame(y=Y,uli=as.factor(uli)) ## what's needed for both sides
   tuli <- table(uli)
   phiinfo <- which(tuli>1L) ## which levels of uli are informative
+  ############################################
+  # -> may generate a large # of levels -> of parameters to estimate -> glm takes time ! ## FR->FR may take time => quick patch    
+  if (length(phiinfo)>30) return(0.1)  ## RETURN !
+  ############################################
   whichRows <- uli %in% phiinfo
   mf <- mf[whichRows,] ## keep lines with replicates of all predictor variables
   if (!is.null(weights)) weights <- weights[whichRows]
@@ -97,12 +101,25 @@ generateInitPhi <- function(formula,data,family,weights=NULL) {
     locform <- y ~ uli 
   } else locform <- y ~ 1 ## only one level of uli had replicates
   # estimation of residual var
-  if (NROW(mf)>1L) {
+  if (NROW(mf)>1L) { ## if replicate observations available
     # formula must retain any operation on the lhs
-    locglm <- glm(formula=locform,data=mf,family=family,weights=weights)  
+    locglm <- spaMM_glm(formula=locform,data=mf,family=family,weights=weights)  
     phi_est <- as.numeric(deviance(locglm)/locglm$df.residual)
   } else phi_est <- NULL
   return(phi_est)
+}
+
+create_get_init_phi <- function() {
+  init_phi <- NULL## so that no build/check note on the <<- 
+  locfn <- function(res) {
+    if (is.null(init_phi)) { 
+      init_phi <<- generateInitPhi(formula=res$predictor,data=res$data,family=res$family,weights=res$prior.weights) 
+    } 
+    return(init_phi)
+  } 
+  environment(locfn) <- list2env(list(init_phi=NULL),
+                                 parent=environment(generateInitPhi))
+  return(locfn)
 }
 
 
@@ -149,12 +166,6 @@ preprocess <- function(control.HLfit, ranFix=NULL, HLmethod,
   break_conv_logL <- control.HLfit$break_conv_logL ##whether to stop if logL (p_v) appears to have converged  
   if (is.null(break_conv_logL)) break_conv_logL <- FALSE
   processed$break_conv_logL <- break_conv_logL ##  
-  AIC <-control.HLfit$AIC ##  
-  if (is.null(AIC)) AIC <- FALSE
-  processed$AIC <- AIC ##  
-  essai <-control.HLfit$essai ##  
-  if (is.null(essai)) essai <- FALSE
-  processed$essai <- essai ##  
   ## numerical control parameters 
   conv.threshold <-control.HLfit$conv.threshold ## 
   if (is.null(conv.threshold)) conv.threshold <- 1e-05
@@ -359,15 +370,14 @@ preprocess <- function(control.HLfit, ranFix=NULL, HLmethod,
     }
     if (sum(BinomialDen) != nobs) stop("(!) SEM procedure: the data do not seem binary; non-binary data are not handled.")
     SEMseed <- control.HLfit$SEMseed ##  
-    if (is.null(SEMseed)) SEMseed <- 123 ## OK pour SEM *unique* mais remplace par NULL dans optimthroughSmooth
+    # if (is.null(SEMseed)) SEMseed <- 123 ## OK pour SEM *unique* mais remplace par NULL dans optimthroughSmooth
     SEMargs <- list(SEMseed=SEMseed)
     SEMargs$nMCint <- control.HLfit$nMCint ##  as is => SEM procedure must handle null value
     SEMargs$control_pmvnorm$maxpts <- control.HLfit$pmvnorm_maxpts ##  as is => SEM procedure must handle null value
-    SEMlogL <- control.HLfit$SEMlogL
-    if (is.null(SEMlogL)) {
-      SEMlogL <- "pmvnorm"
-    }
-    SEMargs$SEMlogL <- SEMlogL
+    #SEMlogL <- control.HLfit$SEMlogL
+    #if (is.null(SEMlogL)) SEMlogL <- "pMVN" ## FR->FR 1.8.25 !
+    #SEMargs$SEMlogL <- SEMlogL
+    SEMargs$SEMlogL <- control.HLfit$SEMlogL
     nSEMiter <- control.HLfit$nSEMiter ##  
     if ( (! is.null(nSEMiter)) && nSEMiter < 10) {
       stop(" 'nSEMiter' should be >9")
@@ -408,7 +418,7 @@ preprocess <- function(control.HLfit, ranFix=NULL, HLmethod,
   processed$REMLformula <- REMLformula  
   #
   processed$loglfn.fix <- selectLoglfn(family)
-  if ( family$family %in% c("binomial","poisson","COMPoisson")) {
+  if ( family$family %in% c("binomial","poisson","COMPoisson","negbin")) {
     ## the response variable should always be Counts
     if (max(abs(y-as.integer(y)))>1e-05) {
       mess <- pastefrom("response variable should be integral values.",prefix="(!) From ")
@@ -448,7 +458,7 @@ preprocess <- function(control.HLfit, ranFix=NULL, HLmethod,
     canonicalLink <- TRUE
   } else if (family$family=="COMPoisson" && family$link=="loglambda") {
     canonicalLink <- TRUE
-  }
+  } ## no implemented canonical link case for negbin
   processed$canonicalLink <- canonicalLink  
   #
   GLMMbool <- (nrand>0 && all(lcrandfamfam=="gaussian") )
@@ -485,7 +495,11 @@ preprocess <- function(control.HLfit, ranFix=NULL, HLmethod,
   processed$LevenbergM <- LevenbergM
   #
   if (nrand>0) {   
-    processed$lambda.Fix <- getPar(ranFix,"lambda")
+    lFix <- getPar(ranFix,"lambda")
+    if (is.null(lFix)) lFix <- rep(NA,nrand)
+    if (length(lFix)!=nrand) stop("length of 'lixed lambda' vector does not match number of random effects")
+    names(lFix) <- as.character(seq(nrand))
+    processed$lambda.Fix <- lFix
     nrand_lambda <- 0
     models[["lambda"]] <- FL$termsModels
     ################################################################################
@@ -501,7 +515,9 @@ preprocess <- function(control.HLfit, ranFix=NULL, HLmethod,
       }
       cum_Xi_cols <- cumsum(c(0, Xi_cols)) ## if two ranef,  with n_u_h=(3,3), this is 0,3,6. cum_h_u_h[nrand+1] is then 6, the total # of realizations
       n_u_h <- rep(0, sum(Xi_cols))
-      for (i in 1:nrand) n_u_h[(cum_Xi_cols[i]+1L):cum_Xi_cols[i+1L]] <-  nlevels(FL$Subject[[i]]) 
+      #for (i in 1:nrand) n_u_h[(cum_Xi_cols[i]+1L):cum_Xi_cols[i+1L]] <- ncol(FL$Design[[i]]) ##  nlevels(FL$Subject[[i]])
+      # if 18 responses in a random slope model ncol(FL$Design[[i]]) is 36 while nlevels(FL$Subject[[i]]) was 18
+      for (i in 1:nrand) n_u_h[cum_Xi_cols[i]+seq(Xi_cols[i])] <- ncol(FL$Design[[i]])/Xi_cols[i]
       cum_h_u_h <- cumsum(c(0, n_u_h)) ## if two "Intercept" ranefs,  with n_u_h=(3,3), this is 0,3,6. cum_h_u_h[nrand+1] is then 6, the total # of realizations
         ## if (1+X|...) +(1|...),  with n_u_h=(3,4), this is 0,3,6,10. cum_h_u_h[sum(Xi_cols)+1] is then 10, the total # of realizations
       X_lamres <- matrix(0,cum_h_u_h[sum(Xi_cols)+1L],sum(Xi_cols))
@@ -530,13 +546,13 @@ preprocess <- function(control.HLfit, ranFix=NULL, HLmethod,
       }
     } 
     processed$X_lamres <- X_lamres ## for glm for lambda
-    attr(processed$ZAlist,"Xi_cols") <- Xi_cols ## used to handle random slope...
+    attr(processed$ZAlist,"Xi_cols") <- Xi_cols ## vector of ncol of X design for LHSs of (|) 
     attr(processed$ZAlist,"anyRandomSlope") <- any(Xi_cols>1L) ## used to handle random slope...
   } 
   #
   phi.Fix <- getPar(ranFix,"phi")
   if (is.null(phi.Fix)) {
-    if (family$family %in% c("poisson","binomial","COMPoisson")) phi.Fix <- 1 
+    if (family$family %in% c("poisson","binomial","COMPoisson","negbin")) phi.Fix <- 1 
   } else if (any(phi.Fix==0)) stop("phi cannot be fixed to 0.")
   processed$phi.Fix <- phi.Fix
   if ( is.null(phi.Fix)) {
@@ -547,18 +563,18 @@ preprocess <- function(control.HLfit, ranFix=NULL, HLmethod,
     if(nrow(X_disp)==0L) X_disp=matrix(1,nrow=nobs)
     namesX_disp <- colnames(fr_disp$X)
     colnames(X_disp) <- namesX_disp
-    random_dispersion<-findbarsMM(formulaDisp) ## random effect in mean predictor of dispersion phi
+    random_dispersion <- findbarsMM(formulaDisp) ## random effect in mean predictor of dispersion phi
     if (!is.null(random_dispersion)) {
       FL_disp <- spMMFactorList(formulaDisp, fr_disp$mf, 0L, drop=TRUE)
       Z_disp <- FL_disp$Design  ## now Matrix...
-      namesRE_disp <- attr(Z_disp,"Groupings")
+      namesRE_disp <- names(attr(Z_disp,"namesTerms"))
       models[["phi"]] <- "phiHGLM"
       mess <- pastefrom("LIKELY missing code to handle random effect for linear predictor for phi.")
       stop(mess)
     } else {
       if (length(namesX_disp)==1 && namesX_disp[1]=="(Intercept)") {
         models[["phi"]] <- "phiScal"
-        processed$init_phi <- generateInitPhi(formula=predictor,data=data,family=family,weights=prior.weights)
+        processed$get_init_phi <- create_get_init_phi()
       } else { 
         models[["phi"]] <- "phiGLM"
       }

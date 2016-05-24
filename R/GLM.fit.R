@@ -17,7 +17,7 @@ get_valid_beta_coefs <- function(X,offset) {
 spaMM_glm.fit <- function (x, y, weights = rep(1, nobs), 
                      start = NULL, ## beta coefs... needed for the LevenbergM algo
                      etastart = NULL, mustart = NULL, offset = rep(0, nobs), family = gaussian(), 
-                          control = list(), intercept = TRUE) 
+                          control = list(maxit=200), intercept = TRUE) 
 {
   if (getRversion() < "3.1.0") stop("R version 3.1.0 or older is needed to run spaMM_glm.fit")
   
@@ -26,6 +26,9 @@ spaMM_glm.fit <- function (x, y, weights = rep(1, nobs),
     beta <- coefold + dbeta
     eta <- drop(x %*% beta) + offset
     if (family$link=="log") {eta <- pmin(eta,30)} ## cf similar code in muetafn
+    if (family$link=="inverse" && family$family=="Gamma") {
+      eta <- pmax(eta,sqrt(.Machine$double.eps)) ## eta must be > 0
+    } ## cf similar code in muetafn
     mu <- linkinv(eta)
     dev <- suppressWarnings(sum(dev.resids(y, mu, weights)))
     if (is.infinite(dev) || is.na(dev)) {  
@@ -178,8 +181,7 @@ spaMM_glm.fit <- function (x, y, weights = rep(1, nobs),
           if (is.null(coefold)) 
             stop("no valid set of coefficients has been found: please supply starting values", 
                  call. = FALSE)
-          warning("step size truncated due to divergence", 
-                  call. = FALSE)
+          #warning("step size truncated due to divergence", call. = FALSE)
           ii <- 1
           while (!is.finite(dev)) {
             if (ii > control$maxit) 
@@ -275,7 +277,7 @@ spaMM_glm.fit <- function (x, y, weights = rep(1, nobs),
       wX <- calc_wAugX(augX=x[good, , drop = FALSE],sqrt.ww=w)
       LM_wz <- z*w - (wX %*% coefold)
     } ## end main loop
-    if (!conv) 
+    if (any(good) & !conv) 
       warning(paste("spaMM_glm.fit did not yet converge at iteration",iter,"(criterion=",
                     signif(conv_crit,3),")"), call. = FALSE)
     if (boundary) 
@@ -353,19 +355,28 @@ spaMM_glm.fit <- function (x, y, weights = rep(1, nobs),
 spaMM_glm <- function(formula, family = gaussian, data, weights, subset,
                 na.action, start = NULL, etastart, mustart, offset,
                 control = list(...), model = TRUE, method = "glm.fit",
-                x = FALSE, y = TRUE, contrasts = NULL, ...) {
+                x = FALSE, y = TRUE, contrasts = NULL, strict=FALSE,...) {
   mc <- match.call(expand.dots=TRUE)
+  mc$strict <- NULL
   mc$family <- checkRespFam(family) # cannot check mc$family itself, which is typically a language object
   mc[[1L]] <- quote(stats::glm)
   res <- tryCatch.W.E(eval(mc,parent.frame()))
   if (inherits(res$value,"error")) {
     if ( requireNamespace("rcdd",quietly=TRUE) ) {
-      if (is.null(mc$control$maxit)) mc$control$maxit <- 200L # distinct default value for spaMM_glm.fit call 
       mc$method <- "spaMM_glm.fit" 
-      eval(mc,parent.frame())
+      res <- eval(mc,parent.frame())
+      return(res)
     } else message("glm() failed. If the 'rcdd' package was installed, spaMM_glm() could fit the model.") 
   } else {
-    if (! is.null(res$warning)) warning(res$warning)
+    if (! is.null(res$warning)
+        ## some glm warnings are useful only to understand a failure, hence not useful here 
+        && res$warning$message != "step size truncated due to divergence" ) {
+      if (res$warning == "glm.fit: algorithm did not converge" && strict) {
+        mc$method <- "spaMM_glm.fit" 
+        res <- eval(mc,parent.frame())
+        return(res)
+      } else warning(res$warning)
+    }
     res$value
   }
 }

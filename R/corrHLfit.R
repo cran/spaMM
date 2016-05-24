@@ -57,7 +57,7 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
       }     
     }
     mc$processed <- do.call(preprocess,preprocess.formal.args,envir=environment(formula))
-    mc$verbose <- reformat_verbose(mc$verbose,For="corrHLfit")
+    mc$verbose <- reformat_verbose(eval(mc$verbose),For="corrHLfit")
     ## removing all elements that are matched in processed:
     mc$data <- NULL
     mc$family <- NULL
@@ -156,9 +156,33 @@ corrHLfit_body <- function(processed,
   } 
   HLCor.args$corr.model <- corr.model ## determined locally
   #
-  ## distMatrix or uniqueGeo potentially added to HLCor.args:
   ############### (almost) always check geo info ###################
-  if (corr.model  %in% c("SAR_WWt","adjacency","ar1")) {
+  if (corr.model  %in% c("Matern","ar1","AR1")) { 
+    if ( is.null(spatial.model)) {
+      stop("An obsolete syntax for the adjacency model appears to be used.")
+      ## coordinates <- c("x","y") ## backward compatibility... old syntax with (1|pos) and default values of the coordinates argument
+    } else {
+      if ( inherits(data,"list")) {
+        dataForCheck <- data[[1]]
+      } else dataForCheck <- data
+      coordinates <- extract.check.coords(spatial.model=spatial.model,datanames=names(dataForCheck))
+    }
+  } ##
+  #
+  if (corr.model %in% "ar1") {
+    # we need all intermediate levels even those not represented in the data
+    levelrange <- range(as.integer(data[,coordinates]))
+    tmax <- levelrange[2]-levelrange[1]+1L ## time zero IS the first level of 'coordinate' 
+    control.dist$ar1_tmax <- tmax
+    if (useAdjacencyApprox <-FALSE) {
+      adj <- Diagonal(tmax,0L)
+      diag(adj[-1,]) <- 1L
+      diag(adj[,-1]) <- 1L
+      HLCor.args$adjMatrix <- as.matrix(adj) ## suitable for *approximation* of AR1 by adjacency model
+    }
+  } 
+  #
+  if (corr.model  %in% c("SAR_WWt","adjacency")) { #!# "ar1"
     ## adjMatrix should become weightMatrix
     if ( is.null(HLCor.args$adjMatrix) ) stop("missing 'adjMatrix' for adjacency model")
     if (isSymmetric(HLCor.args$adjMatrix)) {
@@ -172,17 +196,7 @@ corrHLfit_body <- function(processed,
     }
     rhorange <- sort(1/range(decomp$d)) ## keeping in mind that the bounds can be <>0
     if(verbose["SEM"]) cat(paste("Feasible rho range: ",paste(signif(rhorange,6),collapse=" -- "),"\n"))
-  } else {
-    if ( is.null(spatial.model)) {
-      stop("An obsolete syntax for the adjacency model appears to be used.")
-      ## coordinates <- c("x","y") ## backward compatibility... old syntax with (1|pos) and default values of the coordinates argument
-    } else {
-      if ( inherits(data,"list")) {
-        dataForCheck <- data[[1]]
-      } else dataForCheck <- data
-      coordinates <- extract.check.coords(spatial.model=spatial.model,datanames=names(dataForCheck))
     }
-  } ## 
   #
   Fixrho <- getPar(ranFix,"rho")
   if ( (! is.null(Fixrho)) && (! is.null(init.corrHLfit$rho)) ) {
@@ -197,6 +211,7 @@ corrHLfit_body <- function(processed,
   if ( (! is.null(getPar(ranFix,"Nugget"))) && (! is.null(init.corrHLfit$Nugget)) ) {
     stop("(!) 'Nugget' given as element of both 'ranFix' and 'init.corrHLfit'. Check call.")    
   }
+  ## distMatrix or uniqueGeo potentially added to HLCor.args:
   if (corr.model %in% c("Matern","AR1")) {
     rho_mapping <- control.dist$rho.mapping ## may be NULL
     if (is.null(rho_mapping) ) { ## && length(coordinates)>1L ?
@@ -220,17 +235,25 @@ corrHLfit_body <- function(processed,
       HLCor.args$uniqueGeo <- uniqueGeo   ## determined locally
     }
   } else nbUnique <- NULL
-  
+  family <- getProcessed(processed,"family",from=1L)
+  if (family$family=="COMPoisson") {
+    checknu <- try(environment(family$aic)$nu,silent=TRUE)
+    if (inherits(checknu,"try-error")) init.optim$COMP_nu <- 1
+  } else if (family$family=="negbin") {
+    checktheta <- try(environment(family$aic)$shape,silent=TRUE)
+    if (inherits(checktheta,"try-error")) init.optim$NB_shape <- 1
+  }
   #
   arglist <- list(init.optim=init.optim,init.HLfit=init.HLfit,ranFix=ranFix,
                   corr.model=corr.model,optim.scale=optim.scale,
-                  control.dist=control.dist)
+                  control.dist=control.dist,For="corrHLfit")
   if (corr.model %in% c("Matern")) {
     maxrange <- calc_maxrange(rho.size,distMatrix,uniqueGeo,rho_mapping,dist.method) 
     RHOMAX <- 1.1*30*nbUnique/maxrange ## matches init$rho in calc_inits()
     arglist <-c(arglist,list(maxrange=maxrange,RHOMAX=RHOMAX,NUMAX=NUMAX))
   }
-  if (corr.model %in% c("SAR_WWt","adjacency","ar1") &&  is.null(getPar(ranFix,"rho"))
+  if (corr.model %in% c("SAR_WWt","adjacency") #!# "ar1" rhornage suppressed 
+      &&  is.null(getPar(ranFix,"rho"))
       && (! is.numeric(init.HLfit$rho)) ## init.HLfit$rho$rho NULL or NA) 
   ) arglist$rhorange <- rhorange ## will serve to initialize either HLfit or optim 
   inits <- do.call("calc_inits",arglist)
@@ -258,7 +281,8 @@ corrHLfit_body <- function(processed,
                     corr.model=corr.model,nbUnique=nbUnique,
                     ranFix=ranFix,control.dist=control.dist,
                     optim.scale=optim.scale, RHOMAX=RHOMAX,NUMAX=NUMAX)
-  if (corr.model %in% c("SAR_WWt","adjacency","ar1") &&  is.null(getPar(ranFix,"rho"))
+  if (corr.model %in% c("SAR_WWt","adjacency") #!# "ar1" rhorange suppressed 
+      &&  is.null(getPar(ranFix,"rho"))
       && (! is.numeric(init.HLfit$rho)) ## init.HLfit$rho$rho NULL or NA) 
       ) { 
     LUarglist$rhorange <- rhorange ## will serve to initialize either HLfit or optim 
@@ -278,11 +302,11 @@ corrHLfit_body <- function(processed,
   processedHL1 <- getProcessed(processed,"HL[1]",from=1L) ## there's also HLmethod in processed<[[]]>$callargs
   if (!is.null(processedHL1) && processedHL1=="SEM" && length(lower)>0) {
     optimMethod <- "iterateSEMSmooth"
-    processed <- setProcessed(processed,"SEMargs$SEMseed",value="NULL") ## removing default SEMseed
+    # processed <- setProcessed(processed,"SEMargs$SEMseed",value="NULL") ## removing default SEMseed
     ## : bc SEMseed OK to control individual SEMs but not  series of SEM 
     if (is.null(getProcessed(processed,"SEMargs$control_pmvnorm$maxpts",from=1L))) {
       if (length(LowUp$lower>0L)) {
-        processed <- setProcessed(processed,"SEMargs$control_pmvnorm$maxpts",value="quote(250L*nrow(pmvnorm.Sig))") ## removing default SEMseed
+        processed <- setProcessed(processed,"SEMargs$control_pmvnorm$maxpts",value="quote(250L*nobs)") 
       } ## else default visible in SEMbetalambda
     }
   } else optimMethod <- "locoptim"
@@ -295,6 +319,8 @@ corrHLfit_body <- function(processed,
   attr(anyHLCor_obj_args$skeleton,"type") <- list() ## declares a list of typeS of elemnts of skeleton
   attr(anyHLCor_obj_args$skeleton,"type")[names(init.optim)] <- "fix" # fixed with the HLCor call 
   anyHLCor_obj_args$`HLCor.obj.value` <- objective ## p_v when fixedLRT-> corrHLfit
+  anyHLCor_obj_args$processed <- setProcessed(anyHLCor_obj_args$processed,"only_objective",
+                                              value=paste("\"",objective,"\"",sep="")) ## laborious for strings
   anyHLCor_obj_args$traceFileName <- trace$file
   initvec <- unlist(init.optim)
   ####    tmpName <- generateName("HLtmp") ## tmpName is a string such as "HLtmp0"
@@ -323,7 +349,7 @@ corrHLfit_body <- function(processed,
     optPars <- do.call("locoptim",loclist)
     if (!is.null(optPars)) attr(optPars,"method") <- "locoptim"
   }
-  ranPars[names(optPars)] <- optPars ## avoids overwriting fixed ranPars 
+  ranPars[names(optPars)] <- optPars ## avoids overwriting fixed ranPars; and keep the list class of ranPars...
   attr(ranPars,"type")[names(optPars)] <- "outer" ##  
   attr(ranPars,"RHOMAX") <- RHOMAX
   attr(ranPars,"NUMAX") <- NUMAX
@@ -331,16 +357,14 @@ corrHLfit_body <- function(processed,
   verbose["warn"] <- TRUE ## important!
   HLCor.args$verbose <- verbose ## modified locally
   hlcor <- do.call("HLCor",HLCor.args) ## recomputation post optimization (or only computation, if length(lower)=0)
-  if ( is.null(HLCor.args$adjMatrix) && is.null(attr(hlcor,"info.uniqueGeo")) ) { ## typically if DistMatrix was passed to HLCor...
-    attr(hlcor,"info.uniqueGeo") <- uniqueGeo ## uniqueGeo should have been computed in all relevant cases where test is true (tricky)
+  if ( is.null(HLCor.args$adjMatrix)) { ## Matern, AR1/ar1; or distMatrix models ...
+    ## info.uniqueGeo,  used by predict -> calcNewCorrs and mapMM,
+    ##   may already have been set by HLCor_body (if uniqueGeo was one of its explict args)
+    if (is.null(attr(hlcor,"info.uniqueGeo"))) attr(hlcor,"info.uniqueGeo") <- HLCor.args$uniqueGeo ## Matern with rho.size>1
+    if (is.null(attr(hlcor,"info.uniqueGeo"))) attr(hlcor,"info.uniqueGeo") <- uniqueGeo ## Matern with rho.size=1
+    ## still NULL in AR1/ar1 model
   }
-  attr(hlcor,"objective") <- anyHLCor_obj_args$`HLCor.obj.value` 
-  ## 
-  attr(hlcor,"optimInfo") <- list(optim.pars=optPars, 
-                                  init.optim=init.optim,
-                                  lower=lower,upper=upper,
-                                  user.lower=user.lower,user.upper=user.upper,
-                                  RHOMAX=RHOMAX) ## RHOMAX is also in the *call* of the hlcor object...
+  attr(hlcor,"optimInfo") <- list(LUarglist=LUarglist, optim.pars=optPars, objective=objective)
   if ( ! is.null(locoptr <- attr(optPars,"optr")) && locoptr$convergence>0L) {
     hlcor$warnings$optimMessage <- paste("optim() message: ",locoptr$message," (convergence=",locoptr$convergence,")",sep="")
   }
@@ -348,46 +372,6 @@ corrHLfit_body <- function(processed,
     # provide logL estimate from the smoothing, to be used rather than the hlcor logL :
     logLapp <- optr$value
     attr(logLapp,"method") <- "  logL (smoothed)" 
-    if (FALSE) { ## essai correction biais
-      message("Trying to correct bias of SEM procedure...")
-      p_lambda <- NROW(hlcor$lambda.object$coefficients_lambda)
-      np <- NCOL(hlcor$`X.pv`) + p_lambda
-      lmframe <- replicate(4*((np+1)*(np+2)/2), {## ((np+1)*(np+2)/2) is number of params to be fitted
-        rephlcor <- do.call("HLCor",HLCor.args)
-        if (p_lambda==0L) {
-          c(fixef(rephlcor), logLik(rephlcor)[1])
-        } else if (p_lambda==1L) {
-          c(fixef(rephlcor), lambda=rephlcor$lambda, logLik(rephlcor)[1])
-        } else stop("code missing for p_lambda>0 for bias correction of SEM.")
-        ## FR->FR + problem if one of the predict vaiables in named logLapp
-      } )
-      lmframe <-as.data.frame(t(lmframe))
-      colnames(lmframe)[colnames(lmframe)=="(Intercept)"] <- "fixef.intercept" ## because "(Intercept)" does not work below
-      quadfit <- eval(parse(text=paste("lm(logLapp ~ polym(",
-                                       paste(colnames(lmframe)[1:np],collapse=","),
-                                       ", degree=2,raw=TRUE),data=lmframe)"))) ## predict does not work if raw=FALSE
-      lmlower <- apply(lmframe[,1:np,drop=FALSE],2,min)
-      lmupper <- apply(lmframe[,1:np,drop=FALSE],2,max)
-      parnames <- names(lmlower)
-      ## R issue: [.data.frame loses col name for single col.
-      ## => lmframe[which.max(lmframe$logLapp),1:np] is 1-row data.frame is np>1; is *unnamed* numeric if np=1 unless drop=FALSE; 
-      ##    where we would wish it to be named numeric in both cases
-      initpar <- unlist(lmframe[which.max(lmframe$logLapp),1:np,drop=FALSE]) 
-      optpolym <- optim(par=initpar, 
-                        fn=function(v) {
-                          v <- data.frame(matrix(v,nrow=1)) ## matrix() loses names... ## data.frame uses names as col or row names dependeing on length(v)...
-                          colnames(v) <- parnames ## hence give names as a last step; again drop=F will be needed for 1-col 
-                          predict(quadfit, newdata=v[c(1,1),,drop=FALSE])[1] ## [c(1,1),] is an awful patch for predict.poly
-                        }, 
-                        lower=lmlower,upper=lmupper,method="L-BFGS-B",
-                        control=list(fnscale=-1,parscale=lmupper-lmlower)) 
-      ## computation of dfs as in compare.model.structures
-      attr(logLapp,"optpolym") <- optpolym$value
-      attr(logLapp,"lmframe") <- lmframe
-      attr(logLapp,"replicates") <- replicate(20,logLik(do.call("HLCor",HLCor.args)))
-      attr(logLapp,"stddevres") <- ((predict(optr$Krigobj)-optr$Krigobj$data$logLobj)/(1-optr$Krigobj$lev_phi))
-      attr(logLapp,"df_replicates") <- np
-    }
     hlcor$APHLs$logLapp <- logLapp
   }
   if (is.character(trace$file)) {

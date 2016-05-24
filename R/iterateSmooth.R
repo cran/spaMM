@@ -41,13 +41,18 @@ iterateSEMSmooth <- function(anyHLCor_obj_args, ## contains $processed
         titlesub <- bquote(paste(rho[f(rho)],"=",.(zut[1]),", ",rho[f(nu)],"=",.(zut[2]),
                                  "; max=",.(signif(optr$value,4)),"; predRMSE=",.(signif(printRMSE,4))))
       } else titlesub <- bquote(paste(rho[smooth],"=",.(zut),"; max=",.(signif(optr$value,4)),"; predRMSE=",.(signif(printRMSE,4))))
-      SEMdiagnosticPlot2D(Krigobj, MAX=MAX, smoothingOK=smoothingOK, titlemain=titlemain, titlesub=titlesub, 
+      verif <- try(SEMdiagnosticPlot2D(Krigobj, MAX=MAX, smoothingOK=smoothingOK, titlemain=titlemain, titlesub=titlesub, 
                           nextpoints=nextpoints, 
                           info=info, ## used only if (smoothingOK)
-                          optrPar=optr$par)
-      SEMdiagnosticPlot(Krigobj,MAX=MAX,"Raw profiles",optr) ## as the title says
+                          optrPar=optr$par))
+      try(SEMdiagnosticPlot(Krigobj,MAX=MAX,"Raw profiles",optr)) ## as the title says
       ## it would be nice to have contour lines on a SEMdiagnosticPlot2D -> spaMMplot2D but this requires a grid of values+ smoothing as in spaMM.filled.contour   
-    } else { SEMdiagnosticPlot(Krigobj,MAX=MAX, titlemain=titlemain, optr) }
+    } else { 
+      verif <- try(SEMdiagnosticPlot(Krigobj,MAX=MAX, titlemain=titlemain, optr)) 
+      if (inherits(verif,"try-error")) {
+        message(paste("Diagnostic plot could not be displayed; reason:",attr(verif,"condition")$message))
+      }
+    }
   } 
 
   pargrid <- sampleGridFromLowUp(LowUp,n=init.corrHLfit$nSmoothed) ## n may be NULL
@@ -171,8 +176,10 @@ iterateSEMSmooth <- function(anyHLCor_obj_args, ## contains $processed
     if (interactive()) write_diagnostics(Krigobj=Krigobj,comment=comment)
     continue <- (it<3L || predVar > min(precision,prevPredVars[it])) 
   } ## end 'while' loop
-  cat("\n") 
-  if (interactive()) plot_diagnostics(info=NULL)
+  if (interactive()) {
+    cat("\n") 
+    plot_diagnostics(info=NULL)
+  }
   attr(optr$value,"predVar") <- predVar
   return(optr)
 }

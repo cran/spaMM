@@ -9,12 +9,20 @@ Rcpp_pMVN <- function(L, limits, ismax, rand_seq, nrep) {
     .Call('spaMM_Rcpp_pMVN', PACKAGE = 'spaMM', L, limits, ismax, rand_seq, nrep)
 }
 
-lmwithQ <- function(XX, yy) {
-    .Call('spaMM_lmwithQ', PACKAGE = 'spaMM', XX, yy)
+Rcpp_gibbs_iter <- function(fix, y, lambda, n_u_h, randbGivenObs, ZAisI, eps, CondNorm, ZA, forV, LHSCorrblob, condL) {
+    .Call('spaMM_Rcpp_gibbs_iter', PACKAGE = 'spaMM', fix, y, lambda, n_u_h, randbGivenObs, ZAisI, eps, CondNorm, ZA, forV, LHSCorrblob, condL)
 }
 
-lmwithSparseQ <- function(XX, yy) {
-    .Call('spaMM_lmwithSparseQ', PACKAGE = 'spaMM', XX, yy)
+Rcpp_gibbs_debug <- function(fix, y, decomp, estimCARrho, lambda, n_u_h, randbGivenObs, ZAisI, eps, CondNorm, ZA, forV, LHSCorrblob, condL) {
+    .Call('spaMM_Rcpp_gibbs_debug', PACKAGE = 'spaMM', fix, y, decomp, estimCARrho, lambda, n_u_h, randbGivenObs, ZAisI, eps, CondNorm, ZA, forV, LHSCorrblob, condL)
+}
+
+Rcpp_gibbs <- function(ngibbs, gibbsSample, estimCARrho, decomp, fix, y, lambda, n_u_h, ZAisI, eps, CondNorm, ZA, forV, LHSCorrblob, condL) {
+    .Call('spaMM_Rcpp_gibbs', PACKAGE = 'spaMM', ngibbs, gibbsSample, estimCARrho, decomp, fix, y, lambda, n_u_h, ZAisI, eps, CondNorm, ZA, forV, LHSCorrblob, condL)
+}
+
+lmwithQ <- function(XX, yy) {
+    .Call('spaMM_lmwithQ', PACKAGE = 'spaMM', XX, yy)
 }
 
 leverages <- function(XX) {
@@ -29,10 +37,6 @@ Rcpp_QR <- function(XX) {
     .Call('spaMM_Rcpp_QR', PACKAGE = 'spaMM', XX)
 }
 
-Rcpp_sparseQR <- function(XX) {
-    .Call('spaMM_Rcpp_sparseQR', PACKAGE = 'spaMM', XX)
-}
-
 sweepZ1W <- function(ZZ, WW) {
     .Call('spaMM_sweepZ1W', PACKAGE = 'spaMM', ZZ, WW)
 }
@@ -43,6 +47,14 @@ ZWZt <- function(ZZ, WW) {
 
 ZtWZ <- function(ZZ, WW) {
     .Call('spaMM_ZtWZ', PACKAGE = 'spaMM', ZZ, WW)
+}
+
+Rcpp_Sig <- function(ZZ, WA, WB) {
+    .Call('spaMM_Rcpp_Sig', PACKAGE = 'spaMM', ZZ, WA, WB)
+}
+
+Rcpp_d2hdv2 <- function(ZZ, WA, WB) {
+    .Call('spaMM_Rcpp_d2hdv2', PACKAGE = 'spaMM', ZZ, WA, WB)
 }
 
 RcppChol <- function(AA) {
@@ -75,5 +87,9 @@ selfAdjointSolverCpp <- function(AA) {
 
 LevPerturbedQCpp <- function(perturbedwAugX, pforREML, RpRu, RpRd, lamOverLam0, phiOverPhi0) {
     .Call('spaMM_LevPerturbedQCpp', PACKAGE = 'spaMM', perturbedwAugX, pforREML, RpRu, RpRd, lamOverLam0, phiOverPhi0)
+}
+
+zrnorm <- function(n) {
+    .Call('spaMM_zrnorm', PACKAGE = 'spaMM', n)
 }
 

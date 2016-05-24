@@ -1,8 +1,17 @@
 
+Sig_times_b <- function(Sig0,ZAL,w.ranef,w.resid,b) { # Sig= [Sig0=Z.(1/w.ranef).Z^t+1/w.resid]
+  if (is.null(Sig0)) { ## w.ranef is variable
+    v1 <- ZAL %*% (t(t(b) %*% ZAL)/w.ranef)
+  } else {
+    v1 <- Sig0 %*% b
+  }
+  v2 <- b/w.resid
+  return(as.numeric(v1+v2))
+}
 
 
 auglinmodfit <- function(TT,ZAL,lambda_est,wranefblob,d2hdv2,w.resid,beta_eta,
-                         maxit.mean,eta,u_h,v_h,Sig,
+                         maxit.mean,eta,u_h,v_h,
                          control.HLfit,
                          X.pv,off,
                          etaFix, ## FR->FR still uses $v_h, put perhaps reconsider
@@ -42,7 +51,7 @@ auglinmodfit <- function(TT,ZAL,lambda_est,wranefblob,d2hdv2,w.resid,beta_eta,
     ## if LMM (ie resp gaussian, ranef gaussian), all coef<x> are 0 -> correction is 0 (but this fn must not have been called)
     ## if (gaussian, not gaussian) d3 nonzero
     ## if (non gaussian, gaussian), d3 zero (!maybe not for all possible cases) but d1,d2 nonzero 
-    vecdi1 <- NA; vecdi2 <- NA; vecdi3 <-NA
+    vecdi1 <- vecdi2 <- vecdi3 <-NA
     if (all(dlogWran_dv_h==0L)) vecdi3 <- 0
     # coef1 is the factor of P_ii in d1
     # coef2 is the factor between P_jj and K1 in d2
@@ -76,25 +85,17 @@ auglinmodfit <- function(TT,ZAL,lambda_est,wranefblob,d2hdv2,w.resid,beta_eta,
         warning(mess)
         K2 <- ginv(d2hdv2) %*% tZAL            
       } ## so far we have computed (d2hdv2)^{-1}.t(Z)= -(TWT)^{-1}.t(Z)
-      if (is.na(vecdi2)) {
-        # K1 is K1 in LeeL appendix p. 4 and is A=-ZD in MolasL p. 3307-8 
-        K1 <- ZAL %id*id% K2
-        vecdi2 <- as.numeric( (Pdiagn * coef2) %*% K1)
+      if (is.na(vecdi2)) { # ( ZAL %*% K2 ) is K1 in LeeL appendix p. 4 and is A=-ZD in MolasL p. 3307-8 
+        vecdi2 <- as.numeric( ((Pdiagn * coef2) %*id% ZAL) %*% K2)
       }
       # coef3 =(1/Wran)(dWran/dv_h), the thing between P and K2 in the d3 coef. See LeeL12 appendix
       ## This (dlogWran_dv_h) was computed when w.ranef was computed
-      if (is.na(vecdi3)) { 
-        #vecdi3<-rep(0,nobs)
-        #for (i in 1:nobs) vecdi3[i] <- sum( Pdiag[nobs+seqn_u_h] * dlogWran_dv_h[seqn_u_h] * K2[seqn_u_h , i] ) ## d3 reste nul pour gaussian ranef
+      if (is.na(vecdi3)) {  ## d3 reste nul pour gaussian ranef
         vecdi3 <- as.numeric( (Pdiag[nobs+seqn_u_h] * dlogWran_dv_h[seqn_u_h]) %*% K2)
       }
       vecdi <- vecdi1+vecdi2+vecdi3 ## k_i in MolasL; le d_i de LeeL app. p. 4
       sscaled <- vecdi /2  ## sscaled := detadmu s_i= detadmu d*dmudeta/2 =d/2 in LeeL12; or dz1 = detadmu (y*-y) = detadmu m_i=0.5 k_i dmudeta = 0.5 k_i in MolasL 
-    } else sscaled <-0
-    # if (any(is.infinite(sscaled))) { ## debugging code
-    #   mess <- pastefrom("infinite 'sscaled'.",prefix="(!) From ") 
-    #   stop(mess)
-    # }
+    } else sscaled <- 0
     return(sscaled)
   }
   
@@ -107,16 +108,8 @@ auglinmodfit <- function(TT,ZAL,lambda_est,wranefblob,d2hdv2,w.resid,beta_eta,
         qrwAugX <- Matrix::qr(wAugX) ## 
         betaV <- Matrix::qr.coef(qrwAugX,wAugz)
       } else if (.spaMM.data$options$processedQRmethod == "lmwithSparseQ") {
-        message("lmwithSparseQ called -- should be devel code only") ## protection...
-        betaVQ <- lmwithSparseQ(wAugX,wAugz) ## tragically slow,; cf system.time's in commented code below
-        betaV <- betaVQ$coef
-        if (FALSE) { ## confinement de code de debugage 
-          qrwAugX <- Matrix::qr(wAugX)
-          essai <- Matrix::qr.Q(qrwAugX)
-          #print(max(abs(diag(tcrossprod(essai))-diag(tcrossprod(levQ)))))
-          essai <- Matrix::qr.coef(qrwAugX,wAugz)
-          print(max(abs(essai-betaV)))
-        }
+        stop("forbidden processedQRmethod") ## protection...
+        ## here a block of code was removed on 21/05/2016 (dependence on Eigen::SparseMatrix -> win-builder failing)
       } else if (.spaMM.data$options$processedQRmethod == "lmwithQ_sparseZAL") {     
         if (.spaMM.data$options$USElmwithQ) {## FALSE bc lmwithQ is tragically slow
           betaVQ <- lmwithQ(as.matrix(wAugX),wAugz) 
@@ -164,13 +157,17 @@ auglinmodfit <- function(TT,ZAL,lambda_est,wranefblob,d2hdv2,w.resid,beta_eta,
       if (is.null(etaFix$v_h)) betaV[(pforpv+1L):length(betaV)] <- v_h ## to be copied in old_betaV, in valid space
       ## but conv_dbetaV unchanged for assessing convergence
     }
-    eta <- off + drop(X.pv %*% beta_eta) + drop(ZAL %id*% v_h) ## shoud use as.matrix before calling "+"
     ## update functions u_h,v_h
     if (!processed$GLMMbool) {
       wranefblob <- updateW_ranefS(cum_n_u_h,rand.families,lambda_est,u_h,v_h)
       w.ranef <- wranefblob$w.ranef
       dvdu <- wranefblob$dvdu
     } ## else nothing changed since lambda_est not changed
+    eta <- off + drop(X.pv %*% beta_eta) + drop(ZAL %id*% v_h) ## shoud use as.matrix before calling "+"
+    #if (family$link=="log") {eta <- pmin(eta,30)} ## cf similar code in muetafn
+    #if (family$link=="inverse" && family$family=="Gamma") {
+    #  eta <- pmax(eta,sqrt(.Machine$double.eps)) ## eta must be > 0
+    #}
     muetablob <- muetafn(eta=eta,BinomialDen=BinomialDen,processed=processed) 
     mu <- muetablob$mu ## if Bin/Pois, O(n): facteur BinomialDen dans la transfo mu -> eta ## nonstandard mu des COUNTS
     ## update functions of v_h -> blob
@@ -244,9 +241,7 @@ auglinmodfit <- function(TT,ZAL,lambda_est,wranefblob,d2hdv2,w.resid,beta_eta,
   w.ranef <- wranefblob$w.ranef 
   dlogWran_dv_h <- wranefblob$dlogWran_dv_h 
   dvdu <- wranefblob$dvdu
-  if (processed$GLMMbool) { ## w.ranef will remain = to 1/lambda, constant in this procedure
-    Sig0 <- Sigwrapper(as_matrix_ZAL,1/w.ranef,0,ZALtZAL=ZALtZAL)
-  }
+  Sig0 <- NULL
   for (innerj in 1:maxit.mean) {
     ## breaks when conv.threshold is reached
     ##################
@@ -309,8 +304,9 @@ auglinmodfit <- function(TT,ZAL,lambda_est,wranefblob,d2hdv2,w.resid,beta_eta,
       } else { ## we already have a qr, we use it
         a <- solveWrap.vector(attr(d2hdv2,"qr"), -aa,stop.on.error=stop.on.error)
       }    
-      a <- Sig %*% ( w.resid * (ZAL %id*% a) ) ## a(0) in LeeL12
-      a <- as.numeric(a) ## incase it became a Matrix, which oddly does not fit with z1-a below...
+      a <- Sig_times_b(Sig0=NULL, ZAL=ZAL, w.ranef=w.ranef,w.resid=w.resid,b= w.resid * (ZAL %id*% a) )
+      # a <- Sig %*% ( w.resid * (ZAL %id*% a) ) ## a(0) in LeeL12
+      # a <- as.numeric(a) ## incase it became a _M_atrix, which oddly does not fit with z1-a below...
     }         
     ## and the 'something' for a(1) is computed as follows
     if (HL[1]>0 && (! LMMbool )) { #pforpv>0 && removed since sscaled used for u_h estimation too...
@@ -327,10 +323,12 @@ auglinmodfit <- function(TT,ZAL,lambda_est,wranefblob,d2hdv2,w.resid,beta_eta,
     #     } else 
     if (betaFirst)  { ### LeeL12 top p. 6 Appendix (code non optimise, useful for checking other algorithms) 
       ## c'est bien equivalent au calcul de Augz en fonction de sscaled essaye ci dessous selon LeeL12
+      Sig <- Sigwrapper(as_matrix_ZAL,1/w.ranef,1/w.ranef,ZALtZAL=ZALtZAL)
       tXinvS <- calc_tXinvS(Sig,X.pv,stop.on.error) ## note dependence v_h -> eta -> Sig...
       if (inherits(tXinvS,"try-error")) singularSigmaMessagesStop(lambda_est=lambda_est,phi_est=phi_est,corrPars=corrPars)
       ## from a(0) to a(1) LeeL12 p. 963 col 1 l 2
-      a <- as.numeric(a + Sig%*% (w.resid * sscaled)) ## in case it became a Matrix...
+      a <- a + Sig_times_b(Sig0=NULL, ZAL=ZAL, w.ranef=w.ranef, w.resid=w.resid,  b= (w.resid * sscaled) )
+      # a <- as.numeric(a + Sig%*% (w.resid * sscaled)) ## in case it became a Matrix...
       rhs <-  tXinvS %*% (z1-a) ## already correct in 1.0
       qr.XtinvSX <- QRwrap(tXinvS%*%X.pv) ## looks contrived but avoids computing sqrt(Sig) (! not diag !); and XinvS%*%X.pv is small
       beta_eta <- solveWrap.vector( qr.XtinvSX , rhs ,stop.on.error=stop.on.error) 
@@ -387,13 +385,6 @@ auglinmodfit <- function(TT,ZAL,lambda_est,wranefblob,d2hdv2,w.resid,beta_eta,
           dmudeta <- muetablob$dmudeta
           ## update functions of v_h -> blob
           w.resid <- levMblob$w.resid
-          #### update fns of v_h -> blob -> w.resid
-          if (pforpv>0) {
-            if (processed$GLMMbool) {
-              Sig <- Sig0
-              diag(Sig) <- diag(Sig) + 1/w.resid 
-            } else Sig <- Sigwrapper(as_matrix_ZAL,1/w.ranef,1/w.resid,ZALtZAL=ZALtZAL) ## update v_h -> blob$GLMweights -> w.resid -> Sig -> next beta estimate
-          }
           d2hdv2 <- levMblob$d2hdv2
           ## cf Madsen-Nielsen-Tingleff again, and as in levmar library by Lourakis
           damping <- damping * max(1/3,1-(2*levMblob$gainratio-1)^3)  
@@ -458,12 +449,6 @@ auglinmodfit <- function(TT,ZAL,lambda_est,wranefblob,d2hdv2,w.resid,beta_eta,
         ## update functions of v_h -> blob
         w.resid <- calc.w.resid(muetablob$GLMweights,phi_est) ## 'weinu', must be O(n) in all cases
         #### update fns of v_h -> blob -> w.resid
-        if (pforpv>0) {
-          if (processed$GLMMbool) {
-            Sig <- Sig0
-            diag(Sig) <- diag(Sig) + 1/w.resid 
-          } else Sig <- Sigwrapper(as_matrix_ZAL,1/w.ranef,1/w.resid,ZALtZAL=ZALtZAL) ## update v_h -> blob$GLMweights -> w.resid -> Sig -> next beta estimate
-        }
         d2hdv2 <- calcD2hDv2(as_matrix_ZAL,w.resid,w.ranef) ## update d2hdv2= - t(ZAL) %*% diag(w.resid) %*% ZAL - diag(w.ranef)
       } ## endif LevenbergM else...
       # print(paste(innerj," ",paste(beta_eta,collapse=" ")),quote=F)
@@ -522,7 +507,7 @@ auglinmodfit <- function(TT,ZAL,lambda_est,wranefblob,d2hdv2,w.resid,beta_eta,
   }
   ### end levQ stuff  
   return(list(beta_eta=beta_eta,v_h=v_h,u_h=u_h,eta=eta,wranefblob=wranefblob,
-              w.resid=w.resid,Sig=Sig,d2hdv2=d2hdv2,wAugX=wAugX,tXinvS=tXinvS,
+              w.resid=w.resid,d2hdv2=d2hdv2,wAugX=wAugX,tXinvS=tXinvS,
               sqrt.ww=sqrt.ww,innerj=innerj,levQ=levQ,qrwAugX=qrwAugX,muetablob=muetablob)
   )
 } ## end auglinmodfit

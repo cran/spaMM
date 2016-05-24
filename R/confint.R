@@ -11,8 +11,8 @@ confint.HLfit <- function(object,parm,level=0.95,verbose=TRUE,...) {
     parm <- names(object$fixef)[parmcol]
     attr(parm,"col") <- parmcol
   }
-  llc <- as.list(getCallHL(object))
-  if (llc[[1]]=="corrHLfit") {
+  llc <- as.list(getCall(object))
+  if (paste(llc[[1]]) %in% c("corrHLfit","fitme")) {
     lc <- as.list(attr(object,"HLCorcall"))
   } else lc <- llc
   HL <- object$HL
@@ -25,13 +25,17 @@ confint.HLfit <- function(object,parm,level=0.95,verbose=TRUE,...) {
   lc$control.HLfit$intervalInfo$MLparm <- object$fixef[parm]
   lc$control.HLfit$intervalInfo$parm <- parm
   lc$control.HLfit$LevenbergM <- FALSE ## simple... but read only in preprocess which will usually not be run...
-  if (! is.null(lc$processed)) lc$processed$LevenbergM <- FALSE ## same idea... (10/2015)
+  if (! is.null(lc$processed)) setProcessed(lc$processed,"LevenbergM","FALSE") ## same idea... (10/2015)
   beta_se <- sqrt(diag(object$beta_cov))
   lc$control.HLfit$intervalInfo$asympto_abs_Dparm <- asympto_abs_Dparm <- znorm* beta_se
-  if (llc[[1]]=="corrHLfit") {
+  if (paste(llc[[1]]) %in% c("corrHLfit","fitme")) {
     olc <- lc
     ## good starting values are important... important to use canonizeRanPars as in HLCor
-    trTemplate <- attr(object,"optimInfo")$`optim.pars`
+    optimInfo <- attr(object,"optimInfo")
+    LUarglist <- optimInfo$LUarglist
+    trTemplate <- optimInfo$`optim.pars` ## optr$value in transformed scale 
+    attr(trTemplate,"RHOMAX") <- LUarglist$RHOMAX ## an ugly bit of coding, but canonizeRanpars()  expects them 
+    attr(trTemplate,"NUMAX") <- LUarglist$NUMAX
     objfn <- function(ranefParsVec) { 
       ## bc locoptim expects a fn with first arg ranefParsVec
       ## ca serait mieux de pas avoir de contrainte la dessus et de pvr nommer l'arg trParsVec
@@ -44,17 +48,10 @@ confint.HLfit <- function(object,parm,level=0.95,verbose=TRUE,...) {
       return(resu) ## return value to be optimized is a parameter value, not a likelihood
     }
     canonTemplate <- canonizeRanPars(ranPars=trTemplate,
-                                     corr.model=lc$`corr.model`,
-                                     checkComplete=FALSE
-    )$ranPars
-    LUarglist <- list(canon.init=canonTemplate,
-                      lower=attr(object,"optimInfo")$`init.optim`,
-                      upper=attr(object,"optimInfo")$`init.optim`,
-                      user.lower=attr(object,"optimInfo")$`user.lower`,
-                      user.upper=attr(object,"optimInfo")$`user.upper`, 
-                      corr.model=lc$`corr.model`,nbUnique=attr(lc$distMatrix,"Size"),
-                      ranFix=llc$ranFix,
-                      optim.scale="transformed") ## FR->FR transformed is a guess
+                                     corr.model=LUarglist$corr.model, #corr.model=lc$`corr.model`,
+                                     checkComplete=FALSE)
+    canonTemplate <- canonTemplate$ranPars
+    LUarglist$canon.init <- canonTemplate
     LowUp <- do.call(makeLowerUpper,LUarglist)
     loclist <- list(init.optim=trTemplate,LowUp=LowUp,objfn=objfn,anyObjfnCall.args=list(),optimizers.args=list())
   }
@@ -63,7 +60,7 @@ confint.HLfit <- function(object,parm,level=0.95,verbose=TRUE,...) {
   warnori <- options(warn=-1)
   while(fac < 1e6) {
     lc$control.HLfit$intervalInfo$init <- (object$fixef-asympto_abs_Dparm/fac)[parm]
-    if (llc[[1]]=="corrHLfit") {
+    if (paste(llc[[1]]) %in% c("corrHLfit","fitme")) {
       olc <- lc
       # The objective function 'objfn' returns the confint bound given the corr pars. Thus locptim maximizes the confint bound over the the corr pars
       optr <- do.call(locoptim,loclist) 
@@ -86,7 +83,7 @@ confint.HLfit <- function(object,parm,level=0.95,verbose=TRUE,...) {
   warnori <- options(warn=-1)
   while(fac < 1e6) {
     lc$control.HLfit$intervalInfo$init <- (object$fixef+asympto_abs_Dparm/fac)[parm]
-    if (llc[[1]]=="corrHLfit") {
+    if (paste(llc[[1]]) %in% c("corrHLfit","fitme")) {
       olc <- lc
       loclist$maximize <- TRUE ## 
       # The objective function returns the confint bound given the corr pars. Thus locptim maximizes the confint bound over the the corr pars

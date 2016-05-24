@@ -51,7 +51,7 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL, sizes=ob
     # rebuild linear predictor in three steps eta= X . beta + off + ZAL . RANDOM v
     # hence do not use object$eta which contains PREDICTED V
     nobs <- length(object$y)
-    if (ncol(object$`X.pv`)>0) {eta <- object$`X.pv` %*% object$fixef} else {eta <- rep(0,nobs)}
+    if (ncol(object$`X.pv`)>0) {eta <- drop(object$`X.pv` %*% object$fixef) } else {eta <- rep(0,nobs)}
     ##
     eta <- eta + attr(object$predictor,"offsetObj")$total ## a PROCESSED predictor or resid.predictor always has a non-NULL offset term  
   } else {
@@ -108,8 +108,8 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL, sizes=ob
     }) ## one multi-rand.family simulation
     newV <- do.call(rbind,newV) ## each column a simulation
     if (nsim==1L) {
-      eta <- eta + ZAL %id*% newV 
-    } else eta <-  matrix(rep(eta,nsim),ncol=nsim) + ZAL %id*% newV ## nobs rows, nsim col
+      eta <- eta + drop(ZAL %id*% newV) 
+    } else eta <-  matrix(rep(eta,nsim),ncol=nsim) + as.matrix(ZAL %id*% newV) ## nobs rows, nsim col
   }
   mu <- object$family$linkinv(eta) ## ! freqs for binomial, counts for poisson
   ## 

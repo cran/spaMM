@@ -11,8 +11,10 @@ currently differing only in their fixed effects. Parametric bootstrap p-values c
 This function differ from \code{LRT} in its arguments (model fits for \code{LRT}, but all arguments required to fit the models for \code{fixedLRT}), and in the format of its return value. 
 }
 \usage{
-fixedLRT(null.formula,formula,data,HLmethod,REMLformula=NULL,boot.repl=0,
-          control=list(),control.boot=list(),...)  
+fixedLRT(null.formula, formula, data, 
+         method, HLmethod = method, REMLformula=NULL, 
+         boot.repl=0, control=list(),control.boot=list(), 
+         fittingFunction = "corrHLfit", ...)  
 }
 \arguments{
   \item{null.formula}{
@@ -22,10 +24,10 @@ Either a \code{formula} (as in \code{glm}) or a \code{predictor} (see \code{Pred
 Either a \code{formula} or a \code{predictor} for the full model.
 }
   \item{data}{A data frame containing the variables in the model.}
-  \item{HLmethod}{
+  \item{method}{
    A method to fit the full and null models. 
-   See the identically-named \code{\link{HLfit}} argument for background information about such methods. 
-   The two most meaningful values of \code{HLmethod} in \code{fixedLRT} calls are: 
+   See \code{\link{HLfit}}'s \code{HLmethod} argument for background information about such methods. 
+   The two most meaningful values of \code{method} in \code{fixedLRT} calls are: 
    \code{'ML'} for an LRT based on ML fits (generally recommended); and
    \code{'PQL/L'} for an LRT based on PQL/L fits (recommended for spatial binary data). 
    
@@ -34,6 +36,9 @@ Either a \code{formula} or a \code{predictor} for the full model.
    same conditional (or \dQuote{restricted}) likelihood of residuals for estimating dispersion parameters \eqn{\lambda} and \eqn{\phi} (see \code{REMLformula} argument). 
    Further, REML will not be effective on a given dispersion parameter if a non-trivial init.corrHLfit value is provided for this parameter.  
 }
+ \item{HLmethod}{
+   Kept for back-compatibility. Same as \code{method}, but wll work only for \code{fittingFunction=corrHLfit}.
+ }
   \item{REMLformula}{
   a formula specifying the fixed effects which design matrix is used in the REML correction 
   for the estimation of dispersion parameters, if these are estimated by REML. 
@@ -48,6 +53,7 @@ Either a \code{formula} or a \code{predictor} for the full model.
   \item{control.boot}{
   Same as \code{control}, but for the fits of the bootstrap replicates. Again, the option \code{control.boot=list(prefits=TRUE)} may yield a small improvement in the fits, at the expense of more computation time.   
 }
+\item{fittingFunction}{The function used to fit each model: either \code{corrHLfit} or \code{fitme}.}
   \item{\dots}{
   Further arguments passed to or from other methods; in particular, additional arguments passed to \code{corrHLfit}, including mandatory ones such as \code{data} and those ultimately passed to \code{designL.from.Corr}. With respect to the latter, note that \code{try.chol} affects the simulation of samples for the parametric bootstrap, and although ultimate differences in performance may be small, \code{try.chol=FALSE} may be slightly better.
 }

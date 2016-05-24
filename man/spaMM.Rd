@@ -12,7 +12,7 @@
 
 \details{
 
-  The standard (G)LMM response families \code{gaussian}, \code{binomial}, \code{poisson}, and \code{Gamma} are handled, as well as \code{\link{multinomial}} response (with some constraints) and negative binomial response (see Examples). GLMMs and HGLMs are fit via Laplace approximations for (1) the marginal likelihood with respect to random effects and (2) the restricted likelihood (as in REML), i.e the likelihood of random effect parameters given the fixed effect estimates. 
+  The standard (G)LMM response families \code{gaussian}, \code{binomial}, \code{poisson}, and \code{Gamma} are handled, as well as \code{\link{multinomial}} response (with some constraints), negative binomial (see \code{\link{negbin}}) and Conway-Maxwell-Poisson response (see \code{\link{COMPoisson}}). GLMMs and HGLMs are fit via Laplace approximations for (1) the marginal likelihood with respect to random effects and (2) the restricted likelihood (as in REML), i.e the likelihood of random effect parameters given the fixed effect estimates. 
 
   The package fits models including several nested or crossed random effects, only one of which can be a spatial random effect. The spaMM code has not been optimized for speed in non-spatial models. It fits random effects following either a Matérn correlation model or an adjacency matrix model. See \code{\link{adjacency}} for details about the latter. 
   

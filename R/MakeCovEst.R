@@ -16,12 +16,12 @@ makeCovEst1 <- function(u_h,ZAlist,cum_n_u_h,prev_LMatrices,
   Xi_cols <- attr(ZAlist,"Xi_cols")
   Lu <- u_h
   loc_lambda_est <- numeric(length(u_h))
-  for (rt in seq_len(length(ZAlist))) {
+  for (rt in seq_len(nrand)) {
     ## estimate correlation matrix 
     Xi_ncol <- Xi_cols[rt]
-    blocksize <- ncol(ZAlist[[rt]])/Xi_ncol 
     ## cov mat of u_h if not fixed by user ## standard REML method 
     if ( Xi_ncol>1 && ! userLfixeds[rt]) {
+      blocksize <- ncol(ZAlist[[rt]])/Xi_ncol 
       COVpredUnderHuncorr <- matrix(0,ncol=Xi_ncol,nrow=Xi_ncol) ## var on diag, corr outside diag
       ##prevL <- attr(prev_LMatrices[[rt]],"Lcompact")
       compactLv <- matrix(0,nrow=Xi_ncol,ncol=Xi_ncol)
@@ -39,7 +39,7 @@ makeCovEst1 <- function(u_h,ZAlist,cum_n_u_h,prev_LMatrices,
             diag(longLv[urange2,urange1]) <- Lcompact[jt,it]
           }
         }
-        Matrix(longLv) ## Matrix: 02/2106
+        Matrix(longLv) ## Matrix: 02/2016
       } ## end def makelong
       ##
       u.range <- (cum_n_u_h[rt]+1L):(cum_n_u_h[rt+1L])
@@ -141,7 +141,9 @@ makeCovEst1 <- function(u_h,ZAlist,cum_n_u_h,prev_LMatrices,
     } else next_LMatrix <- NULL
     next_LMatrices[[rt]] <- next_LMatrix
   } ## loop on rt = ranefs
-  return(list(next_LMatrices=next_LMatrices,next_lambda_est=loc_lambda_est,
+  return(list(next_LMatrices=next_LMatrices, 
+              ## : a list of nrand elements, each NULL except for random slope terms
+              next_lambda_est=loc_lambda_est,
               latest.unique.cov=optr$par[2]))
 } ## end def MakeCovEst1
 
@@ -159,9 +161,9 @@ makeCovEst2 <- function(u_h,ZAlist,cum_n_u_h,prev_LMatrices,
   for (rt in seq_len(length(ZAlist))) {
     ## estimate correlation matrix 
     Xi_ncol <- Xi_cols[rt]
-    blocksize <- ncol(ZAlist[[rt]])/Xi_ncol 
     ## cov mat of u_h if not fixed by user ## standard REML method 
     if ( Xi_ncol>1 && ! userLfixeds[rt]) {
+      blocksize <- ncol(ZAlist[[rt]])/Xi_ncol 
       COVpredUnderHuncorr <- matrix(0,ncol=Xi_ncol,nrow=Xi_ncol) ## var on diag, corr outside diag
       compactLv <- matrix(0,nrow=Xi_ncol,ncol=Xi_ncol)
       lowerbloc <- lower.tri(compactLv,diag=TRUE) ## a matrix of T/F !

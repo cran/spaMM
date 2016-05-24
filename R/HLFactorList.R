@@ -8,7 +8,7 @@ spMMFactorList <- function (formula, mf, rmInt, drop) {
   names(bars) <- unlist(lapply(bars, function(x) DEPARSE(x[[3]])))
   #######
   locfn <- function(x) {
-    ## le bidule suivant evalue le bout de formule x[[3]] et en fait un facteur. Useless for spatial effects like longitude + latitude
+    ## le bidule suivant evalue le bout de formule x[[3]] et en fait un facteur. 
     ## but fac may be any vector returned by the evaluation of x[[3]] in the envir mf
     rhs <- x[[3]]
     txt <- DEPARSE(rhs) ## should be the rhs of (|) cleanly converted to a string by terms(formula,data) in HLframes
@@ -19,11 +19,29 @@ spMMFactorList <- function (formula, mf, rmInt, drop) {
       txt <- DEPARSE(rhs)
     }
     #    if (length(grep("\\+",txt))>0) { ## coordinates is a vector with a single string; grep is 1 if  + was found in this single string and numeric(0) otherwise
-    if (! is.null(attr(x,"type"))){ ## Any term with a 'spatial' keyword (incl. corrMatrix); cf comment in last case
-      ## note that later ZALlist has an attr(attr(.,"ranefs"),"type") where non-spatial types are NOT null
-      ## evaluating expression(ULI(...)) serves as a way to identify unique combinations of its arguments
-      aslocator <- parse(text=paste("ULI(",gsub("\\+", "\\,", txt),")")) ## handles for (| ...+...) 
-      ff <- as.factor(eval(expr=aslocator,envir=mf))
+    if (! is.null(raneftype <- attr(x,"type"))){ ## Any term with a 'spatial' keyword (incl. corrMatrix); cf comment in last case
+      if (raneftype=="ar1") {
+        obslevels <- eval(expr=parse(text=paste(txt)),envir=mf) ## keeps original levels, contrary to ULI
+        levelrange <- range(obslevels)
+        ff <- factor(obslevels,levels=levelrange[1L]:levelrange[2L])
+      } else if (raneftype=="corrMatrix") {
+        splt <- strsplit(txt,c("%in%|\\+| "))[[1L]]
+        splt <- splt[splt!=""]
+        if (length(splt)==1L && splt %in% names(mf)) { 
+          ff <- as.factor(mf[[splt]]) 
+          attr(ff,"generator") <- "as.factor"
+        } else {
+          aslocator <- parse(text=paste("ULI(",gsub("\\+", "\\,", txt),")")) ## handles for (| ...+...) 
+          ff <- as.factor(eval(expr=aslocator,envir=mf))
+          attr(ff,"generator") <- "ULI"
+        }   
+      } else {
+        ## note that later ZALlist has an attr(attr(.,"ranefs"),"type") where non-spatial types are NOT null
+        ## evaluating expression(ULI(...)) serves as a way to identify unique combinations of its arguments
+        aslocator <- parse(text=paste("ULI(",gsub("\\+", "\\,", txt),")")) ## handles for (| ...+...) 
+        ff <- as.factor(eval(expr=aslocator,envir=mf))
+        ## FR->FR the general code has thesame final effect ??  
+      }
     } else if (length(grep("c\\(\\w*\\)",txt))>0) { ## c(...,...) was used (actually detects ...c(...)....) 
       aslocator <-  parse(text=gsub("c\\(", "ULI(", txt)) ## slow pcq ULI() est slow
       ff <- as.factor(eval(expr=aslocator,envir=mf))
@@ -58,7 +76,9 @@ spMMFactorList <- function (formula, mf, rmInt, drop) {
     }
     ## *******back to code common to all cases********. 
     ## This is building Z(A) not Z(A)L hence reasonably sparse even in spatial models
-    im <- as(ff, "sparseMatrix") ##FR->FR slow step; but creates S4 objects with required slots
+    if (identical(raneftype,"ar1")) {
+      im <- sparseMatrix(i=as.integer(ff),j=seq(length(ff)),x=1L) # ~general code except that empty levels are not dropped
+    } else im <- as(ff, "sparseMatrix") ##FR->FR slow step; but creates S4 objects with required slots
     ##(lme4) Could well be that we should rather check earlier .. :
     if (!isTRUE(validObject(im, test = TRUE))) {
       stop("invalid conditioning factor in random effect: ", format(rhs))
@@ -96,17 +116,21 @@ spMMFactorList <- function (formula, mf, rmInt, drop) {
   }
   #######
   fl <- lapply(bars, locfn)
-  termsModels <- c()
   Design <- list(0)
-  Subject <- list(0)
+  ## Subject <- list(0) ## keep this as comment; see below
   namesTerms <- list(0)
-  lambda_Xs <- list(0)
   GrpNames <- names(bars)
+  termsModels <- c() ## FR->FR tempo fix because it's not here that this should be determined
   for (i in 1:length(fl)) {
     termsModels[i] <- "lamScal" ## FR->FR tempo fix because it's not here that this should be determined
     ## indeed for adjacency model namesTerms[[i]] <- nt is only Intercept even though two coeffs will be determined
     ##   but this should not be determined here.
-    Subject[[i]] <- as.factor(fl[[i]]$f) # levels of grouping var for all obs
+    ###################
+    # Subject[[i]] <- as.factor(fl[[i]]$f) # levels of grouping var for all obs ('ff' returned by locfn)
+    ## : Subject was used only for random slope model, where ncol(Design) != nlevels(Subject). I tried to get rid of this.
+    ## see commented use of Subject in preprocess()
+    ###################
+    ## is as.factor necess here ?? check that fl[[i]]$f is already factor in all cases. 
     Zt <- fl[[i]]$Zt
     ## ALL Design[[i]] are (dg)*C*matrix ie a Compressed *C*olumn Storage (CCS) matrix 
     ##  (see http://netlib.org/linalg/html_templates/node92.html#SECTION00931200000000000000)
@@ -119,17 +143,17 @@ spMMFactorList <- function (formula, mf, rmInt, drop) {
       rownames(Design[[i]]) <- colnames(Zt) ## with transposition col/row names
     } else Design[[i]] <- t(Zt) ## 
     nt <- colnames(fl[[i]]$ST) ## length=npar
-    namesTerms[[i]] <- nt ## eg intercept of slope... possibly several variables
-    names(namesTerms)[i] <- GrpNames[i] ## eg intercept of slope... possibly several variables
+    namesTerms[[i]] <- nt ## possibly several variables, eg intercept or slope... 
+    names(namesTerms)[i] <- GrpNames[i] ## the name of the list member namesTerms[i]
   }
-  ## One shoudl not check is.identity -> isDiagonal when 10000 points to predict... (FR->FR: modif def one of these functions ?)
+  ## One should not check is.identity -> isDiagonal when 10000 points to predict... (FR->FR: modif def one of these functions ?)
   for (iMat in seq_len(length(Design))) {
     attr(Design[[iMat]],"nlevels") <- ncol(Design[[iMat]])
     attr(Design[[iMat]],"colnames") <- colnames(Design[[iMat]])
+    attr(Design[[iMat]],"generator") <- attr(fl[[iMat]]$f,"generator") ## ( NULL except for corrMatrix )
   }
-  attr(Design,"Groupings") <- GrpNames
-  ## to each (.|.) corresponds a Grouping (not necess distinct) and an element of namesTerms each identifying one or more terms
-  list(Design = Design, Subject = Subject, namesTerms=namesTerms,termsModels=termsModels)
+  list(Design = Design, #Subject = Subject, 
+       namesTerms=namesTerms,termsModels=termsModels)
 }
 
 getgroups <- function(formlist,data) { ## reduction extreme de nlme:::getGroups.data.frame

@@ -1,10 +1,9 @@
 
 \name{spaMM-internal}
 
-\alias{fitme}
 \alias{fitme_body}
 \alias{calc_maxrange}
-\alias{calc_init_dispPars}
+\alias{calc_inits_dispPars}
 \alias{calc_inits_ARphi}
 \alias{calc_inits_nu}
 \alias{calc_inits_Auto_rho}
@@ -20,6 +19,7 @@
 \alias{auglinmodfit}
 \alias{Bartlett.robust} 
 \alias{Beta} 
+\alias{bloc_lambda}
 \alias{calc_beta_w_cov}
 \alias{calc.dlW_deta}
 \alias{calc.dvdloglamMat}
@@ -36,6 +36,7 @@
 \alias{calcRanefPars}
 \alias{calcTT}
 \alias{calcUniqueGeo}
+\alias{calc_info_crits}
 \alias{calc_invL}
 \alias{calc_invL_coeffs}
 \alias{CBIND}
@@ -48,11 +49,17 @@
 \alias{computeZAXlist} 
 \alias{CondNormfn} 
 \alias{corr.notEQL.lambda}
+\alias{create_get_w_h_coeffs}
+\alias{create_get_beta_w_cov}
+\alias{create_get_invColdoldList}
+\alias{create_get_logdispObject}
+\alias{create_get_info_crits}
+\alias{create_get_init_phi}
 \alias{Dim.corMatern} 
 \alias{eval.update.call}
 \alias{eval.corrEst.args}
+\alias{generateInitLambda}
 \alias{spaMM_Gamma} 
-\alias{getCallHL}
 \alias{getHLfit}
 \alias{get_valid_beta_coefs}
 \alias{HLCor.obj} 
@@ -67,7 +74,6 @@
 \alias{LRT.corrHL} 
 \alias{loglfn.ranU}
 \alias{makenewname}
-\alias{negbin}
 \alias{ULI}
 \alias{Variogram.corMatern} 
 \alias{asStandardFormula} 
@@ -104,6 +110,7 @@
 \alias{generateFileName} 
 \alias{generateName} 
 \alias{generateInitPhi}
+\alias{getCall.HLfit} 
 \alias{getCovariate.corMatern} 
 \alias{getgroups} 
 \alias{getPar}
@@ -125,6 +132,7 @@
 \alias{locatePointinvT}
 \alias{logDet.corMatern} 
 \alias{LogAbsDetWrap}
+\alias{logL_from_SEMsample}
 \alias{loglfn.ranU} 
 \alias{makeCheckGeoMatrices}
 \alias{makeCovEst1} 
@@ -181,6 +189,7 @@
 \alias{setProcessed}
 \alias{setControl}
 \alias{Sigwrapper}
+\alias{Sig_times_b}
 \alias{singularSigmaMessagesStop}
 \alias{slashTerms} 
 \alias{selfAdjointWrapper} 

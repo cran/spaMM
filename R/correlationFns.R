@@ -111,27 +111,26 @@ if (F) {
         stop("designL.from.Corr code should be allowed again to handle blockDiag objects")
         #trychol <- RcppChol.blockDiag(m) ## cf pb RcppEigen / generic
       } else trychol <- RcppChol(m)
-      if (trychol$Status==TRUE) { ## if chol computation successful
-        L <- trychol$L
-        type <- "chol"  
-      } else {
+      if (trychol$Status!=1L) { ## if chol computation unsuccessful
         mreg <- m *(1-1e-8)
         diag(mreg) <- diag(mreg) + 1e-8 
         trychol <- RcppChol(mreg)
-        if (trychol$Status==TRUE) {
-          L <- trychol$L
-          type <- "chol"  
-        } ## else type remains NULL      
       } 
-    } else { ## chol de R
+      if (trychol$Status==1L) {
+        L <- trychol$L
+        type <- "cholL_LLt"  
+      } ## else type remains NULL      
+    } else { ## base::chol
       cholR <- try(chol(m),silent=TRUE) ## dim -> unique geo coordinates
       if (inherits(cholR,"try-error")) { ## attempt at regularization 050213
         mreg <- m *(1-1e-8)
         diag(mreg) <- diag(mreg) + 1e-8 
         cholR <- try(chol(mreg),silent=TRUE) 
-        if ( ! inherits(cholR,"try-error")) type <- "chol"
-      } else type <- "chol"
-      if (!is.null(type)) L<-t(cholR) ## such that L %*% t(L) = the correlation matrix in both cases        
+      }
+      if ( ! inherits(cholR,"try-error")) {
+        L <- t(cholR) ## such that L %*% t(L) = the correlation matrix in both cases        
+        type <- "cholL_LLt"
+      }
     }    
   }
   if ( is.null(type) ) { ## hence if none of the chol algos (nor symSVD input) has been used 
@@ -158,7 +157,6 @@ if (F) {
         if (inherits(SVD,"try-error")) {
           ## typically m is I + a few large elements
           ## Most informative post: http://r.789695.n4.nabble.com/Observations-on-SVD-linpack-errors-and-a-workaround-td837282.html
-          ####################### aide sur le .Rdata :  zut <- as.list(attr(resu,"condition")$call) est un HLCor call
           print("Singular value decomposition failed.") 
           print(" See documentation of the 'SVDfix' argument of 'designL.from.Corr'")
           print("   for ways to handle this.")
@@ -195,7 +193,7 @@ if (F) {
     attr(L,"corr.model") <- symSVD$corr.model
   } else attr(L,"corr.model") <- attr(m,"corr.model")
   ## add the 'sanitized' matrix decomp as attribute of the L matrix
-  if (type != "chol") {
+  if (type != "cholL_LLt") {
     decomp <- list(u=u,d=d)
     if ( ! is.null(symSVD)) decomp$adjd <- symSVD$adjd ## useful for SEM CAR; otherwise may be NULL
     attr(L,type) <- decomp
