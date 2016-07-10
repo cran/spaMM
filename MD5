@@ -1,4 +1,4 @@
-52d269774bea6a4433bd55e6d176527b *DESCRIPTION
+1d82a288a213d0bb329449d6250012db *DESCRIPTION
 880ebedb6d580f12f1f42ed7a5433a5f *NAMESPACE
 aaf22c7f70e1526266dda0b7c1b7399d *R/Beta.R
 2ad5a56c3a46953cbe4ad2d549d2de28 *R/COMPoisson.R
@@ -115,7 +115,7 @@ cef2132985a1db6b4db13b83f1d24486 *man/spaMM.Rd
 35bc87d6cdcf0aa8aaa43f460f5e9312 *man/update.Rd
 bb9a11a0e3ef389c1ce2ce49bcd09ba9 *man/wafers.Rd
 63880c7cc1c8a0be51ae4470b8c4034e *man/welding.Rd
-51c9510c0c83dde8a24540f11d1427cd *src/COMPoisson.cpp
+fe24d26c978ecad1eee85f41d5156565 *src/COMPoisson.cpp
 58f5585a66b25e34f778554d660a06fb *src/Makevars.win
 d9fff2ed470874423e199a06f5b631ce *src/RcppExports.cpp
 96a049519031f6a6d31515a624873ce6 *src/Rcpp_gibbs.cpp

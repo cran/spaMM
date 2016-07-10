@@ -37,7 +37,7 @@ SEXP Rcpp_COMP_Z(int moment,double nu, double lambda, int maxn) {
     std::partial_sum(facs.begin(), facs.end(), cumprodfacs.begin(), multiplies<double>()); 
     (cumprodfacs.back()) *= epsn;
     scaled = std::accumulate(cumprodfacs.begin(), cumprodfacs.end(), double(0));
-    if (isnan(scaled)) {
+    if (ISNAN(scaled)) {
       for(vector<double>::iterator it=facs.begin();it !=facs.end();it++) (*it)=log(*it);
       vector<double> cumsumlogfacs(facs.size());
       std::partial_sum(facs.begin(), facs.end(), cumsumlogfacs.begin());
