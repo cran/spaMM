@@ -3,6 +3,30 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 1.9.16}{
+\subsection{NEW FEATURES}{
+\itemize{
+\item Computation of prediction variance has been reimplemented so that it requires storing smaller matrices than before. Further, some terms required for this computation are computed only when prediction variance is requested, rather than being always returned by HLfit(). This allows some gains in computation time for large data sets. 
+}
+}
+\subsection{USER-LEVEL CHANGES}{
+\itemize{
+\item simulate.HLfit() gets new arguments and prints some information, in anticipation of future developments.
+\item spaMM.colors() gets new argument 'adjustcolor_args' for finer control.
+\item Filled plot functions gets new argument 'plot.title'.
+}
+}
+\subsection{BUGS}{
+\itemize{
+\item spaMM_glm(), which has been designed to 'rescue' stats::glm() when the latter fails, did not rescue it for some Gamma(log) GLMs. This is corrected.
+\item Computation of AIC (and other information criteria) failed in many cases. This is corrected.
+\item confint() did not correctly handle models with several random effects. This is corrected.
+\item fitme() does not fit random-slope models, nor models with offset in the dispersion model, but this was not documented. This is corrected.
+\item C++ code has been fixed for compatibility with recent standards.
+}
+}
+}
+%
 \section{CHANGES UP TO VERSION 1.9.0}{
 \subsection{NEW FEATURES}{
 \itemize{
@@ -24,7 +48,7 @@
 }
 \subsection{BUGS}{
 \itemize{
-\item 'spaMM', as well as 'RcppEigen', have become broken for Windows 32bit. See https://github.com/RcppCore/RcppEigen/issues/34 for details. A suitable compilation flag is now used to overcome this issue.   
+\item 'spaMM', as well as 'RcppEigen', had become broken for Windows 32bit. See https://github.com/RcppCore/RcppEigen/issues/34 for details. A suitable compilation flag is now used to overcome this issue.   
 \item simulate.HLfit() could fail when a design matrix was stored as a _M_atrix. This is corrected.
 }
 }
@@ -40,7 +64,7 @@
 \item The Conway-Maxwell-Poisson family is implemented.
 \item New extractor functions get_fixefVar(), get_predVar(), get_residVar() and get_respVar().
 \item Subsetting the result of a predict() call also subsets its variance attributes, thanks to a new internal 'Extract' method `[.predictions`.
-\item spaMM is protected from disturbing numerical problems of the Gamma()dev.resids() function, thanks to an internal redefinition of the Gamma family.
+\item spaMM is protected from disturbing numerical problems of the Gamma()$dev.resids() function, thanks to an internal redefinition of the Gamma family.
 \item New 'control.glm' argument of HLfit(), to control calls to spaMM_glm() within HLfit(). 
 }
 }

@@ -15,11 +15,11 @@
 */
 
 #include <limits>
-
-#include "R.h" // defines USING_R
-#include "Rmath.h" // bessel fns
 #include <R_ext/Linpack.h>
 #include <R_ext/Applic.h>
+#define R_NO_REMAP
+#include "R.h" // defines USING_R
+#include "Rmath.h" // bessel fns
 
 #define longint int
 

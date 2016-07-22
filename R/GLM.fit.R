@@ -158,11 +158,14 @@ spaMM_glm.fit <- function (x, y, weights = rep(1, nobs),
         ## calculate updated values of eta and mu with the new coef:
         start[fit$pivot] <- fit$coefficients
         eta <- drop(x %*% start)
-        mu <- linkinv(eta <- eta + offset)
+        eta <- eta + offset
+        if (family$link=="log") {eta <- pmin(eta,30)} ## cf similar code in muetafn
+        ## ... otherwise dev can be NaN in a case where get_valid_beta_coefs() is not called
+        mu <- linkinv(eta)
         dev <- suppressWarnings(sum(dev.resids(y, mu, weights)))
         ## check for divergence
         boundary <- FALSE
-        if (!is.finite(dev)) {
+        if (!is.finite(dev)) { ## NaN or Inf
           if (is.null(coefold)) {
             # problems occur when there are restrictions on eta [eg, Gamma(inverse)]
             positive_eta <- (family$family=="Gamma" && family$link %in% c("identity","inverse"))

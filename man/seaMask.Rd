@@ -60,10 +60,10 @@ if (require(maps)){
              plot.title=title(main="Inferred migration propensity of blackcaps",
                                xlab="longitude",ylab="latitude"),
              decorations=quote(points(pred[,coordinates],cex=1,pch="+")),
-             plot.axes={axis(1);axis(2);
+             plot.axes=quote({axis(1);axis(2);
                         polypath(rbind(seaMask,pmasks),border=FALSE,
                                  col="grey", rule="evenodd")
-             })
+             }))
 }
 }
 

@@ -264,7 +264,7 @@ spaMMLRT <- function(null.formula=NULL,formula,
       for (ii in 1:boot.repl) {
         locitError <- 0
         repeat { ## for each ii!
-          newy <- simulate(nullfit) ## cannot simulate all samples in one block since some may not be analyzable  
+          newy <- simulate(nullfit,verbose=FALSE) ## cannot simulate all samples in one block since some may not be analyzable  
           if (cbindTest) {
             simbData[[nposname]] <- newy
             simbData[[nnegname]] <- nullfit$weights - newy
@@ -960,22 +960,25 @@ if (restarts) {
       for (ii in 1:boot.repl) {
         locitError <- 0
         repeat { ## for each ii!
-          newy <- simulate(nullfit) ## cannot simulate all samples in one block since some may not be analyzable  
+          newy <- simulate(nullfit,verbose=FALSE) ## cannot simulate all samples in one block since some may not be analyzable  
           if (tolower(nullfit$family$family)=="binomial") {
-            ## We have different possible cbind(exprL,exprR) arguments, but in all case the predictor is that of exprL and 
-            #  exprR is $weights- exprL 
-            
-            ## c'est bouseux: soit j'ai (pos, neg) et le remplacement est possible
-            ##    soit j'ai (pos,ntot -pos) et le 2e remplacment n'est pas poss (et pas necess)
-            ##    aussi (ntot - pos, pos) ...
-            ## would be simple if always ntot-pos, but how to control this ? 
-            ## simbData[[as.character(form[[2]][[2]])]] <- newy
-            ## simbData[[as.character(form[[2]][[3]])]] <- nullfit$weights - newy    
-            exprL <- as.character(form[[2]][[2]]) 
-            exprR <- as.character(form[[2]][[3]]) 
-            if (length(exprL)==1L) simbData[[exprL]] <- newy 
-            if (length(exprR)==1L) simbData[[exprR]] <- nullfit$weights - newy                    
-            ## if (length(exprR)! =1) exprRdoes not correspond to a column in the data.frame so there is no column to replace                     
+            if ( is.symbol(form[[2]]) ) { ## simple y ~ x case [but not say log(y) ~ x :code assumes this doesn't occur here]
+              exprL <- as.character(form[[2]])
+              if (length(exprL)==1L) simbData[[exprL]] <- newy 
+            } else {
+              ## We have different possible cbind(exprL,exprR) arguments, but in all case the predictor is that of exprL and 
+              #  exprR is $weights- exprL 
+              
+              ## c'est bouseux: soit j'ai (pos, neg) et le remplacement est possible
+              ##    soit j'ai (pos,ntot -pos) et le 2e remplacment n'est pas poss (et pas necess)
+              ##    aussi (ntot - pos, pos) ...
+              ## would be simple if always ntot-pos, but how to control this ? 
+              exprL <- as.character(form[[2]][[2]]) 
+              exprR <- as.character(form[[2]][[3]]) 
+              if (length(exprL)==1L) simbData[[exprL]] <- newy 
+              if (length(exprR)==1L) simbData[[exprR]] <- nullfit$weights - newy                    
+              ## if (length(exprR)! =1) exprRdoes not correspond to a column in the data.frame so there is no column to replace                     
+            }
           } else {simbData[[as.character(nullfit$predictor[[2]])]] <- newy}
           bootlist$data <- simbData
           bootrepl <- try(do.call(thisFnName,bootlist))  ################# CALL ################# 

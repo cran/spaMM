@@ -66,8 +66,13 @@ fitme <- function(formula,data, ## matches minimal call of HLfit
     ## removing all elements that are matched in processed:
     mc$data <- NULL
     mc$family <- NULL
-    mc$formula <- NULL ## processed
+    mc$formula <- NULL
+    mc$prior.weights <- NULL
     mc$HLmethod <- NULL ## processed$HL  
+    mc$rand.family <- NULL ## processed$rand.families  
+    mc$control.glm <- NULL ## processed$control.glm  
+    mc$resid.formula <- NULL ## mc$resid.model  
+    mc$REMLformula <- NULL ## processed$REMLformula
   }  
   
   mc[[1L]] <- quote(spaMM::fitme_body) 
@@ -199,6 +204,11 @@ fitme_body <- function(processed,
     }
   } else nbUnique <- NULL
   #
+  phiform <- getProcessed(processed,"resid.predictor",from=1L)
+  if (! is.null(findOffset(attr(phiform,"oriFormula")))) {
+    #dispOffset <- attr(object$resid.predictor,"offsetObj")$total
+    #stop("'fitme' does not yet handle dispersion models with offset.") ## pure programming pb common to all structured disp model
+  } #else dispOffset <- NULL
   ##### init.optim$phi/lambda will affect calc_inits -> calc_inits_dispPars.
   # outer estim seems useful when we can suppress all inner estim (thus the hatval calculations). 
   # ./. Therefore, we need to identify all cases where phi is fixed, 
@@ -223,7 +233,7 @@ fitme_body <- function(processed,
         init.optim$phi <- 0.1 ## assuming a single phi coefficient (as the enclosing code)
       }  
     }
-    # (2) set lambda
+    # (2) set lambda (handling incomplete ranFix$lambda vectors)
     if (is.null(init.optim$lambda)) {
       lFix <- getProcessed(processed,"lambda.Fix",1L)
       if (anyNA(lFix)) {

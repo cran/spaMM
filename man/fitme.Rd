@@ -4,7 +4,7 @@
 Fitting function for fixed- and mixed-effect models with GLM response. 
 }
 \description{
-This is a common interface for fitting all models that spaMM can fit, therefore substituting to \code{corrHLfit}, \code{HLCor} and \code{HLfit}. Currently it is fast for some models and slow for others, with few general guidance except that \code{fitme} should generally be faster than the alternative fitting functions for large data sets when the residual variance model is a single constant term (no structured dispersion). 
+This is a common interface for fitting most models that spaMM can fit, therefore substituting to \code{corrHLfit}, \code{HLCor} and \code{HLfit}. Random-slope models are not yet handled by this function. Currently it is fast for some models and slow for others, with few general guidance except that \code{fitme} should generally be faster than the alternative fitting functions for large data sets when the residual variance model is a single constant term (no structured dispersion). 
 }
 \usage{
 fitme(formula, data, family = gaussian(), init = list(), fixed = list(), 

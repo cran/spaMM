@@ -8,15 +8,15 @@ get_methods_ranefs <- function(object) {
     if ( any(object$lambda.object$type=="outer")) optimEsts <- c(optimEsts,"lambda")
     if ( any(object$lambda.object$type=="inner")) iterativeEsts <- c(iterativeEsts,"lambda")
   }
-  if ( ! is.null(object$phi.object$glm_phi) ) iterativeEsts <- c(iterativeEsts,"phi")
-  # ## c("binomial","poisson"): phi is 1, not NULL
-  # if ( ! (object$family$family %in% c("binomial","poisson","COMPoisson","negbin"))) {
-  #   ## correct if both outer estim and glm_phi (future possibility)
-  #   if ( identical(attr(object$phi.object$phi_outer,"type"),"var")) {optimEsts <- c(optimEsts,"phi")
-  #   } else if ( ! is.null(object$phi.object$glm_phi) ) iterativeEsts <- c(iterativeEsts,"phi")
-  # }
+  if ( ! (object$family$family %in% c("binomial","poisson","COMPoisson","negbin"))) {
+    if ( ! is.null(object$phi.object$glm_phi) ) {
+      iterativeEsts <- c(iterativeEsts,"phi")
+    } else if ( identical(attr(object$phi.object$phi_outer,"type"),"var")) {optimEsts <- c(optimEsts,"phi")
+    } else if ( ! is.null(object$phi.object$glm_phi) ) iterativeEsts <- c(iterativeEsts,"phi")
+    # confint (fitme HLfitoide -> 3e cas)
+  }
   optimNames <- names(attr(object,"optimInfo")$LUarglist$canon.init)
-  optimEsts <- c(optimEsts,intersect(optimNames,c("COMP_nu","NB_shape","phi")))
+  optimEsts <- c(optimEsts,intersect(optimNames,c("COMP_nu","NB_shape")))
   corrPars <- object$corrPars
   optimEsts <- c(optimEsts,intersect(names(corrPars),optimNames))
   iterativeEsts <- c(iterativeEsts,setdiff(optimNames,names(corrPars)))
@@ -88,7 +88,10 @@ MLmess <-function(object,ranef=FALSE) {
 }
 ## FR->FR il faudrait distinguer EQL approx of REML ?
 REMLmess <- function(object) {
-  if (is.null(object$REMLformula)) {
+  ## 'object' has no 'processed' element but its processed$REMLformula was copied to 'REMLformula' element.
+  ## ./. It is by default NULL if REML was used, but may be an explicit non-default formula
+  ## ./. It is an explicit formula if ML was used
+  if (is.null(object$REMLformula)) { ## default REML case
     if (object$HL[1]=='SEM')  {
       resu <- ("by stochastic EM.")
     } else if (object$family$family !="gaussian" 
@@ -98,10 +101,7 @@ REMLmess <- function(object) {
       resu <- ("by REML.")
     }  
   } else {
-    fixeformFromREMLform <- nobarsMM(object$REMLformula) 
-    if (length(fixeformFromREMLform)<2 ## ie 0 if original formula was  <~(.|.)> or 1 if ... <lhs~(.|.)>
-        || object$REMLformula[[3]]=="0" ## this is the whole RHS; for fixed effect models
-    ) {
+    if (identical(attr(object$REMLformula,"isML"),TRUE)) { ## FALSE also if object created by spaMM <1.9.15 
       resu <- (MLmess(object, ranef=TRUE))
     } else { ## if nontrivial REML formula was used...
       resu <- ("by non-standard REML")
@@ -184,6 +184,7 @@ summary.HLfitlist <- function(object, ...) {
   if (lenOpt > 1) optimEsts <- paste(c(paste(optimEsts[-lenOpt],collapse=", "),optimEsts[lenOpt]),collapse=" and ")
   if (lenOpt > 0) { 
     objective <- attr(object,"optimInfo")$objective  
+    if(is.null(objective)) stop("attr(object,'optimInfo')$objective is missing: malformed object.")
     objString <- switch(objective,
                         p_bv= "'outer' REML, maximizing p_bv",
                         p_v= "'outer' ML, maximizing p_v",
@@ -338,7 +339,7 @@ summary.HLfitlist <- function(object, ...) {
     } else {
       if (models[["phi"]]=="phiHGLM") {
         stop("From summary.HLfit: phiHGLM code not ready")
-      } else {
+      } else if (length(phi.object$fixef)>0L) {
         phi_table<-cbind(phi.object$fixef,phi.object$phi_se)
         colnames(phi_table) <- c("Estimate", "Cond. SE")
         rownames(phi_table) <- namesX_disp <- names(phi.object$fixef)
@@ -349,16 +350,16 @@ summary.HLfitlist <- function(object, ...) {
         print(phiform,showEnv=FALSE)
         phiinfo <- object$resid.family$link; if (phiinfo=="identity") phiinfo=""
         phiinfo <- paste("Coefficients for ",phiinfo,"[ phi= ",sep="")
-        if (object$family$family=="Gamma") { ## response family to know if its a scale param; not phi model family, which is always Gamma(ForDispGammaGLM)
+        if (object$family$family=="Gamma") { ## response family to know if its a scale param; not phi model family, which is always GammaForDispGammaGLM()
           phiinfo <- paste(phiinfo,"scale param. ]\n",sep="")
         } else phiinfo <- paste(phiinfo,"residual var ]\n",sep="")
         cat(phiinfo)
         print(phi_table,4)
-        dispoff <- attr(object$resid.predictor,"offsetObj")$total
-        if (!is.null(dispoff)) dispoff <- unique(dispoff)
-        if (length(namesX_disp)==1 && namesX_disp[1]=="(Intercept)" && length(dispoff)<2) {
+        dispOffset <- attr(object$resid.predictor,"offsetObj")$total
+        if (!is.null(dispOffset)) dispOffset <- unique(dispOffset)
+        if (length(namesX_disp)==1 && namesX_disp[1]=="(Intercept)" && length(dispOffset)<2) {
           phi_est <- (phi.object$fixef)
-          if (length(dispoff)==1L) phi_est <- phi_est+dispoff
+          if (length(dispOffset)==1L) phi_est <- phi_est+dispOffset
           phi_est <- object$resid.family$linkinv(phi_est)
           if (object$family$family=="Gamma") {
             cat(paste("Estimate of phi: ",signif(phi_est,4)," (residual var = phi * mu^2)\n"))
@@ -375,7 +376,10 @@ summary.HLfitlist <- function(object, ...) {
             cat(wa,"\n")
           }
         }
-        
+      } else {
+        phiform <- attr(object$resid.predictor,"oriFormula")
+        if (length(phiform)==2) phiform <- as.formula(paste('"phi"',paste(phiform,collapse=" "))) ##FR->FR how does _dglm_ deal with this
+        cat(paste("phi was fixed by an offset term: ",deparse(phiform) ,"\n")) ## quick fix 06/2016 
       }                                                 
     }
   } ## else binomial or poisson, no dispersion param

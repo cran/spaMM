@@ -24,10 +24,6 @@ spaMM.getOption(x)
 
 \item{\code{COMP_maxn}:}{Number of terms for truncation of infinite sums that are evaluated in the fitting of \code{\link{COMPoisson}} models.}
 
-%\item{\code{RHOMAX}:}{Maximum value of the scale parameter \eqn{\rho} of the Matérn correlation function. Reserved variable, not set by default, but set by \code{corrHLfit}.}
-
-%\item{\code{NUMAX=50}:}{Maximum value of the smoothness parameter  \eqn{\nu} of the Matérn correlation function}
-
 \item{\code{TRACE.UNLINK=FALSE}:}{Whether to delete preexisting files named as \code{HLCor.args.*.RData} when the trace option is used in corrHLfit or HLCor.}
 
 \item{\code{MESSAGES.FULL.STACK=TRUE}:}{Whether to give information on the stack of calls in some warning messages.}
@@ -39,6 +35,8 @@ spaMM.getOption(x)
 \item{\code{USElmwithQ=FALSE}:}{Whether to use the Eigen C++ library for solving linear systems.}
 
 \item{\code{USEEIGEN_QR=TRUE}:}{Whether to use the Eigen C++ library for some other QR computations.}
+
+\item{\code{wRegularization=FALSE}:}{Whether to to warn about the use of regularization in some operations on nearly singular matrices.}
 
 \item{\code{maxLambda=1e10}:}{The maximum value of lambda: higher fitted 
  lambda values in HLfit are reduced to this.} 

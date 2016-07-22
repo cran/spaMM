@@ -17,11 +17,7 @@ newetaFix <- function(object, newMeanFrames) {
     } ## but we still proceed with this dubious offset
   }    
   ## dans l'état actuel $fixef et complet,incluant les etaFix$beta: pas besoin de les séparer
-  if (ncol(newMeanFrames$X)>0) {
-    etaFix <-  drop(newMeanFrames$X %*% object$fixef)
-  } else {
-    etaFix <- 0 
-  }   
+  etaFix <-  drop(newMeanFrames$X %*% object$fixef) ## valide even if ncol(newMeanFrames$X) = 0
   if ( ! is.null(off)) etaFix <- etaFix + off   
   return(etaFix)
 }
@@ -29,8 +25,10 @@ newetaFix <- function(object, newMeanFrames) {
 
 
 # simulate.HLfit(fullm[[2]],newdata=fullm[[1]]$data,size=fullm[[1]]$data$total) for multinomial avec binomial nichées de dimension différentes
-# FR->FR misses the computation of randoem effects for new spatial positions: cf comments in the code below
-simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL, sizes=object$weights,...) { ## object must have class HLfit; corr pars are not used, but the ZAL matrix is.
+# FR->FR misses the computation of random effects for new spatial positions: cf comments in the code below
+simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
+                           conditional=FALSE, verbose=TRUE,
+                           sizes=object$weights, ...) { ## object must have class HLfit; corr pars are not used, but the ZAL matrix is.
   ## RNG stuff copied from simulate.lm
   if (!exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE))
     runif(1)
@@ -47,71 +45,97 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL, sizes=ob
     message(" run simulate on each of the individual fit in the list")
     stop() ## FR->FR also some basic changes in fixedLRT but more would be needed 
   }  
-  if (is.null(newdata)) {
-    # rebuild linear predictor in three steps eta= X . beta + off + ZAL . RANDOM v
-    # hence do not use object$eta which contains PREDICTED V
-    nobs <- length(object$y)
-    if (ncol(object$`X.pv`)>0) {eta <- drop(object$`X.pv` %*% object$fixef) } else {eta <- rep(0,nobs)}
-    ##
-    eta <- eta + attr(object$predictor,"offsetObj")$total ## a PROCESSED predictor or resid.predictor always has a non-NULL offset term  
-  } else {
-    nobs <- nrow(newdata)
-    ## [-2] so that HLframes does not try to find the response variables  
-    allFrames <- HLframes(formula=attr(object$predictor,"oriFormula")[-2],data=newdata) ## may need to reconstruct offset using formula term
-    eta <- newetaFix(object,allFrames) ## X . beta + off
-  }
-  ##
-  if (any(object$models[["lambda"]] != "")) { ## i.e. not a GLM
+  if (conditional) {
+    if (verbose) cat("Conditional simulation:\n")
     if (is.null(newdata)) {
-      ZAL <- attr(object$predictor,"ZALMatrix")
-      cum_n_u_h <- attr(object$lambda,"cum_n_u_h")
-      vec_n_u_h <- attr(cum_n_u_h,"vec_n_u_h")
+      mu <- predict(object)[,1L]
+      if (nsim>1) mu <- matrix(rep(mu,nsim),ncol=nsim)
     } else {
-      FL <- spMMFactorList(object$predictor, allFrames$mf, 0L, drop=TRUE) 
-      ##### simulation given the observed response ! :
-      #       spatial.terms <- findSpatial(locform)
-      #       spatial.model <- spatial.terms[[1]] 
-      #       if( is.null(spatial.model)) {
-      #         uuCnewold <- NULL
-      #       } else {
-      #         v_h_coeffs <- predictionCoeffs(object) ## changes the coefficients in the right u_range
-      #         blob <- calcNewCorrs(object=object,locdata=newdata,spatial.model=spatial.model)
-      #         uuCnewold <- blob$uuCnewold
-      #       }
-      #       ZALlist <- computeZAXlist(XMatrix=uuCnewold,ZAlist=FL$Design)
-      #       (unfinished:) il faut rajouter la conditional variance comme dans le SEM => simuler comme dans le SEM ?
-      ##### independent simulation ! : 
-      # en fait il faut recycler du code de HLCor...
-      ##### the following code with NULL LMatrix ignores spatial effects with newdata:
-      ZALlist <- computeZAXlist(XMatrix=NULL,ZAlist=FL$Design)
-      nrand <- length(ZALlist)
-      vec_n_u_h <- unlist(lapply(ZALlist,ncol)) ## nb cols each design matrix = nb realizations each ranef
-      cum_n_u_h <- cumsum(c(0,vec_n_u_h))
-      ZALlist <- lapply(seq_len(length(ZALlist)),as.matrix)
-      ZAL <- do.call(cbind,ZALlist)
+      stop("'newdata' not yet implemented in this case.")
+      # debut d'implementation Mais il peut y avoir des choses inteessantes dans le code cas non conditionnel
+      mu_fixed <- predict(object, newdata=newdata, re.form=NA)
+      eta <- object$family$linkfun(mu_fixed[,1L]) ## onlythe fixed part at this point
+      ranefs <- attr(object$ZAlist,"ranefs")
+      for (rit in seq_len(ranefs)) {
+        loc_u_h <- 666 ## for given ranef
+        n_u_h <- 666 ## for given ranef
+        if (666) { ## test for Gaussian correlated effects
+          randcond_bMean <- 666 # Cno Coo^{-1/2} loc_u_h a coder en vecteurs seulement...
+          randcond_brand <- 666 # Cnn - Cno Coo^{-1} Con 
+          randb <- rmvnorm(nsim,mean=randcond_bMean,sigma=randcond_brand)
+        } else {
+          # hum. Mais il peut y avoir des choses inteessantes dans le code cas non conditionnel
+        }
+        eta <- eta + object$ZAlist[[ranefs]] %*% randb ## could  be donne once for all ranefs 
+      }
+      # autre concept: simulation conditionnelle aux données(pas equiv a simul sous le modèe fitté)
+      # # il faudrait avoir une decomp de la predVar en ses composantes pour chaque ranef... faisable avec re.form ? 
+      # # pas clair, le subrange de beta_w_col ne s'additionnent pas...
+      # if (all(attr(object$rand.families,"lcrandfamfam")=="gaussian")) {
+      #   mu_with_cov <- predict(object,newdata=newdata,variances=list(linPred=TRUE,cov=TRUE))
+      #   Eeta <- object$family$linkfun(mu_with_cov[,1L])
+      #   eta <- rmvnorm(nsim,mean=Eeta,sigma=attr(mu_with_cov,"predVar"))
+      #   mu <- object$family$linkinv(eta) ## ! freqs for binomial, counts for poisson
     }
-    lcrandfamfam <- attr(object$rand.families,"lcrandfamfam") ## unlist(lapply(object$rand.families,function(rf) {tolower(rf$family)})) 
-    fittedLambda <- object$lambda.object$lambda_est
-    newV <- lapply(seq(length(vec_n_u_h)), function(it) {
-      nr <- vec_n_u_h[it]
-      u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
-      loclambda <- fittedLambda[u.range]
-      newU <- replicate(nsim,{
-        switch(lcrandfamfam[it], ## remainder of code should be OK for rand.families
-               gaussian = rnorm(nr,sd=sqrt(loclambda)),
-               gamma = rgamma(nr,shape=1/loclambda,scale=loclambda),
-               beta = rbeta(nr,1/(2*loclambda),1/(2*loclambda)),
-               "inverse.gamma" = 1/rgamma(nr,shape=1+1/loclambda,scale=loclambda), ## yields inverse gamma (1+1/object$lambda,1/object$lambda)
-               stop("(!) random sample from given rand.family not yet implemented")
-        )},simplify=TRUE) ## should have nsim columns
-      object$rand.families[[it]]$linkfun(newU) 
-    }) ## one multi-rand.family simulation
-    newV <- do.call(rbind,newV) ## each column a simulation
-    if (nsim==1L) {
-      eta <- eta + drop(ZAL %id*% newV) 
-    } else eta <-  matrix(rep(eta,nsim),ncol=nsim) + as.matrix(ZAL %id*% newV) ## nobs rows, nsim col
+  } else {
+    if (verbose) cat("Unconditional simulation:\n")
+    mu_fixed <- predict(object, newdata=newdata, re.form=NA)
+    eta_fixed <- object$family$linkfun(mu_fixed[,1L])
+    if (is.null(newdata)) {
+    #   # rebuild linear predictor in three steps eta= X . beta + off + ZAL . RANDOM v
+    #   # hence do not use object$eta which contains PREDICTED V
+      nobs <- length(object$y)
+    #   if (ncol(object$`X.pv`)>0) {eta <- drop(object$`X.pv` %*% object$fixef) } else {eta <- rep(0,nobs)}
+    #   ##
+    #   eta <- eta + attr(object$predictor,"offsetObj")$total ## a PROCESSED predictor or resid.predictor always has a non-NULL offset term  
+    } else {
+      nobs <- nrow(newdata)
+    #   ## [-2] so that HLframes does not try to find the response variables  
+    #   allFrames <- HLframes(formula=attr(object$predictor,"oriFormula")[-2],data=newdata) ## may need to reconstruct offset using formula term
+    #   eta <- newetaFix(object,allFrames) ## X . beta + off
+    }
+    ##
+    if (any(object$models[["lambda"]] != "")) { ## i.e. not a GLM
+      if (is.null(newdata)) {
+        ZAL <- attr(object$predictor,"ZALMatrix")
+        cum_n_u_h <- attr(object$lambda,"cum_n_u_h")
+        vec_n_u_h <- attr(cum_n_u_h,"vec_n_u_h")
+      } else {
+        #   ## [-2] so that HLframes does not try to find the response variables  
+        allFrames <- HLframes(formula=attr(object$predictor,"oriFormula")[-2],data=newdata) 
+        FL <- spMMFactorList(object$predictor, allFrames$mf, 0L, drop=TRUE) 
+        ##### the following code with NULL LMatrix ignores spatial effects with newdata:
+        ZALlist <- computeZAXlist(XMatrix=NULL,ZAlist=FL$Design)
+        # to overcome this we needto calculate the unconditional covmat including for the (nex) positions
+        nrand <- length(ZALlist)
+        vec_n_u_h <- unlist(lapply(ZALlist,ncol)) ## nb cols each design matrix = nb realizations each ranef
+        cum_n_u_h <- cumsum(c(0,vec_n_u_h))
+        ZALlist <- lapply(seq_len(length(ZALlist)),as.matrix)
+        ZAL <- do.call(cbind,ZALlist)
+      }
+      lcrandfamfam <- attr(object$rand.families,"lcrandfamfam") ## unlist(lapply(object$rand.families,function(rf) {tolower(rf$family)})) 
+      fittedLambda <- object$lambda.object$lambda_est
+      newV <- lapply(seq(length(vec_n_u_h)), function(it) {
+        nr <- vec_n_u_h[it]
+        u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
+        loclambda <- fittedLambda[u.range]
+        newU <- replicate(nsim,{
+          switch(lcrandfamfam[it], ## remainder of code should be OK for rand.families
+                 gaussian = rnorm(nr,sd=sqrt(loclambda)),
+                 gamma = rgamma(nr,shape=1/loclambda,scale=loclambda),
+                 beta = rbeta(nr,1/(2*loclambda),1/(2*loclambda)),
+                 "inverse.gamma" = 1/rgamma(nr,shape=1+1/loclambda,scale=loclambda), ## yields inverse gamma (1+1/object$lambda,1/object$lambda)
+                 stop("(!) random sample from given rand.family not yet implemented")
+          )},simplify=TRUE) ## should have nsim columns
+        object$rand.families[[it]]$linkfun(newU) 
+      }) ## one multi-rand.family simulation
+      newV <- do.call(rbind,newV) ## each column a simulation
+      if (nsim==1L) {
+        eta <- eta_fixed + drop(ZAL %id*% newV) 
+      } else eta <-  matrix(rep(eta_fixed,nsim),ncol=nsim) + as.matrix(ZAL %id*% newV) ## nobs rows, nsim col
+    }
+    mu <- object$family$linkinv(eta) ## ! freqs for binomial, counts for poisson
   }
-  mu <- object$family$linkinv(eta) ## ! freqs for binomial, counts for poisson
   ## 
   phiW <- object$phi/object$prior.weights ## cf syntax and meaning in Gamma()$simulate / spaMM_Gamma$simfun
   famfam <- tolower(object$family$family)
@@ -123,7 +147,7 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL, sizes=ob
                                 gamma = rgamma(nobs,shape= mu^2 / phiW, scale=phiW/mu), ## ie shape increase with prior weights, consistent with Gamma()$simulate / spaMM_Gamma()$simfun
                                 stop("(!) random sample from given family not yet implemented")
   )} ## vector
-  if (nsim>1) {
+  if (nsim>1) { ## then mu has several columns
     resu <- apply(mu,2,respv) ## matrix
   } else {
     resu <- respv(mu)
@@ -154,7 +178,7 @@ simulate.HLfitlist <- function(object,nsim=1,seed=NULL,newdata=object[[1]]$data,
     }
     for (it in seq(ncol(resu))) {
       ## it = 1 se ramène à simulate(object[[1]])
-      resu[,it] <- simulate(object[[it]],newdata=newdata,sizes=sizes - cumul)
+      resu[,it] <- simulate(object[[it]],newdata=newdata,sizes=sizes - cumul,verbose=FALSE)
       cumul <- rowSums(resu)  
     }
     resu <- cbind(resu,sizes - cumul) ## now 3 cols if 3 types
@@ -163,14 +187,3 @@ simulate.HLfitlist <- function(object,nsim=1,seed=NULL,newdata=object[[1]]$data,
     as.data.frame(resu)
   },simplify=FALSE)
 }
-  
-
-## there is update.HL for new fits of the same X and same Y...
-
-## there is ?? for new X and new Y... GCV vs Krig....
-
-
-
-
-
-

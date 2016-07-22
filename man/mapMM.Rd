@@ -22,13 +22,13 @@ spaMMplot2D(x, y, z,xrange=range(x, finite = TRUE),
 mapMM(fitobject,Ztransf=NULL,coordinates,
       add.points,decorations=NULL,plot.title=NULL,plot.axes=NULL,envir=-3, ...)
 
-filled.mapMM(fitobject, Ztransf = NULL, coordinates, 
-             xrange = NULL, yrange = NULL, margin = 1/20, map.formula, 
-             phi = 1e-05, gridSteps = 41, 
-             decorations = quote(points(pred[,coordinates],cex=1,lwd=2)),
-             add.map = FALSE, axes = TRUE, plot.axes, map.asp = NULL,
-             variance = NULL, var.contour.args = list(), 
-             smoothObject = NULL, ...)
+filled.mapMM(fitobject, Ztransf = NULL, coordinates, xrange = NULL,
+             yrange = NULL, margin = 1/20, map.formula, phi =
+             1e-05, gridSteps = 41, decorations =
+             quote(points(pred[, coordinates], cex = 1, lwd = 2)),
+             add.map = FALSE, axes = TRUE, plot.title = NULL,
+             plot.axes = NULL, map.asp = NULL, variance = NULL,
+             var.contour.args = list(), smoothObject = NULL, ...)
 }
 \arguments{
   \item{fitobject}{
@@ -83,10 +83,10 @@ the y/x aspect ratio of the 2D plot area (not of the full figure including the s
 an explicit set of colors to be used in the plot. This argument overrides any palette function specification. There should be one less color than levels
 }
 \item{plot.title}{	
-statements which add titles to the main plot. If provided, further \code{...} arguments are ignored (see Details).
+statements which add titles to the main plot. See Details for differences between functions.
 }
 \item{plot.axes}{	
-statements which draw axes (and a box) on the main plot. Default axes are drawn by default when this argument is missing, given \code{axes = TRUE}.
+statements which draw axes (and a box) on the main plot. See Details for differences between functions. 
 }
 \item{decorations}{ Either NULL or Additional graphic statements (\code{points}, \code{polygon}, etc.), enclosed in \code{quote} (the default value illustrates the latter syntax).
 .
@@ -124,16 +124,18 @@ The \code{smoothObject} argument may be used to redraw a figure faster by recycl
 
 For \code{smoothObject=NULL} (the default), \code{filled.mapMM} interpolates the predicted response, with sometimes unpleasant effects. For example, if one interpolates probabilities, the result may not be within [0,1], and then (say) a logarithmic \code{Ztransf} may generate NaN values that would otherwise not occur. The \code{smoothObject} argument may be used to overcome the default behaviour, by providing an alternative predictor. 
 
-
-
-If you have values for all predictor variables in all locations of a fine spatial grid, \code{filled.mapMM} may not be a good choice.
-Rather, use \code{predict(<fitobject>,newdata= <all predictor variables >)} to generate all predictions, and then either 
+If you have values for all predictor variables in all locations of a fine spatial grid, \code{filled.mapMM} may not be a good choice, since it will ignore that information (see \code{map.formula} argument). Rather, one should use \code{predict(<fitobject>,newdata= <all predictor variables >)} to generate all predictions, and then either 
 \code{spaMM.filled.contour} or some other raster functions.
 
-These functions handle some of their arguments as \code{\link{filled.contour}} does. For \code{mapMM} in particular, this means that either
-\code{plot.title} is missing, or \code{...} is ignored. Thus, one can provide an optional \code{xlab} either in the \code{plot.title} argument, or in the \code{...} \code{plot.title} is missing. \code{filled.mapMM} calls \code{spaMM.filled.contour} which behaves identically, so the \code{...} argument of \code{filled.mapMM} should contain either a \code{plot.title} or further arguments. 
+%The functions handle some of their arguments as \code{\link{filled.contour}} does. For \code{mapMM} in particular, this means that either \code{plot.title} is NULL, or \code{...} is ignored. Thus, one can provide an optional \code{xlab} either in the \code{plot.title} argument, or in the \code{...} if \code{plot.title} is missing. \code{filled.mapMM} calls \code{spaMM.filled.contour} which behaves identically, so the \code{...} argument of \code{filled.mapMM} should contain either a \code{plot.title} or further arguments. 
 
-A side effet is that \code{filled.mapMM}, like \code{filled.contour}, does not does not provide axis labels (\code{xlab} and \code{ylab}) by default. 
+The different functions are (currently) inconsistent among themselves in the way they handle the \code{plot.title} and \code{plot.axes} argument:
+
+\bold{spaMM.filled.contour} behaves like \code{graphics::filled.contour}, which (1) handles arguments which are calls such as \code{title(.)} or \code{{axis(1);axis(2)}}; (2) ignores \code{...} arguments if \code{plot.title} is missing; and (3) draws axes by default when \code{plot.axes} is missing, given \code{axes = TRUE}.
+
+By contrast, \bold{filled.mapMM} handles arguments which are language expressions such as produced by \code{quote(.)} or \code{substitute(.)} (see Examples). 
+
+\bold{mapMM} can handles language expressions, but also accepts at least some calls.
 }
 \seealso{\code{\link{raster}} for alternative plot procedures.}
 \examples{
@@ -146,10 +148,10 @@ if (require(maps)) { ## required for add.map=TRUE
 }
 
 if (spaMM.getOption("example_maxtime")>6) {
- ## filled.mapMM takes a bit longer
- # showing 'add.map', 'nlevels', and contour lines for 'variances'
- if (require(maps)) { ## required for add.map=TRUE 
-  filled.mapMM(bfit,nlevels=30,add.map=TRUE,plot.axes={axis(1);axis(2)},
+  ## filled.mapMM takes a bit longer
+  # showing 'add.map', 'nlevels', and contour lines for 'variances'
+  if (require(maps)) { ## required for add.map=TRUE 
+    filled.mapMM(bfit,nlevels=30,add.map=TRUE,plot.axes=quote({axis(1);axis(2)}),
              variance="respVar",
              plot.title=title(main="Inferred migration propensity of blackcaps",
                                xlab="longitude",ylab="latitude"))
@@ -164,7 +166,7 @@ if (spaMM.getOption("example_maxtime")>25) {
 
  ## longer computation requiring interpolation of 197 points 
  if (require(maps)) { ## required for add.map=TRUE 
-  filled.mapMM(lfit,add.map=TRUE,plot.axes={axis(1);axis(2)},
+  filled.mapMM(lfit,add.map=TRUE,plot.axes=quote({axis(1);axis(2)}),
              decorations=quote(points(pred[,coordinates],pch=15,cex=0.3)),
              plot.title=title(main="Inferred prevalence, North Cameroon",
                                 xlab="longitude",ylab="latitude"))

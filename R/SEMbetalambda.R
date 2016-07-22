@@ -10,7 +10,7 @@ SEMbetalambda <- function(beta_eta,lambda,
                           symSVD, ## with a $dim member, not simply a "dim" attribute
                           SEMlogL=if (nrow(X.pv)>250L) {"pMVN"} else {"pmvnorm"}, ## integration of dim nobs, not n_u_h
                           control_pmvnorm=list(maxpts=nMCint),  ## 'for development purposes, not documented...'
-                          control_pMVN=list(nrep=nMCint),  ## 'not documented...'
+                          control_pMVN=list(nrep=nMCint),  ## 'not documented...' cf pMVN_arglist$nrep for default
                           ZA,X.pv,qr.XtX,
                           ZAL,whichy1,off,
                           stop.on.error,

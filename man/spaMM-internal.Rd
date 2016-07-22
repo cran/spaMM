@@ -39,6 +39,8 @@
 \alias{calc_info_crits}
 \alias{calc_invL}
 \alias{calc_invL_coeffs}
+\alias{calc_Sig_from_fitobject}
+\alias{calc_asDmLR_invV_from_fitobject}
 \alias{CBIND}
 \alias{CBIND.matrix}
 \alias{CBIND.Matrix}
@@ -147,9 +149,11 @@
 \alias{nextPoints}
 \alias{niceLabels}
 \alias{nobarsMM} 
+\alias{nobarsMM_} 
 \alias{nobarsNooffset} 
 \alias{noNonSpatialbarsMM}
 \alias{noOffset} 
+\alias{noOffset_} 
 \alias{noReForm} 
 \alias{nuFn} 
 \alias{nuInv} 
@@ -158,6 +162,7 @@
 \alias{plotdhglm} 
 \alias{plotScale}
 \alias{post.process.ZALlist}
+\alias{post_process_ZAL}
 \alias{preprocess}
 \alias{print.arglist}
 \alias{print.predictor}

@@ -114,8 +114,9 @@ HLCor <- function(formula,
   mc$prior.weights <- NULL
   mc$HLmethod <- NULL ## processed$HL  
   mc$rand.family <- NULL ## processed$rand.families  
+  mc$control.glm <- NULL ## processed$control.glm  
   mc$resid.formula <- NULL ## mc$resid.model  
-  mc$REMLformula <- NULL 
+  mc$REMLformula <- NULL ## processed$REMLformula
   mc[[1L]] <- quote(spaMM::HLCor_body)
   hlcor <- eval(mc,parent.frame())
   if ( ! is.null(processed$only_objective)) {

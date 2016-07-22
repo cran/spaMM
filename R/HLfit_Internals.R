@@ -16,6 +16,8 @@ calcTT <- function(X001,ZAL) {
 sweepZ1Wwrapper <- function(ZZ,WW) {
   if (nrow(ZZ)!=length(WW)) {
     stop("From sweepZ1Wwrapper(): nrow(ZZ)!=length(WW) ") ## fatal error for eigen code...
+  } else if (ncol(ZZ)==0L) {
+    return(ZZ)
   } else sweepZ1W(ZZ,WW)
 }
 
@@ -74,7 +76,10 @@ calcD2hDv2 <- function(ZAL,w.resid,w.ranef) {
   if (inherits(ZAL,"ddiMatrix") && ZAL@diag=="U") {
     d2hdv2 <- diag( - w.resid - w.ranef)
   } else if (attr(w.resid,"unique")) {
-    d2hdv2 <- - w.resid[1L] * attr(ZAL,"crossprodZAL") #crossprod(ZAL)
+    # crossprodZAL <- attr(ZAL,"crossprodZAL")
+    # if (is.null(crossprodZAL)) crossprodZAL <- crossprod(ZAL)
+    # d2hdv2 <- - w.resid[1L] * crossprodZAL
+    d2hdv2 <- - w.resid[1L] * attr(ZAL,"crossprodZAL")
     nc <- ncol(d2hdv2)
     diagPos <- seq.int(1L,nc^2,nc+1L)
     d2hdv2[diagPos] <- d2hdv2[diagPos] - w.ranef 
@@ -828,7 +833,7 @@ solveWrap.matrix <- function(A,B,...) { ## chol versions not used...
     } else solved <- try(backsolve(A$R_ap,t(A$Q_ap) %*% B)[A$pivI,],silent=TRUE)    
     return(solved) ## gives control to calling function 
   }
-  ## calc_logdisp_cov -> calc_invS.X(Sig... -> here; suppress signature message;
+  ## past version of calc_logdisp_cov -> calc_invS.X(Sig... -> here; suppress signature message;
   if (inherits(A,"sparseQR")) { ## as produced by Matrix::qr; return value not documented (!), but sparse storage is used
     return(suppressMessages(solve(A,B,sparse=inherits(B,"sparseMatrix")))) 
   }
@@ -1033,29 +1038,90 @@ create_get_info_crits <- function(pforpv, p_lambda, p_phi) {
 }
 
 create_get_logdispObject <- function(dvdloglamMat, dvdlogphiMat, 
-                                     Sig, stop.on.error) {
+                                     stop.on.error) {
   ## creates the function in a local envir different from the closure of HLfit
   # so that this envir can be manipulated easily
   logdispObject <- NULL## so that no build/check note on the <<- 
+  asDmLR_invV <- NULL
   locfn <- function(res) {
+    if (is.null(asDmLR_invV)) { ## tests the envir of locfn, defined below
+      asDmLR_invV <<- calc_asDmLR_invV_from_fitobject(res)
+    } 
     if (is.null(logdispObject)) { 
       ## This call gets args (except res) from the envir of locfn def'd below:
       logdispObject <<- calc_logdisp_cov(res, dvdloglamMat=dvdloglamMat, 
-                                         dvdlogphiMat=dvdlogphiMat, 
-                                         Sig=Sig, stop.on.error=stop.on.error)
+                                         dvdlogphiMat=dvdlogphiMat, asDmLR_invV=asDmLR_invV,
+                                         stop.on.error=stop.on.error)
     } 
     return(logdispObject)
-  } ## this function changes environment(<res object>$get_info_crits)$info_crits
+  } ## Inner locfn() changes members of environment(outer fn <res object>$get_logdispObject)
+  ## INITIALIZATION of envir of outer fn function created by create_get_logdispObject(): 
   environment(locfn) <- list2env(list(logdispObject=NULL, dvdloglamMat=dvdloglamMat, 
                                       dvdlogphiMat=dvdlogphiMat, 
-                                      Sig=Sig, stop.on.error=stop.on.error),
+                                      asDmLR_invV=NULL,
+                                      stop.on.error=stop.on.error),
                                  parent=environment(calc_logdisp_cov))
   return(locfn)
 }
 
+calc_Sig_from_fitobject <- function(object) {
+  predictor <- object$predictor
+  ZALlist <- computeZAXlist(XMatrix=attr(predictor,"LMatrix"),
+                            ZAlist=object$ZAlist)
+  ZAL <- post.process.ZALlist(ZALlist,predictor=predictor, 
+                              trySparse= FALSE) 
+  if (object$models[[1]]=="etaHGLM") {
+    if (nrow(ZAL)>3000L) { 
+      Sig <- NA
+    } else Sig <- Sigwrapper(ZAL,1/object$w.ranef,1/object$w.resid)
+  } else Sig <- Diagonal(x=1/object$w.resid)
+  return(Sig)
+}
+
+calc_asDmLR_invV_from_fitobject <- function(object) {
+  predictor <- object$predictor
+  ZAlist <- object$ZAlist
+  if (length(ZAlist)==1L) {
+    ZA <- ZAlist[[1]]
+    Rmat <- attr(predictor,"LMatrix") 
+  } else {
+    ZALlist <- computeZAXlist(XMatrix=attr(predictor,"LMatrix"),
+                              ZAlist=ZAlist)
+    ZAL <- post.process.ZALlist(ZALlist,predictor=predictor, 
+                                trySparse= FALSE) 
+    qrZAL <- QRwrap(ZAL,useEigen=FALSE)
+    ZA <- qr.Q(qrZAL)
+    Rmat <- qr.R(qrZAL)
+  }
+  invd <- object$w.resid
+  ZtinvDZ <- ZWZtwrapper(t(as.matrix(ZA)), invd) 
+  if (is.null(Rmat)) { # no LMatrix
+    invRWRt <- Diagonal(x=object$w.ranef)
+  } else {
+    RWRt <- ZWZtwrapper(Rmat, 1/object$w.ranef)
+    invRWRt <- try(solve(RWRt),silent=TRUE)
+    if (inherits(invRWRt,"try-error") || anyNA(invRWRt)) {
+      #singularSigmaMessagesStop(lambda_est=lambda,phi_est=object$phi,corrPars=object$corrPars)
+      #warning("Generalized inverse used ")
+      invRWRt <- ginv(RWRt) ## FR->FR quick patch at least
+    }
+  }
+  inv2 <- suppressWarnings(invRWRt+ZtinvDZ) ## suppress signature warning
+  invinv <- try(solve(inv2),silent=TRUE)
+  if (inherits(invinv,"try-error") || anyNA(invinv)) {
+    #singularSigmaMessagesStop(lambda_est=lambda,phi_est=object$phi,corrPars=object$corrPars)
+    invinv <- ginv(inv2) ## FR->FR quick patch at least
+  }
+  QpinvD <- sweep( t(ZA),2L,invd,`*`) 
+  ## avoid formation of a large nxn matrix:
+  return(list(r_x_n=invinv %*% QpinvD, n_x_r=t(QpinvD), invD=invd)) ## invSig = invD- t(QpinvD) %*% invinv %*% QpinvD = invD- n_x_r %*% r_x_n
+}
+
+
 calc_info_crits <- function(object, pforpv, p_lambda, p_phi) {
   APHLs <- object$APHLs
-  X.Re <- object$X.Re
+  X.Re <- object$distinctX.Re
+  if (is.null(X.Re)) X.Re <- object$X.pv
   w.resid <- object$w.resid
   predictor <- object$predictor
   info_crits <- list()
@@ -1065,8 +1131,8 @@ calc_info_crits <- function(object, pforpv, p_lambda, p_phi) {
     } else forAIC <- APHLs
     ZALlist <- computeZAXlist(XMatrix=attr(predictor,"LMatrix"),ZAlist=object$ZAlist)
     ZAL <- post.process.ZALlist(ZALlist,predictor=predictor, trySparse= TRUE) ## may be modified by other call to post.process
-    if (attr(w.resid,"unique")) attr(ZAL,"crossprodZAL") <- crossprod(ZAL) # used bu calcD2hDv2()
-    d2hdv2 <- calcD2hDv2(as.matrix(ZAL),w.resid,object$w.ranef) ## update d2hdv2= - t(ZAL) %*% diag(w.resid) %*% ZAL - diag(w.ranef)
+    ddi_or_matrix_ZAL <- post_process_ZAL(ZAL,w.resid)
+    d2hdv2 <- calcD2hDv2(ddi_or_matrix_ZAL,w.resid,object$w.ranef) ## update d2hdv2= - t(ZAL) %*% diag(w.resid) %*% ZAL - diag(w.ranef)
     ## see readable account of aic in HaLM07
     if (ncol(X.Re)>0) { ## diff de d2hdbv2 slmt dans dernier bloc (-> computation pd)
       hessnondiag <- suppressWarnings(crossprod(ZAL, sweep(X.Re, MARGIN = 1, w.resid, `*`))) ## Matrix or matrix depending on ZAL; suppressWarnings for case crossprod(Matrix,matrix)
@@ -1109,7 +1175,26 @@ calc_info_crits <- function(object, pforpv, p_lambda, p_phi) {
 }
 
 
-calc_logdisp_cov <- function(object, dvdloglamMat=NULL, dvdlogphiMat=NULL, Sig, stop.on.error) { 
+calc_logdisp_cov <- function(object, dvdloglamMat=NULL, dvdlogphiMat=NULL, asDmLR_invV=NULL, stop.on.error) { 
+  
+  # evaluate tr(A %*% B)= sum(A*B) where A and B are large matrices but each of the form l %*% r for 'narrow' l
+  # this function avoids the formation of the large matrices, using a form of commutation of trace arguments.
+  traceAB <- function(lA,rA,lB,rB) {
+    ll <- t(lA) %*% lB
+    rr <- rA %*% t(rB)
+    return(sum(ll*rr))
+  }
+  # and same concept for trace( D %*% B)
+  traceDB <- function(dD,lB,rB) { sum( sweep(lB * t(rB),1L,dD,`*`) )}
+  # lA <- matrix(runif(6),ncol=2)
+  # rA <- matrix(runif(6),ncol=3)
+  # lB <- matrix(runif(6),ncol=2)
+  # rB <- matrix(runif(6),ncol=3)
+  # traceAB(lA,rA,lB,rB)
+  # dD <- runif(3)
+  # sum(diag(diag(dD) %*% lB %*% rB))
+  # traceDB(dD,lB,rB)
+
   lambda.object <- object$lambda.object
   LMatrix <- attr(object$predictor,"LMatrix")
   adjacency <- identical(attr(LMatrix,"corr.model"),"adjacency")
@@ -1174,44 +1259,58 @@ calc_logdisp_cov <- function(object, dvdloglamMat=NULL, dvdlogphiMat=NULL, Sig, 
     # cf my documentation, based on McCullochSN08 6.62 and 6.74
     # lambda and phi factors enter in dV/dlog(.), computed instead of dV/d(.) to match dwdlog(.) vectors.
     ZAL <- attr(object$predictor,"ZALMatrix")
-    invV <- calc_invS.X(Sig,Diagonal(n=nrow(ZAL)),stop.on.error=stop.on.error) ## once for all next terms.
-    if (inherits(invV,"try-error") || anyNA(invV)) {
-      #singularSigmaMessagesStop(lambda_est=lambda,phi_est=object$phi,corrPars=object$corrPars)
-      invV <- ginv(Sig) ## FR->FR quick patch at least
-    }
     logdispInfo <- matrix(NA,nrow=nrc,ncol=nrc)
     colnames(logdispInfo) <- rownames(logdispInfo) <- dispnames
     if ("loglambda" %in% dispnames) {
       if (adjacency || ar1) { 
         #  lambda already evaluated 
         ZALd <- ZAL %id*id% Diagonal(x=sqrt(1/denom))
-        invV.dVdlam <- invV %*% tcrossprodWrap(ZALd)
+        lhs_invV.dVdlam <- asDmLR_invV$n_x_r %*% (asDmLR_invV$r_x_n %*% ZALd)  
+        lhs_invV.dVdlam <- sweep( ZALd,1L,asDmLR_invV$invD,`*`) - lhs_invV.dVdlam
+        rhs_invV.dVdlam <- t(ZALd)
       } else { ## standard lamScal model
         lambda <- exp(lambda.object$coefficients_lambda)
-        invV.dVdlam <- invV %id*id% tcrossprodWrap(ZAL)
+        lhs_invV.dVdlam <- asDmLR_invV$n_x_r %*% (asDmLR_invV$r_x_n %*% ZAL)  
+        lhs_invV.dVdlam <- sweep( ZAL,1L,asDmLR_invV$invD,`*`) - lhs_invV.dVdlam
+        rhs_invV.dVdlam <- t(ZAL)
       }
-      logdispInfo["loglambda","loglambda"] <- lambda^2 *sum(invV.dVdlam* t(invV.dVdlam)) 
+      # lambda^2 *sum(invV.dVdlam* t(invV.dVdlam)) :
+      logdispInfo["loglambda","loglambda"] <- lambda^2 *traceAB(lhs_invV.dVdlam,rhs_invV.dVdlam,t(rhs_invV.dVdlam),t(lhs_invV.dVdlam)) 
     }
     if ("rho" %in% dispnames) {
       # no use of sqrt because adjd can be negative
-      invV.dVdrho <- (invV %id*id% ZAL) %*% ( Diagonal(x=lambda*adjd/(denom^2)) %id*id% t(ZAL))
-      logdispInfo["rho","rho"] <- sum(invV.dVdrho*t(invV.dVdrho))
+      #invV.dVdrho <- (invV %id*id% ZAL) %*% ( Diagonal(x=lambda*adjd/(denom^2)) %id*id% t(ZAL))
+      lhs_invV.dVdrho <- asDmLR_invV$n_x_r %*% (asDmLR_invV$r_x_n %*% ZAL)  
+      lhs_invV.dVdrho <- sweep( ZAL,1L,asDmLR_invV$invD,`*`) - lhs_invV.dVdrho
+      rhs_invV.dVdrho <- ( Diagonal(x=lambda*adjd/(denom^2)) %id*id% t(ZAL))
+      #logdispInfo["rho","rho"] <- sum(invV.dVdrho*t(invV.dVdrho))
+      logdispInfo["rho","rho"] <- traceAB(lhs_invV.dVdrho,rhs_invV.dVdrho,t(rhs_invV.dVdrho),t(lhs_invV.dVdrho))
       if ("loglambda" %in% dispnames) {
         logdispInfo["loglambda","rho"] <- 
-          logdispInfo["rho","loglambda"] <- lambda * sum(invV.dVdlam*t(invV.dVdrho))
+          logdispInfo["rho","loglambda"] <- lambda* ( 
+            traceDB(asDmLR_invV,t(rhs_invV.dVdrho),t(lhs_invV.dVdrho)) -
+            traceAB(lhs_invV.dVdlam,rhs_invV.dVdlam,t(rhs_invV.dVdrho),t(lhs_invV.dVdrho)) 
+          ) #lambda * sum(invV.dVdlam*t(invV.dVdrho))
       }
       } 
-    ## if (! is.null(dwdlogphi)) { ## surrently length(phi)==1L && ! is.null(dvdlogphiMat)
+    ## if (! is.null(dwdlogphi)) { ## currently length(phi)==1L && ! is.null(dvdlogphiMat)
     if ("logphi" %in% dispnames) { ## more transparent, but error if mismatch of conditions
       ## next lines assume that  the design matrix for the residual error is I
-      logdispInfo["logphi","logphi"] <- phi_est^2 * sum(invV^2)
+      logdispInfo["logphi","logphi"] <- phi_est^2 * (
+        sum(asDmLR_invV$invD^2) -2*traceDB(asDmLR_invV$invD,asDmLR_invV$n_x_r, asDmLR_invV$r_x_n) + 
+          traceAB(asDmLR_invV$n_x_r, asDmLR_invV$r_x_n, asDmLR_invV$n_x_r, asDmLR_invV$r_x_n)
+        ) # phi_est^2 * sum(invV^2)
       if ("loglambda" %in% dispnames) {
         logdispInfo["loglambda","logphi"] <- 
-          logdispInfo["logphi","loglambda"] <- lambda * phi_est * sum(invV.dVdlam * invV) 
+          logdispInfo["logphi","loglambda"] <- lambda * phi_est * (
+            traceDB(asDmLR_invV$invD, lhs_invV.dVdlam, rhs_invV.dVdlam) -
+            traceAB(lhs_invV.dVdlam, rhs_invV.dVdlam, asDmLR_invV$n_x_r, asDmLR_invV$r_x_n)
+          ) # lambda * phi_est * sum(invV.dVdlam * invV)
       }
       if ("rho" %in% dispnames) {
         logdispInfo["rho","logphi"] <- 
-          logdispInfo["logphi","rho"] <- phi_est * sum(invV.dVdrho * invV)   
+          logdispInfo["logphi","rho"] <- phi_est * traceAB(lhs_invV.dVdrho,rhs_invV.dVdrho, asDmLR_invV$n_x_r, asDmLR_invV$r_x_n)  
+        # phi_est * sum(invV.dVdrho * invV)  
       }
     } 
     logdispInfo <- logdispInfo/2
@@ -1397,6 +1496,14 @@ post.process.ZALlist <- function(ZALlist,predictor,trySparse=FALSE) {
   return(ZAL)
 }
 
+post_process_ZAL <- function(ZAL,w.resid) {
+  if (inherits(ZAL,"Matrix") && ! (inherits(ZAL,"ddiMatrix") && ZAL@diag=="U")) {
+    ddi_or_matrix_ZAL <- as.matrix(ZAL)
+  } else ddi_or_matrix_ZAL <- ZAL
+  if (attr(w.resid,"unique") && ! is.null(ddi_or_matrix_ZAL)) 
+    attr(ddi_or_matrix_ZAL,"crossprodZAL") <- crossprod(ddi_or_matrix_ZAL)
+  return(ddi_or_matrix_ZAL)
+}
 
 intervalStep <- function(old_betaV,wAugX,wAugz,currentlik,intervalInfo,corrPars,likfn) {
   parmcol <- attr(intervalInfo$parm,"col")

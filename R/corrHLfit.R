@@ -18,6 +18,9 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
   if (!is.null(mc$ranPars)) {
     stop("incorrect 'ranPars' argument in corrHLfit call. Use ranFix (ranPars is for HLCor only)")
   }
+  if (!is.null(mc$fixed)) {
+    stop("incorrect 'fixed' argument in corrHLfit call: fixed is for fitme only.")
+  }
   if ( ! (is.list(lower) && is.list(upper))) {
     wrongclass <- setdiff(unique(c(class(lower),class(upper))),"list")
     stop(paste("'lower' and 'upper' must be of class list, not",paste(wrongclass,collapse=" or ")))

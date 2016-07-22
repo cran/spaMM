@@ -2,9 +2,11 @@ cat("\ntest CAR and SEM:")
 
 data(scotlip)
 
-corrHLfit(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(scotlip$expec)),
+blob <- corrHLfit(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(scotlip$expec)),
           data=scotlip,family=poisson(),
           adjMatrix=Nmatrix) ## 4 s.
+AIC(blob)
+
 ## same without optim: run in scotlip examples; cf also autoregressive.Rd for ML fits
 
 set.seed(124)
@@ -15,17 +17,21 @@ resp <- rbinom(ncol(Lmat),1,1/(1+exp(-lp)))
 donn <- data.frame(npos=resp,nneg=1-resp,gridcode=scotlip$gridcode)
 
 # CAR by Laplace with 'outer' estimation of rho
-corrHLfit(cbind(npos,nneg)~1 +adjacency(1|gridcode),
+blob <- corrHLfit(cbind(npos,nneg)~1 +adjacency(1|gridcode),
           adjMatrix=Nmatrix,family=binomial(probit),data=donn,HLmethod="ML") ## 43 s.
+AIC(blob)
 
 # CAR by Laplace with 'inner' estimation of rho
-HLCor(cbind(npos,nneg)~1 +adjacency(1|gridcode),
+blob <- HLCor(cbind(npos,nneg)~1 +adjacency(1|gridcode),
           adjMatrix=Nmatrix,family=binomial(probit),data=donn,HLmethod="ML") ## 4 s.
+AIC(blob)
 
 # CAR by SEMs +optimsmooth ... slow
 #corrHLfit(cbind(npos,nneg)~1 +adjacency(1|gridcode),
 #          adjMatrix=Nmatrix,family=binomial(probit),data=donn,HLmethod="SEM")
 
 # CAR by single SEM
-HLCor(cbind(npos,nneg)~1 +adjacency(1|gridcode),
+blob <- HLCor(cbind(npos,nneg)~1 +adjacency(1|gridcode),
           adjMatrix=Nmatrix,family=binomial(probit),data=donn,HLmethod="SEM") ## 5 s.
+AIC(blob)
+

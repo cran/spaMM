@@ -84,12 +84,12 @@ compare.model.structures <- function(object,object2) {
       if (is.null(Rnest)) { ## fixed effect test 
         if (REML) {
           ## checking the comparability of REML fits
-          if ( ! is.null(fullm$X.Re) ) {
-            df.f.Re <-ncol(fullm$X.Re)
-          } else df.f.Re <-ncol(fullm$`X.pv`)
-          if ( ! is.null(nullm$X.Re) ) {
-            df.n.Re <-ncol(nullm$X.Re)
-          } else df.n.Re <-ncol(nullm$`X.pv`)
+          if ( ! is.null(fullm$distinctX.Re) ) {
+            df.f.Re <- ncol(fullm$distinctX.Re)
+          } else df.f.Re <- ncol(fullm$`X.pv`)
+          if ( ! is.null(nullm$distinctX.Re) ) {
+            df.n.Re <- ncol(nullm$distinctX.Re)
+          } else df.n.Re <- ncol(nullm$`X.pv`)
           if ( df.f.Re !=  df.n.Re ) {
             warning("LRT comparing REML fits with different designs is highly suspect")
           }
@@ -123,8 +123,6 @@ LRT <- function(object,object2,boot.repl=0) { ## compare two HM objects
         mess <- pastefrom("a 'predictor' object must have an 'oriFormula' member.",prefix="(!) From ")
         stop(mess)
       }
-      exprL <- as.character(form[[2]][[2]]) 
-      exprR <- as.character(form[[2]][[3]]) 
     }
     if (boot.repl<100) print("It is recommended to set boot.repl>=100 for Bartlett correction",quote=FALSE)
     aslistfull <- as.list(getCall(fullm)) 
@@ -134,15 +132,17 @@ LRT <- function(object,object2,boot.repl=0) { ## compare two HM objects
     aslistnull$processed <- NULL ## may capture bugs
     computeBootRepl <- function() {
       ## draw sample
-      newy <- simulate(nullm)  ## only a vector of response value ## cannot simulate all samples in one block since some may not be analyzable  
+      newy <- simulate(nullm,verbose=FALSE)  ## only a vector of response value ## cannot simulate all samples in one block since some may not be analyzable  
       if (tolower(nullm$family$family)=="binomial") {
-        ## c'est bouseux: soit j'ai (pos, neg) et le remplacement est possible
-        ##    soit j'ai (pos,ntot -pos) et le 2e remplacment n'est pas poss (et pas necess)
-        ##    aussi (ntot - pos, pos) ...
-        ## would be simple if always ntot-pos, but how to control this ? 
-        if (length(exprL)==1L) simbData[[exprL]] <- newy 
-        if (length(exprR)==1L) simbData[[exprR]] <- nullm$weights - newy                    
-        ## if (length(exprR)! =1) exprRdoes not correspond to a column in the data;frmae so there is no column to replace                     
+        if ( is.symbol(form[[2]]) ) { ## simple y ~ x case [but not say log(y) ~ x :code assumes this doesn't occur here]
+          exprL <- as.character(form[[2]])
+          if (length(exprL)==1L) simbData[[exprL]] <- newy 
+        } else {
+          exprL <- as.character(form[[2]][[2]]) 
+          exprR <- as.character(form[[2]][[3]]) 
+          if (length(exprL)==1L) simbData[[exprL]] <- newy 
+          if (length(exprR)==1L) simbData[[exprR]] <- nullm$weights - newy                    
+        }
       } else {simbData[[as.character(nullm$predictor[[2]])]] <- newy}
       ## analyze under both models
       aslistfull$data <- simbData

@@ -64,7 +64,7 @@ namespace Ziggurat {
     
 #define UNI  (0.5 + (int32_t) KISS * 0.2328306e-09)
 #define IUNI KISS
-#define RNOR (hz = KISS, iz = hz & 127, ( abs ( hz ) < kn[iz] ) ? hz * wn[iz] : nfix())
+#define RNOR (hz = KISS, iz = hz & 127, ( (uint32_t)(abs ( hz )) < kn[iz] ) ? hz * wn[iz] : nfix()) // (uint32_t) added 06/2016 FR
 
     class Ziggurat : public Zigg {
     public:

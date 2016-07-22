@@ -70,14 +70,14 @@ makeCovEst1 <- function(u_h,ZAlist,cum_n_u_h,prev_LMatrices,
         ZALlist <- computeZAXlist(XMatrix=next_LMatrices,ZAlist=ZAlist)
         locZAL <- post.process.ZALlist(ZALlist,predictor=locpredictor,trySparse=TRUE) 
         if (inherits(locZAL,"Matrix")) {
-          as_matrix_locZAL <- as.matrix(locZAL)
-        } else as_matrix_locZAL <- locZAL
-        if (attr(auglinfixedpars$w.resid,"unique")) attr(as_matrix_locZAL,"crossprodZAL") <- crossprod(as_matrix_locZAL)
+          ddi_or_matrix_locZAL <- as.matrix(locZAL)
+        } else ddi_or_matrix_locZAL <- locZAL
+        if (attr(auglinfixedpars$w.resid,"unique")) attr(ddi_or_matrix_locZAL,"crossprodZAL") <- crossprod(ddi_or_matrix_locZAL)
         locTT <- cbind(Xpv001,attr(locZAL,"ZALI"))
         locw.ranefSblob <- updateW_ranefS(cum_n_u_h,processed$rand.families,lambda=loc_lambda_est,u_h,v_h) 
         ## FR->FR auglinfixedpars is an ambiguous name since this contains $w.resid which is updated within auglinmodfit  
         auglinmodargs <- c(list(TT=locTT,ZAL=locZAL,lambda_est=loc_lambda_est,
-                                wranefblob=locw.ranefSblob,as_matrix_ZAL=as_matrix_locZAL),auglinfixedpars)
+                                wranefblob=locw.ranefSblob,ddi_or_matrix_ZAL=ddi_or_matrix_locZAL),auglinfixedpars)
         auglinmodblob <- do.call("auglinmodfit",auglinmodargs)
         locd2hdv2 <- auglinmodblob$d2hdv2
         aphls <- calc.p_v(mu=auglinmodblob$muetablob$mu,u_h=auglinmodblob$u_h,

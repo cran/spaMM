@@ -1,6 +1,6 @@
 # il fallait fields pour migraine.colors: cf remplacement splint dans spaMM.colors
 
-`spaMM.colors` <- function (n = 64, redshift = 1) {
+`spaMM.colors` <- function (n = 64, redshift = 1, adjustcolor_args=NULL) {
   orig <- c("#00008F", "#00009F", "#0000AF", "#0000BF", "#0000CF", 
             "#0000DF", "#0000EF", "#0000FF", "#0010FF", "#0020FF", 
             "#0030FF", "#0040FF", "#0050FF", "#0060FF", "#0070FF", 
@@ -15,6 +15,8 @@
             "#FF0000", "#EF0000", "#DF0000", "#CF0000", "#BF0000", 
             "#AF0000", "#9F0000", "#8F0000", "#800000")
   orig[1:20] <- topo.colors(64)[1:20]
+  if ( ! is.null(adjustcolor_args)) orig <- do.call("adjustcolor",
+                                                    c(list(col=orig),adjustcolor_args))
   if (n == 64 && redshift == 1) 
     return(orig)
   rgb.tim <- t(col2rgb(orig))
@@ -341,7 +343,7 @@ mapMM <- function (fitobject,Ztransf=NULL,coordinates,
 `filled.mapMM` <- function(fitobject, Ztransf=NULL, coordinates, xrange = NULL, yrange = NULL, 
                            margin = 1/20, map.formula, phi = 1e-05, gridSteps = 41, 
                            decorations = quote(points(pred[, coordinates], cex = 1, lwd = 2)), 
-                           add.map = FALSE, axes = TRUE, plot.axes, map.asp = NULL,
+                           add.map = FALSE, axes = TRUE, plot.title=NULL, plot.axes=NULL, map.asp = NULL,
                            variance=NULL,
                            var.contour.args=list(),
                            smoothObject=NULL,
@@ -376,13 +378,13 @@ mapMM <- function (fitobject,Ztransf=NULL,coordinates,
     margey <- (yrange[2] - yrange[1]) * margin
     yrange <- yrange + margey * c(-1, 1)
   }
-  if (missing(plot.axes)) {
+  if (is.null(plot.axes)) {
     if (axes) {
       plot.axes <- quote({title(main = "", xlab = "", ylab = "")
                          Axis(x, side = 1)
                          Axis(y, side = 2)})
     } else plot.axes <- quote(NULL)
-  }
+  } 
   xGrid <- seq(xrange[1], xrange[2], length.out = gridSteps)
   yGrid <- seq(yrange[1], yrange[2], length.out = gridSteps)
   newdata <- expand.grid(xGrid, yGrid)
@@ -422,6 +424,6 @@ mapMM <- function (fitobject,Ztransf=NULL,coordinates,
     eval(add.varcontour)
     eval(decorations) ## evalbc it uses a local variable 'pred'
     eval(add.map)
-  }, map.asp = map.asp, ...)
+  }, plot.title=eval(plot.title),map.asp = map.asp, ...)
   invisible(smoothObject)
 }

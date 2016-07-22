@@ -13,7 +13,9 @@
   This does not yet work for new locations in a mixed model involving both spatial and non-spatial random effects. 
 }
 \usage{
-\method{simulate}{HLfit}(object, nsim = 1, seed = NULL, newdata=NULL, sizes=object$weights,...)
+\method{simulate}{HLfit}(object, nsim = 1, seed = NULL, newdata=NULL,
+                         conditional=FALSE, verbose=TRUE,
+                         sizes=object$weights,...)
 \method{simulate}{HLfitlist}(object, nsim = 1, seed = NULL, 
                              newdata=object[[1]]$data, sizes=object[[1]]$weights,...)
 }
@@ -32,6 +34,12 @@
   \item{newdata}{
   A data frame closely matching the original data, except that response values are not needed. May provide new values of fixed predictor variables, new spatial locations, or new individuals within a block.   
 }
+  \item{conditional}{
+    Boolean, for development purposes. Currently only conditional simulation is handled.
+  }
+  \item{verbose}{
+    Boolean; whether to print some information or not. 
+  }
   \item{sizes}{
   A vector of sample sizes to simulate in the case of a binomial fit. Defaults to the sizes in the original data. 
 }

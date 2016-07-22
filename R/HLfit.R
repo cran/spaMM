@@ -123,8 +123,9 @@ HLfit <- function(formula,
   mc$prior.weights <- NULL
   mc$HLmethod <- NULL ## processed$HL  
   mc$rand.family <- NULL ## processed$rand.families  
+  mc$control.glm <- NULL ## processed$control.glm  
   mc$resid.formula <- NULL ## mc$resid.model  
-  mc$REMLformula <- NULL 
+  mc$REMLformula <- NULL ## processed$REMLformula
   mc[[1L]] <- quote(spaMM::HLfit_body)
   hlfit <- eval(mc,parent.frame())
   if ( ! is.null(processed$only_objective)) {
@@ -206,7 +207,7 @@ HLfit_body <- function(processed, resid.model= ~ 1,
   resid.predictor <- processed$resid.predictor 
   BinomialDen <- processed$BinomialDen
   y <- processed$y
-  REMLformula <- processed$REMLformula
+  REMLformula <- processed$REMLformula ## should no longer be modified
   X.Re <- processed$`X.Re`
   X.pv <- processed$`X.pv`
   ### a bit of post processing
@@ -232,9 +233,6 @@ HLfit_body <- function(processed, resid.model= ~ 1,
     ZALlist <- NULL
     u_h <- v_h <- lev_lambda <- numeric(0)
   } 
-  if (inherits(ZAL,"Matrix") && ! (inherits(ZAL,"ddiMatrix") && ZAL@diag=="U")) {
-    as_matrix_ZAL <- as.matrix(ZAL)
-  } else as_matrix_ZAL <- ZAL
   ### a bit of post processing // repeat of code in preprocess...
   nrand <- length(ZALlist)
   lambda.Fix <- getPar(ranFix,"lambda") 
@@ -311,7 +309,6 @@ HLfit_body <- function(processed, resid.model= ~ 1,
     muetablob <- muetafn(eta=eta,BinomialDen=BinomialDen,processed=processed) 
     mu <- muetablob$mu ## if Bin/Pois, O(n): facteur BinomialDen dans la transfo mu -> eta ## nonstandard mu des COUNTS
     w.resid <- calc.w.resid(muetablob$GLMweights,phi_est) ## 'weinu', must be O(n) in all cases
-    if (attr(w.resid,"unique")) attr(ZAL,"crossprodZAL") <- crossprod(ZAL)
     if (models[[1]]=="etaHGLM") { ## linear predictor for mean with ranef
       wranefblob <- updateW_ranefS(cum_n_u_h,rand.families,lambda_est,u_h,v_h) ## no fit, likelihood computation
       dvdu <- wranefblob$dvdu
@@ -431,7 +428,7 @@ HLfit_body <- function(processed, resid.model= ~ 1,
   dmudeta<- muetablob$dmudeta ## if Bin/Pois, must be O(n)
   Vmu <- muetablob$Vmu ## if Bin/Pois, O(n)
   w.resid <- calc.w.resid(muetablob$GLMweights,phi_est) ## 'weinu', must be O(n) in all cases
-  if (attr(w.resid,"unique") && ! is.null(as_matrix_ZAL)) attr(as_matrix_ZAL,"crossprodZAL") <- crossprod(as_matrix_ZAL)
+  ddi_or_matrix_ZAL <- post_process_ZAL(ZAL,w.resid)
   if (models[[1]]=="etaHGLM") {
     wranefblob <- updateW_ranefS(cum_n_u_h,rand.families,lambda_est,u_h,v_h) ## initilization !
     w.ranef <- wranefblob$w.ranef
@@ -440,7 +437,7 @@ HLfit_body <- function(processed, resid.model= ~ 1,
   }
   conv.phi <- FALSE; conv.lambda <- FALSE; conv.corr <- FALSE
   if (models[[1]]=="etaHGLM") {
-    d2hdv2 <- calcD2hDv2(as_matrix_ZAL,w.resid,w.ranef) ##  - t(ZAL) %*% diag(w.resid) %*% ZAL - diag(w.ranef)
+    d2hdv2 <- calcD2hDv2(ddi_or_matrix_ZAL,w.resid,w.ranef) ##  - t(ZAL) %*% diag(w.resid) %*% ZAL - diag(w.ranef)
     if (inherits(ZAL,"Matrix")) {
       OO1 <- Matrix(0L,cum_n_u_h[nrand+1L],pforpv)
       Xpv001 <- rBind(as(X.pv,"sparseMatrix"),OO1) ## global
@@ -502,7 +499,7 @@ HLfit_body <- function(processed, resid.model= ~ 1,
                              dim=rep(locdim,2)
                              )
     } else SEMargs$symSVD <- attributes(LMatrix) ## includes dim(LMAtrix)
-    SEMargs$ZAL <- ZAL ## FR->FR should be as_matrix_ZAL ?
+    SEMargs$ZAL <- ZAL ## FR->FR should be ddi_or_matrix_ZAL ?
     SEMargs$off <- off
     #if (SEMargs$SEMlogL=="p_v") SEMargs$mc <- mc ## pass HLfit call args
     SEMargs$stop.on.error <- stop.on.error
@@ -544,7 +541,7 @@ HLfit_body <- function(processed, resid.model= ~ 1,
                                     ranFix=ranFix,corrPars=corrPars,
                                     processed=processed,
                                     ZALtZAL=NULL,
-                                    as_matrix_ZAL=as_matrix_ZAL
+                                    ddi_or_matrix_ZAL=ddi_or_matrix_ZAL
                                     ) ## HL(.,.) estim of beta, v for given lambda,phi
       ##############################
       beta_eta <- auglinmodblob$beta_eta
@@ -663,7 +660,7 @@ HLfit_body <- function(processed, resid.model= ~ 1,
     #### contribution from exact likelihood function instead of EQL
     if (HL[3]!=0 ) {## HL(.,.,1) ie , p_bv(h), not EQL p_bv(q+), LeeNP p89; distinction does not arise for PQL <=> Gaussian ranefs...  
       # lambda
-      if (models[[1]]=="etaHGLM" && anyNA(lambda.Fix)) ## d h/ d !log! lambda coorection     
+      if (models[[1]]=="etaHGLM" && anyNA(lambda.Fix)) ## d h/ d !log! lambda correction     
         lev_lambda <- lev_lambda + corr.notEQL.lambda(nrand,cum_n_u_h,lambda_est,lcrandfamfam) 
       # phi hence not poiss,binom:
       if (family$family=="Gamma" && is.null(phi.Fix) ) { ## d h/ d !log! phi correction (0 for gauss. resid. error). Not tied to REML
@@ -814,10 +811,7 @@ HLfit_body <- function(processed, resid.model= ~ 1,
           ## 
         }
         ZAL <- post.process.ZALlist(ZALlist,predictor=predictor,trySparse=is.null(corr_est) ) ## no trySParse for corr_est...
-        if (inherits(ZAL,"Matrix")) {
-          as_matrix_ZAL <- as.matrix(ZAL)
-        } else as_matrix_ZAL <- ZAL
-        if (attr(w.resid,"unique") && ! is.null(as_matrix_ZAL)) attr(as_matrix_ZAL,"crossprodZAL") <- crossprod(as_matrix_ZAL)
+        ddi_or_matrix_ZAL <- post_process_ZAL(ZAL,w.resid)
         TT <- calcTT(X001=Xpv001,ZAL) 
       }
       if (models[[1]]=="etaHGLM" && anyNA(lambda.Fix)) { ## lambda was modified
@@ -860,7 +854,7 @@ HLfit_body <- function(processed, resid.model= ~ 1,
       } 
       if (models[[1]]=="etaHGLM") {
         if (anyNA(lambda.Fix) || is.null(phi.Fix) || ! is.null(corr_est)) { ## w.ranef or w.resid or ZAL were modified 
-          d2hdv2 <- calcD2hDv2(as_matrix_ZAL,w.resid,w.ranef) ##  - t(ZAL) %*% diag(w.resid) %*% ZAL - diag(w.ranef)
+          d2hdv2 <- calcD2hDv2(ddi_or_matrix_ZAL,w.resid,w.ranef) ##  - t(ZAL) %*% diag(w.resid) %*% ZAL - diag(w.ranef)
         }
       } 
       ## conv_logL either used to break the loop, Xor required only in last two iters for diagnostics 
@@ -901,7 +895,7 @@ HLfit_body <- function(processed, resid.model= ~ 1,
     APHLs <- list(logLapp=logLapp) ## keeps attributes
   } else {
     if (models[[1]]=="etaHGLM" && pforpv==0L) { 
-      d2hdv2 <- calcD2hDv2(as_matrix_ZAL,w.resid,w.ranef) ##  - t(ZAL) %*% diag(w.resid) %*% ZAL - diag(w.ranef)
+      d2hdv2 <- calcD2hDv2(ddi_or_matrix_ZAL,w.resid,w.ranef) ##  - t(ZAL) %*% diag(w.resid) %*% ZAL - diag(w.ranef)
     }
     APHLs <- calc.p_v(mu=mu,u_h=u_h,dvdu=dvdu,lambda_est=lambda_est,phi_est=phi_est,d2hdv2=d2hdv2,
                       cum_n_u_h=cum_n_u_h,lcrandfamfam=lcrandfamfam,processed=processed,
@@ -1044,12 +1038,11 @@ HLfit_body <- function(processed, resid.model= ~ 1,
   res$fixef_levels <- processed$fixef_levels ## added 2015/12/09 for predict
   # order important:
   attr(ZAL,"ZALI") <- NULL ## removes big matrix
-  attr(ZAL,"crossprodZAL") <- NULL ## removes big matrix
   attr(predictor,"ZALMatrix") <- ZAL ## used by simulate.HL and calc_logdisp_cov
   res$predictor <- predictor ##  all post fitting functions expect PROCESSED predictor
   #
   if (models[[1]] == "etaHGLM") res$ZAlist <- processed$ZAlist ## needed for prediction variance
-  res$REMLformula <- REMLformula
+  res$REMLformula <- REMLformula ## copy without modif of processed$REMformula, given that 'processed' is not returned
   ###################
   ## ALGORITHM
   ###################
@@ -1085,7 +1078,7 @@ HLfit_body <- function(processed, resid.model= ~ 1,
     }
     if (anyNA(lambda.Fix)) res$lev_lambda <- lev_lambda
   }  
-  if ( distinct.X.ReML ) res$X.Re <- X.Re
+  if ( distinct.X.ReML ) res$distinctX.Re <- X.Re
   ###################
   ## ALL other LAMBDA returns
   ###################
@@ -1168,7 +1161,7 @@ HLfit_body <- function(processed, resid.model= ~ 1,
   } else {
     ## important distinction for (summary, df of LRTs:
     if (is.null(processed$phi.Fix)) { ## absent from original call
-      res$phi.object <- list(phi_outer=structure(phi.Fix,type="var")) ## only fixed in hlcor call of corrHLfit
+      res$phi.object <- list(phi_outer=structure(phi.Fix,type="var")) ## hlcor call of corrHLfit / HLfit call post fitme ?
     } else res$phi.object <- list(phi_outer=structure(phi.Fix,type="fix"))
   }
   ###################
@@ -1245,7 +1238,7 @@ HLfit_body <- function(processed, resid.model= ~ 1,
     } else warningList$mainNotConv <- paste("Estimates did not converge. Try increasing 'max.iter' above ",max.iter,sep="")
   }
   res$warnings <- warningList
-  res$spaMM.version <- .spaMM.data$Constants$Version
+  res$spaMM.version <- packageVersion("spaMM")
   ###################
   ## Create fns with their own local environment (Chambers, p. 127)
   # The create_... functions have only arguments not in res
@@ -1254,12 +1247,9 @@ HLfit_body <- function(processed, resid.model= ~ 1,
   res$get_w_h_coeffs <- create_get_w_h_coeffs()
   res$get_beta_w_cov <- create_get_beta_w_cov()
   res$get_invColdoldList <- create_get_invColdoldList()
-  # FR->FR define a new create/get/calc extractor for Sig ?  
-  if (models[[1]]=="etaHGLM") {
-    Sig <- Sigwrapper(as_matrix_ZAL,1/w.ranef,1/w.resid,ZALtZAL=NULL) 
-  } else Sig <- Diagonal(x=1/w.resid)
+  ## Sig may bestored in the envir of $get_logdispObject:
   res$get_logdispObject <- create_get_logdispObject(dvdloglamMat, dvdlogphiMat, 
-                                                    Sig, stop.on.error)
+                                                    stop.on.error)
   res$get_info_crits <- create_get_info_crits(pforpv, p_lambda, p_phi)
   ###################
   ## SUMMARY, RETURN
@@ -1285,7 +1275,7 @@ HLfit_body <- function(processed, resid.model= ~ 1,
   # sort(sapply(ls(environment(<object>$get_logdispObject)), function(x)
   # +             object.size(get(x, envir = environment(<object>$get_logdispObject)))),decreasing=TRUE)
   # Sig is used by local fn; ZAL could be; etc.
-  useless <- c("processed","auglinmodblob","generateInitLambda","as_matrix_ZAL","predictor",
+  useless <- c("processed","auglinmodblob","generateInitLambda","ddi_or_matrix_ZAL","predictor",
                "TT","TTleve","wAugX","resglm","ZALlist","ZAL","provide.resglm","formula",
                "LMatrix","next_LMatrices")
   useless <- intersect(useless,ls(environment(res$get_logdispObject)))
@@ -1312,7 +1302,7 @@ HLfit_body <- function(processed, resid.model= ~ 1,
       if(mc$verbose["objective"]) print(c(ranefParsVec,c(sum=resu)))
       if (is.character(traceFileName)) {
         verif <- paste("#global:",ranefParsVec,resu) 
-        write(verif,file=traceFileName,append=T) ## the file is unlink'ed in corrHLfit()  
+        write(verif,file=traceFileName,append=TRUE) ## the file is unlink'ed in corrHLfit()  
       }
       return(resu)
     } else { ## there is one processed for a single data set 

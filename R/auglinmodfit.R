@@ -22,7 +22,7 @@ auglinmodfit <- function(TT,ZAL,lambda_est,wranefblob,d2hdv2,w.resid,beta_eta,
                          corrPars, ## only for error message in intervalStep
                          processed,
                          ZALtZAL=NULL,
-                         as_matrix_ZAL
+                         ddi_or_matrix_ZAL
 ) {
   #if (inherits(eta,"Matrix")) eta <- as.matrix(eta) ## 
   ### 
@@ -172,7 +172,7 @@ auglinmodfit <- function(TT,ZAL,lambda_est,wranefblob,d2hdv2,w.resid,beta_eta,
     mu <- muetablob$mu ## if Bin/Pois, O(n): facteur BinomialDen dans la transfo mu -> eta ## nonstandard mu des COUNTS
     ## update functions of v_h -> blob
     w.resid <- calc.w.resid(muetablob$GLMweights,phi_est) ## 'weinu', must be O(n) in all cases
-    d2hdv2 <- calcD2hDv2(as_matrix_ZAL,w.resid,w.ranef) ## update d2hdv2= - t(ZAL) %*% diag(w.resid) %*% ZAL - diag(w.ranef)
+    d2hdv2 <- calcD2hDv2(ddi_or_matrix_ZAL,w.resid,w.ranef) ## update d2hdv2= - t(ZAL) %*% diag(w.resid) %*% ZAL - diag(w.ranef)
     locarglist <- list(mu=mu,u_h=u_h,dvdu=dvdu,lambda_est=lambda_est,phi_est=phi_est,
                        d2hdv2=d2hdv2,cum_n_u_h=cum_n_u_h,lcrandfamfam=lcrandfamfam,
                        #ZAL=ZAL, ## can provide RZAL attribute but dubious if LevenbergM presumably variable w.resid
@@ -323,7 +323,7 @@ auglinmodfit <- function(TT,ZAL,lambda_est,wranefblob,d2hdv2,w.resid,beta_eta,
     #     } else 
     if (betaFirst)  { ### LeeL12 top p. 6 Appendix (code non optimise, useful for checking other algorithms) 
       ## c'est bien equivalent au calcul de Augz en fonction de sscaled essaye ci dessous selon LeeL12
-      Sig <- Sigwrapper(as_matrix_ZAL,1/w.ranef,1/w.ranef,ZALtZAL=ZALtZAL)
+      Sig <- Sigwrapper(ddi_or_matrix_ZAL,1/w.ranef,1/w.resid,ZALtZAL=ZALtZAL)
       tXinvS <- calc_tXinvS(Sig,X.pv,stop.on.error) ## note dependence v_h -> eta -> Sig...
       if (inherits(tXinvS,"try-error")) singularSigmaMessagesStop(lambda_est=lambda_est,phi_est=phi_est,corrPars=corrPars)
       ## from a(0) to a(1) LeeL12 p. 963 col 1 l 2
@@ -449,7 +449,7 @@ auglinmodfit <- function(TT,ZAL,lambda_est,wranefblob,d2hdv2,w.resid,beta_eta,
         ## update functions of v_h -> blob
         w.resid <- calc.w.resid(muetablob$GLMweights,phi_est) ## 'weinu', must be O(n) in all cases
         #### update fns of v_h -> blob -> w.resid
-        d2hdv2 <- calcD2hDv2(as_matrix_ZAL,w.resid,w.ranef) ## update d2hdv2= - t(ZAL) %*% diag(w.resid) %*% ZAL - diag(w.ranef)
+        d2hdv2 <- calcD2hDv2(ddi_or_matrix_ZAL,w.resid,w.ranef) ## update d2hdv2= - t(ZAL) %*% diag(w.resid) %*% ZAL - diag(w.ranef)
       } ## endif LevenbergM else...
       # print(paste(innerj," ",paste(beta_eta,collapse=" ")),quote=F)
     } ## end true augmented model       

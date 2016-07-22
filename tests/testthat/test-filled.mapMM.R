@@ -8,14 +8,10 @@ bfit <- corrHLfit(migStatus ~ means+ Matern(1|longitude+latitude),data=blackcap,
 
 ## showing add.map
 if (require(maps)) { ## required for add.map=TRUE 
-  filled.mapMM(bfit,add.map=TRUE,plot.axes={axis(1);axis(2)},
+  filled.mapMM(bfit,add.map=TRUE,
              plot.title=title(main="Inferred migration propensity of blackcaps",
                               xlab="longitude",ylab="latitude"))
 }
-## filled.mapMM takes a bit longer
-filled.mapMM(bfit,nlevels=30,plot.axes={axis(1);axis(2)},
-             plot.title=title(main="Inferred migration propensity of blackcaps",
-                              xlab="longitude",ylab="latitude"))
 
 data(Loaloa)  
 lfit <- corrHLfit(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
@@ -24,7 +20,7 @@ lfit <- corrHLfit(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
 
 ## longer computation requiring interpolation of 197 points 
 if (require(maps)) { ## required for add.map=TRUE 
-  filled.mapMM(lfit,add.map=TRUE,plot.axes={axis(1);axis(2)},
+  filled.mapMM(lfit,add.map=TRUE,
              decorations=quote(points(pred[,coordinates],pch=15,cex=0.3)),
              plot.title=title(main="Inferred prevalence, North Cameroon",
                               xlab="longitude",ylab="latitude"))

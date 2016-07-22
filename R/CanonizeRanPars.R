@@ -2,7 +2,9 @@
 canonizeRanPars <- function(ranPars, ## should have a RHOMAX attribute when trRho in input
                             corr.model,checkComplete=TRUE) {
   trueCorrpars <- list()
-  if (corr.model %in% c("Matern")) {
+  if (is.null(corr.model)) {
+    ## do nothing
+  } else if (corr.model %in% c("Matern")) {
     if (!is.null(ranPars$trNu)) { ## either we have nu,rho or trNu,trRho 
       ranPars$nu <- nuInv(ranPars$trNu,ranPars$trRho,NUMAX=attr(ranPars,"NUMAX")) ## before trRho is removed...
       ranPars$trNu <- NULL
@@ -16,7 +18,9 @@ canonizeRanPars <- function(ranPars, ## should have a RHOMAX attribute when trRh
     }
     trueCorrpars$nu <- nu 
   } 
-  if (corr.model %in% c("AR1","ar1")) {
+  if (is.null(corr.model)) {
+    ## do nothing
+  } else if (corr.model %in% c("AR1","ar1")) {
     ARphi <- ranPars$ARphi
     if (is.null(ARphi) && checkComplete) {
       mess <- pastefrom("ARphi missing from ranPars.",prefix="(!) From ")

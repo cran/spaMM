@@ -10,7 +10,6 @@
 
 
 #include "gsl_bessel.h"
-//#include "R.h"
 
 static inline int cheb_eval_e(const cheb_series * cs,
             const double x,

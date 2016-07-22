@@ -58,5 +58,19 @@ p5 <- predict(hl,newdata=lll[101:102,],variances=list(respVar=TRUE))
 expect_equal(attr(p4,"respVar")[101],attr(p5,"respVar")[1])
 expect_equivalent(p4[101],p5[1]) ## _equivalent does not check names and other attributes
 
-
+## dontrun example from help(predict):
+## prediction with distinct given phi's in different locations:
+data(blackcap)
+set.seed(123)
+varphi <- cbind(blackcap,logphi=runif(14))
+vphifit <- corrHLfit(migStatus ~ 1 + Matern(1|latitude+longitude), 
+                     resid.model = list(formula=~0+offset(logphi)),
+                     data=varphi,  ranFix=list(nu=4,rho=0.4))
+# for respVar computation, one needs the resid.model formula to specify phi:
+p1 <- suppressWarnings(get_respVar(vphifit,newdata=data.frame(latitude=1,longitude=1,logphi=1)))
+expect_equal(p1,c(`1`=2.844405),tol=1e-6)
+# for predVar computation, phi is not needed 
+#     (and could have been specified through ranFix):  
+p1 <- suppressWarnings(get_predVar(vphifit,newdata=data.frame(latitude=1,longitude=1)))
+expect_equal(p1,c(`1`=0.1261236),tol=1e-6)
 

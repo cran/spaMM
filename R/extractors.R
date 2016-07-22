@@ -36,12 +36,12 @@ calc_invL <- function(object) { ## computes inv(L) [not inv(Corr): see calc_invC
       affecteds <- which(ranefs %in% attr(lmatrix,"ranefs"))
       condnum <- kappa(lmatrix,norm="1")
       if (condnum>1e7) {
-        warning("calc_invL(): regularization required in inversion of chol factor.")
-        tLL <- crossprodCpp(lmatrix)
-        nc <- ncol(tLL)
+        if (spaMM.getOption("wRegularization")) warning("calc_invL(): regularization required in inversion of chol factor.")
+        LLt <- tcrossprodCpp(lmatrix)  ## presumably corr mat => more 'normalized' => more easily regul than tLL
+        nc <- ncol(LLt)
         diagPos <- seq.int(1L,nc^2,nc+1L)
-        tLL[diagPos] <- tLL[diagPos] + rep(1e-12,nc)  
-        invlmatrix <- solve(tLL) %*% t(lmatrix) ## regularized solve(lmatrix)
+        LLt[diagPos] <- LLt[diagPos] + rep(1e-12,nc)  
+        invlmatrix <- t(lmatrix) %*% solve(LLt) ## regularized solve(lmatrix)
       } else { ## end of designL.from.corr implies either type is cholL_LLt or we have decomp $u and $d 
         type <-  attr(lmatrix,"type")
         if (type=="cholL_LLt")  {
@@ -50,7 +50,7 @@ calc_invL <- function(object) { ## computes inv(L) [not inv(Corr): see calc_invC
           decomp <- attr(lmatrix,attr(lmatrix,"type")) ## of corr matrix !
           invlmatrix <-  ZWZt(decomp$u,sqrt(1/decomp$d))
         } else {
-          message(paste("Possibly inefficient code in calc_invL() for L of type",type))
+          if (spaMM.getOption("wDEVEL")) message(paste("Possibly inefficient code in calc_invL() for L of type",type))
           invlmatrix <- solve(lmatrix)
         }
       }
@@ -85,14 +85,14 @@ calc_invColdoldList <- function(object) { ## returns a list of inv(Corr) from th
         decomp <- attr(lmatrix,attr(lmatrix,"type")) ## of corr matrix !
         invCoo <-  ZWZt(decomp$u,1/decomp$d)
       } else {
-        message(paste("Possibly inefficient code in calc_invColdoldList() for L of type",type)) 
+        if (spaMM.getOption("wDEVEL")) message(paste("Possibly inefficient code in calc_invColdoldList() for L of type",type)) 
         invCoo <- try(solve(tcrossprodCpp(lmatrix)),silent=TRUE) 
       }
       if (inherits(invCoo,"try-error")) {
         invCoo <- NULL
       } else if (kappa(invCoo,norm="1")>1e14) invCoo <- NULL
       if (is.null(invCoo)) { ## regularisation
-        warning("calc_invColdoldList(): regularization required in inversion of correlation matrix.")
+        if (spaMM.getOption("wRegularization")) warning("calc_invColdoldList(): regularization required in inversion of correlation matrix.")
         LLt <- tcrossprodCpp(lmatrix)
         nc <- ncol(LLt)
         diagPos <- seq.int(1L,nc^2,nc+1L)
@@ -230,7 +230,7 @@ deviance.HLfit <- function(object,...) {
 
 get_fixefVar <- function(...) {
   mc <- match.call(expand.dots = TRUE)
-  mc$variances$predVar <- TRUE
+  mc$variances$fixefVar <- TRUE
   mc[[1L]] <- quote(spaMM::predict.HLfit)
   attr(eval(mc,parent.frame()),"fixefVar")
 }
@@ -244,14 +244,14 @@ get_predVar <- function(...) {
 
 get_residVar <- function(...) {
   mc <- match.call(expand.dots = TRUE)
-  mc$variances$predVar <- TRUE
+  mc$variances$residVar <- TRUE
   mc[[1L]] <- quote(spaMM::predict.HLfit)
   attr(eval(mc,parent.frame()),"residVar")
 }
 
 get_respVar <- function(...) {
   mc <- match.call(expand.dots = TRUE)
-  mc$variances$predVar <- TRUE
+  mc$variances$respVar <- TRUE
   mc[[1L]] <- quote(spaMM::predict.HLfit)
   attr(eval(mc,parent.frame()),"respVar")
 }

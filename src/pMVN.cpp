@@ -1,6 +1,7 @@
+#include <Rcpp.h>
+#define R_NO_REMAP
 #include <R.h>
 #include <Rmath.h>
-#include <Rcpp.h>
 using namespace Rcpp;
 using namespace std;
 

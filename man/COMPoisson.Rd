@@ -21,7 +21,7 @@ GLM link function. Cannot be modified.
 }
 }
 \value{
-A family object. The 'simulate' function is not yet implemented.
+A family object. The 'simulate' member function is not yet implemented.
 }
 \details{
 Fitting will be very slow when \eqn{\nu_CMP} approaches zero, i.e. for strong overdispersion of (conditional) response.

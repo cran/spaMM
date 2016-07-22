@@ -27,7 +27,9 @@ get_respVar(...)
   The return object of fitting functions \code{HLfit,corrHLfit,HLCor}... returning an object inheriting from \code{HLfit} class.
 }
   \item{newdata}{
-  \bold{Either} a matrix or data frame containing all required variables for evaluating fixed and random effects, including an offset. If \code{NULL}, the original data are reused.  
+  \bold{Either} NULL, a matrix or data frame, or a numeric vector. 
+  
+  If \code{NULL}, the original data are reused. Otherwise, all variables required to evaluate model formulas must be included. Which variables are required may depend on other arguments: see \dQuote{prediction with given phi's} example, also illustrating the syntax when formulas include an offset.  
   
   \bold{or} a numeric vector, which names (if any) are ignored. This makes it easier to use \code{predict} as an objective function for an 
   optimization procedure such as \code{optim}, which calls the objective function on unnamed vectors. However, one must make sure that the order of elements in the vector is  the order of first occurrence of the variables in the model formula. This order can be checked in the error message returned when calling \code{predict} on a \code{newX} vector of clearly wrong size, e.g. \code{predict(<object>,newdata=numeric(0))}.
@@ -38,13 +40,13 @@ get_respVar(...)
  }
  \item{variances}{
  
+
+   A list which elements control the computation of different estimated variances. In particular,
    \code{list(linPred=TRUE,disp=TRUE)} is suitable for uncertainty in point prediction.   
 
-   A list which elements control the computation of different estimated variances. 
    \code{predict} can return four components of prediction variance: 
-   \code{fixefVar}, \code{predVar}, \code{residVar} and \code{respVar}, 
-   all returned as attributes of the point predictions. The elements of \code{variances} 
-   specify how these components are constructed. By default, 
+   \code{fixefVar}, \code{predVar}, \code{residVar} and \code{respVar}, detailed below. 
+   They are all returned as attributes of the point predictions. By default, 
    each component is a vector of variances. However, if \code{variances$cov=TRUE}, 
    a covariance matrix is returned when applicable (i.e. not for \code{"residVar"}).
    
@@ -67,7 +69,7 @@ get_respVar(...)
    \code{residVar} provides the residual variances (for Gaussian or Gamma responses). 
    It is called by \code{variances$residVar=TRUE}.
   
-  \code{respVar=TRUE} is the variance of the response, i.e. the sum of \code{predVar} and \code{residVar}.
+  \code{respVar} is the variance of the response, i.e. the sum of \code{predVar} and \code{residVar}.
   It is called by \code{variances$respVar=TRUE}.
     
   Calling for one (co)variance implies that some of its components may be also returned.    
@@ -145,6 +147,17 @@ cov2 <- get_predVar(fitobject,newdata=moregroups,
 cov1-cov2 ## the expected off-diagonal covariance due to the common group in the first fit.
 
 \dontrun{
+## prediction with distinct given phi's in different locations:
+varphi <- cbind(blackcap,logphi=runif(14))
+vphifit <- corrHLfit(migStatus ~ 1 + Matern(1|latitude+longitude), 
+                     resid.model = list(formula=~0+offset(logphi)),
+                     data=varphi,  ranFix=list(nu=4,rho=0.4))
+# for respVar computation, one needs the resid.model formula to specify phi:
+get_respVar(vphifit,newdata=data.frame(latitude=1,longitude=1,logphi=1))
+# for predVar computation, phi is not needed 
+#     (and could have been specified through ranFix):  
+get_predVar(vphifit,newdata=data.frame(latitude=1,longitude=1))                     
+
 ## Effects of numerically singular correlation matrix C:
 fitobject <- corrHLfit(migStatus ~ 1 + Matern(1|latitude+longitude),data=blackcap,
                        ranFix=list(nu=10,rho=0.001)) ## numerically singular C

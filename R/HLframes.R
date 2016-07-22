@@ -67,25 +67,37 @@ noNonSpatialbarsMM <- function (term) {
   term
 }
 
-
-
-##' Remove the random-effects terms from a mixed-effects formula,
-nobarsMM <-
-  function (term) 
-  {
+## Remove the random-effects terms from a mixed-effects formula
+nobarsMM <- function (term) { ## different from lme4::nobars
+  nb <- nobarsMM_(term)
+  # if (is(term, "formula") && length(term) == 3 && is.symbol(nb)) { # wong bc is.symbol(cbind(...)) is FALSE
+    if (is(term, "formula") && length(term) == 3 && ! inherits(nb,"formula")) {
+      #nb <- reformulate("0", response = deparse(nb)) ## wrong for nb=cbind(...)
+      nb <- as.formula(paste(deparse(nb),"~ 0")) 
+  }
+  # HLframes -> if (inherits(fixef.form, "formula")) { ... model.frame(...)) does not handle the formula  '~ 0'. Maybe the test should be modified
+  # if (is.null(nb)) {
+  #   nb <- if (is(term, "formula")) 
+  #     ~0
+  #   # else 0 # would convert Matern(...) en Matern(0)
+  # }
+  nb
+}
+  
+nobarsMM_ <- function (term) { ## compare to lme4:::nobars_
     if (!("|" %in% all.names(term))) 
       return(term)
     if (is.call(term) && term[[1]] == as.name("|")) 
       return(NULL)
     if (length(term) == 2) {
-      nb <- nobarsMM(term[[2]])
+      nb <- nobarsMM_(term[[2]])
       if (is.null(nb)) 
         return(NULL)
       term[[2]] <- nb
       return(term)
     }
-    nb2 <- nobarsMM(term[[2]])
-    nb3 <- nobarsMM(term[[3]])
+    nb2 <- nobarsMM_(term[[2]])
+    nb3 <- nobarsMM_(term[[3]])
     if (is.null(nb2)) 
       return(nb3)
     if (is.null(nb3)) 
@@ -95,71 +107,60 @@ nobarsMM <-
     term
   }
 
-
-
-
-noOffset <-
-  function (term) 
-  {
-    if (!("offset" %in% all.names(term))) 
-      return(term)
-    if (length(term) == 2) { ## this is the case if this term is  offset(...)
-      term1 <- as.character(term[[1]])
-      if (term1=="offset") {
-        return(NULL) 
-      }  
-      nb <- noOffset(term[[2]])
-      if (is.null(nb)) 
-        return(NULL)
-      term[[2]] <- nb
-      return(term)
-    }
-    nb2 <- noOffset(term[[2]])
-    nb3 <- noOffset(term[[3]])
-    if (is.null(nb2)) {
-      if (inherits(term,"formula")) {
-        return(as.formula(paste(term[[1]],nb3))) 
-      } else return(nb3)
-    } 
-    if (is.null(nb3)) {
-      if (inherits(term,"formula")) {
-        return(as.formula(paste(nb2,"~ 0"))) ## return(nb2) would only return the LHS, not a formula 
-      } else return(nb2)
-    } 
-    term[[2]] <- nb2
-    term[[3]] <- nb3
-    term
+noOffset <- function (term) { 
+  nb <- noOffset_(term)
+  ## cf comment in nobarsMM
+  if (is(term, "formula") && length(term) == 3  && ! inherits(nb,"formula")) {
+    #nb <- reformulate("0", response = deparse(nb))
+    nb <- as.formula(paste(deparse(nb),"~ 0")) 
   }
+  ## cf comment in nobarsMM
+  # if (is.null(nb)) {
+  #   nb <- if (is(term, "formula")) 
+  #     ~0
+  #   # else 0 ## would convert y~x+offset(...) into y~x+0 
+  # }
+  nb
+}
 
 
-nobarsNooffset <-
-  function (term) 
-  {
-    if (!("|" %in% all.names(term) || "offset" %in% all.names(term))) 
-      return(term)
-    if (is.call(term) && term[[1]] == as.name("|")) 
+noOffset_ <- function (term)   {
+  if (!("offset" %in% all.names(term))) 
+    return(term)
+  if (length(term) == 2) { ## this is the case if this term is  offset(...)
+    term1 <- as.character(term[[1]])
+    if (term1=="offset") {
+      return(NULL) 
+    }  
+    nb <- noOffset_(term[[2]])
+    if (is.null(nb)) 
       return(NULL)
-    if (length(term) == 2) {
-      term1 <- as.character(term[[1]])
-      if (term1=="offset") {
-        return(NULL) 
-      }  
-      nb <- nobarsNooffset(term[[2]])
-      if (is.null(nb)) 
-        return(NULL)
-      term[[2]] <- nb
-      return(term)
-    }
-    nb2 <- nobarsNooffset(term[[2]])
-    nb3 <- nobarsNooffset(term[[3]])
-    if (is.null(nb2)) 
-      return(nb3)
-    if (is.null(nb3)) 
-      return(nb2)
-    term[[2]] <- nb2
-    term[[3]] <- nb3
-    term
+    term[[2]] <- nb
+    return(term)
   }
+  nb2 <- noOffset_(term[[2]])
+  nb3 <- noOffset_(term[[3]])
+  if (is.null(nb2)) {
+    #if (inherits(term,"formula")) {   ## code for autonomous noOffset fn up to 07/2016
+    #  return(as.formula(paste(term[[1]],nb3))) 
+    #} else 
+    return(nb3)
+  } 
+  if (is.null(nb3)) {
+    #if (inherits(term,"formula")) {   ## idem
+    #  return(as.formula(paste(nb2,"~ 0"))) ## return(nb2) would only return the LHS, not a formula 
+    #} else 
+    return(nb2)
+  } 
+  term[[2]] <- nb2
+  term[[3]] <- nb3
+  term
+}
+
+nobarsNooffset <- function (term) {
+  nb <- nobarsMM(term)
+  noOffset(nb)
+}
 
 ## spaces should be as in parseBars because terms can be compared as strings in later code
 findSpatial <- function (term) { ## derived from findbars
@@ -230,6 +231,8 @@ findOffset <- function (term) { ## derived from findbars
     term1 <- as.character(term[[1]])
     if (term1=="offset") {
       return(term) 
+    } else if (term1=="~") { 
+      return(findOffset(term[[2]]))
     } else return(NULL) 
   }
   c(findOffset(term[[2]]), findOffset(term[[3]]))
@@ -295,7 +298,8 @@ HLframes <- function (formula, data,fitobject=NULL) {
   Y <- model.response(mf, "any")
   Y <- as.vector(Y) ## problem: Y is array1d here if input data frame contains array1d
   ####### Then constructs the design X by evaluating the model frame (fe) with fe$formula <- fixef.form
-  fixef.form <- nobarsNooffset(formula) ## nobars removes the (...|...) terms...
+  fixef.form <- nobarsMM_(formula) 
+  fixef.form <- noOffset_(fixef.form) 
   fixef_levels <- NULL
   fixef_terms <- NULL
   if (inherits(fixef.form, "formula")) {
@@ -326,7 +330,7 @@ HLframes <- function (formula, data,fitobject=NULL) {
       fixef_levels <- .getXlevels(fixef_terms, fe) ## added 2015/12/09 useful for predict
     }
   } else {
-    X <- matrix(nrow=NROW(Y), ncol=0L)
+    X <- matrix(nrow=nrow(data), ncol=0L) ## NROW(Y) =0 if formula has no LHS, yielding inappropriate X
   }
   storage.mode(X) <- "double" ## otherwise X may be logi[] rather than num[] in particular when ncol=0
   list(Y = Y, 

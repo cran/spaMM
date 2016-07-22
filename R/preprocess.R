@@ -268,18 +268,18 @@ preprocess <- function(control.HLfit, ranFix=NULL, HLmethod,
   # handling offset in *resid.predictor*
   resid.predictor <- resid.model$formula
   if (! inherits(resid.predictor,"predictor")) resid.predictor <- Predictor(resid.predictor)
-  roff <- model.offset(model.frame(resid.predictor,data=data)) ## look for offset from (ori)Formula 
-  if ( is.null(roff) ) { ## ## no offset (ori)Formula term. Check attribute (Predictor ensures offset is not both in formula and attr)
-    roff <- attr(resid.predictor,"offsetObj")$total 
+  dispOffset <- model.offset(model.frame(resid.predictor,data=data)) ## look for offset from (ori)Formula 
+  if ( is.null(dispOffset) ) { ## ## no offset (ori)Formula term. Check attribute (Predictor ensures offset is not both in formula and attr)
+    dispOffset <- attr(resid.predictor,"offsetObj")$total 
   } else {
     keepOriForm <- attr(resid.predictor,"oriFormula")
     resid.predictor <- noOffset(resid.predictor)
     attr(resid.predictor,"oriFormula") <- keepOriForm
   }
-  if (is.null(roff)) { ## model.frame.default(formula = locform, offset = off,...) expects a vector....
+  if (is.null(dispOffset)) { ## model.frame.default(formula = locform, offset = off,...) expects a vector....
     attr(resid.predictor,"offsetObj") <- list(total=rep(0,nobs),nonZeroInfo=FALSE)
   } else {
-    attr(resid.predictor,"offsetObj") <- list(total=roff,nonZeroInfo=TRUE) ## subtly, will be of length 1 if   original offset was a constant...
+    attr(resid.predictor,"offsetObj") <- list(total=dispOffset,nonZeroInfo=TRUE) ## subtly, will be of length 1 if   original offset was a constant...
   }
   processed$resid.predictor <- resid.predictor  
   #
@@ -414,7 +414,8 @@ preprocess <- function(control.HLfit, ranFix=NULL, HLmethod,
       ## build formula with only random effects
       REMLformula <- as.formula(paste(lhs,"~",paste(terms_ranefs,collapse="+")))
     } else REMLformula <- as.formula(paste(lhs,"~ 0")) 
-  }
+    attr(REMLformula,"isML") <- TRUE
+  } ## else do nothing: keeps input REMLformula, which may be NULL or a non-trivial formula
   processed$REMLformula <- REMLformula  
   #
   processed$loglfn.fix <- selectLoglfn(family)
@@ -468,8 +469,9 @@ preprocess <- function(control.HLfit, ranFix=NULL, HLmethod,
   processed$LMMbool <- LMMbool
   processed$GLMMbool <- GLMMbool
   #
-  if (is.null(prior.weights)) prior.weights <- rep(1,nobs)
+  if (is.null(prior.weights)) prior.weights <- rep(1L,nobs) ## <- 1L prevented by glm -> model.frame(... prior.weights)
   attr(prior.weights,"unique") <- (length(unique(prior.weights))==1L) 
+  #attr(prior.weights,"only1") <- all(upw==1L)
   processed$prior.weights <- prior.weights
   ## algorithms (control of defaults remains in the HLfit code)
   betaFirst <-control.HLfit$betaFirst ##  
@@ -572,7 +574,9 @@ preprocess <- function(control.HLfit, ranFix=NULL, HLmethod,
       mess <- pastefrom("LIKELY missing code to handle random effect for linear predictor for phi.")
       stop(mess)
     } else {
-      if (length(namesX_disp)==1 && namesX_disp[1]=="(Intercept)") {
+      if (length(namesX_disp)==1 && namesX_disp[1]=="(Intercept)"
+          && is.null(dispOffset) ## added 06/2016 (bc phiScal does not handle offset in a phi formula) 
+          ) {
         models[["phi"]] <- "phiScal"
         processed$get_init_phi <- create_get_init_phi()
       } else { 

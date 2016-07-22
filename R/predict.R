@@ -18,7 +18,7 @@
 calc_beta_w_cov <- function(object) {
   beta_w_cov <- attr(object$beta_cov,"beta_v_cov")
   invL <- calc_invL(object) ## correlation matrix of ranefs is solve((t(invL)%*%(invL)))
-  # invL must be solve(attr(object$predictor,"LMatrix"))
+  # invL must be de facto a block matrix when several ranefs
   if ( ! is.null(invL)) {
     pforpv <- ncol(object$beta_cov)
     v.range <- pforpv+seq(ncol(invL))
@@ -97,6 +97,7 @@ calcPredVar <- function(Coldnew,X.pv,newZAC=NULL,newZA,beta_w_cov,
     if (returnMat) {
       return(Z[] %id*id% W[] %id*id% t(Z)[])
     } else {
+      rownames(W) <- colnames(W) <- NULL ## inhibits a useles warning from Matrix:: dimNamesCheck 
       premul <- Z[] %id*id% W[]
       return(rowSums(suppressMessages(premul * Z[]))) ## suppress message("method with signature...") [found by debug(message)]
     }
@@ -128,17 +129,20 @@ calcPredVar <- function(Coldnew,X.pv,newZAC=NULL,newZA,beta_w_cov,
     if (length(problems)>0L) {
       #warning("Some problems were encountered, affecting computation of prediction variance component\n for uncertainty in dispersion parameters:")
       uproblems <-  unique(problems) ## unique(<list>) ## not documented but seems OK
-      sapply(uproblems,warning)
+      sapply(uproblems,warning) 
+      #!# FR->FR this is called each time calcPredVar() is called even if logdispObject is called only once
     }
     #
-    newZACw <- newZAC %*% logdispObject$dwdlogdisp ## typically (nnew * n_u_h) %*% (n_u_h * 2) = nnew * 2 hence small 
-    if (covMatrix) {
-      disp_effect_on_newZACw <- newZACw %*% logdispObject$logdisp_cov %*% t(newZACw)  
-    } else {
-      premul <- newZACw %*% logdispObject$logdisp_cov
-      disp_effect_on_newZACw <- rowSums(premul * newZACw)
+    if (is.null(problems$SigNotAvail)) {
+      newZACw <- newZAC %*% logdispObject$dwdlogdisp ## typically (nnew * n_u_h) %*% (n_u_h * 2) = nnew * 2 hence small 
+      if (covMatrix) {
+        disp_effect_on_newZACw <- newZACw %*% logdispObject$logdisp_cov %*% t(newZACw)  
+      } else {
+        premul <- newZACw %*% logdispObject$logdisp_cov
+        disp_effect_on_newZACw <- rowSums(premul * newZACw)
+      }
+      predVar <- predVar + disp_effect_on_newZACw
     }
-    predVar <- predVar + disp_effect_on_newZACw
   }
   return(predVar) ## may be a Matrix
 }
@@ -412,6 +416,13 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
   ##### (2) predVar
   if(variances$linPred) {
     beta_w_cov <- object$get_beta_w_cov(object)
+    if (inherits(re.form,"formula")) {
+      # identifies an selects columns for the [retained ranefs, which are given by newinold 
+      subrange <- unlist(lapply(newinold,function(it) {(old_cum_n_u_h[it]+1L):(old_cum_n_u_h[it+1L])}))
+      Xncol <- ncol(object$beta_cov)
+      subrange <- c(seq_len(Xncol),subrange + Xncol)
+      beta_w_cov <- beta_w_cov[subrange,subrange]
+    }
     if ( ! is.null(newdata)) {
       invColdoldList <- object$get_invColdoldList(object)
       ## list for Cnewnew, which enters in  newZA %*% Cnewnew %*% tnewZA, hence should not represent newZA itself 
@@ -496,6 +507,10 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
   }
   attr(resu,"predVar") <- respVar ## vector or matrix
   if (variances$residVar) {
+    pw <- object$prior.weights
+    if ( ! (attr(pw,"unique") && pw[1L]==1L)) {
+      warning("Prior weights are not taken in account in residVar computation.")
+    }
     if (object$family$family %in% c("poisson","binomial","COMPoisson","negbin")) {
       attr(resu,"residVar") <- object$family$variance(fv)
     } else attr(resu,"residVar") <- calcResidVar(object,newdata=locdata) 
