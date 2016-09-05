@@ -81,6 +81,8 @@ makeLowerUpper <- function(canon.init, ## cf calls: ~ in user scale, must be a f
             ## constructs upper nu from NUMAX => /(1+...)
             ## nu should not diverge otherwise it will diverge in Bessel_lnKnu, whatever the transformation used
             nu <- NUMAX * canon.init$nu/(1+canon.init$nu) 
+            ## FR->FR hmmm. If canon.init$nu= NUMAX-1 then 
+            ##  (upper) nu= canon.init$nu and possibly < canon.init$nu by numerical accuracy issues => nloptr stops
           }
         }
         if (optim.scale=="transformed") {
@@ -352,8 +354,10 @@ reformat_verbose <- function(verbose,For) {
   if (is.na(verbose["warn"])) verbose["warn"] <- switch(For, "HLCor" = TRUE, "corrHLfit" = FALSE)
   summstring <- paste(For,"Summary",sep="")
   verbose[summstring] <- verbose["summary"]
-  if (is.na(verbose[summstring])) verbose[summstring] <- switch(For, "HLCor" = FALSE, "corrHLfit" = TRUE)
-  verbose["summary"] <- FALSE ## this affects HLCor if reformat_verbose is called from corrHLfit, and HLfit if it is called from HLCor
+  if (is.na(verbose[summstring])) {
+    verbose[summstring] <- switch(For, "HLCor" = FALSE, "corrHLfit" = TRUE)
+    verbose["summary"] <- FALSE ## this affects HLCor if reformat_verbose is called from corrHLfit, and HLfit if it is called from HLCor
+  }
   return(verbose)
 }
 

@@ -113,7 +113,7 @@ if (F) {
       } else trychol <- RcppChol(m)
       if (trychol$Status!=1L) { ## if chol computation unsuccessful
         mreg <- m *(1-1e-8)
-        diag(mreg) <- diag(mreg) + 1e-8 
+        diag(mreg) <- diag(mreg) + 1e-8 * diag(m) ## allows covMatrix; diag(m) has 1's if m is correlation matrix
         trychol <- RcppChol(mreg)
       } 
       if (trychol$Status==1L) {
@@ -124,7 +124,7 @@ if (F) {
       cholR <- try(chol(m),silent=TRUE) ## dim -> unique geo coordinates
       if (inherits(cholR,"try-error")) { ## attempt at regularization 050213
         mreg <- m *(1-1e-8)
-        diag(mreg) <- diag(mreg) + 1e-8 
+        diag(mreg) <- diag(mreg) + 1e-8 * diag(m) ## allows covMatrix again
         cholR <- try(chol(mreg),silent=TRUE) 
       }
       if ( ! inherits(cholR,"try-error")) {
@@ -135,7 +135,7 @@ if (F) {
   }
   if ( is.null(type) ) { ## hence if none of the chol algos (nor symSVD input) has been used 
     ## slower by more stable. Not triangular but should not be a pb
-    if (try.eigen) {
+    if (try.eigen) { ## R's eigen()
       LDL <- try(eigen(m,symmetric=TRUE),silent=TRUE) ## may _hang_ in R2.15.2 on nearly-I matrices
       if ( ! inherits(LDL,"try-error")) d <- LDL$values 
     }
@@ -144,15 +144,15 @@ if (F) {
         symSVD <- selfAdjointSolverCpp(m) ## such that v= t(u)without any sign issue  
         u <- symSVD$u
         d <- symSVD$d  
-        type <- "symsvd"          
-      } else {
-        SVD <- try(svd(m)) ## "the SVD implementation of Eigen (...) is not a particularly fast SVD method." (RcppEigen vignette)
+        type <- "symsvd" ## RcppEigen's SVD: ## "the SVD implementation of Eigen (...) is not a particularly fast SVD method." (RcppEigen vignette)          
+      } else { ## buggy code for testing !  $USEEIGEN
+        SVD <- try(svd(m)) # R's svd()
         if (inherits(SVD,"try-error")) {
           print("spaMM retries SVD following 'svd' failure.") 
           ## numerically different but otherwise equivalent computation
           m <- diag(rep(1-SVDfix,ncol(m))) + m*SVDfix 
           SVD <- try(svd(m)) 
-          if (! inherits(SVD,"try-error") ) SVD$d <- 1+ (SVD$d-1)/SVDfix 
+          if (! inherits(SVD,"try-error") ) SVD$d <- 1+ (SVD$d-1)/SVDfix # valid for covMatrix, but maybe not optimal
         } 
         if (inherits(SVD,"try-error")) {
           ## typically m is I + a few large elements
@@ -166,6 +166,7 @@ if (F) {
           ## must be valid for sym (semi) PD matrices using U, V being eigenvectors of m %*% t(m)
           ## symm matrix => $u, $v match left and right eigenvectors of original Corr matrix
           ## FR->FR but they can be of opposite sign with negative $d...
+          ## => bug in this code not normally used
           u <- SVD$u
           type <- "svd"          
         }         
@@ -183,7 +184,7 @@ if (F) {
       return(try(stop(),silent=T)) ## passes control to calling function
     } else { ## we have a not-too-suspect decomp
       # d[d< threshold]<- threshold ## wrong for corrmats, would be OK for d2hdv2 computation which uses this function 
-      if (any(d<threshold)) d <- threshold + (1-threshold) * d ## 17/05/2014
+      if (any(d<threshold)) d <- threshold + (1-threshold) * d ## 17/05/2014 ## maybe not optimal for covMatrix
       L <- ZWZt(u,sqrt(d))
     }
   } 
@@ -220,7 +221,7 @@ CondNormfn <- function(decomp,lambda) {
 `make_scaled_dist` <- function(uniqueGeo,uniqueGeo2=NULL,distMatrix,rho,rho.mapping=seq_len(length(rho)),
                                dist.method="Euclidean",return_matrix=FALSE) {
   if (length(rho)>1L && dist.method!="Euclidean") { 
-    mess <- pastefrom("'rho' length>1 not allowed for non-Euclidian distance.",prefix="(!) From ")
+    mess <- pastefrom("'rho' length>1 not allowed for non-Euclidean distance.",prefix="(!) From ")
     stop(mess)
   }
   if ( missing(distMatrix) ) { ## ## then provide it (most of this fn's code)
@@ -277,15 +278,19 @@ CondNormfn <- function(decomp,lambda) {
 }
 
 getDistMat <- function(object,scaled=FALSE) {
-  if (! is.null(msd.arglist <- attr(object,"msd.arglist"))) {
-    if ( ! scaled)  {
-      msd.arglist$rho <- 1 
-      msd.arglist$`rho.mapping` <- NULL 
+  if (! is.null(dist_info <- attr(object,"dist_info"))) {
+    if (is.null(dist_info$distMatrix)) { ## we reconstruct it
+      dist_info$distMatrix <- eval(dist_info$distcall,
+                                   list(uniqueGeo=attr(object,"info.uniqueGeo"),dist.method=dist_info$dist.method))
+      dist_info$distcall <- NULL 
     }
-    return(do.call(make_scaled_dist,msd.arglist))
+    if ( ! scaled)  {
+      dist_info$rho <- 1 
+      dist_info$`rho.mapping` <- NULL 
+    }
+    return(do.call(make_scaled_dist,dist_info))
   } else {
     message("no Matern-correlated random effects")
     return(NULL)
   }
 }
-

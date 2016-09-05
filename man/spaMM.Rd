@@ -14,21 +14,21 @@
 
   The standard (G)LMM response families \code{gaussian}, \code{binomial}, \code{poisson}, and \code{Gamma} are handled, as well as \code{\link{multinomial}} response (with some constraints), negative binomial (see \code{\link{negbin}}) and Conway-Maxwell-Poisson response (see \code{\link{COMPoisson}}). GLMMs and HGLMs are fit via Laplace approximations for (1) the marginal likelihood with respect to random effects and (2) the restricted likelihood (as in REML), i.e the likelihood of random effect parameters given the fixed effect estimates. 
 
-  The package fits models including several nested or crossed random effects, only one of which can be a spatial random effect. The spaMM code has not been optimized for speed in non-spatial models. It fits random effects following either a Matérn correlation model or an adjacency matrix model. See \code{\link{adjacency}} for details about the latter. 
+  The package fits models including several nested or crossed random effects, only one of which can be a spatial random effect. The spaMM code has not been optimized for speed in non-spatial models. It fits random effects following either a Matérn correlation model (see \code{\link{Matern}}) or an adjacency matrix model (see \code{\link{adjacency}}). 
   
-  The variance(s) of random effects (\eqn{u}) is (are) denoted \eqn{\lambda} (\code{lambda} in input and output) and that of residual error is denoted \eqn{\phi} (\code{phi}). A fixed-effects linear predictor for \eqn{\phi}, modeling heteroscedasticity, can be considered (see Examples). Fixed effects are described in the standard form \bold{X}\eqn{\beta} where \bold{X} is the design matrix of fixed effects and \eqn{\beta} (\code{beta}) is a vector of fixed effect parameters. 
+  The variance(s) of random effects (\eqn{u}) is (are) denoted \eqn{\lambda} (\code{lambda} in input and output). The variance parameter of residual error is denoted \eqn{\phi} (\code{phi}): this is the residual variance for gaussian response, but for Gamma-distributed response, the residual variance is \eqn{\phi}\eqn{\mu^2} where \eqn{\mu} is expected response. A fixed-effects linear predictor for \eqn{\phi}, modeling heteroscedasticity, can be considered (see Examples). Fixed effects are described in the standard form \bold{X}\eqn{\beta} where \bold{X} is the design matrix of fixed effects and \eqn{\beta} (\code{beta}) is a vector of fixed effect parameters. 
 
   The structure of the random effects can generally be described by the following steps. First, independent and  identically distributed (iid) random effects \eqn{u} are drawn from one of the following distributions: gaussian, Beta-distributed, Gamma and   inverse-Gamma distributed random effects, implemented as detailed in the \code{\link{HLfit}} documentation. Second, a transformation \bold{v}\eqn{=f}(\bold{u}) is applied (\bold{v} elements are still iid). Third, correlated random effects are obtained as \bold{Mv}, where the matrix \bold{M} can describe spatial correlation between observed locations, block effects (or repeated observations in given locations), and correlations involving unobserved locations. See Details in \code{\link{Predictor}} for the general form of \bold{M}. In most cases \bold{M} is determined from the model formula, but it can also be input directly (e.g., to describe genetic correlations).     
 
-  The package has been extensively tested mainly for analysis of spatial GLMMs (Rousset and Ferdy 2014), where the random effects are Gaussian. Other models have been checked against literature results and a few simulations.
+  The package has been extensively tested mainly for analysis of spatial GLMMs (Rousset and Ferdy 2014 and ongoing work), where the random effects are Gaussian. Other models have been checked against literature results and a few simulations.
  
 }
 \author{\enc{François}{Francois} Rousset and Jean-Baptiste Ferdy.
 
-The syntax of formula terms mostly matches the one in the \code{lme4} package, so bits of the \code{lme4} code for parsing formulas has been recycled in \code{spaMM}. 
+The syntax of formula terms mostly matches the one in the \code{lme4} package, so bits of code for parsing formulas has been recycled in \code{spaMM} from various versions of \code{lme4}. 
 }
 \references{
-Lee, Y., Nelder, J. A. and Pawitan, Y. (2006). Generalised linear models with random effects: unified analysis via
+Lee, Y., Nelder, J. A. and Pawitan, Y. (2006). Generalized linear models with random effects: unified analysis via
 h-likelihood. Chapman & Hall: London.
 
 Rousset F., Ferdy, J.-B. (2014) Testing environmental and genetic effects in the presence of spatial autocorrelation. Ecography, 37: 781-790.
@@ -65,7 +65,7 @@ if (spaMM.getOption("example_maxtime")>4) {
 
  ## Nested effects
  
-if (spaMM.getOption("example_maxtime")>30) {
+if (spaMM.getOption("example_maxtime")>28) {
  # lmer syntax allowing several degrees of nesting
  HLfit(cbind(Mate,1-Mate)~1+(1|Female/Male),
        family=binomial(),rand.family=Beta(logit),data=salamander,HLmethod="ML")

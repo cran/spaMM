@@ -73,6 +73,10 @@ pseudoSolvediag <- function(XX, bb) {
     .Call('spaMM_pseudoSolvediag', PACKAGE = 'spaMM', XX, bb)
 }
 
+e_LevenbergMsolveCpp <- function(AA, wwAugz, dd) {
+    .Call('spaMM_e_LevenbergMsolveCpp', PACKAGE = 'spaMM', AA, wwAugz, dd)
+}
+
 LevenbergMsolveCpp <- function(AA, rrhhss, dd) {
     .Call('spaMM_LevenbergMsolveCpp', PACKAGE = 'spaMM', AA, rrhhss, dd)
 }

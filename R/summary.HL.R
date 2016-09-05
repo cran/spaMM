@@ -4,15 +4,14 @@ get_methods_ranefs <- function(object) {
   iterativeEsts<-character(0)
   optimEsts<-character(0)
   ## What the HLfit call says:
-  if (any(object$models[["lambda"]] != "")) {
+  if ( object$models[["eta"]] != "etaGLM") { 
     if ( any(object$lambda.object$type=="outer")) optimEsts <- c(optimEsts,"lambda")
     if ( any(object$lambda.object$type=="inner")) iterativeEsts <- c(iterativeEsts,"lambda")
   }
   if ( ! (object$family$family %in% c("binomial","poisson","COMPoisson","negbin"))) {
-    if ( ! is.null(object$phi.object$glm_phi) ) {
+    if ( ! is.null(object$phi.object$fixef) ) {
       iterativeEsts <- c(iterativeEsts,"phi")
-    } else if ( identical(attr(object$phi.object$phi_outer,"type"),"var")) {optimEsts <- c(optimEsts,"phi")
-    } else if ( ! is.null(object$phi.object$glm_phi) ) iterativeEsts <- c(iterativeEsts,"phi")
+    } else if ( identical(attr(object$phi.object$phi_outer,"type"),"var")) optimEsts <- c(optimEsts,"phi")
     # confint (fitme HLfitoide -> 3e cas)
   }
   optimNames <- names(attr(object,"optimInfo")$LUarglist$canon.init)
@@ -30,9 +29,9 @@ legend_lambda<- function(object) {
   rff <- sapply(seq_len(length(randfams)),function(rfit){tolower(randfams[[rfit]]$family)})
   rfl <- sapply(rff,function(st) {
     switch(st,
-           "beta" = "[ lambda = 4 var(u)/(1 - 4 var(u)) ]",
-           "inverse.gamma" = "[ lambda = var(u)/(1 + var(u)) ]",
-           "[ lambda = var(u) ]"
+           "beta" = "log[ lambda = 4 var(u)/(1 - 4 var(u)) ]", ## u ~ Beta(1/(2lambda),1/(2lambda))
+           "inverse.gamma" = "log[ lambda = var(u)/(1 + var(u)) ]", ## u ~ I-Gamma(1+1/lambda,1/lambda)
+           "log[ lambda = var(u) ]" ## gaussian, or gamma with u ~ Gamma(lambda,1/lambda)
     )
   })
   if ("adjd" %in% names(object$lambda.object$coefficients_lambda)) {
@@ -43,17 +42,7 @@ legend_lambda<- function(object) {
   urff <- unique(rff)
   urfl <- unique(rfl)
   if (length(urff)==1L && length(urfl)==1L) {
-    ## message does not repeat the distribution 
-    if (urff=="beta") {
-      #        cat("Coefficients for log[ lambda ] for u ~ Beta(1/(2lambda),1/(2lambda))\n")
-      cat("Coefficients for log[ lambda = 4 var(u)/(1 - 4 var(u)) ]:\n")
-    } else if (urff=="inverse.gamma") {
-      #        cat("Coefficients for log[ lambda ] for  u ~ I-Gamma(1+1/lambda,1/lambda)\n")
-      cat("Coefficients for log[ lambda = var(u)/(1 + var(u)) ]:\n")
-    } else if (urff=="gamma") {
-      #        cat("Coefficients for log[ lambda = var(u) ] for  u ~ Gamma(lambda,1/lambda)\n")
-      cat("Coefficients for log[ lambda = var(u) ]:\n")
-    } else cat(paste("Coefficients for ",urfl,": \n",sep="")) 
+    cat(paste("Coefficients for ",urfl,":\n",sep=""))
   } else {
     cat(paste("Coefficients for ",paste(urfl,collapse=" or "),", with:\n",sep=""))
     abyss <- lapply(urff, function(st) {
@@ -114,7 +103,7 @@ REMLmess <- function(object) {
 
 summary.HLfitlist <- function(object, ...) {
   sapply(object,summary.HLfit) ## because summary(list object) displays nothing (contrary to print(list.object)) => rather call summary(each HLfit object)
-  cat(" -------- Global likelihood values  --------\n")    
+  cat(" ======== Global likelihood values  ========\n")    
   zut <- attr(object,"APHLs")
   cat(paste(names(zut),": ",signif(unlist(zut),6), sep="",collapse="; "),"\n")
   invisible(object)
@@ -203,11 +192,12 @@ summary.HLfitlist <- function(object, ...) {
   if (length(object$fixef)==0L) {
     cat("No fixed effect\n")
   } else {
-    cat(" ------- Fixed effects (beta) -------\n")
+    cat(" ------------ Fixed effects (beta) ------------\n")
     namesOri <- attr(object$X.pv,"namesOri")
     nc <- length(namesOri)
     betaOri_cov <- matrix(NA,ncol=nc,nrow=nc,dimnames=list(rownames=namesOri,colnames=namesOri))
-    betaOri_cov[colnames(object$beta_cov),colnames(object$beta_cov)] <- object$beta_cov
+    beta_cov <- get_beta_cov_any_version(object)
+    betaOri_cov[colnames(beta_cov),colnames(beta_cov)] <- beta_cov
     beta_se <- sqrt(diag(betaOri_cov))
     fixef_z <- object$fixef/beta_se
     beta_table <- cbind(object$fixef,beta_se,fixef_z)
@@ -217,7 +207,7 @@ summary.HLfitlist <- function(object, ...) {
     summ$beta_table <- beta_table
   }
   if (models[["eta"]]=="etaHGLM") {
-    cat(" ---------- Random effects ----------\n") 
+    cat(" --------------- Random effects ---------------\n") 
     urff <- unique(lcrandfamfam)
     urffl <- unique(randfamfamlinks)
     if (length(urffl)==1L) { 
@@ -228,6 +218,7 @@ summary.HLfitlist <- function(object, ...) {
     corrPars <- object$corrPars
     cP <- unlist(corrPars)
     if ( ! is.null(cP) ) {
+      if (! is.null(ocd <- object$control.dist$dist.method)) cat(paste("Distance:",ocd,"\n"))
       cat("Correlation parameters:")
       corrFixNames <- names(unlist(corrPars[which(attr(corrPars,"type")=="fix")]))
       if (length(corrFixNames)>1) {
@@ -324,7 +315,13 @@ summary.HLfitlist <- function(object, ...) {
   }
   ##
   if (object$family$family %in% c("gaussian","Gamma")) {
-    cat(" -------- Residual variance  --------\n")    
+    if (object$family$family=="Gamma") {
+      cat(" -- Residual variation ( var = phi * mu^2 )  --\n")
+    } else cat(" ------------- Residual variance  -------------\n")    
+    pw <- object$prior.weights
+    if ( ! identical(attr(pw,"unique"),TRUE) && pw[1]!=1L) cat(paste("Prior weights:",
+                                                          paste(signif(pw[1:min(5,length(pw))],6),collapse=" "),
+                                                          "...\n"))
     if ( ! is.null(phi_outer <- phi.object$phi_outer)) {
       if ( identical(attr(phi_outer,"type"),"fix") ) {
         if (length(phi_outer)==1L) {
@@ -338,21 +335,26 @@ summary.HLfitlist <- function(object, ...) {
       summ$phi_outer <- phi_outer
     } else {
       if (models[["phi"]]=="phiHGLM") {
-        stop("From summary.HLfit: phiHGLM code not ready")
-      } else if (length(phi.object$fixef)>0L) {
-        phi_table<-cbind(phi.object$fixef,phi.object$phi_se)
+        cat("Random effects in residual dispersion model:\n  use summary(<fit object>$resid_fit) to display results.\n")       
+      } else if ((loc_p_phi <- length(phi.object$fixef))>0L) {
+        glm_phi <- phi.object[["glm_phi"]]
+        if (is.null(glm_phi)) glm_phi <- phi.object$get_glm_phi(object)
+        phi_se <- summary(glm_phi,dispersion=1)$coefficients[(loc_p_phi+1L):(2L*loc_p_phi)]
+        ## note dispersion set to 1 to match SmythHV's 'V_1' method, which for a log link has steps:
+        #SmythHVsigd <- as.vector(sqrt(2)*phi_est);SmythHVG <- as.vector(phi_est); tmp <- SmythHVG / SmythHVsigd 
+        ## tmp is here sqrt(2) !
+        #if (length(tmp)>1) {SmythHVZstar <- diag(tmp) %*% X_disp} else SmythHVZstar <- tmp * X_disp
+        #SmythHVcovmat <- solve(ZtWZ(SmythHVZstar,(1-lev_phi))); phi_se <- sqrt(diag(SmythHVcovmat)) print(phi_se)
+        #
+        phi_table <- cbind(phi.object$fixef,phi_se)
         colnames(phi_table) <- c("Estimate", "Cond. SE")
         rownames(phi_table) <- namesX_disp <- names(phi.object$fixef)
         summ$phi_table <- phi_table
-        cat("phi formula: ")
         phiform <- attr(object$resid.predictor,"oriFormula")
-        if (length(phiform)==2) phiform <- as.formula(paste('"phi"',paste(phiform,collapse=" "))) ##FR->FR how does _dglm_ deal with this
-        print(phiform,showEnv=FALSE)
-        phiinfo <- object$resid.family$link; if (phiinfo=="identity") phiinfo=""
-        phiinfo <- paste("Coefficients for ",phiinfo,"[ phi= ",sep="")
-        if (object$family$family=="Gamma") { ## response family to know if its a scale param; not phi model family, which is always GammaForDispGammaGLM()
-          phiinfo <- paste(phiinfo,"scale param. ]\n",sep="")
-        } else phiinfo <- paste(phiinfo,"residual var ]\n",sep="")
+        resid.family <- eval(object$resid.family)
+        phiinfo <- resid.family$link 
+        if (phiinfo=="identity") {phiinfo="phi "} else {phiinfo <- paste(phiinfo,"(phi) ",sep="")}
+        phiinfo <- paste("Coefficients for ",phiinfo,paste(phiform,collapse=" ")," :\n",sep="")
         cat(phiinfo)
         print(phi_table,4)
         dispOffset <- attr(object$resid.predictor,"offsetObj")$total
@@ -360,13 +362,13 @@ summary.HLfitlist <- function(object, ...) {
         if (length(namesX_disp)==1 && namesX_disp[1]=="(Intercept)" && length(dispOffset)<2) {
           phi_est <- (phi.object$fixef)
           if (length(dispOffset)==1L) phi_est <- phi_est+dispOffset
-          phi_est <- object$resid.family$linkinv(phi_est)
+          phi_est <- resid.family$linkinv(phi_est)
           if (object$family$family=="Gamma") {
-            cat(paste("Estimate of phi: ",signif(phi_est,4)," (residual var = phi * mu^2)\n"))
+            cat(paste("Estimate of phi: ",signif(phi_est,4),"\n"))
             ## la var c'est phi mu^2...
           } else cat(paste("Estimate of phi=residual var: ",signif(phi_est,4),"\n"))
         } 
-        wa <-attr(phi.object,"warning")
+        wa <- glm_phi$warnmess
         if ( ! is.null(wa)) {
           if (wa=="glm.fit: algorithm did not converge") {
             cat("glm.fit for estimation of phi SE did not converge; this suggests\n")
@@ -396,7 +398,7 @@ summary.HLfitlist <- function(object, ...) {
     names(locli)[1] <- attr(logLapp,"method")
     likelihoods <- c(likelihoods,locli)
   }
-  cat(" -------- Likelihood values  --------\n")    
+  cat(" ------------- Likelihood values  -------------\n")    
   astable <- as.matrix(likelihoods);colnames(astable)<-"logLik";
   print(astable)
   summ$likelihoods <- likelihoods

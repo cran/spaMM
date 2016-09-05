@@ -7,7 +7,7 @@ noReForm <- function(re.form) {
     (inherits(re.form,"formula") && length(re.form)==2 && identical(re.form[[2]],0))
 }
 
-newetaFix <- function(object, newMeanFrames) {
+newetaFix <- function(object, newMeanFrames,validnames=NULL) {
   ## newdata -> offset must be recomputed. 
   off <- model.offset( newMeanFrames$mf) ### look for offset from (ori)Formula 
   if ( is.null(off) ) { ## ## no offset (ori)Formula term. 
@@ -16,8 +16,14 @@ newetaFix <- function(object, newMeanFrames) {
       message("Prediction in new design points from a fit with formula=Predictor(... non-NULL offset ...) is suspect.")
     } ## but we still proceed with this dubious offset
   }    
-  ## dans l'état actuel $fixef et complet,incluant les etaFix$beta: pas besoin de les séparer
-  etaFix <-  drop(newMeanFrames$X %*% object$fixef) ## valide even if ncol(newMeanFrames$X) = 0
+  ## dans l'état actuel $fixef et complet, incluant les etaFix$beta: pas besoin de les séparer
+  ## mais il peut contenir des NA ! à enlever
+  # le newX contient a priori les cols des etaFix$beta, contrairement à object$X.pv => don't use the latter cols 
+  if (is.null(validnames)) {
+    est_and_fix <- names(which(!is.na(object$fixef))) ## estimated + etaFix$beta
+    validnames <- intersect(colnames(newMeanFrames$X) ,est_and_fix) # newX.pv may  contain names of unestimated coeff for the sam reason asthe original MenanFrames$X...
+  }
+  etaFix <-  drop(newMeanFrames$X[,validnames,drop=FALSE] %*% object$fixef[validnames]) ## valide even if ncol(newMeanFrames$X) = 0
   if ( ! is.null(off)) etaFix <- etaFix + off   
   return(etaFix)
 }
@@ -95,9 +101,9 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
     #   eta <- newetaFix(object,allFrames) ## X . beta + off
     }
     ##
-    if (any(object$models[["lambda"]] != "")) { ## i.e. not a GLM
+    if (object$models[["eta"]] != "etaGLM") {
       if (is.null(newdata)) {
-        ZAL <- attr(object$predictor,"ZALMatrix")
+        ZAL <- object$get_ZALMatrix(object) # attr(object$predictor,"ZALMatrix")
         cum_n_u_h <- attr(object$lambda,"cum_n_u_h")
         vec_n_u_h <- attr(cum_n_u_h,"vec_n_u_h")
       } else {
@@ -106,8 +112,8 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
         FL <- spMMFactorList(object$predictor, allFrames$mf, 0L, drop=TRUE) 
         ##### the following code with NULL LMatrix ignores spatial effects with newdata:
         ZALlist <- computeZAXlist(XMatrix=NULL,ZAlist=FL$Design)
-        # to overcome this we needto calculate the unconditional covmat including for the (nex) positions
         nrand <- length(ZALlist)
+        # to overcome this we needto calculate the unconditional covmat including for the (nex) positions
         vec_n_u_h <- unlist(lapply(ZALlist,ncol)) ## nb cols each design matrix = nb realizations each ranef
         cum_n_u_h <- cumsum(c(0,vec_n_u_h))
         ZALlist <- lapply(seq_len(length(ZALlist)),as.matrix)

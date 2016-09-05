@@ -10,13 +10,14 @@
 (however, currently the \code{predictor} argument is processed differently). Using \code{update} is a risky programming style (see Note). 
 }
 \note{
-\code{update}, as a general rule, is tricky. For example with \code{m1 <- glm(y~x + offset(<...>),<...>); m2 <- update(m1,.~.-x)}, \code{m2} will lose the intercept term, which would be retained in the absence of an offset. \code{update.HLfit} has the same behaviour. Further, it is affected in a non-transparent way by changes in variables used in the original call. For example
+\code{update}, as a general rule, is tricky. For example with \code{m1 <- glm(y~x + offset(<...>),<...>); m2 <- update(m1,.~.-x)}, \code{m2} will lose the intercept term, which would be retained in the absence of an offset. \code{update.HLfit} has the same behaviour. Further, \code{update} is easily affected in a non-transparent way by changes in variables used in the original call. For example
 \code{
 foo <- rep(1,10)
 m <- lm(rnorm(10)~1, weights=foo)
 rm(foo)
 update(m, .~.) # Error
 }
+To avoid such problems, \code{spaMM} tries to avoid references to variables in the global environment, by enforcing that the data are explicitly provided by the \code{data} argument, and that prior weights, if not constant, are in the data.
 }
 \usage{
 %- \method{update}{HLCor}(object,formula.,...)
@@ -63,11 +64,14 @@ phifit <- exp(Xphi \%*\% c(-2.90,0.1,0.95))
 update(wFit,formula.= . ~ offset(wFit$`X.pv` \%*\% betavals)+(1|batch),
        ranFix=list(lambda=exp(-3.67),phi=phifit))
 
-## There are subtlety in performing REML fits of constrained models: 
-update(wFit,formula.= . ~ offset(wFit$`X.pv` \%*\% betavals)+(1|batch))
-## ... changes the REML correction. Consider instead
-update(wFit,formula.= . ~ offset(wFit$`X.pv` \%*\% betavals)+(1|batch),
-       REMLformula=wFit$predictor)
+## There are subtlety in performing REML fits of constrained models,
+##   illustrated by thefact thatthe following fir does not recover 
+##   the original likelihood values, because dispersion parameters are
+##   estimatedbut the REML correction changes with the formula:
+update(wFit,formula.= . ~ offset(wFit$`X.pv` \%*\% fixef(wFit))+(1|batch))
+## To maintain the original REML correction, Consider instead
+update(wFit,formula.= . ~ offset(wFit$`X.pv` \%*\% fixef(wFit))+(1|batch),
+       REMLformula=wFit$predictor)  ## recover orginal p_v and p_bv 
 ## Alternatively, show original wFit as differences from betavals:  
 update(wFit,formula.= . ~ . +offset(wFit$`X.pv` \%*\% betavals))
 

@@ -1,8 +1,11 @@
+
 ## initialiser offset a O ?? pas actuellement pcq bcp de tests qu'il est nul
 Predictor <- function (formula, offset=NULL, LMatrix = NULL,  AMatrix = NULL, ZALMatrix = NULL) {
   if (inherits(formula,"predictor")) {
     pastefrom("Do not call 'Predictor' on a predictor object.",prefix="(!) From ")
   }
+  # we redefine the envir of the formula to be the closure of Predictor, and we will empty before exiting Predictor
+  formula <- as.formula(deparse(formula))  # env = emptyenv() not possible as model.frame needs a non-empty envir.
   oriFormula <- formula
   if (substr((as.character(formula[2])),1,5)=="cbind") { 
     ## FR->FR e.g. strsplit("cbind(npos,ntot-npos)","[(,)-]") gives a list which element [[1]] is "cbind" "npos"  "ntot"  "npos"
@@ -46,6 +49,8 @@ Predictor <- function (formula, offset=NULL, LMatrix = NULL,  AMatrix = NULL, ZA
   attr(res,"LMatrix") <- LMatrix
   attr(res,"offsetObj") <- list(offsetArg=offset,nonZeroInfo= !is.null(offset))
   class(res) <- c("predictor",class(res))
+  lsv <- c("lsv",ls())
+  rm(list=setdiff(lsv,"res")) ## empties the environment pointed by the formula in "res"
   return(res)
 }
 

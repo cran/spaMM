@@ -24,7 +24,7 @@ getPar <- function(parlist,name,which=NULL) {
 # getPar(list("1"=list(a=1,b=2),"2"=list(a=3,c=4)),"d") ## NULL
 
 
-calc_invL <- function(object) { ## computes inv(L) [not inv(Corr): see calc_invColdoldList]
+calc_invL <- function(object,regul.threshold=1e-7) { ## computes inv(L) [not inv(Corr): see calc_invColdoldList]
   LMatrix <- attr(object$predictor,"LMatrix") 
   if ( ! is.null(LMatrix)) {
     cum_n_u_h <- attr(object$lambda,"cum_n_u_h")
@@ -34,25 +34,40 @@ calc_invL <- function(object) { ## computes inv(L) [not inv(Corr): see calc_invC
     for (Lit in seq_len(length(LMatrix))) {
       lmatrix <- LMatrix[[Lit]]
       affecteds <- which(ranefs %in% attr(lmatrix,"ranefs"))
+      type <-  attr(lmatrix,"type")
       condnum <- kappa(lmatrix,norm="1")
-      if (condnum>1e7) {
-        if (spaMM.getOption("wRegularization")) warning("calc_invL(): regularization required in inversion of chol factor.")
-        LLt <- tcrossprodCpp(lmatrix)  ## presumably corr mat => more 'normalized' => more easily regul than tLL
-        nc <- ncol(LLt)
-        diagPos <- seq.int(1L,nc^2,nc+1L)
-        LLt[diagPos] <- LLt[diagPos] + rep(1e-12,nc)  
-        invlmatrix <- t(lmatrix) %*% solve(LLt) ## regularized solve(lmatrix)
-      } else { ## end of designL.from.corr implies either type is cholL_LLt or we have decomp $u and $d 
-        type <-  attr(lmatrix,"type")
-        if (type=="cholL_LLt")  {
-          invlmatrix <- forwardsolve(lmatrix,diag(ncol(lmatrix)))
-        } else if (type!="svd") { ## see comments on svd in designL.from.corr
-          decomp <- attr(lmatrix,attr(lmatrix,"type")) ## of corr matrix !
-          invlmatrix <-  ZWZt(decomp$u,sqrt(1/decomp$d))
-        } else {
-          if (spaMM.getOption("wDEVEL")) message(paste("Possibly inefficient code in calc_invL() for L of type",type))
-          invlmatrix <- solve(lmatrix)
+      invlmatrix <- NULL
+      if (type == "cholL_LLt")  {
+        if (condnum<1/regul.threshold) {
+          invlmatrix <- try(forwardsolve(lmatrix,diag(ncol(lmatrix))),silent=TRUE)
+          if (inherits(invlmatrix,"try-error")) invlmatrix <- NULL
         }
+        if (is.null(invlmatrix)) Rmatrix <- t(lmatrix)
+      } else { ## Rcpp's symSVD, or R's eigen() => LDL (also possible bad use of R's svd, not normally used)
+        if (condnum<1/regul.threshold) {
+          decomp <- attr(lmatrix,attr(lmatrix,"type")) ## of corr matrix !
+          if ( all(abs(decomp$d) > regul.threshold) ) {
+            invlmatrix <-  try(ZWZt(decomp$u,sqrt(1/decomp$d)),silent=TRUE)
+            if (inherits(invlmatrix,"try-error")) invlmatrix <- NULL
+          }
+        }
+        if (is.null(invlmatrix)) Rmatrix <- qr.R(qr(t(lmatrix))) 
+      }
+      if (is.null(invlmatrix)){
+        # chol2inv is quite robust in the sens of not stopping, even without any regularization.
+        # Nevertheless (1) lmatrix %*% invlmatrix may be only roughly = I:
+        #   if we don't regularize we expect departures from I due to numerical precision;
+        #   if we regularize we expect departures from I even with exact arithmetic...
+        #              (2) unregul. chol2inv result may still cause problems in later computations ?
+        singular <- which(abs(diag(Rmatrix))<regul.threshold) 
+        if (length(singular)>0L) {
+          if (spaMM.getOption("wRegularization")) warning("regularization required.")
+          nc <- ncol(Rmatrix)
+          diagPos <- seq.int(1L,nc^2,nc+1L)[singular]
+          Rmatrix[diagPos] <- sign(Rmatrix[diagPos])* regul.threshold
+        }
+        invLLt <- chol2inv(Rmatrix) ## 
+        invlmatrix <- t(lmatrix) %*% invLLt ## regularized (or not) solve(lmatrix)
       }
       for (it in affecteds) {
         u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
@@ -64,7 +79,7 @@ calc_invL <- function(object) { ## computes inv(L) [not inv(Corr): see calc_invC
   } else return(NULL)
 }
 
-calc_invColdoldList <- function(object) { ## returns a list of inv(Corr) from the LMatrix
+calc_invColdoldList <- function(object,regul.threshold=1e-7) { ## returns a list of inv(Corr) from the LMatrix
   LMatrix <- attr(object$predictor,"LMatrix") 
   if ( ! is.null(LMatrix)) {
     cum_n_u_h <- attr(object$lambda,"cum_n_u_h")
@@ -78,27 +93,28 @@ calc_invColdoldList <- function(object) { ## returns a list of inv(Corr) from th
       affecteds <- which(ranefs %in% attr(lmatrix,"ranefs"))
       ## end of designL.from.corr implies either type is cholL_LLt or we have decomp $u and $d 
       type <-  attr(lmatrix,"type")
-      if (type=="cholL_LLt")  {
-        invCoo <- try(chol2inv(t(lmatrix)),silent=TRUE) ## ~standard chol2inv(R=chol(A) //  tRR=A)
-        ## chol2inv is rather robust to nonsingularity but using its value will still generate errors
-      } else if (type!="svd") { ## see comments on svd in designL.from.corr
-        decomp <- attr(lmatrix,attr(lmatrix,"type")) ## of corr matrix !
-        invCoo <-  ZWZt(decomp$u,1/decomp$d)
-      } else {
-        if (spaMM.getOption("wDEVEL")) message(paste("Possibly inefficient code in calc_invColdoldList() for L of type",type)) 
-        invCoo <- try(solve(tcrossprodCpp(lmatrix)),silent=TRUE) 
+      invCoo <- NULL
+      if (type == "cholL_LLt")  {
+        Rmatrix <- t(lmatrix)
+      } else { ## Rcpp's symSVD, or R's eigen() => LDL (also possible bad use of R's svd, not normally used)
+        condnum <- kappa(lmatrix,norm="1")
+        if (condnum<1/regul.threshold) {
+          decomp <- attr(lmatrix,attr(lmatrix,"type")) ## of corr matrix !
+          invCoo <-  try(ZWZt(decomp$u,1/decomp$d),silent=TRUE)
+          if (inherits(invCoo,"try-error")) invCoo <- NULL
+        }
+        if (is.null(invCoo)) Rmatrix <- qr.R(qr(t(lmatrix))) 
       }
-      if (inherits(invCoo,"try-error")) {
-        invCoo <- NULL
-      } else if (kappa(invCoo,norm="1")>1e14) invCoo <- NULL
-      if (is.null(invCoo)) { ## regularisation
-        if (spaMM.getOption("wRegularization")) warning("calc_invColdoldList(): regularization required in inversion of correlation matrix.")
-        LLt <- tcrossprodCpp(lmatrix)
-        nc <- ncol(LLt)
-        diagPos <- seq.int(1L,nc^2,nc+1L)
-        LLt[diagPos] <- LLt[diagPos] + rep(1e-12,nc)  
-        invCoo <- solve(LLt)
-      } 
+      if (is.null(invCoo)){ ## see comments on chol2inv in calc_invL()
+        singular <- which(abs(diag(Rmatrix))<regul.threshold) 
+        if (length(singular)>0L) {
+          if (spaMM.getOption("wRegularization")) warning("regularization required.")
+          nc <- ncol(Rmatrix)
+          diagPos <- seq.int(1L,nc^2,nc+1L)[singular]
+          Rmatrix[diagPos] <- sign(Rmatrix[diagPos])* regul.threshold
+        }
+        invCoo <- chol2inv(Rmatrix) ## 
+      }
       for (aff in affecteds) resu[[aff]] <- invCoo
     }
     return(resu)
@@ -200,9 +216,17 @@ logLik.HLfit <- function(object, which=NULL, ...) {
 
 vcov.HLfit <- function(object,...) {
   object <- getHLfit(object)
-  resu <- object$beta_cov
-  class(resu) <- c("vcov.HLfit",class(resu))
-  return(resu)
+  beta_cov <- get_beta_cov_any_version(object)
+  class(beta_cov) <- c("vcov.HLfit",class(beta_cov))
+  return(beta_cov)
+}
+
+get_beta_cov_any_version <- function(object) {
+  if (object$spaMM.version>"1.9.22") {
+    return(object$get_beta_cov(object))
+  } else {
+    return(object$beta_cov)
+  }
 }
 
 # addition post 1.4.4
@@ -256,6 +280,14 @@ get_respVar <- function(...) {
   attr(eval(mc,parent.frame()),"respVar")
 }
 
+get_intervals <- function(...) {
+  mc <- match.call(expand.dots = TRUE)
+  mc[[1L]] <- quote(spaMM::predict.HLfit)
+  if (is.null(mc$intervals)) mc$intervals <- "respVar"
+  attr(eval(mc,parent.frame()),"intervals")
+}
+
+
 get_any_IC <- function(object,...,verbose=interactive()) {
   info_crits <- object$get_info_crits(object)
   likelihoods <- numeric(0)
@@ -274,4 +306,15 @@ AIC.HLfit <- function(object, ..., k,verbose=interactive()) {
   get_any_IC(object,...,verbose=verbose)
 }
 
+get_RLRTSim_args <- function(object,...) {
+  if (object$family$family !="gaussian" 
+      || (object$models[["eta"]]=="etaHGLM" && any(attr(object$rand.families,"lcrandfamfam")!="gaussian"))) {
+    warning("'object' is not the fit of a LMM, while RLRTSim() methods were conceived for LMMs.")
+  }
+  X.pv <- as.matrix(object$X.pv)
+  qrX.pv <- qr(X.pv)
+  ZAL <- as.matrix(object$get_ZALMatrix(object))
+  sqrt.s <- diag(ncol(ZAL))
+  return(list(X=X.pv, Z=ZAL, qrX = qrX.pv, sqrt.Sigma=sqrt.s))
+}
 # get_dispVar : dispVar in not a returned attribute

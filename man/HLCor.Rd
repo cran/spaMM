@@ -21,7 +21,7 @@ HLCor(formula, data, family = gaussian(), ranPars = NULL, distMatrix,
   \item{ranPars}{
   A list of values for correlation parameters (some of which are mandatory), and possibly also dispersion parameters 
   (optional, but passed to HLfit if present). 
-  For the Matérn model, the correlation parameters are \code{rho} (scale parameter(s)), \code{nu} (smoothness parameter), and (optional) \code{Nugget}. 
+  For the Matérn model, the correlation parameters are \code{rho} (scale parameter(s)), \code{nu} (smoothness parameter), and (optional) \code{Nugget} (see \code{\link{Matern}}). 
   The \code{rho} parameter can itself be a vector with different values for different geographic coordinates.
   For the \code{"adjacency"} model, the only correlation parameter is a scalar \code{rho}.
   The dispersion parameters are the random effect variance, \code{lambda}, and the residual variance, \code{phi}.

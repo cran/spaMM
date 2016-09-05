@@ -1,0 +1,108 @@
+resize_lambda <- function(lambda,vec_n_u_h,n_u_h) {
+  if  (length(lambda)==length(vec_n_u_h)) {
+    lambda_est <- rep(lambda,vec_n_u_h)
+  } else if (length(lambda)==n_u_h) {
+    lambda_est <- lambda
+  } else {stop("Initial lambda cannot be mapped to levels of the random effect(s).")}
+  lambda_est
+}
+
+
+eval_gain_LevM_GLM <- function(LevenbergMstep_result,family, X.pv ,coefold,clikold,phi_est,processed, offset) {  
+  dbeta <- LevenbergMstep_result$dbetaV
+  beta <- coefold + dbeta
+  eta <- drop(X.pv %*% beta) + offset
+  if (family$link=="log") {eta <- pmin(eta,30)} ## cf similar code in muetafn
+  if (family$link=="inverse" && family$family=="Gamma") {
+    eta <- pmax(eta,sqrt(.Machine$double.eps)) ## eta must be > 0
+  } ## cf similar code in muetafn
+  mu <- family$linkinv(eta)
+  clik <- calc_clik(mu=mu, phi_est=phi_est,processed=processed) 
+  if (is.infinite(clik) || is.na(clik)) {  
+    gainratio <- -1
+  } else {
+    summand <- dbeta*(LevenbergMstep_result$rhs+ LevenbergMstep_result$dampDpD * dbeta) 
+    ## In the summand, all terms should be positive. conv_dbetaV*rhs should be positive. 
+    # However, numerical error may lead to <0 or even -Inf
+    #  Further, if there are both -Inf and +Inf elements the sum is NaN and the fit fails.
+    summand[summand<0] <- 0
+    denomGainratio <- sum(summand)
+    #cat("eval_gain_LM ");print(c(devold,dev,denomGainratio))
+    gainratio <- 2*(clik-clikold)/(1e-8+denomGainratio)
+  }
+  return(list(gainratio=gainratio,clik=clik,beta=beta,eta=eta,mu=mu))
+}  
+
+calc_etaGLMblob <- function(processed, 
+                         mu, eta, muetablob, beta_eta, w.resid, ## those in output
+                         phi_est, 
+                         off, 
+                         maxit.mean, 
+                         verbose, 
+                         conv.threshold) {
+    BinomialDen <- processed$BinomialDen
+    X.pv <- processed$X.pv
+    y <- processed$y
+    family <- processed$family
+    stop.on.error <- processed$stop.on.error
+    damping <- 1e-7 ## as suggested by Madsen-Nielsen-Tingleff... # Smyth uses abs(mean(diag(XtWX)))/nvars
+    dampingfactor <- 2
+    newclik <- calc_clik(mu=mu,phi_est=phi_est,processed=processed) ## handles the prior.weights from processed
+    for (innerj in seq_len(maxit.mean)) {
+      ## breaks when conv.threshold is reached
+      clik <- newclik
+      z1 <- eta+(y-mu)/muetablob$dmudeta-off ## LeeNP 182 bas. GLM-adjusted response variable; O(n)*O(1/n)
+      ## simple QR solve with LevM fallback
+      old_beta_eta <- beta_eta
+      tXinvS <- sweep(t(X.pv),2L,w.resid,`*`) # calc_tXinvS(Sig,X.pv,stop.on.error) with Sig <- Diagonal(x=1/w.resid) 
+      rhs <-  tXinvS %*% z1
+      qr.XtinvSX <- QRwrap(tXinvS%*%X.pv,useEigen=FALSE) ## Cholwrap tested  ## pas sur que FALSE gagne du temps
+      beta_eta <- solveWrap.vector( qr.XtinvSX , rhs ,stop.on.error=stop.on.error)
+      # # PROBLEM is that NaN/Inf test does not catch all divergence cases so we need this :
+      eta <- off + drop(X.pv %*% beta_eta) ## updated at each inner iteration
+      muetablob <- muetafn(eta=eta,BinomialDen=BinomialDen,processed=processed) 
+      newclik <- calc_clik(mu=muetablob$mu, phi_est=phi_est,processed=processed) 
+      if (newclik < clik-1e-5 || anyNA(beta_eta) || any(is.infinite(beta_eta))) { 
+        ## more robust LevM
+        sqrt.ww <- sqrt(w.resid)
+        wX <- calc_wAugX(augX=X.pv,sqrt.ww=sqrt.ww)
+        LM_wz <- z1*sqrt.ww - (wX %*% old_beta_eta)
+        while(TRUE) { 
+          LevenbergMstep_result <- 
+            LevenbergMstepCallingCpp(wAugX=wX,LM_wAugz=LM_wz,damping=damping) 
+          levMblob <- eval_gain_LevM_GLM(LevenbergMstep_result=LevenbergMstep_result,
+                                         X.pv=X.pv, clikold=clik, family=family,
+                                         coefold=old_beta_eta,
+                                         phi_est=phi_est, offset=off,
+                                         processed=processed)
+          if (levMblob$gainratio<0) { ## failure: increase damping and continue iterations
+            damping <- dampingfactor*damping
+            dampingfactor <- dampingfactor*2
+          } else break ## success
+        } ## while TRUE
+        ## on success :
+        damping <- damping * max(1/3,1-(2*levMblob$gainratio-1)^3)  
+        dampingfactor <- 2
+        dbetaV <- LevenbergMstep_result$dbetaV
+        beta_eta <- levMblob$beta 
+        eta <- off + drop(X.pv %*% beta_eta) ## updated at each inner iteration
+        muetablob <- muetafn(eta=eta,BinomialDen=BinomialDen,processed=processed) 
+        newclik <- levMblob$clik
+      } else dbetaV <- beta_eta - old_beta_eta
+      mu <- muetablob$mu ## needed to update z1
+      w.resid <- calc.w.resid(muetablob$GLMweights,phi_est) ## 'weinu', must be O(n) in all cases
+      if (verbose["trace"]) {
+        print(paste("Inner iteration ",innerj,sep=""))
+        print_err <- c(beta_eta=beta_eta)
+        if (innerj>1) print_err <- c(norm.dbetaV=sqrt(sum(dbetaV^2)),print_err)
+        print(print_err)
+        print("================================================")
+      } 
+      if (maxit.mean>1) {
+        if (mean(abs(dbetaV)) < conv.threshold) break; ## FR->FR mean(abs) is not standard ?  
+      }
+      #### done with one inner iteration
+    } ## end for (innerj in 1:maxit.mean)
+    names(beta_eta) <- colnames(X.pv)
+    return(list(eta=eta, muetablob=muetablob, beta_eta=beta_eta, w.resid=w.resid, innerj=innerj))
+  }

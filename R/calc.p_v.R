@@ -15,11 +15,32 @@
 }
 
 
-`calc.p_v` <- function(mu,u_h,dvdu,lambda_est,phi_est,d2hdv2,cum_n_u_h,lcrandfamfam,processed,
-                       ZAL=NULL, ## can work without it (second order corr)
-                       returnLad=FALSE,only.h=FALSE) { 
+`calc_clik` <- function(mu,phi_est,processed) { 
   BinomialDen <- processed$BinomialDen
   loglfn.fix <- processed$loglfn.fix
+  y <- processed$y
+  family <- processed$family
+  theta <- theta.mu.canonical(mu/BinomialDen,family)  
+  if (family$family=="binomial") {
+    clik <- sum(loglfn.fix(theta,y/BinomialDen,BinomialDen,1/(phi_est))) ## freq a revoir
+  } else {
+    phi_est[phi_est<1e-12] <- 1e-10 ## 2014/09/04 local correction, has to be finer than any test for convergence 
+    ## creates upper bias on clik but should be more than compensated by the lad
+    ## correcting the lad makes an overall upper bias for small (y-theta) at "constant" corrected phi 
+    ## this can be compensated by correcting the lad LESS.
+    clik <- sum(loglfn.fix(theta,y,eval(processed$prior.weights)/phi_est)) ## note (prior) weights meaningful only for gauss/ Gamma 
+    clik
+  }
+}
+  
+
+`calc.p_v` <- function(mu,u_h,dvdu,lambda_est,phi_est,d2hdv2,processed,
+                       ZAL=NULL, ## can work without it (second order corr)
+                       provide.qr=FALSE,only.h=FALSE) { 
+  BinomialDen <- processed$BinomialDen
+  loglfn.fix <- processed$loglfn.fix
+  cum_n_u_h <- processed$cum_n_u_h
+  lcrandfamfam <-  attr(processed$rand.families,"lcrandfamfam")
   y <- processed$y
   models <- processed$models
   family <- processed$family
@@ -31,7 +52,7 @@
     ## creates upper bias on clik but should be more than compensated by the lad
     ## correcting the lad makes an overall upper bias for small (y-theta) at "constant" corrected phi 
     ## this can be compensated by correcting the lad LESS.
-    clik <- sum(loglfn.fix(theta,y,processed$prior.weights/phi_est)) ## note (prior) weights meaningful only for gauss/ Gamma 
+    clik <- sum(loglfn.fix(theta,y,eval(processed$prior.weights)/phi_est)) ## note (prior) weights meaningful only for gauss/ Gamma 
   }
   if (models[[1]]!="etaHGLM" && models[["phi"]]!="phiHGLM") return(list(clik=clik,p_v=clik))
   ## ELSE
@@ -54,10 +75,9 @@
   #     } else vdvd <- 1/eigen(RZAL %*% diag(1/w.ranef) %*% t(RZAL),only.values=TRUE)$values
   #     lad <- lad + sum(log(abs(w.resid[1] + vdvd))) - nrow(RZAL)*log(2*pi) ## nrow -> # real ranef
   #   } else 
-  lad <- LogAbsDetWrap(d2hdv2,logfac=-log(2*pi))
+  lad <- LogAbsDetWrap(d2hdv2,logfac=-log(2*pi),provide.qr=provide.qr)
   p_v <- hlik-lad/2
-  resu <- list(clik=clik,hlik=hlik,p_v=p_v)
-  if(returnLad) resu$lad <- lad
+  resu <- list(clik=clik,hlik=hlik,p_v=p_v,lad=lad)
   if (processed$HL[1]==2) { ## uses second-order correction as in LeeN01, p.996
     if (family$family!="binomial") {
       stop("HL(2,.) not implemented for non-binomial models")

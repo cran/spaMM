@@ -1,4 +1,3 @@
-
 \name{spaMM-internal}
 
 \alias{fitme_body}
@@ -8,6 +7,7 @@
 \alias{calc_inits_nu}
 \alias{calc_inits_Auto_rho}
 \alias{calc_inits_geostat_rho}
+\alias{calc_inits_by_glm}
 \alias{calc_inits}
 \alias{HLfit.obj}
 
@@ -34,33 +34,39 @@
 \alias{calcPHI}
 \alias{calc_dispGammaGLM}
 \alias{calcRanefPars}
-\alias{calcTT}
+\alias{calc_TT}
 \alias{calcUniqueGeo}
 \alias{calc_info_crits}
 \alias{calc_invL}
 \alias{calc_invL_coeffs}
 \alias{calc_Sig_from_fitobject}
+\alias{calc_ZALMatrix}
 \alias{calc_asDmLR_invV_from_fitobject}
-\alias{CBIND}
-\alias{CBIND.matrix}
-\alias{CBIND.Matrix}
+\alias{calc_sscaled}
 \alias{checkRandLinkS}
 \alias{checkRandLink}
 \alias{checkRespFam}
+\alias{choose_QRmethod}
 \alias{compare.model.structures}
 \alias{computeZAXlist} 
 \alias{CondNormfn} 
 \alias{corr.notEQL.lambda}
 \alias{create_get_w_h_coeffs}
+\alias{create_get_beta_cov}
 \alias{create_get_beta_w_cov}
 \alias{create_get_invColdoldList}
 \alias{create_get_logdispObject}
 \alias{create_get_info_crits}
 \alias{create_get_init_phi}
+\alias{create_get_init_lambda}
+\alias{create_get_inits_by_glm}
+\alias{create_get_glm_phi}
+\alias{create_get_ZALMatrix}
+\alias{create_get_qr}
 \alias{Dim.corMatern} 
 \alias{eval.update.call}
 \alias{eval.corrEst.args}
-\alias{generateInitLambda}
+\alias{provide_init_lambdas}
 \alias{spaMM_Gamma} 
 \alias{getHLfit}
 \alias{get_valid_beta_coefs}
@@ -80,6 +86,7 @@
 \alias{Variogram.corMatern} 
 \alias{asStandardFormula} 
 \alias{bessel_lnKnu} 
+\alias{calc_clik}
 \alias{calc_tXinvS}
 \alias{calcNewCorrs}
 \alias{calcPredVar}
@@ -100,8 +107,11 @@
 \alias{d2mudeta2fn} 
 \alias{DEPARSE}
 \alias{dispFn}
+\alias{calc_etaGLMblob}
 \alias{calc_CARdispGammaGLM} 
 \alias{dispInv} 
+\alias{eval_gain_LevM_GLM}
+\alias{eval_gain_LevM_HGLM}
 \alias{extract.check.coords} 
 \alias{findOffset} 
 \alias{findSpatial}
@@ -113,11 +123,17 @@
 \alias{generateName} 
 \alias{generateInitPhi}
 \alias{getCall.HLfit} 
+\alias{get_beta_cov_any_version}
+\alias{get_HLCorcall}
+\alias{get_DispCorrPars}
 \alias{getCovariate.corMatern} 
 \alias{getgroups} 
 \alias{getPar}
 \alias{getProcessed}
+\alias{getValidData}
 \alias{get_methods_ranefs}
+\alias{get_ZAlist}
+\alias{get_LSmatrix}
 \alias{glm.reformat}
 \alias{HLCor_body}
 \alias{HLfit_body}
@@ -126,6 +142,7 @@
 \alias{largeLambdaMessages} 
 \alias{legend_lambda}
 \alias{LevenbergMstep}
+\alias{e_LevenbergMstep}
 \alias{LevenbergMstepCallingCpp}
 \alias{locoptim}
 \alias{NAcleaning}
@@ -139,6 +156,7 @@
 \alias{makeCheckGeoMatrices}
 \alias{makeCovEst1} 
 \alias{makeCovEst2} 
+\alias{make_lambda_object}
 \alias{makeLowerUpper}
 \alias{makeTicks}
 \alias{MaternCorr.ff}
@@ -159,7 +177,6 @@
 \alias{nuInv} 
 \alias{overcat}
 \alias{pastefrom} 
-\alias{plotdhglm} 
 \alias{plotScale}
 \alias{post.process.ZALlist}
 \alias{post_process_ZAL}
@@ -170,12 +187,10 @@
 \alias{print.predictions}
 \alias{print.ranef}
 \alias{process_resglm_list}
-\alias{RBIND}
-\alias{RBIND.matrix}
-\alias{RBIND.Matrix}
 \alias{recalc.corMatern} 
 \alias{reformat_verbose}
 \alias{REMLmess}
+\alias{resize_lambda}
 \alias{rhoFn} 
 \alias{rhoInv}
 \alias{rntneg} 
@@ -195,6 +210,7 @@
 \alias{setControl}
 \alias{Sigwrapper}
 \alias{Sig_times_b}
+\alias{simple_WLS_with_Eigen}
 \alias{singularSigmaMessagesStop}
 \alias{slashTerms} 
 \alias{selfAdjointWrapper} 
@@ -223,7 +239,7 @@
 \alias{rvolTriangulation} %~ could become public later
 \alias{subsimplices.volTriangulation} %~ could become public later
 
-
+\alias{crack}
 
 
 \title{Internal spaMM Functions}

@@ -20,8 +20,7 @@ negbin <- function (shape = stop("negbin's 'shape' must be specified"), link = "
   }
   variance <- function(mu) mu + mu^2/shape
   validmu <- function(mu) all(mu > 0)
-  dev.resids <- function(y, mu, wt) 2 * wt * (y * log(pmax(1, 
-                                                           y)/mu) - (y + shape) * log((y + shape)/(mu + shape)))
+  dev.resids <- function(y, mu, wt) 2 * wt * (y * log(pmax(1, y)/mu) - (y + shape) * log((y + shape)/(mu + shape)))
   aic <- function(y, n, mu, wt, dev) {
     term <- (y + shape) * log(mu + shape) - y * log(mu) + 
       lgamma(y + 1) - shape * log(shape) + lgamma(shape) - 

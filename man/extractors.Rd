@@ -18,6 +18,7 @@
 \alias{AIC}
 \alias{AIC.HLfit}
 \alias{Corr}
+\alias{get_RLRTSim_args}
 %- Also NEED an '\alias' for EACH other topic documented here.
 \title{
 Functions to extract various components of a fit
@@ -33,6 +34,7 @@ Functions to extract various components of a fit
 \code{vcov} returns the variance-covariance matrix of the fixed-effects coefficients.
 \code{Corr} returns a correlation matrix of random effects (with restrictions, see Details).
 \code{getDistMat} extracts a distance matrix for a Matérn correlation model.
+\code{get_RLRTSim_args} extracts a list of arguments suitable for calls to \code{LRTSim::RLRTSim()}
 }
 \usage{
 \method{logLik}{HLfit}(object,which,...)
@@ -46,6 +48,7 @@ getDistMat(object,scaled=FALSE)
 Corr(object,...)
 dev_resids(object,...)
 get_any_IC(object, ..., verbose=interactive())
+get_RLRTSim_args(object,...)
 \method{AIC}{HLfit}(object, ..., k, verbose=interactive())
 }
 %- maybe also 'usage' for other objects documented here.
@@ -66,7 +69,20 @@ Return values are numeric (for \code{logLik}), vectors (most cases), matrices (f
 \code{get_any_IC} computes, optionally prints, and returns invisibly the following quantities. The \bold{Effective degrees of freedom} for the random effects (approximately) characterizes the expectation of a goodness of fit statistic discussed by Lee and Nelder (2001), which gave a general formula for it in HGLMs. The \bold{conditional AIC} (Vaida and Blanchard 2005) is notable in involving the conditional likelihood and the effective degrees of freedom. Lee et al. (2006) and Ha et al (2007) defined a corrected AIC [i.e., AIC(D*) in their eq. 7] that is here interpreted as the conditional AIC. The conditional AIC returned by \code{HLfit} includes both this effective df, the df for estimated fixed effects, and the df for estimated parameters of the variance of random effects. 
 % FR->FR If \code{HLfit} was called through \code{corrHLfit}, a correction for estimated correlation parameters may be added.  
 Also returned are the \bold{marginal AIC} (Akaike's classical AIC), and a focussed AIC for dispersion parameters (\bold{dispersion AIC}) discussed by Ha et al (2007; eq.10). This diversity of criteria should encourage users to think twice before applying model selection automatically, which is no better although more fashionable than misuses of simple null hypothesis testing. Also, alternative procedures for model choice can be considered (e.g. Cox and Donnelly, 2011, p. 130-131).
-  
+
+\code{get_RLRTSim_args} extracts a list of arguments suitable for a call to \code{LRTSim::RLRTSim()} for a small-sample test of the presence of a random effect by an efficient simulation procedure. The test can be run by\cr \code{do.call("RLRTSim",<get_RLRTSim_args return value>)}.  
+}
+\references{
+Ha, I. D., Lee, Y. and MacKenzie, G. (2007) Model selection for multi-component frailty models. Statistics in Medicine 26: 4790-4807.
+
+Lee, Y., Nelder, J. A. (2001)  Hierarchical generalised linear models: A
+synthesis of generalised linear models, random-effect models and structured
+dispersions. Biometrika 88, 987-1006.
+
+Lee, Y., Nelder, J. A. and Pawitan, Y. (2006) Generalized linear models with random effects: unified analysis via
+h-likelihood. Chapman & Hall: London.
+
+Vaida, F., and Blanchard, S. (2005) Conditional Akaike information for mixed-effects models. Biometrika 92, 351-370.
 }
 \examples{
 data(wafers)

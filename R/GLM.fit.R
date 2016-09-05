@@ -19,8 +19,6 @@ spaMM_glm.fit <- function (x, y, weights = rep(1, nobs),
                      etastart = NULL, mustart = NULL, offset = rep(0, nobs), family = gaussian(), 
                           control = list(maxit=200), intercept = TRUE) 
 {
-  if (getRversion() < "3.1.0") stop("R version 3.1.0 or older is needed to run spaMM_glm.fit")
-  
   eval_gain_LM <- function() {  
     dbeta <- LevenbergMstep_result$dbetaV
     beta <- coefold + dbeta

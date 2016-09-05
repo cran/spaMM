@@ -5,6 +5,7 @@
 \alias{lmwithQ} 
 \alias{LevPerturbedQCpp}
 \alias{LevenbergMsolveCpp}
+\alias{e_LevenbergMsolveCpp}
 \alias{leverages}
 \alias{LogAbsDetCpp}
 \alias{pseudoSolvediag}

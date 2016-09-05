@@ -5,11 +5,12 @@
 # for fixed u_h, numerically maximize p_bv (p_v) wrt correlation params; atroce car pour chaque va de param -> objfn -> auglinmodfit 
 # par contre aucune tentative de corriger les corr mat. la prevL n'est pas utilisée, elle impacte seulement u_h en input
 makeCovEst1 <- function(u_h,ZAlist,cum_n_u_h,prev_LMatrices,
-                        userLfixeds,hessUL,hessFac,w.resid,processed,phi_est,lcrandfamfam,family,
-                        Xpv001,v_h,auglinfixedpars
+                        userLfixeds,w.resid,processed,phi_est,lcrandfamfam,family,
+                        locTT,v_h,auglinfixedpars
 ) {
   nrand <- length(ZAlist)
-  X.Re <- processed$X.Re
+  locX.Re <- processed$X.Re ## may be NULL 
+  if (is.null(locX.Re)) locX.Re <- processed$X.pv
   locpredictor <- processed$predictor
   next_LMatrices <- prev_LMatrices
   if (is.null(next_LMatrices)) next_LMatrices <- list() ## NULL wrong for next_LMatrices[[rt]] <- <*M*atrix>
@@ -68,25 +69,31 @@ makeCovEst1 <- function(u_h,ZAlist,cum_n_u_h,prev_LMatrices,
         next_LMatrices[[rt]] <- longLv
         attr(next_LMatrices[[rt]],"ranefs") <- attr(ZAlist,"ranefs")[[rt]] ## FR->FR  revoir pour matrices affectant +s termes ?
         ZALlist <- computeZAXlist(XMatrix=next_LMatrices,ZAlist=ZAlist)
-        locZAL <- post.process.ZALlist(ZALlist,predictor=locpredictor,trySparse=TRUE) 
+        locZAL <- post.process.ZALlist(ZALlist,as_matrix=(processed$QRmethod=="Matrix::qr")) 
         if (inherits(locZAL,"Matrix")) {
           ddi_or_matrix_locZAL <- as.matrix(locZAL)
         } else ddi_or_matrix_locZAL <- locZAL
-        if (attr(auglinfixedpars$w.resid,"unique")) attr(ddi_or_matrix_locZAL,"crossprodZAL") <- crossprod(ddi_or_matrix_locZAL)
-        locTT <- cbind(Xpv001,attr(locZAL,"ZALI"))
+        locTT[1:nrow(locZAL),(ncol(locTT)-ncol(locZAL)+1L):ncol(locTT)] <- locZAL ## locTT <- cbind(Xpv001,attr(locZAL,"ZALI"))
         locw.ranefSblob <- updateW_ranefS(cum_n_u_h,processed$rand.families,lambda=loc_lambda_est,u_h,v_h) 
         ## FR->FR auglinfixedpars is an ambiguous name since this contains $w.resid which is updated within auglinmodfit  
-        auglinmodargs <- c(list(TT=locTT,ZAL=locZAL,lambda_est=loc_lambda_est,
-                                wranefblob=locw.ranefSblob,ddi_or_matrix_ZAL=ddi_or_matrix_locZAL),auglinfixedpars)
+        auglinmodargs <- c(list(TT=locTT,ZAL=locZAL,
+                                tZAL=as.matrix(locZAL),
+                                lambda_est=loc_lambda_est,
+                                wranefblob=locw.ranefSblob,ddi_or_matrix_ZAL=ddi_or_matrix_locZAL),
+                           auglinfixedpars)
         auglinmodblob <- do.call("auglinmodfit",auglinmodargs)
         locd2hdv2 <- auglinmodblob$d2hdv2
         aphls <- calc.p_v(mu=auglinmodblob$muetablob$mu,u_h=auglinmodblob$u_h,
                           dvdu=auglinmodblob$wranefblob$dvdu,
                           lambda_est=loc_lambda_est,phi_est=phi_est,
-                          d2hdv2=locd2hdv2,cum_n_u_h=cum_n_u_h,
-                          lcrandfamfam=lcrandfamfam,processed=processed,
-                          returnLad=FALSE)
-        if (ncol(X.Re)==0L) { ## fit ML: p_bv=p_v hence d2hdpbv reduces to d2hdv2
+                          d2hdv2=locd2hdv2,processed=processed)
+        if ( ncol(locX.Re)>0L ) {
+          ## REML standard || REML non standard
+          hessnondiag <- crossprod(locZAL,sweep(locX.Re,MARGIN=1,auglinmodblob$w.resid,`*`))  
+          Md2hdbv2 <- rbind(cbind(ZtWZwrapper(locX.Re,auglinmodblob$w.resid), t(hessnondiag)),
+                            cbind(hessnondiag, - locd2hdv2)) 
+          ladbv <- LogAbsDetWrap(Md2hdbv2,logfac=-log(2*pi))
+        } else { ## fit ML: p_bv=p_v hence d2hdpbv reduces to d2hdv2
           # le code general se reduit a 
           ladbv <- LogAbsDetWrap(- locd2hdv2,logfac=-log(2*pi))
           # coherent avec
@@ -95,12 +102,7 @@ makeCovEst1 <- function(u_h,ZAlist,cum_n_u_h,prev_LMatrices,
           # dat <- sleepstudy[ (sleepstudy$Days %in% 0:4) & (sleepstudy$Subject %in% 331:333) ,]
           # colnames(dat) <- c("y", "x", "group")
           # lmer( y ~ 1 + x  +( x | group ), data = dat,REML="F") 
-        } else { 
-          hessnondiag <- crossprod(locZAL,sweep(X.Re,MARGIN=1,auglinmodblob$w.resid,`*`))  
-          Md2hdbv2 <- rbind(cbind(ZtWZwrapper(X.Re,auglinmodblob$w.resid), t(hessnondiag)),
-                            cbind(hessnondiag, - locd2hdv2)) 
-          ladbv <- LogAbsDetWrap(Md2hdbv2,logfac=-log(2*pi))
-        }
+        } 
         REMLcrit <- aphls$hlik-ladbv/2
         return(REMLcrit)
       } ## currently this refits the fixed effects together with the other params... probably not optimal
@@ -150,10 +152,11 @@ makeCovEst1 <- function(u_h,ZAlist,cum_n_u_h,prev_LMatrices,
 ## parait lent à converger vers -1; c'est là que tester d'abord les bornes 0 et 1 pour choisir init peut être bien... 
 ## experimental version of MakeCovEst stored in MakeCovEst.R.txt
 makeCovEst2 <- function(u_h,ZAlist,cum_n_u_h,prev_LMatrices,
-                       userLfixeds,hessUL,hessFac,w.resid,processed,prevZAL,clik) {
+                       userLfixeds,w.resid,processed,prevZAL,clik) {
   nrand <- length(ZAlist)
-  X.Re <- processed$X.Re
-  based2hdv2 <- - t(prevZAL) %*% diag(w.resid) %*% prevZAL
+  locX.Re <- processed$X.Re ## may be NULL
+  if (is.null(locX.Re)) locX.Re <- processed$X.pv
+  based2hdv2 <- structure( - t(prevZAL) %*% diag(w.resid) %*% prevZAL, get_qr=create_get_qr())
   next_LMatrices <- prev_LMatrices
   Xi_cols <- attr(ZAlist,"Xi_cols")
   Lu <- u_h
@@ -195,7 +198,7 @@ makeCovEst2 <- function(u_h,ZAlist,cum_n_u_h,prev_LMatrices,
       }
       ####
       # pour une repres non diagonal je devrais reconstruire une Lmatrix... (je l'ai  !)
-      if (ncol(X.Re)>0L) hessnondiag <- crossprod(prevZAL,sweep(X.Re,MARGIN=1,w.resid,`*`))  
+      if (ncol(locX.Re)>0L) hessnondiag <- crossprod(prevZAL,sweep(locX.Re,MARGIN=1,w.resid,`*`))  
       objfn <- function(parvec) {
         compactcovmat <- makeLcovLt(parvec)
         blob <- selfAdjointSolverCpp(compactcovmat) ## COVcorr= blob$u %*% diag(blob$d) %*% t(blob$u) ## u is unitary !!
@@ -211,12 +214,12 @@ makeCovEst2 <- function(u_h,ZAlist,cum_n_u_h,prev_LMatrices,
         if ( ! is.null(prevL)) corrinvSig <- t(prevL) %*% corrinvSig %*% prevL
         longcorrinvSig <- makelong(corrinvSig) ## car t(prevL) =solve(prevL)
         # equiv entre ligne suivante et une repres diagonale car identique a pre/ post par matrice unitaire (! important que unitaire !!!! )
-        locd2hdv2 <- based2hdv2 - longcorrinvSig ## 
+        locd2hdv2 <- structure( based2hdv2 - longcorrinvSig, get_qr=create_get_qr())  
         # pour une repres non diagonal je devrais reconstruire une Lmatrix... (je l'ai  !)
-        if (ncol(X.Re)==0L) { ## fit ML: p_bv=p_v hence d2hdpbv reduces to d2hdv2
+        if (ncol(locX.Re)==0L) { ## fit ML: p_bv=p_v hence d2hdpbv reduces to d2hdv2
           lad <- - LogAbsDetWrap( - locd2hdv2,logfac=-log(2*pi))
         } else { 
-          Md2hdbv2 <- rbind(cbind(ZtWZwrapper(X.Re,w.resid), t(hessnondiag)),
+          Md2hdbv2 <- rbind(cbind(ZtWZwrapper(locX.Re,w.resid), t(hessnondiag)),
                             cbind(hessnondiag, - locd2hdv2)) 
           lad <- - LogAbsDetWrap(Md2hdbv2,logfac=-log(2*pi))
         } ## le lad est OK = ladbv de la version standard

@@ -23,7 +23,7 @@ Either a linear model \code{\link{formula}} (as handled  by various fitting func
   \item{data}{A data frame containing the variables in the response and the model formula.}
   \item{init.corrHLfit}{
 An optional list of initial values for correlation and/or dispersion parameters, e.g. 
-\code{list(rho=1,nu=1,lambda=1,phi=1)} where \code{rho} and \code{nu} are parameters of the Matérn family, and 
+\code{list(rho=1,nu=1,lambda=1,phi=1)} where \code{rho} and \code{nu} are parameters of the Matérn family (see \code{\link{Matern}}), and 
 \code{lambda} and \code{phi} are dispersion parameters (see Details in \code{\link{spaMM}} for the meaning of these parameters). 
  All are optional, but giving values for 
 a dispersion parameter changes the ways it is estimated (see Details).

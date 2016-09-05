@@ -5,6 +5,7 @@
 \alias{get_predVar}
 \alias{get_residVar}
 \alias{get_respVar}
+\alias{get_intervals}
 \alias{intervals}
 
 \title{
@@ -21,6 +22,7 @@ get_fixefVar(...)
 get_predVar(...)
 get_residVar(...)
 get_respVar(...)
+get_intervals(...)
 }
 \arguments{
   \item{object}{
@@ -76,7 +78,7 @@ get_respVar(...)
 
  }
  \item{intervals}{
-   (vector of) character string(s). Provides prediction intervals with (intended) level \code{level}, deduced from the given prediction variance term, e.g. \code{intervals="predVar"}. Currently only intervals from \code{fixefVar} and \code{predVar} (and for LMMs \code{respVar} including the residual variance) may have a probabilistic meaning. Intervals returned in other cases are (currently) meaningless. 
+   NULL or character string or vector of strings. Provides prediction intervals with nominal level \code{level}, deduced from the given prediction variance term, e.g. \code{intervals="predVar"}. Currently only intervals from \code{fixefVar} and \code{predVar} (and for LMMs \code{respVar} including the residual variance) may have a probabilistic meaning. Intervals returned in other cases are (currently) meaningless. 
  }
  \item{level}{Coverage of the intervals.}
  \item{binding}{
@@ -91,7 +93,7 @@ get_respVar(...)
 \value{
   For \code{predict}, a matrix or data frame (according to the \code{binding} argument), with optional attributes \code{frame}, \code{intervals}, \code{predVar}, \code{fixefVar}, \code{residVar}, and/or \code{respVar}, the last four holding one or more variance vector or covariance matrices. The further attribute \code{fittedName} contains the binding name, if any.  
   
-  The \code{get_}... extractor functions call \code{predict} and extract from its result the attribute implied by the name of the extractor.   
+  The \code{get_}... extractor functions call \code{predict} and extract from its result the attribute implied by the name of the extractor. By default, \code{get_intervals} will return prediction intervals using \code{predVar}.
 }
 \details{
   If  \code{newdata} is NULL, \code{predict} returns the fitted responses, including random effects, from the object. 
@@ -102,7 +104,10 @@ get_respVar(...)
 
   \code{predVar} is the prediction (co)variance of \eqn{\eta}=\bold{X}\eqn{\beta}+\bold{Z}\bold{v} (see \code{\link{HLfit}} Details for notation), or more generally of \bold{X}_n\eqn{\beta}+\bold{Z}_n\bold{L}\bold{v}, by default computed for given dispersion parameters. 
   
-  For levels of the random effects present in the original data, \code{predVar} computation assumes that the covariance matrix of \eqn{\beta} and \bold{v} estimates is the inverse of the expected Hessian matrix (for given dispersion parameters) of the augmented linear model for \eqn{\beta} and \bold{v}. It thus takes into account the joint uncertainty in estimation of \eqn{\beta} and prediction of \bold{v}. 
+  For levels of the random effects present in the original data, \code{predVar} computation 
+%assumes that the covariance matrix of \eqn{\beta} and \bold{v} estimates is the inverse of the expected Hessian matrix (for given dispersion parameters) of the augmented linear model for \eqn{\beta} and \bold{v}. It thus 
+takes into account the joint uncertainty in estimation of \eqn{\beta} and prediction of \bold{v}. 
+% No mention of augmented model in doc !
   
   For new levels of the random effects, \code{predVar} computation additionally takes into account uncertainty in prediction of \bold{v} for these new levels. For \bold{prediction covariance} with a new \bold{Z}_n, it matters whether a single or multiple new levels are used: see Examples.      
 
@@ -114,6 +119,8 @@ If \code{variances$disp} is \code{TRUE}, prediction variance may also include a 
   These variance calculations are approximate except for LMMs, and cannot be garanteed to give accurate results.  
 
 In the \bold{point prediction} of the linear predictor, the unconditional expected value of \eqn{u} is assigned to the realizations of \eqn{u} for unobserved levels of non-spatial random effects (it is zero in GLMMs but not for non-gaussian random effects), and the inferred value of \eqn{u} is assigned in all other cases. Corresponding values of \eqn{v} are then deduced. This computation yields the classical \dQuote{BLUP} or empirical Bayes predictor in LMMs, but otherwise it may yield less well characterized predictors, where \dQuote{unconditional} \eqn{v} may not be its expected value when the \code{rand.family} link is not identity. 
+
+\bold{Intervals} computations use the relevant variance estimates plugged in a Gaussian approximation, except for the simple linear model where it uses Student's \emph{t} distribution.   
 }
 \references{
   Booth, J.G., Hobert, J.P. (1998) Standard errors of prediction in generalized linear mixed models. J. Am. Stat. Assoc. 93: 262-272. 

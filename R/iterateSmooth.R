@@ -4,24 +4,15 @@ iterateSEMSmooth <- function(anyHLCor_obj_args, ## contains $processed
                             MAX ## for diagnostic plots, list(rho, nu); where rho typically named num(1) but def'd as expanded. 
                             ) {
   eval_smoothtest <- function(Krigobj) { # perform LRT on the smoothing parameters...
-    smoothtest <- as.list(attr(Krigobj,"HLCorcall"))
-    smoothrho <- smoothtest$ranPars$rho
-    ## there is trRho or rho whether smoothing was performed or not ## FR->FR how to ensure info is in only one place ???  
-    ## if both trRho and rho, trRho is used if HLCor call
-    if (is.null(smoothrho)) {
-      RHOMAX <- attr(Krigobj,"optimInfo")$RHOMAX
-      testedvalue <- rhoFn(rhoInv(smoothtest$ranPars$trRho,RHOMAX)*2,RHOMAX)
-      if (any(is.nan(testedvalue))) { ## *2 exceeds max value => no real smoothing
-        smoothtest <- FALSE
-      } else {
-        smoothtest <- eval(as.call(smoothtest))
-        smoothtest <- Krigobj$APHLs$p_bv> (smoothtest$APHLs$p_bv+1.92) ## test of information about rho_smooth ## FR->FR should p_bv be used here ? 
-      }
-    } else {
-      smoothtest$ranPars$rho <- smoothrho*2
-      smoothtest <- eval(as.call(smoothtest))
-      smoothtest <- Krigobj$APHLs$p_bv> (smoothtest$APHLs$p_bv+1.92) ## test of information about rho_smooth
-    } 
+    ### 08/2016 extensively rewritten and not tested ex-tempo
+    # smoothtest <- as.list(attr(Krigobj,"HLCorcall"))
+    smoothtest <- get_HLCorcall(as.list(getCall(Krigobj)))
+    smoothrho <- Krigobj$corrPars$rho
+    smoothtest$ranPars$rho <- smoothrho*2
+    smoothtest <- eval(as.call(smoothtest))
+    smoothtest <- Krigobj$APHLs$p_bv> (smoothtest$APHLs$p_bv+1.92) ## test of information about rho_smooth
+    return(smoothtest)
+    ###
   }
   
   write_diagnostics <- function(Krigobj,comment=NULL) {
@@ -72,7 +63,7 @@ iterateSEMSmooth <- function(anyHLCor_obj_args, ## contains $processed
   )  
   control.smooth <- allsmooths ## distinction between what goes in allsmooths and others is important ! nrepl will vary
   control.smooth$nrepl <- 20L ## number of points for which replicate estimates of likelihood are computed (modified later)
-  anyHLCor_obj_args$`HLCor.obj.value` <- "logLapp"
+  anyHLCor_obj_args$objective <- "logLapp" ## HLCor.obj()'s 'objective'
   arglist <- list(pargrid=pargrid, 
                   anyHLCor.args=anyHLCor_obj_args, # contains $processed
                   control.smooth=control.smooth)

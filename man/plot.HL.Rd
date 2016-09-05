@@ -51,7 +51,7 @@ each random deviate divided by \eqn{\sqrt(1-q)} where \eqn{q} is the correspondi
   Returns the input object invisibly.
 }
 \references{
-  Lee, Y., Nelder, J. A. and Pawitan, Y. (2006). Generalised linear models with random effects: unified analysis via
+  Lee, Y., Nelder, J. A. and Pawitan, Y. (2006). Generalized linear models with random effects: unified analysis via
   h-likelihood. Chapman & Hall: London.
 }
 \examples{

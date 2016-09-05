@@ -3,14 +3,42 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
-\section{CHANGES UP TO VERSION 1.9.16}{
+\section{CHANGES UP TO VERSION 1.10.0}{
 \subsection{NEW FEATURES}{
 \itemize{
-\item Computation of prediction variance has been reimplemented so that it requires storing smaller matrices than before. Further, some terms required for this computation are computed only when prediction variance is requested, rather than being always returned by HLfit(). This allows some gains in computation time for large data sets. 
+\item spaMM now fits models with random effects in the residual dispersion model, and thus implements a class of \dQuote{double hierarchical GLMs}.
+\item fitme() now fits models with offset in the dispersion model.
+\item Modified convergence criteria for the iterative algorithm in HLfit().
+\item Examples run generally faster by about 30\%. 
+\item New extractor function get_intervals() and \dQuote{member extractor} get_ZALMatrix().
+\item Intervals returned by predict.HLfit() (and hence by get_intervals()) use Student's t distribution when the fitted model is a simple linear model.
+\item Prediction variance can now be computed from fits of models with a corrMatern term.
+\item An HLfit object's $APHLs$p_bv for a *fixed-effect* model now returns the restricted likelihood (for estimation of residual dispersion parameters), which it has never done so far (out of disregard for this case). This allows REML fits of fixed-effect models using fitme() (but has no bearing on similar fits using HLfit()). 
+\item More informative summary() when non-default spatial distance function, or non-default prior weights, are used.
+\item New 'refit' control in fitme().
+\item New extractor function get_RLRTSim_args() for use with the LRTSim package to perform small-sample LRT of the presence of a random effect.
 }
 }
 \subsection{USER-LEVEL CHANGES}{
 \itemize{
+\item Summary() outlook revised, in particular to more accurately display the meaning of phi for Gamma response. 
+\item The objects returned by the fitting functions should be of much smaller size than before. 
+\item Better reporting of terms that have to be ignored in the computation of prediction variance.  
+\item New 'inverse.Gamma', 'spaMM-conventions' and 'member-extractor' documentation pages. HLfit() documentation revised.  
+}
+}
+\subsection{BUGS}{
+\itemize{
+\item Some numerical issues that could affect GLM fitting with HLfit() have been fixed.
+\item More accurate detection of unidentifiable random effect components, when residual variance formulas involve a pure offset term.
+\item confint() on a LMM fitted by fitme() was returning incorrect results. This is corrected.
+}
+}
+}
+\section{CHANGES UP TO VERSION 1.9.16}{
+\subsection{NEW FEATURES}{
+\itemize{
+\item Computation of prediction variance has been reimplemented so that it requires storing smaller matrices than before. Further, some terms required for this computation are computed only when prediction variance is requested, rather than being always returned by HLfit(). This allows some gains in computation time for large data sets. 
 \item simulate.HLfit() gets new arguments and prints some information, in anticipation of future developments.
 \item spaMM.colors() gets new argument 'adjustcolor_args' for finer control.
 \item Filled plot functions gets new argument 'plot.title'.
@@ -37,7 +65,7 @@
 \item The syntax 'family=COMPoisson()', with unknown 'COMP_nu' parameter, works. This means that COMpoisson() models can now be fitted with unknown values of this parameter, by corrHLfit() or by the new fitme() function. The same is true for the parameter of the 'negbin' family. 
 \item Initial or fixed values of the variance of random effects can be controlled independently when there are several random effects.
 \item spaMM_glm() gains a new argument 'strict' for finer control. spaMM_glm.fit() has increased default 'control$maxit'.  
-\item filled.mapMM() now returns a predictor of the response surface. It also gains a new argument 'smoothObject' that takes such a predictor, allows for faster redrawing.   
+\item filled.mapMM() now returns a predictor of the response surface. It also gains a new argument 'smoothObject' that takes such a predictor, allowing for faster redrawing.   
 \item fixedLRT() gets a new argument 'fittingFunction' to select between corrHLfit() and fitme().
 }
 }
@@ -83,7 +111,7 @@
 \item Printing bug for non-standard REML formula in summary.HLfit() corrected. 
 \item Conditions where predict() return an object of class 'predictions' corrected to avoid a printing bug. 
 \item The 'xrange' and 'yrange' arguments of spaMMplot2D() were not effective. This is corrected.
-\item Printing bug in summary.fixedLRT() corrected
+\item Printing bug in summary.fixedLRT() corrected.
 \item spaMM.options(maxLambda=. . .) did not fully control extreme lambda estimates. The revised code is more effective, and also better bypasses some numerical problems that can occur for such values.
 \item Fitting phi using the corrHLfit() outer optimization mechanism was inefficiently implemented and could return some confusing output. This is corrected.  
 }

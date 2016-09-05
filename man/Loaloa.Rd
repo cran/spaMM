@@ -41,33 +41,60 @@ Trop. Med. Parasitol. 101, 499-509.
 }
 \examples{
 
-\dontrun{
 data(Loaloa)
-## Variations on the model fit by Diggle et al. on a subset of these data
 
-## With HLmethod=HL(0,1), this takes ~12s on a recent laptop
+### Variations on the model fit by Diggle et al. 
+###    on a subset of the Loaloa data
+### In each case this shows the slight differences in syntax,
+###    and the difference in 'typical' computation times, 
+###    when fit using corrHLfit() or fitme().
 
-corrHLfit(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
+if (spaMM.getOption("example_maxtime")>13) {
+  corrHLfit(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
                    +Matern(1|longitude+latitude),HLmethod="HL(0,1)",
                  data=Loaloa,family=binomial(),ranFix=list(nu=0.5)) 
-## nu=0.5 is the exponential correlation     
+}
+if (spaMM.getOption("example_maxtime")>3) {
+  fitme(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
+                   +Matern(1|longitude+latitude),method="HL(0,1)",
+                 data=Loaloa,family=binomial(),fixed=list(nu=0.5)) 
+}
 
-## the following fits take ~ 38s -- 2.5 minutes each.
-
-corrHLfit(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
+if (spaMM.getOption("example_maxtime")>49) {
+  corrHLfit(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
             +Matern(1|longitude+latitude),
-              data=Loaloa,family=binomial(),ranFix=list(nu=0.5)) 
+              data=Loaloa,family=binomial(),ranFix=list(nu=0.5))  
+}
+if (spaMM.getOption("example_maxtime")>25) {
+  fitme(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
+            +Matern(1|longitude+latitude),
+              data=Loaloa,family=binomial(),fixed=list(nu=0.5),method="REML")  
+}
 
 ## Diggle and Ribeiro (2007) assumed (in this package notation) Nugget=2/7:
-corrHLfit(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
+if (spaMM.getOption("example_maxtime")>45) {
+  corrHLfit(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
            +Matern(1|longitude+latitude),
-             data=Loaloa,family=binomial(),ranFix=list(nu=0.5,Nugget=2/7))
+             data=Loaloa,family=binomial(),ranFix=list(nu=0.5,Nugget=2/7))  
+}
+if (spaMM.getOption("example_maxtime")>17) {
+  fitme(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
+           +Matern(1|longitude+latitude),method="REML",
+             data=Loaloa,family=binomial(),fixed=list(nu=0.5,Nugget=2/7))  
+}
 
 ## with nugget estimation:
-corrHLfit(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
+if (spaMM.getOption("example_maxtime")>187) {
+  corrHLfit(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
            +Matern(1|longitude+latitude),
              data=Loaloa,family=binomial(),
-             init.corrHLfit=list(Nugget=0.1),ranFix=list(nu=0.5)) 
+             init.corrHLfit=list(Nugget=0.1),ranFix=list(nu=0.5))  
+}
+if (spaMM.getOption("example_maxtime")>43) {
+  fitme(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
+           +Matern(1|longitude+latitude),
+             data=Loaloa,family=binomial(),method="REML",
+             init=list(Nugget=0.1),fixed=list(nu=0.5))  
 }
 
 }

@@ -97,9 +97,9 @@ spMMFactorList <- function (formula, mf, rmInt, drop) {
     }
     ##FR at this point the code diverges from lmerFactorList  
     ans <- list(f = ff, 
-                A = do.call(rBind, lapply(seq_len(ncol(mm)),function(j) im)),
+                A = do.call(rbind, lapply(seq_len(ncol(mm)),function(j) im)),
                 ## Zt is design obs <-> levels of ranef, either dgCMatrix (sparse) or dgeMatrix (dense)
-                Zt = do.call(rBind, lapply(seq_len(ncol(mm)), 
+                Zt = do.call(rbind, lapply(seq_len(ncol(mm)), 
                                            function(j) {
                                              im@x <- mm[, j] ## mm stores (<this info>| ...) => numeric for random slope model 
                                              im
@@ -120,11 +120,7 @@ spMMFactorList <- function (formula, mf, rmInt, drop) {
   ## Subject <- list(0) ## keep this as comment; see below
   namesTerms <- list(0)
   GrpNames <- names(bars)
-  termsModels <- c() ## FR->FR tempo fix because it's not here that this should be determined
   for (i in 1:length(fl)) {
-    termsModels[i] <- "lamScal" ## FR->FR tempo fix because it's not here that this should be determined
-    ## indeed for adjacency model namesTerms[[i]] <- nt is only Intercept even though two coeffs will be determined
-    ##   but this should not be determined here.
     ###################
     # Subject[[i]] <- as.factor(fl[[i]]$f) # levels of grouping var for all obs ('ff' returned by locfn)
     ## : Subject was used only for random slope model, where ncol(Design) != nlevels(Subject). I tried to get rid of this.
@@ -153,7 +149,7 @@ spMMFactorList <- function (formula, mf, rmInt, drop) {
     attr(Design[[iMat]],"generator") <- attr(fl[[iMat]]$f,"generator") ## ( NULL except for corrMatrix )
   }
   list(Design = Design, #Subject = Subject, 
-       namesTerms=namesTerms,termsModels=termsModels)
+       namesTerms=namesTerms)
 }
 
 getgroups <- function(formlist,data) { ## reduction extreme de nlme:::getGroups.data.frame

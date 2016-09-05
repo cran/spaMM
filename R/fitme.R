@@ -5,7 +5,7 @@ fitme <- function(formula,data, ## matches minimal call of HLfit
                   lower=list(),upper=list(),
                   resid.model=~1,
                   init.HLfit=list(),
-                  control=list(), ## optim.scale (private), nloptr
+                  control=list(), ## optim.scale (private), nloptr, refit
                   control.dist=list(),
                   method="ML", 
                   HLmethod=method, ## LRT fns assume HLmethod when they are called and when calling
@@ -87,10 +87,10 @@ fitme <- function(formula,data, ## matches minimal call of HLfit
 fitme_body <- function(processed,
                        init=list(),
                        init.HLfit=list(),
-                       fixed=list(), 
+                       fixed=list(), ## NULL not valid (shouldbe handled in preprocess?)
                        lower=list(),upper=list(),
                        control.dist=list(),
-                       control=list(), ## optim.scale, Optimizer, optimizer.args, maxIter, precision
+                       control=list(), ## optim.scale, Optimizer, optimizer.args, maxIter, precision, refit
                        verbose, ## provided by fitme
                        ... ## cf dotnames processing below 
 ) {
@@ -188,7 +188,7 @@ fitme_body <- function(processed,
         control.dist$rho.mapping <- rho_mapping
       } else if (length(rho.size)>1L) stop("'rho.mapping' missing with no obvious default from the other arguments.")
     } ## then (for given corr.model's) there is rho_mapping
-    locarglist<- list(data=data,distMatrix=dotlist$distMatrix,
+    locarglist <- list(data=data,distMatrix=dotlist$distMatrix,
                       uniqueGeo=HLCor.args$uniqueGeo, ## typically NULL
                       coordinates=coordinates)
     if(!is.null(dist.method <- control.dist$dist.method)) locarglist$dist.method <- dist.method
@@ -205,10 +205,6 @@ fitme_body <- function(processed,
   } else nbUnique <- NULL
   #
   phiform <- getProcessed(processed,"resid.predictor",from=1L)
-  if (! is.null(findOffset(attr(phiform,"oriFormula")))) {
-    #dispOffset <- attr(object$resid.predictor,"offsetObj")$total
-    #stop("'fitme' does not yet handle dispersion models with offset.") ## pure programming pb common to all structured disp model
-  } #else dispOffset <- NULL
   ##### init.optim$phi/lambda will affect calc_inits -> calc_inits_dispPars.
   # outer estim seems useful when we can suppress all inner estim (thus the hatval calculations). 
   # ./. Therefore, we need to identify all cases where phi is fixed, 
@@ -225,7 +221,11 @@ fitme_body <- function(processed,
        ! is.null(get_init_phi) ) {
     # (1) set phi
     if (is.null(phi.Fix)) {
-      if (is.null(init.optim$phi)) init.optim$phi <- get_init_phi(processed)  
+      if (is.null(init.optim$phi)) {
+        if (is.call(processed$prior.weights)) {
+          init.optim$phi <- get_init_phi(processed,weights=NULL)
+        } else init.optim$phi <- get_init_phi(processed,weights=processed$prior.weights)
+      }  
       ## FR->FR fitme may fail obscurely if get_init_phi(processed) fails silently
       if (is.null(init.optim$phi)) { ## get_init_phi returned NULL if ./. 
         # ./. no replicate obs is available, or
@@ -292,11 +292,6 @@ fitme_body <- function(processed,
   lower <- LowUp$lower ## list ! which elements may have length >1 !
   upper <- LowUp$upper ## list !
   #
-  ranPars <- fixed ## ranPars argument of HLCor contains both fixed and estimated parameters:
-  varNames <- names(init.HLfit) ## hence those that will be variable within HLfit
-  ranPars[varNames] <- init.HLfit[varNames] ## FR->FR duplicat (?) qui montre qu'un attribute serait mieux
-  attr(ranPars,"type")[varNames] <- "var"  
-  #
   processedHL1 <- getProcessed(processed,"HL[1]",from=1L) ## there's also HLmethod in processed<[[]]>$callargs
   if (!is.null(processedHL1) && processedHL1=="SEM" && length(lower)>0) {
     optimMethod <- "iterateSEMSmooth"
@@ -308,9 +303,6 @@ fitme_body <- function(processed,
       } ## else default visible in SEMbetalambda
     }
   } else optimMethod <- "nloptr"
-  if (ncol(getProcessed(processed, "X.Re",from=1L))>0) { 
-    objective <- "p_bv"  
-  } else objective <- "p_v"
   needHLCor_specific_args <- (length(setdiff(names(lower),c("trPhi","trLambda","COMP_nu","NB_shape")))>0L
                               # 'empty' corr.model is "" and the match() is then NA
                               || ! is.na(match(corr.model,c("Matern","adjacency","AR1","ar1","corrMatrix")))  
@@ -321,67 +313,92 @@ fitme_body <- function(processed,
     HLcallfn <- "HLCor"
     HLCor.args$corr.model <- corr.model 
     HLCor.args$control.dist <- control.dist ## modified locally
-    HLCor.args$ranPars <- ranPars  
+    # Subtlety is in HLCor_body: ranPars argument of HLCor contains both fixed and estimated parameters:
+    # HL.info$init.HLfit[varNames] <- ranPars[varNames] 
+    # ranPars is used to carry both part of the init_HLfit info, and other info.  
+    # BUT this is not true if we directly call HLfit_body
+    RanFixOrVar <- fixed 
+    varNames <- names(init.HLfit) ## hence those that will be variable within HLfit
+    varNames <- setdiff(varNames,c("fixef","v_h"))
+    RanFixOrVar[varNames] <- init.HLfit[varNames] ## FR->FR duplicat (?) qui montre qu'un attribute serait mieux
+    attr(RanFixOrVar,"type")[varNames] <- "var"  
+    HLCor.args$ranPars <- RanFixOrVar  
   } else {
     HLcallfn.obj <- "HLfit.obj"
     HLcallfn <- "HLfit"
-    HLCor.args$ranFix <- ranPars  
+    HLCor.args$ranFix <- fixed  
   }
-  HLCor.args$processed <- processed
+  HLCor.args$init.HLfit <- init.HLfit[intersect(names(init.HLfit),c("fixef","v_h"))] ## 
+  HLCor.args$processed <- processed ## for the <...>.obj and <...>_body functions  
   processed <- "'processed' erased after copy in 'HLCor.args' to make sure it is not modified later"
   ## 
   anyHLCor_obj_args <- HLCor.args
   ## HLCor.obj uses a vector + skeleton
   if (needHLCor_specific_args) {
     anyHLCor_obj_args$skeleton <- structure(init.optim,RHOMAX=RHOMAX,NUMAX=NUMAX) ## logscale, only used by HLCor.obj
-    anyHLCor_obj_args$`HLCor.obj.value` <- objective
   } else {
     anyHLCor_obj_args$skeleton <- init.optim
-    anyHLCor_obj_args$`HLfit.obj.value` <- objective
   }
   attr(anyHLCor_obj_args$skeleton,"type") <- list() ## declares a list of typeS of elemnts of skeleton
   attr(anyHLCor_obj_args$skeleton,"type")[names(init.optim)] <- "fix" # fixed within the HLCor call 
   anyHLCor_obj_args$processed <- setProcessed(anyHLCor_obj_args$processed,
-                                              "only_objective",
-                                              value = paste("\"",objective,"\"",sep=""))
+                                              "return_only",
+                                              value = paste("\"",anyHLCor_obj_args$processed$objective,"APHLs\"",sep=""))
   initvec <- unlist(init.optim)
   ####    tmpName <- generateName("HLtmp") ## tmpName is a string such as "HLtmp0"
   #    anyHLCor_obj_args$init.HLfit <- tmpName 
   ####    assign(tmpName,list(),pos=".GlobalEnv") ## sets HLtmp0 (or a similarly named variable) at the global level
   if (length(initvec)>0L) {
-    if (optimMethod=="iterateSEMSmooth") {
-      stop("reimplement iterateSEMSmooth() in fitme() later")
-      
-      ## and then we need to put back the code for logL from smoothing at the end of this function
-      
-    } else { ## this is also called if length(lower)=0 by  (SEM or not) and optPars is then null 
-      objfn_nloptr <- function(x,anyHLCor_obj_args) { ## all functions should have the same args.
-        arglist <- c(list(ranefParsVec=x),anyHLCor_obj_args)
-        return( - do.call(HLcallfn.obj,arglist))
+    if (identical(anyHLCor_obj_args$verbose["getCall"][[1L]],TRUE)) {
+      refitPars <- init.optim
+    } else {
+      if (optimMethod=="iterateSEMSmooth") {
+        stop("reimplement iterateSEMSmooth() in fitme() later")
+        
+        ## and then we need to put back the code for logL from smoothing at the end of this function
+        
+      } else { ## this is also called if length(lower)=0 by  (SEM or not) and optPars is then null 
+        objfn_nloptr <- function(x,anyHLCor_obj_args) { ## all functions should have the same args.
+          arglist <- c(list(ranefParsVec=x),anyHLCor_obj_args)
+          return( - do.call(HLcallfn.obj,arglist))
+        }
+        nloptr_controls <- list(algorithm="NLOPT_LN_BOBYQA",xtol_rel=1.0e-4,maxeval=-1,print_level=0) ## DEFAULT
+        nloptr_controls[names(control$nloptr)] <- control$nloptr ## Overwrite defaults with any element of $nloptr
+        optr <- nloptr(x0=initvec,eval_f=objfn_nloptr,lb=unlist(lower),ub=unlist(upper),
+                       opts=nloptr_controls,anyHLCor_obj_args=anyHLCor_obj_args)
+        optPars <- relist(optr$solution,init.optim)
+        refitPars <- optPars <- structure(optPars,method="nloptr",optr=optr) 
+        ## full optr is big. Contains the call and an environment... 
       }
-      nloptr_controls <- list(algorithm="NLOPT_LN_BOBYQA",xtol_rel=1.0e-4,maxeval=-1,print_level=0) ## DEFAULT
-      nloptr_controls[names(control$nloptr)] <- control$nloptr ## Overwrite defaults with any element of $nloptr
-      optr <- nloptr(x0=unlist(init.optim),eval_f=objfn_nloptr,lb=unlist(lower),ub=unlist(upper),
-                     opts=nloptr_controls,anyHLCor_obj_args=anyHLCor_obj_args)
-      optPars <- relist(optr$solution,init.optim)
-      optPars <- structure(optPars,method="nloptr",optr=optr)
     }
-    ranPars[names(init.optim)] <- optPars ## avoids overwriting fixed ranPars 
-    attr(ranPars,"type")[names(init.optim)] <- "outer" ##  
+    RanFixOrVar <- fixed 
+    if (( identical(control$refit,TRUE) || identical(control$refit$phi,TRUE)) && ! is.null(refitPars$trPhi)) {
+      HLCor.args$init.HLfit$phi <- dispInv(refitPars$trPhi)
+      RanFixOrVar$trPhi <- refitPars$trPhi <- NULL
+    }
+    if (( identical(control$refit,TRUE) || identical(control$refit$lambda,TRUE)) && ! is.null(refitPars$trLambda)) {
+      HLCor.args$init.HLfit$lambda <- dispInv(refitPars$trLambda)
+      RanFixOrVar$trLambda <- refitPars$trLambda <- NULL
+    }
+    RanFixOrVar[names(refitPars)] <- refitPars ## avoids overwriting fixed ran pars 
+    attr(RanFixOrVar,"type")[names(refitPars)] <- "outer" ##  
     if (needHLCor_specific_args) {
-      attr(ranPars,"RHOMAX") <- RHOMAX
-      attr(ranPars,"NUMAX") <- NUMAX
-      HLCor.args$ranPars <- ranPars ## variable locally
-    } else HLCor.args$ranFix <- ranPars ## variable locally  
+      attr(RanFixOrVar,"RHOMAX") <- RHOMAX
+      attr(RanFixOrVar,"NUMAX") <- NUMAX
+      HLCor.args$ranPars <- RanFixOrVar ## variable locally
+    } else HLCor.args$ranFix <- RanFixOrVar ## variable locally  
   }
   #
   verbose["warn"] <- TRUE ## important!
   HLCor.args$verbose <- verbose ## modified locally
   hlcor <- do.call(HLcallfn,HLCor.args) ## recomputation post optimization, or only computation if length(initvec)=0
+  if (identical(HLCor.args$verbose["getCall"][[1L]],TRUE)) {
+    return(hlcor) ## HLCorcall
+  }
   #
   if (needHLCor_specific_args) {
-    if ( is.null(HLCor.args$adjMatrix)) { ## Matern, AR1/ar1; or distMatrix models ...
-      ## info.uniqueGeo,  used by predict -> calcNewCorrs and mapMM,
+    if ( is.null(HLCor.args$adjMatrix) && is.null(HLCor.args$corrMatrix)) { ## Matern, AR1/ar1; 
+      ## info.uniqueGeo,  used by predict -> calcNewCorrs and mapMM,  and getDistMat for Matern,
       ##   may already have been set by HLCor_body (if uniqueGeo was one of its explict args)
       if (is.null(attr(hlcor,"info.uniqueGeo"))) attr(hlcor,"info.uniqueGeo") <- HLCor.args$uniqueGeo ## Matern with rho.size>1
       if (is.null(attr(hlcor,"info.uniqueGeo"))) attr(hlcor,"info.uniqueGeo") <- uniqueGeo ## Matern with rho.size=1
@@ -390,7 +407,8 @@ fitme_body <- function(processed,
   }
   #
   if (length(initvec)>0L) {
-    attr(hlcor,"optimInfo") <- list(LUarglist=LUarglist, optim.pars=optPars, objective=objective)
+    attr(hlcor,"optimInfo") <- list(LUarglist=LUarglist, optim.pars=optPars, 
+                                    objective=anyHLCor_obj_args$processed$objective) ## processed was erased for safety
   }
   return(hlcor)
 }

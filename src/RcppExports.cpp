@@ -258,6 +258,19 @@ BEGIN_RCPP
     return __result;
 END_RCPP
 }
+// e_LevenbergMsolveCpp
+SEXP e_LevenbergMsolveCpp(SEXP AA, SEXP wwAugz, SEXP dd);
+RcppExport SEXP spaMM_e_LevenbergMsolveCpp(SEXP AASEXP, SEXP wwAugzSEXP, SEXP ddSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject __result;
+    Rcpp::RNGScope __rngScope;
+    Rcpp::traits::input_parameter< SEXP >::type AA(AASEXP);
+    Rcpp::traits::input_parameter< SEXP >::type wwAugz(wwAugzSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type dd(ddSEXP);
+    __result = Rcpp::wrap(e_LevenbergMsolveCpp(AA, wwAugz, dd));
+    return __result;
+END_RCPP
+}
 // LevenbergMsolveCpp
 SEXP LevenbergMsolveCpp(SEXP AA, SEXP rrhhss, SEXP dd);
 RcppExport SEXP spaMM_LevenbergMsolveCpp(SEXP AASEXP, SEXP rrhhssSEXP, SEXP ddSEXP) {

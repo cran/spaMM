@@ -1,9 +1,8 @@
 \name{HLfit}
 \alias{HLfit}
-\alias{inverse.Gamma}
 \title{Fit mixed models with given correlation matrix}
 \description{
-  This fonction fits GLMMs as well as some hierarchical generalized linear models (HGLM; Lee and Nelder 2001).
+  This function fits GLMMs as well as some hierarchical generalized linear models (HGLM; Lee and Nelder 2001).
   HLfit fits both fixed effects parameters, and dispersion parameters i.e. the variance of the random effects 
   and the variance of the residual error. The linear predictor is of the 
   standard form \code{offset+ X beta + Z v}, where 
@@ -43,9 +42,13 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
   If there are several random effects and only one family is given, this family holds for all random effects.
 }
   \item{resid.model}{
-  \bold{Either} a formula (without left-hand side) for the variance \code{phi} of the residual error, \bold{or} a list 
-  with such a formula as element \code{formula}, and the optional element \code{family} for the model family of the residual model. 
-  Currently the formula can only contain fixed effects, including an offset. A log link is assumed by default, but an identity link can be requested by setting \code{resid.model$family} to \code{Gamma(identity)}. 
+  \bold{Either} a formula (without left-hand side) for the dispersion parameter \code{phi} of the residual error. A log link is assumed by default;\cr 
+  \bold{or} a list, with at most two possible elements if its formula involves only fixed effects:
+  \describe{
+    \item{formula}{model formula as in formula-only case, without left-hand side}
+    \item{family}{Always Gamma, with by default a log link. \code{Gamma(identity)} can be tried but may fail because only the log link ensures that the fitted \eqn{\phi} is positive.}
+  }
+  and additional possible elements (all named as \code{fitme} arguments) if its formula involves random effects:  see \code{\link{phiHGLM}}.
 }
   \item{resid.formula}{
   Obsolete, for back-compatibility; will be deprecated. Same as formula in \code{resid.model}. 
@@ -93,7 +96,7 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
    a convergence threshold for the iterative algorithm, which controls whether 
    linear predictor terms (fixed effects and inferred random effects), and dispersion parameter estimates have converged. Defaults to 1e-05;
    
-   \code{break_conv_logL}, a boolean specifying whether the iterative algorithm should terminate when log-likelihood appears to have convergence (roughly, when its relative variation over on iteration is lower than 1e-8). Default is FALSE.
+   \code{break_conv_logL}, a boolean specifying whether the iterative algorithm should terminate when log-likelihood appears to have converged (roughly, when its relative variation over on iteration is lower than 1e-8). Default is FALSE (convergence is then assessed on the parameter estimates rather than on log-likelihood).
 %
   \code{iter.mean.dispFix}, the number of iterations of the iterative algorithm for coefficients of the linear predictor,
        if no dispersion parameters are estimated by the iterative algorithm. Defaults to 200; 
@@ -133,7 +136,7 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
 }
 \details{
 
- \bold{Fitting methods:}
+ \bold{I. Fitting methods:}
  Many approximations for likelihood have been defined to fit mixed models (e.g. Noh and Lee (2007) for some overview), 
  and this function only considers a subset of them, but it adds a new complication in terms of REML methods. For example, 
  PQL as originally defined by Breslow and Clayton uses REML to estimate dispersion parameters, but this function allows one to use ML instead.
@@ -152,7 +155,7 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
   For a Gamma GLM with log link, ML and EQL results will differ in their phi estimates, and the EQL estimate will match that from the \code{\link{glm}} function. 
   
 
-  \bold{Random effects} are constructed in several steps. first, a vector \bold{u} of independent and identically distributed (iid) random effects is drawn from some distribution;
+  \bold{II. Random effects} are constructed in several steps. first, a vector \bold{u} of independent and identically distributed (iid) random effects is drawn from some distribution;
  second, a transformation v=f(u) is applied to each element (this defines \bold{v} which elements are still iid); third, correlated random effects are obtained as \bold{Lv} 
   where \bold{L} is the \dQuote{square root} of a correlation matrix (this may be meaningful only for Gaussian random effects). 
   Finally, a matrix \bold{Z} (or sometimes \bold{ZA}, see \code{\link{Predictor}}) allows to specify how the correlated random effects
@@ -161,30 +164,19 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
   The design matrix for \bold{v} is then of the form \bold{ZL}. 
 
  The specification of the random effects u and v handles the following cases: 
- \describe{
- \item{Gaussian}{with zero mean, unit variance, and identity link;} 
- \item{Beta}{Beta-distributed random effects, where (\eqn{u ~ B(1/(2\lambda),1/(2\lambda))} 
-    (mean=1/2, var\eqn{=\lambda/[4(1+\lambda)]}), with logit link \code{v=logit(u)})}
- \item{Gamma}{Gamma-distributed random effects, where \eqn{u ~ \Gamma(1/\lambda,\lambda)}, so u
-   has mean 1 and variance \eqn{\lambda}. Both the log (\eqn{v=log(u)}) and identity (\eqn{v=u}) links are possible, though in the latter case the variance of \eqn{u} is constrained below 1. Gamma-distributed random effects with higher variance can be fitted using \code{inverse.Gamma(-1/mu)}. 
-  } 
- \item{Inverse-Gamma}{inverse-Gamma distributed random effects, where \eqn{u ~ }inverse-Gamma\eqn{(1+1/\lambda,1/\lambda)}
-    (mean=1, var=\eqn{\lambda/(1-\lambda))}. The allowed links are \code{v=log(u)} and \code{v=-1/u}. With the latter one, \code{v} 
-    is Gamma-distributed with mean \eqn{\lambda} and variance \eqn{\lambda(\lambda+1)}.}
- }  
+ \bold{Gaussian} with zero mean, unit variance, and identity link; \bold{Beta}-distributed, where \eqn{u ~ B(1/(2\lambda),1/(2\lambda))} with mean=1/2, and var\eqn{=\lambda/[4(1+\lambda)]}; and with logit link \code{v=logit(u)};
+ \bold{Gamma}-distributed random effects, where \eqn{u ~ }\code{Gamma(shape=}1+1/\eqn{\lambda},\bold{scale=}1/\eqn{\lambda}): see \code{\link{Gamma}} for allowed links and further details; and \bold{Inverse-Gamma}-distributed random effects, where \eqn{u ~ }inverse-Gamma(\code{shape=}1+1/\eqn{\lambda},\bold{rate=}1/\eqn{\lambda}): see \code{\link{inverse.Gamma}} for allowed links and further details.
 
-  \bold{The standard errors} reported may sometimes be misleading. For each set of parameters among \eqn{\beta}, \eqn{\lambda}, and \eqn{\phi} parameters these are computed assuming that the other parameters are known without error. This is why they are labelled \code{Cond. SE} (conditional standard error). This is most uninformative in the unusual case where \eqn{\lambda} and \eqn{\phi} are not separately estimable parameters. Further, the SEs for \eqn{\lambda} and \eqn{\phi} are rough approximations as discussed in particular by Smyth et al. (2001; \eqn{V_1} method).    
+  \bold{III. The standard errors} reported may sometimes be misleading. For each set of parameters among \eqn{\beta}, \eqn{\lambda}, and \eqn{\phi} parameters these are computed assuming that the other parameters are known without error. This is why they are labelled \code{Cond. SE} (conditional standard error). This is most uninformative in the unusual case where \eqn{\lambda} and \eqn{\phi} are not separately estimable parameters. Further, the SEs for \eqn{\lambda} and \eqn{\phi} are rough approximations as discussed in particular by Smyth et al. (2001; \eqn{V_1} method).    
 
-The extractor function \code{\link{get_any_IC}} can compute information criteria (\dQuote{AIC}) and effective degrees of freedom from the HLfit results. See the \code{get_any_IC} documentation for more details. 
 }
 \value{
-An object of class \code{HLfit}, actually a list with many elements, several of which represent input arguments. 
-Some elements may be undocumented. 
+An object of class \code{HLfit}, which is a list with many elements, not all of which are documented. 
 
 A few extractor functions are available (see \code{\link{extractors}}), 
 and should be used as far as possible as they should be backward-compatible from version 1.4 onwards, while the structure of the return object may still evolve. The following information will be useful for extracting further elements of the object.
 
-Elements describing the fit include \bold{descriptors of the fit}:
+Elements include \bold{descriptors of the fit}:
 
 \item{eta}{Fitted values on the linear scale  (including the predicted random effects);}
 \item{fv}{Fitted values (\eqn{\mu=}<inverse-link>(\eqn{\eta})) of the response variable (returned by the \code{fitted} function);}
@@ -195,31 +187,29 @@ Elements describing the fit include \bold{descriptors of the fit}:
 \item{phi.object}{A possibly more complex object describing \eqn{\phi};}
 \item{lambda}{The random effects (\eqn{u}) variance \eqn{\lambda};}
 \item{lambda.object}{A possibly more complex object describing \eqn{\lambda};}
-\item{corrPars}{Agglomerates information on correlation parameters, either fixed, or estimated by \code{HLfit} or \code{corrHLfit};}
-\item{APHLs}{A list which elements are various likelihood components and information criteria. ikelihood components include conditional likelihood, the h-likelihood, and the two adjusted profile h-likelihoods:
-   the (approximate) marginal likelihood \code{p_v} and the (approximate) restricted likelihood \code{p_bv} (the latter two available through the \code{logLik} function). Information criteria are described in Details and can be displayed by \code{\link{get_any_IC}};
-}
-\item{beta_cov}{Covariance matrix of \eqn{\beta} estimates.}
+\item{corrPars}{Agglomerates information on correlation parameters, either fixed, or estimated by \code{HLfit}, \code{corrHLfit} or \code{fitme};}
+\item{APHLs}{A list which elements are various likelihood components, include conditional likelihood, h-likelihood, and the two adjusted profile h-likelihoods: the (approximate) marginal \bold{likelihood} \code{p_v} and the (approximate) \bold{restricted likelihood} \code{p_bv} (the latter two available through the \code{logLik} function). See the extractor function \code{\link{get_any_IC}} for information criteria (\dQuote{AIC}) and effective degrees of freedom;}
+\item{}{The covariance matrix of \eqn{\beta} estimates is not included as such, but can be extracted by \code{\link{vcov}};}
 
 \bold{Information about the input} is contained in output elements named as \code{HLfit} or \code{corrHLfit} arguments (\code{data,family,resid.family,ranFix,prior.weights}), with the following notable exceptions or modifications:
 
-\item{predictor}{The linear predictor, including the \code{formula} (possibly reformatted) and several attributes such as \code{ZALMatrix} which is the design matrix for random effects;}
+\item{predictor}{The linear predictor, including the \code{formula} (possibly reformatted) and several attributes;}
 \item{resid.predictor}{Analogous to \code{predictor}, for the residual variance;}
 \item{rand.families}{corresponding to the \code{rand.family} input;}
 
 \bold{Further miscellaneous diagnostics and descriptors of model structure:}
 
-\item{leve_phi,lev_lambda}{Leverages;}
-\item{ZAlist}{Components of the design matrix for random effects;}
 \item{X.pv}{The design matrix for fixed effects;}
+\item{ZAlist}{Components of the design matrix for random effects. The design matrix for the random effects \eqn{v} is not included as such, but can be extracted by the \emph{member_extractor} \code{\link{get_ZALMatrix}}.}
 \item{fixef_terms,fixef_levels}{Futher information about fixed effect model;}
 \item{weights}{(binomial data only) the binomial denominators;}
 \item{y}{the response vector; for binomial data, the frequency response.}
 \item{models}{Additional information on model structure for \eqn{\eta}, \eqn{\lambda} and \eqn{\phi};}
 \item{HL}{A set of indices that characterize the approximations used for likelihood;}
+\item{leve_phi,lev_lambda}{Leverages;}
 \item{warnings}{A list of warnings for events that may have occurred during the fit.}
 
-Finally, the object includes programming tools: \code{call, spaMM.version, get_w_h_coeffs, get_beta_w_cov, get_invColdoldList, get_logdispObject}.
+Finally, the object includes programming tools: \code{call, spaMM.version} and \code{\link{member_extractors}}.
 
 }
 \references{
@@ -228,30 +218,28 @@ Journal of the American Statistical Association 88, 9-25.
 
 Cox, D. R. and Donnelly C. A. (2011) Principles of Applied Statistics. Cambridge Univ. Press.
 
-Ha, I. D., Lee, Y. and MacKenzie, G. (2007) Model selection for multi-component frailty models. Statistics in Medicine 26: 4790-4807.
-
 Lee, Y., Nelder, J. A. (2001)  Hierarchical generalised linear models: A
 synthesis of generalised linear models, random-effect models and structured
 dispersions. Biometrika 88, 987-1006.
 
-Lee, Y., Nelder, J. A. and Pawitan, Y. (2006). Generalised linear models with random effects: unified analysis via
+Lee, Y., Nelder, J. A. and Pawitan, Y. (2006). Generalized linear models with random effects: unified analysis via
 h-likelihood. Chapman & Hall: London.
 
 Noh, M., and Lee, Y. (2007). REML estimation for binary data in GLMMs, J.
 Multivariate Anal. 98, 896-915.
 
 Smyth GK, Huele AF, Verbyla AP (2001). Exact and approximate REML for heteroscedastic regression. Statistical Modelling 1, 161-175. 
-
-Vaida, F., and Blanchard, S. 2005. Conditional Akaike information for mixed-effects models. Biometrika 92, 351-370.
 }
 \seealso{
 \code{\link{HLCor}} for estimation with given spatial correlation parameters;
-\code{\link{corrHLfit}} for joint estimation with spatial correlation parameters.
+\code{\link{corrHLfit}} for joint estimation with spatial correlation parameters;
+\code{\link{fitme}} as an alternative to all these functions.
 }
 
 \examples{
 data(wafers)
 ## Gamma GLMM with log link
+% example also in main page...
 HLfit(y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch),family=Gamma(log),
           resid.model = ~ X3+I(X3^2) ,data=wafers)
 %- : tested in update.Rd

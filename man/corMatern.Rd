@@ -3,7 +3,7 @@
 %- Also NEED an '\alias' for EACH other topic documented here.
 \title{Matern Correlation Structure as a corSpatial object}
 \description{
-  This implements the Matérn correlation structure for use with \code{lme} or \code{glmmPQL}. Usage is as for others \code{corSpatial} objects 
+  This implements the Matérn correlation structure (see \code{\link{Matern}}) for use with \code{lme} or \code{glmmPQL}. Usage is as for others \code{corSpatial} objects 
   such as \code{corGaus} or \code{corExp}, except that the Matérn family
   has an additional parameter. This function was defined for comparing
   results obtained with \code{corrHLfit} to those produced by \code{lme} and \code{glmmmPQL}. There

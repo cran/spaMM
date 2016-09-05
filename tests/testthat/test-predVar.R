@@ -68,9 +68,13 @@ vphifit <- corrHLfit(migStatus ~ 1 + Matern(1|latitude+longitude),
                      data=varphi,  ranFix=list(nu=4,rho=0.4))
 # for respVar computation, one needs the resid.model formula to specify phi:
 p1 <- suppressWarnings(get_respVar(vphifit,newdata=data.frame(latitude=1,longitude=1,logphi=1)))
-expect_equal(p1,c(`1`=2.844405),tol=1e-6)
+expect_equal(p1,c(`1`=2.844421),tol=1e-5)
 # for predVar computation, phi is not needed 
 #     (and could have been specified through ranFix):  
 p1 <- suppressWarnings(get_predVar(vphifit,newdata=data.frame(latitude=1,longitude=1)))
-expect_equal(p1,c(`1`=0.1261236),tol=1e-6)
+expect_equal(p1,c(`1`=0.1261396),tol=1e-5)
 
+# verif calc_logdisp_cov runs after outer optimisation
+fitfit <- fitme(migStatus ~ 1 + Matern(1|latitude+longitude),
+                     data=blackcap,  fixed=list(nu=4,rho=0.4))
+get_respVar(fitfit,newdata=data.frame(latitude=1,longitude=1))

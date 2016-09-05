@@ -33,7 +33,7 @@ It may be faster if the value of the control parameter \code{COMP_maxn} is reduc
 }
 \examples{
 ## Fitting COMPoisson model with estimated nu parameter:
-if (spaMM.getOption("example_maxtime")>8) {          
+if (spaMM.getOption("example_maxtime")>7) {          
   data(freight) ## example from Sellers & Shmueli, Ann. Appl. Stat. 4: 943–961 (2010)
   fitme(broken ~ transfers,family = COMPoisson(),data=freight)
 }

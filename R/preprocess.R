@@ -12,7 +12,8 @@ checkRandLink <- function(rand.family) {
   if ( ! oklink) {
     allowed <- switch(lcrandfamfam,
                       gaussian= "is 'identity'",
-                      gamma= "is 'log'", ## gamma(identity) not yet working
+                      gamma= "is 'log' ('identity' may be *tried*)", ## gamma(identity) not yet working
+                      #  and the above code protext against Gamma(inverse); it could perhaps be allowed for trying ? 
                       beta= "is 'logit'",
                       "inverse.gamma" = "are '-1/mu' and 'log'"
     )
@@ -21,6 +22,7 @@ checkRandLink <- function(rand.family) {
   }
   lcrandfamfam
 }
+
 
 checkRandLinkS <- function(rand.families) {
   rand.families <- lapply(rand.families, function(rf) {
@@ -46,6 +48,29 @@ checkRespFam <- function(family) {
     family <- family()
   if (family$family=="Gamma") family <- call("spaMM_Gamma",link=family$link) ## avoids display of family def in fit results
   family
+}
+
+get_ZAlist <- function(predictor, model_frame) { ## model_frame is an $mf element
+  terms_ranefs <- parseBars(predictor) ## a vector of char strings with attribute(s), 
+  ##    otherwise similar to bars <- spMMexpandSlash(findbarsMM(formula[[length(formula)]])): FR->FR maybe simplification of code possible here?
+  if ( length(terms_ranefs) > 0L ) {
+    FL <- spMMFactorList(predictor, model_frame, 0L, drop=TRUE) ## this uses the spatial information in the formula, even if an explicit distMatrix was used elsewhere
+    ZAlist <- FL$Design ## : is a list of design matrices (temporarily only Z)
+    attr(ZAlist,"ranefs") <- terms_ranefs
+    ## FR->FR ca serait utile d'appeler l'attribut 'terms_ranefs' mais predict() etc deviendrait 
+    ##   back incompat avec anciens fits. 
+    ## Toutefois rend visible le pb que les attr 'ranefs ' de LMatrix et de ZAlist paraissent calcules
+    ##   de deux facons differentes (parseBars() vs unlist(lapply(spatial.terms,DEPARSE)) ) 
+    attr(ZAlist,"namesTerms") <- FL$namesTerms ## list of predictor vars for each element of ZAList
+    AMatrix <- attr(predictor,"AMatrix")
+    if (!is.null(AMatrix)) {
+      ## logic is Z[nresp,nUniqueRespLoc].A[nUniqueRespLoc,nHiddenv].L[nHiddenv,nHiddenv]
+      for (iMat in seq(length(ZAlist))) {
+        ZAlist[[iMat]] <- ZAlist[[iMat]] %*% AMatrix[[iMat]]
+      }
+    }
+  } else ZAlist <- structure(list(),anyRandomSlope=FALSE)
+  return(ZAlist)
 }
 
 getProcessed <- function(object,element,from=NULL) {
@@ -109,16 +134,48 @@ generateInitPhi <- function(formula,data,family,weights=NULL) {
   return(phi_est)
 }
 
+## function for init.optim hence for fitme.
 create_get_init_phi <- function() {
   init_phi <- NULL## so that no build/check note on the <<- 
-  locfn <- function(res) {
+  locfn <- function(res,weights=NULL) {
+    # with processed$get_init_phi <- create_get_init_phi(), res will be the argument of get_init_phi()  
     if (is.null(init_phi)) { 
-      init_phi <<- generateInitPhi(formula=res$predictor,data=res$data,family=res$family,weights=res$prior.weights) 
+      init_phi <<- generateInitPhi(formula=res$predictor,data=res$data,family=res$family,weights=weights) 
     } 
     return(init_phi)
   } 
   environment(locfn) <- list2env(list(init_phi=NULL),
                                  parent=environment(generateInitPhi))
+  return(locfn)
+}
+
+create_get_init_lambda <- function() {
+  init_lambda <- NULL## so that no build/check note on the <<- 
+  locfn <- function(res,reset=FALSE,stillNAs,init_lambda_by_glm=NULL) {
+    if (reset) init_lambda <<- NULL
+    if (is.null(init_lambda)) { ## which occurs either if reste is TRUE or if $get_init_lambda has not yet been called
+      init_lambda <<- provide_init_lambdas(res,stillNAs=stillNAs,init_lambda_by_glm=init_lambda_by_glm) 
+    }
+    return(init_lambda)
+  } 
+  environment(locfn) <- list2env(list(init_lambda=NULL),
+                                 parent=environment(provide_init_lambdas))
+  return(locfn)
+}
+
+
+# function called within HLfit for missing inits
+create_get_inits_by_glm <- function() {
+  inits_by_glm <- NULL## so that no build/check note on the <<- 
+  locfn <- function(res,family=res$family,reset=FALSE) {
+    if (reset) inits_by_glm <<- NULL
+    if (is.null(inits_by_glm)) { 
+      inits_by_glm <<- calc_inits_by_glm(res,family=family) 
+    } 
+    return(inits_by_glm)
+  } 
+  environment(locfn) <- list2env(list(inits_by_glm=NULL),
+                                 parent=environment(calc_inits_by_glm))
   return(locfn)
 }
 
@@ -128,16 +185,12 @@ preprocess <- function(control.HLfit, ranFix=NULL, HLmethod,
                        REMLformula, data, family,
                        BinomialDen, rand.families, etaFix, prior.weights,
                        control.glm ) {
-  callargs <- match.call() ## to make easy to change these arguments in a later fit
+  callargs <- match.call() 
+  #
   if ( ! is.list(resid.model)) resid.model <- list(formula=resid.model,family=control.HLfit$resid.family)
-
+  resid.model$fixed <- as.list(resid.model$fixed) ## converts NULL to list() as exp'd for 'fixed' in fitme_body()
   ################ handling list of data #######################
   if (inherits(data,"list")) {
-    #     data <- lapply(data,function(dt) {
-    #       validdata <- validData(formula=predictor,resid.formula=resid.model$formula,
-    #                              data=dt) ## will remove rows with NA's in required variables
-    #       dt[rownames(validdata),,drop=FALSE] ## ## before Predictor is called and an LMatrix is added, etc.
-    #     })
     locargs <- as.list(callargs)
     famfam <- family$family
     processed <- lapply(data,function(dd) {
@@ -151,11 +204,16 @@ preprocess <- function(control.HLfit, ranFix=NULL, HLmethod,
   ###############################################################
   
   # remove rows with NA's in required variables:
-  validdata <- validData(formula=predictor,resid.formula=resid.model$formula,
-                         data=data) 
-  if (!inherits(data,"environment")) {
+  validdata <- getValidData(formula=predictor, resid.formula=resid.model$formula,
+                            data=data, callargs=callargs["prior.weights"]) ## OK for all prior weights
+  if ( inherits(data,"data.frame")) {
     data <- data[rownames(validdata),,drop=FALSE]  
-  } else data <- validdata
+  } else if  (inherits(data,"environment")) {
+    data <- validdata
+  } else {
+    mess <- pastefrom("'data' is not a data.frame not an environment.",prefix="(!) From ")
+    stop(mess)
+  }
   # add easily testable family name
   famfam <- family$family
   processed <- list(data=data,family=family)
@@ -168,12 +226,8 @@ preprocess <- function(control.HLfit, ranFix=NULL, HLmethod,
   processed$break_conv_logL <- break_conv_logL ##  
   ## numerical control parameters 
   conv.threshold <-control.HLfit$conv.threshold ## 
-  if (is.null(conv.threshold)) conv.threshold <- 1e-05
+  if (is.null(conv.threshold)) conv.threshold <- 1e-05 ## changing to 1e-04 (08/2016) reduces tests/testthat time by nearly 30s
   processed$conv.threshold <- conv.threshold  
-  #
-  HL2.threshold <- control.HLfit$HL2.threshold 
-  if (is.null(HL2.threshold)) HL2.threshold <- 3
-  #    processed$HL2.threshold <- HL2.threshold  
   #
   iter.mean.dispFix <-control.HLfit$iter.mean.dispFix ## private control
   if (is.null(iter.mean.dispFix)) iter.mean.dispFix <- control.HLfit$max.iter.mean ## public control
@@ -189,20 +243,16 @@ preprocess <- function(control.HLfit, ranFix=NULL, HLmethod,
   if (is.null(max.iter)) max.iter <-200
   processed$max.iter <- max.iter  
   #
-  ## only check, no modif of data -> not returned
-  if ( ! (inherits(data,"data.frame") || inherits(data,"environment"))) {
-    mess <- pastefrom("'data' is not a data.frame not an environment.",prefix="(!) From ")
-    stop(mess)
-  }
-  #
   resid.family <- resid.model$family
   if (is.null(resid.family)) {
     resid.family <- spaMM_Gamma(log)
   } else {
-    if (resid.family$family!= "Gamma") stop("resid.family must be Gamma.")
+    if (resid.family$family!= "Gamma") stop("resid.family must be Gamma.")## spaMM_Gamma also valid by this test
     resid.family <- spaMM_Gamma(resid.family$link) ## we will need the returned link, not the promise 
-  }
-  processed$resid.family <- resid.family ## resid.predictor will also be returned
+  } ## and "quoted" suitable for saving in HLfit return object
+  attr(resid.family,"quoted") <- substitute(spaMM_Gamma(link),
+                                            list(link=resid.family$link))
+  resid.model$family <- resid.family ## resid.predictor will also be returned
   #
   if (! inherits(predictor,"predictor")) predictor <- Predictor(predictor) 
   MeanFrames <- HLframes(formula=predictor,data=data) ## design matrix X, Y...
@@ -229,19 +279,30 @@ preprocess <- function(control.HLfit, ranFix=NULL, HLmethod,
     off <- pmax(log(.Machine$double.xmin),off) ## handling log(0) ## but if input off were NULL, output off would be is numeric(0) where it should remain NULL
   }
   colnames(X.pv) <- colnames(MeanFrames$X)
+  if (ncol(X.pv)>0L) { 
+    checkNAs <- coefficients(lm(processed$y ~ X.pv-1))   
+    if (any(is.na(checkNAs))) {   
+      validbeta <- which(!is.na(checkNAs))
+      X.pv <- structure(X.pv[,validbeta,drop=FALSE],namesOri=colnames(X.pv)) 
+      # etaFix$beta |         variables 
+      #             |  valid vars | invalid vars
+      #     (1)           (2)           (3)
+      # (2): colnames(<HLfit>$beta_cov) = colnames (<HLfit>$X.pv)
+      # (1+2+3): namesOri, names(<HLfit>$fixef)
+    } else attr(X.pv,"namesOri") <- colnames(X.pv)  
+  } 
+  # next extracts column for fixed oefficients
+  X.Re <- X.pv ## may be updated from etaFix$beta or REMLformula, but this line makes the opposite possible
   ## reimplementation of etaFix$beta (2015/03)
-  X.Re <- X.pv ## can be overwritten according to etaFix and REMLformula
-  namesOri <- colnames(X.pv)
   if ( length(betaFix <- etaFix$beta)>0 ) {
     namesbetafix <- names(betaFix)
     if (is.null(namesbetafix)) {
-      message("(!) The elements of etaFix$beta should be named and the names should match the column names of the design matrix.")
-      stop("    I exit.")
+      message("The elements of etaFix$beta should be named and the names should match the column names of the design matrix.")
     }
-    if (length(setdiff(namesbetafix,namesOri))==0L) { ## if no incorrect name
+    if (length(setdiff(namesbetafix,colnames(X.pv)))==0L) { ## if no incorrect name
       offFromEtaFix <- X.pv[,namesbetafix,drop=FALSE] %*% betaFix
       namesbetavar <- setdiff(colnames(X.pv),namesbetafix)
-      X.pv <- structure(X.pv[,namesbetavar,drop=FALSE],namesbetavar=namesbetavar)
+      X.pv <- structure(X.pv[,namesbetavar,drop=FALSE],namesOri=attr(X.pv,"namesOri"))
       offsetObj$betaFix <- betaFix
       if (is.null(off)) {
         off <- offFromEtaFix
@@ -249,11 +310,9 @@ preprocess <- function(control.HLfit, ranFix=NULL, HLmethod,
       ## TRUE by default:
       if ( is.null( keepInREML <- attr(betaFix,"keepInREML") ) ||  ( ! keepInREML) ) X.Re <- X.pv ## can be overwritten according to REMLformula
     } else {
-      message("(!) The names of elements of etaFix$beta should all match column names of the design matrix.")
-      stop("    I exit.")
+      stop("The names of elements of etaFix$beta should all match column names of the design matrix.")
     }
-  } 
-  attr(X.pv,"namesOri") <- namesOri
+  } # X.Re may again be modified later
   if (is.null(off)) { ## model.frame.default(formula = locform, offset = off,...) expects a vector....
     offsetObj$total <- rep(0,nobs)
     offsetObj$nonZeroInfo <- FALSE
@@ -264,24 +323,8 @@ preprocess <- function(control.HLfit, ranFix=NULL, HLmethod,
   #
   attr(predictor,"offsetObj") <- offsetObj ## has $total, $nonZeroInfo, possibly $offsetArg (argument of Predictor()) and $betaFix. As nothing from the formula itself 
   processed$predictor <- predictor  
-  processed$X.pv <- X.pv ## further modified in HLfit if non-estimable parameters
-  # handling offset in *resid.predictor*
-  resid.predictor <- resid.model$formula
-  if (! inherits(resid.predictor,"predictor")) resid.predictor <- Predictor(resid.predictor)
-  dispOffset <- model.offset(model.frame(resid.predictor,data=data)) ## look for offset from (ori)Formula 
-  if ( is.null(dispOffset) ) { ## ## no offset (ori)Formula term. Check attribute (Predictor ensures offset is not both in formula and attr)
-    dispOffset <- attr(resid.predictor,"offsetObj")$total 
-  } else {
-    keepOriForm <- attr(resid.predictor,"oriFormula")
-    resid.predictor <- noOffset(resid.predictor)
-    attr(resid.predictor,"oriFormula") <- keepOriForm
-  }
-  if (is.null(dispOffset)) { ## model.frame.default(formula = locform, offset = off,...) expects a vector....
-    attr(resid.predictor,"offsetObj") <- list(total=rep(0,nobs),nonZeroInfo=FALSE)
-  } else {
-    attr(resid.predictor,"offsetObj") <- list(total=dispOffset,nonZeroInfo=TRUE) ## subtly, will be of length 1 if   original offset was a constant...
-  }
-  processed$resid.predictor <- resid.predictor  
+  processed$X.pv <- X.pv 
+  pforpv <- ncol(X.pv)
   #
   # comme l'EQL est dans un monde quasi gaussien, il se ramene aux LMM et utilise les leverage standard,
   # Pour les GLMM non LMM, Dans la mesure ou HL(0,.) utilise h et non q+, ce n'est pas l'EQL pour les fixed params
@@ -314,14 +357,10 @@ preprocess <- function(control.HLfit, ranFix=NULL, HLmethod,
     ## It's not really possible to remove data at this stage as this may not match the dimension of the distance matrices
     ## moreover one cannot simply remove rows of a matrix "root"...
     ## it _could_ be useful to be able to hand BinomilaDen=0 by the general code but...
-    if (var(y)==0 && var(BinomialDen)==0) {
-      warning("var(response) = 0.")
-    }  
+    if (var(y)==0 && var(BinomialDen)==0) { warning("var(response) = 0.") }  
   } else {
     BinomialDen <- rep(1,nobs)
-    if (var(y)==0) {
-      warning("var(response) = 0.")
-    }  
+    if ( var(y)==0 ) { warning("var(response) = 0.") }  
   }
   processed$BinomialDen <- BinomialDen  
   ## conversion from user-friendly format to standard 'XX(...)' format
@@ -332,37 +371,16 @@ preprocess <- function(control.HLfit, ranFix=NULL, HLmethod,
   ## third index is for use of (0) EQL deviance residuals (this affects the leverages) or not (1) (this is not an ReML correction... but impatcs only dispersion estimation..)
   ## thus overall we have <ReML/not>( <h/l> , <more ReML/not> , <not/EQL> )
   ## NohL07 table 1 has interesting terminology and further tables show even more cases
-  terms_ranefs <- parseBars(predictor) ## a vector of char strings with attribute(s), 
-  ##    otherwise similar to bars <- spMMexpandSlash(findbarsMM(formula[[length(formula)]])): FR->FR maybe simplification of code possible here?
-  models <- list(eta="",lambda="",phi="")
-  if ( length(terms_ranefs) > 0L ) {
-    processed$lambdaFamily <- Gamma(link="log")
-    models[["eta"]] <- "etaHGLM" 
-    FL <- spMMFactorList(predictor, MeanFrames$mf, 0L, drop=TRUE) ## this uses the spatial information in the formula, even if an explicit distMatrix was used elsewhere
-    ZAlist <- FL$Design ## : is a list of design matrices (temporarily only Z)
-    attr(ZAlist,"ranefs") <- terms_ranefs
-    attr(ZAlist,"namesTerms") <- FL$namesTerms
-    AMatrix <- attr(predictor,"AMatrix")
-    if (!is.null(AMatrix)) {
-      ## logic is Z[nresp,nUniqueRespLoc].A[nUniqueRespLoc,nHiddenv].L[nHiddenv,nHiddenv]
-      for (iMat in seq(length(ZAlist))) {
-        ZAlist[[iMat]] <- ZAlist[[iMat]] %*% AMatrix[[iMat]]
-      }
-    }
-  } else {
-    models[["eta"]] <- "etaGLM" 
-    ZAlist <- structure(list(),anyRandomSlope=FALSE)
-  }
+  ZAlist <- get_ZAlist(predictor=predictor, model_frame=MeanFrames$mf)
   processed$ZAlist <- ZAlist ## attributes will be added later !
   nrand <- length(ZAlist)
-  #
-  if (inherits(rand.families,"family")) rand.families <- list(rand.families) ## I should pass rand.families to preprocess
+  if (inherits(rand.families,"family")) rand.families <- list(rand.families) 
   if (nrand != 1L && length(rand.families)==1L) rand.families <- rep(rand.families,nrand) 
   rfblob <- checkRandLinkS(rand.families)  
   rand.families <- rfblob$rand.families
   lcrandfamfam <- rfblob$lcrandfamfam
   if (HLmethod=="ML") {
-    HLmethod <- "ML(1,1,1)" ## here there could be a special hack for (family$family=="binomial" && mean(BinomialDen)<HL2.threshold) 
+    HLmethod <- "ML(1,1,1)"  
   } else if (HLmethod=="SEM") {
     HLmethod <- "ML('SEM',NA,NA)" 
     if ( ! (family$family=="binomial" && family$link=="probit")) {
@@ -386,7 +404,7 @@ preprocess <- function(control.HLfit, ranFix=NULL, HLmethod,
     SEMargs$SEMsample <- control.HLfit$SEMsample ## stays NULL if NULL
     processed$SEMargs <- SEMargs
   } else if (HLmethod=="REML") {
-    HLmethod <- "HL(1,1,1)" ## here there could be a special hack for (family$family=="binomial" && mean(BinomialDen)<HL2.threshold) 
+    HLmethod <- "HL(1,1,1)"  
   } else if (HLmethod=="REPQL" || HLmethod=="PQL") {
     if (any(lcrandfamfam!="gaussian"))  stop("PQL is not defined for HGLMs in general. Do you mean 'EQL-'?") 
     HLmethod <- "HL(0,0,1)" ## (=REPQL, equivalent to HL(0,0,0) ie EQL- for GLMMs )
@@ -410,25 +428,14 @@ preprocess <- function(control.HLfit, ranFix=NULL, HLmethod,
       stop("  Make sure what you mean and simplify the arguments.")
     }
     lhs <- paste(predictor)[[2]] ## extract response, either cbind or not
-    if ( ! is.null(terms_ranefs)) {
+    if ( nrand > 0L ) {
       ## build formula with only random effects
-      REMLformula <- as.formula(paste(lhs,"~",paste(terms_ranefs,collapse="+")))
+      REMLformula <- as.formula(paste(lhs,"~",paste(attr(ZAlist,"ranefs"),collapse="+")))
     } else REMLformula <- as.formula(paste(lhs,"~ 0")) 
     attr(REMLformula,"isML") <- TRUE
   } ## else do nothing: keeps input REMLformula, which may be NULL or a non-trivial formula
   processed$REMLformula <- REMLformula  
-  #
   processed$loglfn.fix <- selectLoglfn(family)
-  if ( family$family %in% c("binomial","poisson","COMPoisson","negbin")) {
-    ## the response variable should always be Counts
-    if (max(abs(y-as.integer(y)))>1e-05) {
-      mess <- pastefrom("response variable should be integral values.",prefix="(!) From ")
-      stop(mess)
-    }
-    if (DEPARSE(resid.predictor) != "~1") {
-      warning(paste("resid.model is ignored in ",family$family,"-response models",sep=""))
-    }
-  }
   ## code derived from the glm() function in the safeBinaryRegression package
   if(family$family == "binomial" && length(unique(y)) == 2L && ncol(X.pv)>0L) {
     separation <- separator(X.pv, as.numeric(y), purpose = "test")$separation
@@ -444,9 +451,87 @@ preprocess <- function(control.HLfit, ranFix=NULL, HLmethod,
   #
   if ( ! is.null(REMLformula) ) { ## differences affects only REML estimation of dispersion params, ie which p_bv is computed
     REMLFrames <- HLframes(formula=REMLformula,data=data) ## design matrix X, Y...
-    X.Re <- REMLFrames$X  
-  } ## else keep previously computed X.Re 
-  processed$X.Re <- X.Re
+    X.Re <- REMLFrames$X
+    # wAugX will have lost its colnames...
+    unrestricting_cols <- which(colnames(X.pv) %in% setdiff(colnames(X.pv),colnames(X.Re))) ## not in X.Re
+    extra_vars <- setdiff(colnames(X.Re),colnames(X.pv)) ## example("update") tests this.
+    distinct.X.ReML <- c(length(unrestricting_cols)>0L, length(extra_vars)>0L) ## TWO booleans
+    if (any(distinct.X.ReML)){
+      attr(X.Re,"distinct.X.ReML") <- distinct.X.ReML 
+      if (attr(X.Re,"distinct.X.ReML")[1L]) attr(X.Re,"unrestricting_cols") <- unrestricting_cols
+      if (attr(X.Re,"distinct.X.ReML")[2L])attr(X.Re,"extra_vars") <- extra_vars ## example("update") tests this.
+      processed$X.Re <- X.Re
+    } ## else processed$X.Re  is NULL
+  } ## else keep previously computed X.Re = X.pv
+  # if standard ML: there is an REMLformula ~ 0; local X.Re and processed$X.Re is 0-col matrix
+  # if standard REML: REMLformula is NULL: $X.Re is X.pv, processed$X.Re is NULL
+  # non standard REML: other REMLformula: $X.Re and processed$X.Re identical, and may take essentially any value
+  if (ncol(X.Re)>0) { ## standard or non-standard REML
+    processed$objective <- "p_bv"  ## info for fitme_body, while HLfit instead may use return_only="p_bvAPHLs"
+  } else processed$objective <- "p_v"
+  #
+  models <- list(eta="",lambda="",phi="")
+  if ( nrand > 0L ) {
+    models[["eta"]] <- "etaHGLM" 
+    vec_n_u_h <- unlist(lapply(ZAlist,ncol)) ## nb cols each design matrix = nb realizations each ranef
+    processed$cum_n_u_h <- cum_n_u_h <- structure(cumsum(c(0, vec_n_u_h)),vec_n_u_h=vec_n_u_h) ## if two ranef,  with q=(3,3), this is 0,3,6 ;
+    nrd <- cum_n_u_h[nrand+1L]
+    if (is.null(ZAL <- attr(predictor,"ZALMatrix"))) { ## then we look whether an LMatrix is available
+      ## then we could look further whether an LMatrix <- attr(predictor,"LMatrix") is available
+      ##   but that does not look interesting, bc presumably LMatrix will be variable 
+      ##   and in all case reconstruction will be done in HLfit_body
+      ## But for non spatial models, this will be useful:
+      processed$QRmethod <- choose_QRmethod(ZAlist, predictor)
+      processed$ZA <- ZAL <- post.process.ZALlist(ZAlist,as_matrix=(processed$QRmethod=="Matrix::qr"))  
+    } 
+    if (inherits(ZAL,"Matrix")) {
+      AUGXZ_0I <- cbind2(
+        rbind2(X.pv, Matrix(0,nrow=nrd,ncol=pforpv)), 
+        rbind2(Matrix(0,nrow=nobs,ncol=nrd), Diagonal(n=nrd))
+      ) ## template with ZAL block to be filled later
+    } else {
+      AUGXZ_0I <- cbind2(
+        rbind2(X.pv, matrix(0,nrow=nrd,ncol=pforpv)), 
+        rbind2(matrix(0,nrow=nobs,ncol=nrd), diag(nrow=nrd))
+      ) ## template with ZAL block to be filled later
+    }
+    AUGXZ_0I[1:nobs,(pforpv+1L):(ncol(AUGXZ_0I))] <- ZAL
+    processed$AUGXZ_0I <- AUGXZ_0I
+    #
+    # processed info for u_h inference
+    ## builds box constraints either NULL or non-trivial, of length n_u_h
+    lower.v_h <- rep(-Inf,cum_n_u_h[nrand+1L])
+    boxConstraintsBool <- FALSE
+    gaussian_u_ranges <- integer(0)  
+    for (it in seq_len(nrand)) {
+      if (lcrandfamfam[it]=="gamma" && rand.families[[it]]$link=="identity") { ## gamma(identity)
+        u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
+        lower.v_h[u.range] <- 1e-6 ## 1e-12 is disastrous
+        boxConstraintsBool <- TRUE
+      }
+      if (lcrandfamfam[it]=="gaussian") gaussian_u_ranges <- c(gaussian_u_ranges,(cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])) 
+    }
+    if ( ! boxConstraintsBool ) lower.v_h <- NULL 
+    boxConstraintsBool <- FALSE
+    upper.v_h <- rep(Inf,cum_n_u_h[nrand+1L])
+    for (it in seq_len(nrand)) {
+      if (lcrandfamfam[it]=="inverse.gamma" && rand.families[[it]]$link=="-1/mu") { ## v ~ -Gamma
+        u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
+        upper.v_h[u.range] <- -1e-06
+        boxConstraintsBool <- TRUE
+      } else if (lcrandfamfam[it]=="gamma" && rand.families[[it]]$link=="log") {
+        ## Gamma(log)$linkinv is pmax(exp(eta), .Machine$double.eps), ensuring that all gamma deviates are >= .Machine$double.eps
+        ## we ensure that log(u_h) has symmetric bounds on log scale (redefine Gamma()$linkfun ?)
+        upper.v_h <- Gamma(log)$linkfun(1/.Machine$double.eps)
+      } 
+    }
+    if ( ! boxConstraintsBool ) upper.v_h <- NULL
+    processed$u_h_info <- list(lower.v_h=lower.v_h,upper.v_h=upper.v_h,
+                               boxConstraintsBool=boxConstraintsBool,gaussian_u_ranges=gaussian_u_ranges)
+    
+  } else {
+    models[["eta"]] <- "etaGLM" 
+  }
   #
   canonicalLink <- FALSE
   if (family$family=="gaussian" && family$link=="identity") {
@@ -462,19 +547,28 @@ preprocess <- function(control.HLfit, ranFix=NULL, HLmethod,
   } ## no implemented canonical link case for negbin
   processed$canonicalLink <- canonicalLink  
   #
-  GLMMbool <- (nrand>0 && all(lcrandfamfam=="gaussian") )
+  GLMMbool <- (nrand>0 && all(lcrandfamfam=="gaussian") ) ## only allowed gaussian rand.family is gaussian(identity) 
   if (GLMMbool) {
-    LMMbool <- (family$family=="gaussian" && canonicalLink)
+    LMMbool <- (family$family=="gaussian" && canonicalLink) 
   } else LMMbool <- FALSE
   processed$LMMbool <- LMMbool
   processed$GLMMbool <- GLMMbool
   #
-  if (is.null(prior.weights)) prior.weights <- rep(1L,nobs) ## <- 1L prevented by glm -> model.frame(... prior.weights)
-  attr(prior.weights,"unique") <- (length(unique(prior.weights))==1L) 
-  #attr(prior.weights,"only1") <- all(upw==1L)
+  if (is.null(subs_p_weights <- substitute(prior.weights))) {
+    prior.weights <- structure(rep(1L,nobs),unique=TRUE) ## <- 1L prevented by glm -> model.frame(... prior.weights)
+  } else if ( ! (inherits(subs_p_weights,"call") && subs_p_weights[[1L]] == "quote") )  {
+    prior.weights <- as.vector(model.weights(validdata)) ## as.vector as in say lm() protects against array1d
+    if ( ! is.numeric(prior.weights)) 
+      stop("'weights' must be a numeric vector")
+    if (any(prior.weights < 0)) 
+      stop("negative weights not allowed")
+    attr(prior.weights,"unique") <- (length(unique(prior.weights))==1L) 
+    #attr(prior.weights,"only1") <- all(upw==1L)
+  } else attr(prior.weights,"unique") <- FALSE ## when 'prior.weights' is a quoted expression   
   processed$prior.weights <- prior.weights
+  #
   ## algorithms (control of defaults remains in the HLfit code)
-  betaFirst <-control.HLfit$betaFirst ##  
+  betaFirst <- control.HLfit$betaFirst ##  
   if (is.null(betaFirst)) {
     betaFirst <- FALSE
   } else if (betaFirst && HL[1]=="SEM") {
@@ -499,19 +593,19 @@ preprocess <- function(control.HLfit, ranFix=NULL, HLmethod,
   if (nrand>0) {   
     lFix <- getPar(ranFix,"lambda")
     if (is.null(lFix)) lFix <- rep(NA,nrand)
-    if (length(lFix)!=nrand) stop("length of 'lixed lambda' vector does not match number of random effects")
+    if (length(lFix)!=nrand) stop("length of 'fixed lambda' vector does not match number of random effects")
     names(lFix) <- as.character(seq(nrand))
     processed$lambda.Fix <- lFix
     nrand_lambda <- 0
-    models[["lambda"]] <- FL$termsModels
+    models[["lambda"]] <- rep("lamScal",nrand) ## even for adjacnency, random slope...
     ################################################################################
     # for a random slope term, ie v= v_1+x v_2 , the x went into the general ZAL matrix 
     # (construction of ZAlist by spMMFactorList), and
     # we are still estimating the lambda's using a X_lamres with 0/1's only
     # unless there is a non-trivial model for the lambdas
     ################################################################################
-    if (all(models[["lambda"]]=="lamScal")) { ## all mixed models handled in 06/2015 (random slope, adjacency...) 
-      Xi_cols <- unlist(lapply(FL$namesTerms,length))
+    if (all(models[["lambda"]]=="lamScal")) { ## all mixed models handled in 06/2015 (random slope, adjacency...) hence currently always TRUE
+      Xi_cols <- unlist(lapply(attr(ZAlist,"namesTerms"),length))
       if (any(Xi_cols>1 & !lcrandfamfam=="gaussian")) {
         stop("(!) random slope models with correlated non-gaussian random effects are not fitted.")
       }
@@ -519,11 +613,12 @@ preprocess <- function(control.HLfit, ranFix=NULL, HLmethod,
       n_u_h <- rep(0, sum(Xi_cols))
       #for (i in 1:nrand) n_u_h[(cum_Xi_cols[i]+1L):cum_Xi_cols[i+1L]] <- ncol(FL$Design[[i]]) ##  nlevels(FL$Subject[[i]])
       # if 18 responses in a random slope model ncol(FL$Design[[i]]) is 36 while nlevels(FL$Subject[[i]]) was 18
-      for (i in 1:nrand) n_u_h[cum_Xi_cols[i]+seq(Xi_cols[i])] <- ncol(FL$Design[[i]])/Xi_cols[i]
+      for (i in 1:nrand) n_u_h[cum_Xi_cols[i]+seq(Xi_cols[i])] <- ncol(ZAlist[[i]])/Xi_cols[i]
+      # h_u_h not n_u_h ...
       cum_h_u_h <- cumsum(c(0, n_u_h)) ## if two "Intercept" ranefs,  with n_u_h=(3,3), this is 0,3,6. cum_h_u_h[nrand+1] is then 6, the total # of realizations
         ## if (1+X|...) +(1|...),  with n_u_h=(3,4), this is 0,3,6,10. cum_h_u_h[sum(Xi_cols)+1] is then 10, the total # of realizations
       X_lamres <- matrix(0,cum_h_u_h[sum(Xi_cols)+1L],sum(Xi_cols))
-      colnames(X_lamres) <- unlist(FL$namesTerms)
+      colnames(X_lamres) <- unlist(attr(ZAlist,"namesTerms"))
       for (i in seq(nrand)) {
         for (j in (cum_Xi_cols[i]+1L):cum_Xi_cols[i+1L]) {
           X_lamres[(cum_h_u_h[j]+1L):cum_h_u_h[j+1L],j] <- 1L ## this maps the deviance residuals to the lambda's to be estimated from them. None of the random-slope columns is a constant full column because each dev res is used for estimating only one lambda. Nevertheless, the first col will be called "(Intercept)", and this makes a valid output.
@@ -550,6 +645,7 @@ preprocess <- function(control.HLfit, ranFix=NULL, HLmethod,
     processed$X_lamres <- X_lamres ## for glm for lambda
     attr(processed$ZAlist,"Xi_cols") <- Xi_cols ## vector of ncol of X design for LHSs of (|) 
     attr(processed$ZAlist,"anyRandomSlope") <- any(Xi_cols>1L) ## used to handle random slope...
+    processed$get_init_lambda <- create_get_init_lambda()
   } 
   #
   phi.Fix <- getPar(ranFix,"phi")
@@ -557,51 +653,108 @@ preprocess <- function(control.HLfit, ranFix=NULL, HLmethod,
     if (family$family %in% c("poisson","binomial","COMPoisson","negbin")) phi.Fix <- 1 
   } else if (any(phi.Fix==0)) stop("phi cannot be fixed to 0.")
   processed$phi.Fix <- phi.Fix
+  processed$get_inits_by_glm <- create_get_inits_by_glm()
+  #
+  resid.predictor <- resid.model$formula
   if ( is.null(phi.Fix)) {
-    formulaDisp <- resid.predictor
-    fr_disp <- HLframes(formula=formulaDisp,data=data) 
-    X_disp <- fr_disp$X
-    ## if formula= ~1 and data is an environment, there is no info about nobs, => X_disp has zero rows, which is a problem later 
-    if(nrow(X_disp)==0L) X_disp=matrix(1,nrow=nobs)
-    namesX_disp <- colnames(fr_disp$X)
-    colnames(X_disp) <- namesX_disp
-    random_dispersion <- findbarsMM(formulaDisp) ## random effect in mean predictor of dispersion phi
-    if (!is.null(random_dispersion)) {
-      FL_disp <- spMMFactorList(formulaDisp, fr_disp$mf, 0L, drop=TRUE)
-      Z_disp <- FL_disp$Design  ## now Matrix...
-      namesRE_disp <- names(attr(Z_disp,"namesTerms"))
-      models[["phi"]] <- "phiHGLM"
-      mess <- pastefrom("LIKELY missing code to handle random effect for linear predictor for phi.")
-      stop(mess)
+    phi_ranefs <- findbarsMM(resid.predictor)
+    if ( ! is.null(phi_ranefs)) {
+      if (is.null(resid.model$rand.family)) resid.model$rand.family <- gaussian() # avoids rand.families being NULL in call below.
+      resid.predictor <- as.formula(paste(".phi",DEPARSE(resid.predictor)))
+      data$.phi <- seq(nobs) ##  I need a dummy variabel response else var(y)==0 test will catch it.
+      preprocess_arglist <- list(control.HLfit=control.HLfit, ## constrained
+                         ranFix=resid.model$fixed, ## not constrained, but should rather use 'resid.model$fixed' (but anyway preprocess checks only  phi and lambda)
+                         HLmethod=HLmethod, ## constrained
+                         predictor=resid.predictor, ## obvious
+                         resid.model=~1, # no resid.resid.model... 
+                         REMLformula=NULL, # constrained
+                         data=data, # obvious (?) 
+                         family=resid.family, # obvious
+                         BinomialDen=NULL, # obviously no binomial response
+                         rand.families=resid.model$rand.family, # (NULL not handled by preprocess); 
+                         #   outer preprocess calls *receive* adefautl value from formals(HLfit)
+                         etaFix=resid.model$etaFix, ## not constrained, but should rather use 'resid.model$fixed'
+                         prior.weights=NULL, ## currently defined  dynamically using lev_phi...
+                         control.glm=control.glm ## constrained
+      )
+      residProcessed <- do.call(preprocess,preprocess_arglist)
+      # preprocess here plays the role of fitme as wrapper bringing the following info to fitme_body:
+      processed$residProcessed <- residProcessed
+      models[["phi"]] <- "phiHGLM" 
+      p_phi <- NA
     } else {
-      if (length(namesX_disp)==1 && namesX_disp[1]=="(Intercept)"
+      if (! inherits(resid.predictor,"predictor")) resid.predictor <- Predictor(resid.predictor)
+      residFrames <- HLframes(formula=resid.predictor,data=data)
+      dispOffset <- model.offset(residFrames$mf) ## look for offset from (ori)Formula 
+      if ( is.null(dispOffset) ) { ## ## no offset (ori)Formula term. Check attribute (Predictor ensures offset is not both in formula and attr)
+        dispOffset <- attr(resid.predictor,"offsetObj")$total 
+      } else {
+        keepOriForm <- attr(resid.predictor,"oriFormula")
+        resid.predictor <- noOffset(resid.predictor)
+        attr(resid.predictor,"oriFormula") <- keepOriForm
+      }
+      if (is.null(dispOffset)) { ## model.frame.default(formula = locform, offset = off,...) expects a vector....
+        attr(resid.predictor,"offsetObj") <- list(total=rep(0,nobs),nonZeroInfo=FALSE)
+      } else {
+        attr(resid.predictor,"offsetObj") <- list(total=dispOffset,nonZeroInfo=TRUE) ## subtly, will be of length 1 if   original offset was a constant...
+      }
+      ## if formula= ~1 and data is an environment, there is no info about nobs, => fr_disp$X has zero rows, which is a problem later 
+      p_phi <- NCOL(residFrames$X)
+      namesX_disp <- colnames(residFrames$X)
+      if (p_phi==1 && namesX_disp[1]=="(Intercept)"
           && is.null(dispOffset) ## added 06/2016 (bc phiScal does not handle offset in a phi formula) 
-          ) {
+      ) {
         models[["phi"]] <- "phiScal"
         processed$get_init_phi <- create_get_init_phi()
       } else { 
         models[["phi"]] <- "phiGLM"
       }
+      resid.model$predictor <- resid.predictor  ## absent  if phiHGLM has been detected
     } 
-    processed$X_disp <- X_disp
-  } 
+  } else p_phi <- 0
+  processed$p_phi <- p_phi # no X_disp is saved in processed
+  if ( family$family %in% c("binomial","poisson","COMPoisson","negbin")) {
+    ## the response variable should always be Counts
+    if (max(abs(y-as.integer(y)))>1e-05) {
+      mess <- pastefrom("response variable should be integral values.",prefix="(!) From ")
+      stop(mess)
+    }
+    if ( DEPARSE(resid.predictor) != "~1") {
+      warning(paste("resid.model is ignored in ",family$family,"-response models",sep=""))
+    }
+  }
   #
   if (LMMbool) {
     ## identifiability checks cf modular.R -> checkNlevels() in lmer:
-    ## FR->FR one could also add an isNested check as in https://github.com/lme4/lme4/blob/master/R/utilities.R, but presumably not here
-    LMatrix <- attr(predictor,"LMatrix")
-    for (iMat in seq(length(ZAlist))) {
-      nc <- ncol(ZAlist[[iMat]])
-      if (nc < 2 && is.null(phi.Fix)) {
-        mess <- paste("Only ",nc," level for random effect ",terms_ranefs[iMat],
-                      ";\n   this model cannot be fit unless phi is fixed.",sep="")
+    ## LMatrix <- attr(predictor,"LMatrix") ## non NULL if single ranef
+    vec_n_u_h <- attr(processed$cum_n_u_h,"vec_n_u_h")
+    if (any(vec_n_u_h<2L) && is.null(phi.Fix)) {
+      problems <- which(vec_n_u_h<2L) 
+      for (iMat in problems) {
+        mess <- paste("Only ",vec_n_u_h[iMat]," level for random effect ",
+                      attr(ZAlist,"ranefs")[iMat],
+                      ";\n   this model cannot be fitted unless phi is fixed.",sep="")
         warning(mess)
       }
-      if (is.null(LMatrix) && substr(terms_ranefs[iMat], 1, 1)=="(" && nc == nobs && is.null(phi.Fix)) {
-        mess <- paste("Number of levels = number of observations \n   for random effect ",
-                      terms_ranefs[iMat],
-                      ";\n   this model cannot be fit unless phi is fixed\n   or a correlation matrix is given.",sep="")
-        stop(mess)
+    }
+    if (any(vec_n_u_h==nobs) && models[["phi"]] %in% c("phiScal","phiGLM")) { ## tests (mean)ranefs if intecept in resid formula
+      resid.mf <- residFrames$mf 
+      if (attr(attr(resid.mf, "terms"),"intercept")!=0L) { ## there is an intercept in the resid.formula
+        # ideally for random-coefficients models we should compare the design columns... 
+        ## FR->FR cf isNested check as in https://github.com/lme4/lme4/blob/master/R/utilities.R, 
+        problems <- which(vec_n_u_h==nobs) 
+        for (iMat in problems) {
+          term_ranef <- attr(ZAlist,"ranefs")[iMat]
+          if (# is.null(LMatrix) && ## does not seem useful
+            substr(term_ranef, 1, 1)=="(" ## excludes spatial ranefs 
+          ) {
+            mess <- paste("Number of levels = number of observations",
+                          "\n   for random effect ", term_ranef,
+                          ";\n   this model cannot be fitted unless phi is fixed",
+                          "\n   or a correlation matrix is given.",sep="")
+            stop(mess)
+          }          
+        }
       }
     }
   } 
@@ -616,8 +769,8 @@ preprocess <- function(control.HLfit, ranFix=NULL, HLmethod,
            "inverse.gamma" = 1
     )
   })
+  processed$residModel <- resid.model 
   processed$rand.families <- rand.families
-  processed$callargs <- callargs
   processed$fixef_terms <- MeanFrames$fixef_terms ## added 2015/12/09 for predict
   processed$fixef_levels <- MeanFrames$fixef_levels ## added 2015/12/09 for predict
   processed$control.glm <- do.call("glm.control", control.glm) ## added 04/2016
@@ -630,4 +783,55 @@ eval.update.call <- function(mc,...) {
   dotlist <- list(...)
   mc[names(dotlist)] <- dotlist ## a un moment j'ai mis cette ligne en commentaire, ce qui rend la fonction ineffective !
   eval(as.call(mc))  
+}
+
+calc_inits_by_glm <- function(processed, 
+                              family=processed$family ## but allows postprocessed family (eg COMPoisson)
+                              ) { 
+  y <- processed$y ## requested by the formula
+  if (family$family=="binomial" && NCOL(y)==1L) { 
+    ##  && ncol(y)==1: attempt to implement the cbind() for y itself syntax throughout. But fails later on 'y - mu'...
+    BinomialDen <- processed$BinomialDen ## requested by the formula
+    begform <-"cbind(y,BinomialDen-y)~"  
+  } else {begform <-"y~"}
+  ###################################################if (pforpv==0) {endform <-"0"} else 
+  X.pv <- processed$`X.pv` ## possibly requested by the formula
+  pforpv <- ncol(X.pv)
+  if(pforpv>0) {
+    endform <-"X.pv-1" ## pas besoin de rajouter une constante vue qu'elle est deja dans X
+  } else {
+    if (family$family %in% c("binomial","poisson")) {
+      endform <- "1" ## no meaningful glm without fixed effect in this case !
+    } else {endform <- "0"}
+  }
+  locform <- as.formula(paste(begform, endform))
+  off <- attr(processed$predictor,"offsetObj")$total
+  prior.weights <- processed$prior.weights   
+  if (is.call(prior.weights)) {
+    resglm <- spaMM_glm(locform,family=family,offset=off,
+                        weights=NULL,control=processed$control.glm)
+  } else resglm <- spaMM_glm(locform,family=family,offset=off,
+                             weights=eval(prior.weights),control=processed$control.glm)
+  resu <- list(glm=resglm,phi_est=as.numeric(deviance(resglm)/resglm$df.residual))
+  if (family$family=="binomial" && max(resglm$prior.weights)==1L) { ## binary response
+    resu$lambda <- 1
+  } else {
+    fv <- fitted(resglm)
+    resu$lambda <- sum(resid(resglm)^2/(resglm$prior.weights*family$variance(fv)))/resglm$df.residual
+  }
+  if (pforpv>0) {
+    ## Two potential problems (1) NA's pour param non estimables (cas normal); 
+    ## (2) "glm.fit: fitted probabilities numerically 0 or 1 occurred" which implies separation or large offset
+    if (max(abs(c(coefficients(resglm))),na.rm=TRUE)>1e10) { ## na.rm v1.2 
+      message("(!) Apparent divergence of estimates in a *GLM* analysis of the data.")
+      message("    Check your data for extreme values, separation or bad offset values.")
+      stop("    I exit.") 
+    } 
+    beta_eta <- c(coefficients(resglm)) ## this may include NA's. Testcase: HLfit(Strength ~ Material*Preheating+Method,data=weld)
+    if (all(names(beta_eta)=="X.pv")) { ## si la formula etait y ~X.pv-1
+      names(beta_eta) <- colnames(resglm$model$X.pv)
+    } else names(beta_eta) <- unlist(lapply(names(beta_eta),substring,first=5)) ## removes "X.pv" without guessing any order or length
+    resu$beta_eta <- beta_eta
+  } 
+  return(resu) # elements glm, phi_est, lambda, beta_eta
 }

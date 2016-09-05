@@ -65,7 +65,12 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
     mc$data <- NULL
     mc$family <- NULL
     mc$formula <- NULL ## processed
+    mc$prior.weights <- NULL ## processed$prior.weights  
     mc$HLmethod <- NULL ## processed$HL  
+    mc$rand.family <- NULL ## processed$rand.families  
+    mc$control.glm <- NULL ## processed$control.glm  
+    mc$resid.formula <- NULL ## mc$resid.model  
+    mc$REMLformula <- NULL ## processed$REMLformula
   }  
   
   mc[[1L]] <- quote(spaMM::corrHLfit_body) 
@@ -264,7 +269,6 @@ corrHLfit_body <- function(processed,
   init.optim <- inits$`init.optim` ## subset of all optim estimands, as name implies, and in transformed scale
   init.HLfit <- inits$`init.HLfit` ## subset as name implies 
   #
-  
   ## maximization VIA HLCor.obj
   ## by maxim over (corrpars,phi,lambda, (beta)_[corrpars,phi,lambda])
   ##     if trPhi,trLambda are in the init.optims
@@ -297,6 +301,7 @@ corrHLfit_body <- function(processed,
   #
   ranPars <- ranFix ## ranPars argument of HLCor contains both fixed and estimated parameters:
   varNames <- names(init.HLfit) ## hence those that will be variable within HLfit
+  varNames <- setdiff(varNames,c("fixef","v_h"))
   ranPars[varNames] <- init.HLfit[varNames] ## FR->FR duplicat (?) qui montre qu'un attribute serait mieux
   attr(ranPars,"type")[varNames] <- "var"  
   HLCor.args$ranPars <- ranPars  ## variable locally
@@ -321,9 +326,9 @@ corrHLfit_body <- function(processed,
   anyHLCor_obj_args$skeleton <- structure(init.optim,RHOMAX=RHOMAX,NUMAX=NUMAX) ## logscale, only used by HLCor.obj
   attr(anyHLCor_obj_args$skeleton,"type") <- list() ## declares a list of typeS of elemnts of skeleton
   attr(anyHLCor_obj_args$skeleton,"type")[names(init.optim)] <- "fix" # fixed with the HLCor call 
-  anyHLCor_obj_args$`HLCor.obj.value` <- objective ## p_v when fixedLRT-> corrHLfit
-  anyHLCor_obj_args$processed <- setProcessed(anyHLCor_obj_args$processed,"only_objective",
-                                              value=paste("\"",objective,"\"",sep="")) ## laborious for strings
+  anyHLCor_obj_args$objective <- objective ## p_v when fixedLRT-> corrHLfit
+  anyHLCor_obj_args$processed <- setProcessed(anyHLCor_obj_args$processed,"return_only",
+                                              value=paste("\"",objective,"APHLs\"",sep="")) ## laborious for strings
   anyHLCor_obj_args$traceFileName <- trace$file
   initvec <- unlist(init.optim)
   ####    tmpName <- generateName("HLtmp") ## tmpName is a string such as "HLtmp0"
@@ -346,11 +351,15 @@ corrHLfit_body <- function(processed,
                            ranPars=ranPars,HLCor.args=HLCor.args,trace=trace,Optimizer=Optimizer,
                            optimizers.args=optimizers.args,maxcorners=maxcorners)
     if (!is.null(optPars)) attr(optPars,"method") <-"alternating"
-  } else { ## this is also called if length(lower)=0 by  (SEM or not) and optPars is then null 
-    loclist<-list(init.optim=init.optim,LowUp=LowUp,anyObjfnCall.args=anyHLCor_obj_args,trace=trace,Optimizer=Optimizer,
-                  optimizers.args=optimizers.args,maxcorners=maxcorners,maximize=TRUE) 
-    optPars <- do.call("locoptim",loclist)
-    if (!is.null(optPars)) attr(optPars,"method") <- "locoptim"
+  } else { ## this is also called if length(lower)=0 by  (SEM or not) and optPars is then null
+    if (identical(anyHLCor_obj_args$verbose["getCall"][[1L]],TRUE)) {
+      optPars <- init.optim
+    } else {
+      loclist<-list(init.optim=init.optim,LowUp=LowUp,anyObjfnCall.args=anyHLCor_obj_args,trace=trace,Optimizer=Optimizer,
+                    optimizers.args=optimizers.args,maxcorners=maxcorners,maximize=TRUE) 
+      optPars <- do.call("locoptim",loclist)
+      if (!is.null(optPars)) attr(optPars,"method") <- "locoptim"
+    }
   }
   ranPars[names(optPars)] <- optPars ## avoids overwriting fixed ranPars; and keep the list class of ranPars...
   attr(ranPars,"type")[names(optPars)] <- "outer" ##  
@@ -360,8 +369,9 @@ corrHLfit_body <- function(processed,
   verbose["warn"] <- TRUE ## important!
   HLCor.args$verbose <- verbose ## modified locally
   hlcor <- do.call("HLCor",HLCor.args) ## recomputation post optimization (or only computation, if length(lower)=0)
-  if ( is.null(HLCor.args$adjMatrix)) { ## Matern, AR1/ar1; or distMatrix models ...
-    ## info.uniqueGeo,  used by predict -> calcNewCorrs and mapMM,
+  if (identical(anyHLCor_obj_args$verbose["getCall"][[1L]],TRUE)) { return(hlcor[]) } ## HLCorcall
+  if ( is.null(HLCor.args$adjMatrix)) { ## Matern, AR1/ar1; 
+    ## info.uniqueGeo,  used by predict -> calcNewCorrs and mapMM, and getDistMat for Matern,
     ##   may already have been set by HLCor_body (if uniqueGeo was one of its explict args)
     if (is.null(attr(hlcor,"info.uniqueGeo"))) attr(hlcor,"info.uniqueGeo") <- HLCor.args$uniqueGeo ## Matern with rho.size>1
     if (is.null(attr(hlcor,"info.uniqueGeo"))) attr(hlcor,"info.uniqueGeo") <- uniqueGeo ## Matern with rho.size=1

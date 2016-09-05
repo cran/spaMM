@@ -16,11 +16,12 @@
 }
 
 calc_beta_w_cov <- function(object) {
-  beta_w_cov <- attr(object$beta_cov,"beta_v_cov")
+  beta_cov <- get_beta_cov_any_version(object)
+  beta_w_cov <- attr(beta_cov,"beta_v_cov")
   invL <- calc_invL(object) ## correlation matrix of ranefs is solve((t(invL)%*%(invL)))
   # invL must be de facto a block matrix when several ranefs
   if ( ! is.null(invL)) {
-    pforpv <- ncol(object$beta_cov)
+    pforpv <- ncol(beta_cov)
     v.range <- pforpv+seq(ncol(invL))
     beta_w_cov[v.range,] <- t(invL) %*% beta_w_cov[v.range,]
     beta_w_cov[,v.range] <- beta_w_cov[,v.range] %*% invL
@@ -90,7 +91,7 @@ calcPredVar <- function(Coldnew,X.pv,newZAC=NULL,newZA,beta_w_cov,
     })
     if (nrand>1L) {newZAC <- do.call(cbind,newZAClist)} else {newZAC <- newZAClist[[1]]}
   }
-  newAugX <- CBIND(X.pv,newZAC) ## mais en fait pas un AugX since it uses C (in C.w) rather than L (in L.v)
+  newAugX <- cbind2(X.pv,newZAC) ## mais en fait pas un AugX since it uses C (in C.w) rather than L (in L.v)
   ## First component of predVar
   # variance of expectation of Xbeta+Zb due to var of (hat(beta),hat(v)) using E[b] as function of hat(v)
   calcZWZt_mat_or_diag <- function(Z,W,returnMat) { ## fixefVar or fixefVar + a bit of ranefVar
@@ -123,26 +124,22 @@ calcPredVar <- function(Coldnew,X.pv,newZAC=NULL,newZA,beta_w_cov,
     if (nrand>1L) {Evar <- Reduce("+",Evarlist)} else {Evar <- Evarlist[[1]]}
     predVar <- predVar + Evar
   } 
-  if (! is.null(logdispObject)) { ## ie if disp was requested
-    # scan problems
-    problems <- logdispObject$problems
-    if (length(problems)>0L) {
-      #warning("Some problems were encountered, affecting computation of prediction variance component\n for uncertainty in dispersion parameters:")
-      uproblems <-  unique(problems) ## unique(<list>) ## not documented but seems OK
-      sapply(uproblems,warning) 
-      #!# FR->FR this is called each time calcPredVar() is called even if logdispObject is called only once
+  # If components for uncertainty in dispersion params were requested,
+  #   logdispObject is not NULL
+  # If some components ere computable, $$dwdlogdisp should not be NULL
+  # Former approach (changed 08/2016) was to test logdispObject and then 
+  #   for any 'problem'. But there may some 'problem' and still a valid logdispObject
+  # => In new version, dwdlogdisp should be either NULL or a conforming matrix;
+  #  'problems" should not be tested.
+  if ( ! is.null(logdispObject$dwdlogdisp) ) {
+    newZACw <- newZAC %*% logdispObject$dwdlogdisp ## typically (nnew * n_u_h) %*% (n_u_h * 2) = nnew * 2 hence small 
+    if (covMatrix) {
+      disp_effect_on_newZACw <- newZACw %*% logdispObject$logdisp_cov %*% t(newZACw)  
+    } else {
+      premul <- newZACw %*% logdispObject$logdisp_cov
+      disp_effect_on_newZACw <- rowSums(premul * newZACw)
     }
-    #
-    if (is.null(problems$SigNotAvail)) {
-      newZACw <- newZAC %*% logdispObject$dwdlogdisp ## typically (nnew * n_u_h) %*% (n_u_h * 2) = nnew * 2 hence small 
-      if (covMatrix) {
-        disp_effect_on_newZACw <- newZACw %*% logdispObject$logdisp_cov %*% t(newZACw)  
-      } else {
-        premul <- newZACw %*% logdispObject$logdisp_cov
-        disp_effect_on_newZACw <- rowSums(premul * newZACw)
-      }
-      predVar <- predVar + disp_effect_on_newZACw
-    }
+    predVar <- predVar + disp_effect_on_newZACw
   }
   return(predVar) ## may be a Matrix
 }
@@ -152,7 +149,9 @@ calcPredVar <- function(Coldnew,X.pv,newZAC=NULL,newZA,beta_w_cov,
 calcResidVar <- function(object,newdata=NULL) {
   phi.object <- object$phi.object
   if (is.null(phi_outer <- phi.object$phi_outer)) { ## valid whether newdata are NULL or not:
-    residVar <- predict(phi.object$glm_phi, newdata=newdata, type="response")
+    glm_phi <- phi.object[["glm_phi"]]
+    if (is.null(glm_phi)) glm_phi <- phi.object$get_glm_phi(object)
+    residVar <- predict(glm_phi, newdata=newdata, type="response")
   } else { ## phi, but not glm_phi
     if (length(phi_outer)==1L) {
       if (is.null(newdata)) {
@@ -174,8 +173,7 @@ calcNewCorrs <- function(object,locdata,which,
     newuniqueGeo <- calcUniqueGeo(data=locdata[,geonames,drop=FALSE]) ## It is essential that it keeps the same order as spMMfactorlist -> ULI -> unique. 
     ### rho only used to compute scaled distances
     rho <- getPar(object$ranFix,"rho")
-    #if( !is.null(rho_mapping <- attr(object,"msd.arglist")$rho.mapping)) rho <- rho[rho_mapping] 
-    if ( ! is.null(rho_mapping <- attr(object,"msd.arglist")$rho.mapping)
+    if ( ! is.null(rho_mapping <- attr(object,"dist_info")$rho.mapping)
         && length(rho)>1L ) rho <- fullrho(rho=rho,coordinates=geonames,rho_mapping=rho_mapping)
     ## rows from newuniqueGeo, cols from olduniqueGeo:
     msd.arglist <- list(uniqueGeo=newuniqueGeo,uniqueGeo2=olduniqueGeo,
@@ -292,20 +290,28 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
   }
   ## preparation for fixed effects
   allFrames <- HLframes(formula=locform,data=locdata,fitobject=object)
-  newX.pv <- allFrames$X
-  if ( ! is.null(betaFix <- attr(object$predictor,"offsetObj")$betaFix)) { ## suppress betaFix cols so that this is consistent with <object>$X.pv 
-    newX.pv <- newX.pv[,colnames(object$`X.pv`),drop=FALSE]
-  }
-  needNewEta <- ( ( ! is.null(newdata) ) || variances$linPred || ! is.null(re.form))
-  if (needNewEta) etaFix <- newetaFix(object,allFrames)  ## new fixed effects (or [part of] new linear predictor if re.form)      
+  newX.pv <- allFrames$X ## contains columns for the offset and columns for the other variables
+  #needNewEta <- ( ( ! is.null(newdata) ) || variances$linPred || ! is.null(re.form))
+  needNewEta <- ( ( ! is.null(newdata) ) || ! is.null(re.form))
+  ## newetaFix must handle NS's in fixef...
+  # est_and_fix <- names(which(!is.na(object$fixef))) ## estimated + etaFix$beta
+  # validnames <- intersect(colnames(allFrames$X) ,est_and_fix) # newX.pv may  contain names of unestimated coeff for the sam reason asthe original MenanFrames$X...
+  validnames <- colnames(object$X.pv) ## we don't want the etaFix cols (detected by bboptim)
+  if (needNewEta) etaFix <- newetaFix(object,allFrames,validnames=validnames)  ## new fixed effects (or [part of] new linear predictor if re.form)      
+  # old comment: if ( ! is.null(betaFix <- attr(object$predictor,"offsetObj")$betaFix)) { ## suppress betaFix cols so that this is consistent with <object>$X.pv 
+  # new comment: newX.pv must intersect non-NA elements of fixef; see comment and code in newetaFix
+  newX.pv <- newX.pv[,validnames,drop=FALSE] 
+  #} 
   ## preparation for random effects
   spatial.terms <- findSpatial(locform) ## list of formula terms
-  spatial.model <- spatial.terms[[1]] ## one formula term, e.g Matern(1|...)
-  if ( ! is.null(spatial.model)) { 
-    if (! is.null(newdata) && as.character(spatial.model[[1]]) %in% c("adjacency","ar1")) {
-      stop("Prediction in newdata not implemented or not possible in the autoregressive models")
-    } ## FR->FR would be possible for new non-spatial predictor values in the original locations... il faudrait un test sur les elements de la distance matrix
-  } 
+  spatial.model <- spatial.terms[[1L]] ## one formula term, e.g Matern(1|...)
+  if ( ! is.null(newdata)) {
+    if ( ! is.null(spatial.model)) { 
+      if ((asc <- as.character(spatial.model[[1L]])) %in% c("adjacency","ar1","corrMatrix")) { ## AR1  vs ar1 ?
+        stop(paste("Prediction in 'newdata' not implemented or not possible for models including a", asc,"term."))
+      } 
+    } 
+  }
   ## matching ranef terms of re.form
   if (noReForm(re.form)) {
     nrand <- 0L
@@ -335,16 +341,22 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
       uuCnewnew <- NULL 
     } else {
       oldLMatrix <- attr(object$predictor,"LMatrix") ## may be NULL
-      which <- list(no=( variances$linPred  || needNewEta || ! is.null(newdata)), 
-                    nn= variances$linPred && ! is.null(newdata))
-      uunewCorrs <- calcNewCorrs(object=object,locdata=locdata,
-                                 which=which,
-                                 spatial.model=spatial.model)
-      ## matrices, not list of matrices which are constructed later
-      uuCnewnew <- uunewCorrs$uuCnewnew
-      uuCnewold <- uunewCorrs$uuCnewold
+      #which <- list(no=( variances$linPred  || needNewEta || ! is.null(newdata)), 
+      #              nn= variances$linPred && ! is.null(newdata))
+      if (is.null(newdata)) {
+        uuCnewold <- tcrossprodCpp(oldLMatrix) ## as in Corr()
+        uuCnewnew <- NULL
+      } else {
+        which <- list(no= needNewEta, nn= TRUE)
+        uunewCorrs <- calcNewCorrs(object=object,locdata=locdata,
+                                   which=which,
+                                   spatial.model=spatial.model)
+        ## matrices, not list of matrices which are constructed later
+        uuCnewnew <- uunewCorrs$uuCnewnew
+        uuCnewold <- uunewCorrs$uuCnewold
+      }
       if ( ! is.null(uuCnewold)) attr(uuCnewold,"ranefs") <- attr(oldLMatrix,"ranefs") ## required pour computeZAXlist to match the ranefs of LMatrix
-      newZAClist <- computeZAXlist(XMatrix=uuCnewold,ZAlist=newZAlist) ## ZAL's for ZA's and L's (typically some ZA's are unaffected)
+      newZAClist <- computeZAXlist(XMatrix=uuCnewold,ZAlist=newZAlist) ## (typically some ZA's are unaffected)
     } 
   } 
   #
@@ -415,11 +427,12 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
   }
   ##### (2) predVar
   if(variances$linPred) {
+    beta_cov <- get_beta_cov_any_version(object)
     beta_w_cov <- object$get_beta_w_cov(object)
     if (inherits(re.form,"formula")) {
       # identifies an selects columns for the [retained ranefs, which are given by newinold 
       subrange <- unlist(lapply(newinold,function(it) {(old_cum_n_u_h[it]+1L):(old_cum_n_u_h[it+1L])}))
-      Xncol <- ncol(object$beta_cov)
+      Xncol <- ncol(beta_cov)
       subrange <- c(seq_len(Xncol),subrange + Xncol)
       beta_w_cov <- beta_w_cov[subrange,subrange]
     }
@@ -494,9 +507,10 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
   } else if (any(unlist(variances))) {
     respVar <- rep(0,nrow(locdata))
   } else respVar <- NULL 
-  if (! is.null(object$beta_cov)) {
+  beta_cov <- get_beta_cov_any_version(object)
+  if (! is.null(beta_cov)) {
     if ( variances$fixefVar || (nrand==0L && variances$linPred) ) {
-      fixefcov <- newX.pv %*% object$beta_cov %*% t(newX.pv)
+      fixefcov <- newX.pv %*% beta_cov %*% t(newX.pv)
       if (variances$cov) {
         attr(resu,"fixefVar") <- fixefcov 
       } else attr(resu,"fixefVar") <- diag(fixefcov)
@@ -539,7 +553,15 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
       if (is.matrix(varcomp)) varcomp <- diag(varcomp)
       eta <- object$family$linkfun(resu[,1L])
       pv <- 1-(1-level)/2
-      sd <- qnorm(pv)*sqrt(varcomp)
+      ## special case for simple LM
+      if (length(object$rand.families)==0L &&
+          object$family$family=="gaussian" &&
+          deparse(object$resid.predictor)=="~1" 
+          ) { 
+        resdf <- length(object$y) - ncol(object$X.pv) ## don't use fixef here, that contains bot NAs and etaFix$beta! 
+        ## FR->FR (use a type attribute for fixef ?)
+        sd <- qt(pv,df=resdf)*sqrt(varcomp)
+      } else sd <- qnorm(pv)*sqrt(varcomp)
       interval <- cbind(object$family$linkinv(eta-sd),object$family$linkinv(eta+sd))
       colnames(interval) <- paste(st,c(signif(1-pv,4),signif(pv,4)),sep="_")
       intervalresu <- cbind(intervalresu,interval)

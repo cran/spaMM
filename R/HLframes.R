@@ -163,25 +163,25 @@ nobarsNooffset <- function (term) {
 }
 
 ## spaces should be as in parseBars because terms can be compared as strings in later code
-findSpatial <- function (term) { ## derived from findbars
+findSpatial <- function (term, which=c("adjacency","Matern","AR1","corrMatrix","ar1")) { ## derived from findbars
   if (inherits(term,"formula") && length(term) == 2L) 
-    return(c(NULL,findSpatial(term[[2]])))  
+    return(c(NULL,findSpatial(term[[2]],which=which)))  
   ##       c(NULL,...) ensures that the result is always a list of language objects [critical case: term = ~ Matern() , without LHS nor other RHS terms]
   if (is.name(term) || !is.language(term)) 
     return(NULL)
   if (term[[1]] == as.name("(")) ## i.e. (blob) but not ( | )  [update formula can add parenthese aroundspatial terms...]
-    return(findSpatial(term[[2]])) 
+    return(findSpatial(term[[2]],which=which)) 
   if (!is.call(term)) 
     stop("term must be of class call")
   if (term[[1]] == as.name("|")) ## i.e. ( | ) expression
     return(NULL)
   if (length(term) == 2L) { 
     term1 <- as.character(term[[1]])
-    if (term1 %in% c("adjacency","Matern","AR1","corrMatrix","ar1")) {
+    if (term1 %in% which) {
       return(term) 
     } else return(NULL) 
   }
-  c(findSpatial(term[[2]]), findSpatial(term[[3]]))
+  c(findSpatial(term[[2]],which=which), findSpatial(term[[3]],which=which))
 }
 
 
@@ -249,7 +249,12 @@ asStandardFormula <- function(formula) {
   as.formula(aschar)
 }
 
-validData <- function(formula,resid.formula=NULL,data) {
+## function that handles prior.weights too:
+getValidData <- function(formula,resid.formula=NULL,data,
+                         callargs=list() ## expects a list from callargs, ie match.call of the parent frame, 
+                                         ## rather than an element, to avoid premature eval of refs to data variables 
+                         ) {
+  envform <- environment(formula)
   formula <- asStandardFormula(formula) ## removes spatial tags
   frame.form <- subbarsMM(formula) ## this comes from lme4 and converts (...|...) terms to some "+" form
   if (!is.null(resid.formula)) {
@@ -258,12 +263,16 @@ validData <- function(formula,resid.formula=NULL,data) {
     frame.form <- paste(DEPARSE(frame.form),"+",DEPARSE(frame.resid.form[[2]]))
   }
   frame.form <- as.formula(frame.form)
-  environment(frame.form) <- environment(formula)
-  mf <- call("model.frame",data=data) ## it adds the formula argument below....
-  mf$formula <- frame.form
+  environment(frame.form) <- envform
+  mf <- match.call()
+  m <- match(c("data"), names(mf), 0L)
+  mf <- mf[c(1L, m)]
+  mf$weights <- callargs$prior.weights
   mf$drop.unused.levels <- TRUE
-  mf <- eval(mf) ## data.frame with many attributes
-  return(mf)
+  mf[[1L]] <- quote(stats::model.frame)
+  mf$formula <- frame.form
+  mf <- eval(mf)
+  return(mf) ## data.frame with many attributes
 }
 
 ## cf model.frame.default from package stats mais ne traite pas les effets alea !

@@ -6,16 +6,13 @@
                             LevenbergM=TRUE, ## not much used
                             INIT.HLFITNAME=NA,
                             USEEIGEN=TRUE,
-                            USEEIGEN_QR=TRUE,
-                            USElmwithQ=FALSE,
                             maxLambda=1e10,
                             example_maxtime=1,
                             covEstmethod="makeCovEst1",
                             COMP_maxn=1e4,
                             ff_threshold=1e07, ## ! this affects tryn in OKsmooth::rhullByEI !
-                            ## default QRmethod is NULL
-                            ##QRmethod="lmwithQ_denseZAL", ## meaningful: "Matrix::qr" "lmwithQ_sparseZAL" "lmwithQ_denseZAL" "lmwithSparseQ"
                             wRegularization=FALSE,
-                            wDEVEL=FALSE
+                            wDEVEL=FALSE,
+                            QRmethod=NULL ## For user-provided values. The code does not andshould not change this.
 )
 

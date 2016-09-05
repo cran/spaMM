@@ -1,7 +1,7 @@
 // cf spaMM/devel/RcppDevel.R to generate this
 #include "spaMM_linear.h"
 
-using namespace Rcpp ;
+using namespace Rcpp;
 using namespace std;
 
 using Eigen::Lower;
@@ -29,6 +29,12 @@ SEXP lmwithQ( SEXP XX, SEXP yy ){
   return List::create(Named("coef") = VectorXd(QR.solve(y)),
                       Named("Q") = MatrixXd(QR.householderQ()));
 }
+
+/*     # I have tried  Eigen::SparseMatrix in the past but that failed on win-builder at that time. 
+  the R code then used:
+  pivI <- sort.list(betaVQ$P) ## no pivoting with lmwithQ, pivoting with sparse
+ levQ <- as.matrix(betaVQ$Q_ap[,pivI][,seq_len(ncol(wAugX))]) # using Q_ap (Rcpp_sparseQR case), not Q
+*/
 
 // [[Rcpp::export]]
 SEXP leverages( SEXP XX ){
@@ -198,13 +204,39 @@ SEXP pseudoSolvediag( SEXP XX, SEXP bb ){ // pseudoSolvediag(X,b) should == solv
 }
 
 // [[Rcpp::export]]
+SEXP e_LevenbergMsolveCpp( SEXP AA, SEXP wwAugz, SEXP dd ){ // 
+  if (printDebug)   Rcout <<"debut e_LevenbergMsolveCpp()"<<std::endl;
+  const Map<MatrixXd> A(as<Map<MatrixXd> >(AA));
+  const Map<VectorXd> LM_wAugz(as<Map<VectorXd> >(wwAugz));
+  const double damping(as<double>(dd));
+  const int nc(A.cols());
+  const int nr(A.rows());
+  VectorXd dampDpD = damping * A.cwiseProduct(A).colwise().sum(); //damping * colSums(wAugX*wAugX)
+  VectorXd corrD = dampDpD.cwiseSqrt(); // sqrt(dampDpD);
+  //
+  VectorXd z(nr+nc);
+  z.fill(0);
+  const Eigen::HouseholderQR<MatrixXd> QR_A(A); //QR_A <- Rcpp_QR(wAugX)
+  z.head(nr) = MatrixXd(QR_A.householderQ()).transpose() * LM_wAugz; // t(QR_A$Q) %*% LM_wAugz    
+  //
+  MatrixXd RD(nr+nc, nc);
+  RD << MatrixXd(QR_A.matrixQR().triangularView<Upper>()),
+        MatrixXd(corrD.asDiagonal()); // Matrix() essential! //  (rbind(QR_A$R,diag(corrD,nrow=length(corrD))))
+  const Eigen::HouseholderQR<MatrixXd> QR_RD(RD);
+  z = MatrixXd(QR_RD.householderQ()).leftCols(nc).transpose() * z;  //t(QR_QR_R$Q[,1:nc]) %*% z
+  VectorXd dbetaV = QR_RD.matrixQR().topRows(nc).triangularView<Upper>().solve(z); //backsolve(QR_QR_R$R[1:nc,],z)
+  if (printDebug)   Rcout <<"fin e_LevenbergMsolveCpp()"<<std::endl;
+  return List::create(Named("dbetaV") = dbetaV,Named("dampDpD")=dampDpD);
+}
+
+// [[Rcpp::export]]
 SEXP LevenbergMsolveCpp( SEXP AA, SEXP rrhhss, SEXP dd ){ // 
   if (printDebug)   Rcout <<"debut LevenbergMsolveCpp()"<<std::endl;
   const Map<MatrixXd> A(as<Map<MatrixXd> >(AA));
   const Map<VectorXd> rhs(as<Map<VectorXd> >(rrhhss));
   const double damping(as<double>(dd));
-  const int n(A.cols());
-  MatrixXd AtAdDpD(MatrixXd(n, n).setZero().selfadjointView<Lower>().rankUpdate(A.adjoint()));
+  const int nc(A.cols());
+  MatrixXd AtAdDpD(MatrixXd(nc, nc).setZero().selfadjointView<Lower>().rankUpdate(A.adjoint()));
   const VectorXd dampDpD(damping * VectorXd(AtAdDpD.diagonal()));
   AtAdDpD += dampDpD.asDiagonal();
   const Eigen::LDLT<MatrixXd> PQR(AtAdDpD); // (LDLt is a version of cholesky) faster than QR
@@ -212,6 +244,7 @@ SEXP LevenbergMsolveCpp( SEXP AA, SEXP rrhhss, SEXP dd ){ //
   if (printDebug)   Rcout <<"fin LevenbergMsolveCpp()"<<std::endl;
   return List::create(Named("dbetaV") = dbetaV,Named("dampDpD")=dampDpD);
 }
+
 
 // [[Rcpp::export]]
 SEXP LogAbsDetCpp( SEXP AA ) {

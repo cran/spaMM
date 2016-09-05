@@ -11,7 +11,7 @@
 ## anyOptim.args contains arguments common to all optimizers, and arguments for the objective function
 ## optimizers.args contains arguments specific to the given optimizer
 locoptim <- function(init.optim,LowUp,anyObjfnCall.args,trace=list(file=NULL,append=T),Optimizer="L-BFGS-B",optimizers.args,maxcorners=2^11,objfn=HLCor.obj,maximize=FALSE) {
-  processedHL1 <- getProcessed(anyObjfnCall.args$processed,"HL[1]",from=1L) ## there's also HLmethod in processed<[[]]>$callargs
+  processedHL1 <- getProcessed(anyObjfnCall.args$processed,"HL[1]",from=1L) 
   initvec <- unlist(init.optim)
   if ( ! is.null(anyObjfnCall.args$ranefParsVec) ) stop("! is.null(anyObjfnCall.args$ranefParsVec)") ## catch programming errors
   optimizerObjfnCall.args <- notoptimObjfnCall.args <- anyObjfnCall.args
@@ -87,17 +87,17 @@ locoptim <- function(init.optim,LowUp,anyObjfnCall.args,trace=list(file=NULL,app
       nlminbArgs$upper <- upper
       nlminbArgs$scale <- 1/(upper - lower)
       nlminbArgs$control <- optimizers.args$nlminb$control
-      optr <- do.call(nlminb,nlminbArgs) ## optimize HLCor.obj.value (=objective=p_bv by default, except for SEM)
+      optr <- do.call(nlminb,nlminbArgs) ## optimize HLCor.obj()'s 'objective' (p_bv by default, except for SEM)
     } else {
       control <- list(parscale=parscale,factr=1e9) ## factr was the stricter 1e8 up to 23/01/13
       if (maximize) control$fnscale <- -1     
       control[names(optimizers.args$optim$control)] <- optimizers.args$optim$control ## ...which may be overwritten 
       ## lower and upper were missing 7/11/2014!
       anyBaseOptim.args <- c(optimizerObjfnCall.args,list(par=initvec,lower=lower,upper=upper,control=control,method=Optimizer)) 
-      optr <- do.call("optim",c(anyBaseOptim.args,list(fn=objfn))) ## optimize HLCor.obj.value (=p_bv by default, except for SEM)
+      optr <- do.call("optim",c(anyBaseOptim.args,list(fn=objfn))) ## optimize HLCor.obj()'s 'objective'(=p_bv by default, except for SEM)
     }
     optPars <- relist(optr$par,init.optim)
-    attr(optPars,"optr") <- optr
+    attr(optPars,"optr") <- optr ## full optr is Big. Contains the call and an environment... 
     ## HLCor.args$ranPars[names(optPars)] <- optPars 
   } else if (length(initvec)==1L) { ## one-dimensional optimization
     byvar <- c(lower,upper) ## HLCor expects trLambda...

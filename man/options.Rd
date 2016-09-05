@@ -32,10 +32,6 @@ spaMM.getOption(x)
 
 \item{\code{USEEIGEN=TRUE}:}{Whether to use the Eigen C++ library for some matrix computations.}
 
-\item{\code{USElmwithQ=FALSE}:}{Whether to use the Eigen C++ library for solving linear systems.}
-
-\item{\code{USEEIGEN_QR=TRUE}:}{Whether to use the Eigen C++ library for some other QR computations.}
-
 \item{\code{wRegularization=FALSE}:}{Whether to to warn about the use of regularization in some operations on nearly singular matrices.}
 
 \item{\code{maxLambda=1e10}:}{The maximum value of lambda: higher fitted 

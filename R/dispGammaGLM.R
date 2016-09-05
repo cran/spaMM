@@ -20,7 +20,6 @@ calc_CARdispGammaGLM <-function(data,family=spaMM_Gamma("inverse"),lev=NULL,
   suppressWarnings(do.call("spaMM_glm",loclist))
 }
 
-
 # a specialized version of glm, which further constructs the response value internally; the formula has no lhs 
 calc_dispGammaGLM <- 
   function (formula, 

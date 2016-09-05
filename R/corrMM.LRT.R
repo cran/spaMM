@@ -32,21 +32,29 @@ fixedLRT <- function(null.formula,formula,data,
   if (missing(null.formula)) stop("'null.formula' argument is missing, with no default.")
   if (missing(formula)) stop("'formula' argument is missing, with no default.")
   if (missing(data)) stop("'data' argument is missing, with no default.")
-  if (missing(HLmethod) && missing(method)) stop("'method' or 'HLmethod' argument is missing, with no default.")
+  # construct mc$method from method/HLmethod
+  ## see 'lm' code for template
+  mc <- match.call(expand.dots = TRUE)
+  # method mess
+  if (missing(method)) { ## OK for corrHLfit -> HLfit
+    if (fittingFunction == "fitme") { ## I could allow HLmethod here but presumably not a good long-term solution
+      stop("'method' argument is missing, with no default.")
+    } else {
+      if (missing(HLmethod)) {
+        stop("'method' and 'HLmethod' arguments are missing, with no default. Provide 'method'.")
+      } else mc$method <- method <- eval(HLmethod,parent.frame())
+    } ##  else fitme expects 'method', not 'HLmethod
+  }
+  mc$HLmethod <- NULL 
+  #
   if (! is.null(control$profiles)) {
     stop("'fixedLRT' does not allow 'control$profiles'.")
   }
-  ## see 'lm' code for template
-  mc <- match.call(expand.dots = TRUE)
   ## other possible settings, through iterative fits
   ## We had a potential backward compatiblity problem, since the simulation scripts 
   ## for the Ecography paper assume that the package automatically interpret the model as spatial, even if findSpatial returns NULL
   ## and we no longer want such a behaviour
   ## but fixedLRT is not used in these scripts, so it can make a different assumption
-  if (fittingFunction!="fitme") {
-    if (missing(method)) mc$method <- method <- eval(HLmethod,parent.frame())
-  } ## else we must have a 'method'
-  mc$HLmethod <- NULL 
   spatial <- findSpatial(formula)
   if ( ! is.null(spatial)) {
     ## both will use p_v for the optim steps, we need to distinguish whether some REML correction is used in iterative algo :
@@ -83,25 +91,33 @@ spaMMLRT <- function(null.formula=NULL,formula,
   if (is.na(verbose["trace"])) verbose["trace"] <- FALSE
   if (is.na(verbose["warn"])) verbose["warn"] <- FALSE ## will be unconditionally ignored by the final fit in corrHLfit  
   if (is.na(verbose["summary"])) verbose["summary"] <- FALSE ## this is for HLCor
-  dotlist <-list(...)
+  callargs <- match.call(expand.dots = TRUE)
+  ## as list(...) but holding elements (prior.weights, in particular) unevaluated
+  dotlist <- callargs[setdiff(names(callargs),names(formals(spaMMLRT)))] 
+  dotlist$prior.weights <- NULL
+  dotlist <- lapply(dotlist[-1L],eval,envir=parent.frame(1L))
   ## birth pangs :
-  if ("predictor" %in% names(dotlist)) {
+  if ("predictor" %in% names(callargs)) {
     stop("'spaMMLRT' called with 'predictor' argument which should be 'formula'" )
   }
-  if ("null.predictor" %in% names(dotlist)) {
+  if ("null.predictor" %in% names(callargs)) {
     stop("'spaMMLRT' called with 'null.predictor' argument which should be 'null.formula'" )
   }
   ## here we makes sure that *predictor variables* are available for all data to be used under both models
   data <- dotlist$data
   if ( inherits(data,"list")) {
     data <- lapply(data,function(dt) {
-      null.validdata <- validData(formula=null.formula[-2],resid.formula=dotlist$resid.formula,data=dt) ## will remove rows with NA's in required variables
-      full.validdata <- validData(formula=formula[-2],resid.formula=dotlist$resid.formula,data=dt) ## will remove rows with NA's in required variables
+      null.validdata <- getValidData(formula=null.formula[-2],resid.formula=dotlist$resid.formula,data=dt,
+                                     callargs=callargs["prior.weights"]) ## will remove rows with NA's in required variables
+      full.validdata <- getValidData(formula=formula[-2],resid.formula=dotlist$resid.formula,data=dt,
+                                     callargs=callargs["prior.weights"]) ## will remove rows with NA's in required variables
       dt[intersect(rownames(null.validdata),rownames(full.validdata)),,drop=FALSE]     
     })
   } else {
-    null.validdata <- validData(formula=null.formula[-2],resid.formula=dotlist$resid.formula,data=data) ## will remove rows with NA's in required variables
-    full.validdata <- validData(formula=formula[-2],resid.formula=dotlist$resid.formula,data=data) ## will remove rows with NA's in required variables
+    null.validdata <- getValidData(formula=null.formula[-2],resid.formula=dotlist$resid.formula,data=data,
+                                   callargs=callargs["prior.weights"]) ## will remove rows with NA's in required variables
+    full.validdata <- getValidData(formula=formula[-2],resid.formula=dotlist$resid.formula,data=data,
+                                   callargs=callargs["prior.weights"]) ## will remove rows with NA's in required variables
     data <- data[intersect(rownames(null.validdata),rownames(full.validdata)),,drop=FALSE]     
   }  
   dotlist$data <- data
@@ -847,7 +863,8 @@ if (restarts) {
           prof.fit <- do.call(fittingFunction,prof.list) ## 
           return(prof.fit$APHLs[[test.obj]])
         }
-        beta_se <- sqrt(diag(fullfit$beta_cov))
+        beta_cov <- get_beta_cov_any_version(fullfit)
+        beta_se <- sqrt(diag(beta_cov))
         if (length(profileVars)>1) {
           ## optim syntax
           ## uses last full fit here:

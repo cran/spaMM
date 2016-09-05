@@ -12,14 +12,24 @@ confint.HLfit <- function(object,parm,level=0.95,verbose=TRUE,...) {
     attr(parm,"col") <- parmcol
   }
   llc <- as.list(getCall(object))
-  if (paste(llc[[1]]) =="corrHLfit") {
-    lc <- attr(object,"HLCorcall") ## optimInfo+HLCorcall always present
-  } else if (paste(llc[[1]]) =="fitme") { #optimInfo always present
-    lc <- attr(object,"HLCorcall") ## may or may not be present
-    if (is.null(lc)) {
+  # if (paste(llc[[1]]) =="corrHLfit") {
+  #   flc <- attr(object,"HLCorcall") ## optimInfo+HLCorcall always present
+  # } else if (paste(llc[[1]]) =="fitme") { #optimInfo always present
+  #   flc <- attr(object,"HLCorcall") ## may or may not be present
+  #   if (is.null(flc)) { 
+  #     flc <- object$call ## HLfit call
+  #   } else flc <- as.list(flc) ## optimInfo+HLCor
+  # } else flc <- llc ## no optimInfo
+
+  if (paste(llc[[1]]) =="corrHLfit") { ## optimInfo always present
+    lc <- get_HLCorcall(llc)
+  } else if (paste(llc[[1]]) =="fitme") { ## optimInfo always present
+    if (inherits(object,"HLCor")) {
+      lc <- get_HLCorcall(llc)
+    } else {
       lc <- object$call ## HLfit call
-    } else lc <- as.list(lc) ## optimInfo+HLCor
-  } else lc <- llc ## no optimInfo
+    }
+  } else lc <- llc 
   HL <- object$HL
   lik <- switch(paste(HL[1]),
                 "0"="hlik",
@@ -31,13 +41,14 @@ confint.HLfit <- function(object,parm,level=0.95,verbose=TRUE,...) {
   lc$control.HLfit$intervalInfo$parm <- parm
   lc$control.HLfit$LevenbergM <- FALSE ## simple... but read only in preprocess which will usually not be run...
   if (! is.null(lc$processed)) lc$processed <- setProcessed(lc$processed,"LevenbergM","FALSE") ## same idea... (10/2015) but with return value 07/2016 ! 
-  beta_se <- sqrt(diag(object$beta_cov))
+  beta_cov <- get_beta_cov_any_version(object)
+  beta_se <- sqrt(diag(beta_cov))
   lc$control.HLfit$intervalInfo$asympto_abs_Dparm <- asympto_abs_Dparm <- znorm* beta_se
-  optimInfo <- attr(object,"optimInfo")
-  if ( ! is.null(optimInfo)) {
+  optimInfo <- attr(object,"optimInfo") ## may be NULL
+  trTemplate <- optimInfo$`optim.pars` ## may be NULL if optimInfo is NULL or if  optimInfo is not NULL but no par as outer optimized
+  if ( ! is.null(trTemplate)) {
     olc <- lc ## olc is working copy
     LUarglist <- optimInfo$LUarglist
-    trTemplate <- optimInfo$`optim.pars` ## optr$value in transformed scale 
     attr(trTemplate,"method") <-NULL
     if (paste(lc[[1]])=="HLCor") {
       ## good starting values are important... important to use canonizeRanPars as in HLCor
@@ -81,7 +92,7 @@ confint.HLfit <- function(object,parm,level=0.95,verbose=TRUE,...) {
   prevmsglength <- 0L
   while(fac < 1e6) {
     lc$control.HLfit$intervalInfo$init <- (object$fixef-asympto_abs_Dparm/fac)[parm]
-    if (! is.null(optimInfo)) {
+    if (! is.null(trTemplate)) {
       olc <- lc
       # The objective function 'objfn' returns the confint bound given the corr pars. Thus locptim maximizes the confint bound over the the corr pars
       optr <- do.call(locoptim,loclist) 
@@ -111,7 +122,7 @@ confint.HLfit <- function(object,parm,level=0.95,verbose=TRUE,...) {
   prevmsglength <- 0L
   while(fac < 1e6) {
     lc$control.HLfit$intervalInfo$init <- (object$fixef+asympto_abs_Dparm/fac)[parm]
-    if (! is.null(optimInfo)) {
+    if (! is.null(trTemplate)) {
       olc <- lc
       loclist$maximize <- TRUE ## 
       # The objective function returns the confint bound given the corr pars. Thus locptim maximizes the confint bound over the the corr pars

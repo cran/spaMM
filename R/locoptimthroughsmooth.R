@@ -95,8 +95,8 @@ optimthroughSmooth <- function(pargrid,anyHLCor.args,prevPtls=NULL,control.smoot
   lower <- LowUp$lower
   upper <- LowUp$upper
   ## 
-  processedHL1 <- getProcessed(anyHLCor.args$processed,"HL[1]",from=1L) ## there's also HLmethod in processed<[[]]>$callargs
-  logLobj <- anyHLCor.args$`HLCor.obj.value`
+  processedHL1 <- getProcessed(anyHLCor.args$processed,"HL[1]",from=1L) 
+  logLobj <- anyHLCor.args$objective ## HLCor.obj()'s 'objective'
   prevmsglength <- 0
   ## eval nrepl
   nrepl <- control.smooth$nrepl
