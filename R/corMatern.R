@@ -24,7 +24,7 @@ getCovariate.corMatern <-
     if (length(all.vars(covForm)) > 0) { # covariate present
       if (attr(terms(covForm), "intercept") == 1) {
 	covForm <-
-          eval(parse(text = paste("~", DEPARSE(covForm[[2]]),"-1",sep="")))
+          eval(parse(text = paste("~", .DEPARSE(covForm[[2]]),"-1",sep="")))
       }
       covar <-
           as.data.frame(unclass(model.matrix(covForm,
@@ -260,7 +260,7 @@ corFactor.corMatern <-
   val <- .C("matern_factList",
 	    as.double(as.vector(object)),
 	    as.integer(attr(object, "nugget")),
-            as.integer(attr(object, "nuScaled")),
+      as.integer(attr(object, "nuScaled")),
 	    as.double(unlist(getCovariate(object))),
 	    as.integer(unlist(corD)),
 	    as.double(attr(object, "minD")),

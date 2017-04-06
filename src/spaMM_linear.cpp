@@ -18,25 +18,6 @@ using Eigen::COLAMDOrdering;
 bool printDebug=false;
 
 // [[Rcpp::export]]
-SEXP lmwithQ( SEXP XX, SEXP yy ){
-  if (printDebug)   Rcout <<"debut lmwithQ()"<<std::endl;
-  const Map<MatrixXd> X(as<Map<MatrixXd> >(XX));
-  const Map<VectorXd> y(as<Map<VectorXd> >(yy));
-  //int n = X.rows();
-  //if (y.size() != n) throw invalid_argument("size mismatch");
-  const Eigen::HouseholderQR<MatrixXd> QR(X);
-  if (printDebug)   Rcout <<"fin lmwithQ()"<<std::endl;
-  return List::create(Named("coef") = VectorXd(QR.solve(y)),
-                      Named("Q") = MatrixXd(QR.householderQ()));
-}
-
-/*     # I have tried  Eigen::SparseMatrix in the past but that failed on win-builder at that time. 
-  the R code then used:
-  pivI <- sort.list(betaVQ$P) ## no pivoting with lmwithQ, pivoting with sparse
- levQ <- as.matrix(betaVQ$Q_ap[,pivI][,seq_len(ncol(wAugX))]) # using Q_ap (Rcpp_sparseQR case), not Q
-*/
-
-// [[Rcpp::export]]
 SEXP leverages( SEXP XX ){
   if (printDebug)   Rcout <<"debut leverages()"<<std::endl;
   const Map<MatrixXd> X(as<Map<MatrixXd> >(XX));
@@ -47,28 +28,6 @@ SEXP leverages( SEXP XX ){
   if (printDebug)   Rcout <<"fin leverages()"<<std::endl;
   return wrap(VectorXd(Qthin.cwiseProduct(Qthin).rowwise().sum().transpose())); //returns vector of leverages rather than thin Q matrix
 }
-
-// [[Rcpp::export]]
-SEXP Rcpp_qr_Q( SEXP XX){
-  if (printDebug)   Rcout <<"debut Rcpp_qr_Q()"<<std::endl;
-  const Map<MatrixXd> X(as<Map<MatrixXd> >(XX));
-  const Eigen::HouseholderQR<MatrixXd> QR(X);
-  if (printDebug)   Rcout <<"fin Rcpp_qr_Q()"<<std::endl;
-  return wrap(MatrixXd(QR.householderQ())); // returns full Q matrix
-}
-
-// [[Rcpp::export]]
-List Rcpp_QR( SEXP XX){
-  if (printDebug)   Rcout <<"debut Rcpp_QR()"<<std::endl;
-  const Map<MatrixXd> X(as<Map<MatrixXd> >(XX));
-  const Eigen::HouseholderQR<MatrixXd> QR(X);
-  List out = List::create(Named("Q") = MatrixXd(QR.householderQ()), // full Q matrix (cf leverages compute for thin Q)
-                          Named("R") = MatrixXd(QR.matrixQR().triangularView<Upper>())); 
-  out.attr("class") = "Rcpp_QR";
-  if (printDebug)   Rcout <<"fin Rcpp_QR()"<<std::endl;
-  return(out);
-}
-
 
 // [[Rcpp::export]]
 SEXP sweepZ1W( SEXP ZZ, SEXP WW ){
@@ -172,21 +131,33 @@ SEXP RcppChol( SEXP AA ){ // returns t(R::chol)
 
 // https://gist.github.com/bobthecat/6509321
 // [[Rcpp::export]]
-SEXP crossprodCpp(SEXP Mat){
+SEXP crossprodCpp(SEXP Mat, SEXP yy){
   if (printDebug)   Rcout <<"debut crossprodCpp()"<<std::endl;
   const Map<MatrixXd> A(as<Map<MatrixXd> >(Mat));
-  const int c(A.cols());
-  MatrixXd tAA(MatrixXd(c, c).setZero().selfadjointView<Lower>().rankUpdate(A.transpose()));
+  MatrixXd tAA;
+  if (Rf_isNull(yy)) {
+    const int c(A.cols());
+    tAA= MatrixXd(c, c).setZero().selfadjointView<Lower>().rankUpdate(A.transpose());  
+  } else {
+    const Map<MatrixXd> y(as<Map<MatrixXd> >(yy));
+    tAA = A.transpose() * y;
+  }  
   if (printDebug)   Rcout <<"fin crossprodCpp()"<<std::endl;
   return wrap(tAA);
 } // correspond bien a crossprod()
 
 // [[Rcpp::export]]
-SEXP tcrossprodCpp(SEXP Mat){
+SEXP tcrossprodCpp(SEXP Mat, SEXP yy){
   if (printDebug)   Rcout <<"debut tcrossprodCpp()"<<std::endl;
   const Map<MatrixXd> A(as<Map<MatrixXd> >(Mat));
-  const int r(A.rows());
-  MatrixXd AAt(MatrixXd(r, r).setZero().selfadjointView<Lower>().rankUpdate(A));
+  MatrixXd AAt;
+  if (Rf_isNull(yy)) {
+    const int r(A.rows());
+    AAt = MatrixXd(r, r).setZero().selfadjointView<Lower>().rankUpdate(A);
+  } else {
+    const Map<MatrixXd> y(as<Map<MatrixXd> >(yy));
+    AAt = A * y.transpose();
+  }  
   if (printDebug)   Rcout <<"fin tcrossprodCpp()"<<std::endl;
   return wrap(AAt);
 }
@@ -256,7 +227,7 @@ SEXP LogAbsDetCpp( SEXP AA ) {
 }
 
 // contrary to svd(), the following function ensures that for symm matrices A=u.d.t(u) [with svd, v  can be -u and d can be the opposite of the eigenvalues]
-// [[Rcpp::export]]
+// [[Rcpp::export(.selfAdjointSolverCpp)]]
 SEXP selfAdjointSolverCpp( SEXP AA ){ 
   if (printDebug)   Rcout <<"debut selfAdjointSolverCpp()"<<std::endl;
   const Map<MatrixXd> A(as<Map<MatrixXd> >(AA));

@@ -15,7 +15,7 @@ spaMM.colors(n = 64, redshift = 1, adjustcolor_args=NULL)
   take the first (i.e., bluest) \code{nlevels} color levels. If \code{n}<\code{nlevels}, the color levels are recycled
   }
   \item{redshift}{The higher it is, the more the palette blushes....}
-  \item{adjustcolor_args}{Either NULL or a list of arguments for \code{\link{adjustcolor}}, in which case \code{adjustcolor} is called to modify \code{spaMM.colors}'s default vector of colors. See the documentation of the latter function for further information. All arguments except \code{col} are possible.}
+  \item{adjustcolor_args}{Either NULL or a list of arguments for \code{\link[grDevices]{adjustcolor}}, in which case \code{adjustcolor} is called to modify \code{spaMM.colors}'s default vector of colors. See the documentation of the latter function for further information. All arguments except \code{col} are possible.}
 }
 \value{
 A vector giving the colors in a hexadecimal format.

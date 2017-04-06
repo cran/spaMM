@@ -47,18 +47,24 @@ HLfit <- function(formula,
                   prior.weights=NULL, ## I must avoid default argument reference as formals(HLfit) serves as a template for calls to preprocess() 
                   processed=NULL
 ) {
+  spaMM.options(spaMM_glm_conv_crit=list(max=-Inf),COMP_maxn_warned=FALSE,COMP_geom_approx_warned=FALSE)
+  time1 <- Sys.time()
   oricall <- mc <- match.call()  ## there is no dots in HLfit
   if (is.null(processed)) { 
     if (missing(data)) {
       data <- environment(formula)
       warning("It is _strongly_ recommanded to use the 'data' argument\n for any application beyond a single fit (e.g. for predict(), etc.)")
     }
-    family <- checkRespFam(family) ## same, family as HLCor argument ?
     ################### create data list if family is multi #################################
-    if (identical(family$family,"multi")) {
+    family <- checkRespFam(family)
+    #family <- as_call_family(family) ## same, family as HLCor argument ?
+    ## mix of mc$family and family:
+    ## only the evaluated multi() family is certain to have a $binResponse and ad $binfamily
+    ## error for missing "npos" typically follows from lack of explicit $binResponse 
+    if (identical(paste(family[[1L]]),"multi")) { ## test syntax valid for all formats of 'family'
       if ( ! inherits(data,"list")) {
         if(family$binfamily$family=="binomial") {
-          familyargs <- family
+          familyargs <- family ## must be the evaluated multi() 
           familyargs$family <- NULL
           familyargs$binfamily <- NULL
           data <- do.call(binomialize,c(list(data=data),familyargs)) ## if data not already binomialized
@@ -71,7 +77,8 @@ HLfit <- function(formula,
       multiHLfit <- function() {
         fitlist <- lapply(data,function(dt){
           locmc <- mc
-          if (identical(family$family,"multi")) locmc$family <- family$binfamily
+          if (identical(paste(family[[1L]]),"multi")) 
+            locmc$family <- family$binfamily ## typically binomial()
           locmc$data <- dt
           eval(locmc) ## calls HLfit recursively
         })
@@ -94,7 +101,7 @@ HLfit <- function(formula,
       preprocess.formal.args$family <- family ## already checked 
       preprocess.formal.args$rand.families <- FHF$rand.family ## because preprocess expects $rand.families 
       preprocess.formal.args$predictor <- FHF$formula ## because preprocess stll expects $predictor 
-      mc$processed <- do.call(preprocess,preprocess.formal.args,envir=environment(formula))
+      mc$processed <- do.call(preprocess,preprocess.formal.args,envir=parent.frame(1L))
       # HLfit_body() called below
     }
   } else { ## 'processed' is available
@@ -129,14 +136,16 @@ HLfit <- function(formula,
   mc$resid.model <- NULL ## info in processed
   mc[[1L]] <- quote(spaMM::HLfit_body)
   hlfit <- eval(mc,parent.frame())
+  if (is.null(processed)) .check_conv_glm_reinit()
   if ( ! is.null(processed$return_only)) {
     return(hlfit)    ########################   R E T U R N   a list with $APHLs
   }
   hlfit$call <- oricall ## potentially used by getCall(object) in update.HL
+  hlfit$fit_time <- .timerraw(time1)
   return(hlfit)
 }
 
-`HLfit.obj` <- function(ranefParsVec,skeleton,objective=processed$objective,traceFileName=NULL,processed,...) { ## name of first arg MUST differ from names in dotlist...
+`HLfit.obj` <- function(ranefParsVec,skeleton,objective=processed$objective,processed,...) { ## name of first arg MUST differ from names in dotlist...
   mc <- match.call(expand.dots=TRUE) ## (1) expand.dots added 11/04/2014 for the multinomial... eval 
 
   if (is.null(processed)) { stop("Call to HLfit.obj() without a 'processed' argument is invalid") } 
@@ -154,12 +163,11 @@ HLfit <- function(formula,
     resu <- sum(unlist(fitlist))
     if(mc$verbose["objective"]) {
       unrelist <- unlist(relist(ranefParsVec,skeleton)) ## handles elements of lemgth>1
-      cat(paste(names(forGiven),"=",signif(unrelist,6),sep="",collapse=", "),
-          ", ",objective,"=",resu,"\n",sep="")
-    }
-    if (is.character(traceFileName)) {
-      verif <- paste("#global:",ranefParsVec,resu) 
-      write(verif,file=traceFileName,append=TRUE) ## the file is unlink'ed in corrHLfit()  
+      cat(" parent HLfit: ",objective,"=",resu,
+          " given: ",paste(names(forGiven),"=",signif(unrelist,6),sep="",collapse=", "),
+          "\n",sep="")
+      # cat(paste(names(forGiven),"=",signif(unrelist,6),sep="",collapse=", "),
+      #     ", ",objective,"=",resu,"\n",sep="")
     }
     return(resu)
   } else { ## there is one processed for a single data set 
@@ -171,28 +179,28 @@ HLfit <- function(formula,
   HLfit.call <- mc[c(1,which(names(mc) %in% HLnames))] ## keep the call structure
   HLfit.call[[1L]] <- quote(spaMM::HLfit)
   forGiven <- relist(ranefParsVec,skeleton) ## given values of the optimized variables
+  if (spaMM.getOption("wDEVEL2")) {
+    parlist <- attr(HLfit.call$ranFix,"parlist")
+    parlist <- merge_parlist(parlist,new=forGiven,types="fix")## consistently with previous code
+    attr(HLfit.call$ranFix,"parlist") <- parlist
+  }
   notlambda <- setdiff(names(forGiven),"lambda")
   HLfit.call$ranFix$lambda[names(forGiven$lambda)] <- forGiven$lambda
   HLfit.call$ranFix[notlambda] <- forGiven[notlambda] ## do not wipe out other fixed, non optimized variables
-  types <- attr(skeleton,"type")
-  attr(HLfit.call$ranFix,"type")[names(types)] <- types
-  if (is.character(traceFileName)) {
-    if(.spaMM.data$options$TRACE.UNLINK) unlink("HLfit.call*.RData")
-    zut <- paste(ranefParsVec,collapse="")  
-    save(HLfit.call,file=paste("HLfit.call",zut,".RData",sep="")) ## for replicating the problem
-  }
+  #types <- attr(skeleton,"type")
+  #attr(HLfit.call$ranFix,"type")[names(types)] <- types
   hlfit <- eval(HLfit.call)
   aphls <- hlfit$APHLs
   resu <- aphls[[objective]]
   if(mc$verbose["objective"]) {
     unrelist <- unlist(forGiven) ## handles elements of lemgth>1
-    cat(paste(names(forGiven),"=",signif(unrelist,6),sep="",collapse=", "),
-        ", ",objective,"=",resu,"\n",sep="")
+    cat(" parent HLfit: ",objective,"=",resu,
+        " given: ",paste(names(forGiven),"=",signif(unrelist,6),sep="",collapse=", "),
+        "\n",sep="")
+    # cat(paste(names(forGiven),"=",signif(unrelist,6),sep="",collapse=", "),
+    #     ", ",objective,"=",resu,"\n",sep="")
   }
-  if (is.character(traceFileName)) {
-    readable <- unlist(canonizeRanPars(ranPars=forGiven,corr.model="",checkComplete=FALSE)$ranPars) 
-    verif <- c(unlist(aphls),readable,ranefParsVec) ## hlfit$phi may be NULL
-    write(verif,file=traceFileName,ncolumns=length(verif),append=TRUE) ## the file is unlink'ed in corrHLfit()  
-  }
+  lsv <- c("lsv",ls())
+  rm(list=setdiff(lsv,"resu"))
   return(resu) #
 }

@@ -36,7 +36,7 @@ Journal of the American Statistical Association: 88 9-25.
 }
 \examples{
 data(scotlip)
-scfit <- HLCor(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(scotlip$expec)),
+scfit <- HLCor(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(expec)),
       ranPars=list(rho=0.174),adjMatrix=Nmatrix,family=poisson(),data=scotlip)
 summary(scfit)
 plot(scfit)

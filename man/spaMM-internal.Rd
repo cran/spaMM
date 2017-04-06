@@ -1,133 +1,84 @@
 \name{spaMM-internal}
 
+\alias{generateName} 
+\alias{makenewname}
+
+\alias{merge_parlist}
+\alias{modify_list}
+
 \alias{fitme_body}
 \alias{calc_maxrange}
-\alias{calc_inits_dispPars}
-\alias{calc_inits_ARphi}
-\alias{calc_inits_nu}
-\alias{calc_inits_Auto_rho}
-\alias{calc_inits_geostat_rho}
-\alias{calc_inits_by_glm}
-\alias{calc_inits}
 \alias{HLfit.obj}
 
 
 
 
-\alias{\%id*id\%}
-\alias{alternating}
-\alias{auglinmodfit}
-\alias{Bartlett.robust} 
+%\alias{\%id*id\%}
+\alias{as_call_family}
+\alias{Bartlett.robust} % not currently used 
 \alias{Beta} 
-\alias{bloc_lambda}
-\alias{calc_beta_w_cov}
-\alias{calc.dlW_deta}
-\alias{calc.dvdloglamMat}
-\alias{calc_invS.X}
-\alias{calc.p_v}
 \alias{calc.w.resid}
 \alias{calc_wAugX}
-\alias{calc_hatval}
-\alias{calc.Pdiag}
 \alias{calc.plot.dims}
 \alias{calcD2hDv2}
 \alias{calcPHI}
 \alias{calc_dispGammaGLM}
 \alias{calcRanefPars}
-\alias{calc_TT}
 \alias{calcUniqueGeo}
-\alias{calc_info_crits}
-\alias{calc_invL}
-\alias{calc_invL_coeffs}
-\alias{calc_Sig_from_fitobject}
-\alias{calc_ZALMatrix}
-\alias{calc_asDmLR_invV_from_fitobject}
-\alias{calc_sscaled}
 \alias{checkRandLinkS}
 \alias{checkRandLink}
 \alias{checkRespFam}
-\alias{choose_QRmethod}
-\alias{compare.model.structures}
-\alias{computeZAXlist} 
-\alias{CondNormfn} 
+%\alias{compare.model.structures}
 \alias{corr.notEQL.lambda}
-\alias{create_get_w_h_coeffs}
-\alias{create_get_beta_cov}
-\alias{create_get_beta_w_cov}
-\alias{create_get_invColdoldList}
-\alias{create_get_logdispObject}
-\alias{create_get_info_crits}
-\alias{create_get_init_phi}
-\alias{create_get_init_lambda}
-\alias{create_get_inits_by_glm}
-\alias{create_get_glm_phi}
-\alias{create_get_ZALMatrix}
-\alias{create_get_qr}
-\alias{Dim.corMatern} 
-\alias{eval.update.call}
+\alias{Dim.corMatern} % not currently used
+\alias{eval.update.call} % not currently used
 \alias{eval.corrEst.args}
 \alias{provide_init_lambdas}
 \alias{spaMM_Gamma} 
+%\alias{generateFileName} % only a stop() for obsolescence
 \alias{getHLfit}
 \alias{get_valid_beta_coefs}
+\alias{get_HLCorcall}
 \alias{HLCor.obj} 
 \alias{HL_process.args} 
 \alias{HL_strictify} 
 \alias{HLframes}
-\alias{Initialize.corMatern}
-\alias{initialize.v_h}
-\alias{intervalStep}
-\alias{iterateSEMSmooth}
-%\alias{locatePointinvT}
-\alias{LRT.corrHL} 
-\alias{loglfn.ranU}
-\alias{makenewname}
+\alias{Initialize.corMatern} % probably augments nlme 
+\alias{initialize_v_h}
 \alias{ULI}
-\alias{Variogram.corMatern} 
+\alias{Variogram.corMatern} % probably augments nlme 
 \alias{asStandardFormula} 
-\alias{bessel_lnKnu} 
-\alias{calc_clik}
-\alias{calc_tXinvS}
 \alias{calcNewCorrs}
 \alias{calcPredVar}
 \alias{calcResidVar}
-\alias{calc_beta_cov}
-\alias{calc_dvdlogphiMat}
-\alias{calc_invColdoldList}
 \alias{calc_logdisp_cov}
 \alias{canonizeRanPars} 
 \alias{clean_cs} 
 \alias{checkDistMatrix} 
-\alias{coef.corMatern} 
-\alias{coef<-.corMatern} 
-\alias{corFactor.corMatern}
-\alias{corMatrix.corMatern} 
+\alias{coef.corMatern} % probably augments nlme
+\alias{coef<-.corMatern} % probably augments nlme
+\alias{corFactor.corMatern} % probably augments nlme
+\alias{corMatrix.corMatern} % probably augments nlme
 \alias{corrHLfit_body}
 \alias{corrMM.LRT} 
 \alias{d2mudeta2fn} 
-\alias{DEPARSE}
 \alias{dispFn}
 \alias{calc_etaGLMblob}
 \alias{calc_CARdispGammaGLM} 
 \alias{dispInv} 
 \alias{eval_gain_LevM_GLM}
-\alias{eval_gain_LevM_HGLM}
 \alias{extract.check.coords} 
 \alias{findOffset} 
 \alias{findSpatial}
 \alias{parseBars} 
 \alias{findbarsMM} 
-\alias{findplus}
+\alias{findplus} % not currently used (except recursively by itself)
 \alias{fullrho}
-\alias{generateFileName} 
-\alias{generateName} 
 \alias{generateInitPhi}
 \alias{getCall.HLfit} 
 \alias{get_beta_cov_any_version}
-\alias{get_HLCorcall}
-\alias{get_DispCorrPars}
-\alias{getCovariate.corMatern} 
-\alias{getgroups} 
+\alias{getCovariate.corMatern} % probably augments nlme
+\alias{getgroups} % not currently used
 \alias{getPar}
 \alias{getProcessed}
 \alias{getValidData}
@@ -137,33 +88,22 @@
 \alias{glm.reformat}
 \alias{HLCor_body}
 \alias{HLfit_body}
-\alias{invscalefnfn}
 \alias{is.identity} 
 \alias{largeLambdaMessages} 
 \alias{legend_lambda}
-\alias{LevenbergMstep}
-\alias{e_LevenbergMstep}
 \alias{LevenbergMstepCallingCpp}
 \alias{locoptim}
-\alias{NAcleaning}
-\alias{optimthroughSmooth}
-\alias{labelfn}
-\alias{locatePointinvT}
-\alias{logDet.corMatern} 
+\alias{logDet.corMatern} % probably augments nlme
 \alias{LogAbsDetWrap}
-\alias{logL_from_SEMsample}
-\alias{loglfn.ranU} 
 \alias{makeCheckGeoMatrices}
 \alias{makeCovEst1} 
 \alias{makeCovEst2} 
-\alias{make_lambda_object}
 \alias{makeLowerUpper}
 \alias{makeTicks}
 \alias{MaternCorr.ff}
 \alias{Matern.corr} % back compat, should be deleted later
-\alias{MLmess}
+\alias{Matrix_times_Dvec}
 \alias{muetafn}
-\alias{newetaFix}
 \alias{nextPoints}
 \alias{niceLabels}
 \alias{nobarsMM} 
@@ -172,74 +112,45 @@
 \alias{noNonSpatialbarsMM}
 \alias{noOffset} 
 \alias{noOffset_} 
-\alias{noReForm} 
+\alias{.noRanef} 
 \alias{nuFn} 
 \alias{nuInv} 
 \alias{overcat}
 \alias{pastefrom} 
 \alias{plotScale}
-\alias{post.process.ZALlist}
-\alias{post_process_ZAL}
+\alias{post_process_family}
 \alias{preprocess}
 \alias{print.arglist}
 \alias{print.predictor}
 \alias{print.vcov.HLfit}
 \alias{print.predictions}
-\alias{print.ranef}
 \alias{process_resglm_list}
 \alias{recalc.corMatern} 
-\alias{reformat_verbose}
-\alias{REMLmess}
+%\alias{reformat_verbose}
 \alias{resize_lambda}
 \alias{rhoFn} 
 \alias{rhoInv}
-\alias{rntneg} 
-\alias{rntpos} 
 \alias{safesolve.qr.matrix} 
 \alias{safesolve.qr.vector} 
-\alias{sampleGridFromLowUp}
-\alias{sampleNextPars}
-\alias{scalefnfn}
 \alias{selectLoglfn}
-\alias{SEMbetalambda}
-\alias{pMVN}
-\alias{SEMdiagnosticPlot}
-\alias{SEMdiagnosticPlot2D}
-\alias{separator} 
+%\alias{pMVN}
+%\alias{separator} 
 \alias{setProcessed}
 \alias{setControl}
 \alias{Sigwrapper}
 \alias{Sig_times_b}
-\alias{simple_WLS_with_Eigen}
 \alias{singularSigmaMessagesStop}
 \alias{slashTerms} 
-\alias{selfAdjointWrapper} 
 \alias{solveWrap.matrix}
 \alias{solveWrap.vector}
-\alias{spaMM_rhullByEI}
-\alias{spaMM_bounds1D}
-\alias{spaMMLRT} 
-\alias{spMMFactorList} 
-\alias{spMMexpandSlash}
+\alias{internal_LRT} % not renamed .LRT as foreach does not handle it
 \alias{subbarsMM} 
-\alias{sweepZ1Wwrapper} 
-\alias{tcrossprodWrap}
 \alias{theta.mu.canonical}
 \alias{theta.mu.conjugate} 
-\alias{thetaMuDerivs} 
 \alias{tryCatch.W.E}
-\alias{u_h_v_h_from_v_h}
-\alias{updateWranef}
-\alias{updateW_ranefS}
 \alias{validData}
-\alias{ZWZtwrapper}
-\alias{ZtWZwrapper}
-\alias{validRangefn}
-\alias{volTriangulation} %~ could become public later : cf le .Rd.true.txt
-\alias{rvolTriangulation} %~ could become public later
-\alias{subsimplices.volTriangulation} %~ could become public later
 
-\alias{crack}
+\alias{crack} % not doc'ed but used in an example :-)
 
 
 \title{Internal spaMM Functions}

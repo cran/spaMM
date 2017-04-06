@@ -24,19 +24,23 @@ spaMM.getOption(x)
 
 \item{\code{COMP_maxn}:}{Number of terms for truncation of infinite sums that are evaluated in the fitting of \code{\link{COMPoisson}} models.}
 
-\item{\code{TRACE.UNLINK=FALSE}:}{Whether to delete preexisting files named as \code{HLCor.args.*.RData} when the trace option is used in corrHLfit or HLCor.}
-
 \item{\code{MESSAGES.FULL.STACK=TRUE}:}{Whether to give information on the stack of calls in some warning messages.}
 
-\item{\code{QRmethod}:}{To control the methods used in intensive matrix computations. Computations may be faster in simple block random effect models when this is set to \code{"Matrix::qr"}.}
+\item{\code{QRmethod}:}{A character string, to control whether dense matrix or sparse matrix methods are used in intensive matrix computations, overcoming the defaults choices made by \code{spaMM} in this respect. Possible values are \code{"dense"} and \code{"sparse"}.}
 
-\item{\code{USEEIGEN=TRUE}:}{Whether to use the Eigen C++ library for some matrix computations.}
+\item{\code{matrix_method}:}{A character string, to control the factorization of dense model matrices. Default value is \code{"def_sXaug_EigenDense_QR_scaled"}. \code{"def_sXaug_EigenDense_QRP_scaled"} is sometimes useful (see \code{\link{arabidopsis}}). The source code should be consulted for further information.}
+
+\item{\code{Matrix_method}:}{A character string, to control the factorization of sparse model matrices. Default value is \code{"def_sXaug_Matrix_QRP_scaled"}. The source code should be consulted for further information.}
+
+\item{\code{LevenbergM=FALSE}:}{Boolean. Whether to use a Levenberg-Marquardt algorithm (see Details) by default in most computations. But it is advised to use \code{control.HLfit=list(LevenbergM=...)} to control this on a case-by-case basis.}
+
+\item{\code{USEEIGEN=TRUE}:}{Whether to use the Eigen C++ library for some matrix computations.. The source code should be consulted for further information.}
 
 \item{\code{wRegularization=FALSE}:}{Whether to to warn about the use of regularization in some operations on nearly singular matrices.}
 
 \item{\code{maxLambda=1e10}:}{The maximum value of lambda: higher fitted 
  lambda values in HLfit are reduced to this.} 
-\item{\code{example_maxtime=2.5}:}{Used in the documentation to control whether the longer examples should be run. 
+\item{\code{example_maxtime=0.8}:}{Used in the documentation to control whether the longer examples should be run. 
 The approximate running time of given examples on one author's laptop is compared to this value.} 
 }
 and possibly other undocumented values for development purposes.
@@ -52,6 +56,11 @@ and possibly other undocumented values for development purposes.
 
   spaMM.options() provides an interface for changing maximal values of parameters of the Matérn correlation function. However, 
   it is not recommended to change these values unless a spaMM message specifically suggests so. Errors may occur if too low values are chosen as these may conflit with default initial values for the parameters.
+  
+  The Levenberg-Marquardt algorithm implementation uses the variant described by Nocedal & Wright (1999, p. 266). 
+}
+\references{
+Jorge Nocedal and Stephen J. Wright (1999) Numerical Optimization. Springer-Verlag, New York.
 }
 \value{
   For \code{spaMM.getOption}, the current value set for option \code{x}, or

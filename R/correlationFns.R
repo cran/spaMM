@@ -13,7 +13,7 @@ HL_strictify <- function (val, status) { ## from gsl package
     return(val)
 }
 
-bessel_lnKnu <- function (nu, x, give = FALSE, strict = TRUE) { ## from bessel_lnKnu in gsl package
+.bessel_lnKnu <- function (nu, x, give = FALSE, strict = TRUE) { ## from bessel_lnKnu in gsl package
     jj <- HL_process.args(nu, x)
     nu.vec <- jj$arg1
     x.vec <- jj$arg2
@@ -53,7 +53,7 @@ MaternCorr.ff <- function (d, rho=1, smoothness, nu=smoothness, Nugget=0L) { ## 
     logcon <- (nu - 1)*log(2)+ lgamma(nu) 
     corrvals <- ff::ff(vmode="double",dim=dim(d))
     ## bessel_lnKnu -> various local copies -> memory issues
-    for (it in seq(nrow(corrvals))) corrvals[it,] <- - logcon + nu*log(dscal[it,])+ bessel_lnKnu(x=dscal[it,], nu=nu) ## 
+    for (it in seq(nrow(corrvals))) corrvals[it,] <- - logcon + nu*log(dscal[it,])+ .bessel_lnKnu(x=dscal[it,], nu=nu) ## 
     corrvals[] <- exp(corrvals[]) 
     corrvals[][!isd0] <- (1-Nugget)* corrvals[][!isd0]
     corrvals[][isd0] <- 1 ## 
@@ -70,7 +70,7 @@ MaternCorr.default <- function (d, rho=1, smoothness, nu=smoothness, Nugget=0L) 
   isd0 <- d == 0L
   dscal[isd0] <- 1e-10 ## avoids errors on distance =0; but the resulting corrvals can be visibly < 1 for small nu ## FR->FR make value dependent on rho, nu ?
   logcon <- (nu - 1)*log(2)+ lgamma(nu) 
-  corrvals <- - logcon + nu*log(dscal)+ bessel_lnKnu(x=dscal, nu=nu) ## 
+  corrvals <- - logcon + nu*log(dscal)+ .bessel_lnKnu(x=dscal, nu=nu) ## 
   ##    corrvals <- - logcon + nu*log(dscal)+ log(besselK(x=dscal, nu=nu)) ## function from package gsl
   corrvals <- exp(corrvals) 
   corrvals[!isd0] <- (1-Nugget)* corrvals[!isd0]
@@ -96,8 +96,16 @@ if (F) {
  seL %*% t(seL)
 }
 
+# .designL.from.Qmat <- function(Qmat) {
+#   ## Cholesky gives proper LL' (think LDL')  while chol() gives L'L...
+#   Q_CHMfactor <- Matrix::Cholesky(drop0(Qmat),LDL=FALSE,perm=FALSE)
+#   LMatrix  <- solve(Q_CHMfactor,system="Lt") ## solve(t(as(Q_CHMfactor,"sparseMatrix")))
+#   # next line adds attributes to an S4 object. str() does not show these attributes... 
+#   return(structure(LMatrix,type="invQ_CHMfactor",Q_CHMfactor=Q_CHMfactor,Qmat=Qmat))
+# } 
+
 ## FR->FR we also use this function once on d2hdv2 in HLfit...
-`designL.from.Corr` <- function(m=NULL,symSVD=NULL,try.chol=TRUE,try.eigen=FALSE,threshold=1e-06,debug=FALSE,SVDfix=1/10) {
+`designL.from.Corr` <- function(m=NULL, symSVD=NULL, try.chol=TRUE, try.eigen=FALSE,threshold=1e-06,SVDfix=1/10) {
   ## cf return value: the code must compute 'L', and if the type of L is not chol, also 'corr d' and 'u'
   type <- NULL
   if ( ! is.null(symSVD)) {
@@ -141,7 +149,7 @@ if (F) {
     }
     if ( (! try.eigen) || inherits(LDL,"try-error") || any(d < -1e-08)) {
       if (.spaMM.data$options$USEEIGEN) { ## see package irlba for SVD of sparse matrices
-        symSVD <- selfAdjointSolverCpp(m) ## such that v= t(u)without any sign issue  
+        symSVD <- sym_eigen(m) ## such that v= t(u)without any sign issue  
         u <- symSVD$u
         d <- symSVD$d  
         type <- "symsvd" ## RcppEigen's SVD: ## "the SVD implementation of Eigen (...) is not a particularly fast SVD method." (RcppEigen vignette)          
@@ -200,22 +208,6 @@ if (F) {
     attr(L,type) <- decomp
   }
   return(L)
-} 
-
-## we want to compute (1) [2e ligne de ChanK97 eq 11] the conditional covariance Cov - Cov inv(Cov+I) Cov  (we return a Cholesky factor of it)
-## and (2) the conditional partial regression coeffs for Lv: Cov inv(Cov+I)
-##  It turns out that the two are identical : 
-## If Corr= LDL', cov= lam LDL', we want  L [lam D - lam^2 D^2/(lam D+I)] L'
-## =  L [lam D/(lam D +I)] L' 
-CondNormfn <- function(decomp,lambda) {
-  diago <- decomp$d/(decomp$d+1/lambda)
-  sqrtCondCovLv <- sweep(decomp$u,2,sqrt(diago),`*`); ## so that cond Corr = this.t(this)
-  condLvReg <- tcrossprodCpp(sqrtCondCovLv) ## conditional regr = cond Corr
-  # Un probleme est que la repres sqrtCondCovLv est loin d'être "numerically unique". 
-  # Donc même si on a des distrib equivalentes pour differents sqrtCondCovLv 
-  # (en particulier des condLvReg equivalents)
-  # on va avoir sqrtCondCovLv %*% rnorm nettement divergents sous linux vs Windows 
-  return(list(sqrtCondCovLv=sqrtCondCovLv,condLvReg=condLvReg))
 } 
 
 `make_scaled_dist` <- function(uniqueGeo,uniqueGeo2=NULL,distMatrix,rho,rho.mapping=seq_len(length(rho)),

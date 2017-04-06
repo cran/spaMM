@@ -10,7 +10,7 @@ calc_CARdispGammaGLM <-function(data,family=spaMM_Gamma("inverse"),lev=NULL,
   } else loclist <- list(data=data, family=family)
   if (is.na(lambda.Fix)) {
     loclist$formula <- resp~1+adjd
-    loclist$start <- c(1/mean(data$resp),0)
+    #loclist$start <- c(1/mean(data$resp),0)
   } else {
     loclist$formula <- resp ~ adjd -1
     loclist$offset <- rep(1/lambda.Fix,nrow(data))
@@ -63,7 +63,8 @@ calc_dispGammaGLM <-
                                    control = control, intercept = intercept)))
   fit <- tryfit$value
   warnmess <- fit$warning$message
-  if (inherits(fit,"error")) {
+  #if (inherits(fit,"error") || is.na(fit$null.deviance)) { ## is.na(...): dgamma problem but returns a fit
+  if (inherits(fit,"error")) { ## is.na(...): dgamma problem but returns a fit
     if (try) { ## was for the final glm_lambda, but deprecated.
       ## do nothing: allows the glm to have failed in this case 
     } else {

@@ -1,13 +1,13 @@
 ## derived from the devel version of lme4:
-##' tests if argument implies a model without random effects or not
-##' TRUE if argument is NA or ~0, 
-##' FALSE if argument is NULL or a non-trivial formula
-noReForm <- function(re.form) {
+## tests if argument implies a model without random effects or not
+## TRUE if argument is NA or ~0, 
+## FALSE if argument is NULL or a non-trivial formula
+.noRanef <- function(re.form) {
   (!is.null(re.form) && !is(re.form,"formula") && is.na(re.form)) ||
     (inherits(re.form,"formula") && length(re.form)==2 && identical(re.form[[2]],0))
 }
 
-newetaFix <- function(object, newMeanFrames,validnames=NULL) {
+.newetaFix <- function(object, newMeanFrames,validnames=NULL) {
   ## newdata -> offset must be recomputed. 
   off <- model.offset( newMeanFrames$mf) ### look for offset from (ori)Formula 
   if ( is.null(off) ) { ## ## no offset (ori)Formula term. 
@@ -68,9 +68,9 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
         if (666) { ## test for Gaussian correlated effects
           randcond_bMean <- 666 # Cno Coo^{-1/2} loc_u_h a coder en vecteurs seulement...
           randcond_brand <- 666 # Cnn - Cno Coo^{-1} Con 
-          randb <- rmvnorm(nsim,mean=randcond_bMean,sigma=randcond_brand)
+          # randb <- rmvnorm(nsim,mean=randcond_bMean,sigma=randcond_brand)
         } else {
-          # hum. Mais il peut y avoir des choses inteessantes dans le code cas non conditionnel
+          randb <- 666 # hum. Mais il peut y avoir des choses inteessantes dans le code cas non conditionnel
         }
         eta <- eta + object$ZAlist[[ranefs]] %*% randb ## could  be donne once for all ranefs 
       }
@@ -103,15 +103,15 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
     ##
     if (object$models[["eta"]] != "etaGLM") {
       if (is.null(newdata)) {
-        ZAL <- object$get_ZALMatrix(object) # attr(object$predictor,"ZALMatrix")
+        ZAL <- get_ZALMatrix(object,as_matrix=.eval_as_mat_arg(object))
         cum_n_u_h <- attr(object$lambda,"cum_n_u_h")
-        vec_n_u_h <- attr(cum_n_u_h,"vec_n_u_h")
+        vec_n_u_h <- diff(cum_n_u_h)
       } else {
         #   ## [-2] so that HLframes does not try to find the response variables  
         allFrames <- HLframes(formula=attr(object$predictor,"oriFormula")[-2],data=newdata) 
-        FL <- spMMFactorList(object$predictor, allFrames$mf, 0L, drop=TRUE) 
+        FL <- .spMMFactorList(object$predictor, allFrames$mf, 0L, drop=TRUE) 
         ##### the following code with NULL LMatrix ignores spatial effects with newdata:
-        ZALlist <- computeZAXlist(XMatrix=NULL,ZAlist=FL$Design)
+        ZALlist <- .compute_ZAXlist(XMatrix=NULL,ZAlist=FL$Design)
         nrand <- length(ZALlist)
         # to overcome this we needto calculate the unconditional covmat including for the (nex) positions
         vec_n_u_h <- unlist(lapply(ZALlist,ncol)) ## nb cols each design matrix = nb realizations each ranef
@@ -143,14 +143,14 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
     mu <- object$family$linkinv(eta) ## ! freqs for binomial, counts for poisson
   }
   ## 
-  phiW <- object$phi/object$prior.weights ## cf syntax and meaning in Gamma()$simulate / spaMM_Gamma$simfun
+  phiW <- object$phi/object$prior.weights ## cf syntax and meaning in Gamma()$simulate / spaMM_Gamma$simulate
   famfam <- tolower(object$family$family)
 #  if (famfam=="binomial" && is.null(size)) size <- object$weights ## original sample size by default
   respv <- function(mu) {switch(famfam,
                                 gaussian = rnorm(nobs,mean=mu,sd=sqrt(phiW)),
                                 poisson = rpois(nobs,mu),
                                 binomial = rbinom(nobs,size=sizes,prob=mu),
-                                gamma = rgamma(nobs,shape= mu^2 / phiW, scale=phiW/mu), ## ie shape increase with prior weights, consistent with Gamma()$simulate / spaMM_Gamma()$simfun
+                                gamma = rgamma(nobs,shape= mu^2 / phiW, scale=phiW/mu), ## ie shape increase with prior weights, consistent with Gamma()$simulate / spaMM_Gamma()$simulate
                                 stop("(!) random sample from given family not yet implemented")
   )} ## vector
   if (nsim>1) { ## then mu has several columns

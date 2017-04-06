@@ -2,7 +2,7 @@
 ## explicit argument <=> default values visible in doc
 ## ... <=> no default value eg for responses
 multi <- function(binResponse=c("npos","nneg"),binfamily=binomial(),input="types",...) {
-  return(c(list(family="multi",binResponse=binResponse,binfamily=binfamily,input=input),list(...)))
+    return(c(list(family="multi",binResponse=binResponse,binfamily=binfamily,input=input),list(...)))
 }
 
 binomialize <- function(data,responses,sortedTypes=NULL,binResponse=c("npos","nneg"),depth=Inf,input="types") {
@@ -78,7 +78,7 @@ fitted.HLfitlist <- function(object,...) {
 logLik.HLfitlist <- function(object, which = NULL, ...) {
   item <- getHLfit(object[[1]])
   if (is.null(which)) {
-    mess <- REMLmess(item)
+    mess <- .REMLmess(item)
     which <- switch(mess, 
                     "by stochastic EM."= "logLapp",
                     "by ML approximation (p_v)."= "p_v",

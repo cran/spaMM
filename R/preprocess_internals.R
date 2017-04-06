@@ -1,30 +1,42 @@
 # even though the Z's were sparse postmultplication by LMatrix leads some of the ZAL's to dgeMatrix (dense)
-choose_QRmethod <- function(ZAlist, predictor, trySparse=TRUE) {
-  if ( is.null(QRmethod <- .spaMM.data$options$QRmethod) ) { ## user setting. The code should NOT write into it. 
-    if (trySparse) { ## 
-      nrand <- length(ZAlist)
-      if (nrand>0L && any(attr(attr(ZAlist,"ranefs"),"type") %in% c("Matern","corrMatrix") ) ) {
-        if (sum(unlist(lapply(ZAlist,ncol)))>200L) { ## ad hoc
-          QRmethod <- "lmwithQ_denseZAL"
-        } else QRmethod <- "Matrix::qr"
-      } else if (nrand==1L && is.identity(ZAlist[[1]])) {
-        QRmethod <- "Matrix::qr" ## special case for poisson or binomial with saturated ranef
-      } else if (nrand==1L && inherits(ZAlist[[1]],"sparseMatrix") && length(ZAlist[[1]]@x)/prod(dim((ZAlist[[1]])))<1/133) {
-        QRmethod <- "Matrix::qr" ## recurrent case
-      } else if (all(unlist(lapply(ZAlist,inherits,what="sparseMatrix")))) { ## OK pour Female/Male si Pdiag util sparse
-        totsize <- prod(colSums(do.call(rbind,lapply(ZAlist,dim))))
-        nonzeros <- sum(unlist(lapply(ZAlist,function(spm) {length(spm@x)})))          
-        if (nonzeros/totsize<1/133) { ## of sparse class and effectively sparse 
-          ## without the test, double le temps de calcul de exemples:
-          QRmethod <- "Matrix::qr"
+.choose_QRmethod <- function(ZAlist, predictor, trySparse=TRUE) {
+  if ( is.null(QRmethod <- .spaMM.data$options$QRmethod) ) { ## user setting. The cQode should NOT write into it. 
+    nrand <- length(ZAlist)
+    if (trySparse && nrand>0L) {
+      # adjacency speed to be tested on 2nd example from test-spaMM.R
+      if (any(attr(attr(ZAlist,"ranefs"),"type") %in% c("adjacency") ) ) {
+        QRmethod <- "dense" ## la corr matrix est dense !
+      } else {
+        totdim <- colSums(do.call(rbind,lapply(ZAlist,dim)))
+        if (any(attr(attr(ZAlist,"ranefs"),"type") %in% c("Matern") ) ) {
+          if (totdim[1L]>4*totdim[2L]) {
+            QRmethod <- "sparse"
+          } else QRmethod <- "dense" 
+        } else if (nrand==1L && any(attr(attr(ZAlist,"ranefs"),"type") %in% c("corrMatrix") ) ) {
+          ## quik patch for this case, should be rethought
+          if (totdim[2L]>200L) { ## ad hoc: we should use the type of corrMatrix or else scan its contents
+            QRmethod <- "dense"
+          } else QRmethod <- "sparse"
+        } else if (nrand==1L && is.identity(ZAlist[[1]])) { ## test pertinent slmt pour non-spatial models !
+          QRmethod <- "sparse" ## special case for poisson or binomial with saturated ranef
         } else {
-          QRmethod <- "lmwithQ_denseZAL" ## of sparse class but actually not so sparse
-          ## denseZAL still seems ~ 4 % faster on the tests
+          totsize <- prod(totdim)
+          nonzeros <- sum(unlist(lapply(ZAlist,
+                                        function(spm) {
+                                          if (inherits(spm,"ddiMatrix") && spm@diag=="U") {
+                                            return(ncol(spm))
+                                          } else if (inherits(spm,"sparseMatrix")) {
+                                            return(length(spm@x))
+                                          } else return(length(which(spm!=0))) ## ligne non active...
+                                        })))          
+          if (nonzeros/totsize < .spaMM.data$options$sparsity_threshold) { 
+            QRmethod <- "sparse"
+          } else {
+            QRmethod <- "dense" ## ZAlist actually not so sparse
+          }
         }
-      } else QRmethod <- "lmwithQ_denseZAL" 
-      ## mais dans ce cas (08/2016) Matrix::qr ne change pas visiblement les temps
-      ## even with CAR (etc), this is currently dense...
-    } else QRmethod <- "lmwithQ_denseZAL"  
+      } 
+    } else QRmethod <- "dense" 
   }
   return(QRmethod)
 }

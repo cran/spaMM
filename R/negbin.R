@@ -1,5 +1,6 @@
 ## The MASS::negative.binomial code evaluates .THeta <- theta, making it unsuitable for a call without the shape param
 negbin <- function (shape = stop("negbin's 'shape' must be specified"), link = "log") {
+  mc <- match.call()
   linktemp <- substitute(link)
   if (!is.character(linktemp)) 
     linktemp <- deparse(linktemp)
@@ -34,8 +35,11 @@ negbin <- function (shape = stop("negbin's 'shape' must be specified"), link = "
   })
   simfun <- function(object, nsim) {
     ftd <- fitted(object)
-    rnegbin(nsim * length(ftd), ftd, shape)
+    MASS::rnegbin(nsim * length(ftd), ftd, shape)
   }
+  ## all closures defined here have parent.env the environment(spaMM_Gamma) ie <environment: namespace:spaMM>
+  ## changes the parent.env of all these functions (aic, dev.resids, simfun, validmu, variance): 
+  parent.env(environment(aic)) <- environment(stats::binomial) ## parent = <environment: namespace:stats>
   structure(list(family = structure("negbin",
                                     withArgs=quote(paste("Neg.binomial(shape=",signif(shape,4),")",sep=""))), 
                  link = linktemp, linkfun = stats$linkfun, 

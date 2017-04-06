@@ -52,18 +52,61 @@ canonizeRanPars <- function(ranPars, ## should have a RHOMAX attribute when trRh
     ranPars$trPhi <- NULL
     attr(ranPars,"type")$phi <- attr(ranPars,"type")$trPhi
     attr(ranPars,"type")$trPhi <- NULL
+    if (spaMM.getOption("wDEVEL2")) {
+      parlist <- attr(ranPars,"parlist")
+      parlist$phi <- dispInv(parlist$trPhi)
+      parlist$trPhi <- NULL
+      attr(parlist,"types")$phi <- attr(parlist,"types")$trPhi
+      attr(parlist,"types")$trPhi <- NULL
+      attr(ranPars,"parlist") <- parlist
+    }
   } else if (!is.null(ranPars$logphi)) { ## debug code
     ## HL.info$ranFix$phi <- exp(ranPars$logphi)
     stop("logphi in HLCor...")
-  } #####################  else HL.info$ranFix$phi <- ranPars$phi ## y st deja !?
-  if (!is.null(ranPars$trLambda)) {## 
-    ranPars$lambda <- dispInv(ranPars$trLambda)
+  } # else ranPars$phi unchanged
+  # ranPars may have trLambda and lambda (eg fitme(...lambda=c(<value>,NA)))  
+  # It may have $trLambda (from notlambda) for what is optimized,
+  #              and $lambda (from ranPars$lambda) for what was fixed in the whole outer fit, and also ini.value  
+  if ( ! is.null(ranPars$trLambda)) {## 
+    lambda <- ranPars$lambda
+    ## cf HLCor_body code at this point Fix and init.HLfit are merged 
+    ##    and the type info will be used by HLCor_body to separate them
+    if (is.null(lambda)) { ## only trLambda, not lambda
+      ranPars$lambda <- dispInv(ranPars$trLambda)
+      type <- attr(ranPars,"type")$trLambda 
+    } else { ## merge lambda and trLambda
+      len_lam <- seq(length(lambda))
+      type <- attr(ranPars,"type")$lambda # presumably "fix", or "var"<=> from init.HLfit 
+      if (is.null(names(lambda))) names(type) <- names(lambda) <- len_lam ## FIXME a guess
+      fromTr <- dispInv(ranPars$trLambda)
+      lambda[names(fromTr)] <- fromTr  
+      type[names(fromTr)] <- attr(ranPars,"type")$trLambda ## presumably "fix" (for fully fix or outer estimated)
+      ranPars$lambda <- lambda
+    }
+    attr(ranPars,"type")$lambda <- type
     ranPars$trLambda <- NULL
-    attr(ranPars,"type")$lambda <- attr(ranPars,"type")$trLambda
     attr(ranPars,"type")$trLambda <- NULL
-  } else if (!is.null(ranPars$loglambda)) { ## debug code
-    stop("loglambda in HLCor...")
-  } ##################### else HL.info$ranFix$lambda <- ranPars$lambda
+    if (spaMM.getOption("wDEVEL2")) {
+      parlist <- attr(ranPars,"parlist")
+      lambda <- parlist$lambda
+      if (is.null(lambda)) { ## only trLambda, not lambda
+        types <- attr(parlist,"types")$trLambda 
+        parlist$lambda <- dispInv(parlist$trLambda)
+      } else { ## merge lambda and trLambda
+        len_lam <- seq(length(lambda))
+        types <- attr(parlist,"types")$lambda # presumably "fix", or "var"<=> from init.HLfit 
+        if (is.null(names(lambda))) names(types) <- names(lambdas) <- len_lam ## FIXME a guess
+        fromTr <- dispInv(parlist$trLambda)
+        lambda[names(fromTr)] <- fromTr  
+        types[names(fromTr)] <- attr(parlist,"types")$trLambda ## presumably "fix" (for fully fix or outer estimated)
+        parlist$lambda <- lambda
+      }
+      parlist$trLambda <- NULL
+      attr(parlist,"types")$lambda <- types
+      attr(parlist,"types")$trLambda <- NULL
+      attr(ranPars,"parlist") <- parlist
+    }
+  } ## else ranPars$lambda unchanged  
   return(list(trueCorrpars=trueCorrpars,ranPars=ranPars))
 }
 

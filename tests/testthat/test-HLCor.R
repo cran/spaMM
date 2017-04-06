@@ -9,7 +9,7 @@ hl <- HLCor(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
 expect_equal(hl$APHLs$p_v,-645.7328,tolerance=1e-04)
 
 data(scotlip)
-hl <- HLCor(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(scotlip$expec)),
+hl <- HLCor(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(expec)),
       ranPars=list(rho=0.174),
       adjMatrix=Nmatrix,family=poisson(),data=scotlip)
 

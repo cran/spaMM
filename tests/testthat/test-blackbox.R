@@ -5,7 +5,8 @@ if (require("blackbox",quietly=TRUE)) {
 }
 
 # also feasible but slow:
-if ( FALSE && require("Infusion",quietly=TRUE)) {
-  Infusion.options(example_maxtime=20)
+if (require("Infusion",quietly=TRUE)) {
+  #Infusion.options(example_maxtime=20)  ## allows basic example
+  #Infusion.options(example_maxtime=120)  ## allows refine()
   example("Infusion") ## detected calc_logdisp_cov issues   
 }

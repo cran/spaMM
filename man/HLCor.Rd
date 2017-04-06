@@ -61,7 +61,7 @@ HLCor(formula, data, family = gaussian(), ranPars = NULL, distMatrix,
    \describe{
    \item{rho.mapping}{ a set of indices controlling which elements of the \code{rho} scale vector scales which dimension(s) of the space in which (spatial) 
    correlation matrices of random effects are computed. See same argument in \code{\link{make_scaled_dist}} for details and examples.} 
-   \item{dist.method}{\code{method} argument of \code{proxy::dist} function (by default, \code{"Euclidean"}, but e.g. \code{"Geodesic"} can be used to compute spherical distances.)}
+   \item{dist.method}{\code{method} argument of \code{proxy::dist} function (by default, \code{"Euclidean"}, but see \code{\link{make_scaled_dist}} for other distances such as spherical ones.)}
    }
 }
   \item{\dots}{
@@ -102,7 +102,7 @@ the CAR and SAR models: Journal of Statistical Planning and Inference 121: 311-3
 # see 'adjacency' documentation page
 
 #### Matérn correlation using only the Matern() syntax
-if (spaMM.getOption("example_maxtime")>2) {
+if (spaMM.getOption("example_maxtime")>1.2) {
  data(Loaloa)
  HLCor(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
               +Matern(1|longitude+latitude),data=Loaloa,

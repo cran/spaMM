@@ -1,20 +1,46 @@
 getCall.HLfit <- function(x,...) {
-  if ( ! is.null(call <- attr(x,"corrHLfitcall"))) return(call) 
+  # only one of these call my be be present in the object: HLCorcall is removed by fitme and corrHLfit
   if ( ! is.null(call <- attr(x,"fitmecall"))) return(call) 
-  return(x$call)
+  if ( ! is.null(call <- attr(x,"HLCorcall"))) return(call) ## eg confint on an HLCor object
+  if ( ! is.null(call <- attr(x,"corrHLfitcall"))) return(call) 
+  return(x$call) ## this one is the HLfit call
   # The [stats::: !]getCall.default method cannot be called b/c it is not exported from stats.
   # stats::getCall() with only call getCall.HLfit in an infinite recursion.
 }
 
-get_HLCorcall <- function(outercall) { ## to get a callwith the structure of the final HLCorcall in fitme of corrHLfit
-  outercall$verbose["getCall"] <- TRUE
-  HLCorcall <- eval(as.call(outercall)) ## calls corrHLfit and bypasses optimization to get the call from within the final HLCor
+## to get a call with the structure of the final HLCorcall in fitme of corrHLfit
+## ranFix is either NULL in which case the init.value of the optimization call is used !!!
+##   or an explicit value (which always supersedes the init for the same parameters).
+##   Do not set a default value, so that one is reminded of the need for a possibly non-default one.
+get_HLCorcall <- function(outer_object, ## accepts fit object, or call, or list of call arguments
+                          ranFix, ## see comments above
+                          ... # anything needed to overcome promises in the call
+                          ) { 
+  if (inherits(outer_object,"HLfit")) {
+    outer_call <- getCall(outer_object) ## gets a corrHLfit/fitme call, => eval it to get HLCor callS
+    outer_call$data <- outer_object$data ## removes dependence on promise
+    outer_call$ranFix <- ranFix
+  }
+  verbose <- outer_call$verbose
+  verbose["getCall"] <- TRUE
+  outer_call$verbose <- verbose
+  ## compare to update.default, commented in R language Definition.
+  extras <- match.call(expand.dots = FALSE)$...
+  if (length(extras) > 0) {
+    existing <- !is.na(match(names(extras), names(outer_call)))
+    dotlist <- list(...)
+    for (a in names(extras)[existing]) outer_call[[a]] <- dotlist[[a]]
+    if (any(!existing)) {
+      outer_call <- c(as.list(outer_call), dotlist[!existing])
+    }
+  }
+  #
+  HLCorcall <- eval(as.call(outer_call)) ## calls corrHLfit and bypasses optimization to get the call from within the final HLCor
   HLCorcall[[1L]] <- quote(HLCor)
   HLCorcall$verbose["getCall"] <- NA
   #llc$verbose["getCall"] <- NA ## local, useless
   return(HLCorcall)
 }
-
 
 update.HLfit <- function (object, formula., ..., evaluate = TRUE) {
   if (is.null(call <- getCall(object))) 
@@ -28,7 +54,7 @@ update.HLfit <- function (object, formula., ..., evaluate = TRUE) {
     ## !!!! FR->FR does not handle etaFix$beta !!!!
     if (! is.null(findOffset(formula.))) {off <- NULL} else { off <- attr(predictor,"offsetObj")$total }
     predArgs <- list(formula=form,
-                     LMatrix=attr(predictor,"LMatrix"),
+                     LMatrix=attr(predictor,"LMatrix"), ## argument for Predictor, to be removed ? (modif function Predictor() ?)
                      AMatrix=attr(predictor,"AMatrix"),
                      ZALMatrix=attr(predictor,"ZALMatrix"), ## see above: *again* from object$call, not from object$predictor
                      offset=off)

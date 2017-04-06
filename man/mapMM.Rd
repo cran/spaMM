@@ -137,7 +137,7 @@ By contrast, \bold{filled.mapMM} handles arguments which are language expression
 
 \bold{mapMM} can handles language expressions, but also accepts at least some calls.
 }
-\seealso{\code{\link{raster}} for alternative plot procedures.}
+\seealso{\url{http://kimura.univ-montp2.fr/~rousset/spaMM/example_raster.html} for more elaborate plot procedures.}
 \examples{
 data(blackcap)
 bfit <- corrHLfit(migStatus ~ means+ Matern(1|longitude+latitude),data=blackcap,
@@ -147,7 +147,7 @@ if (require(maps)) { ## required for add.map=TRUE
   mapMM(bfit,color.palette = function(n){spaMM.colors(n,redshift=1/2)},add.map=TRUE)
 }
 
-if (spaMM.getOption("example_maxtime")>6) {
+if (spaMM.getOption("example_maxtime")>0.9) {
   ## filled.mapMM takes a bit longer
   # showing 'add.map', 'nlevels', and contour lines for 'variances'
   if (require(maps)) { ## required for add.map=TRUE 
@@ -158,7 +158,7 @@ if (spaMM.getOption("example_maxtime")>6) {
   }
 }
 
-if (spaMM.getOption("example_maxtime")>25) {
+if (spaMM.getOption("example_maxtime")>4.2) {
  data(Loaloa)  
  lfit <- corrHLfit(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
                   +Matern(1|longitude+latitude),HLmethod="HL(0,1)",data=Loaloa,

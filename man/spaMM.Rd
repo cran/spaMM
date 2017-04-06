@@ -44,19 +44,20 @@ spaMM is designed to be used through the high-level functions
 ## Fit a Poisson GLMM with adjacency (CAR) correlation model
 # see ?adjacency for how to fit efficiently such model models 
 data(scotlip) ## loads 'scotlip' data frame, but also 'Nmatrix'
-HLCor(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(scotlip$expec)),
+HLCor(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(expec)),
           adjMatrix=Nmatrix,family=poisson(),data=scotlip) 
 
 
-if (spaMM.getOption("example_maxtime")>2) {          
+if (spaMM.getOption("example_maxtime")>3) {          
  ## Adding a Gamma random effect to fit a negative-binomial response:
  HLCor(cases~I(prop.ag/10) +(1|gridcode)+adjacency(1|gridcode)
-                +offset(log(scotlip$expec)),
+                +offset(log(expec)),
           data=scotlip,family=poisson(),rand.family=list(Gamma(log),gaussian()),
           adjMatrix=Nmatrix)
 }
 
-if (spaMM.getOption("example_maxtime")>4) {
+ % tested in test-spaMM.R
+\dontrun{
  ## fit non-spatial crossed random effects with distinct families
  data(salamander)
  HLfit(cbind(Mate,1-Mate)~1+(1|Female)+(1|Male),family=binomial(),
@@ -64,8 +65,8 @@ if (spaMM.getOption("example_maxtime")>4) {
 }
 
  ## Nested effects
- 
-if (spaMM.getOption("example_maxtime")>28) {
+ % tested in test-spaMM.R
+\dontrun{
  # lmer syntax allowing several degrees of nesting
  HLfit(cbind(Mate,1-Mate)~1+(1|Female/Male),
        family=binomial(),rand.family=Beta(logit),data=salamander,HLmethod="ML")
@@ -83,7 +84,7 @@ HLfit(y ~X1*X3+X2*X3+I(X2^2)+(1|batch),family=Gamma(log),
           resid.model = ~ X3+I(X3^2) ,data=wafers)
 
 ## Random-slope model (mind the output!)        
-if (spaMM.getOption("example_maxtime")>2) {          
+if (spaMM.getOption("example_maxtime")>1.1) {          
   HLfit(y~X1+(X2|batch),data=wafers)
 }
 

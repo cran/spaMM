@@ -48,7 +48,7 @@ An optional list of values of parameters specified through \code{init.corrHLfit}
 }
   \item{control.dist}{ See \code{control.dist} in \code{\link{HLCor}} }
   \item{method, HLmethod}{
-  \code{"ML"} or \code{"REML"}. \code{"ML"} is the default, in contrast to \code{"REML"} for the \code{HLmethod} argument of other fitting functions. Other possible values of \code{HLfit}'s \code{HLmethod} argument are handled and all should give results close to the other fitting methods with the same \code{HLmethod} argument.
+  \code{"ML"} or \code{"REML"}. \code{"ML"} is the default, in contrast to \code{"REML"} for the \code{HLmethod} argument of other fitting functions. Other possible values of \code{HLfit}'s \code{HLmethod} argument are handled and should give results close to the other fitting methods with the same \code{HLmethod} argument, the most notable exception being \code{PQL/L} for binary response data, as \code{fitme} does not take into account the specific way leverages are computed in \code{PQL/L}.
 }
   \item{processed}{
 For programming purposes, not documented.
@@ -64,7 +64,7 @@ Optional arguments passed to \code{\link{HLCor}}, \code{\link{HLfit}} or  \code{
 
 By default \code{corrHLfit} initiates optimization with the best of a grid of parameter values, while \code{fitme} performs no such grid search for initial value. The grid search may help find a better maximum (as is the case in the toy examples based on the \code{blackcap} data set), but may as well trap the function in an inferior local maximum.  
 
-For \code{phi} and \code{lambda}, \code{fitme} does not use the internal fitting methods of \code{HLfit}. The latter methods are well suited for structured dispersion models, but require the computation of the so-called leverages, which can be slow. However, they also provide some more information such as the \dQuote{cond. SE} (abut which see warning in Details of \code{\link{HLfit}}). To obtain such information from a \code{fitme} call, use the \code{control$refit} argument (see Example).   
+For \code{phi} and \code{lambda}, \code{fitme} does not use the internal fitting methods of \code{HLfit}. The latter methods are well suited for structured dispersion models, but require the computation of the so-called leverages, which can be slow. However, they also provide some more information such as the \dQuote{cond. SE} (about which see warning in Details of \code{\link{HLfit}}). To obtain such information from a \code{fitme} call, use the \code{control$refit} argument (see Example).   
 }
 \value{
 The return value of an \code{HLCor} or an \code{HLfit} call, with additional attributes. The \code{HLCor} call is evaluated at the estimated correlation parameter values. These values are included in the return object as its \code{$corrPars} member. The attributes added by \code{fitme} include the original call of the function (which can be retrived by \code{getCall}(<fitted object>), and information about the optimization call within \code{fitme}. 

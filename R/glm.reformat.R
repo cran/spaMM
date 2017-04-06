@@ -80,12 +80,12 @@ glm.reformat <- function (x, y, weights = rep(1, nobs), start, etastart,
     if (getRversion() > "3.1.0") {
       if (anyNA(varmu)) stop("NAs in V(mu)")
     } else {
-      if (any(is.na(varmu))) stop("NAs in V(mu)")
+      if (anyNA(varmu)) stop("NAs in V(mu)")
     }
     if (any(varmu == 0)) 
       stop("0s in V(mu)")
     mu.eta.val <- mu.eta(eta)
-    if (any(is.na(mu.eta.val[good]))) 
+    if (anyNA(mu.eta.val[good])) 
       stop("NAs in d(mu)/d(eta)")
     good <- (weights > 0) & (mu.eta.val != 0)
     #     if (all(!good)) {

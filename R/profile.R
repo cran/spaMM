@@ -37,14 +37,24 @@ spaMM.getOption <- function (x) {spaMM.options(x)[[1]]}
                         ") is loaded.", 
     "\nType 'help(spaMM)' for a short introduction,\nand news(package='spaMM') for news.")
   #unlockBinding(".SpaMM", asNamespace("spaMM")) ## required when a .SpaMM list was used instead of an envir
+  
 }
 
-
-".onLoad" <- function (lib, pkg) {
-  abyss <- suppressMessages(delaunayn(matrix(1,nrow=2,ncol=1))) # *sigh*
-}  
+.onLoad <- function(libname, pkgname) {
+  ## Let us set the new proxy method
+  if ( ! proxy::pr_DB$entry_exists("Earth")) {
+    pr_DB$set_entry(FUN = .Dist.earth.mat, names = c("Earth", "dist.earth"))
+    pr_DB$modify_entry(
+      names = "Earth",
+      description = "Approximate distance in Km between points on earth surface.",
+      loop = FALSE,
+      distance = TRUE
+    )
+  }
+}
 
 ".onUnload" <- function (libpath) {
+  pr_DB$delete_entry("Earth")
   library.dynam.unload("spaMM", libpath)
 } ## testable by calling unloadNamespace("spaMM")
 #  pkgpath <- system.file(package="OKsmooth") # https://github.com/hadley/devtools/issues/119
@@ -56,3 +66,29 @@ largeLambdaMessages <- function() {
   message("It may also indicate convergence issues, possibly improved by altering the initial value through the 'init.HLfit' argument.")
 }
 
+.Dist.earth.mat <- function (x, y=NULL) { # x and y are both matrices. In each, first col is longitude, second is latitude
+  ## This function computes orthodromic distances in Km between locations.
+  if(is.null(y)) { ## distances within matrice
+    coslat <- cos(x[, 2]*pi/180) ## [,2] is latitude
+    sinlat <- sin(x[, 2]*pi/180)
+    coslon <- cos(x[, 1]*pi/180) ## [,1] is longitude
+    sinlon <- sin(x[, 1]*pi/180)
+    pp <- cbind(coslat * coslon, coslat * sinlon, sinlat) %*% 
+      t(cbind(coslat * coslon, coslat * sinlon, sinlat))
+  } else { ## cross-matrices distances
+    coslat1 <- cos(x[, 2]*pi/180)
+    sinlat1 <- sin(x[, 2]*pi/180)
+    coslon1 <- cos(x[, 1]*pi/180)
+    sinlon1 <- sin(x[, 1]*pi/180)
+    coslat2 <- cos(y[, 2]*pi/180)
+    sinlat2 <- sin(y[, 2]*pi/180)
+    coslon2 <- cos(y[, 1]*pi/180)
+    sinlon2 <- sin(y[, 1]*pi/180)
+    pp <- cbind(coslat1 * coslon1, coslat1 * sinlon1, sinlat1) %*% 
+      t(cbind(coslat2 * coslon2, coslat2 * sinlon2, sinlat2))
+  }
+  ## Earth radius used for approximation = 6371.009 = 1/3*(2*6378.137+6356.752)  [details on https://en.wikipedia.org/wiki/Great-circle_distance]
+  pp <- 6371.009 * acos(ifelse(abs(pp) > 1, 1 * sign(pp), pp))
+  if (is.null(y)) pp <- as.dist(pp)  ## spaMM wants an half matrix in this case, not a full one
+  return(pp)
+}

@@ -3,6 +3,46 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 2.0.0}{
+\subsection{NEW FEATURES}{
+\itemize{
+\item Core functions have been extensively rewritten to manage expensive matrix computations more efficiently. As a result, version 2.0.0 is 2-3 times faster when correlation matrices of random effects are dense (as typically the case for Matern correlation matrices), and can be much faster when correlation matrices are sparse. 
+\item Simple interface for using orthodromic distances: see help(Earth).
+\item bootstrap computations can now use parallelisation; see new argument 'nb_cores' for fixedLRT() and related functions. 
+\item The term for uncertainty in dispersion parameters is now included in computation of prediction variance (1) by default from objects returned by fitme() (special default 'control' argument no longer needed); and (2) for models with multiple random effects.
+\item New extractors get_predCov_var_fix() and preprocess_fix_corr() for more efficient computation of specific blocks of prediction covariance matrix. 
+\item get_ZALMatrix() gets a new argument 'as_matrix' to control the return value.
+\item confint() now works for HLCor fits.
+\item nloptr() call replaces optim() call in random-slope code, with notable improvements in some toy examples. Random-slope models with >1 predictor variables, such as (x+y|z), are now fitted.
+\item New function stripHLfit() to remove some large objects from a fit object before saving it to file.
+\item Time to fit a model is now recorded in the fit object (as element 'fit_time').
+}
+}
+\subsection{USER-LEVEL CHANGES}{
+\itemize{
+\item Structure of bootstrap output in return value of fixedLRT() modified. 
+\item Structure of ranef() result modified. 
+\item Several efforts to reduce the size of fitted objects.
+\item Likelihood-ratio chi-square statistic renamed 'chi2_LR' (was 'LR2') in return value of anova() and some bootstrap outputs. 
+\item Raster.Rd removed to reduced package dependencies. A link to a web page is instead provided. 
+\item spaMM now provides a slightly less informative diagnostic for (quasi-)separation in binary response models, but no longer 'imports' package lpSolveAPI, instead 'suggesting' e1071.   
+\item Tracing stuff, such as 'trace' argument of some functions, has been removed.
+\item Possible values of 'control.corrHLfit$Optimizer' are (as before) 'L-BFGS-B' and (new) 'NLOPT_LN_BOBYQA'. nlminb can no longer be selected.  
+\item get_ZALMatrix() is now a standard function rather than part of the object resulting from a fit.
+\item fitme() now fits CAR model parameters using its own optimization procedure rather than through HLfit's procedures. 
+\item Message added to warn users about the interpretation of formulas without fixed effects.
+\item More meaningful display of results for random-coefficients models; new argument 'details' for summary.HLfit().
+\item ML fit summaries no longer display a 'p_bv' value, to prevent confusion about what this value means. 
+}
+}
+\subsection{BUGS}{
+\itemize{
+\item Version 1.10.0 failed on R < 3.2.0 because cBind() and rBind() calls from earlier spaMM versions have been replaced by cbind() and rbind() calls (see help(cBind)). The Depends field is now corrected to R (>= 3.2.0).  
+\item A few stopping bugs in predict() have been corrected.  
+\item LRT() did not work on HLCor fit objects. This is corrected.
+}
+}
+}
 \section{CHANGES UP TO VERSION 1.10.0}{
 \subsection{NEW FEATURES}{
 \itemize{
@@ -10,7 +50,7 @@
 \item fitme() now fits models with offset in the dispersion model.
 \item Modified convergence criteria for the iterative algorithm in HLfit().
 \item Examples run generally faster by about 30\%. 
-\item New extractor function get_intervals() and \dQuote{member extractor} get_ZALMatrix().
+\item New extractor function get_intervals() and get_ZALMatrix().
 \item Intervals returned by predict.HLfit() (and hence by get_intervals()) use Student's t distribution when the fitted model is a simple linear model.
 \item Prediction variance can now be computed from fits of models with a corrMatern term.
 \item An HLfit object's $APHLs$p_bv for a *fixed-effect* model now returns the restricted likelihood (for estimation of residual dispersion parameters), which it has never done so far (out of disregard for this case). This allows REML fits of fixed-effect models using fitme() (but has no bearing on similar fits using HLfit()). 

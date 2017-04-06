@@ -5,7 +5,7 @@ Predictor <- function (formula, offset=NULL, LMatrix = NULL,  AMatrix = NULL, ZA
     pastefrom("Do not call 'Predictor' on a predictor object.",prefix="(!) From ")
   }
   # we redefine the envir of the formula to be the closure of Predictor, and we will empty before exiting Predictor
-  formula <- as.formula(deparse(formula))  # env = emptyenv() not possible as model.frame needs a non-empty envir.
+  #formula <- .stripFormula(formula)  # env = emptyenv() not possible as model.frame needs a non-empty envir.
   oriFormula <- formula
   if (substr((as.character(formula[2])),1,5)=="cbind") { 
     ## FR->FR e.g. strsplit("cbind(npos,ntot-npos)","[(,)-]") gives a list which element [[1]] is "cbind" "npos"  "ntot"  "npos"
@@ -46,11 +46,11 @@ Predictor <- function (formula, offset=NULL, LMatrix = NULL,  AMatrix = NULL, ZA
   attr(res,"ZALMatrix") <- ZALMatrix
   attr(res,"AMatrix") <- AMatrix
   attr(res,"BinDenForm") <- BinDenForm
-  attr(res,"LMatrix") <- LMatrix
+  attr(res,"LMatrix") <- LMatrix ## to be copied in strucList by HLfit_body() ## non-null here if constant
   attr(res,"offsetObj") <- list(offsetArg=offset,nonZeroInfo= !is.null(offset))
   class(res) <- c("predictor",class(res))
-  lsv <- c("lsv",ls())
-  rm(list=setdiff(lsv,"res")) ## empties the environment pointed by the formula in "res"
+  #lsv <- c("lsv",ls())
+  #rm(list=setdiff(lsv,"res")) ## empties the environment pointed by the formula in "res"
   return(res)
 }
 

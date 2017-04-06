@@ -5,7 +5,7 @@
   This function fits GLMMs as well as some hierarchical generalized linear models (HGLM; Lee and Nelder 2001).
   HLfit fits both fixed effects parameters, and dispersion parameters i.e. the variance of the random effects 
   and the variance of the residual error. The linear predictor is of the 
-  standard form \code{offset+ X beta + Z v}, where 
+  standard form \code{offset+ X beta + Z b}, where 
   X is the design matrix of fixed effects and Z is a design matrix of random effects.   
   The function also handles a linear predictor (with only fixed effects) for the residual variance. 
 }
@@ -68,22 +68,9 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
   }
   \item{HLmethod}{
   Allowed values are \code{"REML"}, \code{"ML"}, \code{"EQL-"} and \code{"EQL+"} for all models;  
-  \code{"PQL"} (=\code{"REPQL"}) and \code{"PQL/L"} for GLMMs only;
-  and (only for those curious to experiment) expressions of the 
-  form \code{"HL(<...>)"}, \code{"ML(<...>)"} and \code{"RE(<...>)"}. HL and RE are equivalent.   
-  The default behaviour is RE(1,1), which \bold{by default performs REML} (standard REML for LMMs, 
-  an extended definition for other models). But it can also perform non-standard forms of REML 
-  (indeed including ML), depending on the \code{REMLformula} given.
-
-  EQL stands for the EQL method of Lee and Nelder (2001). The '+' version includes the d v/ d tau correction 
-  described p. 997 of that paper, and the '-' version ignores it.
-  PQL can be seen as the version of EQL- for GLMMs.
-  PQL/L is PQL without the leverage corrections that define REML estimation of random-effect parameters.
-  
-  For \bold{GLMs}, the default is still REML. For binomial and Poisson GLMs, this cannot be distinguished from an exact ML fit. 
-  Note that the \code{\link{glm}} function performs an EQL analysis, which will differ from the REML (and ML) one for Gamma GLMs.  
-  
-  See Details for the more general syntax.
+  \code{"PQL"} (=\code{"REPQL"}) and \code{"PQL/L"} for GLMMs only; and further values 
+  for those curious to experiment (see Details). \bold{The default is REML} (standard REML for LMMs, 
+  an extended definition for other models). REML can be viewed as a fom of conditional inference, and non-standard  conditionings can be called as \dQuote{REML} with a non-standard \code{REMLformula}. See Details for further information.
 }
   \item{control.HLfit}{
   A list of parameters controlling the fitting algorithms.
@@ -138,26 +125,28 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
 
  \bold{I. Fitting methods:}
  Many approximations for likelihood have been defined to fit mixed models (e.g. Noh and Lee (2007) for some overview), 
- and this function only considers a subset of them, but it adds a new complication in terms of REML methods. For example, 
- PQL as originally defined by Breslow and Clayton uses REML to estimate dispersion parameters, but this function allows one to use ML instead.
- Moreover, it allows some non-standard specification of the model formula that determines the conditional distribution used in REML.
+ and this function implements several of them, and some additional ones. In particular, 
+ PQL as originally defined by Breslow and Clayton (1993) uses REML to estimate dispersion parameters, but this function allows one to use an ML variant of PQL. Moreover, it allows some non-standard specification of the model formula that determines the conditional distribution used in REML.
+ 
+  EQL stands for the EQL method of Lee and Nelder (2001). The '+' version includes the d v/ d tau correction 
+  described p. 997 of that paper, and the '-' version ignores it.
+  PQL can be seen as the version of EQL- for GLMMs. It estimates fixed effects by maximizing h-likelihood and dispersion parameters by an approximation of REML, i.e. by maximization of an approximation of restricted likelihood.
+  PQL/L is PQL without the leverage corrections that define REML estimation of random-effect parameters. Thus, it estimates dispersion parameters by an approximation of marginal likelihood.
 
- In the more general syntax for \code{HLmethod}, used as e.g. \code{HLmethod="RE(1,1)"}  
- the first '1' means that a first order Laplace approximation to the likelihood is used to estimate fixed effects 
+ \code{HLmethod} also accepts values of the form \code{"HL(<...>)"}, \code{"ML(<...>)"} and \code{"RE(<...>)"}, e.g. \code{HLmethod="RE(1,1)"}, which allow a more direct specification of the approximations used. 
+ HL and RE are equivalent (both imply an REML correction).   
+ The first '1' means that a first order Laplace approximation to the likelihood is used to estimate fixed effects 
  (a '0' would instead mean that the h likelihood is used as the objective function).
   The second  '1' means that a first order Laplace approximation to the likelihood or restricted likelihood 
-  is used to estimate dispersion parameters, including the dv/d tau term specifically discussed by Lee & Nelder 2001, p. 997
-  (a '0' would instead mean that these terms are ignored).
+  is used to estimate dispersion parameters, this approximation including the dv/d tau term specifically discussed by Lee & Nelder 2001, p. 997 (a '0' would instead mean that these terms are ignored).
   
-  It is possible to enforce the EQL approximation for estimation of dispersion parameter by adding a third index with value 0. 
-  \code{"HL(0,1,0)"} is Lee & Nelder's (2001) method, i.e. \code{"EQL+"}.
+  It is possible to enforce the EQL approximation for estimation of dispersion parameter (i.e., Lee and Nelder's (2001) method) by adding a third index with value 0. \code{"EQL+"} is thus \code{"HL(0,1,0)"}, while \code{"EQL-"} is \code{"HL(0,0,0)"}. \code{"PQL"} is EQL- for GLMMs. \code{"REML"} is \code{"HL(1,1)"}. \code{"ML"} is \code{"ML(1,1)"}. 
   
-  For a Gamma GLM with log link, ML and EQL results will differ in their phi estimates, and the EQL estimate will match that from the \code{\link{glm}} function. 
-  
+  Some of these distinctions make sense for \bold{GLMs}, and \code{\link[stats]{glm}} methods use approximations, which make a difference for Gamma GLMs. This means in particular that, (as stated in \code{\link[stats]{logLik}}) the logLik of a Gamma GLM fit by \code{glm} differs from the exact likelihood. Further, the dispersion estimate returned by \code{summary.glm} differs from the one implied by \code{logLik}, because \code{summary.glm} uses Pearson residuals instead of deviance residuals, and no \code{HLmethod} tries to reproduce this behaviour. \code{logLik} gives the approximation returned by an \code{"ML(0,0,0)"} fit. The dispersion estimate returned by an \code{"HL(.,.,0)"} fit matches what can be computed from residual deviance and residual degrees of freedom of a glm fit, but this is not the estimate displayed by \code{summary.glm}. With a log link, the fixed effect estimates are unaffected by these distinctions.     
 
   \bold{II. Random effects} are constructed in several steps. first, a vector \bold{u} of independent and identically distributed (iid) random effects is drawn from some distribution;
- second, a transformation v=f(u) is applied to each element (this defines \bold{v} which elements are still iid); third, correlated random effects are obtained as \bold{Lv} 
-  where \bold{L} is the \dQuote{square root} of a correlation matrix (this may be meaningful only for Gaussian random effects). 
+ second, a transformation \bold{v}=f(\bold{u}) is applied to each element (this defines \bold{v} which elements are still iid); third, correlated random effects are obtained as \bold{Lv} 
+  where \bold{L} is the \dQuote{square root} of a correlation matrix (this may be meaningful only for Gaussian random effects). Coefficients in a random-coefficient model correspond to \bold{Lv}.  
   Finally, a matrix \bold{Z} (or sometimes \bold{ZA}, see \code{\link{Predictor}}) allows to specify how the correlated random effects
   affect the response values. In particular, \bold{Z} is the identity matrix if there is a single observation (response) for each location, but otherwise
   its elements \eqn{z_{ji}} are 1 for the \eqn{j}th observation in the \eqn{i}th location. 
@@ -181,7 +170,7 @@ Elements include \bold{descriptors of the fit}:
 \item{eta}{Fitted values on the linear scale  (including the predicted random effects);}
 \item{fv}{Fitted values (\eqn{\mu=}<inverse-link>(\eqn{\eta})) of the response variable (returned by the \code{fitted} function);}
 \item{fixef}{The fixed effects coefficients, \eqn{\beta} (returned by the \code{fixef} function);}
-\item{ranef}{The random effects \eqn{u} (returned by the \code{ranef} function);}
+\item{ranef}{The random effects \eqn{u} (returned by \code{ranef(*,type="uncorrelated")};}
 \item{v_h}{The random effects on the linear scale, \eqn{v};}
 \item{phi}{The residual variance \eqn{\phi};}
 \item{phi.object}{A possibly more complex object describing \eqn{\phi};}
@@ -200,23 +189,22 @@ Elements include \bold{descriptors of the fit}:
 \bold{Further miscellaneous diagnostics and descriptors of model structure:}
 
 \item{X.pv}{The design matrix for fixed effects;}
-\item{ZAlist}{Components of the design matrix for random effects. The design matrix for the random effects \eqn{v} is not included as such, but can be extracted by the \emph{member_extractor} \code{\link{get_ZALMatrix}}.}
+\item{ZAlist,strucList}{Two lists of matrices, respectively the design matrices \dQuote{\bold{Z}}, and the \dQuote{\bold{L}} matrices, for the different random effects terms. The extractor \code{\link{get_ZALMatrix}} can be used to reconstruct a single \dQuote{\bold{ZL}} matrix for all terms.}
 \item{fixef_terms,fixef_levels}{Futher information about fixed effect model;}
 \item{weights}{(binomial data only) the binomial denominators;}
 \item{y}{the response vector; for binomial data, the frequency response.}
 \item{models}{Additional information on model structure for \eqn{\eta}, \eqn{\lambda} and \eqn{\phi};}
 \item{HL}{A set of indices that characterize the approximations used for likelihood;}
 \item{leve_phi,lev_lambda}{Leverages;}
+\item{dfs}{degrees of freedom for different components of the model;}
 \item{warnings}{A list of warnings for events that may have occurred during the fit.}
 
-Finally, the object includes programming tools: \code{call, spaMM.version} and \code{\link{member_extractors}}.
+Finally, the object includes programming tools: \code{call, spaMM.version, fit_time} and \code{envir}.
 
 }
 \references{
 Breslow, NE, Clayton, DG. (1993). Approximate Inference in Generalized Linear Mixed Models.
 Journal of the American Statistical Association 88, 9-25.
-
-Cox, D. R. and Donnelly C. A. (2011) Principles of Applied Statistics. Cambridge Univ. Press.
 
 Lee, Y., Nelder, J. A. (2001)  Hierarchical generalised linear models: A
 synthesis of generalised linear models, random-effect models and structured

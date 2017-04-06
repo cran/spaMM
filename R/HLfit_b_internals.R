@@ -1,23 +1,65 @@
-resize_lambda <- function(lambda,vec_n_u_h,n_u_h) {
+post_process_family <- function(family, ranFix) {
+  if (family$family=="COMPoisson") {
+    if ( ! is.null(ranFix$COMP_nu)) { ## optimisation call
+      assign("nu",ranFix$COMP_nu,envir=environment(family$aic))
+      ranFix$COMP_nu <- NULL
+    } else {
+      checknu <- try(environment(family$aic)$nu,silent=TRUE)
+      if (inherits(checknu,"try-error")) stop(attr(checknu,"condition")$message)
+    }
+  } else if (family$family=="negbin") {
+    if ( ! is.null(ranFix$NB_shape)) { ## optimisation call
+      assign("shape",ranFix$NB_shape,envir=environment(family$aic))
+      ranFix$NB_shape <- NULL
+    } else {
+      checktheta <- try(environment(family$aic)$shape,silent=TRUE)
+      if (inherits(checktheta,"try-error")) stop(attr(checktheta,"condition")$message)
+    }
+  }
+  return(ranFix)
+}
+
+  resize_lambda <- function(lambda,vec_n_u_h,n_u_h,adjacency_info=NULL) {
   if  (length(lambda)==length(vec_n_u_h)) {
     lambda_est <- rep(lambda,vec_n_u_h)
+    if ( ! is.null(adjacency_info)) { 
+      lambda_est[adjacency_info$u.range] <- lambda[adjacency_info$whichadj]*adjacency_info$coeffs 
+    }
   } else if (length(lambda)==n_u_h) {
     lambda_est <- lambda
   } else {stop("Initial lambda cannot be mapped to levels of the random effect(s).")}
   lambda_est
 }
 
+.calc_clik <- function(mu,phi_est,processed) { 
+  BinomialDen <- processed$BinomialDen
+  loglfn.fix <- processed$loglfn.fix
+  y <- processed$y
+  family <- processed$family
+  theta <- theta.mu.canonical(mu/BinomialDen,family)  
+  if (family$family=="binomial") {
+    clik <- sum(loglfn.fix(theta,y/BinomialDen,BinomialDen,1/(phi_est))) ## freq a revoir
+  } else {
+    phi_est[phi_est<1e-12] <- 1e-10 ## 2014/09/04 local correction, has to be finer than any test for convergence 
+    ## creates upper bias on clik but should be more than compensated by the lad
+    ## correcting the lad makes an overall upper bias for small (y-theta) at "constant" corrected phi 
+    ## this can be compensated by correcting the lad LESS.
+    clik <- sum(loglfn.fix(theta,y,eval(processed$prior.weights)/phi_est)) ## note (prior) weights meaningful only for gauss/ Gamma 
+    clik
+  }
+}
 
 eval_gain_LevM_GLM <- function(LevenbergMstep_result,family, X.pv ,coefold,clikold,phi_est,processed, offset) {  
   dbeta <- LevenbergMstep_result$dbetaV
   beta <- coefold + dbeta
   eta <- drop(X.pv %*% beta) + offset
-  if (family$link=="log") {eta <- pmin(eta,30)} ## cf similar code in muetafn
+  if (family$link=="log") {eta[eta>30] <-30} ## cf similar code in muetafn
   if (family$link=="inverse" && family$family=="Gamma") {
-    eta <- pmax(eta,sqrt(.Machine$double.eps)) ## eta must be > 0
+    etamin <- sqrt(.Machine$double.eps)
+    eta[eta<etamin] <- etamin ## eta must be > 0
   } ## cf similar code in muetafn
   mu <- family$linkinv(eta)
-  clik <- calc_clik(mu=mu, phi_est=phi_est,processed=processed) 
+  clik <- .calc_clik(mu=mu, phi_est=phi_est,processed=processed) 
   if (is.infinite(clik) || is.na(clik)) {  
     gainratio <- -1
   } else {
@@ -47,29 +89,30 @@ calc_etaGLMblob <- function(processed,
     stop.on.error <- processed$stop.on.error
     damping <- 1e-7 ## as suggested by Madsen-Nielsen-Tingleff... # Smyth uses abs(mean(diag(XtWX)))/nvars
     dampingfactor <- 2
-    newclik <- calc_clik(mu=mu,phi_est=phi_est,processed=processed) ## handles the prior.weights from processed
+    newclik <- .calc_clik(mu=mu,phi_est=phi_est,processed=processed) ## handles the prior.weights from processed
     for (innerj in seq_len(maxit.mean)) {
       ## breaks when conv.threshold is reached
       clik <- newclik
       z1 <- eta+(y-mu)/muetablob$dmudeta-off ## LeeNP 182 bas. GLM-adjusted response variable; O(n)*O(1/n)
       ## simple QR solve with LevM fallback
       old_beta_eta <- beta_eta
-      tXinvS <- sweep(t(X.pv),2L,w.resid,`*`) # calc_tXinvS(Sig,X.pv,stop.on.error) with Sig <- Diagonal(x=1/w.resid) 
+      tXinvS <- sweep(t(X.pv),2L,w.resid,`*`)  
       rhs <-  tXinvS %*% z1
       qr.XtinvSX <- QRwrap(tXinvS%*%X.pv,useEigen=FALSE) ## Cholwrap tested  ## pas sur que FALSE gagne du temps
       beta_eta <- solveWrap.vector( qr.XtinvSX , rhs ,stop.on.error=stop.on.error)
       # # PROBLEM is that NaN/Inf test does not catch all divergence cases so we need this :
       eta <- off + drop(X.pv %*% beta_eta) ## updated at each inner iteration
       muetablob <- muetafn(eta=eta,BinomialDen=BinomialDen,processed=processed) 
-      newclik <- calc_clik(mu=muetablob$mu, phi_est=phi_est,processed=processed) 
+      newclik <- .calc_clik(mu=muetablob$mu, phi_est=phi_est,processed=processed) 
       if (newclik < clik-1e-5 || anyNA(beta_eta) || any(is.infinite(beta_eta))) { 
         ## more robust LevM
         sqrt.ww <- sqrt(w.resid)
         wX <- calc_wAugX(augX=X.pv,sqrt.ww=sqrt.ww)
         LM_wz <- z1*sqrt.ww - (wX %*% old_beta_eta)
         while(TRUE) { 
-          LevenbergMstep_result <- 
-            LevenbergMstepCallingCpp(wAugX=wX,LM_wAugz=LM_wz,damping=damping) 
+          if (inherits(wX,"Matrix")) {
+            LevenbergMstep_result <- LevenbergMsolve_Matrix(wAugX=wX,LM_wAugz=LM_wz,damping=damping)
+          } else LevenbergMstep_result <- LevenbergMstepCallingCpp(wAugX=wX,LM_wAugz=LM_wz,damping=damping) 
           levMblob <- eval_gain_LevM_GLM(LevenbergMstep_result=LevenbergMstep_result,
                                          X.pv=X.pv, clikold=clik, family=family,
                                          coefold=old_beta_eta,
@@ -106,3 +149,4 @@ calc_etaGLMblob <- function(processed,
     names(beta_eta) <- colnames(X.pv)
     return(list(eta=eta, muetablob=muetablob, beta_eta=beta_eta, w.resid=w.resid, innerj=innerj))
   }
+

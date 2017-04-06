@@ -11,8 +11,8 @@
   in which cases more robust methods (\code{eigen} or \code{svd}) are used. Matrix roots are not unique (for example, they are lower triangular for \code{t(chol(.))}, and symmetric for \code{svd(.)}. As matrix roots are used to simulate samples under the fitted model (in particular in the parametric bootstrap implemented in \code{fixedLRT}), this implies that for given seed of random numbers, these samples will differ with these different methods (although their distribution should be identical). 
 }
 \usage{
-designL.from.Corr(m, symSVD=NULL, try.chol=TRUE, try.eigen=FALSE, threshold=1e-06, 
-                  debug=FALSE, SVDfix=1/10)
+designL.from.Corr(m = NULL, symSVD = NULL, try.chol = TRUE, try.eigen = FALSE, 
+                  threshold = 1e-06, SVDfix = 1/10)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -33,9 +33,6 @@ designL.from.Corr(m, symSVD=NULL, try.chol=TRUE, try.eigen=FALSE, threshold=1e-0
 }
   \item{threshold}{ 
   A correction threshold for low eigenvalues is the case and eigensystem or singular-value decomposition are used.
-}
-  \item{debug}{ 
-  Not documented, only for development purposes.
 }
   \item{SVDfix}{ 
   A solution to failures of \code{svd}: see Details.
@@ -58,7 +55,7 @@ designL.from.Corr(m, symSVD=NULL, try.chol=TRUE, try.eigen=FALSE, threshold=1e-0
 ## through the '...' argument of higher-level functions
 ## such as HLCor, corrHLfit, fixedLRT:
 data(scotlip)
-HLCor(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(scotlip$expec)),
+HLCor(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(expec)),
       ranPars=list(rho=0.174),adjMatrix=Nmatrix,family=poisson(),
       data=scotlip,try.chol=FALSE)
 }

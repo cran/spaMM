@@ -6,7 +6,8 @@ somegrp <- cbind(blackcap,grp=sample(2,14,replace=TRUE))
 fitobject <- corrHLfit(migStatus ~ 1 +  (1|grp) +Matern(1|latitude+longitude),data=somegrp,
                        ranFix=list(nu=4,rho=0.4,phi=0.05))
 res <- get_predVar(fitobject,newdata=somegrp[1:5,])
-expect_equal(res,c("Gibraltar"=0.04458288, "CapeVerde"=0.04779076, "SouthernFrance"=0.03575583, "LaPalma"=0.02247332, "Madeira"=0.04352935),tolerance=1e-5)
+#expect_equal(res,c("Gibraltar"=0.04458288, "CapeVerde"=0.04779076, "SouthernFrance"=0.03575583, "LaPalma"=0.02247332, "Madeira"=0.04352935),tolerance=1e-5) ## only phi
+expect_equal(res,c("Gibraltar"=0.05589882, "CapeVerde"=0.05131165, "SouthernFrance"=0.06722635, "LaPalma"=0.02516891, "Madeira"=0.04629805),tolerance=1e-5)
 
 grouped <- cbind(blackcap,grp=c(rep(1,7),rep(2,7))) 
 fitobject <- corrHLfit(migStatus ~ 1 +  (1|grp) +Matern(1|latitude+longitude),

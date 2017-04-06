@@ -4,6 +4,6 @@
 #include <RcppEigen.h>
 #include <Rcpp.h>
 
-//RcppExport SEXP lmwithQ( SEXP XX, SEXP yy) ;
+extern bool printDebug;
 
 #endif

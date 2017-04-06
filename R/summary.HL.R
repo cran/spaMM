@@ -34,7 +34,8 @@ legend_lambda<- function(object) {
            "log[ lambda = var(u) ]" ## gaussian, or gamma with u ~ Gamma(lambda,1/lambda)
     )
   })
-  if ("adjd" %in% names(object$lambda.object$coefficients_lambda)) {
+  check_adjd <- any(unlist(lapply(object$lambda.object$coefficients_lambdaS,function(v) any(names(v)=="adjd"))))
+  if (check_adjd) {
     whichadj <- attr(attr(object$ZAlist,"ranefs"),"type") %in% c("adjacency","ar1")  
     rfl[whichadj] <- "inverse[ lambda_i =var(V'u) ]"
     rff <- rff[!whichadj]
@@ -58,7 +59,7 @@ legend_lambda<- function(object) {
 }
 
 
-MLmess <-function(object,ranef=FALSE) {
+.MLmess <-function(object,ranef=FALSE) {
   if (object$models[["eta"]]=="etaGLM") {
     return("by ML.")
   } else if (object$family$family=="gaussian" && all(attr(object$rand.families,"lcrandfamfam")=="gaussian")) { 
@@ -76,7 +77,7 @@ MLmess <-function(object,ranef=FALSE) {
   }
 }
 ## FR->FR il faudrait distinguer EQL approx of REML ?
-REMLmess <- function(object) {
+.REMLmess <- function(object) {
   ## 'object' has no 'processed' element but its processed$REMLformula was copied to 'REMLformula' element.
   ## ./. It is by default NULL if REML was used, but may be an explicit non-default formula
   ## ./. It is an explicit formula if ML was used
@@ -91,7 +92,7 @@ REMLmess <- function(object) {
     }  
   } else {
     if (identical(attr(object$REMLformula,"isML"),TRUE)) { ## FALSE also if object created by spaMM <1.9.15 
-      resu <- (MLmess(object, ranef=TRUE))
+      resu <- (.MLmess(object, ranef=TRUE))
     } else { ## if nontrivial REML formula was used...
       resu <- ("by non-standard REML")
       attr(resu,"fixeformFromREMLform") <- nobarsMM(object$REMLformula)
@@ -110,7 +111,7 @@ summary.HLfitlist <- function(object, ...) {
 }
 
 
-`summary.HLfit` <- function(object, ...) {
+`summary.HLfit` <- function(object, details=FALSE,...) {
   models <- object$models
   phi.object <- object$phi.object
   famfam <- object$family$family ## response !
@@ -128,8 +129,8 @@ summary.HLfitlist <- function(object, ...) {
   #  HLchar <- paste(as.character(object$HL),collapse="")
   #  cat(paste("[code: ",HLchar,"]"," method: ",sep=""))
   messlist <- list()
-  if (length(object$fixef)>0) messlist[["fixed"]] <- MLmess(object)
-  messlist[["ranef"]] <- REMLmess(object)
+  if (length(object$fixef)>0) messlist[["fixed"]] <- .MLmess(object)
+  messlist[["ranef"]] <- .REMLmess(object)
   summ$formula <- object$formula
   summ$REMLformula <- object$REMLformula
   ## Distinguishing iterative algo within HLfit and numerical maximization outside HLfit 
@@ -173,14 +174,20 @@ summary.HLfitlist <- function(object, ...) {
   if (lenOpt > 1) optimEsts <- paste(c(paste(optimEsts[-lenOpt],collapse=", "),optimEsts[lenOpt]),collapse=" and ")
   if (lenOpt > 0) { 
     objective <- attr(object,"optimInfo")$objective  
-    if(is.null(objective)) stop("attr(object,'optimInfo')$objective is missing: malformed object.")
-    objString <- switch(objective,
-                        p_bv= "'outer' REML, maximizing p_bv",
-                        p_v= "'outer' ML, maximizing p_v",
-                        paste("'outer' maximization of",objString)
-    )
-    outst <- paste("Estimation of ",optimEsts," by ",objString,".\n",sep="")
-    cat(outst) 
+    if(is.null(objective)) {
+      #stop("attr(object,'optimInfo')$objective is missing: malformed object.")
+      ## may happen when one refits an HLCorcall =>
+      ## optimEsts ultimately deduced by its $processed$ranPars as in the original fit,
+      ## but no optimInfo in the refit.
+    } else {
+      objString <- switch(objective,
+                          p_bv= "'outer' REML, maximizing p_bv",
+                          p_v= "'outer' ML, maximizing p_v",
+                          paste("'outer' maximization of",objString)
+      )
+      outst <- paste("Estimation of ",optimEsts," by ",objString,".\n",sep="")
+      cat(outst) 
+    }
   }
   if ( ! is.null(withArgs <- attr(famfam,"withArgs"))) {
     withArgs <- eval(withArgs,envir=environment(object$family$aic))
@@ -229,41 +236,52 @@ summary.HLfitlist <- function(object, ...) {
     }
     lambda.object <- object$lambda.object
     namesTerms <- lambda.object$namesTerms ## list of vectors of variable length
+    print_lambda <- unlist(lambda.object$lambda)
     type <- lambda.object$type
     if (any(object$models[["lambda"]] == "lamHGLM")) { 
       stop("voir ici dans summary.HLfit")
-    } else if ( ! is.null(coefficients_lambda <- lambda.object$coefficients_lambda)) {
+    } else if ( ! is.null(linklam_coeff_list <- lambda.object$coefficients_lambdaS)) {
       # first construct a table including NA's for some coeeficients (not "inner" estimated), then remove these rows
       repGroupNames <- unlist(lapply(seq_len(length(namesTerms)),function(it) {
         names(namesTerms[[it]]) <- rep(names(namesTerms)[it],length(namesTerms[[it]]))
       })) ## makes group identifiers unique (names of coeffs are unchanged)
       lambda_table <- data.frame(Group=repGroupNames,Term=unlist(namesTerms),
-                                 Estimate=coefficients_lambda,
+                                 Estimate=unlist(linklam_coeff_list),
                                  "Cond.SE"=lambda.object$lambda_se)
+      is_info <- ! is.na(lambda_table$Estimate) ## must be evaluated before the cov.mats block sets more NAs
+      nrand <- length(namesTerms)
+      nrows <- unlist(lapply(namesTerms,length))
+      cum_nrows <- cumsum(c(0,nrows))
+      names(cum_nrows) <- NULL
+      row_map <- lapply(nrows,seq)
+      for (it in seq_len(length(row_map))) row_map[[it]] <- row_map[[it]]+cum_nrows[it]
       cov.mats <- object$cov.mats
       if ( ! is.null(cov.mats)) {
-        nrand <- length(namesTerms)
-        nrows <- unlist(lapply(namesTerms,length))
-        cum_nrows <- cumsum(c(0,nrows))
-        maxnrow <- cum_nrows[nrand+1] ## should be nrow(lambda_table)
-        blob <- data.frame(matrix("",ncol=max(nrows-1),nrow=maxnrow),stringsAsFactors=FALSE)
+        maxnrow <- cum_nrows[nrand+1] ## maxnrow should = nrow(lambda_table)
+        corr_cols <- data.frame(matrix("",ncol=max(nrows-1),nrow=maxnrow),stringsAsFactors=FALSE)
         variances <- data.frame(matrix("",ncol=1,nrow=maxnrow),stringsAsFactors=FALSE)
-        for (mt in length(cov.mats)) { ## assumes cov.mats for all effects
+        for (mt in seq_len(length(cov.mats))) { ## assumes cov.mats for all effects
           m <- cov.mats[[mt]]
-          variances[(cum_nrows[mt]+1):cum_nrows[mt+1],1] <- paste(signif(lambdas <- diag(m),4))
-          covtocorr <- diag(1/sqrt(lambdas))
-          m <- covtocorr %*% m %*% covtocorr
-          for (it in (2:nrow(m))) {
-            for (jt in (1:(it-1))) {
-              blob[cum_nrows[mt]+it,jt] <- paste(signif(m[it,jt],4))
+          if ( ! is.null(m)) {
+            inrows <-  cum_nrows[mt]+(1:nrow(m))
+            variances[inrows,1] <- paste(signif(lambdas <- diag(m),4))
+            covtocorr <- diag(1/sqrt(lambdas))
+            m <- covtocorr %*% m %*% covtocorr
+            for (it in (2:nrow(m))) {
+              for (jt in (1:(it-1))) {
+                corr_cols[cum_nrows[mt]+it,jt] <- paste(signif(m[it,jt],4))
+              }
             }
           }
         }
-        colnames(blob) <- rep("Corr.",ncol(blob))
+        colnames(corr_cols) <- rep("Corr.",ncol(corr_cols))
         colnames(variances) <- "Var."
-        lambda_table <- cbind(lambda_table,variances,blob)
-      }
-      lambda_table <- lambda_table[!is.na(lambda_table$Estimate),]
+        lambda_table <- cbind(lambda_table,variances,corr_cols)
+        random_slope_pos <- which( ! unlist(lapply(cov.mats,is.null)))
+        random_slope_rows <- unlist(row_map[ random_slope_pos ])
+        if ( ! details) lambda_table[(random_slope_rows),3:4] <- NA 
+      } else random_slope_pos <- integer(0)
+      lambda_table <- lambda_table[ is_info,]
       summ$lambda_table <- lambda_table
       legend_lambda(object)
       print(lambda_table,digits=4,row.names=FALSE)
@@ -278,7 +296,7 @@ summary.HLfitlist <- function(object, ...) {
       #   }
       # } 
       innerlambda_pos <- which(type=="inner")
-      linklam <- lambda.object$coefficients_lambda
+      linklam <- unlist(linklam_coeff_list)
       ncoeffs <- attr(object$ZAlist,"Xi_cols") ## RHS = 2 for random slope, else 1
       for (it in seq_len(length(namesTerms))) if ("adjd" %in% namesTerms[[it]]) ncoeffs[it] <- 2
       cum_ncoeffs <- c(0,cumsum(ncoeffs))
@@ -293,20 +311,28 @@ summary.HLfitlist <- function(object, ...) {
           innerlambda_pos <- setdiff(innerlambda_pos,it) ## remove from  generic innerlambda_pos printing below
         } 
       }
-      if (length(innerlambda_pos)>0L) cat(paste("Estimate of lambda (",
-                                                names(namesTerms)[innerlambda_pos],"): ", 
-                                                signif(lambda.object$lambda[innerlambda_pos],4)
-                                                ,collapse="\n"),"\n")
+      if (length(innerlambda_pos)>0L) {
+        if (details) {
+          displaypos <- innerlambda_pos
+        } else displaypos <- setdiff(innerlambda_pos, random_slope_pos)
+        displayrows <- unlist(row_map[displaypos])
+        if ( ! is.null(displayrows)) {
+          cat(paste("Estimate of lambda (",
+                    names(displayrows),"): ", 
+                    signif(print_lambda[displayrows],4)
+                    ,collapse="\n"),"\n")
+        }
+      }
     } 
     outerlambda_pos <- which(type=="outer")
     if (length(outerlambda_pos)>0L) cat(paste("Outer estimate of lambda (",
                                               names(namesTerms)[outerlambda_pos],"): ", 
-                                              signif(lambda.object$lambda[outerlambda_pos],4)
+                                              signif(print_lambda[outerlambda_pos],4)
                                               ,collapse="\n"),"\n")
     fixedlambda_pos <- which(type=="fix")
     if (length(fixedlambda_pos)>0L) cat(paste("Fixed lambda value (",
                                               names(namesTerms)[fixedlambda_pos],"): ", 
-                                              signif(lambda.object$lambda[fixedlambda_pos],4),
+                                              signif(print_lambda[fixedlambda_pos],4),
                                               collapse="\n"),"\n")
     cat(paste("# of obs: ",nrow(object$data),"; # of groups: ",
               paste(names(namesTerms),", ",unlist(lapply(object$ZAlist,ncol)),
@@ -338,7 +364,7 @@ summary.HLfitlist <- function(object, ...) {
         cat("Random effects in residual dispersion model:\n  use summary(<fit object>$resid_fit) to display results.\n")       
       } else if ((loc_p_phi <- length(phi.object$fixef))>0L) {
         glm_phi <- phi.object[["glm_phi"]]
-        if (is.null(glm_phi)) glm_phi <- phi.object$get_glm_phi(object)
+        if (is.null(glm_phi)) glm_phi <- .get_glm_phi(object)
         phi_se <- summary(glm_phi,dispersion=1)$coefficients[(loc_p_phi+1L):(2L*loc_p_phi)]
         ## note dispersion set to 1 to match SmythHV's 'V_1' method, which for a log link has steps:
         #SmythHVsigd <- as.vector(sqrt(2)*phi_est);SmythHVG <- as.vector(phi_est); tmp <- SmythHVG / SmythHVsigd 
@@ -385,13 +411,28 @@ summary.HLfitlist <- function(object, ...) {
       }                                                 
     }
   } ## else binomial or poisson, no dispersion param
-  if ( models[["eta"]]=="etaHGLM") {
-    if (object$HL[1]==0L) {
-      likelihoods <- c("       h-likelihood:"=object$APHLs$hlik,"p_v(h) (marginal L):"=object$APHLs$p_v,"  p_beta,v(h) (ReL):"=object$APHLs$p_bv)
-    } else likelihoods <- c("p_v(h) (marginal L):"=object$APHLs$p_v,"  p_beta,v(h) (ReL):"=object$APHLs$p_bv)
-  } else {
-    likelihoods <- c("p(h)   (Likelihood):"=object$APHLs$p_v,"  p_beta(h)   (ReL):"=object$APHLs$p_bv)
-  }
+  if (object$HL[1]==0L) { 
+    validnames <- intersect(names(object$APHLs),c("hlik","p_v","p_bv"))
+  } else validnames <- intersect(names(object$APHLs),c("p_v","p_bv"))
+  if (length(validnames)) { ## may be 0 in SEM...
+    likelihoods <- unlist(object$APHLs[validnames]) # NULL if no validnames
+    if ( models[["eta"]]=="etaHGLM"){
+      APHLlegend <- c(hlik="       h-likelihood:",
+                      p_v="p_v(h) (marginal L):",
+                      p_bv="  p_beta,v(h) (ReL):")
+    } else APHLlegend <- c(p_v="p(h)   (Likelihood):",
+                           p_bv="  p_beta(h)   (ReL):")
+    names(likelihoods) <- APHLlegend[validnames]
+    if ( is.null(object$distinctX.Re)) {
+      ## standard REML 
+    } else {
+      whichp_bv <- which(validnames=="p_bv")
+      if (ncol(object$distinctX.Re)==0L) {
+        likelihoods <- likelihoods[-whichp_bv] ## ML 
+      } else names(likelihoods)[whichp_bv] <- "Non-standard 'ReL':"
+    }
+  } else likelihoods <- numeric(0)
+  # messlist[["ranef"]]
   logLapp <- object$APHLs$logLapp
   if (!is.null(logLapp)) {
     locli <- list(logLapp[1]) ## [1] removes attribute

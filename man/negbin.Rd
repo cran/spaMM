@@ -34,7 +34,7 @@ Venables, W. N. and Ripley, B. D. (2002) Modern Applied Statistics with S-PLUS. 
 \examples{
 ## Fitting negative binomial model with estimated scale parameter:
 data(scotlip)
-fitme(cases~I(prop.ag/10)+offset(log(scotlip$expec)),family=negbin(), data=scotlip)
+fitme(cases~I(prop.ag/10)+offset(log(expec)),family=negbin(), data=scotlip)
 }
 \keyword{models}
 \keyword{regression}

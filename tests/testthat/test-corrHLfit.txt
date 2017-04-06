@@ -18,6 +18,6 @@ expect_equal(pv,0.008070489,tolerance=1e-5)
 nullfit <- corrHLfit(migStatus ~ 1 + Matern(1|latitude+longitude),data=blackcap,
                      HLmethod="ML",control.dist=list(dist.method="Geodesic")) ## takes ~ 3s
 p1 <- predict(nullfit)[1]
-expect_equal(p1,0.9311825,tolerance=1e-5)
+expect_equal(p1,0.9311825,tolerance=1e-5) ## this tests an incorrect value. Wea re in a.txt file... 
 p2 <- predict(nullfit,newdata=blackcap)[1]
 expect_equal(p2,0.9311825,tolerance=1e-5)

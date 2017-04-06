@@ -15,7 +15,7 @@
             "#FF0000", "#EF0000", "#DF0000", "#CF0000", "#BF0000", 
             "#AF0000", "#9F0000", "#8F0000", "#800000")
   orig[1:20] <- topo.colors(64)[1:20]
-  if ( ! is.null(adjustcolor_args)) orig <- do.call("adjustcolor",
+  if ( ! is.null(adjustcolor_args)) orig <- do.call("grDevices::adjustcolor",
                                                     c(list(col=orig),adjustcolor_args))
   if (n == 64 && redshift == 1) 
     return(orig)

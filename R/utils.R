@@ -1,6 +1,6 @@
 # ~ try() but catches warnings : 
-##' Catch *and* save both errors and warnings, and in the case of
-##' a warning, also keep the computed result.
+## Catch *and* save both errors and warnings, and in the case of
+## a warning, also keep the computed result.
 tryCatch.W.E <- function(expr) {
   W <- NULL
   w.handler <- function(w){ # warning handler
@@ -12,10 +12,10 @@ tryCatch.W.E <- function(expr) {
        warning = W)
 }
 
+.minimalErrorHandler <- function(cond) invisible(structure("See 'condition' attribute", class = "try-error", condition = cond))
+
 ## meeting the width.cutoff in deparse :-(
-DEPARSE <- function(expr) {
-  paste(deparse(expr),collapse="")
-}
+.DEPARSE <- function(expr) { paste(deparse(expr),collapse="") }
 
 overcat <- function(msg, prevmsglength) {
   msglength <- nchar(msg)

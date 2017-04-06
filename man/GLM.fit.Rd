@@ -8,7 +8,7 @@
 \title{Fitting generalized linear models without initial-value or divergence headaches}
 \description{
 \code{spaMM_glm.fit} is a stand-in replacement for \code{glm.fit}, which can be called through \code{glm} by using
-\code{glm(<>, method="spaMM_glm.fit")}. Input and output structure are exactly as for \code{glm.fit}. It uses a Levenberg-Marquardt to prevent divergence of estimates. If the rcdd package is installed, the function can automatically find valid starting values or else indicate that no parameter value is feasible.
+\code{glm(<>, method="spaMM_glm.fit")}. Input and output structure are exactly as for \code{glm.fit}. It uses a Levenberg-Marquardt algorithm to prevent divergence of estimates. If the rcdd package is installed, the function can automatically find valid starting values or else indicate that no parameter value is feasible.
 \code{spaMM_glm} is a convenient wrapper, calling \code{glm} with default method \code{glm.fit}, then calling method \code{spaMM_glm.fit} if \code{glm.fit} failed.
 }
 \usage{

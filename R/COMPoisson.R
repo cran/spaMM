@@ -5,7 +5,10 @@ COMP_maxn <- function(lambda,nu) {
   opt_maxn <- spaMM.getOption("COMP_maxn")
   if (res>opt_maxn) {
     res <- opt_maxn
-    warning(paste("maxn truncated to",res,"for (lambda,nu)=",lambda,nu))
+    if ( ! identical(spaMM.getOption("COMP_maxn_warned"),TRUE)) {
+      warning(paste("maxn truncated to",res,"for (lambda,nu)=",lambda,nu,"and possibly other values."))
+      spaMM.options(COMP_maxn_warned=TRUE)
+    }
   }
   res
 }
@@ -151,6 +154,7 @@ dCOMP <- function(x, mu, nu,
 COMPoisson <- function (nu = stop("COMPoisson's 'nu' must be specified"), 
                         link = "loglambda" # eta <-> mu link, not the eta <-> lambda log link
                         ) {
+  mc <- match.call()
   linktemp <- substitute(link)
   if (!is.character(linktemp)) 
     linktemp <- deparse(linktemp)
@@ -175,9 +179,9 @@ COMPoisson <- function (nu = stop("COMPoisson's 'nu' must be specified"),
       mus <- lambda/(1-lambda) 
     } else {
       locfn <- function(lambda) {
-        num <- COMP_Z_n(lambda=lambda,nu=nu)
-        denum <- COMP_Z(lambda=lambda,nu=nu)
-        mu <- COMP_Z_ratio(num,denum)
+        num <- spaMM::COMP_Z_n(lambda=lambda,nu=nu)
+        denum <- spaMM::COMP_Z(lambda=lambda,nu=nu)
+        mu <- spaMM::COMP_Z_ratio(num,denum)
         if ( ! is.finite(mu) && lambda>10^nu) { ## FR->FR heuristic
           mu <- lambda^(1/nu)-(nu-1)/(2*nu)
         }  
@@ -206,7 +210,10 @@ COMPoisson <- function (nu = stop("COMPoisson's 'nu' must be specified"),
           # last one for low lambda,nu values
           fupper <- objfn(lambdamax)  ## normally >0 
           if (is.nan(fupper) || fupper<0) {
-            warning(paste("Trying geometric approximation in COMPoisson(nu=",nu,")$linkfun(mu=",mu,")..."))
+            if ( ! identical(spaMM.getOption("COMP_geom_approx_warned"),TRUE)) {
+              warning(paste("Geometric approximation tried in COMPoisson(nu=",nu,") for mu=",mu," and possibly for other nu,mu values"))
+              spaMM.options(COMP_geom_approx_warned=TRUE)
+            }
             lambda <- mu/(1+mu) 
           } else {
             flower <- objfn(lambdamin) ## normally <0 
@@ -228,10 +235,10 @@ COMPoisson <- function (nu = stop("COMPoisson's 'nu' must be specified"),
     } else {
       lambdas <- linkfun(mu,log=FALSE)
       En <- sapply(lambdas,function(lambda) {
-        COMP_Z_ratio(COMP_Z_n(lambda=lambda,nu=nu),COMP_Z(lambda=lambda,nu=nu))
+        spaMM::COMP_Z_ratio(spaMM::COMP_Z_n(lambda=lambda,nu=nu),COMP_Z(lambda=lambda,nu=nu))
       }) 
       En2 <- sapply(lambdas,function(lambda) {
-        COMP_Z_ratio(COMP_Z_n2(lambda=lambda,nu=nu),COMP_Z(lambda=lambda,nu=nu)) 
+        spaMM::COMP_Z_ratio(spaMM::COMP_Z_n2(lambda=lambda,nu=nu),COMP_Z(lambda=lambda,nu=nu)) 
       })
       resu <- pmax(En2-En^2,1e-8) ## pmax otherwise for low mu, Vmu=0, -> ... -> w.resid=0
       ## for geom V(mu) = mu(1+mu) but this cannot be a lower bound for resu.
@@ -244,11 +251,11 @@ COMPoisson <- function (nu = stop("COMPoisson's 'nu' must be specified"),
     if (nu==0) {
       resu <- lambda/(1-lambda)^2
     } else resu <- sapply(lambda, function(lambda) {
-      compz <- COMP_Z(lambda=lambda,nu=nu)
-      compzn <- COMP_Z_n(lambda=lambda,nu=nu)
-      compzn2 <- COMP_Z_n2(lambda=lambda,nu=nu)
-      rn2 <- COMP_Z_ratio(compzn2,compz)
-      rn <- COMP_Z_ratio(compzn,compz) ## mu
+      compz <- spaMM::COMP_Z(lambda=lambda,nu=nu)
+      compzn <- spaMM::COMP_Z_n(lambda=lambda,nu=nu)
+      compzn2 <- spaMM::COMP_Z_n2(lambda=lambda,nu=nu)
+      rn2 <- spaMM::COMP_Z_ratio(compzn2,compz)
+      rn <- spaMM::COMP_Z_ratio(compzn,compz) ## mu
       res <- rn2 - rn^2 # (compz*compzn2-compzn^2)/(compz^2)
       # dmu/deta=(dmu/dlam) (dlam/deta) = lam dmu/dlam = lam (compz*compzn2-compzn^2)/(lam compz^2) = resu
       # b/c mu = compzn/compz, d compz/ dlam = compzn/lam, d compzn/ dlam = compzn2/lam
@@ -262,7 +269,7 @@ COMPoisson <- function (nu = stop("COMPoisson's 'nu' must be specified"),
     n <- length(y)
     if (length(mu)==1L) lambdas <- rep(lambdas,n)
     calc_dev <- function(yi,lambdai) {
-      Z2 <- COMP_Z(lambda=lambdai,nu=nu)
+      Z2 <- spaMM::COMP_Z(lambda=lambdai,nu=nu)
       if (yi==0) { # lambda = 0,  Z1 = 1
         dev <- 2*(Z2[["logScaleFac"]]+log(Z2[["scaled"]]))
       } else {
@@ -281,7 +288,7 @@ COMPoisson <- function (nu = stop("COMPoisson's 'nu' must be specified"),
           interval <- c(lambdamin,lambdamax)
           lambda <- uniroot(objfn,interval=interval)$root
         }
-        Z1 <- COMP_Z(lambda=lambda,nu=nu)
+        Z1 <- spaMM::COMP_Z(lambda=lambda,nu=nu)
         #
         dev <- 2*(yi*log(lambda/lambdai)-(Z1[["logScaleFac"]]-Z2[["logScaleFac"]]+log(Z1[["scaled"]]/Z2[["scaled"]])))
       }
@@ -295,7 +302,7 @@ COMPoisson <- function (nu = stop("COMPoisson's 'nu' must be specified"),
   }
   aic <- function(y, n, mu, wt, dev) {
     aici <- sapply(seq(length(y)),function(i){
-      dCOMP(y[i], mu[i], nu=nu, log = TRUE)
+      spaMM::dCOMP(y[i], mu[i], nu=nu, log = TRUE)
     })
     -2 * sum(aici * wt)
   }
@@ -311,6 +318,8 @@ COMPoisson <- function (nu = stop("COMPoisson's 'nu' must be specified"),
     ftd <- fitted(object)
     rpois(nsim * length(ftd), ftd)
   }
+  ## changes the parent.env of all functions: 
+  parent.env(environment(aic)) <- environment(stats::poisson)
   structure(list(family = structure("COMPoisson",
                                     withArgs=quote(paste("COMPoisson(nu=",signif(nu,4),")",sep=""))), 
                  link = linktemp, linkfun = linkfun, 

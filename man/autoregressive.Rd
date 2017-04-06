@@ -26,12 +26,16 @@ LeSage, J., Pace, R.K. (2009) Introduction to Spatial Econometrics. Chapman & Ha
 \examples{
 data(scotlip)
 # CAR by Laplace with 'outer' estimation of rho
-if (spaMM.getOption("example_maxtime")>5) {          
-  corrHLfit(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(scotlip$expec)),
-          adjMatrix=Nmatrix,family=poisson(),data=scotlip,HLmethod="ML") ## ~ 5 s.
+if (spaMM.getOption("example_maxtime")>2.2) {          
+  corrHLfit(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(expec)),
+          adjMatrix=Nmatrix,family=poisson(),data=scotlip,HLmethod="ML") 
+}
+if (spaMM.getOption("example_maxtime")>1.6) {          
+  fitme(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(expec)),
+          adjMatrix=Nmatrix,family=poisson(),data=scotlip) 
 }
 
 # CAR by Laplace with 'inner' estimation of rho
-HLCor(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(scotlip$expec)),
-          adjMatrix=Nmatrix,family=poisson(),data=scotlip,HLmethod="ML") ## < 1 s.
+HLCor(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(expec)),
+          adjMatrix=Nmatrix,family=poisson(),data=scotlip,HLmethod="ML")
 }

@@ -16,7 +16,7 @@ ULI <- function(...) {  ## Unique Location Index; '...' are simply names of vari
 ### Utilities for parsing the mixed model formula
 ## Functions more of less distantly derived from lme4 version of findbars
 
-##' Determine random-effects expressions from a formula
+## Determine random-effects expressions from a formula
 
 # different ! :
 # findbars(~ 1 + (1|batch/cask))
@@ -197,7 +197,7 @@ parseBars <- function (term) { ## derived from findbars, ... return strings
   if (!is.call(term)) 
     stop("term must be of class call")
   if (term[[1]] == as.name("|")) { ## i.e.  .|. expression
-    term <- spMMexpandSlash(term) ## 06/2015
+    term <- .spMMexpandSlash(term) ## 06/2015
     bT <- paste("(",c(term),")")
     attr(bT,"type") <- rep("(.|.)",length(bT)) ## Random-slope models are not best identified here [(X2-1|block) is not randomslope].
     return(bT)
@@ -240,7 +240,7 @@ findOffset <- function (term) { ## derived from findbars
 
 
 asStandardFormula <- function(formula) {
-  aschar <- DEPARSE(formula)
+  aschar <- .DEPARSE(formula)
   aschar <- gsub("adjacency(","(",aschar,fixed=T)
   aschar <- gsub("Matern(","(",aschar,fixed=T)
   aschar <- gsub("AR1(","(",aschar,fixed=T)
@@ -260,7 +260,13 @@ getValidData <- function(formula,resid.formula=NULL,data,
   if (!is.null(resid.formula)) {
     resid.formula <- asStandardFormula(resid.formula) ## removes spatial tags
     frame.resid.form <- subbarsMM(resid.formula) ## this comes from lme4 and converts (...|...) terms to some "+" form
-    frame.form <- paste(DEPARSE(frame.form),"+",DEPARSE(frame.resid.form[[2]]))
+    frame.form <- paste(.DEPARSE(frame.form),"+",.DEPARSE(frame.resid.form[[2]]))
+  }
+  check <- grep('$',frame.form,fixed=TRUE)
+  if (length(check)) {
+    warning("'$' detected in formula: unnecessary and best avoided. 
+            One never needs to specify the 'data' in the 'formula'. 
+            See help('good-practice') for explanations.")
   }
   frame.form <- as.formula(frame.form)
   environment(frame.form) <- envform
@@ -314,28 +320,31 @@ HLframes <- function (formula, data,fitobject=NULL) {
   if (inherits(fixef.form, "formula")) {
     if ( ! is.null(fitobject)) { ## call for prediction
       fixef_terms <- fitobject$fixef_terms
-      if (is.null(fixef_terms)) { 
+      not_any_fixed_effect <- (is.null(fixef_terms) ## y ~ (1 | grp)
+                               || fixef_terms[[length(fixef_terms)]]==0) ## y ~0+ (1|grp)
+      if (not_any_fixed_effect) { 
         X <- matrix(nrow=nrow(mf),ncol=0L) ## model without fixed effects, not even an Intercept 
-      } else if (!is.empty.model(fixef_terms)) {
+      } else {
         Terms <- delete.response(fixef_terms)
         fixef_mf <- model.frame(Terms, data, xlev = fitobject$fixef_levels) ## xlev gives info about the original levels
         X <- model.matrix(Terms, fixef_mf, contrasts.arg=attr(fitobject$X.pv,"contrasts")) ## contrasts.arg not immed useful, maybe later.
-      } else {
-        mess <- pastefrom("no variables identified. Check model formula.",prefix="(!) From ")
-        stop(mess)
       }
     } else {
       fe$formula <- fixef.form
       fe <- eval(fe)
       fixef_terms <- attr(fe, "terms")
-      if (fixef_terms[[length(fixef_terms)]]==0) { 
-        X <- matrix(nrow=nrow(mf),ncol=0L) ## model without fixed effects, not even an Intercept 
-      } else if (!is.empty.model(fixef_terms)) {
-        X <- model.matrix(fixef_terms, mf, contrasts) ## contrasts is a function from the stats package
-      } else {
-        mess <- pastefrom("no variables identified. Check model formula.",prefix="(!) From ")
-        stop(mess)
+      if (is.null(fixef_terms)) {
+        message("Note: formula without explicit fixed effects is interpreted
+                 as formula without fixed effects (i.e., ~ 0 + (random effects).
+                 Use ~ 1 + (random effect) rather than ~ (random effect) to include an Intercept.")
       }
+      not_any_fixed_effect <- (is.null(fixef_terms) ## y ~ (1 | grp)
+                               || fixef_terms[[length(fixef_terms)]]==0) ## y ~0+ (1|grp)
+      if (not_any_fixed_effect) { 
+        X <- matrix(nrow=nrow(mf),ncol=0L) ## model without fixed effects, not even an Intercept 
+      } else {
+        X <- model.matrix(fixef_terms, mf, contrasts) ## contrasts is a function from the stats package
+      } 
       fixef_levels <- .getXlevels(fixef_terms, fe) ## added 2015/12/09 useful for predict
     }
   } else {

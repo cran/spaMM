@@ -1,22 +1,22 @@
 ## derived from lmerFactorList or so. Now see mkReTrms 
 
-spMMFactorList <- function (formula, mf, rmInt, drop) {
+.spMMFactorList <- function (formula, mf, rmInt, drop) {
   ## drop=TRUE elimine des niveaux spurious (test: fit cbind(Mate,1-Mate)~1+(1|Female/Male) ....)
   ## avec des consequences ultimes sur tailles des objets dans dispGammaGLM
-  bars <- spMMexpandSlash(findbarsMM(formula[[length(formula)]])) ## this is what expands a nested random effect
+  bars <- .spMMexpandSlash(findbarsMM(formula[[length(formula)]])) ## this is what expands a nested random effect
   if (!length(bars)) stop("No random effects terms specified in formula")
-  names(bars) <- unlist(lapply(bars, function(x) DEPARSE(x[[3]])))
+  names(bars) <- unlist(lapply(bars, function(x) .DEPARSE(x[[3]])))
   #######
   locfn <- function(x) {
     ## le bidule suivant evalue le bout de formule x[[3]] et en fait un facteur. 
     ## but fac may be any vector returned by the evaluation of x[[3]] in the envir mf
     rhs <- x[[3]]
-    txt <- DEPARSE(rhs) ## should be the rhs of (|) cleanly converted to a string by terms(formula,data) in HLframes
+    txt <- .DEPARSE(rhs) ## should be the rhs of (|) cleanly converted to a string by terms(formula,data) in HLframes
     ## converts '%in%' to ':' 
     if (length(grep("%in%",txt))>0) {
       splittxt <- strsplit(txt,"%in%")[[1]]
       rhs <- as.formula(paste("~",splittxt[1],":",splittxt[2]))[[2]]
-      txt <- DEPARSE(rhs)
+      txt <- .DEPARSE(rhs)
     }
     #    if (length(grep("\\+",txt))>0) { ## coordinates is a vector with a single string; grep is 1 if  + was found in this single string and numeric(0) otherwise
     if (! is.null(raneftype <- attr(x,"type"))){ ## Any term with a 'spatial' keyword (incl. corrMatrix); cf comment in last case

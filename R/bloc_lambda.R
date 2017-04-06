@@ -1,9 +1,11 @@
-bloc_lambda <- function(models, init.lambda, SEMblob=NULL, 
+.bloc_lambda <- function(models, #init.lambda, 
+                         SEMblob=NULL, 
                         calcRanefPars_blob=NULL, ## contains $next_lambda_est (one step ahead of the last updated lambda_est)
                         processed, lambda.Fix, cum_n_u_h, lev_lambda=NULL, next_LMatrices) {
   nrand <- length(processed$ZAlist)
   rand_to_glm_map <- integer(nrand)
   resglm_lambdaS <- list()
+  print_lambdas <- as.list(rep(NA,nrand)) ## to be _partially filled_ by this function uing available glm's
   ## je peux avoir SEM sans adjacency (SEM-Matern) et adjacency sans SEM (Poisson-adjacency)
   if (all(models[[2]]=="lamScal")) { 
     ####### includes SEM
@@ -11,12 +13,15 @@ bloc_lambda <- function(models, init.lambda, SEMblob=NULL,
       glm_lambda <- SEMblob$glm_lambda
       attr(glm_lambda,"whichrand") <- done <- 1L
       resglm_lambdaS[["SEM"]] <- glm_lambda
+      ## following syntax OK for all adjacency case or for ~1 (but not random slope)
+      print_lambdas[attr(glm_lambda,"whichrand")] <- predict(glm_lambda,newdata=data.frame("X.Intercept."=1,adjd=0),type="response")[1L] ## le [1L] en cas d'offset... 
     } else {
       ## checks whether a previous resglm was computed for adjacency model  
       glm_lambda <- calcRanefPars_blob$glm_lambda
       if ( ! is.null(glm_lambda)) { ## includes this adjacency fit
         done <- attr(glm_lambda,"whichrand") ## index according to ordering of attr(ZAlist,"ranefs")
         resglm_lambdaS[["adjacency_from_calcRanefPars_blob"]] <- glm_lambda
+        print_lambdas[attr(glm_lambda,"whichrand")] <- predict(glm_lambda,newdata=data.frame("X.Intercept."=1,adjd=0),type="response")[1L] ## le [1L] en cas d'offset... 
       } else done <- NULL
     }
     rand_to_glm_map[done] <- length(resglm_lambdaS)
@@ -57,7 +62,10 @@ bloc_lambda <- function(models, init.lambda, SEMblob=NULL,
           attr(glm_lambda,"whichrand") <- it
           glmname <- paste(it,"from_post_fit",sep="_")
           resglm_lambdaS[[glmname]] <- glm_lambda
-          rand_to_glm_map[it] <- length(resglm_lambdaS)  ## gives the position of just-added glm  
+          rand_to_glm_map[it] <- length(resglm_lambdaS)  ## gives the position of just-added glm
+          ## following syntax OK for for ~1 and for random-slope (but not adjacency)
+          # [single] <- (multiple) is not correctly interpreted
+          for (lit in attr(glm_lambda,"whichrand")) print_lambdas[[lit]] <- unique(predict(glm_lambda,type="response"))
         } ## else no glm for outer/fixed lambda
       }
     }
@@ -69,5 +77,6 @@ bloc_lambda <- function(models, init.lambda, SEMblob=NULL,
   ## now reformat all resglm's results
   process_resglm_blob <- process_resglm_list(resglm_lambdaS,nrand=nrand)
   process_resglm_blob$rand_to_glm_map <- rand_to_glm_map
+  process_resglm_blob$print_lambdas <- print_lambdas
   return(process_resglm_blob)
 } 

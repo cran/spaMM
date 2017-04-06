@@ -20,10 +20,12 @@ data(oceanmask)
 \code{seaMask} and \code{landMask} are data frames with two variables, \code{x} and \code{y} for longitude and latitude. 
 Its contents are suitable for use with \code{\link{polypath}}: they define different polygones, each separated by a row of \code{NA}s.
 
-\code{worldcountries} and \code{oceanmask} are \code{SpatialPolygonsDataFrame} objects. 
+\code{worldcountries} and \code{oceanmask} are \code{SpatialPolygonsDataFrame} objects.
+% hence require 'sp', but no (runnable) example require sp.
+% R CMD check may complain if 'sp' is not available locally for a check (but it will be available for checks on CRAN). 
 }
 \details{
-A land mask can be produced out of \code{worldcountries} by filling the countries (i.e. \code{fill="black"} in the code for \code{country.layer} in the Examples of \code{\link{raster}}).
+A land mask can be produced out of \code{worldcountries} by filling the countries (i.e. \code{fill="black"} in the code for \code{country.layer} in the Examples in \url{http://kimura.univ-montp2.fr/~rousset/spaMM/example_raster.html}.
 
 \code{worldcountries} and \code{oceanmask} were created from public domain shapefiles downloaded from \url{www.naturalearth.com} on 2015/10/21. These are suitable for plots involving geographical projections not available through \code{map}, and more generally for raster plots. Only the lowest-resolution data are included in spaMM, to minimize the size of the package archive, but higher-resolution files are available on \url{www.naturalearth.com}, from where they can be loaded as shown in the examples. \code{worldcountries} had to be edited for non-ASCII characters before inclusion in spaMM:
 \code{worldcountries@data$formal_fr} was removed and the \dQuote{Côte d'Ivoire} level of some factor variables was renamed.  
@@ -33,9 +35,9 @@ A land mask can be produced out of \code{worldcountries} by filling the countrie
 
 
 }
-\seealso{\code{\link{raster}} for uses of \code{worldcountries} and \code{oceanmask}} 
+\seealso{\url{http://kimura.univ-montp2.fr/~rousset/spaMM/example_raster.html} for uses of \code{worldcountries} and \code{oceanmask}} 
 \examples{
-if (spaMM.getOption("example_maxtime")>2.5) {
+if (spaMM.getOption("example_maxtime")>0.9) {
 
 data(seaMask)
 ## plot of predictions of behaviour for a land bird:

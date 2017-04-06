@@ -102,8 +102,7 @@ nlme::lme(fixed = migStatus ~ means, data = blackcapD, random = ~ 1 | dummy,
     method = "ML")
 
 ## Binomial GLMM
-## ~54s. on a laptop
-if (spaMM.getOption("example_maxtime")>50) {
+if (spaMM.getOption("example_maxtime")>39) {
  data(Loaloa)
  LoaloaD <-cbind(Loaloa,dummy=1) 
  MASS::glmmPQL(fixed =cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI, 

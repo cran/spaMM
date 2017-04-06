@@ -202,82 +202,6 @@ makeCheckGeoMatrices <- function(data,distMatrix=NULL,uniqueGeo=NULL,coordinates
   return(list(nbUnique=nbUnique,uniqueGeo=uniqueGeo,distMatrix=distMatrix))
 }
 
-
-
-
-alternating <-function(init.optim,LowUp,anyOptim.args,maxIter,ranPars,HLCor.args,trace,Optimizer="L-BFGS-B",optimizers.args,maxcorners) {
-  nam <- names(init.optim)
-  if (any(c("trPhi","trLambda") %in% nam )) {
-    mess <- pastefrom("Dispersion parameters non allowed in 'init.corrHLfit' with alternating algorithm.",prefix="(!) From ")
-    stop(mess)
-  }
-  initcorr <- init.optim[nam %in% c("trRho","trNu","Nugget","ARphi")]
-  HLfitLowUp <- LowUp
-  HLfitLowUp$lower[c("trRho","trNu","Nugget","ARphi")] <- NULL
-  HLfitLowUp$upper[c("trRho","trNu","Nugget","ARphi")] <- NULL
-  corrLowUp <- LowUp
-  corrLowUp$lower[c("trPhi","trLambda")] <- NULL
-  corrLowUp$upper[c("trPhi","trLambda")] <- NULL
-  anycorrOptim.args <- anyOptim.args
-  iter <- 0
-  conv <- 1
-  currentLik <- -Inf
-  while (iter < maxIter && conv > 1e-5 ) { ## if alternating: alternate HLCor and locoptim
-    ranPars[names(initcorr)] <- initcorr
-    attr(ranPars,"type")[names(initcorr)] <- "var"
-    HLCor.args$ranPars <- ranPars ## variable locally
-    oldLik <- currentLik
-    if (is.character(trace$file)) {
-      if(.spaMM.data$options$TRACE.UNLINK) unlink("HLCor.args.*.RData")
-      zut <- paste(unlist(initcorr),collapse="")  
-      save(HLCor.args,file=paste("HLCor.args.",zut,".RData",sep="")) ## for replicating the problem
-    }
-    givencorr <- do.call(HLCor,HLCor.args) ## optim disp and beta given corr param
-    currentLik <- givencorr$APHLs$p_v ## iterations maximize p_v
-    conv <- currentLik-oldLik
-    anycorrOptim.args$ranPars$lambda <- givencorr$lambda
-    anycorrOptim.args$ranPars$phi <- givencorr$phi
-    anycorrOptim.args$etaFix <- list(beta=givencorr$fixef) ## LeeN01sm imply that eta should be fixed too 
-    loclist <- list(initcorr,corrLowUp,anyObjfnCall.args=anycorrOptim.args,trace,Optimizer=Optimizer,
-                    optimizers.args=optimizers.args,maxcorners=maxcorners,maximize=TRUE) 
-    initcorr <- do.call(locoptim,loclist) 
-    iter <- iter+1
-  }
-  optPars <- c(initcorr,givencorr$lambda,givencorr$phi)
-  optPars
-}
-
-scalefnfn <- function(var,varMAX) {
-  switch(var,
-         trRho=function(x) rhoFn(x=x,RHOMAX=varMAX),
-         trNu=function(x) nuFn(x,NUMAX=varMAX),
-         trLambda=function(x) dispFn(x),
-         function(x) x) 
-}
-
-invscalefnfn <- function(var,varMAX) {
-  switch(var,
-         trRho=function(x) rhoInv(x,RHOMAX=varMAX),
-         trNu=function(x) nuInv(x,NUMAX=varMAX),
-         trLambda=function(x) dispInv(x),
-         function(x) x) 
-}
-
-
-## for diagnostic plots:
-validRangefn <- function(st,varMAX) {switch(st,
-                                            trRho=c(-Inf,RHOMAX=varMAX),
-                                            trNu=c(-Inf,NUMAX=varMAX), ## 
-                                            c(-Inf,Inf)
-)}
-
-labelfn <- function(st) {switch(st,
-                                trRho=expression(rho),
-                                trNu=expression(nu),
-                                trLambda=expression(lambda),
-                                st
-)}
-
 fullrho <- function(rho, coordinates,rho_mapping) {
   if ( is.null(rho_mapping) ) {
     if (length(rho)==1L ) rho <- rep(rho,length(coordinates))
@@ -289,67 +213,14 @@ fullrho <- function(rho, coordinates,rho_mapping) {
   rho
 }
 
-# plots Krigobj$data$logLobj i.e. *not* the smoothing
-SEMdiagnosticPlot2D <- function(Krigobj,MAX,smoothingOK,titlemain,titlesub, nextpoints, info, optrPar) {
-  axesNames <- names(optrPar) 
-  st <- axesNames[1L]
-  ticks_x <- invscalefnfn(var=st,varMAX=MAX[[st]])(x=Krigobj$data[,st])
-  tmp <- makeTicks(ticks_x, scalefn=scalefnfn(var=st,varMAX=MAX[[st]]),
-                   axis=1L,logticks=TRUE,validRange=validRangefn(st=st,varMAX=MAX[[st]]))
-  xlabs <- tmp$labels;xat <- tmp$at; #xph <- tmp$phantomat
-  st <- axesNames[2L]
-  ticks_y <- invscalefnfn(var=st,varMAX=MAX[[st]])(x=Krigobj$data[,st])
-  tmp <- makeTicks(ticks_y, scalefn=scalefnfn(var=st,varMAX=MAX[[st]]),
-                   axis=2L,logticks=TRUE,validRange=validRangefn(st=st,varMAX=MAX[[st]]))
-  ylabs <- tmp$labels;yat <- tmp$at; #yph <- tmp$phantomat
-  spaMMplot2D(Krigobj$data[,axesNames[1L]],Krigobj$data[,axesNames[2L]],Krigobj$data$logLobj,
-              plot.title={
-                title(main=titlemain,line=2,xlab=labelfn(axesNames[1L]),ylab=labelfn(axesNames[2L])) ## default cex.main=1.2, line ~1.7
-                title(main=titlesub,line=0.8,cex.main=1.1) ## 
-              },
-              plot.axes={
-                axis(1, at=xat, labels=xlabs)
-                axis(2, at=yat, labels=ylabs)
-              },
-              decorations= {
-                if ( ! is.null(nextpoints)) points(nextpoints,pch=15,cex=0.4)
-                ## sampleNextPars() no longer returns the info attribute (easily put back in its code)
-                if (smoothingOK && inherits(info,"volTriangulation")) apply(info$simplicesTable,1,function(v){
-                  polygon(info$vertices[v,])
-                });
-                points(matrix(optrPar,nrow=1),pch="+",col="#008080")  ## col= colortools::complementary(spaMM.colors()[64])
-              },
-              map.asp=1/2 ## -(1-sqrt(5))/2 not wide enough
-  )      
-}
 
-SEMdiagnosticPlot <- function(Krigobj,MAX,titlemain, optr) {
-  nPredictors <- length(optr$par)
-  intsqrt <- as.integer(sqrt(nPredictors))
-  oldpar <- par(no.readonly=TRUE,mfrow=c(ceiling(nPredictors/intsqrt), intsqrt))
-  for (st in names(optr$par)) {
-    ticks_x <- invscalefnfn(var=st,varMAX=MAX[[st]])(x=Krigobj$data[,st])
-    tmp <- makeTicks(ticks_x,scalefn=scalefnfn(st,varMAX=MAX[[st]]),axis=1,logticks=TRUE,
-                     validRange=validRangefn(st,varMAX=MAX[[st]]))
-    xlabs <- tmp$labels;xat <- tmp$at
-    plot(Krigobj$data[,st],Krigobj$data$logLobj,
-         axes=FALSE,frame=TRUE,xlab=labelfn(st),ylab="log(L)"
-    )
-    axis(1, at=xat, labels=xlabs)
-    axis(2)
-    points(optr$par[st],optr$value,pch=19,cex=2,col="red")  
-  }
-  title( titlemain, outer = TRUE )
-  par(oldpar)                              
-  invisible(NULL)
-}
-
-## FR->FR j'ai oublié setControl()...
-reformat_verbose <- function(verbose,For) {
+## FR->FR FIXME j'ai oublié setControl()...
+.reformat_verbose <- function(verbose,For) {
   if (is.null(verbose)) verbose <- logical(0)
   if (is.list(verbose)) stop("is.list(verbose)")
   if (is.na(verbose["trace"])) verbose["trace"] <- FALSE
   if (is.na(verbose["SEM"])) verbose["SEM"] <- FALSE
+  if (is.na(verbose["iterateSEM"])) verbose["iterateSEM"] <- TRUE ## summary info and plots for each iteration
   if (For=="corrHLfit" && is.na(verbose["objective"])) verbose["objective"] <- FALSE
   if (is.na(verbose["warn"])) verbose["warn"] <- switch(For, "HLCor" = TRUE, "corrHLfit" = FALSE)
   summstring <- paste(For,"Summary",sep="")
@@ -391,7 +262,7 @@ calc_maxrange <- function(rho.size,distMatrix=NULL,uniqueGeo=NULL,rho_mapping,di
   return(maxrange)
 }
 
-calc_inits_dispPars <- function(init,init.optim,init.HLfit,ranFix) {
+.calc_inits_dispPars <- function(init,init.optim,init.HLfit,ranFix) {
   ## does not modify init.HLfit, but keeps its original value. Also useful to keep ranFix for simple and safe coding
   init$lambda <- init.optim$lambda 
   fixedlambda <- getPar(ranFix,"lambda") ## FR->FR his comes from user arg, not from preprocessing
@@ -421,7 +292,7 @@ calc_inits_dispPars <- function(init,init.optim,init.HLfit,ranFix) {
   return(list(init=init,init.optim=init.optim,init.HLfit=init.HLfit,ranFix=ranFix))
 }
 
-calc_inits_ARphi <- function(init,init.optim,init.HLfit,ranFix) {
+.calc_inits_ARphi <- function(init,init.optim,init.HLfit,ranFix) {
   if (is.null(getPar(ranFix,"ARphi")) && (! is.numeric(init.HLfit$ARphi))) { 
     init$ARphi <- init.optim$ARphi 
     if (is.null(init$ARphi)) init$ARphi <- 0. 
@@ -438,7 +309,7 @@ calc_inits_ARphi <- function(init,init.optim,init.HLfit,ranFix) {
   return(list(init=init,init.optim=init.optim,init.HLfit=init.HLfit,ranFix=ranFix))
 }
 
-calc_inits_nu <- function(init,init.optim,init.HLfit,ranFix,control.dist,optim.scale,NUMAX) {
+.calc_inits_nu <- function(init,init.optim,init.HLfit,ranFix,control.dist,optim.scale,NUMAX) {
   if (is.null(getPar(ranFix,"nu")) && (! is.numeric(init.HLfit$nu))) { 
     init$nu <- init.optim$nu 
     if (is.null(init$nu)) {
@@ -465,7 +336,7 @@ calc_inits_nu <- function(init,init.optim,init.HLfit,ranFix,control.dist,optim.s
   return(list(init=init,init.optim=init.optim,init.HLfit=init.HLfit,ranFix=ranFix))
 }
 
-calc_inits_Auto_rho <- function(init,init.optim,init.HLfit,ranFix,rhorange,For) {
+.calc_inits_Auto_rho <- function(init,init.optim,init.HLfit,ranFix,rhorange,For) {
   if (is.null(getPar(ranFix,"rho"))) { ## $rho NULL or NA
     if (For=="corrHLfit") { ## with corrHLfit, defaul is outer optim. We provide init.optim
       if (is.null(init.HLfit$rho)) { ## default init.HLfit
@@ -477,21 +348,29 @@ calc_inits_Auto_rho <- function(init,init.optim,init.HLfit,ranFix,rhorange,For) 
         init.optim$rho <- NULL 
       }
     } else if (For=="fitme") { ## with fitme, default is inner optim. We provide init.HLfit
-      if (is.null(init.optim$rho)) { ## default init.optim
+      if ( ! is.null(init.HLfit$rho)) { ## non-default, forces inner estim
         if (! is.numeric(init.HLfit$rho)) init.HLfit$rho <- mean(rhorange)
-      } else if ( ! is.numeric(init.optim$rho) ) { ## non-default: outer optim, but no numeric init  
-        init.optim$rho <- mean(rhorange) 
+      } else if ( ! is.numeric(init.optim$rho) ) { ## default: outer optim, but no numeric init
+        init.optim$rho <- mean(rhorange)
         init.HLfit$rho <- NULL
       } else { ## non-default: inner optim, already with init value
-        init.HLfit$rho <- NULL 
+        init.HLfit$rho <- NULL
       }
+      # if (is.null(init.optim$rho)) { ## default : inner estim
+      #   if (! is.numeric(init.HLfit$rho)) init.HLfit$rho <- mean(rhorange)
+      # } else if ( ! is.numeric(init.optim$rho) ) { ## non-default: outer optim, but no numeric init  
+      #   init.optim$rho <- mean(rhorange) 
+      #   init.HLfit$rho <- NULL
+      # } else { ## non-default: inner optim, already with init value
+      #   init.HLfit$rho <- NULL 
+      # }
     }
   }
   return(list(init=init,init.optim=init.optim,init.HLfit=init.HLfit,ranFix=ranFix))
 }
 
 
-calc_inits_geostat_rho <- function(init,init.optim,init.HLfit,ranFix,maxrange,optim.scale,RHOMAX) {
+.calc_inits_geostat_rho <- function(init,init.optim,init.HLfit,ranFix,maxrange,optim.scale,RHOMAX) {
   if (is.null(getPar(ranFix,"rho")) && (! is.numeric(init.HLfit$rho))) {
     init$rho <- init.optim$rho 
     if (is.null(init$rho)) {
@@ -513,25 +392,25 @@ calc_inits_geostat_rho <- function(init,init.optim,init.HLfit,ranFix,maxrange,op
   return(list(init=init,init.optim=init.optim,init.HLfit=init.HLfit,ranFix=ranFix))
 }
 
-calc_inits <- function(init.optim,init.HLfit,ranFix,corr.model,rhorange=NULL,maxrange=NULL,
+.calc_inits <- function(init.optim,init.HLfit,ranFix,corr.model,rhorange=NULL,maxrange=NULL,
                        optim.scale,control.dist,RHOMAX,NUMAX,For) { 
   inits <- as.list(match.call()[c("init.optim","init.HLfit","ranFix")])
   inits <- c(inits,list(init=list()))
   if (corr.model %in% c("Matern")) {
     arglist <- c(inits,list(maxrange=maxrange,optim.scale=optim.scale,RHOMAX=RHOMAX))
-    inits <- do.call(calc_inits_geostat_rho,arglist)
+    inits <- do.call(.calc_inits_geostat_rho,arglist)
     arglist <- c(inits,list(control.dist=control.dist, optim.scale=optim.scale, NUMAX=NUMAX))
-    inits <- do.call(calc_inits_nu,arglist)
+    inits <- do.call(.calc_inits_nu,arglist)
     # Nugget: remains NULL through all computations if init.optim$Nugget is NULL
     if (is.null(getPar(ranFix,"Nugget"))) { inits$init["Nugget"] <- init.optim$Nugget }  
   } else if ( corr.model  %in% c("SAR_WWt","adjacency") ) { 
     arglist <- c(inits,list(rhorange=rhorange,For=For))
-    inits <- do.call(calc_inits_Auto_rho,arglist)
+    inits <- do.call(.calc_inits_Auto_rho,arglist)
   } else if (corr.model %in% c("AR1","ar1")) {
-    inits <- do.call(calc_inits_ARphi,inits)
+    inits <- do.call(.calc_inits_ARphi,inits)
   }  
   # phi, lambda
-  inits <- do.call(calc_inits_dispPars,inits)
+  inits <- do.call(.calc_inits_dispPars,inits)
   # GLM family parameters
   inits$init$COMP_nu <- inits$init.optim$COMP_nu ## may be NULL. No checks needed
   inits$init$NB_shape <- inits$init.optim$NB_shape ## may be NULL. No checks needed

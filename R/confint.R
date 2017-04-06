@@ -12,20 +12,12 @@ confint.HLfit <- function(object,parm,level=0.95,verbose=TRUE,...) {
     attr(parm,"col") <- parmcol
   }
   llc <- as.list(getCall(object))
-  # if (paste(llc[[1]]) =="corrHLfit") {
-  #   flc <- attr(object,"HLCorcall") ## optimInfo+HLCorcall always present
-  # } else if (paste(llc[[1]]) =="fitme") { #optimInfo always present
-  #   flc <- attr(object,"HLCorcall") ## may or may not be present
-  #   if (is.null(flc)) { 
-  #     flc <- object$call ## HLfit call
-  #   } else flc <- as.list(flc) ## optimInfo+HLCor
-  # } else flc <- llc ## no optimInfo
-
   if (paste(llc[[1]]) =="corrHLfit") { ## optimInfo always present
-    lc <- get_HLCorcall(llc)
+    lc <- get_HLCorcall(object,ranFix=NULL) ## explicit NULL: cf get_HLCorcall source; 
+                                          ## ranPars are optimized again as controlled by code below
   } else if (paste(llc[[1]]) =="fitme") { ## optimInfo always present
     if (inherits(object,"HLCor")) {
-      lc <- get_HLCorcall(llc)
+      lc <- get_HLCorcall(object,ranFix=NULL)
     } else {
       lc <- object$call ## HLfit call
     }
@@ -49,16 +41,16 @@ confint.HLfit <- function(object,parm,level=0.95,verbose=TRUE,...) {
   if ( ! is.null(trTemplate)) {
     olc <- lc ## olc is working copy
     LUarglist <- optimInfo$LUarglist
-    attr(trTemplate,"method") <-NULL
+    attr(trTemplate,"method") <- NULL
     if (paste(lc[[1]])=="HLCor") {
       ## good starting values are important... important to use canonizeRanPars as in HLCor
       attr(trTemplate,"RHOMAX") <- LUarglist$RHOMAX ## an ugly bit of coding, but canonizeRanpars()  expects them 
       attr(trTemplate,"NUMAX") <- LUarglist$NUMAX
-      objfn <- function(ranefParsVec) { 
+      objfn <- function(ranefParsVec,...) { ## ... bc locoptim manipulates notoptimObjfnCall.args
         ## bc locoptim expects a fn with first arg ranefParsVec
         ## ca serait mieux de pas avoir de contrainte la dessus et de pvr nommer l'arg trParsVec
         ## bc HLCor call uses transformed scale for ranPars
-        ranefParsList <-relist(ranefParsVec,trTemplate)
+        ranefParsList <- relist(ranefParsVec,trTemplate)
         olc$ranPars[names(trTemplate)] <- ranefParsList 
         locfit <- eval(as.call(olc)) ## HLCor call with given ranefParsVec
         resu <- locfit$fixef[parm]
@@ -67,9 +59,9 @@ confint.HLfit <- function(object,parm,level=0.95,verbose=TRUE,...) {
         return(resu) ## return value to be optimized is a parameter value, not a likelihood
       }
     } else if (paste(lc[[1]])=="HLfit") {
-      objfn <- function(ranefParsVec) { 
+      objfn <- function(ranefParsVec,...) { 
         ## bc locoptim expects a fn with first arg ranefParsVec
-        ranefParsList <-relist(ranefParsVec,trTemplate)
+        ranefParsList <- relist(ranefParsVec,trTemplate)
         olc$ranFix[names(trTemplate)] <- ranefParsList 
         locfit <- eval(as.call(olc)) ## HLfit call with given ranefParsVec
         resu <- locfit$fixef[parm]

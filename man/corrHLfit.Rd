@@ -10,10 +10,11 @@
 \usage{
 corrHLfit(formula, data, init.corrHLfit = list(), 
           init.HLfit = list(), ranFix = list(), lower = list(), 
-          upper = list(), trace = list(file = NULL, append = TRUE),
-          objective = "p_bv", resid.model = ~1, resid.formula,
+          upper = list(), 
+          objective = NULL, resid.model = ~1, resid.formula,
           control.dist = list(), control.corrHLfit = list(),
-          processed = NULL, family = gaussian(), ...)
+          processed = NULL, family = gaussian(), 
+          nb_cores = NULL, ...)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -37,28 +38,16 @@ a dispersion parameter changes the ways it is estimated (see Details).
 An optional list of values of parameters specified through \code{init.corrHLfit}, used as lower values in calls to \code{optim}. See Details for default values.
 }
   \item{upper}{Same as \code{lower}, but upper values.}
-  \item{trace}{
-Not for normal use.
-If trace is of the form \code{trace=list(file=<filename>,append=F)}, some trace information is written in the file 'filename'. 
-This file is written over by each new call of \code{corrHLfit} unless \code{append=T}.
-Information is written for each \code{HLCor} call. It includes the \code{APHLs}, and all given fixed random effect 
-parameters in the HLCor call. Information about the variables is printed at the end of the file, but may be slightly inaccurate 
-(some amount of guesswork is expected from users venturing into \code{trace}). The arguments of all HLCor calls are saved in RData files
-(if this is felt inappropriate, then using \code{\link{spaMM.options}(TRACE.UNLINK=TRUE)} will keep only the latest HLCor call).
-}
-  \item{objective}{
-The objective function maximized for estimation of parameters by \code{optim}. 
-Either \code{"p_bv"} for restricted likelihood or \code{"p_v"} for marginal likelihood.
-}
+  \item{objective}{ Can be ignored: default value is determined from other 
+  arguments (\code{HLmethod} and \code{REMLformula}), being \code{"p_bv"} for restricted likelihood or \code{"p_v"} for marginal likelihood. Non-default values can be given but this is an obsolete and the other arguments should be used.}
   \item{resid.model, resid.formula}{See identically named \code{\link{HLfit}} arguments.}
 \item{control.dist}{See \code{control.dist} in \code{\link{HLCor}}}
 \item{control.corrHLfit}{
   This may be used to provide control to the optimizer. In particular, \code{control.corrHLfit$optim} should be a list of arguments for optim, e.g. \code{control.corrHLfit = list(optim=list(control=list(ndeps=rep(2e-3,3))))}
 }
-  \item{processed}{For programming purposes, not documented.
-  }
-  \item{family}{Either a \code{\link{family}} or a \code{\link{multi}} value.  
-  }
+  \item{processed}{For programming purposes, not documented.  }
+  \item{family}{Either a \code{\link{family}} or a \code{\link{multi}} value. }
+  \item{nb_cores}{Number of cores to use for parallel computations.}
   \item{\dots}{
 Optional arguments passed to \code{\link{HLCor}}, \code{\link{HLfit}} or  \code{\link{designL.from.Corr}}, for example the \code{distMatrix} argument 
 of \code{HLCor}. Arguments that do not fit within these functions are detected and a warning is issued.
@@ -71,7 +60,7 @@ of \code{HLCor}. Arguments that do not fit within these functions are detected a
   By default \code{corrHLfit} will estimate correlation parameters by maximizing the \code{objective} value returned by \code{HLCor} calls wherein the dispersion parameters are estimated jointly with fixed effects for given correlation parameters. If dispersion parameters are specified in \code{init.corrHLfit}, they will also be estimated by maximizing the \code{objective} value, and \code{HLCor calls} will not estimate them jointly with fixed effects. This means that in general the fixed effect estimates may vary depending on \code{init.corrHLfit} when any form of REML correction is applied. 
   
   Correctly using \code{corrHLfit} for likelihood ratio tests
-  of fixed effects may then by tricky. It is safe to perform full ML fits of all parameters (using \code{objective="p_v",HLmethod="ML"}) for such tests (see Examples).   The higher level function \code{\link{fixedLRT}} is a safe interface for likelihood ratio tests using some form of REML estimation in \code{corrHLfit}.  
+  of fixed effects may then by tricky. It is safe to perform full ML fits of all parameters (using \code{HLmethod="ML"}) for such tests (see Examples).   The higher level function \code{\link{fixedLRT}} is a safe interface for likelihood ratio tests using some form of REML estimation in \code{corrHLfit}.  
   
   \code{attr(<fitted object>,"optimInfo")$lower} and ...\code{$upper} gives the lower and upper bounds for optimization of correlation parameters. These are the default values if the user did not provide explicit values. For the adjacency model, the default values are the inverse of the maximum and minimum eigenvalues of the \code{adjMatrix}. For the Matérn model, the default values are not so easily summarized: they are intended to cover the range of values for which there is statistical information to distinguish among them.
 }
@@ -89,13 +78,13 @@ The return value of an \code{HLCor} call, with additional attributes. The \code{
 
 #### Examples with Matérn correlations
 ## A likelihood ratio test based on the ML fits of a full and of a null model.
-if (spaMM.getOption("example_maxtime")>18) {
+if (spaMM.getOption("example_maxtime")>1) {
  data(blackcap)
  fullfit <- corrHLfit(migStatus ~ means+ Matern(1|latitude+longitude),data=blackcap,
                     HLmethod="ML") 
  summary(fullfit)
  nullfit <- corrHLfit(migStatus ~ 1 + Matern(1|latitude+longitude),data=blackcap,
-                    HLmethod="ML") 
+                    HLmethod="ML",init.corrHLfit=list(phi=1e-6)) 
  summary(nullfit)
  ## p-value:
  1-pchisq(2*(logLik(fullfit)-logLik(nullfit)),df=1)

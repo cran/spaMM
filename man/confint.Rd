@@ -27,7 +27,8 @@ fits \code{lowerfit} and \code{upperfit} giving the profile fits at the confiden
 This is returned invisibly.
 }
 \examples{
-if (spaMM.getOption("example_maxtime")>1) {
+% checked in test-confint.R
+\dontrun{
  data(wafers)
  wfit <- HLfit(y ~X1+(1|batch),family=Gamma(log),data=wafers,HLmethod="ML")
  confint(wfit,"X1")

@@ -1,14 +1,37 @@
-get_valid_beta_coefs <- function(X,offset) {
+.check_conv_glm_reinit <- function() {
+  if ((conv_crit <- spaMM.getOption("spaMM_glm_conv_crit"))$max>0) {
+    warning(paste("spaMM_glm.fit() did not always converge (criterion:",
+                  paste(names(conv_crit),"=",signif(unlist(conv_crit),3),collapse=", "),")"))
+    spaMM.options(spaMM_glm_conv_crit=list(max=-Inf))
+  }
+}
+
+get_valid_beta_coefs <- function(X,offset,family,y,weights) {
   vrepr <- rcdd::scdd(rcdd::makeH(a1=-X,b1=offset))$output ## convex hull of feasible coefs
   if (nrow(vrepr)==0L) {
     stop("The model cannot be fitted: \n given 'x' and 'offset', only eta=0 might satisfy logical constraints.")
   } else {
     verticesRows <- (vrepr[,2]==1)
-    beta <- 0
-    if (length(which(verticesRows))>0L)
-      beta <- colMeans(vrepr[verticesRows,-c(1:2),drop=FALSE]) ## x %*% start + offset must be >=0
-    if (length(which(!verticesRows))>0L)
-      beta <- beta + 0.001 * colMeans(vrepr[!verticesRows,-c(1:2),drop=FALSE])
+    betaS <- 0
+    if (length(which(verticesRows))>0L) {
+      betaS <- t(vrepr[!verticesRows, -c(1:2), drop = FALSE]) ## col vectors of boundary beta values
+      betaS <- betaS + 0.001 * rowMeans(betaS) ## moving a bit inside
+    }
+    if (length(which( ! verticesRows))>0L) {
+      ## generate combinations of vertices and directions:
+      dirS <- t(vrepr[ ! verticesRows,-c(1:2),drop=FALSE])
+      dirS <- apply(dirS,2L,function(v) v/norm(matrix(v),type="2")) ## normalize direction vectors
+      dirS <- 0.001* (dirS + rowMeans(dirS))
+      if (is.matrix(betaS)) {
+        betaS.cols <- split(betaS, col(betaS))
+        betaS <- do.call(cbind,(lapply(betaS.cols,y=dirS,`+`)))
+      } else betaS <- dirS + betaS ## as in Gamma(inverse) example 
+    }
+    etaS <- X %*% betaS ## col vectors of predicted etaS
+    etaS <- etaS + offset
+    muS <- family$linkinv(etaS)
+    devS <- apply(muS,2,function(mu) sum(family$dev.resids(y, mu=mu, weights)))
+    beta <- betaS[,which.min(devS)]
     return(beta)
   }
 }
@@ -22,10 +45,11 @@ spaMM_glm.fit <- function (x, y, weights = rep(1, nobs),
   eval_gain_LM <- function() {  
     dbeta <- LevenbergMstep_result$dbetaV
     beta <- coefold + dbeta
-    eta <- drop(x %*% beta) + offset
+    eta <- (x %*% beta)[] + offset
     if (family$link=="log") {eta <- pmin(eta,30)} ## cf similar code in muetafn
     if (family$link=="inverse" && family$family=="Gamma") {
-      eta <- pmax(eta,sqrt(.Machine$double.eps)) ## eta must be > 0
+      etamin <- sqrt(.Machine$double.eps)
+      eta[eta<etamin] <- etamin ## eta must be > 0
     } ## cf similar code in muetafn
     mu <- linkinv(eta)
     dev <- suppressWarnings(sum(dev.resids(y, mu, weights)))
@@ -129,7 +153,7 @@ spaMM_glm.fit <- function (x, y, weights = rep(1, nobs),
         if (any(varmu == 0)) 
           stop("0s in V(mu): consult the package maintainer.")
         mu.eta.val <- mu.eta(eta)
-        if (any(is.na(mu.eta.val[goodinit]))) 
+        if (anyNA(mu.eta.val[goodinit])) 
           stop("NA/NaN in d(mu)/d(eta): consult the package maintainer.")
         good <- goodinit & (mu.eta.val != 0)
         if (all(!good)) {
@@ -155,7 +179,7 @@ spaMM_glm.fit <- function (x, y, weights = rep(1, nobs),
                        fit$rank, nobs), domain = NA)
         ## calculate updated values of eta and mu with the new coef:
         start[fit$pivot] <- fit$coefficients
-        eta <- drop(x %*% start)
+        eta <- (x %*% start)[]
         eta <- eta + offset
         if (family$link=="log") {eta <- pmin(eta,30)} ## cf similar code in muetafn
         ## ... otherwise dev can be NaN in a case where get_valid_beta_coefs() is not called
@@ -170,11 +194,14 @@ spaMM_glm.fit <- function (x, y, weights = rep(1, nobs),
             positive_eta <- (positive_eta || (family$family %in% c("poisson","negbin") && family$link %in% c("identity","sqrt"))) 
             if (positive_eta) {
               if (requireNamespace("rcdd",quietly=TRUE)) {
-                start <- get_valid_beta_coefs(X=x,offset=offset)
-                eta <- drop(x %*% start)
+                start <- get_valid_beta_coefs(X=x,offset=offset,family,y,weights)
+                eta <- (x %*% start)[]
                 mu <- linkinv(eta <- eta + offset)
                 dev <- suppressWarnings(sum(dev.resids(y, mu, weights)))
-              } else message("If the 'rcdd' package was installed, spaMM_glm.fit() could automatically find a good starting value.") 
+              } else if ( ! identical(spaMM.getOption("rcdd_warned"),TRUE)) {
+                message("glm() failed. If the 'rcdd' package were installed, spaMM_glm.fit() could automatically find a good starting value.")
+                spaMM.options(rcdd_warned=TRUE)
+              }  
             } ## stop()ped or exited loop with finite dev
           }
         }
@@ -190,7 +217,7 @@ spaMM_glm.fit <- function (x, y, weights = rep(1, nobs),
                    call. = FALSE)
             ii <- ii + 1
             start <- (start + coefold)/2
-            eta <- drop(x %*% start)
+            eta <- (x %*% start)[]
             mu <- linkinv(eta <- eta + offset)
             dev <- suppressWarnings(sum(dev.resids(y, mu, weights)))
           }
@@ -205,7 +232,9 @@ spaMM_glm.fit <- function (x, y, weights = rep(1, nobs),
         coef <- coefold <- start
       } else {
         while(TRUE) {
-          LevenbergMstep_result <- LevenbergMstepCallingCpp(wAugX=wX,LM_wAugz=LM_wz,damping=damping)
+          if (inherits(wX,"Matrix")) { ## maybe never the case until upstream code is modified
+            LevenbergMstep_result <- LevenbergMsolve_Matrix(wAugX=wX, LM_wAugz=LM_wz, damping=damping)
+          } else LevenbergMstep_result <- LevenbergMstepCallingCpp(wAugX=wX, LM_wAugz=LM_wz, damping=damping)
           levMblob <- eval_gain_LM() ## Uses a local function to keep the change in start,eta,mu private
           if (levMblob$gainratio<0) { ## failure: increase damping and continue iterations
             damping <- dampingfactor*damping
@@ -220,8 +249,12 @@ spaMM_glm.fit <- function (x, y, weights = rep(1, nobs),
             break
           }
         }
-        conv_crit <- abs(dev - devold)/(0.1 + abs(dev))
-        if ( conv_crit < control$epsilon) { ## (glm.fit style, vs $dbeta in auglinmodfit style)
+        ## (dev crit in glm.fit style, vs $dbeta in auglinmodfit style)
+        ## But it seems to make sense that the gradient must vanish.
+        ## D(dev) and dbetav may be small for non-zero gradient, part. with large damping.
+        conv_crit <- max(abs(dev - devold)/(0.1 + abs(dev)), 
+                         abs(LevenbergMstep_result$rhs))
+        if ( conv_crit < control$epsilon) { 
           conv <- TRUE
           coef <- start
           break
@@ -246,7 +279,7 @@ spaMM_glm.fit <- function (x, y, weights = rep(1, nobs),
                  call. = FALSE)
           ii <- ii + 1
           start <- (start + coefold)/2
-          eta <- drop(x %*% start)
+          eta <- (x %*% start)[]
           mu <- linkinv(eta <- eta + offset)
         } ## stop()s or exits loop with valideta and mu
         boundary <- TRUE
@@ -261,7 +294,7 @@ spaMM_glm.fit <- function (x, y, weights = rep(1, nobs),
       if (any(varmu == 0)) 
         stop("0s in V(mu): consult the package maintainer.")
       mu.eta.val <- mu.eta(eta)
-      if (any(is.na(mu.eta.val[goodinit]))) 
+      if (anyNA(mu.eta.val[goodinit])) 
         stop("NA/NaN in d(mu)/d(eta): consult the package maintainer.")
       good <- goodinit & (mu.eta.val != 0)
       if (all(!good)) {
@@ -277,10 +310,11 @@ spaMM_glm.fit <- function (x, y, weights = rep(1, nobs),
       if (anyNA(w)) stop("NA/NaN in 'w': consult the package maintainer.") # suggests too large 'mu'
       wX <- calc_wAugX(augX=x[good, , drop = FALSE],sqrt.ww=w)
       LM_wz <- z*w - (wX %*% coefold)
-    } ## end main loop
-    if (any(good) & !conv) 
-      warning(paste("spaMM_glm.fit did not yet converge at iteration",iter,"(criterion=",
-                    signif(conv_crit,3),")"), call. = FALSE)
+    } ## end main loop (either a break or control$maxit reached)
+    if (any(good) & ! conv) {
+      previous <- spaMM.getOption("spaMM_glm_conv_crit")$max
+      spaMM.options(spaMM_glm_conv_crit=list(max=max(previous,conv_crit),latest=conv_crit))
+    }
     if (boundary) 
       warning("spaMM_glm.fit: algorithm stopped at boundary value", 
               call. = FALSE)
@@ -295,11 +329,13 @@ spaMM_glm.fit <- function (x, y, weights = rep(1, nobs),
         warning("spaMM_glm.fit: fitted rates numerically 0 occurred", 
                 call. = FALSE)
     }
-    # regenerate the qr object and correctly formatted eta, etc.
-    fit <- .lm.fit(x[good, , drop = FALSE] * w, z * w, min(1e-07, control$epsilon/1000))
-    start[fit$pivot] <- fit$coefficients
-    eta <- drop(x %*% start)
-    mu <- linkinv(eta <- eta + offset)
+    # regenerate the qr (etc) object.
+    fit <- .lm.fit(x[good, , drop = FALSE] * w, z * w, tol=min(1e-07, control$epsilon/1000))
+    # but the trouble is that evalGainLM may detect invalid LevM estimates, 
+    # while the .lm.fit estimates (~damping=0) may be invalid (different if loop terminated with high damping)
+    #start[fit$pivot] <- fit$coefficients
+    #eta <- (x %*% start)[]
+    #mu <- linkinv(eta <- eta + offset)
     #
     if (fit$rank < nvars) 
       coef[fit$pivot][seq.int(fit$rank + 1, nvars)] <- NA
@@ -359,15 +395,21 @@ spaMM_glm <- function(formula, family = gaussian, data, weights, subset,
                 x = FALSE, y = TRUE, contrasts = NULL, strict=FALSE,...) {
   mc <- match.call(expand.dots=TRUE)
   mc$strict <- NULL
-  mc$family <- checkRespFam(family) # cannot check mc$family itself, which is typically a language object
+  ## This code should not interfer with processed$family with possibly assigned param
+  family <- checkRespFam(family)
+  summaryfamily <- as_call_family(family,get_param = TRUE) ## only for printing
   mc[[1L]] <- quote(stats::glm)
   res <- tryCatch.W.E(eval(mc,parent.frame()))
   if (inherits(res$value,"error")) {
     if ( requireNamespace("rcdd",quietly=TRUE) ) {
       mc$method <- "spaMM_glm.fit" 
       res <- eval(mc,parent.frame())
+      res$call$family <- summaryfamily
       return(res)
-    } else message("glm() failed. If the 'rcdd' package was installed, spaMM_glm() could fit the model.") 
+    } else if ( ! identical(spaMM.getOption("rcdd_warned"),TRUE)) {
+      message("glm() failed. If the 'rcdd' package were installed, spaMM_glm() could fit the model.")
+      spaMM.options(rcdd_warned=TRUE)
+    } 
   } else {
     if (! is.null(res$warning)
         ## some glm warnings are useful only to understand a failure, hence not useful here 
@@ -375,9 +417,16 @@ spaMM_glm <- function(formula, family = gaussian, data, weights, subset,
       if (res$warning == "glm.fit: algorithm did not converge" && strict) {
         mc$method <- "spaMM_glm.fit" 
         res <- eval(mc,parent.frame())
+        res$call$family <- summaryfamily
         return(res)
       } else warning(res$warning)
     }
+    if ((conv_crit <- spaMM.getOption("spaMM_glm_conv_crit"))$max>0) {
+      warning(paste("spaMM_glm.fit did not yet converge at iteration",res$iter,"(criterion:",
+                    paste(names(conv_crit),"=",signif(unlist(conv_crit),3),collapse=", "),")"))
+      spaMM.options(spaMM_glm_conv_crit=list(max=-Inf))
+    }
+    res$value$call$family <- summaryfamily
     res$value
   }
 }

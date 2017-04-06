@@ -1,6 +1,6 @@
-compare.model.structures <- function(object,object2) {
+.compare_model_structures <- function(object,object2) {
   if (inherits(object,"HLfitlist") || inherits(object2,"HLfitlist")) {
-    stop("compare.model.structures does not yet work on HLfitlist objects")
+    stop("This does not yet work on HLfitlist objects")
   }
   X1 <- colnames(object$`X.pv`)
   X2 <- colnames(object2$`X.pv`)
@@ -53,14 +53,14 @@ compare.model.structures <- function(object,object2) {
     df2 <- length(X2)
     if (!is.null(Rnest)) {
       lambda.object <- object$lambda.object
-      if (!is.null(lambda.object)) df1 <- df1+nrow(lambda.object$coefficients_lambda)
+      if (!is.null(lambda.object)) df1 <- df1+length(unlist(lambda.object$coefficients_lambdaS))
       cov.mats <- object$cov.mats
       if ( ! is.null(cov.mats)) {
         nrows <- unlist(lapply(cov.mats,NROW))
         df1 <- df1+sum(nrows*(nrows-1)/2)
       }
       lambda.object <- object2$lambda.object
-      if (!is.null(lambda.object)) df2 <- df2+nrow(lambda.object$coefficients_lambda)
+      if (!is.null(lambda.object)) df2 <- df2+length(unlist(lambda.object$coefficients_lambdaS))
       cov.mats <- object2$cov.mats
       if ( ! is.null(cov.mats)) {
         nrows <- unlist(lapply(cov.mats,NROW))
@@ -103,97 +103,70 @@ compare.model.structures <- function(object,object2) {
       }
     } 
   }
-  return(list(fullm=fullm,nullm=nullm,testlik=testlik,df=df))
+  return(list(fullfit=fullm,nullfit=nullm,test_obj=testlik,df=df))
 }
 
-LRT <- function(object,object2,boot.repl=0) { ## compare two HM objects
+LRT <- function(object,object2,boot.repl=0,nb_cores=NULL) { ## compare two HM objects
   if (nrow(object$data)!=nrow(object2$data)) {
     stop("models were not both fitted to the same size of dataset.")
   }
-  info <- compare.model.structures(object,object2)
-  nullm <- info$nullm; fullm <- info$fullm; testlik <- info$testlik;df <- info$df
-  LRTori <- 2*(fullm$APHLs[[testlik]]-nullm$APHLs[[testlik]])
+  info <- .compare_model_structures(object,object2)
+  nullfit <- info$nullfit
+  fullfit <- info$fullfit
+  test_obj <- info$test_obj
+  df <- info$df
+  LRTori <- 2*(logLik(fullfit,which=test_obj)-logLik(nullfit,which=test_obj))
   pvalue <- 1-pchisq(LRTori,df=df) ## but not valid for testing null components of variance
-  resu <- list(nullfit=nullm,fullfit=fullm,basicLRT = data.frame(LR2=LRTori,df=df,pvalue=pvalue)) ## format appropriate for more tests  
+  resu <- list(nullfit=nullfit,fullfit=fullfit,basicLRT = data.frame(chi2_LR=LRTori,df=df,p_value=pvalue)) ## format appropriate for more tests  
   if (boot.repl>0) {
-    simbData <- nullm$data
-    if (tolower(nullm$family$family)=="binomial") {
-      form <- attr(nullm$predictor,"oriFormula") ## this must exists...  
-      if (is.null(form)) {
-        mess <- pastefrom("a 'predictor' object must have an 'oriFormula' member.",prefix="(!) From ")
-        stop(mess)
-      }
-    }
-    if (boot.repl<100) print("It is recommended to set boot.repl>=100 for Bartlett correction",quote=FALSE)
-    aslistfull <- as.list(getCall(fullm)) 
+    if (boot.repl<100) message("It is recommended to set boot.repl>=100 for Bartlett correction")
+    aslistfull <- as.list(getCall(fullfit)) 
     ## problem is for corrHLfit etc this is the call of the final HLfit call with $processed and a lot of missing original arguments  
     aslistfull$processed <- NULL ## may capture bugs 
-    aslistnull <- as.list(getCall(nullm))
+    aslistnull <- as.list(getCall(nullfit))
     aslistnull$processed <- NULL ## may capture bugs
-    computeBootRepl <- function() {
-      ## draw sample
-      newy <- simulate(nullm,verbose=FALSE)  ## only a vector of response value ## cannot simulate all samples in one block since some may not be analyzable  
-      if (tolower(nullm$family$family)=="binomial") {
-        if ( is.symbol(form[[2]]) ) { ## simple y ~ x case [but not say log(y) ~ x :code assumes this doesn't occur here]
-          exprL <- as.character(form[[2]])
-          if (length(exprL)==1L) simbData[[exprL]] <- newy 
-        } else {
-          exprL <- as.character(form[[2]][[2]]) 
-          exprR <- as.character(form[[2]][[3]]) 
-          if (length(exprL)==1L) simbData[[exprL]] <- newy 
-          if (length(exprR)==1L) simbData[[exprR]] <- nullm$weights - newy                    
-        }
-      } else {simbData[[as.character(nullm$predictor[[2]])]] <- newy}
+    simbData <- nullfit$data
+    if (tolower(nullfit$family$family)=="binomial") {
+      cbf <- .check_binomial_formula(nullfit=nullfit, data=fullfit$data, fullfit=fullfit)
+      cbindTest <- cbf$cbindTest
+      if (cbindTest) {
+        nnegname <- cbf$nnegname
+        nposname <- cbf$nposname
+        aslistfull$formula <- cbf$full_formula
+        aslistnull$formula <- cbf$null_formula
+      }
+    } else cbindTest <- FALSE
+    eval_replicate <- function(newy,only_vector=TRUE) { ## only_vector controls how to handle errors
+      if (cbindTest) {
+        simbData[[nposname]] <- newy
+        simbData[[nnegname]] <- nullfit$weights - newy
+      } else {simbData[[as.character(nullfit$predictor[[2L]])]] <- newy} ## allows y~x syntax for binary response
       ## analyze under both models
       aslistfull$data <- simbData
       aslistnull$data <- simbData
       fullfit <- (eval(as.call(aslistfull)))
-      if (inherits(fullfit,"try-error")) return(fullfit) ## eg separation in binomial models
-      nullfit <- try(eval(as.call(aslistnull)))
-      if (inherits(nullfit,"try-error")) return(nullfit) 
-      ## return pair of likelihoods
-      if (inherits(fullfit,"HLfitlist")) {
-        return(c(attr(fullfit,"APHLs")[[testlik]],attr(nullfit,"APHLs")[[testlik]]))
-      } else return(c(fullfit$APHLs[[testlik]],nullfit$APHLs[[testlik]]))
-    }
-    bootLs<-matrix(,nrow=boot.repl,ncol=2) 
-    colnames(bootLs) <- paste(c("full.","null."),testlik,sep="")
-    msg <- "bootstrap replicates: "
-    msglength <- nchar(msg)
-    cat(msg)
-    t0 <- proc.time()["user.self"]
-    for (ii in seq_len(boot.repl)) {
-      locitError <- 0
-      repeat { ## for each ii!
-        bootrep <- (computeBootRepl())
-        if ( ! inherits(bootrep,"try-error")) { 
-          bootLs[ii,] <- bootrep
-          break ## replicate performed, breaks the repeat
-        } else { ## there was one error
-          locitError <- locitError + 1
-          if (locitError>10) { ## to avoid an infinite loop
-            stop("Analysis of bootstrap samples fails repeatedly. Maybe no statistical information in them ?")
-          } ## otherwise repeat!
-        }
-      } 
-      tused <- proc.time()["user.self"]-t0
-      ttotal <- tused* boot.repl/ii
-      if (interactive()) {
-        for (bidon in 1:msglength) cat("\b")
-        msg <- paste("Estimated time remaining for bootstrap: ",signif(ttotal-tused,2)," s.",sep="")
-        msglength <- nchar(msg)
-        cat(msg)
-      } else {
-        cat(ii);cat(" ")
-        if ((ii %% 40)==0L) cat("\n")
+      if (inherits(fullfit,"try-error")) {
+        if (only_vector) {
+          return(c(NA,NA))
+        } else return(fullfit)
       }
+      nullfit <- try(eval(as.call(aslistnull)))
+      if (inherits(nullfit,"try-error")) {
+        if (only_vector) {
+          return(c(NA,NA))
+        } else return(nullfit)
+      }
+      ## return pair of likelihoods
+      return(c(logLik(fullfit,which=test_obj),logLik(nullfit,which=test_obj)))
     }
-    cat("\n")
+    bootLs <- .eval_boot_replicates(eval_replicate=eval_replicate,boot.repl=boot.repl,nullfit=nullfit,nb_cores=nb_cores,
+                                    aslistfull=aslistfull, aslistnull=aslistnull,simbData=simbData)
+    colnames(bootLs) <- paste(c("full.","null."),test_obj,sep="")
     bootdL <- bootLs[,1]-bootLs[,2]
     meanbootLRT <- 2*mean(bootdL)
-    resu <- c(resu,list(rawBootLRT = data.frame(LR2=LRTori,df=df,pvalue=(1+sum(bootdL>=LRTori/2))/(boot.repl+1)))) ## format appropriate for more tests  
+    resu <- c(resu,list(rawBootLRT = data.frame(chi2_LR=LRTori,df=df,p_value=(1+sum(bootdL>=LRTori/2))/(boot.repl+1)))) ## format appropriate for more tests  
     LRTcorr <- LRTori*df/meanbootLRT
-    resu <- c(resu,list(BartBootLRT = data.frame(LR2=LRTcorr,df=df,pvalue=1-pchisq(LRTcorr,df=df)))) ## format appropriate for more tests  
+    resu <- c(resu,list(BartBootLRT = data.frame(chi2_LR=LRTcorr,df=df,p_value=1-pchisq(LRTcorr,df=df)))) ## format appropriate for more tests  
     bootInfo <- list(meanbootLRT = meanbootLRT,bootreps = bootLs)
     resu <- c(resu,list(bootInfo=bootInfo)) ## keeps the sublist structure, which is not compatible with hglmjob.R...  
   }

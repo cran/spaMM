@@ -12,7 +12,7 @@
 
 ##' @return a list of pairs of expressions that generate
 ##'    random-effects terms with slashes expanded.
-spMMexpandSlash <- function (bb) {
+.spMMexpandSlash <- function (bb) {
   ## Create the interaction terms for nested effects
   makeInteraction <- function(x)
   {
@@ -23,7 +23,7 @@ spMMexpandSlash <- function (bb) {
   }
   ##
   if (!is.list(bb)) 
-    return(spMMexpandSlash(list(bb)))
+    return(.spMMexpandSlash(list(bb)))
   #### ELSE :
     unlist(lapply(bb, function(x) {
       if (length(x) > 2 && is.list(trms <- slashTerms(x[[3]])))

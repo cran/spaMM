@@ -43,7 +43,7 @@ set.seed(123)
 data(Loaloa)
 ll <- cbind(Loaloa,idx=sample(2,size=nrow(Loaloa),replace=TRUE))
 hl <- HLCor(cbind(npos,ntot-npos)~1+Matern(1|longitude+latitude)+(1|idx),data=ll,
-            family=binomial(),ranPars=list(nu=0.5,rho=1/0.7),method="PQL/L")
+            family=binomial(),ranPars=list(nu=0.5,rho=1/0.7),HLmethod="PQL/L")
 # verif single point input
 p1 <- predict(hl,variances=list(respVar=TRUE))
 p2 <- predict(hl,newdata=ll[1,],variances=list(respVar=TRUE))
@@ -66,7 +66,8 @@ varphi <- cbind(blackcap,logphi=runif(14))
 vphifit <- corrHLfit(migStatus ~ 1 + Matern(1|latitude+longitude), 
                      resid.model = list(formula=~0+offset(logphi)),
                      data=varphi,  ranFix=list(nu=4,rho=0.4))
-# for respVar computation, one needs the resid.model formula to specify phi:
+# eg  to catch catch problems with wrong application of a-la-Bates formula:
+expect_equal(logLik(vphifit),c(p_bv=-20.04856),tol=1e-5) 
 p1 <- suppressWarnings(get_respVar(vphifit,newdata=data.frame(latitude=1,longitude=1,logphi=1)))
 expect_equal(p1,c(`1`=2.844421),tol=1e-5)
 # for predVar computation, phi is not needed 
@@ -78,3 +79,4 @@ expect_equal(p1,c(`1`=0.1261396),tol=1e-5)
 fitfit <- fitme(migStatus ~ 1 + Matern(1|latitude+longitude),
                      data=blackcap,  fixed=list(nu=4,rho=0.4))
 get_respVar(fitfit,newdata=data.frame(latitude=1,longitude=1))
+

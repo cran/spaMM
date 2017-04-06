@@ -1,0 +1,387 @@
+.check_nb_cores <- function(nb_cores=NULL) {
+  if (is.null(nb_cores)) nb_cores <- spaMM.getOption("nb_cores") ## may be NULL
+  machine_cores <- parallel::detectCores()
+  if (is.null(nb_cores)) {
+    nb_cores <- 1L ## default
+    if (machine_cores>1L && interactive()) {
+      if (! identical(spaMM.getOption("cores_avail_warned"),TRUE)) {
+        message(paste(machine_cores,
+                      "cores are available for parallel computation\n(you may be allowed to fewer of them on a shared cluster).\nChange 'nb_cores' argument to use some of them.\nUse spaMM.options(nb_cores=<n>) to control nb_cores globally."))
+        spaMM.options(cores_avail_warned=TRUE)
+      } else if (nb_cores>machine_cores) {
+        if (! identical(spaMM.getOption("nb_cores_warned"),TRUE)) {
+          warning("More cores are requested than found by parallel::detecCores(). Check 'nb_cores' argument.")
+          ## + reduce it ?
+          spaMM.options(nb_cores_warned=TRUE)
+        }
+      }
+    }
+  }
+  return(nb_cores)
+}
+
+.check_binomial_formula <- function(nullfit, fullfit, data) {
+  res <- list()
+  nform <- attr(nullfit$predictor,"oriFormula")  
+  if (is.null(nform)) stop("a 'predictor' object must have an 'oriFormula' member.")
+  if (paste(nform[[2L]])[[1L]]=="cbind") {
+    ## We have different possible (exprL,exprR) arguments in cbind(exprL,exprR), 
+    ## but in all case the predictor is that of exprL and exprR is $weights- exprL. We standardize: 
+    res$nposname <- nposname <- makenewname("npos",names(data))
+    res$nnegname <- nnegname <- makenewname("nneg",names(data))
+    nform <- paste(nform)
+    nform[2L] <- paste("cbind(",nposname,",",nnegname,")",sep="")
+    res$null_formula <- as.formula(paste(nform[c(2,1,3)],collapse=""))
+    fform <- paste(attr(fullfit$predictor,"oriFormula"))
+    fform[2L] <- nform[2L]
+    res$full_formula <- as.formula(paste(fform[c(2,1,3)],collapse=""))
+    res$cbindTest <- TRUE
+  } else res$cbindTest <- FALSE
+  return(res)
+}
+
+.eval_boot_replicates <- function(eval_replicate, ## function to run on each replicate
+                                  boot.repl, ## number of bootstrap replicates
+                                  nullfit, ## the fitted model ibject for which bootstrap replicates are drawn 
+                                  nb_cores, ## passing explicit value from user
+                                  ...) { ## ... are arguments used by functions called by the eval_replicate function
+  #
+  msg <- "Bootstrap replicates:"
+  msglength <- nchar(msg) ## not used in the parallel case
+  cat(msg)
+  time1 <- Sys.time() 
+  bootreps <- matrix(nrow=0,ncol=2)
+  cumul_nsim <- 0L
+  ii <- 0 ## 'global definition' (!)
+  nb_cores <- .check_nb_cores(nb_cores=nb_cores)
+  if (nb_cores > 1L) {
+    #cl <- parallel::makeCluster(nb_cores,outfile="essai.txt") 
+    cl <- parallel::makeCluster(nb_cores) 
+    R.seed <- get(".Random.seed", envir = .GlobalEnv)
+    if (has_doSNOW <- ("doSNOW" %in% .packages() )) { ## allows progressbar but then requires foreach
+      # loading (?) the namespace of 'snow' changes the global RNG state!
+      assign(".Random.seed", R.seed, envir = .GlobalEnv)
+      eval(as.call(c(quote(registerDoSNOW),list(cl=cl)))) 
+      `%foreachdopar%` <- foreach::`%dopar%`
+      pb <- txtProgressBar(max = boot.repl, style = 3)
+      progress <- function(n) setTxtProgressBar(pb, n)
+      opts <- list(progress = progress)
+      parallel::clusterExport(cl=cl, list("progress"),envir=environment()) ## slow! why?
+    } else if ( ! identical(spaMM.getOption("doSNOW_warned"),TRUE)) {
+      message("If the 'doSNOW' package were attached, the progress of the bootstrap computation could be reported.")
+      spaMM.options(doSNOW_warned=TRUE)
+    } 
+    dotenv <- list2env(list(...))
+    parallel::clusterExport(cl=cl, as.list(ls(dotenv)),envir=dotenv) ## much faster...
+  } 
+  repeat { 
+    block_nsim <- boot.repl-nrow(bootreps)
+    cumul_nsim <- cumul_nsim+block_nsim
+    newy_s <- simulate(nullfit,nsim = block_nsim,verbose=FALSE) ## some replicates may not be analyzable  !
+    #print(head(newy_s))
+    if (nb_cores > 1L) {
+      if (has_doSNOW) {
+        bootblock <- foreach::foreach(
+          ii = 1:boot.repl,
+          .combine = "rbind",
+          .inorder = FALSE,
+          .packages = "spaMM",
+          #.export = c("progress","simbData","bootlist"),
+          .errorhandling = "remove",
+          .options.snow = opts
+        ) %foreachdopar% {
+          eval_replicate(newy_s[,ii])
+        }
+        close(pb)
+      } else {
+        bootblock <- parallel::parApply(cl,newy_s,MARGIN = 2L,FUN = eval_replicate)
+        bootblock <- t(bootblock)
+        bootblock <- stats::na.omit(bootblock)
+      }
+    } else {
+      eval_wrap <- function(v) {
+        res <- eval_replicate(v)
+        ii <<- ii+1
+        tused <- .timerraw(time1)
+        ttotal <- tused* boot.repl/ii
+        if (interactive()) {
+          for (bidon in 1:msglength) cat("\b")
+          msg <<- paste("Estimated time remaining for bootstrap: ",signif(ttotal-tused,2)," s.",sep="")
+          msglength <<- nchar(msg)
+          cat(msg)
+        } else {
+          cat(ii);cat(" ")
+          if ((ii %% 40)==0L) cat("\n")
+        }
+        return(res)
+      }
+      bootblock <- apply(newy_s,MARGIN = 2L,FUN = eval_wrap)
+      bootblock <- t(bootblock)
+      bootblock <- stats::na.omit(bootblock)
+    }
+    if (nrow(bootblock)<block_nsim ) { ## eg separation in binomial models... 
+      warning(paste("Analysis of",block_nsim-nrow(bootblock),"bootstrap samples out of",block_nsim," failed. 
+                          Maybe no statistical information in them ?"))
+      if (cumul_nsim>10*boot.repl) { ## to avoid an infinite loop
+        stop("Analysis of bootstrap samples fails repeatedly. Maybe no statistical information in them ?")
+      } ## otherwise repeat!
+    }
+    bootreps <- rbind(bootreps,bootblock)
+    if (nrow(bootreps)>=boot.repl) break
+  }
+  if (nb_cores > 1L) { parallel::stopCluster(cl) } 
+  cat(paste(" bootstrap took",.timerraw(time1),"s.\n")) 
+  return(bootreps)
+} ## end bootstrap
+
+
+
+
+
+internal_LRT <- function(null.formula=NULL,formula,
+                     null.disp=list(),REMLformula=NULL,boot.repl=0,
+                     ## currently trace always false; this is not an argument t be forwarded as is to corrHLfit! 
+                     #trace=FALSE, ## T means lead to calls of corrHLfit(... trace=list(<file name>,<over/append>))
+                     verbose=c(trace=FALSE,warn=NA,summary=FALSE),
+                     fittingFunction="corrHLfit",  
+                     nb_cores=NULL,
+                     ...) {
+  if (is.na(verbose["trace"])) verbose["trace"] <- FALSE
+  if (is.na(verbose["warn"])) verbose["warn"] <- FALSE ## will be unconditionally ignored by the final fit in corrHLfit  
+  if (is.na(verbose["summary"])) verbose["summary"] <- FALSE ## this is for HLCor
+  callargs <- match.call(expand.dots = TRUE)
+  ## as list(...) but holding elements (prior.weights, in particular) unevaluated
+  dotlist <- callargs[setdiff(names(callargs),names(formals(internal_LRT)))] 
+  dotlist$prior.weights <- NULL
+  dotlist <- lapply(dotlist[-1L],eval,envir=parent.frame(1L))
+  ## birth pangs :
+  if ("predictor" %in% names(callargs)) {
+    stop("internal_LRT() called with 'predictor' argument which should be 'formula'" )
+  }
+  if ("null.predictor" %in% names(callargs)) {
+    stop("internal_LRT() called with 'null.predictor' argument which should be 'null.formula'" )
+  }
+  ## here we makes sure that *predictor variables* are available for all data to be used under both models
+  data <- dotlist$data
+  if ( inherits(data,"list")) {
+    data <- lapply(data,function(dt) {
+      null.validdata <- getValidData(formula=null.formula[-2],resid.formula=dotlist$resid.formula,data=dt,
+                                     callargs=callargs["prior.weights"]) ## will remove rows with NA's in required variables
+      full.validdata <- getValidData(formula=formula[-2],resid.formula=dotlist$resid.formula,data=dt,
+                                     callargs=callargs["prior.weights"]) ## will remove rows with NA's in required variables
+      dt[intersect(rownames(null.validdata),rownames(full.validdata)),,drop=FALSE]     
+    })
+  } else {
+    null.validdata <- getValidData(formula=null.formula[-2],resid.formula=dotlist$resid.formula,data=data,
+                                   callargs=callargs["prior.weights"]) ## will remove rows with NA's in required variables
+    full.validdata <- getValidData(formula=formula[-2],resid.formula=dotlist$resid.formula,data=data,
+                                   callargs=callargs["prior.weights"]) ## will remove rows with NA's in required variables
+    data <- data[intersect(rownames(null.validdata),rownames(full.validdata)),,drop=FALSE]     
+  }  
+  dotlist$data <- data
+  predictor <- formula   
+  if (! inherits(formula,"predictor")) predictor <- Predictor(formula)
+  null.predictor <- null.formula   
+  if (! inherits(null.formula,"predictor")) null.predictor <- Predictor(null.formula)
+  form <- predictor
+  if (!is.null(dotlist$LamFix)) {
+    dotlist$ranFix$lambda <- dotlist$LamFix
+    dotlist$LamFix <- NULL
+  }
+  if (!is.null(dotlist$PhiFix)) {
+    dotlist$ranFix$phi <- dotlist$PhiFix
+    dotlist$PhiFix <- NULL
+  }  
+  dotlist$formula <- predictor 
+  dotlist$verbose <- verbose 
+  if (fittingFunction == "fitme") {
+    if (is.null(dotlist$method)) stop("'method' argument is required when fittingFunction=\"fitme\".")
+    locmethod <- dotlist$method
+  } else {
+    if (is.null(dotlist$HLmethod)) {
+      dotlist$HLmethod <- dotlist$method
+      dotlist$method <- NULL
+    }
+    locmethod <- dotlist$HLmethod
+  }
+  ## do not change dotlist afterwards !
+  fullm.list <- dotlist
+  nullm.list <- dotlist
+  fullm.list$formula <- predictor
+  #### "limited use, for initializing bootstrap replicates:"
+  which.iterative.fit <-character(0)
+  which.optim.fit <-character(0)
+  if ( ! is.null(dotlist$init.corrHLfit$lambda) ) {
+    which.optim.fit <- c(which.optim.fit,"lambda")
+  } else if ( is.null (fullm.list$ranFix$lambda)) which.iterative.fit <- c(which.iterative.fit,"lambda")
+  if (is.null(fullm.list$family) ## (=gaussian)
+      || fullm.list$family$family %in% c("gaussian","Gamma")) {
+    if ( ! is.null(dotlist$init.corrHLfit$phi) ) { ## if user estimates it by ML...
+      which.optim.fit <- c(which.optim.fit,"phi")
+    } else which.iterative.fit <- c(which.iterative.fit,"phi")
+  }
+  if (fittingFunction %in% c("corrHLfit","fitme")) {
+    if ( ! "rho" %in% names(dotlist$ranFix)) which.optim.fit <- c(which.optim.fit,"rho")
+    if ( ! "nu" %in% names(dotlist$ranFix)) which.optim.fit <- c(which.optim.fit,"nu")
+    if ( ! "ARphi" %in% names(dotlist$ranFix)) which.optim.fit <- c(which.optim.fit,"ARphi") # mpf
+    if ( ! "Nugget" %in% names(dotlist$ranFix)) which.optim.fit <- c(which.optim.fit,"Nugget") ## by default not operative given later code and init.optim$Nugget is NULL
+  }
+  if ( ! is.null(null.predictor)) { ## ie if test effet fixe
+    testFix <- TRUE
+    if (locmethod =="SEM") {
+      test.obj <- "logLapp"
+    } else test.obj <- "p_v"
+    ## check fullm.list$REMLformula, which will be copied into nullm in all cases of fixed LRTs
+    if (locmethod %in% c("ML","PQL/L","SEM") || substr(locmethod,0,2) == "ML") {
+      fullm.list$REMLformula <- NULL
+      nullm.list$REMLformula <- NULL
+    } else { ## an REML variant
+      if (is.null(REMLformula)) { ## default
+        fullm.list$REMLformula <- NULL ## HLfit will reconstruct proper REML from this
+        nullm.list$REMLformula <- fullm.list$formula ## 
+      } else { ## allows alternative choice, but still the same *both* the full and the null fit
+        fullm.list$REMLformula <- REMLformula
+        nullm.list$REMLformula <- REMLformula
+      }
+      namesinit <- names(fullm.list$init.corrHLfit)
+      namesinit <- setdiff(namesinit,c("rho","nu","Nugget","ARphi"))
+      len <- length(namesinit)
+      if ( len>0) {
+        if (len > 1) namesinit <- paste(c(paste(namesinit[-len],collapse=", "),namesinit[len]),collapse=" and ")
+        message("Argument 'init.corrHLfit' is used in such a way that")
+        message(paste("  ",namesinit," will be estimated by maximization of p_v.",sep=""))
+        message("  'REMLformula' will be inoperative if all dispersion")
+        message("  and correlation parameters are estimated in this way.")
+      }
+    }
+    nullm.list$formula <- null.predictor
+  } else if ( length(null.disp)>0 ) { ## test disp/corr param
+    testFix <- F
+    #
+    mess <- pastefrom("Models differ in their random effects or residual dispersion structure.")
+    stop(mess)
+    #
+    namescheck <- names(fullm.list$lower)
+    namescheck <- namescheck[ ! namescheck %in% names(null.disp)]  
+    nullm.list$lower <- nullm.list$lower[namescheck]
+    nullm.list$upper <- nullm.list$upper[namescheck]
+    nullm.list$ranFix <- c(nullm.list$ranFix,null.disp) ## adds fixed values to any preexisting one
+  } else testFix <- NA
+  
+  #  trace.info <- NULL
+  fullfit <- do.call(fittingFunction,fullm.list)
+  if (fittingFunction=="fitme") {
+    fullranPars <- fullfit$CorrEst_and_RanFix
+    nullm.list$init[names(fullranPars)] <- fullranPars
+  }
+  nullfit <- do.call(fittingFunction,nullm.list)
+  if (fittingFunction=="fitme") {
+    if (logLik(fullfit)<logLik(nullfit)) { ## evidence of fullfit being trapped in a local maximum
+      nullranPars <- nullfit$CorrEst_and_RanFix
+      fullm.list$init[names(nullranPars)] <- nullranPars
+      fullfit <- do.call(fittingFunction,fullm.list)
+    }
+    # # No comparable evidence that nullfit is trapped in a local maximum: check with fullfit ranPars
+    fullranPars <- fullfit$CorrEst_and_RanFix
+    nullm.list$init[names(fullranPars)] <- fullranPars
+    nullfit <- do.call(fittingFunction,nullm.list)
+  }
+  if (testFix) {df <- length(fullfit$fixef)-length(nullfit$fixef)} else {df <- length(null.disp)}
+  if (df<0) {
+    tmp <- fullfit
+    fullfit <- nullfit
+    nullfit <- tmp
+  }
+  if (inherits(fullfit,"HLfitlist")) {
+    fullL <- attr(fullfit,"APHLs")[[test.obj]]
+  } else fullL <- fullfit$APHLs[[test.obj]]
+  if (inherits(nullfit,"HLfitlist")) {
+    nullL <- attr(nullfit,"APHLs")[[test.obj]]
+  } else nullL <- nullfit$APHLs[[test.obj]]
+  LRTori <- 2*(fullL-nullL)
+  ## BOOTSTRAP
+  if ( ! is.na(testFix)) {
+    if (boot.repl>0) {
+      bootlist <- dotlist ## copies (full)formula and (optionally) ranFix
+      bootlist <- c(bootlist,list(null.formula=null.predictor,null.disp=null.disp,REMLformula=REMLformula,fittingFunction=fittingFunction)) ## unchanged user REMLformula forwarded
+      bootlist$verbose <- c(trace=FALSE,summary=FALSE)
+      #bootlist$trace <- FALSE 
+      bootlist$boot.repl <- 0 ## avoids recursive call of bootstrap
+      all.estim.ranvars <- c(which.optim.fit) ## FR->FR to be modified if optimFits are reintroduced, see corresponding code in corrMM.LRT 
+      for (st in all.estim.ranvars) {
+        if (fittingFunction=="corrHLfit") {
+          if ( st %in% names(nullfit$CorrEst_and_RanFix)) {
+            bootlist$init.corrHLfit[st] <- nullfit$CorrEst_and_RanFix[st]
+          } else if ( st %in% names(nullfit)) {
+            bootlist$init.corrHLfit[st] <- nullfit[st] ## that looks like an obsolete conception
+          } 
+        } else {
+          if ( st %in% names(nullfit)) {
+            bootlist$init.HLfit[st] <- nullfit[st] ## 
+          } 
+        }
+      }        
+      if (tolower(nullfit$family$family)=="binomial") {
+        cbf <- .check_binomial_formula(nullfit=nullfit, data=data, fullfit=fullfit)
+        cbindTest <- cbf$cbindTest
+        if (cbindTest) {
+          bootlist$null.formula <- cbf$null_formula
+          bootlist$formula <- cbf$full_formula
+          nnegname <- cbf$nnegname
+          nposname <- cbf$nposname
+        }
+      } else cbindTest <- FALSE
+      ## the data contain any original variable not further used; e.g original random effect values in the simulation tests  
+      thisFnName <- as.character(sys.call()[[1]]) ## prevents a bug when we change "this" function name
+      thisFnName <- strsplit(thisFnName,":")[[1]]
+      thisFnName <- thisFnName[length(thisFnName)]
+      locitError <- 0
+      #
+      simbData <- nullfit$data
+      eval_replicate <- function(newy,only_vector=TRUE) {
+        if (cbindTest) {
+          simbData[[nposname]] <- newy
+          simbData[[nnegname]] <- nullfit$weights - newy
+        } else {simbData[[as.character(nullfit$predictor[[2L]])]] <- newy} ## allows y~x syntax for binary response
+        bootlist$data <- simbData
+        bootrepl <- try(do.call(thisFnName,bootlist)) ## appears to fail IF thisFnName is internal (.do_LRT)
+        #bootrepl <- try(eval(as.call(c(quote(thisFnName),bootlist)))) ## never worked (without the strsplit at least)
+        if (inherits(bootrepl,"try-error")) {
+          if (only_vector) {
+            return(c(NA,NA))
+          } else return(bootrepl)
+        } else return(c(logLik(bootrepl$fullfit,which=test.obj),
+                        logLik(bootrepl$nullfit,which=test.obj)))
+      }
+      bootreps <- .eval_boot_replicates(eval_replicate=eval_replicate,boot.repl=boot.repl,nullfit=nullfit,nb_cores=nb_cores,
+                                        bootlist=bootlist, simbData=simbData)
+      colnames(bootreps) <- paste(c("full.","null."),test.obj,sep="")
+    } ## end bootstrap
+  } else { ## nothing operativ yet
+    bootreps<-matrix(NA,nrow=boot.repl,ncol=length(unlist(fullfit$APHLs))) 
+    colnames(bootreps) <- names(unlist(fullfit$APHLs))
+    ## more needed here ?
+  }
+  ## prepare output
+  if ( ! is.na(testFix)) {
+    if (testFix) {df <- length(fullfit$fixef)-length(nullfit$fixef)} else {df <- length(null.disp)}
+    resu <- list(fullfit=fullfit,nullfit=nullfit)
+    resu$basicLRT <- data.frame(chi2_LR=LRTori,df=df,p_value=1-pchisq(LRTori,df=df))
+    if (boot.repl>0) {
+      bootdL <- bootreps[,1]-bootreps[,2]
+      meanbootLRT <- 2*mean(bootdL)  
+      rawPvalue <- (1+sum(bootdL>=LRTori/2))/(boot.repl+1) ## DavisonH, p.141
+      LRTcorr <- LRTori*df/meanbootLRT
+      ## as docuumented in ?LRT
+      resu$rawBootLRT <- data.frame(chi2_LR=LRTori,df=df,p_value=rawPvalue)
+      resu$BartBootLRT <- data.frame(chi2_LR=LRTcorr,df=df,p_value=1-pchisq(LRTcorr,df=df))
+      resu$bootInfo <- list(meanbootLRT=meanbootLRT,bootreps=bootreps) 
+    }
+  } else {
+    resu <- list(fullfit=fullfit)
+    resu$bootInfo <- list()
+    resu$basicLRT <- list()
+  }
+  class(resu) <- c("fixedLRT",class(resu)) 
+  return(resu)
+}

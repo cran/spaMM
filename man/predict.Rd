@@ -7,17 +7,23 @@
 \alias{get_respVar}
 \alias{get_intervals}
 \alias{intervals}
+\alias{get_predCov_var_fix}
+\alias{preprocess_fix_corr}
 
 \title{
   Prediction from a model fit.
 }
 \description{
-  Prediction of the response variable by its expected value obtained as (the inverse link transformation of) the linear predictor (\eqn{\eta}) and more generally for terms of the form \bold{X}_n\eqn{\beta}+\bold{Z}_n\bold{L}\bold{v}, for new design matrices \bold{X}_n and \bold{Z}_n. Various components of prediction variances and predictions intervals can also be computed using \code{predict}. The \code{get_}... functions are convenient extractors for such components.   
+  Prediction of the response variable by its expected value obtained as (the inverse link transformation of) the linear predictor (\eqn{\eta}) and more generally for terms of the form \bold{X}_n\eqn{\beta}+\bold{Z}_n\bold{L}\bold{v}, for new design matrices \bold{X}_n and \bold{Z}_n. Various components of prediction variances and predictions intervals can also be computed using \code{predict}. The \code{get_}... functions are convenient extractors for such components. \code{get_predCov_var_fix} extracts a block of a prediction covariance matrix. It was conceived for the specific purpose of computing the spatial prediction covariances between two ``new'' sets of geographic locations, without computing the full covariance matrix for both the new locations and the original (fitted) locations. \code{preprocess_fix_corr} was conceived to perform this covariance computation more efficiently when one of the two sets of new locations is fixed while the other varies.  
 }
 \usage{
 \method{predict}{HLfit}(object, newdata = newX, newX = NULL, re.form = NULL,
                           variances=list(), binding = FALSE, intervals = NULL,
                           level = 0.95, ...)
+get_predCov_var_fix(object, newdata = NULL, fix_X_ZAC.object, fixdata, 
+                   variances=list(disp=TRUE,residVar=FALSE), ...)    
+preprocess_fix_corr(object, fixdata, re.form = NULL,
+                   variances=list(residVar=FALSE))                                
 get_fixefVar(...)
 get_predVar(...)
 get_residVar(...)
@@ -86,6 +92,8 @@ get_intervals(...)
   If \code{binding} is \code{FALSE}, The predicted values are returned as a matrix and the data frame used for prediction is returned as an attribute
   (unless it was \code{NULL}).
  }
+ \item{fixdata}{A data frame describing reference data which covariances with variable \code{newdata} may be requested.}
+ \item{fix_X_ZAC.object}{The return value of calling \code{preprocess_fix_corr} (see trivial Example). This is a more efficient way of providing information about the \code{fixdata} for repeated calls to \code{get_predCov_var_fix} with variable \code{newdata}.}
 \item{\dots}{
   further arguments passed to or from other methods. For the \code{get_}... functions, they are passed to \code{predict}. 
 }
@@ -116,11 +124,12 @@ If \code{variances$disp} is \code{TRUE}, prediction variance may also include a 
   For models with non-Gaussian response, the prediction covariance of the response is approximated by the prediction covariance of the linear predictor, 
   pre- and post-multiplied by \eqn{\partial\mu/\partial\eta}{d\mu/d\eta}. 
   
-  These variance calculations are approximate except for LMMs, and cannot be garanteed to give accurate results.  
+  These variance calculations are approximate except for LMMs, and cannot be guaranteed to give accurate results.  
 
 In the \bold{point prediction} of the linear predictor, the unconditional expected value of \eqn{u} is assigned to the realizations of \eqn{u} for unobserved levels of non-spatial random effects (it is zero in GLMMs but not for non-gaussian random effects), and the inferred value of \eqn{u} is assigned in all other cases. Corresponding values of \eqn{v} are then deduced. This computation yields the classical \dQuote{BLUP} or empirical Bayes predictor in LMMs, but otherwise it may yield less well characterized predictors, where \dQuote{unconditional} \eqn{v} may not be its expected value when the \code{rand.family} link is not identity. 
 
 \bold{Intervals} computations use the relevant variance estimates plugged in a Gaussian approximation, except for the simple linear model where it uses Student's \emph{t} distribution.   
+
 }
 \references{
   Booth, J.G., Hobert, J.P. (1998) Standard errors of prediction in generalized linear mixed models. J. Am. Stat. Assoc. 93: 262-272. 
@@ -170,6 +179,9 @@ fitobject <- corrHLfit(migStatus ~ 1 + Matern(1|latitude+longitude),data=blackca
                        ranFix=list(nu=10,rho=0.001)) ## numerically singular C
 predict(fitobject) ## predicted mu computed as X beta + L v 
 predict(fitobject,newdata=blackcap) ## predicted mu computed as X beta + C %*% solve(t(L),v) 
+#
+fix_X_ZAC.object <- preprocess_fix_corr(fitobject,fixdata=blackcap)
+get_predCov_var_fix(fitobject,newdata=blackcap[14,],fix_X_ZAC.object=fix_X_ZAC.object)
 
 ## point predictions and variances with new X and Z
 if(require("rsae", quietly = TRUE)) {

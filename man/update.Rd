@@ -67,11 +67,11 @@ update(wFit,formula.= . ~ offset(wFit$`X.pv` \%*\% betavals)+(1|batch),
 ## There are subtlety in performing REML fits of constrained models,
 ##   illustrated by thefact thatthe following fir does not recover 
 ##   the original likelihood values, because dispersion parameters are
-##   estimatedbut the REML correction changes with the formula:
+##   estimated but the REML correction changes with the formula:
 update(wFit,formula.= . ~ offset(wFit$`X.pv` \%*\% fixef(wFit))+(1|batch))
 ## To maintain the original REML correction, Consider instead
 update(wFit,formula.= . ~ offset(wFit$`X.pv` \%*\% fixef(wFit))+(1|batch),
-       REMLformula=wFit$predictor)  ## recover orginal p_v and p_bv 
+       REMLformula=wFit$predictor)  ## recover original p_v and p_bv 
 ## Alternatively, show original wFit as differences from betavals:  
 update(wFit,formula.= . ~ . +offset(wFit$`X.pv` \%*\% betavals))
 

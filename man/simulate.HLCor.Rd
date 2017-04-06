@@ -35,7 +35,7 @@
   A data frame closely matching the original data, except that response values are not needed. May provide new values of fixed predictor variables, new spatial locations, or new individuals within a block.   
 }
   \item{conditional}{
-    Boolean, for development purposes. Currently only conditional simulation is handled.
+    Boolean, for development purposes. Currently only unconditional simulation is handled.
   }
   \item{verbose}{
     Boolean; whether to print some information or not. 

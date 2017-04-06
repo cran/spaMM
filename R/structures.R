@@ -1,5 +1,5 @@
 if (FALSE) { ## version de developpement a conserver
-  create_get_qr <- function(tag) {
+  .create_get_qr <- function(tag) {
     ## creates the function in a local envir different from the closure of HLfit
     # so that this envir can be manipulated easily
     qr <- NULL## so that no build/check note on the <<- 
@@ -20,32 +20,19 @@ if (FALSE) { ## version de developpement a conserver
                                    parent=environment(QRwrap))
     return(locfn)
   }
-  
+  #mat <- structure(matrix(runif(12),ncol=3),get_qr=create_get_qr())
+  #essai <- function(mat) {attr(mat,"get_qr")(mat)}
+  #essai(mat) ##changes mat 'globally'
 }  else {
-  create_get_qr <- function(tag) {
-    ## creates the function in a local envir different from the closure of HLfit
-    # so that this envir can be manipulated easily
-    qr <- NULL## so that no build/check note on the <<- 
-    callcount <- NULL
-    locfn <- function(mat,provide=TRUE) {
-      callcount <<- callcount+1L
-      if (is.null(qr)) { 
-        ## This call gets args (except res) from the envir of locfn def'd below:
-        if (provide) {
-          qr <<- QRwrap(mat)
-        } 
-      } 
-      return(qr)
-    } ## this function changes environment(<res object>$get_info_crits)$info_crits
-    environment(locfn) <- list2env(list(qr=NULL,tag=tag,callcount=0L),
-                                   parent=environment(QRwrap))
-    return(locfn)
+  .get_qr <- function(mat,provide=TRUE) {
+    envir <- attr(mat,"envir") ## environment
+    envir$callcount <- envir$callcount+1L
+    if (is.null(envir$qr)) { 
+      if (provide) envir$qr <- QRwrap(mat)
+    } 
+    return(envir$qr)
   }
 }
 
-#mat <- structure(matrix(runif(12),ncol=3),get_qr=create_get_qr())
-#essai <- function(mat) {attr(mat,"get_qr")(mat)}
-#essai(mat) ##changes mat 'globally'
 
-# detected:
-# auglinmodfit does not provide qr_d2hdv2 is !K2needed, but its need for the post-fit omputations
+
