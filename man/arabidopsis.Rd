@@ -26,7 +26,7 @@
 The data were retrieved from \code{http://bergelson.uchicago.edu/regmap-data/climate-genome-scan} on 22 February 2013 (they may no longer be available from there).
 }
 \details{
-  The  response is binary so \dQuote{HLmethod="PQL/L"} seems warranted (see Rousset and Ferdy, 2014).  
+  The  response is binary so \code{HLmethod="PQL/L"} seems warranted (see Rousset and Ferdy, 2014).  
 }
 \references{
  Fournier-Level A, Korte A., Cooper M. D., Nordborg M., Schmitt J., Wilczek AM (2011). A map of local adaptation in Arabidopsis thaliana. Science 334: 86-89.

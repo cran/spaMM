@@ -220,7 +220,7 @@ corrHLfit_body <- function(processed,
     # processed <- setProcessed(processed,"SEMargs$SEMseed",value="NULL") ## removing default SEMseed
     ## : bc SEMseed OK to control individual SEMs but not  series of SEM 
     if (is.null(getProcessed(processed,"SEMargs$control_pmvnorm$maxpts",from=1L))) {
-      if (length(LowUp$lower>0L)) {
+      if (length(LowUp$lower)>0L) {
         processed <- setProcessed(processed,"SEMargs$control_pmvnorm$maxpts",value="quote(250L*nobs)") 
       } ## else default visible in SEMbetalambda
     }
@@ -246,9 +246,9 @@ corrHLfit_body <- function(processed,
                     verbose=verbose[["iterateSEM"]],
                     nb_cores=nb_cores,
                     MAX=MAX)
-    #optr <- do.call(probitgem::iterateSEMSmooth,loclist) ## passes CHECK if CRAN knows it
-    optr <- eval(as.call(c(quote(iterateSEMSmooth),loclist)))
-    optPars <- as.list(optr$par)
+    #optr <- do.call(probitgem::iterateSEMSmooth,loclist) ## will pass CHECK when CRAN knows probitgem
+    optr <- eval(as.call(c(quote(iterateSEMSmooth),loclist))) ## if probitgem unknown
+    optPars <- relist(optr$par,init.optim)
     if (!is.null(optPars)) attr(optPars,"method") <-"optimthroughSmooth"
   } else { ## this is also called if length(lower)=0 by  (SEM or not) and optPars is then null
     if (identical(anyHLCor_obj_args$verbose["getCall"][[1L]],TRUE)) {

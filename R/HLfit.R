@@ -56,8 +56,8 @@ HLfit <- function(formula,
       warning("It is _strongly_ recommanded to use the 'data' argument\n for any application beyond a single fit (e.g. for predict(), etc.)")
     }
     ################### create data list if family is multi #################################
-    family <- checkRespFam(family)
-    #family <- as_call_family(family) ## same, family as HLCor argument ?
+    family <- .checkRespFam(family)
+    #family <- .as_call_family(family) ## same, family as HLCor argument ?
     ## mix of mc$family and family:
     ## only the evaluated multi() family is certain to have a $binResponse and ad $binfamily
     ## error for missing "npos" typically follows from lack of explicit $binResponse 
@@ -124,15 +124,9 @@ HLfit <- function(formula,
     }
   }
   #
-  mc$data <- NULL
-  mc$family <- NULL
-  mc$formula <- NULL
-  mc$prior.weights <- NULL
-  mc$HLmethod <- NULL ## processed$HL  
-  mc$rand.family <- NULL ## processed$rand.families  
-  mc$control.glm <- NULL ## processed$control.glm  
-  mc$resid.formula <- NULL ## mc$resid.model  
-  mc$REMLformula <- NULL ## processed$REMLformula
+  pnames <- c("data","family","formula","prior.weights","HLmethod","rand.family","control.glm","resid.formula","REMLformula",
+              "resid.model")
+  for (st in pnames) mc[st] <- NULL 
   mc$resid.model <- NULL ## info in processed
   mc[[1L]] <- quote(spaMM::HLfit_body)
   hlfit <- eval(mc,parent.frame())

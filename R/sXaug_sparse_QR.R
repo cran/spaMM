@@ -38,7 +38,7 @@ create_sXaug_EigenSparse_QR_scaled <- function() {
     if ( is.null(BLOB$t_Q_scaled) && 
          (#! is.null(szAug) || 
            which %in% c("t_Q_scaled","hatval","hatval_Z")) ) {
-      BLOB$t_Q_scaled <<- drop0(Matrix::solve(t(BLOB$R_scaled),t(sXaug)))
+      BLOB$t_Q_scaled <<- Matrix::drop0(Matrix::solve(t(BLOB$R_scaled),t(sXaug)))
     }
     if ( ! is.null(szAug)) {
       if (is.null(BLOB$t_Q_scaled)) {

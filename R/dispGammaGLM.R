@@ -52,12 +52,12 @@ calc_dispGammaGLM <-
   if (missing(data)) data <- environment(formula)
   mf <- eval(mf, parent.frame()) ## formula argument is required to eval mf => for mt too
   mt <- attr(mf, "terms")
-  X <- model.matrix(mt, mf, contrasts) ## from glm() code
+  X <- model.matrix(mt, mf, stats::contrasts) ## from glm() code
   #
   offset <- as.vector(model.offset(mf))
   intercept <- FALSE ## previously tried attr(mt, "intercept") > 0L but this is wrong
   #
-  weights <- (1-lev)/2 # glm() code : weights <- as.vector(model.weights(mf))
+  weights <- (1-lev)/2 # glm() code : weights <- as.vector(stats::model.weights(mf))
   tryfit <- tryCatch.W.E(eval(call(method, 
                                    x = X, y = Y, weights = weights, offset = offset, family = family, 
                                    control = control, intercept = intercept)))
@@ -81,7 +81,7 @@ calc_dispGammaGLM <-
   if (!y) fit$y <- NULL
   fit <- c(fit, list(call = match.call(), formula = formula, terms = mt, 
                      data = data, offset = offset, control = control, method= "glm.fit",
-                     contrasts = attr(X, "contrasts"), xlevels = .getXlevels(mt, mf),
+                     contrasts = attr(X, "contrasts"), xlevels = stats::.getXlevels(mt, mf),
                      warnmess=warnmess
                      ))
   class(fit) <- c(fit$class, c("glm", "lm"))

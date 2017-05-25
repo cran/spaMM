@@ -26,7 +26,7 @@
   if (is.null(nform)) stop("a 'predictor' object must have an 'oriFormula' member.")
   if (paste(nform[[2L]])[[1L]]=="cbind") {
     ## We have different possible (exprL,exprR) arguments in cbind(exprL,exprR), 
-    ## but in all case the predictor is that of exprL and exprR is $weights- exprL. We standardize: 
+    ## but in all case the predictor is that of exprL and exprR is $BinomialDen - exprL. We standardize: 
     res$nposname <- nposname <- makenewname("npos",names(data))
     res$nnegname <- nnegname <- makenewname("nneg",names(data))
     nform <- paste(nform)
@@ -63,8 +63,8 @@
       assign(".Random.seed", R.seed, envir = .GlobalEnv)
       eval(as.call(c(quote(registerDoSNOW),list(cl=cl)))) 
       `%foreachdopar%` <- foreach::`%dopar%`
-      pb <- txtProgressBar(max = boot.repl, style = 3)
-      progress <- function(n) setTxtProgressBar(pb, n)
+      pb <- utils::txtProgressBar(max = boot.repl, style = 3)
+      progress <- function(n) utils::setTxtProgressBar(pb, n)
       opts <- list(progress = progress)
       parallel::clusterExport(cl=cl, list("progress"),envir=environment()) ## slow! why?
     } else if ( ! identical(spaMM.getOption("doSNOW_warned"),TRUE)) {
@@ -78,6 +78,7 @@
     block_nsim <- boot.repl-nrow(bootreps)
     cumul_nsim <- cumul_nsim+block_nsim
     newy_s <- simulate(nullfit,nsim = block_nsim,verbose=FALSE) ## some replicates may not be analyzable  !
+    if (block_nsim==1L) dim(newy_s) <- c(length(newy_s),1)
     #print(head(newy_s))
     if (nb_cores > 1L) {
       if (has_doSNOW) {
@@ -203,29 +204,14 @@ internal_LRT <- function(null.formula=NULL,formula,
       dotlist$method <- NULL
     }
     locmethod <- dotlist$HLmethod
+    if (fittingFunction=="HLfit") dotlist <- dotlist[names(formals(HLfit))] ## HLfit has no ... args
   }
+  dotlist$nb_cores <- nb_cores ## not yet in dotlist bc nb_cores argument is explicit for bootstrap 
   ## do not change dotlist afterwards !
   fullm.list <- dotlist
   nullm.list <- dotlist
   fullm.list$formula <- predictor
   #### "limited use, for initializing bootstrap replicates:"
-  which.iterative.fit <-character(0)
-  which.optim.fit <-character(0)
-  if ( ! is.null(dotlist$init.corrHLfit$lambda) ) {
-    which.optim.fit <- c(which.optim.fit,"lambda")
-  } else if ( is.null (fullm.list$ranFix$lambda)) which.iterative.fit <- c(which.iterative.fit,"lambda")
-  if (is.null(fullm.list$family) ## (=gaussian)
-      || fullm.list$family$family %in% c("gaussian","Gamma")) {
-    if ( ! is.null(dotlist$init.corrHLfit$phi) ) { ## if user estimates it by ML...
-      which.optim.fit <- c(which.optim.fit,"phi")
-    } else which.iterative.fit <- c(which.iterative.fit,"phi")
-  }
-  if (fittingFunction %in% c("corrHLfit","fitme")) {
-    if ( ! "rho" %in% names(dotlist$ranFix)) which.optim.fit <- c(which.optim.fit,"rho")
-    if ( ! "nu" %in% names(dotlist$ranFix)) which.optim.fit <- c(which.optim.fit,"nu")
-    if ( ! "ARphi" %in% names(dotlist$ranFix)) which.optim.fit <- c(which.optim.fit,"ARphi") # mpf
-    if ( ! "Nugget" %in% names(dotlist$ranFix)) which.optim.fit <- c(which.optim.fit,"Nugget") ## by default not operative given later code and init.optim$Nugget is NULL
-  }
   if ( ! is.null(null.predictor)) { ## ie if test effet fixe
     testFix <- TRUE
     if (locmethod =="SEM") {
@@ -270,20 +256,21 @@ internal_LRT <- function(null.formula=NULL,formula,
   
   #  trace.info <- NULL
   fullfit <- do.call(fittingFunction,fullm.list)
+  fullranPars <- fullfit$CorrEst_and_RanFix
+  notfixed <- names(which(attr(fullranPars,"type")!="fix"))
   if (fittingFunction=="fitme") {
-    fullranPars <- fullfit$CorrEst_and_RanFix
-    nullm.list$init[names(fullranPars)] <- fullranPars
+    nullm.list$init[notfixed] <- fullranPars[notfixed]
   }
   nullfit <- do.call(fittingFunction,nullm.list)
   if (fittingFunction=="fitme") {
     if (logLik(fullfit)<logLik(nullfit)) { ## evidence of fullfit being trapped in a local maximum
       nullranPars <- nullfit$CorrEst_and_RanFix
-      fullm.list$init[names(nullranPars)] <- nullranPars
+      fullm.list$init[notfixed] <- nullranPars[notfixed]
       fullfit <- do.call(fittingFunction,fullm.list)
     }
     # # No comparable evidence that nullfit is trapped in a local maximum: check with fullfit ranPars
     fullranPars <- fullfit$CorrEst_and_RanFix
-    nullm.list$init[names(fullranPars)] <- fullranPars
+    nullm.list$init[notfixed] <- fullranPars[notfixed]
     nullfit <- do.call(fittingFunction,nullm.list)
   }
   if (testFix) {df <- length(fullfit$fixef)-length(nullfit$fixef)} else {df <- length(null.disp)}
@@ -307,20 +294,11 @@ internal_LRT <- function(null.formula=NULL,formula,
       bootlist$verbose <- c(trace=FALSE,summary=FALSE)
       #bootlist$trace <- FALSE 
       bootlist$boot.repl <- 0 ## avoids recursive call of bootstrap
-      all.estim.ranvars <- c(which.optim.fit) ## FR->FR to be modified if optimFits are reintroduced, see corresponding code in corrMM.LRT 
-      for (st in all.estim.ranvars) {
-        if (fittingFunction=="corrHLfit") {
-          if ( st %in% names(nullfit$CorrEst_and_RanFix)) {
-            bootlist$init.corrHLfit[st] <- nullfit$CorrEst_and_RanFix[st]
-          } else if ( st %in% names(nullfit)) {
-            bootlist$init.corrHLfit[st] <- nullfit[st] ## that looks like an obsolete conception
-          } 
-        } else {
-          if ( st %in% names(nullfit)) {
-            bootlist$init.HLfit[st] <- nullfit[st] ## 
-          } 
-        }
-      }        
+      if (fittingFunction=="corrHLfit") {
+        bootlist$init.corrHLfit[notfixed] <- nullfit$CorrEst_and_RanFix[notfixed]
+      } else if (fittingFunction=="fitme") {
+        bootlist$init <- nullfit$CorrEst_and_RanFix[notfixed]
+      } else bootlist$init.HLfit[notfixed] <- nullfit$CorrEst_and_RanFix[notfixed]
       if (tolower(nullfit$family$family)=="binomial") {
         cbf <- .check_binomial_formula(nullfit=nullfit, data=data, fullfit=fullfit)
         cbindTest <- cbf$cbindTest
@@ -341,7 +319,7 @@ internal_LRT <- function(null.formula=NULL,formula,
       eval_replicate <- function(newy,only_vector=TRUE) {
         if (cbindTest) {
           simbData[[nposname]] <- newy
-          simbData[[nnegname]] <- nullfit$weights - newy
+          simbData[[nnegname]] <- .get_BinomialDen(nullfit)  - newy
         } else {simbData[[as.character(nullfit$predictor[[2L]])]] <- newy} ## allows y~x syntax for binary response
         bootlist$data <- simbData
         bootrepl <- try(do.call(thisFnName,bootlist)) ## appears to fail IF thisFnName is internal (.do_LRT)

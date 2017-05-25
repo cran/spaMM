@@ -9,7 +9,7 @@
 \description{
 \code{spaMM_glm.fit} is a stand-in replacement for \code{glm.fit}, which can be called through \code{glm} by using
 \code{glm(<>, method="spaMM_glm.fit")}. Input and output structure are exactly as for \code{glm.fit}. It uses a Levenberg-Marquardt algorithm to prevent divergence of estimates. If the rcdd package is installed, the function can automatically find valid starting values or else indicate that no parameter value is feasible.
-\code{spaMM_glm} is a convenient wrapper, calling \code{glm} with default method \code{glm.fit}, then calling method \code{spaMM_glm.fit} if \code{glm.fit} failed.
+\code{spaMM_glm} is a convenient wrapper, calling \code{glm} with default method \code{glm.fit}, then calling method \code{spaMM_glm.fit}, with possibly different initial values, if \code{glm.fit} failed.
 }
 \usage{
 spaMM_glm.fit(x, y, weights = rep(1, nobs), start = NULL, etastart = NULL, 
@@ -17,7 +17,7 @@ spaMM_glm.fit(x, y, weights = rep(1, nobs), start = NULL, etastart = NULL,
         control = list(maxit=200), intercept = TRUE)
 spaMM_glm(formula, family = gaussian, data, weights, subset,
                 na.action, start = NULL, etastart, mustart, offset,
-                control = list(...), model = TRUE, method = "glm.fit",
+                control = list(...), model = TRUE, method = c("glm.fit","spaMM_glm.fit"),
                 x = FALSE, y = TRUE, contrasts = NULL, strict=FALSE, ...) 
 }
 %- maybe also 'usage' for other objects documented here.
@@ -75,16 +75,7 @@ All arguments except \code{strict} are common to these functions and their \code
   \item{model}{a logical value indicating whether \emph{model frame}
     should be included as a component of the returned value.}
     
-  \item{method}{the method to be used by \code{spaMM_glm} in the firt attempt at fitting the model 
-  (\code{spaMM_glm.fit} being always used in a second attempt if the first failed).  
-    The default method \code{"glm.fit"} uses iteratively reweighted least squares
-    (IWLS): the alternative \code{"model.frame"} returns the model frame
-    and does no fitting.
-
-    User-supplied fitting functions can be supplied either as a function
-    or a character string naming a function, with a function which takes
-    the same arguments as \code{glm.fit}.  If specified as a character
-    string it is looked up from within the \pkg{stats} namespace.
+  \item{method}{A 2-elements vector specifying first the method to be used by \code{spaMM_glm} in the firt attempt at fitting the model, second the method to be used in a second attempt if the first failed. Possible methods include those shown in the default, \code{"model.frame"}, which returns the model frame and does no fitting, or user-supplied fitting functions. These functions can be supplied either as a function or a character string naming a function, with a function which takes the same arguments as \code{glm.fit}.  
   }
   
 
@@ -115,7 +106,7 @@ All arguments except \code{strict} are common to these functions and their \code
 \value{An object inheriting from class \code{glm}. See \code{\link[stats]{glm}} for details.}
 \note{The source and documentation is derived in large part from those of \code{glm.fit}.}
 \examples{
-# glm() failures checked in R-devel version (2016-03-21 r70361)
+# glm() failures last checked in R-devel version (2017-04-19 r72556)
 x <- c(8.752,20.27,24.71,32.88,27.27,19.09)
 y <- c(5254,35.92,84.14,641.8,1.21,47.2)
 \dontrun{ # fails:

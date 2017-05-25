@@ -3,6 +3,34 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 2.1.0}{
+\subsection{NEW FEATURES}{
+\itemize{
+%\item 'HLmethod="SEM"' can now be used to fit probit models if the 'probitgem' package is installed.
+\item fitme() can now use a fast sparse matrix algorithm for CAR (adjacency) (G)LMMs. See revised help(adjacency) for further information.
+\item confint.HLfit() now computes confidence intervals for GLMs. 
+\item spaMM now handles cases where nloptr::nloptr() can be trapped in an infinite loop.
+\item residuals.HLfit() has been redefined to bring it closer to stats::residuals.glm(). Up to now it only returned response residuals, now it returns (unscaled) deviance residuals.
+\item 'method' argument of spaMM_glm() redefined to allow more experiments (default behaviour is unchanged).
+\item simulate.HLfit() now also simulates GLMs.
+\item predict(<formula ith random-coefficient term>, <newdata>) is now handled.
+\item binomial(cauchit) is now handled.
+\item simulate() member function added to COMPoisson(). 
+\item simulate() member function modified in negbin() and in spaMM's version of Gamma() to return matrices when nsim>1, as described in help(family).
+\item simulate.HLfit() now simulates COMPoisson and negbin (mixed) models.
+}
+}
+\subsection{CORRECTED BUGS}{
+\itemize{
+\item HLCor() no longer fitted adjacency models in Version 2.0.0.
+\item spaMM.options(<new values>) did not return old values.
+\item For GLMs, confint.HLfit() (computed no interval but) did return an empty interval.
+\item COMPoisson$linkfun sometimes returned theta=0, causing failure of fit.
+\item Several problems corrected in degrees of freedom computation for information criteria retruned by get_any_IC(). 
+\item Several problems corrected in prediction variance calculation with non-null 're.form'. 
+}
+}
+}
 \section{CHANGES UP TO VERSION 2.0.0}{
 \subsection{NEW FEATURES}{
 \itemize{

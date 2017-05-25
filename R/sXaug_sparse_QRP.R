@@ -40,7 +40,7 @@ create_sXaug_EigenSparse_QRP_scaled <- function() {
     if ( is.null(BLOB$t_Q_scaled) && 
          (#! is.null(szAug) || 
            which %in% c("t_Q_scaled","hatval")) ) {
-      BLOB$t_Q_scaled <<- drop0(Matrix::solve(t(BLOB$R_scaled),t(sXaug[,BLOB$perm])))
+      BLOB$t_Q_scaled <<- Matrix::drop0(Matrix::solve(t(BLOB$R_scaled),t(sXaug[,BLOB$perm])))
     }
     if (is.null(BLOB$sortPerm)) BLOB$sortPerm <<- sort.list(BLOB$perm) ## need for most computations
     if ( ! is.null(szAug)) {

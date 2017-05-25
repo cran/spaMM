@@ -8,6 +8,11 @@ hl <- corrHLfit(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(expec)),
 expect_equal(hl$APHLs$p_v,-161.5140,tolerance=1e-4)
 AIC(hl)
 
+hl <- HLCor(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(expec)),
+            data=scotlip,family=poisson(), adjMatrix=Nmatrix)
+expect_equal(hl$APHLs$p_v,-161.5141,tolerance=1e-4)
+AIC(hl)
+
 ## Adding a Gamma random effect to fit a negative-binomial response:
 # (slow ~~25s with corners) 
 # (and the best fit is not Gamma ranef, which is sadly missed with the default bounds: TODO here)

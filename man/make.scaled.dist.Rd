@@ -1,5 +1,6 @@
 \name{make_scaled_dist}
 \alias{make_scaled_dist}
+\alias{rho.mapping}
 \alias{Earth}
 %- Also NEED an '\alias' for EACH other topic documented here.
 \title{Scaled distances between unique locations}

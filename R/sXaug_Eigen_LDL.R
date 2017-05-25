@@ -34,7 +34,7 @@ create_sXaug_EigenSparse_LDL_scaled <- function() {
          ( ## ! is.null(szAug) || 
            which %in% c("t_Q_scaled","hatval","hatval_Z")) ) {
       # le solve() est bizarrement lent... but then pivoting may be useful...
-      BLOB$t_Q_scaled <<- Diagonal(x=1/sqrt(BLOB$D_scaled)) %*% drop0(Matrix::solve(t(BLOB$U_scaled), t(sXaug))) 
+      BLOB$t_Q_scaled <<- Diagonal(x=1/sqrt(BLOB$D_scaled)) %*% Matrix::drop0(Matrix::solve(t(BLOB$U_scaled), t(sXaug))) 
     }
     if ( ! is.null(szAug)) {
       if (is.null(BLOB$t_Q_scaled)) {

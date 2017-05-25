@@ -14,12 +14,12 @@
             "#FF5000", "#FF4000", "#FF3000", "#FF2000", "#FF1000", 
             "#FF0000", "#EF0000", "#DF0000", "#CF0000", "#BF0000", 
             "#AF0000", "#9F0000", "#8F0000", "#800000")
-  orig[1:20] <- topo.colors(64)[1:20]
+  orig[1:20] <- grDevices::topo.colors(64)[1:20]
   if ( ! is.null(adjustcolor_args)) orig <- do.call("grDevices::adjustcolor",
                                                     c(list(col=orig),adjustcolor_args))
   if (n == 64 && redshift == 1) 
     return(orig)
-  rgb.tim <- t(col2rgb(orig))
+  rgb.tim <- t(grDevices::col2rgb(orig))
   temp <- matrix(NA, ncol = 3, nrow = n)
   x <- (seq(0, 1, , 64)^(redshift))
   xg <- seq(0, 1, , n)
@@ -35,7 +35,7 @@
     hold[hold > 255] <- 255
     temp[, k] <- round(hold)
   }
-  rgb(temp[, 1], temp[, 2], temp[, 3], maxColorValue = 255)
+  grDevices::rgb(temp[, 1], temp[, 2], temp[, 3], maxColorValue = 255)
 }
 
 ## returns in canonical scale

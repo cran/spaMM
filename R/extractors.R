@@ -128,9 +128,29 @@ fitted.HLfit <- function(object,...) {
   object$fv
 }
 
-residuals.HLfit <- function(object,...) {
+.get_BinomialDen <- function(object) {
+  if (object$spaMM.version<"2.0.17") {
+    return(object$weights)
+  } else return(object$BinomialDen)
+}
+
+residuals.HLfit <- function(object, type = c("deviance", "pearson", "response"), ...) {
   object <- getHLfit(object)
-  object$y-object$fv
+  type <- match.arg(type)
+  BinomialDen <- .get_BinomialDen(object) 
+  if (is.null(BinomialDen)) BinomialDen <- 1L
+  y <- object$y / BinomialDen ## le y 
+  mu <- object$fv # on 0-1 probability scale for binomial models
+  wts <- object$prior.weights * BinomialDen ## the BinomialDen are in the $prior.weights of a glm object, but not of an HLfit one
+  res <- switch(type, deviance = #if (object$df.residual > 0) 
+                  { d.res <- sqrt(pmax((object$family$dev.resids)(y, mu, 
+                                                  wts), 0))
+    ifelse(y > mu, d.res, -d.res)
+  } #else rep.int(0, length(mu))
+  , pearson = (y - mu) * sqrt(wts)/sqrt(object$family$variance(mu)), 
+  response = y - mu)
+  #if (!is.null(object$na.action))  res <- naresid(object$na.action, res)
+  res
 }
 
 ranef.HLfit <- function(object,type="correlated",...) {
@@ -149,7 +169,7 @@ ranef.HLfit <- function(object,type="correlated",...) {
   if (object$spaMM.version<"1.11.57") {
     strucList <- list(dummyid=attr(object$predictor,"LMatrix")) ## back compat
   } else strucList <- object$strucList
-  RESU <- lapply(seq_len(length(ranefs)), function(it) {
+  locfn <- function(it) {
     #cat(paste(nams[it], " (", cum_n_u_h[it + 1]-cum_n_u_h[it], " levels)\n",sep=""))    
     u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
     #cat(ranefs[[it]], ":\n")    
@@ -169,9 +189,12 @@ ranef.HLfit <- function(object,type="correlated",...) {
       }
     } else {
       #print(uv_h[u.range])
-      uv_h[u.range]
+      res <- uv_h[u.range]
+      names(res) <- colNames[[it]]
+      res
     }
-  })
+  }
+  RESU <- lapply(seq_len(length(ranefs)), locfn)
   #if (is.null(strucList)) cat("stored as the row vector <object>$v_h")
   names(RESU) <- ranefs
   RESU
@@ -238,9 +261,9 @@ Corr <- function(object,...) { ## compare ?VarCorr
 
 dev_resids <- function(object,...) {
   mu <- predict(object)
-  weights <- object$weights
-  if (is.null(weights)) weights <- 1
-  object$family$dev.resids(object$y/weights,mu,weights)
+  BinomialDen <- .get_BinomialDen(object) 
+  if (is.null(BinomialDen)) BinomialDen <- 1
+  object$family$dev.resids(object$y/BinomialDen,mu,BinomialDen)
 }
 
 deviance.HLfit <- function(object,...) {
@@ -280,7 +303,7 @@ get_intervals <- function(...) {
   mc <- match.call(expand.dots = TRUE)
   mc[[1L]] <- quote(spaMM::predict.HLfit)
   if (is.null(mc$intervals)) mc$intervals <- "respVar"
-  attr(eval(mc,parent.frame()),"intervals")
+  attr(eval(mc,parent.frame()),"intervals") ## intervals by gaussian approx (possibly student'), not LR 
 }
 
 
@@ -293,7 +316,7 @@ get_any_IC <- function(object,...,verbose=interactive()) {
   if (!is.null(info_crits$GoFdf)) likelihoods <- c(likelihoods,"       effective df:"=info_crits$GoFdf)
   if (verbose) {
     astable <- as.matrix(likelihoods)
-    write.table(format(astable, justify="right"), col.names=FALSE, quote=FALSE) 
+    utils::write.table(format(astable, justify="right"), col.names=FALSE, quote=FALSE) 
   }
   invisible(likelihoods)
 }

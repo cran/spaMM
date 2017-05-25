@@ -84,18 +84,16 @@
 
 
 ## version with strucList (and other modifs), called for recent fits
-.calc_logdisp_cov_new <- function(object, dvdloglamMat=NULL, dvdlogphiMat=NULL, asDmLR_invV=NULL, stop.on.error) { 
+.calc_logdisp_cov_new <- function(object, dvdloglamMat=NULL, dvdlogphiMat=NULL, asDmLR_invV=NULL) { 
   lambda.object <- object$lambda.object
   strucList <- object$strucList
   dwdlogphi <- dwdloglam <- NULL ## always a cbind at the end of calc_logdisp_cov
   dispcolinfo <- list()
   problems <- list() ## Its elements' names are tested in calcPredVar, and the strings are 'development info'
   # detect if fitme() without refit 
-#  if (any(lambda.object$type=="outer")) {
-#    ## then we need to refit to get a more complete lambda.object
-#  }
-  
-  
+  #  if (any(lambda.object$type=="outer")) {
+  #    ## then we need to refit to get a more complete lambda.object
+  #  }
   #coefficients_lambdaS <- lambda.object$coefficients_lambdaS
   if (any(lambda.object$type!="fixed")) {
     corr.models <- lapply(strucList,attr,which="corr.model") ## not unlist bc it may contain NULLs
@@ -147,6 +145,13 @@
     }
   }
   dwdlogdisp <- cbind(dwdloglam,dwdlogphi) ## typically nobs * 2
+  col_info <- list(nrand=nrand, ranef_ids=c(), phi_cols=0L)
+  if (!is.null(dwdloglam)) {
+    col_info$ranef_ids <- which(checklambda) ## indices of ranefs, not cols of ranefs
+    col_info$cum_n_u_h <- cum_n_u_h
+  }
+  if (!is.null(dwdlogphi)) col_info$phi_cols=length(col_info$ranef_ids)+seq_len(NCOL(dwdlogphi)) ## cols indices for phi 
+  attr(dwdlogdisp,"col_info") <- col_info
   ## compute info matrix:
   if ((length(dispcolinfo))==0L) {
     return(list(problems=problems))
@@ -221,7 +226,8 @@
       }
       if ("rho" %in% dispnames) {
         logdispInfo[dispcols$rho,dispcols$logphi] <- 
-          logdispInfo[dispcols$logphi,dispcols$rho] <- phi_est * .traceAB(lhs_invV.dVdrho,rhs_invV.dVdrho, asDmLR_invV$n_x_r, asDmLR_invV$r_x_n)  
+          logdispInfo[dispcols$logphi,dispcols$rho] <- phi_est * .traceAB(lhs_invV.dVdrho,rhs_invV.dVdrho, 
+                                                                          asDmLR_invV$n_x_r, asDmLR_invV$r_x_n)  
         # phi_est * sum(invV.dVdrho * invV)  
       }
     } 
@@ -232,10 +238,10 @@
   }
 }
 
-calc_logdisp_cov <- function(object, dvdloglamMat=NULL, dvdlogphiMat=NULL, asDmLR_invV=NULL, stop.on.error) {
+calc_logdisp_cov <- function(object, dvdloglamMat=NULL, dvdlogphiMat=NULL, asDmLR_invV=NULL) {
   if (object$spaMM.version>"1.11.60") {
-    .calc_logdisp_cov_new(object=object, dvdloglamMat=dvdloglamMat, dvdlogphiMat=dvdlogphiMat, asDmLR_invV=asDmLR_invV, stop.on.error=stop.on.error)
+    .calc_logdisp_cov_new(object=object, dvdloglamMat=dvdloglamMat, dvdlogphiMat=dvdlogphiMat, asDmLR_invV=asDmLR_invV)
   } else {
-    .calc_logdisp_cov_old(object=object, dvdloglamMat=dvdloglamMat, dvdlogphiMat=dvdlogphiMat, asDmLR_invV=asDmLR_invV, stop.on.error=stop.on.error)
+    .calc_logdisp_cov_old(object=object, dvdloglamMat=dvdloglamMat, dvdlogphiMat=dvdlogphiMat, asDmLR_invV=asDmLR_invV, stop.on.error=TRUE)
   }
 } 

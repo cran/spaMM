@@ -5,7 +5,7 @@
 Conway-Maxwell-Poisson (COM-Poisson) GLM family
 }
 \description{
-The COM-Poisson family is a generalization of the Poisson family which can describe over-dispersed as well as under-dispersed count data. It is indexed by a parameter \eqn{\nu_{CMP}} that quantifies such dispersion. The COM-Poisson family is here implemented as a \code{\link[stats]{family}} object, so that it can be fitted by \code{\link[stats]{glm}}, and further used to model conditional responses in mixed models fitted by this package's functions (see Examples). \eqn{\nu_{CMP}} is distinct from the dispersion parameter \eqn{\nu=1/\phi} considered elsewhere in this package and in the GLM literature, as \eqn{\nu} affects in a more specific way the log-likelihood. The \dQuote{canonical link} \eqn{\theta(\mu)} between the canonical GLM parameter \eqn{\theta} and the expectation \eqn{\mu} of the response do not have a known expression in terms of elementary functions. The link inverse is \eqn{\mu(\theta)=\sum_(i=0)^\infty \lambda^i / (i!)^\nu} for \eqn{\lambda=e^\theta} (hence the link is here nicknamed \code{"loglambda"}). 
+The COM-Poisson family is a generalization of the Poisson family which can describe over-dispersed as well as under-dispersed count data. It is indexed by a parameter \eqn{\nu_{CMP}} that quantifies such dispersion. The COM-Poisson family is here implemented as a \code{\link[stats]{family}} object, so that it can be fitted by \code{\link[stats]{glm}}, and further used to model conditional responses in mixed models fitted by this package's functions (see Examples). \eqn{\nu_{CMP}} is distinct from the dispersion parameter \eqn{\nu=1/\phi} considered elsewhere in this package and in the GLM literature, as \eqn{\nu} affects in a more specific way the log-likelihood. The \dQuote{canonical link} \eqn{\theta(\mu)} between the canonical GLM parameter \eqn{\theta} and the expectation \eqn{\mu} of the response does not have a known expression in terms of elementary functions. The link inverse is \eqn{\mu(\theta)=\sum_(i=0)^\infty \lambda^i / (i!)^\nu} for \eqn{\lambda=e^\theta} (hence the link is here nicknamed \code{"loglambda"}). 
 }
 \usage{
 COMPoisson(nu =  stop("COMPoisson's 'nu' must be specified"), 
@@ -21,7 +21,7 @@ GLM link function. Cannot be modified.
 }
 }
 \value{
-A family object. The 'simulate' member function is not yet implemented.
+A family object.
 }
 \details{
 Fitting will be very slow when \eqn{\nu_{CMP}} approaches zero, i.e. for strong overdispersion of (conditional) response.

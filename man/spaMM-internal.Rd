@@ -14,7 +14,7 @@
 
 
 %\alias{\%id*id\%}
-\alias{as_call_family}
+%\alias{as_call_family}
 \alias{Bartlett.robust} % not currently used 
 \alias{Beta} 
 \alias{calc.w.resid}
@@ -27,11 +27,11 @@
 \alias{calcUniqueGeo}
 \alias{checkRandLinkS}
 \alias{checkRandLink}
-\alias{checkRespFam}
+%\alias{checkRespFam}
 %\alias{compare.model.structures}
 \alias{corr.notEQL.lambda}
-\alias{Dim.corMatern} % not currently used
-\alias{eval.update.call} % not currently used
+%\alias{Dim.corMatern} % not currently used
+%\alias{eval.update.call} % not currently used
 \alias{eval.corrEst.args}
 \alias{provide_init_lambdas}
 \alias{spaMM_Gamma} 
@@ -63,10 +63,10 @@
 \alias{corrMM.LRT} 
 \alias{d2mudeta2fn} 
 \alias{dispFn}
-\alias{calc_etaGLMblob}
+%\alias{calc_etaGLMblob}
 \alias{calc_CARdispGammaGLM} 
 \alias{dispInv} 
-\alias{eval_gain_LevM_GLM}
+%\alias{eval_gain_LevM_GLM}
 \alias{extract.check.coords} 
 \alias{findOffset} 
 \alias{findSpatial}
@@ -82,7 +82,7 @@
 \alias{getPar}
 \alias{getProcessed}
 \alias{getValidData}
-\alias{get_methods_ranefs}
+%\alias{get_methods_ranefs}
 \alias{get_ZAlist}
 \alias{get_LSmatrix}
 \alias{glm.reformat}
@@ -145,7 +145,7 @@
 \alias{solveWrap.vector}
 \alias{internal_LRT} % not renamed .LRT as foreach does not handle it
 \alias{subbarsMM} 
-\alias{theta.mu.canonical}
+%\alias{theta.mu.canonical}
 \alias{theta.mu.conjugate} 
 \alias{tryCatch.W.E}
 \alias{validData}

@@ -40,7 +40,15 @@ checkRandLinkS <- function(rand.families) {
   return(list(rand.families=rand.families,lcrandfamfam=lcrandfamfam))
 }
 
-checkRespFam <- function(family) {
+.checkRespFam <- function(family) {
+  envname <- environmentName(environment(family))
+  if ( ! envname %in% c("stats","spaMM","")) { ## " typically occurs when family has laready been checked...
+    message(paste("family from namespace environment",envname,"possibly not correctly handled"))
+    if (envname=="mgcv" && identical(paste(formals(family)$theta)[1],"stop")) { ## a call via family=family prevents testing the name
+      mess <- "spaMM::negbin is masked by mgcv::negbin. Use explicitly 'family=spaMM::negbin', or assign 'negbin <- spaMM::negbin'"
+      stop(mess)
+    }
+  }
   ## four lines from glm(), which should have no effect on processed$family, spec. those with a param.
   if (is.character(family)) 
     family <- get(family, mode = "function", envir = parent.frame())
@@ -55,7 +63,7 @@ checkRespFam <- function(family) {
 
 # to convert back a family object to a call, EXCEPT for "multi". 
 # get_param should be TRUE only in cases we are sure that the param has a value
-as_call_family <- function(family,get_param=FALSE) {
+.as_call_family <- function(family,get_param=FALSE) {
   # checkRespFam should have been run. 
   # Then we have either a call or an evaluated family object
   if (identical(family[[1L]],"multi")) {
@@ -65,7 +73,7 @@ as_call_family <- function(family,get_param=FALSE) {
     if (is.null(as_call)) { ## then we have a stats::  family 
       as_call <- call(family$family, link=family$link) ## need a substitute() ? 
     } else if (get_param) { ## param values are constant or dynamically assigned to processed$family
-      famfam <- paste(as_call[[1]]) 
+      famfam <- family$family 
       if (famfam=="negbin") {
         as_call$shape <- environment(family$aic)$shape
       } else if (famfam=="COMPoisson") {
@@ -132,7 +140,7 @@ generateInitPhi <- function(formula,data,family,weights=NULL) {
   mf <- model.frame(form,data=data)
   Y <- model.response(mf) ## evaluated rhs (e.g. log(y) rather than y...)
   # rhs
-  rhs_terms <- delete.response(terms(form))
+  rhs_terms <- stats::delete.response(terms(form))
   mf <- model.frame(rhs_terms, data)
   # builds a model which indexes responses with identical predictor [ULI(mf)] 
   # and retains data that are replicates for each level of this index [uli]
@@ -262,9 +270,9 @@ generateInitPhi <- function(formula,data,family,weights=NULL) {
     prior.weights <- processed$prior.weights   
     if (is.call(prior.weights)) {
       resglm <- spaMM_glm(locform,family=family,offset=off,
-                          weights=NULL,control=processed$control.glm)
+                          weights=NULL,control=processed[["control.glm"]])
     } else resglm <- spaMM_glm(locform,family=family,offset=off,
-                               weights=eval(prior.weights),control=processed$control.glm)
+                               weights=eval(prior.weights),control=processed[["control.glm"]])
     resu <- list(glm=resglm,phi_est=as.numeric(deviance(resglm)/resglm$df.residual))
     if (family$family=="binomial" && max(resglm$prior.weights)==1L) { ## binary response
       resu$lambda <- 1
@@ -498,20 +506,31 @@ preprocess <- function(control.HLfit, ranFix=NULL, HLmethod,
   if (HLmethod=="ML") {
     HLmethod <- "ML(1,1,1)"  
   } else if (HLmethod=="SEM") {
-    #if ( ! requireNamespace("probitgem",quietly = TRUE)) {## passes CHECK if CRAN knows it
-    # if ( ! eval(as.call(c(quote(requireNamespace),list(package="probitgem", quietly = TRUE))))) { passes CRAN checks
-    if ( ! ("probitgem" %in% .packages()) ) { ## pases CRAN checks; tests that the packages is attached rather than loaded
-      stop("Package 'probitgem' not available for fitting by SEM.")
-    }
+    #if ( ! requireNamespace("probitgem",quietly = TRUE)) {## will pass CHECK if CRAN knows probitgem
+    # if ( ! ("probitgem" %in% .packages()) ) { ## passed CRAN checks; appropriate sif probitgem explicitly loaded
+    if ( ! ("probitgem" %in% .packages(all.available = TRUE)) ) { ## 
+        stop("Package 'probitgem' not available for fitting by SEM.")
+    } else eval(as.call(c(quote(require),list(package="probitgem", quietly = TRUE)))) ## passes CRAN checks (but temporary)
+    #      eval(as.call(c(quote(requireNamespace),list(package="probitgem", quietly = TRUE)))) ## is not sufficient
     HLmethod <- "ML('SEM',NA,NA)" 
     if ( ! (family$family=="binomial" && family$link=="probit")) {
       stop("SEM is applicable only to binomial(probit) models.")
     }
-    if (sum(BinomialDen) != nobs) stop("(!) SEM procedure: the data do not seem binary; non-binary data are not handled.")
+    if (sum(BinomialDen) != nobs) {
+      stop("(!) SEM procedure: the data do not seem binary; non-binary data are not handled.")
+      
+      # repsucces <- rep(seq(nrow(currentSample)),currentSample$succes)
+      # repechec <- rep(seq(nrow(currentSample)),currentSample$echec)
+      # currentSample <- currentSample[c(repsucces,repechec),]
+      # currentSample$echec <- rep(c(0,1),c(length(repsucces),length(repechec)))
+      # currentSample$succes <- 1L-currentSample$echec
+      
+    }
     SEMseed <- control.HLfit$SEMseed ##  
     # if (is.null(SEMseed)) SEMseed <- 123 ## OK pour SEM *unique* mais remplace par NULL dans optimthroughSmooth
     SEMargs <- list(SEMseed=SEMseed)
     SEMargs$nMCint <- control.HLfit$nMCint ##  as is => SEM procedure must handle null value
+    SEMargs$get_SEM_info <- control.HLfit$get_SEM_info ##  as is => SEM procedure must handle null value
     SEMargs$control_pmvnorm$maxpts <- control.HLfit$pmvnorm_maxpts ##  as is => SEM procedure must handle null value
     #SEMlogL <- control.HLfit$SEMlogL
     #if (is.null(SEMlogL)) SEMlogL <- "pMVN" ## FR->FR 1.8.25 !
@@ -551,7 +570,7 @@ preprocess <- function(control.HLfit, ranFix=NULL, HLmethod,
     }
     lhs <- paste(predictor)[[2]] ## extract response, either cbind or not
     if ( nrand > 0L ) {
-      ## build formula with only random effects
+      ## build formula with only random effects  ##FR->FR  why have I done that ??
       REMLformula <- as.formula(paste(lhs,"~",paste(attr(ZAlist,"ranefs"),collapse="+")))
     } else REMLformula <- as.formula(paste(lhs,"~ 0")) 
     attr(REMLformula,"isML") <- TRUE
@@ -592,7 +611,7 @@ preprocess <- function(control.HLfit, ranFix=NULL, HLmethod,
       processed$X.Re <- X.Re
     } ## else processed$X.Re  is NULL
   } ## else keep previously computed X.Re = X.pv
-  # if standard ML: there is an REMLformula ~ 0; local X.Re and processed$X.Re is 0-col matrix
+  # if standard ML: there is an REMLformula ~ 0 (or with ranefs ?); local X.Re and processed$X.Re is 0-col matrix
   # if standard REML: REMLformula is NULL: $X.Re is X.pv, processed$X.Re is NULL
   # non standard REML: other REMLformula: $X.Re and processed$X.Re identical, and may take essentially any value
   if (is.null(objective)) {
@@ -615,18 +634,19 @@ preprocess <- function(control.HLfit, ranFix=NULL, HLmethod,
       processed$QRmethod <- .choose_QRmethod(ZAlist, predictor)
       # alternative (commented) code removed from version 1.11.35 
       ZAfix <- .post_process_ZALlist(ZAlist,as_matrix=.eval_as_mat_arg(processed))  
+      # QRmethod is dense for adjacency and then ZAfix is dense here. 
+      # ZAfix may be refined as sparse by post-processing in fitting function(s) if sparse_precision
+      # but still it seems better to keep QRmethod dense in that case.
     } 
     if (inherits(ZAfix,"Matrix")) {
       AUGI0_ZX <- list(I=suppressWarnings(as(Diagonal(n=nrd),"CsparseMatrix")), ## avoids repeated calls to as() through rbind2...
-                       ZeroBlock=Matrix(0,nrow=nrd,ncol=pforpv),X.pv=X.pv)
+                       ZeroBlock=Matrix(0,nrow=nrd,ncol=pforpv),
+                       ZAfix=ZAfix, ## either ZA, or ZAL if the latter is fixed through attr(predictor,"ZALMatrix")
+                       X.pv=X.pv)
     } else {
-      AUGI0_ZX <- list(I=diag(nrow=nrd),ZeroBlock=matrix(0,nrow=nrd,ncol=pforpv),X.pv=X.pv)
-    }
-    if (spaMM.getOption("wDEVEL")) ZAfix <- as(ZAfix,"sparseMatrix") ## forces it irrespective of .eval_as_mat_arg(processed) as used above
-    AUGI0_ZX$ZAfix <- ZAfix ## either ZA, or ZAL if the latter is fixed through attr(predictor,"ZALMatrix")
-    if (spaMM.getOption("wDEVEL")) {
-      rsZA <- rowSums(ZAfix) ## test that there a '1' per row and 'O's otherwise:  
-      AUGI0_ZX$is_unitary_ZAfix <- (unique(rsZA)==1 && all(rowSums(ZAfix^2)==rsZA)) ## $ rather than attribute to S4 ZAfix
+      AUGI0_ZX <- list(I=diag(nrow=nrd),ZeroBlock=matrix(0,nrow=nrd,ncol=pforpv),
+                       ZAfix=ZAfix, ## either ZA, or ZAL if the latter is fixed through attr(predictor,"ZALMatrix")
+                       X.pv=X.pv)
     }
     AUGI0_ZX$adjMatrix <- adjMatrix ## may be NULL
     AUGI0_ZX$envir <- list2env(list(), parent=environment(preprocess))
@@ -692,7 +712,7 @@ preprocess <- function(control.HLfit, ranFix=NULL, HLmethod,
   if (is.null(subs_p_weights <- substitute(prior.weights))) {
     prior.weights <- structure(rep(1L,nobs),unique=TRUE) ## <- 1L prevented by glm -> model.frame(... prior.weights)
   } else if ( ! (inherits(subs_p_weights,"call") && subs_p_weights[[1L]] == "quote") )  {
-    prior.weights <- as.vector(model.weights(validdata)) ## as.vector as in say lm() protects against array1d
+    prior.weights <- as.vector(stats::model.weights(validdata)) ## as.vector as in say lm() protects against array1d
     if ( ! is.numeric(prior.weights)) 
       stop("'weights' must be a numeric vector")
     if (any(prior.weights < 0)) 
@@ -904,13 +924,13 @@ preprocess <- function(control.HLfit, ranFix=NULL, HLmethod,
   processed$rand.families <- rand.families
   processed$fixef_terms <- MeanFrames$fixef_terms ## added 2015/12/09 for predict
   processed$fixef_levels <- MeanFrames$fixef_levels ## added 2015/12/09 for predict
-  processed$control.glm <- do.call("glm.control", control.glm) ## added 04/2016
+  processed[["control.glm"]] <- do.call("glm.control", control.glm) ## added 04/2016 (LHS <- RHS list)
   processed$port_env <- new.env(parent=emptyenv()) ## added 09/2016
   class(processed) <- c("arglist","list")
   return(processed)
 }
 
-eval.update.call <- function(mc,...) {
+.eval.update.call <- function(mc,...) { # not currently used
   mc <- as.list(mc)
   dotlist <- list(...)
   mc[names(dotlist)] <- dotlist ## a un moment j'ai mis cette ligne en commentaire, ce qui rend la fonction ineffective !

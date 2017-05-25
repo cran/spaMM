@@ -19,7 +19,7 @@ HLCor <- function(formula,
   # frst steps as in HLFit: (no need to test missing(data) in several functions)
   if (is.null(processed <- mc$processed)) { ## no 'processed'
     ## FR->FR suggests we should add processed as argument of HLCor...
-    family <- checkRespFam(family)
+    family <- .checkRespFam(family)
     if ( identical(family$family,"multi")) {
       if ( ! inherits(data,"list")) {
         if(family$binfamily$family=="binomial") {
@@ -84,15 +84,9 @@ HLCor <- function(formula,
   if (identical(mc$verbose["getCall"][[1L]],TRUE)) return(oricall)
   #
   mc$verbose <- .reformat_verbose(eval(mc$verbose),For="HLCor")
-  mc$data <- NULL
-  mc$family <- NULL
-  mc$formula <- NULL
-  mc$prior.weights <- NULL
-  mc$HLmethod <- NULL ## processed$HL  
-  mc$rand.family <- NULL ## processed$rand.families  
-  mc$control.glm <- NULL ## processed$control.glm  
-  mc$resid.formula <- NULL ## mc$resid.model  
-  mc$REMLformula <- NULL ## processed$REMLformula
+  pnames <- c("data","family","formula","prior.weights","HLmethod","rand.family","control.glm","resid.formula","REMLformula",
+              "resid.model")
+  for (st in pnames) mc[st] <- NULL 
   mc[[1L]] <- quote(spaMM::HLCor_body)
   hlcor <- eval(mc,parent.frame())
   if (is.null(processed)) .check_conv_glm_reinit()

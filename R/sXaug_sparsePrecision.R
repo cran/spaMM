@@ -31,7 +31,7 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX,rho,lambda,w.resid) {
     BLOB$G_CHMfactor <- Matrix::Cholesky(BLOB$Gmat,LDL=FALSE,perm=FALSE) 
   }
   # ZAL <- AUGI0_ZX$ZAfix %*% LMatrix
-  # Xaug <- drop0(Matrix::rbind2(
+  # Xaug <- Matrix::drop0(Matrix::rbind2(
   #   Matrix::cbind2(AUGI0_ZX$I,AUGI0_ZX$ZeroBlock),
   #   Matrix::cbind2(ZAL,AUGI0_ZX$X)
   # ))
@@ -184,7 +184,10 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX,rho,lambda,w.resid) {
       BLOB$DpD <- c(D_Md2hdv2,diag(BLOB$XtWX))
     } 
     ## sequel recomputed for each new damping value...
-    G_dG <- drop0(BLOB$Gmat + damping*BLOB$dG) ## probably not so sparse...
+    # if (is.null(BLOB$Gmat_dense)) BLOB$Gmat_dense <- as.matrix(BLOB$Gmat)
+    # G_dG <- BLOB$Gmat_dense + damping*as.matrix(BLOB$dG) ## probably not so sparse...
+    # nevertheless the sparse code is faster
+    G_dG <- Matrix::drop0(BLOB$Gmat + damping*BLOB$dG) ## probably not so sparse...
     if (attr(AUGI0_ZX,"pforpv")>0L) {
       # RHS of eq for beta:
       XtWze <- crossprod(X.pv, attr(AUGI0_ZX,"w.resid") * LM_z$z1_eta) ## component Xt W (z1-eta) in Xt (invSigma=W-WZ()Z'W) z1

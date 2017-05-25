@@ -36,7 +36,7 @@ post_process_family <- function(family, ranFix) {
   loglfn.fix <- processed$loglfn.fix
   y <- processed$y
   family <- processed$family
-  theta <- theta.mu.canonical(mu/BinomialDen,family)  
+  theta <- .theta.mu.canonical(mu/BinomialDen,family)  
   if (family$family=="binomial") {
     clik <- sum(loglfn.fix(theta,y/BinomialDen,BinomialDen,1/(phi_est))) ## freq a revoir
   } else {
@@ -49,7 +49,7 @@ post_process_family <- function(family, ranFix) {
   }
 }
 
-eval_gain_LevM_GLM <- function(LevenbergMstep_result,family, X.pv ,coefold,clikold,phi_est,processed, offset) {  
+.eval_gain_LevM_GLM <- function(LevenbergMstep_result,family, X.pv ,coefold,clikold,phi_est,processed, offset) {  
   dbeta <- LevenbergMstep_result$dbetaV
   beta <- coefold + dbeta
   eta <- drop(X.pv %*% beta) + offset
@@ -75,12 +75,13 @@ eval_gain_LevM_GLM <- function(LevenbergMstep_result,family, X.pv ,coefold,cliko
   return(list(gainratio=gainratio,clik=clik,beta=beta,eta=eta,mu=mu))
 }  
 
-calc_etaGLMblob <- function(processed, 
+.calc_etaGLMblob <- function(processed, 
                          mu, eta, muetablob, beta_eta, w.resid, ## those in output
                          phi_est, 
                          off, 
                          maxit.mean, 
                          verbose, 
+                         for_intervals=NULL,
                          conv.threshold) {
     BinomialDen <- processed$BinomialDen
     X.pv <- processed$X.pv
@@ -98,13 +99,26 @@ calc_etaGLMblob <- function(processed,
       old_beta_eta <- beta_eta
       tXinvS <- sweep(t(X.pv),2L,w.resid,`*`)  
       rhs <-  tXinvS %*% z1
-      qr.XtinvSX <- QRwrap(tXinvS%*%X.pv,useEigen=FALSE) ## Cholwrap tested  ## pas sur que FALSE gagne du temps
-      beta_eta <- solveWrap.vector( qr.XtinvSX , rhs ,stop.on.error=stop.on.error)
+      if ( ! is.null(for_intervals)) {
+        currentDy <- (for_intervals$fitlik-newclik)
+        if (currentDy <0) .warn_intervalStep(newclik,for_intervals)
+        intervalBlob <- .intervalStep_glm(old_beta=beta_eta,
+                                         sXaug=tXinvS%*%X.pv,
+                                         szAug=rhs,
+                                         for_intervals=for_intervals,
+                                         currentlik=newclik,currentDy=currentDy)
+        beta_eta <- intervalBlob$beta
+      } else {
+        qr.XtinvSX <- QRwrap(tXinvS%*%X.pv,useEigen=FALSE) ## Cholwrap tested  ## pas sur que FALSE gagne du temps
+        beta_eta <- solveWrap.vector( qr.XtinvSX , rhs ,stop.on.error=stop.on.error)
+      }
+                                           
       # # PROBLEM is that NaN/Inf test does not catch all divergence cases so we need this :
       eta <- off + drop(X.pv %*% beta_eta) ## updated at each inner iteration
       muetablob <- muetafn(eta=eta,BinomialDen=BinomialDen,processed=processed) 
       newclik <- .calc_clik(mu=muetablob$mu, phi_est=phi_est,processed=processed) 
-      if (newclik < clik-1e-5 || anyNA(beta_eta) || any(is.infinite(beta_eta))) { 
+      if ( is.null(for_intervals) &&
+        (newclik < clik-1e-5 || anyNA(beta_eta) || any(is.infinite(beta_eta))) ) { 
         ## more robust LevM
         sqrt.ww <- sqrt(w.resid)
         wX <- calc_wAugX(augX=X.pv,sqrt.ww=sqrt.ww)
@@ -113,7 +127,7 @@ calc_etaGLMblob <- function(processed,
           if (inherits(wX,"Matrix")) {
             LevenbergMstep_result <- LevenbergMsolve_Matrix(wAugX=wX,LM_wAugz=LM_wz,damping=damping)
           } else LevenbergMstep_result <- LevenbergMstepCallingCpp(wAugX=wX,LM_wAugz=LM_wz,damping=damping) 
-          levMblob <- eval_gain_LevM_GLM(LevenbergMstep_result=LevenbergMstep_result,
+          levMblob <- .eval_gain_LevM_GLM(LevenbergMstep_result=LevenbergMstep_result,
                                          X.pv=X.pv, clikold=clik, family=family,
                                          coefold=old_beta_eta,
                                          phi_est=phi_est, offset=off,

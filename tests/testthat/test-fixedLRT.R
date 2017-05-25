@@ -11,4 +11,4 @@ fl <- fixedLRT(null.formula=migStatus ~ 1 + Matern(1|latitude+longitude),
          HLmethod='ML',data=blackcap,init.corrHLfit=list(phi=1e-6),boot.repl=3,nb_cores=nb_cores)
 
 expect_equal(fl$basicLRT$p_value,0.00806473,tolerance=1e-5)
-expect_equal(fl$BartBootLRT$p_value,0.007888459,tolerance=1e-5)
+expect_equal(fl$BartBootLRT$p_value,0.00790332,tolerance=1e-5)

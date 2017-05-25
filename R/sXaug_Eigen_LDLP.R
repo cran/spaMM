@@ -35,7 +35,7 @@ create_sXaug_EigenSparse_LDLP_scaled <- function() {
     if ( is.null(BLOB$t_Q_scaled) && 
          ( ## ! is.null(szAug) || 
            which %in% c("t_Q_scaled","hatval")) ) {
-      BLOB$t_Q_scaled <<- drop0(Matrix::solve(t(BLOB$U_scaled),
+      BLOB$t_Q_scaled <<- Matrix::drop0(Matrix::solve(t(BLOB$U_scaled),
                                         t(Matrix_times_Dvec(sXaug[,BLOB$perm], 1/sqrt(BLOB$D_scaled))) ) )
     }
     if ( ! is.null(szAug)) {
@@ -85,7 +85,7 @@ create_sXaug_EigenSparse_LDLP_scaled <- function() {
         # X[,cols] = Q sqrt(D) U P[,cols] = Q q r p => t(Q q) given by:
         if (is.null(BLOB$t_Qq_scaled)){
           BLOB$t_Qq_scaled <<- Diagonal(x=1/sqrt(BLOB$absD_R_v)) %*% 
-            drop0(solve(t(BLOB$U_R_v), t( sXaug[, seq_n_u_h[BLOB$perm_R_v] ] ) ))
+            Matrix::drop0(solve(t(BLOB$U_R_v), t( sXaug[, seq_n_u_h[BLOB$perm_R_v] ] ) ))
         } 
         tmp <- BLOB$t_Qq_scaled
         tmp@x <- tmp@x^2

@@ -1,20 +1,22 @@
 exportPattern("^[[:alpha:]]+")
-importFrom("graphics", ".filled.contour", "Axis", "abline", "axis", "box", "hist", "layout", "lcm", "lines", "par", "plot.new", "plot.window", "points", "polygon", "rect", "title")
+importFrom("graphics", ".filled.contour", "Axis", "abline", "axis", "box", "hist", "layout", 
+           "lcm", "lines", "par", "plot.new", "plot.window", "points", "polygon", "rect", "title")
 importFrom("graphics", "plot")
-importFrom("grDevices", "col2rgb", "dev.new", "rgb", "topo.colors")
-importFrom("methods", "as", "is", "validObject", "cbind2", "rbind2")
-importFrom("stats", "as.formula", "coefficients", "contrasts", "dgamma", "dnorm", "family", "formula", "getCall", "glm", "is.empty.model", "lm", "loess.smooth", "make.link", "model.frame", "model.matrix", "model.offset", "model.response", "nlminb", "optim", "optimize", "pchisq", "pnorm", "qchisq", "qnorm", "qqline", "qqnorm", "rbeta", "rbinom", "rgamma", "rnorm", "rpois", "runif", "smooth.spline", "terms", "update.formula", "var", "weights")
-importFrom(stats,simulate,anova,confint,fitted,predict,update,logLik,vcov,coef,gaussian,binomial,poisson,Gamma,resid,uniroot,deviance,.getXlevels,delete.response)
-importFrom("stats", ".lm.fit", "as.dist", "hat", "AIC", "reformulate", "qt", "model.weights")
-importFrom("utils", "head", "modifyList", "relist", "str", "strOptions", "write.table","packageVersion")
-importFrom("utils", "setTxtProgressBar", "txtProgressBar")
-importFrom(Matrix, Matrix,drop0,drop,isDiagonal,diag,t,solve,Diagonal,crossprod,tcrossprod,rowSums,colSums)
+importFrom("methods", "as", "is", "cbind2", "rbind2")
+importFrom("stats", "as.formula", "coefficients", "dgamma", "dnorm", "family", "formula", "getCall", 
+           "glm", "lm", "make.link", "model.frame", "model.matrix", "model.offset", "model.response", 
+            "optim", "optimize", "pchisq", "pnorm", "qchisq", "qnorm", "qqline", "qqnorm", 
+           "rbeta", "rbinom", "rgamma", "rnorm", "rpois", "runif", "terms", 
+           "update.formula", "var", "weights")
+importFrom("stats", "simulate", "anova", "confint", "fitted", "predict", "update", "logLik", "vcov", "coef",
+           "gaussian", "binomial", "poisson", "Gamma", "resid", "uniroot", "deviance")
+importFrom("stats", "as.dist", "AIC")
+importFrom("utils", "relist")
+importFrom("Matrix", Matrix,drop,isDiagonal,diag,t,solve,Diagonal,crossprod,tcrossprod,rowSums,colSums)
 importFrom("Matrix", "sparseMatrix", "rankMatrix", "qrR", "qr.R", "qr.Q", "isSymmetric")
 importFrom("proxy", "dist", "pr_DB")
-importFrom(Rcpp,evalCpp)
-importFrom(nlme,getGroups,fixef,ranef,getGroupsFormula,Dim)
-importFrom(nlme,getCovariate,corFactor,getCovariateFormula,corMatrix)
-importFrom(nloptr,nloptr)
+importFrom("Rcpp", "evalCpp")
+importFrom("nlme", "getGroups", "fixef", "ranef", "getCovariate", "corFactor", "corMatrix")
 export(fixef) ## comes from nlme namespace 
 export(ranef) ## comes from nlme namespace
 S3method(getCall, HLfit)

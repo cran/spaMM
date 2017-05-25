@@ -1,5 +1,6 @@
 .check_conv_glm_reinit <- function() {
-  if ((conv_crit <- spaMM.getOption("spaMM_glm_conv_crit"))$max>0) {
+  if ( ( ! identical(spaMM.getOption("spaMM_glm_conv_silent"),TRUE))
+       && (conv_crit <- spaMM.getOption("spaMM_glm_conv_crit"))$max>0) {
     warning(paste("spaMM_glm.fit() did not always converge (criterion:",
                   paste(names(conv_crit),"=",signif(unlist(conv_crit),3),collapse=", "),")"))
     spaMM.options(spaMM_glm_conv_crit=list(max=-Inf))
@@ -166,7 +167,7 @@ spaMM_glm.fit <- function (x, y, weights = rep(1, nobs),
         if (anyNA(z)) stop("NA/NaN in 'z': consult the package maintainer.")
         if (anyNA(w)) stop("NA/NaN in 'w': consult the package maintainer.") # suggests too large 'mu'
         # .lm.fit is a wrapper for C_Cdqrls, but with check=TRUE
-        fit <- .lm.fit(x[good, , drop = FALSE] * w, z * w, min(1e-07, control$epsilon/1000))
+        fit <- stats::.lm.fit(x[good, , drop = FALSE] * w, z * w, min(1e-07, control$epsilon/1000))
         if (any(!is.finite(fit$coefficients))) {
           conv <- FALSE
           warning(gettextf("non-finite coefficients at iteration %d", 
@@ -330,7 +331,7 @@ spaMM_glm.fit <- function (x, y, weights = rep(1, nobs),
                 call. = FALSE)
     }
     # regenerate the qr (etc) object.
-    fit <- .lm.fit(x[good, , drop = FALSE] * w, z * w, tol=min(1e-07, control$epsilon/1000))
+    fit <- stats::.lm.fit(x[good, , drop = FALSE] * w, z * w, tol=min(1e-07, control$epsilon/1000))
     # but the trouble is that evalGainLM may detect invalid LevM estimates, 
     # while the .lm.fit estimates (~damping=0) may be invalid (different if loop terminated with high damping)
     #start[fit$pivot] <- fit$coefficients
@@ -391,18 +392,19 @@ spaMM_glm.fit <- function (x, y, weights = rep(1, nobs),
 
 spaMM_glm <- function(formula, family = gaussian, data, weights, subset,
                 na.action, start = NULL, etastart, mustart, offset,
-                control = list(...), model = TRUE, method = "glm.fit",
+                control = list(...), model = TRUE, method = c("glm.fit","spaMM_glm.fit"),
                 x = FALSE, y = TRUE, contrasts = NULL, strict=FALSE,...) {
   mc <- match.call(expand.dots=TRUE)
   mc$strict <- NULL
   ## This code should not interfer with processed$family with possibly assigned param
-  family <- checkRespFam(family)
-  summaryfamily <- as_call_family(family,get_param = TRUE) ## only for printing
+  family <- .checkRespFam(family)
+  summaryfamily <- .as_call_family(family,get_param = TRUE) ## only for printing
   mc[[1L]] <- quote(stats::glm)
+  mc$method <- method[1L]
   res <- tryCatch.W.E(eval(mc,parent.frame()))
   if (inherits(res$value,"error")) {
     if ( requireNamespace("rcdd",quietly=TRUE) ) {
-      mc$method <- "spaMM_glm.fit" 
+      mc$method <- method[2L]
       res <- eval(mc,parent.frame())
       res$call$family <- summaryfamily
       return(res)
@@ -415,7 +417,7 @@ spaMM_glm <- function(formula, family = gaussian, data, weights, subset,
         ## some glm warnings are useful only to understand a failure, hence not useful here 
         && res$warning$message != "step size truncated due to divergence" ) {
       if (res$warning == "glm.fit: algorithm did not converge" && strict) {
-        mc$method <- "spaMM_glm.fit" 
+        mc$method <- method[2L]
         res <- eval(mc,parent.frame())
         res$call$family <- summaryfamily
         return(res)

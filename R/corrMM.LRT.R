@@ -68,9 +68,10 @@ fixedLRT <- function(  ## interface to spaMMLRT or (for devel only) corrMM.LRT
       mc[[1L]] <- as.name("internal_LRT") ## does not (yet) handles well other method's  when eg init.corrHLfit contains lambda
       ## there's no profile etc in spaMMLRT... 
     } else { ## EQL, REPQL or REML variants: profiles then not allowed within corrMM.LRT!
+      # FIXME typos (e.g. "PQLL") are not detected...
       mc[[1L]] <- as.name("corrMM.LRT") ## corrMM.LRT methods and its options below are best frozen to their v1.0 state
       mc$control<-list(profiles=0,prefits=FALSE) ## default values in call by fixedLRT. corrMM.LRT further has default restarts=TRUE and maxit=1
-      mc$control[names(control)]<-control ## overrides with user values
+      mc$control[names(control)] <- control ## overrides with user values
       mc$control.boot <- control.boot ## default values in call by fixedLRT are those of corrMM.LRT ie prefits=FALSE,profiles=0. We can directly copy user values. 
     }
   } else {
@@ -701,7 +702,7 @@ if (restarts) {
               if (length(exprL)==1L) simbData[[exprL]] <- newy 
             } else {
               ## We have different possible cbind(exprL,exprR) arguments, but in all case the predictor is that of exprL and 
-              #  exprR is $weights- exprL 
+              #  exprR is $BinomialDen- exprL 
               
               ## c'est bouseux: soit j'ai (pos, neg) et le remplacement est possible
               ##    soit j'ai (pos,ntot -pos) et le 2e remplacment n'est pas poss (et pas necess)
@@ -710,7 +711,7 @@ if (restarts) {
               exprL <- as.character(form[[2]][[2]]) 
               exprR <- as.character(form[[2]][[3]]) 
               if (length(exprL)==1L) simbData[[exprL]] <- newy 
-              if (length(exprR)==1L) simbData[[exprR]] <- nullfit$weights - newy                    
+              if (length(exprR)==1L) simbData[[exprR]] <- .get_BinomialDen(nullfit)  - newy                    
               ## if (length(exprR)! =1) exprRdoes not correspond to a column in the data.frame so there is no column to replace                     
             }
           } else {simbData[[as.character(nullfit$predictor[[2]])]] <- newy}

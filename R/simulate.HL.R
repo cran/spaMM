@@ -23,6 +23,7 @@
     est_and_fix <- names(which(!is.na(object$fixef))) ## estimated + etaFix$beta
     validnames <- intersect(colnames(newMeanFrames$X) ,est_and_fix) # newX.pv may  contain names of unestimated coeff for the sam reason asthe original MenanFrames$X...
   }
+  if (length(validnames)==0L) validnames <- c() ## without this, validnames could be character(0) and [,validnames,drop=FALSE] fails.
   etaFix <-  drop(newMeanFrames$X[,validnames,drop=FALSE] %*% object$fixef[validnames]) ## valide even if ncol(newMeanFrames$X) = 0
   if ( ! is.null(off)) etaFix <- etaFix + off   
   return(etaFix)
@@ -34,7 +35,7 @@
 # FR->FR misses the computation of random effects for new spatial positions: cf comments in the code below
 simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
                            conditional=FALSE, verbose=TRUE,
-                           sizes=object$weights, ...) { ## object must have class HLfit; corr pars are not used, but the ZAL matrix is.
+                           sizes=NULL , ...) { ## object must have class HLfit; corr pars are not used, but the ZAL matrix is.
   ## RNG stuff copied from simulate.lm
   if (!exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE))
     runif(1)
@@ -51,62 +52,53 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
     message(" run simulate on each of the individual fit in the list")
     stop() ## FR->FR also some basic changes in fixedLRT but more would be needed 
   }  
-  if (conditional) {
-    if (verbose) cat("Conditional simulation:\n")
-    if (is.null(newdata)) {
-      mu <- predict(object)[,1L]
-      if (nsim>1) mu <- matrix(rep(mu,nsim),ncol=nsim)
-    } else {
-      stop("'newdata' not yet implemented in this case.")
-      # debut d'implementation Mais il peut y avoir des choses inteessantes dans le code cas non conditionnel
-      mu_fixed <- predict(object, newdata=newdata, re.form=NA)
-      eta <- object$family$linkfun(mu_fixed[,1L]) ## onlythe fixed part at this point
-      ranefs <- attr(object$ZAlist,"ranefs")
-      for (rit in seq_len(ranefs)) {
-        loc_u_h <- 666 ## for given ranef
-        n_u_h <- 666 ## for given ranef
-        if (666) { ## test for Gaussian correlated effects
-          randcond_bMean <- 666 # Cno Coo^{-1/2} loc_u_h a coder en vecteurs seulement...
-          randcond_brand <- 666 # Cnn - Cno Coo^{-1} Con 
-          # randb <- rmvnorm(nsim,mean=randcond_bMean,sigma=randcond_brand)
-        } else {
-          randb <- 666 # hum. Mais il peut y avoir des choses inteessantes dans le code cas non conditionnel
+  if (is.null(sizes)) sizes <- .get_BinomialDen(object)
+  nrand <- length(object$ZAlist)
+  if (nrand==0L) {
+    mu <- predict(object,newdata=newdata)[,1L]
+    if (nsim>1) mu <- matrix(rep(mu,nsim),ncol=nsim)
+  } else { ## MIXED MODEL
+    if (conditional) {
+      if (verbose) cat("Conditional simulation:\n")
+      if (is.null(newdata)) {
+        mu <- predict(object)[,1L]
+        if (nsim>1) mu <- matrix(rep(mu,nsim),ncol=nsim)
+      } else { ## conditional Mixed Model with newdata
+        stop("conditional simulation not yet implemented for mixed models with 'newdata'.")
+        # debut d'implementation Mais il peut y avoir des choses inteessantes dans le code cas non conditionnel
+        mu_fixed <- predict(object, newdata=newdata, re.form=NA)
+        eta <- object$family$linkfun(mu_fixed[,1L]) ## onlythe fixed part at this point
+        ranefs <- attr(object$ZAlist,"ranefs")
+        for (rit in seq_len(ranefs)) {
+          loc_u_h <- 666 ## for given ranef
+          n_u_h <- 666 ## for given ranef
+          if (666) { ## test for Gaussian correlated effects
+            randcond_bMean <- 666 # Cno Coo^{-1/2} loc_u_h a coder en vecteurs seulement...
+            randcond_brand <- 666 # Cnn - Cno Coo^{-1} Con 
+            # randb <- rmvnorm(nsim,mean=randcond_bMean,sigma=randcond_brand)
+          } else {
+            randb <- 666 # hum. Mais il peut y avoir des choses inteessantes dans le code cas non conditionnel
+          }
+          eta <- eta + object$ZAlist[[ranefs]] %*% randb ## could  be donne once for all ranefs 
         }
-        eta <- eta + object$ZAlist[[ranefs]] %*% randb ## could  be donne once for all ranefs 
+        # autre concept: simulation conditionnelle aux données(pas equiv a simul sous le modèe fitté)
+        # # il faudrait avoir une decomp de la predVar en ses composantes pour chaque ranef... faisable avec re.form ? 
+        # # pas clair, le subrange de beta_w_col ne s'additionnent pas...
+        # if (all(attr(object$rand.families,"lcrandfamfam")=="gaussian")) {
+        #   mu_with_cov <- predict(object,newdata=newdata,variances=list(linPred=TRUE,cov=TRUE))
+        #   Eeta <- object$family$linkfun(mu_with_cov[,1L])
+        #   eta <- rmvnorm(nsim,mean=Eeta,sigma=attr(mu_with_cov,"predVar"))
+        #   mu <- object$family$linkinv(eta) ## ! freqs for binomial, counts for poisson
       }
-      # autre concept: simulation conditionnelle aux données(pas equiv a simul sous le modèe fitté)
-      # # il faudrait avoir une decomp de la predVar en ses composantes pour chaque ranef... faisable avec re.form ? 
-      # # pas clair, le subrange de beta_w_col ne s'additionnent pas...
-      # if (all(attr(object$rand.families,"lcrandfamfam")=="gaussian")) {
-      #   mu_with_cov <- predict(object,newdata=newdata,variances=list(linPred=TRUE,cov=TRUE))
-      #   Eeta <- object$family$linkfun(mu_with_cov[,1L])
-      #   eta <- rmvnorm(nsim,mean=Eeta,sigma=attr(mu_with_cov,"predVar"))
-      #   mu <- object$family$linkinv(eta) ## ! freqs for binomial, counts for poisson
-    }
-  } else {
-    if (verbose) cat("Unconditional simulation:\n")
-    mu_fixed <- predict(object, newdata=newdata, re.form=NA)
-    eta_fixed <- object$family$linkfun(mu_fixed[,1L])
-    if (is.null(newdata)) {
-    #   # rebuild linear predictor in three steps eta= X . beta + off + ZAL . RANDOM v
-    #   # hence do not use object$eta which contains PREDICTED V
-      nobs <- length(object$y)
-    #   if (ncol(object$`X.pv`)>0) {eta <- drop(object$`X.pv` %*% object$fixef) } else {eta <- rep(0,nobs)}
-    #   ##
-    #   eta <- eta + attr(object$predictor,"offsetObj")$total ## a PROCESSED predictor or resid.predictor always has a non-NULL offset term  
-    } else {
-      nobs <- nrow(newdata)
-    #   ## [-2] so that HLframes does not try to find the response variables  
-    #   allFrames <- HLframes(formula=attr(object$predictor,"oriFormula")[-2],data=newdata) ## may need to reconstruct offset using formula term
-    #   eta <- newetaFix(object,allFrames) ## X . beta + off
-    }
-    ##
-    if (object$models[["eta"]] != "etaGLM") {
+    } else { ## unconditional MIXED MODEL
+      if (verbose) cat("Unconditional simulation:\n")
+      mu_fixed <- predict(object, newdata=newdata, re.form=NA)
+      eta_fixed <- object$family$linkfun(mu_fixed[,1L])
       if (is.null(newdata)) {
         ZAL <- get_ZALMatrix(object,as_matrix=.eval_as_mat_arg(object))
         cum_n_u_h <- attr(object$lambda,"cum_n_u_h")
         vec_n_u_h <- diff(cum_n_u_h)
-      } else {
+      } else { ## unconditional MM with newdata
         #   ## [-2] so that HLframes does not try to find the response variables  
         allFrames <- HLframes(formula=attr(object$predictor,"oriFormula")[-2],data=newdata) 
         FL <- .spMMFactorList(object$predictor, allFrames$mf, 0L, drop=TRUE) 
@@ -139,20 +131,31 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
       if (nsim==1L) {
         eta <- eta_fixed + drop(ZAL %id*% newV) 
       } else eta <-  matrix(rep(eta_fixed,nsim),ncol=nsim) + as.matrix(ZAL %id*% newV) ## nobs rows, nsim col
+      mu <- object$family$linkinv(eta) 
     }
-    mu <- object$family$linkinv(eta) ## ! freqs for binomial, counts for poisson
   }
-  ## 
+  ## ! mu := freqs for binomial, counts for poisson ## vector or matrix
   phiW <- object$phi/object$prior.weights ## cf syntax and meaning in Gamma()$simulate / spaMM_Gamma$simulate
-  famfam <- tolower(object$family$family)
-#  if (famfam=="binomial" && is.null(size)) size <- object$weights ## original sample size by default
+  family <- object$family
+  famfam <- object$family$family
+  # resu <- object$family$simulate(object,nsim=nsim) ## could be OK and more efficient for CONDITIONAL simulation
+  if (famfam =="COMPoisson") {
+    COMP_nu <- environment(object$family$aic)$nu
+  } else if (famfam =="negbin") {
+    NB_shape <- environment(object$family$aic)$shape
+  } 
   respv <- function(mu) {switch(famfam,
-                                gaussian = rnorm(nobs,mean=mu,sd=sqrt(phiW)),
-                                poisson = rpois(nobs,mu),
-                                binomial = rbinom(nobs,size=sizes,prob=mu),
-                                gamma = rgamma(nobs,shape= mu^2 / phiW, scale=phiW/mu), ## ie shape increase with prior weights, consistent with Gamma()$simulate / spaMM_Gamma()$simulate
+                                gaussian = rnorm(length(mu),mean=mu,sd=sqrt(phiW)),
+                                poisson = rpois(length(mu),mu),
+                                binomial = rbinom(length(mu),size=sizes,prob=mu),
+                                Gamma = rgamma(length(mu),shape= mu^2 / phiW, scale=phiW/mu), ## ie shape increase with prior weights, consistent with Gamma()$simulate / spaMM_Gamma()$simulate
+                                COMPoisson = sapply(mu,function(muv) {
+                                  lambda <- family$linkfun(muv,log=FALSE)
+                                  .COMP_simulate(lambda=lambda,nu=COMP_nu)
+                                }),
+                                negbin = MASS::rnegbin(mu, theta=NB_shape),
                                 stop("(!) random sample from given family not yet implemented")
-  )} ## vector
+  )} ## vector-valued function from vector input
   if (nsim>1) { ## then mu has several columns
     resu <- apply(mu,2,respv) ## matrix
   } else {
@@ -162,7 +165,7 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
 }
 
 
-simulate.HLfitlist <- function(object,nsim=1,seed=NULL,newdata=object[[1]]$data,sizes=object[[1]]$weights,...) {
+simulate.HLfitlist <- function(object,nsim=1,seed=NULL,newdata=object[[1]]$data,sizes=NULL,...) {
   ## RNG stuff copied from simulate.lm
   if (!exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE))
     runif(1)
@@ -184,6 +187,7 @@ simulate.HLfitlist <- function(object,nsim=1,seed=NULL,newdata=object[[1]]$data,
     }
     for (it in seq(ncol(resu))) {
       ## it = 1 se ramène à simulate(object[[1]])
+      if (is.null(sizes)) sizes <- .get_BinomialDen(object[[it]])
       resu[,it] <- simulate(object[[it]],newdata=newdata,sizes=sizes - cumul,verbose=FALSE)
       cumul <- rowSums(resu)  
     }

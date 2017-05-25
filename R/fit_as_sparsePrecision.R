@@ -115,9 +115,9 @@ fit_as_sparsePrecision <- function(X.pv,
       ## compute $LMrhs now bc some variables ued here may be modified before $LMrhs is used 
       ## $LMrhs is the rhs in the direct solution of the full system (by chol2inv in the dense QR case)
       ## The 'betaFirst' algo in sparsePrecision does not use it, onlythe gainratio code does  
-      LevMarblob$LMrhs <- c( 
-        .crossprod(ZAL, attr(sXaug,"w.resid") * (zInfo$z1-old_eta)) - old_v_h_beta$v_h/lambda_est, # Z'W(z_1-eta)-Phi v_h
-        .crossprod(X.pv, attr(sXaug,"w.resid") * (augz[-seq_n_u_h]-old_eta)) # X'W(z_1-sscaled-eta)
+      LevMarblob$LMrhs <- c( ## drop() avoids c(Matrix..) 
+        drop(.crossprod(ZAL, attr(sXaug,"w.resid") * (zInfo$z1-old_eta)) - old_v_h_beta$v_h/lambda_est), # Z'W(z_1-eta)-Phi v_h
+        drop(.crossprod(X.pv, attr(sXaug,"w.resid") * (augz[-seq_n_u_h]-old_eta))) # X'W(z_1-sscaled-eta)
       ) ## the RHS of 1st eq in "Details of stepwise solution" less the terms in red therein (including the red terms within z1)
       v_h_beta <- list(
         v_h=old_v_h_beta$v_h + LevMarblob$dv_h,

@@ -1,7 +1,7 @@
 # define save as a generic with method save.HLfit ?
 
 .stripFormula <- function(formula) {
-  form <- as.formula(deparse(formula))
+  form <- as.formula(.DEPARSE(formula))
   assign("formula",NULL,environment(form)) 
   ## so that nothing remains in the within-.stripFormula environment attached to form
   form

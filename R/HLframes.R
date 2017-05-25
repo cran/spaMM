@@ -72,7 +72,7 @@ nobarsMM <- function (term) { ## different from lme4::nobars
   nb <- nobarsMM_(term)
   # if (is(term, "formula") && length(term) == 3 && is.symbol(nb)) { # wong bc is.symbol(cbind(...)) is FALSE
     if (is(term, "formula") && length(term) == 3 && ! inherits(nb,"formula")) {
-      #nb <- reformulate("0", response = deparse(nb)) ## wrong for nb=cbind(...)
+      #nb <- stats::reformulate("0", response = deparse(nb)) ## wrong for nb=cbind(...)
       nb <- as.formula(paste(deparse(nb),"~ 0")) 
   }
   # HLframes -> if (inherits(fixef.form, "formula")) { ... model.frame(...)) does not handle the formula  '~ 0'. Maybe the test should be modified
@@ -111,7 +111,6 @@ noOffset <- function (term) {
   nb <- noOffset_(term)
   ## cf comment in nobarsMM
   if (is(term, "formula") && length(term) == 3  && ! inherits(nb,"formula")) {
-    #nb <- reformulate("0", response = deparse(nb))
     nb <- as.formula(paste(deparse(nb),"~ 0")) 
   }
   ## cf comment in nobarsMM
@@ -325,7 +324,7 @@ HLframes <- function (formula, data,fitobject=NULL) {
       if (not_any_fixed_effect) { 
         X <- matrix(nrow=nrow(mf),ncol=0L) ## model without fixed effects, not even an Intercept 
       } else {
-        Terms <- delete.response(fixef_terms)
+        Terms <- stats::delete.response(fixef_terms)
         fixef_mf <- model.frame(Terms, data, xlev = fitobject$fixef_levels) ## xlev gives info about the original levels
         X <- model.matrix(Terms, fixef_mf, contrasts.arg=attr(fitobject$X.pv,"contrasts")) ## contrasts.arg not immed useful, maybe later.
       }
@@ -343,9 +342,9 @@ HLframes <- function (formula, data,fitobject=NULL) {
       if (not_any_fixed_effect) { 
         X <- matrix(nrow=nrow(mf),ncol=0L) ## model without fixed effects, not even an Intercept 
       } else {
-        X <- model.matrix(fixef_terms, mf, contrasts) ## contrasts is a function from the stats package
+        X <- model.matrix(fixef_terms, mf, stats::contrasts) 
       } 
-      fixef_levels <- .getXlevels(fixef_terms, fe) ## added 2015/12/09 useful for predict
+      fixef_levels <- stats::.getXlevels(fixef_terms, fe) ## added 2015/12/09 useful for predict
     }
   } else {
     X <- matrix(nrow=nrow(data), ncol=0L) ## NROW(Y) =0 if formula has no LHS, yielding inappropriate X

@@ -34,16 +34,16 @@
   if (interactive()) par(ask=TRUE) 
   for (i in seq_len(length(which))) {
     typ <- which[i]
-    if (i > 1) dev.new() ## =: meaning of having different elements in 'which'  
+    if (i > 1) grDevices::dev.new() ## =: meaning of having different elements in 'which'  
 		if (typ =="mean") { ## diagnostic plots for mean model => 4 subplots
 		  par(mfrow = c(2, 2), oma = c( 0, 0, 2, 0 ), pty = "s", ...) ## 4 subplots for mean !!
       #
-		  loess.fit <- loess.smooth(fitted.values, residuals)
+		  loess.fit <- stats::loess.smooth(fitted.values, residuals)
 			plot(fitted.values, residuals, xlab = "Fitted Values", 
 				 ylab = titles$meanmodel$devres, pch = pch, col = pcol, bty = "n", main = titles$meanmodel$devres)
 			lines(loess.fit$x, loess.fit$y, col = lcol)
 			#
-      loess.fit <- loess.smooth(fitted.values, abs(residuals))
+      loess.fit <- stats::loess.smooth(fitted.values, abs(residuals))
 			plot(fitted.values, abs(residuals), xlab = "Fitted Values", 
 				 ylab = titles$meanmodel$absdevres, pch = pch, col = pcol, bty = "n", main = titles$meanmodel$absdevres)
 			lines(loess.fit$x, loess.fit$y, col = lcol)

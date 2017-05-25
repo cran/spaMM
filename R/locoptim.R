@@ -62,9 +62,18 @@ locoptim <- function(init.optim,LowUp,anyObjfnCall.args,
       arglist <- c(list(ranefParsVec=x),anyObjfnCall.args)
       return( - do.call(objfn,arglist))
     }
-    nloptr_controls <- list(algorithm="NLOPT_LN_BOBYQA",xtol_rel=1.0e-4,maxeval=-1,print_level=0) ## DEFAULT
-    optr <- nloptr(x0=initvec,eval_f=objfn_nloptr,lb=unlist(lower),ub=unlist(upper),
+    nloptr_controls <- list(algorithm="NLOPT_LN_BOBYQA",xtol_rel=1.0e-4,maxeval=100,print_level=0) ## DEFAULT
+    lowerb <- unlist(lower)
+    upperb <- unlist(upper)
+    optr <- nloptr::nloptr(x0=initvec,eval_f=objfn_nloptr,lb=lowerb,ub=upperb,
                    opts=nloptr_controls,anyObjfnCall.args=anyObjfnCall.args)
+    while (optr$status==5) { ## 5 => termination bc maxeval has been reached
+      prevlik <- optr$objective
+      reinit <- pmax(lowerb,pmin(upperb,optr$solution))
+      optr <- nloptr::nloptr(x0=reinit,eval_f=objfn_nloptr,lb=lowerb,ub=upperb,
+                             opts=nloptr_controls,anyObjfnCall.args=anyObjfnCall.args)
+      if (optr$objective > prevlik-optr$options$ftol_abs ) break ## no progress in <= maxeval iterations
+    }
     optPars <- relist(optr$solution,init.optim)
     ## full optr is big. We take out the two items that contribute much to saveSize:
     optr$eval_f <- NULL

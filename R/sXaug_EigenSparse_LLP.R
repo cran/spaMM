@@ -35,7 +35,7 @@ create_sXaug_EigenSparse_LLP_scaled <- function() {
     if ( is.null(BLOB$t_Q_scaled) && 
          ( ## ! is.null(szAug) || 
            which %in% c("t_Q_scaled","hatval")) ) {
-      BLOB$t_Q_scaled <<- drop0(Matrix::solve(t(BLOB$R_scaled), sXaug[,BLOB$perm] ) )
+      BLOB$t_Q_scaled <<- Matrix::drop0(Matrix::solve(t(BLOB$R_scaled), sXaug[,BLOB$perm] ) )
     }
     if ( ! is.null(szAug)) {
       if (is.null(BLOB$t_Q_scaled)) {
@@ -81,7 +81,7 @@ create_sXaug_EigenSparse_LLP_scaled <- function() {
         ## but abs(D).U *is* a chol factor of XtX.
         # X[,cols] = Q sqrt(D) U P[,cols] = Q q r p => t(Q q) given by:
         if (is.null(BLOB$t_Qq_scaled)){
-          BLOB$t_Qq_scaled <<- drop0(solve(t(BLOB$R_R_v), t( sXaug[, seq_n_u_h[BLOB$perm_R_v] ] ) ))
+          BLOB$t_Qq_scaled <<- Matrix::drop0(solve(t(BLOB$R_R_v), t( sXaug[, seq_n_u_h[BLOB$perm_R_v] ] ) ))
         } 
         tmp <- BLOB$t_Qq_scaled
         tmp@x <- tmp@x^2

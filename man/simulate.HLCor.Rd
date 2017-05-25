@@ -4,20 +4,21 @@
 \alias{simulate}
 %- Also NEED an '\alias' for EACH other topic documented here.
 \title{
-  Simulate realizations of a fitted mixed model.
+  Simulate realizations of a fitted model.
 }
 \description{
   From an HLfit object, \code{simulate.HLfit} function generates new samples given the estimated fixed effects 
-  and dispersion parameters.
+  and dispersion parameters. Simulation may be conditional on the predicted values of random effects, or unconditional.
+  Simulations may be run for the original values of fixed-effect predictor variables and of random effect levels (spatial locations for spatial random effects), or for new values of these. However, conditional simulation in mixed models with new such values is not yet handled.  
 
-  This does not yet work for new locations in a mixed model involving both spatial and non-spatial random effects. 
+  %This does not yet work for new locations in a mixed model involving both spatial and non-spatial random effects. 
 }
 \usage{
 \method{simulate}{HLfit}(object, nsim = 1, seed = NULL, newdata=NULL,
                          conditional=FALSE, verbose=TRUE,
-                         sizes=object$weights,...)
+                         sizes = NULL, ...)
 \method{simulate}{HLfitlist}(object, nsim = 1, seed = NULL, 
-                             newdata=object[[1]]$data, sizes=object[[1]]$weights,...)
+                             newdata=object[[1]]$data, sizes=NULL, ...)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -28,14 +29,13 @@
  number of response vectors to simulate.  Defaults to '1'.
 }
   \item{seed}{
-  A seed for \code{\link{set.seed}}. If such a value is provided, the initial state of the random number generator at a global level
-  is restored on exit from simulate.
+  A seed for \code{\link{set.seed}}. If such a value is provided, the initial state of the random number generator at a global level is restored on exit from simulate.
 }
   \item{newdata}{
   A data frame closely matching the original data, except that response values are not needed. May provide new values of fixed predictor variables, new spatial locations, or new individuals within a block.   
 }
   \item{conditional}{
-    Boolean, for development purposes. Currently only unconditional simulation is handled.
+    Boolean; whether to run conditional or unconditional simulation. 
   }
   \item{verbose}{
     Boolean; whether to print some information or not. 

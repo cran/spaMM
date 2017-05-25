@@ -1,6 +1,6 @@
 # even though the Z's were sparse postmultplication by LMatrix leads some of the ZAL's to dgeMatrix (dense)
 .choose_QRmethod <- function(ZAlist, predictor, trySparse=TRUE) {
-  if ( is.null(QRmethod <- .spaMM.data$options$QRmethod) ) { ## user setting. The cQode should NOT write into it. 
+  if ( is.null(QRmethod <- .spaMM.data$options$QRmethod) ) { ## user setting. The code should NOT write into it. 
     nrand <- length(ZAlist)
     if (trySparse && nrand>0L) {
       # adjacency speed to be tested on 2nd example from test-spaMM.R

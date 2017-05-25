@@ -28,7 +28,7 @@ canonizeRanPars <- function(ranPars, ## should have a RHOMAX attribute when trRh
     }
     trueCorrpars$ARphi <- ARphi    
   } else if (corr.model != "corrMatrix") { ## all models with a 'rho' parameter
-    if (!is.null(ranPars$trRho)) {
+    if (!is.null(ranPars$trRho)) { ## assuming a single trRho with possibly several elements
       ranPars$rho <- rhoInv(ranPars$trRho,RHOMAX=attr(ranPars,"RHOMAX"))  
       ranPars$trRho <- NULL
       attr(ranPars,"type")$rho <- attr(ranPars,"type")$trRho

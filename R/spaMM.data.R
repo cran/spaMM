@@ -12,8 +12,8 @@
                             COMP_maxn=1e4,
                             ff_threshold=1e07, ## ! this affects tryn in OKsmooth::rhullByEI !
                             wRegularization=FALSE,
-                            wDEVEL=FALSE,
-                            wDEVEL2=FALSE,
+                            # sparse_precision=FALSE,
+                            wDEVEL2=FALSE, ## m'a servi a tester le remplacement de ranFix par une liste un peu diff ? laissé en chantier
                             QRmethod=NULL, ## For user-provided values. The code does not and should not change this.
                             spaMM_glm_conv_crit=list(max=-Inf)
 )

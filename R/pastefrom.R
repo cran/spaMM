@@ -25,6 +25,6 @@ clean_cs <- function(callstack){ ## callstack is a list of *calls*
     }) ## val is a character vector
   val[grepl("\\<function\\>", val)] <- "FUN" ## replaces  any pure fn definition [as called by lapply(,function...)] by "FUN"
   val <- val[!grepl("(###|FUN)", val)] ## then removes "###" and "FUN" from the vector
-  val <- head(val, -1) ## removes the last element which is the name of the function calling clean_cs, ie typically 'pastefrom'
+  val <- utils::head(val, -1) ## removes the last element which is the name of the function calling clean_cs, ie typically 'pastefrom'
   paste(val, collapse="|")
 }

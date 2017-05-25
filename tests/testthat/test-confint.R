@@ -1,5 +1,5 @@
 # confint
-cat("\ntest confint . for HLfit fit (see spaMMIntro for test with corrHLfit):")
+cat("\ntest confint . for HLfit() fit (see spaMMIntro for test with corrHLfit):\n")
 data(wafers)
 wfit <- HLfit(y ~X1+(1|batch),family=Gamma(log),data=wafers,HLmethod="ML")
 ci <- confint(wfit,"X1")

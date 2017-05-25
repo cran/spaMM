@@ -422,7 +422,7 @@ calc_APHLs_from_ZX <- function(auglinmodblob=NULL,processed, which="p_v",
     loglfn.fix <- processed$loglfn.fix
     y <- processed$y
     BinomialDen <- processed$BinomialDen
-    theta <- theta.mu.canonical(mu/BinomialDen,family)  
+    theta <- .theta.mu.canonical(mu/BinomialDen,family)  
     if (famfam=="binomial") {
       resu$clik <- sum(loglfn.fix(theta,y/BinomialDen,BinomialDen,1/(phi_est))) ## freq a revoir
     } else {

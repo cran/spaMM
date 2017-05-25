@@ -4,9 +4,9 @@
 using namespace Rcpp;
 using namespace std;
 
-// [[Rcpp::export]]
+// [[Rcpp::export(.Rcpp_COMP_Z)]]
 SEXP Rcpp_COMP_Z(int moment,double nu, double lambda, int maxn) {
-  //COMP_Z <- function(eta,nu,lambda=exp(eta),maxn=COMP_maxn(lambda,nu)){
+  //COMP_Z <- function(eta,nu,lambda=exp(eta),maxn=.COMP_maxn(lambda,nu)){
   double logScaleFac=0;
   double scaled=1;
   if (nu<1e-08) {

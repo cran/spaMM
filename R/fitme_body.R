@@ -68,9 +68,43 @@ fitme_body <- function(processed,
   if (corr.model  %in% c("SAR_WWt","adjacency")) { #!# "ar1"
     ## adjMatrix should become weightMatrix
     if ( is.null(HLCor.args$adjMatrix) ) stop("missing 'adjMatrix' for adjacency model")
+    ## eigenvalues needed in all cases for the bounds. Full decomp not always needed
     if (isSymmetric(HLCor.args$adjMatrix)) {
-      if ( spaMM.getOption("wDEVEL")) {
-        decomp <- list(d=eigen(HLCor.args$adjMatrix,only.values = TRUE)$values) ## to set optim bounds in fitme
+      sparse_precision <- spaMM.getOption("sparse_precision")
+      ## decision rule not clear. Trade off between repeated sparse Cholesky and a sym_eigen(). 
+      if (is.null(sparse_precision)) {
+        ZAfix <- getProcessed(processed,"AUGI0_ZX$ZAfix",1L)
+        sparse_precision <- (
+          (
+            ! is.numeric(init.HLfit$rho) ## init.HLfit$rho implies inner estim
+            &&  getProcessed(processed,"GLMMbool",1L)
+          ) && (
+            (
+              getProcessed(processed,"LMMbool",1L) 
+              && 1e-4*(ncol(ZAfix) -160^2)+1e-7*(nrow(ZAfix)^3 -250^3)>0 ## from numerical experiments
+            ) || (
+              0.5e-3*(ncol(ZAfix) -100^2)+4.5e-8*(nrow(ZAfix)^3 -200^3)>0 ## from numerical experiments
+            )
+          )
+        )
+      }
+      if ( sparse_precision) { ## FIXME : test aussi GLMMbool...
+        if ( ! is.null(attr(processed,"multiple"))) {
+          for (lit in seq_along(processed)) {
+            processed[[lit]]$sparse_precision <- TRUE
+            ZAfix <- as(processed[[lit]]$AUGI0_ZX$ZAfix,"sparseMatrix")
+            processed[[lit]]$AUGI0_ZX$ZAfix <- ZAfix
+            rsZA <- rowSums(ZAfix) ## test that there a '1' per row and 'O's otherwise:  
+            processed[[lit]]$AUGI0_ZX$is_unitary_ZAfix <- (unique(rsZA)==1 && all(rowSums(ZAfix^2)==rsZA)) ## $ rather than attribute to S4 ZAfix
+          } 
+        } else {
+          processed$sparse_precision <- TRUE
+          ZAfix <- as(processed$AUGI0_ZX$ZAfix,"sparseMatrix")
+          processed$AUGI0_ZX$ZAfix <- ZAfix
+          rsZA <- rowSums(ZAfix) ## test that there a '1' per row and 'O's otherwise:  
+          processed$AUGI0_ZX$is_unitary_ZAfix <- (unique(rsZA)==1 && all(rowSums(ZAfix^2)==rsZA)) ## $ rather than attribute to S4 ZAfix
+        }
+        decomp <- list(d=eigen(HLCor.args$adjMatrix,only.values = TRUE)$values) ## only eigenvalues
       } else {
         decomp <- sym_eigen(HLCor.args$adjMatrix)
       }
@@ -219,7 +253,7 @@ fitme_body <- function(processed,
     # processed <- setProcessed(processed,"SEMargs$SEMseed",value="NULL") ## removing default SEMseed
     ## : bc SEMseed OK to control individual SEMs but not  series of SEM 
     if (is.null(getProcessed(processed,"SEMargs$control_pmvnorm$maxpts",from=1L))) {
-      if (length(LowUp$lower>0L)) {
+      if (length(LowUp$lower)>0L) {
         processed <- setProcessed(processed,"SEMargs$control_pmvnorm$maxpts",value="quote(250L*nobs)") 
       } ## else default visible in SEMbetalambda
     }
@@ -285,10 +319,19 @@ fitme_body <- function(processed,
           arglist <- c(list(ranefParsVec=x),anyHLCor_obj_args)
           return( - do.call(HLcallfn.obj,arglist))
         }
-        nloptr_controls <- list(algorithm="NLOPT_LN_BOBYQA",xtol_rel=1.0e-4,maxeval=-1,print_level=0) ## DEFAULT
+        nloptr_controls <- list(algorithm="NLOPT_LN_BOBYQA",xtol_rel=1.0e-4,maxeval=100,print_level=0) ## DEFAULT
         nloptr_controls[names(control$nloptr)] <- control$nloptr ## Overwrite defaults with any element of $nloptr
-        optr <- nloptr(x0=initvec,eval_f=objfn_nloptr,lb=unlist(lower),ub=unlist(upper),
+        lowerb <- unlist(lower)
+        upperb <- unlist(upper)
+        optr <- nloptr::nloptr(x0=initvec,eval_f=objfn_nloptr,lb=lowerb,ub=upperb,
                        opts=nloptr_controls,anyHLCor_obj_args=anyHLCor_obj_args)
+        while (optr$status==5) { ## 5 => termination bc maxeval has been reached
+          prevlik <- optr$objective
+          reinit <- pmax(lowerb,pmin(upperb,optr$solution))
+          optr <- nloptr::nloptr(x0=reinit,eval_f=objfn_nloptr,lb=lowerb,ub=upperb,
+                                 opts=nloptr_controls,anyHLCor_obj_args=anyHLCor_obj_args)
+          if (optr$objective > prevlik-optr$options$ftol_abs ) break ## no progress in <= maxeval iterations
+        }
         optPars <- relist(optr$solution,init.optim)
         ## full optr is big. We take out the two items that contribute much to saveSize:
         optr$eval_f <- NULL

@@ -13,6 +13,9 @@
   REML <- unique(c(REML1,REML2))
   meth1 <- object$HL
   meth2 <- object2$HL
+  if (! identical(object$family[c("family","link")],object2$family[c("family","link")] ) ) {
+    stop("Models are not nested (distinct families)")
+  }
   if (! identical(meth1,meth2) || length(REML)>1 ) {
     stop("object fitted by different methods cannot be compared")
   }
@@ -45,7 +48,7 @@
   nest <- c(Xnest,Rnest)
   unest <- unique(nest)
   if (length(nest)==0L) { ## NULL,NULL
-    stop("models to not appear different from each other") 
+    stop("Fixed-effect specifications do not appear different from each other.") 
   } else if (length(unest)==2) {
     stop("Models not nested (opposite nestings for fixed and random terms). ")
   } else {
@@ -139,7 +142,7 @@ LRT <- function(object,object2,boot.repl=0,nb_cores=NULL) { ## compare two HM ob
     eval_replicate <- function(newy,only_vector=TRUE) { ## only_vector controls how to handle errors
       if (cbindTest) {
         simbData[[nposname]] <- newy
-        simbData[[nnegname]] <- nullfit$weights - newy
+        simbData[[nnegname]] <- .get_BinomialDen(nullfit)  - newy
       } else {simbData[[as.character(nullfit$predictor[[2L]])]] <- newy} ## allows y~x syntax for binary response
       ## analyze under both models
       aslistfull$data <- simbData

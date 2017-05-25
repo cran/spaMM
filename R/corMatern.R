@@ -20,7 +20,7 @@ getCovariate.corMatern <-
     if (missing(data)) {
       stop("need data to calculate covariate")
     }
-    covForm <- getCovariateFormula(form)
+    covForm <- nlme::getCovariateFormula(form)
     if (length(all.vars(covForm)) > 0) { # covariate present
       if (attr(terms(covForm), "intercept") == 1) {
 	covForm <-
@@ -34,7 +34,7 @@ getCovariate.corMatern <-
       covar <- NULL
     }
 
-    if (!is.null(getGroupsFormula(form))) { # by groups
+    if (!is.null(nlme::getGroupsFormula(form))) { # by groups
       grps <- getGroups(object, data = data)
       if (is.null(covar)) {
 	covar <- lapply(split(grps, grps),
@@ -74,12 +74,12 @@ Initialize.corMatern <- function(object, data, ...)
     
     form <- formula(object)
     ## obtaining the groups information, if any
-    if (!is.null(getGroupsFormula(form))) {
+    if (!is.null(nlme::getGroupsFormula(form))) {
       attr(object, "groups") <- getGroups(object, form, data = data)
-      attr(object, "Dim") <- Dim(object, attr(object, "groups"))
+      attr(object, "Dim") <- nlme::Dim(object, attr(object, "groups"))
     } else {
       # no groups
-      attr(object, "Dim") <- Dim(object, as.factor(rep(1, nrow(data))))
+      attr(object, "Dim") <- nlme::Dim(object, as.factor(rep(1, nrow(data))))
     }
     ## obtaining the covariate(s)
     ## is this where the distance matrix is actually computed ?
@@ -163,11 +163,11 @@ corMatrix.corMatern <-
     if (is.null(names(covariate))) {
       names(covariate) <- 1:length(covariate)
     }
-    corD <- Dim(object, rep(names(covariate),
+    corD <- nlme::Dim(object, rep(names(covariate),
 			    unlist(lapply(covariate,
                                           function(el) round((1 + sqrt(1 + 8 * length(el)))/2)))))
   } else { ## no groups
-    corD <- Dim(object, rep(1, round((1 + sqrt(1 + 8* length(covariate)))/2)))
+    corD <- nlme::Dim(object, rep(1, round((1 + sqrt(1 + 8* length(covariate)))/2)))
   }
 
   if (corr) {
@@ -256,7 +256,7 @@ coef.corMatern <-
 corFactor.corMatern <-
   function(object, ...)
 {
-  corD <- Dim(object)
+  corD <- nlme::Dim(object)
   val <- .C("matern_factList",
 	    as.double(as.vector(object)),
 	    as.integer(attr(object, "nugget")),
@@ -272,8 +272,7 @@ corFactor.corMatern <-
   val
 }
 
-Dim.corMatern <-
-  function(object, groups, ...)
+.Dim.corMatern <- function(object, groups, ...) # not currently used
 {
   if (missing(groups)) return(attr(object, "Dim"))
   ugrp <- unique(groups)
@@ -297,7 +296,7 @@ recalc.corMatern <-
   val <-
     .C("matern_recalc",
        Xy = as.double(conLin[["Xy"]]),
-       as.integer(unlist(Dim(object))),
+       as.integer(unlist(nlme::Dim(object))),
        as.integer(ncol(conLin[["Xy"]])),
        as.double(as.vector(object)),
        as.double(unlist(getCovariate(object))),

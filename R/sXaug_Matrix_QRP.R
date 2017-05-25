@@ -126,15 +126,15 @@ def_sXaug_Matrix_QRP_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale) {
         if (TRUE) { ## slow !
           ## two qr.qy instead of one solve... but qr.qy tends to produce large dense dgeMatrix... 
           # and... this is slow... the y is always treated as dense...
-          q_Rblob <- drop0(Matrix::qr.qy(BLOB$Rblob, diag(1, nrow = nrow(BLOB$Rblob), ncol = ncol(BLOB$Rblob))))
+          q_Rblob <- Matrix::drop0(Matrix::qr.qy(BLOB$Rblob, diag(1, nrow = nrow(BLOB$Rblob), ncol = ncol(BLOB$Rblob))))
           # Important: <dgCMatrix> <- drop0(<dgeMatrix>) allows next line
           q_Rblob@Dim[1L] <- nrow(BLOB$blob) ## adding 0-filled rows in a way sufficient for next computation
-          Qq <- drop0(Matrix::qr.Q(BLOB$blob,complete=TRUE)) %*% q_Rblob
+          Qq <- Matrix::drop0(Matrix::qr.Q(BLOB$blob,complete=TRUE)) %*% q_Rblob
         } else { ## slow !
-          Q_Rblob <- drop0(Matrix::qr.Q(BLOB$Rblob,complete=FALSE))
+          Q_Rblob <- Matrix::drop0(Matrix::qr.Q(BLOB$Rblob,complete=FALSE))
           # Important: <dgCMatrix> <- drop0(<dgeMatrix>) allows next line
           Q_Rblob@Dim[1L] <- nrow(BLOB$blob) ## adding 0-filled rows in a way sufficient for next computation
-          Qq <- drop0(Matrix::qr.Q(BLOB$blob,complete=TRUE)) %*% Q_Rblob
+          Qq <- Matrix::drop0(Matrix::qr.Q(BLOB$blob,complete=TRUE)) %*% Q_Rblob
         }
         BLOB$hatval_Z_ <- rowSums(Qq^2)
       }

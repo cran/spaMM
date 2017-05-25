@@ -210,3 +210,32 @@ fit_as_ZX <- function(X.pv, # only for ncol() and colnames()...
   Vscaled_beta[-(parmcol_ZX)] <- get_from_MME(locsXaug,szAug=locszAug) 
   return(list(Vscaled_beta=Vscaled_beta)) # levQ ispresumably always dense
 }
+
+.intervalStep_glm <- function(old_beta,sXaug,szAug,currentlik,for_intervals,currentDy) {
+  #print((control.HLfit$intervalInfo$fitlik-currentlik)/(control.HLfit$intervalInfo$MLparm-old_betaV[parmcol]))
+  ## voir code avant 18/10/2014 pour une implem rustique de VenzonM pour debugage  
+  ## somewhat more robust algo (FR->FR: still improvable ?), updates according to a quadratic form of lik near max
+  ## then target.dX = (current.dX)*sqrt(target.dY/current.dY) where dX,dY are relative to the ML x and y 
+  ## A nice thing of this conception is that if the target lik cannot be approached, 
+  ##   the inferred x converges to the ML x => this x won't be recognized as a CI bound (important for locoptim) 
+  parmcol_X <- for_intervals$parmcol_X
+  beta <- rep(NA,length(old_beta))
+  if (currentDy <0) { 
+    beta[parmcol_X] <- old_beta[parmcol_X]
+  } else {
+    currentDx <- (old_beta[parmcol_X]-for_intervals$MLparm)
+    targetDy <- (for_intervals$fitlik-for_intervals$targetlik)
+    Dx <- currentDx*sqrt(targetDy/currentDy)
+    ## pb is if Dx=0 , Dx'=0... and Dx=0 can occur while p_v is still far from the target, because other params have not converged.
+    ## FR->FR patch:
+    if (currentDy<targetDy) { ## we are close to the ML: we extrapolate a bit more confidently
+      min_abs_Dx <- for_intervals$asympto_abs_Dparm/1000
+    } else min_abs_Dx <- 1e-6 ## far from ML: more cautious move our of Dx=0
+    Dx <- sign(currentDx)*max(abs(Dx),min_abs_Dx)
+    beta[parmcol_X] <- for_intervals$MLparm + Dx 
+  }
+  locsXaug <- sXaug[,-(parmcol_X),drop=FALSE]
+  locszAug <- as.matrix(szAug-sXaug[,parmcol_X]*beta[parmcol_X])
+  beta[-(parmcol_X)] <- get_from_MME(locsXaug,szAug=locszAug) 
+  return(list(beta=beta)) # levQ ispresumably always dense
+}

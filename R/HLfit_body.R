@@ -197,7 +197,7 @@ HLfit_body <- function(processed, #resid.model= ~ 1,
   if (  is.null(beta_eta) || is.null(phi_est) || anyNA(init.lambda) ) { 
     reset <- (family$family %in% c("COMPoisson","negbin"))
     inits_by_glm <- .get_inits_by_glm(processed,family=family,reset=reset) # using possibly postprocessed family
-    ## : uses processed$y, $BinomialDen, attr($predictor,"offsetObj"), $control.glm.
+    ## : uses processed$y, $BinomialDen, attr($predictor,"offsetObj"), [["control.glm"]]
   }
   ## Finalize initial values for beta_eta
   if (is.null(beta_eta) ) beta_eta <- inits_by_glm$beta_eta
@@ -273,6 +273,9 @@ HLfit_body <- function(processed, #resid.model= ~ 1,
     next_LMatrices <- replicate(length(ZAlist), list(NULL))
     if (!is.null(LMatrix)) next_LMatrices[[which(attr(ZAlist,"ranefs") %in% attr(LMatrix,"ranefs"))]] <- LMatrix
   } else if (models[[1]]=="etaGLM") {
+    if (! is.null(intervalInfo)) {
+      intervalInfo$parmcol_X <- parmcol 
+    }
     ## FR->FR on doit pouvoir mettre maxit.mean = 0 dans pas mal de cas ?
     ## attention toutefois à COMPoisson negbin...
     if ( ! is.null(phi.Fix)) { ## 
@@ -291,10 +294,17 @@ HLfit_body <- function(processed, #resid.model= ~ 1,
   iter <- 0L
   prevmsglength <- 0L
   if (HL[1]=="SEM") { ## specif probit
-    #SEMblob <- probitgem::SEMwrap(processed, ZAL, beta_eta, off, corr_est, init.lambda, lambda.Fix, LMatrix, verbose) ## passes CHECK if CRAN knows it
-    SEMblob <- eval(as.call(c(quote(SEMwrap),list(processed=processed, ZAL=ZAL, beta_eta=beta_eta, 
-                                                             off=off, corr_est=corr_est, init.lambda=init.lambda, 
+    ## will pass CHECK when CRAN knows probitgem
+    #SEMblob <- probitgem::SEMwrap(processed, ZAL, beta_eta, off, corr_est, init.lambda, lambda.Fix, LMatrix, verbose) 
+    # passes CHECK when CRAN does nto know probitgem, when HLfit_body is called on a cluster with probitgem loaded on each node:
+    SEMblob <- eval(as.call(c(quote(SEMwrap),list(processed=processed, ZAL=ZAL, beta_eta=beta_eta,
+                                                             off=off, corr_est=corr_est, init.lambda=init.lambda,
                                                              lambda.Fix=lambda.Fix, LMatrix=LMatrix, verbose=verbose))))
+    ## or
+    # SEMblob <- eval(call("SEMwrap",processed=processed, ZAL=ZAL, beta_eta=beta_eta, 
+    #                                                           off=off, corr_est=corr_est, init.lambda=init.lambda, 
+    #                                                           lambda.Fix=lambda.Fix, LMatrix=LMatrix, verbose=verbose))
+    ## Note that final HLCor call of corrHLfit is not on cluster, and then probitgem is required in parent process.
     beta_eta <- SEMblob$beta_eta
     corr_est["rho"] <- SEMblob$corr_est["rho"] ## may again be NULL
     lambda_est <- predict(SEMblob$glm_lambda,type="response")
@@ -317,7 +327,7 @@ HLfit_body <- function(processed, #resid.model= ~ 1,
       if (models[["phi"]]=="phiScal") {
         H_global_scale <- phi_est[1L]
       } else H_global_scale <- exp(mean(log(phi_est)))
-      if (spaMM.getOption("wDEVEL")) {
+      if ( ! is.null(processed$AUGI0_ZX$envir$Q_CHMfactor) ) { ## valued only for sparsePrecision case
         adj_rho <- corr_est$rho
         if (is.null(adj_rho)) adj_rho <- getPar(ranFix,"rho") ## could this occur with test_inner_estim_rho ?
         if (is.null(adj_rho)) adj_rho <- init.HLfit$rho
@@ -362,10 +372,10 @@ HLfit_body <- function(processed, #resid.model= ~ 1,
       innerj <- auglinmodblob$innerj
     } else if (models[[1]]=="etaGLM") {
       if (pforpv>0  && maxit.mean>0L) {
-        ## nomme auglinmodblob pour avancer vers simplif du code, mais je ne peux suppser qu'auglinmodblob est toujours calculé
-        auglinmodblob <- calc_etaGLMblob(processed=processed,  mu=mu, eta=eta, muetablob=muetablob, beta_eta=beta_eta, 
+        ## resultat nomme' auglinmodblob pour avancer vers simplif du code, mais je ne peux suppser qu'auglinmodblob est toujours calculé
+        auglinmodblob <- .calc_etaGLMblob(processed=processed,  mu=mu, eta=eta, muetablob=muetablob, beta_eta=beta_eta, 
                                       w.resid=w.resid, phi_est=phi_est, off=off, maxit.mean=maxit.mean, 
-                                      verbose=verbose, conv.threshold=conv.threshold)
+                                      verbose=verbose, for_intervals=intervalInfo, conv.threshold=conv.threshold)
         eta <- auglinmodblob$eta 
         muetablob <- auglinmodblob$muetablob 
         mu <- muetablob$mu
@@ -528,7 +538,7 @@ HLfit_body <- function(processed, #resid.model= ~ 1,
                                data=data,
                                family=processed$residModel$family,
                                lev_phi=lev_phi,
-                               control=processed$control.glm,
+                               control=processed[["control.glm"]],
                                phimodel=models[["phi"]],
                                verbose=verbose,
                                control.phi=control.HLfit$`control.phi`)
@@ -592,7 +602,7 @@ HLfit_body <- function(processed, #resid.model= ~ 1,
                                           psi_M=psi_M,
                                           verbose=verbose,
                                           iter=iter,
-                                          control=processed$control.glm
+                                          control=processed[["control.glm"]]
       )
       next_corr_est <- calcRanefPars_blob$next_corrEstList$corr_est
       next_cov_est_vec <- calcRanefPars_blob$next_corrEstList$cov_est_vec
@@ -715,6 +725,7 @@ HLfit_body <- function(processed, #resid.model= ~ 1,
   #
   if (HL[1]=="SEM") {
     APHLs <- list(logLapp=logLapp) ## keeps attributes
+    APHLs$clik <- .calc_clik(mu,phi_est,processed) ## useful for .get_info_crits()
   } else {
     if (models[[1]]=="etaHGLM") {
       # if (processed$HL[1]==0L) {p_v_obj <-"hlik"} else p_v_obj <-"p_v" # meme pour PQL/ l'objective n'est pas hlik
@@ -877,7 +888,7 @@ HLfit_body <- function(processed, #resid.model= ~ 1,
   ###################
   res$data <- data ## very useful for simulate...
   if (family$family=="binomial") {
-    res$weights <- BinomialDen
+    res$BinomialDen <- BinomialDen
   }
   res$y <- y ## counts for Pois/bin
   #res$prior.weights <- structure(eval(prior.weights), unique=identical(attr(prior.weights,"unique"),TRUE)) ## see Gamma()$simulate
@@ -888,7 +899,7 @@ HLfit_body <- function(processed, #resid.model= ~ 1,
   res$family <- family
   res$X.pv <- X.pv
   res$ranFix <- ranFix ## currently as a uniform template consistent with projected changes ; excpt that lamFix, phiFix info is now in lambda.object, etc
-  #if (spaMM.getOption("wDEVEL2")) str(ranFix)
+  #if (spaMM.getOption("wDEVEL2")) utils::str(ranFix)
   correst_and_ranfix <- .get_CorrEst_and_RanFix(ranFix, corr_est)
   res$corrPars <- correst_and_ranfix$corrPars ## subset of the following:
   res$CorrEst_and_RanFix <- correst_and_ranfix$CorrEst_and_RanFix 
@@ -968,35 +979,9 @@ HLfit_body <- function(processed, #resid.model= ~ 1,
                            ,exp(coefficients_lambdaS[[which(attr(ZAlist,"Xi_cols")>1L)]]))) 
       })
     }
-    ## building a more comprehensive list of descriptors of the structure of random effects
-    strucList <- replicate(length(ZAlist), list(NULL)) 
-    if (is.list(next_LMatrices)) { ## excludes primitive case of a single Matern matrix
-      for (it in seq_len(length(ZAlist))) {
-        lmatrix <- next_LMatrices[[it]]
-        if ( ! is.null(lmatrix)) {
-          corr.model <- attr(lmatrix, "corr.model") 
-          if (is.null(corr.model)) warning('attr(next_LMatrix, "corr.model") is NULL')
-          if (corr.model=="random-coef") {
-            longLmatrix <- .makelong(attr(lmatrix,"Lcompact"),longsize=ncol(ZAlist[[it]]))
-            ## extra attributes are hidden from str() because lmatrix is an S4 object...
-            ## ranefs itself has attribute type="(.|.)"
-            ## attr(lmatrix,"Lcompact") doit etre ce que .calc_latentL()$u retrouve
-            lmatrix <- do.call(structure,c(list(.Data=longLmatrix),attributes(lmatrix)[c("Lcompact","par","ranefs","corr.model")]))
-            attr(lmatrix,"cov.mat") <- ZWZt(attr(lmatrix,"Lcompact"),
-                                            exp(coefficients_lambdaS[[which(attr(ZAlist,"Xi_cols")>1L)]])) 
-          } 
-          strucList[[it]] <- lmatrix  
-        } 
-      }
-    }
-    lmatrix <- processed$AUGI0_ZX$envir$LMatrix
-    ## typically with attributes type="cholL_LLt", corr.model="Matern", ranefs
-    if (!is.null(lmatrix)) {
-      ## find ZAlist elements affected by LMatrix element
-      affecteds <- which(attr(ZAlist,"ranefs") %in% attr(lmatrix,"ranefs"))
-      for (it in affecteds) { strucList[[it]] <- lmatrix }
-    }
-    res$strucList <- strucList
+    ## building a more comprehensive list of descriptors of the structure of random effects:
+    res$strucList <- .make_strucList(ZAlist,next_LMatrices,coefficients_lambdaS,
+                                     LMatrix=processed$AUGI0_ZX$envir$LMatrix)
   } ## else all these res$ elements are NULL
   ###################
   ## ALL other PHI returns
@@ -1019,7 +1004,7 @@ HLfit_body <- function(processed, #resid.model= ~ 1,
       if (is.null(phi.object[["glm_phi"]])) {
         # delays computation of glm_phi
         glm_phi_args <- list(dev.res=dev_res*res$prior.weights,
-                             control=processed$control.glm,
+                             control=processed[["control.glm"]],
                              etastart=rep(calcPHIblob$beta_phi,nobs)) ## no glm <=> formula was ~1
         phi.object <- c(phi.object, list(glm_phi_args=glm_phi_args ) )
       } 
@@ -1095,7 +1080,8 @@ HLfit_body <- function(processed, #resid.model= ~ 1,
     warningList$mainNotConv <- mainNotConv
   }
   res$warnings <- warningList
-  res$spaMM.version <- packageVersion("spaMM")
+  res$spaMM.version <- utils::packageVersion("spaMM")
+  if (HL[1]=="SEM") res$SEM_info <- SEMblob$SEM_info ## info
   ###
   ###################
   ## SUMMARY, RETURN

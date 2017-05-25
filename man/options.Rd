@@ -49,15 +49,10 @@ and possibly other undocumented values for development purposes.
 } % arguments
 \details{
    
-  Invoking \code{spaMM.options()} with no arguments returns a list with the
-  current values of the options. Invoking \code{spaMM.getOption(<option name>)} returns the value of the option rather than a list.
-
-%~  Internally, the options are kept in the list \code{.SpaMM}.\cr
-
   spaMM.options() provides an interface for changing maximal values of parameters of the Matérn correlation function. However, 
   it is not recommended to change these values unless a spaMM message specifically suggests so. Errors may occur if too low values are chosen as these may conflit with default initial values for the parameters.
   
-  The Levenberg-Marquardt algorithm implementation uses the variant described by Nocedal & Wright (1999, p. 266). 
+  The implemented Levenberg-Marquardt algorithm is the variant described by Nocedal & Wright (1999, p. 266). 
 }
 \references{
 Jorge Nocedal and Stephen J. Wright (1999) Numerical Optimization. Springer-Verlag, New York.
@@ -66,7 +61,7 @@ Jorge Nocedal and Stephen J. Wright (1999) Numerical Optimization. Springer-Verl
   For \code{spaMM.getOption}, the current value set for option \code{x}, or
   \code{NULL} if the option is unset.
 
-  For \code{spaMM.options()}, a list of all set options sorted by category.  For
+  For \code{spaMM.options()}, a list of all set options.  For
   \code{spaMM.options(name)}, a list of length one containing the set value,
   or \code{NULL} if it is unset.  For uses setting one or more options,
   a list with the previous values of the options changed (returned

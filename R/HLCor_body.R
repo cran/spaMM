@@ -69,15 +69,15 @@ HLCor_body <- function(processed,
       Lunique <- as.matrix(solve(tLinv/sqrt(1-ARphi^2))) ## corrmat is tcrossprod(Lunique): we keep tcrossprod but L' is tri.sup ! 
       attr(Lunique,"type") <- "cholR_RRt" ## not equivalent to base::chol() which whould produce cholR_tRR 
     }
-    rho_is_inner_estimated <- (corr.model=="adjacency"
-                               && ! is.null(attr(ranPars,"type")) ## ie through corrHLfit (or fitme !?) call
+    adj_rho_is_inner_estimated <- (corr.model=="adjacency"
+#                               && ! is.null(attr(ranPars,"type")) ## through corrHLfit (or fitme !?) or some direct HLCor call
                                && identical(attr(ranPars,"type")$rho,"var") ## can occur in direct call of HLCor 
     )    
     if (corr.model %in% c("adjacency")) { ## "ar1" != "AR1" is a tempo name for a futur generic model  #!# "ar1"
       if ( missing(adjMatrix) ) stop("missing 'adjMatrix' for adjacency model")
       ## no nugget in the adjacency model... ## (use additional ranef instead)      
       symSVD <- attr(adjMatrix,"symSVD")
-      if (is.null(symSVD) && rho_is_inner_estimated) { ## can occur in direct call of HLCor 
+      if (is.null(symSVD) && adj_rho_is_inner_estimated) { ## can occur in direct call of HLCor 
         if (isSymmetric(adjMatrix)) {
           symSVD <- sym_eigen(adjMatrix)
           attr(adjMatrix,"symSVD") <- symSVD
@@ -144,12 +144,22 @@ HLCor_body <- function(processed,
       if (missing(corrMatrix)) {
         mess <- pastefrom("missing(corrMatrix) argument despite corrMatrix term in formula.",prefix="(!) From ")
         stop(mess)
-      } ## ELSE:
+      } else {
+        dim_corrMatrix <- dim(corrMatrix)
+        if (dim_corrMatrix[1L]!=dim_corrMatrix[2L])  stop("corrMatrix is not square") 
+      }
+      ## ELSE:
       if (inherits(corrMatrix,"dist")) {
         corrnames <- labels(corrMatrix)
-      } else if (inherits(corrMatrix,"matrix")) {
+        if (is.null(corrnames)) {
+          message("corrMatrix without labels: first grouping levels are matched\n  to first rows of corrMatrix, without further check.\n This may cause later errors (notably, wrongly dimensioned matrices) \n See help(\"corrMatrix\") for a safer syntax.")
+        }
+      } else if (inherits(corrMatrix,"matrix") || inherits(corrMatrix,"Matrix")) {
         corrnames <- rownames(corrMatrix)
-      } else message(paste("(!) 'corrMatrix' is neither a 'matrix' or 'dist' object. Check the input. I exit."))
+        if (is.null(corrnames)) {
+          message("corrMatrix without row names: first grouping levels are matched\n  to first rows of corrMatrix, without further check.\n This may cause later errors (notably, wrongly dimensioned matrices) \n See help(\"corrMatrix\") for a safer syntax.")
+        }
+      } else stop(paste("(!) 'corrMatrix' is neither a 'matrix', 'Matrix' or 'dist' object."))
       whichranef <- which(attr(attr(processed$ZAlist,"ranefs"),"type")=="corrMatrix")
       ZAnames <- colnames(processed$ZAlist[[whichranef]]) ## set by .spMMFactorList(), with two cases for corrMatrix 
       generator <- attr(processed$ZAlist[[whichranef]],"generator")
@@ -158,46 +168,41 @@ HLCor_body <- function(processed,
         if ( length(corrnames)>length(ZAnames) || any(corrnames!=ZAnames) ) { ## ...but superset, or not same order
           if (inherits(corrMatrix,"dist")) {
             corrm <- as.dist(as.matrix(corrMatrix)[ZAnames,ZAnames]) ## fairly ugly. package 'seriation' has (permute.dist-> C code)
-          } else if (inherits(corrMatrix,"matrix")) {
-            corrm <- corrMatrix[ZAnames,ZAnames]  
-          }   
+          } else corrm <- corrMatrix[ZAnames,ZAnames]  
         } else corrm <- corrMatrix ## orders already match
       } else {
         ## : expected when generator = "ULI"
-        message("corrMatrix with complex grouping term: first grouping levels are matched\n  to first rows of corrMatrix, without further check. \n See help(\"corrMatrix\") for a safer syntax.")
+        if ( ! is.null(corrnames)) message("corrMatrix with complex grouping term: first grouping levels are matched\n  to first rows of corrMatrix, without further check. \n See help(\"corrMatrix\") for a safer syntax.")
         corrm <- corrMatrix ## no clear reordering
       }
     } 
     if (verbose["trace"] && length(trueCorrpars)>0) print(unlist(trueCorrpars))
     ## call designL.from.Corr if Lunique not available
     if (is.null(Lunique)) { ## test FR 11/2013 ## modif 2015/04. Noter un calcul de Lunique ci dessus
-      if ( rho_is_inner_estimated ) { ## calcRanefPars uses both envir$adj_symSVD and the LMatrices structure with the attr(Lunique,...)
-        if (spaMM.getOption("wDEVEL")) {
-          message("Sparse Cholesky method cannot be used in case of 'inner' estimation of rho.
-                  Switching to 'inner' estimation of rho by another matrix algorithm.")
-          spaMM.options(wDEVEL=FALSE)
-        }
-        # contrived way of construction Lunique with the correct attributes.
-        symSVD$d <- 1/(1-rho*symSVD$adjd) ## from adjMatrix to correlation matrix
-        Lunique <- try(designL.from.Corr(symSVD=symSVD))
-        ## if inner estimation of rho_adj, uses constant L= symSVD's $u:
-        Lunique[] <- attr(Lunique,"symsvd")$u   ## "[] <- " keeps attributes... except for Matrix...
-      } else if (spaMM.getOption("wDEVEL")) { ## then the rho of the whole HLCor fit is available
-        ## outer estimation hence the following can be computed:
+      if (corr.model=="adjacency" 
+          && ! adj_rho_is_inner_estimated 
+          && identical(processed$sparse_precision,TRUE)) {
+        ## Implies call from fitme_body with outer rho estim.
         Qmat <- - rho * adjMatrix
         diag(Qmat) <- diag(Qmat)+1
         ################################L_Q <- .designL.from.Qmat(Qmat) ## solve(tcrossprod(LMatrix)) = Qmat or
         ## Cholesky gives proper LL' (think LDL')  while chol() gives L'L...
-        Q_CHMfactor <- Matrix::Cholesky(drop0(Qmat),LDL=FALSE,perm=FALSE)
+        Q_CHMfactor <- Matrix::Cholesky(Matrix::drop0(Qmat),LDL=FALSE,perm=FALSE) ## FIXME couteux (appele repetitivement)
         processed$AUGI0_ZX$envir$Qmat <- Qmat 
-        processed$AUGI0_ZX$envir$Q_CHMfactor <- Q_CHMfactor 
-        ## fitme wDEVEL has an incomplete symSVD=> corrm not computed, and try(designL.from.Corr(symSVD=symSVD)) fails. Instead:
+        processed$AUGI0_ZX$envir$Q_CHMfactor <- Q_CHMfactor ## *existence of this is criterion for use of sparePrecision algo*
+        ## fitme sparse_precision has an incomplete symSVD=> corrm not computed, and try(designL.from.Corr(symSVD=symSVD)) fails. Instead:
         Lunique  <- solve(Q_CHMfactor,system="Lt") #  L_Q^{-\top}=LMatrix_correlation
-      } else { ## densePrecision cases with outer rho estimation
+        # Lunique is a dtCMatrix...
+      } else {
+        ## densePrecision cases with outer rho estimation, and some residula inner rho estimation cases
         if ( ! is.null(symSVD)) {
           symSVD$d <- 1/(1-rho*symSVD$adjd) ## from adjMatrix to correlation matrix
           # outer optim -> LMatrix recomputed from this for each rho  
           Lunique <- try(designL.from.Corr(symSVD=symSVD)) ## usin $d not $adjd
+          # Lunique is num, with attr(*, "type")= chr "symsvd" ....
+          if ( adj_rho_is_inner_estimated ) { # contrived way of construction Lunique with the correct attributes.
+            Lunique[] <- attr(Lunique,"symsvd")$u   ## "[] <- " keeps attributes... except for Matrix...
+          }
         } else { ## corrm must exist
           argsfordesignL <- dotlist[intersect(names(dotlist),names(formals(designL.from.Corr)))] 
           if (processed$HL[1L]=="SEM") argsfordesignL$try.chol <- FALSE
@@ -205,7 +210,7 @@ HLCor_body <- function(processed,
             corrm <- as.matrix(corrm)
             diag(corrm) <- 1L ## IF diag missing in input corrMatrix THEN assume a correlation matrix
           } ## else full matrix may be a COV matrix with non-unit diag
-
+          
           Lunique <- try(do.call(designL.from.Corr,c(list(m=corrm),argsfordesignL)))
         }
         if (inherits(Lunique,"try-error")) { 
@@ -213,7 +218,7 @@ HLCor_body <- function(processed,
           print(unlist(trueCorrpars))    
           stop()
         }
-      } 
+      }
     }
     attr(predictor,"%in%") <- test.in
     attr(Lunique,"corr.model") <- corr.model
@@ -259,8 +264,8 @@ HLCor_body <- function(processed,
         if ( ! identical(rpType <- attr(ranPars,"type"), lapply(rpTypes <- attr(rPparlist,"types"),tolower))) {
           #stop(" ! identical(attr(ranPars,\"type\"),attr(attr(ranPars,\"parlist\"),\"types\"))")
           # can be different bc rpType handles named vectors (rho,lambda) differently...
-          str(rpType)
-          str(rpTypes)
+          utils::str(rpType)
+          utils::str(rpTypes)
         }
       }
     }
@@ -272,6 +277,7 @@ HLCor_body <- function(processed,
     return(hlfit)    ########################   R E T U R N   a list with $APHLs, with class "list"
   } else class(hlfit) <- c(class(hlfit),"HLCor")
   #
+  hlfit$sparse_precision <- processed$sparse_precision
   hlfit$control.dist <- control.dist
   attr(hlfit,"info.uniqueGeo") <- uniqueGeo ## whether Matern or not (eg AR1)
   if (corr.model %in% c("Matern")) {
@@ -348,7 +354,7 @@ HLCor_body <- function(processed,
   types <- attr(skeleton,"type")
   attr(HLCor.call$ranPars,"type")[names(types)] <- types
   HLCor.call[[1L]] <- quote(spaMM::HLCor)
-  hlfit <- eval(HLCor.call)
+  hlfit <- eval(HLCor.call) ## retruns fit or call 
   #
   if (identical(HLCor.call$verbose["getCall"][[1L]],TRUE)) {return(hlfit)} ## HLCorcall
   #

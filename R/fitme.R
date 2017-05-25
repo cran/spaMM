@@ -34,7 +34,7 @@
   if (length(argcheck)>0) warning(paste("suspect argument(s) ",paste(argcheck, collapse=",")," in fitme call."))
   # 
   if (is.null(processed)) {
-    family <- checkRespFam(family)
+    family <- .checkRespFam(family)
     FHF <- formals(HLfit) ## makes sure about default values 
     names_FHF <- names(FHF)
     if ( ! is.null(mc$resid.formula)) mc$resid.model <- mc$resid.formula
@@ -48,7 +48,6 @@
     preprocess.formal.args$adjMatrix <- mc$adjMatrix ## because adjMatrix not in formals(HLfit)
     preprocess.formal.args$HLmethod <- HLmethod ## forces evaluation
     #
-    famfam <- family$family
     if ( identical(family$family,"multi")) {
       ## then data are reformatted as a list. Both HLCor and HLfit can analyse such lists for given corrPars and return the joint likelihood
       ## By contrast HLCor should not fit different corrPars to each data, so it does not lapply("corrHLfit",...)
@@ -66,15 +65,9 @@
     mc$processed <- do.call(preprocess,preprocess.formal.args,envir=parent.frame(1L))
     mc$verbose <- .reformat_verbose(eval(mc$verbose),For="corrHLfit")
     ## removing all elements that are matched in processed:
-    mc$data <- NULL
-    mc$family <- NULL
-    mc$formula <- NULL
-    mc$prior.weights <- NULL
-    mc$HLmethod <- NULL ## processed$HL  
-    mc$rand.family <- NULL ## processed$rand.families  
-    mc$control.glm <- NULL ## processed$control.glm  
-    mc$resid.formula <- NULL ## mc$resid.model  
-    mc$REMLformula <- NULL ## processed$REMLformula
+    pnames <- c("data","family","formula","prior.weights","HLmethod","rand.family","control.glm","resid.formula","REMLformula",
+                "resid.model")
+    for (st in pnames) mc[st] <- NULL 
   }  
   
   mc[[1L]] <- quote(spaMM::fitme_body) 
@@ -162,7 +155,7 @@ fitme <- function(formula,data, ## matches minimal call of HLfit
   if (length(argcheck)>0) warning(paste("suspect argument(s) ",paste(argcheck, collapse=",")," in fitme call."))
   # 
   if (is.null(processed)) {
-    family <- checkRespFam(family)
+    family <- .checkRespFam(family)
     FHF <- formals(HLfit) ## makes sure about default values 
     names_FHF <- names(FHF)
     if ( ! is.null(mc$resid.formula)) mc$resid.model <- mc$resid.formula
@@ -176,7 +169,6 @@ fitme <- function(formula,data, ## matches minimal call of HLfit
     preprocess.formal.args$adjMatrix <- mc$adjMatrix ## because adjMatrix not in formals(HLfit)
     preprocess.formal.args$HLmethod <- HLmethod ## forces evaluation
     #
-    famfam <- family$family
     if ( identical(family$family,"multi")) {
       ## then data are reformatted as a list. Both HLCor and HLfit can analyse such lists for given corrPars and return the joint likelihood
       ## By contrast HLCor should not fit different corrPars to each data, so it does not lapply("corrHLfit",...)
@@ -194,15 +186,9 @@ fitme <- function(formula,data, ## matches minimal call of HLfit
     mc$processed <- do.call(preprocess,preprocess.formal.args,envir=parent.frame(1L))
     mc$verbose <- .reformat_verbose(eval(mc$verbose),For="corrHLfit")
     ## removing all elements that are matched in processed:
-    mc$data <- NULL
-    mc$family <- NULL
-    mc$formula <- NULL
-    mc$prior.weights <- NULL
-    mc$HLmethod <- NULL ## processed$HL  
-    mc$rand.family <- NULL ## processed$rand.families  
-    mc$control.glm <- NULL ## processed$control.glm  
-    mc$resid.formula <- NULL ## mc$resid.model  
-    mc$REMLformula <- NULL ## processed$REMLformula
+    pnames <- c("data","family","formula","prior.weights","HLmethod","rand.family","control.glm","resid.formula","REMLformula",
+                "resid.model")
+    for (st in pnames) mc[st] <- NULL 
   }  
   
   mc[[1L]] <- quote(spaMM::fitme_body) 

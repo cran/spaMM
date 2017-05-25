@@ -13,10 +13,14 @@ lp <- 0.1 + 3* Lmat %*% rnorm(ncol(Lmat)) ## single intercept beta =0.1; lambda=
 resp <- rbinom(ncol(Lmat),1,1/(1+exp(-lp)))
 donn <- data.frame(npos=resp,nneg=1-resp,gridcode=scotlip$gridcode)
 
-# CAR by Laplace with 'outer' estimation of rho
-blob <- corrHLfit(cbind(npos,nneg)~1 +adjacency(1|gridcode),
-          adjMatrix=Nmatrix,family=binomial(probit),data=donn,HLmethod="ML",control.corrHLfit = list(maxcorners=0)) ## 3.5 s (!).
-AIC(blob)
+if (FALSE) { ## HLCor/corrHlfit already compared on scotlip by test-spaMM.R
+  # corrHLfit without corners was poor here
+  # CAR by Laplace with 'outer' estimation of rho
+  # *** fitme is not very convicing, stops early ***
+  blob <- fitme(cbind(npos,nneg)~1 +adjacency(1|gridcode),
+                    adjMatrix=Nmatrix,family=binomial(probit),data=donn,method="ML") 
+  AIC(blob)
+}
 
 # CAR by Laplace with 'inner' estimation of rho
 blob <- HLCor(cbind(npos,nneg)~1 +adjacency(1|gridcode),

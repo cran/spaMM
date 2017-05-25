@@ -20,6 +20,7 @@ calcPredVar <- function(ColdnewList,X.pv,newZAC=NULL,newZAlist,beta_w_cov,
                         invColdoldList=NULL, ## may be null is no newdata.
                         lambda=NULL, ## may be null if no newdata.
                         logdispObject=NULL, ## should remain NULL is disp not requested
+                        newinold, 
                         covMatrix=FALSE,blockSize=100L) {
   nrX <-  nrow(X.pv)
   if ( ( ! covMatrix ) && nrX > blockSize) {
@@ -28,26 +29,26 @@ calcPredVar <- function(ColdnewList,X.pv,newZAC=NULL,newZAlist,beta_w_cov,
       slice <- (slices[it]+1L):slices[it+1L]
       ## here  the problem is that newZA should map the new response levels 
       ## to the 'new' levels of random effects  
-      nrand <- length(newZAlist) ## or of any other of the lists of matrices
-      requiredLevelsList <- lapply(seq_len(nrand), function(rd) {
+      newnrand <- length(newZAlist) ## or of any other of the lists of matrices
+      requiredLevelsList <- lapply(seq_len(newnrand), function(rd) {
         which(colSums(newZAlist[[rd]][slice,,drop=FALSE])>0L) })
-      locnewZA <- lapply(seq_len(nrand), function(rd) { 
+      locnewZA <- lapply(seq_len(newnrand), function(rd) { 
         newZAlist[[rd]][slice,requiredLevelsList[[rd]],drop=FALSE] })
       # predVar in observed points uses C rather than L hence we need to compute ZA.C in all cases ('newZAC")
       #  andthen we need newZA and ColdnewList
-      locColdnewList <- lapply(seq_len(nrand), function(rd) { 
+      locColdnewList <- lapply(seq_len(newnrand), function(rd) { 
         locC_on <- ColdnewList[[rd]][,requiredLevelsList[[rd]],drop=FALSE]
-        attr(locC_on,"isEachNewInOld") <- attr(ColdnewList[[rd]],"isEachNewInOld")[requiredLevelsList[[rd]]] ## for non-spatial effects; (qualifies sub cols of sub Cnewold)
+        attr(locC_on,"isEachNewLevelInOld") <- attr(ColdnewList[[rd]],"isEachNewLevelInOld")[requiredLevelsList[[rd]]] ## for non-spatial effects; (qualifies sub cols of sub Cnewold)
         return(locC_on)
       })
-      locnewZAClist <- lapply(seq_len(nrand), function(rd) { 
+      locnewZAClist <- lapply(seq_len(newnrand), function(rd) { 
         terme <- locnewZA[[rd]] %id*id% t(locColdnewList[[rd]])[] 
         as.matrix(terme) ## loses names but they are not useful here 
       })
-      if (nrand>1L) {newZAC <- do.call(cbind,locnewZAClist)} else {newZAC <- locnewZAClist[[1]]}
+      if (newnrand>1L) {newZAC <- do.call(cbind,locnewZAClist)} else {newZAC <- locnewZAClist[[1]]}
       ## the only one that corresponds to real newdata in predict()
       if (!is.null(CnewnewList)) {
-        locCnewnewList <- lapply(seq_len(nrand), function(rd) { 
+        locCnewnewList <- lapply(seq_len(newnrand), function(rd) { 
           CnewnewList[[rd]][requiredLevelsList[[rd]],requiredLevelsList[[rd]],drop=FALSE] }) 
       } else locCnewnewList <- NULL
       calcPredVar(ColdnewList=locColdnewList, ## needed only if newdata in predict() call
@@ -58,18 +59,19 @@ calcPredVar <- function(ColdnewList,X.pv,newZAC=NULL,newZAlist,beta_w_cov,
                   invColdoldList=invColdoldList, ## needed only if newdata in predict() call
                   lambda=lambda,
                   logdispObject=logdispObject,
+                  newinold=newinold,
                   covMatrix=covMatrix,blockSize=blockSize)
     }
     unlist(sapply(seq_len(length(slices)-1L),sliceVar))
   }
   ############################################################
   if (is.null(newZAC)) {
-    nrand <- length(newZAlist) ## or of any other of the lists of matrices
-    newZAClist <- lapply(seq_len(nrand), function(it) {
+    newnrand <- length(newZAlist) ## or of any other of the lists of matrices
+    newZAClist <- lapply(seq_len(newnrand), function(it) {
       terme <- newZAlist[[it]] %id*id% t(ColdnewList[[it]])[] ## %id*id% further keeps col names of C if tZA==I
       as.matrix(terme) ## loses names but they are not useful here 
     })
-    if (nrand>1L) {newZAC <- do.call(cbind,newZAClist)} else {newZAC <- newZAClist[[1]]}
+    if (newnrand>1L) {newZAC <- do.call(cbind,newZAClist)} else {newZAC <- newZAClist[[1]]}
   }
   newAugX <- cbind2(X.pv,newZAC) ## mais en fait pas un AugX since it uses C (in C.w) rather than L (in L.v)
   ## First component of predVar
@@ -88,14 +90,19 @@ calcPredVar <- function(ColdnewList,X.pv,newZAC=NULL,newZAlist,beta_w_cov,
     }
   }
   predVar <- calcZWZt_mat_or_diag(newAugX,beta_w_cov,covMatrix)
+  #### next line of code is an imperfect but useful patch
+  # possible problems:
+  # * (unhandled) Evar can also be (numerically) negative
+  # * (quick-patched) same for min_eigen 
+  predVar <- pmax(apply(newAugX^2,1L,sum)*max(0,attr(beta_w_cov,"min_eigen")), predVar)
   ## Second component of predVar:
   # Evar: expect over distrib of (hat(beta),hat(v)) of [variance of Xbeta+Zb given (hat(beta),hat(v))]
   if ( ! is.null(invColdoldList)) { ## must be equivalent to the presence of newdata
-    nrand <- length(newZAlist) ## or of any other of the lists of matrices
-    Evarlist <- lapply(seq_len(nrand), function(it) {
-      isEachNewInOld <- attr(ColdnewList[[it]],"isEachNewInOld")
-      if ( ! is.null(isEachNewInOld)) { ## non spatial effect: a vector of booleans indicating whether new is in old (qualifies cols of Cnewold)
-        Evar <- Diagonal(x=lambda[it]*as.numeric(! isEachNewInOld))
+    newnrand <- length(newZAlist) ## or of any other of the lists of matrices
+    Evarlist <- lapply(seq_len(newnrand), function(it) {
+      isEachNewLevelInOld <- attr(ColdnewList[[it]],"isEachNewLevelInOld")
+      if ( ! is.null(isEachNewLevelInOld)) { ## non spatial effect: a vector of booleans indicating whether new is in old (qualifies cols of Cnewold)
+        Evar <- Diagonal(x=lambda[it]*as.numeric(! isEachNewLevelInOld))
       } else { ## spatial effect
         if (is.null(CnewnewList[[it]])) { ## we compute only the var vector
           Cno_InvCoo_Con <- colSums(ColdnewList[[it]] * ( (invColdoldList[[it]])[] %id*id% (ColdnewList[[it]])[] ) )
@@ -110,7 +117,7 @@ calcPredVar <- function(ColdnewList,X.pv,newZAC=NULL,newZAlist,beta_w_cov,
         return(as.matrix(terme))  ## loses names but they are not useful here
       } else return(terme)
     })
-    if (nrand>1L) {Evar <- Reduce("+",Evarlist)} else {Evar <- Evarlist[[1]]}
+    if (newnrand>1L) {Evar <- Reduce("+",Evarlist)} else {Evar <- Evarlist[[1]]}
     predVar <- predVar + Evar
   }
   # If components for uncertainty in dispersion params were requested,
@@ -120,12 +127,22 @@ calcPredVar <- function(ColdnewList,X.pv,newZAC=NULL,newZAlist,beta_w_cov,
   #   for any 'problem'. But there may some 'problem' and still a valid logdispObject
   # => In new version, dwdlogdisp should be either NULL or a conforming matrix;
   #  'problems" should not be tested.
-  if ( ! is.null(logdispObject$dwdlogdisp) ) {
-    newZACw <- newZAC %*% logdispObject$dwdlogdisp ## typically (nnew * n_u_h) %*% (n_u_h * 2) = nnew * 2 hence small 
+  if ( ! is.null(dwdlogdisp <- logdispObject$dwdlogdisp) ) {
+    logdisp_cov <- logdispObject$logdisp_cov
+    col_info <- attr(dwdlogdisp,"col_info") ## ranefs for which there is a col in dwdlogdisp
+    if ( length(newinold) != col_info$nrand) { ## selection of blocks for re.form ranefs
+      cum_n_u_h <- col_info$cum_n_u_h
+      which_ranef_cols <- intersect(col_info$ranef_ids,newinold)
+      u_range <- unlist(lapply(which_ranef_cols,function(it) (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])))
+      whichcols <- c(which_ranef_cols,col_info$phi_cols)
+      dwdlogdisp <- dwdlogdisp[u_range,whichcols]
+      logdisp_cov <- logdisp_cov[whichcols,whichcols]
+    }
+    newZACw <- newZAC %*% dwdlogdisp ## typically (nnew * n_u_h) %*% (n_u_h * 2) = nnew * 2 hence small 
     if (covMatrix) {
-      disp_effect_on_newZACw <- newZACw %*% logdispObject$logdisp_cov %*% t(newZACw)  
+      disp_effect_on_newZACw <- newZACw %*% logdisp_cov %*% t(newZACw)  
     } else {
-      premul <- newZACw %*% logdispObject$logdisp_cov
+      premul <- newZACw %*% logdisp_cov
       disp_effect_on_newZACw <- rowSums(premul * newZACw)
     }
     predVar <- predVar + disp_effect_on_newZACw
@@ -251,9 +268,9 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
   locdata <- new_X_ZACblob$locdata
   newX.pv <- new_X_ZACblob$newX.pv
   newZAlist <- new_X_ZACblob$newZAlist
-  nrand <- length(newZAlist) ## may be reduced if non trivial re.form
+  newnrand <- length(newZAlist) ## may be reduced if non trivial re.form
   newZAClist <- new_X_ZACblob$newZAClist
-  if (nrand>1L) {
+  if (newnrand>1L) {
     newZAC <- do.call(cbind,newZAClist)
   } else {newZAC <- newZAClist[[1]]}
   uuCnewold <- new_X_ZACblob$uuCnewold
@@ -262,7 +279,7 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
   subZAlist <- new_X_ZACblob$subZAlist
   spatialOne <- new_X_ZACblob$spatialOne
   spatial.model <- new_X_ZACblob$spatial.model
-  newinold <- new_X_ZACblob$newinold
+  newinold <- new_X_ZACblob$newinold ## says which ranef is kept by re.form
   etaFix <- new_X_ZACblob$etaFix
     #
   ## (1) computes fv (2) compute predVar
@@ -273,7 +290,7 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
     fv <- object$fv ## same length including replicates
     newZAlist <- subZAlist ## useful if predVar
   } else { ## 
-    if ( nrand==0L ) {
+    if ( newnrand==0L ) {
       eta <- etaFix
       newZAlist <- NULL
     } else {
@@ -316,11 +333,11 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
           return(newv)
         }
       }
-      augm_w_h_coeffs <- lapply(seq_len(nrand),match_old_new_levels)
-      if (nrand>1L) {
-        ZACw <- lapply(seq_len(nrand),function(it) {
+      augm_w_h_coeffs <- lapply(seq_len(newnrand),match_old_new_levels)
+      if (newnrand>1L) {
+        ZACw <- lapply(seq_len(newnrand),function(it) {
           drop(newZAClist[[it]][] %*% augm_w_h_coeffs[[it]]) ## sapply preforms a cbind if everything is matrix (not Matrix)
-        }) ## not sapply which binds 1*1 matrices into a vector of length nrand  
+        }) ## not sapply which binds 1*1 matrices into a vector of length newnrand  
         ZACw <- do.call(cbind,ZACw)
         ZACw <- rowSums(ZACw)
       } else ZACw <- drop(newZAClist[[1]][] %*% augm_w_h_coeffs[[1]])
@@ -357,7 +374,7 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
     if ( ! is.null(newdata)) {
       invColdoldList <- .get_invColdoldList(object)
       ## list for Cnewnew, which enters in  newZA %*% Cnewnew %*% tnewZA, hence should not represent newZA itself 
-      if (nrand>0L) newnewClist <- lapply(seq_len(nrand),function(it) {
+      if (newnrand>0L) newnewClist <- lapply(seq_len(newnrand),function(it) {
         if ( it %in% spatialOne) { ## avoids running the next algo which is slow on large matrices
           Cnn <- uuCnewnew ## already computed for point prediction
         } else { 
@@ -369,10 +386,11 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
       invColdoldList <- NULL
       newnewClist <- NULL
     }
-    if (nrand>0L) {
-      loclist <- list(X.pv=newX.pv,beta_w_cov=beta_w_cov,covMatrix=variances$cov,lambda=object$lambda)
+    if (newnrand>0L) {
+      loclist <- list(X.pv=newX.pv,beta_w_cov=beta_w_cov,covMatrix=variances$cov,lambda=object$lambda,
+                      newinold=new_X_ZACblob$newinold)
       if (!is.null(uuCnewnew)) {
-        uuCnewnewList <- lapply(seq_len(nrand),function(it) {
+        uuCnewnewList <- lapply(seq_len(newnrand),function(it) {
           if (it %in% spatialOne) { ## avoids running the next algo which is slow on large matrices
             return(uuCnewnew)
           } else return(NULL)
@@ -401,12 +419,12 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
   } else respVar <- NULL 
   beta_cov <- get_beta_cov_any_version(object)
   if (! is.null(beta_cov)) {
-    if ( variances$fixefVar || (nrand==0L && variances$linPred) ) {
+    if ( variances$fixefVar || (newnrand==0L && variances$linPred) ) {
       fixefcov <- newX.pv %*% beta_cov %*% t(newX.pv)
       if (variances$cov) {
         attr(resu,"fixefVar") <- fixefcov 
       } else attr(resu,"fixefVar") <- diag(fixefcov)
-      if (nrand==0L) { ## otherwise there is already such a term in predVar
+      if (newnrand==0L) { ## otherwise there is already such a term in predVar
         respVar <- respVar + attr(resu,"fixefVar") 
       }
     }
@@ -449,14 +467,21 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
       eta <- object$family$linkfun(resu[,1L])
       pv <- 1-(1-level)/2
       ## special case for simple LM
-      if (length(object$rand.families)==0L &&
+      if (length(object$rand.families)==0L && # not mixed
           object$family$family=="gaussian" &&
-          deparse(object$resid.predictor)=="~1" 
+          deparse(object$resid.predictor)=="~1" # not heteroscedastic
           ) { 
-        resdf <- length(object$y) - ncol(object$X.pv) ## don't use fixef here, that contains bot NAs and etaFix$beta! 
+        nobs <- length(object$y)
+        resdf <- nobs - ncol(object$X.pv) ## don't use fixef here, that contains bot NAs and etaFix$beta! 
+        is_REML <- ( .REMLmess(object,return_message=FALSE))
+        if ( ! is_REML) {
+          vart <- varcomp*nobs/resdf
+        } else vart <- varcomp
         ## FR->FR (use a type attribute for fixef ?)
-        sd <- qt(pv,df=resdf)*sqrt(varcomp)
-      } else sd <- qnorm(pv)*sqrt(varcomp)
+        sd <- stats::qt(pv,df=resdf)*sqrt(vart)
+      } else {
+        sd <- qnorm(pv)*sqrt(varcomp)
+      }
       interval <- cbind(object$family$linkinv(eta-sd),object$family$linkinv(eta+sd))
       colnames(interval) <- paste(st,c(signif(1-pv,4),signif(pv,4)),sep="_")
       intervalresu <- cbind(intervalresu,interval)
@@ -478,7 +503,7 @@ print.vcov.HLfit <-function(x, expanded=FALSE, ...) {
     nest.lev <- 0
     indent.str <- paste(rep.int(" ", max(0, nest.lev + 1)), collapse = "..")
     strO <- getOption("str")
-    strO <- modifyList(strOptions(), strO) ## seems to provide a format.fun function
+    strO <- utils::modifyList(utils::strOptions(), strO) ## seems to provide a format.fun function
     `%w/o%` <- function(x, y) x[is.na(match(x, y))]
     nfS <- names(fStr <- formals())
     ## this scans the substructure of each attribute
@@ -487,7 +512,7 @@ print.vcov.HLfit <-function(x, expanded=FALSE, ...) {
                         "no.list", names(match.call())[-(1:2)], "...")
       aList <- as.list(fStr)[nf]
       aList[] <- lapply(nf, function(n) eval(as.name(n)))
-      strObj <- function(...) str(obj, ...)
+      strObj <- function(...) utils::str(obj, ...)
       do.call(strObj, c(aList, list(...)), quote = TRUE)
     }
     for (i in seq_along(a)) if (all(nam[i] != std.attr)) {
@@ -559,7 +584,7 @@ print.predictions <- function (x, expanded=FALSE, ...) {
     nest.lev <- 0
     indent.str <- paste(rep.int(" ", max(0, nest.lev + 1)), collapse = "..")
     strO <- getOption("str")
-    strO <- modifyList(strOptions(), strO) ## seems to provide a format.fun function
+    strO <- utils::modifyList(utils::strOptions(), strO) ## seems to provide a format.fun function
     `%w/o%` <- function(x, y) x[is.na(match(x, y))]
     nfS <- names(fStr <- formals())
     ## this scans the substructure of each attribute
@@ -568,7 +593,7 @@ print.predictions <- function (x, expanded=FALSE, ...) {
                         "no.list", names(match.call())[-(1:2)], "...")
       aList <- as.list(fStr)[nf]
       aList[] <- lapply(nf, function(n) eval(as.name(n)))
-      strObj <- function(...) str(obj, ...)
+      strObj <- function(...) utils::str(obj, ...)
       do.call(strObj, c(aList, list(...)), quote = TRUE)
     }
     for (i in seq_along(a)) if (all(nam[i] != std.attr)) {

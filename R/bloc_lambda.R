@@ -45,7 +45,7 @@
           locarglist <- list(formula=loclamformula, dev.res=resp_lambda[u.range],
                              lev=lev_lambda[u.range],
                              data=loclamdata,
-                             control=processed$control.glm,
+                             control=processed[["control.glm"]],
                              etastart=locetastart
           )
           if (NCOL(loclamdata) == 1L && all(loclamdata==1)) { ## 02/2016

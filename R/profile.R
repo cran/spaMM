@@ -1,6 +1,5 @@
 spaMM.options <- function(...) {
   if (nargs() == 0) return(.spaMM.data$options)
-  current <- .spaMM.data$options
   temp <- list(...)
   if (length(temp) == 1 && is.null(names(temp))) {
     arg <- temp[[1]]
@@ -9,17 +8,13 @@ spaMM.options <- function(...) {
            character = return(.spaMM.data$options[arg]),  ## return here for eg ... = "NUMAX"
            stop("invalid argument: ", sQuote(arg)))
   }
-  if (length(temp) == 0) return(current)
-  n <- names(temp)
-  if (is.null(n)) stop("options must be given by name")
-  current[n] <- temp
-  .spaMM.data$options <- current
-  ## : al palce dans la version 'list' il y avait
-  #   if (sys.parent() == 0) {
-  #     env <- asNamespace("spaMM")
-  #   } else env <- parent.frame()
-  #   assign(".SpaMM", current, envir = env) 
-  invisible(current)
+  if (length(temp) == 0) return(.spaMM.data$options)
+  argnames <- names(temp)
+  if (is.null(argnames)) stop("options must be given by name")
+  old <- .spaMM.data$options[argnames]
+  names(old) <- argnames ## bc names are not valid for previously absent elements
+  .spaMM.data$options[argnames] <- temp
+  invisible(old)
 }
 
 spaMM.getOption <- function (x) {spaMM.options(x)[[1]]}

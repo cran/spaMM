@@ -1,6 +1,6 @@
 ## FR->FR accessors : http://glmm.wikidot.com/pkg-comparison
 
-get_methods_ranefs <- function(object) {
+.get_methods_disp <- function(object) {
   iterativeEsts<-character(0)
   optimEsts<-character(0)
   ## What the HLfit call says:
@@ -14,11 +14,9 @@ get_methods_ranefs <- function(object) {
     } else if ( identical(attr(object$phi.object$phi_outer,"type"),"var")) optimEsts <- c(optimEsts,"phi")
     # confint (fitme HLfitoide -> 3e cas)
   }
-  optimNames <- names(attr(object,"optimInfo")$LUarglist$canon.init)
-  optimEsts <- c(optimEsts,intersect(optimNames,c("COMP_nu","NB_shape")))
-  corrPars <- object$corrPars
-  optimEsts <- c(optimEsts,intersect(names(corrPars),optimNames))
-  iterativeEsts <- c(iterativeEsts,setdiff(optimNames,names(corrPars)))
+  optimNames <- names(attr(object,"optimInfo")$LUarglist$canon.init) ## will contain eg NB_shape
+  optimEsts <- c(optimEsts,intersect(optimNames,c(names(object$corrPars),"COMP_nu","NB_shape")))
+  iterativeEsts <- c(iterativeEsts,setdiff(optimNames,optimEsts))
   return(list(iterativeEsts=iterativeEsts,optimEsts=optimEsts))
 }
 
@@ -77,27 +75,29 @@ legend_lambda<- function(object) {
   }
 }
 ## FR->FR il faudrait distinguer EQL approx of REML ?
-.REMLmess <- function(object) {
+.REMLmess <- function(object,return_message=TRUE) {
   ## 'object' has no 'processed' element but its processed$REMLformula was copied to 'REMLformula' element.
   ## ./. It is by default NULL if REML was used, but may be an explicit non-default formula
   ## ./. It is an explicit formula if ML was used
-  if (is.null(object$REMLformula)) { ## default REML case
-    if (object$HL[1]=='SEM')  {
-      resu <- ("by stochastic EM.")
-    } else if (object$family$family !="gaussian" 
-               || (object$models[["eta"]]=="etaHGLM" && any(attr(object$rand.families,"lcrandfamfam")!="gaussian"))) { 
-      resu <- ("by REML approximation (p_bv).") 
+  if (return_message) {
+    if (is.null(object$REMLformula)) { ## default REML case
+      if (object$HL[1]=='SEM')  {
+        resu <- ("by stochastic EM.")
+      } else if (object$family$family !="gaussian" 
+                 || (object$models[["eta"]]=="etaHGLM" && any(attr(object$rand.families,"lcrandfamfam")!="gaussian"))) { 
+        resu <- ("by REML approximation (p_bv).") 
+      } else {
+        resu <- ("by REML.")
+      }  
     } else {
-      resu <- ("by REML.")
-    }  
-  } else {
-    if (identical(attr(object$REMLformula,"isML"),TRUE)) { ## FALSE also if object created by spaMM <1.9.15 
-      resu <- (.MLmess(object, ranef=TRUE))
-    } else { ## if nontrivial REML formula was used...
-      resu <- ("by non-standard REML")
-      attr(resu,"fixeformFromREMLform") <- nobarsMM(object$REMLformula)
-    }
-  }    
+      if (identical(attr(object$REMLformula,"isML"),TRUE)) { ## FALSE also if object created by spaMM <1.9.15 
+        resu <- (.MLmess(object, ranef=TRUE))
+      } else { ## if nontrivial REML formula was used...
+        resu <- ("by non-standard REML")
+        attr(resu,"fixeformFromREMLform") <- nobarsMM(object$REMLformula)
+      }
+    }    
+  } else return( is.null(object$REMLformula) && object$HL[1]!='SEM')
   return(resu)
 }
 
@@ -134,7 +134,7 @@ summary.HLfitlist <- function(object, ...) {
   summ$formula <- object$formula
   summ$REMLformula <- object$REMLformula
   ## Distinguishing iterative algo within HLfit and numerical maximization outside HLfit 
-  locblob <- get_methods_ranefs(object)
+  locblob <- .get_methods_disp(object)
   iterativeEsts <- locblob$iterativeEsts
   optimEsts <- locblob$optimEsts
   RE_Ests <- unique(c(iterativeEsts,optimEsts))

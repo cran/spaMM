@@ -34,8 +34,13 @@ negbin <- function (shape = stop("negbin's 'shape' must be specified"), link = "
     mustart <- y + (y == 0)/6
   })
   simfun <- function(object, nsim) {
+    wts <- object$prior.weights
+    if (any(wts != 1)) 
+      warning("ignoring prior weights")
     ftd <- fitted(object)
-    MASS::rnegbin(nsim * length(ftd), ftd, shape)
+    resu <- MASS::rnegbin(nsim * length(ftd), ftd, shape)
+    if (nsim>1L) resu <- matrix(resu,ncol=nsim)
+    resu
   }
   ## all closures defined here have parent.env the environment(spaMM_Gamma) ie <environment: namespace:spaMM>
   ## changes the parent.env of all these functions (aic, dev.resids, simfun, validmu, variance): 

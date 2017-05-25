@@ -1,6 +1,6 @@
 \name{spaMM-Rcpp-internal}
 
-\alias{Cholwrap}
+%\alias{Cholwrap}
 \alias{crossprodCpp} 
 \alias{LevPerturbedQCpp}
 \alias{LevenbergMsolve_Matrix}
