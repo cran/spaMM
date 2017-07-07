@@ -24,7 +24,7 @@ def_sXaug_EigenSparse_LDL_scaled <- function(Xaug,weight_X,w.ranef,H_global_scal
 # if which="solve_d2hdv2", B=NULL: returns solve(d2hdv2)
 # if which="solve_d2hdv2", B ! NULL: returns solve(d2hdv2,B)
 create_sXaug_EigenSparse_LDL_scaled <- function() {
-  BLOB <- list() ## single list for all objects to be kep in memory
+  BLOB <- list() ## single list for all objects to be kept in memory
   locfn <- function(sXaug,which="",szAug=NULL,B=NULL) {
     if (is.null(BLOB$D_scaled)) {
       BLOB <<- lmwith_sparse_LDLp(sXaug, szAug, returntQ=FALSE, returnR=TRUE,pivot=FALSE) 

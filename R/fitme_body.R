@@ -89,21 +89,7 @@ fitme_body <- function(processed,
         )
       }
       if ( sparse_precision) { ## FIXME : test aussi GLMMbool...
-        if ( ! is.null(attr(processed,"multiple"))) {
-          for (lit in seq_along(processed)) {
-            processed[[lit]]$sparse_precision <- TRUE
-            ZAfix <- as(processed[[lit]]$AUGI0_ZX$ZAfix,"sparseMatrix")
-            processed[[lit]]$AUGI0_ZX$ZAfix <- ZAfix
-            rsZA <- rowSums(ZAfix) ## test that there a '1' per row and 'O's otherwise:  
-            processed[[lit]]$AUGI0_ZX$is_unitary_ZAfix <- (unique(rsZA)==1 && all(rowSums(ZAfix^2)==rsZA)) ## $ rather than attribute to S4 ZAfix
-          } 
-        } else {
-          processed$sparse_precision <- TRUE
-          ZAfix <- as(processed$AUGI0_ZX$ZAfix,"sparseMatrix")
-          processed$AUGI0_ZX$ZAfix <- ZAfix
-          rsZA <- rowSums(ZAfix) ## test that there a '1' per row and 'O's otherwise:  
-          processed$AUGI0_ZX$is_unitary_ZAfix <- (unique(rsZA)==1 && all(rowSums(ZAfix^2)==rsZA)) ## $ rather than attribute to S4 ZAfix
-        }
+        processed <- .reset_processed_sparse_precision(processed)
         decomp <- list(d=eigen(HLCor.args$adjMatrix,only.values = TRUE)$values) ## only eigenvalues
       } else {
         decomp <- sym_eigen(HLCor.args$adjMatrix)
@@ -119,7 +105,8 @@ fitme_body <- function(processed,
     if(verbose["SEM"]) cat(paste("Feasible rho range: ",paste(signif(rhorange,6),collapse=" -- "),"\n"))
     ## added 11/2016:
     if (!is.null(lower$rho)) rhorange[1L] <- max(rhorange[1L],lower$rho)
-    if (!is.null(upper$rho)) rhorange[2L] <- min(rhorange[2L],upper$rho)  }
+    if (!is.null(upper$rho)) rhorange[2L] <- min(rhorange[2L],upper$rho)  
+  }
   #
   Fixrho <- getPar(fixed,"rho")
   if ( (! is.null(Fixrho)) && (! is.null(init$rho)) ) {

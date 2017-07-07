@@ -71,13 +71,13 @@ get_intervals(...)
    Currently, this effect can be computed for a scalar residual variance (\eqn{\phi}) 
    and a single random effect with a scalar variance (\eqn{\lambda}). 
    \code{variances$predVar=TRUE} will return the sum of the two components, if available; 
-   otherwise it returns only the (co)variance for given \eqn{\lambda} and \eqn{phi}. 
+   otherwise it returns only the (co)variance for given \eqn{\lambda} and \eqn{\phi}. 
    The latter component can be requested by \code{variances$linPred=TRUE}. 
    
    \code{residVar} provides the residual variances (for Gaussian or Gamma responses). 
    It is called by \code{variances$residVar=TRUE}.
   
-  \code{respVar} is the variance of the response, i.e. the sum of \code{predVar} and \code{residVar}.
+  \code{respVar} is the variance of the response (see Details).
   It is called by \code{variances$respVar=TRUE}.
     
   Calling for one (co)variance implies that some of its components may be also returned.    
@@ -117,14 +117,13 @@ get_intervals(...)
 takes into account the joint uncertainty in estimation of \eqn{\beta} and prediction of \bold{v}. 
 % No mention of augmented model in doc !
   
-  For new levels of the random effects, \code{predVar} computation additionally takes into account uncertainty in prediction of \bold{v} for these new levels. For \bold{prediction covariance} with a new \bold{Z}_n, it matters whether a single or multiple new levels are used: see Examples.      
+For new levels of the random effects, \code{predVar} computation additionally takes into account uncertainty in prediction of \bold{v} for these new levels. For \bold{prediction covariance} with a new \bold{Z}_n, it matters whether a single or multiple new levels are used: see Examples.      
 
 If \code{variances$disp} is \code{TRUE}, prediction variance may also include a term accounting for uncertainty in \eqn{\phi} and \eqn{\lambda}, computed following Booth and Hobert (1998, eq. 19). This computation is currently implemented for models with a single random effect, and ignore uncertainties in spatial correlation parameters.
 
-  For models with non-Gaussian response, the prediction covariance of the response is approximated by the prediction covariance of the linear predictor, 
-  pre- and post-multiplied by \eqn{\partial\mu/\partial\eta}{d\mu/d\eta}. 
+\code{respVar} is the sum of \code{predVar} (pre- and post-multiplied by \eqn{\partial\mu/\partial\eta}{d\mu/d\eta} for models with non-identity link) and of \code{residVar}. 
   
-  These variance calculations are approximate except for LMMs, and cannot be guaranteed to give accurate results.  
+These variance calculations are approximate except for LMMs, and cannot be guaranteed to give accurate results.  
 
 In the \bold{point prediction} of the linear predictor, the unconditional expected value of \eqn{u} is assigned to the realizations of \eqn{u} for unobserved levels of non-spatial random effects (it is zero in GLMMs but not for non-gaussian random effects), and the inferred value of \eqn{u} is assigned in all other cases. Corresponding values of \eqn{v} are then deduced. This computation yields the classical \dQuote{BLUP} or empirical Bayes predictor in LMMs, but otherwise it may yield less well characterized predictors, where \dQuote{unconditional} \eqn{v} may not be its expected value when the \code{rand.family} link is not identity. 
 

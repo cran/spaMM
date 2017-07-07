@@ -3,6 +3,19 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 2.1.6}{
+\subsection{NEW FEATURES}{
+\itemize{
+\item simulate.HLfit() can now simulate samples from a fitted GLMM under the distribution of random effects conditional on the data and given the fixed-effect estimates (using a Gaussian approximation in the GLMM case).
+}
+}
+\subsection{CORRECTED BUGS}{
+\itemize{
+\item predict.HLfit() could no longer return covariance matrices as a result of a bug introduced in version 2.1.0.
+\item 'respVar' computation by predict.HLfit() did not take into account non-identity links, although the documentation suggested it did. 
+}
+}
+}
 \section{CHANGES UP TO VERSION 2.1.0}{
 \subsection{NEW FEATURES}{
 \itemize{

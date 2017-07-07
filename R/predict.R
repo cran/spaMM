@@ -94,7 +94,9 @@ calcPredVar <- function(ColdnewList,X.pv,newZAC=NULL,newZAlist,beta_w_cov,
   # possible problems:
   # * (unhandled) Evar can also be (numerically) negative
   # * (quick-patched) same for min_eigen 
-  predVar <- pmax(apply(newAugX^2,1L,sum)*max(0,attr(beta_w_cov,"min_eigen")), predVar)
+  if ( is.null(dim(predVar))) {
+    predVar <- pmax(apply(newAugX^2,1L,sum)*max(0,attr(beta_w_cov,"min_eigen")), predVar)
+  } else predVar <- pmax(.tcrossprod(newAugX)*max(0,attr(beta_w_cov,"min_eigen")), predVar)
   ## Second component of predVar:
   # Evar: expect over distrib of (hat(beta),hat(v)) of [variance of Xbeta+Zb given (hat(beta),hat(v))]
   if ( ! is.null(invColdoldList)) { ## must be equivalent to the presence of newdata
@@ -219,6 +221,12 @@ makenewname <- function(base,varnames) { ## post CRAN 1.4.1
 }
 
 .process_variances <- function(variances) {
+  if (identical(variances$BH98,TRUE)) { ## my interpretation of BH98
+    variances$predVar <- TRUE ## implies $linPred <- TRUE by default
+    #variances$respVar <- FALSE ## default
+    variances$disp <- FALSE ## non-default
+    variances$cov <- TRUE ## non-default
+  } else variances$BH98 <- FALSE
   # $respVar implies components
   if (is.null(variances$predVar)) variances$predVar <- variances$respVar ## may still be NULL
   if (is.null(variances$residVar)) variances$residVar <- variances$respVar ## may still be NULL
@@ -280,18 +288,20 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
   spatialOne <- new_X_ZACblob$spatialOne
   spatial.model <- new_X_ZACblob$spatial.model
   newinold <- new_X_ZACblob$newinold ## says which ranef is kept by re.form
-  etaFix <- new_X_ZACblob$etaFix
+  eta <- new_X_ZACblob$etaFix ## may be NULL. otherwise only fixed part so far: cf addition of ZACw below
     #
   ## (1) computes fv (2) compute predVar
   ##### fv
   if (.noRanef(re.form)) {
-    fv <- object$family$linkinv(etaFix) 
+    fv <- object$family$linkinv(eta) 
   } else if ( is.null(newdata) && ! inherits(re.form,"formula")) {
     fv <- object$fv ## same length including replicates
-    newZAlist <- subZAlist ## useful if predVar
+    if (variances$predVar) {
+      eta <- object$family$linkfun(fv) 
+      newZAlist <- subZAlist ## useful if predVar
+    }
   } else { ## 
     if ( newnrand==0L ) {
-      eta <- etaFix
       newZAlist <- NULL
     } else {
       ## for random-slope model the original eta's can be recomputed as 
@@ -341,10 +351,12 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
         ZACw <- do.call(cbind,ZACw)
         ZACw <- rowSums(ZACw)
       } else ZACw <- drop(newZAClist[[1]][] %*% augm_w_h_coeffs[[1]])
-      eta <- etaFix + ZACw ## (length(eta)) col vector from coeffs = length(eta) row vector...
+      eta <- eta + ZACw ## (length(eta)) col vector from coeffs = length(eta) row vector...
     }
     # done with eta
-    fv <- object$family$linkinv(eta) ## ! freqs for binomial, counts for poisson
+    if (variances$BH98) {
+      fv <- eta
+    } else fv <- object$family$linkinv(eta) ## ! freqs for binomial, counts for poisson
   }
   resu <- as.matrix(fv) ## suitable for objective function of optim() etc ## matrix ! maybe more suitable than data frame as objective function
   if ( ! is.logical(binding) ) { ## expecting a string
@@ -360,7 +372,6 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
   if(variances$predVar && identical(attr(object$ZAlist, "anyRandomSlope"),TRUE)) {
     warning("This prediction variance computation is not yet implemented for random-coefficient models")
   }
-  
   if(variances$linPred) {
     beta_cov <- get_beta_cov_any_version(object)
     beta_w_cov <- .get_beta_w_cov(object)
@@ -387,6 +398,7 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
       newnewClist <- NULL
     }
     if (newnrand>0L) {
+      if (variances$BH98) newX.pv[] <- 0
       loclist <- list(X.pv=newX.pv,beta_w_cov=beta_w_cov,covMatrix=variances$cov,lambda=object$lambda,
                       newinold=new_X_ZACblob$newinold)
       if (!is.null(uuCnewnew)) {
@@ -430,6 +442,13 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
     }
   }
   attr(resu,"predVar") <- respVar ## vector or matrix
+  if ( ! is.null(respVar) && object$family$link!="identity") {
+    dmudeta <- object$family$mu.eta(eta)
+    if (!is.null(dim(respVar))) {
+      respVar <- sweep(respVar, MARGIN = 1, dmudeta, `*`) ## premul
+      respVar <- sweep(respVar, MARGIN = 2, dmudeta, `*`) ## postmul
+    } else respVar <- respVar*(dmudeta^2)
+  }
   if (variances$residVar) {
     pw <- object$prior.weights
     if ( ! (attr(pw,"unique") && pw[1L]==1L)) {
@@ -472,7 +491,7 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
           deparse(object$resid.predictor)=="~1" # not heteroscedastic
           ) { 
         nobs <- length(object$y)
-        resdf <- nobs - ncol(object$X.pv) ## don't use fixef here, that contains bot NAs and etaFix$beta! 
+        resdf <- nobs - ncol(object$X.pv) ## don't use fixef here, that contains bot NAs and argument etaFix$beta! 
         is_REML <- ( .REMLmess(object,return_message=FALSE))
         if ( ! is_REML) {
           vart <- varcomp*nobs/resdf

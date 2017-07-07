@@ -24,7 +24,7 @@ getPar <- function(parlist,name,which=NULL) {
 # getPar(list("1"=list(a=1,b=2),"2"=list(a=3,c=4)),"d") ## NULL
 
 # LMatrix assumed to be dense
-.calc_invL <- function(object,regul.threshold=1e-7) { ## computes inv(L) [not inv(Corr): see calc_invColdoldList]
+.calc_invL <- function(object, regul.threshold=1e-7) { ## computes inv(L) [not inv(Corr): see calc_invColdoldList]
   if (object$spaMM.version<"1.11.57") {
     strucList <- list(dummyid=attr(object$predictor,"LMatrix")) ## back compat
   } else strucList <- object$strucList
@@ -251,12 +251,12 @@ Corr <- function(object,...) { ## compare ?VarCorr
     return(resu) ## may still be NULL
   }
   if ( ! is.null(strucList)) {
-    lapply(seq_len(length(strucList)), locfn)    
+    resu <- lapply(seq_len(length(strucList)), locfn) ## list for the different ranefs   
   } else {
     message("No 'non-trivial' correlation matrix of random effects")
-    Corr <- NA
+    resu <- NA
   }
-  return(Corr)
+  return(resu)
 }
 
 dev_resids <- function(object,...) {

@@ -70,7 +70,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
       ## 0 for the column-pivoted QR decomposition, 
       ## 1 for the unpivoted QR decomposition, 
       ## 2 for the LLT Cholesky, 3 for the LDLT Cholesky, ...................
-      ## bechmarks: http://dirk.eddelbuettel.com/blog/2011/07/05/
+      ## benchmarks: http://dirk.eddelbuettel.com/blog/2011/07/05/
       ##            http://stackoverflow.com/questions/30420185/fastlm-is-much-slower-than-lm
       ## In my experience (denser matrices ?) .lm.fit remains faster
       # betaV <- RcppEigen::fastLmPure(X=sXaug,y=szAug,method=1)$coefficients

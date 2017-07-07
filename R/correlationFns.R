@@ -134,7 +134,7 @@ if (F) {
       }
       if ( (! try.eigen) || inherits(LDL,"try-error") || any(d < -1e-08)) {
         if (.spaMM.data$options$USEEIGEN) { ## see package irlba for SVD of sparse matrices
-          symSVD <- sym_eigen(m) ## such that v= t(u)without any sign issue  
+          symSVD <- sym_eigen(m) ## such that v= t(u) without any sign issue  
           u <- symSVD$u
           d <- symSVD$d  
           type <- "symsvd" ## RcppEigen's SVD: ## "the SVD implementation of Eigen (...) is not a particularly fast SVD method." (RcppEigen vignette)          

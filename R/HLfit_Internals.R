@@ -850,9 +850,20 @@ singularSigmaMessagesStop <- function(lambda_est,phi_est,corrPars) {
     if ( ! is.null(invL)) {
       pforpv <- ncol(beta_cov)
       v.range <- pforpv+seq(ncol(invL))
+      ## A function for symmetric sandwich product is missing. 
       beta_w_cov[v.range,] <- .crossprod(invL, beta_w_cov[v.range,])
-      beta_w_cov[,v.range] <- beta_w_cov[,v.range] %*% invL # invL' %*% . %*% invL on the v.range,v.range block
-      attr(beta_w_cov,"min_eigen") <- min(eigen(beta_w_cov,only.values = TRUE)$values)
+      beta_w_cov[,v.range] <- beta_w_cov[,v.range] %*% invL # implies invL' %*% . %*% invL on the v.range,v.range block
+      beta_w_cov <- Matrix::symmpart(beta_w_cov)
+      eigenvalues <- eigen(beta_w_cov,only.values = TRUE)$values
+      # beta_w_cov[v.range,-(v.range)] <- .crossprod(invL, beta_w_cov[v.range,-(v.range)])
+      # beta_w_cov[-v.range,v.range] <- t(beta_w_cov[v.range,-(v.range)]) ## usually this block is small, so little speed gain
+      # beta_w_cov[v.range,(v.range)] <- .crossprod(invL,beta_w_cov[v.range,(v.range)] %*% invL) ## still not enforcing symmetry
+      # eigenvalues <- eigen(beta_w_cov,only.values = TRUE)$values
+      # if ( inherits(eigenvalues,"complex")) { ## matrix perceived as asymmetric
+      #   beta_w_cov <- Matrix::symmpart(beta_w_cov)
+      #   eigenvalues <- eigen(beta_w_cov,only.values = TRUE,symmetric = TRUE)$values
+      # }
+      attr(beta_w_cov,"min_eigen") <- min(eigenvalues)
     }
     res$envir$beta_w_cov <- beta_w_cov
   } 
@@ -1013,7 +1024,7 @@ get_ZALMatrix <- function(object,as_matrix) {
       info_crits$mAIC <- -2*forAIC$p_v + 2 *(pforpv+p_lambda+p_corrPars+p_phi)
       info_crits$dAIC <- -2*forAIC$p_bv + 2 * (p_lambda+p_phi+p_corrPars) ## HaLM07 (eq 10) focussed for dispersion params
       #                                                                             including the rho param of an AR model
-      eigvals <- eigen(Md2hdbv2/(2*pi),only.values = TRUE)$values
+      eigvals <- eigen(Md2hdbv2/(2*pi),symmetric=TRUE,only.values = TRUE)$values
       eigvals[eigvals<1e-12] <- 1e-12
       if (min(eigvals)>1e-11) {
         qr.Md2hdbv2 <- QRwrap(Md2hdbv2)

@@ -148,9 +148,11 @@ HLCor_body <- function(processed,
         dim_corrMatrix <- dim(corrMatrix)
         if (dim_corrMatrix[1L]!=dim_corrMatrix[2L])  stop("corrMatrix is not square") 
       }
-      ## ELSE:
-      if (inherits(corrMatrix,"dist")) {
-        corrnames <- labels(corrMatrix)
+      ## ELSE square matrix:
+      if (inherits(corrMatrix,"TDT.")) {
+        ## stub for Triangular LDLt factorization being provided (Henderson's)
+      } else if (inherits(corrMatrix,"dist")) {
+          corrnames <- labels(corrMatrix)
         if (is.null(corrnames)) {
           message("corrMatrix without labels: first grouping levels are matched\n  to first rows of corrMatrix, without further check.\n This may cause later errors (notably, wrongly dimensioned matrices) \n See help(\"corrMatrix\") for a safer syntax.")
         }
@@ -163,7 +165,7 @@ HLCor_body <- function(processed,
       whichranef <- which(attr(attr(processed$ZAlist,"ranefs"),"type")=="corrMatrix")
       ZAnames <- colnames(processed$ZAlist[[whichranef]]) ## set by .spMMFactorList(), with two cases for corrMatrix 
       generator <- attr(processed$ZAlist[[whichranef]],"generator")
-      if ( length(setdiff(ZAnames,corrnames)) ==0L ) { ## i.e. all corrnames in ZAnames
+      if ( length(setdiff(ZAnames,corrnames)) ==0L ) { ## i.e. all ZAnames in corrnames
         ## : should be the case when generator = "as.factor"
         if ( length(corrnames)>length(ZAnames) || any(corrnames!=ZAnames) ) { ## ...but superset, or not same order
           if (inherits(corrMatrix,"dist")) {
@@ -172,9 +174,26 @@ HLCor_body <- function(processed,
         } else corrm <- corrMatrix ## orders already match
       } else {
         ## : expected when generator = "ULI"
-        if ( ! is.null(corrnames)) message("corrMatrix with complex grouping term: first grouping levels are matched\n  to first rows of corrMatrix, without further check. \n See help(\"corrMatrix\") for a safer syntax.")
+        if ( ! is.null(corrnames)) {
+          message("Incompletely checked case: corrMatrix may be invalid, or with complex grouping term\n that spaMM is not able to match to the names of corrMatrix.")
+          message("First grouping levels will be matched\n  to first rows of corrMatrix, without further check. \n See help(\"corrMatrix\") for a safer syntax.")
+          if ( length(corrnames)!=length(ZAnames)){ 
+            message("First grouping levels could not be matched to first rows of corrMatrix, because of inconsistent dimensions.")
+            stop("The dimension of corrMatrix does not match the number of levels of the grouping variable.")
+            #message("Summary of grouping levels that do not appear in the corrMatrix:")
+            #str(checknames)
+          }
+        }
         corrm <- corrMatrix ## no clear reordering
       }
+      # sparse_precision <- spaMM.getOption("sparse_precision")
+      # if ( sparse_precision) { ## FIXME : test aussi GLMMbool...
+      #   processed <- .reset_processed_sparse_precision(processed)
+      #   Qmat <- solve(corrm) ## F I X M E solve <=> devel hack  ## and the resulting fit is wrong
+      #   Q_CHMfactor <- Matrix::Cholesky(Matrix::drop0(Qmat),LDL=FALSE,perm=FALSE) 
+      #   processed$AUGI0_ZX$envir$Qmat <- Qmat 
+      #   processed$AUGI0_ZX$envir$Q_CHMfactor <- Q_CHMfactor ## *existence of this is criterion for use of sparsePrecision algo*
+      # }
     } 
     if (verbose["trace"] && length(trueCorrpars)>0) print(unlist(trueCorrpars))
     ## call designL.from.Corr if Lunique not available
@@ -189,7 +208,7 @@ HLCor_body <- function(processed,
         ## Cholesky gives proper LL' (think LDL')  while chol() gives L'L...
         Q_CHMfactor <- Matrix::Cholesky(Matrix::drop0(Qmat),LDL=FALSE,perm=FALSE) ## FIXME couteux (appele repetitivement)
         processed$AUGI0_ZX$envir$Qmat <- Qmat 
-        processed$AUGI0_ZX$envir$Q_CHMfactor <- Q_CHMfactor ## *existence of this is criterion for use of sparePrecision algo*
+        processed$AUGI0_ZX$envir$Q_CHMfactor <- Q_CHMfactor ## *existence of this is criterion for use of sparsePrecision algo*
         ## fitme sparse_precision has an incomplete symSVD=> corrm not computed, and try(designL.from.Corr(symSVD=symSVD)) fails. Instead:
         Lunique  <- solve(Q_CHMfactor,system="Lt") #  L_Q^{-\top}=LMatrix_correlation
         # Lunique is a dtCMatrix...

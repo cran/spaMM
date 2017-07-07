@@ -34,7 +34,7 @@
 # simulate.HLfit(fullm[[2]],newdata=fullm[[1]]$data,size=fullm[[1]]$data$total) for multinomial avec binomial nichées de dimension différentes
 # FR->FR misses the computation of random effects for new spatial positions: cf comments in the code below
 simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
-                           conditional=FALSE, verbose=TRUE,
+                           type = "marginal", conditional=NULL, verbose=TRUE,
                            sizes=NULL , ...) { ## object must have class HLfit; corr pars are not used, but the ZAL matrix is.
   ## RNG stuff copied from simulate.lm
   if (!exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE))
@@ -52,46 +52,32 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
     message(" run simulate on each of the individual fit in the list")
     stop() ## FR->FR also some basic changes in fixedLRT but more would be needed 
   }  
+  if ( ! is.null(conditional)) {
+    warning("argument 'conditional' is obsolete and will be deprecated. Use 'type' instead.")
+    if (conditional) {type <- "residual"} else type <- "marginal"
+  }
   if (is.null(sizes)) sizes <- .get_BinomialDen(object)
   nrand <- length(object$ZAlist)
   if (nrand==0L) {
     mu <- predict(object,newdata=newdata)[,1L]
     if (nsim>1) mu <- matrix(rep(mu,nsim),ncol=nsim)
   } else { ## MIXED MODEL
-    if (conditional) {
-      if (verbose) cat("Conditional simulation:\n")
-      if (is.null(newdata)) {
-        mu <- predict(object)[,1L]
-        if (nsim>1) mu <- matrix(rep(mu,nsim),ncol=nsim)
-      } else { ## conditional Mixed Model with newdata
-        stop("conditional simulation not yet implemented for mixed models with 'newdata'.")
-        # debut d'implementation Mais il peut y avoir des choses inteessantes dans le code cas non conditionnel
-        mu_fixed <- predict(object, newdata=newdata, re.form=NA)
-        eta <- object$family$linkfun(mu_fixed[,1L]) ## onlythe fixed part at this point
-        ranefs <- attr(object$ZAlist,"ranefs")
-        for (rit in seq_len(ranefs)) {
-          loc_u_h <- 666 ## for given ranef
-          n_u_h <- 666 ## for given ranef
-          if (666) { ## test for Gaussian correlated effects
-            randcond_bMean <- 666 # Cno Coo^{-1/2} loc_u_h a coder en vecteurs seulement...
-            randcond_brand <- 666 # Cnn - Cno Coo^{-1} Con 
-            # randb <- rmvnorm(nsim,mean=randcond_bMean,sigma=randcond_brand)
-          } else {
-            randb <- 666 # hum. Mais il peut y avoir des choses inteessantes dans le code cas non conditionnel
-          }
-          eta <- eta + object$ZAlist[[ranefs]] %*% randb ## could  be donne once for all ranefs 
-        }
-        # autre concept: simulation conditionnelle aux données(pas equiv a simul sous le modèe fitté)
-        # # il faudrait avoir une decomp de la predVar en ses composantes pour chaque ranef... faisable avec re.form ? 
-        # # pas clair, le subrange de beta_w_col ne s'additionnent pas...
-        # if (all(attr(object$rand.families,"lcrandfamfam")=="gaussian")) {
-        #   mu_with_cov <- predict(object,newdata=newdata,variances=list(linPred=TRUE,cov=TRUE))
-        #   Eeta <- object$family$linkfun(mu_with_cov[,1L])
-        #   eta <- rmvnorm(nsim,mean=Eeta,sigma=attr(mu_with_cov,"predVar"))
-        #   mu <- object$family$linkinv(eta) ## ! freqs for binomial, counts for poisson
-      }
-    } else { ## unconditional MIXED MODEL
-      if (verbose) cat("Unconditional simulation:\n")
+    if (type=="(ranef|response)") { ## Booth & Hobert approximate approach
+      if (verbose) cat("Simulation from conditional random effect distribution | observed response:\n") 
+      point_pred_eta <- predict(object,newdata=newdata,variances=list(BH98=TRUE))
+      if (all(attr(object$rand.families,"lcrandfamfam")=="gaussian")){
+        rand_eta <- MASS::mvrnorm(n=nsim,mu=point_pred_eta[,1L],Sigma=attr(point_pred_eta,"predVar"))
+        if (nsim>1L) {
+          rand_eta <- t(rand_eta)
+        } else rand_eta <- rand_eta[1L,]
+        mu <- object$family$linkinv(rand_eta) ## ! freqs for binomial, counts for poisson: suitable for final code
+      } else stop("This conditional simulation is not implemented for non-gaussian random-effects")
+    } else if ( type=="residual") { ## conditional on predicted ranefs
+      if (verbose) cat("Unconditional simulation given predicted random effects:\n") 
+      mu <- predict(object,newdata=newdata)[,1L]
+      if (nsim>1) mu <- matrix(rep(mu,nsim),ncol=nsim)
+    } else if ( type=="marginal"){ ## unconditional MIXED MODEL
+      if (verbose) cat("Unconditional simulation:\n") 
       mu_fixed <- predict(object, newdata=newdata, re.form=NA)
       eta_fixed <- object$family$linkfun(mu_fixed[,1L])
       if (is.null(newdata)) {
@@ -132,7 +118,7 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
         eta <- eta_fixed + drop(ZAL %id*% newV) 
       } else eta <-  matrix(rep(eta_fixed,nsim),ncol=nsim) + as.matrix(ZAL %id*% newV) ## nobs rows, nsim col
       mu <- object$family$linkinv(eta) 
-    }
+    } else stop("Unknown simulate 'type' value.")
   }
   ## ! mu := freqs for binomial, counts for poisson ## vector or matrix
   phiW <- object$phi/object$prior.weights ## cf syntax and meaning in Gamma()$simulate / spaMM_Gamma$simulate

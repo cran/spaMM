@@ -11,6 +11,10 @@ res <- sqrt(get_predVar(fitobject))
 # res: cf row 2, table 6; some discrepancies (surely stemming from point estimates).
 expect_equal(res[6],c("6"=0.7316108),tolerance=2e-4)
 
+res <- get_respVar(fitobject,variances=list(cov=TRUE))
+expect( !is.null(dim(res)),"is.null(dim(<get_respVar(fitobject,variances=list(cov=TRUE))>))") ## check that a matrix is returned
+expect_equal(res[6,6],0.1061096,tolerance=2e-4) ## check that dmudeta sclaing is taken in account.
+
 if(require("rsae", quietly = TRUE)) {
   data(landsat)
   fitobject <- HLfit(HACorn ~ PixelsCorn + PixelsSoybeans + (1|CountyName),data=landsat[-33,],HLmethod="ML")
