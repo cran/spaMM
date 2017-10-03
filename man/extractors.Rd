@@ -22,6 +22,7 @@
 \alias{Corr}
 \alias{get_ZALMatrix}
 \alias{get_RLRTSim_args}
+\alias{get_boot_response}
 %- Also NEED an '\alias' for EACH other topic documented here.
 \title{
 Functions to extract various components of a fit
@@ -40,6 +41,7 @@ Functions to extract various components of a fit
 \code{getDistMat} extracts a distance matrix for a Matérn correlation model.
 \code{get_ZALMatrix} extracts the design matrix for the random effects \eqn{v}.
 \code{get_RLRTSim_args} extracts a list of arguments suitable for calls to \code{LRTSim::RLRTSim()}
+\code{get_boot_response} gets the response vector of a given bootstrap replicate. 
 }
 \usage{
 \method{logLik}{HLfit}(object,which,...)
@@ -54,7 +56,8 @@ Corr(object,...)
 dev_resids(object,...)
 get_any_IC(object, ..., verbose=interactive())
 get_RLRTSim_args(object,...)
-get_ZALMatrix(object,as_matrix)
+get_ZALMatrix(object, as_matrix)
+get_boot_response(object, replicate)
 \method{AIC}{HLfit}(object, ..., k, verbose=interactive())
 }
 %- maybe also 'usage' for other objects documented here.
@@ -66,12 +69,13 @@ get_ZALMatrix(object,as_matrix)
   \item{as_matrix}{Boolean: whether to always return a \code{matrix}; otherwise as \code{Matrix} may be returned.}
   \item{verbose}{ Whether to print the model selection criteria or not. }
   \item{k}{For \code{AIC}, unused by \code{HLfit} method, but included to conform to the generic.}
+  \item{replicate}{integer, to get the response vector of the given bootstrap replicate.}
   \item{\dots}{Other arguments that may be needed by some method.}
 }
 \value{
 Return values are numeric (for \code{logLik}), vectors (most cases), matrices (for \code{vcov}), matrices or dist objects (for \code{getDistMat}). \code{ranef} returns a vector with attributes, which inherits from class \code{ranef} which has its own (undocumented) \code{print} method. 
 
-\code{Corr} returns a list, for the different random effect terms, of unconditional correlation matrix of the random effects \dQuote{\bold{v}} (see Details of \code{\link{HLfit}} for definitions).
+\code{Corr} returns a list, for the different random effect terms, of unconditional correlation matrix of the random effects \dQuote{\bold{v}} (as defined in see Details of \code{\link{HLfit}}), if there is any such matrix. Otherwise the list elements 
 
 \code{get_any_IC} computes, optionally prints, and returns invisibly the following quantities. The \bold{conditional AIC} (Vaida and Blanchard 2005) is a relative measure of quality of prediction of new realizations of a mixed model, conditional on the realized values of the random effects. It involves the conditional likelihood, and degrees of freedom for (i) estimated residual error parameters and (ii) the overall linear predictor characterized by the \bold{Effective degrees of freedom} already discussed by previous authors including Lee and Nelder (2001), which gave a general formula for it in HGLMs. 
 Both a plug-in \dQuote{asymptotic} estimate of the conditional AIC and of this effective df are returned by \code{get_any_IC}.  Note that these may be biased estimates of conditional AIC and effective df, and that more refined formulas are discussed in the literature (e.g. Overholser and Xu 2014), some of which may be implemented in future versions of \code{get_any_IC}. 

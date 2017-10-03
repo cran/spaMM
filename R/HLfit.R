@@ -3,28 +3,6 @@
 ##                                     linkinv(eta) describes frequencies, but we need mu to scale as y in the code...
 ## but the input response ar COUNTS
 
-# function to set and modify various controls of HLfit etc. Accepts a single argument
-setControl <- function(...) {
-  if (nargs() == 0) return(NULL)
-  temp <- list(...)
-  if (length(temp) == 1 && is.null(names(temp))) {
-    arg <- temp[[1]]
-    if( ! is.character(arg)) stop("invalid argument: ", sQuote(arg))
-    res <- switch(arg,verbose=logical(0), ## something  on which further code in this fn can operate
-                  stop("Unhandled argument:",arg) ## 
-                  )
-  } else {
-    arg <- names(temp)
-    res <- temp[[1]]
-  }
-  if (arg=="verbose") { ## default values
-    if (is.na(res["trace"])) res["trace"] <- FALSE
-    if (is.na(res["warn"])) res["warn"] <- TRUE
-    if (is.na(res["summary"])) res["summary"] <- FALSE
-    if (is.na(res["SEM"])) res["SEM"] <- FALSE 
-  }
-  return(res)
-}
 
 # local fn defs
 # attention au piege vite oublié
@@ -35,7 +13,7 @@ setControl <- function(...) {
 HLfit <- function(formula,
                   data,family=gaussian(),rand.family=gaussian(), 
                   resid.model= ~ 1, resid.formula ,REMLformula=NULL,
-                  verbose=c(warn=TRUE,trace=FALSE,summary=FALSE),
+                  verbose=c(trace=FALSE),
                   HLmethod="HL(1,1)",
                   control.HLfit=list(),
                   control.glm=list(),
@@ -75,14 +53,14 @@ HLfit <- function(formula,
     if ( inherits(data,"list")) {
       ## RUN THIS LOOP and return
       multiHLfit <- function() {
-        fitlist <- lapply(data,function(dt){
+        fitlist <- lapply(data, function(dt){
           locmc <- mc
           if (identical(paste(family[[1L]]),"multi")) 
             locmc$family <- family$binfamily ## typically binomial()
           locmc$data <- dt
           eval(locmc) ## calls HLfit recursively
         })
-        liks <- sapply(fitlist,function(v) {unlist(v$APHLs)})
+        liks <- sapply(fitlist, function(v) {unlist(v$APHLs)})
         liks <- apply(liks,1,sum)
         attr(fitlist,"APHLs") <- as.list(liks)
         attr(fitlist,"sortedTypes") <- attr(data,"sortedTypes")
@@ -97,23 +75,23 @@ HLfit <- function(formula,
       if ( ! is.null(mc$resid.formula)) mc$resid.model <- mc$resid.formula
       names_nondefault  <- intersect(names(mc),names_FHF) ## mc including dotlist
       FHF[names_nondefault] <- mc[names_nondefault] ##  full HLfit args
-      preprocess.formal.args <- FHF[which(names_FHF %in% names(formals(preprocess)))] 
+      preprocess.formal.args <- FHF[which(names_FHF %in% names(formals(.preprocess)))] 
+      preprocess.formal.args$For <- "HLfit"
       preprocess.formal.args$family <- family ## already checked 
       preprocess.formal.args$rand.families <- FHF$rand.family ## because preprocess expects $rand.families 
       preprocess.formal.args$predictor <- FHF$formula ## because preprocess stll expects $predictor 
-      mc$processed <- do.call(preprocess,preprocess.formal.args,envir=parent.frame(1L))
+      mc$processed <- do.call(.preprocess,preprocess.formal.args,envir=parent.frame(1L))
       # HLfit_body() called below
     }
   } else { ## 'processed' is available
-    multiple <- attr(processed,"multiple")
-    if ( ( ! is.null(multiple)) && multiple)  { ## "multiple" processed list 
+    if (  is.list(processed))  { ## "multiple" processed list 
       ## RUN THIS LOOP and return
-      fitlist <- lapply(seq_len(length(processed)),function(it){
+      fitlist <- lapply(seq_len(length(processed)), function(it){
         locmc <- mc
         locmc$processed <- processed[[it]] ## The data are in processed !
         eval(locmc)
       }) ## a pure list of HLCor objects
-      liks <- sapply(fitlist,function(v) {unlist(v$APHLs)})
+      liks <- sapply(fitlist, function(v) {unlist(v$APHLs)})
       liks <- apply(liks,1,sum)
       attr(fitlist,"APHLs") <- as.list(liks)
       class(fitlist) <- c("HLfitlist",class(fitlist)) 
@@ -125,17 +103,16 @@ HLfit <- function(formula,
   }
   #
   pnames <- c("data","family","formula","prior.weights","HLmethod","rand.family","control.glm","resid.formula","REMLformula",
-              "resid.model")
-  for (st in pnames) mc[st] <- NULL 
-  mc$resid.model <- NULL ## info in processed
+              "resid.model","verbose")
+  for (st in pnames) mc[st] <- NULL ## info in processed
   mc[[1L]] <- quote(spaMM::HLfit_body)
   hlfit <- eval(mc,parent.frame())
-  if (is.null(processed)) .check_conv_glm_reinit()
+  .check_conv_glm_reinit()
   if ( ! is.null(processed$return_only)) {
     return(hlfit)    ########################   R E T U R N   a list with $APHLs
   }
   hlfit$call <- oricall ## potentially used by getCall(object) in update.HL
-  hlfit$fit_time <- .timerraw(time1)
+  if ( ! identical(paste(family[[1L]]),"multi")) hlfit$fit_time <- .timerraw(time1)
   return(hlfit)
 }
 
@@ -144,10 +121,9 @@ HLfit <- function(formula,
 
   if (is.null(processed)) { stop("Call to HLfit.obj() without a 'processed' argument is invalid") } 
 
-  multiple <- attr(processed,"multiple")
-  if ( ( ! is.null(multiple)) && multiple)  { ## "multiple" processed list 
+  if (  is.list(processed))  { ## "multiple" processed list 
     ## RUN THIS LOOP and return
-    fitlist <- lapply(seq_len(length(processed)),function(it){
+    fitlist <- lapply(seq_len(length(processed)), function(it){
       locmc <- mc
       locmc[[1L]] <- as.name("HLfit.obj") ## replaces "f" !
       locmc$ranefParsVec <- ranefParsVec ## replaces "arg" !
@@ -155,14 +131,6 @@ HLfit <- function(formula,
       eval(locmc)
     }) ## a pure list of HLfit objects
     resu <- sum(unlist(fitlist))
-    if(mc$verbose["objective"]) {
-      unrelist <- unlist(relist(ranefParsVec,skeleton)) ## handles elements of lemgth>1
-      cat(" parent HLfit: ",objective,"=",resu,
-          " given: ",paste(names(forGiven),"=",signif(unrelist,6),sep="",collapse=", "),
-          "\n",sep="")
-      # cat(paste(names(forGiven),"=",signif(unrelist,6),sep="",collapse=", "),
-      #     ", ",objective,"=",resu,"\n",sep="")
-    }
     return(resu)
   } else { ## there is one processed for a single data set 
     family <- processed$family
@@ -175,7 +143,7 @@ HLfit <- function(formula,
   forGiven <- relist(ranefParsVec,skeleton) ## given values of the optimized variables
   if (spaMM.getOption("wDEVEL2")) {
     parlist <- attr(HLfit.call$ranFix,"parlist")
-    parlist <- merge_parlist(parlist,new=forGiven,types="fix")## consistently with previous code
+    parlist <- .merge_parlist(parlist,new=forGiven,types="fix")## consistently with previous code
     attr(HLfit.call$ranFix,"parlist") <- parlist
   }
   notlambda <- setdiff(names(forGiven),"lambda")
@@ -186,14 +154,6 @@ HLfit <- function(formula,
   hlfit <- eval(HLfit.call)
   aphls <- hlfit$APHLs
   resu <- aphls[[objective]]
-  if(mc$verbose["objective"]) {
-    unrelist <- unlist(forGiven) ## handles elements of lemgth>1
-    cat(" parent HLfit: ",objective,"=",resu,
-        " given: ",paste(names(forGiven),"=",signif(unrelist,6),sep="",collapse=", "),
-        "\n",sep="")
-    # cat(paste(names(forGiven),"=",signif(unrelist,6),sep="",collapse=", "),
-    #     ", ",objective,"=",resu,"\n",sep="")
-  }
   lsv <- c("lsv",ls())
   rm(list=setdiff(lsv,"resu"))
   return(resu) #

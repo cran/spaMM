@@ -31,9 +31,8 @@ confint.HLfit <- function(object,parm,level=0.95,verbose=TRUE,...) {
   lc$control.HLfit$intervalInfo$targetlik <- object$APHLs[[lik]]-dlogL
   lc$control.HLfit$intervalInfo$MLparm <- object$fixef[parm]
   lc$control.HLfit$intervalInfo$parm <- parm
-  lc$control.HLfit$LevenbergM <- FALSE ## simple... but read only in preprocess which will usually not be run...
-  if (! is.null(lc$processed)) lc$processed <- setProcessed(lc$processed,"LevenbergM","FALSE") ## same idea... (10/2015) but with return value 07/2016 ! 
-  beta_cov <- get_beta_cov_any_version(object)
+  if (! is.null(lc$processed)) lc$processed <- .setProcessed(lc$processed,'LevenbergM["force"]',"FALSE") ## inhibits LevM for confint 
+  beta_cov <- .get_beta_cov_any_version(object)
   beta_se <- sqrt(diag(beta_cov))
   lc$control.HLfit$intervalInfo$asympto_abs_Dparm <- asympto_abs_Dparm <- znorm* beta_se
   optimInfo <- attr(object,"optimInfo") ## may be NULL
@@ -70,13 +69,13 @@ confint.HLfit <- function(object,parm,level=0.95,verbose=TRUE,...) {
         return(resu) ## return value to be optimized is a parameter value, not a likelihood
       }
     }
-    canonTemplate <- canonizeRanPars(ranPars=trTemplate,
+    canonTemplate <- .canonizeRanPars(ranPars=trTemplate,
                                      corr.model=LUarglist$corr.model, #corr.model=lc$`corr.model`,
                                      checkComplete=FALSE)
     canonTemplate <- canonTemplate$ranPars
     LUarglist$canon.init <- canonTemplate
-    LowUp <- do.call(makeLowerUpper,LUarglist)
-    loclist <- list(init.optim=trTemplate,LowUp=LowUp,objfn=objfn,anyObjfnCall.args=list(),optimizers.args=list())
+    LowUp <- do.call(.makeLowerUpper,LUarglist)
+    loclist <- list(init.optim=trTemplate,LowUp=LowUp,objfn=objfn,anyObjfnCall.args=list(),control=list())
   }
   ## lowerfit
   fac <- 1L 
@@ -87,7 +86,7 @@ confint.HLfit <- function(object,parm,level=0.95,verbose=TRUE,...) {
     if (! is.null(trTemplate)) {
       olc <- lc
       # The objective function 'objfn' returns the confint bound given the corr pars. Thus locptim maximizes the confint bound over the the corr pars
-      optr <- do.call(locoptim,loclist) 
+      optr <- do.call(.locoptim,loclist) 
       ## recover fit for optimized params (must use call with intervalInfo and LevenbergM=FALSE)
       if (paste(lc[[1]])=="HLCor") {
         olc$ranPars[names(trTemplate)] <- optr[names(trTemplate)] ## list <- list
@@ -118,7 +117,7 @@ confint.HLfit <- function(object,parm,level=0.95,verbose=TRUE,...) {
       olc <- lc
       loclist$maximize <- TRUE ## 
       # The objective function returns the confint bound given the corr pars. Thus locptim maximizes the confint bound over the the corr pars
-      optr <- do.call(locoptim,loclist) 
+      optr <- do.call(.locoptim,loclist) 
       ## recover HLCor fit for optimized params
       if (paste(lc[[1]])=="HLCor") {
         olc$ranPars[names(trTemplate)] <- optr[names(trTemplate)] ## list <- list

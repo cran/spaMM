@@ -54,13 +54,6 @@ spaMM.getOption <- function (x) {spaMM.options(x)[[1]]}
 } ## testable by calling unloadNamespace("spaMM")
 #  pkgpath <- system.file(package="OKsmooth") # https://github.com/hadley/devtools/issues/119
 
-largeLambdaMessages <- function() {
-  message("A too high lambda may indicate a very poorly fitting fixed-effect part of the model.")
-  message("In smoothing applications, it may indicate that the response is sharply varying in some point but smooth elsewhere.")
-  message("To control the maximum lambda, use e.g. 'spaMM.options(maxLambda=1e06)'.")
-  message("It may also indicate convergence issues, possibly improved by altering the initial value through the 'init.HLfit' argument.")
-}
-
 .Dist.earth.mat <- function (x, y=NULL) { # x and y are both matrices. In each, first col is longitude, second is latitude
   ## This function computes orthodromic distances in Km between locations.
   if(is.null(y)) { ## distances within matrice

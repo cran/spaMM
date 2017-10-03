@@ -41,8 +41,7 @@ An optional list of values of parameters specified through \code{init.corrHLfit}
   \item{init.HLfit}{ See identically named \code{\link{HLfit}} argument. }
   \item{control}{   A list of control parameters, with two possible elements: 
   \itemize{
-    \item \code{$nloptr}, itself a list of control parameters to be copied in the \code{opts} argument of \code{\link[nloptr]{nloptr}}. Default controls are\cr 
-  \code{list(algorithm="NLOPT_LN_BOBYQA",xtol_rel=1.0e-4,maxeval=-1,print_level=0)}
+    \item \code{$nloptr}, itself a list of control parameters to be copied in the \code{opts} argument of \code{\link[nloptr]{nloptr}}. Default controls are given by \code{spaMM.getOption('nloptr')}
     \item \code{$refit}, a boolean, or a list of booleans with possible elements \code{$phi} and \code{$lambda}. If either element is set to TRUE, then the corresponding parameters are refitted by the internal \code{HLfit} methods (see Details). If \code{$refit} is TRUE, all \code{phi} and \code{lambda} parameters are refit. By default none of them is refitted.
   }   
 }

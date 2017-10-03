@@ -12,31 +12,35 @@
     txt <- .DEPARSE(rhs)
   }
   #    if (length(grep("\\+",txt))>0) { ## coordinates is a vector with a single string; grep is 1 if  + was found in this single string and numeric(0) otherwise
-  if (! is.null(raneftype <- attr(x,"type"))){ ## Any term with a 'spatial' keyword (incl. corrMatrix); cf comment in last case
-    if (raneftype=="ar1") {
-      obslevels <- eval(expr=parse(text=paste(txt)),envir=mf) ## keeps original levels, contrary to ULI
+  if ( ! is.null(raneftype <- attr(x,"type"))){ ## Any term with a 'spatial' keyword (incl. corrMatrix); cf comment in last case
+    if (FALSE && raneftype=="AR1" && identical(spaMM.getOption("sparse_precision"),TRUE)) {
+      obslevels <- eval(expr=parse(text=paste(txt)),envir=mf) ## keeps original levels contrary to ULI ## comment obsolete ??
       levelrange <- range(obslevels)
       ff <- factor(obslevels,levels=levelrange[1L]:levelrange[2L])
-    } else if (raneftype=="corrMatrix") {
-      splt <- strsplit(txt,c("%in%|\\+| "))[[1L]]
+    } else if (raneftype=="AR1" || raneftype=="corrMatrix") {
+      splt <- strsplit(txt,c("%in%|:|\\+| "))[[1L]]
       splt <- splt[splt!=""]
-      if (length(splt)==1L && splt %in% names(mf)) { 
-        ff <- as.factor(mf[[splt]]) 
-        attr(ff,"generator") <- "as.factor"
+      if (length(splt)==1L && splt %in% names(mf)) { ## simple case where .ULI not necessary
+        obslevels <- mf[[splt]]
+        #attr(ff,"generator") <- "as.factor"
       } else {
-        aslocator <- parse(text=paste("ULI(",gsub("\\+", "\\,", txt),")")) ## handles for (| ...+...) 
-        ff <- as.factor(eval(expr=aslocator,envir=mf))
-        attr(ff,"generator") <- "ULI"
+        aslocator <- parse(text=paste(".ULI(",gsub("\\+|:", "\\,", txt),")")) ## handles for (| ...+...) 
+        obslevels <- eval(expr=aslocator,envir=mf)
+        #attr(ff,"generator") <- ".ULI"
       }   
+      if (raneftype=="AR1") { ## F I X M E not sure it's useful. *_body's independently construct the range for the prec mat
+        levelrange <- range(obslevels)
+        ff <- factor(obslevels,levels=levelrange[1L]:levelrange[2L])
+      } else ff <- as.factor(obslevels)
     } else {
       ## note that later ZALlist has an attr(attr(.,"ranefs"),"type") where non-spatial types are NOT null
       ## evaluating expression(ULI(...)) serves as a way to identify unique combinations of its arguments
-      aslocator <- parse(text=paste("ULI(",gsub("\\+", "\\,", txt),")")) ## handles for (| ...+...) 
+      aslocator <- parse(text=paste(".ULI(",gsub("\\+", "\\,", txt),")")) ## handles for (| ...+...) 
       ff <- as.factor(eval(expr=aslocator,envir=mf))
       ## FR->FR the general code has thesame final effect ??  
     }
   } else if (length(grep("c\\(\\w*\\)",txt))>0) { ## c(...,...) was used (actually detects ...c(...)....) 
-    aslocator <-  parse(text=gsub("c\\(", "ULI(", txt)) ## slow pcq ULI() est slow
+    aslocator <-  parse(text=gsub("c\\(", ".ULI(", txt)) ## slow pcq ULI() est slow
     ff <- as.factor(eval(expr=aslocator,envir=mf))
   } else { ## standard ( | ) rhs 
     ## Je pensais que "(if a single variable, it does not matter whether it is spatial or not )"
@@ -69,7 +73,7 @@
   }
   ## *******back to code common to all cases********. 
   ## This is building Z(A) not Z(A)L hence reasonably sparse even in spatial models
-  if (identical(raneftype,"ar1")) {
+  if (identical(raneftype,"AR1") && identical(spaMM.getOption("sparse_precision"),TRUE)) {
     im <- sparseMatrix(i=as.integer(ff),j=seq(length(ff)),x=1L) # ~general code except that empty levels are not dropped
   } else im <- as(ff, "sparseMatrix") ##FR->FR slow step; but creates S4 objects with required slots
   ##(lme4) Could well be that we should rather check earlier .. :
@@ -88,15 +92,10 @@
       mm <- mm[, -icol, drop = FALSE]
     }
   }
-  ##FR at this point the code diverges from lmerFactorList  
   ans <- list(f = ff, 
-              A = do.call(rbind, lapply(seq_len(ncol(mm)),function(j) im)),
+              A = do.call(rbind, rep(list(im),ncol(mm))),
               ## Zt is design obs <-> levels of ranef, either dgCMatrix (sparse) or dgeMatrix (dense)
-              Zt = do.call(rbind, lapply(seq_len(ncol(mm)), 
-                                         function(j) {
-                                           im@x <- mm[, j] ## mm stores (<this info>| ...) => numeric for random slope model 
-                                           im
-                                         })), 
+              Zt = do.call(rbind, lapply(seq_len(ncol(mm)), .fillZtbloc, template=im, source=mm)),  ## mm stores (<this info>| ...) => numeric for random slope model 
               ST = matrix(0, ncol(mm), ncol(mm), dimnames = list(colnames(mm), 
                                                                  colnames(mm))),
               lambda_X=mm ## design matrix for predictor of lambda
@@ -108,13 +107,19 @@
   ans
 }
 
+.fillZtbloc <- function(col,source,template) {
+  template@x <- source[,col]
+  template
+}
+
 
 .spMMFactorList <- function (formula, mf, rmInt, drop) {
   ## drop=TRUE elimine des niveaux spurious (test: fit cbind(Mate,1-Mate)~1+(1|Female/Male) ....)
   ## avec des consequences ultimes sur tailles des objets dans dispGammaGLM
-  bars <- .spMMexpandSlash(findbarsMM(formula[[length(formula)]])) ## this is what expands a nested random effect
+  bars <- .spMMexpandSlash(.findbarsMM(formula[[length(formula)]])) ## this is what expands a nested random effect
   if (!length(bars)) stop("No random effects terms specified in formula")
-  names(bars) <- unlist(lapply(bars, function(x) .DEPARSE(x[[3]])))
+  x3 <- lapply(bars, `[[`,i=3)
+  names(bars) <- unlist(lapply(x3, .DEPARSE))
   #######
   fl <- lapply(bars, .spMMFactorList_locfn,mf=mf,rmInt=rmInt,drop=drop)
   Design <- list(0)
@@ -131,10 +136,10 @@
     Zt <- fl[[i]]$Zt
     ## ALL Design[[i]] are (dg)*C*matrix ie a Compressed *C*olumn Storage (CCS) matrix 
     ##  (see http://netlib.org/linalg/html_templates/node92.html#SECTION00931200000000000000)
-    ##  @x must contain the nonzero elements
-    ##  @i must contain the row indices of nonzero elements
+    ##  @x must contain the nonzero elements (except diagonal elements if @diag represents them)
+    ##  @i contains the row indices of nonzero elements (except diagonal elements if @diag represents them)
     ##  @p[c] must contain the index _in x_ of the first nonzero element of column c, x[p[c]] in col c and row i[p[c]])  
-    if (is.identity(Zt)) {
+    if (.is_identity(Zt)) {
       Design[[i]] <- Diagonal(n=ncol(Zt)) ## diagonal matrix (ddiMatrix) with @diag = "U"
       colnames(Design[[i]]) <- rownames(Zt) ## used e.g. in prediction (no more the case ?)
       rownames(Design[[i]]) <- colnames(Zt) ## with transposition col/row names
@@ -143,29 +148,13 @@
     namesTerms[[i]] <- nt ## possibly several variables, eg intercept or slope... 
     names(namesTerms)[i] <- GrpNames[i] ## the name of the list member namesTerms[i]
   }
-  ## One should not check is.identity -> isDiagonal when 10000 points to predict... (FR->FR: modif def one of these functions ?)
+  ## One should not check .is_identity -> isDiagonal when 10000 points to predict... (FR->FR: modif def one of these functions ?)
   for (iMat in seq_len(length(Design))) {
     attr(Design[[iMat]],"nlevels") <- ncol(Design[[iMat]])
     attr(Design[[iMat]],"colnames") <- colnames(Design[[iMat]])
-    attr(Design[[iMat]],"generator") <- attr(fl[[iMat]]$f,"generator") ## ( NULL except for corrMatrix )
+    #attr(Design[[iMat]],"generator") <- attr(fl[[iMat]]$f,"generator") ## ( NULL except for corrMatrix )
   }
   list(Design = Design, #Subject = Subject, 
        namesTerms=namesTerms ## contains info for identifying random-coef terms
        )
-}
-
-getgroups <- function(formlist,data) { ## reduction extreme de nlme:::getGroups.data.frame
-  vlist <- lapply(formlist, function(x) { 
-    val <- eval(x[[length(x)]], data)
-    if (length(val) == 1) {
-      return(as.factor(rep(val, nrow(data))))
-    }
-    else {
-      return(as.factor(val)[drop = TRUE])
-    }
-  })
-  if (length(vlist) == 1) 
-    return(vlist[[1]])
-  value <- do.call("data.frame", vlist)
-  return(value) 
 }

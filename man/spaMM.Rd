@@ -48,7 +48,7 @@ HLCor(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(expec)),
           adjMatrix=Nmatrix,family=poisson(),data=scotlip) 
 
 
-if (spaMM.getOption("example_maxtime")>3) {          
+if (spaMM.getOption("example_maxtime")>2.1) {          
  ## Adding a Gamma random effect to fit a negative-binomial response:
  HLCor(cases~I(prop.ag/10) +(1|gridcode)+adjacency(1|gridcode)
                 +offset(log(expec)),
@@ -84,7 +84,7 @@ HLfit(y ~X1*X3+X2*X3+I(X2^2)+(1|batch),family=Gamma(log),
           resid.model = ~ X3+I(X3^2) ,data=wafers)
 
 ## Random-slope model (mind the output!)        
-if (spaMM.getOption("example_maxtime")>1.1) {          
+if (spaMM.getOption("example_maxtime")>1) {          
   HLfit(y~X1+(X2|batch),data=wafers)
 }
 

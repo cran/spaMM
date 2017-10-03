@@ -1,6 +1,5 @@
 \name{fixedLRT}
 \alias{fixedLRT}
-%\alias{corrMM.LRT}
 %- Also NEED an '\alias' for EACH other topic documented here.
 \title{
   Likelihood ratio test of fixed effects.
@@ -88,7 +87,7 @@ and, if a bootstrap was performed, the additional elements described in \code{\l
 See also \code{\link{corrHLfit}} and \code{\link{LRT}}.
 }
 \examples{
-if (spaMM.getOption("example_maxtime")>1.4) {
+if (spaMM.getOption("example_maxtime")>2) {
  data(blackcap)
  ## result comparable to the corrHLfit examples based on blackcap
  fixedLRT(null.formula=migStatus ~ 1 + Matern(1|latitude+longitude),

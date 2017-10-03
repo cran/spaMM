@@ -17,7 +17,7 @@ using Eigen::COLAMDOrdering;
 
 bool printDebug=false;
 
-// [[Rcpp::export]]
+// [[Rcpp::export(.leverages)]]
 SEXP leverages( SEXP XX ){
   if (printDebug)   Rcout <<"debut leverages()"<<std::endl;
   const Map<MatrixXd> X(as<Map<MatrixXd> >(XX));
@@ -29,7 +29,7 @@ SEXP leverages( SEXP XX ){
   return wrap(VectorXd(Qthin.cwiseProduct(Qthin).rowwise().sum().transpose())); //returns vector of leverages rather than thin Q matrix
 }
 
-// [[Rcpp::export]]
+// [[Rcpp::export(.Rcpp_sweepZ1W)]]
 SEXP sweepZ1W( SEXP ZZ, SEXP WW ){
   if (printDebug)   Rcout <<"debut sweepZ1W()"<<std::endl;
   const Map<MatrixXd> Z(as<Map<MatrixXd> >(ZZ));
@@ -49,7 +49,7 @@ It's interesting to replicate the benchmark at http://stackoverflow.com/question
 The results may be quite different from those shown there.
 */
 
-// [[Rcpp::export]]
+// [[Rcpp::export(.ZWZt)]]
 SEXP ZWZt( SEXP ZZ, SEXP WW ){
   if (printDebug)   Rcout <<"debut ZWZt()"<<std::endl;
   const Map<MatrixXd> Z(as<Map<MatrixXd> >(ZZ));
@@ -63,7 +63,7 @@ SEXP ZWZt( SEXP ZZ, SEXP WW ){
   return wrap(swZ); 
 }
 
-// [[Rcpp::export]]
+// [[Rcpp::export(.ZtWZ)]]
 SEXP ZtWZ( SEXP ZZ, SEXP WW ){
   if (printDebug)   Rcout <<"debut ZtWZ()"<<std::endl;
   const Map<MatrixXd> Z(as<Map<MatrixXd> >(ZZ));
@@ -78,7 +78,8 @@ SEXP ZtWZ( SEXP ZZ, SEXP WW ){
   return wrap(swZ); 
 }
 
-// [[Rcpp::export]]
+// (fixme?) This function does not seem currently used
+// [[Rcpp::export(.Rcpp_Sig)]]
 SEXP Rcpp_Sig( SEXP ZZ, SEXP WA, SEXP WB ){
   if (printDebug)   Rcout <<"debut Rcpp_Sig()"<<std::endl;
   const Map<MatrixXd> Z(as<Map<MatrixXd> >(ZZ));
@@ -93,7 +94,7 @@ SEXP Rcpp_Sig( SEXP ZZ, SEXP WA, SEXP WB ){
   return wrap(swZ); 
 }
 
-// [[Rcpp::export]]
+// [[Rcpp::export(.Rcpp_d2hdv2)]]
 SEXP Rcpp_d2hdv2( SEXP ZZ, SEXP WA, SEXP WB ){
   if (printDebug)   Rcout <<"debut Rcpp_d2hdv2()"<<std::endl;
   const Map<MatrixXd> Z(as<Map<MatrixXd> >(ZZ));
@@ -111,7 +112,7 @@ SEXP Rcpp_d2hdv2( SEXP ZZ, SEXP WA, SEXP WB ){
 }
 
 
-// [[Rcpp::export]]
+// [[Rcpp::export(.RcppChol)]]
 SEXP RcppChol( SEXP AA ){ // returns t(R::chol)
   if (printDebug)   Rcout <<"debut RcppChol()"<<std::endl;
   const Eigen::LLT<MatrixXd> llt(as<Map<MatrixXd> >(AA));
@@ -130,7 +131,7 @@ SEXP RcppChol( SEXP AA ){ // returns t(R::chol)
 } // such that A = L.Lt ie standard, NOT R's chol()
 
 // https://gist.github.com/bobthecat/6509321
-// [[Rcpp::export]]
+// [[Rcpp::export(.crossprodCpp)]]
 SEXP crossprodCpp(SEXP Mat, SEXP yy){
   if (printDebug)   Rcout <<"debut crossprodCpp()"<<std::endl;
   const Map<MatrixXd> A(as<Map<MatrixXd> >(Mat));
@@ -146,7 +147,7 @@ SEXP crossprodCpp(SEXP Mat, SEXP yy){
   return wrap(tAA);
 } // correspond bien a crossprod()
 
-// [[Rcpp::export]]
+// [[Rcpp::export(.tcrossprodCpp)]]
 SEXP tcrossprodCpp(SEXP Mat, SEXP yy){
   if (printDebug)   Rcout <<"debut tcrossprodCpp()"<<std::endl;
   const Map<MatrixXd> A(as<Map<MatrixXd> >(Mat));
@@ -162,19 +163,19 @@ SEXP tcrossprodCpp(SEXP Mat, SEXP yy){
   return wrap(AAt);
 }
 
-// [[Rcpp::export]] 
-SEXP pseudoSolvediag( SEXP XX, SEXP bb ){ // pseudoSolvediag(X,b) should == solve.qr(qr(X),diag(b))
-  if (printDebug)   Rcout <<"debut pseudoSolvediag()"<<std::endl;
-  const Map<MatrixXd> X(as<Map<MatrixXd> >(XX));
-  const Map<VectorXd> b(as<Map<VectorXd> >(bb));
-  const int c(X.cols());
-  const Eigen::HouseholderQR<MatrixXd> PQR(X);
-  const MatrixXd pseudoInvX(PQR.matrixQR().topRows(c).triangularView<Upper>().solve(MatrixXd(PQR.householderQ()).leftCols(c).adjoint()));
-  if (printDebug)   Rcout <<"fin pseudoSolvediag()"<<std::endl;
-  return wrap(pseudoInvX * b.asDiagonal());
-}
+// // [[Rcpp::export]] 
+// SEXP pseudoSolvediag( SEXP XX, SEXP bb ){ // pseudoSolvediag(X,b) should == solve.qr(qr(X),diag(b))
+//   if (printDebug)   Rcout <<"debut pseudoSolvediag()"<<std::endl;
+//   const Map<MatrixXd> X(as<Map<MatrixXd> >(XX));
+//   const Map<VectorXd> b(as<Map<VectorXd> >(bb));
+//   const int c(X.cols());
+//   const Eigen::HouseholderQR<MatrixXd> PQR(X);
+//   const MatrixXd pseudoInvX(PQR.matrixQR().topRows(c).triangularView<Upper>().solve(MatrixXd(PQR.householderQ()).leftCols(c).adjoint()));
+//   if (printDebug)   Rcout <<"fin pseudoSolvediag()"<<std::endl;
+//   return wrap(pseudoInvX * b.asDiagonal());
+// }
 
-// [[Rcpp::export]]
+// [[Rcpp::export(.e_LevenbergMsolveCpp)]]
 SEXP e_LevenbergMsolveCpp( SEXP AA, SEXP wwAugz, SEXP dd ){ // 
   if (printDebug)   Rcout <<"debut e_LevenbergMsolveCpp()"<<std::endl;
   const Map<MatrixXd> A(as<Map<MatrixXd> >(AA));
@@ -200,7 +201,7 @@ SEXP e_LevenbergMsolveCpp( SEXP AA, SEXP wwAugz, SEXP dd ){ //
   return List::create(Named("dbetaV") = dbetaV,Named("dampDpD")=dampDpD);
 }
 
-// [[Rcpp::export]]
+// [[Rcpp::export(.LevenbergMsolveCpp)]]
 SEXP LevenbergMsolveCpp( SEXP AA, SEXP rrhhss, SEXP dd ){ // 
   if (printDebug)   Rcout <<"debut LevenbergMsolveCpp()"<<std::endl;
   const Map<MatrixXd> A(as<Map<MatrixXd> >(AA));
@@ -217,7 +218,7 @@ SEXP LevenbergMsolveCpp( SEXP AA, SEXP rrhhss, SEXP dd ){ //
 }
 
 
-// [[Rcpp::export]]
+// [[Rcpp::export(.LogAbsDetCpp)]]
 SEXP LogAbsDetCpp( SEXP AA ) {
   if (printDebug)   Rcout <<"debut LogAbsDetCpp()"<<std::endl;
   const Map<MatrixXd> A(as<Map<MatrixXd> >(AA));
@@ -238,7 +239,7 @@ SEXP selfAdjointSolverCpp( SEXP AA ){
 }
 
 // unfortunately useless: // but some improper declarations, would need debugging)
-// [[Rcpp::export]]
+// [[Rcpp::export(.LevPerturbedQCpp)]]
 SEXP LevPerturbedQCpp( SEXP perturbedwAugX, SEXP pforREML, SEXP RpRu, SEXP RpRd, SEXP lamOverLam0, SEXP phiOverPhi0 ){
   const Map<MatrixXd> A(as<Map<MatrixXd> >(perturbedwAugX));
   const unsigned int p(as<unsigned int>(pforREML));

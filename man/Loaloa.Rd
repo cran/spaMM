@@ -49,48 +49,48 @@ data(Loaloa)
 ###    and the difference in 'typical' computation times, 
 ###    when fit using corrHLfit() or fitme().
 
-if (spaMM.getOption("example_maxtime")>16) {
+if (spaMM.getOption("example_maxtime")>4.7) {
   corrHLfit(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
                    +Matern(1|longitude+latitude),HLmethod="HL(0,1)",
                  data=Loaloa,family=binomial(),ranFix=list(nu=0.5)) 
 }
-if (spaMM.getOption("example_maxtime")>4.5) {
+if (spaMM.getOption("example_maxtime")>2.2) {
   fitme(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
                    +Matern(1|longitude+latitude),method="HL(0,1)",
                  data=Loaloa,family=binomial(),fixed=list(nu=0.5)) 
 }
 
-if (spaMM.getOption("example_maxtime")>22) {
+if (spaMM.getOption("example_maxtime")>7.2) {
   corrHLfit(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
             +Matern(1|longitude+latitude),
               data=Loaloa,family=binomial(),ranFix=list(nu=0.5))  
 }
-if (spaMM.getOption("example_maxtime")>8) {
+if (spaMM.getOption("example_maxtime")>3.6) {
   fitme(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
             +Matern(1|longitude+latitude),
               data=Loaloa,family=binomial(),fixed=list(nu=0.5),method="REML")
 }
 
 ## Diggle and Ribeiro (2007) assumed (in this package notation) Nugget=2/7:
-if (spaMM.getOption("example_maxtime")>21) {
+if (spaMM.getOption("example_maxtime")>7) {
   corrHLfit(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
            +Matern(1|longitude+latitude),
              data=Loaloa,family=binomial(),ranFix=list(nu=0.5,Nugget=2/7))  
 }
-if (spaMM.getOption("example_maxtime")>5) {
+if (spaMM.getOption("example_maxtime")>3.1) {
   fitme(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
            +Matern(1|longitude+latitude),method="REML",
              data=Loaloa,family=binomial(),fixed=list(nu=0.5,Nugget=2/7))  
 }
 
 ## with nugget estimation:
-if (spaMM.getOption("example_maxtime")>23) {
+if (spaMM.getOption("example_maxtime")>18.5) {
   corrHLfit(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
            +Matern(1|longitude+latitude),
              data=Loaloa,family=binomial(),
              init.corrHLfit=list(Nugget=0.1),ranFix=list(nu=0.5))  
 }
-if (spaMM.getOption("example_maxtime")>14) {
+if (spaMM.getOption("example_maxtime")>5.2) {
   fitme(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
            +Matern(1|longitude+latitude),
              data=Loaloa,family=binomial(),method="REML",

@@ -1,5 +1,5 @@
 getCall.HLfit <- function(x,...) {
-  # only one of these call my be be present in the object: HLCorcall is removed by fitme and corrHLfit
+  # only one of these call may be present in the object: HLCorcall is removed by fitme and corrHLfit
   if ( ! is.null(call <- attr(x,"fitmecall"))) return(call) 
   if ( ! is.null(call <- attr(x,"HLCorcall"))) return(call) ## eg confint on an HLCor object
   if ( ! is.null(call <- attr(x,"corrHLfitcall"))) return(call) 
@@ -37,8 +37,7 @@ get_HLCorcall <- function(outer_object, ## accepts fit object, or call, or list 
   #
   HLCorcall <- eval(as.call(outer_call)) ## calls corrHLfit and bypasses optimization to get the call from within the final HLCor
   HLCorcall[[1L]] <- quote(HLCor)
-  HLCorcall$verbose["getCall"] <- NA
-  #llc$verbose["getCall"] <- NA ## local, useless
+  .setProcessed(HLCorcall$processed,"verbose['getCall']",NA)
   return(HLCorcall)
 }
 
@@ -52,9 +51,12 @@ update.HLfit <- function (object, formula., ..., evaluate = TRUE) {
       form <- update.formula(attr(predictor,"oriFormula"),formula.) ## LOSES ALL ATTRIBUTES 
     } else  form <- update.formula(predictor,formula.) 
     ## !!!! FR->FR does not handle etaFix$beta !!!!
-    if (! is.null(findOffset(formula.))) {off <- NULL} else { off <- attr(predictor,"offsetObj")$total }
+    if (! is.null(.findOffset(formula.))) {off <- NULL} else { off <- attr(predictor,"offsetObj")$total }
+    if (object$spaMM.version<"1.11.57") {
+      LMatrix <- attr(predictor,"LMatrix") ## back compat
+    } else LMatrix <- NULL ## LMatrix still  appears to be hidden in object$strucList
     predArgs <- list(formula=form,
-                     LMatrix=attr(predictor,"LMatrix"), ## argument for Predictor, to be removed ? (modif function Predictor() ?)
+                     LMatrix=LMatrix, ## argument for Predictor, to be removed ? (modif function Predictor() ?)
                      AMatrix=attr(predictor,"AMatrix"),
                      ZALMatrix=attr(predictor,"ZALMatrix"), ## see above: *again* from object$call, not from object$predictor
                      offset=off)

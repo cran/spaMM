@@ -4,8 +4,7 @@ corrHLfit_body <- function(processed,
                       ranFix=list(), 
                       lower=list(),upper=list(),
                       control.dist=list(),
-                      control.corrHLfit=list(), ## optim.scale, Optimizer, optimizer.args, maxIter, maxcorners, precision
-                      verbose, ## provided by corrHLfit
+                      control.corrHLfit=list(), ## optim.scale, Optimizer, <optimizer controls>
                       nb_cores=NULL,
                       ... ## cf dotnames processing below
 ) { 
@@ -15,8 +14,8 @@ corrHLfit_body <- function(processed,
   #########################################################
   #
   dotlist <- list(...) ## forces evaluations, which makes programming easier...
-
-  data <- getProcessed(processed,"data") ## gets a data list if processed is a list
+  data <- .getProcessed(processed,"data") ## gets a data list if processed is a list
+  verbose <-  .getProcessed(processed,"verbose",from=1L)
   HLnames <- (c(names(formals(HLCor)),names(formals(HLfit)),
                 names(formals(designL.from.Corr)),names(formals(make_scaled_dist))))  ## cf parallel code in HLCor.obj
   ## fill HLCor.args
@@ -28,32 +27,20 @@ corrHLfit_body <- function(processed,
   typelist[names(ranFix)] <- "fix"
   attr(ranFix,"type") <- typelist
   ## replace some HLCor.args members  
-  if ( ! is.null(attr(processed,"multiple"))) {
+  if ( is.list(processed)) { ## list of environments
     pnames <- names(processed[[1]])
   } else pnames <- names(processed)
   for (st in pnames) HLCor.args[st] <- NULL 
   # 'processed' may be modified below, then will be copied in HLCor.args (and then removed from this envir for safety) => NO NEED to copy any processed element in HLCor.args now.
-  HLCor.args$verbose <- verbose ## corrHLfit_body fn argument
-  
+
   RHOMAX <- NULL
   NUMAX <- 50
   
   init.optim <- init.corrHLfit ## usages of init.corrHLfit$rho, etc. must be tracked through init.optim too  
   optim.scale <- control.corrHLfit$optim.scale 
   if (is.null(optim.scale)) optim.scale="transformed" ## currently no public alternative
-  Optimizer <- control.corrHLfit$Optimizer ## L-BFGS-B, NLOPT_LN_BOBYQA
-  if (is.null(Optimizer)) Optimizer <- "NLOPT_LN_BOBYQA" ## default for locoptim but still requested for "Optimizer=Optimizer"
-  #if (is.null(Optimizer)) Optimizer <- "L-BFGS-B" ## default for locoptim but still requested for "Optimizer=Optimizer"
-  optimizers.args <- control.corrHLfit[c("optim","optimize")] 
-  maxcorners <- control.corrHLfit$maxcorners
-  ## 2015/12/24 : setting maxcorners to 0L till makes a difference for
   # test-Nugget -> different p_v / p_bv compromise (!)
-  # nullfit of blackcap (test-fixedLRT) is better with the corners.
-  if (is.null(maxcorners)) maxcorners <- 2^11 
-  maxIter <- control.corrHLfit$maxIter 
-  if (is.null(maxIter)) maxIter<- 10000
-  #
-  spatial.terms <- findSpatial(getProcessed(processed,"predictor",from=1L))
+  spatial.terms <- .findSpatial(.getProcessed(processed,"predictor",from=1L))
   spatial.model <- spatial.terms[[1]] 
   if ( ! is.null(spatial.model)) {
     corr.model <- as.character(spatial.model[[1]]) 
@@ -62,79 +49,59 @@ corrHLfit_body <- function(processed,
     stop("spatial correlation model not specified in 'formula': was valid in version 1.0 but not later.")
   } 
   HLCor.args$corr.model <- corr.model ## determined locally
+  if (corr.model== "corrMatrix") { ## could cover all specifications of a constant 'cov' Matrix without correlation parameter
+    corrMatrix <- HLCor.args$corrMatrix
+    if (is.null(corrMatrix)) corrMatrix <- .get_corr_prec_from_covStruct(HLCor.args$covStruct)
+    .check_corrMatrix(corrMatrix)
+    sparse_precision <- inherits(corrMatrix,"precision")
+    if ( ! sparse_precision) sparse_precision <- .determine_sparse_precision(processed, corr.model, init.HLfit) ## checks spaMM option
+  } else sparse_precision <- .determine_sparse_precision(processed, corr.model, init.HLfit) ## checks spaMM option
+  ignored_as_no_need_for_local_copy_processed <- .reset_processed_sparse_precision(processed, sparse_precision)
   #
   ############### (almost) always check geo info ###################
-  if (corr.model  %in% c("Matern","ar1","AR1")) { 
-    if ( is.null(spatial.model)) {
-      stop("An obsolete syntax for the adjacency model appears to be used.")
-      ## coordinates <- c("x","y") ## backward compatibility... old syntax with (1|pos) and default values of the coordinates argument
-    } else {
-      if ( inherits(data,"list")) {
-        dataForCheck <- data[[1]]
-      } else dataForCheck <- data
-      coordinates <- extract.check.coords(spatial.model=spatial.model,datanames=names(dataForCheck))
-    }
-  } ##
-  #
-  if (corr.model %in% "ar1") {
+  if (corr.model  %in% c("Matern","AR1")) {
+    coordinates <- .get_coordinates(spatial.model=spatial.model, data=data)
+    coord_within <- .extract_check_coords_within(spatial.model=spatial.model) 
+  }
+  if (corr.model %in% "AR1") { ## FIXME only necess for sparse precision ?
     # we need all intermediate levels even those not represented in the data
-    levelrange <- range(as.integer(data[,coordinates]))
+    levelrange <- range(as.integer(data[,coord_within]))
     tmax <- levelrange[2]-levelrange[1]+1L ## time zero IS the first level of 'coordinate' 
-    control.dist$ar1_tmax <- tmax
-    if (useAdjacencyApprox <-FALSE) {
-      adj <- Diagonal(tmax,0L)
-      diag(adj[-1,]) <- 1L
-      diag(adj[,-1]) <- 1L
-      HLCor.args$adjMatrix <- as.matrix(adj) ## suitable for *approximation* of AR1 by adjacency model
-    }
-  } 
+    control.dist$AR1_tmax <- tmax
+  }
   #
-  if (corr.model  %in% c("SAR_WWt","adjacency")) { #!# "ar1"
-    ## adjMatrix should become weightMatrix
-    if ( is.null(HLCor.args$adjMatrix) ) stop("missing 'adjMatrix' for adjacency model")
-    if (isSymmetric(HLCor.args$adjMatrix)) {
-      decomp <- sym_eigen(HLCor.args$adjMatrix)
-      attr(HLCor.args$adjMatrix,"symSVD") <- decomp
-    } else {
-      if (corr.model  %in% c("SAR_WWt")) {
-        decomp <- eigen(HLCor.args$adjMatrix,symmetric=FALSE) ## FR->FR not RcppEigen-optimized
-        attr(HLCor.args$adjMatrix,"UDU.") <- list(u=decomp$vectors,d=decomp$values,u.=solve(decomp$vectors))
-      } else stop("'adjMatrix' is not symmetric") ## => invalid cov mat for MVN
-    }
+  # modify HLCor.args and <>bounds
+  cov_matrices__from_covStruct <- .get_cov_matrices__from_covStruct(HLCor.args$covStruct, corr.model, HLCor.args)
+  if ( ! is.null(cov_matrices__from_covStruct)) for (st in names(cov_matrices__from_covStruct)) HLCor.args[[st]] <- cov_matrices__from_covStruct[[st]]
+  HLCor.args$covStruct <- NULL # so that is it not re-processed by HLCor_body later 
+  
+  if (corr.model  %in% c("SAR_WWt","adjacency")) { 
+    decomp <- .provide_AR_factorization(HLCor.args, sparse_precision, corr.model)
+    if (corr.model=="SAR_WWt") attr(HLCor.args$adjMatrix,"UDU.") <- decomp
+    if (corr.model=="adjacency") attr(HLCor.args$adjMatrix,"symSVD") <- decomp 
     rhorange <- sort(1/range(decomp$d)) ## keeping in mind that the bounds can be <>0
-    if(verbose["SEM"]) cat(paste("Feasible rho range: ",paste(signif(rhorange,6),collapse=" -- "),"\n"))
+    if(.getProcessed(processed,"verbose",from=1L)["SEM"]) cat(paste("Feasible rho range: ",paste(signif(rhorange,6),collapse=" -- "),"\n"))
     ## added 11/2016:
-    if (!is.null(lower$rho)) rhorange[1L] <- max(rhorange[1L],lower$rho)
-    if (!is.null(upper$rho)) rhorange[2L] <- min(rhorange[2L],upper$rho)
+    if ( ! is.null(lower$rho)) rhorange[1L] <- max(rhorange[1L],lower$rho)
+    if ( ! is.null(upper$rho)) rhorange[2L] <- min(rhorange[2L],upper$rho)
   }
   #
-  Fixrho <- getPar(ranFix,"rho")
-  if ( (! is.null(Fixrho)) && (! is.null(init.corrHLfit$rho)) ) {
-    stop("(!) 'rho' given as element of both 'ranFix' and 'init.corrHLfit'. Check call.")    
-  } else rho.size <- max(length(Fixrho),length(init.corrHLfit$rho))
-  if ( (! is.null(getPar(ranFix,"nu"))) && (! is.null(init.corrHLfit$nu)) ) {
-    stop("(!) 'nu' given as element of both 'ranFix' and 'init.corrHLfit'. Check call.")    
-  }
-  if ( (! is.null(getPar(ranFix,"ARphi"))) && (! is.null(init.corrHLfit$ARphi)) ) {
-    stop("(!) 'ARphi' given as element of both 'ranFix' and 'init.corrHLfit'. Check call.")    
-  }
-  if ( (! is.null(getPar(ranFix,"Nugget"))) && (! is.null(init.corrHLfit$Nugget)) ) {
-    stop("(!) 'Nugget' given as element of both 'ranFix' and 'init.corrHLfit'. Check call.")    
-  }
+  rho.size <- .check_conflict_init_fixed(ranFix,init.corrHLfit,
+                             "given as element of both 'ranFix' and 'init.corrHLfit'. Check call.") ## NOTfixme: difference bw fitme et corrHLfit
+  #
   ## distMatrix or uniqueGeo potentially added to HLCor.args:
   if (corr.model %in% c("Matern","AR1")) {
-    rho_mapping <- control.dist$rho.mapping ## may be NULL
-    if (is.null(rho_mapping) ) { ## && length(coordinates)>1L ?
-      if (length(coordinates)==rho.size) { ## rho.size comes from explicit rho from user
-        rho_mapping <- seq_len(rho.size)           
-        names(rho_mapping) <- coordinates
-        control.dist$rho.mapping <- rho_mapping
-      } else if (length(rho.size)>1L) stop("'rho.mapping' missing with no obvious default from the other arguments.")
-    } ## then (for given corr.model's) there is rho_mapping
-    locarglist<- list(data=data,distMatrix=dotlist$distMatrix,
-                      uniqueGeo=HLCor.args$uniqueGeo,coordinates=coordinates)
-    if(!is.null(dist.method <- control.dist$dist.method)) locarglist$dist.method <- dist.method
-    geoMats <- do.call(makeCheckGeoMatrices,locarglist)
+    coords_nesting <- setdiff(coordinates,coord_within)
+    if (length(coords_nesting)) {
+      if (.getProcessed(processed,"sparsePrecisionBOOL",1L)) {
+        message("sparse precision method not available for nested AR1 effects.")
+        .setProcessed(processed,"sparsePrecisionBOOL","FALSE")
+      }
+    }
+    locarglist <- list(data=data,distMatrix=dotlist$distMatrix,
+                       uniqueGeo=HLCor.args$uniqueGeo, ## typically NULL
+                       coords_nesting=coords_nesting, coordinates=coordinates, dist.method = control.dist$dist.method)
+    geoMats <- do.call(".makeCheckGeoMatrices",locarglist) ## computes matrices which are NULL on input
     nbUnique <- geoMats$nbUnique  
     if (inherits(nbUnique,"list")) nbUnique <- mean(unlist(nbUnique))
     distMatrix <- geoMats$distMatrix   
@@ -145,7 +112,7 @@ corrHLfit_body <- function(processed,
       HLCor.args$uniqueGeo <- uniqueGeo   ## determined locally
     }
   } else nbUnique <- NULL
-  family <- getProcessed(processed,"family",from=1L)
+  family <- .getProcessed(processed,"family",from=1L)
   if (family$family=="COMPoisson") {
     checknu <- try(environment(family$aic)$nu,silent=TRUE)
     if (inherits(checknu,"try-error")) init.optim$COMP_nu <- 1
@@ -154,19 +121,21 @@ corrHLfit_body <- function(processed,
     if (inherits(checktheta,"try-error")) init.optim$NB_shape <- 1
   }
   #
-  arglist <- list(init.optim=init.optim,init.HLfit=init.HLfit,ranFix=ranFix,
+  calc_inits_arglist <- list(init.optim=init.optim,init.HLfit=init.HLfit,ranFix=ranFix,
                   corr.model=corr.model,optim.scale=optim.scale,
-                  control.dist=control.dist,For="corrHLfit")
+                  control.dist=control.dist,For="corrHLfit") ## NOTfixme difference fitme/corrHLfit
   if (corr.model %in% c("Matern")) {
-    maxrange <- calc_maxrange(rho.size,distMatrix,uniqueGeo,rho_mapping,dist.method) 
+    control.dist$rho.mapping <- .provide_rho_mapping(control.dist, coordinates, rho.size)
+    maxrange <- .calc_maxrange(rho.size,distMatrix,uniqueGeo,control.dist$rho.mapping,control.dist$dist.method) 
     RHOMAX <- 1.1*30*nbUnique/maxrange ## matches init$rho in calc_inits()
-    arglist <-c(arglist,list(maxrange=maxrange,RHOMAX=RHOMAX,NUMAX=NUMAX))
+    calc_inits_arglist <-c(calc_inits_arglist,list(maxrange=maxrange,RHOMAX=RHOMAX,NUMAX=NUMAX))
   }
-  if (corr.model %in% c("SAR_WWt","adjacency") #!# "ar1" rhorange suppressed 
-      &&  is.null(getPar(ranFix,"rho"))
+  if (corr.model %in% c("SAR_WWt","adjacency")
+      &&  is.null(.getPar(ranFix,"rho")) ## NOTfixme difference fitme/corrHLfit
       && (! is.numeric(init.HLfit$rho)) ## init.HLfit$rho NULL or NA) 
-  ) arglist$rhorange <- rhorange ## will serve to initialize either HLfit or optim 
-  inits <- do.call(".calc_inits",arglist)
+  ) calc_inits_arglist$rhorange <- rhorange ## will serve to initialize either HLfit or optim 
+  inits <- do.call(".calc_inits",calc_inits_arglist)
+  #
   init <- inits$`init` ## keeps all init values, all in untransformed scale
   init.optim <- inits$`init.optim` ## subset of all optim estimands, as name implies, and in transformed scale
   init.HLfit <- inits$`init.HLfit` ## subset as name implies 
@@ -190,13 +159,13 @@ corrHLfit_body <- function(processed,
                     corr.model=corr.model,nbUnique=nbUnique,
                     ranFix=ranFix,control.dist=control.dist,
                     optim.scale=optim.scale, RHOMAX=RHOMAX,NUMAX=NUMAX)
-  if (corr.model %in% c("SAR_WWt","adjacency") #!# "ar1" rhorange suppressed 
-      &&  is.null(getPar(ranFix,"rho"))
+  if (corr.model %in% c("SAR_WWt","adjacency") 
+      &&  is.null(.getPar(ranFix,"rho"))
       && (! is.numeric(init.HLfit$rho)) ## init.HLfit$rho$rho NULL or NA) 
       ) { 
     LUarglist$rhorange <- rhorange ## will serve to initialize either HLfit or optim 
   }
-  LowUp <- do.call("makeLowerUpper",LUarglist)
+  LowUp <- do.call(".makeLowerUpper",LUarglist)
   ## LowUp: a list with elements lower and upper that inherits names from init.optim, must be optim.scale as init.optim is by construction
   lower <- LowUp$lower ## list ! which elements may have length >1 !
   upper <- LowUp$upper ## list !
@@ -207,35 +176,34 @@ corrHLfit_body <- function(processed,
   ranPars[varNames] <- init.HLfit[varNames] ## FR->FR duplicat (?) qui montre qu'un attribute serait mieux
   attr(ranPars,"type")[varNames] <- "var"  
   if (spaMM.getOption("wDEVEL2")) {
-    parlist <- merge_parlist(,new=ranPars,types="fix")
-    parlist <- merge_parlist(parlist,new=init.HLfit,types="var")
+    parlist <- .merge_parlist(,new=ranPars,types="fix")
+    parlist <- .merge_parlist(parlist,new=init.HLfit,types="var")
     attr(ranPars,"parlist") <- parlist
   } 
   HLCor.args$ranPars <- ranPars  ## variable locally
   #
   HLCor.args$control.dist <- control.dist ## modified locally
-  processedHL1 <- getProcessed(processed,"HL[1]",from=1L) ## there's also HLmethod in processed<[[]]>$callargs
+  processedHL1 <- .getProcessed(processed,"HL[1]",from=1L) ## there's also HLmethod in processed<[[]]>$callargs
   if (!is.null(processedHL1) && processedHL1=="SEM" && length(lower)>0) {
     optimMethod <- "iterateSEMSmooth"
-    # processed <- setProcessed(processed,"SEMargs$SEMseed",value="NULL") ## removing default SEMseed
-    ## : bc SEMseed OK to control individual SEMs but not  series of SEM 
-    if (is.null(getProcessed(processed,"SEMargs$control_pmvnorm$maxpts",from=1L))) {
+    if (is.null(.getProcessed(processed,"SEMargs$control_pmvnorm$maxpts",from=1L))) {
       if (length(LowUp$lower)>0L) {
-        processed <- setProcessed(processed,"SEMargs$control_pmvnorm$maxpts",value="quote(250L*nobs)") 
+        processed <- .setProcessed(processed,"SEMargs$control_pmvnorm$maxpts",value="quote(250L*nobs)") 
       } ## else default visible in SEMbetalambda
     }
-  } else optimMethod <- "locoptim"
+  } else optimMethod <- ".locoptim"
   HLCor.args$processed <- processed
-  processed <- "'processed' erased after copy in 'HLCor.args' to make sure it is not modified later"
   ## 
   anyHLCor_obj_args <- HLCor.args
   ## HLCor.obj uses a vector + skeleton
   anyHLCor_obj_args$skeleton <- structure(init.optim,RHOMAX=RHOMAX,NUMAX=NUMAX) ## logscale, only used by HLCor.obj
   attr(anyHLCor_obj_args$skeleton,"type") <- list() ## declares a list of typeS of elemnts of skeleton
   attr(anyHLCor_obj_args$skeleton,"type")[names(init.optim)] <- "fix" # fixed with the HLCor call 
-  anyHLCor_obj_args$processed <- setProcessed(anyHLCor_obj_args$processed,"return_only",
+  # if processed is an envir or a list of envirs, the following is not local to anyHLCor_obj_args$processed but change processed globally
+  anyHLCor_obj_args$processed <- .setProcessed(anyHLCor_obj_args$processed,"return_only",
                                               value=paste("\"",HLCor.args$processed$objective,"APHLs\"",sep="")) ## laborious for strings
   initvec <- unlist(init.optim)
+  ### .do_TRACE(verbose["TRACE"])
   if (optimMethod=="iterateSEMSmooth") {   
     MAX <- list(trRho=RHOMAX, trNu=NUMAX) ##  MAX is used in the SEMdiagnosticplot...;
     ## its names should match the colnames of the data in Krigobj = the  parameters of the likelihood surface. Current code maybe not general.
@@ -251,12 +219,12 @@ corrHLfit_body <- function(processed,
     optPars <- relist(optr$par,init.optim)
     if (!is.null(optPars)) attr(optPars,"method") <-"optimthroughSmooth"
   } else { ## this is also called if length(lower)=0 by  (SEM or not) and optPars is then null
-    if (identical(anyHLCor_obj_args$verbose["getCall"][[1L]],TRUE)) {
+    if (identical(processed$verbose["getCall"][[1L]],TRUE)) {
       optPars <- init.optim
     } else {
-      loclist<-list(init.optim=init.optim,LowUp=LowUp,anyObjfnCall.args=anyHLCor_obj_args,Optimizer=Optimizer,
-                    optimizers.args=optimizers.args,maxcorners=maxcorners,maximize=TRUE) 
-      optPars <- do.call("locoptim",loclist)
+      loclist<-list(init.optim=init.optim,LowUp=LowUp,anyObjfnCall.args=anyHLCor_obj_args,
+                    control=control.corrHLfit,maximize=TRUE) 
+      optPars <- do.call(".locoptim",loclist)
     }
   }
   ranPars[names(optPars)] <- optPars ## avoids overwriting fixed ranPars; and keep the list class of ranPars...
@@ -264,22 +232,23 @@ corrHLfit_body <- function(processed,
   attr(ranPars,"RHOMAX") <- RHOMAX
   attr(ranPars,"NUMAX") <- NUMAX
   if (spaMM.getOption("wDEVEL2")) {
-    parlist <- merge_parlist(,new=ranPars,types="fix")
-    parlist <- merge_parlist(parlist,new=optPars,types="outer") ## consistent with earlier code
+    parlist <- .merge_parlist(,new=ranPars,types="fix")
+    parlist <- .merge_parlist(parlist,new=optPars,types="outer") ## consistent with earlier code
     # so as to combine outer estimation and SEs of inner estimation
     attr(ranPars,"parlist") <- parlist
   }
   HLCor.args$ranPars <- ranPars ## variable locally
-  verbose["warn"] <- TRUE ## important!
-  HLCor.args$verbose <- verbose ## modified locally
+  # if processed is an envir, the following is not local to anyHLCor_obj_args$processed but change processed globally
+  HLCor.args$processed <- .setProcessed(HLCor.args$processed,"return_only", value="NULL") 
+  HLCor.args$processed <- .setProcessed(HLCor.args$processed,"verbose['warn']", value="TRUE") ## important!
   hlcor <- do.call("HLCor",HLCor.args) ## recomputation post optimization (or only computation, if length(lower)=0)
-  if (identical(anyHLCor_obj_args$verbose["getCall"][[1L]],TRUE)) { return(hlcor[]) } ## HLCorcall
-  if ( is.null(HLCor.args$adjMatrix)) { ## Matern, AR1/ar1; 
+  if (is.call(hlcor)) { return(hlcor[]) } ## HLCorcall
+  if ( is.null(HLCor.args$adjMatrix)  && is.null(HLCor.args$corrMatrix)) { ## Matern, AR1; 
     ## info.uniqueGeo,  used by predict -> calcNewCorrs and mapMM, and getDistMat for Matern,
     ##   may already have been set by HLCor_body (if uniqueGeo was one of its explict args)
     if (is.null(attr(hlcor,"info.uniqueGeo"))) attr(hlcor,"info.uniqueGeo") <- HLCor.args$uniqueGeo ## Matern with rho.size>1
     if (is.null(attr(hlcor,"info.uniqueGeo"))) attr(hlcor,"info.uniqueGeo") <- uniqueGeo ## Matern with rho.size=1
-    ## still NULL in AR1/ar1 model
+    ## still NULL in AR1 model
   }
   attr(hlcor,"optimInfo") <- list(LUarglist=LUarglist, optim.pars=optPars, objective=HLCor.args$processed$objective)
   if ( ! is.null(optPars)) {

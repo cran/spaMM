@@ -1,12 +1,43 @@
-dispFn <- function(x,xref=1) {log(x+xref)}
-dispInv <- function(x,xref=1) {exp(x)-xref}
+if (FALSE) {
+  .dispFn <- function(x) log(0.9+x)
+  .dispInv <- function(x) exp(x)-0.9
+} else {
+  ## see control_nloptr.nb for alternatives
+  ## generic .dispInv for devel
+  # .dispInv <- function(x,xref=1e-4,xreff=1e-2,xm=1e-3) {
+  #   uniroot(function(v) dispFn(v)-x,lower=1e-6,upper=1e6,tol=1e-7)$root
+  # }
+  ## complex but still useful in
+  .dispFn <- function(x,xref=5e-5,xreff=1e-1,xm=1e-3) { 
+    if (x<=xm) { 
+      num <- log(xref+x) # -log(xref+1e-6)+1
+    } else {
+      num <- log(xref+xm)+log((xreff+x)/(xreff+xm))*(xreff+xm)/(xref+xm) # -log(xref+1e-6)+1
+    }
+    #num/160 ## scaling/shifting have no effect on nloptr path nor clear effect on timings
+    num
+  } 
+  .dispInv <- function(x,xref=5e-5,xreff=1e-1,xm=1e-3) {
+    # x <- x*160 +log(xref+1e-6)-1
+    if (x<log(xref+xm)) {
+      exp(x)-xref
+    } else {
+      fac <- exp((x-log(xref+xm))*(xm+xref)/(xm+xreff))
+      xm*fac + xreff*(fac-1)
+    }
+  }
+}
+#sapply(sapply(10^(seq(-6,6)),dispFn),dispInv)
+## These must be directly applicable to say lambda=c(0.1,0.1) hence need to vectorize the test on x
+.dispFn <- Vectorize(.dispFn,"x")
+.dispInv <- Vectorize(.dispInv,"x")
 ## for rho/trRho: rho=0 exactly is meaningful in adjacency model. rhoFn and rhoInv should be used only for other models.
-rhoFn <- function(x,RHOMAX) {log(x/(RHOMAX-x))} ## rho should be constrained to <RHOMAX and trRho should diverge as rho approaches RHOMAX
-rhoInv <- function(trRho,RHOMAX) {
+.rhoFn <- function(x,RHOMAX) {log(x/(RHOMAX-x))} ## rho should be constrained to <RHOMAX and trRho should diverge as rho approaches RHOMAX
+.rhoInv <- function(trRho,RHOMAX) {
   RHOMAX*exp(trRho)/(1+exp(trRho))
 } 
-nuFn <- function(nu,rho,NUMAX) {log(nu/(NUMAX-nu))} ## nu should be constrained to <NUMAX and trNu should diverge as nu approaches NUMAX
-nuInv <- function(trNu,trRho,NUMAX) {NUMAX*exp(trNu)/(1+exp(trNu))}
+.nuFn <- function(nu,rho,NUMAX) {log(nu/(NUMAX-nu))} ## nu should be constrained to <NUMAX and trNu should diverge as nu approaches NUMAX
+.nuInv <- function(trNu,trRho,NUMAX) {NUMAX*exp(trNu)/(1+exp(trNu))}
 ## FR->FR rho/sqrt(nu) scaling => should be fixed nu and transformed rho to handle vectorial rho
 ## thus nu fns should be indep of nu and rho fns should be functions of nu ! :
 if (FALSE) {
@@ -22,7 +53,7 @@ if (FALSE) {
 }
 
 
-makeLowerUpper <- function(canon.init, ## cf calls: ~ in user scale, must be a full list of relevant params
+.makeLowerUpper <- function(canon.init, ## cf calls: ~ in user scale, must be a full list of relevant params
                            init.optim, ## ~in transformed scale
                            user.lower=list(),user.upper=list(),
                            corr.model="Matern",nbUnique,ranFix=list(),
@@ -38,7 +69,7 @@ makeLowerUpper <- function(canon.init, ## cf calls: ~ in user scale, must be a f
     upper$rho <- user.upper$rho ## no transfo again
     if (is.null(upper$rho)) upper$rho <- rhorange[2L]-eps
   } else {
-    if (corr.model %in% c("AR1","ar1")) {
+    if (corr.model %in% c("AR1")) {
       if ( ! is.null(canon.init$ARphi)) {
         ARphi <- user.lower$ARphi
         if (is.null(ARphi)) ARphi <- -1 + 1e-6
@@ -52,7 +83,7 @@ makeLowerUpper <- function(canon.init, ## cf calls: ~ in user scale, must be a f
         rho <- user.lower$rho
         if (is.null(rho)) rho <- canon.init$rho/150
         if (optim.scale=="transformed") {
-          lower$trRho <- rhoFn(rho,RHOMAX=RHOMAX)
+          lower$trRho <- .rhoFn(rho,RHOMAX=RHOMAX)
         } else lower$rho <- rho
         rho <- user.upper$rho
         if (is.null(rho)) {
@@ -62,15 +93,15 @@ makeLowerUpper <- function(canon.init, ## cf calls: ~ in user scale, must be a f
           if (optim.scale=="transformed") rho <- 2*rho * RHOMAX/(RHOMAX+2*rho)
         }
         if (optim.scale=="transformed") {
-          upper$trRho <- rhoFn(rho,RHOMAX=RHOMAX) 
+          upper$trRho <- .rhoFn(rho,RHOMAX=RHOMAX) 
         } else upper$rho <- rho
         rhoForNu <- canon.init$rho
-      } else rhoForNu <- getPar(ranFix,"rho")
+      } else rhoForNu <- .getPar(ranFix,"rho")
       if (! is.null(canon.init$nu)) {
         nu <- user.lower$nu
         if (is.null(nu)) nu <- canon.init$nu/100
         if (optim.scale=="transformed") {
-          lower$trNu <- nuFn(nu,rhoForNu,NUMAX)
+          lower$trNu <- .nuFn(nu,rhoForNu,NUMAX)
           #print(c(rhoForNu,nu,lower$trNu))
         } else lower$nu <-nu
         nu <- user.upper$nu
@@ -86,7 +117,7 @@ makeLowerUpper <- function(canon.init, ## cf calls: ~ in user scale, must be a f
           }
         }
         if (optim.scale=="transformed") {
-          upper$trNu <- nuFn(nu,rhoForNu,NUMAX)
+          upper$trNu <- .nuFn(nu,rhoForNu,NUMAX)
         } else upper$nu <- nu
         #print(c(rhoForNu,nu,upper$trNu))
       }
@@ -100,19 +131,19 @@ makeLowerUpper <- function(canon.init, ## cf calls: ~ in user scale, must be a f
   if (! is.null(canon.init$phi)) {
     phi <- user.lower$phi
     if (is.null(phi)) phi <- max(1e-6,canon.init$phi/1e5)
-    lower$trPhi <- dispFn(phi)
+    lower$trPhi <- .dispFn(phi)
     phi <- user.upper$phi
     if (is.null(phi)) phi <-  min(1e8,canon.init$phi*1e7)
     ## if phi is badly initialized then it gets a default which may cause hard to catch problems in the bootstrap...
-    upper$trPhi <- dispFn(phi)
+    upper$trPhi <- .dispFn(phi)
   }
   if (! is.null(canon.init$lambda)) {
     lambda <- user.lower$lambda
     if (is.null(lambda)) lambda <- pmax(1e-6,canon.init$lambda/1e5)
-    lower$trLambda <- dispFn(lambda)
+    lower$trLambda <- .dispFn(lambda)
     lambda <- user.upper$lambda
     if (is.null(lambda)) lambda <- pmin(1e8,canon.init$lambda*1e7)
-    upper$trLambda <- dispFn(lambda)
+    upper$trLambda <- .dispFn(lambda)
   }
   if (! is.null(canon.init$COMP_nu)) {
     COMP_nu <- user.lower$COMP_nu
@@ -129,11 +160,13 @@ makeLowerUpper <- function(canon.init, ## cf calls: ~ in user scale, must be a f
     if (is.null(NB_shape)) NB_shape <- max(100*canon.init$NB_shape,1e6)
     upper$NB_shape <- NB_shape
   }
-  ## names() to make sure the order of elements match; remove extra stuf (=> either ARphi or rho fr ar1)
+  ## names() to make sure the order of elements match; remove any extra stuff (which?)
   return(list(lower=lower[names(init.optim)],upper=upper[names(init.optim)])) 
 }
 
-checkDistMatrix <- function(distMatrix,data,coordinates) {
+.match_coords_in_tUniqueGeo <- function(coords,tUniqueGeo) {any(apply(tUniqueGeo,1L,identical,y=coords))}
+
+.checkDistMatrix <- function(distMatrix,data,coordinates) {
   if (inherits(distMatrix,"dist")) {
     usernames <- labels(distMatrix)
   } else if (inherits(distMatrix,"matrix")) {
@@ -142,18 +175,20 @@ checkDistMatrix <- function(distMatrix,data,coordinates) {
   ## chol() fails on distances matrices with repeated locations (which are pos SD)... but chol() not used by default
   ## the following code assumes that distMatrix deals only with unique locations, and checks this
   ## HENCE ******* distMatrix must refer to unique values of a grouping variable *********
-  checknames <- all(sapply(usernames,function(v) {v %in% rownames(data)})) ## 
+  checknames <- all(sapply(usernames,`%in%`, table=rownames(data))) ## 
   if (!checknames) {
     warning("The rownames of 'distMatrix' are not rownames of the 'data'. Further checking of 'distMatrix' is not possible.")
     nbUnique <- NA
   } else {
-    uniqueGeo <- calcUniqueGeo(data=data[usernames,coordinates,drop=FALSE]) ## check that this corresponds to unique locations
+    uniqueGeo <- .calcUniqueGeo(data=data[usernames,coordinates,drop=FALSE]) ## check that this corresponds to unique locations
     nbUnique <- nrow(uniqueGeo)
     if (nbUnique != nrow(distMatrix)) {
       stop("The dimension of 'distMatrix' does not match the number of levels of the grouping variable")
     } else { ## check order
       redondGeo <- data[,coordinates,drop=F]
-      designRU <- apply(redondGeo,1,function(v) {which(apply(v==t(uniqueGeo),2,all))}) ## has no names
+      tUniqueGeo <- t(uniqueGeo)
+      designRU <- apply(redondGeo, 1L, .match_coords_in_tUniqueGeo, tUniqueGeo=tUniqueGeo) ## has no names
+      # designRU <- apply(redondGeo,1, function(v) {which(apply(v==t(uniqueGeo),2,all))}) ## has no names
       ## eg 1 1 2 2 3 2 3 4 is valid for 8 obs, 4 unique locations
       designRU <- unique(as.vector(designRU)) ## should then be 1 2 3 4
       ## but if distMatrix in reverse order, the first row of redondGeo would match the 4th of uniqueGeo and then the following test is FALSE:
@@ -165,44 +200,74 @@ checkDistMatrix <- function(distMatrix,data,coordinates) {
   nbUnique ## if stop() did not occur
 }
 
-makeCheckGeoMatrices <- function(data,distMatrix=NULL,uniqueGeo=NULL,coordinates,dist.method="Euclidean") {
+.expand_GeoMatrices <- function(distMatrix, locdata, coords_nesting, coord_within) {
+  w_distMatrix <- as.matrix(distMatrix)
+  e_uniqueGeo <- .calcUniqueGeo(data=locdata)
+  bynesting <- by(e_uniqueGeo ,e_uniqueGeo[,coords_nesting],rownames)
+  distMatrix <- matrix(Inf,ncol=nrow(e_uniqueGeo),nrow =nrow(e_uniqueGeo))
+  rownames(distMatrix) <- colnames(distMatrix) <- rownames(e_uniqueGeo)
+  for (lit in seq_len(length(bynesting))) {
+    blockrownames <- bynesting[[lit]]
+    within_values <- e_uniqueGeo[blockrownames,coord_within]
+    distMatrix[blockrownames,blockrownames] <- w_distMatrix[within_values,within_values]
+  }
+  return(list(distMatrix=distMatrix,uniqueGeo=e_uniqueGeo))
+}
+
+.makeCheckGeoMatrices <- function(data, distMatrix=NULL, uniqueGeo=NULL, 
+                                  coords_nesting, coordinates, dist.method="Euclidean") {
+  coord_within <- setdiff(coordinates, coords_nesting)
   isListData <- inherits(data,"list")
   if (is.null(distMatrix)) { 
     if ( is.null(uniqueGeo) ) { ## then construct it from the data ## this should be the routine case
       if (isListData) {
-        uniqueGeo <- lapply(data,function(dd) {calcUniqueGeo(data=dd[,coordinates,drop=FALSE])})
+        uniqueGeo <- lapply(data, function(dd) {.calcUniqueGeo(data=dd[,coord_within,drop=FALSE])})
         nbUnique <- lapply(uniqueGeo,nrow) 
       } else {
-        uniqueGeo <- calcUniqueGeo(data=data[,coordinates,drop=FALSE])
-        nbUnique <- nrow(uniqueGeo) 
+        uniqueGeo <- .calcUniqueGeo(data=data[,coord_within,drop=FALSE])
+        nbUnique <- nrow(uniqueGeo) ## this only serves to control RHOMAX and should not be recomputed in case of nesting
       }
     } 
     ## (2): we need distMatrix *here* in all cases for the check
     if (isListData) {
-      notnumericList <- lapply(uniqueGeo,function(uG) { ! unlist(lapply(uG,is.numeric))})
+      notnumericList <- lapply(uniqueGeo, function(uG) { ! unlist(lapply(uG,is.numeric))})
       if (any(unlist(notnumericList))) {
         firstwrong <- names(which(unlist(lapply(notnumericList,any))))[1L]
         stop(paste("In data list element '",firstwrong,"', variables ",paste(names(which(notnumericList[[firstwrong]])),collapse=" "),
                    " are not numeric, hence not suitable for computation of distance matrix.",sep=""))
       }
-      distMatrix <- lapply(uniqueGeo,proxy::dist,method=dist.method)
+      distMatrix <- vector("list",length(uniqueGeo))
+      for (lit in seq_len(length(uniqueGeo))) { 
+        distMatrix[[lit]] <- proxy::dist(uniqueGeo[[lit]],method=dist.method)
+        if (length(coords_nesting)) {
+          eGM <- .expand_GeoMatrices(distMatrix[[lit]], locdata=data[[lit]][,coordinates,drop=FALSE], 
+                                     coords_nesting=coords_nesting, coord_within=coord_within)
+          distMatrix[[lit]] <- eGM$distMatrix
+          uniqueGeo[[lit]] <- eGM$uniqueGeo
+        }
+      }
     } else {
       notnumeric <- ! unlist(lapply(uniqueGeo,is.numeric))
       if (any(notnumeric)) stop(paste(paste(names(which(notnumeric)),collapse=" "),
                                       "are not numeric, hence not suitable for computation of distance matrix."))
-      
       distMatrix <- proxy::dist(uniqueGeo,method=dist.method)
+      if (length(coords_nesting)) {
+        eGM <- .expand_GeoMatrices(distMatrix, locdata=data[,coordinates,drop=FALSE], 
+                                   coords_nesting=coords_nesting, coord_within=coord_within)
+        distMatrix <- eGM$distMatrix
+        uniqueGeo <- eGM$uniqueGeo
+      }
     }
   } else { ## there is a distMatrix, this is what will be used by HLCor
     if (isListData) {
-      nbUnique <- lapply(seq_len(length(data)),function(dd) {checkDistMatrix(distMatrix,dd,coordinates)})
-    } else nbUnique <- checkDistMatrix(distMatrix,data,coordinates)
+      nbUnique <- lapply(seq_len(length(data)), function(dd) {.checkDistMatrix(distMatrix,dd,coordinates)})
+    } else nbUnique <- .checkDistMatrix(distMatrix,data,coordinates)
     ## stops if problems, otherwise checkDistMatrix has no useful return value
   }
   return(list(nbUnique=nbUnique,uniqueGeo=uniqueGeo,distMatrix=distMatrix))
 }
 
-fullrho <- function(rho, coordinates,rho_mapping) {
+.calc_fullrho <- function(rho, coordinates,rho_mapping) {
   if ( is.null(rho_mapping) ) {
     if (length(rho)==1L ) rho <- rep(rho,length(coordinates))
     names(rho) <- coordinates
@@ -214,58 +279,51 @@ fullrho <- function(rho, coordinates,rho_mapping) {
 }
 
 
-## FR->FR FIXME j'ai oublié setControl()...
 .reformat_verbose <- function(verbose,For) {
   if (is.null(verbose)) verbose <- logical(0)
   if (is.list(verbose)) stop("is.list(verbose)")
+  if (is.na(verbose["TRACE"])) verbose["TRACE"] <- FALSE ## for fitme
   if (is.na(verbose["trace"])) verbose["trace"] <- FALSE
   if (is.na(verbose["SEM"])) verbose["SEM"] <- FALSE
   if (is.na(verbose["iterateSEM"])) verbose["iterateSEM"] <- TRUE ## summary info and plots for each iteration
-  if (For=="corrHLfit" && is.na(verbose["objective"])) verbose["objective"] <- FALSE
-  if (is.na(verbose["warn"])) verbose["warn"] <- switch(For, "HLCor" = TRUE, "corrHLfit" = FALSE)
-  summstring <- paste(For,"Summary",sep="")
-  verbose[summstring] <- verbose["summary"]
-  if (is.na(verbose[summstring])) {
-    verbose[summstring] <- switch(For, "HLCor" = FALSE, "corrHLfit" = TRUE)
-    verbose["summary"] <- FALSE ## this affects HLCor if reformat_verbose is called from corrHLfit, and HLfit if it is called from HLCor
-  }
+  ## when a fit is by HLCor or HLfit, the serious message at the end of HLfit_body are by default displayed,
+  ## but not in the other cases:
+  if (is.na(verbose["all_objfn_calls"])) verbose["all_objfn_calls"] <- switch(For, "HLCor" = TRUE, "HLfit" = TRUE, 
+                                                        "corrHLfit" = FALSE, "fitme" = FALSE)
   return(verbose)
 }
 
+.reformat_LevenbergM <- function(LevenbergM) {
+  if (is.list(LevenbergM)) stop("is.list(LevenbergM)")
+  ## allows user to control the default globally by spaMM.options(): BUT this should typically be NULL
+  default_LM_start <- .spaMM.data$options$LevenbergM
+  if ( ! is.logical(default_LM_start)) default_LM_start <- NA ## converts NULL to NA (default resolved further in preprocess)
+  default_prefit <- .spaMM.data$options$PQL_prefit
+  if ( ! is.logical(default_prefit)) default_prefit <- NA ## converts NULL to NA (default resolved further in preprocess)
+  resu <- c(user_LM=LevenbergM["LevenbergM"][[1L]], user_prefit=LevenbergM["PQL_prefit"][[1L]], 
+            # [.][[1L]] important to get rid of name yet be valid for implicit NAs
+            default_LM_start=default_LM_start, default_prefit=default_prefit, force=NA) 
+  if (length(LevenbergM)==1L && is.logical(LevenbergM)) resu["user_LM"] <- LevenbergM ## T, F, or NA : handles non-vector input
+  return(resu) 
+} 
 
-
-calc_maxrange <- function(rho.size,distMatrix=NULL,uniqueGeo=NULL,rho_mapping,dist.method) {
-  if (rho.size<2L) { ## can be 0 if no explicit rho in the input  
-    if (inherits(distMatrix,"list")) {
-      maxrange <- max(unlist(lapply(distMatrix,function(dd) max(c(-Inf,dd))))) ## les Inf to handle dist(0)...
-      -min(unlist(lapply(distMatrix,function(dd) min(c( Inf,dd)))))
-    } else maxrange <- max(distMatrix)-min(distMatrix)   
-    if (maxrange<.Machine$double.eps) stop("Only one distance value: spatial model cannot be fitted.")
-  } else { ## rho.size >1
-    if (inherits(uniqueGeo,"list")) {
-      maxrange <- lapply(unique(rho_mapping), function(idx) {
-        ranges <- matrix(unlist(lapply(uniqueGeo,function(uu){
-          if (nrow(uu)>1) {
-            range(proxy::dist(uu[,rho_mapping==idx],method=dist.method))
-          } else c(Inf,-Inf) ## encore des Inf to handle dist(0)...
-        })),ncol=2)
-        max(ranges[,2])-min(ranges[,1]) 
-      })
-    } else { ## single data set
-      maxrange <- lapply(unique(rho_mapping), function(idx) {
-        rng <- range(proxy::dist(uniqueGeo[,rho_mapping==idx],method=dist.method))
-        rng[2]-rng[1] 
-      })
+.determine_LevenbergM <- function(LevenbergM, which="user_LM") {
+  if (is.na(info <- LevenbergM["force"])) {
+    if (is.na(info <- LevenbergM[which])) {
+      if (which=="user_prefit") {
+        info <- LevenbergM["default_prefit"]
+      } else info <- LevenbergM["default_LM_start"]
     }  
-    maxrange <- unlist(maxrange)
   }
-  return(maxrange)
-}
+  if (! is.logical(info) || is.na(info)) stop("invalid input: check input (invalid 'which' or invalid user input?)")
+  return(info)
+} 
+
 
 .calc_inits_dispPars <- function(init,init.optim,init.HLfit,ranFix) {
   ## does not modify init.HLfit, but keeps its original value. Also useful to keep ranFix for simple and safe coding
   init$lambda <- init.optim$lambda 
-  fixedlambda <- getPar(ranFix,"lambda") ## FR->FR his comes from user arg, not from preprocessing
+  fixedlambda <- .getPar(ranFix,"lambda") ## FR->FR his comes from user arg, not from preprocessing
   if (!is.null(fixedlambda)) {
     whichNA <- which(is.na(fixedlambda))
     if (length(init$lambda)==length(whichNA)) {
@@ -274,16 +332,17 @@ calc_maxrange <- function(rho.size,distMatrix=NULL,uniqueGeo=NULL,rho_mapping,di
       ## init$lambda should already have names...
     } else stop("'fixed lambda' and 'init lambda' arguments conflict with each other.")
   }
-  if (!is.null(init$lambda)) {
+  if (length(init$lambda)) { ## length rather than !is.null() bc .dispFn(numeric(0)) returns list() bc of the Vectorize code:
+    ## zut <- function(x) return(666); zut <- Vectorize(zut); zut(numeric(0)) ## gives list()
     init$lambda[init$lambda<1e-4] <- 1e-4
-    init.optim$trLambda <- dispFn(init$lambda) 
-    init.optim$lambda <- NULL
+    init.optim$trLambda <- .dispFn(init$lambda) 
   }
-  if (is.null(getPar(ranFix,"phi"))) {
+  init.optim$lambda <- NULL
+  if (is.null(.getPar(ranFix,"phi"))) {
     init$phi <- init.optim$phi 
     if (!is.null(init$phi)) {
       init$phi[init$phi<1e-4] <- 1e-4
-      init.optim$trPhi <- dispFn(init$phi)
+      init.optim$trPhi <- .dispFn(init$phi)
       init.optim$phi <- NULL
     }
   } else {
@@ -293,7 +352,7 @@ calc_maxrange <- function(rho.size,distMatrix=NULL,uniqueGeo=NULL,rho_mapping,di
 }
 
 .calc_inits_ARphi <- function(init,init.optim,init.HLfit,ranFix) {
-  if (is.null(getPar(ranFix,"ARphi")) && (! is.numeric(init.HLfit$ARphi))) { 
+  if (is.null(.getPar(ranFix,"ARphi")) && (! is.numeric(init.HLfit$ARphi))) { 
     init$ARphi <- init.optim$ARphi 
     if (is.null(init$ARphi)) init$ARphi <- 0. 
     if (! is.null(init.HLfit$ARphi)) {
@@ -310,7 +369,7 @@ calc_maxrange <- function(rho.size,distMatrix=NULL,uniqueGeo=NULL,rho_mapping,di
 }
 
 .calc_inits_nu <- function(init,init.optim,init.HLfit,ranFix,control.dist,optim.scale,NUMAX) {
-  if (is.null(getPar(ranFix,"nu")) && (! is.numeric(init.HLfit$nu))) { 
+  if (is.null(.getPar(ranFix,"nu")) && (! is.numeric(init.HLfit$nu))) { 
     init$nu <- init.optim$nu 
     if (is.null(init$nu)) {
       if ( ! is.null(dm <- control.dist$`dist.method`) && dm %in% c("Geodesic","Earth")) {
@@ -321,10 +380,10 @@ calc_maxrange <- function(rho.size,distMatrix=NULL,uniqueGeo=NULL,rho_mapping,di
       init.HLfit$nu <- init$nu ## avant transformation
     } else {
       if (optim.scale=="transformed") {
-        Fixrho <- getPar(ranFix,"rho")
+        Fixrho <- .getPar(ranFix,"rho")
         if (is.null(Fixrho)) { 
-          init.optim$trNu <- nuFn(init$nu,init$rho,NUMAX=NUMAX) 
-        } else init.optim$trNu <- nuFn(init$nu,Fixrho,NUMAX=NUMAX)
+          init.optim$trNu <- .nuFn(init$nu,init$rho,NUMAX=NUMAX) 
+        } else init.optim$trNu <- .nuFn(init$nu,Fixrho,NUMAX=NUMAX)
         init.optim$nu <- NULL
       } else init.optim$nu <- init$nu
     }
@@ -337,7 +396,7 @@ calc_maxrange <- function(rho.size,distMatrix=NULL,uniqueGeo=NULL,rho_mapping,di
 }
 
 .calc_inits_Auto_rho <- function(init,init.optim,init.HLfit,ranFix,rhorange,For) {
-  if (is.null(getPar(ranFix,"rho"))) { ## $rho NULL or NA
+  if (is.null(.getPar(ranFix,"rho"))) { ## $rho NULL or NA
     if (For=="corrHLfit") { ## with corrHLfit, defaul is outer optim. We provide init.optim
       if (is.null(init.HLfit$rho)) { ## default init.HLfit
         if (! is.numeric(init.optim$rho)) init.optim$rho <- mean(rhorange)
@@ -371,7 +430,7 @@ calc_maxrange <- function(rho.size,distMatrix=NULL,uniqueGeo=NULL,rho_mapping,di
 
 
 .calc_inits_geostat_rho <- function(init,init.optim,init.HLfit,ranFix,maxrange,optim.scale,RHOMAX) {
-  if (is.null(getPar(ranFix,"rho")) && (! is.numeric(init.HLfit$rho))) {
+  if (is.null(.getPar(ranFix,"rho")) && (! is.numeric(init.HLfit$rho))) {
     init$rho <- init.optim$rho 
     if (is.null(init$rho)) {
       init$rho <- 30/(2*maxrange)
@@ -380,7 +439,7 @@ calc_maxrange <- function(rho.size,distMatrix=NULL,uniqueGeo=NULL,rho_mapping,di
       init.HLfit$rho <- init$rho ## avant transformation
     } else {
       if (optim.scale=="transformed") {
-        init.optim$trRho <- rhoFn(init$rho,RHOMAX=RHOMAX) ## we're in Matern model here
+        init.optim$trRho <- .rhoFn(init$rho,RHOMAX=RHOMAX) ## we're in Matern model here
         init.optim$rho <- NULL
       } else init.optim$rho <- init$rho
     }
@@ -402,11 +461,11 @@ calc_maxrange <- function(rho.size,distMatrix=NULL,uniqueGeo=NULL,rho_mapping,di
     arglist <- c(inits,list(control.dist=control.dist, optim.scale=optim.scale, NUMAX=NUMAX))
     inits <- do.call(.calc_inits_nu,arglist)
     # Nugget: remains NULL through all computations if init.optim$Nugget is NULL
-    if (is.null(getPar(ranFix,"Nugget"))) { inits$init["Nugget"] <- init.optim$Nugget }  
+    if (is.null(.getPar(ranFix,"Nugget"))) { inits$init["Nugget"] <- init.optim$Nugget }  
   } else if ( corr.model  %in% c("SAR_WWt","adjacency") ) { 
     arglist <- c(inits,list(rhorange=rhorange,For=For))
     inits <- do.call(.calc_inits_Auto_rho,arglist)
-  } else if (corr.model %in% c("AR1","ar1")) {
+  } else if (corr.model %in% c("AR1")) {
     inits <- do.call(.calc_inits_ARphi,inits)
   }  
   # phi, lambda

@@ -3,6 +3,32 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 2.2.0}{
+\subsection{NEW FEATURES}{
+Widespread improvement in speed for large data sets, thanks to some of the  following changes:
+\itemize{
+\item Sparse precision matrix algorithm extended to all HGLMs whose linear predictor involves only a restricted set of random effect terms (excluding mainly Matern and random-coefficient terms). It is used by default for conditional autoregressive models, or when the new argument 'covStruct' is used to provide a sparse precision matrix: see help(covStruct). See also help(pedigree) for a type of applications where the latter syntax may be of particular interest, and help(sparse_precision) for more information.
+\item Significantly faster algorithm for fitting models with large dense correlation matrices (as in Matern correlation models). 
+\item new extractor function get_boot_replicate() to get the response vector for a given bootstrap replicate
+\item ‘spaMM_glm()’ and ‘spaMM_glm.fit()’ get the same ‘singular.ok=TRUE’ argument that ‘glm()’ and ‘glm.fit()’ got in R-devel r73380 (2017-09-28).
+\item More reliable version of Levenberg-Marquardt algorithm for mixed models (see 'help("LevenbergM")'). Revised rules for using it, so that users typically do not need to think about it.   
+}
+}
+\subsection{USER-LEVEL CHANGES}{
+\itemize{
+\item fixedLRT() results might be modified in particular when the likelihood has local maxima.
+\item Changes in the way the generic optimizers are used may lead to changes in the fitme() and corrHLfit() results.
+\item Usage of 'control.corrHLfit' argument has been modified.
+\item Fitted values always get their names from the row names of the data.
+}
+}
+\subsection{CORRECTED BUGS}{
+\itemize{
+\item Fixed numerical issues for binomial(cloglog) family with large values of linear predictor.
+\item Random-coefficient models could not be properly fitted by Levenberg-Marquardt algorithm.
+}
+}
+}
 \section{CHANGES UP TO VERSION 2.1.6}{
 \subsection{NEW FEATURES}{
 \itemize{

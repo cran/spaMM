@@ -7,7 +7,7 @@
                       objective=NULL, ## return value of HLCor.obj for optim calls... FR->FR meaningless for full SEM
                       resid.model=~1, resid.formula,
                       control.dist=list(),
-                      control.corrHLfit=list(), ## optim.scale, Optimizer, optimizer.args, maxIter, maxcorners, precision
+                      control.corrHLfit=list(), ## optim.scale, Optimizer, <optimizer controls>
                       processed=NULL, ## added 2014/02 for programming purposes
                       family=gaussian(),
                       nb_cores=NULL,
@@ -39,7 +39,8 @@
     if ( ! is.null(mc$resid.formula)) mc$resid.model <- mc$resid.formula
     names_nondefault  <- intersect(names(mc),names_FHF) ## mc including dotlist
     FHF[names_nondefault] <- mc[names_nondefault] ##  full HLfit args
-    preprocess.formal.args <- FHF[which(names_FHF %in% names(formals(preprocess)))] 
+    preprocess.formal.args <- FHF[which(names_FHF %in% names(formals(.preprocess)))] 
+    preprocess.formal.args$For <- "corrHLfit"
     preprocess.formal.args$family <- family ## already checked 
     preprocess.formal.args$rand.families <- FHF$rand.family ## because preprocess expects $rand.families 
     preprocess.formal.args$predictor <- FHF$formula ## because preprocess stll expects $predictor 
@@ -55,15 +56,14 @@
         familyargs <- family
         familyargs$family <- NULL
         familyargs$binfamily <- NULL
-        ## we need the data list in the corrHLfit envir for the call to makeCheckGeoMatrices
+        ## we need the data list in the corrHLfit envir for the call to .makeCheckGeoMatrices
         preprocess.formal.args$data <- do.call(binomialize,c(list(data=data),familyargs)) ## if data not already binomialized
       }     
     }
-    mc$processed <- do.call(preprocess,preprocess.formal.args,envir=parent.frame(1L))
-    mc$verbose <- .reformat_verbose(eval(mc$verbose),For="corrHLfit")
+    mc$processed <- do.call(.preprocess,preprocess.formal.args,envir=parent.frame(1L))
     ## removing all elements that duplicate info in processed: 
     pnames <- c("data","family","formula","prior.weights","HLmethod","rand.family","control.glm","resid.formula","REMLformula",
-                "resid.model")
+                "resid.model", "verbose")
     for (st in pnames) mc[st] <- NULL 
   }  
   
@@ -80,7 +80,7 @@
                       objective=NULL, ## return value of HLCor.obj for optim calls... FR->FR meaningless for full SEM
                       resid.model=~1, resid.formula,
                       control.dist=list(),
-                      control.corrHLfit=list(), ## optim.scale, Optimizer, optimizer.args, maxIter, maxcorners, precision
+                      control.corrHLfit=list(), ## optim.scale, Optimizer, <optimizer controls>
                       processed=NULL, ## added 2014/02 for programming purposes
                       family=gaussian(),
                       nb_cores=NULL,
@@ -107,7 +107,7 @@
   attr(hlcor,"corrHLfitcall") <- oricall ## this says the hlcor was returned by corrHLfit
   attr(hlcor,"HLCorcall") <- NULL
   lsv <- c("lsv",ls())
-  hlcor$fit_time <- .timerraw(time1)
+  if ( ! identical(paste(family[[1L]]),"multi"))  hlcor$fit_time <- .timerraw(time1)
   rm(list=setdiff(lsv,"hlcor")) 
   #class(hlcor) <- c(class(hlcor),"corrHLfit")
   return(hlcor)
@@ -123,8 +123,8 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
                        objective=NULL, ## return value of HLCor.obj for optim calls... FR->FR meaningless for full SEM
                        resid.model=~1, resid.formula,
                        control.dist=list(),
-                       control.corrHLfit=list(), ## optim.scale, Optimizer, optimizer.args, maxIter, maxcorners, precision
-                       processed=NULL, ## added 2014/02 for programming purposes
+                      control.corrHLfit=list(), ## optim.scale, Optimizer, <Optimizer controls>
+                      processed=NULL, ## added 2014/02 for programming purposes
                        family=gaussian(),
                        nb_cores=NULL,
                        ... ## pb est risque de passer des args mvs genre HL.method et non HLmethod...
@@ -169,7 +169,8 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
     if ( ! is.null(mc$resid.formula)) mc$resid.model <- mc$resid.formula
     names_nondefault  <- intersect(names(mc),names_FHF) ## mc including dotlist
     FHF[names_nondefault] <- mc[names_nondefault] ##  full HLfit args
-    preprocess.formal.args <- FHF[which(names_FHF %in% names(formals(preprocess)))] 
+    preprocess.formal.args <- FHF[which(names_FHF %in% names(formals(.preprocess)))] 
+    preprocess.formal.args$For <- "corrHLfit"
     preprocess.formal.args$family <- family ## already checked 
     preprocess.formal.args$rand.families <- FHF$rand.family ## because preprocess expects $rand.families 
     preprocess.formal.args$predictor <- FHF$formula ## because preprocess stll expects $predictor 
@@ -185,15 +186,14 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
         familyargs <- family
         familyargs$family <- NULL
         familyargs$binfamily <- NULL
-        ## we need the data list in the corrHLfit envir for the call to makeCheckGeoMatrices
+        ## we need the data list in the corrHLfit envir for the call to .makeCheckGeoMatrices
         preprocess.formal.args$data <- do.call(binomialize,c(list(data=data),familyargs)) ## if data not already binomialized
       }     
     }
-    mc$processed <- do.call(preprocess,preprocess.formal.args,envir=parent.frame(1L))
-    mc$verbose <- .reformat_verbose(eval(mc$verbose),For="corrHLfit")
+    mc$processed <- do.call(.preprocess,preprocess.formal.args,envir=parent.frame(1L))
     ## removing all elements that are matched in processed:
     pnames <- c("data","family","formula","prior.weights","HLmethod","rand.family","control.glm","resid.formula","REMLformula",
-                "resid.model")
+                "resid.model", "verbose")
     for (st in pnames) mc[st] <- NULL 
   }  
   
@@ -203,7 +203,8 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
   attr(hlcor,"corrHLfitcall") <- oricall ## this says the hlcor was returned by corrHLfit
   attr(hlcor,"HLCorcall") <- NULL
   lsv <- c("lsv",ls())
-  hlcor$fit_time <- .timerraw(time1)
+  if ( ! identical(paste(family[[1L]]),"multi")
+       && ! identical(.getProcessed(processed,"verbose",from=1L)["getCall"],TRUE))  hlcor$fit_time <- .timerraw(time1)
   rm(list=setdiff(lsv,"hlcor")) 
   #class(hlcor) <- c(class(hlcor),"corrHLfit")
   return(hlcor)

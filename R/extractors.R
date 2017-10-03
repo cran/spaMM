@@ -1,5 +1,6 @@
+# getPar extract values from a list of lists, controlling that there is no redundancies between the lists => useful t merge lists 
 # 'which' can be any way of indexing a list
-getPar <- function(parlist,name,which=NULL) {
+.getPar <- function(parlist,name,which=NULL) {
   if ( ! is.null(which)) parlist <- parlist[[which]] 
   val <- parlist[[name]] 
   if (is.null(val)) { ## ie name not found a topmost level; scan sublists:
@@ -17,11 +18,11 @@ getPar <- function(parlist,name,which=NULL) {
   val
 }
 
-# getPar(list("1"=list(a=1,b=2),"2"=list(a=3,c=4)),"b") ## 2
-# getPar(list("1"=list(a=1,b=2),"2"=list(a=3,c=4)),"c") ## 4
-# getPar(list("1"=list(a=1,b=2),"2"=list(a=3,c=4)),"a") ## error
-# getPar(list("1"=list(a=1,b=2),"2"=list(a=3,c=4)),"a",which=1) ## 1
-# getPar(list("1"=list(a=1,b=2),"2"=list(a=3,c=4)),"d") ## NULL
+# .getPar(list("1"=list(a=1,b=2),"2"=list(a=3,c=4)),"b") ## 2
+# .getPar(list("1"=list(a=1,b=2),"2"=list(a=3,c=4)),"c") ## 4
+# .getPar(list("1"=list(a=1,b=2),"2"=list(a=3,c=4)),"a") ## error
+# .getPar(list("1"=list(a=1,b=2),"2"=list(a=3,c=4)),"a",which=1) ## 1
+# .getPar(list("1"=list(a=1,b=2),"2"=list(a=3,c=4)),"d") ## NULL
 
 # LMatrix assumed to be dense
 .calc_invL <- function(object, regul.threshold=1e-7) { ## computes inv(L) [not inv(Corr): see calc_invColdoldList]
@@ -39,7 +40,9 @@ getPar <- function(parlist,name,which=NULL) {
         type <-  attr(lmatrix,"type")
         condnum <- kappa(lmatrix,norm="1")
         invlmatrix <- NULL
-        if (type == "cholL_LLt")  {
+        if (type == "from_Q_CHMfactor")  {
+          invlmatrix <- t(as(attr(lmatrix,"Q_CHMfactor"),"sparseMatrix")) ## L=Q^{-T} => invL=Q^T
+        } else if (type == "cholL_LLt")  {
           if (condnum<1/regul.threshold) {
             invlmatrix <- try(forwardsolve(lmatrix,diag(ncol(lmatrix))),silent=TRUE)
             if (inherits(invlmatrix,"try-error")) invlmatrix <- NULL
@@ -49,7 +52,7 @@ getPar <- function(parlist,name,which=NULL) {
           if (condnum<1/regul.threshold) {
             decomp <- attr(lmatrix,attr(lmatrix,"type")) ## of corr matrix !
             if ( all(abs(decomp$d) > regul.threshold) ) {
-              invlmatrix <-  try(ZWZt(decomp$u,sqrt(1/decomp$d)),silent=TRUE)
+              invlmatrix <-  try(.ZWZt(decomp$u,sqrt(1/decomp$d)),silent=TRUE)
               if (inherits(invlmatrix,"try-error")) invlmatrix <- NULL
             }
           }
@@ -113,7 +116,7 @@ getPar <- function(parlist,name,which=NULL) {
 }
 
 
-getHLfit <- function(fitobject) {
+.getHLfit <- function(fitobject) {
   if (inherits(fitobject,"HLfit")) {
     fitobject    
   } else if (inherits(fitobject,"HLCor")) {
@@ -124,7 +127,7 @@ getHLfit <- function(fitobject) {
 } 
 
 fitted.HLfit <- function(object,...) {
-  object <- getHLfit(object)
+  object <- .getHLfit(object)
   object$fv
 }
 
@@ -135,7 +138,7 @@ fitted.HLfit <- function(object,...) {
 }
 
 residuals.HLfit <- function(object, type = c("deviance", "pearson", "response"), ...) {
-  object <- getHLfit(object)
+  object <- .getHLfit(object)
   type <- match.arg(type)
   BinomialDen <- .get_BinomialDen(object) 
   if (is.null(BinomialDen)) BinomialDen <- 1L
@@ -154,10 +157,10 @@ residuals.HLfit <- function(object, type = c("deviance", "pearson", "response"),
 }
 
 ranef.HLfit <- function(object,type="correlated",...) {
-  object <- getHLfit(object)
+  object <- .getHLfit(object)
   lambda.object <- object$lambda.object
   namesTerms <- lambda.object$namesTerms
-  repGroupNames <- unlist(lapply(seq_len(length(namesTerms)),function(it) {
+  repGroupNames <- unlist(lapply(seq_len(length(namesTerms)), function(it) {
     names(namesTerms[[it]]) <- rep(names(namesTerms)[it],length(namesTerms[[it]]))
   })) ## makes group identifiers unique (names of coeffs are unchanged)
   if (type=="correlated") {
@@ -202,12 +205,12 @@ ranef.HLfit <- function(object,type="correlated",...) {
 
 
 fixef.HLfit <- function(object,...) {
-  object <- getHLfit(object)
+  object <- .getHLfit(object)
   object$fixef    
 }
 
 logLik.HLfit <- function(object, which=NULL, ...) {
-  object <- getHLfit(object)
+  object <- .getHLfit(object)
   if (is.null(which)) {
     mess <- .REMLmess(object)
     which <- switch(mess, 
@@ -227,13 +230,13 @@ logLik.HLfit <- function(object, which=NULL, ...) {
 }
 
 vcov.HLfit <- function(object,...) {
-  object <- getHLfit(object)
-  beta_cov <- get_beta_cov_any_version(object)
+  object <- .getHLfit(object)
+  beta_cov <- .get_beta_cov_any_version(object)
   class(beta_cov) <- c("vcov.HLfit",class(beta_cov))
   return(beta_cov)
 }
 
-get_beta_cov_any_version <- function(object) {
+.get_beta_cov_any_version <- function(object) {
   beta_cov <- object$beta_cov
   if (is.null(beta_cov)) {
     return(.get_beta_cov(object))
@@ -242,19 +245,21 @@ get_beta_cov_any_version <- function(object) {
 
 # addition post 1.4.4
 Corr <- function(object,...) { ## compare ?VarCorr
+  trivial <- "No non-trivial correlation matrix for this random effect"
   if (object$spaMM.version<"1.11.57") {
     strucList <- list(dummyid=attr(object$predictor,"LMatrix")) ## back compat
   } else strucList <- object$strucList
   locfn <- function(it) {
     resu <- object$cov.mats[[it]]
     if (is.null(resu)) resu <- .tcrossprod(strucList[[it]],NULL)
+    if (is.null(resu)) resu <- trivial 
     return(resu) ## may still be NULL
   }
   if ( ! is.null(strucList)) {
     resu <- lapply(seq_len(length(strucList)), locfn) ## list for the different ranefs   
   } else {
-    message("No 'non-trivial' correlation matrix of random effects")
-    resu <- NA
+    message(trivial)
+    resu <- list(`1`=trivial) 
   }
   return(resu)
 }

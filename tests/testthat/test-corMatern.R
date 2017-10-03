@@ -9,6 +9,6 @@ bf <- lme(fixed = migStatus ~ means, data = blackcapD, random = ~ 1 | dummy,
     correlation = corMatern(form = ~ longitude+latitude  | dummy), 
     method = "ML")
 
-expect_equal(logLik(bf)[[1]],-7.941674,tolerance=1e-6)
-expect_equal(exp((bf$modelStruct$corStruct)[[1]]),18.35958,tolerance=1e-5) ## nu
-expect_equal(exp((bf$modelStruct$corStruct)[[2]]),0.6285744,tolerance=1e-5) ## range
+testthat::expect_equal(logLik(bf)[[1]],-7.941674,tolerance=1e-6)
+testthat::expect_equal(exp((bf$modelStruct$corStruct)[[1]]),18.35958,tolerance=1e-5) ## nu
+testthat::expect_equal(exp((bf$modelStruct$corStruct)[[2]]),0.6285744,tolerance=1e-5) ## range

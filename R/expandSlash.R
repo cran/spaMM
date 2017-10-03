@@ -26,7 +26,7 @@
     return(.spMMexpandSlash(list(bb)))
   #### ELSE :
     unlist(lapply(bb, function(x) {
-      if (length(x) > 2 && is.list(trms <- slashTerms(x[[3]])))
+      if (length(x) > 2 && is.list(trms <- .slashTerms(x[[3]])))
         ## lapply(unlist(...)) - unlist returns a flattened list
         lapply(unlist(makeInteraction(trms)),
                function(trm) substitute(foo|bar, list(foo = x[[2]], bar = trm)))

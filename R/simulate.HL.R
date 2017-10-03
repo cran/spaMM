@@ -29,7 +29,18 @@
   return(etaFix)
 }
 
-
+.r_resid_var <- function(mu,phiW,sizes,COMP_nu,NB_shape,famfam) {switch(famfam,
+                                                          gaussian = rnorm(length(mu),mean=mu,sd=sqrt(phiW)),
+                                                          poisson = rpois(length(mu),mu),
+                                                          binomial = rbinom(length(mu),size=sizes,prob=mu),
+                                                          Gamma = rgamma(length(mu),shape= mu^2 / phiW, scale=phiW/mu), ## ie shape increase with prior weights, consistent with Gamma()$simulate / spaMM_Gamma()$simulate
+                                                          COMPoisson = sapply(mu, function(muv) {
+                                                            lambda <- family$linkfun(muv,log=FALSE)
+                                                            .COMP_simulate(lambda=lambda,nu=COMP_nu)
+                                                          }),
+                                                          negbin = MASS::rnegbin(mu, theta=NB_shape),
+                                                          stop("(!) random sample from given family not yet implemented")
+)} ## vector-valued function from vector input
 
 # simulate.HLfit(fullm[[2]],newdata=fullm[[1]]$data,size=fullm[[1]]$data$total) for multinomial avec binomial nichées de dimension différentes
 # FR->FR misses the computation of random effects for new spatial positions: cf comments in the code below
@@ -86,7 +97,7 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
         vec_n_u_h <- diff(cum_n_u_h)
       } else { ## unconditional MM with newdata
         #   ## [-2] so that HLframes does not try to find the response variables  
-        allFrames <- HLframes(formula=attr(object$predictor,"oriFormula")[-2],data=newdata) 
+        allFrames <- .HLframes(formula=attr(object$predictor,"oriFormula")[-2],data=newdata) 
         FL <- .spMMFactorList(object$predictor, allFrames$mf, 0L, drop=TRUE) 
         ##### the following code with NULL LMatrix ignores spatial effects with newdata:
         ZALlist <- .compute_ZAXlist(XMatrix=NULL,ZAlist=FL$Design)
@@ -97,7 +108,7 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
         ZALlist <- lapply(seq_len(length(ZALlist)),as.matrix)
         ZAL <- do.call(cbind,ZALlist)
       }
-      lcrandfamfam <- attr(object$rand.families,"lcrandfamfam") ## unlist(lapply(object$rand.families,function(rf) {tolower(rf$family)})) 
+      lcrandfamfam <- attr(object$rand.families,"lcrandfamfam") ## unlist(lapply(object$rand.families, function(rf) {tolower(rf$family)})) 
       fittedLambda <- object$lambda.object$lambda_est
       newV <- lapply(seq(length(vec_n_u_h)), function(it) {
         nr <- vec_n_u_h[it]
@@ -130,22 +141,10 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
   } else if (famfam =="negbin") {
     NB_shape <- environment(object$family$aic)$shape
   } 
-  respv <- function(mu) {switch(famfam,
-                                gaussian = rnorm(length(mu),mean=mu,sd=sqrt(phiW)),
-                                poisson = rpois(length(mu),mu),
-                                binomial = rbinom(length(mu),size=sizes,prob=mu),
-                                Gamma = rgamma(length(mu),shape= mu^2 / phiW, scale=phiW/mu), ## ie shape increase with prior weights, consistent with Gamma()$simulate / spaMM_Gamma()$simulate
-                                COMPoisson = sapply(mu,function(muv) {
-                                  lambda <- family$linkfun(muv,log=FALSE)
-                                  .COMP_simulate(lambda=lambda,nu=COMP_nu)
-                                }),
-                                negbin = MASS::rnegbin(mu, theta=NB_shape),
-                                stop("(!) random sample from given family not yet implemented")
-  )} ## vector-valued function from vector input
   if (nsim>1) { ## then mu has several columns
-    resu <- apply(mu,2,respv) ## matrix
+    resu <- apply(mu,2, .r_resid_var, phiW=phiW,sizes=sizes,COMP_nu=COMP_nu,NB_shape=NB_shape,famfam=famfam) ## matrix
   } else {
-    resu <- respv(mu)
+    resu <- .r_resid_var(mu,phiW=phiW,sizes=sizes,COMP_nu=COMP_nu,NB_shape=NB_shape,famfam=famfam)
   }
   return(resu)    
 }
@@ -164,7 +163,7 @@ simulate.HLfitlist <- function(object,nsim=1,seed=NULL,newdata=object[[1]]$data,
     on.exit(assign(".Random.seed", R.seed, envir = .GlobalEnv))
   }
   replicate(nsim, {
-    allrownames <- unique(unlist(lapply(object,function(hl){rownames(hl$data)})))
+    allrownames <- unique(unlist(lapply(object, function(hl){rownames(hl$data)})))
     resu <- matrix(0,nrow=length(allrownames),ncol=length(object)) ## two cols if 3 types
     cumul <- 0
     if (length(sizes) != nrow(newdata)) {

@@ -12,14 +12,14 @@ using Eigen::VectorXd;
 
 bool print_sparse_QR=false;
 
-// [[Rcpp::export]]
+// [[Rcpp::export(.sparse_LDLp_from_XtX)]]
 SEXP sparse_LDLp_from_XtX( SEXP XX, bool pivot ){
   if (pivot) {
     return(sparse_LDL_from_XtX_oT<Eigen::COLAMDOrdering<int> >( XX, pivot ));
   } else return(sparse_LDL_from_XtX_oT<Eigen::NaturalOrdering<int> >( XX, pivot )); 
 }
 
-// [[Rcpp::export]]
+// [[Rcpp::export(.lmwith_sparse_LDLp)]]
 SEXP lmwith_sparse_LDLp( SEXP XX, SEXP yy, bool returntQ, bool returnR, bool pivot ){
   if (pivot) {
     return(lmwith_sparse_LDL_oT<Eigen::COLAMDOrdering<int> >( XX,  yy, returntQ,
@@ -28,14 +28,14 @@ SEXP lmwith_sparse_LDLp( SEXP XX, SEXP yy, bool returntQ, bool returnR, bool piv
                                                                     returnR, pivot )); 
 }
 
-// [[Rcpp::export]]
+// [[Rcpp::export(.sparse_LLp_from_XtX)]]
 SEXP sparse_LLp_from_XtX( SEXP XX, bool pivot ){
   if (pivot) {
     return(sparse_LL_from_XtX_oT<Eigen::COLAMDOrdering<int> >( XX, pivot ));
   } else return(sparse_LL_from_XtX_oT<Eigen::NaturalOrdering<int> >( XX, pivot )); 
 }
 
-// [[Rcpp::export]]
+// [[Rcpp::export(.lmwith_sparse_LLp)]]
 SEXP lmwith_sparse_LLp( SEXP XX, SEXP yy, bool returntQ, bool returnR, bool pivot ){
   if (pivot) {
     return(lmwith_sparse_LL_oT<Eigen::COLAMDOrdering<int> >( XX,  yy, returntQ,
@@ -45,7 +45,7 @@ SEXP lmwith_sparse_LLp( SEXP XX, SEXP yy, bool returntQ, bool returnR, bool pivo
 }
 
 
-// [[Rcpp::export]]
+// [[Rcpp::export(.lmwithQR)]]
 SEXP lmwithQR( SEXP XX, SEXP yy, bool returntQ, bool returnR ){
   if (printDebug)   Rcout <<"debut lmwithQR()"<<std::endl;
   const Map<MatrixXd> X(as<Map<MatrixXd> >(XX));
@@ -67,7 +67,7 @@ SEXP lmwithQR( SEXP XX, SEXP yy, bool returntQ, bool returnR ){
   return resu;
 }
 
-// [[Rcpp::export]]
+// [[Rcpp::export(.lmwithQRP)]]
 SEXP lmwithQRP( SEXP XX, SEXP yy, bool returntQ, bool returnR ){
   if (printDebug)   Rcout <<"debut lmwithQRP()"<<std::endl;
   const Map<MatrixXd> X(as<Map<MatrixXd> >(XX));
@@ -98,7 +98,7 @@ SEXP lmwithQRP( SEXP XX, SEXP yy, bool returntQ, bool returnR ){
  * => problem for Pdiag calculation in particular.
 */
 
-// [[Rcpp::export]]
+// [[Rcpp::export(.lmwith_sparse_QRp)]]
 SEXP lmwith_sparse_QRp( SEXP XX, SEXP yy, 
                        bool returntQ, // I N H I B I T E D
                        bool returnR, bool pivot ){
@@ -111,7 +111,7 @@ SEXP lmwith_sparse_QRp( SEXP XX, SEXP yy,
                                                                  returnR, pivot )); 
 }
 
-// [[Rcpp::export]]
+// [[Rcpp::export(.Rcpp_chol_R)]]
 SEXP Rcpp_chol_R( SEXP AA ){ // upper tri as in R chol()
   if (printDebug)   Rcout <<"debut Rcpp_chol_R()"<<std::endl;
   const Eigen::LLT<MatrixXd> llt(as<Map<MatrixXd> >(AA));
@@ -129,7 +129,8 @@ SEXP Rcpp_chol_R( SEXP AA ){ // upper tri as in R chol()
   return out;
 } // such that A = R'.R as in R's chol()
 
-// [[Rcpp::export]]
+// only in if (FALSE) {...} blocks of code: 
+// [[Rcpp::export(.LevMar_cpp)]] 
 SEXP LevMar_cpp( SEXP AA, SEXP LMrhs ){ // 
   if (printDebug)   Rcout <<"begin levMar_cpp"<<std::endl;
   const Map<MatrixXd> A(as<Map<MatrixXd> >(AA));

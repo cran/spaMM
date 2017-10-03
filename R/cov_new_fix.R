@@ -1,9 +1,8 @@
-.calc_corr_from_dist <- function(resu, object, spatial.model, which) {
-  corr.model <- as.character(spatial.model[[1]])
+.calc_corr_from_dist <- function(resu, object, corr.model, which) {
   if (corr.model=="AR1") {
     args <-object$ranFix[which(names(object$ranFix) %in% c("ARphi"))]
-    if (which$no) resu$uuCnewold <- args$ARphi^resu$uuCnewold  
-    if (which$nn) resu$uuCnewnew <- args$ARphi^resu$uuCnewnew  
+    if (which$no) resu$uuCnewold <- args$ARphi^resu$uuCnewold ## F I X M E probably wrong if uuCnewold element  can be 0
+    if (which$nn) resu$uuCnewnew <- args$ARphi^resu$uuCnewnew  ## F I X M E same
   } else {
     args <-object$ranFix[which(names(object$ranFix) %in% c("nu","Nugget"))] ## so that rho=1 in MaternCorr
     if (which$no) resu$uuCnewold <- do.call(MaternCorr,args=c(args,list(d=resu$uuCnewold)))  
@@ -45,8 +44,8 @@
   corr.model <- attr(Lmatrix,"corr.model")
   if (corr.model=="random-coef") {
     LforLv <- .calc_latentL(attr(Lmatrix,"cov.mat"))$u
-    old_corr <- tcrossprodCpp(LforLv,NULL)
-  } else old_corr <- tcrossprodCpp(Lmatrix,NULL)
+    old_corr <- .tcrossprodCpp(LforLv,NULL)
+  } else old_corr <- .tcrossprodCpp(Lmatrix,NULL)
   attr(old_corr,"ranefs") <- attr(Lmatrix,"ranefs")
   attr(old_corr,"corr.model") <- attr(Lmatrix,"corr.model")
   return(old_corr)
@@ -92,11 +91,11 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
   locform <- attr(object$predictor,"oriFormula")
   ## possible change of random effect terms
   if ( .noRanef(re.form)) { ## i.e. if re.form implies that there is no random effect
-    locform <- nobarsMM(locform)  ## 
+    locform <- .nobarsMM(locform)  ## 
   } else if (inherits(re.form,"formula")) { ## ie there is a nontrivial re.form
     lhs <- .DEPARSE(locform[[2L]]) ## response
-    fixterms <- .DEPARSE(nobarsMM(locform)[[3L]]) ## fixed effect terms
-    ranterms <- parseBars(re.form)  ## random effects 
+    fixterms <- .DEPARSE(.nobarsMM(locform)[[3L]]) ## fixed effect terms
+    ranterms <- .parseBars(re.form)  ## random effects 
     locform <- as.formula(paste(lhs,"~", paste(fixterms,"+",paste(ranterms,collapse="+")) )) 
   } ## else keep oriFormula
   # checking variables in the data
@@ -125,7 +124,7 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
     }
   }
   ## preparation for fixed effects
-  allFrames <- HLframes(formula=locform,data=locdata,fitobject=object)
+  allFrames <- .HLframes(formula=locform,data=locdata,fitobject=object)
   newX.pv <- allFrames$X ## contains columns for the offset and columns for the other variables
   neednewZAlist <- needNewEta <- ( ( ! is.null(newdata) ) || ! is.null(re.form))
   # newX.pv must intersect non-NA elements of fixef; see comment and code in newetaFix
@@ -134,14 +133,16 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
   RESU <- list(locdata=locdata,newX.pv=newX.pv[,validnames,drop=FALSE]) 
   if (needNewEta) RESU$etaFix <- .newetaFix(object,allFrames,validnames=validnames)  ## new fixed effects (or [part of] new linear predictor if re.form)      
   ## preparation for random effects
-  spatial.terms <- findSpatial(locform) ## list of formula terms
+  spatial.terms <- .findSpatial(locform) ## list of formula terms
   RESU$spatial.model <- spatial.model <- spatial.terms[[1L]] ## one formula term, e.g Matern(1|...)
-  if ( ! is.null(newdata)) {
-    if ( ! is.null(spatial.model)) { 
-      if ((asc <- as.character(spatial.model[[1L]])) %in% c("adjacency","ar1","corrMatrix")) { ## AR1  vs ar1 ?
-        stop(paste("Prediction in 'newdata' not implemented or not possible for models including a", asc,"term."))
+  if ( ! is.null(spatial.model)) { 
+    corr.model <- as.character(spatial.model[[1L]])
+    if ( ! is.null(newdata)) { 
+      if (corr.model %in% c("adjacency","corrMatrix"#,"AR1"
+      )) { 
+        stop(paste("Prediction in 'newdata' not implemented or not possible for models including a", corr.model,"term."))
       } 
-    } 
+    }
   }
   # newZAlist and subZAlist appear to have distinct usages since they are created under different conditions.
   # subZAlist is a subset of the old ZA, newZAlist contains new ZA
@@ -154,9 +155,10 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
   } else {
     ORIspatialOne <- which(attr(object$ZAlist,"ranefs") == spatial.model) ## strictly a spatial one, not other correlated ones
     if (inherits(re.form,"formula")) {
-      ranefs <- parseBars(locform) ## note importance for the computation of newZAlist below
+      ranefs <- .parseBars(locform) ## note importance for the computation of newZAlist below
       nrand <- length(ranefs)
-      newinold <- sapply(ranefs, function(v) {which(v==attr(object$ZAlist,"ranefs"))})
+      #newinold <- sapply(ranefs, function(v) {which(v==attr(object$ZAlist,"ranefs"))})
+      newinold <- sapply(lapply(ranefs, `==`, y= attr(object$ZAlist,"ranefs")), which) ## FIXME inefficient code
       subZAlist <- object$ZAlist[newinold] ## and reordered
       sublambda <- object$lambda[newinold]
     } else {
@@ -194,13 +196,13 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
         oldLMatrix <- attr(object$predictor,"LMatrix") ## back compat
       } else oldLMatrix <- object$strucList[[ORIspatialOne]]
       if (is.null(newdata)) {
-        uuCnewold <- tcrossprodCpp(oldLMatrix,NULL) ## as in Corr()
+        uuCnewold <- .tcrossprod(oldLMatrix,NULL) ## as in Corr() ## sparse in AR1 ## (fixem but then a sparse version of the prediction code ...?)
         uuCnewnew <- NULL
       } else {
         which <- list(no= needNewEta, nn= needNewNew)
-        uunewCorrs <- calcNewCorrs(object=object,locdata=locdata,
+        uunewCorrs <- .calcNewCorrs(object=object,locdata=locdata,
                                    which=which,
-                                   spatial.model=spatial.model)
+                                   corr.model=corr.model)
         ## matrices, not list of matrices which are constructed later
         uuCnewnew <- uunewCorrs$uuCnewnew
         uuCnewold <- uunewCorrs$uuCnewold
@@ -215,7 +217,7 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
     RESU$oldnewClist <- .calc_corr_list(uuCnewold, spatialOne, subZAlist, FL) ## non-trivial value [I] if uuCnewold is NULL
     olduniqueGeo <- attr(object,"info.uniqueGeo")
     geonames <- colnames(olduniqueGeo)
-    RESU$newuniqueGeo <- calcUniqueGeo(data=locdata[,geonames,drop=FALSE])
+    RESU$newuniqueGeo <- .calcUniqueGeo(data=locdata[,geonames,drop=FALSE])
   } 
   return(RESU)
 }
@@ -233,6 +235,7 @@ get_predCov_var_fix <- function(object, newdata = NULL, fix_X_ZAC.object,fixdata
   fixZAlist <- fix_X_ZAC.object$newZAlist
   spatialOne <- fix_X_ZAC.object$spatialOne
   spatial.model <- fix_X_ZAC.object$spatial.model
+  corr.model <- as.character(spatial.model[[1L]])
   #
   new_X_ZACblob <- .calc_new_X_ZAC(object,newdata=newdata,variances=variances,needNewNew=FALSE) ## called for a correlation block
   if (nrand>1L) {
@@ -243,21 +246,22 @@ get_predCov_var_fix <- function(object, newdata = NULL, fix_X_ZAC.object,fixdata
   newuniqueGeo <- new_X_ZACblob$newuniqueGeo
   oldnewClist <- new_X_ZACblob$oldnewClist  # cf calcNewCorrs
   newZAlist <- new_X_ZACblob$newZAlist
-  rho <- getPar(object$ranFix,"rho")
+  rho <- .getPar(object$ranFix,"rho")
   if ( ! is.null(rho_mapping <- attr(object,"dist_info")$rho.mapping)
-       && length(rho)>1L ) rho <- fullrho(rho=rho,coordinates=colnames(newuniqueGeo),rho_mapping=rho_mapping)
+       && length(rho)>1L ) rho <- .calc_fullrho(rho=rho,coordinates=colnames(newuniqueGeo),rho_mapping=rho_mapping)
   msd.arglist <- list(uniqueGeo=newuniqueGeo,uniqueGeo2=fix_X_ZAC.object$newuniqueGeo,
                       rho=rho,return_matrix=TRUE)
   uuCnewfix <- do.call(make_scaled_dist,msd.arglist)
   uuCnewfix <- .calc_corr_from_dist(resu=list(uuCnewold=uuCnewfix), 
-                                   object=object, spatial.model=spatial.model, 
+                                   object=object, corr.model=corr.model, 
                                    which=list(nn=FALSE,no=TRUE))$uuCnewold
   #
-  CnewfixList <- lapply(seq_len(nrand),function(it) {
+  CnewfixList <- vector("list",nrand)
+  for(it in seq_len(nrand)) {
     if (it %in% spatialOne) { ## avoids running the next algo which is slow on large matrices
-      return(uuCnewfix)
-    } else return(NULL)
-  }) ## should make sure it has the same structure as the other matrix lists
+      CnewfixList[[it]] <- uuCnewfix
+    } else CnewfixList[[it]] <- NULL
+  }
   #######################################################
   #
   ## First component of predCov
@@ -270,7 +274,8 @@ get_predCov_var_fix <- function(object, newdata = NULL, fix_X_ZAC.object,fixdata
   lambda <- object$lambda
   invColdoldList <- .get_invColdoldList(object)
   if (! is.null(CnewfixList) ) {
-    Evarlist <- lapply(seq_len(nrand), function(it) {
+    Evarlist <- vector("list",nrand)
+    for (it in seq_len(nrand)) {
       isEachNewLevelInOld <- attr(oldnewClist[[it]],"isEachNewLevelInOld")
       if ( ! is.null(isEachNewLevelInOld)) { ## non spatial effect: a vector of booleans indicating whether new is in old (qualifies cols of Cnewold)
         Evar <- Diagonal(x=lambda[it]*as.numeric(! isEachNewLevelInOld))
@@ -279,8 +284,8 @@ get_predCov_var_fix <- function(object, newdata = NULL, fix_X_ZAC.object,fixdata
         Evar <- lambda[it] * (CnewfixList[[it]] - Cno_InvCoo_Cof)
       } 
       terme <- newZAlist[[it]][] %id*id% Evar[] %id*id% t(fixZAlist[[it]])[]
-      return(as.matrix(terme))
-    })
+      Evarlist[[it]] <- as.matrix(terme)
+    }
     if (nrand>1L) {Evar <- Reduce("+",Evarlist)} else {Evar <- Evarlist[[1]]}
     predVar <- predVar + Evar
   } 
@@ -297,7 +302,7 @@ get_predCov_var_fix <- function(object, newdata = NULL, fix_X_ZAC.object,fixdata
       cum_n_u_h <- attr(object$lambda.object$lambda,"cum_n_u_h")
       col_info <- attr(dwdlogdisp,"col_info") ## ranefs for which there is a col in dwdlogdisp
       which_ranef_cols <- intersect(col_info$ranef_ids,newinold)
-      u_range <- unlist(lapply(which_ranef_cols,function(it) (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])))
+      u_range <- unlist(lapply(which_ranef_cols, function(it) (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])))
       dwdlogdisp <- dwdlogdisp[u_range,c(which_ranef_cols,col_info$phi_cols)]
     }
     newZACw <- newZAC %*% dwdlogdisp ## typically (nnew * n_u_h) %*% (n_u_h * 2) = nnew * 2 hence small 

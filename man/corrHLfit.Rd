@@ -43,8 +43,7 @@ An optional list of values of parameters specified through \code{init.corrHLfit}
   \item{resid.model, resid.formula}{See identically named \code{\link{HLfit}} arguments.}
 \item{control.dist}{See \code{control.dist} in \code{\link{HLCor}}}
 \item{control.corrHLfit}{
-  This may be used to provide control to the optimizer. In particular, \code{control.corrHLfit$optim} should be a list of arguments for optim, e.g. \code{control.corrHLfit = list(optim=list(control=list(ndeps=rep(2e-3,3))))}
-}
+  This may be used to provide control to the optimizer. In particular, \code{optimize} is used for one-dimensional optimisation, but \code{control.corrHLfit$Optimizer} provide control of the optimizer method in other cases (possible values: \code{"NLOPT_LN_BOBYQA"}, using \code{\link[nloptr]{nloptr}}, and \code{"L-BFGS-B"}, using \code{optim}); and \code{control.corrHLfit$nloptr}, \code{$optimize} and \code{$optim} provide controls for these three optimizers. See \code{\link{fitme}} for default nloptr controls.}
   \item{processed}{For programming purposes, not documented.  }
   \item{family}{Either a \code{\link{family}} or a \code{\link{multi}} value. }
   \item{nb_cores}{Number of cores to use for parallel computations.}
@@ -78,7 +77,7 @@ The return value of an \code{HLCor} call, with additional attributes. The \code{
 
 #### Examples with Matérn correlations
 ## A likelihood ratio test based on the ML fits of a full and of a null model.
-if (spaMM.getOption("example_maxtime")>1) {
+if (spaMM.getOption("example_maxtime")>1.4) {
  data(blackcap)
  fullfit <- corrHLfit(migStatus ~ means+ Matern(1|latitude+longitude),data=blackcap,
                     HLmethod="ML") 

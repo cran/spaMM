@@ -9,8 +9,8 @@ then estimating fixed effects and dispersion parameters using \code{HLfit}.
 }
 \usage{
 HLCor(formula, data, family = gaussian(), ranPars = NULL, distMatrix,
-      uniqueGeo = NULL, adjMatrix, corrMatrix,
-      verbose = c(warn=TRUE,trace=FALSE,summary=FALSE),
+      uniqueGeo = NULL, adjMatrix, corrMatrix, covStruct=NULL,
+      verbose = c(trace=FALSE),
       control.dist = list(), ...)
 }
 %- maybe also 'usage' for other objects documented here.
@@ -47,15 +47,14 @@ HLCor(formula, data, family = gaussian(), ranPars = NULL, distMatrix,
     \code{y ~ adjacency(1|geo.loc)} and \code{<data>$geo.loc} is 2,4,3,1,... the first row/column of the matrix refers to the fourth row of the data. 
 }
   \item{corrMatrix}{
-    A arbitrary (valid) correlation matrix, used if a random effect term of the form\cr
-    \code{corrMatrix(1|<stuff>)} is present. Each row corresponds to levels of a variable <stuff>.
-    This allows to analyze non-spatial model by giving for example a matrix of genetic correlations. See \code{\link{corrMatrix}} for details.
+    A matrix \bold{C} used if a random effect term of the form \code{corrMatrix(1|<stuff>)} is present. This allows to analyze non-spatial model by giving for example a matrix of genetic correlations. Each row corresponds to levels of a variable <stuff>. The covariance matrix of the random effects for each level is then \eqn{\lambda}\bold{C}, where as usual \eqn{\lambda} denotes a variance factor for the random effects (if \bold{C} is a correlation matrix, then  \eqn{\lambda} is the variance, but other cases are possible). See \code{\link{corrMatrix}} for further details.
 }
+  \item{covStruct}{
+    An interface for speficying correlation structures for different types of random effect (\code{corrMatrix} or \code{adjacency}). See \code{\link{covStruct}} for details.
+  }
   \item{verbose}{
     A vector of booleans. \code{trace} controls various diagnostic (possibly messy) messages about the iterations.
-    \code{summary} controls whether a summary of the fit is called by \code{HLfit}.
-    \code{warn} is for programming purposes and best ignored.
-}
+  }
   \item{control.dist}{
    A list of arguments that control the computation of the distance argument of the correlation functions. Possible elements are
    \describe{
@@ -102,7 +101,7 @@ the CAR and SAR models: Journal of Statistical Planning and Inference 121: 311-3
 # see 'adjacency' documentation page
 
 #### Matérn correlation using only the Matern() syntax
-if (spaMM.getOption("example_maxtime")>1.2) {
+if (spaMM.getOption("example_maxtime")>0.8) {
  data(Loaloa)
  HLCor(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
               +Matern(1|longitude+latitude),data=Loaloa,

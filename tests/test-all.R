@@ -3,10 +3,14 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") { ## not on CRAN
     pkg   <- "spaMM"
     require(pkg, character.only=TRUE, quietly=TRUE)
     if (interactive())  {
-      testfiles <- dir("C:/home/francois/travail/stats/spaMMplus/spaMM/package/tests/testthat/",pattern="*.R",full.names = TRUE)
-      timings <- t(sapply(testfiles,function(fich){system.time(source(fich))}))
+      op <- par(ask=FALSE)
+      testfiles <- dir("C:/home/francois/travail/stats/spaMMplus/regressionForCRAN/package/tests/testthat/",pattern="*.R",full.names = TRUE)
+      #oldmaxt <- spaMM.options(example_maxtime=12)
+      timings <- t(sapply(testfiles, function(fich){system.time(source(fich))}))
+      #spaMM.options(oldmaxt)
       print(colSums(timings))
       ## test_package(pkg) ## for an installed package
+      par(op)
     } else {
       report <- test_check(pkg) ## for R CMD check ## report is NULL...
       print(warnings()) # TODO? catch most of these by expect_warning(..)

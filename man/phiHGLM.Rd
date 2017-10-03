@@ -33,7 +33,7 @@ Lee, Y., Nelder, J. A. and Pawitan, Y. (2006) Generalized linear models with ran
 h-likelihood. Chapman & Hall: London.
 }
 \examples{
-if (spaMM.getOption("example_maxtime")>6.1) {
+if (spaMM.getOption("example_maxtime")>4.9) {
  data("crack") # crack data, Lee et al. 2006 chapter 11 etc
  hlfit <- HLfit(y~crack0+(1|specimen),family=Gamma(log),
                 data=crack, HLmethod="REML", 

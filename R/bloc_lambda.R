@@ -50,7 +50,7 @@
           )
           if (NCOL(loclamdata) == 1L && all(loclamdata==1)) { ## 02/2016
             # we practically have the answer and reformat it
-            locarglist$method <- "glm.reformat"
+            locarglist$method <- ".glm_reformat"
             locarglist$start <- unique(locetastart)
             #!# locarglist$control <- list(maxit=1L)
           } else {
@@ -58,7 +58,7 @@
             #!# locarglist$try <- TRUE 
             ## 'try' removed, 04/2016: spaMM_glm.fit  should always provide a final glm
           }
-          glm_lambda <- do.call("calc_dispGammaGLM",locarglist)
+          glm_lambda <- do.call(".calc_dispGammaGLM",locarglist)
           attr(glm_lambda,"whichrand") <- it
           glmname <- paste(it,"from_post_fit",sep="_")
           resglm_lambdaS[[glmname]] <- glm_lambda
@@ -75,7 +75,7 @@
     ## there is a template code with comments in version 260812 of HLfit
   }
   ## now reformat all resglm's results
-  process_resglm_blob <- process_resglm_list(resglm_lambdaS,nrand=nrand)
+  process_resglm_blob <- .process_resglm_list(resglm_lambdaS,nrand=nrand)
   process_resglm_blob$rand_to_glm_map <- rand_to_glm_map
   process_resglm_blob$print_lambdas <- print_lambdas
   return(process_resglm_blob)

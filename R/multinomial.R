@@ -21,7 +21,7 @@ binomialize <- function(data,responses,sortedTypes=NULL,binResponse=c("npos","nn
   if (input=="types") { ## contents are types
     resu <- lapply(seq_sure_depth, function(v){
       npos <- apply(data[,responses,drop=FALSE]==sortedTypes[1],1,sum) ## 1.2.1 21/07
-      nneg <- apply(data[,responses,drop=FALSE],c(1,2),function(v) {v  %in% sortedTypes[-1]})
+      nneg <- apply(data[,responses,drop=FALSE],c(1,2), function(v) {v  %in% sortedTypes[-1]})
       nneg <- apply(nneg,1,sum)    
       locdata <- cbind(npos,nneg,data) 
       names(locdata)[1:2] <- binResponse
@@ -57,8 +57,8 @@ binomialize <- function(data,responses,sortedTypes=NULL,binResponse=c("npos","nn
 
 ## function to construct a table of fitted values = multinomial frequencies 
 fitted.HLfitlist <- function(object,...) {
-  allrownames <- unique(unlist(lapply(object,function(hl){rownames(hl$data)})))
-  fv <- lapply(object,function(hl){
+  allrownames <- unique(unlist(lapply(object, function(hl){rownames(hl$data)})))
+  fv <- lapply(object, function(hl){
     fv <- fitted(hl,...)
     names(fv) <- rownames(hl$data); fv
   })
@@ -76,7 +76,7 @@ fitted.HLfitlist <- function(object,...) {
 }
 
 logLik.HLfitlist <- function(object, which = NULL, ...) {
-  item <- getHLfit(object[[1]])
+  item <- .getHLfit(object[[1]])
   if (is.null(which)) {
     mess <- .REMLmess(item)
     which <- switch(mess, 

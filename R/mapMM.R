@@ -152,7 +152,7 @@ makeTicks <- function(x, ## in canonical scale...
 
   mar.orig <- (par.orig <- par(c("mar", "las", "mfrow")))$mar
   on.exit(par(par.orig))
-  wmaphmap <- calc.plot.dims(x,y,xrange=xrange,yrange=yrange,margin=margin,map.asp=map.asp)  
+  wmaphmap <- .calc_plot_dims(x,y,xrange=xrange,yrange=yrange,margin=margin,map.asp=map.asp)  
   layout(matrix(c(2, 1), ncol = 2L), widths = c(lcm(wmaphmap[1]),lcm(wmaphmap[3])),heights=c(lcm(wmaphmap[2])),respect=TRUE)
   
   par(las = las)
@@ -162,7 +162,7 @@ makeTicks <- function(x, ## in canonical scale...
   par(mar = mar)
   ## SCALE
   plot.new()
-  plotScale(z,levels,key.axes,key.title,axes,col)
+  .plotScale(z,levels,key.axes,key.title,axes,col)
   #
   mar <- mar.orig
   mar[4L] <- 1
@@ -187,7 +187,7 @@ makeTicks <- function(x, ## in canonical scale...
 } ## spaMM.filled.contour
 
 
-calc.plot.dims <- function(x,y,xrange=NULL,yrange=NULL,margin=1/20,map.asp=NULL) {
+.calc_plot_dims <- function(x,y,xrange=NULL,yrange=NULL,margin=1/20,map.asp=NULL) {
   if (is.null(xrange)) {
     xrange <- range(x)
   }
@@ -230,7 +230,7 @@ calc.plot.dims <- function(x,y,xrange=NULL,yrange=NULL,margin=1/20,map.asp=NULL)
   return(c(wmap,hmap,wscale))
 }
 
-plotScale <-function(z,levels,key.axes=NULL,key.title=NULL,axes,col) {
+.plotScale <- function(z,levels,key.axes=NULL,key.title=NULL,axes,col) {
   zrange <- range(z)
   plot.window(xlim = c(0, 1), ylim = range(z),xaxs = "i", 
               yaxs = "i")
@@ -263,7 +263,7 @@ spaMMplot2D <- function (x,y,z,
   nlevels <- length(levels)-1
   zscaled <- 1 + floor(nlevels*(0.000001+0.999998*(z-min(z))/(max(z)-min(z)))) ## makes sure its floor( ]1,nlevels+1[ ) 
   ZColor <- color.palette(n=nlevels) ## bug corrected (spaMM.colors -> color.palette) post 1.4.4  
-  wmaphmap <- calc.plot.dims(x,y,xrange=xrange,yrange=yrange,margin=margin,map.asp=map.asp)  
+  wmaphmap <- .calc_plot_dims(x,y,xrange=xrange,yrange=yrange,margin=margin,map.asp=map.asp)  
   layout(matrix(c(2, 1), ncol = 2L), 
          widths = c(lcm(wmaphmap[1]),lcm(wmaphmap[3])),
          heights=c(lcm(wmaphmap[2])),respect=TRUE)
@@ -276,7 +276,7 @@ spaMMplot2D <- function (x,y,z,
   par(mar = mar)
   ## SCALE
   plot.new()
-  plotScale(z,levels,key.axes,key.title,axes,col)
+  .plotScale(z,levels,key.axes,key.title,axes,col)
   #
   mar <- mar.orig
   mar[4L] <- 1
@@ -363,7 +363,7 @@ mapMM <- function (fitobject,Ztransf=NULL,coordinates,
   }
   pred <- predict(fitobject,variances=variance, binding="fitted")
   if (missing(map.formula)) 
-    map.formula <- as.formula(paste(attr(pred,"fittedName"), " ~ 1 + ", paste(findSpatial(fitobject$predictor))))
+    map.formula <- as.formula(paste(attr(pred,"fittedName"), " ~ 1 + ", paste(.findSpatial(fitobject$predictor))))
   if (is.null(smoothObject)) smoothObject <- fitme(map.formula, data = pred, fixed = list(phi = phi),method="REML")
   smoo <- predict(smoothObject,binding="dummy") ## response column does not appear to be used... 
   x <- smoo[, coordinates[1]]

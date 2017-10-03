@@ -37,7 +37,7 @@ A land mask can be produced out of \code{worldcountries} by filling the countrie
 }
 \seealso{\url{http://kimura.univ-montp2.fr/~rousset/spaMM/example_raster.html} for uses of \code{worldcountries} and \code{oceanmask}} 
 \examples{
-if (spaMM.getOption("example_maxtime")>0.9) {
+if (spaMM.getOption("example_maxtime")>1.1) {
 
 data(seaMask)
 ## plot of predictions of behaviour for a land bird:
@@ -50,7 +50,7 @@ if (require(maps)){
  ll <- blackcap[,c("longitude","latitude")]
  pointmask <- function(xy,r=1,npts=12) {
   theta <- 2*pi/npts *seq(npts)
-  hexas <- lapply(seq(nrow(xy)),function(li){
+  hexas <- lapply(seq(nrow(xy)), function(li){
     p <- as.numeric(xy[li,])
     hexa <- cbind(x=p[1]+r*cos(theta),y=p[2]+r*sin(theta))
     rbind(rep(NA,2),hexa) ## inital NA before each polygon

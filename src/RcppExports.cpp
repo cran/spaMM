@@ -248,18 +248,6 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// pseudoSolvediag
-SEXP pseudoSolvediag(SEXP XX, SEXP bb);
-RcppExport SEXP spaMM_pseudoSolvediag(SEXP XXSEXP, SEXP bbSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< SEXP >::type XX(XXSEXP);
-    Rcpp::traits::input_parameter< SEXP >::type bb(bbSEXP);
-    rcpp_result_gen = Rcpp::wrap(pseudoSolvediag(XX, bb));
-    return rcpp_result_gen;
-END_RCPP
-}
 // e_LevenbergMsolveCpp
 SEXP e_LevenbergMsolveCpp(SEXP AA, SEXP wwAugz, SEXP dd);
 RcppExport SEXP spaMM_e_LevenbergMsolveCpp(SEXP AASEXP, SEXP wwAugzSEXP, SEXP ddSEXP) {

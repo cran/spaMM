@@ -1,4 +1,4 @@
-HL_process.args <- function (...) { ## from gsl package
+.HL_process.args <- function (...) { ## from gsl package
   a <- list(...)
   attr <- attributes(a[[which.max(unlist(lapply(a, length)))]])
   a <- lapply(a, as.vector)
@@ -8,13 +8,13 @@ HL_process.args <- function (...) { ## from gsl package
   return(c(out, attr = list(attr)))
 }
 
-HL_strictify <- function (val, status) { ## from gsl package
+.HL_strictify <- function (val, status) { ## from gsl package
     val[status < 0] <- NaN ##FR inverted the test // gsl package !!
     return(val)
 }
 
 .bessel_lnKnu <- function (nu, x, give = FALSE, strict = TRUE) { ## from bessel_lnKnu in gsl package
-    jj <- HL_process.args(nu, x)
+    jj <- .HL_process.args(nu, x)
     nu.vec <- jj$arg1
     x.vec <- jj$arg2
     attr <- jj$attr
@@ -28,7 +28,7 @@ HL_strictify <- function (val, status) { ## from gsl package
     attributes(err) <- attr
     attributes(status) <- attr
     if (strict) {
-        val <- HL_strictify(val, status)
+        val <- .HL_strictify(val, status)
     }
     if (give) {
         return(list(val = val, err = err, status = status))
@@ -113,10 +113,7 @@ if (F) {
     dim_m <- dim(m)
     if (dim_m[1L]!=dim_m[2L]) { stop("matrix is not square") }
     if (try.chol) {
-      if (inherits(m,"blockDiag")) { 
-        stop("designL.from.Corr code should be allowed again to handle blockDiag objects")
-        #trychol <- RcppChol.blockDiag(m) ## cf pb RcppEigen / generic
-      } else L <- try(.Cholwrap(m),silent=TRUE)
+      L <- try(.Cholwrap(m),silent=TRUE)
       if (inherits(L,"try-error")) {
         mreg <- m *(1-1e-8)
         diag(mreg) <- diag(mreg) + 1e-8 * diag(m) ## allows covMatrix; diag(m) has 1's if m is correlation matrix
@@ -172,13 +169,12 @@ if (F) {
       if (any(d< -1e-08)) {
         ## could occur for two reasons: wrong input matrix; or problem with R's svd which $d are the eigenvalues up to the sign, 
         ##   and thus $d can be <0 for eigenvalues >0 (very rare, observed in a 2x2 matrix) 
-        mess <- pastefrom("correlation matrix has suspiciously large negative eigenvalue(s).")
-        print(mess)
-        return(try(stop(),silent=T)) ## passes control to calling function
+        message("correlation matrix has suspiciously large negative eigenvalue(s).")
+        return(try(stop(),silent=TRUE)) ## passes control to calling function to print correlation params
       } else { ## we have a not-too-suspect decomp
         # d[d< threshold]<- threshold ## wrong for corrmats, would be OK for d2hdv2 computation which uses this function 
         if (any(d<threshold)) d <- threshold + (1-threshold) * d ## 17/05/2014 ## maybe not optimal for covMatrix
-        L <- ZWZt(u,sqrt(d))
+        L <- .ZWZt(u,sqrt(d))
       }
     } 
     colnames(L) <- rownames(L) <- colnames(m) ## for checks in HLfit ## currently typically missing from symSVD  
@@ -186,7 +182,7 @@ if (F) {
   } else {
     u <- symSVD$u ## local copy needed for processing attributes at the end of the function
     d <- symSVD$d ## of corr matrix !
-    L <- ZWZt(u,sqrt(d))  
+    L <- .ZWZt(u,sqrt(d))  
     type <- "symsvd"      
     attr(L,"corr.model") <- symSVD$corr.model
   }
@@ -200,7 +196,7 @@ if (F) {
   return(L)
 } 
 
-`make_scaled_dist` <- function(uniqueGeo,uniqueGeo2=NULL,distMatrix,rho,rho.mapping=seq_len(length(rho)),
+make_scaled_dist <- function(uniqueGeo,uniqueGeo2=NULL,distMatrix,rho,rho.mapping=seq_len(length(rho)),
                                dist.method="Euclidean",return_matrix=FALSE) {
   if (length(rho)>1L && dist.method!="Euclidean") { 
     mess <- pastefrom("'rho' length>1 not allowed for non-Euclidean distance.",prefix="(!) From ")

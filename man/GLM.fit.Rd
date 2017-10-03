@@ -13,12 +13,12 @@
 }
 \usage{
 spaMM_glm.fit(x, y, weights = rep(1, nobs), start = NULL, etastart = NULL, 
-        mustart = NULL, offset = rep(0, nobs), family = gaussian(), 
-        control = list(maxit=200), intercept = TRUE)
+              mustart = NULL, offset = rep(0, nobs), family = gaussian(), 
+              control = list(maxit=200), intercept = TRUE, singular.ok = TRUE)
 spaMM_glm(formula, family = gaussian, data, weights, subset,
-                na.action, start = NULL, etastart, mustart, offset,
-                control = list(...), model = TRUE, method = c("glm.fit","spaMM_glm.fit"),
-                x = FALSE, y = TRUE, contrasts = NULL, strict=FALSE, ...) 
+          na.action, start = NULL, etastart, mustart, offset,
+          control = list(...), model = TRUE, method = c("glm.fit","spaMM_glm.fit"),
+          x = FALSE, y = TRUE, singular.ok = TRUE, contrasts = NULL, strict=FALSE, ...) 
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -87,6 +87,8 @@ All arguments except \code{strict} are common to these functions and their \code
     \code{n * p}, and \code{y} is a vector of observations of length
     \code{n}.
   }
+  
+  \item{singular.ok}{logical; if \code{FALSE} a singular fit is an error.}
   
   \item{contrasts}{an optional list. See the \code{contrasts.arg}
     of \code{model.matrix.default}.}

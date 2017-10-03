@@ -10,7 +10,7 @@
 ## isDiagonal must work on matrix as well as Matrix
 
 
-is.identity <- function( x, matrixcheck=FALSE, tol=1e-8 ) {
+.is_identity <- function( x, matrixcheck=FALSE, tol=1e-8 ) {
   if (inherits(x,"Matrix")) {
     if (inherits(x,"ddiMatrix") ) return(x@diag=="U")
     if (! isDiagonal( x ) ) return( FALSE )

@@ -26,7 +26,7 @@
   for (randit in seq_along(strucList)) {
     lmatrix <- strucList[[randit]]
     corr.model <- attr(lmatrix,"corr.model")
-    if (identical(corr.model,"adjacency") || identical(corr.model,"ar1")) { ## allows only one AR model
+    if (identical(corr.model,"adjacency")) { ## allows only one AR model
       glmit <- lambda.object$rand_to_glm_map[randit]
       RES$lambda[[randit]] <- with(lambda.object,linkinvS[[glmit]](coefficients_lambdaS[[randit]][1]))
       if ("adjd" %in% lambda.object$namesTerms[[randit]]) {
@@ -46,11 +46,11 @@
       }  else RES$lambda[[randit]] <- exp(coeff)
     }
   }
-  ZALd <- ZAL %id*id% Diagonal(x=ZAL_to_ZALd_vec)
+  ZALd <- .m_Matrix_times_Dvec(ZAL, ZAL_to_ZALd_vec)
   ## next 2 lines uses invV= invD- n_x_r %*% r_x_n
   # and the lhs of dvdlam = ZALd %*% t(ZALd)
   lhs_invV.dVdlam <- asDmLR_invV$n_x_r %*% (asDmLR_invV$r_x_n %*% ZALd)  
-  RES$lhs_invV.dVdlam <- sweep( ZALd,1L,asDmLR_invV$invD,`*`) - lhs_invV.dVdlam # (invD- n_x_r %*% r_x_n) %*% ZALd 
+  RES$lhs_invV.dVdlam <- .Dvec_times_m_Matrix(asDmLR_invV$invD, ZALd) - lhs_invV.dVdlam # (invD- n_x_r %*% r_x_n) %*% ZALd 
   RES$rhs_invV.dVdlam <- t(ZALd)
   # lambda^2 *sum(invV.dVdlam* t(invV.dVdlam)) :
   return(RES)
@@ -65,14 +65,14 @@
     iloc <- rep(0,cum_n_u_h[nrand+1L])
     u.range <- (cum_n_u_h[randit]+1L):(cum_n_u_h[randit+1L])
     iloc[u.range] <- 1L
-    i_rhs_invV.dVdlam <- sweep( invV.dV_info$rhs_invV.dVdlam,1L,iloc,`*`)
+    i_rhs_invV.dVdlam <- .Dvec_times_m_Matrix(iloc,invV.dV_info$rhs_invV.dVdlam) # sweep( invV.dV_info$rhs_invV.dVdlam,1L,iloc,`*`)
     loglamInfo[randit,randit] <- .traceAB(invV.dV_info$lhs_invV.dVdlam,i_rhs_invV.dVdlam,
                                           t(i_rhs_invV.dVdlam),t(invV.dV_info$lhs_invV.dVdlam))
     for (randjt in intersect(which,seq_len(randit-1L))) {
       jloc <- rep(0,cum_n_u_h[nrand+1L])
       u.range <- (cum_n_u_h[randjt]+1L):(cum_n_u_h[randjt+1L])
       jloc[u.range] <- 1
-      j_rhs_invV.dVdlam <- sweep( invV.dV_info$rhs_invV.dVdlam,1L,jloc,`*`)
+      j_rhs_invV.dVdlam <- .Dvec_times_m_Matrix(jloc, invV.dV_info$rhs_invV.dVdlam) # sweep( invV.dV_info$rhs_invV.dVdlam,1L,jloc,`*`)
       loglamInfo[randjt,randit] <- .traceAB(invV.dV_info$lhs_invV.dVdlam,i_rhs_invV.dVdlam, 
                                             t(j_rhs_invV.dVdlam),t(invV.dV_info$lhs_invV.dVdlam))
       loglamInfo[randit,randjt] <- loglamInfo[randjt,randit]
@@ -99,11 +99,9 @@
     corr.models <- lapply(strucList,attr,which="corr.model") ## not unlist bc it may contain NULLs
     checkadj <- unlist(lapply(corr.models,identical,y="adjacency"))
     if(any(checkadj)) problems$warnadj <- warning("lambda dispVar component not implemented for adjacency model.")
-    checkar1 <- unlist(lapply(corr.models,identical,y="ar1"))
-    if(any(checkar1)) problems$warnauto <- warning("lambda dispVar component not implemented for autoregressive model.")
     checkrancoef <- unlist(lapply(corr.models,identical,y="random-coef"))
     if(any(checkrancoef)) problems$warnauto <- warning("lambda dispVar component not implemented for random-coefficients model.")
-    others <- ! (checkadj | checkar1 | checkrancoef)
+    others <- ! (checkadj | checkrancoef)
     if (any(others)) {
       if (is.null(dvdloglamMat)) {
         ## note that .get_logdispObject is computed on request by .get_logdispObject()
@@ -183,7 +181,7 @@
       # no use of sqrt because adjd can be negative
       #invV.dVdrho <- (invV %id*id% ZAL) %*% ( Diagonal(x=lambda*adjd/(denom^2)) %id*id% t(ZAL))
       lhs_invV.dVdrho <- asDmLR_invV$n_x_r %*% (asDmLR_invV$r_x_n %*% ZAL)  
-      lhs_invV.dVdrho <- sweep( ZAL,1L,asDmLR_invV$invD,`*`) - lhs_invV.dVdrho
+      lhs_invV.dVdrho <- .Dvec_times_m_Matrix(asDmLR_invV$invD, ZAL) - lhs_invV.dVdrho # sweep( ZAL,1L,asDmLR_invV$invD,`*`) - lhs_invV.dVdrho
       rhs_invV.dVdrho <- ( Diagonal(x=lambda*invV.dV_info$adjd_denom2) %id*id% t(ZAL)) ## FIXME curently meaningful for only one lambda element
       #logdispInfo["rho","rho"] <- sum(invV.dVdrho*t(invV.dVdrho))
       logdispInfo[dispcols$rho,dispcols$rho] <- .traceAB(lhs_invV.dVdrho,rhs_invV.dVdrho,t(rhs_invV.dVdrho),t(lhs_invV.dVdrho))
@@ -192,7 +190,7 @@
           iloc <- rep(0,cum_n_u_h[nrand+1L])
           u.range <- (cum_n_u_h[randit]+1L):(cum_n_u_h[randit+1L])
           iloc[u.range] <- 1L
-          i_rhs_invV.dVdlam <- sweep( invV.dV_info$rhs_invV.dVdlam,1L,iloc,`*`)
+          i_rhs_invV.dVdlam <- .Dvec_times_m_Matrix(iloc,invV.dV_info$rhs_invV.dVdlam) # sweep( invV.dV_info$rhs_invV.dVdlam,1L,iloc,`*`)
           logdispInfoBlock[randit] <- .traceDB(asDmLR_invV$invD, t(rhs_invV.dVdrho),t(lhs_invV.dVdrho)) -
             .traceAB(invV.dV_info$lhs_invV.dVdlam, i_rhs_invV.dVdlam,t(rhs_invV.dVdrho),t(lhs_invV.dVdrho))
         }
@@ -216,7 +214,7 @@
           iloc <- rep(0,cum_n_u_h[nrand+1L])
           u.range <- (cum_n_u_h[randit]+1L):(cum_n_u_h[randit+1L])
           iloc[u.range] <- 1L
-          i_rhs_invV.dVdlam <- sweep( invV.dV_info$rhs_invV.dVdlam,1L,iloc,`*`)
+          i_rhs_invV.dVdlam <- .Dvec_times_m_Matrix(iloc, invV.dV_info$rhs_invV.dVdlam) # sweep( invV.dV_info$rhs_invV.dVdlam,1L,iloc,`*`)
           logdispInfoBlock[randit] <- .traceDB(asDmLR_invV$invD, invV.dV_info$lhs_invV.dVdlam, i_rhs_invV.dVdlam) -
             .traceAB(invV.dV_info$lhs_invV.dVdlam, i_rhs_invV.dVdlam, asDmLR_invV$n_x_r, asDmLR_invV$r_x_n)
         }
@@ -238,7 +236,7 @@
   }
 }
 
-calc_logdisp_cov <- function(object, dvdloglamMat=NULL, dvdlogphiMat=NULL, asDmLR_invV=NULL) {
+.calc_logdisp_cov <- function(object, dvdloglamMat=NULL, dvdlogphiMat=NULL, asDmLR_invV=NULL) {
   if (object$spaMM.version>"1.11.60") {
     .calc_logdisp_cov_new(object=object, dvdloglamMat=dvdloglamMat, dvdlogphiMat=dvdlogphiMat, asDmLR_invV=asDmLR_invV)
   } else {

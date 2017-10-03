@@ -7,7 +7,7 @@
   }
 }
 
-get_valid_beta_coefs <- function(X,offset,family,y,weights) {
+.get_valid_beta_coefs <- function(X,offset,family,y,weights) {
   vrepr <- rcdd::scdd(rcdd::makeH(a1=-X,b1=offset))$output ## convex hull of feasible coefs
   if (nrow(vrepr)==0L) {
     stop("The model cannot be fitted: \n given 'x' and 'offset', only eta=0 might satisfy logical constraints.")
@@ -21,7 +21,7 @@ get_valid_beta_coefs <- function(X,offset,family,y,weights) {
     if (length(which( ! verticesRows))>0L) {
       ## generate combinations of vertices and directions:
       dirS <- t(vrepr[ ! verticesRows,-c(1:2),drop=FALSE])
-      dirS <- apply(dirS,2L,function(v) v/norm(matrix(v),type="2")) ## normalize direction vectors
+      dirS <- apply(dirS,2L, function(v) v/norm(matrix(v),type="2")) ## normalize direction vectors
       dirS <- 0.001* (dirS + rowMeans(dirS))
       if (is.matrix(betaS)) {
         betaS.cols <- split(betaS, col(betaS))
@@ -31,44 +31,45 @@ get_valid_beta_coefs <- function(X,offset,family,y,weights) {
     etaS <- X %*% betaS ## col vectors of predicted etaS
     etaS <- etaS + offset
     muS <- family$linkinv(etaS)
-    devS <- apply(muS,2,function(mu) sum(family$dev.resids(y, mu=mu, weights)))
+    devS <- apply(muS,2, function(mu) sum(family$dev.resids(y, mu=mu, weights)))
     beta <- betaS[,which.min(devS)]
     return(beta)
   }
 }
 
+.eval_gain_LevM_spaMM_GLM <- function(LevenbergMstep_result,family, x ,coefold,devold, offset,y,weights) { 
+  dbeta <- LevenbergMstep_result$dbetaV
+  beta <- coefold + dbeta
+  eta <- (x %*% beta)[] + offset
+  if (family$link=="log") {eta <- pmin(eta,30)} ## cf similar code in muetafn
+  if (family$link=="inverse" && family$family=="Gamma") {
+    etamin <- sqrt(.Machine$double.eps)
+    eta[eta<etamin] <- etamin ## eta must be > 0
+  } ## cf similar code in muetafn
+  mu <- family$linkinv(eta)
+  dev <- suppressWarnings(sum(family$dev.resids(y, mu, weights)))
+  if (is.infinite(dev) || is.na(dev)) {  
+    gainratio <- -1
+    conv_dev <- Inf
+  } else {
+    summand <- dbeta*(LevenbergMstep_result$rhs+ LevenbergMstep_result$dampDpD * dbeta) 
+    ## In the summand, all terms should be positive. conv_dbetaV*rhs should be positive. 
+    # However, numerical error may lead to <0 or even -Inf
+    #  Further, if there are both -Inf and +Inf elements the sum is NaN and the fit fails.
+    summand[summand<0] <- 0
+    denomGainratio <- sum(summand)
+    ddev <- devold-dev
+    conv_dev <- abs(ddev)/(1+abs(dev))
+    gainratio <- 2*ddev/denomGainratio 
+  }
+  return(list(gainratio=gainratio,dev=dev,beta=beta,eta=eta,mu=mu,conv_dev=conv_dev))
+}  
 
 spaMM_glm.fit <- function (x, y, weights = rep(1, nobs), 
                      start = NULL, ## beta coefs... needed for the LevenbergM algo
                      etastart = NULL, mustart = NULL, offset = rep(0, nobs), family = gaussian(), 
-                          control = list(maxit=200), intercept = TRUE) 
+                     control = list(maxit=200), intercept = TRUE, singular.ok = TRUE) 
 {
-  eval_gain_LM <- function() {  
-    dbeta <- LevenbergMstep_result$dbetaV
-    beta <- coefold + dbeta
-    eta <- (x %*% beta)[] + offset
-    if (family$link=="log") {eta <- pmin(eta,30)} ## cf similar code in muetafn
-    if (family$link=="inverse" && family$family=="Gamma") {
-      etamin <- sqrt(.Machine$double.eps)
-      eta[eta<etamin] <- etamin ## eta must be > 0
-    } ## cf similar code in muetafn
-    mu <- linkinv(eta)
-    dev <- suppressWarnings(sum(dev.resids(y, mu, weights)))
-    if (is.infinite(dev) || is.na(dev)) {  
-      gainratio <- -1
-    } else {
-      summand <- dbeta*(LevenbergMstep_result$rhs+ LevenbergMstep_result$dampDpD * dbeta) 
-      ## In the summand, all terms should be positive. conv_dbetaV*rhs should be positive. 
-      # However, numerical error may lead to <0 or even -Inf
-      #  Further, if there are both -Inf and +Inf elements the sum is NaN and the fit fails.
-      summand[summand<0] <- 0
-      denomGainratio <- sum(summand)
-      #cat("eval_gain_LM ");print(c(devold,dev,denomGainratio))
-      gainratio <- 2*(devold-dev)/(1e-8+denomGainratio)
-    }
-    return(list(gainratio=gainratio,dev=dev,beta=beta,eta=eta,mu=mu))
-  }  
-
   control <- do.call("glm.control", control)
   x <- as.matrix(x)
   xnames <- dimnames(x)[[2L]]
@@ -91,11 +92,8 @@ spaMM_glm.fit <- function (x, y, weights = rep(1, nobs),
   dev.resids <- family$dev.resids
   aic <- family$aic
   mu.eta <- family$mu.eta
-  unless.null <- function(x, if.null) if (is.null(x)) 
-    if.null
-  else x
-  valideta <- unless.null(family$valideta, function(eta) TRUE)
-  validmu <- unless.null(family$validmu, function(mu) TRUE)
+  valideta <- family$valideta
+  validmu <- family$validmu
   n <- NULL ## to avoid an R CMD check NOTE which cannot see that n will be set by eval(family$initialize)
   if (is.null(mustart)) {
     eval(family$initialize) 
@@ -178,6 +176,7 @@ spaMM_glm.fit <- function (x, y, weights = rep(1, nobs),
           stop(sprintf(ngettext(nobs, "X matrix has rank %d, but only %d observation", 
                                 "X matrix has rank %d, but only %d observations"), 
                        fit$rank, nobs), domain = NA)
+        if (!singular.ok && fit$rank < nvars) stop("singular fit encountered")        
         ## calculate updated values of eta and mu with the new coef:
         start[fit$pivot] <- fit$coefficients
         eta <- (x %*% start)[]
@@ -195,7 +194,7 @@ spaMM_glm.fit <- function (x, y, weights = rep(1, nobs),
             positive_eta <- (positive_eta || (family$family %in% c("poisson","negbin") && family$link %in% c("identity","sqrt"))) 
             if (positive_eta) {
               if (requireNamespace("rcdd",quietly=TRUE)) {
-                start <- get_valid_beta_coefs(X=x,offset=offset,family,y,weights)
+                start <- .get_valid_beta_coefs(X=x,offset=offset,family,y,weights)
                 eta <- (x %*% start)[]
                 mu <- linkinv(eta <- eta + offset)
                 dev <- suppressWarnings(sum(dev.resids(y, mu, weights)))
@@ -234,27 +233,37 @@ spaMM_glm.fit <- function (x, y, weights = rep(1, nobs),
       } else {
         while(TRUE) {
           if (inherits(wX,"Matrix")) { ## maybe never the case until upstream code is modified
-            LevenbergMstep_result <- LevenbergMsolve_Matrix(wAugX=wX, LM_wAugz=LM_wz, damping=damping)
-          } else LevenbergMstep_result <- LevenbergMstepCallingCpp(wAugX=wX, LM_wAugz=LM_wz, damping=damping)
-          levMblob <- eval_gain_LM() ## Uses a local function to keep the change in start,eta,mu private
-          if (levMblob$gainratio<0) { ## failure: increase damping and continue iterations
-            damping <- dampingfactor*damping
-            dampingfactor <- dampingfactor*2
-          } else { ## success
-            damping <- damping * max(1/3,1-(2*levMblob$gainratio-1)^3)  
+            LevenbergMstep_result <- .LevenbergMsolve_Matrix(wAugX=wX, LM_wAugz=LM_wz, damping=damping)
+          } else LevenbergMstep_result <- .LevenbergMstepCallingCpp(wAugX=wX, LM_wAugz=LM_wz, damping=damping)
+          ## LevenbergMstep_result contains rhs, the gradient of the objective, essentially  crossprod(wX,LM_wz)
+          #
+          ## Uses a function call to keep the change in beta->start,eta,mu,dev private
+          levMblob <- .eval_gain_LevM_spaMM_GLM(LevenbergMstep_result,family, x ,coefold,devold, offset,y,weights) 
+          ## (dev crit in glm.fit style, vs $dbeta in auglinmodfit style)
+          ## But it seems to make sense that the gradient must vanish.
+          ## D(dev) and dbetav may be small for non-zero gradient, part. with large damping.
+          gainratio <- levMblob$gainratio
+          conv_crit <- max(levMblob$conv_dev, 
+                           abs(LevenbergMstep_result$rhs)/(1+dev))
+          if (is.nan(levMblob$gainratio)) {
+            break
+          } else if (gainratio>0) { ## success
+            damping <- damping * max(1/3,1-(2*gainratio-1)^3)  
             dampingfactor <- 2
             start <- levMblob$beta 
             eta <- levMblob$eta ## FR->FR 1 -col matrix without names....
             mu <- levMblob$mu
             dev <- levMblob$dev 
             break
-          }
+          } else if (dampingfactor>4 ## implies iter>2
+                        && conv_crit < control$epsilon) {
+            damping <- 1e-7 ## bc presumably damping has diverged unusefully
+            break ## apparently flat dev
+          } else { ## failure: increase damping and continue iterations
+            damping <- dampingfactor*damping
+            dampingfactor <- dampingfactor*2
+          } 
         }
-        ## (dev crit in glm.fit style, vs $dbeta in auglinmodfit style)
-        ## But it seems to make sense that the gradient must vanish.
-        ## D(dev) and dbetav may be small for non-zero gradient, part. with large damping.
-        conv_crit <- max(abs(dev - devold)/(0.1 + abs(dev)), 
-                         abs(LevenbergMstep_result$rhs))
         if ( conv_crit < control$epsilon) { 
           conv <- TRUE
           coef <- start
@@ -309,7 +318,7 @@ spaMM_glm.fit <- function (x, y, weights = rep(1, nobs),
       w <- sqrt((weights[good] * mu.eta.val[good]^2)/variance(mu)[good])
       if (anyNA(z)) stop("NA/NaN in 'z': consult the package maintainer.")
       if (anyNA(w)) stop("NA/NaN in 'w': consult the package maintainer.") # suggests too large 'mu'
-      wX <- calc_wAugX(augX=x[good, , drop = FALSE],sqrt.ww=w)
+      wX <- .calc_wAugX(augX=x[good, , drop = FALSE],sqrt.ww=w)
       LM_wz <- z*w - (wX %*% coefold)
     } ## end main loop (either a break or control$maxit reached)
     if (any(good) & ! conv) {
@@ -393,15 +402,17 @@ spaMM_glm.fit <- function (x, y, weights = rep(1, nobs),
 spaMM_glm <- function(formula, family = gaussian, data, weights, subset,
                 na.action, start = NULL, etastart, mustart, offset,
                 control = list(...), model = TRUE, method = c("glm.fit","spaMM_glm.fit"),
-                x = FALSE, y = TRUE, contrasts = NULL, strict=FALSE,...) {
+                ## new 'method's such as spaMM_glm.fit must have the same arguments as R's default method.  
+                #  When the latter are changed the new method fails. Cf introduction of singular.ok in R-devel, Sept. 2017  
+                x = FALSE, y = TRUE, singular.ok = TRUE, contrasts = NULL, strict=FALSE,...) {
   mc <- match.call(expand.dots=TRUE)
   mc$strict <- NULL
   ## This code should not interfer with processed$family with possibly assigned param
   family <- .checkRespFam(family)
   summaryfamily <- .as_call_family(family,get_param = TRUE) ## only for printing
-  mc[[1L]] <- quote(stats::glm)
+  mc[[1L]] <- quote(stats::glm) 
   mc$method <- method[1L]
-  res <- tryCatch.W.E(eval(mc,parent.frame()))
+  res <- .tryCatch_W_E(eval(mc,parent.frame()))
   if (inherits(res$value,"error")) {
     if ( requireNamespace("rcdd",quietly=TRUE) ) {
       mc$method <- method[2L]

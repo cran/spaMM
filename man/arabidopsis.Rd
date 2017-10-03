@@ -40,20 +40,17 @@ The data were retrieved from \code{http://bergelson.uchicago.edu/regmap-data/cli
 }
 \examples{
 data(arabidopsis)
-if (spaMM.getOption("example_maxtime")>15) {
+if (spaMM.getOption("example_maxtime")>10) {
   HLCor(cbind(pos1046738,1-pos1046738)~seasonal+Matern(1|LAT+LONG),
-        ranPars=list(rho=0.1192889,nu=0.2369864,lambda=8.599),
+        ranPars=list(rho=0.1192781,nu=0.2369891,lambda=8.599),
         family=binomial(),HLmethod="PQL/L",data=arabidopsis)
 }
 ## The above ranPars are deduced from the following fit:
-if (spaMM.getOption("example_maxtime")>220) {
-  opt <- spaMM.options("matrix_method")
-  # Selecting a slightly faster algorithm for this computation:
-  spaMM.options(matrix_method="def_sXaug_EigenDense_QRP_scaled")
+if (spaMM.getOption("example_maxtime")>166) {
   SNPfit <- fitme(cbind(pos1046738,1-pos1046738)~seasonal+Matern(1|LAT+LONG),
+              verbose=c(TRACE=TRUE), 
               family=binomial(),method="PQL/L",data=arabidopsis)
-  spaMM.options(opt)
-  summary(SNPfit)
+  summary(SNPfit) # p_v=-125.0392
 }
 }
 \keyword{datasets}

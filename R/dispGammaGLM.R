@@ -1,4 +1,4 @@
-calc_CARdispGammaGLM <-function(data,family=spaMM_Gamma("inverse"),lev=NULL,
+.calc_CARdispGammaGLM <- function(data,family=spaMM_Gamma("inverse"),lev=NULL,
                                 lambda.Fix, control) {
   if ( ! is.null(lev)) {
     resp <- data$resp/(1-lev) 
@@ -21,8 +21,7 @@ calc_CARdispGammaGLM <-function(data,family=spaMM_Gamma("inverse"),lev=NULL,
 }
 
 # a specialized version of glm, which further constructs the response value internally; the formula has no lhs 
-calc_dispGammaGLM <- 
-  function (formula, 
+.calc_dispGammaGLM <- function (formula, 
             dev.res, ## cf comments on data argument
             lev,
             data, ## provide only the predictor variables ! alternatively could proceed as calc_CARdispGammaGLM
@@ -58,7 +57,7 @@ calc_dispGammaGLM <-
   intercept <- FALSE ## previously tried attr(mt, "intercept") > 0L but this is wrong
   #
   weights <- (1-lev)/2 # glm() code : weights <- as.vector(stats::model.weights(mf))
-  tryfit <- tryCatch.W.E(eval(call(method, 
+  tryfit <- .tryCatch_W_E(eval(call(method, 
                                    x = X, y = Y, weights = weights, offset = offset, family = family, 
                                    control = control, intercept = intercept)))
   fit <- tryfit$value

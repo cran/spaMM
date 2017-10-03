@@ -19,8 +19,8 @@
   if (! identical(meth1,meth2) || length(REML)>1 ) {
     stop("object fitted by different methods cannot be compared")
   }
-  if ( ! is.null(X1)) X1 <- sapply(strsplit(X1,':'),function(x) paste(sort(x),collapse=':')) ## JBF 2015/02/23: sort variables in interaction terms before comparison
-  if ( ! is.null(X2)) X2 <- sapply(strsplit(X2,':'),function(x) paste(sort(x),collapse=':'))
+  if ( ! is.null(X1)) X1 <- sapply(strsplit(X1,':'), function(x) paste(sort(x),collapse=':')) ## JBF 2015/02/23: sort variables in interaction terms before comparison
+  if ( ! is.null(X2)) X2 <- sapply(strsplit(X2,':'), function(x) paste(sort(x),collapse=':'))
   dX12 <- setdiff(X1,X2)
   dX21 <- setdiff(X2,X1)
   if (length(dX12)>0 && length(dX21)>0) {
@@ -32,8 +32,8 @@
   } else Xnest <- NULL
   ranterms1 <- attr(object$ZAlist,"ranefs")
   ranterms2 <- attr(object2$ZAlist,"ranefs")
-  randist1 <- lapply(object$rand.families,function(v) paste(paste(v)[1:2],collapse="")) ## makes a string from each $family and $link 
-  randist2 <- lapply(object2$rand.families,function(v) paste(paste(v)[1:2],collapse="")) ## makes a string from each $family and $link 
+  randist1 <- lapply(object$rand.families, function(v) paste(paste(v)[1:2],collapse="")) ## makes a string from each $family and $link 
+  randist2 <- lapply(object2$rand.families, function(v) paste(paste(v)[1:2],collapse="")) ## makes a string from each $family and $link 
   ranterms1 <- paste(ranterms1,randist1) ## joins each term and its distrib
   ranterms2 <- paste(ranterms2,randist2) ## joins each term and its distrib
   dR12 <- setdiff(ranterms1,ranterms2)
@@ -123,11 +123,13 @@ LRT <- function(object,object2,boot.repl=0,nb_cores=NULL) { ## compare two HM ob
   resu <- list(nullfit=nullfit,fullfit=fullfit,basicLRT = data.frame(chi2_LR=LRTori,df=df,p_value=pvalue)) ## format appropriate for more tests  
   if (boot.repl>0) {
     if (boot.repl<100) message("It is recommended to set boot.repl>=100 for Bartlett correction")
+    nb_cores <- .check_nb_cores(nb_cores=nb_cores)
     aslistfull <- as.list(getCall(fullfit)) 
-    ## problem is for corrHLfit etc this is the call of the final HLfit call with $processed and a lot of missing original arguments  
     aslistfull$processed <- NULL ## may capture bugs 
+    if (nb_cores>1) for(st in names(aslistfull)[-1]) aslistfull[[st]] <- eval(aslistfull[[st]]) ## force evaluation before running in another R session
     aslistnull <- as.list(getCall(nullfit))
     aslistnull$processed <- NULL ## may capture bugs
+    if (nb_cores>1) for(st in names(aslistnull)[-1]) aslistnull[[st]] <- eval(aslistnull[[st]])
     simbData <- nullfit$data
     if (tolower(nullfit$family$family)=="binomial") {
       cbf <- .check_binomial_formula(nullfit=nullfit, data=fullfit$data, fullfit=fullfit)
@@ -162,15 +164,16 @@ LRT <- function(object,object2,boot.repl=0,nb_cores=NULL) { ## compare two HM ob
       ## return pair of likelihoods
       return(c(logLik(fullfit,which=test_obj),logLik(nullfit,which=test_obj)))
     }
-    bootLs <- .eval_boot_replicates(eval_replicate=eval_replicate,boot.repl=boot.repl,nullfit=nullfit,nb_cores=nb_cores,
+    bootblob <- .eval_boot_replicates(eval_replicate=eval_replicate,boot.repl=boot.repl,nullfit=nullfit,nb_cores=nb_cores,
                                     aslistfull=aslistfull, aslistnull=aslistnull,simbData=simbData)
-    colnames(bootLs) <- paste(c("full.","null."),test_obj,sep="")
-    bootdL <- bootLs[,1]-bootLs[,2]
+    bootreps <- bootblob$bootreps
+    colnames(bootreps) <- paste(c("full.","null."),test_obj,sep="")
+    bootdL <- bootreps[,1]-bootreps[,2]
     meanbootLRT <- 2*mean(bootdL)
     resu <- c(resu,list(rawBootLRT = data.frame(chi2_LR=LRTori,df=df,p_value=(1+sum(bootdL>=LRTori/2))/(boot.repl+1)))) ## format appropriate for more tests  
     LRTcorr <- LRTori*df/meanbootLRT
     resu <- c(resu,list(BartBootLRT = data.frame(chi2_LR=LRTcorr,df=df,p_value=1-pchisq(LRTcorr,df=df)))) ## format appropriate for more tests  
-    bootInfo <- list(meanbootLRT = meanbootLRT,bootreps = bootLs)
+    bootInfo <- list(meanbootLRT = meanbootLRT,bootreps = bootreps, RNGstates=bootblob$RNGstates)
     resu <- c(resu,list(bootInfo=bootInfo)) ## keeps the sublist structure, which is not compatible with hglmjob.R...  
   }
   class(resu) <- c("fixedLRT",class(resu)) 

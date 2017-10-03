@@ -1,7 +1,7 @@
 # ~ try() but catches warnings : 
 ## Catch *and* save both errors and warnings, and in the case of
 ## a warning, also keep the computed result.
-tryCatch.W.E <- function(expr) {
+.tryCatch_W_E <- function(expr) {
   W <- NULL
   w.handler <- function(w){ # warning handler
     W <<- w
@@ -18,9 +18,8 @@ tryCatch.W.E <- function(expr) {
 .DEPARSE <- function(expr) { paste(deparse(expr),collapse="") }
 
 overcat <- function(msg, prevmsglength) {
-  msglength <- nchar(msg)
   if (prevmsglength>0) {cat("\r")}    
   cat(msg)
-  return(msglength)
+  return(nchar(msg))
 }
 

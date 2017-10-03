@@ -27,16 +27,16 @@
   Matrix(longLv) ## Matrix: 02/2016
 } ## end def makelong
 
-makeCovEst1 <- function(u_h,ZAlist,cum_n_u_h,prev_LMatrices,
+.makeCovEst1 <- function(u_h,ZAlist,cum_n_u_h,prev_LMatrices,
                         userLfixeds,w.resid,processed,phi_est,lcrandfamfam,family,
-                        as_matrix,v_h,auglinfixedpars
+                        as_matrix,v_h, MakeCovEst_pars_not_ZAL_or_lambda
 ) {
   nrand <- length(ZAlist)
   locX.Re <- processed$X.Re ## may be NULL 
   if (is.null(locX.Re)) locX.Re <- processed$X.pv
   locpredictor <- processed$predictor
-  next_LMatrices <- prev_LMatrices
-  if (is.null(next_LMatrices)) next_LMatrices <- list() ## NULL wrong for next_LMatrices[[rt]] <- <*M*atrix>
+  updated_LMatrices <- working_LMatrices <- prev_LMatrices
+  #if (is.null(next_LMatrices)) next_LMatrices <- list() ## NULL wrong for next_LMatrices[[rt]] <- <*M*atrix>
   Xi_cols <- attr(ZAlist,"Xi_cols")
   Lu <- u_h
   loc_lambda_est <- numeric(length(u_h))
@@ -70,22 +70,21 @@ makeCovEst1 <- function(u_h,ZAlist,cum_n_u_h,prev_LMatrices,
         loc_lambda_est[loc_lambda_est<1e-08] <- 1e-08 ## arbitrarily small eigenvalue is possible for corr=+/-1 even for 'large' parvec
         ## we have a repres in terms of ZAL and of a diag matrix of variances; only the latter affects hlik computation
         longLv <- .makelong(blob$u,longsize=ncol(ZAlist[[rt]])) ## the variances are taken out in $d
-        next_LMatrices[[rt]] <- longLv
-          attr(next_LMatrices[[rt]],"ranefs") <- attr(ZAlist,"ranefs")[[rt]] ## FR->FR  revoir pour matrices affectant +s termes ?
-        ZALlist <- .compute_ZAXlist(XMatrix=next_LMatrices,ZAlist=ZAlist)
+        working_LMatrices[[rt]] <- longLv
+          attr(working_LMatrices[[rt]],"ranefs") <- attr(ZAlist,"ranefs")[[rt]] ## FR->FR  revoir pour matrices affectant +s termes ?
+        ZALlist <- .compute_ZAXlist(XMatrix=working_LMatrices,ZAlist=ZAlist)
         locZAL <- .post_process_ZALlist(ZALlist,as_matrix=as_matrix) 
-        if (inherits(locZAL,"Matrix")) {
-          ddi_or_matrix_locZAL <- as.matrix(locZAL)
-        } else ddi_or_matrix_locZAL <- locZAL
         locw.ranefSblob <- .updateW_ranefS(cum_n_u_h,processed$rand.families,lambda=loc_lambda_est,u_h,v_h) 
-        ## FR->FR auglinfixedpars is an ambiguous name since this contains $w.resid which is updated within auglinmodfit
-        locarglist <- c(auglinfixedpars, list(ZAL=locZAL, lambda_est=loc_lambda_est, wranefblob=locw.ranefSblob))
-        auglinmodblob <- do.call("fit_as_ZX",locarglist)
-        if ( ncol(locX.Re)>0L ) { lik_obj="p_bv"} else lik_obj="p_v" ## could be taken out of locfn ?
+        locarglist <- c(MakeCovEst_pars_not_ZAL_or_lambda, list(ZAL=locZAL, lambda_est=loc_lambda_est, wranefblob=locw.ranefSblob))
+        #locarglist$eta <- NULL
+        #locarglist$muetablob <- NULL
+        #locarglist$w.resid <- NULL
+        auglinmodblob <- do.call(".solve_IRLS_as_ZX",locarglist)
+        if ( ncol(locX.Re)>0L ) { lik_obj="p_bv"} else lik_obj="p_v" ## FIXME could be taken out of locfn ?
         ## FR->FR but its not clear that non-standard REML is handled by calc_APHLs_from_ZX !!
-        REMLcrit <- calc_APHLs_from_ZX(auglinmodblob,which=lik_obj,processed=processed)[[lik_obj]]
+        REMLcrit <- .calc_APHLs_from_ZX(auglinmodblob,which=lik_obj,processed=processed)[[lik_obj]]
         return(REMLcrit)
-      } ## currently this refits the fixed effects together with the other params... probably not optimal
+      } ## currently this refits the fixed effects together with the other params... probably not optimal...
       ####  
       lowerb <- upperb <- matrix(NA,nrow=Xi_ncol,ncol=Xi_ncol)
       diag(lowerb) <- log(sqrt(1e-08))
@@ -105,15 +104,16 @@ makeCovEst1 <- function(u_h,ZAlist,cum_n_u_h,prev_LMatrices,
       parscale <- (upperb-lowerb)
       if (TRUE) {
         objfn_nloptr <- function(x) { return( - objfn(x)) }
-        nloptr_controls <- list(algorithm="NLOPT_LN_BOBYQA",xtol_rel=1.0e-4,maxeval=100,print_level=0) ## DEFAULT
+        nloptr_controls <- spaMM.getOption("nloptr") 
         optr <- nloptr::nloptr(x0=init,eval_f=objfn_nloptr,lb=lowerb,ub=upperb,
                        opts=nloptr_controls)
-        while (optr$status==5) { ## 5 => termination bc maxeval has been reached
+        while (optr$status==5L) { ## 5 => termination bc maxeval has been reached
           prevlik <- optr$objective
           reinit <- pmax(lowerb,pmin(upperb,optr$solution))
           optr <- nloptr::nloptr(x0=reinit,eval_f=objfn_nloptr,lb=lowerb,ub=upperb,
                                  opts=nloptr_controls)
-          if (optr$objective > prevlik-optr$options$ftol_abs ) break ## no progress in <= maxeval iterations
+          loc_ftol <- max(1e-8, optr$options$ftol_abs)
+          if (- optr$objective < - prevlik+loc_ftol) break ## no progress in <= maxeval iterations
         }
         optr$par <- optr$solution
       } else {
@@ -134,18 +134,17 @@ makeCovEst1 <- function(u_h,ZAlist,cum_n_u_h,prev_LMatrices,
       attr(thisranef,"type") <- attr(attr(ZAlist,"ranefs"),"type")[rt] ## ie simply "(.|.)": LMatrix with such type is for random slope ## ajout 2015/06
       attr(next_LMatrix,"ranefs") <- thisranef
       attr(next_LMatrix, "corr.model") <- "random-coef"
-      next_LMatrices[[rt]] <- next_LMatrix
-    } else next_LMatrices[rt] <- list(NULL)
+      updated_LMatrices[[rt]] <- next_LMatrix # (fixme ??) working_LMatrices[[rt]] <- 
+    } else updated_LMatrices[rt] <- list(NULL) ## this erases Matern or AR1, so is not to be used in objfn()   
   } ## loop on rt = ranefs
-  return(list(next_LMatrices=next_LMatrices, 
-              ## : a list of nrand elements, each NULL except for random slope terms
+  return(list(updated_LMatrices=updated_LMatrices, 
               next_lambda_est=loc_lambda_est,
               optr_par=optr$par))
 } ## end def makeCovEst1
 
 ## parait lent à converger vers -1; c'est là que tester d'abord les bornes 0 et 1 pour choisir init peut être bien... 
 ## experimental version of MakeCovEst stored in MakeCovEst.R.txt
-makeCovEst2 <- function(u_h,ZAlist,cum_n_u_h,prev_LMatrices,
+.makeCovEst2 <- function(u_h,ZAlist,cum_n_u_h,prev_LMatrices,
                        userLfixeds,w.resid,processed,prevZAL,clik) {
   nrand <- length(ZAlist)
   locX.Re <- processed$X.Re ## may be NULL
@@ -197,14 +196,13 @@ makeCovEst2 <- function(u_h,ZAlist,cum_n_u_h,prev_LMatrices,
                                 envir=list2env(list(tag="d2hdv2",callcount=0L),parent=environment(HLfit_body)))  
         # pour une repres non diagonal je devrais reconstruire une Lmatrix... (je l'ai  !)
         if (ncol(locX.Re)==0L) { ## fit ML: p_bv=p_v hence d2hdpbv reduces to d2hdv2
-          lad <- - LogAbsDetWrap( - locd2hdv2,logfac=-log(2*pi))
+          lad <- - .LogAbsDetWrap( - locd2hdv2,logfac=-log(2*pi))
         } else { 
           Md2hdbv2 <- rbind(cbind(.ZtWZwrapper(locX.Re,w.resid), t(hessnondiag)),
                             cbind(hessnondiag, - locd2hdv2)) 
-          lad <- - LogAbsDetWrap(Md2hdbv2,logfac=-log(2*pi))
+          lad <- - .LogAbsDetWrap(Md2hdbv2,logfac=-log(2*pi))
         } ## le lad est OK = ladbv de la version standard
-        #likranu <- ( LogAbsDetWrap(longcorrSig,logfac=log(2*pi)) + u_h %*% corrinvSig %*% u_h)/2
-        likranu <- ( blocksize* LogAbsDetWrap(corrSig,logfac=log(2*pi)) + u_h %*% longcorrinvSig %*% u_h)/2
+        likranu <- ( blocksize* .LogAbsDetWrap(corrSig,logfac=log(2*pi)) + u_h %*% longcorrinvSig %*% u_h)/2
         # pas passer par logdet prevL car ?? LogAbsDetWrap(prevL non sym) incorrect ?? 
         obj <- clik - likranu + lad/2 ## different from REMLcrit (normal) but still appears to be maximized
         ## ca marche presque mais l'approx du gradient est très mauvaise pour les corr extremes...

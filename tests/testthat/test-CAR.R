@@ -18,20 +18,20 @@ if (FALSE) { ## HLCor/corrHlfit already compared on scotlip by test-spaMM.R
   # CAR by Laplace with 'outer' estimation of rho
   # *** fitme is not very convicing, stops early ***
   blob <- fitme(cbind(npos,nneg)~1 +adjacency(1|gridcode),
-                    adjMatrix=Nmatrix,family=binomial(probit),data=donn,method="ML") 
+                    adjMatrix=Nmatrix,family=binomial(probit),data=donn,method="ML",control.HLfit = list(LevenbergM=FALSE)) 
   AIC(blob)
 }
 
 # CAR by Laplace with 'inner' estimation of rho
 blob <- HLCor(cbind(npos,nneg)~1 +adjacency(1|gridcode),
-          adjMatrix=Nmatrix,family=binomial(probit),data=donn,HLmethod="ML") ## 2 s.
+          adjMatrix=Nmatrix,family=binomial(probit),data=donn,HLmethod="ML",control.HLfit = list(LevenbergM=FALSE)) ## 2 s.
 AIC(blob)
 
 
 
 if (require("probitgem",quietly=TRUE)) {
   # CAR by SEMs +optimsmooth ... slow
-  if (spaMM.getOption("example_maxtime")>45) {
+  if (spaMM.getOption("example_maxtime")>44) {
     blob <- corrHLfit(cbind(npos,nneg)~1 +adjacency(1|gridcode),
             adjMatrix=Nmatrix,family=binomial(probit),data=donn,HLmethod="SEM")
   }

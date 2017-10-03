@@ -1,19 +1,21 @@
 \name{HLfit}
 \alias{HLfit}
+\alias{Beta-distribution-random-effects}
 \title{Fit mixed models with given correlation matrix}
 \description{
   This function fits GLMMs as well as some hierarchical generalized linear models (HGLM; Lee and Nelder 2001).
-  HLfit fits both fixed effects parameters, and dispersion parameters i.e. the variance of the random effects 
+  \code{HLfit} fits both fixed effects parameters, and dispersion parameters i.e. the variance of the random effects 
   and the variance of the residual error. The linear predictor is of the 
   standard form \code{offset+ X beta + Z b}, where 
   X is the design matrix of fixed effects and Z is a design matrix of random effects.   
-  The function also handles a linear predictor (with only fixed effects) for the residual variance. 
+  The function also handles a linear predictor (with only fixed effects) for the residual variance.\cr
+  \code{HLfit} uses iterative algorithms that may be slow in some applications, in which case it is worth considering the \code{\link{fitme}} function.
+  \code{fitme} and \code{corrHLfit} act by calling \code{HLfit} for different values of random effect parameters or residual dispersion parameters. 
 }
 \usage{
 HLfit(formula, data, family = gaussian(), rand.family = gaussian(), 
       resid.model = ~1, resid.formula, REMLformula = NULL, 
-      verbose = c(warn = TRUE, trace = FALSE, summary = FALSE), 
-      HLmethod = "HL(1,1)", control.HLfit = list(), 
+      verbose = c(trace = FALSE), HLmethod = "HL(1,1)", control.HLfit = list(), 
       control.glm = list(), init.HLfit = list(), ranFix = list(), 
       etaFix = list(), prior.weights = NULL, processed = NULL)
 ## see 'rand.family' argument for inverse.Gamma
@@ -62,9 +64,7 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
   \code{HLmethod="ML"} and leaving \code{REMLformula} at its default NULL value.
 }
   \item{verbose}{
-    A vector of booleans. \code{trace} controls various diagnostic (possibly messy) messages about the iterations.
-    \code{summary} controls whether a summary of the fit is called by \code{HLfit}.
-    \code{warn} is for programming purposes and best ignored.
+    A vector of booleans. \code{trace} controls various diagnostic messages (possibly messy, and in bad need of revision) about the iterations. \code{TRACE} is most useful to follow the progress of a long computation, particularly in \code{fitme} or \code{corrHLfit} calls.
   }
   \item{HLmethod}{
   Allowed values are \code{"REML"}, \code{"ML"}, \code{"EQL-"} and \code{"EQL+"} for all models;  
@@ -79,9 +79,7 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
 
   Controls for the fitting algorithms should be ignored in routine use. They are
 %
-  \code{conv.threshold}, 
-   a convergence threshold for the iterative algorithm, which controls whether 
-   linear predictor terms (fixed effects and inferred random effects), and dispersion parameter estimates have converged. Defaults to 1e-05;
+  \code{conv.threshold} and \code{spaMM_tol}: \code{spaMM_tol} is a list of tolerance values, with elements \code{Xtol_rel} and \code{Xtol_abs} that define thresholds for relative and absolute changes in parameter values in iterative algorithms (used in tests of the form dQuote{d(param)< Xtol_rel * param + Xtol_abs}, so that \code{Xtol_abs} is operative only for small parameter values). \code{conv.threshold} is the older way to control \code{Xtol_rel}. Default values are given by spaMM.getOption("spaMM_tol");
    
    \code{break_conv_logL}, a boolean specifying whether the iterative algorithm should terminate when log-likelihood appears to have converged (roughly, when its relative variation over on iteration is lower than 1e-8). Default is FALSE (convergence is then assessed on the parameter estimates rather than on log-likelihood).
 %

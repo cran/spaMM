@@ -13,7 +13,7 @@ Model fits may provide restricted likelihood values(\code{ReL}) even if restrict
 
 See \code{\link{good-practice}} for advice about the proper syntax of \code{formula}.
 
-\bold{Computation times} depend on \code{control.HLfit$conv.threshold}, which is by default 1e-5. Increasing it to 1e-4 had no notable effect (08/2016) on the tests in the \code{tests} directory of the package, except reducing computation time. \code{spaMM} is therefore slower but safer than it could be.     
+\bold{Computation times} depend on control parameters given by  \code{spaMM.getOption("spaMM_tol")} parameters (for iterative algorithms), and \code{spaMM.getOption("nloptr")} parameters for the default optimizer. Do not use \code{spaMM.options()} to control them globally, unless you know what you are doing. Rather control them locally by the \code{control.HLfit} argument to control \code{spaMM_tol}, and by the control arguments of \code{corrHLfit} and \code{fitme} to control \code{nloptr}. If \code{nloptr$Xtol_rel} is set above 5e-06, \code{fitme} will by default refit the fixed effects and dispersion parameters (but not other correlation parameters estimated by \code{nloptr}) by the iterative algorithm after \code{nloptr} convergence. Increasing \code{nloptr$Xtol_rel} value may therefore switches the bulk of computation time from the optimizer to the iterative algorithm, and may increase or decrease computation time depending on which algorithm is faster for a given input. Use \code{control$refit} if you wish to inhibit this, but note that by default it provides a rescue to a poor \code{nloptr} result due to a too large \code{Xtol_rel}.       
 }
 \references{
 Chambers J.M. (2008) Software for data analysis: Programming with R. Springer-Verlag New York

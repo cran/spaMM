@@ -13,7 +13,7 @@ Efficient algorithms have been widely discussed in particular in the econometric
 %The taxonomy of AR models is not well settled, but \code{adjacency} should retain its current meaning as a specific CAR model in future versions of \code{spaMM}.
 For large data sest, \code{fitme} selects methods that exploits the sparsity of the precision matrix of the random effects. 
 
-A call to \code{HLCor} uses the spectral decomposition of the adjacency matrix as further detailed below. 
+A call to \code{HLCor} uses the spectral decomposition of the adjacency matrix as further detailed below. This is fast for small datasets but fitme may be preferable otherwise.
 
 A call to \code{corrHLfit} with the additional argument 
 \code{init.HLfit=list(rho=0)} should be equivalent in speed and result to the \code{HLCor} call.
@@ -30,11 +30,11 @@ LeSage, J., Pace, R.K. (2009) Introduction to Spatial Econometrics. Chapman & Ha
 \examples{
 data(scotlip)
 # CAR by Laplace with 'outer' estimation of rho
-if (spaMM.getOption("example_maxtime")>2.2) {          
+if (spaMM.getOption("example_maxtime")>0.7) {          
   corrHLfit(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(expec)),
           adjMatrix=Nmatrix,family=poisson(),data=scotlip,HLmethod="ML") 
 }
-if (spaMM.getOption("example_maxtime")>1.6) {          
+if (spaMM.getOption("example_maxtime")>2.1) {          
   fitme(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(expec)),
           adjMatrix=Nmatrix,family=poisson(),data=scotlip) 
 }

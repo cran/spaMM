@@ -147,7 +147,7 @@ if (require(maps)) { ## required for add.map=TRUE
   mapMM(bfit,color.palette = function(n){spaMM.colors(n,redshift=1/2)},add.map=TRUE)
 }
 
-if (spaMM.getOption("example_maxtime")>0.9) {
+if (spaMM.getOption("example_maxtime")>0.8) {
   ## filled.mapMM takes a bit longer
   # showing 'add.map', 'nlevels', and contour lines for 'variances'
   if (require(maps)) { ## required for add.map=TRUE 
@@ -158,7 +158,7 @@ if (spaMM.getOption("example_maxtime")>0.9) {
   }
 }
 
-if (spaMM.getOption("example_maxtime")>4.2) {
+if (spaMM.getOption("example_maxtime")>2.5) {
  data(Loaloa)  
  lfit <- corrHLfit(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
                   +Matern(1|longitude+latitude),HLmethod="HL(0,1)",data=Loaloa,

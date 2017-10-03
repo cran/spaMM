@@ -1,4 +1,4 @@
-glm.reformat <- function (x, y, weights = rep(1, nobs), start, etastart, 
+.glm_reformat <- function (x, y, weights = rep(1, nobs), start, etastart, 
           mustart = NULL, offset = rep(0, nobs), family = gaussian(), 
           control = list(), intercept = TRUE) 
 {
@@ -24,11 +24,8 @@ glm.reformat <- function (x, y, weights = rep(1, nobs), start, etastart,
   dev.resids <- family$dev.resids
   aic <- family$aic
   mu.eta <- family$mu.eta
-  unless.null <- function(x, if.null) if (is.null(x)) 
-    if.null
-  else x
-  valideta <- unless.null(family$valideta, function(eta) TRUE)
-  validmu <- unless.null(family$validmu, function(mu) TRUE)
+  valideta <- family$valideta
+  validmu <- family$validmu
   n <- NULL ## to avoid an R CMD check NOTE which cannot see that n will be set by eval(family$initialize)
   if (is.null(mustart)) {
     eval(family$initialize)

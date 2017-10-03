@@ -21,7 +21,6 @@
   lambda.object <- object$lambda.object
   LMatrix <- attr(object$predictor,"LMatrix") ## back ompat given we are in .calc_logdisp_cov_old()
   adjacency <- identical(attr(LMatrix,"corr.model"),"adjacency")
-  ar1 <- identical(attr(LMatrix,"corr.model"),"ar1")
   ## debut de code de detection parmi +s ranefs
   #whichadj <- attr(attr(ZAlist,"ranefs"),"type")=="adjacency"  
   #notscalar <- unlist(lapply(coefficients_lambdaS,length)==2L)
@@ -30,7 +29,7 @@
   problems <- list() ## Its elements' names are tested in calcPredVar, and the strings are 'development info'
   if (length(lambda.object$coefficients_lambda)>0L) { ## not lambda.Fix
     ## in the first cases, a dvdloglamMat may exist (eg salamander, male and female effects)
-    if (adjacency || ar1) {
+    if (adjacency) {
       ## cf summary.HLfit for extracting info from object
       locit <- 1L
       it <- 1L
@@ -84,9 +83,9 @@
     logdispInfo <- matrix(NA,nrow=nrc,ncol=nrc)
     colnames(logdispInfo) <- rownames(logdispInfo) <- dispnames
     if ("loglambda" %in% dispnames) {
-      if (adjacency || ar1) { 
+      if (adjacency) { 
         #  lambda already evaluated 
-        ZALd <- ZAL %id*id% Diagonal(x=sqrt(1/denom))
+        ZALd <- .m_Matrix_times_Dvec(ZAL, sqrt(1/denom))
         lhs_invV.dVdlam <- asDmLR_invV$n_x_r %*% (asDmLR_invV$r_x_n %*% ZALd)  
         lhs_invV.dVdlam <- sweep( ZALd,1L,asDmLR_invV$invD,`*`) - lhs_invV.dVdlam
         rhs_invV.dVdlam <- t(ZALd)

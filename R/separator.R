@@ -10,10 +10,17 @@
 
 .is_separated <- function(x,y) {
   if (requireNamespace("e1071",quietly=TRUE)) {
-    varcols <- apply(x,2L,var)>0
+    varcols <- logical(ncol(x))
+    for (it in seq_len(ncol(x))) varcols[it] <- (diff(range(x[,it])) > .Machine$double.eps ^ 0.5)
     if (any(varcols)) {
-      svmfit <- e1071::svm(y~x[,varcols,drop=FALSE],type='C-classification', kernel='linear')
-      return( ! any(svmfit$fitted!=y))
+      if (length(y)> spaMM.getOption("separation_max")) {
+        message(paste("Increase spaMM.options(separation_max=<.>) to at least",length(y),
+                      "if you want to check separation (see 'help(separation)')."))
+        return(FALSE)
+      } else {
+        svmfit <- e1071::svm(y~x[,varcols,drop=FALSE],type='C-classification', kernel='linear')
+        return( ! any(svmfit$fitted!=y))
+      }
     } else return(FALSE)
   } else {
     if ( ! identical(spaMM.getOption("e1071_warned"),TRUE)) {

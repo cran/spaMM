@@ -24,7 +24,7 @@ Predictor <- function (formula, offset=NULL, LMatrix = NULL,  AMatrix = NULL, ZA
     AMatrix <- list(AMatrix) ## further code expects a list (should ultimately be the same for all matrices...) 
   }
   if ( ! is.null(offset) ) {
-    offterm <- findOffset(formula)
+    offterm <- .findOffset(formula)
     if ( ! is.null(offterm) ) stop("in 'Predictor', offset should be given EITHER as $formula term OR as $offset element")
   } 
   if ( ! is.null(LMatrix)) {
@@ -32,9 +32,12 @@ Predictor <- function (formula, offset=NULL, LMatrix = NULL,  AMatrix = NULL, ZA
     LMatrix <- lapply(LMatrix, function(lmatrix) {
       ranefs <- attr(lmatrix,"ranefs")
       if (is.null(ranefs)) {
-        ranefs <- parseBars(formula) ## FR->FR or oriformula ???
+        ranefs <- .parseBars(formula) ## FR->FR or oriformula ???
       } else {
-        ranefs <- unlist(lapply(ranefs,function(term) {parseBars(as.formula(paste("bla~",term)))}))      
+        #ranefs <- unlist(lapply(ranefs, function(term) {.parseBars(as.formula(paste("bla~",term)))}))      
+        ranefs <- paste("bla~",ranefs)
+        ranefs <- sapply(as.formula, ranefs)
+        ranefs <- unlist(lapply(ranefs, .parseBars))      
       }
       attr(lmatrix,"ranefs") <- ranefs
       attr(lmatrix,"userLfixed") <- TRUE ## else remains NULL...

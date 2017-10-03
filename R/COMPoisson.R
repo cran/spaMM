@@ -132,13 +132,15 @@
 } 
 
 .COMP_dnu_objfn <- function(nu,y,eta,lambda=exp(eta),maxn=.COMP_maxn(lambda,nu)) { ## not currently used
-  summand <- function(yi,lambdai) {
+  summand <- numeric(length(y))
+  for (i in seq_len(length(y))) {
+    yi <- y[i]
+    lambdai <- lambda[i]
     comp_z_lfacn <- .COMP_Z_lfacn(nu=nu,lambda=lambdai,maxn=maxn)
     comp_z <- .COMP_Z(nu=nu,lambda=lambdai,maxn=maxn)
-    lfactorial(yi)-.COMP_Z_ratio(comp_z_lfacn,comp_z,log=TRUE)
+    summand[i] <- lfactorial(yi)-.COMP_Z_ratio(comp_z_lfacn,comp_z,log=TRUE)
   }
-  res <- sum(sapply(seq_len(length(y)),function(i) summand(yi=y[i],lambdai=lambda[i])))
-  res
+  return(sum(summand))
 }
 
 .dCOMP <- function(x, mu, nu,
@@ -163,8 +165,171 @@
   sample(floorn+1L,size=nsim,prob=cumprodfacs/sum(cumprodfacs))
 }
 
+.CMP_linkinvi <- function(lambda,nu) {
+  num <- .COMP_Z_n(lambda=lambda,nu=nu)
+  denum <- .COMP_Z(lambda=lambda,nu=nu)
+  mu <- .COMP_Z_ratio(num,denum)
+  if ( ! is.finite(mu) && lambda>10^nu) { ## FR->FR heuristic
+    mu <- lambda^(1/nu)-(nu-1)/(2*nu)
+  }  
+  return(max(mu,1e-8)) ## avoids mu=0 which fails validmu(mu) (as for poisson family)
+}
 
-COMPoisson <- function (nu = stop("COMPoisson's 'nu' must be specified"), 
+.CMP_linkfuni <- function(mu,nu, CMP_linkfun_objfn) {
+  if (nu==1) {
+    lambda <- mu ## pb du code general est qu'objfn n'est alors que l'erreur numérique de linkinv()
+  } else if (mu==Inf) {
+    warning(paste("Approximating lambda as 1-1e-8 in COMPoisson(nu=",nu,") for mu = Inf"))
+    lambda <- 1 - 1e-8 ## 1 -> mu.eta = NaN. mu.eta being Inf would not be OK bc Inf GLMweights -> 1/w.resid=0 -> singular Sig or d2hdv2
+  } else {
+    app_lambda <-  max(c(0,(mu+max(0,(nu-1)/(2*nu)))))^(nu)
+    lambdamin <- max(c(.Machine$double.eps, app_lambda-1)) ## (the ultimate contraint is that log(lambda)> -Inf)
+    lambdamax <- max(c(.Machine$double.eps, (app_lambda+1)*c(1.01))) 
+    # last one for low lambda,nu values
+    fupper <- CMP_linkfun_objfn(lambdamax, mu=mu)  ## normally >0 
+    if (is.nan(fupper) || fupper<0) {
+      if ( ! identical(spaMM.getOption("COMP_geom_approx_warned"),TRUE)) {
+        warning(paste("Geometric approximation tried in COMPoisson(nu=",nu,") for mu=",mu," and possibly for other nu,mu values"))
+        spaMM.options(COMP_geom_approx_warned=TRUE)
+      }
+      lambda <- mu/(1+mu) 
+    } else {
+      flower <- CMP_linkfun_objfn(lambdamin, mu=mu) ## normally <0 
+      interval <- c(lambdamin,lambdamax)
+      # linkinv(0)=0 => objfn(0)= -mu
+      lambda <- uniroot(CMP_linkfun_objfn,interval=interval,f.lower = flower,f.upper = fupper, mu=mu)$root
+    }
+  }
+  return(lambda)
+}
+
+.CMP_dev.resid <- function(yi,lambdai,nu, CMP_linkfun_objfn) {
+  Z2 <- .COMP_Z(lambda=lambdai,nu=nu)
+  if (yi==0) { # lambda = 0,  Z1 = 1
+    dev <- 2*(Z2[["logScaleFac"]]+log(Z2[["scaled"]]))
+  } else {
+    # eval lambda for Z1(lambda...)
+    if (nu==0) {
+      lambda <- yi/(1+yi)  
+    } else {
+      app_lambda <-  max(c(0,(yi+max(0,(nu-1)/(2*nu)))))^(nu)
+      lambdamin <- max(c(.Machine$double.eps, app_lambda-1))
+      lambdamax <- max(c(.Machine$double.eps, (app_lambda+1)*c(1.01))) 
+      while (CMP_linkfun_objfn(lambdamax, mu=yi)<0) {
+        lambdamax <- lambdamax*10 ## greedy but resolves errors for low nu 
+        if (lambdamax>1e100) stop("lambdamax>1e100 in COMPoisson$dev.resids()")
+      }
+      interval <- c(lambdamin,lambdamax)
+      lambda <- uniroot(CMP_linkfun_objfn,interval=interval, mu=yi)$root
+    }
+    Z1 <- .COMP_Z(lambda=lambda,nu=nu)
+    #
+    dev <- 2*(yi*log(lambda/lambdai)-(Z1[["logScaleFac"]]-Z2[["logScaleFac"]]+log(Z1[["scaled"]]/Z2[["scaled"]])))
+  }
+  dev
+}
+
+.CMP_dev_resids <- function(y, mu, wt){
+  # must accept, among others, vector y and scalar mu.
+  lambdas <- parent.env(environment())$linkfun(mu=mu,log=FALSE)
+  n <- length(y)
+  if (length(mu)==1L) lambdas <- rep(lambdas,n)
+  devs <- numeric(n)
+  nu <- parent.env(environment())$nu
+  CMP_linkfun_objfn <- parent.env(environment())$CMP_linkfun_objfn
+  for(i in seq(n)) { devs[i] <- .CMP_dev.resid(y[i],lambdai=lambdas[i],nu=nu, CMP_linkfun_objfn=CMP_linkfun_objfn) }
+  devs <- devs*wt
+  devs[devs==Inf] <- .Machine$double.xmax/n ## so that total deviance may be finite 
+  return(devs) 
+}
+
+.CMP_linkinv <- function(eta,lambda=exp(eta)) {
+  if (! is.null(mu <- attr(lambda,"mu"))) {
+    attributes(lambda) <- NULL
+    return(structure(mu,lambda=lambda))
+  }
+  if (nu==0) {
+    mus <- lambda/(1-lambda) 
+  } else {
+    nu <- parent.env(environment())$nu
+    mus <- sapply(lambda, .CMP_linkinvi,nu=nu)
+  }
+  dim(mus) <- dim(lambda) ## may be NULL
+  return(mus)
+}
+
+.CMP_aic <- function(y, n, mu, wt, dev) {
+  nu <- parent.env(environment())$nu
+  aici <- numeric(length(y))
+  for (i in seq_len(length(y))) { aici[i] <- .dCOMP(y[i], mu[i], nu=nu, log = TRUE) }
+  -2 * sum(aici * wt)
+}
+
+.CMP_simfun <- function(object,nsim) {
+  wts <- object$prior.weights
+  if (any(wts != 1)) 
+    warning("ignoring prior weights")
+  lambdas <- exp(object$eta)
+  nu <- parent.env(environment())$nu
+  resu <- sapply(lambdas,.COMP_simulate,nu=nu,nsim=nsim)
+  if (nsim>1) resu <- t(resu)
+  return(resu)
+}
+
+.CMP_mu.eta <- function (eta,lambda=exp(eta)) {
+  if (nu==0) {
+    resu <- lambda/(1-lambda)^2
+  } else {
+    nu <- parent.env(environment())$nu
+    resu <- numeric(length(lambda))
+    for (it in seq_len(length(lambda))) {
+      lambdai <- lambda[it]
+      compz <- .COMP_Z(lambda=lambdai,nu=nu)
+      compzn <- .COMP_Z_n(lambda=lambdai,nu=nu)
+      compzn2 <- .COMP_Z_n2(lambda=lambdai,nu=nu)
+      rn2 <- .COMP_Z_ratio(compzn2,compz)
+      rn <- .COMP_Z_ratio(compzn,compz) ## mu
+      res <- rn2 - rn^2 # (compz*compzn2-compzn^2)/(compz^2)
+      # dmu/deta=(dmu/dlam) (dlam/deta) = lam dmu/dlam = lam (compz*compzn2-compzn^2)/(lam compz^2) = resu
+      # b/c mu = compzn/compz, d compz/ dlam = compzn/lam, d compzn/ dlam = compzn2/lam
+      resu[it] <- pmax(res, .Machine$double.eps)
+    }
+  }
+  resu
+}
+
+.CMP_variance <- function(mu) {
+  nu <- parent.env(environment())$nu
+  if (nu==0) {
+    return(mu*(1+mu)) 
+  } else {
+    lambdas <- parent.env(environment())$linkfun(mu,log=FALSE)
+    En <- En2 <- numeric(length(lambdas))
+    for (it in seq_len(length(lambdas))) {
+      lambda <- lambdas[it]
+      En[it] <- .COMP_Z_ratio(.COMP_Z_n(lambda=lambda,nu=nu),.COMP_Z(lambda=lambda,nu=nu))
+      En2[it] <- .COMP_Z_ratio(.COMP_Z_n2(lambda=lambda,nu=nu),.COMP_Z(lambda=lambda,nu=nu))
+    }
+    resu <- pmax(En2-En^2,1e-8) ## pmax otherwise for low mu, Vmu=0, -> ... -> w.resid=0
+    ## for geom V(mu) = mu(1+mu) but this cannot be a lower bound for resu.
+    return(resu)
+  }
+}
+
+.CMP_linkfun <- function(mu, ## scalar or vector
+                         log=TRUE) { ## log=TRUE => returns eta; else returns lambda, with mu attribute
+  if ( is.null(lambdas <- attr(mu,"lambda"))) {
+    nu <- parent.env(environment())$nu
+    if (nu==0) {
+      lambdas <- mu/(1+mu) 
+    } else lambdas <- sapply(mu, .CMP_linkfuni,nu=nu, CMP_linkfun_objfn=parent.env(environment())$CMP_linkfun_objfn)
+  } else attributes(mu) <- NULL ## avoids 'mise en abime'
+  if (log) {
+    return(log(lambdas)) ## eta, ie standard linkfun value
+  } else return(structure(lambdas,mu=mu))
+}
+
+COMPoisson <- function(nu = stop("COMPoisson's 'nu' must be specified"), 
                         link = "loglambda" # eta <-> mu link, not the eta <-> lambda log link
                         ) {
   mc <- match.call()
@@ -177,163 +342,23 @@ COMPoisson <- function (nu = stop("COMPoisson's 'nu' must be specified"),
                     linktemp, paste(sQuote(okLinks), collapse = ", ")), 
            domain = NA)
   }
-  initialize <- expression({
-    if (any(y < 0)) 
-      stop("negative values not allowed for the 'COMPoisson' family")
-    n <- rep.int(1, nobs)
-    mustart <- y + 0.1
-  })
-  linkinv <- function(eta,lambda=exp(eta)) {
-    if (! is.null(mu <- attr(lambda,"mu"))) {
-      attributes(lambda) <- NULL
-      return(structure(mu,lambda=lambda))
-    }
-    if (nu==0) {
-      mus <- lambda/(1-lambda) 
-    } else {
-      locfn <- function(lambda) {
-        num <- .COMP_Z_n(lambda=lambda,nu=nu)
-        denum <- .COMP_Z(lambda=lambda,nu=nu)
-        mu <- .COMP_Z_ratio(num,denum)
-        if ( ! is.finite(mu) && lambda>10^nu) { ## FR->FR heuristic
-          mu <- lambda^(1/nu)-(nu-1)/(2*nu)
-        }  
-        return(max(mu,1e-8)) ## avoids mu=0 which fails validmu(mu) (as for poisson family)
-      }
-      mus <- sapply(lambda,locfn)
-    }
-    dim(mus) <- dim(lambda) ## may be NULL
-    return(mus)
-  }
-  linkfun <- function(mu, ## scalar or vector
-                      log=TRUE) { ## log=TRUE => returns eta; else returns lambda, with mu attribute
-    if ( is.null(lambdas <- attr(mu,"lambda"))) {
-      if (nu==0) {
-        lambdas <- mu/(1+mu) 
-      } else lambdas <- sapply(mu,function(mu) {
-        if (nu==1) {
-          lambda <- mu ## pb du code general est qu'objfn n'est alors que l'erreur numérique de linkinv()
-        } else if (mu==Inf) {
-          warning(paste("Approximating lambda as 1-1e-8 in COMPoisson(nu=",nu,") for mu = Inf"))
-          lambda <- 1 - 1e-8 ## 1 -> mu.eta = NaN. mu.eta being Inf would not be OK bc Inf GLMweights -> 1/w.resid=0 -> singular Sig or d2hdv2
-        } else {
-          objfn <- function(lambda) {linkinv(lambda=lambda) -mu}
-          app_lambda <-  max(c(0,(mu+max(0,(nu-1)/(2*nu)))))^(nu)
-          lambdamin <- max(c(.Machine$double.eps, app_lambda-1)) ## (the ultimate contraint is that log(lambda)> -Inf)
-          lambdamax <- max(c(.Machine$double.eps, (app_lambda+1)*c(1.01))) 
-          # last one for low lambda,nu values
-          fupper <- objfn(lambdamax)  ## normally >0 
-          if (is.nan(fupper) || fupper<0) {
-            if ( ! identical(spaMM.getOption("COMP_geom_approx_warned"),TRUE)) {
-              warning(paste("Geometric approximation tried in COMPoisson(nu=",nu,") for mu=",mu," and possibly for other nu,mu values"))
-              spaMM.options(COMP_geom_approx_warned=TRUE)
-            }
-            lambda <- mu/(1+mu) 
-          } else {
-            flower <- objfn(lambdamin) ## normally <0 
-            interval <- c(lambdamin,lambdamax)
-            # linkinv(0)=0 => objfn(0)= -mu
-            lambda <- uniroot(objfn,interval=interval,f.lower = flower,f.upper = fupper)$root
-          }
-        }
-        return(lambda)
-      })
-    } else attributes(mu) <- NULL ## avoids 'mise en abime'
-    if (log) {
-      return(log(lambdas)) ## eta, ie standard linkfun value
-    } else return(structure(lambdas,mu=mu))
-  }
-  variance <- function(mu) {
-    if (nu==0) {
-      return(mu*(1+mu)) 
-    } else {
-      lambdas <- linkfun(mu,log=FALSE)
-      En <- sapply(lambdas,function(lambda) {
-        .COMP_Z_ratio(.COMP_Z_n(lambda=lambda,nu=nu),.COMP_Z(lambda=lambda,nu=nu))
-      }) 
-      En2 <- sapply(lambdas,function(lambda) {
-        .COMP_Z_ratio(.COMP_Z_n2(lambda=lambda,nu=nu),.COMP_Z(lambda=lambda,nu=nu)) 
-      })
-      resu <- pmax(En2-En^2,1e-8) ## pmax otherwise for low mu, Vmu=0, -> ... -> w.resid=0
-      ## for geom V(mu) = mu(1+mu) but this cannot be a lower bound for resu.
-      return(resu)
-    }
-  }
+  linkinv <- .CMP_linkinv
+  CMP_linkfun_objfn <- function(lambda, mu) {linkinv(lambda=lambda) -mu}
+  linkfun <- .CMP_linkfun
+  variance <- .CMP_variance
   validmu <- function(mu) all(is.finite(mu)) && all(mu > 0) ## from poisson()
   valideta <- function(eta) TRUE ## from poisson()
-  mu.eta <- function (eta,lambda=exp(eta)) {
-    if (nu==0) {
-      resu <- lambda/(1-lambda)^2
-    } else resu <- sapply(lambda, function(lambda) {
-      compz <- .COMP_Z(lambda=lambda,nu=nu)
-      compzn <- .COMP_Z_n(lambda=lambda,nu=nu)
-      compzn2 <- .COMP_Z_n2(lambda=lambda,nu=nu)
-      rn2 <- .COMP_Z_ratio(compzn2,compz)
-      rn <- .COMP_Z_ratio(compzn,compz) ## mu
-      res <- rn2 - rn^2 # (compz*compzn2-compzn^2)/(compz^2)
-      # dmu/deta=(dmu/dlam) (dlam/deta) = lam dmu/dlam = lam (compz*compzn2-compzn^2)/(lam compz^2) = resu
-      # b/c mu = compzn/compz, d compz/ dlam = compzn/lam, d compzn/ dlam = compzn2/lam
-      pmax(res, .Machine$double.eps)
-    })
-    resu
-  }
-  dev.resids <- function(y, mu, wt){
-    # must accept, among others, vector y and scalar mu.
-    lambdas <- linkfun(mu=mu,log=FALSE)
-    n <- length(y)
-    if (length(mu)==1L) lambdas <- rep(lambdas,n)
-    calc_dev <- function(yi,lambdai) {
-      Z2 <- .COMP_Z(lambda=lambdai,nu=nu)
-      if (yi==0) { # lambda = 0,  Z1 = 1
-        dev <- 2*(Z2[["logScaleFac"]]+log(Z2[["scaled"]]))
-      } else {
-        # eval lambda for Z1(lambda...)
-        if (nu==0) {
-          lambda <- yi/(1+yi)  
-        } else {
-          objfn <- function(lambda) {linkinv(lambda=lambda) -yi}
-          app_lambda <-  max(c(0,(yi+max(0,(nu-1)/(2*nu)))))^(nu)
-          lambdamin <- max(c(.Machine$double.eps, app_lambda-1))
-          lambdamax <- max(c(.Machine$double.eps, (app_lambda+1)*c(1.01))) 
-          while (objfn(lambdamax)<0) {
-            lambdamax <- lambdamax*10 ## greedy but resolves errors for low nu 
-            if (lambdamax>1e100) stop("lambdamax>1e100 in COMPoisson$dev.resids()")
-          }
-          interval <- c(lambdamin,lambdamax)
-          lambda <- uniroot(objfn,interval=interval)$root
-        }
-        Z1 <- .COMP_Z(lambda=lambda,nu=nu)
-        #
-        dev <- 2*(yi*log(lambda/lambdai)-(Z1[["logScaleFac"]]-Z2[["logScaleFac"]]+log(Z1[["scaled"]]/Z2[["scaled"]])))
-      }
-      dev
-    }
-    devs <- numeric(n)
-    for(i in seq(n)) { devs[i] <- calc_dev(y[i],lambdai=lambdas[i]) }
-    devs <- devs*wt
-    devs[devs==Inf] <- .Machine$double.xmax/n ## so that total deviance may be finite 
-    return(devs) 
-  }
-  aic <- function(y, n, mu, wt, dev) {
-    aici <- sapply(seq(length(y)),function(i){
-      .dCOMP(y[i], mu[i], nu=nu, log = TRUE)
-    })
-    -2 * sum(aici * wt)
-  }
+  mu.eta <- .CMP_mu.eta
+  dev.resids <- .CMP_dev_resids
+  aic <- .CMP_aic
   initialize <- expression({
     if (any(y < 0)) stop("negative values not allowed for the 'Poisson' family")
     n <- rep.int(1, nobs)
     mustart <- y + 0.1
   })
-  simfun <- function(object,nsim) {
-    wts <- object$prior.weights
-    if (any(wts != 1)) 
-      warning("ignoring prior weights")
-    lambdas <- exp(object$eta)
-    resu <- sapply(lambdas,.COMP_simulate,nu=nu,nsim=nsim)
-    if (nsim>1) resu <- t(resu)
-    return(resu)
-  }
+  simfun <- .CMP_simfun
+  environment(dev.resids) <- environment(linkinv) <- environment(aic) <- environment(simfun) <- 
+    environment(mu.eta) <- environment(variance) <- environment(linkfun) <- environment() ## containing nu
   ## changes the parent.env of all functions: 
   parent.env(environment(aic)) <- environment(.dCOMP) ## gives access to spaMM:::.dCOMP and other .COMP_ fns
   structure(list(family = structure("COMPoisson",

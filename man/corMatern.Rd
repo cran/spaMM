@@ -1,6 +1,14 @@
 \name{corMatern}
 \alias{corMatern}
-%- Also NEED an '\alias' for EACH other topic documented here.
+\alias{Initialize.corMatern} 
+\alias{Variogram.corMatern} 
+\alias{coef.corMatern} 
+\alias{coef<-.corMatern} 
+\alias{corFactor.corMatern} 
+\alias{corMatrix.corMatern} 
+\alias{getCovariate.corMatern} 
+\alias{logDet.corMatern} 
+\alias{recalc.corMatern} 
 \title{Matern Correlation Structure as a corSpatial object}
 \description{
   This implements the Matérn correlation structure (see \code{\link{Matern}}) for use with \code{lme} or \code{glmmPQL}. Usage is as for others \code{corSpatial} objects 
@@ -94,7 +102,7 @@ Mixed-Effects Models in S and S-PLUS, José C. Pinheiro and Douglas M. Bates, St
 \examples{
 ## LMM
 data(blackcap)
-blackcapD <-cbind(blackcap,dummy=1) ## obscure, isn't it? 
+blackcapD <- cbind(blackcap,dummy=1) ## obscure, isn't it? 
 ## With method= 'ML' in lme, The correlated random effect is described 
 ##  as a correlated residual error and no extra residual variance is fitted:
 nlme::lme(fixed = migStatus ~ means, data = blackcapD, random = ~ 1 | dummy, 

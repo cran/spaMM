@@ -10,3 +10,8 @@ if (require("Infusion",quietly=TRUE)) {
   #Infusion.options(example_maxtime=120)  ## allows refine()
   example("Infusion") ## detected calc_logdisp_cov issues   
 }
+
+if (require("IsoriX",quietly=TRUE)) { ## Checks that exports/imports are OK
+  IsoriX.options(spaMM.options("example_maxtime"))
+  example("isofit") ## to detect e.g. do_TRACE issues
+}

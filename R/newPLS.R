@@ -53,10 +53,10 @@ get_from_MME_default.Matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
     #   return(Matrix::qr.coef(Matrix::qr(sXaug),szAug)) ## Vscaled.beta
     ## FR->FR needs a fully automated selection of methods:
     if (length(grep("QR", .spaMM.data$options$Matrix_method))>0L) {
-      solve_method <- "lmwith_sparse_QRp"
+      solve_method <- ".lmwith_sparse_QRp"
     } else if (length(grep("LDL", .spaMM.data$options$Matrix_method))>0L) {
-      solve_method <- "lmwith_sparse_LDLp"
-    } else solve_method <- "lmwith_sparse_LLp"
+      solve_method <- ".lmwith_sparse_LDLp"
+    } else solve_method <- ".lmwith_sparse_LLp"
     sol <- do.call(solve_method,list(XX=sXaug,yy=szAug,returntQ=FALSE,returnR=FALSE,pivot=TRUE))
     return(sol$coef)
   } else stop("Unhandled arguments in get_from_MME_default.Matrix (missing method for get_from_MME() ?)")
@@ -76,11 +76,11 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
       # betaV <- RcppEigen::fastLmPure(X=sXaug,y=szAug,method=1)$coefficients
       ######
     #} else return(.lm.fit(x=sXaug,y=szAug)$coefficients) ## 
-    } else return(lmwithQR(sXaug,szAug,returntQ=FALSE,returnR=FALSE)$coef) 
+    } else return(.lmwithQR(sXaug,szAug,returntQ=FALSE,returnR=FALSE)$coef) 
   } else stop("Unhandled arguments in get_from_default.matrix")
 }
 
-calc_sXaug_Re <- function(locsXaug, ## conforming template
+.calc_sXaug_Re <- function(locsXaug, ## conforming template
                           X.Re,weight_X) {
   distinct.X.ReML <- attr(X.Re,"distinct.X.ReML")
   n_u_h <- attr(locsXaug,"n_u_h")
@@ -102,12 +102,12 @@ calc_sXaug_Re <- function(locsXaug, ## conforming template
 
 # function to get the hatvalues (only: not the other similar computations on t_Q_scaled)
 # no permutation issues for Q => a single get_hatvalues function should hande all sXaug classes
-.get_hatvalues <-function(sXaug, X.Re, weight_X) {
+.get_hatvalues <- function(sXaug, X.Re, weight_X) {
   if ( ! is.null(X.Re) ) { ## not the standard REML
     distinct.X.ReML <- attr(X.Re,"distinct.X.ReML")
     if ( distinct.X.ReML[2L] ) { ## test FALSE for standard ML, TRUE only for some non-standard REML cases
-      locsXaug <- calc_sXaug_Re(locsXaug=sXaug,X.Re,weight_X)
-      hatval <- leverages(locsXaug) ## Rcpp version of computation through computation of Q
+      locsXaug <- .calc_sXaug_Re(locsXaug=sXaug,X.Re,weight_X)
+      hatval <- .leverages(locsXaug) ## Rcpp version of computation through computation of Q
     } else if ( distinct.X.ReML[1L] ) { ## includes ML standard
       whichcols <- attr(X.Re,"unrestricting_cols")
       if (length(whichcols)==attr(sXaug,"pforpv")) { ## should be ML standard
@@ -132,18 +132,20 @@ calc_sXaug_Re <- function(locsXaug, ## conforming template
 .calc_dvdloglamMat_new <- function(dlogfthdth,cum_n_u_h,lcrandfamfam,rand.families,u_h,
                                    sXaug, d2hdv2=NULL, ## use either one
                                    stop.on.error) {
-  neg.d2f_dv_dloglam <- unlist(lapply(seq(length(lcrandfamfam)), function(it) {
+  neg.d2f_dv_dloglam <- vector("list",length(lcrandfamfam))
+  for (it in seq_len(length(lcrandfamfam)) ) {
     u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
     ## First the cases where g(u) differs from theta(u) : cf oklink dans preprocess pour detection des cas
     ## same computation as canonical case, except that first we consider dlogfthdv=dlogfthdth * [dth/dv]
     if (lcrandfamfam[it]=="inverse.gamma" && rand.families[[it]]$link=="log") { 
-      return(dlogfthdth[u.range] / u_h[u.range])  ## [dth/dv=1/u] for th(u)=-1/u, v=log(u)
+      neg.d2f_dv_dloglam[[it]] <- (dlogfthdth[u.range] / u_h[u.range])  ## [dth/dv=1/u] for th(u)=-1/u, v=log(u)
     } else if (lcrandfamfam[it]=="gamma" && rand.families[[it]]$link=="identity") { 
-      return(dlogfthdth[u.range] / u_h[u.range]) ## gamma(identity)  ## [dth/dv=1/u] for th(u)=log(u), v=u
+      neg.d2f_dv_dloglam[[it]] <- (dlogfthdth[u.range] / u_h[u.range]) ## gamma(identity)  ## [dth/dv=1/u] for th(u)=log(u), v=u
     } else { ## v=g(u) = th(u) : random effect model is canonical conjugate
-      return(dlogfthdth[u.range]) ## (neg => -) (-)(psi_M-u)/lambda^2    *    lambda.... 
+      neg.d2f_dv_dloglam[[it]] <- (dlogfthdth[u.range]) ## (neg => -) (-)(psi_M-u)/lambda^2    *    lambda.... 
     } 
-  }))
+  }
+  neg.d2f_dv_dloglam <- unlist(neg.d2f_dv_dloglam)
   neg.d2f_dv_dloglam <- as.vector(neg.d2f_dv_dloglam)
   if(is.null(d2hdv2)) {
     dvdloglamMat <- get_from_MME(sXaug,"solve_d2hdv2",B=diag( neg.d2f_dv_dloglam)) 
@@ -151,7 +153,7 @@ calc_sXaug_Re <- function(locsXaug, ## conforming template
     qr_d2hdv2 <- .get_qr(d2hdv2,provide=FALSE)
     if (is.null(qr_d2hdv2)) {
       dvdloglamMat <- try(solve(d2hdv2,diag( neg.d2f_dv_dloglam ))) 
-    } else dvdloglamMat <- solveWrap.matrix(qr_d2hdv2, diag( neg.d2f_dv_dloglam ), stop.on.error=stop.on.error) # rXr
+    } else dvdloglamMat <- .solveWrap_matrix(qr_d2hdv2, diag( neg.d2f_dv_dloglam ), stop.on.error=stop.on.error) # rXr
     if (inherits(dvdloglamMat,"try-error")) {
       mess <- pastefrom("problem in dvdloglamMat computation.",prefix="(!) From ")
       warning(mess)
@@ -166,14 +168,12 @@ calc_sXaug_Re <- function(locsXaug, ## conforming template
                                    stop.on.error) {
   ## cf calcul dhdv, but here we want to keep each d/d phi_i distinct hence not sum over observations i 
   ## code corrected here 12/2013; this is dh0dv = neg.d2h0_dv_dlogphi (eta always linear in v :-) and w.resid always propto 1/phi)
-  if (inherits(ZAL,"Matrix")) {
-    neg.d2h0_dv_dlogphi <- Matrix_times_Dvec(t(ZAL),as.vector(dh0deta))
-  } else neg.d2h0_dv_dlogphi <- sweep(t(ZAL),MARGIN=2,as.vector(dh0deta),`*`) ## dh0dv <- t(ZAL) %*% diag(as.vector(dh0deta)) ## nXr each ith column is a vector of derivatives wrt v_k
+  neg.d2h0_dv_dlogphi <- .m_Matrix_times_Dvec(t(ZAL), drop(dh0deta)) # dh0dv <- t(ZAL) %*% diag(as.vector(dh0deta)) ## nXr each ith column is a vector of derivatives wrt v_k
   if (is.null(d2hdv2)) {
     dvdlogphiMat <- get_from_MME(sXaug,"solve_d2hdv2",B=neg.d2h0_dv_dlogphi) 
   } else {
     qr_d2hdv2 <- .get_qr(d2hdv2)
-    dvdlogphiMat <- solveWrap.matrix(qr_d2hdv2, neg.d2h0_dv_dlogphi , stop.on.error=stop.on.error)  # rXn       
+    dvdlogphiMat <- .solveWrap_matrix(qr_d2hdv2, neg.d2h0_dv_dlogphi , stop.on.error=stop.on.error)  # rXn       
     if (inherits(dvdlogphiMat,"try-error")) {
       mess <- pastefrom("problem in dvdlogphiMat computation.",prefix="(!) From ")
       stop(mess) ## ou warning + ginv  comme dans .calc_dvdloglamMat
@@ -183,8 +183,8 @@ calc_sXaug_Re <- function(locsXaug, ## conforming template
 }
 
 
-.calc_sscaled_new <- function(vecdisneeded, dlogWran_dv_h, coef12, Pdiag, n_u_h, nobs, 
-                             sXaug, ZAL) {
+.calc_sscaled_new <- function(vecdisneeded, dlogWran_dv_h, coef12, 
+                              n_u_h, nobs, sXaug, ZAL) {
   if  (any(vecdisneeded[-3L])) {
     coef12 <- coef12 ## eval promise
     coef1 <- coef12$coef1 # coef1 is the factor of P_ii in d1
@@ -196,17 +196,17 @@ calc_sXaug_Re <- function(locsXaug, ## conforming template
   vecdi1 <- vecdis[1L]
   vecdi2 <- vecdis[2L]
   vecdi3 <- vecdis[3L]
-  if (any(vecdisneeded)) { ## buut its stupid to call the function otherwise
+  if (any(vecdisneeded)) { ## but the call to .calc_sscaled_new is conditional to the same condition 
     ## here version 1.5.3 has an interesting signed.wAugX concept
     ## P is P in LeeL appendix p. 4 and is P_R in MolasL p. 3307 
-    Pdiag <- Pdiag ## eval promise bc the function is called with a function call as promise
+    Pdiag <- get_from_MME(sXaug,"hatval_Z") 
     seqn_u_h <- seq_len(n_u_h)
     if (vecdisneeded[1L]) vecdi1 <- Pdiag$lev_phi * coef1
     # K2 = solve(d2hdv2,tZAL) is K2 matrix in LeeL appendix p. 4 and is -D in MolasL p. 3307 
     # W is Sigma^-1 ; TWT = t(ZALI)%*%W%*%ZALI = ZAL'.Wresid.ZAL+Wranef = -d2hdv2 !
     if (vecdisneeded[2L]) { # ( ZAL %*% K2 ) is K1 in LeeL appendix p. 4 and is A=-ZD in MolasL p. 3307-8 
       # vecdi2 <- as.vector( ((Pdiag$lev_phi * coef2) %*id% ZAL) %*% K2)
-       vecdi2 <- get_from_MME(sXaug,"solve_d2hdv2",B=as.vector((Pdiag$lev_phi * coef2) %*id% ZAL))
+      vecdi2 <- get_from_MME(sXaug,"solve_d2hdv2",B=as.vector((Pdiag$lev_phi * coef2) %*id% ZAL))
       vecdi2 <- as.vector(ZAL %*% vecdi2)
     }
     # coef3 =(1/Wran)(dWran/dv_h), the thing between P and K2 in the d3 coef. See LeeL12 appendix
@@ -226,31 +226,36 @@ calc_sXaug_Re <- function(locsXaug, ## conforming template
     z2 <- rep(0,length(w.ranef)) 
     a <- rep(0,nobs)
   } else { ## HGLM: nonzero z2, nonzero a(0) 
-    psi_corr <- unlist(lapply(seq(nrand), function(it) {
+    psi_corr <- vector("list",nrand)
+    for (it in seq_len(nrand)) {
       u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
       if (lcrandfamfam[it]=="inverse.gamma" && rand.families[[it]]$link=="log") { 
-        return(2*u_h[u.range]- (u_h[u.range]^2)*(1+lambda_est[u.range])) ## LeeL01 p.1003; to cast the analysis into the form of z2  
+        psi_corr[[it]] <- (2*u_h[u.range]- (u_h[u.range]^2)*(1+lambda_est[u.range])) ## LeeL01 p.1003; to cast the analysis into the form of z2  
       } else if (lcrandfamfam[it]=="gamma" && rand.families[[it]]$link=="identity") { ## gamma(identity)
-        return(2*u_h[u.range] - (u_h[u.range]^2)/(1-lambda_est[u.range])) ## interesting singularity 
+        psi_corr[[it]] <- (2*u_h[u.range] - (u_h[u.range]^2)/(1-lambda_est[u.range])) ## interesting singularity 
         ## moreover pb: u_h=1, lambda =1/2 -> psi=0 -> z2=0 -> negative u_h
       } else {   
-        return(psi_M[u.range])  
+        psi_corr[[it]] <- (psi_M[u.range])  
       } 
-    }))
+    }
+    psi_corr <- unlist(psi_corr)
+    # w.ranef v^0 + dlogfv_dv ('dlogfvdv' elsewhere) is represented as w.ranef (z2:= v_h + (psi_corr-u_h)*dvdu) 
+    #    as detailed in 'Adjustments of the score equations for different random effect ($v$) distributions'
     z2 <- v_h + (psi_corr-u_h)*dvdu ## update since u_h,v_h updated (yes)
     #        nXn  .   nXn      nX'r'    'r'X'r'       'r'X'r'    'r'
     # a <- Sig %*% Wresid %*% ZAL %*% solve(-d2hdv2) %*% Wranef %*% z2 ## p. 963 l. 1-2; a(0) supp mat p. 6 
     aa <- w.ranef * z2
     a <- - get_from_MME(sXaug,"solve_d2hdv2",B= aa )
-    a <- Sig_times_b(Sig0=NULL, ZAL=ZAL, w.ranef=w.ranef,w.resid=w.resid,b= w.resid * (ZAL %id*% a) )
+    a <- .Sig_times_b(Sig0=NULL, ZAL=ZAL, w.ranef=w.ranef,w.resid=w.resid,b= w.resid * (ZAL %id*% a) )
     # a <- Sig %*% ( w.resid * (ZAL %id*% a) ) ## a(0) in LeeL12
   }         
   return(list(a0=a,z20=z2))
 }
 
-Sig_times_b <- function(Sig0,ZAL,w.ranef,w.resid,b) { # Sig= [Sig0=Z.(1/w.ranef).Z^t+1/w.resid]
+.Sig_times_b <- function(Sig0,ZAL,w.ranef,w.resid,b) { # Sig= [Sig0=Z.(1/w.ranef).Z^t+1/w.resid]
   if (is.null(Sig0)) { ## w.ranef is variable
-    v1 <- ZAL %*% (t(t(b) %*% ZAL)/w.ranef)
+    v1 <- drop(t(b) %*% ZAL)
+    v1 <- ZAL %*% (v1/w.ranef)
   } else {
     v1 <- Sig0 %*% b
   }
@@ -283,20 +288,6 @@ Sig_times_b <- function(Sig0,ZAL,w.ranef,w.resid,b) { # Sig= [Sig0=Z.(1/w.ranef)
     ## if (non gaussian, gaussian), d3 zero (!maybe not for all possible cases) but d1,d2 nonzero 
     vecdisneeded <- c( coef12needed, coef12needed, any(dlogWran_dv_h!=0L) )
     if (any(vecdisneeded)) {
-      ##  The code for Pdiag in terms of wXaug was
-      # qr_wXaug <- ...
-      # qr_Q <- qr.Q(qr_wXaug) ## well-placed 0-block => qr.Q(qr(wXaug[,-(X.pv-cols)])) = qr.Q(qr(wXaug))[,-(X.pv-cols)]
-      # Pdiag <- rowSums((qr_Q[,-(n_u_h+seq_len(pforpv))])^2)
-      ## with the comment "## under ML, Pdiag are the leverages given the current c(w.resid,w.ranef)"
-      ## We have the same well-placed 0-block in sXaug, and the relation wXaug[,cols]= sXaug[,cols] %*% diag(sqrt(w.ranef))
-      ## hence
-      # wXaug_IZcols <- sXaug[,seq(n_u_h)] %*% diag(sqrt(w.ranef))
-      # qr_Q_wXaug_IZcols <- qr.Q(qr(wXaug_IZcols)) 
-      # Pdiag <- rowSums(qr_Q_wXaug_IZcols^2)
-      ## reduces to (no scaling needed!)
-      # zut <- get_from_MME(sXaug,which="t_Q_scaled")[seq(n_u_h),]
-      # zut <- zut*zut
-      # Pdiag <- colSums(zut)
       sscaled <- .calc_sscaled_new(vecdisneeded=vecdisneeded,
                               dlogWran_dv_h=dlogWran_dv_h, ## dlogWran_dv_h was computed when w.ranef was computed
                               coef12= .calc_dlW_deta(dmudeta=drop(dmudeta), mu=drop(mu), eta=drop(eta), 
@@ -304,13 +295,12 @@ Sig_times_b <- function(Sig0,ZAL,w.ranef,w.resid,b) { # Sig= [Sig0=Z.(1/w.ranef)
                                                     BinomialDen=processed$BinomialDen, 
                                                     canonicalLink=processed$canonicalLink,
                                                     calcCoef1=TRUE), ## promise evaluated if any vecdisneeded[-3]
-                              Pdiag=get_from_MME(sXaug,which="hatval_Z"), # keep here as promise
                               n_u_h=n_u_h, nobs=nobs, 
                               sXaug=sXaug,
                               ZAL=ZAL # vecdi2
       )
     } else sscaled <- 0
-    zAug <- c(z2+ as.vector((sscaled * w.resid ) %*% ZAL )/w.ranef,
+    zAug <- c(z2+ as.vector((sscaled * w.resid ) %*% ZAL )/w.ranef, ## that's the y_2 in "Methods of solution based on the augmented matrix"
               z1- sscaled) 
     zAug <- structure(zAug,sscaled=sscaled,z1=z1,z2=z2)
   } else zAug <- structure(c(z2,z1),sscaled=0,z1=z1,z2=z2) 
@@ -330,42 +320,13 @@ Sig_times_b <- function(Sig0,ZAL,w.ranef,w.resid,b) { # Sig= [Sig0=Z.(1/w.ranef)
   message("logLik of the fit=",for_intervals$fitlik)    
 }
 
-Matrix_times_Dvec <- function(X,Dvec) {
-  #return(X %*% Diagonal(x=Dvec))
-  if (inherits(X,"ddiMatrix")) {
-    if (X@diag=="U") {
-      X <- Diagonal(x=Dvec)
-    } else X@x <- X@x * Dvec 
-  } else if (inherits(X,"dgCMatrix") || inherits(X,"dtCMatrix")) {
-    col_indices <- rep(1L:(ncol(X)),diff(X@p))
-    X@x <- X@x * Dvec[col_indices]    
-  } else {
-    warning("inefficient code in make_Xscal")
-    X <- X %*% Diagonal(x=Dvec)
-  } 
-  return(X)
-}
 
-make_Xscal <- function(ZAL, Xunscal=NULL, ZAL_scaling=NULL, AUGI0_ZX,n_u_h) {
-  if (is.null(Xunscal)) {
-    if (inherits(ZAL,"Matrix")) {
-      if (!is.null(ZAL_scaling)) ZAL <- Matrix_times_Dvec(ZAL,ZAL_scaling)
-      Xscal <- suppressMessages(cbind2(
-        suppressMessages(rbind2(AUGI0_ZX$I, ZAL)), ## suppress signature message generated by eg rbind2(Diagonal(x=runif(5)), Diagonal(n=5)) 
-        rbind2(AUGI0_ZX$ZeroBlock, AUGI0_ZX$X.pv)
-      )) 
-    } else {
-      if (!is.null(ZAL_scaling)) ZAL <- ZAL %*% diag(x=ZAL_scaling)
-      Xscal <- cbind(
-        rbind(AUGI0_ZX$I, ZAL), 
-        rbind(AUGI0_ZX$ZeroBlock, AUGI0_ZX$X.pv)
-      ) 
-    }
-  } else { ## Matrix case only ... 
-    Xscal <- Xunscal
-    i_ZAL_pos <- which((Xscal@i>(n_u_h-1L))[seq_len(Xscal@p[ncol(ZAL)+1L])])
-    Xscal@x[i_ZAL_pos] <- Xscal@x[i_ZAL_pos]*ZAL_scaling[Xscal@i[i_ZAL_pos]-n_u_h+1L] 
-  }
+.make_Xscal <- function(ZAL, ZAL_scaling=NULL, AUGI0_ZX,n_u_h) {
+  if (!is.null(ZAL_scaling)) ZAL <- .m_Matrix_times_Dvec(ZAL,ZAL_scaling)
+  Xscal <- suppressMessages(cbind2(
+    suppressMessages(rbind2(AUGI0_ZX$I, ZAL)), ## suppress signature message generated by eg rbind2(Diagonal(x=runif(5)), Diagonal(n=5)) 
+    rbind2(AUGI0_ZX$ZeroBlock, AUGI0_ZX$X.pv)
+  )) 
   return(Xscal)
 }
 
@@ -374,7 +335,7 @@ make_Xscal <- function(ZAL, Xunscal=NULL, ZAL_scaling=NULL, AUGI0_ZX,n_u_h) {
 ## -nu*y+nu*(log(nu*y))-lgamma(nu)-log(y) as it should, LeeNP p. 180
 ## for beta ranef y = u_h and theta = 1/2 this is also OK
 ## for inv gamma cf Log[PDF[InverseGammaDistribution[1 + \[Nu], \[Nu]], uh]] + theta heuristically added to fit p. 181...
-## To merge this with selectLoglfn, relationship between theta and psi_M sould be clarified...
+## To merge this with .get_clik_fn, relationship between theta and psi_M sould be clarified...
 .loglfn_ranU <- function(RandDist,y,nu) { ## functions with standardized mean and only a dispersion param
   switch(RandDist,
          gaussian = {- ((y^2)*nu+log(2*pi/nu))/2}, 
@@ -385,7 +346,7 @@ make_Xscal <- function(ZAL, Xunscal=NULL, ZAL_scaling=NULL, AUGI0_ZX,n_u_h) {
   )
 }
 
-calc_APHLs_from_ZX <- function(auglinmodblob=NULL,processed, which="p_v",
+.calc_APHLs_from_ZX <- function(auglinmodblob=NULL,processed, which="p_v",
                                ## alternative to auglinmodblob, insuff pour REML non standard:
                                sXaug, phi_est, lambda_est, dvdu, u_h, mu 
                                ) {
@@ -419,18 +380,18 @@ calc_APHLs_from_ZX <- function(auglinmodblob=NULL,processed, which="p_v",
     #
     family <- processed$family
     famfam <- family$family
-    loglfn.fix <- processed$loglfn.fix
+    clik_fn <- processed$clik_fn
     y <- processed$y
     BinomialDen <- processed$BinomialDen
     theta <- .theta.mu.canonical(mu/BinomialDen,family)  
     if (famfam=="binomial") {
-      resu$clik <- sum(loglfn.fix(theta,y/BinomialDen,BinomialDen,1/(phi_est))) ## freq a revoir
+      resu$clik <- sum(clik_fn(theta,y/BinomialDen,BinomialDen,1/(phi_est))) ## freq a revoir
     } else {
       phi_est[phi_est<1e-12] <- 1e-10 ## 2014/09/04 local correction, has to be finer than any test for convergence 
       ## creates upper bias on clik but should be more than compensated by the lad
       ## correcting the lad makes an overall upper bias for small (y-theta) at "constant" corrected phi 
       ## this can be compensated by correcting the lad LESS.
-      resu$clik <- sum(loglfn.fix(theta,y,eval(processed$prior.weights)/phi_est)) ## note (prior) weights meaningful only for gauss/ Gamma 
+      resu$clik <- sum(clik_fn(theta,y,eval(processed$prior.weights)/phi_est)) ## note (prior) weights meaningful only for gauss/ Gamma 
     }
     if (processed$models[["eta"]]=="etaGLM") {
       resu$p_v <- resu$clik
@@ -438,10 +399,12 @@ calc_APHLs_from_ZX <- function(auglinmodblob=NULL,processed, which="p_v",
     } # E L S E 
     cum_n_u_h <- processed$cum_n_u_h
     lcrandfamfam <-  attr(processed$rand.families,"lcrandfamfam")
-    likranU <- unlist(lapply(seq_len(length(lcrandfamfam)), function(it) {
+    likranU <- vector("list",length(lcrandfamfam))
+    for (it in seq_len(length(lcrandfamfam))) {
       u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
-      .loglfn_ranU(lcrandfamfam[it],u_h[u.range],1/lambda_est[u.range])
-    }))
+      likranU[[it]] <- .loglfn_ranU(lcrandfamfam[it],u_h[u.range],1/lambda_est[u.range])
+    }
+    likranU <- unlist(likranU)
     log.du_dv <- - log(dvdu) 
     likranV <- sum(likranU + log.du_dv)
     resu$hlik <- resu$clik + likranV
@@ -466,15 +429,14 @@ calc_APHLs_from_ZX <- function(auglinmodblob=NULL,processed, which="p_v",
         H_global_scale <- attr(auglinmodblob$sXaug,"H_global_scale")
         w.ranef <- attr(auglinmodblob$sXaug,"w.ranef")
         if (inherits(locXscal,"Matrix")) {
-          which_i_affected_rows <- locXscal@i>(n_u_h-1L)
-          locXscal@x[which_i_affected_rows] <- locXscal@x[which_i_affected_rows]*(1/weight_X)[locXscal@i[which_i_affected_rows]-n_u_h+1L] 
+          locXscal <- .Dvec_times_Matrix_lower_block(1/weight_X,locXscal,n_u_h)
           mMatrix_method <- .spaMM.data$options$Matrix_method
         } else {
           Xrows <- n_u_h+seq(nobs)
           locXscal[Xrows,] <- diag(x=1/weight_X) %*% locXscal[Xrows,] ## get back to unweighted scaled matrix
           mMatrix_method <- .spaMM.data$options$matrix_method
         }
-        locXscal <- calc_sXaug_Re(locXscal,X.Re,rep(1,nobs))      ## or some cbind ?  
+        locXscal <- .calc_sXaug_Re(locXscal,X.Re,rep(1,nobs))      ## or some cbind ?  
         locsXaug <- do.call(mMatrix_method,
                          list(Xaug=locXscal, weight_X=weight_X, w.ranef=w.ranef, H_global_scale=H_global_scale))
         
@@ -484,6 +446,15 @@ calc_APHLs_from_ZX <- function(auglinmodblob=NULL,processed, which="p_v",
   }
   # if (! any(which=="hlik")) resu$hlik <- NA
   return(resu)
+}
+
+.calc_APHLs_from_auglinmodblob <- function(auglinmodblob,processed, which, phi_est, lambda_est) {
+  APHLs_args <- list(processed=processed, which=which, phi_est=phi_est, lambda_est=lambda_est)
+  APHLs_args$sXaug <- auglinmodblob$sXaug
+  APHLs_args$dvdu <- auglinmodblob$wranefblob$dvdu
+  APHLs_args$u_h <- auglinmodblob$u_h 
+  APHLs_args$mu <- auglinmodblob$muetablob$mu
+  do.call(".calc_APHLs_from_ZX", APHLs_args)[[which]]
 }
 
 

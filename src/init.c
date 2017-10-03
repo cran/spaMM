@@ -3,6 +3,10 @@
 #include <stdlib.h> // for NULL
 #include <R_ext/Rdynload.h>
 
+/* FIXME: 
+Check these declarations against the C/Fortran source code.
+*/
+
 /* .C calls */
 extern void bessel_lnKnu_e(void *, void *, void *, void *, void *, void *);
 extern void matern_cor(void *, void *, void *, void *, void *);
@@ -23,7 +27,7 @@ extern SEXP spaMM_lmwith_sparse_QRp(SEXP, SEXP, SEXP, SEXP, SEXP);
 extern SEXP spaMM_lmwithQR(SEXP, SEXP, SEXP, SEXP);
 extern SEXP spaMM_lmwithQRP(SEXP, SEXP, SEXP, SEXP);
 extern SEXP spaMM_LogAbsDetCpp(SEXP);
-extern SEXP spaMM_pseudoSolvediag(SEXP, SEXP);
+//extern SEXP spaMM_pseudoSolvediag(SEXP, SEXP);
 extern SEXP spaMM_Rcpp_chol_R(SEXP);
 extern SEXP spaMM_Rcpp_COMP_Z(SEXP, SEXP, SEXP, SEXP);
 extern SEXP spaMM_Rcpp_d2hdv2(SEXP, SEXP, SEXP);
@@ -59,7 +63,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"spaMM_lmwithQR",             (DL_FUNC) &spaMM_lmwithQR,             4},
   {"spaMM_lmwithQRP",            (DL_FUNC) &spaMM_lmwithQRP,            4},
   {"spaMM_LogAbsDetCpp",         (DL_FUNC) &spaMM_LogAbsDetCpp,         1},
-  {"spaMM_pseudoSolvediag",      (DL_FUNC) &spaMM_pseudoSolvediag,      2},
+//  {"spaMM_pseudoSolvediag",      (DL_FUNC) &spaMM_pseudoSolvediag,      2},
   {"spaMM_Rcpp_chol_R",          (DL_FUNC) &spaMM_Rcpp_chol_R,          1},
   {"spaMM_Rcpp_COMP_Z",          (DL_FUNC) &spaMM_Rcpp_COMP_Z,          4},
   {"spaMM_Rcpp_d2hdv2",          (DL_FUNC) &spaMM_Rcpp_d2hdv2,          3},

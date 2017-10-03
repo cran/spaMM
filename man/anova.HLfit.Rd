@@ -2,7 +2,6 @@
 \alias{anova}
 \alias{anova.HLfit}
 \alias{LRT}
-%\alias{corrMM.LRT}
 %- Also NEED an '\alias' for EACH other topic documented here.
 \title{
   Likelihood ratio test of fixed effects.

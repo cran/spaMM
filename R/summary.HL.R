@@ -20,44 +20,52 @@
   return(list(iterativeEsts=iterativeEsts,optimEsts=optimEsts))
 }
 
+.make_beta_table <- function(object) {
+  namesOri <- attr(object$X.pv,"namesOri")
+  nc <- length(namesOri)
+  betaOri_cov <- matrix(NA,ncol=nc,nrow=nc,dimnames=list(rownames=namesOri,colnames=namesOri))
+  beta_cov <- .get_beta_cov_any_version(object)
+  betaOri_cov[colnames(beta_cov),colnames(beta_cov)] <- beta_cov
+  beta_se <- sqrt(diag(betaOri_cov))
+  fixef_z <- object$fixef/beta_se
+  beta_table <- cbind(object$fixef,beta_se,fixef_z)
+  colnames(beta_table) <- c("Estimate", "Cond. SE", "t-value")
+  rownames(beta_table) <- names(object$fixef)
+  return(beta_table)
+}
 
-legend_lambda<- function(object) {
+
+.legend_lambda <- function(object) {
   ## (1) analyse distributions
   randfams <- object$rand.families
-  rff <- sapply(seq_len(length(randfams)),function(rfit){tolower(randfams[[rfit]]$family)})
-  rfl <- sapply(rff,function(st) {
-    switch(st,
-           "beta" = "log[ lambda = 4 var(u)/(1 - 4 var(u)) ]", ## u ~ Beta(1/(2lambda),1/(2lambda))
-           "inverse.gamma" = "log[ lambda = var(u)/(1 + var(u)) ]", ## u ~ I-Gamma(1+1/lambda,1/lambda)
-           "log[ lambda = var(u) ]" ## gaussian, or gamma with u ~ Gamma(lambda,1/lambda)
-    )
-  })
-  check_adjd <- any(unlist(lapply(object$lambda.object$coefficients_lambdaS,function(v) any(names(v)=="adjd"))))
+  rff <- sapply(randfams, getElement, name="family")
+  rfl <- sapply(rff, switch, 
+    #        "beta" = "log(lambda)", ## u ~ Beta(1/(2lambda),1/(2lambda))
+    #        "inverse.gamma" = "log(lambda)", ## u ~ I-Gamma(1+1/lambda,1/lambda)
+    #        "llog(lambda)" ## gaussian, or gamma with u ~ Gamma(lambda,1/lambda)
+    "log(lambda)" ## currently constant
+  )
+  check_adjd <- any(unlist(lapply(object$lambda.object$coefficients_lambdaS, names))=="adjd")
   if (check_adjd) {
-    whichadj <- attr(attr(object$ZAlist,"ranefs"),"type") %in% c("adjacency","ar1")  
+    whichadj <- attr(attr(object$ZAlist,"ranefs"),"type") %in% c("adjacency")  
     rfl[whichadj] <- "inverse[ lambda_i =var(V'u) ]"
     rff <- rff[!whichadj]
   }
   urff <- unique(rff)
   urfl <- unique(rfl)
-  if (length(urff)==1L && length(urfl)==1L) {
-    cat(paste("Coefficients for ",urfl,":\n",sep=""))
-  } else {
-    cat(paste("Coefficients for ",paste(urfl,collapse=" or "),", with:\n",sep=""))
-    abyss <- lapply(urff, function(st) {
-      switch(st,
-             "beta" = cat("lambda = 4 var(u)/(1 - 4 var(u)) for Beta distribution; \n"),
-             "inverse.gamma" = cat("lambda = var(u)/(1 + var(u)) for inverse gamma distribution; \n"),
-             "gamma" = cat("lambda = var(u) for gamma distribution; \n"),
-             "gaussian" = cat("lambda = var(u) for Gaussian distribution; \n")
-      )
-    })     
-  }  
+  cat(paste("Coefficients for ",paste(urfl,collapse=" or "), " with", sep=""))
+  if (length(urff)==1L && length(urfl)==1L) {cat(" ")} else cat(":\n")
+  abyss <- lapply(urff, switch,
+           "beta" = cat("lambda = 4 var(u)/(1 - 4 var(u)) for u ~ Beta[1/(2*lambda),1/(2*lambda)]; \n"),
+           "inverse.gamma" = cat("lambda = var(u)/(1 + var(u)) for u ~ inverse-Gamma(sh=1+1/lambda, rate=1/lambda); \n"),
+           "gamma" = cat("lambda = var(u) for u ~ Gamma(sh=1+1/lambda, sc=1/lambda); \n"),
+           "gaussian" = cat("lambda = var(u) for u ~ Gaussian; \n")
+    )
   invisible(NULL)
 }
 
 
-.MLmess <-function(object,ranef=FALSE) {
+.MLmess <- function(object,ranef=FALSE) {
   if (object$models[["eta"]]=="etaGLM") {
     return("by ML.")
   } else if (object$family$family=="gaussian" && all(attr(object$rand.families,"lcrandfamfam")=="gaussian")) { 
@@ -94,7 +102,7 @@ legend_lambda<- function(object) {
         resu <- (.MLmess(object, ranef=TRUE))
       } else { ## if nontrivial REML formula was used...
         resu <- ("by non-standard REML")
-        attr(resu,"fixeformFromREMLform") <- nobarsMM(object$REMLformula)
+        attr(resu,"fixeformFromREMLform") <- .nobarsMM(object$REMLformula)
       }
     }    
   } else return( is.null(object$REMLformula) && object$HL[1]!='SEM')
@@ -110,14 +118,18 @@ summary.HLfitlist <- function(object, ...) {
   invisible(object)
 }
 
+.prettify_family <- function(rf,linkstring="") {
+  fam <- rf$family
+  paste(fam,"( ",linkstring,rf$link," )",sep="")
+}
 
 `summary.HLfit` <- function(object, details=FALSE,...) {
   models <- object$models
   phi.object <- object$phi.object
   famfam <- object$family$family ## response !
-  lcrandfamfam <- attr(object$rand.families,"lcrandfamfam") ## unlist(lapply(object$rand.families,function(rf) {tolower(rf$family)}))
-  randfamfamlinks <- unlist(lapply(object$rand.families,function(rf) {paste(rf$family,"(",rf$link,")",sep="")}))
-  randfamlinks <- unlist(lapply(object$rand.families,function(rf) {rf$link}))
+  lcrandfamfam <- attr(object$rand.families,"lcrandfamfam") 
+  randfamfamlinks <- unlist(lapply(object$rand.families, .prettify_family))
+  randfamlinks <- unlist(lapply(object$rand.families, getElement, name="link"))
   summ <- list()
   cat("formula: ")
   form <- attr(object$predictor,"oriFormula")
@@ -200,16 +212,7 @@ summary.HLfitlist <- function(object, ...) {
     cat("No fixed effect\n")
   } else {
     cat(" ------------ Fixed effects (beta) ------------\n")
-    namesOri <- attr(object$X.pv,"namesOri")
-    nc <- length(namesOri)
-    betaOri_cov <- matrix(NA,ncol=nc,nrow=nc,dimnames=list(rownames=namesOri,colnames=namesOri))
-    beta_cov <- get_beta_cov_any_version(object)
-    betaOri_cov[colnames(beta_cov),colnames(beta_cov)] <- beta_cov
-    beta_se <- sqrt(diag(betaOri_cov))
-    fixef_z <- object$fixef/beta_se
-    beta_table <- cbind(object$fixef,beta_se,fixef_z)
-    colnames(beta_table) <- c("Estimate", "Cond. SE", "t-value")
-    rownames(beta_table) <- names(object$fixef)
+    beta_table <- .make_beta_table(object)
     print(beta_table,4)
     summ$beta_table <- beta_table
   }
@@ -218,7 +221,7 @@ summary.HLfitlist <- function(object, ...) {
     urff <- unique(lcrandfamfam)
     urffl <- unique(randfamfamlinks)
     if (length(urffl)==1L) { 
-      cat("Family:", urff , "( link =", object$rand.families[[1]]$link,")\n") 
+      cat("Family:", .prettify_family(object$rand.families[[1]], linkstring = "link = ") , "\n") 
     } else {
       cat("Families(links):", paste(randfamfamlinks,collapse=", "), "\n")
     }
@@ -242,9 +245,8 @@ summary.HLfitlist <- function(object, ...) {
       stop("voir ici dans summary.HLfit")
     } else if ( ! is.null(linklam_coeff_list <- lambda.object$coefficients_lambdaS)) {
       # first construct a table including NA's for some coeeficients (not "inner" estimated), then remove these rows
-      repGroupNames <- unlist(lapply(seq_len(length(namesTerms)),function(it) {
-        names(namesTerms[[it]]) <- rep(names(namesTerms)[it],length(namesTerms[[it]]))
-      })) ## makes group identifiers unique (names of coeffs are unchanged)
+      repGroupNames <- rep(names(namesTerms),sapply(namesTerms,length))
+      ## i.e. for namesTerms = list(Subject=c("(Intercept)", "Days")), repGroupNames[[1]] is c("Subject", "Subject")
       lambda_table <- data.frame(Group=repGroupNames,Term=unlist(namesTerms),
                                  Estimate=unlist(linklam_coeff_list),
                                  "Cond.SE"=lambda.object$lambda_se)
@@ -283,7 +285,7 @@ summary.HLfitlist <- function(object, ...) {
       } else random_slope_pos <- integer(0)
       lambda_table <- lambda_table[ is_info,]
       summ$lambda_table <- lambda_table
-      legend_lambda(object)
+      .legend_lambda(object)
       print(lambda_table,digits=4,row.names=FALSE)
       # wa <-attr(lambda.object,"warning")
       # if ( ! is.null(wa)) {
@@ -325,15 +327,23 @@ summary.HLfitlist <- function(object, ...) {
       }
     } 
     outerlambda_pos <- which(type=="outer")
-    if (length(outerlambda_pos)>0L) cat(paste("Outer estimate of lambda (",
-                                              names(namesTerms)[outerlambda_pos],"): ", 
-                                              signif(print_lambda[outerlambda_pos],4)
-                                              ,collapse="\n"),"\n")
+    n_outer <- length(outerlambda_pos)
+    if (n_outer>0L) {
+      if (n_outer==1L) {cat("Outer estimate of variance:\n")} else {cat("Outer estimates of variances:\n")}
+      cat(paste("  lambda (",
+                names(namesTerms)[outerlambda_pos],"): ", 
+                signif(print_lambda[outerlambda_pos],4)
+                ,collapse="\n"),"\n")
+    }
     fixedlambda_pos <- which(type=="fix")
-    if (length(fixedlambda_pos)>0L) cat(paste("Fixed lambda value (",
-                                              names(namesTerms)[fixedlambda_pos],"): ", 
-                                              signif(print_lambda[fixedlambda_pos],4),
-                                              collapse="\n"),"\n")
+    n_fixed <- length(fixedlambda_pos)
+    if (n_fixed>0L) {
+      if (n_fixed==1L) {cat("Fixed variance:\n")} else {cat("Fixed variances:\n")}
+      cat(paste("  lambda (",
+                names(namesTerms)[fixedlambda_pos],"): ", 
+                signif(print_lambda[fixedlambda_pos],4),
+                collapse="\n"),"\n")
+    }
     cat(paste("# of obs: ",nrow(object$data),"; # of groups: ",
               paste(names(namesTerms),", ",unlist(lapply(object$ZAlist,ncol)),
                     collapse="; ",sep=""),
@@ -370,7 +380,7 @@ summary.HLfitlist <- function(object, ...) {
         #SmythHVsigd <- as.vector(sqrt(2)*phi_est);SmythHVG <- as.vector(phi_est); tmp <- SmythHVG / SmythHVsigd 
         ## tmp is here sqrt(2) !
         #if (length(tmp)>1) {SmythHVZstar <- diag(tmp) %*% X_disp} else SmythHVZstar <- tmp * X_disp
-        #SmythHVcovmat <- solve(ZtWZ(SmythHVZstar,(1-lev_phi))); phi_se <- sqrt(diag(SmythHVcovmat)) print(phi_se)
+        #SmythHVcovmat <- solve(.ZtWZ(SmythHVZstar,(1-lev_phi))); phi_se <- sqrt(diag(SmythHVcovmat)) print(phi_se)
         #
         phi_table <- cbind(phi.object$fixef,phi_se)
         colnames(phi_table) <- c("Estimate", "Cond. SE")
@@ -429,7 +439,7 @@ summary.HLfitlist <- function(object, ...) {
       whichp_bv <- which(validnames=="p_bv")
       if (ncol(object$distinctX.Re)==0L) {
         likelihoods <- likelihoods[-whichp_bv] ## ML 
-      } else names(likelihoods)[whichp_bv] <- "Non-standard 'ReL':"
+      } else names(likelihoods)[whichp_bv] <- "(Non-standard?)  ReL:"
     }
   } else likelihoods <- numeric(0)
   # messlist[["ranef"]]
@@ -444,17 +454,17 @@ summary.HLfitlist <- function(object, ...) {
   print(astable)
   summ$likelihoods <- likelihoods
   if (length(object$warnings)>0 ) { 
-    silent<-sapply(length(object$warnings),function(i) {cat(object$warnings[[i]]);cat("\n")}) 
+    silent <- sapply(object$warnings, cat, "\n") 
   }
   invisible(summ)
 }
 
-print.HLfit <-function(x,...) {
+print.HLfit <- function(x,...) {
   summary(x,...)
   invisible(x)
 }
 
-print.HLfitlist <-function(x,...) {
+print.HLfitlist <- function(x,...) {
   summary(x,...)
   invisible(x)
 }
