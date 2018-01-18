@@ -9,7 +9,7 @@
   four single nucleotide polmorphisms (SNP) putatively involved in adaptation to climate (Fournier-Level et al, 2011, Table 1), 
   with 13 climatic variables from Hancock et al. (2011). 
 }
-\usage{data(arabidopsis)}
+\usage{data("arabidopsis")}
 \format{
   The data frame includes 948 observations on the following variables:
   \describe{
@@ -39,14 +39,14 @@ The data were retrieved from \code{http://bergelson.uchicago.edu/regmap-data/cli
  
 }
 \examples{
-data(arabidopsis)
-if (spaMM.getOption("example_maxtime")>10) {
+data("arabidopsis")
+if (spaMM.getOption("example_maxtime")>8) {
   HLCor(cbind(pos1046738,1-pos1046738)~seasonal+Matern(1|LAT+LONG),
-        ranPars=list(rho=0.1192781,nu=0.2369891,lambda=8.599),
+        ranPars=list(rho=0.1192779,nu=0.2369892,lambda=8.599),
         family=binomial(),HLmethod="PQL/L",data=arabidopsis)
 }
 ## The above ranPars are deduced from the following fit:
-if (spaMM.getOption("example_maxtime")>166) {
+if (spaMM.getOption("example_maxtime")>46) {
   SNPfit <- fitme(cbind(pos1046738,1-pos1046738)~seasonal+Matern(1|LAT+LONG),
               verbose=c(TRACE=TRUE), 
               family=binomial(),method="PQL/L",data=arabidopsis)

@@ -17,6 +17,37 @@ using Eigen::COLAMDOrdering;
 
 bool printDebug=false;
 
+// [[Rcpp::export(.Rcpp_as_dgCMatrix)]]
+SEXP Rcpp_as_dgCMatrix_( SEXP XX_ ){ 
+  // corrected from http://gallery.rcpp.org/articles/sparse-matrix-coercion/ where a NULL "dimnames" attribute is not correctly handled.
+  typedef Eigen::SparseMatrix<double> SpMat;   
+  typedef Eigen::Map<Eigen::MatrixXd> MapMatd; // Input: must be double
+  MapMatd X(Rcpp::as<MapMatd>(XX_));
+  SpMat Xsparse = X.sparseView();              // Output: sparse matrix
+  S4 Xout(wrap(Xsparse));                      // Output: as S4 object
+  SEXP dimnames = Rf_getAttrib(XX_, R_DimNamesSymbol);
+  if (Rf_isNull(dimnames)) { 
+    Xout.slot("Dimnames") = List::create(R_NilValue,R_NilValue);
+  } else {
+    NumericMatrix Xin(XX_);                      // Copy dimnames
+    Xout.slot("Dimnames") = clone(List(Xin.attr("dimnames")));
+  }
+  return(Xout);
+}
+
+// [[Rcpp::export(.rankinfo)]]
+SEXP rankinfo( SEXP x, SEXP tol){
+  const Map<MatrixXd> X(as<Map<MatrixXd> >(x));
+  const double threshold(as<double>(tol));
+  Eigen::ColPivHouseholderQR<MatrixXd> QR(X);
+  QR.setThreshold(threshold);
+  return List::create(Named("pivot")=QR.colsPermutation().indices(), 
+                      // following https://stackoverflow.com/questions/26385561/how-to-get-matrix-pivot-index-in-c-eigen,
+                      // but this does not seem to be equivalent to qr()$pivot
+                      Named("rank")=int(QR.rank()),
+                      Named("method")=".rankinfo");
+}
+
 // [[Rcpp::export(.leverages)]]
 SEXP leverages( SEXP XX ){
   if (printDebug)   Rcout <<"debut leverages()"<<std::endl;

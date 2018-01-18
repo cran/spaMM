@@ -14,11 +14,11 @@
   } else {
     verticesRows <- (vrepr[,2]==1)
     betaS <- 0
-    if (length(which(verticesRows))>0L) {
+    if (length(which(verticesRows))) {
       betaS <- t(vrepr[!verticesRows, -c(1:2), drop = FALSE]) ## col vectors of boundary beta values
       betaS <- betaS + 0.001 * rowMeans(betaS) ## moving a bit inside
     }
-    if (length(which( ! verticesRows))>0L) {
+    if (length(which( ! verticesRows))) {
       ## generate combinations of vertices and directions:
       dirS <- t(vrepr[ ! verticesRows,-c(1:2),drop=FALSE])
       dirS <- apply(dirS,2L, function(v) v/norm(matrix(v),type="2")) ## normalize direction vectors
@@ -245,7 +245,7 @@ spaMM_glm.fit <- function (x, y, weights = rep(1, nobs),
           gainratio <- levMblob$gainratio
           conv_crit <- max(levMblob$conv_dev, 
                            abs(LevenbergMstep_result$rhs)/(1+dev))
-          if (is.nan(levMblob$gainratio)) {
+          if (is.nan(gainratio)) {
             break
           } else if (gainratio>0) { ## success
             damping <- damping * max(1/3,1-(2*gainratio-1)^3)  

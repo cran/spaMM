@@ -46,7 +46,7 @@ make_scaled_dist(uniqueGeo, uniqueGeo2=NULL, distMatrix, rho,
 A matrix or \code{\link[proxy]{dist}} object. If there are two input matrices, rows of the return value correspond to rows of the first matrix.
 }
 \examples{
-data(blackcap)
+data("blackcap")
 ## a biologically not very meaningful, but syntactically correct example of rho.mapping
 corrHLfit(migStatus ~ 1 + Matern(1|latitude+longitude+means),data=blackcap,
           HLmethod="ML",ranFix=list(nu=0.5,phi=1e-6),

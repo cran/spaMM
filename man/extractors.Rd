@@ -29,7 +29,8 @@ Functions to extract various components of a fit
 }
 \description{
 \code{logLik} extracts the log-likelihood (exact or approximated).
-\code{get_any_IC} and \code{AIC.HLfit} compute model selection/information criteria such as AIC. See \code{\link{AIC}} for more information about these criteria.
+\code{get_any_IC} computes model selection/information criteria such as AIC. See Details for more information about these criteria.
+An \code{AIC} method is also defined for \code{HLfit} objects, which is equivalent to \code{get_any_IC}.
 \code{dev_resids} returns a vector of squared (unscaled) deviance residuals (the summands in McCullagh and Nelder 1989, p. 34). 
 \code{deviance} returns the sum of squares of these (unscaled) deviance residuals, that is (consistently with \code{stats::deviance}) the unscaled deviance.
 \code{fitted} extracts fitted values (see \code{\link{fitted.values}}).
@@ -38,10 +39,10 @@ Functions to extract various components of a fit
 \code{ranef} extracts the predicted random effects, \bold{Lv} (default since version 1.12.0), or \bold{u} (see Details in \code{\link{HLfit}} for definitions).
 \code{vcov} returns the variance-covariance matrix of the fixed-effects coefficients.
 \code{Corr} returns a correlation matrix of random effects.
-\code{getDistMat} extracts a distance matrix for a Matérn correlation model.
-\code{get_ZALMatrix} extracts the design matrix for the random effects \eqn{v}.
-\code{get_RLRTSim_args} extracts a list of arguments suitable for calls to \code{LRTSim::RLRTSim()}
-\code{get_boot_response} gets the response vector of a given bootstrap replicate. 
+\code{getDistMat} returns a distance matrix for a Matérn correlation model.
+\code{get_ZALMatrix} returns the design matrix for the random effects \eqn{v}.
+\code{get_RLRTSim_args} returns a list of arguments suitable for calls to \code{LRTSim::RLRTSim()}
+\code{get_boot_response} returns the response vector of a given bootstrap replicate. 
 }
 \usage{
 \method{logLik}{HLfit}(object,which,...)
@@ -62,11 +63,11 @@ get_boot_response(object, replicate)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
-  \item{object}{The return object of an HLfit or similar function.}
+  \item{object}{A object of class \code{HLfit}, as returned by the fitting functions in \code{spaMM}.}
   \item{type}{For \code{ranef}, use \code{type="correlated"} (default) to display the correlated random effects (\bold{Lv}), whether in a spatial model, or a random- coefficient model. Use \code{type="uncorrelated"} to pretty-print the elements of the \code{<object>$ranef} vector (\bold{u}). For \code{residuals}, the type of residuals which should be returned. The alternatives are: "deviance" (default), "pearson", and "response".}
   \item{which}{Which element of the \code{APHLs} list to return. The default depends on the fitting method.In particular, if it was REML or one of its variants, the function returns the log restricted likelihood (exact or approximated).}
   \item{scaled}{If \code{FALSE}, the function ignores the scale parameter \eqn{rho} and returns unscaled distance.}
-  \item{as_matrix}{Boolean: whether to always return a \code{matrix}; otherwise as \code{Matrix} may be returned.}
+  \item{as_matrix}{Deprecated.}
   \item{verbose}{ Whether to print the model selection criteria or not. }
   \item{k}{For \code{AIC}, unused by \code{HLfit} method, but included to conform to the generic.}
   \item{replicate}{integer, to get the response vector of the given bootstrap replicate.}
@@ -105,7 +106,7 @@ Overholser R., and Xu R. (2104) Effective degrees of freedom and its application
 Vaida, F., and Blanchard, S. (2005) Conditional Akaike information for mixed-effects models. Biometrika 92, 351-370.
 }
 \examples{
-data(wafers)
+data("wafers")
 m1 <- HLfit(y ~X1+X2+(1|batch),
           resid.model = ~ 1 ,data=wafers,HLmethod="ML")
 get_any_IC(m1)          

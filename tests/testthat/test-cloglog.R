@@ -6,7 +6,7 @@
 
 # see also http://bbolker.github.io/mixedmodels-misc/notes/cloglogsim.html
 
-if (spaMM.getOption("example_maxtime")>10) {
+if (spaMM.getOption("example_maxtime")>14) {
   artSim <- function(){
     #
     # Function to simulate "artificial" data which is at least superficially
@@ -38,7 +38,7 @@ if (spaMM.getOption("example_maxtime")>10) {
     lb1   <- beta1[match(Xdat$Trt,names(beta1))]
     nrep  <- 72
     imat  <- match(Xdat$Rep,1:nrep)
-    Z     <- mvrnorm(nrep,c(0,0),Sigma)[imat,]
+    Z     <- MASS::mvrnorm(nrep,c(0,0),Sigma)[imat,]
     linpr <- lb0 + Z[,1] + (lb1 + Z[,2])*Xdat$x
     p     <- linkinv(linpr)
     nsize <- 25
@@ -57,4 +57,14 @@ if (spaMM.getOption("example_maxtime")>10) {
                 family=binomial(link="cloglog"),
                 data=X,HLmethod="ML",verbose=c(TRACE=FALSE)) ## 
   testthat::expect_equal(logLik(fit1)[[1]],-1413.207,tolerance=1e-4)
+  ## NB 
+  # fast but problematic fit by glmer as 
+  # system.time({blob <- glmer(cbind(Dead,Alive) ~ (Trt + 0)/x + (x | Rep),
+  #                            family=binomial(link="cloglog"),
+  #                            data=X,nAGQ=0,control=glmerControl(optimizer="bobyqa",
+  #                                                               optCtrl=list(maxfun=3e4)))})
+  # glmmTMB is much closer to HLfit
+  # system.time({glmmTMB(Dead/(Alive+Dead) ~ (Trt + 0)/x + (x | Rep),
+  #                      weights = Alive+Dead,
+  #                      family=binomial(link="cloglog"),data=X)}) 
 } else cat("test cloglog random slope: increase example_maxtime (14.8s) to run this test.\n")

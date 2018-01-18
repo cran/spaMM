@@ -1,7 +1,7 @@
 cat("\ntest HLfit:\n")
 # HLfit
 
-data(wafers)
+data("wafers")
 ## Gamma GLMM with log link
 ## also test that control.glm is syntactically correct
 hl <- HLfit(y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch),family=Gamma(log),

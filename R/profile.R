@@ -56,27 +56,31 @@ spaMM.getOption <- function (x) {spaMM.options(x)[[1]]}
 
 .Dist.earth.mat <- function (x, y=NULL) { # x and y are both matrices. In each, first col is longitude, second is latitude
   ## This function computes orthodromic distances in Km between locations.
+  rad_deg <- pi/180
+  x <- x*rad_deg
   if(is.null(y)) { ## distances within matrice
-    coslat <- cos(x[, 2]*pi/180) ## [,2] is latitude
-    sinlat <- sin(x[, 2]*pi/180)
-    coslon <- cos(x[, 1]*pi/180) ## [,1] is longitude
-    sinlon <- sin(x[, 1]*pi/180)
+    coslat <- cos(x[, 2]) ## [,2] is latitude
+    sinlat <- sin(x[, 2])
+    coslon <- cos(x[, 1]) ## [,1] is longitude
+    sinlon <- sin(x[, 1])
     pp <- cbind(coslat * coslon, coslat * sinlon, sinlat) %*% 
       t(cbind(coslat * coslon, coslat * sinlon, sinlat))
   } else { ## cross-matrices distances
-    coslat1 <- cos(x[, 2]*pi/180)
-    sinlat1 <- sin(x[, 2]*pi/180)
-    coslon1 <- cos(x[, 1]*pi/180)
-    sinlon1 <- sin(x[, 1]*pi/180)
-    coslat2 <- cos(y[, 2]*pi/180)
-    sinlat2 <- sin(y[, 2]*pi/180)
-    coslon2 <- cos(y[, 1]*pi/180)
-    sinlon2 <- sin(y[, 1]*pi/180)
+    y <- y*rad_deg
+    coslat1 <- cos(x[, 2])
+    sinlat1 <- sin(x[, 2])
+    coslon1 <- cos(x[, 1])
+    sinlon1 <- sin(x[, 1])
+    coslat2 <- cos(y[, 2])
+    sinlat2 <- sin(y[, 2])
+    coslon2 <- cos(y[, 1])
+    sinlon2 <- sin(y[, 1])
     pp <- cbind(coslat1 * coslon1, coslat1 * sinlon1, sinlat1) %*% 
       t(cbind(coslat2 * coslon2, coslat2 * sinlon2, sinlat2))
   }
+  pp <- pmin(pmax(pp,-1),1)
   ## Earth radius used for approximation = 6371.009 = 1/3*(2*6378.137+6356.752)  [details on https://en.wikipedia.org/wiki/Great-circle_distance]
-  pp <- 6371.009 * acos(ifelse(abs(pp) > 1, 1 * sign(pp), pp))
+  pp <- 6371.009 * acos(pp)
   if (is.null(y)) pp <- as.dist(pp)  ## spaMM wants an half matrix in this case, not a full one
   return(pp)
 }

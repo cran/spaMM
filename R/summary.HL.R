@@ -24,7 +24,7 @@
   namesOri <- attr(object$X.pv,"namesOri")
   nc <- length(namesOri)
   betaOri_cov <- matrix(NA,ncol=nc,nrow=nc,dimnames=list(rownames=namesOri,colnames=namesOri))
-  beta_cov <- .get_beta_cov_any_version(object)
+  beta_cov <- .get_beta_cov_any_version(object) ## typically set by HLfit using get_from_MME(, which="beta_cov")
   betaOri_cov[colnames(beta_cov),colnames(beta_cov)] <- beta_cov
   beta_se <- sqrt(diag(betaOri_cov))
   fixef_z <- object$fixef/beta_se
@@ -40,14 +40,16 @@
   randfams <- object$rand.families
   rff <- sapply(randfams, getElement, name="family")
   rfl <- sapply(rff, switch, 
-    #        "beta" = "log(lambda)", ## u ~ Beta(1/(2lambda),1/(2lambda))
-    #        "inverse.gamma" = "log(lambda)", ## u ~ I-Gamma(1+1/lambda,1/lambda)
-    #        "llog(lambda)" ## gaussian, or gamma with u ~ Gamma(lambda,1/lambda)
+    #        "Beta" = "log(lambda)", ## u ~ Beta(1/(2lambda),1/(2lambda))
+    #        "inverse.Gamma" = "log(lambda)", ## u ~ I-Gamma(1+1/lambda,1/lambda)
+    #        "log(lambda)" ## gaussian, or gamma with u ~ Gamma(lambda,1/lambda)
     "log(lambda)" ## currently constant
   )
   check_adjd <- any(unlist(lapply(object$lambda.object$coefficients_lambdaS, names))=="adjd")
   if (check_adjd) {
-    whichadj <- attr(attr(object$ZAlist,"ranefs"),"type") %in% c("adjacency")  
+    if (object$spaMM.version < "2.2.116") {
+      whichadj <- attr(attr(object$ZAlist,"ranefs"),"type") %in% c("adjacency")  
+    } else whichadj <- attr(object$ZAlist,"exp_ranef_types") %in% c("adjacency")  
     rfl[whichadj] <- "inverse[ lambda_i =var(V'u) ]"
     rff <- rff[!whichadj]
   }
@@ -56,9 +58,9 @@
   cat(paste("Coefficients for ",paste(urfl,collapse=" or "), " with", sep=""))
   if (length(urff)==1L && length(urfl)==1L) {cat(" ")} else cat(":\n")
   abyss <- lapply(urff, switch,
-           "beta" = cat("lambda = 4 var(u)/(1 - 4 var(u)) for u ~ Beta[1/(2*lambda),1/(2*lambda)]; \n"),
-           "inverse.gamma" = cat("lambda = var(u)/(1 + var(u)) for u ~ inverse-Gamma(sh=1+1/lambda, rate=1/lambda); \n"),
-           "gamma" = cat("lambda = var(u) for u ~ Gamma(sh=1+1/lambda, sc=1/lambda); \n"),
+           "Beta" = cat("lambda = 4 var(u)/(1 - 4 var(u)) for u ~ Beta[1/(2*lambda),1/(2*lambda)]; \n"),
+           "inverse.Gamma" = cat("lambda = var(u)/(1 + var(u)) for u ~ inverse-Gamma(sh=1+1/lambda, rate=1/lambda); \n"),
+           "Gamma" = cat("lambda = var(u) for u ~ Gamma(sh=1/lambda, sc=1/lambda); \n"),
            "gaussian" = cat("lambda = var(u) for u ~ Gaussian; \n")
     )
   invisible(NULL)
@@ -74,10 +76,10 @@
     if (object$HL[1]=='SEM')  {
       return("by stochastic EM.")
     } else if (object$HL[1]==1L)  {
-      return("by ML approximation (p_v).")
+      return("by Laplace ML approximation (p_v).")
     } else if (object$HL[1]==0L)  {
       if (ranef) {
-        return("by ML approximation (p_v).")
+        return("by Laplace ML approximation (p_v).")
       } else return("by h-likelihood approximation.")
     } 
   }
@@ -93,7 +95,7 @@
         resu <- ("by stochastic EM.")
       } else if (object$family$family !="gaussian" 
                  || (object$models[["eta"]]=="etaHGLM" && any(attr(object$rand.families,"lcrandfamfam")!="gaussian"))) { 
-        resu <- ("by REML approximation (p_bv).") 
+        resu <- ("by Laplace REML approximation (p_bv).") 
       } else {
         resu <- ("by REML.")
       }  
@@ -111,6 +113,9 @@
 
 
 summary.HLfitlist <- function(object, ...) {
+  if (object[[1]]$spaMM.version<"1.11.57") {
+    warning("This fit object was created with spaMM version<1.11.57, and is no longer supported.\n Please recompute it.")
+  } ## warning added in v2.2.43 2017/10/28
   sapply(object,summary.HLfit) ## because summary(list object) displays nothing (contrary to print(list.object)) => rather call summary(each HLfit object)
   cat(" ======== Global likelihood values  ========\n")    
   zut <- attr(object,"APHLs")
@@ -118,12 +123,28 @@ summary.HLfitlist <- function(object, ...) {
   invisible(object)
 }
 
-.prettify_family <- function(rf,linkstring="") {
-  fam <- rf$family
-  paste(fam,"( ",linkstring,rf$link," )",sep="")
+.prettify_family <- function(family,linkstring="") {
+  famfam <- family$family
+  if ( ! is.null(withArgs <- attr(famfam,"withArgs"))) {
+    withArgs <- eval(withArgs,envir=environment(family$aic))
+    legend <- paste(withArgs, "( link =", family$link,")")
+  } else legend <- paste(famfam, "( link =", family$link,")")
+  if (identical(family$zero_truncated, TRUE)) legend <- paste("0-truncated", legend)
+  return(legend)
+}
+
+.get_compact_cov_mats <- function(strucList) {
+  isRandomSlope <- attr(strucList,"isRandomSlope")
+  if (any(isRandomSlope)) {
+    cov.mats <- vector("list",length(strucList))
+    cov.mats[isRandomSlope] <- lapply(strucList[isRandomSlope],attr,which="cov.mat") 
+    ## keep NULL slots for other elements as expected by summary.HLfit
+    return(cov.mats)
+  } else return(NULL)
 }
 
 `summary.HLfit` <- function(object, details=FALSE,...) {
+  oldopt <- options(max.print=100L)
   models <- object$models
   phi.object <- object$phi.object
   famfam <- object$family$family ## response !
@@ -201,12 +222,7 @@ summary.HLfitlist <- function(object, ...) {
       cat(outst) 
     }
   }
-  if ( ! is.null(withArgs <- attr(famfam,"withArgs"))) {
-    withArgs <- eval(withArgs,envir=environment(object$family$aic))
-    cat("Family:", withArgs, "( link =", object$family$link,")\n")
-  } else cat("Family:", famfam, "( link =", object$family$link,")\n")
-  #if (famfam=="COMPoisson") cat("COMPoisson's nu=",signif(environment(object$family$aic)$nu,4),"\n")
-  #if (famfam=="negbin") cat("neg.binomial's shape=",signif(environment(object$family$aic)$shape,4),"\n")
+  cat("Family:", .prettify_family(object$family, linkstring = "link = ") , "\n") 
   summ$family <- object$family
   if (length(object$fixef)==0L) {
     cat("No fixed effect\n")
@@ -238,97 +254,113 @@ summary.HLfitlist <- function(object, ...) {
       print(cP)
     }
     lambda.object <- object$lambda.object
-    namesTerms <- lambda.object$namesTerms ## list of vectors of variable length
+    namesTerms <- lambda.object$print_namesTerms ## list of vectors of variable length
     print_lambda <- unlist(lambda.object$lambda)
     type <- lambda.object$type
     if (any(object$models[["lambda"]] == "lamHGLM")) { 
       stop("voir ici dans summary.HLfit")
-    } else if ( ! is.null(linklam_coeff_list <- lambda.object$coefficients_lambdaS)) {
-      # first construct a table including NA's for some coeeficients (not "inner" estimated), then remove these rows
-      repGroupNames <- rep(names(namesTerms),sapply(namesTerms,length))
-      ## i.e. for namesTerms = list(Subject=c("(Intercept)", "Days")), repGroupNames[[1]] is c("Subject", "Subject")
-      lambda_table <- data.frame(Group=repGroupNames,Term=unlist(namesTerms),
-                                 Estimate=unlist(linklam_coeff_list),
-                                 "Cond.SE"=lambda.object$lambda_se)
-      is_info <- ! is.na(lambda_table$Estimate) ## must be evaluated before the cov.mats block sets more NAs
-      nrand <- length(namesTerms)
-      nrows <- unlist(lapply(namesTerms,length))
-      cum_nrows <- cumsum(c(0,nrows))
-      names(cum_nrows) <- NULL
-      row_map <- lapply(nrows,seq)
-      for (it in seq_len(length(row_map))) row_map[[it]] <- row_map[[it]]+cum_nrows[it]
-      cov.mats <- object$cov.mats
-      if ( ! is.null(cov.mats)) {
-        maxnrow <- cum_nrows[nrand+1] ## maxnrow should = nrow(lambda_table)
-        corr_cols <- data.frame(matrix("",ncol=max(nrows-1),nrow=maxnrow),stringsAsFactors=FALSE)
-        variances <- data.frame(matrix("",ncol=1,nrow=maxnrow),stringsAsFactors=FALSE)
-        for (mt in seq_len(length(cov.mats))) { ## assumes cov.mats for all effects
-          m <- cov.mats[[mt]]
-          if ( ! is.null(m)) {
-            inrows <-  cum_nrows[mt]+(1:nrow(m))
-            variances[inrows,1] <- paste(signif(lambdas <- diag(m),4))
-            covtocorr <- diag(1/sqrt(lambdas))
-            m <- covtocorr %*% m %*% covtocorr
-            for (it in (2:nrow(m))) {
-              for (jt in (1:(it-1))) {
-                corr_cols[cum_nrows[mt]+it,jt] <- paste(signif(m[it,jt],4))
+    } else {
+      cov.mats <- .get_compact_cov_mats(object$strucList)
+      linklam_coeff_list <- lambda.object$coefficients_lambdaS
+      if ( ! is.null(linklam_coeff_list) || length(cov.mats)) {
+        nrand <- length(namesTerms)
+        nrows <- unlist(lapply(namesTerms,length))
+        cum_nrows <- cumsum(c(0,nrows))
+        names(cum_nrows) <- NULL
+        row_map <- lapply(nrows,seq)
+        for (it in seq_len(length(row_map))) row_map[[it]] <- row_map[[it]]+cum_nrows[it]
+        # first construct a table including NA's for some coeeficients (not "inner" estimated), then remove these rows
+        repGroupNames <- rep(names(namesTerms),sapply(namesTerms,length))
+        ## i.e. for namesTerms = list(Subject=c("(Intercept)", "Days")), repGroupNames[[1]] is c("Subject", "Subject")
+        lambda_table <- data.frame(Group=repGroupNames,Term=unlist(namesTerms))
+        if ( length(cov.mats)) { ## fixme ? rename cov.mats to refer to ranCoefs ?
+          maxnrow <- cum_nrows[nrand+1] ## maxnrow should = nrow(lambda_table)
+          corr_cols <- data.frame(matrix("",ncol=max(nrows-1),nrow=maxnrow),stringsAsFactors=FALSE)
+          variances <- data.frame(matrix("",ncol=1,nrow=maxnrow),stringsAsFactors=FALSE)
+          for (mt in seq_len(length(cov.mats))) { 
+            m <- cov.mats[[mt]]
+            if ( ! is.null(m)) {
+              inrows <-  cum_nrows[mt]+(1:nrow(m))
+              variances[inrows,1] <- paste(signif(lambdas <- diag(m),4))
+              covtocorr <- diag(1/sqrt(lambdas))
+              m <- covtocorr %*% m %*% covtocorr
+              for (it in (2:nrow(m))) {
+                for (jt in (1:(it-1))) {
+                  corr_cols[cum_nrows[mt]+it,jt] <- paste(signif(m[it,jt],4))
+                }
               }
             }
           }
-        }
-        colnames(corr_cols) <- rep("Corr.",ncol(corr_cols))
-        colnames(variances) <- "Var."
-        lambda_table <- cbind(lambda_table,variances,corr_cols)
-        random_slope_pos <- which( ! unlist(lapply(cov.mats,is.null)))
-        random_slope_rows <- unlist(row_map[ random_slope_pos ])
-        if ( ! details) lambda_table[(random_slope_rows),3:4] <- NA 
-      } else random_slope_pos <- integer(0)
-      lambda_table <- lambda_table[ is_info,]
-      summ$lambda_table <- lambda_table
-      .legend_lambda(object)
-      print(lambda_table,digits=4,row.names=FALSE)
-      # wa <-attr(lambda.object,"warning")
-      # if ( ! is.null(wa)) {
-      #   if (wa=="glm.fit: algorithm did not converge") {
-      #     cat("glm.fit for estimation of lambda SE did not converge; this suggests\n")
-      #     cat(" non-identifiability of some lambda (and possibly also phi) coefficients.\n")
-      #   } else {
-      #     cat("warning in glm.fit for estimation of lambda SE: \n")
-      #     cat(wa,"\n")
-      #   }
-      # } 
-      innerlambda_pos <- which(type=="inner")
-      linklam <- unlist(linklam_coeff_list)
-      ncoeffs <- attr(object$ZAlist,"Xi_cols") ## RHS = 2 for random slope, else 1
-      for (it in seq_len(length(namesTerms))) if ("adjd" %in% namesTerms[[it]]) ncoeffs[it] <- 2
-      cum_ncoeffs <- c(0,cumsum(ncoeffs))
-      for (it in seq_len(length(namesTerms))) {
-        if ("adjd" %in% namesTerms[[it]]) {
-          namenames <- names(namesTerms[it])
-          pos <- cum_ncoeffs[it]+1L
-          cat(paste("Estimate of rho (",namenames,"CAR): ",
-                    signif( - linklam[pos+1L]/linklam[pos],4),"\n"))
-          cat(paste("Estimate of lambda factor (",namenames,"CAR): ",
-                    with(lambda.object,signif(linkinvS[[rand_to_glm_map[it]]](linklam[pos]),4)),"\n"))
-          innerlambda_pos <- setdiff(innerlambda_pos,it) ## remove from  generic innerlambda_pos printing below
+          colnames(corr_cols) <- rep("Corr.",ncol(corr_cols))
+          colnames(variances) <- "Var."
+          random_slope_pos <- which( ! unlist(lapply(cov.mats,is.null))) ## fixme ? equivalentto isRandomSlope that might be available
+          random_slope_rows <- unlist(row_map[ random_slope_pos ])
+        } else {
+          random_slope_rows <- integer(0) ## used soon in line correct if random_slope_rows is defined, and if "Estimate","Cond.SE" cols exist
+          random_slope_pos <- integer(0) ## used further below
         } 
-      }
-      if (length(innerlambda_pos)>0L) {
-        if (details) {
-          displaypos <- innerlambda_pos
-        } else displaypos <- setdiff(innerlambda_pos, random_slope_pos)
-        displayrows <- unlist(row_map[displaypos])
-        if ( ! is.null(displayrows)) {
-          cat(paste("Estimate of lambda (",
-                    names(displayrows),"): ", 
-                    signif(print_lambda[displayrows],4)
-                    ,collapse="\n"),"\n")
+        if ( ! is.null(linklam_coeff_list)) {
+          lambda_table <- cbind(lambda_table, Estimate=unlist(linklam_coeff_list), 
+                                "Cond.SE"=lambda.object$lambda_se)
+          info_rows <- which(! is.na(lambda_table$Estimate)) ## must be evaluated before the next line sets more NAs
+          if ( ! details) lambda_table[(random_slope_rows),c("Estimate","Cond.SE")] <- NA 
+        } else info_rows <- NULL
+        if ( length(cov.mats) ) {
+          lambda_table <- cbind(lambda_table, variances, corr_cols)
+          info_rows <- unique(c(info_rows, random_slope_rows))
+        } 
+        lambda_table <- lambda_table[ info_rows ,]
+        summ$lambda_table <- lambda_table
+        if ( ! is.null(linklam_coeff_list)) { ## mixed cov.mat and coefficients_lambdaS output
+          .legend_lambda(object)
+          print(lambda_table,digits=4,row.names=FALSE)
+        } else if (length(cov.mats)) {
+          cat("Variances and correlation for random-coefficient terms:\n")
+          print(lambda_table,digits=4,row.names=FALSE)
+        } ## else only other terms with outer lambda (eg Matern term) 
+        # wa <-attr(lambda.object,"warning")
+        # if ( ! is.null(wa)) {
+        #   if (wa=="glm.fit: algorithm did not converge") {
+        #     cat("glm.fit for estimation of lambda SE did not converge; this suggests\n")
+        #     cat(" non-identifiability of some lambda (and possibly also phi) coefficients.\n")
+        #   } else {
+        #     cat("warning in glm.fit for estimation of lambda SE: \n")
+        #     cat(wa,"\n")
+        #   }
+        # } 
+        innerlambda_pos <- which(type=="inner")
+        linklam <- unlist(linklam_coeff_list)
+        ncoeffs <- attr(object$ZAlist,"Xi_cols") ## RHS = 2 for random slope, else 1
+        for (it in seq_len(length(namesTerms))) if ("adjd" %in% namesTerms[[it]]) ncoeffs[it] <- 2
+        cum_ncoeffs <- c(0,cumsum(ncoeffs))
+        for (it in seq_len(length(namesTerms))) {
+          if ("adjd" %in% namesTerms[[it]]) {
+            namenames <- names(namesTerms[it])
+            pos <- cum_ncoeffs[it]+1L
+            cat(paste("Estimate of rho (",namenames,"CAR): ",
+                      signif( - linklam[pos+1L]/linklam[pos],4),"\n"))
+            cat(paste("Estimate of lambda factor (",namenames,"CAR): ",
+                      with(lambda.object,signif(linkinvS[[rand_to_glm_map[it]]](linklam[pos]),4)),"\n"))
+            innerlambda_pos <- setdiff(innerlambda_pos,it) ## remove from  generic innerlambda_pos printing below
+          } 
+        }
+        if (length(innerlambda_pos)>0L) {
+          if (details) {
+            displaypos <- innerlambda_pos
+          } else displaypos <- setdiff(innerlambda_pos, random_slope_pos)
+          displayrows <- unlist(row_map[displaypos])
+          if ( ! is.null(displayrows)) {
+            cat(paste("Estimate of lambda (",
+                      names(displayrows),"): ", 
+                      signif(print_lambda[displayrows],4)
+                      ,collapse="\n"),"\n")
+          }
         }
       }
     } 
-    outerlambda_pos <- which(type=="outer")
+    outerlambda_pos <- which(type=="outer") ## FIXME integrate outer estimates in the table...
     n_outer <- length(outerlambda_pos)
-    if (n_outer>0L) {
+    if (n_outer) {
       if (n_outer==1L) {cat("Outer estimate of variance:\n")} else {cat("Outer estimates of variances:\n")}
       cat(paste("  lambda (",
                 names(namesTerms)[outerlambda_pos],"): ", 
@@ -337,7 +369,7 @@ summary.HLfitlist <- function(object, ...) {
     }
     fixedlambda_pos <- which(type=="fix")
     n_fixed <- length(fixedlambda_pos)
-    if (n_fixed>0L) {
+    if (n_fixed) {
       if (n_fixed==1L) {cat("Fixed variance:\n")} else {cat("Fixed variances:\n")}
       cat(paste("  lambda (",
                 names(namesTerms)[fixedlambda_pos],"): ", 
@@ -372,7 +404,7 @@ summary.HLfitlist <- function(object, ...) {
     } else {
       if (models[["phi"]]=="phiHGLM") {
         cat("Random effects in residual dispersion model:\n  use summary(<fit object>$resid_fit) to display results.\n")       
-      } else if ((loc_p_phi <- length(phi.object$fixef))>0L) {
+      } else if ((loc_p_phi <- length(phi.object$fixef))) {
         glm_phi <- phi.object[["glm_phi"]]
         if (is.null(glm_phi)) glm_phi <- .get_glm_phi(object)
         phi_se <- summary(glm_phi,dispersion=1)$coefficients[(loc_p_phi+1L):(2L*loc_p_phi)]
@@ -456,6 +488,7 @@ summary.HLfitlist <- function(object, ...) {
   if (length(object$warnings)>0 ) { 
     silent <- sapply(object$warnings, cat, "\n") 
   }
+  options(oldopt)
   invisible(summ)
 }
 

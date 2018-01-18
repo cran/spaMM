@@ -2,7 +2,9 @@
   if (inherits(spm,"ddiMatrix") && spm@diag=="U") {
     return(ncol(spm))
   } else if (inherits(spm,"sparseMatrix")) {
-    return(length(spm@x)) # F I X M E not exact (even if not critical)
+    nz <- length(spm@x)
+    if ( methods::.hasSlot(spm, "diag")) nz <- nz+ncol(spm)
+    return(nz) 
   } else return(sum(spm !=0)) ## AMatrix reaches here
 }
 
@@ -12,15 +14,15 @@
     nrand <- length(ZAlist)
     if (trySparse && nrand>0L) {
       # adjacency speed to be tested on 2nd example from test-spaMM.R
-      if (any(attr(attr(ZAlist,"ranefs"),"type") %in% c("adjacency") ) ) {
+      if (any(attr(ZAlist,"exp_ranef_types") %in% c("adjacency") ) ) {
         QRmethod <- "dense" ## la corr matrix est dense !
       } else {
         totdim <- colSums(do.call(rbind,lapply(ZAlist,dim)))
-        if (any(attr(attr(ZAlist,"ranefs"),"type") %in% c("Matern") ) ) {
+        if (any(attr(ZAlist,"exp_ranef_types") %in% c("Matern") ) ) {
           if (totdim[1L]>4*totdim[2L]) {
             QRmethod <- "sparse"
           } else QRmethod <- "dense" 
-        } else if (nrand==1L && any(attr(attr(ZAlist,"ranefs"),"type") %in% c("corrMatrix") ) ) {
+        } else if (nrand==1L && any(attr(ZAlist,"exp_ranef_types") %in% c("corrMatrix") ) ) {
           ## quik patch for this case, should be rethought
           if (totdim[2L]>200L) { ## ad hoc: we should use the type of corrMatrix or else scan its contents
             QRmethod <- "dense"

@@ -15,25 +15,23 @@
   initdamping <- damping
   gainratio_grad <- zInfo$gainratio_grad
   # grad wrt scaled v = d f / d (v/ZAL_scaling) = ZAL_scaling * d f / d v
-  # gainratio_grad[seq_n_u_h] <- gainratio_grad[seq_n_u_h] * ZAL_scaling ## already in computation $LMrhs
   use_heuristic <- TRUE
   while ( TRUE ) {
     if (processed$HL[1L]==1L) { ## ML fit 
       Vscaled_beta <- old_Vscaled_beta
       ## maximize p_v wrt beta only
-      if ( which_LevMar_step=="v_b") { ## note testes on summand too !!!!!!!
-        LevMarblob <- get_from_MME(sXaug=sXaug, which="LevMar_step", LMrhs=zInfo$LMrhs, damping=damping)
+      if ( which_LevMar_step=="v_b") { ## note tests on summand too !!!!!!!
+        LevMarblob <- get_from_MME(sXaug=sXaug, which="LevMar_step", LMrhs=zInfo$scaled_grad, damping=damping)
         Vscaled_beta <- Vscaled_beta + LevMarblob$dVscaled_beta 
       } else if ( which_LevMar_step=="b") {          
-        LevMarblob <- get_from_MME(sXaug=sXaug, which="LevMar_step_beta", LMrhs=zInfo$LMrhs[-seq_n_u_h], damping=damping)
+        LevMarblob <- get_from_MME(sXaug=sXaug, which="LevMar_step_beta", LMrhs=zInfo$scaled_grad[-seq_n_u_h], damping=damping)
         Vscaled_beta[-seq_n_u_h] <- Vscaled_beta[-seq_n_u_h] + LevMarblob$dbeta 
       } else if ( which_LevMar_step=="v") { ## v_h estimation given beta 
-        LevMarblob <- get_from_MME(sXaug=sXaug, which="LevMar_step_v_h", LMrhs=zInfo$LMrhs[seq_n_u_h], damping=damping)
-        #browser()
+        LevMarblob <- get_from_MME(sXaug=sXaug, which="LevMar_step_v_h", LMrhs=zInfo$scaled_grad[seq_n_u_h], damping=damping)
         Vscaled_beta[seq_n_u_h] <- Vscaled_beta[seq_n_u_h] + LevMarblob$dVscaled 
       }
     } else { ## joint hlik maximization
-      LevMarblob <- get_from_MME(sXaug=sXaug, which="LevMar_step", LMrhs=zInfo$LMrhs, damping=damping)
+      LevMarblob <- get_from_MME(sXaug=sXaug, which="LevMar_step", LMrhs=zInfo$scaled_grad, damping=damping)
       Vscaled_beta <- old_Vscaled_beta + LevMarblob$dVscaled_beta 
     }
     fitted <- drop(Xscal %*% Vscaled_beta) ## length nobs+nr ! 
@@ -41,7 +39,7 @@
     
     newmuetablob <- .muetafn(eta=eta,BinomialDen=processed$BinomialDen,processed=processed) 
     neww.resid <- .calc_w_resid(newmuetablob$GLMweights,phi_est)
-    newweight_X <- sqrt(H_global_scale*neww.resid) ## sqrt(s^2 W.resid)
+    newweight_X <- .calc_weight_X(neww.resid, H_global_scale) ## sqrt(s^2 W.resid)
     
     if (is.null(etaFix$v_h)) { 
       v_h <- Vscaled_beta[seq_n_u_h] * ZAL_scaling ## use original scaling!
@@ -83,7 +81,6 @@
     APHLs_args$u_h <- u_h 
     APHLs_args$mu <- newmuetablob$mu
     newAPHLs <- do.call(".calc_APHLs_from_ZX", APHLs_args)
-    #browser()
     if (processed$HL[1L]==1L) { 
       if (which_LevMar_step=="v") { 
         newlik <- newAPHLs[["hlik"]]
@@ -133,7 +130,11 @@
       dlogL <- newlik-oldlik
       conv_logL <- abs(dlogL)/(1+abs(newlik))
       gainratio <- 2*dlogL/denomGainratio ## cf computation in MadsenNT04 below 3.14, but generalized for D' != I ; numerator is reversed for maximization
-    } 
+    } else { ## 2017/10/16 a patch to prevent a stop in this case, but covers up dubious computations (FIXME)
+      newlik <- -.Machine$double.xmax
+      dlogL <- newlik-oldlik
+      conv_logL <- abs(dlogL)/(1+abs(newlik))
+    }
     if (trace) print(paste("dampingfactor=",dampingfactor,#"innerj=",innerj,
                            "damping=",damping,"gainratio=",gainratio,"oldlik=",oldlik,"newlik=",newlik))
     if (is.nan(gainratio)) {
@@ -254,7 +255,7 @@
   }
   ## weight_X and Xscal varies within loop if ! LMM since at least the GLMweights in w.resid change
   if ( is.null(w.resid) ) w.resid <- .calc_w_resid(muetablob$GLMweights,phi_est)
-  weight_X <- sqrt(H_global_scale*w.resid) ## sqrt(s^2 W.resid)
+  weight_X <- .calc_weight_X(w.resid, H_global_scale) ## sqrt(s^2 W.resid)
   sXaug <- do.call(mMatrix_method,
                    list(Xaug=Xscal, weight_X=weight_X, w.ranef=wranefblob$w.ranef, H_global_scale=H_global_scale))
   allow_LM_restart <- ( ! LMMbool && ! LevenbergM && is.null(for_intervals) && is.na(processed$LevenbergM["user_LM"]) )
@@ -305,8 +306,7 @@
     
     ##### RHS
     if (LMMbool) {
-      zAug <- c(rep(0,n_u_h), y-off)
-      wzAug <- c(1/ZAL_scaling,sqrt(w.resid*H_global_scale)) *zAug ## *not* using weight_X 
+      wzAug <- c(rep(0,n_u_h),(y-off)*weight_X)
     } else {
       if ( ! GLMMbool) {
         # arguments for init_resp_z_corrections_new called in calc_zAug_not_LMM
@@ -320,20 +320,15 @@
                                w.ranef=wranefblob$w.ranef, 
                                w.resid=w.resid,
                                init_z_args=init_z_args) )
-      zAug <- do.call(".calc_zAug_not_LMM",calc_zAug_args) ## dlogfvdv is 'contained' in $z2
-      zInfo <- attributes(zAug)
-      wzAug <- c(1/ZAL_scaling,sqrt(w.resid*H_global_scale)) *zAug ## *not* using weight_X 
-      # cat("a");print(range(v_h))
-      # cat("b");print(range( drop(.crossprod(ZAL, w.resid * (zAug[57:112]-(eta - off))) - v_h * wranefblob$w.ranef)))
-      # cat("c");print(range( drop(.crossprod(ZAL, w.resid * (zInfo$z1-zInfo$sscaled-(eta - off))) - v_h * wranefblob$w.ranef)))
-      # cat("d");print(range( drop(.crossprod(ZAL, w.resid * (zInfo$z1-(eta - off))) - v_h * wranefblob$w.ranef)))
+      zInfo <- do.call(".calc_zAug_not_LMM",calc_zAug_args) ## dlogfvdv is 'contained' in $z2
+      wzAug <- c(zInfo$y2_sscaled/ZAL_scaling, (zInfo$z1_sscaled)*weight_X) 
     }
     ## keep name 'w'zAug to emphasize the distinct weightings  of zaug and Xaug (should have been so everywhere)
     #####
     ##### improved  Vscaled_beta   
     if ( ! is.null(for_intervals)) {
       currentDy <- (for_intervals$fitlik-oldlik)
-      if (currentDy <0) .warn_intervalStep(oldlik,for_intervals)
+      if (currentDy < -1e-4) .warn_intervalStep(oldlik,for_intervals)
       intervalBlob <- .intervalStep_ZX(old_Vscaled_beta=Vscaled_beta,
                                        sXaug=sXaug,szAug=wzAug,
                                        for_intervals=for_intervals,
@@ -346,15 +341,22 @@
       ## now we want the LHS of a d_beta_v solution
       etamo <- eta - off
       zInfo$z1_eta <- zInfo$z1-etamo
-      z1_sscaled_eta <- zAug[-seq_n_u_h]-etamo # z_1-sscaled-etamo
+      z1_sscaled_eta <- zInfo$z1_sscaled - etamo # zAug[-seq_n_u_h]-etamo # z_1-sscaled-etamo
       if (GLMMbool) {
         zInfo$dlogfvdv <-  - v_h * wranefblob$w.ranef
       } else zInfo$dlogfvdv <- (zInfo$z2 - v_h) * wranefblob$w.ranef
       ## the gradient for -p_v (or -h), independent of the scaling
-      m_grad_obj <- c( ## drop() avoids c(Matrix..) 
-        m_grad_v <- drop(.crossprod(ZAL, w.resid * zInfo$z1_eta) + zInfo$dlogfvdv), # Z'W(z_1-eta)+ dlogfvdv
-        drop(.crossprod(X.pv, w.resid * z1_sscaled_eta)) # X'W(z_1-sscaled-eta)
-      )
+      if (is.list(w.resid)) {
+        m_grad_obj <- c( ## drop() avoids c(Matrix..) 
+          m_grad_v <- drop(.crossprod(ZAL, w.resid$w_resid * zInfo$z1_eta) + zInfo$dlogfvdv), # Z'W(z_1-eta)+ dlogfvdv
+          drop(.crossprod(X.pv, w.resid$w_resid * z1_sscaled_eta)) # X'W(z_1-sscaled-eta)
+        )
+      } else {
+        m_grad_obj <- c( ## drop() avoids c(Matrix..) 
+          m_grad_v <- drop(.crossprod(ZAL, w.resid * zInfo$z1_eta) + zInfo$dlogfvdv), # Z'W(z_1-eta)+ dlogfvdv
+          drop(.crossprod(X.pv, w.resid * z1_sscaled_eta)) # X'W(z_1-sscaled-eta)
+        )
+      }
       if (not_moving && is_HL1_1) { ## not_moving TRUE may occur when we are out of solution space. Hence test Mg_solve_g
         Mg_solve_g <- get_from_MME(sXaug=sXaug, which="Mg_solve_g", B=m_grad_obj)
         if (Mg_solve_g < Ftol_LM/2) {
@@ -364,11 +366,9 @@
       } ## else not_moving was a break condition elsewhere in code
       zInfo$gainratio_grad <- m_grad_obj ## before recaling
       # gradient for scaled system from gradient of objective
-      LMrhs <- H_global_scale * m_grad_obj
-      LMrhs[seq_n_u_h] <- LMrhs[seq_n_u_h] * ZAL_scaling 
-      zInfo$LMrhs <- LMrhs
-      # print(zInfo$LMrhs[-seq_n_u_h])
-      
+      scaled_grad <- H_global_scale * m_grad_obj
+      scaled_grad[seq_n_u_h] <- scaled_grad[seq_n_u_h] * ZAL_scaling 
+      zInfo$scaled_grad <- scaled_grad
       if (trace>1L )  { ## only tracing
         maxs_grad <- c(max(abs(m_grad_obj[seq_n_u_h])),max(abs(m_grad_obj[-seq_n_u_h])))
         cat("iter=",innerj,", max(|grad|): v=",maxs_grad[1L],"beta=",maxs_grad[2L],";")
@@ -428,7 +428,7 @@
         if (damped_WLS_blob$lik < oldAPHLs$hlik) { ## if LevM step failed to find a damping that increases the lik
           ## This occurs inconspiscuously in the PQL_prefit providing a bad starting point for ML fit
           damped_WLS_blob <- NULL
-          wzAug <- c(1/ZAL_scaling,sqrt(w.resid*H_global_scale)) *zAug ## *not* using weight_X
+          wzAug <- c(zInfo$y2_sscaled/ZAL_scaling, (zInfo$z1_sscaled)*weight_X)
           Vscaled_beta <- get_from_MME(sXaug,szAug=wzAug) # vscaled= v scaling so that v has 'scale' H_global_scale
           LevenbergM <- FALSE ## D O N O T set it to TRUE again !
         } 
@@ -452,8 +452,8 @@
       v_h <- damped_WLS_blob$v_h
       u_h <- damped_WLS_blob$u_h
       muetablob <- damped_WLS_blob$muetablob
-      w.resid <- damped_WLS_blob$w.resid
-      # we don't need to copy the new 'weight_X' here but will need to do it for the return value 
+      w.resid <- damped_WLS_blob$w.resid ## !important! cf test-adjacency-corrMatrix.R
+      # there's no new weight_X in damped_WLS_blob as the weights are purposefully kept constant there
       # same for new 'fitted' 
       sXaug <- damped_WLS_blob$sXaug
       if ( ! GLMMbool ) {
@@ -496,7 +496,7 @@
       if ( ! LMMbool ) {
         ## weight_X and Xscal vary within loop if ! LMM since at least the GLMweights in w.resid change
         w.resid <- .calc_w_resid(muetablob$GLMweights,phi_est)
-        weight_X <- sqrt(H_global_scale*w.resid) ## sqrt(s^2 W.resid)
+        weight_X <- .calc_weight_X(w.resid, H_global_scale) ## sqrt(s^2 W.resid)
         sXaug <- do.call(mMatrix_method,
                          list(Xaug=Xscal, weight_X=weight_X, w.ranef=wranefblob$w.ranef, H_global_scale=H_global_scale))
       } ## ergo sXaug is not updated for LMM (no need to)
@@ -535,7 +535,8 @@
   } 
   RESU <- list(sXaug=sXaug, 
                ## used by calc_APHLs_from_ZX: (in particular can use Vscaled values contained in fitted)
-               fitted=fitted, zAug=zAug, weight_X=weight_X, nobs=nobs, pforpv=pforpv, seq_n_u_h=seq_n_u_h, u_h=u_h, 
+               fitted=fitted, #zAug=zAug, 
+               weight_X=weight_X, nobs=nobs, pforpv=pforpv, seq_n_u_h=seq_n_u_h, u_h=u_h, 
                muetablob=muetablob, 
                lambda_est=lambda_est,
                phi_est=phi_est,

@@ -25,10 +25,12 @@ HLfit <- function(formula,
                   prior.weights=NULL, ## I must avoid default argument reference as formals(HLfit) serves as a template for calls to preprocess() 
                   processed=NULL
 ) {
-  spaMM.options(spaMM_glm_conv_crit=list(max=-Inf),COMP_maxn_warned=FALSE,COMP_geom_approx_warned=FALSE)
+  spaMM.options(spaMM_glm_conv_crit=list(max=-Inf))
   time1 <- Sys.time()
-  oricall <- mc <- match.call()  ## there is no dots in HLfit
+  oricall <- match.call()  ## there is no dots in HLfit
   if (is.null(processed)) { 
+    oricall$formula <- .stripFormula(formula)
+    if ( ! missing(resid.formula)) oricall$resid.model <- resid.formula
     if (missing(data)) {
       data <- environment(formula)
       warning("It is _strongly_ recommanded to use the 'data' argument\n for any application beyond a single fit (e.g. for predict(), etc.)")
@@ -54,7 +56,7 @@ HLfit <- function(formula,
       ## RUN THIS LOOP and return
       multiHLfit <- function() {
         fitlist <- lapply(data, function(dt){
-          locmc <- mc
+          locmc <- oricall
           if (identical(paste(family[[1L]]),"multi")) 
             locmc$family <- family$binfamily ## typically binomial()
           locmc$data <- dt
@@ -70,9 +72,10 @@ HLfit <- function(formula,
       }
       return(multiHLfit())
     } else {## there is a single data set, still without processed
+      mc <- oricall
       FHF <- formals(HLfit) ## makes sure about default values 
       names_FHF <- names(FHF)
-      if ( ! is.null(mc$resid.formula)) mc$resid.model <- mc$resid.formula
+      #if ( ! is.null(mc$resid.formula)) mc$resid.model <- mc$resid.formula
       names_nondefault  <- intersect(names(mc),names_FHF) ## mc including dotlist
       FHF[names_nondefault] <- mc[names_nondefault] ##  full HLfit args
       preprocess.formal.args <- FHF[which(names_FHF %in% names(formals(.preprocess)))] 
@@ -81,13 +84,15 @@ HLfit <- function(formula,
       preprocess.formal.args$rand.families <- FHF$rand.family ## because preprocess expects $rand.families 
       preprocess.formal.args$predictor <- FHF$formula ## because preprocess stll expects $predictor 
       mc$processed <- do.call(.preprocess,preprocess.formal.args,envir=parent.frame(1L))
+      oricall$resid.model <- mc$processed$residModel
+      #mc$ranFix$ranCoefs <- NULL ## but new ranFix can be added by fitme/corrHLfit
       # HLfit_body() called below
     }
   } else { ## 'processed' is available
     if (  is.list(processed))  { ## "multiple" processed list 
       ## RUN THIS LOOP and return
       fitlist <- lapply(seq_len(length(processed)), function(it){
-        locmc <- mc
+        locmc <- oricall
         locmc$processed <- processed[[it]] ## The data are in processed !
         eval(locmc)
       }) ## a pure list of HLCor objects
@@ -97,6 +102,7 @@ HLfit <- function(formula,
       class(fitlist) <- c("HLfitlist",class(fitlist)) 
       return(fitlist) ## list of HLfit object + one attribute
     } else { ## there is one processed for a single data set 
+      mc <- oricall
       # mc$processed <- processed
       # HLfit_body() called below
     }

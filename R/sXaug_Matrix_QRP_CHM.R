@@ -21,7 +21,7 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
 .sXaug_Matrix_QRP_CHM_scaled <- function(sXaug,which="",szAug=NULL,B=NULL) {
   BLOB <- attr(sXaug,"BLOB") ## an environment
   if (is.null(BLOB$blob)) {
-    BLOB$blob <- Matrix::qr(sXaug)
+    BLOB$blob <- qr(sXaug) ##  Matrix::qr
     # sXaug = t(tQ) %*% R[,sP] but then also sXaug = t(tQ)[,sP'] %*% R[sP',sP] for any sP'
     BLOB$perm <- BLOB$blob@q + 1L
     BLOB$R_scaled <- Matrix::qrR(BLOB$blob,backPermute = FALSE)
@@ -50,7 +50,7 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
   ) {
     seq_n_u_h <- seq_len(attr(sXaug,"n_u_h"))
     wd2hdv2w <- Matrix::crossprod(BLOB$R_scaled[,BLOB$sortPerm[ seq_n_u_h ]] )
-    BLOB$CHMfactor_wd2hdv2w <- Matrix::Cholesky(wd2hdv2w,LDL=FALSE,
+    BLOB$CHMfactor_wd2hdv2w <- Cholesky(wd2hdv2w,LDL=FALSE,
                                                 perm=FALSE ) ## perm=FALSE useful for leverage computation as explained below
   }
   ## return()'s
@@ -165,7 +165,7 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
     if (is.null(BLOB$logdet_R_scaled_v)) BLOB$logdet_R_scaled_v <- Matrix::determinant(BLOB$CHMfactor_wd2hdv2w)$modulus[1]
     return(BLOB$logdet_R_scaled_v)
   } else if (which=="beta_cov") { 
-    beta_cov <- Matrix::chol2inv(BLOB$R_scaled)
+    beta_cov <- Matrix::chol2inv(BLOB$R_scaled) ## actually augmented beta_v_cov as the following shows
     beta_pos <- attr(sXaug,"n_u_h")+seq_len(attr(sXaug,"pforpv"))
     sP_beta_pos <- BLOB$sortPerm[beta_pos]
     beta_cov <- as.matrix(beta_cov[sP_beta_pos,sP_beta_pos]) * attr(sXaug,"H_global_scale")
@@ -191,11 +191,11 @@ get_from_MME.sXaug_Matrix_QRP_CHM_scaled <- function(sXaug,which="",szAug=NULL,B
                    logdet_R_scaled_v <- .sXaug_Matrix_QRP_CHM_scaled(sXaug,which="logdet_R_scaled_v")
                    sum(log(w.ranef))/2 + logdet_R_scaled_v
                  },
-                 "logdet_sqrt_d2hdbeta2" = {
+                 "logdet_r22" = {
                    H_global_scale <- attr(sXaug,"H_global_scale")
-                   logdet_R_scaled_b_v <- .sXaug_Matrix_QRP_CHM_scaled(sXaug,which="logdet_R_scaled_b_v")
+                   logdet_R_scaled_b_v <- .sXaug_Matrix_QRP_CHM_scaled(sXaug,which="logdet_R_scaled_b_v") 
                    logdet_R_scaled_v <- .sXaug_Matrix_QRP_CHM_scaled(sXaug,which="logdet_R_scaled_v")
-                   logdet_R_scaled_b_v - logdet_R_scaled_v - attr(sXaug,"pforpv")*log(H_global_scale)/2 
+                   logdet_R_scaled_b_v - logdet_R_scaled_v - attr(sXaug,"pforpv")*log(H_global_scale)/2 ## '-', not '<-'
                  },
                  "LevMar_step" = {
                    ## FR->FR probably not the most elegant implementation 

@@ -52,9 +52,9 @@ get_from_MME_default.Matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
     #   ## see http://cran.r-project.org/web/packages/Matrix/vignettes/Comparisons.pdf
     #   return(Matrix::qr.coef(Matrix::qr(sXaug),szAug)) ## Vscaled.beta
     ## FR->FR needs a fully automated selection of methods:
-    if (length(grep("QR", .spaMM.data$options$Matrix_method))>0L) {
+    if (length(grep("QR", .spaMM.data$options$Matrix_method))) {
       solve_method <- ".lmwith_sparse_QRp"
-    } else if (length(grep("LDL", .spaMM.data$options$Matrix_method))>0L) {
+    } else if (length(grep("LDL", .spaMM.data$options$Matrix_method))) {
       solve_method <- ".lmwith_sparse_LDLp"
     } else solve_method <- ".lmwith_sparse_LLp"
     sol <- do.call(solve_method,list(XX=sXaug,yy=szAug,returntQ=FALSE,returnR=FALSE,pivot=TRUE))
@@ -101,13 +101,13 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
 
 
 # function to get the hatvalues (only: not the other similar computations on t_Q_scaled)
-# no permutation issues for Q => a single get_hatvalues function should hande all sXaug classes
+# no permutation issues for Q => a single get_hatvalues function should handle all sXaug classes
 .get_hatvalues <- function(sXaug, X.Re, weight_X) {
   if ( ! is.null(X.Re) ) { ## not the standard REML
     distinct.X.ReML <- attr(X.Re,"distinct.X.ReML")
     if ( distinct.X.ReML[2L] ) { ## test FALSE for standard ML, TRUE only for some non-standard REML cases
       locsXaug <- .calc_sXaug_Re(locsXaug=sXaug,X.Re,weight_X)
-      hatval <- .leverages(locsXaug) ## Rcpp version of computation through computation of Q
+      hatval <- .leveragesWrap(locsXaug) ## Rcpp version of computation through computation of Q
     } else if ( distinct.X.ReML[1L] ) { ## includes ML standard
       whichcols <- attr(X.Re,"unrestricting_cols")
       if (length(whichcols)==attr(sXaug,"pforpv")) { ## should be ML standard
@@ -126,6 +126,12 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
   } else hatval <- get_from_MME(sXaug,which="hatval") # colSums(t_Q_scaled*t_Q_scaled) ## basic REML, leverages from the same matrix used for estimation of betaV 
   if (is.list(hatval)) hatval <- unlist(hatval) ## assuming order lev_lambda,lev_phi
   return(hatval)
+}
+
+.leveragesWrap <- function(X) {
+  if (inherits(X,"sparseMatrix")) {
+    return(rowSums(qr.Q(qr(X))^2)) ## perhaps not optimal and certainly not optimized as first met in LM with sparse X.pv 01/2018
+  } else .leverages(X) 
 }
 
 
@@ -155,9 +161,8 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
       dvdloglamMat <- try(solve(d2hdv2,diag( neg.d2f_dv_dloglam ))) 
     } else dvdloglamMat <- .solveWrap_matrix(qr_d2hdv2, diag( neg.d2f_dv_dloglam ), stop.on.error=stop.on.error) # rXr
     if (inherits(dvdloglamMat,"try-error")) {
-      mess <- pastefrom("problem in dvdloglamMat computation.",prefix="(!) From ")
-      warning(mess)
-      dvdloglamMat <- sweep(MASS::ginv(d2hdv2),MARGIN=2,as.vector(neg.d2f_dv_dloglam),`*`) ## ginv(d2hdv2) %*% diag( as.vector(neg.d2f_dv_dloglam))
+      warning("Using ginv() in dvdloglamMat computation to overcome numerical problem.")
+      dvdloglamMat <- sweep(ginv(d2hdv2),MARGIN=2,as.vector(neg.d2f_dv_dloglam),`*`) ## ginv(d2hdv2) %*% diag( as.vector(neg.d2f_dv_dloglam))
     }
   } 
   return(dvdloglamMat)
@@ -174,21 +179,17 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
   } else {
     qr_d2hdv2 <- .get_qr(d2hdv2)
     dvdlogphiMat <- .solveWrap_matrix(qr_d2hdv2, neg.d2h0_dv_dlogphi , stop.on.error=stop.on.error)  # rXn       
-    if (inherits(dvdlogphiMat,"try-error")) {
-      mess <- pastefrom("problem in dvdlogphiMat computation.",prefix="(!) From ")
-      stop(mess) ## ou warning + ginv  comme dans .calc_dvdloglamMat
-    }
+    if (inherits(dvdlogphiMat,"try-error")) stop("problem in dvdlogphiMat computation.") ## ou warning + ginv  comme dans .calc_dvdloglamMat
   }
   return(dvdlogphiMat)
 }
 
 
 .calc_sscaled_new <- function(vecdisneeded, dlogWran_dv_h, coef12, 
-                              n_u_h, nobs, sXaug, ZAL) {
+                              n_u_h, nobs, sXaug, ZAL,WU_WT) {
   if  (any(vecdisneeded[-3L])) {
-    coef12 <- coef12 ## eval promise
+    #coef12 <- coef12 ## eval promise
     coef1 <- coef12$coef1 # coef1 is the factor of P_ii in d1
-    coef2 <- coef12$dlW_deta # coef2 is the factor between P_jj and K1 in d2
   }
   vecdis <- vecdisneeded
   vecdis[vecdisneeded] <- NA
@@ -206,14 +207,17 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
     # W is Sigma^-1 ; TWT = t(ZALI)%*%W%*%ZALI = ZAL'.Wresid.ZAL+Wranef = -d2hdv2 !
     if (vecdisneeded[2L]) { # ( ZAL %*% K2 ) is K1 in LeeL appendix p. 4 and is A=-ZD in MolasL p. 3307-8 
       # vecdi2 <- as.vector( ((Pdiag$lev_phi * coef2) %*id% ZAL) %*% K2)
+      coef2 <- coef12$dlW_deta # coef2 is the factor between P_jj and K1 in d2
       vecdi2 <- get_from_MME(sXaug,"solve_d2hdv2",B=as.vector((Pdiag$lev_phi * coef2) %*id% ZAL))
+      if ( ! is.null(WU_WT)) vecdi2 <- vecdi2/WU_WT # zero-truncated model
       vecdi2 <- as.vector(ZAL %*% vecdi2)
     }
     # coef3 =(1/Wran)(dWran/dv_h), the thing between P and K2 in the d3 coef. See LeeL12 appendix
     if (vecdisneeded[3L]) {  ## d3 reste nul pour gaussian ranef
       # vecdi3 <- as.vector( (Pdiag$lev_lambda * dlogWran_dv_h[seqn_u_h]) %*% K2)
        vecdi3 <- get_from_MME(sXaug,"solve_d2hdv2",B=as.vector(Pdiag$lev_lambda * dlogWran_dv_h[seqn_u_h]))
-      vecdi3 <- as.vector(ZAL %*% vecdi3)
+       if ( ! is.null(WU_WT)) vecdi3 <- vecdi3/WU_WT # zero-truncated model
+       vecdi3 <- as.vector(ZAL %*% vecdi3)
     }
     vecdi <- vecdi1+vecdi2+vecdi3 ## k_i in MolasL; le d_i de LeeL app. p. 4
     sscaled <- vecdi /2  ## sscaled := detadmu s_i= detadmu d*dmudeta/2 =d/2 in LeeL12; or dz1 = detadmu (y*-y) = detadmu m_i=0.5 k_i dmudeta = 0.5 k_i in MolasL 
@@ -275,36 +279,46 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
   mu <- muetablob$mu
   dmudeta <- muetablob$dmudeta
   ######## According to 'theorem 1' of LeeL12, new beta estimate from z1-a(i), where z1 is
-  z1 <- as.vector(eta+(y-mu)/dmudeta-off) ## LeeNP 182 bas. GLM-adjusted response variable; O(n)*O(1/n)
+  if (is.list(w.resid)) {
+    z1 <- as.vector(eta+w.resid$WU_WT*(y-mu-w.resid$dlogMthdth)/dmudeta-off) ## MolasL10
+  } else z1 <- as.vector(eta+(y-mu)/dmudeta-off) ## LeeNP 182 bas. GLM-adjusted response variable; O(n)*O(1/n)
   ## and a(i) (for HL(i,1)) is a(0) or a(0)+ something
   ## and a(0) depends on z2, as follows :
   if ( ! GLMMbool) {
     z2 <- do.call(".init_resp_z_corrections_new",init_z_args)$z20 
   } else z2 <- rep(0,n_u_h)
-  if (processed$HL[1L]>0L) { 
+  if (processed$HL[1L]) { 
     ########## HL(1,.) adjustment for mean ################## and specifically the a(1) term in LeeL 12 p. 963
     ## if LMM (ie resp gaussian, ranef gaussian), all coef<x> are 0
     ## if (gaussian, not gaussian) d3 nonzero
     ## if (non gaussian, gaussian), d3 zero (!maybe not for all possible cases) but d1,d2 nonzero 
     vecdisneeded <- c( coef12needed, coef12needed, any(dlogWran_dv_h!=0L) )
     if (any(vecdisneeded)) {
+      if (is.list(w.resid)) {
+        WU_WT <- w.resid$WU_WT 
+      } else WU_WT <- NULL
       sscaled <- .calc_sscaled_new(vecdisneeded=vecdisneeded,
                               dlogWran_dv_h=dlogWran_dv_h, ## dlogWran_dv_h was computed when w.ranef was computed
                               coef12= .calc_dlW_deta(dmudeta=drop(dmudeta), mu=drop(mu), eta=drop(eta), 
                                                     family=processed$family, 
                                                     BinomialDen=processed$BinomialDen, 
                                                     canonicalLink=processed$canonicalLink,
-                                                    calcCoef1=TRUE), ## promise evaluated if any vecdisneeded[-3]
+                                                    calcCoef1=TRUE,
+                                                    w.resid=w.resid), ## promise evaluated if any vecdisneeded[-3]
                               n_u_h=n_u_h, nobs=nobs, 
                               sXaug=sXaug,
-                              ZAL=ZAL # vecdi2
+                              ZAL=ZAL, # vecdi2
+                              WU_WT=WU_WT ## NULL except for truncated model
       )
     } else sscaled <- 0
-    zAug <- c(z2+ as.vector((sscaled * w.resid ) %*% ZAL )/w.ranef, ## that's the y_2 in "Methods of solution based on the augmented matrix"
-              z1- sscaled) 
-    zAug <- structure(zAug,sscaled=sscaled,z1=z1,z2=z2)
-  } else zAug <- structure(c(z2,z1),sscaled=0,z1=z1,z2=z2) 
-  return(zAug)
+    ## sscaled if an 
+    if (is.list(w.resid)) {
+      sscaled <- sscaled * w.resid$WU_WT
+      y2_sscaled <- z2+ as.vector((sscaled * w.resid$w_resid ) %*% ZAL )/w.ranef ## that's the y_2 in "Methods of solution based on the augmented matrix"
+    } else y2_sscaled <- z2+ as.vector((sscaled * w.resid ) %*% ZAL )/w.ranef
+    zInfo <- list(sscaled=sscaled, z1=z1, z2=z2, z1_sscaled=z1-sscaled, y2_sscaled=y2_sscaled)
+  } else zInfo <- list(sscaled=0, z1=z1, z2=z2, z1_sscaled=z1, y2_sscaled=z2) 
+  return(zInfo)
 }
 
 
@@ -321,13 +335,27 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
 }
 
 
-.make_Xscal <- function(ZAL, ZAL_scaling=NULL, AUGI0_ZX,n_u_h) {
-  if (!is.null(ZAL_scaling)) ZAL <- .m_Matrix_times_Dvec(ZAL,ZAL_scaling)
-  Xscal <- suppressMessages(cbind2(
-    suppressMessages(rbind2(AUGI0_ZX$I, ZAL)), ## suppress signature message generated by eg rbind2(Diagonal(x=runif(5)), Diagonal(n=5)) 
-    rbind2(AUGI0_ZX$ZeroBlock, AUGI0_ZX$X.pv)
-  )) 
-  return(Xscal)
+.make_Xscal <- function(ZAL, ZAL_scaling=NULL, AUGI0_ZX, n_u_h, use_Xaug=FALSE) {
+  if (use_Xaug) { ## Write and read AUGI0_ZX$Xaug; but 
+    # (1) the alternative with the bind's remains faster, despite being a slow step of a fit;
+    # this requires reinitializing AUGI0_ZX$Xaug when ZAL is modified, which exposes to bugs.
+    if (is.null(AUGI0_ZX$Xaug)) {
+      AUGI0_ZX$Xaug <- suppressMessages(cbind2(
+        suppressMessages(rbind2(AUGI0_ZX$I, ZAL)), ## suppress signature message generated by eg rbind2(Diagonal(x=runif(5)), Diagonal(n=5)) 
+        rbind2(AUGI0_ZX$ZeroBlock, AUGI0_ZX$X.pv)
+      )) 
+    }
+    if (is.null(ZAL_scaling)) {
+      return(AUGI0_ZX$Xaug)
+    } else return(.m_Matrix_llblock_times_Dvec(AUGI0_ZX$Xaug, ZAL_scaling))
+  } else { 
+    if (!is.null(ZAL_scaling)) ZAL <- .m_Matrix_times_Dvec(ZAL,ZAL_scaling)
+    Xscal <- suppressMessages(cbind2(
+      suppressMessages(rbind2(AUGI0_ZX$I, ZAL)), ## suppress signature message generated by eg rbind2(Diagonal(x=runif(5)), Diagonal(n=5)) 
+      rbind2(AUGI0_ZX$ZeroBlock, AUGI0_ZX$X.pv)
+    )) 
+    return(Xscal)
+  }
 }
 
 ## y=u_h in all cases
@@ -417,8 +445,9 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
     if ("p_bv" %in% which) {
       X.Re <- processed$X.Re
       if ( is.null(X.Re)) {## REML standard
-        # beware that computation of logdet_sqrt_d2hdbeta2 depends on H_global_scale
-        resu$p_bv <- resu$p_v - get_from_MME(sXaug,"logdet_sqrt_d2hdbeta2") + pforpv*log(2*pi)/2
+        # beware that computation of logdet_r22 depends on H_global_scale
+        resu$p_bv <- resu$p_v - get_from_MME(sXaug,"logdet_r22") + pforpv*log(2*pi)/2
+        #browser()
       } else if ( ncol(X.Re)==0L) {## ML standard
         resu$p_bv <- resu$p_v
       } else {
@@ -440,7 +469,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
         locsXaug <- do.call(mMatrix_method,
                          list(Xaug=locXscal, weight_X=weight_X, w.ranef=w.ranef, H_global_scale=H_global_scale))
         
-        resu$p_bv <- resu$p_v - get_from_MME(locsXaug,"logdet_sqrt_d2hdbeta2") + ncol(X.Re)*log(2*pi)/2
+        resu$p_bv <- resu$p_v - get_from_MME(locsXaug,"logdet_r22") + ncol(X.Re)*log(2*pi)/2
       }
     }
   }

@@ -1,6 +1,7 @@
 exportPattern("^[[:alpha:]]+")
-export(".getProcessed", ".Cholwrap", ".calc_CARdispGammaGLM", ".calc_dispGammaGLM", ".ZWZt",
-           ".dispFn", ".dispInv", ".nuFn", ".nuInv", ".rhoFn", ".rhoInv", ".crossprod", ".tcrossprod") ## probitgem
+export(".evalWrapper", ".Cholwrap", ".calc_CARdispGammaGLM", ".calc_dispGammaGLM", ".ZWZt",
+       ".dispFn", ".dispInv", ".nuFn", ".nuInv", ".rhoFn", ".rhoInv", ".NB_shapeFn", ".NB_shapeInv", 
+       ".crossprod", ".tcrossprod") ## probitgem
 importFrom("graphics", ".filled.contour", "Axis", "abline", "axis", "box", "hist", "layout", 
            "lcm", "lines", "par", "plot.new", "plot.window", "points", "polygon", "rect", "title")
 importFrom("graphics", "plot")
@@ -11,14 +12,16 @@ importFrom("stats", "as.formula", "coefficients", "dgamma", "dnorm", "family", "
            "rbeta", "rbinom", "rgamma", "rnorm", "rpois", "runif", "terms", 
            "update.formula", "var", "weights")
 importFrom("stats", "simulate", "anova", "confint", "fitted", "predict", "update", "logLik", "vcov", "coef",
-           "gaussian", "binomial", "poisson", "Gamma", "resid", "uniroot", "deviance")
-importFrom("stats", "as.dist", "AIC")
-importFrom("utils", "relist")
-importFrom("Matrix", Matrix,drop,isDiagonal,diag,t,solve,Diagonal,crossprod,tcrossprod,rowSums,colSums)
-importFrom("Matrix", "sparseMatrix", "rankMatrix", "qrR", "qr.R", "qr.Q", "isSymmetric", "forceSymmetric")
+           "gaussian", "binomial", "dpois", "Gamma", "resid", "uniroot", "deviance", "dbinom", "plogis", "lm.wfit")
+importFrom("stats", "as.dist", "AIC", "qnbinom", "qpois", "rnbinom", "integrate")
+importFrom("utils", "relist", "txtProgressBar", "setTxtProgressBar", "modifyList", "strOptions", "str",
+           "write.table", "packageVersion")
+importFrom("Matrix", "Matrix", "drop", "isDiagonal", "diag", "t", "solve", "Diagonal", "crossprod", "tcrossprod", "rowSums", "colSums")
+importFrom("Matrix", "sparseMatrix", "qr", "qrR", "qr.R", "qr.Q", "isSymmetric", "forceSymmetric", "Cholesky","determinant")
 importFrom("proxy", "dist", "pr_DB")
 importFrom("Rcpp", "evalCpp")
 importFrom("nlme", "getGroups", "fixef", "ranef", "getCovariate", "corFactor", "corMatrix")
+importFrom("MASS", "ginv", "gamma.shape", "mvrnorm")
 export(fixef) ## comes from nlme namespace 
 export(ranef) ## comes from nlme namespace
 S3method(dim, precision)
@@ -51,7 +54,6 @@ S3method(print, arglist)
 S3method(print, predictions)
 S3method(update, HLfit)
 S3method(vcov, HLfit)
-S3method(MaternCorr, ff)
 S3method(MaternCorr, default)
 S3method("[", predictions)
 S3method("[", precision)
@@ -72,4 +74,4 @@ S3method(get_from_MME,sparseMatrix)
 S3method(get_from_MME,default)
 S3method(get_from_MME_default,matrix)
 S3method(get_from_MME_default,Matrix)
-useDynLib(spaMM)  # .registration=TRUE exposes to user level => objects need doc.
+useDynLib(spaMM, .registration=TRUE)  #  exposes to user level => objects need doc.

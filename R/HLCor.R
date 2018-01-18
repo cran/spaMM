@@ -4,21 +4,24 @@ HLCor <- function(formula,
                   distMatrix,uniqueGeo=NULL,adjMatrix,corrMatrix, covStruct=NULL,
                   verbose=c(trace=FALSE),control.dist=list(),
                   ...) { 
-  spaMM.options(spaMM_glm_conv_crit=list(max=-Inf),COMP_maxn_warned=FALSE,COMP_geom_approx_warned=FALSE)
+  spaMM.options(spaMM_glm_conv_crit=list(max=-Inf))
   time1 <- Sys.time()
-  oricall <- mc <- match.call(expand.dots = TRUE) 
-  if ( ! is.null(mc$ranFix)) { ## avoiding user's confusion
+  oricall <- match.call(expand.dots = TRUE) 
+  if ( ! is.null(oricall$ranFix)) { ## avoiding user's confusion
     stop("!From HLCor: ranFix found in '...'. Make sure to use ranPars only")
   }
-  if (!is.null(mc$LamFix)) {
+  if (!is.null(oricall$LamFix)) {
     stop("argument LamFix of HLCor is obsolete")
   }
-  if (!is.null(mc$PhiFix)) {
+  if (!is.null(oricall$PhiFix)) {
     stop("argument PhiFix of HLCor is obsolete")
   }  
   # frst steps as in HLFit: (no need to test missing(data) in several functions)
-  if (is.null(processed <- mc$processed)) { ## no 'processed'
+  if (is.null(processed <- oricall$processed)) { ## no 'processed'
     ## FR->FR suggests we should add processed as argument of HLCor...
+    oricall$formula <- .stripFormula(formula)
+    if ( ! is.null(oricall$resid.formula)) oricall$resid.model <- oricall$resid.formula
+    #
     family <- .checkRespFam(family)
     if ( identical(family$family,"multi")) {
       if ( ! inherits(data,"list")) {
@@ -32,13 +35,12 @@ HLCor <- function(formula,
     }
     if ( inherits(data,"list")) {
       ## RUN THIS LOOP and return
-      fitlist <- lapply(seq_len(length(data)), function(it){
-        locmc <- mc
+      fitlist <- lapply(seq_len(length(data)), function(data_it){
+        locmc <- oricall
         if (identical(family$family,"multi")) locmc$family <- family$binfamily
-        locmc$data <- data[[it]]
-        locmc$distMatrix <- mc$distMatrix[[it]]
-        locmc$covStruct <- mc$covStruct[[it]]
-        locmc$uniqueGeo <- mc$uniqueGeo[[it]]
+        locmc$data <- data[[data_it]]
+        locmc$distMatrix <- oricall$distMatrix[[data_it]]
+        locmc$uniqueGeo <- oricall$uniqueGeo[[data_it]]
         eval(locmc)
       }) ## a pure list of HLCor objects
       liks <- sapply(fitlist, function(v) {unlist(v$APHLs)})
@@ -47,9 +49,10 @@ HLCor <- function(formula,
       class(fitlist) <- c("HLfitlist",class(fitlist)) 
       return(fitlist) ## list of HLfit object + one attribute
     } else {## there is a single data set, still without processed
+      mc <- oricall
       FHF <- formals(HLfit) ## makes sure about default values 
       names_FHF <- names(FHF)
-      if ( ! is.null(mc$resid.formula)) mc$resid.model <- mc$resid.formula
+      #if ( ! is.null(mc$resid.formula)) mc$resid.model <- mc$resid.formula
       names_nondefault  <- intersect(names(mc),names_FHF) ## mc including dotlist
       FHF[names_nondefault] <- mc[names_nondefault] ##  full HLfit args
       preprocess.formal.args <- FHF[which(names_FHF %in% names(formals(.preprocess)))] 
@@ -59,18 +62,22 @@ HLCor <- function(formula,
       preprocess.formal.args$predictor <- FHF$formula ## because preprocess stll expects $predictor 
       preprocess.formal.args$ranFix <- ranPars ## because preprocess expects ranFix
       if (! missing(adjMatrix)) preprocess.formal.args$adjMatrix <- adjMatrix ## because adjMatrix not in formals(HLfit)
+      if (! missing(corrMatrix)) preprocess.formal.args$corrMatrix <- corrMatrix ## because corrMatrix not in formals(HLfit)    #
+      preprocess.formal.args$covStruct <- mc$covStruct ## because covStruct not in formals(HLfit)    #
+      preprocess.formal.args$uniqueGeo <- mc$uniqueGeo ## because uniqueGeo not in formals(HLfit)    #
+      preprocess.formal.args$distMatrix <- mc$distMatrix ## because distMatrix not in formals(HLfit)    #
+      preprocess.formal.args[["control.dist"]] <- control.dist ## because control.dist not in formals(HLfit)    #
       mc$processed <- do.call(.preprocess,preprocess.formal.args,envir=parent.frame(1L))
+      oricall$resid.model <- mc$processed$residModel
+      #mc$ranPars$ranCoefs <- NULL ## but new ranFix can be added by fitme/corrHLfit
       # HLCor_body() called below
     }
   } else { ## 'processed' is available
     if (  is.list(processed) )  { ## "multiple" processed list 
       ## RUN THIS LOOP and return
       fitlist <- lapply(seq_len(length(processed)), function(it){
-        locmc <- mc
+        locmc <- oricall
         locmc$processed <- processed[[it]] ## The data are in processed !
-        locmc$distMatrix <- distMatrix[[it]] ## but the matrices are not HLfit args hence not in processed ! 
-        locmc$covStruct <- covStruct[[it]]
-        locmc$uniqueGeo <- uniqueGeo[[it]]
         eval(locmc)
       }) ## a pure list of HLCor objects
       liks <- sapply(fitlist, function(v) {unlist(v$APHLs)})
@@ -79,14 +86,15 @@ HLCor <- function(formula,
       class(fitlist) <- c("HLfitlist",class(fitlist)) 
       return(fitlist) ## list of HLfit object + one attribute
     } else { ## there is one processed for a single data set 
+      mc <- oricall
       # HLCor_body() called below
     }
   }
   ################# single processed, single data analysis: 
-  if (identical(mc$processed[["verbose"]]["getCall"][[1L]],TRUE)) return(oricall)
+  if (identical(mc$processed[["verbose"]]["getCall"][[1L]],TRUE)) return(oricall) ## returns a call is verbose["getCall"'"] is TRUE
   #
   pnames <- c("data","family","formula","prior.weights","HLmethod","rand.family","control.glm","resid.formula","REMLformula",
-              "resid.model", "verbose")
+              "resid.model", "verbose","distMatrix","uniqueGeo","adjMatrix") ## try covStruct too...
   for (st in pnames) mc[st] <- NULL 
   mc[[1L]] <- quote(spaMM::HLCor_body)
   hlcor <- eval(mc,parent.frame())

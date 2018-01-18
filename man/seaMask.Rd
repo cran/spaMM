@@ -11,10 +11,10 @@
   These convenient masks can be added to maps of (parts of) the world to mask map information for these areas. 
 }
 \usage{
-data(seaMask)
-data(landMask)
-data(worldcountries)
-data(oceanmask)
+data("seaMask")
+data("landMask")
+data("worldcountries")
+data("oceanmask")
 }
 \format{
 \code{seaMask} and \code{landMask} are data frames with two variables, \code{x} and \code{y} for longitude and latitude. 
@@ -39,10 +39,10 @@ A land mask can be produced out of \code{worldcountries} by filling the countrie
 \examples{
 if (spaMM.getOption("example_maxtime")>1.1) {
 
-data(seaMask)
+data("seaMask")
 ## plot of predictions of behaviour for a land bird:
 if (require(maps)){
- data(blackcap)
+ data("blackcap")
  bfit <- corrHLfit(migStatus ~ means+ Matern(1|longitude+latitude),data=blackcap,
                   HLmethod="ML",
                   ranFix=list(lambda=0.5537,phi=1.376e-05,rho=0.0544740,nu=0.6286311))

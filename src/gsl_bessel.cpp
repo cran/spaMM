@@ -10,6 +10,9 @@
 
 
 #include "gsl_bessel.h"
+#include <Rcpp.h>
+
+using namespace Rcpp;
 
 static inline int cheb_eval_e(const cheb_series * cs,
             const double x,
@@ -680,25 +683,18 @@ int gsl_sf_bessel_lnKnu_e(const double nu, const double x, gsl_sf_result * resul
 
 
 
-
-extern "C" { //computes log BesselK_nu
-  void bessel_lnKnu_e(double *nu, double *x, int *len, double *val, double *err, int *status) {
-	int i;
-	gsl_sf_result result;
-	result.val = 0;
-	result.err = 0; // both to avoid -Wuninitialized
-	
-//	gsl_set_error_handler_off();
-
-	for(i = 0; i< *len ; i++){
-		status[i] = gsl_sf_bessel_lnKnu_e(nu[i], x[i], &result) ;
-		val[i] = result.val;
-		err[i] = result.err;
-#ifdef NO_R_CONSOLE
-//    std::cerr<<"bessel_k("<<x<<",nu="<<alpha+nb-1<<"): precision lost in result";
-#else
-//	REprintf("val = %g,err=%g\n",val[i], err[i]);
-#endif
-	}
+// [[Rcpp::export(.bessel_lnKnu_e)]]
+List bessel_lnKnu_e(Rcpp::NumericVector nu, Rcpp::NumericVector x) { //computes log BesselK_nu
+  size_t len=x.size();
+  gsl_sf_result result;
+  result.val = 0;
+  result.err = 0; // both to avoid -Wuninitialized
+  IntegerVector status(len);
+  NumericVector err(len),val(len);
+  for(size_t i = 0; i< len ; i++){
+    status[i] = gsl_sf_bessel_lnKnu_e(nu[i], x[i], &result) ;
+    val[i] = result.val;
+    err[i] = result.err;
   }
+  return(List::create(Named("val") = val,Named("err")=err,Named("status")=status));
 }

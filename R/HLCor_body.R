@@ -8,9 +8,9 @@
 }
 
 
-.extract_check_coords <- function(spatial.model,datanames) {
-  if ( ! is.null(spatial.model)) {
-    bars <- spatial.model[[2]] 
+.extract_check_coords <- function(spatial_term,datanames) {
+  if ( ! is.null(spatial_term)) {
+    bars <- spatial_term[[2]] 
     coordinates <- .DEPARSE(bars[[3]]) ## "x + y"
     coordinates <-  strsplit(coordinates," ")[[1]]
     coordinates <- setdiff(coordinates,c("+","%in%",":","/","")) ## "" for hidden linebreaks (?)
@@ -26,15 +26,15 @@
   return(coordinates) ## should be ordered as bars[[3]] (important for predict)
 }
 
-.extract_check_coords_within <- function(spatial.model) {
-  bars <- spatial.model[[2]] 
+.extract_check_coords_within <- function(spatial_term) {
+  bars <- spatial_term[[2]] 
   coordinates <- .DEPARSE(bars[[3]]) ## "x + y"
   coordinates <-  strsplit(coordinates," ")[[1]]
   if (length(grep("/",coordinates))>0) {
-    stop(paste("'/' not yet handled in",spatial.model))
+    stop(paste("'/' not yet handled in",spatial_term))
   } else if (length(grep_in <- grep("%in%|:",coordinates))>1L) {
-    stop(paste("multiple nesting not yet handled in",spatial.model))
-  } else if (length(grep_in <- grep("%in%|:",coordinates))>0L) {
+    stop(paste("multiple nesting not yet handled in",spatial_term))
+  } else if (length(grep_in <- grep("%in%|:",coordinates))) {
     coordinates <- coordinates[1L:(min(grep_in)-1L)]
   }
   return(coordinates) ## should be ordered as bars[[3]] (important for predict)
@@ -58,16 +58,6 @@
   return(resu)
 }
 
-.get_corr_prec_from_covStruct <- function(covStruct) {
-  corrMatrix <- covStruct[["corrMatrix"]]
-  if (is.null(corrMatrix)) {
-    matrix_ <- covStruct[["precision"]]
-    if (is.null(matrix_)) stop("missing covariance structure for corrMatrix model")
-    corrMatrix <- structure(list(matrix=matrix_),class=c("list","precision")) ## so that further code can detect its a precision matrix
-  }
-  return(corrMatrix)
-}
-
 .check_corrMatrix <- function(corrMatrix) {
   if (is.list(corrMatrix)) {
     dim_corrMatrix <- dim(corrMatrix[[1]])
@@ -76,7 +66,7 @@
 }
 
 
-.check_subset_corrMatrix <- function(corrMatrix,ZAlist) {
+.check_subset_corrMatrix <- function(corrMatrix,ZA) {
   ## ELSE check descriptors of square matrix:
   if (inherits(corrMatrix,"dist")) {
     corrnames <- labels(corrMatrix)
@@ -88,8 +78,7 @@
   if (is.null(corrnames)) {
     message("corrMatrix without labels: first grouping levels are matched\n  to first rows of corrMatrix, without further check.\n This may cause later errors (notably, wrongly dimensioned matrices) \n See help(\"corrMatrix\") for a safer syntax.")
   }
-  whichranef <- which(attr(attr(ZAlist,"ranefs"),"type")=="corrMatrix")
-  ZAnames <- colnames(ZAlist[[whichranef]]) ## set by .spMMFactorList(), with two cases for corrMatrix 
+  ZAnames <- colnames(ZA) ## set by .spMMFactorList(), with two cases for corrMatrix 
   if (is.null(ZAnames)) {
     stop("NULL colnames in (a block of) the design matrix for random effects. Some mishandling of 'AMatrix'?")
   }
@@ -127,233 +116,35 @@
   return(cov_info_mat)
 }
 
+.calc_AR1_t_chol_Q_block <- function(n_u, ARphi) {
+  t_chol_Q <- Diagonal(x=c(rep(1,n_u-1L),sqrt(1-ARphi^2))) 
+  if (n_u>1L) diag(t_chol_Q[,-1,drop=FALSE]) <- -ARphi 
+  t_chol_Q <- t_chol_Q/sqrt(1-ARphi^2) # equivalent to nlme's AR1_fact() in corStruct.c
+  return(t_chol_Q)
+}
 
-HLCor_body <- function(processed,
+
+HLCor_body <- function(processed, ## single environment
                   ranPars=NULL, ## all dispersion and correlation params ideally provided through ranPars
-                  distMatrix,uniqueGeo=NULL,adjMatrix,corrMatrix=NULL, covStruct=NULL,
                   control.dist=list(),
-                  ...) { 
+                  ...) { ## dots for HLfit
   dotlist <- list(...)
-  ################# 
-  data <- processed$data
-  verbose <- processed$verbose
-  predictor <- processed$predictor 
-  spatial.terms <- .findSpatial(predictor)
-  spatial.model <- spatial.terms[[1L]] 
-  if ( ! is.null(spatial.model)) {
-    corr.model <- as.character(spatial.model[[1L]]) 
-  } else {
-    if ( ! is.null(corrMatrix)) {
-      mess <- pastefrom("corrMatrix argument despite no corrMatrix term in formula:",prefix="(!) From ")
-      message(mess)
-      stop("This syntax is obsolete; add a corrMatrix(...) term in the formula.")
-    } ## ELSE more generic message: 
-    stop("Call to 'HLCor' without a spatial term in the formula is suspect.")
-  }
+  spatial_terms <- attr(processed$ZAlist,"exp_spatial_terms")
+  corr_types <- processed$corr_info$corr_types
   ## convert back ranPars to canonical scale:
-  rpblob <- .canonizeRanPars(ranPars=ranPars,corr.model=corr.model) ## also provides some init.HLfit 
+  rpblob <- .canonizeRanPars(ranPars=ranPars,corr_types=corr_types) ## also provides some init.HLfit 
   ranPars <- rpblob$ranPars
-  trueCorrpars <- rpblob$trueCorrpars
-  rho <- ranPars$rho
-  #
-  coordinates <- NULL
-  test.in <- FALSE
-  if (!is.null(covStruct)) covStruct <- .preprocess_covStruct(covStruct)
-  ### ensure LMatrix in predictor: 
-  ## if it is currently absent, first provide corr matrix or its symSVD, from which Lunique will be computed using designL.from.Corr
-  if (is.null(Lunique <- attr(predictor,"LMatrix"))) { ## should exist only if the user provided it explicitly. Should not be used in programming.
-    symSVD <- NULL
-    adj_rho_is_inner_estimated <- (corr.model=="adjacency"
-#                               && ! is.null(attr(ranPars,"type")) ## through corrHLfit (or fitme !?) or some direct HLCor call
-                               && identical(attr(ranPars,"type")$rho,"var") ## can occur in direct call of HLCor 
-    )    
-    if (corr.model %in% c("adjacency")) {
-      if ( missing(adjMatrix) ) {
-        adjMatrix <- covStruct[["adjMatrix"]]
-        if (is.null(adjMatrix)) stop("missing 'adjMatrix' for adjacency model")
-      }
-      ## no nugget in the adjacency model... ## (use additional ranef instead)      
-      symSVD <- attr(adjMatrix,"symSVD")
-      if (is.null(symSVD) && adj_rho_is_inner_estimated) { ## can occur in direct call of HLCor 
-        if (isSymmetric(adjMatrix)) {
-          symSVD <- sym_eigen(adjMatrix)
-          attr(adjMatrix,"symSVD") <- symSVD
-        }             
-      }
-      if (is.null(symSVD)) {
-        cov_info_mat <- as.matrix(solve(diag(nrow(adjMatrix))-rho*(adjMatrix))) 
-      } else {
-        symSVD$adjd <- symSVD$d
-        # FR->FR remove $d from symSVD?
-      }
-    }  else if (corr.model %in% c("SAR_WWt")) { 
-      adjMatrix <- covStruct[["SAR_WWt"]]
-      if (is.null(adjMatrix)) stop("missing covariance structure for SAR_WWt model")
-      UDU. <- attr(adjMatrix,"UDU.")
-      if (is.null(UDU.)) {
-        cov_info_mat <- as.matrix(solve(diag(nrow(adjMatrix))-rho*(adjMatrix))) 
-      } else {
-        cov_info_mat <- UDU.$u %*% sweep(UDU.$u.,MARGIN=1,1/(1-rho*UDU.$d),`*`) 
-      }
-      cov_info_mat <- .tcrossprodCpp(cov_info_mat,NULL)
-    }  else if (corr.model=="AR1" && ! identical(processed$sparsePrecisionBOOL,TRUE)) {
-      if (is.null(distMatrix)) { ## if not precomputed in corrHLfit_body/fitme_body
-        coordinates <- .get_coordinates(spatial.model=spatial.model, data=data)
-        coord_within <- .extract_check_coords_within(spatial.model=spatial.model) 
-        coords_nesting <- setdiff(coordinates,coord_within)
-        if (length(coords_nesting)) {
-          if (.getProcessed(processed,"sparsePrecisionBOOL",1L)) {
-            message("sparse precision method not available for nested AR1 effects.")
-            .setProcessed(processed,"sparsePrecisionBOOL","FALSE")
-          }
-        }
-        locarglist <- list(data=data,distMatrix=dotlist$distMatrix, uniqueGeo=uniqueGeo, 
-                           coords_nesting=coords_nesting, coordinates=coordinates, dist.method = control.dist$dist.method)
-        geoMats <- do.call(".makeCheckGeoMatrices",locarglist) ## computes matrices which are NULL on input
-        distMatrix <- geoMats$distMatrix   
-        uniqueGeo <- geoMats$uniqueGeo   
-      }
-      cov_info_mat <- trueCorrpars$ARphi^distMatrix  
-      cov_info_mat[distMatrix==Inf] <- 0 ## should not be necess, but is.
-    } else  if (corr.model %in% c("Matern")) {
-      txt <- paste(spatial.model[[2]][[3]]) ## the RHS of the ( . | . ) 
-      if (length(grep("%in%",txt))>0) {
-        stop("(!) Matern( . | <coord> %in% <grp>) is not yet handled.")
-        test.in <- TRUE ## should be useful when this case will be handled
-      } 
-      ## in a typical call from corrHLfit the following test should be FALSE because uniqueGeo and maybe distMatrix should have been precomputed
-      if ((length(rho)>1 || missing(distMatrix)) && is.null(uniqueGeo)) { ## all cases where we need uniqueGeo
-        coordinates <- .extract_check_coords(spatial.model=spatial.model,datanames=names(data))
-        uniqueGeo <- .calcUniqueGeo(data=data[,coordinates,drop=FALSE]) ## keeps the names of first instances of the coordinates in data
-      } 
-      ## then compute scaled distances from unscaled info, for HLfit call
-      msd.arglist <- list(rho = rho)
-      msd.arglist$`dist.method` <- control.dist$`dist.method` ## may be NULL
-      if (length(rho)>1L) {
-        msd.arglist <- c(msd.arglist,list(uniqueGeo=uniqueGeo))
-        msd.arglist$`rho.mapping` <- control.dist$`rho.mapping` ## may be NULL
-      } else {
-        if ( missing(distMatrix)) { 
-          dist.arglist <- list(x=uniqueGeo)
-          dist.arglist$method <- control.dist$dist.method ## may be NULL
-          distMatrix <- do.call(proxy::dist,dist.arglist)
-        } 
-        msd.arglist <- c(msd.arglist,list(distMatrix=distMatrix))
-      }
-      cov_info_mat <- do.call("make_scaled_dist",msd.arglist)
-      ## at this point if a single location, dist_mat should be dist(0) and make_scaled_dist was modified to that effect
-      if ( nrow(cov_info_mat)>1 ) { ## >1 locations
-        norho <- trueCorrpars 
-        norho$rho <- NULL ## because the MaternCorr input will be an already scaled distance 'cov_info_mat'
-        cov_info_mat <- do.call(MaternCorr,args=c(norho,list(d=cov_info_mat)))        
-      } 
-    }
-    if (is.null(processed$sparsePrecisionBOOL)) { ## if next operations not already performed by fitme / corrHLfit
-      if (corr.model== "corrMatrix") { ## could cover all specifications of a constant 'cov' Matrix without correlation parameter
-        if (is.null(corrMatrix)) corrMatrix <- .get_corr_prec_from_covStruct(covStruct)
-        .check_corrMatrix(corrMatrix)
-        sparse_precision <- inherits(corrMatrix,"precision")
-        if ( ! sparse_precision) sparse_precision <- .determine_sparse_precision(processed, corr.model, dotlist$init.HLfit) ## checks spaMM option
-        ignored_as_no_need_for_local_copy_processed <- .reset_processed_sparse_precision(processed, inherits(corrMatrix,"precision"))
-      } else sparse_precision <- .determine_sparse_precision(processed, corr.model, dotlist$init.HLfit) ## checks spaMM option
-    }
-    if (corr.model== "corrMatrix") { ## could cover all specifications of a constant 'cov' Matrix without correlation parameter
-      cov_info_mat <- .check_subset_corrMatrix(corrMatrix,ZAlist=processed$ZAlist) ## correlation or precision...
-    } 
-    if (verbose["trace"] && length(trueCorrpars)>0) print(unlist(trueCorrpars))
-    ## call designL.from.Corr if Lunique not available
-    ## Lunique can be available here either bc the user provided it explictly (will not occur in public usage)
-    ##   or if we add an explicit calculation above
-    sparse_Qmat <- NULL
-    if (is.null(Lunique)) { ##
-      ## The following code implies that sparse_precision is not alway enforced and $method not always set
-      if (corr.model=="corrMatrix" && identical(processed$sparsePrecisionBOOL,TRUE)) {
-        processed$AUGI0_ZX$envir$method <- "def_AUGI0_ZX_sparsePrecision"
-        sparse_Qmat <- Matrix::drop0(cov_info_mat[["matrix"]])
-      } else if (corr.model=="adjacency" 
-          && ! adj_rho_is_inner_estimated 
-          && identical(processed$sparsePrecisionBOOL,TRUE)) {
-        ## Implies call from fitme_body with outer rho estim.
-        processed$AUGI0_ZX$envir$method <- "def_AUGI0_ZX_sparsePrecision"
-        sparse_Qmat <- - rho * Matrix::drop0(adjMatrix)
-        diag(sparse_Qmat) <- diag(sparse_Qmat)+1
-        ################################L_Q <- .designL.from.Qmat(Qmat) ## solve(tcrossprod(LMatrix)) = Qmat or
-        ## Cholesky gives proper LL' (think LDL')  while chol() gives L'L...
-      } else if (corr.model=="AR1" && identical(processed$sparsePrecisionBOOL,TRUE)) { # F I X M E nesting
-        processed$AUGI0_ZX$envir$method <- "def_AUGI0_ZX_sparsePrecision"
-        ARphi <- ranPars$ARphi
-        # equivalent to nlme's AR1_fact() in corStruct.c
-        t_chol_Q <- Diagonal(x=c(rep(1,control.dist$AR1_tmax-1L),sqrt(1-ARphi^2))) 
-        diag(t_chol_Q[,-1]) <- -ARphi 
-        t_chol_Q <- t_chol_Q/sqrt(1-ARphi^2)
-        ## bc we nned the CHMfactor per se, we do not directly provide chol_Q. This is not elegant.
-        sparse_Qmat <- crossprod(t_chol_Q) 
-        ## as(Matrix::Cholesky(sparse_Qmat,perm=FALSE,LDL=FALSE),"sparseMatrix") gives back Linv...
-        ## older code used: 
-        #Lunique <- as.matrix(solve(tLinv/sqrt(1-ARphi^2))) ## corrmat is tcrossprod(Lunique): we keep tcrossprod but L' is tri.sup ! 
-        #attr(Lunique,"type") <- "cholR_RRt" ## not equivalent to base::chol() which whould produce cholR_tRR 
-      } else {
-        # this is HLCor, hence there must be a dense correlation structure
-        ## densePrecision cases with outer rho estimation, and some residual inner rho estimation cases
-        if ( ! is.null(symSVD)) {
-          symSVD$d <- 1/(1-rho*symSVD$adjd) ## from adjMatrix to correlation matrix
-          # outer optim -> LMatrix recomputed from this for each rho  
-          Lunique <- try(designL.from.Corr(symSVD=symSVD)) ## usin $d not $adjd
-          # Lunique is num, with attr(*, "type")= chr "symsvd" ....
-          if ( adj_rho_is_inner_estimated ) { # contrived way of construction Lunique with the correct attributes.
-            Lunique[] <- attr(Lunique,"symsvd")$u   ## "[] <- " keeps attributes... except for Matrix...
-          }
-        } else { ## cov_info_mat must exist
-          argsfordesignL <- dotlist[intersect(names(dotlist),names(formals(designL.from.Corr)))] 
-          if (processed$HL[1L]=="SEM") argsfordesignL$try.chol <- FALSE
-          if (inherits(cov_info_mat,"dist")) {
-            cov_info_mat <- as.matrix(cov_info_mat)
-            diag(cov_info_mat) <- 1L ## IF diag missing in input corrMatrix THEN assume a correlation matrix
-          } ## else full matrix may be a COV matrix with non-unit diag
-          Lunique <- try(do.call(designL.from.Corr,c(list(m=cov_info_mat),argsfordesignL)))
-        }
-        if (inherits(Lunique,"try-error")) { 
-          print("correlation parameters were:",quote=FALSE) ## makes sense if designL.from.Corr already issued some warning
-          print(unlist(trueCorrpars))    
-          stop()
-        }
-      }
-      if (identical(processed$sparsePrecisionBOOL,TRUE)) {
-        if (is.null(processed$AUGI0_ZX$envir$precisionFactorList)) .init_precision_info(processed) ## modifies processed$AUGI0_ZX$envir  
-        if ( ! is.null(sparse_Qmat)) {
-          #processed$AUGI0_ZX$envir$Qmat <- sparse_Qmat ## fixme do we need this copy ?
-          Q_CHMfactor <- Matrix::Cholesky(sparse_Qmat,LDL=FALSE,perm=FALSE) ## called for each corrPars
-        }
-        if (identical(processed$AUGI0_ZX$envir$method, "def_AUGI0_ZX_sparsePrecision")) {
-          ## fixme this block of code only to identify the good ranef...
-          types <- processed$AUGI0_ZX$envir$types
-          for (it in seq_len(length(types))) {
-            if (types[it] %in% c("adjacency","AR1") || (types[it]=="corrMatrix" && inherits(cov_info_mat,"precision"))) { 
-              processed$AUGI0_ZX$envir$precisionFactorList[[it]] <- list(Qmat=sparse_Qmat,
-                                                                         chol_Q=as(Q_CHMfactor, "sparseMatrix"))
-            } # else precisionFactorList[[it]] <- Diagonal(n=ncol(processed$ZAlist[[it]])) ## already pre-filled
-          }
-          ## fitme sparse_precision has an incomplete symSVD=> corr mattrix not computed, 
-          ##    and try(designL.from.Corr(symSVD=symSVD)) fails. Instead use code always valid:
-          Lunique <- solve(Q_CHMfactor,system="Lt") #  L_Q^{-\top}=LMatrix_correlation 
-          attr(Lunique, "type") <- "from_Q_CHMfactor"
-          attr(Lunique,"Q_CHMfactor") <- Q_CHMfactor ## FIXME store directly the Q_CHMfactor rather than Lunique ?
-          # Lunique is a dtCMatrix; it is for single correlated effect, and still used in HLfit_body; 
-          ## whether it is used or not in MME_method (sXaug_...), a lot of other code still expects it
-        }
-      }
-    }
-    attr(predictor,"%in%") <- test.in
-    attr(Lunique,"corr.model") <- corr.model
-    attr(Lunique,"ranefs") <- unlist(lapply(spatial.terms,.DEPARSE)) ## essentiel pour la construction de ZAL!
-  }
-  processed$AUGI0_ZX$envir$LMatrix <- Lunique ## either the constant from the predictor or something just defined
-  processed$AUGI0_ZX$envir$adj_symSVD <- symSVD ## may be NULL
-  processed$predictor <- predictor
+  ########################################################################################################################
+  # * assigns geo_envir <- .get_geo_info(...)
+  # * modifies processed$AUGI0_ZX$envir by .init_precision_info(...) 
+  # * computes processed$AUGI0_ZX$envir$LMatrices except for ranCoefs (the latter being filled in HLfit_body)
+  .assign_geoinfo_and_LMatrices_but_ranCoefs(processed, corr_types, spatial_terms, ranPars, control.dist, rpblob$trueCorrpars, 
+                                argsfordesignL=dotlist[intersect(names(dotlist),names(formals(designL.from.Corr)))] )
+  ########################################################################################################################
   ###
-  HLFormals <- names(formals(HLfit))
+  HLFormals <- names(formals(HLfit)) 
   good_dotnames <- intersect(names(dotlist),HLFormals)
-  if (length(good_dotnames)>0L) {
+  if (length(good_dotnames)) {
     HL.info <- dotlist[good_dotnames]
   } else HL.info <- list()
   ## all printing in HLfit is suppressed by default
@@ -384,8 +175,8 @@ HLCor_body <- function(processed,
         if ( ! identical(rpType <- attr(ranPars,"type"), lapply(rpTypes <- attr(rPparlist,"types"),tolower))) {
           #stop(" ! identical(attr(ranPars,\"type\"),attr(attr(ranPars,\"parlist\"),\"types\"))")
           # can be different bc rpType handles named vectors (rho,lambda) differently...
-          utils::str(rpType)
-          utils::str(rpTypes)
+          str(rpType)
+          str(rpTypes)
         }
       }
     }
@@ -396,19 +187,28 @@ HLCor_body <- function(processed,
   if ( ! is.null(processed$return_only)) {
     return(hlfit)    ########################   R E T U R N   a list with $APHLs, with class "list"
   } else class(hlfit) <- c(class(hlfit),"HLCor")
-  #
+  #### Infos in the final fit object: 
   hlfit$control.dist <- control.dist
-  attr(hlfit,"info.uniqueGeo") <- uniqueGeo ## whether Matern or not (eg AR1)
-  if (corr.model %in% c("Matern")) {
-    ## we try to remove the big matrix if it can be reconstructed
-    if ( ! is.null(dM <- msd.arglist$distMatrix) ) { 
-      if ( ! is.null(distcall <- attr(dM,"call"))) {
-        msd.arglist$distcall <- distcall ## save the call, eg language proxy::dist(x = uniqueGeo, method = dist.method)
-        msd.arglist$distMatrix <- NULL ## removes the big matrix
+  hlfit$spatial_terms <- spatial_terms
+  for (it in seq_along(corr_types)) {
+    corr_type <- corr_types[it]
+    if ( (! is.na(corr_type)) && (corr_type=="Matern" || corr_type=="AR1")) {
+      geo_envir <- .get_geo_info(processed, which_ranef=it, which="", 
+                                 dist.method=control.dist$dist.method) 
+      attr(hlfit,"info.uniqueGeo") <- geo_envir$uniqueGeo ## spaMM 3.0 will require a list of matrices
+      if (corr_type=="Matern") {
+        msd.arglist <- attr(processed$AUGI0_ZX$envir$LMatrices[[it]],"msd.arglist") 
+        ## we try to remove the big matrix if it can be reconstructed
+        if ( ! is.null(dM <- msd.arglist$distMatrix) ) { 
+          if ( ! is.null(distcall <- attr(dM,"call"))) {
+            msd.arglist$distcall <- distcall ## save the call, eg language proxy::dist(x = uniqueGeo, method = dist.method)
+            msd.arglist$distMatrix <- NULL ## removes the big matrix
+          }
+        }
+        attr(hlfit,"dist_info") <- msd.arglist ## spaMM 3.0 soudl store a list of msd.arglists
       }
     }
-    attr(hlfit,"dist_info") <- msd.arglist
-  } 
+  }
   #
   hlfit$call <- "$call removed by HLCor. Use getCall() to extract the call from the object." ## instead of the $call with evaluated arguments
   return(hlfit) ## 
@@ -423,20 +223,18 @@ HLCor_body <- function(processed,
 
   if (  is.list(processed) )  { ## "multiple" processed list 
     ## RUN THIS LOOP and return
-    fitlist <- lapply(seq_len(length(processed)), function(it){
+    fitlist <- lapply(seq_len(length(processed)), function(proc_it){
       locmc <- mc
       locmc[[1L]] <- as.name("HLCor.obj") ## replaces "f" !
       locmc$ranefParsVec <- ranefParsVec ## replaces "arg" !
-      locmc$processed <- processed[[it]] ## The data are in processed !
-      locmc$distMatrix <- mc$distMatrix[[it]] ## but the matrices are not HLfit args hence not in processed ! 
-      locmc$uniqueGeo <- mc$uniqueGeo[[it]]
+      locmc$processed <- processed[[proc_it]] 
       eval(locmc)
     }) ## a pure list of HLCor objects
     resu <- sum(unlist(fitlist))
     return(resu)
   } else { ## there is one processed for a single data set 
     family <- processed$family
-    data <- processed$data
+    #data <- processed$data
   }
   
   HLCor.formals <- names(formals(HLCor))

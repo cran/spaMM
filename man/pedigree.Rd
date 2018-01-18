@@ -23,17 +23,14 @@ if(require("pedigreemm", quietly=TRUE)) {
   y <- b[ID]+e0
   obs <- data.frame(y=y,IDgen=ID,IDenv=ID) ## two copies of ID for readability of GLMM results
   ## fits
-  fitme(y ~ 1+ corrMatrix(1|IDgen) , corrMatrix=A,data=obs,method="ML")
+  fitme(y ~ 1+ corrMatrix(1|IDgen) , corrMatrix=A,data=obs,method="REML")
   obs$y01 <- ifelse(y<1.3,0,1)
-  fitme(y01 ~ 1+ corrMatrix(1|IDgen)+(1|IDenv), corrMatrix=A, data=obs,
-        family=binomial(), method="ML")
+  fitme(y01 ~ 1+ corrMatrix(1|IDgen)+(1|IDenv), corrMatrix=A,data=obs, 
+        family=binomial(), method="REML")
   prec_mat <- solve(A)
   colnames(prec_mat) <- rownames(prec_mat) <- rownames(A) # important
   fitme(y01 ~ 1+ corrMatrix(1|IDgen)+(1|IDenv) , covStruct=list(precision=prec_mat),
-        data=obs,family=binomial(), method="ML")
-  # or
-  HLCor(y01 ~ 1+ corrMatrix(1|IDgen)+(1|IDenv) , covStruct=list(precision=prec_mat),
-        data=obs,family=binomial(), HLmethod="ML")
+        data=obs,family=binomial(), method="REML")
 }
 }
 }

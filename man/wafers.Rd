@@ -13,7 +13,7 @@ There are three variables, gas flow rate (x1), temperature (x2), and pressure (x
 \source{
 This data set was manually pasted from Table 3 of Lee et al. (2011). Transcription errors may have occurred. 
 }
-\usage{data(wafers)}
+\usage{data("wafers")}
 \format{
   The data frame includes 198 observations on the following variables:
   \describe{

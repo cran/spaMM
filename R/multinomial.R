@@ -81,10 +81,10 @@ logLik.HLfitlist <- function(object, which = NULL, ...) {
     mess <- .REMLmess(item)
     which <- switch(mess, 
                     "by stochastic EM."= "logLapp",
-                    "by ML approximation (p_v)."= "p_v",
+                    "by Laplace ML approximation (p_v)."= "p_v",
                     "by h-likelihood approximation."= "p_v",
                     "by ML."= "p_v",
-                    "by REML approximation (p_bv)."= "p_bv",
+                    "by Laplace REML approximation (p_bv)."= "p_bv",
                     "by REML."= "p_bv",
                     "by non-standard REML"= "p_bv",
                     stop(paste("No default '",which,"' value for '",mess,"' estimation method.",sep=""))

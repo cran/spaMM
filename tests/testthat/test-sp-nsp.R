@@ -1,5 +1,5 @@
 cat("\ntest sp+nsp ranefs:")
-data(blackcap)
+data("blackcap")
 set.seed(123)
 somegrp <- cbind(blackcap,grp=sample(2,14,replace=TRUE))
 #somegrp <- cbind(blackcap,grp=c(rep(1,7),rep(2,7))) ## to test cov mat with nonzero var of grp effect

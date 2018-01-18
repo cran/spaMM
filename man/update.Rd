@@ -49,7 +49,7 @@ Additional arguments to the call, or arguments with changed values. Use name = N
 See also \code{\link{HLCor}},  \code{\link{HLfit}}.
 }
 \examples{
-data(wafers)
+data("wafers")
 ## First the fit to be updated:
 wFit <- HLfit(y ~X1*X3+X2*X3+I(X2^2)+(1|batch),family=Gamma(log),
           resid.model = ~ X3+I(X3^2) ,data=wafers)

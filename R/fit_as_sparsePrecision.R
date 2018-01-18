@@ -9,11 +9,11 @@
                                  wranefblob, update_sXaug_constant_arglist,
                                  seq_n_u_h,
                                  processed, trace=FALSE,
-                                 phi_est, n_u_h, ZALX,
+                                 phi_est, n_u_h, ZAL,
                                  which_LevMar_step
 ) {
   initdamping <- damping
-  gainratio_grad <- zInfo$LMrhs
+  gainratio_grad <- zInfo$m_grad_obj
   while ( TRUE ) {
     if (processed$HL[1L]==1L) { ## ML fit 
       if ( which_LevMar_step=="v_b") { ## note testes on summand too !!!!!!!
@@ -36,7 +36,7 @@
         beta_eta=old_v_h_beta$beta_eta + LevMarblob$dbeta_eta
       )  
     }
-    eta <- drop(ZALX %*% unlist(v_h_beta)) + off ## length nobs 
+    eta <- off + drop(processed$AUGI0_ZX$X.pv %*% v_h_beta$beta_eta) + drop(ZAL %id*% v_h_beta$v_h) ## length nobs 
     
     newmuetablob <- .muetafn(eta=eta,BinomialDen=processed$BinomialDen,processed=processed) 
     neww.resid <- .calc_w_resid(newmuetablob$GLMweights,phi_est)
@@ -58,10 +58,8 @@
     
     newsXaug <- do.call(processed$AUGI0_ZX$envir$method, # ie, def_AUGI0_ZX_sparsePrecision
                         c(update_sXaug_constant_arglist,
-                          list(unique_w.ranef=newwranefblob$unique_w.ranef,## here lambda is homoscedastic for CAR model ! 
-                               w.ranef=newwranefblob$w.ranef, ## used only if unique_wranef is not NULL
+                          list(w.ranef=newwranefblob$w.ranef, 
                                w.resid=neww.resid)))
-    
     APHLs_args$sXaug <- newsXaug
     APHLs_args$dvdu <- newwranefblob$dvdu
     APHLs_args$u_h <- u_h 
@@ -94,7 +92,6 @@
 
     gainratio <- (newlik!=-Inf) ## -Inf occurred in binary probit with extreme eta... 
     if (gainratio) { 
-      
       if (processed$HL[1L]==1L) { ## ML fit 
         if (which_LevMar_step=="v_b") { 
           dv_h_beta <- unlist(LevMarblob[c("dv_h","dbeta_eta")])
@@ -114,7 +111,11 @@
       dlogL <- newlik-oldlik
       conv_logL <- abs(dlogL)/(1+abs(newlik))
       gainratio <- 2*dlogL/denomGainratio ## cf computation in MadsenNT04 below 3.14, but generalized for D' != I ; numerator is reversed for maximization
-    } 
+    } else { ## 2017/10/16 a patch to prevent a stop in this case, but covers up dubious computations (FIXME)
+      newlik <- -.Machine$double.xmax
+      dlogL <- newlik-oldlik
+      conv_logL <- abs(dlogL)/(1+abs(newlik))
+    }
     if (trace) print(paste("dampingfactor=",dampingfactor,#"innerj=",innerj,
                            "damping=",damping,"gainratio=",gainratio,"oldlik=",oldlik,"newlik=",newlik))
     if (is.nan(gainratio)) {
@@ -151,8 +152,7 @@
 
 
 
-.solve_IRLS_as_spprec <- function(X.pv, 
-                                   ZAL, ## avoid ## still used by calc_zAug_not_LMM ## hmmm and ZALX
+.solve_IRLS_as_spprec <- function(ZAL, 
                                    y, n_u_h, 
                        H_global_scale=1, 
                        lambda_est, muetablob=NULL,
@@ -169,9 +169,8 @@
                        processed, corrPars,
                        trace=FALSE) # corrPars needed together with adjMatrix to define Qmat
 {
-  pforpv <- ncol(X.pv)
+  pforpv <- ncol(processed$AUGI0_ZX$X.pv)
   nobs <- length(y)
-  ZALX <- cbind2(ZAL,X.pv)
   seq_n_u_h <- seq_len(n_u_h)
   ypos <- n_u_h+seq_len(nobs)
   lcrandfamfam <- attr(processed$rand.families,"lcrandfamfam")
@@ -208,7 +207,7 @@
   
   ##### initial sXaug
   if (is.null(eta)) { ## NULL input eta allows NULL input muetablob
-    eta <- (ZALX %*% c(v_h ,beta_eta)) + off
+    eta <- off + drop(processed$AUGI0_ZX$X.pv %*% beta_eta) + drop(ZAL %id*% v_h) 
     muetablob <- .muetafn(eta=eta,BinomialDen=processed$BinomialDen,processed=processed) 
   }
   if ( ! is.null(for_intervals)) {
@@ -220,11 +219,10 @@
   if ( is.null(w.resid) ) w.resid <- .calc_w_resid(muetablob$GLMweights,phi_est)
   ## needs adjMatrix and corrPars to define Qmat
   update_sXaug_constant_arglist <- list(AUGI0_ZX=processed$AUGI0_ZX, corrPars=corrPars, 
-                                            cum_n_u_h=processed$cum_n_u_h) 
+                                        cum_n_u_h=processed$cum_n_u_h) 
   sXaug <- do.call(processed$AUGI0_ZX$envir$method, # ie, def_AUGI0_ZX_sparsePrecision
                    c(update_sXaug_constant_arglist,
-                     list(unique_w.ranef=wranefblob$unique_w.ranef,## here lambda is homoscedastic for CAR model ! 
-                          w.ranef=wranefblob$w.ranef, ## used only if unique_wranef is not NULL
+                     list(w.ranef=wranefblob$w.ranef, 
                           w.resid=w.resid)))
   allow_LM_restart <- ( ! LMMbool && ! LevenbergM && is.null(for_intervals) && is.na(processed$LevenbergM["user_LM"]) )
   if (allow_LM_restart) {
@@ -270,6 +268,7 @@
     } 
     if (LMMbool) {
       zInfo <- list(z2=NULL,z1=y-off,sscaled=0)
+      zInfo$z1_eta <- z1_sscaled_eta <- y-eta
     } else {
       if ( ! GLMMbool) {
         # arguments for init_resp_z_corrections_new called in calc_zAug_not_LMM
@@ -283,9 +282,11 @@
                                w.ranef=wranefblob$w.ranef, 
                                w.resid=w.resid,
                                init_z_args=init_z_args) )
-      augz <- do.call(".calc_zAug_not_LMM",calc_zAug_args)
-      zInfo <- attributes(augz) # .AUGI0_ZX_sparsePrecision use only the attributes; 
+      zInfo <- do.call(".calc_zAug_not_LMM",calc_zAug_args)
       if (GLMMbool) zInfo$z2 <- NULL
+      etamo <- eta - off
+      zInfo$z1_eta <- zInfo$z1- etamo 
+      z1_sscaled_eta <- zInfo$z1_sscaled - etamo # augz[-seq_n_u_h]- etamo # z_1-sscaled-etamo
     }
     ## keep name 'w'zAug to emphasize the distinct weightings  of zaug and Xaug (should have been so everywhere)
     #####
@@ -298,21 +299,15 @@
     ## $gainratio_grad is the rhs in the direct solution of the full system (by chol2inv in the dense QR case)
     ## and thus propto the gradient of the objective.
     ## The 'betaFirst' algo in sparsePrecision does not use it, only the gainratio code does  
-    etamo <- eta - off
-    zInfo$z1_eta <- zInfo$z1- etamo 
-    if (LMMbool) { ## augz not precomputed
-      z1_sscaled_eta <- y-eta ## # z_1-sscaled-etamo = z_1-etamo = y - eta
-    } else z1_sscaled_eta <- augz[-seq_n_u_h]- etamo # z_1-sscaled-etamo
     ## the gradient for -p_v (or -h), independent of the scaling
-    m_grad_obj <- c( ## drop() avoids c(Matrix..) 
+    zInfo$m_grad_obj <- c( ## drop() avoids c(Matrix..); attr(sXaug,"w.resid") correct for truncated models too.
       m_grad_v <- drop(.crossprod(ZAL, attr(sXaug,"w.resid") * zInfo$z1_eta) +zInfo$dlogfvdv), # Z'W(z_1-eta) + dlogfvfv
-      drop(.crossprod(X.pv, attr(sXaug,"w.resid") * z1_sscaled_eta)) # X'W(z_1-sscaled-eta) ## F I X M E too complicated way of computign the gradient
+      drop(.crossprod(processed$AUGI0_ZX$X.pv, attr(sXaug,"w.resid") * z1_sscaled_eta)) # X'W(z_1-sscaled-eta) 
     )
-    zInfo$LMrhs <- m_grad_obj
     #
     if ( ! is.null(for_intervals)) {
       currentDy <- (for_intervals$fitlik-oldlik)
-      if (currentDy <0) .warn_intervalStep(oldlik,for_intervals)
+      if (currentDy < -1e-4) .warn_intervalStep(oldlik,for_intervals)
       intervalBlob <- .intervalStep_spprec(old_v_h_beta=v_h_beta,
                                        sXaug=sXaug,zInfo=zInfo,
                                        for_intervals=for_intervals,
@@ -325,7 +320,7 @@
       if (LevenbergM) { ## not IRLS
         # FIXME I made not_moving a sufficent condition fro break below !
         if (not_moving && is_HL1_1) { ## not_moving TRUE may occur when we are out of solution space. Hence test Mg_solve_g
-          Mg_solve_g <- sum(m_grad_obj*unlist(get_from_MME(sXaug,szAug=zInfo))) ## FIXME presumably not efficient 
+          Mg_solve_g <- sum(zInfo$m_grad_obj*unlist(get_from_MME(sXaug,szAug=zInfo))) ## FIXME presumably not efficient 
           if (Mg_solve_g < Ftol_LM/2) {
             if (trace>1L) {"break bc Mg_solve_g<1e-6"}
             break
@@ -333,8 +328,8 @@
         } ## else not_moving was a break condition elsewhere in code
         
         if (trace>1L )  {
-          maxs_grad <- c(max(abs(m_grad_obj[seq_n_u_h])),max(abs(m_grad_obj[-seq_n_u_h])))
-          if (trace>0L) cat("iter=",innerj,", max(|grad|): v=",maxs_grad[1L],"beta=",maxs_grad[2L],";")
+          maxs_grad <- c(max(abs(zInfo$m_grad_obj[seq_n_u_h])),max(abs(zInfo$m_grad_obj[-seq_n_u_h])))
+          if (trace) cat("iter=",innerj,", max(|grad|): v=",maxs_grad[1L],"beta=",maxs_grad[2L],";")
         }
         constant_APHLs_args <- list(processed=processed, which=processed$p_v_obj, sXaug=sXaug, phi_est=phi_est, lambda_est=lambda_est)
         if (is_HL1_1 && ! is.null(damped_WLS_blob)) {
@@ -382,7 +377,7 @@
                                                  wranefblob=wranefblob,seq_n_u_h=seq_n_u_h,
                                                  update_sXaug_constant_arglist=update_sXaug_constant_arglist, 
                                                  processed=processed, 
-                                                 phi_est=phi_est, n_u_h=n_u_h, ZALX=ZALX,
+                                                 phi_est=phi_est, n_u_h=n_u_h, ZAL=ZAL,
                                                  which_LevMar_step = which_LevMar_step
         )
         ## LevM PQL
@@ -420,7 +415,7 @@
       sXaug <- damped_WLS_blob$sXaug
     } else {
       # drop, not as.vector(): names are then those of (final) eta and mu -> used by predict() when no new data
-      eta <- drop(ZALX %*% unlist(v_h_beta)) + off ## length nobs 
+      eta <- off + drop(processed$AUGI0_ZX$X.pv %*% v_h_beta$beta_eta) + drop(ZAL %id*% v_h_beta$v_h) ## length nobs 
       if ( is.null(etaFix$v_h)) {
         if (GLMMbool) {
           u_h <- v_h_beta$v_h ## keep input wranefblob since lambda_est not changed
@@ -439,8 +434,7 @@
         w.resid <- .calc_w_resid(muetablob$GLMweights,phi_est)
         sXaug <- do.call(processed$AUGI0_ZX$envir$method, # ie, def_AUGI0_ZX_sparsePrecision
                          c(update_sXaug_constant_arglist, 
-                           list(unique_w.ranef=wranefblob$unique_w.ranef,## here lambda is homoscedastic for CAR model ! 
-                                w.ranef=wranefblob$w.ranef, ## used only if unique_wranef is not NULL
+                           list(w.ranef=wranefblob$w.ranef, 
                                 w.resid=w.resid)))
       }
     }
@@ -466,7 +460,7 @@
     } else break
   } ################ E N D LOOP ##############
   
-  names(v_h_beta$beta_eta) <- colnames(X.pv)
+  names(v_h_beta$beta_eta) <- colnames(processed$AUGI0_ZX$X.pv)
   RESU <- list(sXaug=sXaug, 
                ## used by calc_APHLs_from_ZX
                #fitted=fitted, ## FIXME: removed so that no shortcut a la Bates in calc_APHLs_from_ZX; reimplement the shorcut in that fn?  
@@ -497,21 +491,26 @@
     targetDy <- (for_intervals$fitlik-for_intervals$targetlik)
     Dx <- currentDx*sqrt(targetDy/currentDy)
     ## pb is if Dx=0 , Dx'=0... and Dx=0 can occur while p_v is still far from the target, because other params have not converged.
-    ## FR->FR patch:
+    ## (fixme) patch:
     if (currentDy<targetDy) { ## we are close to the ML: we extrapolate a bit more confidently
       min_abs_Dx <- for_intervals$asympto_abs_Dparm/1000
     } else min_abs_Dx <- 1e-6 ## far from ML: more cautious move our of Dx=0
     Dx <- sign(currentDx)*max(abs(Dx),min_abs_Dx)
     v_h_beta_vec[parmcol_ZX] <- for_intervals$MLparm + Dx 
   }
-  locAUGI0_ZX <- sXaug
+  ## szAug changes:
   parmcol_X <- for_intervals$parmcol_X
-  locAUGI0_ZX$X.pv <- locAUGI0_ZX$X.pv[,-(parmcol_X),drop=FALSE]
-  locAUGI0_ZX$ZeroBlock <- locAUGI0_ZX$ZeroBlock[,-(parmcol_X),drop=FALSE]
-  zInfo$z1 <- zInfo$z1 - sXaug$X.pv[,parmcol_X]*v_h_beta_vec[parmcol_ZX]
-  zInfo$LMrhs <- zInfo$LMrhs[-parmcol_ZX]
-  ## sparse precision requires $LMrhs 
-  v_h_beta_vec[-(parmcol_ZX)] <- old_v_h_beta_vec[-(parmcol_ZX)]+ unlist(get_from_MME(locAUGI0_ZX,szAug=zInfo)) 
+  zInfo$z1 <- zInfo$z1 - sXaug$AUGI0_ZX$X.pv[,parmcol_X]*v_h_beta_vec[parmcol_ZX] 
+  zInfo$m_grad_obj <- zInfo$m_grad_obj[-parmcol_ZX]
+  ## sXaug changes: 
+  int_AUGI0_ZX <- as.list(sXaug$AUGI0_ZX) ## as.list() local copy avoids global modifs of original sXaug$AUGI0_ZX envir
+  int_AUGI0_ZX$X.pv <- int_AUGI0_ZX$X.pv[,-(parmcol_X),drop=FALSE]
+  int_AUGI0_ZX$ZeroBlock <- int_AUGI0_ZX$ZeroBlock[,-(parmcol_X),drop=FALSE]
+  # Assuming sXaug not being an envir, sXaug$AUGI0_ZX <- int_AUGI0_ZX would be correct, creating a local copy of sXaug, 
+  #  but less explicit than the following: 
+  int_sXaug <- sXaug ## Assuming sXaug not being an envir, then the following does not affect sXaug.
+  int_sXaug$AUGI0_ZX <- int_AUGI0_ZX ## Replaces an envir by a list i nthe local copy; 
+  v_h_beta_vec[-(parmcol_ZX)] <- old_v_h_beta_vec[-(parmcol_ZX)]+ unlist(get_from_MME(int_sXaug,szAug=zInfo)) 
   return(list(v_h_beta=relist(v_h_beta_vec,old_v_h_beta))) 
 }
 

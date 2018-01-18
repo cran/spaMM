@@ -12,7 +12,7 @@ The simplest case is illustrated in the first two examples below: the grouping t
 These convenient properties no longer hold when the grouping term is not a single variable from the \code{data} (third example below), or when its levels do not correspond to row names of the matrix. In these cases, (1) no attempt is made to match the \code{data} rows to the row and column names of the \code{corrMatrix}. Such attempt could succeed only if the user had given names to the matrix matching those that the the called function could create from the information in the \code{data}, in which case the user should find easier to specify a single variable that can be matched; (2) the order of \code{data} and \code{corrMatrix} matter; Internally, a single factor variable is constructed from all levels of the variables in the grouping term (i.e., from all levels of \code{latitude} and \code{longitude}, in the third example), with levels 1,2,3... that are matched to rows 1,2,3... of the \code{corrMatrix}. Thus the first row of the data is always associated to the first row of the matrix; (3) further, the dimension of the matrix must match the number of levels implied by the grouping term. For example, one might consider the case of 14 response values but of correlations between only 7 levels of a random effect, with two responses for each level. Then the matrix must be of dimension 7x7.
 }
 \examples{
-data(blackcap) 
+data("blackcap") 
 ## Here we manually reconstruct the correlation matrix 
 ##  of the ML fit produced by corrHLfit:
 MLcorMat <- MaternCorr(proxy::dist(blackcap[,c("latitude","longitude")]),

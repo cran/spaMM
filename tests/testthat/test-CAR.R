@@ -1,6 +1,6 @@
 cat("\ntest CAR and SEM:\n")
 
-data(scotlip)
+data("scotlip")
 
 # see also 'old donttest' examples
 
@@ -31,14 +31,14 @@ AIC(blob)
 
 if (require("probitgem",quietly=TRUE)) {
   # CAR by SEMs +optimsmooth ... slow
-  if (spaMM.getOption("example_maxtime")>44) {
+  if (spaMM.getOption("example_maxtime")>38) {
     blob <- corrHLfit(cbind(npos,nneg)~1 +adjacency(1|gridcode),
             adjMatrix=Nmatrix,family=binomial(probit),data=donn,HLmethod="SEM")
   }
   
   # CAR by single SEM
   blob <- HLCor(cbind(npos,nneg)~1 +adjacency(1|gridcode),
-                adjMatrix=Nmatrix,family=binomial(probit),data=donn,HLmethod="SEM") ## -1 s.
+                adjMatrix=Nmatrix,family=binomial(probit),data=donn,HLmethod="SEM") ## -1 s, with more variance of logLik
   AIC(blob)
 } else {
   cat( "package 'probitgem' not available, cannot run SEM test.\n" )

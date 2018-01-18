@@ -35,7 +35,7 @@
   A data frame closely matching the original data, except that response values are not needed. May provide new values of fixed predictor variables, new spatial locations, or new individuals within a block.   
 }
   \item{type}{
-    character string specifying the type of simulation for (G)LMMs. \code{"marginal"} is for simulation from the marginal distribution of the random effect; \code{"residual"} acounts only for the residual variation of the fitted model; and \code{"ranef|response"} accounts both for residual variation and for the conditional distribution of the random effects given the response and the point estimates of model parameters. This distribution is known exactly in LMMs, and otherwise approximated as a Gaussian distribution with mean vector and covariance matrix given as per the Laplace approximation.  
+    character string specifying the type of simulation for ixed models. \code{"marginal"} is for simulation from the marginal distribution of the random effect; \code{"residual"} acounts only for the residual variation of the fitted model; and \code{"(ranef|response)"} accounts both for residual variation and for the conditional distribution of the random effects given the response and the point estimates of model parameters. This distribution is known exactly in LMMs, and otherwise approximated as a Gaussian distribution with mean vector and covariance matrix given as per the Laplace approximation.  
   }
   \item{conditional}{
     Obsolete and will be deprecated. Boolean; TRUE and FALSE are equivalent to \code{type="residual"} and \code{type="marginal"}, respectively. 
@@ -55,7 +55,7 @@
   Otherwise, a vector (if nsim=1) or a matrix with nsim columns, each containing a simulated response.
 }
 \examples{
-data(Loaloa)
+data("Loaloa")
 HLC <- HLCor(cbind(npos,ntot-npos)~Matern(1|longitude+latitude),
            data=Loaloa,family=binomial(),
            ranPars=list(lambda=1,nu=0.5,rho=1/0.7)) 

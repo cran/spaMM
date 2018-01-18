@@ -14,7 +14,7 @@
   as given by Clayton and Kaldor (1987, Table 1). 
   
 }
-\usage{data(scotlip)}
+\usage{data("scotlip")}
 \format{
   The data frame includes 56 observations on the following 7 variables:
   \describe{
@@ -35,10 +35,6 @@ Breslow, NE, Clayton, DG. (1993). Approximate Inference in Generalized Linear Mi
 Journal of the American Statistical Association: 88 9-25.
 }
 \examples{
-data(scotlip)
-scfit <- HLCor(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(expec)),
-      ranPars=list(rho=0.174),adjMatrix=Nmatrix,family=poisson(),data=scotlip)
-summary(scfit)
-plot(scfit)
+## see 'help(autoregressive)' for several exampels involving 'scotlip'.
 }
 \keyword{datasets}

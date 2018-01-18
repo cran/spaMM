@@ -12,9 +12,9 @@
 
 \details{
 
-  The standard (G)LMM response families \code{gaussian}, \code{binomial}, \code{poisson}, and \code{Gamma} are handled, as well as \code{\link{multinomial}} response (with some constraints), negative binomial (see \code{\link{negbin}}) and Conway-Maxwell-Poisson response (see \code{\link{COMPoisson}}). GLMMs and HGLMs are fit via Laplace approximations for (1) the marginal likelihood with respect to random effects and (2) the restricted likelihood (as in REML), i.e the likelihood of random effect parameters given the fixed effect estimates. 
-
-  The package fits models including several nested or crossed random effects, only one of which can be a spatial random effect. The spaMM code has not been optimized for speed in non-spatial models. It fits random effects following either a Matérn correlation model (see \code{\link{Matern}}) or an adjacency matrix model (see \code{\link{adjacency}}). 
+  The standard response families \code{gaussian}, \code{binomial}, \code{poisson}, and \code{Gamma} are handled, as well as negative binomial (see \code{\link{negbin}}), zero-truncated poisson and negative binomial, and Conway-Maxwell-Poisson response (see \code{\link{Tpoisson}}, \code{\link{Tnegbin}} and \code{\link{COMPoisson}}). A \code{multi} family look-alike is also available for \code{\link{multinomial}} response, with some constraints. 
+  
+  The package fits models including several nested or crossed random effects, one of which can be following a Matérn correlation model (see \code{\link{Matern}}), or an adjacency matrix model (see \code{\link{adjacency}}), or an \code{AR1} model, or a gven \code{corrMatrix}. GLMMs and HGLMs are fit via Laplace approximations for (1) the marginal likelihood with respect to random effects and (2) the restricted likelihood (as in REML), i.e the likelihood of random effect parameters given the fixed effect estimates. 
   
   The variance(s) of random effects (\eqn{u}) is (are) denoted \eqn{\lambda} (\code{lambda} in input and output). The variance parameter of residual error is denoted \eqn{\phi} (\code{phi}): this is the residual variance for gaussian response, but for Gamma-distributed response, the residual variance is \eqn{\phi}\eqn{\mu^2} where \eqn{\mu} is expected response. A fixed-effects linear predictor for \eqn{\phi}, modeling heteroscedasticity, can be considered (see Examples). Fixed effects are described in the standard form \bold{X}\eqn{\beta} where \bold{X} is the design matrix of fixed effects and \eqn{\beta} (\code{beta}) is a vector of fixed effect parameters. 
 
@@ -43,7 +43,7 @@ spaMM is designed to be used through the high-level functions
 \examples{
 ## Fit a Poisson GLMM with adjacency (CAR) correlation model
 # see ?adjacency for how to fit efficiently such model models 
-data(scotlip) ## loads 'scotlip' data frame, but also 'Nmatrix'
+data("scotlip") ## loads 'scotlip' data frame, but also 'Nmatrix'
 HLCor(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(expec)),
           adjMatrix=Nmatrix,family=poisson(),data=scotlip) 
 
@@ -59,7 +59,7 @@ if (spaMM.getOption("example_maxtime")>2.1) {
  % tested in test-spaMM.R
 \dontrun{
  ## fit non-spatial crossed random effects with distinct families
- data(salamander)
+ data("salamander")
  HLfit(cbind(Mate,1-Mate)~1+(1|Female)+(1|Male),family=binomial(),
         rand.family=list(gaussian(),Beta(logit)),data=salamander,HLmethod="ML")
 }
@@ -74,7 +74,7 @@ if (spaMM.getOption("example_maxtime")>2.1) {
 }
 
 ## fit a non-spatial, Gamma GLMM:
-data(wafers)
+data("wafers")
 HLfit(y ~X1*X3+X2*X3+I(X2^2)+(1|batch),family=Gamma(log),
           data=wafers)
 
@@ -94,7 +94,7 @@ HLfit( y ~X1+X2+X1*X3+X2*X3+I(X2^2),family=Gamma(log),
 
 ## Fit of binary data using PQL/L. See ?arabidopsis
 \dontrun{
-data(arabidopsis)
+data("arabidopsis")
 HLCor(cbind(pos1046738,1-pos1046738)~seasonal+Matern(1|LAT+LONG),
                    ranPars=list(rho=0.129,lambda=4.28,nu=0.291),
                    family=binomial(),HLmethod="PQL/L",data=arabidopsis)

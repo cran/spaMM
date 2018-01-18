@@ -16,7 +16,7 @@ testthat::expect( !is.null(dim(res)),"is.null(dim(<get_respVar(fitobject,varianc
 testthat::expect_equal(res[6,6],0.1061096,tolerance=2e-4) ## check that dmudeta scaling is taken in account.
 
 if(require("rsae", quietly = TRUE)) {
-  data(landsat)
+  data("landsat")
   fitobject <- HLfit(HACorn ~ PixelsCorn + PixelsSoybeans + (1|CountyName),data=landsat[-33,],HLmethod="ML")
   newXandZ <- unique(data.frame(PixelsCorn=landsat$MeanPixelsCorn,PixelsSoybeans=landsat$MeanPixelsSoybeans,CountyName=landsat$CountyName))
   res <- get_predVar(fitobject,newdata=newXandZ)
@@ -44,7 +44,7 @@ testthat::expect_equal(pp[1],c(`1`=1.074626),tolerance=1e-6)
 
 ## multiple tests with two ranefs 
 set.seed(123)
-data(Loaloa)
+data("Loaloa")
 ll <- cbind(Loaloa,idx=sample(2,size=nrow(Loaloa),replace=TRUE))
 hl <- HLCor(cbind(npos,ntot-npos)~1+Matern(1|longitude+latitude)+(1|idx),data=ll,
             family=binomial(),ranPars=list(nu=0.5,rho=1/0.7),HLmethod="PQL/L")
@@ -64,7 +64,7 @@ testthat::expect_equivalent(p4[101],p5[1]) ## _equivalent does not check names a
 
 ## dontrun example from help(predict):
 ## prediction with distinct given phi's in different locations:
-data(blackcap)
+data("blackcap")
 set.seed(123)
 varphi <- cbind(blackcap,logphi=runif(14))
 vphifit <- corrHLfit(migStatus ~ 1 + Matern(1|latitude+longitude), 
@@ -78,9 +78,14 @@ testthat::expect_equal(p1,c(`1`=2.844421),tol=1e-5)
 #     (and could have been specified through ranFix):  
 p1 <- suppressWarnings(get_predVar(vphifit,newdata=data.frame(latitude=1,longitude=1)))
 testthat::expect_equal(p1,c(`1`=0.1261386),tol=1e-5) ## exact value sensitive to spaMM_tol$Xtol_abs
+# verif get_predCov_var_fix()
+p1 <- get_predVar(vphifit,variances=list(cov=TRUE))[14,]
+fix_X_ZAC.object <- preprocess_fix_corr(vphifit,fixdata=blackcap)
+p2 <- get_predCov_var_fix(vphifit,newdata=blackcap[14,],fix_X_ZAC.object=fix_X_ZAC.object)
+testthat::expect_true(max(abs(range(p1-p2)))<1e-12)
 
-# verif calc_logdisp_cov runs after outer optimisation
-fitfit <- fitme(migStatus ~ 1 + Matern(1|latitude+longitude),
-                     data=blackcap,  fixed=list(nu=4,rho=0.4))
-get_respVar(fitfit,newdata=data.frame(latitude=1,longitude=1))
+# # verif calc_logdisp_cov runs after outer optimisation => now tested in many other places
+# fitfit <- fitme(migStatus ~ 1 + Matern(1|latitude+longitude),
+#                      data=blackcap,  fixed=list(nu=4,rho=0.4))
+# get_respVar(fitfit,newdata=data.frame(latitude=1,longitude=1))
 

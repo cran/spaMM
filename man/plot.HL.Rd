@@ -55,6 +55,6 @@ each random deviate divided by \eqn{\sqrt(1-q)} where \eqn{q} is the correspondi
   h-likelihood. Chapman & Hall: London.
 }
 \examples{
-## see example for data(scotlip)
+## see example for data("scotlip")
 }
 \keyword{hplot}

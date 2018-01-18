@@ -7,10 +7,10 @@
       checknu <- try(environment(family$aic)$nu,silent=TRUE)
       if (inherits(checknu,"try-error")) stop(attr(checknu,"condition")$message)
     }
-  } else if (family$family=="negbin") {
-    if ( ! is.null(ranFix$NB_shape)) { ## optimisation call
-      assign("shape",ranFix$NB_shape,envir=environment(family$aic))
-      ranFix$NB_shape <- NULL
+  } else if (family$family == "negbin") {
+    if ( ! is.null(ranFix$trNB_shape)) { ## optimisation call
+      assign("shape",.NB_shapeInv(ranFix$trNB_shape),envir=environment(family$aic))
+      ranFix$trNB_shape <- NULL
     } else {
       checktheta <- try(environment(family$aic)$shape,silent=TRUE)
       if (inherits(checktheta,"try-error")) stop(attr(checktheta,"condition")$message)
@@ -20,7 +20,13 @@
 }
 
 .resize_lambda <- function(lambda,vec_n_u_h,n_u_h,adjacency_info=NULL) {
-  if  (length(lambda)==length(vec_n_u_h)) {
+  if  (length(lambda)<length(vec_n_u_h)) {
+    newlambda <- rep(NA,length(vec_n_u_h))
+    names(newlambda) <- seq_along(vec_n_u_h)
+    newlambda[names(lambda)] <- lambda
+    lambda <- newlambda
+  } 
+  if (length(lambda)==length(vec_n_u_h)) {
     lambda_est <- rep(lambda,vec_n_u_h)
     if ( ! is.null(adjacency_info)) { 
       lambda_est[adjacency_info$u.range] <- lambda[adjacency_info$whichadj]*adjacency_info$coeffs 
@@ -77,6 +83,7 @@
   return(list(gainratio=gainratio,clik=clik,beta=beta,eta=eta,mu=mu,conv_clik=conv_clik))
 }  
 
+# tested eg by test-COMPoisson:
 .calc_etaGLMblob <- function(processed, 
                          mu, eta, muetablob, beta_eta, w.resid, ## those in output
                          phi_est, 
@@ -86,7 +93,7 @@
                          for_intervals=NULL,
                          Xtol_rel) {
     BinomialDen <- processed$BinomialDen
-    X.pv <- processed$X.pv
+    X.pv <- processed$AUGI0_ZX$X.pv
     y <- processed$y
     family <- processed$family
     stop.on.error <- processed$stop.on.error
@@ -96,23 +103,29 @@
     for (innerj in seq_len(maxit.mean)) {
       ## breaks when Xtol_rel is reached
       clik <- newclik
-      z1 <- eta+(y-mu)/muetablob$dmudeta-off ## LeeNP 182 bas. GLM-adjusted response variable; O(n)*O(1/n)
-      ## simple QR solve with LevM fallback
       old_beta_eta <- beta_eta
-      tXinvS <- sweep(t(X.pv),2L,w.resid,`*`)  
-      rhs <-  tXinvS %*% z1
+      if (is.list(w.resid)) {
+        z1 <- as.vector(eta+w.resid$WU_WT*(y-mu-w.resid$dlogMthdth)/muetablob$dmudeta-off) 
+        XtinvSX <- .ZtWZwrapper(X.pv,w.resid$w_resid)
+        rhs <-  crossprod(X.pv, w.resid$w_resid * z1)
+      } else {
+        z1 <- eta+(y-mu)/muetablob$dmudeta-off ## LeeNP 182 bas. GLM-adjusted response variable; O(n)*O(1/n)
+        XtinvSX <- .ZtWZwrapper(X.pv,w.resid)
+        rhs <-  crossprod(X.pv, w.resid * z1)
+      }
+      ## simple QR solve with LevM fallback
       if ( ! is.null(for_intervals)) {
         currentDy <- (for_intervals$fitlik-newclik)
-        if (currentDy <0) .warn_intervalStep(newclik,for_intervals)
+        if (currentDy < -1e-4) .warn_intervalStep(newclik,for_intervals)
         intervalBlob <- .intervalStep_glm(old_beta=beta_eta,
-                                         sXaug=tXinvS%*%X.pv,
+                                         sXaug=XtinvSX,
                                          szAug=rhs,
                                          for_intervals=for_intervals,
                                          currentlik=newclik,currentDy=currentDy)
         beta_eta <- intervalBlob$beta
       } else {
-        qr.XtinvSX <- .QRwrap_but_diag(tXinvS%*%X.pv,useEigen=FALSE) ## Cholwrap tested  ## pas sur que FALSE gagne du temps
-        beta_eta <- .solveWrap_vector( qr.XtinvSX , rhs ,stop.on.error=stop.on.error)
+        qr.XtinvSX <- .QRwrap_but_diag(XtinvSX,useEigen=FALSE) ## Cholwrap tested  ## pas sur que FALSE gagne du temps
+        beta_eta <- drop(.solveWrap_vector( qr.XtinvSX , rhs ,stop.on.error=stop.on.error))
       }
                                            
       # # PROBLEM is that NaN/Inf test does not catch all divergence cases so we need this :
@@ -122,7 +135,9 @@
       if ( is.null(for_intervals) &&
         (newclik < clik-1e-5 || anyNA(beta_eta) || any(is.infinite(beta_eta))) ) { 
         ## more robust LevM
-        sqrt.ww <- sqrt(w.resid)
+        if (is.list(w.resid)) {
+          sqrt.ww <- sqrt(w.resid$w_resid)        
+        } else sqrt.ww <- sqrt(w.resid)
         wX <- .calc_wAugX(augX=X.pv,sqrt.ww=sqrt.ww)
         LM_wz <- z1*sqrt.ww - (wX %*% old_beta_eta)
         while(TRUE) { 

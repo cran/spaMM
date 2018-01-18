@@ -19,7 +19,7 @@
 \usage{
 \method{predict}{HLfit}(object, newdata = newX, newX = NULL, re.form = NULL,
                           variances=list(), binding = FALSE, intervals = NULL,
-                          level = 0.95, ...)
+                          level = 0.95, blockSize = 2000L, ...)
 get_predCov_var_fix(object, newdata = NULL, fix_X_ZAC.object, fixdata, 
                    variances=list(disp=TRUE,residVar=FALSE), ...)    
 preprocess_fix_corr(object, fixdata, re.form = NULL,
@@ -88,12 +88,15 @@ get_intervals(...)
  }
  \item{level}{Coverage of the intervals.}
  \item{binding}{
-  If \code{binding} is a character string, the predicted values are bound with the \code{newdata} and the result is returned as a data frame. The predicted values column name is the given \code{binding}, or a name based on it, if the \code{newdata} already include a variable with this name). 
-  If \code{binding} is \code{FALSE}, The predicted values are returned as a matrix and the data frame used for prediction is returned as an attribute
-  (unless it was \code{NULL}).
+  If \code{binding} is a character string, the predicted values are bound with the \code{newdata} and the result is returned as a data frame. The predicted values column name is the given \code{binding}, or a name based on it if the \code{newdata} already include a variable with this name. 
+  If \code{binding} is \code{FALSE}, The predicted values are returned as a one-column matrix and the data frame used for prediction is returned as an attribute
+  (unless it was \code{NULL}). If \code{binding} is \code{NA}, a vector is returned, without the previous attributes.
  }
  \item{fixdata}{A data frame describing reference data which covariances with variable \code{newdata} may be requested.}
  \item{fix_X_ZAC.object}{The return value of calling \code{preprocess_fix_corr} (see trivial Example). This is a more efficient way of providing information about the \code{fixdata} for repeated calls to \code{get_predCov_var_fix} with variable \code{newdata}.}
+ \item{blockSize}{
+   Mainly for development purposes. For original or new data with many rows, it may be more efficient to split these data in small blocks, and this gives the maximum number or rows of the blocks. However, this will be ignored if a prediction covariance matrix is requested.    
+ }
 \item{\dots}{
   further arguments passed to or from other methods. For the \code{get_}... functions, they are passed to \code{predict}. 
 }
@@ -135,7 +138,7 @@ In the \bold{point prediction} of the linear predictor, the unconditional expect
 }
 
 \examples{
-data(blackcap)
+data("blackcap")
 fitobject <- corrHLfit(migStatus ~ 1 + Matern(1|latitude+longitude),data=blackcap,
                        ranFix=list(nu=4,rho=0.4,phi=0.05))
 predict(fitobject)
@@ -184,7 +187,7 @@ get_predCov_var_fix(fitobject,newdata=blackcap[14,],fix_X_ZAC.object=fix_X_ZAC.o
 
 ## point predictions and variances with new X and Z
 if(require("rsae", quietly = TRUE)) {
-  data(landsat)
+  data("landsat")
   fitobject <- HLfit(HACorn ~ PixelsCorn + PixelsSoybeans + (1|CountyName),
                      data=landsat[-33,],HLmethod="ML")
   newXandZ <- unique(data.frame(PixelsCorn=landsat$MeanPixelsCorn,

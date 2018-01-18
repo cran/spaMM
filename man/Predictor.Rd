@@ -28,9 +28,7 @@ Predictor(formula, offset=NULL, LMatrix = NULL, AMatrix = NULL, ZALMatrix = NULL
   \item{AMatrix}{
   A matrix that relates observed (unique) locations to unobserved locations, see Details.
 }
-  \item{ZALMatrix}{
-  The design matrix for random effects, see Details.
-}
+  \item{ZALMatrix}{Deprecated}
 }
 \details{
   In a spatial model a vector  of correlated random effects \bold{Lv} can be constructed from uncorrelated ones, \bold{v},
@@ -44,7 +42,7 @@ Predictor(formula, offset=NULL, LMatrix = NULL, AMatrix = NULL, ZALMatrix = NULL
   
   Finally, in some applications the realized random effects in response locations may be viewed as linear combinations \bold{ALv} of random effects \bold{Lv} in distinct locations. In that case the dimension of \bold{L} is the number of such distinct locations, \bold{A} maps them to the observed locations, and \bold{Z} again maps them to possibly repeated observations in observed locations.
   
-  Thus, in general the random term in the linear predictor is written \bold{Mv}, where  \bold{M=ZAL} is reconstructed from the element matrices (usually automatically constructed if needed), unless \bold{ZAL} is given as argument.
+  Thus, in general the random term in the linear predictor is written \bold{Mv}, where  \bold{M=ZAL} is reconstructed from the element matrices (usually automatically constructed if needed).
   
 %- renvoyer a predictForNewX ...
 }

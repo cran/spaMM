@@ -34,7 +34,7 @@ saveSize <- function (object,...) {
     save(object, file = tf,...)
     file.size(tf)
   }
-data(Loaloa)  
+data("Loaloa")  
 lfit <- fitme(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
                    +Matern(1|longitude+latitude), method="HL(0,1)",
               data=Loaloa, family=binomial(), fixed=list(nu=0.5,rho=1,lambda=0.5))

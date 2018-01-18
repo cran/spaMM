@@ -6,7 +6,7 @@ cat("Multilevel Rasch Model example by Doran et al. (2007):")
 ## j stat software 2007 DOI:  	10.18637/jss.v020.i02
 
 if( require("multilevel", quietly = TRUE)) {
-  if (spaMM.getOption("example_maxtime")>15) {
+  if (spaMM.getOption("example_maxtime")>12) {
     data("lq2002", package = "multilevel")
     wrk <- lq2002
     for (i in 3:16) wrk[[i]] <- ordered(wrk[[i]])
@@ -24,12 +24,12 @@ if( require("multilevel", quietly = TRUE)) {
     
     ## spaMM expects integer response
     lql$resp <- as.integer(lql$dichot)-1
-    # 14.5 s WITHOUT LevenbergM NOR sparse_precision
+    # 12s s WITHOUT LevenbergM NOR sparse_precision
     hl1 <- HLfit(cbind(resp,1-resp) ~ 0+itype+(1|subj)+(1|COMPID)+(1|item), 
                  data=lql, binomial,HLmethod="ML",verbose=c(TRACE=TRUE),control.HLfit=list(LevenbergM=FALSE)) 
     testthat::expect_equal(logLik(hl1),c(p_v=-20354.8828))
     
-  } else cat(" requires example_maxtime>15")
+  } else cat(" requires example_maxtime>12")
   
   if (FALSE) { ## for manual comparisons
     if( require("lme4", quietly = TRUE)) {

@@ -65,8 +65,8 @@
       assign(".Random.seed", R.seed, envir = .GlobalEnv)
       eval(as.call(c(quote(registerDoSNOW),list(cl=cl)))) 
       `%foreachdopar%` <- foreach::`%dopar%`
-      pb <- utils::txtProgressBar(max = boot.repl, style = 3)
-      progress <- function(n) utils::setTxtProgressBar(pb, n)
+      pb <- txtProgressBar(max = boot.repl, style = 3)
+      progress <- function(n) setTxtProgressBar(pb, n)
       opts <- list(progress = progress)
       parallel::clusterExport(cl=cl, list("progress"),envir=environment()) ## slow! why?
     } else if ( ! identical(spaMM.getOption("doSNOW_warned"),TRUE)) {
@@ -171,18 +171,20 @@
   }
   ## here we makes sure that *predictor variables* are available for all data to be used under both models
   data <- dotlist$data
+  if ( ! is.null(callargs$resid.formula)) callargs$resid.model <- callargs$resid.formula
+  resid.model <- .reformat_resid_model(callargs$resid.model) ## family not easily checked here; not important
   if ( inherits(data,"list")) {
     data <- lapply(data, function(dt) {
-      null.validdata <- .getValidData(formula=null.formula[-2],resid.formula=dotlist$resid.formula,data=dt,
+      null.validdata <- .getValidData(formula=null.formula[-2],resid.formula=resid.model$formula,data=dt,
                                      callargs=callargs["prior.weights"]) ## will remove rows with NA's in required variables
-      full.validdata <- .getValidData(formula=formula[-2],resid.formula=dotlist$resid.formula,data=dt,
+      full.validdata <- .getValidData(formula=formula[-2],resid.formula=resid.model$formula,data=dt,
                                      callargs=callargs["prior.weights"]) ## will remove rows with NA's in required variables
       dt[intersect(rownames(null.validdata),rownames(full.validdata)),,drop=FALSE]     
     })
   } else {
-    null.validdata <- .getValidData(formula=null.formula[-2],resid.formula=dotlist$resid.formula,data=data,
+    null.validdata <- .getValidData(formula=null.formula[-2],resid.formula=resid.model$formula,data=data,
                                    callargs=callargs["prior.weights"]) ## will remove rows with NA's in required variables
-    full.validdata <- .getValidData(formula=formula[-2],resid.formula=dotlist$resid.formula,data=data,
+    full.validdata <- .getValidData(formula=formula[-2],resid.formula=resid.model$formula,data=data,
                                    callargs=callargs["prior.weights"]) ## will remove rows with NA's in required variables
     data <- data[intersect(rownames(null.validdata),rownames(full.validdata)),,drop=FALSE]     
   }  
@@ -211,7 +213,10 @@
       dotlist$method <- NULL
     }
     locmethod <- dotlist$HLmethod
-    if (fittingFunction=="HLfit") dotlist <- dotlist[names(formals(HLfit))] ## HLfit has no ... args
+    if (fittingFunction=="HLfit") {
+      FHFnames <- intersect(names(formals(HLfit)),names(dotlist))
+      dotlist <- dotlist[FHFnames]
+    } ## HLfit has no ... args: we need to remove all arguments from the ... (FIXME: avoidable complication ?)
   }
   dotlist$nb_cores <- nb_cores ## not yet in dotlist bc nb_cores argument is explicit for bootstrap 
   ## do not change dotlist afterwards !
@@ -249,10 +254,9 @@
     }
     nullm.list$formula <- null.predictor
   } else if ( length(null.disp)>0 ) { ## test disp/corr param
-    testFix <- F
+    testFix <- FALSE
     #
-    mess <- pastefrom("Models differ in their random effects or residual dispersion structure.")
-    stop(mess)
+    stop("Models differ in their random effects or residual dispersion structure.")
     #
     namescheck <- names(fullm.list$lower)
     namescheck <- namescheck[ ! namescheck %in% names(null.disp)]  

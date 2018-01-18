@@ -12,13 +12,14 @@ currently differing only in their fixed effects. Parametric bootstrap p-values c
 This function differ from \code{fixedLRT} in its arguments (model fits for \code{LRT}, but all arguments required to fit the models for \code{fixedLRT}), and in the format of its return value. The function will stop or return possibly incorrect results for models differing beyond their fixed effects. By conceptual drift, \code{anova} works as an alias for \code{LRT}.  
 }
 \usage{
-\method{anova}{HLfit}(object,object2,...)
-LRT(object,object2,boot.repl=0,nb_cores=NULL)  
+\method{anova}{HLfit}(object, object2, ..., method="")
+LRT(object, object2, boot.repl=0, nb_cores=NULL, ...)  
 }
 \arguments{
   \item{object,object2}{Two models fits being compared (their order does not matter).}
   \item{boot.repl}{the number of bootstrap replicates. }
   \item{nb_cores}{Number of cores to use for bootstrap computation. The default is \code{spaMM.getOption("nb_cores")}, and 1 if the latter is NULL. \code{nb_cores=1} which prevents the use of parallelisation procedures.}
+  \item{method}{For development purposes, not documented. }
   \item{\dots}{
   Further arguments passed to or from other methods. 
 }
@@ -52,7 +53,7 @@ and, if a bootstrap was performed:
 See also \code{\link{fixedLRT}}.
 }
 \examples{
-data(wafers)
+data("wafers")
 ## Gamma GLMM with log link
 m1 <- HLfit(y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch),family=Gamma(log),
           resid.model = ~ X3+I(X3^2) ,data=wafers,HLmethod="ML")

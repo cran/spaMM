@@ -9,7 +9,7 @@
   if (length(allremainders) == 0L && length(allnumericremainders) == 0L) { ## if base = allremainders => length(allnumericremainders) == 0 not sufficient
     fvname <- base
   } else {
-    if (length(allnumericremainders)>0L) {
+    if (length(allnumericremainders)) {
       num <- max(allnumericremainders)+1L
     } else num <- 1L
     fvname <-paste ( base , num , sep="") 
@@ -17,7 +17,7 @@
   fvname
 }
 
-makenewname <- function(...) .makenewname(...) ## FIXME can be removed when new (>08/2017) Infusion version on CRAN
+#makenewname <- function(...) .makenewname(...) ## removed since new (>08/2017) Infusion version on CRAN
 
 ## does not seem to be used
 # generateName <- function(base="tmp",

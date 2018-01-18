@@ -1,10 +1,10 @@
 cat("\ntest spaMM.Rd old donttest examples:\n")
 # spaMM
 
-data(scotlip) ## loads 'scotlip' data frame, but also 'Nmatrix'
+data("scotlip") ## loads 'scotlip' data frame, but also 'Nmatrix'
 hl <- corrHLfit(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(expec)),
           data=scotlip,family=poisson(),
-          adjMatrix=Nmatrix)
+          adjMatrix=Nmatrix) ## 1D optimization -> optimize
 testthat::expect_equal(hl$APHLs$p_v,-161.5140,tolerance=1e-4)
 AIC(hl)
 
@@ -25,7 +25,7 @@ hl <- corrHLfit(cases~I(prop.ag/10) +(1|gridcode)+adjacency(1|gridcode)
 
 testthat::expect_equal(hl$APHLs$p_v,-161.5141,tolerance=1e-4)
 
-data(salamander)
+data("salamander")
 hl <- HLfit(cbind(Mate,1-Mate)~1+(1|Female)+(1|Male),family=binomial(),
       rand.family=list(gaussian(),Beta(logit)),data=salamander,HLmethod="ML",control.HLfit = list(LevenbergM=FALSE))
 

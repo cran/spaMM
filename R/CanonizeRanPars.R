@@ -1,52 +1,52 @@
 ## better for development to avoid name conflicts with OKsmooth :toCanonical and :canonize
 .canonizeRanPars <- function(ranPars, ## should have a RHOMAX attribute when trRho in input
-                            corr.model,checkComplete=TRUE) {
+                            corr_types,checkComplete=TRUE) {
   trueCorrpars <- list()
-  if (is.null(corr.model)) {
-    ## do nothing
-  } else if (corr.model %in% c("Matern")) {
-    if (!is.null(ranPars$trNu)) { ## either we have nu,rho or trNu,trRho 
-      ranPars$nu <- .nuInv(ranPars$trNu,ranPars$trRho,NUMAX=attr(ranPars,"NUMAX")) ## before trRho is removed...
-      ranPars$trNu <- NULL
-      attr(ranPars,"type")$nu <- attr(ranPars,"type")$trNu
-      attr(ranPars,"type")$trNu <- NULL
-    } 
-    nu <- ranPars$nu
-    if (is.null(nu) && checkComplete) {
-      mess <- pastefrom("nu missing from ranPars (or correlation model mis-identified).",prefix="(!) From ")
-      stop(mess)
-    }
-    trueCorrpars$nu <- nu 
-  } 
-  if (is.null(corr.model)) {
-    ## do nothing
-  } else if (corr.model %in% c("AR1")) {
-    ARphi <- ranPars$ARphi
-    if (is.null(ARphi) && checkComplete) {
-      mess <- pastefrom("ARphi missing from ranPars.",prefix="(!) From ")
-      stop(mess)
-    }
-    trueCorrpars$ARphi <- ARphi    
-  } else if (corr.model != "corrMatrix") { ## all models with a 'rho' parameter
-    if (!is.null(ranPars$trRho)) { ## assuming a single trRho with possibly several elements
-      ranPars$rho <- .rhoInv(ranPars$trRho,RHOMAX=attr(ranPars,"RHOMAX"))  
-      ranPars$trRho <- NULL
-      attr(ranPars,"type")$rho <- attr(ranPars,"type")$trRho
-      attr(ranPars,"type")$trRho <- NULL
-    } ## else there may simply be rho rather than trRho (including for adjacency model through optim procedure !)
-    trueCorrpars$rho <- rho <- ranPars$rho
-    if (is.null(rho)) {
-      if(corr.model=="adjacency") { ## then allow a direct call through HLCor 
-        ranPars$rho <- 0
-        attr(ranPars,"type")$rho <- "var"
-      } else if (checkComplete) {
-        mess <- pastefrom("rho missing from ranPars.",prefix="(!) From ")
-        stop(mess)
+  for (it in seq_along(corr_types)) {
+    corr_type <- corr_types[it]
+    if (! is.na(corr_type)) {
+      if (corr_type == "AR1") {
+        ARphi <- ranPars$ARphi
+        if (is.null(ARphi) && checkComplete) {
+          stop("ARphi missing from ranPars.")
+        }
+        trueCorrpars$ARphi <- ARphi    
+      } else if (corr_type != "corrMatrix") { ## all models with a 'rho' parameter
+        ## nu, before trRho is removed; and Nugget: 
+        if (corr_type == "Matern") {
+          if (!is.null(ranPars$trNu)) { ## either we have nu,rho or trNu,trRho 
+            ranPars$nu <- .nuInv(ranPars$trNu,ranPars$trRho,NUMAX=attr(ranPars,"NUMAX")) ## before trRho is removed...
+            ranPars$trNu <- NULL
+            attr(ranPars,"type")$nu <- attr(ranPars,"type")$trNu
+            attr(ranPars,"type")$trNu <- NULL
+          } 
+          nu <- ranPars$nu
+          if (is.null(nu) && checkComplete) {
+            stop("nu missing from ranPars (or correlation model mis-identified).")
+          }
+          trueCorrpars$nu <- nu 
+          Nugget <- ranPars$Nugget
+          if (! is.null(Nugget)) trueCorrpars$Nugget <- Nugget 
+        } 
+        ## rho, Matern or not Matern:
+        if ( ! is.null(ranPars$trRho)) { ## assuming a single trRho with possibly several elements
+          ranPars$rho <- .rhoInv(ranPars$trRho,RHOMAX=attr(ranPars,"RHOMAX"))  
+          ranPars$trRho <- NULL
+          attr(ranPars,"type")$rho <- attr(ranPars,"type")$trRho
+          attr(ranPars,"type")$trRho <- NULL
+        } ## else there may simply be rho rather than trRho (including for adjacency model through optim procedure !)
+        trueCorrpars$rho <- rho <- ranPars$rho
+        if (is.null(rho)) {
+          if(corr_type=="adjacency") { ## then provide initial rho to allow a direct call through HLCor 
+            ranPars$rho <- 0  ## Should spaMM 3.0 correct this ? Direct call through HLCor may exclude other rho terms
+            attr(ranPars,"type")$rho <- "var"
+          } else if (checkComplete) {
+            stop("rho missing from ranPars.")
+          }
+        }
       }
-    } 
+    }
   }
-  Nugget <- ranPars$Nugget
-  if (! is.null(Nugget)) trueCorrpars$Nugget <- Nugget 
   if (!is.null(ranPars$trPhi)) {
     ranPars$phi <- .dispInv(ranPars$trPhi)
     ranPars$trPhi <- NULL
@@ -66,8 +66,9 @@
   #              and $lambda (from ranPars$lambda) for what was fixed in the whole outer fit, and also ini.value  
   if ( ! is.null(ranPars$trLambda)) {## 
     lambda <- ranPars$lambda
-    ## cf HLCor_body code at this point Fix and init.HLfit are merged 
-    ##    and the type info will be used by HLCor_body to separate them
+    ## At this point Fix and init.HLfit are merged 
+    #  and the type info will be used by HLCor_body to separate what comes from ranPars ("fix") and what comes from init.HLfit ("var")
+    #  Currently e.g. lambda can be of only one type
     if (is.null(lambda)) { ## only trLambda, not lambda
       ranPars$lambda <- .dispInv(ranPars$trLambda)
       type <- attr(ranPars,"type")$trLambda 
@@ -104,6 +105,14 @@
       attr(ranPars,"parlist") <- parlist
     }
   } ## else ranPars$lambda unchanged  
+  if ( ! is.null(ranPars$trRanCoefs)) {
+    ranPars$ranCoefs <- lapply(ranPars$trRanCoefs,.ranCoefsInv)
+    ranPars$trRanCoefs <- NULL
+  }
+  if ( ! is.null(ranPars$trNB_shape)) {
+    ranPars$NB_shape <- .NB_shapeInv(ranPars$trNB_shape)
+    ranPars$trNB_shape <- NULL
+  }
   return(list(trueCorrpars=trueCorrpars,ranPars=ranPars))
 }
 

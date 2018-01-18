@@ -19,9 +19,6 @@ spaMM.getOption(x)
     are used in \code{spaMM}:
 
   \describe{
-\item{\code{ff_threshold}:}{Minimal number of matrix elements for some matrices to be stored on disk (using the \code{ff} package) rather than in memory}
-  
-
 \item{\code{COMP_maxn}:}{Number of terms for truncation of infinite sums that are evaluated in the fitting of \code{\link{COMPoisson}} models.}
 
 \item{\code{MESSAGES.FULL.STACK=TRUE}:}{Whether to give information on the stack of calls in some warning messages.}
@@ -40,9 +37,13 @@ spaMM.getOption(x)
 
 \item{\code{maxLambda=1e10}:}{The maximum value of lambda: higher fitted 
  lambda values in HLfit are reduced to this.} 
-\item{\code{example_maxtime=0.8}:}{Used in the documentation to control whether the longer examples should be run. 
+\item{\code{example_maxtime=0.7}:}{Used in the documentation to control whether the longer examples should be run. 
 The approximate running time of given examples on one author's laptop is compared to this value.} 
+\item{\code{optimizer1D="optimize"}:}{Optimizer for one-dimensional optimization. If you want to control the initial value, you shoudl select another optimizer.}
+\item{\code{optimizer="nloptr"}:}{Optimizer for optimization in several dimensions. Use \code{optimizer="nloptr"} to call \code{\link[nloptr]{nloptr}} with method \code{"NLOPT_LN_BOBYQA"}; use \code{optimizer="bobyqa"} to call \code{\link[minqa]{bobyqa}}; and use \code{optimizer="L-BFGS-B"} to call \code{\link{optim}} with method \code{"L-BFGS-B"}. The optimizer can also be specified on a fit-by-fit basis as the value of \code{control$optimizer} in a \code{fitme} call, or as the value of \code{control.corrHLfit$optimizer}.
+}
 \item{\code{nloptr}:}{Default control values of \code{nloptr} calls.} 
+\item{\code{CMP_asympto_cond}:}{Condition for applying an approximation or the COMPoisson response family, as detailed in \code{\link{COMPoisson}}.} 
 }
 and possibly other undocumented values for development purposes. Additional options without default values can also be used (e.g., see \code{\link{sparse_precision}}).
 

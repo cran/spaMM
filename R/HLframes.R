@@ -7,10 +7,9 @@
   # uniqueFac <- unique(redondFac) ## seems to preserve order ## unique(<integer>) has unambiguous behaviour
   # sapply(lapply(redondFac, `==`, uniqueFac ), which)
   redondFac <- apply(redondGeo,2L,factor,labels="") # not cute use of labels... 
-  redondFac <- apply(redondFac,1L,paste,collapse="_") ## paste factors
+  redondFac <- apply(redondFac,1L,paste,collapse=":") ## paste factors
   redondFac <- as.character(factor(redondFac))
   uniqueFac <- unique(redondFac) ## seems to preserve order ## unique(<integer>) has unambiguous behaviour
-  # fixme if I want syntacttically valid names I should paste("X",uniqueFac,sep="") 
   uniqueIdx <- seq(length(uniqueFac))
   names(uniqueIdx) <- uniqueFac
   return(uniqueIdx[redondFac])
@@ -18,7 +17,7 @@
 
 # old usage:     corrHLfit(migStatus ~ 1+ (1|ULI(latitude,longitude)),data=blackcap,objective="p_v")
 
-ULI <- function(...) .ULI(...) # => FIXME substitution in 3 steps (1) new spaMM (2) new Infusion and blackbox using .ULI (3) remove ULI from spaMM
+#ULI <- function(...) .ULI(...) # => substitution in 3 steps (1) new spaMM (2) new Infusion and blackbox using .ULI (3) remove ULI from spaMM
 
 ### Utilities for parsing the mixed model formula
 ## Functions more of less distantly derived from lme4 version of findbars
@@ -31,10 +30,13 @@ ULI <- function(...) .ULI(...) # => FIXME substitution in 3 steps (1) new spaMM 
 
 
 .findbarsMM <-  function (term) {
-    if (is.name(term) || !is.language(term)) 
+    if (is.name(term) || !is.language(term)) # eg y or 1 in y~1+... ?
       return(NULL)
-    if (term[[1]] == as.name("(")) 
-      return(.findbarsMM(term[[2]]))
+    if (term[[1]] == as.name("(")) { ## may be (.|.) but also just anything in parenthesis in a formula
+      res <- .findbarsMM(term[[2]])
+      if (length(res)==1L) attr(res,"type") <- "(.|.)"
+      return(res) 
+    }
     if (!is.call(term)) 
       stop("term must be of class call")
     if (term[[1]] == as.name("|")) 
@@ -42,7 +44,7 @@ ULI <- function(...) .ULI(...) # => FIXME substitution in 3 steps (1) new spaMM 
     if (length(term) == 2L) { ## 
       term1 <- as.character(term[[1]])
       if (term1 %in% c("adjacency","Matern","AR1","corrMatrix")) {
-        res <- .findbarsMM(term[[2]])
+        res <- .findbarsMM(term[[2]]) ## term[[2]] is .|. and will match term[[1]] == as.name("|") , NOT term[[1]] == as.name("(")
         attr(res,"type") <- term1
         return(res) 
       } else return(.findbarsMM(term[[2]])) 
@@ -50,30 +52,6 @@ ULI <- function(...) .ULI(...) # => FIXME substitution in 3 steps (1) new spaMM 
     c(.findbarsMM(term[[2]]), .findbarsMM(term[[3]]))
   }
 
-## Returns a formula without the non-spatial random-effects terms.
-#currently not used except par experimental code in Infusion
-# => FIXME remove this def when a new (>08/2017) version of Infusion is on CRAN
-noNonSpatialbarsMM <- function (term) {
-  if (!("|" %in% all.names(term))) 
-    return(term)
-  if (is.call(term) && term[[1]] == as.name("|")) 
-    return(NULL) ## removes (|) but not Matern(|)
-  if (length(term) == 2L) {
-    term1 <- as.character(term[[1]])
-    if (term1 %in% c("adjacency","Matern","AR1","corrMatrix")) {
-      return(term) 
-    } else return(noNonSpatialbarsMM(term[[2]])) 
-  }
-  nb2 <- noNonSpatialbarsMM(term[[2]])
-  nb3 <- noNonSpatialbarsMM(term[[3]])
-  if (is.null(nb2)) 
-    return(nb3)
-  if (is.null(nb3)) 
-    return(nb2)
-  term[[2]] <- nb2
-  term[[3]] <- nb3
-  term
-}
 
 ## Remove the random-effects terms from a mixed-effects formula
 .nobarsMM <- function (term) { ## different from lme4::nobars
@@ -85,27 +63,44 @@ noNonSpatialbarsMM <- function (term) {
 }
   
 .nobarsMM_ <- function (term) { ## compare to lme4:::nobars_
-    if (!("|" %in% all.names(term))) 
-      return(term)
-    if (is.call(term) && term[[1]] == as.name("|")) 
+  if (!("|" %in% all.names(term))) 
+    return(term)
+  if (is.call(term) && term[[1]] == as.name("|")) 
+    return(NULL)
+  if (length(term) == 2) {
+    nb <- .nobarsMM_(term[[2]])
+    if (is.null(nb)) 
       return(NULL)
-    if (length(term) == 2) {
-      nb <- .nobarsMM_(term[[2]])
-      if (is.null(nb)) 
-        return(NULL)
-      term[[2]] <- nb
-      return(term)
-    }
-    nb2 <- .nobarsMM_(term[[2]])
-    nb3 <- .nobarsMM_(term[[3]])
-    if (is.null(nb2)) 
-      return(nb3)
-    if (is.null(nb3)) 
-      return(nb2)
-    term[[2]] <- nb2
-    term[[3]] <- nb3
-    term
+    term[[2]] <- nb
+    return(term)
   }
+  nb2 <- .nobarsMM_(term[[2]])
+  nb3 <- .nobarsMM_(term[[3]])
+  if (is.null(nb2)) 
+    return(nb3)
+  if (is.null(nb3)) 
+    return(nb2)
+  term[[2]] <- nb2
+  term[[3]] <- nb3
+  term
+}
+
+
+.subbarsMM <- function (term) {
+  if (is.name(term) || !is.language(term)) 
+    return(term)
+  if (length(term) == 2) {
+    term[[2]] <- .subbarsMM(term[[2]])
+    return(term)
+  }
+  stopifnot(length(term) >= 3)
+  if (is.call(term) && term[[1]] == as.name("|")) 
+    term[[1]] <- as.name("+")
+  for (j in 2:length(term)) term[[j]] <- .subbarsMM(term[[j]])
+  term
+}
+
+
 
 .noOffset <- function (term) { 
   nb <- .noOffset_(term)
@@ -156,15 +151,57 @@ noNonSpatialbarsMM <- function (term) {
   term
 }
 
+.parseBars <- function (term,expand=TRUE,as_character=TRUE) { ## derived from findbars, ... return strings
+  if (inherits(term,"formula") && length(term) == 2L) ## added 2015/03/23
+    return(.parseBars(term[[2]], expand=expand, as_character=as_character))  ## process RHS
+  if (is.name(term) || !is.language(term)) 
+    return(NULL)
+  if (term[[1]] == as.name("(")) ## i.e. (blob) but not ( | ) 
+  {return(.parseBars(term[[2]],expand=expand, as_character=as_character))} 
+  if (!is.call(term)) 
+    stop("term must be of class call")
+  if (term[[1]] == as.name("|")) { ## i.e.  .|. expression
+    if (expand) term <- .spMMexpandSlash(term) ## 06/2015
+    if (as_character) {
+      term <- paste("(",c(term),")")
+      attr(term,"type") <- rep("(.|.)",length(term)) ## Random-slope models are not best identified here [(X2-1|block) is not randomslope].
+    } else attr(term,"type") <- rep("(.|.)",length(paste(c(term)))) ## paste is the simplest way to count terms (rather than elements of a single term)
+    # OK b in a sense inconstistent: the type is attr to the vector not to each of its elements. 
+    return(term)
+  } ## le c() donne .|. et non |..
+  if (length(term) == 2) {
+    term1 <- as.character(term[[1]])
+    if (term1 %in% c("adjacency","Matern","AR1","corrMatrix")) {
+      if (as_character) term <- paste(c(term)) ## formats nicely a multiline long RHS
+      attr(term,"type") <- term1
+      return(term) 
+    } else return(NULL) 
+  }
+  bT2 <- .parseBars(term[[2]],expand=expand, as_character=as_character)
+  bT3 <- .parseBars(term[[3]],expand=expand, as_character=as_character)
+  res <- c(bT2, bT3)
+  attr(res,"type") <- c(attr(bT2,"type"),attr(bT3,"type"))
+  return(res)
+}
+
 ## spaces should be as in parseBars because terms can be compared as strings in later code
-.findSpatial <- function (term, which=c("adjacency","Matern","AR1","corrMatrix")) { ## derived from findbars
+.findSpatial <- function (term, expand=FALSE, as_character=FALSE, nomatch=NULL) { ## derived from findbars
+  res <- .parseBars(term, expand=expand, as_character=as_character)
+  if (is.null(nomatch)) {
+    res <- res[attr(res,"type")!="(.|.)"] ## nomatch=NULL removes terms of type "(.|.)" 
+  } else res[attr(res,"type")=="(.|.)"] <- nomatch ## typically sets to nomatch=NA the terms of type "(.|.)" 
+  return(res)
+}
+
+## spaces should be as in parseBars because terms can be compared as strings in later code
+.old_findSpatial <- function (term, which=c("adjacency","Matern","AR1","corrMatrix")) { ## derived from findbars
   if (inherits(term,"formula") && length(term) == 2L) 
-    return(c(NULL,.findSpatial(term[[2]],which=which)))  
+    return(c(NULL,.old_findSpatial(term[[2]],which=which)))  
   ##       c(NULL,...) ensures that the result is always a list of language objects [critical case: term = ~ Matern() , without LHS nor other RHS terms]
   if (is.name(term) || !is.language(term)) 
     return(NULL)
   if (term[[1]] == as.name("(")) ## i.e. (blob) but not ( | )  [update formula can add parenthese aroundspatial terms...]
-    return(.findSpatial(term[[2]],which=which)) 
+    return(.old_findSpatial(term[[2]],which=which)) 
   if (!is.call(term)) 
     stop("term must be of class call")
   if (term[[1]] == as.name("|")) ## i.e. ( | ) expression
@@ -175,40 +212,7 @@ noNonSpatialbarsMM <- function (term) {
       return(term) 
     } else return(NULL) 
   }
-  c(.findSpatial(term[[2]],which=which), .findSpatial(term[[3]],which=which))
-}
-
-
-## findSpatialOrNot replaced by parseBars 11/2014; old code in a R.txt file
-## spaces should be as in findSpatial because terms can be compared as strings in later code
-.parseBars <- function (term) { ## derived from findbars, ... return strings
-  if (inherits(term,"formula") && length(term) == 2L) ## added 2015/03/23
-    return(.parseBars(term[[2]]))  ## process RHS
-  if (is.name(term) || !is.language(term)) 
-    return(NULL)
-  if (term[[1]] == as.name("(")) ## i.e. (blob) but not ( | ) 
-  {return(.parseBars(term[[2]]))} 
-  if (!is.call(term)) 
-    stop("term must be of class call")
-  if (term[[1]] == as.name("|")) { ## i.e.  .|. expression
-    term <- .spMMexpandSlash(term) ## 06/2015
-    bT <- paste("(",c(term),")")
-    attr(bT,"type") <- rep("(.|.)",length(bT)) ## Random-slope models are not best identified here [(X2-1|block) is not randomslope].
-    return(bT)
-  } ## le c() donne .|. et non |..
-  if (length(term) == 2) {
-    term1 <- as.character(term[[1]])
-    if (term1 %in% c("adjacency","Matern","AR1","corrMatrix")) {
-      res <- paste(c(term))
-      attr(res,"type") <- term1
-      return(res) 
-    } else return(NULL) 
-  }
-  bT2 <- .parseBars(term[[2]])
-  bT3 <- .parseBars(term[[3]])
-  res <-c(bT2, bT3)
-  attr(res,"type") <- c(attr(bT2,"type"),attr(bT3,"type"))
-  return(res)
+  c(.old_findSpatial(term[[2]],which=which), .old_findSpatial(term[[3]],which=which))
 }
 
 
@@ -247,7 +251,18 @@ noNonSpatialbarsMM <- function (term) {
                          callargs=list() ## expects a list from callargs, ie match.call of the parent frame, 
                                          ## rather than an element, to avoid premature eval of refs to data variables 
                          ) {
-  envform <- environment(formula)
+  ## 
+  envform <- environment(formula)  
+  ## environment(formula) should be trivial as all vars should be in the data. The comments "f i x m e : Cf comment in .getValidData"
+  #  point to the fact that this is not yet quite so because of a glitch in the CRAN version of Infusion (F I X M E)
+  #  which is why fitting functions have
+  #     mc <- oricall
+  #     oricall$formula <- .stripFormula(formula) ## f i x m e : Cf comment in .getValidData
+  #  where we should have 
+  #     oricall$formula <- .stripFormula(formula) 
+  #     mc <- oricall
+  #  stripping is later made by Predictor()
+  #  The revised Infusion code show how to proceed in programming, cf prior.weights=eval(as.name(priorwName))
   formula <- .asStandardFormula(formula) ## removes spatial tags
   frame.form <- .subbarsMM(formula) ## this comes from lme4 and converts (...|...) terms to some "+" form
   if (!is.null(resid.formula)) {
@@ -268,7 +283,7 @@ noNonSpatialbarsMM <- function (term) {
   mf <- mf[c(1L, m)]
   mf$weights <- callargs$prior.weights
   mf$drop.unused.levels <- TRUE
-  mf[[1L]] <- quote(stats::model.frame)
+  mf[[1L]] <- quote(stats::model.frame) ## somewhat cryptic error message when the data do not contain all required variables
   mf$formula <- frame.form
   mf <- eval(mf)
   return(mf) ## data.frame with many attributes
@@ -296,13 +311,13 @@ noNonSpatialbarsMM <- function (term) {
     formula[[2]] <- as.name(validname) ## now the formula is standard
   }
   ####### first construct a mf for all variables required by the formula (NA would be removed here if they had not been by a previous call to validData)
-  mf <- call("model.frame",data=data) ## it adds the formula argument below....
+  mf <- call("model.frame",data=data) ## language object; we add elements to it:
   frame.form <- .subbarsMM(formula) ## this comes from lme4 and converts (...|...) terms to some "+" form
   environment(frame.form) <- environment(formula)
   mf$formula <- frame.form
   mf$drop.unused.levels <- TRUE
-  fe <- mf ## copy before further modif of mf
-  mf <- eval(mf) ## will contain vars required for fixef and for ranef
+  fe <- mf ## copy language object before eval
+  mf <- eval(mf) ## data.frame with all vars required for fixef and for ranef, and a "terms" attribute
   Y <- model.response(mf, "any")
   Y <- as.vector(Y) ## problem: Y is array1d here if input data frame contains array1d
   ####### Then constructs the design X by evaluating the model frame (fe) with fe$formula <- fixef.form
@@ -310,7 +325,7 @@ noNonSpatialbarsMM <- function (term) {
   fixef.form <- .noOffset_(fixef.form) 
   fixef_levels <- NULL
   fixef_terms <- NULL
-  if (inherits(fixef.form, "formula")) {
+  if (inherits(fixef.form, "formula")) { 
     if ( ! is.null(fitobject)) { ## call for prediction
       fixef_terms <- fitobject$fixef_terms
       not_any_fixed_effect <- (is.null(fixef_terms) ## y ~ (1 | grp)
@@ -349,6 +364,7 @@ noNonSpatialbarsMM <- function (term) {
        wts = NULL, 
        off = NULL, 
        mf = mf, 
+       ## only fixef-related variables, contrary to the attr(mf,"terms): 
        fixef_levels = fixef_levels, ## added 2015/12/09 useful for predict
        fixef_terms = fixef_terms ## added 2015/12/09 useful for predict
        #,  fixef = fixef ## removed 2015/12/09 no clear use

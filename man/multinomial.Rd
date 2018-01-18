@@ -7,7 +7,7 @@
 %- Also NEED an '\alias' for EACH other topic documented here.
 \title{Analyzing multinomial data}
 \description{
-  These functions facilite the conversion and analysis of multinomial data as as series of nested binomial data.
+  These functions facilitate the conversion and analysis of multinomial data as as series of nested binomial data.
   The main function is \code{multi}, to be used in the \code{family} argument of the fitting  functions.
   It calls \code{binomialize}, which can be called directly to check how the data are converted to nested binomial data.
   The \code{fitted.HLfitlist} method of the \code{fitted} generic function returns a matrix of fitted multinomial probabilities.

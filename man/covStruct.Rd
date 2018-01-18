@@ -14,7 +14,7 @@ The covariance structure of a \code{corrMatrix(1|<grouping factor>)} formula ter
 \seealso{\code{\link{pedigree}} for a type of applications where declaring a precision matrix is useful.}
 \examples{
 \dontrun{
-data(blackcap) 
+data("blackcap") 
 # a 'dist' object can be used to specify a corrMatrix:  
 MLdistMat <- MaternCorr(proxy::dist(blackcap[,c("latitude","longitude")]),
                         nu=0.6285603,rho=0.0544659) # a 'dist' object!

@@ -64,7 +64,7 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug,weight_X,w.ranef,H_global_
       BLOB$hatval_Z_ <-  list(lev_lambda=lev_lambda,lev_phi=lev_phi)
     }
     return(BLOB$hatval_Z_)
-  } else if (which=="R_scaled") { ## for logdet_sqrt_d2hdbeta2
+  } else if (which=="R_scaled") { ## for logdet_r22
     return(BLOB$R_scaled)
   } else if (which=="R_scaled_blob") {
     if (is.null(BLOB$R_scaled_blob)) {
@@ -124,7 +124,7 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug,weight_X,w.ranef,H_global_
     if (is.null(BLOB$logdet_R_scaled_v)) BLOB$logdet_R_scaled_v <- sum(log(abs(diag(BLOB$R_R_v))))
     return(BLOB$logdet_R_scaled_v)
   } else if (which=="beta_cov") { 
-    beta_cov <- chol2inv(BLOB$R_scaled)
+    beta_cov <- chol2inv(BLOB$R_scaled) ## actually augmented beta_v_cov as the following shows
     beta_pos <- attr(sXaug,"n_u_h")+seq_len(attr(sXaug,"pforpv"))
     sP_beta_pos <- BLOB$sortPerm[beta_pos]
     beta_cov <- beta_cov[sP_beta_pos,sP_beta_pos,drop=FALSE] * attr(sXaug,"H_global_scale")
@@ -153,7 +153,7 @@ get_from_MME.sXaug_EigenDense_QRP_Chol_scaled <- function(sXaug,which="",szAug=N
                    absdiag_R_v <- .sXaug_EigenDense_QRP_Chol_scaled(sXaug,which="absdiag_R_v")
                    sum(log(sqrt(w.ranef) * absdiag_R_v))
                  },
-                 "logdet_sqrt_d2hdbeta2" = {
+                 "logdet_r22" = {
                    H_global_scale <- attr(sXaug,"H_global_scale")
                    R_scaled <- .sXaug_EigenDense_QRP_Chol_scaled(sXaug,which="R_scaled")
                    absdiag_R_v <- .sXaug_EigenDense_QRP_Chol_scaled(sXaug,which="absdiag_R_v")

@@ -14,7 +14,7 @@
   meth1 <- object$HL
   meth2 <- object2$HL
   if (! identical(object$family[c("family","link")],object2$family[c("family","link")] ) ) {
-    stop("Models are not nested (distinct families)")
+    stop("Models may not be nested (distinct families)") ## but COMpoisson vs poisson ?
   }
   if (! identical(meth1,meth2) || length(REML)>1 ) {
     stop("object fitted by different methods cannot be compared")
@@ -24,14 +24,18 @@
   dX12 <- setdiff(X1,X2)
   dX21 <- setdiff(X2,X1)
   if (length(dX12)>0 && length(dX21)>0) {
-    stop("Non-nested fixed-effect models")
+    warning("Fixed-effect models may not be nested") # F I X M E : correct detection of non-nested models
   } else if (length(dX12)>0) {
     Xnest <- "2in1"
   } else if (length(dX21)>0) {
     Xnest <- "1in2"
   } else Xnest <- NULL
-  ranterms1 <- attr(object$ZAlist,"ranefs")
-  ranterms2 <- attr(object2$ZAlist,"ranefs")
+  if (object$spaMM.version < "2.2.116") {
+    ranterms1 <- attr(object$ZAlist,"ranefs")
+  } else ranterms1 <- attr(object$ZAlist,"exp_ranef_strings")
+  if (object2$spaMM.version < "2.2.116") {
+    ranterms2 <- attr(object2$ZAlist,"ranefs")
+  } else ranterms2 <- attr(object2$ZAlist,"exp_ranef_strings")
   randist1 <- lapply(object$rand.families, function(v) paste(paste(v)[1:2],collapse="")) ## makes a string from each $family and $link 
   randist2 <- lapply(object2$rand.families, function(v) paste(paste(v)[1:2],collapse="")) ## makes a string from each $family and $link 
   ranterms1 <- paste(ranterms1,randist1) ## joins each term and its distrib
@@ -57,15 +61,15 @@
     if (!is.null(Rnest)) {
       lambda.object <- object$lambda.object
       if (!is.null(lambda.object)) df1 <- df1+length(unlist(lambda.object$coefficients_lambdaS))
-      cov.mats <- object$cov.mats
-      if ( ! is.null(cov.mats)) {
+      cov.mats <- .get_compact_cov_mats(object$strucList)
+      if (length(cov.mats)) {
         nrows <- unlist(lapply(cov.mats,NROW))
         df1 <- df1+sum(nrows*(nrows-1)/2)
       }
       lambda.object <- object2$lambda.object
       if (!is.null(lambda.object)) df2 <- df2+length(unlist(lambda.object$coefficients_lambdaS))
-      cov.mats <- object2$cov.mats
-      if ( ! is.null(cov.mats)) {
+      cov.mats <- .get_compact_cov_mats(object2$strucList)
+      if ( length(cov.mats)) {
         nrows <- unlist(lapply(cov.mats,NROW))
         df2 <- df2+sum(nrows*(nrows-1)/2)
       }
@@ -109,7 +113,8 @@
   return(list(fullfit=fullm,nullfit=nullm,test_obj=testlik,df=df))
 }
 
-LRT <- function(object,object2,boot.repl=0,nb_cores=NULL) { ## compare two HM objects
+# (fixme?) : create as.lm method for HLfit object?
+LRT <- function(object,object2,boot.repl=0,nb_cores=NULL,...) { ## compare two HM objects
   if (nrow(object$data)!=nrow(object2$data)) {
     stop("models were not both fitted to the same size of dataset.")
   }
@@ -181,7 +186,11 @@ LRT <- function(object,object2,boot.repl=0,nb_cores=NULL) { ## compare two HM ob
 }
 
 ## anova treated as alias for LRT
-anova.HLfit <- function(object,object2,...) {
-  LRT(object,object2,...)
+anova.HLfit <- function(object, object2=NULL, ..., method="") {
+  # if (method=="anova.lm" && is.null(object2)) {
+  #   #identical(fullm$models[c("eta","lambda","phi")],list(eta="etaGLM",lambda="",phi="phiScal"))
+  #   .anova_HLfit_lm(object, ...) ## may now handle factors but not continuosu variance => source in 'ignored' directory
+  # } else 
+    LRT(object,object2, ...)
 }
 

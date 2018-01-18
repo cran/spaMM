@@ -12,8 +12,7 @@
         # points(qchisq(ppoints(filter),1),robustMean * qchisq(ppoints(filter),1),pch=".")   
         if (inherits(robustMean,"try-error")) {
           resu$robustMean <- NA
-          mess <- pastefrom("problem in computation of robustMean.")
-          warning(mess)
+          warning("problem in computation of robustMean.")
         } else resu$robustMean <- robustMean
       }
       resu$meanPosbootLRT <- mean(filter)

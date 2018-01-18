@@ -3,6 +3,54 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 2.3.0}{
+\subsection{NEW FEATURES}{
+\itemize{
+\item Zero-truncated variants of Poisson and negative-binomial families are now implemented.
+\item Models with first-order autoregressive (AR1) random-effects terms are now fitted.
+\item fitme() now fits models with random-coefficient terms, using by default a different strategy than the other fitting functions.
+\item Prediction variance computations extended to most models handled by spaMM, including random-slope models.
+\item The 'ranFix' argument of HLfit(), and similar 'ranPars' or 'fixed' arguments of other functions, 
+      allow a finer control of variance parameters of random effect than before.
+\item predict.HLfit() should be substantially faster in most practical cases, particularly when the 'newdata' have many rows.
+\item Better approximations are implemented for the infinite sums required for fitting COMPoisson models, in particular for low 'nu'.
+\item New extractor get_rankinfo().
+\item Some gains in speed, particularly for fit by sparse-precision algorithms, which also benefit from better memory management for large model matrices. 
+\item Prediction variance computation now take into account uncertainty in the random effect variance for adjacency random effects. 
+}
+}
+\subsection{USER-LEVEL CHANGES}{
+\itemize{
+\item Control of optimizers has been revised, with distinct 'optimizer1D' and 'optimizer' in the spaMM.options(); lower case is now used for 'optimizer' keyword in all user-level code; and minqa::bobyqa() can now be called. See ?spaMM.options for further information.
+\item Argument 'ZALMatrix' of predictor() is deprecated.
+\item Argument 'as_matrix' of get_ZALMatrix() is deprecated.
+\item predict.HLfit() gets a new argument 'blockSize'.
+\item predict.HLfit( . , binding=NA) newly defined to return a vector instead of a one-column matrix. Attributes will differ too.  
+\item Removed dependency on package 'ff'.
+}
+}
+\subsection{FIXED BUGS}{
+\itemize{
+\item Since version 2.0.0, the ranef() extractor did not return "correlated" effects except for random-coefficient models.
+\item Prediction variance computation failed for models involving an adjacency random effect and other random effects. 
+}
+}
+\subsection{SUBSTANTIAL CHANGES TO DOCUMENTATION}{
+\itemize{
+\item Revision of 'help(autoregressive)' following introduction of AR1 models.
+\item Revision of 'help(fitme)' to account for its new features.
+\item New 'help(fixed)' gathering information on how to fix parameter values.
+\item Simplification and updating of documentation pages for fitting functions.
+\item New or updated documentation for 'negbin', 'Tnegbin', 'Poisson', 'Tpoisson' following implementation of the truncated variants.
+}
+}
+\subsection{OTHER CHANGES}{
+\itemize{
+\item Reimplementation of corMatern (forced by effectively backward-incompatible changes in Rcpp) might very slightly change results.
+\item Added '...' argument to LRT(). The function does not yet make anything of it.
+}
+}
+}
 \section{CHANGES UP TO VERSION 2.2.0}{
 \subsection{NEW FEATURES}{
 Widespread improvement in speed for large data sets, thanks to some of the  following changes:
@@ -169,7 +217,7 @@ Widespread improvement in speed for large data sets, thanks to some of the  foll
 \item Some other moderate but noticeable improvements in speed. 
 \item Users no longer need to explicitly request AIC computation when calling the fit of a model. The new extractor function get_any_IC() (or its more conventionnally named alias, AIC()) can be used to compute them from a fitted model object.
 \item Negative binomial response models can be fitted by 'family=negbin()'.
-\item The syntax 'family=COMPoisson()', with unknown 'COMP_nu' parameter, works. This means that COMpoisson() models can now be fitted with unknown values of this parameter, by corrHLfit() or by the new fitme() function. The same is true for the parameter of the 'negbin' family. 
+\item The syntax 'family=COMPoisson()', with unknown 'nu' parameter, works. This means that COMpoisson() models can now be fitted with unknown values of this parameter, by corrHLfit() or by the new fitme() function. The same is true for the parameter of the 'negbin' family. 
 \item Initial or fixed values of the variance of random effects can be controlled independently when there are several random effects.
 \item spaMM_glm() gains a new argument 'strict' for finer control. spaMM_glm.fit() has increased default 'control$maxit'.  
 \item filled.mapMM() now returns a predictor of the response surface. It also gains a new argument 'smoothObject' that takes such a predictor, allowing for faster redrawing.   

@@ -11,7 +11,7 @@ was found to correlate with average allele size (dependent on the number of repe
 at the locus ADCYAP1, encoding a neuropeptide.
 This data set is quite small and ill-suited for separating random-effect variance from residual variance. The likelihood surface for the Matérn model actually has local maxima. 
 }
-\usage{data(blackcap)}
+\usage{data("blackcap")}
 \format{
   The data frame includes 14 observations on the following variables:
   \describe{

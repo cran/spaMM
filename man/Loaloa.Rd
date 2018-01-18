@@ -9,7 +9,7 @@ This data set describes prevalence of infection by the nematode \emph{Loa loa} i
 This is a superset of the data discussed by Diggle and Ribeiro (2007) and Diggle et al. (2007).
 The study investigated the relationship between altitude, vegetation indices, and prevalence of  the parasite. 
 }
-\usage{data(Loaloa)}
+\usage{data("Loaloa")}
 \format{
   The data frame includes 197 observations on the following variables:
   \describe{
@@ -41,7 +41,7 @@ Trop. Med. Parasitol. 101, 499-509.
 }
 \examples{
 
-data(Loaloa)
+data("Loaloa")
 
 ### Variations on the model fit by Diggle et al. 
 ###    on a subset of the Loaloa data
@@ -49,48 +49,48 @@ data(Loaloa)
 ###    and the difference in 'typical' computation times, 
 ###    when fit using corrHLfit() or fitme().
 
-if (spaMM.getOption("example_maxtime")>4.7) {
+if (spaMM.getOption("example_maxtime")>4.2) {
   corrHLfit(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
                    +Matern(1|longitude+latitude),HLmethod="HL(0,1)",
                  data=Loaloa,family=binomial(),ranFix=list(nu=0.5)) 
 }
-if (spaMM.getOption("example_maxtime")>2.2) {
+if (spaMM.getOption("example_maxtime")>1.8) {
   fitme(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
                    +Matern(1|longitude+latitude),method="HL(0,1)",
                  data=Loaloa,family=binomial(),fixed=list(nu=0.5)) 
 }
 
-if (spaMM.getOption("example_maxtime")>7.2) {
+if (spaMM.getOption("example_maxtime")>7.4) {
   corrHLfit(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
             +Matern(1|longitude+latitude),
               data=Loaloa,family=binomial(),ranFix=list(nu=0.5))  
 }
-if (spaMM.getOption("example_maxtime")>3.6) {
+if (spaMM.getOption("example_maxtime")>3.9) {
   fitme(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
             +Matern(1|longitude+latitude),
               data=Loaloa,family=binomial(),fixed=list(nu=0.5),method="REML")
 }
 
 ## Diggle and Ribeiro (2007) assumed (in this package notation) Nugget=2/7:
-if (spaMM.getOption("example_maxtime")>7) {
+if (spaMM.getOption("example_maxtime")>7.2) {
   corrHLfit(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
            +Matern(1|longitude+latitude),
              data=Loaloa,family=binomial(),ranFix=list(nu=0.5,Nugget=2/7))  
 }
-if (spaMM.getOption("example_maxtime")>3.1) {
+if (spaMM.getOption("example_maxtime")>2.8) {
   fitme(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
            +Matern(1|longitude+latitude),method="REML",
              data=Loaloa,family=binomial(),fixed=list(nu=0.5,Nugget=2/7))  
 }
 
 ## with nugget estimation:
-if (spaMM.getOption("example_maxtime")>18.5) {
+if (spaMM.getOption("example_maxtime")>18.1) {
   corrHLfit(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
            +Matern(1|longitude+latitude),
              data=Loaloa,family=binomial(),
              init.corrHLfit=list(Nugget=0.1),ranFix=list(nu=0.5))  
 }
-if (spaMM.getOption("example_maxtime")>5.2) {
+if (spaMM.getOption("example_maxtime")>7.9) {
   fitme(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
            +Matern(1|longitude+latitude),
              data=Loaloa,family=binomial(),method="REML",

@@ -54,7 +54,7 @@ designL.from.Corr(m = NULL, symSVD = NULL, try.chol = TRUE, try.eigen = FALSE,
 ## try.chol argument passed to designL.from.Corr 
 ## through the '...' argument of higher-level functions
 ## such as HLCor, corrHLfit, fixedLRT:
-data(scotlip)
+data("scotlip")
 HLCor(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(expec)),
       ranPars=list(rho=0.174),adjMatrix=Nmatrix,family=poisson(),
       data=scotlip,try.chol=FALSE)

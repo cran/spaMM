@@ -25,63 +25,73 @@
 # .getPar(list("1"=list(a=1,b=2),"2"=list(a=3,c=4)),"d") ## NULL
 
 # LMatrix assumed to be dense
-.calc_invL <- function(object, regul.threshold=1e-7) { ## computes inv(L) [not inv(Corr): see calc_invColdoldList]
-  if (object$spaMM.version<"1.11.57") {
-    strucList <- list(dummyid=attr(object$predictor,"LMatrix")) ## back compat
-  } else strucList <- object$strucList
+.get_invL <- function(object, regul.threshold=1e-7) { ## computes inv(L) [not inv(Corr): see calc_invColdoldList]
+  strucList <- object$strucList
   if ( ! is.null(strucList)) {
-    cum_n_u_h <- attr(object$lambda,"cum_n_u_h")
-    resu <- diag(cum_n_u_h[length(cum_n_u_h)])
-    ranefs <- attr(object$ZAlist,"ranefs") 
-    for (Lit in seq_len(length(strucList))) {
-      lmatrix <- strucList[[Lit]]
-      if ( ! is.null(lmatrix)) {
-        affecteds <- which(ranefs %in% attr(lmatrix,"ranefs"))
-        type <-  attr(lmatrix,"type")
-        condnum <- kappa(lmatrix,norm="1")
-        invlmatrix <- NULL
-        if (type == "from_Q_CHMfactor")  {
-          invlmatrix <- t(as(attr(lmatrix,"Q_CHMfactor"),"sparseMatrix")) ## L=Q^{-T} => invL=Q^T
-        } else if (type == "cholL_LLt")  {
-          if (condnum<1/regul.threshold) {
-            invlmatrix <- try(forwardsolve(lmatrix,diag(ncol(lmatrix))),silent=TRUE)
-            if (inherits(invlmatrix,"try-error")) invlmatrix <- NULL
-          }
-          if (is.null(invlmatrix)) Rmatrix <- t(lmatrix)
-        } else { ## Rcpp's symSVD, or R's eigen() => LDL (also possible bad use of R's svd, not normally used)
-          if (condnum<1/regul.threshold) {
-            decomp <- attr(lmatrix,attr(lmatrix,"type")) ## of corr matrix !
-            if ( all(abs(decomp$d) > regul.threshold) ) {
-              invlmatrix <-  try(.ZWZt(decomp$u,sqrt(1/decomp$d)),silent=TRUE)
+    if (is.null(object$envir$invL)) {
+      cum_n_u_h <- attr(object$lambda,"cum_n_u_h")
+      resu <- diag(cum_n_u_h[length(cum_n_u_h)])
+      if (object$spaMM.version < "2.2.116") {
+        ranefs <- attr(object$ZAlist,"ranefs") 
+      } else ranefs <- attr(object$ZAlist,"exp_ranef_strings") 
+      for (Lit in seq_len(length(strucList))) {
+        lmatrix <- strucList[[Lit]]
+        if ( ! is.null(lmatrix)) {
+          affecteds <- which(ranefs %in% attr(lmatrix,"ranefs"))
+          type <-  attr(lmatrix,"type")
+          condnum <- kappa(lmatrix,norm="1")
+          invlmatrix <- NULL
+          if ( ! is.null(latentL_blob <- attr(lmatrix,"latentL_blob"))) { ## from .process_ranCoefs
+            compactchol_Q <- latentL_blob$compactchol_Q 
+            if (is.null(compactchol_Q)) {
+              invlmatrix <- .makelong(solve(latentL_blob$u),longsize=ncol(lmatrix),as_matrix=TRUE)
+            } else invlmatrix <- .makelong(t(compactchol_Q),longsize=ncol(lmatrix),as_matrix=TRUE) ## L=Q^{-T} => invL=Q^T
+            # as_matrix necessary for resu[u.range, u.range] <- invlmatrix
+          } else if (type == "from_Q_CHMfactor")  {
+            invlmatrix <- t(as(attr(lmatrix,"Q_CHMfactor"),"sparseMatrix")) ## L=Q^{-T} => invL=Q^T
+            invlmatrix <- as.matrix(invlmatrix) ## for [<-.matrix
+          } else if (type == "cholL_LLt")  {
+            if (condnum<1/regul.threshold) {
+              invlmatrix <- try(forwardsolve(lmatrix,diag(ncol(lmatrix))),silent=TRUE)
               if (inherits(invlmatrix,"try-error")) invlmatrix <- NULL
             }
+            if (is.null(invlmatrix)) Rmatrix <- t(lmatrix)
+          } else { ## Rcpp's symSVD, or R's eigen() => LDL (also possible bad use of R's svd, not normally used)
+            if (condnum<1/regul.threshold) {
+              decomp <- attr(lmatrix,attr(lmatrix,"type")) ## of corr matrix !
+              if ( all(abs(decomp$d) > regul.threshold) ) {
+                invlmatrix <-  try(.ZWZt(decomp$u,sqrt(1/decomp$d)),silent=TRUE)
+                if (inherits(invlmatrix,"try-error")) invlmatrix <- NULL
+              }
+            }
+            if (is.null(invlmatrix)) Rmatrix <- qr.R(qr(t(lmatrix))) 
           }
-          if (is.null(invlmatrix)) Rmatrix <- qr.R(qr(t(lmatrix))) 
-        }
-        if (is.null(invlmatrix)){
-          # chol2inv is quite robust in the sens of not stopping, even without any regularization.
-          # Nevertheless (1) lmatrix %*% invlmatrix may be only roughly = I:
-          #   if we don't regularize we expect departures from I due to numerical precision;
-          #   if we regularize we expect departures from I even with exact arithmetic...
-          #              (2) unregul. chol2inv result may still cause problems in later computations ?
-          singular <- which(abs(diag(Rmatrix))<regul.threshold) 
-          if (length(singular)>0L) {
-            if (spaMM.getOption("wRegularization")) warning("regularization required.")
-            nc <- ncol(Rmatrix)
-            diagPos <- seq.int(1L,nc^2,nc+1L)[singular]
-            Rmatrix[diagPos] <- sign(Rmatrix[diagPos])* regul.threshold
+          if (is.null(invlmatrix)){
+            # chol2inv is quite robust in the sens of not stopping, even without any regularization.
+            # Nevertheless (1) lmatrix %*% invlmatrix may be only roughly = I:
+            #   if we don't regularize we expect departures from I due to numerical precision;
+            #   if we regularize we expect departures from I even with exact arithmetic...
+            #              (2) unregul. chol2inv result may still cause problems in later computations ?
+            singular <- which(abs(diag(Rmatrix))<regul.threshold) 
+            if (length(singular)) {
+              if (spaMM.getOption("wRegularization")) warning("regularization required.")
+              nc <- ncol(Rmatrix)
+              diagPos <- seq.int(1L,nc^2,nc+1L)[singular]
+              Rmatrix[diagPos] <- sign(Rmatrix[diagPos])* regul.threshold
+            }
+            invLLt <- chol2inv(Rmatrix) ## 
+            invlmatrix <- crossprod(lmatrix, invLLt) ## regularized (or not) solve(lmatrix)
           }
-          invLLt <- chol2inv(Rmatrix) ## 
-          invlmatrix <- crossprod(lmatrix, invLLt) ## regularized (or not) solve(lmatrix)
+          for (it in affecteds) {
+            u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
+            resu[u.range,u.range] <- invlmatrix   ## FR->FR it would be more eficcent to maintain a block structure here ?
+            # but this allows an lmatrix to affect several rand effects
+          }  
         }
-        for (it in affecteds) {
-          u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
-          resu[u.range,u.range] <- invlmatrix   ## FR->FR it would be more eficcent to maintain a block structure here ?
-          # but this allows an lmatrix to affect several rand effects
-        }  
       }
+      object$envir$invL <- resu
     }
-    return(resu)
+    return(object$envir$invL)
   } else return(NULL)
 }
 
@@ -91,12 +101,12 @@
 ## fitted= X.beta + ZLv where we want to be able to write Lv as Cw = L.L'.w 
 # => w = inv(L').v
 .calc_invL_coeffs <- function(object,newcoeffs) { ##replaces dv/dloglan  by dw/dloglam
-  if (object$spaMM.version<"1.11.57") {
-    strucList <- list(dummyid=attr(object$predictor,"LMatrix")) ## back compat
-  } else strucList <- object$strucList
+  strucList <- object$strucList
   if ( ! is.null(strucList)) {
     cum_n_u_h <- attr(object$lambda,"cum_n_u_h") ## FIXME: avoid using object$lambda
-    ranefs <- attr(object$ZAlist,"ranefs") 
+    if (object$spaMM.version < "2.2.116") {
+      ranefs <- attr(object$ZAlist,"ranefs") 
+    } else ranefs <- attr(object$ZAlist,"exp_ranef_strings") 
     for (Lit in seq_len(length(strucList))) {
       lmatrix <- strucList[[Lit]]
       if (! is.null(lmatrix)) { ## spatial or random-coef
@@ -159,46 +169,40 @@ residuals.HLfit <- function(object, type = c("deviance", "pearson", "response"),
 ranef.HLfit <- function(object,type="correlated",...) {
   object <- .getHLfit(object)
   lambda.object <- object$lambda.object
-  namesTerms <- lambda.object$namesTerms
-  repGroupNames <- unlist(lapply(seq_len(length(namesTerms)), function(it) {
-    names(namesTerms[[it]]) <- rep(names(namesTerms)[it],length(namesTerms[[it]]))
+  print_namesTerms <- lambda.object$print_namesTerms
+  repGroupNames <- unlist(lapply(seq_len(length(print_namesTerms)), function(it) {
+    names(print_namesTerms[[it]]) <- rep(names(print_namesTerms)[it],length(print_namesTerms[[it]]))
   })) ## makes group identifiers unique (names of coeffs are unchanged)
   if (type=="correlated") {
     uv_h <- object$v_h 
   } else uv_h <- object$ranef #random effects \eqn{u}
   cum_n_u_h <- attr(object$ranef,"cum_n_u_h")
-  ranefs <- attr(object$ZAlist,"ranefs")
+  if (object$spaMM.version < "2.2.116") {
+    ranefs <- attr(object$ZAlist,"ranefs") 
+  } else ranefs <- attr(object$ZAlist,"exp_ranef_strings") 
   colNames <- lapply(object$ZAlist,"colnames")
-  if (object$spaMM.version<"1.11.57") {
-    strucList <- list(dummyid=attr(object$predictor,"LMatrix")) ## back compat
-  } else strucList <- object$strucList
-  locfn <- function(it) {
-    #cat(paste(nams[it], " (", cum_n_u_h[it + 1]-cum_n_u_h[it], " levels)\n",sep=""))    
+  # compute Lv from v:
+  strucList <- object$strucList
+  RESU <- vector("list", length(ranefs))
+  for (it in seq_along(ranefs)) {
     u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
-    #cat(ranefs[[it]], ":\n")    
-    if (length(namesTerms[[it]])>1L) { #" random-coef term
-      n_cols <- length(colNames[[it]])/length(namesTerms[[it]])
-      if (is.null(strucList[[it]]) || type!="correlated") {
-        #cat(" (colnames are group levels):\n")resu
-        res <- structure(matrix(uv_h[u.range],ncol=n_cols,byrow=TRUE),dimnames=list(NULL,colNames[[it]][1:n_cols]))
-        #print(res)
-        res
-        #cat('use ranef(*,type="correlated") to obtain the random coefficients.\n')
+    res <- uv_h[u.range] # vector
+    if (length(print_namesTerms[[it]])>1L) { # random-coef term
+      n_cols <- length(colNames[[it]])/length(print_namesTerms[[it]])
+      if (type == "correlated") {
+        res <- strucList[[it]] %*% res ## matrix
+        res <- structure(res, dimnames=list(colNames[[it]][1:n_cols], print_namesTerms[[it]]))
       } else {
-        uv_h[u.range] <- strucList[[it]] %*% uv_h[u.range]
-        res <- structure(matrix(uv_h[u.range],nrow=n_cols,byrow=FALSE),dimnames=list(colNames[[it]][1:n_cols],namesTerms[[it]]))
-        #print(res)
-        res
+        res <- structure(matrix(res, ncol=n_cols,byrow=TRUE), dimnames= list(NULL, colNames[[it]][1:n_cols])) ## matrix
       }
     } else {
-      #print(uv_h[u.range])
-      res <- uv_h[u.range]
+      if (type == "correlated" && ! is.null(strucList[[it]])) {
+        res <- as.vector(strucList[[it]] %*% res) ## vector
+      } 
       names(res) <- colNames[[it]]
-      res
     }
+    RESU[[it]] <- res
   }
-  RESU <- lapply(seq_len(length(ranefs)), locfn)
-  #if (is.null(strucList)) cat("stored as the row vector <object>$v_h")
   names(RESU) <- ranefs
   RESU
 }
@@ -215,10 +219,10 @@ logLik.HLfit <- function(object, which=NULL, ...) {
     mess <- .REMLmess(object)
     which <- switch(mess, 
                     "by stochastic EM."= "logLapp",
-                    "by ML approximation (p_v)."= "p_v",
+                    "by Laplace ML approximation (p_v)."= "p_v",
                     "by h-likelihood approximation."= "p_v",
                     "by ML."= "p_v",
-                    "by REML approximation (p_bv)."= "p_bv",
+                    "by Laplace REML approximation (p_bv)."= "p_bv",
                     "by REML."= "p_bv",
                     "by non-standard REML"= "p_bv",
                     stop(paste("No default '",which,"' value for '",mess,"' estimation method.",sep=""))
@@ -237,7 +241,7 @@ vcov.HLfit <- function(object,...) {
 }
 
 .get_beta_cov_any_version <- function(object) {
-  beta_cov <- object$beta_cov
+  beta_cov <- object$beta_cov ## set by HLfit using get_from_MME(, which="beta_cov")
   if (is.null(beta_cov)) {
     return(.get_beta_cov(object))
   } else return(beta_cov)
@@ -246,9 +250,7 @@ vcov.HLfit <- function(object,...) {
 # addition post 1.4.4
 Corr <- function(object,...) { ## compare ?VarCorr
   trivial <- "No non-trivial correlation matrix for this random effect"
-  if (object$spaMM.version<"1.11.57") {
-    strucList <- list(dummyid=attr(object$predictor,"LMatrix")) ## back compat
-  } else strucList <- object$strucList
+  strucList <- object$strucList
   locfn <- function(it) {
     resu <- object$cov.mats[[it]]
     if (is.null(resu)) resu <- .tcrossprod(strucList[[it]],NULL)
@@ -321,7 +323,7 @@ get_any_IC <- function(object,...,verbose=interactive()) {
   if (!is.null(info_crits$GoFdf)) likelihoods <- c(likelihoods,"       effective df:"=info_crits$GoFdf)
   if (verbose) {
     astable <- as.matrix(likelihoods)
-    utils::write.table(format(astable, justify="right"), col.names=FALSE, quote=FALSE) 
+    write.table(format(astable, justify="right"), col.names=FALSE, quote=FALSE) 
   }
   invisible(likelihoods)
 }
@@ -337,9 +339,11 @@ get_RLRTSim_args <- function(object,...) {
   }
   X.pv <- as.matrix(object$X.pv)
   qrX.pv <- qr(X.pv)
-  ZAL <- get_ZALMatrix(object,as_matrix=TRUE)
+  ZAL <- get_ZALMatrix(object)
+  if(inherits(ZAL,"Matrix")) ZAL <- as.matrix(ZAL)
   sqrt.s <- diag(ncol(ZAL))
   return(list(X=X.pv, Z=ZAL, qrX = qrX.pv, sqrt.Sigma=sqrt.s))
 }
 # get_dispVar : dispVar in not a returned attribute
 
+get_rankinfo <- function(object) return(attr(object$X.pv,"rankinfo")) 

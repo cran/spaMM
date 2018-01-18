@@ -37,7 +37,7 @@
     family <- .checkRespFam(family)
     FHF <- formals(HLfit) ## makes sure about default values 
     names_FHF <- names(FHF)
-    if ( ! is.null(mc$resid.formula)) mc$resid.model <- mc$resid.formula
+    #if ( ! is.null(mc$resid.formula)) mc$resid.model <- mc$resid.formula
     names_nondefault  <- intersect(names(mc),names_FHF) ## mc including dotlist
     FHF[names_nondefault] <- mc[names_nondefault] ##  full HLfit args
     preprocess.formal.args <- FHF[which(names_FHF %in% names(formals(.preprocess)))] 
@@ -47,6 +47,8 @@
     preprocess.formal.args$predictor <- FHF$formula ## because preprocess stll expects $predictor 
     preprocess.formal.args$ranFix <- fixed ## because preprocess expects ranFix
     preprocess.formal.args$adjMatrix <- mc$adjMatrix ## because adjMatrix not in formals(HLfit)
+    preprocess.formal.args$corrMatrix <- mc$corrMatrix ## because corrMatrix not in formals(HLfit)    #
+    preprocess.formal.args$covStruct <- mc$covStruct ## because covStruct not in formals(HLfit)    #
     preprocess.formal.args$HLmethod <- HLmethod ## forces evaluation
     #
     if ( identical(family$family,"multi")) {
@@ -64,6 +66,7 @@
       }     
     }
     mc$processed <- do.call(.preprocess,preprocess.formal.args,envir=parent.frame(1L))
+    #mc$ranFix$ranCoefs <- NULL ## but new ranFix can be added by fitme/corrHLfit
     ## removing all elements that are matched in processed:
     pnames <- c("data","family","formula","prior.weights","HLmethod","rand.family","control.glm","resid.formula","REMLformula",
                 "resid.model", "verbose")
@@ -88,15 +91,11 @@
                   processed=NULL, 
                   ... 
 ) {
-  spaMM.options(spaMM_glm_conv_crit=list(max=-Inf),COMP_maxn_warned=FALSE,COMP_geom_approx_warned=FALSE)
+  spaMM.options(spaMM_glm_conv_crit=list(max=-Inf))
   time1 <- Sys.time()
-  oricall <- mc <- match.call(expand.dots=TRUE) ## mc including dotlist
-  oricall$formula <- .stripFormula(formula)
-  if ( ! is.null(form <- resid.model$formula)) {
-    # cf comments in corrHLfit wrt to next lines
-    resid.model$formula <- .stripFormula(form)
-    oricall$resid.model <- resid.model
-  }
+  oricall <- match.call(expand.dots=TRUE) ## mc including dotlist
+  mc <- oricall
+  oricall$formula <- .stripFormula(formula) ## f i x m e : Cf comment in .getValidData
   mc[[1L]] <- .def_call_fitme_body
   mc <- eval(mc,parent.frame())  
   hlcor <- eval(mc,parent.frame()) 
@@ -124,15 +123,11 @@ fitme <- function(formula,data, ## matches minimal call of HLfit
                   processed=NULL, 
                   ... 
 ) {
-  spaMM.options(spaMM_glm_conv_crit=list(max=-Inf),COMP_maxn_warned=FALSE,COMP_geom_approx_warned=FALSE)
+  spaMM.options(spaMM_glm_conv_crit=list(max=-Inf))
   time1 <- Sys.time()
-  oricall <- mc <- match.call(expand.dots=TRUE) ## mc including dotlist
-  oricall$formula <- .stripFormula(formula)
-  if ( ! is.null(form <- resid.model$formula)) {
-    # cf comments in corrHLfit wrt to next lines
-    resid.model$formula <- .stripFormula(form)
-    oricall$resid.model <- resid.model
-  }
+  oricall <- match.call(expand.dots=TRUE) ## mc including dotlist
+  mc <- oricall
+  oricall$formula <- .stripFormula(formula) ## f i x m e : Cf comment in .getValidData
   ## Preventing confusions
   if ( missing(HLmethod)) {
     HLmethod <- method
@@ -158,7 +153,7 @@ fitme <- function(formula,data, ## matches minimal call of HLfit
     family <- .checkRespFam(family)
     FHF <- formals(HLfit) ## makes sure about default values 
     names_FHF <- names(FHF)
-    if ( ! is.null(mc$resid.formula)) mc$resid.model <- mc$resid.formula
+    #if ( ! is.null(mc$resid.formula)) mc$resid.model <- mc$resid.formula
     names_nondefault  <- intersect(names(mc),names_FHF) ## mc including dotlist
     FHF[names_nondefault] <- mc[names_nondefault] ##  full HLfit args
     preprocess.formal.args <- FHF[which(names_FHF %in% names(formals(.preprocess)))] 
@@ -168,6 +163,11 @@ fitme <- function(formula,data, ## matches minimal call of HLfit
     preprocess.formal.args$predictor <- FHF$formula ## because preprocess stll expects $predictor 
     preprocess.formal.args$ranFix <- fixed ## because preprocess expects ranFix
     preprocess.formal.args$adjMatrix <- mc$adjMatrix ## because adjMatrix not in formals(HLfit)
+    preprocess.formal.args$corrMatrix <- mc$corrMatrix ## because corrMatrix not in formals(HLfit)    #
+    preprocess.formal.args$covStruct <- mc$covStruct ## because covStruct not in formals(HLfit)    #
+    preprocess.formal.args$uniqueGeo <- mc$uniqueGeo ## because uniqueGeo not in formals(HLfit)    #
+    preprocess.formal.args$distMatrix <- mc$distMatrix ## because distMatrix not in formals(HLfit)    #
+    preprocess.formal.args[["control.dist"]] <- control.dist ## because control.dist not in formals(HLfit)    #
     preprocess.formal.args$HLmethod <- HLmethod ## forces evaluation
     #
     if ( identical(family$family,"multi")) {
@@ -185,9 +185,11 @@ fitme <- function(formula,data, ## matches minimal call of HLfit
       }     
     }
     mc$processed <- do.call(.preprocess,preprocess.formal.args,envir=parent.frame(1L))
+    oricall$resid.model <- mc$processed$residModel
+    #mc$ranFix$ranCoefs <- NULL ## but new ranFix can be added by fitme/corrHLfit
     ## removing all elements that are matched in processed:
     pnames <- c("data","family","formula","prior.weights","HLmethod","rand.family","control.glm","resid.formula","REMLformula",
-                "resid.model", "verbose")
+                "resid.model", "verbose","distMatrix","uniqueGeo","adjMatrix") 
     for (st in pnames) mc[st] <- NULL 
   }  
   
@@ -198,8 +200,7 @@ fitme <- function(formula,data, ## matches minimal call of HLfit
   attr(hlcor,"HLCorcall") <- NULL
   #class(hlcor) <- c(class(hlcor,"fitme"))
   lsv <- c("lsv",ls())
-  if ( ! identical(paste(family[[1L]]),"multi")
-       && ! identical(.getProcessed(processed,"verbose",from=1L)["getCall"],TRUE))  hlcor$fit_time <- .timerraw(time1)
+  if ( ! identical(paste(family[[1L]]),"multi") && ! is.call(hlcor) )  hlcor$fit_time <- .timerraw(time1)
   rm(list=setdiff(lsv,"hlcor")) ## empties the whole local envir except the return value
   return(hlcor)
 }

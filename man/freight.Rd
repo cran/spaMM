@@ -8,7 +8,7 @@
 1000 ampules of some substance. For each shipment, the number of ampules found broken upon arrival, and the number of times the shipments were transferred from one aircraft to another, are recorded.
 }
 \usage{
-data(freight)
+data("freight")
 }
 \format{
  The data frame includes 10 observations on the following variables:

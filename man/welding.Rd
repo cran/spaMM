@@ -32,7 +32,7 @@ quality control. Nagoya, Japan: Central Japan
 Quality Control Association.
 }
 \examples{
-data(welding)
+data("welding")
 ## toy example from Smyth et al.
 HLfit(Strength ~ Drying + Material,resid.model = ~ Material+Preheating ,data=welding)
 ## toy example of overparameterized model

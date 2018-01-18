@@ -1,11 +1,12 @@
 .HL_process.args <- function (...) { ## from gsl package
   a <- list(...)
-  attr <- attributes(a[[which.max(unlist(lapply(a, length)))]])
+  #attr <- attributes(a[[which.max(unlist(lapply(a, length)))]])
   a <- lapply(a, as.vector)
   out <- do.call(rbind, a)
   out <- list(`1`=out[1,],`2`=out[2,]) ## == out <- split(out, row(out)) but profiling shows the latter is slow
   names(out) <- paste("arg", 1:length(a), sep = "")
-  return(c(out, attr = list(attr)))
+  #return(c(out, attr = list(attr)))
+  return(out)
 }
 
 .HL_strictify <- function (val, status) { ## from gsl package
@@ -14,53 +15,28 @@
 }
 
 .bessel_lnKnu <- function (nu, x, give = FALSE, strict = TRUE) { ## from bessel_lnKnu in gsl package
-    jj <- .HL_process.args(nu, x)
+    jj <- .HL_process.args(nu, x) ## converts (nu, distance matrice to (nu vector, distance vector)
     nu.vec <- jj$arg1
     x.vec <- jj$arg2
-    attr <- jj$attr
-    jj <- .C("bessel_lnKnu_e", as.double(nu.vec), as.double(x.vec), 
-        as.integer(length(x.vec)), val = as.double(x.vec), err = as.double(x.vec), 
-        status = as.integer(0 * x.vec), PACKAGE = "spaMM")
+    if (give) attr <- jj$attr
+    jj <- .bessel_lnKnu_e(jj$arg1,jj$arg2)
     val <- jj$val
     err <- jj$err
     status <- jj$status
-    attributes(val) <- attr
-    attributes(err) <- attr
-    attributes(status) <- attr
-    if (strict) {
-        val <- .HL_strictify(val, status)
-    }
+    if (strict) val <- .HL_strictify(val, status)
+    attributes(val) <- attributes(x) ## FIXME is this useful here ?
     if (give) {
-        return(list(val = val, err = err, status = status))
-    }
-    else {
-        return(val)
+      attributes(status) <- attr
+      attributes(err) <- attr
+      return(list(val = val, err = err, status = status))
+    } else {
+      return(val)
     }
 }
 
 "MaternCorr" <- function(d, rho=1, smoothness, nu=smoothness, Nugget=0L) UseMethod("MaternCorr") 
 
 Matern.corr <- MaternCorr ## for back compat as it is in spMMjob.R
-
-MaternCorr.ff <- function (d, rho=1, smoothness, nu=smoothness, Nugget=0L) { ## rho is alpha in fields
-  ## ideally (but not necess) on a 'dist' so the diagonal is not  manipulated 
-    if (any(d[] < 0)) 
-        stop("distance argument must be nonnegative")
-    dscal <- ff::ff(vmode="double",dim=dim(d))
-    dscal[] <- d[] * rho
-    isd0 <- d[] == 0L ## regular matrix
-    dscal[][isd0] <- 1e-10 ## avoids errors on distance =0; but the resulting corrvals can be visibly < 1 for small nu ## FR->FR make value dependent on rho, nu ?
-    logcon <- (nu - 1)*log(2)+ lgamma(nu) 
-    corrvals <- ff::ff(vmode="double",dim=dim(d))
-    ## bessel_lnKnu -> various local copies -> memory issues
-    for (it in seq(nrow(corrvals))) corrvals[it,] <- - logcon + nu*log(dscal[it,])+ .bessel_lnKnu(x=dscal[it,], nu=nu) ## 
-    corrvals[] <- exp(corrvals[]) 
-    corrvals[][!isd0] <- (1-Nugget)* corrvals[][!isd0]
-    corrvals[][isd0] <- 1 ## 
-    corrvals[][corrvals[] < 1e-16] <- 0L ## an attempt to deal with problem in chol/ldl/svd which don't like 'nearly-identity' matrices
-    attr(corrvals,"corr.model") <- "Matern"
-    return(corrvals)
-}
 
 MaternCorr.default <- function (d, rho=1, smoothness, nu=smoothness, Nugget=0L) { ## rho is alpha in fields
   ## ideally (but not necess) on a 'dist' so the diagonal is not  manipulated 
@@ -115,7 +91,7 @@ if (F) {
     if (try.chol) {
       L <- try(.Cholwrap(m),silent=TRUE)
       if (inherits(L,"try-error")) {
-        mreg <- m *(1-1e-8)
+        mreg <- m *(1-1e-08)
         diag(mreg) <- diag(mreg) + 1e-8 * diag(m) ## allows covMatrix; diag(m) has 1's if m is correlation matrix
         L <- try(.Cholwrap(mreg),silent=TRUE)
       } 
@@ -199,31 +175,22 @@ if (F) {
 make_scaled_dist <- function(uniqueGeo,uniqueGeo2=NULL,distMatrix,rho,rho.mapping=seq_len(length(rho)),
                                dist.method="Euclidean",return_matrix=FALSE) {
   if (length(rho)>1L && dist.method!="Euclidean") { 
-    mess <- pastefrom("'rho' length>1 not allowed for non-Euclidean distance.",prefix="(!) From ")
-    stop(mess)
+    stop("'rho' length>1 not allowed for non-Euclidean distance.")
   }
   if ( missing(distMatrix) ) { ## ## then provide it (most of this fn's code)
     if ( missing(uniqueGeo) ) {
-      mess <- pastefrom("missing(distMatrix) && missing(uniqueGeo).",prefix="(!) From ")
-      stop(mess)
+      stop("missing(distMatrix) && missing(uniqueGeo).")
     } 
     distnrow <- nrow(uniqueGeo)
     distncol <- NROW(uniqueGeo2)
     scaled.dist <- NULL
-    if ( distnrow*distncol > spaMM.getOption("ff_threshold") ) {
-      if (requireNamespace("ff",quietly=TRUE)) {
-        scaled.dist <- ff::ff( vmode ="double", dim=c(distnrow,distncol))
-      } else message("Package 'ff' for large matrices may be needed but is not installed.")
-    }
     if (dist.method=="Euclidean") {
       if (length(rho)==1L) {
         uniqueScal <- uniqueGeo * rho 
       } else if (ncol(uniqueGeo)==length(rho.mapping)) {
         uniqueScal <- t(t(uniqueGeo) * rho[rho.mapping]) ## valid for vectorial rho...
       } else {
-        mess <- pastefrom("invalid length(rho[rho.mapping]).",prefix="(!) From ")
-        print(mess)
-        mess  <- paste("Length should be either 1 or",ncol(uniqueGeo))
+        mess  <- paste("Invalid length(rho[rho.mapping]). Length should be either 1 or",ncol(uniqueGeo))
         stop(mess)
       }
       if (! is.null(uniqueGeo2)) {

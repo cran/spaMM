@@ -19,7 +19,7 @@
       ## checks whether a previous resglm was computed for adjacency model  
       glm_lambda <- calcRanefPars_blob$glm_lambda
       if ( ! is.null(glm_lambda)) { ## includes this adjacency fit
-        done <- attr(glm_lambda,"whichrand") ## index according to ordering of attr(ZAlist,"ranefs")
+        done <- attr(glm_lambda,"whichrand") ## index according to ordering of attr(ZAlist,"exp_ranef_strings")
         resglm_lambdaS[["adjacency_from_calcRanefPars_blob"]] <- glm_lambda
         print_lambdas[attr(glm_lambda,"whichrand")] <- predict(glm_lambda,newdata=data.frame("X.Intercept."=1,adjd=0),type="response")[1L] ## le [1L] en cas d'offset... 
       } else done <- NULL

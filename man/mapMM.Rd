@@ -139,7 +139,7 @@ By contrast, \bold{filled.mapMM} handles arguments which are language expression
 }
 \seealso{\url{http://kimura.univ-montp2.fr/~rousset/spaMM/example_raster.html} for more elaborate plot procedures.}
 \examples{
-data(blackcap)
+data("blackcap")
 bfit <- corrHLfit(migStatus ~ means+ Matern(1|longitude+latitude),data=blackcap,
                   HLmethod="ML",
                   ranFix=list(lambda=0.5537,phi=1.376e-05,rho=0.0544740,nu=0.6286311))
@@ -159,7 +159,7 @@ if (spaMM.getOption("example_maxtime")>0.8) {
 }
 
 if (spaMM.getOption("example_maxtime")>2.5) {
- data(Loaloa)  
+ data("Loaloa")  
  lfit <- corrHLfit(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
                   +Matern(1|longitude+latitude),HLmethod="HL(0,1)",data=Loaloa,
                   family=binomial(),ranFix=list(nu=0.5,rho=2.255197,lambda=1.075))   

@@ -8,9 +8,9 @@
   and the variance of the residual error. The linear predictor is of the 
   standard form \code{offset+ X beta + Z b}, where 
   X is the design matrix of fixed effects and Z is a design matrix of random effects.   
-  The function also handles a linear predictor (with only fixed effects) for the residual variance.\cr
+  The function also handles modelling of the residual variance.\cr
   \code{HLfit} uses iterative algorithms that may be slow in some applications, in which case it is worth considering the \code{\link{fitme}} function.
-  \code{fitme} and \code{corrHLfit} act by calling \code{HLfit} for different values of random effect parameters or residual dispersion parameters. 
+  \code{fitme} and \code{corrHLfit} act by optimizing the likelihood of \code{HLfit} fits for different values of random effect parameters or residual dispersion parameters, with distinct usage of the iterative methods implemented in HLfit: \code{fitme} rests more of generic optimization, while \code{corrHLfit} rests more on iterative methods for estimating variance parameters. 
 }
 \usage{
 HLfit(formula, data, family = gaussian(), rand.family = gaussian(), 
@@ -29,10 +29,7 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
      A data frame containing the variables named in the model formula.  
 }
   \item{family}{
-   A \code{family} object describing the distribution of the response variable. 
-   Possible values include the \code{gaussian}, \code{poisson}, \code{binomial}, \code{Gamma}, \code{negbin} and 
-   \code{COMPoisson} families. Possible combinations of family and link are those allowed by each of these families
-   (see \code{\link{family}} for the first four, and specific documentation pages for the last two).
+   A \code{family} object describing the distribution of the response variable. See Details in \code{\link{spaMM}} for handled families.
 }
   \item{rand.family}{
   A \code{family} object describing the distribution of the random effect, or a \code{list} of 
@@ -77,9 +74,9 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
 
   \code{resid.family} allows one to change the link for modeling of residual variance \eqn{\phi}, which is \code{"log"} by default. The family is always Gamma, so the non-default possible values of \code{resid.family} are \code{Gamma(identity)} or \code{Gamma(inverse)}. Only the default value ensures that the fitted \eqn{\phi} is positive.     
 
-  Controls for the fitting algorithms should be ignored in routine use. They are
-%
-  \code{conv.threshold} and \code{spaMM_tol}: \code{spaMM_tol} is a list of tolerance values, with elements \code{Xtol_rel} and \code{Xtol_abs} that define thresholds for relative and absolute changes in parameter values in iterative algorithms (used in tests of the form dQuote{d(param)< Xtol_rel * param + Xtol_abs}, so that \code{Xtol_abs} is operative only for small parameter values). \code{conv.threshold} is the older way to control \code{Xtol_rel}. Default values are given by spaMM.getOption("spaMM_tol");
+  Controls for the fitting algorithms should be ignored in routine use. They are:
+
+  \code{conv.threshold} and \code{spaMM_tol}: \code{spaMM_tol} is a list of tolerance values, with elements \code{Xtol_rel} and \code{Xtol_abs} that define thresholds for relative and absolute changes in parameter values in iterative algorithms (used in tests of the form \dQuote{d(param)< Xtol_rel * param + Xtol_abs}, so that \code{Xtol_abs} is operative only for small parameter values). \code{conv.threshold} is the older way to control \code{Xtol_rel}. Default values are given by spaMM.getOption("spaMM_tol");
    
    \code{break_conv_logL}, a boolean specifying whether the iterative algorithm should terminate when log-likelihood appears to have converged (roughly, when its relative variation over on iteration is lower than 1e-8). Default is FALSE (convergence is then assessed on the parameter estimates rather than on log-likelihood).
 %
@@ -105,12 +102,12 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
   \code{phi} for the residual variance. 
   However, this argument can be ignored in routine use. 
 }
+% F I X M E Break this doc in smaller docs !!!
   \item{ranFix}{
-  A list of fixed values of random effect parameters, with possible elements \code{lambda}, and also \code{phi} for gaussian and Gamma HGLMs. 
-  Inhibits the estimation of these parameters. 
+  A list of fixed values of random effect parameters. See \code{\link{ranFix}} for further information.
  }
   \item{etaFix}{
-   A list of fixed values of the coefficients of the linear predictor, with currently documented element \code{beta}. \code{etaFix$beta} should be a vector with names matching (a subset of) coefficient names of a fit without fixed values. It provides a convenient interface for fixing (some of) the fixed-effects coefficients (\eqn{\beta}). In contrast to an offset specification, it affects the REML correction for estimation of dispersion parameters, which depends only on which \eqn{\beta} coefficients are estimated. However, for non-standard use, REML can still be performed as if all \eqn{\beta} coefficients were estimated, by adding attribute \code{keepInREML=TRUE} to \code{etaFix$beta} (see Examples). These different behaviours will be overridden whenever a non-null \code{REMLformula} is provided.     
+   A list of given values of the coefficients of the linear predictor. See \code{\link{etaFix}} for further information.     
  }
   \item{prior.weights}{
    An optional vector of prior weights as in \code{\link{glm}}. This fits the data to a model with residual variance \code{phi/prior.weights}, so that increasing the weights by a constant factor \emph{f} will yield (Intercept) estimates of \code{phi} also increased by \emph{f} (this effect cannot be generally achieved if a non-trivial \code{resid.formula} with log link is used). This is not necessarily the way prior weights are interpreted in widely used packages, but this is consistent with what \code{glm} fits. 
@@ -188,7 +185,7 @@ Elements include \bold{descriptors of the fit}:
 
 \item{X.pv}{The design matrix for fixed effects;}
 \item{ZAlist,strucList}{Two lists of matrices, respectively the design matrices \dQuote{\bold{Z}}, and the \dQuote{\bold{L}} matrices, for the different random effects terms. The extractor \code{\link{get_ZALMatrix}} can be used to reconstruct a single \dQuote{\bold{ZL}} matrix for all terms.}
-\item{fixef_terms,fixef_levels}{Futher information about fixed effect model;}
+\item{fixef_terms,fixef_levels}{Further information about fixed effect model;}
 \item{weights}{(binomial data only) the binomial denominators;}
 \item{y}{the response vector; for binomial data, the frequency response.}
 \item{models}{Additional information on model structure for \eqn{\eta}, \eqn{\lambda} and \eqn{\phi};}
@@ -223,7 +220,7 @@ Smyth GK, Huele AF, Verbyla AP (2001). Exact and approximate REML for heterosced
 }
 
 \examples{
-data(wafers)
+data("wafers")
 ## Gamma GLMM with log link
 % example also in main page...
 HLfit(y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch),family=Gamma(log),

@@ -7,7 +7,7 @@ Seed germination data
 \description{
 A classic toy data set, \dQuote{from research conducted by microbiologist Dr P. Whitney of Surrey University. A batch of tiny seeds is brushed onto a plate covered with a certain extract at a given dilution. The numbers of germinated and ungerminated seeds are subsequently counted} (Crowder, 1978). Two seed types and two extracts are here considered in a 2x2 factorial design.
 }
-\usage{data(seeds)}
+\usage{data("seeds")}
 \format{
   The data frame includes 21 observations on the following variables:
   \describe{
@@ -27,7 +27,7 @@ Crowder, M.J., 1978. Beta-binomial anova for proportions. Appl. Statist., 27, 34
 Y. Lee and J. A. Nelder. 1996. Hierarchical generalized linear models (with discussion). J. R. Statist. Soc. B, 58: 619-678. 
 }
 \examples{
-data(seeds) 
+data("seeds") 
 ## An extended quasi-likelihood (EQL) fit as considered by Lee and Nelder (1996):
 HLfit(cbind(r,n-r)~seed*extract+(1|plate),family=binomial(),
   rand.family=Beta(),

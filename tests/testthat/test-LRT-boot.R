@@ -1,6 +1,6 @@
-if (spaMM.getOption("example_maxtime")>38) { ## plus large uncounted time for parallele setup (total closer to 60 s)
+if (spaMM.getOption("example_maxtime")>(13.7+24)) { ## user time + system.time for parallele setup
   cat("test LRT with bootstrap, parallel or not:\n")
-  data(salamander)
+  data("salamander")
   fullfit <-HLfit(cbind(Mate,1-Mate)~TypeF+(1|Female)+(1|Male),family=binomial(),data=salamander,
                   HLmethod="ML",control.HLfit = list(LevenbergM=FALSE))
   nullfit <-HLfit(cbind(Mate,1-Mate)~1+(1|Female)+(1|Male),family=binomial(),data=salamander,

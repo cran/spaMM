@@ -1,9 +1,8 @@
 
 ## initialiser offset a O ?? pas actuellement pcq bcp de tests qu'il est nul
 Predictor <- function (formula, offset=NULL, LMatrix = NULL,  AMatrix = NULL, ZALMatrix = NULL) {
-  if (inherits(formula,"predictor")) {
-    pastefrom("Do not call 'Predictor' on a predictor object.",prefix="(!) From ")
-  }
+  if (inherits(formula,"predictor")) { stop("Do not call 'Predictor' on a predictor object.")}
+  formula <- .stripFormula(formula)
   # we redefine the envir of the formula to be the closure of Predictor, and we will empty before exiting Predictor
   #formula <- .stripFormula(formula)  # env = emptyenv() not possible as model.frame needs a non-empty envir.
   oriFormula <- formula
@@ -17,6 +16,7 @@ Predictor <- function (formula, offset=NULL, LMatrix = NULL,  AMatrix = NULL, ZA
     ## cbind syntax for binomial model => is converted to alternative syntax; cbind would have failed in HLframes <10/04/2014 
     ## HLframes was modified on 10/04/2014 but the present code as not been revised following that change whichmay not be sufficient
     formula <- as.formula(paste(positives,"~",as.character(formula[3])))
+    formula <- .stripFormula(formula)
     BinDenForm <- paste(positives,"+",negatives)       
   } else {BinDenForm <-NULL}
   if ( ! ( is.null(AMatrix) || is.list(AMatrix)) ) {
@@ -32,7 +32,7 @@ Predictor <- function (formula, offset=NULL, LMatrix = NULL,  AMatrix = NULL, ZA
     LMatrix <- lapply(LMatrix, function(lmatrix) {
       ranefs <- attr(lmatrix,"ranefs")
       if (is.null(ranefs)) {
-        ranefs <- .parseBars(formula) ## FR->FR or oriformula ???
+        ranefs <- .parseBars(formula) ## FR->FR or oriformula ??? ## currently, expand does not seem important here
       } else {
         #ranefs <- unlist(lapply(ranefs, function(term) {.parseBars(as.formula(paste("bla~",term)))}))      
         ranefs <- paste("bla~",ranefs)
@@ -40,16 +40,15 @@ Predictor <- function (formula, offset=NULL, LMatrix = NULL,  AMatrix = NULL, ZA
         ranefs <- unlist(lapply(ranefs, .parseBars))      
       }
       attr(lmatrix,"ranefs") <- ranefs
-      attr(lmatrix,"userLfixed") <- TRUE ## else remains NULL...
+      #attr(lmatrix,"set_by_Predictor") <- TRUE ## else remains NULL...
       lmatrix
     })
   }
   res <- formula
   attr(res,"oriFormula") <- oriFormula
-  attr(res,"ZALMatrix") <- ZALMatrix
   attr(res,"AMatrix") <- AMatrix
   attr(res,"BinDenForm") <- BinDenForm
-  attr(res,"LMatrix") <- LMatrix ## to be copied in strucList by HLfit_body() ## non-null here if constant
+  attr(res,"LMatrix") <- LMatrix ## only usage now is to be copied in AUGI0_ZX$envir$LMatrices, and immediately removed
   attr(res,"offsetObj") <- list(offsetArg=offset,nonZeroInfo= !is.null(offset))
   class(res) <- c("predictor",class(res))
   #lsv <- c("lsv",ls())

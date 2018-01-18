@@ -7,7 +7,7 @@
                       objective=NULL, ## return value of HLCor.obj for optim calls... FR->FR meaningless for full SEM
                       resid.model=~1, resid.formula,
                       control.dist=list(),
-                      control.corrHLfit=list(), ## optim.scale, Optimizer, <optimizer controls>
+                      control.corrHLfit=list(), ## optim.scale, optimizer, <optimizer controls>
                       processed=NULL, ## added 2014/02 for programming purposes
                       family=gaussian(),
                       nb_cores=NULL,
@@ -36,7 +36,7 @@
     #family <- .as_call_family(family)
     FHF <- formals(HLfit) ## makes sure about default values 
     names_FHF <- names(FHF)
-    if ( ! is.null(mc$resid.formula)) mc$resid.model <- mc$resid.formula
+    #if ( ! is.null(mc$resid.formula)) mc$resid.model <- mc$resid.formula
     names_nondefault  <- intersect(names(mc),names_FHF) ## mc including dotlist
     FHF[names_nondefault] <- mc[names_nondefault] ##  full HLfit args
     preprocess.formal.args <- FHF[which(names_FHF %in% names(formals(.preprocess)))] 
@@ -45,7 +45,9 @@
     preprocess.formal.args$rand.families <- FHF$rand.family ## because preprocess expects $rand.families 
     preprocess.formal.args$predictor <- FHF$formula ## because preprocess stll expects $predictor 
     preprocess.formal.args$objective <- objective ## not useful except perhaps to reproduce results from ori paper. 
-    preprocess.formal.args$adjMatrix <- mc$adjMatrix ## because adjMatrix not in formals(HLfit    #
+    preprocess.formal.args$adjMatrix <- mc$adjMatrix ## because adjMatrix not in formals(HLfit)    #
+    preprocess.formal.args$corrMatrix <- mc$corrMatrix ## because corrMatrix not in formals(HLfit)    #
+    preprocess.formal.args$covStruct <- mc$covStruct ## because covStruct not in formals(HLfit)    #
     if ( identical(family$family,"multi")) {
       ## then data are reformatted as a list. Both HLCor and HLfit can analyse such lists for given corrPars and return the joint likelihood
       ## By contrast HLCor should not fit different corrPars to each data, so it does not lapply("corrHLfit",...)
@@ -61,6 +63,7 @@
       }     
     }
     mc$processed <- do.call(.preprocess,preprocess.formal.args,envir=parent.frame(1L))
+    #mc$ranFix$ranCoefs <- NULL ## but new ranFix can be added by fitme/corrHLfit
     ## removing all elements that duplicate info in processed: 
     pnames <- c("data","family","formula","prior.weights","HLmethod","rand.family","control.glm","resid.formula","REMLformula",
                 "resid.model", "verbose")
@@ -80,26 +83,18 @@
                       objective=NULL, ## return value of HLCor.obj for optim calls... FR->FR meaningless for full SEM
                       resid.model=~1, resid.formula,
                       control.dist=list(),
-                      control.corrHLfit=list(), ## optim.scale, Optimizer, <optimizer controls>
+                      control.corrHLfit=list(), ## optim.scale, optimizer, <optimizer controls>
                       processed=NULL, ## added 2014/02 for programming purposes
                       family=gaussian(),
                       nb_cores=NULL,
                       ... ## pb est risque de passer des args mvs genre HL.method et non HLmethod...
 ) {
-  spaMM.options(spaMM_glm_conv_crit=list(max=-Inf),COMP_maxn_warned=FALSE,COMP_geom_approx_warned=FALSE)
+  spaMM.options(spaMM_glm_conv_crit=list(max=-Inf))
   time1 <- Sys.time()
-  oricall <- mc <- match.call(expand.dots=TRUE) ## mc including dotlist
-  oricall$formula <- .stripFormula(formula)  
-  if ( ! missing(resid.formula)) oricall$resid.formula <- .stripFormula(resid.formula)
-  if ( ! is.null(form <- resid.model$formula)) {
-    ## oricall$resid.model$formula <- ... if wrong if oricall$resid.model is a promise
-    ## we can get info about the promise by using pryr::uneval(resid.model)
-    ## class(uneval(resid.model)) may be "bytecode" if the corrHLfit argument was already an evaluated promise
-    ## otherwise class(uneval(resid.model)) may be a "call".
-    ## if needed, uneval is minimal R code  + the C++ code in promise.cpp: promise_code(resid_model) might suffice.
-    resid.model$formula <- .stripFormula(form)
-    oricall$resid.model <- resid.model
-  }
+  oricall <- match.call(expand.dots=TRUE) ## mc including dotlist
+  if ( ! missing(resid.formula)) oricall$resid.model <- resid.formula
+  mc <- oricall
+  oricall$formula <- .stripFormula(formula) ## f i x m e : Cf comment in .getValidData
   mc[[1L]] <- .def_call_corrHLfit_body
   mc <- eval(mc,parent.frame())  
   hlcor <- eval(mc,parent.frame()) 
@@ -123,26 +118,18 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
                        objective=NULL, ## return value of HLCor.obj for optim calls... FR->FR meaningless for full SEM
                        resid.model=~1, resid.formula,
                        control.dist=list(),
-                      control.corrHLfit=list(), ## optim.scale, Optimizer, <Optimizer controls>
+                      control.corrHLfit=list(), ## optim.scale, optimizer, <Optimizer controls>
                       processed=NULL, ## added 2014/02 for programming purposes
                        family=gaussian(),
                        nb_cores=NULL,
                        ... ## pb est risque de passer des args mvs genre HL.method et non HLmethod...
 ) {
-  spaMM.options(spaMM_glm_conv_crit=list(max=-Inf),COMP_maxn_warned=FALSE,COMP_geom_approx_warned=FALSE)
+  spaMM.options(spaMM_glm_conv_crit=list(max=-Inf))
   time1 <- Sys.time()
-  oricall <- mc <- match.call(expand.dots=TRUE) ## mc including dotlist
-  oricall$formula <- .stripFormula(formula)  
-  if ( ! missing(resid.formula)) oricall$resid.formula <- .stripFormula(resid.formula)
-  if ( ! is.null(form <- resid.model$formula)) {
-    ## oricall$resid.model$formula <- ... if wrong if oricall$resid.model is a promise
-    ## we can get info about the promise by using pryr::uneval(resid.model)
-    ## class(uneval(resid.model)) may be "bytecode" if the corrHLfit argument was already an evaluated promise
-    ## otherwise class(uneval(resid.model)) may be a "call".
-    ## if needed, uneval is minimal R code  + the C++ code in promise.cpp: promise_code(resid_model) might suffice.
-    resid.model$formula <- .stripFormula(form)
-    oricall$resid.model <- resid.model
-  }
+  oricall <- match.call(expand.dots=TRUE) ## mc including dotlist
+  if ( ! missing(resid.formula)) oricall$resid.model <- resid.formula
+  mc <- oricall
+  oricall$formula <- .stripFormula(formula) ## f i x m e : Cf comment in .getValidData
   ## Preventing confusions
   if (!is.null(mc$ranPars)) {
     stop("incorrect 'ranPars' argument in corrHLfit call. Use ranFix (ranPars is for HLCor only)")
@@ -166,7 +153,7 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
     #family <- .as_call_family(family)
     FHF <- formals(HLfit) ## makes sure about default values 
     names_FHF <- names(FHF)
-    if ( ! is.null(mc$resid.formula)) mc$resid.model <- mc$resid.formula
+    #if ( ! is.null(mc$resid.formula)) mc$resid.model <- mc$resid.formula
     names_nondefault  <- intersect(names(mc),names_FHF) ## mc including dotlist
     FHF[names_nondefault] <- mc[names_nondefault] ##  full HLfit args
     preprocess.formal.args <- FHF[which(names_FHF %in% names(formals(.preprocess)))] 
@@ -176,6 +163,11 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
     preprocess.formal.args$predictor <- FHF$formula ## because preprocess stll expects $predictor 
     preprocess.formal.args$objective <- objective ## not useful except perhaps to reproduce results from ori paper. 
     preprocess.formal.args$adjMatrix <- mc$adjMatrix ## because adjMatrix not in formals(HLfit    #
+    preprocess.formal.args$corrMatrix <- mc$corrMatrix ## because corrMatrix not in formals(HLfit)    #
+    preprocess.formal.args$covStruct <- mc$covStruct ## because covStruct not in formals(HLfit)    #
+    preprocess.formal.args$uniqueGeo <- mc$uniqueGeo ## because uniqueGeo not in formals(HLfit)    #
+    preprocess.formal.args$distMatrix <- mc$distMatrix ## because distMatrix not in formals(HLfit)    #
+    preprocess.formal.args[["control.dist"]] <- control.dist ## because control.dist not in formals(HLfit)    #
     if ( identical(family$family,"multi")) {
       ## then data are reformatted as a list. Both HLCor and HLfit can analyse such lists for given corrPars and return the joint likelihood
       ## By contrast HLCor should not fit different corrPars to each data, so it does not lapply("corrHLfit",...)
@@ -191,9 +183,11 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
       }     
     }
     mc$processed <- do.call(.preprocess,preprocess.formal.args,envir=parent.frame(1L))
+    oricall$resid.model <- mc$processed$residModel
+    #mc$ranFix$ranCoefs <- NULL ## but new ranFix can be added by fitme/corrHLfit
     ## removing all elements that are matched in processed:
     pnames <- c("data","family","formula","prior.weights","HLmethod","rand.family","control.glm","resid.formula","REMLformula",
-                "resid.model", "verbose")
+                "resid.model", "verbose","distMatrix","uniqueGeo","adjMatrix") 
     for (st in pnames) mc[st] <- NULL 
   }  
   
@@ -203,10 +197,8 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
   attr(hlcor,"corrHLfitcall") <- oricall ## this says the hlcor was returned by corrHLfit
   attr(hlcor,"HLCorcall") <- NULL
   lsv <- c("lsv",ls())
-  if ( ! identical(paste(family[[1L]]),"multi")
-       && ! identical(.getProcessed(processed,"verbose",from=1L)["getCall"],TRUE))  hlcor$fit_time <- .timerraw(time1)
+  if ( ! identical(paste(family[[1L]]),"multi") && ! is.call(hlcor) )  hlcor$fit_time <- .timerraw(time1)
   rm(list=setdiff(lsv,"hlcor")) 
-  #class(hlcor) <- c(class(hlcor),"corrHLfit")
   return(hlcor)
 }
 

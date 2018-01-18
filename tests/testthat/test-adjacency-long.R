@@ -1,24 +1,6 @@
-cat("\ntest of sparse Precision method:")
+cat("\nTest of adjacency (long fits):")
 
-data("scotlip")
-fit1 <- fitme(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(expec)),
-               fixed=list(lambda=0.1), 
-               adjMatrix=Nmatrix,family=poisson(),data=scotlip)
-expectedMethod <- "sXaug_EigenDense_QRP_Chol_scaled" ## bc data too small to switch to sparse
-if (interactive()) {
-  if (! (expectedMethod %in% fit1$MME_method)) {
-    message(paste('! ("',expectedMethod,'" %in% fit1$MME_method): was a non-default option selected?'))
-  }
-} else testthat::expect_true(expectedMethod %in% fit1$MME_method) 
-oldop <- spaMM.options(sparse_precision=TRUE)
-fit2 <- fitme(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(expec)),
-              fixed=list(lambda=0.1), 
-              adjMatrix=Nmatrix,family=poisson(),data=scotlip)
-testthat::expect_true("AUGI0_ZX_sparsePrecision" %in% fit2$MME_method)
-spaMM.options(oldop)
-testthat::expect_equal(logLik(fit1),logLik(fit2),tolerance=1e-05)
-
-if (spaMM.getOption("example_maxtime")>535) { ## approx 116 by IRLS and 417 by LevM (v2.1.107) 
+if (spaMM.getOption("example_maxtime")>465) { ## 
   ## fixme This is sparse_precision LevM: improve efficiency? 
   ## example suggested by Jeroen van den Ochtend jeroenvdochtend@gmail.com Jeroen.vandenochtend@business.uzh.ch
   library(data.table)
@@ -52,8 +34,8 @@ if (spaMM.getOption("example_maxtime")>535) { ## approx 116 by IRLS and 417 by L
 
   ## it's no use to try sparse_precision=FALSE bc bc the augmented sigma matrix is huge
   ###################### spaMM.options(sparse_precision=FALSE) 
-  ## make sure that the wrong valu is not set:
-  oldop <- spaMM.options(sparse_precision=TRUE) ## but this should be fitme()'s default given the data. 
+  ## make sure that the wrong value is not set:
+  oldop <- spaMM.options(sparse_precision=NULL) 
   
   set.seed(123)
   blob <- rsample(N=1000,seed=NULL)
@@ -64,15 +46,20 @@ if (spaMM.getOption("example_maxtime")>535) { ## approx 116 by IRLS and 417 by L
                           verbose=c(TRACE=TRUE), # to trace convergence 
                           adjMatrix=blob$adjMatrix
     )
-  }) ##  116.56
+  }) ##  114.46
+  expectedMethod <- "AUGI0_ZX_sparsePrecision" ## bc data too small to switch to sparse
+  if (interactive()) {
+    if (! (expectedMethod %in% IRLS.Frailty$MME_method)) {
+      message(paste('! ("',expectedMethod,'" %in% IRLS.Frailty$MME_method): was a non-default option selected?'))
+    }
+  } else testthat::expect_true(expectedMethod %in% IRLS.Frailty$MME_method) 
   system.time({
     LevM.Frailty <- fitme(BUY ~ factor(month) + AGE + GENDER + X1*X2 + adjacency(1|ID),
                           data=blob$data,family = binomial(link = cloglog),method = "ML",
                           verbose=c(TRACE=TRUE), # to trace convergence 
+                          #fixed=list(rho = -0.0294184,  lambda = 0.241825),
                           adjMatrix=blob$adjMatrix
     )
-  }) ## 393.45 (v2.1.108)
+  }) ## 350.38 (v2.2.135)
   spaMM.options(oldop)
-  untrace(HLfit_body)
-  untrace(def_AUGI0_ZX_sparsePrecision)
 }

@@ -62,8 +62,7 @@ if (FALSE) { ## assuming  Imports lpSolveAPI (>= 5.5.0.14)
       else if(status == 3)
         ans$separation <- TRUE
       else {
-        mess <- pastefrom("unexpected result for primal test.",prefix="(!) From ")
-        stop(mess)
+        stop("unexpected result for primal test.")
       }
     }
     
@@ -80,8 +79,7 @@ if (FALSE) { ## assuming  Imports lpSolveAPI (>= 5.5.0.14)
       status <- solve(lp)
       
       if(status != 0) {
-        mess <- pastefrom("unexpected result for primal test.",prefix="(!) From ")
-        stop(mess)
+        stop("unexpected result for primal test.")
       }
       beta <- get.variables(lp)
       
@@ -110,8 +108,7 @@ if (FALSE) { ## assuming  Imports lpSolveAPI (>= 5.5.0.14)
       else if(status == 2)
         ans$separation <- TRUE
       else {
-        mess <- pastefrom("unexpected result for dual test.",prefix="(!) From ")
-        stop(mess)
+        stop("unexpected result for dual test.")
       }
     }
     

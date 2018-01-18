@@ -23,3 +23,12 @@ overcat <- function(msg, prevmsglength) {
   return(nchar(msg))
 }
 
+# removed all 'pastefrom' code in version 2.2.44
+
+## quite ad hoc
+.prettify_num <- function(x,nsmall=2L) {
+  if (abs(x)>1) {
+    Ldigits <- floor(log10(abs(x)))+nsmall+1L
+    format(round(x,Ldigits), digits=nsmall, nsmall=nsmall) ## character !
+  } else signif(x,6) ## double !
+}

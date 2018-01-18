@@ -2,98 +2,110 @@
 # Generator token: 10BE3573-1514-4C36-9D1C-5A225CD40393
 
 .Rcpp_COMP_Z <- function(moment, nu, lambda, maxn) {
-    .Call('spaMM_Rcpp_COMP_Z', PACKAGE = 'spaMM', moment, nu, lambda, maxn)
+    .Call(`_spaMM_Rcpp_COMP_Z`, moment, nu, lambda, maxn)
+}
+
+.bessel_lnKnu_e <- function(nu, x) {
+    .Call(`_spaMM_bessel_lnKnu_e`, nu, x)
 }
 
 .sparse_LDLp_from_XtX <- function(XX, pivot) {
-    .Call('spaMM_sparse_LDLp_from_XtX', PACKAGE = 'spaMM', XX, pivot)
+    .Call(`_spaMM_sparse_LDLp_from_XtX`, XX, pivot)
 }
 
 .lmwith_sparse_LDLp <- function(XX, yy, returntQ, returnR, pivot) {
-    .Call('spaMM_lmwith_sparse_LDLp', PACKAGE = 'spaMM', XX, yy, returntQ, returnR, pivot)
+    .Call(`_spaMM_lmwith_sparse_LDLp`, XX, yy, returntQ, returnR, pivot)
 }
 
 .sparse_LLp_from_XtX <- function(XX, pivot) {
-    .Call('spaMM_sparse_LLp_from_XtX', PACKAGE = 'spaMM', XX, pivot)
+    .Call(`_spaMM_sparse_LLp_from_XtX`, XX, pivot)
 }
 
 .lmwith_sparse_LLp <- function(XX, yy, returntQ, returnR, pivot) {
-    .Call('spaMM_lmwith_sparse_LLp', PACKAGE = 'spaMM', XX, yy, returntQ, returnR, pivot)
+    .Call(`_spaMM_lmwith_sparse_LLp`, XX, yy, returntQ, returnR, pivot)
 }
 
 .lmwithQR <- function(XX, yy, returntQ, returnR) {
-    .Call('spaMM_lmwithQR', PACKAGE = 'spaMM', XX, yy, returntQ, returnR)
+    .Call(`_spaMM_lmwithQR`, XX, yy, returntQ, returnR)
 }
 
 .lmwithQRP <- function(XX, yy, returntQ, returnR) {
-    .Call('spaMM_lmwithQRP', PACKAGE = 'spaMM', XX, yy, returntQ, returnR)
+    .Call(`_spaMM_lmwithQRP`, XX, yy, returntQ, returnR)
 }
 
 .lmwith_sparse_QRp <- function(XX, yy, returntQ, returnR, pivot) {
-    .Call('spaMM_lmwith_sparse_QRp', PACKAGE = 'spaMM', XX, yy, returntQ, returnR, pivot)
+    .Call(`_spaMM_lmwith_sparse_QRp`, XX, yy, returntQ, returnR, pivot)
 }
 
 .Rcpp_chol_R <- function(AA) {
-    .Call('spaMM_Rcpp_chol_R', PACKAGE = 'spaMM', AA)
+    .Call(`_spaMM_Rcpp_chol_R`, AA)
 }
 
 .LevMar_cpp <- function(AA, LMrhs) {
-    .Call('spaMM_LevMar_cpp', PACKAGE = 'spaMM', AA, LMrhs)
+    .Call(`_spaMM_LevMar_cpp`, AA, LMrhs)
+}
+
+.Rcpp_as_dgCMatrix <- function(XX_) {
+    .Call(`_spaMM_Rcpp_as_dgCMatrix_`, XX_)
+}
+
+.rankinfo <- function(x, tol) {
+    .Call(`_spaMM_rankinfo`, x, tol)
 }
 
 .leverages <- function(XX) {
-    .Call('spaMM_leverages', PACKAGE = 'spaMM', XX)
+    .Call(`_spaMM_leverages`, XX)
 }
 
 .Rcpp_sweepZ1W <- function(ZZ, WW) {
-    .Call('spaMM_sweepZ1W', PACKAGE = 'spaMM', ZZ, WW)
+    .Call(`_spaMM_sweepZ1W`, ZZ, WW)
 }
 
 .ZWZt <- function(ZZ, WW) {
-    .Call('spaMM_ZWZt', PACKAGE = 'spaMM', ZZ, WW)
+    .Call(`_spaMM_ZWZt`, ZZ, WW)
 }
 
 .ZtWZ <- function(ZZ, WW) {
-    .Call('spaMM_ZtWZ', PACKAGE = 'spaMM', ZZ, WW)
+    .Call(`_spaMM_ZtWZ`, ZZ, WW)
 }
 
 .Rcpp_Sig <- function(ZZ, WA, WB) {
-    .Call('spaMM_Rcpp_Sig', PACKAGE = 'spaMM', ZZ, WA, WB)
+    .Call(`_spaMM_Rcpp_Sig`, ZZ, WA, WB)
 }
 
 .Rcpp_d2hdv2 <- function(ZZ, WA, WB) {
-    .Call('spaMM_Rcpp_d2hdv2', PACKAGE = 'spaMM', ZZ, WA, WB)
+    .Call(`_spaMM_Rcpp_d2hdv2`, ZZ, WA, WB)
 }
 
 .RcppChol <- function(AA) {
-    .Call('spaMM_RcppChol', PACKAGE = 'spaMM', AA)
+    .Call(`_spaMM_RcppChol`, AA)
 }
 
 .crossprodCpp <- function(Mat, yy) {
-    .Call('spaMM_crossprodCpp', PACKAGE = 'spaMM', Mat, yy)
+    .Call(`_spaMM_crossprodCpp`, Mat, yy)
 }
 
 .tcrossprodCpp <- function(Mat, yy) {
-    .Call('spaMM_tcrossprodCpp', PACKAGE = 'spaMM', Mat, yy)
+    .Call(`_spaMM_tcrossprodCpp`, Mat, yy)
 }
 
 .e_LevenbergMsolveCpp <- function(AA, wwAugz, dd) {
-    .Call('spaMM_e_LevenbergMsolveCpp', PACKAGE = 'spaMM', AA, wwAugz, dd)
+    .Call(`_spaMM_e_LevenbergMsolveCpp`, AA, wwAugz, dd)
 }
 
 .LevenbergMsolveCpp <- function(AA, rrhhss, dd) {
-    .Call('spaMM_LevenbergMsolveCpp', PACKAGE = 'spaMM', AA, rrhhss, dd)
+    .Call(`_spaMM_LevenbergMsolveCpp`, AA, rrhhss, dd)
 }
 
 .LogAbsDetCpp <- function(AA) {
-    .Call('spaMM_LogAbsDetCpp', PACKAGE = 'spaMM', AA)
+    .Call(`_spaMM_LogAbsDetCpp`, AA)
 }
 
 .selfAdjointSolverCpp <- function(AA) {
-    .Call('spaMM_selfAdjointSolverCpp', PACKAGE = 'spaMM', AA)
+    .Call(`_spaMM_selfAdjointSolverCpp`, AA)
 }
 
 .LevPerturbedQCpp <- function(perturbedwAugX, pforREML, RpRu, RpRd, lamOverLam0, phiOverPhi0) {
-    .Call('spaMM_LevPerturbedQCpp', PACKAGE = 'spaMM', perturbedwAugX, pforREML, RpRu, RpRd, lamOverLam0, phiOverPhi0)
+    .Call(`_spaMM_LevPerturbedQCpp`, perturbedwAugX, pforREML, RpRu, RpRd, lamOverLam0, phiOverPhi0)
 }
 

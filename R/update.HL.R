@@ -9,17 +9,23 @@ getCall.HLfit <- function(x,...) {
 }
 
 ## to get a call with the structure of the final HLCorcall in fitme of corrHLfit
-## ranFix is either NULL in which case the init.value of the optimization call is used !!!
-##   or an explicit value (which always supersedes the init for the same parameters).
-##   Do not set a default value, so that one is reminded of the need for a possibly non-default one.
+## ranFix is mandatory: Do not set a default value, so that one has to think about the correct value.
+## Therefore, the original ranFix of the outer_object is replaced, unless it is explicitly set to getCall(object)$ranFix or $fixed... (in confint.HLfit)
+## Parameters not in ranFix are set to the initial value of of the optimization call.
+##   
 get_HLCorcall <- function(outer_object, ## accepts fit object, or call, or list of call arguments
-                          ranFix, ## see comments above
+                          fixed, ## see comments above
                           ... # anything needed to overcome promises in the call
                           ) { 
   if (inherits(outer_object,"HLfit")) {
     outer_call <- getCall(outer_object) ## gets a corrHLfit/fitme call, => eval it to get HLCor callS
     outer_call$data <- outer_object$data ## removes dependence on promise
-    outer_call$ranFix <- ranFix
+    outer_fn <- paste(outer_call[[1L]])
+    if (outer_fn=="fitme") {
+      outer_call$fixed <- fixed
+    } else if (outer_fn=="HLCor") {
+      outer_call$ranPars <- fixed
+    } else outer_call$ranFix <- fixed
   }
   verbose <- outer_call$verbose
   verbose["getCall"] <- TRUE
@@ -37,7 +43,7 @@ get_HLCorcall <- function(outer_object, ## accepts fit object, or call, or list 
   #
   HLCorcall <- eval(as.call(outer_call)) ## calls corrHLfit and bypasses optimization to get the call from within the final HLCor
   HLCorcall[[1L]] <- quote(HLCor)
-  .setProcessed(HLCorcall$processed,"verbose['getCall']",NA)
+  .assignWrapper(HLCorcall$processed,"verbose['getCall'] <- NA")
   return(HLCorcall)
 }
 
@@ -52,13 +58,9 @@ update.HLfit <- function (object, formula., ..., evaluate = TRUE) {
     } else  form <- update.formula(predictor,formula.) 
     ## !!!! FR->FR does not handle etaFix$beta !!!!
     if (! is.null(.findOffset(formula.))) {off <- NULL} else { off <- attr(predictor,"offsetObj")$total }
-    if (object$spaMM.version<"1.11.57") {
-      LMatrix <- attr(predictor,"LMatrix") ## back compat
-    } else LMatrix <- NULL ## LMatrix still  appears to be hidden in object$strucList
     predArgs <- list(formula=form,
-                     LMatrix=LMatrix, ## argument for Predictor, to be removed ? (modif function Predictor() ?)
+                     LMatrix=NULL, ## F I X M E argument for Predictor, to be removed ? (modif function Predictor() ?)
                      AMatrix=attr(predictor,"AMatrix"),
-                     ZALMatrix=attr(predictor,"ZALMatrix"), ## see above: *again* from object$call, not from object$predictor
                      offset=off)
     ## attributes BinDenForm and oriFormula will be reconstructed:
     call$formula <- do.call("Predictor",predArgs) ## reconstructs oriFormula... otherwise we have a predictor without it...

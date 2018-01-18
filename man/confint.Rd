@@ -29,7 +29,7 @@ This is returned invisibly.
 \examples{
 % checked in test-confint.R
 \dontrun{
- data(wafers)
+ data("wafers")
  wfit <- HLfit(y ~X1+(1|batch),family=Gamma(log),data=wafers,HLmethod="ML")
  confint(wfit,"X1")
 }

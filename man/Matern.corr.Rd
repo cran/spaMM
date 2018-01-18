@@ -2,7 +2,6 @@
 \alias{Matern}
 \alias{MaternCorr}
 \alias{MaternCorr.default}
-\alias{MaternCorr.ff}
 %- Also NEED an '\alias' for EACH other topic documented here.
 \title{
 Matern correlation function and Matern formula term.
