@@ -18,7 +18,7 @@
 .DEPARSE <- function(expr) { paste(deparse(expr),collapse="") }
 
 overcat <- function(msg, prevmsglength) {
-  if (prevmsglength>0) {cat("\r")}    
+  if (prevmsglength) {cat("\r")}    
   cat(msg)
   return(nchar(msg))
 }

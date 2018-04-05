@@ -328,7 +328,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
                    "\nThis suggests the original fit did not fully maximize",for_intervals$likfn,"\n or numerical accuracy issues.")
   message(locmess)
   dispCorrPars <- .get_CorrEst_and_RanFix(for_intervals$ranFix,for_intervals$corr_est)$corrPars
-  if (length(dispCorrPars)>0) message(paste("Current dispersion and correlation parameters are ",
+  if (length(dispCorrPars)) message(paste("Current dispersion and correlation parameters are ",
                                             paste(names(dispCorrPars),"=",signif(unlist(dispCorrPars),6),collapse=", ")))
   message("Current log likelihood is =",currentlik)                    
   message("logLik of the fit=",for_intervals$fitlik)    
@@ -380,7 +380,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
                                ) {
   resu <- list()
   if (FALSE  &&  ## in particular pb with p_v
-      processed$LMMbool && ! all(which=="hlik") && ! is.null(auglinmodblob)) {
+      processed$LMMbool && ! all(which %in% c("hlik","clik")) && ! is.null(auglinmodblob)) {
     n_u_h <- length(auglinmodblob$u_h)
     weight_Xaug <- c(rep(1,n_u_h),auglinmodblob$weight_X)
     augy <- c(rep(0,n_u_h),processed$y) ## contains the offset, cntrary to augz in fit_as_ZX !
@@ -421,6 +421,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
       ## this can be compensated by correcting the lad LESS.
       resu$clik <- sum(clik_fn(theta,y,eval(processed$prior.weights)/phi_est)) ## note (prior) weights meaningful only for gauss/ Gamma 
     }
+    if (all(which =="clik")) return(resu)
     if (processed$models[["eta"]]=="etaGLM") {
       resu$p_v <- resu$clik
       return(resu)

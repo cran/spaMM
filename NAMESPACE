@@ -1,7 +1,7 @@
 exportPattern("^[[:alpha:]]+")
 export(".evalWrapper", ".Cholwrap", ".calc_CARdispGammaGLM", ".calc_dispGammaGLM", ".ZWZt",
        ".dispFn", ".dispInv", ".nuFn", ".nuInv", ".rhoFn", ".rhoInv", ".NB_shapeFn", ".NB_shapeInv", 
-       ".crossprod", ".tcrossprod") ## probitgem
+       ".crossprod", ".tcrossprod",  ".noOffset", ".nobarsMM", ".modify_list") ## probitgem
 importFrom("graphics", ".filled.contour", "Axis", "abline", "axis", "box", "hist", "layout", 
            "lcm", "lines", "par", "plot.new", "plot.window", "points", "polygon", "rect", "title")
 importFrom("graphics", "plot")
@@ -10,20 +10,31 @@ importFrom("stats", "as.formula", "coefficients", "dgamma", "dnorm", "family", "
            "glm", "lm", "make.link", "model.frame", "model.matrix", "model.offset", "model.response", 
             "optim", "optimize", "pchisq", "pnorm", "qchisq", "qnorm", "qqline", "qqnorm", 
            "rbeta", "rbinom", "rgamma", "rnorm", "rpois", "runif", "terms", 
-           "update.formula", "var", "weights")
-importFrom("stats", "simulate", "anova", "confint", "fitted", "predict", "update", "logLik", "vcov", "coef",
-           "gaussian", "binomial", "dpois", "Gamma", "resid", "uniroot", "deviance", "dbinom", "plogis", "lm.wfit")
-importFrom("stats", "as.dist", "AIC", "qnbinom", "qpois", "rnbinom", "integrate")
+           "update.formula", "var", "weights", "glm.fit",".lm.fit", "lm.wfit",
+           "simulate", "anova", "confint", "fitted", "predict", "update", "logLik", "vcov", "coef",
+           "gaussian", "binomial", "dpois", "Gamma", "resid", "uniroot", "deviance", "dbinom", "plogis", 
+           "as.dist", "AIC", "qnbinom", "qpois", "rnbinom", "integrate", "poisson")
 importFrom("utils", "relist", "txtProgressBar", "setTxtProgressBar", "modifyList", "strOptions", "str",
-           "write.table", "packageVersion")
+           "write.table", "packageVersion", "packageDescription")
 importFrom("Matrix", "Matrix", "drop", "isDiagonal", "diag", "t", "solve", "Diagonal", "crossprod", "tcrossprod", "rowSums", "colSums")
-importFrom("Matrix", "sparseMatrix", "qr", "qrR", "qr.R", "qr.Q", "isSymmetric", "forceSymmetric", "Cholesky","determinant")
+importFrom("Matrix", "sparseMatrix", "qr", "qrR", "qr.R", "qr.Q", "qr.coef", "isSymmetric", "forceSymmetric", "Cholesky","determinant")
 importFrom("proxy", "dist", "pr_DB")
 importFrom("Rcpp", "evalCpp")
-importFrom("nlme", "getGroups", "fixef", "ranef", "getCovariate", "corFactor", "corMatrix")
 importFrom("MASS", "ginv", "gamma.shape", "mvrnorm")
-export(fixef) ## comes from nlme namespace 
-export(ranef) ## comes from nlme namespace
+importFrom("nlme", "getGroups", "fixef", "ranef", "corMatrix", "Initialize", "Variogram", "coef<-", "corFactor", "getCovariate", "logDet", "recalc")
+importFrom("pbapply", "pbapply", "pboptions")
+export(coef) ## from stats namespace
+# From nlme namespace:
+export("fixef", "ranef", "corMatrix", "Initialize", "Variogram", "coef<-", "corFactor", "getCovariate", "logDet", "recalc") 
+S3method(corMatrix, corMatern)
+S3method(Initialize, corMatern)
+S3method(Variogram, corMatern)
+S3method(coef, corMatern)
+S3method("coef<-", corMatern)
+S3method(corFactor, corMatern)
+S3method(getCovariate, corMatern)
+S3method(logDet, corMatern)
+S3method(recalc, corMatern)
 S3method(dim, precision)
 S3method(getCall, HLfit)
 S3method(deviance, HLfit)
@@ -51,6 +62,7 @@ S3method(print, HLfitlist)
 S3method(print, fixedLRT)
 S3method(print, predictor)
 S3method(print, arglist)
+S3method(print, ranef)
 S3method(print, predictions)
 S3method(update, HLfit)
 S3method(vcov, HLfit)

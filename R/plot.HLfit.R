@@ -22,7 +22,7 @@
 	  } else lev_phi <- x$lev_phi
 	  lev_lambda <- x$lev_lambda
 	  ranef <- x$ranef ## u
-	  nranplots <- length(c(which(length(lev_lambda)>0),which(length(lev_phi)>0),which(length(ranef)>0)))
+	  nranplots <- length(which(c(length(lev_lambda)>0,length(lev_phi)>0,length(ranef)>0)))
     if (nranplots==0L) which <- which[which!="ranef"]
 	} 
   pch <- control$pch  
@@ -59,14 +59,14 @@
 		  if (nranplots<3) {
 		    par(mfrow = c(1, nranplots), oma = c( 0, 0, 2, 0 ), pty = "s", ...)
 		  } else { par(mfrow = c(2, 2), oma = c( 0, 0, 2, 0 ), pty = "s", ...) } ## 
-		  if (length(ranef)>0) {
+		  if (length(ranef)) {
               std_ranef <- ranef/sqrt(1-lev_lambda)
      		  qqnorm(ranef, col = pcol, pch = pch, bty = "n", 
 				   xlab = "Normal quantiles", ylab = expression(paste("Standardized ",italic(u)," quantiles")), main = titles$ranef$qq)
 	    	  qqline(ranef, col = lcol)
             }
 			if (!is.null(lev_phi)) plot(lev_phi, ylab = "", main = titles$ranef$levphi , pch = pch, col = pcol, bty = "n")
-			if (length(lev_lambda)>0) plot(lev_lambda, ylab = "", main= titles$ranef$levlambda , pch = pch, col = pcol, bty = "n")
+			if (length(lev_lambda)) plot(lev_lambda, ylab = "", main= titles$ranef$levlambda , pch = pch, col = pcol, bty = "n")
 		  title(titles$ranef$outer,outer=TRUE)
 		} 
   }

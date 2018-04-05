@@ -33,58 +33,63 @@ fixedLRT <- function(  ## interface to spaMMLRT or (for devel only) .corrMM_LRT
   if (missing(null.formula)) stop("'null.formula' argument is missing, with no default.")
   if (missing(formula)) stop("'formula' argument is missing, with no default.")
   if (missing(data)) stop("'data' argument is missing, with no default.")
-  if (missing(fittingFunction)) {
-    #if (method!="SEM") 
-    # message("Assuming 'fittingFunction' is corrHLfit(), but fitme() could be faster.")
-    fittingFunction <- "corrHLfit"
-  }
-  # construct mc$method from method/HLmethod
-  ## see 'lm' code for template
   mc <- match.call(expand.dots = TRUE)
   # method mess
-  if (missing(method)) { ## OK for corrHLfit -> HLfit
-    if (fittingFunction == "fitme") { ## I could allow HLmethod here but presumably not a good long-term solution
-      stop("'method' argument is missing, with no default.")
-    } else {
-      if (missing(HLmethod)) {
-        stop("'method' and 'HLmethod' arguments are missing, with no default. Provide 'method'.")
-      } else mc$method <- method <- eval(HLmethod,parent.frame())
-    } ##  else fitme expects 'method', not 'HLmethod
+  if (missing(method)) {
+    if (missing(HLmethod)) {
+      stop("'method' and 'HLmethod' arguments are missing, with no default. Provide 'method'.")
+    } else mc$method <- method <- eval(HLmethod,parent.frame())
   } else if ( ! missing(HLmethod))  stop("Don't use both 'method' and 'HLmethod' arguments.")
   mc$HLmethod <- NULL ## method always overrides HLmethod; HLmethod may be re-created in spaMMLRT()
   #
-  if (! is.null(control$profiles)) {
-    stop("'fixedLRT' does not allow 'control$profiles'.")
-  }
   ## other possible settings, through iterative fits
   ## We had a potential backward compatiblity problem, since the simulation scripts 
   ## for the Ecography paper assume that the package automatically interpret the model as spatial, even if findSpatial returns NULL
   ## and we no longer want such a behaviour
   ## but fixedLRT is not used in these scripts, so it can make a different assumption
   spatial <- .findSpatial(formula)
-  if ( ! is.null(spatial)) {
+  if ( length(spatial)) { ## not list()
+    if (missing(fittingFunction)) { ## guessing:
+      if (nrow(data)<300L) {
+        mc$fittingFunction <- "corrHLfit" ## leverage computation is fast
+      } else mc$fittingFunction <- "fitme"
+    }
     ## both will use p_v for the optim steps, we need to distinguish whether some REML correction is used in iterative algo :
     if ( method %in% c("ML","PQL/L","SEM") || substr(method,0,2) == "ML") {
       callfn <- ".LRT" # mc[[1L]] <- as.name(".LRT") ## does not (yet) handles well other method's  when eg init.corrHLfit contains lambda
       ## there's no profile etc in spaMMLRT... 
-    } else { ## EQL, REPQL or REML variants: profiles then not allowed within .corrMM_LRT!
+    } else { ## EQL, REPQL or REML variants: 
       # FIXME typos (e.g. "PQLL") are not detected...
       callfn <- ".corrMM_LRT" # mc[[1L]] <- as.name(".corrMM_LRT") ## .corrMM_LRT methods and its options below are best frozen to their v1.0 state
-      mc$control<-list(profiles=0,prefits=FALSE) ## default values in call by fixedLRT. corrMM.LRT further has default restarts=TRUE and maxit=1
+      mc$control<-list(prefits=FALSE) ## default values in call by fixedLRT. corrMM.LRT further has default restarts=TRUE and maxit=1
       mc$control[names(control)] <- control ## overrides with user values
-      mc$control.boot <- control.boot ## default values in call by fixedLRT are those of .corrMM_LRT ie prefits=FALSE,profiles=0. We can directly copy user values. 
+      mc$control.boot <- control.boot ## default values in call by fixedLRT are those of .corrMM_LRT ie prefits=FALSE. We can directly copy user values. 
     }
   } else {
     callfn <- ".LRT" # mc[[1L]] <- as.name(".LRT") 
-    ## No profiles, maxit, restarts, prefits
-    if (is.null(mc$corrMatrix)) { ## neither explicit spatial nor corrMatrix -> HLfit
+    ## No maxit, restarts, prefits
+    if (missing(fittingFunction)) {
+      if (is.null(mc$corrMatrix)) { ## neither explicit spatial nor corrMatrix -> HLfit
         mc$fittingFunction <- "HLfit"
       } else {
-      ## corrMatrix -> we need to use HLCor
+        ## corrMatrix -> we need to use HLCor
         mc$fittingFunction <- "HLCor"
       }                 
+    }
   }  
-  
+  if (mc$fittingFunction=="fitme") {
+    if ( ! is.null(mc$init.corrHLfit)) {
+      mc[["init"]] <- mc$init.corrHLfit
+      mc["init.corrHLfit"] <- NULL
+    }
+    fixed <- c(mc$ranFix,mc$ranPars,mc$etaFix)
+    if ( ! is.null(fixed)) {
+      mc[["fixed"]] <- fixed
+      mc["ranFix"] <- NULL
+      mc["ranPars"] <- NULL
+      mc["etaFix"] <- NULL
+    }
+  }
   # mc[[1L]] must be understood by .eval_boot_replicates and quote() does not work there
   # see further problems with thisFnName <- as.character(sys.call()[[1]])
   # eval with an internal function worked in interacive tests but not in R CMD CHECK...

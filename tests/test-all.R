@@ -1,11 +1,11 @@
-if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") { ## not on CRAN
+if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") { ## not on CRAN (lost? see 2.15 How do I set environment variables? in R Windows FAQ)
   if(require("testthat", quietly = TRUE)) {
     pkg   <- "spaMM"
     require(pkg, character.only=TRUE, quietly=TRUE)
     if (interactive())  {
       op <- par(ask=FALSE)
       testfiles <- dir("C:/home/francois/travail/stats/spaMMplus/spaMM/package/tests/testthat/",pattern="*.R",full.names = TRUE)
-      #oldmaxt <- spaMM.options(example_maxtime=12)
+      #oldmaxt <- spaMM.options(example_maxtime=100)
       timings <- t(sapply(testfiles, function(fich){system.time(source(fich))}))
       #spaMM.options(oldmaxt)
       print(colSums(timings))

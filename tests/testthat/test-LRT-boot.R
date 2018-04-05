@@ -7,12 +7,6 @@ if (spaMM.getOption("example_maxtime")>(13.7+24)) { ## user time + system.time f
                   HLmethod="ML",control.HLfit = list(LevenbergM=FALSE))
   set.seed(123)
   pv1 <- LRT(nullfit,fullfit,boot.repl=10)$BartBootLRT$p_value
-  if (require(doSNOW,quietly=TRUE)) {
-    set.seed(123)
-    pv2 <- LRT(nullfit,fullfit,boot.repl=10,nb_cores=2)$BartBootLRT$p_value
-    unloadNamespace("doSNOW")
-    testthat::expect_equal(pv1,pv2,tolerance=1e-6)
-  }
   set.seed(123)
   pv3 <- LRT(nullfit,fullfit,boot.repl=10,nb_cores=2)$BartBootLRT$p_value
   testthat::expect_equal(pv1,pv3,tolerance=1e-6)

@@ -46,22 +46,25 @@
     corr.model <- attr(lmatrix,"corr.model")
     u.range <- (cum_n_u_h[randit]+1L):(cum_n_u_h[randit+1L])
     if (identical(corr.model,"adjacency") &&
-        ( ! is.null(glmit <- lambda.object$rand_to_glm_map[randit]))
+        ( ! is.null(glmit <- lambda.object$rand_to_glm_map[randit])) && ## means inner estimation of lambda
+        "adjd" %in% lambda.object$print_namesTerms[[randit]] ## means inner estimation of adj_rho
        ) { 
+      ## we end here if not sparse (sparse => outer optim of rho) and inner optim of lambda was allowed
       lambda_list[[randit]] <- with(lambda.object,linkinvS[[glmit]](coefficients_lambdaS[[randit]][1]))
-      if ("adjd" %in% lambda.object$print_namesTerms[[randit]]) {
-        RES$rho <- - with(lambda.object,coefficients_lambdaS[[randit]][2]/coefficients_lambdaS[[randit]][1])
-      } else { RES$rho <- object$corrPars$rho }
-      adjd <- attr(lmatrix,"symSVD")$adjd
+      RES$rho <- - with(lambda.object,coefficients_lambdaS[[randit]][2]/coefficients_lambdaS[[randit]][1])
+      adjd <- attr(lmatrix,"symsvd")$adjd ## svd not SVD becasue went through designL.from.corr which changed attributes
       denom <- 1-RES$rho*adjd
       RES$adjd_denom2 <- adjd/(denom^2) 
       ZAL_to_ZALd_vec[u.range] <- ZAL_to_ZALd_vec[u.range]/sqrt(denom)
-    } else { ## standard lamScal model or ranCoefs model # F I X M E check that this is OK for ranCoefs
+    } else { ## standard lamScal model or ranCoefs model 
+      # as results from outer optimization; lmatrix has no attributes
+      # For adjacency case, sparse_precision  forces outer optim of rho and thus we end here too
       ZAL_to_ZALd_vec[u.range] <- 1
       coeff <- lambda.object$coefficients_lambdaS[[randit]] ## corrHLfit or fitme with control$refit=TRUE
       if (is.null(coeff)) {
         lambda_list[[randit]] <- lambda.object$lambda[[randit]] ## basic fitme (may numerically differ)
       } else lambda_list[[randit]] <- exp(coeff)
+      #print(object$predictor[], showEnv=FALSE)
     }
   }
   RES$lambda_list <- lambda_list
@@ -162,8 +165,7 @@
     }
     dwdloglam <- .calc_invL_coeffs(object,dvdloglam) ## one matrix for all ranefs 
     if (!is.null(dwdloglam)) {
-      col_info$ranef_ids <- which(rep(checklambda,Xi_cols)) ## (repeated) indices of ranefs, not cols of ranefs
-      col_info$cum_n_u_h <- cum_n_u_h
+      ranef_ids <- rep(seq_len(nrand),Xi_cols) ## (repeated) indices of ranefs, not cols of ranefs
     }
   } 
   ###
@@ -174,7 +176,7 @@
     if ( ! is.null(dvdlogphiMat)) {
       dvdlogphi <- rowSums(dvdlogphiMat) ## using each phi_i = phi
       dwdlogphi <- .calc_invL_coeffs(object,dvdlogphi)
-      if (!is.null(dwdlogphi)) col_info$phi_cols=length(col_info$ranef_ids)+seq_len(NCOL(dwdlogphi)) ## cols indices for phi 
+      if (!is.null(dwdlogphi)) col_info$phi_cols=length(ranef_ids)+seq_len(NCOL(dwdlogphi)) ## cols indices for phi 
       dispcolinfo$logphi <- "logphi"
     } else if (object$models[["eta"]]=="etaHGLM") stop("phimodel=='phiScal' but is.null(dvdlogphiMat)")
   } else {  ## else phimodel="", e.g. binomial

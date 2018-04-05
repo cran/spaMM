@@ -99,7 +99,7 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
     # # That is equivalent to
     # r12 <- solve(BLOB$G_CHMfactor, BLOB$ZtWX,system="L") 
     # h22 <- .ZtWZwrapper(AUGI0_ZX$X.pv,attr(sXaug,"w.resid")) - crossprod(r12) ## both lines as explained in working doc
-    # F I X M E keep the most efficient algo !
+    # FIXME keep the most efficient algo ! But not obvious difference in efficiency
   }
   return(cross_r22) # dgeMatrix
 }
@@ -465,7 +465,7 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
   }
   if (which=="beta_v_cov_from_wAugX") { ## for predVar 
     ## not called during the fit, so ideally we store the necessary info in the fit rather than use get_from_MME() 
-    stop("Programming error. Use ad hoc .calc_beta_cov_spprec() function instead.")
+    stop("Programming error. Use ad hoc .calc_beta_cov_info_spprec() function instead.")
   }
   stop(cat("'which=\"",which,"\"' is invalid.",sep=""))
 }
@@ -476,20 +476,12 @@ get_from_MME.AUGI0_ZX_sparsePrecision <- function(sXaug,
   if (which=="LevMar_step" && damping==0L) {
     resu <- get_from_MME.AUGI0_ZX_sparsePrecision(sXaug=sXaug, szAug=LM_z)
   } else resu <- switch(which,
-                 "logdet_sqrt_d2hdv2" = { ## sqrt( logdet info(v) = -d2hdv2 ) 
-                   #if (TRUE || is.null(d <- attr(attr(sXaug,"adjMatrix"),"symSVD")$d)) { ## using $d seems dangerous ./.
-                   #   bc seems to assume a single ranef. Moreover the alternative code should be fast.
-                   #   ANd this is the only usage of adjMatrix in this file...
-                   # if I really want to use attr(.,"symSVD")$d I should put it as attribute elsewhere
-                   #  => on Lunique at the end of .assign_geoinfo_and_LMatrices_but_ranCoefs
-                   
-                     half_logdetQ <- .AUGI0_ZX_sparsePrecision(sXaug=sXaug,which="half_logdetQ")
-                   #} else half_logdetQ <- sum(log(abs(1-attr(sXaug,"corrPars")$rho*d)))/2
-                   - half_logdetQ + .AUGI0_ZX_sparsePrecision(sXaug=sXaug,which="half_logdetG")
-                 },
-                 ## all other cases:
-                 .AUGI0_ZX_sparsePrecision(sXaug=sXaug,which=which,z=szAug,B=B,damping=damping,LM_z=LM_z)
-  )
+                        "logdet_sqrt_d2hdv2" = { ## sqrt( logdet info(v) = -d2hdv2 ) 
+                          half_logdetQ <- .AUGI0_ZX_sparsePrecision(sXaug=sXaug,which="half_logdetQ")
+                          (- half_logdetQ + .AUGI0_ZX_sparsePrecision(sXaug=sXaug,which="half_logdetG"))
+                        }, ## all other cases:
+                        .AUGI0_ZX_sparsePrecision(sXaug=sXaug,which=which,z=szAug,B=B,damping=damping,LM_z=LM_z)
+                       )
   return(resu)
   
 }

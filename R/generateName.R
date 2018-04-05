@@ -17,9 +17,7 @@
   fvname
 }
 
-#makenewname <- function(...) .makenewname(...) ## removed since new (>08/2017) Infusion version on CRAN
-
-## does not seem to be used
+## does not seem to be used. Infusion has some alternative definitions.
 # generateName <- function(base="tmp",
 #                             oldnames, ## typically for creating name of new variable
 #                             pos=".GlobalEnv" ## typically not used: for creating name of object for debugging

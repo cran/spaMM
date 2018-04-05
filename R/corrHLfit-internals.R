@@ -9,28 +9,28 @@ if (FALSE) {
   # }
   ## complex but still useful in
   .dispFn <- function(x,xref=5e-5,xreff=1e-1,xm=1e-3) { 
-    if (x<=xm) { 
-      num <- log(xref+x) # -log(xref+1e-6)+1
-    } else {
-      num <- log(xref+xm)+log((xreff+x)/(xreff+xm))*(xreff+xm)/(xref+xm) # -log(xref+1e-6)+1
-    }
-    #num/160 ## scaling/shifting have no effect on nloptr path nor clear effect on timings
+    num <- x
+    x_lo_xm <- (x<=xm)
+    num[which(x_lo_xm)] <- log(xref+x[which(x_lo_xm)])
+    num[which( ! x_lo_xm)] <- log(xref+xm)+log((xreff+x[which( ! x_lo_xm)])/(xreff+xm))*(xreff+xm)/(xref+xm)
+    #print(num)
     num
   } 
   .dispInv <- function(x,xref=5e-5,xreff=1e-1,xm=1e-3) {
-    # x <- x*160 +log(xref+1e-6)-1
-    if (x<log(xref+xm)) {
-      exp(x)-xref
-    } else {
-      fac <- exp((x-log(xref+xm))*(xm+xref)/(xm+xreff))
-      xm*fac + xreff*(fac-1)
-    }
+    num <- x
+    x_lo_xm <- (x<log(xref+xm))
+    num[which(x_lo_xm)] <- exp(x[which(x_lo_xm)])-xref
+    fac <- exp((x[which( ! x_lo_xm)]-log(xref+xm))*(xm+xref)/(xm+xreff))
+    num[which( ! x_lo_xm)] <-  xm*fac + xreff*(fac-1)
+    #print(num)
+    num
   }
 }
 #sapply(sapply(10^(seq(-6,6)),dispFn),dispInv)
 ## These must be directly applicable to say lambda=c(0.1,0.1) hence need to vectorize the test on x
-.dispFn <- Vectorize(.dispFn,"x")
-.dispInv <- Vectorize(.dispInv,"x")
+# but Vectorize is not quite efficient
+#.dispFn <- Vectorize(.dispFn,"x")
+#.dispInv <- Vectorize(.dispInv,"x")
 ## for rho/trRho: rho=0 exactly is meaningful in adjacency model. rhoFn and rhoInv should be used only for other models.
 .rhoFn <- function(x,RHOMAX) {log(x/(RHOMAX-x))} ## rho should be constrained to <RHOMAX and trRho should diverge as rho approaches RHOMAX
 .rhoInv <- function(trRho,RHOMAX) {
@@ -38,6 +38,8 @@ if (FALSE) {
 } 
 .nuFn <- function(nu,rho,NUMAX) {log(nu/(NUMAX-nu))} ## nu should be constrained to <NUMAX and trNu should diverge as nu approaches NUMAX
 .nuInv <- function(trNu,trRho,NUMAX) {NUMAX*exp(trNu)/(1+exp(trNu))}
+.longdepFn <- function(longdep,LDMAX) {log(longdep/(LDMAX-longdep))} 
+.longdepInv <- function(trLongdep,LDMAX) {LDMAX*exp(trLongdep)/(1+exp(trLongdep))}
 .ranCoefsFn <- function(vec) {
   if ( ! is.null(vec)) {
     Xi_cols <- floor(sqrt(2*length(vec)))
@@ -85,127 +87,6 @@ if (FALSE) {
   lower <- pmin(lower, ranCoefTerm)
   upper <- pmax(upper, ranCoefTerm)
   return(list(lower=lower,upper=upper)) ## CANONICAL scale
-}
-
-.makeLowerUpper <- function(canon.init, ## cf calls: ~ in user scale, must be a full list of relevant params
-                           init.optim, ## ~in transformed scale
-                           user.lower=list(),user.upper=list(),
-                           corr_types=NULL,nbUnique,ranFix=list(),
-                           control.dist=list(),
-                           optim.scale, 
-                           rhorange=NULL,
-                           RHOMAX,NUMAX) {
-  lower <- upper <- init.optim   ## init.optim not further used...
-  for (it in seq_along(corr_types)) {
-    corr_type <- corr_types[it]
-    if (! is.na(corr_type)) {
-      if (corr_type %in% c("SAR_WWt","adjacency")) { ## adjacency model
-        eps <- (rhorange[2L]-rhorange[1L])/(2e6)  
-        lower$rho <- user.lower$rho ## no transfo for adjacency model
-        if (is.null(lower$rho)) lower$rho <- rhorange[1L]+eps ## may remain NULL  
-        upper$rho <- user.upper$rho ## no transfo again
-        if (is.null(upper$rho)) upper$rho <- rhorange[2L]-eps
-      } else if (corr_type =="AR1") {
-        if ( ! is.null(canon.init$ARphi)) {
-          ARphi <- user.lower$ARphi
-          if (is.null(ARphi)) ARphi <- -1 + 1e-6
-          lower$ARphi <- ARphi
-          ARphi <- user.upper$ARphi
-          if (is.null(ARphi)) ARphi <- 1 - 1e-6
-          upper$ARphi <- ARphi
-        }
-      } else if (corr_type =="Matern") { 
-        if (! is.null(canon.init$rho)) {
-          rho <- user.lower$rho
-          if (is.null(rho)) rho <- canon.init$rho/150
-          if (optim.scale=="transformed") {
-            lower$trRho <- .rhoFn(rho,RHOMAX=RHOMAX)
-          } else lower$rho <- rho
-          rho <- user.upper$rho
-          if (is.null(rho)) {
-            if (inherits(nbUnique,"list")) nbUnique <- mean(unlist(nbUnique))
-            rho <- canon.init$rho*2*nbUnique ## The following was a bit too low for experiments with nu=0.5 : 1/(maxrange/(2*nbUnique)) ## nb => unique rows !
-            ## *modify* upper rho so that it does not exceed RHOMAX => /($RHOMAX+...)
-            if (optim.scale=="transformed") rho <- 2*rho * RHOMAX/(RHOMAX+2*rho)
-          }
-          if (optim.scale=="transformed") {
-            upper$trRho <- .rhoFn(rho,RHOMAX=RHOMAX) 
-          } else upper$rho <- rho
-          rhoForNu <- canon.init$rho
-        } else rhoForNu <- .getPar(ranFix,"rho")
-        if (! is.null(canon.init$nu)) {
-          nu <- user.lower$nu
-          if (is.null(nu)) nu <- canon.init$nu/100
-          if (optim.scale=="transformed") {
-            lower$trNu <- .nuFn(nu,rhoForNu,NUMAX)
-            #print(c(rhoForNu,nu,lower$trNu))
-          } else lower$nu <-nu
-          nu <- user.upper$nu
-          if (is.null(nu)) {
-            if ( ! is.null(dm <- control.dist$`dist.method`) && dm %in% c("Geodesic","Earth")) {
-              nu <- 0.5
-            } else {
-              ## constructs upper nu from NUMAX => /(1+...)
-              ## nu should not diverge otherwise it will diverge in Bessel_lnKnu, whatever the transformation used
-              nu <- NUMAX * canon.init$nu/(1+canon.init$nu) 
-              ## FR->FR hmmm. If canon.init$nu= NUMAX-1 then 
-              ##  (upper) nu= canon.init$nu and possibly < canon.init$nu by numerical accuracy issues => nloptr stops
-            }
-          }
-          if (optim.scale=="transformed") {
-            upper$trNu <- .nuFn(nu,rhoForNu,NUMAX)
-          } else upper$nu <- nu
-          #print(c(rhoForNu,nu,upper$trNu))
-        }
-        if ( ! is.null(canon.init$Nugget)) {
-          lower$Nugget <- 0
-          upper$Nugget <- 0.999999
-        }
-      } ## end else if Matern case
-    }
-  }
-
-  if (! is.null(canon.init$phi)) {
-    phi <- user.lower$phi
-    if (is.null(phi)) phi <- max(1e-6,canon.init$phi/1e5)
-    lower$trPhi <- .dispFn(phi)
-    phi <- user.upper$phi
-    if (is.null(phi)) phi <-  min(1e8,canon.init$phi*1e7)
-    ## if phi is badly initialized then it gets a default which may cause hard to catch problems in the bootstrap...
-    upper$trPhi <- .dispFn(phi)
-  }
-  if (! is.null(canon.init$lambda)) {
-    lambda <- user.lower$lambda
-    if (is.null(lambda)) lambda <- pmax(1e-6,canon.init$lambda/1e5)
-    lower$trLambda <- .dispFn(lambda)
-    lambda <- user.upper$lambda
-    if (is.null(lambda)) lambda <- pmin(1e8,canon.init$lambda*1e7)
-    upper$trLambda <- .dispFn(lambda)
-  }
-  if (! is.null(canon.init$COMP_nu)) {
-    COMP_nu <- user.lower$COMP_nu
-    if (is.null(COMP_nu)) COMP_nu <- min(canon.init$COMP_nu/2,0.05)
-    lower$COMP_nu <- COMP_nu
-    COMP_nu <- user.upper$COMP_nu
-    if (is.null(COMP_nu)) COMP_nu <- max(canon.init$COMP_nu*10,10)
-    upper$COMP_nu <- COMP_nu
-  } else if (! is.null(canon.init$NB_shape)) { ## for Gamma(1:sh,sh) with mean 1 and variance sh
-    NB_shape <- user.lower$NB_shape
-    if (is.null(NB_shape)) NB_shape <- 1e-6 
-    lower$trNB_shape <- .NB_shapeFn(NB_shape)
-    NB_shape <- user.upper$NB_shape
-    if (is.null(NB_shape)) NB_shape <- max(100*canon.init$NB_shape,1e6)
-    upper$trNB_shape <- .NB_shapeFn(NB_shape)
-  }
-  if ( ! is.null( ranCoefs <- canon.init$ranCoefs)) { ## not tested
-    canon_LowUp_ranCoef <- lapply(ranCoefs, .calc_canon_LowUp_ranCoef) ## canonical scale: compare with init before log transfo
-    canon_lower <- lapply(canon_LowUp_ranCoef, getElement,"lower")
-    lower$trRanCoefs <- lapply(canon_lower, .ranCoefsFn)
-    canon_upper <- lapply(canon_LowUp_ranCoef, getElement,"upper")
-    upper$trRanCoefs <- lapply(canon_upper, .ranCoefsFn)
-  }
-  ## names() to make sure the order of elements match; remove any extra stuff (which?)
-  return(list(lower=lower[names(init.optim)],upper=upper[names(init.optim)])) 
 }
 
 .match_coords_in_tUniqueGeo <- function(coords,tUniqueGeo) {any(apply(tUniqueGeo,1L,identical,y=coords))}
@@ -330,7 +211,7 @@ if (FALSE) {
 .calc_inits_dispPars <- function(init,init.optim,init.HLfit,ranFix,user.lower,user.upper) {
   ## does not modify init.HLfit, but keeps its original value. Also useful to keep ranFix for simple and safe coding
   init$lambda <- init.optim$lambda 
-  fixedlambda <- .getPar(ranFix,"lambda") ## FR->FR his comes from user arg, not from preprocessing
+  fixedlambda <- .getPar(ranFix,"lambda") ## FIXME getPar not useful ?
   if (!is.null(fixedlambda)) {
     whichNA <- which(is.na(fixedlambda))
     if (length(init$lambda)==length(whichNA)) {
@@ -341,14 +222,17 @@ if (FALSE) {
   }
   if (length(init$lambda)) { ## length rather than !is.null() bc .dispFn(numeric(0)) returns list() bc of the Vectorize code:
     ## zut <- function(x) return(666); zut <- Vectorize(zut); zut(numeric(0)) ## gives list()
-    init$lambda[init$lambda<1e-4] <- 1e-4
+    init$lambda <- pmax(init$lambda, 1e-4) ## see remark on init$phi below. Lower user- or bootstrap- inits are not heeded.
     init.optim$trLambda <- .dispFn(init$lambda) 
   }
   init.optim$lambda <- NULL
-  if (is.null(.getPar(ranFix,"phi"))) {
+  if (is.null(.getPar(ranFix,"phi"))) { ## FIXME getPar not useful ?
     init$phi <- init.optim$phi 
     if (!is.null(init$phi)) {
-      init$phi[init$phi<1e-4] <- 1e-4
+      ## pmax(), really ? 
+      ## Only for generic optimization
+      ##    which then means that lower user- or bootstrap- inits are not heeded. But test-fixedLRT supports this.
+      init$phi <- pmax(init$phi, 1e-4) 
       init.optim$trPhi <- .dispFn(init$phi)
       init.optim$phi <- NULL
     }
@@ -358,135 +242,178 @@ if (FALSE) {
   return(list(init=init,init.optim=init.optim,init.HLfit=init.HLfit,ranFix=ranFix))
 }
 
-.calc_inits_ARphi <- function(init,init.optim,init.HLfit,ranFix,user.lower=list(),user.upper=list()) {
-  if (is.null(.getPar(ranFix,"ARphi")) && (! is.numeric(init.HLfit$ARphi))) { 
-    init$ARphi <- init.optim$ARphi 
-    if (is.null(init$ARphi)) init$ARphi <- (user.lower$ARphi+user.upper$ARphi)/2 ## only a quick debugging aide, but FIXME:
-    # .... set this working more generally in .calc_inits_.... ? 
-    if ( ! length(init$ARphi)==1L) init$ARphi <- 0. 
-    if (! is.null(init.HLfit$ARphi)) {
-      init.HLfit$ARphi <- init$ARphi 
-    } else {
-      init.optim$ARphi <- init$ARphi
+.calc_inits_ARphi <- function(init,init.optim,init.HLfit,ranFix,user.lower=list(),user.upper=list(), char_rd) {
+  if (is.null(ranFix$corrPars[[char_rd]][["ARphi"]])) {
+    if (! is.numeric(HLfit_ARphi <- init.HLfit$corrPars[[char_rd]][["ARphi"]])) { ## if condition is TRUE then HLfit_ARphi should be NA or NULL
+      init_ARphi <- init.optim$corrPars[[char_rd]][["ARphi"]] 
+      if (is.null(init_ARphi)) init_ARphi <- (.get_cP_stuff(user.lower,"ARphi",char_rd)+.get_cP_stuff(user.upper,"ARphi",char_rd))/2 
+      if ( ! length(init_ARphi)) init_ARphi <- 0. ## may be numeric(0) from previous line
+      if (! is.null(HLfit_ARphi)) { ## then typically NA, given that the original init.HLfit$ was not numeric... 
+        init.HLfit$corrPars[[char_rd]] <- list(ARphi=init_ARphi) ## numeric
+        init.optim$corrPars[[char_rd]] <- NULL ## 'should' not be necessary
+      } else { ## then, HLfit_ARphi was NULL and stays NULL
+        init.optim$corrPars[[char_rd]] <- list(ARphi=init_ARphi) ## numeric
+      } ## now HLfit_ARphi is NULL or numeric, and optim_ARphi is numeric 
+      init$corrPars[[char_rd]] <- list(ARphi=init_ARphi)
+    } else { ## else init.HLfit$ -> HLfit_ARphi is numeric
+      init.optim$corrPars[[char_rd]] <- NULL ## 'should' not be necessary
+      init$corrPars[[char_rd]] <- list(ARphi=init_ARphi)
     }
-  } 
-  if ( (! is.null(init.HLfit$ARphi)) && (! is.numeric(init.HLfit$ARphi))) {
-    init.HLfit$ARphi <- init.optim$ARphi
-    init.optim$ARphi <- NULL
-  }      
-  return(list(init=init,init.optim=init.optim,init.HLfit=init.HLfit,ranFix=ranFix))
-}
-
-.calc_inits_nu <- function(init,init.optim,init.HLfit,ranFix,control.dist,optim.scale,NUMAX,user.lower,user.upper) {
-  if (is.null(.getPar(ranFix,"nu")) && (! is.numeric(init.HLfit$nu))) { 
-    init$nu <- init.optim$nu 
-    if (is.null(init$nu)) {
-      if ( ! is.null(dm <- control.dist$`dist.method`) && dm %in% c("Geodesic","Earth")) {
-        init$nu <- 0.25  
-      } else init$nu <- 0.5 
-    }
-    if (! is.null(init.HLfit$nu)) {
-      init.HLfit$nu <- init$nu ## avant transformation
-    } else {
-      if (optim.scale=="transformed") {
-        Fixrho <- .getPar(ranFix,"rho")
-        if (is.null(Fixrho)) { 
-          init.optim$trNu <- .nuFn(init$nu,init$rho,NUMAX=NUMAX) 
-        } else init.optim$trNu <- .nuFn(init$nu,Fixrho,NUMAX=NUMAX)
-        init.optim$nu <- NULL
-      } else init.optim$nu <- init$nu
-    }
-  } 
-  if ( (! is.null(init.HLfit$nu)) && (! is.numeric(init.HLfit$nu))) {
-    init.HLfit$nu <- init.optim$nu
-    init.optim$nu <- NULL
   }
   return(list(init=init,init.optim=init.optim,init.HLfit=init.HLfit,ranFix=ranFix))
 }
 
-.calc_inits_Auto_rho <- function(init,init.optim,init.HLfit,ranFix,rhorange,For,user.lower,user.upper) {
-  if (is.null(.getPar(ranFix,"rho"))) { ## $rho NULL or NA
+.calc_inits_nu <- function(init,init.optim,init.HLfit,ranFix,control_dist_rd,optim.scale,NUMAX,user.lower,user.upper,char_rd) {
+  if (is.null(.get_cP_stuff(ranFix,"nu",which=char_rd))) { 
+    nu <- .get_cP_stuff(init.optim,"nu",which=char_rd)
+    if (is.null(nu)) {
+      if ( ! is.null(dm <- control_dist_rd$`dist.method`) && dm %in% c("Geodesic","Earth")) {
+        nu <- 0.25  
+      } else nu <- 0.5 
+    }
+    init$corrPars[[char_rd]] <- .modify_list(init$corrPars[[char_rd]], list(nu=nu)) ## canonical scale
+    optim_cP <- init.optim$corrPars[[char_rd]]
+    if (optim.scale=="transformed") {
+      rho <- .get_cP_stuff(ranFix,"rho",which=char_rd)
+      if (is.null(rho)) rho <- .get_cP_stuff(init,"rho",which=char_rd)
+      optim_cP <- .modify_list(optim_cP, list(trNu=.nuFn(nu,rho,NUMAX=NUMAX))) 
+      optim_cP$nu <- NULL
+    } else optim_cP <- .modify_list(optim_cP, list(nu=nu)) 
+    init.optim$corrPars[[char_rd]] <- optim_cP
+  } 
+  return(list(init=init,init.optim=init.optim,init.HLfit=init.HLfit,ranFix=ranFix))
+}
+
+.calc_inits_cauchy <- function(init,init.optim,init.HLfit,ranFix,control_dist_rd,optim.scale,LDMAX,user.lower,user.upper,char_rd) {
+  if (is.null(.get_cP_stuff(ranFix,"shape",which=char_rd))) { 
+    shape <- .get_cP_stuff(init.optim,"shape",which=char_rd)
+    if (is.null(shape)) shape <- 1
+    init$corrPars[[char_rd]] <- .modify_list(init$corrPars[[char_rd]], list(shape=shape)) ## canonical scale
+    optim_cP <- init.optim$corrPars[[char_rd]]
+    optim_cP <- .modify_list(optim_cP, list(shape=shape)) 
+    init.optim$corrPars[[char_rd]] <- optim_cP
+  }
+  if (is.null(.get_cP_stuff(ranFix,"longdep",which=char_rd))) { 
+    longdep <- .get_cP_stuff(init.optim,"longdep",which=char_rd)
+    if (is.null(longdep)) longdep <- 0.5
+    init$corrPars[[char_rd]] <- .modify_list(init$corrPars[[char_rd]], list(longdep=longdep)) ## canonical scale
+    optim_cP <- init.optim$corrPars[[char_rd]]
+    if (optim.scale=="transformed") {
+      optim_cP <- .modify_list(optim_cP, list(trLongdep=.longdepFn(longdep,LDMAX=LDMAX))) 
+      optim_cP$longdep <- NULL
+    } else optim_cP <- .modify_list(optim_cP, list(longdep=longdep)) 
+    init.optim$corrPars[[char_rd]] <- optim_cP
+  }
+  return(list(init=init,init.optim=init.optim,init.HLfit=init.HLfit,ranFix=ranFix))
+}
+
+
+
+.calc_inits_Auto_rho <- function(init,init.optim,init.HLfit,ranFix,rhorange,For,user.lower,user.upper,char_rd) {
+  if (is.null(.get_cP_stuff(ranFix,"rho",which=char_rd))) { ## $rho NULL or NA
+    init_rho <- .get_cP_stuff(init.HLfit,"rho",which=char_rd)
     if (For=="corrHLfit") { ## with corrHLfit, defaul is outer optim. We provide init.optim
-      if (is.null(init.HLfit$rho)) { ## default init.HLfit
-        if (! is.numeric(init.optim$rho)) init.optim$rho <- mean(rhorange)
-      } else if ( ! is.numeric(init.HLfit$rho) ) { ## non-default: inner optim, but no numeric init  
-        init.HLfit$rho <- mean(rhorange)
-        init.optim$rho <- NULL 
+      if (is.null(init_rho)) { ## default init.HLfit
+        init_rho <- .get_cP_stuff(init.optim,"rho",which=char_rd)
+        if (! is.numeric(init_rho)) init.optim$corrPars[[char_rd]] <- init_rho <- list(rho=mean(rhorange))
+      } else if ( ! is.numeric(init_rho) ) { ## non-default: inner optim, but no numeric init  
+        init.HLfit$corrPars[[char_rd]] <- init_rho <- list(rho=mean(rhorange))
+        init.optim$corrPars[[char_rd]] <- NULL 
       } else { ## non-default: inner optim, already with init value
-        init.optim$rho <- NULL 
+        init.optim$corrPars[[char_rd]] <- NULL 
       }
     } else if (For=="fitme") { ## with fitme, default is inner optim. We provide init.HLfit
-      if ( ! is.null(init.HLfit$rho)) { ## non-default, forces inner estim
-        if (! is.numeric(init.HLfit$rho)) init.HLfit$rho <- mean(rhorange)
-      } else if ( ! is.numeric(init.optim$rho) ) { ## default: outer optim, but no numeric init
-        init.optim$rho <- mean(rhorange)
-        init.HLfit$rho <- NULL
-      } else { ## non-default: inner optim, already with init value
-        init.HLfit$rho <- NULL
-      }
-      # if (is.null(init.optim$rho)) { ## default : inner estim
-      #   if (! is.numeric(init.HLfit$rho)) init.HLfit$rho <- mean(rhorange)
-      # } else if ( ! is.numeric(init.optim$rho) ) { ## non-default: outer optim, but no numeric init  
-      #   init.optim$rho <- mean(rhorange) 
-      #   init.HLfit$rho <- NULL
-      # } else { ## non-default: inner optim, already with init value
-      #   init.HLfit$rho <- NULL 
-      # }
+      if (is.null(init_rho)) {
+        init_rho <- .get_cP_stuff(init.optim,"rho",which=char_rd)
+        if ( ! is.numeric(init_rho) ) { ## default: outer optim, but no numeric init
+          init.optim$corrPars[[char_rd]] <- init_rho <- list(rho=mean(rhorange))
+          init.HLfit$corrPars[[char_rd]] <- NULL
+        } else { ## non-default: inner optim, already with init value
+          init.HLfit$corrPars[[char_rd]] <- NULL
+        }
+      } else if (! is.numeric(init_rho)) init.HLfit$corrPars[[char_rd]] <- init_rho <- list(rho=mean(rhorange))
     }
+    init$corrPars[[char_rd]] <- init_rho ## assignment absent (still in p2 version)  prior to v2.3.30
   }
   return(list(init=init,init.optim=init.optim,init.HLfit=init.HLfit,ranFix=ranFix))
 }
 
-
-.calc_inits_geostat_rho <- function(init,init.optim,init.HLfit,ranFix,maxrange,optim.scale,RHOMAX,user.lower,user.upper) {
-  if (is.null(.getPar(ranFix,"rho")) && (! is.numeric(init.HLfit$rho))) {
-    init$rho <- init.optim$rho 
-    if (is.null(init$rho)) {
-      init$rho <- 30/(2*maxrange)
-    } else if (any( narho <- is.na(init$rho))) init$rho[narho] <- 30/(2*maxrange[narho]) ## 05/2015 allows init.corrHLfit=list(rho=rep(NA,...
-    if (! is.null(init.HLfit$rho)) { ## ! is.null, but ! is.numeric as tested above; but now it becomes numeric
-      init.HLfit$rho <- init$rho ## avant transformation
-    } else {
-      if (optim.scale=="transformed") {
-        init.optim$trRho <- .rhoFn(init$rho,RHOMAX=RHOMAX) ## we're in Matern model here
-        init.optim$rho <- NULL
-      } else init.optim$rho <- init$rho
-    }
+.calc_inits_geostat_rho <- function(init,init.optim,init.HLfit,ranFix,maxrange,optim.scale,RHOMAX,user.lower,user.upper,char_rd) {
+  if (is.null(.get_cP_stuff(ranFix,"rho",which=char_rd))) {
+    rho <- .get_cP_stuff(init.optim,"rho",which=char_rd)
+    if (is.null(rho)) {
+      rho <- 30/(2*maxrange)
+    } else if (any( narho <- is.na(rho))) rho[narho] <- 30/(2*maxrange[narho]) ## 05/2015 allows init.corrHLfit=list(rho=rep(NA,...
+    optim_cP <- init.optim$corrPars[[char_rd]]
+    init$corrPars[[char_rd]] <- .modify_list(init$corrPars[[char_rd]], list(rho=rho))
+    if (optim.scale=="transformed") {
+      optim_cP <- .modify_list(optim_cP, list(trRho=.rhoFn(rho,RHOMAX=RHOMAX)))
+      optim_cP$rho <- NULL
+    } else optim_cP <- .modify_list(optim_cP, list(rho=rho))
+    init.optim$corrPars[[char_rd]] <- optim_cP
   } 
-  if ( (! is.null(init.HLfit$rho)) && (! is.numeric(init.HLfit$rho))) {
-    init.HLfit$rho <- init.optim$rho
-    init.optim$rho <- NULL
-  }
   return(list(init=init,init.optim=init.optim,init.HLfit=init.HLfit,ranFix=ranFix))
 }
 
-.calc_inits <- function(init.optim,init.HLfit,ranFix,corr_types,rhorange=NULL,maxrange=NULL,
+.calc_inits <- function(init.optim,init.HLfit,ranFix,corr_types,
+                        moreargs,
                         user.lower,user.upper,
-                       optim.scale,control.dist,RHOMAX,NUMAX,For) { 
-  inits <- as.list(match.call()[c("init.optim","init.HLfit","ranFix","user.lower","user.upper")])
-  inits <- c(inits,list(init=list()))
-  for (it in seq_along(corr_types)) {
-    corr_type <- corr_types[it]
+                       optim.scale,For) { 
+  inits <- list(init=list(corrPars=list()), ## minimal structure for assignments $corrPars[[char_rd]][[<name>]] to work.
+                init.optim=init.optim, init.HLfit=init.HLfit, ranFix=ranFix,
+                user.lower=user.lower, user.upper=user.upper, init=list()) 
+  for (rd in seq_along(corr_types)) {
+    corr_type <- corr_types[rd]
     if (! is.na(corr_type)) {
+      char_rd <- as.character(rd)
       if (corr_type =="Matern") {
-        arglist <- c(inits,list(maxrange=maxrange,optim.scale=optim.scale,RHOMAX=RHOMAX))
-        inits <- do.call(.calc_inits_geostat_rho,arglist)
-        arglist <- c(inits,list(control.dist=control.dist, optim.scale=optim.scale, NUMAX=NUMAX))
-        inits <- do.call(.calc_inits_nu,arglist)
-        # Nugget: remains NULL through all computations if init.optim$Nugget is NULL
-        if (is.null(.getPar(ranFix,"Nugget"))) { inits$init["Nugget"] <- init.optim$Nugget }  
+        moreargs_rd <- moreargs[[char_rd]]
+        inits <- .calc_inits_geostat_rho(init=inits$init,init.optim=inits$init.optim,init.HLfit=inits$init.HLfit,ranFix=inits$ranFix,
+                                         user.lower=user.lower,user.upper=user.upper,
+                                         maxrange=moreargs_rd$maxrange,optim.scale=optim.scale,RHOMAX=moreargs_rd$RHOMAX,char_rd=char_rd)
+        inits <- .calc_inits_nu(init=inits$init,init.optim=inits$init.optim,init.HLfit=inits$init.HLfit,ranFix=inits$ranFix,
+                                control_dist_rd=moreargs_rd$control.dist, optim.scale=optim.scale, NUMAX=moreargs_rd$NUMAX,char_rd=char_rd)
+        # Nugget: remains NULL through all computations if NULL in init.optim
+        if (is.null(.get_cP_stuff(ranFix,"Nugget",which=char_rd))) { 
+          if (is.null(init.optim$corrPars)) { ## old sp2 code 
+            if (is.null(.getPar(ranFix,"Nugget"))) { inits$init["Nugget"] <- init.optim$Nugget }
+          } else { ## new spaMM3.0 code
+            inits$init$corrPars[[char_rd]] <- .modify_list(inits$init$corrPars[[char_rd]],
+                                                           list(Nugget=.get_cP_stuff(init.optim,"Nugget",which=char_rd)))
+          }  
+        }
+      } else if (corr_type =="Cauchy") {
+        moreargs_rd <- moreargs[[char_rd]]
+        inits <- .calc_inits_geostat_rho(init=inits$init,init.optim=inits$init.optim,init.HLfit=inits$init.HLfit,ranFix=inits$ranFix,
+                                         user.lower=user.lower,user.upper=user.upper,
+                                         maxrange=moreargs_rd$maxrange,optim.scale=optim.scale,RHOMAX=moreargs_rd$RHOMAX,char_rd=char_rd)
+        inits <- .calc_inits_cauchy(init=inits$init,init.optim=inits$init.optim,init.HLfit=inits$init.HLfit,ranFix=inits$ranFix,
+                                control_dist_rd=moreargs_rd$control.dist, optim.scale=optim.scale, LDMAX=moreargs_rd$LDMAX,char_rd=char_rd)
+        # Nugget: remains NULL through all computations if NULL in init.optim
+        if (is.null(.get_cP_stuff(ranFix,"Nugget",which=char_rd))) { 
+          if (is.null(init.optim$corrPars)) { ## old sp2 code 
+            if (is.null(.getPar(ranFix,"Nugget"))) { inits$init["Nugget"] <- init.optim$Nugget }
+          } else { ## new spaMM3.0 code
+            inits$init$corrPars[[char_rd]] <- .modify_list(inits$init$corrPars[[char_rd]],
+                                                           list(Nugget=.get_cP_stuff(init.optim,"Nugget",which=char_rd)))
+          }  
+        }
       } else if ( corr_type  %in% c("SAR_WWt","adjacency") ) { 
-        arglist <- c(inits,list(rhorange=rhorange,For=For))
-        inits <- do.call(.calc_inits_Auto_rho,arglist)
+        inits <- .calc_inits_Auto_rho(init=inits$init,init.optim=inits$init.optim,init.HLfit=inits$init.HLfit,ranFix=inits$ranFix,
+                                      user.lower=user.lower,user.upper=user.upper,
+                                      rhorange=moreargs[[char_rd]]$rhorange,For=For,char_rd=char_rd)
       } else if (corr_type =="AR1") {
-        inits <- do.call(.calc_inits_ARphi,inits)
+        inits <- .calc_inits_ARphi(init=inits$init,init.optim=inits$init.optim,init.HLfit=inits$init.HLfit,ranFix=inits$ranFix,
+                                   user.lower=user.lower,user.upper=user.upper,char_rd=char_rd)
       }  
     }
   }
   # phi, lambda
-  inits <- do.call(.calc_inits_dispPars,inits)
+  inits <- .calc_inits_dispPars(init=inits$init,init.optim=inits$init.optim,init.HLfit=inits$init.HLfit,ranFix=inits$ranFix,
+                                user.lower=user.lower,user.upper=user.upper)
   # random coefficients
-  inits <- do.call(.calc_inits_ranCoefs,inits)
+  inits <- .calc_inits_ranCoefs(init=inits$init,init.optim=inits$init.optim,init.HLfit=inits$init.HLfit,ranFix=inits$ranFix,
+                                user.lower=user.lower,user.upper=user.upper)
   # GLM family parameters
   inits$init$COMP_nu <- inits$init.optim$COMP_nu ## may be NULL. No checks needed
   inits$init$NB_shape <- inits$init.optim$NB_shape ## may be NULL. No checks needed
@@ -494,7 +421,5 @@ if (FALSE) {
     inits$init.optim$trNB_shape <- .NB_shapeFn(inits$init.optim$NB_shape)
     inits$init.optim$NB_shape <- NULL
   }
-  return(inits)
+  return(eval(inits))
 }
-
-

@@ -27,7 +27,7 @@
     rand_to_glm_map[done] <- length(resglm_lambdaS)
     ## next builds a resglm for all other random effects
     notdone <- setdiff(seq(nrand),done)
-    if (length(notdone)>0) {
+    if (length(notdone)) {
       cum_Xi_cols <- cumsum(c(0,attr(processed$ZAlist,"Xi_cols")))
       for(it in notdone) { ## CAR here if old corrHLfit method (or rho fixed?)
         if (is.na(lambda.Fix[it])) {

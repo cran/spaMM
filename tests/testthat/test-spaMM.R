@@ -1,7 +1,12 @@
-cat("\ntest spaMM.Rd old donttest examples:\n")
+cat("\ntest old examples and new tests:\n")
 # spaMM
 
 data("scotlip") ## loads 'scotlip' data frame, but also 'Nmatrix'
+
+# Bug before 2.3.70 (NB_shape requested before of optimization)
+hl <- fitme(I(1+cases)~I(prop.ag/10)+offset(log(expec))+adjacency(1|gridcode),
+            family=negbin(), adjMatrix=Nmatrix, data=scotlip)
+
 hl <- corrHLfit(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(expec)),
           data=scotlip,family=poisson(),
           adjMatrix=Nmatrix) ## 1D optimization -> optimize

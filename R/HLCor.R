@@ -2,7 +2,8 @@ HLCor <- function(formula,
                   data,family=gaussian(),
                   ranPars=NULL, ## all dispersion and correlation params ideally provided through ranPars
                   distMatrix,uniqueGeo=NULL,adjMatrix,corrMatrix, covStruct=NULL,
-                  verbose=c(trace=FALSE),control.dist=list(),
+                  verbose=c(trace=FALSE), 
+                  control.dist=list(), ## provided by <corrfitme>_body if called through this function. Otherwise processed in not available and control.dist will be preprocessed.
                   ...) { 
   spaMM.options(spaMM_glm_conv_crit=list(max=-Inf))
   time1 <- Sys.time()
@@ -69,6 +70,7 @@ HLCor <- function(formula,
       preprocess.formal.args[["control.dist"]] <- control.dist ## because control.dist not in formals(HLfit)    #
       mc$processed <- do.call(.preprocess,preprocess.formal.args,envir=parent.frame(1L))
       oricall$resid.model <- mc$processed$residModel
+      oricall$control.dist <- mc$processed$control.dist
       #mc$ranPars$ranCoefs <- NULL ## but new ranFix can be added by fitme/corrHLfit
       # HLCor_body() called below
     }

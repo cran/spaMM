@@ -6,7 +6,7 @@
     if (machine_cores>1L && interactive()) {
       if (! identical(spaMM.getOption("cores_avail_warned"),TRUE)) {
         message(paste(machine_cores,
-                      "cores are available for parallel computation\n(you may be allowed to fewer of them on a shared cluster).\nChange 'nb_cores' argument to use some of them.\nUse spaMM.options(nb_cores=<n>) to control nb_cores globally."))
+                      "cores are available for parallel computation\n(you may be allowed to fewer of them on a shared cluster).\nChange 'nb_cores' argument to use some of them.\nUse spaMM.options(nb_cores=<n>) to control nb_cores globally.\n"))
         spaMM.options(cores_avail_warned=TRUE)
       } else if (nb_cores>machine_cores) {
         if (! identical(spaMM.getOption("nb_cores_warned"),TRUE)) {
@@ -42,7 +42,7 @@
 
 .eval_boot_replicates <- function(eval_replicate, ## function to run on each replicate
                                   boot.repl, ## number of bootstrap replicates
-                                  nullfit, ## the fitted model ibject for which bootstrap replicates are drawn 
+                                  nullfit, ## the fitted model object for which bootstrap replicates are drawn 
                                   nb_cores, ## passing explicit value from user
                                   ...) { ## ... are arguments used by functions called by the eval_replicate function
   #
@@ -59,71 +59,19 @@
   if (nb_cores > 1L) {
     #cl <- parallel::makeCluster(nb_cores,outfile="essai.txt") 
     cl <- parallel::makeCluster(nb_cores) 
-    R.seed <- get(".Random.seed", envir = .GlobalEnv)
-    if (has_doSNOW <- ("doSNOW" %in% .packages() )) { ## allows progressbar but then requires foreach
-      # loading (?) the namespace of 'snow' changes the global RNG state!
-      assign(".Random.seed", R.seed, envir = .GlobalEnv)
-      eval(as.call(c(quote(registerDoSNOW),list(cl=cl)))) 
-      `%foreachdopar%` <- foreach::`%dopar%`
-      pb <- txtProgressBar(max = boot.repl, style = 3)
-      progress <- function(n) setTxtProgressBar(pb, n)
-      opts <- list(progress = progress)
-      parallel::clusterExport(cl=cl, list("progress"),envir=environment()) ## slow! why?
-    } else if ( ! identical(spaMM.getOption("doSNOW_warned"),TRUE)) {
-      message("If the 'doSNOW' package were attached, the progress of the bootstrap computation could be reported.")
-      spaMM.options(doSNOW_warned=TRUE)
-    } 
+    parallel::clusterEvalQ(cl, library("spaMM"))
     dotenv <- list2env(list(...))
     parallel::clusterExport(cl=cl, as.list(ls(dotenv)),envir=dotenv) ## much faster...
-  } 
+  } else cl <- NULL
   repeat { 
     block_nsim <- boot.repl-nrow(bootreps)
     cumul_nsim <- cumul_nsim+block_nsim
     RNGstate <- get(".Random.seed", envir = .GlobalEnv)
     newy_s <- simulate(nullfit,nsim = block_nsim,verbose=FALSE) ## some replicates may not be analyzable  !
     if (block_nsim==1L) dim(newy_s) <- c(length(newy_s),1)
-    #print(head(newy_s))
-    if (nb_cores > 1L) {
-      if (has_doSNOW) {
-        bootblock <- foreach::foreach(
-          ii = 1:boot.repl,
-          .combine = "rbind",
-          .inorder = TRUE,
-          .packages = "spaMM",
-          #.export = c("progress","simbData","bootlist"),
-          .errorhandling = "remove",
-          .options.snow = opts
-        ) %foreachdopar% {
-          eval_replicate(newy_s[,ii])
-        }
-        close(pb)
-      } else {
-        bootblock <- parallel::parApply(cl,newy_s,MARGIN = 2L,FUN = eval_replicate)
-        bootblock <- t(bootblock)
-        bootblock <- stats::na.omit(bootblock)
-      }
-    } else {
-      eval_wrap <- function(v) {
-        res <- eval_replicate(v)
-        #if (res[1]< res[2]) {save(v,file="zut.rda");stop("ICI")}
-        ii <<- ii+1
-        tused <- .timerraw(time1)
-        ttotal <- tused* boot.repl/ii
-        if (interactive()) {
-          for (bidon in 1:msglength) cat("\b")
-          msg <<- paste("Estimated time remaining for bootstrap: ",signif(ttotal-tused,2)," s.",sep="")
-          msglength <<- nchar(msg)
-          cat(msg)
-        } else {
-          cat(ii);cat(" ")
-          if ((ii %% 40)==0L) cat("\n")
-        }
-        return(res)
-      }
-      bootblock <- apply(newy_s,MARGIN = 2L,FUN = eval_wrap)
-      bootblock <- t(bootblock)
-      bootblock <- stats::na.omit(bootblock)
-    }
+    bootblock <- pbapply(X=newy_s,MARGIN = 2L,FUN = eval_replicate, cl=cl)
+    bootblock <- t(bootblock)
+    bootblock <- stats::na.omit(bootblock)
     if (is.null(bootblock)) {
       stop("All bootstrap replicates failed. Maybe a programming issue in parallel computation?")
     }
@@ -223,6 +171,7 @@
   fullm.list <- dotlist
   nullm.list <- dotlist
   fullm.list$formula <- predictor
+  
   #### "limited use, for initializing bootstrap replicates:"
   if ( ! is.null(null.predictor)) { ## ie if test effet fixe
     testFix <- TRUE
@@ -244,8 +193,8 @@
       namesinit <- names(fullm.list$init.corrHLfit)
       namesinit <- setdiff(namesinit,c("rho","nu","Nugget","ARphi"))
       len <- length(namesinit)
-      if ( len>0) {
-        if (len > 1) namesinit <- paste(c(paste(namesinit[-len],collapse=", "),namesinit[len]),collapse=" and ")
+      if ( len) {
+        if (len > 1L) namesinit <- paste(c(paste(namesinit[-len],collapse=", "),namesinit[len]),collapse=" and ")
         message("Argument 'init.corrHLfit' is used in such a way that")
         message(paste("  ",namesinit," will be estimated by maximization of p_v.",sep=""))
         message("  'REMLformula' will be inoperative if all dispersion")
@@ -267,22 +216,51 @@
   
   #  trace.info <- NULL
   nullfit <- do.call(fittingFunction,nullm.list)
+  canon.init <- attr(nullfit,"optimInfo")$LUarglist$canon.init ## includes user inist
+  true_corr_types <- c("adjacency","Matern","AR1","corrMatrix", "Cauchy")
+  corr_types <- true_corr_types[match(attr(nullfit$ZAlist, "exp_ranef_types"), true_corr_types)] ## full length
+  user_inits <- .post_process_parlist(nullm.list$init,corr_types=corr_types)
+  names_u_u_inits <- names(unlist(user_inits))
+  names_u_c_inits <- names(unlist(canon.init))
+  not_user_inits_names <- setdiff(names_u_c_inits, names_u_u_inits) 
   nullranPars <- nullfit$CorrEst_and_RanFix
-  notfixed <- names(which(attr(nullranPars,"type")!="fix"))
+  names_u_nullranPars <- names(unlist(nullranPars))
   if (fittingFunction=="fitme") {
-    notfixed_notinit <- setdiff(notfixed,names(fullm.list$init)) ## not overwrite a user-explicit init
-    fullm.list$init[notfixed_notinit] <- nullranPars[notfixed_notinit] 
+    # at this point we have names of parameters that were outer optimized without an explicit user init
+    if ( ! is.null(not_user_inits_names)) {
+      removand <- setdiff(names_u_nullranPars, not_user_inits_names) ## removand: user_inits, fixed, or inner optimized corrPars
+      if ( is.null(removand)) {
+        fullm.list$init <- .modify_list(canon.init,nullranPars)
+      } else { ## leaves user_inits as there are in LUarglist$canon.init, and do not add any fixed or inner-optimized par
+        fullm.list$init <- .modify_list(canon.init,
+                                   .remove_from_cP(nullranPars,u_names=removand)) ## loses attributes
+      }
+    }  else removand <- names_u_nullranPars
   }
   fullfit <- do.call(fittingFunction,fullm.list)
   if (fittingFunction=="fitme") {
     if (logLik(fullfit)<logLik(nullfit)) { ## evidence of fullfit being trapped in a local maximum
-      nullranPars <- nullfit$CorrEst_and_RanFix
-      fullm.list$init[notfixed_notinit] <- nullranPars[notfixed_notinit]
-      fullfit <- do.call(fittingFunction,fullm.list)
+      ## We did not overwrite user inits: we do so
+      if ( ! is.null(names_u_u_inits)) {
+        removand <- setdiff(names_u_nullranPars, names_u_c_inits) ## removand2: fixed, or inner optimized corrPars
+        if ( is.null(removand)) { ## may be true when this was previously false for removand, as there were user_inits
+          fullm.list$init <- .modify_list(canon.init,nullranPars)
+        } else { ## overwrites user_inits, and do not add any fixed or inner-optimized par
+          fullm.list$init <- .modify_list(canon.init,
+                                     .remove_from_cP(nullranPars,u_names=removand)) ## loses attributes
+        }
+        fullm.list$init <- canon.init
+        fullfit <- do.call(fittingFunction,fullm.list)
+      } ## else it's not clear what to do here since we preemptively set the initial values of the full fit to the null fit values.
     }
     # # No comparable evidence that nullfit is trapped in a local maximum: check with fullfit ranPars
-    fullranPars <- fullfit$CorrEst_and_RanFix
-    nullm.list$init[notfixed_notinit] <- fullranPars[notfixed_notinit]
+    fullranPars <- fullfit$CorrEst_and_RanFix ## latest fulfit...
+    if ( is.null(removand)) { ## ...and latest removand
+      nullm.list$init <- .modify_list(canon.init,fullranPars)
+    } else { ## leaves user_inits as there are in LUarglist$canon.init, and do not add any fixed or inner-optimized par
+      nullm.list$init <- .modify_list(canon.init,
+                                      .remove_from_cP(fullranPars,u_names=removand)) ## loses attributes
+    }
     renullfit <- do.call(fittingFunction,nullm.list)
     if (logLik(nullfit)<logLik(renullfit)) nullfit <- renullfit ## test may be FALSE ./. 
     # ./. (typically if fullfit yields a low lambda which is a local maximum of the nullfit)
@@ -302,17 +280,25 @@
   LRTori <- 2*(fullL-nullL)
   ## BOOTSTRAP
   if ( ! is.na(testFix)) {
-    if (boot.repl>0) {
+    if (boot.repl>0L) {
       bootlist <- dotlist ## copies (full)formula and (optionally) ranFix
       bootlist <- c(bootlist,list(null.formula=null.predictor,null.disp=null.disp,REMLformula=REMLformula,fittingFunction=fittingFunction)) ## unchanged user REMLformula forwarded
       bootlist$verbose <- c(trace=FALSE)
       #bootlist$trace <- FALSE 
       bootlist$boot.repl <- 0 ## avoids recursive call of bootstrap
+      if ( ! is.null(not_user_inits_names)) {
+        removand <- setdiff(names_u_nullranPars, not_user_inits_names) ## removand: user_inits, fixed, or inner optimized corrPars
+        if ( is.null(removand)) {
+          boot_init <- .modify_list(canon.init,nullranPars)
+        } else { ## leaves user_inits as there are in LUarglist$canon.init, and do not add any fixed or inner-optimized par
+          boot_init <- .modify_list(canon.init, .remove_from_cP(nullranPars,u_names=removand)) ## loses attributes
+        }
+      }
       if (fittingFunction=="corrHLfit") {
-        bootlist$init.corrHLfit[notfixed] <- nullfit$CorrEst_and_RanFix[notfixed]
+        bootlist$init.corrHLfit <- boot_init
       } else if (fittingFunction=="fitme") {
-        bootlist$init <- nullfit$CorrEst_and_RanFix[notfixed]
-      } else bootlist$init.HLfit[notfixed] <- nullfit$CorrEst_and_RanFix[notfixed]
+        bootlist$init <- boot_init
+      } #else bootlist$init.HLfit[notfixed] <- FIXME ## might do something here
       if (tolower(nullfit$family$family)=="binomial") {
         cbf <- .check_binomial_formula(nullfit=nullfit, data=data, fullfit=fullfit)
         cbindTest <- cbf$cbindTest
@@ -333,7 +319,7 @@
       locitError <- 0
       #
       simbData <- nullfit$data
-      eval_replicate <- function(newy,only_vector=TRUE) {
+      eval_replicate <- function(newy) {
         if (cbindTest) {
           simbData[[nposname]] <- newy
           simbData[[nnegname]] <- .get_BinomialDen(nullfit)  - newy
@@ -342,12 +328,12 @@
         bootrepl <- try(do.call(thisFnName,bootlist)) ## appears to fail IF thisFnName is internal (.do_LRT)
         #bootrepl <- try(eval(as.call(c(quote(thisFnName),bootlist)))) ## never worked (without the strsplit at least)
         if (inherits(bootrepl,"try-error")) {
-          if (only_vector) {
-            return(c(NA,NA))
-          } else return(bootrepl)
+          return(c(NA,NA))
         } else return(c(logLik(bootrepl$fullfit,which=test.obj),
                         logLik(bootrepl$nullfit,which=test.obj)))
       }
+      # cannot use spaMM_boot(object=nullfit, simuland=eval_replicate,nsim=boot.repl,nb_cores=nb_cores)
+      # bc .eval_boot_replicates() handles possible problems with some replicates
       bootblob <- .eval_boot_replicates(eval_replicate=eval_replicate,boot.repl=boot.repl,nullfit=nullfit,nb_cores=nb_cores,
                                         bootlist=bootlist, simbData=simbData)
       bootreps <- bootblob$bootreps
@@ -363,7 +349,7 @@
     if (testFix) {df <- length(fullfit$fixef)-length(nullfit$fixef)} else {df <- length(null.disp)}
     resu <- list(fullfit=fullfit,nullfit=nullfit)
     resu$basicLRT <- data.frame(chi2_LR=LRTori,df=df,p_value=1-pchisq(LRTori,df=df))
-    if (boot.repl>0) {
+    if (boot.repl>0L) {
       bootdL <- bootreps[,1]-bootreps[,2]
       meanbootLRT <- 2*mean(bootdL)  
       rawPvalue <- (1+sum(bootdL>=LRTori/2))/(boot.repl+1) ## DavisonH, p.141
@@ -396,7 +382,7 @@ get_boot_response <- function(object, replicate) {
     assign(".Random.seed", RNGstates[-1L], envir = .GlobalEnv)
     nsim <- replicate
   }
-  sim <- simulate(object$nullfit,nsim=nsim,verbose=FALSE)
+  sim <- simulate(object$nullfit,nsim=nsim,verbose=FALSE) 
   if (nsim>1L) {sim <- sim[,nsim]} else return(sim)
 }
 

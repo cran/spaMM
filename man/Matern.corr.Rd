@@ -11,7 +11,7 @@ Matern correlation function and Matern formula term.
  (i.e. either smooth or rugged surfaces). It also includes a scaling and a 'nugget' parameter. It can be invoked in two ways. First, the \code{MaternCorr} function evaluates these correlations, using distances as input. Second, a term of the form \code{Matern(1|}\emph{<...>}\code{)} in a \code{formula} specifies a random effect with Matérn correlation function, using coordinates found in a data frame as input. In the latter case, the correlations between realizations of the random effect for any two observations in the data will be the value of the Matérn function at the scaled Euclidean distance between coordinates specified in \emph{<...>}, using \dQuote{+} as separator (e.g., \code{Matern(1|latitude + longitude)}). 
 }
 \usage{
-\method{MaternCorr}{default}(d, rho = 1, smoothness, nu = smoothness, Nugget = 0L)
+\method{MaternCorr}{default}(d, rho = 1, smoothness, nu = smoothness, Nugget = NULL)
 # Matern(1|...)
 }
 %- maybe also 'usage' for other objects documented here.
@@ -47,7 +47,7 @@ for a fit including the estimation of the Nugget.
 }
 \examples{
 ## See examples in help("spaMM"), help("HLCor"), help("Loaloa"), etc.
-## The Matérn function can be used in Euclidean spaces of any dimension:
+## The Matérn family can be used in Euclidean spaces of any dimension:
 set.seed(123)
 randpts <- matrix(rnorm(20),nrow=5)
 distMatrix <- as.matrix(proxy::dist(randpts))

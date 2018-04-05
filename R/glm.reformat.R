@@ -99,7 +99,7 @@
     names(coef) <- colnames(x)
     if (getRversion() > "3.1.0") {
       # .lm.fit is a wrapper for C_Cdqrls, but with check=TRUE
-      fit <- stats::.lm.fit(x[good, , drop = FALSE] * w, z * w, min(1e-07, control$epsilon/1000))
+      fit <- .lm.fit(x[good, , drop = FALSE] * w, z * w, min(1e-07, control$epsilon/1000))
     } else {
       ##### reconstructing the C_Cdqrls call: 
       fit <- qr(x[good, , drop = FALSE] * w)

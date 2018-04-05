@@ -21,7 +21,7 @@
                           variances=list(), binding = FALSE, intervals = NULL,
                           level = 0.95, blockSize = 2000L, ...)
 get_predCov_var_fix(object, newdata = NULL, fix_X_ZAC.object, fixdata, 
-                   variances=list(disp=TRUE,residVar=FALSE), ...)    
+                   variances=list(disp=TRUE,residVar=FALSE), re.form = NULL, ...)    
 preprocess_fix_corr(object, fixdata, re.form = NULL,
                    variances=list(residVar=FALSE))                                
 get_fixefVar(...)

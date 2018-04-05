@@ -18,7 +18,7 @@
         QRmethod <- "dense" ## la corr matrix est dense !
       } else {
         totdim <- colSums(do.call(rbind,lapply(ZAlist,dim)))
-        if (any(attr(ZAlist,"exp_ranef_types") %in% c("Matern") ) ) {
+        if (any(attr(ZAlist,"exp_ranef_types") %in% c("Matern","Cauchy") ) ) {
           if (totdim[1L]>4*totdim[2L]) {
             QRmethod <- "sparse"
           } else QRmethod <- "dense" 

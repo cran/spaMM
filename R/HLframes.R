@@ -15,10 +15,6 @@
   return(uniqueIdx[redondFac])
 }
 
-# old usage:     corrHLfit(migStatus ~ 1+ (1|ULI(latitude,longitude)),data=blackcap,objective="p_v")
-
-#ULI <- function(...) .ULI(...) # => substitution in 3 steps (1) new spaMM (2) new Infusion and blackbox using .ULI (3) remove ULI from spaMM
-
 ### Utilities for parsing the mixed model formula
 ## Functions more of less distantly derived from lme4 version of findbars
 
@@ -43,7 +39,7 @@
       return(term)
     if (length(term) == 2L) { ## 
       term1 <- as.character(term[[1]])
-      if (term1 %in% c("adjacency","Matern","AR1","corrMatrix")) {
+      if (term1 %in% c("adjacency","Matern","Cauchy","AR1","corrMatrix")) {
         res <- .findbarsMM(term[[2]]) ## term[[2]] is .|. and will match term[[1]] == as.name("|") , NOT term[[1]] == as.name("(")
         attr(res,"type") <- term1
         return(res) 
@@ -93,7 +89,7 @@
     term[[2]] <- .subbarsMM(term[[2]])
     return(term)
   }
-  stopifnot(length(term) >= 3)
+  # stopifnot(length(term) >= 3) ## inefficient
   if (is.call(term) && term[[1]] == as.name("|")) 
     term[[1]] <- as.name("+")
   for (j in 2:length(term)) term[[j]] <- .subbarsMM(term[[j]])
@@ -171,7 +167,7 @@
   } ## le c() donne .|. et non |..
   if (length(term) == 2) {
     term1 <- as.character(term[[1]])
-    if (term1 %in% c("adjacency","Matern","AR1","corrMatrix")) {
+    if (term1 %in% c("adjacency","Matern","Cauchy","AR1","corrMatrix")) {
       if (as_character) term <- paste(c(term)) ## formats nicely a multiline long RHS
       attr(term,"type") <- term1
       return(term) 
@@ -192,29 +188,6 @@
   } else res[attr(res,"type")=="(.|.)"] <- nomatch ## typically sets to nomatch=NA the terms of type "(.|.)" 
   return(res)
 }
-
-## spaces should be as in parseBars because terms can be compared as strings in later code
-.old_findSpatial <- function (term, which=c("adjacency","Matern","AR1","corrMatrix")) { ## derived from findbars
-  if (inherits(term,"formula") && length(term) == 2L) 
-    return(c(NULL,.old_findSpatial(term[[2]],which=which)))  
-  ##       c(NULL,...) ensures that the result is always a list of language objects [critical case: term = ~ Matern() , without LHS nor other RHS terms]
-  if (is.name(term) || !is.language(term)) 
-    return(NULL)
-  if (term[[1]] == as.name("(")) ## i.e. (blob) but not ( | )  [update formula can add parenthese aroundspatial terms...]
-    return(.old_findSpatial(term[[2]],which=which)) 
-  if (!is.call(term)) 
-    stop("term must be of class call")
-  if (term[[1]] == as.name("|")) ## i.e. ( | ) expression
-    return(NULL)
-  if (length(term) == 2L) { 
-    term1 <- as.character(term[[1]])
-    if (term1 %in% which) {
-      return(term) 
-    } else return(NULL) 
-  }
-  c(.old_findSpatial(term[[2]],which=which), .old_findSpatial(term[[3]],which=which))
-}
-
 
 .findOffset <- function (term) { ## derived from findbars
   if (is.name(term) || !is.language(term)) 
@@ -241,6 +214,7 @@
   aschar <- .DEPARSE(formula)
   aschar <- gsub("adjacency(","(",aschar,fixed=TRUE)
   aschar <- gsub("Matern(","(",aschar,fixed=TRUE)
+  aschar <- gsub("Cauchy(","(",aschar,fixed=TRUE)
   aschar <- gsub("AR1(","(",aschar,fixed=TRUE)
   aschar <- gsub("corrMatrix(","(",aschar,fixed=TRUE)
   as.formula(aschar)
@@ -254,14 +228,15 @@
   ## 
   envform <- environment(formula)  
   ## environment(formula) should be trivial as all vars should be in the data. The comments "f i x m e : Cf comment in .getValidData"
-  #  point to the fact that this is not yet quite so because of a glitch in the CRAN version of Infusion (F I X M E)
-  #  which is why fitting functions have
+  #  point to the fact that this is was yet quite so because of a (now fixed) glitch in the CRAN version of Infusion 
+  #  which is why fitting functions still have
   #     mc <- oricall
   #     oricall$formula <- .stripFormula(formula) ## f i x m e : Cf comment in .getValidData
   #  where we should have 
   #     oricall$formula <- .stripFormula(formula) 
   #     mc <- oricall
   #  stripping is later made by Predictor()
+  #   => _F I X M E_ fix this just after spaMM 2.4.0 is on CRAN
   #  The revised Infusion code show how to proceed in programming, cf prior.weights=eval(as.name(priorwName))
   formula <- .asStandardFormula(formula) ## removes spatial tags
   frame.form <- .subbarsMM(formula) ## this comes from lme4 and converts (...|...) terms to some "+" form
@@ -319,7 +294,14 @@
   fe <- mf ## copy language object before eval
   mf <- eval(mf) ## data.frame with all vars required for fixef and for ranef, and a "terms" attribute
   Y <- model.response(mf, "any")
-  Y <- as.vector(Y) ## problem: Y is array1d here if input data frame contains array1d
+  if ( ! is.null(Y)) { ## exclude this cases which occurs when no LHS formula is handled
+    if (is.factor(Y)) { 
+      Y <- (Y != levels(Y)[1]) ## cf ?glm: ‘success’ is interpreted as the factor not having the first level
+    } ## indeed as in  binomial()$initialize
+    if (NCOL(Y)==1L) { ## test on NCOL excludes the case cbind-LHS -> matrix Y (with any array1d stuff already erased)
+      Y <- as.matrix(Y) ## to cope with array1d, and see $y <- ... code in .preprocess
+    }
+  }
   ####### Then constructs the design X by evaluating the model frame (fe) with fe$formula <- fixef.form
   fixef.form <- .nobarsMM_(formula) 
   fixef.form <- .noOffset_(fixef.form) 
@@ -327,14 +309,14 @@
   fixef_terms <- NULL
   if (inherits(fixef.form, "formula")) { 
     if ( ! is.null(fitobject)) { ## call for prediction
-      fixef_terms <- fitobject$fixef_terms
+      fixef_terms <- fitobject$HLframes$fixef_terms
       not_any_fixed_effect <- (is.null(fixef_terms) ## y ~ (1 | grp)
                                || fixef_terms[[length(fixef_terms)]]==0) ## y ~0+ (1|grp)
       if (not_any_fixed_effect) { 
         X <- matrix(nrow=nrow(mf),ncol=0L) ## model without fixed effects, not even an Intercept 
       } else {
         Terms <- stats::delete.response(fixef_terms)
-        fixef_mf <- model.frame(Terms, data, xlev = fitobject$fixef_levels) ## xlev gives info about the original levels
+        fixef_mf <- model.frame(Terms, data, xlev = fitobject$HLframes$fixef_levels) ## xlev gives info about the original levels
         X <- model.matrix(Terms, fixef_mf, contrasts.arg=attr(fitobject$X.pv,"contrasts")) ## contrasts.arg not immed useful, maybe later.
       }
     } else {
@@ -356,7 +338,7 @@
       fixef_levels <- stats::.getXlevels(fixef_terms, fe) ## added 2015/12/09 useful for predict
     }
   } else {
-    X <- matrix(nrow=nrow(data), ncol=0L) ## NROW(Y) =0 if formula has no LHS, yielding inappropriate X
+    X <- matrix(nrow=nrow(data), ncol=0L) ## Not using NROW(Y) which is 0 if formula has no LHS
   }
   storage.mode(X) <- "double" ## otherwise X may be logi[] rather than num[] in particular when ncol=0
   list(Y = Y, 
@@ -367,6 +349,5 @@
        ## only fixef-related variables, contrary to the attr(mf,"terms): 
        fixef_levels = fixef_levels, ## added 2015/12/09 useful for predict
        fixef_terms = fixef_terms ## added 2015/12/09 useful for predict
-       #,  fixef = fixef ## removed 2015/12/09 no clear use
   )
 }

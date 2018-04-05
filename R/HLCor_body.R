@@ -30,7 +30,7 @@
   bars <- spatial_term[[2]] 
   coordinates <- .DEPARSE(bars[[3]]) ## "x + y"
   coordinates <-  strsplit(coordinates," ")[[1]]
-  if (length(grep("/",coordinates))>0) {
+  if (length(grep("/",coordinates))) {
     stop(paste("'/' not yet handled in",spatial_term))
   } else if (length(grep_in <- grep("%in%|:",coordinates))>1L) {
     stop(paste("multiple nesting not yet handled in",spatial_term))
@@ -46,15 +46,16 @@
   if ( ! inherits(covStruct,"list")) stop("covStruct must inherit from class 'list'.")
   types <- attr(covStruct,'types') ## 1st way of specifying types
   if (is.null(types)) types <- names(covStruct) ## 2nd way of specifying types
-  known_types <- c("adjMatrix","corrMatrix","precision","SAR_WWt","distMatrix")
-  checktypes <- setdiff(types,known_types)
+  known_types <- c("adjMatrix","corrMatrix","precision","SAR_WWt","distMatrix") 
+  checktypes <- setdiff(types,c(known_types,"")) ## "" for unhandled ranefs
   if (length(checktypes)) stop(paste("Unhandled name(s)/type(s)",paste("'",checktypes,"'",sep="",collapse=", "),"in 'covStruct'."))
-  resu <- list() ## list with sublists; next few lines handle multiple values of each type.
-  for (st in known_types) if (any(match_ <- types==st)) {
-    if (st=="precision") {
-      resu[[st]] <- forceSymmetric(covStruct[[which(match_)]])
-    } else resu[[st]] <- covStruct[[which(match_)]]
+  resu <- vector("list",length(covStruct)) ## list with sublists(?); compatible with spaMM3.0 extended syntax
+  for (lit in seq_along(covStruct)) {
+    if (types[[lit]]=="precision") {
+      resu[[lit]] <- forceSymmetric(covStruct[[lit]])
+    } else resu[[lit]] <- covStruct[[lit]]
   }
+  names(resu) <- types ## repeated names possible
   return(resu)
 }
 
@@ -84,7 +85,7 @@
   }
   if ( length(setdiff(ZAnames,corrnames)) ==0L ) { ## i.e. all ZAnames in corrnames
     ## : should be the case when generator = "as.factor"
-    if (  (is_superset <- (length(setdiff(corrnames,ZAnames))>0)) || 
+    if (  (is_superset <- (length(setdiff(corrnames,ZAnames)))) || 
           (is_not_in_order_Zcols <- any(corrnames!=ZAnames)) ) { ## ...but superset, or not same order
       if ( inherits(corrMatrix,"precision")) {
         if ( is_superset ) {
@@ -126,89 +127,49 @@
 
 HLCor_body <- function(processed, ## single environment
                   ranPars=NULL, ## all dispersion and correlation params ideally provided through ranPars
-                  control.dist=list(),
+                  control.dist=list(), # info NOT from processed bc modified by corrHLfit_body or fitme_body
                   ...) { ## dots for HLfit
   dotlist <- list(...)
   spatial_terms <- attr(processed$ZAlist,"exp_spatial_terms")
   corr_types <- processed$corr_info$corr_types
   ## convert back ranPars to canonical scale:
-  rpblob <- .canonizeRanPars(ranPars=ranPars,corr_types=corr_types) ## also provides some init.HLfit 
-  ranPars <- rpblob$ranPars
+  ranPars <- .post_process_parlist(ranPars,corr_types=corr_types) 
+  ranPars <- .canonizeRanPars(ranPars=ranPars,corr_types=corr_types) ## with init.HLfit as attribute
   ########################################################################################################################
   # * assigns geo_envir <- .get_geo_info(...)
   # * modifies processed$AUGI0_ZX$envir by .init_precision_info(...) 
   # * computes processed$AUGI0_ZX$envir$LMatrices except for ranCoefs (the latter being filled in HLfit_body)
-  .assign_geoinfo_and_LMatrices_but_ranCoefs(processed, corr_types, spatial_terms, ranPars, control.dist, rpblob$trueCorrpars, 
+  .assign_geoinfo_and_LMatrices_but_ranCoefs(processed, corr_types, spatial_terms, ranPars, control.dist, 
                                 argsfordesignL=dotlist[intersect(names(dotlist),names(formals(designL.from.Corr)))] )
   ########################################################################################################################
   ###
   HLFormals <- names(formals(HLfit)) 
   good_dotnames <- intersect(names(dotlist),HLFormals)
   if (length(good_dotnames)) {
-    HL.info <- dotlist[good_dotnames]
+    HL.info <- dotlist[good_dotnames]  ## including init.HLfit: possibly modified from processed$init_HLfit by <corrfitme>_body 
   } else HL.info <- list()
   ## all printing in HLfit is suppressed by default
   HL.info$processed <- processed
-  ## convert ranPars to ranFix + init.HLfit
-  ## allows log and not log:
-  varNames <- names(which(attr(ranPars,"type")=="var"))
-  HL.info$init.HLfit[varNames] <- ranPars[varNames] ## inherits values from corrHLfit(...,init.HLfit(...))... or thorugh fitme !
-  fixNames <- setdiff(names(ranPars),varNames) ## "fix" or "outer"
-  if (!is.null(fixNames)) { ## could be NULL for corrMatrix case
-    ranFix <- ranPars[fixNames] ## 11/2014 as there is no other source for ranFix
-    typelist <- list() 
-    typelist[fixNames] <- "fix" ## corrected by next lines
-    if ( ! is.null(rPtype <- attr(ranPars,"type"))) { ## it may not exist in case of direct call of HLCor, 
-      ## else it has elements "fix" or "outer"
-      typelist[names(rPtype)] <- rPtype ## "outer" may override "fix"
-    }
-    attr(ranFix,"type") <- typelist 
-    if (spaMM.getOption("wDEVEL2")) {  
-      ## rPparlist NULLin direct call of HLCor:
-      if ( is.null(rPparlist <- attr(ranPars,"parlist"))) {
-        parlist <- .merge_parlist(NULL,new=ranFix,types="fix") ## will use attr(ranFix,"types") --> "fix"
-        parlist <- .merge_parlist(parlist,new=HL.info$init.HLfit,types="var")
-        attr(ranFix,"parlist") <- parlist ## pallist has fix+var contrary to ranFix[]
-        #str(ranFix)
-      } else {
-        ## ranPars may have a preesisting parlist but eg with trLambda instead of lambda
-        if ( ! identical(rpType <- attr(ranPars,"type"), lapply(rpTypes <- attr(rPparlist,"types"),tolower))) {
-          #stop(" ! identical(attr(ranPars,\"type\"),attr(attr(ranPars,\"parlist\"),\"types\"))")
-          # can be different bc rpType handles named vectors (rho,lambda) differently...
-          str(rpType)
-          str(rpTypes)
-        }
-      }
-    }
-    HL.info$ranFix <- ranFix
-  }
+  HL.info$init.HLfit <- .modify_list(HL.info$init.HLfit, attr(ranPars,"init.HLfit")) 
+  attr(ranPars,"init.HLfit") <- NULL
+  HL.info$ranFix <- ranPars
   hlfit <- do.call("HLfit",HL.info) 
   ## Here there was debug code that saved HL.info in case of error; before 1.8.5
   if ( ! is.null(processed$return_only)) {
     return(hlfit)    ########################   R E T U R N   a list with $APHLs, with class "list"
   } else class(hlfit) <- c(class(hlfit),"HLCor")
   #### Infos in the final fit object: 
-  hlfit$control.dist <- control.dist
   hlfit$spatial_terms <- spatial_terms
-  for (it in seq_along(corr_types)) {
-    corr_type <- corr_types[it]
-    if ( (! is.na(corr_type)) && (corr_type=="Matern" || corr_type=="AR1")) {
-      geo_envir <- .get_geo_info(processed, which_ranef=it, which="", 
-                                 dist.method=control.dist$dist.method) 
-      attr(hlfit,"info.uniqueGeo") <- geo_envir$uniqueGeo ## spaMM 3.0 will require a list of matrices
-      if (corr_type=="Matern") {
-        msd.arglist <- attr(processed$AUGI0_ZX$envir$LMatrices[[it]],"msd.arglist") 
-        ## we try to remove the big matrix if it can be reconstructed
-        if ( ! is.null(dM <- msd.arglist$distMatrix) ) { 
-          if ( ! is.null(distcall <- attr(dM,"call"))) {
-            msd.arglist$distcall <- distcall ## save the call, eg language proxy::dist(x = uniqueGeo, method = dist.method)
-            msd.arglist$distMatrix <- NULL ## removes the big matrix
-          }
-        }
-        attr(hlfit,"dist_info") <- msd.arglist ## spaMM 3.0 soudl store a list of msd.arglists
-      }
-    }
+  info_uniqueGeo <- msd_arglist <- list()
+  is_uniqueGeo_needed <- ( (! is.na(corr_types)) & (corr_types=="Matern" | corr_types=="Cauchy" | corr_types=="AR1"))
+  for (rd in which(is_uniqueGeo_needed)) {
+    char_rd <- as.character(rd)
+    geo_envir <- .get_geo_info(processed, which_ranef=rd, which="", 
+                               dist.method=control.dist[[char_rd]]$dist.method) 
+    info_uniqueGeo[[char_rd]] <- geo_envir$uniqueGeo 
   }
+  attr(hlfit,"info.uniqueGeo") <- info_uniqueGeo
+  #attr(hlfit,"control_dists") <- control.dist
   #
   hlfit$call <- "$call removed by HLCor. Use getCall() to extract the call from the object." ## instead of the $call with evaluated arguments
   return(hlfit) ## 
@@ -243,24 +204,11 @@ HLCor_body <- function(processed, ## single environment
   makescaled.formals <- names(formals(make_scaled_dist))
   HLnames <- (c(HLCor.formals,names_formals_HLfit,designL.formals,makescaled.formals))  ## cf parallel code in corrHLfit
   HLCor.call <- mc[c(1,which(names(mc) %in% HLnames))] ## keep the call structure
-  forGiven <- relist(ranefParsVec,skeleton) ## given values of the optimized variables 
-  ## ... relist keeps the RHOMAX... attributes from the skeleton, but the partial copy into ranPars does not.
-  if (spaMM.getOption("wDEVEL2")) {
-    parlist <- attr(HLCor.call$ranPars,"parlist")
-    parlist <- .merge_parlist(parlist,new=forGiven,types="fix")## consistently with previous code
-    attr(parlist,"RHOMAX") <- attr(skeleton,"RHOMAX")
-    attr(parlist,"NUMAX") <- attr(skeleton,"NUMAX")
-    attr(HLCor.call$ranPars,"parlist") <- parlist
-  }
-  notlambda <- setdiff(names(forGiven),"lambda")
-  HLCor.call$ranPars$lambda[names(forGiven$lambda)] <- forGiven$lambda
-  HLCor.call$ranPars[notlambda] <- forGiven[notlambda] ## do not wipe out other fixed, non optimized variables
+  HLCor.call$ranPars <- structure(.modify_list(HLCor.call$ranPars, relist(ranefParsVec,skeleton)), ## adds given values of the optimized variables 
+                                  type=.modify_list(attr(HLCor.call$ranPars,"type"),attr(skeleton,"type")), ## adds "fix"'s... somewhat confusing 
+                                  moreargs=attr(skeleton,"moreargs") )
   # ranPars may have $trLambda (from notlambda) for what is optimized,
   #              and $lambda (from ranPars$lambda) for what was fixed in the whole outer fit  
-  attr(HLCor.call$ranPars,"RHOMAX") <- attr(skeleton,"RHOMAX")
-  attr(HLCor.call$ranPars,"NUMAX") <- attr(skeleton,"NUMAX")
-  types <- attr(skeleton,"type")
-  attr(HLCor.call$ranPars,"type")[names(types)] <- types
   HLCor.call[[1L]] <- quote(spaMM::HLCor)
   hlfit <- eval(HLCor.call) ## retruns fit or call 
   #
@@ -268,6 +216,7 @@ HLCor_body <- function(processed, ## single environment
   #
   aphls <- hlfit$APHLs
   resu <- aphls[[objective]]
+  if (objective=="cAIC") resu <- - resu ## for minimization of cAIC (private & experimental)
   return(resu) #
 }
 

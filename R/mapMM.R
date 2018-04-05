@@ -98,23 +98,27 @@ makeTicks <- function(x, ## in canonical scale...
     labels <- pmax(validRange[1],labels)
     labels <- pmin(validRange[2],labels)
   }
-  if(logticks) {
-    phantomat <- niceLabels(c(min(labels)/10, max(labels)*10), log=TRUE, lpos=c(1:9)) ## smalltick marks without labels
-  } else phantomat <- NULL
-  if( ! is.null(validRange)) {
-    phantomat <- pmax(validRange[1],phantomat)
-    phantomat <- pmin(validRange[2],phantomat)
-  }
+  
+  # blackbox uses its own maketicks function()
+  
+  # phantomat code here is buggy (is phantomat is NULL -> pmax(-Inf,NULL) is numeric(0) -> is.infinite() fails)
+  # if(logticks) {
+  #   phantomat <- niceLabels(c(min(labels)/10, max(labels)*10), log=TRUE, lpos=c(1:9)) ## smalltick marks without labels
+  # } else phantomat <- NULL
+  # if( ! is.null(validRange)) {
+  #   phantomat <- pmax(validRange[1],phantomat)
+  #   phantomat <- pmin(validRange[2],phantomat)
+  # }
   at <- labels
   if( ! is.null(scalefn)) { ##not necess "log"
     at <- sapply(at,scalefn)
     invalidat <- (is.infinite(at) | is.nan(at))
     at <- at[ ! invalidat]
     labels <- labels[ ! invalidat]
-    phantomat <- sapply(phantomat,scalefn)
-    phantomat <- phantomat[ ! (is.infinite(phantomat) | is.nan(phantomat))]
+    #phantomat <- sapply(phantomat,scalefn)
+    #phantomat <- phantomat[ ! (is.infinite(phantomat) | is.nan(phantomat))]
   }
-  return(list(labels=labels, at=at, phantomat=phantomat))
+  return(list(labels=labels, at=at, phantomat=NULL))
 }
 
   
@@ -317,7 +321,14 @@ mapMM <- function (fitobject,Ztransf=NULL,coordinates,
                    add.points,decorations=NULL,plot.title=NULL,plot.axes=NULL,envir=-3,...) {
   ## currently add.points and decorations are equivalent:
   if ( ! missing(add.points)) warning("'add.points' is obsolete, use 'decorations'")
-  if (missing(coordinates)) coordinates <- colnames(attr(fitobject,"info.uniqueGeo"))
+  if (missing(coordinates)) {
+    info_olduniqueGeo <- attr(fitobject,"info.uniqueGeo") 
+    if ( ! is.array(info_olduniqueGeo)) { ## test TRUE for version > 2.3.18:
+      if (length(info_olduniqueGeo)>1L) stop("mapMM handles only models with a single continuous spatial effect.")
+      olduniqueGeo <- info_olduniqueGeo[[1L]]
+    } else olduniqueGeo <- info_olduniqueGeo 
+    coordinates <- colnames(olduniqueGeo)
+  }
   if (length(coordinates)!=2L) {
     stop(paste("'mapMM' plots only 2D maps, while coordinates are of length ",length(coordinates),sep=""))
   }
@@ -349,8 +360,14 @@ mapMM <- function (fitobject,Ztransf=NULL,coordinates,
                            smoothObject=NULL,
                            ...) 
 {
-  if (missing(coordinates)) 
-    coordinates <- colnames(attr(fitobject, "info.uniqueGeo"))
+  if (missing(coordinates)) {
+    info_olduniqueGeo <- attr(fitobject,"info.uniqueGeo") 
+    if ( ! is.array(info_olduniqueGeo)) { ## test TRUE for version > 2.3.18:
+      if (length(info_olduniqueGeo)>1L) stop("filled.mapMM handles only models with a single continuous spatial effect.")
+      olduniqueGeo <- info_olduniqueGeo[[1L]]
+    } else olduniqueGeo <- info_olduniqueGeo 
+    coordinates <- colnames(olduniqueGeo)
+  }
   if (length(coordinates) != 2L) {
     stop(paste("'map' plots only 2D maps, while coordinates are of length ", 
                length(coordinates), sep = ""))

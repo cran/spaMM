@@ -33,7 +33,7 @@ HLfit <- function(formula,
     if ( ! missing(resid.formula)) oricall$resid.model <- resid.formula
     if (missing(data)) {
       data <- environment(formula)
-      warning("It is _strongly_ recommanded to use the 'data' argument\n for any application beyond a single fit (e.g. for predict(), etc.)")
+      warning("It is _strongly_ recommended to use the 'data' argument\n for any application beyond a single fit (e.g. for predict(), etc.)")
     }
     ################### create data list if family is multi #################################
     family <- .checkRespFam(family)
@@ -142,24 +142,15 @@ HLfit <- function(formula,
     family <- processed$family
     data <- processed$data
   }
-  
   HLnames <- names(formals(HLfit))
   HLfit.call <- mc[c(1,which(names(mc) %in% HLnames))] ## keep the call structure
   HLfit.call[[1L]] <- quote(spaMM::HLfit)
-  forGiven <- relist(ranefParsVec,skeleton) ## given values of the optimized variables
-  if (spaMM.getOption("wDEVEL2")) {
-    parlist <- attr(HLfit.call$ranFix,"parlist")
-    parlist <- .merge_parlist(parlist,new=forGiven,types="fix")## consistently with previous code
-    attr(HLfit.call$ranFix,"parlist") <- parlist
-  }
-  notlambda <- setdiff(names(forGiven),"lambda")
-  HLfit.call$ranFix$lambda[names(forGiven$lambda)] <- forGiven$lambda
-  HLfit.call$ranFix[notlambda] <- forGiven[notlambda] ## do not wipe out other fixed, non optimized variables
-  #types <- attr(skeleton,"type")
-  #attr(HLfit.call$ranFix,"type")[names(types)] <- types
+  HLfit.call$ranFix <- structure(.modify_list(HLfit.call$ranFix, relist(ranefParsVec,skeleton)), ## adds given values of the optimized variables 
+                                  type=.modify_list(attr(HLfit.call$ranFix,"type"),attr(skeleton,"type")) ) ## adds "fix"'s... somewhat confusing 
   hlfit <- eval(HLfit.call)
   aphls <- hlfit$APHLs
   resu <- aphls[[objective]]
+  if (objective=="cAIC") resu <- - resu ## for minimization of cAIC (private & experimental)
   lsv <- c("lsv",ls())
   rm(list=setdiff(lsv,"resu"))
   return(resu) #

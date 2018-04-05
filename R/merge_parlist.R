@@ -1,5 +1,10 @@
 .modify_list <- function (x, val) { ## derived from utils::modifyList
-  stopifnot(is.list(x), is.list(val))
+  if( is.null(x)) {
+    if (is.null(val)) {
+      return(NULL)
+    } else return(val)
+  } else if (is.null(val)) return(x) 
+  #stopifnot(is.list(x), is.list(val)) # inefficient
   xnames <- names(x)
   vnames <- names(val)
   vnames <- vnames[nzchar(vnames)]

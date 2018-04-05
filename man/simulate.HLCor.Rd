@@ -16,7 +16,7 @@
 \usage{
 \method{simulate}{HLfit}(object, nsim = 1, seed = NULL, newdata=NULL,
                          type = "marginal", conditional=NULL, verbose=TRUE,
-                         sizes = NULL, ...)
+                         sizes = NULL, resp_testfn=NULL, ...)
 \method{simulate}{HLfitlist}(object, nsim = 1, seed = NULL, 
                              newdata=object[[1]]$data, sizes=NULL, ...)
 }
@@ -46,6 +46,9 @@
   \item{sizes}{
   A vector of sample sizes to simulate in the case of a binomial fit. Defaults to the sizes in the original data. 
 }
+  \item{resp_testfn}{
+  NULL, or a function that tests a condition which simulated samples should satisfy. This function takes a response vector as argument and return a boolean (TRUE indicating that the sampel satisfies the condition).     
+  }
   \item{\dots}{
   further arguments passed to or from other methods. 
 }

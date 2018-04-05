@@ -18,6 +18,7 @@
                       "if you want to check separation (see 'help(separation)')."))
         return(FALSE)
       } else {
+        if (inherits(x,"sparseMatrix")) x <- as.matrix(x) ## bc next line ->  model.frame.default...
         svmfit <- e1071::svm(y~x[,varcols,drop=FALSE],type='C-classification', kernel='linear')
         return( ! any(svmfit$fitted!=y))
       }
@@ -32,6 +33,7 @@
 }
 
 if (FALSE) { ## assuming  Imports lpSolveAPI (>= 5.5.0.14)
+  ## code derived from the glm() function in the safeBinaryRegression package
   separator <- function(x, y, method = c("primal", "dual"), purpose = c("test", "find"),
                         tol = 1e-3)
   {

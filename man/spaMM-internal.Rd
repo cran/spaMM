@@ -1,14 +1,18 @@
 \name{spaMM-internal}
 
-%\alias{makenewname} % fixme can be removed when next (>08/2017) version of Infusion is on CRAN
 
 \alias{fitme_body}
 \alias{HLfit.obj}
 
-
-%\alias{noNonSpatialbarsMM} % fixme can be removed when next (>08/2017) version of Infusion is on CRAN
-%\alias{LogAbsDetWrap} % fixme can be removed when next (>08/2017) version of Infusion is on CRAN
-
+\alias{Initialize} 
+\alias{Variogram} 
+\alias{coef} 
+\alias{coef<-} 
+\alias{corFactor} 
+\alias{corMatrix} 
+\alias{getCovariate} 
+\alias{logDet} 
+\alias{recalc} 
 \alias{Beta} 
 \alias{spaMM_Gamma} 
 \alias{get_HLCorcall} % fixme: deserves to be documented as of independent interest (cf exampl of usage in probitgem)
@@ -23,7 +27,7 @@
 \alias{makeTicks} % used by probitgem and Infusion but not spaMM itself. Either I define it in each of the two other packages or I keep it here
 \alias{Matern.corr} % back compat, should be deleted later
 \alias{niceLabels} % used by blackbox
-\alias{overcat} % in probitgem. Was in Infusion and blackbox (not in the future > 26/08/2017 versions) so cannot be removed yet.
+\alias{overcat} % used in probitgem. Infusion and blackbox both have .overcat()
 
 \alias{crack} % not doc'ed but used in an example :-)
 

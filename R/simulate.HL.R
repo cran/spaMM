@@ -1,10 +1,13 @@
-## derived from the devel version of lme4:
-## tests if argument implies a model without random effects or not
-## TRUE if argument is NA or ~0, 
-## FALSE if argument is NULL or a non-trivial formula
+## 'has-no-ranef' can be tested by is.null(.findbarsMM(re.form)) or is.null(.parseBars(re.form))
+# devel version of lme4 has noReForm() that assumes that there in no fixed effect in re.form, with result
+# TRUE if argument is NA or ~0, 
+# FALSE if argument is NULL or a non-trivial formula (re.form=NULL in particular means that prediction assumes the original random-effect terms).
+# We additionally want TRUE if argument is ~<only fixef> (fixed effect will be ignored anyway)
+# The following is equivalent to noReForm() except for the last test, is.null(.findbarsMM(re.form)) 
+# ~0 returns TRUE, ~Days returns TRUE [as the last test is TRUE in both cases], ~<including ranefs> returns FALSE 
 .noRanef <- function(re.form) {
-  (!is.null(re.form) && !is(re.form,"formula") && is.na(re.form)) ||
-    (inherits(re.form,"formula") && length(re.form)==2 && identical(re.form[[2]],0))
+  (!is.null(re.form) && !inherits(re.form,"formula") && is.na(re.form)) ||
+    (inherits(re.form,"formula") && length(re.form)==2 && is.null(.findbarsMM(re.form)))
 }
 
 .newetaFix <- function(object, newMeanFrames,validnames=NULL) {
@@ -49,7 +52,7 @@
 # FR->FR misses the computation of random effects for new spatial positions: cf comments in the code below
 simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
                            type = "marginal", conditional=NULL, verbose=TRUE,
-                           sizes=NULL , ...) { ## object must have class HLfit; corr pars are not used, but the ZAL matrix is.
+                           sizes=NULL , resp_testfn=NULL, ...) { ## object must have class HLfit; corr pars are not used, but the ZAL matrix is.
   ## RNG stuff copied from simulate.lm
   if (!exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE))
     runif(1)
@@ -72,98 +75,101 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
   }
   if (is.null(sizes)) sizes <- .get_BinomialDen(object)
   nrand <- length(object$ZAlist)
-  if (nrand==0L) {
-    mu <- predict(object,newdata=newdata,binding=NA)
-    if (nsim>1) mu <- replicate(nsim,mu,simplify=FALSE) # mu <- matrix(rep(mu,nsim),ncol=nsim)
-  } else { ## MIXED MODEL
-    if (type=="(ranef|response)") { ## Booth & Hobert approximate approach
-      if (verbose) cat("Simulation from conditional random effect distribution | observed response:\n") 
-      point_pred_eta <- predict(object,newdata=newdata,variances=list(BH98=TRUE)) ## (with newX.pv=0)
-      if (all(attr(object$rand.families,"lcrandfamfam")=="gaussian")){
-        rand_eta <- mvrnorm(n=nsim,mu=point_pred_eta[,1L],Sigma=attr(point_pred_eta,"predVar"))
-        if (nsim>1L) {
-          rand_eta <- t(rand_eta)
-        } else rand_eta <- rand_eta[1L,]
-        if ( ! is.null(zero_truncated <- object$family$zero_truncated)) {
-          mu <- object$family$linkinv(rand_eta,mu_truncated=zero_truncated)
-        } else mu <- object$family$linkinv(rand_eta) ## ! freqs for binomial, counts for poisson: suitable for final code
-      } else stop("This conditional simulation is not implemented for non-gaussian random-effects")
-    } else if ( type=="residual") { ## conditional on predicted ranefs
-      if (verbose) cat("Unconditional simulation given predicted random effects:\n") 
+  resu <- NULL
+  done <- 0L
+  while((needed <- nsim-done)) {
+    if (nrand==0L) {
       mu <- predict(object,newdata=newdata,binding=NA)
-      if (nsim>1) mu <- replicate(nsim,mu,simplify=FALSE) #matrix(rep(mu,nsim),ncol=nsim)
-    } else if ( type=="marginal"){ ## unconditional MIXED MODEL
-      if (verbose) cat("Unconditional simulation:\n") 
-      mu_fixed <- predict(object, newdata=newdata, re.form=NA,binding=NA) ## mu_T
-      if ( ! is.null(zero_truncated <- object$family$zero_truncated)) {
-        eta_fixed <- object$family$linkfun(mu_fixed, mu_truncated=zero_truncated) ## back to _U to add ranefs to the linear predictor.
-      } else eta_fixed <- object$family$linkfun(mu_fixed)
-      if (is.null(newdata)) {
-        ZAL <- get_ZALMatrix(object)
-        cum_n_u_h <- attr(object$lambda,"cum_n_u_h")
-        vec_n_u_h <- diff(cum_n_u_h)
-      } else { ## unconditional MM with newdata
-        #   ## [-2] so that HLframes does not try to find the response variables  
-        allFrames <- .HLframes(formula=attr(object$predictor,"oriFormula")[-2],data=newdata) 
-        ZALlist <- .spMMFactorList(object$predictor, allFrames$mf, 0L, drop=TRUE,sparse_precision=FALSE) 
-        ##### the following code ignores spatial effects with newdata:
-        # to overcome this we need to calculate the unconditional covmat including for the (new) positions
-        vec_n_u_h <- unlist(lapply(ZALlist,ncol)) ## nb cols each design matrix = nb realizations each ranef
-        cum_n_u_h <- cumsum(c(0,vec_n_u_h))
-        ZALlist <- lapply(ZALlist,as.matrix)
-        ZAL <- do.call(cbind,ZALlist)
-      }
-      lcrandfamfam <- attr(object$rand.families,"lcrandfamfam") ## unlist(lapply(object$rand.families, function(rf) {tolower(rf$family)})) 
-      fittedLambda <- object$lambda.object$lambda_est
-      newV <- lapply(seq(length(vec_n_u_h)), function(it) {
-        nr <- vec_n_u_h[it]
-        u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
-        loclambda <- fittedLambda[u.range]
-        newU <- replicate(nsim,{
-          switch(lcrandfamfam[it], ## remainder of code should be OK for rand.families
-                 gaussian = rnorm(nr,sd=sqrt(loclambda)),
-                 gamma = rgamma(nr,shape=1/loclambda,scale=loclambda),
-                 beta = rbeta(nr,1/(2*loclambda),1/(2*loclambda)),
-                 "inverse.gamma" = 1/rgamma(nr,shape=1+1/loclambda,scale=loclambda), ## yields inverse gamma (1+1/object$lambda,1/object$lambda)
-                 stop("(!) random sample from given rand.family not yet implemented")
-          )},simplify=TRUE) ## should have nsim columns
-        object$rand.families[[it]]$linkfun(newU) 
-      }) ## one multi-rand.family simulation
-      newV <- do.call(rbind,newV) ## each column a simulation
-      if (nsim==1L) {
-        eta <- eta_fixed + drop(ZAL %id*% newV) 
+      if (needed>1) mu <- replicate(needed,mu,simplify=FALSE) # mu <- matrix(rep(mu,nsim),ncol=nsim)
+    } else { ## MIXED MODEL
+      if (type=="(ranef|response)") { ## Booth & Hobert approximate approach
+        if (verbose) cat("Simulation from conditional random effect distribution | observed response:\n") 
+        point_pred_eta <- predict(object,newdata=newdata,variances=list(BH98=TRUE)) ## (with newX.pv=0)
+        if (all(attr(object$rand.families,"lcrandfamfam")=="gaussian")){
+          rand_eta <- mvrnorm(n=needed,mu=point_pred_eta[,1L],Sigma=attr(point_pred_eta,"predVar"))
+          if (needed>1L) {
+            rand_eta <- t(rand_eta)
+          } else rand_eta <- rand_eta[1L,]
+          if ( ! is.null(zero_truncated <- object$family$zero_truncated)) {
+            mu <- object$family$linkinv(rand_eta,mu_truncated=zero_truncated)
+          } else mu <- object$family$linkinv(rand_eta) ## ! freqs for binomial, counts for poisson: suitable for final code
+        } else stop("This conditional simulation is not implemented for non-gaussian random-effects")
+      } else if ( type=="residual") { ## conditional on predicted ranefs
+        if (verbose) cat("Unconditional simulation given predicted random effects:\n") 
+        mu <- predict(object,newdata=newdata,binding=NA)
+        if (needed>1) mu <- replicate(needed,mu,simplify=FALSE) #matrix(rep(mu,nsim),ncol=nsim)
+      } else if ( type=="marginal"){ ## unconditional MIXED MODEL
+        if (verbose) cat("Unconditional simulation:\n") 
+        mu_fixed <- predict(object, newdata=newdata, re.form=NA,binding=NA) ## mu_T
         if ( ! is.null(zero_truncated <- object$family$zero_truncated)) {
-          mu <- object$family$linkinv(eta,mu_truncated=zero_truncated)
-        } else mu <- object$family$linkinv(eta) 
-      } else {
-        eta <-  matrix(rep(eta_fixed,nsim),ncol=nsim) + as.matrix(ZAL %id*% newV) ## nobs rows, nsim col
-        mu <- vector("list",nsim)
+          eta_fixed <- object$family$linkfun(mu_fixed, mu_truncated=zero_truncated) ## back to _U to add ranefs to the linear predictor.
+        } else eta_fixed <- object$family$linkfun(mu_fixed)
+        if (is.null(newdata)) {
+          ZAL <- get_ZALMatrix(object)
+          cum_n_u_h <- attr(object$lambda,"cum_n_u_h")
+          vec_n_u_h <- diff(cum_n_u_h)
+        } else { ## unconditional MM with newdata
+          #   ## [-2] so that HLframes does not try to find the response variables  
+          allFrames <- .HLframes(formula=attr(object$predictor,"oriFormula")[-2],data=newdata) 
+          ZALlist <- .spMMFactorList(object$predictor, allFrames$mf, 0L, drop=TRUE,sparse_precision=FALSE) 
+          ##### the following code ignores spatial effects with newdata:
+          # to overcome this we need to calculate the unconditional covmat including for the (new) positions
+          vec_n_u_h <- unlist(lapply(ZALlist,ncol)) ## nb cols each design matrix = nb realizations each ranef
+          cum_n_u_h <- cumsum(c(0,vec_n_u_h))
+          ZALlist <- lapply(ZALlist,as.matrix)
+          ZAL <- do.call(cbind,ZALlist)
+        }
+        lcrandfamfam <- attr(object$rand.families,"lcrandfamfam") ## unlist(lapply(object$rand.families, function(rf) {tolower(rf$family)})) 
+        fittedLambda <- object$lambda.object$lambda_est
+        locfn <- function(it) {
+          nr <- vec_n_u_h[it]
+          u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
+          loclambda <- fittedLambda[u.range]
+          newU <- replicate(needed,{
+            switch(lcrandfamfam[it], ## remainder of code should be OK for rand.families
+                   gaussian = rnorm(nr,sd=sqrt(loclambda)),
+                   gamma = rgamma(nr,shape=1/loclambda,scale=loclambda),
+                   beta = rbeta(nr,1/(2*loclambda),1/(2*loclambda)),
+                   "inverse.gamma" = 1/rgamma(nr,shape=1+1/loclambda,scale=loclambda), ## yields inverse gamma (1+1/object$lambda,1/object$lambda)
+                   stop("(!) random sample from given rand.family not yet implemented")
+            )},simplify=TRUE) ## should have nsim columns
+          object$rand.families[[it]]$linkfun(newU) 
+        }
+        newV <- lapply(seq(length(vec_n_u_h)), locfn ) ## one multi-rand.family simulation
+        newV <- do.call(rbind,newV) ## each column a simulation
+        eta <-  matrix(rep(eta_fixed,needed),ncol=needed) + as.matrix(ZAL %id*% newV) ## nobs rows, nsim col
+        mu <- vector("list",needed)
         if ( ! is.null(zero_truncated <- object$family$zero_truncated)) {
-          for (it in seq_len(nsim)) mu[[it]] <- object$family$linkinv(eta[,it],mu_truncated=zero_truncated)
-        } else for (it in seq_len(nsim)) mu[[it]] <- object$family$linkinv(eta[,it]) 
-      }
-    } else stop("Unknown simulate 'type' value.")
+          for (it in seq_len(needed)) mu[[it]] <- object$family$linkinv(eta[,it],mu_truncated=zero_truncated)
+        } else for (it in seq_len(needed)) mu[[it]] <- object$family$linkinv(eta[,it]) 
+      } else stop("Unknown simulate 'type' value.")
+    }
+    ## ! mu := freqs for binomial, counts for poisson ## vector or matrix
+    phiW <- object$phi/object$prior.weights ## cf syntax and meaning in Gamma()$simulate / spaMM_Gamma$simulate
+    family <- object$family
+    famfam <- object$family$family
+    # resu <- object$family$simulate(object,nsim=nsim) ## could be OK and more efficient for CONDITIONAL simulation
+    if (famfam =="COMPoisson") {
+      COMP_nu <- environment(object$family$aic)$nu
+    } else if (famfam == "negbin") {
+      NB_shape <- environment(object$family$aic)$shape
+      zero_truncated <- identical(object$family$zero_truncated,TRUE)
+    } else if (famfam == "poisson") {
+      zero_truncated <- identical(object$family$zero_truncated,TRUE)
+    }
+    if ( ! is.null(resp_testfn)) {
+      block <- sapply(mu, .r_resid_var, phiW=phiW,sizes=sizes,COMP_nu=COMP_nu,NB_shape=NB_shape, zero_truncated=zero_truncated,
+                      famfam=famfam, simplify=TRUE) ## simplify from list to matrix, not vector !
+      check_cond <- apply(block,2L, resp_testfn)
+      if (is.null(resu)) {resu <- block[,check_cond,drop=FALSE]} else resu <- cbind(resu,block[,check_cond,drop=FALSE])
+      done <- done+length(which(check_cond))
+    } else {
+      resu <- sapply(mu, .r_resid_var, phiW=phiW,sizes=sizes,COMP_nu=COMP_nu,NB_shape=NB_shape, zero_truncated=zero_truncated,
+                     famfam=famfam, simplify=TRUE) 
+      done <- nsim
+    }
   }
-  ## ! mu := freqs for binomial, counts for poisson ## vector or matrix
-  phiW <- object$phi/object$prior.weights ## cf syntax and meaning in Gamma()$simulate / spaMM_Gamma$simulate
-  family <- object$family
-  famfam <- object$family$family
-  # resu <- object$family$simulate(object,nsim=nsim) ## could be OK and more efficient for CONDITIONAL simulation
-  if (famfam =="COMPoisson") {
-    COMP_nu <- environment(object$family$aic)$nu
-  } else if (famfam == "negbin") {
-    NB_shape <- environment(object$family$aic)$shape
-    zero_truncated <- identical(object$family$zero_truncated,TRUE)
-  } else if (famfam == "poisson") {
-    zero_truncated <- identical(object$family$zero_truncated,TRUE)
-  }
-  if (nsim>1) { ## matrix output, but list input for mu, as it is easier to keep attributes on mu by using a list.
-    resu <- sapply(mu, .r_resid_var, phiW=phiW,sizes=sizes,COMP_nu=COMP_nu,NB_shape=NB_shape, zero_truncated=zero_truncated,
-                                         famfam=famfam) 
-  } else {
-    resu <- .r_resid_var(mu,phiW=phiW,sizes=sizes,COMP_nu=COMP_nu,NB_shape=NB_shape, zero_truncated=zero_truncated,
-                         famfam=famfam)
-  }
+  if (nsim==1) resu <- drop(resu)  
   return(resu)    
 }
 
@@ -188,7 +194,7 @@ simulate.HLfitlist <- function(object,nsim=1,seed=NULL,newdata=object[[1]]$data,
     for (it in seq(ncol(resu))) {
       ## it = 1 se ramène à simulate(object[[1]])
       if (is.null(sizes)) sizes <- .get_BinomialDen(object[[it]])
-      resu[,it] <- simulate(object[[it]],newdata=newdata,sizes=sizes - cumul,verbose=FALSE)
+      resu[,it] <- simulate(object[[it]],newdata=newdata,sizes=sizes - cumul,verbose=FALSE) ## FIXME use of resp_testfn would require it to be a list
       cumul <- rowSums(resu)  
     }
     resu <- cbind(resu,sizes - cumul) ## now 3 cols if 3 types

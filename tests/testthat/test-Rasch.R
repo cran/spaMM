@@ -26,7 +26,7 @@ if( require("multilevel", quietly = TRUE)) {
     lql$resp <- as.integer(lql$dichot)-1
     # 12s s WITHOUT LevenbergM NOR sparse_precision
     hl1 <- HLfit(cbind(resp,1-resp) ~ 0+itype+(1|subj)+(1|COMPID)+(1|item), 
-                 data=lql, binomial,HLmethod="ML",verbose=c(TRACE=TRUE),control.HLfit=list(LevenbergM=FALSE)) 
+                 data=lql, binomial,HLmethod="ML",verbose=c(TRACE=interactive()),control.HLfit=list(LevenbergM=FALSE)) 
     testthat::expect_equal(logLik(hl1),c(p_v=-20354.8828))
     
   } else cat(" requires example_maxtime>12")

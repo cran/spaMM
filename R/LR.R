@@ -2,8 +2,8 @@
   if (inherits(object,"HLfitlist") || inherits(object2,"HLfitlist")) {
     stop("This does not yet work on HLfitlist objects")
   }
-  X1 <- colnames(object$`X.pv`)
-  X2 <- colnames(object2$`X.pv`)
+  X1 <- attr(object$`X.pv`,"namesOri") ## need to track NA beta's
+  X2 <- attr(object2$`X.pv`,"namesOri")
   if (length(X1)==0L) {
     REML1 <- NULL ## compatible with both ML or REML tests
   } else REML1 <- (object$APHLs$p_v != object$APHLs$p_bv)
@@ -23,11 +23,11 @@
   if ( ! is.null(X2)) X2 <- sapply(strsplit(X2,':'), function(x) paste(sort(x),collapse=':'))
   dX12 <- setdiff(X1,X2)
   dX21 <- setdiff(X2,X1)
-  if (length(dX12)>0 && length(dX21)>0) {
+  if (length(dX12) && length(dX21)) {
     warning("Fixed-effect models may not be nested") # F I X M E : correct detection of non-nested models
-  } else if (length(dX12)>0) {
+  } else if (length(dX12)) {
     Xnest <- "2in1"
-  } else if (length(dX21)>0) {
+  } else if (length(dX21)) {
     Xnest <- "1in2"
   } else Xnest <- NULL
   if (object$spaMM.version < "2.2.116") {
@@ -42,11 +42,11 @@
   ranterms2 <- paste(ranterms2,randist2) ## joins each term and its distrib
   dR12 <- setdiff(ranterms1,ranterms2)
   dR21 <- setdiff(ranterms2,ranterms1)
-  if (length(dR12)>0 && length(dR21)>0) { 
+  if (length(dR12) && length(dR21)) { 
     stop("Non-nested random-effect models")
-  } else if (length(dR12)>0) {
+  } else if (length(dR12)) {
     Rnest <- "2in1"
-  } else if (length(dR21)>0) {
+  } else if (length(dR21)) {
     Rnest <- "1in2"
   } else Rnest <- NULL
   nest <- c(Xnest,Rnest)
@@ -56,8 +56,8 @@
   } else if (length(unest)==2) {
     stop("Models not nested (opposite nestings for fixed and random terms). ")
   } else {
-    df1 <- length(X1)
-    df2 <- length(X2)
+    df1 <- length(X1[!is.na(fixef(object))])
+    df2 <- length(X2[!is.na(fixef(object2))])
     if (!is.null(Rnest)) {
       lambda.object <- object$lambda.object
       if (!is.null(lambda.object)) df1 <- df1+length(unlist(lambda.object$coefficients_lambdaS))
@@ -126,8 +126,8 @@ LRT <- function(object,object2,boot.repl=0,nb_cores=NULL,...) { ## compare two H
   LRTori <- 2*(logLik(fullfit,which=test_obj)-logLik(nullfit,which=test_obj))
   pvalue <- 1-pchisq(LRTori,df=df) ## but not valid for testing null components of variance
   resu <- list(nullfit=nullfit,fullfit=fullfit,basicLRT = data.frame(chi2_LR=LRTori,df=df,p_value=pvalue)) ## format appropriate for more tests  
-  if (boot.repl>0) {
-    if (boot.repl<100) message("It is recommended to set boot.repl>=100 for Bartlett correction")
+  if (boot.repl) {
+    if (boot.repl<100L) message("It is recommended to set boot.repl>=100 for Bartlett correction")
     nb_cores <- .check_nb_cores(nb_cores=nb_cores)
     aslistfull <- as.list(getCall(fullfit)) 
     aslistfull$processed <- NULL ## may capture bugs 
@@ -146,7 +146,7 @@ LRT <- function(object,object2,boot.repl=0,nb_cores=NULL,...) { ## compare two H
         aslistnull$formula <- cbf$null_formula
       }
     } else cbindTest <- FALSE
-    eval_replicate <- function(newy,only_vector=TRUE) { ## only_vector controls how to handle errors
+    eval_replicate <- function(newy) { 
       if (cbindTest) {
         simbData[[nposname]] <- newy
         simbData[[nnegname]] <- .get_BinomialDen(nullfit)  - newy
@@ -156,15 +156,11 @@ LRT <- function(object,object2,boot.repl=0,nb_cores=NULL,...) { ## compare two H
       aslistnull$data <- simbData
       fullfit <- (eval(as.call(aslistfull)))
       if (inherits(fullfit,"try-error")) {
-        if (only_vector) {
-          return(c(NA,NA))
-        } else return(fullfit)
-      }
+        return(c(NA,NA))
+      } ## ELSE:
       nullfit <- try(eval(as.call(aslistnull)))
       if (inherits(nullfit,"try-error")) {
-        if (only_vector) {
-          return(c(NA,NA))
-        } else return(nullfit)
+        return(c(NA,NA))
       }
       ## return pair of likelihoods
       return(c(logLik(fullfit,which=test_obj),logLik(nullfit,which=test_obj)))

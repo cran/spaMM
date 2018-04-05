@@ -18,6 +18,7 @@ if (spaMM.getOption("example_maxtime")>105) {
     locdata <- lll
     locdata$newy <- newy
     fitme(newy~1+(1|ID),family=Tnegbin(2), data=locdata)$fixef})
-  testthat::expect_true(diff(c(mean(ecd),0.8167062))<1e-6)
+  # estimand is fixef(tnb) = 0.8398057
+  testthat::expect_true(diff(c(mean(ecd),0.8165989))<1e-6) ## test modified in v2.4.0
   #plot(ecdf(ecd)) ## consistent with the fitted model from which simulations are drawn
 }

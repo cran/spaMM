@@ -1,19 +1,25 @@
-.calc_corr_from_dist <- function(distmat, object, corr.model) {
+.calc_corr_from_dist <- function(distmat, object, corr.model,char_rd) { ## FIXME later we can pass only ranFix$corrPars[[char_rd]]
   if (corr.model=="AR1") {
-    args <-object$ranFix[which(names(object$ranFix) %in% c("ARphi"))]
-    corr_mat <- args$ARphi^distmat 
+    corr_mat <- .get_cP_stuff(object$ranFix,"ARphi",which=char_rd)^distmat 
+  } else if (corr.model=="Cauchy") {
+    corr_mat <- CauchyCorr(shape=.get_cP_stuff(object$ranFix,"shape",which=char_rd),
+                           longdep=.get_cP_stuff(object$ranFix,"longdep",which=char_rd),
+                           Nugget=.get_cP_stuff(object$ranFix,"Nugget",which=char_rd),
+                           d=distmat)  ## so that rho=1 in CauchyCorr
   } else {
-    args <-object$ranFix[which(names(object$ranFix) %in% c("nu","Nugget"))] ## so that rho=1 in MaternCorr
-    corr_mat <- do.call(MaternCorr,args=c(args,list(d=distmat)))  
+    corr_mat <- MaternCorr(nu=.get_cP_stuff(object$ranFix,"nu",which=char_rd),
+                           Nugget=.get_cP_stuff(object$ranFix,"Nugget",which=char_rd),
+                           d=distmat)  ## so that rho=1 in MaternCorr
   }
   return(corr_mat) 
 }
 
+
 # public wrapper for more transparent workflow
 preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
                                 variances=list(residVar=FALSE)) {
-  .calc_new_X_ZAC(object=object, newdata=fixdata, re.form = re.form,
-                             variances=variances) 
+  return(.calc_new_X_ZAC(object=object, newdata=fixdata, re.form = re.form,
+                             variances=variances) )
 }
 ###############################################
 
@@ -50,6 +56,7 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
   newlevels <- colnames(newZA)
   if (identical(oldlevels,newlevels)) {
     newoldC <- Diagonal(n=length(oldlevels)) ## replaces old identityMatrix
+    colnames(newoldC) <- oldlevels ## provides colnames for some XMatrix'es -> some ZAX'es -> used by .match_old_new_levels
   } else {
     oldornew <- unique(c(oldlevels,newlevels))
     numnamesTerms <- length(namesTerms) ## 2 for random-coef
@@ -59,6 +66,20 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
   }
   attr(newoldC,"isEachNewLevelInOld") <- newlevels %in% oldlevels  ## but this attr is unevaluated (-> NULL) for spatial models 
   return(newoldC)
+}
+
+.re_form_col_indices <- function(newinold, cum_n_u_h, Xi_cols) {
+  cum_Xi_cols <- cumsum(c(0,Xi_cols))
+  ranef_ids <- rep(seq_len(length(Xi_cols)),Xi_cols) ## (repeated) indices of ranefs, not cols of ranefs
+  subrange <- which_ranef_cols <- vector("list",length = length(newinold))
+  for (it in seq_len(length(newinold))) {
+    rd <- newinold[it] ## allowing possible permutation of ranefs
+    subrange[[it]] <- (cum_n_u_h[rd]+1L):(cum_n_u_h[rd+1L])
+    which_ranef_cols[[it]] <- which(ranef_ids==rd) ## for ranCoefs, several elements of ranef_ids can match one in newinold
+  }
+  subrange <- unlist(subrange)
+  which_ranef_cols <- unlist(which_ranef_cols)
+  return(list(subrange=subrange,which_ranef_cols=which_ranef_cols))
 }
 
 
@@ -142,13 +163,11 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
       nrand <- length(new_exp_ranef_strings)
       newinold <- sapply(lapply(new_exp_ranef_strings, `==`, y= ori_exp_ranef_strings), which) ## e.g 1 4 5
       RESU$subZAlist <- object$ZAlist[newinold] ## and reordered
-      sublambda <- object$lambda[newinold]
     } else {
       new_exp_ranef_strings <- ori_exp_ranef_strings
       nrand <- length(new_exp_ranef_strings)
       newinold <- seq(nrand) ## keep all ranefs
       RESU$subZAlist <- object$ZAlist
-      sublambda <- object$lambda
     }    
     RESU$newinold <- newinold
   }
@@ -172,57 +191,66 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
     ## .match_old_new_levels will use it running over newnrand values
     ## The cov_ lists are reduced too. newinold should be used to construct them
     ## newZACpplist is reduced.
-    blob <- .make_new_corr_lists(object=object,locdata=locdata, which_mats=which_mats, 
-                                 newZAlist=newZAlist, newinold=newinold)
-    # cov_newLv_oldv_list is always needed for cbind(X.pv,newZAC [which may be ori ZAC]); should ~corr_list when newdata=ori data
-    cov_newLv_oldv_list <- blob$cov_newLv_oldv_list 
-    cov_newLv_newLv_list <- blob$cov_newLv_newLv_list ## may be NULL
-    # cov_newLv_oldv_list still contains NULL's, and we need something complete to compute newZAC without '%*% NULL'
-    namesTerms <- attr(newZAlist,"namesTerms")
-    for (new_rd in seq_along(cov_newLv_oldv_list)) { ## seems correct as everything in rhs is reduced
-      if (is.null(cov_newLv_oldv_list[[new_rd]])) {
-        cov_newLv_oldv_list[[new_rd]] <- .calc_sub_diagmat_cov_newLv_oldv(oldZA=RESU$subZAlist[[new_rd]], newZA=newZAlist[[new_rd]],
-                                                                                         namesTerms=namesTerms[[new_rd]]) ## non-trivial value [I] if uuCnewold is NULL
-        ## without a ranefs attribute, hence ignored by .compute_ZAXlist
-        if (which_mats$nn[new_rd]) {
-          newc <- Diagonal(n=ncol(newZAlist[[new_rd]]))
-          rownames(newc) <- colnames(newc) <- colnames(newZAlist[[new_rd]])
-          cov_newLv_newLv_list[[new_rd]] <- newc
+    if (any(unlist(which_mats)) 
+        || any(unlist(variances)) # cov_newLv_oldv_list is always needed for cbind(X.pv,newZAC [which may be ori ZAC]); should ~corr_list when newdata=ori data
+       ) {
+      blob <- .make_new_corr_lists(object=object,locdata=locdata, which_mats=which_mats, 
+                                   newZAlist=newZAlist, newinold=newinold)
+      # These matrices do not include the lamdba factor, as this will be provided in .calc_Evar()...
+      cov_newLv_oldv_list <- blob$cov_newLv_oldv_list 
+      cov_newLv_newLv_list <- blob$cov_newLv_newLv_list ## may be NULL
+      # cov_newLv_oldv_list still contains NULL's, and we need something complete to compute newZAC without '%*% NULL'
+      namesTerms <- attr(newZAlist,"namesTerms")
+      for (new_rd in seq_along(cov_newLv_oldv_list)) { ## seems correct as everything in rhs is reduced
+        if (is.null(cov_newLv_oldv_list[[new_rd]])) {
+          cov_newLv_oldv_list[[new_rd]] <- .calc_sub_diagmat_cov_newLv_oldv(oldZA=RESU$subZAlist[[new_rd]], newZA=newZAlist[[new_rd]],
+                                                                            namesTerms=namesTerms[[new_rd]]) ## non-trivial value [I] if uuCnewold is NULL
+          ## without a ranefs attribute, hence ignored by .compute_ZAXlist
+          if (which_mats$nn[new_rd]) {
+            newc <- Diagonal(n=ncol(newZAlist[[new_rd]]))
+            rownames(newc) <- colnames(newc) <- colnames(newZAlist[[new_rd]])
+            cov_newLv_newLv_list[[new_rd]] <- newc
+          }
         }
       }
+      if (any(which_mats$nn)) RESU$cov_newLv_newLv_list <- cov_newLv_newLv_list
+      RESU$cov_newLv_oldv_list <- cov_newLv_oldv_list
+      RESU$newZACpplist <- .compute_ZAXlist(XMatrix=cov_newLv_oldv_list, ZAlist=newZAlist) ## build from reduced list, returns a reduced list
+      ## This $newZACpplist serves to compute new _point predictions_.
+      #  # this comment may be obsolete : .compute_ZAXlist affects elements of ZAlist that have a ranefs attribute. 
+      #  It builds a design matrix to all oldv levels. It does not try to reduce levels. 
+      #  But it use newZAlist <- .spMMFactorList(...) which may consider a reduced number of levels.
+      #  The function .match_old_new_levels() will perform the match with 'w_h_coeffs' for point prediction.
+      #  it assign values psi_M to new levels of ranefs.
+      ## _Alternatively_ one may construct a newZACvar for _predVar_ 
+      #  Here we have a slice mechanism (contrary for point pred) hence new ZA with different rows, and the columns of the 
+      #  newZACvar constructed there must match those of beta_w_cov for  ZWZt_mat_or_diag( <cbind(newX,newZAC)> ,beta_w_cov)
+      #  cov_newLv_oldv_list() provides the info for the expansion from the newZA cols to the oldZA cols.
+      #  In that case one does not need to match levels. .calc_newZACvar() performs a simpler operation than .compute_ZAXlist.
     }
-    if (any(which_mats$nn)) RESU$cov_newLv_newLv_list <- cov_newLv_newLv_list
-    RESU$cov_newLv_oldv_list <- cov_newLv_oldv_list
-    RESU$newZACpplist <- .compute_ZAXlist(XMatrix=cov_newLv_oldv_list, ZAlist=newZAlist) ## build from reduced list, returns a reduced list
-    ## This $newZACpplist serves to compute new _point predictions_.
-    #  .compute_ZAXlist affects elements of ZAlist that have a ranefs attribute. 
-    #  It builds a design matrix to all oldv levels. It does not try to reduce levels. 
-    #  But it use newZAlist <- .spMMFactorList(...) which may consider a reduced number of levels.
-    #  The function .match_old_new_levels() will perform the match with 'w_h_coeffs' for point prediction.
-    #  it assign values psi_M to new levels of ranefs.
-    ## _Alternatively_ one may construct a newZACvar for _predVar_ 
-    #  Here we have a slice mechanism (contrary for point pred) hence new ZA with different rows, and the columns of the 
-    #  newZACvar constructed there must match those of beta_w_cov for  ZWZt_mat_or_diag( <cbind(newX,newZAC)> ,beta_w_cov)
-    #  cov_newLv_oldv_list() provides the info for the expansion from the newZA cols to the oldZA cols.
-    #  In that case one does not need to match levels. .calc_newZACvar() performs a simpler operation than .compute_ZAXlist.
     #############################
-    RESU$spatial_term <- NaN
-    if (object$spaMM.version < "2.2.20") {
-      spatial.terms <- .findSpatial(locform) ## list of formula terms
-      spatial_term <- spatial.terms[[1L]] ## one formula term, e.g Matern(1|...)
-    } else if (object$spaMM.version < "2.2.118") {
-      spatial_term <- object$spatial_term
-    } else {
-      spatial_terms <- attr(object$ZAlist,"exp_spatial_terms")
-      if ( ! is.null(spatial_terms) && any( true_spatial_terms <- (! is.na(spatial_terms)))) {
-        spatial_term <- (spatial_terms[true_spatial_terms])[[1L]] ## tempo befre spaMM 3.0
-      } else spatial_term <- NULL
-    }
-    if ( ! is.null(spatial_term)) { 
-      olduniqueGeo <- attr(object,"info.uniqueGeo")
-      geonames <- colnames(olduniqueGeo)
-      if (need_new_design) geonames <- intersect(geonames, colnames(locdata)) 
-      RESU$newuniqueGeo <- locdata[,geonames,drop=FALSE]
+    info_olduniqueGeo <- attr(object,"info.uniqueGeo") ## test TRUE for version > 2.3.18:
+    if ( ! is.null(info_olduniqueGeo)) {
+      if ( ! is.array(info_olduniqueGeo)) {
+        newuniqueGeo <- list() ## to be indexed as the olduniqueGeo
+        for (old_rd in newinold) {
+          char_old_rd <- as.character(old_rd)
+          olduniqueGeo <- info_olduniqueGeo[[char_old_rd]]
+          if (!is.null(olduniqueGeo)) {
+            coordinates <- colnames(olduniqueGeo)
+            geonames <- colnames(olduniqueGeo)
+            if (need_new_design) geonames <- intersect(geonames, colnames(locdata)) 
+            newuniqueGeo[[char_old_rd]] <- locdata[,geonames,drop=FALSE]
+          }
+        }
+        RESU$newuniqueGeo <- newuniqueGeo
+      } else {
+        olduniqueGeo <- info_olduniqueGeo
+        coordinates <- colnames(olduniqueGeo)
+        geonames <- colnames(olduniqueGeo)
+        if (need_new_design) geonames <- intersect(geonames, colnames(locdata)) 
+        RESU$newuniqueGeo <- locdata[,geonames,drop=FALSE]
+      }
     }
     # compatiblity code that should disappear:
     uuCnewnew <- NULL
@@ -234,7 +262,7 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
 
 ## get_predCov_var_fix: see example in predict.Rd (?get_predCov_var_fix), test in test-predVar 
 get_predCov_var_fix <- function(object, newdata = NULL, fix_X_ZAC.object,fixdata, 
-                                variances=list(disp=TRUE,residVar=FALSE),...) {
+                                variances=list(disp=TRUE,residVar=FALSE), re.form = NULL, ...) {
   newnrand <- length(fix_X_ZAC.object$newZAlist) 
   fixZACvar <- .calc_newZACvar(fix_X_ZAC.object$newZAlist,fix_X_ZAC.object$cov_newLv_oldv_list)
   new_X_ZACblob <- .calc_new_X_ZAC(object,newdata=newdata,variances=variances) ## called for a correlation block
@@ -245,9 +273,19 @@ get_predCov_var_fix <- function(object, newdata = NULL, fix_X_ZAC.object,fixdata
   fix_X_ZAC <- cbind2(fix_X_ZAC.object$newX.pv, fixZACvar)
   new_X_ZAC <- cbind2(new_X_ZACblob$newX.pv, newZACvar)
   beta_w_cov <- .get_beta_w_cov(object)
+  if (inherits(re.form,"formula")) {
+    # identifies and selects columns for the [retained ranefs, which are given by newinold 
+    ori_exp_ranef_strings <- attr(object$ZAlist,"exp_ranef_strings")
+    new_exp_ranef_strings <- .parseBars(re.form,expand=TRUE) 
+    newinold <- sapply(lapply(new_exp_ranef_strings, `==`, y= ori_exp_ranef_strings), which) ## e.g 1 4 5
+    re_form_col_indices <- .re_form_col_indices(newinold, cum_n_u_h=attr(object$lambda,"cum_n_u_h"), Xi_cols=attr(object$ZAlist, "Xi_cols"))
+    Xncol <- ncol(object$beta_cov)
+    subrange <- c(seq_len(Xncol),re_form_col_indices$subrange + Xncol)
+    beta_w_cov <- beta_w_cov[subrange,subrange]
+  } else re_form_col_indices <- NULL
   predVar <- new_X_ZAC[] %id*id% beta_w_cov[] %id*id% t(fix_X_ZAC)[]
   ## Second component of predVar:
-  cov_newLv_fixLv_list <- .make_new_corr_lists(object,new_X_ZACblob$newuniqueGeo, 
+  cov_newLv_fixLv_list <- .make_new_corr_lists(object, locdata=new_X_ZACblob$newuniqueGeo, 
                                                which_mats=list(no=TRUE,nn=rep(FALSE,newnrand)), 
                                                new_X_ZACblob$newZAlist, 
                                                newinold=fix_X_ZAC.object$newinold,
@@ -268,12 +306,14 @@ get_predCov_var_fix <- function(object, newdata = NULL, fix_X_ZAC.object,fixdata
   #   for any 'problem'. But there may some 'problem' and still a valid logdispObject
   # => In new version, dwdlogdisp should be either NULL or a conforming matrix;
   #  'problems" should not be tested.
-  if (variances$disp) logdispObject <- .get_logdispObject(object)
-  if ( ! is.null(logdispObject$dwdlogdisp) ) {
-    col_info <- attr(logdispObject$dwdlogdisp,"col_info") ## ranefs for which there is a col in dwdlogdisp
-    if ( newnrand != col_info$nrand) { ## selection of blocks for re.form ranefs # fixme: this code is not (testthat-)checked
-      submatrices <- .submatrices_for_disp_effect(logdispObject, col_info, fix_X_ZAC.object$newinold) 
-    } else submatrices <- logdispObject
+  submatrices <- .get_logdispObject(object)
+  if (variances$disp && ! is.null(submatrices$dwdlogdisp) ) {
+    if ( ! is.null(re_form_col_indices) ) { ## selection of blocks for re.form ranefs 
+      col_info <- attr(submatrices$dwdlogdisp,"col_info") ## ranefs for which there is a col in dwdlogdisp
+      whichcols <- c(re_form_col_indices$which_ranef_cols,col_info$phi_cols)
+      submatrices$dwdlogdisp <- submatrices$dwdlogdisp[re_form_col_indices$subrange,whichcols]
+      submatrices$logdisp_cov <- submatrices$logdisp_cov[whichcols,whichcols]
+    } 
     newZACw <- newZACvar %*% submatrices$dwdlogdisp ## typically (nnew * n_u_h) %*% (n_u_h * 2) = nnew * 2 hence small 
     fixZACw <- fixZACvar %*% submatrices$dwdlogdisp ## typically (nnew * n_u_h) %*% (n_u_h * 2) = nnew * 2 hence small 
     disp_effect_on_newZACw <- newZACw %*% submatrices$logdisp_cov %*% t(fixZACw)      

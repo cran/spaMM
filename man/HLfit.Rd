@@ -4,13 +4,9 @@
 \title{Fit mixed models with given correlation matrix}
 \description{
   This function fits GLMMs as well as some hierarchical generalized linear models (HGLM; Lee and Nelder 2001).
-  \code{HLfit} fits both fixed effects parameters, and dispersion parameters i.e. the variance of the random effects 
-  and the variance of the residual error. The linear predictor is of the 
-  standard form \code{offset+ X beta + Z b}, where 
-  X is the design matrix of fixed effects and Z is a design matrix of random effects.   
-  The function also handles modelling of the residual variance.\cr
-  \code{HLfit} uses iterative algorithms that may be slow in some applications, in which case it is worth considering the \code{\link{fitme}} function.
-  \code{fitme} and \code{corrHLfit} act by optimizing the likelihood of \code{HLfit} fits for different values of random effect parameters or residual dispersion parameters, with distinct usage of the iterative methods implemented in HLfit: \code{fitme} rests more of generic optimization, while \code{corrHLfit} rests more on iterative methods for estimating variance parameters. 
+  \code{HLfit} fits both fixed effects parameters, and dispersion parameters i.e. the variance of the random effects (full covariance for random-coefficient models), and the variance of the residual error. The linear predictor is of the standard form \code{offset+ X beta + Z b}, where 
+  X is the design matrix of fixed effects and Z is a design matrix of random effects. Models are fitted by an iterative algorithm alternating estimation of fixed effects and of dispersion parameters. The residual dispersion may follow a \dQuote{structured-dispersion model} modeling heteroscedasticity. 
+  Estimation of the latter parameters is performed by a form of fit of debiased residuals, which allows fitting a structured-dispersion model (Smyth et al. 2001).  However, evaluation of the debiased residuals can be slow in particular for large datasets. For models without structured dispersion, it is then worth using the \code{\link{fitme}} function (or the \code{\link{corrHLfit}} function with non-default arguments). These functions can optimize the likelihood of \code{HLfit} fits for different given values of the dispersion parameters (\dQuote{outer optimization}), thereby avoiding the need to estimate debiased residuals. 
 }
 \usage{
 HLfit(formula, data, family = gaussian(), rand.family = gaussian(), 

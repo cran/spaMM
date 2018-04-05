@@ -57,14 +57,19 @@ if (spaMM.getOption("example_maxtime")>14) {
                 family=binomial(link="cloglog"),
                 data=X,HLmethod="ML",verbose=c(TRACE=FALSE)) ## 
   testthat::expect_equal(logLik(fit1)[[1]],-1413.207,tolerance=1e-4)
-  ## NB 
-  # fast but problematic fit by glmer as 
-  # system.time({blob <- glmer(cbind(Dead,Alive) ~ (Trt + 0)/x + (x | Rep),
-  #                            family=binomial(link="cloglog"),
-  #                            data=X,nAGQ=0,control=glmerControl(optimizer="bobyqa",
-  #                                                               optCtrl=list(maxfun=3e4)))})
-  # glmmTMB is much closer to HLfit
-  # system.time({glmmTMB(Dead/(Alive+Dead) ~ (Trt + 0)/x + (x | Rep),
-  #                      weights = Alive+Dead,
-  #                      family=binomial(link="cloglog"),data=X)}) 
+  if (FALSE) { ## results alluded to in spaMMintro
+    # fast but problematic fit by glmer as
+    if(require("lme4", quietly = TRUE)) {
+      system.time({gblob <- glmer(cbind(Dead,Alive) ~ (Trt + 0)/x + (x | Rep),
+                               family=binomial(link="cloglog"),
+                               data=X,nAGQ=0,control=glmerControl(optimizer="bobyqa",
+                                                                  optCtrl=list(maxfun=3e4)))})
+    }
+    #glmmTMB is much closer to HLfit
+    if(require("glmmTMB", quietly = TRUE)) {
+      system.time({tblob <- glmmTMB(Dead/(Alive+Dead) ~ (Trt + 0)/x + (x | Rep),
+                         weights = Alive+Dead,
+                         family=binomial(link="cloglog"),data=X)})
+    }
+  }
 } else cat("test cloglog random slope: increase example_maxtime (14.8s) to run this test.\n")

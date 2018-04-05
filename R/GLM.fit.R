@@ -22,18 +22,22 @@
       ## generate combinations of vertices and directions:
       dirS <- t(vrepr[ ! verticesRows,-c(1:2),drop=FALSE])
       dirS <- apply(dirS,2L, function(v) v/norm(matrix(v),type="2")) ## normalize direction vectors
-      dirS <- 0.001* (dirS + rowMeans(dirS))
+      if (NCOL(dirS)>1L) {
+        dirS <- 0.001* (dirS + rowMeans(dirS))
+      } else dirS <- 0.002* dirS ## ~1+offset(...)
       if (is.matrix(betaS)) {
         betaS.cols <- split(betaS, col(betaS))
         betaS <- do.call(cbind,(lapply(betaS.cols,y=dirS,`+`)))
       } else betaS <- dirS + betaS ## as in Gamma(inverse) example 
     }
-    etaS <- X %*% betaS ## col vectors of predicted etaS
-    etaS <- etaS + offset
-    muS <- family$linkinv(etaS)
-    devS <- apply(muS,2, function(mu) sum(family$dev.resids(y, mu=mu, weights)))
-    beta <- betaS[,which.min(devS)]
-    return(beta)
+    if (is.array(betaS)) {
+      etaS <- X %*% betaS ## col vectors of predicted etaS
+      etaS <- etaS + offset
+      muS <- family$linkinv(etaS)
+      devS <- apply(muS,2, function(mu) sum(family$dev.resids(y, mu=mu, weights)))
+      beta <- betaS[,which.min(devS)]
+      return(beta)
+    } else return(betaS) ## Vrepr was a single line with  0    0    1
   }
 }
 
@@ -96,11 +100,11 @@ spaMM_glm.fit <- function (x, y, weights = rep(1, nobs),
   validmu <- family$validmu
   n <- NULL ## to avoid an R CMD check NOTE which cannot see that n will be set by eval(family$initialize)
   if (is.null(mustart)) {
-    eval(family$initialize) 
+    eval(family$initialize) ## changes y 2 col -> 1 col
   }
   else {
     mukeep <- mustart
-    eval(family$initialize)
+    eval(family$initialize) ## changes y 2 col -> 1 col
     mustart <- mukeep
   }
   if (EMPTY) {
@@ -165,7 +169,7 @@ spaMM_glm.fit <- function (x, y, weights = rep(1, nobs),
         if (anyNA(z)) stop("NA/NaN in 'z': consult the package maintainer.")
         if (anyNA(w)) stop("NA/NaN in 'w': consult the package maintainer.") # suggests too large 'mu'
         # .lm.fit is a wrapper for C_Cdqrls, but with check=TRUE
-        fit <- stats::.lm.fit(x[good, , drop = FALSE] * w, z * w, min(1e-07, control$epsilon/1000))
+        fit <-  .lm.fit(x[good, , drop = FALSE] * w, z * w, min(1e-07, control$epsilon/1000))
         if (any(!is.finite(fit$coefficients))) {
           conv <- FALSE
           warning(gettextf("non-finite coefficients at iteration %d", 
@@ -340,7 +344,7 @@ spaMM_glm.fit <- function (x, y, weights = rep(1, nobs),
                 call. = FALSE)
     }
     # regenerate the qr (etc) object.
-    fit <- stats::.lm.fit(x[good, , drop = FALSE] * w, z * w, tol=min(1e-07, control$epsilon/1000))
+    fit <-  .lm.fit(x[good, , drop = FALSE] * w, z * w, tol=min(1e-07, control$epsilon/1000))
     # but the trouble is that evalGainLM may detect invalid LevM estimates, 
     # while the .lm.fit estimates (~damping=0) may be invalid (different if loop terminated with high damping)
     #start[fit$pivot] <- fit$coefficients
@@ -428,7 +432,7 @@ spaMM_glm <- function(formula, family = gaussian, data, weights, subset,
         ## some glm warnings are useful only to understand a failure, hence not useful here 
         && res$warning$message != "step size truncated due to divergence" ) {
       if (res$warning == "glm.fit: algorithm did not converge" && strict) {
-        mc$method <- method[2L]
+        mc$method <- method[2L] ## changes the method arg, but the called function is still stats::glm
         res <- eval(mc,parent.frame())
         res$call$family <- summaryfamily
         return(res)

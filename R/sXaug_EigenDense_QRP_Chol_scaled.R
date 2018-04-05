@@ -1,9 +1,9 @@
 # 'constructor' for sXaug_Eigen_QR (unpivoted QR factorization) object
-# from Xaug which already has a *scaled* ZAL 
+# from Xaug which already has a *scaled* ZAL (it has no name in the doc but appears in the eq defining mathcal{W}_w)
 def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale) {
   n_u_h <- length(w.ranef)
-  Xrows <- n_u_h+seq(length(weight_X))
-  Xaug[Xrows,] <- .Dvec_times_matrix(weight_X, Xaug[Xrows,,drop=FALSE]) # sweep(TT,MARGIN=1,sqrt.ww,`*`) # rWW %*%TT
+  Xrows <- n_u_h+seq(length(weight_X)) 
+  Xaug[Xrows,] <- .Dvec_times_matrix(weight_X, Xaug[Xrows,,drop=FALSE]) ## applying def of mathcal{W}_w in the doc
   resu <- structure(Xaug,
                     get_from="get_from_MME.sXaug_EigenDense_QRP_Chol_scaled",
                     BLOB=list2env(list(), parent=environment(.sXaug_EigenDense_QRP_Chol_scaled)),
@@ -125,11 +125,21 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug,weight_X,w.ranef,H_global_
     return(BLOB$logdet_R_scaled_v)
   } else if (which=="beta_cov") { 
     beta_cov <- chol2inv(BLOB$R_scaled) ## actually augmented beta_v_cov as the following shows
-    beta_pos <- attr(sXaug,"n_u_h")+seq_len(attr(sXaug,"pforpv"))
-    sP_beta_pos <- BLOB$sortPerm[beta_pos]
-    beta_cov <- beta_cov[sP_beta_pos,sP_beta_pos,drop=FALSE] * attr(sXaug,"H_global_scale")
-    colnames(beta_cov) <- colnames(sXaug)[beta_pos]
-    return(beta_cov)
+    pforpv <- attr(sXaug,"pforpv")
+    beta_pos <- attr(sXaug,"n_u_h")+seq_len(pforpv)
+    if (FALSE) {
+      sP_beta_pos <- BLOB$sortPerm[beta_pos]
+      beta_cov <- beta_cov[sP_beta_pos,sP_beta_pos,drop=FALSE] * attr(sXaug,"H_global_scale")
+      colnames(beta_cov) <- colnames(sXaug)[beta_pos]
+      return(beta_cov)
+    } else {
+      v_beta_cov <- beta_cov[BLOB$sortPerm,BLOB$sortPerm,drop=FALSE] ## has colnames
+      diagscalings <- sqrt(c(1/attr(sXaug,"w.ranef"),rep(attr(sXaug,"H_global_scale"),pforpv)))
+      v_beta_cov <- .Dvec_times_matrix(diagscalings, .m_Matrix_times_Dvec(v_beta_cov, diagscalings)) ## loses colnames...
+      colnames(v_beta_cov) <- colnames(sXaug) 
+      beta_v_order <- c(beta_pos,seq(attr(sXaug,"n_u_h")))
+      return( structure(v_beta_cov[beta_pos,beta_pos,drop=FALSE], beta_v_cov=v_beta_cov[beta_v_order,beta_v_order]) )
+    }
   } else if (which=="beta_v_cov_from_wAugX") { ## using a weighted Henderson's augmented design matrix, not a true sXaug  
     beta_v_cov <- chol2inv(BLOB$R_scaled)[BLOB$sortPerm,BLOB$sortPerm,drop=FALSE]
     # this tends to be dense bc v_h estimates covary (example: wafers)

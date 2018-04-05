@@ -24,24 +24,24 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
     BLOB$blob <- qr(sXaug) ##  Matrix::qr
     # sXaug = t(tQ) %*% R[,sP] but then also sXaug = t(tQ)[,sP'] %*% R[sP',sP] for any sP'
     BLOB$perm <- BLOB$blob@q + 1L
-    BLOB$R_scaled <- Matrix::qrR(BLOB$blob,backPermute = FALSE)
+    BLOB$R_scaled <- qrR(BLOB$blob,backPermute = FALSE)
     ## we don't request (t) Q from Eigen bc it is terribly slow
     n_u_h <- attr(sXaug,"n_u_h")
     seq_n_u_h <- seq(n_u_h)
     BLOB$sortPerm <- sort.list(BLOB$perm) 
     BLOB$u_h_cols_on_left <- (max(BLOB$sortPerm[ seq_n_u_h ])==n_u_h)
-    if ( ! is.null(szAug)) return(Matrix::qr.coef(BLOB$blob,szAug))   
+    if ( ! is.null(szAug)) return(qr.coef(BLOB$blob,szAug))   
   } 
   if ( is.null(BLOB$t_Q_scaled) && 
        ( which %in% c("t_Q_scaled","hatval") || (which=="hatval_Z" && BLOB$u_h_cols_on_left)
        ) ) {
-    BLOB$t_Q_scaled <- Matrix::solve(t(BLOB$R_scaled),t(sXaug[,BLOB$perm]))
+    BLOB$t_Q_scaled <- solve(t(BLOB$R_scaled),t(sXaug[,BLOB$perm])) ## Matrix::solve ## this is faster than qr.Q and returns dgCMatrix rather than qr.Q -> dge !
   }
   if ( ! is.null(szAug)) {
     if (is.null(BLOB$t_Q_scaled)) {
-      return(Matrix::qr.coef(BLOB$blob,szAug)) # avoid t_Q_computation there
+      return(qr.coef(BLOB$blob,szAug)) # avoid t_Q_computation there ## Matrix::qr.coef
     } else {
-      return(Matrix::solve(BLOB$R_scaled, BLOB$t_Q_scaled %*% szAug)[BLOB$sortPerm,,drop=FALSE]) 
+      return(solve(BLOB$R_scaled, BLOB$t_Q_scaled %*% szAug)[BLOB$sortPerm,,drop=FALSE]) ## Matrix::solve
     }
   }
   # ELSE
@@ -49,7 +49,7 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
        (which %in% c("logdet_R_scaled_v","hatval_Z","d2hdv2","solve_d2hdv2","R_scaled_v_h_blob"))
   ) {
     seq_n_u_h <- seq_len(attr(sXaug,"n_u_h"))
-    wd2hdv2w <- Matrix::crossprod(BLOB$R_scaled[,BLOB$sortPerm[ seq_n_u_h ]] )
+    wd2hdv2w <- crossprod(BLOB$R_scaled[,BLOB$sortPerm[ seq_n_u_h ]] ) # Matrix::crossprod
     BLOB$CHMfactor_wd2hdv2w <- Cholesky(wd2hdv2w,LDL=FALSE,
                                                 perm=FALSE ) ## perm=FALSE useful for leverage computation as explained below
   }
@@ -166,11 +166,21 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
     return(BLOB$logdet_R_scaled_v)
   } else if (which=="beta_cov") { 
     beta_cov <- Matrix::chol2inv(BLOB$R_scaled) ## actually augmented beta_v_cov as the following shows
-    beta_pos <- attr(sXaug,"n_u_h")+seq_len(attr(sXaug,"pforpv"))
-    sP_beta_pos <- BLOB$sortPerm[beta_pos]
-    beta_cov <- as.matrix(beta_cov[sP_beta_pos,sP_beta_pos]) * attr(sXaug,"H_global_scale")
-    colnames(beta_cov) <- colnames(sXaug)[beta_pos]
-    return(beta_cov)
+    pforpv <- attr(sXaug,"pforpv")
+    beta_pos <- attr(sXaug,"n_u_h")+seq_len(pforpv)
+    if (FALSE) {
+      sP_beta_pos <- BLOB$sortPerm[beta_pos]
+      beta_cov <- as.matrix(beta_cov[sP_beta_pos,sP_beta_pos]) * attr(sXaug,"H_global_scale")
+      colnames(beta_cov) <- colnames(sXaug)[beta_pos]
+      return(beta_cov)
+    } else {
+      v_beta_cov <- as.matrix(beta_cov[BLOB$sortPerm,BLOB$sortPerm])
+      diagscalings <- sqrt(c(1/attr(sXaug,"w.ranef"),rep(attr(sXaug,"H_global_scale"),pforpv)))
+      v_beta_cov <- .Dvec_times_matrix(diagscalings, .m_Matrix_times_Dvec(v_beta_cov, diagscalings))
+      colnames(v_beta_cov) <- colnames(sXaug) ## necessary for summary.HLfit !
+      beta_v_order <- c(beta_pos,seq(attr(sXaug,"n_u_h")))
+      return( structure(v_beta_cov[beta_pos,beta_pos,drop=FALSE], beta_v_cov=v_beta_cov[beta_v_order,beta_v_order]) )
+    }
   } else if (which=="beta_v_cov_from_wAugX") { ## using a weighted Henderson's augmented design matrix, not a true sXaug  
     beta_v_cov <- as.matrix(Matrix::chol2inv(BLOB$R_scaled)[BLOB$sortPerm,BLOB$sortPerm])
     # this tends to be dense bc v_h estimates covary   

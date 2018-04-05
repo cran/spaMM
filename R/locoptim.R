@@ -36,7 +36,7 @@
 # returns optPars which is a list given by relist(.,init.optim), with attributes the optimMethod and (+:- raw) optr 
 .new_locoptim <- function(init.optim, LowUp, control, objfn_locoptim, 
                           anyHLCor_obj_args, HLcallfn.obj="HLCor.obj", 
-                          user_init_optim=list() ## only purpose is to check whether (some of the) init.optim comes from explicit user info.
+                          user_init_optim ## only purpose is to check whether (some of the) init.optim comes from explicit user info.
 ) {
   initvec <- unlist(init.optim) 
   if ( ! length(initvec)) return(NULL)

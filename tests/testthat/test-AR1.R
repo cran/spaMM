@@ -10,7 +10,7 @@ if (spaMM.getOption("example_maxtime")>8) {
   obs <- rpois(nobs,exp(eta))
   plot(obs)
   fake <- data.frame(obs=obs,age=1:nobs)
-  fitar1 <- corrHLfit(obs ~ 1+AR1(1|age),family=poisson(),data=fake)
+  fitar1 <- corrHLfit(obs ~ 1+AR1(1|age),family=poisson(),data=fake,verbose=c(TRACE=TRUE))
   testthat::expect_equal(logLik(fitar1), c(p_bv=-1269.06022553))
 }
 
@@ -44,7 +44,7 @@ if (TRUE) {
   spaMM.options(sparse_precision=NULL)
   testthat::expect_true(diff(range((c(logLik(zut),logLik(rezut),logLik(rerezut),-47.3130016607291))))<1e-8)
   ## check predict on each fit and subset of (permuted) data:
-  p1 <- predict(zut,newdata=rezut$data[rownames(rezut$data)>30,])["39"]
+  p1 <- predict(zut,newdata=rezut$data[rownames(rezut$data)>30,])["39"] 
   p2 <- predict(rezut,newdata=rerezut$data[rownames(rerezut$data)>30,])["39"]
   p3 <- predict(rerezut,newdata=zut$data[rownames(zut$data)>30,])["39"]
   testthat::expect_true(diff(range(c(p1,p2,p3, 2.35717079935)))<1e-7) ## sparse different > 1e-8
@@ -77,7 +77,18 @@ if (spaMM.getOption("example_maxtime")>13) {
   spaMM.options(sparse_precision=NULL)
   testthat::expect_true(diff(range((c(logLik(zut),logLik(rezut),logLik(rerezut)))))<1e-8)
   ## full data
-  fit_ar1nested <- corrHLfit(obs ~ 1+AR1(1|age %in% ind),family=poisson(),data=fake,verbose=c(TRACE=TRUE)) 
+  fit_ar1nested <- corrHLfit(obs ~ 1+AR1(1|age %in% ind),family=poisson(),data=fake,verbose=c(TRACE=interactive())) 
   testthat::expect_equal(logLik(fit_ar1nested), c(p_bv=-2295.67792783))
 }
 
+if (spaMM.getOption("example_maxtime")>0.5) {
+  require("nlme")
+  #checkinput <- fitme(distance ~ age + factor(Sex)+( 1 | Subject)+ AR1(1|age %in% Subject), fixed=list(phi=1e-6),
+  #      data = Orthodont,verbose=c(TRACE=interactive()),method="REML")  ## 1.5s
+  checkinput <- corrHLfit(distance ~ age + factor(Sex)+( 1 | Subject)+ AR1(1|age %in% Subject), ranFix=list(phi=1e-6),
+                          data = Orthodont,verbose=c(TRACE=interactive()),HLmethod="REML")
+  testthat::expect_equal(logLik(checkinput), c(p_bv=-218.69839984))
+  # consistent with 
+  # lme(distance ~ age + factor(Sex),random = ~ 1 | Subject, cor=corCAR1(form=~age|Subject),data = Orthodont)
+  # which is faster (FIXME: LMM-specific code?)
+}

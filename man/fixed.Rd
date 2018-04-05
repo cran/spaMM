@@ -6,7 +6,7 @@
 \alias{ranCoefs}
 
 \title{Fixing some parameters}
-\description{The fitting functions allow some parameters to be fixed rather than estimated, by way of the \code{fixed} argument for \code{fitme}, of \code{etaFix} (linear predictor coefficents) and \code{ranFix} (random-effect and residual dispersion parameters) for \code{HLfit} and \code{corrHLfit}, and of \code{ranPars} for \code{HLCor}. The diversity of names may be confusing, but keep in mind that \code{ranFix} allows one to fix parameters that \code{HLfit} and \code{corrHLfit} would otherwise estimate, while \code{ranPars} can be used to set required parameters for \code{HLCor}, which it would otherwise be unable to estimate (e.g., Matern correlation parameters). 
+\description{The fitting functions allow some parameters to be fixed rather than estimated, by way of \code{etaFix} (linear predictor coefficents) for all fitting functions, of the \code{fixed} argument for all (co-)variance parameters in \code{fitme}, of \code{ranFix} (random-effect and residual dispersion parameters) in \code{HLfit} and \code{corrHLfit}, and of \code{ranPars} in \code{HLCor}. The diversity of names may be confusing, but keep in mind that \code{ranFix} allows one to fix parameters that \code{HLfit} and \code{corrHLfit} would otherwise estimate, while \code{ranPars} can be used to set required parameters for \code{HLCor}, which it would otherwise be unable to estimate (e.g., Matern correlation parameters). 
 
 Each of these arguments is a list.
 

@@ -38,18 +38,18 @@
 
 Matern.corr <- MaternCorr ## for back compat as it is in spMMjob.R
 
-MaternCorr.default <- function (d, rho=1, smoothness, nu=smoothness, Nugget=0L) { ## rho is alpha in fields
+MaternCorr.default <- function (d, rho=1, smoothness, nu=smoothness, Nugget=NULL) { ## rho is alpha in fields
   ## ideally (but not necess) on a 'dist' so the diagonal is not  manipulated 
   if (any(d < 0)) 
     stop("distance argument must be nonnegative")
   dscal <- d * rho
   isd0 <- d == 0L
-  dscal[isd0] <- 1e-10 ## avoids errors on distance =0; but the resulting corrvals can be visibly < 1 for small nu ## FR->FR make value dependent on rho, nu ?
+  dscal[isd0] <- 1e-10 ## avoids errors on distance =0; but the resulting corrvals can be visibly < 1 for small nu ## FIXME make value dependent on rho, nu ?
   logcon <- (nu - 1)*log(2)+ lgamma(nu) 
-  corrvals <- - logcon + nu*log(dscal)+ .bessel_lnKnu(x=dscal, nu=nu) ## 
-  ##    corrvals <- - logcon + nu*log(dscal)+ log(besselK(x=dscal, nu=nu)) ## function from package gsl
+  corrvals <- - logcon + nu*log(dscal)+ .bessel_lnKnu(x=dscal, nu=nu) 
+  ##    corrvals <- - logcon + nu*log(dscal)+ log(gsl::besselK(x=dscal, nu=nu)) 
   corrvals <- exp(corrvals) 
-  corrvals[!isd0] <- (1-Nugget)* corrvals[!isd0]
+  if ( ! is.null(Nugget)) corrvals[!isd0] <- (1-Nugget)* corrvals[!isd0]
   corrvals[isd0] <- 1 ## 
   corrvals[corrvals < 1e-16] <- 0L ## an attempt to deal with problem in chol/ldl/svd which don't like 'nearly-identity' matrices
   attr(corrvals,"corr.model") <- "Matern"
@@ -58,6 +58,20 @@ MaternCorr.default <- function (d, rho=1, smoothness, nu=smoothness, Nugget=0L) 
 
 
 ## ess <- function(nu,d) {exp(-(d/(2*sqrt(nu)))^2)} ...
+
+CauchyCorr <- function(d, rho=1, shape, longdep, Nugget=NULL) { ## rho is 1/c in Gneiting
+  ## ideally (but not necess) on a 'dist' so the diagonal is not  manipulated 
+  if (any(d < 0)) 
+    stop("distance argument must be nonnegative")
+  dscal <- d * rho
+  isd0 <- d == 0L
+  corrvals <- 1+dscal^shape
+  corrvals <- corrvals^(-longdep/shape)
+  if ( ! is.null(Nugget)) corrvals[!isd0] <- (1-Nugget)* corrvals[!isd0]
+  corrvals[corrvals < 1e-16] <- 0L ## an attempt to deal with problem in chol/ldl/svd which don't like 'nearly-identity' matrices
+  attr(corrvals,"corr.model") <- "Cauchy"
+  return(corrvals)
+}
 
 
 #### demo
@@ -126,7 +140,7 @@ if (F) {
             print("Singular value decomposition failed.") 
             print(" See documentation of the 'SVDfix' argument of 'designL.from.Corr'")
             print("   for ways to handle this.")
-            return(try(stop(),silent=TRUE)) ## passes control to calling function
+            return(SVD) ## passes control to calling function if it checks try-error
           } else {
             d <- SVD$d
             ## must be valid for sym (semi) PD matrices using U, V being eigenvectors of m %*% t(m)
@@ -146,7 +160,9 @@ if (F) {
         ## could occur for two reasons: wrong input matrix; or problem with R's svd which $d are the eigenvalues up to the sign, 
         ##   and thus $d can be <0 for eigenvalues >0 (very rare, observed in a 2x2 matrix) 
         message("correlation matrix has suspiciously large negative eigenvalue(s).")
-        return(try(stop(),silent=TRUE)) ## passes control to calling function to print correlation params
+        return(structure("correlation matrix has suspiciously large negative eigenvalue(s).",
+                         class="try-error", ## passes control to calling function to print further info
+                         call=match.call())) ## not fully conformant to "try-error" class ?"
       } else { ## we have a not-too-suspect decomp
         # d[d< threshold]<- threshold ## wrong for corrmats, would be OK for d2hdv2 computation which uses this function 
         if (any(d<threshold)) d <- threshold + (1-threshold) * d ## 17/05/2014 ## maybe not optimal for covMatrix
@@ -222,20 +238,25 @@ make_scaled_dist <- function(uniqueGeo,uniqueGeo2=NULL,distMatrix,rho,rho.mappin
   return(scaled.dist)
 }
 
-getDistMat <- function(object,scaled=FALSE) {
-  if (! is.null(dist_info <- attr(object,"dist_info"))) {
-    if (is.null(dist_info$distMatrix)) { ## we reconstruct it
-      dist_info$distMatrix <- eval(dist_info$distcall,
-                                   list(uniqueGeo=attr(object,"info.uniqueGeo"),dist.method=dist_info$dist.method))
-      dist_info$distcall <- NULL 
+getDistMat <- function(object,scaled=FALSE, which=1L) {
+  if (! is.null(msd_arglist <- attr(object$strucList[[which]],"msd.arglist"))) {
+    if (is.null(msd_arglist$distMatrix)) { ## we reconstruct it
+      info_olduniqueGeo <- attr(object,"info.uniqueGeo") 
+      if ( ! is.array(info_olduniqueGeo)) { ## test TRUE for version > 2.3.18:
+        olduniqueGeo <- info_olduniqueGeo[[as.character(which)]] ## spaMM3.0 but could be better documented
+      } else olduniqueGeo <- info_olduniqueGeo 
+      coordinates <- colnames(olduniqueGeo)
+      msd_arglist$distMatrix <- eval(msd_arglist$distcall,
+                                   list(uniqueGeo=olduniqueGeo,dist.method=msd_arglist$dist.method))
+      msd_arglist$distcall <- NULL 
     }
     if ( ! scaled)  {
-      dist_info$rho <- 1 
-      dist_info$`rho.mapping` <- NULL 
+      msd_arglist$rho <- 1 
+      msd_arglist$`rho.mapping` <- NULL 
     }
-    return(do.call(make_scaled_dist,dist_info))
+    return(do.call(make_scaled_dist,msd_arglist))
   } else {
-    message("no Matern-correlated random effects")
+    message("no random effect for which a distance matrix can be constructed.") # Matern: seek "msd.arglist"
     return(NULL)
   }
 }

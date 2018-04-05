@@ -15,8 +15,6 @@
                             COMP_maxn=1e4,
                             ff_threshold=Inf, ## ! this affects tryn in blackbox::rhullByEI ! F I X M E remove when new blackbox on CRAN
                             wRegularization=FALSE,
-                            # sparse_precision=FALSE,
-                            wDEVEL2=FALSE, ## m'a servi a tester le remplacement de ranFix par une liste un peu diff ? laissé en chantier
                             QRmethod=NULL, ## For user-provided values. The code does not and should not change this.
                             spaMM_glm_conv_crit=list(max=-Inf),
                             spaMM_tol=list(Xtol_rel=1e-5, Xtol_abs=1e-6, Ftol_LM=1e-1), 

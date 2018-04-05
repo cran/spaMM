@@ -22,10 +22,10 @@ adjfitsp <- fitme(cases~I(prop.ag/10) +adjacency(1|gridcode)+(1|gridcode)+offset
 testthat::expect_true("AUGI0_ZX_sparsePrecision" %in% adjfitsp$MME_method)
 spaMM.options(oldop)
 testthat::expect_true(diff(range(logLik(adjfit),logLik(adjfitsp)))<2e-8) 
-testthat::expect_true(max(abs(range(get_predVar(adjfit)-get_predVar(adjfitsp))))<2e-6) 
+testthat::expect_true(max(abs(range(get_predVar(adjfit)-get_predVar(adjfitsp))))<8e-6) ## predVar seems numerically instable for small lambda ?
 
 ## same using corrMatrix()
-if (spaMM.getOption("example_maxtime")>9.22) { 
+if (spaMM.getOption("example_maxtime")>7.10) { 
   precmat <- diag(56)-0.1*Nmatrix   ## equivalent to adjacency model with rho=0.1
   colnames(precmat) <- rownames(precmat) <- seq(56)
   covmat <- solve(precmat)
@@ -47,7 +47,7 @@ if (spaMM.getOption("example_maxtime")>9.22) {
                   #fixed=list(lambda=c(0.1,0.05)), 
                   family=poisson(),data=scotlip)
   testthat::expect_true("dgCMatrix" %in% covfit$MME_method)
-  testthat::expect_equal(logLik(covfit),c(p_v=-168.12966973))
+  testthat::expect_equal(logLik(covfit),c(p_v=-168.12966973),tol=5e-5) ## all methods are equally sensitive to the initial value (note that one lambda->0)
   testthat::expect_true(max(abs(range(get_predVar(covfit)-get_predVar(precfit))))<4e-6)  
   testthat::expect_true(max(abs(range(get_predVar(adjfit)-get_predVar(covfit))))<6e-6) 
   covfitLM <- fitme(cases~I(prop.ag/10) +corrMatrix(1|gridcode)+(1|gridcode)+offset(log(expec)),

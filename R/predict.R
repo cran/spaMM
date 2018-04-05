@@ -72,25 +72,9 @@
   return(Evar)
 }
 
-.submatrices_for_disp_effect <- function(logdispObject, col_info, newinold) { ## logdisp_cov is complete, newinold informs about retained ranefs
-  logdisp_cov <- logdispObject$logdisp_cov
-  dwdlogdisp <- logdispObject$dwdlogdisp
-  cum_n_u_h <- col_info$cum_n_u_h
-  #
-  which_ranefs <- intersect(col_info$ranef_ids,newinold)
-  u_range <- vector("list",length = length(which_ranefs))
-  for (it in which_ranefs) u_range[[it]] <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
-  u_range <- unlist(u_range)
-  #
-  which_ranef_cols <- which(col_info$ranef_ids %in% newinold) ## for ranCoefs, several elements of col_info$ranef_ids can match one in newinold
-  whichcols <- c(which_ranef_cols,col_info$phi_cols)
-  dwdlogdisp <- dwdlogdisp[u_range,whichcols]
-  logdisp_cov <- logdisp_cov[whichcols,whichcols]
-  return(list(dwdlogdisp=dwdlogdisp,logdisp_cov=logdisp_cov))
-}
-
 .calc_sliceVar <- function(slice, cov_newLv_oldv_list,
                            X.pv, newZAlist_slice, 
+                           re_form_col_indices=NULL,
                            beta_w_cov,
                            cov_newLv_newLv_list,
                            invCov_oldLv_oldLv_list, ## may be null is no newdata.
@@ -118,6 +102,7 @@
   .calcPredVar(cov_newLv_oldv_list=locCov_newLv_oldv_list, ## needed only if newdata in predict() call
                X.pv=X.pv,## problem is that this creates the appearence of new data end more calculations
                newZAlist=locnewZA, ## either newZA or newZAC needed even if no newdata in predict() call
+               re_form_col_indices=re_form_col_indices,
                beta_w_cov=beta_w_cov,cov_newLv_newLv_list=locCov_newLv_newLv_list,
                invCov_oldLv_oldLv_list=invCov_oldLv_oldLv_list, ## needed only if newdata in predict() call
                lambda=lambda,
@@ -127,7 +112,9 @@
 }
 
 .calcPredVar <- function(cov_newLv_oldv_list,
-                         X.pv,newZAlist,beta_w_cov,
+                         X.pv,newZAlist,
+                         re_form_col_indices=NULL,
+                         beta_w_cov,
                          #newZACpplist=NULL,
                          cov_newLv_newLv_list=NULL,
                          invCov_oldLv_oldLv_list=NULL, ## may be null is no newdata.
@@ -155,6 +142,7 @@
                                       cov_newLv_oldv_list=cov_newLv_oldv_list,
                                       X.pv=X.pv_slice,
                                       newZAlist_slice=newZAlist_slice,
+                                      re_form_col_indices=re_form_col_indices,
                                       beta_w_cov=beta_w_cov,
                                       cov_newLv_newLv_list=cov_newLv_newLv_list,
                                       invCov_oldLv_oldLv_list=invCov_oldLv_oldLv_list, ## may be null is no newdata.
@@ -197,10 +185,16 @@
   # => In new version, dwdlogdisp should be either NULL or a conforming matrix;
   #  'problems" should not be tested.
   if ( ! is.null(logdispObject$dwdlogdisp) ) {
-    col_info <- attr(logdispObject$dwdlogdisp,"col_info") ## ranefs for which there is a col in dwdlogdisp
-    if ( length(newinold) != col_info$nrand) { ## selection of blocks for re.form ranefs # fixme: this code is not (testthat-)checked
-      submatrices <- .submatrices_for_disp_effect(logdispObject, col_info, newinold) 
-    } else submatrices <- logdispObject
+    submatrices <- logdispObject
+    if ( ! is.null(re_form_col_indices) ) { ## selection of blocks for re.form ranefs 
+      col_info <- attr(logdispObject$dwdlogdisp,"col_info") ## ranefs for which there is a col in dwdlogdisp
+      whichcols <- c(re_form_col_indices$which_ranef_cols,col_info$phi_cols)
+      submatrices$dwdlogdisp <- submatrices$dwdlogdisp[re_form_col_indices$subrange,whichcols]
+      submatrices$logdisp_cov <- submatrices$logdisp_cov[whichcols,whichcols]
+    } 
+    #if new ranef are permuted wrt old ranefs, 
+    # newZACvar rows are unchanged (they correspond to observations) but its cols and dwdlogdisp rows and cols are permuted
+    # hence newZACw rows are unchanged bt its cols are permuted
     newZACw <- newZACvar %*% submatrices$dwdlogdisp ## typically (nnew * n_u_h) %*% (n_u_h * 2) = nnew * 2 hence small 
     if (covMatrix) {
       disp_effect_on_newZACw <- newZACw %*% submatrices$logdisp_cov %*% t(newZACw)  
@@ -231,12 +225,16 @@
   residVar
 } 
 
-.make_new_corr_lists <- function(object,locdata, which_mats, newZAlist, newinold, fix_info=NULL) {
+.make_new_corr_lists <- function(object,
+                                 locdata, ## a list of arrays for selected ranefs, with selected coordinates, if 'preprocessed' by get_predCov_var_fix(), 
+                                          ## or a single data frame with all coordiantes for all ranefs if from within .calc_new_X_ZAC()
+                                 which_mats, newZAlist, newinold, fix_info=NULL) {
   if (which_mats$no) {
     cov_newLv_oldv_list <- vector("list",length(newZAlist)) ## declar-initalization, will be filled in the loop
   } else cov_newLv_oldv_list <- .make_corr_list(object$strucList,newZAlist=NULL) # we always need a non trivial value
   cov_newLv_newLv_list <- vector("list",length(cov_newLv_oldv_list))
-  ranefs <- attr(newZAlist,"exp_ranef_strings") ## only the matrices that get a "ranefs" attribute will be used in .compute_ZAXlist()
+  ranefs <- attr(newZAlist,"exp_ranef_strings") 
+  ## The following comment may be obsolete: ## only the matrices that get a "ranefs" attribute will be used in .compute_ZAXlist()
   if (any(unlist(which_mats))) {
     strucList <- object$strucList
     spatial_terms <- attr(object$ZAlist,"exp_spatial_terms")
@@ -266,12 +264,25 @@
           if (which_mats$no) cov_newLv_oldv_list[[new_rd]] <- structure(newoldC[newcols,oldcols,drop=FALSE],ranefs=ranefs[[new_rd]])
           if (which_mats$nn[new_rd]) cov_newLv_newLv_list[[new_rd]] <- newoldC[newcols,newcols,drop=FALSE]
         } else {
+          old_char_rd <- as.character(old_rd)
           if ( ! is.null(fix_info)) {
-            olduniqueGeo <- fix_info$newuniqueGeo
-          } else olduniqueGeo <- attr(object,"info.uniqueGeo")
-          geonames <- colnames(olduniqueGeo)
-          newuniqueGeo <- locdata[,geonames,drop=FALSE] ## includes nesting factor
+            info_olduniqueGeo <- fix_info$newuniqueGeo
+          } else {
+            info_olduniqueGeo <- attr(object,"info.uniqueGeo") 
+          }
+          # olduniqueGeo needed in all cases
+          if ( ! is.array(info_olduniqueGeo)) { ## test TRUE for attr(object,"info.uniqueGeo") for version > 2.3.18:
+            olduniqueGeo <- info_olduniqueGeo[[old_char_rd]]
+          } else olduniqueGeo <- info_olduniqueGeo 
+          if ( is.data.frame(locdata)) {
+            geonames <- colnames(olduniqueGeo) 
+            newuniqueGeo <- locdata[,geonames,drop=FALSE] ## includes nesting factor
+          } else { ## locdata is 'preprocessed' list of arrays 
+            newuniqueGeo <- locdata[[as.character(old_rd)]] ## preprocessed, [,geonames,drop=FALSE] not necess ## includes nesting factor 
+            geonames <- colnames(locdata) ## should be true
+          }
           ## distance matrix and then call to correl fn:
+          moreargs_rd <- attr(object,"optimInfo")$LUarglist$moreargs[[old_char_rd]] ## might be NULL 
           if (corr.model=="AR1") {
             ### older, non nested code:
             # if (which$no) resu$uuCnewold <- proxy::dist(newuniqueGeo,olduniqueGeo) 
@@ -280,11 +291,11 @@
             onGeo <- rbind(newuniqueGeo,olduniqueGeo) # includes nesting factor
             if (object$spaMM.version < "2.2.118") {
               blob <- .get_dist_nested_or_not(object$spatial_term, data=onGeo, distMatrix=NULL, uniqueGeo=NULL, 
-                                              dist.method=object$control.dist$dist.method, as_matrix=TRUE,
+                                              dist.method=moreargs_rd$control.dist$dist.method, as_matrix=TRUE,
                                               needed=c(distMatrix=TRUE))
             } else {
               blob <- .get_dist_nested_or_not(spatial_terms[[old_rd]], data=onGeo, distMatrix=NULL, uniqueGeo=NULL, 
-                                            dist.method=object$control.dist$dist.method, as_matrix=TRUE,
+                                            dist.method=moreargs_rd$control.dist$dist.method, as_matrix=TRUE,
                                             needed=c(distMatrix=TRUE)) ## FIXME provide uniqueGeo to save time ?
             }
             ## we merged old and new so need to get the respective cols (which may overlap) 
@@ -295,24 +306,24 @@
             if (which_mats$nn[new_rd]) uuCnewnew <- blob$distMatrix[uli_new,uli_new,drop=FALSE]
           } else {
             ### rho only used to compute scaled distances
-            rho <- .getPar(object$ranFix,"rho")
-            if ( ! is.null(rho_mapping <- attr(object,"dist_info")$rho.mapping)
+            rho <- .get_cP_stuff(object$ranFix,"rho", which=old_char_rd)
+            if ( ! is.null(rho_mapping <- moreargs_rd$rho.mapping) 
                  && length(rho)>1L ) rho <- .calc_fullrho(rho=rho,coordinates=geonames,rho_mapping=rho_mapping)
             ## rows from newuniqueGeo, cols from olduniqueGeo:
             msd.arglist <- list(uniqueGeo=newuniqueGeo,uniqueGeo2=olduniqueGeo,
                                 rho=rho,return_matrix=TRUE)
-            if ( ! is.null(dist.method <- object$control.dist$dist.method)) msd.arglist$dist.method <- dist.method
+            if ( ! is.null(dist.method <- moreargs_rd$control.dist$dist.method)) msd.arglist$dist.method <- dist.method ## make_scaled_dist does not handle NULL
             if (which_mats$no) uuCnewold <- do.call(make_scaled_dist,msd.arglist) ## ultimately allows products with Matrix ## '*cross*dist' has few methods, not even as.matrix
             if (which_mats$nn[new_rd])  {
               msd.arglist$uniqueGeo2 <- NULL
               if (nrow(msd.arglist$uniqueGeo)==1L) {
-                uuCnewnew <- matrix(0)
+                uuCnewnew <- matrix(0) ## trivial distance matrix for single point
               } else uuCnewnew <- do.call(make_scaled_dist,msd.arglist) 
             }
           }
-          if (which_mats$no) cov_newLv_oldv_list[[new_rd]] <- structure(.calc_corr_from_dist(uuCnewold, object, corr.model),
+          if (which_mats$no) cov_newLv_oldv_list[[new_rd]] <- structure(.calc_corr_from_dist(uuCnewold, object, corr.model,char_rd=old_char_rd),
                                                                     ranefs=ranefs[[new_rd]])
-          if (which_mats$nn[new_rd]) cov_newLv_newLv_list[[new_rd]] <- .calc_corr_from_dist(uuCnewnew, object, corr.model)
+          if (which_mats$nn[new_rd]) cov_newLv_newLv_list[[new_rd]] <- .calc_corr_from_dist(uuCnewnew, object, corr.model,char_rd=old_char_rd)
         }
       }
     }
@@ -399,7 +410,7 @@
         object$envir$w_h_coeffs <- w_h_coeffs <- .calc_invL_coeffs(object,object$v_h)
       }
       lcrandfamfam <- attr(object$`rand.families`,"lcrandfamfam")[newinold]
-      
+      #browser()
       augm_w_h_coeffs <- lapply(seq_len(newnrand),.match_old_new_levels,
                                 old_cum_n_u_h=attr(object$lambda,"cum_n_u_h"), newinold=newinold, 
                                 spatial_old_rd=spatial_old_rd, w_h_coeffs=w_h_coeffs, 
@@ -425,7 +436,7 @@
 .predict_body <- function(object, newdata, re.form,
                           variances, binding, intervals, level, blockSize) {
   new_X_ZACblob <- .calc_new_X_ZAC(object=object, newdata=newdata, re.form = re.form,
-                                   variances=variances)
+                                   variances=variances) ## (fixme) still some unnecessary computation for predict(object)
   newinold <- new_X_ZACblob$newinold ## says which ranef is kept by re.form
   #
   ## (1) computes fv (2) compute predVar
@@ -451,24 +462,25 @@
     resu <- cbind(locdata,resu) ## becomes a data frame !
     attr(resu,"fittedName") <- binding
   } else { ## expecting binding= FALSE
-    if (! is.na(binding) && ncol(locdata)>0)  attr(resu,"frame") <- locdata 
+    if (! is.na(binding) && ncol(locdata))  attr(resu,"frame") <- locdata 
   }
   ##### (2) predVar
   newnrand <- length(new_X_ZACblob$newZAlist) ## may be reduced if non trivial re.form
   newX.pv <- new_X_ZACblob$newX.pv
+  #
+  beta_w_cov_needed <- (inherits(re.form,"formula") || 
+                          (variances$linPred && newnrand)
+                        )
+  if (beta_w_cov_needed) beta_w_cov <- .get_beta_w_cov(object)
+  if (inherits(re.form,"formula")) {
+    # identifies and selects columns for the [retained ranefs, which are given by newinold 
+    re_form_col_indices <- .re_form_col_indices(newinold, cum_n_u_h=attr(object$lambda,"cum_n_u_h"), Xi_cols=attr(object$ZAlist, "Xi_cols"))
+    Xncol <- ncol(object$X.pv)
+    subrange <- c(seq_len(Xncol),re_form_col_indices$subrange + Xncol)
+    beta_w_cov <- beta_w_cov[subrange,subrange]
+  } else re_form_col_indices <- NULL
+  #
   if(variances$linPred) {
-    beta_cov <- .get_beta_cov_any_version(object)
-    beta_w_cov <- .get_beta_w_cov(object)
-    if (inherits(re.form,"formula")) {
-      # identifies an selects columns for the [retained ranefs, which are given by newinold 
-      subrange <- vector("list",length = length(newinold))
-      old_cum_n_u_h <- attr(object$lambda,"cum_n_u_h")
-      for (it in newinold) subrange[[it]] <- (old_cum_n_u_h[it]+1L):(old_cum_n_u_h[it+1L])
-      subrange <- unlist(subrange)
-      Xncol <- ncol(beta_cov)
-      subrange <- c(seq_len(Xncol),subrange + Xncol)
-      beta_w_cov <- beta_w_cov[subrange,subrange]
-    }
     if (newnrand) {
       if ( is.null(newdata) && ! inherits(re.form,"formula")) {
         newZAlist <- new_X_ZACblob$subZAlist ## (subset of) the original object$ZAlist 
@@ -485,7 +497,7 @@
       if (variances$BH98) newX.pv[] <- 0
       loclist <- list(X.pv=newX.pv,beta_w_cov=beta_w_cov,covMatrix=variances$cov,lambda=object$lambda,
                       newinold=new_X_ZACblob$newinold,blockSize=blockSize, 
-                      newZAlist=newZAlist,
+                      newZAlist=newZAlist, re_form_col_indices=re_form_col_indices,
                       cov_newLv_oldv_list=new_X_ZACblob$cov_newLv_oldv_list,
                       ## list for Cnewnew, which enters in  newZA %*% Cnewnew %*% tnewZA, hence should not represent newZA itself 
                       cov_newLv_newLv_list=new_X_ZACblob$cov_newLv_newLv_list)
@@ -506,9 +518,9 @@
   } else if (any(unlist(variances))) {
     respVar <- rep(0,nrow(locdata))
   } else respVar <- NULL 
-  beta_cov <- .get_beta_cov_any_version(object)
-  if (! is.null(beta_cov)) {
-    if ( variances$fixefVar || (newnrand==0L && variances$linPred) ) {
+  if ( variances$fixefVar || (newnrand==0L && variances$linPred) ) {
+    beta_cov <- .get_beta_cov_any_version(object)
+    if (! is.null(beta_cov)) {
       fixefcov <- newX.pv %*% beta_cov %*% t(newX.pv)
       if (variances$cov) {
         attr(resu,"fixefVar") <- fixefcov 

@@ -3,6 +3,49 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 2.4.0}{
+\subsection{NEW FEATURES}{
+\itemize{
+\item Cauchy spatial correlation family has been implemented.
+\item For binomial family the response can now be specified as a factor.
+\item Better default selection of methods for autoregressive fits with many random-effect levels may lead to much faster fits.
+\item fitme() now selects estimation methods for phi and lambda by default according to nrow(data), which may change details of the results, To overcome the new defaults, fitme() now allows better control of estimation method and of initial values for phi and lambda. 
+\item get_predCov_var_fix() may now handle a non-trivial 're.form'.
+\item New 'max.print' argument for summary.HLfit().
+\item New function spaMM_boot() for parametric bootstrap. 
+\item New 'resp_testfn' argument for simulate.HLfit(), to simulate samples that satisfy a given condition.
+}
+}
+\subsection{USER-LEVEL CHANGES}{
+\itemize{
+\item Revised summary of random-effect parameters.
+\item revised format of ranef() screen output for random-coefficient terms, using new method 'print.ranef'.
+\item Imports package 'pbapply' to draw progress bars, including in parallel computations; no longer Suggests the package 'foreach' (and optionally 'doSNOW') for the same effect.
+}
+}
+\subsection{FIXED BUGS}{
+\itemize{
+\item An error was produced when model formulas included a nested random effect (.|./.) followed by a correlated random effect such as Matern(.).  
+\item Incorrect prediction variance with non-trivial 're.form' with random-coefficient term(s) or permutations of the random effects.
+\item Errors when attempting to fit models with correlated random effects and 'negbin' response family.
+\item A wrong algorithm could sometimes be selected for 'inner' estimation of the correlation parameter of CAR models.
+\item Wrong documentation for ranef().
+\item anova() failed when a fit had non-estimable coefficients because of collinearity.
+}
+}
+\subsection{SUBSTANTIAL CHANGES TO DOCUMENTATION}{
+\itemize{
+\item Revised 'help(ranFix)' to clarify the usage of argument for fixing parameters in the different fitting functions.
+}
+}
+\subsection{OTHER CHANGES}{
+\itemize{
+\item Revised default initial values of lambda may slightly change results.
+\item Revised default 'fittingFunction' for fixedLRT() may slightly change results, or may call for a user-provided explicit value of 'fittingFunction'.
+\item Corrected the poorly written documentation for COMPoisson.
+}
+}
+}
 \section{CHANGES UP TO VERSION 2.3.0}{
 \subsection{NEW FEATURES}{
 \itemize{

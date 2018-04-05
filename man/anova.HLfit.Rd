@@ -18,7 +18,7 @@ LRT(object, object2, boot.repl=0, nb_cores=NULL, ...)
 \arguments{
   \item{object,object2}{Two models fits being compared (their order does not matter).}
   \item{boot.repl}{the number of bootstrap replicates. }
-  \item{nb_cores}{Number of cores to use for bootstrap computation. The default is \code{spaMM.getOption("nb_cores")}, and 1 if the latter is NULL. \code{nb_cores=1} which prevents the use of parallelisation procedures.}
+  \item{nb_cores}{Number of cores to use for parallel computation of bootstrap. The default is \code{spaMM.getOption("nb_cores")}, and 1 if the latter is NULL. \code{nb_cores=1} prevents the use of parallelisation procedures.}
   \item{method}{For development purposes, not documented. }
   \item{\dots}{
   Further arguments passed to or from other methods. 

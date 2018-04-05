@@ -15,7 +15,7 @@
   Summary and print methods for results from HLfit or related functions.  
 }
 \usage{
-\method{summary}{HLfit}(object, details=FALSE, ...)
+\method{summary}{HLfit}(object, details=FALSE, max.print=100L, ...)
 \method{summary}{HLfitlist}(object, ...)
 \method{summary}{fixedLRT}(object, verbose=TRUE, ...)
 \method{print}{HLfit}(x,...)
@@ -23,21 +23,12 @@
 \method{print}{fixedLRT}(x,...)
 }
 \arguments{
-  \item{object}{
-  The return object of HLfit or related functions.
-}
-  \item{x}{
-  The return object of HLfit or related functions.
-}
-  \item{verbose}{
-  for \code{summary.fixedLRT}, whether to print the model fits or not.
-}
-  \item{details}{
-  whether to print some obscure details. Currently affects only random-coefficients models (see Details).
-}
-  \item{\dots}{
-  further arguments passed to or from other methods. 
-}
+  \item{object}{  The return object of HLfit or related functions.}
+  \item{x}{  The return object of HLfit or related functions.}
+  \item{verbose}{  for \code{summary.fixedLRT}, whether to print the model fits or not. }
+  \item{max.print}{Controls \code{options("max.print")} locally.}
+  \item{details}{  whether to print some obscure details. Currently affects only random-coefficients models (see Details).}
+  \item{\dots}{  further arguments passed to or from other methods. }
 }
 \value{
   These methods return the object invisibly. They print details of the (lower level) HLfit results in a convenient form.

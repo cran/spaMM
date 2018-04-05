@@ -13,5 +13,12 @@ if (require("Infusion",quietly=TRUE)) {
 
 if (require("IsoriX",quietly=TRUE)) { ## Checks that exports/imports are OK
   IsoriX.options(spaMM.options("example_maxtime"))
-  example("isofit") ## to detect e.g. do_TRACE issues
+  IsoriX.options(dont_ask = TRUE) ## for plots
+  chk <- try(example("isofit"),silent=TRUE) ## to detect e.g. do_TRACE issues... or corrPars$rho...
+  if (inherits(chk,"try-error")) {
+    warning(paste('example("isofit")',"produced",chk))
+  } else if ( ! is.null(chk$value)) { ## NULL value if example_maxtime too low
+    testthat::expect_equal(chk$value$mean.fit$corrPars[["2"]]$rho,0.0001176491)
+    testthat::expect_equal(chk$value$disp.fit$corrPars[["2"]]$rho,0.0001176491) ## lower bound for rho in both cases
+  }
 }

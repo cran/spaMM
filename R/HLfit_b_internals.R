@@ -4,15 +4,18 @@
       assign("nu",ranFix$COMP_nu,envir=environment(family$aic))
       ranFix$COMP_nu <- NULL
     } else {
-      checknu <- try(environment(family$aic)$nu,silent=TRUE)
+      checknu <- suppressWarnings(try(environment(family$aic)$nu,silent=TRUE))
       if (inherits(checknu,"try-error")) stop(attr(checknu,"condition")$message)
     }
   } else if (family$family == "negbin") {
-    if ( ! is.null(ranFix$trNB_shape)) { ## optimisation call
+    if ( ! is.null(ranFix$NB_shape)) { ## fitme -> HLCor -> HLfit
+      assign("shape",ranFix$NB_shape,envir=environment(family$aic))
+      ranFix$NB_shape <- NULL
+    } else if ( ! is.null(ranFix$trNB_shape)) { ## fitme -> HLfit directly (FIXME: unify both cases ?)
       assign("shape",.NB_shapeInv(ranFix$trNB_shape),envir=environment(family$aic))
       ranFix$trNB_shape <- NULL
     } else {
-      checktheta <- try(environment(family$aic)$shape,silent=TRUE)
+      checktheta <- suppressWarnings(try(environment(family$aic)$shape,silent=TRUE))
       if (inherits(checktheta,"try-error")) stop(attr(checktheta,"condition")$message)
     }
   }

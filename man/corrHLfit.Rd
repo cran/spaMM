@@ -38,8 +38,7 @@ a dispersion parameter changes the ways it is estimated (see Details).
 An optional list of values of parameters specified through \code{init.corrHLfit}, used as lower values in calls to \code{optim}. See Details for default values.
 }
   \item{upper}{Same as \code{lower}, but upper values.}
-  \item{objective}{ Can be ignored: default value is determined from other 
-  arguments (\code{HLmethod} and \code{REMLformula}), being \code{"p_bv"} for restricted likelihood or \code{"p_v"} for marginal likelihood. Non-default values can be given but this is an obsolete and the other arguments should be used.}
+  \item{objective}{ For development purpose, not documented (this had a distinct use in the first version of spaMM, but has been deprecated as such).}
   \item{resid.model, resid.formula}{See identically named \code{\link{HLfit}} arguments.}
 \item{control.dist}{See \code{control.dist} in \code{\link{HLCor}}}
 \item{control.corrHLfit}{
@@ -58,8 +57,7 @@ of \code{HLCor}. Arguments that do not fit within these functions are detected a
 
   By default \code{corrHLfit} will estimate correlation parameters by maximizing the \code{objective} value returned by \code{HLCor} calls wherein the dispersion parameters are estimated jointly with fixed effects for given correlation parameters. If dispersion parameters are specified in \code{init.corrHLfit}, they will also be estimated by maximizing the \code{objective} value, and \code{HLCor calls} will not estimate them jointly with fixed effects. This means that in general the fixed effect estimates may vary depending on \code{init.corrHLfit} when any form of REML correction is applied. 
   
-  Correctly using \code{corrHLfit} for likelihood ratio tests
-  of fixed effects may then by tricky. It is safe to perform full ML fits of all parameters (using \code{HLmethod="ML"}) for such tests (see Examples).   The higher level function \code{\link{fixedLRT}} is a safe interface for likelihood ratio tests using some form of REML estimation in \code{corrHLfit}.  
+Correctly using \code{corrHLfit} for likelihood ratio tests of fixed effects may then be tricky. It is safe to perform full ML fits of all parameters (using \code{HLmethod="ML"}) for such tests (see Examples).   The higher level function \code{\link{fixedLRT}} is a safe interface for likelihood ratio tests using some form of REML estimation in \code{corrHLfit}.  
   
   \code{attr(<fitted object>,"optimInfo")$lower} and ...\code{$upper} gives the lower and upper bounds for optimization of correlation parameters. These are the default values if the user did not provide explicit values. For the adjacency model, the default values are the inverse of the maximum and minimum eigenvalues of the \code{adjMatrix}. For the Matérn model, the default values are not so easily summarized: they are intended to cover the range of values for which there is statistical information to distinguish among them.
 }

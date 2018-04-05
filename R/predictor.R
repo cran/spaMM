@@ -5,20 +5,7 @@ Predictor <- function (formula, offset=NULL, LMatrix = NULL,  AMatrix = NULL, ZA
   formula <- .stripFormula(formula)
   # we redefine the envir of the formula to be the closure of Predictor, and we will empty before exiting Predictor
   #formula <- .stripFormula(formula)  # env = emptyenv() not possible as model.frame needs a non-empty envir.
-  oriFormula <- formula
-  if (substr((as.character(formula[2])),1,5)=="cbind") { 
-    ## FR->FR e.g. strsplit("cbind(npos,ntot-npos)","[(,)-]") gives a list which element [[1]] is "cbind" "npos"  "ntot"  "npos"
-    positives <- strsplit(strsplit(as.character(formula[2]),"\\(")[[1]][2],",")[[1]][1] ## names of variables
-    negatives <- strsplit(strsplit(as.character(formula[2]),",")[[1]][2],"\\)")[[1]][1] ## names of variables
-    if (length(positives)>1 && length(negatives)>1) {
-      stop("For binomial data, please use cbind(<pos>,<neg>) where at least one of <pos> and <neg> is a variable from the data frame")
-    } ## because problem bootstrap otherwise...
-    ## cbind syntax for binomial model => is converted to alternative syntax; cbind would have failed in HLframes <10/04/2014 
-    ## HLframes was modified on 10/04/2014 but the present code as not been revised following that change whichmay not be sufficient
-    formula <- as.formula(paste(positives,"~",as.character(formula[3])))
-    formula <- .stripFormula(formula)
-    BinDenForm <- paste(positives,"+",negatives)       
-  } else {BinDenForm <-NULL}
+  #oriFormula <- formula
   if ( ! ( is.null(AMatrix) || is.list(AMatrix)) ) {
     ## assumes any of a number of matrix classes. Not clear how to test compactly for the soup of Matrix classes
     AMatrix <- list(AMatrix) ## further code expects a list (should ultimately be the same for all matrices...) 
@@ -45,9 +32,8 @@ Predictor <- function (formula, offset=NULL, LMatrix = NULL,  AMatrix = NULL, ZA
     })
   }
   res <- formula
-  attr(res,"oriFormula") <- oriFormula
+  attr(res,"oriFormula") <- formula     ## they may diverge by .noOffset, so they need to be kept distinct
   attr(res,"AMatrix") <- AMatrix
-  attr(res,"BinDenForm") <- BinDenForm
   attr(res,"LMatrix") <- LMatrix ## only usage now is to be copied in AUGI0_ZX$envir$LMatrices, and immediately removed
   attr(res,"offsetObj") <- list(offsetArg=offset,nonZeroInfo= !is.null(offset))
   class(res) <- c("predictor",class(res))

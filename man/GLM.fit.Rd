@@ -108,7 +108,7 @@ All arguments except \code{strict} are common to these functions and their \code
 \value{An object inheriting from class \code{glm}. See \code{\link[stats]{glm}} for details.}
 \note{The source and documentation is derived in large part from those of \code{glm.fit}.}
 \examples{
-# glm() failures last checked in R-devel version (2017-04-19 r72556)
+# glm() failures last checked in R-devel version (2018-01-06 r74073)
 x <- c(8.752,20.27,24.71,32.88,27.27,19.09)
 y <- c(5254,35.92,84.14,641.8,1.21,47.2)
 \dontrun{ # fails:

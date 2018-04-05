@@ -1,29 +1,3 @@
-# getPar extract values from a list of lists, controlling that there is no redundancies between the lists => useful t merge lists 
-# 'which' can be any way of indexing a list
-.getPar <- function(parlist,name,which=NULL) {
-  if ( ! is.null(which)) parlist <- parlist[[which]] 
-  val <- parlist[[name]] 
-  if (is.null(val)) { ## ie name not found a topmost level; scan sublists:
-    vallist <- lapply(parlist, function(sublist) {
-      if (is.list(sublist)) {sublist[[name]]} else {NULL}
-    })
-    ll <- sapply(vallist,length)
-    ll <- which(ll>0)
-    if (length(ll)>1) {
-      stop(paste("Found several instances of element '",name,"' in nested list: use 'which' to resolve this.",sep=""))
-    } else if (length(ll)==0L) {
-      val <- NULL
-    } else val <- vallist[[ll]]
-  }
-  val
-}
-
-# .getPar(list("1"=list(a=1,b=2),"2"=list(a=3,c=4)),"b") ## 2
-# .getPar(list("1"=list(a=1,b=2),"2"=list(a=3,c=4)),"c") ## 4
-# .getPar(list("1"=list(a=1,b=2),"2"=list(a=3,c=4)),"a") ## error
-# .getPar(list("1"=list(a=1,b=2),"2"=list(a=3,c=4)),"a",which=1) ## 1
-# .getPar(list("1"=list(a=1,b=2),"2"=list(a=3,c=4)),"d") ## NULL
-
 # LMatrix assumed to be dense
 .get_invL <- function(object, regul.threshold=1e-7) { ## computes inv(L) [not inv(Corr): see calc_invColdoldList]
   strucList <- object$strucList
@@ -37,7 +11,6 @@
       for (Lit in seq_len(length(strucList))) {
         lmatrix <- strucList[[Lit]]
         if ( ! is.null(lmatrix)) {
-          affecteds <- which(ranefs %in% attr(lmatrix,"ranefs"))
           type <-  attr(lmatrix,"type")
           condnum <- kappa(lmatrix,norm="1")
           invlmatrix <- NULL
@@ -82,11 +55,8 @@
             invLLt <- chol2inv(Rmatrix) ## 
             invlmatrix <- crossprod(lmatrix, invLLt) ## regularized (or not) solve(lmatrix)
           }
-          for (it in affecteds) {
-            u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
-            resu[u.range,u.range] <- invlmatrix   ## FR->FR it would be more eficcent to maintain a block structure here ?
-            # but this allows an lmatrix to affect several rand effects
-          }  
+          u.range <- (cum_n_u_h[Lit]+1L):(cum_n_u_h[Lit+1L])
+          resu[u.range,u.range] <- invlmatrix   
         }
       }
       object$envir$invL <- resu
@@ -112,13 +82,10 @@
       if (! is.null(lmatrix)) { ## spatial or random-coef
         lmatrixranefs <- attr(lmatrix,"ranefs")
         if (object$spaMM.version>"1.11.56" && is.null(lmatrixranefs)) stop('attr(lmatrix,"ranefs") missing')
-        affecteds <- which(ranefs %in% lmatrixranefs)
-        for (it in affecteds) {
-          u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
-          ## dense calculation on not necess triangular lmatrix (!?). 
-          ## Could surely be optimized, but by redfining lamtrix à la sXaug 
-          newcoeffs[u.range] <- solve(t(lmatrix),newcoeffs[u.range])   ## transpose
-        }  
+        u.range <- (cum_n_u_h[Lit]+1L):(cum_n_u_h[Lit+1L])
+        ## dense calculation on not necess triangular lmatrix (!?). 
+        ## Could surely be optimized, but by redfining lamtrix à la sXaug 
+        newcoeffs[u.range] <- solve(t(lmatrix),newcoeffs[u.range])   ## transpose
       }
     }
   }
@@ -180,18 +147,19 @@ ranef.HLfit <- function(object,type="correlated",...) {
   if (object$spaMM.version < "2.2.116") {
     ranefs <- attr(object$ZAlist,"ranefs") 
   } else ranefs <- attr(object$ZAlist,"exp_ranef_strings") 
-  colNames <- lapply(object$ZAlist,"colnames")
+  colNames <- lapply(object$ZAlist,"colnames")   ## F I X M E lapply generally slow (not specif this one)  (but keep list names!)=> check where it can be replaced
   # compute Lv from v:
   strucList <- object$strucList
   RESU <- vector("list", length(ranefs))
   for (it in seq_along(ranefs)) {
     u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
     res <- uv_h[u.range] # vector
-    if (length(print_namesTerms[[it]])>1L) { # random-coef term
+    if ((nr <- length(print_namesTerms[[it]]))>1L) { # random-coef term
       n_cols <- length(colNames[[it]])/length(print_namesTerms[[it]])
       if (type == "correlated") {
         res <- strucList[[it]] %*% res ## matrix
-        res <- structure(res, dimnames=list(colNames[[it]][1:n_cols], print_namesTerms[[it]]))
+        res <- structure(matrix(res, ncol=n_cols,byrow=TRUE), dimnames=list(print_namesTerms[[it]],colNames[[it]][1:n_cols]))
+        res <- t(res) # despite the t() it makes it ~ to the vector in the alternative case (both operate as n_u_h-row matrices) 
       } else {
         res <- structure(matrix(res, ncol=n_cols,byrow=TRUE), dimnames= list(NULL, colNames[[it]][1:n_cols])) ## matrix
       }
@@ -204,9 +172,15 @@ ranef.HLfit <- function(object,type="correlated",...) {
     RESU[[it]] <- res
   }
   names(RESU) <- ranefs
+  class(RESU) <- c("list","ranef")
   RESU
 }
 
+print.ranef <- function(x, max.print=40L, ...) {
+  oldopt <- options(max.print=max.print)
+  print.default(x)
+  options(oldopt)
+}
 
 fixef.HLfit <- function(object,...) {
   object <- .getHLfit(object)
@@ -242,8 +216,8 @@ vcov.HLfit <- function(object,...) {
 
 .get_beta_cov_any_version <- function(object) {
   beta_cov <- object$beta_cov ## set by HLfit using get_from_MME(, which="beta_cov")
-  if (is.null(beta_cov)) {
-    return(.get_beta_cov(object))
+  if (is.null(beta_cov)) { ## should never happen
+    return(.get_beta_cov_info(object))
   } else return(beta_cov)
 }
 

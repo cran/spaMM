@@ -29,30 +29,36 @@
       sparse_precision <- FALSE
     }
   }
-  ## best decision rule not obvious. Trade off between repeated sparse Cholesky and a sym_eigen(). 
+  ## best decision rule not obvious. For adjacency, trade off between repeated sparse Cholesky and a sym_eigen() . 
   if (is.null(sparse_precision)) {
-    if (length(intersect(attr(ZAlist,"exp_ranef_types"),c("SAR_WWt","adjacency","AR1")))) {
-      sparse_precision <- (
+    inner_estim_adj_rho <- (length(intersect(attr(ZAlist,"exp_ranef_types"),c("SAR_WWt","adjacency"))) && 
+        ( processed$For=="HLCor" || (.get_cP_stuff(init.HLfit,"rho",count=TRUE))))
+    if (inner_estim_adj_rho) {
+      sparse_precision <- FALSE
+    } else {
+      # all_AR1  or ( all_adj && tall ZAfix):             (for AR1 cf fitar1 <- corrHLfit(.,data=fake,.))
+      condition1 <- ( all(attr(ZAlist,"exp_ranef_types")=="AR1") || 
+                        (all(attr(ZAlist,"exp_ranef_types") %in% c("SAR_WWt","adjacency")) && 
+                           nrow(ZAfix)/ncol(ZAfix)>3 ## tall ZAfix
+                        ) 
+                    ) ## FALSE for "Matern", "", etc.
+      sparse_precision <- condition1 && (
         (
-          ! is.numeric(init.HLfit$rho) ## init.HLfit$rho implies inner estim of AR parameter using SVD of the adjacency matrix
-        ) && (
-          (
-            processed$LMMbool 
-            && 1e-4*(ncol(ZAfix)^2 -160^2)+1e-7*(nrow(ZAfix)^3 -250^3)>0 ## from numerical experiments
-          ) || (
-            # the Poisson-gamma adjacency HGLM in 'old donttest examples' i slow in sparse...
-            0.5e-3*(ncol(ZAfix)^2 -120^2)+4.5e-8*(nrow(ZAfix)^3 -200^3)>0 ## from numerical experiments
-          )
-        )
-      )  
-    } else sparse_precision <- FALSE ## "Matern", "", etc.
+          processed$LMMbool
+          && 1e-4*(ncol(ZAfix)^2 -160^2)+1e-7*(nrow(ZAfix)^3 -250^3)>0 ## from numerical experiments
+        ) || (
+          # the Poisson-gamma adjacency HGLM in 'old donttest examples' is slow in sparse...
+          0.5e-3*(ncol(ZAfix)^2 -120^2)+4.5e-8*(nrow(ZAfix)^3 -200^3)>0 ## from numerical experiments
+        ) ## slow test_all without such conditions...
+      )
+    }
     ## pb with nonspatial "" as for any other model is that G may be dense, and the solve(BLOB$G_CHMfactor) are not efficient,
     #  (HLfit -> .get_hatvalues -> "hatval" is particularly inefficient and can take most of the time)
     # while the Matrix_QRP_CHM code is efficient on sparse sXaug (cf test-Rasch as a good example)
     # ie when (L of corrMatrix) is sparse. So sparse precision should be used when there is a corrMatrix and
     # the precision matrix is significantly _sparser_ than the corrMatrix
     # (?fixme? ! not obvious from first attempt): rewrite part of sparse_precision code using solve(Q,... rather than solve(G,...)
-  } else if (sparse_precision && is.numeric(init.HLfit$rho)) {
+  } else if (sparse_precision && is.numeric(.getPar(init.HLfit,"rho"))) {
     stop("Conflicting option 'sparse_precision' and argument init.HLfit$rho")
   }
   return(sparse_precision)

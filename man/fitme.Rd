@@ -4,13 +4,14 @@
 Fitting function for fixed- and mixed-effect models with GLM response. 
 }
 \description{
-This is a common interface for fitting most models that spaMM can fit, from linear models to mixed models with non-gaussian random effects, therefore substituting to \code{corrHLfit}, \code{HLCor} and \code{HLfit}. By default, it uses ML rather than REML (differing in this respect from the other fitting functions). It may use \dQuote{outer optimization}, i.e., generic optimization methods for estimating all dispersion parameters, rather than the often slow default method in \code{HLfit}. Outer optimization should generally be faster than the alternative algorithms for large data sets when the residual variance model is a single constant term (no structured dispersion). Which method \code{fitme} actually uses depends on its input arguments, and decision criteria are subject to change in the future. For mixed models, \code{fitme} by default tries to select the fastest method when both can be applied, but may not always succeed in this respect.  
+This is a common interface for fitting most models that spaMM can fit, from linear models to mixed models with non-gaussian random effects, therefore substituting to \code{corrHLfit}, \code{HLCor} and \code{HLfit}. By default, it uses ML rather than REML (differing in this respect from the other fitting functions). It may use \dQuote{outer optimization}, i.e., generic optimization methods for estimating all dispersion parameters, rather than the iterative methods method in \code{HLfit}. The results of REML fits of non-gaussian mixed models by these different methods may (generally slightly) differ. Outer optimization should generally be faster than the alternative algorithms for large data sets when the residual variance model is a single constant term (no structured dispersion). For mixed models, \code{fitme} by default tries to select the fastest method when both can be applied, but precise decision criteria are subject to change in the future. \code{corrHLfit} (with non-default arguments to control the optimization method most suitable to a particular problem) may be used to ensure better consistency over successive versions of \code{spaMM}.
 }
 \usage{
 fitme(formula, data, family = gaussian(), init = list(), fixed = list(), 
       lower = list(), upper = list(), resid.model = ~1, init.HLfit = list(), 
       control = list(), control.dist = list(), method = "ML", 
-      HLmethod = method, processed = NULL, ...)
+      HLmethod = method, processed = NULL, nb_cores = NULL, objective = NULL, 
+      ...)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -49,17 +50,19 @@ An optional list of values of parameters specified through \code{init.corrHLfit}
   \item{method, HLmethod}{
   \code{"ML"} or \code{"REML"}. \code{"ML"} is the default, in contrast to \code{"REML"} for the \code{HLmethod} argument of other fitting functions. Other possible values of \code{HLfit}'s \code{HLmethod} argument are handled and should give results close to the other fitting methods with the same \code{HLmethod} argument, the most notable exception being \code{PQL/L} for binary response data, as \code{fitme} does not take into account the specific way leverages are computed in \code{PQL/L}.
 }
-  \item{processed}{
-For programming purposes, not documented.
-}
+  \item{nb_cores}{Number of cores to use for parallel computations.}
+  \item{processed}{ For programming purposes, not documented.}
+  \item{objective}{ For development purpose, not documented.}
   \item{\dots}{
 Optional arguments passed to \code{\link{HLCor}}, \code{\link{HLfit}} or  \code{\link{designL.from.Corr}}, for example the \code{distMatrix} argument of \code{HLCor}. 
-% FR->FR : ? :
+% FIXME : ? :
 %Arguments that do not fit within these functions are detected and a warning is issued.
 }
 }
 \details{
-For \code{phi} and \code{lambda}, \code{fitme} may not use the internal fitting methods of \code{HLfit}. The latter methods are well suited for structured dispersion models, but require the computation of the so-called leverages, which can be slow. However, they also provide some more information such as the \dQuote{cond. SE} (about which see warning in Details of \code{\link{HLfit}}). To force the evaluation of such information from a \code{fitme} call, use the \code{control$refit} argument (see Example).    
+For \code{phi}, \code{lambda}, and \code{ranCoefs}, \code{fitme} may or may not use the internal fitting methods of \code{HLfit}. The latter methods are well suited for structured dispersion models, but require the computation of the so-called leverages, which can be slow for large datasets. Therefore, \code{fitme} tends to outer-optimize by default for large datasets, unless there is a non-trivial \code{resid.model}. 
+
+However, the internal fitting methods of \code{HLfit} also provide some more information such as the \dQuote{cond. SE} (about which see warning in Details of \code{\link{HLfit}}). To force the evaluation of such information after an outer-optimization by a \code{fitme} call, use the \code{control$refit} argument (see Example). Alternatively (and possibly of limited use), one can force inner-optimization of \code{lambda} for a given random effect, or of \code{phi}, by setting it to \code{NaN} in \code{init}. 
 }
 \value{
 The return value of an \code{HLCor} or an \code{HLfit} call, with additional attributes. The \code{HLCor} call is evaluated at the estimated correlation parameter values. These values are included in the return object as its \code{$corrPars} member. The attributes added by \code{fitme} include the original call of the function (which can be retrived by \code{getCall}(<fitted object>), and information about the optimization call within \code{fitme}. 

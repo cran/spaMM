@@ -52,8 +52,8 @@ Either a \code{formula} or a \code{predictor} for the full model.
   \item{control.boot}{
   Same as \code{control}, but for the fits of the bootstrap replicates. Again, the option \code{control.boot=list(prefits=TRUE)} may yield a small improvement in the fits, at the expense of more computation time.   
 }
-\item{fittingFunction}{Character string giving the function used to fit each model: either \code{"corrHLfit"} or \code{"fitme"}.}
-\item{nb_cores}{Number of cores to use for bootstrap computation. The default is \code{spaMM.getOption("nb_cores")}, and 1 if the latter is NULL. \code{nb_cores=1} which prevents the use of parallelisation procedures.}
+\item{fittingFunction}{Character string giving the function used to fit each model: either \code{"corrHLfit"} or \code{"fitme"}. Default is \code{"corrHLfit"} for small data sets (fewer than 300 observations), and \code{"fitme"} otherwise, but this may change in future versions.}
+\item{nb_cores}{Number of cores to use for parallel computation of bootstrap. The default is \code{spaMM.getOption("nb_cores")}, and 1 if the latter is NULL. \code{nb_cores=1} prevents the use of parallelisation procedures.}
   \item{\dots}{
   Further arguments passed to or from other methods; in particular, additional arguments passed to \code{corrHLfit}, including mandatory ones such as \code{data} and those ultimately passed to \code{designL.from.Corr}. With respect to the latter, note that \code{try.chol} affects the simulation of samples for the parametric bootstrap, and although ultimate differences in performance may be small, \code{try.chol=FALSE} may be slightly better.
 }
@@ -87,14 +87,14 @@ and, if a bootstrap was performed, the additional elements described in \code{\l
 See also \code{\link{corrHLfit}} and \code{\link{LRT}}.
 }
 \examples{
-if (spaMM.getOption("example_maxtime")>2) {
+if (spaMM.getOption("example_maxtime")>1.6) {
  data("blackcap")
  ## result comparable to the corrHLfit examples based on blackcap
  fixedLRT(null.formula=migStatus ~ 1 + Matern(1|latitude+longitude),
        formula=migStatus ~ means + Matern(1|latitude+longitude), 
        HLmethod='ML',data=blackcap)
 }
-if (spaMM.getOption("example_maxtime")>223) {
+if (spaMM.getOption("example_maxtime")>186) {
  ## longer version with bootstrap
  fixedLRT(null.formula=migStatus ~ 1 + Matern(1|latitude+longitude),
        formula=migStatus ~ means + Matern(1|latitude+longitude), 

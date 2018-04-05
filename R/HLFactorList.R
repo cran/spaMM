@@ -17,7 +17,11 @@
     if (length(splt)==1L) {
       dataordered_levels <- mf[[splt[1L]]]  ## depending on the user, mf[[splt[1L]]] may be integer or factor...
     } else {
-      dataordered_levels <- apply(mf[,splt],1,paste,collapse=":") ## paste gives a character vector, not a factor.
+      ## without the next line, apply(mf[,splt] -> as.matrix(mf) produces artefacts such as space characters. 
+      # the same artefacts should then be produced by seq_levelrange <- apply(uniqueGeo,1L,paste,sep="",collapse=":")
+      # mf[splt] <- lapply(mf[splt],factor)
+      dataordered_levels <- apply(mf[splt],1,paste,collapse=":") ## paste gives a character vector, not a factor.
+      
     } 
   } 
   return(list(factor=as.factor(dataordered_levels),splt=splt))
@@ -33,12 +37,12 @@
     dim(uniqueGeo) <- c(length(uniqueGeo),1)
     #  this reorders levels differently to their order of appearance in the data, consistently with the code producing Q -> Lunique 
   } else {
-    # We need integers instead of factors in e_uniqueGeo. We use level labels (levels()) 
-    # rather than level indices (1...n) there so we should use the same here.
+    # We need numeric values instead of factors in e_uniqueGeo. We use level labels (levels()) 
+    # rather than level indices (1...n) there, so we should use the same here.
     # Without the next line of code, df[1,splt[-1L]]) would return the indices 1...n not the labels. 
     # Modifications of this code S H O U L D be tested on data where the nesting factors are coded as factors 
     # whose level names are  not 1...n (using subsetting from a large data frame is an appropriate way to 'mismatch' levels...)
-    for (nam in splt[-1L]) {if (is.factor(fac <- mf[[nam]])) mf[[nam]] <- as.numeric(levels(fac))[fac]}
+    for (nam in splt[-1L]) {if (is.factor(fac <- mf[[nam]])) mf[[nam]] <- as.character(levels(fac))[fac]}
     # : see https://stackoverflow.com/questions/3418128/how-to-convert-a-factor-to-an-integer-numeric-without-a-loss-of-information
     by_values <- by(mf,mf[,splt[-1L]],function(df) df[1,splt[-1L]]) ## (unique) combination of the nesting indices
     by_levels <- by(mf,mf[,splt[-1L]],getElement,name=splt[1L]) ## levels of nested (time) factor
@@ -47,11 +51,11 @@
     AR1_block_n_u_h_s <- integer(length(by_levels))
     for (lit in seq_along(by_levels)) {
       seq_levelrange <- by_levelranges[[lit]][1L]:by_levelranges[[lit]][2L]
-      uniqueGeos[[lit]] <- cbind(seq_levelrange,by_values[[lit]])
+      uniqueGeos[[lit]] <- data.frame(seq_levelrange, by_values[[lit]])
       AR1_block_n_u_h_s[lit] <- diff(by_levelranges[[lit]])+1L
       #by_levels[[lit]] <- paste(prefixes[[lit]],by_levels[[lit]],sep=":")
     }
-    uniqueGeo <- do.call(rbind,uniqueGeos)
+    uniqueGeo <- do.call(rbind,uniqueGeos)  ## data.frame (v2.3.9)
     seq_levelrange <- apply(uniqueGeo,1L,paste,sep="",collapse=":")
   }
   colnames(uniqueGeo) <- splt
@@ -69,12 +73,12 @@
   rhs <- x[[3]]
   txt <- .DEPARSE(rhs) ## should be the rhs of (|) cleanly converted to a string by terms(formula,data) in HLframes
   ## converts '%in%' to ':' 
-  if (length(grep("%in%",txt))>0) {
+  if (length(grep("%in%",txt))) {
     splittxt <- strsplit(txt,"%in%")[[1]]
     rhs <- as.formula(paste("~",splittxt[1],":",splittxt[2]))[[2]]
     txt <- .DEPARSE(rhs)
   }
-  #    if (length(grep("\\+",txt))>0) { ## coordinates is a vector with a single string; grep is 1 if  + was found in this single string and numeric(0) otherwise
+  #    if (length(grep("\\+",txt))) { ## coordinates is a vector with a single string; grep is 1 if  + was found in this single string and numeric(0) otherwise
   ## if sparse_precision is not yet determined
   #  this build the design matrix as if it was TRUE,
   #  but adds the info dataordered_levels that allows a later modif of the design matrix if sparse_precision is set to FALSE
@@ -98,7 +102,7 @@
       # In particular im <- as(ff... creates a non-diagonal matrix in the he standard (.|.) code to represent this reordering.
       ff <- dataordered_levels_blob$factor
     }
-  } else if (length(grep("c\\(\\w*\\)",txt))>0) { ## c(...,...) was used (actually detects ...c(...)....) (but in which context ?)
+  } else if (length(grep("c\\(\\w*\\)",txt))) { ## c(...,...) was used (actually detects ...c(...)....) (but in which context ?)
     aslocator <-  parse(text=gsub("c\\(", ".ULI(", txt)) ## slow pcq ULI() est slow
     ff <- as.factor(eval(expr=aslocator,envir=mf))
   } else { ## standard ( | ) rhs 
@@ -108,7 +112,7 @@
     if (is.null(ff <- tryCatch(eval(substitute(as.factor(fac), list(fac = rhs)), mfloc),
                                error=function(e) NULL))) {
       message("couldn't evaluate grouping factor ", deparse(rhs)," within model frame:")
-      if (length(grep("as.factor",rhs))>0) {
+      if (length(grep("as.factor",rhs))) {
         stop("'as.factor' found in grouping factor term is not necessary and should be removed.",call.=FALSE)
       } else stop(" try adding grouping factor to data frame explicitly if possible",call.=FALSE)        
     }

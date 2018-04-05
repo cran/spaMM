@@ -59,10 +59,10 @@ update.HLfit <- function (object, formula., ..., evaluate = TRUE) {
     ## !!!! FR->FR does not handle etaFix$beta !!!!
     if (! is.null(.findOffset(formula.))) {off <- NULL} else { off <- attr(predictor,"offsetObj")$total }
     predArgs <- list(formula=form,
-                     LMatrix=NULL, ## F I X M E argument for Predictor, to be removed ? (modif function Predictor() ?)
+                     LMatrix=NULL, ## f i x m e argument for Predictor, to be removed ? (modif function Predictor() ?)
                      AMatrix=attr(predictor,"AMatrix"),
                      offset=off)
-    ## attributes BinDenForm and oriFormula will be reconstructed:
+    ## attributes oriFormula will be reconstructed:
     call$formula <- do.call("Predictor",predArgs) ## reconstructs oriFormula... otherwise we have a predictor without it...
   }
   if (length(extras)) {

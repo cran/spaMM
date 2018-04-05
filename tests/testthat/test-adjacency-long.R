@@ -38,15 +38,15 @@ if (spaMM.getOption("example_maxtime")>465) { ##
   oldop <- spaMM.options(sparse_precision=NULL) 
   
   set.seed(123)
-  blob <- rsample(N=1000,seed=NULL)
+  adjlg_sam <- rsample(N=1000,seed=NULL)
   system.time({
     IRLS.Frailty <- fitme(BUY ~ factor(month) + AGE + GENDER + X1*X2 + adjacency(1|ID),
-                          data=blob$data,family = binomial(link = cloglog),method = "ML",
+                          data=adjlg_sam$data,family = binomial(link = cloglog),method = "ML",
                           control.HLfit=list(LevenbergM=FALSE), ## inhibits default for binary data 
-                          verbose=c(TRACE=TRUE), # to trace convergence 
-                          adjMatrix=blob$adjMatrix
+                          verbose=c(TRACE=interactive()), # to trace convergence 
+                          adjMatrix=adjlg_sam$adjMatrix
     )
-  }) ##  114.46
+  }) ##   110.35 (v.2.3.55) but 116.47 (2.4.0)
   expectedMethod <- "AUGI0_ZX_sparsePrecision" ## bc data too small to switch to sparse
   if (interactive()) {
     if (! (expectedMethod %in% IRLS.Frailty$MME_method)) {
@@ -55,11 +55,11 @@ if (spaMM.getOption("example_maxtime")>465) { ##
   } else testthat::expect_true(expectedMethod %in% IRLS.Frailty$MME_method) 
   system.time({
     LevM.Frailty <- fitme(BUY ~ factor(month) + AGE + GENDER + X1*X2 + adjacency(1|ID),
-                          data=blob$data,family = binomial(link = cloglog),method = "ML",
-                          verbose=c(TRACE=TRUE), # to trace convergence 
+                          data=adjlg_sam$data,family = binomial(link = cloglog),method = "ML",
+                          verbose=c(TRACE=interactive()), # to trace convergence 
                           #fixed=list(rho = -0.0294184,  lambda = 0.241825),
-                          adjMatrix=blob$adjMatrix
+                          adjMatrix=adjlg_sam$adjMatrix
     )
-  }) ## 350.38 (v2.2.135)
+  }) ## 354.74 (v.2.3.55) but 363.31 (2.4.0)
   spaMM.options(oldop)
 }

@@ -29,7 +29,7 @@
                 names(formals(designL.from.Corr)),names(formals(make_scaled_dist))))  
   dotnames <- setdiff(names(mc)[-1],names(formals(corrHLfit)))
   argcheck <- setdiff(dotnames,HLnames)
-  if (length(argcheck)>0) warning(paste("suspect argument(s) ",paste(argcheck, collapse=",")," in corrHLfit call."))
+  if (length(argcheck)) warning(paste("suspect argument(s) ",paste(argcheck, collapse=",")," in corrHLfit call."))
   # 
   if (is.null(processed)) {
     family <- .checkRespFam(family)
@@ -146,7 +146,7 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
                 names(formals(designL.from.Corr)),names(formals(make_scaled_dist))))  
   dotnames <- setdiff(names(mc)[-1],names(formals(corrHLfit)))
   argcheck <- setdiff(dotnames,HLnames)
-  if (length(argcheck)>0) warning(paste("suspect argument(s) ",paste(argcheck, collapse=",")," in corrHLfit call."))
+  if (length(argcheck)) warning(paste("suspect argument(s) ",paste(argcheck, collapse=",")," in corrHLfit call."))
   # 
   if (is.null(processed)) {
     family <- .checkRespFam(family)
@@ -161,7 +161,7 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
     preprocess.formal.args$family <- family ## already checked 
     preprocess.formal.args$rand.families <- FHF$rand.family ## because preprocess expects $rand.families 
     preprocess.formal.args$predictor <- FHF$formula ## because preprocess stll expects $predictor 
-    preprocess.formal.args$objective <- objective ## not useful except perhaps to reproduce results from ori paper. 
+    preprocess.formal.args$objective <- objective ## now a non-trivial use: cAIC 
     preprocess.formal.args$adjMatrix <- mc$adjMatrix ## because adjMatrix not in formals(HLfit    #
     preprocess.formal.args$corrMatrix <- mc$corrMatrix ## because corrMatrix not in formals(HLfit)    #
     preprocess.formal.args$covStruct <- mc$covStruct ## because covStruct not in formals(HLfit)    #

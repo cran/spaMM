@@ -31,7 +31,7 @@
                 names(formals(designL.from.Corr)),names(formals(make_scaled_dist))))  
   dotnames <- setdiff(names(mc)[-1],names(formals(fitme)))
   argcheck <- setdiff(dotnames,HLnames)
-  if (length(argcheck)>0) warning(paste("suspect argument(s) ",paste(argcheck, collapse=",")," in fitme call."))
+  if (length(argcheck)) warning(paste("suspect argument(s) ",paste(argcheck, collapse=",")," in fitme call."))
   # 
   if (is.null(processed)) {
     family <- .checkRespFam(family)
@@ -45,7 +45,7 @@
     preprocess.formal.args$family <- family ## already checked 
     preprocess.formal.args$rand.families <- FHF$rand.family ## because preprocess expects $rand.families 
     preprocess.formal.args$predictor <- FHF$formula ## because preprocess stll expects $predictor 
-    preprocess.formal.args$ranFix <- fixed ## because preprocess expects ranFix
+    preprocess.formal.args$ranFix <- fixed ## because preprocess expects ranFix # note that etaFix is handled in the FHF's
     preprocess.formal.args$adjMatrix <- mc$adjMatrix ## because adjMatrix not in formals(HLfit)
     preprocess.formal.args$corrMatrix <- mc$corrMatrix ## because corrMatrix not in formals(HLfit)    #
     preprocess.formal.args$covStruct <- mc$covStruct ## because covStruct not in formals(HLfit)    #
@@ -121,6 +121,8 @@ fitme <- function(formula,data, ## matches minimal call of HLfit
                   method="ML", 
                   HLmethod=method, ## LRT fns assume HLmethod when they are called and when calling
                   processed=NULL, 
+                  nb_cores = NULL, # to be used by SEM...
+                  objective=NULL,
                   ... 
 ) {
   spaMM.options(spaMM_glm_conv_crit=list(max=-Inf))
@@ -147,7 +149,7 @@ fitme <- function(formula,data, ## matches minimal call of HLfit
                 names(formals(designL.from.Corr)),names(formals(make_scaled_dist))))  
   dotnames <- setdiff(names(mc)[-1],names(formals(fitme)))
   argcheck <- setdiff(dotnames,HLnames)
-  if (length(argcheck)>0) warning(paste("suspect argument(s) ",paste(argcheck, collapse=",")," in fitme call."))
+  if (length(argcheck)) warning(paste("suspect argument(s) ",paste(argcheck, collapse=",")," in fitme call."))
   # 
   if (is.null(processed)) {
     family <- .checkRespFam(family)
@@ -161,6 +163,7 @@ fitme <- function(formula,data, ## matches minimal call of HLfit
     preprocess.formal.args$family <- family ## already checked 
     preprocess.formal.args$rand.families <- FHF$rand.family ## because preprocess expects $rand.families 
     preprocess.formal.args$predictor <- FHF$formula ## because preprocess stll expects $predictor 
+    preprocess.formal.args$objective <- objective ## now a non-trivial use: cAIC 
     preprocess.formal.args$ranFix <- fixed ## because preprocess expects ranFix
     preprocess.formal.args$adjMatrix <- mc$adjMatrix ## because adjMatrix not in formals(HLfit)
     preprocess.formal.args$corrMatrix <- mc$corrMatrix ## because corrMatrix not in formals(HLfit)    #

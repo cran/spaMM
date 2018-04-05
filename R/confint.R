@@ -43,13 +43,13 @@ confint.HLfit <- function(object,parm,level=0.95,verbose=TRUE,...) {
     attr(trTemplate,"method") <- NULL
     if (paste(lc[[1]])=="HLCor") {
       ## good starting values are important... important to use canonizeRanPars as in HLCor
-      attr(trTemplate,"RHOMAX") <- LUarglist$RHOMAX ## an ugly bit of coding, but canonizeRanpars()  expects them 
-      attr(trTemplate,"NUMAX") <- LUarglist$NUMAX
+      attr(trTemplate,"moreargs") <- LUarglist$moreargs
+      ## locoptim expects a fn with first arg ranefParsVec
+      ## ca serait mieux de pas avoir de contrainte la dessus et de pvr nommer l'arg trParsVec
+      ## bc HLCor call uses transformed scale for ranPars
       objfn <- function(ranefParsVec, anyHLCor_obj_args=NULL, HLcallfn.obj=NULL) { 
-        ## ca serait mieux de pas avoir de contrainte la dessus et de pvr nommer l'arg trParsVec
-        ## bc HLCor call uses transformed scale for ranPars
         ranefParsList <- relist(ranefParsVec,trTemplate)
-        olc$ranPars[names(trTemplate)] <- ranefParsList 
+        olc$ranPars <- structure(.modify_list(olc$ranPars,ranefParsList)) ## replaces ! some elements and keeps the "type" !
         locfit <- eval(as.call(olc)) ## HLCor call with given ranefParsVec
         resu <- (posforminimiz)* locfit$fixef[parm]
         attr(resu,"info") <- locfit$APHLs$p_v 
@@ -58,9 +58,8 @@ confint.HLfit <- function(object,parm,level=0.95,verbose=TRUE,...) {
       }
     } else if (paste(lc[[1]])=="HLfit") {
       objfn <- function(ranefParsVec, anyHLCor_obj_args=NULL, HLcallfn.obj=NULL) { 
-        ## bc locoptim expects a fn with first arg ranefParsVec
         ranefParsList <- relist(ranefParsVec,trTemplate)
-        olc$ranFix[names(trTemplate)] <- ranefParsList 
+        olc$ranFix <- structure(.modify_list(olc$ranFix,ranefParsList)) ## replaces ! some elements and keeps the "type" !
         locfit <- eval(as.call(olc)) ## HLfit call with given ranefParsVec
         resu <- (posforminimiz)*locfit$fixef[parm]
         attr(resu,"info") <- locfit$APHLs$p_v 
@@ -68,24 +67,22 @@ confint.HLfit <- function(object,parm,level=0.95,verbose=TRUE,...) {
         return(resu) ## return value to be optimized is a parameter value, not a likelihood
       }
     }
-    ad_hoc_fn <- function(posforminimiz) {
+    ad_hoc_fn <- function(posforminimiz) { ## optimize the CI bound and returns the parameters that optimize this bound
       if (length(unlist(trTemplate))==1L) { ## .new_locoptim cannot be used in 1D case bc -> new_locoptim -> optimize does not use objfn_locoptim!
         optr <- optimize(f=objfn,interval=unlist(LowUp)) # objfn uses posforminimiz in its definition 
-        return(optr$m) ## minimum or maximum...
+        return(relist(optr$m,trTemplate)) 
       } else { # maximization (profiled out pars) may be multidimensional, 
         optr <- .new_locoptim(init.optim=trTemplate,LowUp=LowUp,
                               objfn_locoptim=objfn, # uses posforminimiz in its definition 
                               # default HLcallfn.obj="HLCor.obj"
                               anyHLCor_obj_args=anyObjfnCall.args,
                               control=list())  
-        return(optr[names(trTemplate)])
+        return(optr) ## already relisted
       }
     }
-    canonTemplate <- .canonizeRanPars(ranPars=trTemplate,
-                                      corr_types=LUarglist$corr_types, #corr.model=lc$`corr.model`,
-                                     checkComplete=FALSE)
-    canonTemplate <- canonTemplate$ranPars
-    LUarglist$canon.init <- canonTemplate
+    LUarglist$canon.init <- .canonizeRanPars(ranPars=trTemplate,
+                                                corr_types=LUarglist$corr_types, #corr.model=lc$`corr.model`,
+                                                checkComplete=FALSE)
     LowUp <- do.call(.makeLowerUpper,LUarglist)
   }
   ## lowerfit
@@ -101,9 +98,9 @@ confint.HLfit <- function(object,parm,level=0.95,verbose=TRUE,...) {
       olc <- lc ## that's olc that is used in the objective fn !
       posforminimiz <- 1 ## defined in the envir where objfn is defined... (bad style)
       if (paste(lc[[1]])=="HLCor") {
-        olc$ranPars[names(trTemplate)] <- ad_hoc_fn() 
+        olc$ranPars <- structure(.modify_list(olc$ranPars,ad_hoc_fn())) ## replaces ! some elements and keeps the "type" (lazyness)!
       } else {
-        olc$ranFix[names(trTemplate)] <- ad_hoc_fn()
+        olc$ranFix <- structure(.modify_list(olc$ranFix,ad_hoc_fn())) ## replaces ! some elements and keeps the "type" !
       }
       ## recover fit for optimized params (must use call witSh intervalInfo and LevenbergM=FALSE)
       lowerfit <- eval(as.call(olc))
@@ -130,9 +127,9 @@ confint.HLfit <- function(object,parm,level=0.95,verbose=TRUE,...) {
       olc <- lc
       posforminimiz <- -1 ## maximization
       if (paste(lc[[1]])=="HLCor") {
-        olc$ranPars[names(trTemplate)] <- ad_hoc_fn() 
+        olc$ranPars <- structure(.modify_list(olc$ranPars,ad_hoc_fn())) ## replaces ! some elements and keeps the "type" !
       } else {
-        olc$ranFix[names(trTemplate)] <- ad_hoc_fn()
+        olc$ranFix <- structure(.modify_list(olc$ranFix,ad_hoc_fn())) ## replaces ! some elements and keeps the "type" !
       }
       upperfit <- eval(as.call(olc))
       attr(upperfit,"optimInfo") <- optimInfo ## expected by summary.HLfit
