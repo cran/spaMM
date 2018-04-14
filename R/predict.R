@@ -91,7 +91,7 @@
   locCov_newLv_oldv_list <- templateList
   if ( ! is.null(cov_newLv_newLv_list)) {locCov_newLv_newLv_list <- templateList} else locCov_newLv_newLv_list <- NULL
   for (new_rd in seq_len(newnrand)) {
-    req_levels <- which(colSums(newZAlist_slice[[new_rd]])) 
+    req_levels <- which(colSums(newZAlist_slice[[new_rd]])>0L) 
     locnewZA[[new_rd]] <- newZAlist_slice[[new_rd]][ , req_levels, drop=FALSE] 
     locCov_newLv_oldv_list[[new_rd]] <- structure(
       cov_newLv_oldv_list[[new_rd]][req_levels, , drop=FALSE],
@@ -263,7 +263,20 @@
           colnames(newoldC) <- rownames(newoldC) <- repnames ## these will be needed by .match_old_new_levels()
           if (which_mats$no) cov_newLv_oldv_list[[new_rd]] <- structure(newoldC[newcols,oldcols,drop=FALSE],ranefs=ranefs[[new_rd]])
           if (which_mats$nn[new_rd]) cov_newLv_newLv_list[[new_rd]] <- newoldC[newcols,newcols,drop=FALSE]
-        } else {
+        } else if (corr.model=="corrMatrix") { ## this is called if re.form...
+          newZA <- newZAlist[[new_rd]]  
+          namesTerms <- attr(newZAlist,"namesTerms")[[new_rd]]
+          if ( ! is.null(fix_info)) {
+            oldlevels <- colnames(fix_info$newZAlist[[old_rd]]) ## old_rd despite the "newZAlist" name: specific to fix_info
+          } else oldlevels <- colnames(object$ZAlist[[old_rd]])
+          newlevels <- colnames(newZA)
+          ## currently newdata are not allowed with corrMatrix so that newlevels should = oldlevels...
+          if (length(setdiff(newlevels,oldlevels))) stop("Found new levels for a 'corrMatrix' random effect.")
+          newoldC <- tcrossprod(object$strucList[[old_rd]]) ## reconstructs permuted (according to cols of Z) corrMatrix from its L factor
+          colnames(newoldC) <- rownames(newoldC) <- oldlevels
+          if (which_mats$no) cov_newLv_oldv_list[[new_rd]] <- structure(newoldC[newlevels, ,drop=FALSE],ranefs=ranefs[[new_rd]])
+          if (which_mats$nn[new_rd]) cov_newLv_newLv_list[[new_rd]] <- newoldC[newlevels, ,drop=FALSE]
+        } else { ## all models where a correlation matrix must be computed from a distance matrix
           old_char_rd <- as.character(old_rd)
           if ( ! is.null(fix_info)) {
             info_olduniqueGeo <- fix_info$newuniqueGeo
@@ -304,7 +317,7 @@
             uli_old <- uli_onGeo[-seq(nrow(newuniqueGeo))]
             if (which_mats$no) uuCnewold <- blob$distMatrix[uli_new,uli_old,drop=FALSE] ## rows match the newZAlist, cols match th u_h 
             if (which_mats$nn[new_rd]) uuCnewnew <- blob$distMatrix[uli_new,uli_new,drop=FALSE]
-          } else {
+          } else if (corr.model %in% c("Cauchy", "Matern")) { ## _F I X M E_ test Cauchy
             ### rho only used to compute scaled distances
             rho <- .get_cP_stuff(object$ranFix,"rho", which=old_char_rd)
             if ( ! is.null(rho_mapping <- moreargs_rd$rho.mapping) 
@@ -320,7 +333,7 @@
                 uuCnewnew <- matrix(0) ## trivial distance matrix for single point
               } else uuCnewnew <- do.call(make_scaled_dist,msd.arglist) 
             }
-          }
+          } else stop("Unhandled corr.model.")
           if (which_mats$no) cov_newLv_oldv_list[[new_rd]] <- structure(.calc_corr_from_dist(uuCnewold, object, corr.model,char_rd=old_char_rd),
                                                                     ranefs=ranefs[[new_rd]])
           if (which_mats$nn[new_rd]) cov_newLv_newLv_list[[new_rd]] <- .calc_corr_from_dist(uuCnewnew, object, corr.model,char_rd=old_char_rd)
@@ -592,8 +605,8 @@
         sd <- qnorm(pv)*sqrt(varcomp)
       }
       if (! is.null(zero_truncated <- object$family$zero_truncated)) {
-        interval <- cbind(object$family$predict(eta-sd, mu_truncated=zero_truncated),
-                          object$family$predict(eta+sd, mu_truncated=zero_truncated))
+        interval <- cbind(object$family$linkinv(eta-sd, mu_truncated=zero_truncated),
+                          object$family$linkinv(eta+sd, mu_truncated=zero_truncated)) 
       } else interval <- cbind(object$family$linkinv(eta-sd),object$family$linkinv(eta+sd))
       colnames(interval) <- paste(st,c(signif(1-pv,4),signif(pv,4)),sep="_")
       intervalresu <- cbind(intervalresu,interval)

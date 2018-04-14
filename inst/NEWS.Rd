@@ -3,6 +3,21 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 2.4.8}{
+\subsection{NEW FEATURES}{
+\itemize{
+\item Non-trivial re.form argument now works for models including a 'corrMatrix' term.
+\item Precision matrices with more levels than there are in the data are now handled.
+}
+}
+\subsection{FIXED BUGS}{
+\itemize{
+\item COMPoisson fits could crash in some cases (bug introduced in version 2.4.0 in code for initial values).
+\item Calls not requesting any form of least-squares fit, such as fitme(y ~ 0, data = <.>), failed. 
+\item Prediction interval computation failed for zero-truncated distributions.
+}
+}
+}
 \section{CHANGES UP TO VERSION 2.4.0}{
 \subsection{NEW FEATURES}{
 \itemize{

@@ -67,7 +67,10 @@
   return(res)
 }
 
-.spMMFactorList_locfn <- function(x,mf,rmInt,drop,sparse_precision,type=".ULI") {
+.spMMFactorList_locfn <- function(x,mf,
+                                  rmInt, ## remove Intercept
+                                  drop,sparse_precision,type=".ULI",
+                                  cov_mat_info) {
   ## le bidule suivant evalue le bout de formule x[[3]] et en fait un facteur. 
   ## but fac may be any vector returned by the evaluation of x[[3]] in the envir mf
   rhs <- x[[3]]
@@ -82,17 +85,23 @@
   ## if sparse_precision is not yet determined
   #  this build the design matrix as if it was TRUE,
   #  but adds the info dataordered_levels that allows a later modif of the design matrix if sparse_precision is set to FALSE
-  AR1_sparse_Q <- FALSE
+  AR1_sparse_Q <- info_mat_is_prec <- FALSE
   if (( ! is.null(raneftype <- attr(x,"type"))) && raneftype != "(.|.)"){ ## Any term with a 'spatial' keyword (incl. corrMatrix); cf comment in last case
     ## if sparse not yet determined for AR1, we generate the required info for sparse (and non-sparse) and thus assume AR1_sparse_Q: 
-    if (nullsparse <- is.null(AR1_sparse_Q <- sparse_precision)) AR1_sparse_Q <- (raneftype=="AR1")  
+    if (is.null(AR1_sparse_Q <- sparse_precision)) AR1_sparse_Q <- (raneftype=="AR1")  
+    ## similar idea for precision matrices:
+    if (is.null(info_mat_is_prec <- sparse_precision)) info_mat_is_prec <- (raneftype=="corrMatrix" && inherits(cov_mat_info,"precision"))  
     ## for AR1_sparse and corMatrix, we cannot use dummy levels as created by .ULI() of factor(). THe level names have special meaning
     #   matching a time concept, or user-provided names for the corrMatrix
     if (AR1_sparse_Q || raneftype=="corrMatrix") {
       dataordered_levels_blob <- .calc_dataordered_levels(txt=txt,mf=mf,type="mf")
     } else dataordered_levels_blob <- .calc_dataordered_levels(txt=txt,mf=mf,type=type)
     if (raneftype=="corrMatrix") {
-      ff <- dataordered_levels_blob$factor
+      if (info_mat_is_prec) { 
+        ff <- factor(dataordered_levels_blob$factor, levels=colnames(cov_mat_info$matrix))
+      } else {
+        ff <- dataordered_levels_blob$factor
+      }
     } else if (AR1_sparse_Q) { 
       AR1_sparse_Q_ranges_blob <- .calc_AR1_sparse_Q_ranges(mf=mf,dataordered_levels_blob)
       ff <- factor(dataordered_levels_blob$factor,levels=AR1_sparse_Q_ranges_blob$seq_levelrange) ## rebuild a new factor with new levels
@@ -122,7 +131,7 @@
   }
   ## We have ff. 
   ## This is building Z(A) not Z(A)L hence reasonably sparse even in spatial models
-  if (AR1_sparse_Q) {
+  if (AR1_sparse_Q || info_mat_is_prec) {
     im <- sparseMatrix(i=as.integer(ff),j=seq(length(ff)),x=1L, # ~general code except that empty levels are not dropped
                        dimnames=list(levels(ff),NULL)) # names important for corrMatrix case at least
   } else im <- as(ff, "sparseMatrix") ##FR->FR slow step; but creates S4 objects with required slots
@@ -173,17 +182,22 @@
 
 
 .spMMFactorList <- function (formula, mf, rmInt, drop, sparse_precision=spaMM.getOption("sparse_precision"),
-                             type=".ULI") {
+                             type=".ULI", corr_info) {
   ## drop=TRUE elimine des niveaux spurious (test: fit cbind(Mate,1-Mate)~1+(1|Female/Male) ....)
   ## avec des consequences ultimes sur tailles des objets dans dispGammaGLM
   ranef_terms <- .findbarsMM(formula[[length(formula)]])
   if (!length(ranef_terms)) return(structure(list(),anyRandomSlope=FALSE))
-  exp_ranef_terms <- .spMMexpandSlash(ranef_terms) ## this is what expands a nested random effect
   ## ELSE
+  exp_ranef_terms <- .spMMexpandSlash(ranef_terms) ## this is what expands a nested random effect
   x3 <- lapply(exp_ranef_terms, `[[`,i=3)
   names(exp_ranef_terms) <- unlist(lapply(x3, .DEPARSE)) ## names are RHS of (.|.)
   #######
-  fl <- lapply(exp_ranef_terms, .spMMFactorList_locfn,mf=mf,rmInt=rmInt,drop=drop,sparse_precision=sparse_precision,type=type)
+  fl <- vector("list",length(exp_ranef_terms))
+  for (lit in seq_along(exp_ranef_terms)) {
+    fl[[lit]] <- .spMMFactorList_locfn(exp_ranef_terms[[lit]], mf=mf, rmInt=rmInt,
+                                       drop=drop, sparse_precision=sparse_precision, type=type, 
+                                       cov_mat_info=corr_info$corrMatrices[[lit]])
+  }
   ZAlist <- vector("list",length(fl))
   ## Subject <- list(0) ## keep this as comment; see below
   namesTerms <- vector("list",length(fl))

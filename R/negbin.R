@@ -94,7 +94,7 @@ negbin <- function (shape = stop("negbin's 'shape' must be specified"), link = "
                  linkinv = linkinv, variance = variance, dev.resids = dev.resids, 
                  aic = aic, mu.eta = stats$mu.eta, initialize = initialize, 
                  validmu = validmu, valideta = stats$valideta, simulate = simfun,
-                 zero_truncated=(trunc==0L),predict=predict), 
+                 zero_truncated=(trunc==0L)), 
             class = "family")
 }
 

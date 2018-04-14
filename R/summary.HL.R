@@ -29,7 +29,7 @@
   beta_se <- sqrt(diag(betaOri_cov))
   fixef_z <- object$fixef/beta_se
   beta_table <- cbind(Estimate=object$fixef,"Cond. SE"=beta_se,"t-value"=fixef_z)
-  if (p_value=="Wald") {beta_table <- cbind(beta_table,1-pchisq(fixef_z^2,df=1))} ## FIXEM F_test: need to extract dfs
+  if (p_value=="Wald") {beta_table <- cbind(beta_table,"p-value"=1-pchisq(fixef_z^2,df=1))} ## FIXEM F_test: need to extract dfs
   rownames(beta_table) <- names(object$fixef)
   return(beta_table)
 }

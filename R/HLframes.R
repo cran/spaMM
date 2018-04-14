@@ -227,17 +227,16 @@
                          ) {
   ## 
   envform <- environment(formula)  
-  ## environment(formula) should be trivial as all vars should be in the data. The comments "f i x m e : Cf comment in .getValidData"
-  #  point to the fact that this is was yet quite so because of a (now fixed) glitch in the CRAN version of Infusion 
+  ## F I X M E: The aim is to reduce environment(formula) to almost nothing as all vars should be in the data. 
+  # Despite previous efforts prior.weights may still using it. in particular, this was not fixed in Infusion 1.2.0
   #  which is why fitting functions still have
   #     mc <- oricall
   #     oricall$formula <- .stripFormula(formula) ## f i x m e : Cf comment in .getValidData
-  #  where we should have 
+  #  (stripping of mc$formula being done only later by Predictor() )
+  #  where we could otherwise have 
   #     oricall$formula <- .stripFormula(formula) 
   #     mc <- oricall
-  #  stripping is later made by Predictor()
-  #   => _F I X M E_ fix this just after spaMM 2.4.0 is on CRAN
-  #  The revised Infusion code show how to proceed in programming, cf prior.weights=eval(as.name(priorwName))
+  #  The revised Infusion code shows how to proceed in programming, using eval(parse(text=paste(<...>,priorwName,<...>)))
   formula <- .asStandardFormula(formula) ## removes spatial tags
   frame.form <- .subbarsMM(formula) ## this comes from lme4 and converts (...|...) terms to some "+" form
   if (!is.null(resid.formula)) {

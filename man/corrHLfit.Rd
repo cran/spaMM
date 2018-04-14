@@ -45,7 +45,7 @@ An optional list of values of parameters specified through \code{init.corrHLfit}
   This may be used control the optimizer. See \code{\link{spaMM.options}}} for default values.
   \item{processed}{For programming purposes, not documented.  }
   \item{family}{Either a \code{\link{family}} or a \code{\link{multi}} value. }
-  \item{nb_cores}{Number of cores to use for parallel computations.}
+  \item{nb_cores}{\bold{Not yet operative}, only for development purposes. Number of cores to use for parallel computations. }
   \item{\dots}{
 Optional arguments passed to \code{\link{HLCor}}, \code{\link{HLfit}} or  \code{\link{designL.from.Corr}}, for example the \code{distMatrix} argument 
 of \code{HLCor}. Arguments that do not fit within these functions are detected and a warning is issued.

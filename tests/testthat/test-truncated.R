@@ -4,6 +4,7 @@ data(scotlip)
 fit1 <- glm(I(1+cases)~1,family=Tpoisson(),data=scotlip)
 fit2 <- fitme(I(1+cases)~1+(1|id),family=Tpoisson(),fixed=list(lambda=1e-8),data=scotlip)
 testthat::expect_equal(logLik(fit1)[[1L]],logLik(fit2)[[1L]],tol=2e-5) ## logL2 converges to logL1 as lambda -> 0 
+testthat::expect_equal(attr(predict(fit2, intervals="predVar"),"intervals")[1,1],  9.753711, tol=2e-5) ## check ZT-enabled specific code of prediction intervals
 simulate(fit2,nsim=3)
 
 ## check simulation and estimation:

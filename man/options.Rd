@@ -39,7 +39,7 @@ spaMM.getOption(x)
  lambda values in HLfit are reduced to this.} 
 \item{\code{example_maxtime=0.7}:}{Used in the documentation to control whether the longer examples should be run. 
 The approximate running time of given examples on one author's laptop is compared to this value.} 
-\item{\code{optimizer1D="optimize"}:}{Optimizer for one-dimensional optimization. If you want to control the initial value, you shoudl select another optimizer.}
+\item{\code{optimizer1D="optimize"}:}{Optimizer for one-dimensional optimization. If you want to control the initial value, you should select another optimizer.}
 \item{\code{optimizer="nloptr"}:}{Optimizer for optimization in several dimensions. Use \code{optimizer="nloptr"} to call \code{\link[nloptr]{nloptr}} with method \code{"NLOPT_LN_BOBYQA"}; use \code{optimizer="bobyqa"} to call \code{\link[minqa]{bobyqa}}; and use \code{optimizer="L-BFGS-B"} to call \code{\link{optim}} with method \code{"L-BFGS-B"}. The optimizer can also be specified on a fit-by-fit basis as the value of \code{control$optimizer} in a \code{fitme} call, or as the value of \code{control.corrHLfit$optimizer}.
 }
 \item{\code{nloptr}:}{Default control values of \code{nloptr} calls.} 

@@ -124,14 +124,11 @@
   }
 }
 
-.calc_ZAlist <- function(predictor, model_frame) { ## model_frame is an $mf element
+.calc_ZAlist <- function(predictor, model_frame, corr_info) { ## model_frame is an $mf element
   ##    otherwise similar to bars <- .spMMexpandSlash(.findbarsMM(formula[[length(formula)]])): FR->FR maybe simplification of code possible here?
-  ZAlist <- .spMMFactorList(predictor, model_frame, 0L, drop=TRUE) ## this uses the spatial information in the formula, even if an explicit distMatrix was used elsewhere
+  ZAlist <- .spMMFactorList(predictor, model_frame, rmInt=0L, drop=TRUE, corr_info=corr_info) ## this uses the spatial information in the formula, even if an explicit distMatrix was used elsewhere
   # ZAlist has attr(ZAlist,"exp_ranef_terms") and attr(ZAlist,"exp_ranef_types")
   if ( length(ZAlist) > 0L ) {
-    exp_ranef_strings <- .parseBars(predictor,expand=TRUE) ## a vector of char strings with attribute(s), expanded for (1|./.) terms
-    attr(ZAlist,"exp_ranef_strings") <- exp_ranef_strings ## expanded 
-    attr(ZAlist,"exp_ranef_types") <- attr(exp_ranef_strings,"type") ## expanded
     AMatrix <- attr(predictor,"AMatrix")
     if (!is.null(AMatrix)) {
       ## logic is Z[nresp,nUniqueRespLoc].A[nUniqueRespLoc,nHiddenv].L[nHiddenv,nHiddenv]
@@ -335,7 +332,7 @@
       if (inherits(checktheta,"try-error")) family <- Poisson(family$link, trunc=environment(family$aic)$trunc) 
     } else if (family$family=="COMPoisson") {
       checknu <- suppressWarnings(try(environment(family$aic)$nu,silent=TRUE))
-      if (inherits(checknu,"try-error")) family <- poisson(family$link)
+      if (inherits(checknu,"try-error")) family <- poisson() ## do not use the loglambda link of the COMPoisson!
     }
     y <- processed$y ## requested by the formula
     if (family$family=="binomial" && NCOL(y)==1L) { 
@@ -607,9 +604,8 @@
   return(adjMatrix)
 }
 
-.assign_cov_matrices__from_covStruct <- function(processed, covStruct=NULL, corrMatrix=NULL, adjMatrix=NULL) {
+.assign_cov_matrices__from_covStruct <- function(corr_info, covStruct=NULL, corrMatrix=NULL, adjMatrix=NULL) {
   if ( ! is.null(covStruct)) covStruct <- .preprocess_covStruct(covStruct)
-  corr_info <- processed$corr_info
   corr_types <- corr_info$corr_types
   corr_info$adjMatrices <- vector("list",length(corr_types))
   corr_info$corrMatrices <- vector("list",length(corr_types))
@@ -726,12 +722,12 @@
   if ( ! is.null(user_spaMM_tol <- control.HLfit$spaMM_tol)) spaMM_tol[names(user_spaMM_tol)] <- user_spaMM_tol
   processed$spaMM_tol <- spaMM_tol
   #
-  iter.mean.dispFix <-control.HLfit$iter.mean.dispFix ## private control
+  iter.mean.dispFix <- control.HLfit$iter.mean.dispFix ## private control
   if (is.null(iter.mean.dispFix)) iter.mean.dispFix <- control.HLfit$max.iter.mean ## public control
   if (is.null(iter.mean.dispFix)) iter.mean.dispFix <- 200 ## control of inner loop when no disp param is estimated ## was 40, 06/2014
   processed$iter.mean.dispFix <- iter.mean.dispFix  
   #
-  iter.mean.dispVar <-control.HLfit$iter.mean.dispVar ## private control
+  iter.mean.dispVar <- control.HLfit$iter.mean.dispVar ## private control
   if (is.null(iter.mean.dispVar)) iter.mean.dispVar <- control.HLfit$max.iter.mean ## public control ## control of inner loop when some disp param is estimated
   if (is.null(iter.mean.dispVar)) iter.mean.dispVar <- 50 ## control of inner loop when some disp param is estimated  ## was 20, 06/2014
   processed$iter.mean.dispVar <- iter.mean.dispVar  
@@ -776,10 +772,22 @@
   } # (e1071::svm should fail when var response=0)
   #
   X.pv <- HLframes$X
-  ZAlist <- .calc_ZAlist(predictor=predictor, model_frame=HLframes$mf)
-  nrand <- length(ZAlist)
+  exp_ranef_strings <- .parseBars(predictor,expand=TRUE) ## a vector of char strings with attribute(s), expanded for (1|./.) terms
   #
-  if (nrand) {
+  if (nrand <- length(exp_ranef_strings)) {
+    ## Initialize $corr_info (ASAP to assign_cov_matrices ASAP):
+    processed$corr_info <- corr_info <- new.env() ## do not set parent=emptyenv() else with(corr_info,...) will not find trivial fns such as `[`
+    true_corr_types <- c("adjacency","Matern","Cauchy","AR1","corrMatrix")
+    exp_ranef_types <- attr(exp_ranef_strings,"type") ## expanded
+    corr_info$corr_types <- corr_types <- true_corr_types[match(exp_ranef_types, true_corr_types)] ## full length
+    ## Assigns $corr_info$corrMatrices, $adjMatrices using $corr_info$corr_type: BEFORE determining sparse precision:
+    .assign_cov_matrices__from_covStruct(processed$corr_info, covStruct=covStruct, corrMatrix=corrMatrix, adjMatrix=adjMatrix)
+    
+    ZAlist <- .calc_ZAlist(predictor=predictor, model_frame=HLframes$mf, corr_info=corr_info)
+    #nrand <- length(ZAlist)
+    attr(ZAlist,"exp_ranef_strings") <- exp_ranef_strings ## expanded 
+    attr(ZAlist,"exp_ranef_types") <- exp_ranef_types ## expanded
+    
     if (inherits(rand.families,"family")) rand.families <- list(rand.families) 
     if (nrand != 1L && length(rand.families)==1L) rand.families <- rep(rand.families,nrand) 
     ## need to process lcrandfamfam, a convenient object for immediate use (for the vector class more than 'lc')
@@ -812,11 +820,6 @@
   }
   #
   if (nrand) {
-    ## Initialize $corr_info:
-    processed$corr_info <- corr_info <- new.env() ## do not set parent=emptyenv() else with(corr_info,...) will not find trivial fns such as `[`
-    true_corr_types <- c("adjacency","Matern","Cauchy","AR1","corrMatrix")
-    corr_info$corr_types <- corr_types <- true_corr_types[match(attr(ZAlist, "exp_ranef_types"), true_corr_types)] ## full length
-
     # Standardize init.HLfit in the one case where it may have corrPars (simplified version of .post_process_parlist)
     if ( ! is.null(rho <- init.HLfit$rho)) {
       init.HLfit$corrPars <- list()
@@ -825,9 +828,9 @@
         init.HLfit$rho <- NULL
       } else stop("Invalid ambiguous 'init.HLfit' argument: single 'rho' but not single adjacency random-effect term.")
     }
+    
     processed$control_dist <- .preprocess_control.dist(control.dist,corr_types)
-    ## Assigns $corr_info$corrMatrices, $adjMatrices: BEFORE determining sparse precision:
-    .assign_cov_matrices__from_covStruct(processed, covStruct=covStruct, corrMatrix=corrMatrix, adjMatrix=adjMatrix)
+    
     ## assign sparse_precision (.determine_spprec uses $For, $corr_info, and $LMMbool:)
     ZAfix <- .post_process_ZALlist(ZAlist, as_matrix=FALSE)  
     if (inherits(X.pv,"sparseMatrix") && ncol(X.pv)> ncol(ZAfix)) { ## f i x m e heuristic rule
@@ -986,6 +989,8 @@
           corr_type <- corr_types[it]
           if ( ! is.na(corr_type)) {
             if (corr_type== "corrMatrix") { ## could cover all specifications of a constant 'cov' Matrix without correlation parameter
+              ## .check_subset_corrMatrix has the effect that the corr or prec mat used in later computation is a permutation of the inputed one
+              #  according to the order of colums of ZAlist[[it]] 
               cov_info_mats[[it]] <- .check_subset_corrMatrix(corrMatrix=corr_info$corrMatrices[[it]],ZA=ZAlist[[it]]) ## correlation or precision...
             } else {
               geo_info[[it]] <- new.env(parent=emptyenv())

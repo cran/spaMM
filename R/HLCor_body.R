@@ -85,16 +85,15 @@
   }
   if ( length(setdiff(ZAnames,corrnames)) ==0L ) { ## i.e. all ZAnames in corrnames
     ## : should be the case when generator = "as.factor"
-    if (  (is_superset <- (length(setdiff(corrnames,ZAnames)))) || 
-          (is_not_in_order_Zcols <- any(corrnames!=ZAnames)) ) { ## ...but superset, or not same order
-      if ( inherits(corrMatrix,"precision")) {
-        if ( is_superset ) {
-          # could be corrected though subsampling of the _correlation_ factor matrix, but:
-          stop("Precision matrix involves levels of the grouping variable absent from the data. 
-               spaMM asks the user to correct this rather than itself to correct it automatically.")
-        } else if (is_not_in_order_Zcols) cov_info_mat <- corrMatrix[ZAnames,ZAnames] ## reordering
-        ## do nothing, because it is incorrect to subset a precision matrix. return is a list...
-      } else if (inherits(corrMatrix,"dist")) {
+    if ( inherits(corrMatrix,"precision")) { ## reordering only 
+      if (any(corrnames!=ZAnames)) {
+        cov_info_mat <- corrMatrix[ZAnames,ZAnames] 
+        if ( morelevels <- length(setdiff(corrnames,ZAnames))) {
+          message(paste("Note: precision matrix has", morelevels, "more levels than there are in the data."))
+        }
+      } else cov_info_mat <- corrMatrix
+    } else if ( length(setdiff(corrnames,ZAnames)) || any(corrnames!=ZAnames) ) { # reordering and subsetting
+      if (inherits(corrMatrix,"dist")) {
         cov_info_mat <- (as.matrix(corrMatrix)[ZAnames,ZAnames]) 
         ## it's not useful to convert back to dist (either uglily by as.dist(); or package 'seriation' has (permute.dist-> C code)
         diag(cov_info_mat) <- 1L ## IF diag missing in input corrMatrix THEN assume a correlation matrix

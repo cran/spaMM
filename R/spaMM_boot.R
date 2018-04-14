@@ -26,7 +26,7 @@ spaMM_boot <- function(object, simuland, nsim, nb_cores=NULL,
   newy_s <- simulate(object,nsim = nsim,verbose=FALSE,resp_testfn=resp_testfn) 
   if (nsim==1L) dim(newy_s) <- c(length(newy_s),1)
   pbopt <- pboptions(nout=min(100,2*nsim),type="timer")
-  bootreps <- pbapply(X=newy_s,MARGIN = 2L,FUN = simuland, cl=cl, ...)
+  bootreps <- pbapply(X=newy_s,MARGIN = 2L,FUN = simuland, cl=cl, ...) ## F I X M E allow doSNOW again
   pboptions(pbopt)
   ####
   if (nb_cores > 1L) { parallel::stopCluster(cl) } 

@@ -111,7 +111,7 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
         } else { ## unconditional MM with newdata
           #   ## [-2] so that HLframes does not try to find the response variables  
           allFrames <- .HLframes(formula=attr(object$predictor,"oriFormula")[-2],data=newdata) 
-          ZALlist <- .spMMFactorList(object$predictor, allFrames$mf, 0L, drop=TRUE,sparse_precision=FALSE) 
+          ZALlist <- .spMMFactorList(object$predictor, allFrames$mf, rmInt=0L, drop=TRUE,sparse_precision=FALSE) 
           ##### the following code ignores spatial effects with newdata:
           # to overcome this we need to calculate the unconditional covmat including for the (new) positions
           vec_n_u_h <- unlist(lapply(ZALlist,ncol)) ## nb cols each design matrix = nb realizations each ranef

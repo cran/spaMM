@@ -2,8 +2,8 @@ Package: spaMM
 Type: Package
 Title: Mixed-Effect Models, Particularly Spatial Models
 Encoding: UTF-8
-Version: 2.4.0
-Date: 2018-04-05
+Version: 2.4.8
+Date: 2018-04-14
 Authors@R: c(person("François", "Rousset", role = c("aut", "cre", "cph"),
                      email = "francois.rousset@umontpellier.fr"),
               person("Jean-Baptiste", "Ferdy", role = c("aut","cph")),
@@ -27,6 +27,6 @@ Author: François Rousset [aut, cre, cph],
   Jean-Baptiste Ferdy [aut, cph],
   Alexandre Courtiol [aut],
   GSL authors [ctb] (src/gsl_bessel.*)
-Packaged: 2018-04-05 10:20:22 UTC; Francois.rousset
+Packaged: 2018-04-14 09:55:47 UTC; Francois.rousset
 Repository: CRAN
-Date/Publication: 2018-04-05 17:16:11 UTC
+Date/Publication: 2018-04-14 10:33:02 UTC

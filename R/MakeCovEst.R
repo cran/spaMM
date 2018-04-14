@@ -15,6 +15,7 @@
     solveu <- solve(blob$u)
     compactprecmat <- t(solveu) %*% diag(1/blob$d) %*% solveu
     ## lower tri dtC chol_Q:
+    compactprecmat <- forceSymmetric(compactprecmat,uplo="L")
     chol_prec <- as(Cholesky(as(compactprecmat,"sparseMatrix"),LDL=FALSE,perm=FALSE), "sparseMatrix")
     dcp <- diag(chol_prec)
     chol_Q <- chol_prec %*% Diagonal(x=1/dcp)

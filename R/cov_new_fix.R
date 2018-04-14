@@ -6,11 +6,11 @@
                            longdep=.get_cP_stuff(object$ranFix,"longdep",which=char_rd),
                            Nugget=.get_cP_stuff(object$ranFix,"Nugget",which=char_rd),
                            d=distmat)  ## so that rho=1 in CauchyCorr
-  } else {
+  } else if (corr.model=="Matern") {
     corr_mat <- MaternCorr(nu=.get_cP_stuff(object$ranFix,"nu",which=char_rd),
                            Nugget=.get_cP_stuff(object$ranFix,"Nugget",which=char_rd),
                            d=distmat)  ## so that rho=1 in MaternCorr
-  }
+  } else stop("Unhandled corr.model")
   return(corr_mat) 
 }
 
@@ -181,7 +181,7 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
                        nn= ( attr(object$strucList,"isRandomSlope")[newinold] | identical(variances$cov,TRUE))) 
     if (need_new_design) {
       ## with newdata we need Evar and then we need nn... if newdata=ori data the Evar (computed with the proper nn) should be 0
-      newZAlist <- .spMMFactorList(locform, allFrames$mf, 0L, drop=TRUE,sparse_precision=FALSE, type="seq_len") 
+      newZAlist <- .spMMFactorList(locform, allFrames$mf, rmInt=0L, drop=TRUE,sparse_precision=FALSE, type="seq_len") 
       ## must be ordered as parseBars result for the next line to be correct.
       attr(newZAlist,"exp_ranef_strings") <- new_exp_ranef_strings ## required pour .compute_ZAXlist to match the ranefs of LMatrix
     } else {

@@ -50,7 +50,7 @@ An optional list of values of parameters specified through \code{init.corrHLfit}
   \item{method, HLmethod}{
   \code{"ML"} or \code{"REML"}. \code{"ML"} is the default, in contrast to \code{"REML"} for the \code{HLmethod} argument of other fitting functions. Other possible values of \code{HLfit}'s \code{HLmethod} argument are handled and should give results close to the other fitting methods with the same \code{HLmethod} argument, the most notable exception being \code{PQL/L} for binary response data, as \code{fitme} does not take into account the specific way leverages are computed in \code{PQL/L}.
 }
-  \item{nb_cores}{Number of cores to use for parallel computations.}
+  \item{nb_cores}{\bold{Not yet operative}, only for development purposes. Number of cores to use for parallel computations.}
   \item{processed}{ For programming purposes, not documented.}
   \item{objective}{ For development purpose, not documented.}
   \item{\dots}{

@@ -398,7 +398,7 @@ HLfit_body <- function(processed, #resid.model= ~ 1,
         beta_eta <- auglinmodblob$beta_eta 
         w.resid <- auglinmodblob$w.resid
         innerj <- auglinmodblob$innerj
-      } #else innerj <- 0L ## apparently not necess
+      } else auglinmodblob <- NULL 
     } # end etaGLM...
     if(inherits(mu,"Matrix")) mu <- drop(mu) ## pb calcul deviance_residual 
     ########## LEVERAGES
@@ -541,13 +541,13 @@ HLfit_body <- function(processed, #resid.model= ~ 1,
       if (any(next_phi_est<1e-12)) {
         if (is.null(min_phi <- control.HLfit$min_phi)) {
           if ( ! identical(spaMM.getOption("min_phi_warned"),TRUE)) {
-            warning("(This warning will show only once)
-                    Some values of the fitted residual variance (phi) are low (<1e-12): 
-                    This may point to problems in the 'data' (duplicated response values?). 
-                    This may also crash later computations. If the data are OK, you may overcome this 
-                    by setting control.HLfit$min_phi to 1e-10 or some other low, but not too low, value.
-                    However, maximization of likelihood wrt phi jointly with other parameters may still be quite unreliable.  
-                    ")
+            warning(cat("(This warning will show only once)\n",
+                    "Low (<1e-12) fitted residual variance (phi): this may be a genuine result\n",
+                    "for data without appropriate replicates and a model that allows overfitting, but\n",
+                    "(1) this may also point to problems in the data (duplicated response values?);\n",
+                    "(2) this may crash later computations. You may overcome this by setting\n",
+                    "    control.HLfit$min_phi to 1e-10 or some other low, but not too low, value.\n",
+                    "    Still, the computed likelihood maximum wrt all parameters may be inaccurate.\n"))
             # crash later computations: ::Cholesky(wd2hdv2w) problem
             spaMM.options(min_phi_warned=TRUE)
           }

@@ -49,3 +49,7 @@ hl <- HLfit(cbind(Mate,1-Mate)~1+(1|Female)+(1|Male %in% Female),
             family=binomial(),rand.family=Beta(logit),data=salamander,HLmethod="ML",control.HLfit = list(LevenbergM=FALSE))
 
 testthat::expect_equal(hl$APHLs$p_v,-243.6668,tolerance=1e-4)
+
+### check NULL auglinmodblob
+d <- data.frame(y = 1:10)
+summary(fitme(y ~ 0, data = d))
