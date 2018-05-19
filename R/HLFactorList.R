@@ -18,7 +18,7 @@
       dataordered_levels <- mf[[splt[1L]]]  ## depending on the user, mf[[splt[1L]]] may be integer or factor...
     } else {
       ## without the next line, apply(mf[,splt] -> as.matrix(mf) produces artefacts such as space characters. 
-      # the same artefacts should then be produced by seq_levelrange <- apply(uniqueGeo,1L,paste,sep="",collapse=":")
+      # the same artefacts should then be produced by seq_levelrange <- apply(uniqueGeo,1L,paste0,collapse=":")
       # mf[splt] <- lapply(mf[splt],factor)
       dataordered_levels <- apply(mf[splt],1,paste,collapse=":") ## paste gives a character vector, not a factor.
       
@@ -56,7 +56,7 @@
       #by_levels[[lit]] <- paste(prefixes[[lit]],by_levels[[lit]],sep=":")
     }
     uniqueGeo <- do.call(rbind,uniqueGeos)  ## data.frame (v2.3.9)
-    seq_levelrange <- apply(uniqueGeo,1L,paste,sep="",collapse=":")
+    seq_levelrange <- apply(uniqueGeo,1L,paste0,collapse=":")
   }
   colnames(uniqueGeo) <- splt
   res$uniqueGeo <- uniqueGeo ## more values than in the data ## .get_dist_nested_or_not() expects a *numeric* uniqueGeo, including cols for nesting factor
@@ -105,6 +105,11 @@
     } else if (AR1_sparse_Q) { 
       AR1_sparse_Q_ranges_blob <- .calc_AR1_sparse_Q_ranges(mf=mf,dataordered_levels_blob)
       ff <- factor(dataordered_levels_blob$factor,levels=AR1_sparse_Q_ranges_blob$seq_levelrange) ## rebuild a new factor with new levels
+      if (anyNA(ff)) {
+        stop(paste("Levels of the factor for an AR1 random effect should take integer values\n",
+                 "(for convenient use of sparse-precision methods).")
+        )
+      }
     } else { # other raneftype's: handles for ( | ...+...) A N D importantly differs from the standard (.|.) code below,
       # which creates a Zt matrix with rows (then ZA cols) reordered as the automatic levels of the factor
       # while the cov mats / LMatrix has the original order

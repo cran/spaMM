@@ -1243,7 +1243,8 @@ get_ZALMatrix <- function(object,as_matrix) {
       #                                   cbind2(hessnondiag, .ZtWZwrapper(ZAL,w.resid))))            
       # }
       X.pv <- object$X.pv
-      p_corrPars <- length(intersect(names_est_ranefPars,names(object$corrPars)))
+      corrPars <- get_ranPars(object,which="corrPars")
+      p_corrPars <- length(intersect(names_est_ranefPars,names(corrPars)))
       info_crits$mAIC <- -2*forAIC$p_v + 2 *(pforpv+p_lambda+p_corrPars+p_phi)
       info_crits$dAIC <- -2*forAIC$p_bv + 2 * (p_lambda+p_phi+p_corrPars) ## HaLM07 (eq 10) focussed for dispersion params
       #                                                                             including the rho param of an AR model
@@ -1397,7 +1398,8 @@ get_ZALMatrix <- function(object,as_matrix) {
       BLOB$chol_Md2hdv2 <- chol_Md2hdv2 <- Cholesky(as(tcrossprod(factor_Md2hdv2),"sparseMatrix"),perm=FALSE) #Md2hdv2 = U'.U 
     }
     r12 <- as(Matrix::solve(BLOB$G_CHMfactor, BLOB$ZtW %*% AUGI0_ZX$X.pv,system="L"),"sparseMatrix") ## solve(as(BLOB$G_CHMfactor,"sparseMatrix"), BLOB$ZtW %*% AUGI0_ZX$X.pv)
-    r22 <- as(chol(.ZtWZwrapper(AUGI0_ZX$X.pv,w.resid)-crossprod(r12)),"sparseMatrix") ## both lines as explained in working doc
+    r22 <- .calc_r22(AUGI0_ZX$X.pv,w.resid,r12, AUGI0_ZX) ## both lines as explained in working doc
+    r22 <- as(r22,"sparseMatrix") 
     n_u_h <- ncol(chol_Md2hdv2)
     pforpv <- ncol(AUGI0_ZX$X.pv)
     if (TRUE) {
@@ -1428,7 +1430,7 @@ get_ZALMatrix <- function(object,as_matrix) {
       BLOB$chol_Md2hdv2 <- chol_Md2hdv2 <- chol(tcrossprod(factor_Md2hdv2)) #Md2hdv2 = U'.U 
     } ## the tcrossprod result is dense, chol() is upper tri
     r12 <- Matrix::solve(BLOB$G_CHMfactor, BLOB$ZtW %*% AUGI0_ZX$X.pv,system="L") ## solve(as(BLOB$G_CHMfactor,"sparseMatrix"), BLOB$ZtW %*% AUGI0_ZX$X.pv)
-    r22 <- chol(.ZtWZwrapper(AUGI0_ZX$X.pv,w.resid)-crossprod(r12)) ## both lines as explained in working doc
+    r22 <- .calc_r22(AUGI0_ZX$X.pv,w.resid,r12, AUGI0_ZX) ## both lines as explained in working doc
     n_u_h <- ncol(chol_Md2hdv2)
     pforpv <- ncol(AUGI0_ZX$X.pv)
     Rmat_crossT <- rbind(cbind(chol_Md2hdv2,as.matrix(r12)),
@@ -1558,8 +1560,9 @@ get_ZALMatrix <- function(object,as_matrix) {
           locnc <- ncol(ZA)
           locnr <- nrow(xmatrix)
           if ( locnc %% locnr !=0) {
-            mess <- paste("The number of levels of the grouping variable in random term ", attr(ZAlist,"exp_ranef_strings")[Lit],sep="")
-            mess <- paste(mess,"\n  is not a multiple of the dimension of the correlation matrix.") ## by distMatrix checking in corrHLfit or no.info check somewhere...
+            mess <- paste0("The number of levels of the grouping variable in random term ", 
+                           attr(ZAlist,"exp_ranef_strings")[Lit])
+            mess <- paste0(mess,"\n  is not a multiple of the dimension of the correlation matrix.") ## by distMatrix checking in corrHLfit or no.info check somewhere...
             stop(mess)
           }         
           nblocks <- locnc %/% locnr 
@@ -1711,7 +1714,7 @@ get_ZALMatrix <- function(object,as_matrix) {
   ## redefine names(namesTerms) and namesTerms elements
   print_namesTerms <- attr(ZAlist,"namesTerms") ## a list, which names correspond to the grouping variable, and elements are the names of the coefficients fitted
   namesnames <- names(print_namesTerms)
-  for (it in seq_len(length(namesnames))) if (nchar(namesnames[it])>10) namesnames[it] <- paste(substr(namesnames[it],0,9),".",sep="")
+  for (it in seq_len(length(namesnames))) if (nchar(namesnames[it])>10) namesnames[it] <- paste0(substr(namesnames[it],0,9),".")
   names(print_namesTerms) <- make.unique(namesnames,sep=".") ## makes group identifiers unique (names of coeffs are unchanged); using base::make.unique
   print_lambda <- vector("list",nrand) 
   for (it in seq_len(nrand)) {
@@ -1875,7 +1878,7 @@ get_ZALMatrix <- function(object,as_matrix) {
 
 
 .new_phifit_init_corrPars <- function(phifit) { ## proc and residProc only to check what is fixed
-  corrPars <- phifit$corrPars
+  corrPars <- get_ranPars(phifit,which="corrPars")
   type <- attr(corrPars,"type")
   notouter <- which((u_list <- unlist(type))!="outer")
   corrPars <- structure(  .remove_from_cP(corrPars, u_names = names(notouter)),

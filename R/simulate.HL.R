@@ -77,7 +77,7 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
   nrand <- length(object$ZAlist)
   resu <- NULL
   done <- 0L
-  while((needed <- nsim-done)) {
+  while((needed <- nsim-done)) { ## loop operates only for resp_testfn
     if (nrand==0L) {
       mu <- predict(object,newdata=newdata,binding=NA)
       if (needed>1) mu <- replicate(needed,mu,simplify=FALSE) # mu <- matrix(rep(mu,nsim),ncol=nsim)
@@ -87,9 +87,7 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
         point_pred_eta <- predict(object,newdata=newdata,variances=list(BH98=TRUE)) ## (with newX.pv=0)
         if (all(attr(object$rand.families,"lcrandfamfam")=="gaussian")){
           rand_eta <- mvrnorm(n=needed,mu=point_pred_eta[,1L],Sigma=attr(point_pred_eta,"predVar"))
-          if (needed>1L) {
-            rand_eta <- t(rand_eta)
-          } else rand_eta <- rand_eta[1L,]
+          if (needed>1L) rand_eta <- t(rand_eta) ## else mvrnorn value is a vector
           if ( ! is.null(zero_truncated <- object$family$zero_truncated)) {
             mu <- object$family$linkinv(rand_eta,mu_truncated=zero_truncated)
           } else mu <- object$family$linkinv(rand_eta) ## ! freqs for binomial, counts for poisson: suitable for final code
@@ -157,19 +155,23 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
     } else if (famfam == "poisson") {
       zero_truncated <- identical(object$family$zero_truncated,TRUE)
     }
-    if ( ! is.null(resp_testfn)) {
-      block <- sapply(mu, .r_resid_var, phiW=phiW,sizes=sizes,COMP_nu=COMP_nu,NB_shape=NB_shape, zero_truncated=zero_truncated,
-                      famfam=famfam, simplify=TRUE) ## simplify from list to matrix, not vector !
+    # mu may be a list, in which case sapply(., simplify=TRUE) is a matrix (possibly 1-col=>may need conversion to vector); 
+    # or mu may be matrix/vector, in which case sapply(., simplify=TRUE) is a vector (and may need conversion to matrix).
+    # Let's try to uniformize the input hence output of the sapply():
+    if (!inherits(mu,"list")) mu <- data.frame(mu) ## converts to list
+    block <- sapply(mu, .r_resid_var, phiW=phiW,sizes=sizes,COMP_nu=COMP_nu,NB_shape=NB_shape, zero_truncated=zero_truncated,
+                    famfam=famfam, simplify=TRUE) ## simplify from list to matrix in all cases !
+    if (is.null(resp_testfn)) {
+      if (nsim==1L) block <- drop(block)
+      return(block) 
+    } else {
       check_cond <- apply(block,2L, resp_testfn)
       if (is.null(resu)) {resu <- block[,check_cond,drop=FALSE]} else resu <- cbind(resu,block[,check_cond,drop=FALSE])
       done <- done+length(which(check_cond))
-    } else {
-      resu <- sapply(mu, .r_resid_var, phiW=phiW,sizes=sizes,COMP_nu=COMP_nu,NB_shape=NB_shape, zero_truncated=zero_truncated,
-                     famfam=famfam, simplify=TRUE) 
-      done <- nsim
     }
   }
-  if (nsim==1) resu <- drop(resu)  
+  ## we reach this point only if there is a resp_testfn, and then 'resu'
+  if (nsim==1L) resu <- drop(resu)
   return(resu)    
 }
 

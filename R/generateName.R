@@ -12,7 +12,7 @@
     if (length(allnumericremainders)) {
       num <- max(allnumericremainders)+1L
     } else num <- 1L
-    fvname <-paste ( base , num , sep="") 
+    fvname <-paste0( base , num) 
   }
   fvname
 }
@@ -25,7 +25,7 @@
 #   if ( ! missing(oldnames)) { ## because presumably the test should be TRUE if preexisting was provided yet is NULL
 #     allmatches <- pmatch(x=base,oldnames)
 #   } else {
-#     pattern <- paste(base,"*",sep="")
+#     pattern <- paste0(base,"*")
 #     allmatches <- ls(pattern=pattern,pos=pos)
 #   }
 #   allremainders <- substring(allmatches,nchar(base)+1) 
@@ -34,7 +34,7 @@
 #     validname <- base 
 #   } else {
 #     num <- max(allremainders)+1
-#     validname <-paste ( base , num , sep="") 
+#     validname <-paste0( base , num) 
 #   }
 #   return(validname)
 # }

@@ -1,4 +1,6 @@
-HLfit_body <- function(processed, #resid.model= ~ 1, 
+HLfit_body <- local({
+  min_phi_warned <- FALSE
+  function(processed, #resid.model= ~ 1, 
                        control.HLfit=list(), ## used both by preprocess and HLfit_body
                        init.HLfit = list(), ## not from processed: this is affected by HLCor_body -> .canonizeRanPars(ranPars) post .preprocess()ing
                        #                       Thus if in a HLCor call we can expect a $corrPars in sp3 code.
@@ -76,7 +78,7 @@ HLfit_body <- function(processed, #resid.model= ~ 1,
     ZAL <- NULL ## 
     u_h <- v_h <- lev_lambda <- numeric(0)
   }
-  lambda.Fix <- .getPar(ranFix,"lambda") ## should already have length 'nrand' or else be NULL
+  lambda.Fix <- ranFix$lambda # .getPar(ranFix,"lambda") ## should already have length 'nrand' or else be NULL
   if (is.null(lambda.Fix)) lambda.Fix <- rep(NA,nrand) ## FIXME: put in canonizeRanpars ? depends onother uses of this fn.
   if (any(lambda.Fix[!is.na(lambda.Fix)]==0)) stop("lambda cannot be fixed to 0.")
   ###
@@ -228,6 +230,7 @@ HLfit_body <- function(processed, #resid.model= ~ 1,
   dvdloglamMat <- NULL
   penul_lambda <- NULL
   residProcessed <- processed$residProcessed ## currently NULL except for phiHGLM
+  #ori_resid_lambda.Fix <- residProcessed$lambda.Fix
   ########################################
   ######### Main loop ####################
   ########################################
@@ -488,36 +491,55 @@ HLfit_body <- function(processed, #resid.model= ~ 1,
         residProcessed$y <- residProcessed$data$.phi
         residProcessed$HLframes$Y <- as.matrix(residProcessed$data$.phi)
         phifitarglist <- processed$residModel
-        phifitarglist$processed <- residProcessed  ## including residProcessed$port_env$port_fit_values, and $fixed (a *list* created by preprocess)
-        #  which may be NULL, but allows a previous 'close' [as defined by condition on logLik change] 
-        #   outer fit to be used to initialize the 1st inner fitme of the new HLfit 
-        ## A resid.model's fixed lambda, phi have been preprocessed 
-        ##   and info in processed$residModel$fixed must match that in residProcessed
+        phifitarglist$processed <- residProcessed  ## including 
+        # residProcessed$port_env$port_fit_values, and $fixed (a *list* created by preprocess) which may be NULL.
+        #  $port_fit_values allows a previous 'close' [as defined by condition on logLik change] outer fit 
+        #   to be used to initialize the 1st inner fitme of the new HLfit.
+        #  residProcessed$fixed, until modified below, contains preprocessed resid.model's fixed lambda, and phi.
+        #   and info in residModel$fixed must match (duplicate!) that in residProcessed:
+        #   <processed=residProcessed>$lambda.Fix contains globally fixed lambda for the resid-fit.
+        #  Finally, residProcessed$envir$ranPars may be used for outer-optimization at the mean-fit level 
+        #   ('outer_optim_resid' option) of the resid-fit parameters,
+        #   in which case residProcessed$envir$ranPars contains the objective's arguments that are resid-fit parameters,
+        #   which have been written in (by [HLCor|HLfit].obj()).
+        #   and should now be copied in phifitarglist$fixed:
+        phifitarglist$fixed <- structure(.modify_list(phifitarglist$fixed, residProcessed$envir$ranPars ),
+                                         type=.modify_list(attr(phifitarglist$fixed,"type"), attr(residProcessed$envir$ranPars,"type") ))
         if (iter==0) { ## use port_fit_values if available, else use:
+          phifit_init <- phifitarglist$init ## with default value list()
           if (is.null(processed$residModel$fixed$phi)) {
-            phifitarglist$init$phi <- 1 ## A case can be made for fixing it to 1; see working doc, end of 'Gamma GLM formulation of REML estimators'
-          } # and  keeps other init values as given by user (if NULL, will get its default value list() ) 
+            phifit_init$phi <- 1 ## A case can be made for fixing it to 1; see working doc, end of 'Gamma GLM formulation of REML estimators'
+          } # and  keeps other init values as given by user
         } else {
-          ## fitme_body's 'init.Hlfit' argument (## use port_fit_values if available, else use init.HLfit)
+          ## (1) fitme_body's 'init.HLfit' argument (## use port_fit_values if available, else use init.HLfit)
           #  These are results of the previous fitme_body call for the residual model, not of the last HLfit_body objective function call within fitme_body
           #  but shouldn't the two be identical ?
-          if (is.null(processed$residModel$fixed$fixef)) phifitarglist$processed$init_HLfit$fixef <- fixef(phifit)
+          if (is.null(processed$residModel$fixed$fixef)) phifitarglist$processed$init_HLfit$fixef <- fixef(phifit) ## : Use an init if the parameters are not fixed. 
           phifitarglist$processed$init_HLfit$v_h <- phifit$v_h
-          # FIXME one could *update* a corrPars[[.]]$rho element in init_Lfit... not done currently...
-          ## fitme_body's 'init' argument controlling initial value of outer-optimized parameters (FIXME ranCoefs ?)
+          # FIXME one could *update* a corrPars[[.]]$rho element in init_HLfit... not done currently...
+          ## (2) fitme_body's 'init' argument controlling initial value of outer-optimized parameters (FIXME ranCoefs ?)
           phifit_init <- list(corrPars=.new_phifit_init_corrPars(phifit))
-          if (all(is.na(residProcessed$lambda.Fix))) phifit_init$lambda <- phifit$lambda 
+          #
+          phifit_init$lambda <- phifit$lambda
+          #
           if (is.null(processed$residModel$fixed$phi)) phifit_init$phi <- phifit$phi 
-          phifitarglist$init <- phifit_init 
         }
+        if (length(phifit_init$lambda)) {
+          # check for lambda in residProcessed$lambda.Fix (globally fixed) 
+          #               or in phifitarglist$fixed (outer optimization !?)
+          which_init_resid_lambda <- (is.na(residProcessed$lambda.Fix) & ! is.numeric(phifitarglist$fixed$lambda) )
+          phifit_init$lambda[ ! which_init_resid_lambda] <- NaN
+        }
+        phifitarglist$init <- phifit_init 
         phifit <- do.call("fitme_body",phifitarglist)
-        prevmsglength <- overcat(paste("phi fit in HLfit's iter=",iter+1L,
-                                       ", .phi[1]=",signif(phifit$y[1],5),", ",
-                                       paste(c(names(phifit$corrPars),"lambda"),"=",
-                                               signif(c(unlist(phifit["corrPars"]),phifit$lambda),6),
-                                               collapse=", ",sep=""),
-                                       ";           ",sep=""),prevmsglength
-            )
+        la <- phifit$lambda
+        names(la) <- paste0(seq_len(length(la)),".lam")
+        cpla <- c(unlist(get_ranPars(phifit,which="corrPars")),la)
+        prevmsglength <- overcat(paste0("phi fit in HLfit's iter=",iter+1L,
+                                        ", .phi[1]=",signif(phifit$y[1],5),", ",
+                                        paste0(names(cpla),"=", signif(cpla,6), collapse=", "),
+                                        ";           "),
+                                 prevmsglength)
         next_phi_est <- phifit$fv
       } else {
         # to obtain the phi estimate given by summary.glm(), one must use
@@ -540,8 +562,8 @@ HLfit_body <- function(processed, #resid.model= ~ 1,
       }
       if (any(next_phi_est<1e-12)) {
         if (is.null(min_phi <- control.HLfit$min_phi)) {
-          if ( ! identical(spaMM.getOption("min_phi_warned"),TRUE)) {
-            warning(cat("(This warning will show only once)\n",
+          if ( ! min_phi_warned) {
+            warning(paste0("(This warning will show only once)\n",
                     "Low (<1e-12) fitted residual variance (phi): this may be a genuine result\n",
                     "for data without appropriate replicates and a model that allows overfitting, but\n",
                     "(1) this may also point to problems in the data (duplicated response values?);\n",
@@ -549,7 +571,7 @@ HLfit_body <- function(processed, #resid.model= ~ 1,
                     "    control.HLfit$min_phi to 1e-10 or some other low, but not too low, value.\n",
                     "    Still, the computed likelihood maximum wrt all parameters may be inaccurate.\n"))
             # crash later computations: ::Cholesky(wd2hdv2w) problem
-            spaMM.options(min_phi_warned=TRUE)
+            min_phi_warned <<- TRUE
           }
         } else next_phi_est[next_phi_est<min_phi] <- min_phi  
       }
@@ -710,8 +732,8 @@ HLfit_body <- function(processed, #resid.model= ~ 1,
       ##
       if (verbose["trace"]) {
         print(paste("iteration ",iter,"; convergence criteria for phi, lambda, corr pars , conv_lambda_vs_u, conv_rel_lambda: ",
-                    paste(c( conv.phi , conv.lambda, conv.corr, 
-                             conv_lambda_vs_u, conv_rel_lambda),collapse = " "),sep=""))
+                    paste0(c( conv.phi , conv.lambda, conv.corr, 
+                             conv_lambda_vs_u, conv_rel_lambda),collapse = " ")))
         if (models[[1]]=="etaHGLM" && need_simple_lambda) { 
           #print(range(logrel_crit))
           #print(range(reldlam_crit))
@@ -720,6 +742,7 @@ HLfit_body <- function(processed, #resid.model= ~ 1,
     } 
     ##### end convergence block
   } ## end main loop while ( TRUE )
+  #residProcessed$lambda.Fix <- ori_resid_lambda.Fix
   ########################################
   ######### END main loop ################
   ########################################
@@ -890,12 +913,19 @@ HLfit_body <- function(processed, #resid.model= ~ 1,
   ###################
   res$family <- family
   res$X.pv <- processed$AUGI0_ZX$X.pv
-  res$ranFix <- ranFix ## currently as a uniform template consistent with projected changes ; excpt that lamFix, phiFix info is now in lambda.object, etc
+  res$ranFix <- ranFix ## currently as a uniform template consistent with projected changes ; except that lamFix, phiFix info is now in lambda.object, etc
+  ## If an outer optimizer has been called,
+  #  "fix" and "outer" parameters are given these types afeter the optimization call, then HLfit is called again and we reach this point.
+  #  This means ranFix gets its type from there *if* properly retained by .canonizeRanPars() 
+  #  Then we add inner-optimized parameters, with "var" type added by .get_CorrEst_and_RanFix()
   if ( ! is.null(corr_est) && ! is.null(init.HLfit$corrPars)) corr_est <- list(corrPars=relist(corr_est$rho,init.HLfit$corrPars)) ## not yet spaMM 3.0
-  res$CorrEst_and_RanFix <- .get_CorrEst_and_RanFix(ranFix, corr_est)
+  res$CorrEst_and_RanFix <- .get_CorrEst_and_RanFix(ranFix, corr_est) # corr_est parameters are inner-estimated and of type "var"
+  #
   if ( ! is.null(res$CorrEst_and_RanFix$corrPars)) {
     res$corrPars <- structure(res$CorrEst_and_RanFix$corrPars, # ## subset of the above: F I X M E (?) redundancy
                               type=attr(res$CorrEst_and_RanFix,"type")$corrPars)
+    ## F I X M E Next line requires changes in dependent packages IsoriX, Infusion > 1.2.3, blackbox OK, (probitgem OK)
+    # res$corrPars <- 'Use get_ranPars(.,which="corrPars") to extract "corrPars" from fit object.' 
   }   
   res$models <- models
   res$HLframes <- processed$HLframes ## used by predict
@@ -1051,10 +1081,10 @@ HLfit_body <- function(processed, #resid.model= ~ 1,
     warningList$negLevLam <- "Negative leverages for lambda were replaced by 1e-8"
   }
   if (! is.null(locw <- warningList$innerPhiGLM)) {
-    warningList$innerPhiGLM <- paste("'",locw,"' in some sub-final iteration(s) of phi estimation;", sep="")
+    warningList$innerPhiGLM <- paste0("'",locw,"' in some sub-final iteration(s) of phi estimation;")
   }
   if (! is.null(locw <- warningList$innerLamGLM)) {
-    warningList$innerLamGLM <- paste("'",locw,"' in some sub-final iteration(s) of lambda estimation;", sep="")
+    warningList$innerLamGLM <- paste0("'",locw,"' in some sub-final iteration(s) of lambda estimation;")
   }
   if ( HL[1]!="SEM" && maxit.mean>1 ## cases where iterations are needed 
       && ( ( models[[1]]=="etaHGLM"  && innerj==maxit.mean) 
@@ -1062,25 +1092,25 @@ HLfit_body <- function(processed, #resid.model= ~ 1,
            ( models[[1]]=="etaGLM" && pforpv>0L && innerj==maxit.mean)
         )) {
     
-    warningList$innerNotConv <- paste("linear predictor estimation did not converge;",
+    warningList$innerNotConv <- paste0("linear predictor estimation did not converge;",
                                       if ( ! LMMbool && ! .determine_LevenbergM(processed$LevenbergM) ) {
                                          " try control.HLfit=list(LevenbergM=TRUE), or"
                                       },
-                                      " increase 'max.iter.mean' above ",maxit.mean,sep="")
+                                      " increase 'max.iter.mean' above ",maxit.mean)
   }
   if ( (! is.na(conv_logL)) && iter==max.iter) {
-    maxitmess <- paste("Estimates did not converge;",
+    maxitmess <- paste0("Estimates did not converge;",
                        if ( ! LMMbool && ! .determine_LevenbergM(processed$LevenbergM) ) {
                          "trycontrol.HLfit=list(LevenbergM=TRUE), or"
                        },
                        " increase 'max.iter' above ",max.iter,
-                       "\n (see help('HLfit') for details about 'max.iter')",sep="")
+                       "\n (see help('HLfit') for details about 'max.iter')")
     if (models[["eta"]]=="etaHGLM") {
       if (conv_logL  && ! conv.lambda) {
-        mainNotConv <- paste("p_v apparently converged but lambda estimates apparently did not.",
+        mainNotConv <- paste0("p_v apparently converged but lambda estimates apparently did not.",
                              "\n This may indicate that some lambda estimate(s) should be zero.",
                              "\n Otherwise try increasing 'max.iter' above ",max.iter,
-                             "\n (see help(HLfit) for details about 'max.iter')",sep="")          
+                             "\n (see help(HLfit) for details about 'max.iter')")          
       } else mainNotConv <- maxitmess        
       attr(mainNotConv,"diagnostics") <- c( conv.phi=conv.phi , conv.lambda=conv.lambda, 
                                             conv.corr=conv.corr, conv_lambda_vs_u=conv_lambda_vs_u,
@@ -1130,14 +1160,14 @@ HLfit_body <- function(processed, #resid.model= ~ 1,
   if (verbose["all_objfn_calls"]) {
     seriousWarnings <- warningList[intersect(c("innerNotConv","mainNotConv"),names(warningList))]
     if (length(seriousWarnings) ) { 
-      warningsss <- paste("In HLfit :\n",unlist(seriousWarnings),sep="")
+      warningsss <- paste0("In HLfit :\n",unlist(seriousWarnings))
       abyss <- sapply(warningsss, warning, call.=FALSE) 
       warningList[setdiff(names(warningList),c("innerNotConv","mainNotCov"))] <- NULL
     }
   } 
   if (verbose["trace"]) {
     if (length(warningList) ) {
-      warningsss <- paste(unlist(warningList),"\n",sep="")
+      warningsss <- paste0(unlist(warningList),"\n")
       abyss <- sapply(warningsss,cat) 
     }
   }
@@ -1147,4 +1177,4 @@ HLfit_body <- function(processed, #resid.model= ~ 1,
   lsv <- c("lsv",ls())
   rm(list=setdiff(lsv,"res")) ## empties the whole local envir except the return value
   return(res)
-}
+}})

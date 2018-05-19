@@ -8,4 +8,13 @@ hlfit <- HLfit(y~crack0+(1|specimen),family=Gamma(log),data=crack, HLmethod="REM
 # testthat::expect_equal(AIC(hlfit)[2],c("    conditional AIC:"=-1576.2316),tolerance=1e-4) ## older test with 'wrong' pd for dhglm
 testthat::expect_equal(AIC(hlfit)[2],c("    conditional AIC:"=-1607.22365),tolerance=1e-4) 
 
+if (FALSE) {  
+  hlfit <- HLfit(y~crack0+(1|specimen),family=Gamma(log),data=crack, HLmethod="REML", 
+                 rand.family=inverse.Gamma(log), resid.model=list(formula=~cycle+(1|specimen),fixed=list(lambda=0.666))   )
+}
+
+if (FALSE) {  
+  hlfit <- fitme(y~crack0+(1|specimen),family=Gamma(log),data=crack, method="REML", 
+                 rand.family=inverse.Gamma(log), resid.model=list(formula=~cycle+(1|specimen),fixed=list(lambda=0.666))   )
+}
 

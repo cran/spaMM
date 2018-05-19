@@ -154,7 +154,7 @@ LRT <- function(object,object2,boot.repl=0,nb_cores=NULL,...) { ## compare two H
       ## analyze under both models
       aslistfull$data <- simbData
       aslistnull$data <- simbData
-      fullfit <- (eval(as.call(aslistfull)))
+      fullfit <- try(eval(as.call(aslistfull)))
       if (inherits(fullfit,"try-error")) {
         return(c(NA,NA))
       } ## ELSE:
@@ -168,7 +168,7 @@ LRT <- function(object,object2,boot.repl=0,nb_cores=NULL,...) { ## compare two H
     bootblob <- .eval_boot_replicates(eval_replicate=eval_replicate,boot.repl=boot.repl,nullfit=nullfit,nb_cores=nb_cores,
                                     aslistfull=aslistfull, aslistnull=aslistnull,simbData=simbData)
     bootreps <- bootblob$bootreps
-    colnames(bootreps) <- paste(c("full.","null."),test_obj,sep="")
+    colnames(bootreps) <- paste0(c("full.","null."),test_obj)
     bootdL <- bootreps[,1]-bootreps[,2]
     meanbootLRT <- 2*mean(bootdL)
     resu <- c(resu,list(rawBootLRT = data.frame(chi2_LR=LRTori,df=df,p_value=(1+sum(bootdL>=LRTori/2))/(boot.repl+1)))) ## format appropriate for more tests  

@@ -87,7 +87,7 @@ logLik.HLfitlist <- function(object, which = NULL, ...) {
                     "by Laplace REML approximation (p_bv)."= "p_bv",
                     "by REML."= "p_bv",
                     "by non-standard REML"= "p_bv",
-                    stop(paste("No default '",which,"' value for '",mess,"' estimation method.",sep=""))
+                    stop(paste0("No default '",which,"' value for '",mess,"' estimation method."))
     ) 
   }
   resu  <- attr(object,"APHLs")[[which]]

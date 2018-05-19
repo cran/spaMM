@@ -1,6 +1,7 @@
 \name{HLfit}
 \alias{HLfit}
 \alias{Beta-distribution-random-effects}
+\alias{Beta}
 \title{Fit mixed models with given correlation matrix}
 \description{
   This function fits GLMMs as well as some hierarchical generalized linear models (HGLM; Lee and Nelder 2001).

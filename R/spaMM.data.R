@@ -13,7 +13,7 @@
                             example_maxtime=0.7,
                             covEstmethod=".makeCovEst1",
                             COMP_maxn=1e4,
-                            ff_threshold=Inf, ## ! this affects tryn in blackbox::rhullByEI ! F I X M E remove when new blackbox on CRAN
+                            ff_threshold=Inf, ## ! this affects tryn in blackbox::rhullByEI ! F I X M E remove when blackbox> 1.1.10 on CRAN
                             wRegularization=FALSE,
                             QRmethod=NULL, ## For user-provided values. The code does not and should not change this.
                             spaMM_glm_conv_crit=list(max=-Inf),

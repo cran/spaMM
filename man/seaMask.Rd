@@ -41,7 +41,7 @@ if (spaMM.getOption("example_maxtime")>1.1) {
 
 data("seaMask")
 ## plot of predictions of behaviour for a land bird:
-if (require(maps)){
+if (requireNamespace("maps")){
  data("blackcap")
  bfit <- corrHLfit(migStatus ~ means+ Matern(1|longitude+latitude),data=blackcap,
                   HLmethod="ML",
@@ -72,7 +72,7 @@ if (require(maps)){
 \dontrun{
 # All shape files can be found here: http://www.naturalearthdata.com/downloads/
 # Once downloaded, they can be loaded into R by
-if (require("rgdal", quietly = TRUE)) {
+if (requireNamespace("rgdal", quietly = TRUE)) {
   worldcountries <- readOGR("ne_110m_admin_0_countries_lakes.shp",
                            layer="ne_110m_admin_0_countries_lakes")
 }

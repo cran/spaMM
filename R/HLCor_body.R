@@ -48,7 +48,8 @@
   if (is.null(types)) types <- names(covStruct) ## 2nd way of specifying types
   known_types <- c("adjMatrix","corrMatrix","precision","SAR_WWt","distMatrix") 
   checktypes <- setdiff(types,c(known_types,"")) ## "" for unhandled ranefs
-  if (length(checktypes)) stop(paste("Unhandled name(s)/type(s)",paste("'",checktypes,"'",sep="",collapse=", "),"in 'covStruct'."))
+  if (length(checktypes)) stop(paste("Unhandled name(s)/type(s)",
+                                     paste0("'",checktypes,"'",collapse=", "),"in 'covStruct'."))
   resu <- vector("list",length(covStruct)) ## list with sublists(?); compatible with spaMM3.0 extended syntax
   for (lit in seq_along(covStruct)) {
     if (types[[lit]]=="precision") {
@@ -185,7 +186,7 @@ HLCor_body <- function(processed, ## single environment
     ## RUN THIS LOOP and return
     fitlist <- lapply(seq_len(length(processed)), function(proc_it){
       locmc <- mc
-      locmc[[1L]] <- as.name("HLCor.obj") ## replaces "f" !
+      locmc[[1L]] <- get("HLCor.obj", asNamespace("spaMM")) # as.name("HLCor.obj") ## replaces "f" !
       locmc$ranefParsVec <- ranefParsVec ## replaces "arg" !
       locmc$processed <- processed[[proc_it]] 
       eval(locmc)
@@ -203,12 +204,28 @@ HLCor_body <- function(processed, ## single environment
   makescaled.formals <- names(formals(make_scaled_dist))
   HLnames <- (c(HLCor.formals,names_formals_HLfit,designL.formals,makescaled.formals))  ## cf parallel code in corrHLfit
   HLCor.call <- mc[c(1,which(names(mc) %in% HLnames))] ## keep the call structure
-  HLCor.call$ranPars <- structure(.modify_list(HLCor.call$ranPars, relist(ranefParsVec,skeleton)), ## adds given values of the optimized variables 
-                                  type=.modify_list(attr(HLCor.call$ranPars,"type"),attr(skeleton,"type")), ## adds "fix"'s... somewhat confusing 
-                                  moreargs=attr(skeleton,"moreargs") )
+  ranPars <- .modify_list(HLCor.call$ranPars, relist(ranefParsVec,skeleton))
+  rpType <- .modify_list(attr(HLCor.call$ranPars,"type"),attr(skeleton,"type"))
+  moreargs <- attr(skeleton,"moreargs")
+  if ( ! is.null(ranPars$resid) ) {
+    resid_ranPars <- structure(ranPars$resid, ## but not sure that the attributes are necessary...
+                               type=rpType$resid, 
+                               moreargs=moreargs$resid)
+    # canonize bc fitme_body(,fixed=.) does not handle transformed parameters
+    processed$residProcessed$envir$ranPars <- .canonizeRanPars(ranPars=resid_ranPars,
+                                corr_types=processed$residProcessed$corr_info$corr_types,
+                                checkComplete = FALSE) 
+    ranPars$resid <- NULL
+    rpType$resid <- NULL
+    moreargs$resid <- NULL
+  }
+  HLCor.call$ranPars <- structure(ranPars, ## adds given values of the optimized variables 
+                                  type=rpType, ## adds "fix"'s... somewhat confusing 
+                                  moreargs=moreargs )
   # ranPars may have $trLambda (from notlambda) for what is optimized,
   #              and $lambda (from ranPars$lambda) for what was fixed in the whole outer fit  
-  HLCor.call[[1L]] <- quote(spaMM::HLCor)
+  HLCor.call[[1L]] <- get("HLCor", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
+  #HLCor.call[[1L]] <- quote(spaMM::HLCor)
   hlfit <- eval(HLCor.call) ## retruns fit or call 
   #
   if (is.call(hlfit)) {return(hlfit)} ## HLCorcall

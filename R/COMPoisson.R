@@ -11,7 +11,8 @@
   # } else { 
     app_En <- lambda^(1/(nu+1e-6)) ## .COMP_asympto_P_moment(pow_lam_nu,nu+1e-6,1L) would be lower
     # and using var ~ En/nu
-    res <- max(2,1+app_En+6*sqrt(app_En/(nu+1e-6)))  ## real, to allow continuity correction
+    # minimal value 9 to obtain identical values in "aliens' test (in version without the corrections in .COMP_Pr_moments())
+    res <- max(9,1+app_En+6*sqrt(app_En/(nu+1e-6)))  ## real, to allow continuity correction 
     opt_maxn <- spaMM.getOption("COMP_maxn")
     if (res>opt_maxn) {
       res <- opt_maxn
@@ -57,16 +58,18 @@
     }
   } else {
     resu <- .Rcpp_COMP_Z(moment=moment,nu=nu,lambda=lambda,maxn=maxn)
-    k_maxim <- ceiling(pow_lam_nu)
+    k_maxim <- ceiling(pow_lam_nu) ## practically locates the mode 
     lfac <- lfactorial(k_maxim)
     if (is.infinite(lfac)) { ## Should not occur as the asymptotic approx for the moments of the *PDF* should have been used 
       stop(paste("Practically infinite sum for COMPoisson's nu=",nu,". The asymptotic approx for the moments of the *PDF* should have been used."))
     } 
     logScaleFac <- (k_maxim*eta - nu*lfac)[[1L]] ## drop any name !
-    ## need to pinpoint the "maximum" otherwise integrate misses it. 
-    scaled <- max(0,integrate(.COMP_Z_integrand,lower=k_maxim,upper=Inf,eta=eta,nu=nu,moment=moment,
+    ## Add approximation for tail beyond summation from zero to maxn: 
+    ## integrating directly from maxn to Inf may not work, as integrate() may then miss the mode of the integrand. So:
+    # (1) Always add tail beyond the highest of maxn and k_maxim
+    scaled <- max(0,integrate(.COMP_Z_integrand,lower=max(k_maxim,maxn),upper=Inf,eta=eta,nu=nu,moment=moment,
                          logScaleFac=logScaleFac,stop.on.error = FALSE)$value)
-    if (maxn<k_maxim) {
+    if (maxn<k_maxim) { ## then add integral from maxn to k_maxim 
       scaled <- scaled + max(0,integrate(.COMP_Z_integrand,lower=maxn,upper=k_maxim,eta=eta,nu=nu,moment=moment,
                                          logScaleFac=logScaleFac,stop.on.error = FALSE)$value)
     }
@@ -96,17 +99,30 @@
     }
   } else {
     denum <- .COMP_Z(lambda=lambda,nu=nu)
+    denum_corr <- .COMP_Z(lambda=lambda,nu=1)
     if ("1" %in% moments) {
       num <- .COMP_Z_n(lambda=lambda,nu=nu)
       resu["1"] <- .COMP_Z_ratio(num,denum)
+      if (TRUE) {
+        corr <- .COMP_Z_ratio(.COMP_Z_n(lambda=lambda,nu=1), denum_corr) ## poisson value by general approx
+        resu["1"] <- resu["1"]+(lambda-corr) ## approx_any_nu+(exact_poi-approx_poi): exact in nu=1
+      }
     }
     if ("2" %in% moments) {
       num <- .COMP_Z_n2(lambda=lambda,nu=nu)
       resu["2"] <- .COMP_Z_ratio(num,denum)
+      if (TRUE) {
+        corr <- .COMP_Z_ratio(.COMP_Z_n2(lambda=lambda,nu=1), denum_corr) ## poisson value by general approx
+        resu["2"] <- resu["2"]+(lambda*(1+lambda)-corr) ## approx_any_nu+(exact_poi-approx_poi): exact in nu=1
+      }
     }
     if ("3" %in% moments) {
       num <- .COMP_Z_n3(lambda=lambda,nu=nu)
       resu["3"] <- .COMP_Z_ratio(num,denum)
+      if (TRUE) {
+        corr <- .COMP_Z_ratio(.COMP_Z_n3(lambda=lambda,nu=1), denum_corr) ## poisson value by general approx
+        resu["3"] <- resu["3"]+(lambda*(1+lambda*(3+lambda))-corr) ## approx_any_nu+(exact_poi-approx_poi): exact in nu=1
+      }
     }
   }
   return(resu)
@@ -497,7 +513,7 @@ COMPoisson <- function(nu = stop("COMPoisson's 'nu' must be specified"),
   dev.resids <- .CMP_dev_resids
   aic <- .CMP_aic
   initialize <- expression({
-    if (any(y < 0)) stop("negative values not allowed for the 'Poisson' family")
+    if (any(y < 0L)) stop("negative values not allowed for the 'Poisson' family")
     n <- rep.int(1, nobs)
     mustart <- y + 0.1
   })
@@ -507,7 +523,7 @@ COMPoisson <- function(nu = stop("COMPoisson's 'nu' must be specified"),
   ## changes the parent.env of all functions: 
   parent.env(environment(aic)) <- environment(.dCOMP) ## gives access to spaMM:::.dCOMP and other .COMP_ fns
   structure(list(family = structure("COMPoisson",
-                                    withArgs=quote(paste("COMPoisson(nu=",signif(nu,4),")",sep=""))), 
+                                    withArgs=quote(paste0("COMPoisson(nu=",signif(nu,4),")"))), 
                  link = linktemp, linkfun = linkfun, 
                  linkinv = linkinv, variance = variance, dev.resids = dev.resids, 
                  aic = aic, mu.eta = mu.eta, initialize = initialize, 

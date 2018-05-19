@@ -1,50 +1,19 @@
 cat("\nTest of adjacency (long fits):")
 
-if (spaMM.getOption("example_maxtime")>465) { ## 
+if (spaMM.getOption("example_maxtime")>465) { 
   ## fixme This is sparse_precision LevM: improve efficiency? 
   ## example suggested by Jeroen van den Ochtend jeroenvdochtend@gmail.com Jeroen.vandenochtend@business.uzh.ch
-  library(data.table)
-  library(igraph)
-  
-  rsample <- function(N=100, ## size of implied adjacency matrix
-                      month_max=10,seed) {
-    if (is.integer(seed)) set.seed(seed)
-    dt <- data.table(ID=factor(1:N))
-    dt$months <- sample(1:month_max,N,replace=T) ## nombres de lignes qui vont être créées pour chaque ligne originelle de dt
-    dt$GENDER <- sample(c("MALE","FEMALE"),N,replace=TRUE)
-    dt$AGE <- sample(18:99,N,replace=T)
-    dt$X1 <- sample(1000:9900,N,replace=T)
-    dt$X2 <-  runif(N)
-    
-    dt <- dt[, c(.SD, month=data.table(seq(from=1, to=months, by = 1))), by = ID] 
-    dt[,BUY := 0]
-    dt[month.V1==months,BUY := sample(c(0,1),1),by=ID]
-    setnames(dt,"month.V1","month")
-    
-    #### create adjacency matrix
-    Network <- data.table(OUT=sample(dt$ID,N*month_max*4/10))
-    Network$IN <- sample(dt$ID,N*month_max*4/10)
-    Network <- Network[IN != OUT]
-    Network <- unique(Network)
-    g <- graph.data.frame(Network,directed=F)
-    g <- add_vertices(g,sum(!unique(dt$ID) %in% V(g)),name=unique(dt[!dt$ID %in% V(g),list(ID)]))
-    Network <- as_adjacency_matrix(g,sparse = TRUE,type="both")
-    return(list(data=dt,adjMatrix=Network))
-  }
-
   ## it's no use to try sparse_precision=FALSE bc bc the augmented sigma matrix is huge
   ###################### spaMM.options(sparse_precision=FALSE) 
   ## make sure that the wrong value is not set:
+  data("adjlg")
   oldop <- spaMM.options(sparse_precision=NULL) 
-  
-  set.seed(123)
-  adjlg_sam <- rsample(N=1000,seed=NULL)
   system.time({
     IRLS.Frailty <- fitme(BUY ~ factor(month) + AGE + GENDER + X1*X2 + adjacency(1|ID),
-                          data=adjlg_sam$data,family = binomial(link = cloglog),method = "ML",
+                          data=adjlg,family = binomial(link = cloglog),method = "ML",
                           control.HLfit=list(LevenbergM=FALSE), ## inhibits default for binary data 
                           verbose=c(TRACE=interactive()), # to trace convergence 
-                          adjMatrix=adjlg_sam$adjMatrix
+                          adjMatrix=adjlgMat
     )
   }) ##   110.35 (v.2.3.55) but 116.47 (2.4.0)
   expectedMethod <- "AUGI0_ZX_sparsePrecision" ## bc data too small to switch to sparse
@@ -55,10 +24,10 @@ if (spaMM.getOption("example_maxtime")>465) { ##
   } else testthat::expect_true(expectedMethod %in% IRLS.Frailty$MME_method) 
   system.time({
     LevM.Frailty <- fitme(BUY ~ factor(month) + AGE + GENDER + X1*X2 + adjacency(1|ID),
-                          data=adjlg_sam$data,family = binomial(link = cloglog),method = "ML",
+                          data=adjlg,family = binomial(link = cloglog),method = "ML",
                           verbose=c(TRACE=interactive()), # to trace convergence 
                           #fixed=list(rho = -0.0294184,  lambda = 0.241825),
-                          adjMatrix=adjlg_sam$adjMatrix
+                          adjMatrix=adjlgMat
     )
   }) ## 354.74 (v.2.3.55) but 363.31 (2.4.0)
   spaMM.options(oldop)

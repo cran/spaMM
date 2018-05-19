@@ -49,7 +49,8 @@
 .post_process_fixed <- function(fixed,corr_types) {
   if (is.null(fixed)) return(NULL)
   fixed <- .post_process_parlist(fixed,corr_types)
-  attr(fixed,"type") <- relist(rep("fix",length(unlist(fixed))),fixed) ## on veut une list pour pouvoir supp des elements par <- NULL
+  # I write "F I X" as a TAG for this modif type attribute:
+  #attr(fixed,"type") <- relist(rep("fix",length(unlist(fixed))),fixed) ## on veut une list pour pouvoir supp des elements par <- NULL
   return(fixed)
 }
 
@@ -188,7 +189,7 @@
     init_rd <- init_cP[[char_rd]]
     for (st in c("nu","ARphi","Nugget","rho")) {
       if ( (! is.null(fixed_rd[[st]])) && (! is.null(init_rd[[st]])) ) {
-        stop(paste("(!) '",st,"'" ,errstring,sep=""))    
+        stop(paste0("(!) '",st,"'" ,errstring))    
       }
     }
   }
@@ -273,45 +274,53 @@
 }
 
 .do_TRACE <- function(level) {
-  if (level) {
-    suppressMessages(trace(HLfit_body,print=FALSE, 
-                           tracer=quote(try({
-                             ranPars <- .canonizeRanPars(ranFix,corr_types=NULL,checkComplete = FALSE)
-                             ntC <- names(ranPars)
-                             for (lit in seq_along(ranPars)) {
-                               urP <- unlist(ranPars[[lit]]) ## ranPars$corrPars can be list() in which case urP is NULL 
-                               if (!is.null(urP)) cat(ntC[lit],"=",paste(signif(urP,6),collapse=" ")," ")
-                             }
-                           })),
-                           exit=quote({
-                             aphl <- unlist(res$APHLs[c("p_bv","p_v")])[1L] ## unlist drops a NULL p_bv
-                             print(paste(names(aphl),"= ",.prettify_num(aphl,nsmall=4),sep=""),quote=FALSE)
-                           }))) 
-    suppressMessages (trace(.solve_IRLS_as_ZX,print=FALSE,tracer=quote(cat(">"))))
-    suppressMessages (trace(.solve_IRLS_as_spprec,print=FALSE,tracer=quote(cat(">"))))
-    suppressMessages (trace(spaMM.getOption("matrix_method"),print=FALSE,tracer=quote(cat("."))))
-    suppressMessages(trace(spaMM.getOption("Matrix_method"),print=FALSE,tracer=quote(cat("."))))
-    suppressMessages(trace("def_AUGI0_ZX_sparsePrecision",print=FALSE,tracer=quote(cat("."))))
-    if (level>3L) {
+  ## trouble when called from another package while not attached (bboptim example)
+  # THe syntax spaMM::HLfit_body, where=spaMM::fitme does not stop() in that case, 
+  #     but HLfit_body is not effectively traced when using spaMM directly attached (standard library(spaMM))
+  # The syntax spaMM::HLfit_body without where=also does not trace when using spaMM directly attached
+  if ("package:spaMM" %in% search()) {
+    if (level) {
+      suppressMessages(trace(HLfit_body, print=FALSE, 
+                             tracer=quote(try({
+                               ranPars <- .canonizeRanPars(ranFix,corr_types=NULL,checkComplete = FALSE)
+                               ntC <- names(ranPars)
+                               for (lit in seq_along(ranPars)) {
+                                 urP <- unlist(ranPars[[lit]]) ## ranPars$corrPars can be list() in which case urP is NULL 
+                                 if (!is.null(urP)) cat(ntC[lit],"=",paste(signif(urP,6),collapse=" ")," ")
+                               }
+                             })),
+                             exit=quote({
+                               aphl <- unlist(res$APHLs[c("p_bv","p_v","logLapp")])[1L] ## unlist drops NULL values
+                               if (is.null(aphl)) {
+                                 print("(objective not found)",quote=FALSE)
+                               } else print(paste0(names(aphl),"= ",.prettify_num(aphl,nsmall=4)),quote=FALSE)
+                             }))) 
+      suppressMessages (trace(.solve_IRLS_as_ZX,print=FALSE,tracer=quote(cat(">"))))
+      suppressMessages (trace(.solve_IRLS_as_spprec,print=FALSE,tracer=quote(cat(">"))))
+      suppressMessages (trace(spaMM.getOption("matrix_method"),print=FALSE,tracer=quote(cat("."))))
+      suppressMessages(trace(spaMM.getOption("Matrix_method"),print=FALSE,tracer=quote(cat("."))))
+      suppressMessages(trace("def_AUGI0_ZX_sparsePrecision",print=FALSE,tracer=quote(cat("."))))
+      if (level>3L) {
+        fn <- paste("get_from_MME",strsplit(spaMM.getOption("matrix_method"),"def_")[[1L]][2],sep=".") ## get_from_MME.sXaug_EigenDense_QRP_Chol_scaled
+        suppressMessages(trace(fn,print=FALSE,tracer=quote(cat(which))))
+        fn <- paste("get_from_MME",strsplit(spaMM.getOption("Matrix_method"),"def_")[[1L]][2],sep=".") ## get_from_MME.sXaug_Matrix_QRP_CHM_scaled
+        suppressMessages(trace("fn",print=FALSE,tracer=quote(cat(which))))
+        suppressMessages(trace("get_from_MME.AUGI0_ZX_sparsePrecision",print=FALSE,tracer=quote(cat(which))))
+      }
+    } else {
+      suppressMessages(untrace(HLfit_body))      
+      suppressMessages(try(untrace(.solve_IRLS_as_ZX),silent=TRUE)) ## untracing untraced internal functions fails
+      suppressMessages(try(untrace(.solve_IRLS_as_spprec),silent=TRUE))
+      suppressMessages(untrace(spaMM.getOption("matrix_method")))
+      suppressMessages(untrace(spaMM.getOption("Matrix_method")))
+      suppressMessages(untrace("def_AUGI0_ZX_sparsePrecision"))
       fn <- paste("get_from_MME",strsplit(spaMM.getOption("matrix_method"),"def_")[[1L]][2],sep=".") ## get_from_MME.sXaug_EigenDense_QRP_Chol_scaled
-      suppressMessages(trace(fn,print=FALSE,tracer=quote(cat(which))))
+      suppressMessages(untrace(fn))
       fn <- paste("get_from_MME",strsplit(spaMM.getOption("Matrix_method"),"def_")[[1L]][2],sep=".") ## get_from_MME.sXaug_Matrix_QRP_CHM_scaled
-      suppressMessages(trace("fn",print=FALSE,tracer=quote(cat(which))))
-      suppressMessages(trace("get_from_MME.AUGI0_ZX_sparsePrecision",print=FALSE,tracer=quote(cat(which))))
-    }
-  } else {
-    suppressMessages(untrace(spaMM::HLfit_body))
-    suppressMessages(try(untrace(.solve_IRLS_as_ZX),silent=TRUE)) ## untracing untraced internal functions fails
-    suppressMessages(try(untrace(.solve_IRLS_as_spprec),silent=TRUE))
-    suppressMessages(untrace(spaMM.getOption("matrix_method")))
-    suppressMessages(untrace(spaMM.getOption("Matrix_method")))
-    suppressMessages(untrace("def_AUGI0_ZX_sparsePrecision"))
-    fn <- paste("get_from_MME",strsplit(spaMM.getOption("matrix_method"),"def_")[[1L]][2],sep=".") ## get_from_MME.sXaug_EigenDense_QRP_Chol_scaled
-    suppressMessages(untrace(fn))
-    fn <- paste("get_from_MME",strsplit(spaMM.getOption("Matrix_method"),"def_")[[1L]][2],sep=".") ## get_from_MME.sXaug_Matrix_QRP_CHM_scaled
-    suppressMessages(untrace(fn))
-    suppressMessages(untrace("get_from_MME.AUGI0_ZX_sparsePrecision"))
-  } 
+      suppressMessages(untrace(fn))
+      suppressMessages(untrace("get_from_MME.AUGI0_ZX_sparsePrecision"))
+    } 
+  } else if (level) {warning("The 'spaMM' package must be *attached* for verbose(TRACE=...) tracing to operate")}
 } 
 
 ## creates precisionFactorList if it doesn't exist, and partially fills it with Diagonal()'s
@@ -351,4 +360,165 @@
   envir$precisionFactorList <- precisionFactorList
   ## environment modified, no return value
 }
+
+.init_optim_phi <- function(phi.Fix, phimodel, processed, init.optim, nrand) {
+  if (is.null(phi.Fix)) {
+    if (phimodel == "phiScal") {
+      if (NROW(processed$y)>200L) { # FIXME: processed ? (more occurrences below)
+        ## default method is outer but can be reversed if init is NaN (and to test NaN we need to test NULL)
+        not_inner_phi <- is.null(init.optim$phi) || ! is.nan(init.optim$phi) ## outer if NULL, NA or numeric
+      } else {
+        ## default is inner but can be reversed if numeric or NA (hence neither NULL nor NaN)
+        not_inner_phi <- ! (is.null(init.optim$phi) || is.nan(init.optim$phi))
+      }
+    } else not_inner_phi <- FALSE
+    if (not_inner_phi) {
+      ## .get_init_phi takes more account of ranefs than .get_inits_by_glm(.)$phi_est, but it may return NULL.
+      #  It seems (?) marginally better hence we try it first and check the result.
+      if (is.null(init.optim$phi)) { 
+        # if (is.call(processed$prior.weights)) {
+        #   init.optim$phi <- .get_init_phi(processed,weights=NULL)
+        # } else 
+        init.optim$phi <- .get_init_phi(processed,weights=eval(processed$prior.weights)) ## _F I X M E_ test the eval()
+        ## (fixme): fitme may fail obscurely if .get_init_phi(processed) fails silently
+        if (is.null(init.optim$phi)) { ## .get_init_phi returned NULL if ./. 
+          # ./. no replicate obs is available, or
+          # ./. ULI too large ?? Grey area here (fixme)
+          if (TRUE) {
+            init.optim$phi <- .get_inits_by_glm(processed)$phi_est/(nrand+1L) ## at least one initial value should represent high guessed variance
+            # if it's too low (as in min(.,2)) then fitme(Reaction ~ Days + AR1(1|Days) + (Days|Subject), data = sleepstudy) is poor
+          } else {
+            #init.optim$phi <- 2*sqrt(1.00001+.get_inits_by_glm(processed)$phi_est/(nrand+1L))-1 ## less coherent with general logic 
+            init.optim$phi <- log(1.00001+.get_inits_by_glm(processed)$phi_est/(nrand+1L)) ## less coherent with general logic 
+          }
+        }  
+        # init.optim$phi <- max(1e-4,init.optim$phi) ## Controlled by .calc_inits_dispPars()...
+      }      
+    }
+  } else not_inner_phi <- TRUE ## not outer as well. Hence not_inner_phi != outer phi...
+  return(list(not_inner_phi=not_inner_phi, init.optim=init.optim))
+}
+
+.init_optim_lambda_ranCoefs <- function(proc1, not_inner_phi, init.optim, nrand, ranCoefs_blob, var_ranCoefs) {
+  lFix <- proc1$lambda.Fix ## only for 'simple" ranefs with Xi_cols=1
+  if (not_inner_phi) { ## Tests show it is very inefficient to use outer optim on lambda (at least) when phi must be inner optimized
+    optim_lambda_with_NAs <- .reformat_init_lambda_with_NAs(init.optim$lambda, nrand=nrand, default=NA)
+    ## handling fitme call for resid fit with meanfit-optimized parameters (if input is NULL, output is all NA):
+    optim_resid_lambda_with_NAs <- .reformat_init_lambda_with_NAs(proc1$envir$ranPars$lambda, nrand=nrand, default=NA)
+    which_NA_simplelambda <- which(is.na(lFix) & 
+                                     is.na(optim_resid_lambda_with_NAs) & 
+                                     (is.na(optim_lambda_with_NAs) & ! is.nan(optim_lambda_with_NAs)) & ## explicit NaN's will be inner-optimized
+                                     ! ranCoefs_blob$isRandomSlope) ## exclude random slope whether set or not
+    if (length(which_NA_simplelambda)) { ## but not NaN
+      init_lambda <- .eval_init_lambda_guess(proc1, stillNAs=which_NA_simplelambda, For="optim")
+      optim_lambda_with_NAs[which_NA_simplelambda] <- init_lambda[which_NA_simplelambda]
+      init.optim$lambda <- optim_lambda_with_NAs[ ! is.na(optim_lambda_with_NAs)] ## but NaN still there 
+    }
+  } ## else use inner optimization  for simple lambdas if inner_phi is necessary
+  init.optim$lambda <- init.optim$lambda[ ! is.nan(init.optim$lambda)] ## removes users's explicit NaN, which effect is documented in help(fitme)
+  #
+  if (any(var_ranCoefs)) {
+    # Not super clear why I considered nranterms (user level ??) instead of nrand. FIXME.
+    nranterms <- sum(var_ranCoefs | is.na(lFix)) ## var_ranCoefs has FALSE elements for non-ranCoefs (hence it is full-length)
+    guess_from_glm_lambda <- .get_inits_by_glm(proc1)$lambda * (3L*nranterms)/((nranterms+1L)) # +1 for residual
+    fam_corrected_guess <- .calc_fam_corrected_guess(guess=guess_from_glm_lambda, For="optim", processed=proc1) ## divides by nrand...
+    for (rt in which(var_ranCoefs)) {
+      char_rt <- as.character(rt)
+      if (is.null(init.optim$ranCoefs[[char_rt]])) {
+        Xi_cols <- attr(proc1$ZAlist,'Xi_cols')
+        Xi_ncol <- Xi_cols[rt]
+        rc <- rep(0,Xi_ncol*(Xi_ncol+1L)/2L)
+        rc[cumsum(seq(Xi_ncol))] <- fam_corrected_guess/(Xi_ncol)
+        init.optim$ranCoefs[[char_rt]] <- rc ## see help(ran)
+      }
+    }
+  }
+  return(init.optim)
+}
+
+
+.more_init_optim <- function(proc1, corr_types, init.optim) {
+  phimodel <- proc1$models[['phi']]
+  #if (phimodel=="phiGLM") {message("'fitme' not optimized for models with structured dispersion.")} ## FR->FR test this later"
+  ranCoefs_blob <- proc1$ranCoefs_blob
+  ## trying to guess all cases where optimization is useful. But FIXME: create all init and decide afterwardsS
+  if ( (is_MixedM <- ( ! is.null(ranCoefs_blob) )) && (
+    (var_ranCoefs <- (ranCoefs_blob$isRandomSlope & ! ranCoefs_blob$is_set)) ||
+    phimodel == "phiScal" || # lambda + phi
+    (phimodel == "phiHGLM" && identical(spaMM.getOption("outer_optim_resid"),TRUE)) || 
+    length(var_ranCoefs)>1L || # +s lambda
+    length(corr_types[ ! is.na(corr_types)]) # lambda + corr pars
+  )
+  ) { ## prefer outer optimization if var_ranCoefs or not resid.model
+    nrand <- length(proc1$ZAlist)
+    # (1) set (or not) outer optimization for phi: 
+    phi.Fix <- proc1$phi.Fix
+    ## All cases where phi is fixed, or can be outer optimized jointly with lambda:  
+    ## Then determine a single phi value
+    init_optim_phi_blob <- .init_optim_phi(phi.Fix, phimodel, proc1, init.optim, nrand)
+    not_inner_phi <- init_optim_phi_blob$not_inner_phi
+    init.optim <- init_optim_phi_blob$init.optim
+    # (2) set outer optimization for lambda and ranCoefs (handling incomplete ranFix$lambda vectors)
+    if (is_MixedM) {
+      init.optim <- .init_optim_lambda_ranCoefs(proc1, not_inner_phi, init.optim, nrand, ranCoefs_blob, var_ranCoefs)
+    }
+  }
+  return(init.optim)
+}
+
+.calc_optim_args <- function(proc1, processed, init, fixed, lower, upper, verbose, optim.scale, For) {
+  corr_info <- proc1$corr_info 
+  # modify HLCor.args and <>bounds;   ## distMatrix or uniqueGeo potentially added to HLCor.args:
+  corr_types <- corr_info$corr_types
+  fixed <- .post_process_fixed(fixed, corr_types=corr_types)
+  init.optim <- .post_process_parlist(init, corr_types=corr_types)
+  init.HLfit <- proc1$init_HLfit #to be modified below ## dhglm uses fitme_body not (fitme-> .preprocess) => dhglm code modifies processed$init_HLfit
+  init <- NaN ## make clear it's not to be used 
+  #
+  ##### init.optim$phi/lambda will affect calc_inits -> calc_inits_dispPars.
+  # outer estim seems useful when we can suppress all inner estim (thus the hatval calculations). 
+  # ./. Therefore, we need to identify all cases where phi is fixed, 
+  # ./. or can be outer optimized jointly with lambda:  
+  if (For=="fitme") init.optim <- .more_init_optim(proc1=proc1, corr_types=corr_types, init.optim=init.optim)
+  #
+  family <- proc1$family
+  if (family$family=="COMPoisson") {
+    checknu <- suppressWarnings(try(environment(family$aic)$nu,silent=TRUE))
+    if (inherits(checknu,"try-error") && is.null(init.optim$COMP_nu)) init.optim$COMP_nu <- 1 ## FR->FR FIXME what if not included in the range ?
+  } else if (family$family == "negbin") {
+    checktheta <- suppressWarnings(try(environment(family$aic)$shape,silent=TRUE))
+    if (inherits(checktheta,"try-error") && is.null(init.optim$NB_shape)) init.optim$NB_shape <- 1 ## FR->FR FIXME idem ...
+  }
+  user.lower <- .post_process_parlist(lower,corr_types)
+  user.upper <- .post_process_parlist(upper,corr_types) ## keep user input 
+  .check_conflict_init_fixed(fixed,init.optim, "given as element of both 'fixed' and 'init'. Check call.")
+  .check_conflict_init_fixed(init.HLfit,init.optim, "given as element of both 'init.HLfit' and 'init'. Check call.") ## has quite poor effect on fits
+  moreargs <- .calc_moreargs(processed=processed, # possibly a list of environments -> .calc_range_info -> scans then to compute a mean(nbUnique) 
+                             corr_types=corr_types, fixed=fixed, init.optim=init.optim, control_dist=proc1$control_dist, 
+                             init.HLfit=init.HLfit, corr_info=corr_info, verbose=verbose, lower=lower, upper=upper)
+  inits <- .calc_inits(init.optim=init.optim, init.HLfit=init.HLfit,
+                       ranFix=fixed, corr_types=corr_types,
+                       moreargs=moreargs,
+                       user.lower=user.lower, user.upper=user.upper,
+                       optim.scale=optim.scale, 
+                       For=For
+  )
+  if ("lambda" %in% c(names(user.lower),names(user.lower)) 
+      && is.null(inits$init$lambda)) {
+    stop("'lambda' in 'lower' or 'upper' has no effect if absent from 'init'.")
+  }
+  ################
+  LUarglist <- list(canon.init=inits$`init`, 
+                    init.optim=inits$init.optim,
+                    user.lower=user.lower,user.upper=user.upper,
+                    corr_types=corr_types,
+                    ranFix=fixed,
+                    optim.scale=optim.scale, 
+                    moreargs=moreargs) ## list needed as part of attr(,"optimInfo")
+  ################
+  LowUp <- do.call(".makeLowerUpper",LUarglist)
+  ## LowUp: a list with elements lower and upper that inherits names from init.optim, must be optim.scale as init.optim is by construction
+  return(list(inits=inits, moreargs=moreargs, 
+              fixed=fixed, corr_types=corr_types, LUarglist=LUarglist,LowUp=LowUp))
+} 
 

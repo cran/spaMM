@@ -1,14 +1,17 @@
-exportPattern("^[[:alpha:]]+")
+exportPattern("^[[:alpha:]]+") 
+# F I X M E (1) update spaMM (2) update dependent packages without importFrom(_body) and with required spaMM version 
+# (3) hide xxx_body... 
 export(".evalWrapper", ".Cholwrap", ".calc_CARdispGammaGLM", ".calc_dispGammaGLM", ".ZWZt",
        ".dispFn", ".dispInv", ".nuFn", ".nuInv", ".rhoFn", ".rhoInv", ".NB_shapeFn", ".NB_shapeInv", 
        ".crossprod", ".tcrossprod",  ".noOffset", ".nobarsMM", ".modify_list") ## probitgem
 importFrom("graphics", ".filled.contour", "Axis", "abline", "axis", "box", "hist", "layout", 
            "lcm", "lines", "par", "plot.new", "plot.window", "points", "polygon", "rect", "title")
 importFrom("graphics", "plot")
+importFrom("grDevices", "devAskNewPage")
 importFrom("methods", "as", "is", "cbind2", "rbind2", "new")
 importFrom("stats", "as.formula", "coefficients", "dgamma", "dnorm", "family", "formula", "getCall", 
            "glm", "lm", "make.link", "model.frame", "model.matrix", "model.offset", "model.response", 
-            "optim", "optimize", "pchisq", "pnorm", "qchisq", "qnorm", "qqline", "qqnorm", 
+           "optim", "optimize", "pchisq", "pnorm", "qchisq", "qnorm", "qqline", "qqnorm", 
            "rbeta", "rbinom", "rgamma", "rnorm", "rpois", "runif", "terms", 
            "update.formula", "var", "weights", "glm.fit",".lm.fit", "lm.wfit",
            "simulate", "anova", "confint", "fitted", "predict", "update", "logLik", "vcov", "coef",

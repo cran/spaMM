@@ -3,6 +3,25 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 2.4.34}{
+\subsection{NEW FEATURES}{
+\itemize{
+\item Stricter control of numerical accuracy of COMPoisson-family fits, which does not affect high-nu fits (which were already accurate), but which improve accuracy particularly around nu=1.
+\item Use of the 'lpSolveAPI' package is reintroduced to check (quasi-)separation.
+\item New extractor get_ranPars() (with limited functionality so far).
+\item Parallel computation of some bootstrap computations by foreach+doSNOW has been reinstated. 
+\item plot.HLfit has a new argument 'ask', and no longer has a side effect on subsequent plots. 
+}
+}
+\subsection{FIXED BUGS}{
+\itemize{
+\item Bug in COMPoisson-family fits, which impacted most clearly the results when some response values were zero.
+\item Crashing bug could occurs in zero-truncated models (for various cases of the Laplace approximation).
+\item Fixed some bootstrap code which could fail (because the original try() statement had disappeared through mis-editing :-( ).
+\item simulate(., type = "(ranef|response)") failed, or returned incorrectly formatted results.
+}
+}
+}
 \section{CHANGES UP TO VERSION 2.4.8}{
 \subsection{NEW FEATURES}{
 \itemize{
@@ -12,9 +31,10 @@
 }
 \subsection{FIXED BUGS}{
 \itemize{
-\item COMPoisson fits could crash in some cases (bug introduced in version 2.4.0 in code for initial values).
+\item COMPoisson-family fits could crash in some cases (bug introduced in version 2.4.0 in code for initial values).
 \item Calls not requesting any form of least-squares fit, such as fitme(y ~ 0, data = <.>), failed. 
 \item Prediction interval computation failed for zero-truncated distributions.
+\item Prediction variance computation could fail for large newdata ('slicing' algorithm).
 }
 }
 }

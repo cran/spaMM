@@ -70,7 +70,8 @@
     for (st in pnames) mc[st] <- NULL 
   }  
   
-  mc[[1L]] <- quote(spaMM::corrHLfit_body) 
+  mc[[1L]] <- get("corrHLfit_body", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
+  #mc[[1L]] <- quote(spaMM::corrHLfit_body) 
   return(mc)
 }
 
@@ -190,8 +191,8 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
                 "resid.model", "verbose","distMatrix","uniqueGeo","adjMatrix") 
     for (st in pnames) mc[st] <- NULL 
   }  
-  
-  mc[[1L]] <- quote(spaMM::corrHLfit_body) 
+  mc[[1L]] <- get("corrHLfit_body", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
+  #mc[[1L]] <- quote(spaMM::corrHLfit_body) 
   hlcor <- eval(mc,parent.frame()) 
   .check_conv_glm_reinit()
   attr(hlcor,"corrHLfitcall") <- oricall ## this says the hlcor was returned by corrHLfit

@@ -2,10 +2,10 @@ cat("\ntest spaMM::corMatern for lme():")
 
 data("blackcap")
 blackcapD <-cbind(blackcap,dummy=1) ## obscure, isn't it? 
-require(nlme)
+requireNamespace("nlme")
 ## With method= 'ML' in lme, The correlated random effect is described 
 ##  as a correlated residual error and no extra residual variance is fitted:
-bf <- lme(fixed = migStatus ~ means, data = blackcapD, random = ~ 1 | dummy, 
+bf <- nlme::lme(fixed = migStatus ~ means, data = blackcapD, random = ~ 1 | dummy, 
     correlation = corMatern(form = ~ longitude+latitude  | dummy), 
     method = "ML")
 
@@ -15,10 +15,11 @@ testthat::expect_equal(exp((bf$modelStruct$corStruct)[[2]]),0.62857441,tolerance
 # parametrisation was modified in bf$modelStruct$corStruct from log(range =1/rho) to log(rho) 
 
 if (FALSE) {
-  library(nlme)
+  requireNamespace("nlme")
+  data("Orthodont",package = "nlme")
   set.seed(1)
   d <- data.frame(x = rnorm(50), y = rnorm(50))
-  gls(distance ~ Sex, data=Orthodont, correlation = corExp(1,form = ~1 | Subject)) #This works
+  nlme::gls(distance ~ Sex, data=Orthodont, correlation = corExp(1,form = ~1 | Subject)) #This works
   
   # use corMatern(form = ~age | Subject) to have distances according to age ! 
   str(csage <- corMatern(form = ~age | Subject)) 
@@ -26,7 +27,7 @@ if (FALSE) {
   corFactor(csage)
   
   ## corExp
-  str(ce1 <- corExp(1,form = ~1 | Subject)) 
+  str(ce1 <- nlme::corExp(1,form = ~1 | Subject)) 
   locdata <- Orthodont[0+(1:8),]
   str(ce1o <- Initialize(ce1, data = locdata)) 
   corMatrix(ce1o)

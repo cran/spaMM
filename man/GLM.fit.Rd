@@ -122,7 +122,7 @@ y <- c(2420,708,39.6,16.7,46.7,10.8)
 \dontrun{ # fails (can't find starting value)
   glm(y~ x,data=data.frame(x,y),family=Gamma()) 
 }
-if (require("rcdd",quietly=TRUE)) {
+if (requireNamespace("rcdd",quietly=TRUE)) {
   spaMM_glm(y~ x,data=data.frame(x,y),family=Gamma())
 }
 }

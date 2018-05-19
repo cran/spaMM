@@ -25,7 +25,7 @@ A CAR random effect is specified as \code{adjacency(1|<grouping factor>)}. The c
 
 For \bold{AR1} models, and large data sest, the fitting functions by default select methods that exploits the sparsity of the precision matrix of the random effects. the dimension of the implied precision matrix is determined by the extreme values of grouping factor (typically interpreted as a time index), as all intermediate values must be considered. Thus, the precision matrix may be quite large even if few levels are represented in the data.   
 
-For \bold{CAR} models, different fitting strateges may be used:
+For \bold{CAR} models, different fitting strategies may be used:
 
 A call to \code{HLCor} uses the spectral decomposition of the adjacency matrix as further detailed below. This is fast for small datasets but fitme may be preferable otherwise.
 

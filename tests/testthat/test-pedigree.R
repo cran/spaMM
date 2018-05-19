@@ -1,6 +1,6 @@
 cat("\ntest pedigree:\n")
 
-if(require("pedigreemm", quietly=TRUE)) {
+if(requireNamespace("pedigreemm", quietly=TRUE)) {
   ## derived from help("pedigreemm")
   p1 <- new("pedigree",
             sire = as.integer(c(NA,NA,1, 1,4,5)),

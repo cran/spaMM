@@ -143,14 +143,14 @@ data("blackcap")
 bfit <- corrHLfit(migStatus ~ means+ Matern(1|longitude+latitude),data=blackcap,
                   HLmethod="ML",
                   ranFix=list(lambda=0.5537,phi=1.376e-05,rho=0.0544740,nu=0.6286311))
-if (require(maps)) { ## required for add.map=TRUE 
+if (requireNamespace("maps")) { ## required for add.map=TRUE 
   mapMM(bfit,color.palette = function(n){spaMM.colors(n,redshift=1/2)},add.map=TRUE)
 }
 
 if (spaMM.getOption("example_maxtime")>0.8) {
   ## filled.mapMM takes a bit longer
   # showing 'add.map', 'nlevels', and contour lines for 'variances'
-  if (require(maps)) { ## required for add.map=TRUE 
+  if (requireNamespace("maps")) { ## required for add.map=TRUE 
     filled.mapMM(bfit,nlevels=30,add.map=TRUE,plot.axes=quote({axis(1);axis(2)}),
              variance="respVar",
              plot.title=title(main="Inferred migration propensity of blackcaps",
@@ -165,7 +165,7 @@ if (spaMM.getOption("example_maxtime")>2.5) {
                   family=binomial(),ranFix=list(nu=0.5,rho=2.255197,lambda=1.075))   
 
  ## longer computation requiring interpolation of 197 points 
- if (require(maps)) { ## required for add.map=TRUE 
+ if (requireNamespace("maps")) { ## required for add.map=TRUE 
   filled.mapMM(lfit,add.map=TRUE,plot.axes=quote({axis(1);axis(2)}),
              decorations=quote(points(pred[,coordinates],pch=15,cex=0.3)),
              plot.title=title(main="Inferred prevalence, North Cameroon",

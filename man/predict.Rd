@@ -122,7 +122,8 @@ takes into account the joint uncertainty in estimation of \eqn{\beta} and predic
   
 For new levels of the random effects, \code{predVar} computation additionally takes into account uncertainty in prediction of \bold{v} for these new levels. For \bold{prediction covariance} with a new \bold{Z}_n, it matters whether a single or multiple new levels are used: see Examples.      
 
-If \code{variances$disp} is \code{TRUE}, prediction variance may also include a term accounting for uncertainty in \eqn{\phi} and \eqn{\lambda}, computed following Booth and Hobert (1998, eq. 19). This computation is currently implemented for models with a single random effect, and ignore uncertainties in spatial correlation parameters.
+If \code{variances$disp} is \code{TRUE}, prediction variance may also include a term accounting for uncertainty in \eqn{\phi} and \eqn{\lambda}, computed following Booth and Hobert (1998, eq. 19). This computation 
+ignores uncertainties in spatial correlation parameters.
 
 \code{respVar} is the sum of \code{predVar} (pre- and post-multiplied by \eqn{\partial\mu/\partial\eta}{d\mu/d\eta} for models with non-identity link) and of \code{residVar}. 
   
@@ -155,7 +156,7 @@ predict(fitobject,re.form= ~ 1 +  Matern(1|latitude+longitude))
 
 ## (3) comparison of covariance matrices for two types of new data
 moregroups <- grouped[1:5,]
-rownames(moregroups) <- paste("newloc",1:5,sep="")
+rownames(moregroups) <- paste0("newloc",1:5)
 moregroups$grp <- rep(3,5) ## all new data belong to an unobserved third group 
 cov1 <- get_predVar(fitobject,newdata=moregroups,
                      variances=list(linPred=TRUE,cov=TRUE))
@@ -186,7 +187,7 @@ fix_X_ZAC.object <- preprocess_fix_corr(fitobject,fixdata=blackcap)
 get_predCov_var_fix(fitobject,newdata=blackcap[14,],fix_X_ZAC.object=fix_X_ZAC.object)
 
 ## point predictions and variances with new X and Z
-if(require("rsae", quietly = TRUE)) {
+if(requireNamespace("rsae", quietly = TRUE)) {
   data("landsat")
   fitobject <- HLfit(HACorn ~ PixelsCorn + PixelsSoybeans + (1|CountyName),
                      data=landsat[-33,],HLmethod="ML")

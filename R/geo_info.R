@@ -74,7 +74,7 @@
         control_dist_rd <- control.dist[[char_rd]]
         txt <- paste(c(spatial_term[[2]][[3]])) ## the RHS of the ( . | . ) # c() to handle very long RHS
         if (length(grep("%in%",txt))) {
-          stop(paste("(!) ",corr_type,"( . | <coord> %in% <grp>) is not yet handled.",sep=""))
+          stop(paste0("(!) ",corr_type,"( . | <coord> %in% <grp>) is not yet handled."))
         } 
         msd.arglist <- list(rho = rho)
         msd.arglist$`dist.method` <- control_dist_rd$`dist.method` ## may be NULL

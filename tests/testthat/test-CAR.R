@@ -27,20 +27,6 @@ blob <- HLCor(cbind(npos,nneg)~1 +adjacency(1|gridcode),
           adjMatrix=Nmatrix,family=binomial(probit),data=donn,HLmethod="ML",control.HLfit = list(LevenbergM=FALSE)) ## 2 s.
 AIC(blob)
 
-
-
-if (require("probitgem",quietly=TRUE)) {
-  # CAR by SEMs +optimsmooth ... slow
-  if (spaMM.getOption("example_maxtime")>38) {
-    blob <- corrHLfit(cbind(npos,nneg)~1 +adjacency(1|gridcode),
-            adjMatrix=Nmatrix,family=binomial(probit),data=donn,HLmethod="SEM")
-  }
-  
-  # CAR by single SEM
-  blob <- HLCor(cbind(npos,nneg)~1 +adjacency(1|gridcode),
-                adjMatrix=Nmatrix,family=binomial(probit),data=donn,HLmethod="SEM") ## -1 s, with more variance of logLik
-  AIC(blob)
-} else {
-  cat( "package 'probitgem' not available, cannot run SEM test.\n" )
+if (file.exists((privtest <- "C:/home/francois/travail/stats/spaMMplus/spaMM/package/tests_other_pack/test-probitgem.R"))) {
+  source(privtest)
 }
-

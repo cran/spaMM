@@ -98,7 +98,8 @@ HLCor <- function(formula,
   pnames <- c("data","family","formula","prior.weights","HLmethod","rand.family","control.glm","resid.formula","REMLformula",
               "resid.model", "verbose","distMatrix","uniqueGeo","adjMatrix") ## try covStruct too...
   for (st in pnames) mc[st] <- NULL 
-  mc[[1L]] <- quote(spaMM::HLCor_body)
+  mc[[1L]] <- get("HLCor_body", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
+  #mc[[1L]] <- quote(spaMM::HLCor_body)
   hlcor <- eval(mc,parent.frame())
   .check_conv_glm_reinit()
   if ( ! is.null(processed$return_only)) {

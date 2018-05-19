@@ -72,7 +72,7 @@ Poisson <- function (link = "log", trunc=-1L) {
   initialize <- expression({
     if (environment(aic)$trunc==0L) {
       if (any(y < 1L)) stop("Values <1 are not allowed for the truncated poisson family")
-    } else if (any(y < 0)) stop("negative values not allowed for the 'Poisson' family")
+    } else if (any(y < 0L)) stop("negative values not allowed for the 'Poisson' family")
     n <- rep.int(1, nobs)
     mustart <- y + 0.1
   })

@@ -17,7 +17,8 @@
                       beta= "is 'logit'",
                       "inverse.gamma" = "are '-1/mu' and 'log'"
     )
-    mess <- paste("(!) rand.family/link combination not handled;\nallowed link(s) for rand.family '",rand.family$family,"' ",allowed,sep="")
+    mess <- paste0("(!) rand.family/link combination not handled;\nallowed link(s) for rand.family '",
+                   rand.family$family,"' ",allowed)
     stop(mess)
   }
   lcrandfamfam
@@ -167,11 +168,11 @@
 
 # .assignWrapper <- function(object,assignment) {
 #   if (  is.list(object)) {
-#     #    for (it in seq_len(length((object))) {eval(parse(text=paste("object[[",it,"]]$",element," <- ",value,sep="")))} 
+#     #    for (it in seq_len(length((object))) {eval(parse(text=paste0("object[[",it,"]]$",element," <- ",value)))} 
 #     ## fails bc nam loses its enclosing "s :
-#     #for (nam in names(object)) {eval(parse(text=paste("object[[",nam,"]]$",element," <- ",value,sep="")))} 
-#     for (nam in names(object)) {eval(parse(text=paste("object[[\"",nam,"\"]]$",assignment,sep="")))} 
-#   } else eval(parse(text=paste("object$",assignment,sep="")))
+#     #for (nam in names(object)) {eval(parse(text=paste0("object[[",nam,"]]$",element," <- ",value)))} 
+#     for (nam in names(object)) {eval(parse(text=paste0("object[[\"",nam,"\"]]$",assignment)))} 
+#   } else eval(parse(text=paste0("object$",assignment)))
 #   ## no need to return the modified environment
 # }
 .assignWrapper <- function(object,assignment) { ## not using assign(), to allow eg. verbose['warn'] <- ... instead of simple variable name    # older version ".setProcessed" (<2.2.119) did not use de envir argument; this was tricky
@@ -260,11 +261,19 @@
 }
 
 .eval_init_lambda_guess <- function(processed, stillNAs, ZAL=NULL, cum_n_u_h,For) {
-  inits_by_glm <- .get_inits_by_glm(processed) 
   nrand <-  length(processed$ZAlist)
-  if (For=="optim") { 
-    guess_from_glm_lambda <- inits_by_glm$lambda*(3L*nrand)/((nrand+1L)) # +1 for residual
-  } else guess_from_glm_lambda <- inits_by_glm$lambda*(3L*nrand+2L)/((nrand+1L)) # +1 for residual  ## old code was *5/(nr+1) ## f i x m e super ad hoc
+  if (is.null(processed$HLframes$Y)) { ## for resid model
+    if (For=="optim") { 
+      guess_from_glm_lambda <- 0.1 ## (FIXME ad hoc) Cannot let it NA as this will be ignored by further code, namely
+    #                               optim_lambda_with_NAs[which_NA_simplelambda] <- init_lambda[which_NA_simplelambda]
+    #                               init.optim$lambda <- optim_lambda_with_NAs[!is.na(optim_lambda_with_NAs)]
+    } else guess_from_glm_lambda <- NA
+  } else {
+    inits_by_glm <- .get_inits_by_glm(processed) 
+    if (For=="optim") { 
+      guess_from_glm_lambda <- inits_by_glm$lambda*(3L*nrand)/((nrand+1L)) # +1 for residual
+    } else guess_from_glm_lambda <- inits_by_glm$lambda*(3L*nrand+2L)/((nrand+1L)) # +1 for residual  ## old code was *5/(nr+1) ## f i x m e super ad hoc
+  }
   init_lambda <- rep(NA,nrand)
   rand.families <- processed$rand.families
   lcrandfamfam <- attr(rand.families,"lcrandfamfam")
@@ -546,7 +555,7 @@
       .rankinfo_usable <- (prod(dim(X.pv))<1e8)
       rankmethod <- c("qr",".rankinfo")[.rankinfo_usable+1L] 
     }
-    if (verbose)  print(paste(rankmethod,"(<matrix>)",sep=""))
+    if (verbose)  print(paste0(rankmethod,"(<matrix>)"))
     rankinfo <- do.call(rankmethod,list(x=X.pv,tol=tol))
   }
   if (inherits(rankinfo,"qr")) {
@@ -798,7 +807,7 @@
   .assign_canonLink_G_LMMbool(family, processed) ## assigns processed$canonicalLink, $LMMbool, $GLMMbool using $lcrandfamfam
   #
   HLmethod <- .preprocess_HLmethod(HLmethod, family, processed$lcrandfamfam) ## not a member of the return object
-  HL <- eval(parse(text=paste("c",substr(HLmethod,3,100),sep=""))) ## extracts the (...) part into a vector
+  HL <- eval(parse(text=paste0("c",substr(HLmethod,3,100)))) ## extracts the (...) part into a vector
   if (length(HL)==2) HL <- c(HL,1)
   processed$HL <- HL
   ####
@@ -915,15 +924,6 @@
                     "\n\tsome estimates of fixed-effect coefficients could be infinite,",
                     "\n\tcausing numerical issues in various functions."))
     }
-    # separation <- separator(X.pv, as.numeric(y), purpose = "test")$separation
-    # if(separation) {
-    #   message("Separation exists among the sample points.\n\tThis model cannot be fit by maximum likelihood.")
-    #   message("The following terms are causing separation among the sample points:")
-    #   separation <- separator(X.pv, as.numeric(y), purpose = "find")$beta
-    #   separating.terms <- dimnames(X.pv)[[2]][abs(separation) > 1e-09]
-    #   if(length(separating.terms)) message(paste(separating.terms, collapse = ", "))
-    #   stop()
-    # }
   }
   if (HL[1L]=="SEM") processed$SEMargs <- .preprocess_SEMargs(BinomialDen, nobs, control.HLfit, y)
   if (HL[1L]==0L) {processed$p_v_obj <-"hlik"} else processed$p_v_obj <-"p_v" ## objective for beta(_v) estim only: != outer obj 
@@ -1001,7 +1001,7 @@
                   # The above test implies "if not already ! sparse when ZAlist was first evaluated"
                   # Subsetting ZAlist drops useful attributes => "uniqueGeo" must be secured in a more consistent place
                   
-                  rownames(ugeo) <- apply(ugeo,1L,paste,sep="",collapse=":")
+                  rownames(ugeo) <- apply(ugeo,1L,paste0,collapse=":")
                   geo_info[[it]]$uniqueGeo <- ugeo[(dataordered_unique_levels),,drop=FALSE]
                   #
                   ZAlist[[it]] <- ZAlist[[it]][,(dataordered_unique_levels)]
@@ -1186,8 +1186,6 @@
     phi_ranefs <- .findbarsMM(resid.predictor)
     if ( ! is.null(phi_ranefs)) {
       if (is.null(resid.model$rand.family)) resid.model$rand.family <- gaussian() # avoids rand.families being NULL in call below.
-      #resid.predictor <- as.formula(paste(".phi",.DEPARSE(resid.predictor)))
-      #data$.phi <- seq(nobs) ##  I need a dummy variabel response else var(y)==0 test will catch it.
       preprocess_arglist <- list(control.HLfit=control.HLfit, ## constrained
                          ranFix=resid.model$fixed, ## not constrained, but should rather use 'resid.model$fixed' (but anyway preprocess checks only  phi and lambda)
                          HLmethod=HLmethod, ## constrained
@@ -1203,7 +1201,11 @@
                          prior.weights=NULL, ## currently defined  dynamically using lev_phi...
                          control.glm=control.glm, ## constrained
                          verbose=NULL,For="fitme" ## constrained: preprocess must allow spatial and non-spatial models
+                         #, init.HLfit=list(), ## not clear what to do F I X M E
       )
+      ## preprocess formal arguments that where ignored up to v.2.4.30 14/05/2018:
+      other_preprocess_args <- setdiff(names(formals(.preprocess)),names(preprocess_arglist))
+      preprocess_arglist[other_preprocess_args] <- resid.model[other_preprocess_args]
       residProcessed <- do.call(.preprocess,preprocess_arglist)
       # preprocess here plays the role of fitme as wrapper bringing the following info to fitme_body:
       fullform <-  .stripFormula(as.formula(paste(".phi",.DEPARSE(residProcessed$predictor))))
@@ -1249,7 +1251,7 @@
       stop("response variable should be integral values.")
     }
     if ( .DEPARSE(resid.predictor) != "~1") {
-      warning(paste("resid.model is ignored in ",family$family,"-response models",sep=""))
+      warning(paste0("resid.model is ignored in ",family$family,"-response models"))
     }
   }
   #
@@ -1259,9 +1261,9 @@
     if (any(vec_n_u_h<2L) && is.null(phi.Fix)) {
       problems <- which(vec_n_u_h<2L) 
       for (iMat in problems) {
-        mess <- paste("Only ",vec_n_u_h[iMat]," level for random effect ",
+        mess <- paste0("Only ",vec_n_u_h[iMat]," level for random effect ",
                       attr(ZAlist,"exp_ranef_strings")[iMat],
-                      ";\n   this model cannot be fitted unless phi is fixed.",sep="")
+                      ";\n   this model cannot be fitted unless phi is fixed.")
         warning(mess)
       }
     }
@@ -1276,10 +1278,10 @@
           if (# is.null(LMatrix) && ## does not seem useful
             substr(term_ranef, 1, 1)=="(" ## excludes spatial ranefs 
           ) {
-            mess <- paste("Number of levels = number of observations",
+            mess <- paste0("Number of levels = number of observations",
                           "\n   for random effect ", term_ranef,
                           ";\n   this model cannot be fitted unless phi is fixed",
-                          "\n   or a correlation matrix is given.",sep="")
+                          "\n   or a correlation matrix is given.")
             stop(mess)
           }          
         }

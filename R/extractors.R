@@ -147,7 +147,10 @@ ranef.HLfit <- function(object,type="correlated",...) {
   if (object$spaMM.version < "2.2.116") {
     ranefs <- attr(object$ZAlist,"ranefs") 
   } else ranefs <- attr(object$ZAlist,"exp_ranef_strings") 
-  colNames <- lapply(object$ZAlist,"colnames")   ## F I X M E lapply generally slow (not specif this one)  (but keep list names!)=> check where it can be replaced
+  #colNames <- lapply(object$ZAlist,"colnames") without a slow lapply():
+  colNames <- vector("list", length(object$ZAlist))
+  names(colNames) <- names(object$ZAlist)
+  for (it in seq_along(object$ZAlist)) colNames[[it]] <- colnames(object$ZAlist[[it]])
   # compute Lv from v:
   strucList <- object$strucList
   RESU <- vector("list", length(ranefs))
@@ -173,7 +176,7 @@ ranef.HLfit <- function(object,type="correlated",...) {
   }
   names(RESU) <- ranefs
   class(RESU) <- c("list","ranef")
-  RESU
+  RESU ## TODO: ~lme4:::ranef.merMod(mod, condVar = TRUE) & ajouter des arguments "variances" et "intervals" à ta fonction ranef() (Alex 7/5/2018)
 }
 
 print.ranef <- function(x, max.print=40L, ...) {
@@ -199,7 +202,7 @@ logLik.HLfit <- function(object, which=NULL, ...) {
                     "by Laplace REML approximation (p_bv)."= "p_bv",
                     "by REML."= "p_bv",
                     "by non-standard REML"= "p_bv",
-                    stop(paste("No default '",which,"' value for '",mess,"' estimation method.",sep=""))
+                    stop(paste0("No default '",which,"' value for '",mess,"' estimation method."))
                     ) 
   }
   resu  <- object$APHLs[[which]]
@@ -255,34 +258,39 @@ deviance.HLfit <- function(object,...) {
 get_fixefVar <- function(...) {
   mc <- match.call(expand.dots = TRUE)
   mc$variances$fixefVar <- TRUE
-  mc[[1L]] <- quote(spaMM::predict.HLfit)
+  mc[[1L]] <- get("predict.HLfit", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
+  #mc[[1L]] <- quote(spaMM::predict.HLfit)
   attr(eval(mc,parent.frame()),"fixefVar")
 }
 
 get_predVar <- function(...) {
   mc <- match.call(expand.dots = TRUE)
   mc$variances$predVar <- TRUE
-  mc[[1L]] <- quote(spaMM::predict.HLfit)
+  mc[[1L]] <- get("predict.HLfit", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
+  #mc[[1L]] <- quote(spaMM::predict.HLfit)
   attr(eval(mc,parent.frame()),"predVar")
 }
 
 get_residVar <- function(...) {
   mc <- match.call(expand.dots = TRUE)
   mc$variances$residVar <- TRUE
-  mc[[1L]] <- quote(spaMM::predict.HLfit)
+  mc[[1L]] <- get("predict.HLfit", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
+  #mc[[1L]] <- quote(spaMM::predict.HLfit)
   attr(eval(mc,parent.frame()),"residVar")
 }
 
 get_respVar <- function(...) {
   mc <- match.call(expand.dots = TRUE)
   mc$variances$respVar <- TRUE
-  mc[[1L]] <- quote(spaMM::predict.HLfit)
+  mc[[1L]] <- get("predict.HLfit", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
+  #mc[[1L]] <- quote(spaMM::predict.HLfit)
   attr(eval(mc,parent.frame()),"respVar")
 }
 
 get_intervals <- function(...) {
   mc <- match.call(expand.dots = TRUE)
-  mc[[1L]] <- quote(spaMM::predict.HLfit)
+  mc[[1L]] <- get("predict.HLfit", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
+  #mc[[1L]] <- quote(spaMM::predict.HLfit)
   if (is.null(mc$intervals)) mc$intervals <- "respVar"
   attr(eval(mc,parent.frame()),"intervals") ## intervals by gaussian approx (possibly student'), not LR 
 }
@@ -321,3 +329,14 @@ get_RLRTSim_args <- function(object,...) {
 # get_dispVar : dispVar in not a returned attribute
 
 get_rankinfo <- function(object) return(attr(object$X.pv,"rankinfo")) 
+
+get_ranPars <- function(object, which=NULL, ...) {
+  CorrEst_and_RanFix <- object$CorrEst_and_RanFix
+  if (is.null(which)) {
+    return(CorrEst_and_RanFix)
+  } else if (which=="corrPars") {
+    resu <- CorrEst_and_RanFix$corrPars
+    if ( ! is.null(resu)) resu <- structure(resu, type=attr(CorrEst_and_RanFix,"type")$corrPars)
+    return(resu)
+  } 
+}

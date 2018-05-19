@@ -7,7 +7,8 @@ if (FALSE) {  ## DOC:
   ## idiom for merging parameters
   varNames <- setdiff(names(init.HLfit),c("fixef","v_h")) ## maybe also corrPars ? empty list in init.HLfit...
   HLCor.args$ranPars <- structure(.modify_list(fixed,init.HLfit[varNames]),
-                                  type=.modify_list(attr(fixed,"type"),attr(init.HLfit,"type")[varNames]))  
+                                  type=.modify_list(relist(rep("fix",length(unlist(fixed))),fixed),
+                                                    attr(init.HLfit,"type")[varNames]))  
   
   ## idom for splitting parameters
   rPtype <- attr(ranPars,"type")
@@ -33,9 +34,9 @@ if (FALSE) {  ## DOC:
 }
 
 
-# getPar extract values from a list of lists, controlling that there is no redundancies between the lists => useful to merge lists 
+# getPar extract values from a list of lists, controlling that there is no redundancies between the lists => useful to *merge* lists 
 # but in fact I do not seem to use this facility. .getPar() is applied to 'ranFix' (once to 'fixed')
-# 'which' can be any way of indexing a list
+# Argument 'which' can be any way of indexing a list
 .getPar <- function(parlist,name,which=NULL, count=FALSE) { ## see .get_cP_stuff() to extract from first level or from an optional corrPars element !
   if ( ! is.null(which)) parlist <- parlist[[which]] 
   val <- parlist[[name]] 
@@ -51,7 +52,7 @@ if (FALSE) {  ## DOC:
     if (count) return(nmatch)
     ## ELSE
     if (nmatch>1L) {
-      stop(paste("Found several instances of element '",name,"' in nested list: use 'which' to resolve this.",sep=""))
+      stop(paste0("Found several instances of element '",name,"' in nested list: use 'which' to resolve this."))
     } 
     return(val)
   } else if (count) {return(1L)} else return(val) ## single first-level or [[which]] value
@@ -96,7 +97,11 @@ if (FALSE) {  ## DOC:
 
 
 .remove_from_cP <- function(parlist, u_list=unlist(parlist), u_names) {
-  u_list[u_names] <- rep(NaN,length(u_names))
-  u_list <- relist(u_list,parlist)
-  return(.rmNaN(u_list)) ## removes attributes
+  # if (is.null(parlist)) {
+  #   return(NULL) 
+  # } else {
+    u_list[u_names] <- rep(NaN,length(u_names))
+    u_list <- relist(u_list,parlist)
+    return(.rmNaN(u_list)) ## removes attributes
+  # }
 }

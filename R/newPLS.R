@@ -209,15 +209,16 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
       # vecdi2 <- as.vector( ((Pdiag$lev_phi * coef2) %*id% ZAL) %*% K2)
       coef2 <- coef12$dlW_deta # coef2 is the factor between P_jj and K1 in d2
       vecdi2 <- get_from_MME(sXaug,"solve_d2hdv2",B=as.vector((Pdiag$lev_phi * coef2) %*id% ZAL))
-      if ( ! is.null(WU_WT)) vecdi2 <- vecdi2/WU_WT # zero-truncated model
-      vecdi2 <- as.vector(ZAL %*% vecdi2)
+      vecdi2 <- as.vector(ZAL %*% vecdi2) ## equiv  post-multiplication by Z^T in the expression for D p.3307 bottom.
+      
+      if ( ! is.null(WU_WT)) vecdi2 <- vecdi2/WU_WT # zero-truncated model: final factor in A11 in B4
     }
     # coef3 =(1/Wran)(dWran/dv_h), the thing between P and K2 in the d3 coef. See LeeL12 appendix
     if (vecdisneeded[3L]) {  ## d3 reste nul pour gaussian ranef
       # vecdi3 <- as.vector( (Pdiag$lev_lambda * dlogWran_dv_h[seqn_u_h]) %*% K2)
        vecdi3 <- get_from_MME(sXaug,"solve_d2hdv2",B=as.vector(Pdiag$lev_lambda * dlogWran_dv_h[seqn_u_h]))
-       if ( ! is.null(WU_WT)) vecdi3 <- vecdi3/WU_WT # zero-truncated model
-       vecdi3 <- as.vector(ZAL %*% vecdi3)
+       vecdi3 <- as.vector(ZAL %*% vecdi3) ## equiv  post-multiplication by Z^T in the expression for D p.3307 bottom.
+       if ( ! is.null(WU_WT)) vecdi3 <- vecdi3/WU_WT # zero-truncated model: final factor in A22 in B4
     }
     vecdi <- vecdi1+vecdi2+vecdi3 ## k_i in MolasL; le d_i de LeeL app. p. 4
     sscaled <- vecdi /2  ## sscaled := detadmu s_i= detadmu d*dmudeta/2 =d/2 in LeeL12; or dz1 = detadmu (y*-y) = detadmu m_i=0.5 k_i dmudeta = 0.5 k_i in MolasL 

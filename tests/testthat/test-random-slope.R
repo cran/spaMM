@@ -1,5 +1,6 @@
 cat("\ntest of random-slope model:")
-if(require("lme4", quietly = TRUE)) {
+if(requireNamespace("lme4", quietly = TRUE)) {
+  data("sleepstudy",package = "lme4")
   res <- HLfit(Reaction ~ Days + (Days|Subject), data = sleepstudy)
   testthat::expect_equal(res$APHLs$p_bv,-871.8141,tolerance=2e-4)
   # next value depends on .calc_latentL() implementation

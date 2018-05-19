@@ -279,7 +279,7 @@
       if (length(allphis) == 0) {
         num <- 0
       } else num <- max(allphis)+1
-      validname <-paste ( respname , num , sep="") 
+      validname <-paste0( respname , num) 
     }
     data[validname] <- 1 ## adds a column $phi of 1 
     formula[[2]] <- as.name(validname) ## now the formula is standard

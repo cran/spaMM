@@ -37,7 +37,7 @@
     family <- .checkRespFam(family)
     FHF <- formals(HLfit) ## makes sure about default values 
     names_FHF <- names(FHF)
-    #if ( ! is.null(mc$resid.formula)) mc$resid.model <- mc$resid.formula
+    if ( ! is.null(mc$resid.formula)) stop("Use 'resid.model' instead of 'resid.formula'.")
     names_nondefault  <- intersect(names(mc),names_FHF) ## mc including dotlist
     FHF[names_nondefault] <- mc[names_nondefault] ##  full HLfit args
     preprocess.formal.args <- FHF[which(names_FHF %in% names(formals(.preprocess)))] 
@@ -73,7 +73,8 @@
     for (st in pnames) mc[st] <- NULL 
   }  
   
-  mc[[1L]] <- quote(spaMM::fitme_body) 
+  mc[[1L]] <- get("fitme_body", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
+  #mc[[1L]] <- quote(spaMM::fitme_body) 
   return(mc)
 }
 
@@ -155,7 +156,7 @@ fitme <- function(formula,data, ## matches minimal call of HLfit
     family <- .checkRespFam(family)
     FHF <- formals(HLfit) ## makes sure about default values 
     names_FHF <- names(FHF)
-    #if ( ! is.null(mc$resid.formula)) mc$resid.model <- mc$resid.formula
+    if ( ! is.null(mc$resid.formula)) stop("Use 'resid.model' instead of 'resid.formula'.")
     names_nondefault  <- intersect(names(mc),names_FHF) ## mc including dotlist
     FHF[names_nondefault] <- mc[names_nondefault] ##  full HLfit args
     preprocess.formal.args <- FHF[which(names_FHF %in% names(formals(.preprocess)))] 
@@ -196,7 +197,8 @@ fitme <- function(formula,data, ## matches minimal call of HLfit
     for (st in pnames) mc[st] <- NULL 
   }  
   
-  mc[[1L]] <- quote(spaMM::fitme_body) 
+  mc[[1L]] <- get("fitme_body", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
+  #mc[[1L]] <- quote(spaMM::fitme_body) 
   hlcor <- eval(mc,parent.frame()) 
   .check_conv_glm_reinit()
   attr(hlcor,"fitmecall") <- oricall ## this says the hlcor was returned by fitme

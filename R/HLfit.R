@@ -111,7 +111,8 @@ HLfit <- function(formula,
   pnames <- c("data","family","formula","prior.weights","HLmethod","rand.family","control.glm","resid.formula","REMLformula",
               "resid.model","verbose")
   for (st in pnames) mc[st] <- NULL ## info in processed
-  mc[[1L]] <- quote(spaMM::HLfit_body)
+  mc[[1L]] <- get("HLfit_body", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
+  #mc[[1L]] <- quote(spaMM::HLfit_body)
   hlfit <- eval(mc,parent.frame())
   .check_conv_glm_reinit()
   if ( ! is.null(processed$return_only)) {
@@ -131,7 +132,7 @@ HLfit <- function(formula,
     ## RUN THIS LOOP and return
     fitlist <- lapply(seq_len(length(processed)), function(it){
       locmc <- mc
-      locmc[[1L]] <- as.name("HLfit.obj") ## replaces "f" !
+      locmc[[1L]] <- get("HLfit.obj", asNamespace("spaMM")) # as.name("HLfit.obj") ## replaces "f" !
       locmc$ranefParsVec <- ranefParsVec ## replaces "arg" !
       locmc$processed <- processed[[it]] ## The data are in processed !
       eval(locmc)
@@ -144,9 +145,23 @@ HLfit <- function(formula,
   }
   HLnames <- names(formals(HLfit))
   HLfit.call <- mc[c(1,which(names(mc) %in% HLnames))] ## keep the call structure
-  HLfit.call[[1L]] <- quote(spaMM::HLfit)
-  HLfit.call$ranFix <- structure(.modify_list(HLfit.call$ranFix, relist(ranefParsVec,skeleton)), ## adds given values of the optimized variables 
-                                  type=.modify_list(attr(HLfit.call$ranFix,"type"),attr(skeleton,"type")) ) ## adds "fix"'s... somewhat confusing 
+  HLfit.call[[1L]] <- get("HLfit", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
+  ranFix <- .modify_list(HLfit.call$ranFix, relist(ranefParsVec,skeleton))
+  rpType <- .modify_list(attr(HLfit.call$ranFix,"type"),attr(skeleton,"type"))
+  moreargs <- attr(skeleton,"moreargs") 
+  if ( ! is.null(ranFix$resid) ) {
+    resid_ranPars <- structure(ranFix$resid, ## but not sure that the attributes are necessary...
+                               type=rpType$resid, 
+                               moreargs=moreargs$resid)
+    # canonize bc fitme_body(,fixed=.) does not handle transformed parameters
+    processed$residProcessed$envir$ranPars <- .canonizeRanPars(ranPars=resid_ranPars,
+                                                               corr_types=processed$residProcessed$corr_info$corr_types,
+                                                               checkComplete = FALSE) 
+    ranFix$resid <- NULL
+    rpType$resid <- NULL
+    #moreargs$resid <- NULL
+  }
+  HLfit.call$ranFix <- structure(ranFix, type=rpType) 
   hlfit <- eval(HLfit.call)
   aphls <- hlfit$APHLs
   resu <- aphls[[objective]]

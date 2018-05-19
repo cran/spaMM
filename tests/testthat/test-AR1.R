@@ -82,7 +82,8 @@ if (spaMM.getOption("example_maxtime")>13) {
 }
 
 if (spaMM.getOption("example_maxtime")>0.5) {
-  require("nlme")
+  requireNamespace("nlme")
+  data("Orthodont",package = "nlme")
   #checkinput <- fitme(distance ~ age + factor(Sex)+( 1 | Subject)+ AR1(1|age %in% Subject), fixed=list(phi=1e-6),
   #      data = Orthodont,verbose=c(TRACE=interactive()),method="REML")  ## 1.5s
   checkinput <- corrHLfit(distance ~ age + factor(Sex)+( 1 | Subject)+ AR1(1|age %in% Subject), ranFix=list(phi=1e-6),

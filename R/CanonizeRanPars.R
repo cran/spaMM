@@ -1,3 +1,5 @@
+## the "type" attribute is important, see comments explaining the computation of $CorrEst_and_RanFix
+## There is also an "init.HLfit" attribute which usage is explained below for $rho
 .canonizeRanPars <- function(ranPars, ## should have a RHOMAX attribute when trRho in input
                              corr_types,checkComplete=TRUE) {
   init.HLfit <- list() 
@@ -48,10 +50,7 @@
         rho <- corrPars_rd$rho
         if (is.null(rho)) {
           if(corr_type=="adjacency") { ## then provide initial rho to allow a direct call through HLCor 
-            #corrPars_rd$rho <- 0  
-            #cP_type_rd$rho <- "var"
             init.HLfit$corrPars[[char_rd]] <- list(rho=0)
-            #attr(init.HLfit,"type")$corrPars[[char_rd]] <- list(rho="var")
           } else if (checkComplete) {
             stop("rho missing from ranPars.")
           }
@@ -67,35 +66,21 @@
     attr(ranPars,"type")$phi <- attr(ranPars,"type")$trPhi
     attr(ranPars,"type")$trPhi <- NULL
   } # else ranPars$phi unchanged
-  # if (attr(ranPars,"type")$phi=="var") {
-  #   init.HLfit$phi <- ranPars$phi
-  #   ranPars$phi <- NULL
-  # }
   # ranPars may have trLambda and lambda (eg fitme(...lambda=c(<value>,NA)))  
   # It may have $trLambda (from notlambda) for what is optimized,
   #              and $lambda (from ranPars$lambda) for what was fixed in the whole outer fit, and also ini.value  
   if ( ! is.null(ranPars$trLambda)) {## 
     lambda <- ranPars$lambda
-    ## At this point Fix and init.HLfit are merged 
-    #  and the type info will be used by HLCor_body to separate what comes from ranPars ("fix") and what comes from init.HLfit ("var")
-    #  Currently e.g. lambda can be of only one type
     if (is.null(lambda)) { ## only trLambda, not lambda
       ranPars$lambda <- .dispInv(ranPars$trLambda)
       type <- attr(ranPars,"type")$trLambda 
     } else { ## merge lambda and trLambda
       len_lam <- seq(length(lambda))
-      type <- attr(ranPars,"type")$lambda # presumably "fix", or "var"<=> from init.HLfit, except that input ranPars should no longer mix them
-      ## => F I X M E try to remove attr(ranPars,"type")
+      type <- attr(ranPars,"type")$lambda
       if (is.null(names(lambda))) names(lambda) <- len_lam ## but do not try to assign a vector of names for a single 'type' value
       fromTr <- .dispInv(ranPars$trLambda)
       lambda[names(fromTr)] <- fromTr  
-      #type[names(fromTr)] <- attr(ranPars,"type")$trLambda ## presumably "fix" (for fully fix or outer estimated)
     }
-    # # extracts init.HLfit$lambda...
-    # init.HLfit$lambda <- ranPars$lambda
-    # init.HLfit$lambda[which(type !="var")] <- NA
-    # # finalize ranPars$lambda...
-    # ranPars$lambda[which(type=="var")]  <- NA
     attr(ranPars,"type")$lambda <- type
     ranPars$trLambda <- NULL
     attr(ranPars,"type")$trLambda <- NULL
@@ -108,6 +93,6 @@
     ranPars$NB_shape <- .NB_shapeInv(ranPars$trNB_shape)
     ranPars$trNB_shape <- NULL
   }
-  attr(ranPars,"init.HLfit") <- init.HLfit
+  attr(ranPars,"init.HLfit") <- init.HLfit  
   return(ranPars)
 }

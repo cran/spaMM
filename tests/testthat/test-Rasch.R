@@ -5,7 +5,7 @@ cat("Multilevel Rasch Model example by Doran et al. (2007):")
 ## 	Estimating the Multilevel Rasch Model: With the lme4 Package
 ## j stat software 2007 DOI:  	10.18637/jss.v020.i02
 
-if( require("multilevel", quietly = TRUE)) {
+if( requireNamespace("multilevel", quietly = TRUE)) {
   if (spaMM.getOption("example_maxtime")>12) {
     data("lq2002", package = "multilevel")
     wrk <- lq2002
@@ -26,17 +26,14 @@ if( require("multilevel", quietly = TRUE)) {
     lql$resp <- as.integer(lql$dichot)-1
     # 12s s WITHOUT LevenbergM NOR sparse_precision
     hl1 <- HLfit(cbind(resp,1-resp) ~ 0+itype+(1|subj)+(1|COMPID)+(1|item), 
-                 data=lql, binomial,HLmethod="ML",verbose=c(TRACE=interactive()),control.HLfit=list(LevenbergM=FALSE)) 
+                 data=lql, family=binomial() ,HLmethod="ML",verbose=c(TRACE=interactive()),control.HLfit=list(LevenbergM=FALSE)) 
     testthat::expect_equal(logLik(hl1),c(p_v=-20354.8828))
-    
-  } else cat(" requires example_maxtime>12")
-  
-  if (FALSE) { ## for manual comparisons
-    if( require("lme4", quietly = TRUE)) {
-      system.time(fm1 <- glmer(dichot ~ 0+itype+(1|subj)+(1|COMPID)+(1|item),
-                               lql, binomial)) ## 28.6s
+    if (FALSE) { ## not useful in routine tests
+      if (file.exists((privtest <- "C:/home/francois/travail/stats/spaMMplus/spaMM/package/tests_other_pack/test-Rasch-lme4.R"))) {
+        source(privtest)
+      }
     }
-  } 
+  } else cat(" requires example_maxtime>12")
 } else cat(" requires 'multilevel' package")
 cat("\n")
   

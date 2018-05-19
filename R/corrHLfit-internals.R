@@ -211,7 +211,7 @@ if (FALSE) {
 .calc_inits_dispPars <- function(init,init.optim,init.HLfit,ranFix,user.lower,user.upper) {
   ## does not modify init.HLfit, but keeps its original value. Also useful to keep ranFix for simple and safe coding
   init$lambda <- init.optim$lambda 
-  fixedlambda <- .getPar(ranFix,"lambda") ## FIXME getPar not useful ?
+  fixedlambda <- ranFix$lambda # .getPar(ranFix,"lambda") ## FIXME getPar not useful ?
   if (!is.null(fixedlambda)) {
     whichNA <- which(is.na(fixedlambda))
     if (length(init$lambda)==length(whichNA)) {

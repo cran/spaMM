@@ -108,12 +108,12 @@ summary.fixedLRT <- function(object,verbose=TRUE,...) {
   #     summary(object$nullfit,...) 
   #     cat(" ======== Likelihood ratio test: ========\n")    
   #   }
-  #   outst <- paste(" LR statistic (",object$df," df): ",signif(object$LRTori,3),sep="")    
+  #   outst <- paste0(" LR statistic (",object$df," df): ",signif(object$LRTori,3))    
   #   cat(outst)
   bootInfo <- object$bootInfo
   if (!is.null(bootInfo)) {
     cat(" ======== Bootstrap: ========\n")    
-    outst <- paste("Raw simulated p-value: ",signif(object$rawBootLRT$p_value,3),sep="")    
+    outst <- paste0("Raw simulated p-value: ",signif(object$rawBootLRT$p_value,3))    
     cat(outst)
     cat(paste("\nBartlett-corrected LR test:\n"))
     print(object$BartBootLRT) ## print data frame

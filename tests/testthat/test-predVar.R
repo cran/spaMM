@@ -15,8 +15,8 @@ res <- get_respVar(fitobject,variances=list(cov=TRUE))
 testthat::expect( !is.null(dim(res)),"is.null(dim(<get_respVar(fitobject,variances=list(cov=TRUE))>))") ## check that a matrix is returned
 testthat::expect_equal(res[6,6],0.1061096,tolerance=2e-4) ## check that dmudeta scaling is taken in account.
 
-if(require("rsae", quietly = TRUE)) {
-  data("landsat")
+if(requireNamespace("rsae", quietly = TRUE)) {
+  data("landsat", package = "rsae")
   fitobject <- HLfit(HACorn ~ PixelsCorn + PixelsSoybeans + (1|CountyName),data=landsat[-33,],HLmethod="ML")
   newXandZ <- unique(data.frame(PixelsCorn=landsat$MeanPixelsCorn,PixelsSoybeans=landsat$MeanPixelsSoybeans,CountyName=landsat$CountyName))
   res <- get_predVar(fitobject,newdata=newXandZ)

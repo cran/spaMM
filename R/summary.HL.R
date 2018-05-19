@@ -15,7 +15,8 @@
     # confint (fitme HLfitoide -> 3e cas)
   }
   optimNames <- names(attr(object,"optimInfo")$LUarglist$canon.init) ## will contain eg NB_shape
-  optimEsts <- c(optimEsts,intersect(optimNames,c(names(object$corrPars),"COMP_nu","NB_shape")))
+  corrPars <- get_ranPars(object,which="corrPars")
+  optimEsts <- c(optimEsts,intersect(optimNames,c(names(corrPars),"COMP_nu","NB_shape")))
   iterativeEsts <- c(iterativeEsts,setdiff(optimNames,optimEsts))
   return(list(iterativeEsts=iterativeEsts,optimEsts=optimEsts))
 }
@@ -63,7 +64,7 @@
     )
   } else {
     urfl <- unique(rfl[in_table])
-    cat(paste("             --- Coefficients for ",paste(urfl,collapse=" or "),":",sep=""))
+    cat(paste0("             --- Coefficients for ",paste(urfl,collapse=" or "),":"))
   }
   invisible(NULL)
 }
@@ -121,7 +122,7 @@ summary.HLfitlist <- function(object, ...) {
   sapply(object,summary.HLfit) ## because summary(list object) displays nothing (contrary to print(list.object)) => rather call summary(each HLfit object)
   cat(" ======== Global likelihood values  ========\n")    
   zut <- attr(object,"APHLs")
-  cat(paste(names(zut),": ",signif(unlist(zut),6), sep="",collapse="; "),"\n")
+  cat(paste0(names(zut),": ",signif(unlist(zut),6), collapse="; "),"\n")
   invisible(object)
 }
 
@@ -166,7 +167,7 @@ summary.HLfitlist <- function(object, ...) {
   } else print(form,showEnv=FALSE)
   #
   #  HLchar <- paste(as.character(object$HL),collapse="")
-  #  cat(paste("[code: ",HLchar,"]"," method: ",sep=""))
+  #  cat(paste0("[code: ",HLchar,"]"," method: "))
   messlist <- list()
   if (length(object$fixef)) messlist[["fixed"]] <- .MLmess(object)
   messlist[["ranef"]] <- .REMLmess(object)
@@ -225,7 +226,7 @@ summary.HLfitlist <- function(object, ...) {
                           cAIC= "'outer' minimization of cAIC",
                           paste("'outer' maximization of",objective)
       )
-      outst <- paste("Estimation of ",optimEsts," by ",objString,".\n",sep="")
+      outst <- paste0("Estimation of ",optimEsts," by ",objString,".\n")
       cat(outst) 
     }
   }
@@ -248,7 +249,7 @@ summary.HLfitlist <- function(object, ...) {
     } else {
       cat("Families(links):", paste(randfamfamlinks,collapse=", "), "\n")
     }
-    corrPars <- object$corrPars
+    corrPars <- get_ranPars(object,which="corrPars")
     cP <- unlist(corrPars)
     if ( ! is.null(cP) ) {
       moreargs <- attr(object,"optimInfo")$LUarglist$moreargs
@@ -263,8 +264,8 @@ summary.HLfitlist <- function(object, ...) {
       cat("                   --- Correlation parameters:")
       corrFixNames <- names(unlist(corrPars[which(attr(corrPars,"type")=="fix")]))
       if (length(corrFixNames)>1) {
-        cat(" [",paste(corrFixNames,collapse=",")," were fixed]",sep="")
-      } else if (length(corrFixNames)==1L) cat(" [",corrFixNames," was fixed]",sep="")
+        cat(" [",paste0(corrFixNames,collapse=",")," were fixed]")
+      } else if (length(corrFixNames)==1L) cat(" [",corrFixNames," was fixed]")
       cat("\n")
       print(cP)
     }
@@ -387,10 +388,9 @@ summary.HLfitlist <- function(object, ...) {
         }
       }
     } 
-    cat(paste("# of obs: ",nrow(object$data),"; # of groups: ",
-              paste(names(namesTerms),", ",unlist(lapply(object$ZAlist,ncol)),
-                    collapse="; ",sep=""),
-              sep=""),"\n")
+    cat(paste0("# of obs: ",nrow(object$data),"; # of groups: ",
+              paste0(names(namesTerms),", ",unlist(lapply(object$ZAlist,ncol)), collapse="; ")
+              ), "\n")
   }
   ##
   if (object$family$family %in% c("gaussian","Gamma")) {
@@ -414,7 +414,7 @@ summary.HLfitlist <- function(object, ...) {
       summ$phi_outer <- phi_outer
     } else {
       if (models[["phi"]]=="phiHGLM") {
-        cat("Random effects in residual dispersion model:\n  use summary(<fit object>$resid_fit) to display results.\n")       
+        cat("Residual dispersion model includes random effects:\n  use summary(<fit object>$resid_fit) to display results.\n")       
       } else if ((loc_p_phi <- length(phi.object$fixef))) {
         glm_phi <- phi.object[["glm_phi"]]
         if (is.null(glm_phi)) glm_phi <- .get_glm_phi(object)
@@ -432,8 +432,8 @@ summary.HLfitlist <- function(object, ...) {
         phiform <- attr(object$resid.predictor,"oriFormula")
         resid.family <- eval(object$resid.family)
         phiinfo <- resid.family$link 
-        if (phiinfo=="identity") {phiinfo="phi "} else {phiinfo <- paste(phiinfo,"(phi) ",sep="")}
-        phiinfo <- paste("Coefficients for ",phiinfo,paste(phiform,collapse=" ")," :\n",sep="")
+        if (phiinfo=="identity") {phiinfo="phi "} else {phiinfo <- paste0(phiinfo,"(phi) ")}
+        phiinfo <- paste("Coefficients for ",phiinfo,paste0(phiform,collapse=" ")," :\n")
         cat(phiinfo)
         print(phi_table,4)
         dispOffset <- attr(object$resid.predictor,"offsetObj")$total

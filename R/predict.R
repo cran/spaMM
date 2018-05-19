@@ -157,24 +157,24 @@
   }
   ############################################################
   newZACvar <- .calc_newZACvar(newZAlist,cov_newLv_oldv_list)
-  newAugX <- cbind2(X.pv,newZACvar) ## mais en fait pas un AugX since it uses C (in C.w) rather than L (in L.v)
+  XZAC <- cbind2(X.pv,newZACvar) ## uses C (in C.w) rather than L (in L.v)
   ## First component of predVar
-  # variance of expectation of Xbeta+Zb due to var of (hat(beta),hat(v)) using E[b] as function of hat(v)
-  predVar <- .calcZWZt_mat_or_diag(newAugX,beta_w_cov,covMatrix) ## component for linPred=TRUE,disp=FALSE when newdata=ori data
+  # variance of expectation of Xbeta+Zb due to var of (hat(beta),old hat(v)) using E[b] as function of old hat(v)
+  predVar <- .calcZWZt_mat_or_diag(XZAC,beta_w_cov,covMatrix) ## component for linPred=TRUE,disp=FALSE when newdata=ori data
   #### next line of code is an imperfect but useful patch
   # possible problems:
   # * (unhandled) Evar can also be (numerically) negative
   # * (quick-patched) same for min_eigen 
   if ( is.null(dim(predVar))) {
-    predVar <- pmax(apply(newAugX^2,1L,sum)*max(0,attr(beta_w_cov,"min_eigen")), predVar)
-  } else predVar <- pmax(.tcrossprod(newAugX)*max(0,attr(beta_w_cov,"min_eigen")), predVar)
-  ## Second component of predVar:
-  # Evar: expect over distrib of (hat(beta),hat(v)) of [variance of Xbeta+Zb given (hat(beta),hat(v))]
+    predVar <- pmax(apply(XZAC^2,1L,sum)*max(0,attr(beta_w_cov,"min_eigen")), predVar)
+  } else predVar <- pmax(.tcrossprod(XZAC)*max(0,attr(beta_w_cov,"min_eigen")), predVar)
+  ## Second component of predVar: 
+  # Evar: expect over distrib of (hat(beta),new hat(v)) of [variance of Xbeta+Zb given (hat(beta),old hat(v))]
+  # Evar must be 0 when newdata=ori data
   if ( ! is.null(invCov_oldLv_oldLv_list)) { ## must be equivalent to the presence of newdata
     Evar <- .calc_Evar(newZAlist=newZAlist,newinold=newinold, cov_newLv_oldv_list=cov_newLv_oldv_list, 
                lambda=lambda, invCov_oldLv_oldLv_list=invCov_oldLv_oldLv_list, 
                cov_newLv_newLv_list=cov_newLv_newLv_list, covMatrix=covMatrix)
-    # Evar must be 0 when newdata=ori data
     predVar <- predVar + Evar ## component for linPred=TRUE,disp=FALSE whether newdata=ori data or not
   }
   # If components for uncertainty in dispersion params were requested,
@@ -586,7 +586,8 @@
       varcomp <- attr(resu,st)
       if (is.null(varcomp)) warning(paste("Prediction variance component",st,"requested but not available: check input."))
       if (is.matrix(varcomp)) varcomp <- diag(varcomp)
-      eta <- object$family$linkfun(resu[,1L])
+      ## [] with explicit indices, to drop mu attribute otherwise linkinv(eta+/-sd) uses it! 
+      eta <- object$family$linkfun(resu[,1L])[seq(nrow(resu))] 
       pv <- 1-(1-level)/2
       ## special case for simple LM
       if (length(object$rand.families)==0L && # not mixed
@@ -765,7 +766,7 @@ print.predictions <- function (x, expanded=FALSE, ...) {
   asvec <- as.vector(x) ## important to remove names and keep them separately
   rnames <- rownames(x)
   toolong <- nchar(rnames)>9
-  rnames[toolong] <- paste(substr(rnames[toolong],0,8),".",sep="")
+  rnames[toolong] <- paste0(substr(rnames[toolong],0,8),".")
   names(asvec) <- rnames
   cat("Point predictions:\n")
   print(asvec)

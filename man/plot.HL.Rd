@@ -20,7 +20,7 @@ each random deviate divided by \eqn{\sqrt(1-q)} where \eqn{q} is the correspondi
                      levphi=expression(paste("Leverages for ",phi)), 
           levlambda=expression(paste("Leverages for ",lambda))) 
         ), 
-      control= list(), ...)
+      control= list(), ask=TRUE, ...)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -36,6 +36,9 @@ each random deviate divided by \eqn{\sqrt(1-q)} where \eqn{q} is the correspondi
   }
   \item{control}{
     A list of default options for the plots. Defaults are \code{pch="+"} and \code{pcol="blue"} for points, and \code{lcol="red"} for curves.
+  }
+  \item{ask}{
+    Logical; passed to \code{devAskNewPage} which is run when a new device is opened by \code{code.HLfit}. 
   }
   \item{\dots}{
     Options passed from \code{plot.HLfit} to \code{par}.  

@@ -16,7 +16,7 @@ Matern correlation function and Matern formula term.
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
-  \item{d}{A distance, typically an Euclidean distance}
+  \item{d}{A distance or a distance matrix.}
   \item{rho}{A scaling factor for distance. The 'range' considered in some 
             formulations is the reciprocal of this scaling factor}
   \item{smoothness}{The smoothness parameter, >0. \eqn{\nu=0.5} corresponds to the exponential correlation function, 

@@ -30,7 +30,7 @@
     res$nposname <- nposname <- .makenewname("npos",names(data))
     res$nnegname <- nnegname <- .makenewname("nneg",names(data))
     nform <- paste(nform)
-    nform[2L] <- paste("cbind(",nposname,",",nnegname,")",sep="")
+    nform[2L] <- paste0("cbind(",nposname,",",nnegname,")")
     res$null_formula <- as.formula(paste(nform[c(2,1,3)],collapse=""))
     fform <- paste(attr(fullfit$predictor,"oriFormula"))
     fform[2L] <- nform[2L]
@@ -40,56 +40,92 @@
   return(res)
 }
 
-.eval_boot_replicates <- function(eval_replicate, ## function to run on each replicate
-                                  boot.repl, ## number of bootstrap replicates
-                                  nullfit, ## the fitted model object for which bootstrap replicates are drawn 
-                                  nb_cores, ## passing explicit value from user
-                                  ...) { ## ... are arguments used by functions called by the eval_replicate function
-  #
-  msg <- "Bootstrap replicates:"
-  msglength <- nchar(msg) ## not used in the parallel case
-  cat(msg)
-  time1 <- Sys.time() 
-  bootreps <- matrix(nrow=0,ncol=2)
-  cumul_nsim <- 0L
-  RNGstateList <- vector("list")
-  boot.repl <- as.integer(boot.repl) ## impacts type of RNGstates...
-  ii <- 0 ## 'global definition' (!)
-  #nb_cores <- .check_nb_cores(nb_cores=nb_cores) # checked by calling fn
-  if (nb_cores > 1L) {
-    #cl <- parallel::makeCluster(nb_cores,outfile="essai.txt") 
-    cl <- parallel::makeCluster(nb_cores) 
-    parallel::clusterEvalQ(cl, library("spaMM"))
-    dotenv <- list2env(list(...))
-    parallel::clusterExport(cl=cl, as.list(ls(dotenv)),envir=dotenv) ## much faster...
-  } else cl <- NULL
-  repeat { 
-    block_nsim <- boot.repl-nrow(bootreps)
-    cumul_nsim <- cumul_nsim+block_nsim
-    RNGstate <- get(".Random.seed", envir = .GlobalEnv)
-    newy_s <- simulate(nullfit,nsim = block_nsim,verbose=FALSE) ## some replicates may not be analyzable  !
-    if (block_nsim==1L) dim(newy_s) <- c(length(newy_s),1)
-    bootblock <- pbapply(X=newy_s,MARGIN = 2L,FUN = eval_replicate, cl=cl)
-    bootblock <- t(bootblock)
-    bootblock <- stats::na.omit(bootblock)
-    if (is.null(bootblock)) {
-      stop("All bootstrap replicates failed. Maybe a programming issue in parallel computation?")
-    }
-    if (nrow(bootblock)<block_nsim ) { ## eg separation in binomial models... 
-      warning(paste("Analysis of",block_nsim-nrow(bootblock),"bootstrap samples out of",block_nsim," failed. 
-                          Maybe no statistical information in them ?"))
-      if (cumul_nsim>10*boot.repl) { ## to avoid an infinite loop
-        stop("Analysis of bootstrap samples fails repeatedly. Maybe no statistical information in them ?")
-      } ## otherwise repeat!
-    }
-    RNGstateList[[length(RNGstateList)+1L]] <- c(block_nsim=block_nsim, RNGstate)
-    bootreps <- rbind(bootreps,bootblock)
-    if (nrow(bootreps)>=boot.repl) break
+.eval_boot_replicates <- local({
+  doSNOW_warned <- FALSE
+  function(eval_replicate, ## function to run on each replicate
+                                    boot.repl, ## number of bootstrap replicates
+                                    nullfit, ## the fitted model object for which bootstrap replicates are drawn 
+                                    nb_cores, ## passing explicit value from user
+                                    ...) { ## ... are arguments used by functions called by the eval_replicate function
+    #
+    msg <- "Bootstrap replicates:"
+    msglength <- nchar(msg) ## not used in the parallel case
+    cat(msg)
+    time1 <- Sys.time() 
+    bootreps <- matrix(nrow=0,ncol=2)
+    cumul_nsim <- 0L
+    RNGstateList <- vector("list")
+    boot.repl <- as.integer(boot.repl) ## impacts type of RNGstates...
+    ii <- 0 ## 'global definition' (!)
+    #nb_cores <- .check_nb_cores(nb_cores=nb_cores) # checked by calling fn
+    if (nb_cores > 1L) {
+      #cl <- parallel::makeCluster(nb_cores,outfile="essai.txt") 
+      cl <- parallel::makeCluster(nb_cores) 
+      R.seed <- get(".Random.seed", envir = .GlobalEnv)
+      if (has_doSNOW <- ("package:doSNOW" %in% search())) { ## allows progressbar but then requires foreach
+        # loading (?) the namespace of 'snow' changes the global RNG state!
+        assign(".Random.seed", R.seed, envir = .GlobalEnv)
+        fn <- get("registerDoSNOW", asNamespace("doSNOW"))
+        do.call(fn,list(cl=cl)) 
+        `%foreachdopar%` <- foreach::`%dopar%`
+        pb <- txtProgressBar(max = boot.repl, style = 3)
+        progress <- function(n) setTxtProgressBar(pb, n)
+        opts <- list(progress = progress)
+        parallel::clusterExport(cl=cl, list("progress"),envir=environment()) ## slow! why?
+      } else {
+        if ( ! doSNOW_warned) {
+          message("If the 'doSNOW' package were attached, the progress of the bootstrap computation could be reported.")
+          doSNOW_warned <<- TRUE
+        } 
+        parallel::clusterEvalQ(cl, library("spaMM"))
+      }
+      dotenv <- list2env(list(...))
+      parallel::clusterExport(cl=cl, as.list(ls(dotenv)),envir=dotenv) ## much faster...
+    } else cl <- NULL
+    repeat { 
+      block_nsim <- boot.repl-nrow(bootreps)
+      cumul_nsim <- cumul_nsim+block_nsim
+      RNGstate <- get(".Random.seed", envir = .GlobalEnv)
+      newy_s <- simulate(nullfit,nsim = block_nsim,verbose=FALSE) ## some replicates may not be analyzable  !
+      if (block_nsim==1L) dim(newy_s) <- c(length(newy_s),1)
+      if (nb_cores > 1L && has_doSNOW) {
+        bootblock <- foreach::foreach(
+          ii = 1:boot.repl,
+          .combine = "rbind",
+          .inorder = TRUE,
+          .packages = "spaMM",
+          #.export = c("progress","simbData","bootlist"),
+          .errorhandling = "remove",
+          .options.snow = opts
+        ) %foreachdopar% {
+          eval_replicate(newy_s[,ii])
+        }
+        close(pb)
+      } else {
+        bootblock <- pbapply(X=newy_s,MARGIN = 2L,FUN = eval_replicate, cl=cl)
+        bootblock <- t(bootblock)
+        bootblock <- stats::na.omit(bootblock)
+      }
+      if (is.null(bootblock)) {
+        stop("All bootstrap replicates failed. Maybe a programming issue in parallel computation?")
+      }
+      if (nrow(bootblock)<block_nsim ) { ## eg separation in binomial models... 
+        warning(paste("Analysis of",block_nsim-nrow(bootblock),"bootstrap samples out of",block_nsim," failed. 
+                      Maybe no statistical information in them ?"))
+        if (cumul_nsim>10*boot.repl) { ## to avoid an infinite loop
+          stop("Analysis of bootstrap samples fails repeatedly. Maybe no statistical information in them ?")
+        } ## otherwise repeat!
+      }
+      RNGstateList[[length(RNGstateList)+1L]] <- c(block_nsim=block_nsim, RNGstate)
+      bootreps <- rbind(bootreps,bootblock)
+      if (nrow(bootreps)>=boot.repl) break
   }
-  if (nb_cores > 1L) { parallel::stopCluster(cl) } 
-  cat(paste(" bootstrap took",.timerraw(time1),"s.\n")) 
-  return(list(bootreps=bootreps,RNGstates=unlist(RNGstateList)))
-} ## end bootstrap
+    if (nb_cores > 1L) { parallel::stopCluster(cl) } 
+    cat(paste(" bootstrap took",.timerraw(time1),"s.\n")) 
+    return(list(bootreps=bootreps,RNGstates=unlist(RNGstateList)))
+  } ## end bootstrap
+  })
+
 
 
 
@@ -196,7 +232,7 @@
       if ( len) {
         if (len > 1L) namesinit <- paste(c(paste(namesinit[-len],collapse=", "),namesinit[len]),collapse=" and ")
         message("Argument 'init.corrHLfit' is used in such a way that")
-        message(paste("  ",namesinit," will be estimated by maximization of p_v.",sep=""))
+        message(paste0("  ",namesinit," will be estimated by maximization of p_v."))
         message("  'REMLformula' will be inoperative if all dispersion")
         message("  and correlation parameters are estimated in this way.")
       }
@@ -223,7 +259,7 @@
   names_u_u_inits <- names(unlist(user_inits))
   names_u_c_inits <- names(unlist(canon.init))
   not_user_inits_names <- setdiff(names_u_c_inits, names_u_u_inits) 
-  nullranPars <- nullfit$CorrEst_and_RanFix
+  nullranPars <- get_ranPars(nullfit)
   names_u_nullranPars <- names(unlist(nullranPars))
   if (fittingFunction=="fitme") {
     # at this point we have names of parameters that were outer optimized without an explicit user init
@@ -254,7 +290,7 @@
       } ## else it's not clear what to do here since we preemptively set the initial values of the full fit to the null fit values.
     }
     # # No comparable evidence that nullfit is trapped in a local maximum: check with fullfit ranPars
-    fullranPars <- fullfit$CorrEst_and_RanFix ## latest fulfit...
+    fullranPars <- get_ranPars(fullfit) ## latest fulfit...
     if ( is.null(removand)) { ## ...and latest removand
       nullm.list$init <- .modify_list(canon.init,fullranPars)
     } else { ## leaves user_inits as there are in LUarglist$canon.init, and do not add any fixed or inner-optimized par

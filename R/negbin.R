@@ -74,7 +74,7 @@ negbin <- function (shape = stop("negbin's 'shape' must be specified"), link = "
   initialize <- expression({
     if (environment(aic)$trunc==0L) {
       if (any(y < 1L)) stop("Values <1 are not allowed for the truncated negative binomial family")
-    } else if (any(y < 0)) stop("negative values not allowed for the negative binomial family")
+    } else if (any(y < 0L)) stop("negative values not allowed for the negative binomial family")
     n <- rep(1, nobs)
     mustart <- y + (y == 0)/6
   })
@@ -89,7 +89,7 @@ negbin <- function (shape = stop("negbin's 'shape' must be specified"), link = "
   ## changes the parent.env of all these functions (aic, dev.resids, simfun, validmu, variance): 
   parent.env(environment(aic)) <- environment(stats::binomial) ## parent = <environment: namespace:stats>
   structure(list(family = structure("negbin",
-                                    withArgs=quote(paste("Neg.binomial(shape=",signif(shape,4),")",sep=""))), 
+                                    withArgs=quote(paste0("Neg.binomial(shape=",signif(shape,4),")"))), 
                  link = linktemp, linkfun = linkfun, 
                  linkinv = linkinv, variance = variance, dev.resids = dev.resids, 
                  aic = aic, mu.eta = stats$mu.eta, initialize = initialize, 
@@ -100,7 +100,8 @@ negbin <- function (shape = stop("negbin's 'shape' must be specified"), link = "
 
 Tnegbin <- function(shape = stop("negbin's 'shape' must be specified"), link = "log") {
   mc <- match.call()   # avoid evaluation of promise...
-  mc[[1L]] <- quote(spaMM::negbin)
+  mc[[1L]] <- get("negbin", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
+  #mc[[1L]] <- quote(spaMM::negbin)
   mc[["trunc"]] <- 0L
   eval(mc, parent.frame())
 }

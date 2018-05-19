@@ -330,7 +330,7 @@ mapMM <- function (fitobject,Ztransf=NULL,coordinates,
     coordinates <- colnames(olduniqueGeo)
   }
   if (length(coordinates)!=2L) {
-    stop(paste("'mapMM' plots only 2D maps, while coordinates are of length ",length(coordinates),sep=""))
+    stop(paste0("'mapMM' plots only 2D maps, while coordinates are of length ",length(coordinates)))
   }
   pred <- predict(fitobject,binding="fitted")
   x <- pred[,coordinates[1]]

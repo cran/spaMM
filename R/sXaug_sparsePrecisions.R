@@ -104,6 +104,50 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
   return(cross_r22) # dgeMatrix
 }
 
+.calc_r22 <- function(X.pv, w.resid, r12, sXaug) {
+  ## i's vain to try to regularize crossr22 by manipulating diagonal or eigenvalues. 
+  #  One must rather control the accuracy of the computation of crossr22 as a difference.
+  crossr22 <- .ZtWZwrapper(X.pv,w.resid)-crossprod(r12)
+  return(chol(crossr22))
+  
+  
+  
+  
+  if (FALSE) {
+    scaling <- 1/sqrt(colSums(r12^2)) ## i.e. control diag(crossprod(r12))
+    locX <- .m_Matrix_times_Dvec(X.pv, scaling)
+    locr12 <- .m_Matrix_times_Dvec(r12, scaling)
+    crossscaledr22 <- .ZtWZwrapper(locX,w.resid)-crossprod(locr12)
+    cholscaled <- chol(crossscaledr22)
+    return(.m_Matrix_times_Dvec(cholscaled, 1/scaling))
+  } else if (TRUE) {
+    crossr22 <- .ZtWZwrapper(X.pv,w.resid)-crossprod(r12)
+    resu <- try(chol(crossr22),silent=TRUE)
+    if (inherits(resu,"try-error")) {
+      BLOB <- sXaug$BLOB
+      # AUGI0_ZX <- sXaug$AUGI0_ZX
+      scaling <- 1/sqrt(colSums(r12^2)) ## i.e. control diag(crossprod(r12))
+      locX <- .m_Matrix_times_Dvec(X.pv, scaling)
+      # locZtWX <-  .Dvec_times_m_Matrix(attr(sXaug,"w.resid"),locX)
+      # locZtWX <- as.matrix(crossprod(AUGI0_ZX$ZAfix, locZtWX)) 
+      # cross_r22 <- solve(BLOB$G_CHMfactor, locZtWX) ## dgeMatrix <- *m*atrix
+      # cross_r22 <- locX - AUGI0_ZX$ZAfix %*% cross_r22 ## still dgeMatrix
+      # cross_r22 <- .Dvec_times_Matrix( attr(sXaug,"w.resid"),cross_r22) ## invM.X
+      # cross_r22 <- crossprod(locX, cross_r22) ## Xt.invM.X
+      cross_r22 <- t(locX) %*% BLOB$precisionMatrix %*% locX
+      cholscaled <- chol(cross_r22)
+      return(.m_Matrix_times_Dvec(cholscaled, 1/scaling))
+    } else return(resu)
+  } else {
+    crossr22 <- .ZtWZwrapper(X.pv,w.resid)-crossprod(r12)
+    resu <- try(chol(crossr22),silent=TRUE)
+    if (inherits(resu,"try-error")) {
+      crossr22 <- .calc_inv_beta_cov(sXaug)
+    }
+    return(chol(crossr22))
+  }
+}
+
 .Sigsolve_sparsePrecision <- function(sXaug, rhs) { ## no longer used: compare .calc_inv_beta_cov() when rhs= X.pv. But useful as doc.
   v <- Matrix::solve(sXaug$BLOB$G_CHMfactor, sXaug$BLOB$ZtW %*% rhs) ## BLOB$ZtW removed !
   # implicit .Dvec_times_m_Matrix( on a dgeMatrix:
@@ -145,6 +189,7 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
       precisionMatrix <- forceSymmetric(do.call(Matrix::bdiag, precisionBlocks))
     } else precisionMatrix <- forceSymmetric(precisionBlocks[[1L]])
     ## FIXME more efficient code for case where isDiagonal(precisionMatrix) ?
+    # BLOB$precisionMatrix <- precisionMatrix # might be useful for alternative .calc_r22() code
     BLOB$Gmat <- Matrix::drop0(forceSymmetric(.ZtWZwrapper(AUGI0_ZX$ZAfix,attr(sXaug,"w.resid"))) + precisionMatrix) ## depends on w.ranef and w.resid
     BLOB$G_CHMfactor <- Cholesky(BLOB$Gmat,LDL=FALSE,perm=FALSE) ## costly
     ## with perm=TRUE G=P'LL'P and the P'L (non-triangular) factor is given by solve(<G_CHM>,as(<G_CHM>,"sparseMatrix"),system="Pt")
@@ -275,7 +320,7 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
         # We know one of its block is the same as for the ML leverages, we compute two additional blocks: 
         if (is.null(BLOB$ZtWX)) BLOB$ZtWX <- .calc_ZtWX(sXaug)
         r12 <- solve(BLOB$G_CHMfactor, BLOB$ZtWX,system="L") 
-        BLOB$r22 <- chol(.ZtWZwrapper(AUGI0_ZX$X.pv,attr(sXaug,"w.resid"))-crossprod(r12)) ## both lines as explained in working doc
+        BLOB$r22 <- .calc_r22(AUGI0_ZX$X.pv,attr(sXaug,"w.resid"),r12, sXaug)         ## both lines as explained in working doc
         lev_lambda_z <- BLOB$factor_inv_Md2hdv2 ## ul block of R^{-T} as described in working doc
         lev_lambda_z@x <- lev_lambda_z@x^2 
         lev_lambda_z <- .Matrix_times_Dvec(lev_lambda_z,w.ranef)
@@ -467,7 +512,7 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
     ## not called during the fit, so ideally we store the necessary info in the fit rather than use get_from_MME() 
     stop("Programming error. Use ad hoc .calc_beta_cov_info_spprec() function instead.")
   }
-  stop(cat("'which=\"",which,"\"' is invalid.",sep=""))
+  stop(cat("'which=\"",which,"\"' is invalid."))
 }
 
 get_from_MME.AUGI0_ZX_sparsePrecision <- function(sXaug, 

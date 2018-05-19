@@ -22,9 +22,9 @@
       if (identical(sparse_precision,TRUE)) {
         # FIXME the ollowing restriction is slightly too strict: "HLfit","corrHLfit" work with fixed ranCoefs but there's something missing
         # for estimating the ranCoefs.
-        message(paste("Sparse-precision method was requested, but random-coefficient terms\n", 
+        message(paste0("Sparse-precision method was requested, but random-coefficient terms\n", 
                       "are not yet handled by ",processed$For,"() in this case. _Another method will be used._\n",
-                      "Use fitme() if you really want to fit random-coefficient terms by sparse-precision algorithms.",sep=""))
+                      "Use fitme() if you really want to fit random-coefficient terms by sparse-precision algorithms."))
       } 
       sparse_precision <- FALSE
     }

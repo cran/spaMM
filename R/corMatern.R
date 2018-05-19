@@ -18,7 +18,7 @@ getCovariate.corMatern <- function(object, form = formula(object), data) {
     covForm <- nlme::getCovariateFormula(form)
     if (length(all.vars(covForm)) > 0) { # covariate present
       if (attr(terms(covForm), "intercept") == 1) {
-        covForm <- eval(parse(text = paste("~", .DEPARSE(covForm[[2]]),"-1",sep="")))
+        covForm <- eval(parse(text = paste0("~", .DEPARSE(covForm[[2]]),"-1")))
       }
       covar <- as.data.frame(unclass(model.matrix(covForm,
                                                   model.frame(covForm, data, drop.unused.levels = TRUE))))

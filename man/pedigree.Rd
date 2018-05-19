@@ -4,7 +4,7 @@
 \description{This illustrates how to use spaMM for quantitative genetic analyses. spaMM appears competitive in terms of speed for GLMMs with large data sets, particularly when using the PQL method, which may be a quite good approximation in such cases. For large pedigrees it may be useful to compute the inverse of the relationship matrix using some efficient ad hoc algorithm, then to provide it as argument of the fit using the \code{\link{covStruct}(list(precision=...))} syntax.}
 \examples{
 \dontrun{
-if(require("pedigreemm", quietly=TRUE)) {
+if(requireNamespace("pedigreemm", quietly=TRUE)) {
 ## derived from help("pedigreemm")
   p1 <- new("pedigree",
            sire = as.integer(c(NA,NA,1, 1,4,5)),

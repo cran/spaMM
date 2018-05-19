@@ -7,11 +7,11 @@
     if ( requireNamespace(pack, quietly = TRUE)) {
       myfun <- get(chr_fnname, asNamespace(pack)) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
       do.call(myfun,arglist) 
-    } else {stop(paste("'",pack,"' required but not available.",sep=""))}
+    } else {stop(paste0("'",pack,"' required but not available."))}
   } else { ## package not declared in DESCRIPTION; private for example
     if (do.call("require",list(package=pack, quietly = TRUE))) {
       do.call(chr_fnname,arglist) 
-    } else {stop(paste("'",pack,"' required but not available.",sep=""))}
+    } else {stop(paste0("'",pack,"' required but not available."))}
   }
 }
 

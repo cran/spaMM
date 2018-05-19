@@ -180,7 +180,7 @@
       mu <- muetablob$mu ## needed to update z1
       w.resid <- .calc_w_resid(muetablob$GLMweights,phi_est) ## 'weinu', must be O(n) in all cases
       if (verbose["trace"]) {
-        print(paste("Inner iteration ",innerj,sep=""))
+        print(paste0("Inner iteration ",innerj))
         print_err <- c(beta_eta=beta_eta)
         if (innerj>1) print_err <- c(norm.dbetaV=sqrt(sum(dbetaV^2)),print_err)
         print(print_err)

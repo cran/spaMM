@@ -13,7 +13,7 @@
 \alias{getCovariate} 
 \alias{logDet} 
 \alias{recalc} 
-\alias{Beta} 
+%\alias{Beta} % doc in ?HLfit
 \alias{spaMM_Gamma} 
 \alias{get_HLCorcall} % fixme: deserves to be documented as of independent interest (cf exampl of usage in probitgem)
 \alias{HLCor.obj} 

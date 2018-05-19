@@ -291,7 +291,7 @@ get_predCov_var_fix <- function(object, newdata = NULL, fix_X_ZAC.object,fixdata
                                                newinold=fix_X_ZAC.object$newinold,
                                                fix_info=fix_X_ZAC.object)$cov_newLv_oldv_list
   if ( ! is.null(cov_newLv_fixLv_list) ) {
-    # Evar: expect over distrib of (hat(beta),hat(v)) of [covvariance of Xbeta+Zb given (hat(beta),hat(v))]
+    # Evar: expect over distrib of (hat(beta),new hat(v)) of [covariance of Xbeta+Zb given (hat(beta),orig hat(v))]
     Evar <- .calc_Evar(newZAlist=new_X_ZACblob$newZAlist,newinold=fix_X_ZAC.object$newinold, 
                                     cov_newLv_oldv_list=new_X_ZACblob$cov_newLv_oldv_list, 
                                     lambda=object$lambda, invCov_oldLv_oldLv_list=.get_invColdoldList(object), 
