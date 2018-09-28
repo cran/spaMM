@@ -34,23 +34,24 @@
 
 
 
-.is_separated <- local(
+is_separated <- local(
   {
     warned_is <- FALSE
-    function(x,y) {
+    function(x,y, verbose=TRUE) {
       if (requireNamespace("lpSolveAPI",quietly=TRUE)) {
         ## test for and/or find the direction of separation
         ## x a design matrix and y a 0-1 binary response vector
         separation <- .separator(x, as.numeric(y), purpose = "test")$separation
         if(separation) {
-          message("Separation exists among the sample points.\n\tThis model cannot be fit by maximum likelihood.")
-          message("The following terms are causing separation among the sample points:")
           beta <- .separator(x, as.numeric(y), purpose = "find")$beta
           separating.terms <- dimnames(x)[[2]][abs(beta) > 1e-09]
           if(length(separating.terms)) {
-            separating.terms <- paste(separating.terms, collapse = ", ")
-            message(paste(separating.terms,"\n"))
-            warning(paste("separation due to", separating.terms))
+            mess <- paste("The following terms are causing separation among the sample points:",
+                          paste(separating.terms, collapse = ", "))
+            if (verbose) message(paste(mess,
+                                       "\n\tsome estimates of fixed-effect coefficients could be practically infinite,",
+                                       "\n\tcausing numerical issues in various functions."))
+            warning(mess)
           }
         }
         return(separation)
@@ -97,7 +98,7 @@
   n <- dim(x)[1]
   p <- dim(x)[2]
   
-  dimnames(x) <- NULL
+  #dimnames(x) <- list(NULL,NULL)
   
   y.bar <- -sign(y - 0.5)
   x.bar <- y.bar * x

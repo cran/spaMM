@@ -27,10 +27,7 @@ if (spaMM.getOption("example_maxtime")>18) { ## user time + system.time for para
     full_call <- getCall(lrt$fullfit) ## call for full fit
     full_call$data <- data
     res <- eval(full_call) ## fits the full model on the simulated response
-    if (! deparse(substitute(what))=="NULL") ## post-process the fit
-      res <- eval(eval(substitute(what),list(res=res)))
-    # : when only pbapply is used, the following code suffices:
-    # if (!is.null(what)) res <- eval(what)
+    if (!is.null(what)) res <- eval(what)
     return(res) ## the fit, or anything produced by evaluating 'what'
   }
 
@@ -48,7 +45,8 @@ if (spaMM.getOption("example_maxtime")>18) { ## user time + system.time for para
   # unloadNamespace("doSNOW")
   
   ## parallel pbapply 
-  spaMM_boot(lrt$nullfit, simuland = myfun, nsim=4,
+  if (exists("res")) rm(res) ## otherwise any error in the following code may result in a confusing message
+  spaMM_boot(lrt$nullfit, simuland = myfun, nsim=4, control.foreach = list(.errorhandling="pass"),
              what=quote(fixef(res)[2L]), lrt=lrt,nb_cores=4L)[["bootreps"]]    
   
 } 

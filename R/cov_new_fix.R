@@ -12,7 +12,7 @@
                            d=distmat)  ## so that rho=1 in MaternCorr
   } else stop("Unhandled corr.model")
   return(corr_mat) 
-}
+} ## FIXME .calc_corr_from_dist() will ultimately become obsolete, being tied to object$spaMM.version<"2.4.49"
 
 
 # public wrapper for more transparent workflow
@@ -31,7 +31,7 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
         if (attr(locstrucList[[it]],"corr.model")=="random-coef" &&
             ncol(newZAlist[[it]]) != nrow(strucList[[it]]) ## new groups for the random-coef term
         ) {
-          locstrucList[[it]] <- .makelong(attr(locstrucList[[it]],"latentL_blob")$u,longsize = ncol(newZAlist[[it]]))
+          locstrucList[[it]] <- .makelong(attr(locstrucList[[it]],"latentL_blob")$design_u,longsize = ncol(newZAlist[[it]]))
           rownames(locstrucList[[it]]) <- colnames(newZAlist[[it]]) 
           # .tcrossprod gets names from rownames
           ## names required for a predict(,newdata) on a random-coef model
@@ -70,7 +70,7 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
 
 .re_form_col_indices <- function(newinold, cum_n_u_h, Xi_cols) {
   cum_Xi_cols <- cumsum(c(0,Xi_cols))
-  ranef_ids <- rep(seq_len(length(Xi_cols)),Xi_cols) ## (repeated) indices of ranefs, not cols of ranefs
+  ranef_ids <- rep(seq_len(length(Xi_cols)),Xi_cols) ## (repeated for ranCoefs) indices of ranefs, not cols of ranefs
   subrange <- which_ranef_cols <- vector("list",length = length(newinold))
   for (it in seq_len(length(newinold))) {
     rd <- newinold[it] ## allowing possible permutation of ranefs
@@ -85,20 +85,20 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
 
 .calc_new_X_ZAC <- function(object, newdata=NULL, re.form = NULL,
                          variances=list(residVar=FALSE)) {
-  locform <- attr(object$predictor,"oriFormula")
+  locform <- formula.HLfit(object) 
   ## possible change of random effect terms
   if ( .noRanef(re.form)) { ## i.e. if re.form implies that there is no random effect
-    locform <- .nobarsMM(locform)  ## 
+    locform <- .stripRanefs(locform)  ## 
   } else if (inherits(re.form,"formula")) { ## ie there is a nontrivial re.form
     lhs <- .DEPARSE(locform[[2L]]) ## response
-    fixterms <- .DEPARSE(.nobarsMM(locform)[[3L]]) ## fixed effect terms
+    fixterms <- .DEPARSE(.stripRanefs(locform)[[3L]]) ## fixed effect terms
     ranterms <- .parseBars(re.form)  ## random effects  ## expand does not seem to be important here
-    locform <- as.formula(paste(lhs,"~", paste(fixterms,"+",paste(ranterms,collapse="+")) )) 
-  } ## else keep oriFormula
+    locform <- as.formula(paste(lhs,"~", paste(fixterms,"+",paste(ranterms,collapse="+")) )) # orig fixterms + new ranterms
+  } ## else keep original formula
   # checking variables in the data
   if (length(locform)==3L) locform <- locform[-2] ## removes RHS for checking  vars on RHS etc
   allvars <- all.vars(locform) 
-  if (variances$residVar) allvars <- unique(c(allvars,all.vars(attr(object$resid.predictor,"oriFormula")))) ## but the 'newdata' may not contain the resid.predictor vars. 
+  if (variances$residVar) allvars <- unique(c(allvars,all.vars(object$resid.predictor))) ## but the 'newdata' may not contain the resid.predictor vars. 
   if (is.vector(newdata)) { ## ## less well controlled case, but useful for maximization
     newdata <- data.frame(matrix(newdata,nrow=1))
     if (length(allvars)==ncol(newdata)) {
@@ -122,14 +122,19 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
   }
   need_new_design <- ( ( ! is.null(newdata) ) || ! is.null(re.form)) ## newdata or new model
   if (need_new_design) {
-    allFrames <- .HLframes(formula=locform,data=locdata,fitobject=object) ## also used for predVar computations
+    newFrames_fixed <- .calc_newFrames_fixed(formula=.stripRanefs(locform),data=locdata,fitobject=object) ## also used for predVar computations
     ## preparation for fixed effects
-    newX.pv <- allFrames$X ## contains columns for the offset and columns for the other variables
+    newX.pv <- newFrames_fixed$X ## contains columns for the offset and columns for the other variables
     # newX.pv must intersect non-NA elements of fixef; see comment and code in newetaFix
-    validnames <- intersect(colnames(object$X.pv),colnames(newX.pv)) ## we don't want the etaFix cols (detected by bboptim)
+    coefnames <- colnames(object$X.pv)
+    validnames <- intersect(coefnames,colnames(newX.pv)) ## we don't want the etaFix cols (detected by bboptim)
     if (length(validnames)==0L) validnames <- c() ## without this, validnames could be character(0) and [,validnames,drop=FALSE] fails.
+    if (length(notfound <- setdiff(colnames(newX.pv), coefnames))) {
+      # capture case where the newX.pv has colnames  not in object$X.pv (including wierd case of mis-naming)
+      stop(paste0("No fitted coefficient(s) for variables\n",paste(notfound,collapse=", "),"\nin the design matrix derived from 'newdata'."))
+    }
     RESU <- list(locdata=locdata,newX.pv=newX.pv[,validnames,drop=FALSE]) 
-    RESU$etaFix <- .newetaFix(object,allFrames,validnames=validnames)  ## new fixed effects (or [part of] new linear predictor if re.form)      
+    RESU$etaFix <- .newetaFix(object,newFrames_fixed,validnames=validnames)  ## new fixed effects (or [part of] new linear predictor if re.form)      
   } else RESU <- list(locdata=locdata,newX.pv=object$X.pv) 
   ## preparation for random effects
   if ( ! is.null(newdata)) { 
@@ -181,7 +186,11 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
                        nn= ( attr(object$strucList,"isRandomSlope")[newinold] | identical(variances$cov,TRUE))) 
     if (need_new_design) {
       ## with newdata we need Evar and then we need nn... if newdata=ori data the Evar (computed with the proper nn) should be 0
-      newZAlist <- .spMMFactorList(locform, allFrames$mf, rmInt=0L, drop=TRUE,sparse_precision=FALSE, type="seq_len") 
+      ranef_form <- as.formula(paste("~",(paste(.parseBars(locform),collapse="+")))) ## effective '.noFixef'
+      new_mf_ranef <- .calc_newFrames_ranef(formula=ranef_form,data=locdata,fitobject=object)$mf ## also used for predVar computations
+      newZlist <- .calc_Zlist(locform, new_mf_ranef, rmInt=0L, drop=TRUE,sparse_precision=FALSE, type="seq_len",
+                              old_ZAlist=object$ZAlist, newinold=newinold) 
+      newZAlist <- .calc_ZAlist(newZlist,AMatrices=attr(object$ZAlist,"AMatrices")) 
       ## must be ordered as parseBars result for the next line to be correct.
       attr(newZAlist,"exp_ranef_strings") <- new_exp_ranef_strings ## required pour .compute_ZAXlist to match the ranefs of LMatrix
     } else {
@@ -219,7 +228,7 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
       ## This $newZACpplist serves to compute new _point predictions_.
       #  # this comment may be obsolete : .compute_ZAXlist affects elements of ZAlist that have a ranefs attribute. 
       #  It builds a design matrix to all oldv levels. It does not try to reduce levels. 
-      #  But it use newZAlist <- .spMMFactorList(...) which may consider a reduced number of levels.
+      #  But it use newZlist <- .calc_Zlist(...) which may consider a reduced number of levels.
       #  The function .match_old_new_levels() will perform the match with 'w_h_coeffs' for point prediction.
       #  it assign values psi_M to new levels of ranefs.
       ## _Alternatively_ one may construct a newZACvar for _predVar_ 
@@ -314,6 +323,7 @@ get_predCov_var_fix <- function(object, newdata = NULL, fix_X_ZAC.object,fixdata
       submatrices$dwdlogdisp <- submatrices$dwdlogdisp[re_form_col_indices$subrange,whichcols]
       submatrices$logdisp_cov <- submatrices$logdisp_cov[whichcols,whichcols]
     } 
+    # newZACvar = (ZAC_ranef1 | ZAC_ranef3... ) %*% dwdlogdisp which rows match the successive v_h (all ranefs) and cols match disp pars
     newZACw <- newZACvar %*% submatrices$dwdlogdisp ## typically (nnew * n_u_h) %*% (n_u_h * 2) = nnew * 2 hence small 
     fixZACw <- fixZACvar %*% submatrices$dwdlogdisp ## typically (nnew * n_u_h) %*% (n_u_h * 2) = nnew * 2 hence small 
     disp_effect_on_newZACw <- newZACw %*% submatrices$logdisp_cov %*% t(fixZACw)      

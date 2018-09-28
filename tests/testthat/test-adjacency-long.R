@@ -15,7 +15,7 @@ if (spaMM.getOption("example_maxtime")>465) {
                           verbose=c(TRACE=interactive()), # to trace convergence 
                           adjMatrix=adjlgMat
     )
-  }) ##   110.35 (v.2.3.55) but 116.47 (2.4.0)
+  }) ##  ~107 (v.2.4.102) ## F I X M E refitting lambda (by request) gives a lower lik...
   expectedMethod <- "AUGI0_ZX_sparsePrecision" ## bc data too small to switch to sparse
   if (interactive()) {
     if (! (expectedMethod %in% IRLS.Frailty$MME_method)) {
@@ -29,6 +29,6 @@ if (spaMM.getOption("example_maxtime")>465) {
                           #fixed=list(rho = -0.0294184,  lambda = 0.241825),
                           adjMatrix=adjlgMat
     )
-  }) ## 354.74 (v.2.3.55) but 363.31 (2.4.0)
+  }) ## ~359 (v.2.4.102)
   spaMM.options(oldop)
 }

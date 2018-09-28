@@ -13,42 +13,6 @@ using Eigen::VectorXd;
 extern bool print_sparse_QR;
 
 template<typename OrderingType>
-SEXP sparse_LDL_from_XtX_oT( SEXP XX, bool pivot ){
-  if (printDebug || print_sparse_QR)   Rcout <<"begin sparse_LDLp_from_XtX()"<<std::endl;
-  const Eigen::MappedSparseMatrix<double> XtX(as<Eigen::MappedSparseMatrix<double> >(XX));
-  Eigen::SimplicialLDLT< Eigen::SparseMatrix<double, Eigen::ColMajor> , Eigen::Lower, OrderingType > LDLp(XtX);
-  List resu=List::create();
-  resu["D_scaled"] = LDLp.vectorD();
-  resu["XtX"] = XtX; // gloups
-  if (pivot) {
-    resu["sortPerm"] = LDLp.permutationP().indices();
-    resu["perm"] = LDLp.permutationPinv().indices();
-  } // more direct way to test the OrderingType ? 
-  Eigen::SparseMatrix<double> U = LDLp.matrixU();  
-  resu["U_scaled"] = U;
-  if (printDebug || print_sparse_QR)   Rcout <<"end sparse_LDLp_from_XtX()"<<std::endl;
-  return resu;
-}
-
-template<typename OrderingType>
-SEXP sparse_LL_from_XtX_oT( SEXP XX, bool pivot ){
-  if (printDebug || print_sparse_QR)   Rcout <<"begin sparse_LLp_from_XtX()"<<std::endl;
-  const Eigen::MappedSparseMatrix<double> XtX(as<Eigen::MappedSparseMatrix<double> >(XX));
-  Eigen::SimplicialLLT< Eigen::SparseMatrix<double, Eigen::ColMajor> , Eigen::Lower, OrderingType > LLp(XtX);
-  List resu=List::create();
-  resu["XtX"] = XtX; // gloups
-  if (pivot) {
-    resu["sortPerm"] = LLp.permutationP().indices();
-    resu["perm"] = LLp.permutationPinv().indices();
-  } // more direct way to test the OrderingType ? 
-  Eigen::SparseMatrix<double> R = LLp.matrixU();  
-  resu["R_scaled"] = R;
-  if (printDebug || print_sparse_QR)   Rcout <<"end sparse_LLp_from_XtX()"<<std::endl;
-  return resu;
-}
-
-
-template<typename OrderingType>
 SEXP lmwith_sparse_LDL_oT( SEXP XX, SEXP yy, 
                            bool returntQ, // I G N O R E D but for consistent interface (cf get_from_default.Matrix)
                            bool returnR, bool pivot ){
@@ -113,7 +77,7 @@ SEXP lmwith_sparse_LL_oT( SEXP XX, SEXP yy,
 template<typename OrderingType>
 SEXP lmwith_sparse_QR_oT( SEXP XX, SEXP yy, 
                         bool returntQ, // I N H I B I T E D
-                        bool returnR, bool pivot ){
+                        bool returnR){
   if (printDebug || print_sparse_QR)   Rcout <<"debut lmwith_sparse_QRp()"<<std::endl;
   const Eigen::MappedSparseMatrix<double> X(as<Eigen::MappedSparseMatrix<double> >(XX));
   Eigen::SparseQR< Eigen::SparseMatrix<double, Eigen::ColMajor> ,  OrderingType > QRp(X);
@@ -144,7 +108,7 @@ SEXP lmwith_sparse_QR_oT( SEXP XX, SEXP yy,
     }
   }
   if (returnR) {
-    if (pivot) resu["P"] = QRp.colsPermutation().indices(); // more direct way to test the OrderingType ? 
+    resu["P"] = QRp.colsPermutation().indices(); // more direct way to test the OrderingType ? 
     const int r(X.cols()); // r(QRP.rank());
     Eigen::SparseMatrix<double> R(r,r);
     R = QRp.matrixR().topLeftCorner(r,r);  

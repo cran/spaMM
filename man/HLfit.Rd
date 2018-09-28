@@ -11,7 +11,7 @@
 }
 \usage{
 HLfit(formula, data, family = gaussian(), rand.family = gaussian(), 
-      resid.model = ~1, resid.formula, REMLformula = NULL, 
+      resid.model = ~1, REMLformula = NULL, 
       verbose = c(trace = FALSE), HLmethod = "HL(1,1)", control.HLfit = list(), 
       control.glm = list(), init.HLfit = list(), ranFix = list(), 
       etaFix = list(), prior.weights = NULL, processed = NULL)
@@ -39,15 +39,13 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
 }
   \item{resid.model}{
   \bold{Either} a formula (without left-hand side) for the dispersion parameter \code{phi} of the residual error. A log link is assumed by default;\cr 
-  \bold{or} a list, with at most two possible elements if its formula involves only fixed effects:
+  \bold{or} a list, with at most three possible elements if its formula involves only fixed effects:
   \describe{
     \item{formula}{model formula as in formula-only case, without left-hand side}
     \item{family}{Always Gamma, with by default a log link. \code{Gamma(identity)} can be tried but may fail because only the log link ensures that the fitted \eqn{\phi} is positive.}
+    \item{fixed}{can be used to specify the residual dispersion parameter of the residual dispersion model itself. The default value is 1; this argument can be used to set another value, and \code{fixed=list(phi=NA)} will force estimation of this parameter.} 
   }
   and additional possible elements (all named as \code{fitme} arguments) if its formula involves random effects:  see \code{\link{phiHGLM}}.
-}
-  \item{resid.formula}{
-  Obsolete, for back-compatibility; will be deprecated. Same as formula in \code{resid.model}. 
 }
   \item{REMLformula}{
   A model \code{formula} that allows the estimation of dispersion parameters, and 
@@ -58,7 +56,7 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
   \code{HLmethod="ML"} and leaving \code{REMLformula} at its default NULL value.
 }
   \item{verbose}{
-    A vector of booleans. \code{trace} controls various diagnostic messages (possibly messy, and in bad need of revision) about the iterations. \code{TRACE} is most useful to follow the progress of a long computation, particularly in \code{fitme} or \code{corrHLfit} calls.
+    A vector of booleans. \code{trace} controls various diagnostic messages (possibly messy) about the iterations. \code{TRACE} is most useful to follow the progress of a long computation, particularly in \code{fitme} or \code{corrHLfit} calls. \code{phifit} (which defaults to \code{TRUE}) controls messages about the progress of residual dispersion fits in DHGLMs. 
   }
   \item{HLmethod}{
   Allowed values are \code{"REML"}, \code{"ML"}, \code{"EQL-"} and \code{"EQL+"} for all models;  
@@ -107,7 +105,7 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
    A list of given values of the coefficients of the linear predictor. See \code{\link{etaFix}} for further information.     
  }
   \item{prior.weights}{
-   An optional vector of prior weights as in \code{\link{glm}}. This fits the data to a model with residual variance \code{phi/prior.weights}, so that increasing the weights by a constant factor \emph{f} will yield (Intercept) estimates of \code{phi} also increased by \emph{f} (this effect cannot be generally achieved if a non-trivial \code{resid.formula} with log link is used). This is not necessarily the way prior weights are interpreted in widely used packages, but this is consistent with what \code{glm} fits. 
+   An optional vector of prior weights as in \code{\link{glm}}. This fits the data to a model with residual variance \code{phi/prior.weights}, so that increasing the weights by a constant factor \emph{f} will yield (Intercept) estimates of \code{phi} also increased by \emph{f} (except if a non-trivial \code{resid.formula} with log link is used). This is not necessarily the way prior weights are interpreted in widely used packages, but this is consistent with what \code{glm} fits. 
  }
   \item{processed}{
     A list of preprocessed arguments, for programming purposes only (as in \code{corrHLfit}).
@@ -134,7 +132,7 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
   
   It is possible to enforce the EQL approximation for estimation of dispersion parameter (i.e., Lee and Nelder's (2001) method) by adding a third index with value 0. \code{"EQL+"} is thus \code{"HL(0,1,0)"}, while \code{"EQL-"} is \code{"HL(0,0,0)"}. \code{"PQL"} is EQL- for GLMMs. \code{"REML"} is \code{"HL(1,1)"}. \code{"ML"} is \code{"ML(1,1)"}. 
   
-  Some of these distinctions make sense for \bold{GLMs}, and \code{\link[stats]{glm}} methods use approximations, which make a difference for Gamma GLMs. This means in particular that, (as stated in \code{\link[stats]{logLik}}) the logLik of a Gamma GLM fit by \code{glm} differs from the exact likelihood. Further, the dispersion estimate returned by \code{summary.glm} differs from the one implied by \code{logLik}, because \code{summary.glm} uses Pearson residuals instead of deviance residuals, and no \code{HLmethod} tries to reproduce this behaviour. \code{logLik} gives the approximation returned by an \code{"ML(0,0,0)"} fit. The dispersion estimate returned by an \code{"HL(.,.,0)"} fit matches what can be computed from residual deviance and residual degrees of freedom of a glm fit, but this is not the estimate displayed by \code{summary.glm}. With a log link, the fixed effect estimates are unaffected by these distinctions.     
+  Some of these distinctions make sense for \bold{GLMs}, and \code{\link[stats]{glm}} methods use approximations, which make a difference for Gamma GLMs. This means in particular that, (as stated in \code{stats::\link[stats]{logLik}}) the logLik of a Gamma GLM fit by \code{glm} differs from the exact likelihood. Further, the dispersion estimate returned by \code{summary.glm} differs from the one implied by \code{logLik}, because \code{summary.glm} uses Pearson residuals instead of deviance residuals, and no \code{HLmethod} tries to reproduce simultaneously these distinct behaviours. An \code{"ML(0,0,0)"} approximation of true ML provides the same log likelihood as \code{stats::logLik}, and the dispersion estimate returned by an \code{"HL(.,.,0)"} fit matches what can be computed from residual deviance and residual degrees of freedom of a glm fit, but this is not the estimate displayed by \code{summary.glm}. With a log link, the fixed effect estimates are unaffected by these distinctions.     
 
   \bold{II. Random effects} are constructed in several steps. first, a vector \bold{u} of independent and identically distributed (iid) random effects is drawn from some distribution;
  second, a transformation \bold{v}=f(\bold{u}) is applied to each element (this defines \bold{v} which elements are still iid); third, correlated random effects are obtained as \bold{Lv} 

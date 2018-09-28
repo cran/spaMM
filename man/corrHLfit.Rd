@@ -11,7 +11,7 @@
 corrHLfit(formula, data, init.corrHLfit = list(), 
           init.HLfit = list(), ranFix = list(), lower = list(), 
           upper = list(), 
-          objective = NULL, resid.model = ~1, resid.formula,
+          objective = NULL, resid.model = ~1, 
           control.dist = list(), control.corrHLfit = list(),
           processed = NULL, family = gaussian(), 
           nb_cores = NULL, ...)
@@ -39,7 +39,7 @@ An optional list of values of parameters specified through \code{init.corrHLfit}
 }
   \item{upper}{Same as \code{lower}, but upper values.}
   \item{objective}{ For development purpose, not documented (this had a distinct use in the first version of spaMM, but has been deprecated as such).}
-  \item{resid.model, resid.formula}{See identically named \code{\link{HLfit}} arguments.}
+  \item{resid.model}{See identically named \code{\link{HLfit}} argument.}
 \item{control.dist}{See \code{control.dist} in \code{\link{HLCor}}}
 \item{control.corrHLfit}{
   This may be used control the optimizer. See \code{\link{spaMM.options}}} for default values.
@@ -47,7 +47,7 @@ An optional list of values of parameters specified through \code{init.corrHLfit}
   \item{family}{Either a \code{\link{family}} or a \code{\link{multi}} value. }
   \item{nb_cores}{\bold{Not yet operative}, only for development purposes. Number of cores to use for parallel computations. }
   \item{\dots}{
-Optional arguments passed to \code{\link{HLCor}}, \code{\link{HLfit}} or  \code{\link{designL.from.Corr}}, for example the \code{distMatrix} argument 
+Optional arguments passed to \code{\link{HLCor}}, \code{\link{HLfit}} or  \code{\link{mat_sqrt}}, for example the \code{distMatrix} argument 
 of \code{HLCor}. Arguments that do not fit within these functions are detected and a warning is issued.
 }
 }

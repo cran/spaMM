@@ -36,7 +36,7 @@
 
 "MaternCorr" <- function(d, rho=1, smoothness, nu=smoothness, Nugget=0L) UseMethod("MaternCorr") 
 
-Matern.corr <- MaternCorr ## for back compat as it is in spMMjob.R
+#Matern.corr <- MaternCorr ## for back compat as it is in spMMjob.R
 
 MaternCorr.default <- function (d, rho=1, smoothness, nu=smoothness, Nugget=NULL) { ## rho is alpha in fields
   ## ideally (but not necess) on a 'dist' so the diagonal is not  manipulated 
@@ -50,6 +50,7 @@ MaternCorr.default <- function (d, rho=1, smoothness, nu=smoothness, Nugget=NULL
   ##    corrvals <- - logcon + nu*log(dscal)+ log(gsl::besselK(x=dscal, nu=nu)) 
   corrvals <- exp(corrvals) 
   if ( ! is.null(Nugget)) corrvals[!isd0] <- (1-Nugget)* corrvals[!isd0]
+  #if (identical(spaMM.getOption("ad_hoc"),TRUE)) corrvals <- (1+corrvals)/2 ## ad hoc temporary 
   corrvals[isd0] <- 1 ## 
   corrvals[corrvals < 1e-16] <- 0L ## an attempt to deal with problem in chol/ldl/svd which don't like 'nearly-identity' matrices
   attr(corrvals,"corr.model") <- "Matern"
@@ -88,11 +89,59 @@ if (F) {
 
 # .designL.from.Qmat <- function(Qmat) {
 #   ## Cholesky gives proper LL' (think LDL')  while chol() gives L'L...
-#   Q_CHMfactor <- Matrix::Cholesky(Matrix::drop0(Qmat),LDL=FALSE,perm=FALSE)
+#   Q_CHMfactor <- Matrix::Cholesky(drop0(Qmat),LDL=FALSE,perm=FALSE)
 #   LMatrix  <- solve(Q_CHMfactor,system="Lt") ## solve(t(as(Q_CHMfactor,"sparseMatrix")))
 #   # next line adds attributes to an S4 object. str() does not show these attributes... 
 #   return(structure(LMatrix,type="invQ_CHMfactor",Q_CHMfactor=Q_CHMfactor,Qmat=Qmat))
 # } 
+
+mat_sqrt <- function(m=NULL, symSVD=NULL, try.chol=TRUE, condnum=1e12) { ## also once for d2hdv2
+  ## cf return value: the code must compute 'L', and if the type of L is not chol, also 'corr d' and 'u'
+  type <- NULL
+  
+  if (is.null(symSVD)) {
+    dim_m <- dim(m)
+    if (dim_m[1L]!=dim_m[2L]) { stop("matrix is not square") }
+    if (try.chol) {
+      L <- try(.wrap_Ltri_t_chol(m),silent=TRUE)
+      if (inherits(L,"try-error")) {
+        blob <- eigen(m, symmetric=TRUE,only.values = TRUE) ## COV= blob$u %*% diag(blob$d) %*% t(blob$u) ##
+        min_d <- max(blob$values)/condnum ## so that corrected condition number is at most the denominator
+        diagcorr <- max(c(0,min_d-blob$values)) # all diag is corrected => added a constant diagonal matrix to compactcovmat
+        nc <- ncol(m)
+        diagPos <- seq.int(1L,nc^2,nc+1L)
+        m[diagPos] <- m[diagPos] + diagcorr
+        L <- try(.wrap_Ltri_t_chol(m),silent=TRUE)
+      } 
+      if ( ! inherits(L,"try-error") ) type <- "cholL_LLt" ## else type remains NULL      
+    }
+    if ( is.null(type) ) { ## no chol or failed chol
+      symSVD <- eigen(m, symmetric=TRUE) ## such that v= t(u) without any sign issue
+      decomp <- list(u=symSVD$vectors,d=symSVD$values)
+      type <- "eigen" 
+      if (any(symSVD$values< -1e-08)) {
+        ## could occur for two reasons: wrong input matrix; or problem with R's svd which $d are the eigenvalues up to the sign, 
+        ##   and thus $d can be <0 for eigenvalues >0 (very rare, observed in a 2x2 matrix) 
+        message("correlation matrix has suspiciously large negative eigenvalue(s).")
+        return(structure("correlation matrix has suspiciously large negative eigenvalue(s).",
+                         class="try-error", ## passes control to calling function to print further info
+                         call=match.call())) ## not fully conformant to "try-error" class ?"
+      } else { 
+        L <- .ZWZt(symSVD$u,sqrt(symSVD$d))
+      }
+    } 
+    colnames(L) <- rownames(L) <- colnames(m) ## for checks in HLfit ## currently typically missing from symSVD  
+  } else {
+    decomp <- symSVD[c("d","u","adjd")] # keep any $adjd  useful for SEM CAR; otherwise may be NULL
+    L <- .ZWZt(symSVD$u,sqrt(symSVD$d))  
+    type <- "symsvd"      
+  }
+  attr(L,"type") <- type
+  attr(L,"corr.model") <- attr(m,"corr.model")
+  if (type != "cholL_LLt") attr(L,type) <- decomp
+  return(L)
+} 
+
 
 ## FR->FR we also use this function once on d2hdv2 in HLfit...
 `designL.from.Corr` <- function(m=NULL, symSVD=NULL, try.chol=TRUE, try.eigen=FALSE,threshold=1e-06,SVDfix=1/10) {
@@ -103,11 +152,11 @@ if (F) {
     dim_m <- dim(m)
     if (dim_m[1L]!=dim_m[2L]) { stop("matrix is not square") }
     if (try.chol) {
-      L <- try(.Cholwrap(m),silent=TRUE)
+      L <- try(.wrap_Ltri_t_chol(m),silent=TRUE)
       if (inherits(L,"try-error")) {
         mreg <- m *(1-1e-08)
         diag(mreg) <- diag(mreg) + 1e-8 * diag(m) ## allows covMatrix; diag(m) has 1's if m is correlation matrix
-        L <- try(.Cholwrap(mreg),silent=TRUE)
+        L <- try(.wrap_Ltri_t_chol(mreg),silent=TRUE)
       } 
       if ( ! inherits(L,"try-error") ) {
         type <- "cholL_LLt"  
@@ -121,9 +170,9 @@ if (F) {
       }
       if ( (! try.eigen) || inherits(LDL,"try-error") || any(d < -1e-08)) {
         if (.spaMM.data$options$USEEIGEN) { ## see package irlba for SVD of sparse matrices
-          symSVD <- sym_eigen(m) ## such that v= t(u) without any sign issue  
-          u <- symSVD$u
-          d <- symSVD$d  
+          symSVD <- sym_eigen(m) ## such that v= t(u) without any sign issue 
+          u <- symSVD$vectors
+          d <- symSVD$values  
           type <- "symsvd" ## RcppEigen's SVD: ## "the SVD implementation of Eigen (...) is not a particularly fast SVD method." (RcppEigen vignette)          
         } else { ## buggy code for testing !  $USEEIGEN
           SVD <- try(svd(m)) # R's svd()
@@ -165,7 +214,7 @@ if (F) {
                          call=match.call())) ## not fully conformant to "try-error" class ?"
       } else { ## we have a not-too-suspect decomp
         # d[d< threshold]<- threshold ## wrong for corrmats, would be OK for d2hdv2 computation which uses this function 
-        if (any(d<threshold)) d <- threshold + (1-threshold) * d ## 17/05/2014 ## maybe not optimal for covMatrix
+        if (any(d<threshold)) d <- threshold + (1-threshold) * d ## 17/05/2014
         L <- .ZWZt(u,sqrt(d))
       }
     } 

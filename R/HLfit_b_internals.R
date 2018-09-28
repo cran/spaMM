@@ -71,6 +71,7 @@
   clik <- .calc_clik(mu=mu, phi_est=phi_est,processed=processed) 
   if (is.infinite(clik) || is.na(clik)) {  
     gainratio <- -1
+    conv_clik <- Inf
   } else {
     summand <- dbeta*(LevenbergMstep_result$rhs+ LevenbergMstep_result$dampDpD * dbeta) 
     ## In the summand, all terms should be positive. conv_dbetaV*rhs should be positive. 
@@ -107,30 +108,35 @@
       ## breaks when Xtol_rel is reached
       clik <- newclik
       old_beta_eta <- beta_eta
+      # Historical oddity: this has worked with .ZtWZwrapper(X.pv,w.resid) rather than a scaled X; and 
+      # likewise a premultiplied rhs. This was OK for solving, but not for CI as the CI code suppresses 
+      # a column of the design matrix, which is not sufficient on the premultiplied system.
       if (is.list(w.resid)) {
+        sqrtW <- sqrt(w.resid$w_resid)
         z1 <- as.vector(eta+w.resid$WU_WT*(y-mu-w.resid$dlogMthdth)/muetablob$dmudeta-off) 
-        XtinvSX <- .ZtWZwrapper(X.pv,w.resid$w_resid)
-        rhs <-  crossprod(X.pv, w.resid$w_resid * z1)
       } else {
+        sqrtW <- sqrt(w.resid)
         z1 <- eta+(y-mu)/muetablob$dmudeta-off ## LeeNP 182 bas. GLM-adjusted response variable; O(n)*O(1/n)
-        XtinvSX <- .ZtWZwrapper(X.pv,w.resid)
-        rhs <-  crossprod(X.pv, w.resid * z1)
       }
+      sXaug <- .Dvec_times_m_Matrix(sqrtW, X.pv) ## keeps colnames: important for intervalStep_glm
+      szAug <- sqrtW * z1  
+      names(szAug) <- colnames(X.pv) ## also important for intervalStep_glm
       ## simple QR solve with LevM fallback
       if ( ! is.null(for_intervals)) {
         currentDy <- (for_intervals$fitlik-newclik)
         if (currentDy < -1e-4) .warn_intervalStep(newclik,for_intervals)
         intervalBlob <- .intervalStep_glm(old_beta=beta_eta,
-                                         sXaug=XtinvSX,
-                                         szAug=rhs,
+                                         sXaug=sXaug,
+                                         szAug=szAug,
                                          for_intervals=for_intervals,
                                          currentlik=newclik,currentDy=currentDy)
         beta_eta <- intervalBlob$beta
       } else {
-        qr.XtinvSX <- .QRwrap_but_diag(XtinvSX,useEigen=FALSE) ## Cholwrap tested  ## pas sur que FALSE gagne du temps
-        beta_eta <- drop(.solveWrap_vector( qr.XtinvSX , rhs ,stop.on.error=stop.on.error))
+        qr_X <- qr(sXaug,tol=spaMM.getOption("qrTolerance")) 
+        beta_eta <- .safesolve_qr_vector(qr_X, szAug)
+        beta_eta <- drop(beta_eta)
       }
-                                           
+      names(beta_eta) <- colnames(X.pv)
       # # PROBLEM is that NaN/Inf test does not catch all divergence cases so we need this :
       eta <- off + drop(X.pv %*% beta_eta) ## updated at each inner iteration
       muetablob <- .muetafn(eta=eta,BinomialDen=BinomialDen,processed=processed) 
@@ -141,7 +147,7 @@
         if (is.list(w.resid)) {
           sqrt.ww <- sqrt(w.resid$w_resid)        
         } else sqrt.ww <- sqrt(w.resid)
-        wX <- .calc_wAugX(augX=X.pv,sqrt.ww=sqrt.ww)
+        wX <- .calc_wAugX(XZ_0I=X.pv,sqrt.ww=sqrt.ww)
         LM_wz <- z1*sqrt.ww - (wX %*% old_beta_eta)
         while(TRUE) { 
           if (inherits(wX,"Matrix")) {
@@ -175,6 +181,7 @@
             damping <- dampingfactor*damping
             dampingfactor <- dampingfactor*2
           } 
+          if (damping>1e100) break # stop("reached damping=1e100")
         } ## while TRUE
       } else dbetaV <- beta_eta - old_beta_eta
       mu <- muetablob$mu ## needed to update z1
@@ -186,10 +193,11 @@
         print(print_err)
         print("================================================")
       } 
-      if (maxit.mean>1 && mean(abs(dbetaV)) < Xtol_rel) break
+      if (maxit.mean>1 && (damping>1e100 || mean(abs(dbetaV)) < Xtol_rel)) break
       #### done with one inner iteration
     } ## end for (innerj in 1:maxit.mean)
     names(beta_eta) <- colnames(X.pv)
-    return(list(eta=eta, muetablob=muetablob, beta_eta=beta_eta, w.resid=w.resid, innerj=innerj))
+    return(list(eta=eta, muetablob=muetablob, beta_eta=beta_eta, w.resid=w.resid, innerj=innerj,
+                sXaug=structure(NA,class="LM or GLM")))
   }
 

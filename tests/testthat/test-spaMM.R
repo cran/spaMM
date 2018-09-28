@@ -5,7 +5,7 @@ data("scotlip") ## loads 'scotlip' data frame, but also 'Nmatrix'
 
 # Bug before 2.3.70 (NB_shape requested before of optimization)
 hl <- fitme(I(1+cases)~I(prop.ag/10)+offset(log(expec))+adjacency(1|gridcode),
-            family=negbin(), adjMatrix=Nmatrix, data=scotlip)
+            family=negbin(), adjMatrix=Nmatrix, data=scotlip) ## explicit spaMM::negbin() may be needed.
 
 hl <- corrHLfit(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(expec)),
           data=scotlip,family=poisson(),

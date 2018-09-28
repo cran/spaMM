@@ -12,13 +12,6 @@ using Eigen::VectorXd;
 
 bool print_sparse_QR=false;
 
-// [[Rcpp::export(.sparse_LDLp_from_XtX)]]
-SEXP sparse_LDLp_from_XtX( SEXP XX, bool pivot ){
-  if (pivot) {
-    return(sparse_LDL_from_XtX_oT<Eigen::COLAMDOrdering<int> >( XX, pivot ));
-  } else return(sparse_LDL_from_XtX_oT<Eigen::NaturalOrdering<int> >( XX, pivot )); 
-}
-
 // [[Rcpp::export(.lmwith_sparse_LDLp)]]
 SEXP lmwith_sparse_LDLp( SEXP XX, SEXP yy, bool returntQ, bool returnR, bool pivot ){
   if (pivot) {
@@ -26,13 +19,6 @@ SEXP lmwith_sparse_LDLp( SEXP XX, SEXP yy, bool returntQ, bool returnR, bool piv
                                                               returnR, pivot ));
   } else return(lmwith_sparse_LDL_oT<Eigen::NaturalOrdering<int> >( XX,  yy, returntQ,
                                                                     returnR, pivot )); 
-}
-
-// [[Rcpp::export(.sparse_LLp_from_XtX)]]
-SEXP sparse_LLp_from_XtX( SEXP XX, bool pivot ){
-  if (pivot) {
-    return(sparse_LL_from_XtX_oT<Eigen::COLAMDOrdering<int> >( XX, pivot ));
-  } else return(sparse_LL_from_XtX_oT<Eigen::NaturalOrdering<int> >( XX, pivot )); 
 }
 
 // [[Rcpp::export(.lmwith_sparse_LLp)]]
@@ -93,7 +79,6 @@ SEXP lmwithQRP( SEXP XX, SEXP yy, bool returntQ, bool returnR ){
 
 /* 
  * SEXP lmwith_sparse_QRp( SEXP XX, SEXP yy, bool returntQ, bool returnR )
- * could be defined similarly to lmwith_sparse_QRp, with another ordering than Eigen::NaturalOrdering<int>,
  * e.g. COLAMDOrdering. However, see Notes: leverages(X[,B]) are not deducible from Q[,B] 
  * => problem for Pdiag calculation in particular.
 */
@@ -101,16 +86,18 @@ SEXP lmwithQRP( SEXP XX, SEXP yy, bool returntQ, bool returnR ){
 // [[Rcpp::export(.lmwith_sparse_QRp)]]
 SEXP lmwith_sparse_QRp( SEXP XX, SEXP yy, 
                        bool returntQ, // I N H I B I T E D
-                       bool returnR, bool pivot ){
-  if (pivot) {
+                       bool returnR, bool COLAMDO=true ){
+  // R is pivoted in both cases !
+  if (COLAMDO) {
     return(lmwith_sparse_QR_oT<Eigen::COLAMDOrdering<int> >( XX,  yy, 
                                returntQ, // I N H I B I T E D
-                              returnR, pivot ));
+                              returnR ));
   } else return(lmwith_sparse_QR_oT<Eigen::NaturalOrdering<int> >( XX,  yy, 
                                                                  returntQ, // I N H I B I T E D
-                                                                 returnR, pivot )); 
+                                                                 returnR )); 
 }
 
+// there are also .wrap_Ltri_t_chol() calling .RcppChol() which return the transpose.
 // [[Rcpp::export(.Rcpp_chol_R)]]
 SEXP Rcpp_chol_R( SEXP AA ){ // upper tri as in R chol()
   if (printDebug)   Rcout <<"debut Rcpp_chol_R()"<<std::endl;
@@ -129,30 +116,12 @@ SEXP Rcpp_chol_R( SEXP AA ){ // upper tri as in R chol()
   return out;
 } // such that A = R'.R as in R's chol()
 
-// only in if (FALSE) {...} blocks of code: 
-// [[Rcpp::export(.LevMar_cpp)]] 
-SEXP LevMar_cpp( SEXP AA, SEXP LMrhs ){ // 
-  if (printDebug)   Rcout <<"begin levMar_cpp"<<std::endl;
-  const Map<MatrixXd> A(as<Map<MatrixXd> >(AA));
-  const Map<VectorXd> LM_rhs(as<Map<VectorXd> >(LMrhs));
-  // usng generic QR
-  // more efficient algo using givens rotations: https://eigen.tuxfamily.org/dox/unsupported/LMqrsolv_8h_source.html
-  // cf aussi ancienne approche util. LDL sur AtAdDpD
-  const Eigen::HouseholderQR<MatrixXd> QR_A(A);
-  const int r(A.cols()); // r(QRP.rank());
-  MatrixXd R = MatrixXd(QR_A.matrixQR().topLeftCorner(r,r));
-  List resu=List::create();
-  // first compute t(t(rhs).inv(R)) = inv(Rt).rhs
-  VectorXd dVscaled_beta = R.triangularView<Upper>().solve<Eigen::OnTheRight>(LM_rhs.transpose()).transpose();
-  // then inv(R) . inv(Rt).rhs  = inv(RtR).rhs
-  resu["dVscaled_beta"] = R.triangularView<Upper>().solve( dVscaled_beta );
-  resu["rhs"] = LMrhs;
-  if (printDebug)   Rcout <<"end levMar_cpp"<<std::endl;
-  return(resu);
-}
-
 // DEVEL code
 // http://stackoverflow.com/questions/25147577/get-information-about-a-promise-without-evaluating-the-promise
+// ## we can get info about the promise by using pryr::uneval(resid.model)
+// ## class(uneval(resid.model)) may be "bytecode" if the corrHLfit argument was already an evaluated promise
+// ## otherwise class(uneval(resid.model)) may be a "call".
+// ## if needed, uneval is minimal R code  + the C++ code in promise.cpp: promise_code(resid_model) might suffice.
 /*
   // [[Rcpp::export]]
 bool is_promise2(Symbol name, Environment env) {
@@ -171,3 +140,28 @@ SEXP promise_value(Symbol name, Environment env) {
   return PRVALUE(object);
 }
 */
+
+//https://stackoverflow.com/questions/31913437/r-fast-cbind-matrix-using-rcpp
+// [[Rcpp::export(.Rcpp_dense_cbind_mat_mat)]]
+NumericMatrix Rcpp_dense_cbind_mat_mat(NumericMatrix a, NumericMatrix b) {
+  int acoln = a.ncol();
+  int bcoln = b.ncol();
+  NumericMatrix out = no_init_matrix(a.nrow(), acoln + bcoln);
+  for (int j = 0; j < acoln + bcoln; j++) {
+    if (j < acoln) {
+      out(_, j) = a(_, j);
+    } else {
+      out(_, j) = b(_, j - acoln);
+    }
+  }
+  return out;
+}
+
+// [[Rcpp::export(.Rcpp_dense_cbind_mat_vec)]]
+NumericMatrix Rcpp_dense_cbind_mat_vec(NumericMatrix a, NumericVector b) {
+  int acoln = a.ncol();
+  NumericMatrix out = no_init_matrix(a.nrow(), acoln + 1);
+  for (int j = 0; j < acoln ; j++)  out(_, j) = a(_, j);
+  out(_, acoln) = b;
+  return out;
+}

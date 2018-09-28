@@ -3,6 +3,57 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 2.5.0}{ 
+\subsection{NEW FEATURES}{
+\itemize{
+\item A faster-fitting procedure is implemented (through fitme()) for fitting a class of LMMs (without heteroscedasticity, without fixed random-effect variances...).
+\item The restriction, to models with a single random effect, of the computation of the component of prediction variance for uncertainty in dispersion parameters, has been removed.
+\item simulate.HLfit() has new arguments for controlling prior weights and simulation from fits with structured dispersion.
+\item EarthChord distance: see help("EarthChord").
+\item Models with 'geostatistical' random-effect terms (Matern, Cauchy) can now be fitted by sparse-precision methods (although this is not necessarily very efficient).  
+\item Possible improvements in numerical accuracy, notably by sparse-precision methods when (1) fitting models with AR1 terms, that are numerically unstable for extreme AR1 correlation values; (2) in REML fits with low residual variance.
+\item Improvement in numerical accuracy of computation of prediction variance when residual variance is low or spatial correlation matrices are nearly-singular.
+\item New function MSFDR() implements the multiple-stage false discovery rate method of Benjamini and Gavrilov 2009.
+\item Improved .LRT() function (called through fixedLRT()) which makes it more suitable for programming, and which better handles generic-optimization issues.
+\item fixedLRT(), LRT() and anova() now call by default spaMM_boot() for the bootstrap. They handle new arguments to control the spaMM_boot() call, allowing finer control of poorly- or non-informative bootstrap samples.
+\item is_separated() convenience function to check for (quasi-)separation in binomial-response models (this was previously implemented but not exported nor documented). 
+\item Possibly improved initial value for lambda may affect speed and results of some fits.
+\item New extractors formula(), terms(), nobs(), and extract.AIC(), being methods for 'HLfit' objects of generics defined by 'stats'. 
+\item The syntax '.' can now be used in formulas, e.g. HLfit(y ~ (.)^2, ...)
+\item Automatic conversion of correlation matrices to precision factor matrices when sparse-precsion algorithm is requested; new as_precision() function for such conversion.
+\item More transparent control of the residual variance parameter of a residual dispersion model. However, this affects the default results if the residual dispersion model is a mixed-effect one. Use 'fixed=list(phi=NA)' in the 'resid.model' (forcing estimation of its phi) to recover past results. 
+\item More efficient computation of conditional AIC. Users can also control whether it should be computed along with other information criteria. 
+\item New extractor how() to cleanly extract information about how a model fit was obtained.
+\item An hidden memory-dependent constraint on the size of data that could be fit by fixed-effect models by ML has been alleviated.
+\item Numerous improvements for residual dispersion models with random effects makes fitting of the joint residual and main-response models more likely to converge in reasonable time when both models contain spatial terms. 
+}
+}
+\subsection{USER-LEVEL CHANGES}{
+\itemize{
+\item The Predictor() function is deprecated. See help("Predictor") for details.
+\item The designL.from.Corr() function is superseded by mat_sqrt().
+\item The structure of the return value of sym_eigen() is modified.
+\item 'resid.formula' argument of fitting functions is formally deprecated (it has been declared obsolete since v1.8.0).
+}
+}
+\subsection{PREVIOUSLY DOCUMENTED, BUT NEVERTHELESS MISLEADING FEATURES}{
+\itemize{
+\item The computation of prediction variance (specifically its component for uncertainty in dispersion parameters) could be incorrect when several random effects were considered. Fixed as noted in 'New Features'.
+}
+}
+\subsection{FIXED BUGS}{
+\itemize{
+\item The 'random-slope' (Intercept+slope) code was OK, but the more general 'random-coefficients' code (>2 parameters) was not. 
+\item Bug in initialization of adjacency correlation parameter, which prevented at least some bootstrap computations. 
+\item Fixed a (previously documented) issue in spaMM's update() method, stemming from the distinct interpretation of formulas without explicit fixed-effect terms by spaMM vs. stats. Formula updates should still be carefully checked, as getting them fluent is not on the priority list.
+\item Fits failed when spaMM.options(sparse_precision=TRUE) but a corrMatrix was not specified as a precision matrix.
+\item Prediction failed from models involving poly(., raw=FALSE) terms.
+\item Prediction should use contrast information contained in the fitted object rather than in the session's options().
+\item confint() for fixed-effect models has various problems. 
+\item An horrendous bug was found in the implementation of Gamma family for inverse link. Fortunately, no reasonable people would use Gamma(inverse)...
+}
+}
+}
 \section{CHANGES UP TO VERSION 2.4.34}{
 \subsection{NEW FEATURES}{
 \itemize{

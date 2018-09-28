@@ -77,7 +77,7 @@
             } else upper_cP$nu <- nu
             #print(c(rhoForNu,nu,upper$trNu))
           }
-        } else {
+        } else { ## ,"Cauchy"
           if (! is.null(canon_longdep <- .get_cP_stuff(canon.init,"longdep",char_rd))) {
             LDMAX <- moreargs[[char_rd]]$LDMAX
             longdep <- .get_cP_stuff(user.lower,"longdep",char_rd)
@@ -123,10 +123,10 @@
   
   if (! is.null(canon.init$phi)) {
     phi <- user.lower$phi
-    if (is.null(phi)) phi <- max(1e-6,canon.init$phi/1e5)
+    if (is.null(phi)) phi <- max(min(1e-6,canon.init$phi/1.01),canon.init$phi/1e5) # >=1e-6 if canon.init$phi>1e-6
     lower$trPhi <- .dispFn(phi)
     phi <- user.upper$phi
-    if (is.null(phi)) phi <-  min(1e8,canon.init$phi*1e7)
+    if (is.null(phi)) phi <-  min(max(1e8,canon.init$phi*1.01),canon.init$phi*1e7) 
     ## if phi is badly initialized then it gets a default which may cause hard to catch problems in the bootstrap...
     upper$trPhi <- .dispFn(phi)
   }
@@ -153,14 +153,16 @@
     if (is.null(NB_shape)) NB_shape <- max(100*canon.init$NB_shape,1e6)
     upper$trNB_shape <- .NB_shapeFn(NB_shape)
   }
-  if ( ! is.null( ranCoefs <- canon.init$ranCoefs)) { ## not tested
-    canon_LowUp_ranCoef <- lapply(ranCoefs, .calc_canon_LowUp_ranCoef) ## canonical scale: compare with init before log transfo
-    canon_lower <- lapply(canon_LowUp_ranCoef, getElement,"lower")
-    lower$trRanCoefs <- lapply(canon_lower, .ranCoefsFn)
-    canon_upper <- lapply(canon_LowUp_ranCoef, getElement,"upper")
-    upper$trRanCoefs <- lapply(canon_upper, .ranCoefsFn)
+  if ( ! is.null( ranCoefs <- canon.init$ranCoefs)) { ## whenever there are ranCoefs to outer-optimize (FIXME? no user control on canon.init?)
+    upper$trRanCoefs <- lower$trRanCoefs <- ranCoefs
+    for (it in seq_along(ranCoefs)) {
+      init_trRancoef <- .ranCoefsFn(ranCoefs[[it]])
+      trRancoef_LowUp <- .calc_LowUp_trRancoef(init_trRancoef,Xi_ncol=attr(init_trRancoef,"Xi_ncol"),
+                                               tol_ranCoefs=.spaMM.data$options$tol_rel_ranCoefs)
+      lower$trRanCoefs[[it]] <- trRancoef_LowUp$lower
+      upper$trRanCoefs[[it]] <- trRancoef_LowUp$upper
+    }
   }
   ## names() to make sure the order of elements match; remove any extra stuff (which?... hmmm erroneous inclusion of some pars...) 
-  
   return(list(lower=lower[names(init.optim)],upper=upper[names(init.optim)])) 
 }

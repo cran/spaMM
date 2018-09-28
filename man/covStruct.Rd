@@ -1,29 +1,48 @@
 \name{covStruct}
 \alias{covStruct}
+\alias{Predictor}
+\alias{as_precision}
 %\alias{subset_prec}
 %- Also NEED an '\alias' for EACH other topic documented here.
 \title{Specifying correlation structures}
 \description{
-\code{covStruct} is a formal argument of \code{HLCor}, also handled by \code{fitme} and \code{corrHLfit}, that allows one to specify the correlation structure for different types of random effects, It is an alternative to other ad hoc formal arguments such as \code{corrMatrix} or \code{adjMatrix}.\cr 
-It is a \code{list} of matrices with names specifying the type of matrix considered: \code{covStruct=list(corrMatrix=<some matrix>)} or \code{covStruct=list(adjMatrix=<some matrix>)}, where the \dQuote{corrMatrix} or \dQuote{adjMatrix} names are used to specify the type of information provided (accordingly, the names can be repeated: \code{covStruct=list(corrMatrix=<.>,corrMatrix=<.>)}).\cr
-The covariance structure of a \code{corrMatrix(1|<grouping factor>)} formula term can be specified in two ways (see Examples): either by a correlation matrix factor (\code{covStruct=list(corrMatrix=<some matrix>)}), or by a precision matrix factor \bold{Q} such that the covariance factor is \eqn{\lambda}\bold{Q}\eqn{^{-1}}, using the type name \code{"precision"}: \code{covStruct=list(precision=<some matrix>)}. In this case, an algorithm efficient for \bold{sparse} precision matrices is used to fit the model.    
+\code{covStruct} is a formal argument of \code{HLCor}, also handled by \code{fitme} and \code{corrHLfit}, that allows one to specify the correlation structure for different types of random effects, It is an alternative to other ad hoc formal arguments such as \code{corrMatrix} or \code{adjMatrix}. It replaces the deprecated function \code{Predictor(...)} which has served as an interface for specifying the design matrices for random effects in early versions of \code{spaMM}. 
 
-%Although the covariance matrix for a subset of levels is the corresponding subset of the covariance matrix, this is not true for precision matrices The \code{subset_prec} function can be used to perform the correct operations.
+It is assumed that the design matrices for the random effects take the form \bold{ZL} or \bold{ZAL} (see Details) where the \bold{L} factor can be determined from the \code{covStruct} argument (or from the model formula), the \bold{Z} factor is determined from the model formula, and the optional \bold{A} factor is given by the optional \code{"AMatrices"} attribute of \code{covStruct}.
+
+\code{covStruct} is a \code{list} of matrices with names specifying the type of matrix considered: \code{covStruct=list(corrMatrix=<some matrix>)} or \code{covStruct=list(adjMatrix=<some matrix>)}, where the \dQuote{corrMatrix} or \dQuote{adjMatrix} names are used to specify the type of information provided (accordingly, the names can be repeated: \code{covStruct=list(corrMatrix=<.>,corrMatrix=<.>)}). 
+\cr
+The covariance structure of a \code{corrMatrix(1|<grouping factor>)} formula term can be specified in two ways (see Examples): either by a correlation matrix factor (\code{covStruct=list(corrMatrix=<some matrix>)}), or by a precision matrix factor \bold{Q} such that the covariance factor is \eqn{\lambda}\bold{Q}\eqn{^{-1}}, using the type name \code{"precision"}: \code{covStruct=list(precision=<some matrix>)}. In this case, an algorithm efficient for \bold{sparse} precision matrices is used to fit the model. 
+The function \code{as_precision} can be used to perform the conversion from correlation information to precision factor (using a crude solve() that may not always be efficient).
+
+\code{"AMatrices"} is a list of matrices. The names of elements of the list does not matter, but the row names of each \code{A} matrix should match the column names of the corresponding \bold{Z} matrices.
+
+\code{NULL} list members may be necessary, e.g.\cr 
+\code{covStruct=list(corrMatrix=<.>,"2"=NULL,corrMatrix=<.>)})\cr
+when correlations matrices are required only for the first and third random effect. The same syntax should be used for the \code{"AMatrices"} attribute.
 }
-%\usage{
-%subset_prec(prec_mat, corr_mat=NULL, rowcol_ids, tol = 1e-10, verbose = TRUE)  
-%}
-%\arguments{
-%\item{prec_mat}{Precision matrix factor for the full set of levels of the random effect. Must be (Matrix::) sparse, and have dimnames.}
-%\item{corr_mat}{Optional (see Details) correlation matrix factor for the full set of levels of the random effect. Must be in some Matrix:: format, and have dimnames.}
-%\item{rowcol_ids}{Row and columns identifiers; must match the dimnames of the input matrix. Integer values are converted using \code{as.character()}}
-%\item{tol}{A numerical tolerance value, passed to \code{Matrix::drop0} which is called after each matrix inversion operation.}
-%\item{verbose}{Boolean: whether to print some information, or not.}
-%}
+\usage{
+as_precision(corrMatrix)  
+}
+\arguments{
+\item{corrMatrix}{Correlation matrix, specified as \code{matrix} or as \code{dist} object}
+}
 \details{
 \code{covStruct} can also be specified as a list with an optional \code{"types"} attribute, e.g.\cr
 \code{structure(list(<some matrix>,types="corrMatrix"))}\cr
-%\code{subset_prec} uses matrix inversions, which may be inefficient and exceed memory limits if the correlation matrix is numerically dense. If the \code{corr_mat} is not provided, it has to be computed by matrix inversion. It may be thus be useful to precompute the correlation matrix if \code{subset_prec} is called repeatedly on it.
+
+
+  In a spatial model, a vector of correlated random effects \bold{Lv} can be constructed from uncorrelated ones, \bold{v},
+  for some matrix \bold{L} (this may be meaningful only for Gaussian random effects). Typically \bold{L} is the Cholesky \dQuote{square root} of a correlation matrix determined by the random effect specification (e.g., \code{Matern(...)}), or given by the \code{covStruct} argument. 
+  
+  If there is one response value par location, \bold{L} is thus a square matrix which dimension is the number of observations. Alternatively, several observations may be taken in the same location, and a matrix \bold{Z} automatically constructed) tells which element of \bold{Lv} affects each observation. The linear predictor then contains a term of the form \bold{ZLv}, where \code{dim(Z)} is (number of observations,number of locations). 
+  
+  Finally, in some applications the realized random effects in response locations may be viewed as linear combinations \bold{ALv} of random effects \bold{Lv} in distinct locations. In that case the dimension of \bold{L} is the number of such distinct locations, \bold{A} maps them to the observed locations, and \bold{Z} again maps them to possibly repeated observations in observed locations.
+  
+  Thus, in general the random term in the linear predictor is written \bold{Mv}, where  \bold{M=ZAL} is reconstructed from the element matrices (usually automatically constructed if needed).
+  
+ \code{attr(covStruct,"AMatrices")} should be used to specify \bold{A} matrices, and the other matrices are automatically constructed from the various arguments of a fit. 
+
 }
 \seealso{\code{\link{pedigree}} for a type of applications where declaring a precision matrix is useful.}
 \examples{
@@ -36,6 +55,9 @@ blackcap$name <- as.factor(rownames(blackcap))
 HLCor(migStatus ~ means + corrMatrix(1|name), data=blackcap,
       corrMatrix=MLdistMat, HLmethod="ML")
 #### Same result by different input and algorithm:
+HLCor(migStatus ~ means + corrMatrix(1|name), data=blackcap,
+      covStruc=list(precision=as_precision(MLdistMat)), HLmethod="ML")
+# Manual version of the same:
 m <- as.matrix(MLdistMat) ## leaves 0 on the diagonal! 
 diag(m) <- 1 ## so that m is true correlation matrix 
 prec_mat <- solve(m) ## precision factor matrix

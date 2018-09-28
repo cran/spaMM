@@ -1,4 +1,5 @@
 \name{extractors}
+\alias{model.matrix.HLfit} % FIXME not used in spaMM code, and undocumented
 \alias{extractors}
 \alias{getDistMat}
 \alias{logLik}
@@ -9,6 +10,12 @@
 \alias{residuals.HLfit}
 \alias{fixef}
 \alias{fixef.HLfit}
+\alias{formula}
+\alias{formula.HLfit}
+\alias{terms}
+\alias{terms.HLfit}
+\alias{nobs}
+\alias{nobs.HLfit}
 \alias{ranef}
 \alias{ranef.HLfit}
 \alias{print.ranef}
@@ -17,9 +24,6 @@
 \alias{deviance}
 \alias{deviance.HLfit}
 \alias{dev_resids}
-\alias{get_any_IC}
-\alias{AIC}
-\alias{AIC.HLfit}
 \alias{Corr}
 \alias{get_ZALMatrix}
 \alias{get_RLRTSim_args}
@@ -29,9 +33,10 @@
 Functions to extract various components of a fit
 }
 \description{
+\code{formula} extracts the model formula.
+\code{terms} extracts the \bold{fixed-effect} terms.
+\code{nobs} returns the length of the response vector.
 \code{logLik} extracts the log-likelihood (exact or approximated).
-\code{get_any_IC} computes model selection/information criteria such as AIC. See Details for more information about these criteria.
-An \code{AIC} method is also defined for \code{HLfit} objects, which is equivalent to \code{get_any_IC}.
 \code{dev_resids} returns a vector of squared (unscaled) deviance residuals (the summands in McCullagh and Nelder 1989, p. 34). 
 \code{deviance} returns the sum of squares of these (unscaled) deviance residuals, that is (consistently with \code{stats::deviance}) the unscaled deviance.
 \code{fitted} extracts fitted values (see \code{\link{fitted.values}}).
@@ -43,9 +48,12 @@ An \code{AIC} method is also defined for \code{HLfit} objects, which is equivale
 \code{getDistMat} returns a distance matrix for a Matérn correlation model.
 \code{get_ZALMatrix} returns the design matrix for the random effects \eqn{v}.
 \code{get_RLRTSim_args} returns a list of arguments suitable for calls to \code{LRTSim::RLRTSim()}
-\code{get_boot_response} returns the response vector of a given bootstrap replicate in a \code{fixedLRT} run (see Details). 
+\code{get_boot_response} returns the response vector of a given bootstrap replicate in an obsolete use of \code{fixedLRT} (see Details). 
 }
 \usage{
+\method{formula}{HLfit}(x, ...)
+\method{terms}{HLfit}(x, ...)
+\method{nobs}{HLfit}(object, ...)
 \method{logLik}{HLfit}(object,which,...)
 \method{fitted}{HLfit}(object,...)
 \method{fixef}{HLfit}(object,...)
@@ -57,11 +65,9 @@ An \code{AIC} method is also defined for \code{HLfit} objects, which is equivale
 getDistMat(object, scaled=FALSE, which=1L)
 Corr(object,...)
 dev_resids(object,...)
-get_any_IC(object, ..., verbose=interactive())
 get_RLRTSim_args(object,...)
 get_ZALMatrix(object, as_matrix)
 get_boot_response(object, replicate)
-\method{AIC}{HLfit}(object, ..., k, verbose=interactive())
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -70,23 +76,17 @@ get_boot_response(object, replicate)
   \item{which}{For \code{logLik}, the name of the element of the \code{APHLs} list to return. The default depends on the fitting method. In particular, if it was REML or one of its variants, the function returns the log restricted likelihood (exact or approximated). For \code{getDistMat}, as integer, to select a random effect from several for which a distance matrix may be constructed.}
   \item{scaled}{If \code{FALSE}, the function ignores the scale parameter \eqn{rho} and returns unscaled distance.}
   \item{as_matrix}{Deprecated.}
-  \item{verbose}{ Whether to print the model selection criteria or not. }
   \item{x}{For \code{print.ranef}: the return value of \code{ranef.HLfit}.}
   \item{max.print}{Controls \code{options("max.print")} locally.}
-  \item{k}{For \code{AIC}: unused by \code{HLfit} method, but included to conform to the generic.}
   \item{replicate}{integer; to get the response vector of the given bootstrap replicate.}
   \item{\dots}{Other arguments that may be needed by some method.}
 }
 \value{
-Return values are numeric (for \code{logLik}), vectors (most cases), matrices (for \code{vcov}), matrices or dist objects (for \code{getDistMat}). \code{ranef} returns a list of vectors or matrices (the latter for random-coefficient terms). 
+Return values are numeric (for \code{logLik}), vectors (most cases), matrices (for \code{vcov}), matrices or dist objects (for \code{getDistMat}). \code{ranef} returns a list of vectors or matrices (the latter for random-coefficient terms). \code{terms} returns an object of class \code{c("terms", "formula")} which contains the \emph{terms} representation of a symbolic model.  See \code{\link[stats]{terms.object}} for its structure.
 
-\code{Corr} returns a list, for the different random effect terms, of unconditional correlation matrix of the random effects \dQuote{\bold{v}} (as defined in see Details of \code{\link{HLfit}}), if there is any such matrix. Otherwise the list elements 
+\code{Corr} returns a list, for the different random effect terms. For each random-effect term, the returned element is a non-trivial unconditional correlation matrix of the vector \dQuote{\bold{v}} of random effects (\bold{v} as defined in see Details of \code{\link{HLfit}}) for this term, if there is any such matrix. Otherwise the returned element is a information message.
 
-\code{get_any_IC} computes, optionally prints, and returns invisibly the following quantities. The \bold{conditional AIC} (Vaida and Blanchard 2005) is a relative measure of quality of prediction of new realizations of a mixed model, conditional on the realized values of the random effects. It involves the conditional likelihood, and degrees of freedom for (i) estimated residual error parameters and (ii) the overall linear predictor characterized by the \bold{Effective degrees of freedom} already discussed by previous authors including Lee and Nelder (2001), which gave a general formula for it in HGLMs. 
-Both a plug-in \dQuote{asymptotic} estimate of the conditional AIC and of this effective df are returned by \code{get_any_IC}.  Note that these may be biased estimates of conditional AIC and effective df, and that more refined formulas are discussed in the literature (e.g. Overholser and Xu 2014), some of which may be implemented in future versions of \code{get_any_IC}. 
-Lee et al. (2006) and Ha et al (2007) defined a corrected AIC [i.e., AIC(D*) in their eq. 7] which is here interpreted as the conditional AIC. Also returned are the \bold{marginal AIC} (Akaike's classical AIC), and a focussed AIC for dispersion parameters (\bold{dispersion AIC}) discussed by Ha et al (2007; eq.10). This diversity of criteria should encourage users to think twice before applying model selection automatically, which is no better although more fashionable than misuses of simple null hypothesis testing. Also, alternative procedures for model choice can be considered (e.g. Cox and Donnelly, 2011, p. 130-131).
-
-\code{get_boot_response} has no \code{resp_testfn} argument so it cannot always reproduce the samples simulated by \code{spaMM_boot}. Note however that the latter function, with \code{simuland=function(y) {y}}, will return the samples simulated given the condition defined by \code{resp_testfn}.
+\code{get_boot_response} aims to reproduce samples produced by fixedLRT() with argument \code{boot_fn=".eval_boot_replicates"}. However, the default \code{boot_fn} is now \code{spaMM_boot} wherein samples are simulated by \code{simulate(object,nsim = nsim,verbose=FALSE,resp_testfn=resp_testfn)} and, given the same state of the random number generator, running this should be enough to reproduce the samples. \code{get_boot_response} has no \code{resp_testfn} argument so it cannot always reproduce the samples simulated by \code{spaMM_boot}. It may soon be deprecated, as \code{boot_fn=".eval_boot_replicates"}.
 
 \code{get_RLRTSim_args} extracts a list of arguments suitable for a call to \code{LRTSim::RLRTSim()} for a small-sample test of the presence of a random effect by an efficient simulation procedure. The test can be run by\cr \code{do.call("RLRTSim",<get_RLRTSim_args return value>)}.  
 }
@@ -94,11 +94,7 @@ Lee et al. (2006) and Ha et al (2007) defined a corrected AIC [i.e., AIC(D*) in 
 See \code{\link{residuals.glm}} for more information about the types of residuals.
 }
 \references{
-Cox, D. R. and Donnelly C. A. (2011) Principles of Applied Statistics. Cambridge Univ. Press.
-
 McCullagh, P. and Nelder J. A. (1989) Generalized linear models. Second ed. Chapman & Hall: London.
-
-Ha, I. D., Lee, Y. and MacKenzie, G. (2007) Model selection for multi-component frailty models. Statistics in Medicine 26: 4790-4807.
 
 Lee, Y., Nelder, J. A. (2001)  Hierarchical generalised linear models: A
 synthesis of generalised linear models, random-effect models and structured
@@ -106,16 +102,11 @@ dispersions. Biometrika 88, 987-1006.
 
 Lee, Y., Nelder, J. A. and Pawitan, Y. (2006) Generalized linear models with random effects: unified analysis via
 h-likelihood. Chapman & Hall: London.
-
-Overholser R., and Xu R. (2104) Effective degrees of freedom and its application to conditional AIC for linear mixed-effects models with correlated error structures. J. Multivariate Anal. 132: 160-170.
-
-Vaida, F., and Blanchard, S. (2005) Conditional Akaike information for mixed-effects models. Biometrika 92, 351-370.
 }
 \examples{
 data("wafers")
 m1 <- HLfit(y ~X1+X2+(1|batch),
           resid.model = ~ 1 ,data=wafers,HLmethod="ML")
-get_any_IC(m1)          
 fixef(m1)
 vcov(m1)
 ranef(m1)

@@ -29,6 +29,8 @@ fixedLRT <- function(  ## interface to spaMMLRT or (for devel only) .corrMM_LRT
   HLmethod=method,
   REMLformula=NULL,boot.repl=0,
   control=list(),control.boot=list(),fittingFunction, nb_cores=NULL,
+  boot_fn="spaMM_boot",
+  resp_testfn=NULL,
   ...) {  ## since .corrMM_LRT is not doc'ed, REMLformula=NULL,boot.repl=0 cannot go into '...' 
   if (missing(null.formula)) stop("'null.formula' argument is missing, with no default.")
   if (missing(formula)) stop("'formula' argument is missing, with no default.")
@@ -56,17 +58,19 @@ fixedLRT <- function(  ## interface to spaMMLRT or (for devel only) .corrMM_LRT
     }
     ## both will use p_v for the optim steps, we need to distinguish whether some REML correction is used in iterative algo :
     if ( method %in% c("ML","PQL/L","SEM") || substr(method,0,2) == "ML") {
-      callfn <- ".LRT" # mc[[1L]] <- as.name(".LRT") ## does not (yet) handles well other method's  when eg init.corrHLfit contains lambda
+      mc[[1L]] <- get(".LRT", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
       ## there's no profile etc in spaMMLRT... 
     } else { ## EQL, REPQL or REML variants: 
       # FIXME typos (e.g. "PQLL") are not detected...
-      callfn <- ".corrMM_LRT" # mc[[1L]] <- as.name(".corrMM_LRT") ## .corrMM_LRT methods and its options below are best frozen to their v1.0 state
+      mc[[1L]] <- get(".corrMM_LRT", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
       mc$control<-list(prefits=FALSE) ## default values in call by fixedLRT. corrMM.LRT further has default restarts=TRUE and maxit=1
       mc$control[names(control)] <- control ## overrides with user values
       mc$control.boot <- control.boot ## default values in call by fixedLRT are those of .corrMM_LRT ie prefits=FALSE. We can directly copy user values. 
+      mc$boot_fn <- NULL
+      mc$resp_testfn <- NULL
     }
   } else {
-    callfn <- ".LRT" # mc[[1L]] <- as.name(".LRT") 
+    mc[[1L]] <- get(".LRT", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
     ## No maxit, restarts, prefits
     if (missing(fittingFunction)) {
       if (is.null(mc$corrMatrix)) { ## neither explicit spatial nor corrMatrix -> HLfit
@@ -90,10 +94,7 @@ fixedLRT <- function(  ## interface to spaMMLRT or (for devel only) .corrMM_LRT
       mc["etaFix"] <- NULL
     }
   }
-  # mc[[1L]] must be understood by .eval_boot_replicates and quote() does not work there
-  # see further problems with thisFnName <- as.character(sys.call()[[1]])
-  # eval with an internal function worked in interacive tests but not in R CMD CHECK...
-  do.call(callfn, as.list(mc[-1])) # eval(mc, parent.frame()) ## need to specify an environment where .LRT and fixedLRT args can both be found...
+  eval(mc, parent.frame())
 }
 
 corrMM.LRT <- function(...) stop("'corrMM.LRT' is deprecated since version 2.1.66.\n The up-to-date function is 'fixedLRT' (or 'spaMM:::.LRT' for elaborate experiments)")

@@ -5,7 +5,7 @@
     nz <- length(spm@x)
     if ( methods::.hasSlot(spm, "diag")) nz <- nz+ncol(spm)
     return(nz) 
-  } else return(sum(spm !=0)) ## AMatrix reaches here
+  } else return(sum(spm !=0)) ## AMatrices reaches here
 }
 
 # even though the Z's were sparse postmultplication by LMatrix leads some of the ZAL's to dgeMatrix (dense)

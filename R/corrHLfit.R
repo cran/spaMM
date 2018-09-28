@@ -5,7 +5,7 @@
                       ranFix=list(), 
                       lower=list(),upper=list(),
                       objective=NULL, ## return value of HLCor.obj for optim calls... FR->FR meaningless for full SEM
-                      resid.model=~1, resid.formula,
+                      resid.model=~1, 
                       control.dist=list(),
                       control.corrHLfit=list(), ## optim.scale, optimizer, <optimizer controls>
                       processed=NULL, ## added 2014/02 for programming purposes
@@ -26,7 +26,7 @@
   } ## as.list() would flatten rho vectors
   #
   HLnames <- (c(names(formals(HLCor)),names(formals(HLfit)),
-                names(formals(designL.from.Corr)),names(formals(make_scaled_dist))))  
+                names(formals(.spaMM.data$options$mat_sqrt_fn)),names(formals(make_scaled_dist))))  
   dotnames <- setdiff(names(mc)[-1],names(formals(corrHLfit)))
   argcheck <- setdiff(dotnames,HLnames)
   if (length(argcheck)) warning(paste("suspect argument(s) ",paste(argcheck, collapse=",")," in corrHLfit call."))
@@ -36,7 +36,6 @@
     #family <- .as_call_family(family)
     FHF <- formals(HLfit) ## makes sure about default values 
     names_FHF <- names(FHF)
-    #if ( ! is.null(mc$resid.formula)) mc$resid.model <- mc$resid.formula
     names_nondefault  <- intersect(names(mc),names_FHF) ## mc including dotlist
     FHF[names_nondefault] <- mc[names_nondefault] ##  full HLfit args
     preprocess.formal.args <- FHF[which(names_FHF %in% names(formals(.preprocess)))] 
@@ -65,13 +64,12 @@
     mc$processed <- do.call(.preprocess,preprocess.formal.args,envir=parent.frame(1L))
     #mc$ranFix$ranCoefs <- NULL ## but new ranFix can be added by fitme/corrHLfit
     ## removing all elements that duplicate info in processed: 
-    pnames <- c("data","family","formula","prior.weights","HLmethod","rand.family","control.glm","resid.formula","REMLformula",
+    pnames <- c("data","family","formula","prior.weights","HLmethod","rand.family","control.glm","REMLformula",
                 "resid.model", "verbose")
     for (st in pnames) mc[st] <- NULL 
   }  
   
   mc[[1L]] <- get("corrHLfit_body", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
-  #mc[[1L]] <- quote(spaMM::corrHLfit_body) 
   return(mc)
 }
 
@@ -82,7 +80,7 @@
                       ranFix=list(), 
                       lower=list(),upper=list(),
                       objective=NULL, ## return value of HLCor.obj for optim calls... FR->FR meaningless for full SEM
-                      resid.model=~1, resid.formula,
+                      resid.model=~1, 
                       control.dist=list(),
                       control.corrHLfit=list(), ## optim.scale, optimizer, <optimizer controls>
                       processed=NULL, ## added 2014/02 for programming purposes
@@ -93,17 +91,22 @@
   spaMM.options(spaMM_glm_conv_crit=list(max=-Inf))
   time1 <- Sys.time()
   oricall <- match.call(expand.dots=TRUE) ## mc including dotlist
-  if ( ! missing(resid.formula)) oricall$resid.model <- resid.formula
+  oricall$formula <- .stripFormula(formula) ## Cf comment in .getValidData
   mc <- oricall
-  oricall$formula <- .stripFormula(formula) ## f i x m e : Cf comment in .getValidData
-  mc[[1L]] <- .def_call_corrHLfit_body
+  mc[[1L]] <- get(".def_call_corrHLfit_body", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
   mc <- eval(mc,parent.frame())  
   hlcor <- eval(mc,parent.frame()) 
   .check_conv_glm_reinit()
-  attr(hlcor,"corrHLfitcall") <- oricall ## this says the hlcor was returned by corrHLfit
+  if (inherits(hlcor,"HLfitlist")) {
+    attr(hlcor,"call") <- oricall
+  } else hlcor$call <- oricall ## this is a call to corrHLfit()
   attr(hlcor,"HLCorcall") <- NULL
   lsv <- c("lsv",ls())
-  if ( ! identical(paste(family[[1L]]),"multi"))  hlcor$fit_time <- .timerraw(time1)
+  if ( ! identical(paste(family[[1L]]),"multi"))  {
+    hlcor$how$fit_time <- .timerraw(time1)
+    hlcor$fit_time <- structure(hlcor$how$fit_time,
+                                message="Please use how(<fit object>)[['fit_time']] to extract this information cleanly.")
+  }
   rm(list=setdiff(lsv,"hlcor")) 
   #class(hlcor) <- c(class(hlcor),"corrHLfit")
   return(hlcor)
@@ -117,7 +120,7 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
                        ranFix=list(), 
                        lower=list(),upper=list(),
                        objective=NULL, ## return value of HLCor.obj for optim calls... FR->FR meaningless for full SEM
-                       resid.model=~1, resid.formula,
+                       resid.model=~1, 
                        control.dist=list(),
                       control.corrHLfit=list(), ## optim.scale, optimizer, <Optimizer controls>
                       processed=NULL, ## added 2014/02 for programming purposes
@@ -128,9 +131,8 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
   spaMM.options(spaMM_glm_conv_crit=list(max=-Inf))
   time1 <- Sys.time()
   oricall <- match.call(expand.dots=TRUE) ## mc including dotlist
-  if ( ! missing(resid.formula)) oricall$resid.model <- resid.formula
+  oricall$formula <- .stripFormula(formula) ## Cf comment in .getValidData
   mc <- oricall
-  oricall$formula <- .stripFormula(formula) ## f i x m e : Cf comment in .getValidData
   ## Preventing confusions
   if (!is.null(mc$ranPars)) {
     stop("incorrect 'ranPars' argument in corrHLfit call. Use ranFix (ranPars is for HLCor only)")
@@ -144,7 +146,7 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
   } ## as.list() would flatten rho vectors
   #
   HLnames <- (c(names(formals(HLCor)),names(formals(HLfit)),
-                names(formals(designL.from.Corr)),names(formals(make_scaled_dist))))  
+                names(formals(.spaMM.data$options$mat_sqrt_fn)),names(formals(make_scaled_dist))))  
   dotnames <- setdiff(names(mc)[-1],names(formals(corrHLfit)))
   argcheck <- setdiff(dotnames,HLnames)
   if (length(argcheck)) warning(paste("suspect argument(s) ",paste(argcheck, collapse=",")," in corrHLfit call."))
@@ -154,7 +156,6 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
     #family <- .as_call_family(family)
     FHF <- formals(HLfit) ## makes sure about default values 
     names_FHF <- names(FHF)
-    #if ( ! is.null(mc$resid.formula)) mc$resid.model <- mc$resid.formula
     names_nondefault  <- intersect(names(mc),names_FHF) ## mc including dotlist
     FHF[names_nondefault] <- mc[names_nondefault] ##  full HLfit args
     preprocess.formal.args <- FHF[which(names_FHF %in% names(formals(.preprocess)))] 
@@ -173,7 +174,7 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
       ## then data are reformatted as a list. Both HLCor and HLfit can analyse such lists for given corrPars and return the joint likelihood
       ## By contrast HLCor should not fit different corrPars to each data, so it does not lapply("corrHLfit",...)
       ## Rather, it calls preprocess which will construct a list of processed objects, to be used conjointly with the data list.
-      ## But then we should not attempt to modify an element of 'pocessed' as if it was a single processed object
+      ## But then we should not attempt to modify an element of 'processed' as if it was a single processed object
       ## We must use setProcessed / getProcessed to access list elements.
       if ( ! inherits(data,"list")) {
         familyargs <- family
@@ -184,21 +185,23 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
       }     
     }
     mc$processed <- do.call(.preprocess,preprocess.formal.args,envir=parent.frame(1L))
-    oricall$resid.model <- mc$processed$residModel
-    #mc$ranFix$ranCoefs <- NULL ## but new ranFix can be added by fitme/corrHLfit
-    ## removing all elements that are matched in processed:
-    pnames <- c("data","family","formula","prior.weights","HLmethod","rand.family","control.glm","resid.formula","REMLformula",
+    pnames <- c("data","family","formula","prior.weights","HLmethod","rand.family","control.glm","REMLformula",
                 "resid.model", "verbose","distMatrix","uniqueGeo","adjMatrix") 
     for (st in pnames) mc[st] <- NULL 
   }  
   mc[[1L]] <- get("corrHLfit_body", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
-  #mc[[1L]] <- quote(spaMM::corrHLfit_body) 
   hlcor <- eval(mc,parent.frame()) 
   .check_conv_glm_reinit()
-  attr(hlcor,"corrHLfitcall") <- oricall ## this says the hlcor was returned by corrHLfit
-  attr(hlcor,"HLCorcall") <- NULL
+  if (inherits(hlcor,"HLfitlist")) {
+    attr(hlcor,"call") <- oricall
+  } else hlcor$call <- oricall ## this is a call to corrHLfit()
+  #attr(hlcor,"HLCorcall") <- NULL # not necess?
   lsv <- c("lsv",ls())
-  if ( ! identical(paste(family[[1L]]),"multi") && ! is.call(hlcor) )  hlcor$fit_time <- .timerraw(time1)
+  if ( ! identical(paste(family[[1L]]),"multi") && ! is.call(hlcor) )  {
+    hlcor$how$fit_time <- .timerraw(time1)
+    hlcor$fit_time <- structure(hlcor$how$fit_time,
+                                message="Please use how(<fit object>)[['fit_time']] to extract this information cleanly.")
+  }
   rm(list=setdiff(lsv,"hlcor")) 
   return(hlcor)
 }

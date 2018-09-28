@@ -55,7 +55,7 @@ HLCor(formula, data, family = gaussian(), ranPars = NULL, distMatrix,
    }
 }
   \item{\dots}{
-    Further parameters passed to \code{HLfit} or to \code{designL.from.Corr}.
+    Further parameters passed to \code{HLfit} or to \code{\link{mat_sqrt}}.
 }
 }
 \details{
@@ -78,7 +78,6 @@ HLCor(formula, data, family = gaussian(), ranPars = NULL, distMatrix,
 
 \seealso{
 \code{\link{autoregressive}} for additional examples, \code{\link{MaternCorr}}, \code{\link{HLfit}}, and \code{\link{corrHLfit}}
-% possibly the currently undocumented designL.from.Corr
 }
 \examples{
 # Example with an adjacency matrix (autoregressive model):

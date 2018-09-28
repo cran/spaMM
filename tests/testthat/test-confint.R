@@ -1,5 +1,5 @@
 # confint
-cat("\ntest confint(). for HLfit() fit (see spaMMIntro for test with corrHLfit):\n")
+cat("\ntest confint() for HLfit, corrHLfit, and fitme:\n")
 data("wafers")
 wfit <- HLfit(y ~X1+(1|batch),family=Gamma(log),data=wafers,HLmethod="ML")
 ci <- confint(wfit,"X1")
@@ -12,16 +12,16 @@ testthat::expect_equal(ci$interval[[2]],0.17271333,tolerance=1e-4)
 
 ## with corrHLfit
 data("blackcap")
-fitobject <- corrHLfit(migStatus ~ means + Matern(1|latitude+longitude),data=blackcap,
+fitobject <- corrHLfit(migStatus ~ means + Matern(1|latitude+longitude),data=blackcap,HLmethod="ML",
                        init.corrHLfit=list(nu=0.535929513,rho=0.007485725),ranFix=list(phi=0.05,lambda=2))
 ci <- confint(fitobject,"means")
-testthat::expect_equal(ci$interval[[1]],0.1576837,tolerance=1e-4)
-testthat::expect_equal(ci$interval[[2]],0.9594751,tolerance=1e-4)
-refitobject <- corrHLfit(migStatus ~ means + Matern(1|latitude+longitude),data=blackcap,
+testthat::expect_equal(ci$interval[[1]],0.1606797,tolerance=1e-4)
+testthat::expect_equal(ci$interval[[2]],0.9558826,tolerance=1e-4)
+refitobject <- corrHLfit(migStatus ~ means + Matern(1|latitude+longitude),data=blackcap,HLmethod="ML",
                          init.corrHLfit=list(rho=0.007485725),ranFix=list(nu=0.535929513,phi=0.05,lambda=2))
 ci <- confint(refitobject,"means")
-testthat::expect_equal(ci$interval[[1]],0.1576841,tolerance=1e-4)
-testthat::expect_equal(ci$interval[[2]],0.9582488,tolerance=1e-4)
+testthat::expect_equal(ci$interval[[1]],0.1586536,tolerance=1e-4)
+testthat::expect_equal(ci$interval[[2]],0.9570798,tolerance=1e-4)
 
 ## with fitme (derived from gentle intro)
 rSample <- function(nb,rho,sigma2_u,resid,intercept,slope,pairs=TRUE) {

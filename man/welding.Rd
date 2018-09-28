@@ -13,7 +13,7 @@ for heterocedastic models and is also suitable for illustrating fit of overparam
   The data frame includes 16 observations on 10 variables:
   \describe{
     \item{Strengh}{response variable;}
-    \item{...}{nine two-level factors.}
+    \item{\dots}{nine two-level factors.}
   }
 }
 \source{

@@ -66,18 +66,24 @@ get_from_MME_default.Matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
 get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
   if (which=="" && ! is.null(szAug)) {
     if (FALSE) {
-      ###### fastLmPure
-      ## 0 for the column-pivoted QR decomposition, 
-      ## 1 for the unpivoted QR decomposition, 
-      ## 2 for the LLT Cholesky, 3 for the LDLT Cholesky, ...................
-      ## benchmarks: http://dirk.eddelbuettel.com/blog/2011/07/05/
-      ##            http://stackoverflow.com/questions/30420185/fastlm-is-much-slower-than-lm
-      ## In my experience (denser matrices ?) .lm.fit remains faster
-      # betaV <- RcppEigen::fastLmPure(X=sXaug,y=szAug,method=1)$coefficients
-      ######
-    #} else return(.lm.fit(x=sXaug,y=szAug)$coefficients) ## 
-    } else return(.lmwithQR(sXaug,szAug,returntQ=FALSE,returnR=FALSE)$coef) 
-  } else stop("Unhandled arguments in get_from_default.matrix")
+      if (FALSE) {
+        ###### fastLmPure
+        ## 0 for the column-pivoted QR decomposition, 
+        ## 1 for the unpivoted QR decomposition, 
+        ## 2 for the LLT Cholesky, 3 for the LDLT Cholesky, ...................
+        ## benchmarks: http://dirk.eddelbuettel.com/blog/2011/07/05/
+        ##            http://stackoverflow.com/questions/30420185/fastlm-is-much-slower-than-lm
+        ## In my experience (denser matrices ?) .lm.fit remains faster
+        # betaV <- RcppEigen::fastLmPure(X=sXaug,y=szAug,method=1)$coefficients
+        # return(betaV)
+        ######
+      } else return(.lm.fit(x=sXaug,y=szAug)$coefficients) ## 
+    } else { 
+      ## according to https://eigen.tuxfamily.org/dox/group__DenseDecompositionBenchmark.html
+      ## HouseholderQR is faster thanColPivHouseholderQR. There are precision trade-offs.
+      return(.lmwithQR(sXaug,szAug,returntQ=FALSE,returnR=FALSE)$coef)
+    } ## Eigen QR is OK bc we don't request Q
+  } else stop("Unhandled arguments in get_from_MME_default.matrix")
 }
 
 .calc_sXaug_Re <- function(locsXaug, ## conforming template
@@ -102,11 +108,11 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
 
 # function to get the hatvalues (only: not the other similar computations on t_Q_scaled)
 # no permutation issues for Q => a single get_hatvalues function should handle all sXaug classes
-.get_hatvalues <- function(sXaug, X.Re, weight_X) {
+.get_hatvalues_MM <- function(sXaug, X.Re, weight_X) {
   if ( ! is.null(X.Re) ) { ## not the standard REML
     distinct.X.ReML <- attr(X.Re,"distinct.X.ReML")
     if ( distinct.X.ReML[2L] ) { ## test FALSE for standard ML, TRUE only for some non-standard REML cases
-      locsXaug <- .calc_sXaug_Re(locsXaug=sXaug,X.Re,weight_X)
+      locsXaug <- .calc_sXaug_Re(locsXaug=sXaug,X.Re,weight_X) ## FIXME presumably does not work for sparse methods.
       hatval <- .leveragesWrap(locsXaug) ## Rcpp version of computation through computation of Q
     } else if ( distinct.X.ReML[1L] ) { ## includes ML standard
       whichcols <- attr(X.Re,"unrestricting_cols")
@@ -128,15 +134,37 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
   return(hatval)
 }
 
-.leveragesWrap <- function(X) {
+.get_hatvalues_FM <- function(X.Re, augX, w.resid) { ## for (G)LM
+  if ( is.null(X.Re) ) { ## basic REML, leverages from the same matrix used for estimation of beta
+    if (ncol(augX)) { 
+      wAugX <- .calc_wAugX(XZ_0I=augX,sqrt.ww=sqrt(w.resid)) # rWW %*% X.pv 
+      lev_phi <- .leveragesWrap(wAugX)
+    } else { 
+      lev_phi <- rep(0,nrow(augX)) ## leveragesWrap() -> .leverages() would fail on 0-col matrix? or it is large nrow the problem ?
+    }
+  } else if (ncol(X.Re)) { ## non standard REML
+    wAugXleve <- .calc_wAugX(XZ_0I=X.Re,sqrt.ww=sqrt(w.resid)) # rWW%*%X.Re 
+    lev_phi <- .leveragesWrap(wAugXleve)
+  } else { # ML: X.Re non NULL mais ncol(X.Re)=0
+    lev_phi <- rep(0,nrow(X.Re)) ## leveragesWrap() -> .leverages() would fail on 0-col matrix? or it is large nrow the problem ?
+  }
+}
+
+.leveragesWrap <- function(X) { 
+  # Matrix::qr.Q fails is X had zero columns. The call to this function assumes ncol>0
+  #
   if (inherits(X,"sparseMatrix")) {
     return(rowSums(qr.Q(qr(X))^2)) ## perhaps not optimal and certainly not optimized as first met in LM with sparse X.pv 01/2018
-  } else .leverages(X) 
+  } else if (nrow(X)> .spaMM.data$options$lev_by_sparse_Q) { ## Eigen's QR does not seem memory-efficient for large nrow.
+    #  so we convert to sparse. There is no big overhead in doing this only here (but there are drawbacks in doing it upstream)
+    X <- as(X,"dgCMatrix") # X <- .Rcpp_as_dgCMatrix(X) 
+    return(rowSums(qr.Q(qr(X))^2)) ## perhaps not optimal and certainly not optimized as first met in LM with sparse X.pv 01/2018
+  } else .leverages(X) ## requests Q from Eigen QR hich is inefficient for large nrow(X)
 }
 
 
 .calc_dvdloglamMat_new <- function(dlogfthdth,cum_n_u_h,lcrandfamfam,rand.families,u_h,
-                                   sXaug, d2hdv2=NULL, ## use either one
+                                   sXaug, d2hdv2_info=NULL, ## use either one
                                    stop.on.error) {
   neg.d2f_dv_dloglam <- vector("list",length(lcrandfamfam))
   for (it in seq_len(length(lcrandfamfam)) ) {
@@ -153,33 +181,28 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
   }
   neg.d2f_dv_dloglam <- unlist(neg.d2f_dv_dloglam)
   neg.d2f_dv_dloglam <- as.vector(neg.d2f_dv_dloglam)
-  if(is.null(d2hdv2)) {
-    dvdloglamMat <- get_from_MME(sXaug,"solve_d2hdv2",B=diag( neg.d2f_dv_dloglam)) 
-  } else {
-    qr_d2hdv2 <- .get_qr(d2hdv2,provide=FALSE)
-    if (is.null(qr_d2hdv2)) {
-      dvdloglamMat <- try(solve(d2hdv2,diag( neg.d2f_dv_dloglam ))) 
-    } else dvdloglamMat <- .solveWrap_matrix(qr_d2hdv2, diag( neg.d2f_dv_dloglam ), stop.on.error=stop.on.error) # rXr
-    if (inherits(dvdloglamMat,"try-error")) {
-      warning("Using ginv() in dvdloglamMat computation to overcome numerical problem.")
-      dvdloglamMat <- sweep(ginv(d2hdv2),MARGIN=2,as.vector(neg.d2f_dv_dloglam),`*`) ## ginv(d2hdv2) %*% diag( as.vector(neg.d2f_dv_dloglam))
-    }
-  } 
-  return(dvdloglamMat)
+  if(is.null(d2hdv2_info)) {
+    dvdloglamMat <- get_from_MME(sXaug,"solve_d2hdv2",B=diag( neg.d2f_dv_dloglam)) ## square matrix, by  the formulation of the algo 
+  } else if (inherits(d2hdv2_info,"qr") || inherits(d2hdv2_info,"sparseQR") ) {
+    dvdloglamMat <- solve(d2hdv2_info, diag( neg.d2f_dv_dloglam ))  # rXn       
+  } else { ## then d2hdv2_info is ginv(d2hdv2) or some other form of inverse
+    dvdloglamMat <- sweep(d2hdv2_info,MARGIN=2L,neg.d2f_dv_dloglam,`*`) ## ginv(d2hdv2) %*% diag( as.vector(neg.d2f_dv_dloglam))      
+  }
+  return(dvdloglamMat) ## square matrix, by  the formulation of the algo 
 }
 
 .calc_dvdlogphiMat_new <- function(dh0deta,ZAL,
-                                   sXaug,d2hdv2=NULL, ## either one
+                                   sXaug,d2hdv2_info=NULL, ## either one
                                    stop.on.error) {
   ## cf calcul dhdv, but here we want to keep each d/d phi_i distinct hence not sum over observations i 
   ## code corrected here 12/2013; this is dh0dv = neg.d2h0_dv_dlogphi (eta always linear in v :-) and w.resid always propto 1/phi)
   neg.d2h0_dv_dlogphi <- .m_Matrix_times_Dvec(t(ZAL), drop(dh0deta)) # dh0dv <- t(ZAL) %*% diag(as.vector(dh0deta)) ## nXr each ith column is a vector of derivatives wrt v_k
-  if (is.null(d2hdv2)) {
+  if (is.null(d2hdv2_info)) {
     dvdlogphiMat <- get_from_MME(sXaug,"solve_d2hdv2",B=neg.d2h0_dv_dlogphi) 
-  } else {
-    qr_d2hdv2 <- .get_qr(d2hdv2)
-    dvdlogphiMat <- .solveWrap_matrix(qr_d2hdv2, neg.d2h0_dv_dlogphi , stop.on.error=stop.on.error)  # rXn       
-    if (inherits(dvdlogphiMat,"try-error")) stop("problem in dvdlogphiMat computation.") ## ou warning + ginv  comme dans .calc_dvdloglamMat
+  } else if (inherits(d2hdv2_info,"qr") || inherits(d2hdv2_info,"sparseQR") ) {
+    dvdlogphiMat <- solve(d2hdv2_info, neg.d2h0_dv_dlogphi)  # rXn       
+  } else { ## then d2hdv2_info is ginv(d2hdv2)
+    dvdlogphiMat <- sweep(d2hdv2_info,MARGIN=2L,diag(neg.d2h0_dv_dlogphi),`*`)  # rXn       
   }
   return(dvdlogphiMat)
 }
@@ -326,7 +349,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
 
 .warn_intervalStep <- function(currentlik,for_intervals) {
   locmess <- paste("A higher",for_intervals$likfn,"was found than for the original fit.",
-                   "\nThis suggests the original fit did not fully maximize",for_intervals$likfn,"\n or numerical accuracy issues.")
+                   "\nThis suggests the original fit did not fully maximize",for_intervals$likfn," (REML?)\n or numerical accuracy issues.")
   message(locmess)
   dispCorrPars <- .get_CorrEst_and_RanFix(for_intervals$ranFix,for_intervals$corr_est)$corrPars
   if (length(dispCorrPars)) message(paste("Current dispersion and correlation parameters are ",
@@ -335,28 +358,70 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
   message("logLik of the fit=",for_intervals$fitlik)    
 }
 
+.cbind_dgC_dgC <- function(leftcols, rightcols) { # expects @x,i,p => dgCMatrix
+  leftcols@p <- c(leftcols@p, leftcols@p[length(leftcols@p)] + rightcols@p[-1L])
+  leftcols@i <- c(leftcols@i, rightcols@i) 
+  leftcols@x <- c(leftcols@x, rightcols@x)
+  if (is.null(leftcols@Dimnames[[2L]])) {
+    if ( ! is.null(rightcols@Dimnames[[2L]])) {
+      leftcols@Dimnames[[2L]] <- c(rep("",leftcols@Dim[2L]),rightcols@Dimnames[[2L]])
+    } ## else all colnames are NULL
+  } else {
+    if ( is.null(rightcols@Dimnames[[2L]])) {
+      leftcols@Dimnames[[2L]] <- c(leftcols@Dimnames[[2L]],rep("",rightcols@Dim[2L]))
+    } else leftcols@Dimnames[[2L]] <- c(leftcols@Dimnames[[2L]],rightcols@Dimnames[[2L]])
+  } 
+  leftcols@Dim[2L] <- leftcols@Dim[2L]+rightcols@Dim[2L]
+  return(leftcols)
+}
 
-.make_Xscal <- function(ZAL, ZAL_scaling=NULL, AUGI0_ZX, n_u_h, use_Xaug=FALSE) {
-  if (use_Xaug) { ## Write and read AUGI0_ZX$Xaug; but 
-    # (1) the alternative with the bind's remains faster, despite being a slow step of a fit;
-    # this requires reinitializing AUGI0_ZX$Xaug when ZAL is modified, which exposes to bugs.
-    if (is.null(AUGI0_ZX$Xaug)) {
-      AUGI0_ZX$Xaug <- suppressMessages(cbind2(
-        suppressMessages(rbind2(AUGI0_ZX$I, ZAL)), ## suppress signature message generated by eg rbind2(Diagonal(x=runif(5)), Diagonal(n=5)) 
-        rbind2(AUGI0_ZX$ZeroBlock, AUGI0_ZX$X.pv)
-      )) 
-    }
-    if (is.null(ZAL_scaling)) {
-      return(AUGI0_ZX$Xaug)
-    } else return(.m_Matrix_llblock_times_Dvec(AUGI0_ZX$Xaug, ZAL_scaling))
-  } else { 
-    if (!is.null(ZAL_scaling)) ZAL <- .m_Matrix_times_Dvec(ZAL,ZAL_scaling)
-    Xscal <- suppressMessages(cbind2(
-      suppressMessages(rbind2(AUGI0_ZX$I, ZAL)), ## suppress signature message generated by eg rbind2(Diagonal(x=runif(5)), Diagonal(n=5)) 
-      rbind2(AUGI0_ZX$ZeroBlock, AUGI0_ZX$X.pv)
-    )) 
-    return(Xscal)
-  }
+.adhoc_cbind_dgC_0 <- function(leftcols, newcoln) { # expects @x,i,p => dgCMatrix
+  leftcols@p <- c(leftcols@p, rep(leftcols@p[length(leftcols@p)],newcoln))
+  if ( ! is.null(leftcols@Dimnames[[2L]])) leftcols@Dimnames[[2L]] <- c(leftcols@Dimnames[[2L]],rep("",newcoln)) 
+  leftcols@Dim[2L] <- leftcols@Dim[2L]+newcoln
+  return(leftcols)
+}
+
+.adhoc_rbind_I_ZAL <- function(Ilen, ZAL) {
+  newlen <- Ilen+length(ZAL@x)
+  Iseq <- seq_len(Ilen)
+  Ip <- c(0L,Iseq)
+  newp <- Ip+ZAL@p
+  Ipos <- newp[-length(newp)]+1L
+  #
+  newx <- numeric(newlen)
+  newx[Ipos] <- 1 # "I@x"
+  newx[-Ipos] <- ZAL@x
+  newi <- integer(newlen)
+  newi[Ipos] <- Iseq-1L
+  newi[-Ipos] <- ZAL@i+Ilen
+  #
+  ZAL@i <- newi
+  ZAL@x <- newx
+  ZAL@p <- newp
+  ZAL@Dim[1L] <- Ilen+ZAL@Dim[1L]
+  if ( ! is.null(ZAL@Dimnames[[1L]])) ZAL@Dimnames[[1L]] <- c(rep("",Ilen),ZAL@Dimnames[[1L]]) 
+  return(ZAL)
+}
+
+.make_Xscal <- function(ZAL, ZAL_scaling=NULL, AUGI0_ZX) {
+  # if (is.null(ZAL)) { ## has been used to construct template in .preprocess(), but not currently used 
+  #   if (inherits(AUGI0_ZX$I,"sparseMatrix")) {
+  #     ZeroZAL <- Matrix(0,ncol=ncol(AUGI0_ZX$I),nrow=nrow(AUGI0_ZX$X.pv))
+  #   } else ZeroZAL <- matrix(0,ncol=ncol(AUGI0_ZX$I),nrow=nrow(AUGI0_ZX$X.pv)) 
+  #   # etc
+  # } else {
+    if (length(ZAL_scaling)==1) stop("ZAL_scaling should be a full-length vector, or NULL.")
+    if ( ! is.null(ZAL_scaling)) ZAL <- .m_Matrix_times_Dvec(ZAL,ZAL_scaling)
+    if (is.null(Zero_sparseX <- AUGI0_ZX$Zero_sparseX)) Zero_sparseX <- rbind2(AUGI0_ZX$ZeroBlock, AUGI0_ZX$X.pv)
+    if (inherits(ZAL,"dgCMatrix")) {
+      I_ZAL <- .adhoc_rbind_I_ZAL(nrow(AUGI0_ZX$I), ZAL) ## this is faster...
+    } else I_ZAL <- rbind2(AUGI0_ZX$I, ZAL)
+    if (inherits(I_ZAL,"dgCMatrix") &&  inherits(Zero_sparseX,"dgCMatrix") ) {
+      Xscal <- .cbind_dgC_dgC(I_ZAL, Zero_sparseX) # substantially faster than the general alternative => F I X M E extend its usage ? 
+    } else Xscal <- cbind2(I_ZAL, Zero_sparseX)
+  # }
+  return(Xscal)
 }
 
 ## y=u_h in all cases
@@ -375,118 +440,337 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
   )
 }
 
-.calc_APHLs_from_ZX <- function(auglinmodblob=NULL,processed, which="p_v",
-                               ## alternative to auglinmodblob, insuff pour REML non standard:
-                               sXaug, phi_est, lambda_est, dvdu, u_h, mu 
-                               ) {
-  resu <- list()
-  if (FALSE  &&  ## in particular pb with p_v
-      processed$LMMbool && ! all(which %in% c("hlik","clik")) && ! is.null(auglinmodblob)) {
-    n_u_h <- length(auglinmodblob$u_h)
-    weight_Xaug <- c(rep(1,n_u_h),auglinmodblob$weight_X)
-    augy <- c(rep(0,n_u_h),processed$y) ## contains the offset, cntrary to augz in fit_as_ZX !
-    SSE <- sum((weight_Xaug*(augy-auglinmodblob$fitted))^2) 
-    ## SSE [sum of nobs+nr terms]/nobs provides an estimate of a scaling factor 
-    ## not of phi (which could be  sum((y-fitted)[ypos])^2)/sum(1-lev_phi)
-    nobs <- auglinmodblob$nobs
-    if ("p_v" %in% which) { ## I N V A L I D  formula in REML fits
-      resu$p_v <- sum(log(auglinmodblob$weight_X)) - get_from_MME(auglinmodblob$sXaug,"logdet_R_scaled_v") - nobs*(1+log(2*pi*SSE/nobs))/2
-    }
-    if ("p_bv" %in% which) {
-      resdf <- nobs - auglinmodblob$pforpv
-      resu$p_bv <- sum(log(auglinmodblob$weight_X)) - get_from_MME(auglinmodblob$sXaug,"logdet_R_scaled_b_v") - resdf*(1+log(2*pi*SSE/resdf))/2
-    }
-  } else { ## general code
-    if ( ! is.null(auglinmodblob)) {
-      sXaug <- auglinmodblob$sXaug 
-      mu <- auglinmodblob$muetablob$mu
-      phi_est <- auglinmodblob$phi_est
-      u_h <- auglinmodblob$u_h
-      lambda_est <- auglinmodblob$lambda_est
-      dvdu <- auglinmodblob$wranefblob$dvdu
-      pforpv <- auglinmodblob$pforpv
-    }
-    #
-    family <- processed$family
-    famfam <- family$family
-    clik_fn <- processed$clik_fn
-    y <- processed$y
-    BinomialDen <- processed$BinomialDen
-    theta <- .theta.mu.canonical(mu/BinomialDen,family)  
-    if (famfam=="binomial") {
-      resu$clik <- sum(clik_fn(theta,y/BinomialDen,BinomialDen,1/(phi_est))) ## freq a revoir
-    } else {
-      phi_est[phi_est<1e-12] <- 1e-10 ## 2014/09/04 local correction, has to be finer than any test for convergence 
-      ## creates upper bias on clik but should be more than compensated by the lad
-      ## correcting the lad makes an overall upper bias for small (y-theta) at "constant" corrected phi 
-      ## this can be compensated by correcting the lad LESS.
-      resu$clik <- sum(clik_fn(theta,y,eval(processed$prior.weights)/phi_est)) ## note (prior) weights meaningful only for gauss/ Gamma 
-    }
-    if (all(which =="clik")) return(resu)
-    if (processed$models[["eta"]]=="etaGLM") {
-      resu$p_v <- resu$clik
-      return(resu)
-    } # E L S E 
-    cum_n_u_h <- processed$cum_n_u_h
-    lcrandfamfam <-  attr(processed$rand.families,"lcrandfamfam")
-    likranU <- vector("list",length(lcrandfamfam))
-    for (it in seq_len(length(lcrandfamfam))) {
-      u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
-      likranU[[it]] <- .loglfn_ranU(lcrandfamfam[it],u_h[u.range],1/lambda_est[u.range])
-    }
-    likranU <- unlist(likranU)
-    log.du_dv <- - log(dvdu) 
-    likranV <- sum(likranU + log.du_dv)
-    resu$hlik <- resu$clik + likranV
-    #
-    n_u_h <- length(lambda_est)
-    # beware that computation of logdet_sqrt_d2hdv2 depends on w.ranef
-    if ("p_v" %in% which || "p_bv" %in% which) {
-      resu$p_v <- resu$hlik - get_from_MME(sXaug,"logdet_sqrt_d2hdv2") + n_u_h*log(2*pi)/2
-    }
-    if ("p_bv" %in% which) {
-      X.Re <- processed$X.Re
-      if ( is.null(X.Re)) {## REML standard
-        # beware that computation of logdet_r22 depends on H_global_scale
-        resu$p_bv <- resu$p_v - get_from_MME(sXaug,"logdet_r22") + pforpv*log(2*pi)/2
-        #browser()
-      } else if ( ncol(X.Re)==0L) {## ML standard
-        resu$p_bv <- resu$p_v
-      } else {
-        #resu$p_bv <- NA ## FR->FR non-standard REML not yet handled
-        locXscal <- auglinmodblob$sXaug   
-        weight_X <- auglinmodblob$weight_X
-        nobs <- auglinmodblob$nobs
-        H_global_scale <- attr(auglinmodblob$sXaug,"H_global_scale")
-        w.ranef <- attr(auglinmodblob$sXaug,"w.ranef")
-        if (inherits(locXscal,"Matrix")) {
-          locXscal <- .Dvec_times_Matrix_lower_block(1/weight_X,locXscal,n_u_h)
-          mMatrix_method <- .spaMM.data$options$Matrix_method
-        } else {
-          Xrows <- n_u_h+seq(nobs)
-          locXscal[Xrows,] <- diag(x=1/weight_X) %*% locXscal[Xrows,] ## get back to unweighted scaled matrix
-          mMatrix_method <- .spaMM.data$options$matrix_method
+.adhoc_cbind_dtC_sXaug_pxy_o <- function(sXaug, pwy_o, n_u_h) {
+  I00_ZXy <- sXaug
+  I00_ZXy@p <- c(I00_ZXy@p, I00_ZXy@p[length(I00_ZXy@p)]+length(pwy_o))
+  I00_ZXy@i <- c(I00_ZXy@i, n_u_h-1L+seq_len(length(pwy_o))) ## fails if n_u_h is not integer
+  I00_ZXy@x <- c(I00_ZXy@x, pwy_o)
+  I00_ZXy@Dim[2L] <- I00_ZXy@Dim[2L]+1L
+  I00_ZXy@Dimnames[[2L]] <- c(I00_ZXy@Dimnames[[2L]],"") ## otherwise try(chol()=> error)  (which hmakes a test of the rescue code...)
+  return(I00_ZXy)
+}
+
+.get_R_aug_ZXy <- function(aug_ZXy, augZXy_solver, return_tri) {
+  nc <- ncol(aug_ZXy)
+  solver <- augZXy_solver[1L]
+  if (solver =="chol") {
+    R_aug_ZXy <- try(chol(crossprod(aug_ZXy)), silent=TRUE)
+    if ( ! inherits(R_aug_ZXy,"try-error")) return(R_aug_ZXy)
+    solver <- augZXy_solver[2L]
+    if (is.na(solver)) solver <- "EigenQR"
+  } else if (solver=="QR") solver <- "EigenQR" ## explicitation of current default meaning of "QR"
+  if (solver =="EigenQR") {
+    if (inherits(aug_ZXy,"Matrix")) { 
+      # If ZXy is 'tall' then $R will have the correct size, but if it is 'wide', Eigen  returns a square matrix with the wide dimension, 
+      # .lmwithQR's last rows contains noise (variable between different calls!) that impacts the crossprod (see example in devel/Eigen), so these rows should be removed.
+      # .lmwith_sparse_QRp may be less likely to generate such noise but let's be consistent
+      qrblob <- .lmwith_sparse_QRp(aug_ZXy,yy=NULL,returntQ=FALSE,returnR=TRUE)
+      R_aug_ZXy <- qrblob$R
+      if (nrow(aug_ZXy)<ncol(aug_ZXy)) R_aug_ZXy <- R_aug_ZXy[seq_len(nrow(aug_ZXy)),]
+      if ( ! all(unique(diff(qrblob$P))==1L)) {
+        R_aug_ZXy <- R_aug_ZXy[,sort.list(qrblob$P)] ## not triangular
+        if (return_tri) { # eval an unpermuted triangular R
+          R_aug_ZXy <- .lmwithQR(as.matrix(R_aug_ZXy) ,yy=NULL,returntQ=FALSE,returnR=TRUE)$R
         }
-        locXscal <- .calc_sXaug_Re(locXscal,X.Re,rep(1,nobs))      ## or some cbind ?  
-        locsXaug <- do.call(mMatrix_method,
-                         list(Xaug=locXscal, weight_X=weight_X, w.ranef=w.ranef, H_global_scale=H_global_scale))
-        
-        resu$p_bv <- resu$p_v - get_from_MME(locsXaug,"logdet_r22") + ncol(X.Re)*log(2*pi)/2
+      }
+    } else R_aug_ZXy <- .lmwithQR(aug_ZXy,yy=NULL,returntQ=FALSE,returnR=TRUE)$R
+  } else if (solver =="qr") {
+    if (inherits(aug_ZXy,"Matrix")) {
+      qrblob <- qr(aug_ZXy)
+      R_aug_ZXy <- qrR(qrblob,backPermute=TRUE) ## not triangular
+      if ( return_tri && ! all(unique(diff(qrblob@q))==1L)) { # eval an unpermuted triangular R
+        R_aug_ZXy <- .lmwithQR(as.matrix(R_aug_ZXy) ,yy=NULL,returntQ=FALSE,returnR=TRUE)$R
+      }
+    } else R_aug_ZXy <- qr.R(qr(aug_ZXy)) ## may implement sparse code later ## this is crappy (fitme3 when matrix can be enforced)
+  } else stop("unknown 'augZXy_solver' requested.")
+  return(R_aug_ZXy)
+}
+
+
+.get_absdiagR <- function(aug_ZXy, augZXy_solver) {
+  R_aug_ZXy <- .get_R_aug_ZXy(aug_ZXy, augZXy_solver,return_tri=TRUE)
+  nc <- ncol(aug_ZXy)
+  diagPos <- seq.int(1L,nc^2,nc+1L)
+  return(abs(R_aug_ZXy[diagPos]))
+}
+
+
+.calc_APHLs_by_augZXy_or_sXaug <- function(processed, auglinmodblob=NULL, 
+                                     sXaug, W00_R_qr_ZXy=NULL, which, phi_est) { # either auglinmodblob or (sXaug|W00_R_qr_ZXy) and (possibly NULL) phi_est
+  resu <- list()
+  if ( ! is.null(auglinmodblob)) {
+    sXaug <- auglinmodblob$sXaug
+    phi_est <- auglinmodblob$phi_est
+  } 
+  if (!is.null(W00_R_qr_ZXy)) {
+    locattr <- attributes(W00_R_qr_ZXy)
+  } else locattr <- attributes(sXaug)
+  weight_X <- locattr$weight_X
+  H_global_scale <- locattr$H_global_scale 
+  extranorm <- locattr$extranorm 
+  #if (is.null(W00_R_qr_ZXy) && inherits(sXaug,"AUGI0_ZX_sparsePrecision")) { 
+    if (is.null(weight_X)) weight_X <- 1 ## spprec case
+    if (is.null(H_global_scale)) H_global_scale <- 1 ## spprec case
+  #}
+  if (is.null(extranorm)) extranorm <- H_global_scale
+  n_u_h <- locattr$n_u_h
+  nobs <- length(processed$y)
+  pforpv <- locattr$pforpv
+  resdf <- nobs - pforpv
+  #
+  prior_weights <- eval(processed$prior.weights)
+  if (is.null(phi_est)) { ## then we estimate a factor 'lamphifac" common to lambda and phi
+    # in effect we fit for phi=1 then estimate lamphifac from a sum of squares for all augmented residuals.
+    augZXy_solver <- .spaMM.data$options$augZXy_solver ## ie "chol", "EigenQR", etc.
+    if ( ! is.null(augZXy_solver) && ! inherits(sXaug,"AUGI0_ZX_sparsePrecision")) { # use augZXy_solver
+      if (! is.null(W00_R_qr_ZXy)) { # y-augmented factor available
+        absdiagR <- .get_absdiagR(W00_R_qr_ZXy, augZXy_solver)
+        absdiagR[seq(n_u_h)] <- absdiagR[seq(n_u_h)] /attr(W00_R_qr_ZXy,"eigen_s_invL") # equivalent to the |Omega| term in BatesD04
+      } else { # y-augmented factor to be constructed from sXaug: .HLfit_body_augZXy, or check_augZXy code
+        pwphi <- 1/(prior_weights) ## vector
+        y_o <- (processed$y-processed$off)
+        pwy_o <- y_o*sqrt(extranorm/pwphi)
+        if (inherits(sXaug,"dgCMatrix")) {
+          I00_ZXy <- .adhoc_cbind_dtC_sXaug_pxy_o(sXaug, pwy_o, n_u_h) ## distinctly faster
+        } else if (is.numeric(sXaug)) { ## not in routine tests
+          I00_ZXy <- .Rcpp_dense_cbind_mat_vec(sXaug, c(rep(0,n_u_h),pwy_o)) 
+        } else I00_ZXy <- cbind(sXaug,c(rep(0,n_u_h),pwy_o)) ## this cbind takes time...
+        # Rcpp version of cbind for sparse matrices : https://stackoverflow.com/questions/45875668/rcpp-eigen-sparse-matrix-cbind#
+        # but the gain is small...
+        absdiagR <- .get_absdiagR(I00_ZXy, augZXy_solver)
+      }
+      nc <- length(absdiagR)
+      pwSSE <- (absdiagR[nc]^2)/extranorm
+      logdet_R_scaled_b_v <- sum(log(absdiagR[-nc]))
+      X_scaled_H_unscaled_logdet_r22 <- sum(log(absdiagR)[-c(seq(n_u_h),nc)]) -pforpv*log(H_global_scale)/2 
+      ## -pforpv*log(H_global_scale)/2 for consistency with get_from_MME(sXaug,"logdet_r22") assuming the latter is correct
+    } else { ## other sXaug methods not using y-augmented factor: AUGI0_ZX_sparsePrecision or devel(?) code
+      pwphi <- 1/(prior_weights) ## vector
+      y_o <- (processed$y-processed$off)
+      pwy_o <- y_o*sqrt(extranorm/pwphi) # extranorm is for better accuracy of next step
+      if (inherits(sXaug,"AUGI0_ZX_sparsePrecision")) {
+        pwt_Q_y_o <- .calc_Qt_pwy_o(sXaug,pwy_o)
+      } else pwt_Q_y_o <- get_from_MME(sXaug,"t_Q_scaled")%*% c(rep(0,n_u_h),pwy_o) 
+      pwSSE <- (sum(pwy_o^2)-sum(pwt_Q_y_o^2))/extranorm ## sum() : vectors of different lengths !
+      X_scaled_H_unscaled_logdet_r22 <- get_from_MME(sXaug,"logdet_r22")
+      if (inherits(sXaug,"AUGI0_ZX_sparsePrecision")) {
+        logdet_R_scaled_v <- get_from_MME(sXaug,"logdet_sqrt_d2hdv2") - sum(log(attr(sXaug,"w.ranef")))/2  
+        logdet_R_scaled_b_v <- logdet_R_scaled_v+X_scaled_H_unscaled_logdet_r22 ## p_bv substract all of this and p_v cancels the r22 part 
+      } else {
+        logdet_R_scaled_b_v <- get_from_MME(sXaug,"logdet_R_scaled_b_v")
+      }    
+    }
+    # We obtain phi_est IN ANOTHER MODEL than in the general formulation as this phi also impacts the ranef variances
+    #we have fitted for the model (lambda, 1/prior_weights) and deduce the optimal (lamphifac*lambda, lamphifac/prior_weights)
+    #The hatval are thus those both for phi and lambda whose sum is the #df
+    # hatval <- .get_hatvalues_MM(sXaug,X.Re=processed$X.Re, weight_X) ## in case we need them...
+    if (FALSE) { # NOTE conditions on prior.weights in .determine_augZXy() => procedure not called with variable prior weights.
+      # scratch code for devel
+      {
+        #rZy <- R_I00_ZXy[seq(n_u_h),nc,drop=FALSE]
+        #rXX <- R_I00_ZXy[-c(seq(n_u_h),nc), -c(seq(n_u_h),nc),drop=FALSE]
+        #rXy <- R_I00_ZXy[-c(seq(n_u_h),nc),nc,drop=FALSE]
+        #beta_eta <- solve(rXX,rXy)
+        #next lines use beta_eta in combination with scaled matrix ! So no need to .unscale(processed$AUGI0_ZX$X.pv, beta_eta) nor a ZAL unscaling of v_h
+        #rZZ <- R_I00_ZXy[seq(n_u_h), seq(n_u_h),drop=FALSE]
+        #rZX <- R_I00_ZXy[seq(n_u_h), -c(seq(n_u_h),nc),drop=FALSE]
+        #v_h <- solve(rZZ,rZy-rZX %*% beta_eta)
+      } # equivalent to:
+      v_h_beta <- solve( R_I00_ZXy[-nc,-nc],R_I00_ZXy[-nc,nc]) ## fit to I00_ZXy[-nc,nc]=> prior weighted 
+      sfitted <- sXaug %*% v_h_beta ## not Xaug...
+      # tests in case without prior weights show there is no ZAL scaling to use here or even H_global_scale. or w.ranef
+      res2 <- ((sfitted-c(rep(0,n_u_h),pwy_o))^2 ) ## affected by extranorm
+      # THEN
+      pwSSE <- sum(res2)/extranorm ## recovers the previous pwSSE of the ## maybe not correct for extranorm != 1
+      # OR
+      pwSSE <- sum(res2 * c(rep(1,n_u_h),pwphi))/extranorm ## closer to giving the correct answer, but not exact, and why should this work ? (F I X M E)
+    }
+    
+    if (is.null(processed[["X.Re"]])) { ## REML standard (test not fully consistent with other test below)
+      lamphifac <- pwSSE/(resdf) ## check with pw ## remind We obtain phi_est IN ANOTHER MODEL than in the general formulation
+      df <- resdf
+    } else { ## ML standard
+      lamphifac <- pwSSE/(nobs) ## check with pw
+      df <- nobs
+    }
+    #
+    lamphifac <- max(lamphifac,1e-6)
+    #
+    X_scaled_p_bv <- # formula deduced by consistency with alternative direct formula for p_v below
+      sum(log(weight_X)) - (
+        logdet_R_scaled_b_v -
+          pforpv*log(2*pi*H_global_scale)/2 ## keep H_global_scale here even when it differs from extranorm
+      ) - (df+sum(log(2*pi*lamphifac/prior_weights)))/2
+    if ("p_v" %in% which) {
+      resu$p_v <- X_scaled_p_bv + X_scaled_H_unscaled_logdet_r22 - pforpv*log(2*pi)/2 
+    }
+    resu$phi_est <- lamphifac
+  } else { ## no lamphifac estimation; in particular for .makeCovEst1
+    pwphi <- phi_est/(prior_weights) ## vectorize phi if not already vector
+    pwy_o <- (processed$y-processed$off)/sqrt(pwphi/extranorm) # extranorm is for better accuracy of next step
+    if (inherits(sXaug,"AUGI0_ZX_sparsePrecision")) {
+      pwt_Q_y_o <- .calc_Qt_pwy_o(sXaug,pwy_o)
+    } else pwt_Q_y_o <- get_from_MME(sXaug,"t_Q_scaled")%*% c(rep(0,n_u_h),pwy_o) 
+    pwSSE <- (sum(pwy_o^2)-sum(pwt_Q_y_o^2))/extranorm ## vectors of different lengths !
+    if (inherits(sXaug,"AUGI0_ZX_sparsePrecision")) {
+      X_scaled_H_unscaled_logdet_r22 <- get_from_MME(sXaug,"logdet_r22") 
+      logdet_R_scaled_b_v <- logdet_R_scaled_v + X_scaled_H_unscaled_logdet_r22 ## p_bv substract all of this and p_v cancels the r22 part 
+    } else {
+      logdet_R_scaled_b_v <- get_from_MME(sXaug,"logdet_R_scaled_b_v")
+    }    
+    cliklike <- (pwSSE+sum(log(2*pi*pwphi)))/2
+    X_scaled_p_bv <- # formula deduced by consistency with alternative direct formula for p_v below
+      sum(log(weight_X)) - ( 
+        logdet_R_scaled_b_v - pforpv*log(2*pi*H_global_scale)/2 ## keep  H_global_scale here even when it differs from extranorm
+      ) - cliklike
+
+    if ("p_v" %in% which) { # we don't assume here that phi_est is at its MLE (in commparison to Bates's formulas)
+      if (inherits(sXaug,"AUGI0_ZX_sparsePrecision")) {
+        ## X_scaled_H_unscaled_logdet_r22 already available
+      } else {
+        X_scaled_H_unscaled_logdet_r22 <- get_from_MME(sXaug,"logdet_r22") 
+      }    
+      resu$p_v <- X_scaled_p_bv + X_scaled_H_unscaled_logdet_r22 - pforpv*log(2*pi)/2 
+      if (FALSE) {
+        # This shows the practical equivalence of the two calculations of p_v, except that HLfit3 result is modified... 
+        # in that example get_from_MME is get_from_MME.sXaug_Matrix_QRP_CHM_scaled
+        # logdet_r22 is simply a diff of the other logdet and of a fn of H_global_scale 
+        #     so no issue with matrix algebra explains the difference.
+        # It just happens that adding things in p_bv and substracting them in computing p_v from X_scaled_p_bv 
+        # generates micro difference that may stop the optimization given the extreme values of the lambda, phi parameters ?
+        # Still a bit mysterious
+        logdet_R_scaled_v <- get_from_MME(sXaug,"logdet_R_scaled_v")
+        also_p_v <-  (sum(log(weight_X)) - logdet_R_scaled_v - cliklike)
+        if (abs(resu$p_v - also_p_v)>3e-13) stop("abs(resu$p_v - also_p_v)>3e-13") ## lost of 2....e-13
+        resu$p_v <- also_p_v
       }
     }
   }
-  # if (! any(which=="hlik")) resu$hlik <- NA
+  ## SSE [sum of nobs+nr terms]/nobs provides an estimate of a scaling factor
+  ## not of phi (which could be  sum((y-fitted)[ypos])^2)/sum(1-lev_phi)
+
+  if ("p_bv" %in% which) {
+    if ( ! is.null(processed$X.Re) && ! ncol(processed$X.Re)) {
+      resu$p_bv <- resu$p_v
+    } else {
+      if ( ! is.null(X_scale <- attr(processed$AUGI0_ZX$X.pv,"scaled:scale"))) {
+        resu$p_bv <- X_scaled_p_bv - sum(log(X_scale))
+      } else resu$p_bv <- X_scaled_p_bv
+    }
+  }
   return(resu)
 }
 
-.calc_APHLs_from_auglinmodblob <- function(auglinmodblob,processed, which, phi_est, lambda_est) {
-  APHLs_args <- list(processed=processed, which=which, phi_est=phi_est, lambda_est=lambda_est)
-  APHLs_args$sXaug <- auglinmodblob$sXaug
-  APHLs_args$dvdu <- auglinmodblob$wranefblob$dvdu
-  APHLs_args$u_h <- auglinmodblob$u_h 
-  APHLs_args$mu <- auglinmodblob$muetablob$mu
-  do.call(".calc_APHLs_from_ZX", APHLs_args)[[which]]
+.test_augZXy <- function(augZXy_resu, augZX_resu,phi.Fix, phi_est) {
+  if (!is.null(augZXy_phi <- augZXy_resu$phi_est)) { ## ie was estimted by the augZXy method
+    cat("dphi:", augZXy_phi-phi_est)
+  }
+  if ( ! is.null(p_v <- augZXy_resu$p_v)) {
+    cat("p_v:", p_v)
+    zut <- abs(p_v-augZX_resu$p_v)
+    if (zut>1e-6) browser()
+  }
+  if ( ! is.null(p_bv <- augZXy_resu$p_bv)) {
+    cat("p_bv:", p_bv)
+    zut <- abs(p_bv-augZX_resu$p_bv)
+    if (zut>1e-6) browser()
+  }
 }
+
+.calc_APHLs_from_ZX <- function(auglinmodblob=NULL,processed, which="p_v",
+                               ## alternative to auglinmodblob, insuff pour REML non standard:
+                               sXaug, phi_est, lambda_est, dvdu, u_h, mu
+                               ) {
+  augZX_resu <- list()
+  if ( ! is.null(auglinmodblob)) {
+    sXaug <- auglinmodblob$sXaug 
+    mu <- auglinmodblob$muetablob$mu
+    phi_est <- auglinmodblob$phi_est
+    u_h <- auglinmodblob$u_h
+    lambda_est <- auglinmodblob$lambda_est
+    dvdu <- auglinmodblob$wranefblob$dvdu
+  }
+  #
+  family <- processed$family
+  famfam <- family$family
+  clik_fn <- processed$clik_fn
+  y <- processed$y
+  BinomialDen <- processed$BinomialDen
+  theta <- .theta.mu.canonical(mu/BinomialDen,family)  
+  if (famfam=="binomial") {
+    augZX_resu$clik <- sum(clik_fn(theta,y/BinomialDen,BinomialDen,1/(phi_est))) ## freq a revoir
+  } else {
+    phi_est[phi_est<1e-12] <- 1e-10 ## 2014/09/04 local correction, has to be finer than any test for convergence 
+    ## creates upper bias on clik but should be more than compensated by the lad
+    ## correcting the lad makes an overall upper bias for small (y-theta) at "constant" corrected phi 
+    ## this can be compensated by correcting the lad LESS.
+    augZX_resu$clik <- sum(clik_fn(theta,y,eval(processed$prior.weights)/phi_est)) ## note (prior) weights meaningful only for gauss/ Gamma 
+  }
+  if (all(which =="clik")) return(augZX_resu)
+  if (processed$models[["eta"]]=="etaGLM") {
+    augZX_resu$p_v <- augZX_resu$clik
+    return(augZX_resu)
+  } # E L S E 
+  cum_n_u_h <- processed$cum_n_u_h
+  lcrandfamfam <-  attr(processed$rand.families,"lcrandfamfam")
+  likranU <- vector("list",length(lcrandfamfam))
+  for (it in seq_len(length(lcrandfamfam))) {
+    u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
+    likranU[[it]] <- .loglfn_ranU(lcrandfamfam[it],u_h[u.range],1/lambda_est[u.range])
+  }
+  likranU <- unlist(likranU)
+  log.du_dv <- - log(dvdu) 
+  likranV <- sum(likranU + log.du_dv)
+  augZX_resu$hlik <- augZX_resu$clik + likranV
+  #
+  n_u_h <- length(lambda_est)
+  # beware that computation of logdet_sqrt_d2hdv2 depends on w.ranef
+  if ("p_v" %in% which || "p_bv" %in% which) {
+    augZX_resu$p_v <- augZX_resu$hlik - get_from_MME(sXaug,"logdet_sqrt_d2hdv2") + n_u_h*log(2*pi)/2
+  }
+  if ("p_bv" %in% which) {
+    X.Re <- processed$X.Re
+    if ( is.null(X.Re)) {## REML standard
+      pforpv <- attr(sXaug,"pforpv")
+      X_scaled_H_unscaled_logdet_r22 <- get_from_MME(sXaug,"logdet_r22") 
+      augZX_resu$p_bv <- augZX_resu$p_v - X_scaled_H_unscaled_logdet_r22 + pforpv*log(2*pi)/2 
+      if ( ! is.null(X_scale <- attr(processed$AUGI0_ZX$X.pv,"scaled:scale"))) {
+        augZX_resu$p_bv <- augZX_resu$p_bv -sum(log(X_scale))
+      } 
+    } else if ( ncol(X.Re)==0L) {## ML standard
+      augZX_resu$p_bv <- augZX_resu$p_v
+    } else {## non-standard REML: => no X-scaling
+      locXscal <- auglinmodblob$sXaug   
+      weight_X <- auglinmodblob$weight_X ## FIXME may not work with sparse results
+      nobs <- auglinmodblob$nobs
+      H_global_scale <- attr(auglinmodblob$sXaug,"H_global_scale")
+      w.ranef <- attr(auglinmodblob$sXaug,"w.ranef")
+      if (inherits(locXscal,"Matrix")) {
+        locXscal <- .Dvec_times_Matrix_lower_block(1/weight_X,locXscal,n_u_h)
+        mMatrix_method <- .spaMM.data$options$Matrix_method
+      } else {
+        Xrows <- n_u_h+seq(nobs)
+        locXscal[Xrows,] <- diag(x=1/weight_X) %*% locXscal[Xrows,] ## get back to unweighted scaled matrix
+        mMatrix_method <- .spaMM.data$options$matrix_method
+      }
+      locXscal <- .calc_sXaug_Re(locXscal,X.Re,rep(1,nobs))      ## or some cbind ?  
+      locsXaug <- do.call(mMatrix_method,
+                          list(Xaug=locXscal, weight_X=weight_X, w.ranef=w.ranef, H_global_scale=H_global_scale))
+      loc_unscaled_logdet_r22 <- get_from_MME(locsXaug,"logdet_r22") ## non-standard REML: => no X-scaling
+      augZX_resu$p_bv <- augZX_resu$p_v - loc_unscaled_logdet_r22 + ncol(X.Re)*log(2*pi)/2
+    }
+  }
+  return(augZX_resu)
+}
+
+# .calc_APHLs_from_auglinmodblob <- function(auglinmodblob,processed, which, phi_est, lambda_est) { 
+#   APHLs_args <- list(processed=processed, which=which, phi_est=phi_est, lambda_est=lambda_est)
+#   APHLs_args$sXaug <- auglinmodblob$sXaug
+#   APHLs_args$dvdu <- auglinmodblob$wranefblob$dvdu
+#   APHLs_args$u_h <- auglinmodblob$u_h 
+#   APHLs_args$mu <- auglinmodblob$muetablob$mu
+#   do.call(".calc_APHLs_from_ZX", APHLs_args)[[which]]
+# } 
 
 
 

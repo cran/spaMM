@@ -19,7 +19,7 @@ if(requireNamespace("pedigreemm", quietly=TRUE)) {
   y <- b[ID]+e0
   obs <- data.frame(y=y,IDgen=ID,IDenv=ID) ## two copies of ID for readability of GLMM results
   ## fits
-  verif1 <- fitme(y ~ 1+ corrMatrix(1|IDgen) , corrMatrix=A,data=obs,method="ML") 
+  verif1 <- fitme(y ~ 1+ corrMatrix(1|IDgen) , corrMatrix=A,data=obs,method="ML") ## tests the full augZXy method
   testthat::expect_true(diff(c(logLik(verif1),-132.037970787))<1e-6)
   obs$y01 <- ifelse(y<1.3,0,1)
   verif2 <- fitme(y01 ~ 1+ corrMatrix(1|IDgen)+(1|IDenv), corrMatrix=A,data=obs, 

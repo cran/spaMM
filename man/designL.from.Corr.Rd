@@ -5,10 +5,12 @@
   Computation of \dQuote{square root} of correlation matrix
 }
 \description{
+  This function is somewhat obsolete; see \code{\link{mat_sqrt}}.
+
   This function is not usually directly called by users, but arguments may be passed to it through higher-level calls (see Examples).  
   For given correlation matrix  \bold{C}, it computes a \dQuote{design matrix} \bold{L} such that \bold{C} = \bold{L} * t(\bold{L}). 
-  \code{t(chol(.))} (Cholesky factorization) is a fast method for this computation, but it is not robust numerically and may even return an error, 
-  in which cases more robust methods (\code{eigen} or \code{svd}) are used. Matrix roots are not unique (for example, they are lower triangular for \code{t(chol(.))}, and symmetric for \code{svd(.)}. As matrix roots are used to simulate samples under the fitted model (in particular in the parametric bootstrap implemented in \code{fixedLRT}), this implies that for given seed of random numbers, these samples will differ with these different methods (although their distribution should be identical). 
+  Cholesky factorization (performed by \code{t(base::chol(.))} or some other implementation) is a fast method for this computation, but it is not robust numerically and may even return an error, 
+  in which cases more robust methods are used. Matrix roots are not unique (for example, they are lower triangular for \code{t(chol(.))}, and symmetric for \code{svd(.)}. As matrix roots are used to simulate samples under the fitted model (in particular in the parametric bootstrap implemented in \code{fixedLRT}), this implies that for given seed of random numbers, these samples will differ with these different methods (although their distribution should be identical). 
 }
 \usage{
 designL.from.Corr(m = NULL, symSVD = NULL, try.chol = TRUE, try.eigen = FALSE, 
@@ -27,9 +29,7 @@ designL.from.Corr(m = NULL, symSVD = NULL, try.chol = TRUE, try.eigen = FALSE,
 }
   \item{try.eigen}{
   The default behavior is to try \code{\link{chol}}, and use \code{\link{svd}} if chol fails. 
-  If \code{try.eigen=TRUE}, the \code{\link{eigen}} factorization will be tried before \code{svd}. 
-  \code{eigen} is a compromise between speed and accuracy, but in our experience 
-  it may *hang* so by default it is not tried.  
+  If \code{try.eigen=TRUE}, the \code{\link{sym_eigen}} factorization will be tried before \code{svd}. 
 }
   \item{threshold}{ 
   A correction threshold for low eigenvalues is the case and eigensystem or singular-value decomposition are used.
@@ -55,9 +55,11 @@ designL.from.Corr(m = NULL, symSVD = NULL, try.chol = TRUE, try.eigen = FALSE,
 ## through the '...' argument of higher-level functions
 ## such as HLCor, corrHLfit, fixedLRT:
 data("scotlip")
+opt <- spaMM.options(mat_sqrt_fr="designL.from.Corr")
 HLCor(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(expec)),
       ranPars=list(rho=0.174),adjMatrix=Nmatrix,family=poisson(),
       data=scotlip,try.chol=FALSE)
+spaMM.options(opt)
 }
 
 }

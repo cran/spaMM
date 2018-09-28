@@ -14,6 +14,7 @@
                          opts=nloptr_controls, anyHLCor_obj_args=anyHLCor_obj_args, HLcallfn.obj=HLcallfn.obj)
   while (optr$status==5L) { ## optr$status=5 => termination bc maxeval has been reached 
     # met status=4: nloptr message in normal termination due toxtol_rel, but is this true ?
+    message("maxeval reached in nloptr(); nloptr() called again until apparent convergence of objective.") 
     prevlik <- optr$objective
     reinit <- pmax(lowerb,pmin(upperb,optr$solution))
     optr <- nloptr::nloptr(x0=reinit,eval_f=objfn_locoptim,lb=lowerb,ub=upperb,
@@ -29,8 +30,30 @@
   if ( ! requireNamespace("minqa",quietly=TRUE) ) {stop("Package minqa not installed.")}
   optr <- minqa::bobyqa(par=initvec,fn=objfn_locoptim,lower=lowerb,upper=upperb,control=bobyqa_controls,
                         anyHLCor_obj_args=anyHLCor_obj_args, HLcallfn.obj=HLcallfn.obj)
+  while(optr$ierr==1L) { #maximum number of function evaluations exceeded
+    message("maxeval reached in bobyqa(); bobyqa() called again until apparent convergence of objective.") 
+    prevmlik <- optr$fval
+    reinit <- pmax(lowerb,pmin(upperb,optr$par))
+    optr <- minqa::bobyqa(par=initvec,fn=objfn_locoptim,lower=lowerb,upper=upperb,control=bobyqa_controls,
+                          anyHLCor_obj_args=anyHLCor_obj_args, HLcallfn.obj=HLcallfn.obj)
+    if (optr$fval > prevmlik-1e-8) break ## not enough progress in <= maxeval iterations
+  }
   optr$value <- - optr$fval
   return(optr)
+}
+
+.xtol_abs_fn <- function(LowUp,factors=c(rcLam=5e-7,rcCor=5e-6,others=5e-11,abs=1e-7)) {
+  xtol_abs <- vector("list",length(LowUp$lower))
+  parnames <- names(LowUp$lower)
+  if ("trRanCoefs" %in% parnames) {
+    for (st in names(LowUp$lower)) if(st=="trRanCoefs") {
+      len <- length(unlist(LowUp$lower[[st]]))
+      Xi_ncol <- floor(sqrt(len*2))
+      xtol_abs[[st]] <- c(rep(factors["rcLam"],Xi_ncol),rep(factors["rcCor"],len-Xi_ncol)) 
+    } else {xtol_abs[[st]] <- rep(factors["others"],length(unlist(LowUp$lower[[st]])))}
+    xtol_abs <- unlist(xtol_abs) * (unlist(LowUp$upper)-unlist(LowUp$lower))
+  } else xtol_abs <- factors["abs"]
+  return(xtol_abs)
 }
 
 # returns optPars which is a list given by relist(.,init.optim), with attributes the optimMethod and (+:- raw) optr 
@@ -45,17 +68,20 @@
   upperb <- unlist(LowUp$upper) 
   Optimizer <- control[["optimizer"]] ## consistent with control.corrHLfit
   if (is.null(Optimizer)) {
-    if (length(initvec)==1L && ! length(unlist(user_init_optim)) ) { 
+    if (use_optimizer1D <- (length(initvec)==1L)) {
+      uuinit <- unlist(user_init_optim)
+      uuinit_not_nan <- uuinit[ ! is.nan(uuinit)]
+      use_optimizer1D <- (! length(uuinit_not_nan))
+    }
+    if (use_optimizer1D) { 
       Optimizer <- spaMM.getOption("optimizer1D")
-      if (Optimizer=="default") Optimizer <- "optimize" ## no control of intial value (but it _is_ faster that the other optimizers)
+      if (Optimizer=="default") Optimizer <- "optimize" ## no control of initial value (but it _is_ faster that the other optimizers)
     } else {
       Optimizer <- spaMM.getOption("optimizer")
       if (Optimizer=="default") Optimizer <- "nloptr" ## old default; but new spaMM.getOption() default is ...?
     }
   }
   if (Optimizer=="optimize") {
-    #user_init_optim <- unlist(user_init_optim) ## from list() to NULL
-    #if ( ! is.null(user_init_optim) && sum( ! is.na(user_init_optim))) message("'optimize' used for 1D optimization: user-provided initial value ignored.")
     if (is.character(HLcallfn.obj)) HLcallfn.obj <- eval(as.name(HLcallfn.obj)) # ## do.call("optimize", c(<list>, list(fn = objfn))) does not work with a char string
     locarglist <- c(anyHLCor_obj_args,list(f=HLcallfn.obj, interval=c(lowerb,upperb), maximum=TRUE))
     tol <- control[["optimize"]]$tol
@@ -69,6 +95,7 @@
     bobyqa_controls$rhobeg <- min(0.95, 0.2*min(upperb-lowerb))
     bobyqa_controls$rhoend <- min(bobyqa_controls$rhobeg/1e6, 1e-6)
     bobyqa_controls[names(control$bobyqa)] <- control$bobyqa ## Overwrite defaults with any element of $bobyqa
+    if (is.null(bobyqa_controls$maxfun)) bobyqa_controls$maxfun <- max(2*( eval(.spaMM.data$options$maxeval)),1+10*length(initvec)^2) # bobyqa will complain if not > second value
     optr <- .optim_by_bobyqa(lowerb, upperb, initvec, objfn_locoptim, anyHLCor_obj_args, HLcallfn.obj, init.optim, 
                              bobyqa_controls) 
     optPars <- relist(optr$par,init.optim)
@@ -88,6 +115,8 @@
   } else { ##"nloptr"
     nloptr_controls <- spaMM.getOption("nloptr")
     nloptr_controls[names(control$nloptr)] <- control$nloptr ## Overwrite defaults with any element of $nloptr
+    if (is.null(nloptr_controls$maxeval)) nloptr_controls$maxeval <- eval(.spaMM.data$options$maxeval)
+    if (is.null(nloptr_controls$xtol_abs)) nloptr_controls$xtol_abs <- eval(.spaMM.data$options$xtol_abs, list(LowUp=LowUp))
     optr <- .optim_by_nloptr(lowerb, upperb, initvec, objfn_locoptim, anyHLCor_obj_args, HLcallfn.obj, init.optim, 
                              nloptr_controls) 
     optPars <- relist(optr$solution,init.optim)
@@ -96,7 +125,8 @@
     optr$eval_f <- NULL
     optr$nloptr_environment <- NULL
   }
-  optPars <- structure(optPars,method=Optimizer,optr=optr,refit_info=refit_info) ## refit_info is control[["refit"]] if code follows the doc
+  optPars <- structure(optPars,method=Optimizer,optr=optr,
+                       refit_info=refit_info) ## refit_info is control[["refit"]] if code follows the doc (but there is an undocumented 'FIXME')
   return(optPars)
 }
 

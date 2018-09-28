@@ -101,7 +101,6 @@ negbin <- function (shape = stop("negbin's 'shape' must be specified"), link = "
 Tnegbin <- function(shape = stop("negbin's 'shape' must be specified"), link = "log") {
   mc <- match.call()   # avoid evaluation of promise...
   mc[[1L]] <- get("negbin", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
-  #mc[[1L]] <- quote(spaMM::negbin)
   mc[["trunc"]] <- 0L
   eval(mc, parent.frame())
 }

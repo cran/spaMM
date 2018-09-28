@@ -20,32 +20,38 @@ spaMM_boot <- local({
       cl <- parallel::makeCluster(nb_cores) 
       R.seed <- get(".Random.seed", envir = .GlobalEnv)
       if (has_doSNOW <- ("package:doSNOW" %in% search())) { ## allows progressbar but then requires foreach
-        assign(".Random.seed", R.seed, envir = .GlobalEnv)
+        assign(".Random.seed", R.seed, envir = .GlobalEnv) # loading (?) the namespace of 'snow' changes the global RNG state!
         fn <- get("registerDoSNOW", asNamespace("doSNOW"))
         do.call(fn,list(cl=cl)) 
         #`%foreachdopar%` <- foreach::`%dopar%`
-        pb <- txtProgressBar(max = nsim, style = 3)
+        pb <- txtProgressBar(max = nsim, style = 3, char="P")
         progress <- function(n) setTxtProgressBar(pb, n)
         opts <- list(progress = progress)
         parallel::clusterExport(cl=cl, list("progress"),envir=environment()) ## slow! why?
       } else {
         if ( ! doSNOW_warned) {
-          message("If the 'doSNOW' package were attached, the progress of the bootstrap computation could be reported.")
+          message("If the 'doSNOW' package were attached, better load-balancing might be possible.")
           doSNOW_warned <<- TRUE
         } 
         parallel::clusterEvalQ(cl, library("spaMM")) ## for pbapply
       }
-      #dotenv <- list2env(list(...))
-      #parallel::clusterExport(cl=cl, as.list(ls(dotenv)),envir=dotenv) ## much faster...
     } else cl <- NULL
     ####
     RNGstate <- get(".Random.seed", envir = .GlobalEnv)
     newy_s <- simulate(object,nsim = nsim,verbose=FALSE,resp_testfn=resp_testfn) 
+    dots <- list(...) ## We will use a list, not a call, for exports etc.
+    nfs <- names(formals(simuland))
+    simuland_dots <- intersect(names(dots),nfs)
+    simuland_dots <- dots[simuland_dots]
+    for (st in names(simuland_dots)) {
+      # Add an enclusing quote():
+      if ( is.language(simuland_dots[[st]])) simuland_dots[[st]] <- substitute(quote(what),list(what=simuland_dots[[st]]))
+    }
     if (nsim==1L) dim(newy_s) <- c(length(newy_s),1)
     if (nb_cores > 1L && has_doSNOW) {
-      #    dotenv <- list2env(list(...))
-      #  parallel::clusterExport(cl=cl, as.list(ls(dotenv)),envir=dotenv) ## much faster...
-      dots <- list(...)
+      other_dots <- setdiff(names(dots),nfs)
+      other_dots <- list2env(dots[other_dots])
+      parallel::clusterExport(cl=cl, as.list(ls(other_dots)),envir=other_dots) 
       i <- NULL ## otherwise R CMD check complains that no visible binding for global variable 'i'
       foreach_args <- list(
         i = 1:nsim, .combine = "rbind",
@@ -56,16 +62,25 @@ spaMM_boot <- local({
       foreach_args[names(control.foreach)] <- control.foreach
       foreach_blob <- do.call(foreach::foreach,foreach_args)
       bootreps <- foreach::`%dopar%`(foreach_blob,
-                                     do.call(simuland,c(list(y=newy_s[,i]), dots)))
+                                     do.call(simuland,c(list(y=newy_s[,i]),simuland_dots)))
       #bootreps <- sapply(bootreps,identity)
       close(pb)
-    } else {
-      pbopt <- pboptions(nout=min(100,2*nsim),type="timer")
-      bootreps <- pbapply(X=newy_s,MARGIN = 2L,FUN = simuland, cl=cl, ...) 
+    } else { ## serial or parallel pbapply
+      if (nb_cores>1L) {pb_char <- "p"} else pb_char <- "s"
+      pbopt <- pboptions(nout=min(100,2*nsim),type="timer",char=pb_char)
+      bootreps <- do.call("pbapply",c(list(X=newy_s,MARGIN = 2L,FUN = simuland, cl=cl), simuland_dots)) 
+      if ( ! is.list(bootreps)) {
+        if ( ! is.matrix(bootreps)) {
+          dim(bootreps) <- c(length(bootreps),1L)
+        } else bootreps <- t(bootreps)
+      } # tries to return an nsim-rows matrix
       pboptions(pbopt)
     }
     ####
-    if (nb_cores > 1L) { parallel::stopCluster(cl) } 
+    if (nb_cores > 1L) {
+      if (has_doSNOW) foreach::registerDoSEQ() ## https://stackoverflow.com/questions/25097729/un-register-a-doparallel-cluster
+      parallel::stopCluster(cl) 
+    } 
     cat(paste(" bootstrap took",.timerraw(time1),"s.\n")) 
     return(list(bootreps=bootreps,RNGstate=RNGstate))
   }

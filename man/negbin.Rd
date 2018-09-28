@@ -20,7 +20,7 @@ Tnegbin(shape = stop("negbin's 'shape' must be specified"), link = "log")
   Shape parameter of the underlying Gamma distribution, given that the \code{negbin} family can be represented as a Poisson-Gamma mixture, where the conditional Poisson mean is \eqn{\mu} times a Gamma random variable with mean 1 and shape \code{shape} (as produced by \code{rgamma(., shape=shape,scale=1/shape)}). 
 }
   \item{link}{
-  log, sqrt or identity link, specified by the sevaral available ways for GLM links (name, character string, one-element character vector, or object of class \code{link-glm} as returned by \code{\link[stats]{make.link}}). 
+  log, sqrt or identity link, specified by any of the available ways for GLM links (name, character string, one-element character vector, or object of class \code{link-glm} as returned by \code{\link[stats]{make.link}}). 
 }
   \item{trunc}{
   Either \code{0L} for zero-truncated distribution, or \code{-1L} for default untruncated dsitribution.

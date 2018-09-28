@@ -12,7 +12,7 @@
 
 HLfit <- function(formula,
                   data,family=gaussian(),rand.family=gaussian(), 
-                  resid.model= ~ 1, resid.formula ,REMLformula=NULL,
+                  resid.model= ~ 1, REMLformula=NULL,
                   verbose=c(trace=FALSE),
                   HLmethod="HL(1,1)",
                   control.HLfit=list(),
@@ -30,7 +30,6 @@ HLfit <- function(formula,
   oricall <- match.call()  ## there is no dots in HLfit
   if (is.null(processed)) { 
     oricall$formula <- .stripFormula(formula)
-    if ( ! missing(resid.formula)) oricall$resid.model <- resid.formula
     if (missing(data)) {
       data <- environment(formula)
       warning("It is _strongly_ recommended to use the 'data' argument\n for any application beyond a single fit (e.g. for predict(), etc.)")
@@ -75,7 +74,6 @@ HLfit <- function(formula,
       mc <- oricall
       FHF <- formals(HLfit) ## makes sure about default values 
       names_FHF <- names(FHF)
-      #if ( ! is.null(mc$resid.formula)) mc$resid.model <- mc$resid.formula
       names_nondefault  <- intersect(names(mc),names_FHF) ## mc including dotlist
       FHF[names_nondefault] <- mc[names_nondefault] ##  full HLfit args
       preprocess.formal.args <- FHF[which(names_FHF %in% names(formals(.preprocess)))] 
@@ -84,8 +82,7 @@ HLfit <- function(formula,
       preprocess.formal.args$rand.families <- FHF$rand.family ## because preprocess expects $rand.families 
       preprocess.formal.args$predictor <- FHF$formula ## because preprocess stll expects $predictor 
       mc$processed <- do.call(.preprocess,preprocess.formal.args,envir=parent.frame(1L))
-      oricall$resid.model <- mc$processed$residModel
-      #mc$ranFix$ranCoefs <- NULL ## but new ranFix can be added by fitme/corrHLfit
+      # oricall$resid.model <- mc$processed$residModel
       # HLfit_body() called below
     }
   } else { ## 'processed' is available
@@ -108,18 +105,22 @@ HLfit <- function(formula,
     }
   }
   #
-  pnames <- c("data","family","formula","prior.weights","HLmethod","rand.family","control.glm","resid.formula","REMLformula",
+  pnames <- c("data","family","formula","prior.weights","HLmethod","rand.family","control.glm","REMLformula",
               "resid.model","verbose")
   for (st in pnames) mc[st] <- NULL ## info in processed
   mc[[1L]] <- get("HLfit_body", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
-  #mc[[1L]] <- quote(spaMM::HLfit_body)
+  if (identical(mc$processed[["verbose"]]["getCall"][[1L]],TRUE)) return(mc) ## returns a call if verbose["getCall"'"] is TRUE
   hlfit <- eval(mc,parent.frame())
   .check_conv_glm_reinit()
   if ( ! is.null(processed$return_only)) {
     return(hlfit)    ########################   R E T U R N   a list with $APHLs
   }
   hlfit$call <- oricall ## potentially used by getCall(object) in update.HL
-  if ( ! identical(paste(family[[1L]]),"multi")) hlfit$fit_time <- .timerraw(time1)
+  if ( ! identical(paste(family[[1L]]),"multi")) {
+    hlfit$how$fit_time <- .timerraw(time1)
+    hlfit$fit_time <- structure(hlfit$how$fit_time,
+                                message="Please use how(<fit object>)[['fit_time']] to extract this information cleanly.")
+  }
   return(hlfit)
 }
 
@@ -143,10 +144,25 @@ HLfit <- function(formula,
     family <- processed$family
     data <- processed$data
   }
-  HLnames <- names(formals(HLfit))
-  HLfit.call <- mc[c(1,which(names(mc) %in% HLnames))] ## keep the call structure
-  HLfit.call[[1L]] <- get("HLfit", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
-  ranFix <- .modify_list(HLfit.call$ranFix, relist(ranefParsVec,skeleton))
+  if (processed$augZXy_cond) { 
+    HLnames <- names(formals(.HLfit_body_augZXy))
+    HLfit.call <- mc[c(1L,which(names(mc) %in% HLnames))] ## keep the call structure
+    HLfit.call[[1L]] <- get(.spaMM.data$options$augZXy_fitfn, asNamespace("spaMM"))
+  } else {
+    # since there is a $processed, we can call HLfit_body here (with HLnames <- names(formals(HLfit_body))), rather than HLfit
+    # The main difference is a more definite selection of arguments in the HLfit_body() call through HLfit()
+    # and the call to .check_conv_glm_reinit()
+    HLnames <- names(formals(HLfit))
+    HLfit.call <- mc[c(1L,which(names(mc) %in% HLnames))] ## keep the call structure
+    HLfit.call[[1L]] <- get("HLfit", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
+  } 
+  ranefParsList <- relist(ranefParsVec,skeleton)
+  print_phiHGLM_info <- ( ! is.null(processed$residProcessed) && processed$verbose["phifit"])
+  if (print_phiHGLM_info) {
+    urP <- unlist(.canonizeRanPars(ranefParsList, corr_info=processed$corr_info,checkComplete=FALSE))
+    processed$port_env$prefix <- paste0("HLfit for ", paste(signif(urP,6), collapse=" "), ": ")
+  } 
+  ranFix <- .modify_list(HLfit.call$ranFix, ranefParsList)
   rpType <- .modify_list(attr(HLfit.call$ranFix,"type"),attr(skeleton,"type"))
   moreargs <- attr(skeleton,"moreargs") 
   if ( ! is.null(ranFix$resid) ) {
@@ -155,7 +171,7 @@ HLfit <- function(formula,
                                moreargs=moreargs$resid)
     # canonize bc fitme_body(,fixed=.) does not handle transformed parameters
     processed$residProcessed$envir$ranPars <- .canonizeRanPars(ranPars=resid_ranPars,
-                                                               corr_types=processed$residProcessed$corr_info$corr_types,
+                                                               corr_info=processed$residProcessed$corr_info,
                                                                checkComplete = FALSE) 
     ranFix$resid <- NULL
     rpType$resid <- NULL
@@ -165,7 +181,12 @@ HLfit <- function(formula,
   hlfit <- eval(HLfit.call)
   aphls <- hlfit$APHLs
   resu <- aphls[[objective]]
+  if (print_phiHGLM_info) cat(paste0(objective,"=",resu)) # verbose["phifit"]
   if (objective=="cAIC") resu <- - resu ## for minimization of cAIC (private & experimental)
+  if (processed$augZXy_cond && resu>processed$augZXy_env$objective) {
+    processed$augZXy_env$objective <- resu
+    processed$augZXy_env$phi_est <- aphls[["phi_est"]]
+  }
   lsv <- c("lsv",ls())
   rm(list=setdiff(lsv,"resu"))
   return(resu) #

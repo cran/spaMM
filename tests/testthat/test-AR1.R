@@ -1,6 +1,6 @@
 cat("\ntest AR1:\n")
 
-if (spaMM.getOption("example_maxtime")>8) { 
+if (spaMM.getOption("example_maxtime")>12) { # 
   set.seed(123)
   nobs <- 500
   distm <- as.matrix(dist(1:nobs)) 
@@ -47,7 +47,7 @@ if (TRUE) {
   p1 <- predict(zut,newdata=rezut$data[rownames(rezut$data)>30,])["39"] 
   p2 <- predict(rezut,newdata=rerezut$data[rownames(rerezut$data)>30,])["39"]
   p3 <- predict(rerezut,newdata=zut$data[rownames(zut$data)>30,])["39"]
-  testthat::expect_true(diff(range(c(p1,p2,p3, 2.35717079935)))<1e-7) ## sparse different > 1e-8
+  testthat::expect_true(diff(range(c(p1,p2,p3, 2.35717079935)))<1e-10) ## sparse much closer when avoiding Cholesky !
 }
 
 

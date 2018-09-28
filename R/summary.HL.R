@@ -107,7 +107,7 @@
         resu <- (.MLmess(object, ranef=TRUE))
       } else { ## if nontrivial REML formula was used...
         resu <- ("by non-standard REML")
-        attr(resu,"fixeformFromREMLform") <- .nobarsMM(object$REMLformula)
+        attr(resu,"fixeformFromREMLform") <- .stripRanefs(object$REMLformula)
       }
     }    
   } else return( is.null(object$REMLformula) && object$HL[1]!='SEM')
@@ -136,22 +136,26 @@ summary.HLfitlist <- function(object, ...) {
   return(legend)
 }
 
-.get_compact_cov_mats <- function(strucList) {
+.get_compact_cov_mats <- function(strucList,later) {
   isRandomSlope <- attr(strucList,"isRandomSlope")
   if (any(isRandomSlope)) {
     cov.mats <- vector("list",length(strucList))
-    cov.mats[isRandomSlope] <- lapply(strucList[isRandomSlope],attr,which="cov.mat") 
-    ## keep NULL slots for other elements as expected by summary.HLfit
+    for (it in seq_along(strucList)) {
+      if ( isRandomSlope[it] ) {
+        cov.mats[[it]] <- attr(strucList[[it]],"latentL_blob")$compactcovmat
+      }
+      ## keep NULL slots for other elements as expected by summary.HLfit
+    }
     return(cov.mats)
   } else return(NULL)
 }
 
-`summary.HLfit` <- function(object, details=FALSE, max.print=100L, ...) {
+`summary.HLfit` <- function(object, details=FALSE, max.print=100L, ...) { 
   oldopt <- options(max.print=max.print)
-  if (is.null(names(details))) details <- structure(rep(details,2),names=c("ranCoefs","p_value")) ## nandle FALSE or TRUE input
+  if (is.null(names(details))) details <- structure(rep(details,2),names=c("ranCoefs","p_value")) ## handle FALSE or TRUE input
   details <- as.list(details)
   for (st in c("ranCoefs")) if (is.null(details[[st]])) details[st] <- FALSE
-  for (st in c("p_value")) if (is.null(details[[st]])) details[st] <- "" ## FIXME entirely private as factors with multiple levels require some more work
+  for (st in c("p_value")) if (is.null(details[[st]])) details[st] <- "" ## a string such as "Wald"
   models <- object$models
   phi.object <- object$phi.object
   famfam <- object$family$family ## response !
@@ -160,11 +164,8 @@ summary.HLfitlist <- function(object, ...) {
   randfamlinks <- unlist(lapply(object$rand.families, getElement, name="link"))
   summ <- list()
   cat("formula: ")
-  form <- attr(object$predictor,"oriFormula")
-  if (is.null(form)) { ## currently should not occur ?
-    form <- object$predictor[] 
-    print(form,showEnv=FALSE)
-  } else print(form,showEnv=FALSE)
+  form <- formula.HLfit(object)
+  print(form,showEnv=FALSE)
   #
   #  HLchar <- paste(as.character(object$HL),collapse="")
   #  cat(paste0("[code: ",HLchar,"]"," method: "))
@@ -275,117 +276,127 @@ summary.HLfitlist <- function(object, ...) {
     if (any(object$models[["lambda"]] == "lamHGLM")) { 
       stop("voir ici dans summary.HLfit")
     } else {
-      cov.mats <- .get_compact_cov_mats(object$strucList)
-      linklam_coeff_list <- lambda.object$coefficients_lambdaS
-      if (TRUE ||  ! is.null(linklam_coeff_list) || length(cov.mats)) {
-        nrand <- length(namesTerms)
-        nrows <- unlist(lapply(namesTerms,length))
-        cum_nrows <- cumsum(c(0,nrows))
-        names(cum_nrows) <- NULL
-        row_map <- lapply(nrows,seq)
-        for (it in seq_len(length(row_map))) row_map[[it]] <- row_map[[it]]+cum_nrows[it]
-        # first construct a table including NA's for some coeeficients (not "inner" estimated), then remove these rows
-        repGroupNames <- rep(names(namesTerms),sapply(namesTerms,length))
-        ## i.e. for namesTerms = list(Subject=c("(Intercept)", "Days")), repGroupNames[[1]] is c("Subject", "Subject")
-        lambda_table <- data.frame(Group=repGroupNames,Term=unlist(namesTerms))
-        in_table <- rep(FALSE,nrand)
-        in_pointLambda <- rep(TRUE,nrand)
-        if ( length(cov.mats)) { ## fixme ? rename cov.mats to refer to ranCoefs ?
-          maxnrow <- cum_nrows[nrand+1] ## maxnrow should = nrow(lambda_table)
-          corr_cols <- data.frame(matrix("",ncol=max(nrows-1),nrow=maxnrow),stringsAsFactors=FALSE)
-          variances <- data.frame(matrix("",ncol=1,nrow=maxnrow),stringsAsFactors=FALSE)
-          for (mt in seq_len(length(cov.mats))) { 
-            m <- cov.mats[[mt]]
-            if ( ! is.null(m)) {
-              in_table[mt] <- TRUE
-              in_pointLambda[mt] <- FALSE
-              inrows <-  cum_nrows[mt]+(1:nrow(m))
-              variances[inrows,1] <- paste(signif(lambdas <- diag(m),4))
-              covtocorr <- diag(1/sqrt(lambdas))
-              m <- covtocorr %*% m %*% covtocorr
-              for (it in (2:nrow(m))) {
-                for (jt in (1:(it-1))) {
-                  corr_cols[cum_nrows[mt]+it,jt] <- paste(signif(m[it,jt],4))
-                }
+      nrand <- length(namesTerms)
+      nrows <- unlist(lapply(namesTerms,length))
+      cum_nrows <- cumsum(c(0,nrows))
+      names(cum_nrows) <- NULL
+      row_map <- lapply(nrows,seq)
+      for (it in seq_len(length(row_map))) row_map[[it]] <- row_map[[it]]+cum_nrows[it]
+      # first construct a table including NA's for some coeeficients (not "inner" estimated), then remove these rows
+      repGroupNames <- rep(names(namesTerms),sapply(namesTerms,length))
+      ## i.e. for namesTerms = list(Subject=c("(Intercept)", "Days")), repGroupNames[[1]] is c("Subject", "Subject")
+      lambda_table <- data.frame(Group=repGroupNames,Term=unlist(namesTerms))
+      in_table <- rep(FALSE,nrand)
+      in_pointLambda <- rep(TRUE,nrand)
+      cov.mats <- .get_compact_cov_mats(object$strucList,later=TRUE)
+      if ( length(cov.mats)) { ## fixme ? rename cov.mats to refer to ranCoefs ?
+        maxnrow <- cum_nrows[nrand+1] ## maxnrow should = nrow(lambda_table)
+        corr_cols <- data.frame(matrix("",ncol=max(nrows-1),nrow=maxnrow),stringsAsFactors=FALSE)
+        variances <- data.frame(matrix("",ncol=1,nrow=maxnrow),stringsAsFactors=FALSE)
+        # strings for screen output, numeric for summary object
+        summ_corr_cols <- data.frame(matrix(NA,ncol=max(nrows-1),nrow=maxnrow))
+        summ_variances <- data.frame(matrix(NA,ncol=1,nrow=maxnrow))
+        for (mt in seq_len(length(cov.mats))) { 
+          m <- cov.mats[[mt]]
+          if ( ! is.null(m)) {
+            in_table[mt] <- TRUE
+            in_pointLambda[mt] <- FALSE
+            inrows <-  cum_nrows[mt]+(1:nrow(m))
+            variances[inrows,1] <- paste(signif(lambdas <- diag(m),4))
+            summ_variances[inrows,1] <- lambdas
+            covtocorr <- diag(1/sqrt(lambdas))
+            m <- covtocorr %*% m %*% covtocorr
+            for (it in (2:nrow(m))) {
+              for (jt in (1:(it-1))) {
+                corr_cols[cum_nrows[mt]+it,jt] <- paste(signif(m[it,jt],4))
+                summ_corr_cols[cum_nrows[mt]+it,jt] <- m[it,jt]
               }
             }
           }
-          colnames(corr_cols) <- rep("Corr.",ncol(corr_cols))
-          colnames(variances) <- "Var."
-          random_slope_pos <- which( ! unlist(lapply(cov.mats,is.null))) ## fixme ? equivalentto isRandomSlope that might be available
-          random_slope_rows <- unlist(row_map[ random_slope_pos ])
-        } else {
-          random_slope_rows <- integer(0) ## used soon in line correct if random_slope_rows is defined, and if "Estimate","Cond.SE" cols exist
-          random_slope_pos <- integer(0) ## used further below
+        }
+        colnames(corr_cols) <- colnames(summ_corr_cols) <- rep("Corr.",ncol(corr_cols))
+        colnames(variances) <- colnames(summ_variances) <- "Var."
+        random_slope_pos <- which( ! unlist(lapply(cov.mats,is.null))) ## fixme ? equivalentto isRandomSlope that might be available
+        random_slope_rows <- unlist(row_map[ random_slope_pos ])
+      } else {
+        random_slope_rows <- integer(0) ## used soon in line correct if random_slope_rows is defined, and if "Estimate","Cond.SE" cols exist
+        random_slope_pos <- integer(0) ## used further below
+      } 
+      linklam_coeff_list <- lambda.object$coefficients_lambdaS
+      if ( ! is.null(linklam_coeff_list)) {
+        in_table[which( ! unlist(lapply(linklam_coeff_list,is.null)))] <- TRUE
+        lambda_table <- cbind(lambda_table, Estimate=unlist(linklam_coeff_list), 
+                              "Cond.SE"=lambda.object$lambda_se)
+        
+        info_rows <- which(! is.na(lambda_table$Estimate)) ## must be evaluated before the next line sets more NAs
+      } else info_rows <- NULL
+      if ( length(cov.mats) ) {
+        summ$lambda_table <- structure(cbind(lambda_table, summ_variances, summ_corr_cols), ## summ_ cols
+                                       class=c("lambda_table",class(lambda_table)),
+                                       random_slope_rows=random_slope_rows)
+        lambda_table <- structure(cbind(lambda_table, variances, corr_cols), ## not summ_ cols
+                                  class=c("lambda_table",class(lambda_table)),
+                                  random_slope_rows=random_slope_rows)
+        #
+        keep <- which( ! colnames(lambda_table) %in% c("Estimate","Cond.SE")) ## may be null if only outer... + fixed
+        cov_table <- lambda_table[random_slope_rows,keep] ## EXCLUDES the "Estimate","Cond.SE" cols
+        cat("         --- Random-coefficients Cov matrices:\n")
+        print(cov_table, digits = 4, row.names = FALSE)
+        #
+        keep <- which( colnames(lambda_table) %in% c("Group","Term","Estimate","Cond.SE")) ## may be null if only outer... + fixed
+        lambda_table <- lambda_table[,keep]
+        if ( ! details$ranCoefs) info_rows <- setdiff(info_rows, random_slope_rows)
+      } else summ$lambda_table <- structure(lambda_table, 
+                                            class=c("lambda_table",class(lambda_table)),
+                                            random_slope_rows=random_slope_rows)
+      cat("           --- Variance parameters ('lambda'):\n")
+      .legend_lambda(object, type="def") ## print info about the meaning of lambda
+      lambda_table <- lambda_table[ info_rows ,]
+      linklam <- unlist(linklam_coeff_list)
+      ncoeffs <- attr(object$ZAlist,"Xi_cols") ## RHS = 2 for random slope, else 1
+      for (it in seq_len(length(namesTerms))) if ("adjd" %in% namesTerms[[it]]) ncoeffs[it] <- 2
+      cum_ncoeffs <- c(0,cumsum(ncoeffs))
+      for (it in seq_len(length(namesTerms))) {
+        if ("adjd" %in% namesTerms[[it]]) {
+          namenames <- names(namesTerms[it])
+          pos <- cum_ncoeffs[it]+1L
+          cat(paste("Estimate of rho (",namenames,"CAR): ",
+                    signif( - linklam[pos+1L]/linklam[pos],4),"\n"))
+          cat(paste("Estimate of lambda factor (",namenames,"CAR): ",
+                    with(lambda.object,signif(linkinvS[[rand_to_glm_map[it]]](linklam[pos]),4)),"\n"))
+          in_pointLambda[it] <- FALSE
+          in_table[it] <- TRUE 
         } 
-        if ( ! is.null(linklam_coeff_list)) {
-          in_table[which( ! unlist(lapply(linklam_coeff_list,is.null)))] <- TRUE
-          lambda_table <- cbind(lambda_table, Estimate=unlist(linklam_coeff_list), 
-                                "Cond.SE"=lambda.object$lambda_se)
-          info_rows <- which(! is.na(lambda_table$Estimate)) ## must be evaluated before the next line sets more NAs
-        } else info_rows <- NULL
-        if ( length(cov.mats) ) {
-          lambda_table <- cbind(lambda_table, variances, corr_cols)
-          #
-          keep <- which( ! colnames(lambda_table) %in% c("Estimate","Cond.SE")) ## may be null if only outer... + fixed
-          cov_table <- lambda_table[random_slope_rows,keep]
-          cat("         --- Random-coefficients Cov matrices:\n")
-          print(cov_table, digits = 4, row.names = FALSE)
-          #
-          keep <- which( colnames(lambda_table) %in% c("Group","Term","Estimate","Cond.SE")) ## may be null if only outer... + fixed
-          lambda_table <- lambda_table[,keep]
-          if ( ! details$ranCoefs) info_rows <- setdiff(info_rows, random_slope_rows)
-        } 
-        cat("           --- Variance parameters ('lambda'):\n")
-        .legend_lambda(object, type="def") ## print info about the meaning of lambda
-        lambda_table <- lambda_table[ info_rows ,]
-        summ$lambda_table <- lambda_table
-        linklam <- unlist(linklam_coeff_list)
-        ncoeffs <- attr(object$ZAlist,"Xi_cols") ## RHS = 2 for random slope, else 1
-        for (it in seq_len(length(namesTerms))) if ("adjd" %in% namesTerms[[it]]) ncoeffs[it] <- 2
-        cum_ncoeffs <- c(0,cumsum(ncoeffs))
-        for (it in seq_len(length(namesTerms))) {
-          if ("adjd" %in% namesTerms[[it]]) {
-            namenames <- names(namesTerms[it])
-            pos <- cum_ncoeffs[it]+1L
-            cat(paste("Estimate of rho (",namenames,"CAR): ",
-                      signif( - linklam[pos+1L]/linklam[pos],4),"\n"))
-            cat(paste("Estimate of lambda factor (",namenames,"CAR): ",
-                      with(lambda.object,signif(linkinvS[[rand_to_glm_map[it]]](linklam[pos]),4)),"\n"))
-            in_pointLambda[it] <- FALSE
-            in_table[it] <- TRUE 
-          } 
+      }
+      if (length(which(in_pointLambda))) { ## not the table with SEs / covariances
+        # if (details$ranCoefs) {
+        #   displaypos <- innerlambda_pos
+        # } else displaypos <- setdiff(innerlambda_pos, random_slope_pos)
+        # displayrows <- unlist(row_map[displaypos])
+        #if ( ! details$ranCoefs) displaypos <- setdiff(displaypos, random_slope_pos)
+        displaypos <- which(in_pointLambda)
+        displayrows <- unlist(row_map[displaypos])
+        nicertypes <- lambda.object$type[displaypos]
+        nicertypes[ ! nicertypes=="fixed"] <- ""
+        nicertypes[ nicertypes=="fixed"] <- "[fixed]"
+        nicertypes <- rep(nicertypes, unlist(lapply(row_map[displaypos], length)))
+        if ( ! is.null(displayrows)) {
+          cat(paste("  ",
+                    names(displayrows)," : ", 
+                    signif(print_lambda[displayrows],4),
+                    nicertypes,
+                    collapse="\n"),"\n")
         }
-        if (length(which(in_pointLambda))) { ## not the table with SEs / covariances
-          # if (details$ranCoefs) {
-          #   displaypos <- innerlambda_pos
-          # } else displaypos <- setdiff(innerlambda_pos, random_slope_pos)
-          # displayrows <- unlist(row_map[displaypos])
-          #if ( ! details$ranCoefs) displaypos <- setdiff(displaypos, random_slope_pos)
-          displaypos <- which(in_pointLambda)
-          displayrows <- unlist(row_map[displaypos])
-          nicertypes <- lambda.object$type[displaypos]
-          nicertypes[ ! nicertypes=="fixed"] <- ""
-          nicertypes[ nicertypes=="fixed"] <- "[fixed]"
-          nicertypes <- rep(nicertypes, unlist(lapply(row_map[displaypos], length)))
-          if ( ! is.null(displayrows)) {
-            cat(paste("  ",
-                      names(displayrows)," : ", 
-                      signif(print_lambda[displayrows],4),
-                      nicertypes,
-                      collapse="\n"),"\n")
-          }
-        }
-        #if ( ! details$ranCoefs) in_table[random_slope_pos] <- FALSE
-        if (nrow(lambda_table) && any(in_table)) { ## in_table is a subset of lambda_table...
-          if ( ! is.null(linklam_coeff_list[in_table])) { ## (mixed cov.mat and) coefficients_lambdaS output
-            .legend_lambda(object, in_table)
-            cat("\n")
-          } else if (length(cov.mats)) { ## only ranCoefs
-            cat("Variances and correlation for random-coefficient terms:\n")
-          } ## else only other terms with outer lambda (eg Matern term) 
-          print(lambda_table,digits=4,row.names=FALSE)
-        }
+      }
+      #if ( ! details$ranCoefs) in_table[random_slope_pos] <- FALSE
+      if (nrow(lambda_table) && any(in_table)) { ## in_table is a subset of lambda_table...
+        if ( ! is.null(linklam_coeff_list[in_table])) { ## (mixed cov.mat and) coefficients_lambdaS output
+          .legend_lambda(object, in_table)
+          cat("\n")
+        } else if (length(cov.mats)) { ## only ranCoefs
+          cat("Variances and correlation for random-coefficient terms:\n")
+        } ## else only other terms with outer lambda (eg Matern term) 
+        print(lambda_table,digits=4,row.names=FALSE)
       }
     } 
     cat(paste0("# of obs: ",nrow(object$data),"; # of groups: ",
@@ -429,16 +440,17 @@ summary.HLfitlist <- function(object, ...) {
         colnames(phi_table) <- c("Estimate", "Cond. SE")
         rownames(phi_table) <- namesX_disp <- names(phi.object$fixef)
         summ$phi_table <- phi_table
-        phiform <- attr(object$resid.predictor,"oriFormula")
+        phiform <- object$resid.predictor
         resid.family <- eval(object$resid.family)
         phiinfo <- resid.family$link 
         if (phiinfo=="identity") {phiinfo="phi "} else {phiinfo <- paste0(phiinfo,"(phi) ")}
-        phiinfo <- paste("Coefficients for ",phiinfo,paste0(phiform,collapse=" ")," :\n")
+        phiinfo <- paste("Coefficients for",phiinfo,paste0(phiform,collapse=" ")," :\n")
         cat(phiinfo)
         print(phi_table,4)
-        dispOffset <- attr(object$resid.predictor,"offsetObj")$total
+        dispOffset <- attr(object$resid.predictor,"off")
         if (!is.null(dispOffset)) dispOffset <- unique(dispOffset)
-        if (length(namesX_disp)==1 && namesX_disp[1]=="(Intercept)" && length(dispOffset)<2) {
+        if (length(namesX_disp)==1 && namesX_disp[1]=="(Intercept)" && length(dispOffset)<2L) {
+          # constant phi: we can display it
           phi_est <- (phi.object$fixef)
           if (length(dispOffset)==1L) phi_est <- phi_est+dispOffset
           phi_est <- resid.family$linkinv(phi_est)
@@ -446,7 +458,7 @@ summary.HLfitlist <- function(object, ...) {
             cat(paste("Estimate of phi: ",signif(phi_est,4),"\n"))
             ## la var c'est phi mu^2...
           } else cat(paste("Estimate of phi=residual var: ",signif(phi_est,4),"\n"))
-        } 
+        } ## else phi not constant; We don't try to display it
         wa <- glm_phi$warnmess
         if ( ! is.null(wa)) {
           if (wa=="glm.fit: algorithm did not converge") {
@@ -458,7 +470,7 @@ summary.HLfitlist <- function(object, ...) {
           }
         }
       } else {
-        phiform <- attr(object$resid.predictor,"oriFormula")
+        phiform <- object$resid.predictor
         if (length(phiform)==2) phiform <- as.formula(paste('"phi"',paste(phiform,collapse=" "))) ##FR->FR how does _dglm_ deal with this
         cat(paste("phi was fixed by an offset term: ",deparse(phiform) ,"\n")) ## quick fix 06/2016 
       }                                                 
@@ -499,6 +511,12 @@ summary.HLfitlist <- function(object, ...) {
   if (length(object$warnings) ) { 
     silent <- sapply(object$warnings, cat, "\n") 
   }
+  if (object$family$family=="Gamma" && 
+      object$family$link=="inverse" &&
+      identical(attr(object$muetablob$mu,"any_neg_eta"),TRUE) ## attribute added in version 2.4.100
+  ) {
+    cat("Non-positive predictions implied by final fitted coefficients in Gamma(inverse)-response model.\n")
+  }
   options(oldopt)
   invisible(summ)
 }
@@ -513,6 +531,23 @@ print.HLfitlist <- function(x,...) {
   invisible(x)
 }
 
+.print.lambda_table <- function(lambda_table, details=attr(lambda_table,"details")) {
+  random_slope_rows <- attr(lambda_table,"random_slope_rows")
+  details <- attr(lambda_table,"details")
+  keep <- which( ! colnames(lambda_table) %in% c("Estimate","Cond.SE")) ## may be null if only outer... + fixed
+  cov_table <- lambda_table[random_slope_rows,keep] ## EXCLUDES the "Estimate","Cond.SE" cols
+  cat("         --- Random-coefficients Cov matrices:\n")
+  print(cov_table, digits = 4, row.names = FALSE)
+  #
+  keep <- which( colnames(lambda_table) %in% c("Group","Term","Estimate","Cond.SE")) ## may be null if only outer... + fixed
+  lambda_table <- lambda_table[,keep]
+  if ( ! details$ranCoefs) info_rows <- setdiff(info_rows, random_slope_rows)
+  cat("           --- Variance parameters ('lambda'):\n")
+#  .legend_lambda(object, type="def") ## print info about the meaning of lambda  #      refernece to 'object'
+  lambda_table <- lambda_table[ info_rows ,]
+  # F I X M E unfinished
+  invisible(lambda_table) ## no courrently correct as it is truncated
+}
 
 
 

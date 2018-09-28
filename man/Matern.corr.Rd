@@ -26,7 +26,7 @@ Matern correlation function and Matern formula term.
   \item{Nugget}{(Following the jargon of Kriging) a parameter describing a discontinuous decrease in 
     correlation at zero distance. Correlation will always be 1 at \eqn{d=0}, and from which it immediately drops to 
     (1-Nugget)}
-  \item{...}{Names of coordinates, using \dQuote{+} as separator (e.g., \code{Matern(1|latitude + longitude)}}
+  \item{\dots}{Names of coordinates, using \dQuote{+} as separator (e.g., \code{Matern(1|latitude + longitude)}}
 }
 \details{
 The correlation at distance \eqn{d>0} is 
@@ -53,5 +53,5 @@ randpts <- matrix(rnorm(20),nrow=5)
 distMatrix <- as.matrix(proxy::dist(randpts))
 MaternCorr(distMatrix,nu=2)
 }
-% Add one or more standard keywords, see file 'KEYWORDS' in the
-% R documentation directory.
+\keyword{ models }% use one of  RShowDoc("KEYWORDS")
+\keyword{ spatial }% __ONLY ONE__ keyword per line

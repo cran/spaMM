@@ -21,7 +21,6 @@ HLCor <- function(formula,
   if (is.null(processed <- oricall$processed)) { ## no 'processed'
     ## FR->FR suggests we should add processed as argument of HLCor...
     oricall$formula <- .stripFormula(formula)
-    if ( ! is.null(oricall$resid.formula)) oricall$resid.model <- oricall$resid.formula
     #
     family <- .checkRespFam(family)
     if ( identical(family$family,"multi")) {
@@ -53,7 +52,6 @@ HLCor <- function(formula,
       mc <- oricall
       FHF <- formals(HLfit) ## makes sure about default values 
       names_FHF <- names(FHF)
-      #if ( ! is.null(mc$resid.formula)) mc$resid.model <- mc$resid.formula
       names_nondefault  <- intersect(names(mc),names_FHF) ## mc including dotlist
       FHF[names_nondefault] <- mc[names_nondefault] ##  full HLfit args
       preprocess.formal.args <- FHF[which(names_FHF %in% names(formals(.preprocess)))] 
@@ -69,7 +67,7 @@ HLCor <- function(formula,
       preprocess.formal.args$distMatrix <- mc$distMatrix ## because distMatrix not in formals(HLfit)    #
       preprocess.formal.args[["control.dist"]] <- control.dist ## because control.dist not in formals(HLfit)    #
       mc$processed <- do.call(.preprocess,preprocess.formal.args,envir=parent.frame(1L))
-      oricall$resid.model <- mc$processed$residModel
+      # oricall$resid.model <- mc$processed$residModel
       oricall$control.dist <- mc$processed$control.dist
       #mc$ranPars$ranCoefs <- NULL ## but new ranFix can be added by fitme/corrHLfit
       # HLCor_body() called below
@@ -95,20 +93,23 @@ HLCor <- function(formula,
   ################# single processed, single data analysis: 
   if (identical(mc$processed[["verbose"]]["getCall"][[1L]],TRUE)) return(oricall) ## returns a call is verbose["getCall"'"] is TRUE
   #
-  pnames <- c("data","family","formula","prior.weights","HLmethod","rand.family","control.glm","resid.formula","REMLformula",
+  pnames <- c("data","family","formula","prior.weights","HLmethod","rand.family","control.glm","REMLformula",
               "resid.model", "verbose","distMatrix","uniqueGeo","adjMatrix") ## try covStruct too...
   for (st in pnames) mc[st] <- NULL 
   mc[[1L]] <- get("HLCor_body", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
-  #mc[[1L]] <- quote(spaMM::HLCor_body)
   hlcor <- eval(mc,parent.frame())
   .check_conv_glm_reinit()
   if ( ! is.null(processed$return_only)) {
     return(hlcor)    ########################   R E T U R N   a list with $APHLs
   }
   # FR->FR 10/2016 remis une ligne supp de 1.9.24 (mais ça doit être supprimé par fitme ou corrHLfit)
-  attr(hlcor,"HLCorcall") <- oricall ## potentially used by getCall(object) in update.HL ./., NOT processed
+  hlcor$call <- oricall ## potentially used by getCall(object) in update.HL ./., NOT processed
   # ./. and more directly by confint (very convenient)
-  if ( ! identical(paste(family[[1L]]),"multi")) hlcor$fit_time <- .timerraw(time1)
+  if ( ! identical(paste(family[[1L]]),"multi")) {
+    hlcor$how$fit_time <- .timerraw(time1)
+    hlcor$fit_time <- structure(hlcor$how$fit_time,
+                                message="Please use how(<fit object>)[['fit_time']] to extract this information cleanly.")
+  }
   return(hlcor)
 }
 

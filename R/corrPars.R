@@ -10,7 +10,7 @@ if (FALSE) {  ## DOC:
                                   type=.modify_list(relist(rep("fix",length(unlist(fixed))),fixed),
                                                     attr(init.HLfit,"type")[varNames]))  
   
-  ## idom for splitting parameters
+  ## idiom for splitting parameters
   rPtype <- attr(ranPars,"type")
   if (is.null(rPtype) && length(ranPars)) { ## direct HLCor call
     HL.info$ranFix <- structure(ranPars,
@@ -33,6 +33,27 @@ if (FALSE) {  ## DOC:
 
 }
 
+.modify_list <- function (x, val) { ## derived from utils::modifyList
+  if( is.null(x)) {
+    if (is.null(val)) {
+      return(NULL)
+    } else return(val)
+  } else if (is.null(val)) return(x) 
+  #stopifnot(is.list(x), is.list(val)) # inefficient
+  xnames <- names(x)
+  vnames <- names(val)
+  vnames <- vnames[nzchar(vnames)]
+  for (v in vnames) {
+    if (v %in% xnames) {
+      if ( is.list(x[[v]]) && is.list(val[[v]])) {
+        x[[v]] <- .modify_list(x[[v]], val[[v]])
+      } else if ( ! is.null(nam <- names(val[[v]]))) {
+        x[[v]][nam] <- val[[v]]
+      } else x[[v]] <- val[[v]]
+    } else x[[v]] <- val[[v]] 
+  }
+  x
+}
 
 # getPar extract values from a list of lists, controlling that there is no redundancies between the lists => useful to *merge* lists 
 # but in fact I do not seem to use this facility. .getPar() is applied to 'ranFix' (once to 'fixed')
@@ -97,11 +118,9 @@ if (FALSE) {  ## DOC:
 
 
 .remove_from_cP <- function(parlist, u_list=unlist(parlist), u_names) {
-  # if (is.null(parlist)) {
-  #   return(NULL) 
-  # } else {
+  if (length(u_names)) { ## if something to subtract
     u_list[u_names] <- rep(NaN,length(u_names))
     u_list <- relist(u_list,parlist)
     return(.rmNaN(u_list)) ## removes attributes
-  # }
+  } else return(parlist) ## DHGLM where all parameters are fixed.
 }

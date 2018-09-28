@@ -10,11 +10,12 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
                     get_from="get_from_MME.sXaug_Matrix_QRP_CHM_scaled",
                     BLOB=list2env(list(), parent=environment(.sXaug_Matrix_QRP_CHM_scaled)),
                     w.ranef=w.ranef,
-                    n_u_h=n_u_h,
-                    pforpv=ncol(Xaug)-n_u_h,
+                    n_u_h=n_u_h, # mandatory for all sXaug types
+                    pforpv=ncol(Xaug)-n_u_h,  # mandatory for all sXaug types
+                    weight_X=weight_X, # new mandatory 08/2018
                     H_global_scale=H_global_scale
   )
-  ## cannot modify the 'class' attribute... => immediate clumsy code below...
+  ## cannot modify the 'class' attribute... => immediate clumsy code below... and how(.) reports method: dgCMatrix.
   return( resu ) 
 }
 
@@ -25,7 +26,6 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
     # sXaug = t(tQ) %*% R[,sP] but then also sXaug = t(tQ)[,sP'] %*% R[sP',sP] for any sP'
     BLOB$perm <- BLOB$blob@q + 1L
     BLOB$R_scaled <- qrR(BLOB$blob,backPermute = FALSE)
-    ## we don't request (t) Q from Eigen bc it is terribly slow
     n_u_h <- attr(sXaug,"n_u_h")
     seq_n_u_h <- seq(n_u_h)
     BLOB$sortPerm <- sort.list(BLOB$perm) 
@@ -154,8 +154,8 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
   #     BLOB$R_beta_blob <- list(R_beta=R_beta,diag_pRtRp_beta=diag_pRtRp_beta)
   #   }
   #   return(BLOB$R_beta_blob)
-  } else if (which=="sortPerm") { ## extracted for LevMar
-    return(BLOB$sortPerm)
+  # } else if (which=="sortPerm") { 
+  #   return(BLOB$sortPerm)
   } else if (which=="t_Q_scaled") { ## used in get_hatvalues for nonstandard case
     return(BLOB$t_Q_scaled)
   } else if (which %in% c("logdet_R_scaled_b_v")) {
@@ -168,19 +168,12 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
     beta_cov <- Matrix::chol2inv(BLOB$R_scaled) ## actually augmented beta_v_cov as the following shows
     pforpv <- attr(sXaug,"pforpv")
     beta_pos <- attr(sXaug,"n_u_h")+seq_len(pforpv)
-    if (FALSE) {
-      sP_beta_pos <- BLOB$sortPerm[beta_pos]
-      beta_cov <- as.matrix(beta_cov[sP_beta_pos,sP_beta_pos]) * attr(sXaug,"H_global_scale")
-      colnames(beta_cov) <- colnames(sXaug)[beta_pos]
-      return(beta_cov)
-    } else {
-      v_beta_cov <- as.matrix(beta_cov[BLOB$sortPerm,BLOB$sortPerm])
-      diagscalings <- sqrt(c(1/attr(sXaug,"w.ranef"),rep(attr(sXaug,"H_global_scale"),pforpv)))
-      v_beta_cov <- .Dvec_times_matrix(diagscalings, .m_Matrix_times_Dvec(v_beta_cov, diagscalings))
-      colnames(v_beta_cov) <- colnames(sXaug) ## necessary for summary.HLfit !
-      beta_v_order <- c(beta_pos,seq(attr(sXaug,"n_u_h")))
-      return( structure(v_beta_cov[beta_pos,beta_pos,drop=FALSE], beta_v_cov=v_beta_cov[beta_v_order,beta_v_order]) )
-    }
+    v_beta_cov <- as.matrix(beta_cov[BLOB$sortPerm,BLOB$sortPerm])
+    diagscalings <- sqrt(c(1/attr(sXaug,"w.ranef"),rep(attr(sXaug,"H_global_scale"),pforpv)))
+    v_beta_cov <- .Dvec_times_matrix(diagscalings, .m_Matrix_times_Dvec(v_beta_cov, diagscalings))
+    colnames(v_beta_cov) <- colnames(sXaug) ## necessary for summary.HLfit
+    beta_v_order <- c(beta_pos,seq(attr(sXaug,"n_u_h")))
+    return( structure(v_beta_cov[beta_pos,beta_pos,drop=FALSE], beta_v_cov=v_beta_cov[beta_v_order,beta_v_order]) )
   } else if (which=="beta_v_cov_from_wAugX") { ## using a weighted Henderson's augmented design matrix, not a true sXaug  
     beta_v_cov <- as.matrix(Matrix::chol2inv(BLOB$R_scaled)[BLOB$sortPerm,BLOB$sortPerm])
     # this tends to be dense bc v_h estimates covary   

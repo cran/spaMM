@@ -1,9 +1,11 @@
 exportPattern("^[[:alpha:]]+") 
 # F I X M E (1) update spaMM (2) update dependent packages without importFrom(_body) and with required spaMM version 
 # (3) hide xxx_body... 
-export(".evalWrapper", ".Cholwrap", ".calc_CARdispGammaGLM", ".calc_dispGammaGLM", ".ZWZt",
+# blackbox 1.1.25 on CRAN is OK IsoriX is OK
+export(".evalWrapper", ".wrap_Ltri_t_chol", ".calc_CARdispGammaGLM", ".calc_dispGammaGLM", ".ZWZt",
        ".dispFn", ".dispInv", ".nuFn", ".nuInv", ".rhoFn", ".rhoInv", ".NB_shapeFn", ".NB_shapeInv", 
-       ".crossprod", ".tcrossprod",  ".noOffset", ".nobarsMM", ".modify_list") ## probitgem
+       ".crossprod", ".tcrossprod",  ".stripOffset", ".stripRanefs", ".modify_list") ## probitgem
+export(".HLfit_body_augZXy", ".solve_IRLS_as_ZX", ".solve_IRLS_as_spprec") ## must be exported to be traceable
 importFrom("graphics", ".filled.contour", "Axis", "abline", "axis", "box", "hist", "layout", 
            "lcm", "lines", "par", "plot.new", "plot.window", "points", "polygon", "rect", "title")
 importFrom("graphics", "plot")
@@ -12,18 +14,20 @@ importFrom("methods", "as", "is", "cbind2", "rbind2", "new")
 importFrom("stats", "as.formula", "coefficients", "dgamma", "dnorm", "family", "formula", "getCall", 
            "glm", "lm", "make.link", "model.frame", "model.matrix", "model.offset", "model.response", 
            "optim", "optimize", "pchisq", "pnorm", "qchisq", "qnorm", "qqline", "qqnorm", 
-           "rbeta", "rbinom", "rgamma", "rnorm", "rpois", "runif", "terms", 
-           "update.formula", "var", "weights", "glm.fit",".lm.fit", "lm.wfit",
+           "rbeta", "rbinom", "rgamma", "rnorm", "rpois", "runif", "terms", "extractAIC", "step",
+           "terms.formula", "var", "sd", "weights", "glm.fit",".lm.fit", "lm.wfit", 
+           "nobs", ## bc spaMM defines an HLfit method, although I do not currently use it
            "simulate", "anova", "confint", "fitted", "predict", "update", "logLik", "vcov", "coef",
            "gaussian", "binomial", "dpois", "Gamma", "resid", "uniroot", "deviance", "dbinom", "plogis", 
            "as.dist", "AIC", "qnbinom", "qpois", "rnbinom", "integrate", "poisson")
 importFrom("utils", "relist", "txtProgressBar", "setTxtProgressBar", "modifyList", "strOptions", "str",
            "write.table", "packageVersion", "packageDescription")
-importFrom("Matrix", "Matrix", "drop", "isDiagonal", "diag", "t", "solve", "Diagonal", "crossprod", "tcrossprod", "rowSums", "colSums")
-importFrom("Matrix", "sparseMatrix", "qr", "qrR", "qr.R", "qr.Q", "qr.coef", "isSymmetric", "forceSymmetric", "Cholesky","determinant")
+importFrom("Matrix", "Matrix", "drop", "isDiagonal", "diag", "t", "solve", "Diagonal", "crossprod", "tcrossprod", "rowSums", "colSums",
+           "sparseMatrix", "qr", "qrR", "qr.R", "qr.Q", "qr.coef", "isSymmetric", "forceSymmetric", "Cholesky","determinant",
+           "chol2inv", "drop0")
 importFrom("proxy", "dist", "pr_DB")
 importFrom("Rcpp", "evalCpp")
-importFrom("MASS", "ginv", "gamma.shape", "mvrnorm")
+importFrom("MASS", "ginv", "gamma.shape", "mvrnorm") ## gamma.shape is actually a generic with a 'glm' method.
 importFrom("nlme", "getGroups", "fixef", "ranef", "corMatrix", "Initialize", "Variogram", "coef<-", "corFactor", "getCovariate", "logDet", "recalc")
 importFrom("pbapply", "pbapply", "pboptions")
 export(coef) ## from stats namespace
@@ -44,7 +48,12 @@ S3method(deviance, HLfit)
 S3method(anova, HLfit)
 S3method(coef,corMatern)
 S3method(AIC, HLfit)
+S3method(extractAIC, HLfit)
 S3method(confint, HLfit)
+S3method(formula, HLfit)
+S3method(terms, HLfit)
+S3method(model.matrix, HLfit)
+S3method(nobs, HLfit)
 S3method(logLik, HLfit)
 S3method(logLik, HLfitlist)
 S3method(fitted, HLfit)
@@ -67,6 +76,7 @@ S3method(print, predictor)
 S3method(print, arglist)
 S3method(print, ranef)
 S3method(print, predictions)
+S3method(print, corr_family)
 S3method(update, HLfit)
 S3method(vcov, HLfit)
 S3method(MaternCorr, default)
@@ -85,8 +95,11 @@ S3method(get_from_MME,sXaug_EigenDense_QRP_Chol_scaled)
 S3method(get_from_MME,sXaug_Matrix_QRP_CHM_scaled)
 #S3method(get_from_MME,sXaug_Matrix_cholP_scaled)
 S3method(get_from_MME,AUGI0_ZX_sparsePrecision)
+#S3method(get_from_MME,AUGI0_ZX_sparsePrecision_scaled)
 S3method(get_from_MME,sparseMatrix)
 S3method(get_from_MME,default)
 S3method(get_from_MME_default,matrix)
 S3method(get_from_MME_default,Matrix)
+S3method(how,default)
+S3method(how,HLfit)
 useDynLib(spaMM, .registration=TRUE)  #  exposes to user level => objects need doc.

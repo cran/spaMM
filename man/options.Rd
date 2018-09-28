@@ -19,9 +19,9 @@ spaMM.getOption(x)
     are used in \code{spaMM}:
 
   \describe{
+  
+\item{\code{regul_lev_lambda}}{Numeric (default: 1e-8); lambda leverages numerically 1 are replaced by 1- \code{regul_lev_lambda}}  
 \item{\code{COMP_maxn}:}{Number of terms for truncation of infinite sums that are evaluated in the fitting of \code{\link{COMPoisson}} models.}
-
-\item{\code{MESSAGES.FULL.STACK=TRUE}:}{Whether to give information on the stack of calls in some warning messages.}
 
 \item{\code{QRmethod}:}{A character string, to control whether dense matrix or sparse matrix methods are used in intensive matrix computations, overcoming the defaults choices made by \code{spaMM} in this respect. Possible values are \code{"dense"} and \code{"sparse"}.}
 

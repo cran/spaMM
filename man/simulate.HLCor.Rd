@@ -14,11 +14,12 @@
   %This does not yet work for new locations in a mixed model involving both spatial and non-spatial random effects. 
 }
 \usage{
-\method{simulate}{HLfit}(object, nsim = 1, seed = NULL, newdata=NULL,
-                         type = "marginal", conditional=NULL, verbose=TRUE,
-                         sizes = NULL, resp_testfn=NULL, ...)
+\method{simulate}{HLfit}(object, nsim = 1, seed = NULL, newdata = NULL,
+                         type = "marginal", conditional = NULL, verbose = TRUE,
+                         sizes = NULL, resp_testfn = NULL, phi_type = "predict",
+                         prior.weights = object$prior.weights, ...)
 \method{simulate}{HLfitlist}(object, nsim = 1, seed = NULL, 
-                             newdata=object[[1]]$data, sizes=NULL, ...)
+                             newdata = object[[1]]$data, sizes = NULL, ...)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -49,6 +50,12 @@
   \item{resp_testfn}{
   NULL, or a function that tests a condition which simulated samples should satisfy. This function takes a response vector as argument and return a boolean (TRUE indicating that the sampel satisfies the condition).     
   }
+  \item{phi_type}{
+    Character string, either \code{"predict"} or one of the values possible for \code{type}. This controls the residual variance parameter \eqn{\phi}. The default is to use predicted \eqn{\phi} values from the fit, which are the fitted \eqn{\phi} values except when a structured-dispersion model is involved together with non-NULL \code{newdata}. However, when a structured-dispersion model is involved, it is also possible to simulate new \eqn{\phi} values, and for a mixed-effects structured-dispersion model, the same types of simulation controlled by \code{type} for the main response can be performed as controlled by \code{phi_type}. For a fixed-effects structured-dispersion model, these types cannot be distinguished, and any \code{phi_type} distinct from \code{"predict"} will imply simulation under the fixed-effect model (see Examples). 
+  }
+  \item{prior.weights}{
+  Prior weights that may be substituted to those of the original fit, with the same effect on the residual variance. 
+}
   \item{\dots}{
   further arguments passed to or from other methods. 
 }
@@ -63,5 +70,11 @@ HLC <- HLCor(cbind(npos,ntot-npos)~Matern(1|longitude+latitude),
            data=Loaloa,family=binomial(),
            ranPars=list(lambda=1,nu=0.5,rho=1/0.7)) 
 simulate(HLC,nsim=2)
+
+## Structured dispersion model 
+data("wafers")
+hl <- HLfit(y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch),family=Gamma(log),
+            resid.model = ~ X3+I(X3^2) ,data=wafers)
+simulate(hl,type="marginal",phi_type="simulate",nsim=2)
 }
 \keyword{ datagen }

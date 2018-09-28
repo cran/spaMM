@@ -132,7 +132,7 @@
     nslices <- length(slices)-1L
     predVar <- vector("list",nslices)
     newZAlist_slice <- vector("list",length(newZAlist))
-    if (showpbar <- interactive()) pb <- txtProgressBar(style = 3)
+    if (showpbar <- interactive()) pb <- txtProgressBar(style = 3, char="s") # FIXME could implement parallee computation
     for (it in seq_len(nslices)) {
       slice <- (slices[it]+1L):slices[it+1L]
       X.pv_slice <- X.pv[slice,,drop=FALSE]
@@ -161,6 +161,7 @@
   ## First component of predVar
   # variance of expectation of Xbeta+Zb due to var of (hat(beta),old hat(v)) using E[b] as function of old hat(v)
   predVar <- .calcZWZt_mat_or_diag(XZAC,beta_w_cov,covMatrix) ## component for linPred=TRUE,disp=FALSE when newdata=ori data
+  #   Despite the symmetric computation, predVar can be asymmetric if is (symmetric!) nearly-singular
   #### next line of code is an imperfect but useful patch
   # possible problems:
   # * (unhandled) Evar can also be (numerically) negative
@@ -179,7 +180,7 @@
   }
   # If components for uncertainty in dispersion params were requested,
   #   logdispObject is not NULL
-  # If some components ere computable, $$dwdlogdisp should not be NULL
+  # If some components are computable, $$dwdlogdisp should not be NULL
   # Former approach (changed 08/2016) was to test logdispObject and then 
   #   for any 'problem'. But there may some 'problem' and still a valid logdispObject
   # => In new version, dwdlogdisp should be either NULL or a conforming matrix;
@@ -255,7 +256,7 @@
           newlevels <- colnames(newZA)
           oldornew <- unique(c(oldlevels,newlevels))
           numnamesTerms <- length(namesTerms) ## 2 for random-coef
-          design_u <- attr(strucList[[old_rd]],"latentL_blob")$u
+          design_u <- attr(strucList[[old_rd]],"latentL_blob")$design_u
           newoldC <- .makelong(.tcrossprod(design_u), longsize=length(oldornew)*numnamesTerms)
           repnames <- rep(oldornew, numnamesTerms)
           newcols <- repnames %in% newlevels ## handle replicates (don't `[` newoldC using names !)
@@ -272,7 +273,7 @@
           newlevels <- colnames(newZA)
           ## currently newdata are not allowed with corrMatrix so that newlevels should = oldlevels...
           if (length(setdiff(newlevels,oldlevels))) stop("Found new levels for a 'corrMatrix' random effect.")
-          newoldC <- tcrossprod(object$strucList[[old_rd]]) ## reconstructs permuted (according to cols of Z) corrMatrix from its L factor
+          newoldC <- .tcrossprod(object$strucList[[old_rd]]) ## reconstructs permuted (according to cols of Z) corrMatrix from its L factor
           colnames(newoldC) <- rownames(newoldC) <- oldlevels
           if (which_mats$no) cov_newLv_oldv_list[[new_rd]] <- structure(newoldC[newlevels, ,drop=FALSE],ranefs=ranefs[[new_rd]])
           if (which_mats$nn[new_rd]) cov_newLv_newLv_list[[new_rd]] <- newoldC[newlevels, ,drop=FALSE]
@@ -317,7 +318,7 @@
             uli_old <- uli_onGeo[-seq(nrow(newuniqueGeo))]
             if (which_mats$no) uuCnewold <- blob$distMatrix[uli_new,uli_old,drop=FALSE] ## rows match the newZAlist, cols match th u_h 
             if (which_mats$nn[new_rd]) uuCnewnew <- blob$distMatrix[uli_new,uli_new,drop=FALSE]
-          } else if (corr.model %in% c("Cauchy", "Matern")) { ## _F I X M E_ test Cauchy
+          } else if (corr.model %in% c("Cauchy", "Matern")) { 
             ### rho only used to compute scaled distances
             rho <- .get_cP_stuff(object$ranFix,"rho", which=old_char_rd)
             if ( ! is.null(rho_mapping <- moreargs_rd$rho.mapping) 
@@ -334,9 +335,17 @@
               } else uuCnewnew <- do.call(make_scaled_dist,msd.arglist) 
             }
           } else stop("Unhandled corr.model.")
-          if (which_mats$no) cov_newLv_oldv_list[[new_rd]] <- structure(.calc_corr_from_dist(uuCnewold, object, corr.model,char_rd=old_char_rd),
-                                                                    ranefs=ranefs[[new_rd]])
-          if (which_mats$nn[new_rd]) cov_newLv_newLv_list[[new_rd]] <- .calc_corr_from_dist(uuCnewnew, object, corr.model,char_rd=old_char_rd)
+          if (object$spaMM.version<"2.4.49") {
+            if (which_mats$no) cov_newLv_oldv_list[[new_rd]] <- structure(.calc_corr_from_dist(uuCnewold, object, corr.model,char_rd=old_char_rd),
+                                                                          ranefs=ranefs[[new_rd]])
+            if (which_mats$nn[new_rd]) cov_newLv_newLv_list[[new_rd]] <- .calc_corr_from_dist(uuCnewnew, object, corr.model,char_rd=old_char_rd)
+          } else {
+            if (which_mats$no) cov_newLv_oldv_list[[new_rd]] <- 
+                structure(.get_sub_corr_info(object)$corr_families[[old_rd]]$calc_corr_from_dist(ranFix=object$ranFix, char_rd=old_char_rd, distmat=uuCnewold),
+                          ranefs=ranefs[[new_rd]])
+            if (which_mats$nn[new_rd]) cov_newLv_newLv_list[[new_rd]] <- 
+                .get_sub_corr_info(object)$corr_families[[old_rd]]$calc_corr_from_dist(ranFix=object$ranFix, char_rd=old_char_rd, distmat=uuCnewnew)
+          }
         }
       }
     }
@@ -344,30 +353,37 @@
   return(list(cov_newLv_oldv_list=cov_newLv_oldv_list, cov_newLv_newLv_list=cov_newLv_newLv_list))
 }
 
-.process_variances <- function(variances) {
-  if (identical(variances$BH98,TRUE)) { ## my interpretation of BH98
-    variances$predVar <- TRUE ## implies $linPred <- TRUE by default
-    #variances$respVar <- FALSE ## default
-    variances$disp <- FALSE ## non-default
-    variances$cov <- TRUE ## non-default
-  } else variances$BH98 <- FALSE
-  # $respVar implies components
-  if (is.null(variances$predVar)) variances$predVar <- variances$respVar ## may still be NULL
-  if (is.null(variances$residVar)) variances$residVar <- variances$respVar ## may still be NULL
-  if (is.null(variances$respVar)) variances$respVar <- FALSE 
-  # $predVar implies components
-  if (is.null(variances$linPred)) variances$linPred <- variances$predVar ## may still be NULL
-  if (is.null(variances$disp)) variances$disp <- variances$predVar ## may still be NULL
-  if (is.null(variances$predVar)) variances$predVar <- FALSE 
-  # Do not let any component empty
-  if (is.null(variances$fixefVar)) variances$fixefVar <- FALSE 
-  if (is.null(variances$linPred)) variances$linPred <- FALSE 
-  if (is.null(variances$disp)) variances$disp <- FALSE ## uncertaintly on dispersion parameters
-  if (is.null(variances$residVar)) variances$residVar <- FALSE ## uncertaintly on dispersion parameters
-  if (is.null(variances$cov)) variances$cov <- FALSE
-  ##
-  return(variances)
-}
+.process_variances <- local({
+  link_warned <- FALSE
+  function(variances, object) {
+    if ( (! link_warned) && identical(variances$predVar, TRUE) && object$family$link!="identity") {
+      link_warned <<- TRUE
+      message("Non-identity link: predVar is on linear-predictor scale.") #        [This message appears only once per session]")
+    }
+    if (identical(variances$BH98,TRUE)) { ## my interpretation of BH98
+      variances$predVar <- TRUE ## implies $linPred <- TRUE by default
+      #variances$respVar <- FALSE ## default
+      variances$disp <- FALSE ## non-default
+      variances$cov <- TRUE ## non-default
+    } else variances$BH98 <- FALSE
+    # $respVar implies components
+    if (is.null(variances$predVar)) variances$predVar <- variances$respVar ## may still be NULL
+    if (is.null(variances$residVar)) variances$residVar <- variances$respVar ## may still be NULL
+    if (is.null(variances$respVar)) variances$respVar <- FALSE 
+    # $predVar implies components
+    if (is.null(variances$linPred)) variances$linPred <- variances$predVar ## may still be NULL
+    if (is.null(variances$disp)) variances$disp <- variances$predVar ## may still be NULL
+    if (is.null(variances$predVar)) variances$predVar <- FALSE 
+    # Do not let any component empty
+    if (is.null(variances$fixefVar)) variances$fixefVar <- FALSE 
+    if (is.null(variances$linPred)) variances$linPred <- FALSE 
+    if (is.null(variances$disp)) variances$disp <- FALSE ## uncertaintly on dispersion parameters
+    if (is.null(variances$residVar)) variances$residVar <- FALSE ## uncertaintly on dispersion parameters
+    if (is.null(variances$cov)) variances$cov <- FALSE
+    ##
+    return(variances)
+  }
+})
 
 .match_old_new_levels <- function(new_rd, old_cum_n_u_h, newinold, spatial_old_rd, w_h_coeffs, subZAlist, newZACpplist, lcrandfamfam, object) {
   old_rd <- newinold[new_rd]
@@ -498,7 +514,7 @@
       if ( is.null(newdata) && ! inherits(re.form,"formula")) {
         newZAlist <- new_X_ZACblob$subZAlist ## (subset of) the original object$ZAlist 
       } else { ## 
-        newZAlist <- new_X_ZACblob$newZAlist ## a new ZAlist built using .spMMFactorList(new formula...)
+        newZAlist <- new_X_ZACblob$newZAlist ## a new ZAlist built using .calc_Zlist(new formula...) 
       }
     }
     if ( ! is.null(newdata)) {
@@ -659,7 +675,7 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
   if (any(!checkIntervals)) warning("Element(s)",intervals[!checkIntervals],"are suspect, not ending in 'Var'.")
   # possible elements in return value: fixefVar, predVar, residVar, respVar
   variances[intervals] <- TRUE 
-  variances <- .process_variances(variances)
+  variances <- .process_variances(variances, object)
   nrX <-  NROW(newdata)
   ############################## if (nrX>0L) newdata <- droplevels(newdata) FIXME perhaps here ? 
   if ( (! variances$cov) && nrX > blockSize) {
@@ -669,13 +685,13 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
     slices <- unique(c(seq(0L,nrX,blockSize),nrX))
     nslices <- length(slices)-1L
     res <- vector("list",nslices)
-    if (showpbar <- interactive()) pb <- txtProgressBar(style = 3)
+    if (showpbar <- interactive()) pb <- txtProgressBar(style = 3, char="s") # FIXME could implement parallee computation
     for (it in seq_len(nslices)) {
       slice <- (slices[it]+1L):slices[it+1L]
       newdata_slice <- newdata[slice,,drop=FALSE]
       ## newdata_slice <- droplevels(newdata_slice) 
       res[[it]] <- .predict_body(object=object, newdata=newdata_slice, re.form = re.form, variances=variances, 
-                                 binding=binding, intervals=intervals, level=level, blockSize=blockSize) ## blocksize shuld not be useful *here*
+                                 binding=binding, intervals=intervals, level=level, blockSize=blockSize) ## blockSize shuld not be useful *here*
       if (showpbar) setTxtProgressBar(pb, slices[it+1L]/nrX) ## update progress bar
     }
     if (showpbar) close(pb)

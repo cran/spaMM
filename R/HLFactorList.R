@@ -67,127 +67,156 @@
   return(res)
 }
 
-.spMMFactorList_locfn <- function(x,mf,
-                                  rmInt, ## remove Intercept
-                                  drop,sparse_precision,type=".ULI",
-                                  cov_mat_info) {
-  ## le bidule suivant evalue le bout de formule x[[3]] et en fait un facteur. 
-  ## but fac may be any vector returned by the evaluation of x[[3]] in the envir mf
-  rhs <- x[[3]]
-  txt <- .DEPARSE(rhs) ## should be the rhs of (|) cleanly converted to a string by terms(formula,data) in HLframes
-  ## converts '%in%' to ':' 
-  if (length(grep("%in%",txt))) {
-    splittxt <- strsplit(txt,"%in%")[[1]]
-    rhs <- as.formula(paste("~",splittxt[1],":",splittxt[2]))[[2]]
-    txt <- .DEPARSE(rhs)
-  }
-  #    if (length(grep("\\+",txt))) { ## coordinates is a vector with a single string; grep is 1 if  + was found in this single string and numeric(0) otherwise
-  ## if sparse_precision is not yet determined
-  #  this build the design matrix as if it was TRUE,
-  #  but adds the info dataordered_levels that allows a later modif of the design matrix if sparse_precision is set to FALSE
-  AR1_sparse_Q <- info_mat_is_prec <- FALSE
-  if (( ! is.null(raneftype <- attr(x,"type"))) && raneftype != "(.|.)"){ ## Any term with a 'spatial' keyword (incl. corrMatrix); cf comment in last case
-    ## if sparse not yet determined for AR1, we generate the required info for sparse (and non-sparse) and thus assume AR1_sparse_Q: 
-    if (is.null(AR1_sparse_Q <- sparse_precision)) AR1_sparse_Q <- (raneftype=="AR1")  
-    ## similar idea for precision matrices:
-    if (is.null(info_mat_is_prec <- sparse_precision)) info_mat_is_prec <- (raneftype=="corrMatrix" && inherits(cov_mat_info,"precision"))  
-    ## for AR1_sparse and corMatrix, we cannot use dummy levels as created by .ULI() of factor(). THe level names have special meaning
-    #   matching a time concept, or user-provided names for the corrMatrix
-    if (AR1_sparse_Q || raneftype=="corrMatrix") {
-      dataordered_levels_blob <- .calc_dataordered_levels(txt=txt,mf=mf,type="mf")
-    } else dataordered_levels_blob <- .calc_dataordered_levels(txt=txt,mf=mf,type=type)
-    if (raneftype=="corrMatrix") {
-      if (info_mat_is_prec) { 
-        ff <- factor(dataordered_levels_blob$factor, levels=colnames(cov_mat_info$matrix))
-      } else {
+.calc_Zmatrix <- local({
+  trivial_incidMat <- sparseMatrix(i=1L,j=1L,x=1L, dimnames=list("1",NULL)) 
+  function(x,mf,
+           rmInt, ## remove Intercept
+           drop,sparse_precision,type=".ULI",
+           cov_mat_info, old_leftOfBar_mf=NULL) {
+    ## le bidule suivant evalue le bout de formule x[[3]] et en fait un facteur. 
+    ## but fac may be any vector returned by the evaluation of x[[3]] in the envir mf
+    rhs <- x[[3]]
+    txt <- .DEPARSE(rhs) ## should be the rhs of (|) cleanly converted to a string by terms(formula,data) in HLframes
+    ## converts '%in%' to ':' 
+    if (length(grep("%in%",txt))) {
+      splittxt <- strsplit(txt,"%in%")[[1]]
+      rhs <- as.formula(paste("~",splittxt[1],":",splittxt[2]))[[2]]
+      txt <- .DEPARSE(rhs)
+    }
+    #    if (length(grep("\\+",txt))) { ## coordinates is a vector with a single string; grep is 1 if  + was found in this single string and numeric(0) otherwise
+    ## if sparse_precision is not yet determined
+    #  this build the design matrix as if it was TRUE,
+    #  but adds the info dataordered_levels that allows a later modif of the design matrix if sparse_precision is set to FALSE
+    AR1_sparse_Q <- info_mat_is_prec <- FALSE
+    if (( ! is.null(raneftype <- attr(x,"type"))) && raneftype != "(.|.)"){ ## Any term with a 'spatial' keyword (incl. corrMatrix); cf comment in last case
+      ## if sparse not yet determined for AR1, we generate the required info for sparse (and non-sparse) and thus assume AR1_sparse_Q: 
+      if (is.null(AR1_sparse_Q <- sparse_precision)) AR1_sparse_Q <- (raneftype=="AR1")  
+      info_mat_is_prec <- (raneftype=="corrMatrix" && inherits(cov_mat_info,"precision")) 
+      ## for AR1_sparse and corMatrix, we cannot use dummy levels as created by .ULI() of factor(). THe level names have special meaning
+      #   matching a time concept, or user-provided names for the corrMatrix
+      if (raneftype %in% c("Matern","Cauchy")) {
+        dataordered_levels_blob <- .calc_dataordered_levels(txt=txt,mf=mf,type=type) ## even in sparse case
+      } else if (AR1_sparse_Q || raneftype=="corrMatrix") {
+        dataordered_levels_blob <- .calc_dataordered_levels(txt=txt,mf=mf,type="mf")
+      } else dataordered_levels_blob <- .calc_dataordered_levels(txt=txt,mf=mf,type=type)
+      #
+      if (raneftype %in% c("Matern","Cauchy")) {
+        ff <- dataordered_levels_blob$factor ## so that Z cols will not be reordered.
+      } else if (raneftype=="corrMatrix") {
+        if (info_mat_is_prec) { 
+          ff <- factor(dataordered_levels_blob$factor, levels=colnames(cov_mat_info$matrix))
+        } else {
+          ff <- dataordered_levels_blob$factor
+        }
+      } else if (AR1_sparse_Q) { 
+        AR1_sparse_Q_ranges_blob <- .calc_AR1_sparse_Q_ranges(mf=mf,dataordered_levels_blob)
+        ff <- factor(dataordered_levels_blob$factor,levels=AR1_sparse_Q_ranges_blob$seq_levelrange) ## rebuild a new factor with new levels
+        if (anyNA(ff)) {
+          stop(paste("Levels of the factor for an AR1 random effect should take integer values\n",
+                     "(for convenient use of sparse-precision methods).")
+          )
+        }
+      } else { # other raneftype's: handles for ( | ...+...) A N D importantly differs from the standard (.|.) code below,
+        # which creates a Zt matrix with rows (then ZA cols) reordered as the automatic levels of the factor
+        # while the cov mats / LMatrix has the original order
+        # In particular im <- as(ff... creates a non-diagonal matrix in the he standard (.|.) code to represent this reordering.
         ff <- dataordered_levels_blob$factor
       }
-    } else if (AR1_sparse_Q) { 
-      AR1_sparse_Q_ranges_blob <- .calc_AR1_sparse_Q_ranges(mf=mf,dataordered_levels_blob)
-      ff <- factor(dataordered_levels_blob$factor,levels=AR1_sparse_Q_ranges_blob$seq_levelrange) ## rebuild a new factor with new levels
-      if (anyNA(ff)) {
-        stop(paste("Levels of the factor for an AR1 random effect should take integer values\n",
-                 "(for convenient use of sparse-precision methods).")
-        )
+    } else if (length(grep("c\\(\\w*\\)",txt))) { ## c(...,...) was used (actually detects ...c(...)....) (but in which context ?)
+      aslocator <-  parse(text=gsub("c\\(", ".ULI(", txt)) ## slow pcq ULI() est slow
+      ff <- as.factor(eval(expr=aslocator,envir=mf))
+    } else { ## standard ( | ) rhs 
+      mfloc <- mf
+      ## automatically converts grouping variables to factors as in lme4::mkBlist (10/2014)
+      for (i in all.vars(rhs)) { if ( ! is.null(curf <- mfloc[[i]])) mfloc[[i]] <- as.factor(curf)}
+      if (is.null(ff <- tryCatch(eval(substitute(as.factor(fac), list(fac = rhs)), mfloc),
+                                 error=function(e) NULL))) {
+        message("couldn't evaluate grouping factor ", deparse(rhs)," within model frame:")
+        if (length(grep("as.factor",rhs))) {
+          stop("'as.factor' found in grouping factor term is not necessary and should be removed.",call.=FALSE)
+        } else stop(" try adding grouping factor to data frame explicitly if possible",call.=FALSE)        
       }
-    } else { # other raneftype's: handles for ( | ...+...) A N D importantly differs from the standard (.|.) code below,
-      # which creates a Zt matrix with rows (then ZA cols) reordered as the automatic levels of the factor
-      # while the cov mats / LMatrix has the original order
-      # In particular im <- as(ff... creates a non-diagonal matrix in the he standard (.|.) code to represent this reordering.
-      ff <- dataordered_levels_blob$factor
+      if (all(is.na(ff))) stop("Invalid grouping factor specification, ", deparse(rhs),call.=FALSE)
+      ## note additional code in lme4::mkBlist for handling lhs in particular
     }
-  } else if (length(grep("c\\(\\w*\\)",txt))) { ## c(...,...) was used (actually detects ...c(...)....) (but in which context ?)
-    aslocator <-  parse(text=gsub("c\\(", ".ULI(", txt)) ## slow pcq ULI() est slow
-    ff <- as.factor(eval(expr=aslocator,envir=mf))
-  } else { ## standard ( | ) rhs 
-    mfloc <- mf
-    ## automatically converts grouping variables to factors as in lme4::mkBlist (10/2014)
-    for (i in all.vars(rhs)) { if ( ! is.null(curf <- mfloc[[i]])) mfloc[[i]] <- as.factor(curf)}
-    if (is.null(ff <- tryCatch(eval(substitute(as.factor(fac), list(fac = rhs)), mfloc),
-                               error=function(e) NULL))) {
-      message("couldn't evaluate grouping factor ", deparse(rhs)," within model frame:")
-      if (length(grep("as.factor",rhs))) {
-        stop("'as.factor' found in grouping factor term is not necessary and should be removed.",call.=FALSE)
-      } else stop(" try adding grouping factor to data frame explicitly if possible",call.=FALSE)        
-    }
-    if (all(is.na(ff))) stop("Invalid grouping factor specification, ", deparse(rhs),call.=FALSE)
-    if (drop) ff <- droplevels(ff)
-    ## note additional code in lme4::mkBlist for handling lhs in particular
-  }
-  ## We have ff. 
-  ## This is building Z(A) not Z(A)L hence reasonably sparse even in spatial models
-  if (AR1_sparse_Q || info_mat_is_prec) {
-    im <- sparseMatrix(i=as.integer(ff),j=seq(length(ff)),x=1L, # ~general code except that empty levels are not dropped
+    ## Done with ff. Now the incidence matrix: 
+    if (drop && ! (AR1_sparse_Q || info_mat_is_prec))  ff <- droplevels(ff)
+    if (nrow(mf)==1L && levels(ff)=="1") {
+      im <- trivial_incidMat ## massive time gain when optimizing spatial point predictions
+    } else im <- sparseMatrix(i=as.integer(ff),j=seq(length(ff)),x=1L, # ~ as(ff, "sparseMatrix") except that empty levels are not dropped
                        dimnames=list(levels(ff),NULL)) # names important for corrMatrix case at least
-  } else im <- as(ff, "sparseMatrix") ##FR->FR slow step; but creates S4 objects with required slots
-  if (!isTRUE(methods::validObject(im, test = TRUE))) {
-    stop("invalid conditioning factor in random effect: ", format(rhs))
-  }
-  tempexp <- x[[2]] ## analyzing the LEFT hand side for non-trivial term (random-slope model)
-  mm <- model.matrix(eval(substitute(~expr, list(expr = tempexp))), mf)
-  if (rmInt) { ## remove intercept column
-    if ( ! is.na(icol <- match("(Intercept)", colnames(mm)))) {
-      if (ncol(mm) < 2) stop("lhs of a random-effects term cannot be an intercept only")
-      mm <- mm[, -icol, drop = FALSE]
+    # : this is faster than   im <- Matrix::fac2sparse(ff,drop.unused.levels = (drop && ! (AR1_sparse_Q || info_mat_is_prec)))
+    if (!isTRUE(methods::validObject(im, test = TRUE))) {
+      stop("invalid conditioning factor in random effect: ", format(rhs))
     }
-  }
-  ans <- list(f = ff, 
-              A = do.call(rbind, rep(list(im),ncol(mm))),
-              ## Zt is design obs <-> levels of ranef, either dgCMatrix (sparse) or dgeMatrix (dense)
-              Zt = do.call(rbind, lapply(seq_len(ncol(mm)), .fillZtbloc, template=im, source=mm)),  ## mm stores (<this info>| ...) => numeric for random slope model 
-              ST = matrix(0, ncol(mm), ncol(mm), dimnames = list(colnames(mm), 
-                                                                 colnames(mm)))
-              #lambda_X=mm ## design matrix for predictor of lambda
-  )
-  if (drop) {
-    ans$A@x <- rep(0, length(ans$A@x))
-    ans$Zt <- Matrix::drop0(ans$Zt)
-  }
-  if (identical(raneftype,"AR1")) {
-    if (AR1_sparse_Q) { ## this is TRUE is sparse_precision has not yet been determined !
-      ## Following is different from levels(dataordered_levels_blob$factor) which are reordered as character
-      #  Effect in first fit in testèAR1, when spprec goes from NULL to FALSE
-      ans$dataordered_unique_levels <- unique(as.character(dataordered_levels_blob$factor)) ## allow reformatting for ! sparse prec
-      rownames(ans$Zt) <- AR1_sparse_Q_ranges_blob$seq_levelrange ## allow reformatting for ! sparse prec
-      # ! ! ! caveat when changing the name of the following elements here, to change it elsewhere ! ! !
-      ans$AR1_block_n_u_h_s <- AR1_sparse_Q_ranges_blob$AR1_block_n_u_h_s ## required for t_chol_Q computation
-      ans$uniqueGeo <- AR1_sparse_Q_ranges_blob$uniqueGeo 
-    } else {
-      splt <- strsplit(txt,c("%in%|:|\\+| "))[[1L]]
-      ans$uniqueGeo <- .calcUniqueGeo(data=mf[,splt,drop=FALSE])
+    ## model matrix for LHS (Intercept if ...(1|.))
+    tempexp <- x[[2]] ## analyzing the LEFT hand side for non-trivial term (random-slope model)
+    leftOfBar_form <- eval(substitute(~expr, list(expr = tempexp)))
+    leftOfBar_terms <- terms(leftOfBar_form)
+    if ( length(old_leftOfBar_mf)) { ## excludes NULL, or 0-col data.frames as in Matern(1|.)
+      # new predvars set on 'mf' by new_mf_ranef <- .calc_newFrames_ranef(.)$mf
+      ori_levels <- stats::.getXlevels(attr(old_leftOfBar_mf,"terms"), old_leftOfBar_mf) 
+      leftOfBar_mf <- model.frame(leftOfBar_terms, mf, xlev = ori_levels) 
+    } else leftOfBar_mf <- model.frame(leftOfBar_terms, mf) ## Matern(1|.) => [0 col; nrow=nrow(mf)]
+    # note the test of contrasts on predict with ranCoefs with factors, in test-ranCoefs.R
+    modmat <- model.matrix(leftOfBar_terms, leftOfBar_mf) ## contrasts.arg not immed useful, maybe later.
+    if (rmInt) { ## remove intercept column
+      if ( ! is.na(icol <- match("(Intercept)", colnames(modmat)))) {
+        if (ncol(modmat) < 2) stop("lhs of a random-effects term cannot be an intercept only")
+        modmat <- modmat[, -icol, drop = FALSE]
+      }
     }
+    ## This is building Z(A) not Z(A)L hence reasonably sparse even in spatial models
+    ZA <- .calc_raw_ZA(incidMat=im, modmat)
+    attr(ZA,"leftOfBar_mf") <- leftOfBar_mf
+    attr(ZA, "namesTerm") <- colnames(modmat) ## length=npar
+    if (identical(raneftype,"AR1")) {
+      if (AR1_sparse_Q) { ## this is TRUE is sparse_precision has not yet been determined !
+        ## Following is different from levels(dataordered_levels_blob$factor) which are reordered as character
+        #  Effect in first fit in testèAR1, when spprec goes from NULL to FALSE
+        attr(ZA,"dataordered_unique_levels") <- unique(as.character(dataordered_levels_blob$factor)) ## allow reformatting for ! sparse prec
+        colnames(ZA) <- AR1_sparse_Q_ranges_blob$seq_levelrange ## allow reformatting for ! sparse prec
+        # ! ! ! caveat when changing the name of the following elements here, to change it elsewhere ! ! !
+        attr(ZA,"AR1_block_n_u_h_s") <- AR1_sparse_Q_ranges_blob$AR1_block_n_u_h_s ## required for t_chol_Q computation
+        attr(ZA,"uniqueGeo") <- AR1_sparse_Q_ranges_blob$uniqueGeo 
+      } else {
+        splt <- strsplit(txt,c("%in%|:|\\+| "))[[1L]]
+        attr(ZA,"uniqueGeo") <- .calcUniqueGeo(data=mf[,splt,drop=FALSE])
+      }
+    }
+    ZA
   }
-  ans
+})
+
+# incidMat is a incidence matrix with one 1 per row (~perm but not necess square) hence its @x has nrow(im) elements
+## modmat stores (<this info>| ...) => numeric for random slope model  
+.calc_raw_ZA <- function(incidMat, modmat) {
+  if (ncol(modmat)==1L && (length(umm <- unique(modmat[,1L]))==1L) && umm==1) { # classic (1|.) case
+    if (nrow(incidMat)>1 && .is_identity(incidMat)) { ## if nrow=1 we may be optimizing poitn predictions and Diagonal is not worth the cost. 
+      ZA <- Diagonal(n=nrow(incidMat))
+      colnames(ZA) <- rownames(incidMat) 
+    } else ZA <- t(incidMat)
+    # incidMat has no colnames and modmat does not provide names in the alternative general code
+  } else {
+    ZA <- vector("list",ncol(modmat))
+    for (col in seq_len(ncol(modmat))) {
+      ZA_col <- incidMat     # don't try to fill with template <- t(incidMat) as @x would no longer have the correct order
+      ZA_col@x <- modmat[,col]
+      ZA_col <-  drop0(ZA_col)
+      ZA[[col]] <- t(ZA_col)
+    }
+    ZA <- do.call(cbind, ZA) ## colnames are repeated if modmat has several cols...
+    if (.spaMM.data$options$Zcolsbyrows) ZA <- ZA[,as.integer(matrix(seq(ncol(ZA)),byrow=TRUE,ncol=nrow(incidMat)))]
+  }
+  return(ZA)
 }
 
-.fillZtbloc <- function(col,source,template) {
-  template@x <- source[,col]
-  template
-}
 
 
-.spMMFactorList <- function (formula, mf, rmInt, drop, sparse_precision=spaMM.getOption("sparse_precision"),
-                             type=".ULI", corr_info) {
+.calc_Zlist <- function (formula, mf, rmInt, drop, sparse_precision=spaMM.getOption("sparse_precision"),
+                         type=".ULI", corr_info, 
+                         old_ZAlist=NULL,newinold=NULL ## for prediction
+) {
   ## drop=TRUE elimine des niveaux spurious (test: fit cbind(Mate,1-Mate)~1+(1|Female/Male) ....)
   ## avec des consequences ultimes sur tailles des objets dans dispGammaGLM
   ranef_terms <- .findbarsMM(formula[[length(formula)]])
@@ -197,38 +226,30 @@
   x3 <- lapply(exp_ranef_terms, `[[`,i=3)
   names(exp_ranef_terms) <- unlist(lapply(x3, .DEPARSE)) ## names are RHS of (.|.)
   #######
-  fl <- vector("list",length(exp_ranef_terms))
+  ZAlist <- vector("list",length(exp_ranef_terms))
   for (lit in seq_along(exp_ranef_terms)) {
-    fl[[lit]] <- .spMMFactorList_locfn(exp_ranef_terms[[lit]], mf=mf, rmInt=rmInt,
-                                       drop=drop, sparse_precision=sparse_precision, type=type, 
-                                       cov_mat_info=corr_info$corrMatrices[[lit]])
+    ZAlist[[lit]] <- .calc_Zmatrix(exp_ranef_terms[[lit]], mf=mf, rmInt=rmInt,
+                                   drop=drop, sparse_precision=sparse_precision, type=type, 
+                                   cov_mat_info=corr_info$corrMatrices[[lit]],
+                                   old_leftOfBar_mf = attr(old_ZAlist[[newinold[lit]]],"leftOfBar_mf"))
+    ## ALL ZAlist[[i]] are either 
+    #     diagonal matrix (ddiMatrix) with @diag = "U"
+    #  or (dg)*C*matrix ie a Compressed *C*olumn Storage (CCS) matrix 
+    ##  (see http://netlib.org/linalg/html_templates/node92.html#SECTION00931200000000000000)
+    ##  @x must contain the nonzero elements (except diagonal elements if @diag represents them)
+    ##  @i contains the row indices of nonzero elements (except diagonal elements if @diag represents them)
+    ##  @p[c] must contain the index _in x_ of the first nonzero element of column c, x[p[c]] in col c and row i[p[c]])  
   }
-  ZAlist <- vector("list",length(fl))
   ## Subject <- list(0) ## keep this as comment; see below
-  namesTerms <- vector("list",length(fl))
+  namesTerms <- vector("list",length(ZAlist))
   GrpNames <- names(exp_ranef_terms)
-  for (i in 1:length(fl)) {
+  for (i in seq_len(length(ZAlist))) {
     ###################
     # Subject[[i]] <- as.factor(fl[[i]]$f) # levels of grouping var for all obs ('ff' returned by locfn)
     ## : Subject was used only for random slope model, where ncol(Design) != nlevels(Subject). I tried to get rid of this.
     ## see commented use of Subject in preprocess()
     ###################
-    Zt <- fl[[i]]$Zt
-    ## ALL ZAlist[[i]] are (dg)*C*matrix ie a Compressed *C*olumn Storage (CCS) matrix 
-    ##  (see http://netlib.org/linalg/html_templates/node92.html#SECTION00931200000000000000)
-    ##  @x must contain the nonzero elements (except diagonal elements if @diag represents them)
-    ##  @i contains the row indices of nonzero elements (except diagonal elements if @diag represents them)
-    ##  @p[c] must contain the index _in x_ of the first nonzero element of column c, x[p[c]] in col c and row i[p[c]])  
-    if (.is_identity(Zt)) {
-      ZAlist[[i]] <- Diagonal(n=ncol(Zt)) ## diagonal matrix (ddiMatrix) with @diag = "U"
-      colnames(ZAlist[[i]]) <- rownames(Zt) ## used e.g. in prediction (no more the case ?)
-      rownames(ZAlist[[i]]) <- colnames(Zt) ## with transposition col/row names
-    } else ZAlist[[i]] <- t(Zt) ## 
-    attr(ZAlist[[i]],"dataordered_unique_levels") <- fl[[i]]$dataordered_unique_levels ## for conversion to nore standard, ! sparse-precision, matrices 
-    attr(ZAlist[[i]],"AR1_block_n_u_h_s") <- fl[[i]]$AR1_block_n_u_h_s ## for building t_chol_Q
-    attr(ZAlist[[i]],"uniqueGeo") <- fl[[i]]$uniqueGeo ## computed for AR1 only: predict, at last, will use it after copy in geo_info
-    nt <- colnames(fl[[i]]$ST) ## length=npar
-    namesTerms[[i]] <- nt ## possibly several variables, eg intercept or slope... 
+    namesTerms[[i]] <- attr(ZAlist[[i]],"namesTerm") ## possibly several variables, eg intercept or slope... 
     names(namesTerms)[i] <- GrpNames[i] ## the name of the list member namesTerms[i]
   }
   ## One should not check .is_identity -> isDiagonal when 10000 points to predict... (FR->FR: modif def one of these functions ?)

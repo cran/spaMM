@@ -1,30 +1,17 @@
-.post_process_parlist <- function(parlist,corr_types) {
+.post_process_parlist <- function(parlist,corr_types,corr_families=NULL) {
   if (is.null(parlist$corrPars)) { ## must be exclusive of other rho, nu...
     corrPars <- list()
-    for (rd in seq_along(corr_types)) {
-      corr_type <- corr_types[rd]
-      if (! is.na(corr_type)) {
-        char_rd <- as.character(rd) ## avoid creating NULL list elements 
-        if (corr_type == "Matern") {
-          corrPars[[char_rd]]$rho <- parlist$rho ## does not create NULL element if rhs is NULL
-          corrPars[[char_rd]]$nu <- parlist$nu
-          corrPars[[char_rd]]$Nugget <- parlist$Nugget
-          parlist$rho <- parlist$nu <- parlist$Nugget <- NULL
-        } else if (corr_type =="Cauchy") {
-          corrPars[[char_rd]]$rho <- parlist$rho ## does not create NULL element if rhs is NULL
-          corrPars[[char_rd]]$shape <- parlist$shape
-          corrPars[[char_rd]]$longdep <- parlist$longdep
-          corrPars[[char_rd]]$Nugget <- parlist$Nugget
-          parlist$rho <- parlist$shape <- parlist$longdep <- parlist$Nugget <- NULL
-        } else if (corr_type=="AR1") {
-          corrPars[[char_rd]]$ARphi <- parlist$ARphi
-          parlist$ARphi <- NULL
-        } else if (corr_type=="adjacency") {
-          corrPars[[char_rd]]$rho <- parlist$rho
-          parlist$rho <- NULL
+    if ( ! is.null(corr_families)) {
+      for (rd in seq_along(corr_families)) {
+        corr_type <- corr_families[[rd]]$corr_family
+        if (! is.null(corr_type)) {
+          char_rd <- as.character(rd) ## avoidrho <- parlist$shape <- parlist$longdep <- parlist$Nugget creating NULL list elements 
+          parnames <- corr_families[[rd]]$names_for_post_process_parlist
+          for (st in intersect(parnames,names(parlist))) corrPars[[char_rd]][st] <- parlist[st] ## creates sublist; does not create NULL element if rhs is NULL
+          parlist[parnames] <- NULL
         }
       }
-    }
+    } 
     parlist$corrPars <- corrPars
   }
   return(parlist)
@@ -46,9 +33,9 @@
   return(init_lambda)
 }
 
-.post_process_fixed <- function(fixed,corr_types) {
+.post_process_fixed <- function(fixed,corr_families) {
   if (is.null(fixed)) return(NULL)
-  fixed <- .post_process_parlist(fixed,corr_types)
+  fixed <- .post_process_parlist(fixed,corr_families=corr_families)
   # I write "F I X" as a TAG for this modif type attribute:
   #attr(fixed,"type") <- relist(rep("fix",length(unlist(fixed))),fixed) ## on veut une list pour pouvoir supp des elements par <- NULL
   return(fixed)
@@ -62,43 +49,19 @@
     corr_type <- corr_types[rd]
     if (! is.na(corr_type)) {
       char_rd <- as.character(rd)
-      if (corr_type %in% c("Matern","Cauchy")) {
-        if (is.null(fixed$corrPars)) { ## before spaMM3.0
-          rho_size <- max(length(fixed$rho),length(init.optim$rho))
-        } else { ## spaMM3.0
-          rho_size <- max(length(fixed$corrPars[[char_rd]][["rho"]]),length(init.optim$corrPars[[char_rd]][["rho"]]))
-        }
-        range_info_blob <- .calc_range_info(rho_size, processed, rd, control_dist[[char_rd]]) 
-        RHOMAX <- 1.1*30*range_info_blob$nbUnique/range_info_blob$maxrange## matches init$rho in calc_inits() 
-        control_dist[[char_rd]]$rho.mapping <- range_info_blob$rho_mapping 
-        moreargs[[char_rd]] <- list(maxrange=range_info_blob$maxrange, RHOMAX=RHOMAX,
-                                    NUMAX=NUMAX, LDMAX=LDMAX,## not variable...
-                                    nbUnique=range_info_blob$nbUnique, control.dist=control_dist[[char_rd]]## needed for LUarglist, not calc_inits
-                                    ) 
-      }
-      if (is.null(fixed$corrPars)) { ## before spaMM3.0
-        adj_test <- (corr_type %in% c("SAR_WWt","adjacency") 
-                     &&  is.null(.getPar(fixed,"rho")) 
-                     && (! is.numeric(init.HLfit$rho))) ## init.HLfit$rho NULL or NA) 
-      } else { ## spaMM3.0
-        adj_test <- (corr_type %in% c("SAR_WWt","adjacency") 
-                     &&  is.null(fixed[[char_rd]]$rho) 
-                     && (! is.numeric(init.HLfit[[char_rd]]$rho))) ## init.HLfit[[]]$rho NULL or NA) 
-      }
+      adj_test <- (corr_type %in% c("SAR_WWt","adjacency") 
+                   &&  is.null(fixed[[char_rd]]$rho) 
+                   && (! is.numeric(init.HLfit[[char_rd]]$rho))) ## init.HLfit[[]]$rho NULL or NA) 
       if (adj_test) {
         if (corr_type=="SAR_WWt") decomp <- attr(corr_info$adjMatrices[[rd]],"UDU.")
         if (corr_type=="adjacency") decomp <- attr(corr_info$adjMatrices[[rd]],"symSVD")
-        rhorange <- sort(1/range(decomp$d)) ## keeping in mind that the bounds can be <>0
-        if(verbose["SEM"])  cat(paste("Feasible rho range: ",paste(signif(rhorange,6),collapse=" -- "),"\n"))
-        if (is.null(lower$corrPars)) { ## TRUE before spaMM3.0
-          rhorange[1L] <- max(rhorange[1L],lower$rho)
-          rhorange[2L] <- min(rhorange[2L],upper$rho)
-        } else { ## spaMM3.0
-          rhorange[1L] <- max(rhorange[1L],lower$corrPars[[char_rd]][["rho"]])
-          rhorange[2L] <- min(rhorange[2L],upper$corrPars[[char_rd]][["rho"]])
-        }
-        moreargs[[char_rd]] <- list(rhorange=rhorange) # for spaMM3.0
       }
+      moreargs[[char_rd]] <- corr_info$corr_families[[rd]]$calc_moreargs(fixed=fixed, char_rd=char_rd, init.optim=init.optim, 
+                                                                         processed=processed, rd=rd, control_dist=control_dist, 
+                                                                         NUMAX=NUMAX, LDMAX=LDMAX,
+                                                                         # quite distinct arguments for adjacency:
+                                                                         decomp=decomp, verbose=verbose, lower=lower, upper=upper
+      )
     }
   }
   return(moreargs)
@@ -173,7 +136,8 @@
       if ( sparse_precision) { 
         decomp <- list(d=eigen(adjMatrix,only.values = TRUE)$values) ## only eigenvalues
       } else {
-        decomp <- sym_eigen(adjMatrix)
+        decomp <- eigen(adjMatrix, symmetric=TRUE)
+        decomp <- list(u=decomp$vectors,d=decomp$values) ## ugly copy...
       }
       return(decomp)
     } else stop("'adjMatrix' is not symmetric") ## => invalid cov mat for MVN
@@ -273,16 +237,20 @@
   }
 }
 
-.do_TRACE <- function(level) {
+.do_TRACE <- function(processed) { ## no need for an 'unTRACE' call at the end of each fit since the next fit will cope with everything.
   ## trouble when called from another package while not attached (bboptim example)
   # THe syntax spaMM::HLfit_body, where=spaMM::fitme does not stop() in that case, 
   #     but HLfit_body is not effectively traced when using spaMM directly attached (standard library(spaMM))
   # The syntax spaMM::HLfit_body without where=also does not trace when using spaMM directly attached
+  level <- processed$verbose["TRACE"]
   if ("package:spaMM" %in% search()) {
+    if (processed$augZXy_cond) {
+      traced_fn <- quote(.HLfit_body_augZXy)
+    } else traced_fn <- quote(HLfit_body)
     if (level) {
-      suppressMessages(trace(HLfit_body, print=FALSE, 
+      suppressMessages(trace(traced_fn, where=asNamespace("spaMM"), print=FALSE, 
                              tracer=quote(try({
-                               ranPars <- .canonizeRanPars(ranFix,corr_types=NULL,checkComplete = FALSE)
+                               ranPars <- .canonizeRanPars(ranFix,corr_info=NULL,checkComplete = FALSE)
                                ntC <- names(ranPars)
                                for (lit in seq_along(ranPars)) {
                                  urP <- unlist(ranPars[[lit]]) ## ranPars$corrPars can be list() in which case urP is NULL 
@@ -295,30 +263,34 @@
                                  print("(objective not found)",quote=FALSE)
                                } else print(paste0(names(aphl),"= ",.prettify_num(aphl,nsmall=4)),quote=FALSE)
                              }))) 
-      suppressMessages (trace(.solve_IRLS_as_ZX,print=FALSE,tracer=quote(cat(">"))))
-      suppressMessages (trace(.solve_IRLS_as_spprec,print=FALSE,tracer=quote(cat(">"))))
-      suppressMessages (trace(spaMM.getOption("matrix_method"),print=FALSE,tracer=quote(cat("."))))
+      if (processed$sparsePrecisionBOOL) {
+        suppressMessages(trace(.solve_IRLS_as_spprec, where=asNamespace("spaMM"),print=FALSE,tracer=quote(cat(">"))))
+      } else suppressMessages(trace(.solve_IRLS_as_ZX, where=asNamespace("spaMM"), print=FALSE,tracer=quote(cat(">"))))
+      suppressMessages(trace(spaMM.getOption("matrix_method"),print=FALSE,tracer=quote(cat("."))))
       suppressMessages(trace(spaMM.getOption("Matrix_method"),print=FALSE,tracer=quote(cat("."))))
-      suppressMessages(trace("def_AUGI0_ZX_sparsePrecision",print=FALSE,tracer=quote(cat("."))))
+      suppressMessages(trace(spaMM.getOption("spprec_method"),print=FALSE,tracer=quote(cat("."))))
       if (level>3L) {
         fn <- paste("get_from_MME",strsplit(spaMM.getOption("matrix_method"),"def_")[[1L]][2],sep=".") ## get_from_MME.sXaug_EigenDense_QRP_Chol_scaled
         suppressMessages(trace(fn,print=FALSE,tracer=quote(cat(which))))
         fn <- paste("get_from_MME",strsplit(spaMM.getOption("Matrix_method"),"def_")[[1L]][2],sep=".") ## get_from_MME.sXaug_Matrix_QRP_CHM_scaled
-        suppressMessages(trace("fn",print=FALSE,tracer=quote(cat(which))))
-        suppressMessages(trace("get_from_MME.AUGI0_ZX_sparsePrecision",print=FALSE,tracer=quote(cat(which))))
+        suppressMessages(trace(fn,print=FALSE,tracer=quote(cat(which))))
+        fn <- paste("get_from_MME",strsplit(spaMM.getOption("spprec_method"),"def_")[[1L]][2],sep=".") #
+        suppressMessages(trace(fn,print=FALSE,tracer=quote(cat(which))))
       }
     } else {
-      suppressMessages(untrace(HLfit_body))      
-      suppressMessages(try(untrace(.solve_IRLS_as_ZX),silent=TRUE)) ## untracing untraced internal functions fails
-      suppressMessages(try(untrace(.solve_IRLS_as_spprec),silent=TRUE))
+      suppressMessages(try(untrace(traced_fn, where=asNamespace("spaMM")), silent=TRUE))      
+      if (processed$sparsePrecisionBOOL) {
+        suppressMessages(try(untrace(.solve_IRLS_as_spprec, where=asNamespace("spaMM")), silent=TRUE))
+      } else suppressMessages(try(untrace(.solve_IRLS_as_ZX, where=asNamespace("spaMM")), silent=TRUE))
       suppressMessages(untrace(spaMM.getOption("matrix_method")))
       suppressMessages(untrace(spaMM.getOption("Matrix_method")))
-      suppressMessages(untrace("def_AUGI0_ZX_sparsePrecision"))
+      suppressMessages(untrace(spaMM.getOption("spprec_method")))
       fn <- paste("get_from_MME",strsplit(spaMM.getOption("matrix_method"),"def_")[[1L]][2],sep=".") ## get_from_MME.sXaug_EigenDense_QRP_Chol_scaled
       suppressMessages(untrace(fn))
       fn <- paste("get_from_MME",strsplit(spaMM.getOption("Matrix_method"),"def_")[[1L]][2],sep=".") ## get_from_MME.sXaug_Matrix_QRP_CHM_scaled
       suppressMessages(untrace(fn))
-      suppressMessages(untrace("get_from_MME.AUGI0_ZX_sparsePrecision"))
+      fn <- paste("get_from_MME",strsplit(spaMM.getOption("spprec_method"),"def_")[[1L]][2],sep=".") 
+      suppressMessages(untrace(fn))
     } 
   } else if (level) {warning("The 'spaMM' package must be *attached* for verbose(TRACE=...) tracing to operate")}
 } 
@@ -339,22 +311,23 @@
         precisionFactorList[[it]] <- list(Qmat=Diagonal(n=nc), ## used independently of chol_Q_list, see precisionBlocks
                                           chol_Q=new("dtCMatrix",i= 0:(nc-1L), p=0:(nc), Dim=c(nc,nc),x=rep(1,nc)) )
         # All chol_Q's must be dtCMatrix so that bdiag() gives a dtCMatrix
-      } else if ( envir$finertypes[it] =="ranCoefs" ) { 
+      } else if ( envir$finertypes[it] %in% c("ranCoefs", "Matern", "Cauchy") ) { 
         ## leave precisionFactorList[[it]] NULL
-      } else stop(paste("sparse precision was selected, but",envir$finertypes[it],"terms are not yet handled by sparse precision code."))
-      # Matern fails with Error in solve(Q_CHMfactor, system = "Lt") : object 'Q_CHMfactor' not found 
+      } else stop(paste("sparse-precision methods were requested, but",envir$finertypes[it],"terms are not yet handled by sparse precision code."))
     }
   }
   if ( ! is.null(LMatrices)) {
     is_given_by <- attr(LMatrices,"is_given_by")
-    for (it in which(is_given_by=="ranCoefs")) {
-      latentL_blob <- attr(LMatrices[[it]],"latentL_blob")
+    for (rt in which(is_given_by=="ranCoefs")) {
+      latentL_blob <- attr(LMatrices[[rt]],"latentL_blob")
       compactchol_Q <- latentL_blob$compactchol_Q
-      chol_Q <- .makelong(compactchol_Q,longsize=ncol((LMatrices[[it]])) ) 
+      chol_Q <- .makelong(compactchol_Q,longsize=ncol((LMatrices[[rt]])), 
+                          template=processed$ranCoefs_blob$longLv_templates[[rt]] ) 
       if ( ! inherits(chol_Q,"dtCMatrix")) stop("chol_Q should be a 'dtCMatrix'.") ## FIXME check lower tri too
       #
-      precisionFactorList[[it]] <- list(chol_Q=chol_Q,
-                                  precmat=.makelong(latentL_blob$compactprecmat,longsize=ncol((LMatrices[[it]])) ))
+      precisionFactorList[[rt]] <- list(chol_Q=chol_Q,
+                                  precmat=.makelong(latentL_blob$compactprecmat,longsize=ncol((LMatrices[[rt]])), 
+                                                    template=processed$ranCoefs_blob$longLv_templates[[rt]] ))
     }
   }
   envir$precisionFactorList <- precisionFactorList
@@ -375,25 +348,14 @@
     if (not_inner_phi) {
       ## .get_init_phi takes more account of ranefs than .get_inits_by_glm(.)$phi_est, but it may return NULL.
       #  It seems (?) marginally better hence we try it first and check the result.
-      if (is.null(init.optim$phi)) { 
-        # if (is.call(processed$prior.weights)) {
-        #   init.optim$phi <- .get_init_phi(processed,weights=NULL)
-        # } else 
-        init.optim$phi <- .get_init_phi(processed,weights=eval(processed$prior.weights)) ## _F I X M E_ test the eval()
-        ## (fixme): fitme may fail obscurely if .get_init_phi(processed) fails silently
-        if (is.null(init.optim$phi)) { ## .get_init_phi returned NULL if ./. 
-          # ./. no replicate obs is available, or
-          # ./. ULI too large ?? Grey area here (fixme)
-          if (TRUE) {
-            init.optim$phi <- .get_inits_by_glm(processed)$phi_est/(nrand+1L) ## at least one initial value should represent high guessed variance
-            # if it's too low (as in min(.,2)) then fitme(Reaction ~ Days + AR1(1|Days) + (Days|Subject), data = sleepstudy) is poor
-          } else {
-            #init.optim$phi <- 2*sqrt(1.00001+.get_inits_by_glm(processed)$phi_est/(nrand+1L))-1 ## less coherent with general logic 
-            init.optim$phi <- log(1.00001+.get_inits_by_glm(processed)$phi_est/(nrand+1L)) ## less coherent with general logic 
-          }
-        }  
-        # init.optim$phi <- max(1e-4,init.optim$phi) ## Controlled by .calc_inits_dispPars()...
-      }      
+      if (is.null(init.optim$phi)) init.optim$phi <- .get_init_phi(processed,weights=eval(processed$prior.weights)) 
+      ## (fixme): fitme may fail obscurely if .get_init_phi(processed) fails silently
+      if (is.null(init.optim$phi)) { ## .get_init_phi returned NULL if ./. 
+        # ./. no replicate obs is available, or
+        # ./. ULI too large ?? Grey area here (fixme)
+        init.optim$phi <- .get_inits_by_glm(processed)$phi_est/(nrand+1L) ## at least one initial value should represent high guessed variance
+        # if init.optim$phi too low (as in min(.,2)) then fitme(Reaction ~ Days + AR1(1|Days) + (Days|Subject), data = sleepstudy) is poor
+      }  
     }
   } else not_inner_phi <- TRUE ## not outer as well. Hence not_inner_phi != outer phi...
   return(list(not_inner_phi=not_inner_phi, init.optim=init.optim))
@@ -401,7 +363,8 @@
 
 .init_optim_lambda_ranCoefs <- function(proc1, not_inner_phi, init.optim, nrand, ranCoefs_blob, var_ranCoefs) {
   lFix <- proc1$lambda.Fix ## only for 'simple" ranefs with Xi_cols=1
-  if (not_inner_phi) { ## Tests show it is very inefficient to use outer optim on lambda (at least) when phi must be inner optimized
+  if (proc1$augZXy_cond || 
+      not_inner_phi) { ## Tests show it is very inefficient to use outer optim on lambda (at least) when phi must be inner optimized
     optim_lambda_with_NAs <- .reformat_init_lambda_with_NAs(init.optim$lambda, nrand=nrand, default=NA)
     ## handling fitme call for resid fit with meanfit-optimized parameters (if input is NULL, output is all NA):
     optim_resid_lambda_with_NAs <- .reformat_init_lambda_with_NAs(proc1$envir$ranPars$lambda, nrand=nrand, default=NA)
@@ -409,10 +372,11 @@
                                      is.na(optim_resid_lambda_with_NAs) & 
                                      (is.na(optim_lambda_with_NAs) & ! is.nan(optim_lambda_with_NAs)) & ## explicit NaN's will be inner-optimized
                                      ! ranCoefs_blob$isRandomSlope) ## exclude random slope whether set or not
-    if (length(which_NA_simplelambda)) { ## but not NaN
+    if (length(which_NA_simplelambda)) { 
       init_lambda <- .eval_init_lambda_guess(proc1, stillNAs=which_NA_simplelambda, For="optim")
       optim_lambda_with_NAs[which_NA_simplelambda] <- init_lambda[which_NA_simplelambda]
-      init.optim$lambda <- optim_lambda_with_NAs[ ! is.na(optim_lambda_with_NAs)] ## but NaN still there 
+      init.optim$lambda <- optim_lambda_with_NAs[ ! is.na(optim_lambda_with_NAs)] ## NaN now rmoved if still there (cf is.na(c(1,NA,NaN))) BUT
+      # ... it's dubious that we have augZXy_cond || not_inner_phi if we requested inner estimation of lambda by a NaN                                                  
     }
   } ## else use inner optimization  for simple lambdas if inner_phi is necessary
   init.optim$lambda <- init.optim$lambda[ ! is.nan(init.optim$lambda)] ## removes users's explicit NaN, which effect is documented in help(fitme)
@@ -428,8 +392,19 @@
         Xi_cols <- attr(proc1$ZAlist,'Xi_cols')
         Xi_ncol <- Xi_cols[rt]
         rc <- rep(0,Xi_ncol*(Xi_ncol+1L)/2L)
-        rc[cumsum(seq(Xi_ncol))] <- fam_corrected_guess/(Xi_ncol)
-        init.optim$ranCoefs[[char_rt]] <- rc ## see help(ran)
+        #
+        if (FALSE) { # guess to find good initial value, but no useful impact...
+          # gaussian at least: fits the model y~Zv and uses the corr of the v's...
+          ZAlist <- proc1$ZAlist
+          ZA <- .compute_ZAL(NULL,proc1$ZAlist[rt], as_matrix=FALSE)
+          coef <-.lmwith_sparse_QRp(ZA,1.0*(as.numeric(proc1$y)*1.0-proc1$off),returntQ = FALSE,returnR = TRUE)$coef 
+          cor <- cov2cor(cov(matrix(coef,ncol=Xi_ncol)))
+          rc <- cor[lower.tri(cor,diag = TRUE)]
+        }
+        #
+        lampos <- rev(length(rc) -cumsum(seq(Xi_ncol))+1L)  ## NOT cumsum(seq(Xi_cols))
+        rc[lampos] <- fam_corrected_guess/(Xi_ncol)
+        init.optim$ranCoefs[[char_rt]] <- rc ## see help(ranCoefs)
       }
     }
   }
@@ -470,8 +445,8 @@
   corr_info <- proc1$corr_info 
   # modify HLCor.args and <>bounds;   ## distMatrix or uniqueGeo potentially added to HLCor.args:
   corr_types <- corr_info$corr_types
-  fixed <- .post_process_fixed(fixed, corr_types=corr_types)
-  init.optim <- .post_process_parlist(init, corr_types=corr_types)
+  fixed <- .post_process_fixed(fixed, corr_families=corr_info$corr_families)
+  init.optim <- .post_process_parlist(init, corr_families=corr_info$corr_families)
   init.HLfit <- proc1$init_HLfit #to be modified below ## dhglm uses fitme_body not (fitme-> .preprocess) => dhglm code modifies processed$init_HLfit
   init <- NaN ## make clear it's not to be used 
   #
@@ -479,7 +454,11 @@
   # outer estim seems useful when we can suppress all inner estim (thus the hatval calculations). 
   # ./. Therefore, we need to identify all cases where phi is fixed, 
   # ./. or can be outer optimized jointly with lambda:  
-  if (For=="fitme") init.optim <- .more_init_optim(proc1=proc1, corr_types=corr_types, init.optim=init.optim)
+  # Provide ranCoefs inits by calling .init_optim_lambda_ranCoefs:
+  if (For=="fitme") {
+    init.optim <- .more_init_optim(proc1=proc1, corr_types=corr_types, init.optim=init.optim)
+    if (proc1$augZXy_cond) init.optim$phi <- NULL
+  }
   #
   family <- proc1$family
   if (family$family=="COMPoisson") {
@@ -489,15 +468,15 @@
     checktheta <- suppressWarnings(try(environment(family$aic)$shape,silent=TRUE))
     if (inherits(checktheta,"try-error") && is.null(init.optim$NB_shape)) init.optim$NB_shape <- 1 ## FR->FR FIXME idem ...
   }
-  user.lower <- .post_process_parlist(lower,corr_types)
-  user.upper <- .post_process_parlist(upper,corr_types) ## keep user input 
+  user.lower <- .post_process_parlist(lower,corr_families=corr_info$corr_families)
+  user.upper <- .post_process_parlist(upper,corr_families=corr_info$corr_families) ## keep user input 
   .check_conflict_init_fixed(fixed,init.optim, "given as element of both 'fixed' and 'init'. Check call.")
   .check_conflict_init_fixed(init.HLfit,init.optim, "given as element of both 'init.HLfit' and 'init'. Check call.") ## has quite poor effect on fits
   moreargs <- .calc_moreargs(processed=processed, # possibly a list of environments -> .calc_range_info -> scans then to compute a mean(nbUnique) 
                              corr_types=corr_types, fixed=fixed, init.optim=init.optim, control_dist=proc1$control_dist, 
                              init.HLfit=init.HLfit, corr_info=corr_info, verbose=verbose, lower=lower, upper=upper)
   inits <- .calc_inits(init.optim=init.optim, init.HLfit=init.HLfit,
-                       ranFix=fixed, corr_types=corr_types,
+                       ranFix=fixed,  corr_info=corr_info,
                        moreargs=moreargs,
                        user.lower=user.lower, user.upper=user.upper,
                        optim.scale=optim.scale, 

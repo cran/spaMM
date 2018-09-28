@@ -1,63 +1,23 @@
 ## the "type" attribute is important, see comments explaining the computation of $CorrEst_and_RanFix
 ## There is also an "init.HLfit" attribute which usage is explained below for $rho
 .canonizeRanPars <- function(ranPars, ## should have a RHOMAX attribute when trRho in input
-                             corr_types,checkComplete=TRUE) {
+                             corr_info, ## NULL in HLfit fns assuming no corr_types is processed there. Else processed$corr_info or <HLfit object>$sub_corr_info
+                             checkComplete=TRUE) {
   init.HLfit <- list() 
-  for (it in seq_along(corr_types)) {
-    corr_type <- corr_types[it]
+  corr_types <- corr_info$corr_types
+  for (rd in seq_along(corr_types)) {
+    corr_type <- corr_types[rd]
     if (! is.na(corr_type)) {
-      char_rd <- as.character(it)
-      corrPars_rd <- ranPars$corrPars[[char_rd]]
-      cP_type_rd <- attr(ranPars,"type")$corrPars[[char_rd]]
-      if (corr_type == "AR1") {
-        ARphi <- corrPars_rd$ARphi
-        if (is.null(ARphi) && checkComplete) {
-          stop("ARphi missing from ranPars.")
-        }
-      } else if (corr_type != "corrMatrix") { ## all models with a 'rho' parameter
-        moreargs_rd <- attr(ranPars,"moreargs")[[char_rd]]
-        ## nu, before trRho is removed; and Nugget: 
-        if (corr_type == "Matern") {
-          if (!is.null(corrPars_rd$trNu)) { ## either we have nu,rho or trNu,trRho 
-            corrPars_rd$nu <- .nuInv(corrPars_rd$trNu,NUMAX=moreargs_rd$NUMAX) ## before trRho is removed...
-            corrPars_rd$trNu <- NULL
-            cP_type_rd$nu <- cP_type_rd$trNu 
-            cP_type_rd$trNu <- NULL
-          } 
-          nu <- corrPars_rd$nu
-          if (is.null(nu) && checkComplete) {
-            stop("nu missing from ranPars (or correlation model mis-identified).")
-          }
-        } else if (corr_type == "Cauchy") {
-          if (!is.null(corrPars_rd$trLongdep)) { ## either we have longdep,rho or trLongdep,trRho 
-            corrPars_rd$longdep <- .longdepInv(corrPars_rd$trLongdep,LDMAX=moreargs_rd$LDMAX)
-            corrPars_rd$trLongdep <- NULL
-            cP_type_rd$longdep <- cP_type_rd$trLongdep 
-            cP_type_rd$trLongdep <- NULL
-          }
-          longdep <- corrPars_rd$longdep
-          if (is.null(longdep) && checkComplete) {
-            stop("longdep missing from ranPars (or correlation model mis-identified).")
-          }
-        }
-        ## rho, Matern or not Matern:
-        if ( ! is.null(corrPars_rd$trRho)) { ## assuming a single trRho with possibly several elements
-          corrPars_rd$rho <- .rhoInv(corrPars_rd$trRho,RHOMAX=moreargs_rd$RHOMAX)  
-          corrPars_rd$trRho <- NULL
-          cP_type_rd$rho <- cP_type_rd$trRho
-          cP_type_rd$trRho <- NULL
-        } ## else there may simply be rho rather than trRho (including for adjacency model through optim procedure !)
-        rho <- corrPars_rd$rho
-        if (is.null(rho)) {
-          if(corr_type=="adjacency") { ## then provide initial rho to allow a direct call through HLCor 
-            init.HLfit$corrPars[[char_rd]] <- list(rho=0)
-          } else if (checkComplete) {
-            stop("rho missing from ranPars.")
-          }
-        }
+      char_rd <- as.character(rd)
+      canonizeblob <- corr_info$corr_families[[rd]]$canonize(corrPars_rd=ranPars$corrPars[[char_rd]],
+                                                             cP_type_rd=attr(ranPars,"type")$corrPars[[char_rd]], 
+                                                             checkComplete=checkComplete,
+                                                             moreargs_rd = attr(ranPars,"moreargs")[[char_rd]])  
+      ranPars$corrPars[[char_rd]] <- canonizeblob$corrPars_rd
+      if (!is.null(canonizeblob$cP_type_rd)) attr(ranPars,"type")$corrPars[[char_rd]] <- canonizeblob$cP_type_rd
+      if(corr_type=="adjacency" && is.null(canonizeblob$corrPars_rd$rho)) { ## then provide initial rho to allow a direct call through HLCor 
+        init.HLfit$corrPars[[char_rd]] <- list(rho=0)
       }
-      ranPars$corrPars[[char_rd]] <- corrPars_rd
-      attr(ranPars,"type")$corrPars[[char_rd]] <- cP_type_rd
     }
   }
   if (!is.null(ranPars$trPhi)) {
@@ -85,8 +45,9 @@
     ranPars$trLambda <- NULL
     attr(ranPars,"type")$trLambda <- NULL
   } ## else ranPars$lambda unchanged  
-  if ( ! is.null(ranPars$trRanCoefs)) {
-    ranPars$ranCoefs <- lapply(ranPars$trRanCoefs,.ranCoefsInv)
+  if ( ! is.null(trRanCoefs <- ranPars$trRanCoefs)) {
+    ranPars$ranCoefs <- trRanCoefs ## copies the non-trivial names
+    for (rd in seq_along(trRanCoefs)) ranPars$ranCoefs[[rd]] <- .ranCoefsInv(trRanCoefs[[rd]])
     ranPars$trRanCoefs <- NULL
   }
   if ( ! is.null(ranPars$trNB_shape)) {

@@ -36,25 +36,35 @@ spaMM.getOption <- function (x) {spaMM.options(x)[[1]]}
 }
 
 .onLoad <- function(libname, pkgname) {
-  ## Let us set the new proxy method
   if ( ! proxy::pr_DB$entry_exists("Earth")) {
     pr_DB$set_entry(FUN = .Dist.earth.mat, names = c("Earth", "dist.earth"))
     pr_DB$modify_entry(
       names = "Earth",
-      description = "Approximate distance in Km between points on earth surface.",
+      description = "Approximate great-circle distance in Km between points on Earth surface.",
       loop = FALSE,
       distance = TRUE
     )
-  }
+  } else warning("'Earth' entry already present in proxy::pr_DB database.")
+  if ( ! proxy::pr_DB$entry_exists("EarthChord")) {
+    pr_DB$set_entry(FUN = .Dist.chord.mat, names = c("EarthChord", "dist.EarthChord"))
+    pr_DB$modify_entry(
+      names = "EarthChord",
+      description = "Approximate chord distance in Km between points on Earth surface.",
+      loop = FALSE,
+      distance = TRUE
+    )
+  } else warning("'EarthChord' entry already present in proxy::pr_DB database.")
 }
 
 ".onUnload" <- function (libpath) {
   pr_DB$delete_entry("Earth")
+  pr_DB$delete_entry("EarthChord")
   library.dynam.unload("spaMM", libpath)
 } ## testable by calling unloadNamespace("spaMM")
 #  pkgpath <- system.file(package="OKsmooth") # https://github.com/hadley/devtools/issues/119
 
-.Dist.earth.mat <- function (x, y=NULL) { # x and y are both matrices. In each, first col is longitude, second is latitude
+.Dist.earth.mat <- function (x, y=NULL, radius=6371.009) { # x and y are both matrices. In each, first col is longitude, second is latitude
+  ## Earth radius used for approximation = 6371.009 = 1/3*(2*6378.137+6356.752)  [details on https://en.wikipedia.org/wiki/Great-circle_distance]
   ## This function computes orthodromic distances in Km between locations.
   rad_deg <- pi/180
   x <- x*rad_deg
@@ -79,8 +89,14 @@ spaMM.getOption <- function (x) {spaMM.options(x)[[1]]}
       t(cbind(coslat2 * coslon2, coslat2 * sinlon2, sinlat2))
   }
   pp <- pmin(pmax(pp,-1),1)
-  ## Earth radius used for approximation = 6371.009 = 1/3*(2*6378.137+6356.752)  [details on https://en.wikipedia.org/wiki/Great-circle_distance]
-  pp <- 6371.009 * acos(pp)
+  pp <- radius * acos(pp)
+  if (is.null(y)) pp <- as.dist(pp)  ## spaMM wants an half matrix in this case, not a full one
+  return(pp)
+}
+
+.Dist.chord.mat <- function(x,y=NULL, radius=6371.009) {
+  pp <- .Dist.earth.mat(x,y,radius=1)
+  pp <- radius * 2*sin(pp/2)
   if (is.null(y)) pp <- as.dist(pp)  ## spaMM wants an half matrix in this case, not a full one
   return(pp)
 }

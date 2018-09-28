@@ -28,7 +28,7 @@
   } ## as.list() would flatten rho vectors
   #
   HLnames <- (c(names(formals(HLCor)),names(formals(HLfit)),
-                names(formals(designL.from.Corr)),names(formals(make_scaled_dist))))  
+                names(formals(.spaMM.data$options$mat_sqrt_fn)),names(formals(make_scaled_dist))))  
   dotnames <- setdiff(names(mc)[-1],names(formals(fitme)))
   argcheck <- setdiff(dotnames,HLnames)
   if (length(argcheck)) warning(paste("suspect argument(s) ",paste(argcheck, collapse=",")," in fitme call."))
@@ -37,7 +37,6 @@
     family <- .checkRespFam(family)
     FHF <- formals(HLfit) ## makes sure about default values 
     names_FHF <- names(FHF)
-    if ( ! is.null(mc$resid.formula)) stop("Use 'resid.model' instead of 'resid.formula'.")
     names_nondefault  <- intersect(names(mc),names_FHF) ## mc including dotlist
     FHF[names_nondefault] <- mc[names_nondefault] ##  full HLfit args
     preprocess.formal.args <- FHF[which(names_FHF %in% names(formals(.preprocess)))] 
@@ -68,13 +67,12 @@
     mc$processed <- do.call(.preprocess,preprocess.formal.args,envir=parent.frame(1L))
     #mc$ranFix$ranCoefs <- NULL ## but new ranFix can be added by fitme/corrHLfit
     ## removing all elements that are matched in processed:
-    pnames <- c("data","family","formula","prior.weights","HLmethod","rand.family","control.glm","resid.formula","REMLformula",
+    pnames <- c("data","family","formula","prior.weights","HLmethod","rand.family","control.glm","REMLformula",
                 "resid.model", "verbose")
     for (st in pnames) mc[st] <- NULL 
   }  
   
   mc[[1L]] <- get("fitme_body", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
-  #mc[[1L]] <- quote(spaMM::fitme_body) 
   return(mc)
 }
 
@@ -95,17 +93,23 @@
   spaMM.options(spaMM_glm_conv_crit=list(max=-Inf))
   time1 <- Sys.time()
   oricall <- match.call(expand.dots=TRUE) ## mc including dotlist
+  oricall$formula <- .stripFormula(formula) ## Cf comment in .getValidData
   mc <- oricall
-  oricall$formula <- .stripFormula(formula) ## f i x m e : Cf comment in .getValidData
-  mc[[1L]] <- .def_call_fitme_body
+  mc[[1L]] <- get(".def_call_fitme_body", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
   mc <- eval(mc,parent.frame())  
   hlcor <- eval(mc,parent.frame()) 
   .check_conv_glm_reinit()
-  attr(hlcor,"fitmecall") <- oricall ## this says the hlcor was returned by fitme
+  if (inherits(hlcor,"HLfitlist")) {
+    attr(hlcor,"call") <- oricall
+  } else hlcor$call <- oricall ## this is a call to fitme()
   attr(hlcor,"HLCorcall") <- NULL
   #class(hlcor) <- c(class(hlcor,"fitme"))
   lsv <- c("lsv",ls())
-  if ( ! identical(paste(family[[1L]]),"multi"))  hlcor$fit_time <- .timerraw(time1)
+  if ( ! identical(paste(family[[1L]]),"multi")) {
+    hlcor$how$fit_time <- .timerraw(time1)
+    hlcor$fit_time <- structure(hlcor$how$fit_time,
+                                message="Please use how(<fit object>)[['fit_time']] to extract this information cleanly.")
+  }
   rm(list=setdiff(lsv,"hlcor")) ## empties the whole local envir except the return value
   return(hlcor)
 }
@@ -129,8 +133,8 @@ fitme <- function(formula,data, ## matches minimal call of HLfit
   spaMM.options(spaMM_glm_conv_crit=list(max=-Inf))
   time1 <- Sys.time()
   oricall <- match.call(expand.dots=TRUE) ## mc including dotlist
+  oricall$formula <- .stripFormula(formula) ##  Cf comment in .getValidData
   mc <- oricall
-  oricall$formula <- .stripFormula(formula) ## f i x m e : Cf comment in .getValidData
   ## Preventing confusions
   if ( missing(HLmethod)) {
     HLmethod <- method
@@ -147,16 +151,15 @@ fitme <- function(formula,data, ## matches minimal call of HLfit
   } ## as.list() would flatten rho vectors
   #
   HLnames <- (c(names(formals(HLCor)),names(formals(HLfit)),
-                names(formals(designL.from.Corr)),names(formals(make_scaled_dist))))  
+                names(formals(.spaMM.data$options$mat_sqrt_fn)),names(formals(make_scaled_dist))))  
   dotnames <- setdiff(names(mc)[-1],names(formals(fitme)))
   argcheck <- setdiff(dotnames,HLnames)
   if (length(argcheck)) warning(paste("suspect argument(s) ",paste(argcheck, collapse=",")," in fitme call."))
   # 
   if (is.null(processed)) {
-    family <- .checkRespFam(family)
+    family <- .checkRespFam(family) ## beware negbin not shadowed by mgcv::negbin()
     FHF <- formals(HLfit) ## makes sure about default values 
     names_FHF <- names(FHF)
-    if ( ! is.null(mc$resid.formula)) stop("Use 'resid.model' instead of 'resid.formula'.")
     names_nondefault  <- intersect(names(mc),names_FHF) ## mc including dotlist
     FHF[names_nondefault] <- mc[names_nondefault] ##  full HLfit args
     preprocess.formal.args <- FHF[which(names_FHF %in% names(formals(.preprocess)))] 
@@ -189,23 +192,28 @@ fitme <- function(formula,data, ## matches minimal call of HLfit
       }     
     }
     mc$processed <- do.call(.preprocess,preprocess.formal.args,envir=parent.frame(1L))
-    oricall$resid.model <- mc$processed$residModel
+    # oricall$resid.model <- mc$processed$residModel
     #mc$ranFix$ranCoefs <- NULL ## but new ranFix can be added by fitme/corrHLfit
     ## removing all elements that are matched in processed:
-    pnames <- c("data","family","formula","prior.weights","HLmethod","rand.family","control.glm","resid.formula","REMLformula",
+    pnames <- c("data","family","formula","prior.weights","HLmethod","rand.family","control.glm","REMLformula",
                 "resid.model", "verbose","distMatrix","uniqueGeo","adjMatrix") 
     for (st in pnames) mc[st] <- NULL 
   }  
   
   mc[[1L]] <- get("fitme_body", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
-  #mc[[1L]] <- quote(spaMM::fitme_body) 
   hlcor <- eval(mc,parent.frame()) 
   .check_conv_glm_reinit()
-  attr(hlcor,"fitmecall") <- oricall ## this says the hlcor was returned by fitme
-  attr(hlcor,"HLCorcall") <- NULL
+  if (inherits(hlcor,"HLfitlist")) {
+    attr(hlcor,"call") <- oricall
+  } else hlcor$call <- oricall ## this is a call to fitme()
+  attr(hlcor,"HLCorcall") <- NULL # presumably no more needed
   #class(hlcor) <- c(class(hlcor,"fitme"))
   lsv <- c("lsv",ls())
-  if ( ! identical(paste(family[[1L]]),"multi") && ! is.call(hlcor) )  hlcor$fit_time <- .timerraw(time1)
+  if ( ! identical(paste(family[[1L]]),"multi") && ! is.call(hlcor) ) {
+    hlcor$how$fit_time <- .timerraw(time1)
+    hlcor$fit_time <- structure(hlcor$how$fit_time,
+                                message="Please use how(<fit object>)[['fit_time']] to extract this information cleanly.")
+  }
   rm(list=setdiff(lsv,"hlcor")) ## empties the whole local envir except the return value
   return(hlcor)
 }

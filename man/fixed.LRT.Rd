@@ -10,10 +10,10 @@ currently differing only in their fixed effects. Parametric bootstrap p-values c
 This function differ from \code{LRT} in its arguments (model fits for \code{LRT}, but all arguments required to fit the models for \code{fixedLRT}), and in the format of its return value. 
 }
 \usage{
-fixedLRT(null.formula, formula, data, 
-         method, HLmethod = method, REMLformula=NULL, 
-         boot.repl=0, control=list(),control.boot=list(), 
-         fittingFunction, nb_cores=NULL, ...)  
+fixedLRT(null.formula, formula, data, method, HLmethod = method, 
+         REMLformula = NULL, boot.repl=0, control=list(),
+         control.boot=list(), fittingFunction, nb_cores=NULL, 
+         boot_fn = "spaMM_boot", resp_testfn = NULL, ...)  
 }
 \arguments{
   \item{null.formula}{
@@ -54,8 +54,10 @@ Either a \code{formula} or a \code{predictor} for the full model.
 }
 \item{fittingFunction}{Character string giving the function used to fit each model: either \code{"corrHLfit"} or \code{"fitme"}. Default is \code{"corrHLfit"} for small data sets (fewer than 300 observations), and \code{"fitme"} otherwise, but this may change in future versions.}
 \item{nb_cores}{Number of cores to use for parallel computation of bootstrap. The default is \code{spaMM.getOption("nb_cores")}, and 1 if the latter is NULL. \code{nb_cores=1} prevents the use of parallelisation procedures.}
+\item{boot_fn}{function called for simulating and fitting bootstrap replicates: the default is \code{"spaMM_boot"} since version 2.4.41. Older results can be replicated using \code{".eval_boot_replicates"}, but this may be deprecated soon.}
+\item{resp_testfn}{See argument \code{resp_testfn} of \code{\link{spaMM_boot}}}
   \item{\dots}{
-  Further arguments passed to or from other methods; in particular, additional arguments passed to \code{corrHLfit}, including mandatory ones such as \code{data} and those ultimately passed to \code{designL.from.Corr}. With respect to the latter, note that \code{try.chol} affects the simulation of samples for the parametric bootstrap, and although ultimate differences in performance may be small, \code{try.chol=FALSE} may be slightly better.
+  Further arguments passed to or from other methods; in particular, additional arguments passed to fitting functions, including those ultimately passed to \code{\link{mat_sqrt}}. With respect to the latter, note that \code{try.chol} affects the simulation of samples for the parametric bootstrap, and although ultimate differences in performance may be small, \code{try.chol=FALSE} may be slightly better.
 }
 }
 \details{

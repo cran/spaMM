@@ -2,17 +2,17 @@
   lcrandfamfam <- tolower(rand.family$family) ## tolower once and for all
   oklink <- F
   ## cases where g(u)=th(u)
-  if (lcrandfamfam=="gaussian" && rand.family$link=="identity") oklink <- T          
-  if (lcrandfamfam=="gamma" && rand.family$link=="log") oklink <- T          
-  if (lcrandfamfam=="inverse.gamma" && rand.family$link=="-1/mu") oklink <- T
-  if (lcrandfamfam=="beta" && rand.family$link=="logit") oklink <- T
+  if (lcrandfamfam=="gaussian" && rand.family$link=="identity") oklink <- TRUE          
+  if (lcrandfamfam=="gamma" && rand.family$link=="log") oklink <- TRUE          
+  if (lcrandfamfam=="inverse.gamma" && rand.family$link=="-1/mu") oklink <- TRUE
+  if (lcrandfamfam=="beta" && rand.family$link=="logit") oklink <- TRUE
   ## cases where g(u)!=th(u)
-  if (lcrandfamfam=="inverse.gamma" && rand.family$link=="log") oklink <- T 
-  if (lcrandfamfam=="gamma" && rand.family$link=="identity") oklink <- T ## gamma(identity)
+  if (lcrandfamfam=="inverse.gamma" && rand.family$link=="log") oklink <- TRUE 
+  if (lcrandfamfam=="gamma" && rand.family$link=="identity") oklink <- TRUE ## gamma(identity)
   if ( ! oklink) {
     allowed <- switch(lcrandfamfam,
                       gaussian= "is 'identity'",
-                      gamma= "is 'log' ('identity' may be *tried*)", ## gamma(identity) not yet working
+                      gamma= "is 'log' (explicit 'identity' may be *tried*)", ## gamma(identity) not yet working
                       #  and the above code protext against Gamma(inverse); it could perhaps be allowed for trying ? 
                       beta= "is 'logit'",
                       "inverse.gamma" = "are '-1/mu' and 'log'"
@@ -125,24 +125,22 @@
   }
 }
 
-.calc_ZAlist <- function(predictor, model_frame, corr_info) { ## model_frame is an $mf element
-  ##    otherwise similar to bars <- .spMMexpandSlash(.findbarsMM(formula[[length(formula)]])): FR->FR maybe simplification of code possible here?
-  ZAlist <- .spMMFactorList(predictor, model_frame, rmInt=0L, drop=TRUE, corr_info=corr_info) ## this uses the spatial information in the formula, even if an explicit distMatrix was used elsewhere
-  # ZAlist has attr(ZAlist,"exp_ranef_terms") and attr(ZAlist,"exp_ranef_types")
-  if ( length(ZAlist) > 0L ) {
-    AMatrix <- attr(predictor,"AMatrix")
-    if (!is.null(AMatrix)) {
+.calc_ZAlist <- function(Zlist, AMatrices) { ## model_frame is an $mf element
+  if ( length(Zlist) > 0L ) {
+    if (length(AMatrices)) {
       ## logic is Z[nresp,nUniqueRespLoc].A[nUniqueRespLoc,nHiddenv].L[nHiddenv,nHiddenv]
-      for (iMat in seq(length(ZAlist))) if ( ! is.null(AMatrix[[iMat]])) {
-        colnams <- colnames(ZAlist[[iMat]])
-        if ( ! setequal(rownames(AMatrix[[iMat]]),colnams)) {
-          stop("AMatrix must have row names that match with the levels of the random effects (colnames of the 'Z' design matrix)")
+      for (iMat in seq(length(Zlist))) if ( ! is.null(AMatrices[[iMat]])) {
+        colnams <- colnames(Zlist[[iMat]])
+        if ( ! setequal(rownames(AMatrices[[iMat]]),colnams)) {
+          stop(paste0("Any 'A' matrix must have row names that match the levels of the random effects\n",
+                      "(i.e. the colnames of the 'Z' design matrix)"))
         }
-        ZAlist[[iMat]] <- ZAlist[[iMat]] %*% AMatrix[[iMat]][colnams,]
+        Zlist[[iMat]] <- Zlist[[iMat]] %*% AMatrices[[iMat]][colnams,]
       }
+      attr(Zlist,"AMatrices") <- AMatrices
     }
   } 
-  return(ZAlist)
+  return(Zlist)
 }
 
 .evalWrapper <- function(object,
@@ -184,12 +182,13 @@
 
 .generateInitPhi <- function(formula,data,family,weights=NULL) {
   ## look for replicates to estimate phi
-  form <- .subbarsMM(.asStandardFormula(formula)) ## removes all random effect decorum (but retains its variables)
+  form <- .subbarsMM(.asNoCorrFormula(formula)) ## removes all random effect decorum (converts (...|...) terms to some "+" form)
   # lhs
   mf <- model.frame(form,data=data)
   Y <- model.response(mf) ## evaluated rhs (e.g. log(y) rather than y...)
   # rhs
-  rhs_terms <- stats::delete.response(terms(form))
+  off <- model.offset(mf)
+  rhs_terms <- stats::delete.response(terms(.stripOffset(form),data=data)) ## data argument allows e.g. ~ (.)^2
   mf <- model.frame(rhs_terms, data)
   # builds a model which indexes responses with identical predictor [ULI(mf)] 
   # and retains data that are replicates for each level of this index [uli]
@@ -205,6 +204,7 @@
   ############################################
   whichRows <- uli %in% phiinfo
   mf <- mf[whichRows,] ## keep lines with replicates of all predictor variables
+  off <- off[whichRows]
   if (!is.null(weights)) weights <- weights[whichRows]
   if (length(phiinfo)>1L) {
     locform <- y ~ uli 
@@ -212,7 +212,7 @@
   # estimation of residual var
   if (NROW(mf)>1L) { ## if replicate observations available
     # formula must retain any operation on the lhs
-    locglm <- spaMM_glm(formula=locform,data=mf,family=family,weights=weights)  
+    locglm <- spaMM_glm(formula=locform,data=mf,family=family,offset=off,weights=weights)  
     phi_est <- as.numeric(deviance(locglm)/locglm$df.residual)
   } else phi_est <- NULL
   return(phi_est)
@@ -287,7 +287,9 @@
       ZA <- ZAL[,u.range,drop=FALSE]
       # colSums(ZA*ZA) are diag tcrossprod(ZAL). Their sum is independent of L if L is chol(correlation matrix) !
     }
-    ZA_corrected_guess <- guess_from_glm_lambda/sqrt(mean(colSums(ZA*ZA)))
+    denom <- colSums(ZA*ZA)
+    denom <- denom[denom!=0] ## so that same result in dense and sparse if ZA has empty cols in sparse
+    ZA_corrected_guess <- guess_from_glm_lambda/sqrt(mean(denom)) 
     #if (corr_types[it]=="AR1") ZA_corrected_guess <- log(1.00001+ZA_corrected_guess) ## ad hoc fix but a transformation for ARphi could be better FIXME
     fam_corrected_guess <- .calc_fam_corrected_guess(guess=ZA_corrected_guess, link_=link_, For=For, processed=processed, nrand=nrand)
     init_lambda[it] <- .preprocess_valuesforNAs(it, lcrandfamfam=lcrandfamfam, 
@@ -331,6 +333,24 @@
   adhoc
 }
 
+.reformat_lFix <- function(user_lFix, nrand) {
+  lFix <- rep(NA,nrand)
+  names(lFix) <- seq(nrand) # (character)
+  if ( ! is.null(user_lFix)) {
+    user_names <- names(user_lFix)
+    # 'user'_names are not necessarily 1,2... (fitted values have names from rhs of ranef terms) ## F I X M E info at preprocessing time ?
+    complex_names <- setdiff(user_names, paste(seq(nrand)))
+    if (length(complex_names)) { ## cannot be used
+      if (length(user_lFix)!=nrand) {
+        stop("'fixed lambda' vector cannot be matched to random effects (different lengths).") ## needs to include NA's
+      } else lFix[seq(nrand)] <- user_lFix ## keeping lFix default names
+    } else if (length(user_names)) {
+      lFix[user_names] <- user_lFix
+    } else lFix[] <- user_lFix ## keep lFix names
+  }
+  return(lFix)
+}
+
 # function called within HLfit for missing inits... 
 # but also sometimes in fitme_body prior to optimization (cf complex condition for call of .eval_init_lambda_guess())
 .get_inits_by_glm <- function(processed, family=processed$family, reset=FALSE) {
@@ -359,12 +379,11 @@
       } else {endform <- "0"}
     }
     locform <- as.formula(paste(begform, endform))
-    off <- attr(processed$predictor,"offsetObj")$total
     prior.weights <- processed$prior.weights   ## do not try to eval() it outside of the .wfit function call; else nasty crashes may occur.
     if (family$family=="gaussian" && family$link=="identity") {
       if (inherits(X.pv,"sparseMatrix")) {
-        resglm <- .spaMM_lm.wfit(x=X.pv,y=y,offset=off,w=eval(prior.weights))
-      } else resglm <- lm.wfit(x=X.pv,y=y,offset=off,w=eval(prior.weights))
+        resglm <- .spaMM_lm.wfit(x=X.pv,y=y,offset=processed$off,w=eval(prior.weights))
+      } else resglm <- lm.wfit(x=X.pv,y=y,offset=processed$off,w=eval(prior.weights))
       fv <- fitted(resglm)
       dev <- resid(resglm)^2
       if (! is.null(resglm$weights)) dev <- dev/resglm$weights
@@ -375,7 +394,7 @@
       resglm <- .tryCatch_W_E(glm.fit(x=X.pv, 
                                       y=processed$HLframes$Y, 
                                       weights = eval(prior.weights), 
-                                      offset = attr(processed$predictor,"offsetObj")$total, family = family, 
+                                      offset = processed$off, family = family, 
                                       control = processed[["control.glm"]]))$value 
       if (inherits(resglm,"error")) {
         resglm <- withCallingHandlers(
@@ -383,7 +402,7 @@
           spaMM_glm.fit(x=X.pv, 
                         y=processed$HLframes$Y, 
                         weights = eval(prior.weights), 
-                        offset = attr(processed$predictor,"offsetObj")$total, family = family, 
+                        offset = processed$off, family = family, 
                         control = processed[["control.glm"]]),
           warning = function(w){
             if(w$message != "glm.fit: algorithm did not converge" ) warning(w$message)
@@ -399,16 +418,20 @@
         resu$lambda <- 1
       } else {
         fv <- fitted(resglm)
-        resu$lambda <- sum(resid(resglm)^2/(resglm$prior.weights*family$variance(fv)))/resglm$df.residual
+        # resu$lambda <- sum(resid(resglm)^2/(resglm$prior.weights*family$variance(fv)))/resglm$df.residual # was a birth pang...
+        # resid(resglm) gives resglm$residuals, which are the "working residuals" ie (y-mu)/mu.eta one the RHS of the IRLS equation
+        # hence they are not an appropriate way to reconstruct the deviance residuals
+        # which are given by with(resglm, family$dev.resids(y, mu=fitted.values, weights)), already taking prior weights into account
+        # but this leads to 
+        resu$lambda <- resu$phi_est
       }
     } ## end else ('GLM')
     if (pforpv) {
       ## Two potential problems (1) NA's pour param non estimables (cas normal); 
       ## (2) "glm.fit: fitted probabilities numerically 0 or 1 occurred" which implies separation or large offset
       if (max(abs(c(coefficients(resglm))),na.rm=TRUE)>1e10) { ## na.rm v1.2 
-        message("(!) Apparent divergence of estimates in a *GLM* analysis of the data.")
-        message("    Check your data for extreme values, separation or bad offset values.")
-        stop("    I exit.") 
+        warning(paste0("(!) Apparent divergence of estimates in a *GLM* analysis of the data.\n",
+                       "    Check your data for extreme values, separation or bad offset values."))
       } 
       beta_eta <- c(coefficients(resglm)) ## this may include NA's. Testcase: HLfit(Strength ~ Material*Preheating+Method,data=weld)
       if (all(names(beta_eta)=="X.pv")) { ## si la formula etait y ~X.pv-1
@@ -522,20 +545,15 @@
   # no return value
 }
 
-.calc_rankinfo <- function(X.pv, verbose=FALSE, tol=spaMM.getOption("rankTolerance")) {
+.calc_rankinfo <- function(X.pv, verbose=FALSE, tol) {
   nc <- ncol(X.pv)
   nobs <- nrow(X.pv)
   tol <- eval(tol)
   if (inherits(X.pv,"sparseMatrix")) {
-    if (nc>nobs) {
-      if (TRUE) {
-        zerofill <- sparseMatrix(dims = c(nc-nobs,nc), i={}, j={})
-        if (verbose) print("qr(rbind2(<sparseMatrix>,zerofill))")
-        rankinfo <- qr(x=rbind2(X.pv,zerofill),tol=tol)
-      } else {
-        if (verbose) print("qr(as.matrix(<sparseMatrix>))")
-        rankinfo <- qr(x=as.matrix(X.pv),tol=tol)
-      }
+    if (nc>nobs) { ## qr does not handle "wide " matrices
+      zerofill <- sparseMatrix(dims = c(nc-nobs,nc), i={}, j={})
+      if (verbose) print("qr(rbind2(<sparseMatrix>,zerofill))")
+      rankinfo <- qr(x=rbind2(X.pv,zerofill),tol=tol)
     } else {
       if (verbose) print("qr(<sparseMatrix>)")
       rankinfo <- qr(x=X.pv,tol=tol)
@@ -545,7 +563,7 @@
       message("The design matrix for fixed effects is quite large. Checking its rank will take time. 
               See help('rankinfo') for possible ways to circumvent this.")
     }
-    ## .rankinfo request too much memory, but was clearly faster for matrices of size ~ 5000*2900
+    ## .rankinfo request much memory, but is clearly faster for matrices of size ~ 5000*2900
     ## HOWEVER it does not always yield *p_bv* results consistent with qr !!!!!
     ## +
     ## FIXME this may evolve when  ColPivHouseholderQR implements "blocking strategies".
@@ -575,19 +593,23 @@
   return(rankinfo)
 }
 
-.rankTrim <- function(X.pv, rankinfo, verbose=FALSE) {
-  if (verbose)  str(rankinfo)
-  if (rankinfo$rank < ncol(X.pv)) {   
-    X.pv <- structure(X.pv[,rankinfo$whichcols,drop=FALSE],namesOri=colnames(X.pv)) 
-    # etaFix$beta |         variables 
-    #             |  valid vars | invalid vars
-    #     (1)           (2)           (3)
-    # (2): colnames(<HLfit>$beta_cov) = colnames (<HLfit>$X.pv)
-    # (1+2+3): namesOri, names(<HLfit>$fixef)
-  } else attr(X.pv,"namesOri") <- colnames(X.pv)  
-  attr(X.pv,"rankinfo") <- rankinfo
-  return(X.pv)
+as_precision <- function(corrMatrix) {
+  if (inherits(corrMatrix,"dist")) {
+    corrMatrix <- as.matrix(corrMatrix) ## leaves 0 on the diagonal! 
+    diag(corrMatrix) <- 1 ## so that m is true correlation matrix 
+  }
+  precmat <- solve(corrMatrix)
+  #colnames(precmat) <- rownames(precmat) <- colnames(corrMatrix) 
+  return(structure(list(matrix=precmat),class=c("list","precision")))
 }
+
+# .automatic_corr_prec_mat <- function(corrMatrix) {
+#   if (identical(spaMM.getOption("sparse_precision"),TRUE) && ! inherits(corrMatrix,"precision")){
+#     message("Conversion of corrMatrix to precision matrix since sparse_precision explicitly set to TRUE;\n using solve()!")
+#     corrMatrix <- as_precision(corrMatrix)
+#   }
+#   return(corrMatrix)
+# }
 
 .get_corr_prec_from_covStruct <- function(covStruct,it) { ## compatible with spaMM3.0 extended syntax
   if (length(covStruct)>1L) {
@@ -597,9 +619,10 @@
   }
   if (is.null(corrMatrix)) {
     matrix_ <- covStruct[["precision"]]
-    if (is.null(matrix_)) stop("missing covariance structure for corrMatrix model")
+    if (is.null(matrix_)) stop("missing covariance structure for corrMatrix model") ## no info in any form
+    ## else the user provided covStruct$precision =>  reformattng 
     corrMatrix <- structure(list(matrix=matrix_),class=c("list","precision")) ## so that further code can detect its a precision matrix
-  }
+  } else  corrMatrix <- corrMatrix
   return(corrMatrix)
 }
 
@@ -615,6 +638,7 @@
 
 .assign_cov_matrices__from_covStruct <- function(corr_info, covStruct=NULL, corrMatrix=NULL, adjMatrix=NULL) {
   if ( ! is.null(covStruct)) covStruct <- .preprocess_covStruct(covStruct)
+  corr_info$AMatrices <- attr(covStruct,"AMatrices")
   corr_types <- corr_info$corr_types
   corr_info$adjMatrices <- vector("list",length(corr_types))
   corr_info$corrMatrices <- vector("list",length(corr_types))
@@ -636,7 +660,9 @@
 }
 
 .determine_sparse_X <- function(HLframes, X.pv) {
-  sparse_X <- spaMM.getOption("sparse_X")
+  sparse_X <- spaMM.getOption("sparse_X") 
+  ## forcing sparse_X may (1) be slow for small problems 
+  ## (2) entails the use of Matrix::Cholesky, which is less accurate => small bu visible effect on predVar in singular 'twolambda' case
   if (is.null(sparse_X)) {
     # les terms et cols sont reord selon attr(fixef_terms, "term.labels")
     # (1) identify terms that involve factors: 
@@ -659,6 +685,33 @@
   return(sparse_X)
 }
 
+
+.process_corr_info_spprec <- function(corr_types, corr_info, For, sparse_precision) {
+  for (it in seq_along(corr_types)) {
+    corr_type <- corr_types[it]
+    if ( ! is.na(corr_type)) {
+      if (corr_type=="corrMatrix" && sparse_precision) {
+        if (! inherits(corr_info$corrMatrices[[it]],"precision")) {
+          message("Conversion of corrMatrix to precision matrix, using solve()!")
+          corr_info$corrMatrices[[it]] <- as_precision(corr_info$corrMatrices[[it]])
+        }
+      } else if (corr_type=="adjacency" || corr_type=="SAR_WWt") {
+        if (For %in% c("fitme","corrHLfit")) {
+          ## This block cannot be in .assign_cov_matrices__from_covStruct bc it requires sparse_precision value
+          # We will need the $d to determine rhorange.
+          # given the decomp is computed, we try to make it available for other computations.
+          # But others computs should not assume it is available.
+          # HLCor_body can also compute "symSVD" attribute and add in each processed environment
+          decomp <- .provide_AR_factorization(corr_info$adjMatrices[[it]], sparse_precision, corr_type)
+          if (corr_type=="SAR_WWt") attr(corr_info$adjMatrices[[it]],"UDU.") <- decomp
+          if (corr_type=="adjacency") attr(corr_info$adjMatrices[[it]],"symSVD") <- decomp 
+        }
+      }
+    }
+  }
+}
+
+
 .preprocess_control.dist <- function(control.dist,corr_types) {
   if ( ! is.null(control.dist)) {
     matchnames <- intersect (names(control.dist), c("dist.method","rho.mapping"))
@@ -674,6 +727,97 @@
   } else return(NULL)
 }
 
+
+.determine_augZXy <- function(processed, control.HLfit) {
+  augZXy_cond <- spaMM.getOption("allow_augZXy")
+  if (augZXy_cond) augZXy_cond <-  processed$LMMbool
+  if (augZXy_cond) augZXy_cond <- ( is.null(processed$X.Re) || ! ncol(processed$X.Re)) ## exclude non-standard REML (avoiding NCOL(NULL)=1)
+  augZXy_cond_inner <- augZXy_cond ## for .makeCovEst1() 
+  if (augZXy_cond) augZXy_cond <- (processed$For=="fitme")
+  if (augZXy_cond) augZXy_cond <- (processed$models[["phi"]]=="phiScal") ## allows prior weights, but there must be a single phi scaling factor
+  if (augZXy_cond) augZXy_cond <- (is.null(control.HLfit$intervalInfo)) 
+  if (augZXy_cond) augZXy_cond <- (length(processed$init_HLfit)==0L) ## excludes (among others) internal rho estimation
+  ## we need to detect numbers in lambda, and NaN in lambda (forced inner optimization: in the latter case,
+  #                                               we could imagine using the augZXy code for given phi within HLfit)
+  if (augZXy_cond) augZXy_cond <- ! any( !is.na(c(processed$lambda.Fix)) | is.nan(c(processed$lambda.Fix)))
+  if (augZXy_cond) augZXy_cond <- (! any(processed$ranCoefs_blob$is_set)) ## at preprocessing stage this excludes cases with ranCoefs sets by users
+  if (augZXy_cond) augZXy_cond <- ( ! is.call(processed$prior.weights) && attr(processed$prior.weights,"unique")) ## cf APHLs_by_augZXy code
+  return(structure(augZXy_cond, inner=augZXy_cond_inner))
+}
+
+# fails on priorw in Infusion (long tests)
+# .preprocess_pweights <- function(prior.weights, validdata) {
+#   subs_p_weights <- substitute(prior.weights)
+#   if ( ! (inherits(subs_p_weights,"call") && subs_p_weights[[1L]] == "quote") )  {
+#     if (is.null(prior.weights)) {
+#       prior.weights <- structure(rep(1L,nrow(validdata)),unique=TRUE) ## <- 1L prevented by glm -> model.frame(... prior.weights)
+#     } else {
+#       prior.weights <- as.vector(stats::model.weights(validdata)) ## as.vector as in say lm() protects against array1d
+#       if ( ! is.numeric(prior.weights)) 
+#         stop("'weights' must be a numeric vector")
+#       if (any(prior.weights < 0)) 
+#         stop("negative weights not allowed")
+#       attr(prior.weights,"unique") <- (length(unique(prior.weights))==1L) 
+#       #attr(prior.weights,"only1") <- all(upw==1L)
+#     }
+#   } else attr(prior.weights,"unique") <- FALSE ## when 'prior.weights' is a quoted expression   
+#   return(prior.weights)
+# }
+
+
+.reformat_resid_model <- function(resid.model,family) {
+  fixed <- as.list(resid.model$fixed) ## converts NULL to list() as exp'd for 'fixed' in fitme_body()
+  if ( ! is.null(resid.model)) { 
+    if ( ! is.null(form <- resid.model$formula)) {
+      resid.model$formula <- .stripFormula(form)
+      # control of phi matters for phiHGLM but the phi model has not yet been determined
+      if (is.null(fixed[["phi"]])) {
+        fixed[["phi"]] <- c(default=1)
+        #        message("'phi' of residual dispersion model set to 1 by default") ## inappropriate when resid.model=~1
+      } else if (is.na(fixed[["phi"]])) fixed[["phi"]] <- NULL ## to force estimation of this phi; 
+    } else { ## including resid.model=~1
+      resid.model <- list(formula=.stripFormula(resid.model), ## otherwise it retains the local environment of the fn in which it is match.call()ed!
+                          family=family)
+    }
+    resid.model$fixed <- fixed
+    if (is.null(resid.model$resid.model)) resid.model$resid.model <- ~1
+  } 
+  return(resid.model)
+}
+
+.rankTrim <- function(X.pv, rankinfo, verbose=FALSE) {
+  if (verbose)  str(rankinfo)
+  if (rankinfo$rank < ncol(X.pv)) {   
+    X.pv <- structure(X.pv[,rankinfo$whichcols,drop=FALSE],namesOri=colnames(X.pv)) 
+    # etaFix$beta |         variables 
+    #             |  valid vars | invalid vars
+    #     (1)           (2)           (3)
+    # (2): colnames(<HLfit>$beta_cov) = colnames (<HLfit>$X.pv)
+    # (1+2+3): namesOri, names(<HLfit>$fixef)
+  } else attr(X.pv,"namesOri") <- colnames(X.pv)  
+  attr(X.pv,"rankinfo") <- rankinfo
+  return(X.pv)
+}
+
+.post_process_X <- function(X.pv, HL, HLframes, control.HLfit) {
+  Xattr <- attributes(X.pv)
+  if ( ncol(X.pv) && HL[1L] != "SEM") { ## gaussian bc .get_inits_by_glm -> spaMM_glm -> stats::glm fails
+    sparse_X <- .determine_sparse_X(HLframes, X.pv)   ## sparse_X is useful for rankinfo bc Matrix::qr can be much faster
+    if (sparse_X) {
+      X.pv <- as(X.pv,"dgCMatrix") # .Rcpp_as_dgCMatrix(X.pv) # 
+    }
+  } 
+  # determine true # cols before determining sparse_precision
+  colnames(X.pv) <- colnames(HLframes$X)
+  if (ncol(X.pv)) {
+    rankinfo <- control.HLfit$rankinfo
+    if (is.null(rankinfo)) rankinfo <- .calc_rankinfo(X.pv, tol=spaMM.getOption("rankTolerance"))
+    if (is.list(rankinfo)) X.pv <- .rankTrim(X.pv,rankinfo = rankinfo)
+  }
+  names_lostattrs <- setdiff(names(Xattr), c(names(attributes(X.pv)),"dim","dimnames"))
+  attributes(X.pv)[names_lostattrs] <- Xattr[names_lostattrs] # as in .subcol_wAttr(). 
+  return(X.pv)
+}
 
 .preprocess <- function(control.HLfit, ranFix=NULL, HLmethod, 
                        predictor, resid.model,
@@ -699,7 +843,7 @@
     return(processed) ## a list of environments
   }
   ###############################################################
-  resid.model <- .reformat_resid_model(resid.model,family=control.HLfit$resid.family) ## the list(...) is used even for poisson, binomial...
+  resid.model <- .reformat_resid_model(resid.model,family=control.HLfit$resid.family) ## calls .stripFormula() ## the list(...) is used even for poisson, binomial...
   # remove rows with NA's in required variables:
   validdata <- .getValidData(formula=predictor, resid.formula=resid.model$formula,
                             data=data, callargs=callargs["prior.weights"]) ## OK for all prior weights
@@ -756,7 +900,7 @@
                                             list(link=resid.family$link))
   resid.model$family <- resid.family ## resid.predictor will also be returned
   #
-  if (! inherits(predictor,"predictor")) predictor <- Predictor(predictor) 
+  if (! inherits(predictor,"predictor")) predictor <- .stripTerms(predictor,data=data) 
   HLframes <- .HLframes(formula=predictor,data=data) ## design matrix X, Y... 
   Y <- HLframes$Y
   nobs <- NROW(HLframes$X) ## not using Y which may be NULL
@@ -789,10 +933,13 @@
     true_corr_types <- c("adjacency","Matern","Cauchy","AR1","corrMatrix")
     exp_ranef_types <- attr(exp_ranef_strings,"type") ## expanded
     corr_info$corr_types <- corr_types <- true_corr_types[match(exp_ranef_types, true_corr_types)] ## full length
-    ## Assigns $corr_info$corrMatrices, $adjMatrices using $corr_info$corr_type: BEFORE determining sparse precision:
-    .assign_cov_matrices__from_covStruct(processed$corr_info, covStruct=covStruct, corrMatrix=corrMatrix, adjMatrix=adjMatrix)
-    
-    ZAlist <- .calc_ZAlist(predictor=predictor, model_frame=HLframes$mf, corr_info=corr_info)
+    corr_families <- vector('list',length(corr_types))
+    for (rd in which( ! is.na(corr_types))) corr_families[[rd]] <- do.call(corr_types[rd],list())
+    corr_info$corr_families <- corr_families
+    ## Assigns $corr_info$corrMatrices, $adjMatrices, $AMatrices using $corr_info$corr_type: BEFORE determining sparse precision:
+    .assign_cov_matrices__from_covStruct(corr_info, covStruct=covStruct, corrMatrix=corrMatrix, adjMatrix=adjMatrix)
+    Zlist <- .calc_Zlist(formula=predictor, mf=HLframes$mf, rmInt=0L, drop=TRUE, corr_info=corr_info) 
+    ZAlist <- .calc_ZAlist(Zlist=Zlist, AMatrices=corr_info$AMatrices)
     #nrand <- length(ZAlist)
     attr(ZAlist,"exp_ranef_strings") <- exp_ranef_strings ## expanded 
     attr(ZAlist,"exp_ranef_types") <- exp_ranef_types ## expanded
@@ -813,20 +960,8 @@
   ####
   ####
   ## X.pv post-processing; later extract column for fixed oefficients, but we need the offset for that
-  if ( ncol(X.pv) && HL[1L] != "SEM") { ## gaussian bc .get_inits_by_glm -> spaMM_glm -> stats::glm fails
-    sparse_X <- .determine_sparse_X(HLframes, X.pv)   ## sparse_X is useful for rankinfo bc Matrix::qr can be much faster
-    if (sparse_X) {
-      X.pv <- .Rcpp_as_dgCMatrix(X.pv) # as(X.pv,"sparseMatrix")
-      #cat('\nsparse_X\n')
-    }
-  } 
-  # determine true # cols before determining sparse_precision
-  colnames(X.pv) <- colnames(HLframes$X)
-  if (ncol(X.pv)) {
-    rankinfo <- control.HLfit$rankinfo
-    if (is.null(rankinfo)) rankinfo <- .calc_rankinfo(X.pv)
-    if (is.list(rankinfo)) X.pv <- .rankTrim(X.pv,rankinfo = rankinfo)
-  }
+  X.pv <- .post_process_X(X.pv, HL, HLframes, control.HLfit)
+  # .post_process_X() calls .rankTrim() which adds attributes "namesOri" and "rankinfo"
   #
   if (nrand) {
     # Standardize init.HLfit in the one case where it may have corrPars (simplified version of .post_process_parlist)
@@ -837,9 +972,8 @@
         init.HLfit$rho <- NULL
       } else stop("Invalid ambiguous 'init.HLfit' argument: single 'rho' but not single adjacency random-effect term.")
     }
-    
     processed$control_dist <- .preprocess_control.dist(control.dist,corr_types)
-    
+    #
     ## assign sparse_precision (.determine_spprec uses $For, $corr_info, and $LMMbool:)
     ZAfix <- .post_process_ZALlist(ZAlist, as_matrix=FALSE)  
     if (inherits(X.pv,"sparseMatrix") && ncol(X.pv)> ncol(ZAfix)) { ## f i x m e heuristic rule
@@ -847,39 +981,16 @@
     } else {
       sparse_precision <- .determine_spprec(ZAfix, ZAlist, processed, init.HLfit=init.HLfit)
     }
-    processed$sparsePrecisionBOOL <- sparse_precision 
+    processed$sparsePrecisionBOOL <- sparse_precision
     #
-    if (processed$For %in% c("fitme","corrHLfit")) {
-      for (it in seq_along(corr_types)) {
-        corr_type <- corr_types[it]
-        if ( ! is.na(corr_type)) {
-          if (corr_type=="adjacency" || corr_type=="SAR_WWt") {
-            ## This block cannot be in .assign_cov_matrices__from_covStruct bc it requires sparse_precision value
-            # We will need the $d to determine rhorange.
-            # given the decomp is computed, we try to make it available for other computations.
-            # But others computs should not assume it is available.
-            # HLCor_body can also compute "symSVD" attribute and add in each processed environment
-            decomp <- .provide_AR_factorization(corr_info$adjMatrices[[it]], sparse_precision, corr_type)
-            if (corr_type=="SAR_WWt") attr(corr_info$adjMatrices[[it]],"UDU.") <- decomp
-            if (corr_type=="adjacency") attr(corr_info$adjMatrices[[it]],"symSVD") <- decomp 
-          }
-        }
-      }
-    }
-  }
+    ## post-processing of corr_info depending on sparse_precision
+    .process_corr_info_spprec(corr_types=corr_types,corr_info=corr_info, For=processed$For,sparse_precision=sparse_precision)
+  } else processed$sparsePrecisionBOOL <- FALSE ## for .do_TRACE()
   processed$init_HLfit <- init.HLfit ## this can be modified by dhglm-specific code.
   ###   OFFSET
   off <- model.offset(HLframes$mf) ## look for offset from (ori)Formula 
-  if ( is.null(off) ) { ## no offset (ori)Formula term. Check attribute (Predictor ensures offset is not both in formula and attr)
-    offsetObj <- attr(predictor,"offsetObj")
-    off <- offsetObj$offsetArg 
-  } else {
-    offsetObj <- list()
-    keepOriForm <- attr(predictor,"oriFormula")
-    predictor <- .noOffset(predictor)
-    attr(predictor,"oriFormula") <- keepOriForm
-  }
-  if (!is.null(off)) {
+  if ( ! is.null(off) ) { ## offset (ori)Formula term. Check attribute (Predictor ensures offset is not both in formula and attr)
+    predictor <- .stripOffset(predictor) ## note that .stripOffset()ing is not performed in .preprocess for the resid.formula 
     off <- pmax(log(.Machine$double.xmin),off) ## handling log(0) ## but if input off were NULL, output off would be is numeric(0) where it should remain NULL
   }
   ## Extract columns for fixed oefficients (involves offset; ! can conflict with .rankTrim() results)
@@ -893,8 +1004,7 @@
     if (length(setdiff(namesbetafix,colnames(X.pv)))==0L) { ## if no incorrect name
       offFromEtaFix <- X.pv[,namesbetafix,drop=FALSE] %*% betaFix
       namesbetavar <- setdiff(colnames(X.pv),namesbetafix)
-      X.pv <- structure(X.pv[,namesbetavar,drop=FALSE],namesOri=attr(X.pv,"namesOri"))
-      offsetObj$betaFix <- betaFix
+      X.pv <- .subcol_wAttr(X.pv, j=namesbetavar, drop=FALSE)
       if (is.null(off)) {
         off <- offFromEtaFix
       } else off <- off + offFromEtaFix
@@ -905,25 +1015,16 @@
     }
   } # X.Re may again be modified later
   if (is.null(off)) { ## model.frame.default(formula = locform, offset = off,...) expects a vector....
-    offsetObj$total <- rep(0,nobs)
-    offsetObj$nonZeroInfo <- FALSE
+    processed$off <- rep(0,nobs) ## long form expected by spaMM_glm.fit() [as by glm.fit()] and maby by fitme_body()
   } else {
-    offsetObj$total <- off
-    offsetObj$nonZeroInfo <- TRUE
+    processed$off <- off
   }
   #
-  attr(predictor,"offsetObj") <- offsetObj ## has $total, $nonZeroInfo, possibly $offsetArg (argument of Predictor()) and $betaFix. As nothing from the formula itself
   processed$predictor <- predictor  
-  #processed$X.pv <- X.pv 
   pforpv <- ncol(X.pv)
   #
   if(family$family == "binomial" && processed$bin_all_or_none && pforpv) {
-    isSeparated <- .is_separated(X.pv, as.numeric(y))
-    if(isSeparated) {
-      warning(paste("Separation or quasi-separation exists among the sample points:",
-                    "\n\tsome estimates of fixed-effect coefficients could be infinite,",
-                    "\n\tcausing numerical issues in various functions."))
-    }
+    isSeparated <- is_separated(X.pv, as.numeric(y))
   }
   if (HL[1L]=="SEM") processed$SEMargs <- .preprocess_SEMargs(BinomialDen, nobs, control.HLfit, y)
   if (HL[1L]==0L) {processed$p_v_obj <-"hlik"} else processed$p_v_obj <-"p_v" ## objective for beta(_v) estim only: != outer obj 
@@ -974,7 +1075,6 @@
   models <- list(eta="",lambda="",phi="")
   if ( nrand) {
     models[["eta"]] <- "etaHGLM" 
-    if (sparse_precision) processed$AUGI0_ZX$envir$method <- "def_AUGI0_ZX_sparsePrecision"  
     ##
     if ( length(corr_types[ ! is.na(corr_types)])) {
       if (For=="HLfit") {
@@ -990,14 +1090,15 @@
           if ( ! is.na(corr_type)) {
             if (corr_type== "corrMatrix") { ## could cover all specifications of a constant 'cov' Matrix without correlation parameter
               ## .check_subset_corrMatrix has the effect that the corr or prec mat used in later computation is a permutation of the inputed one
-              #  according to the order of colums of ZAlist[[it]] 
+              #  according to the order of columns of ZAlist[[it]] 
+              ## In the spprec case corr_info$corrMatrices[[it]] already contains a precision matrix
               cov_info_mats[[it]] <- .check_subset_corrMatrix(corrMatrix=corr_info$corrMatrices[[it]],ZA=ZAlist[[it]]) ## correlation or precision...
-            } else {
+            } else { ## all cases where geo_info (even empty) is needed 
               geo_info[[it]] <- new.env(parent=emptyenv())
               if (corr_type == "AR1") {
                 ugeo <-  attr(ZAlist[[it]],"uniqueGeo")
-                if ( ! sparse_precision 
-                    &&  ! is.null(dataordered_unique_levels <- attr(ZAlist[[it]],"dataordered_unique_levels"))) {
+                if ( ! sparse_precision &&
+                     ! is.null(dataordered_unique_levels <- attr(ZAlist[[it]],"dataordered_unique_levels"))) {
                   # The above test implies "if not already ! sparse when ZAlist was first evaluated"
                   # Subsetting ZAlist drops useful attributes => "uniqueGeo" must be secured in a more consistent place
                   
@@ -1009,6 +1110,13 @@
                   for (nam in names(ugeo)) if (is.factor(fac <- ugeo[[nam]])) ugeo[[nam]] <- as.character(levels(fac))[fac]
                   geo_info[[it]]$uniqueGeo <- ugeo
                 }
+              # } else if (corr_type %in% c("Matern","Cauchy") ) {
+                # in that case we either
+                # (1) have columns in ZAlist[[it]] not reordered: no further issues. This is the current design
+                #  or
+                # (2) have columns in ZAlist[[it]] not reordered in .calc_Zmatrix Then
+                #     the cov_info_mats[[it]] info is not yet available at preprocessing time...
+                #     See further comment in .assign_geoinfo_and_LMatrices_but_ranCoefs()
               } else if ( ! is.null(uniqueGeo)) { ## user-provided uniqueGeo (no example anywhere! :-) )
                 if (is.list(uniqueGeo)) { ## spaMM3.0 extended syntax
                   geo_info[[it]]$uniqueGeo <- uniqueGeo[[it]] 
@@ -1030,10 +1138,10 @@
         ## Matern or corrMatrix were allowed without a tag then
       }
     }
-    processed$ZAlist <- ZAlist
+    processed$ZAlist <- ZAlist ## F I X M E pre test .is_identity so that it's not necessary later
     #
     vec_n_u_h <- unlist(lapply(ZAlist,ncol)) ## nb cols each design matrix = nb realizations each ranef
-    processed$cum_n_u_h <- cum_n_u_h <- cumsum(c(0, vec_n_u_h)) ## if two ranef,  with q=(3,3), this is 0,3,6 ;
+    processed$cum_n_u_h <- cum_n_u_h <- cumsum(c(0L, vec_n_u_h)) ## if two ranef,  with q=(3,3), this is 0,3,6 ;
     nrd <- cum_n_u_h[nrand+1L]
     processed$QRmethod <- .choose_QRmethod(ZAlist, predictor) ## (fixme: rethink) typically sparse for large Matern model ?
     # QRmethod may well be dense for adjacency and then ZAfix will be dense. 
@@ -1041,34 +1149,24 @@
       AUGI0_ZX <- list2env( list(I=suppressWarnings(as(Diagonal(n=nrd),"CsparseMatrix")), ## avoids repeated calls to as() through rbind2...
                                  ZeroBlock= Matrix(0,nrow=nrd,ncol=pforpv), X.pv=X.pv) )
     } else {
-      if (FALSE) { ## F I X M E code may be correct but (gc?) takes a huge amount of time
-        if (.Platform$OS.type == "unix") {
-          maxM <- as.numeric(system("awk '/MemFree/ {print $2}' /proc/meminfo", intern=TRUE))/1024 # KB
-        } else if (.Platform$OS.type == "windows") {
-          maxM <- memory.limit() ## in MiB (1048576 bytes)
-        }
-        curM <-  gc()["Vcells",2]
-        XaugM <- 8 * (nobs+nrd) * (pforpv+nrd) / 1048576
-        if (4*XaugM > (maxM-curM)) {
-          message("R may fail to allocate the required memory. If so, try 'spaMM.options(QRmethod='sparse')'")
-        }
-      }
+      ## here in version up to 2.4.100 I had code trying to guess available memory by memory.limit() or /proc/meminfo
       AUGI0_ZX <- list2env( list(I=diag(nrow=nrd),ZeroBlock= matrix(0,nrow=nrd,ncol=pforpv), X.pv=X.pv) )
-    } ## $ZAfix added later
+    } ## $ZAfix added later   and   X.pv scaled below  !!
     AUGI0_ZX$envir <- list2env(list(finertypes=attr(ZAlist,"exp_ranef_types"), ## to be modified later
                                     LMatrices=structure(vector("list",nrand),
                                                         is_given_by=rep("",nrand))),    
                                parent=environment(.preprocess))
-    if ( ! is.null(Lunique <- attr(processed$predictor,"LMatrix"))) {
-      AUGI0_ZX$envir$LMatrices <- structure(list("1"=Lunique),is_given_by="user")
-      attr(processed$predictor,"LMatrix") <- NULL
-    }
+    ## Deprecated:
+    # if ( ! is.null(Lunique <- attr(processed$predictor,"LMatrix"))) {
+    #   AUGI0_ZX$envir$LMatrices <- structure(list("1"=Lunique),is_given_by="user")
+    #   attr(processed$predictor,"LMatrix") <- NULL
+    # }
     ## If (sparse_precision) then ZAfix is sparse else its class is determined by .eval_as_mat_arg(processed):
     if (sparse_precision) {
-      if ( ! inherits(ZAfix,"sparseMatrix")) ZAfix <- .Rcpp_as_dgCMatrix(ZAfix) ## as(ZAfix,"sparseMatrix")
+      if ( ! inherits(ZAfix,"sparseMatrix")) ZAfix <- as(ZAfix,"dgCMatrix") # .Rcpp_as_dgCMatrix(ZAfix) ## 
       rsZA <- rowSums(ZAfix) ## test that there a '1' per row and '0's otherwise:  
       AUGI0_ZX$is_unitary_ZAfix <- (unique(rsZA)==1 && all(rowSums(ZAfix^2)==rsZA)) ## $ rather than attribute to S4 ZAfix
-      AUGI0_ZX$envir$method <- "def_AUGI0_ZX_sparsePrecision"  
+      AUGI0_ZX$envir$method <- .spaMM.data$options$spprec_method  
     } else if (.eval_as_mat_arg(processed)) ZAfix <- as.matrix(ZAfix)  
     AUGI0_ZX$ZAfix <- ZAfix
     # processed info for u_h inference
@@ -1076,6 +1174,16 @@
   } else {
     models[["eta"]] <- "etaGLM" 
     AUGI0_ZX <- list(X.pv=X.pv)
+  }
+  if (.spaMM.data$options$X_scaling) { ## use scaling by default v.2.4.83
+    ##       standard REML    ||      ML 
+    if ( is.null(REMLformula) || ncol(X.Re)==0L) AUGI0_ZX$X.pv <- .scale(AUGI0_ZX$X.pv)
+  }
+  #if (nrand &&  ! sparse_precision ) { AUGI0_ZX$template_Xscal <- .make_Xscal(ZAL=NULL, ZAL_scaling = NULL, AUGI0_ZX=AUGI0_ZX) } # ## failure to use it efficiently
+  if (nrand &&  ! sparse_precision ) { 
+    if (inherits(AUGI0_ZX$ZeroBlock,"sparseMatrix")) {
+      AUGI0_ZX$Zero_sparseX <- rbind2(AUGI0_ZX$ZeroBlock, as(AUGI0_ZX$X.pv,"CsparseMatrix"))
+    } else AUGI0_ZX$Zero_sparseX <- rbind2(AUGI0_ZX$ZeroBlock, AUGI0_ZX$X.pv)
   }
   processed$AUGI0_ZX <- AUGI0_ZX
   #
@@ -1119,16 +1227,11 @@
   processed$LevenbergM <- LevenbergM
   #
   if (nrand) {   
-    lFix <- .getPar(ranFix,"lambda")
-    if (is.null(lFix)) lFix <- rep(NA,nrand)
-    if (length(lFix)!=nrand) stop("length of 'fixed lambda' vector does not match number of random effects")
-    names(lFix) <- as.character(seq(nrand))
-    processed$lambda.Fix <- lFix
-    nrand_lambda <- 0
+    processed$lambda.Fix <- .reformat_lFix(.getPar(ranFix,"lambda"), nrand)
     models[["lambda"]] <- rep("lamScal",nrand) ## even for adjacnency, random slope...
     ################################################################################
     # for a random slope term, ie v= v_1+x v_2 , the x went into the general ZAL matrix 
-    # (construction of ZAlist by .spMMFactorList), and
+    # (construction of Zlist by .calc_Zlist(), and
     # we are still estimating the lambda's using a X_lamres with 0/1's only
     # unless there is a non-trivial model for the lambdas
     ################################################################################
@@ -1157,7 +1260,6 @@
         if (length(formulaLambda)==2) formulaLambda <- as.formula(paste('"lambda"',paste(formulaLambda,collapse=" ")))
         lambda_ranefs <- .findbarsMM(formulaLambda)
         if (!is.null(lambda_ranefs)) {  ## lamHGLM
-          nrand_lambda <- length(lambda_ranefs)
           models[["lambda"]] <- list("lamHGLM")
         } else models[["lambda"]] <- list("lamGLM")  
         colnames(X_lambda) <- colnames(fr_lambda$X) ## but code not effective, fr_lambda not computed
@@ -1171,7 +1273,7 @@
     } 
     processed$X_lamres <- X_lamres ## for glm for lambda, and SEMbetalambda
     ranCoefs <- .getPar(ranFix,"ranCoefs") ## may be NULL
-    processed$ranCoefs_blob <- .process_ranCoefs(NULL, processed$ZAlist, ranCoefs, cum_n_u_h) ## FIXME could be recycled to compute updated LMatrices?
+    processed$ranCoefs_blob <- .process_ranCoefs(processed, ranCoefs, use_tri=TRUE) 
     processed$AUGI0_ZX$envir$finertypes[processed$ranCoefs_blob$isRandomSlope] <- "ranCoefs" ## (*creates* the variable in the *environment* so that .evalWrapper() finds it)
   } #else processed$ranCoefs_blob <- NULL
   #
@@ -1181,78 +1283,75 @@
   } else if (any(phi.Fix==0)) stop("phi cannot be fixed to 0.")
   processed$phi.Fix <- phi.Fix
   #
-  resid.predictor <- resid.model$formula
+  resid.formula <- resid.model$formula
   if ( is.null(phi.Fix)) {
-    phi_ranefs <- .findbarsMM(resid.predictor)
+    phi_ranefs <- .findbarsMM(resid.formula)
     if ( ! is.null(phi_ranefs)) {
       if (is.null(resid.model$rand.family)) resid.model$rand.family <- gaussian() # avoids rand.families being NULL in call below.
       preprocess_arglist <- list(control.HLfit=control.HLfit, ## constrained
-                         ranFix=resid.model$fixed, ## not constrained, but should rather use 'resid.model$fixed' (but anyway preprocess checks only  phi and lambda)
+                         ranFix=resid.model$fixed, 
                          HLmethod=HLmethod, ## constrained
-                         predictor=resid.predictor, ## obvious
-                         resid.model=~1, # no resid.resid.model... 
+                         predictor=resid.formula, ## obvious
+                         resid.model=resid.model$resid.model, # potentially allows nested resid.model's... 
                          REMLformula=NULL, # constrained
                          data=data, # obvious (?) 
                          family=resid.family, # obvious
                          BinomialDen=NULL, # obviously no binomial response
                          rand.families=resid.model$rand.family, # (NULL not handled by preprocess); 
-                         #   outer preprocess calls *receive* adefautl value from formals(HLfit)
+                         #   outer preprocess calls *receive* a default value from formals(HLfit)
                          etaFix=resid.model$etaFix, ## not constrained, but should rather use 'resid.model$fixed'
                          prior.weights=NULL, ## currently defined  dynamically using lev_phi...
                          control.glm=control.glm, ## constrained
-                         verbose=NULL,For="fitme" ## constrained: preprocess must allow spatial and non-spatial models
-                         #, init.HLfit=list(), ## not clear what to do F I X M E
+                         verbose=NULL, ## TRACE would be overriden by the final do_TRACE call of the parent .preprocess()
+                         For="fitme", ## constrained: preprocess must allow spatial and non-spatial models
+                         init.HLfit=as.list(resid.model$init.HLfit) ## converts NULL to list() as exp'd by .preprocess()
       )
       ## preprocess formal arguments that where ignored up to v.2.4.30 14/05/2018:
       other_preprocess_args <- setdiff(names(formals(.preprocess)),names(preprocess_arglist))
       preprocess_arglist[other_preprocess_args] <- resid.model[other_preprocess_args]
-      residProcessed <- do.call(.preprocess,preprocess_arglist)
+      residProcessed <- do.call(.preprocess,preprocess_arglist) ## cf verbose explicitly set to NULL 
       # preprocess here plays the role of fitme as wrapper bringing the following info to fitme_body:
       fullform <-  .stripFormula(as.formula(paste(".phi",.DEPARSE(residProcessed$predictor))))
       mostattributes(fullform) <- attributes(residProcessed$predictor)
       residProcessed$predictor <- fullform
       # residProcessed$y <- residProcessed$HLframes$Y <- "removed for safety" # must be NULL
+      if (identical(names(resid.model$fixed$phi),"default")) message("'phi' of residual dispersion model set to 1 by default")
       processed$residProcessed <- residProcessed
       models[["phi"]] <- "phiHGLM" 
       p_phi <- NA
     } else {
-      if (! inherits(resid.predictor,"predictor")) resid.predictor <- Predictor(resid.predictor)
-      residFrames <- .HLframes(formula=resid.predictor,data=data)
-      dispOffset <- model.offset(residFrames$mf) ## look for offset from (ori)Formula 
-      if ( is.null(dispOffset) ) { ## ## no offset (ori)Formula term. Check attribute (Predictor ensures offset is not both in formula and attr)
-        dispOffset <- attr(resid.predictor,"offsetObj")$total 
-      } else {
-        keepOriForm <- attr(resid.predictor,"oriFormula")
-        resid.predictor <- .noOffset(resid.predictor)
-        attr(resid.predictor,"oriFormula") <- keepOriForm
-      }
-      if (is.null(dispOffset)) { ## model.frame.default(formula = locform, offset = off,...) expects a vector....
-        attr(resid.predictor,"offsetObj") <- list(total=rep(0,nobs),nonZeroInfo=FALSE)
-      } else {
-        attr(resid.predictor,"offsetObj") <- list(total=dispOffset,nonZeroInfo=TRUE) ## subtly, will be of length 1 if   original offset was a constant...
-      }
+      resid.formula <- .stripTerms(resid.formula,data=data)
+      residFrames <- .HLframes(formula=resid.formula,data=data)
+      attr(resid.formula,"off") <- model.offset(residFrames$mf) ## only for summary.HLfit()
       ## if formula= ~1 and data is an environment, there is no info about nobs, => fr_disp$X has zero rows, which is a problem later 
       p_phi <- NCOL(residFrames$X)
       namesX_disp <- colnames(residFrames$X)
       if (p_phi==1 && namesX_disp[1]=="(Intercept)"
-          && is.null(dispOffset) ## added 06/2016 (bc phiScal does not handle offset in a phi formula) 
+          && is.null(attr(resid.formula,"off")) ## added 06/2016 (bc phiScal does not handle offset in a phi formula) 
       ) {
         models[["phi"]] <- "phiScal"
       } else { 
         models[["phi"]] <- "phiGLM"
       }
-      resid.model$predictor <- resid.predictor  ## absent  if phiHGLM has been detected
+      resid.model$formula <- resid.formula  ## absent  if phiHGLM has been detected
     } 
   } else p_phi <- 0
+  processed$models <- models
   processed$p_fixef_phi <- p_phi # no X_disp is saved in processed
   if ( family$family %in% c("binomial","poisson","COMPoisson","negbin")) {
     ## the response variable should always be Counts
     if (max(abs(y-as.integer(y)))>1e-05) {
       stop("response variable should be integral values.")
     }
-    if ( .DEPARSE(resid.predictor) != "~1") {
+    if ( .DEPARSE(resid.formula) != "~1") {
       warning(paste0("resid.model is ignored in ",family$family,"-response models"))
     }
+  }
+  #
+  processed$augZXy_cond <- .determine_augZXy(processed,control.HLfit=control.HLfit)
+  if (processed$augZXy_cond) {
+    processed$augZXy_env <- new.env(parent=emptyenv()) 
+    processed$augZXy_env$objective <- -Inf 
   }
   #
   if (processed$LMMbool) {
@@ -1269,7 +1368,7 @@
     }
     if (any(vec_n_u_h==nobs) && models[["phi"]] %in% c("phiScal","phiGLM")) { ## tests (mean)ranefs if intecept in resid formula
       resid.mf <- residFrames$mf 
-      if (attr(attr(resid.mf, "terms"),"intercept")!=0L) { ## there is an intercept in the resid.formula
+      if (attr(attr(resid.mf, "terms"),"intercept")!=0L) { ## there is an intercept in the resid.model formula
         # ideally for random-coefficients models we should compare the design columns... 
         ## FR->FR cf isNested check as in https://github.com/lme4/lme4/blob/master/R/utilities.R, 
         problems <- which(vec_n_u_h==nobs) 
@@ -1289,14 +1388,14 @@
     }
   } 
   #
-  processed$models <- models
   processed$HLframes <- HLframes[c("Y","fixef_terms","fixef_levels")] ## Y for family$initialize() (binomial spec.), others for predict()
+  #processed$HLframes$all_terms <- attr(HLframes$mf, "terms") ## also for predict, with poly(.,raw=FALSE) term
   processed$residModel <- resid.model 
   processed$rand.families <- rand.families
   processed[["control.glm"]] <- do.call("glm.control", control.glm) ## added 04/2016 (LHS <- RHS list)
   processed$port_env <- new.env(parent=emptyenv()) ## added 09/2016
   processed$verbose <- .reformat_verbose(verbose,For=For) ## added 09/2017*
-  .do_TRACE(processed$verbose["TRACE"])
+  .do_TRACE(processed)
   class(processed) <- c("arglist",class(processed))
   spaMM.options(COMP_maxn_warned=FALSE,COMP_geom_approx_warned=FALSE)
   return(processed)

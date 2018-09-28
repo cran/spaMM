@@ -3,6 +3,9 @@
 
 \alias{fitme_body}
 \alias{HLfit.obj}
+\alias{..HLfit_body_augZXy} % alias bc exported bc it must be exported to be traceable
+\alias{.solve_IRLS_as_ZX} %  alias bc exported bc it must be exported to be traceable
+\alias{.solve_IRLS_as_spprec} % alias bc exported bc it must be exported to be traceable
 
 \alias{Initialize} 
 \alias{Variogram} 
@@ -13,7 +16,6 @@
 \alias{getCovariate} 
 \alias{logDet} 
 \alias{recalc} 
-%\alias{Beta} % doc in ?HLfit
 \alias{spaMM_Gamma} 
 \alias{get_HLCorcall} % fixme: deserves to be documented as of independent interest (cf exampl of usage in probitgem)
 \alias{HLCor.obj} 

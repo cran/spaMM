@@ -61,14 +61,14 @@
     if (!is.null(Rnest)) {
       lambda.object <- object$lambda.object
       if (!is.null(lambda.object)) df1 <- df1+length(unlist(lambda.object$coefficients_lambdaS))
-      cov.mats <- .get_compact_cov_mats(object$strucList)
+      cov.mats <- .get_compact_cov_mats(object$strucList,later=FALSE)
       if (length(cov.mats)) {
         nrows <- unlist(lapply(cov.mats,NROW))
         df1 <- df1+sum(nrows*(nrows-1)/2)
       }
       lambda.object <- object2$lambda.object
       if (!is.null(lambda.object)) df2 <- df2+length(unlist(lambda.object$coefficients_lambdaS))
-      cov.mats <- .get_compact_cov_mats(object2$strucList)
+      cov.mats <- .get_compact_cov_mats(object2$strucList,later=FALSE)
       if ( length(cov.mats)) {
         nrows <- unlist(lapply(cov.mats,NROW))
         df2 <- df2+sum(nrows*(nrows-1)/2)
@@ -114,7 +114,7 @@
 }
 
 # (fixme?) : create as.lm method for HLfit object?
-LRT <- function(object,object2,boot.repl=0,nb_cores=NULL,...) { ## compare two HM objects
+LRT <- function(object,object2,boot.repl=0,nb_cores=NULL, boot_fn="spaMM_boot", resp_testfn=NULL, ...) { ## compare two HM objects
   if (nrow(object$data)!=nrow(object2$data)) {
     stop("models were not both fitted to the same size of dataset.")
   }
@@ -146,11 +146,11 @@ LRT <- function(object,object2,boot.repl=0,nb_cores=NULL,...) { ## compare two H
         aslistnull$formula <- cbf$null_formula
       }
     } else cbindTest <- FALSE
-    eval_replicate <- function(newy) { 
+    eval_replicate <- function(y) { 
       if (cbindTest) {
-        simbData[[nposname]] <- newy
-        simbData[[nnegname]] <- .get_BinomialDen(nullfit)  - newy
-      } else {simbData[[as.character(nullfit$predictor[[2L]])]] <- newy} ## allows y~x syntax for binary response
+        simbData[[nposname]] <- y
+        simbData[[nnegname]] <- .get_BinomialDen(nullfit)  - y
+      } else {simbData[[as.character(nullfit$predictor[[2L]])]] <- y} ## allows y~x syntax for binary response
       ## analyze under both models
       aslistfull$data <- simbData
       aslistnull$data <- simbData
@@ -165,10 +165,19 @@ LRT <- function(object,object2,boot.repl=0,nb_cores=NULL,...) { ## compare two H
       ## return pair of likelihoods
       return(c(logLik(fullfit,which=test_obj),logLik(nullfit,which=test_obj)))
     }
-    bootblob <- .eval_boot_replicates(eval_replicate=eval_replicate,boot.repl=boot.repl,nullfit=nullfit,nb_cores=nb_cores,
-                                    aslistfull=aslistfull, aslistnull=aslistnull,simbData=simbData)
+    if (boot_fn==".eval_boot_replicates") {
+      bootblob <- .eval_boot_replicates(eval_replicate=function(newy) {eval_replicate(y=newy)},boot.repl=boot.repl,nullfit=nullfit,nb_cores=nb_cores,
+                                        aslistfull=aslistfull, aslistnull=aslistnull,simbData=simbData)
+    } else {
+      bootblob <- spaMM_boot(object=nullfit,nsim = boot.repl,simuland=eval_replicate,nb_cores = nb_cores,
+                             resp_testfn = resp_testfn,
+                             aslistfull=aslistfull, aslistnull=aslistnull,simbData=simbData
+                             #, control.foreach=list(.errorhandling="pass")
+      )
+    }
     bootreps <- bootblob$bootreps
-    colnames(bootreps) <- paste0(c("full.","null."),test_obj)
+    #print(paste(boot_fn,paste(dim(bootreps),collapse=",")))
+    colnames(bootreps) <- c(paste0(c("full.","null."),test_obj),"condition")[seq_len(ncol(bootreps))]
     bootdL <- bootreps[,1]-bootreps[,2]
     meanbootLRT <- 2*mean(bootdL)
     resu <- c(resu,list(rawBootLRT = data.frame(chi2_LR=LRTori,df=df,p_value=(1+sum(bootdL>=LRTori/2))/(boot.repl+1)))) ## format appropriate for more tests  

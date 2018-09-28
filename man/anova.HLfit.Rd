@@ -13,12 +13,15 @@ This function differ from \code{fixedLRT} in its arguments (model fits for \code
 }
 \usage{
 \method{anova}{HLfit}(object, object2, ..., method="")
-LRT(object, object2, boot.repl=0, nb_cores=NULL, ...)  
+LRT(object, object2, boot.repl = 0, nb_cores = NULL, 
+    boot_fn = "spaMM_boot", resp_testfn = NULL, ...)  
 }
 \arguments{
   \item{object,object2}{Two models fits being compared (their order does not matter).}
   \item{boot.repl}{the number of bootstrap replicates. }
   \item{nb_cores}{Number of cores to use for parallel computation of bootstrap. The default is \code{spaMM.getOption("nb_cores")}, and 1 if the latter is NULL. \code{nb_cores=1} prevents the use of parallelisation procedures.}
+  \item{boot_fn}{function called for simulating and fitting bootstrap replicates: the default is \code{"spaMM_boot"} since version 2.4.42. Older results can be replicated using \code{".eval_boot_replicates"}, but this may be deprecated soon.}
+\item{resp_testfn}{See argument \code{resp_testfn} of \code{\link{spaMM_boot}}}
   \item{method}{For development purposes, not documented. }
   \item{\dots}{
   Further arguments passed to or from other methods. 
@@ -59,5 +62,18 @@ m1 <- HLfit(y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch),family=Gamma(log),
           resid.model = ~ X3+I(X3^2) ,data=wafers,HLmethod="ML")
 m2 <- update(m1,formula.= ~ . -I(X2^2))
 anova(m1,m2)
+
+# Using resp_testfn argument:
+\dontrun{
+set.seed(1L)
+d <- data.frame(success = rbinom(10, size = 1, prob = 0.9), x = 1:10)
+xx <- cbind(1,d$x)
+table(d$success)
+m_x <- fitme(success ~ x, data = d, family = binomial())
+m_0 <- fitme(success ~ 1, data = d, family = binomial())
+anova(m_x, m_0, boot.repl = 100,
+      resp_testfn=function(y) {! is_separated(xx,as.numeric(y),verbose=FALSE)})
+}
+
 }
 \keyword{ htest }

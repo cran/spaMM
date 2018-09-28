@@ -42,8 +42,8 @@ An optional list of values of parameters specified through \code{init.corrHLfit}
   \item{init.HLfit}{ See identically named \code{\link{HLfit}} argument. }
   \item{control}{   A list of control parameters, with two possible elements: 
   \itemize{
-    \item \code{$nloptr}, itself a list of control parameters to be copied in the \code{opts} argument of \code{\link[nloptr]{nloptr}}. Default controls are given by \code{spaMM.getOption('nloptr')}
-    \item \code{$refit}, a boolean, or a list of booleans with possible elements \code{$phi} and \code{$lambda}. If either element is set to TRUE, then the corresponding parameters are refitted by the internal \code{HLfit} methods (see Details). If \code{$refit} is TRUE, all \code{phi} and \code{lambda} parameters are refit. By default none of them is refitted, but this default may change in the future. 
+    \item \code{nloptr}, itself a list of control parameters to be copied in the \code{opts} argument of \code{\link[nloptr]{nloptr}}. Default controls are given by \code{spaMM.getOption('nloptr')}
+    \item \code{refit}, a boolean, or a list of booleans with possible elements \code{$phi}, \code{$lambda} and \code{$ranCoefs}. If either element is set to TRUE, then the corresponding parameters are refitted by the internal \code{HLfit} methods (see Details). If \code{$refit} is a single boolean, it affects of parameters. By default only \code{lambda} is refitted, but this default may change in the future. 
   }   
 }
   \item{control.dist}{ See \code{control.dist} in \code{\link{HLCor}} }
@@ -54,7 +54,7 @@ An optional list of values of parameters specified through \code{init.corrHLfit}
   \item{processed}{ For programming purposes, not documented.}
   \item{objective}{ For development purpose, not documented.}
   \item{\dots}{
-Optional arguments passed to \code{\link{HLCor}}, \code{\link{HLfit}} or  \code{\link{designL.from.Corr}}, for example the \code{distMatrix} argument of \code{HLCor}. 
+Optional arguments passed to \code{\link{HLCor}}, \code{\link{HLfit}} or  \code{\link{mat_sqrt}}, for example the \code{distMatrix} argument of \code{HLCor}. 
 % FIXME : ? :
 %Arguments that do not fit within these functions are detected and a warning is issued.
 }

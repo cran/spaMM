@@ -29,8 +29,7 @@ The link inverse function, as shown in Description, involves an infinite summati
 The name \code{COMP_nu} should be used to set values of \code{nu} in control arguments of the fitting functions (e.g., \code{fitme(.,init=list(COMP_nu=1))}). 
 }
 \references{
-  Gaunt, Robert E. and Iyengar, Satish and Olde Daalhuis, Adri B. and Simsek, Burcin. An asymptotic expansion for the normalizing constant of the Conway--Maxwell--Poisson distribution. To appear in Annals of the Institute of Statistical Mathematics.
-% FIXME update ref when published.
+  Gaunt, Robert E. and Iyengar, Satish and Olde Daalhuis, Adri B. and Simsek, Burcin. An asymptotic expansion for the normalizing constant of the Conway--Maxwell--Poisson distribution. Ann Inst Stat Math (2017) \doi{10.1007/s10463-017-0629-6}.
   
   G. Shmueli, T. P. Minka, J. B. Kadane, S. Borle and P. Boatwright (2005) A useful distribution for fitting discrete data: revival of the Conway-Maxwell-Poisson distribution. Appl. Statist. 54: 127-142.
 

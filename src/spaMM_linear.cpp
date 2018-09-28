@@ -7,35 +7,11 @@ using namespace std;
 using Eigen::Lower;
 using Eigen::Map;
 using Eigen::MatrixXd;
-using Eigen::Upper;
 using Eigen::VectorXd;
-// for sparse QR:
-using Eigen::MappedSparseMatrix;
-using Eigen::SparseMatrix;
-using Eigen::SparseQR;
-using Eigen::COLAMDOrdering;
 
 bool printDebug=false;
 
-// [[Rcpp::export(.Rcpp_as_dgCMatrix)]]
-SEXP Rcpp_as_dgCMatrix_( SEXP XX_ ){ 
-  // corrected from http://gallery.rcpp.org/articles/sparse-matrix-coercion/ where a NULL "dimnames" attribute is not correctly handled.
-  typedef Eigen::SparseMatrix<double> SpMat;   
-  typedef Eigen::Map<Eigen::MatrixXd> MapMatd; // Input: must be double
-  MapMatd X(Rcpp::as<MapMatd>(XX_));
-  SpMat Xsparse = X.sparseView();              // Output: sparse matrix
-  S4 Xout(wrap(Xsparse));                      // Output: as S4 object
-  SEXP dimnames = Rf_getAttrib(XX_, R_DimNamesSymbol);
-  if (Rf_isNull(dimnames)) { 
-    Xout.slot("Dimnames") = List::create(R_NilValue,R_NilValue);
-  } else {
-    NumericMatrix Xin(XX_);                      // Copy dimnames
-    Xout.slot("Dimnames") = clone(List(Xin.attr("dimnames")));
-  }
-  return(Xout);
-}
-
-// [[Rcpp::export(.rankinfo)]]
+// [[Rcpp::export(.rankinfo)]] // called only if spaMM.getOption("rankMethod") is NULL (non-default)
 SEXP rankinfo( SEXP x, SEXP tol){
   const Map<MatrixXd> X(as<Map<MatrixXd> >(x));
   const double threshold(as<double>(tol));
@@ -54,7 +30,8 @@ SEXP leverages( SEXP XX ){
   const Map<MatrixXd> X(as<Map<MatrixXd> >(XX));
   const int c(X.cols()); 
   const Eigen::HouseholderQR<MatrixXd> QR(X);
-  MatrixXd Qthin(MatrixXd(QR.householderQ()).leftCols(c)); // householderQ SLOW: main bottleneck for GLMMs
+  MatrixXd Qthin(MatrixXd(QR.householderQ()).leftCols(c)); /* householderQ SLOW and memory-inefficient (full Q)
+  The main weakness of Eigen's QR is that Qthin computation requires Qfull computation*/
   // transpose -> 1-row matrix OK for return as VectorXd -> R vector 
   if (printDebug)   Rcout <<"fin leverages()"<<std::endl;
   return wrap(VectorXd(Qthin.cwiseProduct(Qthin).rowwise().sum().transpose())); //returns vector of leverages rather than thin Q matrix
@@ -65,9 +42,36 @@ SEXP sweepZ1W( SEXP ZZ, SEXP WW ){
   if (printDebug)   Rcout <<"debut sweepZ1W()"<<std::endl;
   const Map<MatrixXd> Z(as<Map<MatrixXd> >(ZZ));
   const Map<VectorXd> W(as<Map<VectorXd> >(WW));
-  if (printDebug)   Rcout <<"fin sweepZ1W()"<<std::endl;
+  if (printDebug)   Rcout <<"fin sweepZ1W()"<<std::endl; // almost...
   return wrap(W.asDiagonal() *Z);
 }
+
+/* attempt to add the colnames here by the following code, which was perhaps correct 
+ but failed (as does the simpler version) on my first test because the matrix was integer... 
+ Poor error message, waste of time!
+ 
+ 
+ if (printDebug)   Rcout <<"debut sweepZ1W()"<<std::endl;
+ const Map<MatrixXd> Z(as<Map<MatrixXd> >(ZZ));
+ const Map<VectorXd> W(as<Map<VectorXd> >(WW));
+ // Consistent with R's diag(<vector>) %*% X that keeps only the X colnames:
+ SEXP dimnames = Rf_getAttrib(ZZ, R_DimNamesSymbol);
+ SEXP ZZ_colnames;
+ bool hascolnames =  (! Rf_isNull(dimnames));
+ if (hascolnames) {
+ ZZ_colnames = VECTOR_ELT(dimnames, 1);
+ hascolnames = ( ! Rf_isNull(dimnames));
+ }
+ if (hascolnames) {
+ NumericMatrix Xout(wrap(W.asDiagonal() *Z)); 
+ colnames(Xout) = ZZ_colnames;
+ if (printDebug)   Rcout <<"fin sweepZ1W()"<<std::endl;
+ return(Xout);
+ } else {
+ if (printDebug)   Rcout <<"fin sweepZ1W()"<<std::endl; // hmmm
+ return(wrap(W.asDiagonal() *Z));
+ }
+*/
 
 /*
 variations on 
@@ -109,22 +113,6 @@ SEXP ZtWZ( SEXP ZZ, SEXP WW ){
   return wrap(swZ); 
 }
 
-// (fixme?) This function does not seem currently used
-// [[Rcpp::export(.Rcpp_Sig)]]
-SEXP Rcpp_Sig( SEXP ZZ, SEXP WA, SEXP WB ){
-  if (printDebug)   Rcout <<"debut Rcpp_Sig()"<<std::endl;
-  const Map<MatrixXd> Z(as<Map<MatrixXd> >(ZZ));
-  const Map<VectorXd> wa(as<Map<VectorXd> >(WA));
-  const Map<VectorXd> wb(as<Map<VectorXd> >(WB));
-  VectorXd sqrtW = wa.array().sqrt();
-  MatrixXd swZ = Z * sqrtW.asDiagonal();
-  const int r(swZ.rows());
-  swZ = MatrixXd(r, r).setZero().selfadjointView<Lower>().rankUpdate(swZ);
-  swZ.diagonal() += wb;
-  if (printDebug)   Rcout <<"fin Rcpp_Sig()"<<std::endl;
-  return wrap(swZ); 
-}
-
 // [[Rcpp::export(.Rcpp_d2hdv2)]]
 SEXP Rcpp_d2hdv2( SEXP ZZ, SEXP WA, SEXP WB ){
   if (printDebug)   Rcout <<"debut Rcpp_d2hdv2()"<<std::endl;
@@ -144,7 +132,7 @@ SEXP Rcpp_d2hdv2( SEXP ZZ, SEXP WA, SEXP WB ){
 
 
 // [[Rcpp::export(.RcppChol)]]
-SEXP RcppChol( SEXP AA ){ // returns t(R::chol)
+SEXP RcppChol( SEXP AA ){ // returns t(base::chol)
   if (printDebug)   Rcout <<"debut RcppChol()"<<std::endl;
   const Eigen::LLT<MatrixXd> llt(as<Map<MatrixXd> >(AA));
   int indic=0;
@@ -161,7 +149,7 @@ SEXP RcppChol( SEXP AA ){ // returns t(R::chol)
   return out;
 } // such that A = L.Lt ie standard, NOT R's chol()
 
-// https://gist.github.com/bobthecat/6509321
+// https://gist.github.com/bobthecat/6509321 // wrapped bu .crossprod. Remain clearly faster for large matrices 09/2018 but not 3*3 matrix...
 // [[Rcpp::export(.crossprodCpp)]]
 SEXP crossprodCpp(SEXP Mat, SEXP yy){
   if (printDebug)   Rcout <<"debut crossprodCpp()"<<std::endl;
@@ -192,44 +180,6 @@ SEXP tcrossprodCpp(SEXP Mat, SEXP yy){
   }  
   if (printDebug)   Rcout <<"fin tcrossprodCpp()"<<std::endl;
   return wrap(AAt);
-}
-
-// // [[Rcpp::export]] 
-// SEXP pseudoSolvediag( SEXP XX, SEXP bb ){ // pseudoSolvediag(X,b) should == solve.qr(qr(X),diag(b))
-//   if (printDebug)   Rcout <<"debut pseudoSolvediag()"<<std::endl;
-//   const Map<MatrixXd> X(as<Map<MatrixXd> >(XX));
-//   const Map<VectorXd> b(as<Map<VectorXd> >(bb));
-//   const int c(X.cols());
-//   const Eigen::HouseholderQR<MatrixXd> PQR(X);
-//   const MatrixXd pseudoInvX(PQR.matrixQR().topRows(c).triangularView<Upper>().solve(MatrixXd(PQR.householderQ()).leftCols(c).adjoint()));
-//   if (printDebug)   Rcout <<"fin pseudoSolvediag()"<<std::endl;
-//   return wrap(pseudoInvX * b.asDiagonal());
-// }
-
-// [[Rcpp::export(.e_LevenbergMsolveCpp)]]
-SEXP e_LevenbergMsolveCpp( SEXP AA, SEXP wwAugz, SEXP dd ){ // 
-  if (printDebug)   Rcout <<"debut e_LevenbergMsolveCpp()"<<std::endl;
-  const Map<MatrixXd> A(as<Map<MatrixXd> >(AA));
-  const Map<VectorXd> LM_wAugz(as<Map<VectorXd> >(wwAugz));
-  const double damping(as<double>(dd));
-  const int nc(A.cols());
-  const int nr(A.rows());
-  VectorXd dampDpD = damping * A.cwiseProduct(A).colwise().sum(); //damping * colSums(wAugX*wAugX)
-  VectorXd corrD = dampDpD.cwiseSqrt(); // sqrt(dampDpD);
-  //
-  VectorXd z(nr+nc);
-  z.fill(0);
-  const Eigen::HouseholderQR<MatrixXd> QR_A(A); //QR_A <- Rcpp_QR(wAugX)
-  z.head(nr) = MatrixXd(QR_A.householderQ()).transpose() * LM_wAugz; // t(QR_A$Q) %*% LM_wAugz    
-  //
-  MatrixXd RD(nr+nc, nc);
-  RD << MatrixXd(QR_A.matrixQR().triangularView<Upper>()),
-        MatrixXd(corrD.asDiagonal()); // Matrix() essential! //  (rbind(QR_A$R,diag(corrD,nrow=length(corrD))))
-  const Eigen::HouseholderQR<MatrixXd> QR_RD(RD);
-  z = MatrixXd(QR_RD.householderQ()).leftCols(nc).transpose() * z;  //t(QR_QR_R$Q[,1:nc]) %*% z
-  VectorXd dbetaV = QR_RD.matrixQR().topRows(nc).triangularView<Upper>().solve(z); //backsolve(QR_QR_R$R[1:nc,],z)
-  if (printDebug)   Rcout <<"fin e_LevenbergMsolveCpp()"<<std::endl;
-  return List::create(Named("dbetaV") = dbetaV,Named("dampDpD")=dampDpD);
 }
 
 // [[Rcpp::export(.LevenbergMsolveCpp)]]
@@ -266,31 +216,5 @@ SEXP selfAdjointSolverCpp( SEXP AA ){
   Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es;
   es.compute(A); 
   if (printDebug)   Rcout <<"fin selfAdjointSolverCpp()"<<std::endl;
-  return List::create(Named("u") = es.eigenvectors(),Named("d")=es.eigenvalues());
-}
-
-// unfortunately useless: // but some improper declarations, would need debugging)
-// [[Rcpp::export(.LevPerturbedQCpp)]]
-SEXP LevPerturbedQCpp( SEXP perturbedwAugX, SEXP pforREML, SEXP RpRu, SEXP RpRd, SEXP lamOverLam0, SEXP phiOverPhi0 ){
-  const Map<MatrixXd> A(as<Map<MatrixXd> >(perturbedwAugX));
-  const unsigned int p(as<unsigned int>(pforREML));
-  const  Map<MatrixXd> RpRU(as< Map<MatrixXd> >(RpRu));
-  const  Map<VectorXd> RpRdiag(as< Map<VectorXd> >(RpRd));
-  const double a(sqrt(as<double>(lamOverLam0)));
-  const double b(sqrt(as<double>(phiOverPhi0)));
-  double psi = b/a; psi *=psi; psi -=1; // (b/a)^2 -1
-  int n(RpRdiag.size());
-  VectorXd W(n);
-  for (int it=0; it<W.size();it++) {W(it) = b*b/(RpRdiag(it)+psi);}
-  MatrixXd BB(n,n); 
-  BB = RpRU * W.asDiagonal() * RpRU.transpose();  // FR->FR can be improved ? 
-  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es;
-  es.compute(BB.topLeftCorner(p,p));
-  MatrixXd gauche = BB.leftCols(p) * es.eigenvectors();
-  VectorXd diag(es.eigenvalues().size());
-  for (int it=0; it<diag.size();it++) {diag(it) = 1/((es.eigenvalues())(it)-b*b/psi);}
-  MatrixXd perturbedRRp = (BB - gauche * diag.asDiagonal() * gauche.adjoint());
-  VectorXd leverages(A.rows());
-  for (int it=0; it<leverages.size();it++) {leverages(it) = A.row(it) * perturbedRRp * A.row(it).transpose();}
-  return(wrap(leverages));
+  return List::create(Named("vectors") = es.eigenvectors(),Named("values")=es.eigenvalues());
 }

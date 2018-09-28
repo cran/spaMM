@@ -32,18 +32,6 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// sparse_LDLp_from_XtX
-SEXP sparse_LDLp_from_XtX(SEXP XX, bool pivot);
-RcppExport SEXP _spaMM_sparse_LDLp_from_XtX(SEXP XXSEXP, SEXP pivotSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< SEXP >::type XX(XXSEXP);
-    Rcpp::traits::input_parameter< bool >::type pivot(pivotSEXP);
-    rcpp_result_gen = Rcpp::wrap(sparse_LDLp_from_XtX(XX, pivot));
-    return rcpp_result_gen;
-END_RCPP
-}
 // lmwith_sparse_LDLp
 SEXP lmwith_sparse_LDLp(SEXP XX, SEXP yy, bool returntQ, bool returnR, bool pivot);
 RcppExport SEXP _spaMM_lmwith_sparse_LDLp(SEXP XXSEXP, SEXP yySEXP, SEXP returntQSEXP, SEXP returnRSEXP, SEXP pivotSEXP) {
@@ -56,18 +44,6 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< bool >::type returnR(returnRSEXP);
     Rcpp::traits::input_parameter< bool >::type pivot(pivotSEXP);
     rcpp_result_gen = Rcpp::wrap(lmwith_sparse_LDLp(XX, yy, returntQ, returnR, pivot));
-    return rcpp_result_gen;
-END_RCPP
-}
-// sparse_LLp_from_XtX
-SEXP sparse_LLp_from_XtX(SEXP XX, bool pivot);
-RcppExport SEXP _spaMM_sparse_LLp_from_XtX(SEXP XXSEXP, SEXP pivotSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< SEXP >::type XX(XXSEXP);
-    Rcpp::traits::input_parameter< bool >::type pivot(pivotSEXP);
-    rcpp_result_gen = Rcpp::wrap(sparse_LLp_from_XtX(XX, pivot));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -115,8 +91,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // lmwith_sparse_QRp
-SEXP lmwith_sparse_QRp(SEXP XX, SEXP yy, bool returntQ, bool returnR, bool pivot);
-RcppExport SEXP _spaMM_lmwith_sparse_QRp(SEXP XXSEXP, SEXP yySEXP, SEXP returntQSEXP, SEXP returnRSEXP, SEXP pivotSEXP) {
+SEXP lmwith_sparse_QRp(SEXP XX, SEXP yy, bool returntQ, bool returnR, bool COLAMDO);
+RcppExport SEXP _spaMM_lmwith_sparse_QRp(SEXP XXSEXP, SEXP yySEXP, SEXP returntQSEXP, SEXP returnRSEXP, SEXP COLAMDOSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -124,8 +100,8 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< SEXP >::type yy(yySEXP);
     Rcpp::traits::input_parameter< bool >::type returntQ(returntQSEXP);
     Rcpp::traits::input_parameter< bool >::type returnR(returnRSEXP);
-    Rcpp::traits::input_parameter< bool >::type pivot(pivotSEXP);
-    rcpp_result_gen = Rcpp::wrap(lmwith_sparse_QRp(XX, yy, returntQ, returnR, pivot));
+    Rcpp::traits::input_parameter< bool >::type COLAMDO(COLAMDOSEXP);
+    rcpp_result_gen = Rcpp::wrap(lmwith_sparse_QRp(XX, yy, returntQ, returnR, COLAMDO));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -140,26 +116,27 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// LevMar_cpp
-SEXP LevMar_cpp(SEXP AA, SEXP LMrhs);
-RcppExport SEXP _spaMM_LevMar_cpp(SEXP AASEXP, SEXP LMrhsSEXP) {
+// Rcpp_dense_cbind_mat_mat
+NumericMatrix Rcpp_dense_cbind_mat_mat(NumericMatrix a, NumericMatrix b);
+RcppExport SEXP _spaMM_Rcpp_dense_cbind_mat_mat(SEXP aSEXP, SEXP bSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< SEXP >::type AA(AASEXP);
-    Rcpp::traits::input_parameter< SEXP >::type LMrhs(LMrhsSEXP);
-    rcpp_result_gen = Rcpp::wrap(LevMar_cpp(AA, LMrhs));
+    Rcpp::traits::input_parameter< NumericMatrix >::type a(aSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type b(bSEXP);
+    rcpp_result_gen = Rcpp::wrap(Rcpp_dense_cbind_mat_mat(a, b));
     return rcpp_result_gen;
 END_RCPP
 }
-// Rcpp_as_dgCMatrix_
-SEXP Rcpp_as_dgCMatrix_(SEXP XX_);
-RcppExport SEXP _spaMM_Rcpp_as_dgCMatrix_(SEXP XX_SEXP) {
+// Rcpp_dense_cbind_mat_vec
+NumericMatrix Rcpp_dense_cbind_mat_vec(NumericMatrix a, NumericVector b);
+RcppExport SEXP _spaMM_Rcpp_dense_cbind_mat_vec(SEXP aSEXP, SEXP bSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< SEXP >::type XX_(XX_SEXP);
-    rcpp_result_gen = Rcpp::wrap(Rcpp_as_dgCMatrix_(XX_));
+    Rcpp::traits::input_parameter< NumericMatrix >::type a(aSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type b(bSEXP);
+    rcpp_result_gen = Rcpp::wrap(Rcpp_dense_cbind_mat_vec(a, b));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -222,19 +199,6 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// Rcpp_Sig
-SEXP Rcpp_Sig(SEXP ZZ, SEXP WA, SEXP WB);
-RcppExport SEXP _spaMM_Rcpp_Sig(SEXP ZZSEXP, SEXP WASEXP, SEXP WBSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< SEXP >::type ZZ(ZZSEXP);
-    Rcpp::traits::input_parameter< SEXP >::type WA(WASEXP);
-    Rcpp::traits::input_parameter< SEXP >::type WB(WBSEXP);
-    rcpp_result_gen = Rcpp::wrap(Rcpp_Sig(ZZ, WA, WB));
-    return rcpp_result_gen;
-END_RCPP
-}
 // Rcpp_d2hdv2
 SEXP Rcpp_d2hdv2(SEXP ZZ, SEXP WA, SEXP WB);
 RcppExport SEXP _spaMM_Rcpp_d2hdv2(SEXP ZZSEXP, SEXP WASEXP, SEXP WBSEXP) {
@@ -283,19 +247,6 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// e_LevenbergMsolveCpp
-SEXP e_LevenbergMsolveCpp(SEXP AA, SEXP wwAugz, SEXP dd);
-RcppExport SEXP _spaMM_e_LevenbergMsolveCpp(SEXP AASEXP, SEXP wwAugzSEXP, SEXP ddSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< SEXP >::type AA(AASEXP);
-    Rcpp::traits::input_parameter< SEXP >::type wwAugz(wwAugzSEXP);
-    Rcpp::traits::input_parameter< SEXP >::type dd(ddSEXP);
-    rcpp_result_gen = Rcpp::wrap(e_LevenbergMsolveCpp(AA, wwAugz, dd));
-    return rcpp_result_gen;
-END_RCPP
-}
 // LevenbergMsolveCpp
 SEXP LevenbergMsolveCpp(SEXP AA, SEXP rrhhss, SEXP dd);
 RcppExport SEXP _spaMM_LevenbergMsolveCpp(SEXP AASEXP, SEXP rrhhssSEXP, SEXP ddSEXP) {
@@ -331,51 +282,30 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// LevPerturbedQCpp
-SEXP LevPerturbedQCpp(SEXP perturbedwAugX, SEXP pforREML, SEXP RpRu, SEXP RpRd, SEXP lamOverLam0, SEXP phiOverPhi0);
-RcppExport SEXP _spaMM_LevPerturbedQCpp(SEXP perturbedwAugXSEXP, SEXP pforREMLSEXP, SEXP RpRuSEXP, SEXP RpRdSEXP, SEXP lamOverLam0SEXP, SEXP phiOverPhi0SEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< SEXP >::type perturbedwAugX(perturbedwAugXSEXP);
-    Rcpp::traits::input_parameter< SEXP >::type pforREML(pforREMLSEXP);
-    Rcpp::traits::input_parameter< SEXP >::type RpRu(RpRuSEXP);
-    Rcpp::traits::input_parameter< SEXP >::type RpRd(RpRdSEXP);
-    Rcpp::traits::input_parameter< SEXP >::type lamOverLam0(lamOverLam0SEXP);
-    Rcpp::traits::input_parameter< SEXP >::type phiOverPhi0(phiOverPhi0SEXP);
-    rcpp_result_gen = Rcpp::wrap(LevPerturbedQCpp(perturbedwAugX, pforREML, RpRu, RpRd, lamOverLam0, phiOverPhi0));
-    return rcpp_result_gen;
-END_RCPP
-}
 
 static const R_CallMethodDef CallEntries[] = {
     {"_spaMM_Rcpp_COMP_Z", (DL_FUNC) &_spaMM_Rcpp_COMP_Z, 4},
     {"_spaMM_bessel_lnKnu_e", (DL_FUNC) &_spaMM_bessel_lnKnu_e, 2},
-    {"_spaMM_sparse_LDLp_from_XtX", (DL_FUNC) &_spaMM_sparse_LDLp_from_XtX, 2},
     {"_spaMM_lmwith_sparse_LDLp", (DL_FUNC) &_spaMM_lmwith_sparse_LDLp, 5},
-    {"_spaMM_sparse_LLp_from_XtX", (DL_FUNC) &_spaMM_sparse_LLp_from_XtX, 2},
     {"_spaMM_lmwith_sparse_LLp", (DL_FUNC) &_spaMM_lmwith_sparse_LLp, 5},
     {"_spaMM_lmwithQR", (DL_FUNC) &_spaMM_lmwithQR, 4},
     {"_spaMM_lmwithQRP", (DL_FUNC) &_spaMM_lmwithQRP, 4},
     {"_spaMM_lmwith_sparse_QRp", (DL_FUNC) &_spaMM_lmwith_sparse_QRp, 5},
     {"_spaMM_Rcpp_chol_R", (DL_FUNC) &_spaMM_Rcpp_chol_R, 1},
-    {"_spaMM_LevMar_cpp", (DL_FUNC) &_spaMM_LevMar_cpp, 2},
-    {"_spaMM_Rcpp_as_dgCMatrix_", (DL_FUNC) &_spaMM_Rcpp_as_dgCMatrix_, 1},
+    {"_spaMM_Rcpp_dense_cbind_mat_mat", (DL_FUNC) &_spaMM_Rcpp_dense_cbind_mat_mat, 2},
+    {"_spaMM_Rcpp_dense_cbind_mat_vec", (DL_FUNC) &_spaMM_Rcpp_dense_cbind_mat_vec, 2},
     {"_spaMM_rankinfo", (DL_FUNC) &_spaMM_rankinfo, 2},
     {"_spaMM_leverages", (DL_FUNC) &_spaMM_leverages, 1},
     {"_spaMM_sweepZ1W", (DL_FUNC) &_spaMM_sweepZ1W, 2},
     {"_spaMM_ZWZt", (DL_FUNC) &_spaMM_ZWZt, 2},
     {"_spaMM_ZtWZ", (DL_FUNC) &_spaMM_ZtWZ, 2},
-    {"_spaMM_Rcpp_Sig", (DL_FUNC) &_spaMM_Rcpp_Sig, 3},
     {"_spaMM_Rcpp_d2hdv2", (DL_FUNC) &_spaMM_Rcpp_d2hdv2, 3},
     {"_spaMM_RcppChol", (DL_FUNC) &_spaMM_RcppChol, 1},
     {"_spaMM_crossprodCpp", (DL_FUNC) &_spaMM_crossprodCpp, 2},
     {"_spaMM_tcrossprodCpp", (DL_FUNC) &_spaMM_tcrossprodCpp, 2},
-    {"_spaMM_e_LevenbergMsolveCpp", (DL_FUNC) &_spaMM_e_LevenbergMsolveCpp, 3},
     {"_spaMM_LevenbergMsolveCpp", (DL_FUNC) &_spaMM_LevenbergMsolveCpp, 3},
     {"_spaMM_LogAbsDetCpp", (DL_FUNC) &_spaMM_LogAbsDetCpp, 1},
     {"_spaMM_selfAdjointSolverCpp", (DL_FUNC) &_spaMM_selfAdjointSolverCpp, 1},
-    {"_spaMM_LevPerturbedQCpp", (DL_FUNC) &_spaMM_LevPerturbedQCpp, 6},
     {NULL, NULL, 0}
 };
 

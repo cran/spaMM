@@ -267,6 +267,7 @@ spaMM_glm.fit <- function (x, y, weights = rep(1, nobs),
             damping <- dampingfactor*damping
             dampingfactor <- dampingfactor*2
           } 
+          if (damping>1e100) break ## stop("reached damping=1e100")
         }
         if ( conv_crit < control$epsilon) { 
           conv <- TRUE
@@ -322,7 +323,7 @@ spaMM_glm.fit <- function (x, y, weights = rep(1, nobs),
       w <- sqrt((weights[good] * mu.eta.val[good]^2)/variance(mu)[good])
       if (anyNA(z)) stop("NA/NaN in 'z': consult the package maintainer.")
       if (anyNA(w)) stop("NA/NaN in 'w': consult the package maintainer.") # suggests too large 'mu'
-      wX <- .calc_wAugX(augX=x[good, , drop = FALSE],sqrt.ww=w)
+      wX <- .calc_wAugX(XZ_0I=x[good, , drop = FALSE],sqrt.ww=w)
       LM_wz <- z*w - (wX %*% coefold)
     } ## end main loop (either a break or control$maxit reached)
     if (any(good) & ! conv) {
@@ -414,7 +415,8 @@ spaMM_glm <- function(formula, family = gaussian, data, weights, subset,
   ## This code should not interfer with processed$family with possibly assigned param
   family <- .checkRespFam(family)
   summaryfamily <- .as_call_family(family,get_param = TRUE) ## only for printing
-  mc[[1L]] <- quote(stats::glm) 
+  mc[[1L]] <- quote(stats::glm) # for get("glm", asNamespace("stats")), summary.glm() will print the body of glm() ! ./.
+  # quote seems OK for base fns; cf usages of mc[[1L]] <- quote(stats::model.frame). othewise change the final res$call[[1L]] 
   mc$method <- method[1L]
   res <- .tryCatch_W_E(eval(mc,parent.frame()))
   if (inherits(res$value,"error")) {

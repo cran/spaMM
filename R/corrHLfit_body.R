@@ -19,7 +19,7 @@ corrHLfit_body <- function(processed, ## possibly a list of environments
   } else proc1 <- processed
   verbose <-  proc1$verbose
   HLnames <- (c(names(formals(HLCor)),names(formals(HLfit)),
-                names(formals(designL.from.Corr)),names(formals(make_scaled_dist))))  ## cf parallel code in HLCor.obj
+                names(formals(.spaMM.data$options$mat_sqrt_fn)),names(formals(make_scaled_dist))))  ## cf parallel code in HLCor.obj
   ## fill HLCor.args
   good_dotnames <- intersect(names(dotlist),HLnames) ## those specifically for the called fns as def'd by HLnames
   if (length(good_dotnames)) {
@@ -38,87 +38,28 @@ corrHLfit_body <- function(processed, ## possibly a list of environments
   #
   # modify HLCor.args and <>bounds;   
   user_init_optim <- init.corrHLfit 
-  if (TRUE) {
-    optim_blob <- .calc_optim_args(proc1=proc1, processed=processed,
-                                   init=init.corrHLfit, fixed=ranFix, lower=lower, upper=upper, 
-                                   verbose=verbose, optim.scale=optim.scale, For="corrHLfit") 
-    init.corrHLfit <- NaN ## make clear it's not to be used
-    # #  code correct mais opaque pour l'utilisateur: init.optim va être ignore en cas de 1D optimization... (OK in fitme)
-    # ## maximization VIA HLCor.obj
-    # ## by maxim over (corrpars,phi,lambda, (beta)_[corrpars,phi,lambda])
-    # ##     if trPhi,trLambda are in the init.optims
-    # ## or by maxim over (corrpars,(beta,phi,lambda)_corrpars)
-    # ##     otherwise.
-    # ################ construct intervals for this maximization
-    init.optim <- optim_blob$inits$`init.optim` ## list; subset of all estimands, as name implies, and in transformed scale
-    init.HLfit <- optim_blob$inits$`init.HLfit` ## list; subset as name implies
-    fixed <- optim_blob$fixed
-    corr_types <- optim_blob$corr_types
-    moreargs <- optim_blob$moreargs
-    LUarglist <- optim_blob$LUarglist
-    LowUp <- optim_blob$LowUp
-    lower <- LowUp$lower ## list ! which elements may have length >1 !
-    upper <- LowUp$upper ## list !
-    HLCor.args$ranPars <- fixed
-  } else {
-    corr_info <- proc1$corr_info 
-    #
-    corr_types <- corr_info$corr_types
-    fixed <- .post_process_fixed(ranFix,corr_types=corr_types)
-    init.optim <- .post_process_parlist(init.corrHLfit,corr_types=corr_types)   
-    init.HLfit <- proc1$init_HLfit #to be modified below ## dhglm uses fitme_body not (fitme-> .preprocess) => dhglm code modifies processed$init_HLfit
-    init.corrHLfit <- NaN ## make clear it's not to be used
-    family <- proc1$family
-    if (family$family=="COMPoisson") {
-      checknu <- suppressWarnings(try(environment(family$aic)$nu,silent=TRUE))
-      if (inherits(checknu,"try-error") && is.null(init.optim$COMP_nu)) init.optim$COMP_nu <- 1
-    } else if (family$family == "negbin") {
-      checktheta <- suppressWarnings(try(environment(family$aic)$shape,silent=TRUE))
-      if (inherits(checktheta,"try-error") && is.null(init.optim$NB_shape)) init.optim$NB_shape <- 1
-    }
-    #
-    user.lower <- .post_process_parlist(lower,corr_types)
-    user.upper <- .post_process_parlist(upper,corr_types) ## keep user input 
-    .check_conflict_init_fixed(fixed,init.optim, "given as element of both 'fixed' and 'init'. Check call.")
-    .check_conflict_init_fixed(init.HLfit,init.optim, "given as element of both 'init.HLfit' and 'init'. Check call.") ## has quite poor effect on fits
-    moreargs <- .calc_moreargs(processed=processed, # possibly a list of environments -> .calc_range_info -> scans then to compute a mean(nbUnique) 
-                               corr_types=corr_types, fixed=fixed, init.optim=init.optim, 
-                               control_dist=proc1$control_dist, 
-                               init.HLfit=init.HLfit, corr_info=corr_info, verbose=verbose, lower=lower, upper=upper)
-    inits <- .calc_inits(init.optim=init.optim, init.HLfit=init.HLfit,
-                         ranFix=fixed, corr_types=corr_types,
-                         moreargs=moreargs,
-                         user.lower=user.lower, user.upper=user.upper,
-                         optim.scale=optim.scale, 
-                         For="corrHLfit"
-    )
-    #
-    init <- inits$`init` ## keeps all init values, all in untransformed scale
-    init.optim <- inits$`init.optim` ## subset of all optim estimands, as name implies, and in transformed scale
-    init.HLfit <- inits$`init.HLfit` ## subset as name implies 
-    ################ construct intervals for this maximization
-    ## construct default upper and lower values ; on transformed scale by default
-    user.lower <- lower; user.upper <- upper ## keep user input 
-    if ("lambda" %in% c(names(user.lower),names(user.lower)) 
-        && is.null(init$lambda)) {
-      stop("'lambda' in 'lower' or 'upper' has no effect if absent from 'init.corrHLfit'.")   
-      ## corrHLfit-specific logic: if lambda absent from init.corrHLfit it is not outer optimized and then 'as the message says'.
-    }
-    ################
-    LUarglist <- list(canon.init=init, ## canonical scale
-                      init.optim=init.optim, ## transformed scale, used only to initialize lower and upper 
-                      user.lower=user.lower,user.upper=user.upper,
-                      corr_types=corr_types,
-                      ranFix=fixed,
-                      optim.scale=optim.scale, 
-                      moreargs=moreargs)
-    LowUp <- do.call(".makeLowerUpper",LUarglist)
-    ## LowUp: a list with elements lower and upper that inherits names from init.optim, must be optim.scale as init.optim is by construction
-    lower <- LowUp$lower ## list ! which elements may have length >1 !
-    upper <- LowUp$upper ## list !
-    HLCor.args$ranPars <- fixed  
-  }
-  #  code correct mais opaque pour l'utilisateur: init.optim va être ignore en cas de 1D optimization... (OK in fitme)
+  
+  optim_blob <- .calc_optim_args(proc1=proc1, processed=processed,
+                                 init=init.corrHLfit, fixed=ranFix, lower=lower, upper=upper, 
+                                 verbose=verbose, optim.scale=optim.scale, For="corrHLfit") 
+  init.corrHLfit <- NaN ## make clear it's not to be used
+  # #  code correct mais opaque pour l'utilisateur: init.optim va être ignore en cas de 1D optimization... (OK in fitme)
+  # ## maximization VIA HLCor.obj
+  # ## by maxim over (corrpars,phi,lambda, (beta)_[corrpars,phi,lambda])
+  # ##     if trPhi,trLambda are in the init.optims
+  # ## or by maxim over (corrpars,(beta,phi,lambda)_corrpars)
+  # ##     otherwise.
+  # ################ construct intervals for this maximization
+  init.optim <- optim_blob$inits$`init.optim` ## list; subset of all estimands, as name implies, and in transformed scale
+  init.HLfit <- optim_blob$inits$`init.HLfit` ## list; subset as name implies
+  fixed <- optim_blob$fixed
+  corr_types <- optim_blob$corr_types
+  moreargs <- optim_blob$moreargs
+  LUarglist <- optim_blob$LUarglist
+  LowUp <- optim_blob$LowUp
+  lower <- LowUp$lower ## list ! which elements may have length >1 !
+  upper <- LowUp$upper ## list !
+  HLCor.args$ranPars <- fixed
   #
   ## maximization VIA HLCor.obj
   ## by maxim over (corrpars,phi,lambda, (beta)_[corrpars,phi,lambda])
@@ -175,6 +116,9 @@ corrHLfit_body <- function(processed, ## possibly a list of environments
                                     type=.modify_list(relist(rep("fix",length(unlist(HLCor.args$ranPars))),HLCor.args$ranPars), #attr(HLCor.args$ranPars,"type"),
                                                       relist(rep("outer",length(unlist(optPars))),optPars)),
                                     moreargs=moreargs)
+  } else {
+      HLCor.args$ranPars <- structure(HLCor.args$ranPars,
+                                      type = relist(rep("fix", length(unlist(HLCor.args$ranPars))), HLCor.args$ranPars))
   }
   # if processed is an envir, the following is not local to anyHLCor_obj_args$processed but change processed globally
   .assignWrapper(HLCor.args$processed,"return_only <- NULL") 

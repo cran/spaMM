@@ -14,7 +14,7 @@ Tpoisson(link="log")
 }
 \arguments{
   \item{link}{
-  log, sqrt or identity link, specified by the sevaral available ways for GLM links (name, character string, one-element character vector, or object of class \code{link-glm} as returned by \code{\link[stats]{make.link}}). 
+  log, sqrt or identity link, specified by any of the available ways for GLM links (name, character string, one-element character vector, or object of class \code{link-glm} as returned by \code{\link[stats]{make.link}}). 
 }
   \item{trunc}{
   Either \code{0L} for zero-truncated distribution, or \code{-1L} for default untruncated dsitribution.

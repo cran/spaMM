@@ -14,7 +14,7 @@
   Prediction from a model fit.
 }
 \description{
-  Prediction of the response variable by its expected value obtained as (the inverse link transformation of) the linear predictor (\eqn{\eta}) and more generally for terms of the form \bold{X}_n\eqn{\beta}+\bold{Z}_n\bold{L}\bold{v}, for new design matrices \bold{X}_n and \bold{Z}_n. Various components of prediction variances and predictions intervals can also be computed using \code{predict}. The \code{get_}... functions are convenient extractors for such components. \code{get_predCov_var_fix} extracts a block of a prediction covariance matrix. It was conceived for the specific purpose of computing the spatial prediction covariances between two ``new'' sets of geographic locations, without computing the full covariance matrix for both the new locations and the original (fitted) locations. \code{preprocess_fix_corr} was conceived to perform this covariance computation more efficiently when one of the two sets of new locations is fixed while the other varies.  
+  Prediction of the response variable by its expected value obtained as (the inverse link transformation of) the linear predictor (\eqn{\eta}) and more generally for terms of the form \bold{X}_n\eqn{\beta}+\bold{Z}_n\bold{L}\bold{v}, for new design matrices \bold{X}_n and \bold{Z}_n. Various components of prediction variances and predictions intervals can also be computed using \code{predict}. The \code{get_}... functions are convenient extractors for such components. \code{get_predCov_var_fix} extracts a block of a prediction covariance matrix. It was conceived for the specific purpose of computing the spatial prediction covariances between two \dQuote{new} sets of geographic locations, without computing the full covariance matrix for both the new locations and the original (fitted) locations. \code{preprocess_fix_corr} was conceived to perform this covariance computation more efficiently when one of the two sets of new locations is fixed while the other varies.
 }
 \usage{
 \method{predict}{HLfit}(object, newdata = newX, newX = NULL, re.form = NULL,
@@ -66,10 +66,10 @@ get_intervals(...)
    It accounts for uncertainty in fixed effects (\bold{X}\eqn{\beta}) and 
    random effects (\bold{ZLv}) for given dispersion parameters (see Details), 
    but it can also accounts for uncertainty in dispersion parameters 
-   (\eqn{\lambda} and \eqn{phi}) estimates if \code{variances$disp=TRUE}, 
+   (\eqn{\lambda} and \eqn{\phi}) estimates if \code{variances$disp=TRUE}, 
    for models in which the effect of uncertainty in dispersion parameters can be computed.  
-   Currently, this effect can be computed for a scalar residual variance (\eqn{\phi}) 
-   and a single random effect with a scalar variance (\eqn{\lambda}). 
+   This effect can be computed for a scalar residual variance (\eqn{\phi}) 
+   and for several random effects with scalar variances (\eqn{\lambda}). 
    \code{variances$predVar=TRUE} will return the sum of the two components, if available; 
    otherwise it returns only the (co)variance for given \eqn{\lambda} and \eqn{\phi}. 
    The latter component can be requested by \code{variances$linPred=TRUE}. 

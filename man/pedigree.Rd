@@ -30,7 +30,7 @@ if(requireNamespace("pedigreemm", quietly=TRUE)) {
   prec_mat <- solve(A)
   colnames(prec_mat) <- rownames(prec_mat) <- rownames(A) # important
   fitme(y01 ~ 1+ corrMatrix(1|IDgen)+(1|IDenv) , covStruct=list(precision=prec_mat),
-        data=obs,family=binomial(), method="REML")
+        data=obs, family=binomial(), method="REML")
 }
 }
 }

@@ -68,3 +68,6 @@ if (spaMM.getOption("example_maxtime")>0.8) {
 HLCor(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(expec)),
           adjMatrix=Nmatrix,family=poisson(),data=scotlip,HLmethod="ML")
 }
+\keyword{ models }% use one of  RShowDoc("KEYWORDS")
+\keyword{ spatial }% __ONLY ONE__ keyword per line
+\keyword{ ts }% __ONLY ONE__ keyword per line

@@ -16,14 +16,21 @@
 
 ## meeting the width.cutoff in deparse :-(
 .DEPARSE <- function(expr) { paste(deparse(expr),collapse="") }
+# but parse(text=deparse(substitute(zut,list(zut=binomial())))) works
+# while parse(text=spaMM:::.DEPARSE(substitute(zut,list(zut=binomial())))) does not ( F I X M E )
 
 overcat <- function(msg, prevmsglength) {
-  if (prevmsglength) {cat("\r")}    
+  if (prevmsglength) {cat("\r")}   # \b effect is terminal-dependent so cannot be relied upon.  
   cat(msg)
   return(nchar(msg))
 }
 
 # removed all 'pastefrom' code in version 2.2.44
+
+.diagfast <- function(x, nc=ncol(x)) {
+  diagPos <- seq.int(1L,nc^2,nc+1L)
+  x[diagPos]
+}
 
 ## quite ad hoc
 .prettify_num <- function(x,nsmall=2L) {
@@ -31,4 +38,20 @@ overcat <- function(msg, prevmsglength) {
     Ldigits <- floor(log10(abs(x)))+nsmall+1L
     format(round(x,Ldigits), digits=nsmall, nsmall=nsmall) ## character !
   } else signif(x,6) ## double !
+}
+
+.prompt <- function() {
+  cat("\nPause: 'c' to continue, 'b' for browsing, 's' to stop")
+  res <- readLines(n = 1)
+  if (res=='s') stop("User-requested stop().")
+  if (res=='b') browser()
+}
+
+# must work on S4 objects but we avoid defining a new S4 class... hence e don't manipulate class
+.subcol_wAttr <- function(X, j, drop) {
+  Xattr <- attributes(X)
+  X <- X[,j=j,drop=drop]
+  names_lostattrs <- setdiff(names(Xattr), names(attributes(X)))
+  attributes(X)[names_lostattrs] <- Xattr[names_lostattrs] ## not mostattributes hich messes S4 objects ?!
+  return(X)
 }

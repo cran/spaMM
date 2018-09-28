@@ -9,16 +9,8 @@
     .Call(`_spaMM_bessel_lnKnu_e`, nu, x)
 }
 
-.sparse_LDLp_from_XtX <- function(XX, pivot) {
-    .Call(`_spaMM_sparse_LDLp_from_XtX`, XX, pivot)
-}
-
 .lmwith_sparse_LDLp <- function(XX, yy, returntQ, returnR, pivot) {
     .Call(`_spaMM_lmwith_sparse_LDLp`, XX, yy, returntQ, returnR, pivot)
-}
-
-.sparse_LLp_from_XtX <- function(XX, pivot) {
-    .Call(`_spaMM_sparse_LLp_from_XtX`, XX, pivot)
 }
 
 .lmwith_sparse_LLp <- function(XX, yy, returntQ, returnR, pivot) {
@@ -33,20 +25,20 @@
     .Call(`_spaMM_lmwithQRP`, XX, yy, returntQ, returnR)
 }
 
-.lmwith_sparse_QRp <- function(XX, yy, returntQ, returnR, pivot) {
-    .Call(`_spaMM_lmwith_sparse_QRp`, XX, yy, returntQ, returnR, pivot)
+.lmwith_sparse_QRp <- function(XX, yy, returntQ, returnR, COLAMDO = TRUE) {
+    .Call(`_spaMM_lmwith_sparse_QRp`, XX, yy, returntQ, returnR, COLAMDO)
 }
 
 .Rcpp_chol_R <- function(AA) {
     .Call(`_spaMM_Rcpp_chol_R`, AA)
 }
 
-.LevMar_cpp <- function(AA, LMrhs) {
-    .Call(`_spaMM_LevMar_cpp`, AA, LMrhs)
+.Rcpp_dense_cbind_mat_mat <- function(a, b) {
+    .Call(`_spaMM_Rcpp_dense_cbind_mat_mat`, a, b)
 }
 
-.Rcpp_as_dgCMatrix <- function(XX_) {
-    .Call(`_spaMM_Rcpp_as_dgCMatrix_`, XX_)
+.Rcpp_dense_cbind_mat_vec <- function(a, b) {
+    .Call(`_spaMM_Rcpp_dense_cbind_mat_vec`, a, b)
 }
 
 .rankinfo <- function(x, tol) {
@@ -69,10 +61,6 @@
     .Call(`_spaMM_ZtWZ`, ZZ, WW)
 }
 
-.Rcpp_Sig <- function(ZZ, WA, WB) {
-    .Call(`_spaMM_Rcpp_Sig`, ZZ, WA, WB)
-}
-
 .Rcpp_d2hdv2 <- function(ZZ, WA, WB) {
     .Call(`_spaMM_Rcpp_d2hdv2`, ZZ, WA, WB)
 }
@@ -89,10 +77,6 @@
     .Call(`_spaMM_tcrossprodCpp`, Mat, yy)
 }
 
-.e_LevenbergMsolveCpp <- function(AA, wwAugz, dd) {
-    .Call(`_spaMM_e_LevenbergMsolveCpp`, AA, wwAugz, dd)
-}
-
 .LevenbergMsolveCpp <- function(AA, rrhhss, dd) {
     .Call(`_spaMM_LevenbergMsolveCpp`, AA, rrhhss, dd)
 }
@@ -103,9 +87,5 @@
 
 .selfAdjointSolverCpp <- function(AA) {
     .Call(`_spaMM_selfAdjointSolverCpp`, AA)
-}
-
-.LevPerturbedQCpp <- function(perturbedwAugX, pforREML, RpRu, RpRd, lamOverLam0, phiOverPhi0) {
-    .Call(`_spaMM_LevPerturbedQCpp`, perturbedwAugX, pforREML, RpRu, RpRd, lamOverLam0, phiOverPhi0)
 }
 

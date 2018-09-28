@@ -12,13 +12,6 @@
 
 .newetaFix <- function(object, newMeanFrames,validnames=NULL) {
   ## newdata -> offset must be recomputed. 
-  off <- model.offset( newMeanFrames$mf) ### look for offset from (ori)Formula 
-  if ( is.null(off) ) { ## ## no offset (ori)Formula term. 
-    ## then we check that no non zero $offset was used. This would make prediction generally incorrect
-    if (! is.null(off <- attr(object$predictor,"offsetObj")$offsetArg)) { ## that means there was a non trivial offset argument in the original Predictor(formula...)  
-      message("Prediction in new design points from a fit with formula=Predictor(... non-NULL offset ...) is suspect.")
-    } ## but we still proceed with this dubious offset
-  }    
   ## dans l'état actuel $fixef et complet, incluant les etaFix$beta: pas besoin de les séparer
   ## mais il peut contenir des NA ! à enlever
   # le newX contient a priori les cols des etaFix$beta, contrairement à object$X.pv => don't use the latter cols 
@@ -28,6 +21,7 @@
   }
   if (length(validnames)==0L) validnames <- c() ## without this, validnames could be character(0) and [,validnames,drop=FALSE] fails.
   etaFix <-  drop(newMeanFrames$X[,validnames,drop=FALSE] %*% object$fixef[validnames]) ## valide even if ncol(newMeanFrames$X) = 0
+  off <- model.offset( newMeanFrames$mf) ### look for offset from (ori)Formula 
   if ( ! is.null(off)) etaFix <- etaFix + off   
   return(etaFix)
 }
@@ -52,7 +46,7 @@
 # FR->FR misses the computation of random effects for new spatial positions: cf comments in the code below
 simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
                            type = "marginal", conditional=NULL, verbose=TRUE,
-                           sizes=NULL , resp_testfn=NULL, ...) { ## object must have class HLfit; corr pars are not used, but the ZAL matrix is.
+                           sizes=NULL , resp_testfn=NULL, phi_type="predict", prior.weights=object$prior.weights, ...) { ## object must have class HLfit; corr pars are not used, but the ZAL matrix is.
   ## RNG stuff copied from simulate.lm
   if (!exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE))
     runif(1)
@@ -80,7 +74,7 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
   while((needed <- nsim-done)) { ## loop operates only for resp_testfn
     if (nrand==0L) {
       mu <- predict(object,newdata=newdata,binding=NA)
-      if (needed>1) mu <- replicate(needed,mu,simplify=FALSE) # mu <- matrix(rep(mu,nsim),ncol=nsim)
+      mu <- replicate(needed,mu,simplify=FALSE) # always a list at this stage
     } else { ## MIXED MODEL
       if (type=="(ranef|response)") { ## Booth & Hobert approximate approach
         if (verbose) cat("Simulation from conditional random effect distribution | observed response:\n") 
@@ -93,9 +87,9 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
           } else mu <- object$family$linkinv(rand_eta) ## ! freqs for binomial, counts for poisson: suitable for final code
         } else stop("This conditional simulation is not implemented for non-gaussian random-effects")
       } else if ( type=="residual") { ## conditional on predicted ranefs
-        if (verbose) cat("Unconditional simulation given predicted random effects:\n") 
+        if (verbose) cat("Conditional simulation given predicted random effects:\n") 
         mu <- predict(object,newdata=newdata,binding=NA)
-        if (needed>1) mu <- replicate(needed,mu,simplify=FALSE) #matrix(rep(mu,nsim),ncol=nsim)
+        mu <- replicate(needed,mu,simplify=FALSE) #matrix(rep(mu,nsim),ncol=nsim)
       } else if ( type=="marginal"){ ## unconditional MIXED MODEL
         if (verbose) cat("Unconditional simulation:\n") 
         mu_fixed <- predict(object, newdata=newdata, re.form=NA,binding=NA) ## mu_T
@@ -108,8 +102,12 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
           vec_n_u_h <- diff(cum_n_u_h)
         } else { ## unconditional MM with newdata
           #   ## [-2] so that HLframes does not try to find the response variables  
-          allFrames <- .HLframes(formula=attr(object$predictor,"oriFormula")[-2],data=newdata) 
-          ZALlist <- .spMMFactorList(object$predictor, allFrames$mf, rmInt=0L, drop=TRUE,sparse_precision=FALSE) 
+          ranef_form <- formula.HLfit(object)[-2]
+          ranef_form <- as.formula(paste("~",(paste(.parseBars(ranef_form),collapse="+")))) ## effective '.noFixef'
+          frame_ranefs <- .calc_newFrames_ranef(formula=ranef_form,data=newdata, fitobject=object)$mf 
+          ## : F I X M E suboptimal since we call also .calc_newFrames_ranef() in predict -> . -> .calc_new_X_ZAC()
+          Zlist <- .calc_Zlist(formula=object$predictor, mf=frame_ranefs, rmInt=0L, drop=TRUE,sparse_precision=FALSE)
+          ZALlist <-  .calc_ZAlist(Zlist,AMatrices=attr(object$ZAlist,"AMatrices")) 
           ##### the following code ignores spatial effects with newdata:
           # to overcome this we need to calculate the unconditional covmat including for the (new) positions
           vec_n_u_h <- unlist(lapply(ZALlist,ncol)) ## nb cols each design matrix = nb realizations each ranef
@@ -143,7 +141,47 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
       } else stop("Unknown simulate 'type' value.")
     }
     ## ! mu := freqs for binomial, counts for poisson ## vector or matrix
-    phiW <- object$phi/object$prior.weights ## cf syntax and meaning in Gamma()$simulate / spaMM_Gamma$simulate
+    # phiW is always a matrix but mu cannot bc its elements may have attributes =>
+    if ( ! inherits(mu,"list")) mu <- data.frame(mu) ## makes it always a list
+    if (length(mu) != needed) stop("Programming error in simulate.HLfit() (ncol(mu) != needed).")
+    #
+    phi_model <-  object$models[["phi"]]
+    if (phi_model == "") { ## the count families, or user-given phi
+      if (length(object$phi)>1L) {
+        if (is.null(newdata)) {
+          message(paste0("simulate.HLfit() called on an original fit where phi was given but not constant.\n",
+                         "This phi will be used, but is that relevant?"))
+        } else stop("I do not know what to simulate when 'newdata' is not NULL and the original fit's phi was given but not constant.")
+      }  
+      newphiMat <- matrix(object$phi,ncol=length(mu),nrow=length(mu[[1L]]))
+      if (identical(attr(prior.weights,"unique"),TRUE)) {
+        phiW <- newphiMat/prior.weights[1L]
+      } else phiW <- .Dvec_times_matrix(1/prior.weights,newphiMat)  ## warnings or errors if something suspect
+    } else if (phi_type=="predict") {
+      newphiVec <- switch(phi_model,
+                       "phiGLM" = predict(object$phi.object$glm_phi, 
+                                          newdata=newdata, type="response"), ## vector
+                       "phiHGLM" = predict(object$phi_model, newdata=newdata, type=phi_type)[,1L],
+                       "phiScal" = rep(object$phi,length(mu[[1L]])),
+                       stop('Unhandled object$models[["phi"]]')
+      ) ## vector in all cases
+      if (identical(attr(prior.weights,"unique"),TRUE)) {
+        phiW <- newphiVec/prior.weights[1L]
+      } else phiW <- newphiVec/prior.weights  ## warnings or errors if something suspect
+      phiW <- matrix(phiW,nrow=length(phiW), ncol=length(mu))  # vector -> matrix
+    } else { # any other phi_type 
+      newphiMat <- switch(phi_model,
+                       "phiGLM" = as.matrix(simulate(object$phi.object$glm_phi, 
+                                                     newdata=newdata, nsim=needed)), ## data frame -> matrix
+                       "phiHGLM" = simulate(object$phi_model, newdata=newdata, type=phi_type, nsim=needed),
+                       "phiScal" = matrix(object$phi,ncol=length(mu),nrow=length(mu[[1L]])),
+                       stop('Unhandled object$models[["phi"]]')
+      )
+      if (identical(attr(prior.weights,"unique"),TRUE)) {
+        phiW <- newphiMat/prior.weights[1L]
+      } else phiW <- .Dvec_times_matrix(1/prior.weights,newphiMat)  ## warnings or errors if something suspect
+      # F I X M E add diagnostics ?
+    } # phiW is always a matrix
     family <- object$family
     famfam <- object$family$family
     # resu <- object$family$simulate(object,nsim=nsim) ## could be OK and more efficient for CONDITIONAL simulation
@@ -155,12 +193,10 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
     } else if (famfam == "poisson") {
       zero_truncated <- identical(object$family$zero_truncated,TRUE)
     }
-    # mu may be a list, in which case sapply(., simplify=TRUE) is a matrix (possibly 1-col=>may need conversion to vector); 
-    # or mu may be matrix/vector, in which case sapply(., simplify=TRUE) is a vector (and may need conversion to matrix).
-    # Let's try to uniformize the input hence output of the sapply():
-    if (!inherits(mu,"list")) mu <- data.frame(mu) ## converts to list
-    block <- sapply(mu, .r_resid_var, phiW=phiW,sizes=sizes,COMP_nu=COMP_nu,NB_shape=NB_shape, zero_truncated=zero_truncated,
-                    famfam=famfam, simplify=TRUE) ## simplify from list to matrix in all cases !
+    block <- NA*phiW
+    for (ii in seq_len(needed)) block[,ii] <- 
+      .r_resid_var(mu[[ii]], phiW=phiW[,ii],sizes=sizes,COMP_nu=COMP_nu,NB_shape=NB_shape, 
+                   zero_truncated=zero_truncated, famfam=famfam)
     if (is.null(resp_testfn)) {
       if (nsim==1L) block <- drop(block)
       return(block) 

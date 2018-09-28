@@ -16,12 +16,12 @@ CauchyCorr(d, rho=1, shape, longdep, Nugget=NULL)
 \arguments{
   \item{d}{Euclidean or great-circle distance}
   \item{rho}{The scaling factor for distance, a real >0.}
-  \item{shape}{The shape parameter, a real 0<.<=2 for Euclidean distances and 0<.<=1 for great-circle distances.}
+  \item{shape}{The shape (smoothness) parameter, a real 0<.<=2 for Euclidean distances and 0<.<=1 for great-circle distances. Smoothness increases, and fractal dimension decreases, with increasing shape (the fractal dimension of realizations in spaces of dimension \eqn{d} being \eqn{d}+1-shape/2).}
   \item{longdep}{The long-memory dependence parameter, a real >0. It gives the exponent of the asymptotic decrease of correlation with distance: the \bold{smaller} \code{longdep} is, the longer the dependence.}
   \item{Nugget}{(Following the jargon of Kriging) a parameter describing a discontinuous decrease in 
     correlation at zero distance. Correlation will always be 1 at \eqn{d=0}, and from which it immediately drops to 
     (1-Nugget). Defaults to zero.}
-  \item{...}{Names of coordinates, using \dQuote{+} as separator (e.g., \code{Matern(1|latitude + longitude)}}
+  \item{\dots}{Names of coordinates, using \dQuote{+} as separator (e.g., \code{Matern(1|latitude + longitude)}}
 }
 \details{
 The correlation at distance \eqn{d>0} is 
@@ -45,5 +45,5 @@ randpts <- matrix(rnorm(20),nrow=5)
 distMatrix <- as.matrix(proxy::dist(randpts))
 CauchyCorr(distMatrix,rho=0.1,shape=1,longdep=10)
 }
-% Add one or more standard keywords, see file 'KEYWORDS' in the
-% R documentation directory.
+\keyword{ models }% use one of  RShowDoc("KEYWORDS")
+\keyword{ spatial }% __ONLY ONE__ keyword per line

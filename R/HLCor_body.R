@@ -57,6 +57,8 @@
     } else resu[[lit]] <- covStruct[[lit]]
   }
   names(resu) <- types ## repeated names possible
+  attr(resu,'AMatrices') <- AMatrices <- attr(covStruct,'AMatrices')
+  if ( ! is.null(AMatrices) && ! is.list(AMatrices)) {stop("attr(covStruct,'AMatrices') must be a list.")} 
   return(resu)
 }
 
@@ -80,9 +82,9 @@
   if (is.null(corrnames)) {
     message("corrMatrix without labels: first grouping levels are matched\n  to first rows of corrMatrix, without further check.\n This may cause later errors (notably, wrongly dimensioned matrices) \n See help(\"corrMatrix\") for a safer syntax.")
   }
-  ZAnames <- colnames(ZA) ## set by .spMMFactorList(), with two cases for corrMatrix 
+  ZAnames <- colnames(ZA) ## set by .calc_Zlist() or .calc_ZAlist(), with two cases for corrMatrix 
   if (is.null(ZAnames)) {
-    stop("NULL colnames in (a block of) the design matrix for random effects. Some mishandling of 'AMatrix'?")
+    stop("NULL colnames in (a block of) the design matrix for random effects. Some mishandling of 'AMatrices'?")
   }
   if ( length(setdiff(ZAnames,corrnames)) ==0L ) { ## i.e. all ZAnames in corrnames
     ## : should be the case when generator = "as.factor"
@@ -118,10 +120,10 @@
 }
 
 .calc_AR1_t_chol_Q_block <- function(n_u, ARphi) {
-  t_chol_Q <- Diagonal(x=c(rep(1,n_u-1L),sqrt(1-ARphi^2))) 
-  if (n_u>1L) diag(t_chol_Q[,-1,drop=FALSE]) <- -ARphi 
-  t_chol_Q <- t_chol_Q/sqrt(1-ARphi^2) # equivalent to nlme's AR1_fact() in corStruct.c
-  return(t_chol_Q)
+  denom <- sqrt(1-ARphi^2)
+  t_chol_Q <- Diagonal(x=c(rep(1/denom,n_u-1L),1)) 
+  if (n_u>1L) diag(t_chol_Q[,-1,drop=FALSE]) <- -ARphi/denom 
+  return(t_chol_Q) # equivalent to nlme's AR1_fact() in corStruct.c
 }
 
 
@@ -133,27 +135,32 @@ HLCor_body <- function(processed, ## single environment
   spatial_terms <- attr(processed$ZAlist,"exp_spatial_terms")
   corr_types <- processed$corr_info$corr_types
   ## convert back ranPars to canonical scale:
-  ranPars <- .post_process_parlist(ranPars,corr_types=corr_types) 
-  ranPars <- .canonizeRanPars(ranPars=ranPars,corr_types=corr_types) ## with init.HLfit as attribute
+  ranPars <- .post_process_parlist(ranPars,corr_families=processed$corr_info$corr_families) 
+  ranPars <- .canonizeRanPars(ranPars=ranPars,
+                              corr_info=processed$corr_info) ## with init.HLfit as attribute
   ########################################################################################################################
   # * assigns geo_envir <- .get_geo_info(...)
   # * modifies processed$AUGI0_ZX$envir by .init_precision_info(...) 
   # * computes processed$AUGI0_ZX$envir$LMatrices except for ranCoefs (the latter being filled in HLfit_body)
   .assign_geoinfo_and_LMatrices_but_ranCoefs(processed, corr_types, spatial_terms, ranPars, control.dist, 
-                                argsfordesignL=dotlist[intersect(names(dotlist),names(formals(designL.from.Corr)))] )
+                                argsfordesignL=dotlist[intersect(names(dotlist),names(formals(.spaMM.data$options$mat_sqrt_fn)))] )
   ########################################################################################################################
   ###
-  HLFormals <- names(formals(HLfit)) 
-  good_dotnames <- intersect(names(dotlist),HLFormals)
-  if (length(good_dotnames)) {
-    HL.info <- dotlist[good_dotnames]  ## including init.HLfit: possibly modified from processed$init_HLfit by <corrfitme>_body 
-  } else HL.info <- list()
-  ## all printing in HLfit is suppressed by default
-  HL.info$processed <- processed
-  HL.info$init.HLfit <- .modify_list(HL.info$init.HLfit, attr(ranPars,"init.HLfit")) 
-  attr(ranPars,"init.HLfit") <- NULL
-  HL.info$ranFix <- ranPars
-  hlfit <- do.call("HLfit",HL.info) 
+  if ( (! is.null(processed$return_only)) && processed$augZXy_cond) {
+    hlfit <- do.call(.spaMM.data$options$augZXy_fitfn,list(processed=processed, ranFix=ranPars))
+  } else {
+    HLFormals <- names(formals(HLfit)) 
+    good_dotnames <- intersect(names(dotlist),HLFormals)
+    if (length(good_dotnames)) {
+      HL.info <- dotlist[good_dotnames]  ## including init.HLfit: possibly modified from processed$init_HLfit by <corrfitme>_body 
+    } else HL.info <- list()
+    ## all printing in HLfit is suppressed by default
+    HL.info$processed <- processed
+    HL.info$init.HLfit <- .modify_list(HL.info$init.HLfit, attr(ranPars,"init.HLfit")) 
+    attr(ranPars,"init.HLfit") <- NULL
+    HL.info$ranFix <- ranPars
+    hlfit <- do.call("HLfit",HL.info) 
+  }  
   ## Here there was debug code that saved HL.info in case of error; before 1.8.5
   if ( ! is.null(processed$return_only)) {
     return(hlfit)    ########################   R E T U R N   a list with $APHLs, with class "list"
@@ -171,7 +178,7 @@ HLCor_body <- function(processed, ## single environment
   attr(hlfit,"info.uniqueGeo") <- info_uniqueGeo
   #attr(hlfit,"control_dists") <- control.dist
   #
-  hlfit$call <- "$call removed by HLCor. Use getCall() to extract the call from the object." ## instead of the $call with evaluated arguments
+  hlfit$call <- "$call removed by HLCor_body. Use getCall() to extract the call from the object." ## instead of the $call with evaluated arguments
   return(hlfit) ## 
 }
 
@@ -200,20 +207,26 @@ HLCor_body <- function(processed, ## single environment
   
   HLCor.formals <- names(formals(HLCor))
   names_formals_HLfit <- names(formals(HLfit))
-  designL.formals <- names(formals(designL.from.Corr))
+  designL.formals <- names(formals(.spaMM.data$options$mat_sqrt_fn))
   makescaled.formals <- names(formals(make_scaled_dist))
   HLnames <- (c(HLCor.formals,names_formals_HLfit,designL.formals,makescaled.formals))  ## cf parallel code in corrHLfit
   HLCor.call <- mc[c(1,which(names(mc) %in% HLnames))] ## keep the call structure
-  ranPars <- .modify_list(HLCor.call$ranPars, relist(ranefParsVec,skeleton))
+  ranefParsList <- relist(ranefParsVec,skeleton)
+  print_phiHGLM_info <- ( ! is.null(processed$residProcessed) && processed$verbose["phifit"])
+  if (print_phiHGLM_info) {
+    urP <- unlist(.canonizeRanPars(ranefParsList, corr_info=processed$corr_info,checkComplete=FALSE))
+    processed$port_env$prefix <- paste0("HLCor for ", paste(signif(urP,6), collapse=" "), ": ")
+  } 
+  ranPars <- .modify_list(HLCor.call$ranPars, ranefParsList)
   rpType <- .modify_list(attr(HLCor.call$ranPars,"type"),attr(skeleton,"type"))
   moreargs <- attr(skeleton,"moreargs")
-  if ( ! is.null(ranPars$resid) ) {
+  if ( ! is.null(ranPars$resid) ) { ## mmm FIXME never operational ?
     resid_ranPars <- structure(ranPars$resid, ## but not sure that the attributes are necessary...
                                type=rpType$resid, 
                                moreargs=moreargs$resid)
     # canonize bc fitme_body(,fixed=.) does not handle transformed parameters
     processed$residProcessed$envir$ranPars <- .canonizeRanPars(ranPars=resid_ranPars,
-                                corr_types=processed$residProcessed$corr_info$corr_types,
+                                corr_info=processed$residProcessed$corr_info,
                                 checkComplete = FALSE) 
     ranPars$resid <- NULL
     rpType$resid <- NULL
@@ -232,7 +245,12 @@ HLCor_body <- function(processed, ## single environment
   #
   aphls <- hlfit$APHLs
   resu <- aphls[[objective]]
+  if (print_phiHGLM_info) cat(paste0(objective,"=",resu)) # verbose["phifit"]
   if (objective=="cAIC") resu <- - resu ## for minimization of cAIC (private & experimental)
+  if (processed$augZXy_cond && resu>processed$augZXy_env$objective) {
+    processed$augZXy_env$objective <- resu
+    processed$augZXy_env$phi_est <- aphls[["phi_est"]]
+  }
   return(resu) #
 }
 

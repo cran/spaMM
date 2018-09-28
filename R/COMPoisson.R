@@ -103,26 +103,23 @@
     if ("1" %in% moments) {
       num <- .COMP_Z_n(lambda=lambda,nu=nu)
       resu["1"] <- .COMP_Z_ratio(num,denum)
-      if (TRUE) {
-        corr <- .COMP_Z_ratio(.COMP_Z_n(lambda=lambda,nu=1), denum_corr) ## poisson value by general approx
-        resu["1"] <- resu["1"]+(lambda-corr) ## approx_any_nu+(exact_poi-approx_poi): exact in nu=1
-      }
+      # cotinuity correction wrt poisson: 
+      corr <- .COMP_Z_ratio(.COMP_Z_n(lambda=lambda,nu=1), denum_corr) ## poisson value by general approx
+      resu["1"] <- resu["1"]+(lambda-corr) ## approx_any_nu+(exact_poi-approx_poi): exact in nu=1
     }
     if ("2" %in% moments) {
       num <- .COMP_Z_n2(lambda=lambda,nu=nu)
       resu["2"] <- .COMP_Z_ratio(num,denum)
-      if (TRUE) {
-        corr <- .COMP_Z_ratio(.COMP_Z_n2(lambda=lambda,nu=1), denum_corr) ## poisson value by general approx
-        resu["2"] <- resu["2"]+(lambda*(1+lambda)-corr) ## approx_any_nu+(exact_poi-approx_poi): exact in nu=1
-      }
+      # cotinuity correction wrt poisson: 
+      corr <- .COMP_Z_ratio(.COMP_Z_n2(lambda=lambda,nu=1), denum_corr) ## poisson value by general approx
+      resu["2"] <- resu["2"]+(lambda*(1+lambda)-corr) ## approx_any_nu+(exact_poi-approx_poi): exact in nu=1
     }
     if ("3" %in% moments) {
       num <- .COMP_Z_n3(lambda=lambda,nu=nu)
       resu["3"] <- .COMP_Z_ratio(num,denum)
-      if (TRUE) {
-        corr <- .COMP_Z_ratio(.COMP_Z_n3(lambda=lambda,nu=1), denum_corr) ## poisson value by general approx
-        resu["3"] <- resu["3"]+(lambda*(1+lambda*(3+lambda))-corr) ## approx_any_nu+(exact_poi-approx_poi): exact in nu=1
-      }
+      # cotinuity correction wrt poisson: 
+      corr <- .COMP_Z_ratio(.COMP_Z_n3(lambda=lambda,nu=1), denum_corr) ## poisson value by general approx
+      resu["3"] <- resu["3"]+(lambda*(1+lambda*(3+lambda))-corr) ## approx_any_nu+(exact_poi-approx_poi): exact in nu=1
     }
   }
   return(resu)

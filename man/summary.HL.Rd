@@ -27,7 +27,7 @@
   \item{x}{  The return object of HLfit or related functions.}
   \item{verbose}{  for \code{summary.fixedLRT}, whether to print the model fits or not. }
   \item{max.print}{Controls \code{options("max.print")} locally.}
-  \item{details}{  whether to print some obscure details. Currently affects only random-coefficients models (see Details).}
+  \item{details}{A vector with elements controlling whether to print some obscure details. Element \code{ranCoefs=TRUE} will print details about random-coefficients terms (see Details); and element \code{p_value="Wald"} will print a p-value for the t-value of each fixed-effect coefficient, assuming a gaussian distribution of the test statistic.}
   \item{\dots}{  further arguments passed to or from other methods. }
 }
 \value{

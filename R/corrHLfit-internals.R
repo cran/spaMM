@@ -40,22 +40,197 @@ if (FALSE) {
 .nuInv <- function(trNu,trRho,NUMAX) {NUMAX*exp(trNu)/(1+exp(trNu))}
 .longdepFn <- function(longdep,LDMAX) {log(longdep/(LDMAX-longdep))} 
 .longdepInv <- function(trLongdep,LDMAX) {LDMAX*exp(trLongdep)/(1+exp(trLongdep))}
-.ranCoefsFn <- function(vec) {
-  if ( ! is.null(vec)) {
-    Xi_cols <- floor(sqrt(2*length(vec)))
-    lampos <- cumsum(seq(Xi_cols))
-    vec[lampos] <- .dispFn(vec[lampos])
-  }
-  return(vec)
+
+## spherical transfo of Pinheiro and Bates 96; see further explanation
+# https://math.stackexchange.com/questions/1326462/spherical-parametrization-of-a-cholesky-decomposition/1329660#1329660
+# if this is used then 2 lines must be uncommented in .makeLowerUpper() !!! 
+.sphFn <- function(covpars,Xi_ncol=NULL, unbounded=TRUE) { ## from *cov* parameter vector to trRancoefs
+  if (is.null(Xi_ncol)) Xi_ncol <- floor(sqrt(length(covpars)*2))
+  cholmat <- diag(Xi_ncol)
+  cholmat[lower.tri(cholmat,diag = TRUE)] <- covpars
+  lambdas <- diag(cholmat)
+  tocorr <- diag(x=sqrt(1/lambdas))
+  cholmat <- tocorr %*% cholmat %*% tocorr
+  diag(cholmat) <- diag(cholmat)/2
+  cholmat <- t(cholmat) + cholmat
+  if (TRUE){ ## svd +qr more precise ? .sphFn is not often called... (only in inits outer optim)
+    svdv <- svd(cholmat)
+    esys <- with(svdv,list(values=d,vectors=(u+v)/2))
+    crossfac <- .Dvec_times_matrix(sqrt(esys$values), t(esys$vectors))
+    cholmat <- qr.R(qr(crossfac))
+  } else cholmat <- .CHOL(cholmat) ### potential source of problems as crossprod() in .sphInv() may not be the exact inverse
+  if (unbounded) {
+    corrpars <- numeric(0)
+    for (i in 2:Xi_ncol) {
+      # operations on col i of the chol 
+      aux <- acos(cholmat[1:(i - 1), i]/sqrt(cumsum(cholmat[i:1, i]^2)[i:2]))
+      # corr: -1   0   1
+      # aux:  pi pi/2  0
+      if (.spaMM.data$options$rC_unbounded) {
+        corrpars <- c(corrpars, log(aux/(pi - aux))) # log:  Inf  0  -Inf
+      } else corrpars <- c(corrpars,2*(aux/pi)-1) # second terms in (-1,1)
+    }
+    trRancoef <- c(log(lambdas)/2, corrpars) ## trRancoef:= unconstrained parameterization of the cov matrix with log sigma in first positions
+    if(any(is.nan(trRancoef))) stop("any(is.nan(trRancoef))")
+  } else trRancoef <- c(log(lambdas)/2, cholmat[lower.tri(cholmat)])
+  return(trRancoef) 
 }
-.ranCoefsInv <- function(vec) {
-  if ( ! is.null(vec)) {
-    Xi_cols <- floor(sqrt(2*length(vec)))
-    lampos <- cumsum(seq(Xi_cols))
-    vec[lampos] <- .dispInv(vec[lampos])
-  }
-  return(vec)
+
+.sphInv <- function(trRancoef,Xi_ncol=NULL) { ## from trRancoefs, with log sigma in first positions, to *cov* parameter vector
+  if (is.null(Xi_ncol)) Xi_ncol <- floor(sqrt(length(trRancoef)*2))
+  covmat <- .calc_cov_from_trRancoef(trRancoef,Xi_ncol=Xi_ncol)
+  return(covmat[lower.tri(covmat,diag = TRUE)]) ## vector representation of the cov matrix using covariances
 }
+#.sphInv(.sphFn(c(1,1,1,5,5,14)))
+
+.regularized_eigen <- function(compactcovmat, condnum, raw_regul = NULL) {
+  if ( ! is.null(raw_regul)) {
+    Xi_ncol <- ncol(compactcovmat)
+    diagPos <- seq.int(1L,Xi_ncol^2,Xi_ncol+1L)
+    compactcovmat[diagPos] <- compactcovmat[diagPos] + raw_regul 
+  }
+  #if ( ! is.null(condnum)) {
+    if (TRUE) {
+      svdv <- svd(compactcovmat)
+      esys <- with(svdv,list(values=d,vectors=(u+v)/2))  ## a bit heuristic, but this appears more accurate
+    } else {
+      esys <- eigen(compactcovmat,symmetric = TRUE) ## COV= .ZwZt(esys$vectors,esys$values) ##
+    }
+    target_min_d <- max(esys$values)/condnum ## so that corrected condition number is at most the denominator: 
+    d_corr <- max(c(0,target_min_d-esys$values))
+    d_regul <- esys$values+ d_corr # all diag is corrected => added a constant diagonal matrix to compactcovmat
+    #
+    compactcovmat <- .ZWZt(esys$vectors, d_regul) # at least for return value
+    return(structure(compactcovmat, esys=esys, d_regul=d_regul))
+  #} else return(compactcovmat)
+}
+
+.calc_cov_from_trRancoef <- function(trRancoef, Xi_ncol=NULL) { ## note use in .sphInv
+  if (is.null(Xi_ncol)) Xi_ncol <- attr(trRancoef,"Xi_ncol")
+  if (is.null(Xi_ncol)) Xi_ncol <- floor(sqrt(length(trRancoef)*2))
+  cumnp <- c(0,cumsum(seq(Xi_ncol-1)))
+  offdiag <- trRancoef[-seq(Xi_ncol)] #*10
+  if (.spaMM.data$options$rC_unbounded) {
+    ox <- pi*exp(offdiag)/(1+exp(offdiag)) # PinheiroB96
+  } else ox <- pi*((offdiag + 1)/2)
+  cholmat <- diag(nrow=Xi_ncol)
+  for (col in 2:Xi_ncol) {
+    oxrange <- (cumnp[col-1L]+1L):(cumnp[col])
+    subox <- cos(ox[oxrange])
+    cossign <- sign(subox)
+    subox <- - diff(c(1,cumprod(1-subox^2)))
+    cholmat[seq(col-1L),col] <- cossign*sqrt(subox)
+    cholmat[col,col] <- sqrt(1-sum(subox))
+  }
+  corrmat <- crossprod(cholmat)  ## .crossprod not interesting for small matrices
+  sqrtlam <- diag(x=exp(trRancoef[1:Xi_ncol])) # tried .dispInv
+  covmat <- sqrtlam %*% corrmat %*% sqrtlam
+  if(any(is.nan(covmat))) stop("any(is.nan(covmat))")
+  return(covmat)
+}
+
+.calc_invL_from_trRancoef <- function(trRancoef, Xi_ncol=NULL,sing_threshold=.spaMM.data$options$invL_threshold) { ## note use in .sphInv
+  if (is.null(Xi_ncol)) Xi_ncol <- attr(trRancoef,"Xi_ncol")
+  if (is.null(Xi_ncol)) Xi_ncol <- floor(sqrt(length(trRancoef)*2))
+  cumnp <- c(0,cumsum(seq(Xi_ncol-1)))
+  offdiag <- trRancoef[-seq(Xi_ncol)] 
+  if (.spaMM.data$options$rC_unbounded) {
+    ox <- pi*exp(offdiag)/(1+exp(offdiag)) # PinheiroB96
+  } else ox <- pi*((offdiag + 1)/2)
+  cholmat_corr <- diag(nrow=Xi_ncol)
+  for (col in 2:Xi_ncol) {
+    oxrange <- (cumnp[col-1L]+1L):(cumnp[col])
+    subox <- cos(ox[oxrange])
+    cossign <- sign(subox)
+    subox <- - diff(c(1,cumprod(1-subox^2)))
+    cholmat_corr[seq(col-1L),col] <- cossign*sqrt(subox)
+    cholmat_corr[col,col] <- sqrt(1-sum(subox))
+  }
+  inv_cholmat_corr <- solve(cholmat_corr)
+  dvec <- exp(-trRancoef[1:Xi_ncol]) #1/sigma
+  crossfac_precmat <- t(.Dvec_times_matrix(dvec, inv_cholmat_corr))
+  #print(range(crossfac_precmat))
+  #kappa(crossfac_precmat)>sing_threshold
+  if (prod(.diagfast(crossfac_precmat,Xi_ncol))>sing_threshold) { ## F I X_invL any(.diagfast(crossfac_precmat,Xi_ncol)>sing_threshold) maybe not the good test
+    return(NULL)
+  } else return(crossfac_precmat)
+}
+
+
+
+.ranCoefsFn <- function(vec) { # from canonical vector (var+corr) space
+  if ( ! is.null(vec)) {
+    transf <- attr(vec,"transf")
+    if ( TRUE &&  ! is.null(transf)) { 
+      resu <- structure(transf,
+                        canon=as.vector(vec), # as.vector() to drop attributes
+                        Xi_ncol=attr(vec,"Xi_ncol"))
+      return(resu)
+    }
+    Xi_ncol <- attr(vec,"Xi_ncol")
+    if (is.null(Xi_ncol)) Xi_ncol <- floor(sqrt(length(vec)*2))
+    #
+    compactcovmat <- matrix(0,nrow=Xi_ncol,ncol=Xi_ncol)
+    lowerbloc <- lower.tri(compactcovmat,diag=TRUE) ## a matrix of T/F !
+    compactcovmat[lowerbloc] <- vec
+    diagPos <- seq.int(1L,Xi_ncol^2,Xi_ncol+1L)
+    lambdas <- compactcovmat[diagPos]
+    # lambdas <- lambdas + 1e-10 # here that woudl affect the fonversion from correlation to covariances
+    sigmas <- diag(x=sqrt(lambdas)) 
+    #
+    compactcovmat[diagPos] <- 1
+    compactcovmat <- sigmas %*% compactcovmat %*% sigmas ## using lower tri only
+    trRancoef <- structure(.sphFn(compactcovmat[lowerbloc],Xi_ncol=Xi_ncol),
+                      canon=vec,
+                      Xi_ncol=Xi_ncol)
+    return(trRancoef) # to transformed, 'unbounded' parameter space with log sigma in first positions
+  } else return(NULL)
+}
+
+.calc_cov_from_ranCoef <- function(ranCoef, Xi_ncol=attr(ranCoef,"Xi_ncol")) {
+  # assume input is marginal variances + correlation as in user input, but ordered as in lower.tri
+  compactcovmat <- matrix(0,nrow=Xi_ncol,ncol=Xi_ncol)
+  lowerbloc <- lower.tri(compactcovmat,diag=TRUE) ## a matrix of T/F !
+  compactcovmat[lowerbloc] <- ranCoef
+  diagPos <- seq.int(1L,Xi_ncol^2,Xi_ncol+1L)
+  lambdas <- compactcovmat[diagPos]
+  # lambdas <- lambdas + 1e-10 # here that would affect the conversion from correlation to covariances
+  sigmas <- diag(x=sqrt(lambdas)) 
+  compactcovmat <- (compactcovmat+t(compactcovmat))
+  compactcovmat[diagPos] <- 1
+  compactcovmat <- sigmas %*% compactcovmat %*% sigmas
+  # compactcovmat[diagPos] <- compactcovmat[diagPos] + 1e-10
+  return(compactcovmat)
+}  
+
+.ranCoefsInv <- function(trRancoef) { # from transformed, 'unbounded' parameter space to correlation parameter vector
+  if ( ! is.null(trRancoef)) {
+    canon <- attr(trRancoef,"canon")
+    if (TRUE &&  ! is.null(canon)) {
+      resu <- structure(canon,
+                        transf=as.vector(trRancoef), # as.vector() to drop attributes
+                        Xi_ncol=attr(trRancoef,"Xi_ncol"))
+      return(resu)
+    }
+    Xi_ncol <- attr(trRancoef,"Xi_ncol")
+    if (is.null(Xi_ncol)) Xi_ncol <- floor(sqrt(length(trRancoef)*2))
+    covpars <- .sphInv(trRancoef, Xi_ncol=Xi_ncol) # to vector of parameters with *cov*ariances
+    # from vector with *cov*ariances to canonical vector with *corr*elations:
+    rancoefs <- diag(nrow=Xi_ncol)
+    rancoefs[lower.tri(rancoefs,diag = TRUE)] <- covpars
+    diagPos <- seq.int(1L,Xi_ncol^2,Xi_ncol+1L)
+    lambdas <- rancoefs[diagPos]
+    # lambdas <- lambdas + 1e-10 # here affecting also the conversion from covariances to correlations
+    torancoefs <- diag(x=sqrt(1/lambdas))
+    rancoefs <- torancoefs %*% rancoefs %*% torancoefs ## lower tri of corr mat
+    rancoefs[diagPos] <- lambdas
+    varcorr <- structure(rancoefs[lower.tri(rancoefs,diag = TRUE)],
+                      transf=trRancoef,
+                      Xi_ncol=Xi_ncol)
+    return(varcorr) # to canonical vector (var+corr) space
+  } else return(NULL)
+}
+#(.ranCoefsInv(.ranCoefsFn(c(1.0000000,  0.4472136,  0.2672612,  5.0000000,  0.5976143, 14.0000000))))
 
 .NB_shapeFn <- function(x) {log(log(1+x))} ## drastic handling of flat likelihoods for high shape= LOW variance. .../...
 # .../... negbin example in gentle intro is a test (using optimize() -> initial value cannot be controlled)
@@ -76,18 +251,26 @@ if (FALSE) {
   }
 }
 
-.calc_canon_LowUp_ranCoef <- function(ranCoefTerm,tol_ranCoefs=1e-08) { ## FIXME not yet user control
-  lower <- upper <- numeric(length(ranCoefTerm))
-  Xi_ncol <- floor(sqrt(2*length(ranCoefTerm)))
-  varpos <- cumsum(seq(Xi_ncol))
-  lower[varpos] <- tol_ranCoefs
-  upper[varpos] <- 1/tol_ranCoefs
-  lower[-varpos] <-   -(1-tol_ranCoefs)
-  upper[-varpos] <-   (1-tol_ranCoefs)
-  lower <- pmin(lower, ranCoefTerm)
-  upper <- pmax(upper, ranCoefTerm)
-  return(list(lower=lower,upper=upper)) ## CANONICAL scale
+.calc_LowUp_trRancoef <- function(trRancoef, ## single vector 
+                                  Xi_ncol,
+                                  tol_ranCoefs,
+                                  adjust=.spaMM.data$options$max_corr_ranCoefs
+                                  ) { 
+  lower <- c(
+    rep(log(tol_ranCoefs["lo_lam"]), Xi_ncol), # log(sigma)
+    rep(-1+tol_ranCoefs["corr"], Xi_ncol*(Xi_ncol-1L)/2L) ## better then -1+tol_ranCoefs
+  )
+  lower <- adjust*lower
+  lower <- pmin(lower, trRancoef)
+  upper <- c(
+    rep(log(tol_ranCoefs["up_lam"]), Xi_ncol), # log(sigma)
+    rep(1-tol_ranCoefs["corr"], Xi_ncol*(Xi_ncol-1L)/2L) ## better then -1+tol_ranCoefs
+  )
+  upper <- adjust*upper
+  upper <- pmax(upper, trRancoef)
+  return(list(lower=lower,upper=upper)) ## transformed scale with log sigma in first positions
 }
+
 
 .match_coords_in_tUniqueGeo <- function(coords,tUniqueGeo) {any(apply(tUniqueGeo,1L,identical,y=coords))}
 
@@ -162,6 +345,7 @@ if (FALSE) {
   if (is.na(verbose["trace"])) verbose["trace"] <- FALSE
   if (is.na(verbose["SEM"])) verbose["SEM"] <- FALSE
   if (is.na(verbose["iterateSEM"])) verbose["iterateSEM"] <- TRUE ## summary info and plots for each iteration
+  if (is.na(verbose["phifit"])) verbose["phifit"] <- TRUE ## DHGLM information
   ## when a fit is by HLCor or HLfit, the serious message at the end of HLfit_body are by default displayed,
   ## but not in the other cases:
   if (is.na(verbose["all_objfn_calls"])) verbose["all_objfn_calls"] <- switch(For, "HLCor" = TRUE, "HLfit" = TRUE, 
@@ -210,6 +394,8 @@ if (FALSE) {
 
 .calc_inits_dispPars <- function(init,init.optim,init.HLfit,ranFix,user.lower,user.upper) {
   ## does not modify init.HLfit, but keeps its original value. Also useful to keep ranFix for simple and safe coding
+  lambda <- init.optim$lambda 
+  if (! is.null(lambda) && is.null(names(lambda))) names(lambda) <- paste(seq_len(length(lambda))) ## matters ultimately  for optPars names in fitme's refit code
   init$lambda <- init.optim$lambda 
   fixedlambda <- ranFix$lambda # .getPar(ranFix,"lambda") ## FIXME getPar not useful ?
   if (!is.null(fixedlambda)) {
@@ -333,7 +519,7 @@ if (FALSE) {
         }
       } else if (! is.numeric(init_rho)) init.HLfit$corrPars[[char_rd]] <- init_rho <- list(rho=mean(rhorange))
     }
-    init$corrPars[[char_rd]] <- init_rho ## assignment absent (still in p2 version)  prior to v2.3.30
+    init$corrPars[[char_rd]] <- list(rho=init_rho) ## bugs corrected in v2.3.30 and (again) v2.4.51
   }
   return(list(init=init,init.optim=init.optim,init.HLfit=init.HLfit,ranFix=ranFix))
 }
@@ -344,8 +530,13 @@ if (FALSE) {
     if (is.null(rho)) {
       rho <- 30/(2*maxrange)
     } else if (any( narho <- is.na(rho))) rho[narho] <- 30/(2*maxrange[narho]) ## 05/2015 allows init.corrHLfit=list(rho=rep(NA,...
-    optim_cP <- init.optim$corrPars[[char_rd]]
-    init$corrPars[[char_rd]] <- .modify_list(init$corrPars[[char_rd]], list(rho=rho))
+    rho <- min(max(rho, ## checking against user-provided min/max
+                   user.lower$corrPars[[char_rd]]$rho)*1.000001, 
+               user.upper$corrPars[[char_rd]]$rho/1.000001)
+    # Info in canonical scale:
+    init$corrPars[[char_rd]] <- .modify_list(init$corrPars[[char_rd]], list(rho=rho)) ## synthesis of user init and default init
+    # Template of what will affect init.optim$corrPars in transformed scale:
+    optim_cP <- init.optim$corrPars[[char_rd]] 
     if (optim.scale=="transformed") {
       optim_cP <- .modify_list(optim_cP, list(trRho=.rhoFn(rho,RHOMAX=RHOMAX)))
       optim_cP$rho <- NULL
@@ -355,57 +546,22 @@ if (FALSE) {
   return(list(init=init,init.optim=init.optim,init.HLfit=init.HLfit,ranFix=ranFix))
 }
 
-.calc_inits <- function(init.optim,init.HLfit,ranFix,corr_types,
+.calc_inits <- function(init.optim,init.HLfit,ranFix,corr_info,
                         moreargs,
                         user.lower,user.upper,
                        optim.scale,For) { 
   inits <- list(init=list(corrPars=list()), ## minimal structure for assignments $corrPars[[char_rd]][[<name>]] to work.
                 init.optim=init.optim, init.HLfit=init.HLfit, ranFix=ranFix,
                 user.lower=user.lower, user.upper=user.upper, init=list()) 
+  corr_types <- corr_info$corr_types
   for (rd in seq_along(corr_types)) {
     corr_type <- corr_types[rd]
     if (! is.na(corr_type)) {
       char_rd <- as.character(rd)
-      if (corr_type =="Matern") {
-        moreargs_rd <- moreargs[[char_rd]]
-        inits <- .calc_inits_geostat_rho(init=inits$init,init.optim=inits$init.optim,init.HLfit=inits$init.HLfit,ranFix=inits$ranFix,
-                                         user.lower=user.lower,user.upper=user.upper,
-                                         maxrange=moreargs_rd$maxrange,optim.scale=optim.scale,RHOMAX=moreargs_rd$RHOMAX,char_rd=char_rd)
-        inits <- .calc_inits_nu(init=inits$init,init.optim=inits$init.optim,init.HLfit=inits$init.HLfit,ranFix=inits$ranFix,
-                                control_dist_rd=moreargs_rd$control.dist, optim.scale=optim.scale, NUMAX=moreargs_rd$NUMAX,char_rd=char_rd)
-        # Nugget: remains NULL through all computations if NULL in init.optim
-        if (is.null(.get_cP_stuff(ranFix,"Nugget",which=char_rd))) { 
-          if (is.null(init.optim$corrPars)) { ## old sp2 code 
-            if (is.null(.getPar(ranFix,"Nugget"))) { inits$init["Nugget"] <- init.optim$Nugget }
-          } else { ## new spaMM3.0 code
-            inits$init$corrPars[[char_rd]] <- .modify_list(inits$init$corrPars[[char_rd]],
-                                                           list(Nugget=.get_cP_stuff(init.optim,"Nugget",which=char_rd)))
-          }  
-        }
-      } else if (corr_type =="Cauchy") {
-        moreargs_rd <- moreargs[[char_rd]]
-        inits <- .calc_inits_geostat_rho(init=inits$init,init.optim=inits$init.optim,init.HLfit=inits$init.HLfit,ranFix=inits$ranFix,
-                                         user.lower=user.lower,user.upper=user.upper,
-                                         maxrange=moreargs_rd$maxrange,optim.scale=optim.scale,RHOMAX=moreargs_rd$RHOMAX,char_rd=char_rd)
-        inits <- .calc_inits_cauchy(init=inits$init,init.optim=inits$init.optim,init.HLfit=inits$init.HLfit,ranFix=inits$ranFix,
-                                control_dist_rd=moreargs_rd$control.dist, optim.scale=optim.scale, LDMAX=moreargs_rd$LDMAX,char_rd=char_rd)
-        # Nugget: remains NULL through all computations if NULL in init.optim
-        if (is.null(.get_cP_stuff(ranFix,"Nugget",which=char_rd))) { 
-          if (is.null(init.optim$corrPars)) { ## old sp2 code 
-            if (is.null(.getPar(ranFix,"Nugget"))) { inits$init["Nugget"] <- init.optim$Nugget }
-          } else { ## new spaMM3.0 code
-            inits$init$corrPars[[char_rd]] <- .modify_list(inits$init$corrPars[[char_rd]],
-                                                           list(Nugget=.get_cP_stuff(init.optim,"Nugget",which=char_rd)))
-          }  
-        }
-      } else if ( corr_type  %in% c("SAR_WWt","adjacency") ) { 
-        inits <- .calc_inits_Auto_rho(init=inits$init,init.optim=inits$init.optim,init.HLfit=inits$init.HLfit,ranFix=inits$ranFix,
-                                      user.lower=user.lower,user.upper=user.upper,
-                                      rhorange=moreargs[[char_rd]]$rhorange,For=For,char_rd=char_rd)
-      } else if (corr_type =="AR1") {
-        inits <- .calc_inits_ARphi(init=inits$init,init.optim=inits$init.optim,init.HLfit=inits$init.HLfit,ranFix=inits$ranFix,
-                                   user.lower=user.lower,user.upper=user.upper,char_rd=char_rd)
-      }  
+      inits <- corr_info$corr_families[[rd]]$calc_inits(inits=inits, char_rd=char_rd, moreargs_rd=moreargs[[char_rd]], 
+                                                        user.lower=user.lower, user.upper=user.upper, optim.scale=optim.scale, 
+                                                        ranFix=ranFix, 
+                                                        init.optim=init.optim, For=For)
     }
   }
   # phi, lambda
@@ -421,5 +577,10 @@ if (FALSE) {
     inits$init.optim$trNB_shape <- .NB_shapeFn(inits$init.optim$NB_shape)
     inits$init.optim$NB_shape <- NULL
   }
-  return(eval(inits))
+  inits <- eval(inits) ## not sure why
+  if ( ! length(inits[["init.optim"]][["corrPars"]])) { ## remove corrParslist()
+    inits[["init.optim"]]["corrPars"] <- NULL
+    inits[["init"]]["corrPars"] <- NULL
+  }
+  return(inits)
 }

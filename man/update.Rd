@@ -10,7 +10,7 @@
 (however, currently the \code{predictor} argument is processed differently). Using \code{update} is a risky programming style (see Note). 
 }
 \note{
-\code{update}, as a general rule, is tricky. For example with \code{m1 <- glm(y~x + offset(<...>),<...>); m2 <- update(m1,.~.-x)}, \code{m2} will lose the intercept term, which would be retained in the absence of an offset. \code{update.HLfit} has the same behaviour. Further, \code{update} is easily affected in a non-transparent way by changes in variables used in the original call. For example
+\code{update}, as a general rule, is tricky. \code{update} methods are easily affected in a non-transparent way by changes in variables used in the original call. For example
 \code{
 foo <- rep(1,10)
 m <- lm(rnorm(10)~1, weights=foo)
@@ -18,6 +18,8 @@ rm(foo)
 update(m, .~.) # Error
 }
 To avoid such problems, \code{spaMM} tries to avoid references to variables in the global environment, by enforcing that the data are explicitly provided by the \code{data} argument, and that prior weights, if not constant, are in the data.
+
+\code{spaMM}'s \code{update} method was all the more tricky when spaMM called \code{stats::update.formula} whose results endorse \code{stats}'s (annoying) convention that a formula without an explicit intercept term actually includes an intercept. \code{spaMM::update} now avoids this problem. \bold{Formula updates should still be carefully checked}, as getting them perfect has not been on the priority list.
 }
 \usage{
 %- \method{update}{HLCor}(object,formula.,...)

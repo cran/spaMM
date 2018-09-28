@@ -1,4 +1,4 @@
-cat("\ntest fixedLRT:")
+cat("\ntest fixedLRT:\n")
 # fixedLRT
 
 data("blackcap")
@@ -11,4 +11,4 @@ fl <- fixedLRT(null.formula=migStatus ~ 1 + Matern(1|latitude+longitude),
          HLmethod='ML',data=blackcap,init.corrHLfit=list(phi=1e-6),boot.repl=3,nb_cores=nb_cores) ## phi=1e-6 is a potential test of changes in .calc_inits_dispPars()
 
 testthat::expect_equal(fl$basicLRT$p_value,0.00806473,tolerance=2e-5)
-testthat::expect_equal(fl$BartBootLRT$p_value,0.007888223,tolerance=2e-5) # 
+testthat::expect_equal(fl$BartBootLRT$p_value,structure(0.007888223,boot_type="marginal"),tolerance=2e-5) # 
