@@ -46,7 +46,10 @@
           rho <- attr(ranPars,"init.HLfit")$corrPars[[char_rd]]$rho
           if (isSymmetric(adjMatrix)) {
             symSVD <- eigen(adjMatrix, symmetric=TRUE)
-            symSVD <- list(u=symSVD$vectors,d=symSVD$values) ## ugly copy...
+            svdnames <- names(symSVD)
+            svdnames[svdnames=="values"] <- "d"
+            svdnames[svdnames=="vectors"] <- "u"
+            names(symSVD) <- svdnames
           }             
         }
         if (is.null(symSVD)) {

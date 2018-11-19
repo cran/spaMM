@@ -3,8 +3,8 @@ MSFDR <- function(  nullfit, fullfit , q = 0.05 , verbose = TRUE) {
   if (is.null(nullfit$REMLformula) || ! identical(attr(nullfit$REMLformula,"isML"),TRUE)) {
     warning("nullfit used REML, hence all further fits will. This is not recommended for inferences about fixed effects.")
   }
-  scope <- list(lower=(nullfit$HLframes$fixef_terms), ## only the fixed-effect terms
-                upper=(fullfit$HLframes$fixef_terms))
+  scope <- list(lower=(.get_fixef_off_terms(nullfit)), ## only the fixed-effect terms
+                upper=(.get_fixef_off_terms(fullfit)))
   #trace.stepAIC <- ifelse(print.the.steps , 1,0)
   iter <- 1L
   nslopes_f <- extractAIC(fullfit)[1L] - 1 # B&G comment: 'check if the full model should include the intercept or not !!!!!!'

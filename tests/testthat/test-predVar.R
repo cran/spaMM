@@ -131,3 +131,23 @@ testthat::expect_true(max(abs(range(p1-p2)))<1e-12)
 #                      data=blackcap,  fixed=list(nu=4,rho=0.4))
 # get_respVar(fitfit,newdata=data.frame(latitude=1,longitude=1))
 
+# check corret handling of offset in predictions
+check_off <- cbind(blackcap,off=runif(14))
+voff <- corrHLfit(migStatus ~ 1 + offset(off) + Matern(1|latitude+longitude), 
+                  data=check_off,  ranFix=list(nu=4,rho=0.4))
+p1 <- predict(voff)
+p2 <- predict(voff, newdata=check_off)
+testthat::expect_true(max(abs(range(p1-p2)))<1e-12)
+#
+voff <- corrHLfit(migStatus ~ 0 + offset(off) + Matern(1|latitude+longitude), 
+                  data=check_off,  ranFix=list(nu=4,rho=0.4))
+p1 <- predict(voff)
+p2 <- predict(voff, newdata=check_off)
+testthat::expect_true(max(abs(range(p1-p2)))<1e-12)
+#
+voff <- corrHLfit(migStatus ~ offset(off) + Matern(1|latitude+longitude), 
+                  data=check_off,  ranFix=list(nu=4,rho=0.4))
+p3 <- predict(voff)
+p4 <- predict(voff, newdata=check_off)
+testthat::expect_true(max(abs(range(p3-p4)))<1e-12)
+testthat::expect_true(max(abs(range(p1-p4)))<1e-12)

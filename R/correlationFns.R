@@ -95,6 +95,7 @@ if (F) {
 #   return(structure(LMatrix,type="invQ_CHMfactor",Q_CHMfactor=Q_CHMfactor,Qmat=Qmat))
 # } 
 
+# tcrossprod factor, Ltri or not.
 mat_sqrt <- function(m=NULL, symSVD=NULL, try.chol=TRUE, condnum=1e12) { ## also once for d2hdv2
   ## cf return value: the code must compute 'L', and if the type of L is not chol, also 'corr d' and 'u'
   type <- NULL
@@ -116,10 +117,13 @@ mat_sqrt <- function(m=NULL, symSVD=NULL, try.chol=TRUE, condnum=1e12) { ## also
       if ( ! inherits(L,"try-error") ) type <- "cholL_LLt" ## else type remains NULL      
     }
     if ( is.null(type) ) { ## no chol or failed chol
-      symSVD <- eigen(m, symmetric=TRUE) ## such that v= t(u) without any sign issue
-      decomp <- list(u=symSVD$vectors,d=symSVD$values)
+      decomp <- eigen(m, symmetric=TRUE) ## such that v= t(u) without any sign issue
+      svdnames <- names(decomp)
+      svdnames[svdnames=="values"] <- "d"
+      svdnames[svdnames=="vectors"] <- "u"
+      names(decomp) <- svdnames
       type <- "eigen" 
-      if (any(symSVD$values< -1e-08)) {
+      if (any(decomp$d < -1e-08)) {
         ## could occur for two reasons: wrong input matrix; or problem with R's svd which $d are the eigenvalues up to the sign, 
         ##   and thus $d can be <0 for eigenvalues >0 (very rare, observed in a 2x2 matrix) 
         message("correlation matrix has suspiciously large negative eigenvalue(s).")
@@ -127,12 +131,14 @@ mat_sqrt <- function(m=NULL, symSVD=NULL, try.chol=TRUE, condnum=1e12) { ## also
                          class="try-error", ## passes control to calling function to print further info
                          call=match.call())) ## not fully conformant to "try-error" class ?"
       } else { 
-        L <- .ZWZt(symSVD$u,sqrt(symSVD$d))
+        decomp$d[decomp$d<1e-16] <- 1e-16
+        L <- .ZWZt(decomp$u,sqrt(decomp$d))
       }
     } 
     colnames(L) <- rownames(L) <- colnames(m) ## for checks in HLfit ## currently typically missing from symSVD  
   } else {
     decomp <- symSVD[c("d","u","adjd")] # keep any $adjd  useful for SEM CAR; otherwise may be NULL
+    decomp$d[decomp$d<1e-16] <- 1e-16
     L <- .ZWZt(symSVD$u,sqrt(symSVD$d))  
     type <- "symsvd"      
   }

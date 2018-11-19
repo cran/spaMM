@@ -108,10 +108,11 @@ Matern <- function(...) {
     }
     return(resu)
   }
-  
   makeLowerUpper <- function() {
     ## hmmm is that useful ?
   }
+  #parent.env(environment(calc_corr_from_dist)) <- environment(spaMM::MaternCorr) ## parent = <environment: namespace:stats>
+  # : changes the parent.env of all the member functions.
   structure(list(corr_family="Matern",
                  names_for_post_process_parlist= c("rho","nu","Nugget"),
                  canonize=canonize,

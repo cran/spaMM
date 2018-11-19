@@ -14,11 +14,11 @@
   } else {
     verticesRows <- (vrepr[,2]==1)
     betaS <- 0
-    if (length(which(verticesRows))) {
+    if (any(verticesRows)) {
       betaS <- t(vrepr[!verticesRows, -c(1:2), drop = FALSE]) ## col vectors of boundary beta values
       betaS <- betaS + 0.001 * rowMeans(betaS) ## moving a bit inside
     }
-    if (length(which( ! verticesRows))) {
+    if (any( ! verticesRows)) {
       ## generate combinations of vertices and directions:
       dirS <- t(vrepr[ ! verticesRows,-c(1:2),drop=FALSE])
       dirS <- apply(dirS,2L, function(v) v/norm(matrix(v),type="2")) ## normalize direction vectors

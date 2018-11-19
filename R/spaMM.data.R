@@ -20,7 +20,7 @@
                             ############## augZXy stuff 
                             allow_augZXy=TRUE,
                             augZXy_solver=c("chol","EigenQR"), # "chol", "QR" (currently = "EigenQR"), "EigenQR" (dense or sparse), or "qr" (=base::qr)
-                            augZXy_fitfn=".HLfit_body_augZXy", # safe version, no specific singularity, but no refinement beyond aumgentation by y
+                            augZXy_fitfn=".HLfit_body_augZXy", # safe version, no specific singularity, but no refinement beyond augmentation by y
                             check_alt_augZXy=FALSE, ## private, effective only if alternative augZXy fitfn is set to TRUE
                             ############## ranCoefs settings:
                             covEstmethod=".makeCovEst1",

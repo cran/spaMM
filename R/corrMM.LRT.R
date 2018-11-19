@@ -86,12 +86,12 @@ fixedLRT <- function(  ## interface to spaMMLRT or (for devel only) .corrMM_LRT
       mc[["init"]] <- mc$init.corrHLfit
       mc["init.corrHLfit"] <- NULL
     }
-    fixed <- c(mc$ranFix,mc$ranPars,mc$etaFix)
+    fixed <- c(mc$ranFix,mc$ranPars) #,mc$etaFix)
     if ( ! is.null(fixed)) {
       mc[["fixed"]] <- fixed
       mc["ranFix"] <- NULL
       mc["ranPars"] <- NULL
-      mc["etaFix"] <- NULL
+      #mc["etaFix"] <- NULL
     }
   }
   eval(mc, parent.frame())

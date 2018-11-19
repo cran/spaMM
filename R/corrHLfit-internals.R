@@ -7,7 +7,7 @@ if (FALSE) {
   # .dispInv <- function(x,xref=1e-4,xreff=1e-2,xm=1e-3) {
   #   uniroot(function(v) dispFn(v)-x,lower=1e-6,upper=1e6,tol=1e-7)$root
   # }
-  ## complex but still useful in
+  ## Still derivable at the threshold xm: 
   .dispFn <- function(x,xref=5e-5,xreff=1e-1,xm=1e-3) { 
     num <- x
     x_lo_xm <- (x<=xm)

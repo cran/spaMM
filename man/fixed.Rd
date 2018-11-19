@@ -22,9 +22,9 @@ Additional \code{ranFix} elements are taken into account by \code{corrHLfit}, as
 
 \code{ranPars} elements taken into account by \code{HLCor} include all the above \code{ranFix} elements.
 
-The only \code{etaFix} element considered here is \code{beta}, which should be a vector of (a subset of) the coefficients (\eqn{\beta}) of the fixed effects, with names as shown in a fit without such given values. In contrast to an offset specification, it affects by default the REML correction for estimation of dispersion parameters, which depends only on which \eqn{\beta} coefficients are estimated rather than given. This default behaviour will be overridden whenever a non-null \code{REMLformula} is provided to \code{HLfit} or the other fitting functions (see Example).
+\code{fixed} elements taken into account by \code{fitme} likewise include all the above \code{ranFix} elements.
 
-\code{fixed} elements taken into account by \code{fitme} include all the above \code{ranFix} and \code{etaFix} elements.
+The only \code{etaFix} element considered here is \code{beta}, which should be a vector of (a subset of) the coefficients (\eqn{\beta}) of the fixed effects, with names as shown in a fit without such given values. In contrast to an offset specification, it affects by default the REML correction for estimation of dispersion parameters, which depends only on which \eqn{\beta} coefficients are estimated rather than given. This default behaviour will be overridden whenever a non-null \code{REMLformula} is provided to \code{HLfit} or the other fitting functions (see Example).
 
 }
 \details{

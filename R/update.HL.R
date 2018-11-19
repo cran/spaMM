@@ -15,7 +15,7 @@ getCall.HLfit <- function(x,...) { ## FIXME ? getCall()$resid.model does not loo
 }
 
 ## to get a call with the structure of the final HLCorcall in fitme or corrHLfit
-## ranFix is mandatory: Do not set a default value, so that one has to think about the correct value.
+## fixed is mandatory: Do not set a default value, so that one has to think about the correct value.
 ## Therefore, the original ranFix of the outer_object is replaced, unless it is explicitly set to getCall(object)$ranFix or $fixed... (in confint.HLfit)
 ## Parameters not in ranFix are set to the initial value of of the optimization call.
 ##   
@@ -110,7 +110,7 @@ update.HLfit <- function (object, formula., ..., evaluate = TRUE) {
   tmp <- do.call(".Call",list(C_updateform, as.formula(old), as.formula(new))) # circumventing RcppExports' kind bureaucracy...  
   ## at some point I started to write another fn where 'tmp' was actually 'out' and that continued as :
   #HLframes <- .HLframes(formula=out, data=old$data) ## design matrix X, Y... 
-  #attributes(out) <- attributes(HLframes$fixef_terms)
+  #attributes(out) <- attributes(HLframes$fixef_off_terms)
   ## Was it useful ?
   out <- formula(terms.formula(tmp, simplify = FALSE))
   out <- .fixFormulaObject(out)

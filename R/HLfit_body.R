@@ -238,11 +238,13 @@ HLfit_body <- local({
     processed$SEMargs$qr_X <- qr(processed$AUGI0_ZX$X.pv) 
     locarglist <- list(processed=processed, ZAL=ZAL, beta_eta=beta_eta,
                        off=off, corr_est=corr_est, init.lambda=attr(lambda_est,"init.lambda"),
-                       lambda.Fix=lambda.Fix, LMatrix=LMatrices[[1L]], verbose=verbose)
+                       lambda.Fix=lambda.Fix, LMatrices=LMatrices, verbose=verbose)
     SEMblob <- .probitgemWrap("SEMwrap",arglist=locarglist, pack="probitgem") # eval(as.call(c(quote(SEMwrap),logarglist)))
     beta_eta <- SEMblob$beta_eta
     corr_est["rho"] <- SEMblob$corr_est["rho"] ## may again be NULL
-    lambda_est <- predict(SEMblob$glm_lambda,type="response")
+    if (is.null(SEMblob$glm_lambda)) {
+      lambda_est <- lambda.Fix
+    } else lambda_est <- predict(SEMblob$glm_lambda,type="response")
     u_h <- v_h <- SEMblob$v_h
     logLapp <- SEMblob$logLapp
     attr(logLapp,"seInt") <- SEMblob$seInt ## may be NULL
@@ -959,7 +961,7 @@ HLfit_body <- local({
   # !!! res$MME_method used later in this fn !!!
   res$MME_method <- structure(res$how$MME_method,
                               message="Please use how(<fit object>)[['MME_method']] to extract this information cleanly.")                 
-  res$spaMM.version <- structure(res$how$spaMM.version,
+  res$spaMM.version <- structure(res$how$spaMM.version, ## this is NOT a string and comparison with a string is suitably def'ed (as detailed in ?package_version)
                                  message="Please use how(<fit object>)[['spaMM.version']] to extract this information cleanly.")                 
   if (HL[1]=="SEM") res$SEM_info <- SEMblob$SEM_info ## info
   ###################

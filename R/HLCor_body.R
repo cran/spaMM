@@ -71,20 +71,31 @@
 
 
 .check_subset_corrMatrix <- function(corrMatrix,ZA) {
-  ## ELSE check descriptors of square matrix:
+  ZAnames <- colnames(ZA) ## set by .calc_Zlist() or .calc_ZAlist(), with two cases for corrMatrix 
+  if (is.null(ZAnames)) {
+    stop("NULL colnames in (a block of) the design matrix for random effects. Some mishandling of 'AMatrices'?")
+  }
   if (inherits(corrMatrix,"dist")) {
-    corrnames <- labels(corrMatrix)
+    corrnames <- labels(corrMatrix) ## unclear
   } else if (inherits(corrMatrix,c("matrix","Matrix"))) {
     corrnames <- rownames(corrMatrix)
   } else if ( inherits(corrMatrix,"precision")) {
     corrnames <- rownames(corrMatrix[["matrix"]])
   } else stop("Unhandled class of corrMatrix object.")
   if (is.null(corrnames)) {
-    message("corrMatrix without labels: first grouping levels are matched\n  to first rows of corrMatrix, without further check.\n This may cause later errors (notably, wrongly dimensioned matrices) \n See help(\"corrMatrix\") for a safer syntax.")
-  }
-  ZAnames <- colnames(ZA) ## set by .calc_Zlist() or .calc_ZAlist(), with two cases for corrMatrix 
-  if (is.null(ZAnames)) {
-    stop("NULL colnames in (a block of) the design matrix for random effects. Some mishandling of 'AMatrices'?")
+    mess <- paste("(!) corrMatrix without labels or row names: the grouping levels, in order",
+                  paste0(ZAnames[1L:min(5L,length(ZAnames))], collapse=" "),if(length(ZAnames)>5L){"...,"} else{","},
+                  "\n are matched in this order to rows and columns of corrMatrix, without further check.",
+                  "\n This may cause later visible errors (notably, wrongly dimensioned matrices)",
+                  "\n or even silent errors. See help(\"corrMatrix\") for a safer syntax.")
+    warning(mess)
+  } else if (is.null(colnames(corrMatrix))) {
+    if (inherits(corrMatrix, c("matrix", "Matrix"))) {
+      colnames(corrMatrix) <- corrnames
+    }
+    else if (inherits(corrMatrix, "precision")) {
+      colnames(corrMatrix[["matrix"]]) <- corrnames
+    }
   }
   if ( length(setdiff(ZAnames,corrnames)) ==0L ) { ## i.e. all ZAnames in corrnames
     ## : should be the case when generator = "as.factor"

@@ -67,7 +67,7 @@
       longLv <- do.call(Matrix::bdiag,rep(list(Lcompact),n_levels)) # more diagonal... no benefits (yet)
     } else {
       if (longsize>180L) {
-        longLv <- Diagonal(n=longsize) ## declaration ## F I X M E with some effort, we could produce better sparse code.
+        longLv <- Diagonal(n=longsize) ## declaration ## FIXME with some effort, we could produce better sparse code.
       } else longLv <- diag(nrow=longsize) ## declaration
       for (it in seq_len(ncol(Lcompact))) {
         urange1 <- (it-1)*n_levels + seq(n_levels)

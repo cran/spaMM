@@ -19,7 +19,7 @@ if (FALSE) { ## HLCor/corrHlfit already compared on scotlip by test-spaMM.R
   # corrHLfit without corners was poor here
   # CAR by Laplace with 'outer' estimation of rho
   # *** fitme is not very convicing, stops early ***
-  blob <- fitme(bind(npos,nneg)~1 +adjacency(1|gridcode),
+  blob <- fitme(cbind(npos,nneg)~1 +adjacency(1|gridcode),
                     adjMatrix=Nmatrix,family=binomial(probit),data=donn,method="ML",control.HLfit = list(LevenbergM=FALSE)) 
   AIC(blob)
 }

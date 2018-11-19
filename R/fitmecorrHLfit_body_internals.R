@@ -137,7 +137,10 @@
         decomp <- list(d=eigen(adjMatrix,only.values = TRUE)$values) ## only eigenvalues
       } else {
         decomp <- eigen(adjMatrix, symmetric=TRUE)
-        decomp <- list(u=decomp$vectors,d=decomp$values) ## ugly copy...
+        svdnames <- names(decomp)
+        svdnames[svdnames=="values"] <- "d"
+        svdnames[svdnames=="vectors"] <- "u"
+        names(decomp) <- svdnames
       }
       return(decomp)
     } else stop("'adjMatrix' is not symmetric") ## => invalid cov mat for MVN
@@ -420,6 +423,7 @@
   if ( (is_MixedM <- ( ! is.null(ranCoefs_blob) )) && (
     (var_ranCoefs <- (ranCoefs_blob$isRandomSlope & ! ranCoefs_blob$is_set)) ||
     phimodel == "phiScal" || # lambda + phi
+    var(proc1$y)<1e-3 || # mixed model with low response variance (including case where phi is fixed (phimodel="") )
     (phimodel == "phiHGLM" && identical(spaMM.getOption("outer_optim_resid"),TRUE)) || 
     length(var_ranCoefs)>1L || # +s lambda
     length(corr_types[ ! is.na(corr_types)]) # lambda + corr pars
@@ -455,7 +459,7 @@
   # ./. Therefore, we need to identify all cases where phi is fixed, 
   # ./. or can be outer optimized jointly with lambda:  
   # Provide ranCoefs inits by calling .init_optim_lambda_ranCoefs:
-  if (For=="fitme") {
+  if (For=="fitme" && proc1$HL[1]!="SEM") { ## for SEM, it's better to let SEMbetalambda find reasonable estimates
     init.optim <- .more_init_optim(proc1=proc1, corr_types=corr_types, init.optim=init.optim)
     if (proc1$augZXy_cond) init.optim$phi <- NULL
   }

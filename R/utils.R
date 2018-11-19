@@ -15,9 +15,12 @@
 .minimalErrorHandler <- function(cond) invisible(structure("See 'condition' attribute", class = "try-error", condition = cond))
 
 ## meeting the width.cutoff in deparse :-(
-.DEPARSE <- function(expr) { paste(deparse(expr),collapse="") }
-# but parse(text=deparse(substitute(zut,list(zut=binomial())))) works
-# while parse(text=spaMM:::.DEPARSE(substitute(zut,list(zut=binomial())))) does not ( F I X M E )
+# Details of ?deparse imply that parse/deparse operations are not completely reversible. 
+.DEPARSE <- function(expr,collapse="") { paste(deparse(expr),collapse=collapse) }
+# parse(text=paste(deparse(binomial()), collapse="")) fails
+# parse(text=paste(deparse(binomial()), collapse="\n")) works
+# "\n" not OK for formulas; 
+# From v 2.5.7, .stripFormula() no longer uses .DEPARSE() 
 
 overcat <- function(msg, prevmsglength) {
   if (prevmsglength) {cat("\r")}   # \b effect is terminal-dependent so cannot be relied upon.  

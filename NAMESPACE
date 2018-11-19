@@ -1,7 +1,4 @@
 exportPattern("^[[:alpha:]]+") 
-# F I X M E (1) update spaMM (2) update dependent packages without importFrom(_body) and with required spaMM version 
-# (3) hide xxx_body... 
-# blackbox 1.1.25 on CRAN is OK IsoriX is OK
 export(".evalWrapper", ".wrap_Ltri_t_chol", ".calc_CARdispGammaGLM", ".calc_dispGammaGLM", ".ZWZt",
        ".dispFn", ".dispInv", ".nuFn", ".nuInv", ".rhoFn", ".rhoInv", ".NB_shapeFn", ".NB_shapeInv", 
        ".crossprod", ".tcrossprod",  ".stripOffset", ".stripRanefs", ".modify_list") ## probitgem
@@ -50,6 +47,8 @@ S3method(coef,corMatern)
 S3method(AIC, HLfit)
 S3method(extractAIC, HLfit)
 S3method(confint, HLfit)
+S3method(family, HLfit)
+#S3method(model.frame, HLfit)
 S3method(formula, HLfit)
 S3method(terms, HLfit)
 S3method(model.matrix, HLfit)

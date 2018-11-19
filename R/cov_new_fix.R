@@ -50,20 +50,28 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
 }
 
 .calc_sub_diagmat_cov_newLv_oldv <- function(oldZA, newZA,namesTerms) {
-  ## provides a Diagonal cov matrix for un-autocorrelated ranefs. Ignores unrepresented old levels, 
-  ##   while covs for autocorrelated ranefs keep unrepresented old levels because it takes time to remove them.
   oldlevels <- colnames(oldZA)
   newlevels <- colnames(newZA)
   if (identical(oldlevels,newlevels)) {
     newoldC <- Diagonal(n=length(oldlevels)) ## replaces old identityMatrix
     colnames(newoldC) <- oldlevels ## provides colnames for some XMatrix'es -> some ZAX'es -> used by .match_old_new_levels
   } else {
-    oldornew <- unique(c(oldlevels,newlevels))
     numnamesTerms <- length(namesTerms) ## 2 for random-coef
-    newoldC <- diag(length(oldornew)*numnamesTerms)
-    colnames(newoldC) <- rownames(newoldC) <- rep(oldornew, numnamesTerms)
-    newoldC <- newoldC[newlevels,oldlevels,drop=FALSE]
-  }
+    if (numnamesTerms==1L) {
+      nold <- length(oldlevels)
+      nnew <- length(newlevels)
+      newoldC <- matrix(0,nrow=nnew,ncol=nold)
+      newinold <- match(newlevels,oldlevels)
+      newoldC[seq(nnew)[!is.na(newinold)], newinold] <- 1      
+      colnames(newoldC) <- oldlevels
+      rownames(newoldC) <- newlevels
+    } else {
+      oldornew <- unique(c(oldlevels,newlevels))
+      newoldC <- diag(length(oldornew)*numnamesTerms)
+      colnames(newoldC) <- rownames(newoldC) <- rep(oldornew, numnamesTerms)
+      newoldC <- newoldC[newlevels,oldlevels,drop=FALSE]
+    }
+  } 
   attr(newoldC,"isEachNewLevelInOld") <- newlevels %in% oldlevels  ## but this attr is unevaluated (-> NULL) for spatial models 
   return(newoldC)
 }
@@ -88,7 +96,7 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
   locform <- formula.HLfit(object) 
   ## possible change of random effect terms
   if ( .noRanef(re.form)) { ## i.e. if re.form implies that there is no random effect
-    locform <- .stripRanefs(locform)  ## 
+    locform <- .stripRanefs(locform)  
   } else if (inherits(re.form,"formula")) { ## ie there is a nontrivial re.form
     lhs <- .DEPARSE(locform[[2L]]) ## response
     fixterms <- .DEPARSE(.stripRanefs(locform)[[3L]]) ## fixed effect terms
@@ -126,11 +134,11 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
     ## preparation for fixed effects
     newX.pv <- newFrames_fixed$X ## contains columns for the offset and columns for the other variables
     # newX.pv must intersect non-NA elements of fixef; see comment and code in newetaFix
-    coefnames <- colnames(object$X.pv)
-    validnames <- intersect(coefnames,colnames(newX.pv)) ## we don't want the etaFix cols (detected by bboptim)
+    est_and_fix <- names(which(!is.na(object$fixef)))
+    validnames <- intersect(est_and_fix,colnames(newX.pv)) ## we don't want the etaFix cols (detected by bboptim)
     if (length(validnames)==0L) validnames <- c() ## without this, validnames could be character(0) and [,validnames,drop=FALSE] fails.
-    if (length(notfound <- setdiff(colnames(newX.pv), coefnames))) {
-      # capture case where the newX.pv has colnames  not in object$X.pv (including wierd case of mis-naming)
+    if (length(notfound <- setdiff(colnames(newX.pv), est_and_fix))) {
+      # capture case where the newX.pv has colnames  not in object$X.pv (including weird case of mis-naming)
       stop(paste0("No fitted coefficient(s) for variables\n",paste(notfound,collapse=", "),"\nin the design matrix derived from 'newdata'."))
     }
     RESU <- list(locdata=locdata,newX.pv=newX.pv[,validnames,drop=FALSE]) 

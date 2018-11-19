@@ -220,12 +220,23 @@ logLik.HLfit <- function(object, which=NULL, ...) {
                     stop(paste0("No default '",which,"' value for '",mess,"' estimation method."))
                     ) 
   }
-  resu  <- object$APHLs[[which]]
+  if (which=="logL_Lap") {
+    if (all(unlist(object$family[c("family","link")]==c("Gamma","log")))) {
+      ZAL <- .compute_ZAL(XMatrix=object$strucList, ZAlist=object$ZAlist,as_matrix=.eval_as_mat_arg(object)) 
+      w.obs <- structure(object$w.resid * (object$y/object$fv)[,1],unique=FALSE)
+      d2hdv2 <- .calcD2hDv2(ZAL,w.obs,object$w.ranef) ## update d2hdv2= - t(ZAL) %*% diag(w.resid) %*% ZAL - diag(w.ranef)
+      hlik <- object$APHLs$hlik
+      resu <- hlik -determinant(d2hdv2)$modulus[1L]/2 + ncol(d2hdv2)* log(2*pi)/2
+    } else if (.is_link_canonical(object$family)) {
+      message("logL_Lap = p_v because the response-family link is canonical")
+      resu  <- object$APHLs[["p_v"]]
+    } else stop("logL_Lap computation not yet implemented for this (family,link) combination.")
+  } else resu  <- object$APHLs[[which]]
   names(resu) <- which
   return(resu)
 }
 
-vcov.HLfit <- function(object,...) {
+vcov.HLfit <- function(object, ...) {
   object <- .getHLfit(object)
   beta_cov <- .get_beta_cov_any_version(object)
   class(beta_cov) <- c("vcov.HLfit",class(beta_cov))
@@ -257,6 +268,9 @@ Corr <- function(object,...) { ## compare ?VarCorr
   }
   return(resu)
 }
+
+# for a lme4::VarCorr() equivalent; generic is nlme::VarCorr 
+.VarCorr <- function(x, sigma=1, ...) {} ## F I X M E
 
 dev_resids <- function(object,...) {
   mu <- predict(object)
@@ -344,28 +358,33 @@ get_ranPars <- function(object, which=NULL, ...) {
 }
 
 formula.HLfit <- function(x, ...) {
+  ## stats:::formula.default looks for x$formula then x$call$formula. 
+  # So formula(object) should be enough, EXCEPT that if it finds neither (no explicitly named formula in the call), 
+  # it evaluates the call, in which case print(formula(<HLfit>)) leads to an infinite recursion
+  # since form is then an HLfit object so print(form...) will call summary.HLfit()...
   if (x$spaMM.version> "2.4.35") {
     form <- x$call$formula
   } else form <- getCall.HLfit(x)$formula
-  if (is.null(form)) { 
-    ## residual fit has no explicit call of its own. Do not try to access or even create $call$resid.model$formula as was done in version < 2.4.136
-    ##   or
-    ## HLfit member object in an HLfitlist  ( F I X M E : they have a call with $processed and no $formula 
-    ##          bc it's not clear where to get a non-processed HLCor or HLfit call if the oricall was an outer optimizing fn)
+  if (is.null(form)) {
+    form <- getCall.HLfit(x)$processed$predictor
+    ## finds something for HLfit member object in an HLfitlist  (they have a call with $processed and no $formula 
+    #          bc it's not clear where to get a non-processed HLCor or HLfit call if the oricall was an outer optimizing fn)
     #    or    
     ## should not occur on a finished HLfit object but may on a call with $processed accessed in a debugging session
-    ## stats:::formula.default looks for x$formula then x$call$formula (so ultimately formula(object) should be enough ?)
-    #  If it finds neither (no explicitly named formula in the call), it evaluates the call, which leads to an infinite recursion
-    # since form is then an HLfit object so print(form...) will call summary.HLfit()...
-    form <- x$predictor
+  }
+  if (is.null(form)) { 
+    ## residual fit object had no explicit $call of its own when this block was first written; 
+    # but now (11/2018) it has $call$processed$predictor so we should not reach this point.
+    form <- x$predictor # should be equivalent to $call$processed$predictor
+    ## Do not try to access or even create $call$resid.model$formula as was done in version < 2.4.136 !
   }
   form
-} ## stats::formula generic
+} ## extends stats::formula generic
 
 terms.HLfit <- function(x, ...) { ## the full formula with the attributes for the fixed effects only (OK for MSFDR -> stats::step())
   # distinct attributes for ranefs wold surely work.
   form <- x$predictor
-  attributes(form) <- attributes(x$HLframes$fixef_terms)
+  attributes(form) <- attributes(.get_fixef_off_terms(x))
   return(form)
 }
 
@@ -394,6 +413,73 @@ extractAIC.HLfit <- function(fit, scale, k=2L, ..., verbose=FALSE) { ## stats::e
   aic <- AIC(object=fit, ..., verbose = verbose,also_AIC=FALSE)[["       marginal AIC:"]] # does not use k
   if (k !=2L) aic <- aic + (k - 2)*df
   c(edf=df, AIC=aic) 
+}
+
+.get_XZ_0I <- function(object) { ## there is a .calc_XZ_0I from the processed AUGI0_ZX
+  pforpv <- ncol(object$X.pv)
+  nrd <- length(object$w.ranef)
+  nobs <- nrow(object$X.pv)
+  ZAL <- get_ZALMatrix(object)  
+  if (is.null(ZAL)) {
+    XZ_0I <- object$X.pv ## and general code below works and gives the same result for augmented or not
+  } else {
+    XZ_0I <- cbind2(
+      rbind2(object$X.pv, matrix(0,nrow=nrd,ncol=pforpv)), 
+      rbind2(ZAL, diag(nrow=nrd))
+    ) 
+  }
+  return(XZ_0I)
+}
+
+get_ZALMatrix <- function(object,as_matrix) {
+  if ( ! missing(as_matrix)) stop("'as_matrix' is deprecated")
+  if (length(ZAlist <- object$ZAlist)) { ## ou tester if (object$models[["eta"]]=="etaGLM")
+    if (is.null(object$envir$ZALMatrix)) {
+      object$envir$ZALMatrix <- .compute_ZAL(XMatrix=object$strucList, ZAlist=ZAlist,as_matrix=FALSE) 
+    }
+    return(object$envir$ZALMatrix)
+  } else return(NULL) 
+}
+
+# left pseudo inverse of (augmented) design matrix, (X_a' W X_a)^{-1} X_a' W
+.get_WLS_ginv <- function(object, augmented, XZ_0I=NULL) { 
+  ## gets inv(tX_a invSig_a X_a).tX_a invSig_a that gives hat(beta,v_h)
+  if (is.null(XZ_0I))  XZ_0I <- .get_XZ_0I(object)
+  ww <- c(object$w.resid, object$w.ranef) ## NOT sqrt()
+  Wei_XZ_0I <- .calc_wAugX(XZ_0I=XZ_0I, sqrt.ww=ww) ## 2nd argument name misleading
+  beta_cov_info <- .get_beta_cov_info(object)
+  beta_v_cov <- attr(beta_cov_info,"beta_v_cov")
+  augXWXXW <- tcrossprod(beta_v_cov, Wei_XZ_0I) ## = solve(crossprod(wAugX)) %*% crossprod(wAugX, diag(x=sqrt.ww))
+  if (augmented) {
+    return(augXWXXW)
+  } else {
+    return(augXWXXW[seq_len(ncol(object$X.pv)),seq_len(nrow(object$X.pv)),drop=FALSE])
+  }
+}
+
+get_matrix <- function(object, which="model.matrix", augmented=TRUE, ...) {
+  switch(which,
+         "model.matrix"= object$X.pv, #model.matrix(object, ...), ## X
+         "ZAL"=get_ZALMatrix(object),                             ## ZAL
+         "AugX"=.get_XZ_0I(object),                               ## X_a
+         "wAugX"={
+           XZ_0I <- .get_XZ_0I(object)
+           ww <- c(object$w.resid, object$w.ranef)
+           .calc_wAugX(XZ_0I=XZ_0I, sqrt.ww=sqrt(ww)) 
+         },                               
+         "wei_AugX"={
+           XZ_0I <- .get_XZ_0I(object)
+           ww <- c(object$w.resid, object$w.ranef) ## NOT sqrt()
+           Wei_XZ_0I <- .calc_wAugX(XZ_0I=XZ_0I, sqrt.ww=ww) ## 2nd argument name misleading
+         },                               
+         "left_ginv"= .get_WLS_ginv(object, augmented=augmented), ## X_a^- = (X_a' W X_a)^{-1} X_a' W
+         "hat_matrix"= { ## hat projection matrix                 ## P_a = X_a X_a^- = X_a (X_a' W X_a)^{-1} X_a' W
+           XZ_0I <- .get_XZ_0I(object) 
+           WLS_ginv <- .get_WLS_ginv(object, augmented=TRUE, XZ_0I=XZ_0I)
+           XZ_0I %*% WLS_ginv 
+          },
+         stop("Unhandled 'which' value in get_matrix()")
+  )
 }
 
 model.matrix.HLfit <- function(object, ...) object$X.pv
@@ -430,4 +516,11 @@ how.HLfit <- function(object, devel=FALSE, ...) {
   invisible(info)
 }
 
+family.HLfit <- function(object, ...) object$family
+
+.get_fixef_off_terms <- function(object) {
+  if (object$spaMM.version > "2.5.9") {
+    return(object$HLframes$fixef_terms)
+  } else return(object$HLframes$fixef_off_terms)
+}
 

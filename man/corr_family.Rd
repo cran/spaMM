@@ -7,7 +7,7 @@
 \code{corr_family} objects
 }
 \description{
-\code{corr_family} objects provide a convenient way to implement correlation models handled by \code{spaMM}, analogous to \code{family} objects. These objects are undocumented (but there are documentation pages for eahc of the models implemented).
+\code{corr_family} objects provide a convenient way to implement correlation models handled by \code{spaMM}, analogous to \code{family} objects. These objects are undocumented (but there are documentation pages for each of the models implemented).
 }
 \usage{
 # Matern(...)

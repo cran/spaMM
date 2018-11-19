@@ -74,10 +74,8 @@ corrHLfit_body <- function(processed, ## possibly a list of environments
   if (!is.null(processedHL1) && processedHL1=="SEM" && length(lower)) {
     optimMethod <- "iterateSEMSmooth"
     if (is.null(proc1$SEMargs$control_pmvnorm$maxpts)) {
-      if (length(LowUp$lower)) {
-        .assignWrapper(processed,"SEMargs$control_pmvnorm$maxpts <- quote(250L*nobs)") 
-      } ## else default visible in SEMbetalambda
-    }
+      .assignWrapper(processed,"SEMargs$control_pmvnorm$maxpts <- quote(250L*nobs)") 
+    } ## else default visible in SEMbetalambda
   } else optimMethod <- ".new_locoptim"
   HLCor.args$processed <- processed
   ## 

@@ -54,7 +54,8 @@ spaMM_boot <- local({
       parallel::clusterExport(cl=cl, as.list(ls(other_dots)),envir=other_dots) 
       i <- NULL ## otherwise R CMD check complains that no visible binding for global variable 'i'
       foreach_args <- list(
-        i = 1:nsim, .combine = "rbind",
+        i = 1:nsim, 
+        .combine = "rbind", ## rbinds 1-row data frames (into a data frame) as well as vectors (into a matrix) (result has nsim rows)
         .inorder = TRUE, .packages = "spaMM", .errorhandling = "remove", 
         #"pass", ## "pass" to see error messages
         .options.snow = opts
@@ -70,10 +71,13 @@ spaMM_boot <- local({
       pbopt <- pboptions(nout=min(100,2*nsim),type="timer",char=pb_char)
       bootreps <- do.call("pbapply",c(list(X=newy_s,MARGIN = 2L,FUN = simuland, cl=cl), simuland_dots)) 
       if ( ! is.list(bootreps)) {
+        # tries to return an nsim-rows matrix
         if ( ! is.matrix(bootreps)) {
           dim(bootreps) <- c(length(bootreps),1L)
         } else bootreps <- t(bootreps)
-      } # tries to return an nsim-rows matrix
+      } else if (is.list(bootreps) &&  identical(unique(unlist(lapply(bootreps,nrow))),1L)) {
+        bootreps <- do.call(rbind, bootreps) # rbinds 1-row data frames (into a data frame) to match the doSNOW-based result.
+      }
       pboptions(pbopt)
     }
     ####

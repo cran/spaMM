@@ -29,7 +29,7 @@
             offset=rep.int(0, NROW(dev.res)),
             na.action, start = NULL, etastart, mustart, 
             control, 
-            try = FALSE, 
+            #try = FALSE, 
             ## more args from glm() def:
             subset, ##  not used but rethink.
             model = TRUE, ## whether to return the mf, cf end of code
@@ -63,16 +63,13 @@
   fit <- tryfit$value
   warnmess <- fit$warning$message
   #if (inherits(fit,"error") || is.na(fit$null.deviance)) { ## is.na(...): dgamma problem but returns a fit
-  if (inherits(fit,"error")) { ## is.na(...): dgamma problem but returns a fit
-    if (try) { ## was for the final glm_lambda, but deprecated.
-      ## do nothing: allows the glm to have failed in this case 
-    } else {
-      ## we need a valid GLM: we fit again with a more controlled method
-      fit <- eval(call("spaMM_glm.fit", 
-                  x = X, y = Y, weights = weights, offset = offset, family = family, 
-                  control = control, intercept = intercept))
-      warnmess <- NULL
-    }
+  if (inherits(fit,"error")) { 
+    ## we need a valid GLM: we fit again with a more controlled method
+    control$maxit <- 1e3 ## convergence is very slow when fitting y ~ 1 where most y values are <1e-12 and one is ~1e-10. 
+    fit <- eval(call("spaMM_glm.fit", 
+                     x = X, y = Y, weights = weights, offset = offset, family = family, 
+                     control = control, intercept = intercept))
+    warnmess <- NULL
   }
   if (model) fit$model <- mf
   fit$na.action <- attr(mf, "na.action")

@@ -42,16 +42,22 @@
     old_rd <- newinold[new_rd]
     isEachNewLevelInOld <- attr(cov_newLv_oldv_list[[new_rd]],"isEachNewLevelInOld") ## non autocorr effect: a vector of booleans indicating whether new is in old (qualifies cols of Cnewold)
     if ( ! is.null(isEachNewLevelInOld)) { ## non spatial effect: a vector of booleans indicating whether new is in old (qualifies cols of Cnewold)
-      Evar <- Diagonal(x=lambda[old_rd]*as.numeric(! isEachNewLevelInOld))
-      terme <- .calcZWZt_mat_or_diag(newZAlist[[new_rd]], Evar, covMatrix)
+      if ( ! is.null(fixZAlist)) { 
+        Cno_InvCoo_Cof <- (cov_newLv_oldv_list[[new_rd]])[] %id*id% t(cov_fixLv_oldv_list[[new_rd]])[]
+        Evar <- lambda[old_rd] * (cov_newLv_fixLv_list[[new_rd]] - Cno_InvCoo_Cof) # !=0 only for (new=fiw) not in old
+        terme <- newZAlist[[new_rd]][] %id*id% Evar[] %id*id% t(fixZAlist[[new_rd]])[]
+      } else {
+        Evardiag <- lambda[old_rd] * as.numeric(! isEachNewLevelInOld)
+        if (is.null(cov_newLv_newLv_list[[new_rd]])) { ## we compute only the var vector
+          terme <- .calcZWZt_mat_or_diag(newZAlist[[new_rd]], Evardiag, covMatrix)
+        } else {
+          terme <- .calcZWZt_mat_or_diag(newZAlist[[new_rd]], Diagonal(x=Evardiag), covMatrix)
+        }
+      }
     } else { ## autocorr effect (spatial, ranCoefs...)
       if ( ! is.null(fixZAlist)) {
-        if ( ! is.null(isEachNewLevelInOld)) { ## non spatial effect: a vector of booleans indicating whether new is in old (qualifies cols of Cnewold)
-          Evar <- Diagonal(x=lambda[old_rd]*as.numeric(! isEachNewLevelInOld))
-        } else { ## spatial effect
-          Cno_InvCoo_Cof <- (cov_newLv_oldv_list[[new_rd]])[] %id*id% (invCov_oldLv_oldLv_list[[old_rd]])[] %id*id% t(cov_fixLv_oldv_list[[new_rd]])[]
-          Evar <- lambda[old_rd] * (cov_newLv_fixLv_list[[new_rd]] - Cno_InvCoo_Cof)
-        } 
+        Cno_InvCoo_Cof <- (cov_newLv_oldv_list[[new_rd]])[] %id*id% (invCov_oldLv_oldLv_list[[old_rd]])[] %id*id% t(cov_fixLv_oldv_list[[new_rd]])[]
+        Evar <- lambda[old_rd] * (cov_newLv_fixLv_list[[new_rd]] - Cno_InvCoo_Cof)
         terme <- newZAlist[[new_rd]][] %id*id% Evar[] %id*id% t(fixZAlist[[new_rd]])[]
       } else {
         if (is.null(cov_newLv_newLv_list[[new_rd]])) { ## we compute only the var vector
@@ -244,16 +250,18 @@
       if ( which_mats$no || which_mats$nn[new_rd]) {
         corr.model <- attr(strucList[[old_rd]],"corr.model")
         if (is.null(corr.model)) {
-          ## the list elements remain NULL
-        } else if ( corr.model=="") {
-          stop("corr.model==''") ## FIXME remove this test ?
+          if ( ! is.null(fix_info)) {
+            if (which_mats$no) cov_newLv_oldv_list[[new_rd]] <- 
+              .calc_sub_diagmat_cov_newLv_oldv(oldZA=fix_info$newZAlist[[old_rd]], newZA=newZAlist[[new_rd]],
+                                               namesTerms=attr(newZAlist,"namesTerms")[[new_rd]] ## should have length one, which is all that matters
+              ) 
+          } ## else the list elements remain NULL
         } else if ( corr.model=="random-coef") {
-          newZA <- newZAlist[[new_rd]]  
           namesTerms <- attr(newZAlist,"namesTerms")[[new_rd]]
           if ( ! is.null(fix_info)) {
             oldlevels <- colnames(fix_info$newZAlist[[old_rd]]) ## old_rd despite the "newZAlist" name: specific to fix_info
           } else oldlevels <- colnames(object$ZAlist[[old_rd]])
-          newlevels <- colnames(newZA)
+          newlevels <- colnames(newZAlist[[new_rd]])
           oldornew <- unique(c(oldlevels,newlevels))
           numnamesTerms <- length(namesTerms) ## 2 for random-coef
           design_u <- attr(strucList[[old_rd]],"latentL_blob")$design_u
@@ -265,12 +273,11 @@
           if (which_mats$no) cov_newLv_oldv_list[[new_rd]] <- structure(newoldC[newcols,oldcols,drop=FALSE],ranefs=ranefs[[new_rd]])
           if (which_mats$nn[new_rd]) cov_newLv_newLv_list[[new_rd]] <- newoldC[newcols,newcols,drop=FALSE]
         } else if (corr.model=="corrMatrix") { ## this is called if re.form...
-          newZA <- newZAlist[[new_rd]]  
           namesTerms <- attr(newZAlist,"namesTerms")[[new_rd]]
           if ( ! is.null(fix_info)) {
             oldlevels <- colnames(fix_info$newZAlist[[old_rd]]) ## old_rd despite the "newZAlist" name: specific to fix_info
           } else oldlevels <- colnames(object$ZAlist[[old_rd]])
-          newlevels <- colnames(newZA)
+          newlevels <- colnames(newZAlist[[new_rd]])
           ## currently newdata are not allowed with corrMatrix so that newlevels should = oldlevels...
           if (length(setdiff(newlevels,oldlevels))) stop("Found new levels for a 'corrMatrix' random effect.")
           newoldC <- .tcrossprod(object$strucList[[old_rd]]) ## reconstructs permuted (according to cols of Z) corrMatrix from its L factor
@@ -608,7 +615,7 @@
       ## special case for simple LM
       if (length(object$rand.families)==0L && # not mixed
           object$family$family=="gaussian" &&
-          deparse(object$resid.predictor)=="~1" # not heteroscedastic
+          .DEPARSE(object$resid.predictor)=="~1" # not heteroscedastic
       ) { 
         nobs <- length(object$y)
         resdf <- nobs - ncol(object$X.pv) ## don't use fixef here, that contains bot NAs and argument etaFix$beta! 

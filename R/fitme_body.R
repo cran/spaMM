@@ -2,11 +2,12 @@
 #  et meilleurs default phi, lambda 
 fitme_body <- function(processed,
                        init=list(),
-#                       init.HLfit=list(),
+                       #                       init.HLfit=list(),
                        fixed=list(), ## NULL not valid (should be handled in preprocess?)
                        lower=list(),upper=list(),
                        # control.dist=list(), ## info in processed
                        control=list(), ## optimizer, <optimizer controls>, precision
+                       nb_cores=NULL,
                        ... ## cf dotnames processing below 
 ) {
   dotlist <- list(...) ## forces evaluations, which makes programming easier...
@@ -113,22 +114,29 @@ fitme_body <- function(processed,
       use_SEM <- (!is.null(processedHL1) && processedHL1=="SEM")
       time2 <- Sys.time()
       if (use_SEM) {
+        optimMethod <- "iterateSEMSmooth"
         if (is.null(proc1$SEMargs$control_pmvnorm$maxpts)) {
-          if (length(LowUp$lower)) {
-            .assignWrapper(processed,"SEMargs$control_pmvnorm$maxpts <- quote(250L*nobs)") 
-          } ## else default visible in SEMbetalambda
-        }
-        stop("reimplement iterateSEMSmooth() in fitme() later")
-        ## and then we need to put back the code for logL from smoothing at the end of this function
-        ## beware of SEM case with length(lower)=0
+          .assignWrapper(processed,"SEMargs$control_pmvnorm$maxpts <- quote(250L*nobs)") 
+        } ## else default visible in SEMbetalambda
+        ## its names should match the colnames of the data in Krigobj = the  parameters of the likelihood surface. Current code maybe not general.
+        loclist <- list(anyHLCor_obj_args=anyHLCor_obj_args,  ## contains $processed
+                        LowUp=LowUp,init.corrHLfit=init.optim, ## F I X M E usage of user_init_optim probably not definitive
+                        #preprocess.formal.args=preprocess.formal.args, 
+                        control.corrHLfit=control,
+                        verbose=verbose[["iterateSEM"]],
+                        nb_cores=nb_cores)
+        optr <- .probitgemWrap("iterateSEMSmooth",arglist=loclist, pack="probitgem") # do.call("iterateSEMSmooth",loclist) 
+        optPars <- relist(optr$par,init.optim)
+        if (!is.null(optPars)) attr(optPars,"method") <-"optimthroughSmooth"
         refit_info <- control[["refit"]] ## may be a NULL/ NA/ boolean or a list of booleans 
         if ( is.null(refit_info) || is.na(refit_info)) refit_info <- FALSE ## alternatives are TRUE or an explicit list or NULL
       } else {
-        optPars <- .new_locoptim(init.optim, ## F I X M E try to use gradient?
+        optPars <- .new_locoptim(init.optim, ## F I X M E try to use gradient? But neither minnqa nor _LN_BOBYQA use gradients. optim() can
                                  LowUp, 
                                  control, objfn_locoptim=.objfn_locoptim, 
                                  HLcallfn.obj=HLcallfn.obj, anyHLCor_obj_args=anyHLCor_obj_args, 
-                                 user_init_optim=user_init_optim)
+                                 user_init_optim=user_init_optim,
+                                 grad_locoptim=NULL) # .grad_locoptim)
         refit_info <- attr(optPars,"refit_info") ## 'derives' from control[["refit"]] with modification ## may be NULL but not NA
       }
       optim_time <- .timerraw(time2)
@@ -238,6 +246,19 @@ fitme_body <- function(processed,
     attr(hlcor,"optimInfo") <- list(LUarglist=LUarglist, optim.pars=optPars, 
                                     objective=proc1$objective,
                                     optim_time=optim_time) ## processed was erased for safety
+    locoptr <- attr(optPars,"optr")
+    if (attr(optPars,"method")=="nloptr") {
+      if (locoptr$status<0L) hlcor$warnings$optimMessage <- paste0("nloptr() message: ",
+                                                                   locoptr$message," (status=",locoptr$status,")")
+    } else if ( attr(optPars,"method")=="optim" ) {
+      if (locoptr$convergence) hlcor$warnings$optimMessage <- paste0("optim() message: ",locoptr$message,
+                                                                     " (convergence=",locoptr$convergence,")")
+    } else if ( attr(optPars,"method")== "optimthroughSmooth") {
+      # provide logL estimate from the smoothing, to be used rather than the hlcor logL :
+      logLapp <- optr$value
+      attr(logLapp,"method") <- "  logL (smoothed)" 
+      hlcor$APHLs$logLapp <- logLapp
+    }
   }
   ## substantial effect on object size! :
   lsv <- c("lsv",ls())

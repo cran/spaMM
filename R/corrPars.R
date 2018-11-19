@@ -117,10 +117,17 @@ if (FALSE) {  ## DOC:
 }
 
 
-.remove_from_cP <- function(parlist, u_list=unlist(parlist), u_names) {
+.remove_from_cP <- function(parlist, u_list=unlist(parlist), u_names) { ## not simply corrPars...
   if (length(u_names)) { ## if something to subtract
     u_list[u_names] <- rep(NaN,length(u_names))
     u_list <- relist(u_list,parlist)
     return(.rmNaN(u_list)) ## removes attributes
   } else return(parlist) ## DHGLM where all parameters are fixed.
+}
+
+remove_from_parlist <- function(parlist, removand=NULL, rm_names=names(unlist(removand))) {
+  type <- attr(parlist,"type")
+  if ( ! is.null(type)) type <- .remove_from_cP(type, u_names=rm_names)
+  structure(.remove_from_cP(parlist,u_names=rm_names),
+            type=type )
 }

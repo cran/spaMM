@@ -3,6 +3,29 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 2.5.11}{ 
+\subsection{NEW FEATURES}{
+\itemize{
+\item Function get_matrix() to extract various matrices from the fit.
+\item Function remove_from_parlist() for manipulating a structured list of parameters.
+\item spaMM_boot() now rbind's into a data frame the results of the 'simuland' calls when each call returns a 1-row data frame (the previous behaviour was undocumented and effectively inconsistent accross different parallel backends). 
+\item More explicit error message when variables for prior weights are not in the 'data'.
+\item logLik(., which="logL_Lap") to compute Laplace approximation using observed Hessian (currently only for family=Gamma(log), for demonstration purposes).
+\item Low response variance could result in poor fits. A warning is now issued and several steps have been taken for more robust results.
+\item New family() extractor.
+}
+}
+\subsection{FIXED BUGS}{
+\itemize{
+\item predict() did not generally handle correctly offset terms.
+\item A hack perfomed by spaMM on the value of 'options(error=<.>)' could conflict in some cases with the user setting 'options(error=<expression>)'.  
+\item Prediction variance computation with a 'fix_X_ZAC.object' failed when the model included a non-autocorrelated random effet.
+\item Prior-weights information was not shown in model summaries in some cases where it should.
+\item Documentation bug in help("fixed") (with respect to 'etaFix' vs. 'fixed' elements).
+\item predict() with 'newdata' did not work from a fit with non-null 'etaFix$beta'.
+}
+}
+}
 \section{CHANGES UP TO VERSION 2.5.0}{ 
 \subsection{NEW FEATURES}{
 \itemize{
@@ -20,7 +43,7 @@
 \item Possibly improved initial value for lambda may affect speed and results of some fits.
 \item New extractors formula(), terms(), nobs(), and extract.AIC(), being methods for 'HLfit' objects of generics defined by 'stats'. 
 \item The syntax '.' can now be used in formulas, e.g. HLfit(y ~ (.)^2, ...)
-\item Automatic conversion of correlation matrices to precision factor matrices when sparse-precsion algorithm is requested; new as_precision() function for such conversion.
+\item Automatic conversion of correlation matrices to precision factor matrices when sparse-precision algorithm is requested; new as_precision() function for such conversion.
 \item More transparent control of the residual variance parameter of a residual dispersion model. However, this affects the default results if the residual dispersion model is a mixed-effect one. Use 'fixed=list(phi=NA)' in the 'resid.model' (forcing estimation of its phi) to recover past results. 
 \item More efficient computation of conditional AIC. Users can also control whether it should be computed along with other information criteria. 
 \item New extractor how() to cleanly extract information about how a model fit was obtained.
@@ -34,6 +57,7 @@
 \item The designL.from.Corr() function is superseded by mat_sqrt().
 \item The structure of the return value of sym_eigen() is modified.
 \item 'resid.formula' argument of fitting functions is formally deprecated (it has been declared obsolete since v1.8.0).
+\item spaMM now enforces variables for prior weights to be in the 'data'.
 }
 }
 \subsection{PREVIOUSLY DOCUMENTED, BUT NEVERTHELESS MISLEADING FEATURES}{
@@ -95,7 +119,7 @@
 \item Cauchy spatial correlation family has been implemented.
 \item For binomial family the response can now be specified as a factor.
 \item Better default selection of methods for autoregressive fits with many random-effect levels may lead to much faster fits.
-\item fitme() now selects estimation methods for phi and lambda by default according to nrow(data), which may change details of the results, To overcome the new defaults, fitme() now allows better control of estimation method and of initial values for phi and lambda. 
+\item fitme() now selects estimation methods for phi and lambda by default according to nrow(data), which may change details of the results. To overcome the new defaults, fitme() now allows better control of estimation method and of initial values for phi and lambda. 
 \item get_predCov_var_fix() may now handle a non-trivial 're.form'.
 \item New 'max.print' argument for summary.HLfit().
 \item New function spaMM_boot() for parametric bootstrap. 

@@ -193,7 +193,7 @@ if (FALSE) {
       if (  methods::.hasSlot(DZAL, "diag") &&  DZAL@diag=="U") Matrix::diag(DZAL) <- w
       return(Matrix::crossprod(ZAL, DZAL)) ## t(Z) %*% (W Z)
     }
-  } else return(.ZtWZ(ZAL,w))
+  } else return(.ZtWZ(ZAL,w)) ## but this uses sqrt() hence assumes w>0
 }
 
 .process_ranCoefs <- function(processed, ranCoefs, trRanCoefs, invLs=NULL, use_tri, need_longLv=TRUE) {
@@ -508,7 +508,7 @@ if (FALSE) {
 }
 
 ## spaMM_Gamma() fixes Gamma()$dev.resids(1e10+2,1e10,1) is < 0
-# dev.resids() must be >0 for computation deviance_residual in fitting Gamma GLMM, and alos for $aic() computation.
+# dev.resids() must be >0 for computation deviance_residual in fitting Gamma GLMM, and also for $aic() computation.
 spaMM_Gamma <- function (link = "inverse") {
   mc <- match.call()
   linktemp <- substitute(link) ## does not evaluate
@@ -718,6 +718,7 @@ spaMM_Gamma <- function (link = "inverse") {
     GLMweights <- eval(processed$prior.weights)  ## with attr(.,"unique")
     attr(GLMweights,"unique") <- attr(processed$prior.weights,"unique") ## might actually be true sometimes
   } else {
+    # in Gamma() (inverse) case dmudeta=Vmu => dmudeta^2 /Vmu= Vmu
     GLMweights <- eval(processed$prior.weights) * dmudeta^2 /Vmu ## must be O(n) in binomial cases
     attr(GLMweights,"unique") <- FALSE ## might actually be true sometimes
   }
@@ -945,16 +946,18 @@ spaMM_Gamma <- function (link = "inverse") {
 }
 
 .is_identity <- function( x, matrixcheck=FALSE, tol=1e-8 ) {
-  if (inherits(x,"Matrix")) {
-    if (inherits(x,"ddiMatrix") ) return(x@diag=="U")
-    if (! isDiagonal( x ) ) return( FALSE )
-    ## hence now diagonal:
-    return(max(abs(range(diag(x))-1))<tol)
-  } else {
-    if (matrixcheck) {
-      return(ncol(x)==nrow(x) && max(abs(x- diag(ncol(x))))<tol)
-    } else return(FALSE)  
-  }
+  #if (is.null(is_id <- attr(x,"is_identity"))) {
+    if (inherits(x,"Matrix")) {
+      if (inherits(x,"ddiMatrix") ) return(x@diag=="U")
+      if (! isDiagonal( x ) ) return( FALSE )
+      ## hence now diagonal:
+      return(max(abs(range(diag(x))-1))<tol)
+    } else {
+      if (matrixcheck) {
+        return(ncol(x)==nrow(x) && max(abs(x- diag(ncol(x))))<tol)
+      } else return(FALSE)  
+    }
+  #} else return(is_id)
 }
 
 .CHOL <- function(x, CHOLtol=1e-8, ...) {
@@ -1113,17 +1116,6 @@ sym_eigen <- local({
   } 
   return(beta_w_cov)
 }
-
-get_ZALMatrix <- function(object,as_matrix) {
-  if ( ! missing(as_matrix)) stop("'as_matrix' is deprecated")
-  if (length(ZAlist <- object$ZAlist)) { ## ou tester if (object$models[["eta"]]=="etaGLM")
-    if (is.null(object$envir$ZALMatrix)) {
-      object$envir$ZALMatrix <- .compute_ZAL(XMatrix=object$strucList, ZAlist=ZAlist,as_matrix=FALSE) 
-    }
-    return(object$envir$ZALMatrix)
-  } else return(NULL) 
-}
-
 
 .eval_as_mat_arg <- function(object) { 
   (
@@ -1612,7 +1604,7 @@ get_ZALMatrix <- function(object,as_matrix) {
   return(beta_cov)
 }
 
-.calc_beta_cov_info_others <- function(wAugX=NULL, AUGI0_ZX, ZAL, ww) {
+    .calc_beta_cov_info_others <- function(wAugX=NULL, AUGI0_ZX, ZAL, ww) {
   if (is.null(wAugX)) {
     if (is.null(ZAL)) {
       wAugX <- .calc_wAugX(XZ_0I=AUGI0_ZX$X.pv,sqrt.ww=sqrt(ww))
@@ -1664,32 +1656,6 @@ get_ZALMatrix <- function(object,as_matrix) {
   return(res$envir$beta_cov_info)
 }
 
-
-# not doc'ed (no mention of augmented model in doc)
-.get_LSmatrix <- function(object,augmented=FALSE) { 
-  ## gets inv(tX_a invSig_a X_a).tX_a invSig_a that gives hat(beta,v_h)
-  ww <- c(object$w.resid, object$w.ranef)
-  sqrt.ww <- sqrt(ww)
-  pforpv <- ncol(object$X.pv)
-  nrd <- length(object$w.ranef)
-  nobs <- nrow(object$X.pv)
-  ZAL <- get_ZALMatrix(object)  
-  XZ_0I <- cbind2(
-    rbind2(object$X.pv, matrix(0,nrow=nrd,ncol=pforpv)), 
-    rbind2(ZAL, diag(nrow=nrd))
-  ) ## template with ZAL block to be filled later
-  wAugX <- .calc_wAugX(XZ_0I=XZ_0I,sqrt.ww=sqrt.ww)
-  beta_cov_info <- .get_beta_cov_info(object)
-  beta_v_cov <- attr(beta_cov_info,"beta_v_cov")
-  augXWXXW <- beta_v_cov %*% crossprod(wAugX, diag(x=sqrt.ww)) ## hmmm solve(crossprod(wAugX)) %*% crossprod(wAugX, diag(x=sqrt.ww))
-  if (augmented) {
-    return(augXWXXW)
-  } else {
-    return(augXWXXW[seq_len(pforpv),seq_len(nobs)])
-  }
-}
-
-
 .calc_newZACvar <- function(newZAlist,cov_newLv_oldv_list) {
   newZACvarlist <- vector("list",length(newZAlist))
   for (new_rd in seq_along(newZAlist)) {
@@ -1732,7 +1698,7 @@ get_ZALMatrix <- function(object,as_matrix) {
           if (nblocks>1) {
             locZA <- ZA
             for (bt in 1:nblocks) 
-              locZA[,locnr*(bt-1)+(1:locnr)] <- locZA[,locnr*(bt-1)+(1:locnr)] %*% xmatrix[] ## [] to handle ff_matrix
+              locZA[,locnr*(bt-1)+(1:locnr)] <- locZA[,locnr*(bt-1)+(1:locnr)] %*% xmatrix
             ZAX[[Lit]] <- locZA
           } else {
             ## With a proxy::dist or 'crossdist' matrix, it is likely that ZA was = I and we don't reach this code;
@@ -1743,9 +1709,10 @@ get_ZALMatrix <- function(object,as_matrix) {
             #   matmult <- getMethod(`%*%`, c("CsparseMatrix", "CsparseMatrix"))
             #   zax <- matmult(ZA, xmatrix)
             # } else 
-            zax <- ZA %*% xmatrix[] # measurably slow... 
+            zax <- ZA %*% xmatrix # measurably slow... 
             attr(zax,"corr.model") <- attr(xmatrix,"corr.model")
-            if (identical(attr(zax,"corr.model"),"random-coef")) colnames(zax) <- colnames(ZA) ## names needed for match_old_new_levels(); and for fits, somewhere... (yet this costs measurable time F I X M E)
+            if (identical(attr(zax,"corr.model"),"random-coef")) colnames(zax) <- colnames(ZA) 
+            ## : names needed for match_old_new_levels(); and for fits, somewhere... (yet this costs measurable time FIXME)
             ZAX[[Lit]] <- zax
           }
         }
@@ -2226,9 +2193,10 @@ get_ZALMatrix <- function(object,as_matrix) {
       res$envir$beta_cov_info <- structure(beta_cov, beta_v_cov=beta_v_cov)
     } else {
       beta_cov <- .Dvec_times_m_Matrix(inv_X_scale,.m_Matrix_times_Dvec(beta_cov,inv_X_scale))
-      #rownames(beta_cov) <- colnames(beta_cov) ## only colnames have been retained (logic explained in .Dvec_times_matrix)
     }
+    rownames(beta_cov) <- colnames(beta_cov) ## In some cases, only colnames have been retained (reason explained in .Dvec_times_matrix)
   } else {
+    rownames(beta_cov) <- colnames(beta_cov) ## In some cases, only colnames have been retained (bis)
     if ( ! is.null(attr(beta_cov,"beta_v_cov"))) { ## typically TRUE except for sparse_precision results
       ## beta_cov stricto sensu is a permanent element of the HLfit object (this might change later: FIXME)
       ## beta_cov_info (with beta_v_cov attribute) is a labile element of the object $envir 
@@ -2241,11 +2209,14 @@ get_ZALMatrix <- function(object,as_matrix) {
 
 .scale <- function(X, beta=NULL) {
   if (is.null(beta)) {
+    Xattr <- attributes(X)
     scale <- apply(X,2L,sd)
     constcol <- scale==0
     scale[constcol] <- X[1L,constcol] ## there should be only one constcol, "(Intercept)", or something that happens to play the same role
     X <- .m_Matrix_times_Dvec(X,1/scale)  # .m_Matrix_times_Dvec() kindly preserve attributes
     attr(X,"scaled:scale") <- scale ## same attr as in base::scale
+    names_lostattrs <- setdiff(names(Xattr), names(attributes(X)))
+    attributes(X)[names_lostattrs] <- Xattr[names_lostattrs] ## not mostattributes hich messes S4 objects ?!
     return(X) ## center=FALSE keeps sparsity
   } else {
     return(beta * attr(X,"scaled:scale"))
@@ -2253,7 +2224,10 @@ get_ZALMatrix <- function(object,as_matrix) {
 }
 .unscale <- function(X, beta=NULL) {
   if (is.null(beta)) {
+    Xattr <- attributes(X)
     X <- .m_Matrix_times_Dvec(X, attr(X,"scaled:scale")) 
+    names_lostattrs <- setdiff(names(Xattr), names(attributes(X)))
+    attributes(X)[names_lostattrs] <- Xattr[names_lostattrs] ## not mostattributes hich messes S4 objects ?!
     attr(X,"scaled:scale") <- NULL ## otherwise there is a non-trivial scale on an unscaled matrix
     attr(X,"info") <- "scale removed after unscaling" ## otherwise ther is a non-trivial scale on an unscaled matrix
     return(X)

@@ -152,7 +152,7 @@
     ## model matrix for LHS (Intercept if ...(1|.))
     tempexp <- x[[2]] ## analyzing the LEFT hand side for non-trivial term (random-slope model)
     leftOfBar_form <- eval(substitute(~expr, list(expr = tempexp)))
-    leftOfBar_terms <- terms(leftOfBar_form)
+    leftOfBar_terms <- terms(leftOfBar_form) ## assumes Intercept implicitly
     if ( length(old_leftOfBar_mf)) { ## excludes NULL, or 0-col data.frames as in Matern(1|.)
       # new predvars set on 'mf' by new_mf_ranef <- .calc_newFrames_ranef(.)$mf
       ori_levels <- stats::.getXlevels(attr(old_leftOfBar_mf,"terms"), old_leftOfBar_mf) 

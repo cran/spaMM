@@ -105,7 +105,7 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
    A list of given values of the coefficients of the linear predictor. See \code{\link{etaFix}} for further information.     
  }
   \item{prior.weights}{
-   An optional vector of prior weights as in \code{\link{glm}}. This fits the data to a model with residual variance \code{phi/prior.weights}, so that increasing the weights by a constant factor \emph{f} will yield (Intercept) estimates of \code{phi} also increased by \emph{f} (except if a non-trivial \code{resid.formula} with log link is used). This is not necessarily the way prior weights are interpreted in widely used packages, but this is consistent with what \code{glm} fits. 
+   An optional vector of prior weights as in \code{\link{glm}}. This fits the data to a probability model with residual variance \code{phi/prior.weights}, and all further outputs are defined to be consistent with this (see section IV in Details). 
  }
   \item{processed}{
     A list of preprocessed arguments, for programming purposes only (as in \code{corrHLfit}).
@@ -147,6 +147,8 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
  \bold{Gamma}-distributed random effects, where \eqn{u ~ }\code{Gamma(shape=}1+1/\eqn{\lambda},\bold{scale=}1/\eqn{\lambda}): see \code{\link{Gamma}} for allowed links and further details; and \bold{Inverse-Gamma}-distributed random effects, where \eqn{u ~ }inverse-Gamma(\code{shape=}1+1/\eqn{\lambda},\bold{rate=}1/\eqn{\lambda}): see \code{\link{inverse.Gamma}} for allowed links and further details.
 
   \bold{III. The standard errors} reported may sometimes be misleading. For each set of parameters among \eqn{\beta}, \eqn{\lambda}, and \eqn{\phi} parameters these are computed assuming that the other parameters are known without error. This is why they are labelled \code{Cond. SE} (conditional standard error). This is most uninformative in the unusual case where \eqn{\lambda} and \eqn{\phi} are not separately estimable parameters. Further, the SEs for \eqn{\lambda} and \eqn{\phi} are rough approximations as discussed in particular by Smyth et al. (2001; \eqn{V_1} method).    
+  
+  \bold{IV. prior weigths}. This controls the likelihood analysis of heteroscedastic models. In particular, increasing the weights by a constant factor \emph{f} should, and will, yield (Intercept) estimates of \code{phi} also increased by \emph{f} (except if a non-trivial \code{resid.formula} with log link is used). This is consistent with what \code{glm} does, but some widely used packages do not follow this logic.
 
 }
 \value{
@@ -164,7 +166,7 @@ Elements include \bold{descriptors of the fit}:
 \item{v_h}{The random effects on the linear scale, \eqn{v};}
 \item{phi}{The residual variance \eqn{\phi};}
 \item{phi.object}{A possibly more complex object describing \eqn{\phi};}
-\item{lambda}{The random effects (\eqn{u}) variance \eqn{\lambda};}
+\item{lambda}{The random-effect (\eqn{u}) variance(s) \eqn{\lambda} in compact form;}
 \item{lambda.object}{A possibly more complex object describing \eqn{\lambda};}
 \item{corrPars}{Agglomerates information on correlation parameters, either fixed, or estimated by \code{HLfit}, \code{corrHLfit} or \code{fitme};}
 \item{APHLs}{A list which elements are various likelihood components, include conditional likelihood, h-likelihood, and the two adjusted profile h-likelihoods: the (approximate) marginal \bold{likelihood} \code{p_v} and the (approximate) \bold{restricted likelihood} \code{p_bv} (the latter two available through the \code{logLik} function). See the extractor function \code{\link{get_any_IC}} for information criteria (\dQuote{AIC}) and effective degrees of freedom;}
@@ -172,16 +174,15 @@ Elements include \bold{descriptors of the fit}:
 
 \bold{Information about the input} is contained in output elements named as \code{HLfit} or \code{corrHLfit} arguments (\code{data,family,resid.family,ranFix,prior.weights}), with the following notable exceptions or modifications:
 
-\item{predictor}{The linear predictor, including the \code{formula} (possibly reformatted) and several attributes;}
+\item{predictor}{The \code{formula}, possibly reformatted;}
 \item{resid.predictor}{Analogous to \code{predictor}, for the residual variance;}
 \item{rand.families}{corresponding to the \code{rand.family} input;}
 
 \bold{Further miscellaneous diagnostics and descriptors of model structure:}
 
 \item{X.pv}{The design matrix for fixed effects;}
-\item{ZAlist,strucList}{Two lists of matrices, respectively the design matrices \dQuote{\bold{Z}}, and the \dQuote{\bold{L}} matrices, for the different random effects terms. The extractor \code{\link{get_ZALMatrix}} can be used to reconstruct a single \dQuote{\bold{ZL}} matrix for all terms.}
-\item{fixef_terms,fixef_levels}{Further information about fixed effect model;}
-\item{weights}{(binomial data only) the binomial denominators;}
+\item{ZAlist,strucList}{Two lists of matrices, respectively the design matrices \dQuote{\bold{Z}}, and the \dQuote{\bold{L}} matrices, for the different random-effect terms. The extractor \code{\link{get_ZALMatrix}} can be used to reconstruct a single \dQuote{\bold{ZL}} matrix for all terms.}
+\item{BinomialDen}{(binomial data only) the binomial denominators;}
 \item{y}{the response vector; for binomial data, the frequency response.}
 \item{models}{Additional information on model structure for \eqn{\eta}, \eqn{\lambda} and \eqn{\phi};}
 \item{HL}{A set of indices that characterize the approximations used for likelihood;}

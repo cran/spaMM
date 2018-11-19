@@ -188,7 +188,8 @@
   Y <- model.response(mf) ## evaluated rhs (e.g. log(y) rather than y...)
   # rhs
   off <- model.offset(mf)
-  rhs_terms <- stats::delete.response(terms(.stripOffset(form),data=data)) ## data argument allows e.g. ~ (.)^2
+  rhs_terms <- terms(.stripOffset(form),data=data) ## data argument allows e.g. ~ (.)^2; "Intercept" implicitly assumed by terms()
+  rhs_terms <- stats::delete.response(rhs_terms) 
   mf <- model.frame(rhs_terms, data)
   # builds a model which indexes responses with identical predictor [ULI(mf)] 
   # and retains data that are replicates for each level of this index [uli]
@@ -338,7 +339,7 @@
   names(lFix) <- seq(nrand) # (character)
   if ( ! is.null(user_lFix)) {
     user_names <- names(user_lFix)
-    # 'user'_names are not necessarily 1,2... (fitted values have names from rhs of ranef terms) ## F I X M E info at preprocessing time ?
+    # 'user'_names are not necessarily 1,2... (fitted values have names from rhs of ranef terms) 
     complex_names <- setdiff(user_names, paste(seq(nrand)))
     if (length(complex_names)) { ## cannot be used
       if (length(user_lFix)!=nrand) {
@@ -515,13 +516,13 @@
   if ( (! is.null(nSEMiter)) && nSEMiter < 10) {
     stop(" 'nSEMiter' should be >9")
   } else SEMargs$nSEMiter <- nSEMiter
-  SEMargs$ngibbs <-control.HLfit$ngibbs ##  
+  SEMargs$ngibbs <- control.HLfit$ngibbs ##  
   SEMargs$SEMsample <- control.HLfit$SEMsample ## stays NULL if NULL
   SEMargs$whichy1 <- (y==1) 
   return(SEMargs)
 }
 
-.assign_canonLink_G_LMMbool <- function(family, processed) {
+.is_link_canonical <- function(family) {
   canonicalLink <- FALSE
   if (family$family=="gaussian" && family$link=="identity") {
     canonicalLink <- TRUE
@@ -534,11 +535,15 @@
   } else if (family$family=="COMPoisson" && family$link=="loglambda") {
     canonicalLink <- TRUE
   } ## no implemented canonical link case for negbin
-  processed$canonicalLink <- canonicalLink  
+  return(canonicalLink)
+}
+
+.assign_canonLink_G_LMMbool <- function(family, processed) {
+  processed$canonicalLink <- .is_link_canonical(family)  
   #
   GLMMbool <- (length(processed$lcrandfamfam) && all(processed$lcrandfamfam=="gaussian") ) ## only allowed gaussian rand.family is gaussian(identity) 
   if (GLMMbool) {
-    LMMbool <- (family$family=="gaussian" && canonicalLink) 
+    LMMbool <- (family$family=="gaussian" && processed$canonicalLink) 
   } else LMMbool <- FALSE
   processed$LMMbool <- LMMbool
   processed$GLMMbool <- GLMMbool
@@ -664,10 +669,10 @@ as_precision <- function(corrMatrix) {
   ## forcing sparse_X may (1) be slow for small problems 
   ## (2) entails the use of Matrix::Cholesky, which is less accurate => small bu visible effect on predVar in singular 'twolambda' case
   if (is.null(sparse_X)) {
-    # les terms et cols sont reord selon attr(fixef_terms, "term.labels")
+    # les terms et cols sont reord selon attr(fixef_off_terms, "term.labels")
     # (1) identify terms that involve factors: 
     if ( length(HLframes$fixef_levels) ) {
-      vars_terms_table <- attr(HLframes$fixef_terms,"factors") ## ""factors"" is a misleading name as table includes quantitative predictors
+      vars_terms_table <- attr(HLframes$fixef_off_terms,"factors") ## ""factors"" is a misleading name as table includes quantitative predictors
       n_levels <- sapply(HLframes$fixef_levels,length)
       col_heuristic_denseness <- rep(1,ncol(X.pv))
       term_heuristic_denseness <- rep(1,ncol(vars_terms_table)) 
@@ -788,7 +793,7 @@ as_precision <- function(corrMatrix) {
 .rankTrim <- function(X.pv, rankinfo, verbose=FALSE) {
   if (verbose)  str(rankinfo)
   if (rankinfo$rank < ncol(X.pv)) {   
-    X.pv <- structure(X.pv[,rankinfo$whichcols,drop=FALSE],namesOri=colnames(X.pv)) 
+    X.pv <- structure(X.pv[,rankinfo$whichcols,drop=FALSE], namesOri=colnames(X.pv)) 
     # etaFix$beta |         variables 
     #             |  valid vars | invalid vars
     #     (1)           (2)           (3)
@@ -900,10 +905,11 @@ as_precision <- function(corrMatrix) {
                                             list(link=resid.family$link))
   resid.model$family <- resid.family ## resid.predictor will also be returned
   #
-  if (! inherits(predictor,"predictor")) predictor <- .stripTerms(predictor,data=data) 
+  if (! inherits(predictor,"predictor")) predictor <- .as_predictor(predictor,data=data) 
   HLframes <- .HLframes(formula=predictor,data=data) ## design matrix X, Y... 
   Y <- HLframes$Y
   nobs <- NROW(HLframes$X) ## not using Y which may be NULL
+  if (nobs==0L) stop("No line in the data have all the variables required to fit the model.")
   if (family$family=="binomial" && NCOL(Y)>1) {
     BinomialDen <- rowSums(Y)
     if (any(BinomialDen == 0)) {
@@ -921,7 +927,13 @@ as_precision <- function(corrMatrix) {
     processed$bin_all_or_none <- all(pmin(y,BinomialDen-y)==0L)
   } else { 
     processed$bin_all_or_none <- FALSE
-    if ( (! is.null(y)) && var(y)==0 ) { stop("var(response) = 0.") }  ## y may be NULL in evaluation of residProcessed
+    if ( ! is.null(y)) { ## y may be NULL in evaluation of residProcessed
+      if ( var(y)==0 ) { 
+        stop("var(response) = 0.") 
+      } else if (var(y)<1e-3 && family$family=="gaussian") {
+        warning("The variance of the response is low, which may lead to imperfect estimation of variance parameters.\n Perhaps rescale the response?")
+      }
+    }  
   } # (e1071::svm should fail when var response=0)
   #
   X.pv <- HLframes$X
@@ -1138,7 +1150,9 @@ as_precision <- function(corrMatrix) {
         ## Matern or corrMatrix were allowed without a tag then
       }
     }
-    processed$ZAlist <- ZAlist ## F I X M E pre test .is_identity so that it's not necessary later
+    # This, together with two commented lines in .is_identity(), is not clearly useful:
+    #for (rd in seq_along(ZAlist)) attr(ZAlist[[rd]], "is_identity") - .is_identity(ZAlist[[rd]], matrixcheck=TRUE)
+    processed$ZAlist <- ZAlist 
     #
     vec_n_u_h <- unlist(lapply(ZAlist,ncol)) ## nb cols each design matrix = nb realizations each ranef
     processed$cum_n_u_h <- cum_n_u_h <- cumsum(c(0L, vec_n_u_h)) ## if two ranef,  with q=(3,3), this is 0,3,6 ;
@@ -1320,7 +1334,7 @@ as_precision <- function(corrMatrix) {
       models[["phi"]] <- "phiHGLM" 
       p_phi <- NA
     } else {
-      resid.formula <- .stripTerms(resid.formula,data=data)
+      resid.formula <- .as_predictor(resid.formula,data=data)
       residFrames <- .HLframes(formula=resid.formula,data=data)
       attr(resid.formula,"off") <- model.offset(residFrames$mf) ## only for summary.HLfit()
       ## if formula= ~1 and data is an environment, there is no info about nobs, => fr_disp$X has zero rows, which is a problem later 
@@ -1366,7 +1380,7 @@ as_precision <- function(corrMatrix) {
         warning(mess)
       }
     }
-    if (any(vec_n_u_h==nobs) && models[["phi"]] %in% c("phiScal","phiGLM")) { ## tests (mean)ranefs if intecept in resid formula
+    if (any(vec_n_u_h==nobs) && models[["phi"]] %in% c("phiScal","phiGLM")) { ## tests (mean)ranefs if intercept in resid formula
       resid.mf <- residFrames$mf 
       if (attr(attr(resid.mf, "terms"),"intercept")!=0L) { ## there is an intercept in the resid.model formula
         # ideally for random-coefficients models we should compare the design columns... 
@@ -1376,11 +1390,11 @@ as_precision <- function(corrMatrix) {
           term_ranef <- attr(ZAlist,"exp_ranef_strings")[iMat]
           if (# is.null(LMatrix) && ## does not seem useful
             substr(term_ranef, 1, 1)=="(" ## excludes spatial ranefs 
+            && ! is.numeric(ranFix$lambda[iMat])
           ) {
-            mess <- paste0("Number of levels = number of observations",
-                          "\n   for random effect ", term_ranef,
-                          ";\n   this model cannot be fitted unless phi is fixed",
-                          "\n   or a correlation matrix is given.")
+            mess <- paste0("Number of levels = number of observations for random effect ", term_ranef,
+                          ";\n   this model cannot be fitted unless phi is fixed, or the variance",
+                          "\n   of this effect is fixed, or a non-trivial correlation matrix is given.")
             stop(mess)
           }          
         }
@@ -1388,7 +1402,7 @@ as_precision <- function(corrMatrix) {
     }
   } 
   #
-  processed$HLframes <- HLframes[c("Y","fixef_terms","fixef_levels")] ## Y for family$initialize() (binomial spec.), others for predict()
+  processed$HLframes <- HLframes[c("Y","fixef_off_terms","fixef_levels")] ## Y for family$initialize() (binomial spec.), others for predict()
   #processed$HLframes$all_terms <- attr(HLframes$mf, "terms") ## also for predict, with poly(.,raw=FALSE) term
   processed$residModel <- resid.model 
   processed$rand.families <- rand.families

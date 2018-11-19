@@ -8,16 +8,18 @@
 }
 
 .optim_by_nloptr <- function(lowerb, upperb, initvec, objfn_locoptim, anyHLCor_obj_args, HLcallfn.obj, init.optim, 
-                             nloptr_controls) {
+                             nloptr_controls, grad_locoptim=NULL) {
   ## this is also called if length(lower)=0 by  (SEM or not) and optPars is then null 
-  optr <- nloptr::nloptr(x0=initvec,eval_f=objfn_locoptim,lb=lowerb,ub=upperb,
+  optr <- nloptr::nloptr(x0=initvec,eval_f=objfn_locoptim,
+                         eval_grad_f=grad_locoptim, # ignored with NLOPT_LN_BOBYQA
+                         lb=lowerb,ub=upperb,
                          opts=nloptr_controls, anyHLCor_obj_args=anyHLCor_obj_args, HLcallfn.obj=HLcallfn.obj)
   while (optr$status==5L) { ## optr$status=5 => termination bc maxeval has been reached 
     # met status=4: nloptr message in normal termination due toxtol_rel, but is this true ?
     message("maxeval reached in nloptr(); nloptr() called again until apparent convergence of objective.") 
     prevlik <- optr$objective
     reinit <- pmax(lowerb,pmin(upperb,optr$solution))
-    optr <- nloptr::nloptr(x0=reinit,eval_f=objfn_locoptim,lb=lowerb,ub=upperb,
+    optr <- nloptr::nloptr(x0=reinit,eval_f=objfn_locoptim, eval_grad_f=grad_locoptim, lb=lowerb,ub=upperb,
                            opts=nloptr_controls, anyHLCor_obj_args=anyHLCor_obj_args, HLcallfn.obj=HLcallfn.obj)
     loc_ftol <- max(1e-8, optr$options$ftol_abs)
     if (- optr$objective < - prevlik+loc_ftol) break ## no progress in <= maxeval iterations
@@ -59,7 +61,8 @@
 # returns optPars which is a list given by relist(.,init.optim), with attributes the optimMethod and (+:- raw) optr 
 .new_locoptim <- function(init.optim, LowUp, control, objfn_locoptim, 
                           anyHLCor_obj_args, HLcallfn.obj="HLCor.obj", 
-                          user_init_optim ## only purpose is to check whether (some of the) init.optim comes from explicit user info.
+                          user_init_optim, ## only purpose is to check whether (some of the) init.optim comes from explicit user info.
+                          grad_locoptim=NULL
 ) {
   initvec <- unlist(init.optim) 
   if ( ! length(initvec)) return(NULL)
@@ -97,7 +100,7 @@
     bobyqa_controls[names(control$bobyqa)] <- control$bobyqa ## Overwrite defaults with any element of $bobyqa
     if (is.null(bobyqa_controls$maxfun)) bobyqa_controls$maxfun <- max(2*( eval(.spaMM.data$options$maxeval)),1+10*length(initvec)^2) # bobyqa will complain if not > second value
     optr <- .optim_by_bobyqa(lowerb, upperb, initvec, objfn_locoptim, anyHLCor_obj_args, HLcallfn.obj, init.optim, 
-                             bobyqa_controls) 
+                             bobyqa_controls) ## does not use gradients
     optPars <- relist(optr$par,init.optim)
   } else if (Optimizer=="L-BFGS-B") {
     parscale <- (upperb-lowerb) 
@@ -105,6 +108,7 @@
     control_optim <- list(parscale=parscale,factr=1e9) ## factr was the stricter 1e8 up to 23/01/13
     control_optim[names(control[["optim"]]$control)] <- control[["optim"]]$control ## ...which may be overwritten 
     optr <- optim(par=initvec,fn=objfn_locoptim,lower=lowerb,upper=upperb,control=control_optim,method="L-BFGS-B",
+                  gr=grad_locoptim, 
                   anyHLCor_obj_args=anyHLCor_obj_args, HLcallfn.obj=HLcallfn.obj) ## optimize HLCor.obj()'s 'objective'
     optPars <- relist(optr$par,init.optim)
     ## full optr is big. We take out the two items that contribute much to saveSize:
@@ -117,8 +121,9 @@
     nloptr_controls[names(control$nloptr)] <- control$nloptr ## Overwrite defaults with any element of $nloptr
     if (is.null(nloptr_controls$maxeval)) nloptr_controls$maxeval <- eval(.spaMM.data$options$maxeval)
     if (is.null(nloptr_controls$xtol_abs)) nloptr_controls$xtol_abs <- eval(.spaMM.data$options$xtol_abs, list(LowUp=LowUp))
-    optr <- .optim_by_nloptr(lowerb, upperb, initvec, objfn_locoptim, anyHLCor_obj_args, HLcallfn.obj, init.optim, 
-                             nloptr_controls) 
+    optr <- .optim_by_nloptr(lowerb=lowerb, upperb=upperb, initvec=initvec, objfn_locoptim=objfn_locoptim, 
+                             anyHLCor_obj_args=anyHLCor_obj_args, HLcallfn.obj=HLcallfn.obj, init.optim=init.optim, 
+                             nloptr_controls=nloptr_controls, grad_locoptim = grad_locoptim) 
     optPars <- relist(optr$solution,init.optim)
     if (anyNA(refit_info)) refit_info <- (nloptr_controls$xtol_rel > (5e-6 + 1e-8)) ## FIXME not documented (& anyNA to handle NULL)
     ## full optr is big. We take out the two items that contribute much to saveSize:

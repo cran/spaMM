@@ -184,9 +184,9 @@
     }
   } else boot_call$"prior.weights" <- data$"(weights)" ## this is where .preprocess_data() -> .getValidData() -> model.frame() puts the evaluated weights.
   predictor <- formula   
-  if (! inherits(formula,"predictor")) predictor <- .stripTerms(formula,data=data)
+  if (! inherits(formula,"predictor")) predictor <- .as_predictor(formula,data=data)
   null.predictor <- null.formula   
-  if (! inherits(null.formula,"predictor")) null.predictor <- .stripTerms(null.formula,data=data)
+  if (! inherits(null.formula,"predictor")) null.predictor <- .as_predictor(null.formula,data=data)
   form <- predictor
   if (!is.null(boot_call$LamFix)) stop("LamFix is obsolete")
   if (!is.null(boot_call$PhiFix)) stop("PhiFix is obsolete")  

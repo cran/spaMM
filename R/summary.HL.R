@@ -40,11 +40,12 @@
   ## (1) analyse distributions
   randfams <- object$rand.families
   rff <- sapply(randfams, getElement, name="family")
+  # info about links:
   rfl <- sapply(rff, switch, 
     #        "Beta" = "log(lambda)", ## u ~ Beta(1/(2lambda),1/(2lambda))
     #        "inverse.Gamma" = "log(lambda)", ## u ~ I-Gamma(1+1/lambda,1/lambda)
     #        "log(lambda)" ## gaussian, or gamma with u ~ Gamma(lambda,1/lambda)
-    "log(lambda)" ## currently constant
+    "log(lambda)" ## currently constant except as modified below for adjd
   )
   check_adjd <- any(unlist(lapply(object$lambda.object$coefficients_lambdaS, names))=="adjd")
   if (check_adjd) {
@@ -52,9 +53,11 @@
       whichadj <- attr(attr(object$ZAlist,"ranefs"),"type") %in% c("adjacency")  
     } else whichadj <- attr(object$ZAlist,"exp_ranef_types") %in% c("adjacency")  
     rfl[whichadj] <- "inverse[ lambda_i =var(V'u) ]"
-    rff <- rff[!whichadj]
+    rff <- rff[!whichadj] # and remove such terms from the family info
   }
-  if (type=="def") {
+  #
+  if (type=="family") {
+    # print family info except for adjd
     urff <- unique(rff)
     abyss <- lapply(urff, switch,
                     "Beta" = cat("lambda = 4 var(u)/(1 - 4 var(u)) for u ~ Beta[1/(2*lambda),1/(2*lambda)]; \n"),
@@ -62,7 +65,8 @@
                     "Gamma" = cat("lambda = var(u) for u ~ Gamma(sh=1/lambda, sc=1/lambda); \n"),
                     "gaussian" = cat("lambda = var(u) for u ~ Gaussian; \n")
     )
-  } else {
+  } else if (type=="link") {
+    # print link info
     urfl <- unique(rfl[in_table])
     cat(paste0("             --- Coefficients for ",paste(urfl,collapse=" or "),":"))
   }
@@ -149,6 +153,169 @@ summary.HLfitlist <- function(object, ...) {
     return(cov.mats)
   } else return(NULL)
 }
+
+# conversion of columns of data frames:
+.aschar_adhoc <- function(data) {
+  for (colit in seq_len(ncol(data))) if (is.numeric(colval <- data[,colit])) {
+    charvec <- as.character(signif(colval,4))
+    charvec[is.na(charvec)] <- "" ## the reason why we create an ad hoc fn.
+    data[,colit] <- charvec
+  }
+  return(data)
+}
+
+
+.display_raw_lambdas <- function(in_pointLambda, row_map, lambda.object) {
+  # if (details$ranCoefs) {
+  #   displaypos <- innerlambda_pos
+  # } else displaypos <- setdiff(innerlambda_pos, random_slope_pos)
+  # displayrows <- unlist(row_map[displaypos])
+  #if ( ! details$ranCoefs) displaypos <- setdiff(displaypos, random_slope_pos)
+  displaypos <- which(in_pointLambda)
+  displayrows <- unlist(row_map[displaypos])
+  nicertypes <- lambda.object$type[displaypos]
+  nicertypes[ ! nicertypes=="fixed"] <- ""
+  nicertypes[ nicertypes=="fixed"] <- "[fixed]"
+  nicertypes <- rep(nicertypes, unlist(lapply(row_map[displaypos], length)))
+  if ( ! is.null(displayrows)) {
+    print_lambda <- unlist(lambda.object$lambda)
+    cat(paste("  ",
+              names(displayrows)," : ", 
+              signif(print_lambda[displayrows],4),
+              nicertypes,
+              collapse="\n"),"\n")
+  }
+}
+
+.lambda_table_fn <- function(namesTerms, object, lambda.object, linklam_coeff_list=lambda.object$coefficients_lambdaS) {
+  nrand <- length(namesTerms)
+  nrows <- unlist(lapply(namesTerms,length))
+  cum_nrows <- cumsum(c(0,nrows))
+  names(cum_nrows) <- NULL
+  row_map <- lapply(nrows,seq)
+  for (it in seq_len(length(row_map))) row_map[[it]] <- row_map[[it]]+cum_nrows[it]
+  # first construct a table including NA's for some coeeficients (not "inner" estimated), then remove these rows
+  repGroupNames <- rep(names(namesTerms),sapply(namesTerms,length))
+  ## i.e. for namesTerms = list(Subject=c("(Intercept)", "Days")), repGroupNames[[1]] is c("Subject", "Subject")
+  lambda_table <- data.frame(Group=repGroupNames,Term=unlist(namesTerms))
+  in_table <- rep(FALSE,nrand)
+  in_pointLambda <- rep(TRUE,nrand)
+  cov.mats <- .get_compact_cov_mats(object$strucList,later=TRUE)
+  if ( length(cov.mats)) { ## fixme ? rename cov.mats to refer to ranCoefs ?
+    maxnrow <- cum_nrows[nrand+1] ## maxnrow should = nrow(lambda_table)
+    #.varcorr <- function(nrows, maxnrow, cov.mats, in_table, in_pointLambda, cum_nrows) {
+    summ_corr_cols <- data.frame(matrix(NA,ncol=max(nrows-1L),nrow=maxnrow))
+    summ_variances <- data.frame(matrix(NA,ncol=1L,nrow=maxnrow))
+    for (mt in seq_len(length(cov.mats))) { 
+      m <- cov.mats[[mt]]
+      if ( ! is.null(m)) {
+        in_table[mt] <- TRUE
+        in_pointLambda[mt] <- FALSE
+        inrows <-  cum_nrows[mt]+(1:nrow(m))
+        summ_variances[inrows,1] <- diag(m)
+        m <- stats::cov2cor(m)
+        for (it in (2:nrow(m))) {
+          for (jt in (1:(it-1))) {
+            summ_corr_cols[cum_nrows[mt]+it,jt] <- m[it,jt]
+          }
+        }
+      }
+    }
+    colnames(summ_corr_cols) <- rep("Corr.",ncol(summ_corr_cols))
+    colnames(summ_variances) <- "Var."
+    # }
+    random_slope_pos <- which( ! unlist(lapply(cov.mats,is.null))) ## fixme ? equivalentto isRandomSlope that might be available
+    random_slope_rows <- unlist(row_map[ random_slope_pos ])
+  } else random_slope_rows <- random_slope_pos <- integer(0)
+  if ( ! is.null(linklam_coeff_list)) {
+    in_table[which( ! unlist(lapply(linklam_coeff_list,is.null)))] <- TRUE
+    lambda_table <- cbind(lambda_table, Estimate=unlist(linklam_coeff_list), 
+                          "Cond.SE"=lambda.object$lambda_se)
+    
+    info_rows <- which(! is.na(lambda_table$Estimate)) ## must be evaluated before the next line sets more NAs
+  } else info_rows <- NULL
+  for (it in seq_len(length(namesTerms))) {
+    if ("adjd" %in% namesTerms[[it]]) {
+      in_pointLambda[it] <- FALSE
+      in_table[it] <- TRUE 
+    } 
+  }
+  if ( length(cov.mats)) lambda_table <- cbind(lambda_table, summ_variances, summ_corr_cols)
+  lambda_table <- structure(lambda_table, 
+                            class=c("lambda_table",class(lambda_table)), info_rows=info_rows,
+                            random_slope_rows=random_slope_rows,random_slope_pos=random_slope_pos,
+                            in_pointLambda=in_pointLambda,row_map=row_map, in_table=in_table)
+  return(lambda_table)
+}
+
+.print_adj_ests <- function(object, namesTerms, linklam) {
+  ncoeffs <- attr(object$ZAlist,"Xi_cols") ## RHS = 2 for random slope, else 1
+  any_adjd <- FALSE
+  for (it in seq_len(length(namesTerms))) if ("adjd" %in% namesTerms[[it]]) {
+    ncoeffs[it] <- 2L
+    any_adjd <- TRUE
+  }
+  if (any_adjd) {
+    cat("           --- Variance parameters ('lambda'):\n") ## NOT the (Gamma-GLM) coefficients and SEs
+  }
+  cum_ncoeffs <- c(0,cumsum(ncoeffs))
+  for (it in seq_len(length(namesTerms))) {
+    if ("adjd" %in% namesTerms[[it]]) {
+      namenames <- names(namesTerms[it])
+      pos <- cum_ncoeffs[it]+1L
+      cat(paste("Estimate of rho (",namenames,"CAR): ",
+                signif( - linklam[pos+1L]/linklam[pos],4),"\n"))
+      cat(paste("Estimate of lambda factor (",namenames,"CAR): ",
+                with(object$lambda.object,signif(linkinvS[[rand_to_glm_map[it]]](linklam[pos]),4)),"\n"))
+    } 
+  }
+  return(any_adjd)
+}
+
+.print_lambda_table <- function(object,lambda_table, details, namesTerms, linklam_coeff_list) {
+  attribs <- attributes(lambda_table) 
+  # strings for screen output:
+  lambda_table <- .aschar_adhoc(lambda_table)
+  if (length(attribs$random_slope_rows)) {
+    keep <- which( ! colnames(lambda_table) %in% c("Estimate","Cond.SE")) ## may be null if only outer... + fixed
+    cov_table <- lambda_table[attribs$random_slope_rows,keep] ## EXCLUDES the "Estimate","Cond.SE" cols
+    cat("         --- Random-coefficients Cov matrices:\n")
+    print(cov_table, digits = 4, row.names = FALSE)
+  }
+  #
+  keep <- which( colnames(lambda_table) %in% c("Group","Term","Estimate","Cond.SE")) ## may be null if only outer... + fixed
+  lambda_table <- lambda_table[,keep] 
+  #
+  # point lambda's (+adjd rho) estimates, NOT the (Gamma-GLM) coefficients and SEs
+  linklam <- unlist(linklam_coeff_list)
+  any_adjd <- .print_adj_ests(object, namesTerms, linklam)
+  if (any(attribs$in_pointLambda)) {
+    if ( ! any_adjd) cat("           --- Variance parameters ('lambda'):\n") 
+    .legend_lambda(object, type="family") ## print info about the meaning of lambda according to the rand family (not rand link)
+    .display_raw_lambdas(in_pointLambda=attribs$in_pointLambda, 
+                         row_map=attribs$row_map, 
+                         object$lambda.object) ## not the table with SEs / covariances
+  }
+  #
+  # NOW the (Gamma-GLM) coefficients and SEs
+  info_rows <- attribs$info_rows
+  if ( ! details$ranCoefs) info_rows <- setdiff(info_rows, attribs$random_slope_rows) ## removes random-coef info except if detaisl are requested
+  lambda_table <- lambda_table[ info_rows ,]
+  in_table <- attribs$in_table
+  if (nrow(lambda_table)) { 
+    if (any(in_table) && ! is.null(linklam_coeff_list[in_table])) { ## (mixed cov.mat and) coefficients_lambdaS output
+      .legend_lambda(object, in_table, type="link")
+      cat("\n")
+    # } else { ## only ranCoefs
+    #   cat("Variances and correlation for random-coefficient terms:\n")
+    } ## else only other terms with outer lambda (eg Matern term) 
+    print(lambda_table,digits=4,row.names=FALSE)
+  }
+  invisible(lambda_table) ## not currently correct as it is truncated
+}
+
+
+
 
 `summary.HLfit` <- function(object, details=FALSE, max.print=100L, ...) { 
   oldopt <- options(max.print=max.print)
@@ -272,132 +439,12 @@ summary.HLfitlist <- function(object, ...) {
     }
     lambda.object <- object$lambda.object
     namesTerms <- lambda.object$print_namesTerms ## list of vectors of variable length
-    print_lambda <- unlist(lambda.object$lambda)
     if (any(object$models[["lambda"]] == "lamHGLM")) { 
       stop("voir ici dans summary.HLfit")
     } else {
-      nrand <- length(namesTerms)
-      nrows <- unlist(lapply(namesTerms,length))
-      cum_nrows <- cumsum(c(0,nrows))
-      names(cum_nrows) <- NULL
-      row_map <- lapply(nrows,seq)
-      for (it in seq_len(length(row_map))) row_map[[it]] <- row_map[[it]]+cum_nrows[it]
-      # first construct a table including NA's for some coeeficients (not "inner" estimated), then remove these rows
-      repGroupNames <- rep(names(namesTerms),sapply(namesTerms,length))
-      ## i.e. for namesTerms = list(Subject=c("(Intercept)", "Days")), repGroupNames[[1]] is c("Subject", "Subject")
-      lambda_table <- data.frame(Group=repGroupNames,Term=unlist(namesTerms))
-      in_table <- rep(FALSE,nrand)
-      in_pointLambda <- rep(TRUE,nrand)
-      cov.mats <- .get_compact_cov_mats(object$strucList,later=TRUE)
-      if ( length(cov.mats)) { ## fixme ? rename cov.mats to refer to ranCoefs ?
-        maxnrow <- cum_nrows[nrand+1] ## maxnrow should = nrow(lambda_table)
-        corr_cols <- data.frame(matrix("",ncol=max(nrows-1),nrow=maxnrow),stringsAsFactors=FALSE)
-        variances <- data.frame(matrix("",ncol=1,nrow=maxnrow),stringsAsFactors=FALSE)
-        # strings for screen output, numeric for summary object
-        summ_corr_cols <- data.frame(matrix(NA,ncol=max(nrows-1),nrow=maxnrow))
-        summ_variances <- data.frame(matrix(NA,ncol=1,nrow=maxnrow))
-        for (mt in seq_len(length(cov.mats))) { 
-          m <- cov.mats[[mt]]
-          if ( ! is.null(m)) {
-            in_table[mt] <- TRUE
-            in_pointLambda[mt] <- FALSE
-            inrows <-  cum_nrows[mt]+(1:nrow(m))
-            variances[inrows,1] <- paste(signif(lambdas <- diag(m),4))
-            summ_variances[inrows,1] <- lambdas
-            covtocorr <- diag(1/sqrt(lambdas))
-            m <- covtocorr %*% m %*% covtocorr
-            for (it in (2:nrow(m))) {
-              for (jt in (1:(it-1))) {
-                corr_cols[cum_nrows[mt]+it,jt] <- paste(signif(m[it,jt],4))
-                summ_corr_cols[cum_nrows[mt]+it,jt] <- m[it,jt]
-              }
-            }
-          }
-        }
-        colnames(corr_cols) <- colnames(summ_corr_cols) <- rep("Corr.",ncol(corr_cols))
-        colnames(variances) <- colnames(summ_variances) <- "Var."
-        random_slope_pos <- which( ! unlist(lapply(cov.mats,is.null))) ## fixme ? equivalentto isRandomSlope that might be available
-        random_slope_rows <- unlist(row_map[ random_slope_pos ])
-      } else {
-        random_slope_rows <- integer(0) ## used soon in line correct if random_slope_rows is defined, and if "Estimate","Cond.SE" cols exist
-        random_slope_pos <- integer(0) ## used further below
-      } 
-      linklam_coeff_list <- lambda.object$coefficients_lambdaS
-      if ( ! is.null(linklam_coeff_list)) {
-        in_table[which( ! unlist(lapply(linklam_coeff_list,is.null)))] <- TRUE
-        lambda_table <- cbind(lambda_table, Estimate=unlist(linklam_coeff_list), 
-                              "Cond.SE"=lambda.object$lambda_se)
-        
-        info_rows <- which(! is.na(lambda_table$Estimate)) ## must be evaluated before the next line sets more NAs
-      } else info_rows <- NULL
-      if ( length(cov.mats) ) {
-        summ$lambda_table <- structure(cbind(lambda_table, summ_variances, summ_corr_cols), ## summ_ cols
-                                       class=c("lambda_table",class(lambda_table)),
-                                       random_slope_rows=random_slope_rows)
-        lambda_table <- structure(cbind(lambda_table, variances, corr_cols), ## not summ_ cols
-                                  class=c("lambda_table",class(lambda_table)),
-                                  random_slope_rows=random_slope_rows)
-        #
-        keep <- which( ! colnames(lambda_table) %in% c("Estimate","Cond.SE")) ## may be null if only outer... + fixed
-        cov_table <- lambda_table[random_slope_rows,keep] ## EXCLUDES the "Estimate","Cond.SE" cols
-        cat("         --- Random-coefficients Cov matrices:\n")
-        print(cov_table, digits = 4, row.names = FALSE)
-        #
-        keep <- which( colnames(lambda_table) %in% c("Group","Term","Estimate","Cond.SE")) ## may be null if only outer... + fixed
-        lambda_table <- lambda_table[,keep]
-        if ( ! details$ranCoefs) info_rows <- setdiff(info_rows, random_slope_rows)
-      } else summ$lambda_table <- structure(lambda_table, 
-                                            class=c("lambda_table",class(lambda_table)),
-                                            random_slope_rows=random_slope_rows)
-      cat("           --- Variance parameters ('lambda'):\n")
-      .legend_lambda(object, type="def") ## print info about the meaning of lambda
-      lambda_table <- lambda_table[ info_rows ,]
-      linklam <- unlist(linklam_coeff_list)
-      ncoeffs <- attr(object$ZAlist,"Xi_cols") ## RHS = 2 for random slope, else 1
-      for (it in seq_len(length(namesTerms))) if ("adjd" %in% namesTerms[[it]]) ncoeffs[it] <- 2
-      cum_ncoeffs <- c(0,cumsum(ncoeffs))
-      for (it in seq_len(length(namesTerms))) {
-        if ("adjd" %in% namesTerms[[it]]) {
-          namenames <- names(namesTerms[it])
-          pos <- cum_ncoeffs[it]+1L
-          cat(paste("Estimate of rho (",namenames,"CAR): ",
-                    signif( - linklam[pos+1L]/linklam[pos],4),"\n"))
-          cat(paste("Estimate of lambda factor (",namenames,"CAR): ",
-                    with(lambda.object,signif(linkinvS[[rand_to_glm_map[it]]](linklam[pos]),4)),"\n"))
-          in_pointLambda[it] <- FALSE
-          in_table[it] <- TRUE 
-        } 
-      }
-      if (length(which(in_pointLambda))) { ## not the table with SEs / covariances
-        # if (details$ranCoefs) {
-        #   displaypos <- innerlambda_pos
-        # } else displaypos <- setdiff(innerlambda_pos, random_slope_pos)
-        # displayrows <- unlist(row_map[displaypos])
-        #if ( ! details$ranCoefs) displaypos <- setdiff(displaypos, random_slope_pos)
-        displaypos <- which(in_pointLambda)
-        displayrows <- unlist(row_map[displaypos])
-        nicertypes <- lambda.object$type[displaypos]
-        nicertypes[ ! nicertypes=="fixed"] <- ""
-        nicertypes[ nicertypes=="fixed"] <- "[fixed]"
-        nicertypes <- rep(nicertypes, unlist(lapply(row_map[displaypos], length)))
-        if ( ! is.null(displayrows)) {
-          cat(paste("  ",
-                    names(displayrows)," : ", 
-                    signif(print_lambda[displayrows],4),
-                    nicertypes,
-                    collapse="\n"),"\n")
-        }
-      }
-      #if ( ! details$ranCoefs) in_table[random_slope_pos] <- FALSE
-      if (nrow(lambda_table) && any(in_table)) { ## in_table is a subset of lambda_table...
-        if ( ! is.null(linklam_coeff_list[in_table])) { ## (mixed cov.mat and) coefficients_lambdaS output
-          .legend_lambda(object, in_table)
-          cat("\n")
-        } else if (length(cov.mats)) { ## only ranCoefs
-          cat("Variances and correlation for random-coefficient terms:\n")
-        } ## else only other terms with outer lambda (eg Matern term) 
-        print(lambda_table,digits=4,row.names=FALSE)
-      }
+      linklam_coeff_list <- lambda.object$coefficients_lambdaS ## used beyond the next line
+      summ$lambda_table <- lambda_table <- .lambda_table_fn(namesTerms, object, lambda.object,linklam_coeff_list)
+      .print_lambda_table(object,lambda_table, details=details, namesTerms, linklam_coeff_list) 
     } 
     cat(paste0("# of obs: ",nrow(object$data),"; # of groups: ",
               paste0(names(namesTerms),", ",unlist(lapply(object$ZAlist,ncol)), collapse="; ")
@@ -409,7 +456,7 @@ summary.HLfitlist <- function(object, ...) {
       cat(" -- Residual variation ( var = phi * mu^2 )  --\n")
     } else cat(" ------------- Residual variance  -------------\n")    
     pw <- object$prior.weights
-    if ( ! identical(attr(pw,"unique"),TRUE) && pw[1]!=1L) cat(paste("Prior weights:",
+    if ( ! (identical(attr(pw,"unique"),TRUE) && pw[1]==1L)) cat(paste("Prior weights:",
                                                           paste(signif(pw[1:min(5,length(pw))],6),collapse=" "),
                                                           "...\n"))
     if ( ! is.null(phi_outer <- phi.object$phi_outer)) {
@@ -530,24 +577,5 @@ print.HLfitlist <- function(x,...) {
   summary(x,...)
   invisible(x)
 }
-
-.print.lambda_table <- function(lambda_table, details=attr(lambda_table,"details")) {
-  random_slope_rows <- attr(lambda_table,"random_slope_rows")
-  details <- attr(lambda_table,"details")
-  keep <- which( ! colnames(lambda_table) %in% c("Estimate","Cond.SE")) ## may be null if only outer... + fixed
-  cov_table <- lambda_table[random_slope_rows,keep] ## EXCLUDES the "Estimate","Cond.SE" cols
-  cat("         --- Random-coefficients Cov matrices:\n")
-  print(cov_table, digits = 4, row.names = FALSE)
-  #
-  keep <- which( colnames(lambda_table) %in% c("Group","Term","Estimate","Cond.SE")) ## may be null if only outer... + fixed
-  lambda_table <- lambda_table[,keep]
-  if ( ! details$ranCoefs) info_rows <- setdiff(info_rows, random_slope_rows)
-  cat("           --- Variance parameters ('lambda'):\n")
-#  .legend_lambda(object, type="def") ## print info about the meaning of lambda  #      refernece to 'object'
-  lambda_table <- lambda_table[ info_rows ,]
-  # F I X M E unfinished
-  invisible(lambda_table) ## no courrently correct as it is truncated
-}
-
 
 

@@ -41,7 +41,7 @@ This function handles parallel backends with different features. \code{pbapply::
 }
 \value{A list with two elements: 
   \itemize{
-    \item \code{bootreps}, \code{nsim} return values in the format returned either by \code{apply} or \code{parallel::parApply} or by \code{foreach::`\%dopar\%`} as controlled by \code{control.foreach$.combine}. If \code{simuland} returns a vector, \code{spaMM_boot} should effectively \code{rbind} the results by default, returning an \code{nsim}-row matrix in all cases;
+    \item \code{bootreps}, \code{nsim} return values in the format returned either by \code{apply} or \code{parallel::parApply} or by \code{foreach::`\%dopar\%`} as controlled by \code{control.foreach$.combine}. If \code{simuland} returns a vector, \code{spaMM_boot} should effectively \code{rbind} the results by default, returning an \code{nsim}-row matrix in all cases. From spaMM 2.5.6, if \code{simuland} returns a 1-row data frame, \code{spaMM_boot} \code{rbind}s the results into a \code{nsim}-row data frame in all cases. The results may not be consistent among parallel backends in other cases, and may change in later versions, so users should stick to one of these two cases as much as possible.
     \item \code{RNGstate}, the state of \code{.Random.seed} at the beginning of the simulation.  
   }
 }

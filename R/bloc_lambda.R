@@ -11,10 +11,12 @@
     ####### includes SEM
     if ( ! is.null(SEMblob)) {
       glm_lambda <- SEMblob$glm_lambda
-      attr(glm_lambda,"whichrand") <- done <- 1L
-      resglm_lambdaS[["SEM"]] <- glm_lambda
-      ## following syntax OK for all adjacency case or for ~1 (but not random slope)
-      print_lambdas[attr(glm_lambda,"whichrand")] <- predict(glm_lambda,newdata=data.frame("X.Intercept."=1,adjd=0),type="response")[1L] ## le [1L] en cas d'offset... 
+      if ( ! is.null(glm_lambda)) {
+        attr(glm_lambda,"whichrand") <- done <- 1L
+        resglm_lambdaS[["SEM"]] <- glm_lambda
+        ## following syntax OK for all adjacency case or for ~1 (but not random slope)
+        print_lambdas[attr(glm_lambda,"whichrand")] <- predict(glm_lambda,newdata=data.frame("X.Intercept."=1,adjd=0),type="response")[1L] ## le [1L] en cas d'offset... 
+      }
     } else {
       ## checks whether a previous resglm was computed for adjacency model  
       glm_lambda <- calcRanefPars_blob$glm_lambda

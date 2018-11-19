@@ -58,7 +58,7 @@
   nb
 }
   
-.stripRanefs_ <- function (term) { ## compare to lme4:::nobars_
+.stripRanefs_ <- function (term) { ## compare to lme4:::nobars_ ; 'term is formula or any term, recursively
   if (!("|" %in% all.names(term))) 
     return(term)
   if (is.call(term) && term[[1]] == as.name("|")) 
@@ -113,6 +113,19 @@
   nb
 }
 
+.explicit_0_term <- function(x) { ## not yet used
+  check_x <- .stripRanefs_(x)
+  check_x <- .stripOffset_(check_x) 
+  if ( ! inherits(check_x,"formula")) {
+    x_len <- length(x)
+    rhs <- paste0("0 + ",x[x_len])
+    if (x_len > 2L) {
+      res <- formula(paste("lhs ~", rhs))
+      res[[2L]] <- x[[2L]]
+      return(res)
+    } else return(formula(paste("~", rhs)))
+  } else return(x)
+}
 
 .stripOffset_ <- function (term)   {
   if (!("offset" %in% all.names(term))) 
@@ -232,7 +245,7 @@
   # As long as prior.weights was still using the environment, fitting functions still had
   #     mc <- oricall
   #     oricall$formula <- .stripFormula(formula) ## Cf comment in .getValidData
-  #  (stripping of mc$formula being done only later by .stripTerms() )
+  #  (stripping of mc$formula being done only later by .as_predictor() )
   #  where we otherwise have 
   #     oricall$formula <- .stripFormula(formula) 
   #     mc <- oricall
@@ -254,6 +267,8 @@
   mf <- match.call()
   m <- match(c("data"), names(mf), 0L)
   mf <- mf[c(1L, m)]
+  verif <- try(eval(callargs$prior.weights,data),silent=TRUE)
+  if (inherits(verif,"try-error")) stop("All variables should be in the 'data', including those for prior weights.")
   mf$weights <- callargs$prior.weights
   mf$drop.unused.levels <- TRUE
   mf[[1L]] <- get("model.frame", asNamespace("stats"))
@@ -292,42 +307,54 @@
   ####### first construct a mf for all variables required by the formula (NA would be removed here if they had not been by a previous call to validData)
   frame.form <- .subbarsMM(formula) ## this comes from lme4 and converts (...|...) terms to some "+" form 
   environment(frame.form) <- environment(formula)
-  fe <- call("model.frame", data=data, formula=frame.form,  drop.unused.levels=TRUE) # language object reused later
+  fe <- feo <- call("model.frame", data=data, formula=frame.form,  drop.unused.levels=TRUE) # language object reused later
   mf <- eval(fe) ## data.frame with all vars required for fixef and for ranef, and a "terms" attribute
   #
   Y <- model.response(mf, "any")
   if ( ! is.null(Y)) { ## exclude this cases which occurs when no LHS formula is handled
     if (is.factor(Y)) { 
-      Y <- (Y != levels(Y)[1]) ## cf ?glm: ‘success’ is interpreted as the factor not having the first level
+      Y <- (Y != levels(Y)[1L]) ## cf ?glm: ‘success’ is interpreted as the factor not having the first level
     } ## indeed as in  binomial()$initialize
     if (NCOL(Y)==1L) { ## test on NCOL excludes the case cbind-LHS -> matrix Y (with any array1d stuff already erased)
       Y <- as.matrix(Y) ## to cope with array1d, and see $y <- ... code in .preprocess
     }
   }
   #
-  fixef.form <- .stripRanefs_(formula) 
-  fixef.form <- .stripOffset_(fixef.form) 
-  if (inherits(fixef.form, "formula")) {
-    fe$formula <- fixef.form
-    fe <- eval(fe)
-    fixef_terms <- attr(fe, "terms")
-    if (is.null(fixef_terms)) {
-      message("Note: formula without explicit fixed effects is interpreted
-              as formula without fixed effects (i.e., ~ 0 + (random effects).
+  fixef_off_form <- .stripRanefs_(formula) 
+  # compare to .calc_newFrames_fixed() to keep changes in code consistent
+  if (inherits(fixef_off_form, "formula")) {
+    fixef_form <- .stripOffset_(fixef_off_form) # formula if something remains (e.g, ". ~ 0") after the offset has been removed
+    if (inherits(fixef_form, "formula")) { # something remains after the offset has been removed (e.g., explicit '0')
+      ## Produce X design matrix:
+      fe$formula <- fixef_form
+      fe <- eval(fe)
+      fixef_terms <- attr(fe, "terms")
+      if (is.null(fixef_terms)) {
+        message("Note: formula without explicit fixed effects is interpreted
+              as formula without fixed effects [i.e., as .~ 0 + (random effect)].
               Use ~ 1 + (random effect) rather than ~ (random effect) to include an Intercept.")
-    }
-    not_any_fixed_effect <- (is.null(fixef_terms) ## y ~ (1 | grp)
-                             || fixef_terms[[length(fixef_terms)]]==0) ## y ~0+ (1|grp)
-    if (not_any_fixed_effect) { 
+      }
+      if (fixef_terms[[length(fixef_terms)]]==0L) { ## check that the fixef are only an explicit '0' (odd that it compares to 0L, but it does)
+        X <- matrix(nrow=nrow(mf),ncol=0L) ## model without fixed effects, not even an Intercept 
+      } else {
+        X <- model.matrix(fixef_terms, mf, stats::contrasts) ## always valid, but slower
+      } 
+      fixef_levels <- stats::.getXlevels(fixef_terms, fe) ## added 2015/12/09 useful for .calc_newFrames()
+    } else { ## only an offset in formula, not even an explicit 0: .stripOffset_(fixef_off_form) produced a 'name'
+      message("Note: formula without explicit fixed effects is interpreted
+              as formula without fixed effects [i.e.,  as .~ 0 + offset + (random effect)].
+              Use ~ 1 + offset + (random effect) rather than ~ offset + (random effect) to include an Intercept.")
       X <- matrix(nrow=nrow(mf),ncol=0L) ## model without fixed effects, not even an Intercept 
-    } else {
-      X <- model.matrix(fixef_terms, mf, stats::contrasts) 
-    } 
-    fixef_levels <- stats::.getXlevels(fixef_terms, fe) ## added 2015/12/09 useful for .calc_newFrames()
-    } else {
-      X <- matrix(nrow=nrow(data), ncol=0L) ## Not using NROW(Y) which is 0 if formula has no LHS
-      fixef_terms <- fixef_levels <- NULL
+      fixef_levels <- NULL
     }
+    # to keep info about offset in $fixef_off_terms
+    feo$formula <- fixef_off_form
+    feo <- eval(feo)
+    fixef_off_terms <- attr(feo, "terms") 
+  } else {
+    X <- matrix(nrow=nrow(data), ncol=0L) ## Not using NROW(Y) which is 0 if formula has no LHS
+    fixef_off_terms <- fixef_levels <- NULL
+  }
   ####### Then constructs the design X by evaluating the model frame (fe) with fe$formula <- fixef.form
   storage.mode(X) <- "double" ## otherwise X may be logi[] rather than num[] in particular when ncol=0
   list(Y = Y, 
@@ -337,7 +364,7 @@
        mf = mf, 
        ## only fixef-related variables, contrary to the attr(mf,"terms): 
        fixef_levels = fixef_levels, ## added 2015/12/09 useful for .calc_newFrames()
-       fixef_terms = fixef_terms ## added 2015/12/09 useful for .calc_newFrames()
+       fixef_off_terms = fixef_off_terms ## added 2015/12/09 useful for .calc_newFrames()
   )
 }
 
@@ -348,54 +375,61 @@
     newtermnames <- rownames(attr(newterms,"factors"))
     oldtermnames <- rownames(attr(oldterms,"factors"))
     textnewform <- .DEPARSE(formula)
-    newpredvars <- character(length(newtermnames))
+    newpredvars_factors <- character(length(newtermnames))
     for (it in seq_len(length(newtermnames))) {
       oldpos <- which(oldtermnames==newtermnames[it])
-      newpredvars[it] <- .DEPARSE(predvars[-1][[oldpos]])
+      newpredvars_factors[it] <- .DEPARSE(predvars[-1L][[oldpos]])
     }
+    #
+    newpredvars_offset <- character(length(attr(newterms,"offset"))) ## template with empty string(s) ""
+    offsetpos <- attr(newterms,"offset")
+    for (it in seq_len(length(offsetpos))) newpredvars_offset[it] <- .DEPARSE(attr(newterms,"variables")[[offsetpos[it]+1L]])
+    #
+    newpredvars <- unique(c(newpredvars_factors,newpredvars_offset))
     newpredvars <- paste0("list(",paste(newpredvars,collapse=","),")")
     return(parse(text=newpredvars)) ## contains poly(., coefs) information,
   } else return(NULL)
 }
 
 .calc_newFrames_fixed <- function (formula, data, fitobject, need_allFrames=TRUE) {
-  fixef_terms <- fitobject$HLframes$fixef_terms
-  not_any_fixed_effect <- ( is.null(formula) ## .stripRanefs( ~ <rhs without fixef> )
-                            || is.null(fixef_terms) ## y ~ (1 | grp)
-                           || fixef_terms[[length(fixef_terms)]]==0) ## y ~0+ (1|grp)
-  if (not_any_fixed_effect) { 
+  ## X may or may not contain offset info, which should not be used (see .newEtaFix()) 
+  #  but fixef_mf should contain such info bc .newEtaFix calls off <- model.offset( newMeanFrames$mf)
+  fixef_off_terms <- .get_fixef_off_terms(fitobject) 
+  if (is.null(formula)) {
     X <- matrix(nrow=nrow(data),ncol=0L) ## model without fixed effects, not even an Intercept 
-    fixef_mf <- NULL
-  } else {
-    formula <- .asNoCorrFormula(formula) ## strips out the correlation information, retaining the ranefs as (.|.)
-    if (is.character(formula[[2]])) { ## something like ".phi" ....
-      validname <- .find_validname(formula, data)
-      data[validname] <- 1 ## adds a column $phi of 1 
-      formula[[2]] <- as.name(validname) ## now the formula is standard
+    fixef_mf <- NULL 
+  } else { 
+    fixef_off_form <- .stripRanefs_(formula) 
+    if (inherits(fixef_off_form, "formula")) {
+      if (is.character(formula[[2L]])) fixef_off_form <- fixef_off_form[-2L] ## something like ".phi" ....
+      Terms <- terms(fixef_off_form)
+      Terms <- stats::delete.response(Terms)
+      attr(Terms,"predvars") <- .calc_newpredvars(fixef_off_terms, fixef_off_form) ## for poly()
+      fixef_form <- .stripOffset_(fixef_off_form) # formula if something remains after the offset has been removed
+      if ( ! inherits(fixef_form, "formula")) { ## only an offset in formula, not even an explicit 0: .stripOffset_(fixef_off_form) produced a 'name'
+        attr(Terms,"intercept") <- 0L # removes offset that terms() assumes if there is no explicit '0'.
+      }
+      # handles offset:  (without the small shortcut used in .HLframes())
+      fixef_mf <- model.frame(Terms, data, xlev = fitobject$HLframes$fixef_levels) ## xlev gives info about the original levels
+      X <- model.matrix(Terms, fixef_mf, contrasts.arg=attr(fitobject$X.pv,"contrasts")) 
+      ## : original contrasts definition is used to define X cols that match those of original X, whatever was the contrast definition when the model was fitted
+    } else {
+      fixef_mf <- NULL
+      X <- matrix(nrow=nrow(data), ncol=0L) ## Not using NROW(Y) which is 0 if formula has no LHS
     }
-    Terms <- terms(stats::delete.response(formula))
-    attr(Terms,"predvars") <- .calc_newpredvars(fixef_terms, formula) ## for poly()
-    fixef_mf <- model.frame(Terms, data, xlev = fitobject$HLframes$fixef_levels) ## xlev gives info about the original levels
-    X <- model.matrix(Terms, fixef_mf, contrasts.arg=attr(fitobject$X.pv,"contrasts")) 
-    ## : original contrasts definition is used to define X cols that match those of original X, whatever was the contrast definition when the model was fitted
   }
-  #
   storage.mode(X) <- "double" ## otherwise X may be logi[] rather than num[] in particular when ncol=0
   return(list(X = X, mf = fixef_mf)) 
 }
 
 .calc_newFrames_ranef <- function (formula, data, fitobject) {
   formula <- .asNoCorrFormula(formula) ## strips out the correlation information, retaining the ranefs as (.|.)
-  if (is.character(formula[[2]])) {
-    validname <- .find_validname(formula, data)
-    data[validname] <- 1 ## adds a column $phi of 1 
-    formula[[2]] <- as.name(validname) ## now the formula is standard
-  }
+  if (is.character(formula[[2L]])) formula <- formula[-2L] ## something like ".phi" ....
   plusForm <- .subbarsMM(formula) ## this comes from lme4 and converts (.|.) terms to (.+.) form 
   environment(plusForm) <- environment(formula)
-  Terms <- terms(stats::delete.response(plusForm))
+  Terms <- terms(plusForm) ## assumes an Intercept implicitly
+  Terms <- stats::delete.response(Terms)
   attr(Terms,"predvars") <- .calc_newpredvars(fitobject$HLframes$all_terms, Terms) ## for poly in ranefs ? which never worked
   mf <- model.frame(Terms, data, drop.unused.levels=TRUE) 
-  #print(head(mf))
   return(list(mf = mf))
 }

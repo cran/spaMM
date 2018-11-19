@@ -1,3 +1,5 @@
+## S E E  .modify_list()
+
 # .merge_parlist <- function(parlist=NULL, new, types) {
 #   if (is.null(parlist)) parlist <- structure(list(),types=list()) ## implicit or explicit NULL may occur
 #   if (is.null(new)) return(parlist)
