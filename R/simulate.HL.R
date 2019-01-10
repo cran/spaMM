@@ -1,13 +1,13 @@
-## 'has-no-ranef' can be tested by is.null(.findbarsMM(re.form)) or is.null(.parseBars(re.form))
+## 'has-no-ranef' can be tested by is.null(.parseBars(re.form))
 # devel version of lme4 has noReForm() that assumes that there in no fixed effect in re.form, with result
 # TRUE if argument is NA or ~0, 
 # FALSE if argument is NULL or a non-trivial formula (re.form=NULL in particular means that prediction assumes the original random-effect terms).
 # We additionally want TRUE if argument is ~<only fixef> (fixed effect will be ignored anyway)
-# The following is equivalent to noReForm() except for the last test, is.null(.findbarsMM(re.form)) 
+# The following is equivalent to noReForm() except for the last test, is.null(.parseBars(re.form)) 
 # ~0 returns TRUE, ~Days returns TRUE [as the last test is TRUE in both cases], ~<including ranefs> returns FALSE 
 .noRanef <- function(re.form) {
   (!is.null(re.form) && !inherits(re.form,"formula") && is.na(re.form)) ||
-    (inherits(re.form,"formula") && length(re.form)==2 && is.null(.findbarsMM(re.form)))
+    (inherits(re.form,"formula") && length(re.form)==2 && is.null(.parseBars(re.form)))
 }
 
 .newetaFix <- function(object, newMeanFrames,validnames=NULL) {
@@ -45,7 +45,7 @@
 # simulate.HLfit(fullm[[2]],newdata=fullm[[1]]$data,size=fullm[[1]]$data$total) for multinomial avec binomial nichées de dimension différentes
 # FR->FR misses the computation of random effects for new spatial positions: cf comments in the code below
 simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
-                           type = "marginal", conditional=NULL, verbose=TRUE,
+                           type = "marginal", re.form, conditional=NULL, verbose=TRUE,
                            sizes=NULL , resp_testfn=NULL, phi_type="predict", prior.weights=object$prior.weights, ...) { ## object must have class HLfit; corr pars are not used, but the ZAL matrix is.
   ## RNG stuff copied from simulate.lm
   if (!exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE))
@@ -69,6 +69,18 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
   }
   if (is.null(sizes)) sizes <- .get_BinomialDen(object)
   nrand <- length(object$ZAlist)
+  if (nrand>0L) {
+    if ( missing(re.form)) {
+      if (type=="marginal") {
+        re.form <- NA
+      } else if (type=="residual") re.form <- NULL
+      # type (ranef|resid) leaves 're.form' missing.
+    } else if (inherits(re.form,"formula")) {
+      ori_exp_ranef_strings <- attr(object$ZAlist,"exp_ranef_strings")
+      new_exp_ranef_strings <- .process_bars(re.form,expand=TRUE)
+      newinold <- unlist(sapply(lapply(new_exp_ranef_strings, `==`, y= ori_exp_ranef_strings), which)) ## unlist() bc empty list() can otherwise occur  
+    }
+  }
   resu <- NULL
   done <- 0L
   while((needed <- nsim-done)) { ## loop operates only for resp_testfn
@@ -86,28 +98,38 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
             mu <- object$family$linkinv(rand_eta,mu_truncated=zero_truncated)
           } else mu <- object$family$linkinv(rand_eta) ## ! freqs for binomial, counts for poisson: suitable for final code
         } else stop("This conditional simulation is not implemented for non-gaussian random-effects")
-      } else if ( type=="residual") { ## conditional on predicted ranefs
+      } else if ( is.null(re.form)) { ## conditional on (all) predicted ranefs, type = "residual"
         if (verbose) cat("Conditional simulation given predicted random effects:\n") 
         mu <- predict(object,newdata=newdata,binding=NA)
         mu <- replicate(needed,mu,simplify=FALSE) #matrix(rep(mu,nsim),ncol=nsim)
-      } else if ( type=="marginal"){ ## unconditional MIXED MODEL
-        if (verbose) cat("Unconditional simulation:\n") 
-        mu_fixed <- predict(object, newdata=newdata, re.form=NA,binding=NA) ## mu_T
+      } else if ( inherits(re.form,"formula") || is.na(re.form) ){ ## explicit re.form; or unconditional MIXED MODEL, type= "marginal"
+        if (verbose) {
+          if (inherits(re.form,"formula")) {
+            cat("Simulation conditional on random effect(s) retained in 're.form':\n")
+          } else cat("Unconditional simulation:\n") 
+        }
+        mu_fixed <- predict(object, newdata=newdata, re.form=re.form,binding=NA) ## mu_T
         if ( ! is.null(zero_truncated <- object$family$zero_truncated)) {
           eta_fixed <- object$family$linkfun(mu_fixed, mu_truncated=zero_truncated) ## back to _U to add ranefs to the linear predictor.
         } else eta_fixed <- object$family$linkfun(mu_fixed)
-        if (is.null(newdata)) {
+        if (is.null(newdata)) { ## we simulate with all ranefs (treated conditionnally|ranef or marginally) hence no selection of matrix
           ZAL <- get_ZALMatrix(object)
           cum_n_u_h <- attr(object$lambda,"cum_n_u_h")
           vec_n_u_h <- diff(cum_n_u_h)
-        } else { ## unconditional MM with newdata
+        } else { ## newdata and re.form to handle
           #   ## [-2] so that HLframes does not try to find the response variables  
-          ranef_form <- formula.HLfit(object)[-2]
-          ranef_form <- as.formula(paste("~",(paste(.parseBars(ranef_form),collapse="+")))) ## effective '.noFixef'
-          frame_ranefs <- .calc_newFrames_ranef(formula=ranef_form,data=newdata, fitobject=object)$mf 
+          # we simulate with all ranefs (treated conditionnally|ranef or marginally) hence 
+          # * we need design matrices for all ranefs
+          # * we need values of all the original variables
+          # hence we use the old_ranef_form
+          old_ranef_form <- formula.HLfit(object)[-2]
+          old_ranef_form <- as.formula(paste("~",(paste(.process_bars(old_ranef_form),collapse="+")))) ## effective '.noFixef'
+          frame_ranefs <- .calc_newFrames_ranef(formula=old_ranef_form,data=newdata, fitobject=object)$mf 
           ## : F I X M E suboptimal since we call also .calc_newFrames_ranef() in predict -> . -> .calc_new_X_ZAC()
           Zlist <- .calc_Zlist(formula=object$predictor, mf=frame_ranefs, rmInt=0L, drop=TRUE,sparse_precision=FALSE)
-          ZALlist <-  .calc_ZAlist(Zlist,AMatrices=attr(object$ZAlist,"AMatrices")) 
+          amatrices <- .get_new_AMatrices(object,new_mf_ranef=frame_ranefs)
+          ZAlist <- .calc_ZAlist(Zlist, AMatrices=amatrices) 
+          ZALlist <- .compute_ZAXlist(object$strucList,ZAlist)
           ##### the following code ignores spatial effects with newdata:
           # to overcome this we need to calculate the unconditional covmat including for the (new) positions
           vec_n_u_h <- unlist(lapply(ZALlist,ncol)) ## nb cols each design matrix = nb realizations each ranef
@@ -115,7 +137,8 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
           ZALlist <- lapply(ZALlist,as.matrix)
           ZAL <- do.call(cbind,ZALlist)
         }
-        lcrandfamfam <- attr(object$rand.families,"lcrandfamfam") ## unlist(lapply(object$rand.families, function(rf) {tolower(rf$family)})) 
+        lcrandfamfam <- attr(object$rand.families,"lcrandfamfam") ## unlist(lapply(object$rand.families, function(rf) {tolower(rf$family)}))
+        if (inherits(re.form,"formula")) lcrandfamfam[newinold] <- "conditional" ## if is.na(re.form), lcrandfamfam is unchanged
         fittedLambda <- object$lambda.object$lambda_est
         locfn <- function(it) {
           nr <- vec_n_u_h[it]
@@ -127,6 +150,7 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
                    gamma = rgamma(nr,shape=1/loclambda,scale=loclambda),
                    beta = rbeta(nr,1/(2*loclambda),1/(2*loclambda)),
                    "inverse.gamma" = 1/rgamma(nr,shape=1+1/loclambda,scale=loclambda), ## yields inverse gamma (1+1/object$lambda,1/object$lambda)
+                   conditional= rep(0,length(loclambda)), ## conditional random effects already in predictor
                    stop("(!) random sample from given rand.family not yet implemented")
             )},simplify=TRUE) ## should have nsim columns
           object$rand.families[[it]]$linkfun(newU) 

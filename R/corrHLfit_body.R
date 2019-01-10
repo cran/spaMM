@@ -126,7 +126,9 @@ corrHLfit_body <- function(processed, ## possibly a list of environments
   if (is.call(hlcor)) { return(hlcor[]) } ## HLCorcall
   #
   # hlcor should have received attr(.,"info.uniqueGeo") from HLCor_body.
-  attr(hlcor,"optimInfo") <- list(LUarglist=LUarglist, optim.pars=optPars, objective=proc1$objective)
+  attr(hlcor,"optimInfo") <- list(LUarglist=LUarglist, optim.pars=optPars, 
+                                  #augZXy_phi_est=NULL, # implicit NULL
+                                  objective=proc1$objective)
   if ( ! is.null(optPars)) {
     locoptr <- attr(optPars,"optr")
     if (attr(optPars,"method")=="nloptr") {

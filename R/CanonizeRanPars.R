@@ -9,6 +9,7 @@
     corr_type <- corr_types[rd]
     if (! is.na(corr_type)) {
       char_rd <- as.character(rd)
+      # $canonize() fails in multiSAR models if .expand_hyper() fails to convert parameters eg bc of wrong input
       canonizeblob <- corr_info$corr_families[[rd]]$canonize(corrPars_rd=ranPars$corrPars[[char_rd]],
                                                              cP_type_rd=attr(ranPars,"type")$corrPars[[char_rd]], 
                                                              checkComplete=checkComplete,

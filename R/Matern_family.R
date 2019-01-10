@@ -49,9 +49,9 @@ Matern <- function(...) {
                                 NUMAX=NUMAX, LDMAX=LDMAX,## not variable...
                                 nbUnique=range_info_blob$nbUnique, control.dist=control_dist[[char_rd]]## needed for LUarglist, not calc_inits
     ) 
-    return(moreargs_rd)
+    return(moreargs_rd) ## with control_dist with possibly modified rho_mapping
   }
-  #
+  # This fn is not used so the Cauchy code is not even wrong...
   calc_cov_info_mat <- function(control.dist, char_rd, spatial_term, corr_type, rho, processed, rd, ranPars) {
     control_dist_rd <- control.dist[[char_rd]]
     txt <- paste(c(spatial_term[[2]][[3]])) ## the RHS of the ( . | . ) # c() to handle very long RHS
@@ -89,15 +89,15 @@ Matern <- function(...) {
     return(cov_info_mat)
   }
   
-  make_new_corr_list <- function(object, old_char_rd, moreargs_rd, geonames, newuniqueGeo, olduniqueGeo, which_mats, make_scaled_dist, new_rd) {
+  make_new_corr_list <- function(object, old_char_rd, control_dist_rd, geonames, newuniqueGeo, olduniqueGeo, which_mats, make_scaled_dist, new_rd) {
     ### rho only used to compute scaled distances
     rho <- .get_cP_stuff(object$ranFix,"rho", which=old_char_rd)
-    if ( ! is.null(rho_mapping <- moreargs_rd$rho.mapping) 
+    if ( ! is.null(rho_mapping <- control_dist_rd$rho.mapping) 
          && length(rho)>1L ) rho <- .calc_fullrho(rho=rho,coordinates=geonames,rho_mapping=rho_mapping)
     ## rows from newuniqueGeo, cols from olduniqueGeo:
     msd.arglist <- list(uniqueGeo=newuniqueGeo,uniqueGeo2=olduniqueGeo,
                         rho=rho,return_matrix=TRUE)
-    if ( ! is.null(dist.method <- moreargs_rd$control.dist$dist.method)) msd.arglist$dist.method <- dist.method ## make_scaled_dist does not handle NULL
+    if ( ! is.null(dist.method <- control_dist_rd$dist.method)) msd.arglist$dist.method <- dist.method ## make_scaled_dist does not handle NULL
     resu <- list()
     if (which_mats$no) resu$uuCnewold <- do.call(make_scaled_dist,msd.arglist) ## ultimately allows products with Matrix ## '*cross*dist' has few methods, not even as.matrix
     if (which_mats$nn[new_rd])  {
@@ -118,9 +118,9 @@ Matern <- function(...) {
                  canonize=canonize,
                  calc_inits=calc_inits,
                  calc_corr_from_dist=calc_corr_from_dist,
-                 calc_moreargs=calc_moreargs,
-                 calc_cov_info_mat=calc_cov_info_mat,
-                 make_new_corr_list=make_new_corr_list),
+                 #calc_cov_info_mat=calc_cov_info_mat,
+                 #make_new_corr_list=make_new_corr_list,
+                 calc_moreargs=calc_moreargs ),
             class="corr_family")
 }
 
@@ -180,7 +180,7 @@ Cauchy <- function(...) {
                         NUMAX=NUMAX, LDMAX=LDMAX,## not variable...
                         nbUnique=range_info_blob$nbUnique, control.dist=control_dist[[char_rd]]## needed for LUarglist, not calc_inits
     ) 
-    return(moreargs_rd)
+    return(moreargs_rd) ## with control_dist with possibly modified rho_mapping
   }
   #
   structure(list(corr_family="Cauchy",

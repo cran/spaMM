@@ -16,38 +16,6 @@
 }
 
 ### Utilities for parsing the mixed model formula
-## Functions more of less distantly derived from lme4 version of findbars
-
-## Determine random-effects expressions from a formula
-
-# different ! :
-# findbars(~ 1 + (1|batch/cask))
-# .findbarsMM(~ 1 + (1|batch/cask))
-
-
-.findbarsMM <-  function (term) {
-    if (is.name(term) || !is.language(term)) # eg y or 1 in y~1+... ?
-      return(NULL)
-    if (term[[1]] == as.name("(")) { ## may be (.|.) but also just anything in parenthesis in a formula
-      res <- .findbarsMM(term[[2]])
-      if (length(res)==1L) attr(res,"type") <- "(.|.)"
-      return(res) 
-    }
-    if (!is.call(term)) 
-      stop("term must be of class call")
-    if (term[[1]] == as.name("|")) 
-      return(term)
-    if (length(term) == 2L) { ## 
-      term1 <- as.character(term[[1]])
-      if (term1 %in% c("adjacency","Matern","Cauchy","AR1","corrMatrix")) {
-        res <- .findbarsMM(term[[2]]) ## term[[2]] is .|. and will match term[[1]] == as.name("|") , NOT term[[1]] == as.name("(")
-        attr(res,"type") <- term1
-        return(res) 
-      } else return(.findbarsMM(term[[2]])) 
-    }
-    c(.findbarsMM(term[[2]]), .findbarsMM(term[[3]]))
-  }
-
 
 ## Remove the random-effects terms from a mixed-effects formula
 .stripRanefs <- function (term) { ## different from lme4::nobars
@@ -63,6 +31,9 @@
     return(term)
   if (is.call(term) && term[[1]] == as.name("|")) 
     return(NULL)
+  if (term[[1]] == as.name("MRF")) {
+    return(NULL)
+  }
   if (length(term) == 2) {
     nb <- .stripRanefs_(term[[2]])
     if (is.null(nb)) 
@@ -82,9 +53,13 @@
 }
 
 ## lme4::subbars "Substitute the '+' function for the '|' function in a mixed-model formula, recursively (hence the argument name term). This provides a formula suitable for the current model.frame function."
-## Small modif; origina lversion shows handling of '||'
-.subbarsMM <- function (term) {   if (is.name(term) || !is.language(term)) 
+## Original version shows handling of '||'
+.subbarsMM <- function (term) {   
+  if (is.name(term) || !is.language(term)) 
     return(term)
+  if (term[[1]] == as.name("MRF")) {
+    return(.subbarsMM(term[[2]]))
+  }
   if (length(term) == 2) {
     term[[2]] <- .subbarsMM(term[[2]])
     return(term)
@@ -160,42 +135,117 @@
   term
 }
 
-.parseBars <- function (term,expand=TRUE,as_character=TRUE) { ## derived from findbars, ... return strings
+# To match the lme4 'syntactic sugar' (.||.):
+.expandDoubleVert <- function(term) {
+  frml <- formula(substitute(~x, list(x = term[[2]])))
+  newtrms <- paste0("0+", attr(terms(frml), "term.labels"))
+  if (attr(terms(frml), "intercept") != 0) 
+    newtrms <- c("1", newtrms)
+  nterms <- length(newtrms)
+  collapsand <- character(nterms)
+  for (it in seq_len(nterms)) collapsand[it] <- paste0(newtrms[it], "|", deparse(term[[3]]))
+  as.formula(paste("~(", paste(collapsand, collapse = ")+("), ")"))[[2]]
+}
+
+.expandDoubleVerts <- function (term) {
+  if (!is.name(term) && is.language(term)) {
+    if (term[[1]] == as.name("(")) {
+      term[[2]] <- .expandDoubleVerts(term[[2]])
+    }
+    stopifnot(is.call(term))
+    if (term[[1]] == as.name("||")) 
+      return(.expandDoubleVert(term))
+    term[[2]] <- .expandDoubleVerts(term[[2]])
+    if (length(term) == 3) 
+      term[[3]] <- .expandDoubleVerts(term[[3]])
+  }
+  term
+}
+
+.parseBars <- function (term) { ## derived from findbars, ... 
   if (inherits(term,"formula") && length(term) == 2L) ## added 2015/03/23
-    return(.parseBars(term[[2]], expand=expand, as_character=as_character))  ## process RHS
+    return(.parseBars(term[[2]]))  ## process RHS
   if (is.name(term) || !is.language(term)) 
     return(NULL)
   if (term[[1]] == as.name("(")) ## i.e. (blob) but not ( | ) 
-  {return(.parseBars(term[[2]],expand=expand, as_character=as_character))} 
+  {return(.parseBars(term[[2]]))} 
   if (!is.call(term)) 
     stop("term must be of class call")
   if (term[[1]] == as.name("|")) { ## i.e.  .|. expression
-    if (expand) term <- .spMMexpandSlash(term) ## 06/2015
-    if (as_character) {
-      term <- paste("(",c(term),")")
-      attr(term,"type") <- rep("(.|.)",length(term)) ## Random-slope models are not best identified here [(X2-1|block) is not randomslope].
-    } else attr(term,"type") <- rep("(.|.)",length(paste(c(term)))) ## paste is the simplest way to count terms (rather than elements of a single term)
-    # OK b in a sense inconstistent: the type is attr to the vector not to each of its elements. 
+    attr(term,"type") <- rep("(.|.)",length(paste(c(term)))) ## paste is the simplest way to count terms (rather than elements of a single term)
     return(term)
   } ## le c() donne .|. et non |..
+  if (term[[1]] == as.name("MRF")) {
+    pars <- paste(paste(names(term),"=",term)[-c(1,2)], collapse=",") 
+    attr(term,"type") <- structure("MRF", pars=eval(parse(text = paste("list(",pars,")")))) # pars as attr to type avoid problems in building the return value.
+    return(term) # (lhs|rhs) (language, with the ()); or character string.
+  }
   if (length(term) == 2) {
     term1 <- as.character(term[[1]])
     if (term1 %in% c("adjacency","Matern","Cauchy","AR1","corrMatrix")) {
-      if (as_character) term <- paste(c(term)) ## formats nicely a multiline long RHS
       attr(term,"type") <- term1
       return(term) 
     } else return(NULL) 
   }
-  bT2 <- .parseBars(term[[2]],expand=expand, as_character=as_character)
-  bT3 <- .parseBars(term[[3]],expand=expand, as_character=as_character)
-  res <- c(bT2, bT3)
+  # This point may not be reached by the outer .parseBars() call, so the following is not consistently terminal code.
+  bT2 <- .parseBars(term[[2]])
+  bT3 <- .parseBars(term[[3]])
+  res <- c(bT2, bT3) ## if the bT's are language objects, c() creates a *list* of them
   attr(res,"type") <- c(attr(bT2,"type"),attr(bT3,"type"))
+  # res is a list or a vector, depending on as_character
+  # If a list, each element has a type (conversely, vector elements cannot have attributes except a name)
+  # The list, or the vector, *has* a type attribute. It's a full vector, hence it has "(.|.)" for elements that have no type
   return(res)
 }
 
+.lhs_rhs_bars <- function(barlist) { ## replicates the old .findbarsMM result, but starting from a .parseBars() result
+  res <- barlist
+  attr(res,"type") <- NULL
+  for (it in seq_along(res)) {
+    if ( ! is.null(type <- attr(res[[it]],"type"))) { 
+      if (type == "(.|.)") {
+        attr(res[[it]],"type") <- NULL
+      } else res[[it]] <- structure(.parseBars(res[[it]][[2]]), type=type)}
+  }
+  return(res)
+}
+
+.as_char_bars <- function(barlist) { # character vector from language list
+  if (is.null(barlist)) return(NULL)
+  # ELSE
+  res <- character(length(barlist))
+  for (it in seq_along(res)) {
+    if ( ! is.null(type <- attr(barlist[[it]],"type"))) { 
+      if (type == "(.|.)") {
+        res[it] <- paste("(",c(barlist[[it]]),")")
+      } else res[it] <- paste(c(barlist[[it]]))
+    }
+  }
+  attr(res,"type") <- attr(barlist,"type")
+  return(res)
+}
+
+.process_bars <- function(formula, barlist, expand= (which.==""),
+                          as_character= (which.==""), # return strings vs. full <keyword>(.|.) terms
+                          which.="") {
+  if (missing(barlist)) barlist <- .parseBars(formula)
+  # NULL barlist is a result from a previous.parseBars / .process_bars call !   
+  if (expand) {
+    barlist <- .spMMexpandSlash(barlist)
+    attr(barlist,"type") <- unlist(lapply(barlist,attr,which="type"))
+  }
+  if (which.=="exp_ranef_terms") {
+    return(.lhs_rhs_bars(barlist))
+  } else if (as_character) {
+    return(.as_char_bars(barlist))
+  } else return(barlist)
+}
+
 ## spaces should be as in parseBars because terms can be compared as strings in later code
-.findSpatial <- function (term, expand=FALSE, as_character=FALSE, nomatch=NULL) { ## derived from findbars
-  res <- .parseBars(term, expand=expand, as_character=as_character)
+.findSpatial <- function (term, barlist, expand=FALSE, as_character=FALSE, nomatch=NULL) { 
+  res <- .process_bars(term, 
+                       barlist=barlist, ## may be missing
+                       expand=expand, as_character=as_character)
   if (is.null(nomatch)) {
     res <- res[attr(res,"type")!="(.|.)"] ## nomatch=NULL removes terms of type "(.|.)" 
   } else res[attr(res,"type")=="(.|.)"] <- nomatch ## typically sets to nomatch=NA the terms of type "(.|.)" 
@@ -230,6 +280,9 @@
   aschar <- gsub("Cauchy(","(",aschar,fixed=TRUE)
   aschar <- gsub("AR1(","(",aschar,fixed=TRUE)
   aschar <- gsub("corrMatrix(","(",aschar,fixed=TRUE)
+  #                     (  1st group )  (2nd group)        \1: only first group is retained
+  aschar <- gsub("MRF\\((.+?\\|[^,]+?), ([^)]+?)\\)", "\\(\\1\\)", aschar, fixed = FALSE) # removes MRF and the parameters
+  ## thank you https://regex101.com/ ... ? (:lazy matching) is essential
   as.formula(aschar)
 }
 
@@ -244,10 +297,10 @@
   #  The revised Infusion code shows how to use the 'data' tfor prior.weights in programming, using eval(parse(text=paste(<...>,priorwName,<...>)))
   # As long as prior.weights was still using the environment, fitting functions still had
   #     mc <- oricall
-  #     oricall$formula <- .stripFormula(formula) ## Cf comment in .getValidData
+  #     oricall$formula <- .preprocess_formula(formula) ## Cf comment in .getValidData
   #  (stripping of mc$formula being done only later by .as_predictor() )
   #  where we otherwise have 
-  #     oricall$formula <- .stripFormula(formula) 
+  #     oricall$formula <- .preprocess_formula(formula) 
   #     mc <- oricall
   formula <- .asNoCorrFormula(formula) ## removes spatial tags
   frame.form <- .subbarsMM(formula) ## this comes from lme4 and converts (...|...) terms to some "+" form
@@ -307,10 +360,11 @@
   ####### first construct a mf for all variables required by the formula (NA would be removed here if they had not been by a previous call to validData)
   frame.form <- .subbarsMM(formula) ## this comes from lme4 and converts (...|...) terms to some "+" form 
   environment(frame.form) <- environment(formula)
-  fe <- feo <- call("model.frame", data=data, formula=frame.form,  drop.unused.levels=TRUE) # language object reused later
-  mf <- eval(fe) ## data.frame with all vars required for fixef and for ranef, and a "terms" attribute
+  mf_call <- call("model.frame", data=data, formula=frame.form,  drop.unused.levels=TRUE) # language object reused later
+  full_frame <- eval(mf_call) ## data.frame with all vars required for fixef and for ranef, and a "terms" attribute
+  res <- list(mf=full_frame)
   #
-  Y <- model.response(mf, "any")
+  Y <- model.response(full_frame, "any")
   if ( ! is.null(Y)) { ## exclude this cases which occurs when no LHS formula is handled
     if (is.factor(Y)) { 
       Y <- (Y != levels(Y)[1L]) ## cf ?glm: ‘success’ is interpreted as the factor not having the first level
@@ -319,53 +373,46 @@
       Y <- as.matrix(Y) ## to cope with array1d, and see $y <- ... code in .preprocess
     }
   }
+  res$Y <- Y
   #
-  fixef_off_form <- .stripRanefs_(formula) 
   # compare to .calc_newFrames_fixed() to keep changes in code consistent
+  fixef_off_form <- .stripRanefs_(formula) 
   if (inherits(fixef_off_form, "formula")) {
+    # to keep info about offset in $fixef_off_terms
+    mf_call$formula <- fixef_off_form
+    feo_frame <- eval(mf_call)
+    res$fixef_off_terms <- attr(feo_frame, "terms") ## added 2015/12/09 useful for .calc_newFrames()
+    #
     fixef_form <- .stripOffset_(fixef_off_form) # formula if something remains (e.g, ". ~ 0") after the offset has been removed
     if (inherits(fixef_form, "formula")) { # something remains after the offset has been removed (e.g., explicit '0')
       ## Produce X design matrix:
-      fe$formula <- fixef_form
-      fe <- eval(fe)
-      fixef_terms <- attr(fe, "terms")
+      fe_call <- mf_call
+      fe_call$formula <- fixef_form
+      fe_frame <- eval(fe_call)
+      fixef_terms <- attr(fe_frame, "terms")
       if (is.null(fixef_terms)) {
         message("Note: formula without explicit fixed effects is interpreted
               as formula without fixed effects [i.e., as .~ 0 + (random effect)].
               Use ~ 1 + (random effect) rather than ~ (random effect) to include an Intercept.")
       }
       if (fixef_terms[[length(fixef_terms)]]==0L) { ## check that the fixef are only an explicit '0' (odd that it compares to 0L, but it does)
-        X <- matrix(nrow=nrow(mf),ncol=0L) ## model without fixed effects, not even an Intercept 
+        res$X <- matrix(nrow=nrow(full_frame),ncol=0L) ## model without fixed effects, not even an Intercept 
       } else {
-        X <- model.matrix(fixef_terms, mf, stats::contrasts) ## always valid, but slower
+        res$X <- model.matrix(fixef_terms, full_frame, stats::contrasts) ## always valid, but slower
       } 
-      fixef_levels <- stats::.getXlevels(fixef_terms, fe) ## added 2015/12/09 useful for .calc_newFrames()
+      res$fixef_levels <- .getXlevels(fixef_terms, fe_frame) ## added 2015/12/09 useful for .calc_newFrames()
     } else { ## only an offset in formula, not even an explicit 0: .stripOffset_(fixef_off_form) produced a 'name'
       message("Note: formula without explicit fixed effects is interpreted
               as formula without fixed effects [i.e.,  as .~ 0 + offset + (random effect)].
               Use ~ 1 + offset + (random effect) rather than ~ offset + (random effect) to include an Intercept.")
-      X <- matrix(nrow=nrow(mf),ncol=0L) ## model without fixed effects, not even an Intercept 
-      fixef_levels <- NULL
+      res$X <- matrix(nrow=nrow(full_frame),ncol=0L) ## model without fixed effects, not even an Intercept 
     }
-    # to keep info about offset in $fixef_off_terms
-    feo$formula <- fixef_off_form
-    feo <- eval(feo)
-    fixef_off_terms <- attr(feo, "terms") 
   } else {
-    X <- matrix(nrow=nrow(data), ncol=0L) ## Not using NROW(Y) which is 0 if formula has no LHS
-    fixef_off_terms <- fixef_levels <- NULL
+    res$X <- matrix(nrow=nrow(data), ncol=0L) ## Not using NROW(Y) which is 0 if formula has no LHS errr... RHS ?
   }
   ####### Then constructs the design X by evaluating the model frame (fe) with fe$formula <- fixef.form
-  storage.mode(X) <- "double" ## otherwise X may be logi[] rather than num[] in particular when ncol=0
-  list(Y = Y, 
-       X = X, 
-       wts = NULL, 
-       off = NULL, 
-       mf = mf, 
-       ## only fixef-related variables, contrary to the attr(mf,"terms): 
-       fixef_levels = fixef_levels, ## added 2015/12/09 useful for .calc_newFrames()
-       fixef_off_terms = fixef_off_terms ## added 2015/12/09 useful for .calc_newFrames()
-  )
+  storage.mode(res$X) <- "double" ## otherwise X may be logi[] rather than num[] in particular when ncol=0
+  return(res) # full_frame, fixef_off_terms, fixef_levels, X, Y
 }
 
 .calc_newpredvars <- function(oldterms, formula) {

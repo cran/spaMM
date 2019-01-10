@@ -19,11 +19,11 @@
 \usage{
 \method{predict}{HLfit}(object, newdata = newX, newX = NULL, re.form = NULL,
                           variances=list(), binding = FALSE, intervals = NULL,
-                          level = 0.95, blockSize = 2000L, ...)
-get_predCov_var_fix(object, newdata = NULL, fix_X_ZAC.object, fixdata, 
-                   variances=list(disp=TRUE,residVar=FALSE), re.form = NULL, ...)    
+                          level = 0.95, blockSize = 2000L, type = "response", ...)
+get_predCov_var_fix(object, newdata = NULL, fix_X_ZAC.object, fixdata, re.form = NULL,
+                   variances=list(disp=TRUE,residVar=FALSE,cov=FALSE), ...)    
 preprocess_fix_corr(object, fixdata, re.form = NULL,
-                   variances=list(residVar=FALSE))                                
+                   variances=list(residVar=FALSE, cov=FALSE))
 get_fixefVar(...)
 get_predVar(...)
 get_residVar(...)
@@ -97,11 +97,14 @@ get_intervals(...)
  \item{blockSize}{
    Mainly for development purposes. For original or new data with many rows, it may be more efficient to split these data in small blocks, and this gives the maximum number or rows of the blocks. However, this will be ignored if a prediction covariance matrix is requested.    
  }
+\item{type}{character string; The returned point prediction is on the response scale if \code{type="response"} (the default). It is on the linear predictor scale if \code{type="link"}. }
 \item{\dots}{
   further arguments passed to or from other methods. For the \code{get_}... functions, they are passed to \code{predict}. 
 }
 }
 \value{
+  See Details in \code{\link{Tpoisson}} for questions specific to truncated distributions.
+
   For \code{predict}, a matrix or data frame (according to the \code{binding} argument), with optional attributes \code{frame}, \code{intervals}, \code{predVar}, \code{fixefVar}, \code{residVar}, and/or \code{respVar}, the last four holding one or more variance vector or covariance matrices. The further attribute \code{fittedName} contains the binding name, if any.  
   
   The \code{get_}... extractor functions call \code{predict} and extract from its result the attribute implied by the name of the extractor. By default, \code{get_intervals} will return prediction intervals using \code{predVar}.

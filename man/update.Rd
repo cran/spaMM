@@ -1,13 +1,14 @@
 \name{update.HLfit}
-%- \alias{update.HLCor}
 \alias{update.HLfit}
 \alias{update}
+\alias{update_resp}
+\alias{refit}
 \title{
-  Updates an HLCor or HLfit fit 
+  Updates a fit 
 }
 \description{
-\code{update} will update and (by default) re-fit a model. It does this mostly by extracting the call stored in the object, updating the call and evaluating that call. 
-(however, currently the \code{predictor} argument is processed differently). Using \code{update} is a risky programming style (see Note). 
+\code{update} will update and (by default) re-fit a model. It does this mostly by extracting the call stored in the object, updating the call and evaluating that call. Using \code{update} is a risky programming style (see Note). 
+\code{update_resp} is a more restricted version inspired from \code{lme4::refit}, handling only a new a response vector as produced by \code{simulate}. 
 }
 \note{
 \code{update}, as a general rule, is tricky. \code{update} methods are easily affected in a non-transparent way by changes in variables used in the original call. For example
@@ -22,8 +23,8 @@ To avoid such problems, \code{spaMM} tries to avoid references to variables in t
 \code{spaMM}'s \code{update} method was all the more tricky when spaMM called \code{stats::update.formula} whose results endorse \code{stats}'s (annoying) convention that a formula without an explicit intercept term actually includes an intercept. \code{spaMM::update} now avoids this problem. \bold{Formula updates should still be carefully checked}, as getting them perfect has not been on the priority list.
 }
 \usage{
-%- \method{update}{HLCor}(object,formula.,...)
 \method{update}{HLfit}(object, formula., ..., evaluate = TRUE)
+update_resp(object, newresp, evaluate = TRUE)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -32,6 +33,7 @@ To avoid such problems, \code{spaMM} tries to avoid references to variables in t
 }
 
 \item{formula.}{Changes to the formula. Beware of the syntax: see \cite{\link{update.formula}} for details.}
+\item{newresp}{New response vector.}
 
 \item{\dots}{
 Additional arguments to the call, or arguments with changed values. Use name = NULL to remove the argument name.
@@ -42,11 +44,8 @@ Additional arguments to the call, or arguments with changed values. Use name = N
 }
 }
 \value{
-  An HLCor or HLfit fit of the same type as the input object.
+  An HLfit fit of the same type as the input object, or a call object, depending on the \code{evaluate} value.
 }
-
-%% ~Make other sections like Warning with \section{Warning }{....} ~
-
 \seealso{
 See also \code{\link{HLCor}},  \code{\link{HLfit}}.
 }
@@ -55,6 +54,9 @@ data("wafers")
 ## First the fit to be updated:
 wFit <- HLfit(y ~X1*X3+X2*X3+I(X2^2)+(1|batch),family=Gamma(log),
           resid.model = ~ X3+I(X3^2) ,data=wafers)
+
+newresp <- simulate(wFit)
+update_resp(wFit,newresp=newresp)
 
 # For estimates given by Lee et al., Appl. Stochastic Models Bus. Ind. (2011) 27:  315-328:
 # Refit with given beta or/and phi values:

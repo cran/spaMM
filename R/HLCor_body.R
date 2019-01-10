@@ -1,4 +1,4 @@
-## the following must match the'unique' method is ULI as explained there
+## the following must match the'unique' method in .ULI as explained there
 .calcUniqueGeo <- function(data) {
   redondGeo <- apply(data,1,paste,collapse=" ") ## creates character string
   dfforunique <- cbind(data,redondGeo) ## associates rownames of data to redondGeo
@@ -46,7 +46,7 @@
   if ( ! inherits(covStruct,"list")) stop("covStruct must inherit from class 'list'.")
   types <- attr(covStruct,'types') ## 1st way of specifying types
   if (is.null(types)) types <- names(covStruct) ## 2nd way of specifying types
-  known_types <- c("adjMatrix","corrMatrix","precision","SAR_WWt","distMatrix") 
+  known_types <- c("adjMatrix","corrMatrix","precision","SAR_WWt","distMatrix", "MRF") 
   checktypes <- setdiff(types,c(known_types,"")) ## "" for unhandled ranefs
   if (length(checktypes)) stop(paste("Unhandled name(s)/type(s)",
                                      paste0("'",checktypes,"'",collapse=", "),"in 'covStruct'."))
@@ -132,7 +132,7 @@
 
 .calc_AR1_t_chol_Q_block <- function(n_u, ARphi) {
   denom <- sqrt(1-ARphi^2)
-  t_chol_Q <- Diagonal(x=c(rep(1/denom,n_u-1L),1)) 
+  t_chol_Q <- .symDiagonal(x=c(rep(1/denom,n_u-1L),1)) 
   if (n_u>1L) diag(t_chol_Q[,-1,drop=FALSE]) <- -ARphi/denom 
   return(t_chol_Q) # equivalent to nlme's AR1_fact() in corStruct.c
 }
@@ -140,15 +140,15 @@
 
 HLCor_body <- function(processed, ## single environment
                   ranPars=NULL, ## all dispersion and correlation params ideally provided through ranPars
-                  control.dist=list(), # info NOT from processed bc modified by corrHLfit_body or fitme_body
+                  control.dist=list(), # possibly distinct from processed info bc corrHLfit_body/fitme_body may have modified it => 
+                                       # this one is used, not the one from processed
                   ...) { ## dots for HLfit
   dotlist <- list(...)
   spatial_terms <- attr(processed$ZAlist,"exp_spatial_terms")
   corr_types <- processed$corr_info$corr_types
   ## convert back ranPars to canonical scale:
   ranPars <- .post_process_parlist(ranPars,corr_families=processed$corr_info$corr_families) 
-  ranPars <- .canonizeRanPars(ranPars=ranPars,
-                              corr_info=processed$corr_info) ## with init.HLfit as attribute
+  ranPars <- .canonizeRanPars(ranPars=ranPars, corr_info=processed$corr_info) ## with init.HLfit as attribute
   ########################################################################################################################
   # * assigns geo_envir <- .get_geo_info(...)
   # * modifies processed$AUGI0_ZX$envir by .init_precision_info(...) 
@@ -179,10 +179,11 @@ HLCor_body <- function(processed, ## single environment
   #### Infos in the final fit object: 
   hlfit$spatial_terms <- spatial_terms
   info_uniqueGeo <- msd_arglist <- list()
-  is_uniqueGeo_needed <- ( (! is.na(corr_types)) & (corr_types=="Matern" | corr_types=="Cauchy" | corr_types=="AR1"))
+  is_uniqueGeo_needed <- ( (! is.na(corr_types)) & (corr_types=="Matern" | corr_types=="Cauchy" | corr_types=="AR1"
+                           | corr_types=="MRF")) ## MRF: mapMM expects it.
   for (rd in which(is_uniqueGeo_needed)) {
     char_rd <- as.character(rd)
-    geo_envir <- .get_geo_info(processed, which_ranef=rd, which="", 
+    geo_envir <- .get_geo_info(processed, which_ranef=rd, which="uniqueGeo", 
                                dist.method=control.dist[[char_rd]]$dist.method) 
     info_uniqueGeo[[char_rd]] <- geo_envir$uniqueGeo 
   }
@@ -231,6 +232,8 @@ HLCor_body <- function(processed, ## single environment
   ranPars <- .modify_list(HLCor.call$ranPars, ranefParsList)
   rpType <- .modify_list(attr(HLCor.call$ranPars,"type"),attr(skeleton,"type"))
   moreargs <- attr(skeleton,"moreargs")
+  ranPars <- .expand_hyper(ranPars, trL_skeleton=attr(skeleton,"trL_skeleton"),processed) ## input ranPars contains both unconstrained ranPars and $hyper
+  # => failing to expand leads to unconstrained optimization
   if ( ! is.null(ranPars$resid) ) { ## mmm FIXME never operational ?
     resid_ranPars <- structure(ranPars$resid, ## but not sure that the attributes are necessary...
                                type=rpType$resid, 

@@ -73,13 +73,13 @@ fitme_body <- function(processed,
   
   processedHL1 <- proc1$HL[1] ## there's also HLmethod in processed<[[]]>$callargs
   needHLCor_specific_args <- (length(unlist(lower$corrPars)) || 
-                                length(intersect(corr_types,c("Matern","Cauchy","adjacency","AR1","corrMatrix"))))
+                                length(intersect(corr_types,c("Matern","Cauchy","adjacency","AR1","corrMatrix", "MRF"))))
   if (needHLCor_specific_args) {
     HLcallfn.obj <- "HLCor.obj" 
     HLcallfn <- "HLCor"
     control.dist <- vector("list",length(moreargs))
-    for (nam in names(moreargs)) control.dist[[nam]] <- moreargs[[nam]]$control.dist
-    HLCor.args$control.dist <- control.dist # lapply(moreargs,getElement,name="control.dist")
+    for (nam in names(moreargs)) control.dist[[nam]] <- moreargs[[nam]]$control.dist 
+    HLCor.args[["control.dist"]] <- control.dist ## always reconstructed locally, not in the fitme_body call
     HLCor.args$ranPars <- fixed ## to be modified by objective function
   } else {
     HLcallfn.obj <- "HLfit.obj"
@@ -93,9 +93,9 @@ fitme_body <- function(processed,
   ## HLCor.obj uses a vector + skeleton
   initvec <- unlist(init.optim)
   if (needHLCor_specific_args) {
-    anyHLCor_obj_args$skeleton <- structure(init.optim, moreargs=moreargs,
+    anyHLCor_obj_args$skeleton <- structure(init.optim, moreargs=moreargs, ## moreargs is a list over ranefs 
                                             type=relist(rep("fix",length(initvec)),init.optim),
-                                            moreargs=moreargs)
+                                            trL_skeleton=attr(init.optim$hyper,"trL_skeleton") )
   } else {
     anyHLCor_obj_args$skeleton <- structure(init.optim,
                                             type=relist(rep("fix",length(initvec)),init.optim))
@@ -103,7 +103,7 @@ fitme_body <- function(processed,
   .assignWrapper(anyHLCor_obj_args$processed,
                    paste0("return_only <- \"",proc1$objective,"APHLs\""))
   if (length(initvec)) {
-    
+    augZXy_phi_est <- NULL
     if (identical(verbose["getCall"][[1L]],TRUE)) { ## toget an optim call with its initial value. Then HLcallfn is called and its call returned.
       ## confint -> get_HLCorcall needs an HLCor call with the following ranFix
       ranPars_in_refit <- structure(.modify_list(fixed,init.optim),
@@ -143,6 +143,7 @@ fitme_body <- function(processed,
       ranPars_in_refit <- structure(.modify_list(fixed,optPars),
                                    type=.modify_list(relist(rep("fix",length(unlist(fixed))),fixed), #attr(fixed,"type"),
                                                      relist(rep("outer",length(unlist(optPars))),optPars)))
+      ranPars_in_refit <- .expand_hyper(ranPars_in_refit, trL_skeleton=attr(init.optim$hyper,"trL_skeleton"),processed)
       augZXy_phi_est <- proc1$augZXy_env$phi_est ## may be NULL: if phi was not estimated by augZXy
       
       any_nearly_singular_covmat <- FALSE
@@ -234,7 +235,6 @@ fitme_body <- function(processed,
   # if processed is an envir, the following is not local to anyHLCor_obj_args$processed but change processed globally
   .assignWrapper(HLCor.args$processed,"return_only <- NULL") 
   .assignWrapper(HLCor.args$processed,"verbose['warn'] <- TRUE") ## important!
-  #browser()
   hlcor <- do.call(HLcallfn,HLCor.args) ## recomputation post optimization, or only computation if length(initvec)=0
   if (is.call(hlcor)) {
     ## then do.call(HLcallfn,HLCor.args) has retuned the call, not the fit. 
@@ -245,6 +245,7 @@ fitme_body <- function(processed,
   if (length(initvec)) {
     attr(hlcor,"optimInfo") <- list(LUarglist=LUarglist, optim.pars=optPars, 
                                     objective=proc1$objective,
+                                    augZXy_phi_est=augZXy_phi_est, ## gives info to interpret optim.pars in confint.HLfit()
                                     optim_time=optim_time) ## processed was erased for safety
     locoptr <- attr(optPars,"optr")
     if (attr(optPars,"method")=="nloptr") {

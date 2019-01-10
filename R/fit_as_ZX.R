@@ -330,10 +330,12 @@
     if ( ! is.null(for_intervals)) {
       currentDy <- (for_intervals$fitlik-oldlik)
       if (currentDy < -1e-4) .warn_intervalStep(oldlik,for_intervals)
+      # given current focal-parameter estimate and associated current lik, 
+      # try to guess the new estimate that will bring the likelihood closer to the CI threshold:
       intervalBlob <- .intervalStep_ZX(old_Vscaled_beta=Vscaled_beta,
                                        sXaug=sXaug,szAug=wzAug,
                                        for_intervals=for_intervals,
-                                       currentlik=oldlik,currentDy=currentDy)
+                                       currentlik=oldlik,currentDy=currentDy) # return value is list(Vscaled_beta=...)
       damped_WLS_blob <- NULL
       Vscaled_beta <- intervalBlob$Vscaled_beta
     } else if (LevenbergM) { ## excludes IRLS
@@ -547,7 +549,9 @@
   return(RESU)
 }
 
-.intervalStep_ZX <- function(old_Vscaled_beta,sXaug,szAug,currentlik,for_intervals,currentDy) {
+.intervalStep_ZX <- function(old_Vscaled_beta,sXaug,szAug,
+                             currentlik, ## not currently used (has been, for diagnostic printing)
+                             for_intervals,currentDy) {
   #print((processed$intervalInfo$fitlik-currentlik)/(control.HLfit$intervalInfo$MLparm-old_betaV[parmcol]))
   ## voir code avant 18/10/2014 pour une implem rustique de VenzonM pour debugage  
   ## somewhat more robust algo (FR->FR: still improvable ?), updates according to a quadratic form of lik near max

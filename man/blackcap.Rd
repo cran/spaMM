@@ -29,8 +29,8 @@ short-distances as '1.5', intermediate-distance migratory populations as '2' and
 as '2.5'.
 }
 \source{
-Data from Mueller et al. (2011), including supplementary material retrieved from
-\url{http://rspb.royalsocietypublishing.org/content/suppl/2011/02/11/rspb.2010.2567.DC1}.
+Data from Mueller et al. (2011), including supplementary material now available from
+\url{https://doi.org/10.1098/rspb.2010.2567}.
 }
 \references{
 Mueller, J. C., Pulido, F., and Kempenaers, B. 2011. Identification of a

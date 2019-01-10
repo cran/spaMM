@@ -91,7 +91,7 @@
   spaMM.options(spaMM_glm_conv_crit=list(max=-Inf))
   time1 <- Sys.time()
   oricall <- match.call(expand.dots=TRUE) ## mc including dotlist
-  oricall$formula <- .stripFormula(formula) ## Cf comment in .getValidData
+  oricall$formula <- .preprocess_formula(formula) ## Cf comment in .getValidData
   mc <- oricall
   mc[[1L]] <- get(".def_call_corrHLfit_body", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
   mc <- eval(mc,parent.frame())  
@@ -131,7 +131,7 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
   spaMM.options(spaMM_glm_conv_crit=list(max=-Inf))
   time1 <- Sys.time()
   oricall <- match.call(expand.dots=TRUE) ## mc including dotlist
-  oricall$formula <- .stripFormula(formula) ## Cf comment in .getValidData
+  oricall$formula <- .preprocess_formula(formula) ## Cf comment in .getValidData
   mc <- oricall
   ## Preventing confusions
   if (!is.null(mc$ranPars)) {

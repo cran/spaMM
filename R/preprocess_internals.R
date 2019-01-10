@@ -14,7 +14,7 @@
     nrand <- length(ZAlist)
     if (trySparse && nrand>0L) {
       # adjacency speed to be tested on 2nd example from test-spaMM.R
-      if (any(attr(ZAlist,"exp_ranef_types") %in% c("adjacency") ) ) {
+      if (any(attr(ZAlist,"exp_ranef_types") %in% c("adjacency", "MRF") ) ) {
         QRmethod <- "dense" ## la corr matrix est dense !
       } else {
         totdim <- colSums(do.call(rbind,lapply(ZAlist,dim)))

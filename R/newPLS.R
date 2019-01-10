@@ -53,11 +53,10 @@ get_from_MME_default.Matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
     #   return(Matrix::qr.coef(Matrix::qr(sXaug),szAug)) ## Vscaled.beta
     ## FR->FR needs a fully automated selection of methods:
     if (length(grep("QR", .spaMM.data$options$Matrix_method))) {
-      solve_method <- ".lmwith_sparse_QRp"
+      sol <- .lmwith_sparse_QRp(XX=sXaug,yy=szAug,returntQ=FALSE,returnR=FALSE) # no pivot argument
     } else if (length(grep("LDL", .spaMM.data$options$Matrix_method))) {
-      solve_method <- ".lmwith_sparse_LDLp"
-    } else solve_method <- ".lmwith_sparse_LLp"
-    sol <- do.call(solve_method,list(XX=sXaug,yy=szAug,returntQ=FALSE,returnR=FALSE,pivot=TRUE))
+      sol <- .lmwith_sparse_LDLp(XX=sXaug,yy=szAug,returntQ=FALSE,returnR=FALSE,pivot=TRUE)
+    } else sol <- .lmwith_sparse_LLp(XX=sXaug,yy=szAug,returntQ=FALSE,returnR=FALSE,pivot=TRUE)
     return(sol$coef)
   } else stop("Unhandled arguments in get_from_MME_default.Matrix (missing method for get_from_MME() ?)")
 }
@@ -96,11 +95,10 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
   extra_vars <- attr(X.Re,"extra_vars") ## may be NULL
   if (inherits(locsXaug,"Matrix")) {
     suppl_cols <- Matrix(0,ncol=length(extra_vars),nrow=nrow(locsXaug))
-    suppl_cols[n_u_h+seq(nrow(X.Re)),] <- Diagonal(x=weight_X) %*% X.Re[,extra_vars]
   } else {
     suppl_cols <- matrix(0,ncol=length(extra_vars),nrow=nrow(locsXaug))
-    suppl_cols[n_u_h+seq(nrow(X.Re)),] <- diag(x=weight_X) %*% X.Re[,extra_vars]
   }
+  suppl_cols[n_u_h+seq(nrow(X.Re)),] <- .Dvec_times_m_Matrix(weight_X,X.Re[,extra_vars])#  Diagonal(x=weight_X) %*% X.Re[,extra_vars]
   locsXaug <- cbind(locsXaug,suppl_cols)
   return(locsXaug)
 }
@@ -112,7 +110,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
   if ( ! is.null(X.Re) ) { ## not the standard REML
     distinct.X.ReML <- attr(X.Re,"distinct.X.ReML")
     if ( distinct.X.ReML[2L] ) { ## test FALSE for standard ML, TRUE only for some non-standard REML cases
-      locsXaug <- .calc_sXaug_Re(locsXaug=sXaug,X.Re,weight_X) ## FIXME presumably does not work for sparse methods.
+      locsXaug <- .calc_sXaug_Re(locsXaug=sXaug,X.Re,weight_X) 
       hatval <- .leveragesWrap(locsXaug) ## Rcpp version of computation through computation of Q
     } else if ( distinct.X.ReML[1L] ) { ## includes ML standard
       whichcols <- attr(X.Re,"unrestricting_cols")
@@ -382,7 +380,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
   return(leftcols)
 }
 
-.adhoc_rbind_I_ZAL <- function(Ilen, ZAL) {
+.adhoc_rbind_I_dgC <- function(Ilen, ZAL) {
   newlen <- Ilen+length(ZAL@x)
   Iseq <- seq_len(Ilen)
   Ip <- c(0L,Iseq)
@@ -415,7 +413,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
     if ( ! is.null(ZAL_scaling)) ZAL <- .m_Matrix_times_Dvec(ZAL,ZAL_scaling)
     if (is.null(Zero_sparseX <- AUGI0_ZX$Zero_sparseX)) Zero_sparseX <- rbind2(AUGI0_ZX$ZeroBlock, AUGI0_ZX$X.pv)
     if (inherits(ZAL,"dgCMatrix")) {
-      I_ZAL <- .adhoc_rbind_I_ZAL(nrow(AUGI0_ZX$I), ZAL) ## this is faster...
+      I_ZAL <- .adhoc_rbind_I_dgC(nrow(AUGI0_ZX$I), ZAL) ## this is faster...
     } else I_ZAL <- rbind2(AUGI0_ZX$I, ZAL)
     if (inherits(I_ZAL,"dgCMatrix") &&  inherits(Zero_sparseX,"dgCMatrix") ) {
       Xscal <- .cbind_dgC_dgC(I_ZAL, Zero_sparseX) # substantially faster than the general alternative => F I X M E extend its usage ? 
@@ -446,7 +444,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
   I00_ZXy@i <- c(I00_ZXy@i, n_u_h-1L+seq_len(length(pwy_o))) ## fails if n_u_h is not integer
   I00_ZXy@x <- c(I00_ZXy@x, pwy_o)
   I00_ZXy@Dim[2L] <- I00_ZXy@Dim[2L]+1L
-  I00_ZXy@Dimnames[[2L]] <- c(I00_ZXy@Dimnames[[2L]],"") ## otherwise try(chol()=> error)  (which hmakes a test of the rescue code...)
+  I00_ZXy@Dimnames[[2L]] <- c(I00_ZXy@Dimnames[[2L]],"") ## otherwise try(chol()=> error)  (which makes a test of the rescue code...)
   return(I00_ZXy)
 }
 
@@ -753,7 +751,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
         locXscal[Xrows,] <- diag(x=1/weight_X) %*% locXscal[Xrows,] ## get back to unweighted scaled matrix
         mMatrix_method <- .spaMM.data$options$matrix_method
       }
-      locXscal <- .calc_sXaug_Re(locXscal,X.Re,rep(1,nobs))      ## or some cbind ?  
+      locXscal <- .calc_sXaug_Re(locXscal,X.Re,rep(1,nobs))   
       locsXaug <- do.call(mMatrix_method,
                           list(Xaug=locXscal, weight_X=weight_X, w.ranef=w.ranef, H_global_scale=H_global_scale))
       loc_unscaled_logdet_r22 <- get_from_MME(locsXaug,"logdet_r22") ## non-standard REML: => no X-scaling

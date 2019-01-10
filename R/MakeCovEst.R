@@ -32,7 +32,8 @@
       ## (2) Even with two steps as(.,"dtCMatrix") is costly hence the spprecBool condition (dtCMatrix useful only for chol_Q)
       tcrossfac_Q <- as(tcrossfac_Q,"sparseMatrix") # precision factor for sparse_precision algo
       blob$compactchol_Q <- as(tcrossfac_Q,"dtCMatrix") # precision factor for sparse_precision algo
-      blob$compactprecmat <- .ZWZt(esys$vectors, 1/d_regul) 
+      evec <- as(esys$vectors,"dgCMatrix")
+      blob$compactprecmat <- .ZWZtwrapper(evec, 1/d_regul) # dsCMatrix
     }
   } else if (triangularL) { ## never run as triangularL handled by first case, but would be much nicer if it was OK for HLfit6
     # qr always produces a crossprod factor so if we want a tcrossprod factor, it must be t(qr.R()) hence lower tri...); unless we qr() the preci mat...
@@ -51,14 +52,17 @@
 }
 
 ## Build Lmatrix between all pairs of u_h (nr*nr) from parameter estimates (2*2) for the design matrix, longsize is final dim of matrix
-.makelong <- function(Lcompact,longsize,as_matrix=FALSE,template=NULL) { ## always returns a Matrix unless explicitly as_matrix
-  if ( ! is.null(template)) {
+.makelong <- function(Lcompact, ## may also be a compact precmat, symmetric rather than triangular
+                      longsize,as_matrix=FALSE,template=NULL) { ## always returns a Matrix unless explicitly as_matrix
+  if ( ! is.null(template)) { ## allows efficient filling of long template
     template@x <- Lcompact[template@x]
     if (as_matrix) {
       template <- as.matrix(template)
     } else {
       template <- drop0(template) ## LHS is *M*atrix in all cases
-      if ( inherits(Lcompact,"dtCMatrix")) template <- as(template,"dtCMatrix")
+      if ( inherits(Lcompact,"dtCMatrix")) {
+        template <- as(template,"dtCMatrix")
+      } else if ( inherits(Lcompact,"dsCMatrix")) template <- forceSymmetric(template)
     } 
     return(template) 
   } else {
@@ -83,7 +87,11 @@
       longLv <- as.matrix(longLv)
     } else {
       longLv <- drop0(longLv) ## drop0() returns a *M*atrix
-      if ( inherits(Lcompact,"dtCMatrix")) { longLv <- as(longLv,"dtCMatrix")} 
+      if ( inherits(Lcompact,"dtCMatrix")) { 
+        longLv <- as(longLv,"dtCMatrix")
+      } else if ( inherits(Lcompact,"dsCMatrix")) { 
+        longLv <- forceSymmetric(longLv)
+      }
       #if (! is.null(template) && diff(range(template-longLv))>0) stop("zut") 
     }
     return(longLv) 

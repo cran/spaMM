@@ -12,10 +12,10 @@
   Summary and print methods for fit and test results.
 }
 \description{
-  Summary and print methods for results from HLfit or related functions.  
+  Summary and print methods for results from HLfit or related functions. \code{summary} may also be used as an extractor (see e.g. \code{\link{beta_table}}).  
 }
 \usage{
-\method{summary}{HLfit}(object, details=FALSE, max.print=100L, ...)
+\method{summary}{HLfit}(object, details=FALSE, max.print=100L, verbose=TRUE, ...)
 \method{summary}{HLfitlist}(object, ...)
 \method{summary}{fixedLRT}(object, verbose=TRUE, ...)
 \method{print}{HLfit}(x,...)
@@ -25,7 +25,7 @@
 \arguments{
   \item{object}{  The return object of HLfit or related functions.}
   \item{x}{  The return object of HLfit or related functions.}
-  \item{verbose}{  for \code{summary.fixedLRT}, whether to print the model fits or not. }
+  \item{verbose}{ For \code{summary.HLfit}, whether to print the screen output that is the primary purpose of summary. \code{verbose=FALSE} may be convenient when \code{summary} is used as an extractor. For \code{summary.fixedLRT}, whether to print the model fits or not. }
   \item{max.print}{Controls \code{options("max.print")} locally.}
   \item{details}{A vector with elements controlling whether to print some obscure details. Element \code{ranCoefs=TRUE} will print details about random-coefficients terms (see Details); and element \code{p_value="Wald"} will print a p-value for the t-value of each fixed-effect coefficient, assuming a gaussian distribution of the test statistic.}
   \item{\dots}{  further arguments passed to or from other methods. }

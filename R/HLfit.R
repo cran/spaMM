@@ -29,7 +29,7 @@ HLfit <- function(formula,
   time1 <- Sys.time()
   oricall <- match.call()  ## there is no dots in HLfit
   if (is.null(processed)) { 
-    oricall$formula <- .stripFormula(formula)
+    oricall$formula <- .preprocess_formula(formula)
     if (missing(data)) {
       data <- environment(formula)
       warning("It is _strongly_ recommended to use the 'data' argument\n for any application beyond a single fit (e.g. for predict(), etc.)")

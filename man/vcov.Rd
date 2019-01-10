@@ -1,10 +1,12 @@
 \name{vcov}
+\alias{beta_table}
 \alias{vcov}
 \alias{vcov.HLfit}
 \alias{Corr}
 \title{
 Extract covariance or correlation matrices from a fitted model object}
 \description{
+\code{summary(<fit object>)$beta_table} returns the table of fixed-effect coefficients as it is printed by \code{summary}, including standard errors and t-values.
 \code{vcov} returns the variance-covariance matrix of the fixed-effects coefficients.
 \code{Corr} returns a correlation matrix of random effects.
 }

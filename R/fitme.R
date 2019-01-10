@@ -93,7 +93,7 @@
   spaMM.options(spaMM_glm_conv_crit=list(max=-Inf))
   time1 <- Sys.time()
   oricall <- match.call(expand.dots=TRUE) ## mc including dotlist
-  oricall$formula <- .stripFormula(formula) ## Cf comment in .getValidData
+  oricall$formula <- .preprocess_formula(formula) ## Cf comment in .getValidData
   mc <- oricall
   mc[[1L]] <- get(".def_call_fitme_body", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
   mc <- eval(mc,parent.frame())  
@@ -133,7 +133,7 @@ fitme <- function(formula,data, ## matches minimal call of HLfit
   spaMM.options(spaMM_glm_conv_crit=list(max=-Inf))
   time1 <- Sys.time()
   oricall <- match.call(expand.dots=TRUE) ## mc including dotlist
-  oricall$formula <- .stripFormula(formula) ##  Cf comment in .getValidData
+  oricall$formula <- .preprocess_formula(formula) ##  Cf comment in .getValidData
   mc <- oricall
   ## Preventing confusions
   if ( missing(HLmethod)) {
@@ -196,7 +196,7 @@ fitme <- function(formula,data, ## matches minimal call of HLfit
     #mc$ranFix$ranCoefs <- NULL ## but new ranFix can be added by fitme/corrHLfit
     ## removing all elements that are matched in processed:
     pnames <- c("data","family","formula","prior.weights","HLmethod","rand.family","control.glm","REMLformula",
-                "resid.model", "verbose","distMatrix","uniqueGeo","adjMatrix") 
+                "resid.model", "verbose","distMatrix","uniqueGeo","adjMatrix", "control.dist") 
     for (st in pnames) mc[st] <- NULL 
   }  
   
@@ -205,7 +205,10 @@ fitme <- function(formula,data, ## matches minimal call of HLfit
   .check_conv_glm_reinit()
   if (inherits(hlcor,"HLfitlist")) {
     attr(hlcor,"call") <- oricall
-  } else hlcor$call <- oricall ## this is a call to fitme()
+  } else {
+    oricall$control.dist <- mc$processed$control_dist ## but never in the fitme_body() call
+    hlcor$call <- oricall ## this is a call to fitme()
+  }
   attr(hlcor,"HLCorcall") <- NULL # presumably no more needed
   #class(hlcor) <- c(class(hlcor,"fitme"))
   lsv <- c("lsv",ls())

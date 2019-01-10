@@ -10,11 +10,12 @@
 \code{corr_family} objects provide a convenient way to implement correlation models handled by \code{spaMM}, analogous to \code{family} objects. These objects are undocumented (but there are documentation pages for each of the models implemented).
 }
 \usage{
-# Matern(...)
-# Cauchy(...)
-# corrMatrix(...)
-# AR1(...)
-# adjacency(...)
+# Matern(...)           # see help(Matern)
+# Cauchy(...)           # see help(Cauchy)
+# corrMatrix(...)       # see help(corrMatrix)
+# AR1(...)              # see help(AR1)
+# adjacency(...)        # see help(adjacency)
+% MRF(...)              # see help(MRF)    % F I X M E
 \method{print}{corr_family}(x,...)
 }
 %- maybe also 'usage' for other objects documented here.

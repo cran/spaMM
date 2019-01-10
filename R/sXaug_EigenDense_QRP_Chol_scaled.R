@@ -164,18 +164,21 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug, # already ZAL_scaled
       BLOB$logdet_R_scaled_v <- sum(log(BLOB$absdiag_R_v)) 
     }
     return(BLOB$logdet_R_scaled_v)
-  } else if (which=="beta_cov") { 
-    beta_cov <- chol2inv(BLOB$R_scaled) ## actually augmented beta_v_cov as the following shows
+  } else if (which=="beta_cov") {  ## called by HLfit_body 
+    augm_beta_cov <- chol2inv(BLOB$R_scaled) ## augmented beta_v_cov as the following shows
     pforpv <- attr(sXaug,"pforpv")
     beta_pos <- attr(sXaug,"n_u_h")+seq_len(pforpv)
-    if ( ! is.null(BLOB$sortPerm)) {
-      v_beta_cov <- beta_cov[BLOB$sortPerm,BLOB$sortPerm,drop=FALSE] ## has colnames
-    } else v_beta_cov <- beta_cov
+    if ( ! is.null(BLOB$sortPerm)) { ## this may never happen for the default EigenDense_QRP_method
+      v_beta_cov <- augm_beta_cov[BLOB$sortPerm,BLOB$sortPerm,drop=FALSE] ## has colnames 
+      ##  =  tcrossprod(solve(BLOB$R_scaled[,BLOB$sortPerm])) = tcrossprod(solve(BLOB$R_scaled)[BLOB$sortPerm,])
+    } else v_beta_cov <- augm_beta_cov
     diagscalings <- sqrt(c(1/attr(sXaug,"w.ranef"),rep(attr(sXaug,"H_global_scale"),pforpv)))
     v_beta_cov <- .Dvec_times_matrix(diagscalings, .m_Matrix_times_Dvec(v_beta_cov, diagscalings)) ## loses colnames...
     colnames(v_beta_cov) <- colnames(sXaug) ## necessary for summary.HLfit, already lost in BLOB$R_scaled
     beta_v_order <- c(beta_pos,seq(attr(sXaug,"n_u_h")))
-    return( structure(v_beta_cov[beta_pos,beta_pos,drop=FALSE], beta_v_cov=v_beta_cov[beta_v_order,beta_v_order]) )
+    return( list(beta_cov=v_beta_cov[beta_pos,beta_pos,drop=FALSE], 
+                 #solvefac=.Dvec_times_matrix(1/diagscalings,BLOB$R_scaled[,BLOB$sortPerm])[,beta_v_order],
+                 beta_v_cov=v_beta_cov[beta_v_order,beta_v_order]) )
   } else if (which=="beta_v_cov_from_wAugX") { ## using a weighted Henderson's augmented design matrix, not a true sXaug  
     beta_v_cov <- chol2inv(BLOB$R_scaled)
     if ( ! is.null(BLOB$sortPerm)) beta_v_cov <- beta_v_cov[BLOB$sortPerm,BLOB$sortPerm,drop=FALSE]

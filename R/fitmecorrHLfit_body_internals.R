@@ -42,7 +42,7 @@
 }
 
 .calc_moreargs <- function(processed, # possibly a list of environments -> .calc_range_info -> scans then to compute a mean(nbUnique) 
-                           corr_types, fixed, init.optim, control_dist, NUMAX=50, LDMAX=50,
+                           corr_types, fixed, init.optim, control_dist, NUMAX=50, LDMAX=50, KAPPAMAX=100,
                            init.HLfit, corr_info, verbose, lower, upper) {
   moreargs <- list()
   for (rd in seq_along(corr_types)) {
@@ -58,7 +58,7 @@
       }
       moreargs[[char_rd]] <- corr_info$corr_families[[rd]]$calc_moreargs(fixed=fixed, char_rd=char_rd, init.optim=init.optim, 
                                                                          processed=processed, rd=rd, control_dist=control_dist, 
-                                                                         NUMAX=NUMAX, LDMAX=LDMAX,
+                                                                         NUMAX=NUMAX, LDMAX=LDMAX, KAPPAMAX=KAPPAMAX,
                                                                          # quite distinct arguments for adjacency:
                                                                          decomp=decomp, verbose=verbose, lower=lower, upper=upper
       )
@@ -81,7 +81,7 @@
 }
 
 .get_dist_nested_or_not <- function(spatial_term, data, distMatrix, uniqueGeo, dist.method, as_matrix=FALSE,
-                                    needed=c()) {
+                                    needed=c(), geo_envir) {
   if (is.na(needed["distMatrix"])) needed["distMatrix"] <- FALSE 
   if (is.na(needed["uniqueGeo"])) needed["uniqueGeo"] <- FALSE 
   if (is.na(needed["nbUnique"])) needed["nbUnique"] <- FALSE 
@@ -94,6 +94,9 @@
     ## needed in most cases for evaluation of further elements:
     if (is.null(uniqueGeo) ) { ## then construct it from the data ## this should be the routine case, except for AR1
       uniqueGeo <- .calcUniqueGeo(data=data[,coord_within,drop=FALSE])
+      # activelevels are data-ordered levels whose ranef values affect the likelihood
+      # .calcUniqueGeo must produce data-ordered values.
+      if (!is.null(geo_envir$activelevels)) uniqueGeo <- uniqueGeo[geo_envir$activelevels,,drop=FALSE]
     } 
     geoMats$nbUnique <- nrow(uniqueGeo) ## only serves to control RHOMAX and should not be computed from the final uniqueGeo in case of nesting
     if (length(coords_nesting) && any(needed[c("distMatrix","uniqueGeo")]) ) {
@@ -172,7 +175,7 @@
       names(rho_mapping) <- coordinates
     } else if (length(rho.size)>1L) stop("'rho.mapping' missing with no obvious default from the other arguments.")
   } ## then (for given corr.model's) there is rho_mapping
-  return(rho_mapping)
+  return(rho_mapping) ## if length(rho)>1 and input rho.mapping was NULL, output rho.mapping is named 1 2 3... 
 }
 
 .calc_range_info <- function(rho.size, processed, it, control_dist_rd) {
@@ -236,7 +239,7 @@
       nbUnique <- geo_envir$nbUnique
     }
     maxrange <- unlist(maxrange)
-    return(list(maxrange=maxrange,nbUnique=nbUnique, rho_mapping=rho_mapping))
+    return(list(maxrange=maxrange,nbUnique=nbUnique, rho_mapping=rho_mapping)) ## possibly modified (more explicit) rho_mapping
   }
 }
 
@@ -303,15 +306,16 @@
 .init_precision_info <- function(processed, LMatrices=NULL) {
   envir <- processed$AUGI0_ZX$envir
   precisionFactorList <- envir$precisionFactorList
+  # I N I T
   if (is.null(precisionFactorList)) {
     nranef <- length(envir$finertypes)
     precisionFactorList <- vector("list",nranef) ## will contain diagonal matrices/info for non-trivial (diagonal) precision matrices 
     for (it in seq_len(nranef)) {
-      if ( envir$finertypes[it] %in% c("adjacency","corrMatrix","AR1") ) {
-        ## terms of these types must have been dealt with by ad hoc code for each type
+      if ( envir$finertypes[it] %in% c("adjacency","corrMatrix","AR1", "MRF") ) {
+        ## terms of these types must be dealt with by ad hoc code for each type elsewhere
       } else if ( envir$finertypes[it] =="(.|.)" ) { # EXcludes "ranCoefs"
         nc <- ncol(processed$ZAlist[[it]])
-        precisionFactorList[[it]] <- list(Qmat=Diagonal(n=nc), ## used independently of chol_Q_list, see precisionBlocks
+        precisionFactorList[[it]] <- list(Qmat=.symDiagonal(n=nc), ## used independently of chol_Q_list, see precisionBlocks
                                           chol_Q=new("dtCMatrix",i= 0:(nc-1L), p=0:(nc), Dim=c(nc,nc),x=rep(1,nc)) )
         # All chol_Q's must be dtCMatrix so that bdiag() gives a dtCMatrix
       } else if ( envir$finertypes[it] %in% c("ranCoefs", "Matern", "Cauchy") ) { 
@@ -319,9 +323,10 @@
       } else stop(paste("sparse-precision methods were requested, but",envir$finertypes[it],"terms are not yet handled by sparse precision code."))
     }
   }
+  # F I L L
   if ( ! is.null(LMatrices)) {
     is_given_by <- attr(LMatrices,"is_given_by")
-    for (rt in which(is_given_by=="ranCoefs")) {
+    for (rt in which(is_given_by %in% c("ranCoefs"))) {
       latentL_blob <- attr(LMatrices[[rt]],"latentL_blob")
       compactchol_Q <- latentL_blob$compactchol_Q
       chol_Q <- .makelong(compactchol_Q,longsize=ncol((LMatrices[[rt]])), 
@@ -329,9 +334,36 @@
       if ( ! inherits(chol_Q,"dtCMatrix")) stop("chol_Q should be a 'dtCMatrix'.") ## FIXME check lower tri too
       #
       precisionFactorList[[rt]] <- list(chol_Q=chol_Q,
-                                  precmat=.makelong(latentL_blob$compactprecmat,longsize=ncol((LMatrices[[rt]])), 
-                                                    template=processed$ranCoefs_blob$longLv_templates[[rt]] ))
+                                        precmat=.makelong(latentL_blob$compactprecmat,longsize=ncol((LMatrices[[rt]])), 
+                                                          template=processed$ranCoefs_blob$longLv_templates[[rt]] ))
     }
+    for (rt in which(is_given_by=="inner_ranCoefs")) {
+      # : need to initialize because spprec IRLS requires .init_precision_info to have filled all matrices
+      nc <- ncol(processed$ranCoefs_blob$longLv_templates[[rt]] )
+      precisionFactorList[[rt]] <- list(precmat=.symDiagonal(n=nc), 
+                                        chol_Q=new("dtCMatrix",i= 0:(nc-1L), p=0:(nc), Dim=c(nc,nc),x=rep(1,nc)) )
+    }
+  }
+  envir$precisionFactorList <- precisionFactorList
+  ## environment modified, no return value
+}
+
+.update_precision_info <- function(processed, LMatrices, which.) {
+  envir <- processed$AUGI0_ZX$envir
+  precisionFactorList <- envir$precisionFactorList
+  is_given_by <- attr(LMatrices,"is_given_by")
+  for (rt in which(is_given_by %in% which.)) {
+    if (is_given_by[rt] =="inner_ranCoefs") { 
+      latentL_blob <- attr(LMatrices[[rt]],"latentL_blob")
+      compactchol_Q <- latentL_blob$compactchol_Q
+      chol_Q <- .makelong(compactchol_Q,longsize=ncol((LMatrices[[rt]])), 
+                          template=processed$ranCoefs_blob$longLv_templates[[rt]] ) 
+      if ( ! inherits(chol_Q,"dtCMatrix")) stop("chol_Q should be a 'dtCMatrix'.") ## FIXME check lower tri too
+      #
+      precisionFactorList[[rt]] <- list(chol_Q=chol_Q,
+                                        precmat=.makelong(latentL_blob$compactprecmat,longsize=ncol((LMatrices[[rt]])), 
+                                                          template=processed$ranCoefs_blob$longLv_templates[[rt]] ))
+    } else stop("'which.' value not handled ")
   }
   envir$precisionFactorList <- precisionFactorList
   ## environment modified, no return value
@@ -484,7 +516,7 @@
                        moreargs=moreargs,
                        user.lower=user.lower, user.upper=user.upper,
                        optim.scale=optim.scale, 
-                       For=For
+                       For=For, hyper_info=processed$hyper_info
   )
   if ("lambda" %in% c(names(user.lower),names(user.lower)) 
       && is.null(inits$init$lambda)) {

@@ -60,6 +60,8 @@ HLfit_body <- local({
       # lambda_est initialized from ranCoefs_blob later !
     }
     if (processed$sparsePrecisionBOOL) { 
+      which_inner_ranCoefs <- which(ranCoefs_blob$isRandomSlope & ( ! ranCoefs_blob$is_set))
+      attr(LMatrices,"is_given_by")[which_inner_ranCoefs] <- "inner_ranCoefs"
       .init_precision_info(processed,LMatrices) ## modifies processed$AUGI0_ZX$envir  
     }
     if ( any((attr(LMatrices,"is_given_by") !="")) ) {
@@ -702,6 +704,9 @@ HLfit_body <- local({
         if (need_ranefPars_estim) { ## next_lambda_est/ next ranCoefs/ next rho adjacency available:
           if (any(ranCoefs_blob$isRandomSlope)) {
             LMatrices <- calcRanefPars_blob$next_LMatrices ## keep L factor of corr mats for all models 
+            if (processed$sparsePrecisionBOOL && any(which_inner_ranCoefs)) {
+              .update_precision_info(processed, LMatrices, which.="inner_ranCoefs")
+            }
             ZAL <- .compute_ZAL(XMatrix=LMatrices, ZAlist=processed$ZAlist,as_matrix=( ! inherits(ZAL,"Matrix"))) 
             if ( ! LMMbool ) {
               ## ZAL is modified hence wranefblob must be modified (below) but also eta-> mu->GLMweights
@@ -907,7 +912,6 @@ HLfit_body <- local({
   ## LIKELIHOODS
   ###################
   res <- list(APHLs=APHLs)
-  res$dfs <- c(pforpv=pforpv, p_lambda=p_lambda, p_fixef_phi=processed$p_fixef_phi)
   ###################
   ## DATA
   ###################
@@ -937,10 +941,12 @@ HLfit_body <- local({
   res$CorrEst_and_RanFix <- .get_CorrEst_and_RanFix(ranFix, corr_est) # corr_est parameters are inner-estimated and of type "var"
   #
   if ( ! is.null(res$CorrEst_and_RanFix$corrPars)) {
+    p_corrPars <- length(which(unlist(attr(res$CorrEst_and_RanFix,"type")$corrPars) != "fix"))
     res$corrPars <- structure(res$CorrEst_and_RanFix$corrPars, # ## subset of the above: F I X M E (?) redundancy but convenient when examining fits
                               type=attr(res$CorrEst_and_RanFix,"type")$corrPars,
                               message='Use get_ranPars(.,which="corrPars") to extract "corrPars" cleanly from fit object.')
-  }   
+  } else p_corrPars <- 0  
+  res$dfs <- c(pforpv=pforpv, p_lambda=p_lambda, p_fixef_phi=processed$p_fixef_phi, p_corrPars=p_corrPars)
   res$models <- models
   res$HLframes <- processed$HLframes ## used by predict
   res$predictor <- predictor ##  all post fitting functions expect PROCESSED predictor
@@ -990,7 +996,8 @@ HLfit_body <- local({
     names(beta_eta) <- colnames(processed$AUGI0_ZX$X.pv)
     res$fixef <- beta_eta 
   } 
-  res$eta <- eta ## convenient for defining starting values...
+  res$eta <- eta ## convenient for defining starting values... and also sometimes used by predict()
+  names(res$eta) <- rownames(data)
   res$muetablob <- muetablob # for get_logdispObject, added 11/2016
   ###################
   ## LEVERAGES and REML (ie either phi OR lambda was estimated)
@@ -1068,9 +1075,11 @@ HLfit_body <- local({
   res$envir <- list2env(list(dvdloglamMat=dvdloglamMat, dvdlogphiMat=dvdlogphiMat), ## provided if available
                         parent=environment(HLfit_body))
   if (models[[1L]]=="etaHGLM" && HL[1]!="SEM") {
-    res$beta_cov <- .assign_beta_cov_info(res, ## also assigns res$envir$beta_cov_info
-                                         sXaug=auglinmodblob$sXaug,
-                                         X_scale=attr(processed$AUGI0_ZX$X.pv,"scaled:scale"))
+    beta_cov_info <- get_from_MME(auglinmodblob$sXaug,"beta_cov") 
+    res$envir$beta_cov_info <- .unscale_beta_cov_info(beta_cov_info, 
+                                            sXaug=auglinmodblob$sXaug,
+                                            X_scale=attr(processed$AUGI0_ZX$X.pv,"scaled:scale"))
+    # in sparse precision beta_v_cov is not yet included
   }
   if ("AUGI0_ZX_sparsePrecision" %in% res$MME_method) { 
     ## for beta_v_cov and cAIC's p_d

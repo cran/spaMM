@@ -77,7 +77,7 @@
   if (!y) fit$y <- NULL
   fit <- c(fit, list(call = match.call(), formula = formula, terms = mt, 
                      data = data, offset = offset, control = control, method= "glm.fit",
-                     contrasts = attr(X, "contrasts"), xlevels = stats::.getXlevels(mt, mf),
+                     contrasts = attr(X, "contrasts"), xlevels = .getXlevels(mt, mf),
                      warnmess=warnmess
                      ))
   class(fit) <- c(fit$class, c("glm", "lm"))

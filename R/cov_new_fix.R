@@ -17,7 +17,7 @@
 
 # public wrapper for more transparent workflow
 preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
-                                variances=list(residVar=FALSE)) {
+                                variances=list(residVar=FALSE, cov=FALSE)) {
   return(.calc_new_X_ZAC(object=object, newdata=fixdata, re.form = re.form,
                              variances=variances) )
 }
@@ -62,7 +62,8 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
       nnew <- length(newlevels)
       newoldC <- matrix(0,nrow=nnew,ncol=nold)
       newinold <- match(newlevels,oldlevels)
-      newoldC[seq(nnew)[!is.na(newinold)], newinold] <- 1      
+      matched <- (!is.na(newinold))
+      newoldC[cbind(seq(nnew)[matched],newinold[matched])] <- 1 # cbind() ! don't fill a block !     
       colnames(newoldC) <- oldlevels
       rownames(newoldC) <- newlevels
     } else {
@@ -92,7 +93,7 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
 
 
 .calc_new_X_ZAC <- function(object, newdata=NULL, re.form = NULL,
-                         variances=list(residVar=FALSE)) {
+                         variances=list(residVar=FALSE, cov=FALSE)) {
   locform <- formula.HLfit(object) 
   ## possible change of random effect terms
   if ( .noRanef(re.form)) { ## i.e. if re.form implies that there is no random effect
@@ -100,7 +101,7 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
   } else if (inherits(re.form,"formula")) { ## ie there is a nontrivial re.form
     lhs <- .DEPARSE(locform[[2L]]) ## response
     fixterms <- .DEPARSE(.stripRanefs(locform)[[3L]]) ## fixed effect terms
-    ranterms <- .parseBars(re.form)  ## random effects  ## expand does not seem to be important here
+    ranterms <- .process_bars(re.form)  ## random effects  ## expand does not seem to be important here
     locform <- as.formula(paste(lhs,"~", paste(fixterms,"+",paste(ranterms,collapse="+")) )) # orig fixterms + new ranterms
   } ## else keep original formula
   # checking variables in the data
@@ -172,7 +173,7 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
     }
     RESU$spatial_old_rd <- which(ori_exp_ranef_types != "(.|.)")   
     if (inherits(re.form,"formula")) {
-      new_exp_ranef_strings <- .parseBars(locform,expand=TRUE) ## note importance for the computation of newZAlist below
+      new_exp_ranef_strings <- .process_bars(locform,expand=TRUE) ## note importance for the computation of newZAlist below
       nrand <- length(new_exp_ranef_strings)
       newinold <- sapply(lapply(new_exp_ranef_strings, `==`, y= ori_exp_ranef_strings), which) ## e.g 1 4 5
       RESU$subZAlist <- object$ZAlist[newinold] ## and reordered
@@ -191,14 +192,17 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
     which_mats <- list(no= need_new_design, 
                        ## cov_newLv_newLv_list used in .calc_Evar() whenever newdata, but elements may remain NULL if $cov not requested
                        ## However, for ranCoefs, we need Xi_cols rows for each response's predVar. (FIXME) we store the full matrix.
-                       nn= ( attr(object$strucList,"isRandomSlope")[newinold] | identical(variances$cov,TRUE))) 
+                       nn= ( attr(object$strucList,"isRandomSlope")[newinold] | variances$cov)) 
     if (need_new_design) {
       ## with newdata we need Evar and then we need nn... if newdata=ori data the Evar (computed with the proper nn) should be 0
-      ranef_form <- as.formula(paste("~",(paste(.parseBars(locform),collapse="+")))) ## effective '.noFixef'
+      barlist <- .process_bars(locform,as_character=FALSE) ## but default expand =TRUE
+      exp_ranef_strings <- .process_bars(barlist=barlist,expand=FALSE, as_character=TRUE) ## no need to expand again
+      ranef_form <- as.formula(paste("~",(paste(exp_ranef_strings,collapse="+")))) ## effective '.noFixef'
       new_mf_ranef <- .calc_newFrames_ranef(formula=ranef_form,data=locdata,fitobject=object)$mf ## also used for predVar computations
       newZlist <- .calc_Zlist(locform, new_mf_ranef, rmInt=0L, drop=TRUE,sparse_precision=FALSE, type="seq_len",
-                              old_ZAlist=object$ZAlist, newinold=newinold) 
-      newZAlist <- .calc_ZAlist(newZlist,AMatrices=attr(object$ZAlist,"AMatrices")) 
+                              old_ZAlist=object$ZAlist, newinold=newinold, barlist=barlist) 
+      amatrices <- .get_new_AMatrices(object,new_mf_ranef=new_mf_ranef)
+      newZAlist <- .calc_ZAlist(newZlist, AMatrices=amatrices) 
       ## must be ordered as parseBars result for the next line to be correct.
       attr(newZAlist,"exp_ranef_strings") <- new_exp_ranef_strings ## required pour .compute_ZAXlist to match the ranefs of LMatrix
     } else {
@@ -219,7 +223,7 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
       # cov_newLv_oldv_list still contains NULL's, and we need something complete to compute newZAC without '%*% NULL'
       namesTerms <- attr(newZAlist,"namesTerms")
       for (new_rd in seq_along(cov_newLv_oldv_list)) { ## seems correct as everything in rhs is reduced
-        if (is.null(cov_newLv_oldv_list[[new_rd]])) {
+        if (is.null(cov_newLv_oldv_list[[new_rd]])) { ## excludes ranCoefs, corrMatrix, geostat...
           cov_newLv_oldv_list[[new_rd]] <- .calc_sub_diagmat_cov_newLv_oldv(oldZA=RESU$subZAlist[[new_rd]], newZA=newZAlist[[new_rd]],
                                                                             namesTerms=namesTerms[[new_rd]]) ## non-trivial value [I] if uuCnewold is NULL
           ## without a ranefs attribute, hence ignored by .compute_ZAXlist
@@ -278,8 +282,8 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
 }
 
 ## get_predCov_var_fix: see example in predict.Rd (?get_predCov_var_fix), test in test-predVar 
-get_predCov_var_fix <- function(object, newdata = NULL, fix_X_ZAC.object,fixdata, 
-                                variances=list(disp=TRUE,residVar=FALSE), re.form = NULL, ...) {
+get_predCov_var_fix <- function(object, newdata = NULL, fix_X_ZAC.object,fixdata, re.form = NULL, 
+                                variances=list(disp=TRUE,residVar=FALSE,cov=FALSE), ...) {
   newnrand <- length(fix_X_ZAC.object$newZAlist) 
   fixZACvar <- .calc_newZACvar(fix_X_ZAC.object$newZAlist,fix_X_ZAC.object$cov_newLv_oldv_list)
   new_X_ZACblob <- .calc_new_X_ZAC(object,newdata=newdata,variances=variances) ## called for a correlation block
@@ -293,10 +297,12 @@ get_predCov_var_fix <- function(object, newdata = NULL, fix_X_ZAC.object,fixdata
   if (inherits(re.form,"formula")) {
     # identifies and selects columns for the [retained ranefs, which are given by newinold 
     ori_exp_ranef_strings <- attr(object$ZAlist,"exp_ranef_strings")
-    new_exp_ranef_strings <- .parseBars(re.form,expand=TRUE) 
+    new_exp_ranef_strings <- .process_bars(re.form,expand=TRUE) 
     newinold <- sapply(lapply(new_exp_ranef_strings, `==`, y= ori_exp_ranef_strings), which) ## e.g 1 4 5
     re_form_col_indices <- .re_form_col_indices(newinold, cum_n_u_h=attr(object$lambda,"cum_n_u_h"), Xi_cols=attr(object$ZAlist, "Xi_cols"))
-    Xncol <- ncol(object$beta_cov)
+    if (object$spaMM.version > "2.5.20") {
+      Xncol <- ncol(object$envir$beta_cov_info$beta_cov)
+    } else Xncol <- ncol(object$beta_cov)
     subrange <- c(seq_len(Xncol),re_form_col_indices$subrange + Xncol)
     beta_w_cov <- beta_w_cov[subrange,subrange]
   } else re_form_col_indices <- NULL

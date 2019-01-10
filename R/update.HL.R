@@ -82,6 +82,45 @@ update.HLfit <- function (object, formula., ..., evaluate = TRUE) {
   else call
 }
 
+update_resp <- function(object, newresp, evaluate = TRUE) {
+  if (is.null(re_call <- getCall(object))) stop("need an object with call component")
+  re_data <- object$data
+  mf <- model.frame(object)
+  form <- formula.HLfit(object)
+  Y <- model.response(mf)
+  if (NCOL(Y)==2L) { ## paste(form[[2L]])[[1L]]=="cbind"
+    # model.frame is a data frame whose 1st element is a 2-col matrix with unamed first column
+    # model.response() extracts this matrix:
+    # If formula is cbind(npos,nneg) ~... the two columns have names "npos", "nneg"
+    # If formula is cbind(npos,ntot-npos) ~... the two columns have names "npos", ""
+    # If formula is cbind(ntot-nneg,nneg) ~... the two columns have names "", "nneg"
+    colY <- colnames(Y)
+    if (colY[1L]!="") re_data[,colY[1L]] <- newresp
+    if (colY[2L]!="") re_data[,colY[2L]] <- rowSums(Y)-newresp
+    # any "ntot" col is left unchanged. In particular, from # cbind(ntot-nneg,nneg)
+    #  thsi code changes nneg to ntot-newresp so that ntot-nneg will be newresp
+  } else { # colnames(Y) is typically NULL
+    ## : from a formula of the form formula I(<fn>(var...)) ~ ... colnames(mf)[1L] is "I(<fn>(var...))" 
+    # for a variable of class 'AsIs' which is NOT used in the refit... 
+    if (inherits(mf[[1L]],"AsIs")) {
+      stop("the response of the original fit is as 'AsIs' term, I(.), which is not handled by update_resp().")
+    } else re_data[colnames(mf)[1L]] <- newresp 
+  }
+  re_call$data <- re_data
+  if (evaluate) 
+    eval(re_call, parent.frame())
+  else re_call
+}
+
+if (FALSE) {
+  x = simulate(fittedModel)
+  refit.HLfit <- function(object, newresp, ...) { ## consistent with lme4:: generic function
+    update_resp(object, newresp)
+  }
+  refit.HLfit(fittedModel, x)
+  remove(refit.HLfit)
+}
+
 # Fix intercept issue in local def of stats::terms.formula
 .fixFormulaObject <- function (object) {
   Terms <- terms(object)

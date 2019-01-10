@@ -3,10 +3,10 @@
 \alias{get_ZALMatrix}
 %- Also NEED an '\alias' for EACH other topic documented here.
 \title{
-Functions to extract various matrices used in fitting a model, from the resulting fit object. All augmented matrices follow (Henderson's) block order (upper blocks: X,Z; lower blocks: 0,I).
+Extract matrices from a fit
 }
 \description{
-\code{get_matrix} is a first attempt at a unified extractor of various matrices from a fit.
+\code{get_matrix} is a first attempt at a unified extractor of various matrices from a fit. All augmented matrices follow (Henderson's) block order (upper blocks: X,Z; lower blocks: 0,I).
 \code{get_ZALMatrix} returns the design matrix for the random effects \eqn{v}.
 }
 \usage{

@@ -31,9 +31,11 @@
     nform <- paste(nform)
     nform[2L] <- paste0("cbind(",nposname,",",nnegname,")")
     res$null_formula <- as.formula(paste(nform[c(2,1,3)],collapse=""))
-    fform <- paste(formula.HLfit(fullfit))
-    fform[2L] <- nform[2L]
-    res$full_formula <- as.formula(paste(fform[c(2,1,3)],collapse=""))
+    if ( ! is.null(fullfit)) {
+      fform <- paste(formula.HLfit(fullfit))
+      fform[2L] <- nform[2L]
+      res$full_formula <- as.formula(paste(fform[c(2,1,3)],collapse=""))
+    }
     res$cbindTest <- TRUE
   } else res$cbindTest <- FALSE
   return(res)
@@ -184,9 +186,7 @@
     }
   } else boot_call$"prior.weights" <- data$"(weights)" ## this is where .preprocess_data() -> .getValidData() -> model.frame() puts the evaluated weights.
   predictor <- formula   
-  if (! inherits(formula,"predictor")) predictor <- .as_predictor(formula,data=data)
   null.predictor <- null.formula   
-  if (! inherits(null.formula,"predictor")) null.predictor <- .as_predictor(null.formula,data=data)
   form <- predictor
   if (!is.null(boot_call$LamFix)) stop("LamFix is obsolete")
   if (!is.null(boot_call$PhiFix)) stop("PhiFix is obsolete")  
@@ -259,11 +259,6 @@
   #  trace.info <- NULL
   nullfit <- eval(nullm_call)
   canon.init <- attr(nullfit,"optimInfo")$LUarglist$canon.init ## includes user init
-  # Laborious but matching the code in preprocess
-  # true_corr_types <- c("adjacency","Matern","AR1","corrMatrix", "Cauchy")
-  # corr_types <- true_corr_types[match(attr(nullfit$ZAlist, "exp_ranef_types"), true_corr_types)] ## full length
-  # corr_families <- vector('list',length(corr_types))
-  # for (rd in which( ! is.na(corr_types))) corr_families[[rd]] <- do.call(corr_types[rd],list())
   user_inits <- .post_process_parlist(nullm_call$init,corr_families=nullfit$corr_info$corr_families)
   #
   names_u_u_inits <- names(unlist(user_inits))

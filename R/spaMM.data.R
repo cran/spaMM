@@ -61,6 +61,6 @@
                             rankTolerance=quote(max(1e-7,.Machine$double.eps*10*ncol(X.pv))), ## private, used  by preprocess
                             qrTolerance=1e-10, ## private, used by select qr() calls for predVar computation
                             # , sparse_X=NULL## private
-                            Zcolsbyrows=FALSE ## private; diferent values if fit and post fit would currently generate wrong results
+                            Zcolsbyrows=FALSE ## private; diferent values in fit and post fit would currently generate wrong results
 )
 

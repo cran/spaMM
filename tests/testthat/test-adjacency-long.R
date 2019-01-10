@@ -1,6 +1,6 @@
 cat("\nTest of adjacency (long fits):")
 
-if (spaMM.getOption("example_maxtime")>465) { 
+if (spaMM.getOption("example_maxtime")>465) { # now 350 ?
   ## fixme This is sparse_precision LevM: improve efficiency? 
   ## example suggested by Jeroen van den Ochtend jeroenvdochtend@gmail.com Jeroen.vandenochtend@business.uzh.ch
   ## it's no use to try sparse_precision=FALSE bc bc the augmented sigma matrix is huge
@@ -15,7 +15,7 @@ if (spaMM.getOption("example_maxtime")>465) {
                           verbose=c(TRACE=interactive()), # to trace convergence 
                           adjMatrix=adjlgMat
     )
-  }) ##  ~107 (v.2.4.102) ## F I X M E refitting lambda (by request) gives a lower lik...
+  }) ##  ~107 (v.2.4.102) ## F I X M E refitting lambda (by request) gives a lower lik... ## 102 in v.2.5.34
   expectedMethod <- "AUGI0_ZX_sparsePrecision" ## bc data too small to switch to sparse
   if (interactive()) {
     if (! (expectedMethod %in% IRLS.Frailty$MME_method)) {
@@ -29,6 +29,6 @@ if (spaMM.getOption("example_maxtime")>465) {
                           #fixed=list(rho = -0.0294184,  lambda = 0.241825),
                           adjMatrix=adjlgMat
     )
-  }) ## ~359 (v.2.4.102)
+  }) ## ~359 (v.2.4.102) => 250 in v.2.5.34
   spaMM.options(oldop)
 }

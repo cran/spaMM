@@ -125,7 +125,7 @@
   }
 }
 
-.calc_ZAlist <- function(Zlist, AMatrices) { ## model_frame is an $mf element
+.calc_ZAlist <- function(Zlist, AMatrices) { 
   if ( length(Zlist) > 0L ) {
     if (length(AMatrices)) {
       ## logic is Z[nresp,nUniqueRespLoc].A[nUniqueRespLoc,nHiddenv].L[nHiddenv,nHiddenv]
@@ -603,18 +603,13 @@ as_precision <- function(corrMatrix) {
     corrMatrix <- as.matrix(corrMatrix) ## leaves 0 on the diagonal! 
     diag(corrMatrix) <- 1 ## so that m is true correlation matrix 
   }
-  precmat <- solve(corrMatrix)
-  #colnames(precmat) <- rownames(precmat) <- colnames(corrMatrix) 
-  return(structure(list(matrix=precmat),class=c("list","precision")))
+  precmat <- try(chol2inv(chol(corrMatrix)),silent=TRUE)
+  if (inherits(precmat,"try-error")) {
+    precmat <- solve(corrMatrix)
+  } else colnames(precmat) <- rownames(precmat) <- colnames(corrMatrix) 
+  # drop0 useful to convert to sparseMarix even if no 0 to drop
+  return(structure(list(matrix=forceSymmetric(drop0(precmat))),class=c("list","precision")))
 }
-
-# .automatic_corr_prec_mat <- function(corrMatrix) {
-#   if (identical(spaMM.getOption("sparse_precision"),TRUE) && ! inherits(corrMatrix,"precision")){
-#     message("Conversion of corrMatrix to precision matrix since sparse_precision explicitly set to TRUE;\n using solve()!")
-#     corrMatrix <- as_precision(corrMatrix)
-#   }
-#   return(corrMatrix)
-# }
 
 .get_corr_prec_from_covStruct <- function(covStruct,it) { ## compatible with spaMM3.0 extended syntax
   if (length(covStruct)>1L) {
@@ -659,7 +654,8 @@ as_precision <- function(corrMatrix) {
           corr_info$corrMatrices[[it]] <- .get_corr_prec_from_covStruct(covStruct,it) 
         } else corr_info$corrMatrices[[it]] <- corrMatrix
         .check_corrMatrix(corr_info$corrMatrices[[it]]) 
-      }
+      } 
+      # MRF AMatrices are assigned later from Zlist info, not from covStruct info
     }
   }
 }
@@ -697,8 +693,8 @@ as_precision <- function(corrMatrix) {
     if ( ! is.na(corr_type)) {
       if (corr_type=="corrMatrix" && sparse_precision) {
         if (! inherits(corr_info$corrMatrices[[it]],"precision")) {
-          message("Conversion of corrMatrix to precision matrix, using solve()!")
-          corr_info$corrMatrices[[it]] <- as_precision(corr_info$corrMatrices[[it]])
+          message("Conversion of corrMatrix to precision matrix")
+          corr_info$corrMatrices[[it]] <- as_precision(corr_info$corrMatrices[[it]]) ## test by test-Matern-spprec
         }
       } else if (corr_type=="adjacency" || corr_type=="SAR_WWt") {
         if (For %in% c("fitme","corrHLfit")) {
@@ -709,7 +705,10 @@ as_precision <- function(corrMatrix) {
           # HLCor_body can also compute "symSVD" attribute and add in each processed environment
           decomp <- .provide_AR_factorization(corr_info$adjMatrices[[it]], sparse_precision, corr_type)
           if (corr_type=="SAR_WWt") attr(corr_info$adjMatrices[[it]],"UDU.") <- decomp
-          if (corr_type=="adjacency") attr(corr_info$adjMatrices[[it]],"symSVD") <- decomp 
+          if (corr_type=="adjacency") {
+            corr_info$adjMatrices[[it]] <- forceSymmetric(drop0(corr_info$adjMatrices[[it]]))
+            attr(corr_info$adjMatrices[[it]],"symSVD") <- decomp
+          } 
         }
       }
     }
@@ -718,17 +717,20 @@ as_precision <- function(corrMatrix) {
 
 
 .preprocess_control.dist <- function(control.dist,corr_types) {
+  # handles either a list with possible elements "dist.method","rho.mapping", or a nested list with elements for the different ranefs
   if ( ! is.null(control.dist)) {
-    matchnames <- intersect (names(control.dist), c("dist.method","rho.mapping"))
-    if (length(matchnames)) {
-      control_dist <- list()
-      for (rd in seq_along(corr_types)) {
-        if (corr_types[[rd]] %in% c("Matern","Cauchy","AR1")) { ## not (yet) clearly useful for AR1 ?
-          control_dist[[as.character(rd)]] <- control.dist[matchnames]
+    if (length(control.dist)) { # list with elements (or NULL_s_)
+      matchnames <- intersect (names(control.dist), c("dist.method","rho.mapping"))
+      if (length(matchnames)) {
+        control_dist <- vector("list",length(corr_types))
+        for (rd in seq_along(corr_types)) {
+          if (corr_types[[rd]] %in% c("Matern","Cauchy","AR1", "MRF")) { ## not (yet) clearly useful for AR1 ?
+            control_dist[[as.character(rd)]] <- control.dist[matchnames]
+          }
         }
-      }
-      return(control_dist)
-    } else return(control.dist) ## assuming the user ar not messed
+        return(control_dist) # return nested list with elements for the different ranefs built from the 'matchnames'
+      } else return(control.dist) ## No 'matchnames': control.dist should then be a nested list with elements for the different ranefs 
+    } else return(vector("list", length(corr_types))) # Return "empty nested list" built from empty list() (could return NULL ?)
   } else return(NULL)
 }
 
@@ -774,14 +776,14 @@ as_precision <- function(corrMatrix) {
   fixed <- as.list(resid.model$fixed) ## converts NULL to list() as exp'd for 'fixed' in fitme_body()
   if ( ! is.null(resid.model)) { 
     if ( ! is.null(form <- resid.model$formula)) {
-      resid.model$formula <- .stripFormula(form)
+      resid.model$formula <- .preprocess_formula(form)
       # control of phi matters for phiHGLM but the phi model has not yet been determined
       if (is.null(fixed[["phi"]])) {
         fixed[["phi"]] <- c(default=1)
         #        message("'phi' of residual dispersion model set to 1 by default") ## inappropriate when resid.model=~1
       } else if (is.na(fixed[["phi"]])) fixed[["phi"]] <- NULL ## to force estimation of this phi; 
     } else { ## including resid.model=~1
-      resid.model <- list(formula=.stripFormula(resid.model), ## otherwise it retains the local environment of the fn in which it is match.call()ed!
+      resid.model <- list(formula=.preprocess_formula(resid.model), ## otherwise it retains the local environment of the fn in which it is match.call()ed!
                           family=family)
     }
     resid.model$fixed <- fixed
@@ -797,7 +799,7 @@ as_precision <- function(corrMatrix) {
     # etaFix$beta |         variables 
     #             |  valid vars | invalid vars
     #     (1)           (2)           (3)
-    # (2): colnames(<HLfit>$beta_cov) = colnames (<HLfit>$X.pv)
+    # (2): colnames(<HLfit>$envir$beta_cov_info$beta_cov) = colnames (<HLfit>$X.pv)
     # (1+2+3): namesOri, names(<HLfit>$fixef)
   } else attr(X.pv,"namesOri") <- colnames(X.pv)  
   attr(X.pv,"rankinfo") <- rankinfo
@@ -824,6 +826,23 @@ as_precision <- function(corrMatrix) {
   return(X.pv)
 }
 
+.preprocess_formula <- function(formula) {
+  if (inherits(formula,"predictor")) { 
+    return(formula) ## happens eg in confint
+    # stop("Do not call '.preprocess_formula' on a predictor object.")
+  }
+  formlen <- length(formula)
+  formula[[formlen]] <- .expandDoubleVerts(formula[[formlen]])
+  rhs <- .expand_multiSARs(formula[[formlen]]) 
+  hyper_info <- attr(rhs,"hyper_info")
+  attr(rhs,"hyper_info") <- NULL
+  formula[[formlen]] <- rhs
+  environment(formula) <- new.env() # zut <- y~x; rezut <- spaMM:::.preprocess_formula(zut); ls(environment(zut)) confirms that the original 'formula's environment is unaffected
+  predictor <- structure(formula,hyper_info=hyper_info) 
+  class(predictor) <- c("predictor",class(formula))
+  return(predictor)
+}
+
 .preprocess <- function(control.HLfit, ranFix=NULL, HLmethod, 
                        predictor, resid.model,
                        REMLformula, data, family,
@@ -848,7 +867,7 @@ as_precision <- function(corrMatrix) {
     return(processed) ## a list of environments
   }
   ###############################################################
-  resid.model <- .reformat_resid_model(resid.model,family=control.HLfit$resid.family) ## calls .stripFormula() ## the list(...) is used even for poisson, binomial...
+  resid.model <- .reformat_resid_model(resid.model,family=control.HLfit$resid.family) ## calls .preprocess_formula() ## the list(...) is used even for poisson, binomial...
   # remove rows with NA's in required variables:
   validdata <- .getValidData(formula=predictor, resid.formula=resid.model$formula,
                             data=data, callargs=callargs["prior.weights"]) ## OK for all prior weights
@@ -905,7 +924,6 @@ as_precision <- function(corrMatrix) {
                                             list(link=resid.family$link))
   resid.model$family <- resid.family ## resid.predictor will also be returned
   #
-  if (! inherits(predictor,"predictor")) predictor <- .as_predictor(predictor,data=data) 
   HLframes <- .HLframes(formula=predictor,data=data) ## design matrix X, Y... 
   Y <- HLframes$Y
   nobs <- NROW(HLframes$X) ## not using Y which may be NULL
@@ -921,15 +939,15 @@ as_precision <- function(corrMatrix) {
     BinomialDen <- rep(1,nobs)
   }
   processed$BinomialDen <- BinomialDen
-  processed$y <- y <- Y[,1,drop=FALSE] # may work as vetor, but seems marginally faster as matrix.
+  processed$y <- y <- Y[,1L,drop=FALSE] # may work as vector, but seems marginally faster as matrix.
   if (family$family=="binomial") {
-    if (var(y)==0 && var(BinomialDen)==0) { stop("var(response) = 0.") }  
+    if (var(y)==0 && var(BinomialDen)==0) { warning("var(response) = 0, which may cause errors.") }  
     processed$bin_all_or_none <- all(pmin(y,BinomialDen-y)==0L)
   } else { 
     processed$bin_all_or_none <- FALSE
     if ( ! is.null(y)) { ## y may be NULL in evaluation of residProcessed
       if ( var(y)==0 ) { 
-        stop("var(response) = 0.") 
+        warning("var(response) = 0, which may cause errors.") 
       } else if (var(y)<1e-3 && family$family=="gaussian") {
         warning("The variance of the response is low, which may lead to imperfect estimation of variance parameters.\n Perhaps rescale the response?")
       }
@@ -937,20 +955,24 @@ as_precision <- function(corrMatrix) {
   } # (e1071::svm should fail when var response=0)
   #
   X.pv <- HLframes$X
-  exp_ranef_strings <- .parseBars(predictor,expand=TRUE) ## a vector of char strings with attribute(s), expanded for (1|./.) terms
+  exp_barlist <- .process_bars(predictor,as_character=FALSE) ## but default expand =TRUE
+  exp_ranef_strings <- .process_bars(barlist=exp_barlist,expand=FALSE, as_character=TRUE) ## no need to expand again
   #
   if (nrand <- length(exp_ranef_strings)) {
     ## Initialize $corr_info (ASAP to assign_cov_matrices ASAP):
     processed$corr_info <- corr_info <- new.env() ## do not set parent=emptyenv() else with(corr_info,...) will not find trivial fns such as `[`
-    true_corr_types <- c("adjacency","Matern","Cauchy","AR1","corrMatrix")
+    true_corr_types <- c("adjacency","Matern","Cauchy","AR1","corrMatrix", "MRF")
     exp_ranef_types <- attr(exp_ranef_strings,"type") ## expanded
     corr_info$corr_types <- corr_types <- true_corr_types[match(exp_ranef_types, true_corr_types)] ## full length
+    processed$control_dist <- .preprocess_control.dist(control.dist,corr_types)
     corr_families <- vector('list',length(corr_types))
     for (rd in which( ! is.na(corr_types))) corr_families[[rd]] <- do.call(corr_types[rd],list())
     corr_info$corr_families <- corr_families
     ## Assigns $corr_info$corrMatrices, $adjMatrices, $AMatrices using $corr_info$corr_type: BEFORE determining sparse precision:
     .assign_cov_matrices__from_covStruct(corr_info, covStruct=covStruct, corrMatrix=corrMatrix, adjMatrix=adjMatrix)
-    Zlist <- .calc_Zlist(formula=predictor, mf=HLframes$mf, rmInt=0L, drop=TRUE, corr_info=corr_info) 
+    Zlist <- .calc_Zlist(formula=predictor, mf=HLframes$mf, rmInt=0L, drop=TRUE, corr_info=corr_info, barlist=exp_barlist) 
+    ## Assigns $corr_info$corrMatrices for MRFs:
+    .assign_AMatrices_MRF(corr_info, Zlist, exp_barlist=exp_barlist, processed$data, control_dist=processed$control_dist) 
     ZAlist <- .calc_ZAlist(Zlist=Zlist, AMatrices=corr_info$AMatrices)
     #nrand <- length(ZAlist)
     attr(ZAlist,"exp_ranef_strings") <- exp_ranef_strings ## expanded 
@@ -984,7 +1006,6 @@ as_precision <- function(corrMatrix) {
         init.HLfit$rho <- NULL
       } else stop("Invalid ambiguous 'init.HLfit' argument: single 'rho' but not single adjacency random-effect term.")
     }
-    processed$control_dist <- .preprocess_control.dist(control.dist,corr_types)
     #
     ## assign sparse_precision (.determine_spprec uses $For, $corr_info, and $LMMbool:)
     ZAfix <- .post_process_ZALlist(ZAlist, as_matrix=FALSE)  
@@ -1032,7 +1053,7 @@ as_precision <- function(corrMatrix) {
     processed$off <- off
   }
   #
-  processed$predictor <- predictor  
+  processed$predictor <- predictor  # ! !has lost any offset! !
   pforpv <- ncol(X.pv)
   #
   if(family$family == "binomial" && processed$bin_all_or_none && pforpv) {
@@ -1059,7 +1080,7 @@ as_precision <- function(corrMatrix) {
     } else REMLformula <- as.formula(paste(lhs,"~ 0")) 
     attr(REMLformula,"isML") <- TRUE
   } ## else do nothing: keeps input REMLformula, which may be NULL or a non-trivial formula
-  # REMLformula <- .stripFormula(REMLformula)
+  # REMLformula <- .preprocess_formula(REMLformula)
   processed$REMLformula <- REMLformula  
   if ( ! is.null(REMLformula) ) { ## differences affects only REML estimation of dispersion params, ie which p_bv is computed
     REMLFrames <- .HLframes(formula=REMLformula,data=data) ## design matrix X, Y...
@@ -1094,7 +1115,7 @@ as_precision <- function(corrMatrix) {
         stop(paste("Term",ranef_string,"not allowed in HLfit(). Try another fitting function such as fitme()."))
       } else {
         ## Cannot be unlisted bc cf ?unlist " Non-vector elements ... are not coerced, and so a list containing ... remains a list":
-        attr(ZAlist,"exp_spatial_terms") <- exp_spatial_terms <- .findSpatial(predictor,nomatch=NA, expand=TRUE) ## match ZAlist for predict() 
+        attr(ZAlist,"exp_spatial_terms") <- exp_spatial_terms <- .findSpatial(predictor,barlist=exp_barlist, nomatch=NA, expand=TRUE) ## match ZAlist for predict()
         geo_info <- vector("list",nrand) ## each element will be an environment with typical elements $distMatrix, $uniqueGeo, $nbUnique
         cov_info_mats <- vector("list",nrand)
         for (it in seq_along(corr_types)) {
@@ -1129,6 +1150,11 @@ as_precision <- function(corrMatrix) {
                 # (2) have columns in ZAlist[[it]] not reordered in .calc_Zmatrix Then
                 #     the cov_info_mats[[it]] info is not yet available at preprocessing time...
                 #     See further comment in .assign_geoinfo_and_LMatrices_but_ranCoefs()
+              } else if (corr_type %in% c("Matern","Cauchy")) { 
+                if (TRUE && attr(ZAlist[[it]],"namesTerm") != "(Intercept)") {
+                  geo_info[[it]]$activelevels <- activelevels <- which(colSums(ZAlist[[it]]!=0L)>0L)
+                  ZAlist[[it]] <- ZAlist[[it]][,activelevels,drop=FALSE]
+                } 
               } else if ( ! is.null(uniqueGeo)) { ## user-provided uniqueGeo (no example anywhere! :-) )
                 if (is.list(uniqueGeo)) { ## spaMM3.0 extended syntax
                   geo_info[[it]]$uniqueGeo <- uniqueGeo[[it]] 
@@ -1153,6 +1179,7 @@ as_precision <- function(corrMatrix) {
     # This, together with two commented lines in .is_identity(), is not clearly useful:
     #for (rd in seq_along(ZAlist)) attr(ZAlist[[rd]], "is_identity") - .is_identity(ZAlist[[rd]], matrixcheck=TRUE)
     processed$ZAlist <- ZAlist 
+    processed$hyper_info <- .preprocess_hyper(processed=processed) # uses$ZAlist and $predictor
     #
     vec_n_u_h <- unlist(lapply(ZAlist,ncol)) ## nb cols each design matrix = nb realizations each ranef
     processed$cum_n_u_h <- cum_n_u_h <- cumsum(c(0L, vec_n_u_h)) ## if two ranef,  with q=(3,3), this is 0,3,6 ;
@@ -1160,7 +1187,7 @@ as_precision <- function(corrMatrix) {
     processed$QRmethod <- .choose_QRmethod(ZAlist, predictor) ## (fixme: rethink) typically sparse for large Matern model ?
     # QRmethod may well be dense for adjacency and then ZAfix will be dense. 
     if ( ! .eval_as_mat_arg(processed)) {
-      AUGI0_ZX <- list2env( list(I=suppressWarnings(as(Diagonal(n=nrd),"CsparseMatrix")), ## avoids repeated calls to as() through rbind2...
+      AUGI0_ZX <- list2env( list(I=.trDiagonal(n=nrd), ## avoids repeated calls to as() through rbind2...
                                  ZeroBlock= Matrix(0,nrow=nrd,ncol=pforpv), X.pv=X.pv) )
     } else {
       ## here in version up to 2.4.100 I had code trying to guess available memory by memory.limit() or /proc/meminfo
@@ -1272,8 +1299,7 @@ as_precision <- function(corrMatrix) {
     } else {  ## linear predictor for variance of random effects (lambda) (lamGLM or lamHGLM) 
       if (any(models[["lambda"]]=="lamHGLM")) { ##need distinct calls... to fit each lambda model  
         if (length(formulaLambda)==2) formulaLambda <- as.formula(paste('"lambda"',paste(formulaLambda,collapse=" ")))
-        lambda_ranefs <- .findbarsMM(formulaLambda)
-        if (!is.null(lambda_ranefs)) {  ## lamHGLM
+        if (!is.null(.parseBars(formulaLambda))) {  ## lamHGLM
           models[["lambda"]] <- list("lamHGLM")
         } else models[["lambda"]] <- list("lamGLM")  
         colnames(X_lambda) <- colnames(fr_lambda$X) ## but code not effective, fr_lambda not computed
@@ -1293,14 +1319,15 @@ as_precision <- function(corrMatrix) {
   #
   phi.Fix <- .getPar(ranFix,"phi")
   if (is.null(phi.Fix)) {
-    if (family$family %in% c("poisson","binomial","COMPoisson","negbin")) phi.Fix <- 1 
+    if (family$family %in% c("poisson","binomial","COMPoisson","negbin")) {
+      phi.Fix <- 1 
+    } # else if (var(y)==0) phi.Fix <- .spaMM.data$options$min_disp
   } else if (any(phi.Fix==0)) stop("phi cannot be fixed to 0.")
   processed$phi.Fix <- phi.Fix
   #
   resid.formula <- resid.model$formula
   if ( is.null(phi.Fix)) {
-    phi_ranefs <- .findbarsMM(resid.formula)
-    if ( ! is.null(phi_ranefs)) {
+    if ( ! is.null(.parseBars(resid.formula))) {
       if (is.null(resid.model$rand.family)) resid.model$rand.family <- gaussian() # avoids rand.families being NULL in call below.
       preprocess_arglist <- list(control.HLfit=control.HLfit, ## constrained
                          ranFix=resid.model$fixed, 
@@ -1325,7 +1352,7 @@ as_precision <- function(corrMatrix) {
       preprocess_arglist[other_preprocess_args] <- resid.model[other_preprocess_args]
       residProcessed <- do.call(.preprocess,preprocess_arglist) ## cf verbose explicitly set to NULL 
       # preprocess here plays the role of fitme as wrapper bringing the following info to fitme_body:
-      fullform <-  .stripFormula(as.formula(paste(".phi",.DEPARSE(residProcessed$predictor))))
+      fullform <-  .preprocess_formula(as.formula(paste(".phi",.DEPARSE(residProcessed$predictor))))
       mostattributes(fullform) <- attributes(residProcessed$predictor)
       residProcessed$predictor <- fullform
       # residProcessed$y <- residProcessed$HLframes$Y <- "removed for safety" # must be NULL
@@ -1334,7 +1361,6 @@ as_precision <- function(corrMatrix) {
       models[["phi"]] <- "phiHGLM" 
       p_phi <- NA
     } else {
-      resid.formula <- .as_predictor(resid.formula,data=data)
       residFrames <- .HLframes(formula=resid.formula,data=data)
       attr(resid.formula,"off") <- model.offset(residFrames$mf) ## only for summary.HLfit()
       ## if formula= ~1 and data is an environment, there is no info about nobs, => fr_disp$X has zero rows, which is a problem later 

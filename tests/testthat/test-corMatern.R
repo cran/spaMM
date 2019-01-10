@@ -7,7 +7,7 @@ requireNamespace("nlme")
 ##  as a correlated residual error and no extra residual variance is fitted:
 bf <- nlme::lme(fixed = migStatus ~ means, data = blackcapD, random = ~ 1 | dummy, 
     correlation = corMatern(form = ~ longitude+latitude  | dummy), 
-    method = "ML")
+    method = "ML", control=nlme::lmeControl(sing.tol=1e-20))
 
 testthat::expect_equal(logLik(bf)[[1]],-7.941674,tolerance=1e-6)
 testthat::expect_equal(exp((bf$modelStruct$corStruct)[[1]]),18.3595917,tolerance=1e-5) ## range =1/rho 

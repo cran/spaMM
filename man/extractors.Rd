@@ -1,4 +1,5 @@
 \name{extractors}
+\alias{model.frame.HLfit} % undocumented as long as it is not stable (and not yet used)
 \alias{model.matrix.HLfit} % FIXME not used in spaMM code, and undocumented
 \alias{extractors}
 \alias{getDistMat}
@@ -23,6 +24,7 @@
 \alias{print.ranef}
 \alias{deviance}
 \alias{deviance.HLfit}
+\alias{response}
 \alias{dev_resids}
 \alias{get_RLRTSim_args}
 \alias{get_boot_response}
@@ -40,10 +42,11 @@ Functions to extract various components of a fit
 \code{deviance} returns the sum of squares of these (unscaled) deviance residuals, that is (consistently with \code{stats::deviance}) the unscaled deviance.
 \code{fitted} extracts fitted values (see \code{\link{fitted.values}}).
 \code{residuals} extracts residuals of the fit.
+\code{response} extracts the response (as a vector).
 \code{fixef} extracts the fixed effects coefficients, \eqn{\beta}.
 \code{ranef} extracts the predicted random effects, \bold{Lv} (default since version 1.12.0), or \bold{u} (see Details in \code{\link{HLfit}} for definitions), \code{print.ranef} controls their printing. 
 \code{getDistMat} returns a distance matrix for a Matérn correlation model.
-\code{get_RLRTSim_args} returns a list of arguments suitable for calls to \code{LRTSim::RLRTSim()}
+\code{get_RLRTSim_args} returns a list of arguments suitable for calls to \code{RLRsim::RLRTSim()}
 \code{get_boot_response} returns the response vector of a given bootstrap replicate in an obsolete use of \code{fixedLRT} (see Details). 
 }
 \usage{
@@ -59,6 +62,7 @@ Functions to extract various components of a fit
 \method{deviance}{HLfit}(object,...)
 \method{residuals}{HLfit}(object, type = c("deviance", "pearson", "response"), ...)
 getDistMat(object, scaled=FALSE, which=1L)
+response(object,...)
 dev_resids(object,...)
 get_RLRTSim_args(object,...)
 get_boot_response(object, replicate)
@@ -79,7 +83,7 @@ Return values are numeric (for \code{logLik}), vectors (most cases), matrices or
 
 \code{get_boot_response} aims to reproduce samples produced by fixedLRT() with argument \code{boot_fn=".eval_boot_replicates"}. However, the default \code{boot_fn} is now \code{spaMM_boot} wherein samples are simulated by \code{simulate(object,nsim = nsim,verbose=FALSE,resp_testfn=resp_testfn)} and, given the same state of the random number generator, running this should be enough to reproduce the samples. \code{get_boot_response} has no \code{resp_testfn} argument so it cannot always reproduce the samples simulated by \code{spaMM_boot}. It may soon be deprecated, as \code{boot_fn=".eval_boot_replicates"}.
 
-\code{get_RLRTSim_args} extracts a list of arguments suitable for a call to \code{LRTSim::RLRTSim()} for a small-sample test of the presence of a random effect by an efficient simulation procedure. The test can be run by\cr \code{do.call("RLRTSim",<get_RLRTSim_args return value>)}.  
+\code{get_RLRTSim_args} extracts a list of arguments suitable for a call to \code{RLRsim::RLRTSim()} for a small-sample test of the presence of a random effect by an efficient simulation procedure. The test can be run by\cr \code{do.call("RLRTSim",<get_RLRTSim_args return value>)}.  
 }
 \details{
 See \code{\link{residuals.glm}} for more information about the types of residuals.

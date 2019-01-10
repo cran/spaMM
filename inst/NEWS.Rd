@@ -3,6 +3,39 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 2.6.0}{ 
+\subsection{NEW FEATURES}{
+\itemize{
+\item New syntax for autocorrelated random-coefficient effects, allowing e.g. the formula terms Matern(male|.) + Matern(female|.) to fit distinct Matern effects for males and females. See help(spaMM) for details.
+\item New function update_resp() to refit on a updated response vector.
+\item New simulate() argument 're.form' for finer control of conditioning.
+\item New predict() argument 'type' to allow returning the linear predictor.
+\item New summary() argument 'verbose' may be convenient when using summary() as an extractor.
+\item New function response() to extract the response from the fit.
+\item The double-vertical syntax for random effects, ( rhs || lhs ), is now handled. See help(spaMM) for details.
+\item HLfit can now fit random-coefficient models by sparse-precision methods.
+}
+}
+\subsection{USER-LEVEL CHANGES}{
+\itemize{
+\item Faster implementation of some computations in the sparse-precision code.
+\item The warnings that occurred when 'e1071' availability was tested, but the package was not available, has been suppressed.
+\item Modified approach to controlling numerical precision of prediction covariance matrices, should impact these matrices when they are nearly singular.
+\item as_precision() return type documented, and type of the matrix within is itself modified.
+}
+}
+\subsection{FIXED BUGS}{
+\itemize{
+\item Bug, reintroduced in the previous version, in predict()'ing from models with poly() terms.
+\item Bug in simulate(.,type="maginal", newdata=<non-NULL>)
+\item confint() had weaknesses, more likely to impact intervals for simple LMMs since the introduction of new fitting algorithms in version 2.5.0.
+\item Bug in predict()'ing with an unusual combination of random effects and newdata (documented in test/testthat/test-more-predict.R).
+\item Marginal AIC computation did not exclude fixed correlation parameters from number of degrees of freedom.
+\item Sparse-precision code could fail when all fixed-effect coefficents were set by the user using the 'etaFix' argument.
+\item Failure to catch some incorrect or inefficient calls, notably of HLfit to fit random-coefficient models by sparse-precision methods (which is now a correct call!).
+}
+}
+}
 \section{CHANGES UP TO VERSION 2.5.11}{ 
 \subsection{NEW FEATURES}{
 \itemize{
@@ -324,7 +357,7 @@ Widespread improvement in speed for large data sets, thanks to some of the  foll
 \item An HLfit object's $APHLs$p_bv for a *fixed-effect* model now returns the restricted likelihood (for estimation of residual dispersion parameters), which it has never done so far (out of disregard for this case). This allows REML fits of fixed-effect models using fitme() (but has no bearing on similar fits using HLfit()). 
 \item More informative summary() when non-default spatial distance function, or non-default prior weights, are used.
 \item New 'refit' control in fitme().
-\item New extractor function get_RLRTSim_args() for use with the LRTSim package to perform small-sample LRT of the presence of a random effect.
+\item New extractor function get_RLRTSim_args() for use with the RLRsim package to perform small-sample LRT of the presence of a random effect.
 }
 }
 \subsection{USER-LEVEL CHANGES}{

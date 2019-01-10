@@ -28,6 +28,31 @@
           if (is.null(ARphi)) ARphi <- 1 - 1e-6
           upper$corrPars[[char_rd]][["ARphi"]] <- ARphi
         }
+      } else if (corr_type =="MRF") {
+        if ( ! is.null(.get_cP_stuff(canon.init,"kappa",char_rd))) {
+          KAPPAMAX <- moreargs[[char_rd]]$KAPPAMAX
+          hyper <- init.optim$hyper
+          hyper_map <- attr(hyper,"map")
+          trKappa <- hyper[[hyper_map[it]]]$hy_trK
+          if (is.null(trKappa)) {
+            kappa <- .get_cP_stuff(user.lower,"kappa",char_rd)
+            if (is.null(kappa)) kappa <- 1e-4
+            if (optim.scale=="transformed") {
+              lower$corrPars[[char_rd]][["trKappa"]] <- .kappaFn(kappa,KAPPAMAX=KAPPAMAX)
+            } else lower$corrPars[[char_rd]][["kappa"]] <- kappa
+            kappa <- .get_cP_stuff(user.upper,"kappa",char_rd)
+            if (is.null(kappa)) kappa <- KAPPAMAX
+            if (optim.scale=="transformed") {
+              upper$corrPars[[char_rd]][["trKappa"]] <- .kappaFn(kappa,KAPPAMAX=KAPPAMAX)
+            } else upper$corrPars[[char_rd]][["kappa"]] <- kappa
+          } else {
+            # slightly inelegant as repeated for several it...
+            lower$hyper[[hyper_map[it]]]$hy_trK <- .kappaFn(1e-4,KAPPAMAX=KAPPAMAX)
+            upper$hyper[[hyper_map[it]]]$hy_trK <- .kappaFn(KAPPAMAX,KAPPAMAX=KAPPAMAX) 
+            lower$hyper[[hyper_map[it]]]$hy_trL <- .dispFn(1e-6)
+            upper$hyper[[hyper_map[it]]]$hy_trL <- .dispFn(1e4) 
+          }
+        }
       } else if (corr_type %in% c("Matern","Cauchy")) { 
         lower_cP <- lower$corrPars[[char_rd]]
         if (is.null(lower_cP)) lower_cP <- list()

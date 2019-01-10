@@ -10,18 +10,18 @@ importFrom("grDevices", "devAskNewPage")
 importFrom("methods", "as", "is", "cbind2", "rbind2", "new")
 importFrom("stats", "as.formula", "coefficients", "dgamma", "dnorm", "family", "formula", "getCall", 
            "glm", "lm", "make.link", "model.frame", "model.matrix", "model.offset", "model.response", 
-           "optim", "optimize", "pchisq", "pnorm", "qchisq", "qnorm", "qqline", "qqnorm", 
+           "optim", "optimize", "pchisq", "pnorm", "qchisq", "qnorm", "qqline", "qqnorm", "qgamma",
            "rbeta", "rbinom", "rgamma", "rnorm", "rpois", "runif", "terms", "extractAIC", "step",
-           "terms.formula", "var", "sd", "weights", "glm.fit",".lm.fit", "lm.wfit", 
+           "terms.formula", "var", "sd", "weights", "glm.fit",".lm.fit", "lm.wfit", "qbeta",
            "nobs", ## bc spaMM defines an HLfit method, although I do not currently use it
            "simulate", "anova", "confint", "fitted", "predict", "update", "logLik", "vcov", "coef",
            "gaussian", "binomial", "dpois", "Gamma", "resid", "uniroot", "deviance", "dbinom", "plogis", 
-           "as.dist", "AIC", "qnbinom", "qpois", "rnbinom", "integrate", "poisson")
+           "as.dist", "AIC", "qnbinom", "qpois", "rnbinom", "integrate", "poisson",".getXlevels")
 importFrom("utils", "relist", "txtProgressBar", "setTxtProgressBar", "modifyList", "strOptions", "str",
-           "write.table", "packageVersion", "packageDescription")
+           "write.table", "packageVersion", "packageDescription", "capture.output")
 importFrom("Matrix", "Matrix", "drop", "isDiagonal", "diag", "t", "solve", "Diagonal", "crossprod", "tcrossprod", "rowSums", "colSums",
            "sparseMatrix", "qr", "qrR", "qr.R", "qr.Q", "qr.coef", "isSymmetric", "forceSymmetric", "Cholesky","determinant",
-           "chol2inv", "drop0")
+           "chol2inv", "drop0", ".symDiagonal",".trDiagonal")
 importFrom("proxy", "dist", "pr_DB")
 importFrom("Rcpp", "evalCpp")
 importFrom("MASS", "ginv", "gamma.shape", "mvrnorm") ## gamma.shape is actually a generic with a 'glm' method.
@@ -48,7 +48,7 @@ S3method(AIC, HLfit)
 S3method(extractAIC, HLfit)
 S3method(confint, HLfit)
 S3method(family, HLfit)
-#S3method(model.frame, HLfit)
+S3method(model.frame, HLfit)
 S3method(formula, HLfit)
 S3method(terms, HLfit)
 S3method(model.matrix, HLfit)

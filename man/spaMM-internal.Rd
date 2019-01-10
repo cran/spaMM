@@ -1,5 +1,7 @@
 \name{spaMM-internal}
 
+\alias{MRF} % F I X M E
+
 
 \alias{fitme_body}
 \alias{HLfit.obj}

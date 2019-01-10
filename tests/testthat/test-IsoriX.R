@@ -36,7 +36,8 @@ if (requireNamespace("IsoriX",quietly=TRUE)) { ## Checks that exports/imports ar
   } else if (spaMM.options("example_maxtime")>10) {
     # ad-hoc bc builing the additional calibfits is not worth the time
     source("C:/home/francois/travail/stats/spaMMplus/spaMM/package/tests/testthat/nestedFiles/calibfit.R")
-    try(testthat::expect_equal(logLik(CalibAlien$calib_fit),c(p_bv=-1132.78314))) ## -1135.841334 before same bug correction
+    #try(testthat::expect_equal(logLik(CalibAlien$calib_fit),c(p_bv=-1132.78314))) ## -1135.841334 before same bug correction
+    try(testthat::expect_equal(logLik(CalibAlien$calib_fit),c(p_bv=-1132.664893))) ## after modif numerical precision predVar
   }
   chk <- try(example("isofind",package="IsoriX",ask=FALSE),silent=TRUE) ## ~101s but the condition is 200
   if (inherits(chk,"try-error")) {

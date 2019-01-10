@@ -8,7 +8,8 @@
     blob <- .get_dist_nested_or_not(spatial_term=attr(processed$ZAlist,"exp_spatial_terms")[[which_ranef]], 
                                 data=processed$data, distMatrix=geo_envir$distMatrix, 
                                 uniqueGeo=geo_envir$uniqueGeo, ## precomputed only for AR1
-                                dist.method = dist.method,needed=needed)
+                                dist.method = dist.method,needed=needed,
+                                geo_envir=geo_envir)
     ## Avoid overwriting preexisting ones with possible NULL's:
     if (is.null(geo_envir$distMatrix)) geo_envir$distMatrix <- blob$distMatrix 
     if (is.null(geo_envir$uniqueGeo)) geo_envir$uniqueGeo <- blob$uniqueGeo  
@@ -59,7 +60,15 @@
           # fixme remove $d from symSVD to avoid later confusions ?
         }
         # symSVD may be modified below
-      }  else if (corr_type =="SAR_WWt") { 
+      } else if (corr_type =="MRF") {
+        kappa <- .get_cP_stuff(ranPars,"kappa",which=char_rd)
+        pars <- attr(attr(spatial_term,"type"),"pars")
+        crossfac_Q <- .MRFcrossfactor(xsteps=pars$nd, ysteps=pars$nd, margin=pars$m,kappa=kappa)
+        sparse_Qmat <- crossprod(crossfac_Q) # same relation as for t_chol_Q ## automatically dsCMatrix
+        if ( ! processed$sparsePrecisionBOOL) {
+          cov_info_mat <- chol2inv(chol(sparse_Qmat)) # solve(sparse_Qmat) 
+        }
+      } else if (corr_type =="SAR_WWt") { 
         adjMatrix <- processed$corr_info$adjMatrices[[rd]]
         UDU. <- attr(adjMatrix,"UDU.")
         if (is.null(UDU.)) {
@@ -121,7 +130,7 @@
         } else if (corr_type=="adjacency" 
                    && ! adj_rho_is_inner_estimated) {
           ## Implies call from fitme_body with outer rho estim.
-          sparse_Qmat <- - rho * drop0(adjMatrix)
+          sparse_Qmat <- - rho * adjMatrix
           diag(sparse_Qmat) <- diag(sparse_Qmat)+1
           ## Cholesky gives proper LL' (think LDL')  while chol() gives L'L...
         } else if (corr_type=="AR1") { 
@@ -146,11 +155,14 @@
           # ZAnames <- colnames(processed$ZAlist[[rd]])
           # cov_info_mat <- cov_info_mat[ZAnames,ZAnames]
           # but this would require controlling the names of Z to be those of cov_info_mat (spMMFactorList_locfn() does not care for that)
-          sparse_Qmat <- (as(solve(cov_info_mat),"sparseMatrix")) # even though it's not mathematically sparse
+          sparse_Qmat <- as_precision(cov_info_mat)$matrix
+        } else if (corr_type== "MRF") {
+          # Remember that we need dtCMatrix'es 'chol_Q' so that bdiag() gives a dtCMatrix
+          # Hence use next general code to produce precisionFactorList[[rd]]
         } else {stop("Some error occurred (inner estimation of adjacency rho with requested sparse precision ?)")}     
         ## (2) Builds from sparse_Qmat if not already available
-        if (corr_type != "AR1") { ## General code that is correct for AR1 too
-          ## I have tried to use Q_CHMfactor uniformly but Cholesky may poorly handle nearly-singular correlation matrices
+        if (corr_type != "AR1") { ## General code for "Matern", etc that is correct for AR1 too
+          ## Provides precisionFactorList[[rd]] as expected by .reformat_Qmat_info()
           ## solve(sparse_Qmat) gives the correlation matrix
           Q_CHMfactor <- Cholesky(sparse_Qmat,LDL=FALSE,perm=FALSE) ## called for each corrPars
           ## fitme sparse_precision has an incomplete symSVD=> corr mattrix not computed, 
@@ -161,9 +173,9 @@
           attr(Lunique,"Q_CHMfactor") <- Q_CHMfactor ## FIXME remove ? limited use that saves only optional sparse triangular solves
           attr(Lunique, "type") <- "from_Q_CHMfactor"
           processed$AUGI0_ZX$envir$precisionFactorList[[rd]] <- list(chol_Q=as(Q_CHMfactor, "sparseMatrix"), # Linv
-                                                                     Qmat=sparse_Qmat)
+                                                                     Qmat=sparse_Qmat) # should by symmetric by format (typically dsCMatrix)
         }
-      } else {
+      } else { ## sparse or dense CORRELATION algorithms
         # this is called through HLCor, hence there must be a dense correlation structure
         ## densePrecision cases with outer rho estimation, and some residual inner rho estimation cases
         if ( ! is.null(symSVD)) {

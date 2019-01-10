@@ -1,16 +1,5 @@
 # define save as a generic with method save.HLfit ?
 
-.stripFormula <- function(formula) {
-  # form <- as.formula(.DEPARSE(formula))
-  # assign("formula",NULL,environment(form)) # assigns value NULL to variable formula _in the environment of form_ 
-  # ## so that nothing remains in the within-.stripFormula environment attached to form
-  # form
-  environment(formula) <- new.env()
-  formula # zut <- y~x; rezut <- spaMM:::.stripFormula(zut); ls(environment(zut)) confirms that the original 'formula's environment is unaffected
-}
-
-
-
 stripHLfit <- function(object,...) {
   if (inherits(object,"HLfit")) {
     ######## clean matrices

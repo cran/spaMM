@@ -40,6 +40,8 @@ if (FALSE) {
 .nuInv <- function(trNu,trRho,NUMAX) {NUMAX*exp(trNu)/(1+exp(trNu))}
 .longdepFn <- function(longdep,LDMAX) {log(longdep/(LDMAX-longdep))} 
 .longdepInv <- function(trLongdep,LDMAX) {LDMAX*exp(trLongdep)/(1+exp(trLongdep))}
+.kappaFn <- function(kappa,KAPPAMAX) {log(kappa/(KAPPAMAX-kappa))} 
+.kappaInv <- function(trKappa,KAPPAMAX) {KAPPAMAX*exp(trKappa)/(1+exp(trKappa))}
 
 ## spherical transfo of Pinheiro and Bates 96; see further explanation
 # https://math.stackexchange.com/questions/1326462/spherical-parametrization-of-a-cholesky-decomposition/1329660#1329660
@@ -546,10 +548,30 @@ if (FALSE) {
   return(list(init=init,init.optim=init.optim,init.HLfit=init.HLfit,ranFix=ranFix))
 }
 
+.calc_inits_MRF <- function(init,init.optim,init.HLfit,ranFix,optim.scale,KAPPAMAX,user.lower,user.upper,char_rd) {
+  if (is.null(.get_cP_stuff(ranFix,"kappa",which=char_rd))) {
+    kappa <- .get_cP_stuff(init.optim,"kappa",which=char_rd)
+    if (is.null(kappa)) { kappa <- 0.5 }
+    kappa <- min(max(kappa, ## checking against user-provided min/max
+                   user.lower$corrPars[[char_rd]]$kappa)*1.000001, 
+               user.upper$corrPars[[char_rd]]$kappa/1.000001)
+    # Info in canonical scale:
+    init$corrPars[[char_rd]] <- .modify_list(init$corrPars[[char_rd]], list(kappa=kappa)) ## synthesis of user init and default init
+    # Template of what will affect init.optim$corrPars in transformed scale:
+    optim_cP <- init.optim$corrPars[[char_rd]] 
+    if (optim.scale=="transformed") {
+      optim_cP <- .modify_list(optim_cP, list(trKappa=.kappaFn(kappa,KAPPAMAX=KAPPAMAX)))
+      optim_cP$kappa <- NULL
+    } else optim_cP <- .modify_list(optim_cP, list(kappa=kappa))
+    init.optim$corrPars[[char_rd]] <- optim_cP
+  } 
+  return(list(init=init,init.optim=init.optim,init.HLfit=init.HLfit,ranFix=ranFix))
+}
+
 .calc_inits <- function(init.optim,init.HLfit,ranFix,corr_info,
                         moreargs,
                         user.lower,user.upper,
-                       optim.scale,For) { 
+                       optim.scale, For, hyper_info) { 
   inits <- list(init=list(corrPars=list()), ## minimal structure for assignments $corrPars[[char_rd]][[<name>]] to work.
                 init.optim=init.optim, init.HLfit=init.HLfit, ranFix=ranFix,
                 user.lower=user.lower, user.upper=user.upper, init=list()) 
@@ -582,5 +604,7 @@ if (FALSE) {
     inits[["init.optim"]]["corrPars"] <- NULL
     inits[["init"]]["corrPars"] <- NULL
   }
+  # after loop on corrPars etc but before .makeLowerUpper():
+  inits <- .calc_inits_hyper(inits, hyper_info=hyper_info)
   return(inits)
 }

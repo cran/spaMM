@@ -30,6 +30,6 @@
              ))
     else x
   }))
-}
+} ## result is a list of language expresion lhs|rhs each with an attr(."type") as provided by the input bb
 
 

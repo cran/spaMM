@@ -28,11 +28,15 @@ remove_from_parlist(parlist, removand=NULL, rm_names=names(unlist(removand)))
 }
 \details{
 \code{remove_from_parlist} is designed to manipulate structured lists of parameters, such as a list with elements \code{phi}, \code{lambda}, and \code{corrPars}, the latter being itself a list structured as the return value of \code{get_ranPars(.,which="corrPars")}. \code{remove_from_parlist} may have an attribute \code{type}, also with elements \code{phi}, \code{lambda}, and \code{corrPars}... If given, \code{removand} must have the same structure (but typically not all the elements of \code{parlist}); otherwise, \code{rm_names} must have elements which match names of \code{unlist(names(parlist))}. 
-% F I X M E no example for remove_from_parlist
 }
 \examples{
 data("wafers")
 m1 <- HLfit(y ~X1+X2+(1|batch),
           resid.model = ~ 1 ,data=wafers,HLmethod="ML")
-get_ranPars(m1,which="corrPars") # NULL since no correlated random effect          
+get_ranPars(m1,which="corrPars") # NULL since no correlated random effect     
+
+parlist1 <- list(lambda=1,phi=2,corrPars=list("1"=list(rho=3,nu=4),"2"=list(rho=5)))
+parlist2 <- list(lambda=NA,corrPars=list("1"=list(rho=NA))) # values of elements do not matter
+remove_from_parlist(parlist1,parlist2) ## same result as:
+remove_from_parlist(parlist1,rm_names = names(unlist(parlist2)))
 }

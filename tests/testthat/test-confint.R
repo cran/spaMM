@@ -49,3 +49,11 @@ ci <- confint(HLM,"pred") ## practically identical in the two fits (+ nu drifts 
 testthat::expect_equal(ci$interval[[1]],0.06483437,tolerance=1e-4)
 testthat::expect_equal(ci$interval[[2]],0.10567543,tolerance=1e-4)
 
+# compar to lme4
+if(requireNamespace("lme4", quietly = TRUE)) {
+  data("sleepstudy",package = "lme4")
+  fit <- fitme(Reaction ~ Days + (1|Subject), data = sleepstudy)
+  fitci <- confint(fit, parm = "Days")$interval
+  fit_mer <- lme4::lmer(Reaction ~ Days + (1|Subject), data = sleepstudy)
+  testthat::expect_true(diff(range(suppressWarnings(confint(fit_mer))[4, ]-fitci))<1e-5) ## suppress bobyqa conv warning in lme4:::optwrap
+}

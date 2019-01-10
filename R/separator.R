@@ -1,6 +1,6 @@
 .do_call_wrap <- local(
   {
-    warned_dcw <- FALSE
+    warned_dcw <- list()
     function(chr_fnname,arglist, pack="e1071") {
       if (length(grep(pack,packageDescription("spaMM")$Imports))) {
         ## then the necessary functions must be imported-from in the NAMESPACE  
@@ -11,19 +11,21 @@
           myfun <- get(chr_fnname, asNamespace(pack)) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
           do.call(myfun,arglist) 
         } else {
-          if ( ! warned_dcw) {
-            message("If the'",pack,"'package were installed, spaMM could check separation in binary regression problem.")
-            warned_dcw <<- TRUE
+          if ( ! identical(warned_dcw[[pack]],TRUE)) {
+            if (pack=="e1071") message("If the 'e1071' package were installed, spaMM could check separation in binary regression problem.")
+            if (pack=="cubature") message("If the 'cubature' package were installed, spaMM could compute a requested marginal prediction.")
+            warned_dcw[[pack]] <<- TRUE
           }
           return(NULL)
         }
       } else { ## package not declared in DESCRIPTION
-        if (do.call("require",list(package=pack, quietly = TRUE))) {
+        if (suppressWarnings(do.call("require",list(package=pack, quietly = TRUE)))) { ## 'quietly' only inhibits the startup message
           do.call(chr_fnname,arglist) 
         } else {
-          if ( ! warned_dcw) {
-            message("If the'",pack,"'package were installed, spaMM could check separation in binary regression problem.")
-            warned_dcw <<- TRUE
+          if ( ! identical(warned_dcw[[pack]],TRUE)) {
+            if (pack=="e1071") message("If the 'e1071' package were installed, spaMM could check separation in binary regression problem.")
+            if (pack=="cubature") message("If the 'cubature' package were installed, spaMM could compute a requested marginal prediction.")
+            warned_dcw[[pack]] <<- TRUE
           }
           return(NULL)
         }

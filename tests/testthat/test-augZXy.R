@@ -19,8 +19,8 @@ if (file.exists((privdata <- "C:/home/francois/travail/stats/spaMMplus/spaMM/pac
     oldopt <- spaMM.options(augZXy_fitfn=".HLfit_body_augZXy_W", check_alt_augZXy=TRUE) 
     essainola <- fitme(total_red ~ sex*env + (1|rep) + (1|line), data = my.data, method="ML")
     spaMM.options(oldopt)
+    testthat::expect_true((diff(range(logLik(vanilla),logLik(essainola)))<1e-8)) 
   }
-  testthat::expect_true((diff(range(logLik(vanilla),logLik(essainola)))<1e-8)) 
   if (exists(".HLfit_body_augZXy_invL",envir = asNamespace("spaMM"))) {
     oldopt <- spaMM.options(augZXy_fitfn=".HLfit_body_augZXy_invL", check_alt_augZXy=TRUE)
     essainola <- fitme(total_red ~ sex*env + (1|rep) + (1|line), data = my.data, method="ML")

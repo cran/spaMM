@@ -317,7 +317,13 @@ summary.HLfitlist <- function(object, ...) {
 
 
 
-`summary.HLfit` <- function(object, details=FALSE, max.print=100L, ...) { 
+`summary.HLfit` <- function(object, details=FALSE, max.print=100L, verbose=TRUE, ...) { 
+  if ( ! verbose) {
+    mc <- match.call(expand.dots = TRUE)
+    mc$verbose <- TRUE
+    capture.output({silent <- eval(mc)})
+    return(silent)
+  }
   oldopt <- options(max.print=max.print)
   if (is.null(names(details))) details <- structure(rep(details,2),names=c("ranCoefs","p_value")) ## handle FALSE or TRUE input
   details <- as.list(details)

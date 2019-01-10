@@ -20,7 +20,7 @@
 # parse(text=paste(deparse(binomial()), collapse="")) fails
 # parse(text=paste(deparse(binomial()), collapse="\n")) works
 # "\n" not OK for formulas; 
-# From v 2.5.7, .stripFormula() no longer uses .DEPARSE() 
+# From v 2.5.7, .stripFormula() (now .preprocess_formula()) no longer uses .DEPARSE() [and I neglected stats::reformulate]
 
 overcat <- function(msg, prevmsglength) {
   if (prevmsglength) {cat("\r")}   # \b effect is terminal-dependent so cannot be relied upon.  

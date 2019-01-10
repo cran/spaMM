@@ -165,11 +165,12 @@ if (FALSE) {
   if (inherits(ZAL,"Matrix")) {
     if (inherits(ZAL,"ddiMatrix")) { ## if diagonal
       if ( ZAL@diag=="U") {
-        return(Diagonal(x=w)) ## diagonal and unitary => identity
-      } else return(Diagonal(x = w * diag(ZAL)^2)) ## this case may never occur
+        return(.symDiagonal(x=w)) ## diagonal and unitary => identity
+      } else return(.symDiagonal(x = w * diag(ZAL)^2)) ## this case may never occur
     } else {
-      ZW <- .Matrix_times_Dvec(ZAL,w)
-      return(Matrix::tcrossprod( ZW ,ZAL)) ## (Z W) %*% Zt
+      sqrtW <- sqrt(w)
+      ZW <- .Matrix_times_Dvec(ZAL,sqrtW)
+      return(Matrix::tcrossprod( ZW)) ## dsCMatrix
     }
   } else return(.ZWZt(ZAL,w))
 }
@@ -182,19 +183,37 @@ if (FALSE) {
   #   stop(".ZtWZwrapper called with ncol(ZAL)=0") ## temporary devel code since all calls are in principle protected 
   # } else 
   if (inherits(ZAL,"Matrix")) {
+    #   old version
+    # 
+    # if (inherits(ZAL,"ddiMatrix")) { ## if diagonal
+    #   if ( ZAL@diag=="U") {
+    #     return(Diagonal(x=w)) ## diagonal and unitary => identity
+    #   } else return(Diagonal(x = w * diag(ZAL)^2)) ## this case may never occur
+    # } else  {
+    #   DZAL <- ZAL
+    #   DZAL@x <- DZAL@x * w[DZAL@i+1L] ## W Z
+    #   ## a triangular matrix with unitary diagonal may be stored as @diag=="U" and only non-diag elements specified...
+    #   if (  methods::.hasSlot(DZAL, "diag") &&  DZAL@diag=="U") Matrix::diag(DZAL) <- w
+    #   return(Matrix::crossprod(ZAL, DZAL)) ## t(Z) %*% (W Z)
+    # }
+    # 
+    # but Diagonal() is slow and it's better to produce matrices of symmetric type by construction so that forceSymmetric is not needed
+    # Matrix::.symDiagonal better for addition with another symmetric matrix, see its doc.
+    #
     if (inherits(ZAL,"ddiMatrix")) { ## if diagonal
       if ( ZAL@diag=="U") {
-        return(Diagonal(x=w)) ## diagonal and unitary => identity
-      } else return(Diagonal(x = w * diag(ZAL)^2)) ## this case may never occur
+        return(.symDiagonal(x=w)) ## diagonal and unitary => identity
+      } else return(.symDiagonal(x = w * diag(ZAL)^2)) ## this case may never occur
     } else  {
+      sqrtW <- sqrt(w) # this uses sqrt() hence assumes w>0
       DZAL <- ZAL
-      DZAL@x <- DZAL@x * w[DZAL@i+1L] ## W Z
+      DZAL@x <- DZAL@x * sqrtW[DZAL@i+1L] ## W Z
       ## a triangular matrix with unitary diagonal may be stored as @diag=="U" and only non-diag elements specified...
-      if (  methods::.hasSlot(DZAL, "diag") &&  DZAL@diag=="U") Matrix::diag(DZAL) <- w
-      return(Matrix::crossprod(ZAL, DZAL)) ## t(Z) %*% (W Z)
+      if (  methods::.hasSlot(DZAL, "diag") &&  DZAL@diag=="U") Matrix::diag(DZAL) <- sqrtW
+      return(Matrix::crossprod(DZAL))  
     }
   } else return(.ZtWZ(ZAL,w)) ## but this uses sqrt() hence assumes w>0
-}
+} # Matrix result is always of symmetric type (dsC or ddi)
 
 .process_ranCoefs <- function(processed, ranCoefs, trRanCoefs, invLs=NULL, use_tri, need_longLv=TRUE) {
   if (! is.null(invLs)) ranCoefs <- trRanCoefs
@@ -210,7 +229,7 @@ if (FALSE) {
       for(rd in seq_len(length(Xi_cols))) {
         if ((Xi_ncol <- Xi_cols[rd])>1L) {
           templa <- matrix(seq(Xi_ncol^2),nrow=Xi_ncol,ncol=Xi_ncol)
-          longLv_templates[[rd]] <- .makelong(templa, ncol(ZAlist[[rd]]))
+          longLv_templates[[rd]] <- .makelong(templa, ncol(ZAlist[[rd]])) ## templa is dense array of indices
         }
       }
     }
@@ -1091,18 +1110,21 @@ sym_eigen <- local({
 .get_beta_w_cov <- function(res) {
   if (is.null(beta_w_cov <- res$envir$beta_w_cov)) { 
     beta_cov_info <- .get_beta_cov_info(res) ## beta_v_cov needed
-    beta_w_cov <- attr(beta_cov_info,"beta_v_cov")
+    if (res$spaMM.version > "2.5.20") {
+      beta_w_cov <- beta_cov_info$beta_v_cov
+    } else beta_w_cov <- attr(beta_cov_info,"beta_v_cov")
     invL <- .get_invL_HLfit(res) ## correlation matrix of ranefs is solve((t(invL)%*%(invL)))
     # invL is currently a single matrix for allranefs. de facto a block matrix when several ranefs
     if ( ! is.null(invL) && ! .is_identity(invL)) {
-      pforpv <- ncol(beta_cov_info)
+      if (res$spaMM.version > "2.5.20") {
+        pforpv <- ncol(beta_cov_info$beta_cov)
+      } else pforpv <- ncol(beta_cov_info)
       v.range <- pforpv+seq(ncol(invL))
       ## A function for symmetric sandwich product is missing. 
       beta_w_cov[v.range,] <- .crossprod(invL, beta_w_cov[v.range,])
       beta_w_cov[,v.range] <- beta_w_cov[,v.range] %*% invL # implies invL' %*% . %*% invL on the v.range,v.range block
       beta_w_cov <- Matrix::symmpart(beta_w_cov)
     }
-    eigenvalues <- eigen(beta_w_cov,only.values = TRUE)$values
     # beta_w_cov[v.range,-(v.range)] <- .crossprod(invL, beta_w_cov[v.range,-(v.range)])
     # beta_w_cov[-v.range,v.range] <- t(beta_w_cov[v.range,-(v.range)]) ## usually this block is small, so little speed gain
     # beta_w_cov[v.range,(v.range)] <- .crossprod(invL,beta_w_cov[v.range,(v.range)] %*% invL) ## still not enforcing symmetry
@@ -1111,7 +1133,11 @@ sym_eigen <- local({
     #   beta_w_cov <- Matrix::symmpart(beta_w_cov)
     #   eigenvalues <- eigen(beta_w_cov,only.values = TRUE,symmetric = TRUE)$values
     # }
-    attr(beta_w_cov,"min_eigen") <- min(eigenvalues)
+    # if (FALSE && ncol(beta_w_cov)<=1000L) { 
+    #   ## eigen() for large matrices takes time and **memory**. The result is not clearly better than simply assuming the alternative
+    #   eigenvalues <- eigen(beta_w_cov,only.values = TRUE)$values
+    #   attr(beta_w_cov,"min_eigen") <- min(eigenvalues)
+    # } else attr(beta_w_cov,"min_eigen") <- 1e-10 # ad-hockery; 
     res$envir$beta_w_cov <- beta_w_cov
   } 
   return(beta_w_cov)
@@ -1229,7 +1255,7 @@ sym_eigen <- local({
 
 .calc_cAIC_pd_spprec <- function(object, blockSize=1000L) {
   nrd <- length(object$w.ranef)
-  AUGI0_ZX <- list(I=suppressWarnings(as(Diagonal(n=nrd),"CsparseMatrix")),
+  AUGI0_ZX <- list(I=.trDiagonal(n=nrd),
                    ZeroBlock=Matrix(0,nrow=nrd,ncol=ncol(object$X.pv)),X.pv=object$X.pv)
   w.resid <- object$w.resid
   ZAL <- .compute_ZAL(XMatrix=object$strucList, ZAlist=object$ZAlist,as_matrix=.eval_as_mat_arg(object)) 
@@ -1311,8 +1337,8 @@ sym_eigen <- local({
       #                                   cbind2(hessnondiag, .ZtWZwrapper(ZAL,w.resid))))            
       # }
       X.pv <- object$X.pv
-      corrPars <- get_ranPars(object,which="corrPars")
-      p_corrPars <- length(intersect(names_est_ranefPars,names(corrPars)))
+      #corrPars <- get_ranPars(object,which="corrPars")
+      p_corrPars <- object$dfs[["p_corrPars"]] # length(intersect(names_est_ranefPars,names(corrPars)))
       info_crits$mAIC <- -2*forAIC$p_v + 2 *(pforpv+p_lambda+p_corrPars+p_phi)
       info_crits$dAIC <- -2*forAIC$p_bv + 2 * (p_lambda+p_phi+p_corrPars) ## HaLM07 (eq 10) focussed for dispersion params
       #                                                                             including the rho param of an AR model
@@ -1350,7 +1376,7 @@ sym_eigen <- local({
     diagPos <- seq.int(1L,nc^2,nc+1L)
     d2hdv2[diagPos] <- d2hdv2[diagPos] - w.ranef 
   } else if (inherits(ZAL,"Matrix")) {
-    d2hdv2 <- Matrix::crossprod(x=ZAL,y= Diagonal(x= - w.resid) %*% ZAL)    
+    d2hdv2 <- - .ZtWZwrapper(ZAL,w.resid) #  Matrix::crossprod(x=ZAL,y= Diagonal(x= - w.resid) %*% ZAL)    
     nc <- ncol(d2hdv2)
     diagPos <- seq.int(1L,nc^2,nc+1L)
     d2hdv2[diagPos] <- d2hdv2[diagPos] - w.ranef 
@@ -1553,7 +1579,7 @@ sym_eigen <- local({
   }
   if (is.null(r22 <- envir$r22)){ 
     r12 <- as(Matrix::solve(envir$G_CHMfactor, envir$ZtW %*% AUGI0_ZX$X.pv,system="L"),"sparseMatrix") ## solve(as(envir$G_CHMfactor,"sparseMatrix"), envir$ZtW %*% AUGI0_ZX$X.pv)
-    r22 <- .calc_r22(AUGI0_ZX$X.pv,w.resid,r12, AUGI0_ZX) ## both lines as explained in working doc
+    r22 <- .calc_r22(AUGI0_ZX$X.pv,w.resid,r12, sXaug=NULL) ## both lines as explained in working doc
   } else r12 <- envir$r12 
   r22 <- as(r22,"sparseMatrix") 
   n_u_h <- ncol(chol_Md2hdv2)
@@ -1596,15 +1622,14 @@ sym_eigen <- local({
   n_u_h <- ncol(AUGI0_ZX$I)
   seqp <- seq_len(pforpv)
   perm <- c(n_u_h+seqp,seq_len(n_u_h))
-  beta_v_cov <- v_beta_cov[perm,perm,drop=FALSE]
+  beta_v_cov <- v_beta_cov[perm,perm,drop=FALSE] ## with a L that differs from other MME_methods hence beta_v_cov too (!) 
+  # ./. but we can check that is is = solve(crossprod(wAugX)) by reconstructing wAugX with the matching L as in .get_LSmatrix()
   beta_cov <- beta_v_cov[seqp,seqp,drop=FALSE]
   colnames(beta_cov) <- rownames(beta_cov) <- colnames(AUGI0_ZX$X.pv)
-  attr(beta_cov,"beta_v_cov") <- beta_v_cov ## with a L that differs from other MME_methods hence beta_v_cov too (!) 
-  # ./. but we can check that is is = solve(crossprod(wAugX)) by reconstructing wAugX with the matching L as in .get_LSmatrix()
-  return(beta_cov)
+  return(list(beta_cov=beta_cov,beta_v_cov=beta_v_cov))
 }
 
-    .calc_beta_cov_info_others <- function(wAugX=NULL, AUGI0_ZX, ZAL, ww) {
+.calc_beta_cov_info_others <- function(wAugX=NULL, AUGI0_ZX, ZAL, ww) {
   if (is.null(wAugX)) {
     if (is.null(ZAL)) {
       wAugX <- .calc_wAugX(XZ_0I=AUGI0_ZX$X.pv,sqrt.ww=sqrt(ww))
@@ -1624,19 +1649,18 @@ sym_eigen <- local({
   pforpv <- ncol(AUGI0_ZX$X.pv)
   beta_cov <- beta_v_cov[seq_len(pforpv),seq_len(pforpv),drop=FALSE]
   colnames(beta_cov) <- rownames(beta_cov) <- colnames(AUGI0_ZX$X.pv)
-  attr(beta_cov,"beta_v_cov") <- beta_v_cov
-  return(beta_cov)
+  return(list(beta_cov=beta_cov,beta_v_cov=beta_v_cov))
 }
 
 .get_beta_cov_info <- function(res) { 
-  # (1) res$beta_cov is provided by the fit, without a beta_v_cov attribute
-  # (2) What this function provides is a full beta_v_cov, although as an attribute of another copy of beta_cov, res$envir$beta_cov_info
-  if (is.null(res$envir$beta_cov_info)) { 
+  # (1) res$envir$beta_cov_info$beta_cov is generally provided by the fit, with or without a beta_v_cov attribute depending on sparse_precision
+  # (2) What this function provides is a full beta_cov + beta_v_cov
+  if (is.null(res$envir$beta_cov_info$beta_v_cov)) { 
     if ( "AUGI0_ZX_sparsePrecision" %in% res$MME_method) {
       ## Use .calc_beta_cov_info_spprec special code NOT calling get_from_MME()
       nrd <- length(res$w.ranef)
       pforpv <- ncol(res$X.pv)
-      AUGI0_ZX <- list(I=suppressWarnings(as(Diagonal(n=nrd),"CsparseMatrix")),
+      AUGI0_ZX <- list(I=.trDiagonal(n=nrd),
                        ZeroBlock=Matrix(0,nrow=nrd,ncol=pforpv),X.pv=res$X.pv)
       res$envir$beta_cov_info <- .calc_beta_cov_info_spprec(AUGI0_ZX=AUGI0_ZX, envir=res$envir, w.resid=res$w.resid) ## with beta_v_cov attribute
     } else { 
@@ -1645,7 +1669,7 @@ sym_eigen <- local({
       nrd <- length(res$w.ranef)
       pforpv <- ncol(res$X.pv)
       if (inherits(ZAL,"Matrix")) {
-        AUGI0_ZX <- list(I=suppressWarnings(as(Diagonal(n=nrd),"CsparseMatrix")),
+        AUGI0_ZX <- list(I=.trDiagonal(n=nrd),
                          ZeroBlock=Matrix(0,nrow=nrd,ncol=pforpv),X.pv=res$X.pv)
       } else {
         AUGI0_ZX <- list(I=diag(nrow=nrd),ZeroBlock=matrix(0,nrow=nrd,ncol=pforpv),X.pv=res$X.pv)
@@ -1962,11 +1986,37 @@ sym_eigen <- local({
   return(res)
 }
 
+.adhoc_rbind_dgC_dvec <- function(X, dvec) { 
+  Ilen <- X@Dim[2L]
+  newlen <- Ilen+length(X@x) # ne @x length
+  Iseq <- seq_len(Ilen)
+  Ip <- c(0L,Iseq)
+  newp <- Ip+X@p
+  Ipos <- newp[-1L]
+  #
+  newx <- numeric(newlen)
+  newx[Ipos] <- dvec
+  newx[-Ipos] <- X@x
+  newi <- integer(newlen)
+  newi[Ipos] <- Ilen-1L+Iseq
+  newi[-Ipos] <- X@i
+  #
+  X@i <- newi
+  X@x <- newx
+  X@p <- newp
+  X@Dim[1L] <- Ilen+X@Dim[1L]
+  if ( ! is.null(X@Dimnames[[1L]])) X@Dimnames[[1L]] <- c(X@Dimnames[[1L]],rep("",Ilen)) 
+  return(X)
+}
+
+
 .damping_to_solve <- function(X, dampDpD, rhs=NULL,method="QR", .drop=TRUE) { ##  
   if (.drop) rhs <- drop(rhs) ## 1-col m/Matrix to vector ## affects indexing below but the result of the chol2inv line is always Matrix
   if (method=="QR") {
     if (inherits(X,"Matrix")) {
-      XD <- rbind2(X, Diagonal(x=sqrt(dampDpD))) ## fixme might even be possible to store an rbind result...
+      if (inherits(X,"dgCMatrix")) {
+        XD <- .adhoc_rbind_dgC_dvec(X,dvec=sqrt(dampDpD))
+      } else XD <- rbind2(X, Diagonal(x=sqrt(dampDpD))) ## fixme might even be possible to store an rbind result...
       RP <- qr(XD) ## i.e. Matrix::qr
       RRsP <- sort.list(RP@q) 
       # solve(crossprod(XD)) = chol2inv(Matrix::qrR(RP,backPermute = FALSE))[RRsp,RRsP]
@@ -2017,6 +2067,7 @@ sym_eigen <- local({
   notouter <- which((u_list <- unlist(type))!="outer")
   corrPars <- structure(  .remove_from_cP(corrPars, u_names = names(notouter)),
                              type=.remove_from_cP(type, u_list=u_list,u_names = names(notouter)) )
+  # correction corrPars to handle numerical problems:
   if (length(corrPars)) {
     ## FR->FR init must be in user scale, optr output is 'unreliable' => complex code
     LUarglist <- attr(phifit,"optimInfo")$LUarglist ## might be NULL 
@@ -2180,32 +2231,23 @@ sym_eigen <- local({
   }
 }
 
-
-.assign_beta_cov_info <- function(res,sXaug,X_scale) { ## assigns res$envir$beta_cov_info and returns bare beta_cov
-  beta_cov <- get_from_MME(sXaug,"beta_cov") 
+.unscale_beta_cov_info <- function(beta_cov_info,sXaug,X_scale) { ## assigns res$envir$beta_cov_info and returns bare beta_cov
   if (!is.null(X_scale)) {
     inv_X_scale <- 1/X_scale
-    if ( ! is.null(beta_v_cov <- attr(beta_cov,"beta_v_cov"))) { ## typically TRUE except for sparse_precision results
+    if ( ! is.null(beta_v_cov <- beta_cov_info$beta_v_cov)) { ## typically TRUE except for sparse_precision results
       Xcols <- seq_len(length(inv_X_scale))
       beta_v_cov[,Xcols] <- .m_Matrix_times_Dvec(beta_v_cov[,Xcols,drop=FALSE], inv_X_scale)
       beta_v_cov[Xcols,] <- .Dvec_times_m_Matrix(inv_X_scale, beta_v_cov[Xcols,,drop=FALSE])
       beta_cov <- beta_v_cov[Xcols,Xcols,drop=FALSE]
-      res$envir$beta_cov_info <- structure(beta_cov, beta_v_cov=beta_v_cov)
+      beta_cov_info <- list(beta_cov=beta_cov, beta_v_cov=beta_v_cov)
     } else {
-      beta_cov <- .Dvec_times_m_Matrix(inv_X_scale,.m_Matrix_times_Dvec(beta_cov,inv_X_scale))
+      beta_cov_info <- list(beta_cov=.Dvec_times_m_Matrix(inv_X_scale,.m_Matrix_times_Dvec(beta_cov_info$beta_cov,inv_X_scale)))
     }
-    rownames(beta_cov) <- colnames(beta_cov) ## In some cases, only colnames have been retained (reason explained in .Dvec_times_matrix)
-  } else {
-    rownames(beta_cov) <- colnames(beta_cov) ## In some cases, only colnames have been retained (bis)
-    if ( ! is.null(attr(beta_cov,"beta_v_cov"))) { ## typically TRUE except for sparse_precision results
-      ## beta_cov stricto sensu is a permanent element of the HLfit object (this might change later: FIXME)
-      ## beta_cov_info (with beta_v_cov attribute) is a labile element of the object $envir 
-      res$envir$beta_cov_info <- beta_cov
-      attr(beta_cov,"beta_v_cov") <- NULL ## store beta_v_cov info in only one place
-    }
-  }
-  return(beta_cov)
+  } 
+  rownames(beta_cov_info$beta_cov) <- colnames(beta_cov_info$beta_cov) ## In some cases, only colnames have been retained (reason explained in .Dvec_times_matrix)
+  return(beta_cov_info)
 }
+
 
 .scale <- function(X, beta=NULL) {
   if (is.null(beta)) {

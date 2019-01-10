@@ -8,16 +8,15 @@
 }
 \description{
   From an HLfit object, \code{simulate.HLfit} function generates new samples given the estimated fixed effects 
-  and dispersion parameters. Simulation may be conditional on the predicted values of random effects, or unconditional.
-  Simulations may be run for the original values of fixed-effect predictor variables and of random effect levels (spatial locations for spatial random effects), or for new values of these. However, conditional simulation in mixed models with new such values is not yet handled.  
-
-  %This does not yet work for new locations in a mixed model involving both spatial and non-spatial random effects. 
+  and dispersion parameters. Simulation may be unconditional (the default, useful in many applications of parametric bootstrap), or conditional on the predicted values of random effects, or may draw from the conditional distribution of random effects given the observed response.
+  Simulations may be run for the original values of fixed-effect predictor variables and of random effect levels (spatial locations for spatial random effects), or for new values of these. 
 }
 \usage{
-\method{simulate}{HLfit}(object, nsim = 1, seed = NULL, newdata = NULL,
-                         type = "marginal", conditional = NULL, verbose = TRUE,
-                         sizes = NULL, resp_testfn = NULL, phi_type = "predict",
-                         prior.weights = object$prior.weights, ...)
+\method{simulate}{HLfit}(object, nsim = 1, seed = NULL, newdata = NULL, 
+                         type = "marginal", re.form, conditional = NULL, 
+                         verbose = TRUE, sizes = NULL, resp_testfn = NULL, 
+                         phi_type = "predict", prior.weights = object$prior.weights, 
+                         ...)
 \method{simulate}{HLfitlist}(object, nsim = 1, seed = NULL, 
                              newdata = object[[1]]$data, sizes = NULL, ...)
 }
@@ -34,6 +33,8 @@
 }
   \item{newdata}{
   A data frame closely matching the original data, except that response values are not needed. May provide new values of fixed predictor variables, new spatial locations, or new individuals within a block.   
+}
+\item{re.form}{ formula for random effects to condition on. If non-missing, this argument overrides the \code{type} argument. As it is missing by default, the joint default \code{re.form} and \code{type} effect is the latter's default, i.e., unconditional simulation. \code{re.form=NULL} conditions on all random effects (as \code{type="residual"}), and \code{re.form=NA} conditions on none of the random effects (as \code{type="marginal"} or \code{re.form=~0}).  
 }
   \item{type}{
     character string specifying the type of simulation for mixed models. \code{"marginal"} is for simulation from the marginal distribution of the random effect; \code{"residual"} acounts only for the residual variation of the fitted model; and \code{"(ranef|response)"} accounts both for residual variation and for the conditional distribution of the random effects given the response and the point estimates of model parameters. This distribution is known exactly in LMMs, and otherwise approximated as a Gaussian distribution with mean vector and covariance matrix given as per the Laplace approximation.  

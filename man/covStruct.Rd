@@ -27,6 +27,9 @@ as_precision(corrMatrix)
 \arguments{
 \item{corrMatrix}{Correlation matrix, specified as \code{matrix} or as \code{dist} object}
 }
+\value{
+\code{as_precision} returns a list with addition class \code{precision} and with single element a symmetric matrix of class \code{dsCMatrix}.
+}
 \details{
 \code{covStruct} can also be specified as a list with an optional \code{"types"} attribute, e.g.\cr
 \code{structure(list(<some matrix>,types="corrMatrix"))}\cr

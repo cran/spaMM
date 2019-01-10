@@ -17,11 +17,11 @@ confint.HLfit <- function(object,parm,level=0.95,verbose=TRUE,...) {
   llc <- getCall(object)
   lc <- switch(paste(llc[[1L]]),
                "corrHLfit" = get_HLCorcall(object,fixed=llc$ranFix),
-               "fitme" = get_HLCorcall(object,fixed=llc$fixed),
+               "fitme" = get_HLCorcall(object,fixed=llc$fixed), # HLfit or HLCor call
                "HLCor" = get_HLCorcall(object,fixed=llc$ranPars),
                "HLfit" = get_HLCorcall(object,fixed=llc$ranFix),
                stop("Unhandled getCall(object) in confint.HLfit()")
-  ) # uniformly calling get_HLCorcall() so that $processed is always available (and thus calls .preprocess())
+  ) # uniformly calls get_HLCorcall() -> .preprocess() so that $processed is always available 
   HL <- object$HL
   lik <- switch(paste(HL[1L]),
                 "0"="hlik",
@@ -45,6 +45,13 @@ confint.HLfit <- function(object,parm,level=0.95,verbose=TRUE,...) {
   .assignWrapper(lc$processed,"LevenbergM['force'] <- FALSE") ## inhibits LevM for confint 
   optimInfo <- attr(object,"optimInfo") ## may be NULL
   trTemplate <- optimInfo$`optim.pars` ## may be NULL if optimInfo is NULL or if  optimInfo is not NULL but no par as outer optimized
+  attr(trTemplate,"optr") <- NULL 
+  attr(trTemplate,"method") <- NULL 
+  if ( ! is.null(augZXy_phi_est <- optimInfo$augZXy_phi_est)) { ## augZXy not used for confint but may have been used in the original fit.
+    lambda <- .dispInv(trTemplate$trLambda) ## assuming $trLambda exists...
+    lambda <- lambda * augZXy_phi_est 
+    trTemplate$trLambda <- .dispFn(lambda) 
+  }
   if ( ! is.null(trTemplate)) {
     olc <- lc ## olc is working copy
     LUarglist <- optimInfo$LUarglist
@@ -75,18 +82,30 @@ confint.HLfit <- function(object,parm,level=0.95,verbose=TRUE,...) {
         return(resu) ## return value to be optimized is a parameter value, not a likelihood
       }
     }
-    ad_hoc_fn <- function(posforminimiz) { ## optimize the CI bound and returns the parameters that optimize this bound
-      if (length(unlist(trTemplate))==1L) { ## .new_locoptim cannot be used in 1D case bc -> new_locoptim -> optimize does not use objfn_locoptim!
-        optr <- optimize(f=objfn,interval=unlist(LowUp)) # objfn uses posforminimiz in its definition 
-        return(relist(optr$m,trTemplate)) 
-      } else { # maximization (profiled out pars) may be multidimensional, 
-        optr <- .new_locoptim(init.optim=trTemplate,LowUp=LowUp,
-                              objfn_locoptim=objfn, # uses posforminimiz in its definition 
-                              # default HLcallfn.obj="HLCor.obj"
-                              anyHLCor_obj_args=anyObjfnCall.args,
-                              control=list())  
-        return(optr) ## already relisted
+    optim_bound_over_nuisance_pars <- function(posforminimiz) { ## optimize the CI bound and returns the parameters that optimize this bound
+      user_init_optim <- switch(paste(llc[[1L]]),
+                                "corrHLfit" = llc[["init.corrHLfit"]],
+                                "fitme" = llc[["init"]], 
+                                NULL)
+      init <- unlist(trTemplate)
+      if (paste(lc[[1]])=="HLCor") { HLcallfn_obj <- "HLCor.obj" } else HLcallfn_obj <- "HLfit.obj"
+      nloptr_controls <- spaMM.getOption("nloptr") 
+      if (is.null(nloptr_controls$maxeval)) nloptr_controls$maxeval <- eval(.spaMM.data$options$maxeval,
+                                                                            list(initvec=init))
+      if (is.null(nloptr_controls$xtol_abs)) {
+        nloptr_controls$xtol_abs <- eval(.spaMM.data$options$xtol_abs, 
+                                         list(LowUp=LowUp)) 
       }
+      optr <- .new_locoptim(init.optim=trTemplate,LowUp=LowUp,
+                            objfn_locoptim=objfn, # uses posforminimiz in its definition 
+                            HLcallfn.obj=HLcallfn_obj,
+                            user_init_optim=user_init_optim,
+                            anyHLCor_obj_args=anyObjfnCall.args,
+                            control=list(optimizer=spaMM.getOption("optimizer"))) # important to avoid use of optimize():
+      # We need an optimizer with control of the initial value (hence not optimize());
+      # otherwise the optimizer may never find a value of the nuisance pars that results in a focal parameter value 
+      #  with high enough lik. In that case the returned value of the focal parameter is the ML estimate and the interval reduces to the ML estimate.
+      return(optr) ## the bound, relist()'ed according to trTemplate
     }
     # corr_types <- LUarglist$corr_types
     # corr_families <- vector('list',length(corr_types))
@@ -110,11 +129,11 @@ confint.HLfit <- function(object,parm,level=0.95,verbose=TRUE,...) {
       # The objective function 'objfn' returns the confint bound given the corr pars. Thus locoptim maximizes the confint bound over the the corr pars
       olc <- lc ## that's olc that is used in the objective fn !
       posforminimiz <- 1 ## defined in the envir where objfn is defined... (bad style)
-      ## outer optimization is hidden in ad_hoc_fn call !!!!!!!!
+      bound <- optim_bound_over_nuisance_pars()
       if (paste(lc[[1]])=="HLCor") {
-        olc$ranPars <- structure(.modify_list(olc$ranPars,ad_hoc_fn())) ## replaces ! some elements and keeps the "type" (lazyness)!
+        olc$ranPars <- structure(.modify_list(olc$ranPars,bound)) ## replaces ! some elements and keeps the "type" (lazyness)!
       } else {
-        olc$ranFix <- structure(.modify_list(olc$ranFix,ad_hoc_fn())) ## replaces ! some elements and keeps the "type" !
+        olc$ranFix <- structure(.modify_list(olc$ranFix,bound)) ## replaces ! some elements and keeps the "type" !
       }
       ## recover fit for optimized params (must use call with intervalInfo and LevenbergM=FALSE)
       lowerfit <- eval(as.call(olc)) ## full HLfit objectobject
@@ -144,10 +163,11 @@ confint.HLfit <- function(object,parm,level=0.95,verbose=TRUE,...) {
     if (! is.null(trTemplate)) {
       olc <- lc
       posforminimiz <- -1 ## maximization
+      bound <- optim_bound_over_nuisance_pars()
       if (paste(lc[[1]])=="HLCor") {
-        olc$ranPars <- structure(.modify_list(olc$ranPars,ad_hoc_fn())) ## replaces ! some elements and keeps the "type" !
+        olc$ranPars <- structure(.modify_list(olc$ranPars,bound)) ## replaces ! some elements and keeps the "type" !
       } else {
-        olc$ranFix <- structure(.modify_list(olc$ranFix,ad_hoc_fn())) ## replaces ! some elements and keeps the "type" !
+        olc$ranFix <- structure(.modify_list(olc$ranFix,bound)) ## replaces ! some elements and keeps the "type" !
       }
       upperfit <- eval(as.call(olc))
       attr(upperfit,"optimInfo") <- optimInfo ## expected by summary.HLfit

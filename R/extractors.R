@@ -89,7 +89,7 @@
 
 ## fitted= X.beta + ZLv where we want to be able to write Lv as Cw = L.L'.w 
 # => w = inv(L').v
-.calc_invL_coeffs <- function(object,newcoeffs) { ##replaces dv/dloglan  by dw/dloglam
+.calc_invL_coeffs <- function(object,newcoeffs) { 
   strucList <- object$strucList
   if ( ! is.null(strucList)) {
     cum_n_u_h <- attr(object$lambda,"cum_n_u_h") ## FIXME: avoid using object$lambda
@@ -165,7 +165,12 @@ ranef.HLfit <- function(object,type="correlated",...) {
   #colNames <- lapply(object$ZAlist,"colnames") without a slow lapply():
   colNames <- vector("list", length(object$ZAlist))
   names(colNames) <- names(object$ZAlist)
-  for (it in seq_along(object$ZAlist)) colNames[[it]] <- colnames(object$ZAlist[[it]])
+  for (it in seq_along(object$ZAlist)) {
+    verif <- colnames(object$ZAlist[[it]])
+    if ( ! is.null(verif)) colNames[[it]] <- verif # do not assign <- NULL to list member
+    # the case NULL: I could stop(paste0("Misformed object: colnames(object$ZAlist[[",it,"]]) is NULL.")) 
+    # but this occurrence may depend on user input through AMatrices...
+  }
   # compute Lv from v:
   strucList <- object$strucList
   RESU <- vector("list", length(ranefs))
@@ -244,10 +249,14 @@ vcov.HLfit <- function(object, ...) {
 }
 
 .get_beta_cov_any_version <- function(object) {
-  beta_cov <- object$beta_cov ## set by HLfit using get_from_MME(, which="beta_cov")
-  if (is.null(beta_cov)) { ## should never happen
-    return(.get_beta_cov_info(object))
-  } else return(beta_cov)
+  if (object$spaMM.version > "2.5.20") {
+    beta_cov <- object$envir$beta_cov_info$beta_cov
+  } else {
+    beta_cov <- object$beta_cov
+    attr(beta_cov,"beta_v_cov") <- NULL 
+  } 
+  if (is.null(beta_cov)) beta_cov <- .get_beta_cov_info(object)$beta_cov ## notably for GLM
+  return(beta_cov)
 }
 
 # addition post 1.4.4
@@ -366,7 +375,7 @@ formula.HLfit <- function(x, ...) {
     form <- x$call$formula
   } else form <- getCall.HLfit(x)$formula
   if (is.null(form)) {
-    form <- getCall.HLfit(x)$processed$predictor
+    form <- getCall.HLfit(x)$processed$predictor # ! ! no offset! !
     ## finds something for HLfit member object in an HLfitlist  (they have a call with $processed and no $formula 
     #          bc it's not clear where to get a non-processed HLCor or HLfit call if the oricall was an outer optimizing fn)
     #    or    
@@ -375,18 +384,11 @@ formula.HLfit <- function(x, ...) {
   if (is.null(form)) { 
     ## residual fit object had no explicit $call of its own when this block was first written; 
     # but now (11/2018) it has $call$processed$predictor so we should not reach this point.
-    form <- x$predictor # should be equivalent to $call$processed$predictor
+    form <- x$predictor # should be equivalent to $call$processed$predictor (! ! no offset! !)
     ## Do not try to access or even create $call$resid.model$formula as was done in version < 2.4.136 !
   }
   form
 } ## extends stats::formula generic
-
-terms.HLfit <- function(x, ...) { ## the full formula with the attributes for the fixed effects only (OK for MSFDR -> stats::step())
-  # distinct attributes for ranefs wold surely work.
-  form <- x$predictor
-  attributes(form) <- attributes(.get_fixef_off_terms(x))
-  return(form)
-}
 
 nobs.HLfit <- function(object, ...) {length(object$y)}
 
@@ -448,7 +450,9 @@ get_ZALMatrix <- function(object,as_matrix) {
   ww <- c(object$w.resid, object$w.ranef) ## NOT sqrt()
   Wei_XZ_0I <- .calc_wAugX(XZ_0I=XZ_0I, sqrt.ww=ww) ## 2nd argument name misleading
   beta_cov_info <- .get_beta_cov_info(object)
-  beta_v_cov <- attr(beta_cov_info,"beta_v_cov")
+  if (object$spaMM.version > "2.5.20") {
+    beta_v_cov <- beta_cov_info$beta_v_cov
+  } else beta_v_cov <- attr(beta_cov_info,"beta_v_cov")
   augXWXXW <- tcrossprod(beta_v_cov, Wei_XZ_0I) ## = solve(crossprod(wAugX)) %*% crossprod(wAugX, diag(x=sqrt.ww))
   if (augmented) {
     return(augXWXXW)
@@ -456,6 +460,14 @@ get_ZALMatrix <- function(object,as_matrix) {
     return(augXWXXW[seq_len(ncol(object$X.pv)),seq_len(nrow(object$X.pv)),drop=FALSE])
   }
 }
+
+.get_control_dist <- function(fitobject, rd) {
+  if (is.null(optimInfo <- attr(fitobject,"optimInfo"))) {
+    # HLCor, or fitme with nothing to optimize... (corrHLfit with nothing to optimize has an optimInfo...)
+    outer_call <- getCall(fitobject) 
+    return(outer_call$dist.method[[rd]]) ## (from a preprocessed version copied back to the call)
+  } else return(optimInfo$LUarglist$moreargs[[rd]]$control.dist)
+} # F I X M E but the two are not equivalent since the moreargs version has gone through .provide_rho_mapping() which converts NULL rho.mapping into explicit rho_mappings
 
 get_matrix <- function(object, which="model.matrix", augmented=TRUE, ...) {
   switch(which,
@@ -511,16 +523,68 @@ how.HLfit <- function(object, devel=FALSE, ...) {
   }
   if (devel && ! is.null(switches <- info$switches)) {
     print(paste(paste(names(switches),"=",switches), collapse = ", "))
-    
-  }
+  }  
   invisible(info)
 }
 
+response <- function(object, ...) object$y[,1L]
+
 family.HLfit <- function(object, ...) object$family
 
-.get_fixef_off_terms <- function(object) {
-  if (object$spaMM.version > "2.5.9") {
-    return(object$HLframes$fixef_terms)
-  } else return(object$HLframes$fixef_off_terms)
-}
+model.frame.HLfit <- function(formula, ...) {
+  object <- formula
+  form <- formula(object) 
+  form <- .asNoCorrFormula(form) ## strips out the spatial information, retaining the variables
+  frame.form <- .subbarsMM(form) ## this comes from lme4 and converts (...|...) terms to some "+" form 
+  environment(frame.form) <- environment(form)
+  mf_call <- call("model.frame", data=object$data, formula=frame.form,  drop.unused.levels=TRUE) # language object reused later
+  eval(mf_call) ## data.frame with all vars required for fixef and for ranef, and a "terms" attribute
+} ## model frame -> data.frame; model.matrix -> matrix...
+
+## Might eventually try to match the merMod version:
+#   str(model.frame(fittedModel))
+#   'data.frame':	200 obs. of  3 variables:
+#     $ observedResponse: int  1 1 1 1 0 0 1 0 1 1 ...
+#   $ Environment1    : num  -0.776 0.119 -0.29 0.527 0.726 ...
+#   $ group           : Factor w/ 10 levels "1","2","3","4",..: 1 1 1 1 1 1 1 1 1 1 ...
+#   - attr(*, "terms")=Classes 'terms', 'formula'  language observedResponse ~ Environment1 + (1 + group)
+#   .. ..- attr(*, "variables")= language list(observedResponse, Environment1, group)
+#   .. ..- attr(*, "factors")= int [1:3, 1:2] 0 1 0 0 0 1
+#   .. .. ..- attr(*, "dimnames")=List of 2
+#   .. .. .. ..$ : chr [1:3] "observedResponse" "Environment1" "group"
+#   .. .. .. ..$ : chr [1:2] "Environment1" "group"
+#   .. ..- attr(*, "term.labels")= chr [1:2] "Environment1" "group"
+#   .. ..- attr(*, "order")= int [1:2] 1 1
+#   .. ..- attr(*, "intercept")= int 1
+#   .. ..- attr(*, "response")= int 1
+#   .. ..- attr(*, ".Environment")=<environment: R_GlobalEnv> 
+#     .. ..- attr(*, "predvars")= language list(observedResponse, Environment1, group)
+#   .. ..- attr(*, "dataClasses")= Named chr [1:3] "numeric" "numeric" "factor"
+#   .. .. ..- attr(*, "names")= chr [1:3] "observedResponse" "Environment1" "group"
+#   .. ..- attr(*, "predvars.fixed")= language list(observedResponse, Environment1)
+#   .. ..- attr(*, "varnames.fixed")= chr [1:2] "observedResponse" "Environment1"
+#   .. ..- attr(*, "predvars.random")= language list(observedResponse, group)
+#   - attr(*, "formula")=Class 'formula'  language observedResponse ~ Environment1 + (1 | group)
+#   .. ..- attr(*, ".Environment")=<environment: R_GlobalEnv> 
+#     
+#     
+# starting from 
+#   'data.frame':	200 obs. of  3 variables:
+#     $ observedResponse: int  1 1 1 1 0 0 1 0 1 1 ...
+#   $ Environment1    : num  -0.776 0.119 -0.29 0.527 0.726 ...
+#   $ group           : Factor w/ 10 levels "1","2","3","4",..: 1 1 1 1 1 1 1 1 1 1 ...
+#   - attr(*, "terms")=Classes 'terms', 'formula'  language observedResponse ~ Environment1 + (1 + group)
+#   .. ..- attr(*, "variables")= language list(observedResponse, Environment1, group)
+#   .. ..- attr(*, "factors")= int [1:3, 1:2] 0 1 0 0 0 1
+#   .. .. ..- attr(*, "dimnames")=List of 2
+#   .. .. .. ..$ : chr [1:3] "observedResponse" "Environment1" "group"
+#   .. .. .. ..$ : chr [1:2] "Environment1" "group"
+#   .. ..- attr(*, "term.labels")= chr [1:2] "Environment1" "group"
+#   .. ..- attr(*, "order")= int [1:2] 1 1
+#   .. ..- attr(*, "intercept")= int 1
+#   .. ..- attr(*, "response")= int 1
+#   .. ..- attr(*, ".Environment")=<environment: 0x000000002871d6e8> 
+#     .. ..- attr(*, "predvars")= language list(observedResponse, Environment1, group)
+#   .. ..- attr(*, "dataClasses")= Named chr [1:3] "numeric" "numeric" "factor"
+#   .. .. ..- attr(*, "names")= chr [1:3] "observedResponse" "Environment1" "group"
 
