@@ -10,7 +10,10 @@
   fitted.values <- x$fv
   ## possible modif of 'which':
   if (is.null(residuals)) {## possible if disp pars in ranFix
-    which <- setdiff(which,c("mean")) ## all 'mean' diagnostic plots involve these residuals
+    if ("mean" %in% "which") {
+      message("No 'mean' plot produced because computation of leverages for phi was not needed to fit the model.")
+      which <- setdiff(which,c("mean")) ## all 'mean' diagnostic plots involve these residuals
+    }
   }
   if ("predict" %in% which) {
     plot(x$y,predict(x),xlab="Response",ylab="Predicted response",...)

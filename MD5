@@ -1,4 +1,4 @@
-51f81c1f3b7bfd468f552f7e28988b04 *DESCRIPTION
+69391cb31b51a717d1525821227b1b00 *DESCRIPTION
 55beb3a07687cff497fbfdf35dc6cb51 *NAMESPACE
 ab03bd10b7ef2c880dd3069001429085 *R/Beta.R
 0d2a76e98bcd15fb4de94e1d0a047ec2 *R/COMPoisson.R
@@ -8,9 +8,9 @@ a9f3c74d368fe384903f87a5f2f103ea *R/CanonizeRanPars.R
 d668fdfed0b3ef3ce9130e11155f5042 *R/HLCor_body.R
 74f70a4e31356ae79d14e3dfa115de3e *R/HLFactorList.R
 2fdd2738531ac1a4c126bfcd228ef4bd *R/HLfit.R
-f7ccb251f7cd88e6b1e7e586d40e5e3b *R/HLfit_Internals.R
+3f4a6b47dfbd1d2140fc2665bc081566 *R/HLfit_Internals.R
 ce9328e9ed938bf5dcf0ddb041f7b606 *R/HLfit_b_internals.R
-ae8b645f92c1075e66f0886f93e67635 *R/HLfit_body.R
+45d7574d56127d357d47102f36f915e8 *R/HLfit_body.R
 a1b506f40247393bab5f8748e5dc6f8c *R/HLfit_body_augZXy.R
 70ac83cbece64c9aed26f493378dd03b *R/HLframes.R
 cdc44cd7385baf4002da20bfbc5fed8a *R/LR.R
@@ -52,7 +52,7 @@ d5deb7487f619015e740ee9fc1ad03f1 *R/inverse.Gamma.R
 f9f56f9518338207d73ffc6152b94a49 *R/multinomial.R
 66d931a37f08621ddc843cfab63795ec *R/negbin.R
 65753f36972acfcd9951cd0aefdd90a7 *R/newPLS.R
-4ca1598d278ac9d6924bc7479caa7903 *R/plot.HLfit.R
+5663146cec5e3cfc8ddbbb0c26226046 *R/plot.HLfit.R
 20f3f854572cfec0571939e9d0b39093 *R/poisson.R
 029565bc883a14339bbd654d621e322a *R/precision_internals.R
 2f18a2ac1b3146221d271ec14247ed9e *R/predict.R
@@ -76,7 +76,7 @@ c5169c21a69c1f19c121597d6693347b *R/summary.HL.R
 17fdfd920109b9c6627e86469b459c91 *R/terms.R
 f1b72d24147b1e324d949692ec3cb950 *R/update.HL.R
 c0e65821a2a43bd67c06979267f463e8 *R/utils.R
-493f92a421f8ce29a27e5949fd31c792 *build/partial.rdb
+841080de4cbb2f96514a2772c254734b *build/partial.rdb
 c4971e9a8feaf9037911f6766d5ac3fb *data/Loaloa.RData
 1c6616c1e32de97527e76dba98f4381a *data/adjlg.RData
 009f49b02d6ed8131b6f415103097aec *data/arabidopsis.RData
@@ -93,7 +93,7 @@ e1f10c7ff65b860333b0b7175519eb54 *data/wafers.RData
 2160a87414edf88691129fab674a31e7 *data/welding.RData
 acb69d528614f3da680fd498f425f2d7 *data/worldcountries.RData
 d8854c2b53f67ddba3439380d3dc09c0 *inst/CITATION
-26aca3c19de6aaa334aa9c7f3fb2c9fc *inst/NEWS.Rd
+b3604d06d7363bcbc7b0ff6069fa66d8 *inst/NEWS.Rd
 129de843d86f447b9d62ad2349c9574a *man/AIC.Rd
 16576a0947d2750595b5f198fd578306 *man/COMPoisson.Rd
 5849f326bb92d39d3035984c95649da3 *man/CauchyCorr.Rd
@@ -110,7 +110,7 @@ d211c0d70dd6e578e78e6a05852431f4 *man/anova.HLfit.Rd
 b8fdab4c43ab39e739ad62c74bb7cb77 *man/autoregressive.Rd
 d64ccd82b8ab154d7e10b3bc066c5aa6 *man/blackcap.Rd
 eeea7b2c9e3ce883b72ed9af2d5f09d3 *man/confint.Rd
-a3d766fcb2dd1303b23d007c2e817a6f *man/corMatern.Rd
+d8464d3ea68ca2b5623be39aa2f70f97 *man/corMatern.Rd
 b5c4221a406e66d53aaec56406d90d68 *man/corrHLfit.Rd
 b51c67d5d951d9bd7e4d243624d8b8b1 *man/corrMatrix.Rd
 5fe0a5e73387720cd7c6d7466e7f91fe *man/corr_family.Rd
@@ -132,7 +132,7 @@ be5f47c1f18d21baacbd93794828b041 *man/inverse.Gamma.Rd
 3850409f4fb97acbd2d0496a17b87483 *man/mat_sqrt.Rd
 63565f090a63b4f13f98016271fb34ab *man/multinomial.Rd
 478ff5f68e757324734a8349b5a6ff3b *man/negbin.Rd
-dad9bba7ef7720e4f89b9ac8777947c3 *man/options.Rd
+285c417dc12e9cfa90f8ea35b6d55eb0 *man/options.Rd
 c93058d8b62c74d23cf222b36db74c5e *man/pedigree.Rd
 a10408d2158f51d4b7f97cfc8e941fe5 *man/phiHGLM.Rd
 c2e46e64dac9e0581891d96b7c0c2ab4 *man/plot.HL.Rd

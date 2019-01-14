@@ -4,6 +4,18 @@
 % cf ?news for the format and usage of this file
 %
 \section{CHANGES UP TO VERSION 2.6.0}{ 
+\subsection{USER-LEVEL CHANGES}{
+\itemize{
+\item Informative message when plot.HLfit does not produce a 'mean' plot. 
+}
+}
+\subsection{FIXED BUGS}{
+\itemize{
+\item Fix problem in corMatern example (only on CRAN tests for debian+gcc, which started with a system upgrade to glibc 2.28, and which may reveal weaknesses of nlme and/or nlminb rather than spaMM).
+}
+}
+}
+\section{CHANGES UP TO VERSION 2.6.0}{ 
 \subsection{NEW FEATURES}{
 \itemize{
 \item New syntax for autocorrelated random-coefficient effects, allowing e.g. the formula terms Matern(male|.) + Matern(female|.) to fit distinct Matern effects for males and females. See help(spaMM) for details.

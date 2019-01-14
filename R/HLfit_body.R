@@ -594,7 +594,7 @@ HLfit_body <- local({
                                verbose=verbose,
                                control.phi=control.HLfit$`control.phi`)
         if (! is.null(locw <- calcPHIblob$glm_phi$warnmess)) warningList$innerPhiGLM <- locw
-        next_phi_est <- calcPHIblob$next_phi_est # value of *phi* (not phi_i:= phi/prior.weights as pw are usd inGLMweights, not here)  
+        next_phi_est <- calcPHIblob$next_phi_est # value of *phi* (not phi_i:= phi/prior.weights as pw are used in GLMweights, not here)  
       }
       if (any(next_phi_est<1e-12)) {
         if (is.null(min_phi <- control.HLfit$min_phi)) {

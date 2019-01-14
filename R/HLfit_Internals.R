@@ -750,11 +750,11 @@ spaMM_Gamma <- function (link = "inverse") {
       d2logMthdth2 <- -(1 + expmu * (mu-1))* mu/((expmu-1)^2)
       exp2mu <- expmu^2
       d3logMthdth3 <- mu * (1 + 3 * mu *(expmu - exp2mu) + (mu^2) *(expmu + exp2mu) + exp2mu - 2 * expmu )/(expmu-1)^3
-    } else if (family$family=="negbin") { 
-      ## D[Log[1 - E^-E^theta], {theta, 2}] /. {theta -> Log[mu]} // Simplify
+    } else if (family$family=="negbin") { ## computations in TruncatedNegBin.nb
+      ## D[Log[1 - E^-E^theta], {theta, 2}] /. {theta -> Log[mu...]} // Simplify
       shape <- .get_family_par(family,"shape")
       p0 <- (shape/(mu+shape))^shape ## (1-p)^r
-      dlogMthdth <- (mu * p0)/(1-p0)
+      dlogMthdth <- (mu * p0)/(1-p0) ## family-specific relation btwn correction term M(th) for truncation and p0
       d2logMthdth2 <- -((mu * p0 *(shape *(-1 + p0) + mu *(-1 + shape + p0)))/(shape *(-1 + p0)^2))
       d3logMthdth3 <- -((mu * p0 * (shape^2 *(-1 + p0)^2 + 3 * mu * shape *(-1 + p0) * (-1 + shape + p0) + 
                                       mu^2 *(3 *shape *(-1 + p0) + 2 *(-1 + p0)^2 + shape^2 *(1 + p0))))/(

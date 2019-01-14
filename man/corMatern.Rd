@@ -107,7 +107,7 @@ blackcapD <- cbind(blackcap,dummy=1) ## obscure, isn't it?
 ##  as a correlated residual error and no extra residual variance is fitted:
 nlme::lme(fixed = migStatus ~ means, data = blackcapD, random = ~ 1 | dummy, 
     correlation = corMatern(form = ~ longitude+latitude  | dummy), 
-    method = "ML")
+    method = "ML", control=nlme::lmeControl(sing.tol=1e-20))
 
 ## Binomial GLMM
 if (spaMM.getOption("example_maxtime")>32) {
