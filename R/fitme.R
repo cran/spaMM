@@ -90,7 +90,7 @@
                   processed=NULL, 
                   ... 
 ) {
-  spaMM.options(spaMM_glm_conv_crit=list(max=-Inf))
+  assign("spaMM_glm_conv_crit",list(max=-Inf) , envir=environment(spaMM_glm.fit))
   time1 <- Sys.time()
   oricall <- match.call(expand.dots=TRUE) ## mc including dotlist
   oricall$formula <- .preprocess_formula(formula) ## Cf comment in .getValidData
@@ -103,7 +103,6 @@
     attr(hlcor,"call") <- oricall
   } else hlcor$call <- oricall ## this is a call to fitme()
   attr(hlcor,"HLCorcall") <- NULL
-  #class(hlcor) <- c(class(hlcor,"fitme"))
   lsv <- c("lsv",ls())
   if ( ! identical(paste(family[[1L]]),"multi")) {
     hlcor$how$fit_time <- .timerraw(time1)
@@ -130,11 +129,12 @@ fitme <- function(formula,data, ## matches minimal call of HLfit
                   objective=NULL,
                   ... 
 ) {
-  spaMM.options(spaMM_glm_conv_crit=list(max=-Inf))
+  assign("spaMM_glm_conv_crit",list(max=-Inf) , envir=environment(spaMM_glm.fit))
   time1 <- Sys.time()
   oricall <- match.call(expand.dots=TRUE) ## mc including dotlist
   oricall$formula <- .preprocess_formula(formula) ##  Cf comment in .getValidData
   mc <- oricall
+  if (is.null(fixed)) mc$fixed <- list() ## deep reason is that relist(., fixed) will need a list
   ## Preventing confusions
   if ( missing(HLmethod)) {
     HLmethod <- method
@@ -210,7 +210,6 @@ fitme <- function(formula,data, ## matches minimal call of HLfit
     hlcor$call <- oricall ## this is a call to fitme()
   }
   attr(hlcor,"HLCorcall") <- NULL # presumably no more needed
-  #class(hlcor) <- c(class(hlcor,"fitme"))
   lsv <- c("lsv",ls())
   if ( ! identical(paste(family[[1L]]),"multi") && ! is.call(hlcor) ) {
     hlcor$how$fit_time <- .timerraw(time1)

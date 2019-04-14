@@ -109,15 +109,17 @@ corrHLfit_body <- function(processed, ## possibly a list of environments
     }
   }
   if (!is.null(optPars)) {
-    HLCor.args$ranPars <- structure(.modify_list(HLCor.args$ranPars,optPars),
+    ranPars_in_refit <- structure(.modify_list(HLCor.args$ranPars,optPars),
                                     # I write "F I X" as a TAG for this modif type attribute:
                                     type=.modify_list(relist(rep("fix",length(unlist(HLCor.args$ranPars))),HLCor.args$ranPars), #attr(HLCor.args$ranPars,"type"),
                                                       relist(rep("outer",length(unlist(optPars))),optPars)),
                                     moreargs=moreargs)
   } else {
-      HLCor.args$ranPars <- structure(HLCor.args$ranPars,
+    ranPars_in_refit <- structure(HLCor.args$ranPars,
                                       type = relist(rep("fix", length(unlist(HLCor.args$ranPars))), HLCor.args$ranPars))
   }
+  ranPars_in_refit <- .expand_hyper(ranPars_in_refit, processed$hyper_info, moreargs=moreargs)
+  HLCor.args$ranPars <- ranPars_in_refit
   # if processed is an envir, the following is not local to anyHLCor_obj_args$processed but change processed globally
   .assignWrapper(HLCor.args$processed,"return_only <- NULL") 
   .assignWrapper(HLCor.args$processed,"verbose['warn'] <- TRUE") ## important!

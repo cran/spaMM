@@ -8,18 +8,18 @@
 \description{
 \code{covStruct} is a formal argument of \code{HLCor}, also handled by \code{fitme} and \code{corrHLfit}, that allows one to specify the correlation structure for different types of random effects, It is an alternative to other ad hoc formal arguments such as \code{corrMatrix} or \code{adjMatrix}. It replaces the deprecated function \code{Predictor(...)} which has served as an interface for specifying the design matrices for random effects in early versions of \code{spaMM}. 
 
-It is assumed that the design matrices for the random effects take the form \bold{ZL} or \bold{ZAL} (see Details) where the \bold{L} factor can be determined from the \code{covStruct} argument (or from the model formula), the \bold{Z} factor is determined from the model formula, and the optional \bold{A} factor is given by the optional \code{"AMatrices"} attribute of \code{covStruct}.
+It is assumed that the design matrices for the random effects take the form \bold{ZL} or \bold{ZAL} where the \bold{L} factor can be determined from the \code{covStruct} argument (or from the model formula; see Details), the \bold{Z} factor is determined from the model formula, and the optional \bold{A} factor is given by the optional \code{"AMatrices"} attribute of \code{covStruct}.
 
 \code{covStruct} is a \code{list} of matrices with names specifying the type of matrix considered: \code{covStruct=list(corrMatrix=<some matrix>)} or \code{covStruct=list(adjMatrix=<some matrix>)}, where the \dQuote{corrMatrix} or \dQuote{adjMatrix} names are used to specify the type of information provided (accordingly, the names can be repeated: \code{covStruct=list(corrMatrix=<.>,corrMatrix=<.>)}). 
 \cr
 The covariance structure of a \code{corrMatrix(1|<grouping factor>)} formula term can be specified in two ways (see Examples): either by a correlation matrix factor (\code{covStruct=list(corrMatrix=<some matrix>)}), or by a precision matrix factor \bold{Q} such that the covariance factor is \eqn{\lambda}\bold{Q}\eqn{^{-1}}, using the type name \code{"precision"}: \code{covStruct=list(precision=<some matrix>)}. In this case, an algorithm efficient for \bold{sparse} precision matrices is used to fit the model. 
 The function \code{as_precision} can be used to perform the conversion from correlation information to precision factor (using a crude solve() that may not always be efficient).
 
-\code{"AMatrices"} is a list of matrices. The names of elements of the list does not matter, but the row names of each \code{A} matrix should match the column names of the corresponding \bold{Z} matrices.
-
 \code{NULL} list members may be necessary, e.g.\cr 
 \code{covStruct=list(corrMatrix=<.>,"2"=NULL,corrMatrix=<.>)})\cr
-when correlations matrices are required only for the first and third random effect. The same syntax should be used for the \code{"AMatrices"} attribute.
+when correlations matrices are required only for the first and third random effect. 
+
+\code{"AMatrices"} is a list of matrices. The names of elements of the list does not matter, but the \emph{i}th \code{A} matrix, and its row names, should match the \emph{i}th \bold{Z} matrix, and its column names. This implies that \code{NULL} list members may be necessary, as for the \code{covStruct} list.
 }
 \usage{
 as_precision(corrMatrix)  

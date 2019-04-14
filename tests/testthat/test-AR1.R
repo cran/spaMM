@@ -1,6 +1,6 @@
 cat("\ntest AR1:\n")
 
-if (spaMM.getOption("example_maxtime")>12) { # 
+if (spaMM.getOption("example_maxtime")>8) { # fit itself < 8s
   set.seed(123)
   nobs <- 500
   distm <- as.matrix(dist(1:nobs)) 
@@ -35,7 +35,7 @@ if (TRUE) {
   fake <- data.frame(obs=obs,age=age,ind=as.factor(ind+1L), ## as.factor( [all > 1] ) to test the dark side of uniqueGeo
                      idx=seq_len(length(obs)))
   ## the sample() provides a check that permutations of the data have no effect
-  spaMM.options(sparse_precision=NULL) ## checks the sparse->non-sparse case
+  spaMM.options(sparse_precision=NULL) ## checks the sparse->non-sparse case (assuming .determine_spprec() returns FALSE)
   zut <- corrHLfit(obs ~ 1+AR1(1|idx %in% ind),family=poisson(),data=fake[20+sample(20),],ranFix=list(ARphi=0.7040234,lambda=0.7308))
   spaMM.options(sparse_precision=TRUE)
   rezut <- corrHLfit(obs ~ 1+AR1(1|idx %in% ind),family=poisson(),data=fake[20+sample(20),],ranFix=list(ARphi=0.7040234,lambda=0.7308))
@@ -69,9 +69,9 @@ if (spaMM.getOption("example_maxtime")>13) {
   fake <- data.frame(obs=obs,age=age,ind=ind,idx=seq_len(length(obs)))
   ## the sample() provides a check that permutations of the data have no effect
   spaMM.options(sparse_precision=NULL) ## checks the sparse->non-sparse case
-  zut <- corrHLfit(obs ~ 1+AR1(1|idx %in% ind),family=poisson(),data=fake[20+sample(20),])
+  (zut <- corrHLfit(obs ~ 1+AR1(1|idx %in% ind),family=poisson(),data=fake[20+sample(20),]))
   spaMM.options(sparse_precision=TRUE)
-  rezut <- corrHLfit(obs ~ 1+AR1(1|idx %in% ind),family=poisson(),data=fake[20+sample(20),])
+  (rezut <- corrHLfit(obs ~ 1+AR1(1|idx %in% ind),family=poisson(),data=fake[20+sample(20),]))
   spaMM.options(sparse_precision=FALSE)
   rerezut <- corrHLfit(obs ~ 1+AR1(1|idx %in% ind),family=poisson(),data=fake[20+sample(20),])
   spaMM.options(sparse_precision=NULL)
@@ -84,12 +84,15 @@ if (spaMM.getOption("example_maxtime")>13) {
 if (spaMM.getOption("example_maxtime")>0.5) {
   requireNamespace("nlme")
   data("Orthodont",package = "nlme")
-  #checkinput <- fitme(distance ~ age + factor(Sex)+( 1 | Subject)+ AR1(1|age %in% Subject), fixed=list(phi=1e-6),
-  #      data = Orthodont,verbose=c(TRACE=interactive()),method="REML")  ## 1.5s
-  checkinput <- corrHLfit(distance ~ age + factor(Sex)+( 1 | Subject)+ AR1(1|age %in% Subject), ranFix=list(phi=1e-6),
-                          data = Orthodont,verbose=c(TRACE=interactive()),HLmethod="REML")
+  if (FALSE) {
+    checkinput <- fitme(distance ~ age + factor(Sex)+( 1 | Subject)+ AR1(1|age %in% Subject), fixed=list(phi=1e-6), 
+                        data = Orthodont,verbose=c(TRACE=interactive()),method="REML")  
+  } else { # remains faster...
+    checkinput <- corrHLfit(distance ~ age + factor(Sex)+( 1 | Subject)+ AR1(1|age %in% Subject), ranFix=list(phi=1e-6),
+                            data = Orthodont,verbose=c(TRACE=interactive()),HLmethod="REML")
+  }
   testthat::expect_equal(logLik(checkinput), c(p_bv=-218.69839984))
   # consistent with 
   # lme(distance ~ age + factor(Sex),random = ~ 1 | Subject, cor=corCAR1(form=~age|Subject),data = Orthodont)
-  # which is faster (FIXME: LMM-specific code?)
+  # which is faster (FIXME: .assign_geoinfo_and_LMatrices_but_ranCoefs() for AR1 not efficient; more work needed to handle nested AR1 efficiently)
 }

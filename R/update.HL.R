@@ -64,7 +64,7 @@ update.HLfit <- function (object, formula., ..., evaluate = TRUE) {
     stop("need an object with call component")
   extras <- match.call(expand.dots = FALSE)$...
   if (!missing(formula.)) {
-    oriform <- formula.HLfit(object) ## formula from $call, not $predictor
+    oriform <- formula.HLfit(object, which="hyper") ## with hyper-ranefs and offset
     ## fixme A long time ago I wrote "does not handle etaFix$beta"... 
     if (is.null(data <- extras$data)) data <- object$data ## fortunately keeping more than the variables required in the original formula
     call$formula <- .update_formula(oriform,formula.) 
@@ -82,11 +82,10 @@ update.HLfit <- function (object, formula., ..., evaluate = TRUE) {
   else call
 }
 
-update_resp <- function(object, newresp, evaluate = TRUE) {
-  if (is.null(re_call <- getCall(object))) stop("need an object with call component")
+.update_data <- function(object, newresp) {
   re_data <- object$data
   mf <- model.frame(object)
-  form <- formula.HLfit(object)
+  #form <- formula.HLfit(object, which="hyper")
   Y <- model.response(mf)
   if (NCOL(Y)==2L) { ## paste(form[[2L]])[[1L]]=="cbind"
     # model.frame is a data frame whose 1st element is a 2-col matrix with unamed first column
@@ -103,10 +102,26 @@ update_resp <- function(object, newresp, evaluate = TRUE) {
     ## : from a formula of the form formula I(<fn>(var...)) ~ ... colnames(mf)[1L] is "I(<fn>(var...))" 
     # for a variable of class 'AsIs' which is NOT used in the refit... 
     if (inherits(mf[[1L]],"AsIs")) {
-      stop("the response of the original fit is as 'AsIs' term, I(.), which is not handled by update_resp().")
+      stop("the response of the original fit is as 'AsIs' term, I(.), which is not handled by code updating response.")
+      # the alternative would be to change internally the lhs of the formula...
     } else re_data[colnames(mf)[1L]] <- newresp 
   }
-  re_call$data <- re_data
+  return(re_data)
+}
+
+update_resp <- function(object, newresp, ...,  evaluate = TRUE) {
+  if (is.null(re_call <- getCall(object))) stop("need an object with call component")
+  extras <- match.call(expand.dots = FALSE)$...
+  if ("data" %in% names(extras)) stop("'data' not allowed in update_resp()'s arguments")
+  if (length(extras)) {
+    existing <- !is.na(match(names(extras), names(re_call))) ## which to replace and which to add to the call
+    for (a in names(extras)[existing]) re_call[[a]] <- extras[[a]] ## replace
+    if (any(!existing)) {
+      re_call <- c(as.list(re_call), extras[!existing]) ## add
+      re_call <- as.call(re_call)
+    }
+  }
+  re_call$data <- .update_data(object, newresp=newresp)
   if (evaluate) 
     eval(re_call, parent.frame())
   else re_call
@@ -122,7 +137,7 @@ if (FALSE) {
 }
 
 # Fix intercept issue in local def of stats::terms.formula
-.fixFormulaObject <- function (object) {
+.fixFormulaObject <- function (object) { # object is a formula object not a fit object
   Terms <- terms(object)
   tmp <- attr(Terms, "term.labels")
   ind <- grep("|", tmp, fixed = TRUE)

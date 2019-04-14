@@ -1,6 +1,6 @@
 .LevenbergMsolve_Matrix <- function(wAugX, LM_wAugz, damping){ 
-  rhs <- as.vector(Matrix::crossprod(wAugX,LM_wAugz)) ## t(wAugX) %*% LM_wAugz ## backward: A'.z* ## rhs needed further below to assess
-  AtAdDpD <- Matrix::crossprod(wAugX)
+  rhs <- as.vector(.crossprod(wAugX,LM_wAugz)) ## t(wAugX) %*% LM_wAugz ## backward: A'.z* ## rhs needed further below to assess
+  AtAdDpD <- .crossprod(wAugX)
   dampDpD <- damping * diag(AtAdDpD)
   nc <- ncol(wAugX)
   diagPos <- seq.int(1L,nc^2,nc+1L)

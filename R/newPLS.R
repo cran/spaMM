@@ -160,10 +160,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
   } else .leverages(X) ## requests Q from Eigen QR hich is inefficient for large nrow(X)
 }
 
-
-.calc_dvdloglamMat_new <- function(dlogfthdth,cum_n_u_h,lcrandfamfam,rand.families,u_h,
-                                   sXaug, d2hdv2_info=NULL, ## use either one
-                                   stop.on.error) {
+.calc_neg_d2f_dv_dloglam <- function(dlogfthdth, cum_n_u_h, lcrandfamfam, rand.families, u_h) {
   neg.d2f_dv_dloglam <- vector("list",length(lcrandfamfam))
   for (it in seq_len(length(lcrandfamfam)) ) {
     u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
@@ -178,29 +175,71 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
     } 
   }
   neg.d2f_dv_dloglam <- unlist(neg.d2f_dv_dloglam)
-  neg.d2f_dv_dloglam <- as.vector(neg.d2f_dv_dloglam)
-  if(is.null(d2hdv2_info)) {
-    dvdloglamMat <- get_from_MME(sXaug,"solve_d2hdv2",B=diag( neg.d2f_dv_dloglam)) ## square matrix, by  the formulation of the algo 
-  } else if (inherits(d2hdv2_info,"qr") || inherits(d2hdv2_info,"sparseQR") ) {
-    dvdloglamMat <- solve(d2hdv2_info, diag( neg.d2f_dv_dloglam ))  # rXn       
-  } else { ## then d2hdv2_info is ginv(d2hdv2) or some other form of inverse
-    dvdloglamMat <- sweep(d2hdv2_info,MARGIN=2L,neg.d2f_dv_dloglam,`*`) ## ginv(d2hdv2) %*% diag( as.vector(neg.d2f_dv_dloglam))      
-  }
-  return(dvdloglamMat) ## square matrix, by  the formulation of the algo 
+  return(as.vector(neg.d2f_dv_dloglam))
 }
+
+
+.useless_calc_dvdloglamMat_info <- function(neg.d2f_dv_dloglam,
+                                            sXaug, d2hdv2_info=NULL ## use either one
+) {
+  if (is.environment(d2hdv2_info)) {
+    # dvdloglamMat <- solve(d2hdv2_info, diag( neg.d2f_dv_dloglam ))  # rXr !       
+    rhs <- .Matrix_times_Dvec(d2hdv2_info$chol_Q, - neg.d2f_dv_dloglam ) # don't forget '-'
+    dvdloglamMat_info <- solve(d2hdv2_info$G_CHMfactor,rhs)
+  } else { 
+    stop("case not handled in .calc_dvdloglamMat_info() (use spaMM.options(TRY_ZAX=FALSE)?)")
+  }
+  return(dvdloglamMat_info) ## square matrix
+}
+
+.calc_dvdloglamMat_new <- function(neg.d2f_dv_dloglam,
+                                   sXaug, d2hdv2_info=NULL ## use either one
+                                   ) {
+  if(is.null(d2hdv2_info)) {
+    if (TRUE) {
+      if (is.matrix(sXaug)) { # sXaug_EigenDense_QRP_Chol_scaled case
+        dvdloglamMat <- get_from_MME(sXaug,"solve_d2hdv2",B=diag( neg.d2f_dv_dloglam))
+      } else  dvdloglamMat <- get_from_MME(sXaug,"solve_d2hdv2",B=Diagonal(x= neg.d2f_dv_dloglam))
+    } else {
+      # Avoids the inelegant test is.matrix(sXaug), but... less accurate!
+      inv_d2hdv2 <- get_from_MME(sXaug,"solve_d2hdv2") # slow step (test-negbin1 with large nobs is good example)
+      dvdloglamMat <- .m_Matrix_times_Dvec(inv_d2hdv2, neg.d2f_dv_dloglam)# get_from_MME(sXaug,"solve_d2hdv2",B=diag( neg.d2f_dv_dloglam)) ## square matrix, by  the formulation of the algo 
+    }
+  } else if (inherits(d2hdv2_info,"qr") || inherits(d2hdv2_info,"sparseQR") ) {
+    dvdloglamMat <- solve(d2hdv2_info, diag( neg.d2f_dv_dloglam ))  # rXr !       
+  } else if (is.environment(d2hdv2_info)) {
+    # dvdloglamMat <- solve(d2hdv2_info, diag( neg.d2f_dv_dloglam ))  # rXr !       
+    rhs <- .Matrix_times_Dvec(d2hdv2_info$chol_Q, neg.d2f_dv_dloglam )
+    rhs <- solve(d2hdv2_info$G_CHMfactor,rhs)
+    dvdloglamMat <- - .crossprod(d2hdv2_info$chol_Q,rhs) # don't forget '-'
+  } else { ## then d2hdv2_info is ginv(d2hdv2) or some other form of inverse
+    dvdloglamMat <- .m_Matrix_times_Dvec(as(d2hdv2_info, "dgCMatrix"), # otherwise Matrix_times_Dvec() with dsC defaults detect a problem
+                                         neg.d2f_dv_dloglam) ## sweep(d2hdv2_info,MARGIN=2L,neg.d2f_dv_dloglam,`*`) ## ginv(d2hdv2) %*% diag( as.vector(neg.d2f_dv_dloglam))      
+  }
+  return(as.matrix(dvdloglamMat)) ## square matrix, by  the formulation of the algo ## quite dens even if many small values and we subset it
+}
+
 
 .calc_dvdlogphiMat_new <- function(dh0deta,ZAL,
                                    sXaug,d2hdv2_info=NULL, ## either one
                                    stop.on.error) {
   ## cf calcul dhdv, but here we want to keep each d/d phi_i distinct hence not sum over observations i 
-  ## code corrected here 12/2013; this is dh0dv = neg.d2h0_dv_dlogphi (eta always linear in v :-) and w.resid always propto 1/phi)
   neg.d2h0_dv_dlogphi <- .m_Matrix_times_Dvec(t(ZAL), drop(dh0deta)) # dh0dv <- t(ZAL) %*% diag(as.vector(dh0deta)) ## nXr each ith column is a vector of derivatives wrt v_k
-  if (is.null(d2hdv2_info)) {
+  if (is.null(d2hdv2_info)) { # call by HLfit_body
     dvdlogphiMat <- get_from_MME(sXaug,"solve_d2hdv2",B=neg.d2h0_dv_dlogphi) 
   } else if (inherits(d2hdv2_info,"qr") || inherits(d2hdv2_info,"sparseQR") ) {
-    dvdlogphiMat <- solve(d2hdv2_info, neg.d2h0_dv_dlogphi)  # rXn       
-  } else { ## then d2hdv2_info is ginv(d2hdv2)
-    dvdlogphiMat <- sweep(d2hdv2_info,MARGIN=2L,diag(neg.d2h0_dv_dlogphi),`*`)  # rXn       
+    dvdlogphiMat <- solve(d2hdv2_info, as.matrix(neg.d2h0_dv_dlogphi))  # rXn       
+  } else if (is.environment(d2hdv2_info)) {
+    # dvdlogphiMat <- d2hdv2_info %*% neg.d2h0_dv_dlogphi # rXn     
+    rhs <- d2hdv2_info$chol_Q %*% neg.d2h0_dv_dlogphi
+    rhs <- solve(d2hdv2_info$G_CHMfactor,rhs)
+    dvdlogphiMat <- - .crossprod(d2hdv2_info$chol_Q,rhs) # don't forget '-'
+  } else { ## then d2hdv2_info is ginv(d2hdv2) or a sparse matrix inverse of (d2hdv2) (spprec code will provide a dsCMatrix)
+    if (inherits(d2hdv2_info,"dsCMatrix")) {
+      d2hdv2_info <- as(d2hdv2_info,"dgeMatrix") ## more efficient if inv_d2hdv2 is math-dense
+      # It would be nice to store only the half matrix but then as( - d2hdv2_info, "dpoMatrix") and reversing sign afterwards. 
+    }
+    dvdlogphiMat <- d2hdv2_info %*% neg.d2h0_dv_dlogphi # rXn       
   }
   return(dvdlogphiMat)
 }
@@ -280,8 +319,8 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
 
 .Sig_times_b <- function(Sig0,ZAL,w.ranef,w.resid,b) { # Sig= [Sig0=Z.(1/w.ranef).Z^t+1/w.resid]
   if (is.null(Sig0)) { ## w.ranef is variable
-    v1 <- drop(t(b) %*% ZAL)
-    v1 <- ZAL %*% (v1/w.ranef)
+    v1 <- .crossprod(ZAL, b) # drop(t(b) %*% ZAL) # drop() or .crossprod OK if b is effectively a vector
+    v1 <- ZAL %*% ( v1 /w.ranef)
   } else {
     v1 <- Sig0 %*% b
   }
@@ -416,7 +455,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
       I_ZAL <- .adhoc_rbind_I_dgC(nrow(AUGI0_ZX$I), ZAL) ## this is faster...
     } else I_ZAL <- rbind2(AUGI0_ZX$I, ZAL)
     if (inherits(I_ZAL,"dgCMatrix") &&  inherits(Zero_sparseX,"dgCMatrix") ) {
-      Xscal <- .cbind_dgC_dgC(I_ZAL, Zero_sparseX) # substantially faster than the general alternative => F I X M E extend its usage ? 
+      Xscal <- .cbind_dgC_dgC(I_ZAL, Zero_sparseX) # substantially faster than the general alternative 
     } else Xscal <- cbind2(I_ZAL, Zero_sparseX)
   # }
   return(Xscal)
@@ -452,7 +491,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
   nc <- ncol(aug_ZXy)
   solver <- augZXy_solver[1L]
   if (solver =="chol") {
-    R_aug_ZXy <- try(chol(crossprod(aug_ZXy)), silent=TRUE)
+    R_aug_ZXy <- try(chol(.crossprod(aug_ZXy)), silent=TRUE)
     if ( ! inherits(R_aug_ZXy,"try-error")) return(R_aug_ZXy)
     solver <- augZXy_solver[2L]
     if (is.na(solver)) solver <- "EigenQR"
@@ -550,15 +589,18 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
         pwt_Q_y_o <- .calc_Qt_pwy_o(sXaug,pwy_o)
       } else pwt_Q_y_o <- get_from_MME(sXaug,"t_Q_scaled")%*% c(rep(0,n_u_h),pwy_o) 
       pwSSE <- (sum(pwy_o^2)-sum(pwt_Q_y_o^2))/extranorm ## sum() : vectors of different lengths !
-      X_scaled_H_unscaled_logdet_r22 <- get_from_MME(sXaug,"logdet_r22")
       if (inherits(sXaug,"AUGI0_ZX_sparsePrecision")) {
         logdet_R_scaled_v <- get_from_MME(sXaug,"logdet_sqrt_d2hdv2") - sum(log(attr(sXaug,"w.ranef")))/2  
+        X_scaled_H_unscaled_logdet_r22 <- get_from_MME(sXaug,"logdet_r22")
         logdet_R_scaled_b_v <- logdet_R_scaled_v+X_scaled_H_unscaled_logdet_r22 ## p_bv substract all of this and p_v cancels the r22 part 
       } else {
+        if ( ! is.null(processed$X.Re)) X_scaled_H_unscaled_logdet_r22 <- get_from_MME(sXaug,"logdet_r22")
         logdet_R_scaled_b_v <- get_from_MME(sXaug,"logdet_R_scaled_b_v")
       }    
     }
     # We obtain phi_est IN ANOTHER MODEL than in the general formulation as this phi also impacts the ranef variances
+    ## SSE [sum of nobs+nr terms]/nobs provides an estimate of a scaling factor
+    ## not of phi (which could be  sum((y-fitted)[ypos])^2)/sum(1-lev_phi)
     #we have fitted for the model (lambda, 1/prior_weights) and deduce the optimal (lamphifac*lambda, lamphifac/prior_weights)
     #The hatval are thus those both for phi and lambda whose sum is the #df
     # hatval <- .get_hatvalues_MM(sXaug,X.Re=processed$X.Re, weight_X) ## in case we need them...
@@ -583,27 +625,22 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
       # OR
       pwSSE <- sum(res2 * c(rep(1,n_u_h),pwphi))/extranorm ## closer to giving the correct answer, but not exact, and why should this work ? (F I X M E)
     }
-    
-    if (is.null(processed[["X.Re"]])) { ## REML standard (test not fully consistent with other test below)
-      lamphifac <- pwSSE/(resdf) ## check with pw ## remind We obtain phi_est IN ANOTHER MODEL than in the general formulation
-      df <- resdf
-    } else { ## ML standard
-      lamphifac <- pwSSE/(nobs) ## check with pw
-      df <- nobs
-    }
     #
-    lamphifac <- max(lamphifac,1e-6)
-    #
-    X_scaled_p_bv <- # formula deduced by consistency with alternative direct formula for p_v below
-      sum(log(weight_X)) - (
-        logdet_R_scaled_b_v -
-          pforpv*log(2*pi*H_global_scale)/2 ## keep H_global_scale here even when it differs from extranorm
-      ) - (df+sum(log(2*pi*lamphifac/prior_weights)))/2
-    if ("p_v" %in% which) {
-      resu$p_v <- X_scaled_p_bv + X_scaled_H_unscaled_logdet_r22 - pforpv*log(2*pi)/2 
+    p_base <- sum(log(weight_X)) - logdet_R_scaled_b_v + pforpv*log(H_global_scale)/2 ## keep H_global_scale here even when it differs from extranorm
+    if (is.null(processed$X.Re)) { # canonical REML
+      resu$phi_est <- lamphifac_REML <- max(pwSSE/(resdf), 1e-6) ## check with pw ## remind We obtain phi_est IN ANOTHER MODEL than in the general formulation
+      X_scaled_p_bv <- p_base - resdf * (1+log(2 * pi * lamphifac_REML))/2 
+    } else {
+      resu$phi_est <- lamphifac_ML <- max(pwSSE/(nobs), 1e-6) 
+      # X_scaled_H_unscaled_logdet_r22 must have been previously computed  in all subcases where it is needed
+      resu$p_v <- p_base + X_scaled_H_unscaled_logdet_r22 - nobs * (1+log(2 * pi * lamphifac_ML))/2 
     }
-    resu$phi_est <- lamphifac
-  } else { ## no lamphifac estimation; in particular for .makeCovEst1
+    # X_scaled_p_bv <- # formula deduced by consistency with alternative direct formula for p_v below
+    #   sum(log(weight_X)) - (
+    #     logdet_R_scaled_b_v -
+    #       pforpv*log(2*pi*H_global_scale)/2 ## keep H_global_scale here even when it differs from extranorm
+    #   ) - (df+sum(log(2*pi*lamphifac_REML/prior_weights)))/2
+  } else { ## phi_est available; no lamphifac estimation; in particular for .makeCovEst1
     pwphi <- phi_est/(prior_weights) ## vectorize phi if not already vector
     pwy_o <- (processed$y-processed$off)/sqrt(pwphi/extranorm) # extranorm is for better accuracy of next step
     if (inherits(sXaug,"AUGI0_ZX_sparsePrecision")) {
@@ -611,50 +648,50 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
     } else pwt_Q_y_o <- get_from_MME(sXaug,"t_Q_scaled")%*% c(rep(0,n_u_h),pwy_o) 
     pwSSE <- (sum(pwy_o^2)-sum(pwt_Q_y_o^2))/extranorm ## vectors of different lengths !
     if (inherits(sXaug,"AUGI0_ZX_sparsePrecision")) {
+      logdet_R_scaled_v <- get_from_MME(sXaug,"logdet_sqrt_d2hdv2") - sum(log(attr(sXaug,"w.ranef")))/2  
       X_scaled_H_unscaled_logdet_r22 <- get_from_MME(sXaug,"logdet_r22") 
       logdet_R_scaled_b_v <- logdet_R_scaled_v + X_scaled_H_unscaled_logdet_r22 ## p_bv substract all of this and p_v cancels the r22 part 
     } else {
       logdet_R_scaled_b_v <- get_from_MME(sXaug,"logdet_R_scaled_b_v")
     }    
+    # we don't assume here that phi_est is at its MLE (in contrast to null-phi_est case => Bates's formulas)
     cliklike <- (pwSSE+sum(log(2*pi*pwphi)))/2
-    X_scaled_p_bv <- # formula deduced by consistency with alternative direct formula for p_v below
-      sum(log(weight_X)) - ( 
-        logdet_R_scaled_b_v - pforpv*log(2*pi*H_global_scale)/2 ## keep  H_global_scale here even when it differs from extranorm
-      ) - cliklike
-
-    if ("p_v" %in% which) { # we don't assume here that phi_est is at its MLE (in commparison to Bates's formulas)
-      if (inherits(sXaug,"AUGI0_ZX_sparsePrecision")) {
-        ## X_scaled_H_unscaled_logdet_r22 already available
+    if (FALSE) {
+      p_base <- sum(log(weight_X)) - logdet_R_scaled_b_v + pforpv*log(2*pi*H_global_scale)/2 - cliklike ## keep  H_global_scale here even when it differs from extranorm
+      if (is.null(processed$X.Re)) {
+        X_scaled_p_bv <- p_base 
+      } else { # we don't assume here that phi_est is at its MLE (in commparison to Bates's formulas)
+        if ( ! inherits(sXaug,"AUGI0_ZX_sparsePrecision")) X_scaled_H_unscaled_logdet_r22 <- get_from_MME(sXaug,"logdet_r22") 
+        resu$p_v <- p_base + X_scaled_H_unscaled_logdet_r22 - pforpv*log(2*pi)/2 
+      }
+      old_p_v <- resu$p_v
+    } 
+    if (FALSE) { ## FALSE TRUE TRUE => .816
+      p_base <- - cliklike + sum(log(weight_X)) - logdet_R_scaled_b_v + pforpv*log(2*pi*H_global_scale)/2 ## keep  H_global_scale here even when it differs from extranorm
+      if (is.null(processed$X.Re)) { # canonical REML
+        X_scaled_p_bv <- p_base 
       } else {
-        X_scaled_H_unscaled_logdet_r22 <- get_from_MME(sXaug,"logdet_r22") 
-      }    
-      resu$p_v <- X_scaled_p_bv + X_scaled_H_unscaled_logdet_r22 - pforpv*log(2*pi)/2 
-      if (FALSE) {
-        # This shows the practical equivalence of the two calculations of p_v, except that HLfit3 result is modified... 
-        # in that example get_from_MME is get_from_MME.sXaug_Matrix_QRP_CHM_scaled
-        # logdet_r22 is simply a diff of the other logdet and of a fn of H_global_scale 
-        #     so no issue with matrix algebra explains the difference.
-        # It just happens that adding things in p_bv and substracting them in computing p_v from X_scaled_p_bv 
-        # generates micro difference that may stop the optimization given the extreme values of the lambda, phi parameters ?
-        # Still a bit mysterious
-        logdet_R_scaled_v <- get_from_MME(sXaug,"logdet_R_scaled_v")
-        also_p_v <-  (sum(log(weight_X)) - logdet_R_scaled_v - cliklike)
-        if (abs(resu$p_v - also_p_v)>3e-13) stop("abs(resu$p_v - also_p_v)>3e-13") ## lost of 2....e-13
-        resu$p_v <- also_p_v
+        if ( ! inherits(sXaug,"AUGI0_ZX_sparsePrecision")) X_scaled_H_unscaled_logdet_r22 <- get_from_MME(sXaug,"logdet_r22") 
+        resu$p_v <- p_base + X_scaled_H_unscaled_logdet_r22 - pforpv*log(2*pi)/2 
+      }
+    }
+    if (TRUE) { ## optimization fitme6 etc. is sensitive to the smallest numerical errors... even affected by order of additions and subtrations 
+      p_base <- - cliklike + sum(log(weight_X)) - logdet_R_scaled_b_v + pforpv*log(H_global_scale)/2 ## keep  H_global_scale here even when it differs from extranorm
+      if (is.null(processed$X.Re)) { # canonical REML
+        X_scaled_p_bv <- p_base + pforpv*log(2*pi)/2
+      } else {
+        if ( ! inherits(sXaug,"AUGI0_ZX_sparsePrecision")) X_scaled_H_unscaled_logdet_r22 <- get_from_MME(sXaug,"logdet_r22")
+        resu$p_v <- p_base + X_scaled_H_unscaled_logdet_r22 
       }
     }
   }
-  ## SSE [sum of nobs+nr terms]/nobs provides an estimate of a scaling factor
-  ## not of phi (which could be  sum((y-fitted)[ypos])^2)/sum(1-lev_phi)
 
   if ("p_bv" %in% which) {
-    if ( ! is.null(processed$X.Re) && ! ncol(processed$X.Re)) {
-      resu$p_bv <- resu$p_v
-    } else {
+    if (is.null(processed$X.Re)) { # canonical REML
       if ( ! is.null(X_scale <- attr(processed$AUGI0_ZX$X.pv,"scaled:scale"))) {
         resu$p_bv <- X_scaled_p_bv - sum(log(X_scale))
       } else resu$p_bv <- X_scaled_p_bv
-    }
+    } else resu$p_bv <- resu$p_v
   }
   return(resu)
 }

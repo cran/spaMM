@@ -33,16 +33,22 @@
   return(init_lambda)
 }
 
-.post_process_fixed <- function(fixed,corr_families) {
+.post_process_fixed <- function(fixed,corr_families, hyper_info) {
   if (is.null(fixed)) return(NULL)
-  fixed <- .post_process_parlist(fixed,corr_families=corr_families)
+  fixed <- .post_process_parlist(fixed,corr_families=corr_families) ## standardize use of corrPars in the parlist
   # I write "F I X" as a TAG for this modif type attribute:
   #attr(fixed,"type") <- relist(rep("fix",length(unlist(fixed))),fixed) ## on veut une list pour pouvoir supp des elements par <- NULL
+  # if ( ! is.null(fixed$hyper)) {
+  #   for (char_rd in as.character(unlist(hyper_info$ranges))) {
+  #     if (is.null(fixed$corrPars[[char_rd]])) fixed$corrPars[[char_rd]] <- list() ## seems no longer necessary for .expand_hyper()
+  #   }
+  # }
   return(fixed)
 }
 
 .calc_moreargs <- function(processed, # possibly a list of environments -> .calc_range_info -> scans then to compute a mean(nbUnique) 
-                           corr_types, fixed, init.optim, control_dist, NUMAX=50, LDMAX=50, KAPPAMAX=100,
+                           corr_types, fixed, init.optim, control_dist, NUMAX=50, LDMAX=50, 
+                           KAPPAMAX=100.000001, # so that users can set it to 100...
                            init.HLfit, corr_info, verbose, lower, upper) {
   moreargs <- list()
   for (rd in seq_along(corr_types)) {
@@ -60,7 +66,9 @@
                                                                          processed=processed, rd=rd, control_dist=control_dist, 
                                                                          NUMAX=NUMAX, LDMAX=LDMAX, KAPPAMAX=KAPPAMAX,
                                                                          # quite distinct arguments for adjacency:
-                                                                         decomp=decomp, verbose=verbose, lower=lower, upper=upper
+                                                                         decomp=decomp, verbose=verbose, lower=lower, upper=upper,
+                                                                         # IMRF...:
+                                                                         IMRF_pars=attr(attr(attr(processed$ZAlist,"exp_spatial_terms")[[rd]],"type"),"pars")
       )
     }
   }
@@ -254,9 +262,31 @@
       traced_fn <- quote(.HLfit_body_augZXy)
     } else traced_fn <- quote(HLfit_body)
     if (level) {
+      # F I X M E ? provide alternative tracer that only prints "." or so.
       suppressMessages(trace(traced_fn, where=asNamespace("spaMM"), print=FALSE, 
                              tracer=quote(try({
                                ranPars <- .canonizeRanPars(ranFix,corr_info=NULL,checkComplete = FALSE)
+                               #
+                               if ( ! is.null(ranPars$hyper)) {
+                                 ranges <- processed$hyper_info$ranges
+                                 for (char_hyper_it in names(ranPars$hyper)) {
+                                   rd_range <- ranges[[char_hyper_it]]
+                                   char_rd_range <- as.character(rd_range)
+                                   first_char_rd <- char_rd_range[1L]
+                                   ranPars$hyper[[char_hyper_it]] <- list(hy_kap=ranPars$corrPars[[first_char_rd]]$kappa,
+                                                                  hy_lam=sum(ranPars$lambda[char_rd_range]))
+                                   for (char_rd in char_rd_range) {
+                                     ranPars$corrPars[[char_rd]]$kappa <- NULL
+                                   }
+                                   ranPars$lambda <- ranPars$lambda[setdiff(names(ranPars$lambda),char_rd_range)]
+                                 }
+                                  if ( ! length(ranPars$lambda)) ranPars$lambda <- NULL
+                               }
+                               #
+                               if (length(ranPars$phi)>1) {
+                                 cat("(phi fixed) ")
+                                 ranPars[["phi"]] <- NULL
+                               }
                                ntC <- names(ranPars)
                                for (lit in seq_along(ranPars)) {
                                  urP <- unlist(ranPars[[lit]]) ## ranPars$corrPars can be list() in which case urP is NULL 
@@ -284,7 +314,8 @@
         suppressMessages(trace(fn,print=FALSE,tracer=quote(cat(which))))
       }
     } else {
-      suppressMessages(try(untrace(traced_fn, where=asNamespace("spaMM")), silent=TRUE))      
+      suppressMessages(try(untrace(HLfit_body, where=asNamespace("spaMM")), silent=TRUE))      
+      suppressMessages(try(untrace(.HLfit_body_augZXy, where=asNamespace("spaMM")), silent=TRUE))      
       if (processed$sparsePrecisionBOOL) {
         suppressMessages(try(untrace(.solve_IRLS_as_spprec, where=asNamespace("spaMM")), silent=TRUE))
       } else suppressMessages(try(untrace(.solve_IRLS_as_ZX, where=asNamespace("spaMM")), silent=TRUE))
@@ -298,7 +329,8 @@
       fn <- paste("get_from_MME",strsplit(spaMM.getOption("spprec_method"),"def_")[[1L]][2],sep=".") 
       suppressMessages(untrace(fn))
     } 
-  } else if (level) {warning("The 'spaMM' package must be *attached* for verbose(TRACE=...) tracing to operate")}
+  } else if (level) {warning("The 'spaMM' package must be *attached* for verbose(TRACE=...) tracing to operate",
+                             immediate.=TRUE)}
 } 
 
 ## creates precisionFactorList if it doesn't exist, and partially fills it with Diagonal()'s
@@ -311,7 +343,7 @@
     nranef <- length(envir$finertypes)
     precisionFactorList <- vector("list",nranef) ## will contain diagonal matrices/info for non-trivial (diagonal) precision matrices 
     for (it in seq_len(nranef)) {
-      if ( envir$finertypes[it] %in% c("adjacency","corrMatrix","AR1", "MRF") ) {
+      if ( envir$finertypes[it] %in% c("adjacency","corrMatrix","AR1", "IMRF") ) {
         ## terms of these types must be dealt with by ad hoc code for each type elsewhere
       } else if ( envir$finertypes[it] =="(.|.)" ) { # EXcludes "ranCoefs"
         nc <- ncol(processed$ZAlist[[it]])
@@ -372,14 +404,16 @@
 .init_optim_phi <- function(phi.Fix, phimodel, processed, init.optim, nrand) {
   if (is.null(phi.Fix)) {
     if (phimodel == "phiScal") {
-      if (NROW(processed$y)>200L) { # FIXME: processed ? (more occurrences below)
+      if (NROW(processed$y)>200L || 
+          processed$cum_n_u_h[length(processed$cum_n_u_h)]>200 || # leverage computation also costly in that case (FIXME single criterion ?) 
+          processed$family$family=="Gamma") { # FIXME: processed ? (more occurrences below)
         ## default method is outer but can be reversed if init is NaN (and to test NaN we need to test NULL)
         not_inner_phi <- is.null(init.optim$phi) || ! is.nan(init.optim$phi) ## outer if NULL, NA or numeric
       } else {
         ## default is inner but can be reversed if numeric or NA (hence neither NULL nor NaN)
         not_inner_phi <- ! (is.null(init.optim$phi) || is.nan(init.optim$phi))
       }
-    } else not_inner_phi <- FALSE
+  } else not_inner_phi <- FALSE
     if (not_inner_phi) {
       ## .get_init_phi takes more account of ranefs than .get_inits_by_glm(.)$phi_est, but it may return NULL.
       #  It seems (?) marginally better hence we try it first and check the result.
@@ -447,24 +481,24 @@
 }
 
 
-.more_init_optim <- function(proc1, corr_types, init.optim) {
+  .more_init_optim <- function(proc1, corr_types, init.optim) {
   phimodel <- proc1$models[['phi']]
   #if (phimodel=="phiGLM") {message("'fitme' not optimized for models with structured dispersion.")} ## FR->FR test this later"
   ranCoefs_blob <- proc1$ranCoefs_blob
   ## trying to guess all cases where optimization is useful. But FIXME: create all init and decide afterwardsS
   if ( (is_MixedM <- ( ! is.null(ranCoefs_blob) )) && (
-    (var_ranCoefs <- (ranCoefs_blob$isRandomSlope & ! ranCoefs_blob$is_set)) ||
+    any(var_ranCoefs <- (ranCoefs_blob$isRandomSlope & ! ranCoefs_blob$is_set)) ||
     phimodel == "phiScal" || # lambda + phi
     var(proc1$y)<1e-3 || # mixed model with low response variance (including case where phi is fixed (phimodel="") )
     (phimodel == "phiHGLM" && identical(spaMM.getOption("outer_optim_resid"),TRUE)) || 
     length(var_ranCoefs)>1L || # +s lambda
     length(corr_types[ ! is.na(corr_types)]) # lambda + corr pars
   )
-  ) { ## prefer outer optimization if var_ranCoefs or not resid.model
+  ) { ## All cases where phi is fixed, or can be outer optimized jointly with lambda:  
+    ## prefer outer optimization if var_ranCoefs or not resid.model
     nrand <- length(proc1$ZAlist)
     # (1) set (or not) outer optimization for phi: 
     phi.Fix <- proc1$phi.Fix
-    ## All cases where phi is fixed, or can be outer optimized jointly with lambda:  
     ## Then determine a single phi value
     init_optim_phi_blob <- .init_optim_phi(phi.Fix, phimodel, proc1, init.optim, nrand)
     not_inner_phi <- init_optim_phi_blob$not_inner_phi
@@ -481,7 +515,11 @@
   corr_info <- proc1$corr_info 
   # modify HLCor.args and <>bounds;   ## distMatrix or uniqueGeo potentially added to HLCor.args:
   corr_types <- corr_info$corr_types
-  fixed <- .post_process_fixed(fixed, corr_families=corr_info$corr_families)
+  fixed <- .post_process_fixed(fixed, corr_families=corr_info$corr_families, processed$hyper_info)
+  if (processed$models[["phi"]]!="phiScal" && ! is.null(init$phi)) {
+    warning("initial value for 'phi' is ignored when the is a non-default resid.model") # i.e. anything but Intercept model
+    init$phi <- NULL # otherwise the residModel would be ignored!
+  }
   init.optim <- .post_process_parlist(init, corr_families=corr_info$corr_families)
   init.HLfit <- proc1$init_HLfit #to be modified below ## dhglm uses fitme_body not (fitme-> .preprocess) => dhglm code modifies processed$init_HLfit
   init <- NaN ## make clear it's not to be used 
@@ -492,7 +530,7 @@
   # ./. or can be outer optimized jointly with lambda:  
   # Provide ranCoefs inits by calling .init_optim_lambda_ranCoefs:
   if (For=="fitme" && proc1$HL[1]!="SEM") { ## for SEM, it's better to let SEMbetalambda find reasonable estimates
-    init.optim <- .more_init_optim(proc1=proc1, corr_types=corr_types, init.optim=init.optim)
+    init.optim <- .more_init_optim(proc1=proc1, corr_types=corr_types, init.optim=init.optim) # This decides for outer/inner optimisations
     if (proc1$augZXy_cond) init.optim$phi <- NULL
   }
   #
@@ -511,6 +549,7 @@
   moreargs <- .calc_moreargs(processed=processed, # possibly a list of environments -> .calc_range_info -> scans then to compute a mean(nbUnique) 
                              corr_types=corr_types, fixed=fixed, init.optim=init.optim, control_dist=proc1$control_dist, 
                              init.HLfit=init.HLfit, corr_info=corr_info, verbose=verbose, lower=lower, upper=upper)
+  fixed <- .expand_hyper(fixed, hyper_info=processed$hyper_info, moreargs=moreargs)
   inits <- .calc_inits(init.optim=init.optim, init.HLfit=init.HLfit,
                        ranFix=fixed,  corr_info=corr_info,
                        moreargs=moreargs,
@@ -527,7 +566,7 @@
                     init.optim=inits$init.optim,
                     user.lower=user.lower,user.upper=user.upper,
                     corr_types=corr_types,
-                    ranFix=fixed,
+                    ranFix=fixed, # inits$ranFix, # Any change in $ranFix would be ignored 
                     optim.scale=optim.scale, 
                     moreargs=moreargs) ## list needed as part of attr(,"optimInfo")
   ################

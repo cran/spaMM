@@ -14,7 +14,7 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug, # already ZAL_scaled
                     weight_X=weight_X, # new mandatory 08/2018
                     H_global_scale=H_global_scale
   )
-  class(resu) <- c(class(resu),"sXaug_EigenDense_QRP_Chol_scaled")
+  class(resu) <- c("sXaug_EigenDense_QRP_Chol_scaled", class(resu))
   return( resu ) 
 }
 
@@ -164,7 +164,30 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug, # already ZAL_scaled
       BLOB$logdet_R_scaled_v <- sum(log(BLOB$absdiag_R_v)) 
     }
     return(BLOB$logdet_R_scaled_v)
-  } else if (which=="beta_cov") {  ## called by HLfit_body 
+  } else if (which=="beta_cov_info_from_sXaug") {  ## called by HLfit_body 
+    if (TRUE) {
+      tcrossfac_v_beta_cov <-  solve(BLOB$R_scaled) # solve(as(BLOB$R_scaled,"dtCMatrix"))
+      pforpv <- attr(sXaug,"pforpv")
+      X_scaling <- sqrt(rep(attr(sXaug,"H_global_scale"),pforpv))
+      if ( ! is.null(B)) X_scaling <- X_scaling/B
+      diagscalings <- c(1/sqrt(attr(sXaug,"w.ranef")), X_scaling)
+      if ( ! is.null(BLOB$sortPerm)) { # depending on method used for QR facto
+        tPmat <- sparseMatrix(seq_along(BLOB$sortPerm), BLOB$sortPerm, x=1)
+        tPmat <- .Dvec_times_Matrix(diagscalings, tPmat) # Pmat <- .Matrix_times_Dvec(Pmat,diagscalings)
+        tcrossfac_v_beta_cov <- as.matrix(tPmat %*% tcrossfac_v_beta_cov)
+      } else tcrossfac_v_beta_cov <- as.matrix(.Dvec_times_m_Matrix(diagscalings, tcrossfac_v_beta_cov)) ## loses colnames...
+      rownames(tcrossfac_v_beta_cov) <- colnames(sXaug) ## necessary for summary.HLfit, already lost in BLOB$R_scaled
+      seqp <- seq_len(pforpv)
+      beta_pos <- attr(sXaug,"n_u_h")+seqp
+      beta_v_order <- c(beta_pos,seq(attr(sXaug,"n_u_h")))
+      tcrossfac_beta_v_cov <- tcrossfac_v_beta_cov[beta_v_order,,drop=FALSE]
+      #beta_v_cov <- .tcrossprod(tcrossfac_beta_v_cov)
+      beta_cov <- .tcrossprod(tcrossfac_beta_v_cov[seqp,,drop=FALSE])
+      return( list(beta_cov=beta_cov, 
+                   #beta_v_cov=beta_v_cov,
+                   tcrossfac_beta_v_cov=tcrossfac_beta_v_cov) )
+    }
+    ########################
     augm_beta_cov <- chol2inv(BLOB$R_scaled) ## augmented beta_v_cov as the following shows
     pforpv <- attr(sXaug,"pforpv")
     beta_pos <- attr(sXaug,"n_u_h")+seq_len(pforpv)
@@ -179,7 +202,23 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug, # already ZAL_scaled
     return( list(beta_cov=v_beta_cov[beta_pos,beta_pos,drop=FALSE], 
                  #solvefac=.Dvec_times_matrix(1/diagscalings,BLOB$R_scaled[,BLOB$sortPerm])[,beta_v_order],
                  beta_v_cov=v_beta_cov[beta_v_order,beta_v_order]) )
-  } else if (which=="beta_v_cov_from_wAugX") { ## using a weighted Henderson's augmented design matrix, not a true sXaug  
+  } else if (which=="beta_cov_info_from_wAugX") { ## using a weighted Henderson's augmented design matrix, not a true sXaug  
+    if (TRUE) {
+      tcrossfac_beta_v_cov <- solve(BLOB$R_scaled) # solve(as(BLOB$R_scaled,"dtCMatrix"))
+      if ( ! is.null(BLOB$sortPerm)) { # depending on method used for QR facto
+        tPmat <- sparseMatrix(seq_along(BLOB$sortPerm), BLOB$sortPerm, x=1)
+        tcrossfac_beta_v_cov <- as.matrix(tPmat %*% tcrossfac_beta_v_cov)
+      } else tcrossfac_beta_v_cov <- as.matrix(tcrossfac_beta_v_cov)
+      rownames(tcrossfac_beta_v_cov) <- colnames(sXaug) ## necessary for summary.HLfit, already lost in BLOB$R_scaled
+      #beta_v_cov <- .tcrossprod(tcrossfac_beta_v_cov)
+      pforpv <- attr(sXaug,"pforpv")
+      seqp <- seq_len(pforpv)
+      beta_cov <- .tcrossprod(tcrossfac_beta_v_cov[seqp,,drop=FALSE])
+      return( list(beta_cov=beta_cov, 
+                   #beta_v_cov=beta_v_cov,
+                   tcrossfac_beta_v_cov=tcrossfac_beta_v_cov) )
+    }
+    ########################
     beta_v_cov <- chol2inv(BLOB$R_scaled)
     if ( ! is.null(BLOB$sortPerm)) beta_v_cov <- beta_v_cov[BLOB$sortPerm,BLOB$sortPerm,drop=FALSE]
     # this tends to be dense bc v_h estimates covary (example: wafers)

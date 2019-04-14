@@ -1,6 +1,6 @@
 cat("\nTest of adjacency (long fits):")
 
-if (spaMM.getOption("example_maxtime")>465) { # now 350 ?
+if (spaMM.getOption("example_maxtime")>360) { # 
   ## fixme This is sparse_precision LevM: improve efficiency? 
   ## example suggested by Jeroen van den Ochtend jeroenvdochtend@gmail.com Jeroen.vandenochtend@business.uzh.ch
   ## it's no use to try sparse_precision=FALSE bc bc the augmented sigma matrix is huge
@@ -14,9 +14,9 @@ if (spaMM.getOption("example_maxtime")>465) { # now 350 ?
                           control.HLfit=list(LevenbergM=FALSE), ## inhibits default for binary data 
                           verbose=c(TRACE=interactive()), # to trace convergence 
                           adjMatrix=adjlgMat
-    )
-  }) ##  ~107 (v.2.4.102) ## F I X M E refitting lambda (by request) gives a lower lik... ## 102 in v.2.5.34
-  expectedMethod <- "AUGI0_ZX_sparsePrecision" ## bc data too small to switch to sparse
+    ) ## F I X M E refitting lambda (by request) gives a lower lik...
+  }) ##  ~107 (v.2.4.102)  ## 102 in v.2.5.34 ## 99.99 in v2.6.53
+  expectedMethod <- "AUGI0_ZX_sparsePrecision" 
   if (interactive()) {
     if (! (expectedMethod %in% IRLS.Frailty$MME_method)) {
       message(paste('! ("',expectedMethod,'" %in% IRLS.Frailty$MME_method): was a non-default option selected?'))
@@ -29,6 +29,7 @@ if (spaMM.getOption("example_maxtime")>465) { # now 350 ?
                           #fixed=list(rho = -0.0294184,  lambda = 0.241825),
                           adjMatrix=adjlgMat
     )
-  }) ## ~359 (v.2.4.102) => 250 in v.2.5.34
+  }) ## ~359 (v.2.4.102) => 250 in v.2.5.34; 242.44 in v2.6.53
+  # spprec_LevM_D=="colSums" gives the highest lik, but "1" is fastest; "rowSums" may be slowest.
   spaMM.options(oldop)
 }

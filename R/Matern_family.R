@@ -51,7 +51,7 @@ Matern <- function(...) {
     ) 
     return(moreargs_rd) ## with control_dist with possibly modified rho_mapping
   }
-  # This fn is not used so the Cauchy code is not even wrong...
+  # This fn is not used (it is an unfinished attempt), so it does not matter the Cauchy code is "not even wrong".
   calc_cov_info_mat <- function(control.dist, char_rd, spatial_term, corr_type, rho, processed, rd, ranPars) {
     control_dist_rd <- control.dist[[char_rd]]
     txt <- paste(c(spatial_term[[2]][[3]])) ## the RHS of the ( . | . ) # c() to handle very long RHS

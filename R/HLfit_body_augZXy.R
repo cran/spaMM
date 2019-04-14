@@ -28,7 +28,9 @@
   if (processed$sparsePrecisionBOOL) { 
     .init_precision_info(processed,LMatrices) ## modifies processed$AUGI0_ZX$envir  
   }
-  if ( any((attr(LMatrices,"is_given_by") !="")) ) {
+  if (processed$sparsePrecisionBOOL) {
+    ZAL <- NULL # we practically don't need it (though F I X M E: it would be nice to provide alternative info to .eval_init_lambda_guess)
+  } else if ( any((attr(LMatrices,"is_given_by") !="")) ) {
     ZAL <- .compute_ZAL(XMatrix=LMatrices, ZAlist=processed$ZAlist,as_matrix=.eval_as_mat_arg(processed))
     ## ZAL may be modified by other call to .compute_ZAL()   
   } else { 
@@ -40,9 +42,10 @@
   off <- processed$off
   ##################
   ## Initial estimate for lambda in 'compact" form
-  init.lambda <- .calc_initial_init_lambda(lambda.Fix, nrand, processed, ranCoefs_blob, init.HLfit=NULL)
+  init.lambda <- .calc_initial_init_lambda(lambda.Fix, nrand, processed, ranCoefs_blob, 
+                                           init.HLfit=NULL, fixed=ranFix)
   # expand:
-  lambda_est <- .HLfit_finalize_init_lambda(models, init.lambda, processed, ZAL, cum_n_u_h, 
+  lambda_est <- .HLfit_finalize_init_lambda(models, init.lambda, processed, ZAL=ZAL, cum_n_u_h, 
                                             vec_n_u_h=diff(cum_n_u_h), n_u_h, ranCoefs_blob)
   if (identical(processed$return_only,"p_vAPHLs")) {
     whichAPHLs <- "p_v"

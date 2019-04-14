@@ -85,6 +85,11 @@
     }
   }
   if (Optimizer=="optimize") {
+    if (length(unlist(user_init_optim))) {
+      message(paste("1D optimization by optimize(): user-provided initial value is ignored.\n",
+                    "Change spaMM option 'optimizer1D' to override this.")
+              )
+    }
     if (is.character(HLcallfn.obj)) HLcallfn.obj <- eval(as.name(HLcallfn.obj)) # ## do.call("optimize", c(<list>, list(fn = objfn))) does not work with a char string
     locarglist <- c(anyHLCor_obj_args,list(f=HLcallfn.obj, interval=c(lowerb,upperb), maximum=TRUE))
     tol <- control[["optimize"]]$tol

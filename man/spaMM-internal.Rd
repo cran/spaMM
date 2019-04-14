@@ -1,8 +1,5 @@
 \name{spaMM-internal}
 
-\alias{MRF} % F I X M E
-
-
 \alias{fitme_body}
 \alias{HLfit.obj}
 \alias{.HLfit_body_augZXy} % alias bc exported bc it must be exported to be traceable

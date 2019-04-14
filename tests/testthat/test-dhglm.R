@@ -13,3 +13,4 @@ if (FALSE) {
   hlfit <- HLfit(y~crack0+(1|specimen),family=Gamma(log),data=crack, HLmethod="REML", 
                  rand.family=inverse.Gamma(log), resid.model=list(formula=~cycle+(1|specimen),fixed=list(lambda=0.666))   )
 }
+

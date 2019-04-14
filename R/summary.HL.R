@@ -25,7 +25,7 @@
   namesOri <- attr(object$X.pv,"namesOri")
   nc <- length(namesOri)
   betaOri_cov <- matrix(NA,ncol=nc,nrow=nc,dimnames=list(rownames=namesOri,colnames=namesOri))
-  beta_cov <- .get_beta_cov_any_version(object) ## typically set by HLfit using get_from_MME(, which="beta_cov"), circumventing full beta_w_cov computation
+  beta_cov <- .get_beta_cov_any_version(object) 
   betaOri_cov[colnames(beta_cov),colnames(beta_cov)] <- beta_cov
   beta_se <- sqrt(diag(betaOri_cov))
   fixef_z <- object$fixef/beta_se
@@ -165,7 +165,7 @@ summary.HLfitlist <- function(object, ...) {
 }
 
 
-.display_raw_lambdas <- function(in_pointLambda, row_map, lambda.object) {
+.display_raw_lambdas <- function(in_pointLambda, row_map, lambda.object, hy_ranges) {
   # if (details$ranCoefs) {
   #   displaypos <- innerlambda_pos
   # } else displaypos <- setdiff(innerlambda_pos, random_slope_pos)
@@ -174,8 +174,19 @@ summary.HLfitlist <- function(object, ...) {
   displaypos <- which(in_pointLambda)
   displayrows <- unlist(row_map[displaypos])
   nicertypes <- lambda.object$type[displaypos]
-  nicertypes[ ! nicertypes=="fixed"] <- ""
-  nicertypes[ nicertypes=="fixed"] <- "[fixed]"
+  posf <- ( nicertypes=="fixed")
+  posfh <- ( nicertypes=="fix_hyper") # see paste0(hy_lam_type,"_hyper") in .calc_initial_init_lambda()
+  posoh <- ( nicertypes=="outer_hyper") # again, see paste0(hy_lam_type,"_hyper") in .calc_initial_init_lambda()
+  nicertypes[posf] <- "[fixed]"
+  nicertypes[posfh] <- "[fixed]" # "[fix_hyper]" # need to distinguish in summary not obvious
+  for (it in seq_along(hy_ranges)) {
+    hy_range <- hy_ranges[[it]]
+    if (nicertypes[hy_range[1L]] == "outer_hyper") {
+      nicertypes[hy_range[1L]] <- "" ## outer-optim
+      nicertypes[hy_range[-1L]] <- ("[set by hyper]")
+    }
+  }
+  nicertypes[ ! (posf | posfh | posoh )] <- ""
   nicertypes <- rep(nicertypes, unlist(lapply(row_map[displaypos], length)))
   if ( ! is.null(displayrows)) {
     print_lambda <- unlist(lambda.object$lambda)
@@ -294,7 +305,9 @@ summary.HLfitlist <- function(object, ...) {
     .legend_lambda(object, type="family") ## print info about the meaning of lambda according to the rand family (not rand link)
     .display_raw_lambdas(in_pointLambda=attribs$in_pointLambda, 
                          row_map=attribs$row_map, 
-                         object$lambda.object) ## not the table with SEs / covariances
+                         object$lambda.object,
+                         object$ranef_info$hyper_info$ranges
+                         ) ## not the table with SEs / covariances
   }
   #
   # NOW the (Gamma-GLM) coefficients and SEs
@@ -337,7 +350,7 @@ summary.HLfitlist <- function(object, ...) {
   randfamlinks <- unlist(lapply(object$rand.families, getElement, name="link"))
   summ <- list()
   cat("formula: ")
-  form <- formula.HLfit(object)
+  form <- formula.HLfit(object, which="hyper")
   print(form,showEnv=FALSE)
   #
   #  HLchar <- paste(as.character(object$HL),collapse="")
@@ -424,6 +437,7 @@ summary.HLfitlist <- function(object, ...) {
       cat("Families(links):", paste(randfamfamlinks,collapse=", "), "\n")
     }
     corrPars <- get_ranPars(object,which="corrPars")
+    corrPars <- corrPars[sort(names(corrPars))]
     cP <- unlist(corrPars)
     if ( ! is.null(cP) ) {
       moreargs <- attr(object,"optimInfo")$LUarglist$moreargs

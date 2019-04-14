@@ -54,7 +54,7 @@ Either a \code{formula} or a \code{predictor} for the full model.
 }
 \item{fittingFunction}{Character string giving the function used to fit each model: either \code{"corrHLfit"} or \code{"fitme"}. Default is \code{"corrHLfit"} for small data sets (fewer than 300 observations), and \code{"fitme"} otherwise, but this may change in future versions.}
 \item{nb_cores}{Number of cores to use for parallel computation of bootstrap. The default is \code{spaMM.getOption("nb_cores")}, and 1 if the latter is NULL. \code{nb_cores=1} prevents the use of parallelisation procedures.}
-\item{boot_fn}{function called for simulating and fitting bootstrap replicates: the default is \code{"spaMM_boot"} since version 2.4.41. Older results can be replicated using \code{".eval_boot_replicates"}, but this may be deprecated soon.}
+\item{boot_fn}{Deprecated. No alternative to default is considered.}
 \item{resp_testfn}{See argument \code{resp_testfn} of \code{\link{spaMM_boot}}}
   \item{\dots}{
   Further arguments passed to or from other methods; in particular, additional arguments passed to fitting functions, including those ultimately passed to \code{\link{mat_sqrt}}. With respect to the latter, note that \code{try.chol} affects the simulation of samples for the parametric bootstrap, and although ultimate differences in performance may be small, \code{try.chol=FALSE} may be slightly better.

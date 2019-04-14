@@ -67,7 +67,7 @@
   return(res)
 }
 
-.calc_Z_model_matrix <- function(leftOfBar_terms, leftOfBar_mf, raneftype) {
+.calc_Z_model_matrix <- function(leftOfBar_terms, leftOfBar_mf, raneftype,lcrandfamfam) {
   modmat <- model.matrix(leftOfBar_terms, leftOfBar_mf) ## contrasts.arg not immed useful, maybe later.
   #if (raneftype == "(.|.)") stop("this does not occur") # does not seem to occur here
   if (! (is.null(raneftype))) {  ## NULL for ranCoefs! 
@@ -88,7 +88,16 @@
       } else 
         stop(paste0("Unhandled expression in ", raneftype, "(<LHS>|.) for this type of random effect"))
     }
-  }
+  } else if (ncol(leftOfBar_mf)==1L) { ## ncol=0L is for (1|.) ## single variable, but modmat may have an intercept col
+    if (lcrandfamfam != "gaussian" && 
+        (attr(attr(leftOfBar_mf,"terms"),"dataClasses"))=="numeric"
+    ) { ## Gamma(wei|.)
+      if (ncol(modmat)>1L) stop(paste0("Unhandled expression in ", raneftype,"(<numeric>|.): use explicit '0 + .' syntax to remove Intercept."))
+      prior_lam_fac <- modmat[,1]^2
+      modmat[] <- 1
+      attr(modmat,"prior_lam_fac") <- prior_lam_fac
+    }
+  } 
   return(modmat)
 }
 
@@ -98,7 +107,8 @@
   function(x,mf,
            rmInt, ## remove Intercept
            drop,sparse_precision,type=".ULI",
-           cov_mat_info, old_leftOfBar_mf=NULL) {
+           corrMat_info, old_leftOfBar_mf=NULL,
+           lcrandfamfam) {
     ## le bidule suivant evalue le bout de formule x[[3]] et en fait un facteur. 
     ## but fac may be any vector returned by the evaluation of x[[3]] in the envir mf
     rhs <- x[[3]]
@@ -119,21 +129,31 @@
     if (( ! is.null(raneftype))){ ## Any term with a 'spatial' keyword (incl. corrMatrix); cf comment in last case
       ## if sparse not yet determined for AR1, we generate the required info for sparse (and non-sparse) and thus assume AR1_sparse_Q: 
       if (is.null(AR1_sparse_Q <- sparse_precision)) AR1_sparse_Q <- (raneftype=="AR1")  
-      info_mat_is_prec <- (raneftype=="corrMatrix" && inherits(cov_mat_info,"precision")) 
-      ## for AR1_sparse and corMatrix, we cannot use dummy levels as created by .ULI() of factor(). THe level names have special meaning
-      #   matching a time concept, or user-provided names for the corrMatrix
-      if (raneftype %in% c("Matern","Cauchy", "MRF")) {
-        # for MRF Z matches geo to uniqueGeo and A matches uniqueGeo to nodes
+      info_mat_is_prec <- (raneftype=="corrMatrix" && inherits(corrMat_info,"precision")) 
+      ## for AR1_sparse and corrMatrix, we cannot use dummy levels as created by .ULI() of factor(). The level names have special meaning
+      #   matching a time concept, or user-provided names for the corrMatrix.
+      ## Further, we can drop rows/cols of a correlation matrix, but not of a precision matrix
+      if (raneftype %in% c("Matern","Cauchy")) {
         dataordered_levels_blob <- .calc_dataordered_levels(txt=txt,mf=mf,type=type) ## even in sparse case
+      } else if (raneftype =="IMRF") {
+        # for IMRF Z matches geo to uniqueGeo and A matches uniqueGeo to nodes
+        dataordered_levels_blob <- .calc_dataordered_levels(txt=txt,mf=mf,type=.spaMM.data$options$levels_type)
+        # if (is.null(spde_info <- attr(raneftype,"model"))) {
+        #   dataordered_levels_blob <- .calc_dataordered_levels(txt=txt,mf=mf,type=.spaMM.data$options$levels_type) #,type=".ULI") 
+        # } else {
+        #   if (inherits(spde_info,"inla.spde2")) {
+        #     dataordered_levels_blob <- .calc_dataordered_levels(txt=txt,mf=mf,type=.spaMM.data$options$levels_type)
+        #   } else stop("Unhandled model class for IMRF")
+        # }
       } else if (AR1_sparse_Q || raneftype=="corrMatrix") {
         dataordered_levels_blob <- .calc_dataordered_levels(txt=txt,mf=mf,type="mf")
       } else dataordered_levels_blob <- .calc_dataordered_levels(txt=txt,mf=mf,type=type)
       #
-      if (raneftype %in% c("Matern","Cauchy", "MRF")) {
+      if (raneftype %in% c("Matern","Cauchy", "IMRF")) {
         ff <- dataordered_levels_blob$factor ## so that Z cols will not be reordered.
       } else if (raneftype=="corrMatrix") {
-        if (info_mat_is_prec) { 
-          ff <- factor(dataordered_levels_blob$factor, levels=colnames(cov_mat_info$matrix))
+        if (info_mat_is_prec) { ## we have to keep all levels even those absent from the data
+          ff <- factor(dataordered_levels_blob$factor, levels=colnames(corrMat_info$matrix))
         } else {
           ff <- dataordered_levels_blob$factor
         }
@@ -189,32 +209,33 @@
       leftOfBar_mf <- model.frame(leftOfBar_terms, mf, xlev = ori_levels) 
     } else leftOfBar_mf <- model.frame(leftOfBar_terms, mf) ## Matern(1|.) => [0 col; nrow=nrow(mf)]
     # note the test of contrasts on predict with ranCoefs with factors, in test-ranCoefs.R
-    modmat <- .calc_Z_model_matrix(leftOfBar_terms, leftOfBar_mf, raneftype) ## handles non-trivial LHS in e.g. Matern(LHS|rhs)
+    modmat <- .calc_Z_model_matrix(leftOfBar_terms, leftOfBar_mf, raneftype, lcrandfamfam) ## handles non-trivial LHS in e.g. Matern(LHS|rhs)
     if (rmInt) { ## remove intercept column
       if ( ! is.na(icol <- match("(Intercept)", colnames(modmat)))) {
         if (ncol(modmat) < 2) stop("lhs of a random-effects term cannot be an intercept only")
         modmat <- modmat[, -icol, drop = FALSE]
       }
     }
-    ## This is building Z(A) not Z(A)L hence reasonably sparse even in spatial models
-    ZA <- .calc_raw_ZA(incidMat=im, modmat)
-    attr(ZA,"leftOfBar_mf") <- leftOfBar_mf
-    attr(ZA, "namesTerm") <- colnames(modmat) ## length=npar
+    ## This is building Z not Z(A)L hence reasonably sparse even in spatial models
+    Z_ <- .calc_raw_ZA(incidMat=im, modmat) ## modmat allows simple forms of heteroscedasticity of lambda.
+    attr(Z_,"leftOfBar_mf") <- leftOfBar_mf
+    attr(Z_, "namesTerm") <- colnames(modmat) ## length=npar
     if (identical(raneftype,"AR1")) {
       if (AR1_sparse_Q) { ## this is TRUE is sparse_precision has not yet been determined !
         ## Following is different from levels(dataordered_levels_blob$factor) which are reordered as character
         #  Effect in first fit in test-AR1, when spprec goes from NULL to FALSE
-        attr(ZA,"dataordered_unique_levels") <- unique(as.character(dataordered_levels_blob$factor)) ## allow reformatting for ! sparse prec
-        colnames(ZA) <- AR1_sparse_Q_ranges_blob$seq_levelrange ## allow reformatting for ! sparse prec
+        attr(Z_,"dataordered_unique_levels") <- unique(as.character(dataordered_levels_blob$factor)) ## allow reformatting for ! sparse prec
+        colnames(Z_) <- AR1_sparse_Q_ranges_blob$seq_levelrange ## allow reformatting for ! sparse prec
         # ! ! ! caveat when changing the name of the following elements here, to change it elsewhere ! ! !
-        attr(ZA,"AR1_block_n_u_h_s") <- AR1_sparse_Q_ranges_blob$AR1_block_n_u_h_s ## required for t_chol_Q computation
-        attr(ZA,"uniqueGeo") <- AR1_sparse_Q_ranges_blob$uniqueGeo 
+        attr(Z_,"AR1_block_n_u_h_s") <- AR1_sparse_Q_ranges_blob$AR1_block_n_u_h_s ## required for t_chol_Q computation
+        attr(Z_,"uniqueGeo") <- AR1_sparse_Q_ranges_blob$uniqueGeo 
       } else {
         splt <- strsplit(txt,c("%in%|:|\\+| "))[[1L]]
-        attr(ZA,"uniqueGeo") <- .calcUniqueGeo(data=mf[,splt,drop=FALSE])
+        attr(Z_,"uniqueGeo") <- .calcUniqueGeo(data=mf[,splt,drop=FALSE])
       }
     } 
-    ZA
+    attr(Z_,"prior_lam_fac") <- attr(modmat,"prior_lam_fac") 
+    return(Z_)
   }
 })
 
@@ -245,9 +266,10 @@
 
 
 .calc_Zlist <- function (formula, mf, rmInt, drop, sparse_precision=spaMM.getOption("sparse_precision"),
-                         type=".ULI", corr_info, 
+                         type=".ULI", corrMats_info, 
                          old_ZAlist=NULL,newinold=NULL, ## for prediction
-                         barlist ## missing and NULL ust be distinguished 
+                         barlist, ## missing and NULL ust be distinguished 
+                         lcrandfamfam # for heteroscedastic non-gaussian random effects
 ) {
   ## drop=TRUE elimine des niveaux spurious (test: fit cbind(Mate,1-Mate)~1+(1|Female/Male) ....)
   ## avec des consequences ultimes sur tailles des objets dans dispGammaGLM
@@ -262,8 +284,9 @@
   for (lit in seq_along(exp_ranef_terms)) {
     ZAlist[[lit]] <- .calc_Zmatrix(exp_ranef_terms[[lit]], mf=mf, rmInt=rmInt,
                                    drop=drop, sparse_precision=sparse_precision, type=type, 
-                                   cov_mat_info=corr_info$corrMatrices[[lit]],
-                                   old_leftOfBar_mf = attr(old_ZAlist[[newinold[lit]]],"leftOfBar_mf"))
+                                   corrMat_info=corrMats_info[[lit]],
+                                   old_leftOfBar_mf = attr(old_ZAlist[[newinold[lit]]],"leftOfBar_mf"),
+                                   lcrandfamfam=lcrandfamfam[[lit]])
     ## ALL ZAlist[[i]] are either 
     #     diagonal matrix (ddiMatrix) with @diag = "U"
     #  or (dg)*C*matrix ie a Compressed *C*olumn Storage (CCS) matrix 
@@ -272,6 +295,9 @@
     ##  @i contains the row indices of nonzero elements (except diagonal elements if @diag represents them)
     ##  @p[c] must contain the index _in x_ of the first nonzero element of column c, x[p[c]] in col c and row i[p[c]])  
   }
+  if ( ! is.null(newinold)) {
+    names(ZAlist) <- paste(newinold) ## bc .calc_ZAlist() matches AMatrices by names (itself useful for re.form) 
+  } ## F I X M E try char naming in all cases... 
   ## Subject <- list(0) ## keep this as comment; see below
   namesTerms <- vector("list",length(ZAlist))
   GrpNames <- names(exp_ranef_terms)
@@ -287,7 +313,7 @@
   ## One should not check .is_identity -> isDiagonal when 10000 points to predict... (FR->FR: modif def one of these functions ?)
   return(structure(ZAlist,  
                    exp_ranef_terms=exp_ranef_terms, ## matches ZAlist elements
-                   exp_ranef_types=unlist(lapply(exp_ranef_terms,attr,which="type")), ## matches ZAlist elements
+                   exp_ranef_types=attr(exp_ranef_terms,"type"), ## matches ZAlist elements
                    namesTerms=namesTerms, ## contains info for identifying random-coef terms
                    Xi_cols= unlist(lapply(namesTerms,length)))
   )

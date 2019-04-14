@@ -1,4 +1,4 @@
-## wrapper for optimization of HLCor.obj OR (iterateSEMSmooth -> HLCor directly)
+# for .corrHLfit_future
 .def_call_corrHLfit_body <- function(formula,data, ## matches minimal call of HLfit
                       init.corrHLfit=list(),
                       init.HLfit=list(),
@@ -88,7 +88,7 @@
                       nb_cores=NULL,
                       ... ## pb est risque de passer des args mvs genre HL.method et non HLmethod...
 ) {
-  spaMM.options(spaMM_glm_conv_crit=list(max=-Inf))
+  assign("spaMM_glm_conv_crit",list(max=-Inf) , envir=environment(spaMM_glm.fit))
   time1 <- Sys.time()
   oricall <- match.call(expand.dots=TRUE) ## mc including dotlist
   oricall$formula <- .preprocess_formula(formula) ## Cf comment in .getValidData
@@ -128,11 +128,12 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
                        nb_cores=NULL,
                        ... ## pb est risque de passer des args mvs genre HL.method et non HLmethod...
 ) {
-  spaMM.options(spaMM_glm_conv_crit=list(max=-Inf))
+  assign("spaMM_glm_conv_crit",list(max=-Inf) , envir=environment(spaMM_glm.fit))
   time1 <- Sys.time()
   oricall <- match.call(expand.dots=TRUE) ## mc including dotlist
   oricall$formula <- .preprocess_formula(formula) ## Cf comment in .getValidData
   mc <- oricall
+  if (is.null(ranFix)) mc$ranFix <- list() ## deep reason is that relist(., HLCor$ranPars) will need a list
   ## Preventing confusions
   if (!is.null(mc$ranPars)) {
     stop("incorrect 'ranPars' argument in corrHLfit call. Use ranFix (ranPars is for HLCor only)")
@@ -184,7 +185,7 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
         preprocess.formal.args$data <- do.call(binomialize,c(list(data=data),familyargs)) ## if data not already binomialized
       }     
     }
-    mc$processed <- do.call(.preprocess,preprocess.formal.args,envir=parent.frame(1L))
+    mc$processed <- do.call(.preprocess, preprocess.formal.args,envir=parent.frame(1L))
     pnames <- c("data","family","formula","prior.weights","HLmethod","rand.family","control.glm","REMLformula",
                 "resid.model", "verbose","distMatrix","uniqueGeo","adjMatrix") 
     for (st in pnames) mc[st] <- NULL 

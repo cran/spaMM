@@ -6,17 +6,18 @@ export(".HLfit_body_augZXy", ".solve_IRLS_as_ZX", ".solve_IRLS_as_spprec") ## mu
 importFrom("graphics", ".filled.contour", "Axis", "abline", "axis", "box", "hist", "layout", 
            "lcm", "lines", "par", "plot.new", "plot.window", "points", "polygon", "rect", "title")
 importFrom("graphics", "plot")
-importFrom("grDevices", "devAskNewPage")
+importFrom("grDevices", "devAskNewPage", "topo.colors", "adjustcolor", "col2rgb", "rgb", "dev.new")
 importFrom("methods", "as", "is", "cbind2", "rbind2", "new")
 importFrom("stats", "as.formula", "coefficients", "dgamma", "dnorm", "family", "formula", "getCall", 
            "glm", "lm", "make.link", "model.frame", "model.matrix", "model.offset", "model.response", 
-           "optim", "optimize", "pchisq", "pnorm", "qchisq", "qnorm", "qqline", "qqnorm", "qgamma",
+           "optim", "optimize", "pchisq", 
+           "qchisq", "qnorm", "qqline", "qqnorm", "qgamma",
            "rbeta", "rbinom", "rgamma", "rnorm", "rpois", "runif", "terms", "extractAIC", "step",
            "terms.formula", "var", "sd", "weights", "glm.fit",".lm.fit", "lm.wfit", "qbeta",
            "nobs", ## bc spaMM defines an HLfit method, although I do not currently use it
            "simulate", "anova", "confint", "fitted", "predict", "update", "logLik", "vcov", "coef",
            "gaussian", "binomial", "dpois", "Gamma", "resid", "uniroot", "deviance", "dbinom", "plogis", 
-           "as.dist", "AIC", "qnbinom", "qpois", "rnbinom", "integrate", "poisson",".getXlevels")
+           "as.dist", "AIC", "qnbinom", "qpois", "rnbinom", "integrate", "poisson",".getXlevels", "na.omit")
 importFrom("utils", "relist", "txtProgressBar", "setTxtProgressBar", "modifyList", "strOptions", "str",
            "write.table", "packageVersion", "packageDescription", "capture.output")
 importFrom("Matrix", "Matrix", "drop", "isDiagonal", "diag", "t", "solve", "Diagonal", "crossprod", "tcrossprod", "rowSums", "colSums",
@@ -101,4 +102,12 @@ S3method(get_from_MME_default,matrix)
 S3method(get_from_MME_default,Matrix)
 S3method(how,default)
 S3method(how,HLfit)
+#
+S3method(str,inla.spde2)
+# S4 class ZAXlist
+exportMethods("%*%")
+exportMethods(crossprod)
+exportMethods(tcrossprod)
+importFrom("methods", "slotNames")
+#
 useDynLib(spaMM, .registration=TRUE)  #  exposes to user level => objects need doc.

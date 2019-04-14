@@ -25,7 +25,7 @@ HLfit <- function(formula,
                   prior.weights=NULL, ## I must avoid default argument reference as formals(HLfit) serves as a template for calls to preprocess() 
                   processed=NULL
 ) {
-  spaMM.options(spaMM_glm_conv_crit=list(max=-Inf))
+  assign("spaMM_glm_conv_crit",list(max=-Inf) , envir=environment(spaMM_glm.fit))
   time1 <- Sys.time()
   oricall <- match.call()  ## there is no dots in HLfit
   if (is.null(processed)) { 

@@ -4,9 +4,10 @@
   } else return(object$HLframes$fixef_off_terms)
 }
 
+# Initially [for for MSFDR -> stats::step(); not directly called in spaMM code]
 terms.HLfit <- function(x, ...) { ## the full formula with the attributes for the fixed effects only (OK for MSFDR -> stats::step())
   # distinct attributes for ranefs wold surely work.
-  form <- x$predictor
+  form <- formula.HLfit(x, which="") ## hper does not seem necessary (nor offset, probably but the attribute will keep offset info bc it's the info available)
   attributes(form) <- attributes(.get_fixef_off_terms(x))
   return(form)
 }

@@ -27,7 +27,9 @@ Tnegbin(shape = stop("negbin's 'shape' must be specified"), link = "log")
   }
 }
 \details{
-\code{shape} is the \eqn{k} parameter of McCullagh and Nelder (1989, p.373) and the \code{theta} parameter of Venables and Ripley (2002, section 7.4). The latent Gamma variable has mean 1 and variance 1/shape, and the negbin with mean \eqn{mu} has variance \eqn{mu+mu^2}/shape. The \code{negbin} family is sometimes called the NegBin1 model in the literature on negative binomial models. 
+\code{shape} is the \eqn{k} parameter of McCullagh and Nelder (1989, p.373) and the \code{theta} parameter of Venables and Ripley (2002, section 7.4). The latent Gamma variable has mean 1 and variance 1/shape, and the negbin with mean \eqn{mu} has variance \eqn{mu+mu^2}/shape. The \code{negbin} family is sometimes called the NegBin1 model (as the first, historically) in the literature on negative binomial models, and sometimes the NegBin2 model (because its variance is a quadratic function of its mean). 
+
+\code{spaMM} does not handle models with the ``other'' negative-binomial response family where the variance is a linear function of the mean, because this is not an exponential-family model. However, it can approximate it, through a Laplace approximation and a bit of additional programming, as a Poisson-Gamma mixture model with an heteroscedastic Gamma random-effect, specified e.g. as \code{(weights-1|.)} where the weights need to be updated iteratively as function of predicted response. File \code{test-negbin1.R} in the \code{/test} directory provides one example. Other mean-variance relationship can be handled in the same way.
 
 The name \code{NB_shape} should be used to set values of shape in control arguments of the fitting functions (e.g., \code{fitme(.,init=list(NB_shape=1))}). 
 }

@@ -8,6 +8,7 @@ if (spaMM.getOption("example_maxtime")>0.7) { ##  not based on real timing
   spaMM.options(sparse_precision=TRUE)
   (f1 <- HLCor(migStatus ~ means+ corrMatrix(1|name),data=blackcap,
         corrMatrix=MLcorMat,HLmethod="ML"))
+  predict(f1, newdata=f1$data[1,]) ## check bugs on predict on corrMatrix model 
   f2 <- corrHLfit(migStatus ~ means+ Matern(1|latitude+longitude),data=blackcap,
             corrMatrix=MLcorMat,ranFix=list(corrPars=list("1"=list(nu=4,rho=0.4))),HLmethod="ML")
   spaMM.options(sparse_precision=FALSE)

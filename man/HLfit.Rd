@@ -5,8 +5,7 @@
 \title{Fit mixed models with given correlation matrix}
 \description{
   This function fits GLMMs as well as some hierarchical generalized linear models (HGLM; Lee and Nelder 2001).
-  \code{HLfit} fits both fixed effects parameters, and dispersion parameters i.e. the variance of the random effects (full covariance for random-coefficient models), and the variance of the residual error. The linear predictor is of the standard form \code{offset+ X beta + Z b}, where 
-  X is the design matrix of fixed effects and Z is a design matrix of random effects. Models are fitted by an iterative algorithm alternating estimation of fixed effects and of dispersion parameters. The residual dispersion may follow a \dQuote{structured-dispersion model} modeling heteroscedasticity. 
+  \code{HLfit} fits both fixed effects parameters, and dispersion parameters i.e. the variance of the random effects (full covariance for random-coefficient models), and the variance of the residual error. The linear predictor is of the standard form \code{offset+ X beta + Z b}, where X is the design matrix of fixed effects and Z is a design matrix of random effects (typically an incidence matrix with 0s and 1s, but not necessarily). Models are fitted by an iterative algorithm alternating estimation of fixed effects and of dispersion parameters. The residual dispersion may follow a \dQuote{structured-dispersion model} modeling heteroscedasticity. 
   Estimation of the latter parameters is performed by a form of fit of debiased residuals, which allows fitting a structured-dispersion model (Smyth et al. 2001).  However, evaluation of the debiased residuals can be slow in particular for large datasets. For models without structured dispersion, it is then worth using the \code{\link{fitme}} function (or the \code{\link{corrHLfit}} function with non-default arguments). These functions can optimize the likelihood of \code{HLfit} fits for different given values of the dispersion parameters (\dQuote{outer optimization}), thereby avoiding the need to estimate debiased residuals. 
 }
 \usage{
@@ -65,11 +64,12 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
   an extended definition for other models). REML can be viewed as a fom of conditional inference, and non-standard  conditionings can be called as \dQuote{REML} with a non-standard \code{REMLformula}. See Details for further information.
 }
   \item{control.HLfit}{
-  A list of parameters controlling the fitting algorithms.
+  A list of parameters controlling the fitting algorithms, which should be ignored in routine use. In addition, a \code{resid.family} parameter was previously documented here (before version 2.6.40), and will still operate as previously documented, but should not be used in new code. 
 
-  \code{resid.family} allows one to change the link for modeling of residual variance \eqn{\phi}, which is \code{"log"} by default. The family is always Gamma, so the non-default possible values of \code{resid.family} are \code{Gamma(identity)} or \code{Gamma(inverse)}. Only the default value ensures that the fitted \eqn{\phi} is positive.     
+%%%%%  As it just a list memeber and not formal arg, we can just remove the doc.
+%  \code{resid.family} Allows one to change the link for modeling of residual variance \eqn{\phi}, which is \code{"log"} by default. The family is always Gamma, so the non-default possible values of \code{resid.family} are \code{Gamma(identity)} or \code{Gamma(inverse)}. Only the default value ensures that the fitted \eqn{\phi} is positive.     
 
-  Controls for the fitting algorithms should be ignored in routine use. They are:
+  Possible parameters are:
 
   \code{conv.threshold} and \code{spaMM_tol}: \code{spaMM_tol} is a list of tolerance values, with elements \code{Xtol_rel} and \code{Xtol_abs} that define thresholds for relative and absolute changes in parameter values in iterative algorithms (used in tests of the form \dQuote{d(param)< Xtol_rel * param + Xtol_abs}, so that \code{Xtol_abs} is operative only for small parameter values). \code{conv.threshold} is the older way to control \code{Xtol_rel}. Default values are given by spaMM.getOption("spaMM_tol");
    

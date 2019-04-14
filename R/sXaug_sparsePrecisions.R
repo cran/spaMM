@@ -22,22 +22,29 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
   # => All of chol_Q_list must be dtCMatrix so that bdiag() gives a dtCMatrix
   precisionBlocks <- envir$precisionFactorList ## local copy so that AUGI0_ZX$envir$precisionFactorList is not modified
   chol_Q_list <- vector("list",length(envir$precisionFactorList)) ## of L in LL' factorisation of precision factor 
-  for (it in seq_len(length(envir$precisionFactorList))) {
-    if( ! is.null(envir$precisionFactorList[[it]])) {
-      if (inherits(envir$precisionFactorList[[it]],c("Matrix","matrix"))) { ## Q_CHMfactor NOT provided
+  for (rd in seq_len(length(envir$precisionFactorList))) {
+    if( ! is.null(envir$precisionFactorList[[rd]])) {
+      if (inherits(envir$precisionFactorList[[rd]],c("Matrix","matrix"))) { ## Q_CHMfactor NOT provided
         ## not clear that adjacency or AR1 can occur here
-        if (envir$finertypes[it] %in% c("AR1", "ranCoefs", "adjacency")) { # adjacency-specific code removed [from version 2.5.30
-          ## envir$precisionFactorList[[it]] should be a list hence this block should not be reached
+        if (envir$finertypes[rd] %in% c("AR1", "ranCoefs", "adjacency")) { # adjacency-specific code removed [from version 2.5.30
+          ## envir$precisionFactorList[[rd]] should be a list hence this block should not be reached
           stop("reached here in .reformat_Qmat_info()") 
-        } else {## other models where a single matrix is provided : Qmatrix provided.
-          chol_Q_list[[it]] <- as(Cholesky(envir$precisionFactorList[[it]],LDL=FALSE,perm=FALSE), "sparseMatrix")
+        } else {## other models where a single matrix is provided : Qmatrix provided. # is this ever run ?
+          if (is.null(template <- envir$precisionFactorList[[rd]]$template)) { 
+            Q_CHMfactor <- Cholesky(envir$precisionFactorList[[rd]],LDL=FALSE,perm=FALSE)
+            if (identical(.spaMM.data$options$TRY_update,TRUE) 
+                && ! isDiagonal(envir$precisionFactorList[[rd]])) { # protection against silly bugs 
+              envir$precisionFactorList[[rd]]$template <- Q_CHMfactor
+            } 
+          } else Q_CHMfactor <- Matrix::update(template, envir$precisionFactorList[[rd]])
+          chol_Q_list[[rd]] <- as(Q_CHMfactor, "sparseMatrix")
         }
-      } else if (envir$finertypes[it]=="ranCoefs") {
-        chol_Q_list[[it]] <- envir$precisionFactorList[[it]]$chol_Q
-        precisionBlocks[[it]] <- envir$precisionFactorList[[it]]$precmat ## full allready including lambda 
+      } else if (envir$finertypes[rd]=="ranCoefs") {
+        chol_Q_list[[rd]] <- envir$precisionFactorList[[rd]]$chol_Q
+        precisionBlocks[[rd]] <- envir$precisionFactorList[[rd]]$precmat ## full allready including lambda 
       } else { ## both Q and factorization provided (see .assign_geoinfo_and_LMatrices_but_ranCoefs())
-        chol_Q_list[[it]] <- envir$precisionFactorList[[it]]$chol_Q
-        precisionBlocks[[it]] <- envir$precisionFactorList[[it]]$Qmat ## indep of w.ranef (lambda) 
+        chol_Q_list[[rd]] <- envir$precisionFactorList[[rd]]$chol_Q
+        precisionBlocks[[rd]] <- envir$precisionFactorList[[rd]]$Qmat ## indep of w.ranef (lambda) 
       }
     } ## ELSE NULL precisionFactorList element <-> chol_Q_list element prefilled
   }
@@ -69,47 +76,60 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
   return(ZtWX) ## always *m*atrix
 }
 
-.calc_inv_beta_cov <- function(sXaug) { ## crossprod_r22
+.get_inv_L_G_ZtsqrW <- function(BLOB, sXaug) {
+  if (is.null(BLOB$inv_L_G_ZtsqrW)) {
+    sqrtwZ <- .Dvec_times_Matrix(sqrt(attr(sXaug,"w.resid")), sXaug$AUGI0_ZX$ZAfix)
+    BLOB$inv_L_G_ZtsqrW <- Matrix::solve(BLOB$G_CHMfactor, as(BLOB$G_CHMfactor,"pMatrix") %*% t(sqrtwZ), system="L")
+  }
+  return(BLOB$inv_L_G_ZtsqrW)
+}
+
+.provide_BLOB_r12 <- function(BLOB, sXaug) {
+  if (is.null(BLOB$r12)) {
+    # Use inv_L_G_ZtsqrW when it's available (as needed for certain leverage computations) 
+    # Otherwise use ZtWX which is typically much smaller so that solve(., ZtWX) is faster than solve(., ZtsqrW)
+    if (is.null(BLOB$inv_L_G_ZtsqrW)) { 
+      #inv_L_G_ZtsqrW <- .get_inv_L_G_ZtsqrW(BLOB, sXaug)
+      if (is.null(BLOB$ZtWX)) BLOB$ZtWX <- .calc_ZtWX(sXaug) # *m*atrix
+      BLOB$r12 <- Matrix::solve(BLOB$G_CHMfactor, as(BLOB$G_CHMfactor,"pMatrix") %*% BLOB$ZtWX, system="L")
+    } else {
+      sqrtwX <- .Dvec_times_m_Matrix(sqrt(attr(sXaug,"w.resid")),sXaug$AUGI0_ZX$X.pv)
+      BLOB$r12 <- BLOB$inv_L_G_ZtsqrW %*% sqrtwX
+    }
+  }
+}
+
+.calc_inv_beta_cov <- function(sXaug) { ## crossprod_r22 without computing r22 (nor r12) when r22 is ot already available
+  pforpv <- attr(sXaug, "pforpv") 
+  if (pforpv==0L) return(Diagonal(n=0L))
+  # ELSE
   ## In the working doc it is shown that the beta,beta block of inv_d2hdbv2 is solve(crossprod(r22)). We compute crossprod(r22) here,
   ## We know this crossprod is X'inv(Sig_e)X - r12'r12 in the working doc (not X'inv(Sig_e)X ! ) since r22 is defined from this. 
   AUGI0_ZX <- sXaug$AUGI0_ZX
   BLOB <- sXaug$BLOB
   if (is.null(BLOB$ZtWX)) BLOB$ZtWX <- .calc_ZtWX(sXaug)
   bloclength <- ceiling(1e7/nrow(AUGI0_ZX$X.pv)) 
-  pforpv <- attr(sXaug, "pforpv") 
-  if (pforpv==0L) {
-    return(Diagonal(n=0L))
-  } else if (pforpv>bloclength) {
-    #cat("_<_")
+  if (pforpv>bloclength) { ## I felt a need to avoid crossprod_r12 when r12 is tall (even if r12 is slim so that its crossprod is small)
+    .provide_BLOB_r12(BLOB, sXaug) 
+    sqrtWX <- as.matrix(.Dvec_times_m_Matrix( sqrt(attr(sXaug,"w.resid")),AUGI0_ZX$X.pv))
     seqncol <- seq(pforpv)
-    blocs <- split(seqncol, ceiling(seq_along(seqncol)/bloclength))
-    cross_r22 <- vector("list",length(blocs))
-    for (it in seq_along(blocs)) {
-      #cat(it," ")
-      cross_r22[[it]] <- BLOB$ZtWX[,blocs[[it]],drop=FALSE] ##*m*atrix
-      cross_r22[[it]] <- solve(BLOB$G_CHMfactor, cross_r22[[it]],system="A") ## ~v ## dgeMatrix <- *m*atrix
-      if(! is.null(BLOB$G_scaling)) cross_r22[[it]] <- cross_r22[[it]]/BLOB$G_scaling
-      cross_r22[[it]] <- AUGI0_ZX$X.pv[,blocs[[it]],drop=FALSE] - AUGI0_ZX$ZAfix %*% cross_r22[[it]]
-      cross_r22[[it]] <- .Dvec_times_Matrix( attr(sXaug,"w.resid"),cross_r22[[it]]) ## ~invM.z
-      cross_r22[[it]] <- crossprod(AUGI0_ZX$X.pv, cross_r22[[it]])
+    row_blocs <- split(seqncol, ceiling(seq_along(seqncol)/bloclength))
+    crossprod_r22 <- vector("list",length(row_blocs))
+    for (it in seq_along(row_blocs)) {
+      crossprod_r22[[it]] <- .crossprod(BLOB$r12, BLOB$r12[,row_blocs[[it]],drop=FALSE])
+      if(! is.null(BLOB$G_scaling)) crossprod_r22[[it]] <- crossprod_r22[[it]]/BLOB$G_scaling
+      crossprod_r22[[it]] <- .crossprod(sqrtWX, sqrtWX[,row_blocs[[it]],drop=FALSE]) - crossprod_r22[[it]]
     }
-    cross_r22 <- do.call(cbind, cross_r22)
-    #cat("_>_")
+    crossprod_r22 <- do.call(cbind, crossprod_r22)
   } else {
-    cross_r22 <- solve(BLOB$G_CHMfactor, BLOB$ZtWX,system="A") ## dgeMatrix <- *m*atrix
-    if(! is.null(BLOB$G_scaling)) cross_r22 <- cross_r22/BLOB$G_scaling
-    cross_r22 <- AUGI0_ZX$X.pv - AUGI0_ZX$ZAfix %*% cross_r22 ## still dgeMatrix
-    cross_r22 <- .Dvec_times_Matrix( attr(sXaug,"w.resid"),cross_r22) ## invM.X
-    cross_r22 <- crossprod(AUGI0_ZX$X.pv, cross_r22) ## Xt.invM.X
-    # # That is equivalent to
-    # r12 <- solve(BLOB$G_CHMfactor, BLOB$ZtWX,system="L") 
-    # h22 <- .ZtWZwrapper(AUGI0_ZX$X.pv,attr(sXaug,"w.resid")) - crossprod(r12) ## both lines as explained in working doc
-    # FIXME keep the most efficient algo ! But not obvious difference in efficiency
+    .provide_BLOB_r12(BLOB, sXaug) 
+    crossprod_r12 <- .crossprod(BLOB$r12)  # Xt_X !
+    crossprod_r22 <- .ZtWZwrapper(AUGI0_ZX$X.pv,attr(sXaug,"w.resid")) - as.matrix(crossprod_r12) ## XtWX-Xt_X ! Both lines as explained in working doc
   }
-  return(cross_r22) # dgeMatrix
+  return(crossprod_r22) # dgeMatrix
 }
 
-.calc_r22 <- function(X.pv, w.resid, r12, sXaug) {
+.calc_r22 <- function(X.pv, w.resid, r12, sXaug) { ## given r12 is known
   ## i's vain to try to regularize crossr22 by manipulating diagonal or eigenvalues. 
   #  It would be better to control the accuracy of the computation of crossr22 as a difference.
   if (ncol(X.pv)==0L) { # sXaug may be NULL bc not accessible in all calls.
@@ -118,53 +138,16 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
     crossr22 <- .ZtWZwrapper(X.pv,w.resid)-crossprod(r12) ## typically dsyMatrix (dense symmetric)
     return(.wrap_Utri_chol(crossr22)) # rather than (Matrix::)chol()
   }
-  
-  
-  ## lots of alternatives here:
-  
-  
-  if (FALSE) {
-    scaling <- 1/sqrt(colSums(r12^2)) ## i.e. control diag(crossprod(r12))
-    locX <- .m_Matrix_times_Dvec(X.pv, scaling)
-    locr12 <- .m_Matrix_times_Dvec(r12, scaling)
-    crossscaledr22 <- .ZtWZwrapper(locX,w.resid)-crossprod(locr12)
-    cholscaled <- chol(crossscaledr22)
-    return(.m_Matrix_times_Dvec(cholscaled, 1/scaling))
-  } else if (TRUE) {
-    crossr22 <- .ZtWZwrapper(X.pv,w.resid)-crossprod(r12)
-    resu <- try(chol(crossr22),silent=TRUE)
-    if (inherits(resu,"try-error")) {
-      BLOB <- sXaug$BLOB
-      # AUGI0_ZX <- sXaug$AUGI0_ZX
-      scaling <- 1/sqrt(colSums(r12^2)) ## i.e. control diag(crossprod(r12))
-      locX <- .m_Matrix_times_Dvec(X.pv, scaling)
-      # locZtWX <-  .Dvec_times_m_Matrix(attr(sXaug,"w.resid"),locX)
-      # locZtWX <- as.matrix(crossprod(AUGI0_ZX$ZAfix, locZtWX)) 
-      # cross_r22 <- solve(BLOB$G_CHMfactor, locZtWX) ## dgeMatrix <- *m*atrix
-      # cross_r22 <- locX - AUGI0_ZX$ZAfix %*% cross_r22 ## still dgeMatrix
-      # cross_r22 <- .Dvec_times_Matrix( attr(sXaug,"w.resid"),cross_r22) ## invM.X
-      # cross_r22 <- crossprod(locX, cross_r22) ## Xt.invM.X
-      cross_r22 <- t(locX) %*% BLOB$precisionMatrix %*% locX
-      cholscaled <- chol(cross_r22)
-      return(.m_Matrix_times_Dvec(cholscaled, 1/scaling))
-    } else return(resu)
-  } else {
-    crossr22 <- .ZtWZwrapper(X.pv,w.resid)-crossprod(r12)
-    resu <- try(chol(crossr22),silent=TRUE)
-    if (inherits(resu,"try-error")) {
-      crossr22 <- .calc_inv_beta_cov(sXaug)
-    }
-    return(chol(crossr22))
-  }
+  ## lots of alternatives here, removed from [v2.6.54
 }
 
 .provide_assignment_qrXa_or_r22 <- function(BLOB, sXaug, AUGI0_ZX, w.ranef) {
   if (is.null(BLOB$qrXa)) { ## use it whenever available
     if ( ! identical(.spaMM.data$options$use_spprec_QR,TRUE)) {
       if (is.null(BLOB$r22)) {
-        if (is.null(BLOB$ZtWX)) BLOB$ZtWX <- .calc_ZtWX(sXaug)
-        BLOB$r12 <- solve(BLOB$G_CHMfactor, BLOB$ZtWX,system="L") 
-        BLOB$r22 <- try(.calc_r22(AUGI0_ZX$X.pv,attr(sXaug,"w.resid"),BLOB$r12, sXaug),silent=TRUE)         ## both lines as explained in working doc
+        # the code assumes that when r22 is available, r12 is, so I cannot simply compute crossprod_r12 here
+        .provide_BLOB_r12(BLOB, sXaug) 
+        BLOB$r22 <- .calc_r22(AUGI0_ZX$X.pv,attr(sXaug,"w.resid"),BLOB$r12, sXaug)        ## both lines as explained in working doc
       }
     }
     if ( is.null(dim(BLOB$r22))) { ## not attempted to compute or failed computation
@@ -189,7 +172,7 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
   AUGI0_ZX <- sXaug$AUGI0_ZX
   Zt_sqrtw_pwy_o <- crossprod(AUGI0_ZX$ZAfix, sqrt(attr(sXaug,"w.resid"))*pwy_o) 
   Xt_sqrtw_pwy_o <- crossprod(AUGI0_ZX$X.pv, sqrt(attr(sXaug,"w.resid"))*pwy_o)
-  lev_phi_z_pwy_o <- Matrix::solve(BLOB$G_CHMfactor, Zt_sqrtw_pwy_o, system="L") ## R_11^{-T}.Ztw.pwy_o
+  lev_phi_z_pwy_o <- Matrix::solve(BLOB$G_CHMfactor, as(BLOB$G_CHMfactor,"pMatrix") %*% Zt_sqrtw_pwy_o, system="L") ## R_11^{-T}.Ztw.pwy_o
   if (attr(sXaug,"pforpv")>0L) {
     .provide_assignment_qrXa_or_r22(BLOB, sXaug, AUGI0_ZX, w.ranef=attr(sXaug,"w.ranef")) 
     ## : currently provides r12, r22 ratehr than qrXaand the follwing code assumes so.
@@ -228,24 +211,23 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
     }
     lev_lambda <- lev_lambda_z+lev_lambda_x
   } 
-  #sqrtwZ <- AUGI0_ZX$ZAfix
-  #sqrtwZ@x <- sqrtwZ@x * sqrt(attr(sXaug,"w.resid"))[sqrtwZ@i+1L]
-  sqrtwZ <- .Dvec_times_Matrix(sqrt(attr(sXaug,"w.resid")), AUGI0_ZX$ZAfix)
-  XtW <- t(AUGI0_ZX$X.pv *sqrt(attr(sXaug,"w.resid")))
-  if (AUGI0_ZX$is_unitary_ZAfix) {
+  if (AUGI0_ZX$is_unitary_ZAfix) {  
     # no complete simplif for AUGI0_ZX$is_unitary_ZAfix bc lev_phi_x is not the diag of a Z...Zt matrix
     # but we can still use p*n matrices instead of r*n matrices to compute the lev_phi_x component
-    g <- Matrix::solve(BLOB$G_CHMfactor, system="L") ## fixme rethink this.
-    crossprod_r12_z_rows <- suppressMessages(crossprod(crossprod(g, BLOB$r12),t(sqrtwZ))) 
+    ## 
+    g <- Matrix::solve(BLOB$G_CHMfactor, as(BLOB$G_CHMfactor,"pMatrix"), system="L") ## fixme rethink this.
+    sqrtwZ <- .Dvec_times_Matrix(sqrt(attr(sXaug,"w.resid")), AUGI0_ZX$ZAfix)
+    crossprod_r12_z_rows <- crossprod(crossprod(g, BLOB$r12),t(sqrtwZ)) 
     lev_phi_z <- colSums(g^2)
     lev_phi_z <- drop(AUGI0_ZX$ZAfix %*% lev_phi_z)*attr(sXaug,"w.resid")
   } else {
-    lev_phi_z <- Matrix::solve(BLOB$G_CHMfactor, t(sqrtwZ), system="L") ## solve(as(BLOB$G_CHMfactor,"sparseMatrix"), t(sqrtwZ))
+    lev_phi_z <- .get_inv_L_G_ZtsqrW(BLOB, sXaug)
     crossprod_r12_z_rows <- crossprod(BLOB$r12,lev_phi_z)
     lev_phi_z@x <- lev_phi_z@x^2
     lev_phi_z <- colSums(lev_phi_z) 
   }
   if (attr(sXaug,"pforpv")>0L) {
+    XtW <- t(AUGI0_ZX$X.pv *sqrt(attr(sXaug,"w.resid")))
     lev_phi_x <- backsolve(BLOB$r22, XtW - crossprod_r12_z_rows, transpose=TRUE)
     lev_phi_x <- lev_phi_x^2
     if ( is.matrix(lev_phi_x)) lev_phi_x <- colSums(lev_phi_x) 
@@ -262,15 +244,82 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
   return(invM.z) ## where M=Z.solve(precMat).Zt+diag(~phi)
 } # solve(AUGI0_ZX$ZAfix %*% solve(precisionMatrix) %*% t(AUGI0_ZX$ZAfix)+diag(1/attr(sXaug,"w.resid"))) = Sigsolve(diag(x=ncol(ZtW)))
 
-# (FIXME) Matrix::solve not used economically in this code => long time of test-Rasch when sparse precision is used.
-# this is why spprec is useful only when prec mat is quite sparser than corr mat. 
-# It involves the following calls ( * => mMatrix rhs ) :
-# * solve(BLOB$G_CHMfactor, chol_Q, "L")
-# * solve(BLOB$G_CHMfactor, t(sqrtwZ), "L")
-# solve(BLOB$G_CHMfactor, rhs, "A")
-# solve(BLOB$G_CHMfactor, (chol_Q %*% grad_v), "A")
-# * solve(BLOB$G_CHMfactor, ZtWX, "A")
-# solve(BLOB$G_CHMfactor, ZtWX %*% dbeta_eta, "A")
+.calc_H_dH <- function(BLOB, damping) {
+  ## See comments in .calc_G_dG()
+  if (is.null(BLOB$dH)) {
+    if (is.null(BLOB$tcrossfac_Md2hdv2)) BLOB$tcrossfac_Md2hdv2 <- Matrix::solve(BLOB$chol_Q,  t(as(BLOB$G_CHMfactor,"pMatrix"))%*%as(BLOB$G_CHMfactor,"sparseMatrix"))
+    BLOB$Md2hdv2 <- .tcrossprod(BLOB$tcrossfac_Md2hdv2)
+  }
+  H_dH <- BLOB$Md2hdv2
+  nc <- ncol(H_dH)
+  diagPos <- seq.int(1L,nc^2,nc+1L)
+  dH <- H_dH[diagPos]*damping
+  H_dH[diagPos] <- H_dH[diagPos] + dH
+  return(list(H_dH=H_dH, dampDpD_2=dH))
+}
+
+.calc_G_dG <- function(BLOB, damping) {
+  spprec_LevM_D <- .spaMM.data$options$spprec_LevM_D
+  if (spprec_LevM_D=="update") { # experimental, may not fully work. F I X M E retest when permuted cholesly is used bc currently slow.
+    BLOB$D_Md2hdv2 <- diag(chol2inv(BLOB$chol_Q))
+    BLOB$dG <- NaN ## Todetect prolems in further usages
+    G_dG <- Matrix::update(BLOB$G_CHMfactor, BLOB$Gmat, damping) # actually method of stats:::update for class CHMfactor (?`CHMfactor-class`) 
+    return(list(G_dG=G_dG, dampDpD_2=damping * BLOB$D_Md2hdv2))
+  } else {
+    if (is.null(BLOB$dG)) {  
+      if (spprec_LevM_D=="1") {
+        BLOB$D_Md2hdv2 <- rep(1,ncol(BLOB$chol_Q))
+        BLOB$dG <- .tcrossprod(BLOB$chol_Q) # dsCMatrix # do we have the precisionMatrix somewhere ?
+      } else { ## costly solve()
+        ## part of the problem is avoiding tall matrices from tall ZA (and X), but for squarish ZA, using solve(chol_Q,... ) looks complicated.
+        ## solve(chol_Q,... ) further assuming that we have not stored the LMatrix
+        if (is.null(BLOB$tcrossfac_Md2hdv2)) BLOB$tcrossfac_Md2hdv2 <- Matrix::solve(BLOB$chol_Q, t(as(BLOB$G_CHMfactor,"pMatrix"))%*%as(BLOB$G_CHMfactor,"sparseMatrix"))
+        tmp <- BLOB$tcrossfac_Md2hdv2 ## (Hfac)
+        tmp@x <- tmp@x^2
+        # def of pertubration D_Md2hdv2 affects decimals in test-adjacency-long
+        if (spprec_LevM_D=="rowSums") { ## [as originally used for (full) LevMar_step]
+          BLOB$D_Md2hdv2 <- rowSums(tmp) # the diagonal elements since *row*Sums = diag Tcrossprod(tcrossfac) (= invQ G Gt invQt)
+        } else { 
+          BLOB$D_Md2hdv2 <- colSums(tmp) # colSums() seems to give good results
+        }
+        ## convert diag perturb of Md2hdv2 into a non-diag perturb of G :
+        ## since H=invL_Q G t(invL_Q),  dG= L_Q dH t(L_Q) 
+        BLOB$dG <- .ZWZtwrapper(BLOB$chol_Q , BLOB$D_Md2hdv2) # dsCMatrix
+      } 
+    }
+    dampdG <- (damping*BLOB$dG) ## not always diagonal...
+    G_dG <- BLOB$Gmat + dampdG ## probably not so sparse... typically dsC + dsC 
+    return(list(G_dG=G_dG, dampDpD_2=damping * BLOB$D_Md2hdv2))
+  }
+}
+
+.provide_BLOB_hatval_Z_ <- function(BLOB, w.ranef, AUGI0_ZX, sXaug) {
+  if (is.null(BLOB$hatval_Z_)) {
+    lev_lambda <- BLOB$factor_inv_Md2hdv2
+    lev_lambda@x <- lev_lambda@x^2 
+    lev_lambda <- .Matrix_times_Dvec(lev_lambda, w.ranef)
+    lev_lambda <- colSums(lev_lambda)
+    if (AUGI0_ZX$is_unitary_ZAfix) { ## then only diagonal values of invG matter  ## adjacency-long case...?
+      lev_phi <- colSums(Matrix::solve(BLOB$G_CHMfactor, as(BLOB$G_CHMfactor,"pMatrix"), system="L")^2)
+      lev_phi <- drop(AUGI0_ZX$ZAfix %*% lev_phi)*attr(sXaug,"w.resid")
+    } else {
+      # inv_L_G_ZtsqrW arises as simplif of BLOB$factor_inv_Md2hdv2 %*% t(sqrtwZL) (L and chol_Q cancel each other)
+      lev_phi <- .get_inv_L_G_ZtsqrW(BLOB, sXaug) ## solve(as(BLOB$G_CHMfactor,"sparseMatrix"), t(sqrtwZ))
+      lev_phi@x <- lev_phi@x^2
+      lev_phi <- colSums(lev_phi)
+    }
+    BLOB$hatval_Z_ <- list(lev_lambda=lev_lambda,lev_phi=lev_phi)
+  }
+}
+
+.provide_BLOB_factor_inv_Md2hdv2 <- function(BLOB) { ## Code encapsulated in a function for easier profiling
+  LL <- Matrix::solve(BLOB$G_CHMfactor, as(BLOB$G_CHMfactor,"pMatrix") %*% BLOB$chol_Q,system="L") ## dgCMatrix 
+  BLOB$factor_inv_Md2hdv2 <- drop0(LL,tol=.Machine$double.eps) ## crossfactor
+  #factor_Md2hdv2 <- as.matrix(Matrix::solve(BLOB$chol_Q,as(BLOB$G_CHMfactor,"sparseMatrix")))
+  #BLOB$chol_Md2hdv2 <- Rcpp_chol_R(tcrossprod(factor_Md2hdv2)) #A = R'.R as in R's chol()
+}
+
+
 .AUGI0_ZX_sparsePrecision <- function(sXaug,which="",z=NULL,B=NULL,
                                       damping,LM_z) {
   AUGI0_ZX <- sXaug$AUGI0_ZX 
@@ -287,56 +336,39 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
         # Either a precisionBlocks is that of a non-trivial corr mat of a gaussian ranef => the lambda and w.ranef are constant (even in CAR)
         # or the lambda and w.ranef are not constant but the precisionBlocks is an identity matrix.
         # In both cases, precisionBlocks[[it]] * w.ranef[u.range] is a correct way of computing the precision block
+        # .Matrix_times_Dvec() is faster by directly manipulating slots.
         u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
-        precisionBlocks[[it]] <- .Matrix_times_Dvec(precisionBlocks[[it]], w.ranef[u.range]) ## more vanilla code actually degrades a dsC into dgC 
+        precisionBlocks[[it]] <- .Matrix_times_Dvec(precisionBlocks[[it]], 
+                                                    w.ranef[u.range],
+                                                    check_dsC=FALSE, # risky: use TRUE to detect when the result cannot be dsC
+                                                    keep_dsC=TRUE # result MUST be dsC
+                                                    ) 
       }
     }
     if (length(precisionBlocks)>1L) {
       precisionMatrix <- forceSymmetric(do.call(Matrix::bdiag, precisionBlocks)) # bdiag degrades dsC into dgC
     } else precisionMatrix <- (precisionBlocks[[1L]]) # forceSymmetric removed bc input should in principle be dsC
     tmp <- .ZtWZwrapper(AUGI0_ZX$ZAfix,attr(sXaug,"w.resid")) # should return a symmetric-type matrix (dsC or ddi...)
-    tmp <- tmp + precisionMatrix 
+    tmp <- tmp + precisionMatrix # may be dsC + dsC yet FIXME takes some time as this calls forceSymmetric(callGeneric(as(e1, "dgCMatrix"), as(e2, "dgCMatrix")))
     BLOB$Gmat <- drop0(tmp) ## depends on w.ranef and w.resid
     # if (inherits(BLOB$Gmat,"dgCMatrix")) stop("ICI") 
-    BLOB$G_CHMfactor <- Cholesky(BLOB$Gmat,LDL=FALSE,perm=FALSE) ## costly
+    if (is.null(template <- AUGI0_ZX$template_G_CHM)) { 
+      BLOB$G_CHMfactor <- Cholesky(BLOB$Gmat,LDL=FALSE,perm=.spaMM.data$options$perm_G) ## costly
+      if (identical(.spaMM.data$options$TRY_update,TRUE) 
+          && ! isDiagonal(precisionMatrix)) { # protection against silly bugs # F I X M E Could we identify cases where prec matrix is always Diagonal ?
+        AUGI0_ZX$template_G_CHM <- BLOB$G_CHMfactor
+      }
+    } else BLOB$G_CHMfactor <- Matrix::update(template, BLOB$Gmat) ## If it fails in spde, look for too low kappa.
     ## with perm=TRUE G=P'LL'P and the P'L (non-triangular) factor is given by solve(<G_CHM>,as(<G_CHM>,"sparseMatrix"),system="Pt")
   }
   if (which=="initialize") return(NULL)
-  if ( is.null(BLOB$factor_inv_Md2hdv2)  && 
-       #(which %in% c("logdet_R_scaled_v","hatval_Z","d2hdv2","solve_d2hdv2","R_scaled_v_h_blob"))
-       (which %in% c("solve_d2hdv2","Mg_invH_g","hatval_Z","hatval"))
-  ) {
-    LL <- Matrix::solve(BLOB$G_CHMfactor, BLOB$chol_Q,system="L") ## dgCMatrix 
-    BLOB$factor_inv_Md2hdv2 <- drop0(LL,tol=.Machine$double.eps)
-    #factor_Md2hdv2 <- as.matrix(Matrix::solve(BLOB$chol_Q,as(BLOB$G_CHMfactor,"sparseMatrix")))
-    #BLOB$chol_Md2hdv2 <- Rcpp_chol_R(tcrossprod(factor_Md2hdv2)) #A = R'.R as in R's chol()
-    ####BLOB$inv_Md2hdv2 <- Matrix::crossprod(BLOB$factor_inv_Md2hdv2)
-    ####BLOB$CHMfactor_inv_Md2hdv2 <- Matrix::Cholesky(BLOB$inv_Md2hdv2,LDL=FALSE,perm=FALSE)
-  }
-  
+  if ( is.null(BLOB$factor_inv_Md2hdv2)  
+       && which %in% c("","solve_d2hdv2","Mg_invH_g","hatval_Z","hatval")) .provide_BLOB_factor_inv_Md2hdv2(BLOB)
   if (which=="hatval_Z") {
     ## calcul correct; 
     # TT <- rbind(diag(sqrt(w.ranef)),diag(sqrt(attr(AUGI0_ZX, "w.resid"))) %*% AUGI0_ZX$ZAfix %*% t(solve(BLOB$chol_Q)) )
     # diag(TT %*% (solve(crossprod(TT))) %*% t(TT)) ## lev_lambda, lev_phi
-    if (is.null(BLOB$hatval_Z_)) {
-      lev_lambda <- BLOB$factor_inv_Md2hdv2
-      lev_lambda@x <- lev_lambda@x^2 
-      lev_lambda <- .Matrix_times_Dvec(lev_lambda, w.ranef)
-      lev_lambda <- colSums(lev_lambda)
-      if (AUGI0_ZX$is_unitary_ZAfix) { ## then only diagonal values of invG matter
-        lev_phi <- colSums(Matrix::solve(BLOB$G_CHMfactor, system="L")^2)
-        lev_phi <- drop(AUGI0_ZX$ZAfix %*% lev_phi)*attr(sXaug,"w.resid")
-      } else {
-        #sqrtwZ <- AUGI0_ZX$ZAfix
-        #sqrtwZ@x <- sqrtwZ@x * sqrt(attr(sXaug,"w.resid"))[sqrtwZ@i+1L]
-        sqrtwZ <- .Dvec_times_Matrix(sqrt(attr(sXaug,"w.resid")), AUGI0_ZX$ZAfix)
-        # next line is simplif of BLOB$factor_inv_Md2hdv2 %*% t(sqrtwZL) (L and chol_Q cancel each other)
-        lev_phi <- Matrix::solve(BLOB$G_CHMfactor, t(sqrtwZ), system="L") ## solve(as(BLOB$G_CHMfactor,"sparseMatrix"), t(sqrtwZ))
-        lev_phi@x <- lev_phi@x^2
-        lev_phi <- colSums(lev_phi)
-      }
-      BLOB$hatval_Z_ <- list(lev_lambda=lev_lambda,lev_phi=lev_phi)
-    }
+    .provide_BLOB_hatval_Z_(BLOB, w.ranef, AUGI0_ZX, sXaug)
     return(BLOB$hatval_Z_)
   }
   if (which=="Mg_solve_g") {
@@ -347,8 +379,9 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
   }
   if (which=="solve_d2hdv2") { 
       if ( is.null(B) ) {
-        stop("B is NULL")
-      } else {return( - Matrix::crossprod(BLOB$factor_inv_Md2hdv2, BLOB$factor_inv_Md2hdv2 %*% B))}
+        # stop("B is NULL") # this would actually 'work' bc this case never occurs in current code (v2.6.3)
+        return( - .crossprod(BLOB$factor_inv_Md2hdv2))
+      } else {return( - .crossprod(BLOB$factor_inv_Md2hdv2, BLOB$factor_inv_Md2hdv2 %*% B))}
   }
   if (which=="half_logdetQ") {
     half_logdetQ <-  sum(log(diag(BLOB$chol_Q))) 
@@ -363,37 +396,37 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
   ## Solving for model coefficients:
   if ( ! is.null(z)) { ## which=""
     grad_v <- z$m_grad_obj[seq(ncol(BLOB$chol_Q))]
-    #L_dv_term_from_grad_v <- Matrix::solve(BLOB$G_CHMfactor, BLOB$factor_inv_Md2hdv2 %*% grad_v, system="Lt")
-    L_dv_term_from_grad_v <- Matrix::solve(BLOB$G_CHMfactor, BLOB$chol_Q %*% grad_v,system="A") # part from grad_h, to be completed
     if (attr(sXaug,"pforpv")) { ## if there are fixed effect coefficients to estimate
-      if (is.null(BLOB$ZtWX)) BLOB$ZtWX <- .calc_ZtWX(sXaug)
-      XtWX <- .ZtWZwrapper(AUGI0_ZX$X.pv,attr(sXaug,"w.resid")) 
       # rhs for beta
       grad_p_v <- z$m_grad_obj[-seq(ncol(BLOB$chol_Q))]
-      dbeta_rhs <- Matrix::drop(grad_p_v - crossprod(BLOB$ZtWX, L_dv_term_from_grad_v)) 
-      # matrix for beta
-      Xt_X <- crossprod(BLOB$ZtWX, solve(BLOB$G_CHMfactor, BLOB$ZtWX, system="A"))
-      dbeta_eta <- solve(XtWX-Xt_X , dbeta_rhs)[,1] ## wher Xt(W-_)X = X'SigSolve X
-      # modif rhs for v_h :
-      L_dv <- L_dv_term_from_grad_v - solve(BLOB$G_CHMfactor, BLOB$ZtWX %*% dbeta_eta, system="A")
-      dv_h <- Matrix::drop(Matrix::crossprod(BLOB$chol_Q, Matrix::drop(L_dv))) ## inner drop() to avoid signature issue with dgeMatrix dv_rhs...
+      if (is.null(BLOB$r22)) {
+        .provide_BLOB_r12(BLOB, sXaug) 
+        BLOB$r22 <- .calc_r22(AUGI0_ZX$X.pv,attr(sXaug,"w.resid"), BLOB$r12, sXaug)        ## both lines as explained in working doc
+      }
+      rhs <- (BLOB$factor_inv_Md2hdv2 %*% grad_v)[,1L]
+      dbeta_rhs <- grad_p_v - .crossprod(BLOB$r12, rhs)[,1L] # numeric  vector
+      dbeta_eta <- backsolve(BLOB$r22, forwardsolve(BLOB$r22, dbeta_rhs, 
+                                                    upper.tri = TRUE, transpose = TRUE)) # ie (chol2inv(BLOB$r22) %*% dbeta_rhs)[,1L]
+      dv_h <- .crossprod(BLOB$factor_inv_Md2hdv2, rhs - (BLOB$r12 %*% dbeta_eta)[,1])[,1]
     } else {
       dbeta_eta <- numeric(0)
-      dv_h <- Matrix::drop(Matrix::crossprod(BLOB$chol_Q, Matrix::drop(L_dv_term_from_grad_v))) ## inner drop() to avoid signature issue with dgeMatrix dv_rhs...
+      dv_h <- .crossprod(BLOB$factor_inv_Md2hdv2, (BLOB$factor_inv_Md2hdv2 %*% grad_v)[,1L])[,1L]
     }
     return(list(dv_h=dv_h,dbeta_eta=dbeta_eta)) 
   }
   if (which=="beta_cov") { 
     if (attr(sXaug,"pforpv")==0L) return(list(beta_cov=diag(nrow=0L)))
     # ELSE
-    inv_beta_cov <- .calc_inv_beta_cov(sXaug) 
+    if (is.null(BLOB$r22)) {
+      inv_beta_cov <- .calc_inv_beta_cov(sXaug) 
+    } else inv_beta_cov <- crossprod(BLOB$r22)
     beta_cov <- try(solve(inv_beta_cov), silent=TRUE) ## chol2inv(Rscaled) in other methods.
     if (inherits(beta_cov,"try-error")) {
       warning("Information matrix is (nearly) singular.")
       beta_cov <- ginv(as.matrix(inv_beta_cov))
     }
     colnames(beta_cov) <- rownames(beta_cov) <- colnames(AUGI0_ZX$X.pv)
-    return(list(beta_cov=as.matrix(beta_cov)))
+    return(list(beta_cov=as.matrix(beta_cov))) # make_beta_table() expects a *m*atrix
   }
   #### REML:
   if (which=="logdet_r22") { 
@@ -407,8 +440,9 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
         qrX <- qr(Xscal)
         logdet_r22 <- determinant(qrR(qrX,backPermute = FALSE))$modulus[1] - get_from_MME(sXaug,"logdet_sqrt_d2hdv2")
       } else {
-        #cat("cross_r22:") # FIXME should use X.Re for non-standard REML?
-        crossprod_r22 <- .calc_inv_beta_cov(sXaug) # inv_beta_cov is crossprod(diagonal block r22 of cholesky factor) as shown in working doc.
+        #cat("cross_r22:") # FIXME should use X.Re for non-standard REML? (don't modify thia but code which may call for it)
+        # _FIXME_ is it faster to compute crossprod_r22 or r22 by .calc_r22() ?
+        crossprod_r22 <- .calc_inv_beta_cov(sXaug) # inv_beta_cov is crossprod_r22 as shown in working doc.
         logdet_r22 <- determinant(crossprod_r22)$modulus[1]/2
       }
     } else {
@@ -428,26 +462,15 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
   }
   if (which %in% c("LevMar_step")) {  ## LM with diagonal perturbation as in NocedalW p. 266
     #
-    if (TRUE) { ## not so clear which is faster
+    if (.spaMM.data$options$use_G_dG) { ## not so clear which is faster
       # uses rather complex code to avoid solve(dense d2hdv2,...) but cannot avoid solve(rather dense G_dG)
-      if (is.null(BLOB$dG)) {  
-        tmp <- Matrix::solve(BLOB$chol_Q, as(BLOB$G_CHMfactor,"sparseMatrix"))
-        tmp@x <- tmp@x^2
-        BLOB$D_Md2hdv2 <- rowSums(tmp) ## rowSums = diag Tcrossprod = invQ G Gt invQt
-        ## convert diag perturb of Md2hdv2 into a non-diag perturb of G :
-        ## since H=invL_Q G t(invL_Q),  dG= L_Q dH t(L_Q) 
-        BLOB$dG <- .ZWZtwrapper(BLOB$chol_Q , BLOB$D_Md2hdv2)
-        if (is.null(BLOB$ZtWX)) BLOB$ZtWX <- .calc_ZtWX(sXaug)
-        BLOB$XtWX <- .ZtWZwrapper(AUGI0_ZX$X.pv,attr(sXaug,"w.resid")) ## as(,"matrix") ?
-        BLOB$DpD <- c(BLOB$D_Md2hdv2,diag(BLOB$XtWX)) ## store as diagonal perturbation for the return value
-      } 
+      if (is.null(BLOB$ZtWX)) BLOB$ZtWX <- .calc_ZtWX(sXaug)
+      BLOB$XtWX <- .ZtWZwrapper(AUGI0_ZX$X.pv,attr(sXaug,"w.resid")) ## as(,"matrix") ?
+      G_dG_blob <- .calc_G_dG(BLOB, damping) # list(G_dG=G_dG, dampDpD_2=damping * BLOB$D_Md2hdv2)
+      if (is.null(BLOB$DpD)) BLOB$DpD <- c(BLOB$D_Md2hdv2,diag(BLOB$XtWX)) ## store as diagonal perturbation for the return value
       ## sequel recomputed for each new damping value...
-      # if (is.null(BLOB$Gmat_dense)) BLOB$Gmat_dense <- as.matrix(BLOB$Gmat)
-      # G_dG <- BLOB$Gmat_dense + damping*as.matrix(BLOB$dG) ## probably not so sparse...
-      # nevertheless the sparse code is faster
       grad_v <- LM_z$scaled_grad[seq(ncol(BLOB$chol_Q))] 
-      dampDpD_2 <- (damping*BLOB$dG) ## not diagonal...
-      G_dG <- drop0(BLOB$Gmat + dampDpD_2) ## probably not so sparse...
+      G_dG <- G_dG_blob$G_dG
       L_dv_term_from_grad_v <- Matrix::drop(Matrix::solve(G_dG, Matrix::tcrossprod(BLOB$chol_Q, grad_v))) # part from grad_h, to be completed
       if (attr(sXaug,"pforpv")) { ## if there are fixed effect coefficients to estimate
         # rhs for beta
@@ -458,8 +481,9 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
         XX_D <- BLOB$XtWX
         dampDpD_1 <- damping*diag(XX_D)
         diag(XX_D) <- diag(XX_D)+dampDpD_1 ## adds D1=damping*diag(XX_D)
-        #
-        dbeta_eta <- solve(XX_D-Xt_X , dbeta_rhs)[,1]
+        # see INLA_vs_spaMM_Loaloa.R for one case where the matrix is singular.
+        dbeta_eta <- try(solve(XX_D-Xt_X , dbeta_rhs)[,1],silent=TRUE)
+        if (inherits(dbeta_eta,"try-error")) dbeta_eta <- (ginv(XX_D-Xt_X) %*% dbeta_rhs)[,1]
         L_dv <- L_dv_term_from_grad_v - drop(solve(G_dG, BLOB$ZtWX %*% dbeta_eta)) # - dampDpD_2 %*% LM_z$v_h_beta$v_h
         dv_h <- Matrix::drop(Matrix::crossprod(BLOB$chol_Q, Matrix::drop(L_dv))) ## inner drop() to avoid signature issue with dgeMatrix dv_rhs...
       } else {
@@ -481,7 +505,7 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
       if ((useQR <- FALSE)) {
         if (is.null(BLOB$D_Md2hdv2)) {
           ## t() bc .damping_to_solve implictly uses crossprod ( as in solve(X'X)=solve(R'R) )
-          BLOB$Hfac <- tmp <- t(drop0(solve(BLOB$chol_Q, as(BLOB$G_CHMfactor,"sparseMatrix")))) ## probably not so sparse...
+          BLOB$Hfac <- tmp <- t(drop0(solve(BLOB$chol_Q, t(as(BLOB$G_CHMfactor,"pMatrix"))%*%as(BLOB$G_CHMfactor,"sparseMatrix")))) ## probably not so sparse...
           tmp@x <- tmp@x^2
           BLOB$D_Md2hdv2 <- colSums(tmp) ## colSums bc t() above // rowSums for diag Tcrossprod(invQ G)  = invQ G Gt invQt
         }
@@ -489,21 +513,20 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
         DS <- .damping_to_solve(X=BLOB$Hfac, dampDpD=dampDpD_2, rhs=NULL) 
         dv_term_from_grad_v <- drop((DS$inv %*% grad_v[DS$Rperm])[DS$RRsP]) 
       } else {
-        if (is.null(BLOB$Md2hdv2)) BLOB$Md2hdv2 <- as(tcrossprod(Matrix::solve(BLOB$chol_Q, as(BLOB$G_CHMfactor,"sparseMatrix"))),"matrix")
-        H_dH <- BLOB$Md2hdv2 ## fixme inefficace en soi d'autant plus qu'on a un rhs
-        diag(H_dH) <- diag(H_dH)*(1+damping)
-        dv_term_from_grad_v <- solve(H_dH, grad_v)
+        H_dH_blob <- .calc_H_dH(BLOB, damping) # list(dVscaled= dv_h, dampDpD = dampDpD_2)
+        dv_term_from_grad_v <- solve(H_dH_blob$H_dH,  grad_v)
       }
       if (attr(sXaug,"pforpv")) { ## if there are fixed effect coefficients to estimate
         dbeta_rhs <- grad_beta - crossprod(BLOB$LZtWX, dv_term_from_grad_v) # - dampDpD_1 * LM_z$v_h_beta$beta_eta one damps the gradient eq, not the one giving v_h_beta
         if (useQR) {
           thinsolve <- as((DS$inv %*% BLOB$LZtWX[DS$Rperm,])[DS$RRsP,],"matrix") ## something wrong here ?
-        } else thinsolve <- solve(H_dH, BLOB$LZtWX) ## thin result, needed for Xt_X
+        } else thinsolve <- solve(H_dH_blob$H_dH, BLOB$LZtWX) ## thin result, needed for Xt_X
         Xt_X <- crossprod(BLOB$LZtWX, thinsolve)
         XX_D <- BLOB$XtWX
         diag(XX_D) <- diag(XX_D)*(1+damping) ## adds D1=damping*diag(XX_D)
         #
-        dbeta_eta <- solve(XX_D-Xt_X , dbeta_rhs)[,1]
+        dbeta_eta <- try(solve(XX_D-Xt_X , dbeta_rhs)[,1],silent=TRUE)
+        if (inherits(dbeta_eta,"try-error")) dbeta_eta <- (ginv(XX_D-Xt_X) %*% dbeta_rhs)[,1]
         dv_h <- dv_term_from_grad_v - thinsolve %*% dbeta_eta 
       } else {
         dbeta_eta <- numeric(0)
@@ -538,30 +561,18 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
   if (which =="LevMar_step_v_h") {  ## LM with diagonal perturbation as in NocedalW p. 266
     ## Here I deleted from v2.4.100 a variant using .damping_to_solve()
     grad_v <- LM_z$scaled_grad[seq(ncol(BLOB$chol_Q))]
-    if (TRUE) {
-      if (is.null(BLOB$dG)) {  
-        tmp <- Matrix::solve(BLOB$chol_Q, as(BLOB$G_CHMfactor,"sparseMatrix")) ## (Hfac)
-        tmp@x <- tmp@x^2
-        BLOB$D_Md2hdv2 <- colSums(tmp)
-        ## convert diag perturb of Md2hdv2 into a non-diag perturb of G :
-        ## since H=invL_Q G t(invL_Q),  dG= L_Q dH t(L_Q) 
-        BLOB$dG <- .ZWZtwrapper(BLOB$chol_Q , BLOB$D_Md2hdv2)
-      }
-      dampdG <- (damping*BLOB$dG) ## not diagonal...
-      G_dG <- drop0(BLOB$Gmat + dampdG) ## probably not so sparse...
+    if (.spaMM.data$options$use_G_dG) {
+      #browser()
+      G_dG_blob <- .calc_G_dG(BLOB, damping) # list(G_dG=G_dG, dampDpD_2=damping * BLOB$D_Md2hdv2)
       rhs <- BLOB$chol_Q %*% grad_v
-      rhs <- Matrix::solve(G_dG,rhs)
+      rhs <- Matrix::solve(G_dG_blob$G_dG,rhs)
       dv_h <- drop(crossprod(BLOB$chol_Q,rhs))
-      dampDpD_2 <- damping * BLOB$D_Md2hdv2 ## the diagonal perturbation of the full H matrix for the return value
-    } else { ## pas vu bcp de difference en terme de vitesse
-      ## part of the problem is avoiding tall matrices from tall ZA (and X), but for squarish ZA, using solve(chol_Q,... ) looks complicated
-      if (is.null(BLOB$Md2hdv2)) BLOB$Md2hdv2 <- as(tcrossprod(Matrix::solve(BLOB$chol_Q, as(BLOB$G_CHMfactor,"sparseMatrix"))),"matrix")
-      H_dH <- BLOB$Md2hdv2 
-      dampDpD_2 <- diag(H_dH)*damping
-      diag(H_dH) <- diag(H_dH)+dampDpD_2
-      dv_h <- solve(H_dH,  grad_v)
+      resu <- list(dVscaled= dv_h, dampDpD = G_dG_blob$dampDpD_2)
+    } else { ## slower... sigh. Maybe bc the code for (full) LevMar_step uses the other approach.
+      H_dH_blob <- .calc_H_dH(BLOB, damping) # list(dVscaled= dv_h, dampDpD = dampDpD_2)
+      dv_h <- Matrix::solve(H_dH_blob$H_dH,  grad_v)[,1]
+      resu <- list(dVscaled= dv_h, dampDpD = H_dH_blob$dampDpD_2)
     }
-    resu <- list(dVscaled= dv_h, dampDpD = dampDpD_2)
     return(resu)
   }
   if (which=="Qty") { ## 
@@ -573,11 +584,11 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
     }
     return(BLOB$hatval_ZX)
   }
-  if (which=="beta_v_cov_from_wAugX") { ## for predVar 
+  if (which=="beta_cov_info_from_wAugX") { ## for predVar 
     ## not called during the fit, so ideally we store the necessary info in the fit rather than use get_from_MME() 
     stop("Programming error. Use ad hoc .calc_beta_cov_info_spprec() function instead.")
   }
-  stop(cat("'which=\"",which,"\"' is invalid."))
+  stop(cat(paste0("'which=\"",which,"\"' is invalid.")))
 }
 
 if (FALSE) {

@@ -33,11 +33,12 @@
     upper <- .integrate_marg_lowup(cum_nactive, sdvars, famfams, quantil=1-loq)
   }
   if (length(lower)>1L) {
+    warning("Experimental code, will give poor results. Check the integration error in attr(.,'integrate_info')")
     # Vectorize vectorizes a fn(scalar), but does not "matricize" a fn(vector)
     integrand_v <- function(V, eta_fix, newZAXrow, cum_nactive, object) {
       matrix(apply(V, 2L, integrand, eta_fix=eta_fix, newZAXrow=newZAXrow, cum_nactive=cum_nactive, object=object), ncol = ncol(V))
     }
-    locarglist <- list(f=integrand_v, lower=lower, upper=upper, method="hcubature", vectorInterface=TRUE,
+    locarglist <- list(f=integrand_v, lower=lower, upper=upper, method="hcubature", nVec=2L,
                        eta_fix=eta_fix, newZAXrow=newZAXrow, cum_nactive=cum_nactive, object=object)
       resu <- .do_call_wrap("cubintegrate",locarglist, pack="cubature")
   } else {
@@ -50,7 +51,10 @@
   data.frame(resu[]) ## for easy binding; [] removes the "integrate" class for which there is no data.frame method
 }
 
+# gives nonsense in first serious test case. Not sure why, bt integration error diverges.
+# cf private test-predict-marginal.R
 .predict_marg <- function(object, newdata, re.form) {
+  if (is.null(newdata)) newdata <- object$data # quick way of forcing computation of $etaFix (FIXME)
   new_X_ZACblob <- .calc_new_X_ZAC(object=object, newdata=newdata, re.form = re.form,
                                    variances=list(residVar=FALSE, cov=FALSE)) 
   newinold <- new_X_ZACblob$newinold ## says which ranef is kept by re.form
@@ -72,7 +76,7 @@
       } else sdvars[[oldrd]] <- object$lambda.object$lambda[[oldrd]]
     } else newZAXlist[[oldrd]] <- list(NULL)
   }
-  eta_fix <- new_X_ZACblob$etaFix
+  eta_fix <- new_X_ZACblob$eta_fix
   zero_truncated <- object$family$zero_truncated
   #
   integrand <- function(u, eta_fix, newZAXrow, cum_nactive, object
@@ -95,10 +99,10 @@
     if ( ! is.null(zero_truncated)) {
       fv <- object$family$linkinv(eta,mu_truncated=zero_truncated)
     } else fv <- object$family$linkinv(eta)
-    return(fv * prod(u_densities))
+    return(fv * prod(u_densities)) ## predicted value|u * density(u)
   }
   #
-  resu <- vector("list",nrow(newdata))
+  resu <- vector("list",length(eta_fix))
   for (ii in seq(nrow(newdata))) {
     resu[[ii]] <- .integrate_marg(integrand, newZAXlist, eta_fix=eta_fix[ii], sdvars=sdvars, 
                                   object=object, nactives=nactives, newinold=newinold, famfams=famfams, ii=ii)

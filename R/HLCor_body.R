@@ -46,7 +46,7 @@
   if ( ! inherits(covStruct,"list")) stop("covStruct must inherit from class 'list'.")
   types <- attr(covStruct,'types') ## 1st way of specifying types
   if (is.null(types)) types <- names(covStruct) ## 2nd way of specifying types
-  known_types <- c("adjMatrix","corrMatrix","precision","SAR_WWt","distMatrix", "MRF") 
+  known_types <- c("adjMatrix","corrMatrix","precision","SAR_WWt","distMatrix", "IMRF") 
   checktypes <- setdiff(types,c(known_types,"")) ## "" for unhandled ranefs
   if (length(checktypes)) stop(paste("Unhandled name(s)/type(s)",
                                      paste0("'",checktypes,"'",collapse=", "),"in 'covStruct'."))
@@ -131,10 +131,16 @@
 }
 
 .calc_AR1_t_chol_Q_block <- function(n_u, ARphi) {
+  # denom <- sqrt(1-ARphi^2)
+  # t_chol_Q <- .symDiagonal(x=c(rep(1/denom,n_u-1L),1)) 
+  # if (n_u>1L) diag(t_chol_Q[,-1,drop=FALSE]) <- -ARphi/denom 
+  # return(t_chol_Q) # equivalent to nlme's AR1_fact() in corStruct.c
+  seqn <- seq(n_u)
   denom <- sqrt(1-ARphi^2)
-  t_chol_Q <- .symDiagonal(x=c(rep(1/denom,n_u-1L),1)) 
-  if (n_u>1L) diag(t_chol_Q[,-1,drop=FALSE]) <- -ARphi/denom 
-  return(t_chol_Q) # equivalent to nlme's AR1_fact() in corStruct.c
+  list(i=c(seqn,seqn[-n_u]),
+       j=c(seqn,seqn[-1L]),
+       x=c(rep(1/denom, n_u-1L),1,rep(-ARphi/denom, n_u-1L))
+  )
 }
 
 
@@ -148,17 +154,51 @@ HLCor_body <- function(processed, ## single environment
   corr_types <- processed$corr_info$corr_types
   ## convert back ranPars to canonical scale:
   ranPars <- .post_process_parlist(ranPars,corr_families=processed$corr_info$corr_families) 
-  ranPars <- .canonizeRanPars(ranPars=ranPars, corr_info=processed$corr_info) ## with init.HLfit as attribute
+  ranPars <- .canonizeRanPars(ranPars=ranPars, corr_info=processed$corr_info) ## with init.HLfit as attribute # expands hyper params.
   ########################################################################################################################
   # * assigns geo_envir <- .get_geo_info(...)
   # * modifies processed$AUGI0_ZX$envir by .init_precision_info(...) 
   # * computes processed$AUGI0_ZX$envir$LMatrices except for ranCoefs (the latter being filled in HLfit_body)
   .assign_geoinfo_and_LMatrices_but_ranCoefs(processed, corr_types, spatial_terms, ranPars, control.dist, 
                                 argsfordesignL=dotlist[intersect(names(dotlist),names(formals(.spaMM.data$options$mat_sqrt_fn)))] )
+  if (any(vec_normIMRF <- processed$AUGI0_ZX$vec_normIMRF ) ) {
+    processed$ZAlist <- .normalize_IMRF(processed$ZAlist, 
+                                        vec_normIMRF=vec_normIMRF,
+                                        #ranges=processed$hyper_info$ranges,
+                                        strucList=processed$AUGI0_ZX$envir$LMatrices)
+    ZAfix <- .ad_hoc_cbind(processed$ZAlist, as_matrix=FALSE)   
+    if (processed$sparsePrecisionBOOL) {
+      if ( ! inherits(ZAfix,"sparseMatrix")) ZAfix <- as(ZAfix,"dgCMatrix") # .Rcpp_as_dgCMatrix(ZAfix) ## 
+      processed$AUGI0_ZX$is_unitary_ZAfix <- FALSE
+    }
+    processed$AUGI0_ZX$ZAfix <- ZAfix
+  }
   ########################################################################################################################
   ###
   if ( (! is.null(processed$return_only)) && processed$augZXy_cond) {
     hlfit <- do.call(.spaMM.data$options$augZXy_fitfn,list(processed=processed, ranFix=ranPars))
+    if (FALSE) { ## this test interferes with the results (fitme3, fitme6 tests)
+      processed$augZXy_cond <- FALSE
+      HLFormals <- names(formals(HLfit)) 
+      good_dotnames <- intersect(names(dotlist),HLFormals)
+      if (length(good_dotnames)) {
+        HL.info <- dotlist[good_dotnames]  ## including init.HLfit: possibly modified from processed$init_HLfit by <corrfitme>_body 
+      } else HL.info <- list()
+      ## all printing in HLfit is suppressed by default
+      HL.info$processed <- processed
+      HL.info$init.HLfit <- .modify_list(HL.info$init.HLfit, attr(ranPars,"init.HLfit")) 
+      locrp <- ranPars
+      attr(locrp,"init.HLfit") <- NULL
+      locrp$phi <- hlfit$APHLs$phi_est
+      locrp$lambda <- locrp$lambda * hlfit$APHLs$phi_est
+      HL.info$ranFix <- locrp
+      vanilla <- do.call("HLfit",HL.info) 
+      processed$augZXy_cond <- TRUE
+      #print(vanilla$APHLs$p_bv-hlfit$APHLs$p_bv)
+      #if ((vanilla$APHLs$p_bv-hlfit$APHLs$p_bv)>1e-2) browser() # to catch in part. when phi-profiled p_bv is lower than non profiled !
+      # hmmm aug_ZXy's p_bv is suspicious close to vanilla's p_v
+      # debug(.calc_APHLs_by_augZXy_or_sXaug)
+    }
   } else {
     HLFormals <- names(formals(HLfit)) 
     good_dotnames <- intersect(names(dotlist),HLFormals)
@@ -175,12 +215,12 @@ HLCor_body <- function(processed, ## single environment
   ## Here there was debug code that saved HL.info in case of error; before 1.8.5
   if ( ! is.null(processed$return_only)) {
     return(hlfit)    ########################   R E T U R N   a list with $APHLs, with class "list"
-  } else class(hlfit) <- c(class(hlfit),"HLCor")
+  } else class(hlfit) <- c("HLCor", class(hlfit))
   #### Infos in the final fit object: 
   hlfit$spatial_terms <- spatial_terms
   info_uniqueGeo <- msd_arglist <- list()
   is_uniqueGeo_needed <- ( (! is.na(corr_types)) & (corr_types=="Matern" | corr_types=="Cauchy" | corr_types=="AR1"
-                           | corr_types=="MRF")) ## MRF: mapMM expects it.
+                           | corr_types=="IMRF")) ## IMRF: mapMM expects it.
   for (rd in which(is_uniqueGeo_needed)) {
     char_rd <- as.character(rd)
     geo_envir <- .get_geo_info(processed, which_ranef=rd, which="uniqueGeo", 
@@ -232,7 +272,7 @@ HLCor_body <- function(processed, ## single environment
   ranPars <- .modify_list(HLCor.call$ranPars, ranefParsList)
   rpType <- .modify_list(attr(HLCor.call$ranPars,"type"),attr(skeleton,"type"))
   moreargs <- attr(skeleton,"moreargs")
-  ranPars <- .expand_hyper(ranPars, trL_skeleton=attr(skeleton,"trL_skeleton"),processed) ## input ranPars contains both unconstrained ranPars and $hyper
+  ranPars <- .expand_hyper(ranPars, processed$hyper_info,moreargs=moreargs) ## input ranPars contains both unconstrained ranPars and $hyper
   # => failing to expand leads to unconstrained optimization
   if ( ! is.null(ranPars$resid) ) { ## mmm FIXME never operational ?
     resid_ranPars <- structure(ranPars$resid, ## but not sure that the attributes are necessary...
@@ -253,7 +293,7 @@ HLCor_body <- function(processed, ## single environment
   #              and $lambda (from ranPars$lambda) for what was fixed in the whole outer fit  
   HLCor.call[[1L]] <- get("HLCor", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
   #HLCor.call[[1L]] <- quote(spaMM::HLCor)
-  hlfit <- eval(HLCor.call) ## retruns fit or call 
+  hlfit <- eval(HLCor.call) ## returns fit or call 
   #
   if (is.call(hlfit)) {return(hlfit)} ## HLCorcall
   #

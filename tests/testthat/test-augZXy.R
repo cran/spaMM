@@ -28,3 +28,4 @@ if (file.exists((privdata <- "C:/home/francois/travail/stats/spaMMplus/spaMM/pac
     testthat::expect_true((diff(range(logLik(vanilla),logLik(essainola)))<1e-8)) 
   }
 }
+

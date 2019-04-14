@@ -54,15 +54,15 @@
     ## correcting the lad makes an overall upper bias for small (y-theta) at "constant" corrected phi 
     ## this can be compensated by correcting the lad LESS.
     clik <- sum(clik_fn(theta,y,eval(processed$prior.weights)/phi_est)) ## note (prior) weights meaningful only for gauss/ Gamma 
-    clik
   }
+  clik
 }
 
 .eval_gain_LevM_etaGLM <- function(LevenbergMstep_result,family, X.pv ,coefold,clikold,phi_est,processed, offset) {  
   dbeta <- LevenbergMstep_result$dbetaV
   beta <- coefold + dbeta
   eta <- drop(X.pv %*% beta) + offset
-  if (family$link=="log") {eta[eta>30] <-30} ## cf similar code in muetafn
+  if (family$link=="log") eta <- .sanitize_eta_log_link(eta, max=40) 
   if (family$link=="inverse" && family$family=="Gamma") {
     etamin <- sqrt(.Machine$double.eps)
     eta[eta<etamin] <- etamin ## eta must be > 0
@@ -172,11 +172,26 @@
             muetablob <- .muetafn(eta=eta,BinomialDen=BinomialDen,processed=processed) 
             newclik <- levMblob$clik
             break
-          } else if (dampingfactor>4 ## implies iter>2
-                     && conv_crit < 1e-8) {
-            damping <- 1e-7 ## bc presumably damping has diverged unusefully
-            dbetaV <- LevenbergMstep_result$dbetaV ## needed to break the innerj loop
-            break ## apparently flat dev
+          } else if (dampingfactor>4 ## iter not accessible for test
+                     && gainratio==0) { # apparently flat deviance
+            if (conv_crit < 1e-8) { # we were at optimum
+              damping <- 1e-7
+              dbetaV <- LevenbergMstep_result$dbetaV ## needed to break the innerj loop
+              if (verbose["trace"]) cat("#")
+              break ## apparently flat dev
+            } else { ## measurable gradient, but we don't move => too high damping ? (if damping from previous LevM step was too high)
+              if ( ! restarted) { # condition to avoid infinite loop
+                damping <- 1e-7
+                dampingfactor <- 2
+                restarted <- TRUE
+                if (verbose["trace"]) cat("-")
+                # and continue # but this allows an  infinite loop
+              } else {
+                # hmm; well, break and diagnose...
+                if (verbose["trace"]) cat("?")
+                break
+              }
+            }
           } else { ## failure: increase damping and continue iterations
             damping <- dampingfactor*damping
             dampingfactor <- dampingfactor*2

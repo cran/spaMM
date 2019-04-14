@@ -32,7 +32,13 @@
                     gaussian = rnorm(length(mu),mean=mu,sd=sqrt(phiW)),
                     poisson = .rpois(length(mu),mu,zero_truncated=zero_truncated), 
                     binomial = rbinom(length(mu),size=sizes,prob=mu),
-                    Gamma = rgamma(length(mu),shape= mu^2 / phiW, scale=phiW/mu), ## ie shape increase with prior weights, consistent with Gamma()$simulate / spaMM_Gamma()$simulate
+                    Gamma = {
+                      y <- rgamma(length(mu),shape= mu^2 / phiW, scale=phiW/mu)
+                      Gamma_min_y <- .spaMM.data$options$Gamma_min_y
+                      is_low_y <- (y < Gamma_min_y)
+                      if (any(is_low_y)) { y[which(is_low_y)] <- Gamma_min_y }
+                      return(y)
+                    }, ## ie shape increase with prior weights, consistent with Gamma()$simulate / spaMM_Gamma()$simulate
                     COMPoisson = sapply(mu, function(muv) {
                       lambda <- family$linkfun(muv,log=FALSE)
                       .COMP_simulate(lambda=lambda,nu=COMP_nu)
@@ -67,6 +73,7 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
     warning("argument 'conditional' is obsolete and will be deprecated. Use 'type' instead.")
     if (conditional) {type <- "residual"} else type <- "marginal"
   }
+  
   if (is.null(sizes)) sizes <- .get_BinomialDen(object)
   nrand <- length(object$ZAlist)
   if (nrand>0L) {
@@ -76,6 +83,7 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
       } else if (type=="residual") re.form <- NULL
       # type (ranef|resid) leaves 're.form' missing.
     } else if (inherits(re.form,"formula")) {
+      re.form <- .preprocess_formula(re.form)
       ori_exp_ranef_strings <- attr(object$ZAlist,"exp_ranef_strings")
       new_exp_ranef_strings <- .process_bars(re.form,expand=TRUE)
       newinold <- unlist(sapply(lapply(new_exp_ranef_strings, `==`, y= ori_exp_ranef_strings), which)) ## unlist() bc empty list() can otherwise occur  
@@ -122,14 +130,20 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
           # * we need design matrices for all ranefs
           # * we need values of all the original variables
           # hence we use the old_ranef_form
-          old_ranef_form <- formula.HLfit(object)[-2]
+          old_ranef_form <- formula.HLfit(object, which="")[-2]
           old_ranef_form <- as.formula(paste("~",(paste(.process_bars(old_ranef_form),collapse="+")))) ## effective '.noFixef'
           frame_ranefs <- .calc_newFrames_ranef(formula=old_ranef_form,data=newdata, fitobject=object)$mf 
           ## : F I X M E suboptimal since we call also .calc_newFrames_ranef() in predict -> . -> .calc_new_X_ZAC()
-          Zlist <- .calc_Zlist(formula=object$predictor, mf=frame_ranefs, rmInt=0L, drop=TRUE,sparse_precision=FALSE)
+          Zlist <- .calc_Zlist(formula=formula.HLfit(object, which="no_offset"), # F I X M E may which="" work ?
+                               mf=frame_ranefs, rmInt=0L, drop=TRUE,sparse_precision=FALSE,
+                               corrMats_info=object$strucList,
+                               lcrandfamfam=attr(object$rand.families,"lcrandfamfam"))
           amatrices <- .get_new_AMatrices(object,new_mf_ranef=frame_ranefs)
-          ZAlist <- .calc_ZAlist(Zlist, AMatrices=amatrices) 
-          ZALlist <- .compute_ZAXlist(object$strucList,ZAlist)
+          newZAlist <- .calc_normalized_ZAlist(Zlist=Zlist,
+                                               AMatrices=amatrices,
+                                               vec_normIMRF=object$ranef_info$vec_normIMRF, 
+                                               strucList=object$strucList)
+          ZALlist <- .compute_ZAXlist(object$strucList,newZAlist)
           ##### the following code ignores spatial effects with newdata:
           # to overcome this we need to calculate the unconditional covmat including for the (new) positions
           vec_n_u_h <- unlist(lapply(ZALlist,ncol)) ## nb cols each design matrix = nb realizations each ranef
@@ -143,7 +157,12 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
         locfn <- function(it) {
           nr <- vec_n_u_h[it]
           u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
-          loclambda <- fittedLambda[u.range]
+          if ( ! is.null(object$rand.families[[it]]$prior_lam_fac) && ! is.null(newdata)) {
+            leftOfBar_terms <- attr(object$ZAlist,"exp_ranef_terms")[[it]][[2L]]
+            leftOfBar_mf <- model.frame(as.formula(paste("~",leftOfBar_terms)), newdata, xlev = NULL) 
+            prior_lam_fac <- leftOfBar_mf[,1L]^2 ## assumes simple syntax (wei-1|.)
+            loclambda <- object$lambda[it]* prior_lam_fac
+          } else loclambda <- fittedLambda[u.range] ## includes prior_lam_fac
           newU <- replicate(needed,{
             switch(lcrandfamfam[it], ## remainder of code should be OK for rand.families
                    gaussian = rnorm(nr,sd=sqrt(loclambda)),

@@ -11,13 +11,14 @@ Extract matrices from a fit
 }
 \usage{
 get_matrix(object, which="model.matrix", augmented=TRUE, ...)
-get_ZALMatrix(object, as_matrix)
+get_ZALMatrix(object, as_matrix, force_bind=FALSE)
 }
 \arguments{
-  \item{object}{A object of class \code{HLfit}, as returned by the fitting functions in \code{spaMM}.}
+  \item{object}{An object of class \code{HLfit}, as returned by the fitting functions in \code{spaMM}.}
   \item{augmented}{Boolean; whether to return an augmented matrix for all model coefficients (fixed-effects coefficients and random-effect predictions) or only for fixed effects. Not operative for all \code{which} values (currently only for \code{which="left_ginv"}).}
   \item{which}{Which element to extract. For \code{"model.matrix"}, the design matrix for fixed effects (similarly to \code{stats::model.matrix}); for \code{"ZAL"}, the design matrix for random effects (same as code{get_ZALMatrix()}); for \code{"AugX"}, the (unweighted) augmented design matrix of the least-square problem; for \code{"hat_matrix"}, the projection matrix that gives model predictions from the (augmented) response vector; for \code{"left_ginv"}, the pseudo-inverse that gives the model coefficients from the (augmented) response vector. See Details for definitiosn and further options.}  
   \item{as_matrix}{Deprecated.}
+  \item{force_bind}{Boolean; with the default value \code{FALSE}, the function may return an object of class \code{\link{ZAXlist}}, which is poorly documented and for development purposes only. }
   \item{\dots}{Other arguments that may be needed in some future versions of \code{spaMM}.}
 }
 \value{

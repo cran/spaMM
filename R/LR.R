@@ -1,3 +1,9 @@
+.is_2_in_1 <- function(X1,X2, tol=1e-10) {
+  qrX <- qr(X1)
+  proj2in1 <- X1 %*% qr.solve(qrX,X2)
+  return(all(abs(proj2in1 -X2)<tol))
+}
+
 .compare_model_structures <- function(object,object2) {
   if (inherits(object,"HLfitlist") || inherits(object2,"HLfitlist")) {
     stop("This does not yet work on HLfitlist objects")
@@ -24,12 +30,18 @@
   dX12 <- setdiff(X1,X2)
   dX21 <- setdiff(X2,X1)
   if (length(dX12) && length(dX21)) {
-    warning("Fixed-effect models may not be nested") # F I X M E : correct detection of non-nested models
+    if (.is_2_in_1(X1=object$X.pv,  X2=object2$X.pv)) {
+      Xnest <- "2in1"
+    } else if (.is_2_in_1(X1=object2$X.pv,  X2=object$X.pv)) {
+      Xnest <- "1in2"
+    } else stop("Fixed effects seem non-nested.") 
   } else if (length(dX12)) {
     Xnest <- "2in1"
   } else if (length(dX21)) {
     Xnest <- "1in2"
-  } else Xnest <- NULL
+  } else {
+    Xnest <- NULL
+  }
   if (object$spaMM.version < "2.2.116") {
     ranterms1 <- attr(object$ZAlist,"ranefs")
   } else ranterms1 <- attr(object$ZAlist,"exp_ranef_strings")
@@ -43,17 +55,28 @@
   dR12 <- setdiff(ranterms1,ranterms2)
   dR21 <- setdiff(ranterms2,ranterms1)
   if (length(dR12) && length(dR21)) { 
-    stop("Non-nested random-effect models")
+    stop(paste("Fixed-effects specifications from both models seem equivalent,\n",
+               "andd random-effect specifications may be non-nested\n", 
+               "(a better algorithm would be required to check this properly).\n",
+               "This case is not handled.")) 
   } else if (length(dR12)) {
     Rnest <- "2in1"
+    warning(paste("Random-effect specifications appear distinct.\n", 
+                  "This procedure is unreliable for comparing models with different random effects."),
+            immediate.=TRUE)
   } else if (length(dR21)) {
     Rnest <- "1in2"
-  } else Rnest <- NULL
+    warning(paste("Random-effect specifications appear distinct.\n", 
+                  "This procedure is unreliable for comparing models with different random effects."),
+            immediate.=TRUE)
+  } else {
+    Rnest <- NULL
+    if (is.null(Xnest)) stop(paste("The two models appear equivalent (except perhaps for residual dispersion models).\n", 
+                                   "This case is not handled."))
+  }
   nest <- c(Xnest,Rnest)
   unest <- unique(nest)
-  if (length(nest)==0L) { ## NULL,NULL
-    stop("Fixed-effect specifications do not appear different from each other.") 
-  } else if (length(unest)==2) {
+  if (length(unest)==2L) {
     stop("Models not nested (opposite nestings for fixed and random terms). ")
   } else {
     df1 <- length(X1[!is.na(fixef(object))])
@@ -113,11 +136,210 @@
   return(list(fullfit=fullm,nullfit=nullm,test_obj=testlik,df=df))
 }
 
+.get_inits_from_fit <- function(fitobject, keep_canon_user_inits) {
+  canon.init <- attr(fitobject,"optimInfo")$LUarglist$canon.init ## includes user init
+  #
+  nullranPars <- get_ranPars(fitobject)
+  names_u_nullranPars <- names(unlist(nullranPars))
+  names_u_c_inits <- names(unlist(canon.init))
+  if (keep_canon_user_inits) { # keep them (as interpreted in canon.init: minimum phi is 1e-4, etc) in return value
+    # => remove the fitted values from the nullranPars used to modify_list
+    # => keep them in 'removand' list of pars to remove from nullranPars
+    # => exclude them from 'not_user_inits_names' to remove from 'removand' !
+    user_inits <- .post_process_parlist(getCall(fitobject)$init,corr_families=fitobject$corr_info$corr_families)
+    names_u_u_inits <- names(unlist(user_inits))
+    not_user_inits_names <- setdiff(names_u_c_inits, names_u_u_inits) # names, excluding those of parameters with user inits
+    removand <- setdiff(names_u_nullranPars, not_user_inits_names) ## removand: user_inits, fixed, or inner optimized corrPars
+    ## removand: user_inits, fixed, or inner optimized corrPars
+    # locinit will retain parameters that were outer optimized without an explicit user init
+  } else removand <- setdiff(names_u_nullranPars, names_u_c_inits)
+  if ( is.null(removand)) {
+    locinit <- .modify_list(canon.init,nullranPars)
+  } else { ## leaves user_inits as there are in LUarglist$canon.init, and do not add any fixed or inner-optimized par
+    locinit <- .modify_list(canon.init,
+                            .remove_from_cP(nullranPars,u_names=removand)) ## loses attributes
+  }
+  return(locinit)
+}
+
+.eval_replicate <- function(y) { # no additional arguments, to ease parallel programming => next lines instead
+  # the function will be called within e.g. pbapply so it's useless to refer to parent.frame() here
+  enclosing_env <- parent.env(environment()) ## this is not necess for the code to run, but for the CRAN checks not to complain
+  nullfit <- get("nullfit", enclosing_env)
+  fullfit <- get("fullfit", enclosing_env)
+  #dotargs <- get("dotargs", enclosing_env)
+  test_obj <- get("test_obj", enclosing_env)
+  debug. <- get("debug.", enclosing_env)
+  #  .condition <- get(".condition", enclosing_env)
+  fittingFunction <- paste(getCall(nullfit)[[1]])
+  newinits <- .get_inits_from_fit(fitobject=nullfit, 
+                                  keep_canon_user_inits = FALSE)                                     
+  if (fittingFunction=="fitme") {
+    new_args <- list(init=newinits)
+  } else if (fittingFunction=="corrHLfit") {
+    new_args <- list(init.corrHLfit=newinits)
+  } else new_args <- NULL
+  if (debug.==2) {
+    re_nullfit <- do.call(update_resp, c(list(object=nullfit, newresp = y),new_args)) # may stop on error
+  } else {
+    re_nullfit <- try(do.call(update_resp, c(list(object=nullfit, newresp = y),new_args)))
+    if (inherits(re_nullfit,"try-error")) {
+      if (debug.) { ## (debug.= TRUE or 1L) to return error info in parallel mode: return the try-error object
+        return(c(NA,re_nullfit))
+      } else return(c(NA,NA))
+    }
+    ## ELSE return pair of likelihoods
+  }
+  # Allows the user to control the starting values of the re_fullfit:
+  # edotargs <- dotargs
+  # for (st in setdiff(names(edotargs),"prior.weights")) {
+  #   edotargs[[st]] <- eval(edotargs[[st]],env=environment()) ## evaluate the promises in the current execution envir
+  # }
+  # #
+  newinits <- .get_inits_from_fit(fitobject=re_nullfit, keep_canon_user_inits = FALSE)
+  if (fittingFunction=="fitme") {
+    new_args <- list(init=newinits)
+  } else if (fittingFunction=="corrHLfit") {
+    new_args <- list(init.corrHLfit=newinits)
+  } else new_args <- NULL
+  if (debug.==2) {
+    re_fullfit <- do.call(update_resp, c(list(object=fullfit, newresp = y),new_args)) # may stop on error
+  } else {
+    re_fullfit <- try(do.call(update_resp, c(list(object=fullfit, newresp = y),new_args)))
+    if (inherits(fullfit,"try-error")) {
+      if (debug.) { 
+        return(c(re_fullfit,re_nullfit))
+      } else return(c(NA,re_nullfit))
+    }
+    ## ELSE:
+  }
+  LRstat <- 2*(logLik(re_fullfit,which=test_obj)-logLik(re_nullfit,which=test_obj))  
+  if (1-pchisq(LRstat,df=sum(re_fullfit$dfs)-sum(re_nullfit$dfs))<0) { # ie, if (FALSE)
+    newinits <- .get_inits_from_fit(fitobject=re_fullfit, keep_canon_user_inits = FALSE)
+    if (fittingFunction=="fitme") {
+      new_args <- list(init=newinits)
+    } else if (fittingFunction=="corrHLfit") {
+      new_args <- list(init.corrHLfit=newinits)
+    }
+    if (debug.==2) {
+      new_nullfit <- do.call(update_resp, c(list(object=nullfit, newresp = y),new_args)) # may stop on error
+    } else {
+      new_nullfit <- try(do.call(update_resp, c(list(object=nullfit, newresp = y),new_args)))
+      if (inherits(new_nullfit,"try-error")) {
+        if (debug.) { ## (debug.= TRUE or 1L) to return error info in parallel mode: return the try-error object
+          return(c(NA,new_nullfit))
+        } else return(c(NA,NA))
+      }
+    }
+    logL_new_null <- logLik(new_nullfit,which=test_obj)
+    if (logLik(new_nullfit,which=test_obj)>logLik(re_nullfit,which=test_obj)) re_nullfit <- new_nullfit
+  }
+  resu <- c(full=logLik(re_fullfit,which=test_obj),null=logLik(re_nullfit,which=test_obj))
+  # if ( ! is.null(.condition)) {
+  #   condition <- with(list(nullfit=re_nullfit, fullfit=re_fullfit), eval(.condition))
+  #   resu <- c(resu, condition=condition)
+  # }
+  return(resu)
+}
+
+
+.eval_replicate2 <- function(y) { 
+  enclosing_env <- parent.env(environment())
+  nullfit <- get("nullfit",enclosing_env)
+  fullfit <- get("fullfit",enclosing_env)
+  # dotargs <- get("dotargs",enclosing_env)
+  test_obj <- get("test_obj",enclosing_env)
+  debug. <- get("debug.", enclosing_env)
+#  .condition <- get(".condition", enclosing_env)
+  fittingFunction <- paste(getCall(nullfit)[[1]])
+  conv_full <- conv_null <- FALSE
+  best_logL_full <- best_logL_null <- prev_logL_full <- prev_logL_null <- -Inf
+  # Allows the user to control the starting values of the initial new_nullfit
+  # edotargs <- dotargs
+  # for (st in setdiff(names(edotargs),"prior.weights")) {
+  #   edotargs[[st]] <- eval(edotargs[[st]],env=environment()) ## evaluate the promises in the current execution envir
+  # }
+  newinits <- .get_inits_from_fit(fitobject=nullfit, 
+                                  keep_canon_user_inits = FALSE)                 
+  if (fittingFunction=="fitme") {
+    new_args <- list(init=newinits)
+  } else if (fittingFunction=="corrHLfit") {
+    new_args <- list(init.corrHLfit=newinits)
+  } else new_args <- NULL
+  while ( TRUE ) {
+    if (debug.==2) {
+      new_nullfit <- do.call(update_resp, c(list(object=nullfit, newresp = y),new_args)) # may stop on error
+    } else {
+      new_nullfit <- try(do.call(update_resp, c(list(object=nullfit, newresp = y),new_args)))
+      if (inherits(new_nullfit,"try-error")) {
+        if (debug.) { ## (debug.= TRUE or 1L) to return error info in parallel mode: return the try-error object
+          return(c(NA,new_nullfit))
+        } else return(c(NA,NA))
+      }
+    }
+    logL_new_null <- logLik(new_nullfit,which=test_obj)
+    #cat(logL_new_null)
+    conv_null <- (abs(logL_new_null - prev_logL_null)<1e-4)
+    if (logL_new_null>best_logL_null) { # always true the first time
+      best_logL_null <- logL_new_null
+      best_nullfit <- new_nullfit
+    }
+    if (conv_null) break # no point in refitting the full model if the new inits from null fit don't change
+    # ELSE
+    prev_logL_null <- logL_new_null
+    newinits <- .get_inits_from_fit(fitobject=best_nullfit, keep_canon_user_inits = FALSE)
+    if (fittingFunction=="fitme") {
+      new_args <- list(init=newinits)
+    } else if (fittingFunction=="corrHLfit") {
+      new_args <- list(init.corrHLfit=newinits)
+    }
+    if (debug.==2) {
+      new_fullfit <- do.call(update_resp, c(list(object=fullfit, newresp = y),new_args)) # may stop on error
+    } else {
+      new_fullfit <- try(do.call(update_resp, c(list(object=fullfit, newresp = y),new_args)))
+      if (inherits(new_fullfit,"try-error")) {
+        if (debug.) { 
+          return(c(new_fullfit,new_nullfit))
+        } else return(c(NA,new_nullfit))
+      }
+    }
+    logL_new_full <- logLik(new_fullfit,which=test_obj)
+    #cat(" ",logL_new_full,"\n")
+    conv_full <- (abs(logL_new_full - prev_logL_full)<1e-4)
+    if (logL_new_full>best_logL_full) { # always true the first time
+      best_fullfit <- new_fullfit
+      best_logL_full <- logL_new_full
+    }
+    if (conv_full) break # no point in refitting the null model if the new inits from full fit don't change
+    # ELSE
+    prev_logL_full <- logL_new_full
+    newinits <- .get_inits_from_fit(fitobject=best_fullfit, keep_canon_user_inits = FALSE)
+    if (fittingFunction=="fitme") {
+      new_args <- list(init=newinits)
+    } else if (fittingFunction=="corrHLfit") {
+      new_args <- list(init.corrHLfit=newinits)
+    }
+  } # end while()
+  # print(logLik(new_fullfit,which=test_obj) - logLik(new_nullfit,which=test_obj)) 
+  resu <- c(full=best_logL_full,null=best_logL_null)
+  # if ( ! is.null(.condition)) {
+  #   condition <- with(list(nullfit=best_nullfit, fullfit=best_fullfit), eval(.condition))
+  #   resu <- c(resu, condition=condition)
+  # }
+  return(resu)
+}
+
+
 # (fixme?) : create as.lm method for HLfit object?
-LRT <- function(object,object2,boot.repl=0,nb_cores=NULL, boot_fn="spaMM_boot", resp_testfn=NULL, ...) { ## compare two HM objects
+LRT <- function(object,object2,boot.repl=0,nb_cores=NULL, boot_fn="spaMM_boot", 
+                resp_testfn=NULL, debug.=FALSE, type="marginal", simuland=.eval_replicate, 
+#                .condition = NULL, ## bc expected by simuland, but not operational,
+                ...) { 
   if (nrow(object$data)!=nrow(object2$data)) {
     stop("models were not both fitted to the same size of dataset.")
   }
+  if (length(list(...))) warning("...' arguments are currently ignored in LRT()", immediate. = TRUE) 
+  #  which is a bit unfortunate ( say ...control=list(optimizer="bobyqa")) but makes parallelisation so much more straightforward...
   info <- .compare_model_structures(object,object2)
   nullfit <- info$nullfit
   fullfit <- info$fullfit
@@ -129,62 +351,36 @@ LRT <- function(object,object2,boot.repl=0,nb_cores=NULL, boot_fn="spaMM_boot", 
   if (boot.repl) {
     if (boot.repl<100L) message("It is recommended to set boot.repl>=100 for Bartlett correction")
     nb_cores <- .check_nb_cores(nb_cores=nb_cores)
-    aslistfull <- as.list(getCall(fullfit)) 
-    aslistfull$processed <- NULL ## may capture bugs 
-    if (nb_cores>1) for(st in names(aslistfull)[-1]) aslistfull[[st]] <- eval(aslistfull[[st]]) ## force evaluation before running in another R session
-    aslistnull <- as.list(getCall(nullfit))
-    aslistnull$processed <- NULL ## may capture bugs
-    if (nb_cores>1) for(st in names(aslistnull)[-1]) aslistnull[[st]] <- eval(aslistnull[[st]])
-    simbData <- nullfit$data
-    if (tolower(nullfit$family$family)=="binomial") {
-      cbf <- .check_binomial_formula(nullfit=nullfit, data=fullfit$data, fullfit=fullfit)
-      cbindTest <- cbf$cbindTest
-      if (cbindTest) {
-        nnegname <- cbf$nnegname
-        nposname <- cbf$nposname
-        aslistfull$formula <- cbf$full_formula
-        aslistnull$formula <- cbf$null_formula
-      }
-    } else cbindTest <- FALSE
-    eval_replicate <- function(y) { 
-      if (cbindTest) {
-        simbData[[nposname]] <- y
-        simbData[[nnegname]] <- .get_BinomialDen(nullfit)  - y
-      } else {simbData[[as.character(nullfit$predictor[[2L]])]] <- y} ## allows y~x syntax for binary response
-      ## analyze under both models
-      aslistfull$data <- simbData
-      aslistnull$data <- simbData
-      fullfit <- try(eval(as.call(aslistfull)))
-      if (inherits(fullfit,"try-error")) {
-        return(c(NA,NA))
-      } ## ELSE:
-      nullfit <- try(eval(as.call(aslistnull)))
-      if (inherits(nullfit,"try-error")) {
-        return(c(NA,NA))
-      }
-      ## return pair of likelihoods
-      return(c(logLik(fullfit,which=test_obj),logLik(nullfit,which=test_obj)))
-    }
-    if (boot_fn==".eval_boot_replicates") {
-      bootblob <- .eval_boot_replicates(eval_replicate=function(newy) {eval_replicate(y=newy)},boot.repl=boot.repl,nullfit=nullfit,nb_cores=nb_cores,
-                                        aslistfull=aslistfull, aslistnull=aslistnull,simbData=simbData)
-    } else {
-      bootblob <- spaMM_boot(object=nullfit,nsim = boot.repl,simuland=eval_replicate,nb_cores = nb_cores,
-                             resp_testfn = resp_testfn,
-                             aslistfull=aslistfull, aslistnull=aslistnull,simbData=simbData
-                             #, control.foreach=list(.errorhandling="pass")
-      )
-    }
+#    dotargs <- match.call(expand.dots = FALSE)$... ## produce a pairlist of (essentially) promises. No quote() needed
+    isdebugd <- isdebugged(simuland) # bc the assignment of environment drops this status
+    environment(simuland) <- environment() # enclosing env(simuland) <- evaluation env(LRT)
+    if (isdebugd) debug(simuland)
+
+    bootblob <- spaMM_boot(object=nullfit,nsim = boot.repl,
+                           simuland=simuland, 
+                           nb_cores = nb_cores,
+                           resp_testfn = resp_testfn,
+                           #aslistfull=aslistfull, aslistnull=aslistnull#, simbData=simbData,
+                           debug.=debug., type=type
+                           #, control.foreach=list(.errorhandling="pass")
+    )
+    
     bootreps <- bootblob$bootreps
-    #print(paste(boot_fn,paste(dim(bootreps),collapse=",")))
-    colnames(bootreps) <- c(paste0(c("full.","null."),test_obj),"condition")[seq_len(ncol(bootreps))]
-    bootdL <- bootreps[,1]-bootreps[,2]
-    meanbootLRT <- 2*mean(bootdL)
-    resu <- c(resu,list(rawBootLRT = data.frame(chi2_LR=LRTori,df=df,p_value=(1+sum(bootdL>=LRTori/2))/(boot.repl+1)))) ## format appropriate for more tests  
-    LRTcorr <- LRTori*df/meanbootLRT
-    resu <- c(resu,list(BartBootLRT = data.frame(chi2_LR=LRTcorr,df=df,p_value=1-pchisq(LRTcorr,df=df)))) ## format appropriate for more tests  
-    bootInfo <- list(meanbootLRT = meanbootLRT,bootreps = bootreps, RNGstates=bootblob$RNGstates)
-    resu <- c(resu,list(bootInfo=bootInfo)) ## keeps the sublist structure, which is not compatible with hglmjob.R...  
+    if (is.matrix(bootreps)) {
+      colnames(bootreps)[1:2] <- paste0(c("full.","null."),test_obj) # which may already be the case
+      bootdL <- bootreps[,1]-bootreps[,2]
+      meanbootLRT <- 2*mean(bootdL)
+      resu <- c(resu,list(rawBootLRT = data.frame(chi2_LR=LRTori,df=df,p_value=(1+sum(bootdL>=LRTori/2))/(boot.repl+1)))) ## format appropriate for more tests  
+      LRTcorr <- LRTori*df/meanbootLRT
+      resu <- c(resu,list(BartBootLRT = data.frame(chi2_LR=LRTcorr,df=df,p_value=1-pchisq(LRTcorr,df=df)))) ## format appropriate for more tests  
+      bootInfo <- list(meanbootLRT = meanbootLRT,bootreps = bootreps, RNGstates=bootblob$RNGstates)
+      resu <- c(resu,list(bootInfo=bootInfo)) ## keeps the sublist structure, which is not compatible with hglmjob.R...  
+    } else {## a list in debug. case; following code to avoid bug
+      bootInfo <- list(meanbootLRT = data.frame(chi2_LR=NA,df=df,p_value=NA),
+                       bootreps = bootreps, RNGstates=bootblob$RNGstates)
+      resu <- c(resu,list(bootInfo=bootInfo,
+                          rawBootLRT = data.frame(chi2_LR=LRTori,df=df,p_value=NA))) 
+    }
   }
   class(resu) <- c("fixedLRT",class(resu)) 
   return(resu)

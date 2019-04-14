@@ -5,7 +5,7 @@ HLCor <- function(formula,
                   verbose=c(trace=FALSE), 
                   control.dist=list(), ## provided by <corrfitme>_body if called through this function. Otherwise processed in not available and control.dist will be preprocessed.
                   ...) { # may contain processed
-  spaMM.options(spaMM_glm_conv_crit=list(max=-Inf))
+  assign("spaMM_glm_conv_crit",list(max=-Inf) , envir=environment(spaMM_glm.fit))
   time1 <- Sys.time()
   oricall <- match.call(expand.dots = TRUE) 
   if ( ! is.null(oricall$ranFix)) { ## avoiding user's confusion
@@ -67,10 +67,8 @@ HLCor <- function(formula,
       preprocess.formal.args$distMatrix <- mc$distMatrix ## because distMatrix not in formals(HLfit)    #
       preprocess.formal.args[["control.dist"]] <- control.dist ## because control.dist not in formals(HLfit)    #
       mc$processed <- do.call(.preprocess,preprocess.formal.args,envir=parent.frame(1L))
-      # oricall$resid.model <- mc$processed$residModel
       # HLCor() DOES expect a DISTINCT control.dist argument in a call with a 'processed' argument
       oricall$control.dist <- mc$processed$control_dist ## fix bug 26/12/2018 wrong extraction from processed.
-      #mc$ranPars$ranCoefs <- NULL ## but new ranFix can be added by fitme/corrHLfit
       # HLCor_body() called below
     }
   } else { ## 'processed' is available

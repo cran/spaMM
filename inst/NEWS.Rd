@@ -3,6 +3,44 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 2.7.0}{
+\subsection{NEW FEATURES}{
+\itemize{
+\item Trendy stuff: geostatistical analyses based on a Markov Random Field on a lattice are now implemented through the new random-effect syntax 'IMRF' (Interpolated Markov Random Field).
+\item Improved implementation of sparse-precision algorithms lead to increases in speed that can exceed 50 \% for fits that use such methods. 
+\item New syntax introduced to fit some heteroscedastic non-Gaussian random effects (see help("spaMM")).
+\item Better choice of default optimization strategy by fitme() may lead to much faster fits of Gamma-response models.
+\item Restriction of [filled.]mapMM() to plots with a single spatial random effect removed, as long as the spatial effects remain together in 2D space.
+\item Restriction against predict.HLfit(.,newdata=...), on models with corrMatrix or adjacency terms, lifted when the 'newdata' do not involve levels absent from the correlation structure for such terms.
+\item New functions pdep_effects() and plot_effects() to quantify and plot the effects of a variable.  
+\item Better control of damping factor of Levenberg-Marquardt algorithm.
+\item Better assessment of convergence of Levenberg-Marquardt algorithm for PQL fits.
+\item New features of LRT() and spaMM_boot() to facilitate debugging of bootstrap simulations.
+\item New package option 'Gamma_min_y' to control numerical problems with low response values in Gamma-response models.
+\item update_resp() now handles additional arguments as update() does.
+}
+}
+\subsection{USER-LEVEL CHANGES}{
+\itemize{
+\item get_boot_response() is deprecated (and removed), and the 'boot_fn' argument of fixedLRT() is deprecated, and its formerly possible value, the function .eval_boot_replicates(), is deprecated (and removed). 
+}
+}
+\subsection{FIXED BUGS}{
+\itemize{
+\item Predictions function could fail (stop) for some combinations of fixed vs. estimated dispersion parameters.
+\item Prediction variance computation could fail (stop) when 'etaFix' argument was used (cryptic case indeed).
+\item LRT() could fail (stop) when prior weights were used.
+\item anova.HLfit() now properly detect non-nestedness of fixed effects.
+\item Information about random number generator was missing from bootstrap output, contrary to the documentation.
+\item Incorrect dfs for AIC computation in the case of inner-optimized rho parameter of a CAR model.
+}
+}
+\subsection{SUBSTANTIAL CHANGES TO DOCUMENTATION}{
+\itemize{
+\item Revised 'help(spaMM_boot)', in particular with respect to the 'simuland' argument.
+}
+}
+}
 \section{CHANGES UP TO VERSION 2.6.0}{ 
 \subsection{USER-LEVEL CHANGES}{
 \itemize{

@@ -5,10 +5,6 @@
     .Call(`_spaMM_Rcpp_COMP_Z`, moment, nu, lambda, maxn)
 }
 
-.bessel_lnKnu_e <- function(nu, x) {
-    .Call(`_spaMM_bessel_lnKnu_e`, nu, x)
-}
-
 .lmwith_sparse_LDLp <- function(XX, yy, returntQ, returnR, pivot) {
     .Call(`_spaMM_lmwith_sparse_LDLp`, XX, yy, returntQ, returnR, pivot)
 }
@@ -39,6 +35,10 @@
 
 .Rcpp_dense_cbind_mat_vec <- function(a, b) {
     .Call(`_spaMM_Rcpp_dense_cbind_mat_vec`, a, b)
+}
+
+.bessel_lnKnu_e <- function(nu, x) {
+    .Call(`_spaMM_bessel_lnKnu_e`, nu, x)
 }
 
 .rankinfo <- function(x, tol) {

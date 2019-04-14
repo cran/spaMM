@@ -15,7 +15,7 @@
 # corrMatrix(...)       # see help(corrMatrix)
 # AR1(...)              # see help(AR1)
 # adjacency(...)        # see help(adjacency)
-% MRF(...)              # see help(MRF)    % F I X M E
+# IMRF(...)             # see help(IMRF)
 \method{print}{corr_family}(x,...)
 }
 %- maybe also 'usage' for other objects documented here.

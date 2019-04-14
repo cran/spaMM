@@ -37,7 +37,7 @@
   for (i in seq_len(length(which))) {
     typ <- which[i]
     if (i > 1) {
-      grDevices::dev.new() ## =: meaning of having different elements in 'which'  
+      dev.new() ## =: meaning of having different elements in 'which'  
       if (interactive()) oldask <- devAskNewPage(ask=ask) 
     }
     if (typ =="mean") { ## diagnostic plots for mean model => 4 subplots

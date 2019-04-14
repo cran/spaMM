@@ -87,14 +87,6 @@ if (F) {
  seL %*% t(seL)
 }
 
-# .designL.from.Qmat <- function(Qmat) {
-#   ## Cholesky gives proper LL' (think LDL')  while chol() gives L'L...
-#   Q_CHMfactor <- Matrix::Cholesky(drop0(Qmat),LDL=FALSE,perm=FALSE)
-#   LMatrix  <- solve(Q_CHMfactor,system="Lt") ## solve(t(as(Q_CHMfactor,"sparseMatrix")))
-#   # next line adds attributes to an S4 object. str() does not show these attributes... 
-#   return(structure(LMatrix,type="invQ_CHMfactor",Q_CHMfactor=Q_CHMfactor,Qmat=Qmat))
-# } 
-
 # tcrossprod factor, Ltri or not.
 mat_sqrt <- function(m=NULL, symSVD=NULL, try.chol=TRUE, condnum=1e12) { ## also once for d2hdv2
   ## cf return value: the code must compute 'L', and if the type of L is not chol, also 'corr d' and 'u'

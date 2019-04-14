@@ -31,7 +31,7 @@
     return(term)
   if (is.call(term) && term[[1]] == as.name("|")) 
     return(NULL)
-  if (term[[1]] == as.name("MRF")) {
+  if (term[[1]] == as.name("IMRF") || term[[1]] == as.name("multIMRF")) {
     return(NULL)
   }
   if (length(term) == 2) {
@@ -57,7 +57,7 @@
 .subbarsMM <- function (term) {   
   if (is.name(term) || !is.language(term)) 
     return(term)
-  if (term[[1]] == as.name("MRF")) {
+  if (term[[1]] == as.name("IMRF") || term[[1]] == as.name("multIMRF")) {
     return(.subbarsMM(term[[2]]))
   }
   if (length(term) == 2) {
@@ -175,12 +175,34 @@
     attr(term,"type") <- rep("(.|.)",length(paste(c(term)))) ## paste is the simplest way to count terms (rather than elements of a single term)
     return(term)
   } ## le c() donne .|. et non |..
-  if (term[[1]] == as.name("MRF")) {
-    pars <- paste(paste(names(term),"=",term)[-c(1,2)], collapse=",") 
-    attr(term,"type") <- structure("MRF", pars=eval(parse(text = paste("list(",pars,")")))) # pars as attr to type avoid problems in building the return value.
+  if (term[[1]] == as.name("IMRF")) {
+    pars <- paste0(paste0(names(term),"=",term)[-c(1,2)], collapse=",") 
+    pars <- eval(parse(text = paste("list(",pars,")")))
+    if ( ! is.null(pars$spde)) {
+      warning("'spde' argument is obsolete. Use 'model' instead.")
+      pars$model <- pars$spde
+      pars$spde <- NULL
+    }
+    if ( ! is.null(pars$model)) {
+      pars$no <- FALSE
+      # it's hard to guess the alpha parameter from the object!
+      if (pars$model$param.inla[["B0"]][1,3]!=0) {
+        stop("Apparently fractional SPDE model, not implemented in spaMM.")
+      } else {
+        SPDE_alpha <- pars$model$param.inla[["B1"]][1,3]
+        if ( ! (SPDE_alpha  %in% c(1,2))) stop("Unrecognized model from inla.spde2. Contact the spaMM maintainer to extend spaMM.")
+        pars$SPDE_alpha <- SPDE_alpha
+      }
+    } else if (is.null(pars$no)) pars$no <- TRUE
+    if (is.null(pars$ce)) pars$ce <- TRUE
+    attr(term,"type") <- structure("IMRF", pars=pars) # pars as attr to type avoid problems in building the return value.
     return(term) # (lhs|rhs) (language, with the ()); or character string.
   }
-  if (length(term) == 2) {
+  if (term[[1]] == as.name("multIMRF")) { # useful for .findSpatial() before preprocessing, as in filled.mapMM()
+    attr(term,"type") <- as.character(term[[1]])
+    return(term) 
+  }
+  if (length(term) == 2) { # no extra args ater the grouping rhs !
     term1 <- as.character(term[[1]])
     if (term1 %in% c("adjacency","Matern","Cauchy","AR1","corrMatrix")) {
       attr(term,"type") <- term1
@@ -199,15 +221,16 @@
 }
 
 .lhs_rhs_bars <- function(barlist) { ## replicates the old .findbarsMM result, but starting from a .parseBars() result
+  ## this means that a .|. term loses its "(.|.)" attribute, 
+  ##        and that a Matern(.|.) becomes .|. without the Matern(), but keeping its "Matern" attribute.
   res <- barlist
-  attr(res,"type") <- NULL
   for (it in seq_along(res)) {
     if ( ! is.null(type <- attr(res[[it]],"type"))) { 
       if (type == "(.|.)") {
         attr(res[[it]],"type") <- NULL
-      } else res[[it]] <- structure(.parseBars(res[[it]][[2]]), type=type)}
+      } else res[[it]] <- structure(.parseBars(res[[it]][[2]]), type=type)} # 1 | grp is unchanged, and 
   }
-  return(res)
+  return(structure(res,type=attr(barlist,"type"))) # list attribute modified, 2019/3/6
 }
 
 .as_char_bars <- function(barlist) { # character vector from language list
@@ -221,8 +244,7 @@
       } else res[it] <- paste(c(barlist[[it]]))
     }
   }
-  attr(res,"type") <- attr(barlist,"type")
-  return(res)
+  return(structure(res,type=attr(barlist,"type")))
 }
 
 .process_bars <- function(formula, barlist, expand= (which.==""),
@@ -232,14 +254,14 @@
   # NULL barlist is a result from a previous.parseBars / .process_bars call !   
   if (expand) {
     barlist <- .spMMexpandSlash(barlist)
-    attr(barlist,"type") <- unlist(lapply(barlist,attr,which="type"))
   }
+  attr(barlist,"type") <- unlist(lapply(barlist,attr,which="type")) # before the element attributes are hacked by .lhs_rhs_bars()
   if (which.=="exp_ranef_terms") {
-    return(.lhs_rhs_bars(barlist))
+    return(.lhs_rhs_bars(barlist)) # keeps the "type" attribute of the list
   } else if (as_character) {
-    return(.as_char_bars(barlist))
+    return(.as_char_bars(barlist)) # keeps the "type" attribute of the list
   } else return(barlist)
-}
+} # with a "type" attribute to the list 
 
 ## spaces should be as in parseBars because terms can be compared as strings in later code
 .findSpatial <- function (term, barlist, expand=FALSE, as_character=FALSE, nomatch=NULL) { 
@@ -281,7 +303,8 @@
   aschar <- gsub("AR1(","(",aschar,fixed=TRUE)
   aschar <- gsub("corrMatrix(","(",aschar,fixed=TRUE)
   #                     (  1st group )  (2nd group)        \1: only first group is retained
-  aschar <- gsub("MRF\\((.+?\\|[^,]+?), ([^)]+?)\\)", "\\(\\1\\)", aschar, fixed = FALSE) # removes MRF and the parameters
+  aschar <- gsub("multIMRF\\((.+?\\|[^,]+?), ([^)]+?)\\)", "\\(\\1\\)", aschar, fixed = FALSE) # removes IMRF and the parameters
+  aschar <- gsub("IMRF\\((.+?\\|[^,]+?), ([^)]+?)\\)", "\\(\\1\\)", aschar, fixed = FALSE) # removes IMRF and the parameters
   ## thank you https://regex101.com/ ... ? (:lazy matching) is essential
   as.formula(aschar)
 }
@@ -297,9 +320,9 @@
   #  The revised Infusion code shows how to use the 'data' tfor prior.weights in programming, using eval(parse(text=paste(<...>,priorwName,<...>)))
   # As long as prior.weights was still using the environment, fitting functions still had
   #     mc <- oricall
-  #     oricall$formula <- .preprocess_formula(formula) ## Cf comment in .getValidData
+  #     oricall$formula <- .preprocess_formula(formula) 
   #  (stripping of mc$formula being done only later by .as_predictor() )
-  #  where we otherwise have 
+  #  where we otherwise have the opposite order
   #     oricall$formula <- .preprocess_formula(formula) 
   #     mc <- oricall
   formula <- .asNoCorrFormula(formula) ## removes spatial tags
@@ -311,8 +334,8 @@
   }
   check <- grep('$',frame.form,fixed=TRUE)
   if (length(check)) {
-    warning("'$' detected in formula: unnecessary and best avoided. 
-            One never needs to specify the 'data' in the 'formula'. 
+    warning("'$' detected in formula: suspect and best avoided. 
+            In particular, one should never needs to specify the 'data' in the 'formula'. 
             See help('good-practice') for explanations.")
   }
   frame.form <- as.formula(frame.form)
@@ -367,7 +390,7 @@
   Y <- model.response(full_frame, "any")
   if ( ! is.null(Y)) { ## exclude this cases which occurs when no LHS formula is handled
     if (is.factor(Y)) { 
-      Y <- (Y != levels(Y)[1L]) ## cf ?glm: ‘success’ is interpreted as the factor not having the first level
+      Y <- (Y != levels(Y)[1L]) ## cf ?glm: 'success' is interpreted as the factor not having the first level
     } ## indeed as in  binomial()$initialize
     if (NCOL(Y)==1L) { ## test on NCOL excludes the case cbind-LHS -> matrix Y (with any array1d stuff already erased)
       Y <- as.matrix(Y) ## to cope with array1d, and see $y <- ... code in .preprocess
@@ -398,7 +421,7 @@
       if (fixef_terms[[length(fixef_terms)]]==0L) { ## check that the fixef are only an explicit '0' (odd that it compares to 0L, but it does)
         res$X <- matrix(nrow=nrow(full_frame),ncol=0L) ## model without fixed effects, not even an Intercept 
       } else {
-        res$X <- model.matrix(fixef_terms, full_frame, stats::contrasts) ## always valid, but slower
+        res$X <- model.matrix(fixef_terms, full_frame, contrasts.arg = NULL) ## always valid, but slower
       } 
       res$fixef_levels <- .getXlevels(fixef_terms, fe_frame) ## added 2015/12/09 useful for .calc_newFrames()
     } else { ## only an offset in formula, not even an explicit 0: .stripOffset_(fixef_off_form) produced a 'name'

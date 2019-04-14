@@ -29,11 +29,12 @@ confint.HLfit <- function(object,parm,level=0.95,verbose=TRUE,...) {
                 stop(paste("confint does not yet handle HLmethod",paste(HL,collapse=" "),
                            "(or ",c(llc$method,llc$HLmethod),").",sep=" ")))
   beta_cov <- .get_beta_cov_any_version(object)
-  beta_se <- sqrt(diag(beta_cov))
+  beta_se <- sqrt(diag(x=beta_cov))
   asympto_abs_Dparm <- znorm* beta_se
   X.pv <- lc$processed$AUGI0_ZX$X.pv
   X_is_scaled <- ( ! is.null(attr(X.pv,"scaled:scale")))
   #
+  # FIXME test processed nature to prevent multinom stuff here
   lc$processed$intervalInfo <- list(fitlik=object$APHLs[[lik]],
                                     targetlik=object$APHLs[[lik]]-dlogL,
                                     parm=parm,
@@ -96,12 +97,16 @@ confint.HLfit <- function(object,parm,level=0.95,verbose=TRUE,...) {
         nloptr_controls$xtol_abs <- eval(.spaMM.data$options$xtol_abs, 
                                          list(LowUp=LowUp)) 
       }
+      .assignWrapper(anyObjfnCall.args$processed,
+                     paste0("return_only <- \"confint_bound\""))
       optr <- .new_locoptim(init.optim=trTemplate,LowUp=LowUp,
                             objfn_locoptim=objfn, # uses posforminimiz in its definition 
                             HLcallfn.obj=HLcallfn_obj,
                             user_init_optim=user_init_optim,
                             anyHLCor_obj_args=anyObjfnCall.args,
                             control=list(optimizer=spaMM.getOption("optimizer"))) # important to avoid use of optimize():
+      .assignWrapper(anyObjfnCall.args$processed,
+                     paste0("return_only <- NULL"))
       # We need an optimizer with control of the initial value (hence not optimize());
       # otherwise the optimizer may never find a value of the nuisance pars that results in a focal parameter value 
       #  with high enough lik. In that case the returned value of the focal parameter is the ML estimate and the interval reduces to the ML estimate.
@@ -111,7 +116,7 @@ confint.HLfit <- function(object,parm,level=0.95,verbose=TRUE,...) {
     # corr_families <- vector('list',length(corr_types))
     # for (rd in which( ! is.na(corr_types))) corr_families[[rd]] <- do.call(corr_types[rd],list())
     LUarglist$canon.init <- .canonizeRanPars(ranPars=trTemplate,
-                                             corr_info=.get_sub_corr_info(object), 
+                                             corr_info=.get_from_ranef_info(object), 
                                              checkComplete=FALSE)
     LowUp <- do.call(.makeLowerUpper,LUarglist)
   }

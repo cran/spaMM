@@ -15,20 +15,20 @@ lp <- 0.1 + 3* Lmat %*% rnorm(ncol(Lmat)) ## single intercept beta =0.1; lambda=
 resp <- rbinom(ncol(Lmat),1,1/(1+exp(-lp)))
 donn <- data.frame(npos=resp,nneg=1-resp,gridcode=scotlip$gridcode)
 
+# CAR by Laplace with 'inner' estimation of rho
+blob1 <- HLCor(cbind(npos,nneg)~1 +adjacency(1|gridcode),
+          adjMatrix=Nmatrix,family=binomial(probit),data=donn,HLmethod="ML",control.HLfit = list(LevenbergM=FALSE)) ## 2 s.
+#AIC(blob1)
+
 if (FALSE) { ## HLCor/corrHlfit already compared on scotlip by test-spaMM.R
   # corrHLfit without corners was poor here
   # CAR by Laplace with 'outer' estimation of rho
-  # *** fitme is not very convicing, stops early ***
-  blob <- fitme(cbind(npos,nneg)~1 +adjacency(1|gridcode),
-                    adjMatrix=Nmatrix,family=binomial(probit),data=donn,method="ML",control.HLfit = list(LevenbergM=FALSE)) 
-  AIC(blob)
+  blob2 <- fitme(cbind(npos,nneg)~1 +adjacency(1|gridcode),
+                 adjMatrix=Nmatrix,family=binomial(probit),data=donn,method="ML",control.HLfit = list(LevenbergM=FALSE)) 
+  #AIC(blob2) 
+  testthat::expect_true(diff(range(AIC(blob2,verbose=FALSE)-AIC(blob1,verbose=FALSE)))<0.1) # effective-df calculation sensitive to small difs in fit
 }
 
-# CAR by Laplace with 'inner' estimation of rho
-blob <- HLCor(cbind(npos,nneg)~1 +adjacency(1|gridcode),
-          adjMatrix=Nmatrix,family=binomial(probit),data=donn,HLmethod="ML",control.HLfit = list(LevenbergM=FALSE)) ## 2 s.
-AIC(blob)
-
 if (file.exists((privtest <- "C:/home/francois/travail/stats/spaMMplus/spaMM/package/tests_other_pack/test-probitgem.R"))) {
-  source(privtest)
+  source(privtest) # including another AIC() check
 }

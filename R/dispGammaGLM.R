@@ -25,7 +25,7 @@
             dev.res, ## cf comments on data argument
             lev,
             data, ## provide only the predictor variables ! alternatively could proceed as calc_CARdispGammaGLM
-            family = spaMM_Gamma(link=log), 
+            family = spaMM_Gamma(link=log), #inverse link is used in .calc_CARdispGammaGLM()
             offset=rep.int(0, NROW(dev.res)),
             na.action, start = NULL, etastart, mustart, 
             control, 
@@ -38,10 +38,11 @@
             contrasts = NULL,
             method="glm.fit",
             ...) {
-    Y <- as.numeric(dev.res/((1-lev))) 
+  Y <- as.numeric(dev.res/((1-lev))) 
   ## potential problem of any corrections is that v_h and lambda estimates may be inconsistent 
   Y[Y==0L] <- 1e-100 ## v_h ~0 occurs eg Poisson, y ~ 1+ ranef(lambda->very small)
   Y[Y>1e150] <- 1e150 ## v1.2 fix for glm -> glm.fit -> .Call(C_Cdqrls, x[good, , drop = FALSE]*w problem
+  Y <- exp(.sanitize_eta_log_link(log(Y), max=30)) 
   #
   mf <- match.call(expand.dots = FALSE)
   m <- match(c("formula", "data", "subset", "weights", "na.action", "offset","X"), names(mf), 0L)
@@ -51,7 +52,7 @@
   if (missing(data)) data <- environment(formula)
   mf <- eval(mf, parent.frame()) ## formula argument is required to eval mf => for mt too
   mt <- attr(mf, "terms")
-  X <- model.matrix(mt, mf, stats::contrasts) ## from glm() code
+  X <- model.matrix(mt, mf, contrasts) ## from glm() code
   #
   offset <- as.vector(model.offset(mf))
   intercept <- FALSE ## previously tried attr(mt, "intercept") > 0L but this is wrong
@@ -65,7 +66,7 @@
   #if (inherits(fit,"error") || is.na(fit$null.deviance)) { ## is.na(...): dgamma problem but returns a fit
   if (inherits(fit,"error")) { 
     ## we need a valid GLM: we fit again with a more controlled method
-    control$maxit <- 1e3 ## convergence is very slow when fitting y ~ 1 where most y values are <1e-12 and one is ~1e-10. 
+    control$maxit <- 1000L ## convergence is very slow when fitting y ~ 1 where most y values are <1e-12 and one is ~1e-10. 
     fit <- eval(call("spaMM_glm.fit", 
                      x = X, y = Y, weights = weights, offset = offset, family = family, 
                      control = control, intercept = intercept))

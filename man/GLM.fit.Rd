@@ -123,7 +123,7 @@ y <- c(2420,708,39.6,16.7,46.7,10.8)
 
 # glm(.) fails (can't find starting value)
 (check_error <- suppressWarnings(try(glm(y~ x,data=data.frame(x,y),family=Gamma()) , silent=TRUE)))
-if ( ! inherits(check_error,"try-error")) stop("glm(.) call unexpectedly succeeded")
+if ( ! inherits(check_error,"try-error")) stop("glm(.) call unexpectedly succeeded.")
 
 if (requireNamespace("rcdd",quietly=TRUE)) {
   spaMM_glm(y~ x,data=data.frame(x,y),family=Gamma())

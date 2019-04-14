@@ -200,8 +200,7 @@ if (FALSE) {
   sigmas <- diag(x=sqrt(lambdas)) 
   compactcovmat <- (compactcovmat+t(compactcovmat))
   compactcovmat[diagPos] <- 1
-  compactcovmat <- sigmas %*% compactcovmat %*% sigmas
-  # compactcovmat[diagPos] <- compactcovmat[diagPos] + 1e-10
+  compactcovmat <- sigmas %*% compactcovmat %*% sigmas # cov2cor use distinct, recommended syntax for the last operations
   return(compactcovmat)
 }  
 
@@ -394,20 +393,45 @@ if (FALSE) {
   return(list(init=init,init.optim=init.optim,init.HLfit=init.HLfit,ranFix=ranFix))
 }
 
-.calc_inits_dispPars <- function(init,init.optim,init.HLfit,ranFix,user.lower,user.upper) {
-  ## does not modify init.HLfit, but keeps its original value. Also useful to keep ranFix for simple and safe coding
-  lambda <- init.optim$lambda 
-  if (! is.null(lambda) && is.null(names(lambda))) names(lambda) <- paste(seq_len(length(lambda))) ## matters ultimately  for optPars names in fitme's refit code
-  init$lambda <- init.optim$lambda 
-  fixedlambda <- ranFix$lambda # .getPar(ranFix,"lambda") ## FIXME getPar not useful ?
-  if (!is.null(fixedlambda)) {
-    whichNA <- which(is.na(fixedlambda))
-    if (length(init$lambda)==length(whichNA)) {
-      if (length(whichNA)) names(init$lambda) <- whichNA
-    } else if (length(init$lambda)<length(whichNA)) {
-      ## init$lambda should already have names...
-    } else stop("'fixed lambda' and 'init lambda' arguments conflict with each other.")
+.rename_lambda <- function(lambda) {
+  if (! is.null(lambda)) {
+    if (is.null(names(lambda))) {
+      names(lambda) <- paste(seq_len(length(lambda))) 
+    } else { ## names are not null, they should contain integer info
+      checknames <- strsplit(names(lambda), "[^0-9]")
+      for (rd in seq_along(checknames)) {
+        if (length(checknames[[rd]])) {
+          if (checknames[[rd]][1L]=="") {
+            checknames[[rd]] <- list(NULL)
+          } else checknames[[rd]] <- checknames[[rd]][1L] # this must be a char_rd
+        } else checknames[[rd]] <- list(NULL)
+      }
+      n_hasint <- length(unames <- unlist(checknames))
+      if (n_hasint==0L) {
+        names(lambda) <- paste(seq_len(length(lambda))) 
+      } else if (n_hasint < length(lambda)) {
+        stop(paste0("lambda name(s) '",paste(names(lambda),collapse="', '"),"' have no obvious integer interpretation.\n",
+                    "  Check names of initial or fixed lambda values."))
+      } else names(lambda) <- unames
+    }
   }
+  return(lambda)
+}
+
+.calc_inits_dispPars <- function(init,init.optim,init.HLfit,ranFix,user.lower,user.upper) { 
+  ## does not modify init.HLfit, but keeps its original value. Also useful to keep ranFix for simple and safe coding
+  lambda <- init.optim$lambda # <- .rename_lambda(init.optim$lambda) 
+  ## : matters ultimately  for optPars names in fitme's refit code; and now for merging with (canon)init from IMRF
+  init$lambda[names(lambda)] <- lambda # merging with init$lambda from IMRF; works even if init$lambda was NULL
+  ## the following code assumes that any inconsistency between init.optim$lambda and ranFix$trLambda has been handled by .calc_inits_hyper()
+#  ranFix$lambda <- .rename_lambda(ranFix$lambda) 
+  lambdaNames <- sort(unique(c(names(init.optim$lambda),names(ranFix$lambda))))
+  optimVal <- ( ! is.na(init.optim$lambda[lambdaNames])) # not yet up to date: 
+  # init.optim$lambda has kept default initial value except those removed by .calc_inits_IMRF()
+  fixVal <- ( ! is.na(ranFix$lambda[lambdaNames]))
+  conflicts <- ( optimVal & fixVal)
+  if (any(conflicts))  stop("'fixed lambda' and 'init lambda' arguments conflict with each other.")
+  ##
   if (length(init$lambda)) { ## length rather than !is.null() bc .dispFn(numeric(0)) returns list() bc of the Vectorize code:
     ## zut <- function(x) return(666); zut <- Vectorize(zut); zut(numeric(0)) ## gives list()
     init$lambda <- pmax(init$lambda, 1e-4) ## see remark on init$phi below. Lower user- or bootstrap- inits are not heeded.
@@ -417,9 +441,7 @@ if (FALSE) {
   if (is.null(.getPar(ranFix,"phi"))) { ## FIXME getPar not useful ?
     init$phi <- init.optim$phi 
     if (!is.null(init$phi)) {
-      ## pmax(), really ? 
-      ## Only for generic optimization
-      ##    which then means that lower user- or bootstrap- inits are not heeded. But test-fixedLRT supports this.
+      ## pmax(), really ? FIXME
       init$phi <- pmax(init$phi, 1e-4) 
       init.optim$trPhi <- .dispFn(init$phi)
       init.optim$phi <- NULL
@@ -548,8 +570,11 @@ if (FALSE) {
   return(list(init=init,init.optim=init.optim,init.HLfit=init.HLfit,ranFix=ranFix))
 }
 
-.calc_inits_MRF <- function(init,init.optim,init.HLfit,ranFix,optim.scale,KAPPAMAX,user.lower,user.upper,char_rd) {
-  if (is.null(.get_cP_stuff(ranFix,"kappa",which=char_rd))) {
+.calc_inits_IMRF <- function(init,init.optim,init.HLfit,ranFix,optim.scale,moreargs_rd,user.lower,user.upper,char_rd) {
+  ## This is based on char_rd hence has to ignore hyper, unless contrived use of hyper"s attributes is implemented;
+  ## HENCE the return value may contain more values than ultimately retained based on hyper info.
+  ## For independent IMRF terms, the user input may be used; then, transformed user input is ignored, as in .calc_inits_dispPars()
+  if (is.null(.get_cP_stuff(ranFix,"kappa",which=char_rd))) { 
     kappa <- .get_cP_stuff(init.optim,"kappa",which=char_rd)
     if (is.null(kappa)) { kappa <- 0.5 }
     kappa <- min(max(kappa, ## checking against user-provided min/max
@@ -560,11 +585,17 @@ if (FALSE) {
     # Template of what will affect init.optim$corrPars in transformed scale:
     optim_cP <- init.optim$corrPars[[char_rd]] 
     if (optim.scale=="transformed") {
-      optim_cP <- .modify_list(optim_cP, list(trKappa=.kappaFn(kappa,KAPPAMAX=KAPPAMAX)))
+      optim_cP <- .modify_list(optim_cP, list(trKappa=.kappaFn(kappa,KAPPAMAX=moreargs_rd$KAPPAMAX)))
       optim_cP$kappa <- NULL
     } else optim_cP <- .modify_list(optim_cP, list(kappa=kappa))
     init.optim$corrPars[[char_rd]] <- optim_cP
   } 
+  if (is.null(ranFix$lambda) || is.na(ranFix$lambda[char_rd])) { 
+    if (is.null(moreargs_rd$minKappa)) { # slightly cryptic way of excludig spde case
+      init$lambda[char_rd] <- 200 # but this will be ignored by optimize (i.e., in the comparison to LatticeKrig)
+      init.optim$lambda[char_rd] <- 200 
+    } # else control of initial value should be as by default method (~that for Matern)
+  }
   return(list(init=init,init.optim=init.optim,init.HLfit=init.HLfit,ranFix=ranFix))
 }
 
@@ -572,6 +603,11 @@ if (FALSE) {
                         moreargs,
                         user.lower,user.upper,
                        optim.scale, For, hyper_info) { 
+  # final $ranFix should be suitable for .modify_list()... hence may contain NA's (in trLambda notably: cf mixing of ["1"] optimized, ["2"] fixed)
+  # final $init.optim should be suitable for optimizer
+  # final $[canon.]init should track $init.optim. It start different from $init.optim, though.
+  init.optim$lambda <- .rename_lambda(init.optim$lambda) 
+  ranFix$lambda <- .rename_lambda(ranFix$lambda) # Now, to allow name matching in .calc_inits_IMRF()
   inits <- list(init=list(corrPars=list()), ## minimal structure for assignments $corrPars[[char_rd]][[<name>]] to work.
                 init.optim=init.optim, init.HLfit=init.HLfit, ranFix=ranFix,
                 user.lower=user.lower, user.upper=user.upper, init=list()) 
@@ -586,6 +622,7 @@ if (FALSE) {
                                                         init.optim=init.optim, For=For)
     }
   }
+  inits <- .calc_inits_hyper(inits, hyper_info=hyper_info, fixed=inits$ranFix, moreargs=moreargs)
   # phi, lambda
   inits <- .calc_inits_dispPars(init=inits$init,init.optim=inits$init.optim,init.HLfit=inits$init.HLfit,ranFix=inits$ranFix,
                                 user.lower=user.lower,user.upper=user.upper)
@@ -604,7 +641,5 @@ if (FALSE) {
     inits[["init.optim"]]["corrPars"] <- NULL
     inits[["init"]]["corrPars"] <- NULL
   }
-  # after loop on corrPars etc but before .makeLowerUpper():
-  inits <- .calc_inits_hyper(inits, hyper_info=hyper_info)
   return(inits)
 }

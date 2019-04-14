@@ -1,7 +1,8 @@
 ## the "type" attribute is important, see comments explaining the computation of $CorrEst_and_RanFix
 ## There is also an "init.HLfit" attribute which usage is explained below for $rho
 .canonizeRanPars <- function(ranPars, ## should have a RHOMAX attribute when trRho in input
-                             corr_info, ## NULL in HLfit fns assuming no corr_types is processed there. Else processed$corr_info or <HLfit object>$sub_corr_info
+                             corr_info, ## NULL in HLfit fns assuming no corr_types is processed there. 
+                                        ## Else processed$corr_info or .get_from_ranef_info(<HLfit object>)
                              checkComplete=TRUE) {
   init.HLfit <- list() 
   corr_types <- corr_info$corr_types
@@ -9,7 +10,7 @@
     corr_type <- corr_types[rd]
     if (! is.na(corr_type)) {
       char_rd <- as.character(rd)
-      # $canonize() fails in multiSAR models if .expand_hyper() fails to convert parameters eg bc of wrong input
+      # $canonize() fails in multIMRF models if .expand_hyper() fails to convert parameters eg bc of wrong input
       canonizeblob <- corr_info$corr_families[[rd]]$canonize(corrPars_rd=ranPars$corrPars[[char_rd]],
                                                              cP_type_rd=attr(ranPars,"type")$corrPars[[char_rd]], 
                                                              checkComplete=checkComplete,
@@ -21,6 +22,7 @@
       }
     }
   }
+  # see .do_TRACE() for a way to handle hyper parameters
   if (!is.null(ranPars$trPhi)) {
     ranPars$phi <- .dispInv(ranPars$trPhi)
     ranPars$trPhi <- NULL
@@ -30,7 +32,7 @@
   # ranPars may have trLambda and lambda (eg fitme(...lambda=c(<value>,NA)))  
   # It may have $trLambda (from notlambda) for what is optimized,
   #              and $lambda (from ranPars$lambda) for what was fixed in the whole outer fit, and also ini.value  
-  if ( ! is.null(ranPars$trLambda)) {## 
+  if ( ! is.null(ranPars$trLambda)) {
     lambda <- ranPars$lambda
     if (is.null(lambda)) { ## only trLambda, not lambda
       ranPars$lambda <- .dispInv(ranPars$trLambda)
@@ -38,9 +40,10 @@
     } else { ## merge lambda and trLambda
       len_lam <- seq(length(lambda))
       type <- attr(ranPars,"type")$lambda
-      if (is.null(names(lambda))) names(lambda) <- len_lam ## but do not try to assign a vector of names for a single 'type' value
-      fromTr <- .dispInv(ranPars$trLambda)
-      lambda[names(fromTr)] <- fromTr  
+      if (is.null(names(lambda))) names(lambda) <- paste(len_lam) ## but do not try to assign a vector of names for a single 'type' value
+      fromTr <- .dispInv(ranPars$trLambda[! is.na(ranPars$trLambda)])
+      lambda[paste(names(fromTr))] <- fromTr  
+      ranPars$lambda <- lambda
     }
     attr(ranPars,"type")$lambda <- type
     ranPars$trLambda <- NULL

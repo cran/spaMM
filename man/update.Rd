@@ -7,8 +7,8 @@
   Updates a fit 
 }
 \description{
-\code{update} will update and (by default) re-fit a model. It does this mostly by extracting the call stored in the object, updating the call and evaluating that call. Using \code{update} is a risky programming style (see Note). 
-\code{update_resp} is a more restricted version inspired from \code{lme4::refit}, handling only a new a response vector as produced by \code{simulate}. 
+\code{update} and \code{update_resp} will update and (by default) re-fit a model. They do this mostly by extracting the call stored in the object, updating the call and evaluating that call. Using \code{update} is a risky programming style (see Note). 
+\code{update_resp} handles a new response vector as produced by \code{simulate}. 
 }
 \note{
 \code{update}, as a general rule, is tricky. \code{update} methods are easily affected in a non-transparent way by changes in variables used in the original call. For example
@@ -18,13 +18,13 @@ m <- lm(rnorm(10)~1, weights=foo)
 rm(foo)
 update(m, .~.) # Error
 }
-To avoid such problems, \code{spaMM} tries to avoid references to variables in the global environment, by enforcing that the data are explicitly provided by the \code{data} argument, and that prior weights, if not constant, are in the data.
+To avoid such problems, \code{spaMM} tries to avoid references to variables in the global environment, by enforcing that the data are explicitly provided to the fitting functions by the \code{data} argument, and that any variable used in the \code{prior.weights} argument is in the data.
 
-\code{spaMM}'s \code{update} method was all the more tricky when spaMM called \code{stats::update.formula} whose results endorse \code{stats}'s (annoying) convention that a formula without an explicit intercept term actually includes an intercept. \code{spaMM::update} now avoids this problem. \bold{Formula updates should still be carefully checked}, as getting them perfect has not been on the priority list.
+\code{spaMM}'s \code{update} method was all the more tricky when spaMM called \code{stats::update.formula} whose results endorse \code{stats}'s (sometimes annoying) convention that a formula without an explicit intercept term actually includes an intercept. \code{spaMM::update} now avoids this problem. \bold{Formula updates should still be carefully checked}, as getting them perfect has not been on the priority list.
 }
 \usage{
 \method{update}{HLfit}(object, formula., ..., evaluate = TRUE)
-update_resp(object, newresp, evaluate = TRUE)
+update_resp(object, newresp, ..., evaluate = TRUE)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -36,7 +36,7 @@ update_resp(object, newresp, evaluate = TRUE)
 \item{newresp}{New response vector.}
 
 \item{\dots}{
-Additional arguments to the call, or arguments with changed values. Use name = NULL to remove the argument name.
+Additional arguments to the call, or arguments with changed values. Use \emph{name}\code{ = NULL} to remove the argument with given \emph{name}.
 }
 
 \item{evaluate}{
@@ -69,13 +69,13 @@ update(wFit,formula.= . ~ offset(wFit$`X.pv` \%*\% betavals)+(1|batch),
        ranFix=list(lambda=exp(-3.67),phi=phifit))
 
 ## There are subtlety in performing REML fits of constrained models,
-##   illustrated by thefact thatthe following fir does not recover 
+##   illustrated by the fact that the following fit does not recover 
 ##   the original likelihood values, because dispersion parameters are
 ##   estimated but the REML correction changes with the formula:
 update(wFit,formula.= . ~ offset(wFit$`X.pv` \%*\% fixef(wFit))+(1|batch))
 ## To maintain the original REML correction, Consider instead
 update(wFit,formula.= . ~ offset(wFit$`X.pv` \%*\% fixef(wFit))+(1|batch),
-       REMLformula=wFit$predictor)  ## recover original p_v and p_bv 
+       REMLformula=formula(wFit))  ## recover original p_v and p_bv     
 ## Alternatively, show original wFit as differences from betavals:  
 update(wFit,formula.= . ~ . +offset(wFit$`X.pv` \%*\% betavals))
 

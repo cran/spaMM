@@ -125,6 +125,7 @@
       #test <- TRUE
       objfn <- function(trRancoef) {
         compactcovmat <- .calc_cov_from_trRancoef(trRancoef, Xi_ncol)
+        compactcovmat <- .CovRegulCor(compactcovmat) ## not quite elegant, but robust. 
         compactcovmat <- .regularized_eigen(compactcovmat, condnum=.spaMM.data$options$condnum_for_latentL_inner)
         latentL_blob <- .calc_latentL(compactcovmat, triangularL=.spaMM.data$options$use_tri_for_makeCovEst,
                                       spprecBool=processed$sparsePrecisionBOOL)
@@ -216,6 +217,7 @@
       ################# 
       ## reproduces representation in objfn
       compactcovmat <- .calc_cov_from_trRancoef(optr$solution, Xi_ncol)
+      compactcovmat <- .CovRegulCor(compactcovmat) ## not quite elegant, but robust. 
       compactcovmat <- .regularized_eigen(compactcovmat, condnum=.spaMM.data$options$condnum_for_latentL_inner)
       latentL_blob <- .calc_latentL(compactcovmat, triangularL=.spaMM.data$options$use_tri_for_makeCovEst,
                             spprecBool=processed$sparsePrecisionBOOL) 

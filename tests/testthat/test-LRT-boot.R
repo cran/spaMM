@@ -1,9 +1,9 @@
 if (spaMM.getOption("example_maxtime")>(13.7+24)) { ## user time + system.time for parallele setup
   cat("test LRT with bootstrap, parallel or not:\n")
   data("salamander")
-  fullfit <-HLfit(cbind(Mate,1-Mate)~TypeF+(1|Female)+(1|Male),family=binomial(),data=salamander,
+  fullfit <- HLfit(cbind(Mate,1-Mate)~TypeF+(1|Female)+(1|Male),family=binomial(),data=salamander,
                   HLmethod="ML",control.HLfit = list(LevenbergM=FALSE))
-  nullfit <-HLfit(cbind(Mate,1-Mate)~1+(1|Female)+(1|Male),family=binomial(),data=salamander,
+  nullfit <- HLfit(cbind(Mate,1-Mate)~1+(1|Female)+(1|Male),family=binomial(),data=salamander,
                   HLmethod="ML",control.HLfit = list(LevenbergM=FALSE))
   set.seed(123)
   pv1 <- LRT(nullfit,fullfit,boot.repl=10)$BartBootLRT$p_value
@@ -26,28 +26,31 @@ if (spaMM.getOption("example_maxtime")>18) { ## user time + system.time for para
     data$migStatus <- y ## replaces original response (! more complicated for binomial fits)
     full_call <- getCall(lrt$fullfit) ## call for full fit
     full_call$data <- data
-    res <- eval(full_call) ## fits the full model on the simulated response
-    if (!is.null(what)) res <- eval(what)
-    return(res) ## the fit, or anything produced by evaluating 'what'
+    ReSu <- eval(full_call) ## fits the full model on the simulated response
+    if (!is.null(what)) ReSu <- eval(what)
+    return(ReSu) ## the fit, or anything produced by evaluating 'what'
   }
 
   ## nb_cores=1, serial pbapply 
+  set.seed(123)
   spaMM_boot(lrt$nullfit, simuland = myfun, nsim=4,
-             what=quote(fixef(res)[2L]), lrt=lrt,nb_cores=1L)[["bootreps"]]    
+             what=quote(fixef(ReSu)[2L]), lrt=lrt,nb_cores=1L)[["bootreps"]]    
   
   ## foreach+doSNOW
   if (file.exists((privtest <- "C:/home/francois/travail/stats/spaMMplus/spaMM/package/tests_other_pack/test-doSNOW.R"))) {
     source(privtest)
   } # i.e.: 
   # library("doSNOW")
+  # set.seed(123)
   # spaMM_boot(lrt$nullfit, simuland = myfun, nsim=4,
-  #            what=quote(fixef(res)[2L]), lrt=lrt,nb_cores=4L)[["bootreps"]]
+  #            what=quote(fixef(ReSu)[2L]), lrt=lrt,nb_cores=4L)[["bootreps"]]
   # unloadNamespace("doSNOW")
   
   ## parallel pbapply 
-  if (exists("res")) rm(res) ## otherwise any error in the following code may result in a confusing message
+  set.seed(123)
+  if (exists("ReSu")) rm(ReSu) ## otherwise any error in the following code may result in a confusing message
   spaMM_boot(lrt$nullfit, simuland = myfun, nsim=4, control.foreach = list(.errorhandling="pass"),
-             what=quote(fixef(res)[2L]), lrt=lrt,nb_cores=4L)[["bootreps"]]    
+             what=quote(fixef(ReSu)[2L]), lrt=lrt,nb_cores=4L)[["bootreps"]]    
   
 } 
 

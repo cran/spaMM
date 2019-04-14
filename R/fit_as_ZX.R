@@ -10,15 +10,21 @@
            wranefblob, seq_n_u_h, ZAL_scaling,
            processed, trace=FALSE,
            phi_est, H_global_scale, n_u_h, ZAL,
-           which_LevMar_step,
+           which_LevMar_step, # fixed within this function
            which_i_affected_rows,
            Xscal, ## locally fixed, "resident"
-           mMatrix_method
+           mMatrix_method,
+           # promise rater than argument:
+           pot4improv = switch(which_LevMar_step,
+                                "v_b"= get_from_MME(sXaug=sXaug, which="Mg_solve_g", B=zInfo$gainratio_grad),
+                                "v"= get_from_MME(sXaug=sXaug, which="Mg_invH_g", B=gainratio_grad[seq_n_u_h]))
+           
   ) {
   newXscal <- Xscal ## template
   initdamping <- damping
   gainratio_grad <- zInfo$gainratio_grad
   # grad wrt scaled v = d f / d (v/ZAL_scaling) = ZAL_scaling * d f / d v
+  gone_thru_mini <- (damping==1e-7)
   while ( TRUE ) {
     if (processed$HL[1L]==1L) { ## ML fit 
       Vscaled_beta <- old_Vscaled_beta
@@ -116,6 +122,7 @@
           tempodvhbeta <- LevMarblob$dVscaled_beta
           tempodvhbeta[seq_n_u_h] <- tempodvhbeta[seq_n_u_h]*ZAL_scaling
           summand <- tempodvhbeta*(gainratio_grad+ LevMarblob$dampDpD * tempodvhbeta)
+          #conv_crit2 <- sum(tempodvhbeta^2)/(1e-7*(1e-7+sum(Vscaled_beta^2)))
         } else if (which_LevMar_step=="b") {
           summand <- LevMarblob$dbeta*(gainratio_grad[-seq_n_u_h]+ LevMarblob$dampDpD * LevMarblob$dbeta) 
         } else if (which_LevMar_step=="v") { ## v_h estimation given beta (FIXME can surely be made more exact)
@@ -133,6 +140,8 @@
       dlogL <- newlik-oldlik
       conv_logL <- abs(dlogL)/(1+abs(newlik))
       gainratio <- 2*dlogL/denomGainratio ## cf computation in MadsenNT04 below 3.14, but generalized for D' != I ; numerator is reversed for maximization
+      # but if gradient is practically zero and damping  ~0 we may not wish to compare ~0 to ~0...
+      #  which is why we break, rather than stop, on (damping>1e100). MadsenNT04 have other stopping crits 
     } else { ## 2017/10/16 a patch to prevent a stop in this case, but covers up dubious computations (FIXME)
       newlik <- -.Machine$double.xmax
       dlogL <- newlik-oldlik
@@ -153,16 +162,40 @@
       ## cf Madsen-Nielsen-Tingleff again, and as in levmar library by Lourakis
       damping <- damping * max(1/3,1-(2*gainratio-1)^3)  
       break 
-    } else if (dampingfactor>4 ## implies iter>2
-               && conv_logL <1e-8 && abs(prev_conv_logL) <1e-8) {
-      damping <- initdamping ## bc presumably damping has diverged un-usefully
-      break ## apparently flat likelihood; this has occurred when fit_as_ZX used a wrong initial (beta,v_h), but still occurs in /tests
-    } else { ## UNsuccessful step
+    } else if ( pot4improv<1e-6 # apparently at optimum, not worth to much effort
+                || ( dampingfactor>4 ## ie at least 2 iteration of the while() => prev_conv_logL is available
+                     # && gainratio==0 # in GLMM, gainratio is a less reliable criterion, cannot be used as in GLM, bc
+                     # gainratio may be slightly negative if initial ranefs better optimize logL than correct solution. 
+                     && conv_logL <1e-8 && abs(prev_conv_logL) <1e-8 
+                     && gone_thru_mini ## has gone through 1e-7, # REPLACES:
+                     ###&& damping<1000 # arbitrary threshold, 
+                     ### the idea was that if we started with too high damping, the improvement may be within numerical error 
+                     ### the higher the threshold, the more likely the loop breaks => low value can slow down fits substantially (test-nloptr, replicat 9 for ex.) 
+                )
+    ) { 
+      damping <- initdamping # for return value
+      if (trace) cat("#")
+      break   ##   cases were we do not expect any significant improvement
+    } else if ( ! gone_thru_mini  # condition to avoid infinite loop
+               #&& damping>1e6 ## if we started from too high damping to see any progress, 
+               && pot4improv>1e-6) { ## we should be able to improve likelihood
+      damping <- 1e-7
+      dampingfactor <- 2
+      gone_thru_mini <- TRUE
+      if (trace) cat("-")
+      # and continue # but this allows an  infinite loop
+    } else { ## other UNsuccessful step
       prev_conv_logL <- conv_logL
       damping <- damping*dampingfactor
       dampingfactor <- dampingfactor*2
+      if (damping>1e100) {
+        if (TRUE) { # I still have 'improvable' cases where gainratio is never >0
+          # maybe it's really improvable, but the oldlik was too high ?
+          if (trace) cat("!")
+          break 
+        } else stop("reached damping=1e100")
+      }
     }
-    if (damping>1e100) stop("reached damping=1e100")
   } 
   RESU <- list(lik=newlik, APHLs=newAPHLs, damping=damping, sXaug=newsXaug,
                fitted=fitted,
@@ -206,7 +239,9 @@
   GLMMbool <- processed$GLMMbool
   LevenbergM <- (.determine_LevenbergM(processed$LevenbergM) && is.null(for_intervals))
   is_HL1_1 <- (processed$HL[1L]==1L)
-  which_LevMar_step <- "v_b"
+  #which_LevMar_step <- .spaMM.data$options$DEBUG_LM ## To check whether starting from which_LevMar_step = "v" works (I does)
+  #if (is.null(which_LevMar_step)) 
+    which_LevMar_step <- "v_b"
   old_relV_beta <- NULL
   not_moving <- FALSE
   damped_WLS_blob <- NULL
@@ -361,6 +396,7 @@
         )
       }
       if (not_moving && is_HL1_1) { ## not_moving TRUE may occur when we are out of solution space. Hence test Mg_solve_g
+        # BUT I made (not_moving && is_HL1_1) a sufficient condition for break below ! So this block is never run. 
         Mg_solve_g <- get_from_MME(sXaug=sXaug, which="Mg_solve_g", B=m_grad_obj)
         if (Mg_solve_g < Ftol_LM/2) {
           if (trace>1L) {"break bc Mg_solve_g<1e-6"}
@@ -385,7 +421,7 @@
           if ( hlik_stuck || ! need_v_step) { ## LevMar apparently maximized h wrt v after several iterations
             ## if hlik has not recently moved or has moved but reached a point where the h gradient is negligible 
             if (trace>2L) print("switch from v to v_b")
-            old_relV_beta <- relV_beta ## serves to assess convergence !!!!!!!!!!!!!!!!!!!
+            old_relV_beta <- relV_beta ## serves to assess convergence !!! which is thus dependent on condition ( hlik_stuck || ! need_v_step)
             which_LevMar_step <- "v_b" 
           } else {
             if (trace>2L) print("still v")
@@ -510,7 +546,7 @@
     ##### assessment of convergence
     if (innerj<maxit.mean) {
       relV_beta <- c(v_h*sqrt(wranefblob$w.ranef),beta_eta)  ## convergence on v_h relative to sqrt(w.ranef)
-      abs_d_relV_beta <- abs(relV_beta - old_relV_beta)
+      abs_d_relV_beta <- abs(relV_beta - old_relV_beta) ## for ML, comparison between estimates when ( hlik_stuck || ! need_v_step )
       not_moving <- ( ( ! is.null(old_relV_beta)) && mean(abs_d_relV_beta) < loc_Xtol_rel )
       if (is.na(not_moving)) {
         if (anyNA(relV_beta)) {
@@ -520,8 +556,17 @@
           } else stop("Numerical problem: try control.HLfit=list(LevenbergM=TRUE)")
         } else stop("Error in evaluating break condition")
       } 
-      if (not_moving) break ## sufficient condition here
-      if ( ! (is_HL1_1 && LevenbergM)) { ## possible reversal of condition from F to T in  LevM PQL !!!!
+      if (not_moving) { # with LevM, loc_Xtol_rel is lax so this is not a very good test for large data;
+        # for ML, the test depends on values updated when ( hlik_stuck || ! need_v_step) and thus involves checks of the likelihood;
+        # for PQL, we need a likelihood check:
+        if ( ! is_HL1_1 ) { ## PQL in particular
+          if ( ! is.null(damped_WLS_blob)) {
+            hlik_stuck <- (damped_WLS_blob$APHLs$hlik < oldAPHLs$hlik + Ftol_LM/10)
+            if (hlik_stuck) break
+          } else break 
+        } else break ## sufficient condition in ML case 
+      }
+      if ( ! (is_HL1_1 && LevenbergM)) { ## possible reversal of LevenbergM condition from F to T in  LevM PQL !!!!
         old_relV_beta <- relV_beta
       } ## ELSE old_relV_beta controlled in block for which_LevMar_step !!
     } else break

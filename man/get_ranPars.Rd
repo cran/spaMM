@@ -14,7 +14,7 @@ remove_from_parlist(parlist, removand=NULL, rm_names=names(unlist(removand)))
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
-  \item{object}{A object of class \code{HLfit}, as returned by the fitting functions in \code{spaMM}.}
+  \item{object}{An object of class \code{HLfit}, as returned by the fitting functions in \code{spaMM}.}
   \item{which}{For \code{get_ranPars}, the only non-null value is \code{"corrPars"}, to return correlation parameters of random effects.}
   \item{\dots}{Other arguments that may be needed by some method.}
   \item{parlist}{A list of parameters. see Details.}

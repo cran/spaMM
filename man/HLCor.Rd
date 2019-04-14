@@ -83,7 +83,7 @@ HLCor(formula, data, family = gaussian(), ranPars = NULL, distMatrix,
 # Example with an adjacency matrix (autoregressive model):
 # see 'adjacency' documentation page
 
-#### Matérn correlation using only the Matern() syntax
+#### Matern correlation using only the Matern() syntax
 if (spaMM.getOption("example_maxtime")>0.8) {
  data("Loaloa")
  HLCor(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
@@ -92,7 +92,7 @@ if (spaMM.getOption("example_maxtime")>0.8) {
 }
 %- : tested in simulate.HLCor.Rd
 
-#### Matérn correlation using a distMatrix
+#### Matern correlation using a distMatrix
 data("blackcap")
 MLdistMat <- as.matrix(proxy::dist(blackcap[,c("latitude","longitude")]))
 HLCor(migStatus ~ means+ Matern(1|latitude+longitude),data=blackcap,

@@ -14,16 +14,31 @@ This function differ from \code{fixedLRT} in its arguments (model fits for \code
 \usage{
 \method{anova}{HLfit}(object, object2, ..., method="")
 LRT(object, object2, boot.repl = 0, nb_cores = NULL, 
-    boot_fn = "spaMM_boot", resp_testfn = NULL, ...)  
+    boot_fn = "spaMM_boot", resp_testfn = NULL, debug. = FALSE,
+    type = "marginal", simuland = .eval_replicate, 
+%    .condition = NULL, 
+    ...)  
 }
 \arguments{
   \item{object,object2}{Two models fits being compared (their order does not matter).}
   \item{boot.repl}{the number of bootstrap replicates. }
   \item{nb_cores}{Number of cores to use for parallel computation of bootstrap. The default is \code{spaMM.getOption("nb_cores")}, and 1 if the latter is NULL. \code{nb_cores=1} prevents the use of parallelisation procedures.}
-  \item{boot_fn}{function called for simulating and fitting bootstrap replicates: the default is \code{"spaMM_boot"} since version 2.4.42. Older results can be replicated using \code{".eval_boot_replicates"}, but this may be deprecated soon.}
+\item{boot_fn}{Deprecated. No alternative to default is considered.}
 \item{resp_testfn}{See argument \code{resp_testfn} of \code{\link{spaMM_boot}}}
   \item{method}{For development purposes, not documented. }
-  \item{\dots}{
+\item{debug.}{
+  Boolean; only for debugging purposes. See same argument in \code{\link{spaMM_boot}}. 
+}  
+\item{type}{
+  For development purposes, not documented. % F I X M E maybe remove
+}  
+\item{simuland}{
+  See argument \code{simuland} of \code{\link{spaMM_boot}}.
+}  
+%\item{.condition}{
+%  For development purposes, not documented. % F I X M E
+%}  
+\item{\dots}{
   Further arguments passed to or from other methods. 
 }
 }

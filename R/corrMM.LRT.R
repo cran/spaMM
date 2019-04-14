@@ -23,7 +23,7 @@
 
 ## fixedLRT is a safe interface for performing tests as described in Ecography paper.
 ## it does not allow the profiling procedure in .corrMM_LRT
-fixedLRT <- function(  ## interface to spaMMLRT or (for devel only) .corrMM_LRT
+fixedLRT <- function(  ## interface to .LRT or (for devel only) .corrMM_LRT
   null.formula,formula,data,
   method, 
   HLmethod=method,
@@ -40,9 +40,10 @@ fixedLRT <- function(  ## interface to spaMMLRT or (for devel only) .corrMM_LRT
   if (missing(method)) {
     if (missing(HLmethod)) {
       stop("'method' and 'HLmethod' arguments are missing, with no default. Provide 'method'.")
-    } else mc$method <- method <- eval(HLmethod,parent.frame())
+    } else {
+      METHOD <- eval(HLmethod,parent.frame())
+    }
   } else if ( ! missing(HLmethod))  stop("Don't use both 'method' and 'HLmethod' arguments.")
-  mc$HLmethod <- NULL ## method always overrides HLmethod; HLmethod may be re-created in spaMMLRT()
   #
   ## other possible settings, through iterative fits
   ## We had a potential backward compatiblity problem, since the simulation scripts 
@@ -54,12 +55,15 @@ fixedLRT <- function(  ## interface to spaMMLRT or (for devel only) .corrMM_LRT
     if (missing(fittingFunction)) { ## guessing:
       if (nrow(data)<300L) {
         mc$fittingFunction <- "corrHLfit" ## leverage computation is fast
-      } else mc$fittingFunction <- "fitme"
+        mc$method <- NULL
+      } else {
+        mc$fittingFunction <- "fitme"
+        mc$HLmethod <- NULL
+      }
     }
     ## both will use p_v for the optim steps, we need to distinguish whether some REML correction is used in iterative algo :
-    if ( method %in% c("ML","PQL/L","SEM") || substr(method,0,2) == "ML") {
+    if ( METHOD %in% c("ML","PQL/L","SEM") || substr(METHOD,0,2) == "ML") {
       mc[[1L]] <- get(".LRT", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
-      ## there's no profile etc in spaMMLRT... 
     } else { ## EQL, REPQL or REML variants: 
       # FIXME typos (e.g. "PQLL") are not detected...
       mc[[1L]] <- get(".corrMM_LRT", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
@@ -71,6 +75,7 @@ fixedLRT <- function(  ## interface to spaMMLRT or (for devel only) .corrMM_LRT
     }
   } else {
     mc[[1L]] <- get(".LRT", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
+    mc$method <- NULL
     ## No maxit, restarts, prefits
     if (missing(fittingFunction)) {
       if (is.null(mc$corrMatrix)) { ## neither explicit spatial nor corrMatrix -> HLfit

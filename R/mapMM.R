@@ -14,12 +14,12 @@
             "#FF5000", "#FF4000", "#FF3000", "#FF2000", "#FF1000", 
             "#FF0000", "#EF0000", "#DF0000", "#CF0000", "#BF0000", 
             "#AF0000", "#9F0000", "#8F0000", "#800000")
-  orig[1:20] <- grDevices::topo.colors(64)[1:20]
-  if ( ! is.null(adjustcolor_args)) orig <- do.call("grDevices::adjustcolor",
+  orig[1:20] <- topo.colors(64)[1:20]
+  if ( ! is.null(adjustcolor_args)) orig <- do.call("adjustcolor",
                                                     c(list(col=orig),adjustcolor_args))
   if (n == 64 && redshift == 1) 
     return(orig)
-  rgb.tim <- t(grDevices::col2rgb(orig))
+  rgb.tim <- t(col2rgb(orig))
   temp <- matrix(NA, ncol = 3, nrow = n)
   x <- (seq(0, 1, , 64)^(redshift))
   xg <- seq(0, 1, , n)
@@ -35,7 +35,7 @@
     hold[hold > 255] <- 255
     temp[, k] <- round(hold)
   }
-  grDevices::rgb(temp[, 1], temp[, 2], temp[, 3], maxColorValue = 255)
+  rgb(temp[, 1], temp[, 2], temp[, 3], maxColorValue = 255)
 }
 
 ## returns in canonical scale
@@ -324,10 +324,8 @@ mapMM <- function (fitobject,Ztransf=NULL,coordinates,
   if (missing(coordinates)) {
     info_olduniqueGeo <- attr(fitobject,"info.uniqueGeo") 
     if ( ! is.array(info_olduniqueGeo)) { ## test TRUE for version > 2.3.18:
-      if (length(info_olduniqueGeo)>1L) stop("mapMM handles only models with a single continuous spatial effect.")
-      olduniqueGeo <- info_olduniqueGeo[[1L]]
-    } else olduniqueGeo <- info_olduniqueGeo 
-    coordinates <- colnames(olduniqueGeo)
+      coordinates <- unique(unlist(lapply(info_olduniqueGeo,colnames)))
+    } else coordinates <- colnames(info_olduniqueGeo)
   }
   if (length(coordinates)!=2L) {
     stop(paste0("'mapMM' plots only 2D maps, while coordinates are of length ",length(coordinates)))
@@ -363,10 +361,8 @@ mapMM <- function (fitobject,Ztransf=NULL,coordinates,
   if (missing(coordinates)) {
     info_olduniqueGeo <- attr(fitobject,"info.uniqueGeo") 
     if ( ! is.array(info_olduniqueGeo)) { ## test TRUE for version > 2.3.18:
-      if (length(info_olduniqueGeo)>1L) stop("filled.mapMM handles only models with a single continuous spatial effect.")
-      olduniqueGeo <- info_olduniqueGeo[[1L]]
-    } else olduniqueGeo <- info_olduniqueGeo 
-    coordinates <- colnames(olduniqueGeo)
+      coordinates <- unique(unlist(lapply(info_olduniqueGeo,colnames)))
+    } else coordinates <- colnames(info_olduniqueGeo)
   }
   if (length(coordinates) != 2L) {
     stop(paste("'map' plots only 2D maps, while coordinates are of length ", 
@@ -378,9 +374,13 @@ mapMM <- function (fitobject,Ztransf=NULL,coordinates,
     if (length(variance)>1L) stop("'variance' argument should include a single name")
     if (is.character(variance)) variance <- structure(list(TRUE),names=variance)
   }
-  pred <- predict(fitobject,variances=variance, binding="fitted")
-  if (missing(map.formula)) 
-    map.formula <- as.formula(paste(attr(pred,"fittedName"), " ~ 1 + ", paste(.findSpatial(fitobject$predictor))))
+  pred <- predict(fitobject,variances=variance, binding="fitted") 
+  if (missing(map.formula)) {
+    form <- formula.HLfit(fitobject,which="hyper") 
+    map.formula <- as.formula(paste(attr(pred,"fittedName"), " ~ 1 + ", paste(.findSpatial(form),collapse=" + ")))
+  } else {
+    map.formula <- as.formula(paste(attr(pred,"fittedName"), " ~", paste(map.formula[length(map.formula)])))
+  }
   if (is.null(smoothObject)) smoothObject <- fitme(map.formula, data = pred, fixed = list(phi = phi),method="REML")
   smoo <- predict(smoothObject,binding="dummy") ## response column does not appear to be used... 
   x <- smoo[, coordinates[1]]

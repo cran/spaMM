@@ -73,7 +73,7 @@ fitme_body <- function(processed,
   
   processedHL1 <- proc1$HL[1] ## there's also HLmethod in processed<[[]]>$callargs
   needHLCor_specific_args <- (length(unlist(lower$corrPars)) || 
-                                length(intersect(corr_types,c("Matern","Cauchy","adjacency","AR1","corrMatrix", "MRF"))))
+                                length(intersect(corr_types,c("Matern","Cauchy","adjacency","AR1","corrMatrix", "IMRF"))))
   if (needHLCor_specific_args) {
     HLcallfn.obj <- "HLCor.obj" 
     HLcallfn <- "HLCor"
@@ -94,8 +94,7 @@ fitme_body <- function(processed,
   initvec <- unlist(init.optim)
   if (needHLCor_specific_args) {
     anyHLCor_obj_args$skeleton <- structure(init.optim, moreargs=moreargs, ## moreargs is a list over ranefs 
-                                            type=relist(rep("fix",length(initvec)),init.optim),
-                                            trL_skeleton=attr(init.optim$hyper,"trL_skeleton") )
+                                            type=relist(rep("fix",length(initvec)),init.optim) )
   } else {
     anyHLCor_obj_args$skeleton <- structure(init.optim,
                                             type=relist(rep("fix",length(initvec)),init.optim))
@@ -143,7 +142,7 @@ fitme_body <- function(processed,
       ranPars_in_refit <- structure(.modify_list(fixed,optPars),
                                    type=.modify_list(relist(rep("fix",length(unlist(fixed))),fixed), #attr(fixed,"type"),
                                                      relist(rep("outer",length(unlist(optPars))),optPars)))
-      ranPars_in_refit <- .expand_hyper(ranPars_in_refit, trL_skeleton=attr(init.optim$hyper,"trL_skeleton"),processed)
+      ranPars_in_refit <- .expand_hyper(ranPars_in_refit, processed$hyper_info,moreargs=moreargs)
       augZXy_phi_est <- proc1$augZXy_env$phi_est ## may be NULL: if phi was not estimated by augZXy
       
       any_nearly_singular_covmat <- FALSE
@@ -187,7 +186,7 @@ fitme_body <- function(processed,
       }
       # refit, or rescale by augZXy_phi_est even if no refit:
       if ( ! is.null(augZXy_phi_est) || identical(refit_info$lambda,TRUE)) {
-        if (! is.null(optPars$trLambda)) { # does NOT include the lambdas of the ranCoefs
+        if (length(optPars$trLambda)) { # does NOT include the lambdas of the ranCoefs
           lambdapos <- as.integer(names(optPars$trLambda))
           lambda <- rep(NA,max(lambdapos))
           names(lambda) <- paste(seq_len(length(lambda)))
@@ -199,6 +198,19 @@ fitme_body <- function(processed,
             attr(ranPars_in_refit,"type")$trLambda <- NULL
           } else ranPars_in_refit$trLambda <- .dispFn(lambda) ## rescale, but no refit
         }
+      }
+      # rescaling hyper- ontrolled lambdas
+      if ( ! is.null(augZXy_phi_est) && ! is.null(optPars$hyper)) {
+        ranges <- attr(optPars$hyper,"ranges")
+        for (rg_it in names(ranges)) {
+          hyper_el <- ranPars_in_refit$hyper[[rg_it]]
+          if ( ! is.null(hy_trL <- hyper_el$hy_trL)) {
+            ranPars_in_refit$hyper[[rg_it]]$hy_trL <- .dispFn(.dispInv(hy_trL)*augZXy_phi_est) # no direct effect on refit
+            char_rd_range <- as.character(ranges[[rg_it]]) 
+            trL <- ranPars_in_refit$trLambda[char_rd_range]
+            ranPars_in_refit$trLambda[char_rd_range] <- .dispFn(.dispInv(trL)*augZXy_phi_est) # the effective rescaling
+          }
+        } 
       }
       ## refit, or rescale by augZXy_phi_est even if no refit:
       if ( ! is.null(augZXy_phi_est)  || identical(refit_info$ranCoefs,TRUE)) {
@@ -229,7 +241,8 @@ fitme_body <- function(processed,
     } else HLCor.args$ranFix <- ranPars_in_refit 
   } else if (len_ranPars <- length(unlist(HLCor.args$ranPars))){ ## Set attribute
     HLCor.args$ranPars <- structure(HLCor.args$ranPars,
-                                  type = relist(rep("fix", len_ranPars), HLCor.args$ranPars))
+                                  type = relist(rep("fix", len_ranPars), HLCor.args$ranPars),
+                                  moreargs=moreargs) ## moreargs needed if user handles fixed(<transformed params>) ('hyper' tests)
   }
   #
   # if processed is an envir, the following is not local to anyHLCor_obj_args$processed but change processed globally

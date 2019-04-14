@@ -24,28 +24,24 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
 ###############################################
 
 .make_corr_list <- function(strucList, newZAlist) {
-  if ( ! is.null(newZAlist)) {
-    locstrucList <- strucList
-    for (it in seq_len(length(locstrucList))) {
-      if (! is.null(locstrucList[[it]])) {
-        if (attr(locstrucList[[it]],"corr.model")=="random-coef" &&
+  corr_list <- vector("list", length(strucList))
+  for (it in seq_len(length(strucList))) {
+    if (! is.null(strucList[[it]])) {
+      if ( ! is.null(newZAlist)) {
+        if (attr(strucList[[it]],"corr.model")=="random-coef" &&
             ncol(newZAlist[[it]]) != nrow(strucList[[it]]) ## new groups for the random-coef term
         ) {
-          locstrucList[[it]] <- .makelong(attr(locstrucList[[it]],"latentL_blob")$design_u,longsize = ncol(newZAlist[[it]]))
-          rownames(locstrucList[[it]]) <- colnames(newZAlist[[it]]) 
+          strucList[[it]] <- .makelong(attr(strucList[[it]],"latentL_blob")$design_u,longsize = ncol(newZAlist[[it]]))
+          rownames(strucList[[it]]) <- colnames(newZAlist[[it]]) 
           # .tcrossprod gets names from rownames
           ## names required for a predict(,newdata) on a random-coef model
         }
       }
-    }
-    corr_list <- lapply(locstrucList, .tcrossprod,y=NULL)
-  } else corr_list <- lapply(strucList, .tcrossprod,y=NULL)
-  for (it in seq_len(length(corr_list))) {
-    if ( ! is.null(corr_list[[it]])) {
+      corr_list[[it]] <- .tcrossprod(strucList[[it]],y=NULL)
       attr(corr_list[[it]],"ranefs") <- attr(strucList[[it]],"ranefs")
       attr(corr_list[[it]],"corr.model") <- attr(strucList[[it]],"corr.model")
     }
-  }
+  } 
   return(corr_list)
 }
 
@@ -94,7 +90,7 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
 
 .calc_new_X_ZAC <- function(object, newdata=NULL, re.form = NULL,
                          variances=list(residVar=FALSE, cov=FALSE)) {
-  locform <- formula.HLfit(object) 
+  locform <- formula.HLfit(object, which="") 
   ## possible change of random effect terms
   if ( .noRanef(re.form)) { ## i.e. if re.form implies that there is no random effect
     locform <- .stripRanefs(locform)  
@@ -106,8 +102,8 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
   } ## else keep original formula
   # checking variables in the data
   if (length(locform)==3L) locform <- locform[-2] ## removes RHS for checking  vars on RHS etc
-  allvars <- all.vars(locform) 
-  if (variances$residVar) allvars <- unique(c(allvars,all.vars(object$resid.predictor))) ## but the 'newdata' may not contain the resid.predictor vars. 
+  allvars <- all.vars(.strip_IMRF_args(locform)) ## strip to avoid e.g. 'stuff' being retained as a var from IMRF(..., model=stuff)
+  if (variances$residVar) allvars <- unique(c(allvars,all.vars(.strip_IMRF_args(object$resid.predictor)))) ## but the 'newdata' may not contain the resid.predictor vars. 
   if (is.vector(newdata)) { ## ## less well controlled case, but useful for maximization
     newdata <- data.frame(matrix(newdata,nrow=1))
     if (length(allvars)==ncol(newdata)) {
@@ -118,11 +114,14 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
   } 
   ## it is important that newdata remains NULL if it was so initially because it is tested below. Hence copy in locdata
   if (is.null(newdata)) {
-    locdata <- object$data[,allvars,drop=FALSE]
+    locdata <- object$data[, allvars,drop=FALSE]
   } else {
     if( is.matrix(newdata) ) newdata <- as.data.frame(newdata)  
     # so that matrix 'newdata' arguments can be used as in some other predict methods.
-    locdata <- newdata[,allvars,drop=FALSE] ## allvars checks only RHS variables
+    locdata <- try(newdata[,allvars,drop=FALSE]) ## allvars checks only RHS variables
+    if (inherits(locdata,"try-error")) stop(paste0("Variable(s) ",
+                                                   paste(setdiff(allvars,colnames(newdata)), collapse=","),
+                                                   " appear to be missing from newdata."))
     checkNAs <- apply(locdata,1L,anyNA)
     if (any(checkNAs)) {
       message("NA's in required variables from 'newdata'. Prediction not always possible.")
@@ -143,22 +142,22 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
       stop(paste0("No fitted coefficient(s) for variables\n",paste(notfound,collapse=", "),"\nin the design matrix derived from 'newdata'."))
     }
     RESU <- list(locdata=locdata,newX.pv=newX.pv[,validnames,drop=FALSE]) 
-    RESU$etaFix <- .newetaFix(object,newFrames_fixed,validnames=validnames)  ## new fixed effects (or [part of] new linear predictor if re.form)      
+    RESU$eta_fix <- .newetaFix(object,newFrames_fixed,validnames=validnames)  ## new fixed effects (or [part of] new linear predictor if re.form)      
   } else RESU <- list(locdata=locdata,newX.pv=object$X.pv) 
   ## preparation for random effects
-  if ( ! is.null(newdata)) { 
-    if (object$spaMM.version < "2.2.116") {
-      bad_corr_types <- intersect(attr(attr(object$ZAlist,"ranefs"),"type"),c("adjacency","corrMatrix"))
-    } else bad_corr_types <- intersect(attr(object$ZAlist,"exp_ranef_types"),c("adjacency","corrMatrix")) ## AR1 and Matern are OK
-    if (length(bad_corr_types)) { 
-      stop(paste("Prediction in 'newdata' not implemented or not possible for models including ", 
-                 paste(bad_corr_types, collapse="and"), "term(s)."))
-    } 
-  }
-  # newZAlist and subZAlist appear to have distinct usages since they are created under different conditions.
-  # subZAlist is a subset of the old ZA, newZAlist contains new ZA
-  # calling .make_corr_list(object$strucList,...) is always OK bc the fist argument may be a superset of the required list
-  # all matching in .make_corr_list is through the ranef attributes.
+  # if ( ! is.null(newdata)) {
+  #   if (object$spaMM.version < "2.2.116") {
+  #     bad_corr_types <- intersect(attr(attr(object$ZAlist,"ranefs"),"type"),c("adjacency","corrMatrix"))
+  #   } else bad_corr_types <- intersect(attr(object$ZAlist,"exp_ranef_types"),c("adjacency","corrMatrix")) ## AR1 and Matern are OK
+  #   if (FALSE && length(bad_corr_types)) {
+  #     stop(paste("Prediction in 'newdata' not implemented or not possible for models including ",
+  #                paste(bad_corr_types, collapse="and"), "term(s)."))
+  #   }
+  # }
+  ## newZAlist and subZAlist appear to have distinct usages since they are created under different conditions.
+  ## subZAlist is a subset of the old ZA, newZAlist contains new ZA
+  ## calling .make_corr_list(object$strucList,...) is always OK bc the fist argument may be a superset of the required list
+  ## all matching in .make_corr_list is through the ranef attributes.
   #
   ## matching ranef terms of re.form
   if (.noRanef(re.form)) {
@@ -175,7 +174,8 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
     if (inherits(re.form,"formula")) {
       new_exp_ranef_strings <- .process_bars(locform,expand=TRUE) ## note importance for the computation of newZAlist below
       nrand <- length(new_exp_ranef_strings)
-      newinold <- sapply(lapply(new_exp_ranef_strings, `==`, y= ori_exp_ranef_strings), which) ## e.g 1 4 5
+      newinold <- unlist(sapply(lapply(new_exp_ranef_strings, `==`, y= ori_exp_ranef_strings), which)) ## e.g 1 4 5
+      # : unlist bc sapply(list(F), which) return list(numeric(0)), etc.
       RESU$subZAlist <- object$ZAlist[newinold] ## and reordered
     } else {
       new_exp_ranef_strings <- ori_exp_ranef_strings
@@ -189,25 +189,50 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
   if (nrand) {
     strucList <- object$strucList
     if (object$spaMM.version<"1.11.57") stop("This fit object was created with spaMM version<1.11.57, and is no longer supported.\n Please recompute it.")
-    which_mats <- list(no= need_new_design, 
-                       ## cov_newLv_newLv_list used in .calc_Evar() whenever newdata, but elements may remain NULL if $cov not requested
-                       ## However, for ranCoefs, we need Xi_cols rows for each response's predVar. (FIXME) we store the full matrix.
-                       nn= ( attr(object$strucList,"isRandomSlope")[newinold] | variances$cov)) 
     if (need_new_design) {
       ## with newdata we need Evar and then we need nn... if newdata=ori data the Evar (computed with the proper nn) should be 0
       barlist <- .process_bars(locform,as_character=FALSE) ## but default expand =TRUE
       exp_ranef_strings <- .process_bars(barlist=barlist,expand=FALSE, as_character=TRUE) ## no need to expand again
       ranef_form <- as.formula(paste("~",(paste(exp_ranef_strings,collapse="+")))) ## effective '.noFixef'
       new_mf_ranef <- .calc_newFrames_ranef(formula=ranef_form,data=locdata,fitobject=object)$mf ## also used for predVar computations
-      newZlist <- .calc_Zlist(locform, new_mf_ranef, rmInt=0L, drop=TRUE,sparse_precision=FALSE, type="seq_len",
-                              old_ZAlist=object$ZAlist, newinold=newinold, barlist=barlist) 
+      newZlist <- .calc_Zlist(locform, new_mf_ranef, rmInt=0L, drop=TRUE,sparse_precision=FALSE, 
+                              type="seq_len", ## superseded in specific cases: notably, 
+                              ## the same type has to be used by .calc_AMatrix_IMRF() -> .calc_dataordered_levels()
+                              ##   as in .calc_Zmatrix() -> .calc_dataordered_levels()
+                              ## This is why the type in .calc_dataordered_levels(,type) has to be the same in both case
+                              ##    (here type = "mf" as the most explicit; using ".ULI" in both cases appears OK)
+                              ## The sames functions are called with the same arguments for predict with newdata.
+                              corrMats_info=object$strucList, ## use is to provide info about levels in .calc_ZMatrix()
+                              old_ZAlist=object$ZAlist, newinold=newinold, barlist=barlist, 
+                              lcrandfamfam=attr(object$rand.families,"lcrandfamfam")) 
       amatrices <- .get_new_AMatrices(object,new_mf_ranef=new_mf_ranef)
-      newZAlist <- .calc_ZAlist(newZlist, AMatrices=amatrices) 
+      vec_normIMRF <- object$ranef_info$vec_normIMRF
+      newZAlist <- .calc_normalized_ZAlist(Zlist=newZlist,
+                                           AMatrices=amatrices,
+                                           vec_normIMRF=object$ranef_info$vec_normIMRF, 
+                                           strucList=strucList)
       ## must be ordered as parseBars result for the next line to be correct.
       attr(newZAlist,"exp_ranef_strings") <- new_exp_ranef_strings ## required pour .compute_ZAXlist to match the ranefs of LMatrix
     } else {
       newZAlist <- object$ZAlist
     }
+    # We determine which matrices we need for computation of Evar:
+    need_Cnn <- rep(FALSE, nrand) # i.e. length of newZAlist
+    for (new_rd in seq_len(nrand)) { # we don't vectorize to avoid evaluating isDiagonal when it's not needed.  
+      old_rd <- newinold[new_rd]
+      if (ori_exp_ranef_types[old_rd] != "IMRF") { # we don't need cov matrices for IMRF terms ! bc their Evar is always FALSE
+        need_Cnn[new_rd] <- (attr(object$strucList,"isRandomSlope")[old_rd] | variances$cov) 
+        # that is, we need them also for prediction variances (not cov) for random-slope.
+        # and we check another condition where we may need them for prediction variances: 
+        if ( !  need_Cnn[new_rd]) need_Cnn[new_rd] <- ( ! isDiagonal(tcrossprod(newZAlist[[new_rd]])))
+        # (depends on AMatrices in particular, but again for IMRF the Evar in nodes is 0 and so is ZA %*% Evar %*% t(ZA) )
+      } # else it remains FALSE
+    }
+    #
+    which_mats <- list(no= need_new_design, 
+                       ## cov_newLv_newLv_list used in .calc_Evar() whenever newdata, but elements may remain NULL if $cov not requested
+                       ## However, for ranCoefs, we need Xi_cols rows for each response's predVar. (FIXME) we store the full matrix.
+                       nn= need_Cnn ) 
     ## AT this point both newZAlist and subZAlist may be reduced to 'newnrand' elements relative to ori object$ZAlist.
     ## .match_old_new_levels will use it running over newnrand values
     ## The cov_ lists are reduced too. newinold should be used to construct them
@@ -236,6 +261,7 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
       }
       if (any(which_mats$nn)) RESU$cov_newLv_newLv_list <- cov_newLv_newLv_list
       RESU$cov_newLv_oldv_list <- cov_newLv_oldv_list
+      RESU$diag_cov_newLv_newLv_list <- blob$diag_cov_newLv_newLv_list
       RESU$newZACpplist <- .compute_ZAXlist(XMatrix=cov_newLv_oldv_list, ZAlist=newZAlist) ## build from reduced list, returns a reduced list
       ## This $newZACpplist serves to compute new _point predictions_.
       #  # this comment may be obsolete : .compute_ZAXlist affects elements of ZAlist that have a ranefs attribute. 
@@ -282,6 +308,7 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
 }
 
 ## get_predCov_var_fix: see example in predict.Rd (?get_predCov_var_fix), test in test-predVar 
+# get_predCov_var_fix -> .calc_new_X_ZAC -> evaluates 'which_mats' according to all relevant arguments
 get_predCov_var_fix <- function(object, newdata = NULL, fix_X_ZAC.object,fixdata, re.form = NULL, 
                                 variances=list(disp=TRUE,residVar=FALSE,cov=FALSE), ...) {
   newnrand <- length(fix_X_ZAC.object$newZAlist) 
@@ -293,33 +320,33 @@ get_predCov_var_fix <- function(object, newdata = NULL, fix_X_ZAC.object,fixdata
   ## (X_n | C_no) %*% [ t(invL) %*% beta_v_cov[v.range,] %*% invL ] %*% t(X_f | C_fo)
   fix_X_ZAC <- cbind2(fix_X_ZAC.object$newX.pv, fixZACvar)
   new_X_ZAC <- cbind2(new_X_ZACblob$newX.pv, newZACvar)
-  beta_w_cov <- .get_beta_w_cov(object)
+  loc_tcrossfac_beta_w_cov <- .get_tcrossfac_beta_w_cov(object)
   if (inherits(re.form,"formula")) {
     # identifies and selects columns for the [retained ranefs, which are given by newinold 
     ori_exp_ranef_strings <- attr(object$ZAlist,"exp_ranef_strings")
     new_exp_ranef_strings <- .process_bars(re.form,expand=TRUE) 
     newinold <- sapply(lapply(new_exp_ranef_strings, `==`, y= ori_exp_ranef_strings), which) ## e.g 1 4 5
     re_form_col_indices <- .re_form_col_indices(newinold, cum_n_u_h=attr(object$lambda,"cum_n_u_h"), Xi_cols=attr(object$ZAlist, "Xi_cols"))
-    if (object$spaMM.version > "2.5.20") {
-      Xncol <- ncol(object$envir$beta_cov_info$beta_cov)
-    } else Xncol <- ncol(object$beta_cov)
+    Xncol <- ncol(object$X.pv)
     subrange <- c(seq_len(Xncol),re_form_col_indices$subrange + Xncol)
-    beta_w_cov <- beta_w_cov[subrange,subrange]
+    loc_tcrossfac_beta_w_cov <- loc_tcrossfac_beta_w_cov[subrange,]
   } else re_form_col_indices <- NULL
-  predVar <- new_X_ZAC[] %id*id% beta_w_cov[] %id*id% t(fix_X_ZAC)[]
+  ## get_predCov_var_fix() is typically called once (if it is) so no use in saving beta_w_cov
+  predVar <- new_X_ZAC %id*% .tcrossprod(loc_tcrossfac_beta_w_cov) %*id% t(fix_X_ZAC)
   ## Second component of predVar:
   cov_newLv_fixLv_list <- .make_new_corr_lists(object, locdata=new_X_ZACblob$newuniqueGeo, 
-                                               which_mats=list(no=TRUE,nn=rep(FALSE,newnrand)), 
+                                               which_mats=list(no=TRUE,nn=rep(FALSE,newnrand)), # all the covariance info being provided by the fix_X_ZAC.object 
                                                new_X_ZACblob$newZAlist, 
                                                newinold=fix_X_ZAC.object$newinold,
                                                fix_info=fix_X_ZAC.object)$cov_newLv_oldv_list
   if ( ! is.null(cov_newLv_fixLv_list) ) {
     # Evar: expect over distrib of (hat(beta),new hat(v)) of [covariance of Xbeta+Zb given (hat(beta),orig hat(v))]
     Evar <- .calc_Evar(newZAlist=new_X_ZACblob$newZAlist,newinold=fix_X_ZAC.object$newinold, 
-                                    cov_newLv_oldv_list=new_X_ZACblob$cov_newLv_oldv_list, 
-                                    lambda=object$lambda, invCov_oldLv_oldLv_list=.get_invColdoldList(object), 
-                                    cov_newLv_fixLv_list=cov_newLv_fixLv_list, cov_fixLv_oldv_list=fix_X_ZAC.object$cov_newLv_oldv_list, 
-                                    fixZAlist=fix_X_ZAC.object$newZAlist,covMatrix=TRUE)
+                       cov_newLv_oldv_list=new_X_ZACblob$cov_newLv_oldv_list, 
+                       lambda=object$lambda, invCov_oldLv_oldLv_list=.get_invColdoldList(object), 
+                       cov_newLv_fixLv_list=cov_newLv_fixLv_list, cov_fixLv_oldv_list=fix_X_ZAC.object$cov_newLv_oldv_list, 
+                       fixZAlist=fix_X_ZAC.object$newZAlist,covMatrix=TRUE,
+                       diag_cov_newLv_newLv_list=fix_X_ZAC.object$diag_cov_newLv_newLv_list)
     predVar <- predVar + Evar
   } 
   # If components for uncertainty in dispersion params were requested,

@@ -15,3 +15,22 @@
   }
 }
 
+.get_rho_from_SEM_output <- function(SEMblob, lambda.Fix) {
+  if (is.null(glm_lambda <- SEMblob$glm_lambda)) {
+    rho <- SEMblob$corr_est["rho"] ## may again be NULL
+  } else {
+    # parallels a block of code from .calcRanefPars(), which is not run in SEM case 
+    coeffs <- coefficients(glm_lambda)
+    if ( is.na(coeffs["adjd"])) {
+      rho <- SEMblob$corr_est["rho"] ## may again be NULL
+    } else {
+      if (is.na(lambda.Fix[1L])) { # [1L] is ad hoc not spaMM 3.0
+        rho <- - coeffs[["adjd"]]/ coeffs[["(Intercept)"]]
+      } else {
+        rho <- - coeffs[1]*lambda.Fix
+      }
+    }
+  }
+  return(rho) 
+}
+

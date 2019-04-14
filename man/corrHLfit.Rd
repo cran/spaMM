@@ -73,7 +73,7 @@ The return value of an \code{HLCor} call, with additional attributes. The \code{
 # Example with an adjacency matrix (autoregressive model):
 # see 'adjacency' documentation page
 
-#### Examples with Matérn correlations
+#### Examples with Matern correlations
 ## A likelihood ratio test based on the ML fits of a full and of a null model.
 if (spaMM.getOption("example_maxtime")>1.4) {
  data("blackcap")

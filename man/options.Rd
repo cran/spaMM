@@ -25,7 +25,7 @@ spaMM.getOption(x)
 
 \item{\code{QRmethod}:}{A character string, to control whether dense matrix or sparse matrix methods are used in intensive matrix computations, overcoming the defaults choices made by \code{spaMM} in this respect. Possible values are \code{"dense"} and \code{"sparse"}.}
 
-\item{\code{matrix_method}:}{A character string, to control the factorization of dense model matrices. Default value is \code{"def_sXaug_EigenDense_QR_scaled"}. \code{"def_sXaug_EigenDense_QRP_scaled"} is sometimes useful (see \code{\link{arabidopsis}}). The source code should be consulted for further information.}
+\item{\code{matrix_method}:}{A character string, to control the factorization of dense model matrices. Default value is \code{"def_sXaug_EigenDense_QRP_scaled"}. The source code should be consulted for further information.}
 
 \item{\code{Matrix_method}:}{A character string, to control the factorization of sparse model matrices. Default value is \code{"def_sXaug_Matrix_QRP_scaled"}. The source code should be consulted for further information.}
 
@@ -35,6 +35,7 @@ spaMM.getOption(x)
 
 \item{\code{wRegularization=FALSE}:}{Whether to to warn about the use of regularization in some operations on nearly singular matrices.}
 
+\item{\code{Gamma_min_y=1e-10}:}{A minimum response value in Gamma-response models; used to check data, and in \code{simulate()} to correct the simulation results.} 
 \item{\code{maxLambda=1e10}:}{The maximum value of lambda: higher fitted 
  lambda values in HLfit are reduced to this.} 
 \item{\code{example_maxtime=0.7}:}{Used in the documentation to control whether the longer examples should be run. 
@@ -52,7 +53,7 @@ and possibly other undocumented values for development purposes. Additional opti
 \details{
    
   spaMM.options() provides an interface for changing maximal values of parameters of the Matérn correlation function. However, 
-  it is not recommended to change these values unless a spaMM message specifically suggests so. Errors may occur if too low values are chosen as these may conflit with default initial values for the parameters.
+  it is not recommended to change these values unless a spaMM message specifically suggests so.
   
   By default spaMM use Iteratively Reweighted Least Squares (IRLS) methods to estimate fixed-effect parameters (jointly with predictions of random effects). However, a Levenberg-Marquardt algorithm, as described by Nocedal & Wright (1999, p. 266), is also implemented. The Levenberg-Marquardt algorithm is designed to optimize a single objective function with repsect to all its parameters. It is thus well suited to compute a PQL fit, which is based on maximization of a single function, the h-likelihood. By contrast, in a fit of a mixed model by (RE)ML, one computes jointly fixed-effect estimates that maximizes marginal likelihood, and random-effect values that maximize h-likelihood given the fixed-effect estimates. The Levenberg-Marquardt algorithm is not directly applicable in this case, as it may produce random-effect values that it will accept as increasing marginal likelihood rather than h-likelihood. The (RE)ML variant of the algorithm, as conceived in spaMM, therefore uses additional nested h-likelihood-maximizing steps for correcting random-effect values. 
 

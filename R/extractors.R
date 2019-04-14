@@ -1,4 +1,4 @@
-# LMatrix assumed to be dense
+# LMatrix assumed to be dense except in the trival case of identity matrix
 .get_invL_HLfit <- function(object, regul.threshold=1e-7) { ## computes inv(L) [not inv(Corr): see calc_invColdoldList]
   strucList <- object$strucList
   if (is.null(strucList)) {
@@ -6,13 +6,13 @@
   } else if (is.null(unlist(strucList))) { ## ranefs with trivial strucList
     if (is.null(object$envir$invL)) {
       cum_n_u_h <- attr(object$lambda,"cum_n_u_h")
-      object$envir$invL <- Diagonal(n=cum_n_u_h[length(cum_n_u_h)])
+      object$envir$invL <- Diagonal(n=cum_n_u_h[length(cum_n_u_h)]) # F I X M E inconsistency in return type
     }
     return(object$envir$invL)
   } else {
     if (is.null(object$envir$invL)) {
       cum_n_u_h <- attr(object$lambda,"cum_n_u_h")
-      resu <- diag(cum_n_u_h[length(cum_n_u_h)])
+      resu <- diag(cum_n_u_h[length(cum_n_u_h)]) # has to be dense since we will assign blocks
       if (object$spaMM.version < "2.2.116") {
         ranefs <- attr(object$ZAlist,"ranefs") 
       } else ranefs <- attr(object$ZAlist,"exp_ranef_strings") 
@@ -27,6 +27,8 @@
               invlmatrix <- .makelong(solve(latentL_blob$design_u),longsize=ncol(lmatrix),as_matrix=TRUE)
             } else invlmatrix <- .makelong(t(compactchol_Q),longsize=ncol(lmatrix),as_matrix=TRUE) ## L=Q^{-T} => invL=Q^T
             # as_matrix necessary for resu[u.range, u.range] <- invlmatrix
+          } else if (inherits(lmatrix,"dCHMsimpl")) { # before any test on type...
+            invlmatrix <- t(as(lmatrix, "sparseMatrix"))
           } else if (type == "from_AR1_specific_code")  {
             invlmatrix <- solve(lmatrix) # cost of solve sparse triangular matrix
             invlmatrix <- as.matrix(invlmatrix) ## for [<-.matrix
@@ -78,6 +80,111 @@
           resu[u.range,u.range] <- invlmatrix   
         }
       }
+      #resu <- as(resu,"sparseMatrix") # F I X M E (retry!) breaks test twolambda vs onelambda by effect on nearly singular matrix:
+      # ...by changing the twolambda result.
+      # # Without it I have two messages : 
+      # 1: In .calc_logdisp_cov(object, dvdloglamMat = dvdloglamMat, dvdlogphiMat = dvdlogphiMat,  :
+      # Numerical precision issue in computation of the information matrix for dispersion parameters:
+      #   the prediction variance may be inaccurate.
+      # 2: In .force_solve(logdispInfo) : The matrix looks exactly singular.
+      # # While with it I have only the first message, and a result less consistent with onelambda
+      # Alternatively to the present conversion, 
+      # In can reproduce these two symptoms (only the first message, and a result less consistent) 
+      # by calling .crossprodCpp in .calc_invV_factors() -> .crossprod(ZAfix, wrZ)
+      # (as tested by hacking the return value of  the single call to .crossprod() in this get_predVar() test)
+      # and the only impact of the .crossprod() is here to change the numerical precision of the $r_x_n element in the 
+      # return value of .calc_invV_factors() by effects of order 1e-13 (this element being dgeMatrix whether .crossprodCpp was called or not).
+      object$envir$invL <- resu
+    }
+    return(object$envir$invL)
+  }
+}
+
+.useless_get_sp_invL_HLfit <- function(object, regul.threshold=1e-7) { ## computes inv(L) [not inv(Corr): see calc_invColdoldList]
+  strucList <- object$strucList
+  if (is.null(strucList)) {
+    return(NULL) ## no ranefs
+  } else if (is.null(unlist(strucList))) { ## ranefs with trivial strucList
+    if (is.null(object$envir$invL)) {
+      cum_n_u_h <- attr(object$lambda,"cum_n_u_h")
+      object$envir$invL <- Diagonal(n=cum_n_u_h[length(cum_n_u_h)])
+    }
+    return(object$envir$invL)
+  } else {
+    if (is.null(object$envir$invL)) {
+      cum_n_u_h <- attr(object$lambda,"cum_n_u_h")
+      seq_n_u_h <- diff(cum_n_u_h)
+      resu <- vector("list", length(strucList))
+      if (object$spaMM.version < "2.2.116") {
+        ranefs <- attr(object$ZAlist,"ranefs") 
+      } else ranefs <- attr(object$ZAlist,"exp_ranef_strings") 
+      for (Lit in seq_len(length(strucList))) {
+        lmatrix <- strucList[[Lit]]
+        if ( is.null(lmatrix)) {
+          resu[[Lit]] <- Diagonal(n=seq_n_u_h[Lit])
+        } else if (inherits(lmatrix,"dCHMsimpl")) { # before any test on type...
+          resu[[Lit]] <- t(as(lmatrix, "sparseMatrix"))
+        } else {
+          type <-  attr(lmatrix,"type")
+          if ( ! is.null(latentL_blob <- attr(lmatrix,"latentL_blob"))) { ## from .process_ranCoefs
+            compactchol_Q <- latentL_blob$compactchol_Q 
+            if (is.null(compactchol_Q)) {
+              resu[[Lit]] <- .makelong(solve(latentL_blob$design_u),longsize=ncol(lmatrix),as_matrix=FALSE)
+            } else resu[[Lit]] <- .makelong(t(compactchol_Q),longsize=ncol(lmatrix),as_matrix=FALSE) ## L=Q^{-T} => invL=Q^T
+            # as_matrix necessary for resu[u.range, u.range] <- invlmatrix
+          } else if (type == "from_AR1_specific_code")  {
+            resu[[Lit]] <- solve(lmatrix) # cost of solve sparse triangular matrix
+          } else if (type == "from_Q_CHMfactor")  {
+            resu[[Lit]] <- t(as(attr(lmatrix,"Q_CHMfactor"),"sparseMatrix")) ## L=Q^{-T} => invL=Q^T ## correct but requires the attribute => numerical issues in computing Q_CHMfactor
+          } else if (type == "cholL_LLt")  {
+            condnum <- kappa(lmatrix,norm="1")
+            if (condnum<1/regul.threshold) {
+              resu[[Lit]] <- try(forwardsolve(lmatrix,diag(ncol(lmatrix))),silent=TRUE)
+              if (inherits(resu[[Lit]],"try-error")) invlmatrix <- NULL
+            }
+            if (is.null(resu[[Lit]])) {
+              Rmatrix <- t(lmatrix)
+            } else resu[[Lit]] <- as(resu[[Lit]],"sparseMatrix")
+          } else { ## Rcpp's symSVD, or R's eigen() => LDL (also possible bad use of R's svd, not normally used)
+            condnum <- kappa(lmatrix,norm="1")
+            if (condnum<1/regul.threshold) {
+              decomp <- attr(lmatrix,attr(lmatrix,"type")) ## of corr matrix !
+              if ( all(abs(decomp$d) > regul.threshold) ) {
+                resu[[Lit]] <-  try(.ZWZt(decomp$u,sqrt(1/decomp$d)),silent=TRUE) ## try() still allowing for no (0) regul.threshold; not useful ?
+                if (inherits(resu[[Lit]],"try-error")) resu[[Lit]] <- NULL
+              }
+            }
+            if (is.null(resu[[Lit]])) {
+              Rmatrix <- qr.R(qr(t(lmatrix))) 
+            } else resu[[Lit]] <- as(resu[[Lit]],"sparseMatrix")
+          }
+          if (is.null(resu[[Lit]])){
+            # chol2inv is quite robust in the sense of not stopping, even without any regularization.
+            # Nevertheless (1) lmatrix %*% invlmatrix may be only roughly = I:
+            #   if we don't regularize we expect departures from I due to numerical precision;
+            #   if we regularize we expect departures from I even with exact arithmetic...
+            #
+            # But regul. chol2inv result still causes problems in later computations!
+            #
+            # singular <- which(abs(diag(Rmatrix))<regul.threshold) 
+            # if (length(singular)) {
+            #   if (spaMM.getOption("wRegularization")) warning("regularization required.")
+            #   nc <- ncol(Rmatrix)
+            #   diagPos <- seq.int(1L,nc^2,nc+1L)[singular]
+            #   Rmatrix[diagPos] <- sign(Rmatrix[diagPos])* regul.threshold
+            # }
+            # invLLt <- chol2inv(Rmatrix) ## 
+            #
+            invLLt <- try(chol2inv(Rmatrix),silent=TRUE)
+            if (inherits(invLLt,"try-error") || max(abs(range(invLLt)))> 1e12) {
+              invLLt <- ginv(crossprod(Rmatrix))
+            }
+            resu[[Lit]] <- .crossprod(lmatrix, invLLt) ## regularized (or not) solve(lmatrix)
+            resu[[Lit]] <- as(resu[[Lit]],"sparseMatrix")
+          }
+        }
+        resu <- do.call(Matrix::bdiag,resu)
+      }
       object$envir$invL <- resu
     }
     return(object$envir$invL)
@@ -95,7 +202,10 @@
     cum_n_u_h <- attr(object$lambda,"cum_n_u_h") ## FIXME: avoid using object$lambda
     for (Lit in seq_len(length(strucList))) {
       lmatrix <- strucList[[Lit]]
-      if (! is.null(lmatrix)) { ## spatial or random-coef
+      if (inherits(lmatrix,"dCHMsimpl")) {
+        u.range <- (cum_n_u_h[Lit]+1L):(cum_n_u_h[Lit+1L])
+        newcoeffs[u.range] <- as(lmatrix,"sparseMatrix") %*% newcoeffs[u.range]
+      } else if (! is.null(lmatrix)) { ## spatial or random-coef
         u.range <- (cum_n_u_h[Lit]+1L):(cum_n_u_h[Lit+1L])
         ## dense calculation on not necess triangular lmatrix (!?). 
         ## solve( _t_(lmatrix)) may not allow the efficient use of solveWrap. 
@@ -195,7 +305,7 @@ ranef.HLfit <- function(object,type="correlated",...) {
     RESU[[it]] <- res
   }
   names(RESU) <- ranefs
-  class(RESU) <- c("list","ranef")
+  class(RESU) <- c("ranef", "list")
   RESU ## TODO: ~lme4:::ranef.merMod(mod, condVar = TRUE) & ajouter des arguments "variances" et "intervals" à ta fonction ranef() (Alex 7/5/2018)
 }
 
@@ -255,7 +365,7 @@ vcov.HLfit <- function(object, ...) {
     beta_cov <- object$beta_cov
     attr(beta_cov,"beta_v_cov") <- NULL 
   } 
-  if (is.null(beta_cov)) beta_cov <- .get_beta_cov_info(object)$beta_cov ## notably for GLM
+  if (is.null(beta_cov)) beta_cov <- .calc_beta_cov_info(object)$beta_cov ## notably for GLM or if was stripped from envir by stripHLfit()
   return(beta_cov)
 }
 
@@ -360,34 +470,42 @@ get_ranPars <- function(object, which=NULL, ...) {
   } 
 }
 
-.get_sub_corr_info <- function(object) {
-  if (is.null(object$sub_corr_info)) {
-    return(object$corr_info) ## occurs for < v2.4.57
-  } else return(object$sub_corr_info)
+.get_from_ranef_info <- function(object,which="sub_corr_info") {
+  if (is.null(object$ranef_info)) { ## occurs for < v2.6.15
+    if (is.null(object[[which]])) { ## occurs for < v2.4.57
+      return(object$corr_info) 
+    } else return(object[[which]])
+  } else return(object$ranef_info[[which]])
 }
 
-formula.HLfit <- function(x, ...) {
+# older version of formula.HLfit removed from  [v2.6.59
+formula.HLfit <- function(x, which="hyper", ...) {
   ## stats:::formula.default looks for x$formula then x$call$formula. 
   # So formula(object) should be enough, EXCEPT that if it finds neither (no explicitly named formula in the call), 
   # it evaluates the call, in which case print(formula(<HLfit>)) leads to an infinite recursion
   # since form is then an HLfit object so print(form...) will call summary.HLfit()...
-  if (x$spaMM.version> "2.4.35") {
-    form <- x$call$formula
-  } else form <- getCall.HLfit(x)$formula
-  if (is.null(form)) {
-    form <- getCall.HLfit(x)$processed$predictor # ! ! no offset! !
-    ## finds something for HLfit member object in an HLfitlist  (they have a call with $processed and no $formula 
-    #          bc it's not clear where to get a non-processed HLCor or HLfit call if the oricall was an outer optimizing fn)
-    #    or    
-    ## should not occur on a finished HLfit object but may on a call with $processed accessed in a debugging session
+  form <- NULL
+  if (x$spaMM.version> "2.6.20") form <- x$predictor
+  # Older object or objects that are not strictly HLfit objects, as detailed below:
+  if (is.null(form) && x$spaMM.version> "2.4.35") form <- x$call$formula
+  # Objects that are not strictly hLfit objects, as follows:
+  ## finds something for HLfit member object in an HLfitlist  (they have a call with $processed and no $formula 
+  #          bc it's not clear where to get a non-processed HLCor or HLfit call if the oricall was an outer optimizing fn)
+  #    or    
+  ## should not occur on a finished HLfit object but may on a call with $processed accessed in a debugging session
+  #    or
+  ## resid_fit !
+  if (is.null(form)) form <- getCall.HLfit(x)$processed$predictor # from $call$processed$predictor
+  #
+  ## Now we must have a non-null form
+  #
+  if (which=="hyper") { # suitable for displays and for any function that reprocesses (update, refit, ... 
+    #               and MFSDR -> stats::step() hence default="hyper")
+    if ( ! is.null(resu <- attr(form,"hyper_info")$formula) ) return(resu)
+  } else if (which=="no_offset") {
+    if ( ! is.null(resu <- attr(form,"no_offset")) ) return(resu)
   }
-  if (is.null(form)) { 
-    ## residual fit object had no explicit $call of its own when this block was first written; 
-    # but now (11/2018) it has $call$processed$predictor so we should not reach this point.
-    form <- x$predictor # should be equivalent to $call$processed$predictor (! ! no offset! !)
-    ## Do not try to access or even create $call$resid.model$formula as was done in version < 2.4.136 !
-  }
-  form
+  return(form) ## which = "" or NULL attributes
 } ## extends stats::formula generic
 
 nobs.HLfit <- function(object, ...) {length(object$y)}
@@ -421,7 +539,7 @@ extractAIC.HLfit <- function(fit, scale, k=2L, ..., verbose=FALSE) { ## stats::e
   pforpv <- ncol(object$X.pv)
   nrd <- length(object$w.ranef)
   nobs <- nrow(object$X.pv)
-  ZAL <- get_ZALMatrix(object)  
+  ZAL <- get_ZALMatrix(object, force_bind=TRUE) # force bind for rbind2()  
   if (is.null(ZAL)) {
     XZ_0I <- object$X.pv ## and general code below works and gives the same result for augmented or not
   } else {
@@ -433,14 +551,20 @@ extractAIC.HLfit <- function(fit, scale, k=2L, ..., verbose=FALSE) { ## stats::e
   return(XZ_0I)
 }
 
-get_ZALMatrix <- function(object,as_matrix) {
+get_ZALMatrix <- function(object,as_matrix, force_bind=FALSE) {
   if ( ! missing(as_matrix)) stop("'as_matrix' is deprecated")
   if (length(ZAlist <- object$ZAlist)) { ## ou tester if (object$models[["eta"]]=="etaGLM")
-    if (is.null(object$envir$ZALMatrix)) {
-      object$envir$ZALMatrix <- .compute_ZAL(XMatrix=object$strucList, ZAlist=ZAlist,as_matrix=FALSE) 
+    if (is.null(object$envir$ZALMatrix) ||
+        (force_bind && inherits(object$envir$ZALMatrix,"ZAXlist")) ) {
+      object$envir$ZALMatrix <- .compute_ZAL(XMatrix=object$strucList, ZAlist=ZAlist,as_matrix=FALSE, force_bind=force_bind) 
     }
     return(object$envir$ZALMatrix)
   } else return(NULL) 
+}
+
+.get_ZAfix <- function(object, as_matrix) {
+  if (is.null(object$envir$ZAfix)) object$envir$ZAfix <- .ad_hoc_cbind(object$ZAlist, as_matrix=as_matrix)  
+  return(object$envir$ZAfix)
 }
 
 # left pseudo inverse of (augmented) design matrix, (X_a' W X_a)^{-1} X_a' W
@@ -449,10 +573,10 @@ get_ZALMatrix <- function(object,as_matrix) {
   if (is.null(XZ_0I))  XZ_0I <- .get_XZ_0I(object)
   ww <- c(object$w.resid, object$w.ranef) ## NOT sqrt()
   Wei_XZ_0I <- .calc_wAugX(XZ_0I=XZ_0I, sqrt.ww=ww) ## 2nd argument name misleading
-  beta_cov_info <- .get_beta_cov_info(object)
-  if (object$spaMM.version > "2.5.20") {
-    beta_v_cov <- beta_cov_info$beta_v_cov
-  } else beta_v_cov <- attr(beta_cov_info,"beta_v_cov")
+  if (is.null(tcrossfac_beta_v_cov <- object$envir$beta_cov_info$tcrossfac_beta_v_cov)) {
+    tcrossfac_beta_v_cov <- .calc_beta_cov_info(object)$tcrossfac_beta_v_cov
+  }
+  beta_v_cov <- .tcrossprod(tcrossfac_beta_v_cov)
   augXWXXW <- tcrossprod(beta_v_cov, Wei_XZ_0I) ## = solve(crossprod(wAugX)) %*% crossprod(wAugX, diag(x=sqrt.ww))
   if (augmented) {
     return(augXWXXW)
@@ -461,12 +585,12 @@ get_ZALMatrix <- function(object,as_matrix) {
   }
 }
 
-.get_control_dist <- function(fitobject, rd) {
+.get_control_dist <- function(fitobject, char_rd) {
   if (is.null(optimInfo <- attr(fitobject,"optimInfo"))) {
     # HLCor, or fitme with nothing to optimize... (corrHLfit with nothing to optimize has an optimInfo...)
     outer_call <- getCall(fitobject) 
-    return(outer_call$dist.method[[rd]]) ## (from a preprocessed version copied back to the call)
-  } else return(optimInfo$LUarglist$moreargs[[rd]]$control.dist)
+    return(outer_call$dist.method[[char_rd]]) ## (from a preprocessed version copied back to the call) ## imposes char_rd here
+  } else return(optimInfo$LUarglist$moreargs[[char_rd]]$control.dist)
 } # F I X M E but the two are not equivalent since the moreargs version has gone through .provide_rho_mapping() which converts NULL rho.mapping into explicit rho_mappings
 
 get_matrix <- function(object, which="model.matrix", augmented=TRUE, ...) {

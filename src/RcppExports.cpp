@@ -20,18 +20,6 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// bessel_lnKnu_e
-List bessel_lnKnu_e(Rcpp::NumericVector nu, Rcpp::NumericVector x);
-RcppExport SEXP _spaMM_bessel_lnKnu_e(SEXP nuSEXP, SEXP xSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type nu(nuSEXP);
-    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type x(xSEXP);
-    rcpp_result_gen = Rcpp::wrap(bessel_lnKnu_e(nu, x));
-    return rcpp_result_gen;
-END_RCPP
-}
 // lmwith_sparse_LDLp
 SEXP lmwith_sparse_LDLp(SEXP XX, SEXP yy, bool returntQ, bool returnR, bool pivot);
 RcppExport SEXP _spaMM_lmwith_sparse_LDLp(SEXP XXSEXP, SEXP yySEXP, SEXP returntQSEXP, SEXP returnRSEXP, SEXP pivotSEXP) {
@@ -137,6 +125,18 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< NumericMatrix >::type a(aSEXP);
     Rcpp::traits::input_parameter< NumericVector >::type b(bSEXP);
     rcpp_result_gen = Rcpp::wrap(Rcpp_dense_cbind_mat_vec(a, b));
+    return rcpp_result_gen;
+END_RCPP
+}
+// bessel_lnKnu_e
+List bessel_lnKnu_e(Rcpp::NumericVector nu, Rcpp::NumericVector x);
+RcppExport SEXP _spaMM_bessel_lnKnu_e(SEXP nuSEXP, SEXP xSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type nu(nuSEXP);
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type x(xSEXP);
+    rcpp_result_gen = Rcpp::wrap(bessel_lnKnu_e(nu, x));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -285,7 +285,6 @@ END_RCPP
 
 static const R_CallMethodDef CallEntries[] = {
     {"_spaMM_Rcpp_COMP_Z", (DL_FUNC) &_spaMM_Rcpp_COMP_Z, 4},
-    {"_spaMM_bessel_lnKnu_e", (DL_FUNC) &_spaMM_bessel_lnKnu_e, 2},
     {"_spaMM_lmwith_sparse_LDLp", (DL_FUNC) &_spaMM_lmwith_sparse_LDLp, 5},
     {"_spaMM_lmwith_sparse_LLp", (DL_FUNC) &_spaMM_lmwith_sparse_LLp, 5},
     {"_spaMM_lmwithQR", (DL_FUNC) &_spaMM_lmwithQR, 4},
@@ -294,6 +293,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_spaMM_Rcpp_chol_R", (DL_FUNC) &_spaMM_Rcpp_chol_R, 1},
     {"_spaMM_Rcpp_dense_cbind_mat_mat", (DL_FUNC) &_spaMM_Rcpp_dense_cbind_mat_mat, 2},
     {"_spaMM_Rcpp_dense_cbind_mat_vec", (DL_FUNC) &_spaMM_Rcpp_dense_cbind_mat_vec, 2},
+    {"_spaMM_bessel_lnKnu_e", (DL_FUNC) &_spaMM_bessel_lnKnu_e, 2},
     {"_spaMM_rankinfo", (DL_FUNC) &_spaMM_rankinfo, 2},
     {"_spaMM_leverages", (DL_FUNC) &_spaMM_leverages, 1},
     {"_spaMM_sweepZ1W", (DL_FUNC) &_spaMM_sweepZ1W, 2},

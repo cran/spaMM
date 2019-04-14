@@ -3,32 +3,19 @@ cat("\ntest old examples and new tests:\n")
 
 data("scotlip") ## loads 'scotlip' data frame, but also 'Nmatrix'
 
-# Bug before 2.3.70 (NB_shape requested before of optimization)
-hl <- fitme(I(1+cases)~I(prop.ag/10)+offset(log(expec))+adjacency(1|gridcode),
-            family=negbin(), adjMatrix=Nmatrix, data=scotlip) ## explicit spaMM::negbin() may be needed.
+# Bug before 2.3.70 (NB_shape requested before optimization)
+(hl <- fitme(I(1+cases)~I(prop.ag/10)+offset(log(expec))+adjacency(1|gridcode),
+            family=negbin(), adjMatrix=Nmatrix, data=scotlip)) ## explicit spaMM::negbin() may be needed.
 
-hl <- corrHLfit(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(expec)),
+(hl1 <- corrHLfit(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(expec)),
           data=scotlip,family=poisson(),
-          adjMatrix=Nmatrix) ## 1D optimization -> optimize
-testthat::expect_equal(hl$APHLs$p_v,-161.5140,tolerance=1e-4)
-AIC(hl)
+          adjMatrix=Nmatrix)) ## 1D optimization -> optimize
+testthat::expect_equal(hl1$APHLs$p_v,-161.5140,tolerance=1e-4)
 
-hl <- HLCor(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(expec)),
-            data=scotlip,family=poisson(), adjMatrix=Nmatrix)
-testthat::expect_equal(hl$APHLs$p_v,-161.5141,tolerance=1e-4)
-AIC(hl)
-
-## Adding a Gamma random effect to fit a negative-binomial response:
-# (slow ~~25s with corners) 
-# (and the best fit is not Gamma ranef, which is sadly missed with the default bounds: TODO here)
-hl <- corrHLfit(cases~I(prop.ag/10) +(1|gridcode)+adjacency(1|gridcode)
-          +offset(log(expec)),
-          data=scotlip,family=poisson(),rand.family=list(Gamma(log),gaussian()),
-          adjMatrix=Nmatrix,lower=list(rho=0),upper=list(rho=0.1745))
-# this example is slower in sparse_sprecision than in dense, and faster by HLCor
-# In the ohio example, dense is never the better: HLCor is fastest for n<200 and corrHLfit sparse for n>200 
-
-testthat::expect_equal(hl$APHLs$p_v,-161.5141,tolerance=1e-4)
+(hl2 <- HLCor(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(expec)),
+            data=scotlip,family=poisson(), adjMatrix=Nmatrix))
+testthat::expect_equal(hl2$APHLs$p_v,-161.5141,tolerance=1e-4)
+testthat::expect_true(diff(range(AIC(hl2,verbose=FALSE)-AIC(hl1,verbose=FALSE)))<1e-2)
 
 data("salamander")
 hl <- HLfit(cbind(Mate,1-Mate)~1+(1|Female)+(1|Male),family=binomial(),
@@ -53,3 +40,13 @@ testthat::expect_equal(hl$APHLs$p_v,-243.6668,tolerance=1e-4)
 ### check NULL auglinmodblob
 d <- data.frame(y = 1:10)
 summary(fitme(y ~ 0, data = d))
+
+
+if (spaMM.getOption("example_maxtime")>2.8) {
+  (ranSlope1 <- fitme(I(1+cases)~I(prop.ag/10)+adjacency(0+expec|gridcode),
+                      family=poisson(), adjMatrix=Nmatrix, data=scotlip))
+  scotlip$verif <- scotlip$expec/2
+  (ranSlope2 <- fitme(I(1+cases)~I(prop.ag/10)+adjacency(0+verif|gridcode),
+                      family=poisson(), adjMatrix=Nmatrix, data=scotlip)) ## explicit spaMM::negbin() may be needed.
+  testthat::expect_true(abs(ranSlope2$lambda-4*ranSlope1$lambda)<1e-5)
+}
