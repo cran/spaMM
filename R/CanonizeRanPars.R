@@ -3,7 +3,8 @@
 .canonizeRanPars <- function(ranPars, ## should have a RHOMAX attribute when trRho in input
                              corr_info, ## NULL in HLfit fns assuming no corr_types is processed there. 
                                         ## Else processed$corr_info or .get_from_ranef_info(<HLfit object>)
-                             checkComplete=TRUE) {
+                             checkComplete=TRUE,
+                             rC_transf) {
   init.HLfit <- list() 
   corr_types <- corr_info$corr_types
   for (rd in seq_along(corr_types)) {
@@ -51,7 +52,7 @@
   } ## else ranPars$lambda unchanged  
   if ( ! is.null(trRanCoefs <- ranPars$trRanCoefs)) {
     ranPars$ranCoefs <- trRanCoefs ## copies the non-trivial names
-    for (rd in seq_along(trRanCoefs)) ranPars$ranCoefs[[rd]] <- .ranCoefsInv(trRanCoefs[[rd]])
+    for (rd in seq_along(trRanCoefs)) ranPars$ranCoefs[[rd]] <- .ranCoefsInv(trRanCoefs[[rd]], rC_transf=rC_transf)
     ranPars$trRanCoefs <- NULL
   }
   if ( ! is.null(ranPars$trNB_shape)) {

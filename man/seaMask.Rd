@@ -27,7 +27,7 @@ Its contents are suitable for use with \code{\link{polypath}}: they define diffe
 \details{
 A land mask can be produced out of \code{worldcountries} by filling the countries (i.e. \code{fill="black"} in the code for \code{country.layer} in the Examples in \url{http://kimura.univ-montp2.fr/~rousset/spaMM/example_raster.html}.
 
-\code{worldcountries} and \code{oceanmask} were created from public domain shapefiles downloaded from \url{www.naturalearth.com} on 2015/10/21. These are suitable for plots involving geographical projections not available through \code{map}, and more generally for raster plots. Only the lowest-resolution data are included in spaMM, to minimize the size of the package archive, but higher-resolution files are available on \url{www.naturalearth.com}, from where they can be loaded as shown in the examples. \code{worldcountries} had to be edited for non-ASCII characters before inclusion in spaMM:
+\code{worldcountries} and \code{oceanmask} were created from public domain shapefiles downloaded from \code{www.naturalearth.com} on 2015/10/21. These are suitable for plots involving geographical projections not available through \code{map}, and more generally for raster plots. Only the lowest-resolution data are included in spaMM, to minimize the size of the package archive, but higher-resolution files are available on \url{http://www.naturalearthdata.com}, from where they can be loaded as shown in the examples. \code{worldcountries} had to be edited for non-ASCII characters before inclusion in spaMM:
 \code{worldcountries@data$formal_fr} was removed and the \dQuote{Côte d'Ivoire} level of some factor variables was renamed.  
 
 \code{seaMask} and \code{landMask} were created from the world map in the maps package. 

@@ -7,7 +7,7 @@ Singular Value Decomposition of a Symmetric Matrix
 \description{
 Computes the symmetric eigenvalue decomposition of a symmetric matrix, \eqn{X=U.D.U'}, where \eqn{U} is a matrix of orthogonal eigenvectors and \eqn{D} is a diagonal matrix of eigenvalues. The result is similar to that of \code{eigen(.,symmetric=TRUE)} but its evaluation uses the \code{SelfAdjointEigenSolver} function from the \code{Eigen} C++ library. No symmetry check is performed. 
 
-This function was introduced to circumvent a bug in LAPACK (bug 113 in \url{http://www.netlib.org/lapack/bug_list.html}; originally \url{https://bugs.r-project.org/bugzilla3/show_bug.cgi?id=15211}). However, this bug has been fixed, and \code{sym_eigen} may be less accurate than the LAPACK one. It is no longer used is \code{spaMM} with default options (only the superseded function\code{\link{designL.from.Corr}}) may still call it). The structure of its return value was changed in spaMM version 2.4.123.  
+This function was introduced to circumvent a bug in LAPACK (bug 113 in \url{http://www.netlib.org/lapack/bug_list.html}; originally \url{https://bugs.r-project.org/bugzilla3/show_bug.cgi?id=15211}). However, this bug has been fixed, and \code{sym_eigen} may be less accurate than the LAPACK one. It is no longer used is \code{spaMM} with default options (only the superseded function \code{\link{designL.from.Corr}}) may still call it). The structure of its return value was changed in spaMM version 2.4.123.  
 }
 \usage{
 sym_eigen(X)

@@ -107,7 +107,7 @@
       Evarlist[[new_rd]] <- as.matrix(terme)
     } else Evarlist[[new_rd]] <- terme
   }
-  Evar <- do.call("+",Evarlist)
+  Evar <- Reduce("+",Evarlist)
   return(Evar)
 }
 
@@ -421,12 +421,15 @@
           } else stop("Unhandled corr.model.")
           if (object$spaMM.version<"2.4.49") {
             if (which_mats$no) cov_newLv_oldv_list[[new_rd]] <- structure(.calc_corr_from_dist(uuCnewold, object, corr.model,char_rd=old_char_rd),
+                                                                          corr.model=corr.model,
                                                                           ranefs=ranefs[[new_rd]])
             if (which_mats$nn[new_rd]) cov_newLv_newLv_list[[new_rd]] <- .calc_corr_from_dist(uuCnewnew, object, corr.model,char_rd=old_char_rd)
           } else {
             if (which_mats$no) cov_newLv_oldv_list[[new_rd]] <- 
                 structure(.get_from_ranef_info(object)$corr_families[[old_rd]]$calc_corr_from_dist(
-                  ranFix=object$ranFix, char_rd=old_char_rd, distmat=uuCnewold),ranefs=ranefs[[new_rd]])
+                  ranFix=object$ranFix, char_rd=old_char_rd, distmat=uuCnewold),
+                  corr.model=corr.model,
+                  ranefs=ranefs[[new_rd]])
             if (which_mats$nn[new_rd]) {
               cov_newLv_newLv_list[[new_rd]] <- 
                 .get_from_ranef_info(object)$corr_families[[old_rd]]$calc_corr_from_dist(

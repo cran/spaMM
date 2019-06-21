@@ -235,8 +235,8 @@ if (FALSE) {
 } # Matrix result is always of symmetric type (dsC or ddi)
 
 # See getMethod("cov2cor", signature=c("ANY"))
-.CovRegulCor <- function(COV, regul=.spaMM.data$options$regul_ranCoefs) { # F I X M E merge with .regularized_eigen()
-  #if (regul==0) return(COV)
+.CovRegulCor <- function(COV, regul_cor=.spaMM.data$options$regul_ranCoefs[1L]) { 
+  if (regul_cor==0) return(COV)
   p <- (d <- dim(COV))[1L]
   if (!is.numeric(COV) || length(d) != 2L || p != d[2L]) 
     stop("'V' is not a square numeric matrix")
@@ -245,7 +245,7 @@ if (FALSE) {
     warning("diag(.) had 0 or NA entries; non-finite result is doubtful")
   cor <- COV
   cor[] <- Is * COV * rep(Is, each = p)
-  cor[cbind(1L:p, 1L:p)] <- 1+regul
+  cor[cbind(1L:p, 1L:p)] <- 1+regul_cor
   invIs <- 1/Is
   COV <- cor
   COV[] <- invIs * cor * rep(invIs, each = p)
@@ -306,28 +306,24 @@ if (FALSE) {
     } else return(ranCoefs_blob)
   }
   ## newly_set contains some TRUE
+  spprecBool <- processed$sparsePrecisionBOOL
+  if (spprecBool) {
+    condnum <- .spaMM.data$options[["condnum_for_latentL_spprec"]]
+  } else condnum <- .spaMM.data$options[["condnum_for_latentL"]]
   nrand <- length(ZAlist)
   if (is.null(LMatrices <- ranCoefs_blob$LMatrices)) LMatrices <- vector("list", nrand)
   if (is.null(lambda_est <- ranCoefs_blob$lambda_est)) lambda_est <- numeric(cum_n_u_h[nrand+1L])
-  min_lam <- .spaMM.data$options$tol_ranCoefs["tol"]
+  min_lam <- .spaMM.data$options$tol_ranCoefs_inner["tol"]
   for (rt in which(isRandomSlope & newly_set)) {
     Xi_ncol <- Xi_cols[rt]
-    if (need_longLv || is.null(invLs)) {
+    if (need_longLv || is.null(invLs)) { ## only the econd case appears to be true sometimes, and only in develcode...
       compactcovmat <- .calc_cov_from_ranCoef(ranCoef=ranCoefs[[rt]], Xi_ncol=Xi_ncol)
-      #diag(compactcovmat) <- diag(compactcovmat)+.spaMM.data$options$regul_ranCoefs
-      compactcovmat <- .CovRegulCor(compactcovmat) ## not quite elegant, but robust. 
-      spprecBool <- processed$sparsePrecisionBOOL
-      # Next we evaluate structure(compactcovmat, esys=esys, d_regul=d_regul):
-      if (spprecBool) {
-        compactcovmat <- .regularized_eigen(compactcovmat, condnum=.spaMM.data$options$condnum_for_latentL_spprec)
-      } else compactcovmat <- .regularized_eigen(compactcovmat, condnum=.spaMM.data$options$condnum_for_latentL)
-      # And deduce ZWZt factorization:
-      latentL_blob <- .calc_latentL(compactcovmat, triangularL=use_tri, spprecBool=spprecBool)
+      latentL_blob <- .calc_latentL(compactcovmat, triangularL=use_tri, spprecBool=spprecBool, try_chol= ! spprecBool, condnum=condnum)
       #  with(latentL_blob,.ZWZt(design_u,d)) = compactcovmat hence design_u is more of a tcrossprod factor
       ## we have a repres in terms of ZAL and of a diag matrix of variances; only the latter affects hlik computation
       longLv <- .makelong(latentL_blob$design_u,longsize=ncol(ZAlist[[rt]]),
                           template=ranCoefs_blob$longLv_templates[[rt]]) ## the variances are taken out in $d
-      attr(longLv,"trRancoef") <- .ranCoefsFn(ranCoefs[[rt]])
+      attr(longLv,"trRancoef") <- .ranCoefsFn(ranCoefs[[rt]], rC_transf=.spaMM.data$options$rC_transf_inner) # used for init_trRancoef in .MakeCovEst()
       attr(longLv,"Ltype") <- "cov"
     } else {
       char_rt <- as.character(rt)
@@ -1090,6 +1086,20 @@ sym_eigen <- local({
   } else return(t(chol(mat))) 
 } 
 
+.Utri_chol_by_qr <- function(mat) { # transpose of .wrap_Ltri_t_chol
+  esys <- .eigen_sym(mat) 
+  eigvals <- esys$values
+  if (min(eigvals)<0) eigvals <- attr(.regularize_Wattr(mat, condnum=1e100), "d_regul")
+  crossfac <- .Dvec_times_matrix(sqrt(eigvals), t(esys$vectors)) # crossfac but not upper triangular.
+  qrblob <- qr(crossfac)
+  crossfac <- qr.R(qrblob) # applying .lmwithQR() systematically (badly) affects numerical precision
+  if (! all(unique(diff(qrblob$pivot))==1L)) { # eval an unpermuted triangular R
+    crossfac <- .lmwithQR(crossfac[, sort.list(qrblob$pivot)] ,yy=NULL,returntQ=FALSE,returnR=TRUE)$R_scaled # not permuted in contrast to qr(crossfac) # upper tri crossfac
+  } 
+  crossfac <- .Dvec_times_matrix(sign(.diagfast(crossfac)), crossfac) ## upper.tri crossfac
+  return(crossfac)
+}
+
 .wrap_Utri_chol <- function(mat, use_eigen=.spaMM.data$options$USEEIGEN) { # transpose of .wrap_Ltri_t_chol
   ## returns upper tri crossfactor as base::chol in all cases
   if (inherits(mat,"sparseMatrix")) {
@@ -1102,16 +1112,15 @@ sym_eigen <- local({
     chol <- .Rcpp_chol_R(mat) 
     if (chol$Status==1L) { 
       return(chol$R) 
-    } else {
+    } else { ## tested by tests_private/test-for-scaled-spprec.R
       ## OK for small matrices such as crossr22
-      svdv <- svd(mat)
-      esys <- with(svdv,list(values=d,vectors=(u+v)/2))
-      crossfac <- .Dvec_times_matrix(sqrt(esys$values), t(esys$vectors)) # crossfac but not upper tri
-      crossfac <- qr.R(qr(crossfac)) # upper tri crossfac
+      crossfac <- .Utri_chol_by_qr(mat) # not permuted in contrast to qr(crossfac) # upper tri crossfac
       return(crossfac)
     }
   } else try(chol(mat)) 
 } 
+
+
 
 
 #LogAbsDetWrap <- function(...) .LogAbsDetWrap(...) ## 
@@ -1144,7 +1153,21 @@ sym_eigen <- local({
   return(lad)
 }
 
-.tcrossprod <-  function(x, y=NULL, allow_as_mat=TRUE) {
+# currently not used:
+.Matrix_tcrossprod <- function(x,y, as_sym=TRUE) { # x Matrix; y Matrix or NULL
+  if (inherits(x,"dgCMatrix")) {
+    if (is.null(y)) {
+      xyt <- .dgCtcrossprod(x,NULL) 
+      if (as_sym) {
+        return(forceSymmetric(xyt)) ## not as(.,"sparseMatrix") which checks -> slow
+      } else return(xyt)    
+    } else if (inherits(y,"dgCMatrix")) {
+      return(.dgCtcrossprod(x,y)) ## return(Matrix::tcrossprod(x,y)) ## 
+    } else return(Matrix::tcrossprod(x,y))
+  } else return(Matrix::tcrossprod(x,y))
+}
+
+.tcrossprod <-  function(x, y=NULL, allow_as_mat=TRUE, as_sym=TRUE) {
   if (is.null(x)) return(NULL) ## allows lapply(,.tcrossprod) on a listof (matrix or NULL)
   if (inherits(x,"ZAXlist")) {
     return(tcrossprod(x,y)) # ZAXlist method
@@ -1154,16 +1177,24 @@ sym_eigen <- local({
     } else resu <- t( solve(x, b=as(x,"pMatrix") %*% t(y), system="L") ) 
   } else if (inherits(x,"Matrix") || inherits(y,"Matrix")) {
     if (is.null(y)) {
-      if (allow_as_mat && (maxd <- prod(dim(x)))>1L ) { 
+      if (TRUE && inherits(x,"dgCMatrix")) { # TRUE slightly better in long tests ? _F I X M E_ retest (last test v2.7.17)
+        xxt <- .dgCtcrossprod(x,y) 
+        if (as_sym) {
+          return(forceSymmetric(xxt)) ## not as(.,"sparseMatrix") which checks -> slow
+        } else return(xxt)
+      } else if (allow_as_mat && (maxd <- prod(dim(x)))>1L ) { 
         x_denseness <- .calc_denseness(x)/maxd 
         if (x_denseness>0.35) {
           resu <- .tcrossprodCpp(as.matrix(x),y) ##  so much faster (simulate(mrf,...) )-- poor Matrix:: coding ?
-          resu <- as(resu,"symmetricMatrix") # but the as(, ) may produce a quite dense dsC (or dgC ?)
+          if (as_sym) resu <- as(resu,"symmetricMatrix") # but the as(, ) may produce a quite dense dsC (or dsy)
           #                                                             
           colnames(resu) <- rownames(resu) <- rownames(x)
           return(resu)
         } else return(Matrix::tcrossprod(x))
       } else return(Matrix::tcrossprod(x))
+    } else if (FALSE && inherits(x,"dgCMatrix") &&  inherits(y,"dgCMatrix") ) { ## FASTer when (FALSE &&)
+      xyt <- .dgCtcrossprod(x,y) 
+      return(xyt)
     } else if (allow_as_mat) {
       if (inherits(x,"Matrix") && (maxd <- prod(dim(x)))>1L) { # trivial >1L bc the alternatives to Matrix::tcrossprod are always useful
         x_denseness <- .calc_denseness(x)/maxd 
@@ -1191,20 +1222,64 @@ sym_eigen <- local({
   }
 }
 
-.crossprod <- function(x, y=NULL, allow_as_mat=TRUE) {
+# currently not used:
+.Matrix_crossprod <- function(x,y, as_sym=TRUE) { # x Matrix; y Matrix or NULL
+  if (inherits(x,"dgCMatrix")) {
+    if (is.null(y)) {
+      txy <- .dgCcrossprod(x,NULL) 
+      #if (class(Matrix::crossprod(x)) != class(forceSymmetric(.dgCcrossprod(x,NULL)))) browser()
+      if (as_sym) {
+        return(forceSymmetric(txy)) ## not as(.,"sparseMatrix") which checks -> slow
+      } else return(txy)    
+    } else if (inherits(y,"dgCMatrix")) {
+      #txy <- Matrix::crossprod(x,y); if (!inherits(txy,"dgCMatrix")) browser(); 
+      return(.dgCcrossprod(x,y)) ## return(Matrix::crossprod(x,y)) ## 
+    } else return(Matrix::crossprod(x,y))
+  } else return(Matrix::crossprod(x,y))
+}
+
+.crossprod <- function(x, y=NULL, allow_as_mat=TRUE, as_sym=TRUE, use_Rcpp=.spaMM.data$options$Rcpp_crossprod, eval_dens=TRUE) {
   if (is.null(x)) return(NULL) ## allows lapply(,.tcrossprod) on a list of (matrix or NULL)
   if (inherits(x,"ZAXlist")) {
     return(crossprod(x,y)) # ZAXlist method
-  } else if (inherits(x,"Matrix") || inherits(y,"Matrix")) { 
+  } else if (use_Rcpp) {
+    if ( inherits(x,c("dgCMatrix","dgeMatrix","matrix"))
+         && inherits(y,c("dgCMatrix","dgeMatrix", "matrix","NULL"))) {
+      if (use_Rcpp>2L) {
+        print(c("+",class(x),class(y))) ## ddi...
+        utils::flush.console()
+      }
+      txy <- .Rcpp_crossprod(x, y, eval_dens)
+      if (is.null(y) && as_sym) { txy <- forceSymmetric(txy) } # absolutely necessary for use as update(., parent=txy); see ?`CHMfactor-class`
+      return(txy)
+    } else { ## show unhandled classes and continue
+      if (use_Rcpp>1L) {
+        print(c("-",class(x),class(y))) ## ddi...
+        utils::flush.console()
+      }
+    }
+  }
+  if (inherits(x,"Matrix") || inherits(y,"Matrix")) { 
     # it's OK to use Matrix::crossprod() rather than .crossprod() when x has a known quite-sparse structure such as chol_Q
     if (is.null(y)) {
-      if (allow_as_mat && (maxd <- prod(dim(x)))>1L ) { 
+      if (TRUE && inherits(x,"dgCMatrix")) { ## FAST when (TRUE &&)
+        txx <- .dgCcrossprod(x,y) 
+        if (as_sym) {
+          return(forceSymmetric(txx)) ## not as(.,"sparseMatrix") which checks -> slow
+        } else return(txx)
+      } else if (allow_as_mat && (maxd <- prod(dim(x)))>1L ) { 
         x_denseness <- .calc_denseness(x)/maxd 
         if (x_denseness>0.35) {
           ## Matrix::crossprod() is inefficient on math-dense matrices, even for dgeMatrix ! We try to maintain its return type, typically dsCMatrix:
-          return(as(.crossprodCpp(as.matrix(x),y),"symmetricMatrix")) 
-        } else return(Matrix::crossprod(x))
-      } else return(Matrix::crossprod(x))
+          resu <- .crossprodCpp(as.matrix(x),y)
+          if (as_sym) {
+            return(forceSymmetric(resu)) 
+          } else return(resu)
+        } else return(Matrix::crossprod(x)) ## return(.Matrix_crossprod(x,y=NULL,as_sym=as_sym)) ## 
+      } else return(Matrix::crossprod(x)) ## return(.Matrix_crossprod(x,y=NULL,as_sym=as_sym)) ## 
+    } else if (FALSE && inherits(x,"dgCMatrix") &&  inherits(y,"dgCMatrix") ) { ## FASTer when (FALSE &&)
+      txy <- .dgCcrossprod(x,y) 
+      return(txy)
     } else if (allow_as_mat) {
       if (inherits(x,"Matrix") && (maxd <- prod(dim(x)))>1L) { # trivial >1L bc the alternatives to Matrix::tcrossprod are always useful
         x_denseness <- .calc_denseness(x)/maxd 
@@ -1216,8 +1291,8 @@ sym_eigen <- local({
       }
       if (is.matrix(x) && is.matrix(y)) { # sparsity overhead is ~ 1/0.35
         return(.crossprodCpp(x, y)) # .crossprodCpp() slightly better than crossprod()
-      } else return(Matrix::crossprod(x,y)) ## both <0.35
-    } else return(Matrix::crossprod(x,y)) ## ! allow_as_mat
+      } else return(Matrix::crossprod(x,y)) ## return(.Matrix_crossprod(x,y)) ## either is <0.35 so Matrix was retained. but dgeMatrix-y ends here
+    } else return(Matrix::crossprod(x,y)) ## return(.Matrix_crossprod(x,y)) ## ! allow_as_mat
   } else {
     if (is.integer(x)) storage.mode(x) <- "double"
     if (is.integer(y)) storage.mode(y) <- "double"
@@ -1232,8 +1307,9 @@ sym_eigen <- local({
   }
 }
 
+
 .get_tcrossfac_beta_w_cov <- function(fit) { 
-  if (is.null(fit$envir$tcrossfac_beta_w_cov)) {
+  if (is.null(fit$envir$tcrossfac_beta_w_cov)) { ## tcrossfac...w stored under $envir while tcrossfac...v is under $beta_v_cov
     if ("AUGI0_ZX_sparsePrecision" %in% fit$MME_method) {
       tcrossfac_beta_v_cov <- .get_tcrossfac_beta_v_cov(fit$X.pv, fit$envir, fit$w.resid) ## typically permuted from triangular
       pforpv <- ncol(fit$X.pv)
@@ -1241,8 +1317,9 @@ sym_eigen <- local({
                            fit$envir$chol_Q)
       fit$envir$tcrossfac_beta_w_cov <- drop0(lhs %*% tcrossfac_beta_v_cov, tol=1e-16) 
     } else {
-      if (is.null(tcrossfac_beta_w_cov <- fit$envir$beta_cov_info$tcrossfac_beta_v_cov)) {
-        tcrossfac_beta_w_cov <- .calc_beta_cov_info(fit)$tcrossfac_beta_v_cov 
+      if (is.matrix(beta_cov_info <- fit$envir$beta_cov_info) || ## matrix is old format, should be a list now
+          is.null(tcrossfac_beta_w_cov <- beta_cov_info$tcrossfac_beta_v_cov)) {
+        tcrossfac_beta_w_cov <- .get_beta_cov_info(fit)$tcrossfac_beta_v_cov 
       }    
       tcrossfac_beta_w_cov <- as.matrix(tcrossfac_beta_w_cov)
       invL <- .get_invL_HLfit(fit) ## correlation matrix of ranefs is solve((t(invL)%*%(invL)))
@@ -1289,6 +1366,8 @@ sym_eigen <- local({
             if (is.null(design_u)) {
               invCoo <- stop("code missing here (1)") ## there may be a $compactchol_Q in spprec case.
             } else invCoo <- .makelong(solve(.tcrossprod(design_u)),longsize=ncol(lmatrix))
+          } else if (inherits(lmatrix,"dCHMsimpl")) { # before any test on type...
+            invCoo <- tcrossprod(as(lmatrix,"sparseMatrix")) # assuming 'lmatrix' is an unpermuted CHM factor of the precision factor (as for attr(lmatrix,"Q_CHMfactor"))
           } else if (type == "from_AR1_specific_code")  {
             invCoo <- crossprod(solve(lmatrix)) # cost of a sparse triangular solve.
           } else if (type == "from_Q_CHMfactor")  {
@@ -1303,7 +1382,7 @@ sym_eigen <- local({
               #                                                         to attempt regularization, given that condnum has been tested as not large.
               if (inherits(invCoo,"try-error")) invCoo <- NULL
             }
-            if (is.null(invCoo)) Rmatrix <- qr.R(qr(t(lmatrix))) 
+            if (is.null(invCoo)) Rmatrix <- .lmwithQR(t(lmatrix),yy=NULL,returntQ=FALSE,returnR=TRUE)$R_scaled # no pivoting compared to qr.R(qr(t(lmatrix))) 
           }
           if (is.null(invCoo)){ 
             ## see comments on regularization and chol2inv in .get_invL_HLfit()
@@ -1327,45 +1406,6 @@ sym_eigen <- local({
     } else return(NULL)
   } 
   return(invColdoldList)
-}
-
-.calc_cAIC_pd <- function(X.pv, ZAL, w.resid, d2hdv2, blockSize=1000L) {
-  if ( ncol(X.pv) ) { ## the projection matrix for the response always includes X even for REML!
-    hessnondiag <- .crossprod(ZAL, .Dvec_times_m_Matrix(w.resid, X.pv))
-    Md2hdbv2 <- as.matrix(rbind2(cbind2(.ZtWZwrapper(X.pv,w.resid), t(hessnondiag)),
-                                 cbind2(hessnondiag, - d2hdv2))) 
-    Md2clikdbv2 <- as.matrix(rbind2(cbind2(.ZtWZwrapper(X.pv,w.resid), t(hessnondiag)),
-                                    cbind2(hessnondiag, .ZtWZwrapper(ZAL,w.resid))))            
-  } else {
-    Md2hdbv2 <- - d2hdv2 
-    Md2clikdbv2 <-  as.matrix(.ZtWZwrapper(ZAL,w.resid))
-  }
-  if (inherits(Md2hdbv2,"diagonalMatrix")) {
-    pd <- sum(diag(Md2clikdbv2)/diag(Md2hdbv2)) ## is sum(diag(solve(Md2hdbv2,Md2clikdbv2)))
-  } else {
-    ## dans un LMM avec estimation ML, pd = sum(lev_phi), mais pas de simplif plus generale 
-    if ((nc <- ncol(Md2hdbv2))>(blockSize)) {
-      message(paste0("Conditional-AIC computation requires operations on a large dense matrix (square with dimension ",nc,"),\n",
-                     "which may take a lot of time. Use 'also_cAIC=FALSE' to avoid it."))
-    }
-    ## if we reached this point with a huge dense matrix, then we have huge memory, hence saving memory may not be the issue,
-    #  But we might save computation by computing only the requested diagonal (one qr, one backsolve, one sum(. * .))
-    qr.Md2hdbv2 <- try(qr(Md2hdbv2))
-    if (inherits(qr.Md2hdbv2,"try-error")) {
-      warning("Computation of cAIC/GoF df's failed because the information matrix appears singular.")
-      pd <- NA
-    } else {
-      solveR <- try(backsolve(qr.R(qr.Md2hdbv2),diag(nrow =nc)))
-      if (inherits(solveR,"try-error")) {
-        warning("Computation of cAIC/GoF df's failed because the information matrix appears singular.")
-        # determinant(qrR,logarithm=FALSE)$modulus > 1e-14
-        pd <- NA
-      } else {
-        pd <- sum(solveR * t(qr.qty(qr.Md2hdbv2,Md2clikdbv2))) ## F I X M E in spprec case at least I use envir$. Is that possible here ?      
-      }
-    }
-  }
-  return(pd)
 }
 
 .calcD2hDv2 <- function(ZAL,w.resid,w.ranef) { ## wrapper for a "ZtWZ minus diag" computation
@@ -1605,29 +1645,9 @@ sym_eigen <- local({
   return(envir$beta_cov_info)
 }
 
-.calc_beta_cov_info_others <- function(wAugX=NULL, AUGI0_ZX, ZAL, ww) {
-  if (is.null(wAugX)) {
-    if (is.null(ZAL)) {
-      wAugX <- .calc_wAugX(XZ_0I=AUGI0_ZX$X.pv,sqrt.ww=sqrt(ww))
-    } else {
-      XZ_0I <- .calc_XZ_0I(AUGI0_ZX=AUGI0_ZX,ZAL) # ZAL is not ZAXlist since .calc_beta_cov_info_others not called in spprec
-      wAugX <- .calc_wAugX(XZ_0I=XZ_0I,sqrt.ww=sqrt(ww))
-    }
-  } ## wAugX is in XZ_OI order 
-  if (inherits(wAugX,"Matrix")) {
-    mMatrix_method <- .spaMM.data$options$Matrix_method 
-  } else mMatrix_method <- .spaMM.data$options$matrix_method
-  # hack to recycle sXaug code; all weights are 1 or unit vectors as the order is not that assumed by mMatrix_method. 
-  wAugX <- do.call(mMatrix_method,list(Xaug=wAugX, weight_X=rep(1,nrow(AUGI0_ZX$X.pv)), 
-                                       w.ranef=rep(1,ncol(AUGI0_ZX$I)), ## we need at least its length for get_from Matrix methods
-                                       H_global_scale=1))
-  beta_cov_info <- get_from_MME(wAugX,"beta_cov_info_from_wAugX") 
-  return(beta_cov_info)
-}
-
 ## returns a list !!
 ## input XMatrix is either a single LMatrix which is assumed to be the spatial one, or a list of matrices 
-.compute_ZAXlist <- function(XMatrix,ZAlist, force_bindable=FALSE) {
+.compute_ZAXlist <- function(XMatrix, ZAlist, force_bindable=FALSE) {
   ## ZAL is nobs * (# levels ranef) and ZA too
   ## XMatrix is (# levels ranef) * (# levels ranef) [! or more generally a list of matrices!]
   ## the levels of the ranef must match each other in multiplied matrices
@@ -1678,19 +1698,20 @@ sym_eigen <- local({
             ## With a proxy::dist or 'crossdist' matrix, it is likely that ZA was = I and we don't reach this code;
             ## However, exceptions can occur: cf Infusion with CIpoint = MLE => replicate in points where MSEs are to be estimated
             ## Then the xmatrix must have been converted from proxy style to a matrix.
-            # In random slope models, xmatrix can be a Matrix
-            # if (inherits(ZA,"dgCMatrix") &&  inherits(xmatrix,"dgCMatrix") ) {
-            #   matmult <- getMethod(`%*%`, c("CsparseMatrix", "CsparseMatrix"))
-            #   zax <- matmult(ZA, xmatrix)
-            # } else 
             if (inherits(xmatrix,"dCHMsimpl")) {
               zax <- structure(list(ZA=ZA, Q_CHMfactor=xmatrix), class=c("ZA_QCHM","list")) 
+              # F I X M E not sure about colnames handling here. Can this occur for the xmatrix of a random-coef?
+            } else if (inherits(ZA,"dgCMatrix") &&  inherits(xmatrix,"dgCMatrix") ) {
+              # In random slope models, xmatrix can be a Matrix
+              #   matmult <- getMethod(`%*%`, c("CsparseMatrix", "CsparseMatrix"))
+              #   zax <- matmult(ZA, xmatrix)
+              zax <- .dgCprod(ZA, xmatrix) 
+              #zax@Dimnames[2] <- xmatrix@Dimnames[2] # now in cpp code
+              ## : colnames needed for predict(., newdata) -> match_old_new_levels(), and maybe elsewhere. 
             } else {
               zax <- ZA %*% xmatrix # measurably slow... 
+              if (identical(attr(xmatrix,"corr.model"),"random-coef")) colnames(zax) <- colnames(ZA) 
             }
-            attr(zax,"corr.model") <- attr(xmatrix,"corr.model")
-            if (identical(attr(zax,"corr.model"),"random-coef")) colnames(zax) <- colnames(ZA) 
-            ## : names needed for match_old_new_levels(); and for fits, somewhere... (yet this costs measurable time FIXME)
             ZAX[[Lit]] <- zax
           }
           
@@ -1834,17 +1855,24 @@ sym_eigen <- local({
   for (it in seq_len(length(namesnames))) if (nchar(namesnames[it])>10) namesnames[it] <- paste0(substr(namesnames[it],0,9),".")
   names(print_namesTerms) <- make.unique(namesnames,sep=".") ## makes group identifiers unique (names of coeffs are unchanged); using base::make.unique
   print_lambda <- vector("list",nrand) 
+  Xi_cols <- attr(ZAlist,"Xi_cols")
   for (rd in seq_len(nrand)) {
     plam_rd <- process_resglm_blob$print_lambdas[[rd]]
     if (anyNA(plam_rd)) { ## those for which no glm was available, such as fixed lambdas...
+      Xi_ncol <- Xi_cols[rd]
+      plam_rd <- numeric(Xi_ncol)
       u.range <- (cum_n_u_h[rd]+1L):(cum_n_u_h[rd+1L])
-      plam_rd <- unique(lambda_est[u.range])
+      blocksize <- length(u.range)/Xi_ncol
+      for (colit in seq_len(Xi_cols[rd])) {
+        u.subrange <- u.range[((colit-1L)*blocksize+1L):(colit*blocksize)]
+        plam_rd[colit] <- unique(lambda_est[u.subrange])
+      } # With "chol" transfo pour ranCoefs, all the lambda's are 1, so subrange'ing is essential
     }
     if (lambdaType[rd]!="inner" && ## bc for inner, plam_rd is $print_lambdas[[rd]] and is already the single lambda param
         ! is.null(prior_lam_fac <- rand.families[[rd]]$prior_lam_fac)) {
       plam_rd <- plam_rd[1L]/prior_lam_fac[1L]
     } ## F I X M E It would be better to use a lambda_par attribute for lambda_est
-    print_lambda[[rd]] <- structure(plam_rd, names=names(print_namesTerms)[rd])
+    print_lambda[[rd]] <- structure(plam_rd, names=print_namesTerms[[rd]])
   }
   attr(print_lambda,"cum_n_u_h") <- cum_n_u_h
   lambda.object <- list(lambda_est = lambda_est,  ## full vector for simulate() calc_logdisp_cov()
@@ -1984,10 +2012,22 @@ sym_eigen <- local({
       if (is.null(rhs)) {
         return(list(inv=Matrix::chol2inv(qrR(RP,backPermute = FALSE)),Rperm=RP@q+1L,RRsP=RRsP))
       } else {
-        if (is.matrix(rhs)) {
-          resu <- (Matrix::chol2inv(qrR(RP,backPermute = FALSE)) %*% rhs[RP@q+1L,])[RRsP,]
-        } else { ## if rhs is one col 
-          resu <- (Matrix::chol2inv(qrR(RP,backPermute = FALSE)) %*% rhs[RP@q+1L])[RRsP]
+        ## ::chol2inv (-> essentially tcrossprod(solve()) without any particular optimization): very slow tcrossprod for large matrices,
+        ## not specifically bc of the tcrossprod implementation (compared to crossprod) but because the result is *much* denser (bigranefs example) 
+        ## It's then much better to avoid chol2inv(), at least when there is a RHS! 
+        if (ncol(XD)<1000L) { # F I X M E ad hoc (fast tests vs 'bigranefs' test)
+          if (is.matrix(rhs)) {
+            resu <- (Matrix::chol2inv(qrR(RP,backPermute = FALSE)) %*% rhs[RP@q+1L,])[RRsP,]
+          } else { ## if rhs is one col 
+            resu <- (Matrix::chol2inv(qrR(RP,backPermute = FALSE)) %*% rhs[RP@q+1L])[RRsP]
+          }
+        } else {
+          solveR <- solve(qrR(RP,backPermute = FALSE))
+          if (is.matrix(rhs)) {
+            resu <- (solveR %*% .crossprod(solveR,rhs[RP@q+1L,]))[RRsP,]
+          } else { ## if rhs is one col 
+            resu <- (solveR %*% .crossprod(solveR,rhs[RP@q+1L]))[RRsP]
+          }
         }
       }
       ## assuming rhs is 'slim', this minimizes permutations. For computation of dv_h, it is square rather than slim...

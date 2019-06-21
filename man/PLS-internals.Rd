@@ -16,7 +16,7 @@
 \alias{get_from_MME_default.matrix}
 \alias{get_from_MME_default.Matrix}
 
-\title{Internal, Experimental Functions for procedure using the ((I,0),(Z,X)) block-order}
+\title{Internal functions for procedure using the ((I,0),(Z,X)) block-order}
 \description{
   Internal spaMM functions
 }

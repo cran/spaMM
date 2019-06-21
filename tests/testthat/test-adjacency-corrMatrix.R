@@ -51,7 +51,7 @@ if (spaMM.getOption("example_maxtime")>7.10) {
                   rand.family=list(gaussian(),Gamma(log)), #verbose=c(TRACE=1L),
                   #fixed=list(lambda=c(0.1,0.05)), 
                   family=poisson(),data=scotlip)
-  testthat::expect_true("dgCMatrix" %in% covfit$MME_method)
+  testthat::expect_true("matrix" %in% covfit$MME_method)
   testthat::expect_equal(logLik(covfit),c(p_v=-168.12966973),tol=5e-5) ## all methods are equally sensitive to the initial value (note that one lambda->0)
   testthat::expect_true(max(abs(range(get_predVar(covfit)-get_predVar(precfit))))<4e-6)  
   if (spaMM.getOption("EigenDense_QRP_method")==".lmwithQR") {

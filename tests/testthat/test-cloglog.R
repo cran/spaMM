@@ -6,7 +6,7 @@
 
 # see also http://bbolker.github.io/mixedmodels-misc/notes/cloglogsim.html
 
-if (spaMM.getOption("example_maxtime")>14) {
+if (spaMM.getOption("example_maxtime")>11.7) {
   if (requireNamespace("MASS", quietly = TRUE)) {
     artSim <- function(){
       #

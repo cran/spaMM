@@ -258,47 +258,53 @@
   # The syntax spaMM::HLfit_body without where=also does not trace when using spaMM directly attached
   level <- processed$verbose["TRACE"]
   if ("package:spaMM" %in% search()) {
-    if (processed$augZXy_cond) {
-      traced_fn <- quote(.HLfit_body_augZXy)
-    } else traced_fn <- quote(HLfit_body)
-    if (level) {
-      # F I X M E ? provide alternative tracer that only prints "." or so.
+    if ( level ) {
+      if (processed$augZXy_cond) {
+        traced_fn <- quote(.HLfit_body_augZXy)
+      } else traced_fn <- quote(HLfit_body)
+      if (level >= 1L ) {
+        tracing_op <- quote(try({
+          ranPars <- .canonizeRanPars(ranFix,corr_info=NULL,checkComplete = FALSE, rC_transf=.spaMM.data$options$rC_transf)
+          #
+          if ( ! is.null(ranPars$hyper)) {
+            ranges <- processed$hyper_info$ranges
+            for (char_hyper_it in names(ranPars$hyper)) {
+              rd_range <- ranges[[char_hyper_it]]
+              char_rd_range <- as.character(rd_range)
+              first_char_rd <- char_rd_range[1L]
+              ranPars$hyper[[char_hyper_it]] <- list(hy_kap=ranPars$corrPars[[first_char_rd]]$kappa,
+                                                     hy_lam=sum(ranPars$lambda[char_rd_range]))
+              for (char_rd in char_rd_range) {
+                ranPars$corrPars[[char_rd]]$kappa <- NULL
+              }
+              ranPars$lambda <- ranPars$lambda[setdiff(names(ranPars$lambda),char_rd_range)]
+            }
+            if ( ! length(ranPars$lambda)) ranPars$lambda <- NULL
+          }
+          #
+          if (length(ranPars$phi)>1) {
+            cat("(phi fixed) ")
+            ranPars[["phi"]] <- NULL
+          }
+          ntC <- names(ranPars)
+          for (lit in seq_along(ranPars)) {
+            urP <- unlist(ranPars[[lit]]) ## ranPars$corrPars can be list() in which case urP is NULL 
+            if (!is.null(urP)) cat(ntC[lit],"=",paste(signif(urP,6),collapse=" ")," ")
+          }
+        }))
+        exit_op <- quote({
+          aphl <- unlist(res$APHLs[c("p_bv","p_v","logLapp")])[1L] ## unlist drops NULL values
+          if (is.null(aphl)) {
+            print("(objective not found)",quote=FALSE)
+          } else print(paste0(names(aphl),"= ",.prettify_num(aphl,nsmall=4)),quote=FALSE)
+        })
+      } else { ## e.g. level=0.5 : will print only the "progress bars"  
+        tracing_op <- quote({})
+        exit_op <- quote({})
+      }
       suppressMessages(trace(traced_fn, where=asNamespace("spaMM"), print=FALSE, 
-                             tracer=quote(try({
-                               ranPars <- .canonizeRanPars(ranFix,corr_info=NULL,checkComplete = FALSE)
-                               #
-                               if ( ! is.null(ranPars$hyper)) {
-                                 ranges <- processed$hyper_info$ranges
-                                 for (char_hyper_it in names(ranPars$hyper)) {
-                                   rd_range <- ranges[[char_hyper_it]]
-                                   char_rd_range <- as.character(rd_range)
-                                   first_char_rd <- char_rd_range[1L]
-                                   ranPars$hyper[[char_hyper_it]] <- list(hy_kap=ranPars$corrPars[[first_char_rd]]$kappa,
-                                                                  hy_lam=sum(ranPars$lambda[char_rd_range]))
-                                   for (char_rd in char_rd_range) {
-                                     ranPars$corrPars[[char_rd]]$kappa <- NULL
-                                   }
-                                   ranPars$lambda <- ranPars$lambda[setdiff(names(ranPars$lambda),char_rd_range)]
-                                 }
-                                  if ( ! length(ranPars$lambda)) ranPars$lambda <- NULL
-                               }
-                               #
-                               if (length(ranPars$phi)>1) {
-                                 cat("(phi fixed) ")
-                                 ranPars[["phi"]] <- NULL
-                               }
-                               ntC <- names(ranPars)
-                               for (lit in seq_along(ranPars)) {
-                                 urP <- unlist(ranPars[[lit]]) ## ranPars$corrPars can be list() in which case urP is NULL 
-                                 if (!is.null(urP)) cat(ntC[lit],"=",paste(signif(urP,6),collapse=" ")," ")
-                               }
-                             })),
-                             exit=quote({
-                               aphl <- unlist(res$APHLs[c("p_bv","p_v","logLapp")])[1L] ## unlist drops NULL values
-                               if (is.null(aphl)) {
-                                 print("(objective not found)",quote=FALSE)
-                               } else print(paste0(names(aphl),"= ",.prettify_num(aphl,nsmall=4)),quote=FALSE)
-                             }))) 
+                             tracer=tracing_op,
+                             exit=exit_op)) 
       if (processed$sparsePrecisionBOOL) {
         suppressMessages(trace(.solve_IRLS_as_spprec, where=asNamespace("spaMM"),print=FALSE,tracer=quote(cat(">"))))
       } else suppressMessages(trace(.solve_IRLS_as_ZX, where=asNamespace("spaMM"), print=FALSE,tracer=quote(cat(">"))))
@@ -319,15 +325,15 @@
       if (processed$sparsePrecisionBOOL) {
         suppressMessages(try(untrace(.solve_IRLS_as_spprec, where=asNamespace("spaMM")), silent=TRUE))
       } else suppressMessages(try(untrace(.solve_IRLS_as_ZX, where=asNamespace("spaMM")), silent=TRUE))
-      suppressMessages(untrace(spaMM.getOption("matrix_method")))
-      suppressMessages(untrace(spaMM.getOption("Matrix_method")))
-      suppressMessages(untrace(spaMM.getOption("spprec_method")))
+      suppressMessages(untrace(spaMM.getOption("matrix_method"), where=asNamespace("spaMM")))
+      suppressMessages(untrace(spaMM.getOption("Matrix_method"), where=asNamespace("spaMM")))
+      suppressMessages(untrace(spaMM.getOption("spprec_method"), where=asNamespace("spaMM")))
       fn <- paste("get_from_MME",strsplit(spaMM.getOption("matrix_method"),"def_")[[1L]][2],sep=".") ## get_from_MME.sXaug_EigenDense_QRP_Chol_scaled
-      suppressMessages(untrace(fn))
+      suppressMessages(untrace(fn, where=asNamespace("spaMM")))
       fn <- paste("get_from_MME",strsplit(spaMM.getOption("Matrix_method"),"def_")[[1L]][2],sep=".") ## get_from_MME.sXaug_Matrix_QRP_CHM_scaled
-      suppressMessages(untrace(fn))
+      suppressMessages(untrace(fn, where=asNamespace("spaMM")))
       fn <- paste("get_from_MME",strsplit(spaMM.getOption("spprec_method"),"def_")[[1L]][2],sep=".") 
-      suppressMessages(untrace(fn))
+      suppressMessages(untrace(fn, where=asNamespace("spaMM")))
     } 
   } else if (level) {warning("The 'spaMM' package must be *attached* for verbose(TRACE=...) tracing to operate",
                              immediate.=TRUE)}
@@ -413,15 +419,12 @@
         ## default is inner but can be reversed if numeric or NA (hence neither NULL nor NaN)
         not_inner_phi <- ! (is.null(init.optim$phi) || is.nan(init.optim$phi))
       }
-  } else not_inner_phi <- FALSE
+    } else not_inner_phi <- FALSE
     if (not_inner_phi) {
-      ## .get_init_phi takes more account of ranefs than .get_inits_by_glm(.)$phi_est, but it may return NULL.
-      #  It seems (?) marginally better hence we try it first and check the result.
-      if (is.null(init.optim$phi)) init.optim$phi <- .get_init_phi(processed,weights=eval(processed$prior.weights)) 
-      ## (fixme): fitme may fail obscurely if .get_init_phi(processed) fails silently
+      #    if (is.null(init.optim$phi)) init.optim$phi <- .get_init_phi(processed,weights=eval(processed$prior.weights)) 
       if (is.null(init.optim$phi)) { ## .get_init_phi returned NULL if ./. 
         # ./. no replicate obs is available, or
-        # ./. ULI too large ?? Grey area here (fixme)
+        # ./. more than 30 informative levels
         init.optim$phi <- .get_inits_by_glm(processed)$phi_est/(nrand+1L) ## at least one initial value should represent high guessed variance
         # if init.optim$phi too low (as in min(.,2)) then fitme(Reaction ~ Days + AR1(1|Days) + (Days|Subject), data = sleepstudy) is poor
       }  

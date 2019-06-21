@@ -6,7 +6,7 @@
   } else if (is.null(unlist(strucList))) { ## ranefs with trivial strucList
     if (is.null(object$envir$invL)) {
       cum_n_u_h <- attr(object$lambda,"cum_n_u_h")
-      object$envir$invL <- Diagonal(n=cum_n_u_h[length(cum_n_u_h)]) # F I X M E inconsistency in return type
+      object$envir$invL <- Diagonal(n=cum_n_u_h[length(cum_n_u_h)]) 
     }
     return(object$envir$invL)
   } else {
@@ -51,7 +51,7 @@
                 if (inherits(invlmatrix,"try-error")) invlmatrix <- NULL
               }
             }
-            if (is.null(invlmatrix)) Rmatrix <- qr.R(qr(t(lmatrix))) 
+            if (is.null(invlmatrix)) Rmatrix <- .lmwithQR(t(lmatrix),yy=NULL,returntQ=FALSE,returnR=TRUE)$R_scaled # no pivoting compared to qr.R(qr(t(lmatrix))) 
           }
           if (is.null(invlmatrix)){
             # chol2inv is quite robust in the sense of not stopping, even without any regularization.
@@ -80,23 +80,23 @@
           resu[u.range,u.range] <- invlmatrix   
         }
       }
-      #resu <- as(resu,"sparseMatrix") # F I X M E (retry!) breaks test twolambda vs onelambda by effect on nearly singular matrix:
+      resu <- as(resu,"sparseMatrix") # previously broke test twolambda vs onelambda by effect on nearly singular matrix:
       # ...by changing the twolambda result.
-      # # Without it I have two messages : 
+      # # Without it I haD two messages : 
       # 1: In .calc_logdisp_cov(object, dvdloglamMat = dvdloglamMat, dvdlogphiMat = dvdlogphiMat,  :
       # Numerical precision issue in computation of the information matrix for dispersion parameters:
       #   the prediction variance may be inaccurate.
       # 2: In .force_solve(logdispInfo) : The matrix looks exactly singular.
-      # # While with it I have only the first message, and a result less consistent with onelambda
+      # # While with it I haD only the first message, and a result less consistent with onelambda
       # Alternatively to the present conversion, 
-      # In can reproduce these two symptoms (only the first message, and a result less consistent) 
+      # I could reproduce these two symptoms (only the first message, and a result less consistent) 
       # by calling .crossprodCpp in .calc_invV_factors() -> .crossprod(ZAfix, wrZ)
       # (as tested by hacking the return value of  the single call to .crossprod() in this get_predVar() test)
       # and the only impact of the .crossprod() is here to change the numerical precision of the $r_x_n element in the 
       # return value of .calc_invV_factors() by effects of order 1e-13 (this element being dgeMatrix whether .crossprodCpp was called or not).
       object$envir$invL <- resu
     }
-    return(object$envir$invL)
+    return(object$envir$invL) # May be Diagonal() => calling code must handle that case.
   }
 }
 
@@ -155,7 +155,7 @@
               }
             }
             if (is.null(resu[[Lit]])) {
-              Rmatrix <- qr.R(qr(t(lmatrix))) 
+              Rmatrix <- .lmwithQR(t(lmatrix),yy=NULL,returntQ=FALSE,returnR=TRUE)$R_scaled # no pivoting compared to qr.R(qr(t(lmatrix))) 
             } else resu[[Lit]] <- as(resu[[Lit]],"sparseMatrix")
           }
           if (is.null(resu[[Lit]])){
@@ -365,7 +365,7 @@ vcov.HLfit <- function(object, ...) {
     beta_cov <- object$beta_cov
     attr(beta_cov,"beta_v_cov") <- NULL 
   } 
-  if (is.null(beta_cov)) beta_cov <- .calc_beta_cov_info(object)$beta_cov ## notably for GLM or if was stripped from envir by stripHLfit()
+  if (is.null(beta_cov)) beta_cov <- .get_beta_cov_info(object)$beta_cov ## notably for GLM or if was stripped from envir by stripHLfit()
   return(beta_cov)
 }
 
@@ -389,7 +389,44 @@ Corr <- function(object,...) { ## compare ?VarCorr
 }
 
 # for a lme4::VarCorr() equivalent; generic is nlme::VarCorr 
-.VarCorr <- function(x, sigma=1, ...) {} ## F I X M E
+VarCorr.HLfit <- function(x, sigma=1, message.=TRUE, ...) {
+  if (message.) message("The design of VarCorr.HLfit() is not yet fully specified.") 
+  lambda.object <- x$lambda.object
+  namesTerms <- lambda.object$print_namesTerms ## list of vectors of variable length
+  linklam_coeff_list <- lambda.object$coefficients_lambdaS ## used beyond the next line
+  lamtable <- .lambda_table_fn(namesTerms, x, lambda.object,linklam_coeff_list)
+  loctable <- data.frame(Group=lamtable[,"Group"],Term=lamtable[,"Term"],Variance=lamtable[,"Var."],"Std.Dev."=sqrt(lamtable[,"Var."]))
+  if ("Corr." %in% colnames(lamtable)) loctable <- cbind(loctable,Corr=lamtable[,"Corr."])
+  rownames(loctable) <- lamtable[,"Term"]
+  if (x$family$family %in% c("gaussian","Gamma")) {
+    phi.object <- x$phi.object
+    if ( ! is.null(phi_outer <- phi.object$phi_outer)) {
+      phi_line <- data.frame(Group="Residual",Term="(Intercept)",Variance=phi_outer, "Std.Dev."=sqrt(phi_outer))
+      if ("Corr." %in% colnames(lamtable)) phi_line <- cbind(phi_line,Corr=NA)
+      loctable <- rbind(loctable,phi_line)
+    } else {
+      if (x$models[["phi"]]=="phiHGLM") {
+        #cat("Residual dispersion model includes random effects:\n  use summary(<fit object>$resid_fit) to display results.\n")       
+      } else if ((loc_p_phi <- length(phi.object$fixef))==1L) {
+        namesX_disp <- names(phi.object$fixef)
+        dispOffset <- attr(x$resid.predictor,"off")
+        if (!is.null(dispOffset)) dispOffset <- unique(dispOffset)
+        if (length(namesX_disp)==1 && namesX_disp[1]=="(Intercept)" && length(dispOffset)<2L) {
+          # constant phi: we can display it
+          phi_est <- (phi.object$fixef)
+          if (length(dispOffset)==1L) phi_est <- phi_est+dispOffset
+          resid.family <- eval(x$resid.family)
+          phi_est <- resid.family$linkinv(phi_est)
+        } ## else phi not constant; We don't try to display it
+        phi_line <- data.frame(Group="Residual",Term="(Intercept)",Variance=phi_est, "Std.Dev."=sqrt(phi_est))
+        if ("Corr." %in% colnames(lamtable)) phi_line <- cbind(phi_line,Corr=NA)
+        loctable <- rbind(loctable,phi_line)
+      }                                                 
+    }
+  }
+  rownames(loctable) <- NULL
+  return(loctable)
+} 
 
 dev_resids <- function(object,...) {
   mu <- predict(object)
@@ -574,7 +611,7 @@ get_ZALMatrix <- function(object,as_matrix, force_bind=FALSE) {
   ww <- c(object$w.resid, object$w.ranef) ## NOT sqrt()
   Wei_XZ_0I <- .calc_wAugX(XZ_0I=XZ_0I, sqrt.ww=ww) ## 2nd argument name misleading
   if (is.null(tcrossfac_beta_v_cov <- object$envir$beta_cov_info$tcrossfac_beta_v_cov)) {
-    tcrossfac_beta_v_cov <- .calc_beta_cov_info(object)$tcrossfac_beta_v_cov
+    tcrossfac_beta_v_cov <- .get_beta_cov_info(object)$tcrossfac_beta_v_cov
   }
   beta_v_cov <- .tcrossprod(tcrossfac_beta_v_cov)
   augXWXXW <- tcrossprod(beta_v_cov, Wei_XZ_0I) ## = solve(crossprod(wAugX)) %*% crossprod(wAugX, diag(x=sqrt.ww))

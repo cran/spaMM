@@ -3,6 +3,28 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 2.8.0}{
+\subsection{NEW FEATURES}{
+\itemize{
+\item Substantially faster fits of random-coefficient models.
+\item Faster procedure for some simple LMMs.
+\item New VarCorr() extractor.
+}
+}
+\subsection{FIXED BUGS}{
+\itemize{
+\item confint() failed (stop) on models fitted by fast procedures suitable for a class of LMMs.
+\item The names appearing in certain outputs of lambda values were incorrect.
+\item Fits could fail (stop) in the uncommon case where some fixed-effect coefficients were fixed by the user and non-standard REML, as defined by a non-default REML formula, was requested.
+\item Prediction variance failed (stop) givn more than two random effects.
+}
+}
+\subsection{SUBSTANTIAL CHANGES TO DOCUMENTATION}{
+\itemize{
+\item 'help(fixed)' completed ('corrPars' information missing), corrected and clarified.
+}
+}
+}
 \section{CHANGES UP TO VERSION 2.7.0}{
 \subsection{NEW FEATURES}{
 \itemize{

@@ -2,20 +2,35 @@
 # HLfit(Reaction ~ 1 + (Days|Subject), data = sleepstudy,HLmethod="ML")
 # HLfit(Reaction ~ Days + (Days|Subject), data = sleepstudy,HLmethod="ML")
 
-.calc_latentL <- function(compactcovmat, triangularL=TRUE, spprecBool) {
-  ## the tcrossproduct factorization is not unique, so there's no reason for the factorization of compactcovmat and compactprecmat to match
-  #  unless one is deduced from the other. L and L_Q are distinct matrices used jointly in a fit (L in ZAL...).
-  #  Hence it's pathetic to recompute a Chol from the cov somewhere and another from the prec elsewhere.
+.calc_latentL <- function(compactcovmat, triangularL=TRUE, spprecBool, try_chol=FALSE, condnum=condnum) {
+  # returns a *t*crossfactor 
+  ## L and L_Q are distinct matrices used jointly in a fit (L in ZAL...) andmust be deduced from each other.
   #  In sparse precision code We want chol_Q to be lower triangular (dtCMatrix can be Up or Lo) 
   #    to obtain a dtCMatrix by bdiag(list of lower tri dtCMatrices).
   # Beyond this, design_u may be lower or upper tri
+  #compactcovmat <- .CovRegulCor(compactcovmat) ## not quite elegant, but robust. (but now, by default 'compactcovmat' is not modified) 
+  if (try_chol) {
+    if (is.null(chol_crossfac <- attr(compactcovmat, "chol_crossfac"))) {
+      #compactcovmat <- .regularize_Wattr(compactcovmat, condnum=condnum) # would introduce a painful trade-off with "sph" on condnum.
+      chol_crossfac <- try(chol(compactcovmat), silent=TRUE)
+    }
+    if ( ! inherits(chol_crossfac, "try-error")) return(list(design_u=t(chol_crossfac), 
+                                                             d=rep(1,ncol(compactcovmat)), 
+                                                             compactcovmat=compactcovmat))
+  }
+  # ELSE:
+  compactcovmat <- .regularize_Wattr(compactcovmat, condnum=condnum) 
   d_regul <- attr(compactcovmat,"d_regul")
   esys <- attr(compactcovmat,"esys")
   if (spprecBool || triangularL) { ## Competing for clumsy code prize... ## sparse version elsewhere
     ## need triangular factor for spprec case in particular hence the default value of triangularL
     crossfac_prec <- .Dvec_times_matrix(sqrt(1/d_regul), t(esys$vectors))
-    crossfac_prec <- qr.R(qr(crossfac_prec))
-    tcrossfac_prec <- t(crossfac_prec)  ## equivalent to chol up to signs... # tcrossprod(tcrossfac_prec)=compactprecmat
+    qrblob <- qr(crossfac_prec)
+    crossfac_prec <- qr.R(qrblob) # applying .lmwithQR() systematically (badly) affects numerical precision
+    if (! all(unique(diff(qrblob$pivot))==1L)) { # eval an unpermuted triangular R
+      crossfac_prec <- .lmwithQR(crossfac_prec[, sort.list(qrblob$pivot)] ,yy=NULL,returntQ=FALSE,returnR=TRUE)$R
+    } 
+    tcrossfac_prec <- t(crossfac_prec) ## tcrossprod(tcrossfac_prec)=compactprecmat
     # Correct signs:
     diagsigns <- sign(.diagfast(tcrossfac_prec))
     tcrossfac_prec <- .m_Matrix_times_Dvec(tcrossfac_prec,diagsigns)
@@ -35,11 +50,17 @@
       evec <- as(esys$vectors,"dgCMatrix")
       blob$compactprecmat <- .ZWZtwrapper(evec, 1/d_regul) # dsCMatrix
     }
-  } else if (triangularL) { ## never run as triangularL handled by first case, but would be much nicer if it was OK for HLfit6
+  } else if (FALSE) { ## Would be much nicer if it was OK for HLfit
     # qr always produces a crossprod factor so if we want a tcrossprod factor, it must be t(qr.R()) hence lower tri...); unless we qr() the preci mat...
-    design_u <- t(qr.R(qr(t(.m_Matrix_times_Dvec(esys$vectors,sqrt(d_regul)))))) ## lower tri contrary to clumsy method
-    sqrt_d <- .diagfast(x=design_u) 
-    tcrossfac_corr <- .m_Matrix_times_Dvec(design_u, 1/sqrt_d)
+    qrand <- t(.m_Matrix_times_Dvec(esys$vectors,sqrt(d_regul)))
+    qrblob <- qr(qrand)
+    crossfac <- qr.R(qrblob) # applying .lmwithQR() systematically (badly) affects numerical precision
+    if (! all(unique(diff(qrblob$pivot))==1L)) { # eval an unpermuted triangular R
+      crossfac <- .lmwithQR(crossfac[, sort.list(qrblob$pivot)] ,yy=NULL,returntQ=FALSE,returnR=TRUE)$R
+    } 
+    tcrossfac <- t(crossfac) # lower.tri
+    sqrt_d <- .diagfast(x=tcrossfac) 
+    tcrossfac_corr <- .m_Matrix_times_Dvec(tcrossfac, 1/sqrt_d)
     blob <- list(design_u=tcrossfac_corr, # LOWER tri tcrossprod factor
                  d= sqrt_d^2, # rep(1,length(d_regul)), # given variances of latent independent ranefs outer optim algo and iterative algo
                  compactcovmat=compactcovmat ## not used for the fit
@@ -102,8 +123,10 @@
 .makeCovEst1 <- function(u_h,ZAlist,cum_n_u_h,prev_LMatrices,
                          var_ranCoefs,w.resid,processed,phi_est,
                          #family, ## ignored
-                        as_matrix,v_h, MakeCovEst_pars_not_ZAL_or_lambda
+                        as_matrix,v_h, MakeCovEst_pars_not_ZAL_or_lambda,
+                        init_ranCoefs
 ) {
+  rC_transf_inner <- .spaMM.data$options$rC_transf_inner
   nrand <- length(ZAlist)
   locX.Re <- processed$X.Re ## may be NULL 
   if (is.null(locX.Re)) locX.Re <- processed$AUGI0_ZX$X.pv
@@ -111,6 +134,15 @@
   updated_LMatrices <- working_LMatrices <- prev_LMatrices
   Xi_cols <- attr(ZAlist,"Xi_cols")
   loc_lambda_est <- numeric(length(u_h))
+  spprecBool <- processed$sparsePrecisionBOOL
+  use_tri <- .spaMM.data$options$use_tri_for_makeCovEst
+  if (spprecBool || use_tri) {
+    condnum <- .spaMM.data$options[["condnum_for_latentL_inner"]]
+  } else condnum <- .spaMM.data$options[["condnum_for_latentL"]]
+  try_chol <- ( ! spprecBool ) && (.spaMM.data$options[["rC_transf_inner"]]=="chol") ## "sph" could be combined with chol latentL but this does not appear to be optimal.
+  augZXy_cond <- attr(processed$augZXy_cond,"inner")
+  test <- FALSE
+  #test <- TRUE
   for (rt in seq_len(nrand)) {
     if ( var_ranCoefs[rt]) { ## inner estimation of cov mat of u_h 
       Xi_ncol <- Xi_cols[rt]
@@ -119,16 +151,9 @@
       ##prevL <- attr(prev_LMatrices[[rt]],"latentL_blob")$design_u
       u.range <- (cum_n_u_h[rt]+1L):(cum_n_u_h[rt+1L])
       ########## brute force optimization
-      #
-      augZXy_cond <- attr(processed$augZXy_cond,"inner")
-      test <- FALSE
-      #test <- TRUE
       objfn <- function(trRancoef) {
-        compactcovmat <- .calc_cov_from_trRancoef(trRancoef, Xi_ncol)
-        compactcovmat <- .CovRegulCor(compactcovmat) ## not quite elegant, but robust. 
-        compactcovmat <- .regularized_eigen(compactcovmat, condnum=.spaMM.data$options$condnum_for_latentL_inner)
-        latentL_blob <- .calc_latentL(compactcovmat, triangularL=.spaMM.data$options$use_tri_for_makeCovEst,
-                                      spprecBool=processed$sparsePrecisionBOOL)
+        compactcovmat <- .calc_cov_from_trRancoef(trRancoef, Xi_ncol, rC_transf=rC_transf_inner)
+        latentL_blob <- .calc_latentL(compactcovmat, triangularL=use_tri, spprecBool=spprecBool, try_chol= try_chol , condnum=condnum)
         # Build Xscal
         working_LMatrices[[rt]] <- .makelong(latentL_blob$design_u,longsize=ncol(ZAlist[[rt]]), 
                                              template=processed$ranCoefs_blob$longLv_templates[[rt]]) ## the variances are taken out in $d
@@ -136,7 +161,7 @@
         locZAL <- .compute_ZAL(XMatrix=working_LMatrices, ZAlist=ZAlist, as_matrix=as_matrix) 
         # w.ranef argument
         loc_lambda_est[u.range] <- .make_long_lambda(latentL_blob$d, n_levels, Xi_ncol) 
-        loc_lambda_est[loc_lambda_est<1e-08] <- 1e-08 ## arbitrarily small eigenvalue is possible for corr=+/-1 even for 'large' parvec
+        if (.spaMM.data$options$rC_transf_inner!="chol") loc_lambda_est[loc_lambda_est<1e-08] <- 1e-08
         if (augZXy_cond || test) {
           ####################################################################################################
           n_u_h <- length(u_h)
@@ -185,9 +210,14 @@
       } 
       ####
       init_trRancoef <- attr(prev_LMatrices[[rt]],"trRancoef")
-      if (is.null(init_trRancoef)) init_trRancoef <- rep(0,Xi_ncol*(Xi_ncol+1L)/2L)
+      if (is.null(init_trRancoef)) {
+        init_ranCoef <- init_ranCoefs[[as.character(rt)]]
+        if (is.null(init_ranCoef)) init_ranCoef <- diag(x=rep(1, Xi_ncol)) # F I X M E adapt to the data ?
+        init_trRancoef <- .ranCoefsFn(init_ranCoef[lower.tri(init_ranCoef,diag=TRUE)], rC_transf=rC_transf_inner) # rep(0,Xi_ncol*(Xi_ncol+1L)/2L)
+      }
       trRancoef_LowUp <- .calc_LowUp_trRancoef(init_trRancoef, Xi_ncol=Xi_ncol,
-                                               tol_ranCoefs=.spaMM.data$options$tol_ranCoefs)
+                                               tol_ranCoefs=.spaMM.data$options$tol_ranCoefs_inner,
+                                               rC_transf=rC_transf_inner)
       lowerb <- trRancoef_LowUp$lower
       upperb <- trRancoef_LowUp$upper
       if (TRUE) {
@@ -195,10 +225,11 @@
         if (is.null(nloptr_controls$maxeval)) nloptr_controls$maxeval <-  eval(.spaMM.data$options$maxeval,list(initvec=init_trRancoef))
         if (is.null(nloptr_controls$xtol_abs)) {
           nloptr_controls$xtol_abs <- eval(.spaMM.data$options$xtol_abs, 
-                                           list(LowUp=trRancoef_LowUp)) #, factors=c(rcLam=5e-8,rcCor=5e-7,others=5e-11))) 
+                                           list(LowUp=trRancoef_LowUp, rC_transf=rC_transf_inner) ) 
         }
         optr <- nloptr::nloptr(x0=init_trRancoef,eval_f=objfn,lb=lowerb,ub=upperb,
                        opts=nloptr_controls)
+        #browser()
         while (optr$status==5L) { ## 5 => termination bc maxeval has been reached
           prevlik <- optr$objective
           reinit <- pmax(lowerb,pmin(upperb,optr$solution))
@@ -216,13 +247,10 @@
       }
       ################# 
       ## reproduces representation in objfn
-      compactcovmat <- .calc_cov_from_trRancoef(optr$solution, Xi_ncol)
-      compactcovmat <- .CovRegulCor(compactcovmat) ## not quite elegant, but robust. 
-      compactcovmat <- .regularized_eigen(compactcovmat, condnum=.spaMM.data$options$condnum_for_latentL_inner)
-      latentL_blob <- .calc_latentL(compactcovmat, triangularL=.spaMM.data$options$use_tri_for_makeCovEst,
-                            spprecBool=processed$sparsePrecisionBOOL) 
+      compactcovmat <- .calc_cov_from_trRancoef(optr$solution, Xi_ncol, rC_transf=rC_transf_inner)
+      latentL_blob <- .calc_latentL(compactcovmat, triangularL=use_tri, spprecBool=spprecBool, try_chol= try_chol , condnum=condnum)
       loc_lambda_est[u.range] <- .make_long_lambda(latentL_blob$d, n_levels, Xi_ncol) 
-      loc_lambda_est[loc_lambda_est<1e-08] <- 1e-08 
+      if (.spaMM.data$options$rC_transf_inner!="chol") loc_lambda_est[loc_lambda_est<1e-08] <- 1e-08 
       next_LMatrix <- .makelong(latentL_blob$design_u,longsize=ncol(ZAlist[[rt]]), 
                                 template=processed$ranCoefs_blob$longLv_templates[[rt]]) ## il faut updater pour estimer les ranef correctement...
       attr(next_LMatrix,"latentL_blob") <- latentL_blob ## kept for updating in next iteration and for output

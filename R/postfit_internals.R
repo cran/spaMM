@@ -1,4 +1,40 @@
-.calc_cAIC_pd_spprec <- function(object, blockSize=5000L) {
+.calc_pd_product <- function(tcrossfac_v_beta_cov, Md2clikdvb2, blockSize=5000L) {
+  if ((nc <- ncol(tcrossfac_v_beta_cov))>(blockSize)) {
+    ## We reached this point by sparse matrix computations. We need to save memory in the following dense computations,
+    message(paste0("Conditional-AIC computation requires operations on a large matrix (square with dimension ",nc,"),\n",
+                   "which may take a bit of time. Use 'also_cAIC=FALSE' to avoid it.")) 
+    slices <- unique(c(seq(0L,nc,blockSize),nc))
+    nslices <- length(slices)-1L
+    it <- 0L ## 'global definition' for Rcmd check
+    foreach_args <- list(it = seq_len(nslices), .combine = "sum")
+    foreach_blob <- do.call(foreach::foreach,foreach_args)
+    abyss <- foreach::`%do%`(foreach_blob, Sys.setenv(LANG = "en"))
+    pb <- txtProgressBar(max = nslices, style = 3, char="s")
+    pd <- foreach::`%do%`(foreach_blob, {
+      slice <- (slices[it]+1L):slices[it+1L]
+      tmp <- t(.crossprod(tcrossfac_v_beta_cov, Md2clikdvb2[,slice]))
+      setTxtProgressBar(pb, it)
+      return(sum(tcrossfac_v_beta_cov[slice,] * tmp)) 
+    })
+    # We could parallelize using %dopar% (twice) but is that worth the overhead? 
+  } else {
+    # logic of following code is
+    # pd = sum(diag(solve(Md2hdbv2,Md2clikdbv2[c(113:114,1:112),]))) 
+    #    = sum(diag((tcrossprod(R_invMd2hdvb2)[c(113:114,1:112),] %*% Md2clikdbv2[sort.list(c(113:114,1:112)),]))) 
+    #    = sum(diag(R_invMd2hdvb2[c(113:114,1:112),] %*% (crossprod(R_invMd2hdvb2, Md2clikdbv2[sort.list(c(113:114,1:112)),])))) 
+    #    = sum((R_invMd2hdvb2[c(113:114,1:112),] * t(crossprod(R_invMd2hdvb2, Md2clikdbv2[sort.list(c(113:114,1:112)),])))) 
+    # but we directly use v,b order rather than b,v
+    pd <- t(.crossprod(tcrossfac_v_beta_cov,Md2clikdvb2))
+    pd <- sum(tcrossfac_v_beta_cov * pd) 
+    # that is actually the logic of .traceAB:
+    # pd = .traceAB(tcrossfac_v_beta_cov, t(tcrossfac_v_beta_cov),Md2clikdvb2,diag(nrow =ncol(Md2clikdvb2)))
+    # but the matrices are square so no use here
+  }
+  return(pd)
+}
+
+
+.calc_cAIC_pd_spprec <- function(object) {
   w.resid <- object$w.resid
   #ZAL <- .compute_ZAL(XMatrix=object$strucList, ZAlist=object$ZAlist,as_matrix=.eval_as_mat_arg(object)) 
   ZAL <- get_ZALMatrix(object) # allows ZAXlist; but if a non-ZAXlist is already in the $envir, no effect; + we will solve(chol_Q, Diagonal()) so the gain is not obvious
@@ -13,39 +49,81 @@
   tcrossfac_v_beta_cov <- .calc_Md2hdvb2_info_spprec(X.pv=object$X.pv, envir=object$envir, w.resid=w.resid, 
                                                      which="tcrossfac_v_beta_cov") 
   # not triang if we used sparse QR. Following code should not assume triangularity
-  if ((nc <- ncol(tcrossfac_v_beta_cov))>(blockSize)) {
-    ## We reached this point by sparse matrix computations. We need to save memory in the following dense computations,
-    message(paste0("Conditional-AIC computation requires operations on a large matrix (square with dimension ",nc,"),\n",
-                   "which may take a bit of time. Use 'also_cAIC=FALSE' to avoid it.")) 
-    slices <- unique(c(seq(0L,nc,blockSize),nc))
-    nslices <- length(slices)-1L
-    it <- 0L ## 'global definition' for Rcmd check
-    foreach_args <- list(it = seq_len(nslices), .combine = "sum")
-    foreach_blob <- do.call(foreach::foreach,foreach_args)
-    abyss <- foreach::`%do%`(foreach_blob, Sys.setenv(LANG = "en"))
-    pb <- txtProgressBar(max = nslices, style = 3, char="s")
-    pd <- foreach::`%do%`(foreach_blob, {
-      slice <- (slices[it]+1L):slices[it+1L]
-      tmp <- t(crossprod(tcrossfac_v_beta_cov, Md2clikdvb2[,slice]))
-      setTxtProgressBar(pb, it)
-      return(sum(tcrossfac_v_beta_cov[slice,] * tmp)) 
-    })
-    # We could parallelize using %dopar% (twice) but is that worth the overhead? 
+  pd <- .calc_pd_product(tcrossfac_v_beta_cov, Md2clikdvb2)
+  return(pd)
+}
+
+.calc_cAIC_pd_from_sXaug <- function(object) {
+  if (is.matrix(beta_cov_info <- object$envir$beta_cov_info) || ## matrix is old format, should be a list now
+      is.null(tcrossfac_beta_v_cov <- beta_cov_info$tcrossfac_beta_v_cov)) {
+    tcrossfac_beta_v_cov <- .get_beta_cov_info(object)$tcrossfac_beta_v_cov
+  }    
+  pforpv <- ncol(object$X.pv)
+  nc <- ncol(tcrossfac_beta_v_cov)
+  n_u_h <- nc - pforpv
+  seqp <- seq_len(pforpv)
+  perm <- c(pforpv+seq_len(n_u_h), seqp)
+  tcrossfac_v_beta_cov <- tcrossfac_beta_v_cov[perm,,drop=FALSE] # useful to keep it for predVar computations?
+  
+  w.resid <- object$w.resid
+  #ZAL <- .compute_ZAL(XMatrix=obje17ct$strucList, ZAlist=object$ZAlist,as_matrix=.eval_as_mat_arg(object)) 
+  ZAL <- get_ZALMatrix(object) # allows ZAXlist; but if a non-ZAXlist is already in the $envir, no effect; + we will solve(chol_Q, Diagonal()) so the gain is not obvious
+  if ( ncol(object$X.pv) ) {
+    M12 <- as.matrix(.crossprod(ZAL, .Dvec_times_m_Matrix(w.resid, object$X.pv)))
+    Md2clikdvb2 <- rbind2(cbind2(as.matrix(.ZtWZwrapper(ZAL,w.resid)), M12), ## this .ZtWZwrapper() takes time
+                          cbind2(t(M12), as.matrix(.ZtWZwrapper(object$X.pv,w.resid)))) 
+    # _FIXME_ any way to avoid formation of this matrix ? Or otherwise message() ?           
   } else {
-    # logic of following code is
-    # pd = sum(diag(solve(Md2hdbv2,Md2clikdbv2[c(113:114,1:112),]))) 
-    #    = sum(diag((tcrossprod(R_invMd2hdvb2)[c(113:114,1:112),] %*% Md2clikdbv2[sort.list(c(113:114,1:112)),]))) 
-    #    = sum(diag(R_invMd2hdvb2[c(113:114,1:112),] %*% (crossprod(R_invMd2hdvb2, Md2clikdbv2[sort.list(c(113:114,1:112)),])))) 
-    #    = sum((R_invMd2hdvb2[c(113:114,1:112),] * t(crossprod(R_invMd2hdvb2, Md2clikdbv2[sort.list(c(113:114,1:112)),])))) 
-    # but we directly use v,b order rather than b,v
-    pd <- t(crossprod(tcrossfac_v_beta_cov,Md2clikdvb2))
-    pd <- sum(tcrossfac_v_beta_cov * pd) 
-    # that is actually the logic of .traceAB:
-    # pd = .traceAB(tcrossfac_v_beta_cov, t(tcrossfac_v_beta_cov),Md2clikdvb2,diag(nrow =ncol(Md2clikdvb2)))
-    # but the matrices are square so no use here
+    Md2clikdvb2 <-  as.matrix(.ZtWZwrapper(ZAL,w.resid))
+  }
+  # not triang if we used sparse QR. Following code should not assume triangularity
+  pd <- .calc_pd_product(tcrossfac_v_beta_cov, Md2clikdvb2)
+  return(pd)
+}
+
+.calc_cAIC_pd_others <- function(X.pv, ZAL, w.resid, d2hdv2, blockSize=1000L) {
+  if ( ncol(X.pv) ) { ## the projection matrix for the response always includes X even for REML!
+    hessnondiag <- .crossprod(ZAL, .Dvec_times_m_Matrix(w.resid, X.pv))
+    Md2hdbv2 <- as.matrix(rbind2(cbind2(.ZtWZwrapper(X.pv,w.resid), t(hessnondiag)),
+                                 cbind2(hessnondiag, - d2hdv2))) 
+    Md2clikdbv2 <- as.matrix(rbind2(cbind2(.ZtWZwrapper(X.pv,w.resid), t(hessnondiag)),
+                                    cbind2(hessnondiag, .ZtWZwrapper(ZAL,w.resid))))            
+  } else {
+    Md2hdbv2 <- - d2hdv2 
+    Md2clikdbv2 <-  as.matrix(.ZtWZwrapper(ZAL,w.resid))
+  }
+  if (inherits(Md2hdbv2,"diagonalMatrix")) {
+    pd <- sum(diag(Md2clikdbv2)/diag(Md2hdbv2)) ## is sum(diag(solve(Md2hdbv2,Md2clikdbv2)))
+  } else {
+    ## dans un LMM avec estimation ML, pd = sum(lev_phi), mais pas de simplif plus generale 
+    if ((nc <- ncol(Md2hdbv2))>(blockSize)) {
+      message(paste0("Conditional-AIC computation requires operations on a large dense matrix (square with dimension ",nc,"),\n",
+                     "which may take a lot of time. Use 'also_cAIC=FALSE' to avoid it."))
+    }
+    ## if we reached this point with a huge dense matrix, then we have huge memory, hence saving memory may not be the issue,
+    #  But we might save computation by computing only the requested diagonal (one qr, one backsolve, one sum(. * .))
+    # using Md2hdbv2=QRP, tr=sum_i (invP invR Qt(Md2hdbv2))_ii
+    qr.Md2hdbv2 <- try(qr(Md2hdbv2))
+    if (inherits(qr.Md2hdbv2,"try-error")) {
+      warning("Computation of cAIC/GoF df's failed because the information matrix appears singular.")
+      pd <- NA
+    } else {
+      solveR <- try(backsolve(qr.R(qr.Md2hdbv2),diag(nrow =nc)))
+      if (inherits(solveR,"try-error")) {
+        warning("Computation of cAIC/GoF df's failed because the information matrix appears singular.")
+        # determinant(qrR,logarithm=FALSE)$modulus > 1e-14
+        pd <- NA
+      } else {
+        # using inv(RP)= inv(R[,perm <- sort.list(.$pivot)]) = inv(R)[perm,] (as in h9[,perm] %*% solve(h9)[perm,] for any perm)
+        # though use of pivot may occur only for nearly singular matrices (poorly doc)
+        pd <- sum(solveR[sort.list(qr.Md2hdbv2$pivot),] * t(qr.qty(qr.Md2hdbv2,Md2clikdbv2)))      
+      }
+    }
   }
   return(pd)
 }
+
+
 
 .get_info_crits <- function(object, also_cAIC=TRUE) {
   if (is.null(info_crits <- object$envir$info_crits) || (also_cAIC && is.null(info_crits$cAIC))) { 
@@ -94,10 +172,12 @@
       if (also_cAIC) {
         if ( "AUGI0_ZX_sparsePrecision" %in% object$MME_method) {
           pd <- .calc_cAIC_pd_spprec(object)
+        } else if ( ! is.null(object$envir$sXaug)) {
+          pd <- .calc_cAIC_pd_from_sXaug(object)
         } else {
           ZAL <- .compute_ZAL(XMatrix=object$strucList, ZAlist=object$ZAlist,as_matrix=.eval_as_mat_arg(object)) 
           d2hdv2 <- .calcD2hDv2(ZAL,w.resid,object$w.ranef) ## update d2hdv2= - t(ZAL) %*% diag(w.resid) %*% ZAL - diag(w.ranef)
-          pd <- .calc_cAIC_pd(X.pv, ZAL, w.resid, d2hdv2)
+          pd <- .calc_cAIC_pd_others(X.pv, ZAL, w.resid, d2hdv2)
         }
         info_crits$GoFdf <- length(object$y) - pd ## <- nobs minus # df absorbed in inference of ranefs
         ## eqs 4,7 in HaLM07
@@ -209,15 +289,71 @@
   }
 }
 
-.calc_beta_cov_info <- function(res) { 
-  # res$envir$beta_cov_info$beta_cov is generally provided by the fit, with or without a beta_v_cov attribute depending on sparse_precision
+.calc_beta_cov_info_others <- function(wAugX=NULL, AUGI0_ZX, ZAL, ww) { ## post-fit fn
+  if (is.null(wAugX)) {
+    if (is.null(ZAL)) {
+      wAugX <- .calc_wAugX(XZ_0I=AUGI0_ZX$X.pv,sqrt.ww=sqrt(ww))
+    } else {
+      XZ_0I <- .calc_XZ_0I(AUGI0_ZX=AUGI0_ZX,ZAL) # ZAL is not ZAXlist since .calc_beta_cov_info_others not called in spprec
+      wAugX <- .calc_wAugX(XZ_0I=XZ_0I,sqrt.ww=sqrt(ww))
+    }
+  } ## wAugX is in XZ_OI order 
+  if (inherits(wAugX,"Matrix")) {
+    mMatrix_method <- .spaMM.data$options$Matrix_method 
+  } else mMatrix_method <- .spaMM.data$options$matrix_method
+  suppressMessages(try(untrace(mMatrix_method, where=asNamespace("spaMM")),silent=TRUE)) # try() bc this fails when called by Infusion 
+  # test: Infusion tests -> ... -> .predict_body -> ;.. -> .calc_beta_cov_info_others -> untrace -> def_sXaug_EigenDense_QRP_Chol_scaled not found
+  # Note that the function is in exportPattern, explicitly exporting/impporting it does not help; attaching spaMM seems required to avoid untrace's error..
+  # hack to recycle sXaug code; all weights are 1 or unit vectors as the order is not that assumed by mMatrix_method. 
+  wAugX <- do.call(mMatrix_method,list(Xaug=wAugX, weight_X=rep(1,nrow(AUGI0_ZX$X.pv)), 
+                                       w.ranef=rep(1,ncol(AUGI0_ZX$I)), ## we need at least its length for get_from Matrix methods
+                                       H_global_scale=1))
+  beta_cov_info <- get_from_MME(wAugX,"beta_cov_info_from_wAugX") 
+  return(beta_cov_info)
+}
+
+
+
+.calc_beta_cov_info_from_sXaug <- function(BLOB, sXaug, B) {
+  tcrossfac_v_beta_cov <-  solve(BLOB$R_scaled) # solve(as(BLOB$R_scaled,"dtCMatrix"))
+  pforpv <- attr(sXaug,"pforpv")
+  X_scaling <- sqrt(rep(attr(sXaug,"H_global_scale"),pforpv))
+  if ( ! is.null(B)) X_scaling <- X_scaling/B
+  diagscalings <- c(1/sqrt(attr(sXaug,"w.ranef")), X_scaling)
+  if ( ! is.null(BLOB$sortPerm)) { # depending on method used for QR facto
+    tPmat <- sparseMatrix(seq_along(BLOB$sortPerm), BLOB$sortPerm, x=1)
+    tPmat <- .Dvec_times_Matrix(diagscalings, tPmat) # Pmat <- .Matrix_times_Dvec(Pmat,diagscalings)
+    tcrossfac_v_beta_cov <- as.matrix(tPmat %*% tcrossfac_v_beta_cov)
+  } else tcrossfac_v_beta_cov <- as.matrix(.Dvec_times_m_Matrix(diagscalings, tcrossfac_v_beta_cov)) ## loses colnames...
+  rownames(tcrossfac_v_beta_cov) <- colnames(sXaug) ## necessary for summary.HLfit, already lost in BLOB$R_scaled
+  seqp <- seq_len(pforpv)
+  beta_pos <- attr(sXaug,"n_u_h")+seqp
+  beta_v_order <- c(beta_pos,seq(attr(sXaug,"n_u_h")))
+  tcrossfac_beta_v_cov <- tcrossfac_v_beta_cov[beta_v_order,,drop=FALSE]
+  if (inherits(sXaug,"dtCMatrix")) tcrossfac_beta_v_cov <- as(tcrossfac_beta_v_cov, "sparseMatrix")
+  #beta_v_cov <- .tcrossprod(tcrossfac_beta_v_cov)
+  beta_cov <- .tcrossprod(tcrossfac_beta_v_cov[seqp,,drop=FALSE])
+  return( list(beta_cov=beta_cov, 
+               #beta_v_cov=beta_v_cov,
+               tcrossfac_beta_v_cov=tcrossfac_beta_v_cov) )
+}
+
+
+
+.get_beta_cov_info <- function(res) { 
+  # Provide list(beta_cov=., tcrossfac_beta_v_cov=.)
   if ( "AUGI0_ZX_sparsePrecision" %in% res$MME_method) {
-    # Provide beta_cov + tcrossfac_beta_v_cov
     return(.calc_beta_cov_info_spprec(X.pv=res$X.pv, envir=res$envir, w.resid=res$w.resid)) 
-  } else { 
+  } else if (! is.null(res$envir$sXaug)) { # excludes SEM *and* fixed-effect models 
+    if (prod(dim(res$envir$sXaug))>1e7) message("[one-time computation of covariance matrix, which may be slow]")
+    res$envir$beta_cov_info <- get_from_MME(res$envir$sXaug,which="beta_cov_info_from_sXaug", 
+                                  B=attr(res$envir$sXaug,"scaled:scale")) 
+  } else { ## older code, generic for non-spprec.
     # What this [block -> .calc_beta_cov_info_others()] provides is a beta_cov + full beta_v_cov
-    if (is.null(res$envir$beta_cov_info$tcrossfac_beta_v_cov)) { 
-      ## Use .calc_beta_cov_info_others -> get_from_MME()
+    if (is.matrix(beta_cov_info <- res$envir$beta_cov_info) || ## old format (old fit object), should be a list now
+        is.null(beta_cov_info$tcrossfac_beta_v_cov)) { ## Use .calc_beta_cov_info_others -> get_from_MME()
+      # F I X M E test useless if call to .get_beta_cov_info() already dependent on the test
+      # Further, can $tcrossfac_beta_v_cov be NULL if $beta_cov_info is list ?
       ZAL <- get_ZALMatrix(res) # note that .calc_beta_cov_info_others -> ... -> rbind2() but ZAL should not be a ZAXlist here
       nrd <- length(res$w.ranef)
       pforpv <- ncol(res$X.pv)

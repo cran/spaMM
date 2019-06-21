@@ -120,8 +120,8 @@
     RES$type <- "|L" # "iVZA | (Ld!dL)AZ" 
     ## traceAB will use iVZA as lhs and Ld!dL'A'Z' as rhs: we store iVZA and A'Z and .fill_rhs_invV.dVdlam() factors by (Ld!dL)
   } else {
-    if (identical(.spaMM.data$options$TRY_dense_iVZA,TRUE)) { # (ZALd argument missing in next call) ## F I X M E Not convincing. Retry
-      # I may not yet have good tests of the efficiency of this code, but I keep it ready for use
+    if (identical(.spaMM.data$options$TRY_dense_iVZA,TRUE)) { # (ZALd argument missing in next call) 
+      # I may not yet have good tests of the efficiency of this code, but I keep it ready for use ## F I X M E Not convincing. Retry
       RES$lhs_invV.dVdlam <- .calc_lhs_invV.dVdlam(object, invV_factors=invV_factors) ## invV %*% ZA 
       #
       ZAphant <- object$ZAlist
@@ -163,7 +163,7 @@
     lhs <- .tcrossprod(tcrossfac) # LddL'
     return(as.matrix(.tcrossprod(lhs, invV.dV_info$envir$ZAfix))) # LddL'A'Z'
   } else {
-    # (F I X M E) I could add a drop0 when there are several lambda's and matrices are sparse
+    # (FIXME) I could add a drop0 when there are several lambda's and matrices are sparse
     return(.Dvec_times_m_Matrix(template, invV.dV_info$rhs_rhs_invV.dVdlam)) # sweep( invV.dV_info$rhs_invV.dVdlam,1L,iloc,`*`))
   }
 }

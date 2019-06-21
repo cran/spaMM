@@ -167,12 +167,12 @@ mat_sqrt <- function(m=NULL, symSVD=NULL, try.chol=TRUE, condnum=1e12) { ## also
         if ( ! inherits(LDL,"try-error")) d <- LDL$values 
       }
       if ( (! try.eigen) || inherits(LDL,"try-error") || any(d < -1e-08)) {
-        if (.spaMM.data$options$USEEIGEN) { ## see package irlba for SVD of sparse matrices
+        if (.spaMM.data$options$USEEIGEN) { 
           symSVD <- sym_eigen(m) ## such that v= t(u) without any sign issue 
           u <- symSVD$vectors
           d <- symSVD$values  
           type <- "symsvd" ## RcppEigen's SVD: ## "the SVD implementation of Eigen (...) is not a particularly fast SVD method." (RcppEigen vignette)          
-        } else { ## buggy code for testing !  $USEEIGEN
+        } else { ## (! $USEEIGEN); buggy code for testing 
           SVD <- try(svd(m)) # R's svd()
           if (inherits(SVD,"try-error")) {
             print("spaMM retries SVD following 'svd' failure.") 

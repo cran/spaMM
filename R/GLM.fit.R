@@ -1,9 +1,9 @@
 .check_conv_glm_reinit <- function() {
   if ( ( ! identical(spaMM.getOption("spaMM_glm_conv_silent"),TRUE))
-       && (conv_crit <- environment(spaMM_glm.fit)$spaMM_glm_conv_crit$max>0)) { 
-    # This should arise from .calcDispGammaGLM() ; $max potentially comes from any call to spaMM_glm.fit(), 
+       && (conv_crit <- environment(spaMM_glm.fit)$spaMM_glm_conv_crit$max)>0) { 
+    # This should arise from .calc_dispGammaGLM() ; $max potentially comes from any call to spaMM_glm.fit(), 
     # but .get_inits_by_glm() reinitializes it. Info from .get_inits_by_glm is tracked through processed$envir$inits_by_glm$conv_info -> HLfit's warningList
-    warning(paste(".calcDispGammaGLM() -> spaMM_glm.fit() did not always converge (criterion:",
+    warning(paste(".calc_dispGammaGLM() -> spaMM_glm.fit() did not always converge (criterion:",
                   paste(names(conv_crit),"=",signif(unlist(conv_crit),3),collapse=", "),")"))
     assign("spaMM_glm_conv_crit",list(max=-Inf) , envir=environment(spaMM_glm.fit))
   }
@@ -164,7 +164,8 @@ spaMM_glm.fit <- local({
         if (iter==1L) {
           ## The aim here is to provide starting values of eta compatible with the model, rather than an unconstrained eta(mu=y),
           # so that initial dev is >= the ML deviance under the ftted model, suitable for LM iterations; 
-          # while initialize() is typically mustart <- y, not  compatible with the model.
+          # while initialize() is typically mustart <- y, not  compatible with the model. => low control$epsilon necessary
+          # Conversely, if all y's are quite small, a low control$epsilon may raise spurious warnings => inmportant to control it in .calc_dispGammaGLM()
           goodinit <- weights > 0 
           varmu <- variance(mu)[goodinit]
           if (anyNA(varmu)) stop("NAs in V(mu): consult the package maintainer.")
@@ -362,7 +363,7 @@ spaMM_glm.fit <- local({
       } ## end main loop (either a break or control$maxit reached)
       if (any(good) & ! conv) {
         if (getOption("warn")==2L) { # immediate stop() vs. *delayed* warning
-          stop("spaMM_glm.fit did not converge") 
+          stop("spaMM_glm.fit() did not converge") 
         } else {
           spaMM_glm_conv_crit <<- list(max=max(spaMM_glm_conv_crit$max,conv_crit),latest=conv_crit)
         }

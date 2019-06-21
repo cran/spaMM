@@ -22,7 +22,7 @@ setMethod("%*%", c(x = "ZAXlist", y= "numeric"),
               }
               sum_nc <- lastcol
             }
-            do.call("+",res)
+            Reduce("+",res)
           })
 
 for (.inh_y in c("matrix","Matrix")) {
@@ -43,7 +43,7 @@ for (.inh_y in c("matrix","Matrix")) {
                 }
                 sum_nc <- lastcol
               }
-              do.call("+",res)
+              Reduce("+",res)
             })
 }
 

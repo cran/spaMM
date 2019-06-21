@@ -61,8 +61,7 @@ HLCor(migStatus ~ means + corrMatrix(1|name), data=blackcap,
 HLCor(migStatus ~ means + corrMatrix(1|name), data=blackcap,
       covStruc=list(precision=as_precision(MLdistMat)), HLmethod="ML")
 # Manual version of the same:
-m <- as.matrix(MLdistMat) ## leaves 0 on the diagonal! 
-diag(m) <- 1 ## so that m is true correlation matrix 
+m <- proxy::as.matrix(MLdistMat, diag=1) 
 prec_mat <- solve(m) ## precision factor matrix
 HLCor(migStatus ~ means + corrMatrix(1|name), data=blackcap,
       covStruc=list(precision=prec_mat), HLmethod="ML")

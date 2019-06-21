@@ -2,4 +2,4 @@
 # with -O3 (or -UNDEBUG?) for windows 32bit:
 # see https://github.com/RcppCore/RcppEigen/issues/34
 PKG_CXXFLAGS= -fno-omit-frame-pointer
-PKG_CFLAGS= -fno-omit-frame-pointer
+# PKG_CFLAGS= -fno-omit-frame-pointer # no .c files here

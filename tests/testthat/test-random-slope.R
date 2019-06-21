@@ -3,7 +3,9 @@ if(requireNamespace("lme4", quietly = TRUE)) {
   data("sleepstudy",package = "lme4")
   (res <- HLfit(Reaction ~ Days + (Days|Subject), data = sleepstudy))
   testthat::expect_equal(logLik(res),c(p_bv=-871.8141),tolerance=2e-4)
-  try(testthat::expect_equal(res$lambda[[2]],35.0715,tolerance=2e-4)) # dependent on internal representation of the cov mat
+  if (spaMM.getOption("use_tri_for_makeCovEst")) { # lambda dependent on internal representation of the cov mat
+    if (spaMM.getOption("rC_transf_inner")=="sph") try(testthat::expect_equal(res$lambda[[2]],35.0715,tolerance=2e-4)) ## else the lambda's=1
+  } else try(testthat::expect_equal(res$lambda[[2]],34.91173,tolerance=2e-4))
   try(testthat::expect_equal(predict(res)[1:6,],predict(res,newdata=sleepstudy[1:6,],re.form= ~ (Days|Subject))[,1])) 
   ## tests of predVar with re.form and ranCoefs in test-devel-predVar-ranCoefs.R
   ## a bit slow but detects many problem: (+ effect of refit$lambda)

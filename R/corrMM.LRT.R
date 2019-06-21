@@ -43,7 +43,9 @@ fixedLRT <- function(  ## interface to .LRT or (for devel only) .corrMM_LRT
     } else {
       METHOD <- eval(HLmethod,parent.frame())
     }
-  } else if ( ! missing(HLmethod))  stop("Don't use both 'method' and 'HLmethod' arguments.")
+  } else if ( ! missing(HLmethod)) {
+    stop("Don't use both 'method' and 'HLmethod' arguments.")
+  } else METHOD <- eval(method,parent.frame())
   #
   ## other possible settings, through iterative fits
   ## We had a potential backward compatiblity problem, since the simulation scripts 
@@ -56,9 +58,11 @@ fixedLRT <- function(  ## interface to .LRT or (for devel only) .corrMM_LRT
       if (nrow(data)<300L) {
         mc$fittingFunction <- "corrHLfit" ## leverage computation is fast
         mc$method <- NULL
+        mc$HLmethod <- METHOD
       } else {
         mc$fittingFunction <- "fitme"
         mc$HLmethod <- NULL
+        mc$method <- METHOD
       }
     }
     ## both will use p_v for the optim steps, we need to distinguish whether some REML correction is used in iterative algo :
@@ -67,7 +71,7 @@ fixedLRT <- function(  ## interface to .LRT or (for devel only) .corrMM_LRT
     } else { ## EQL, REPQL or REML variants: 
       # FIXME typos (e.g. "PQLL") are not detected...
       mc[[1L]] <- get(".corrMM_LRT", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
-      mc$control<-list(prefits=FALSE) ## default values in call by fixedLRT. corrMM.LRT further has default restarts=TRUE and maxit=1
+      mc$control <- list(prefits=FALSE) ## default values in call by fixedLRT. corrMM.LRT further has default restarts=TRUE and maxit=1
       mc$control[names(control)] <- control ## overrides with user values
       mc$control.boot <- control.boot ## default values in call by fixedLRT are those of .corrMM_LRT ie prefits=FALSE. We can directly copy user values. 
       mc$boot_fn <- NULL
@@ -76,6 +80,7 @@ fixedLRT <- function(  ## interface to .LRT or (for devel only) .corrMM_LRT
   } else {
     mc[[1L]] <- get(".LRT", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
     mc$method <- NULL
+    mc$HLmethod <- METHOD
     ## No maxit, restarts, prefits
     if (missing(fittingFunction)) {
       if (is.null(mc$corrMatrix)) { ## neither explicit spatial nor corrMatrix -> HLfit

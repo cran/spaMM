@@ -89,3 +89,23 @@
     .Call(`_spaMM_selfAdjointSolverCpp`, AA)
 }
 
+.dgCprod <- function(AA, BB) {
+    .Call(`_spaMM_dgCprod`, AA, BB)
+}
+
+.dgCcrossprod <- function(AA, BB) {
+    .Call(`_spaMM_dgCcrossprod`, AA, BB)
+}
+
+.dgCtcrossprod <- function(AA, BB) {
+    .Call(`_spaMM_dgCtcrossprod`, AA, BB)
+}
+
+.crossprod_not_dge <- function(AA, BB, eval_dens) {
+    .Call(`_spaMM_crossprod_not_dge`, AA, BB, eval_dens)
+}
+
+.Rcpp_crossprod <- function(AA, BB, eval_dens = TRUE) {
+    .Call(`_spaMM_Rcpp_crossprod`, AA, BB, eval_dens)
+}
+

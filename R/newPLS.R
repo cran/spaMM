@@ -87,7 +87,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
 
 .calc_sXaug_Re <- function(locsXaug, ## conforming template
                           X.Re,weight_X) {
-  distinct.X.ReML <- attr(X.Re,"distinct.X.ReML")
+  distinct.X.ReML <- attr(X.Re,"distinct.X.ReML") # This fn should be called only for non-stdd REML
   n_u_h <- attr(locsXaug,"n_u_h")
   if ( distinct.X.ReML[1L] ) {
     locsXaug <- locsXaug[,-(n_u_h+attr(X.Re,"unrestricting_cols"))]
@@ -98,7 +98,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
   } else {
     suppl_cols <- matrix(0,ncol=length(extra_vars),nrow=nrow(locsXaug))
   }
-  suppl_cols[n_u_h+seq(nrow(X.Re)),] <- .Dvec_times_m_Matrix(weight_X,X.Re[,extra_vars])#  Diagonal(x=weight_X) %*% X.Re[,extra_vars]
+  suppl_cols[n_u_h+seq(nrow(X.Re)),] <- .Dvec_times_m_Matrix(weight_X,X.Re[,extra_vars, drop=FALSE])#  Diagonal(x=weight_X) %*% X.Re[,extra_vars]
   locsXaug <- cbind(locsXaug,suppl_cols)
   return(locsXaug)
 }
@@ -107,15 +107,19 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
 # function to get the hatvalues (only: not the other similar computations on t_Q_scaled)
 # no permutation issues for Q => a single get_hatvalues function should handle all sXaug classes
 .get_hatvalues_MM <- function(sXaug, X.Re, weight_X) {
-  if ( ! is.null(X.Re) ) { ## not the standard REML
+  if ( is.null(X.Re)) { #<REML standard>
+    hatval <- get_from_MME(sXaug,which="hatval") # colSums(t_Q_scaled*t_Q_scaled) ## basic REML, leverages from the same matrix used for estimation of betaV 
+  } else if ( ncol(X.Re)==0L) { #<ML standard>
+    hatval <- get_from_MME(sXaug,which="hatval_Z")
+  } else {#<non-standard REML>
     distinct.X.ReML <- attr(X.Re,"distinct.X.ReML")
-    if ( distinct.X.ReML[2L] ) { ## test FALSE for standard ML, TRUE only for some non-standard REML cases
+    if ( distinct.X.ReML[2L] ) { 
       locsXaug <- .calc_sXaug_Re(locsXaug=sXaug,X.Re,weight_X) 
       hatval <- .leveragesWrap(locsXaug) ## Rcpp version of computation through computation of Q
-    } else if ( distinct.X.ReML[1L] ) { ## includes ML standard
+    } else if ( distinct.X.ReML[1L] ) { 
       whichcols <- attr(X.Re,"unrestricting_cols")
       if (length(whichcols)==attr(sXaug,"pforpv")) { ## should be ML standard
-        hatval <- get_from_MME(sXaug,which="hatval_Z")
+        stop("Ideally this case is not reached") #hatval <- get_from_MME(sXaug,which="hatval_Z")
       } else { ## non-standard case
         t_Q_scaled <- get_from_MME(sXaug,which="t_Q_scaled")
         n_u_h <- attr(sXaug,"n_u_h")
@@ -124,10 +128,10 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
         ## [, -integer(0)] would empty the matrix...
         hatval <- colSums(t_Q_scaled*t_Q_scaled)
       }
-    } else { ## REML standard
-      stop("Ideally this case is not reached") ## REML: ideally X.Re is null. But...  
+    } else { # etaFix with formula=REMLformula: REML de factor standard by non-standard REML syntax
+      hatval <- get_from_MME(sXaug,which="hatval") 
     }
-  } else hatval <- get_from_MME(sXaug,which="hatval") # colSums(t_Q_scaled*t_Q_scaled) ## basic REML, leverages from the same matrix used for estimation of betaV 
+  }
   if (is.list(hatval)) hatval <- unlist(hatval) ## assuming order lev_lambda,lev_phi
   return(hatval)
 }
@@ -488,6 +492,8 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
 }
 
 .get_R_aug_ZXy <- function(aug_ZXy, augZXy_solver, return_tri) {
+  # Currently using only the diagonal (though not simply the logdet) => tri is important, lower or upper OK.  BUT .../...
+  # .../... actually it's not true: I use its t(solve(.)) in a subcase
   nc <- ncol(aug_ZXy)
   solver <- augZXy_solver[1L]
   if (solver =="chol") {
@@ -511,18 +517,59 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
         }
       }
     } else R_aug_ZXy <- .lmwithQR(aug_ZXy,yy=NULL,returntQ=FALSE,returnR=TRUE)$R
-  } else if (solver =="qr") {
+  } else if (solver =="qr") { ## tries base qr but checks pivoting, with fallback
     if (inherits(aug_ZXy,"Matrix")) {
       qrblob <- qr(aug_ZXy)
       R_aug_ZXy <- qrR(qrblob,backPermute=TRUE) ## not triangular
       if ( return_tri && ! all(unique(diff(qrblob@q))==1L)) { # eval an unpermuted triangular R
-        R_aug_ZXy <- .lmwithQR(as.matrix(R_aug_ZXy) ,yy=NULL,returntQ=FALSE,returnR=TRUE)$R
+        R_aug_ZXy <- .lmwithQR(as.matrix(R_aug_ZXy) ,yy=NULL,returntQ=FALSE,returnR=TRUE)$R ## upper tri
       }
-    } else R_aug_ZXy <- qr.R(qr(aug_ZXy)) ## may implement sparse code later ## this is crappy (fitme3 when matrix can be enforced)
+    } else {
+      qrblob <- qr(aug_ZXy)
+      R_aug_ZXy <- qr.R(qrblob)
+      if ( return_tri && ! all(unique(diff(qrblob$pivot))==1L)) { # eval an unpermuted triangular R
+        R_aug_ZXy <- .lmwithQR(R_aug_ZXy[, sort.list(qrblob$pivot)] ,yy=NULL,returntQ=FALSE,returnR=TRUE)$R ## upper tri
+      } 
+    }
   } else stop("unknown 'augZXy_solver' requested.")
   return(R_aug_ZXy)
 }
 
+.get_absdiagR_blocks <- function(sXaug_blocks, pwy_o, n_u_h, processed, augZXy_solver,update_info) {
+  seq_n_u_h <- seq(n_u_h)
+  ZW <- sXaug_blocks$ZW # actually a ZL rather than a Z.
+  if (is.null(template <- processed$AUGI0_ZX$template_CHM_ZZ_blocks)) { 
+    cross_Z <- .crossprod(ZW) 
+    if (inherits(cross_Z,"dsyMatrix")) { ## Matrix considered the matrix as effectively dense
+      message(paste("Possibly poor selection of methods: Z stored as sparse, but Z'Z assessed as dense by Matrix's as(., 'symmetricMatrix').",
+                    "spaMM.options(QRmethod='dense') may be used to control this on an ad-hoc basis (but should otherwise be reset to NULL!).",
+                    ## see comments in .choose_QRmethod(). We may reach this block whenever the correlation matrix is dense.
+                    collapse="\n"))
+      cross_Z <- as(cross_Z,"sparseMatrix")
+    } 
+    CHM_ZZ <- Cholesky(cross_Z+sXaug_blocks$I, perm=TRUE, LDL=FALSE)
+    if (update_info$allow) { 
+      processed$AUGI0_ZX$template_CHM_ZZ_blocks <- CHM_ZZ
+    }
+  } else {
+    cross_Z <- .crossprod(ZW, eval_dens=FALSE) 
+    #cross_Z <- as(cross_Z,"sparseMatrix") ## should generally be useless
+    CHM_ZZ <- Matrix::update(template, cross_Z, mult=1)
+  }
+  XW <- sXaug_blocks$XW
+  ZtWX <- .crossprod(ZW, XW)
+  Rzx <- solve(CHM_ZZ, solve(CHM_ZZ,ZtWX,system="P"), system="L")
+  cross_Rxx <- as.matrix(.crossprod(XW,as_sym=FALSE))-as.matrix(.crossprod(Rzx,as_sym=FALSE)) # as(,"dpoMatrix) involves a chol() factorization...
+  chol_XX <- chol(cross_Rxx)
+  ZtWy <- .crossprod(ZW, pwy_o)
+  r_Zy <-  solve(CHM_ZZ, solve(CHM_ZZ,ZtWy,system="P"), system="L")
+  XtWy <- .crossprod(XW, pwy_o)
+  r_Xy <- backsolve(chol_XX, XtWy-.crossprod(Rzx, r_Zy), transpose=TRUE) ## transpose since chol() provides a tcrossfac
+  ryy2 <- sum(pwy_o^2) - sum(r_Zy^2) - sum(r_Xy^2)
+  absdiagR_terms <- list(logdet_v=determinant(CHM_ZZ)$modulus[1], 
+                         logdet_b=sum(log(abs(diag(chol_XX)))), ryy2=ryy2)
+  return(absdiagR_terms)
+}
 
 .get_absdiagR <- function(aug_ZXy, augZXy_solver) {
   R_aug_ZXy <- .get_R_aug_ZXy(aug_ZXy, augZXy_solver,return_tri=TRUE)
@@ -533,7 +580,8 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
 
 
 .calc_APHLs_by_augZXy_or_sXaug <- function(processed, auglinmodblob=NULL, 
-                                     sXaug, W00_R_qr_ZXy=NULL, which, phi_est) { # either auglinmodblob or (sXaug|W00_R_qr_ZXy) and (possibly NULL) phi_est
+                                     sXaug, W00_R_qr_ZXy=NULL, which, phi_est,
+                                     update_info) { # either auglinmodblob or (sXaug|W00_R_qr_ZXy) and (possibly NULL) phi_est
   resu <- list()
   if ( ! is.null(auglinmodblob)) {
     sXaug <- auglinmodblob$sXaug
@@ -563,6 +611,37 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
       if (! is.null(W00_R_qr_ZXy)) { # y-augmented factor available
         absdiagR <- .get_absdiagR(W00_R_qr_ZXy, augZXy_solver)
         absdiagR[seq(n_u_h)] <- absdiagR[seq(n_u_h)] /attr(W00_R_qr_ZXy,"eigen_s_invL") # equivalent to the |Omega| term in BatesD04
+        nc <- length(absdiagR)
+        pwSSE <- (absdiagR[nc]^2)/extranorm
+        logdet_R_scaled_b_v <- sum(log(absdiagR[-nc]))
+        X_scaled_H_unscaled_logdet_r22 <- sum(log(absdiagR)[-c(seq(n_u_h),nc)]) -pforpv*log(H_global_scale)/2 
+        ## -pforpv*log(H_global_scale)/2 for consistency with get_from_MME(sXaug,"logdet_r22") assuming the latter is correct
+      } else if (inherits(sXaug,"sXaug_blocks")) {
+        pwphi <- 1/(prior_weights) ## vector
+        y_o <- (processed$y-processed$off)
+        pwy_o <- y_o*sqrt(extranorm/pwphi)
+        # .spaMM.data$options$ATUER <- FALSE
+        # absdiagR_terms1 <- .get_absdiagR_new(sXaug, pwy_o, n_u_h, processed, 
+        #                                      augZXy_solver=augZXy_solver,
+        #                                      update_info=update_info) 
+        # .spaMM.data$options$ATUER <- TRUE
+        # absdiagR_terms <- .get_absdiagR_new(sXaug, pwy_o, n_u_h, processed, 
+        #                                     augZXy_solver=augZXy_solver,
+        #                                     update_info=update_info) 
+        absdiagR_terms <- .get_absdiagR_blocks(sXaug_blocks=sXaug, pwy_o, n_u_h, processed, 
+                                            augZXy_solver=augZXy_solver,
+                                            update_info=update_info) 
+        #if (diff(range(unlist(absdiagR_terms1)-unlist(absdiagR_terms)))>1e-10) browser("ICI")
+        # 
+        # 
+        # zut <- .get_absdiagR_new(sXaug=attr(sXaug,"TRUE_sXaug"), pwy_o, n_u_h, processed, 
+        #                   augZXy_solver=augZXy_solver,
+        #                   update_info=update_info)
+        # if (diff(range(unlist(absdiagR_terms)-unlist(zut)))>1e-6) browser()
+        
+        pwSSE <- absdiagR_terms$ryy2/extranorm
+        logdet_R_scaled_b_v <- absdiagR_terms$logdet_v+absdiagR_terms$logdet_b
+        X_scaled_H_unscaled_logdet_r22 <- absdiagR_terms$logdet_b -pforpv*log(H_global_scale)/2 
       } else { # y-augmented factor to be constructed from sXaug: .HLfit_body_augZXy, or check_augZXy code
         pwphi <- 1/(prior_weights) ## vector
         y_o <- (processed$y-processed$off)
@@ -575,12 +654,12 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
         # Rcpp version of cbind for sparse matrices : https://stackoverflow.com/questions/45875668/rcpp-eigen-sparse-matrix-cbind#
         # but the gain is small...
         absdiagR <- .get_absdiagR(I00_ZXy, augZXy_solver)
+        nc <- length(absdiagR)
+        pwSSE <- (absdiagR[nc]^2)/extranorm
+        logdet_R_scaled_b_v <- sum(log(absdiagR[-nc]))
+        X_scaled_H_unscaled_logdet_r22 <- sum(log(absdiagR)[-c(seq(n_u_h),nc)]) -pforpv*log(H_global_scale)/2 
+        ## -pforpv*log(H_global_scale)/2 for consistency with get_from_MME(sXaug,"logdet_r22") assuming the latter is correct
       }
-      nc <- length(absdiagR)
-      pwSSE <- (absdiagR[nc]^2)/extranorm
-      logdet_R_scaled_b_v <- sum(log(absdiagR[-nc]))
-      X_scaled_H_unscaled_logdet_r22 <- sum(log(absdiagR)[-c(seq(n_u_h),nc)]) -pforpv*log(H_global_scale)/2 
-      ## -pforpv*log(H_global_scale)/2 for consistency with get_from_MME(sXaug,"logdet_r22") assuming the latter is correct
     } else { ## other sXaug methods not using y-augmented factor: AUGI0_ZX_sparsePrecision or devel(?) code
       pwphi <- 1/(prior_weights) ## vector
       y_o <- (processed$y-processed$off)
@@ -604,27 +683,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
     #we have fitted for the model (lambda, 1/prior_weights) and deduce the optimal (lamphifac*lambda, lamphifac/prior_weights)
     #The hatval are thus those both for phi and lambda whose sum is the #df
     # hatval <- .get_hatvalues_MM(sXaug,X.Re=processed$X.Re, weight_X) ## in case we need them...
-    if (FALSE) { # NOTE conditions on prior.weights in .determine_augZXy() => procedure not called with variable prior weights.
-      # scratch code for devel
-      {
-        #rZy <- R_I00_ZXy[seq(n_u_h),nc,drop=FALSE]
-        #rXX <- R_I00_ZXy[-c(seq(n_u_h),nc), -c(seq(n_u_h),nc),drop=FALSE]
-        #rXy <- R_I00_ZXy[-c(seq(n_u_h),nc),nc,drop=FALSE]
-        #beta_eta <- solve(rXX,rXy)
-        #next lines use beta_eta in combination with scaled matrix ! So no need to .unscale(processed$AUGI0_ZX$X.pv, beta_eta) nor a ZAL unscaling of v_h
-        #rZZ <- R_I00_ZXy[seq(n_u_h), seq(n_u_h),drop=FALSE]
-        #rZX <- R_I00_ZXy[seq(n_u_h), -c(seq(n_u_h),nc),drop=FALSE]
-        #v_h <- solve(rZZ,rZy-rZX %*% beta_eta)
-      } # equivalent to:
-      v_h_beta <- solve( R_I00_ZXy[-nc,-nc],R_I00_ZXy[-nc,nc]) ## fit to I00_ZXy[-nc,nc]=> prior weighted 
-      sfitted <- sXaug %*% v_h_beta ## not Xaug...
-      # tests in case without prior weights show there is no ZAL scaling to use here or even H_global_scale. or w.ranef
-      res2 <- ((sfitted-c(rep(0,n_u_h),pwy_o))^2 ) ## affected by extranorm
-      # THEN
-      pwSSE <- sum(res2)/extranorm ## recovers the previous pwSSE of the ## maybe not correct for extranorm != 1
-      # OR
-      pwSSE <- sum(res2 * c(rep(1,n_u_h),pwphi))/extranorm ## closer to giving the correct answer, but not exact, and why should this work ? (F I X M E)
-    }
+    # devel code for pror weights removed from [v2.7.11
     #
     p_base <- sum(log(weight_X)) - logdet_R_scaled_b_v + pforpv*log(H_global_scale)/2 ## keep H_global_scale here even when it differs from extranorm
     if (is.null(processed$X.Re)) { # canonical REML
@@ -635,11 +694,6 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
       # X_scaled_H_unscaled_logdet_r22 must have been previously computed  in all subcases where it is needed
       resu$p_v <- p_base + X_scaled_H_unscaled_logdet_r22 - nobs * (1+log(2 * pi * lamphifac_ML))/2 
     }
-    # X_scaled_p_bv <- # formula deduced by consistency with alternative direct formula for p_v below
-    #   sum(log(weight_X)) - (
-    #     logdet_R_scaled_b_v -
-    #       pforpv*log(2*pi*H_global_scale)/2 ## keep H_global_scale here even when it differs from extranorm
-    #   ) - (df+sum(log(2*pi*lamphifac_REML/prior_weights)))/2
   } else { ## phi_est available; no lamphifac estimation; in particular for .makeCovEst1
     pwphi <- phi_est/(prior_weights) ## vectorize phi if not already vector
     pwy_o <- (processed$y-processed$off)/sqrt(pwphi/extranorm) # extranorm is for better accuracy of next step
@@ -785,7 +839,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
         mMatrix_method <- .spaMM.data$options$Matrix_method
       } else {
         Xrows <- n_u_h+seq(nobs)
-        locXscal[Xrows,] <- diag(x=1/weight_X) %*% locXscal[Xrows,] ## get back to unweighted scaled matrix
+        locXscal[Xrows,] <- .Dvec_times_matrix(1/weight_X,locXscal[Xrows,]) ## get back to unweighted scaled matrix
         mMatrix_method <- .spaMM.data$options$matrix_method
       }
       locXscal <- .calc_sXaug_Re(locXscal,X.Re,rep(1,nobs))   

@@ -8,7 +8,10 @@ Interpolated Markov Random Field models
 }
 \description{
 
-\code{IMRF} is a syntax to specify random-effect terms of the forms considered by Lindgren et al. (2011) or Nychka et al. (2015, 2019). These random effects involve a multivariate Gaussian random effect over a lattice, from which the random-effect value in any spatial position is determined by interpolation of values on the lattice. \bold{IMRF} stands here for \bold{I}nterpolated \bold{M}arkov \bold{R}andom \bold{F}ield because the specific process considered on the lattice is currently known as a Gaussian Markov Random Field (see the Details for further information). Lindgren et al. considered irregular lattices that can be specified by the \code{model} argument, while Nychka et al. considered regular grids that can be specified by the other arguments. 
+\code{IMRF} is a syntax to specify random-effect terms of the forms considered by Lindgren et al. (2011) or Nychka et al. (2015, 2019).
+For example, using \code{IMRF} with its \code{model} argument provides good approximations of random effects with \code{Matern} correlation structure win smoothness=1. 
+
+The random effects considered here all involve a multivariate Gaussian random effect over a lattice, from which the random-effect value in any spatial position is determined by interpolation of values on the lattice. \bold{IMRF} stands for \bold{I}nterpolated \bold{M}arkov \bold{R}andom \bold{F}ield because the specific process considered on the lattice is currently known as a Gaussian Markov Random Field (see the Details for further information). Lindgren et al. considered irregular lattices that can be specified by the \code{model} argument, while Nychka et al. considered regular grids that can be specified by the other arguments. 
 
 The \code{multIMRF} syntax implements the multiresolution model of Nychka et al. Any \code{multIMRF} term in a formula is immediately converted to \code{IMRF} terms, which should be counted as distinct random effects for all purposes (e.g., for fixing the variances of other random effects).  However, the arguments that control \code{multIMRF} terms are lists with names referring to successive \code{multIMRF} terms in the un-expanded formula, not to successive random-effect terms in the expanded formula.  
 }
@@ -19,7 +22,7 @@ The common idea is the Markov-like property that the distribution of each elemen
 
 Given the inferred vector \bold{b} of values of the MRF on the lattice, the interpolation of the MRF in any focal point is of the form \bold{Ab} where each row of \bold{A} weights the values of \bold{b} according to the position of the focal point relative to the vertices of the lattice. Following the original publications, for regular grids (NULL \code{model}), the weights are computed as <Wendland function>(<scaled Euclidean distances beween focal point and vertices>); and for grids given by \code{model=<inla.spde2 object>}, the non-zero weights are the barycentric coordinates of the focal point in the enclosing triangle from the mesh triangulation (points from outside the mesh would have zero weights, so the predicted effect \bold{Ab=0}). 
 
-The \code{IMRF} model defines both a lattice in space, the precision matrix for a Gaussian MRF over this lattice, and the \bold{A} weights. The full specification of the MRF on \bold{irregular lattices} is complex. The \eqn{\kappa} parameter considered by \code{spaMM} is the \eqn{\kappa} considered there; only the case \emph{d=2} and \eqn{alpha=} 1 or 2, approximating a Matérn correlation model with \eqn{nu=0} or \eqn{nu=1} (\eqn{alpha=nu + d/2}), is currently implemented in \code{spaMM}.  
+The \code{IMRF} model defines both a lattice in space, the precision matrix for a Gaussian MRF over this lattice, and the \bold{A} weights. The full specification of the MRF on \bold{irregular lattices} is complex. The \eqn{\kappa} parameter considered by \code{spaMM} is the \eqn{\kappa} considered by Lindgren et al.; only the case \emph{d=2} and \eqn{alpha=} 1 or 2, approximating a Matérn correlation model with \eqn{nu=0} or \eqn{nu=1} (\eqn{alpha=nu + d/2}), is currently implemented in \code{spaMM}.  
 
 For the MRFs on \bold{regular grids} implemented here, the precision matrix is defined (up to a variance parameter) as \bold{M'M} where the diagonal elements \eqn{m_{ii}} of \bold{M} are 4+\eqn{\kappa^2} and the \eqn{m_{ij}} for the four nearest neighbours are -1 (note that \bold{M'M} involves more than these four neighbours). 
 
@@ -39,7 +42,7 @@ To control initial or fixed values of \code{multIMRF} \eqn{\kappa} and variance 
 % IMRF( 1 | <coordinates>, model, nd, m, no, ce, ...) defaults implemented in .parseBars()
 % multIMRF( 1 | . ) defaults in .expand_multIMRF() default args
 \arguments{
-  \item{model}{An \code{inla.spde2} object as produced by \code{INLA::inla.spde2.matern} (see \url{http://www.r-inla.org}).
+  \item{model}{An \code{inla.spde2} object as produced by \code{INLA::inla.spde2.matern} (see Examples below, and \url{http://www.r-inla.org} for further information).
 }
   \item{levels}{integer; 
 Number of levels in the hierarchy, i.e. number of component IMRFs.
@@ -75,7 +78,7 @@ data("blackcap") ## toy examples; but IMRF may be useful only for much larger da
 
 ########################## Irregular lattice specified by 'model':
 
-if (spaMM.getOption("example_maxtime")>7) {
+if (spaMM.getOption("example_maxtime")>1.6) {
 
 data("small_spde") ## load object of class 'inla.spde2', created and saved by :
   # spd <- sp::SpatialPointsDataFrame(coords = blackcap[, c("longitude", "latitude")],

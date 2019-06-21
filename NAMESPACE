@@ -17,7 +17,8 @@ importFrom("stats", "as.formula", "coefficients", "dgamma", "dnorm", "family", "
            "nobs", ## bc spaMM defines an HLfit method, although I do not currently use it
            "simulate", "anova", "confint", "fitted", "predict", "update", "logLik", "vcov", "coef",
            "gaussian", "binomial", "dpois", "Gamma", "resid", "uniroot", "deviance", "dbinom", "plogis", 
-           "as.dist", "AIC", "qnbinom", "qpois", "rnbinom", "integrate", "poisson",".getXlevels", "na.omit")
+           "as.dist", "AIC", "qnbinom", "qpois", "rnbinom", "integrate", "poisson",".getXlevels", "na.omit",
+           "cov2cor")
 importFrom("utils", "relist", "txtProgressBar", "setTxtProgressBar", "modifyList", "strOptions", "str",
            "write.table", "packageVersion", "packageDescription", "capture.output")
 importFrom("Matrix", "Matrix", "drop", "isDiagonal", "diag", "t", "solve", "Diagonal", "crossprod", "tcrossprod", "rowSums", "colSums",
@@ -26,11 +27,12 @@ importFrom("Matrix", "Matrix", "drop", "isDiagonal", "diag", "t", "solve", "Diag
 importFrom("proxy", "dist", "pr_DB")
 importFrom("Rcpp", "evalCpp")
 importFrom("MASS", "ginv", "gamma.shape", "mvrnorm") ## gamma.shape is actually a generic with a 'glm' method.
-importFrom("nlme", "getGroups", "fixef", "ranef", "corMatrix", "Initialize", "Variogram", "coef<-", "corFactor", "getCovariate", "logDet", "recalc")
+importFrom("nlme", "getGroups", "fixef", "ranef", "corMatrix", "Initialize", "Variogram", "coef<-", "corFactor", 
+           "getCovariate", "logDet", "recalc", "VarCorr")
 importFrom("pbapply", "pbapply", "pboptions")
 export(coef) ## from stats namespace
 # From nlme namespace:
-export("fixef", "ranef", "corMatrix", "Initialize", "Variogram", "coef<-", "corFactor", "getCovariate", "logDet", "recalc") 
+export("fixef", "ranef", "corMatrix", "Initialize", "Variogram", "coef<-", "corFactor", "getCovariate", "logDet", "recalc", "VarCorr") 
 S3method(corMatrix, corMatern)
 S3method(Initialize, corMatern)
 S3method(Variogram, corMatern)
@@ -41,6 +43,7 @@ S3method(getCovariate, corMatern)
 S3method(logDet, corMatern)
 S3method(recalc, corMatern)
 S3method(dim, precision)
+S3method(VarCorr, HLfit)
 S3method(getCall, HLfit)
 S3method(deviance, HLfit)
 S3method(anova, HLfit)

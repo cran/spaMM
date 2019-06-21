@@ -130,7 +130,7 @@ fitme_body <- function(processed,
         refit_info <- control[["refit"]] ## may be a NULL/ NA/ boolean or a list of booleans 
         if ( is.null(refit_info) || is.na(refit_info)) refit_info <- FALSE ## alternatives are TRUE or an explicit list or NULL
       } else {
-        optPars <- .new_locoptim(init.optim, ## F I X M E try to use gradient? But neither minnqa nor _LN_BOBYQA use gradients. optim() can
+        optPars <- .new_locoptim(init.optim, ## try to use gradient? But neither minnqa nor _LN_BOBYQA use gradients. optim() can
                                  LowUp, 
                                  control, objfn_locoptim=.objfn_locoptim, 
                                  HLcallfn.obj=HLcallfn.obj, anyHLCor_obj_args=anyHLCor_obj_args, 
@@ -149,7 +149,7 @@ fitme_body <- function(processed,
       if (! is.null(optPars$trRanCoefs)) {
         ranCoefs <- optPars$trRanCoefs # copy names...
         for (char_rd in names(optPars$trRanCoefs)) {
-          ranCoefs[[char_rd]] <- .ranCoefsInv(optPars$trRanCoefs[[char_rd]])
+          ranCoefs[[char_rd]] <- .ranCoefsInv(optPars$trRanCoefs[[char_rd]], rC_transf=.spaMM.data$options$rC_transf)
           covmat <- .calc_cov_from_ranCoef(ranCoefs[[char_rd]])
           if (kappa(covmat)>1e14 || min(eigen(covmat,only.values = TRUE)$values)<1e-6) any_nearly_singular_covmat <- TRUE
         }
@@ -174,7 +174,7 @@ fitme_body <- function(processed,
         } 
         refit_info <- list(phi=refit_info,lambda=refit_info,ranCoefs=refit_info) # default with SEM is all FALSE
       }
-      # refit:
+      # refit: (change ranPars_in_refit depending on what's already in and on refit_info)
       if (identical(refit_info$phi,TRUE)) {
         if ( ! is.null(optPars$trPhi)) {
           init_refit$phi <- .dispInv(optPars$trPhi)
@@ -183,7 +183,7 @@ fitme_body <- function(processed,
         } else if (proc1$augZXy_cond ) {
           init_refit$phi <- augZXy_phi_est # might still be NULL...
         }
-      }
+      } else if (proc1$augZXy_cond &&  ! is.null(augZXy_phi_est)) ranPars_in_refit$trPhi <- .dispFn(augZXy_phi_est)
       # refit, or rescale by augZXy_phi_est even if no refit:
       if ( ! is.null(augZXy_phi_est) || identical(refit_info$lambda,TRUE)) {
         if (length(optPars$trLambda)) { # does NOT include the lambdas of the ranCoefs
@@ -227,7 +227,7 @@ fitme_body <- function(processed,
               init_refit$ranCoefs[[char_rd]] <- rancoef
               ranPars_in_refit$trRanCoefs[char_rd] <- NULL
               attr(ranPars_in_refit,"type")$trRanCoefs[char_rd] <- NULL
-            } else ranPars_in_refit$trRanCoefs[[char_rd]] <- .ranCoefsFn(rancoef)  
+            } else ranPars_in_refit$trRanCoefs[[char_rd]] <- .ranCoefsFn(rancoef, rC_transf=.spaMM.data$options$rC_transf_inner)  
           }
         }      
       }

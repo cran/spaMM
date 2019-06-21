@@ -193,6 +193,7 @@
   ## no need to return the modified environment
 }
 
+# *obsolete*
 .generateInitPhi <- function(formula,data,family,weights=NULL) {
   ## look for replicates to estimate phi
   form <- .subbarsMM(.asNoCorrFormula(formula)) ## removes all random effect decorum (converts (...|...) terms to some "+" form)
@@ -214,7 +215,7 @@
   phiinfo <- which(tuli>1L) ## which levels of uli are informative
   ############################################
   # -> may generate a large # of levels -> of parameters to estimate -> glm takes time ! ## FR->FR may take time => quick patch    
-  if (length(phiinfo)>30) return(0.1)  ## RETURN !
+  if (length(phiinfo)>30L) return(0.1)  ## RETURN !
   ############################################
   whichRows <- uli %in% phiinfo
   mf <- mf[whichRows,] ## keep lines with replicates of all predictor variables
@@ -232,7 +233,7 @@
   return(phi_est)
 }
 
-## function for init.optim hence for fitme.
+## This appears useless in particular bc of the limitations of => *obsolete* 
 .get_init_phi <- function(processed,weights=NULL) {
   if (is.null(processed$envir$init_phi)) { 
     processed$envir$init_phi <- .generateInitPhi(formula=attr(processed$predictor,"no_offset"),data=processed$data,
@@ -636,10 +637,7 @@
 }
 
 as_precision <- function(corrMatrix) {
-  if (inherits(corrMatrix,"dist")) {
-    corrMatrix <- as.matrix(corrMatrix) ## leaves 0 on the diagonal! 
-    diag(corrMatrix) <- 1 ## so that m is true correlation matrix 
-  }
+  if (inherits(corrMatrix,"dist")) { corrMatrix <- proxy::as.matrix(corrMatrix, diag=1) }
   #precmat <- try(chol2inv(chol(corrMatrix)),silent=TRUE) # this can succeed and produce an inverse non positive def...
   #if (inherits(precmat,"try-error")) { # Don' try solve() without regularization as this may produce a matrix with quite large negative eigenvalues.
     esys <- eigen(corrMatrix, only.values = TRUE)
@@ -801,7 +799,8 @@ as_precision <- function(corrMatrix) {
   #                                               we could imagine using the augZXy code for given phi within HLfit)
   if (augZXy_cond) augZXy_cond <- ! any( !is.na(c(processed$lambda.Fix)) | is.nan(c(processed$lambda.Fix)))
   if (augZXy_cond) augZXy_cond <- (! any(processed$ranCoefs_blob$is_set)) ## at preprocessing stage this excludes cases with ranCoefs sets by users
-  if (augZXy_cond) augZXy_cond <- ( ! is.call(processed$prior.weights) && attr(processed$prior.weights,"unique")) ## cf APHLs_by_augZXy code
+  if (augZXy_cond == 1L) augZXy_cond <- ( ! is.call(processed$prior.weights) && attr(processed$prior.weights,"unique")) ## cf APHLs_by_augZXy code
+  # which means that allow_augZXy=2L allows augZXy usage with non-constant prior weights 
   return(structure(augZXy_cond, inner=augZXy_cond_inner))
 }
 
@@ -1118,7 +1117,8 @@ as_precision <- function(corrMatrix) {
     if (inherits(X.pv,"sparseMatrix") && ncol(X.pv)> sum(unlist(lapply(ZAlist,ncol)))) { ## f i x m e heuristic rule
       sparse_precision <- FALSE ## presumably efficient use of Matrix::qr by .sXaug_Matrix_QRP_CHM_scaled algo
     } else { # general case
-      sparse_precision <- .determine_spprec(ZAlist, processed, init.HLfit=init.HLfit) 
+      sparse_precision <- .determine_spprec(ZAlist, processed, init.HLfit=init.HLfit) ## possibly writes $corr_info$G_diagnosis! .../...
+      ## F I X M E: ZAL diagnosis uses elements that may be modified afterwards and before .choose_QRmethod() reuses $G_diagnosis
     }
     processed$sparsePrecisionBOOL <- sparse_precision
     #
@@ -1193,23 +1193,26 @@ as_precision <- function(corrMatrix) {
   } ## else do nothing: keeps input REMLformula, which may be NULL or a non-trivial formula
   # REMLformula <- .preprocess_formula(REMLformula)
   processed$REMLformula <- REMLformula  
-  if ( ! is.null(REMLformula) ) { ## differences affects only REML estimation of dispersion params, ie which p_bv is computed
+  if ( ! is.null(REMLformula) ) { # ML or non-standard REML... 
     REMLFrames <- .HLframes(formula=REMLformula,data=data) ## design matrix X, Y...
     X.Re <- REMLFrames$X
     # wAugX will have lost its colnames...
     unrestricting_cols <- which(colnames(X.pv) %in% setdiff(colnames(X.pv),colnames(X.Re))) ## not in X.Re
-    extra_vars <- setdiff(colnames(X.Re),colnames(X.pv)) ## example("update") tests this.
+    extra_vars <- setdiff(colnames(X.Re),colnames(X.pv)) ## example("update") tests this. # should occur too with etaFix + REMLformula
     distinct.X.ReML <- c(length(unrestricting_cols), length(extra_vars)) ## TWO booleans
-    if (any(distinct.X.ReML)){
+    if (ncol(X.Re)) { # non-standard REML... 
       attr(X.Re,"distinct.X.ReML") <- distinct.X.ReML 
-      if (attr(X.Re,"distinct.X.ReML")[1L]) attr(X.Re,"unrestricting_cols") <- unrestricting_cols
-      if (attr(X.Re,"distinct.X.ReML")[2L])attr(X.Re,"extra_vars") <- extra_vars ## example("update") tests this.
-      processed$X.Re <- X.Re
-    } ## else processed$X.Re  is NULL
-  } ## else keep previously computed X.Re = X.pv
+      if (any(distinct.X.ReML)){ # *subcase* of non-standard REML (other subcase when formula= explicit REMLformula... with ranFix...)
+        if (attr(X.Re,"distinct.X.ReML")[1L]) attr(X.Re,"unrestricting_cols") <- unrestricting_cols
+        if (attr(X.Re,"distinct.X.ReML")[2L]) attr(X.Re,"extra_vars") <- extra_vars ## example("update") tests this.
+      } 
+    }
+    processed$X.Re <- X.Re 
+  } ## else this should be standard REML; let processed$X.Re be NULL 
   # if standard ML: there is an REMLformula ~ 0 (or with ranefs ?); local X.Re and processed$X.Re is 0-col matrix
   # if standard REML: REMLformula is NULL: $X.Re is X.pv, processed$X.Re is NULL
   # non standard REML: other REMLformula: $X.Re and processed$X.Re identical, and may take essentially any value
+  # So a testing pattern is if ( is.null(X.Re)) {<REML standard>} else if ( ncol(X.Re)==0L) {<ML standard>} else {<non-standard REML>}
   if (is.null(objective)) {
     if (ncol(X.Re)) { ## standard or non-standard REML
       processed$objective <- "p_bv"  ## info for fitme_body and corrHLfit_body, while HLfit instead may use return_only="p_bvAPHLs"
@@ -1296,7 +1299,7 @@ as_precision <- function(corrMatrix) {
     processed$ZAlist <- ZAlist 
     processed$hyper_info <- .preprocess_hyper(processed=processed) # uses$ZAlist and $predictor
     #
-    processed$QRmethod <- .choose_QRmethod(ZAlist, predictor) ## (fixme: rethink) typically sparse for large Matern model ?
+    processed$QRmethod <- .choose_QRmethod(ZAlist, predictor, corr_info=corr_info) ## (fixme: rethink) typically sparse for large Matern model ?
     # QRmethod may well be dense for adjacency and then ZAfix will be dense. 
     nrd <- cum_n_u_h[nrand+1L]
     if ( ! .eval_as_mat_arg(processed)) {
@@ -1555,3 +1558,24 @@ as_precision <- function(corrMatrix) {
   mc[names(dotlist)] <- dotlist ## a un moment j'ai mis cette ligne en commentaire, ce qui rend la fonction ineffective !
   eval(as.call(mc))  
 }
+
+.options.processed <- function(processed,...) {  # based on spaMM.options()
+  if (nargs() == 0) return(processed)
+  temp <- list(...)
+  if (length(temp) == 1 && is.null(names(temp))) {
+    arg <- temp[[1]]
+    switch(mode(arg),
+           list = temp <- arg,
+           character = return(mget(arg, envir=processed, ifnotfound = list(NULL))),  ## return here for eg ... = "NUMAX"
+           stop("invalid argument: ", sQuote(arg)))
+  }
+  if (length(temp) == 0) return(processed)
+  argnames <- names(temp)
+  if (is.null(argnames)) stop("options must be given by name")
+  old <- mget(argnames, envir=processed, ifnotfound = list(NULL))
+  names(old) <- argnames ## bc names are not valid for previously absent elements
+  for (st in argnames) assign(st, temp[[st]], envir=processed)
+  invisible(old)
+}
+
+

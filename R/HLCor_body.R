@@ -108,9 +108,8 @@
       } else cov_info_mat <- corrMatrix
     } else if ( length(setdiff(corrnames,ZAnames)) || any(corrnames!=ZAnames) ) { # reordering and subsetting
       if (inherits(corrMatrix,"dist")) {
-        cov_info_mat <- (as.matrix(corrMatrix)[ZAnames,ZAnames]) 
+        cov_info_mat <- (proxy::as.matrix(corrMatrix,diag=1)[ZAnames,ZAnames]) ## IF diag missing in input corrMatrix THEN assume a correlation matrix
         ## it's not useful to convert back to dist (either uglily by as.dist(); or package 'seriation' has (permute.dist-> C code)
-        diag(cov_info_mat) <- 1L ## IF diag missing in input corrMatrix THEN assume a correlation matrix
       } else cov_info_mat <- corrMatrix[ZAnames,ZAnames]  
     } else cov_info_mat <- corrMatrix ## orders already match
   } else {
@@ -154,7 +153,7 @@ HLCor_body <- function(processed, ## single environment
   corr_types <- processed$corr_info$corr_types
   ## convert back ranPars to canonical scale:
   ranPars <- .post_process_parlist(ranPars,corr_families=processed$corr_info$corr_families) 
-  ranPars <- .canonizeRanPars(ranPars=ranPars, corr_info=processed$corr_info) ## with init.HLfit as attribute # expands hyper params.
+  ranPars <- .canonizeRanPars(ranPars=ranPars, corr_info=processed$corr_info, rC_transf=.spaMM.data$options$rC_transf) ## with init.HLfit as attribute # expands hyper params.
   ########################################################################################################################
   # * assigns geo_envir <- .get_geo_info(...)
   # * modifies processed$AUGI0_ZX$envir by .init_precision_info(...) 
@@ -266,7 +265,7 @@ HLCor_body <- function(processed, ## single environment
   ranefParsList <- relist(ranefParsVec,skeleton)
   print_phiHGLM_info <- ( ! is.null(processed$residProcessed) && processed$verbose["phifit"])
   if (print_phiHGLM_info) {
-    urP <- unlist(.canonizeRanPars(ranefParsList, corr_info=processed$corr_info,checkComplete=FALSE))
+    urP <- unlist(.canonizeRanPars(ranefParsList, corr_info=processed$corr_info,checkComplete=FALSE, rC_transf=.spaMM.data$options$rC_transf))
     processed$port_env$prefix <- paste0("HLCor for ", paste(signif(urP,6), collapse=" "), ": ")
   } 
   ranPars <- .modify_list(HLCor.call$ranPars, ranefParsList)
@@ -281,7 +280,7 @@ HLCor_body <- function(processed, ## single environment
     # canonize bc fitme_body(,fixed=.) does not handle transformed parameters
     processed$residProcessed$envir$ranPars <- .canonizeRanPars(ranPars=resid_ranPars,
                                 corr_info=processed$residProcessed$corr_info,
-                                checkComplete = FALSE) 
+                                checkComplete = FALSE, rC_transf=.spaMM.data$options$rC_transf) 
     ranPars$resid <- NULL
     rpType$resid <- NULL
     moreargs$resid <- NULL

@@ -11,7 +11,7 @@ HLfit_body <- local({
   verbose <- processed$verbose
   family <- processed$family
   ranFix <- .post_process_family(family,ranFix) ## assign 'extra' pars and cleans ranFix
-  ranFix <- .canonizeRanPars(ranPars=ranFix,corr_info=NULL, checkComplete = FALSE)## including full-size lambda
+  ranFix <- .canonizeRanPars(ranPars=ranFix,corr_info=NULL, checkComplete = FALSE, rC_transf=.spaMM.data$options$rC_transf)## including full-size lambda
   predictor <- attr(processed$predictor,"no_offset") 
   prior.weights <- processed$prior.weights
   
@@ -169,12 +169,13 @@ HLfit_body <- local({
   ## Finalize initial values for phi 
   if (is.null(phi_est) ) {
     ## there are many cases that .get_init_phi does not handle
-    if ( models[["phi"]] == "phiScal") {
-      if (is.call(processed$prior.weights)) {
-        phi_est <- .get_init_phi(processed,weights=NULL)
-      } else phi_est <- .get_init_phi(processed,weights=processed$prior.weights)
-    }
-    if ( is.null(phi_est) ) phi_est <- inits_by_glm$phi_est
+    # if ( models[["phi"]] == "phiScal") {
+    #   if (is.call(processed$prior.weights)) {
+    #     phi_est <- .get_init_phi(processed,weights=NULL)
+    #   } else phi_est <- .get_init_phi(processed,weights=processed$prior.weights)
+    # }
+    # if ( is.null(phi_est) ) 
+      phi_est <- inits_by_glm$phi_est
     # at this point fitme call -> calc_init_dispPars() has set phi >= 1e-4
     # This may be lower in HLfit call (included for bootstrap) (different from lambda)
     if (models[["phi"]] != "phiScal") {
@@ -629,30 +630,29 @@ HLfit_body <- local({
                            prev_LMatrices=LMatrices,
                            #lcrandfamfam=lcrandfamfam,
                            processed=processed,
+                           init_ranCoefs=init.HLfit$ranCoefs,
                            w.resid=w.resid)
       if (any(ranCoefs_blob$isRandomSlope)) { ## if random-slope model
         covEstmethod <- .spaMM.data$options$covEstmethod ## note same call in calcRanefPars
         if (is.null(covEstmethod)) stop("spaMM.getOption('covEstmethod') should not be NULL")
-        if (covEstmethod == ".makeCovEst1") {
-          ranefEstargs <- c(ranefEstargs,list(phi_est=phi_est,
-                                              as_matrix=( ! inherits(ZAL,"Matrix")),v_h=v_h))
-          H_global_scale <- .calc_H_global_scale(w.resid)
-          ## MakeCovEst defines à local ZAL and the eta,mu, w.resid must generally be recomputed locally for this ZAL
-          ranefEstargs$MakeCovEst_pars_not_ZAL_or_lambda <- list(X.pv=processed$AUGI0_ZX$X.pv, y=y, n_u_h=cum_n_u_h[nrand+1L], 
-                                                                 H_global_scale=H_global_scale, 
-                                                                 muetablob=NULL,
-                                                                 off=off, maxit.mean=maxit.mean, etaFix=etaFix,
-                                                                 ## for ! LMM
-                                                                 eta=NULL, 
-                                                                 ## supplement for LevenbergM
-                                                                 beta_eta=beta_eta,
-                                                                 ## supplement for ! GLMM
-                                                                 u_h=u_h, v_h=v_h, w.resid=NULL, phi_est=phi_est,
-                                                                 for_init_z_args=list(nrand=nrand, psi_M=psi_M, ranFix=ranFix), 
-                                                                 for_intervals=intervalInfo,
-                                                                 ##
-                                                                 processed=processed)
-        } else stop("some code for alternative covEstmethod would be needed here.")
+        ranefEstargs <- c(ranefEstargs,list(phi_est=phi_est,
+                                            as_matrix=( ! inherits(ZAL,"Matrix")),v_h=v_h))
+        H_global_scale <- .calc_H_global_scale(w.resid)
+        ## MakeCovEst defines à local ZAL and the eta,mu, w.resid must generally be recomputed locally for this ZAL
+        ranefEstargs$MakeCovEst_pars_not_ZAL_or_lambda <- list(X.pv=processed$AUGI0_ZX$X.pv, y=y, n_u_h=cum_n_u_h[nrand+1L], 
+                                                               H_global_scale=H_global_scale, 
+                                                               muetablob=NULL,
+                                                               off=off, maxit.mean=maxit.mean, etaFix=etaFix,
+                                                               ## for ! LMM
+                                                               eta=NULL, 
+                                                               ## supplement for LevenbergM
+                                                               beta_eta=beta_eta,
+                                                               ## supplement for ! GLMM
+                                                               u_h=u_h, v_h=v_h, w.resid=NULL, phi_est=phi_est,
+                                                               for_init_z_args=list(nrand=nrand, psi_M=psi_M, ranFix=ranFix), 
+                                                               for_intervals=intervalInfo,
+                                                               ##
+                                                               processed=processed)
       }
       calcRanefPars_blob <- .calcRanefPars(HLfit_corrPars=HLfit_corrPars,
                                           lev_lambda=lev_lambda,
@@ -753,10 +753,9 @@ HLfit_body <- local({
         w.resid <- .calc_w_resid(muetablob$GLMweights,phi_est) ## bc phi was updated. 'weinu', must be O(n) in all cases 
       }
       ## conv_logL either used to break the loop, Xor required only in last two iters for diagnostics 
-      if (processed$break_conv_logL 
-          || ( verbose["trace"])) {
+      if (processed$break_conv_logL || verbose["trace"] ) {
         next_lik <- .calc_APHLs_from_ZX(auglinmodblob=auglinmodblob, which="p_v", processed=processed)$p_v
-        # this does not depend on the latest ranPars estimates, sicne sXaug was not updated afterwards... 
+        # this does not depend on the latest ranPars estimates, since sXaug was not updated afterwards... 
         conv_logL <- abs(next_lik - prev_lik)/(0.1 + abs(next_lik)) < 1e-8 # ~ glm.fit convergence
         if (processed$break_conv_logL && conv_logL) break 
         prev_lik <- next_lik
@@ -1096,10 +1095,10 @@ HLfit_body <- local({
   res$envir <- list2env(list(dvdloglamMat=dvdloglamMat, dvdlogphiMat=dvdlogphiMat), ## provided if available
                         parent=environment(HLfit_body))
   if (models[[1L]]=="etaHGLM") {
+    ## for beta_v_cov and cAIC's p_d
+    # These elements are protected from deletion in stripHLfit() by explicit setdiff(stripnames,c("G_CHMfactor",...)):
     if ("AUGI0_ZX_sparsePrecision" %in% res$MME_method) {
-      beta_cov_info <- get_from_MME(auglinmodblob$sXaug,"beta_cov")  
-      ## for beta_v_cov and cAIC's p_d
-      # These elements are protected from deletion in stripHLfit() by explicit setdiff(stripnames,c("G_CHMfactor",...)):
+      ###beta_cov_info <- get_from_MME(auglinmodblob$sXaug,"beta_cov")  
       res$envir$ZAfix <- auglinmodblob$sXaug$AUGI0_ZX$ZAfix # introduced in v2.6.44 #.ad_hoc_cbind(object$ZAlist, as_matrix=FALSE) # math-sparse 
       res$envir$ZtW <- t(.Dvec_times_m_Matrix(attr(auglinmodblob$sXaug,"w.resid"), res$envir$ZAfix))
       BLOB <- auglinmodblob$sXaug$BLOB 
@@ -1108,8 +1107,12 @@ HLfit_body <- local({
       res$envir$qrXa <- BLOB$qrXa
       res$envir$X_scale <- BLOB$X_scale
       res$envir$factor_inv_Md2hdv2 <- BLOB$factor_inv_Md2hdv2 # useful for prediction variance (but may be NULL)
-    } else if (HL[1]!="SEM") beta_cov_info <- get_from_MME(auglinmodblob$sXaug,"beta_cov_info_from_sXaug", 
-                                                           B=attr(processed$AUGI0_ZX$X.pv,"scaled:scale")) # FIXME it would be nice to keep the info in the sXaug object
+    } else if (HL[1]!="SEM") {
+      ###beta_cov_info <- get_from_MME(auglinmodblob$sXaug,"beta_cov_info_from_sXaug", B=attr(processed$AUGI0_ZX$X.pv,"scaled:scale")) # FIXME it would be nice to keep the info in the sXaug object
+      res$envir$sXaug <- auglinmodblob$sXaug ## F I X M E definitely useful, but could we remove some elements?
+      # big-ranefs.R is a good test
+      attr(res$envir$sXaug,"scaled:scale") <- attr(processed$AUGI0_ZX$X.pv,"scaled:scale")
+    }
   }
   ###################
   ## WARNINGS
@@ -1187,10 +1190,6 @@ HLfit_body <- local({
   ###
   ### experimental cAIC minimization
   if ( identical(processed$return_only,"cAICAPHLs")) {
-    #clik <- .calc_APHLs_from_ZX(auglinmodblob,which="clik",processed)$clik
-    #d2hdv2 <- .calcD2hDv2(ZAL,w.resid,auglinmodblob$wranefblob$w.ranef) 
-    #pd <- .calc_cAIC_pd(X.pv=processed$AUGI0_ZX$X.pv, ZAL, w.resid, d2hdv2)
-    # but general code for p_phi is complex, whcih which we don't use the previous code (and early return) but this:
     APHLs <- .get_info_crits(res)["cAIC"]
     if ( ! is.null(oldcAIC <- processed$port_env$objective)) {
       .update_port_fit_values(old_obj= - oldcAIC,new_obj= - APHLs$cAIC, 

@@ -65,7 +65,7 @@
   locinit <- .get_inits_from_fit(nullfit, keep_canon_user_inits=TRUE) 
   if (fittingFunction=="fitme") {
     fullm_call$init <- locinit
-  } else {
+  } else if (fittingFunction=="corrHLfit") {
     fullm_call[["init.corrHLfit"]] <- locinit
   }
   fullfit <- eval(fullm_call)
@@ -75,7 +75,7 @@
     if ( ! identical(locinit,re_locinit)) {
       if (fittingFunction=="fitme") {
         fullm_call$init <- locinit
-      } else {
+      } else if (fittingFunction=="corrHLfit") {
         fullm_call[["init.corrHLfit"]] <- locinit
       }
       fullfit <- eval(fullm_call)
@@ -85,7 +85,7 @@
   locinit <- .get_inits_from_fit(nullfit, keep_canon_user_inits=FALSE) 
   if (fittingFunction=="fitme") {
     nullm_call$init <- locinit
-  } else {
+  } else if (fittingFunction=="corrHLfit") {
     nullm_call[["init.corrHLfit"]] <- locinit ## but currently not used.
   }
   if (fittingFunction=="fitme") {
@@ -109,7 +109,7 @@
                  data,
                  boot_fn="spaMM_boot", # DEPRECATED
                  resp_testfn=NULL,
-#                 .condition = NULL, ## only an argument of the internal function .LRT() so not visible at user level.
+                 #                 .condition = NULL, ## only an argument of the internal function .LRT() so not visible at user level.
                  debug.=FALSE,
                  ...) {
   if (is.na(verbose["trace"])) verbose["trace"] <- FALSE
@@ -127,7 +127,7 @@
   ## here we makes sure that *predictor variables* are available for all data to be used under both models
   resid.model <- .reformat_resid_model(callargs$resid.model) ## family not easily checked here; not important
   data <- .preprocess_data(data=data, null.formula=null.formula, formula=formula, resid.model=resid.model,
-	                           callargs=callargs) ## this keeps the variables for the prior.weights
+                           callargs=callargs) ## this keeps the variables for the prior.weights
   boot_call$data <- data
   boot_call$verbose <- verbose 
   if (fittingFunction == "fitme") {

@@ -1,19 +1,31 @@
 .ULI <- function(...) {
-  redondGeo <- cbind(...) ## always a matrix
+  redondGeo <- cbind(...) ## NOT always a matrix: if ... is a model frame, there may be $ poly(x, 2, raw = TRUE): 'poly' num  inside
   if (ncol(redondGeo)==0L) return(rep(1L,nrow(redondGeo))) ## .generateInitPhi with constant predictor led here
   if (nrow(redondGeo)==1L) return(1L) ##  trivial case where the forllowingcode fails
-  # redondFac <- apply(redondGeo,1,paste,collapse=" ") ## always characters whatever the number of columns 
-  # redondFac <- as.integer(as.factor(redondFac)) ## as.factor effectively distinguishes unique character strings 
-  # uniqueFac <- unique(redondFac) ## seems to preserve order ## unique(<integer>) has unambiguous behaviour
-  # sapply(lapply(redondFac, `==`, uniqueFac ), which)
+  ## redondGeo is NOT always a matrix: if ... is a model frame, there may be <$ poly(x, 2, raw = TRUE): 'poly' num>  inside
+  ## poly may be a two-col matrix and ncol(redoncGeo) is *1*
   redondFac <- apply(redondGeo,2L,factor,labels="") # not cute use of labels... 
   redondFac <- apply(redondFac,1L,paste,collapse=":") ## paste factors
-  redondFac <- as.character(factor(redondFac))
+  #redondFac <- as.character(factor(redondFac))
   uniqueFac <- unique(redondFac) ## seems to preserve order ## unique(<integer>) has unambiguous behaviour
   uniqueIdx <- seq(length(uniqueFac))
   names(uniqueIdx) <- uniqueFac
   return(uniqueIdx[redondFac])
 }
+
+.ULI_failure <- function(...) { # doc for the code of .ULI()...
+  redondGeo <- cbind(...) ## NOT always a matrix: if ... is a model frame, there may be $ poly(x, 2, raw = TRUE): 'poly' num  inside
+  if (ncol(redondGeo)==0L) return(rep(1L,nrow(redondGeo))) 
+  if (nrow(redondGeo)==1L) return(1L) 
+  for (colit in seq_len(ncol(redondGeo))) redondGeo[,colit] <- factor(redondGeo[,colit],labels="") # fails in poly() case...
+  redondFac <- character(nrow(redondGeo))
+  for (rowit in seq_len(nrow(redondGeo))) redondFac[rowit] <- paste(redondGeo[rowit,],collapse=":") 
+  uniqueFac <- unique(redondFac) 
+  uniqueIdx <- seq(length(uniqueFac))
+  names(uniqueIdx) <- uniqueFac
+  return(uniqueIdx[redondFac])
+}
+
 
 ### Utilities for parsing the mixed model formula
 

@@ -65,8 +65,11 @@
   warnmess <- fit$warning$message
   #if (inherits(fit,"error") || is.na(fit$null.deviance)) { ## is.na(...): dgamma problem but returns a fit
   if (inherits(fit,"error")) { 
+    # Gamma() with small response values... 
     ## we need a valid GLM: we fit again with a more controlled method
     control$maxit <- 1000L ## convergence is very slow when fitting y ~ 1 where most y values are <1e-12 and one is ~1e-10. 
+    # Further, if all y are very small, a strict control may give spurious warnings:
+    if (all(Y<1e-12)) control$epsilon <- 1e-7 # rather than 1e-8
     fit <- eval(call("spaMM_glm.fit", 
                      x = X, y = Y, weights = weights, offset = offset, family = family, 
                      control = control, intercept = intercept))

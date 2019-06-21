@@ -183,8 +183,7 @@
           attr(Lunique, "type") <- "from_AR1_specific_code"
         } else if (corr_type %in% c("Matern","Cauchy")) {
           ## at this point cov_info_mat is a dist object !
-          cov_info_mat <- as.matrix(cov_info_mat)
-          diag(cov_info_mat) <- 1
+          cov_info_mat <- proxy::as.matrix(cov_info_mat, diag=1)
           ## If the order of columns of ZAlist[[it]] had been permuted by .calc_Zmatrix(), we ould need something like:
           # ZAnames <- colnames(processed$ZAlist[[rd]])
           # cov_info_mat <- cov_info_mat[ZAnames,ZAnames]
@@ -244,10 +243,7 @@
           }
         } else { ## cov_info_mat must exist
           if (processed$HL[1L]=="SEM") argsfordesignL$try.chol <- FALSE
-          if (inherits(cov_info_mat,"dist")) {
-            cov_info_mat <- as.matrix(cov_info_mat)
-            diag(cov_info_mat) <- 1L ## IF diag missing in input corrMatrix THEN assume a correlation matrix
-          } ## else full matrix may be a COV matrix with non-unit diag
+          if (inherits(cov_info_mat,"dist")) {cov_info_mat <- proxy::as.matrix(cov_info_mat, diag=1)} ## else full matrix may be a COV matrix with non-unit diag
           Lunique <- do.call(.spaMM.data$options$mat_sqrt_fn,c(list(m=cov_info_mat),argsfordesignL)) ## mat_sqrt_fn has try()'s and can return "try-error"'s
           if (inherits(Lunique,"try-error")) { 
             print("correlation parameters were:",quote=FALSE) ## makes sense if mat_sqrt_fn already issued some warning

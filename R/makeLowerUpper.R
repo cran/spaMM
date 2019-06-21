@@ -2,7 +2,7 @@
                                 init.optim, ## ~in transformed scale : is has all pars to be optimized
                                 user.lower=list(),user.upper=list(),
                                 corr_types=NULL, ranFix=list(),
-                                optim.scale, moreargs=NULL) {
+                                optim.scale, moreargs=NULL, rC_transf=.spaMM.data$options$rC_transf) {
   lower <- upper <- init.optim   ## init.optim not further used...
   for (it in seq_along(corr_types)) {
     corr_type <- corr_types[it]
@@ -200,9 +200,10 @@
   if ( ! is.null( ranCoefs <- canon.init$ranCoefs)) { ## whenever there are ranCoefs to outer-optimize (FIXME? no user control on canon.init?)
     upper$trRanCoefs <- lower$trRanCoefs <- ranCoefs
     for (it in seq_along(ranCoefs)) {
-      init_trRancoef <- .ranCoefsFn(ranCoefs[[it]])
+      init_trRancoef <- .ranCoefsFn(ranCoefs[[it]], rC_transf=rC_transf)
       trRancoef_LowUp <- .calc_LowUp_trRancoef(init_trRancoef,Xi_ncol=attr(init_trRancoef,"Xi_ncol"),
-                                               tol_ranCoefs=.spaMM.data$options$tol_rel_ranCoefs)
+                                               tol_ranCoefs=.spaMM.data$options$tol_rel_ranCoefs,
+                                               rC_transf=rC_transf)
       lower$trRanCoefs[[it]] <- trRancoef_LowUp$lower
       upper$trRanCoefs[[it]] <- trRancoef_LowUp$upper
     }

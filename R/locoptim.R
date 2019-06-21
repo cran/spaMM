@@ -44,16 +44,21 @@
   return(optr)
 }
 
-.xtol_abs_fn <- function(LowUp,factors=c(rcLam=5e-7,rcCor=5e-6,others=5e-11,abs=1e-7)) {
+.xtol_abs_fn <- function(LowUp,factors=.spaMM.data$options$xtol_abs_factors, rC_transf=.spaMM.data$options$rC_transf) {
   xtol_abs <- vector("list",length(LowUp$lower))
   parnames <- names(LowUp$lower)
   if ("trRanCoefs" %in% parnames) {
     for (st in names(LowUp$lower)) if(st=="trRanCoefs") {
       len <- length(unlist(LowUp$lower[[st]]))
       Xi_ncol <- floor(sqrt(len*2))
-      xtol_abs[[st]] <- c(rep(factors["rcLam"],Xi_ncol),rep(factors["rcCor"],len-Xi_ncol)) 
+      if (rC_transf=="chol") {
+        xtol_abs[[st]] <- rep(1e-12,len) # note that order of elements is that of upper.tri 
+      } else xtol_abs[[st]] <- c(rep(factors["rcLam"],Xi_ncol),rep(factors["rcCor"],len-Xi_ncol)) # "sph" etc
     } else {xtol_abs[[st]] <- rep(factors["others"],length(unlist(LowUp$lower[[st]])))}
-    xtol_abs <- unlist(xtol_abs) * (unlist(LowUp$upper)-unlist(LowUp$lower))
+    rng <- unlist(LowUp$upper)-unlist(LowUp$lower)
+    xtol_abs <- unlist(xtol_abs)# not clear why
+    rng_finite <- is.finite(rng)
+    xtol_abs[rng_finite] <- xtol_abs[rng_finite] * rng[rng_finite]
   } else xtol_abs <- factors["abs"]
   return(xtol_abs)
 }
@@ -123,9 +128,11 @@
     attr(optPars,"method") <- "optim"  
   } else { ##"nloptr"
     nloptr_controls <- spaMM.getOption("nloptr")
+    #if (spaMM.getOption("TRY_R_new")) nloptr_controls$xtol_rel <- nloptr_controls$xtol_rel * length(lowerb) # weird; why ?
     nloptr_controls[names(control$nloptr)] <- control$nloptr ## Overwrite defaults with any element of $nloptr
     if (is.null(nloptr_controls$maxeval)) nloptr_controls$maxeval <- eval(.spaMM.data$options$maxeval)
-    if (is.null(nloptr_controls$xtol_abs)) nloptr_controls$xtol_abs <- eval(.spaMM.data$options$xtol_abs, list(LowUp=LowUp))
+    if (is.null(nloptr_controls$xtol_abs)) nloptr_controls$xtol_abs <- eval(.spaMM.data$options$xtol_abs, 
+                                                                            list(LowUp=LowUp, rC_transf=.spaMM.data$options$rC_transf))
     optr <- .optim_by_nloptr(lowerb=lowerb, upperb=upperb, initvec=initvec, objfn_locoptim=objfn_locoptim, 
                              anyHLCor_obj_args=anyHLCor_obj_args, HLcallfn.obj=HLcallfn.obj, init.optim=init.optim, 
                              nloptr_controls=nloptr_controls, grad_locoptim = grad_locoptim) 

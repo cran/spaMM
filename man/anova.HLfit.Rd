@@ -35,9 +35,6 @@ LRT(object, object2, boot.repl = 0, nb_cores = NULL,
 \item{simuland}{
   See argument \code{simuland} of \code{\link{spaMM_boot}}.
 }  
-%\item{.condition}{
-%  For development purposes, not documented. % F I X M E
-%}  
 \item{\dots}{
   Further arguments passed to or from other methods. 
 }

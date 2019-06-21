@@ -159,7 +159,7 @@ HLfit <- function(formula,
   ranefParsList <- relist(ranefParsVec,skeleton)
   print_phiHGLM_info <- ( ! is.null(processed$residProcessed) && processed$verbose["phifit"])
   if (print_phiHGLM_info) {
-    urP <- unlist(.canonizeRanPars(ranefParsList, corr_info=processed$corr_info,checkComplete=FALSE))
+    urP <- unlist(.canonizeRanPars(ranefParsList, corr_info=processed$corr_info,checkComplete=FALSE, rC_transf=.spaMM.data$options$rC_transf))
     processed$port_env$prefix <- paste0("HLfit for ", paste(signif(urP,6), collapse=" "), ": ")
   } 
   ranFix <- .modify_list(HLfit.call$ranFix, ranefParsList)
@@ -172,7 +172,7 @@ HLfit <- function(formula,
     # canonize bc fitme_body(,fixed=.) does not handle transformed parameters
     processed$residProcessed$envir$ranPars <- .canonizeRanPars(ranPars=resid_ranPars,
                                                                corr_info=processed$residProcessed$corr_info,
-                                                               checkComplete = FALSE) 
+                                                               checkComplete = FALSE, rC_transf=.spaMM.data$options$rC_transf) 
     ranFix$resid <- NULL
     rpType$resid <- NULL
     #moreargs$resid <- NULL

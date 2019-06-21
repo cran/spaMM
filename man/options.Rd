@@ -31,7 +31,7 @@ spaMM.getOption(x)
 
 \item{\code{LevenbergM=NULL}:}{NULL or boolean. Whether to use a Levenberg-Marquardt algorithm (see Details) by default in most computations. But it is advised to use instead \code{control.HLfit=list(LevenbergM=...)} to control this on a case-by-case basis. The joint default behaviour is that Levenberg-Marquardt is used by default for binomial response data that takes only extreme values (in particular, for binary 0/1 response), and that for other models the fitting algorithm switches to it if divergence is suspected. \code{FALSE} inhibits its use; \code{TRUE} forces its use for all iterative least-square fits, except when 'confint()' is called.}
 
-\item{\code{USEEIGEN=TRUE}:}{Whether to use the Eigen C++ library for some matrix computations.. The source code should be consulted for further information.}
+\item{\code{USEEIGEN=TRUE}:}{Whether to use the Eigen C++ library for some matrix computations. The source code should be consulted for further information.}
 
 \item{\code{wRegularization=FALSE}:}{Whether to to warn about the use of regularization in some operations on nearly singular matrices.}
 

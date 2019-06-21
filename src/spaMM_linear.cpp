@@ -6,6 +6,7 @@ using namespace std;
 
 using Eigen::Lower;
 using Eigen::Map;
+using Eigen::SparseMatrix;
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
 
@@ -218,3 +219,249 @@ SEXP selfAdjointSolverCpp( SEXP AA ){
   if (printDebug)   Rcout <<"fin selfAdjointSolverCpp()"<<std::endl;
   return List::create(Named("vectors") = es.eigenvectors(),Named("values")=es.eigenvalues());
 }
+
+//https://stackoverflow.com/questions/40225812/should-sexp-function-args-be-protected-when-put-inside-an-rcppxptr
+
+// [[Rcpp::export(.dgCprod)]]
+SEXP dgCprod( SEXP AA, SEXP BB ){ 
+  const Map<SparseMatrix<double> > A(as<Map<SparseMatrix<double> > >(AA)); 
+  const Map<SparseMatrix<double> > B(as<Map<SparseMatrix<double> > >(BB));
+  S4 Xout(wrap(A * B));
+  if (true) { // I could make this conditional; and I only need the colnames for some operations
+    S4 Ain(AA); // look like inelegant copying...
+    S4 Bin(BB);
+    RObject newDimNames(Rf_allocVector(VECSXP, 2));
+    RObject AAdimnames(clone(as<SEXP>((Ain.slot("Dimnames"))))); // clone() to copy values rather than address
+    RObject BBdimnames(clone(as<SEXP>((Bin.slot("Dimnames")))));
+    if ( ! Rf_isNull(AAdimnames)) SET_VECTOR_ELT(newDimNames, 0, VECTOR_ELT(AAdimnames, 0));
+    if ( ! Rf_isNull(BBdimnames)) SET_VECTOR_ELT(newDimNames, 1, VECTOR_ELT(BBdimnames, 1));
+    Xout.slot("Dimnames") = newDimNames; 
+  }
+  return Xout;
+}
+
+// [[Rcpp::export(.dgCcrossprod)]]
+SEXP dgCcrossprod( SEXP AA, SEXP BB ){ 
+  const Map<SparseMatrix<double> > A(as<Map<SparseMatrix<double> > >(AA)); 
+  if (Rf_isNull(BB)) {
+    const int c(A.cols());
+    SparseMatrix<double> XX= SparseMatrix<double>(c, c).selfadjointView<Lower>().rankUpdate(A.transpose());
+    S4 Xout(wrap(XX));
+    if (true) { // I could make this conditional but this has no measurable impact on computation times
+      S4 Ain(AA); 
+      RObject newDimNames(Rf_allocVector(VECSXP, 2));
+      RObject AAdimnames(clone(as<SEXP>((Ain.slot("Dimnames"))))); // clone() to copy values rather than address
+      if ( ! Rf_isNull(AAdimnames)) {
+        SET_VECTOR_ELT(newDimNames, 0, VECTOR_ELT(AAdimnames, 1));
+        SET_VECTOR_ELT(newDimNames, 1, VECTOR_ELT(AAdimnames, 1));
+      }
+      Xout.slot("Dimnames") = newDimNames; 
+    }
+    return Xout;
+  } else {
+    const Map<SparseMatrix<double> > B(as<Map<SparseMatrix<double> > >(BB));
+    S4 Xout(wrap(A.adjoint() * B));
+    if (true) { // I could make this conditional
+      S4 Ain(AA); 
+      S4 Bin(BB);
+      RObject newDimNames(Rf_allocVector(VECSXP, 2));
+      RObject AAdimnames(clone(as<SEXP>((Ain.slot("Dimnames"))))); // clone() to copy values rather than address
+      RObject BBdimnames(clone(as<SEXP>((Bin.slot("Dimnames")))));
+      if ( ! Rf_isNull(AAdimnames)) SET_VECTOR_ELT(newDimNames, 0, VECTOR_ELT(AAdimnames, 1));
+      if ( ! Rf_isNull(BBdimnames)) SET_VECTOR_ELT(newDimNames, 1, VECTOR_ELT(BBdimnames, 1));
+      Xout.slot("Dimnames") = newDimNames; 
+    }
+    return Xout;
+  }  
+}
+
+// [[Rcpp::export(.dgCtcrossprod)]]
+SEXP dgCtcrossprod( SEXP AA, SEXP BB ){ 
+  const Map<SparseMatrix<double> > A(as<Map<SparseMatrix<double> > >(AA)); 
+  if (Rf_isNull(BB)) {
+    const int r(A.rows());
+    SparseMatrix<double> XX= SparseMatrix<double>(r, r).selfadjointView<Lower>().rankUpdate(A);
+    S4 Xout(wrap(XX));
+    if (true) { // I could make this conditional but this has no measurable impact on computation times
+      S4 Ain(AA); 
+      RObject newDimNames(Rf_allocVector(VECSXP, 2));
+      RObject AAdimnames = clone(as<SEXP>((Ain.slot("Dimnames")))); // clone() to copy values rather than address
+      if ( ! Rf_isNull(AAdimnames)) {
+        SET_VECTOR_ELT(newDimNames, 0, VECTOR_ELT(AAdimnames, 0));
+        SET_VECTOR_ELT(newDimNames, 1, VECTOR_ELT(AAdimnames, 0));
+      }
+      Xout.slot("Dimnames") = newDimNames; 
+    }
+    return Xout;
+  } else {
+    const Map<SparseMatrix<double> > B(as<Map<SparseMatrix<double> > >(BB));
+    S4 Xout(wrap(A * B.adjoint() ));
+    if (true) { // I could make this conditional
+      S4 Ain(AA); 
+      S4 Bin(BB);
+      RObject newDimNames(Rf_allocVector(VECSXP, 2));
+      RObject AAdimnames(clone(as<SEXP>((Ain.slot("Dimnames"))))); // clone() to copy values rather than address
+      RObject BBdimnames(clone(as<SEXP>((Bin.slot("Dimnames")))));
+      if ( ! Rf_isNull(AAdimnames)) SET_VECTOR_ELT(newDimNames, 0, VECTOR_ELT(AAdimnames, 0));
+      if ( ! Rf_isNull(BBdimnames)) SET_VECTOR_ELT(newDimNames, 1, VECTOR_ELT(BBdimnames, 0));
+      Xout.slot("Dimnames") = newDimNames; 
+    }
+    return Xout;
+  }  
+}
+
+int get_type(SEXP x) {
+  int sexp_type = TYPEOF(x);
+  if (sexp_type==REALSXP) { // numeric vector (including matrix
+    RObject dim(Rf_getAttrib(x, R_DimSymbol));
+    bool hasdim =  (! Rf_isNull(dim));
+    if (hasdim) return(sexp_type); else return(-sexp_type); // 14 for matrix, -14 for vector
+  } else return(sexp_type);
+}
+
+// SEXP_TYPE's: https://cran.r-project.org/doc/manuals/r-release/R-ints.html#R-Internal-Structures
+// Distingusihing types: http://lists.r-forge.r-project.org/pipermail/rcpp-devel/2013-February/005352.html
+
+// [[Rcpp::export(.crossprod_not_dge)]]
+SEXP crossprod_not_dge( SEXP AA, SEXP BB, bool eval_dens ) {  
+  int type_AA=get_type(AA);
+  int type_BB=get_type(BB);
+  int c;
+  bool A_sp=false,B_sp=false;
+  MatrixXd Ad,Bd; // we would like to be able to declare a common type for MatrixXd, Map<MatriXd> and Map<parseMatirx<double> > ...
+  RObject Xout;
+  RObject AAdimnames;
+  RObject BBdimnames;
+  RObject newDimNames(Rf_allocVector(VECSXP, 2));
+  if (type_AA==S4SXP) {
+    if ( ! Rf_inherits( AA, "dgCMatrix" ) ) return(wrap("Unhandled type for first argument."));
+    const Map<SparseMatrix<double> > A(as<Map<SparseMatrix<double> > >(AA)); 
+    double denseness_A=double(A.nonZeros())/(A.rows()* A.cols());
+    if ( eval_dens) {
+      A_sp = (denseness_A<=0.35);
+      if (denseness_A>0.35) {
+        Ad=MatrixXd(A);
+      } else A_sp=true;
+    } else A_sp=true;
+    const S4 Ain(AA); 
+    AAdimnames = clone(as<SEXP>(Ain.slot("Dimnames"))); // clone() to copy values rather than address
+  } else if (type_AA!=NILSXP) {
+    AAdimnames = Rf_getAttrib(AA, R_DimNamesSymbol);
+  }
+  if (type_BB==S4SXP) {
+    if ( ! Rf_inherits( BB, "dgCMatrix" ) ) return(wrap("Unhandled type for second argument."));
+    const Map<SparseMatrix<double> > B(as<Map<SparseMatrix<double> > >(BB)); 
+    double denseness_B=double(B.nonZeros())/(B.rows()* B.cols());
+    if ( eval_dens) {
+      if (denseness_B>0.35) {
+        Bd=MatrixXd(B);
+      } else B_sp=true;
+    } else B_sp=true;
+    const S4 Bin(BB); 
+    BBdimnames = clone(as<SEXP>(Bin.slot("Dimnames"))); // clone() to copy values rather than address
+  } else if (type_BB!=NILSXP) {
+    BBdimnames = Rf_getAttrib(BB, R_DimNamesSymbol); // appears to work in NILSXP case too
+  }
+  if (type_BB==NILSXP) {
+    if ( ! Rf_isNull(AAdimnames)) {
+      SET_VECTOR_ELT(newDimNames, 0, VECTOR_ELT(AAdimnames, 1));
+      SET_VECTOR_ELT(newDimNames, 1, VECTOR_ELT(AAdimnames, 1));
+    }
+    if (A_sp) {
+      const Map<SparseMatrix<double> > A(as<Map<SparseMatrix<double> > >(AA)); 
+      c=A.cols();
+      SparseMatrix<double> tmp = SparseMatrix<double>(c, c).selfadjointView<Lower>().rankUpdate(A.transpose());
+      Xout = S4(wrap(tmp));
+      Xout.slot("Dimnames") = newDimNames; 
+    } else {
+      MatrixXd txx;
+      if (type_AA==S4SXP) { // Ad created by conversion
+        c=Ad.cols();
+        txx=MatrixXd(c, c).setZero().selfadjointView<Lower>().rankUpdate(Ad.transpose());
+      } else {
+        const Map<MatrixXd> Am(as<Map<MatrixXd> >(AA)); // wrapping, no deep copy
+        c=Am.cols();
+        txx=MatrixXd(c, c).setZero().selfadjointView<Lower>().rankUpdate(Am.transpose());
+      }
+      Xout = wrap(txx);  
+      Xout.attr("dimnames") = newDimNames; 
+    }
+  } else {
+    if ( ! Rf_isNull(AAdimnames)) SET_VECTOR_ELT(newDimNames, 0, VECTOR_ELT(AAdimnames, 1));
+    if ( ! Rf_isNull(BBdimnames)) SET_VECTOR_ELT(newDimNames, 1, VECTOR_ELT(BBdimnames, 1));
+    if (A_sp) {
+      const Map<SparseMatrix<double> > A(as<Map<SparseMatrix<double> > >(AA)); 
+      if (B_sp) {
+        const Map<SparseMatrix<double> > B(as<Map<SparseMatrix<double> > >(BB)); 
+        Xout = S4(wrap(A.adjoint() * B));
+        Xout.slot("Dimnames") = newDimNames; 
+      } else {
+        if (type_BB==S4SXP) { // Bd created by conversion
+          Xout = wrap(A.adjoint() * Bd);
+        } else {
+          const Map<MatrixXd> Bm(as<Map<MatrixXd> >(BB)); // wrapping, no deep copy
+          Xout = wrap(A.adjoint() * Bm);
+        }
+        Xout.attr("dimnames") = newDimNames; 
+      } 
+    } else {
+      if (B_sp) {
+        const Map<SparseMatrix<double> > B(as<Map<SparseMatrix<double> > >(BB)); 
+        if (type_AA==S4SXP) { // Ad created by conversion
+          Xout = wrap(Ad.adjoint() * B);
+        } else {
+          const Map<MatrixXd> Am(as<Map<MatrixXd> >(AA)); // wrapping
+          Xout = wrap(Am.adjoint() * B);
+        }
+      } else {
+        if (type_BB==S4SXP) { // Bd created by conversion
+          if (type_AA==S4SXP) { // Ad created by conversion
+            Xout = wrap(Ad.adjoint() * Bd);
+          } else {
+            const Map<MatrixXd> Am(as<Map<MatrixXd> >(AA)); // wrapping
+            Xout = wrap(Am.adjoint() * Bd);
+          }
+        } else {
+          const Map<MatrixXd> Bm(as<Map<MatrixXd> >(BB)); // wrapping, no deep copy
+          if (type_AA==S4SXP) { // Ad created by conversion
+            Xout = wrap(Ad.adjoint() * Bm);
+          } else {
+            const Map<MatrixXd> Am(as<Map<MatrixXd> >(AA)); // wrapping, 
+            Xout = wrap(Am.adjoint() * Bm);
+          }
+        }
+      } 
+      Xout.attr("dimnames") = newDimNames; 
+    }
+  }
+  return(Xout);  
+}
+
+// [[Rcpp::export(.Rcpp_crossprod)]]
+SEXP Rcpp_crossprod( SEXP AA, SEXP BB, bool eval_dens=true ) {
+  //Rcout<<"debut"<<std::flush;
+  bool Adge=Rf_inherits( AA, "dgeMatrix" );
+  bool Bdge=Rf_inherits( BB, "dgeMatrix" );
+  if (Adge || Bdge) {
+    RObject A,B;
+    if (Adge) {
+      const S4 Ain(AA); 
+      NumericVector a= clone(as<SEXP>(Ain.slot("x"))); // otherwise modifying a's dim modifies AA@x's dim...
+      a.attr("dim") = clone(as<SEXP>(Ain.slot("Dim"))); 
+      a.attr("dimnames") = clone(as<SEXP>(Ain.slot("Dimnames"))); // clone() to copy values rather than address
+      A=as<NumericMatrix>(a);
+    } else A=AA;
+    if (Bdge) {
+      const S4 Bin(BB); 
+      NumericVector b= clone(as<SEXP>(Bin.slot("x"))); // otherwise modifying b's dim modifies BB@x's dim...
+      b.attr("dim") = clone(as<SEXP>(Bin.slot("Dim"))); 
+      b.attr("dimnames") = clone(as<SEXP>(Bin.slot("Dimnames"))); // clone() to copy values rather than address
+      B=as<NumericMatrix>(b);
+    } else B=BB;
+    return(crossprod_not_dge( wrap(A), wrap(B), eval_dens ));
+  } // ELSE:
+  return(crossprod_not_dge( AA, BB, eval_dens ));
+}
+
+
+

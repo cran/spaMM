@@ -6,7 +6,7 @@
 \alias{extractAIC.HLfit}
 %- Also NEED an '\alias' for EACH other topic documented here.
 \title{
-Extractors for informations criteria such as AIC
+Extractors for information criteria such as AIC
 }
 \description{
 \code{get_any_IC} computes model selection/information criteria such as AIC. See Details for more information about these criteria. The other extractors \code{AIC} and \code{extractAIC} are methods for \code{HLfit} objects of generic functions defined in other packages; \code{AIC} is equivalent to \code{get_any_IC}, and \code{extractAIC} additionally returns a number of degrees of freedom. 

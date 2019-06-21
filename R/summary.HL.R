@@ -224,7 +224,7 @@ summary.HLfitlist <- function(object, ...) {
         in_pointLambda[mt] <- FALSE
         inrows <-  cum_nrows[mt]+(1:nrow(m))
         summ_variances[inrows,1] <- diag(m)
-        m <- stats::cov2cor(m)
+        m <- cov2cor(m)
         for (it in (2:nrow(m))) {
           for (jt in (1:(it-1))) {
             summ_corr_cols[cum_nrows[mt]+it,jt] <- m[it,jt]

@@ -1,7 +1,7 @@
 # y-augmented method withOUT precomputation of R_aug_ZXy
 .HLfit_body_augZXy <- function(processed, ranFix=list()) { 
   ranFix <- .post_process_family(processed$family,ranFix) ## assign 'extra' pars and cleans ranFix
-  ranFix <- .canonizeRanPars(ranPars=ranFix,corr_info=NULL, checkComplete = FALSE)## including full-size lambda
+  ranFix <- .canonizeRanPars(ranPars=ranFix,corr_info=NULL, checkComplete = FALSE, rC_transf=.spaMM.data$options$rC_transf)## including full-size lambda
   nobs <- nrow(processed$data) ## before prior.weights is evaluated
   ### a bit of post processing
   nobs <- NROW(processed$AUGI0_ZX$X.pv)
@@ -14,7 +14,7 @@
   sparse_precision <- processed$sparsePrecisionBOOL
   ranCoefs.Fix <- .getPar(ranFix,"ranCoefs") ## may be NULL
   # Updates processed$ranCoefs_blob which contains no globally fixed ranCoefs as this has been excluded by .determine_augZXy() 
-  ranCoefs_blob <- .process_ranCoefs(processed, ranCoefs.Fix,use_tri=.spaMM.data$options$use_tri_for_augZXy) ## UPDATES preexisting object
+  ranCoefs_blob <- .process_ranCoefs(processed, ranCoefs.Fix,use_tri=.spaMM.data$options$use_tri_for_augZXy) ## *updates* *locally* a preexisting object
   LMatrices <- processed$AUGI0_ZX$envir$LMatrices
   # HLCor_body has prefilled $LMatrices for :
   #    for Matern...
@@ -70,19 +70,32 @@
                             cum_n_u_h=cum_n_u_h,w.resid=w.resid))
   } else {
     ZAL_scaling <- 1/sqrt(wranefblob$w.ranef*H_global_scale) ## Q^{-1/2}/s
-    Xscal <- .make_Xscal(ZAL=ZAL, ZAL_scaling = ZAL_scaling, AUGI0_ZX=processed$AUGI0_ZX)
-    if (inherits(Xscal,"sparseMatrix")) { # 
-      mMatrix_method <- .spaMM.data$options$Matrix_method
-    } else {
-      mMatrix_method <- .spaMM.data$options$matrix_method
-    }
     weight_X <- .calc_weight_X(w.resid, H_global_scale) ## sqrt(s^2 W.resid) ## should not affect the result up to precision
-    sXaug <- do.call(mMatrix_method,
-                     list(Xaug=Xscal, weight_X=weight_X, w.ranef=wranefblob$w.ranef, H_global_scale=H_global_scale))
+    if (.spaMM.data$options$TRY_R_new && inherits(ZAL,"sparseMatrix")) {
+      ZW <- .Dvec_times_Matrix(weight_X,.Matrix_times_Dvec(ZAL,ZAL_scaling))
+      XW <- .Dvec_times_m_Matrix(weight_X,processed$AUGI0_ZX$X.pv)
+      sXaug <- structure(list(ZW=ZW,XW=XW,I=processed$AUGI0_ZX$I),
+                         w.ranef=wranefblob$w.ranef,
+                         n_u_h=ncol(ZW), # mandatory for all sXaug types
+                         pforpv=ncol(XW),  # mandatory for all sXaug types
+                         weight_X=weight_X, # new mandatory 08/2018
+                         H_global_scale=H_global_scale)
+      class(sXaug) <- c(class(sXaug),"sXaug_blocks")
+    } else {
+      Xscal <- .make_Xscal(ZAL=ZAL, ZAL_scaling = ZAL_scaling, AUGI0_ZX=processed$AUGI0_ZX) # does not weights the I
+      if (inherits(Xscal,"sparseMatrix")) { # 
+        mMatrix_method <- .spaMM.data$options$Matrix_method # does not weights the I
+      } else {
+        mMatrix_method <- .spaMM.data$options$matrix_method
+      }
+      sXaug <- do.call(mMatrix_method,
+                       list(Xaug=Xscal, weight_X=weight_X, w.ranef=wranefblob$w.ranef, H_global_scale=H_global_scale))
+    }
   }
   ####################################################################################################
   augZXy_resu <- .calc_APHLs_by_augZXy_or_sXaug(sXaug=sXaug, phi_est=phi_est, # may be NULL
-                                             processed=processed, which=whichAPHLs)
+                                             processed=processed, which=whichAPHLs,
+                                              update_info=list(allow= (! any(unlist(ranCoefs.Fix)==0))))
   res <- list(APHLs=augZXy_resu)
   return(res)    ########################   R E T U R N
 }

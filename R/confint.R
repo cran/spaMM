@@ -35,10 +35,11 @@ confint.HLfit <- function(object,parm,level=0.95,verbose=TRUE,...) {
   X_is_scaled <- ( ! is.null(attr(X.pv,"scaled:scale")))
   #
   # FIXME test processed nature to prevent multinom stuff here
-  lc$processed$intervalInfo <- list(fitlik=object$APHLs[[lik]],
-                                    targetlik=object$APHLs[[lik]]-dlogL,
-                                    parm=parm,
-                                    asympto_abs_Dparm=asympto_abs_Dparm)
+  intervalinfo <- list(fitlik=object$APHLs[[lik]],
+                     targetlik=object$APHLs[[lik]]-dlogL,
+                     parm=parm,
+                     asympto_abs_Dparm=asympto_abs_Dparm)
+  oldopt <- .options.processed(lc$processed, intervalInfo=intervalinfo, augZXy_cond=FALSE)
   if (X_is_scaled) {
     lc$processed$intervalInfo$MLparm <- .scale(beta=object$fixef,X=X.pv)[parm]
   } else lc$processed$intervalInfo$MLparm <- object$fixef[parm]   
@@ -83,6 +84,7 @@ confint.HLfit <- function(object,parm,level=0.95,verbose=TRUE,...) {
         return(resu) ## return value to be optimized is a parameter value, not a likelihood
       }
     }
+    rC_transf <- .spaMM.data$options$rC_transf
     optim_bound_over_nuisance_pars <- function(posforminimiz) { ## optimize the CI bound and returns the parameters that optimize this bound
       user_init_optim <- switch(paste(llc[[1L]]),
                                 "corrHLfit" = llc[["init.corrHLfit"]],
@@ -95,7 +97,7 @@ confint.HLfit <- function(object,parm,level=0.95,verbose=TRUE,...) {
                                                                             list(initvec=init))
       if (is.null(nloptr_controls$xtol_abs)) {
         nloptr_controls$xtol_abs <- eval(.spaMM.data$options$xtol_abs, 
-                                         list(LowUp=LowUp)) 
+                                         list(LowUp=LowUp, rC_transf=rC_transf)) 
       }
       .assignWrapper(anyObjfnCall.args$processed,
                      paste0("return_only <- \"confint_bound\""))
@@ -117,7 +119,7 @@ confint.HLfit <- function(object,parm,level=0.95,verbose=TRUE,...) {
     # for (rd in which( ! is.na(corr_types))) corr_families[[rd]] <- do.call(corr_types[rd],list())
     LUarglist$canon.init <- .canonizeRanPars(ranPars=trTemplate,
                                              corr_info=.get_from_ranef_info(object), 
-                                             checkComplete=FALSE)
+                                             checkComplete=FALSE, rC_transf=rC_transf)
     LowUp <- do.call(.makeLowerUpper,LUarglist)
   }
   ## lowerfit
@@ -187,6 +189,7 @@ confint.HLfit <- function(object,parm,level=0.95,verbose=TRUE,...) {
     }
   }
   options(warnori)
+  .options.processed(lc$processed, oldopt)
   interval <- c(lowerfit$fixef[parm],upperfit$fixef[parm])
   names(interval) <- paste(c("lower","upper"),parm)
   if (verbose) print(interval)

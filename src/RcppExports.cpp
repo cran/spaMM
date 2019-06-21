@@ -282,6 +282,68 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// dgCprod
+SEXP dgCprod(SEXP AA, SEXP BB);
+RcppExport SEXP _spaMM_dgCprod(SEXP AASEXP, SEXP BBSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type AA(AASEXP);
+    Rcpp::traits::input_parameter< SEXP >::type BB(BBSEXP);
+    rcpp_result_gen = Rcpp::wrap(dgCprod(AA, BB));
+    return rcpp_result_gen;
+END_RCPP
+}
+// dgCcrossprod
+SEXP dgCcrossprod(SEXP AA, SEXP BB);
+RcppExport SEXP _spaMM_dgCcrossprod(SEXP AASEXP, SEXP BBSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type AA(AASEXP);
+    Rcpp::traits::input_parameter< SEXP >::type BB(BBSEXP);
+    rcpp_result_gen = Rcpp::wrap(dgCcrossprod(AA, BB));
+    return rcpp_result_gen;
+END_RCPP
+}
+// dgCtcrossprod
+SEXP dgCtcrossprod(SEXP AA, SEXP BB);
+RcppExport SEXP _spaMM_dgCtcrossprod(SEXP AASEXP, SEXP BBSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type AA(AASEXP);
+    Rcpp::traits::input_parameter< SEXP >::type BB(BBSEXP);
+    rcpp_result_gen = Rcpp::wrap(dgCtcrossprod(AA, BB));
+    return rcpp_result_gen;
+END_RCPP
+}
+// crossprod_not_dge
+SEXP crossprod_not_dge(SEXP AA, SEXP BB, bool eval_dens);
+RcppExport SEXP _spaMM_crossprod_not_dge(SEXP AASEXP, SEXP BBSEXP, SEXP eval_densSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type AA(AASEXP);
+    Rcpp::traits::input_parameter< SEXP >::type BB(BBSEXP);
+    Rcpp::traits::input_parameter< bool >::type eval_dens(eval_densSEXP);
+    rcpp_result_gen = Rcpp::wrap(crossprod_not_dge(AA, BB, eval_dens));
+    return rcpp_result_gen;
+END_RCPP
+}
+// Rcpp_crossprod
+SEXP Rcpp_crossprod(SEXP AA, SEXP BB, bool eval_dens);
+RcppExport SEXP _spaMM_Rcpp_crossprod(SEXP AASEXP, SEXP BBSEXP, SEXP eval_densSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type AA(AASEXP);
+    Rcpp::traits::input_parameter< SEXP >::type BB(BBSEXP);
+    Rcpp::traits::input_parameter< bool >::type eval_dens(eval_densSEXP);
+    rcpp_result_gen = Rcpp::wrap(Rcpp_crossprod(AA, BB, eval_dens));
+    return rcpp_result_gen;
+END_RCPP
+}
 
 static const R_CallMethodDef CallEntries[] = {
     {"_spaMM_Rcpp_COMP_Z", (DL_FUNC) &_spaMM_Rcpp_COMP_Z, 4},
@@ -306,6 +368,11 @@ static const R_CallMethodDef CallEntries[] = {
     {"_spaMM_LevenbergMsolveCpp", (DL_FUNC) &_spaMM_LevenbergMsolveCpp, 3},
     {"_spaMM_LogAbsDetCpp", (DL_FUNC) &_spaMM_LogAbsDetCpp, 1},
     {"_spaMM_selfAdjointSolverCpp", (DL_FUNC) &_spaMM_selfAdjointSolverCpp, 1},
+    {"_spaMM_dgCprod", (DL_FUNC) &_spaMM_dgCprod, 2},
+    {"_spaMM_dgCcrossprod", (DL_FUNC) &_spaMM_dgCcrossprod, 2},
+    {"_spaMM_dgCtcrossprod", (DL_FUNC) &_spaMM_dgCtcrossprod, 2},
+    {"_spaMM_crossprod_not_dge", (DL_FUNC) &_spaMM_crossprod_not_dge, 3},
+    {"_spaMM_Rcpp_crossprod", (DL_FUNC) &_spaMM_Rcpp_crossprod, 3},
     {NULL, NULL, 0}
 };
 
