@@ -1,4 +1,4 @@
-cat("\ntest DHGLM:")
+cat(crayon::yellow("\ntest DHGLM:"))
 
 data("crack") # crack data, LeeNP06 chapter 11 etc
 hlfit <- HLfit(y~crack0+(1|specimen),family=Gamma(log),data=crack, HLmethod="REML", 

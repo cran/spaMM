@@ -14,7 +14,7 @@ of the profile likelihood ratio for this parameter. The profiling is other all o
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
-  \item{object}{An object of class \code{HLfit}, such as return object of HLfit, HLCor or corrHLfit calls;}
+  \item{object}{An object of class \code{HLfit}, as returned by the fitting functions in \code{spaMM}.}
   \item{parm}{The name of a parameter to be fitted, or its position in the the object's \code{$fixef} vector. 
   Valid names are those of the object's \code{$fixef}; }
   \item{level}{The coverage of the interval;}

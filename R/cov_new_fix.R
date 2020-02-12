@@ -17,9 +17,10 @@
 
 # public wrapper for more transparent workflow
 preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
-                                variances=list(residVar=FALSE, cov=FALSE)) {
+                                variances=list(residVar=FALSE, cov=FALSE), control=list()) {
+  delayedAssign("invCov_oldLv_oldLv_list", .get_invColdoldList(object, control=control))
   return(.calc_new_X_ZAC(object=object, newdata=fixdata, re.form = re.form,
-                             variances=variances) )
+                             variances=variances,invCov_oldLv_oldLv_list=invCov_oldLv_oldLv_list) )
 }
 ###############################################
 
@@ -89,7 +90,7 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
 
 
 .calc_new_X_ZAC <- function(object, newdata=NULL, re.form = NULL,
-                         variances=list(residVar=FALSE, cov=FALSE)) {
+                         variances=list(residVar=FALSE, cov=FALSE),invCov_oldLv_oldLv_list) {
   locform <- formula.HLfit(object, which="") 
   ## possible change of random effect terms
   if ( .noRanef(re.form)) { ## i.e. if re.form implies that there is no random effect
@@ -241,8 +242,9 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
         || any(unlist(variances)) # cov_newLv_oldv_list is always needed for cbind(X.pv,newZAC [which may be ori ZAC]); should ~corr_list when newdata=ori data
        ) {
       blob <- .make_new_corr_lists(object=object,locdata=locdata, which_mats=which_mats, 
-                                   newZAlist=newZAlist, newinold=newinold)
-      # These matrices do not include the lamdba factor, as this will be provided in .calc_Evar()...
+                                   newZAlist=newZAlist, newinold=newinold,
+                                   invCov_oldLv_oldLv_list=invCov_oldLv_oldLv_list)
+      # These matrices do not include the lambda factor, as this will be provided in .calc_Evar()...
       cov_newLv_oldv_list <- blob$cov_newLv_oldv_list 
       cov_newLv_newLv_list <- blob$cov_newLv_newLv_list ## may be NULL
       # cov_newLv_oldv_list still contains NULL's, and we need something complete to compute newZAC without '%*% NULL'
@@ -310,10 +312,13 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
 ## get_predCov_var_fix: see example in predict.Rd (?get_predCov_var_fix), test in test-predVar 
 # get_predCov_var_fix -> .calc_new_X_ZAC -> evaluates 'which_mats' according to all relevant arguments
 get_predCov_var_fix <- function(object, newdata = NULL, fix_X_ZAC.object,fixdata, re.form = NULL, 
-                                variances=list(disp=TRUE,residVar=FALSE,cov=FALSE), ...) {
+                                variances=list(disp=TRUE,residVar=FALSE,cov=FALSE), control=list(), ...) {
+  delayedAssign("invCov_oldLv_oldLv_list", .get_invColdoldList(object, control=control))
+  variances <- .process_variances(variances, object)
   newnrand <- length(fix_X_ZAC.object$newZAlist) 
   fixZACvar <- .calc_newZACvar(fix_X_ZAC.object$newZAlist,fix_X_ZAC.object$cov_newLv_oldv_list)
-  new_X_ZACblob <- .calc_new_X_ZAC(object,newdata=newdata,variances=variances) ## called for a correlation block
+  new_X_ZACblob <- .calc_new_X_ZAC(object,newdata=newdata,variances=variances,
+                                   invCov_oldLv_oldLv_list=invCov_oldLv_oldLv_list) ## called for a correlation block
   newZACvar <- .calc_newZACvar(new_X_ZACblob$newZAlist,new_X_ZACblob$cov_newLv_oldv_list)
   ## First component of predVar
   # covariance of expectation of Xbeta+Zb due to var of (hat(beta),hat(v)) using E[b] as function of hat(v)
@@ -331,6 +336,10 @@ get_predCov_var_fix <- function(object, newdata = NULL, fix_X_ZAC.object,fixdata
     subrange <- c(seq_len(Xncol),re_form_col_indices$subrange + Xncol)
     loc_tcrossfac_beta_w_cov <- loc_tcrossfac_beta_w_cov[subrange,]
   } else re_form_col_indices <- NULL
+  if (variances$naive) {
+    naive <- .calc_Var_given_fixef(object, new_X_ZACblob=new_X_ZACblob, covMatrix=variances$cov, fix_X_ZAC.object=fix_X_ZAC.object)
+    return(naive)
+  } 
   ## get_predCov_var_fix() is typically called once (if it is) so no use in saving beta_w_cov
   predVar <- new_X_ZAC %id*% .tcrossprod(loc_tcrossfac_beta_w_cov) %*id% t(fix_X_ZAC)
   ## Second component of predVar:
@@ -338,15 +347,18 @@ get_predCov_var_fix <- function(object, newdata = NULL, fix_X_ZAC.object,fixdata
                                                which_mats=list(no=TRUE,nn=rep(FALSE,newnrand)), # all the covariance info being provided by the fix_X_ZAC.object 
                                                new_X_ZACblob$newZAlist, 
                                                newinold=fix_X_ZAC.object$newinold,
-                                               fix_info=fix_X_ZAC.object)$cov_newLv_oldv_list
+                                               fix_info=fix_X_ZAC.object,
+                                               invCov_oldLv_oldLv_list=invCov_oldLv_oldLv_list
+                                               )$cov_newLv_oldv_list
   if ( ! is.null(cov_newLv_fixLv_list) ) {
     # Evar: expect over distrib of (hat(beta),new hat(v)) of [covariance of Xbeta+Zb given (hat(beta),orig hat(v))]
     Evar <- .calc_Evar(newZAlist=new_X_ZACblob$newZAlist,newinold=fix_X_ZAC.object$newinold, 
                        cov_newLv_oldv_list=new_X_ZACblob$cov_newLv_oldv_list, 
-                       lambda=object$lambda, invCov_oldLv_oldLv_list=.get_invColdoldList(object), 
+                       lambda=object$lambda, invCov_oldLv_oldLv_list=invCov_oldLv_oldLv_list, 
                        cov_newLv_fixLv_list=cov_newLv_fixLv_list, cov_fixLv_oldv_list=fix_X_ZAC.object$cov_newLv_oldv_list, 
                        fixZAlist=fix_X_ZAC.object$newZAlist,covMatrix=TRUE,
-                       diag_cov_newLv_newLv_list=fix_X_ZAC.object$diag_cov_newLv_newLv_list)
+                       diag_cov_newLv_newLv_list=fix_X_ZAC.object$diag_cov_newLv_newLv_list,
+                       object=object) # we pass object to be able to assign it its environment
     predVar <- predVar + Evar
   } 
   # If components for uncertainty in dispersion params were requested,

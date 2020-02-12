@@ -29,7 +29,7 @@
     colorpts <- data.frame(x=x,y=rgb.tim[,k])
     # fitme very slow on this 7/5/2016
     blob <- corrHLfit(y~ Matern(1|x),data=eval(colorpts),ranFix=list(phi=1e-07,nu=4,rho=10)) ## use rho large...
-    hold <- predict(blob,newdata=data.frame(x=xg))[,1] ## binding FALSE by default -> returns vector 
+    hold <- predict(blob,newdata=data.frame(x=xg),control=list(fix_predVar=FALSE))[,1] ## binding FALSE by default -> returns vector 
     ##
     hold[hold < 0] <- 0
     hold[hold > 255] <- 255
@@ -374,7 +374,7 @@ mapMM <- function (fitobject,Ztransf=NULL,coordinates,
     if (length(variance)>1L) stop("'variance' argument should include a single name")
     if (is.character(variance)) variance <- structure(list(TRUE),names=variance)
   }
-  pred <- predict(fitobject,variances=variance, binding="fitted") 
+  pred <- predict(fitobject, binding="fitted") # no newdata -> no 'control' needed # variances=variance removed as it was not used
   if (missing(map.formula)) {
     form <- formula.HLfit(fitobject,which="hyper") 
     map.formula <- as.formula(paste(attr(pred,"fittedName"), " ~ 1 + ", paste(.findSpatial(form),collapse=" + ")))
@@ -406,9 +406,11 @@ mapMM <- function (fitobject,Ztransf=NULL,coordinates,
   yGrid <- seq(yrange[1], yrange[2], length.out = gridSteps)
   newdata <- expand.grid(xGrid, yGrid)
   colnames(newdata) <- coordinates
-  gridpred <- predict(smoothObject, newdata = newdata,variances=variance)
+  gridpred <- predict(smoothObject, newdata = newdata,variances=variance, control=list(fix_predVar=FALSE)) 
   if (length(variance)==1L) {
-    pvar <- attr(gridpred,names(variance))  
+    pvar <- attr(gridpred,names(variance))  # so the ____Var of the _smoother_ will be plotted here
+    # we could imagine plotting the interpolation of the prediction var of the fitobject. That would be better; 
+    # but we need a good formula for interpolating the variance (? or log(variance)) _F I X M E_
     varz <- matrix(pvar,ncol=length(yGrid),nrow=length(xGrid))
     contourArgs <- c(list(x=xGrid,y=yGrid,z=varz,add=TRUE),var.contour.args)
     add.varcontour <- quote(do.call(contour,contourArgs))

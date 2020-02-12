@@ -28,9 +28,12 @@ fixedLRT <- function(  ## interface to .LRT or (for devel only) .corrMM_LRT
   method, 
   HLmethod=method,
   REMLformula=NULL,boot.repl=0,
-  control=list(),control.boot=list(),fittingFunction, nb_cores=NULL,
-  boot_fn="spaMM_boot",
-  resp_testfn=NULL,
+  control="DEPRECATED",
+  control.boot="DEPRECATED",
+  fittingFunction, 
+  #nb_cores=NULL,
+  resp_testfn=NULL, 
+  # type="marginal", # not necess sing fixedLRT -> .LRT -> spaMM_boot( type="marginal" hard coded)
   ...) {  ## since .corrMM_LRT is not doc'ed, REMLformula=NULL,boot.repl=0 cannot go into '...' 
   if (missing(null.formula)) stop("'null.formula' argument is missing, with no default.")
   if (missing(formula)) stop("'formula' argument is missing, with no default.")
@@ -69,19 +72,14 @@ fixedLRT <- function(  ## interface to .LRT or (for devel only) .corrMM_LRT
     if ( METHOD %in% c("ML","PQL/L","SEM") || substr(METHOD,0,2) == "ML") {
       mc[[1L]] <- get(".LRT", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
     } else { ## EQL, REPQL or REML variants: 
+      stop(paste0("Likelihood-ratio test not (or no longer) implemented for method ",METHOD)) # .corrMM_LRT long removed
       # FIXME typos (e.g. "PQLL") are not detected...
-      mc[[1L]] <- get(".corrMM_LRT", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
-      mc$control <- list(prefits=FALSE) ## default values in call by fixedLRT. corrMM.LRT further has default restarts=TRUE and maxit=1
-      mc$control[names(control)] <- control ## overrides with user values
-      mc$control.boot <- control.boot ## default values in call by fixedLRT are those of .corrMM_LRT ie prefits=FALSE. We can directly copy user values. 
-      mc$boot_fn <- NULL
-      mc$resp_testfn <- NULL
     }
   } else {
     mc[[1L]] <- get(".LRT", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
     mc$method <- NULL
     mc$HLmethod <- METHOD
-    ## No maxit, restarts, prefits
+    ## No maxit, restarts
     if (missing(fittingFunction)) {
       if (is.null(mc$corrMatrix)) { ## neither explicit spatial nor corrMatrix -> HLfit
         mc$fittingFunction <- "HLfit"
@@ -128,6 +126,7 @@ summary.fixedLRT <- function(object,verbose=TRUE,...) {
     cat(outst)
     cat(paste("\nBartlett-corrected LR test:\n"))
     print(object$BartBootLRT) ## print data frame
+    if ( ! is.null(bootInfo$warnlist)) lapply(bootInfo$warnlist, message)
   } 
 }
 

@@ -1,11 +1,13 @@
 \name{is_separated}
 \alias{is_separated}
-%- Also NEED an '\alias' for EACH other topic documented here.
+\alias{separation}
 \title{
 Checking for (quasi-)separation in binomial-response model.
 }
 \description{
-This is a convenient interface to procedures from the lpSolveAPI package, if this package is installed (otherwise a cruder approach and possibly flawed will be used), to test for (quasi-)separation. This is used by default by the fitting funtions, but can also be called explicitly by the user to check bootstrap samples (see Example in \code{\link{anova}}). 
+Separation occurs in binomial response models when a combination of the predictor variables perfectly predict a level of the response. In such a case the estimates of the coefficients for these variables diverge to (+/-)infinity, and the numerical algorithms typically fail. To anticipate such a problem, the fitting functions in \code{spaMM} try to check for separation by default, using the \code{lpSolveAPI} package which can also detect some borderline cases (\dQuote{quasi-separation}). If this package is not available, \code{spaMM} tries to use the \code{e1071} package (in a way which will not detect quasi-separation). The check may take much time, and is skipped if the \dQuote{problem size} exceeds a threshold defined by \code{spaMM.options(separation_max=<.>)}, in which case a message will tell users by how much they should increase \code{separation_max} to force the check (the definition of the \dQuote{problem size} differs betwwen the two methods and may be complicated). 
+
+\code{is_separated} is a convenient interface to procedures from the \code{lpSolveAPI} package, which can be called explicitly by the user to check bootstrap samples (see Example in \code{\link{anova}}). 
 }
 \usage{
 is_separated(x, y, verbose = TRUE)

@@ -1,26 +1,28 @@
-cat("\ntest of random-slope model:")
+cat(crayon::yellow("\ntest of random-slope model:"))
 if(requireNamespace("lme4", quietly = TRUE)) {
   data("sleepstudy",package = "lme4")
-  (res <- HLfit(Reaction ~ Days + (Days|Subject), data = sleepstudy))
-  testthat::expect_equal(logLik(res),c(p_bv=-871.8141),tolerance=2e-4)
-  if (spaMM.getOption("use_tri_for_makeCovEst")) { # lambda dependent on internal representation of the cov mat
-    if (spaMM.getOption("rC_transf_inner")=="sph") try(testthat::expect_equal(res$lambda[[2]],35.0715,tolerance=2e-4)) ## else the lambda's=1
-  } else try(testthat::expect_equal(res$lambda[[2]],34.91173,tolerance=2e-4))
+  (res <- HLfit(Reaction ~ Days + (Days|Subject), data = sleepstudy)) 
+  testthat::expect_equal(logLik(res),c(p_bv=-871.8141),tolerance=2e-4) 
+  # lambda dependent on internal representation of the cov mat
+  # which itself depends on a try_chol and whether chol facto succeeds...
+  verif_lam <- try(testthat::expect_equal(res$lambda[[2]],35.07115,tolerance=1e-5), silent=TRUE) # if sparse_precision=TRUE which inhibits try_chol 
+  if (inherits(verif_lam,"try-error")) verif_lam <- try(testthat::expect_equal(res$lambda[[2]],1,tolerance=1e-5), silent=TRUE)
+  if (inherits(verif_lam,"try-error")) message("(!) verif_lam not equal to 35.07115 nor to 1")
   try(testthat::expect_equal(predict(res)[1:6,],predict(res,newdata=sleepstudy[1:6,],re.form= ~ (Days|Subject))[,1])) 
   ## tests of predVar with re.form and ranCoefs in test-devel-predVar-ranCoefs.R
   ## a bit slow but detects many problem: (+ effect of refit$lambda)
-  if (FALSE) { ## and to elicit a minqa bug
+  if (FALSE) { # \label{ares_bobyqa_ssprec} # this case produced a bug before bound in .calc_cov_from_ranCoef (+ bobyqa margin is used in the bobyqa_wrapper + ).
     #spaMM.options(allow_augZXy=TRUE) # make sure of this; even if it's the default
-    spaMM.options(optimizer="bobyqa")
-    # and run next fit... the objective function is called by minqa::bobyqa on a par vector outside the bounds
-    # => the logLik is NaN => the test resu>processed$augZXy_env$objective fails bc 'resu' is NaN.
+    oldopt <- spaMM.options(optimizer="bobyqa", sparse_precision=TRUE)
+    (ares <- fitme(Reaction ~ Days + AR1(1|Days) + (Days|Subject), data = sleepstudy, verbose=c(TRACE=TRUE)))
+    spaMM.options(oldopt)
   }
   (ares <- fitme(Reaction ~ Days + AR1(1|Days) + (Days|Subject), data = sleepstudy))  ## AR-lambda is ~0 hence lik is flat  wrt ARphi
   testthat::expect_equal(logLik(ares),c(p_v=-875.969672803))
   if (spaMM.getOption("example_maxtime")>1.5) { ## approx time v2.4.129 ten times faster than v2.3.33
     sm <- fitme(Reaction ~ Days + (Days|Subject) + Matern(1|Days), fixed=list(nu=0.5),data = sleepstudy)
     testthat::expect_true(diff(range((c(logLik(sm),logLik(ares)))))<1e-5)
-    spaMM.options(sparse_precision = FALSE)
+    spaMM.options(sparse_precision = FALSE, warn=FALSE)
     HLfit(Reaction ~ Days + (Days|Subject), data = sleepstudy,ranFix =list(ranCoefs=list("1"=c(612.1,0.06555,35.07)),phi=654.9))
     fitme(Reaction ~ Days + (Days|Subject) + AR1(1|Days), method="REML",
           fixed=list(lambda=c(NA,10),ranCoefs=list("1"=c(612.1,0.06555,35.07)),phi=654.9),

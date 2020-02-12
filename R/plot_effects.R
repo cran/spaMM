@@ -1,5 +1,6 @@
 pdep_effects <- function(object,focal_var,newdata =object$data, length.out=20, levels = NULL, 
                          intervals = "predVar", indiv=FALSE, ...) {
+  was_invColdoldList_NULL <- is.null(object$envir$invColdoldList) # to be able to restore initial state 
   if (!focal_var %in% colnames(newdata)) {
     stop("'focal_var' is not found in the data.")
   }
@@ -31,7 +32,7 @@ pdep_effects <- function(object,focal_var,newdata =object$data, length.out=20, l
   }
   for (it in seq_len(length.out)) {
     newdata[,focal_var] <- focal_values[it]
-    pred <- predict(object,newdata,intervals = intervals, ...)
+    pred <- predict(object,newdata,intervals = intervals, control=list(fix_predVar=NA),, ...)
     CIs <- attr(pred,"intervals") ## not intervals <- ... within the loop!...
     if (indiv) {
       resu[[it]]$pointp <- pred[,1]
@@ -43,6 +44,7 @@ pdep_effects <- function(object,focal_var,newdata =object$data, length.out=20, l
       resu$up[it] <- mean(CIs[,2])
     }
   }
+  if (was_invColdoldList_NULL) object$envir$invColdoldList <- NULL
   return(resu)
 }
 
@@ -53,10 +55,15 @@ plot_effects <- function(object, focal_var, newdata=object$data,
                         xlab = focal_var, ylab=NULL, rgb.args=col2rgb("blue"), add=FALSE, ylim=NULL, ...) {
   # If focal_var remains NULL, the idea is probably to run over all predictor variables (not all regressors), 
   #             but this entails other graphic decisions... 
-  if (is.null(ylab)) ylab <- paste(formula.HLfit(object,which="")[[2]])
   if (is.null(effects)) effects <- pdep_effects(object, newdata=newdata, focal_var=focal_var, indiv=FALSE, ...) 
   # : could imagine plotting the results of indiv=TRUE (requires more code)
-  resp <- object$y
+  if (object$family$family=="binomial") {
+    resp <- object$y/object$BinomialDen
+    if (is.null(ylab)) ylab <- paste("frequency(",formula.HLfit(object,which="")[[2]][[2]],")")
+  } else {
+    resp <- object$y
+    if (is.null(ylab)) ylab <- paste(formula.HLfit(object,which="")[[2]])
+  }
   if (is.null(ylim)) ylim <- stats::quantile(resp, c(0.025, 0.975))
   rgb.args <- as.list(rgb.args)
   if (is.null(rgb.args$maxColorValue)) rgb.args$maxColorValue <- 255

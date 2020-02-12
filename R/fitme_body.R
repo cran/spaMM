@@ -34,7 +34,7 @@ fitme_body <- function(processed,
   #
   user_init_optim <- init ## user_init_optim only for a check in new_locoptim, true initial value init.optim is modified below
   optim_blob <- .calc_optim_args(proc1=proc1, processed=processed,
-                                 init=init, fixed=fixed, lower=lower, upper=upper, 
+                                 init=user_init_optim, fixed=fixed, lower=lower, upper=upper, 
                                  verbose=verbose, optim.scale=optim.scale, For="fitme") 
   # modify HLCor.args and <>bounds;   ## distMatrix or uniqueGeo potentially added to HLCor.args:
   # init <- optim_blob$inits$`init` ## list; keeps all init values, all in untransformed scale
@@ -51,8 +51,8 @@ fitme_body <- function(processed,
 
   #
   if ( ! is.null(residproc1 <- proc1$residProcessed) && identical(spaMM.getOption("outer_optim_resid"),TRUE)) {
-    ## problem is that this is useful if we can avoid computation of the leverages of the resid Model
-    ## (we already need the leverages of the 'mean' model to define the resid model response)
+    ## Problem is that outer optim at the mean model level is useful if we can avoid computation of the leverages 
+    ## But here anyway we need the leverages of the 'mean' model to define the resid model response.
     resid_optim_blob <- .calc_optim_args(proc1=residproc1, processed=proc1,
                                          init=proc1$residModel$init, fixed=proc1$residModel$fixed, ## all user input must be in proc1$residModel
                                          lower=proc1$residModel$lower, upper=proc1$residModel$upper, ## all user input must be in proc1$residModel
@@ -135,7 +135,7 @@ fitme_body <- function(processed,
                                  control, objfn_locoptim=.objfn_locoptim, 
                                  HLcallfn.obj=HLcallfn.obj, anyHLCor_obj_args=anyHLCor_obj_args, 
                                  user_init_optim=user_init_optim,
-                                 grad_locoptim=NULL) # .grad_locoptim)
+                                 grad_locoptim=NULL, verbose=verbose[["TRACE"]])
         refit_info <- attr(optPars,"refit_info") ## 'derives' from control[["refit"]] with modification ## may be NULL but not NA
       }
       optim_time <- .timerraw(time2)
@@ -145,33 +145,23 @@ fitme_body <- function(processed,
       ranPars_in_refit <- .expand_hyper(ranPars_in_refit, processed$hyper_info,moreargs=moreargs)
       augZXy_phi_est <- proc1$augZXy_env$phi_est ## may be NULL: if phi was not estimated by augZXy
       
-      any_nearly_singular_covmat <- FALSE
+      #any_nearly_singular_covmat <- FALSE
       if (! is.null(optPars$trRanCoefs)) {
         ranCoefs <- optPars$trRanCoefs # copy names...
         for (char_rd in names(optPars$trRanCoefs)) {
           ranCoefs[[char_rd]] <- .ranCoefsInv(optPars$trRanCoefs[[char_rd]], rC_transf=.spaMM.data$options$rC_transf)
           covmat <- .calc_cov_from_ranCoef(ranCoefs[[char_rd]])
-          if (kappa(covmat)>1e14 || min(eigen(covmat,only.values = TRUE)$values)<1e-6) any_nearly_singular_covmat <- TRUE
+          #if (kappa(covmat)>1e14 || min(eigen(covmat,only.values = TRUE)$values)<1e-6) any_nearly_singular_covmat <- TRUE # use of this removed 2019/12/16
         }
       }
       init_refit <- list()
       if ( is.null(refit_info) ) { ## not the case with SEM
-        # if (any_nearly_singular_covmat) message("Nearly-singular cov matrix => refitting random-coefficient parameters by default.")
-        if (any_nearly_singular_covmat) message("Nearly-singular cov matrix => Consider refitting with refit_info=TRUE.")
-        refit_info <- list(phi=FALSE,lambda=(! is.null(optPars$trRanCoefs)),ranCoefs=(FALSE && any_nearly_singular_covmat))
+        refit_info <- list(phi=FALSE,lambda=(! is.null(optPars$trRanCoefs)),ranCoefs=FALSE)
       } else if ( is.list(refit_info) ) { ## never the default
-        if (any_nearly_singular_covmat) {
-          if (is.null(refit_info$ranCoefs)) {
-            # message("Nearly-singular cov matrix => refitting random-coefficient parameters by default.")
-          } else if ( ! refit_info$ranCoefs ) message("Nearly-singular cov matrix => Consider refitting with refit_info$ranCoefs=FALSE.")
-        } 
         refit_info <- .modify_list( list(phi=FALSE,lambda=(! is.null(optPars$trRanCoefs)),
-                                         ranCoefs=(FALSE && any_nearly_singular_covmat)), refit_info) 
-        ## lambda=TRUE becomes the dafault (test random-slope 'ares' shows the effect)
+                                         ranCoefs=FALSE), refit_info) 
+        ## lambda=TRUE becomes the default (test random-slope 'ares' shows the effect)
       } else {
-        if (any_nearly_singular_covmat) {
-          if ( ! refit_info) message("Nearly-singular cov matrix => Consider refitting with refit_info=TRUE.")
-        } 
         refit_info <- list(phi=refit_info,lambda=refit_info,ranCoefs=refit_info) # default with SEM is all FALSE
       }
       # refit: (change ranPars_in_refit depending on what's already in and on refit_info)
@@ -199,7 +189,7 @@ fitme_body <- function(processed,
           } else ranPars_in_refit$trLambda <- .dispFn(lambda) ## rescale, but no refit
         }
       }
-      # rescaling hyper- ontrolled lambdas
+      # rescaling hyper-controlled lambdas
       if ( ! is.null(augZXy_phi_est) && ! is.null(optPars$hyper)) {
         ranges <- attr(optPars$hyper,"ranges")
         for (rg_it in names(ranges)) {
@@ -245,7 +235,7 @@ fitme_body <- function(processed,
                                   moreargs=moreargs) ## moreargs needed if user handles fixed(<transformed params>) ('hyper' tests)
   }
   #
-  # if processed is an envir, the following is not local to anyHLCor_obj_args$processed but change processed globally
+  # not local to anyHLCor_obj_args$processed: change processed globally
   .assignWrapper(HLCor.args$processed,"return_only <- NULL") 
   .assignWrapper(HLCor.args$processed,"verbose['warn'] <- TRUE") ## important!
   hlcor <- do.call(HLcallfn,HLCor.args) ## recomputation post optimization, or only computation if length(initvec)=0

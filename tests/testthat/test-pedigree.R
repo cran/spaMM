@@ -1,4 +1,4 @@
-cat("\ntest pedigree:\n")
+cat(crayon::yellow("\ntest pedigree:\n"))
 
 if(requireNamespace("pedigreemm", quietly=TRUE)) {
   ## derived from help("pedigreemm")

@@ -1,12 +1,12 @@
 .do_call_wrap <- local(
   {
     warned_dcw <- list()
-    function(chr_fnname,arglist, pack="e1071") {
+    function(chr_fnname,arglist, pack="e1071", info_mess) {
       if (length(grep(pack,packageDescription("spaMM")$Imports))) {
-        ## then the necessary functions must be imported-from in the NAMESPACE  
+        ## then the necessary functions are imported-from in the NAMESPACE  
         do.call(chr_fnname,arglist) 
       } else if (length(grep(pack,packageDescription("spaMM")$Suggests))) {
-        ## then the necessary functions cannot be imported-from in the NAMESPACE  (and the package must be written in an appropriate way)
+        ## then the necessary functions are not imported-from in the NAMESPACE  (and the package must be written in an appropriate way)
         if ( requireNamespace(pack, quietly = TRUE)) {
           myfun <- get(chr_fnname, asNamespace(pack)) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
           do.call(myfun,arglist) 
@@ -25,6 +25,7 @@
           if ( ! identical(warned_dcw[[pack]],TRUE)) {
             if (pack=="e1071") message("If the 'e1071' package were installed, spaMM could check separation in binary regression problem.")
             if (pack=="cubature") message("If the 'cubature' package were installed, spaMM could compute a requested marginal prediction.")
+            if (pack=="pracma") message(info_mess)
             warned_dcw[[pack]] <<- TRUE
           }
           return(NULL)
@@ -41,22 +42,32 @@ is_separated <- local(
     warned_is <- FALSE
     function(x,y, verbose=TRUE) {
       if (requireNamespace("lpSolveAPI",quietly=TRUE)) {
-        ## test for and/or find the direction of separation
-        ## x a design matrix and y a 0-1 binary response vector
-        separation <- .separator(x, as.numeric(y), purpose = "test")$separation
-        if(separation) {
-          beta <- .separator(x, as.numeric(y), purpose = "find")$beta
-          separating.terms <- dimnames(x)[[2]][abs(beta) > 1e-09]
-          if(length(separating.terms)) {
-            mess <- paste("The following terms are causing separation among the sample points:",
-                          paste(separating.terms, collapse = ", "))
-            if (verbose) message(paste(mess,
-                                       "\n\tsome estimates of fixed-effect coefficients could be practically infinite,",
-                                       "\n\tcausing numerical issues in various functions."))
-            warning(mess)
+        pb_size <- 1e-13*prod(dim(x))^3
+        if (pb_size> spaMM.getOption("separation_max")) {
+          message(paste("Increase spaMM.options(separation_max=<.>) to at least", ceiling(pb_size),
+                        "if you want to check separation (see 'help(separation)')."))
+          return(FALSE)
+        } else {        
+          ## test for and/or find the direction of separation
+          ## x a design matrix and y a 0-1 binary response vector
+          time1 <- Sys.time()
+          separation <- .separator(x, as.numeric(y), purpose = "test")$separation
+          sep_time <- .timerraw(time1)
+          if (sep_time>1) message(paste0("Checking separation for binomial-response model took ",sep_time," s."))
+          if(separation) {
+            beta <- .separator(x, as.numeric(y), purpose = "find")$beta
+            separating.terms <- dimnames(x)[[2]][abs(beta) > 1e-09]
+            if(length(separating.terms)) {
+              mess <- paste("The following terms are causing separation among the sample points:",
+                            paste(separating.terms, collapse = ", "))
+              if (verbose) message(paste(mess,
+                                         "\n\tsome estimates of fixed-effect coefficients could be practically infinite,",
+                                         "\n\tcausing numerical issues in various functions."))
+              warning(mess)
+            }
           }
+          return(separation)
         }
-        return(separation)
       } else {
         if ( ! warned_is) {
           message("If the 'lpSolveAPI' package were installed, spaMM could properly check (quasi-)separation in binary regression problem.")
@@ -70,9 +81,12 @@ is_separated <- local(
                           "if you want to check separation (see 'help(separation)')."))
             return(FALSE)
           } else {
+            time1 <- Sys.time()
             if (inherits(x,"sparseMatrix")) x <- as.matrix(x) ## bc next line ->  model.frame.default...
             arglist <- list(formula= y~x[,varcols,drop=FALSE],type='C-classification', kernel='linear')
             svmfit <- .do_call_wrap("svm",arglist=arglist)
+            sep_time <- .timerraw(time1)
+            if (sep_time>1) message(paste0("Checking separation for binomial-response model took ",sep_time," s."))
             if ( ! is.null(svmfit)) {
               zut <- cbind(y=y,fv=svmfit$fitted)
               #return( ! any(svmfit$fitted!=y)) ## wrong ,this tested for perfect prediction of all response levels
@@ -94,7 +108,8 @@ is_separated <- local(
 ##FR See also Zorn, A Solution to Separation in Binary Response Models, Political Analysis (2005) 13:157-170
 ##FR see also http://www.ats.ucla.edu/stat/mult_pkg/faq/general/complete_separation_logit_models.htm
 ##FR there is a Firth method for dealing with this (and a package, brglm... brglm(locform,offset=Offset) ).
-.separator <- function(x, y, method = c("primal", "dual"), purpose = c("test", "find"),
+.separator <- function(x, y, method = "primal", # else "dual" 
+                       purpose = "test", # else "find"
                       tol = 1e-3)
 {
   n <- dim(x)[1]

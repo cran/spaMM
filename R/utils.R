@@ -36,8 +36,17 @@ overcat <- function(msg, prevmsglength) {
 }
 
 ## quite ad hoc
+.pretty_summ_lambda <- function(lambda_est,processed) {
+  cum_n_u_h <- processed$cum_n_u_h
+  nrand <- length(cum_n_u_h)-1L
+  ulam <- numeric(nrand)
+  for (rd in seq_len(nrand)) ulam[rd] <- unique(lambda_est[(cum_n_u_h[rd]+1L):(cum_n_u_h[rd+1L])])
+  return(ulam)
+}
+
+## quite ad hoc
 .prettify_num <- function(x,nsmall=2L) {
-  if (is.na(x)) {
+  if (is.na(x) || is.null(x)) {
     return(x)
   } else if (abs(x)>1) {
     Ldigits <- floor(log10(abs(x)))+nsmall+1L
@@ -45,11 +54,15 @@ overcat <- function(msg, prevmsglength) {
   } else signif(x,6) ## double !
 }
 
-.prompt <- function() {
-  cat("\nPause: 'c' to continue, 'b' for browsing, 's' to stop")
+.prettify_list <- function(li,nsmall=2L) {
+  lapply(li,.prettify_num,nsmall=nsmall)
+}
+
+.prompt <- function() { # levite qq lourdeurs de browser(); 
+  cat("\nPause: 'c' to continue, 'b' for browsing, 's' to stop") # other ahrs equivalent to c
   res <- readLines(n = 1)
   if (res=='s') stop("User-requested stop().")
-  if (res=='b') browser()
+  if (res=='b') browser("To debug, run options(error=recover); stop()" )
 }
 
 # must work on S4 objects but we avoid defining a new S4 class... hence e don't manipulate class
@@ -59,4 +72,40 @@ overcat <- function(msg, prevmsglength) {
   names_lostattrs <- setdiff(names(Xattr), names(attributes(X)))
   attributes(X)[names_lostattrs] <- Xattr[names_lostattrs] ## not mostattributes hich messes S4 objects ?!
   return(X)
+}
+
+## F I X M E not yet used, to be tested next time I see an inline call from do.call(...)
+print.spcall <- function (x, digits = NULL, quote = TRUE, na.print = NULL, print.gap = NULL, 
+          right = FALSE, max = NULL, useSource = TRUE, ...) {
+  ## print.default: 
+  # args <- pairlist(digits = digits, quote = quote, na.print = na.print, 
+  #                  print.gap = print.gap, right = right, max = max, useSource = useSource, 
+  #                  ...)
+  # missings <- c(missing(digits), missing(quote), missing(na.print), 
+  #               missing(print.gap), missing(right), missing(max), missing(useSource))
+  # .Internal(print.default(x, args, missings))
+  ##
+  abyss <- lapply(x, str) 
+}
+
+.all.subsets <- function(set) {
+  if (is.null(set)) return(list(list())) # so that resu is always a list of lists, with at least one element.
+  len <- length(set)
+  TFsubsets <- expand.grid(rep(list(c(TRUE, FALSE)),len))
+  resu <- apply(TFsubsets, 1L, function(TF) { set[TF] })
+  if (! length(resu)) resu <- list(list()) # the case for input set=list()
+  return(resu)
+}
+
+# See https://stackoverflow.com/questions/32806974/detecting-whether-shiny-runs-the-r-code
+.check_frames <- function (which) {
+  if (is.null(which)) return(0L)
+  # Look for `which` call somewhere in the call stack.
+  frames <-  sys.frames()
+  calls <- lapply(sys.calls(), `[[`, 1)
+  call_name <- function (call)
+    if (is.function(call)) '<closure>' else deparse(call)
+  call_names <- vapply(calls, call_name, character(1))
+  target_call <- grep(which, call_names)
+  return(length(target_call))
 }

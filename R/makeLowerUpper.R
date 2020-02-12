@@ -202,7 +202,7 @@
     for (it in seq_along(ranCoefs)) {
       init_trRancoef <- .ranCoefsFn(ranCoefs[[it]], rC_transf=rC_transf)
       trRancoef_LowUp <- .calc_LowUp_trRancoef(init_trRancoef,Xi_ncol=attr(init_trRancoef,"Xi_ncol"),
-                                               tol_ranCoefs=.spaMM.data$options$tol_rel_ranCoefs,
+                                               tol_ranCoefs=.spaMM.data$options$tol_ranCoefs_outer,
                                                rC_transf=rC_transf)
       lower$trRanCoefs[[it]] <- trRancoef_LowUp$lower
       upper$trRanCoefs[[it]] <- trRancoef_LowUp$upper

@@ -15,6 +15,60 @@
   return(A %*% B)
 }
 
+
+dimnames.bigq <- function(x) { # colnames() and rownames() will use this for bigq objects
+  attr(x, "DIMNAMES")
+}
+
+.sparseMatrix_bigq <- function(X) {
+  dimNames <- dimnames(X) # using my "DIMNAMES" attribute
+  nc <- ncol(X)
+  nr <- nrow(X)
+  Xv <- X[[]]
+  positions <- (Xv!="0")
+  if (any(positions)) {
+    i <- rep_len(rep.int(seq_len(nc), rep.int(1, nc)), nc*nr)[positions] # cf gl() code
+    j <- rep_len(rep.int(seq_len(nc), rep.int(nr, nc)), nc*nr)[positions]
+    sparseMatrix(i=i,j=j,x=gmp::asNumeric(Xv[positions]), dims=c(nr,nc), dimnames=dimNames)
+  } else sparseMatrix(i=integer(),j=integer(),x=numeric(), dims=c(nr,nc), dimnames=dimNames) # zero matrix in sparse format
+}
+
+.mMatrix_bigq <- function(X) {
+  dimNames <- dimnames(X) # using my "DIMNAMES" attribute
+  nc <- ncol(X)
+  nr <- nrow(X)
+  Xv <- X[[]]
+  positions <- (Xv!="0")
+  denseness <- length(which(positions))/length(positions)
+  if (denseness>0.3) {
+    return(structure(gmp::asNumeric(X), dimnames=dimNames))
+  } else if (denseness>0) {
+    i <- rep_len(rep.int(seq_len(nc), rep.int(1, nc)), nc*nr)[positions] # cf gl() code
+    j <- rep_len(rep.int(seq_len(nc), rep.int(nr, nc)), nc*nr)[positions]
+    return(sparseMatrix(i=i,j=j,x=gmp::asNumeric(Xv[positions]), dims=c(nr,nc), dimnames=dimNames))
+  } else return(sparseMatrix(i=integer(),j=integer(),x=numeric(), dims=c(nr,nc), dimnames=dimNames)) # zero matrix in sparse format
+}
+
+`%ZA*gI%` <- function(A,B) {
+  if (inherits(B,"bigq")) B <- .mMatrix_bigq(B)
+  return(A %id*id% B)
+}
+
+# 'gI' for Id and gmp
+`%gI*gI%` <- local({
+  gmp_warned <- FALSE
+  function(A,B) { 
+    A_bigq <- inherits(A,"bigq")
+    B_bigq <- inherits(B,"bigq")
+    if (A_bigq != B_bigq) stop("code missing here")
+    if (A_bigq) return(gmp::`%*%`(A,B))
+    if (.is_identity(A)) return(B)
+    if (.is_identity(B)) return(A)
+    return(A %*% B)
+  }
+})
+
+
 .calcZWZt_mat_or_diag <- function(Z,
                                   W, # never identity in the actual calls
                                   cholW,
@@ -54,7 +108,8 @@
                        cov_newLv_newLv_list, 
                        ## arguments for non-diagonal block of Evar matrix:
                        cov_newLv_fixLv_list, cov_fixLv_oldv_list, fixZAlist=NULL ,
-                       diag_cov_newLv_newLv_list
+                       diag_cov_newLv_newLv_list,
+                       object
 ) {
   newnrand <- length(newinold)
   Evarlist <- vector("list",newnrand)
@@ -66,11 +121,11 @@
     if (exp_ranef_types[new_rd]=="IMRF") { ## in that case the newLv = the oldLv Cno=Coo... and actually the Evar term is zero 
       terme <- rep(0, nrow(newZAlist[[new_rd]]))
       if (covMatrix) terme <- diag(x=terme)
-    } else if ( ! is.null(isEachNewLevelInOld)) { ## non spatial effect: a vector of booleans indicating whether new is in old (qualifies cols of Cnewold)
+    } else if ( ! is.null(isEachNewLevelInOld)) { ## non correlated effect: a vector of booleans indicating whether new is in old (qualifies cols of Cnewold)
       if ( ! is.null(fixZAlist)) { 
-        Cno_InvCoo_Cof <- (cov_newLv_oldv_list[[new_rd]])[] %id*id% t(cov_fixLv_oldv_list[[new_rd]])[]
+        Cno_InvCoo_Cof <- cov_newLv_oldv_list[[new_rd]] %id*id% t(cov_fixLv_oldv_list[[new_rd]])
         Evar <- lambda[old_rd] * (cov_newLv_fixLv_list[[new_rd]] - Cno_InvCoo_Cof) # !=0 only for (new=fiw) not in old
-        terme <- newZAlist[[new_rd]][] %id*id% Evar[] %id*id% t(fixZAlist[[new_rd]])[]
+        terme <- newZAlist[[new_rd]] %id*id% Evar %id*id% t(fixZAlist[[new_rd]])
       } else {
         Evardiag <- lambda[old_rd] * as.numeric(! isEachNewLevelInOld)
         if (is.null(cov_newLv_newLv_list[[new_rd]])) { ## we compute only the var vector
@@ -79,11 +134,12 @@
           terme <- .calcZWZt_mat_or_diag(Z=newZAlist[[new_rd]], W=Diagonal(x=Evardiag), cholW=Diagonal(x=sqrt(Evardiag)), returnMat=covMatrix)
         }
       }
-    } else { ## autocorr effect (spatial, ranCoefs...) EXCEPT IMRF
+    } else { ## autocorr effect (spatial, ranCoefs...) EXCEPT IMRF (first case above)
       if ( ! is.null(fixZAlist)) {
-        Cno_InvCoo_Cof <- (cov_newLv_oldv_list[[new_rd]])[] %id*id% (invCov_oldLv_oldLv_list[[old_rd]])[] %id*id% t(cov_fixLv_oldv_list[[new_rd]])[]
-        Evar <- lambda[old_rd] * (cov_newLv_fixLv_list[[new_rd]] - Cno_InvCoo_Cof)
-        terme <- newZAlist[[new_rd]][] %id*id% Evar[] %id*id% t(fixZAlist[[new_rd]])[]
+        Cno_InvCoo_Cof <- cov_newLv_oldv_list[[new_rd]] %gI*gI% invCov_oldLv_oldLv_list[[old_rd]] %gI*gI% t(cov_fixLv_oldv_list[[new_rd]]) # (invCoo.t() could have been precomputed.)
+        Evar_C <- lambda[old_rd] * (cov_newLv_fixLv_list[[new_rd]] - Cno_InvCoo_Cof)
+        if (inherits(Evar_C,"bigq")) Evar_C <- .mMatrix_bigq(Evar_C)
+        terme <- newZAlist[[new_rd]] %id*id% Evar_C %id*id% t(fixZAlist[[new_rd]])
       } else {
         ## We're hoping for a simplification of the form Evar <- lambda[old_rd] * (1 - diag_Cno_InvCoo_Con)
         ## There are underlying assumptions:
@@ -93,13 +149,22 @@
         ## (2) The '1': L is the chol factor of a correlation matrix itself with a diag of 1's
         ##     Otherwise, even if we do not need the full cov matrix, we need its diagonal.
         if (is.null(cov_newLv_newLv_list[[new_rd]])) { ## we compute only the var vector
-          diag_Cno_InvCoo_Con <- rowSums( ( (cov_newLv_oldv_list[[new_rd]])[] %id*id% (invCov_oldLv_oldLv_list[[old_rd]])[]) * cov_newLv_oldv_list[[new_rd]] )
-          Evar <- lambda[old_rd] * (diag_cov_newLv_newLv_list[[new_rd]] - diag_Cno_InvCoo_Con)
-          terme <- .calcZWZt_mat_or_diag(Z=newZAlist[[new_rd]],W=Evar,cholW=sqrt(Evar), returnMat=covMatrix) # with covMatrix=FALSE?
+          if (inherits(invCov_oldLv_oldLv_list[[old_rd]],"bigq")) {
+            Cno_InvCoo_Con <- ( cov_newLv_oldv_list[[new_rd]]%gI*gI%  invCov_oldLv_oldLv_list[[old_rd]]) * cov_newLv_oldv_list[[new_rd]] 
+            diag_Cno_InvCoo_Con <- rowSums(gmp::asNumeric(Cno_InvCoo_Con))
+            # faster than:
+            #nr <- nrow(tmp)
+            #diag_Cno_InvCoo_Con <- numeric(nr)
+            #for (it in seq_len(nr)) diag_Cno_InvCoo_Con[it] <- gmp::asNumeric(sum(tmp[it,]))
+          } else diag_Cno_InvCoo_Con <- rowSums( ( cov_newLv_oldv_list[[new_rd]] %gI*gI%  invCov_oldLv_oldLv_list[[old_rd]]) * cov_newLv_oldv_list[[new_rd]] )
+          Evar_C <- lambda[old_rd] * (diag_cov_newLv_newLv_list[[new_rd]] - diag_Cno_InvCoo_Con)
+          if (inherits(Evar_C,"bigq")) Evar_C <- .mMatrix_bigq(Evar_C)
+          terme <- .calcZWZt_mat_or_diag(Z=newZAlist[[new_rd]],W=Evar_C,cholW=sqrt(Evar_C), returnMat=covMatrix) # READ the above comments to understand the complexity of this case
         } else { ## full cov matrix
-          Cno_InvCoo_Con <- (cov_newLv_oldv_list[[new_rd]])[] %id*id% (invCov_oldLv_oldLv_list[[old_rd]])[] %id*id% t(cov_newLv_oldv_list[[new_rd]])[]
-          Evar <- lambda[old_rd] * (cov_newLv_newLv_list[[new_rd]] - Cno_InvCoo_Con)
-          terme <- .calcZWZt_mat_or_diag(Z=newZAlist[[new_rd]],W=Evar, cholW=try(chol(Evar), silent=TRUE), returnMat=covMatrix)
+          Cno_InvCoo_Con <- cov_newLv_oldv_list[[new_rd]] %gI*gI%  invCov_oldLv_oldLv_list[[old_rd]] %gI*gI%  t(cov_newLv_oldv_list[[new_rd]])
+          Evar_C <- lambda[old_rd] * (cov_newLv_newLv_list[[new_rd]] - Cno_InvCoo_Con)
+          if (inherits(Evar_C,"bigq")) Evar_C <- .mMatrix_bigq(Evar_C)
+          terme <- .calcZWZt_mat_or_diag(Z=newZAlist[[new_rd]],W=Evar_C, cholW=try(chol(Evar_C), silent=TRUE), returnMat=covMatrix)
         }
       }
     }
@@ -219,7 +284,7 @@
     Evar <- .calc_Evar(newZAlist=newZAlist,newinold=newinold, cov_newLv_oldv_list=cov_newLv_oldv_list, 
                lambda=lambda, invCov_oldLv_oldLv_list=invCov_oldLv_oldLv_list, 
                cov_newLv_newLv_list=cov_newLv_newLv_list, covMatrix=covMatrix,
-               diag_cov_newLv_newLv_list=diag_cov_newLv_newLv_list)
+               diag_cov_newLv_newLv_list=diag_cov_newLv_newLv_list, object=object)
     predVar <- predVar + Evar ## component for linPred=TRUE,disp=FALSE whether newdata=ori data or not
   }
   # If components for uncertainty in dispersion params were requested,
@@ -288,9 +353,10 @@
 .make_new_corr_lists <- function(object,
                                  locdata, ## a list of arrays for selected ranefs, with selected coordinates, if 'preprocessed' by get_predCov_var_fix(), 
                                           ## or a single data frame with all coordinates for all ranefs if from within .calc_new_X_ZAC()
-                                 which_mats, newZAlist, newinold, fix_info=NULL) {
+                                 which_mats, newZAlist, newinold, fix_info=NULL,
+                                 invCov_oldLv_oldLv_list) {
   if (which_mats$no) {
-    cov_newLv_oldv_list <- vector("list",length(newZAlist)) ## declar-initalization, will be filled in the loop
+    cov_newLv_oldv_list <- vector("list",length(newZAlist)) ## declar-initialization, will be filled in the loop
   } else cov_newLv_oldv_list <- .make_corr_list(object$strucList,newZAlist=NULL) # we always need a non trivial value
   cov_newLv_newLv_list <- vector("list",length(cov_newLv_oldv_list))
   diag_cov_newLv_newLv_list <- vector("list",length(cov_newLv_oldv_list))
@@ -309,7 +375,11 @@
               .calc_sub_diagmat_cov_newLv_oldv(oldZA=fix_info$newZAlist[[old_rd]], newZA=newZAlist[[new_rd]],
                                                namesTerms=attr(newZAlist,"namesTerms")[[new_rd]] ## should have length one, which is all that matters
               ) 
-          } ## else the list elements remain NULL
+          } else { ## else the list elements remained NULL... until .calc_Var_given_fixef() needed them
+            if (which_mats$nn[new_rd]) {
+              cov_newLv_newLv_list[[new_rd]] <- 1
+            } else diag_cov_newLv_newLv_list[[new_rd]] <- diag(nrow = ncol(newZAlist[[old_rd]]))
+          }
         } else if ( corr.model=="random-coef") {
           namesTerms <- attr(newZAlist,"namesTerms")[[new_rd]]
           if ( ! is.null(fix_info)) {
@@ -318,16 +388,34 @@
           newlevels <- colnames(newZAlist[[new_rd]])
           oldornew <- unique(c(oldlevels,newlevels))
           numnamesTerms <- length(namesTerms) ## 2 for random-coef
-          design_u <- attr(strucList[[old_rd]],"latentL_blob")$design_u
-          newoldC <- .makelong(.tcrossprod(design_u), longsize=length(oldornew)*numnamesTerms)
           repnames <- rep(oldornew, numnamesTerms)
           newcols <- repnames %in% newlevels ## handle replicates (don't `[` newoldC using names !)
           oldcols <- repnames %in% oldlevels
-          colnames(newoldC) <- rownames(newoldC) <- repnames ## these will be needed by .match_old_new_levels()
-          if (which_mats$no) cov_newLv_oldv_list[[new_rd]] <- structure(newoldC[newcols,oldcols,drop=FALSE],ranefs=ranefs[[new_rd]])
+          if ( ! is.null(gmp_design_u <- attr(strucList[[old_rd]],"latentL_blob")$gmp_design_u)) {
+            #cat(crayon::yellow("YES"))
+            bigq_C <- gmp::tcrossprod(gmp_design_u)
+            newoldC <- .makelong(bigq_C, longsize=length(oldornew)*numnamesTerms)
+            #attr(newoldC,"DIMNAMES") <- list(repnames,repnames) # will be lost in next subsetting
+          } else {
+            design_u <- attr(strucList[[old_rd]],"latentL_blob")$design_u
+            newoldC <- .makelong(.tcrossprod(design_u), longsize=length(oldornew)*numnamesTerms)
+            colnames(newoldC) <- rownames(newoldC) <- repnames ## these will be needed by .match_old_new_levels()
+          }
+          if (which_mats$no) {
+            cov_newLv_oldv_list[[new_rd]] <- structure(newoldC[which(newcols),which(oldcols),drop=FALSE],ranefs=ranefs[[new_rd]])
+            if (inherits(newoldC,"bigq")) attr(cov_newLv_oldv_list[[new_rd]], "DIMNAMES") <- list(repnames[newcols],repnames[oldcols]) ## these will be needed by .match_old_new_levels()
+          }
           if (which_mats$nn[new_rd]) {
-            cov_newLv_newLv_list[[new_rd]] <- newoldC[newcols,newcols,drop=FALSE]
-          } else diag_cov_newLv_newLv_list[[new_rd]] <- diag(x=newoldC[newcols,newcols,drop=FALSE])
+            cov_newLv_newLv_list[[new_rd]] <- newoldC[which(newcols),which(newcols),drop=FALSE] ## __F I X M E__ bug report sent...
+            #names presumably not used
+            #if (inherits(newoldC,"bigq")) attr(diag_cov_newLv_newLv_list[[new_rd]], "DIMNAMES") <- list(repnames[newcols],repnames[newcols])
+          } else {
+            nc <- ncol(newoldC)
+            diagPos <- seq.int(1L,nc^2,nc+1L) ## it's not only an efficient syntax, that's the only way to extract the diag from bigq...
+            if (inherits(newoldC,"bigq")) {
+              diag_cov_newLv_newLv_list[[new_rd]] <- newoldC[[]][diagPos[newcols]] ## with the [[]] to access the raw vector
+            } else diag_cov_newLv_newLv_list[[new_rd]] <- newoldC[diagPos[newcols]]
+          }
         } else if (corr.model %in% c("corrMatrix","adjacency")) { ## this is called if re.form... or pdep_effects()
           namesTerms <- attr(newZAlist,"namesTerms")[[new_rd]]
           if ( ! is.null(fix_info)) {
@@ -425,11 +513,14 @@
                                                                           ranefs=ranefs[[new_rd]])
             if (which_mats$nn[new_rd]) cov_newLv_newLv_list[[new_rd]] <- .calc_corr_from_dist(uuCnewnew, object, corr.model,char_rd=old_char_rd)
           } else {
-            if (which_mats$no) cov_newLv_oldv_list[[new_rd]] <- 
-                structure(.get_from_ranef_info(object)$corr_families[[old_rd]]$calc_corr_from_dist(
-                  ranFix=object$ranFix, char_rd=old_char_rd, distmat=uuCnewold),
-                  corr.model=corr.model,
-                  ranefs=ranefs[[new_rd]])
+            if (which_mats$no) {
+              cov_newLv_oldv <- .get_from_ranef_info(object)$corr_families[[old_rd]]$calc_corr_from_dist(
+                ranFix=object$ranFix, char_rd=old_char_rd, distmat=uuCnewold)
+              # if (attr(strucList[[old_rd]],"need_gmp") && 
+              if (inherits(invCov_oldLv_oldLv_list[[old_rd]],"bigq")) cov_newLv_oldv <- structure(gmp::as.bigq(cov_newLv_oldv),
+                                                                                    DIMNAMES=dimnames(cov_newLv_oldv))
+              cov_newLv_oldv_list[[new_rd]] <- structure(cov_newLv_oldv, corr.model=corr.model, ranefs=ranefs[[new_rd]])
+            }
             if (which_mats$nn[new_rd]) {
               cov_newLv_newLv_list[[new_rd]] <- 
                 .get_from_ranef_info(object)$corr_families[[old_rd]]$calc_corr_from_dist(
@@ -438,7 +529,8 @@
               diag_cov_newLv_newLv_list[[new_rd]] <- rep(1,nrow(newuniqueGeo)) # just 1 must suffice except when we subset (slice...)
               #   .get_from_ranef_info(object)$corr_families[[old_rd]]$calc_corr_from_dist(
               # ranFix=object$ranFix, char_rd=old_char_rd, distmat=diag(x=uuCnewnew))
-          }}
+            }
+          }
         }
       }
     }
@@ -454,12 +546,16 @@
       link_warned <<- TRUE
       message("Non-identity link: predVar is on linear-predictor scale.") #        [This message appears only once per session]")
     }
-    if (identical(variances$BH98,TRUE)) { ## my interpretation of BH98
-      variances$predVar <- TRUE ## implies $linPred <- TRUE by default
-      #variances$respVar <- FALSE ## default
-      variances$disp <- FALSE ## non-default
-      variances$cov <- TRUE ## non-default
-    } else variances$BH98 <- FALSE
+    if ( ! is.null(variances$ranef)) {
+      message("'variances$ranef' is obsolete: I interpret this as 'variances$linPred'.")
+      variances$linPred <- variances$ranef
+      variances$ranef <- NULL
+    }
+    if ( ! is.null(variances$sum)) {
+      message("'variances$sum' is obsolete: I interpret this as 'variances$respVar'.")
+      variances$respVar <- variances$sum
+      variances$sum <- NULL
+    }
     # $respVar implies components
     if (is.null(variances$predVar)) variances$predVar <- variances$respVar ## may still be NULL
     if (is.null(variances$residVar)) variances$residVar <- variances$respVar ## may still be NULL
@@ -474,7 +570,8 @@
     if (is.null(variances$disp)) variances$disp <- FALSE ## uncertaintly on dispersion parameters
     if (is.null(variances$residVar)) variances$residVar <- FALSE ## uncertaintly on dispersion parameters
     if (is.null(variances$cov)) variances$cov <- FALSE
-    ##
+    if (is.null(variances$naive)) variances$naive <- FALSE
+    if (is.null(variances$cancel_X.pv)) variances$cancel_X.pv <- FALSE
     return(variances)
   }
 })
@@ -510,14 +607,14 @@
 .point_predict <- function(object, newdata, variances, eta_fix, re.form,
                            newinold, spatial_old_rd, subZAlist, newZACpplist, type ) {
   if (.noRanef(re.form)) {
-    if (type=="link" || variances$BH98) { ## case variances$BH98 never happens ?
-      fv <- NULL
+    if (type=="link") { # in those cases, we return eta but no useful $fv 
+      fv <- NULL 
     } else if ( ! is.null(zero_truncated <- object$family$zero_truncated)) { ## fv is mu_truncated !
       fv <- object$family$linkinv(eta_fix, mu_truncated=zero_truncated) ## fv is mu_truncated when zero_truncated is TRUE
     } else fv <- object$family$linkinv(eta_fix) 
     return(list(fv=fv,eta=eta_fix))
   } else if ( is.null(newdata) && ! inherits(re.form,"formula")) {
-    if (type=="link" || variances$BH98) {
+    if (type=="link") {
       return(list(eta=object$eta)) 
     } else return(list(fv=object$fv)) ## eta will be reconstructed from fv on request
   } else { ## 
@@ -546,15 +643,15 @@
       }
       if (newnrand>1L) {
         ZACw <- vector("list", length=newnrand )
-        for (new_rd in seq_len(newnrand)) ZACw[[new_rd]] <- drop(newZACpplist[[new_rd]][] %*% augm_w_h_coeffs[[new_rd]])
+        for (new_rd in seq_len(newnrand)) ZACw[[new_rd]] <- drop(newZACpplist[[new_rd]] %*% augm_w_h_coeffs[[new_rd]])
         ZACw <- do.call(cbind,ZACw)
         ZACw <- rowSums(ZACw)
-      } else ZACw <- drop(newZACpplist[[1]][] %*% augm_w_h_coeffs[[1]])
+      } else ZACw <- drop(newZACpplist[[1]] %*% augm_w_h_coeffs[[1]])
     }
     eta <- eta_fix + ZACw ## (length(eta)) col vector from coeffs = length(eta) row vector...
     # done with eta
-    if (type=="link" || variances$BH98) {
-      fv <- NULL
+    if (type=="link") {
+      fv <- NULL # but eta will be returned
     } else if ( ! is.null(zero_truncated <- object$family$zero_truncated)) {
       fv <- object$family$linkinv(eta,mu_truncated=zero_truncated)
     } else fv <- object$family$linkinv(eta) ## ! freqs for binomial, counts for poisson
@@ -564,9 +661,10 @@
 
 
 .predict_body <- function(object, newdata, re.form, type,
-                          variances, binding, intervals, level, blockSize) {
+                          variances, binding, intervals, level, blockSize, control) {
+  delayedAssign("invCov_oldLv_oldLv_list", .get_invColdoldList(object, control=control))
   new_X_ZACblob <- .calc_new_X_ZAC(object=object, newdata=newdata, re.form = re.form,
-                                   variances=variances) ## (fixme) still some unnecessary computation for predict(object)
+                                   variances=variances, invCov_oldLv_oldLv_list=invCov_oldLv_oldLv_list) ## (fixme) still some unnecessary computation for predict(object)
   newinold <- new_X_ZACblob$newinold ## says which ranef is kept by re.form
   #
   ## (1) computes fv (2) compute predVar
@@ -576,10 +674,10 @@
                        re.form, newinold=newinold, spatial_old_rd= new_X_ZACblob$spatial_old_rd,
                        subZAlist=new_X_ZACblob$subZAlist, ## (subset of) the original object$ZAlist 
                        newZACpplist=new_X_ZACblob$newZACpplist, type=type)
-  if (type=="link" || variances$BH98) {
+  if (type=="link" ) {
     resu <- ppblob$eta
   } else resu <- ppblob$fv ## mu(_T) by default
-  if ( ! is.na(binding)) resu <- as.matrix(resu) ## suitable for objective function of optim() etc ## matrix ! maybe more suitable than data frame as objective function
+  if ( ! is.na(binding)) resu <- structure(as.matrix(resu),mu_U=attr(resu,"mu_U"),p0=attr(resu,"p0")) ## suitable for objective function of optim() etc ## matrix ! maybe more suitable than data frame as objective function
   # if (identical(object$family$zero_truncated,TRUE)) {
   #   attr(resu,"p0") <- attr(ppblob$fv,"p0")
   #   attr(resu,"mu_U") <- attr(ppblob$fv,"mu_U")
@@ -589,7 +687,7 @@
   locdata <- new_X_ZACblob$locdata
   if ( ! is.logical(binding) ) { ## expecting a string
     binding <- .makenewname(base=binding,varnames=colnames(locdata)) ## 09/11/2014 = posterior to CRAN 1.4.1 
-    resu <- data.frame(resu)
+    resu <- structure(data.frame(resu), mu_U=attr(resu,"mu_U"),p0=attr(resu,"p0"))
     colnames(resu) <- binding
     resu <- cbind(locdata,resu) ## becomes a data frame !
     attr(resu,"fittedName") <- binding
@@ -597,6 +695,14 @@
     if (! is.na(binding) && ncol(locdata))  attr(resu,"frame") <- locdata 
   }
   ##### (2) predVar
+  if (variances$naive) { # the 'naive' estimate in BH98 (nu_i, without beta)
+    naive <- .calc_Var_given_fixef(object, new_X_ZACblob=new_X_ZACblob, covMatrix=variances$cov, fix_X_ZAC.object=NULL)
+    if (variances$cov) {
+      rownames(naive) <- colnames(naive) <- rownames(locdata)
+    } else names(naive) <- rownames(locdata)
+    attr(resu,"naive") <- naive
+  }
+  #
   newnrand <- length(new_X_ZACblob$newZAlist) ## may be reduced if non trivial re.form
   newX.pv <- new_X_ZACblob$newX.pv
   #
@@ -620,23 +726,19 @@
         newZAlist <- new_X_ZACblob$newZAlist ## a new ZAlist built using .calc_Zlist(new formula...) 
       }
     }
-    if ( ! is.null(newdata)) {
-      invCov_oldLv_oldLv_list <- .get_invColdoldList(object)
-    } else {
-      invCov_oldLv_oldLv_list <- NULL
-    }
-    if (newnrand) {
-      if (variances$BH98) newX.pv[] <- 0
-      loclist <- list(X.pv=newX.pv,tcrossfac_beta_w_cov=loc_tcrossfac_beta_w_cov,covMatrix=variances$cov,object=object,
-                      newinold=new_X_ZACblob$newinold,blockSize=blockSize, 
-                      newZAlist=newZAlist, re_form_col_indices=re_form_col_indices,
-                      cov_newLv_oldv_list=new_X_ZACblob$cov_newLv_oldv_list,
-                      ## list for Cnewnew, which enters in  newZA %*% Cnewnew %*% tnewZA, hence should not represent newZA itself 
-                      cov_newLv_newLv_list=new_X_ZACblob$cov_newLv_newLv_list,
-                      diag_cov_newLv_newLv_list=new_X_ZACblob$diag_cov_newLv_newLv_list)
-      if ( ! is.null(newdata)) loclist$invCov_oldLv_oldLv_list <- invCov_oldLv_oldLv_list
-      if (variances$disp) loclist$logdispObject <- .get_logdispObject(object)
-      respVar <- do.call(.calcPredVar,loclist) 
+    if (newnrand) { # if there are ranefs in 'new' formula (which may be orig formula)
+      if (variances$cancel_X.pv) newX.pv[] <- 0 
+      respVar <- .calcPredVar(X.pv=newX.pv,tcrossfac_beta_w_cov=loc_tcrossfac_beta_w_cov,covMatrix=variances$cov,object=object,
+                              newinold=new_X_ZACblob$newinold,blockSize=blockSize, 
+                              newZAlist=newZAlist, re_form_col_indices=re_form_col_indices,
+                              invCov_oldLv_oldLv_list=if (is.null(newdata)) {
+                                NULL} else {invCov_oldLv_oldLv_list}, # promise for newdata
+                              logdispObject=if (variances$disp) {
+                                .get_logdispObject(object)} else {NULL}, # promise for variances$disp
+                              cov_newLv_oldv_list=new_X_ZACblob$cov_newLv_oldv_list,
+                              ## list for Cnewnew, which enters in  newZA %*% Cnewnew %*% tnewZA, hence should not represent newZA itself 
+                              cov_newLv_newLv_list=new_X_ZACblob$cov_newLv_newLv_list,
+                              diag_cov_newLv_newLv_list=new_X_ZACblob$diag_cov_newLv_newLv_list) 
       if (variances$cov) {
         respVar <- as.matrix(respVar) ## matrix, not Matrix (assumed below)
         rownames(respVar) <- colnames(respVar) <- rownames(locdata)
@@ -686,7 +788,7 @@
     if ( ! (attr(pw,"unique") && pw[1L]==1L)) {
       if (! identical(spaMM.getOption("prior_weights_residvar_warned"),TRUE)) {
         warning("Prior weights are not taken in account in residVar computation.")
-        spaMM.options(prior_weights_residvar_warned=TRUE)
+        .spaMM.data$options$prior_weights_residvar_warned <- TRUE
       }
     }
     if (object$family$family %in% c("poisson","binomial","COMPoisson","negbin")) {
@@ -717,9 +819,11 @@
       if (is.matrix(varcomp)) varcomp <- diag(varcomp)
       if (type=="link") {
         eta <- resu[,1L]
+      } else if ( ! is.null(zero_truncated <- object$family$zero_truncated)) {
+        eta <- object$family$linkfun(resu,mu_truncated=zero_truncated)[seq(nrow(resu))] 
       } else {
-        ## [] with explicit indices, to drop mu attribute otherwise linkinv(eta+/-sd) uses it! 
-        eta <- object$family$linkfun(resu[,1L])[seq(nrow(resu))] 
+        ## [] with explicit indices, to drop possible mu attribute otherwise linkinv(eta+/-sd) uses it! 
+        eta <- object$family$linkfun(resu)[seq(nrow(resu))] 
       }
       pv <- 1-(1-level)/2
       ## special case for simple LM
@@ -775,26 +879,40 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
                           level = 0.95,
                           blockSize = 2000L,
                           type = "response", 
+                          control=list(),
                           ...) { ## but not new Y
-  if ( ! is.null(variances$ranef)) {
-    message("'variances$ranef' is obsolete: I interpret this as 'variances$linPred'.")
-    variances$linPred <- variances$ranef
-    variances$ranef <- NULL
-  }
-  if ( ! is.null(variances$sum)) {
-    message("'variances$sum' is obsolete: I interpret this as 'variances$respVar'.")
-    variances$respVar <- variances$sum
-    variances$sum <- NULL
-  }
   if (is.null(object$envir)) object$envir <- list2env(list(), ## back-compatibility fix for old objects
                                                      parent=environment(HLfit_body))
   ## the final components returned as attributes have names ...Var, other terms should be named differently
+  #
+  if ( ! is.null(newdata)) {
+    if (identical(is.nan(control$fix_predVar),TRUE)) {
+      object$envir$invColdoldList <- NULL
+      control$fix_predVar <- NULL
+    }
+    if (is.null(control$fix_predVar)) {
+      predVar_exceptions <- .spaMM.data$options$fix_predVar
+      if (.check_frames(which=predVar_exceptions$"NA")) {
+        control$fix_predVar <- NA
+      } else if (.check_frames(which=predVar_exceptions$"TRUE")) {
+        control$fix_predVar <- TRUE
+      } else if (.check_frames(which=predVar_exceptions$"FALSE")) {
+        control$fix_predVar <- FALSE
+      } 
+    }
+  }
+  #
   if ( ! is.null(intervals) && ! inherits(intervals,"character")) stop("'intervals' arguments should inherit from class 'character'.")
   checkIntervals <- (substr(x=intervals, nchar(intervals)-2, nchar(intervals))=="Var")
   if (any(!checkIntervals)) warning("Element(s)",intervals[!checkIntervals],"are suspect, not ending in 'Var'.")
   # possible elements in return value: fixefVar, predVar, residVar, respVar
   variances[intervals] <- TRUE 
   variances <- .process_variances(variances, object)
+  # if (type=="rand_eta") { # called by simulate(., type="[predVar" || "(ranef|response)"] ))
+  #   rand_eta <- list(...)$rand_eta # this may not even be useful except to avoid a CRAN check NOTE
+  #   type <- "link"
+  #   variances[names(rand_eta)] <- rand_eta
+  # }
   nrX <-  NROW(newdata)
   if (!is.null(re.form) && inherits(re.form,"formula")) re.form <- .preprocess_formula(re.form)
   ############################## if (nrX>0L) newdata <- droplevels(newdata) FIXME perhaps here ? 
@@ -811,17 +929,19 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
       newdata_slice <- newdata[slice,,drop=FALSE]
       ## newdata_slice <- droplevels(newdata_slice) 
       res[[it]] <- .predict_body(object=object, newdata=newdata_slice, re.form = re.form, variances=variances, 
-                                 binding=binding, type=type, intervals=intervals, level=level, blockSize=blockSize) ## blockSize shuld not be useful *here*
+                                 binding=binding, type=type, intervals=intervals, level=level, blockSize=blockSize, ## blockSize should not be useful *here*
+                                 control=control)
       if (showpbar) setTxtProgressBar(pb, slices[it+1L]/nrX) ## update progress bar
     }
     if (showpbar) close(pb)
     res <- .unlist_with_attributes(res)
     return(res)
   } else if (type=="marginal") {
-    .predict_marg(object=object, newdata=newdata, re.form = re.form)
+    .predict_marg(object=object, newdata=newdata, re.form = re.form, control=control)
   } else .predict_body(object=object, newdata=newdata, re.form = re.form,
                 variances=variances, binding=binding, type=type,
-                intervals=intervals, level=level, blockSize=blockSize)  ## but blockSize could be useful *here* if newdata was NULL
+                intervals=intervals, level=level, blockSize=blockSize, ## but blockSize could be useful *here* if newdata was NULL
+                control=control) 
 }
 
 print.vcov.HLfit <- function(x, expanded=FALSE, ...) {
@@ -866,10 +986,7 @@ print.vcov.HLfit <- function(x, expanded=FALSE, ...) {
 `[.predictions` <- function (x, i, j, 
                              drop = TRUE ## by default, this function will return scalar/vector  
                              ) {
-  class(x) <- "matrix" ## removes "predictions" => set back later
-  #   if (is.data.frame(x)) {
-  #     resu <- x[i,j]
-  #   } else 
+  class(x) <- "matrix" ## avoids recursive call to `[.predictions` 
   resu <- x[i,j,drop=drop]
   if ( ! drop) {
     fixefVar <- attr(x, "fixefVar")

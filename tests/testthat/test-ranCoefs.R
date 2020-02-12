@@ -1,15 +1,15 @@
+# spaMM.options(example_maxtime=70) # keep it handy...
 if (file.exists((privdata <- "C:/home/francois/travail/stats/spaMMplus/spaMM/package/tests_private/all_fitness.txt"))) {
-  cat("\ntest ranCoefs:")
+  cat(crayon::yellow("\ntest ranCoefs:"))
   my.data <- read.table(privdata, header = TRUE, sep = "\t",dec = ".")
   my.data$line <- factor(as.character(my.data$line))
   my.data <- na.omit(my.data)
-  if (TRUE || spaMM.getOption("example_maxtime")>2.5) {
-    # -1559.813 0.4s v 2.7.17
+  if (TRUE) {
     (fitme3 <- fitme(total_red ~ sex*env + (1|rep) + (0 + env|line),
                      data = my.data, method="ML"))
-    how(fitme3)
+    how(fitme3) # 0.7s v3.0.34
     # final precision depends on two steps ! And ultimately on HLfit/hatval precision in the refit
-    testval3o <- 1559.81264449748 ## sph gives the same result but longer 
+    testval3o <- 1559.81264462379 ## sph gives practically the same result but longer 
     zut <- try(testthat::expect_equal((res3o <- attr(attr(fitme3,"optimInfo")$optim.pars,"optr")$objective),
                                       testval3o,tol=1e-8),silent=TRUE)
     if (inherits(zut,"try-error")) {
@@ -17,8 +17,8 @@ if (file.exists((privdata <- "C:/home/francois/travail/stats/spaMMplus/spaMM/pac
       cat(paste0("objective from fitme3's optimInfo=",
                  res3o, strg, " than tested value ",testval3o," by ",res3o-testval3o ,"\n"))
     }
-    testval3f <- -1559.8126444852
-    zut <- try(testthat::expect_equal((res3f <- logLik(fitme3)[[1L]]),testval3f,tol=1e-8),silent=TRUE) ## -1536.080818 is quite possible
+    testval3f <- -1559.812644545275
+    zut <- try(testthat::expect_equal((res3f <- logLik(fitme3)[[1L]]),testval3f,tol=1e-8),silent=TRUE) 
     if (inherits(zut,"try-error")) {
       if (res3f<testval3f) strg <- " poorer" else strg <- " better" 
       cat(paste0("logLik(fitme3)=",
@@ -35,56 +35,48 @@ if (file.exists((privdata <- "C:/home/francois/travail/stats/spaMMplus/spaMM/pac
     #
   }
   if (spaMM.getOption("example_maxtime")>69) {
-    oldtransf <- spaMM.options(rC_transf_inner="sph")
-    # -1559.815 # 3.5s v 2.7.17
+    if (file.exists((privtest <- "C:/home/francois/travail/stats/spaMMplus/spaMM/package/tests_private/test-rc_transf.R"))) {
+      source(privtest)
+    }
     (HLfit3 <- HLfit(total_red ~ sex*env + (1|rep) + (0 + env|line),
                      data = my.data, HLmethod="ML"))
-    how(HLfit3)
-    testval3h <- -1559.81388366791 # sph -- better than ever
-    zut <- try(testthat::expect_equal((res3h <- logLik(HLfit3)[[1L]]),testval3h,tol=1e-8),silent=TRUE) ## -1536.080818 is quite possible
+    how(HLfit3) # 2.2s v3.0.34
+    testval3h <- -1559.81264432437 # chol -- better than ever
+    zut <- try(testthat::expect_equal((res3h <- logLik(HLfit3)[[1L]]),testval3h,tol=1e-8),silent=TRUE) 
     if (inherits(zut,"try-error")) {
       if (res3h<testval3h) strg <- " poorer" else strg <- " better" 
       cat(paste0("logLik(HLfit3)=",
                  res3h, strg, " than tested value ",testval3h," by ",res3h-testval3h ,"\n"))
     }
-    spaMM.options(oldtransf)
-    # -1559.815 # 1.3s v 2.7.17
-    (HLfit3 <- HLfit(total_red ~ sex*env + (1|rep) + (0 + env|line),
-                     data = my.data, HLmethod="ML"))
-    how(HLfit3)
-    testval3h <- -1559.81467152791 # chol -- passable
-    zut <- try(testthat::expect_equal((res3h <- logLik(HLfit3)[[1L]]),testval3h,tol=1e-8),silent=TRUE) ## -1536.080818 is quite possible
-    if (inherits(zut,"try-error")) {
-      if (res3h<testval3h) strg <- " poorer" else strg <- " better" 
-      cat(paste0("logLik(HLfit3)=",
-                 res3h, strg, " than tested value ",testval3h," by ",res3h-testval3h ,"\n"))
+    if (TRUE) { # a check of get_inits_from_fit() usage
+      reinit <- get_inits_from_fit(HLfit3)
+      abyss <- fitme(total_red ~ sex*env + (1|rep) + (0 + env|line),
+                     data = my.data, fixed=reinit$init.HLfit["ranCoefs"])
     }
-    #  -1536.081 3.4s v2.7.17
     (fitme6 <- fitme(total_red ~ sex*env + (1|rep) + (0 + sex:env|line),
                      data = my.data, method="ML"))  
-    how(fitme6)
-    testval6o <- 1536.08080233819 # chol -- good (sph was identical but quite longer)
-    zut <- try(testthat::expect_equal((res6o <- attr(attr(fitme6,"optimInfo")$optim.pars,"optr")$objective),
+    how(fitme6) # 2.5s v3.0.34
+    testval6o <- 1536.080805076491 # chol -- good 
+    zut <- try(testthat::expect_equal((res6o <- attr(attr(fitme6,"optimInfo")$optim.pars,"optr")$objective), 
                                       testval6o,tol=1e-8),silent=TRUE)
     if (inherits(zut,"try-error")) {
       if (res6o>testval6o) strg <- " poorer" else strg <- " better" 
       cat(paste0("objective from fitme6's optimInfo=",
                  res6o, strg, " than tested value ",testval6o," by ",res6o-testval6o ,"\n"))
     }
-    testval6f <- -1536.08080209794 # chol -- good (sph was identical but quite longer)
-    zut <- try(testthat::expect_equal((res6f <- logLik(fitme6)[[1L]]),testval6f,tol=1e-8),silent=TRUE) ## -1536.080818 is quite possible
+    testval6f <- -1536.080805075333 # chol -- good 
+    zut <- try(testthat::expect_equal((res6f <- logLik(fitme6)[[1L]]),testval6f,tol=1e-8),silent=TRUE) 
     if (inherits(zut,"try-error")) {
       if (res6f<testval6f) strg <- " poorer" else strg <- " better" 
       cat(paste0("logLik(fitme6)=",
                  res6f, strg, " than tested value ",testval6f," by ",res6f-testval6f ,"\n"))
     }
-    #  -1536.083 13.7s v2.7.17
     (HLfit6 <- HLfit(total_red ~ sex*env + (1|rep) + (0 + sex:env|line),
                      data = my.data, HLmethod="ML"))
-    how(HLfit6)
-    testval6h <- -1536.08308704975 # chol -- good (sph is trivially better but much longer)
-    zut <- try(testthat::expect_equal((res6h <- logLik(HLfit6)[[1L]]),testval6h,tol=1e-8),silent=TRUE) ## -1536.080818 is quite possible
-    if (inherits(zut,"try-error")) {
+    how(HLfit6) # 12s v3.0.34; quite longer (35.7s) in v3.0.44 which gives more exact result.
+    testval6h <- -1536.08079543165 # chol -- good 
+    zut <- try(testthat::expect_equal((res6h <- logLik(HLfit6)[[1L]]),testval6h,tol=1e-8),silent=TRUE) 
+    if (inherits(zut,"try-error")) { 
       if (res6h<testval6h) strg <- " poorer" else strg <- " better" 
       cat(paste0("logLik(HLfit6)=",
                  res6h, strg, " than tested value ",testval6h," by ",res6h-testval6h ,"\n"))

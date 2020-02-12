@@ -1,4 +1,4 @@
-cat("test of inverse Gamma:\n")
+cat(crayon::yellow("test of inverse Gamma:\n"))
 
 data("wafers")
 HLig <- HLfit( y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch),

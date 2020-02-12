@@ -64,7 +64,7 @@
       adj_rho_is_inner_estimated <- (corr_type=="adjacency"
                                      && is.null(rho) ) ## can occur in direct call of HLCor 
       if (corr_type == "adjacency") {
-        adjMatrix <- processed$corr_info$adjMatrices[[rd]]
+        adjMatrix <- processed$corr_info$adjMatrices[[rd]] # must be sparse when spprec algo is used
         symSVD <- attr(adjMatrix,"symSVD")
         if (is.null(symSVD) && adj_rho_is_inner_estimated) { 
           ## Can occur in direct call of HLCor, or more genrally if(list(processed)),
@@ -72,13 +72,13 @@
           # We tray to avoid the computation when its cost/benefit ratio is low.
           # Nevertheless if computed here, it is added to the proc envir hence computed only once per environment
           rho <- attr(ranPars,"init.HLfit")$corrPars[[char_rd]]$rho
-          if (isSymmetric(adjMatrix)) {
+          #if (isSymmetric(adjMatrix)) { # should have been checkedby .preprocess -> ... -> .sym_checked(adjMatrix)
             symSVD <- eigen(adjMatrix, symmetric=TRUE)
             svdnames <- names(symSVD)
             svdnames[svdnames=="values"] <- "d"
             svdnames[svdnames=="vectors"] <- "u"
             names(symSVD) <- svdnames
-          }             
+          #}             
         }
         if (is.null(symSVD)) {
           cov_info_mat <- as.matrix(solve(diag(nrow(adjMatrix))-rho*(adjMatrix))) 

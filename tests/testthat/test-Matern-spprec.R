@@ -1,4 +1,4 @@
-cat("test-Matern-spprec")
+cat(crayon::yellow("test-Matern-spprec"))
 if (spaMM.getOption("example_maxtime")>0.7) { ##  not based on real timing
   data("blackcap")
   MLcorMat <- MaternCorr(proxy::dist(blackcap[,c("latitude","longitude")]),

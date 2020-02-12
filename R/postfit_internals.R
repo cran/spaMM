@@ -323,8 +323,11 @@
   if ( ! is.null(BLOB$sortPerm)) { # depending on method used for QR facto
     tPmat <- sparseMatrix(seq_along(BLOB$sortPerm), BLOB$sortPerm, x=1)
     tPmat <- .Dvec_times_Matrix(diagscalings, tPmat) # Pmat <- .Matrix_times_Dvec(Pmat,diagscalings)
-    tcrossfac_v_beta_cov <- as.matrix(tPmat %*% tcrossfac_v_beta_cov)
-  } else tcrossfac_v_beta_cov <- as.matrix(.Dvec_times_m_Matrix(diagscalings, tcrossfac_v_beta_cov)) ## loses colnames...
+    tcrossfac_v_beta_cov <- tPmat %*% tcrossfac_v_beta_cov
+  } else tcrossfac_v_beta_cov <- .Dvec_times_m_Matrix(diagscalings, tcrossfac_v_beta_cov) ## loses colnames...
+  dgC_good <- (inherits(tcrossfac_v_beta_cov, "dgCMatrix") && 
+                 .calc_denseness(tcrossfac_v_beta_cov)/prod(dim(tcrossfac_v_beta_cov))<0.35 )
+  if ( ! dgC_good) tcrossfac_v_beta_cov <- as.matrix(tcrossfac_v_beta_cov) # bigranefs.R shows that conversion is not always good.
   rownames(tcrossfac_v_beta_cov) <- colnames(sXaug) ## necessary for summary.HLfit, already lost in BLOB$R_scaled
   seqp <- seq_len(pforpv)
   beta_pos <- attr(sXaug,"n_u_h")+seqp
@@ -332,7 +335,7 @@
   tcrossfac_beta_v_cov <- tcrossfac_v_beta_cov[beta_v_order,,drop=FALSE]
   if (inherits(sXaug,"dtCMatrix")) tcrossfac_beta_v_cov <- as(tcrossfac_beta_v_cov, "sparseMatrix")
   #beta_v_cov <- .tcrossprod(tcrossfac_beta_v_cov)
-  beta_cov <- .tcrossprod(tcrossfac_beta_v_cov[seqp,,drop=FALSE])
+  beta_cov <- as.matrix(.tcrossprod(tcrossfac_beta_v_cov[seqp,,drop=FALSE])) ## assignment in .make_beta_table() assumes a dense matrix
   return( list(beta_cov=beta_cov, 
                #beta_v_cov=beta_v_cov,
                tcrossfac_beta_v_cov=tcrossfac_beta_v_cov) )
@@ -372,7 +375,7 @@
 .calc_newZACvar <- function(newZAlist,cov_newLv_oldv_list) {
   newZACvarlist <- vector("list",length(newZAlist))
   for (new_rd in seq_along(newZAlist)) {
-    terme <- newZAlist[[new_rd]] %id*id% (cov_newLv_oldv_list[[new_rd]])[]
+    terme <- newZAlist[[new_rd]] %ZA*gI% cov_newLv_oldv_list[[new_rd]]
     terme <- as.matrix(terme)
     newZACvarlist[[new_rd]] <- as.matrix(terme)
   }

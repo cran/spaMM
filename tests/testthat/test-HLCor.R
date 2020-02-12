@@ -1,4 +1,4 @@
-cat("\ntest HLCor:")
+cat(crayon::yellow("\ntest HLCor:"))
 # HLCor
 
 if (spaMM.getOption("example_maxtime")>1.5) { # test no longer fvery informative, cf related test in test-predVar

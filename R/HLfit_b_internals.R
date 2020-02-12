@@ -40,34 +40,38 @@
   lambda_est
 }
 
-.calc_clik <- function(mu,phi_est,processed) { 
+.calc_clik <- function(mu, # as given by .muetafn(), ie, prediction of counts in binomial case...
+                       phi_est,processed, clik_fn=processed$clik_fn, 
+                       prior.weights=processed$prior.weights,
+                       summand=FALSE) { 
   BinomialDen <- processed$BinomialDen
-  clik_fn <- processed$clik_fn
   y <- processed$y
   family <- processed$family
   theta <- .theta.mu.canonical(mu/BinomialDen,family)  
   if (family$family=="binomial") {
-    clik <- sum(clik_fn(theta,y/BinomialDen,BinomialDen,1/(phi_est))) ## freq a revoir
+    cliks <- clik_fn(theta,y/BinomialDen,BinomialDen,eval(prior.weights)/(phi_est))
   } else {
     phi_est[phi_est<1e-12] <- 1e-10 ## 2014/09/04 local correction, has to be finer than any test for convergence 
     ## creates upper bias on clik but should be more than compensated by the lad
     ## correcting the lad makes an overall upper bias for small (y-theta) at "constant" corrected phi 
     ## this can be compensated by correcting the lad LESS.
-    clik <- sum(clik_fn(theta,y,eval(processed$prior.weights)/phi_est)) ## note (prior) weights meaningful only for gauss/ Gamma 
+    cliks <- clik_fn(theta,y,eval(prior.weights)/phi_est)
   }
-  clik
+  if (summand) {
+    attr(cliks,"unique") <- NULL
+    return(cliks)
+  } else return(sum(cliks))
 }
 
 .eval_gain_LevM_etaGLM <- function(LevenbergMstep_result,family, X.pv ,coefold,clikold,phi_est,processed, offset) {  
   dbeta <- LevenbergMstep_result$dbetaV
   beta <- coefold + dbeta
   eta <- drop(X.pv %*% beta) + offset
-  if (family$link=="log") eta <- .sanitize_eta_log_link(eta, max=40) 
-  if (family$link=="inverse" && family$family=="Gamma") {
-    etamin <- sqrt(.Machine$double.eps)
-    eta[eta<etamin] <- etamin ## eta must be > 0
-  } ## cf similar code in muetafn
-  mu <- family$linkinv(eta)
+  eta <- .sanitize_eta(eta, y=processed$y, family=family, max=40) 
+  if (family$family=="binomial") {
+    muFREQS <- family$linkinv(eta)
+    mu <- muFREQS * processed$BinomialDen
+  } else mu <- family$linkinv(eta)
   clik <- .calc_clik(mu=mu, phi_est=phi_est,processed=processed) 
   if (is.infinite(clik) || is.na(clik)) {  
     gainratio <- -1
@@ -87,9 +91,11 @@
   return(list(gainratio=gainratio,clik=clik,beta=beta,eta=eta,mu=mu,conv_clik=conv_clik))
 }  
 
-# tested eg by test-COMPoisson:
+# called by HLfit_body for models[[1]]=="etaGLM"; tested eg by test-COMPoisson:
 .calc_etaGLMblob <- function(processed, 
-                         mu, eta, muetablob, beta_eta, w.resid, ## those in output
+                         mu, eta, muetablob, 
+                         old_beta_eta, ## scaled since X.pv is scaled; same fro return beta_eta. An init.HLfit$fixef would be (.)/attr(spaMM:::.scale(zut$X.pv),"scaled:scale")
+                         w.resid, ## those in output
                          phi_est, 
                          off, 
                          maxit.mean, 
@@ -107,7 +113,6 @@
     for (innerj in seq_len(maxit.mean)) {
       ## breaks when Xtol_rel is reached
       clik <- newclik
-      old_beta_eta <- beta_eta
       # Historical oddity: this has worked with .ZtWZwrapper(X.pv,w.resid) rather than a scaled X; and 
       # likewise a premultiplied rhs. This was OK for solving, but not for CI as the CI code suppresses 
       # a column of the design matrix, which is not sufficient on the premultiplied system.
@@ -125,7 +130,7 @@
       if ( ! is.null(for_intervals)) {
         currentDy <- (for_intervals$fitlik-newclik)
         if (currentDy < -1e-4) .warn_intervalStep(newclik,for_intervals)
-        intervalBlob <- .intervalStep_glm(old_beta=beta_eta,
+        intervalBlob <- .intervalStep_glm(old_beta=old_beta_eta,
                                          sXaug=sXaug,
                                          szAug=szAug,
                                          for_intervals=for_intervals,
@@ -151,7 +156,7 @@
         LM_wz <- z1*sqrt.ww - (wX %*% old_beta_eta)
         while(TRUE) { 
           if (inherits(wX,"Matrix")) {
-            LevenbergMstep_result <- .LevenbergMsolve_Matrix(wAugX=wX,LM_wAugz=LM_wz,damping=damping)
+            LevenbergMstep_result <- .LevenbergMsolve_Matrix(wAugX=wX,LM_wAugz=LM_wz,damping=damping) 
           } else LevenbergMstep_result <- .LevenbergMstepCallingCpp(wAugX=wX,LM_wAugz=LM_wz,damping=damping) 
           levMblob <- .eval_gain_LevM_etaGLM(LevenbergMstep_result=LevenbergMstep_result,
                                          X.pv=X.pv, clikold=clik, family=family,
@@ -210,9 +215,10 @@
       } 
       if (maxit.mean>1 && (damping>1e100 || mean(abs(dbetaV)) < Xtol_rel)) break
       #### done with one inner iteration
+      old_beta_eta <- beta_eta
     } ## end for (innerj in 1:maxit.mean)
     names(beta_eta) <- colnames(X.pv)
-    return(list(eta=eta, muetablob=muetablob, beta_eta=beta_eta, w.resid=w.resid, innerj=innerj,
+    return(list(eta=muetablob$sane_eta, muetablob=muetablob, beta_eta=beta_eta, w.resid=w.resid, innerj=innerj,
                 sXaug=structure(NA,class="LM or GLM")))
   }
 

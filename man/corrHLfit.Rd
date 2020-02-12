@@ -28,7 +28,7 @@ An optional list of initial values for correlation and/or dispersion parameters,
 \code{lambda} and \code{phi} are dispersion parameters (see Details in \code{\link{spaMM}} for the meaning of these parameters). 
  All are optional, but giving values for 
 a dispersion parameter changes the ways it is estimated (see Details).
-\code{rho}  may be a vector (see \code{\link{make_scaled_dist}}) and, in that case, it is possible that some or all of its elements are \code{NA}, for which \code{corrHLfit} substitute automatically determined values.  
+\code{rho}  may be a vector (see \code{\link{make_scaled_dist}}) and, in that case, it is possible that some or all of its elements are \code{NA}, for which \code{corrHLfit} substitutes automatically determined values.  
 }
   \item{init.HLfit}{See identically named \code{\link{HLfit}} argument.
 %- FR->FR more to say (if corr estim within HLfit becomes public ?)...
@@ -77,12 +77,10 @@ The return value of an \code{HLCor} call, with additional attributes. The \code{
 ## A likelihood ratio test based on the ML fits of a full and of a null model.
 if (spaMM.getOption("example_maxtime")>1.4) {
  data("blackcap")
- fullfit <- corrHLfit(migStatus ~ means+ Matern(1|latitude+longitude),data=blackcap,
-                    HLmethod="ML") 
- summary(fullfit)
- nullfit <- corrHLfit(migStatus ~ 1 + Matern(1|latitude+longitude),data=blackcap,
-                    HLmethod="ML",init.corrHLfit=list(phi=1e-6)) 
- summary(nullfit)
+ (fullfit <- corrHLfit(migStatus ~ means+ Matern(1|latitude+longitude),data=blackcap,
+                    HLmethod="ML") )
+ (nullfit <- corrHLfit(migStatus ~ 1 + Matern(1|latitude+longitude),data=blackcap,
+                    HLmethod="ML",init.corrHLfit=list(phi=1e-6))) 
  ## p-value:
  1-pchisq(2*(logLik(fullfit)-logLik(nullfit)),df=1)
 }

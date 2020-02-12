@@ -3,7 +3,64 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
-\section{CHANGES UP TO VERSION 2.8.0}{
+\section{CHANGES UP TO VERSION 3.1.2}{
+\subsection{NEW FEATURES: Numerical robustness}{
+\itemize{
+\item Better numerical precision of some computations for binomial models (including a more accurate alternative to binomial(.)$variance(mu)) may avoid numerical imprecisions (or worse) for extreme 'mu'.
+\item More rigorous variant of the Levenberg-Marquardt-like algorithm will give better (albeit slower) fits in difficult cases such as binary models with strong spatial correlations, and Gamma GLMMs with response values approaching 1.
+\item Default optimizer is not always nloptr(); nloptr() or bobyqa() are now selected depending on input (though nloptr() remains the most common choice).
+\item Stricter checking of arguments for adjacency models (the adjacency matrix and any fixed 'rho' parameter).
+\item Prediction variances more accurate when correlation matrices of random effecs are nearly singular, for random-coefficient and Matern/Cauchy types of random effects. 
+\item Algorithms for fitting COMPoisson-response models made more numerically stable for extreme values of the linear predictor and for low COMP_nu parameter.
+}
+}
+\subsection{NEW FEATURES: Bootstrap computations}{
+\itemize{
+\item New function eval_replicate() is the new default 'simuland' argument of the likelihood-ratio testing functions, which themselves better handle imperfections of the bootstrap results.
+\item Multiple changes to spaMM_boot(), to make it consistently usable in programming, to control parallel::makeCluster(), etc.
+\item The '...' argument of LRT() is now passed to spaMM_boot(). 
+}
+}
+\subsection{OTHER NEW FEATURES}{
+\itemize{
+\item New extractor get_inits_from_fit().
+\item By default, spaMM.options() now checks whether in arguments are preexisting options or not. This helps to avoid errors due to typos. The argument 'warn' controls this check.
+\item New argument 'verbose' for how().
+\item plot_effects() now produces more suitable output than before for binomial models.
+\item simulate.HLfit() can perform simulation from linear predictors randomized in various ways (see Details section of its documentation).
+\item New argument in get_predVar(., which) provides an alternative extraction method for various components of prediction variance.
+\item spaMM.options(separation_max=.) can now be used to control also the checks of separation using the lpSolveAPI package.
+}
+}
+\subsection{NEW FEATURE BY NEW DOCUMENTATION}{
+\itemize{
+\item 'help("post-fit")' explains how to use multiple-comparison procedures implemented in multcomp::glht on spaMM's fit objects.
+}
+}
+\subsection{USER-LEVEL CHANGES}{
+\itemize{
+\item fitme() will select iterative methods, rather than "outer" optimization, in some cases where it did not but where it is faster.
+\item Computations using the Levenberg-Marquardt-like algorithm tend to be longer than before (there may be exceptions due to other changes).
+\item Changes in formal arguments of LRT() (a.k.a. anova.LRT()) and fixedLRT(). These should be backward compatible, as important removed arguments are now handled through the '...'.
+\item SpatialPolygonsDataFrame objects 'worldcountries' and 'oceanmask' removed from the package. See help("seaMask") for availability.
+}
+}
+\subsection{NEW DEPENDENCIES}{
+\itemize{
+\item 'crayon'; one may not yet see any effect unless verbose=c(TRACE=TRUE) is used.   
+\item 'minqa' and 'gmp' moved from Suggests to Imports.   
+\item Updated dependency to lpSolveAPI >= 5.5.2.0.17.6 as it seems faster than previous versions on "big problems".
+}
+}
+\subsection{FIXED BUGS}{
+\itemize{
+\item Interval computation by predict() was not correct for zero-truncated response families.
+\item Fitting a truncated negbin model could fail due to numerical precision issues.   
+\item HLfit() stopped on non-gaussian response models with several random effects including at least one random-coefficient one (although fitme() allowed to fit such models). Gaussian-response HLfit()'s with the same random-effect structure were imprecise, with typically third-decimal imperfections on the logLik.
+}
+}
+}
+\section{CHANGES UP TO VERSION 3.0.0}{
 \subsection{NEW FEATURES}{
 \itemize{
 \item Substantially faster fits of random-coefficient models.
@@ -16,7 +73,7 @@
 \item confint() failed (stop) on models fitted by fast procedures suitable for a class of LMMs.
 \item The names appearing in certain outputs of lambda values were incorrect.
 \item Fits could fail (stop) in the uncommon case where some fixed-effect coefficients were fixed by the user and non-standard REML, as defined by a non-default REML formula, was requested.
-\item Prediction variance failed (stop) givn more than two random effects.
+\item Prediction variance failed (stop) given more than two random effects.
 }
 }
 \subsection{SUBSTANTIAL CHANGES TO DOCUMENTATION}{
@@ -99,7 +156,7 @@
 \subsection{FIXED BUGS}{
 \itemize{
 \item Bug, reintroduced in the previous version, in predict()'ing from models with poly() terms.
-\item Bug in simulate(.,type="maginal", newdata=<non-NULL>)
+\item Bug in simulate(.,type="marginal", newdata=<non-NULL>)
 \item confint() had weaknesses, more likely to impact intervals for simple LMMs since the introduction of new fitting algorithms in version 2.5.0.
 \item Bug in predict()'ing with an unusual combination of random effects and newdata (documented in test/testthat/test-more-predict.R).
 \item Marginal AIC computation did not exclude fixed correlation parameters from number of degrees of freedom.
@@ -172,7 +229,7 @@
 }
 \subsection{FIXED BUGS}{
 \itemize{
-\item The 'random-slope' (Intercept+slope) code was OK, but the more general 'random-coefficients' code (>2 parameters) was not. 
+\item The 'random-slope' (Intercept+slope) code was OK, but the more general 'random-coefficients' code (>2 covarying random effects) was not. 
 \item Bug in initialization of adjacency correlation parameter, which prevented at least some bootstrap computations. 
 \item Fixed a (previously documented) issue in spaMM's update() method, stemming from the distinct interpretation of formulas without explicit fixed-effect terms by spaMM vs. stats. Formula updates should still be carefully checked, as getting them fluent is not on the priority list.
 \item Fits failed when spaMM.options(sparse_precision=TRUE) but a corrMatrix was not specified as a precision matrix.
@@ -557,9 +614,9 @@ Widespread improvement in speed for large data sets, thanks to some of the  foll
 \subsection{NEW FEATURES}{
 \itemize{
 \item Prediction variance can now account for uncertainty is dispersion parameters (though not for all models; see Details of 'disp' in the 'predict' documentation).
-\item Now allows prediction for a large number of spatial positions by storing some large correlation matrices on disk rather than in memory (using the ff package, and as controlled by the spaMM option 'ff_threshold').
+\item Now allows prediction for a large number of spatial positions by storing some large correlation matrices on disk rather than in memory (using the ff package, and as controlled by the spaMM option 'ff_threshold'). (NB: this was removed in a later version)
 \item Convenience extractor functions 'dev_resids' and 'deviance' have been added. 
-\item New data objects 'worldcountries' and 'oceanmask' added for better plots of spatial predictions (see the new documentation '?raster' for plot of spatial predictions using rasters and geographical projections). 
+\item New data objects 'worldcountries' and 'oceanmask' added for better plots of spatial predictions (see the new documentation '?raster' for plot of spatial predictions using rasters and geographical projections). (PS: removed since, see version 3.1.2) 
 \item More efficient implementation of a conditional autoregressive (CAR) model. % (including in SEM algorithm) (to be documented)
 \item 're.form' argument of 'predict' function has been extended to handle values of class 'formula'.
 \item etaFix$beta usage has been extensively revised to provide a convenient interface for fixing (some of) the fixed effects (beta coefficients) values.

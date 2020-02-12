@@ -298,7 +298,7 @@
       problems$structphi <- "phi dispVar component not yet available for phi model != ~1."
       if ( ! identical(spaMM.getOption("phi_dispVar_comp_warned"),TRUE)) {
         warning(problems$structphi)
-        spaMM.options(phi_dispVar_comp_warned=TRUE)
+        .spaMM.data$options$phi_dispVar_comp_warned <- TRUE
       }
     }
   }
@@ -518,7 +518,7 @@
       problems$structphi <- "phi dispVar component not yet available for phi model != ~1."
       if ( ! identical(spaMM.getOption("phi_dispVar_comp_warned"),TRUE)) {
         warning(problems$structphi)
-        spaMM.options(phi_dispVar_comp_warned=TRUE)
+        .spaMM.data$options$phi_dispVar_comp_warned <- TRUE 
       }
     }
   }

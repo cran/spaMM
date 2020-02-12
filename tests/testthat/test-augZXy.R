@@ -1,4 +1,4 @@
-cat("test aug_ZXy:\n")
+cat(crayon::yellow("test aug_ZXy:\n"))
 
 #cat("\ntest no fixef, pw & REMLformula, by augZXy:\n")
 if(requireNamespace("lme4", quietly = TRUE)
@@ -34,7 +34,7 @@ if (file.exists((privdata <- "C:/home/francois/travail/stats/spaMMplus/spaMM/pac
   }
   
   # Plus an augZXy test (not ranCoefs):
-  vanilla <- fitme(total_red ~ sex*env + (1|rep) + (1|line), data = my.data, method="ML")
+  (vanilla <- fitme(total_red ~ sex*env + (1|rep) + (1|line), data = my.data, method="ML"))
   if (exists(".HLfit_body_augZXy_W",envir = asNamespace("spaMM"))) {
     oldopt <- spaMM.options(augZXy_fitfn=".HLfit_body_augZXy_W", check_alt_augZXy=TRUE) 
     essainola <- fitme(total_red ~ sex*env + (1|rep) + (1|line), data = my.data, method="ML")

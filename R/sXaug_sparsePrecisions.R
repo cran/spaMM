@@ -1,6 +1,6 @@
-def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.resid, 
-                                         #weight_X, ## currently ignored
-                                         H_global_scale ## currently ignored
+def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.resid 
+                                         #,weight_X ## currently ignored
+                                         #,H_global_scale ## currently ignored
                                          ) {
   resu <- structure(list(AUGI0_ZX=AUGI0_ZX,
                          BLOB=list2env(list(), parent=environment(.AUGI0_ZX_sparsePrecision))),
@@ -261,7 +261,10 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
 
 .calc_G_dG <- function(BLOB, damping) {
   spprec_LevM_D <- .spaMM.data$options$spprec_LevM_D
-  if (spprec_LevM_D=="update") { # experimental, may not fully work. _F I X M E_ retest when permuted cholesly is used bc currently slow.
+  ################
+  as_sym <- FALSE # If as_sym is TRUE, the final operation BLOB$Gmat + dampdG is dsC + dsC = forceSymmetric(callGeneric(as(e1, "dgCMatrix"), as(e2, "dgCMatrix"))) (with generic for '+')
+  # so having previously forced symmetry on dG is a waste of time=> as_sym=FALSE
+  if (spprec_LevM_D=="update") { # experimental. Effect dependent a priori on .spaMM.data$options$perm_G. OK but not faster with default permG (TRUE) 01/2020 
     BLOB$D_Md2hdv2 <- diag(chol2inv(BLOB$chol_Q))
     BLOB$dG <- NaN ## Todetect prolems in further usages
     G_dG <- Matrix::update(BLOB$G_CHMfactor, BLOB$Gmat, damping) # actually method of stats:::update for class CHMfactor (?`CHMfactor-class`) 
@@ -270,7 +273,7 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
     if (is.null(BLOB$dG)) {  
       if (spprec_LevM_D=="1") {
         BLOB$D_Md2hdv2 <- rep(1,ncol(BLOB$chol_Q))
-        BLOB$dG <- .tcrossprod(BLOB$chol_Q) # dsCMatrix # do we have the precisionMatrix somewhere ?
+        BLOB$dG <- drop0(.tcrossprod(BLOB$chol_Q, as_sym=as_sym)) # dsCMatrix if as_sym is TRUE# drop0 makes a diff in LevM.Frailty test # do we have the precisionMatrix somewhere ?
       } else { ## costly solve()
         ## part of the problem is avoiding tall matrices from tall ZA (and X), but for squarish ZA, using solve(chol_Q,... ) looks complicated.
         ## solve(chol_Q,... ) further assuming that we have not stored the LMatrix
@@ -286,11 +289,14 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
         }
         ## convert diag perturb of Md2hdv2 into a non-diag perturb of G :
         ## since H=invL_Q G t(invL_Q),  dG= L_Q dH t(L_Q) 
-        BLOB$dG <- .ZWZtwrapper(BLOB$chol_Q , BLOB$D_Md2hdv2) # dsCMatrix
+        BLOB$dG <- drop0(.ZWZtwrapper(BLOB$chol_Q , BLOB$D_Md2hdv2, as_sym=as_sym)) # dsCMatrix if as_sym is TRUE
       } 
     }
     dampdG <- (damping*BLOB$dG) ## not always diagonal...
-    G_dG <- BLOB$Gmat + dampdG ## probably not so sparse... typically dsC + dsC 
+    if (as_sym) {
+      G_dG <- BLOB$Gmat + dampdG ## probably not so sparse... 
+      #G_dG <- .dsC_plus_dsC(BLOB$Gmat,dampdG) ##
+    } else G_dG <- forceSymmetric(BLOB$Gmat + dampdG)
     return(list(G_dG=G_dG, dampDpD_2=damping * BLOB$D_Md2hdv2))
   }
 }
@@ -365,7 +371,7 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
   }
   if (which=="initialize") return(NULL)
   if ( is.null(BLOB$factor_inv_Md2hdv2)  
-       && which %in% c("","solve_d2hdv2","Mg_invH_g","hatval_Z","hatval")) .provide_BLOB_factor_inv_Md2hdv2(BLOB)
+       && which %in% c("","solve_d2hdv2","Mg_invH_g","hatval_Z","hatval", "Mg_invH_g")) .provide_BLOB_factor_inv_Md2hdv2(BLOB)
   if (which=="hatval_Z") {
     ## calcul correct; 
     # TT <- rbind(diag(sqrt(w.ranef)),diag(sqrt(attr(AUGI0_ZX, "w.resid"))) %*% AUGI0_ZX$ZAfix %*% t(solve(BLOB$chol_Q)) )
@@ -375,9 +381,15 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
   }
   if (which=="Mg_solve_g") {
     stop("Mg_solve_g not implemented, using alternative way")
-  } else if (which=="Mg_invH_g") { ## - grad_v invD2hdv2 grad_v 
+  } 
+  if (which=="Mg_invH_g") { ## - grad_v invD2hdv2 grad_v 
     LLgrad <- BLOB$factor_inv_Md2hdv2 %*% B
     return( sum(LLgrad^2))
+  }
+  if (which=="Mg_invXtWX_g") { ## 
+    if (is.null(BLOB$XtWX)) BLOB$XtWX <- .ZtWZwrapper(AUGI0_ZX$X.pv,attr(sXaug,"w.resid")) ## as(,"matrix") ?
+    Mg_invXtWX_g <- crossprod(B,solve(BLOB$XtWX,B))[1L] # [1L] drops possible Matrix class...
+    return(Mg_invXtWX_g)
   }
   if (which=="solve_d2hdv2") { 
       if ( is.null(B) ) {
@@ -467,7 +479,7 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
     if (.spaMM.data$options$use_G_dG) { ## not so clear which is faster ## big-ranefs would be a good test F I X M E
       # uses rather complex code to avoid solve(dense d2hdv2,...) but cannot avoid solve(rather dense G_dG)
       if (is.null(BLOB$ZtWX)) BLOB$ZtWX <- .calc_ZtWX(sXaug)
-      BLOB$XtWX <- .ZtWZwrapper(AUGI0_ZX$X.pv,attr(sXaug,"w.resid")) ## as(,"matrix") ?
+      if (is.null(BLOB$XtWX)) BLOB$XtWX <- .ZtWZwrapper(AUGI0_ZX$X.pv,attr(sXaug,"w.resid")) ## as(,"matrix") ?
       G_dG_blob <- .calc_G_dG(BLOB, damping) # list(G_dG=G_dG, dampDpD_2=damping * BLOB$D_Md2hdv2)
       if (is.null(BLOB$DpD)) BLOB$DpD <- c(BLOB$D_Md2hdv2,diag(BLOB$XtWX)) ## store as diagonal perturbation for the return value
       ## sequel recomputed for each new damping value...
@@ -498,7 +510,7 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
           if (is.null(BLOB$ZtWX)) BLOB$ZtWX <- .calc_ZtWX(sXaug)
           BLOB$LZtWX <- as(solve(BLOB$chol_Q, BLOB$ZtWX),"matrix")
         }
-        BLOB$XtWX <- .ZtWZwrapper(AUGI0_ZX$X.pv,attr(sXaug,"w.resid")) 
+        if (is.null(BLOB$XtWX)) BLOB$XtWX <- .ZtWZwrapper(AUGI0_ZX$X.pv,attr(sXaug,"w.resid")) 
         BLOB$DpD <- c(BLOB$D_Md2hdv2,diag(BLOB$XtWX)) ## store as diagonal perturbation for the retrun value
       } 
       ## sequel recomputed for each new damping value...
@@ -577,6 +589,19 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
       resu <- list(dVscaled= dv_h, dampDpD = H_dH_blob$dampDpD_2)
     }
     return(resu)
+  }
+  
+  if (which =="LevMar_step_beta") {
+    if (attr(sXaug,"pforpv")) { ## if there are fixed effect coefficients to estimate
+      dbeta_rhs <- LM_z$scaled_grad[-seq(ncol(BLOB$chol_Q))]
+      XX_D <- BLOB$XtWX
+      dampDpD <- damping*diag(XX_D)
+      diag(XX_D) <- diag(XX_D)+dampDpD
+      dbeta_eta <- try(solve(XX_D , dbeta_rhs)[,1],silent=TRUE)
+      if (inherits(dbeta_eta,"try-error")) dbeta_eta <- (ginv(XX_D) %*% dbeta_rhs)[,1]
+      resu <- list(dbeta_eta=dbeta_eta, dampDpD =dampDpD)
+      return(resu)
+    } else stop("LevMar_step_beta called with 0-length rhs: pforpv=0?")
   }
   if (which=="Qty") { ## 
     if (is.null(BLOB$hatval_ZX)) {

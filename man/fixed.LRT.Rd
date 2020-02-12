@@ -5,15 +5,15 @@
   Likelihood ratio test of fixed effects.
 }
 \description{
-\code{fixedLRT} performs a likelihood ratio (LR) test between two models, the ``full'' and the ``null'' models, 
-currently differing only in their fixed effects. Parametric bootstrap p-values can be computed, either using the raw bootstrap distribution of the likelihood ratio, or a a bootstrap estimate of the Bartlett correction of the LR statistic.
-This function differ from \code{LRT} in its arguments (model fits for \code{LRT}, but all arguments required to fit the models for \code{fixedLRT}), and in the format of its return value. 
+\code{fixedLRT} performs a likelihood ratio (LR) test between two models, the \dQuote{full} and the \dQuote{null} models, 
+currently differing only in their fixed effects. Parametric bootstrap p-values can be computed, either using the raw bootstrap distribution of the likelihood ratio, or a bootstrap estimate of the Bartlett correction of the LR statistic.
+This function differs from \code{LRT} in its arguments (model fits for \code{LRT}, versus all arguments required to fit the models for \code{fixedLRT}), and in the format of its return value. 
 }
 \usage{
 fixedLRT(null.formula, formula, data, method, HLmethod = method, 
-         REMLformula = NULL, boot.repl=0, control=list(),
-         control.boot=list(), fittingFunction, nb_cores=NULL, 
-         boot_fn = "spaMM_boot", resp_testfn = NULL, ...)  
+         REMLformula = NULL, boot.repl=0, control="DEPRECATED",
+         control.boot="DEPRECATED", fittingFunction, 
+         resp_testfn = NULL, ...)  
 }
 \arguments{
   \item{null.formula}{
@@ -46,18 +46,13 @@ Either a \code{formula} or a \code{predictor} for the full model.
   \item{boot.repl}{
   the number of bootstrap replicates.
 }
-  \item{control}{
-  A set of control parameters for the fits of the data, mostly for development purposes. However, if an initial value is provided for a dispersion parameter, a better one may be sought if further \code{control=list(prefits=TRUE)} (the effect appears small, however).   
-}
-  \item{control.boot}{
-  Same as \code{control}, but for the fits of the bootstrap replicates. Again, the option \code{control.boot=list(prefits=TRUE)} may yield a small improvement in the fits, at the expense of more computation time.   
-}
+  \item{control}{Deprecated.}
+  \item{control.boot}{Deprecated.}
 \item{fittingFunction}{Character string giving the function used to fit each model: either \code{"corrHLfit"} or \code{"fitme"}. Default is \code{"corrHLfit"} for small data sets (fewer than 300 observations), and \code{"fitme"} otherwise, but this may change in future versions.}
-\item{nb_cores}{Number of cores to use for parallel computation of bootstrap. The default is \code{spaMM.getOption("nb_cores")}, and 1 if the latter is NULL. \code{nb_cores=1} prevents the use of parallelisation procedures.}
-\item{boot_fn}{Deprecated. No alternative to default is considered.}
 \item{resp_testfn}{See argument \code{resp_testfn} of \code{\link{spaMM_boot}}}
+%\item{type}{Passed to \code{\link{simulate.HLfit}}}
   \item{\dots}{
-  Further arguments passed to or from other methods; in particular, additional arguments passed to fitting functions, including those ultimately passed to \code{\link{mat_sqrt}}. With respect to the latter, note that \code{try.chol} affects the simulation of samples for the parametric bootstrap, and although ultimate differences in performance may be small, \code{try.chol=FALSE} may be slightly better.
+  Further arguments passed to or from other methods; presently, additional arguments passed to fitting functions.
 }
 }
 \details{
@@ -89,18 +84,18 @@ and, if a bootstrap was performed, the additional elements described in \code{\l
 See also \code{\link{corrHLfit}} and \code{\link{LRT}}.
 }
 \examples{
-if (spaMM.getOption("example_maxtime")>1.6) {
+if (spaMM.getOption("example_maxtime")>1.9) {
  data("blackcap")
  ## result comparable to the corrHLfit examples based on blackcap
  fixedLRT(null.formula=migStatus ~ 1 + Matern(1|latitude+longitude),
        formula=migStatus ~ means + Matern(1|latitude+longitude), 
        HLmethod='ML',data=blackcap)
 }
-if (spaMM.getOption("example_maxtime")>186) {
+if (spaMM.getOption("example_maxtime")>156) {
  ## longer version with bootstrap
  fixedLRT(null.formula=migStatus ~ 1 + Matern(1|latitude+longitude),
        formula=migStatus ~ means + Matern(1|latitude+longitude), 
-       HLmethod='ML',data=blackcap, boot.repl=100) 
+       HLmethod='ML',data=blackcap, boot.repl=100, seed=123) 
  }
 }
 \keyword{ htest }

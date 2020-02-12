@@ -1,10 +1,11 @@
-cat("\ntest old examples and new tests:\n")
+cat(crayon::yellow("\ntest old examples and new tests:\n"))
 # spaMM
 
 data("scotlip") ## loads 'scotlip' data frame, but also 'Nmatrix'
 
 # Bug before 2.3.70 (NB_shape requested before optimization)
 (hl <- fitme(I(1+cases)~I(prop.ag/10)+offset(log(expec))+adjacency(1|gridcode),
+             control.HLfit = list(LevenbergM=FALSE), # otherwise "!LM" occurs and costs 7.5s; it's in test-LevM.R
             family=negbin(), adjMatrix=Nmatrix, data=scotlip)) ## explicit spaMM::negbin() may be needed.
 
 (hl1 <- corrHLfit(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(expec)),
@@ -42,11 +43,11 @@ d <- data.frame(y = 1:10)
 summary(fitme(y ~ 0, data = d))
 
 
-if (spaMM.getOption("example_maxtime")>2.8) {
-  (ranSlope1 <- fitme(I(1+cases)~I(prop.ag/10)+adjacency(0+expec|gridcode),
-                      family=poisson(), adjMatrix=Nmatrix, data=scotlip))
-  scotlip$verif <- scotlip$expec/2
-  (ranSlope2 <- fitme(I(1+cases)~I(prop.ag/10)+adjacency(0+verif|gridcode),
-                      family=poisson(), adjMatrix=Nmatrix, data=scotlip)) ## explicit spaMM::negbin() may be needed.
-  testthat::expect_true(abs(ranSlope2$lambda-4*ranSlope1$lambda)<1e-5)
-}
+# test of scaling of ranCoef predictor
+(ranSlope1 <- fitme(I(1+cases)~I(prop.ag/10)+adjacency(0+expec|gridcode),
+                    family=poisson(), adjMatrix=Nmatrix, data=scotlip))
+scotlip$verif <- scotlip$expec/2
+(ranSlope2 <- fitme(I(1+cases)~I(prop.ag/10)+adjacency(0+verif|gridcode),
+                    family=poisson(), adjMatrix=Nmatrix, data=scotlip)) ## explicit spaMM::negbin() may be needed.
+testthat::expect_true(abs(ranSlope2$lambda-4*ranSlope1$lambda)<1e-5)
+

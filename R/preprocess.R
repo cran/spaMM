@@ -1,6 +1,6 @@
 .checkRandLink <- function(rand.family) {
   lcrandfamfam <- tolower(rand.family$family) ## tolower once and for all
-  oklink <- F
+  oklink <- FALSE
   ## cases where g(u)=th(u)
   if (lcrandfamfam=="gaussian" && rand.family$link=="identity") oklink <- TRUE          
   if (lcrandfamfam=="gamma" && rand.family$link=="log") oklink <- TRUE          
@@ -31,7 +31,7 @@
     if (is.character(rf)) {
       rand.families[[it]] <- switch(tolower(rf),
                   gaussian = gaussian(),
-                  gamma = Gamma(link=log), ## NOT the default link
+                  gamma = spaMM_Gamma(link=log), 
                   beta = Beta(), 
                   "inverse.gamma" = inverse.Gamma(),
                   stop("rand.family argument not valid"))
@@ -44,6 +44,7 @@
                          beta = 1/2, 
                          "inverse.gamma" = 1
   )
+  names(unique.psi_M) <- NULL
   return(structure(rand.families,lcrandfamfam=lcrandfamfam,unique.psi_M=unique.psi_M))
 }
 
@@ -83,7 +84,8 @@
       lower.v_h[u.range] <- 1e-6 ## 1e-12 is disastrous
       boxConstraintsBool <- TRUE
     }
-    if (rand.families[[it]]$family=="gaussian") gaussian_u_ranges <- c(gaussian_u_ranges,(cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])) 
+    if (rand.families[[it]]$family=="gaussian") gaussian_u_ranges <- c(gaussian_u_ranges,
+                                                                       (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])) 
   }
   if ( ! boxConstraintsBool ) lower.v_h <- NULL 
   boxConstraintsBool <- FALSE
@@ -231,15 +233,6 @@
     phi_est <- as.numeric(deviance(locglm)/locglm$df.residual)
   } else phi_est <- NULL
   return(phi_est)
-}
-
-## This appears useless in particular bc of the limitations of => *obsolete* 
-.get_init_phi <- function(processed,weights=NULL) {
-  if (is.null(processed$envir$init_phi)) { 
-    processed$envir$init_phi <- .generateInitPhi(formula=attr(processed$predictor,"no_offset"),data=processed$data,
-                                family=processed$family,weights=weights) 
-  } 
-  return(processed$envir$init_phi)
 }
 
 .calc_fam_corrected_guess <- function(guess, For, processed, link_=NULL, nrand=NULL) {
@@ -398,6 +391,8 @@
     }
     locform <- as.formula(paste(begform, endform))
     prior.weights <- processed$prior.weights   ## do not try to eval() it outside of the .wfit function call; else nasty crashes may occur.
+    n_lambda <- sum(attr(processed$ZAlist,"Xi_cols"))
+    if (family$family %in% c("Gamma","gaussian")) {lam_fac <- 1/(n_lambda+1L)} else lam_fac <- 1/n_lambda
     resu <- list() 
     if (family$family=="gaussian" && family$link=="identity") {
       if (inherits(X.pv,"sparseMatrix")) {
@@ -406,7 +401,7 @@
       fv <- fitted(resglm)
       dev <- resid(resglm)^2
       if (! is.null(resglm$weights)) dev <- dev/resglm$weights
-      resu$lambda <- resu$phi_est <- sum(dev)/resglm$df.residual
+      resu$lambda <- resu$phi_est <- sum(dev)/resglm$df.residual # /lam_fac
     } else { ## GLM
       #
       resglm <- .tryCatch_W_E(glm.fit(x=X.pv, 
@@ -415,7 +410,7 @@
                                       offset = processed$off, family = family, 
                                       control = processed[["control.glm"]]))$value 
       if (inherits(resglm,"error") || 
-          ( ! resglm$converged && any(fitted(resglm)>1e30)) # this occurred in Gamma(log) models
+          ( ! resglm$converged && any(fitted(resglm)>1e20)) # this occurred in Gamma(log) models or negbin(log)
           ) {
         if (TRUE) {
           #control.glm <- processed[["control.glm"]]
@@ -425,6 +420,7 @@
                         weights = eval(prior.weights), 
                         offset = processed$off, family = family, 
                         control = processed[["control.glm"]])
+          # F I X M E but this may still be poor; default control is still maxit=25. Think about (1) better diagnotic than any(fitted(resglm)>1e20) ? (2) check on non-convergence at this second resglm ? 
         } else {
           resglm <- withCallingHandlers(
             {
@@ -444,19 +440,21 @@
             } 
           )
         }
-        if ( ( ! identical(spaMM.getOption("spaMM_glm_conv_silent"),TRUE))
+        if ( ( ! .spaMM.data$options$spaMM_glm_conv_silent)
              && (conv_crit <- environment(spaMM_glm.fit)$spaMM_glm_conv_crit$max>0)) {
-          resu$conv_info <- paste(".get_inits_by_glm() -> spaMM_glm.fit did not yet converge at iteration",resglm$iter,"(criterion:",
-                                paste(names(conv_crit),"=",signif(unlist(conv_crit),3),collapse=", "),")")
+          resu$conv_info <- paste(".get_inits_by_glm() -> spaMM_glm.fit did not yet converge at iteration",
+                                  resglm$iter,"(criterion:",
+                                paste(names(conv_crit),"=",signif(unlist(conv_crit),3),collapse=", "),").\n",
+                                "Use <fitting function>(., control.glm=list(maxit=<larger value>,..)) to control this.")
           assign("spaMM_glm_conv_crit",list(max=-Inf) , envir=environment(spaMM_glm.fit)) # So that no-convergence in these glms will not be warned about
         }
       }
       #
-      resu$phi_est <- as.numeric(deviance(resglm)/resglm$df.residual) 
+      resu$phi_est <- as.numeric(deviance(resglm)/resglm$df.residual) #/n_lambda 
       if (family$family=="binomial" && max(resglm$prior.weights)==1L) { ## binary response
         resu$lambda <- 1
       } else {
-        fv <- fitted(resglm)
+        # fv <- fitted(resglm)
         # resu$lambda <- sum(resid(resglm)^2/(resglm$prior.weights*family$variance(fv)))/resglm$df.residual # was a birth pang...
         # resid(resglm) gives resglm$residuals, which are the "working residuals" ie (y-mu)/mu.eta one the RHS of the IRLS equation
         # hence they are not an appropriate way to reconstruct the deviance residuals
@@ -478,6 +476,7 @@
       } else names(beta_eta) <- gsub("^X\\.pv","",names(beta_eta)) ## removes initial "X.pv" without guessing any order or length
       resu$beta_eta <- beta_eta
     } 
+    resu$converged <- resglm$converged
     #parent.env(environment(processed$get_inits_by_glm)) <- environment(stats::glm)
     processed$envir$inits_by_glm <- resu
   } 
@@ -623,15 +622,15 @@
     rankinfo <- list(rank=rankinfo$rank, 
                      whichcols=sort(rankinfo$pivot[1:rankinfo$rank]), ## cf lm.fit or base::qr.coef. sort() is cosmetic, \neq sort.list() !
                      method="qr") 
-  } else if (inherits(rankinfo,"sparseQR")) {
+  } else if (inherits(rankinfo,"sparseQR")) { ## result of calling qr() when inherits(X.pv,"sparseMatrix")
     checkd <- (abs(diag(rankinfo@R))>tol) ## 1:rankinfo$rank in base::qr; but here the zero-filled rows are not the last of R
     whichcols <- (rankinfo@q+1L)[checkd] ## $pivot[ <checkd> ] in base::qr
     rankinfo <- list(rank=sum(checkd), whichcols=sort((rankinfo@q+1L)[checkd]), method="sparseQR")
   } else if (rankinfo$method==".rankinfo") { ## .rankinfo:
-    stop("FIXME possibly missing the 'checkd' line required in sparseQR method.")
-    checkd <- NaN ## suspect that not 1:rankinfo$rank
+    checkd <- seq_len(rankinfo$rank) ## not quite clear  
     piv <- (rankinfo$pivot+1L)[checkd] ## +1L bc .rankinfo()$pivot indexes columns from 0
-    rankinfo <- list(rank=rankinfo$rank, whichcols=sort((rankinfo$pivot+1L)[checkd]), method=".rankinfo")
+    rankinfo <- list(rank=rankinfo$rank, whichcols= sort(piv), # "not sure about correct code here", #  
+                     method=".rankinfo")
   } else stop("Unknown rankinfo$method.")
   return(rankinfo)
 }
@@ -681,6 +680,19 @@ as_precision <- function(corrMatrix) {
   return(adjMatrix)
 }
 
+.sym_checked <- function(mMatrix, mname="matrix") { ## return a Matrix; user input may be a matrix
+  if (ncol(mMatrix)!=nrow(mMatrix)) {stop(paste0("Some ",mname," that should be symmetric is found to be not even square."))}
+  if ( ! identical(colnames(mMatrix), rownames(mMatrix))) {
+    warning("Forcing colnames(mMatrix) <- rownames(mMatrix) before calling isSymmetric().")
+    colnames(mMatrix) <- rownames(mMatrix)
+  }
+  if (isSymmetric(mMatrix)) {
+    return(forceSymmetric(drop0(mMatrix))) # Matrix!
+  } else {
+    stop(paste0("Some ",mname," appears not to be symmetric."))
+  }
+}
+
 .assign_cov_matrices__from_covStruct <- function(corr_info, covStruct=NULL, corrMatrix=NULL, adjMatrix=NULL) {
   if ( ! is.null(covStruct)) covStruct <- .preprocess_covStruct(covStruct)
   corr_info$AMatrices <- attr(covStruct,"AMatrices")
@@ -692,8 +704,9 @@ as_precision <- function(corrMatrix) {
     if ( ! is.na(corr_type)) {
       if (corr_type=="adjacency" || corr_type=="SAR_WWt") {
         if ( is.null(adjMatrix) ) {
-          corr_info$adjMatrices[[it]] <- .get_adjMatrix_from_covStruct(covStruct,it)
-        } else corr_info$adjMatrices[[it]] <- adjMatrix   
+          adjMatrix <- .get_adjMatrix_from_covStruct(covStruct,it)
+        } else adjMatrix <- .sym_checked(adjMatrix,"adjMatrix")   
+        corr_info$adjMatrices[[it]] <- .sym_checked(adjMatrix,"adjMatrix")
       } else if (corr_type=="corrMatrix") {
         if (is.null(corrMatrix)) {
           corr_info$corrMatrices[[it]] <- .get_corr_prec_from_covStruct(covStruct,it) 
@@ -751,7 +764,7 @@ as_precision <- function(corrMatrix) {
           decomp <- .provide_AR_factorization(corr_info$adjMatrices[[it]], sparse_precision, corr_type)
           if (corr_type=="SAR_WWt") attr(corr_info$adjMatrices[[it]],"UDU.") <- decomp
           if (corr_type=="adjacency") {
-            corr_info$adjMatrices[[it]] <- forceSymmetric(drop0(corr_info$adjMatrices[[it]]))
+            #corr_info$adjMatrices[[it]] <- forceSymmetric(drop0(corr_info$adjMatrices[[it]])) # now in .sym_checked()
             attr(corr_info$adjMatrices[[it]],"symSVD") <- decomp
           } 
         }
@@ -780,7 +793,7 @@ as_precision <- function(corrMatrix) {
 }
 
 
-.determine_augZXy <- function(processed, control.HLfit) {
+.determine_augZXy <- function(processed, control.HLfit, init) {
   augZXy_cond_inner <- augZXy_cond <- spaMM.getOption("allow_augZXy")
   if (is.null(augZXy_cond)) {
     augZXy_cond <- (processed$models[["phi"]]=="phiScal") ## allows prior weights, but there must be a single phi scaling factor
@@ -797,7 +810,7 @@ as_precision <- function(corrMatrix) {
   if (augZXy_cond) augZXy_cond <- (length(processed$init_HLfit)==0L) ## excludes (among others) internal rho estimation
   ## we need to detect numbers in lambda, and NaN in lambda (forced inner optimization: in the latter case,
   #                                               we could imagine using the augZXy code for given phi within HLfit)
-  if (augZXy_cond) augZXy_cond <- ! any( !is.na(c(processed$lambda.Fix)) | is.nan(c(processed$lambda.Fix)))
+  if (augZXy_cond) augZXy_cond <- ! any( !is.na(c(processed$lambda.Fix)) | is.nan(init$lambda))
   if (augZXy_cond) augZXy_cond <- (! any(processed$ranCoefs_blob$is_set)) ## at preprocessing stage this excludes cases with ranCoefs sets by users
   if (augZXy_cond == 1L) augZXy_cond <- ( ! is.call(processed$prior.weights) && attr(processed$prior.weights,"unique")) ## cf APHLs_by_augZXy code
   # which means that allow_augZXy=2L allows augZXy usage with non-constant prior weights 
@@ -843,7 +856,7 @@ as_precision <- function(corrMatrix) {
                           family=check_old_syntax) # may be NULL, in which case it is later processed as spaMM_Gamma(log)
     }
     resid.model$fixed <- fixed
-    if (is.null(resid.model$resid.model)) resid.model$resid.model <- ~1
+    if (is.null(resid.model$resid.model)) resid.model$resid.model <- .preprocess_formula(~1)
   } 
   return(resid.model)
 }
@@ -925,7 +938,7 @@ as_precision <- function(corrMatrix) {
     if (sparse_precision) {
       if ( ! inherits(ZAfix,"sparseMatrix")) ZAfix <- as(ZAfix,"dgCMatrix") # .Rcpp_as_dgCMatrix(ZAfix) ## 
       rsZA <- rowSums(ZAfix) ## test that there a '1' per row and '0's otherwise:  
-      AUGI0_ZX$is_unitary_ZAfix <- (unique(rsZA)==1 && all(rowSums(ZAfix^2)==rsZA)) ## $ rather than attribute to S4 ZAfix
+      AUGI0_ZX$is_unitary_ZAfix <- (all(unique(rsZA)==1L) && all(rowSums(ZAfix^2)==rsZA)) ## $ rather than attribute to S4 ZAfix
     } else {
       if (.eval_as_mat_arg(processed)) ZAfix <- as.matrix(ZAfix)  
     }
@@ -941,10 +954,12 @@ as_precision <- function(corrMatrix) {
                        REMLformula, data, family,
                        BinomialDen, rand.families, etaFix, prior.weights,
                        objective=NULL, 
-                       control.glm, adjMatrix=NULL, verbose=NULL, For,
+                       control.glm, # under user control! => impacts inits_by_glm
+                       adjMatrix=NULL, verbose=NULL, For,
                        init.HLfit=list(),corrMatrix=NULL,covStruct=NULL,
                        uniqueGeo=NULL,distMatrix=NULL, 
-                       control.dist=NULL 
+                       control.dist=NULL,
+                       init=NULL # for .determine_augZXy()
                        ) {
   callargs <- match.call() 
   #
@@ -972,7 +987,6 @@ as_precision <- function(corrMatrix) {
     stop("'data' is not a data.frame not an environment.")
   }
   # add easily testable family name
-  famfam <- family$family
   processed <- list2env(list(data=data, family=family, For=For,
                              envir=list2env(list(),parent=environment(HLfit)))) 
   processed$clik_fn <- .get_clik_fn(family)
@@ -983,28 +997,6 @@ as_precision <- function(corrMatrix) {
   break_conv_logL <- control.HLfit$break_conv_logL ##whether to stop if logL (p_v) appears to have converged  
   if (is.null(break_conv_logL)) break_conv_logL <- FALSE
   processed$break_conv_logL <- break_conv_logL ##  
-  ## numerical control parameters 
-  spaMM_tol <- spaMM.getOption("spaMM_tol") 
-  if ( ! is.list(spaMM_tol)) stop("spaMM_tol must be a list")
-  # then user's explicit conv.threshold controls
-  if ( ! is.null(conv.threshold <- control.HLfit$conv.threshold)) spaMM_tol[["Xtol_rel"]] <- conv.threshold
-  # then user's explicit spaMM_tol controls
-  if ( ! is.null(user_spaMM_tol <- control.HLfit$spaMM_tol)) spaMM_tol[names(user_spaMM_tol)] <- user_spaMM_tol
-  processed$spaMM_tol <- spaMM_tol
-  #
-  iter.mean.dispFix <- control.HLfit$iter.mean.dispFix ## private control
-  if (is.null(iter.mean.dispFix)) iter.mean.dispFix <- control.HLfit$max.iter.mean ## public control
-  if (is.null(iter.mean.dispFix)) iter.mean.dispFix <- 200 ## control of inner loop when no disp param is estimated ## was 40, 06/2014
-  processed$iter.mean.dispFix <- iter.mean.dispFix  
-  #
-  iter.mean.dispVar <- control.HLfit$iter.mean.dispVar ## private control
-  if (is.null(iter.mean.dispVar)) iter.mean.dispVar <- control.HLfit$max.iter.mean ## public control ## control of inner loop when some disp param is estimated
-  if (is.null(iter.mean.dispVar)) iter.mean.dispVar <- 50 ## control of inner loop when some disp param is estimated  ## was 20, 06/2014
-  processed$iter.mean.dispVar <- iter.mean.dispVar  
-  #
-  max.iter <- control.HLfit$max.iter  ## control of outer loop 
-  if (is.null(max.iter)) max.iter <- 200
-  processed$max.iter <- max.iter  
   #
   resid.family <- resid.model$family
   if (is.null(resid.family)) {
@@ -1040,21 +1032,69 @@ as_precision <- function(corrMatrix) {
       #y[which(is_low_y)] <- Gamma_min_y
       warning(paste0("Found Gamma response < (Gamma_min_y=",Gamma_min_y,") . Troubles may happen."))
     }
+    is_high_y <- (y > 1/Gamma_min_y)
+    if (any(is_high_y)) {
+      #y[which(is_low_y)] <- Gamma_min_y
+      warning(paste0("Found Gamma response > (1/Gamma_min_y=",1/Gamma_min_y,") . Troubles may happen."))
+    }
   }
   processed$y <- y
   if (family$family=="binomial") {
-    if (var(y)==0 && var(BinomialDen)==0) { warning("var(response) = 0, which may cause errors.") }  
+    if (length(y)==1L || (var(y)==0 && var(BinomialDen)==0) ) { warning("var(response) = 0, which may cause errors.") }  
     processed$bin_all_or_none <- all(pmin(y,BinomialDen-y)==0L)
   } else { 
     processed$bin_all_or_none <- FALSE
     if ( ! is.null(y)) { ## y may be NULL in evaluation of residProcessed
-      if ( var(y)==0 ) { 
-        warning("var(response) = 0, which may cause errors.") 
+      if ( length(y)==1L || var(y)==0) { # (~1, family=poisson, data=<single response> ) can be fitted
+        if (family$family %in% c("gaussian", "Gamma")) warning("var(response) = 0, which may cause errors.") 
       } else if (var(y)<1e-3 && family$family=="gaussian") {
         warning("The variance of the response is low, which may lead to imperfect estimation of variance parameters.\n Perhaps rescale the response?")
       }
     }  
   } # (e1071::svm should fail when var response=0)
+  #### Various control parameters
+  ## control of outer loop 
+  max.iter <- control.HLfit$max.iter  
+  if (is.null(max.iter)) max.iter <- 200L
+  processed$max.iter <- max.iter  
+  #
+  ## control of maxit.mean in inner loop i.e. in .solve_IRLS_as_...(), dependent on y (Leucadendron_hard.R was revelatory)
+  iter_mean_dispFix <- control.HLfit$iter.mean.dispFix ## documented
+  if (is.null(iter_mean_dispFix)) iter_mean_dispFix <- control.HLfit$max.iter.mean ## public control
+  if (is.null(iter_mean_dispFix)) {
+    if (family$family=="Gamma" && family$link=="log") {
+      if (is.null(y)) { 
+        iter_mean_dispFix <- NaN # will be replaced when residProcessed$y is known.
+      } else iter_mean_dispFix <- max(200L,ceiling(100* mean(abs(log2(y)))))
+    } else iter_mean_dispFix <- 200L 
+  }
+  processed$iter_mean_dispFix <- iter_mean_dispFix  
+  # ... when some disp param is inner estimated: (HLfit_body() tells cases apart) 
+  iter_mean_dispVar <- control.HLfit$iter.mean.dispVar ## documented
+  if (is.null(iter_mean_dispVar)) iter_mean_dispVar <- control.HLfit$max.iter.mean ## public control 
+  if (is.null(iter_mean_dispVar)) {
+    if (family$family=="Gamma" && family$link=="log") {
+      if (is.null(y)) { 
+        iter_mean_dispVar <- NaN
+      } else iter_mean_dispVar <- max(50L,ceiling(100* mean(abs(log2(y)))))
+    } else iter_mean_dispVar <- 50L 
+  } 
+  processed$iter_mean_dispVar <- iter_mean_dispVar  
+  # spaMM_tol, dependent on bin_all_or_none:
+  spaMM_tol <- spaMM.getOption("spaMM_tol") 
+  if ( ! is.list(spaMM_tol)) stop("spaMM_tol must be a list")
+  if (processed$bin_all_or_none) {
+    spaMM_tol$rescue_thr <- .spaMM.data$options$LevM_HL11_method$rescue_thr_AoN
+  } else spaMM_tol$rescue_thr <- .spaMM.data$options$LevM_HL11_method$rescue_thr_null
+  if (spaMM_tol$rescue_thr["rescue"]) {
+    spaMM_tol$v_pot_tol <- spaMM_tol$v_pot_tol_rescue
+  } else spaMM_tol$v_pot_tol <- spaMM_tol$v_pot_tol_noresc
+  # then user's explicit conv.threshold controls
+  if ( ! is.null(conv.threshold <- control.HLfit$conv.threshold)) spaMM_tol[["Xtol_rel"]] <- conv.threshold
+  # then user's explicit spaMM_tol controls
+  if ( ! is.null(user_spaMM_tol <- control.HLfit$spaMM_tol)) spaMM_tol[names(user_spaMM_tol)] <- user_spaMM_tol
+  processed$spaMM_tol <- spaMM_tol
+  #
   #
   X.pv <- HLframes$X
   exp_barlist <- .process_bars(predictor,as_character=FALSE) ## but default expand =TRUE
@@ -1096,7 +1136,8 @@ as_precision <- function(corrMatrix) {
   HLmethod <- .preprocess_HLmethod(HLmethod, family, processed$lcrandfamfam) ## not a member of the return object
   HL <- eval(parse(text=paste0("c",substr(HLmethod,3,100)))) ## extracts the (...) part into a vector
   if (length(HL)==2) HL <- c(HL,1)
-  processed$HL <- HL
+  processed$HL <- HL ## ! this may be modified locally !!
+  processed$LevenbergM <- .preprocess_LevM(control.HLfit$LevenbergM, processed) # uses processed$bin_all_or_non & $HL
   ####
   ####
   ## X.pv post-processing; later extract column for fixed oefficients, but we need the offset for that
@@ -1169,12 +1210,6 @@ as_precision <- function(corrMatrix) {
   if (HL[1L]=="SEM") processed$SEMargs <- .preprocess_SEMargs(BinomialDen, nobs, control.HLfit, y)
   if (HL[1L]==0L) {processed$p_v_obj <-"hlik"} else processed$p_v_obj <-"p_v" ## objective for beta(_v) estim only: != outer obj 
   if (substr(HLmethod,0,2)=="ML") { # && HL[1]!="SEM") { ## FR->FR c'est bizarre d'exclure le SEM là... p_bv est il vraiment utilisé ?
-    if (family$family == "binomial" && processed$bin_all_or_none && HL[1]==1L) {
-      if ( ! identical(spaMM.getOption("PQL_warned"),TRUE)) {
-        message("Fits using Laplace approximation may diverge for all-or-none binomial data:\n check PQL or PQL/L methods in that case.")
-        spaMM.options(PQL_warned=TRUE)
-      }
-    }
     if ( ! is.null(REMLformula)) {
       message("Confusing combination of arguments: 'HLmethod=ML(...)' with non-null 'REMLformula'.")
       stop("  Make sure what you mean and simplify the arguments.")
@@ -1293,6 +1328,14 @@ as_precision <- function(corrMatrix) {
     # This, together with two commented lines in .is_identity(), is not clearly useful:
     #for (rd in seq_along(ZAlist)) attr(ZAlist[[rd]], "is_identity") <- .is_identity(ZAlist[[rd]], matrixcheck=TRUE)
     vec_n_u_h <- unlist(lapply(ZAlist,ncol)) ## nb cols each design matrix = nb realizations each ranef
+    if (min(nobs/vec_n_u_h)<2) {
+      if (family$family == "binomial" && processed$bin_all_or_none && HL[1]==1L) {
+        if ( ! identical(spaMM.getOption("PQL_warned"),TRUE)) {
+          message("Fits using Laplace approximation may diverge for (nearly) all-or-none binomial data:\n check PQL or PQL/L methods in that case.")
+          .spaMM.data$options$PQL_warned <- TRUE
+        }
+      }
+    }
     processed$cum_n_u_h <- cum_n_u_h <- cumsum(c(0L, vec_n_u_h)) ## if two ranef,  with q=(3,3), this is 0,3,6 ;
     vec_normIMRF <- .calc_vec_normIMRF(exp_ranef_terms=attr(ZAlist, "exp_ranef_terms"), corr_types=corr_types)   
     if (any(vec_normIMRF)) attr(ZAlist,"Zlist") <- Zlist
@@ -1326,7 +1369,7 @@ as_precision <- function(corrMatrix) {
   }
   if (.spaMM.data$options$X_scaling) { ## use scaling by default v.2.4.83
     ##       standard REML    ||      ML 
-    if ( is.null(REMLformula) || ncol(X.Re)==0L) AUGI0_ZX$X.pv <- .scale(AUGI0_ZX$X.pv)
+    if ( is.null(REMLformula) || ncol(X.Re)==0L) AUGI0_ZX$X.pv <- .scale(AUGI0_ZX$X.pv) # scales and adds "scaled:scale" attribute
   }
   #if (nrand &&  ! sparse_precision ) { AUGI0_ZX$template_Xscal <- .make_Xscal(ZAL=NULL, ZAL_scaling = NULL, AUGI0_ZX=AUGI0_ZX) } # ## failure to use it efficiently
   if (nrand &&  ! sparse_precision ) { 
@@ -1336,8 +1379,10 @@ as_precision <- function(corrMatrix) {
   }
   processed$AUGI0_ZX <- AUGI0_ZX
   #
-  processed$coef12needed <- ! ((family$family=="gaussian" && family$link=="identity")
+  coef12needed <- ! ((family$family=="gaussian" && family$link=="identity")
                               || (family$family=="Gamma" && family$link=="log")  ) ## two ad hoc cases
+  coef3needed <- any(attr(rand.families,"unique.psi_M")!=0) # psi_M happening to be 0 only for gaussian(identity) ranef
+  processed$vecdisneeded <- c( coef12needed, coef12needed, coef3needed )
   #
   if (is.null(subs_p_weights <- substitute(prior.weights))) {
     prior.weights <- structure(rep(1L,nobs),unique=TRUE) ## <- 1L prevented by glm -> model.frame(... prior.weights)
@@ -1361,23 +1406,10 @@ as_precision <- function(corrMatrix) {
     betaFirst <- FALSE
   }
   processed$betaFirst <- betaFirst ##
-  LevenbergM <- .reformat_LevenbergM(control.HLfit$LevenbergM)
-  if (is.na(LevenbergM["default_LM_start"])) { ## ie, if not set globally by spaMM.options()
-    if (family$family == "binomial" && processed$bin_all_or_none ) { # both PQL and ML
-      if (HL[1L]==0L) {
-        LevenbergM["default_LM_start"] <- TRUE ## PQL/L + LevenbergM combine safely and relatively fast.
-      } else  LevenbergM["default_LM_start"] <- TRUE ## main reason for TRUE is to reduce variance in fit time: cf BINARYboot test
-    } else LevenbergM["default_LM_start"] <- FALSE
-  }
-  ## prefit less useful since Levenberg works better
-  if (is.na(LevenbergM["default_prefit"])) { ## ie, if not set globally by spaMM.options()
-    LevenbergM["default_prefit"] <- FALSE ## and should not be looked for anyway
-  }
-  processed$LevenbergM <- LevenbergM
   #
   if (nrand) {   
     processed$lambda.Fix <- .reformat_lFix(.getPar(ranFix,"lambda"), nrand)
-    models[["lambda"]] <- rep("lamScal",nrand) ## even for adjacnency, random slope...
+    models[["lambda"]] <- rep("lamScal",nrand) ## even for adjacency, random slope...
     ################################################################################
     # for a random slope term, ie v= v_1+x v_2 , the x went into the general ZAL matrix 
     # (construction of Zlist by .calc_Zlist(), and
@@ -1421,7 +1453,7 @@ as_precision <- function(corrMatrix) {
     } 
     processed$X_lamres <- X_lamres ## for glm for lambda, and SEMbetalambda
     ranCoefs <- .getPar(ranFix,"ranCoefs") ## may be NULL
-    processed$ranCoefs_blob <- .process_ranCoefs(processed, ranCoefs, use_tri=TRUE) 
+    processed$ranCoefs_blob <- .process_ranCoefs(processed, ranCoefs, use_tri_Nspprec=TRUE) 
     processed$AUGI0_ZX$envir$finertypes[processed$ranCoefs_blob$isRandomSlope] <- "ranCoefs" ## (*creates* the variable in the *environment* so that .evalWrapper() finds it)
   } #else processed$ranCoefs_blob <- NULL
   #
@@ -1499,7 +1531,7 @@ as_precision <- function(corrMatrix) {
     }
   }
   #
-  processed$augZXy_cond <- .determine_augZXy(processed,control.HLfit=control.HLfit)
+  processed$augZXy_cond <- .determine_augZXy(processed,control.HLfit=control.HLfit, init=init)
   if (processed$augZXy_cond) {
     processed$augZXy_env <- new.env(parent=emptyenv()) 
     processed$augZXy_env$objective <- -Inf 
@@ -1548,7 +1580,8 @@ as_precision <- function(corrMatrix) {
   processed$verbose <- .reformat_verbose(verbose,For=For) ## added 09/2017*
   .do_TRACE(processed)
   class(processed) <- c("arglist",class(processed))
-  spaMM.options(COMP_maxn_warned=FALSE,COMP_geom_approx_warned=FALSE)
+  .spaMM.data$options$COMP_maxn_warned <- FALSE
+  .spaMM.data$options$COMP_geom_approx_warned <- FALSE
   return(processed)
 }
 

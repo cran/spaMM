@@ -1,4 +1,4 @@
-cat("\ntest fixedLRT:\n")
+cat(crayon::yellow("\ntest fixedLRT:\n"))
 # fixedLRT
 
 data("blackcap")
@@ -12,5 +12,5 @@ fl <- fixedLRT(null.formula=migStatus ~ 1 + Matern(1|latitude+longitude),
 ## phi=1e-6 must be automatically converted to 1e-4 : potential test of changes in .calc_inits_dispPars()
 
 testthat::expect_equal(fl$basicLRT$p_value,0.00806473,tolerance=2e-5)
-try(testthat::expect_equal(fl$BartBootLRT$p_value,structure(0.00854742,boot_type="marginal"),tolerance=2e-5)) # 
+testthat::expect_equal(fl$BartBootLRT$p_value,structure(0.008546614,boot_type="marginal"),tolerance=1e-5)
 testthat::expect_true(length(fl$bootInfo$RNGstates)==626) ## check that it's there

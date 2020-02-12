@@ -106,7 +106,8 @@ confint.HLfit <- function(object,parm,level=0.95,verbose=TRUE,...) {
                             HLcallfn.obj=HLcallfn_obj,
                             user_init_optim=user_init_optim,
                             anyHLCor_obj_args=anyObjfnCall.args,
-                            control=list(optimizer=spaMM.getOption("optimizer"))) # important to avoid use of optimize():
+                            control=list(optimizer=spaMM.getOption("optimizer")), # important to avoid use of optimize()
+                            verbose=FALSE) 
       .assignWrapper(anyObjfnCall.args$processed,
                      paste0("return_only <- NULL"))
       # We need an optimizer with control of the initial value (hence not optimize());

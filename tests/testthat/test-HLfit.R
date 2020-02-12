@@ -1,4 +1,4 @@
-cat("\ntest HLfit:\n")
+cat(crayon::yellow("\ntest HLfit:\n"))
 # HLfit
 
 data("wafers")

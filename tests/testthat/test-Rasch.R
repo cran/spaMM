@@ -1,4 +1,4 @@
-cat("Multilevel Rasch Model example by Doran et al. (2007):")
+cat(crayon::yellow("Multilevel Rasch Model example by Doran et al. (2007):"))
 
 ## example from:
 ## Harold Doran, Douglas Bates, Paul Bliese, Maritza Dowling
@@ -24,7 +24,7 @@ if( requireNamespace("multilevel", quietly = TRUE)) {
     
     ## spaMM expects integer response
     lql$resp <- as.integer(lql$dichot)-1
-    # 12s s WITHOUT LevenbergM NOR sparse_precision
+    # 12s s WITHOUT LevenbergM NOR sparse_precision; see the privtest for other comparisons.
     hl1 <- HLfit(cbind(resp,1-resp) ~ 0+itype+(1|subj)+(1|COMPID)+(1|item), 
                  data=lql, family=binomial() ,HLmethod="ML",verbose=c(TRACE=interactive()),
                  control.HLfit=list(LevenbergM=FALSE)) 

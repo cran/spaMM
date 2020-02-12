@@ -1,4 +1,4 @@
-cat("\ntest poly():\n")
+cat(crayon::yellow("\ntest poly():\n"))
 
 set.seed(123)
 d <- data.frame(x = 1:10, y = rnorm(10))

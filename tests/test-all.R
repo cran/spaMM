@@ -1,9 +1,9 @@
-if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") { ## not on CRAN (lost? see 2.15 How do I set environment variables? in R Windows FAQ)
+if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") { ## set in etc/Renviron.site (cf R Windows FAQ)
   if(requireNamespace("testthat", quietly = TRUE)) {
     pkg   <- "spaMM"
     require(pkg, character.only=TRUE, quietly=TRUE)
     # options(error = quote({dump.frames(to.file = TRUE)})) # useful for bugs in .do_TRACE()
-    if (interactive())  {
+    if (interactive()) {
       # options(error=recover)
       # spaMM.options(TRY_ZAX=TRUE)
       # abyss <- matrix(runif(2e7),nrow=1000); gc(reset=TRUE) ## partial control of gc trigger...
@@ -16,14 +16,18 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") { ## not on CRAN (lost? see 2.15 How do
       print(colSums(timings))
       ## testthat::test_package(pkg) ## for an installed package
       if (FALSE) { ## tests not included in package (using unpublished data, etc.)
-        priv_testfiles <- dir("C:/home/francois/travail/stats/spaMMplus/spaMM/package/tests_private/",pattern="*.R",full.names = TRUE)
+        priv_testfiles <- dir("C:/home/francois/travail/stats/spaMMplus/spaMM/package/tests_private/",pattern="*.R$",full.names = TRUE)
         priv_timings <- t(sapply(priv_testfiles, function(fich){system.time(source(fich))}))
         #spaMM.options(oldmaxt)
         print(colSums(priv_timings))
       }
       devAskNewPage(op)
-    } else {
-      report <- test_check(pkg) ## for R CMD check ## report is NULL...
+    } else if (FALSE) { ## for R CMD check (but still assuming _LOCAL_TESTS_), but this does not work on nested files
+      library("testthat") # cf ?test_check for using library() here:
+      library(pkg, character.only = TRUE)
+      oldmaxt <- spaMM.options(example_maxtime=70) ## then slow (Rstudio -> devtools tests) 
+      report <- test_check(pkg) 
+      spaMM.options(oldmaxt)
       print(warnings()) # TODO? catch most of these by expect_warning(..)
     }
   } else {

@@ -67,7 +67,8 @@
           rand_to_glm_map[it] <- length(resglm_lambdaS)  ## gives the position of just-added glm
           ## following syntax OK for for ~1 and for random-slope (but not adjacency)
           # [single] <- (multiple) is not correctly interpreted
-          for (lit in attr(glm_lambda,"whichrand")) print_lambdas[[lit]] <- unique(predict(glm_lambda,type="response"))
+          for (lit in attr(glm_lambda,"whichrand")) print_lambdas[[lit]] <- predict(glm_lambda,
+                                                                                    newdata=unique(glm_lambda$data),type="response")
         } ## else no glm for outer/fixed lambda
       }
     }

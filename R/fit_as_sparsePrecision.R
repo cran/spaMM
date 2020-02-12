@@ -1,44 +1,123 @@
-.do_damped_WLS_spprec <- 
-  function(sXaug, zInfo, # fixed descriptors of system to be solved
-           old_Vscaled_beta,
-           oldAPHLs,
-           APHLs_args,
-           damping,
-           dampingfactor=2, ## no need to change the input value
-           ypos,off,GLMMbool,etaFix,constant_u_h_v_h_args,
-           updateW_ranefS_constant_arglist,
-           wranefblob, seq_n_u_h, 
-           ZAL_scaling, # locally fixed, "resident"; only changed in return value
-           processed, trace=FALSE,
-           phi_est, H_global_scale, n_u_h, 
-           ZAL, # unscaled one 
-           which_LevMar_step,
-           update_sXaug_constant_arglist,
-           # promise rater than argument:
-           pot4improv = switch(which_LevMar_step,
-                            "v_b"= sum(zInfo$m_grad_obj*unlist(get_from_MME(sXaug,szAug=zInfo["m_grad_obj"]))),
-                            "v"= get_from_MME(sXaug=sXaug, which="Mg_invH_g", B=gainratio_grad[seq_n_u_h]))
-  ) {
+.do_damped_WLS_spprec <- function(
+  sXaug, zInfo, # fixed descriptors of system to be solved
+  old_Vscaled_beta,
+  oldAPHLs,
+  APHLs_args,
+  damping,
+  dampingfactor=2, ## no need to change the input value
+  ypos,off,GLMMbool,etaFix,constant_u_h_v_h_args,
+  updateW_ranefS_constant_arglist,
+  wranefblob, seq_n_u_h, 
+  ZAL_scaling, # locally fixed, "resident"; only changed in return value
+  processed, 
+  Trace,
+  phi_est, #H_global_scale, 
+  n_u_h, 
+  ZAL, # unscaled one 
+  which_LevMar_step,
+  update_sXaug_constant_arglist,
+  # promise rather than argument:
+  low_pot=NULL,
+  v_infer_args=NULL, # not null for beta optimization with v_in_b optimization i.e. in *some* .do_damped_WLS_outer() call
+  stylefn, # in-loop stylefn for damped_WLS
+  stylefn_v_out= .spaMM.data$options$stylefns$v_out_last, 
+  stylefn_v_in= .spaMM.data$options$stylefns$v_in_last, ##
+  outer) {
   ZAL_scaling <- 1 ## TAG: scaling for spprec
+  if (outer) {
+    trace <- max(0L,Trace-1L)
+    stylefn_v <- stylefn_v_out
+  } else {
+    trace <- max(0L,Trace-2L)
+    stylefn_v <- stylefn_v_in
+  }
+  if (processed$p_v_obj=="p_v" && which_LevMar_step!="v") { 
+    objname <- "p_v" 
+  } else { 
+    objname <- APHLs_args$which <- "hlik"
+  }
+
+  oldlik <- oldAPHLs[[objname]]
   initdamping <- damping
   gainratio_grad <- zInfo$gainratio_grad
   gone_thru_mini <- (damping==1e-7)
-  while ( TRUE ) {
+  first_it <- TRUE
+  prev_gainratio <- -Inf
+  if (Trace && ! is.null(v_infer_args)) {
+    cat(stylefn("[")) # cat(which_LevMar_step) #=> a substep of V_IN_B: "strict_v|b" or "b_&_v_in_b"
+  } 
+  loc_pot_tol <- attr(low_pot,"pot_tol") ## if low_pot is not NULL, we get this info.
+  #v_total_maxit_mean <- v_infer_args$maxit.mean
+  while ( TRUE ) { ## loop on damping; each iteration produce blue + ul-greens + yellow
+    # if (trace && ! is.null(v_infer_args)) {
+    #   cat(c(damping)) # => what is shown after [.v_h iter...]V_h IRLS...; .dampingfactor=* damping=
+    # }
     if (processed$HL[1L]==1L) { ## ML fit 
+      Vscaled_beta <- old_Vscaled_beta
+      LM_z <- zInfo["scaled_grad"] # still a list, but for clarity, emphasizes that only this element is needed
+      ## maximize p_v wrt beta only
       if ( which_LevMar_step=="v_b") { ## note tests on summand too !!!!!!!
-        LevMarblob <- get_from_MME(sXaug=sXaug, which="LevMar_step", 
-                                   LM_z=zInfo["scaled_grad"], # still a list, but for clarity, emphasizes that only this element is needed
-                                   damping=damping)
+        LevMarblob <- get_from_MME(sXaug=sXaug, which="LevMar_step", LM_z=LM_z, damping=damping)
         Vscaled_beta <- list(
-          v_h=old_Vscaled_beta$v_h + LevMarblob$dVscaled, ##
-          beta_eta=old_Vscaled_beta$beta_eta + LevMarblob$dbeta_eta
+          v_h=Vscaled_beta$v_h + LevMarblob$dVscaled, ##
+          beta_eta=Vscaled_beta$beta_eta + LevMarblob$dbeta_eta
         )  
       } else if ( which_LevMar_step=="v") { ## v_h estimation given beta 
-        LevMarblob <- get_from_MME(sXaug=sXaug, which="LevMar_step_v_h", LM_z=zInfo["scaled_grad"], damping=damping)
-        Vscaled_beta <- list(
-          v_h=old_Vscaled_beta$v_h + LevMarblob$dVscaled,
-          beta_eta=old_Vscaled_beta$beta_eta 
-        )  
+        LevMarblob <- get_from_MME(sXaug=sXaug, which="LevMar_step_v_h", LM_z=LM_z, damping=damping)
+        Vscaled_beta$v_h <- Vscaled_beta$v_h + LevMarblob$dVscaled
+      } else if ( which_LevMar_step=="strict_v|b") {
+        # =: the case where we only fit v_h for the input beta_eta:
+        #    only v_h in Vscaled_beta will be changed, by v_infer_args step below, 
+        LevMarblob <- v_infer_args$LevMarblob ## LevMarblob$d... will be overwritten below
+        #                                        is.null(LevMarblob) occurs in initial damping=Inf call.
+      } else if ( which_LevMar_step=="b_&_v_in_b") {     
+        LevMarblob <- get_from_MME(sXaug=sXaug, which="LevMar_step", LM_z=LM_z, damping=damping) # template
+        dbeta_LevMarblob <- get_from_MME(sXaug=sXaug, which="LevMar_step_beta", LM_z=LM_z, damping=damping)
+        Vscaled_beta$beta_eta <- Vscaled_beta$beta_eta + dbeta_LevMarblob$dbeta_eta
+        # v_h in Vscaled_beta will be changed by v_infer_args step below.
+        v_infer_args$LevMarblob <- get_from_MME(sXaug=sXaug, which="LevMar_step_v_h", LM_z=LM_z, damping=damping)
+      } else if ( which_LevMar_step=="b_from_v_b") { 
+        LevMarblob <- get_from_MME(sXaug=sXaug, which="LevMar_step", LM_z=LM_z, damping=damping)
+        Vscaled_beta$beta_eta <- Vscaled_beta$beta_eta + dbeta_LevMarblob$dbeta_eta
+      } else if ( which_LevMar_step=="b") { ## probably not used; get_from_MME() includes protection for pforpv=0
+        LevMarblob <- get_from_MME(sXaug=sXaug, which="LevMar_step_beta", LM_z=LM_z, damping=damping)
+        Vscaled_beta$beta_eta <- Vscaled_beta$beta_eta + dbeta_LevMarblob$dbeta_eta
+      } 
+      if ( which_LevMar_step!="v" &&  ! is.null(v_infer_args)) {
+        if (Trace) cat(stylefn_v("["))
+        #v_infer_args$maxit.mean <- ceiling(v_total_maxit_mean/5)
+        v_h_blob <- .wrap_v_h_IRLS(v_h=Vscaled_beta$v_h , 
+                                   beta_eta=Vscaled_beta$beta_eta, seq_n_u_h, GLMMbool, wranefblob, 
+                                   constant_u_h_v_h_args, updateW_ranefS_constant_arglist, v_infer_args, Trace, IRLS_fn=".solve_v_h_IRLS_spprec")
+        if (v_h_blob$break_info$IRLS_breakcond=="maxit") { # problematic failure: we need to do something
+          #v_infer_args$maxit.mean <- ceiling(v_total_maxit_mean*4/5)
+          psi_M <- rep(attr(processed$rand.families,"unique.psi_M"),diff(processed$cum_n_u_h))
+          v_h_blob <- .wrap_v_h_IRLS(v_h=psi_M, 
+                                     beta_eta=Vscaled_beta$beta_eta, seq_n_u_h, GLMMbool, wranefblob, 
+                                     constant_u_h_v_h_args, updateW_ranefS_constant_arglist, v_infer_args, Trace, IRLS_fn=".solve_v_h_IRLS_spprec")
+        } 
+        # each underline green is a damping _loop_ not a damping step
+        if (Trace) cat(stylefn_v("]"))
+        if (trace)  { ## prints, at the level of the outer damped_WLS, the results of the v_h IRLS
+          with(v_h_blob,cat(stylefn_v(paste0("v_h IRLS returns max(|grad|): v=",.prettify_num(break_info$maxs_grad[1L]), # grad when v_h IRLS exits
+                             " beta=",.prettify_num(break_info$maxs_grad[2L]),
+                             " after ",innerj, # number of iterations of v_h IRLS
+                             " iter"
+                             ))))
+          break_info <- v_h_blob$break_info
+          break_info$maxs_grad <- NULL
+          for (st in names(break_info)) {
+            if (is.numeric(stinfo <- break_info[[st]])) {
+              cat(stylefn_v(paste0(", ",st,"=",.prettify_num(stinfo))))
+            } else cat(stylefn_v(paste0(", ",st,"=",stinfo)))
+          }
+          cat(stylefn(";"))
+        } # else if (Trace) cat(stylefn_v(".")) ## underline blue ## But no reason since no matrix factorization
+        Vscaled_beta$v_h <- v_h_blob$v_h
+        LevMarblob$dVscaled_beta <- list(
+          v_h=Vscaled_beta$v_h - old_Vscaled_beta$v_h, ##
+          beta_eta=Vscaled_beta$beta_eta -old_Vscaled_beta$beta_eta
+        ) 
       }
     } else { ## joint hlik maximization
       LevMarblob <- get_from_MME(sXaug=sXaug, which="LevMar_step", LM_z=zInfo["scaled_grad"], damping=damping)
@@ -47,7 +126,7 @@
         beta_eta=old_Vscaled_beta$beta_eta + LevMarblob$dbeta_eta
       )  
     }
-    v_h <- Vscaled_beta$v_h * ZAL_scaling ## use original scaling!
+    v_h <- Vscaled_beta$v_h #### * ZAL_scaling =1 here
     eta <- off + drop(processed$AUGI0_ZX$X.pv %*% Vscaled_beta$beta_eta) + drop(ZAL %id*% v_h) ## length nobs 
     
     newmuetablob <- .muetafn(eta=eta,BinomialDen=processed$BinomialDen,processed=processed) 
@@ -68,57 +147,77 @@
         newwranefblob <- do.call(".updateW_ranefS",c(updateW_ranefS_constant_arglist,list(u_h=u_h,v_h=v_h)))
       } 
     } else newwranefblob <- wranefblob
-    if ( ! GLMMbool) {newZAL_scaling <- 1}  ## TAG: scaling for spprec
-    newsXaug <- do.call(processed$AUGI0_ZX$envir$method, # ie, def_AUGI0_ZX_sparsePrecision
-                        c(update_sXaug_constant_arglist,
+    sXaug_arglist <- c(update_sXaug_constant_arglist,
                           list(w.ranef=newwranefblob$w.ranef, 
                                #weight_X=newweight_X,
-                               w.resid=neww.resid)))
-    APHLs_args$sXaug <- newsXaug
+                               w.resid=neww.resid))
+    if ( ! GLMMbool) {newZAL_scaling <- 1}  ## TAG: scaling for spprec
+    ####
     APHLs_args$dvdu <- newwranefblob$dvdu
     APHLs_args$u_h <- u_h 
     APHLs_args$mu <- newmuetablob$mu
-    newAPHLs <- do.call(".calc_APHLs_from_ZX", APHLs_args)
-    if (processed$HL[1L]==1L) { 
-      if (which_LevMar_step=="v") { 
-        newlik <- newAPHLs[["hlik"]]
-        oldlik <- oldAPHLs[["hlik"]]
-        if (damping==0L) {
-          if (trace) print(paste("IRLS step for v_h, hlik=",newlik))
-          break
-        }
-      } else {
-        newlik <- newAPHLs[["p_v"]]
-        oldlik <- oldAPHLs[["p_v"]]
-        if (damping==0L) {
-          if (trace) print(paste("IRLS step for (beta,v_h); p_v=",newlik))
-          break
-        }
-      } 
-    } else {
-      newlik <- newAPHLs[["hlik"]]
-      oldlik <- oldAPHLs[["hlik"]]
-      if (damping==0L) {
-        if (trace) print(paste("IRLS step, hlik=",newlik))
-        break
-      }
+    #
+    if (processed$p_v_obj=="p_v" && which_LevMar_step!="v") { ## new damping -> new weights -> new expensive computation to evaluate p_v
+      if (Trace) cat(stylefn(".")) # yellow in V_IN_B case
+      newsXaug <- do.call(processed$AUGI0_ZX$envir$method, # ie, def_AUGI0_ZX_sparsePrecision
+                        sXaug_arglist)
+      APHLs_args$sXaug <- newsXaug
+    } else { ## sXaug_arglist will still be used after the loop !!!!!!!!!!!!!!!!!!!!
+      APHLs_args$sXaug <- newsXaug <- NULL # to compute hlik, no expensive matrix computation.
     }
-
+    newAPHLs <- do.call(".calc_APHLs_from_ZX", APHLs_args)
+    #print(c(unlist(newAPHLs)))
+    newlik <- unlist(newAPHLs[objname]) # keep name
+    #
+    if (damping==0L) {
+      breakcond <- "damping=0"
+      break
+    }
+    if ( which_LevMar_step=="strict_v|b") { ## whether rescue or not...
+      breakcond <- "v|b_no_loop"
+      break
+    } #  =: single call to .calc_APHLs_from_ZX to only fit v_h for the input beta_eta.
+    if (is.null(low_pot)) { 
+      switch(which_LevMar_step,
+             "v_b"= {
+               pot4improv <- sum(zInfo$m_grad_obj*unlist(get_from_MME(sXaug,szAug=zInfo["m_grad_obj"])))
+               loc_pot_tol <- processed$spaMM_tol$b_pot_tol
+             },
+             "v"= {
+               pot4improv <- get_from_MME(sXaug=sXaug, which="Mg_invH_g", B=gainratio_grad[seq_n_u_h])
+               loc_pot_tol <- processed$spaMM_tol$v_pot_tol
+             },
+             "b"= { 
+               B=zInfo$gainratio_grad[-seq_n_u_h]
+               if (length(B)) {
+                 pot4improv <- get_from_MME(sXaug=sXaug, which="Mg_invXtWX_g", B=B)
+               } else pot4improv <- 0
+               loc_pot_tol <- processed$spaMM_tol$b_pot_tol
+             }, 
+             "b_&_v_in_b"= {
+               pot4improv <- sum(zInfo$m_grad_obj*unlist(get_from_MME(sXaug,szAug=zInfo["m_grad_obj"]))) 
+               loc_pot_tol <- processed$spaMM_tol$b_pot_tol
+             },
+             "b_from_v_b"= {
+               pot4improv <- get_from_MME(sXaug=sXaug, which="Mg_solve_g", B=zInfo$gainratio_grad)
+               loc_pot_tol <- processed$spaMM_tol$b_pot_tol
+             }
+      )
+      low_pot <- (pot4improv < loc_pot_tol) 
+      if (low_pot) { # keeping the low_pot condition may be important for the "605" tests. We may always suppress it by the spaMM.options.
+        very_low_pot <- (pot4improv < loc_pot_tol/10)
+        if (processed$HL[1L]==1L && which_LevMar_step=="v_b") {
+          v_pot4improv <- get_from_MME(sXaug=sXaug, which="Mg_invH_g", B=gainratio_grad[seq_n_u_h])
+          breakcond <- structure("low_pot", pot4improv=pot4improv, very_low_pot=very_low_pot,
+                                 no_overfit = (v_pot4improv < processed$spaMM_tol$v_pot_tol))
+        } else breakcond <- structure("low_pot", pot4improv=pot4improv, very_low_pot=very_low_pot)
+        break
+      } 
+    } 
+    ## ELSE
     gainratio <- (newlik!=-Inf) ## -Inf occurred in binary probit with extreme eta... 
     if (gainratio) { 
-      if (processed$HL[1L]==1L) { ## ML fit 
-        if (which_LevMar_step=="v_b") { 
-          tempodvhbeta <- unlist(LevMarblob[c("dVscaled","dbeta_eta")])
-          tempodvhbeta[seq_n_u_h] <- tempodvhbeta[seq_n_u_h]*ZAL_scaling
-          summand <- tempodvhbeta*(gainratio_grad+ LevMarblob$dampDpD * tempodvhbeta)
-        } else if (which_LevMar_step=="v") { ## v_h estimation given beta (FIXME can surely be made more exact)
-          tempodvh <- LevMarblob$dVscaled*ZAL_scaling
-          summand <- tempodvh*(gainratio_grad[seq_n_u_h]+ LevMarblob$dampDpD * tempodvh) 
-        }
-      } else { ## joint hlik maximization
-        dVscaled_beta <- unlist(LevMarblob[c("dVscaled","dbeta_eta")])
-        summand <- dVscaled_beta*(gainratio_grad+ LevMarblob$dampDpD * dVscaled_beta) 
-      }
+      summand <- .calc_summand_gainratio_spprec(processed, which_LevMar_step, LevMarblob, seq_n_u_h, ZAL_scaling=1, gainratio_grad)
       ## The two terms of the summand should be positive. In part. dv_h_beta*gainratio_grad should be positive. 
       ## However, numerical error may lead to <0 or even -Inf
       ## Further, if there are both -Inf and +Inf elements the sum is NaN.
@@ -127,13 +226,18 @@
       dlogL <- newlik-oldlik
       conv_logL <- abs(dlogL)/(1+abs(newlik))
       gainratio <- 2*dlogL/denomGainratio ## cf computation in MadsenNT04 below 3.14, but generalized for D' != I ; numerator is reversed for maximization
+      # but if gradient is practically zero and damping  ~0 we may not wish to compare ~0 to ~0...
+      #  which is why we break, rather than stop, on (damping>1e100). MadsenNT04 have other stopping crits 
     } else { ## 2017/10/16 a patch to prevent a stop in this case, but covers up dubious computations (FIXME)
       newlik <- -.Machine$double.xmax
       dlogL <- newlik-oldlik
       conv_logL <- abs(dlogL)/(1+abs(newlik))
+      denomGainratio <- Inf # bc denomGainratio can be tested below 
     }
-    if (trace) print(paste("dampingfactor=",dampingfactor,#"innerj=",innerj,
-                           "damping=",damping,"gainratio=",gainratio,"oldlik=",oldlik,"newlik=",newlik))
+    if (trace) {
+      cat(stylefn(paste(" dampingfactor=",dampingfactor,#"innerj=",innerj,
+                           "damping=",damping,"gainratio=",gainratio,"oldlik=",oldlik,"newlik=",newlik)))
+    }
     if (is.nan(gainratio)) {
       # if the initial logL is the solution logL, then damping diverges 
       # it is then possible that some element of dVscaled_beta =0 and some of dampDpD =Inf
@@ -141,51 +245,78 @@
       # At the same time not all elements of dVscaled_beta need be 0 (eg small changes in eta for mu=0 or 1 in binomial models)
       # so testing dVscaled_beta is not sufficient to stop the algo
       # (LevenbergM is quite slow in such cases)
+      breakcond <- "NaN_gain"
       break
-    }
-    if (gainratio > 0) { 
+    } 
+    div_gainratio <- (gainratio-prev_gainratio)*damping/dampingfactor
+    if (div_gainratio < -0.1) { ## F I X M E a bit arbirary but 1 may not make a big difference
+      breakcond <- "div_gain"
+      break  
+    } 
+    if (gainratio > 0) { # gainratio may be always negative if initial ranefs better optimize logL than the correct solution does.
       ## cf Madsen-Nielsen-Tingleff again, and as in levmar library by Lourakis
-      damping <- damping * max(1/3,1-(2*gainratio-1)^3)  
+      damping <- damping * max(1/3,1-(2*gainratio-1)^3) # gainratio->0 factor-> 2; gainratio->1 factor->1/3
+      breakcond <- "OK_gain"
       break 
-    } else if ( pot4improv<1e-6 # apparently at optimum, not worth to much effort
-                || ( dampingfactor>4 ## ie at least 2 iteration of the while() => prev_conv_logL is available
-                     # && gainratio==0 # in GLMM, gainratio is a less reliable criterion, cannot be used as in GLM, bc
-                     # gainratio may be slightly negative if initial ranefs better optimize logL than correct solution. 
-                     && conv_logL <1e-8 && abs(prev_conv_logL) <1e-8 
-                     && gone_thru_mini ## has gone through 1e-7, # REPLACES:
-                     ###&& damping<1000 # arbitrary threshold, 
-                     ### the idea was that if we started with too high damping, the improvement may be within numerical error 
-                     ### the higher the threshold, the more likely the loop breaks => low value can slow down fits substantially (test-nloptr, replicat 9 for ex.) 
-                )
-    ) { # apparently at optimum
-      damping <- initdamping
-      if (trace) cat("#")
-      break 
-    } else if ( ! gone_thru_mini  # condition to avoid infinite loop
-                #&& damping>1e6 ## if we started from too high damping to see any progress, 
-                && pot4improv>1e-6) { ## we should be able to improve likelihood
+    }
+    if ( dampingfactor>4 ## ie at least 2 iteration of the while() => prev_conv_logL is available
+                && conv_logL <1e-8 && abs(prev_conv_logL) <1e-8 
+                && gone_thru_mini ## has gone through 1e-7, including the cases where we started with too high damping 
+    ) { 
+      breakcond <- "stuck_obj"
+      break   ##   cases were we do not expect any significant improvement
+    } 
+    if ( (! gone_thru_mini) &&  # condition to avoid infinite loop when gainratio remains <0 for arbitrarily large damping
+         #conv_logL < 1e-9 # not useful as this may mean e were borderline making progress
+         # in which case we should damp further! low_pot is not instruction bc it must be FALSE when we reach here. Another indicator of potential is:
+         denomGainratio<loc_pot_tol/10 # lax condition here leads to poor perf.
+    ) { 
       damping <- 1e-7
       dampingfactor <- 2
       gone_thru_mini <- TRUE
+      prev_gainratio <- -Inf
       if (trace) cat("-")
-      # and continue # but this allows an  infinite loop
+      # and continue 
     } else { ## other UNsuccessful step
+      prev_gainratio <- gainratio
       prev_conv_logL <- conv_logL
       damping <- damping*dampingfactor
       dampingfactor <- dampingfactor*2
-      if (damping>1e100) {
-        if (TRUE) { # I still have 'improvable' cases where gainratio is never >0
-          # maybe it's really improvable, but the oldlik was too high ?
-          if (trace) cat("!")
-          break 
-        } else stop("reached damping=1e100")
+      if (damping>1e100) { # endpoint for large negative gainratio (i.e. v overfit as starting point)
+        breakcond <- "div_damp"
+        break 
       }
     }
-  } 
+    first_it <- FALSE # : skipped if break in first iteration
+  } ################# end while(TRUE)
+  if (Trace && ! is.null(v_infer_args)) {
+    cat(stylefn("]"))
+    if (trace) {cat(stylefn(damping))}
+  }
+  if (trace) cat(breakcond)
+  if (is.null(newsXaug)) { ## which means that hlik is the local objective.
+    # For HL11, p_v will be used as oldAPHLs in the next call to .do_damped_WLS_outer() in an alternating algo;
+    #   and sXaug may be needed to compute sscaled in .solve_v_h_IRLS()
+    # For PQL fits newsXaug has not been needed in the damping loop but will be needed after exiting this fn
+    #   (e.g., for its next call -> LevMarblob <- get_from_MME(sXaug=sXaug, which="LevMar_step", LMrhs=zInfo$scaled_grad, damping=damping))
+    if (Trace) { 
+      if (processed$p_v_obj=="p_v") { # v estimation within HL11
+        cat(stylefn_v("."))
+      } else  cat(stylefn(".")) # PQL/L, vb extimation
+    }
+    newsXaug <- do.call(processed$AUGI0_ZX$envir$method, sXaug_arglist)
+    APHLs_args$sXaug <- newsXaug
+    APHLs_args$which <- processed$p_v_obj # "p_v" # 
+    newAPHLs <- do.call(".calc_APHLs_from_ZX", APHLs_args) 
+  }
   RESU <- list(lik=newlik, APHLs=newAPHLs, damping=damping, sXaug=newsXaug,
                # fitted=fitted, ## FIXME: removed so that no shortcut a la Bates in calc_APHLs_from_ZX; reimplement the shorcut in that fn?
-               eta=eta, muetablob=newmuetablob, wranefblob=newwranefblob,
-               v_h=v_h, u_h=u_h, w.resid=neww.resid)
+               eta=newmuetablob$sane_eta, muetablob=newmuetablob, wranefblob=newwranefblob,
+               breakcond=breakcond,
+               v_h=v_h, u_h=u_h, w.resid=neww.resid) # newweight_X does not exists and not needed in spprec
+  if ( ! first_it) { # if not break in first iteration
+    RESU$conv_logL_not_first_it <- conv_logL
+  }
   if ( ! GLMMbool ) {
     RESU$ZAL_scaling <- newZAL_scaling
     # RESU$Xscal <- newXscal ## does not exist and presumably not needed.
@@ -193,20 +324,64 @@
   } 
   RESU$Vscaled_beta <- Vscaled_beta 
   return(RESU)
-  
 }
 
+#copies to allow independent debug()ing
+.do_damped_WLS_v_in_b_spprec <- .do_damped_WLS_spprec
+.do_damped_WLS_outer_spprec <- .do_damped_WLS_spprec
 
+# processed, Trace
+
+
+.WLS_substitute_spprec <- function(update_sXaug_constant_arglist, Vscaled_beta, off, etaFix, GLMMbool, 
+                            constant_u_h_v_h_args, updateW_ranefS_constant_arglist, ZAL, 
+                            processed, LMMbool, phi_est,
+                            wranefblob, Trace,stylefn) {
+  
+  # Vscaled_beta must have been provided by somethin else than damped_WLS_blob
+  # drop, not as.vector(): names are then those of (final) eta and mu -> used by predict() when no new data
+  eta <- off + drop(processed$AUGI0_ZX$X.pv %*% Vscaled_beta$beta_eta) + drop(ZAL %id*% Vscaled_beta$v_h)
+  RESU <- list()
+  if (is.null(etaFix$v_h)) { 
+    v_h <- Vscaled_beta$v_h ## * ZAL_scaling (=1)
+    if (GLMMbool) {
+      RESU$u_h <- RESU$v_h <- v_h ## keep input wranefblob since lambda_est not changed
+    } else {
+      u_h_v_h_from_v_h_args <- c(constant_u_h_v_h_args,list(v_h=v_h))
+      RESU$u_h <- u_h <- do.call(".u_h_v_h_from_v_h",u_h_v_h_from_v_h_args)
+      if ( ! is.null(attr(u_h,"v_h"))) { ## second test = if u_h_info$upper.v_h or $lower.v_h non NULL
+        v_h <- attr(u_h,"v_h")
+      }
+      RESU$v_h <- v_h
+      ## update functions u_h,v_h
+      RESU$wranefblob <- wranefblob <- do.call(".updateW_ranefS",c(updateW_ranefS_constant_arglist,
+                                                                   list(u_h=u_h,v_h=v_h)))
+      if ( ! GLMMbool) { RESU$ZAL_scaling <- 1 } ## TAG: scaling for spprec
+    }
+  }
+  RESU$muetablob <- muetablob <- .muetafn(eta=eta,BinomialDen=processed$BinomialDen,processed=processed) 
+  if ( ! LMMbool ) {
+    RESU$w.resid <- .calc_w_resid(muetablob$GLMweights,phi_est)
+    sXaug_arglist <- c(update_sXaug_constant_arglist, # contained H_global_scale but not longer so
+                           list(w.ranef=wranefblob$w.ranef, 
+                                #weight_X=weight_X, 
+                                w.resid=RESU$w.resid))
+    if (Trace) cat(stylefn("."))
+    RESU$sXaug <- do.call(processed$AUGI0_ZX$envir$method, # ie, def_AUGI0_ZX_sparsePrecision
+                          sXaug_arglist)
+  } ## ergo sXaug is not updated for LMM (no need to)
+  return(RESU) ## contains only updated quantities
+}
 
 .solve_IRLS_as_spprec <- 
   function(
            ZAL, y, 
            n_u_h, 
-           H_global_scale, 
+           #H_global_scale, 
            lambda_est, muetablob=NULL, off, maxit.mean, etaFix,
            wranefblob, processed,
            ## for ! LMM
-           phi_est, eta=NULL, 
+           phi_est, 
            ## supplement for LevenbergM
            beta_eta,
            ## supplement for ! GLMM
@@ -215,8 +390,14 @@
            for_intervals,
            ##
            corrPars, # corrPars needed together with adjMatrix to define Qmat
-           trace=FALSE
+           verbose,
+           LevM_HL11_method=.spaMM.data$options$LevM_HL11_method
   ) {
+    trace <- verbose["TRACE"]
+    if (trace) {
+      cat(">") 
+      if (verbose["trace"]) cat(.pretty_summ_lambda(lambda_est,processed))
+    }
   pforpv <- ncol(processed$AUGI0_ZX$X.pv)
   nobs <- length(y)
   seq_n_u_h <- seq_len(n_u_h)
@@ -224,20 +405,22 @@
   lcrandfamfam <- attr(processed$rand.families,"lcrandfamfam")
   LMMbool <- processed$LMMbool
   GLMMbool <- processed$GLMMbool
-  LevenbergM <- (.determine_LevenbergM(processed$LevenbergM) && is.null(for_intervals))
+  LevenbergM <- (processed$LevenbergM["LM_start"] && is.null(for_intervals))
   is_HL1_1 <- (processed$HL[1L]==1L)
-  which_LevMar_step <- "v_b"
+  if ( is.null(for_intervals) && is_HL1_1) {
+    which_LevMar_step <- default_b_step <- LevM_HL11_method[["b_step"]] 
+    rescue_thr <- processed$spaMM_tol$rescue_thr
+    rescue_nbr <- 0L
+    prev1_rescued <- FALSE
+  } else which_LevMar_step <- "v_b" 
   old_relV_beta <- NULL
   not_moving <- FALSE
   damped_WLS_blob <- NULL
-  Ftol_LM <- processed$spaMM_tol$Ftol_LM
+  d_relV_b_tol <- processed$spaMM_tol$d_relV_b_tol 
+  d_relV_b_tol_LM <- processed$spaMM_tol$d_relV_b_tol_LM 
   if ( LevenbergM) { 
-    damping <- 1e-7
-    loc_Xtol_rel <- 1e-03 ## maybe good compromise between optim accuracy and time. 
-  } else {
-    damping <- 0L ## indicator for early exit from .do_damped_WLS without a check for increase 
-    loc_Xtol_rel <- processed$spaMM_tol$Xtol_rel/10
-  }
+    dampings_env <- list2env(.spaMM.data$options$spaMM_tol$dampings_env_v)
+  } 
   if ( ! LMMbool) {
     constant_zAug_args <- list(n_u_h=n_u_h, nobs=nobs, pforpv=pforpv, y=y, off=off, ZAL=ZAL, processed=processed)
     if ( ! GLMMbool) {
@@ -255,7 +438,7 @@
   
   ##### initial sXaug
   ZAL_scaling <- 1  ## TAG: scaling for spprec
-  if (is.null(eta)) { ## NULL input eta allows NULL input muetablob
+  if (is.null(muetablob)) { ## NULL input eta allows NULL input muetablob
     eta <- off + drop(processed$AUGI0_ZX$X.pv %*% beta_eta) + drop(ZAL %id*% v_h) 
     muetablob <- .muetafn(eta=eta,BinomialDen=processed$BinomialDen,processed=processed) 
   }
@@ -263,8 +446,16 @@
   if ( is.null(w.resid) ) w.resid <- .calc_w_resid(muetablob$GLMweights,phi_est)
   ## needs adjMatrix and corrPars to define Qmat
   update_sXaug_constant_arglist <- list(AUGI0_ZX=processed$AUGI0_ZX, corrPars=corrPars, 
-                                        cum_n_u_h=processed$cum_n_u_h,H_global_scale=H_global_scale) 
+                                        cum_n_u_h=processed$cum_n_u_h #,H_global_scale=H_global_scale
+                                        ) 
   #weight_X <- .calc_weight_X(w.resid, H_global_scale) ## sqrt(s^2 W.resid)
+  if (trace) {
+    stylefn <- switch(which_LevMar_step,
+                      v=.spaMM.data$options$stylefns$vloop,
+                      V_IN_B=.spaMM.data$options$stylefns$v_in_loop,
+                      .spaMM.data$options$stylefns$betaloop )
+    cat(stylefn("."))
+  }
   sXaug <- do.call(processed$AUGI0_ZX$envir$method, # ie, def_AUGI0_ZX_sparsePrecision
                    c(update_sXaug_constant_arglist,
                      list(w.ranef=wranefblob$w.ranef, 
@@ -274,16 +465,22 @@
     Vscaled_beta <- list(v_h=v_h/ZAL_scaling, beta_eta=for_intervals$beta_eta)
   } else {
     Vscaled_beta <- list(v_h=v_h/ZAL_scaling,beta_eta=beta_eta)
-  }
+  } 
+  # to be evaluated once when it becomes needed:
+  delayedAssign("constant_v_infer_args", list( # ultimately for the .solve_v_h_IRLS_spprec() call
+    X.pv=processed$AUGI0_ZX$X.pv, 
+    ZAL=ZAL, y=y, n_u_h=n_u_h, #H_global_scale=H_global_scale,
+    lambda_est=lambda_est, off=off,maxit.mean=maxit.mean,etaFix=etaFix,
+    processed=processed, phi_est=phi_est, for_init_z_args=for_init_z_args,
+    trace=trace, corrPars=corrPars, dampings_env=dampings_env))
   ## Loop controls:
   allow_LM_restart <- ( ! LMMbool && ! LevenbergM && is.null(for_intervals) && is.na(processed$LevenbergM["user_LM"]) )
   if (allow_LM_restart) {
     keep_init <- new.env()
-    #names_keep <- ls()  
-    names_keep <- c("sXaug","wranefblob","muetablob","u_h","w.resid","eta","v_h","beta_eta","Vscaled_beta")
+    names_keep <- c("sXaug","wranefblob","muetablob","u_h","w.resid","v_h","beta_eta","Vscaled_beta")
     for (st in names_keep) keep_init[[st]] <- environment()[[st]]
   }
-  LMcond <- - 10. 
+  LMcond <- - 10. # also for hlik LM algo
   ################ L O O P ##############
   for (innerj in 1:maxit.mean) {
     if( ! LevenbergM && allow_LM_restart) { ## FIXME the next step improvement would be 
@@ -296,11 +493,21 @@
           if (trace) cat("!LM") # ie, LevenbergM!
           for (st in names_keep) assign(st,keep_init[[st]])
           LevenbergM <- TRUE
-          # Vscaled_beta included in keep_init
-          damping <- 1e-7
-          loc_Xtol_rel <- 1e-03 ## maybe good compromise between optim accuracy and time. 
+          # Vscaled_beta included in keep_init hence assigned by assign(st,keep_init[[st]])
+          dampings_env <- list2env(.spaMM.data$options$spaMM_tol$dampings_env_v)
           damped_WLS_blob <- NULL
           allow_LM_restart <- FALSE 
+          if ( which_LevMar_step=="v_b") { 
+            ## The LevM.negbin test finds "strict_v|b" poorer than "V_IN_B"" (note some divergent p_v's)  which led to:
+            # which_LevMar_step <- "V_IN_B" ## not modified by if (... ! is.null(damped_WLS_blob) ...) before being used.
+            # but the  optim_LevM's (update(br$fullfit,fixed=... test shows one should keep using "v_b" here.
+            # otherwise "!LM" differs (and is poorer) from LevM=TRUE (which indeed starts from "v_b")
+            # However, it's not clear why "V_IN_B" is poorer (and it's not the step on which the loop terminates)  => (there is a fixme on the fit_as_ZX version...) 
+            from_good_v_b <- FALSE
+            rescue_thr <- processed$spaMM_tol$rescue_thr
+            rescue_nbr <- 0L
+            prev1_rescued <- FALSE
+          }
         }
       }
       if (innerj>2) old_abs_d_relV_beta <- abs_d_relV_beta
@@ -323,7 +530,7 @@
     ##### RHS
     if (LMMbool) {
       zInfo <- list(z2=NULL,z1=y-off,sscaled=0)
-      zInfo$z1_eta <- z1_sscaled_eta <- y-eta
+      zInfo$z1_eta <- z1_sscaled_eta <- y-muetablob$sane_eta
     } else {
       if ( ! GLMMbool) {
         # arguments for init_resp_z_corrections_new called in calc_zAug_not_LMM
@@ -332,20 +539,19 @@
                               sXaug=sXaug, w.resid=w.resid))
       } else init_z_args <- NULL
       calc_zAug_args <- c(constant_zAug_args,
-                          list(eta=eta, muetablob=muetablob, dlogWran_dv_h=wranefblob$dlogWran_dv_h, 
+                          list(muetablob=muetablob, dlogWran_dv_h=wranefblob$dlogWran_dv_h, 
                                sXaug=sXaug, 
                                w.ranef=wranefblob$w.ranef, 
                                w.resid=w.resid,
                                init_z_args=init_z_args) )
       zInfo <- do.call(".calc_zAug_not_LMM",calc_zAug_args)
       if (GLMMbool) zInfo$z2 <- NULL
-      etamo <- eta - off
+      etamo <- muetablob$sane_eta - off
       zInfo$z1_eta <- zInfo$z1- etamo 
       z1_sscaled_eta <- zInfo$z1_sscaled - etamo # augz[-seq_n_u_h]- etamo # z_1-sscaled-etamo
     }
     ## keep name 'w'zAug to emphasize the distinct weightings  of zaug and Xaug (should have been so everywhere)
     #####
-
     ##### improved  Vscaled_beta   
     ## he solver uses a 'beta first" approach to solveing for d_beta and d_v... even for LMM 
     if (GLMMbool) {
@@ -373,76 +579,113 @@
                                        currentlik=oldlik,currentDy=currentDy)
       damped_WLS_blob <- NULL
       Vscaled_beta <- intervalBlob$v_h_beta
-    } else if (LevenbergM) { ## excludes IRLS
-      if (not_moving && is_HL1_1) { ## not_moving TRUE may occur when we are out of solution space. Hence test Mg_solve_g
-        # BUT I made (not_moving && is_HL1_1) a sufficient condition for break below ! So this block is never run.
-        Mg_solve_g <- sum(zInfo$m_grad_obj*unlist(get_from_MME(sXaug,szAug=zInfo["m_grad_obj"]))) ## FIXME presumably not efficient 
-        if (Mg_solve_g < Ftol_LM/2) {
-          if (trace>1L) {"break bc Mg_solve_g<1e-6"}
-          break
-        }
-      } ## else not_moving was a break condition elsewhere in code
+    } else if (LevenbergM) {
       if (trace>1L) {
+        stylefn <- switch(which_LevMar_step,
+                       v=.spaMM.data$options$stylefns$vloop,
+                       V_IN_B=.spaMM.data$options$stylefns$v_in_loop,
+                       .spaMM.data$options$stylefns$betaloop )
         maxs_grad <- c(max(abs(zInfo$m_grad_obj[seq_n_u_h])),max(abs(zInfo$m_grad_obj[-seq_n_u_h])))
-        cat("iter=",innerj,", max(|grad|): v=",maxs_grad[1L],"beta=",maxs_grad[2L],";")
+        cat(stylefn("iter=",innerj,", max(|grad|): v=",maxs_grad[1L],"beta=",maxs_grad[2L],";"))
       }
       constant_APHLs_args <- list(processed=processed, which=processed$p_v_obj, sXaug=sXaug, phi_est=phi_est, lambda_est=lambda_est)
+      # the following block needs m_grad_v the new m_grad_v hence its position
       if (is_HL1_1 && ! is.null(damped_WLS_blob)) {
-        if (which_LevMar_step=="v") {
-          hlik_stuck <- (damped_WLS_blob$APHLs$hlik < oldAPHLs$hlik + Ftol_LM/10)
-          if ( ! hlik_stuck) need_v_step <- (get_from_MME(sXaug=damped_WLS_blob$sXaug, which="Mg_invH_g", B=m_grad_v) > Ftol_LM/2) 
-          if ( hlik_stuck || ! need_v_step) { ## LevMar apparently maximized h wrt v after several iterations
-            ## if hlik has not recently moved or has moved but reached a point where the h gradient is negligible 
-            if (trace>2L) print("switch from v to v_b")
+        #### Get next LM step && conditionally update old_relV_beta ####
+        # we assess convergence at the end of the loop by comparing old_relV_beta to relV_beta. We update old_relV_beta 
+        #    (1) here, in all cases where v has been updated;
+        # or (2) in one reversal case, it needs to be updated after the test at the end of the loop.
+        if (just_rescued <- identical(attr(damped_WLS_blob, "step"), "rescue")) {
+          rescue_nbr <- rescue_nbr + 1L
+          old_relV_beta <- relV_beta 
+          if (prev1_rescued || rescue_nbr > rescue_thr["V_IN_B"]) {
+            which_LevMar_step <- "V_IN_B"
+          } else which_LevMar_step <- "v_b" 
+        } else if (which_LevMar_step=="v_b" || which_LevMar_step=="b_from_v_b" ) { 
+          if (rescue_nbr > rescue_thr["strictv"]  &&  #rescue has been previously needed in the outer loop
+              damped_WLS_blob$breakcond != "low_pot" ) { # i.e. if OK_gain (other cases would lead to the previous "rescue" case)
+            which_LevMar_step <- "strict_v|b" # yet we play safer if we know a problem occurred previously
+            from_good_v_b <- TRUE
+          # } else if (max(abs(m_grad_v)) > max(abs(old_m_grad_v))) which_LevMar_step <- "v" # test is fausse bonne idee...
+          } else which_LevMar_step <- "v"
+        } else if (which_LevMar_step=="v") {
+          if (damped_WLS_blob$breakcond == "low_pot") { ## LevMar apparently maximized h wrt v after several iterations
+            #cat(damped_WLS_blob$breakcond)
             old_relV_beta <- relV_beta ## serves to assess convergence !!! which is thus dependent on condition ( hlik_stuck || ! need_v_step)
-            which_LevMar_step <- "v_b" 
+            which_LevMar_step <- default_b_step # We should not reach this line when RHS is "v_in_b"
           } else {
-            if (trace>2L) print("still v")
             ## v_h estimation not yet converged, continue with it
           }
-        } else { ## performed one improvement of p_v by new v_b, 
-          # indirect way of checking Mg_solve_g:
-          # FIXME I made not_moving a sufficent condition fro break below !
-          if (not_moving) { ## if we reach this point, Mg_solve_g (tested above) was too large, we must be out of solution space
-            # need_v_step <- TRUE ## implicit meaning
-          } else {
-            p_v_stuck <- (damped_WLS_blob$APHLs$p_v < oldAPHLs$p_v + Ftol_LM/10) ## test whether LevMar apparently solved (v,beta) equations after several iterations
-            if ( ! p_v_stuck) need_v_step <- (get_from_MME(sXaug=damped_WLS_blob$sXaug, which="Mg_invH_g", B=m_grad_v) > Ftol_LM/2) 
-            ## we have identified two gradient cases where we must check v: Mg_solve_g>0 or (if estimates have just moved) Mg_invH_g>0 
+        } else if (which_LevMar_step=="strict_v|b") {
+          old_relV_beta <- relV_beta 
+          if (from_good_v_b) { # strictv was called after a v_b (which implies that rescue was not called)
+            which_LevMar_step <- "v_b"
+          } else { # strictv was called after V_IN_B (!)
+            if (rescue_nbr > rescue_thr["re_V_IN_B"]) {
+              which_LevMar_step <- "V_IN_B"
+            } else which_LevMar_step <- "v_b"  
           }
-          if ( not_moving || p_v_stuck || need_v_step) { ## logically we may not need p_v_stuck, but this condition is faster to evaluate
-            # p_v_stuck is analogous to (not_moving BUT large Mg_solve_g), checking that lik and estimates do not change 
-            if (trace>2L) print("switch from v_b to v")
-            which_LevMar_step <- "v"
+          #which_LevMar_step <- "V_IN_B" # sequence "v_b" -> "low_pot" -> "strict_v|b"
+        } else if (which_LevMar_step=="V_IN_B") { 
+          breakcond <- damped_WLS_blob$breakcond
+          if (breakcond=="stuck_obj" || breakcond=="div_gain") {
+            which_LevMar_step <- "strict_v|b" # the call to "strict_v|b" may seem odd but results in clean optim
+            #If we did that in the wrap... then we would next compare two identical "strict_v|b" 
+            from_good_v_b <- FALSE
           } else {
-            if (trace>2L) print("still v_b")
+            old_relV_beta <- relV_beta 
+            if (rescue_nbr > rescue_thr["re_V_IN_B"]) {
+              which_LevMar_step <- "V_IN_B"
+            } else which_LevMar_step <- "v_b" 
           }
+        } else if (default_b_step=="v_in_b") { # presumably not used
+          old_relV_beta <- relV_beta 
+        } else { ## "b" or any unanticipated case # presumably not used 
+          # as v_b cas:
+          if (rescue_nbr > rescue_thr["strictv"] &&  #rescue has been previously needed in the outer loop
+              damped_WLS_blob$breakcond != "low_pot") { #rescue has been previously needed in the outer loop
+            which_LevMar_step <- "strict_v|b" # yet we play safer if we know a problem ocurred previously
+            from_good_v_b <- TRUE
+          } else which_LevMar_step <- "v" # yet we play safer if we know a problem ocurred previously
         }
-      }
-      
-      damped_WLS_blob <- .do_damped_WLS_spprec(sXaug=sXaug, 
-                                               zInfo=zInfo, 
-                                               old_Vscaled_beta=Vscaled_beta, 
-                                               oldAPHLs=oldAPHLs,
-                                               APHLs_args = constant_APHLs_args,
-                                               damping=damping,
-                                               ypos=ypos,off=off,
-                                               GLMMbool=GLMMbool,etaFix=etaFix,
-                                               constant_u_h_v_h_args=constant_u_h_v_h_args,
-                                               updateW_ranefS_constant_arglist=updateW_ranefS_constant_arglist,
-                                               wranefblob=wranefblob,seq_n_u_h=seq_n_u_h,
-                                               update_sXaug_constant_arglist=update_sXaug_constant_arglist,
-                                               H_global_scale=H_global_scale,     
-                                               ZAL_scaling= ZAL_scaling, 
-                                               processed=processed, 
-                                               phi_est=phi_est, n_u_h=n_u_h, ZAL=ZAL,
-                                               which_LevMar_step = which_LevMar_step
-      )
+        prev1_rescued <- just_rescued 
+      } 
+      new_damping <- .get_new_damping(dampings_env$v[[which_LevMar_step]], which_LevMar_step)
+      damped_WLS_blob <- .wrap_do_damped_WLS_outer(
+        damped_WLS_fn = .do_damped_WLS_outer_spprec,
+        LevM_HL11_method=LevM_HL11_method, # contains the rescue_thr options => any possibility to simplify arguments ?
+        rescue= (is_HL1_1 && rescue_thr["rescue"]), 
+        which_LevMar_step=which_LevMar_step,
+        old_relV_beta=old_relV_beta,
+        sXaug=sXaug, zInfo=zInfo, 
+        old_Vscaled_beta=Vscaled_beta,
+        oldAPHLs=oldAPHLs,
+        APHLs_args = constant_APHLs_args,
+        damping=new_damping,
+        Trace= trace,
+        ypos=ypos,off=off,
+        GLMMbool=GLMMbool,etaFix=etaFix,
+        constant_u_h_v_h_args=constant_u_h_v_h_args,
+        updateW_ranefS_constant_arglist=updateW_ranefS_constant_arglist,
+        wranefblob=wranefblob,seq_n_u_h=seq_n_u_h,
+        update_sXaug_constant_arglist=update_sXaug_constant_arglist,
+        #H_global_scale=H_global_scale,     
+        ZAL_scaling= ZAL_scaling, 
+        processed=processed, 
+        phi_est=phi_est, n_u_h=n_u_h, ZAL=ZAL,
+        constant_v_infer_args=constant_v_infer_args,
+        looseness= if ( is.null(damped_WLS_blob) ||  ## start strict
+                        new_damping>1e-7) {## use strict when there are trace of difficulties (in particular, failure to improve) 
+          1 } else {processed$spaMM_tol$loose_fac},
+        low_pot=NULL ## explicit for clarity, but its the default
+      ) 
+      #old_m_grad_v <- m_grad_v
+      dampings_env$v[[attr(damped_WLS_blob,"step")]] <- damped_WLS_blob$damping
       ## LevM PQL
-      # here in a truely scaled version the LHS as represented by zinfo should be afected y ZAL_scaling
       if (! is_HL1_1) {
-        if (damped_WLS_blob$lik < oldAPHLs$hlik) { ## if LevM step failed to find a damping that increases the lik
-          ## This occurs inconspiscuously in the PQL_prefit providing a bad starting point for ML fit
+        if (damped_WLS_blob$lik < oldAPHLs$hlik) { ## if LevM step failed to find a damping that increases the hlik :
+          # Tis should occur only bc of (1) numerically challenging conditions e.g mu close to bounds; or (2) optimum has been 
+          # found and floating point innacurracies matter.
           damped_WLS_blob <- NULL
           dVscaled_beta <- get_from_MME(sXaug,szAug=zInfo) ################### FIT
           Vscaled_beta <- list(v_h=Vscaled_beta$v_h+dVscaled_beta$dv_h,
@@ -451,93 +694,100 @@
         } 
       }
     } else { ## IRLS: always accept new v_h_beta
-      damped_WLS_blob <- NULL
       dVscaled_beta <- get_from_MME(sXaug,szAug=zInfo) ################### FIT
       Vscaled_beta <- list(v_h=Vscaled_beta$v_h+dVscaled_beta$dv_h,
                            beta_eta=Vscaled_beta$beta_eta+dVscaled_beta$dbeta_eta)
+      damped_WLS_blob <- NULL
     }
-    if (trace>4L) .prompt()
-    ######
-    
+    if (trace>5L) .prompt()
     ##### Everything that is needed for 
     #  (1) assessment of convergence: c(v_h*sqrt(wranefblob$w.ranef),beta_eta)
-    #  (2) all return elements are updated as function of the latest Vscaled_beta.
+    #  (2) all return elements are updated as function of the latest Vscaled_beta 
+    #                               (itself possible updated to new scaling by the following assign()'s).
     #      In particular We need muetablob and (if ! LMM) sXaug, hence a lot of stuff.
     #  Hence, the following code is useful whether a break occurs or not. 
-    if ( ! is.null(damped_WLS_blob) ) {
-      Vscaled_beta <- damped_WLS_blob$Vscaled_beta
-      eta <- damped_WLS_blob$eta
-      wranefblob <- damped_WLS_blob$wranefblob
-      v_h <- damped_WLS_blob$v_h
-      u_h <- damped_WLS_blob$u_h
-      muetablob <- damped_WLS_blob$muetablob
-      w.resid <- damped_WLS_blob$w.resid
-      sXaug <- damped_WLS_blob$sXaug
+    if ( is.null(damped_WLS_blob) ) { ## fits nothing, but updates variables in case of standard IRLS, or of intervals
+      WLS_blob <- .WLS_substitute_spprec(update_sXaug_constant_arglist, Vscaled_beta, off, etaFix, GLMMbool, 
+                                         constant_u_h_v_h_args, updateW_ranefS_constant_arglist, ZAL, 
+                                         processed, LMMbool, phi_est,
+                                         wranefblob, Trace=trace, stylefn)
+      for (st in names(WLS_blob)) assign(st,WLS_blob[[st]]) 
+    } else {
+      for (st in c("Vscaled_beta","wranefblob","v_h","u_h","muetablob",
+                   "w.resid", ## !important! cf test-adjacency-corrMatrix.R
+                   "sXaug")) assign(st,damped_WLS_blob[[st]])
       if ( ! GLMMbool ) {
         # Xscal <- damped_WLS_blob$Xscal # does not exist; and presumably not needed
-        ZAL_scaling <- damped_WLS_blob$ZAL_scaling 
-      }
-    } else {
-      # drop, not as.vector(): names are then those of (final) eta and mu -> used by predict() when no new data
-      eta <- off + drop(processed$AUGI0_ZX$X.pv %*% Vscaled_beta$beta_eta) + drop(ZAL %id*% Vscaled_beta$v_h) ## length nobs 
-      if ( is.null(etaFix$v_h)) {
-        v_h <- Vscaled_beta$v_h * ZAL_scaling
-        if (GLMMbool) {
-          u_h <- v_h ## keep input wranefblob since lambda_est not changed
-        } else {
-          u_h_v_h_from_v_h_args <- c(constant_u_h_v_h_args,list(v_h=v_h))
-          u_h <- do.call(".u_h_v_h_from_v_h",u_h_v_h_from_v_h_args)
-          if ( ! is.null(attr(u_h,"v_h"))) { ## second test = if u_h_info$upper.v_h or $lower.v_h non NULL
-            v_h <- attr(u_h,"v_h")
-          }
-          ## update functions u_h,v_h
-          wranefblob <- do.call(".updateW_ranefS",c(updateW_ranefS_constant_arglist,list(u_h=u_h,v_h=v_h)))
-          if ( ! GLMMbool) {ZAL_scaling <- 1}  ## TAG: scaling for spprec
-        }
-      }
-      muetablob <- .muetafn(eta=eta,BinomialDen=processed$BinomialDen,processed=processed) 
-      if ( ! LMMbool ) {
-        ## weight_X and Xscal vary within loop if ! LMM since at least the GLMweights in w.resid change
-        w.resid <- .calc_w_resid(muetablob$GLMweights,phi_est)
-        #weight_X <- .calc_weight_X(w.resid, H_global_scale) ## sqrt(s^2 W.resid)
-        sXaug <- do.call(processed$AUGI0_ZX$envir$method, # ie, def_AUGI0_ZX_sparsePrecision
-                         c(update_sXaug_constant_arglist, # contains H_global_scale
-                           list(w.ranef=wranefblob$w.ranef, 
-                                #weight_X=weight_X, 
-                                w.resid=w.resid)))
+        ZAL_scaling <- damped_WLS_blob$ZAL_scaling ## hmmm but this is the TAGged 1, isn't it ? FIXME
       }
     }
+    #  At this point all return elements are updated as function of the latest Vscaled_beta.
+    #  In particular We need muetablob and (if ! LMM) sXaug, hence a lot of stuff.
     #####
     beta_eta <- Vscaled_beta$beta_eta
     ##### assessment of convergence
-    if (innerj<maxit.mean) {
+    if (innerj==maxit.mean) {
+      if (maxit.mean>1L) {
+        if (LevenbergM) processed$LevenbergM["LM_start"] <- TRUE
+        if (trace) {
+          cat(crayon::red("!"))
+        } else if ( ! identical(processed$warned_maxit_mean, TRUE)) {
+          processed$warned_maxit_mean <- TRUE
+          message("Iterative algorithm converges slowly. See help('convergence') for suggestions.")
+        }
+      }
+      break
+    } else {    
       relV_beta <- c(v_h*sqrt(wranefblob$w.ranef),beta_eta)  ## convergence on v_h relative to sqrt(lambda), more exactly for Gaussian
       abs_d_relV_beta <- abs(relV_beta - old_relV_beta) ## for ML, comparison between estimates when ( hlik_stuck || ! need_v_step )
-      not_moving <- ( ( ! is.null(old_relV_beta)) && mean(abs_d_relV_beta) < loc_Xtol_rel )
-      if (is.na(not_moving)) {
-        if (anyNA(relV_beta)) {
-          if ( ! is.null(damped_WLS_blob)) {
-            message(paste("innerj=",innerj,"damping=",damping,"lik=",damped_WLS_blob$lik))
-            stop("Numerical problem despite Levenberg algorithm being used: complain.")
-          } else stop("Numerical problem: try control.HLfit=list(LevenbergM=TRUE)")
-        } else stop("Error in evaluating break condition")
-      } 
-      if (not_moving) { # with LevM, loc_Xtol_rel is lax sà this is not a very good test for large data.     
-        if ( ! is_HL1_1 ) { ## PQL in particular
-          if ( ! is.null(damped_WLS_blob)) {
-            hlik_stuck <- (damped_WLS_blob$APHLs$hlik < oldAPHLs$hlik + Ftol_LM/10)
-            if (hlik_stuck) break
-          } else break 
-        } else break ## sufficient condition here
+      if (is_HL1_1 && LevenbergM) {
+        not_moving <- (
+          # exclude cases of possible p_v overfit by v_h, such as cases "b" "v_b" "b_from_v_b" "b_&_v_in_b"
+          (which_LevMar_step %in% c("v", "V_IN_B","strict_v|b") || default_b_step=="v_in_b") &&
+            ( ! is.null(old_relV_beta)) && 
+            {
+              #print(c(mean(abs_d_relV_beta[seq_n_u_h]),relV_beta[-seq_n_u_h],old_relV_beta[-seq_n_u_h]))
+              meanmean <- mean(c(mean(abs_d_relV_beta[seq_n_u_h]), mean(abs_d_relV_beta[-seq_n_u_h])), na.rm=TRUE) # second mean may be NaN
+              meanmean < d_relV_b_tol_LM
+            }
+        )
+      } else not_moving <- ( 
+        ( ! is.null(old_relV_beta)) && 
+        {
+          meanmean <- mean(c(mean(abs_d_relV_beta[seq_n_u_h]), mean(abs_d_relV_beta[-seq_n_u_h])), na.rm=TRUE) # second mean may be NaN
+          meanmean < d_relV_b_tol
+        }
+      ) #In ! LevM, v&b are fitted simultaneously without damping
+      if (not_moving) {
+        # not_moving_Wattr <- .diagnose_coeff_not_moving(coeff_not_moving = not_moving,relV_beta, damped_WLS_blob, innerj, 
+        #                                                damping, is_HL1_1, oldAPHLs, Ftol=processed$spaMM_tol$Ftol_LM, trace, LevenbergM,stylefn=identity)
+        break
       }
-      if ( ! (is_HL1_1 && LevenbergM)) { ## possible reversal of LevenbergM condition from F to T in  LevM PQL !!!!
+      # More ad hoc breaks for cases where the coefficients keep moving although the total potential is low:
+      if ( ! is.null(damped_WLS_blob) ) {
+        if (is_HL1_1) {
+          if ( which_LevMar_step=="v_b" && damped_WLS_blob$breakcond=="low_pot" && attr(damped_WLS_blob$breakcond,"no_overfit")) {
+            break # motivated by BINARYboot (e.g., replicate 362)
+          } else if ( which_LevMar_step =="V_IN_B" && damped_WLS_blob$breakcond=="low_pot") {
+            # I could further test attr(damped_WLS_blob$breakcond,"very_low_pot") here
+            break # motivated by poisson 'smaller' fit in test_COMPoisson_difficult with control.HLfit=list(max.iter.mean=1000),
+          } #else {print(which_LevMar_step); str(damped_WLS_blob$breakcond)}
+        } else {# tendency of PQL/L meanmean to converge very slowly despite low_pot (and indeed tiny changes in hlik) => ad hoc adjustment
+          if (damped_WLS_blob$breakcond=="low_pot" && attr(damped_WLS_blob$breakcond,"very_low_pot")) break
+        }
+      }
+      #
+      if ( ! (is_HL1_1 && LevenbergM)) { ## This is for the special case of reversal of LevenbergM condition from F to T in  LevM PQL !!!!
         old_relV_beta <- relV_beta
-      } ## ELSE old_relV_beta controlled in block for which_LevMar_step !!
-    } else break
+      } ## ELSE old_relV_beta was updated when required in block for which_LevMar_step.
+    } 
   } ################ E N D LOOP ##############
+  #if (trace>4L) browser() 
+
   if (trace>1L && (LevenbergM))  {
+    stylefn <- .spaMM.data$options$stylefns$betalast
     maxs_grad <- c(max(abs(zInfo$m_grad_obj[seq_n_u_h])),max(abs(zInfo$m_grad_obj[-seq_n_u_h])))
-    cat("iter=",innerj,", max(|grad|): v=",maxs_grad[1L],"beta=",maxs_grad[2L],";")
+    cat(stylefn("iter=",innerj,", max(|grad|): v=",maxs_grad[1L],"beta=",maxs_grad[2L],";"))
   }
   names(beta_eta) <- colnames(processed$AUGI0_ZX$X.pv)
   RESU <- list(sXaug=sXaug, 
@@ -550,7 +800,9 @@
                phi_est=phi_est,
                ## used by other code
                beta_eta=beta_eta, w.resid=w.resid, wranefblob=wranefblob, 
-               v_h=v_h, eta=eta, innerj=innerj)
+               v_h=v_h, eta=muetablob$sane_eta, innerj=innerj)
+  ## for diagnostic purposes
+  if ( ! LMMbool ) RESU$m_grad_obj <- zInfo$gainratio_grad ## frm ZInfo bc other copies of m_grad_obj may be missing if not LevenbergM
   return(RESU)
 } 
 

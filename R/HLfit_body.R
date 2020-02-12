@@ -24,8 +24,8 @@ HLfit_body <- local({
   HL <- processed$HL
   stop.on.error <- processed$stop.on.error ## to control issues with matrix computations; F by default
   spaMM_tol <- processed$spaMM_tol
-  iter.mean.dispFix <- processed$iter.mean.dispFix
-  iter.mean.dispVar <- processed$iter.mean.dispVar
+  iter_mean_dispFix <- processed$iter_mean_dispFix
+  iter_mean_dispVar <- processed$iter_mean_dispVar
   max.iter <- processed$max.iter
   BinomialDen <- processed$BinomialDen
   y <- processed$y
@@ -46,7 +46,7 @@ HLfit_body <- local({
   if (models[["eta"]]=="etaHGLM") {
     sparse_precision <- processed$sparsePrecisionBOOL
     ranCoefs.Fix <- .getPar(ranFix,"ranCoefs") ## may be NULL
-    ranCoefs_blob <- .process_ranCoefs(processed, ranCoefs.Fix,use_tri=TRUE) ## UPDATES preexisting object # no augZXy pb here
+    ranCoefs_blob <- .process_ranCoefs(processed, ranCoefs.Fix, use_tri_Nspprec=TRUE) ## UPDATES preexisting object # no augZXy pb here
     LMatrices <- processed$AUGI0_ZX$envir$LMatrices
     # HLCor_body has prefilled $LMatrices for :
     #    for Matern...
@@ -75,14 +75,16 @@ HLfit_body <- local({
   }
   lambda.Fix <- ranFix$lambda # .getPar(ranFix,"lambda") ## should already have length 'nrand' or else be NULL
   if (is.null(lambda.Fix)) lambda.Fix <- rep(NA,nrand) ## FIXME: put in canonizeRanpars ? depends onother uses of this fn.
-  if (any(lambda.Fix[!is.na(lambda.Fix)]==0)) stop("lambda cannot be fixed to 0.")
+  if (any(lambda.Fix==0, na.rm=TRUE)) stop("lambda cannot be fixed to 0.")
   ###
   off <- processed$off
   ##################
-  unknowns <- setdiff(names(init.HLfit),c("fixef","phi","lambda","v_h","rho","nu","Nugget","ARphi","corrPars","ranCoefs")) ## in spaMM 3.0 several names should disappear   
+  valid_inits <- c("fixef","phi","lambda","v_h","rho","nu","Nugget","ARphi","corrPars","ranCoefs")
+  unknowns <- setdiff(names(init.HLfit),valid_inits) ## in spaMM 3.0 several names should disappear   
     if (length(unknowns)) {
       if ("beta" %in% unknowns) message("  Use 'fixef' rather than 'beta' in 'init.HLfit'.")
-      stop("unhandled elements in 'init.HLfit'.")
+      if ("beta_eta" %in% unknowns) message("  Use 'fixef' rather than 'beta_eta' in 'init.HLfit'.")
+      stop(paste0("unhandled elements in 'init.HLfit'. Allowed ones are: ",paste(valid_inits, collapse=",") ))
     }
   ###################
   HLfit_corrPars <- init.HLfit$corrPars 
@@ -97,6 +99,9 @@ HLfit_body <- local({
   if (need_simple_lambda <- need_ranefPars_estim <- models[[1]]=="etaHGLM") {
     need_simple_lambda <- any(is.na(lambda.Fix) & ! ranCoefs_blob$is_set)
     need_ranefPars_estim <-  (need_simple_lambda || ! is.null(corr_est))
+    if (family$link %in% c("log","loglambda"))  {
+      maxLambda <- log(sqrt(.spaMM.data$options$maxLambda))^2
+    } else maxLambda <- .spaMM.data$options$maxLambda
   } 
   #
   whichadj <- which(attr(ZAlist,"exp_ranef_types")=="adjacency") ## bug presumably corrected here 30/12/2107
@@ -126,16 +131,15 @@ HLfit_body <- local({
 
   ### Initial values  for lambda, phi and beta from lambda.Fix, phi.Fix, or init.HLfit ##### 
   ## Initial estimate for beta  (etaFix acts directly in auglinmodfit)
-  beta_eta <- processed$port_env$port_fit_values$fixef
-  if (is.null(beta_eta)) {
-    beta_eta <- numeric(pforpv)
+  beta_eta <- processed$port_env$port_fit_values$fixef # scaled
+  if (is.null(beta_eta)) { # then we look at user value and scale it <=> user values must be unscaled.
     if (pforpv) {
       beta_eta <- init.HLfit$fixef
       if ( ! is.null(beta_eta) && ! is.null(attr(processed$AUGI0_ZX$X.pv,"scaled:scale"))) {
         beta_eta <- .scale(beta=beta_eta,X=processed$AUGI0_ZX$X.pv)
       }
-    }
-  }
+    } else beta_eta <- numeric(0L) # don't leave it NULL so that we don't try to get it from inits_by_glm.
+  } 
   ## Initial estimate for phi 
   phi_est <- phi.Fix
   if (is.null(phi_est)) phi_est <- processed$port_env$port_fit_values$phi_est
@@ -160,7 +164,7 @@ HLfit_body <- local({
     ## : uses processed$y, $BinomialDen, [["control.glm"]]
   }
   ## Finalize initial values for beta_eta
-  if (is.null(beta_eta) ) beta_eta <- inits_by_glm$beta_eta
+  if (is.null(beta_eta) ) beta_eta <- inits_by_glm$beta_eta # from .lm.fit or lm.fit using scaled X.pv, hennce must be scaled.
   intervalInfo <- processed$intervalInfo
   if (!is.null(intervalInfo)) {
     parmcol <- attr(intervalInfo$parm,"col")
@@ -168,19 +172,9 @@ HLfit_body <- local({
   }  
   ## Finalize initial values for phi 
   if (is.null(phi_est) ) {
-    ## there are many cases that .get_init_phi does not handle
-    # if ( models[["phi"]] == "phiScal") {
-    #   if (is.call(processed$prior.weights)) {
-    #     phi_est <- .get_init_phi(processed,weights=NULL)
-    #   } else phi_est <- .get_init_phi(processed,weights=processed$prior.weights)
-    # }
-    # if ( is.null(phi_est) ) 
       phi_est <- inits_by_glm$phi_est
     # at this point fitme call -> calc_init_dispPars() has set phi >= 1e-4
     # This may be lower in HLfit call (included for bootstrap) (different from lambda)
-    if (models[["phi"]] != "phiScal") {
-      phi_est <- rep(phi_est,nobs) ## moche ## FR->FR why is this necess ?
-    }
   }
   ## Finalize initial values for lambda
   if (models[[1]]=="etaHGLM") {
@@ -210,21 +204,19 @@ HLfit_body <- local({
     } else if ( LMMbool && is.null(intervalInfo) ) {
       maxit.mean <- 1 ## 1 is sufficient for LMM as Hessian does not vary with beta_eta  => quadratic function;
       # ./ E X C E P T for calculation of confidence intervals: at least two intervalSteps are required. Quite visible when 
-      # dispersion params areouter-estimated (fitme) in which case there isno outer iteration to compensate a small maxit.mean  
+      # dispersion params are outer-estimated (fitme) in which case there isno outer iteration to compensate a small maxit.mean  
     } else { ## even h maximization in *G*LMMs 
       if ( ! is.null(phi.Fix) && ! need_simple_lambda) { ## allFix hence no true outer iteration 
-        maxit.mean <- iter.mean.dispFix 
-      } else maxit.mean <- iter.mean.dispVar # If phi.Fix and lambda.Fix, the only way to have 'outer' convergence is to have 'inner' convergence
+        maxit.mean <- iter_mean_dispFix 
+      } else maxit.mean <- iter_mean_dispVar # If phi.Fix and lambda.Fix, the only way to have 'outer' convergence is to have 'inner' convergence
     } 
   } else if (models[[1]]=="etaGLM") {
     if (! is.null(intervalInfo)) {
       intervalInfo$parmcol_X <- parmcol 
     }
-    ## FR->FR on doit pouvoir mettre maxit.mean = 0 dans pas mal de cas ?
-    ## attention toutefois à COMPoisson negbin...
     if ( ! is.null(phi.Fix)) { ## 
-      maxit.mean <- iter.mean.dispFix 
-    } else maxit.mean <- iter.mean.dispVar # If phi.Fix and lambda.Fix, the only way to have 'outer' convergence is to have 'inner' convergence
+      maxit.mean <- iter_mean_dispFix 
+    } else maxit.mean <- iter_mean_dispVar # If phi.Fix and lambda.Fix, the only way to have 'outer' convergence is to have 'inner' convergence
   }
   prev_lik <- -Inf
   conv_logL <- NA
@@ -266,59 +258,16 @@ HLfit_body <- local({
         intervalInfo$corr_est <- corr_est ## currently needs to be added ex tempo... apparently only for warn_intervalStep()
         intervalInfo$beta_eta <- beta_eta ## ex tempo: the current estimate of the CI bound
       } ## else intervalInfo remains NULL
-      # if (models[["phi"]]=="phiScal") {
-      #   H_global_scale <- phi_est[1L]
-      # } else H_global_scale <- exp(mean(log(phi_est)))
       H_global_scale <- .calc_H_global_scale(w.resid)
       if ( processed$sparsePrecisionBOOL ) { 
         adj_rho <- corr_est$rho
         if (is.null(adj_rho)) adj_rho <- .getPar(ranFix,"rho") ## could this occur with test_inner_estim_rho ?
         if (is.null(adj_rho)) adj_rho <- init.HLfit$rho
-        
-        
-        # For ML binary and LevM, first PQL binary then ML. 
-        # The basic fit (run for all other models) is the second.
-        if (prePQL <-(processed$HL[1L]==1L && .determine_LevenbergM(processed$LevenbergM,which="user_prefit"))
-            # && is.null(processed$port_env$port_fit_values)
-            ) { 
-          ## first PQL LevenbergM then ML 
-          processed$HL[1L] <- 0L
-          processed$p_v_obj <- "hlik"
-          pqlblob <- .solve_IRLS_as_spprec(ZAL=ZAL, y=y, n_u_h=cum_n_u_h[nrand+1L],
-                                             H_global_scale=H_global_scale, # de facto ignored through trivial tests
-                                             lambda_est=lambda_est, # homoscedastic for CAR! confusing!
-                                             muetablob=muetablob,
-                                             off=off, maxit.mean=maxit.mean, etaFix=etaFix,
-                                             ## for ! LMM
-                                             eta=eta,
-                                             ## supplement for LevenbergM
-                                             beta_eta=beta_eta,
-                                             ## supplement for ! GLMM
-                                           wranefblob=wranefblob, u_h=u_h, v_h=v_h, w.resid=w.resid, phi_est=phi_est,
-                                             for_init_z_args=list(nrand=nrand, psi_M=psi_M, ranFix=ranFix),
-                                             for_intervals=intervalInfo,
-                                             ##
-                                             trace=verbose["TRACE"],
-                                             processed=processed,corrPars=list(rho=adj_rho))
-          muetablob <- pqlblob$muetablob
-          eta <- pqlblob$eta
-          beta_eta <- pqlblob$beta_eta
-          wranefblob <- pqlblob$wranefblob
-          u_h <- pqlblob$u_h
-          v_h <- pqlblob$v_h
-          w.resid <- .calc_w_resid(muetablob$GLMweights,phi_est) # pqlblob$w.resid
-          processed$HL[1L] <- 1L
-          processed$p_v_obj <- "p_v"
-          #pql_levm_p_v <- .calc_APHLs_from_auglinmodblob(pqlblob,processed, which="p_v", phi_est, lambda_est)
-          pql_levm_p_v <- .calc_APHLs_from_ZX(auglinmodblob=pqlblob,processed=processed, which="p_v")
-        }
         auglinmodblob <- .solve_IRLS_as_spprec(ZAL=ZAL, y=y, n_u_h=cum_n_u_h[nrand+1L],
-                                                 H_global_scale=H_global_scale, # de facto ignored through trivial tests
+                                                 #H_global_scale=H_global_scale, # de facto ignored through trivial tests
                                                  lambda_est=lambda_est, # homoscedastic for CAR! confusing!
                                                  muetablob=muetablob,
                                                  off=off, maxit.mean=maxit.mean, etaFix=etaFix,
-                                                 ## for ! LMM
-                                                 eta=eta,
                                                  ## supplement for LevenbergM
                                                  beta_eta=beta_eta,
                                                  ## supplement for ! GLMM
@@ -326,52 +275,13 @@ HLfit_body <- local({
                                                  for_init_z_args=list(nrand=nrand, psi_M=psi_M, ranFix=ranFix), 
                                                  for_intervals=intervalInfo,
                                                  ##
-                                                 trace=verbose["TRACE"],
+                                                 verbose=verbose,
                                                  processed=processed,corrPars=list(rho=adj_rho))
-        ## FIXME provide the gradient by the auglinmodblob and check it and then suggest LevM if not already used
       } else {
-        # For ML binary and LevM, first PQL binary then ML. 
-        # The basic fit (run for all other models) is the second 
-        if (prePQL <-(processed$HL[1L]==1L && .determine_LevenbergM(processed$LevenbergM,which="user_prefit"))
-            # && is.null(processed$port_env$port_fit_values) ## FIXME reconsider: effect on #605 of BINARYboot 
-        ) { 
-          ## first PQL LevenbergM then ML 
-          processed$HL[1L] <- 0L
-          processed$p_v_obj <- "hlik"
-          pqlblob <- .solve_IRLS_as_ZX(processed$AUGI0_ZX$X.pv, ZAL, y, n_u_h=cum_n_u_h[nrand+1L], 
-                                H_global_scale=H_global_scale, 
-                                lambda_est=lambda_est, muetablob=muetablob,
-                                off=off, maxit.mean=maxit.mean, etaFix=etaFix,
-                                ## for ! LMM
-                                eta=eta, 
-                                ## supplement for LevenbergM
-                                beta_eta=beta_eta,
-                                ## supplement for ! GLMM
-                                wranefblob=wranefblob, u_h=u_h, v_h=v_h, w.resid=w.resid, phi_est=phi_est,
-                                for_init_z_args=list(nrand=nrand, psi_M=psi_M, ranFix=ranFix), 
-                                for_intervals=intervalInfo,
-                                ##
-                                trace=verbose["TRACE"],
-                                processed=processed)
-          muetablob <- pqlblob$muetablob
-          eta <- pqlblob$eta
-          beta_eta <- pqlblob$beta_eta
-          wranefblob <- pqlblob$wranefblob
-          u_h <- pqlblob$u_h
-          v_h <- pqlblob$v_h
-          w.resid <- .calc_w_resid(muetablob$GLMweights,phi_est) # pqlblob$w.resid
-          H_global_scale <- .calc_H_global_scale(w.resid)
-          processed$HL[1L] <- 1L
-          processed$p_v_obj <- "p_v"
-          #pql_levm_p_v <- .calc_APHLs_from_auglinmodblob(pqlblob,processed, which="p_v", phi_est, lambda_est)
-          pql_levm_p_v <- .calc_APHLs_from_ZX(auglinmodblob=pqlblob,processed=processed, which="p_v")
-        }
         auglinmodblob <-  .solve_IRLS_as_ZX(processed$AUGI0_ZX$X.pv, ZAL, y, n_u_h=cum_n_u_h[nrand+1L], 
                            H_global_scale=H_global_scale, 
                            lambda_est=lambda_est, muetablob=muetablob,
                            off=off, maxit.mean=maxit.mean, etaFix=etaFix,
-                           ## for ! LMM
-                           eta=eta, 
                            ## supplement for LevenbergM
                            beta_eta=beta_eta,
                            ## supplement for ! GLMM
@@ -379,29 +289,26 @@ HLfit_body <- local({
                            for_init_z_args=list(nrand=nrand, psi_M=psi_M, ranFix=ranFix), 
                            for_intervals=intervalInfo,
                            ##
-                           trace=verbose["TRACE"],
+                           verbose=verbose,
                            processed=processed)
       }
-      #if ( ! .determine_LevenbergM(processed$LevenbergM) && maxit.mean>1L && auglinmodblob$innerj==maxit.mean) {
-      #  processed$LevenbergM <- c(LevenbergM=TRUE,PQL_prefit=TRUE) ## FIXME crude rescue: the IRLS procedure shouls autocorrect ?
-      #}
       ##############################
       beta_eta <- auglinmodblob$beta_eta
       wranefblob <- auglinmodblob$wranefblob # updated only if !LMM
-      muetablob <- auglinmodblob$muetablob # updated only if !LMM
+      muetablob <- auglinmodblob$muetablob 
       mu <- muetablob$mu ## testé par accident, necess dans test COMPoisson HLfit...
       w.resid <- auglinmodblob$w.resid # updated only if !LMM
       v_h <- auglinmodblob$v_h
       u_h <- auglinmodblob$u_h
-      eta <- auglinmodblob$eta
+      #eta <- auglinmodblob$eta
       innerj <- auglinmodblob$innerj
     } else if (models[[1]]=="etaGLM") {
       if (pforpv>0L  && maxit.mean) {
         ## resultat nomme' auglinmodblob pour avancer vers simplif du code, mais je ne peux suppser qu'auglinmodblob est toujours calculé
-        auglinmodblob <- .calc_etaGLMblob(processed=processed,  mu=mu, eta=eta, muetablob=muetablob, beta_eta=beta_eta, 
+        auglinmodblob <- .calc_etaGLMblob(processed=processed,  mu=mu, eta=muetablob$sane_eta, muetablob=muetablob, old_beta_eta=beta_eta, 
                                       w.resid=w.resid, phi_est=phi_est, off=off, maxit.mean=maxit.mean, 
                                       verbose=verbose, for_intervals=intervalInfo, Xtol_rel=spaMM_tol$Xtol_rel)
-        eta <- auglinmodblob$eta 
+        #eta <- auglinmodblob$eta 
         muetablob <- auglinmodblob$muetablob 
         mu <- muetablob$mu
         beta_eta <- auglinmodblob$beta_eta 
@@ -434,7 +341,7 @@ HLfit_body <- local({
       ## first the d log hessian / d log lambda or phi corrections
       ### For the d log hessian first the derivatives of GLM weights wrt eta 
       ##################### noter que c'est le coef2 de HL(1,.), but mu,eta may have been updated since coef2 was computed
-      dlW_deta <- .calc_dlW_deta(dmudeta=drop(muetablob$dmudeta),family=family,mu=drop(mu),eta=drop(eta),
+      dlW_deta <- .calc_dlW_deta(dmudeta=drop(muetablob$dmudeta),family=family,mu=drop(mu),eta=drop(muetablob$sane_eta),
                                 BinomialDen=BinomialDen,canonicalLink=processed$canonicalLink,
                                 w.resid=w.resid)$dlW_deta
       ### we join this with the deriv of log w.ranef wrt v_h
@@ -491,6 +398,8 @@ HLfit_body <- local({
         # uses of prior weights matches thatin input of calcPHI -> dispGammaGLM 
         residProcessed$data$.phi <- family$dev.resids(y,mu,wt= eval(prior.weights))/(1-lev_phi) 
         residProcessed$y <- residProcessed$data$.phi
+        residProcessed$iter_mean_dispFix <- max(200L,ceiling(100* mean(abs(log2(residProcessed$y)))))
+        residProcessed$iter_mean_dispVar <- max(50L,ceiling(100* mean(abs(log2(residProcessed$y)))))
         residProcessed$HLframes$Y <- as.matrix(residProcessed$data$.phi)
         #  residProcessed$port_fit_values allows a previous 'close' [as defined by condition on logLik change] outer fit 
         #   to be used to initialize the 1st inner fitme of the new HLfit.
@@ -631,10 +540,9 @@ HLfit_body <- local({
                            #lcrandfamfam=lcrandfamfam,
                            processed=processed,
                            init_ranCoefs=init.HLfit$ranCoefs,
+                           prev_lambda_est=lambda_est,
                            w.resid=w.resid)
       if (any(ranCoefs_blob$isRandomSlope)) { ## if random-slope model
-        covEstmethod <- .spaMM.data$options$covEstmethod ## note same call in calcRanefPars
-        if (is.null(covEstmethod)) stop("spaMM.getOption('covEstmethod') should not be NULL")
         ranefEstargs <- c(ranefEstargs,list(phi_est=phi_est,
                                             as_matrix=( ! inherits(ZAL,"Matrix")),v_h=v_h))
         H_global_scale <- .calc_H_global_scale(w.resid)
@@ -643,14 +551,13 @@ HLfit_body <- local({
                                                                H_global_scale=H_global_scale, 
                                                                muetablob=NULL,
                                                                off=off, maxit.mean=maxit.mean, etaFix=etaFix,
-                                                               ## for ! LMM
-                                                               eta=NULL, 
                                                                ## supplement for LevenbergM
                                                                beta_eta=beta_eta,
                                                                ## supplement for ! GLMM
                                                                u_h=u_h, v_h=v_h, w.resid=NULL, phi_est=phi_est,
                                                                for_init_z_args=list(nrand=nrand, psi_M=psi_M, ranFix=ranFix), 
                                                                for_intervals=intervalInfo,
+                                                               verbose=c(TRACE=FALSE,trace=FALSE),
                                                                ##
                                                                processed=processed)
       }
@@ -663,13 +570,14 @@ HLfit_body <- local({
                                           psi_M=psi_M,
                                           verbose=verbose,
                                           iter=iter,
-                                          control=processed[["control.glm"]]
+                                          control=processed[["control.glm"]],
+                                          maxLambda=maxLambda
       )
       HLfit_corrPars <- calcRanefPars_blob$HLfit_corrPars
-      next_randcoeff_cov_est <- calcRanefPars_blob$HLfit_corrPars$random_coeff ## vector
+      next_info_for_conv_rC <- calcRanefPars_blob$HLfit_corrPars$info_for_conv_rC ## vector
       next_lambda_est <- calcRanefPars_blob$next_lambda_est  ## T H I S is what affects next beta,v estimates when rho is inner estimated in CAR.
       ########################################
-      # => variation of log(u^2/lamdba) = simplified likRanU convergence  (from 1.9.31)
+      # => variation of log(u^2/lambda) = simplified likRanU convergence  (from 1.9.31) (see below use of verbose["trace"] to print diagnostics)
       next_u_vs_lambda <- 2*log(abs(u_h[gaussian_u_ranges])+1e-12)-log(next_lambda_est[gaussian_u_ranges])    
       conv_lambda_vs_u <- (iter> 1L && 
                              all( abs(next_u_vs_lambda-prev_u_vs_lambda) < 500*spaMM_tol$Xtol_rel) )        
@@ -680,11 +588,18 @@ HLfit_body <- local({
       } else loc_Xtol_abs <- spaMM_tol$Xtol_abs
       conv_rel_lambda <- all( abs(next_lambda_est-lambda_est) < spaMM_tol$Xtol_rel *lambda_est + loc_Xtol_abs) 
       conv.lambda <- ( conv_lambda_vs_u && conv_rel_lambda )  
-      if (!is.null(next_randcoeff_cov_est)) {
-        if (iter>1 && abs(randcoeff_cov_est-next_randcoeff_cov_est) < spaMM_tol$Xtol_rel ) { 
-          conv.corr <- TRUE 
-        } else conv.corr - FALSE       
-        randcoeff_cov_est <- next_randcoeff_cov_est
+      if (!is.null(next_info_for_conv_rC)) {
+        if (conv.corr <- (iter>1L)) {
+          dlogL_rC <- abs(info_for_conv_rC$obj-next_info_for_conv_rC$obj) 
+          if ( ! (conv.corr <- (dlogL_rC<1e-07))) { # strict bu sufficient condition on logL convergence, else:
+            # the good conve crit on the parameters is difficult to find. Cf comments on HLfit6 in .makeCovEst1()
+            rel_dcov <- abs(info_for_conv_rC$ranCoefs-next_info_for_conv_rC$ranCoefs)/(1+abs(info_for_conv_rC$ranCoefs))
+            rel_dcov <- abs(info_for_conv_rC$ranCoefs-next_info_for_conv_rC$ranCoefs)/(1+abs(info_for_conv_rC$ranCoefs))
+            conv.corr <- (max(rel_dcov) < spaMM_tol$Xtol_rel ) 
+            #print(rel_dcov)
+          }  
+        } 
+        info_for_conv_rC <- next_info_for_conv_rC
       } else conv.corr <- TRUE
     } else { conv.lambda <- conv.corr <- TRUE } ## end if need_ranefPars_estim else...
     #
@@ -764,7 +679,8 @@ HLfit_body <- local({
       if (verbose["trace"]) {
         print(paste("iteration ",iter,"; convergence criteria for phi, lambda, corr pars , conv_lambda_vs_u, conv_rel_lambda: ",
                     paste0(c( conv.phi , conv.lambda, conv.corr, 
-                             conv_lambda_vs_u, conv_rel_lambda),collapse = " ")))
+                             conv_lambda_vs_u, conv_rel_lambda),collapse = " "),
+                    "; logL & conv_logL:", next_lik, conv_logL))
         if (models[[1]]=="etaHGLM" && need_simple_lambda) { 
           #print(range(logrel_crit))
           #print(range(reldlam_crit))
@@ -785,7 +701,6 @@ HLfit_body <- local({
     }
   }
   #
-  # if (max(abs(levyes$beta_eta-levno$beta_eta))>1e-6) browser("max(abs(levyes$beta_eta-levno$beta_eta))>1e-6")
   if (HL[1]=="SEM") {
     APHLs <- list(logLapp=logLapp) ## keeps attributes
     APHLs$clik <- .calc_clik(mu,phi_est,processed) ## useful for .get_info_crits()
@@ -937,9 +852,9 @@ HLfit_body <- local({
   if (identical(processed$return_only,"confint_bound")) {
     return(res)    ########################   R E T U R N fixef + APHLs
   }
-  res$eta <- eta ## convenient for defining starting values... and also sometimes used by predict()
+  res$eta <- muetablob$sane_eta ## convenient for defining starting values... and also sometimes used by predict() 
   names(res$eta) <- rownames(data)
-  res$muetablob <- muetablob # for get_logdispObject, added 11/2016
+  res$muetablob <- muetablob[c("mu","dmudeta")] # for get_logdispObject, added 11/2016
   ###################
   ## DATA
   ###################
@@ -948,7 +863,6 @@ HLfit_body <- local({
     res$BinomialDen <- BinomialDen
   }
   res$y <- y ## counts for Pois/bin
-  #res$prior.weights <- structure(eval(prior.weights), unique=identical(attr(prior.weights,"unique"),TRUE)) ## see Gamma()$simulate
   res$prior.weights <- structure(eval(prior.weights), unique=attr(prior.weights,"unique")) ## see Gamma()$simulate
   ###################
   ## MODEL info
@@ -1095,25 +1009,30 @@ HLfit_body <- local({
   res$envir <- list2env(list(dvdloglamMat=dvdloglamMat, dvdlogphiMat=dvdlogphiMat), ## provided if available
                         parent=environment(HLfit_body))
   if (models[[1L]]=="etaHGLM") {
-    ## for beta_v_cov and cAIC's p_d
-    # These elements are protected from deletion in stripHLfit() by explicit setdiff(stripnames,c("G_CHMfactor",...)):
-    if ("AUGI0_ZX_sparsePrecision" %in% res$MME_method) {
-      ###beta_cov_info <- get_from_MME(auglinmodblob$sXaug,"beta_cov")  
-      res$envir$ZAfix <- auglinmodblob$sXaug$AUGI0_ZX$ZAfix # introduced in v2.6.44 #.ad_hoc_cbind(object$ZAlist, as_matrix=FALSE) # math-sparse 
-      res$envir$ZtW <- t(.Dvec_times_m_Matrix(attr(auglinmodblob$sXaug,"w.resid"), res$envir$ZAfix))
-      BLOB <- auglinmodblob$sXaug$BLOB 
-      res$envir$chol_Q <- BLOB$chol_Q ## 'res$BLOB' is actually 'res$envir'
-      res$envir$G_CHMfactor <- BLOB$G_CHMfactor
-      res$envir$qrXa <- BLOB$qrXa
-      res$envir$X_scale <- BLOB$X_scale
-      res$envir$factor_inv_Md2hdv2 <- BLOB$factor_inv_Md2hdv2 # useful for prediction variance (but may be NULL)
-    } else if (HL[1]!="SEM") {
-      ###beta_cov_info <- get_from_MME(auglinmodblob$sXaug,"beta_cov_info_from_sXaug", B=attr(processed$AUGI0_ZX$X.pv,"scaled:scale")) # FIXME it would be nice to keep the info in the sXaug object
-      res$envir$sXaug <- auglinmodblob$sXaug ## F I X M E definitely useful, but could we remove some elements?
-      # big-ranefs.R is a good test
-      attr(res$envir$sXaug,"scaled:scale") <- attr(processed$AUGI0_ZX$X.pv,"scaled:scale")
+    if (HL[1]=="SEM") {
+      # bla
+    } else {
+      res$diagnostics$m_grad_obj <- auglinmodblob$m_grad_obj # typically NULL for LMM
+      ## for beta_v_cov and cAIC's p_d
+      # These elements are protected from deletion in stripHLfit() by explicit setdiff(stripnames,c("G_CHMfactor",...)):
+      if ("AUGI0_ZX_sparsePrecision" %in% res$MME_method) {
+        ###beta_cov_info <- get_from_MME(auglinmodblob$sXaug,"beta_cov")  
+        res$envir$ZAfix <- auglinmodblob$sXaug$AUGI0_ZX$ZAfix # introduced in v2.6.44 #.ad_hoc_cbind(object$ZAlist, as_matrix=FALSE) # math-sparse 
+        res$envir$ZtW <- t(.Dvec_times_m_Matrix(attr(auglinmodblob$sXaug,"w.resid"), res$envir$ZAfix))
+        BLOB <- auglinmodblob$sXaug$BLOB 
+        res$envir$chol_Q <- BLOB$chol_Q ## 'res$BLOB' is actually 'res$envir'
+        res$envir$G_CHMfactor <- BLOB$G_CHMfactor
+        res$envir$qrXa <- BLOB$qrXa
+        res$envir$X_scale <- BLOB$X_scale
+        res$envir$factor_inv_Md2hdv2 <- BLOB$factor_inv_Md2hdv2 # useful for prediction variance (but may be NULL)
+      } else {
+        ###beta_cov_info <- get_from_MME(auglinmodblob$sXaug,"beta_cov_info_from_sXaug", B=attr(processed$AUGI0_ZX$X.pv,"scaled:scale")) # FIXME it would be nice to keep the info in the sXaug object
+        res$envir$sXaug <- auglinmodblob$sXaug ## F I X M E definitely useful, but could we remove some elements?
+        # big-ranefs.R is a good test
+        attr(res$envir$sXaug,"scaled:scale") <- attr(processed$AUGI0_ZX$X.pv,"scaled:scale")
+      }
     }
-  }
+  } # scale not used post-fit for GLMs, otherwise it might be worth to provide it as above.
   ###################
   ## WARNINGS
   ###################
@@ -1157,15 +1076,15 @@ HLfit_body <- local({
         )) {
     
     warningList$innerNotConv <- paste0("linear predictor estimation did not converge;",
-                                      if ( ! LMMbool && ! .determine_LevenbergM(processed$LevenbergM) ) {
+                                      if ( ! LMMbool && ! processed$LevenbergM["LM_start"] ) {
                                          " try control.HLfit=list(LevenbergM=TRUE), or"
                                       },
-                                      " increase 'max.iter.mean' above ",maxit.mean)
+                                      " increase 'control.HLfit$max.iter.mean' above ",maxit.mean)
   }
   if ( (! is.na(conv_logL)) && iter==max.iter) {
     maxitmess <- paste0("Estimates did not converge;",
-                       if ( ! LMMbool && ! .determine_LevenbergM(processed$LevenbergM) ) {
-                         "trycontrol.HLfit=list(LevenbergM=TRUE), or"
+                       if ( ! LMMbool && ! processed$LevenbergM["LM_start"] ) {
+                         " try control.HLfit=list(LevenbergM=TRUE), or"
                        },
                        " increase 'max.iter' above ",max.iter,
                        "\n (see help('HLfit') for details about 'max.iter')")
@@ -1188,7 +1107,7 @@ HLfit_body <- local({
   }
   res$warnings <- warningList
   ###
-  ### experimental cAIC minimization
+  ### experimental cAIC minimization (completely experimental)
   if ( identical(processed$return_only,"cAICAPHLs")) {
     APHLs <- .get_info_crits(res)["cAIC"]
     if ( ! is.null(oldcAIC <- processed$port_env$objective)) {

@@ -1,5 +1,6 @@
-cat("\ntest of IsoriX compatibility:")
+cat(crayon::yellow("\ntest of IsoriX compatibility:"))
 
+# bug correction in v2.4.87, and last decimals updated after v3.0.24
 if (requireNamespace("IsoriX",quietly=TRUE)) { ## Checks that exports/imports are OK
   IsoriX::options_IsoriX(spaMM.options("example_maxtime")) ## Set to 201 for running  the full test
   IsoriX::options_IsoriX(dont_ask = TRUE) ## for plots
@@ -11,21 +12,20 @@ if (requireNamespace("IsoriX",quietly=TRUE)) { ## Checks that exports/imports ar
   if (inherits(chk,"try-error")) {
     warning(paste('example("isofit")',"produced",chk))
   } else if ( exists("GermanFit")) { ## !exists if IsoriX.getOption("example_maxtime") too low
-    testthat::expect_equal(get_ranPars(GermanFit$mean_fit,which="corrPars")[["2"]]$rho,0.0001176491)
-    #testthat::expect_equal(get_ranPars(GermanFit$disp.fit,which="corrPars")$rho,0.0001176491) ## lower bound for rho in both cases
+    try(testthat::expect_equal(get_ranPars(GermanFit$mean_fit,which="corrPars")[["2"]]$rho,0.0001176492))
   }
   if (spaMM.options("example_maxtime")>700) { ## that would be tests' total time
     chk <- try(example("isoscape",package="IsoriX",ask=FALSE),silent=TRUE) 
     if (inherits(chk,"try-error")) {
       warning(paste('example("isoscape")',"produced",chk))
     } else if ( exists("PlotMeanRespVar")) { ## !exists if IsoriX.getOption("example_maxtime") too low
-      try(testthat::expect_equal(GermanScape$isoscapes@data@values[1,"mean_predVar"],c(mean_predVar=24.343934))) ## 148.333653 before same bug correction
+      try(testthat::expect_equal(GermanScape$isoscapes@data@values[1,"mean_predVar"],c(mean_predVar=24.343934))) 
       # The values are affected by changes in force_solve; try_gmp is quite different (given GermanFit$mean.fit$lambda[1] = 6.993493e-10)
     }
   } else if (spaMM.options("example_maxtime")>30) {
     # ad-hoc bc builing the sphere is not worth the time
     source("C:/home/francois/travail/stats/spaMMplus/spaMM/package/tests/testthat/nestedFiles/isoscape.R")
-    testthat::expect_equal(GermanScape$isoscapes@data@values[1,"disp_predVar"],c(disp_predVar=0.08379131),tol=1e-7) ## 0.0804033 before bug correction in v2.4.87
+    try(testthat::expect_equal(GermanScape$isoscapes@data@values[1,"disp_predVar"],c(disp_predVar=0.08379127),tol=1e-7)) 
   }
   if (spaMM.options("example_maxtime")>700) { ## that would be tests' total time
     chk <- try(example("calibfit",package="IsoriX",ask=FALSE),silent=TRUE) 
@@ -36,8 +36,7 @@ if (requireNamespace("IsoriX",quietly=TRUE)) { ## Checks that exports/imports ar
   } else if (spaMM.options("example_maxtime")>10) {
     # ad-hoc bc builing the additional calibfits is not worth the time
     source("C:/home/francois/travail/stats/spaMMplus/spaMM/package/tests/testthat/nestedFiles/calibfit.R")
-    #try(testthat::expect_equal(logLik(CalibAlien$calib_fit),c(p_bv=-1132.78314))) ## -1135.841334 before same bug correction
-    try(testthat::expect_equal(logLik(CalibAlien$calib_fit),c(p_bv=-1132.664893))) ## after modif numerical precision predVar
+    try(testthat::expect_equal(logLik(CalibAlien$calib_fit),c(p_bv=-1132.66489195))) ## after modif numerical precision predVar
   }
   chk <- try(example("isofind",package="IsoriX",ask=FALSE),silent=TRUE) ## ~101s but the condition is 200
   if (inherits(chk,"try-error")) {

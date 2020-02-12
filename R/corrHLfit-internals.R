@@ -49,7 +49,7 @@ if (FALSE) {
 
 ## spherical transfo of Pinheiro and Bates 96; see further explanation
 # https://math.stackexchange.com/questions/1326462/spherical-parametrization-of-a-cholesky-decomposition/1329660#1329660
-# Called only by .ranCoefsFn(), for optim bound, and to convert back the optim results
+# Called only by .ranCoefsFn() in devel code, for optim bound, and to convert back the optim results for refit
 .sphFn <- function(covpars,Xi_ncol=NULL) { ## from *cov* parameter in lower.tri order vector to trRancoefs
   if (is.null(Xi_ncol)) Xi_ncol <- floor(sqrt(length(covpars)*2))
   cholmat <- diag(Xi_ncol)
@@ -71,7 +71,7 @@ if (FALSE) {
     if (! all(unique(diff(qrblob$pivot))==1L)) { # eval an unpermuted triangular R
       cholmat <- .lmwithQR(cholmat[, sort.list(qrblob$pivot)] ,yy=NULL,returntQ=FALSE,returnR=TRUE)$R
     } 
-  } else cholmat <- .CHOL(cholmat) ### potential source of problems as crossprod() in .sphInv() may not be the exact inverse
+  } else cholmat <- .CHOL(cholmat) ### potential source of problems as crossprod() in .tr2cov() may not be the exact inverse
   # sequel assumes UPPER triangular cholmat (cholmat[i:1, i]...)
   corrpars <- numeric(0)
   for (i in 2:Xi_ncol) {
@@ -88,13 +88,18 @@ if (FALSE) {
   return(trRancoef) 
 }
 
-.sphInv <- function(trRancoef,Xi_ncol=NULL, rC_transf) { ## from trRancoefs, with log sigma in first positions, to *cov* parameter vector
-  if (is.null(Xi_ncol)) Xi_ncol <- floor(sqrt(length(trRancoef)*2))
-  covmat <- .calc_cov_from_trRancoef(trRancoef,Xi_ncol=Xi_ncol, rC_transf=rC_transf) # must handle all transfos so there is no .chlInv() nor .corrInv()
-  return(covmat[lower.tri(covmat,diag = TRUE)]) ## vector representation of the cov matrix using covariances
+.smooth_regul <- function(covmat, epsi= .spaMM.data$options$tol_ranCoefs_outer["regul"]) {
+  es <- .eigen_sym(covmat)
+  v <- es$values
+  # correction <- v*(v/(4*epsi)-1)+epsi # goes from epsi to 0 as v goes from 0 to 2*epsi. d/dv = -1 in 0 and =0 in 2*epsi.
+  # v[v<2*epsi] <- (v+correction)[v<2*epsi] # *increasing* from epsi to 2*epsi as v goes from 0 to 2*epsi, derivable in 2*epsi.
+  # i.e.:
+  v[v<2*epsi] <- (4*epsi)*v[v<2*epsi]^2+epsi ## inverse is w[w<2*epsi] <- sqrt( (4*epsi)*(w[w<2*epsi]-epsi) )
+  covmat <- .ZWZt(es$vector,v)
+  return(structure(covmat, esys=es, d_regul=v))
 }
-#.sphInv(.sphFn(c(1,1,1,5,5,14)))
 
+# called only at the begining of inner or outer optim 
 .chlFn <- function(covpars,Xi_ncol=NULL) { # from *cov* parameter in lower.tri order vector to trRancoefs
   if (is.null(Xi_ncol)) Xi_ncol <- floor(sqrt(length(covpars)*2))
   svdv <- diag(Xi_ncol)
@@ -242,7 +247,7 @@ if (FALSE) {
   lowerbloc <- lower.tri(compactcovmat,diag=TRUE) ## a matrix of T/F !
   compactcovmat[lowerbloc] <- ranCoef
   diagPos <- seq.int(1L,Xi_ncol^2,Xi_ncol+1L)
-  lambdas <- compactcovmat[diagPos]
+  lambdas <- pmin(1e12,compactcovmat[diagPos]) # motivated by \ref{ares_bobyqa_ssprec}
   # lambdas <- lambdas + 1e-10 # here that would affect the conversion from correlation to covariances
   sigmas <- diag(x=sqrt(lambdas)) 
   compactcovmat <- (compactcovmat+t(compactcovmat))
@@ -250,6 +255,15 @@ if (FALSE) {
   compactcovmat <- sigmas %*% compactcovmat %*% sigmas # cov2cor use distinct, recommended syntax for the last operations
   return(compactcovmat)
 }  
+
+# not called in inner optimization...
+.tr2cov <- function(trRancoef,Xi_ncol=NULL, rC_transf) { ## from trRancoefs to *cov* parameter vector
+  if (is.null(Xi_ncol)) Xi_ncol <- floor(sqrt(length(trRancoef)*2))
+  covmat <- .calc_cov_from_trRancoef(trRancoef,Xi_ncol=Xi_ncol, rC_transf=rC_transf) # must handle all transfos so there is no .chlInv() nor .sphInv()
+  covmat <- .smooth_regul(covmat)
+  return(covmat[lower.tri(covmat,diag = TRUE)]) ## vector representation of the cov matrix using covariances
+}
+#.tr2cov(.sphFn(c(1,1,1,5,5,14)))
 
 .ranCoefsInv <- function(trRancoef, rC_transf) { # from transformed parameter space to correlation parameter vector
   if ( ! is.null(trRancoef)) {
@@ -262,7 +276,7 @@ if (FALSE) {
     }
     Xi_ncol <- attr(trRancoef,"Xi_ncol")
     if (is.null(Xi_ncol)) Xi_ncol <- floor(sqrt(length(trRancoef)*2))
-    covpars <- .sphInv(trRancoef, Xi_ncol=Xi_ncol, rC_transf=rC_transf) # to vector of parameters with *cov*ariances (misleading name)
+    covpars <- .tr2cov(trRancoef, Xi_ncol=Xi_ncol, rC_transf=rC_transf) # to vector of parameters with *cov*ariances
     # from vector with *cov*ariances to canonical vector with *corr*elations:
     rancoefs <- diag(nrow=Xi_ncol)
     rancoefs[lower.tri(rancoefs,diag = TRUE)] <- covpars
@@ -305,7 +319,7 @@ if (FALSE) {
 .calc_LowUp_trRancoef <- function(trRancoef, ## single vector 
                                   Xi_ncol,
                                   tol_ranCoefs,
-                                  adjust=.spaMM.data$options$max_corr_ranCoefs,
+                                  adjust=.spaMM.data$options$max_bound_ranCoefs,
                                   rC_transf=.spaMM.data$options$rC_transf
                                   ) { 
   # !!!!!!!!! If I change the parametrisation I must also change the .xtol_abs_fn() code !!!!!!!!!
@@ -314,11 +328,12 @@ if (FALSE) {
       bnd1 <- diag(1e-10, Xi_ncol) # bc there is a solve on the implied chol factor
     } else bnd1 <- diag(0, Xi_ncol) # so not really chol factor, but still bounds a space of triangular factor containing chol factors
     if (tol_ranCoefs["inner"]) {
-      cholmax <- tol_ranCoefs["cholmax"]
+      cholmax <- tol_ranCoefs["cholmax"] ## Inf by default...
     } else cholmax <- Inf
     bnd1[upper.tri(bnd1)] <- rep(-cholmax, Xi_ncol*(Xi_ncol-1L)/2L)  
     lower <- bnd1[upper.tri(bnd1,diag=TRUE)]
     upper <- rep(cholmax, Xi_ncol*(Xi_ncol+1L)/2L) 
+    adjust_init <- NULL
   } else { ## "sph" etc.
     lower <- c(
       rep(.rcDispFn(tol_ranCoefs["lo_lam"]), Xi_ncol), # log(sigma)... or log(sigmafac) !!
@@ -328,14 +343,20 @@ if (FALSE) {
       rep(.rcDispFn(tol_ranCoefs["up_lam"]), Xi_ncol), # log(sigma)... or log(sigmafac) !!
       rep(1-tol_ranCoefs["corr"], Xi_ncol*(Xi_ncol-1L)/2L) 
     )
+    adjust_init <- list(lower=c(
+      rep(.rcDispFn((tol_ranCoefs["lo_lam"])^(2/3)), Xi_ncol), #for log(sigma or sigmafac)
+      rep(-1+tol_ranCoefs["corr"], Xi_ncol*(Xi_ncol-1L)/2L) 
+    ))
   }
   lower <- adjust*lower
   lower <- pmin(lower, trRancoef)
   upper <- adjust*upper
   upper <- pmax(upper, trRancoef)
   #print(list(lower=lower,upper=upper))
-  return(list(lower=lower,upper=upper)) ## transformed scale with log sigma in first positions
+  return(list(lower=lower,upper=upper,adjust_init=adjust_init)) ## transformed scale with log sigma in first positions
 }
+
+
 
 
 .match_coords_in_tUniqueGeo <- function(coords,tUniqueGeo) {any(apply(tUniqueGeo,1L,identical,y=coords))}
@@ -419,31 +440,27 @@ if (FALSE) {
   return(verbose)
 }
 
-.reformat_LevenbergM <- function(LevenbergM) {
-  if (is.list(LevenbergM)) stop("is.list(LevenbergM)")
-  ## allows user to control the default globally by spaMM.options(): BUT this should typically be NULL
-  default_LM_start <- .spaMM.data$options$LevenbergM
-  if ( ! is.logical(default_LM_start)) default_LM_start <- NA ## converts NULL to NA (default resolved further in preprocess)
-  default_prefit <- .spaMM.data$options$PQL_prefit
-  if ( ! is.logical(default_prefit)) default_prefit <- NA ## converts NULL to NA (default resolved further in preprocess)
-  resu <- c(user_LM=LevenbergM["LevenbergM"][[1L]], user_prefit=LevenbergM["PQL_prefit"][[1L]], 
-            # [.][[1L]] important to get rid of name yet be valid for implicit NAs
-            default_LM_start=default_LM_start, default_prefit=default_prefit, force=NA) 
-  if (length(LevenbergM)==1L && is.logical(LevenbergM)) resu["user_LM"] <- LevenbergM ## T, F, or NA : handles non-vector input
-  return(resu) 
-} 
+.preprocess_LevM <- function(user_LM, processed) {
+  if (is.null(user_LM)) user_LM <- .spaMM.data$options$LevenbergM
+  if (is.list(user_LM)) stop("is.list(LevenbergM)")
+  # we may want: 
+  # no Levenberg: user's LevenbergM=FALSE
+  # Levenberg from start: user's LevenbergM=TRUE
+  # optional LevenbergM, with start as decided by following code: user's LevenbergM=NULL
+  # full control overriding code below: e.g. user's LevenbergM=c(user_LM=TRUE, LM_start=TRUE) (not API)
+  if (length(setdiff(c("user_LM","LM_start"), names(user_LM)))) {
+    if ( ! is.logical(user_LM)) user_LM <- NA # handles default case where user_LM is NULL 
+    if (is.na(user_LM)) { 
+      if (processed$bin_all_or_none ) { 
+        if (processed$HL[1L]==0L) {
+          LM_start <- TRUE ## PQL/L + LevenbergM combine safely and relatively fast.
+        } else LM_start <- FALSE  ## BINARYboot test to assess effect on timings
+      } else LM_start <- FALSE
+    } else LM_start <- user_LM[[1L]] # important to drop name else the names of the vector are wrong
+    return(c(user_LM=user_LM[[1L]], LM_start=LM_start) ) 
+  } else return(user_LM) # allows a full vector to be user-provided, for full control
+}
 
-.determine_LevenbergM <- function(LevenbergM, which="user_LM") {
-  if (is.na(info <- LevenbergM["force"])) {
-    if (is.na(info <- LevenbergM[which])) {
-      if (which=="user_prefit") {
-        info <- LevenbergM["default_prefit"]
-      } else info <- LevenbergM["default_LM_start"]
-    }  
-  }
-  if (! is.logical(info) || is.na(info)) stop("invalid input: check input (invalid 'which' or invalid user input?)")
-  return(info)
-} 
 
 .calc_inits_ranCoefs <- function(init,init.optim,init.HLfit,ranFix,user.lower,user.upper) {
   # fixme c/should allow a user-provided init.HLfit$ranCoefs to control what remains in init.optim relative to init.HLfit 
@@ -727,11 +744,15 @@ if (FALSE) {
   esys <- .eigen_sym(compactcovmat)
   target_min_d <- max(esys$values)/condnum ## so that corrected condition number is at most the denominator:     
   # (yes, but with high 'condnum' and large negative esys$values, target_min_d may not be numerically 
-  # distinct from target_min_d-esys$values and then output matrix has a zero eigenvalue... hence add +.Machine$double.eps here:
-  d_corr <- max(c(0,(target_min_d-esys$values)*(1+regul_ranCoefs[2L])))
+  # distinct from target_min_d-esys$values and then output matrix has a zero eigenvalue... hence add small regul_ranCoefs[1L] here:
+  d_corr <- max(c(0,(target_min_d-esys$values)*(1+regul_ranCoefs[1L])))
   ## ... but then target_min_d loses its verbatim meaning...
-  #esys$values <- esys$values+ d_corr # negatively impacts one of the test-ranCoefs
   d_regul <- esys$values+ d_corr # all diag is corrected => added a constant diagonal matrix to compactcovmat
+  ############ previously, esys$values were uncorrected hence still distinct from d_regul
+  # correcting them negatively impacted one of the test-ranCoefs in older versions
+  # More recently, this has become important for the rC_transf test HLfit3 when .safe_opt() more closely approaches singularity
+  # Hence:
+  esys$values <- esys$values+ d_corr # 26/12/2019 => redundant info now. _F I X M E_ remove redundant info if the code stands.
   #
   compactcovmat <- .ZWZt(esys$vectors, d_regul) # at least for return value
   return(structure(compactcovmat, esys=esys, d_regul=d_regul))

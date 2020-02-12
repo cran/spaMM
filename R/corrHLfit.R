@@ -47,6 +47,7 @@
     preprocess.formal.args$adjMatrix <- mc$adjMatrix ## because adjMatrix not in formals(HLfit)    #
     preprocess.formal.args$corrMatrix <- mc$corrMatrix ## because corrMatrix not in formals(HLfit)    #
     preprocess.formal.args$covStruct <- mc$covStruct ## because covStruct not in formals(HLfit)    #
+    preprocess.formal.args$init <- mc$init.corrHLfit ## because init not in formals(HLfit)    #
     if ( identical(family$family,"multi")) {
       ## then data are reformatted as a list. Both HLCor and HLfit can analyse such lists for given corrPars and return the joint likelihood
       ## By contrast HLCor should not fit different corrPars to each data, so it does not lapply("corrHLfit",...)
@@ -171,6 +172,7 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
     preprocess.formal.args$uniqueGeo <- mc$uniqueGeo ## because uniqueGeo not in formals(HLfit)    #
     preprocess.formal.args$distMatrix <- mc$distMatrix ## because distMatrix not in formals(HLfit)    #
     preprocess.formal.args[["control.dist"]] <- control.dist ## because control.dist not in formals(HLfit)    #
+    preprocess.formal.args$init <- mc$init.corrHLfit ## because init not in formals(HLfit)    #
     if ( identical(family$family,"multi")) {
       ## then data are reformatted as a list. Both HLCor and HLfit can analyse such lists for given corrPars and return the joint likelihood
       ## By contrast HLCor should not fit different corrPars to each data, so it does not lapply("corrHLfit",...)

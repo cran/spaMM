@@ -55,7 +55,7 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
   \code{HLmethod="ML"} and leaving \code{REMLformula} at its default NULL value.
 }
   \item{verbose}{
-    A vector of booleans. \code{trace} controls various diagnostic messages (possibly messy) about the iterations. \code{TRACE} is most useful to follow the progress of a long computation, particularly in \code{fitme} or \code{corrHLfit} calls (non-boolean values of \code{TRACE} are meaningful, but the source code of \code{spaMM:::.doTRACE} should be consulted). \code{phifit} (which defaults to \code{TRUE}) controls messages about the progress of residual dispersion fits in DHGLMs. 
+    A vector of booleans. \code{trace} controls various diagnostic messages (possibly messy) about the iterations. \code{TRACE=TRUE} is most useful to follow the progress of a long computation, particularly in \code{fitme} or \code{corrHLfit} calls, for which it displays some mysterious output for each set of correlation and dispersion parameter values considered by the optimiser. Non-boolean values of \code{TRACE} are meaningful, but the source code of \code{spaMM:::.doTRACE} should be consulted for their meaning. \code{phifit} (which defaults to \code{TRUE}) controls messages about the progress of residual dispersion fits in DHGLMs. 
   }
   \item{HLmethod}{
   Allowed values are \code{"REML"}, \code{"ML"}, \code{"EQL-"} and \code{"EQL+"} for all models;  
@@ -76,10 +76,10 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
    \code{break_conv_logL}, a boolean specifying whether the iterative algorithm should terminate when log-likelihood appears to have converged (roughly, when its relative variation over on iteration is lower than 1e-8). Default is FALSE (convergence is then assessed on the parameter estimates rather than on log-likelihood).
 %
   \code{iter.mean.dispFix}, the number of iterations of the iterative algorithm for coefficients of the linear predictor,
-       if no dispersion parameters are estimated by the iterative algorithm. Defaults to 200; 
+       if no dispersion parameters are estimated by the iterative algorithm. Defaults to 200 except for Gamma(log)-family models; 
 %
   \code{iter.mean.dispVar}, the number of iterations of the iterative algorithm for coefficients of the linear predictor,
-       if some dispersion parameter(s) is estimated by the iterative algorithm. Defaults to 50;  
+       if some dispersion parameter(s) is estimated by the iterative algorithm. Defaults to 50 except for Gamma(log)-family models;  
 %
   \code{max.iter}, the number of iterations of the iterative algorithm for joint estimation of dispersion parameters and
         of coefficients of the linear predictor. Defaults to 200. This is typically much more than necessary, 

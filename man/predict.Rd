@@ -14,18 +14,20 @@
   Prediction from a model fit.
 }
 \description{
-  Prediction of the response variable by its expected value obtained as (the inverse link transformation of) the linear predictor (\eqn{\eta}) and more generally for terms of the form \bold{X}_n\eqn{\beta}+\bold{Z}_n\bold{L}\bold{v}, for new design matrices \bold{X}_n and \bold{Z}_n. Various components of prediction variances and predictions intervals can also be computed using \code{predict}. The \code{get_}... functions are convenient extractors for such components. \code{get_predCov_var_fix} extracts a block of a prediction covariance matrix. It was conceived for the specific purpose of computing the spatial prediction covariances between two \dQuote{new} sets of geographic locations, without computing the full covariance matrix for both the new locations and the original (fitted) locations. When one of the two sets of new locations is fixed while the other varies, some expensive computations can be performed once for all sets of ne locations, and be provided as the \code{fix_X_ZAC.object} argument. \code{preprocess_fix_corr} is designed to provide this argument. 
+Prediction of the response variable by its expected value obtained as (the inverse link transformation of) the linear predictor (\eqn{\eta}) and more generally for terms of the form \bold{X}_n\eqn{\beta}+\bold{Z}_n\bold{L}\bold{v}, for new design matrices \bold{X}_n and \bold{Z}_n. Various components of prediction variances and predictions intervals can also be computed using \code{predict}. The \code{get_}... functions are convenient extractors for such components. \code{get_predCov_var_fix} extracts a block of a prediction covariance matrix. It was conceived for the specific purpose of computing the spatial prediction covariances between two \dQuote{new} sets of geographic locations, without computing the full covariance matrix for both the new locations and the original (fitted) locations. When one of the two sets of new locations is fixed while the other varies, some expensive computations can be performed once for all sets of new locations, and be provided as the \code{fix_X_ZAC.object} argument. \code{preprocess_fix_corr} is designed to provide this argument. 
 }
 \usage{
 \method{predict}{HLfit}(object, newdata = newX, newX = NULL, re.form = NULL,
-                          variances=list(), binding = FALSE, intervals = NULL,
-                          level = 0.95, blockSize = 2000L, type = "response", ...)
+                        variances=list(), binding = FALSE, intervals = NULL,
+                        level = 0.95, blockSize = 2000L, type = "response", 
+                        control=list(), ...)
 get_predCov_var_fix(object, newdata = NULL, fix_X_ZAC.object, fixdata, re.form = NULL,
-                   variances=list(disp=TRUE,residVar=FALSE,cov=FALSE), ...)    
+                    variances=list(disp=TRUE,residVar=FALSE,cov=FALSE), 
+                    control=list(), ...)    
 preprocess_fix_corr(object, fixdata, re.form = NULL,
-                   variances=list(residVar=FALSE, cov=FALSE))
+                   variances=list(residVar=FALSE, cov=FALSE), control=list())
 get_fixefVar(...)
-get_predVar(...)
+get_predVar(..., variances=list(), which="predVar")
 get_residVar(...)
 get_respVar(...)
 get_intervals(...)
@@ -47,8 +49,6 @@ get_intervals(...)
   formula for random effects to include.  By default, it is NULL, in which case all random effects are included. If it is NA, no random effect is included. If it is a formula, only the random effects it contains are retained. The other variance components are removed from both point prediction and \code{variances} calculations. If you want to retain only the spatial effects in the point prediction, but all variances, either use re.form  and add missing variances (on linear predictor scale) manually, or ignore this argument and see Details and Examples for different ways of controlling variances.     
  }
  \item{variances}{
- 
-
    A list which elements control the computation of different estimated variances. In particular,
    \code{list(linPred=TRUE,disp=TRUE)} is suitable for uncertainty in point prediction.   
 
@@ -61,13 +61,12 @@ get_intervals(...)
    \code{fixefVar} is the (co)variance of fixed effects (\bold{X}\eqn{\beta}) 
    due to uncertainty in \eqn{\beta}. It is called by \code{variances$fixefVar=TRUE}.
    
-   \code{predVar} is the (co)variance of the linear predictor \eqn{\eta}. 
-   It is the most common measure of uncertainty in point prediction.
+   \code{predVar} is the (co)variance of the linear predictor \eqn{\eta}. It should be noted that the phrase \dQuote{prediction variance} is used inconsistently in the literature, often to denote the uncertainty in the response (therefore, including the residual variance). Here, this uncertainly is called the response variance, and prediction variance is used to denote the uncertainty in the linear predictor (e.g., Booth & Hobert, 1998).  
    It accounts for uncertainty in fixed effects (\bold{X}\eqn{\beta}) and 
    random effects (\bold{ZLv}) for given dispersion parameters (see Details), 
    but it can also accounts for uncertainty in dispersion parameters 
    (\eqn{\lambda} and \eqn{\phi}) estimates if \code{variances$disp=TRUE}, 
-   for models in which the effect of uncertainty in dispersion parameters can be computed.  
+   for models in which the effect of uncertainty in dispersion parameters on the uncertainty of the linear predictor can be computed.  
    This effect can be computed for a scalar residual variance (\eqn{\phi}) 
    and for several random effects with scalar variances (\eqn{\lambda}). 
    \code{variances$predVar=TRUE} will return the sum of the two components, if available; 
@@ -86,6 +85,7 @@ get_intervals(...)
  \item{intervals}{
    NULL or character string or vector of strings. Provides prediction intervals with nominal level \code{level}, deduced from the given prediction variance term, e.g. \code{intervals="predVar"}. Currently only intervals from \code{fixefVar} and \code{predVar} (and for LMMs \code{respVar} including the residual variance) may have a probabilistic meaning. Intervals returned in other cases are (currently) meaningless. 
  }
+ \item{which}{any of \code{"predVar"},\code{"respVar"},\code{"residVar"}, \code{"fixefVar"}, \code{"intervals"}, or \code{"naive"} }
  \item{level}{Coverage of the intervals.}
  \item{binding}{
   If \code{binding} is a character string, the predicted values are bound with the \code{newdata} and the result is returned as a data frame. The predicted values column name is the given \code{binding}, or a name based on it if the \code{newdata} already include a variable with this name. 
@@ -98,6 +98,7 @@ get_intervals(...)
    Mainly for development purposes. For original or new data with many rows, it may be more efficient to split these data in small blocks, and this gives the maximum number or rows of the blocks. However, this will be ignored if a prediction covariance matrix is requested.    
  }
 \item{type}{character string; The returned point prediction is on the response scale if \code{type="response"} (the default). It is on the linear predictor scale if \code{type="link"}. }
+\item{control}{A list; a warning will direct you to relevant usage when needed.}
 \item{\dots}{
   further arguments passed to or from other methods. For the \code{get_}... functions, they are passed to \code{predict}. 
 }
@@ -108,6 +109,7 @@ get_intervals(...)
   For \code{predict}, a matrix or data frame (according to the \code{binding} argument), with optional attributes \code{frame}, \code{intervals}, \code{predVar}, \code{fixefVar}, \code{residVar}, and/or \code{respVar}, the last four holding one or more variance vector or covariance matrices. The further attribute \code{fittedName} contains the binding name, if any.  
   
   The \code{get_}... extractor functions call \code{predict} and extract from its result the attribute implied by the name of the extractor. By default, \code{get_intervals} will return prediction intervals using \code{predVar}.
+  \code{get_predVar} with non-default \code{which} argument has the same effect as the \code{get_}... function whose name is implied by \code{which}.
 }
 \details{
   If  \code{newdata} is NULL, \code{predict} returns the fitted responses, including random effects, from the object. 
@@ -125,8 +127,7 @@ takes into account the joint uncertainty in estimation of \eqn{\beta} and predic
   
 For new levels of the random effects, \code{predVar} computation additionally takes into account uncertainty in prediction of \bold{v} for these new levels. For \bold{prediction covariance} with a new \bold{Z}_n, it matters whether a single or multiple new levels are used: see Examples.      
 
-If \code{variances$disp} is \code{TRUE}, prediction variance may also include a term accounting for uncertainty in \eqn{\phi} and \eqn{\lambda}, computed following Booth and Hobert (1998, eq. 19). This computation 
-ignores uncertainties in spatial correlation parameters.
+If \code{variances$disp} is \code{TRUE}, prediction variance may also include a term accounting for uncertainty in \eqn{\phi} and \eqn{\lambda}, computed following Booth and Hobert (1998, eq. 19). This computation ignores uncertainties in spatial correlation parameters. 
 
 \code{respVar} is the sum of \code{predVar} (pre- and post-multiplied by \eqn{\partial\mu/\partial\eta}{d\mu/d\eta} for models with non-identity link) and of \code{residVar}. 
   
@@ -139,6 +140,9 @@ In the \bold{point prediction} of the linear predictor, the unconditional expect
 }
 \references{
   Booth, J.G., Hobert, J.P. (1998) Standard errors of prediction in generalized linear mixed models. J. Am. Stat. Assoc. 93: 262-272. 
+}
+\seealso{
+\code{\link{get_cPredVar}} for a bootstrap-corrected version of \code{get_predVar}.
 }
 
 \examples{
@@ -169,6 +173,11 @@ cov2 <- get_predVar(fitobject,newdata=moregroups,
 cov1-cov2 ## the expected off-diagonal covariance due to the common group in the first fit.
 
 \dontrun{
+## Other extractors:
+fix_X_ZAC.object <- preprocess_fix_corr(fitobject,fixdata=blackcap)
+# ... for use in multiple calls to get_predCov_var_fix():
+get_predCov_var_fix(fitobject,newdata=blackcap[14,],fix_X_ZAC.object=fix_X_ZAC.object)
+
 ## prediction with distinct given phi's in different locations:
 varphi <- cbind(blackcap,logphi=runif(14))
 vphifit <- corrHLfit(migStatus ~ 1 + Matern(1|latitude+longitude), 
@@ -179,15 +188,6 @@ get_respVar(vphifit,newdata=data.frame(latitude=1,longitude=1,logphi=1))
 # for predVar computation, phi is not needed 
 #     (and could have been specified through ranFix):  
 get_predVar(vphifit,newdata=data.frame(latitude=1,longitude=1))                     
-
-## Effects of numerically singular correlation matrix C:
-fitobject <- corrHLfit(migStatus ~ 1 + Matern(1|latitude+longitude),data=blackcap,
-                       ranFix=list(nu=10,rho=0.001)) ## numerically singular C
-predict(fitobject) ## predicted mu computed as X beta + L v 
-predict(fitobject,newdata=blackcap) ## predicted mu computed as X beta + C %*% solve(t(L),v) 
-#
-fix_X_ZAC.object <- preprocess_fix_corr(fitobject,fixdata=blackcap)
-get_predCov_var_fix(fitobject,newdata=blackcap[14,],fix_X_ZAC.object=fix_X_ZAC.object)
 
 ## point predictions and variances with new X and Z
 if(requireNamespace("rsae", quietly = TRUE)) {

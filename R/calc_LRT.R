@@ -7,12 +7,12 @@
       if (! identical(spaMM.getOption("cores_avail_warned"),TRUE)) {
         message(paste(machine_cores,
                       "cores are available for parallel computation\n(you may be allowed to fewer of them on a shared cluster).\nChange 'nb_cores' argument to use some of them.\nUse spaMM.options(nb_cores=<n>) to control nb_cores globally.\n"))
-        spaMM.options(cores_avail_warned=TRUE)
+        .spaMM.data$options$cores_avail_warned <- TRUE
       } else if (nb_cores>machine_cores) {
         if (! identical(spaMM.getOption("nb_cores_warned"),TRUE)) {
           warning("More cores are requested than found by parallel::detecCores(). Check 'nb_cores' argument.")
           ## + reduce it ?
-          spaMM.options(nb_cores_warned=TRUE)
+          .spaMM.data$options$nb_cores_warned <- TRUE
         }
       }
     }
@@ -62,7 +62,7 @@
 
 .eval_both_fits <- function(nullm_call, fullm_call, fittingFunction) {
   nullfit <- eval(nullm_call)
-  locinit <- .get_inits_from_fit(nullfit, keep_canon_user_inits=TRUE) 
+  locinit <- .get_outer_inits_from_fit(nullfit, keep_canon_user_inits=TRUE) # to initiate fullfit (no previous fullfit available)
   if (fittingFunction=="fitme") {
     fullm_call$init <- locinit
   } else if (fittingFunction=="corrHLfit") {
@@ -71,18 +71,19 @@
   fullfit <- eval(fullm_call)
   if (logLik(fullfit)<logLik(nullfit)) { ## evidence of fullfit being trapped in a local maximum (or so)
     ## We did not overwrite user inits: we do so (but perhaps not optimal if fitted phi at 1e-6
-    re_locinit <- .get_inits_from_fit(nullfit, keep_canon_user_inits=FALSE)
+    re_locinit <- get_inits_from_fit(from=nullfit, template=fullfit, to_fn=fittingFunction )# to initiate next fullfit
     if ( ! identical(locinit,re_locinit)) {
       if (fittingFunction=="fitme") {
-        fullm_call$init <- locinit
+        fullm_call$init <- locinit$init
       } else if (fittingFunction=="corrHLfit") {
-        fullm_call[["init.corrHLfit"]] <- locinit
+        fullm_call[["init.corrHLfit"]] <- locinit[["init.corrHLfit"]]
       }
+      if ( ! is.null(locinit$init.HLfit)) fullm_call[["init.HLfit"]] <- locinit[["init.HLfit"]]
       fullfit <- eval(fullm_call)
     } ## else it's not clear what to do, short of reproducing the eval_replicate2() concept
   }
   # # No comparable evidence that nullfit is trapped in a local maximum: check with fullfit ranPars
-  locinit <- .get_inits_from_fit(nullfit, keep_canon_user_inits=FALSE) 
+  locinit <- .get_outer_inits_from_fit(nullfit, keep_canon_user_inits=FALSE) # for next renullfit
   if (fittingFunction=="fitme") {
     nullm_call$init <- locinit
   } else if (fittingFunction=="corrHLfit") {
@@ -97,6 +98,66 @@
 }
 
 
+.add_boot_results <- function(bootblob, resu, LRTori, df, test_obj) {
+  bootreps <- bootblob$bootreps
+  colnames(bootreps)[1:2] <- paste0(c("full.","null."),test_obj) # which may already be the case
+  if (is.matrix(bootreps)) {
+    bootreps <- data.frame(bootreps)
+    if (anyNA(bootreps)) {
+      bootreps <- na.omit(bootreps)
+      n_omitted <- length(attr(na.omit(bootreps),"na.action"))
+      warnmess <- paste0(n_omitted," bootstrap replicate(s) apparently failed and are omitted for p-value computations.")
+      #warning(warnmess, immediate.=TRUE)
+      bootblob$warnlist$n_omitted <- warnmess
+    } # but thse are retained in the bootblob that is returned
+    bootdL <- bootreps[,1L]-bootreps[,2L]
+    # if ( ! is.null( .condition )) {
+    #   lrfit <- lm(bootdL ~ condition ,data=bootreps)
+    #   meanbootLRT <- 2*predict(lrfit,newdata=data.frame(condition=eval(.condition))) ## conditional mean
+    #   attr(meanbootLRT,"boot_type") <- "conditional"
+    # } else {
+    if (any(bootdL < -2e-04)) {
+      neg_values <- bootdL[bootdL<0]
+      diagn_test <- stats::ks.test(x= -neg_values,y=.neg_r_chinorm, alternative = "less")
+      ##### .neg_r_chinorm was produced as follows for a quick and dirty test (null hypo: chi2+gaussian noise(SD=1e-4))
+      # set.seed(123)
+      # r_chinorm <- rnorm(1e6, mean=rchisq(n=1e6, df=1), sd = 1e-4)
+      # .neg_r_chinorm <- -r_chinorm[r_chinorm<0]
+      # save(.neg_r_chinorm, file="C:\\home\\francois\\travail\\stats\\spaMMplus\\spaMM\\package/R/sysdata.rda", 
+      #    compress="bzip2", version = 2) # version control compared to:
+      ## devtools::use_data(.neg_r_chinorm, internal=TRUE) # while directory is set to .../package/ 
+      ##### Ideally we would like to have a one-sample test instead.
+      # Also, The test ignores the frequency of negatives (length(.neg_r_chinorm)=3284).
+      if (diagn_test$p.value<0.01) {
+        warnmess <- paste0("Suspiciously large negative values in bootstrap distribution of likelihood ratio\n",
+                           "  (up to ",signif(min(neg_values),3L),"). These are treated as 0.")
+        #warning(warnmess, immediate.=TRUE)
+        bootblob$warnlist$neg_values <- warnmess
+      }
+    }
+    bootdL <- pmax(0,bootdL)
+    meanbootLRT <- 2*mean(bootdL)
+    attr(meanbootLRT,"boot_type") <- "marginal"
+    # }
+    LRTcorr <- LRTori*df/meanbootLRT
+    resu$BartBootLRT <- data.frame(chi2_LR=LRTcorr,df=df,p_value=1-pchisq(LRTcorr,df=df))
+    rawPvalue <- (1+sum(bootdL>=LRTori/2))/(nrow(bootreps)+1) ## DavisonH, p.141
+    ## as documented in ?LRT
+    resu$rawBootLRT <- data.frame(chi2_LR=LRTori,df=df,p_value=rawPvalue)
+    resu$bootInfo <- c(bootblob,list(meanbootLRT=meanbootLRT)) 
+  } else {
+    warning(" spaMM_boot is not returning a *matrix* of logLik values, which points to a bug (or an explicit debug.)", 
+            immediate.=TRUE)
+    # trying to return the info without stopping:
+    bootInfo <- c(bootblob,list(meanbootLRT=data.frame(chi2_LR=NA,df=df,p_value=NA)))
+    resu <- c(resu,list(bootInfo=bootInfo,
+                        rawBootLRT = data.frame(chi2_LR=LRTori,df=df,p_value=NA))) 
+  }
+  return(resu)
+}
+
+
+
 # fixedLRT -> .LRT -> spaMM_boot
 .LRT <- function(null.formula=NULL,formula,
                  null.disp=list(), boot.repl=0,
@@ -104,14 +165,15 @@
                  #trace=FALSE, ## T means lead to calls of corrHLfit(... trace=list(<file name>,<over/append>))
                  verbose=c(trace=FALSE),
                  fittingFunction="corrHLfit",  
-                 simuland= .eval_replicate,
-                 nb_cores=NULL,
+                 simuland= eval_replicate,
                  data,
-                 boot_fn="spaMM_boot", # DEPRECATED
                  resp_testfn=NULL,
                  #                 .condition = NULL, ## only an argument of the internal function .LRT() so not visible at user level.
-                 debug.=FALSE,
-                 ...) {
+                 nb_cores=NULL, 
+                 debug.=FALSE, 
+                 #type="marginal", # explicit in call to spaMM_boot() below.
+                 ... # I cannot use the dots to pass arguments to spaMM_boot bc they also contain arguments for the fitting functions
+                 ) {
   if (is.na(verbose["trace"])) verbose["trace"] <- FALSE
   if (is.na(verbose["all_objfn_calls"])) verbose["all_objfn_calls"] <- FALSE   
   callargs <- match.call(expand.dots = TRUE)
@@ -137,7 +199,7 @@
     locmethod <- boot_call$HLmethod
   }
   fullm_call <- boot_call
-  fullm_call[[1L]] <- as.name(fittingFunction) ## so that I can paste() it in .eval_replicate
+  fullm_call[[1L]] <- as.name(fittingFunction) ## so that I can paste() it in eval_replicate
   nullm_call <- fullm_call
   fullm_call$formula <- formula
   
@@ -187,10 +249,11 @@
   nullfit <- blob$nullfit
   fullfit <- blob$fullfit
   if (testFix) {df <- fullfit$dfs[["pforpv"]]-nullfit$dfs[["pforpv"]]} else {df <- length(null.disp)} 
-  if (df<0) {
+  if (df < 0) {
     tmp <- fullfit
     fullfit <- nullfit
     nullfit <- tmp
+    df <- - df
   }
   if (inherits(fullfit,"HLfitlist")) {
     fullL <- attr(fullfit,"APHLs")[[test_obj]]
@@ -201,44 +264,22 @@
   LRTori <- 2*(fullL-nullL)
   ## BOOTSTRAP
   if ( ! is.na(testFix)) {
-    if (boot.repl>0L) {
-      environment(simuland) <- environment() # enclosing env(simuland) <- evaluation env(LRT)
-      bootblob <- spaMM_boot(object=nullfit, nsim = boot.repl, simuland=simuland, nb_cores = nb_cores,
-                             resp_testfn = resp_testfn, ## for simulate
-                             debug.=debug.
-      )
-      bootreps <- bootblob$bootreps
-      colnames(bootreps)[1:2] <- paste0(c("full.","null."),test_obj) # which may already be the case
-    } ## end bootstrap
-  } else { ## nothing operativ yet
-    warning("code missing here")
-    bootreps <- matrix(NA,nrow=boot.repl,ncol=length(unlist(fullfit$APHLs))) 
-    ## more needed here ?
-  }
-  ## prepare output
-  if ( ! is.na(testFix)) {
-    if (testFix) {df <- fullfit$dfs[["pforpv"]]-nullfit$dfs[["pforpv"]]} else {df <- length(null.disp)} 
     resu <- list(fullfit=fullfit,nullfit=nullfit)
     resu$basicLRT <- data.frame(chi2_LR=LRTori,df=df,p_value=1-pchisq(LRTori,df=df))
     if (boot.repl>0L) {
-      bootreps <- data.frame(bootreps)
-      bootreps$bootdL <- bootreps[,1L]-bootreps[,2L]
-      rawPvalue <- (1+sum(bootreps$bootdL>=LRTori/2))/(boot.repl+1) ## DavisonH, p.141
-      # if ( ! is.null( .condition )) {
-      #   lrfit <- lm(bootdL ~ condition ,data=bootreps)
-      #   meanbootLRT <- 2*predict(lrfit,newdata=data.frame(condition=eval(.condition))) ## conditional mean
-      #   attr(meanbootLRT,"boot_type") <- "conditional"
-      # } else {
-         meanbootLRT <- 2*mean(bootreps$bootdL)
-         attr(meanbootLRT,"boot_type") <- "marginal"
-      # }
-      LRTcorr <- LRTori*df/meanbootLRT
-      ## as documented in ?LRT
-      resu$rawBootLRT <- data.frame(chi2_LR=LRTori,df=df,p_value=rawPvalue)
-      resu$BartBootLRT <- data.frame(chi2_LR=LRTcorr,df=df,p_value=1-pchisq(LRTcorr,df=df))
-      resu$bootInfo <- c(bootblob,list(meanbootLRT=meanbootLRT)) 
-    }
-  } else {
+      environment(simuland) <- environment() # enclosing env(simuland) <- evaluation env(LRT)
+      bootblob <- spaMM_boot(object=nullfit, nsim = boot.repl, simuland=simuland, 
+                             nb_cores = nb_cores, #in the dots
+                             resp_testfn = resp_testfn, ## for simulate
+                             debug.=debug., #in the dots
+                             type="marginal" # mandatory arg of spaMM_boot()
+      )
+      resu <- .add_boot_results(bootblob, resu, LRTori, df, test_obj)
+    } ## end bootstrap
+  } else { ## nothing operativ yet
+    warning("code missing here")
+    #bootreps <- matrix(NA,nrow=boot.repl,ncol=length(unlist(fullfit$APHLs))) 
+    ## more needed here ?
     resu <- list(fullfit=fullfit)
     resu$bootInfo <- list()
     resu$basicLRT <- list()

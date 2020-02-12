@@ -1,4 +1,4 @@
-cat("\ntest of MSFDR:")
+cat(crayon::yellow("\ntest of MSFDR:"))
 
 if (spaMM.getOption("example_maxtime")>1.5) { ## fast but not routinely useful
   data("wafers")

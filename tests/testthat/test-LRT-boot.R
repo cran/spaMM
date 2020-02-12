@@ -1,5 +1,6 @@
+cat(crayon::yellow("test LRT with bootstrap, parallel or not:\n"))
 if (spaMM.getOption("example_maxtime")>(13.7+24)) { ## user time + system.time for parallele setup
-  cat("test LRT with bootstrap, parallel or not:\n")
+  cat("test LRT()")
   data("salamander")
   fullfit <- HLfit(cbind(Mate,1-Mate)~TypeF+(1|Female)+(1|Male),family=binomial(),data=salamander,
                   HLmethod="ML",control.HLfit = list(LevenbergM=FALSE))
@@ -10,7 +11,7 @@ if (spaMM.getOption("example_maxtime")>(13.7+24)) { ## user time + system.time f
   set.seed(123)
   pv3 <- LRT(nullfit,fullfit,boot.repl=10,nb_cores=2)$BartBootLRT$p_value
   testthat::expect_equal(pv1,pv3,tolerance=1e-6)
-} else cat("test LRT with bootstrap, parallel or not: increase example_maxtime (38s) to run this test.\n")
+} else cat("increase example_maxtime (38s) to run LRT() test.\n")
 
 if (spaMM.getOption("example_maxtime")>18) { ## user time + system.time for parallele setup
   cat("test spaMM_boot() with different backends:\n")
@@ -33,11 +34,12 @@ if (spaMM.getOption("example_maxtime")>18) { ## user time + system.time for para
 
   ## nb_cores=1, serial pbapply 
   set.seed(123)
-  spaMM_boot(lrt$nullfit, simuland = myfun, nsim=4,
+  spaMM_boot(lrt$nullfit, simuland = myfun, nsim=4, type="marginal", 
              what=quote(fixef(ReSu)[2L]), lrt=lrt,nb_cores=1L)[["bootreps"]]    
   
   ## foreach+doSNOW
-  if (file.exists((privtest <- "C:/home/francois/travail/stats/spaMMplus/spaMM/package/tests_other_pack/test-doSNOW.R"))) {
+  if ( (! "covr" %in% loadedNamespaces()) && 
+       file.exists((privtest <- "C:/home/francois/travail/stats/spaMMplus/spaMM/package/tests_other_pack/test-doSNOW.R"))) {
     source(privtest)
   } # i.e.: 
   # library("doSNOW")
@@ -50,7 +52,7 @@ if (spaMM.getOption("example_maxtime")>18) { ## user time + system.time for para
   set.seed(123)
   if (exists("ReSu")) rm(ReSu) ## otherwise any error in the following code may result in a confusing message
   spaMM_boot(lrt$nullfit, simuland = myfun, nsim=4, control.foreach = list(.errorhandling="pass"),
-             what=quote(fixef(ReSu)[2L]), lrt=lrt,nb_cores=4L)[["bootreps"]]    
+             type="marginal", what=quote(fixef(ReSu)[2L]), lrt=lrt,nb_cores=4L)[["bootreps"]]    
   
 } 
 

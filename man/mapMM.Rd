@@ -7,7 +7,9 @@
   Colorful plots of predicted responses in two-dimensional space. 
 }
 \description{
-  These functions provide either a map of predicted response in analyzed locations, or a predicted surface. \code{mapMM} is a straightforward representation of the analysis of the data, while \code{filled.mapMM} copes with the fact that all predictor variables may not be known in all locations on a fine spatial grid, but may involve questionable choices as a result (see \code{map.formula} argument). Both functions takes an \code{HLfit} object as input. \code{mapMM} calls \code{spaMMplot2D}, which is similar but takes a more conventional (x,y,z) input.  
+  These functions provide either a map of predicted response in analyzed locations, or a predicted surface. \code{mapMM} is a straightforward representation of the analysis of the data, while \code{filled.mapMM} uses interpolation to cope with the fact that all predictor variables may not be known in all locations on a fine spatial grid. Both functions takes an \code{HLfit} object as input. \code{mapMM} calls \code{spaMMplot2D}, which is similar but takes a more conventional (x,y,z) input. 
+  
+  Using \code{filled.mapMM} may involve questionable choices. Plotting a filled contour generally requires prediction in non-observed locations, where predictor variables used in the original data analysis may be missing. In that case, the original model formula cannot be used and an alternative model (controlled by the \code{map.formula} argument) must be used to interpolate (not smooth) the predicted values in observed locations (these predictions still resulting from the original analysis based on predictor variables). \code{filled.mapMM} always performs such interpolation (it does not allow one to provide values for the predictor variables). As a result (1) \code{filled.mapMM} will be slower than a mere plotting function, since it involves the analysis of spatial data; (2) the results may have little useful meaning if the effect of the original predictor variables is not correctly represented by this interpolation step. For example, prediction by interpolation may be biased in a way analogous to prediction of temperature in non-observed locations while ignoring effect of variation in altitude in such locations. Likewise, the\code{variance} argument of \code{filled.mapMM} allows one only to plot the prediction variance of its own interpolator, rather than that of the input object. 
 }
 \usage{
 spaMMplot2D(x, y, z,xrange=range(x, finite = TRUE),
@@ -32,7 +34,7 @@ filled.mapMM(fitobject, Ztransf = NULL, coordinates, xrange = NULL,
 }
 \arguments{
   \item{fitobject}{
-  The return object of a corrHLfit call.
+  The return object of a corrHLfit or fitme call.
 %~ adjMatrix valid for mapMM ?
 }
   \item{x,y,z}{
@@ -55,13 +57,13 @@ filled.mapMM(fitobject, Ztransf = NULL, coordinates, xrange = NULL,
  \item{margin}{
    This controls how far (in relative terms) the plot extends beyond the x and y ranges of the analyzed points, and is overriden by explicit \code{xrange} and \code{yrange} arguments.  
  }
-\item{map.formula}{NULL, or a formula whose left-hand side is ignored. Plotting a filled contour generally requires prediction in non-observed locations, where predictor variables used in the original data analysis may be missing. In that case, the original model formula cannot be used and an alternative \code{map.formula} must be used to interpolate (not smooth) the predicted values in observed locations (these predictions still resulting from the original analysis based on predictor variables). As a result (1) \code{filled.mapMM} will be slower than a mere plotting function, since it involves the analysis of spatial data; (2) the results may have little useful meaning if the effects of the original predictor variables is not correctly represented by this interpolation step. For example, it may involve biases analogous to predicting temperature in non-oberved locations while ignoring effect of variation in altitude in such locations.     
+\item{map.formula}{NULL, or a formula whose left-hand side is ignored. Provides the formula used for interpolation. If NULL, a default formula with the same spatial effect(s) as in the input \code{fitobject} is used.     
 }
 \item{phi}{  
   This controls the phi value assumed in the interpolation step. Ideally \code{phi} would be zero, but problems with numerically singular matrices may arise when \code{phi} is too small.
 }
 \item{gridSteps}{The number of levels of the grid of x and y values}
-\item{variance}{Either NULL, or the name of a component of prediction variance to be plotted. Must name one of the components that can be returned by \code{predict.HLfit}. \code{variance="predVar"} is suitable for uncertainty in point prediction.}
+\item{variance}{Either NULL, or the name of a component of variance of prediction \emph{by the interpolator} to be plotted. Must name one of the components that can be returned by \code{predict.HLfit}. \code{variance="predVar"} is suitable for uncertainty in point prediction.}
 \item{var.contour.args}{A list of control parameters for rendering of prediction variances. See \code{\link{contour}} for possible arguments (except \code{x}, \code{y}, \code{z} and \code{add}).}
 \item{add.map}{
   Either a boolean or an explicit expression, enclosed in \code{quote} (see Examples).
@@ -143,19 +145,15 @@ data("blackcap")
 bfit <- corrHLfit(migStatus ~ means+ Matern(1|longitude+latitude),data=blackcap,
                   HLmethod="ML",
                   ranFix=list(lambda=0.5537,phi=1.376e-05,rho=0.0544740,nu=0.6286311))
-if (requireNamespace("maps")) { ## required for add.map=TRUE 
   mapMM(bfit,color.palette = function(n){spaMM.colors(n,redshift=1/2)},add.map=TRUE)
-}
 
 if (spaMM.getOption("example_maxtime")>0.8) {
   ## filled.mapMM takes a bit longer
-  # showing 'add.map', 'nlevels', and contour lines for 'variances'
-  if (requireNamespace("maps")) { ## required for add.map=TRUE 
-    filled.mapMM(bfit,nlevels=30,add.map=TRUE,plot.axes=quote({axis(1);axis(2)}),
+  # showing 'add.map', 'nlevels', and contour lines for 'variance'
+  filled.mapMM(bfit,nlevels=30,add.map=TRUE,plot.axes=quote({axis(1);axis(2)}),
              variance="respVar",
              plot.title=title(main="Inferred migration propensity of blackcaps",
                                xlab="longitude",ylab="latitude"))
-  }
 }
 
 if (spaMM.getOption("example_maxtime")>2.5) {
@@ -165,12 +163,10 @@ if (spaMM.getOption("example_maxtime")>2.5) {
                   family=binomial(),ranFix=list(nu=0.5,rho=2.255197,lambda=1.075))   
 
  ## longer computation requiring interpolation of 197 points 
- if (requireNamespace("maps")) { ## required for add.map=TRUE 
-  filled.mapMM(lfit,add.map=TRUE,plot.axes=quote({axis(1);axis(2)}),
+ filled.mapMM(lfit,add.map=TRUE,plot.axes=quote({axis(1);axis(2)}),
              decorations=quote(points(pred[,coordinates],pch=15,cex=0.3)),
              plot.title=title(main="Inferred prevalence, North Cameroon",
                                 xlab="longitude",ylab="latitude"))
-  }
 }
 
 }

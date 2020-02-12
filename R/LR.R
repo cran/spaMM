@@ -84,14 +84,14 @@
     if (!is.null(Rnest)) {
       lambda.object <- object$lambda.object
       if (!is.null(lambda.object)) df1 <- df1+length(unlist(lambda.object$coefficients_lambdaS))
-      cov.mats <- .get_compact_cov_mats(object$strucList,later=FALSE)
+      cov.mats <- .get_compact_cov_mats(object$strucList)
       if (length(cov.mats)) {
         nrows <- unlist(lapply(cov.mats,NROW))
         df1 <- df1+sum(nrows*(nrows-1)/2)
       }
       lambda.object <- object2$lambda.object
       if (!is.null(lambda.object)) df2 <- df2+length(unlist(lambda.object$coefficients_lambdaS))
-      cov.mats <- .get_compact_cov_mats(object2$strucList,later=FALSE)
+      cov.mats <- .get_compact_cov_mats(object2$strucList)
       if ( length(cov.mats)) {
         nrows <- unlist(lapply(cov.mats,NROW))
         df2 <- df2+sum(nrows*(nrows-1)/2)
@@ -136,7 +136,7 @@
   return(list(fullfit=fullm,nullfit=nullm,test_obj=testlik,df=df))
 }
 
-.get_inits_from_fit <- function(fitobject, keep_canon_user_inits) {
+.get_outer_inits_from_fit <- function(fitobject, keep_canon_user_inits) {
   canon.init <- attr(fitobject,"optimInfo")$LUarglist$canon.init ## includes user init
   #
   nullranPars <- get_ranPars(fitobject)
@@ -162,7 +162,73 @@
   return(locinit)
 }
 
-.eval_replicate <- function(y) { # no additional arguments, to ease parallel programming => next lines instead
+.get_rC_inits_from_hlfit <- function(hlfit) {
+  reinit <- .get_compact_cov_mats(hlfit$strucList)
+  seq_rd <- seq_along(reinit)
+  if (length(seq_rd)) {
+    for (rd in seq_rd) {
+      if ( ! is.null(ini_mix <- reinit[[rd]])) {
+        ini_corr <- cov2cor(ini_mix)
+        ini_mix[lower.tri(ini_corr,diag=FALSE)] <-  ini_corr[lower.tri(ini_corr,diag=FALSE)] # replaces covby corr
+        reinit[[rd]] <- ini_mix[lower.tri(ini_mix,diag=TRUE)] ## mix cov/corr in vector form
+      } else reinit[[rd]] <- NA # the syntax undestood by fitting functions
+    }
+    names(reinit) <- paste(seq_rd)
+  }
+  return(reinit)
+}
+
+# to initiate a *f*ullfit
+get_inits_from_fit <- function(from, template=NULL, to_fn=NULL ) { # 'to_fn' may differ from that of 'from' and 'to'
+  new_outer_inits <- .get_outer_inits_from_fit(fitobject=from, keep_canon_user_inits = FALSE)
+  fromfn <- paste(getCall(from)[[1]])
+  init.HLfit <- NULL
+  if (fromfn=="HLfit") { 
+    rC_inits <- .get_rC_inits_from_hlfit(from)
+    if (length(rC_inits)) init.HLfit <- list(ranCoefs=rC_inits)
+  }
+  if (is.null(to_fn)) {
+    if (is.null(template)) {
+      to_fn <- fromfn
+    } else if (inherits(template,"HLfit")) {
+      to_fn <- paste(getCall(template)[[1]])
+    } else stop("Invalid 'template' argument.")
+  }
+  if (to_fn=="fitme") {
+    new_inits <- list(init=new_outer_inits,init.HLfit=init.HLfit)
+  } else if (to_fn=="corrHLfit") {
+    new_inits <- list(init.corrHLfit=new_outer_inits,init.HLfit=init.HLfit)
+  } else new_inits <- list(init.HLfit=init.HLfit)
+  if (length(fixef_from <- fixef(from))) {
+    if (inherits(template,"HLfit")) { # This was motivated by the Leucadendron_hard.R bootstrap replicates.
+      new_HLfit_inits <- fixef(template)
+      new_HLfit_inits[names(new_HLfit_inits)] <- 0
+      shared_names <- intersect(names(new_HLfit_inits), names(fixef_from))
+      new_HLfit_inits[shared_names] <- fixef_from[shared_names]
+      new_HLfit_inits <- list(fixef=new_HLfit_inits)
+      new_inits[["init.HLfit"]] <- c(new_inits[["init.HLfit"]], new_HLfit_inits)
+    } else new_inits[["init.HLfit"]] <- c(new_inits[["init.HLfit"]], list(fixef=fixef_from))
+  }
+  return(new_inits)
+}
+
+.update_control <- function(fit_call, optim_boot, from_fn=NULL) {
+  if (is.null(from_fn)) from_fn <- paste(fit_call[[1]])
+  if (from_fn=="fitme") {
+    ctrl_opt <- fit_call[["control"]]
+    if (is.null(ctrl_opt)) {
+      ctrl_opt <- list(optimizer=optim_boot) 
+    } else ctrl_opt[["optimizer"]] <- optim_boot
+  } else if (from_fn=="corrHLfit") {
+    ctrl_opt <- fit_call[["control.corrHLfit"]]
+    if (is.null(ctrl_opt)) {
+      ctrl_opt <- list(optimizer=optim_boot) 
+    } else ctrl_opt[["optimizer"]] <- optim_boot
+  } else ctrl_opt <- NULL
+  return(ctrl_opt)
+}
+
+eval_replicate <- function(y) { # no additional arguments, to ease parallel programming => next lines instead
   # the function will be called within e.g. pbapply so it's useless to refer to parent.frame() here
   enclosing_env <- parent.env(environment()) ## this is not necess for the code to run, but for the CRAN checks not to complain
   nullfit <- get("nullfit", enclosing_env)
@@ -171,70 +237,63 @@
   test_obj <- get("test_obj", enclosing_env)
   debug. <- get("debug.", enclosing_env)
   #  .condition <- get(".condition", enclosing_env)
-  fittingFunction <- paste(getCall(nullfit)[[1]])
-  newinits <- .get_inits_from_fit(fitobject=nullfit, 
-                                  keep_canon_user_inits = FALSE)                                     
-  if (fittingFunction=="fitme") {
-    new_args <- list(init=newinits)
-  } else if (fittingFunction=="corrHLfit") {
-    new_args <- list(init.corrHLfit=newinits)
+  null_call <- getCall(nullfit)
+  null_fit_fn <- paste(null_call[[1]]) 
+  full_fit_fn <- paste(getCall(fullfit)[[1]]) 
+  newinits <- .get_outer_inits_from_fit(fitobject=nullfit, keep_canon_user_inits = FALSE) # for next new_nullfit
+  ctrl_opt <- .update_control(fit_call=null_call, optim_boot=.spaMM.data$options$optim_boot, from_fn=null_fit_fn) # need .safe_opt when newinits are at bound.
+  if (null_fit_fn=="fitme") {
+    new_args <- list(init=newinits, control=ctrl_opt)
+  } else if (null_fit_fn=="corrHLfit") {
+    new_args <- list(init.corrHLfit=newinits, control.corrHLfit=ctrl_opt)
   } else new_args <- NULL
-  if (debug.==2) {
-    re_nullfit <- do.call(update_resp, c(list(object=nullfit, newresp = y),new_args)) # may stop on error
-  } else {
-    re_nullfit <- try(do.call(update_resp, c(list(object=nullfit, newresp = y),new_args)))
-    if (inherits(re_nullfit,"try-error")) {
-      if (debug.) { ## (debug.= TRUE or 1L) to return error info in parallel mode: return the try-error object
-        return(c(NA,re_nullfit))
-      } else return(c(NA,NA))
-    }
-    ## ELSE return pair of likelihoods
-  }
+  # pbbly never good not to use try(). It's the handling of try-error that may vary
+  # debug(pbapply) (or pblapply ?) may be useful to 
+  re_nullfit <- try(do.call(update_resp, c(list(object=nullfit, newresp = y),new_args)))
+  if (inherits(re_nullfit,"try-error")) { ## (debug.= TRUE or 1L) to return error info in parallel mode: return the try-error object
+    if (debug.==2) stop() # it's really a bad idea in a parallel session 
+    if (debug.) {
+      utils::dump.frames(dumpto="dump_on_re_nullfit", to.file=TRUE) # but doesn't stop
+      return(list(full=structure(NA,info="no fullfit"), 
+               null=structure(NA,re_nullfit=re_nullfit)))
+    } else return(c(full=NA, null=NA)) # attributes would be lost at the level of the pbapply() closure. 
+               # cf apply -> array -> as.vector -> loses all attributes as doc'ed in apply and as.vector
+  } ## ELSE continue
+  logL_re_null <- logLik(re_nullfit,which=test_obj)
   # Allows the user to control the starting values of the re_fullfit:
   # edotargs <- dotargs
   # for (st in setdiff(names(edotargs),"prior.weights")) {
   #   edotargs[[st]] <- eval(edotargs[[st]],env=environment()) ## evaluate the promises in the current execution envir
   # }
   # #
-  newinits <- .get_inits_from_fit(fitobject=re_nullfit, keep_canon_user_inits = FALSE)
-  if (fittingFunction=="fitme") {
-    new_args <- list(init=newinits)
-  } else if (fittingFunction=="corrHLfit") {
-    new_args <- list(init.corrHLfit=newinits)
-  } else new_args <- NULL
-  if (debug.==2) {
-    re_fullfit <- do.call(update_resp, c(list(object=fullfit, newresp = y),new_args)) # may stop on error
-  } else {
-    re_fullfit <- try(do.call(update_resp, c(list(object=fullfit, newresp = y),new_args)))
-    if (inherits(fullfit,"try-error")) {
-      if (debug.) { 
-        return(c(re_fullfit,re_nullfit))
-      } else return(c(NA,re_nullfit))
-    }
-    ## ELSE:
-  }
-  LRstat <- 2*(logLik(re_fullfit,which=test_obj)-logLik(re_nullfit,which=test_obj))  
-  if (1-pchisq(LRstat,df=sum(re_fullfit$dfs)-sum(re_nullfit$dfs))<0) { # ie, if (FALSE)
-    newinits <- .get_inits_from_fit(fitobject=re_fullfit, keep_canon_user_inits = FALSE)
-    if (fittingFunction=="fitme") {
-      new_args <- list(init=newinits)
-    } else if (fittingFunction=="corrHLfit") {
-      new_args <- list(init.corrHLfit=newinits)
-    }
+  newinits <- get_inits_from_fit(from=re_nullfit, template=fullfit, to_fn=full_fit_fn )
+  for (it in seq_along(newinits)) if ( ! length(newinits[[it]])) newinits[it] <- NULL
+  subsets_inits <- .all.subsets(newinits) ## limited scope: could effectively do this is a nested way (with a skeleton+relist technique)
+  # subsets_inits is always a list of lists, with at least one element (minimally: list(list()))
+  for (it in seq_along(subsets_inits)) {
+    inits <- subsets_inits[[it]]
+    if (full_fit_fn=="fitme") {
+      new_args <- list(init=inits$init, init.HLfit=inits$init.HLfit, control=ctrl_opt)
+    } else if (full_fit_fn=="corrHLfit") {
+      new_args <- list(init.corrHLfit=inits$init.corrHLfit, init.HLfit=inits$init.HLfit, control.corrHLfit=ctrl_opt)
+    } else new_args <- list(init.HLfit=inits$init.HLfit)
     if (debug.==2) {
-      new_nullfit <- do.call(update_resp, c(list(object=nullfit, newresp = y),new_args)) # may stop on error
+      re_fullfit <- do.call(update_resp, c(list(object=fullfit, newresp = y),new_args)) # may stop on error
     } else {
-      new_nullfit <- try(do.call(update_resp, c(list(object=nullfit, newresp = y),new_args)))
-      if (inherits(new_nullfit,"try-error")) {
-        if (debug.) { ## (debug.= TRUE or 1L) to return error info in parallel mode: return the try-error object
-          return(c(NA,new_nullfit))
-        } else return(c(NA,NA))
-      }
+      re_fullfit <- try(do.call(update_resp, c(list(object=fullfit, newresp = y),new_args)))
+      if (inherits(re_fullfit,"try-error")) { ## (debug.= TRUE or 1L) to return error info in parallel mode: return the try-error object
+        if (debug.==2) stop() # it's really a bad idea in a parallel session 
+        if (debug.) {
+          utils::dump.frames(dumpto="dump_on_re_fullfit", to.file=TRUE) # but doesn't stop
+          return(list(full=structure(NA,re_fullfit=re_fullfit), # but the attributes seem lost at the level of the pbapply() closure.
+                      null=structure(logL_re_null,re_nullfit=re_nullfit)))
+        } else return(c(full=NA, null=logL_re_null)) # attributes would be lost at the level of the pbapply() closure. 
+      } ## ELSE continue
     }
-    logL_new_null <- logLik(new_nullfit,which=test_obj)
-    if (logLik(new_nullfit,which=test_obj)>logLik(re_nullfit,which=test_obj)) re_nullfit <- new_nullfit
+    logL_re_full <- logLik(re_fullfit,which=test_obj)
+    if (logL_re_full>logL_re_null-1e-04) break # break the for loop
   }
-  resu <- c(full=logLik(re_fullfit,which=test_obj),null=logLik(re_nullfit,which=test_obj))
+  resu <- c(full=logL_re_full,null=logL_re_null)
   # if ( ! is.null(.condition)) {
   #   condition <- with(list(nullfit=re_nullfit, fullfit=re_fullfit), eval(.condition))
   #   resu <- c(resu, condition=condition)
@@ -251,7 +310,9 @@
   test_obj <- get("test_obj",enclosing_env)
   debug. <- get("debug.", enclosing_env)
 #  .condition <- get(".condition", enclosing_env)
-  fittingFunction <- paste(getCall(nullfit)[[1]])
+  null_call <- getCall(nullfit)
+  null_fit_fn <- paste(null_call[[1]]) 
+  full_fit_fn <- paste(getCall(fullfit)[[1]]) 
   conv_full <- conv_null <- FALSE
   best_logL_full <- best_logL_null <- prev_logL_full <- prev_logL_null <- -Inf
   # Allows the user to control the starting values of the initial new_nullfit
@@ -259,24 +320,23 @@
   # for (st in setdiff(names(edotargs),"prior.weights")) {
   #   edotargs[[st]] <- eval(edotargs[[st]],env=environment()) ## evaluate the promises in the current execution envir
   # }
-  newinits <- .get_inits_from_fit(fitobject=nullfit, 
-                                  keep_canon_user_inits = FALSE)                 
-  if (fittingFunction=="fitme") {
-    new_args <- list(init=newinits)
-  } else if (fittingFunction=="corrHLfit") {
-    new_args <- list(init.corrHLfit=newinits)
+  ctrl_opt <- .update_control(fit_call=null_call, optim_boot=.spaMM.data$options$optim_boot, from_fn=null_fit_fn) # need .safe_opt when newinits are at bound.
+  newinits <- .get_outer_inits_from_fit(fitobject=nullfit, keep_canon_user_inits = FALSE) # for next new_nullfit
+  if (null_fit_fn=="fitme") {
+    new_args <- list(init=newinits, control=ctrl_opt)
+  } else if (null_fit_fn=="corrHLfit") {
+    new_args <- list(init.corrHLfit=newinits, control.corrHLfit=ctrl_opt)
   } else new_args <- NULL
   while ( TRUE ) {
-    if (debug.==2) {
-      new_nullfit <- do.call(update_resp, c(list(object=nullfit, newresp = y),new_args)) # may stop on error
-    } else {
-      new_nullfit <- try(do.call(update_resp, c(list(object=nullfit, newresp = y),new_args)))
-      if (inherits(new_nullfit,"try-error")) {
-        if (debug.) { ## (debug.= TRUE or 1L) to return error info in parallel mode: return the try-error object
-          return(c(NA,new_nullfit))
-        } else return(c(NA,NA))
-      }
-    }
+    new_nullfit <- try(do.call(update_resp, c(list(object=nullfit, newresp = y),new_args)))
+    if (inherits(new_nullfit,"try-error")) { ## (debug.= TRUE or 1L) to return error info in parallel mode: return the try-error object
+      if (debug.==2) stop() # it's really a bad idea in a parallel session 
+      if (debug.) {
+        utils::dump.frames(dumpto="dump_on_new_nullfit", to.file=TRUE) # but doesn't stop
+        return(list(full=structure(NA,new_nullfit=new_nullfit), # but the attributes seem lost at the level of the pbapply() closure.
+                    null=structure(NA,info="no nullfit")))
+      } else return(c(full=NA, null=NA)) # attributes would be lost at the level of the pbapply() closure. 
+    } ## ELSE continue
     logL_new_null <- logLik(new_nullfit,which=test_obj)
     #cat(logL_new_null)
     conv_null <- (abs(logL_new_null - prev_logL_null)<1e-4)
@@ -287,41 +347,52 @@
     if (conv_null) break # no point in refitting the full model if the new inits from null fit don't change
     # ELSE
     prev_logL_null <- logL_new_null
-    newinits <- .get_inits_from_fit(fitobject=best_nullfit, keep_canon_user_inits = FALSE)
-    if (fittingFunction=="fitme") {
-      new_args <- list(init=newinits)
-    } else if (fittingFunction=="corrHLfit") {
-      new_args <- list(init.corrHLfit=newinits)
-    }
-    if (debug.==2) {
-      new_fullfit <- do.call(update_resp, c(list(object=fullfit, newresp = y),new_args)) # may stop on error
-    } else {
-      new_fullfit <- try(do.call(update_resp, c(list(object=fullfit, newresp = y),new_args)))
-      if (inherits(new_fullfit,"try-error")) {
-        if (debug.) { 
-          return(c(new_fullfit,new_nullfit))
-        } else return(c(NA,new_nullfit))
+    newinits <- get_inits_from_fit(from=best_nullfit, template=fullfit, to_fn=full_fit_fn )
+    for (it in seq_along(newinits)) if ( ! length(newinits[[it]])) newinits[it] <- NULL
+    subsets_inits <- .all.subsets(newinits) ## limited scope: could effectively do this is a nested way (with a skeleton+relist technique)
+    # subsets_inits is always a list of lists, with at least one element (minimally: list(list()))
+    for (it in seq_along(subsets_inits)) {
+      inits <- subsets_inits[[it]]
+      if (full_fit_fn=="fitme") {
+        new_args <- list(init=inits$init, init.HLfit=inits$init.HLfit, control=ctrl_opt)
+      } else if (full_fit_fn=="corrHLfit") {
+        new_args <- list(init.corrHLfit=inits$init.corrHLfit, init.HLfit=inits$init.HLfit, control.corrHLfit=ctrl_opt)
+      } else new_args <- list(init.HLfit=inits$init.HLfit)
+      if (debug.==2) {
+        new_fullfit <- do.call(update_resp, c(list(object=fullfit, newresp = y),new_args)) # may stop on error
+      } else {
+        new_fullfit <- try(do.call(update_resp, c(list(object=fullfit, newresp = y),new_args)))
+        if (inherits(new_fullfit,"try-error")) { ## (debug.= TRUE or 1L) to return error info in parallel mode: return the try-error object
+          if (debug.==2) stop() # it's really a bad idea in a parallel session 
+          if (debug.) {
+            utils::dump.frames(dumpto="dump_on_new_fullfit", to.file=TRUE) # but doesn't stop
+            return(list(full=structure(NA,new_fullfit=new_fullfit), # but the attributes seem lost at the level of the pbapply() closure.
+                        null=structure(logL_new_null,new_nullfit=new_nullfit)))
+          } else return(c(full=NA, null=logL_new_null)) # attributes would be lost at the level of the pbapply() closure. 
+        } ## ELSE continue
       }
-    }
-    logL_new_full <- logLik(new_fullfit,which=test_obj)
-    #cat(" ",logL_new_full,"\n")
-    conv_full <- (abs(logL_new_full - prev_logL_full)<1e-4)
-    if (logL_new_full>best_logL_full) { # always true the first time
-      best_fullfit <- new_fullfit
-      best_logL_full <- logL_new_full
+      logL_new_full <- logLik(new_fullfit,which=test_obj)
+      #cat(" ",logL_new_full,"\n")
+      conv_full <- (abs(logL_new_full - prev_logL_full)<1e-4)
+      if (logL_new_full>best_logL_full) { # always true the first time
+        best_fullfit <- new_fullfit
+        best_logL_full <- logL_new_full
+        if (logL_new_full>best_logL_null) break # the for loop
+      }
     }
     if (conv_full) break # no point in refitting the null model if the new inits from full fit don't change
     # ELSE
     prev_logL_full <- logL_new_full
-    newinits <- .get_inits_from_fit(fitobject=best_fullfit, keep_canon_user_inits = FALSE)
-    if (fittingFunction=="fitme") {
-      new_args <- list(init=newinits)
-    } else if (fittingFunction=="corrHLfit") {
-      new_args <- list(init.corrHLfit=newinits)
-    }
+    newinits <- .get_outer_inits_from_fit(fitobject=best_fullfit, keep_canon_user_inits = FALSE) # for next new_nullfit
+    if (null_fit_fn=="fitme") {
+      new_args <- list(init=newinits, control=ctrl_opt)
+    } else if (null_fit_fn=="corrHLfit") {
+      new_args <- list(init.corrHLfit=newinits, control.corrHLfit=ctrl_opt)
+    } else new_args <- NULL
   } # end while()
   # print(logLik(new_fullfit,which=test_obj) - logLik(new_nullfit,which=test_obj)) 
   resu <- c(full=best_logL_full,null=best_logL_null)
+  #if (best_logL_full<best_logL_null-0.01) browser()
   # if ( ! is.null(.condition)) {
   #   condition <- with(list(nullfit=best_nullfit, fullfit=best_fullfit), eval(.condition))
   #   resu <- c(resu, condition=condition)
@@ -331,14 +402,14 @@
 
 
 # (fixme?) : create as.lm method for HLfit object?
-LRT <- function(object,object2,boot.repl=0,nb_cores=NULL, boot_fn="spaMM_boot", 
-                resp_testfn=NULL, debug.=FALSE, type="marginal", simuland=.eval_replicate, 
+LRT <- function(object,object2,boot.repl=0,# nb_cores=NULL, 
+                resp_testfn=NULL, simuland=eval_replicate, 
 #                .condition = NULL, ## bc expected by simuland, but not operational,
                 ...) { 
   if (nrow(object$data)!=nrow(object2$data)) {
     stop("models were not both fitted to the same size of dataset.")
   }
-  if (length(list(...))) warning("...' arguments are currently ignored in LRT()", immediate. = TRUE) 
+  #if (length(list(...))) warning("...' arguments are currently ignored in LRT()", immediate. = TRUE) 
   #  which is a bit unfortunate ( say ...control=list(optimizer="bobyqa")) but makes parallelisation so much more straightforward...
   info <- .compare_model_structures(object,object2)
   nullfit <- info$nullfit
@@ -350,7 +421,6 @@ LRT <- function(object,object2,boot.repl=0,nb_cores=NULL, boot_fn="spaMM_boot",
   resu <- list(nullfit=nullfit,fullfit=fullfit,basicLRT = data.frame(chi2_LR=LRTori,df=df,p_value=pvalue)) ## format appropriate for more tests  
   if (boot.repl) {
     if (boot.repl<100L) message("It is recommended to set boot.repl>=100 for Bartlett correction")
-    nb_cores <- .check_nb_cores(nb_cores=nb_cores)
 #    dotargs <- match.call(expand.dots = FALSE)$... ## produce a pairlist of (essentially) promises. No quote() needed
     isdebugd <- isdebugged(simuland) # bc the assignment of environment drops this status
     environment(simuland) <- environment() # enclosing env(simuland) <- evaluation env(LRT)
@@ -358,29 +428,15 @@ LRT <- function(object,object2,boot.repl=0,nb_cores=NULL, boot_fn="spaMM_boot",
 
     bootblob <- spaMM_boot(object=nullfit,nsim = boot.repl,
                            simuland=simuland, 
-                           nb_cores = nb_cores,
+                           #nb_cores = nb_cores,
                            resp_testfn = resp_testfn,
                            #aslistfull=aslistfull, aslistnull=aslistnull#, simbData=simbData,
-                           debug.=debug., type=type
+                           # debug.=debug., now in the ...
+                           type="marginal", # mandatory arg of spaMM_boot()
                            #, control.foreach=list(.errorhandling="pass")
+                           ...
     )
-    
-    bootreps <- bootblob$bootreps
-    if (is.matrix(bootreps)) {
-      colnames(bootreps)[1:2] <- paste0(c("full.","null."),test_obj) # which may already be the case
-      bootdL <- bootreps[,1]-bootreps[,2]
-      meanbootLRT <- 2*mean(bootdL)
-      resu <- c(resu,list(rawBootLRT = data.frame(chi2_LR=LRTori,df=df,p_value=(1+sum(bootdL>=LRTori/2))/(boot.repl+1)))) ## format appropriate for more tests  
-      LRTcorr <- LRTori*df/meanbootLRT
-      resu <- c(resu,list(BartBootLRT = data.frame(chi2_LR=LRTcorr,df=df,p_value=1-pchisq(LRTcorr,df=df)))) ## format appropriate for more tests  
-      bootInfo <- list(meanbootLRT = meanbootLRT,bootreps = bootreps, RNGstates=bootblob$RNGstates)
-      resu <- c(resu,list(bootInfo=bootInfo)) ## keeps the sublist structure, which is not compatible with hglmjob.R...  
-    } else {## a list in debug. case; following code to avoid bug
-      bootInfo <- list(meanbootLRT = data.frame(chi2_LR=NA,df=df,p_value=NA),
-                       bootreps = bootreps, RNGstates=bootblob$RNGstates)
-      resu <- c(resu,list(bootInfo=bootInfo,
-                          rawBootLRT = data.frame(chi2_LR=LRTori,df=df,p_value=NA))) 
-    }
+    resu <- .add_boot_results(bootblob, resu, LRTori, df, test_obj)
   }
   class(resu) <- c("fixedLRT",class(resu)) 
   return(resu)

@@ -185,10 +185,10 @@ if (FALSE) {
 
 
 
-## the following fns try to keep the input class in output, but are called with dense matrices (except irst tested case).
+## the following fns try to keep the input class in output, but are called with dense matrices (except first tested case).
 # les Matrix::(t)crossprod  paraissent (parfois au moins) remarquablement inefficaces !!
 # idem pour Diagonal()
-.ZWZtwrapper <- function(ZAL,w) { 
+.ZWZtwrapper <- function(ZAL,w,as_sym=TRUE) { 
   if (inherits(ZAL,"Matrix")) {
     if (inherits(ZAL,"ddiMatrix")) { ## if diagonal
       if ( ZAL@diag=="U") {
@@ -197,12 +197,12 @@ if (FALSE) {
     } else {
       sqrtW <- sqrt(w)
       ZW <- .Matrix_times_Dvec(ZAL,sqrtW)
-      return(.tcrossprod( ZW)) ## dsCMatrix
+      return(.tcrossprod( ZW, as_sym=as_sym)) ## dsCMatrix if as_sym=TRUE (default)
     }
   } else if (inherits(ZAL,"ZAXlist")) {
     sqrtW <- sqrt(w)
     ZW <- .m_Matrix_times_Dvec(ZAL,sqrtW)
-    return(.tcrossprod( ZW)) ## dsCMatrix
+    return(.tcrossprod( ZW,as_sym=as_sym)) ## dsCMatrix if as_sym=TRUE (default)
   } else return(.ZWZt(ZAL,w))
 }
 
@@ -234,25 +234,7 @@ if (FALSE) {
   } else return(.ZtWZ(ZAL,w)) ## but this uses sqrt() hence assumes w>0
 } # Matrix result is always of symmetric type (dsC or ddi)
 
-# See getMethod("cov2cor", signature=c("ANY"))
-.CovRegulCor <- function(COV, regul_cor=.spaMM.data$options$regul_ranCoefs[1L]) { 
-  if (regul_cor==0) return(COV)
-  p <- (d <- dim(COV))[1L]
-  if (!is.numeric(COV) || length(d) != 2L || p != d[2L]) 
-    stop("'V' is not a square numeric matrix")
-  Is <- sqrt(1/diag(COV))
-  if (any(!is.finite(Is))) 
-    warning("diag(.) had 0 or NA entries; non-finite result is doubtful")
-  cor <- COV
-  cor[] <- Is * COV * rep(Is, each = p)
-  cor[cbind(1L:p, 1L:p)] <- 1+regul_cor
-  invIs <- 1/Is
-  COV <- cor
-  COV[] <- invIs * cor * rep(invIs, each = p)
-  COV
-}
-
-.process_ranCoefs <- function(processed, ranCoefs, trRanCoefs, invLs=NULL, use_tri, need_longLv=TRUE) {
+.process_ranCoefs <- function(processed, ranCoefs, trRanCoefs, invLs=NULL, use_tri_Nspprec, need_longLv=TRUE) {
   if (! is.null(invLs)) ranCoefs <- trRanCoefs
   ranCoefs_blob <- processed$ranCoefs_blob
   ZAlist <- processed$ZAlist 
@@ -309,7 +291,9 @@ if (FALSE) {
   spprecBool <- processed$sparsePrecisionBOOL
   if (spprecBool) {
     condnum <- .spaMM.data$options[["condnum_for_latentL_spprec"]]
-  } else condnum <- .spaMM.data$options[["condnum_for_latentL"]]
+  } else if (use_tri_Nspprec) {
+    condnum <- .spaMM.data$options[["condnum_for_latentL_other"]]
+  } else condnum <- .spaMM.data$options[["condnum_for_latentL_other"]]
   nrand <- length(ZAlist)
   if (is.null(LMatrices <- ranCoefs_blob$LMatrices)) LMatrices <- vector("list", nrand)
   if (is.null(lambda_est <- ranCoefs_blob$lambda_est)) lambda_est <- numeric(cum_n_u_h[nrand+1L])
@@ -318,7 +302,7 @@ if (FALSE) {
     Xi_ncol <- Xi_cols[rt]
     if (need_longLv || is.null(invLs)) { ## only the econd case appears to be true sometimes, and only in develcode...
       compactcovmat <- .calc_cov_from_ranCoef(ranCoef=ranCoefs[[rt]], Xi_ncol=Xi_ncol)
-      latentL_blob <- .calc_latentL(compactcovmat, triangularL=use_tri, spprecBool=spprecBool, try_chol= ! spprecBool, condnum=condnum)
+      latentL_blob <- .calc_latentL(compactcovmat, use_tri_Nspprec=use_tri_Nspprec, spprecBool=spprecBool, try_chol= ! spprecBool, condnum=condnum)
       #  with(latentL_blob,.ZWZt(design_u,d)) = compactcovmat hence design_u is more of a tcrossprod factor
       ## we have a repres in terms of ZAL and of a diag matrix of variances; only the latter affects hlik computation
       longLv <- .makelong(latentL_blob$design_u,longsize=ncol(ZAlist[[rt]]),
@@ -352,9 +336,7 @@ if (FALSE) {
 }
 
 .make_long_lambda <- function(d, n_levels, Xi_ncol=length(d)) { ## n_levels as given by rhs of ranef term
-  if (.spaMM.data$options$Zcolsbyrows)  {
-    lambda <- rep(d,n_levels)
-  } else lambda <- rep(d,rep(n_levels,Xi_ncol)) 
+  lambda <- rep(d,rep(n_levels,Xi_ncol)) 
   return(lambda)
 }
 
@@ -368,7 +350,8 @@ if (FALSE) {
                           psi_M,
                           verbose,
                           control,
-                          iter ## ajustement gamma(identity...)
+                          iter, ## ajustement gamma(identity...)
+                          maxLambda
 ) {
   ## Build pseudo response for lambda GLM/HGLM
   glm_lambda <- NULL
@@ -391,8 +374,8 @@ if (FALSE) {
     if (any(var_ranCoefs)) {
       ## handling correlation in random slope models # slmt pr gaussian ranefs, verif dans preprocess
       ranefEstargs$var_ranCoefs <- var_ranCoefs 
-      LMatricesBlob <- do.call(.spaMM.data$options$covEstmethod, ranefEstargs)  ## ranCoefs estimation
-      HLfit_corrPars$random_coeff <- LMatricesBlob$optr_par
+      LMatricesBlob <- do.call(".makeCovEst1", ranefEstargs)  ## ranCoefs estimation
+      HLfit_corrPars$info_for_conv_rC <- LMatricesBlob$info_for_conv_rC
       next_LMatrices[var_ranCoefs] <- LMatricesBlob$updated_LMatrices[var_ranCoefs] # update next_LMatrices only if (any(var_ranCoefs))
       ## : updated_LMatrices is list of matrices where only random-slope elements are non NULL
       done[ var_ranCoefs ] <- TRUE
@@ -406,7 +389,7 @@ if (FALSE) {
       resp_lambda[u.range] <- rand.families[[it]]$dev.resids(u_h[u.range],psi_M[u.range],wt=1) ## must give d1 in table p 989 de LeeN01
     }
   } else { ## only 'declarations' for all further code
-    HLfit_corrPars$random_coeff <- NULL
+    HLfit_corrPars$info_for_conv_rC <- NULL
   }
   ### next the other LMatrix models
   
@@ -441,7 +424,7 @@ if (FALSE) {
       resp_lambda[u.range] <- rand.families[[it]]$dev.resids(u_h[u.range],psi_M[u.range],wt=wt) ## must give d1 in table p 989 de LeeN01
       unique.lambda <- sum(resp_lambda[u.range])/sum(1-lev_lambda[u.range]) ## NOT in linkscale 
       unique.lambda <- max(unique.lambda,1e-8) # FR->FR still corrected
-      unique.lambda <- min(unique.lambda,.spaMM.data$options$maxLambda)  
+      unique.lambda <- min(unique.lambda,maxLambda)  
       if (lcrandfamfam[it]=="gamma" && rand.families[[it]]$link=="identity") { ## Gamma(identity)
         unique.lambda <- pmin(unique.lambda,1-1/(2^(iter+1)))  ## impose lambda<1 dans ce cas 
       }
@@ -546,6 +529,7 @@ if (FALSE) {
     res <- GLMweights ## includes WU_WT, d3logLthdth3....
     GLMweights <- GLMweights$truncGLMweights
   }
+  #if (any(is.nan(GLMweights/phi_est))) stop("any(is.nan(GLMweights/phi_est))")
   w.resid <- structure(as.vector(GLMweights/phi_est),unique= (attr(GLMweights,"unique") && length(phi_est)==1L))
   if (ilg) {
     res[["w_resid"]] <- w.resid
@@ -555,10 +539,19 @@ if (FALSE) {
   }
 }
 
-.calc_H_global_scale <- function(w.resid) {
-  if (is.list(w.resid)) {
-    return(exp( - mean(log(w.resid$w_resid))))
-  } else return(exp( - mean(log(w.resid)))) ## generalization of exp(mean(log(phi_est))) (but prior weights are in w.resid)
+.calc_H_global_scale <- function(w.resid) { # where w.resid depends on phi_est and on prior weights
+  # small adjustment added 2019/11/11 resolve some numerical pb in extreme binary fits (mu \approx y, w.resid->0)
+  if (is.list(w.resid)) w.resid <- w.resid$w_resid
+  u_w_resid <- unique(w.resid)
+  if (length(u_w_resid)==1L) {
+    H_global_scale <- 1/u_w_resid # so that weight_X is rep(1,...) 
+  } else {
+    H_global_scale <- exp(- mean(log(w.resid)))
+  }
+  # unbiased in w.resid=1 (if lop1p used,  difference between lop1p(x) and log(1+x) could create a 'bias' => don't use log1p):
+  H_scale_regul <- .spaMM.data$options$H_scale_regul
+  if (H_global_scale>1/H_scale_regul) H_global_scale <- exp(log(H_scale_regul+1) - mean(log(H_scale_regul+w.resid))) # test '871.8141' affected if this is not conditional
+  return(H_global_scale) 
 }
 
 .calc_weight_X <- function(w.resid, H_global_scale) {
@@ -595,11 +588,10 @@ spaMM_Gamma <- function (link = "inverse") {
   }
   variance <- function(mu) mu^2 ## problem for extreme mu values
   validmu <- function(mu) all(mu > 0)
-  dev.resids <- function(y, mu, wt) {
-    if (any(mu < 0)) return(Inf) ## 2015/04/27; maybe not useful
-    ## otherwise see deviance.gamma function locally defined in statmod::glmgam.fit
+  dev.resids <- function(y, mu, wt) { # mu<0 -> Inf; mu=0 -> NaN; some huge mu's that could yield dev_res<0 => fixed
+    if (any(mu < 0)) return(Inf) ## 2015/04/27; shortcut; without it next line warns about NaNs produced and NaN's are returned
     dev_res <- -2 * wt * (log(ifelse(y == 0, 1, y/mu)) - (y - mu)/mu)
-    dev_res[dev_res<.Machine$double.eps] <- .Machine$double.eps ##  ## FR: added this
+    dev_res[dev_res<.Machine$double.eps] <- .Machine$double.eps ##  ## FR: added this (*would* ignore NaN's)
     return(dev_res)
   }
   aic <- function(y, n, mu, wt, dev) {
@@ -660,7 +652,7 @@ spaMM_Gamma <- function (link = "inverse") {
          },
          binomial = function(theta,freqs,sizes,nu) {
            #nu*sizes*(freqs*theta-log(1+exp(theta))) +lchoose(sizes,round(sizes*freqs)) :
-           ## uses C code:
+           ## uses stats:: C code:
            muFREQS <- plogis(theta)
            nu * dbinom(round(sizes * freqs), sizes, prob=muFREQS, log = TRUE)
           },
@@ -681,7 +673,8 @@ spaMM_Gamma <- function (link = "inverse") {
          },
          negbin = function(theta,y,nu) { ## theta is the canonical param, -log(1+shape/mu)
            NB_shape <- environment(family$aic)$shape
-           -family$aic(y=y, mu=NB_shape/(exp(-theta)-1), wt=1)/2 ## handles truncation from given untruncated mu
+           if (is.null(mu <- attr(theta,"mu"))) mu <- NB_shape/(exp(-theta)-1) # note that NB_shape/(exp(log(1 + NB_shape/x)) - 1) numerically fails to be x for large x
+           -family$aic(y=y, mu=mu, wt=1)/2 ## handles truncation from given untruncated mu
          },
          stop("code missing for this family")
   )
@@ -744,10 +737,12 @@ spaMM_Gamma <- function (link = "inverse") {
   return(list(Dtheta.Dmu=Dtheta.Dmu,D2theta.Dmu2=D2theta.Dmu2))
 }
 
-.sanitize_eta_log_link <- function(eta, max) {
+.sanitize_eta_log_link <- function(eta, max, min=-max,y, nu=1) { # cf reasons below to always provide y 
+  ### Before implementation of y argument:
   ## 'max' used to sanitize eta should be higher than the max used to sanitize the response in .calc_dispGammaGLM()
-  ## Otherwise we would never have eta = y in cases where this would be the correct solution.
+  ## Otherwise we would never have sanitized eta = sanitized y in cases where this would be the correct solution.
   ## More generally the LevM algo may then be stuck.
+  ### BUT: additional concept in v.3.0.49; extend bound according to y (for both sanitized eta & sanitized y)
   #  test code with huge .calc_dispGammaGLM() response:
   # {
   #   spaMM.options(example_maxtime=70)
@@ -758,40 +753,155 @@ spaMM_Gamma <- function (link = "inverse") {
   #   #Infusion.options(example_maxtime=120)  ## allows refine()
   #   example("example_raw",package="Infusion",ask=FALSE) 
   # }
-  #
-  #eta[eta>30] <-30 ## 100 -> mu = 2.688117e+43 ; 30 -> 1.068647e+13
-  #
-  #eta[eta>25] <- 25 + log(eta[eta>25]-24) ## proved useful in spaMM_glm.fit (at least), presumably to avoid a plateau of objective fn 
-  #
+  # max=40 means mu < exp(40)=2.353853e+17
+  if (any(is.infinite(eta))) {
+    isinf <- which(is.infinite(eta))
+    eta[isinf] <- sign(eta[isinf]) * .Machine$double.xmax  # following code further sanitizes eta if within +/- double.xmax
+  }
   tmp1 <-  6.5663667753507884 # log(1+log(.Machine$double.xmax))
-  tmp2 <- max - tmp1
-  eta[eta>tmp2] <- tmp2 + log(1+log(1+eta[eta>tmp2]-tmp2)) ## proved useful in spaMM_glm.fit (at least), presumably to avoid a plateau of objective fn
+  tmpmax <- (max - tmp1)*nu # when nu<1, this shrinks both the maximum and the range over which a correction is applied
+  if ( ! is.null(y)) {
+    tmpmax <- pmax(log(y), tmpmax) ## if log(y)>tmpmax corrected eta is log(y)+(< log(1+double.xmax)=tmp1)*nu i.e. corrected eta is < log(y)+tmp1*nu
+    #   otherwise  corrected eta is < (max-tmp1)*nu+(< log(1+double.xmax)=tmp1)*nu    <   max*nu  
+    #  and "-tmpmax" ensures continuity in eta=tmpmax) as log(1+log(1+...))=0 there
+    high_eta <- (eta>tmpmax)
+    eta[high_eta] <- tmpmax[high_eta] + log(1+log(1+eta[high_eta]-tmpmax[high_eta]))*nu
+  }  else eta[eta>tmpmax] <- tmpmax + log(1+log(1+eta[eta>tmpmax]-tmpmax))*nu
+  ## smooth correction proved useful in spaMM_glm.fit (at least), presumably to avoid a plateau of objective fn
+  tmpmin <- min+tmp1 # nu appears to have little effect on mu when eta is small
+  if ( ! is.null(y)) {
+    tmpmin <- pmin(tmpmin,log(y))
+    low_eta <- (eta< tmpmin)
+    eta[low_eta] <- tmpmin[low_eta] - log(1+log(1-eta[low_eta]+tmpmin[low_eta]))
+  } else eta[eta< tmpmin] <- tmpmin - log(1+log(1-eta[eta< tmpmin]+tmpmin))## symmetric correction for negative eta
   return(eta)
-}
+} 
 
-.muetafn <- function(eta,BinomialDen,processed) { ## note outer var BinomialDen 
-  family <- processed$family
-  ## patches for borderline eta's
+# using y is important in cases where a comparison btwn eta (or mu) and y is important for convergence of an algo
+# In that case we sanitize only to the extant that individual values of y allow.
+# If this sanitization is not enough, then it is y than must be sanitized.
+.sanitize_eta <- function(eta, y=NULL,family,max=.spaMM.data$options$sanitize_eta["otherlog"]) {
   if (family$link =="log") {
-    eta <- .sanitize_eta_log_link(eta, max=40)
+    if (family$family=="gaussian") {
+      eta <- .sanitize_eta_log_link(eta, max=.spaMM.data$options$sanitize_eta["gauslog"],  y=y) 
+    } else eta <- .sanitize_eta_log_link(eta, max=max,  y=y)
   } else if (family$family == "COMPoisson" && family$link =="loglambda") {
-    etamax <- 30*environment(family$aic)$nu
-    eta[eta>etamax] <- etamax ## using log(mu) ~ eta/nu for large nu
+    # this should be consistent with poisson(log) when nu=1
+    COMP_nu <- environment(family$aic)$nu 
+    eta <- .sanitize_eta_log_link(eta, max=max, y=y, nu=COMP_nu) ## will use log(mu) ~ eta/nu for large eta and small nu
   } else if (family$link=="inverse" && family$family=="Gamma") {
     etamin <- sqrt(.Machine$double.eps)
     neg_eta <- (eta<etamin)
     eta[neg_eta] <- etamin ## both eta and mu must be >0
+    attr(eta,"any_neg_eta") <- any(neg_eta) ## actually 'not strictly positive'
+  } else if (family$family == "binomial") { ## 
+    #for binomial cases stats::binomial(...)$linkinv corrects eta for all links so that mu is always .Machine$double.eps from 0 or 1
+    # This may not be enough... or inconsistent with corrections used elsewhere, so we overcome the stats:: correction
+    # by correcting eta differently here and by computing mu <- .binomial_raw_linkinv(eta,link=family$link) (in .muetafn and possibly elsewhere)
+    eta <- .binomial_corr_eta(eta,link=family$link, tol=.spaMM.data$options$bin_mu_tol)
   }
-  mu <- family$linkinv(eta) ## linkinv(eta) is FREQS for binomial, COUNTS for poisson...
-  if (family$link %in% c("logit","probit","cloglog","cauchit")) {
-    mu[mu > (1-1e-12)] <- (1-1e-12)
-    mu[mu < (1e-12)] <- (1e-12)
-  } else if (family$link=="inverse" && family$family=="Gamma") {
-    attr(mu,"any_neg_eta") <- any(neg_eta) ## actually 'not strictly positive'
+  return(eta)
+}
+
+
+.DlogM_Tnegbin_mpfr <- function(mu, shape, theta=NULL) {
+  if (is.null(theta)) theta <- - log1p(shape/mu)
+  umeth <- -expm1(theta)
+  eth <- 1-umeth
+  gmu <- .do_call_wrap("mpfr",arglist=list(x=mu, precBits=128),pack = "Rmpfr")
+  gsh <- .do_call_wrap("mpfr",arglist=list(x=shape, precBits=128),pack = "Rmpfr")
+  gth <- - log1p(gsh/gmu)
+  umeth <- -expm1(gth)
+  eth <- 1-umeth
+  g2 <- -(umeth^gsh-gsh*umeth+gsh-1)*((eth*umeth^(gsh-2)*gsh)/(umeth^gsh-1)^2)
+  fac <- (1+eth)*(-1+umeth^gsh)^2 + 3*gsh*eth*(-1+umeth^gsh) + (gsh*eth)^2*(1+umeth^gsh)
+  g3 <- -(fac)*((eth*umeth^(gsh-3)*gsh)/(umeth^gsh-1)^3)
+  return(list(d2logMthdth2=as.numeric(g2), d3logMthdth3=as.numeric(g3)))
+}
+
+.muetafn_truncated <- local({
+  Rmpfr_warned <- FALSE
+  function(family, mu, GLMweights, Vmu) {
+    if (family$family=="poisson") { 
+      ## D[Log[1 - E^-E^theta], {theta, 2}] /. {theta -> Log[mu]} // Simplify
+      expmu <- exp(mu)
+      p0 <- 1/expmu
+      dlogMthdth <- -mu/(1-expmu) ## useful to correct rhs
+      d2logMthdth2 <- -(1 + expmu * (mu-1))* mu/((expmu-1)^2)
+      exp2mu <- expmu^2
+      d3logMthdth3 <- mu * (1 + 3 * mu *(expmu - exp2mu) + (mu^2) *(expmu + exp2mu) + exp2mu - 2 * expmu )/(expmu-1)^3
+    } else if (family$family=="negbin") { ## computations in TruncatedNegBin.nb
+      ## D[Log[1 - E^-E^theta], {theta, 2}] /. {theta -> Log[mu...]} // Simplify
+      shape <- .get_family_par(family, "shape")
+      p0 <- (shape/(mu+shape))^shape ## (1-p)^r
+      dlogMthdth <- (mu * p0)/(1-p0) ## family-specific relation btwn correction term M(th) for truncation and p0
+      # d2logMthdth2 <- -((mu * p0 *(shape *(-1 + p0) + mu *(-1 + shape + p0)))/(shape *(-1 + p0)^2))
+      # d3logMthdth3 <- -((mu * p0 * (shape^2 *(-1 + p0)^2 + 3 * mu * shape *(-1 + p0) * (-1 + shape + p0) + 
+      #                                 mu^2 *(3 *shape *(-1 + p0) + 2 *(-1 + p0)^2 + shape^2 *(1 + p0))))/(
+      #                                   shape^2 *(-1 + p0)^3))
+      theta <- - log1p(shape/mu)
+      umeth <- -expm1(theta)
+      eth <- 1-umeth
+      # num is -((mu * p0 *(shape *(-1 + p0) + mu *(-1 + shape + p0)))/(shape) an denome is (-1 + p0)^2
+      d2logMthdth2 <- -(umeth^shape-shape*umeth+shape-1)*((eth*umeth^(shape-2)*shape)/(umeth^shape-1)^2)
+      lowmu <- ((mu^2 * (1+shape)/(shape))<1e-11) # derived from second order term in Normal[Series[(shape/(mu + shape))^shape, {mu, 0, 2}]]
+      if (any(lowmu)) {
+        lmu <- mu[lowmu]
+        # see section on approximations in the notebook
+        d2logMthdth2[lowmu] <- -(lmu^3 *(lmu^2 + (2 + (-2 + lmu)* lmu)* shape)* (lmu + (-1 + lmu) *shape + shape^2))/(4 *shape^3 *umeth[lowmu]^shape-1)^2
+      }
+      #
+      fac <- (1+eth)*(-1+umeth^shape)^2 + 3*shape*eth*(-1+umeth^shape) + (shape*eth)^2*(1+umeth^shape)
+      d3logMthdth3 <- -(fac)*((eth*umeth^(shape-3)*shape)/(umeth^shape-1)^3)
+      #
+    } 
+    truncGLMweights <- GLMweights*(1+d2logMthdth2/Vmu) 
+    if (any(wrong <- truncGLMweights<=0)) {
+      if (family$family=="negbin") { 
+        has_Rmpfr <- suppressWarnings(do.call("require",list(package="Rmpfr", quietly = TRUE))) # given it's nto in DESCRIPTION
+        if (has_Rmpfr) {
+          dnlogMthdthn <- .DlogM_Tnegbin_mpfr(mu[wrong],shape)
+          d2logMthdth2[wrong] <- dnlogMthdthn$d2logMthdth2
+          d3logMthdth3[wrong] <- dnlogMthdthn$d3logMthdth3
+          truncGLMweights[wrong] <- GLMweights*(1+d2logMthdth2[wrong]/Vmu) 
+        } else {
+          if ( ! Rmpfr_warned) {
+            message("If the 'Rmpfr' package were installed, better numerical precision would be possible in some Tnegbin computation.")
+            Rmpfr_warned <<- TRUE
+          }
+          truncGLMweights <- pmax(truncGLMweights, .Machine$double.eps)
+          # not clear what to do about d3logMthdth3 but it may be quite close to d2logMthdth2
+        }
+      }
+    }
+    WU_WT <- GLMweights/truncGLMweights 
+    return(list(mu=mu, p0=p0,
+                GLMweights=list(truncGLMweights=truncGLMweights,WU_WT=WU_WT,dlogMthdth=dlogMthdth, 
+                                d2logMthdth2=d2logMthdth2, d3logMthdth3=d3logMthdth3)))
   }
+})
+
+
+.muetafn <-   function(eta,BinomialDen,processed) { ## note outer var BinomialDen 
+  names(eta) <- NULL
+  family <- processed$family
+  eta <- .sanitize_eta(eta, family=family)
+  if (family$family == "binomial") { ## 
+    #for binomial cases stats::binomial(...)$linkinv corrects eta for all links so that mu is always .Machine$double.eps from 0 or 1
+    # This may not be enough... or inconsistent with corrections used elsewhere, so we overcome the stats:: correction
+    # by computing eta <- .binomial_corr_eta(eta,link=family$link, tol=.spaMM.data$options$bin_mu_tol) in .sanitize_eta() and by:
+    mu <- .binomial_raw_linkinv(eta,link=family$link)
+  } else if (family$family == "poisson") { ## same troubles as for binomial
+    mu <- .poisson_raw_linkinv(eta,link=family$link)
+  } else mu <- family$linkinv(eta) ## linkinv(eta) is FREQS for binomial, COUNTS for poisson...
   dmudeta <- family$mu.eta(eta) ## aberrant at hoc code for cloglog 'elsewhere'...
   Vmu <- family$variance(mu) 
   if (family$family=="binomial") {
+    if ( family$link=="probit") { ## _F I X M E_ other links need correction too (same Vmu function of mu), but eta-mu link not even symmetric for cloglog
+      islarge <- abs(eta)>8
+      etalarge <- eta[islarge]
+      Vmu[islarge] <- pnorm(etalarge,lower.tail = FALSE)*pnorm(etalarge)
+    }
     Vmu <- Vmu * BinomialDen 
     mu <- mu * BinomialDen
     dmudeta <- dmudeta * BinomialDen
@@ -807,31 +917,12 @@ spaMM_Gamma <- function (link = "inverse") {
     GLMweights <- eval(processed$prior.weights) * dmudeta^2 /Vmu ## must be O(n) in binomial cases
     attr(GLMweights,"unique") <- FALSE ## might actually be true sometimes
   }
-  if (identical(family$zero_truncated,TRUE)) { 
-    if (family$family=="poisson") { 
-      ## D[Log[1 - E^-E^theta], {theta, 2}] /. {theta -> Log[mu]} // Simplify
-      expmu <- exp(mu)
-      p0 <- 1/expmu
-      dlogMthdth <- -mu/(1-expmu) ## useful to correct rhs
-      d2logMthdth2 <- -(1 + expmu * (mu-1))* mu/((expmu-1)^2)
-      exp2mu <- expmu^2
-      d3logMthdth3 <- mu * (1 + 3 * mu *(expmu - exp2mu) + (mu^2) *(expmu + exp2mu) + exp2mu - 2 * expmu )/(expmu-1)^3
-    } else if (family$family=="negbin") { ## computations in TruncatedNegBin.nb
-      ## D[Log[1 - E^-E^theta], {theta, 2}] /. {theta -> Log[mu...]} // Simplify
-      shape <- .get_family_par(family,"shape")
-      p0 <- (shape/(mu+shape))^shape ## (1-p)^r
-      dlogMthdth <- (mu * p0)/(1-p0) ## family-specific relation btwn correction term M(th) for truncation and p0
-      d2logMthdth2 <- -((mu * p0 *(shape *(-1 + p0) + mu *(-1 + shape + p0)))/(shape *(-1 + p0)^2))
-      d3logMthdth3 <- -((mu * p0 * (shape^2 *(-1 + p0)^2 + 3 * mu * shape *(-1 + p0) * (-1 + shape + p0) + 
-                                      mu^2 *(3 *shape *(-1 + p0) + 2 *(-1 + p0)^2 + shape^2 *(1 + p0))))/(
-                                        shape^2 *(-1 + p0)^3))
-    } 
-    truncGLMweights <- GLMweights*(1+d2logMthdth2/Vmu) 
-    WU_WT <- GLMweights/truncGLMweights 
-    return(list(mu=mu, dmudeta=dmudeta, p0=p0,
-                GLMweights=list(truncGLMweights=truncGLMweights,WU_WT=WU_WT,dlogMthdth=dlogMthdth, 
-                                d2logMthdth2=d2logMthdth2, d3logMthdth3=d3logMthdth3)))
-  } else return(list(mu=mu,dmudeta=dmudeta,GLMweights=GLMweights))
+  if (identical(family$zero_truncated,TRUE)) {
+    resu <- .muetafn_truncated(family, mu, GLMweights, Vmu)
+    resu$dmudeta <- dmudeta
+    resu$sane_eta <- eta
+    return(resu)
+  } else return(list(mu=mu,dmudeta=dmudeta,GLMweights=GLMweights, sane_eta=eta))
 } ## end def .muetafn
 
 .updateWranef <- function(rand.family,lambda,u_h,v_h) {
@@ -906,7 +997,7 @@ spaMM_Gamma <- function (link = "inverse") {
                   d2muFREQS <- muFREQS*(1-muFREQS)*(1-2*muFREQS);
                   d2muFREQS * BinomialDen
          },
-         probit = -eta*dnorm(eta) * BinomialDen,
+         probit = -eta * dnorm(eta) * BinomialDen, # assuming eta corrected as in binomial(probit)$mu.eta
          cloglog = {
            eta <- pmin(eta,700) ## as in binomial(cloglog)$mu.eta
            ## in particular d2mudeta2/dmudeta is then numerically OK
@@ -931,6 +1022,50 @@ spaMM_Gamma <- function (link = "inverse") {
   return(c(dmudeta=dmu.dlogLambda, d2mudeta2=d2mu.dlogLambda2))
 }
 
+# returns bounded eta
+.binomial_corr_eta <- function(eta, link=family$link, tol=.Machine$double.eps) {
+  switch(link,
+         logit= { # .Call(C_logit_linkinv, eta) de facto corrects eta has follows before computing mu:
+           thresh <- -qlogis(tol)
+           pmin(pmax(eta, -thresh), thresh)
+         },
+         probit= {
+           ### .muetafn has called binomial(probit)$linkinv to compute mu(FREQS), which first corrected eta as follows:
+           thresh <- -qnorm(tol)
+           pmin(pmax(eta, -thresh), thresh) # so that abs(dnorm(eta)) is bounded by .Machine$double.eps   
+         },
+         cloglog= {
+           lo <- log(-log1p(-tol))
+           up <- log(-log(tol))
+           pmin(pmax(eta, lo), up) 
+          },
+         cauchit= {
+           thresh <- -qcauchy(tol)
+           pmin(pmax(eta, -thresh), thresh)
+          },
+         stop("Unhandled link")
+  )
+}
+## _F I X M E_ disjunction between previous and next function may cause pbs
+.binomial_raw_linkinv <- function(eta, link=family$link) { # without control of eta extreme values 
+  switch(link,
+         logit= 1/(1+exp(-eta)),
+         probit= pnorm(eta),
+         cloglog= -expm1(-exp(eta)),
+         cauchit= pcauchy(eta),
+         stop("Unhandled link")
+  )
+}
+
+.poisson_raw_linkinv <- function(eta, link=family$link) { # without control of eta extreme values 
+  switch(link,
+         log=exp(eta),
+         identity= eta,
+         sqrt= eta^2,
+         stop("Unhandled link")
+  )
+}
+
 .calc_dlW_deta <- function(dmudeta,family,mu,eta,BinomialDen,canonicalLink,calcCoef1=FALSE,w.resid) {
   coef1 <- NULL
   ## We first handle the canonical link cases, where comput. of coef1 depends only on the link  
@@ -952,13 +1087,13 @@ spaMM_Gamma <- function (link = "inverse") {
         if (calcCoef1) coef1 <- 1/dmudeta
       }
     } else if (family$family=="binomial") {
+      dlW_deta <- (1-2*mu/BinomialDen)  
+      if (calcCoef1) coef1 <- dlW_deta/dmudeta # F I X M E there's a pattern
       ## numerator is D[D[1/(1 + E^-\[Eta]), \[Eta]] /. {E^-\[Eta]->(1-\[Mu])/\[Mu]} ,\[Mu]]=1-2 mu 
-      if (calcCoef1) coef1 <-(1-2*mu/BinomialDen)/dmudeta  
-      dlW_deta <-(1-2*mu/BinomialDen)  
     } else if (family$family=="Gamma") { ## link= "inverse" !
       ## numerator is D[D[-1/\[Eta], \[Eta]] /. {\[Eta] -> -1/\[Mu]}, \[Mu]] =2 mu 
-      if (calcCoef1) coef1 <- 2*mu /dmudeta
       dlW_deta <- 2*mu
+      if (calcCoef1) coef1 <- dlW_deta /dmudeta
     } else if (family$family=="COMPoisson") { 
       COMP_nu <- environment(family$aic)$nu
       lambdas <- exp(eta) ## pmin(exp(eta),.Machine$double.xmax) ##  FR->FR lambdas missing as mu attribute here ?
@@ -971,17 +1106,18 @@ spaMM_Gamma <- function (link = "inverse") {
       }
     } 
   } else if (family$family=="binomial" && family$link=="probit") { ## ad hoc non canonical case 
+    pmax_dnorm_eta <- dnorm(eta)
     muFREQS <- mu/BinomialDen
-    dlW_deta <- -2*eta - dnorm(eta)*(1-2*muFREQS)/(muFREQS*(1-muFREQS))
+    VmuFREQS <- pnorm(eta,lower.tail = FALSE)*pnorm(eta)  # more accurate than muFREQS*(1-muFREQS)
+    dlW_deta <- -2*eta - pmax_dnorm_eta*(1-2*muFREQS)/VmuFREQS
     if (calcCoef1) {
-      coef1 <- dlW_deta *(muFREQS*(1-muFREQS))/ (BinomialDen * dnorm(eta)^2) 
-      coef1[coef1>1e100] <- 1e100
-      coef1[coef1< -1e100] <- -1e100
+      coef1 <- dlW_deta *(VmuFREQS)/ (BinomialDen * pmax_dnorm_eta^2) 
+      # or coef1 <- (-1+2*(mu-VmuFREQS*eta/pmax_dnorm_eta))/(BinomialDen*pmax_dnorm_eta)
     }
   } else if (family$family=="Gamma" && family$link=="log") { ## ad hoc non canonical case 
-    if (calcCoef1) coef1 <- rep(0L,length(mu))
     dlW_deta <- rep(0L,length(mu)) ## because they both involve dW.resid/dmu= 0
-  } else { ## "negbin" only called with non-canonical links always end here 
+    if (calcCoef1) coef1 <- dlW_deta
+  } else { ## "negbin" only called with non-canonical links always ends here 
     ## we need to update more functions of mu...
     tmblob <- .thetaMuDerivs(mu,BinomialDen,family)
     Dtheta.Dmu <- tmblob$Dtheta.Dmu # calcul co fn de muFREQS puis / BinomialDen
@@ -1177,7 +1313,7 @@ sym_eigen <- local({
     } else resu <- t( solve(x, b=as(x,"pMatrix") %*% t(y), system="L") ) 
   } else if (inherits(x,"Matrix") || inherits(y,"Matrix")) {
     if (is.null(y)) {
-      if (TRUE && inherits(x,"dgCMatrix")) { # TRUE slightly better in long tests ? _F I X M E_ retest (last test v2.7.17)
+      if (inherits(x,"dgCMatrix")) { 
         xxt <- .dgCtcrossprod(x,y) 
         if (as_sym) {
           return(forceSymmetric(xxt)) ## not as(.,"sparseMatrix") which checks -> slow
@@ -1342,12 +1478,12 @@ sym_eigen <- local({
   )
 }
 
-.get_invColdoldList <- function(res,regul.threshold=1e-7) {
-  ## the validity of this fn is tested by checking that Evar (in predVar) is null i nthe case where newdata=ori data
-  # one needs to force the computation of Evar for that test (newdata && [Neednewnew= variances$cov])
+.get_invColdoldList <- function(res,regul.threshold=1e-7, control) {
+  ## the validity of this fn is tested by checking that Evar (in predVar) is null in the case where explicit newdata=ori data
   if (is.null(invColdoldList <- res$envir$invColdoldList)) { 
     ## returns a list of inv(Corr) from the LMatrix
     strucList <- res$strucList
+    fix_predVar_NULL <- FALSE
     if ( ! is.null(strucList)) {
       cum_n_u_h <- attr(res$lambda,"cum_n_u_h")
       vec_n_u_h <- diff(attr(res$lambda,"cum_n_u_h")) 
@@ -1362,10 +1498,13 @@ sym_eigen <- local({
           type <-  attr(lmatrix,"type")
           invCoo <- NULL
           if ( ! is.null(latentL_blob <- attr(lmatrix,"latentL_blob"))) { ## from .process_ranCoefs
-            design_u <- latentL_blob$design_u 
-            if (is.null(design_u)) {
-              invCoo <- stop("code missing here (1)") ## there may be a $compactchol_Q in spprec case.
-            } else invCoo <- .makelong(solve(.tcrossprod(design_u)),longsize=ncol(lmatrix))
+            if ( ! is.null(gmp_design_u <- latentL_blob$gmp_design_u)) {
+              #cat(crayon::red("YES"))
+              invC <- gmp::solve.bigq(gmp::tcrossprod(gmp_design_u))
+            } else {
+              invC <- solve(.tcrossprod(latentL_blob$design_u ))
+            }
+            invCoo <- .makelong(invC,longsize=ncol(lmatrix))
           } else if (inherits(lmatrix,"dCHMsimpl")) { # before any test on type...
             invCoo <- tcrossprod(as(lmatrix,"sparseMatrix")) # assuming 'lmatrix' is an unpermuted CHM factor of the precision factor (as for attr(lmatrix,"Q_CHMfactor"))
           } else if (type == "from_AR1_specific_code")  {
@@ -1374,6 +1513,17 @@ sym_eigen <- local({
             invCoo <- tcrossprod(as(attr(lmatrix,"Q_CHMfactor"),"sparseMatrix")) ## correct but requires the attribute => numerical issues in computing Q_CHMfactor
           } else if (type == "cholL_LLt")  {
             Rmatrix <- t(lmatrix)
+            if (attr(lmatrix,"need_gmp")) {
+              if (is.null(fix_predVar <- control$fix_predVar)) {
+                warning("A nearly-singular correlation matrix was fitted; see help('fix_predVar') for handling this", immediate. = TRUE)
+                fix_predVar_NULL <- TRUE
+              } else if (is.na(fix_predVar)) {
+                warning("A nearly-singular correlation matrix was fitted", immediate. = TRUE)
+              } else if (fix_predVar) {
+                invCoo <- gmp::tcrossprod(gmp::solve.bigq(gmp::as.bigq(Rmatrix))) 
+                #invCoo <- Rmpfr::mpfr(invCoo,128)
+              } # invCoo remains NULL if fix_predVar!=TRUE, in which case it will be computed below.
+            }
           } else { ## Rcpp's symSVD, or R's eigen() => LDL (also possible bad use of R's svd, not normally used)
             condnum <- kappa(lmatrix,norm="1")
             if (condnum<1/regul.threshold) {
@@ -1385,15 +1535,6 @@ sym_eigen <- local({
             if (is.null(invCoo)) Rmatrix <- .lmwithQR(t(lmatrix),yy=NULL,returntQ=FALSE,returnR=TRUE)$R_scaled # no pivoting compared to qr.R(qr(t(lmatrix))) 
           }
           if (is.null(invCoo)){ 
-            ## see comments on regularization and chol2inv in .get_invL_HLfit()
-            # singular <- which(abs(diag(Rmatrix))<regul.threshold) 
-            # if (length(singular)) {
-            #   if (spaMM.getOption("wRegularization")) warning("regularization required.")
-            #   nc <- ncol(Rmatrix)
-            #   diagPos <- seq.int(1L,nc^2,nc+1L)[singular]
-            #   Rmatrix[diagPos] <- sign(Rmatrix[diagPos])* regul.threshold
-            # }
-            # invCoo <- chol2inv(Rmatrix) ## 
             invCoo <- try(chol2inv(Rmatrix),silent=TRUE)
             if (inherits(invCoo,"try-error") || max(abs(range(invCoo)))> 1e12) {
               invCoo <- ginv(crossprod(Rmatrix))
@@ -1402,7 +1543,7 @@ sym_eigen <- local({
           invColdoldList[[Lit]] <- invCoo
         } 
       }
-      res$envir$invColdoldList <- invColdoldList
+      if ( ! fix_predVar_NULL) res$envir$invColdoldList <- invColdoldList
     } else return(NULL)
   } 
   return(invColdoldList)
@@ -1429,10 +1570,10 @@ sym_eigen <- local({
   structure(d2hdv2,envir=list2env(list(tag="d2hdv2",callcount=0L),parent=environment(HLfit_body)))
 }
 
-.gmp_solve <- function(X) { ## garbage in... the main problem may be the imprecision in the input X
+.gmp_solve <- function(X, as_numeric=TRUE) { ## "garbage in, garbage out:" the main problem may be the imprecision in the input X
   gmp_X <- gmp::as.bigq(X)
   invX <- gmp::solve.bigq(gmp_X) ##  with this invX gmp::`%*%`(gmp_X, invX) is exactly Identity
-  invX <- gmp::asNumeric(invX) ## unfortunately with this invX X %*% invX can widely differ from Identity
+  if (as_numeric) invX <- gmp::asNumeric(invX) ## unfortunately with this invX X %*% invX can widely differ from Identity
   rownames(invX) <- colnames(invX) <- colnames(X)
   return(invX)
 }
@@ -1665,6 +1806,8 @@ sym_eigen <- local({
         if (force_bindable) {
           xmatrix <- as(xmatrix,"pMatrix") %*% solve(xmatrix, system="Lt")
         } else bindable <- FALSE
+      } else if (inherits(xmatrix,"bigq") ) {
+        xmatrix <- .mMatrix_bigq(xmatrix) # this does not seem to be used for the Evar computation so we may drop precision
       } 
       if ( ! is.null(xmatrix)) {
         ZA <- ZAlist[[Lit]]
@@ -1710,7 +1853,7 @@ sym_eigen <- local({
               ## : colnames needed for predict(., newdata) -> match_old_new_levels(), and maybe elsewhere. 
             } else {
               zax <- ZA %*% xmatrix # measurably slow... 
-              if (identical(attr(xmatrix,"corr.model"),"random-coef")) colnames(zax) <- colnames(ZA) 
+              #if (identical(attr(xmatrix,"corr.model"),"random-coef")) colnames(zax) <- colnames(ZA) ## presumably obsolete. xmatrix must provide colnames
             }
             ZAX[[Lit]] <- zax
           }
@@ -1914,7 +2057,9 @@ sym_eigen <- local({
       corr.model <- attr(lmatrix, "corr.model") 
       if (is.null(corr.model)) warning('attr(next_LMatrix, "corr.model") is NULL')
       if (corr.model=="random-coef") {
-        ## Nothing to do to lmatrix
+        design_u <- attr(lmatrix,"latentL_blob")$design_u
+        if ( ( ! is.null(design_u)) && kappa(design_u)>1e06) attr(lmatrix,"latentL_blob")$gmp_design_u <- gmp::as.bigq(design_u)
+        # singularity issues not handled here in spprec (crossfac_Q representation)
       } else if (! is.null(msd.arglist <- attr(lmatrix,"msd.arglist"))) { ## Matern, Cauchy
         ## remove potentially large distMatrix to save space, but stores its "call" attribute for getDistMat()
         if ( ! is.null(dM <- msd.arglist$distMatrix) ) { 
@@ -1925,6 +2070,10 @@ sym_eigen <- local({
           attr(lmatrix,"msd.arglist") <- msd.arglist
         }
       }
+      # 'given' that I cannot modify strucList in post_fit code, the need_gmp attribute must be assigned now.  
+      if (attr(lmatrix,"type")=="cholL_LLt" && corr.model %in% c("Matern","Cauchy")) {
+        attr(lmatrix,"need_gmp") <- (kappa(lmatrix)>1e05)
+      } else attr(lmatrix,"need_gmp") <- FALSE ## it's not that we ma ynot need it, it's thant we may not handle it
       if (FALSE && inherits(lmatrix,"dCHMsimpl")) { # inhibited => dCHMsimpl goes into strucList
         extras <- setdiff(names(attributes(lmatrix)),c("class",slotNames(lmatrix)))
         lmatrix_ <- as(lmatrix,"pMatrix") %*% solve(lmatrix, system="Lt") 
@@ -2223,26 +2372,31 @@ sym_eigen <- local({
                                     lambda_est, #we only need lambda_est to initiate the next inner optim of the mean fit
                                     phifit # we need more info to initiate both inner and outer optim of the next phifit
                                     ) {
-  if ( new_obj> old_obj ) {
-    if (models[["eta"]]=="etaHGLM") {
-      port_fit_values$lambda_est <- lambda_est ## mean fit lambda; to be used by .HLfit_finalise_init_lambda
-      # 
-    }
+  if ( new_obj> old_obj) {
     ## Use FALSE to inhibit all port_env usage:
-    #assign("best_fit_values",port_fit_values,envir=processed$port_env) ## keep best values in all cases
-    processed$port_env$port_fit_values <- port_fit_values # NOT only for phiHGLM
-    if (models[["phi"]]=="phiHGLM") {
-      # phifit (fitme -> HLfit) has already written in processed$residProcessed$port_env$port_fit_values (and this may be erased by the phifitarglist code): 
-      # but the condition was on its own APHLs and it may actually have erased the info 
-      ## To be used only in iter=0; for iter>0 see parallel code in HLfit_body()
-      phifit_init_HLfit <- list(v_h=phifit$v_h)
-      if (is.null(processed$residModel$fixed$fixef)) phifit_init_HLfit$fixef <- fixef(phifit) ## : Use an init if the parameters are not fixed. 
-      processed$residProcessed$port_env$port_fit_values[["init_HLfit"]] <- phifit_init_HLfit
-      processed$residProcessed$port_env$port_fit_values$corrPars <- .new_phifit_init_corrPars(phifit,innershift=0) 
-      ## $corrPars : canonical and with full info about types including "outer"
-      processed$residProcessed$port_env$port_fit_values$lambda_object <- phifit$lambda.object ## disp fit lambda info.
-    }          
     if ( ! identical(control.HLfit$write_port_env,FALSE)) assign("objective",new_obj,envir=processed$port_env) 
+    if (abs(old_obj-new_obj)<5) { # from tests on fit_SPDE_spaMM <- fitme(.... Loaloa ...)
+      # Update port_fit_values and assign it: 
+      if (models[["eta"]]=="etaHGLM") {
+        port_fit_values$lambda_est <- lambda_est ## mean fit lambda; to be used by .HLfit_finalise_init_lambda
+        # 
+      }
+      processed$port_env$port_fit_values <- port_fit_values # NOT only for phiHGLM
+      #assign("best_fit_values",port_fit_values,envir=processed$port_env) ## keep best values in all cases
+      #
+      # Updates for a phifit:
+      if (models[["phi"]]=="phiHGLM") {
+        # phifit (fitme -> HLfit) has already written in processed$residProcessed$port_env$port_fit_values (and this may be erased by the phifitarglist code): 
+        # but the condition was on its own APHLs and it may actually have erased the info 
+        ## To be used only in iter=0; for iter>0 see parallel code in HLfit_body()
+        phifit_init_HLfit <- list(v_h=phifit$v_h)
+        if (is.null(processed$residModel$fixed$fixef)) phifit_init_HLfit$fixef <- fixef(phifit) ## : Use an init if the parameters are not fixed. 
+        processed$residProcessed$port_env$port_fit_values[["init_HLfit"]] <- phifit_init_HLfit
+        processed$residProcessed$port_env$port_fit_values$corrPars <- .new_phifit_init_corrPars(phifit,innershift=0) 
+        ## $corrPars : canonical and with full info about types including "outer"
+        processed$residProcessed$port_env$port_fit_values$lambda_object <- phifit$lambda.object ## disp fit lambda info.
+      }          
+    }
   } else { ## keep objective value; two cases for init values:
     if (abs(old_obj-new_obj)<1) {
       ## small decrease: Keep old port_env_values
@@ -2259,15 +2413,19 @@ sym_eigen <- local({
   if (is.null(beta)) {
     Xattr <- attributes(X)
     nc <- ncol(X)
-    scale <- numeric(nc)
-    for (jt in seq_len(nc)) {
-      x <- X[,jt]
-      v <- var(x)
-      if (v==0) { ## there should be only one constcol, "(Intercept)", or something that happens to play the same role
-        scale[jt] <- x[1L]
-      } else if ((am <- abs(mean(x)))>10) { ## threshold ad hoc but the sensitive tests are eg HLfit3 and fitme(passengers ~ month * year + AR1(1|time)...)
-        scale[jt] <- sqrt(v)*(1+sqrt(am)) # not using sqrt(v) in this case affects adjacency-long... X1 has large mean and var
-      } else scale[jt] <- sqrt(v)
+    if (nrow(X)==1L) {
+      scale <- rep(1, nc)
+    } else {
+      scale <- numeric(nc)
+      for (jt in seq_len(nc)) {
+        x <- X[,jt]
+        v <- var(x)
+        if (v==0) { ## there should be only one constcol, "(Intercept)", or something that happens to play the same role
+          scale[jt] <- x[1L]
+        } else if ((am <- abs(mean(x)))>10) { ## threshold ad hoc but the sensitive tests are eg HLfit3 and fitme(passengers ~ month * year + AR1(1|time)...)
+          scale[jt] <- sqrt(v)*(1+sqrt(am)) # not using sqrt(v) in this case affects adjacency-long... X1 has large mean and var
+        } else scale[jt] <- sqrt(v)
+      }
     }
     names(scale) <- colnames(X)
     X <- .m_Matrix_times_Dvec(X,1/scale)  # .m_Matrix_times_Dvec() kindly preserve attributes
@@ -2279,6 +2437,7 @@ sym_eigen <- local({
     return(beta * attr(X,"scaled:scale"))
   }
 }
+
 .unscale <- function(X, beta=NULL) {
   if (is.null(beta)) {
     Xattr <- attributes(X)

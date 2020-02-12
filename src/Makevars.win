@@ -1,5 +1,5 @@
 # To overcome a (compiler?) bug, in case one would recompile 
 # with -O3 (or -UNDEBUG?) for windows 32bit:
 # see https://github.com/RcppCore/RcppEigen/issues/34
-PKG_CXXFLAGS= -fno-omit-frame-pointer
-# PKG_CFLAGS= -fno-omit-frame-pointer # no .c files here
+PKG_CXXFLAGS= -fno-omit-frame-pointer 
+# I added -03 in R-devel/etc/x64/Makevars.site. -o0 last successfully tested (on default test_all) between spaMM v3.0.3 and 3.0.4

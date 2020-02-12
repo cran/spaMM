@@ -1,4 +1,4 @@
-spaMM.options <- function(...) {
+spaMM.options <- function(..., warn=TRUE) {
   if (nargs() == 0) return(.spaMM.data$options)
   temp <- list(...)
   if (length(temp) == 1 && is.null(names(temp))) {
@@ -12,12 +12,16 @@ spaMM.options <- function(...) {
   argnames <- names(temp)
   if (is.null(argnames)) stop("options must be given by name")
   old <- .spaMM.data$options[argnames]
-  names(old) <- argnames ## bc names are not valid for previously absent elements
+  if (anyNA(names(old))) {
+    if (warn) warning(paste0("'",paste(argnames[which(is.na(names(old)))],collapse="', '")),
+                      "' not previously in spaMM.options. Check such name(s)?", immediate. = TRUE)
+    names(old) <- argnames 
+  }
   .spaMM.data$options[argnames] <- temp
   invisible(old)
 }
 
-spaMM.getOption <- function (x) {spaMM.options(x)[[1]]}
+spaMM.getOption <- function (x) {spaMM.options(x, warn=FALSE)[[1]]}
 
 
 ## large rho is not a problem
@@ -26,11 +30,11 @@ spaMM.getOption <- function (x) {spaMM.options(x)[[1]]}
 
 ".onAttach" <- function (lib, pkg) {
   version <- utils::packageVersion("spaMM")
-  packageStartupMessage("spaMM (version ", version, 
+  packageStartupMessage("spaMM (Rousset & Ferdy, 2014, version ", version, 
                           ## not sure this will always work and makes sense only for devel version :
                           # ", packaged ", utils::packageDescription("spaMM")$Packaged,
                         ") is loaded.", 
-    "\nType 'help(spaMM)' for a short introduction,\nand news(package='spaMM') for news.")
+    "\nType 'help(spaMM)' for a short introduction,\n'news(package='spaMM')' for news,\nand 'citation(spaMM)' for proper citation.")
   #unlockBinding(".SpaMM", asNamespace("spaMM")) ## required when a .SpaMM list was used instead of an envir
   
 }

@@ -1,4 +1,4 @@
-cat("\ntest of bboptim compatibility:")
+cat(crayon::yellow("\ntest of bboptim compatibility:"))
 
 if (requireNamespace("blackbox",quietly=TRUE)) {
   blackbox::blackbox.options(spaMM.options("example_maxtime"))

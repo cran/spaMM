@@ -53,10 +53,11 @@
 
 # gives nonsense in first serious test case. Not sure why, bt integration error diverges.
 # cf private test-predict-marginal.R
-.predict_marg <- function(object, newdata, re.form) {
+.predict_marg <- function(object, newdata, re.form, control) {
   if (is.null(newdata)) newdata <- object$data # quick way of forcing computation of $etaFix (FIXME)
+  delayedAssign("invCov_oldLv_oldLv_list", .get_invColdoldList(object, control=control))
   new_X_ZACblob <- .calc_new_X_ZAC(object=object, newdata=newdata, re.form = re.form,
-                                   variances=list(residVar=FALSE, cov=FALSE)) 
+                                   variances=list(residVar=FALSE, cov=FALSE), invCov_oldLv_oldLv_list=invCov_oldLv_oldLv_list) 
   newinold <- new_X_ZACblob$newinold ## says which ranef is kept by re.form
   newZAXlist <- new_X_ZACblob$newZACpplist
   lcrandfamfam <- attr(object$rand.families,"lcrandfamfam")

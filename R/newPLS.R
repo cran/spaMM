@@ -183,18 +183,6 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
 }
 
 
-.useless_calc_dvdloglamMat_info <- function(neg.d2f_dv_dloglam,
-                                            sXaug, d2hdv2_info=NULL ## use either one
-) {
-  if (is.environment(d2hdv2_info)) {
-    # dvdloglamMat <- solve(d2hdv2_info, diag( neg.d2f_dv_dloglam ))  # rXr !       
-    rhs <- .Matrix_times_Dvec(d2hdv2_info$chol_Q, - neg.d2f_dv_dloglam ) # don't forget '-'
-    dvdloglamMat_info <- solve(d2hdv2_info$G_CHMfactor,rhs)
-  } else { 
-    stop("case not handled in .calc_dvdloglamMat_info() (use spaMM.options(TRY_ZAX=FALSE)?)")
-  }
-  return(dvdloglamMat_info) ## square matrix
-}
 
 .calc_dvdloglamMat_new <- function(neg.d2f_dv_dloglam,
                                    sXaug, d2hdv2_info=NULL ## use either one
@@ -220,7 +208,8 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
     dvdloglamMat <- .m_Matrix_times_Dvec(as(d2hdv2_info, "dgCMatrix"), # otherwise Matrix_times_Dvec() with dsC defaults detect a problem
                                          neg.d2f_dv_dloglam) ## sweep(d2hdv2_info,MARGIN=2L,neg.d2f_dv_dloglam,`*`) ## ginv(d2hdv2) %*% diag( as.vector(neg.d2f_dv_dloglam))      
   }
-  return(as.matrix(dvdloglamMat)) ## square matrix, by  the formulation of the algo ## quite dens even if many small values and we subset it
+  #return(as.matrix(dvdloglamMat)) ## square matrix, by  the formulation of the algo ## quite dense even if many small values and we subset it
+  return(dvdloglamMat) ## square matrix, by  the formulation of the algo ## as.matrix() is terribly inefficient in bigranefs case (_F I X M E_ more adaptive code?)
 }
 
 
@@ -250,11 +239,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
 
 
 .calc_sscaled_new <- function(vecdisneeded, dlogWran_dv_h, coef12, 
-                              n_u_h, nobs, sXaug, ZAL,WU_WT) {
-  if  (any(vecdisneeded[-3L])) {
-    #coef12 <- coef12 ## eval promise
-    coef1 <- coef12$coef1 # coef1 is the factor of P_ii in d1
-  }
+                              n_u_h, sXaug, ZAL,WU_WT) {
   vecdis <- vecdisneeded
   vecdis[vecdisneeded] <- NA
   vecdis[!vecdisneeded] <- 0
@@ -263,10 +248,9 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
   vecdi3 <- vecdis[3L]
   if (any(vecdisneeded)) { ## but the call to .calc_sscaled_new is conditional to the same condition 
     ## here version 1.5.3 has an interesting signed.wAugX concept
-    ## P is P in LeeL appendix p. 4 and is P_R in MolasL p. 3307 
+    ## P is P in LeeL appendix p. 4 and is P_R in MolasL p. 3307; X cols are excluded.
     Pdiag <- get_from_MME(sXaug,"hatval_Z") 
-    seqn_u_h <- seq_len(n_u_h)
-    if (vecdisneeded[1L]) vecdi1 <- Pdiag$lev_phi * coef1
+    if (vecdisneeded[1L]) vecdi1 <- Pdiag$lev_phi * coef12$coef1 # coef1 is the factor of P_ii in d1
     # K2 = solve(d2hdv2,tZAL) is K2 matrix in LeeL appendix p. 4 and is -D in MolasL p. 3307 
     # W is Sigma^-1 ; TWT = t(ZALI)%*%W%*%ZALI = ZAL'.Wresid.ZAL+Wranef = -d2hdv2 !
     if (vecdisneeded[2L]) { # ( ZAL %*% K2 ) is K1 in LeeL appendix p. 4 and is A=-ZD in MolasL p. 3307-8 
@@ -280,9 +264,10 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
     # coef3 =(1/Wran)(dWran/dv_h), the thing between P and K2 in the d3 coef. See LeeL12 appendix
     if (vecdisneeded[3L]) {  ## d3 reste nul pour gaussian ranef
       # vecdi3 <- as.vector( (Pdiag$lev_lambda * dlogWran_dv_h[seqn_u_h]) %*% K2)
-       vecdi3 <- get_from_MME(sXaug,"solve_d2hdv2",B=as.vector(Pdiag$lev_lambda * dlogWran_dv_h[seqn_u_h]))
-       vecdi3 <- as.vector(ZAL %*% vecdi3) ## equiv  post-multiplication by Z^T in the expression for D p.3307 bottom.
-       if ( ! is.null(WU_WT)) vecdi3 <- vecdi3/WU_WT # zero-truncated model: final factor in A22 in B4
+      seqn_u_h <- seq_len(n_u_h)
+      vecdi3 <- get_from_MME(sXaug,"solve_d2hdv2",B=as.vector(Pdiag$lev_lambda * dlogWran_dv_h[seqn_u_h]))
+      vecdi3 <- as.vector(ZAL %*% vecdi3) ## equiv  post-multiplication by Z^T in the expression for D p.3307 bottom.
+      if ( ! is.null(WU_WT)) vecdi3 <- vecdi3/WU_WT # zero-truncated model: final factor in A22 in B4
     }
     vecdi <- vecdi1+vecdi2+vecdi3 ## k_i in MolasL; le d_i de LeeL app. p. 4
     sscaled <- vecdi /2  ## sscaled := detadmu s_i= detadmu d*dmudeta/2 =d/2 in LeeL12; or dz1 = detadmu (y*-y) = detadmu m_i=0.5 k_i dmudeta = 0.5 k_i in MolasL 
@@ -321,6 +306,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
   return(list(a0=a,z20=z2))
 }
 
+# b is a vector !
 .Sig_times_b <- function(Sig0,ZAL,w.ranef,w.resid,b) { # Sig= [Sig0=Z.(1/w.ranef).Z^t+1/w.resid]
   if (is.null(Sig0)) { ## w.ranef is variable
     v1 <- .crossprod(ZAL, b) # drop(t(b) %*% ZAL) # drop() or .crossprod OK if b is effectively a vector
@@ -332,17 +318,28 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
   return(as.numeric(v1+v2))
 }
 
+# derived from .calc_dvdlogphiMat_new() and NOT USED but handy. (but does this work when ZAL is ZAX_list?)
+.calc_lhs_InvSigma_rhs <- function(lhs, rhs=t(lhs), invV_factors, w.resid) {
+  ## next lines use invV= w.resid- n_x_r %*% r_x_n
+  resu <- lhs %*% .Dvec_times_m_Matrix(w.resid, rhs)
+  resu <- resu - (lhs %*% invV_factors$n_x_r) %*% (invV_factors$r_x_n %*% rhs)
+  return(resu)
+}
+
+
 .calc_zAug_not_LMM <- function(n_u_h, nobs, pforpv, y, off, ZAL, 
                       # variable within fit_as_ZX:
-                      eta, muetablob, dlogWran_dv_h, sXaug, w.resid, w.ranef, 
+                      muetablob, dlogWran_dv_h, sXaug, w.resid, w.ranef, 
+                      ########################### ZAL_scaling,
                       init_z_args, 
                       #
                       processed) {
   GLMMbool <- processed$GLMMbool
-  coef12needed <- processed$coef12needed
+  
   
   mu <- muetablob$mu
   dmudeta <- muetablob$dmudeta
+  eta <- muetablob$sane_eta
   ######## According to 'theorem 1' of LeeL12, new beta estimate from z1-a(i), where z1 is
   if (is.list(w.resid)) {
     z1 <- as.vector(eta+w.resid$WU_WT*(y-mu-w.resid$dlogMthdth)/dmudeta-off) ## MolasL10
@@ -357,7 +354,8 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
     ## if LMM (ie resp gaussian, ranef gaussian), all coef<x> are 0
     ## if (gaussian, not gaussian) d3 nonzero
     ## if (non gaussian, gaussian), d3 zero (!maybe not for all possible cases) but d1,d2 nonzero 
-    vecdisneeded <- c( coef12needed, coef12needed, any(dlogWran_dv_h!=0L) )
+    ######################## ZAL <- .m_Matrix_times_Dvec(ZAL, ZAL_scaling)
+    vecdisneeded <- processed$vecdisneeded # vecdisneeded <- c( coef12needed, coef12needed, any(dlogWran_dv_h!=0L) )
     if (any(vecdisneeded)) {
       if (is.list(w.resid)) {
         WU_WT <- w.resid$WU_WT 
@@ -370,7 +368,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
                                                     canonicalLink=processed$canonicalLink,
                                                     calcCoef1=TRUE,
                                                     w.resid=w.resid), ## promise evaluated if any vecdisneeded[-3]
-                              n_u_h=n_u_h, nobs=nobs, 
+                              n_u_h=n_u_h, 
                               sXaug=sXaug,
                               ZAL=ZAL, # vecdi2
                               WU_WT=WU_WT ## NULL except for truncated model
@@ -380,6 +378,8 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
     if (is.list(w.resid)) {
       sscaled <- sscaled * w.resid$WU_WT
       y2_sscaled <- z2+ as.vector((sscaled * w.resid$w_resid ) %*% ZAL )/w.ranef ## that's the y_2 in "Methods of solution based on the augmented matrix"
+      # it is unaffected by the matrix rescaling bc it is a fn of z1 and z2. But rescaled is alays taken into account bc we uuse y2_sscaled only 
+      #      in the context wzAug <- c(zInfo$y2_sscaled/ZAL_scaling, (zInfo$z1_sscaled)*weight_X)
     } else y2_sscaled <- z2+ as.vector((sscaled * w.resid ) %*% ZAL )/w.ranef
     zInfo <- list(sscaled=sscaled, z1=z1, z2=z2, z1_sscaled=z1-sscaled, y2_sscaled=y2_sscaled)
   } else zInfo <- list(sscaled=0, z1=z1, z2=z2, z1_sscaled=z1, y2_sscaled=z2) 
@@ -590,12 +590,13 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
   if (!is.null(W00_R_qr_ZXy)) {
     locattr <- attributes(W00_R_qr_ZXy)
   } else locattr <- attributes(sXaug)
-  weight_X <- locattr$weight_X
+  #weight_X <- locattr$weight_X
   H_global_scale <- locattr$H_global_scale 
   extranorm <- locattr$extranorm 
   #if (is.null(W00_R_qr_ZXy) && inherits(sXaug,"AUGI0_ZX_sparsePrecision")) { 
-    if (is.null(weight_X)) weight_X <- 1 ## spprec case
-    if (is.null(H_global_scale)) H_global_scale <- 1 ## spprec case
+#    if (is.null(weight_X)) weight_X <- 1 ## spprec case
+  weight_X <- 1 ## 05/12/2019 using weight_X in this fn is actually a 'bug' (adding constant term to objective, but not affecting optimization)
+  if (is.null(H_global_scale)) H_global_scale <- 1 ## spprec case
   #}
   if (is.null(extranorm)) extranorm <- H_global_scale
   n_u_h <- locattr$n_u_h
@@ -683,7 +684,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
     #we have fitted for the model (lambda, 1/prior_weights) and deduce the optimal (lamphifac*lambda, lamphifac/prior_weights)
     #The hatval are thus those both for phi and lambda whose sum is the #df
     # hatval <- .get_hatvalues_MM(sXaug,X.Re=processed$X.Re, weight_X) ## in case we need them...
-    # devel code for pror weights removed from [v2.7.11
+    # devel code for prior weights removed from [v2.7.11
     #
     p_base <- sum(log(weight_X)) - logdet_R_scaled_b_v + pforpv*log(H_global_scale)/2 ## keep H_global_scale here even when it differs from extranorm
     if (is.null(processed$X.Re)) { # canonical REML
@@ -782,19 +783,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
   #
   family <- processed$family
   famfam <- family$family
-  clik_fn <- processed$clik_fn
-  y <- processed$y
-  BinomialDen <- processed$BinomialDen
-  theta <- .theta.mu.canonical(mu/BinomialDen,family)  
-  if (famfam=="binomial") {
-    augZX_resu$clik <- sum(clik_fn(theta,y/BinomialDen,BinomialDen,1/(phi_est))) ## freq a revoir
-  } else {
-    phi_est[phi_est<1e-12] <- 1e-10 ## 2014/09/04 local correction, has to be finer than any test for convergence 
-    ## creates upper bias on clik but should be more than compensated by the lad
-    ## correcting the lad makes an overall upper bias for small (y-theta) at "constant" corrected phi 
-    ## this can be compensated by correcting the lad LESS.
-    augZX_resu$clik <- sum(clik_fn(theta,y,eval(processed$prior.weights)/phi_est)) ## note (prior) weights meaningful only for gauss/ Gamma 
-  }
+  augZX_resu$clik <- .calc_clik(mu,phi_est,processed)
   if (all(which =="clik")) return(augZX_resu)
   if (processed$models[["eta"]]=="etaGLM") {
     augZX_resu$p_v <- augZX_resu$clik

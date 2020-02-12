@@ -6,6 +6,7 @@
 \alias{print.predictor}
 \alias{print.vcov.HLfit}
 \alias{print.predictions}
+\alias{print.spcall}
 
 
 

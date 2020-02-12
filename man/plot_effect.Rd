@@ -5,13 +5,13 @@
 Partial-dependence effects and plots
 }
 \description{
-
+The following functions evaluate or plot \emph{partial-dependence} effects. The is a dedicated package for such plots, \code{pdp} (\url{https://cran.r-project.org/package=pdp}), so if you are not happy with these functions (which, for instance, do not handle pairs of variables and their interactions), try that package (which seems to handle fit object produced by \code{spaMM}).
   
 \code{pdep_effects} evaluates the effect of a given fixed-effect variable, as (by default, the average of) predicted values on the response scale, over the empirical distribution of all other fixed-effect variables in the data, and of inferred random effects. This can be seen as the result of an experiment where specific treatments (given values of the focal variable) are applied over all conditions defined by the other fixed effects and by the inferred random effects. Thus, apparent dependencies induced by associations between predictor variables are avoided (see Friedman, 2001, from which the name \dQuote{partial dependence plot} is taken; or Hastie et al., 2009, Section 10.13.2). This also avoids biases of possible alternative ways of plotting effects. In particular, such biases occur if the response link is not identity, and if averaging is performed on the linear-predictor scale or when other variables are set to some conventional value other than its average. 
 
-\code{pdep_effects} also compute intervals of the type defined by its \code{intervals} argument (by default, prediction intervals). By default, it returns a data frame of average values of point predictiosn and interval bounds for each value of the focal variable, but it can also return lists of all predictions.
+\code{pdep_effects} also compute intervals of the type defined by its \code{intervals} argument (by default, prediction intervals). By default, it returns a data frame of average values of point predictions and interval bounds for each value of the focal variable, but it can also return lists of all predictions.
   
-\code{plot_effects} calls \code{pdep_effects} and produces a simple plot (using only base graphic functions) of its results, including prediction bands representing the two average one-sided widths of intervals.  If added to the plot, the raw data may appear to depart from the partial-dependence predictions, since the data are a priori affected by the associations between variables which the predictions free themselves from.  
+\code{plot_effects} calls \code{pdep_effects} and produces a simple plot (using only base graphic functions) of its results, including prediction bands representing the two average one-sided widths of intervals.  If added to the plot, the raw data may appear to depart from the partial-dependence predictions, since the data are a priori affected by the associations between variables which the predictions free themselves from.   
 }
 \usage{
 pdep_effects(object, focal_var, newdata = object$data, length.out = 20, 

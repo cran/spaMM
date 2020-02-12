@@ -23,11 +23,11 @@
 \method{print}{fixedLRT}(x,...)
 }
 \arguments{
-  \item{object}{  The return object of HLfit or related functions.}
+  \item{object}{An object of class \code{HLfit}, as returned by the fitting functions in \code{spaMM}.}
   \item{x}{  The return object of HLfit or related functions.}
   \item{verbose}{ For \code{summary.HLfit}, whether to print the screen output that is the primary purpose of summary. \code{verbose=FALSE} may be convenient when \code{summary} is used as an extractor. For \code{summary.fixedLRT}, whether to print the model fits or not. }
   \item{max.print}{Controls \code{options("max.print")} locally.}
-  \item{details}{A vector with elements controlling whether to print some obscure details. Element \code{ranCoefs=TRUE} will print details about random-coefficients terms (see Details); and element \code{p_value="Wald"} will print a p-value for the t-value of each fixed-effect coefficient, assuming a gaussian distribution of the test statistic.}
+  \item{details}{A vector with elements controlling whether to print some obscure details. Element \code{ranCoefs=TRUE} will print details about random-coefficients terms (see Details); and element \code{p_value="Wald"} will print a p-value for the t-value of each fixed-effect coefficient, assuming a gaussian distribution of the test statistic (but, beyond the generally questionable nature of p-value tables, see e.g. \code{LRT} and \code{fixedLRT} for alternative testing approaches).}
   \item{\dots}{  further arguments passed to or from other methods. }
 }
 \value{

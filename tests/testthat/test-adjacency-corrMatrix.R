@@ -1,4 +1,4 @@
-cat("\ntest-adjacency-corrMatrix: adjacency (dense,sparse) vs. corrMatrix() (dense,sparse * LevM or not), for HGLM with offset:\n")
+cat(crayon::yellow("\ntest-adjacency-corrMatrix: adjacency (dense,sparse) vs. corrMatrix() (dense,sparse * LevM or not), for HGLM with offset:\n"))
 
 data("scotlip")
 
@@ -13,7 +13,7 @@ if (interactive()) {
     message(paste('! ("',expectedMethod,'" %in% adjfit$MME_method): was a non-default option selected?'))
   }
 } else testthat::expect_true(expectedMethod %in% adjfit$MME_method) 
-oldop <- spaMM.options(sparse_precision=TRUE)
+oldop <- spaMM.options(sparse_precision=TRUE, warn=FALSE)
 adjfitsp <- fitme(cases~I(prop.ag/10) +adjacency(1|gridcode)+(1|gridcode)+offset(log(expec)),
                   adjMatrix=Nmatrix,
                   rand.family=list(gaussian(),Gamma(log)), #verbose=c(TRACE=1L),
@@ -30,7 +30,7 @@ if (spaMM.getOption("EigenDense_QRP_method")==".lmwithQR") {
 }
 
 ## same using corrMatrix()
-if (spaMM.getOption("example_maxtime")>7.10) { 
+if (spaMM.getOption("example_maxtime")>6.90) { 
   precmat <- diag(56)-0.1*Nmatrix   ## equivalent to adjacency model with rho=0.1
   colnames(precmat) <- rownames(precmat) <- seq(56)
   covmat <- solve(precmat)
@@ -61,7 +61,7 @@ if (spaMM.getOption("example_maxtime")>7.10) {
                     covStruct=list(corrMatrix=covmat),
                     rand.family=list(gaussian(),Gamma(log)), #verbose=c(TRACE=1L),
                     #fixed=list(lambda=c(0.1,0.05)), 
-                    family=poisson(),data=scotlip,control.HLfit=list(LevenbergM=c(LevenbergM=TRUE))) ## 
+                    family=poisson(),data=scotlip,control.HLfit=list(LevenbergM=TRUE)) ## 
   if (spaMM.getOption("EigenDense_QRP_method")==".lmwithQR") {
     testthat::expect_true(diff(range(logLik(covfit),logLik(covfitLM),logLik(precfitLM),logLik(adjfit),logLik(adjfitsp)))<5e-8) 
   } else testthat::expect_true(diff(range(logLik(covfit),logLik(covfitLM),logLik(precfitLM),logLik(adjfit),logLik(adjfitsp)))<3e-8) 
@@ -78,7 +78,7 @@ if (spaMM.getOption("example_maxtime")>7.10) {
                   covStruct=list(precision=precmat),
                   rand.family=list(gaussian(),Gamma(log)), #verbose=c(TRACE=3L),
                   fixed=list(lambda=c(0.05,0.05)), 
-                  family=poisson(),data=scotlip,control.HLfit=list(LevenbergM=c(LevenbergM=TRUE)))
+                  family=poisson(),data=scotlip,control.HLfit=list(LevenbergM=TRUE))
   }
 }
 

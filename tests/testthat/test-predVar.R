@@ -1,18 +1,21 @@
-cat("\ntest of prediction variance:")
+cat(crayon::yellow("\ntest of prediction variance:"))
 
 ## two ranefs with estimated lambdas:
 data("blackcap")
+rngcheck <- ("sample.kind" %in% names (formals(RNGkind)))
+if (rngcheck) suppressWarnings(RNGkind("Mersenne-Twister", "Inversion", "Rounding"  )) 
 set.seed(123)
 somegrp <- cbind(blackcap,grp=sample(2,14,replace=TRUE))
+if (rngcheck) RNGkind("Mersenne-Twister", "Inversion", "Rejection"  )
 #somegrp <- cbind(blackcap,grp=c(rep(1,7),rep(2,7))) ## to test cov mat with nonzero var of grp effect
 tworanefs <- corrHLfit(migStatus ~ 1 +  (1|grp) +Matern(1|latitude+longitude),data=somegrp,
                        ranFix=list(nu=4,rho=0.4,phi=0.05))
 expected <- c("Gibraltar"=0.04880579, "CapeVerde"=0.04884620, "SouthernFrance"=0.04197530, 
               "LaPalma"=0.03337928, "Madeira"=0.04360190)
 p1 <- get_predVar(tworanefs)[1:5]
-testthat::expect_true(diff(range(p1 -expected))<1e-8)
-p1 <- get_predVar(tworanefs,newdata=somegrp[1:5,])
-testthat::expect_true(diff(range(p1 -expected))<1e-8)
+testthat::expect_true(diff(range(p1 - expected))<1e-8)
+p1p <- get_predVar(tworanefs,newdata=somegrp[1:5,])
+testthat::expect_true(diff(range(p1p -p1))<1e-10)
 ranefstwo <- corrHLfit(migStatus ~ 1  +Matern(1|latitude+longitude)+  (1|grp),data=somegrp,
                        ranFix=list(nu=4,rho=0.4,phi=0.05))
 p2 <- get_predVar(ranefstwo,newdata=somegrp[1:5,])
@@ -25,7 +28,7 @@ twolambda <- corrHLfit(migStatus ~ 1 +  Matern(1|latitude+longitude) +Matern(1|l
 ## any attempt at computing a non-singular loglamInfo will amplify floating point error.
 onelambda <- corrHLfit(migStatus ~ 1 + Matern(1|latitude+longitude),data=blackcap,
                        ranFix=list(nu=4,rho=0.4,phi=0.05))
-testthat::expect_true(diff(range(get_predVar(twolambda)[1:5]-get_predVar(onelambda)[1:5]))<1e-7)
+testthat::expect_true(diff(range(get_predVar(twolambda)[1:5]-get_predVar(onelambda)[1:5]))<1e-7) ## was dependent on H_scale_regul ?
 
 # examples from Booth & Hobert 1998 JASA
 
@@ -47,9 +50,9 @@ if(requireNamespace("rsae", quietly = TRUE)) {
   data("landsat", package = "rsae")
   fitobject <- HLfit(HACorn ~ PixelsCorn + PixelsSoybeans + (1|CountyName),data=landsat[-33,],HLmethod="ML")
   newXandZ <- unique(data.frame(PixelsCorn=landsat$MeanPixelsCorn,PixelsSoybeans=landsat$MeanPixelsSoybeans,CountyName=landsat$CountyName))
-  res <- get_predVar(fitobject,newdata=newXandZ)
+  (res <- get_predVar(fitobject,newdata=newXandZ))
   testthat::expect_equal(res[12],c("32"=27.80684),tolerance=2e-4)
-  res <- get_predVar(fitobject,newdata=newXandZ,variances=list(disp=FALSE)) ## sum of cols nu and beta in Table 7
+  (res <- get_predVar(fitobject,newdata=newXandZ,variances=list(disp=FALSE))) ## sum of cols nu and beta in Table 7
   testthat::expect_equal(res[12],c("32"=26.56215),tolerance=2e-4)
   
   ## comparison dense vs. spprec with use_spprec_qr on an REML non-spatial fit 
@@ -151,3 +154,18 @@ p3 <- predict(voff)
 p4 <- predict(voff, newdata=check_off)
 testthat::expect_true(max(abs(range(p3-p4)))<1e-12)
 testthat::expect_true(max(abs(range(p1-p4)))<1e-12)
+
+# Check of different syntaxes to get naive term 
+# Note that naive depend on the L matrix root and thus not comparable accross equivalent fits (e.g. sparse/dense prec)
+fitobject <- corrHLfit(migStatus ~ 1 + Matern(1|latitude+longitude),data=blackcap,
+                       ranFix=list(nu=1,rho=0.1, phi=0.1)) 
+(naive1 <- get_predVar(fitobject,which="naive"))
+(naive2 <- get_predVar(fitobject,newdata=fitobject$data, which="naive"))
+fix_X_ZAC.object <- preprocess_fix_corr(fitobject,fixdata=fitobject$data)
+(naive3 <- diag(get_predCov_var_fix(fitobject,newdata=blackcap,fix_X_ZAC.object=fix_X_ZAC.object,variances=list(predVar=TRUE,naive=TRUE,cov=TRUE))))
+(naive4 <- (get_predCov_var_fix(fitobject,newdata=blackcap,fix_X_ZAC.object=fix_X_ZAC.object,variances=list(predVar=TRUE,naive=TRUE,cov=FALSE))))
+testthat::expect_true(max(abs(range(naive2-naive1)))<1e-12)
+testthat::expect_true(max(abs(range(naive3-naive1)))<1e-12)
+testthat::expect_true(max(abs(range(naive4-naive1)))<1e-12)
+
+

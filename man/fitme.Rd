@@ -4,7 +4,7 @@
 Fitting function for fixed- and mixed-effect models with GLM response. 
 }
 \description{
-This is a common interface for fitting most models that spaMM can fit, from linear models to mixed models with non-gaussian random effects, therefore substituting to \code{corrHLfit}, \code{HLCor} and \code{HLfit}. By default, it uses ML rather than REML (differing in this respect from the other fitting functions). It may use \dQuote{outer optimization}, i.e., generic optimization methods for estimating all dispersion parameters, rather than the iterative methods method in \code{HLfit}. The results of REML fits of non-gaussian mixed models by these different methods may (generally slightly) differ. Outer optimization should generally be faster than the alternative algorithms for large data sets when the residual variance model is a single constant term (no structured dispersion). For mixed models, \code{fitme} by default tries to select the fastest method when both can be applied, but precise decision criteria are subject to change in the future. \code{corrHLfit} (with non-default arguments to control the optimization method most suitable to a particular problem) may be used to ensure better consistency over successive versions of \code{spaMM}.
+This is a common interface for fitting most models that spaMM can fit, from linear models to mixed models with non-gaussian random effects, therefore substituting to \code{corrHLfit}, \code{HLCor} and \code{HLfit}. By default, it uses ML rather than REML (differing in this respect from the other fitting functions). It may use \dQuote{outer optimization}, i.e., generic optimization methods for estimating all dispersion parameters, rather than the iterative methods implemented in \code{HLfit}. The results of REML fits of non-gaussian mixed models by these different methods may (generally slightly) differ. Outer optimization should generally be faster than the alternative algorithms for large data sets when the residual variance model is a single constant term (no structured dispersion). For mixed models, \code{fitme} by default tries to select the fastest method when both can be applied, but precise decision criteria are subject to change in the future. \code{corrHLfit} (with non-default arguments to control the optimization method most suitable to a particular problem) may be used to ensure better consistency over successive versions of \code{spaMM}.
 }
 \usage{
 fitme(formula, data, family = gaussian(), init = list(), fixed = list(), 
@@ -29,10 +29,10 @@ An optional list of initial values for correlation and/or dispersion parameters 
 \code{list(rho=1,nu=1,lambda=1,phi=1)} where \code{rho} and \code{nu} are parameters of the Matérn family (see \code{\link{Matern}}), and 
 \code{lambda} and \code{phi} are dispersion parameters (see Details in \code{\link{spaMM}} for the meaning of these parameters). 
  All are optional, but giving values for a dispersion parameter changes the ways it is estimated (see Details and Examples).
-\code{rho}  may be a vector (see \code{\link{make_scaled_dist}}) and, in that case, it is possible that some or all of its elements are \code{NA}, for which \code{corrHLfit} substitute automatically determined values.  
+\code{rho}  may be a vector (see \code{\link{make_scaled_dist}}) and, in that case, it is possible that some or all of its elements are \code{NA}, for which \code{fitme} substitutes automatically determined values.  
 }
   \item{fixed}{
-A list similar to \code{init}, but specifying fixed values of the parameters not estimated. See \code{\link{fixed}} for further information.
+A list similar to \code{init}, but specifying fixed values of the parameters not estimated. See \code{\link{fixed}} for further information; and keep in mind that fixed fixed-effect coefficients can be passed as the \code{etaFix} argument as part of the \sQuote{\ldots}.
 }
   \item{lower}{
 An optional list of values of parameters specified through \code{init.corrHLfit}, used as lower values in calls to \code{optim}. See Details for default values.
@@ -60,9 +60,9 @@ Optional arguments passed to \code{\link{HLCor}}, \code{\link{HLfit}} or  \code{
 }
 }
 \details{
-For \code{phi}, \code{lambda}, and \code{ranCoefs}, \code{fitme} may or may not use the internal fitting methods of \code{HLfit}. The latter methods are well suited for structured dispersion models, but require the computation of the so-called leverages, which can be slow for large datasets. Therefore, \code{fitme} tends to outer-optimize by default for large datasets, unless there is a non-trivial \code{resid.model}. 
+For \code{phi}, \code{lambda}, and \code{ranCoefs}, \code{fitme} may or may not use the internal fitting methods of \code{HLfit}. The latter methods are well suited for structured dispersion models, but require computations which can be slow for large datasets. Therefore, \code{fitme} tends to outer-optimize by default for large datasets, unless there is a non-trivial \code{resid.model}. The precise criteria for selection of default method by \code{fitme} are liable to future changes. 
 
-However, the internal fitting methods of \code{HLfit} also provide some more information such as the \dQuote{cond. SE} (about which see warning in Details of \code{\link{HLfit}}). To force the evaluation of such information after an outer-optimization by a \code{fitme} call, use the \code{control$refit} argument (see Example). Alternatively (and possibly of limited use), one can force inner-optimization of \code{lambda} for a given random effect, or of \code{phi}, by setting it to \code{NaN} in \code{init}. 
+Further, the internal fitting methods of \code{HLfit} also provide some more information such as the \dQuote{cond. SE} (about which see warning in Details of \code{\link{HLfit}}). To force the evaluation of such information after an outer-optimization by a \code{fitme} call, use the \code{control$refit} argument (see Example). Alternatively (and possibly of limited use), one can force inner-optimization of \code{lambda} for a given random effect, or of \code{phi}, by setting it to \code{NaN} in \code{init} (see Example using \sQuote{blackcap} data). The same syntax may be tried for \code{phi}.
 }
 \value{
 The return value of an \code{HLCor} or an \code{HLfit} call, with additional attributes. The \code{HLCor} call is evaluated at the estimated correlation parameter values. These values are included in the return object as its \code{$corrPars} member. The attributes added by \code{fitme} include the original call of the function (which can be retrived by \code{getCall}(<fitted object>), and information about the optimization call within \code{fitme}. 
@@ -83,6 +83,18 @@ fitme(y~1,data=gr,family=Gamma(log),init=list(phi=1))
 # To obtain cond. SE for phi after outer optimization, use the 'refit' control:
 fitme(y~1,data=gr,family=Gamma(log),,init=list(phi=1),
       control=list(refit=list(phi=TRUE))) ## or ...refit=TRUE...
+
+## Outer-optimization is not necessarily the best way to find a global maximum, 
+#  particularly when there is little statistical information in the data:  
+if (spaMM.getOption("example_maxtime")>1.6) {
+  data("blackcap")
+  fitme(migStatus ~ means+ Matern(1|latitude+longitude),data=blackcap) # poor
+  #  Compare with the following two ways of avoiding outer-optimization of lambda:
+  corrHLfit(migStatus ~ means+ Matern(1|latitude+longitude),data=blackcap,
+            HLmethod="ML")
+  fitme(migStatus ~ means+ Matern(1|latitude+longitude),data=blackcap, 
+        init=list(lambda=NaN))
+}
 
 ## see help("COMPoisson"), help("negbin"), help("Loaloa"), etc., for further examples.
 }

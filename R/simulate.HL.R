@@ -52,8 +52,10 @@
 # FR->FR misses the computation of random effects for new spatial positions: cf comments in the code below
 simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
                            type = "marginal", re.form, conditional=NULL, verbose=TRUE,
-                           sizes=NULL , resp_testfn=NULL, phi_type="predict", prior.weights=object$prior.weights, ...) { ## object must have class HLfit; corr pars are not used, but the ZAL matrix is.
+                           sizes=NULL , resp_testfn=NULL, phi_type="predict", prior.weights=object$prior.weights, 
+                           variances=list(), ...) { ## object must have class HLfit; corr pars are not used, but the ZAL matrix is.
   ## RNG stuff copied from simulate.lm
+  was_invColdoldList_NULL <- is.null(object$envir$invColdoldList) # to be able to restore initial state 
   if (!exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE))
     runif(1)
   if (is.null(seed))
@@ -73,7 +75,14 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
     warning("argument 'conditional' is obsolete and will be deprecated. Use 'type' instead.")
     if (conditional) {type <- "residual"} else type <- "marginal"
   }
-  
+  if (type=="predVar") {
+    pred_type <- "predVar_s.lato" 
+    if ( ! length(variances)) stop("A 'variances' argument must be specified (e.g., variances=list(predVar=TRUE))")
+    variances$cov <- TRUE # mandatory, overriding any user's variances$cov argument
+  } else if (type=="(ranef|response)") {
+    pred_type <- "predVar_s.lato" 
+    variances <- list(linPred=TRUE, disp=FALSE, cancel_X.pv=TRUE, cov=TRUE) # mandatory, overriding any user's variance argument
+  } else pred_type <- ""
   if (is.null(sizes)) sizes <- .get_BinomialDen(object)
   nrand <- length(object$ZAlist)
   if (nrand>0L) {
@@ -81,34 +90,63 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
       if (type=="marginal") {
         re.form <- NA
       } else if (type=="residual") re.form <- NULL
-      # type (ranef|resid) leaves 're.form' missing.
+      # type "predVar" leaves 're.form' missing. as it is not used (which should be equivalent to re.form=NULL)
     } else if (inherits(re.form,"formula")) {
+      if (pred_type=="predVar_s.lato") warning("Non-default 're.form' is *currently* ignored when type='",type,"'.")
       re.form <- .preprocess_formula(re.form)
       ori_exp_ranef_strings <- attr(object$ZAlist,"exp_ranef_strings")
       new_exp_ranef_strings <- .process_bars(re.form,expand=TRUE)
       newinold <- unlist(sapply(lapply(new_exp_ranef_strings, `==`, y= ori_exp_ranef_strings), which)) ## unlist() bc empty list() can otherwise occur  
+    } else if (is.na(re.form)) {
+      if (pred_type=="predVar_s.lato") warning("Non-default 're.form' is *currently* ignored when type='",type,"'.")
     }
   }
   resu <- NULL
   done <- 0L
   while((needed <- nsim-done)) { ## loop operates only for resp_testfn
     if (nrand==0L) {
-      mu <- predict(object,newdata=newdata,binding=NA)
-      mu <- replicate(needed,mu,simplify=FALSE) # always a list at this stage
+      if (pred_type=="predVar_s.lato") { ## re.form ignored so de facto NULL
+        if (verbose) {
+          if (type=="(ranef|response)") {
+            stop("meaningless argument type='(ranef|response)' for a fixed-effect model")
+          } else cat("Simulation from linear predictor variance | observed response:\n") 
+        }
+        variances$cov <- (NROW(newdata)!=1L)
+        point_pred_eta <- predict(object,newdata=newdata, type="link", control=list(fix_predVar=NA),
+                                  variances=variances, ...) 
+        predVar <- attr(point_pred_eta,"predVar")
+        if (is.null(predVar)) stop("A 'variances' argument should be provided so that prediction variances are computed.") 
+        rand_eta <- mvrnorm(n=needed,mu=point_pred_eta[,1L], predVar)
+        if (needed>1L) rand_eta <- t(rand_eta) ## else mvrnorn value is a vector
+        if ( ! is.null(zero_truncated <- object$family$zero_truncated)) {
+          mu <- object$family$linkinv(rand_eta,mu_truncated=zero_truncated)
+        } else mu <- object$family$linkinv(rand_eta) ## ! freqs for binomial, counts for poisson: suitable for final code
+      } else {
+        mu <- predict(object,newdata=newdata,binding=NA,control=list(fix_predVar=FALSE))
+        mu <- replicate(needed,mu,simplify=FALSE) # always a list at this stage
+      }
     } else { ## MIXED MODEL
-      if (type=="(ranef|response)") { ## Booth & Hobert approximate approach
-        if (verbose) cat("Simulation from conditional random effect distribution | observed response:\n") 
-        point_pred_eta <- predict(object,newdata=newdata,variances=list(BH98=TRUE)) ## (with newX.pv=0)
+      if (pred_type=="predVar_s.lato") { ## re.form ignored so de facto NULL
+        if (verbose) {
+          if (type=="(ranef|response)") {
+            cat("Simulation from random-effects variance | observed response:\n")
+          } else cat("Simulation from linear predictor variance | observed response:\n") 
+        } 
         if (all(attr(object$rand.families,"lcrandfamfam")=="gaussian")){
-          rand_eta <- mvrnorm(n=needed,mu=point_pred_eta[,1L],Sigma=attr(point_pred_eta,"predVar"))
+          variances$cov <- (NROW(newdata)!=1L)
+          point_pred_eta <- predict(object,newdata=newdata, type="link", control=list(fix_predVar=NA),
+                                    variances=variances, ...) 
+          predVar <- attr(point_pred_eta,"predVar")
+          if (is.null(predVar)) stop("A 'variances' argument should be provided so that prediction variances are computed.") 
+          rand_eta <- mvrnorm(n=needed,mu=point_pred_eta[,1L], predVar)
           if (needed>1L) rand_eta <- t(rand_eta) ## else mvrnorn value is a vector
           if ( ! is.null(zero_truncated <- object$family$zero_truncated)) {
             mu <- object$family$linkinv(rand_eta,mu_truncated=zero_truncated)
           } else mu <- object$family$linkinv(rand_eta) ## ! freqs for binomial, counts for poisson: suitable for final code
         } else stop("This conditional simulation is not implemented for non-gaussian random-effects")
       } else if ( is.null(re.form)) { ## conditional on (all) predicted ranefs, type = "residual"
-        if (verbose) cat("Conditional simulation given predicted random effects:\n") 
-        mu <- predict(object,newdata=newdata,binding=NA)
+        if (verbose) cat("simulation of residuals, conditional on point predictions (hence on random effects):\n") 
+        mu <- predict(object,newdata=newdata,binding=NA,control=list(fix_predVar=FALSE))
         mu <- replicate(needed,mu,simplify=FALSE) #matrix(rep(mu,nsim),ncol=nsim)
       } else if ( inherits(re.form,"formula") || is.na(re.form) ){ ## explicit re.form; or unconditional MIXED MODEL, type= "marginal"
         if (verbose) {
@@ -116,7 +154,7 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
             cat("Simulation conditional on random effect(s) retained in 're.form':\n")
           } else cat("Unconditional simulation:\n") 
         }
-        mu_fixed <- predict(object, newdata=newdata, re.form=re.form,binding=NA) ## mu_T
+        mu_fixed <- predict(object, newdata=newdata, re.form=re.form,binding=NA,control=list(fix_predVar=FALSE)) ## mu_T
         if ( ! is.null(zero_truncated <- object$family$zero_truncated)) {
           eta_fixed <- object$family$linkfun(mu_fixed, mu_truncated=zero_truncated) ## back to _U to add ranefs to the linear predictor.
         } else eta_fixed <- object$family$linkfun(mu_fixed)
@@ -188,43 +226,8 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
     if ( ! inherits(mu,"list")) mu <- data.frame(mu) ## makes it always a list
     if (length(mu) != needed) stop("Programming error in simulate.HLfit() (ncol(mu) != needed).")
     #
-    phi_model <-  object$models[["phi"]]
-    if (phi_model == "") { ## the count families, or user-given phi
-      if (length(object$phi)>1L) {
-        if (is.null(newdata)) {
-          message(paste0("simulate.HLfit() called on an original fit where phi was given but not constant.\n",
-                         "This phi will be used, but is that relevant?"))
-        } else stop("I do not know what to simulate when 'newdata' is not NULL and the original fit's phi was given but not constant.")
-      }  
-      newphiMat <- matrix(object$phi,ncol=length(mu),nrow=length(mu[[1L]]))
-      if (identical(attr(prior.weights,"unique"),TRUE)) {
-        phiW <- newphiMat/prior.weights[1L]
-      } else phiW <- .Dvec_times_matrix(1/prior.weights,newphiMat)  ## warnings or errors if something suspect
-    } else if (phi_type=="predict") {
-      newphiVec <- switch(phi_model,
-                       "phiGLM" = predict(object$phi.object$glm_phi, 
-                                          newdata=newdata, type="response"), ## vector
-                       "phiHGLM" = predict(object$phi_model, newdata=newdata, type=phi_type)[,1L],
-                       "phiScal" = rep(object$phi,length(mu[[1L]])),
-                       stop('Unhandled object$models[["phi"]]')
-      ) ## vector in all cases
-      if (identical(attr(prior.weights,"unique"),TRUE)) {
-        phiW <- newphiVec/prior.weights[1L]
-      } else phiW <- newphiVec/prior.weights  ## warnings or errors if something suspect
-      phiW <- matrix(phiW,nrow=length(phiW), ncol=length(mu))  # vector -> matrix
-    } else { # any other phi_type 
-      newphiMat <- switch(phi_model,
-                       "phiGLM" = as.matrix(simulate(object$phi.object$glm_phi, 
-                                                     newdata=newdata, nsim=needed)), ## data frame -> matrix
-                       "phiHGLM" = simulate(object$phi_model, newdata=newdata, type=phi_type, nsim=needed),
-                       "phiScal" = matrix(object$phi,ncol=length(mu),nrow=length(mu[[1L]])),
-                       stop('Unhandled object$models[["phi"]]')
-      )
-      if (identical(attr(prior.weights,"unique"),TRUE)) {
-        phiW <- newphiMat/prior.weights[1L]
-      } else phiW <- .Dvec_times_matrix(1/prior.weights,newphiMat)  ## warnings or errors if something suspect
-      # F I X M E add diagnostics ?
-    } # phiW is always a matrix
+    phiW <- .get_phiW(object=object, newdata=newdata, mu=mu, phi_type=phi_type, needed=needed, 
+                      prior.weights=prior.weights) # phiW is always a matrix
     family <- object$family
     famfam <- object$family$family
     # resu <- object$family$simulate(object,nsim=nsim) ## could be OK and more efficient for CONDITIONAL simulation
@@ -251,6 +254,7 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
   }
   ## we reach this point only if there is a resp_testfn, and then 'resu'
   if (nsim==1L) resu <- drop(resu)
+  if (was_invColdoldList_NULL) object$envir$invColdoldList <- NULL
   return(resu)    
 }
 

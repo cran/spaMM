@@ -1,5 +1,4 @@
-# confint
-cat("\ntest confint() for HLfit, corrHLfit, and fitme:\n")
+cat(crayon::yellow("\ntest confint() for HLfit, corrHLfit, and fitme:\n"))
 data("wafers")
 wfit <- HLfit(y ~X1+(1|batch),family=Gamma(log),data=wafers,HLmethod="ML")
 ci <- confint(wfit,"X1")
@@ -15,7 +14,7 @@ data("blackcap")
 fitobject <- corrHLfit(migStatus ~ means + Matern(1|latitude+longitude),data=blackcap,HLmethod="ML",
                        init.corrHLfit=list(nu=0.535929513,rho=0.007485725),ranFix=list(phi=0.05,lambda=2))
 ci <- confint(fitobject,"means")
-testthat::expect_equal(ci$interval[[1]],0.1606797,tolerance=1e-4)
+testthat::expect_equal(ci$interval[[1]],0.1606797,tolerance=1e-4) 
 testthat::expect_equal(ci$interval[[2]],0.9558826,tolerance=1e-4)
 refitobject <- corrHLfit(migStatus ~ means + Matern(1|latitude+longitude),data=blackcap,HLmethod="ML",
                          init.corrHLfit=list(rho=0.007485725),ranFix=list(nu=0.535929513,phi=0.05,lambda=2))
@@ -38,16 +37,20 @@ rSample <- function(nb,rho,sigma2_u,resid,intercept,slope,pairs=TRUE) {
   data.frame(obs=obs,x,y,pred=pred)
 }
 
+rngcheck <- ("sample.kind" %in% names (formals(RNGkind)))
+if (rngcheck) suppressWarnings(RNGkind("Mersenne-Twister", "Inversion", "Rounding"  )) 
 set.seed(123)
 d1 <- rSample(nb=40,rho=3,sigma2_u=0.5,resid=0.5,intercept=-1,slope=0.1)
+if (rngcheck) RNGkind("Mersenne-Twister", "Inversion", "Rejection"  )
+
 HLMf <- fitme(obs~pred+Matern(1|x+y),init=list(rho=59.11287),fixed=list(nu=48.96201,phi=0.447761,lambda=0.3697),data=d1,method="ML")
 ci <- confint(HLMf,"pred") 
-testthat::expect_equal(ci$interval[[1]],0.06483438,tolerance=1e-4) 
-testthat::expect_equal(ci$interval[[2]],0.10567544,tolerance=1e-4)
+testthat::expect_equal(ci$interval[[1]],0.06483438,tolerance=1e-4)  
+testthat::expect_equal(ci$interval[[2]],0.10567544,tolerance=1e-4)  
 HLM <- fitme(obs~pred+Matern(1|x+y),init=list(nu=48.96201,rho=59.11287),fixed=list(phi=0.447761,lambda=0.3697),data=d1,method="ML")
 ci <- confint(HLM,"pred") ## practically identical in the two fits (+ nu drifts to higher values whatever the initial one)
-testthat::expect_equal(ci$interval[[1]],0.06483437,tolerance=1e-4)
-testthat::expect_equal(ci$interval[[2]],0.10567543,tolerance=1e-4)
+testthat::expect_equal(ci$interval[[1]],0.06483437,tolerance=1e-4)  
+testthat::expect_equal(ci$interval[[2]],0.10567543,tolerance=1e-4)  
 
 # compar to lme4
 if(requireNamespace("lme4", quietly = TRUE)) {

@@ -1,4 +1,4 @@
-cat("\ntest spaMM_glm:")
+cat(crayon::yellow("\ntest spaMM_glm:"))
 # salamander
 
 x <- c(43.6,46.5,21.7,18.6,17.3,16.7)

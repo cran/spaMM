@@ -235,7 +235,10 @@ mat_sqrt <- function(m=NULL, symSVD=NULL, try.chol=TRUE, condnum=1e12) { ## also
   return(L)
 } 
 
-make_scaled_dist <- function(uniqueGeo,uniqueGeo2=NULL,distMatrix,rho,rho.mapping=seq_len(length(rho)),
+
+make_scaled_dist <- local({
+  Chord_warned <- FALSE
+  function(uniqueGeo,uniqueGeo2=NULL,distMatrix,rho,rho.mapping=seq_len(length(rho)),
                                dist.method="Euclidean",return_matrix=FALSE) {
   if (length(rho)>1L && dist.method!="Euclidean") { 
     stop("'rho' length>1 not allowed for non-Euclidean distance.")
@@ -263,13 +266,13 @@ make_scaled_dist <- function(uniqueGeo,uniqueGeo2=NULL,distMatrix,rho,rho.mappin
       } else {
         uniqueScal2 <- NULL
       }
-      if (inherits(scaled.dist,"ff_matrix")) {
-        scaled.dist[] <- proxy::dist(x=uniqueScal,y=uniqueScal2, method=dist.method) 
-      } else scaled.dist <- proxy::dist(x=uniqueScal,y=uniqueScal2, method=dist.method) 
+      scaled.dist <- proxy::dist(x=uniqueScal,y=uniqueScal2, method=dist.method) 
     } else { ## not Euclidean
-      if (inherits(scaled.dist,"ff_matrix")) {
-        scaled.dist[] <- rho * proxy::dist(uniqueGeo,y=uniqueGeo2,method=dist.method) 
-      } else scaled.dist <- rho * proxy::dist(uniqueGeo,y=uniqueGeo2,method=dist.method)  
+      if (dist.method=="Chord" && (! Chord_warned) ) {
+        warning("NB: using dist's Chord distance on a circle, not EarthChord on a sphere", immediate. = TRUE )
+        Chord_warned <<- TRUE
+      }
+      scaled.dist <- rho * proxy::dist(uniqueGeo,y=uniqueGeo2,method=dist.method)  
     }
   } else { ## distMatrix provided
     scaled.dist <- rho * distMatrix
@@ -283,7 +286,8 @@ make_scaled_dist <- function(uniqueGeo,uniqueGeo2=NULL,distMatrix,rho,rho.mappin
     } else if (inherits(scaled.dist,"crossdist")) scaled.dist <- scaled.dist[] ## []: same effect as what oen would expect from non-existent as.matrix.crossdist()
   }
   return(scaled.dist)
-}
+  }
+}) 
 
 getDistMat <- function(object,scaled=FALSE, which=1L) {
   if (! is.null(msd_arglist <- attr(object$strucList[[which]],"msd.arglist"))) {

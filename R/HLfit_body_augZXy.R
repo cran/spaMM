@@ -1,5 +1,6 @@
 # y-augmented method withOUT precomputation of R_aug_ZXy
 .HLfit_body_augZXy <- function(processed, ranFix=list()) { 
+  trace <- processed$verbose["TRACE"]
   ranFix <- .post_process_family(processed$family,ranFix) ## assign 'extra' pars and cleans ranFix
   ranFix <- .canonizeRanPars(ranPars=ranFix,corr_info=NULL, checkComplete = FALSE, rC_transf=.spaMM.data$options$rC_transf)## including full-size lambda
   nobs <- nrow(processed$data) ## before prior.weights is evaluated
@@ -14,7 +15,7 @@
   sparse_precision <- processed$sparsePrecisionBOOL
   ranCoefs.Fix <- .getPar(ranFix,"ranCoefs") ## may be NULL
   # Updates processed$ranCoefs_blob which contains no globally fixed ranCoefs as this has been excluded by .determine_augZXy() 
-  ranCoefs_blob <- .process_ranCoefs(processed, ranCoefs.Fix,use_tri=.spaMM.data$options$use_tri_for_augZXy) ## *updates* *locally* a preexisting object
+  ranCoefs_blob <- .process_ranCoefs(processed, ranCoefs.Fix,use_tri_Nspprec=.spaMM.data$options$use_tri_for_augZXy) ## *updates* *locally* a preexisting object
   LMatrices <- processed$AUGI0_ZX$envir$LMatrices
   # HLCor_body has prefilled $LMatrices for :
   #    for Matern...
@@ -37,7 +38,7 @@
     ZAL <- processed$AUGI0_ZX$ZAfix ## default ZA 
   } 
   lambda.Fix <- ranFix$lambda # .getPar(ranFix,"lambda") ## should already have length 'nrand' or else be NULL
-  if (any(lambda.Fix==0)) stop("lambda cannot be fixed to 0.")
+  if (any(lambda.Fix==0, na.rm=TRUE)) stop("lambda cannot be fixed to 0.")
   ###
   off <- processed$off
   ##################
@@ -65,6 +66,7 @@
   H_global_scale <- .calc_H_global_scale(w.resid)
   if (processed$sparsePrecisionBOOL) {
     # .HLfit_body_augZXy has called .init_precision_info(processed,LMatrices)...
+    if (trace) cat(".")
     sXaug <- do.call(processed$AUGI0_ZX$envir$method, # ie, def_AUGI0_ZX_sparsePrecision
                        list(AUGI0_ZX=processed$AUGI0_ZX, corrPars=ranFix$corrPars,w.ranef=wranefblob$w.ranef,
                             cum_n_u_h=cum_n_u_h,w.resid=w.resid))
@@ -88,6 +90,7 @@
       } else {
         mMatrix_method <- .spaMM.data$options$matrix_method
       }
+      if (trace) cat(".")
       sXaug <- do.call(mMatrix_method,
                        list(Xaug=Xscal, weight_X=weight_X, w.ranef=wranefblob$w.ranef, H_global_scale=H_global_scale))
     }

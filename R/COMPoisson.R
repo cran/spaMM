@@ -5,23 +5,27 @@
 }
 
 .COMP_maxn <- function(lambda,nu) { ## this uses the simplest asympto approx to determine the discrete sum bound 
-  pow_lam_nu <- lambda^(1/nu)
-  # if (.CMP_use_asympto(pow_lam_nu,nu)) {
-  #   res <- stop(".COMP_maxn() called despite .CMP_use_asympto(pow_lam_nu,nu) being TRUE") 
-  # } else { 
+  # most pbatic case is nu->0, lambda->1^- where E -> lambda/(1-lambda) ->Inf while the first En approx <1 or <<1
+  if (nu>1) { 
     app_En <- lambda^(1/(nu+1e-6)) ## .COMP_asympto_P_moment(pow_lam_nu,nu+1e-6,1L) would be lower
-    # and using var ~ En/nu
-    # minimal value 9 to obtain identical values in "aliens' test (in version without the corrections in .COMP_Pr_moments())
-    res <- max(9,1+app_En+6*sqrt(app_En/(nu+1e-6)))  ## real, to allow continuity correction 
-    opt_maxn <- spaMM.getOption("COMP_maxn")
-    if (res>opt_maxn) {
-      res <- opt_maxn
-      if ( ! identical(spaMM.getOption("COMP_maxn_warned"),TRUE)) {
-        warning(paste("maxn truncated to",res,"for (lambda,nu)=",lambda,nu,"and possibly other values."))
-        spaMM.options(COMP_maxn_warned=TRUE)
-      }
+    app_Vn <- 5*app_En/(nu+1e-6)
+  } else { # combination of geom (for nu=0) and Poisson cases
+    hack <- (1-nu)*lambda # we make sure that 1/(1-hack) dominates when nu->0 and lambda->1^-
+    app_En <- hack/(1-hack)+exp(lambda)
+    app_Vn <- 5*hack/(1-hack)^2+exp(lambda)
+  } # 6*sqrt(app_Vn) to keep all but 1e-6 of the distrib (Feller p.245). 
+  #   For same effect with geom maxn=-6/log10(lambda) and with log(lambda)~lambda-1 we need 6*sqrt(app_Vn)~ 6/[log(10)*(1-lambda)]
+  #   But we apparently need a wider range of the distribution to get fast convergence in data_session_compil test.
+  res <- 1+app_En+6*sqrt(app_Vn)  ## real, to allow continuity correction 
+  # minimal value 9 to obtain identical values in "Aliens' test in old version, no longer necessary...
+  opt_maxn <- spaMM.getOption("COMP_maxn")
+  if (res>opt_maxn) {
+    res <- opt_maxn
+    if ( ! identical(spaMM.getOption("COMP_maxn_warned"),TRUE)) {
+      warning(paste0("maxn truncated to ",res," for (lambda,nu)= (",lambda,",",nu,") and possibly other values."))
+      .spaMM.data$options$COMP_maxn_warned <- TRUE 
     }
-  # }
+  }
   res
 }
 
@@ -67,11 +71,26 @@
     ## Add approximation for tail beyond summation from zero to maxn: 
     ## integrating directly from maxn to Inf may not work, as integrate() may then miss the mode of the integrand. So:
     # (1) Always add tail beyond the highest of maxn and k_maxim
-    scaled <- max(0,integrate(.COMP_Z_integrand,lower=max(k_maxim,maxn),upper=Inf,eta=eta,nu=nu,moment=moment,
-                         logScaleFac=logScaleFac,stop.on.error = FALSE)$value)
+    taildef <- max(k_maxim,maxn)
+    if (taildef>1e10) {
+      # nintegrate behaves more poorly that what can be handled by max(0,.)
+      # E.g., compare the value of 'scaled' in (spaMM:::.COMP_Z_n(lambda=exp(7.321), nu=0.25)) verss (spaMM:::.COMP_Z_n(lambda=exp(7.32), nu=0.25))
+      scaled <- .do_call_wrap("quadinf", 
+                              arglist=list(f=.COMP_Z_integrand, xa = taildef, xb = Inf, 
+                                           eta = eta, nu = nu, moment = 1,logScaleFac = logScaleFac),
+                              pack="pracma",
+                              info_mess=paste0("If the 'pracma' package were available,\n",
+                                               "more accurate evaluation of an integral would be possible.")
+                              )$Q
+      if (is.null(scaled)) scaled <- max(0,integrate(.COMP_Z_integrand,lower=taildef,upper=Inf,eta=eta,nu=nu,moment=moment,
+                                                     logScaleFac=logScaleFac)$value)
+    } else {
+      scaled <- max(0,integrate(.COMP_Z_integrand,lower=taildef,upper=Inf,eta=eta,nu=nu,moment=moment,
+                                logScaleFac=logScaleFac)$value)
+    }
     if (maxn<k_maxim) { ## then add integral from maxn to k_maxim 
       scaled <- scaled + max(0,integrate(.COMP_Z_integrand,lower=maxn,upper=k_maxim,eta=eta,nu=nu,moment=moment,
-                                         logScaleFac=logScaleFac,stop.on.error = FALSE)$value)
+                                         logScaleFac=logScaleFac)$value)
     }
     scaled <- pmin(.Machine$double.xmax,scaled)
     resu <- .COMP_Z_sum(resu, c(logScaleFac=logScaleFac,scaled=scaled))
@@ -99,7 +118,7 @@
     }
   } else {
     denum <- .COMP_Z(lambda=lambda,nu=nu)
-    denum_corr <- .COMP_Z(lambda=lambda,nu=1)
+    denum_corr <- .COMP_Z(lambda=lambda,nu=1) # for continuity correction in nu=1
     if ("1" %in% moments) {
       num <- .COMP_Z_n(lambda=lambda,nu=nu)
       resu["1"] <- .COMP_Z_ratio(num,denum)
@@ -310,7 +329,8 @@
     return(1e-8)  
   } else {
     mu <- .COMP_Pr_moments(lambda=lambda, nu=nu, moments="1")
-    return(max(mu,1e-8)) ## avoids mu=0 which fails validmu(mu) (as for poisson family)
+    return(mu) #(max(mu,1e-8)) would avoid mu=0 which fails validmu(mu) (as for poisson family)
+    # but it's better to use a consistent code to sanitize the input lambda than to fix the return value.
   }
 }
 
@@ -335,7 +355,7 @@
     if (is.nan(fupper)) {
       if ( ! identical(spaMM.getOption("COMP_geom_approx_warned"),TRUE)) {
         warning(paste("Geometric approximation tried in COMPoisson(nu=",nu,") for mu=",mu," and possibly for other nu,mu values"))
-        spaMM.options(COMP_geom_approx_warned=TRUE)
+        .spaMM.data$options$COMP_geom_approx_warned <- TRUE
       }
       lambda <- mu/(1+mu) ## but it should be checked hence the warning. Ideally for large nu ?
     } else {

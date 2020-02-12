@@ -16,7 +16,7 @@
                          type = "marginal", re.form, conditional = NULL, 
                          verbose = TRUE, sizes = NULL, resp_testfn = NULL, 
                          phi_type = "predict", prior.weights = object$prior.weights, 
-                         ...)
+                         variances=list(), ...)
 \method{simulate}{HLfitlist}(object, nsim = 1, seed = NULL, 
                              newdata = object[[1]]$data, sizes = NULL, ...)
 }
@@ -34,10 +34,10 @@
   \item{newdata}{
   A data frame closely matching the original data, except that response values are not needed. May provide new values of fixed predictor variables, new spatial locations, or new individuals within a block.   
 }
-\item{re.form}{ formula for random effects to condition on. If non-missing, this argument overrides the \code{type} argument. As it is missing by default, the joint default \code{re.form} and \code{type} effect is the latter's default, i.e., unconditional simulation. \code{re.form=NULL} conditions on all random effects (as \code{type="residual"}), and \code{re.form=NA} conditions on none of the random effects (as \code{type="marginal"} or \code{re.form=~0}).  
+\item{re.form}{ formula for random effects to condition on. Default behaviour depends on the \code{type} argument. The joint default is the latter's default, i.e., unconditional simulation. \code{re.form} is currently ignored when \code{type="Vlinpred"} (with a warning). Otherwise, \code{re.form=NULL} conditions on all random effects (as \code{type="residual"} does), and \code{re.form=NA} conditions on none of the random effects (as \code{type="marginal"} or \code{re.form=~0} do).  
 }
   \item{type}{
-    character string specifying the type of simulation for mixed models. \code{"marginal"} is for simulation from the marginal distribution of the random effect; \code{"residual"} acounts only for the residual variation of the fitted model; and \code{"(ranef|response)"} accounts both for residual variation and for the conditional distribution of the random effects given the response and the point estimates of model parameters. This distribution is known exactly in LMMs, and otherwise approximated as a Gaussian distribution with mean vector and covariance matrix given as per the Laplace approximation.  
+    character string specifying the type of simulation for mixed models. \code{"marginal"} is for simulation from the marginal distribution of the random effect; \code{"residual"} accounts only for the residual variation of the fitted model; and the more speculative \code{"predVar"} accounts both for residual variation and for the uncertainty of the linear predictor (see Details). 
   }
   \item{conditional}{
     Obsolete and will be deprecated. Boolean; TRUE and FALSE are equivalent to \code{type="residual"} and \code{type="marginal"}, respectively. 
@@ -57,9 +57,18 @@
   \item{prior.weights}{
   Prior weights that may be substituted to those of the original fit, with the same effect on the residual variance. 
 }
-  \item{\dots}{
-  further arguments passed to or from other methods. 
+  \item{variances}{
+  Used when \code{type="predVar"}: see Details. 
+}  \item{\dots}{
+  further arguments passed to or from other methods; currently only passed to \code{predict} in a speculative bit of code (see Details). 
 }
+}
+\details{
+\code{type="predVar"} accounts for the uncertainty of the linear predictor, by drawing new values of the predictor in a multivariate gaussian distribution with mean and covariance matrix of prediction. In this case, the user has to provide a \code{variances} argument, passed to \code{predict}. The covariance matrix represent the joint uncertainty in the fixed-effect coefficients and of any random effects given the response and the point estimates of dispersion and correlation parameters. This distribution is known exactly in LMMs, and otherwise approximated as a Gaussian distribution with mean vector and covariance matrix given as per the Laplace approximation. 
+
+\code{type="(ranef|response)"} can be viewed as a special version of \code{type="predVar"} where \code{variances=list(linPred=TRUE,disp=FALSE)}) and only the uncertainty in the random effects is taken into account.
+
+A full discussion of the merits of the different \code{type}s is beyond the scope of this documentation, but these different types may not all be useful. \code{type="marginal"} is typically used for computation of confidence intervals by parametric boostrap methods. \code{type="residual"} is used by \code{\link{get_cPredVar}} for its evaluation of a bias term. The other \code{type}s may be used to simulate the uncertainty in the random effects, conditionally on the data, and may thereofre be more akin to the computation of prediction intervals conditionnally on an (unknown but inferred) realization of the random effects. But these should presumably not be used in a bootstrap computation of such intervals, as this would represent a double accounting of the uncertainty that the boostrap aims to quantify.
 }
 \value{
   For the \code{HLfitlist} method (i.e., the result of a multinomial fit), a list of simulated responses.

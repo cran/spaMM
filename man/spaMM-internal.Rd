@@ -6,6 +6,9 @@
 \alias{.solve_IRLS_as_ZX} %  alias bc exported bc it must be exported to be traceable
 \alias{.solve_IRLS_as_spprec} % alias bc exported bc it must be exported to be traceable
 
+\alias{dimnames.bigq} % hidden method for base:: generic
+
+% exported from nlme
 \alias{Initialize} 
 \alias{Variogram} 
 \alias{coef} 

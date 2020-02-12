@@ -1,5 +1,5 @@
 .check_conv_glm_reinit <- function() {
-  if ( ( ! identical(spaMM.getOption("spaMM_glm_conv_silent"),TRUE))
+  if ( ( ! .spaMM.data$options$spaMM_glm_conv_silent)
        && (conv_crit <- environment(spaMM_glm.fit)$spaMM_glm_conv_crit$max)>0) { 
     # This should arise from .calc_dispGammaGLM() ; $max potentially comes from any call to spaMM_glm.fit(), 
     # but .get_inits_by_glm() reinitializes it. Info from .get_inits_by_glm is tracked through processed$envir$inits_by_glm$conv_info -> HLfit's warningList
@@ -49,12 +49,7 @@
   dbeta <- LevenbergMstep_result$dbetaV
   beta <- coefold + dbeta
   eta <- (x %*% beta)[] + offset
-  # if (family$link=="log") {eta[eta>30] <-30} 
-  if (family$link=="log") eta <- .sanitize_eta_log_link(eta,max=40) 
-  if (family$link=="inverse" && family$family=="Gamma") {
-    etamin <- sqrt(.Machine$double.eps)
-    eta[eta<etamin] <- etamin ## eta must be > 0
-  } ## cf similar code in muetafn
+  eta <- .sanitize_eta(eta, y=y, family=family, max=40) 
   mu <- family$linkinv(eta)
   dev <- suppressWarnings(sum(family$dev.resids(y, mu, weights)))
   if (is.infinite(dev) || is.na(dev)) {  
@@ -106,6 +101,14 @@ spaMM_glm.fit <- local({
     mu.eta <- family$mu.eta
     valideta <- family$valideta
     validmu <- family$validmu
+    # Check whether beta will be constrained by the need for postive eta
+    beta_bounded <- ( ( ! valideta(-1e-8) )|| # test not sufficient! next test needed for Gamma(inverse of identity)
+                      ( ! validmu(linkinv(-1e-8)) ))
+    #
+    # delayedAssign("positive_eta", {
+    #   pos_eta <- (family$family=="Gamma" && family$link %in% c("identity","inverse"))
+    #   (pos_eta || (family$family %in% c("poisson","negbin") && family$link %in% c("identity","sqrt"))) 
+    # })
     n <- NULL ## to avoid an R CMD check NOTE which cannot see that n will be set by eval(family$initialize)
     if (is.null(mustart)) {
       eval(family$initialize) ## changes y 2 col -> 1 col 
@@ -150,7 +153,12 @@ spaMM_glm.fit <- local({
           eta <- offset + as.vector(if (NCOL(x) == 1L) {x * start} else {x %*% start})
         }
       } else eta <- family$linkfun(mustart)
-      if (family$link=="log") eta <- .sanitize_eta_log_link(eta, max=40)
+      if (family$link=="log") {
+        eta <- .sanitize_eta_log_link(eta, max=40,y=y)
+      } else if (family$link=="loglambda") {
+        COMP_nu <- environment(family$aic)$nu 
+        eta <- .sanitize_eta_log_link(eta, max=40, y=y, nu=COMP_nu)
+      }
       mu <- linkinv(eta)
       if (!(validmu(mu) && valideta(eta))) 
         stop("cannot find valid starting values: please specify some", 
@@ -196,35 +204,29 @@ spaMM_glm.fit <- local({
             stop(sprintf(ngettext(nobs, "X matrix has rank %d, but only %d observation", 
                                   "X matrix has rank %d, but only %d observations"), 
                          fit$rank, nobs), domain = NA)
-          if (!singular.ok && fit$rank < nvars) stop("singular fit encountered")        
+          if (!singular.ok && fit$rank < nvars) stop("singular fit encountered")
           ## calculate updated values of eta and mu with the new coef:
           start[fit$pivot] <- fit$coefficients
           eta <- (x %*% start)[]
           eta <- eta + offset
-          if (family$link=="log") eta <- .sanitize_eta_log_link(eta, max=40) 
-          ## ... otherwise dev can be NaN in a case where get_valid_beta_coefs() is not called
+          if ( ! beta_bounded) eta <- .sanitize_eta(eta, y=y, family=family, max=40) # else we use .get_valid_beta_coefs()
           mu <- linkinv(eta)
           dev <- suppressWarnings(sum(dev.resids(y, mu, weights)))
-          ## check for divergence
           boundary <- FALSE
-          if (!is.finite(dev)) { ## NaN or Inf
+          if (beta_bounded && !is.finite(dev)) { ## NaN or Inf
             if (is.null(coefold)) {
-              # problems occur when there are restrictions on eta [eg, Gamma(inverse)]
-              positive_eta <- (family$family=="Gamma" && family$link %in% c("identity","inverse"))
-              positive_eta <- (positive_eta || (family$family %in% c("poisson","negbin") && family$link %in% c("identity","sqrt"))) 
-              if (positive_eta) {
-                if (requireNamespace("rcdd",quietly=TRUE)) {
-                  start <- .get_valid_beta_coefs(X=x,offset=offset,family,y,weights)
-                  eta <- (x %*% start)[]
-                  mu <- linkinv(eta <- eta + offset)
-                  dev <- suppressWarnings(sum(dev.resids(y, mu, weights)))
-                } else if ( ! identical(spaMM.getOption("rcdd_warned"),TRUE)) {
-                  message("glm() failed. If the 'rcdd' package were installed, spaMM_glm.fit() could automatically find a good starting value.")
-                  spaMM.options(rcdd_warned=TRUE)
-                }  
-              } ## stop()ped or exited loop with finite dev
+              if (requireNamespace("rcdd",quietly=TRUE)) {
+                start <- .get_valid_beta_coefs(X=x,offset=offset,family,y,weights)
+                eta <- (x %*% start)[]
+                mu <- linkinv(eta <- eta + offset) # could sanitze it, perhaps ?
+                dev <- suppressWarnings(sum(dev.resids(y, mu, weights)))
+              } else if ( ! identical(spaMM.getOption("rcdd_warned"),TRUE)) {
+                message("glm() failed. If the 'rcdd' package were installed, spaMM_glm.fit() could automatically find a good starting value.")
+                .spaMM.data$options$rcdd_warned <- TRUE
+              }
             }
           }
+          ## check for divergence
           if (!is.finite(dev)) {
             if (is.null(coefold)) 
               stop("no valid set of coefficients has been found: please supply starting values", 
@@ -362,9 +364,9 @@ spaMM_glm.fit <- local({
         LM_wz <- z*w - (wX %*% coefold) ## FIXME? if coefold diverges, LM_wz diverges and increasing damping may not be sufficient
       } ## end main loop (either a break or control$maxit reached)
       if (any(good) & ! conv) {
-        if (getOption("warn")==2L) { # immediate stop() vs. *delayed* warning
-          stop("spaMM_glm.fit() did not converge") 
-        } else {
+        if (getOption("warn")==2L) { # immediate stop() ...
+          warning("spaMM_glm.fit() did not converge") # rather than stop() so it's tagged as converted from warning
+        } else { # ... vs. *delayed* warning
           spaMM_glm_conv_crit <<- list(max=max(spaMM_glm_conv_crit$max,conv_crit),latest=conv_crit)
         }
       }
@@ -456,7 +458,7 @@ spaMM_glm <- function(formula, family = gaussian, data, weights, subset,
   summaryfamily <- .as_call_family(family,get_param = TRUE) ## only for printing
   mc[[1L]] <- quote(stats::glm) # for get("glm", asNamespace("stats")), summary.glm() will print the body of glm() ! ./.
   # quote seems OK for base fns; cf usages of mc[[1L]] <- quote(stats::model.frame). othewise change the final res$call[[1L]] 
-  mc$method <- method[1L]
+  mc$method <- method[1L] ## method must have 2 elements (doc)
   res <- .tryCatch_W_E(eval(mc,parent.frame()))
   if (inherits(res$value,"error")) {
     if ( requireNamespace("rcdd",quietly=TRUE) ) {
@@ -465,8 +467,8 @@ spaMM_glm <- function(formula, family = gaussian, data, weights, subset,
       res$call$family <- summaryfamily
       return(res)
     } else if ( ! identical(spaMM.getOption("rcdd_warned"),TRUE)) {
-      message("spaMM_glm() -> glm() failed. If the 'rcdd' package were installed, spaMM_glm() could fit the model.")
-      spaMM.options(rcdd_warned=TRUE)
+      stop("spaMM_glm() -> glm() failed. If the 'rcdd' package were installed, spaMM_glm() could fit the model.")
+      .spaMM.data$options$rcdd_warned <- TRUE
     } 
   } else {
     if (! is.null(res$warning)

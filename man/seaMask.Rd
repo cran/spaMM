@@ -13,35 +13,29 @@
 \usage{
 data("seaMask")
 data("landMask")
-data("worldcountries")
-data("oceanmask")
+# data("worldcountries") # deprecated and removed
+# data("oceanmask") # deprecated and removed
 }
 \format{
 \code{seaMask} and \code{landMask} are data frames with two variables, \code{x} and \code{y} for longitude and latitude. 
 Its contents are suitable for use with \code{\link{polypath}}: they define different polygones, each separated by a row of \code{NA}s.
 
-\code{worldcountries} and \code{oceanmask} are \code{SpatialPolygonsDataFrame} objects.
-% hence require 'sp', but no (runnable) example require sp.
-% R CMD check may complain if 'sp' is not available locally for a check (but it will be available for checks on CRAN). 
+\code{worldcountries} and \code{oceanmask} were \code{sp::SpatialPolygonsDataFrame} objects previously included in spaMM (see Details for replacement). Such objects were useful for creating land masks for different geographical projections. 
 }
 \details{
-A land mask can be produced out of \code{worldcountries} by filling the countries (i.e. \code{fill="black"} in the code for \code{country.layer} in the Examples in \url{http://kimura.univ-montp2.fr/~rousset/spaMM/example_raster.html}.
-
-\code{worldcountries} and \code{oceanmask} were created from public domain shapefiles downloaded from \code{www.naturalearth.com} on 2015/10/21. These are suitable for plots involving geographical projections not available through \code{map}, and more generally for raster plots. Only the lowest-resolution data are included in spaMM, to minimize the size of the package archive, but higher-resolution files are available on \url{http://www.naturalearthdata.com}, from where they can be loaded as shown in the examples. \code{worldcountries} had to be edited for non-ASCII characters before inclusion in spaMM:
-\code{worldcountries@data$formal_fr} was removed and the \dQuote{Côte d'Ivoire} level of some factor variables was renamed.  
+The removed objects \code{worldcountries} and \code{oceanmask} were suitable for plots involving geographical projections not available through \code{map}, and more generally for raster plots. A land mask could be produced out of \code{worldcountries} by filling the countries, as by \code{fill="black"} in the code for \code{country.layer} in the Examples in \url{http://kimura.univ-montp2.fr/~rousset/spaMM/example_raster.html}. These objects may now be available through the same web page, but a better place to look for the same functionality is the \code{IsoriX} package (objects \code{CountryBorders} and \code{OceanMask}).   
 
 \code{seaMask} and \code{landMask} were created from the world map in the maps package. 
 \code{polypath} requires polygons, while \code{map(interior=FALSE,plot=FALSE)} returns small segments. \code{landMask} is the result of reconnecting the segments into full coastlines of all land blocks. 
 
 
 }
-\seealso{\url{http://kimura.univ-montp2.fr/~rousset/spaMM/example_raster.html} for uses of \code{worldcountries} and \code{oceanmask}} 
+\seealso{\url{http://kimura.univ-montp2.fr/~rousset/spaMM/example_raster.html} for access to, and use of \code{worldcountries} and \code{oceanmask}; \url{https://cran.r-project.org/package=IsoriX} for replacement \code{CountryBorders} and \code{OceanMask} for these objects.} 
 \examples{
 if (spaMM.getOption("example_maxtime")>1.1) {
 
 data("seaMask")
 ## plot of predictions of behaviour for a land bird:
-if (requireNamespace("maps")){
  data("blackcap")
  bfit <- corrHLfit(migStatus ~ means+ Matern(1|longitude+latitude),data=blackcap,
                   HLmethod="ML",
@@ -53,7 +47,7 @@ if (requireNamespace("maps")){
   hexas <- lapply(seq(nrow(xy)), function(li){
     p <- as.numeric(xy[li,])
     hexa <- cbind(x=p[1]+r*cos(theta),y=p[2]+r*sin(theta))
-    rbind(rep(NA,2),hexa) ## inital NA before each polygon
+    rbind(rep(NA,2),hexa) ## initial NA before each polygon
   })
   do.call(rbind,hexas)
  }
@@ -66,16 +60,6 @@ if (requireNamespace("maps")){
                         polypath(rbind(seaMask,pmasks),border=FALSE,
                                  col="grey", rule="evenodd")
              }))
-}
-}
-
-\dontrun{
-# All shape files can be found here: http://www.naturalearthdata.com/downloads/
-# Once downloaded, they can be loaded into R by
-if (requireNamespace("rgdal", quietly = TRUE)) {
-  worldcountries <- readOGR("ne_110m_admin_0_countries_lakes.shp",
-                           layer="ne_110m_admin_0_countries_lakes")
-}
 }
 }
 \keyword{datasets}

@@ -6,7 +6,7 @@
 
 # see also http://bbolker.github.io/mixedmodels-misc/notes/cloglogsim.html
 
-if (spaMM.getOption("example_maxtime")>11.7) {
+if (spaMM.getOption("example_maxtime")>4.3) {
   if (requireNamespace("MASS", quietly = TRUE)) {
     artSim <- function(){
       #
@@ -53,15 +53,15 @@ if (spaMM.getOption("example_maxtime")>11.7) {
     }
     
     set.seed(42)
-    X <- artSim()
-    fit1 <- HLfit(cbind(Dead,Alive) ~ (Trt + 0)/x + (x | Rep),
+    artsim <- artSim()
+    fit1 <- fitme(cbind(Dead,Alive) ~ (Trt + 0)/x + (x | Rep),
                   family=binomial(link="cloglog"),
-                  data=X,HLmethod="ML",verbose=c(TRACE=FALSE)) ## 
+                  data=artsim, method="ML",verbose=c(TRACE=FALSE)) ## 
     testthat::expect_equal(logLik(fit1)[[1]],-1413.207,tolerance=1e-4) ## This is works in spprec too, with version 2.5.33
     if (FALSE) { ## not useful in routine tests
       if (file.exists((privtest <- "C:/home/francois/travail/stats/spaMMplus/spaMM/package/tests_other_pack/test-cloglog-lme4-glmmTMB.R"))) {
         source(privtest)
       }
     }
-  } else cat("test cloglog random slope: increase example_maxtime (14.8s) to run this test.\n")  
+  } else cat("test cloglog random slope: increase example_maxtime (4.3) to run this test.\n")  
 }

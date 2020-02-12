@@ -1,4 +1,4 @@
-# LMatrix assumed to be dense except in the trival case of identity matrix
+# LMatrix assumed to be dense except in the trivial case of identity matrix
 .get_invL_HLfit <- function(object, regul.threshold=1e-7) { ## computes inv(L) [not inv(Corr): see calc_invColdoldList]
   strucList <- object$strucList
   if (is.null(strucList)) {
@@ -320,6 +320,50 @@ fixef.HLfit <- function(object,...) {
   object$fixef    
 }
 
+.get_phiW <- function(object, newdata, 
+                      mu, # mu is a list (or data frame) whose length() is the # of replicates needed
+                      prior.weights=object$prior.weights, phi_type, needed) { # phi/prior.weights
+  phi_model <-  object$models[["phi"]]
+  if (phi_model == "") { ## the count families, or user-given phi
+    if (length(object$phi)>1L) {
+      if (is.null(newdata)) {
+        message(paste0("simulate.HLfit() called on an original fit where phi was given but not constant.\n",
+                       "This phi will be used, but is that relevant?"))
+      } else stop("I do not know what to simulate when 'newdata' is not NULL and the original fit's phi was given but not constant.")
+    }  
+    newphiMat <- matrix(object$phi,ncol=length(mu),nrow=length(mu[[1L]]))
+    if (identical(attr(prior.weights,"unique"),TRUE)) {
+      phiW <- newphiMat/prior.weights[1L]
+    } else phiW <- .Dvec_times_matrix(1/prior.weights,newphiMat)  ## warnings or errors if something suspect
+  } else if (phi_type=="predict") {
+    newphiVec <- switch(phi_model,
+                        "phiGLM" = predict(object$phi.object$glm_phi, 
+                                           newdata=newdata, type="response"), ## vector
+                        "phiHGLM" = predict(object$phi_model, newdata=newdata, type=phi_type)[ ,1L],
+                        "phiScal" = rep(object$phi,length(mu[[1L]])),
+                        stop('Unhandled object$models[["phi"]]')
+    ) ## vector in all cases
+    if (identical(attr(prior.weights,"unique"),TRUE)) {
+      phiW <- newphiVec/prior.weights[1L]
+    } else phiW <- newphiVec/prior.weights  ## warnings or errors if something suspect
+    phiW <- matrix(phiW,nrow=length(phiW), ncol=length(mu))  # vector -> matrix
+  } else { # any other phi_type 
+    newphiMat <- switch(phi_model,
+                        "phiGLM" = as.matrix(simulate(object$phi.object$glm_phi, 
+                                                      newdata=newdata, nsim=needed)), ## data frame -> matrix
+                        "phiHGLM" = simulate(object$phi_model, newdata=newdata, type=phi_type, nsim=needed),
+                        "phiScal" = matrix(object$phi,ncol=length(mu),nrow=length(mu[[1L]])),
+                        stop('Unhandled object$models[["phi"]]')
+    )
+    if (identical(attr(prior.weights,"unique"),TRUE)) {
+      phiW <- newphiMat/prior.weights[1L]
+    } else phiW <- .Dvec_times_matrix(1/prior.weights,newphiMat)  ## warnings or errors if something suspect
+    # F I X M E add diagnostics ?
+  } # phiW is always a matrix
+  return(phiW)
+}
+
+
 logLik.HLfit <- function(object, which=NULL, ...) {
   object <- .getHLfit(object)
   if (is.null(which)) {
@@ -346,6 +390,16 @@ logLik.HLfit <- function(object, which=NULL, ...) {
       message("logL_Lap = p_v because the response-family link is canonical")
       resu  <- object$APHLs[["p_v"]]
     } else stop("logL_Lap computation not yet implemented for this (family,link) combination.")
+  } else if (which=="cliks") { ## undoc
+    if (object$family$family=="binomial") {
+      muFREQS <- predict(object)
+      mu <- muFREQS * object$BinomialDen
+    }
+    clik_fn <- .get_clik_fn(object$family)
+    phi_est <- .get_phiW(object=object, newdata=NULL, mu=as.data.frame(mu), phi_type="predict", needed=1L,...)[,1L] # ... allows to overcome the default prior.weights
+    reweiclik <- .calc_clik(mu=mu,phi_est=phi_est,object, clik_fn=clik_fn, summand=TRUE, ...) # ... allows to overcome the default prior.weights
+    colnames(reweiclik) <- "clik"
+    return(reweiclik) ## currently 1-col matrix; avoids names(resu) <- which !
   } else resu  <- object$APHLs[[which]]
   names(resu) <- which
   return(resu)
@@ -440,40 +494,42 @@ deviance.HLfit <- function(object,...) {
   return(sum(dev_res2))
 }  
 
-get_fixefVar <- function(...) {
+get_predVar <- function(..., variances=list(), which="predVar") {
   mc <- match.call(expand.dots = TRUE)
-  mc$variances$fixefVar <- TRUE
+  if (which=="naive") {
+    variances$naive <- TRUE
+    variances$predVar <- FALSE
+    variances$disp <- FALSE # we only want the "naive" component
+  } else if (which=="respVar") {
+    variances$respVar <- TRUE
+  } else if (which=="residVar") {
+    variances$residVar <- TRUE
+  } else if (which=="fixefVar") {
+    variances$fixefVar <- TRUE
+  } else if (which=="intervals") {
+    if (is.null(mc$intervals)) mc$intervals <- "predVar" # but other intervals can be obtained if mc$intervals is not NULL
+  } else variances$predVar <- TRUE
+  mc$variances <- variances
   mc[[1L]] <- get("predict.HLfit", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
-  attr(eval(mc,parent.frame()),"fixefVar")
-}
-
-get_predVar <- function(...) {
-  mc <- match.call(expand.dots = TRUE)
-  mc$variances$predVar <- TRUE
-  mc[[1L]] <- get("predict.HLfit", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
-  attr(eval(mc,parent.frame()),"predVar")
+  attr(eval(mc,parent.frame()),which)
 }
 
 get_residVar <- function(...) {
-  mc <- match.call(expand.dots = TRUE)
-  mc$variances$residVar <- TRUE
-  mc[[1L]] <- get("predict.HLfit", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
-  attr(eval(mc,parent.frame()),"residVar")
+  get_predVar(...,which="residVar")
 }
 
 get_respVar <- function(...) {
-  mc <- match.call(expand.dots = TRUE)
-  mc$variances$respVar <- TRUE
-  mc[[1L]] <- get("predict.HLfit", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
-  attr(eval(mc,parent.frame()),"respVar")
+  get_predVar(...,which="respVar")
 }
 
 get_intervals <- function(...) {
-  mc <- match.call(expand.dots = TRUE)
-  mc[[1L]] <- get("predict.HLfit", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
-  if (is.null(mc$intervals)) mc$intervals <- "respVar"
-  attr(eval(mc,parent.frame()),"intervals") ## intervals by gaussian approx (possibly student'), not LR 
+  get_predVar(...,which="intervals")
 }
+
+get_fixefVar <- function(...) {
+  get_predVar(...,which="fixefVar")
+}
+
 
 
 get_RLRTSim_args <- function(object,...) {
@@ -661,29 +717,25 @@ model.matrix.HLfit <- function(object, ...) object$X.pv
 
 how.default <- function(object, ...) {message(paste("No 'how' method defined for objects of class",class(object)))} 
 
-how.HLfit <- function(object, devel=FALSE, ...) {
+how.HLfit <- function(object, devel=FALSE, verbose=TRUE, ...) {
   info <- object$how
   if (is.null(info)) {
     info <- list(MME_method=setdiff(object$MME_method,c("list")),
                  fit_time=object$fit_time,
                  "spaMM.version"=object$spaMM.version)
   }
-  if  ( is.null(resid_fit <- object$resid_fit)) {
-    print(paste0("Model fitted by spaMM, version ",info[["spaMM.version"]],
-                 ", in ",info$fit_time,"s using method: ",paste(info$MME_method,collapse=","),"."))
-  } else {
-    print(paste0("Model fitted by spaMM, version ",info[["spaMM.version"]],
-                 ", in ",info$fit_time,"s using method: ",paste(info$MME_method,collapse=","),"."))
-    #
+  if (verbose) print(paste0("Model fitted by spaMM::", paste(getCall(object)[[1L]]),", version ",info[["spaMM.version"]],
+               ", in ",info$fit_time,"s using method: ",paste(info$MME_method,collapse=","),"."))
+  if  (!  is.null(resid_fit <- object$resid_fit)) {
     resid_info <- object$resid_fit$how
     if (is.null(resid_info)) {
       resid_info <- list( MME_method=setdiff(object$resid_fit$MME_method,c("list")) )
     }
-    print(paste0("Residual model fitted using method: ",paste(resid_info$MME_method, collapse=","),"."))
+    if (verbose) print(paste0("Residual model fitted using method: ",paste(resid_info$MME_method, collapse=","),"."))
     info$resid_info <- resid_info
   }
   if (devel && ! is.null(switches <- info$switches)) {
-    print(paste(paste(names(switches),"=",switches), collapse = ", "))
+    if (verbose) print(paste(paste(names(switches),"=",switches), collapse = ", "))
   }  
   invisible(info)
 }

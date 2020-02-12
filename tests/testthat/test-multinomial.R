@@ -1,4 +1,4 @@
-cat("\ntest multinomial:")
+cat(crayon::yellow("\ntest multinomial:"))
 # dontrun in multinomial.Rd
 
 # good for detecting when one has forgotten to use setProcessed...

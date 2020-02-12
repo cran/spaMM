@@ -16,7 +16,7 @@
   resu <- .LevenbergMsolveCpp(wAugX, rhs, damping ) 
   #resu <- .e_LevenbergMsolveCpp(wAugX, LM_wAugz, damping ) ## essai 07/2016, using Eigen QR, not convincing
   resu$rhs <- rhs
-  resu$damping <- damping
-  return(resu) 
+  #resu$damping <- damping
+  return(resu) ## format: list(dbetaV, dampDpD, rhs)
 }  
 

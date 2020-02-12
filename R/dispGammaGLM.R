@@ -40,9 +40,9 @@
             ...) {
   Y <- as.numeric(dev.res/((1-lev))) 
   ## potential problem of any corrections is that v_h and lambda estimates may be inconsistent 
-  Y[Y==0L] <- 1e-100 ## v_h ~0 occurs eg Poisson, y ~ 1+ ranef(lambda->very small)
+  Y[Y==0L] <- 1e-100 ## v_h ~0 occurs eg Poisson, y ~ 1+ ranef(lambda->very small)  ... and COMPoisson
   Y[Y>1e150] <- 1e150 ## v1.2 fix for glm -> glm.fit -> .Call(C_Cdqrls, x[good, , drop = FALSE]*w problem
-  Y <- exp(.sanitize_eta_log_link(log(Y), max=30)) 
+  Y <- exp(.sanitize_eta_log_link(log(Y), max=30,y=Y)) # previous two lines important for the y=Y argument, which is itself important.
   #
   mf <- match.call(expand.dots = FALSE)
   m <- match(c("formula", "data", "subset", "weights", "na.action", "offset","X"), names(mf), 0L)

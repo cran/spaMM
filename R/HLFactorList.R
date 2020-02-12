@@ -258,7 +258,6 @@
       ZA[[col]] <- t(ZA_col)
     }
     ZA <- do.call(cbind, ZA) ## colnames are repeated if modmat has several cols...
-    if (.spaMM.data$options$Zcolsbyrows) ZA <- ZA[,as.integer(matrix(seq(ncol(ZA)),byrow=TRUE,ncol=nrow(incidMat)))]
   }
   return(ZA)
 }

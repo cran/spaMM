@@ -31,7 +31,7 @@ HLCor(formula, data, family = gaussian(), ranPars = NULL, distMatrix,
     A distance matrix between geographic locations, forwarded to \code{MaternCorr}
 }
   \item{uniqueGeo}{
-    A matrix of non-redundant geographic locations. Such a matrix is typically constructed autoantically from the data and the model formula, but otherwise could be useful if further the \code{rho} parameter is a vector with different values for different coordinates, in which case a scaled distance matrix has to be reconstructed from \code{uniqueGeo} and \code{rho}. 
+    A matrix of non-redundant geographic locations. Such a matrix is typically constructed automatically from the data and the model formula, but otherwise could be useful if further the \code{rho} parameter is a vector with different values for different coordinates, in which case a scaled distance matrix has to be reconstructed from \code{uniqueGeo} and \code{rho}. 
 }
   \item{adjMatrix}{
     An adjacency matrix, used if a random effect of the form\cr

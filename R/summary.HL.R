@@ -140,7 +140,7 @@ summary.HLfitlist <- function(object, ...) {
   return(legend)
 }
 
-.get_compact_cov_mats <- function(strucList,later) {
+.get_compact_cov_mats <- function(strucList) {
   isRandomSlope <- attr(strucList,"isRandomSlope")
   if (any(isRandomSlope)) {
     cov.mats <- vector("list",length(strucList))
@@ -211,7 +211,7 @@ summary.HLfitlist <- function(object, ...) {
   lambda_table <- data.frame(Group=repGroupNames,Term=unlist(namesTerms))
   in_table <- rep(FALSE,nrand)
   in_pointLambda <- rep(TRUE,nrand)
-  cov.mats <- .get_compact_cov_mats(object$strucList,later=TRUE)
+  cov.mats <- .get_compact_cov_mats(object$strucList)
   if ( length(cov.mats)) { ## fixme ? rename cov.mats to refer to ranCoefs ?
     maxnrow <- cum_nrows[nrand+1] ## maxnrow should = nrow(lambda_table)
     #.varcorr <- function(nrows, maxnrow, cov.mats, in_table, in_pointLambda, cum_nrows) {
@@ -580,7 +580,7 @@ summary.HLfitlist <- function(object, ...) {
   }
   if (object$family$family=="Gamma" && 
       object$family$link=="inverse" &&
-      identical(attr(object$muetablob$mu,"any_neg_eta"),TRUE) ## attribute added in version 2.4.100
+      identical(attr(object$eta,"any_neg_eta"),TRUE) 
   ) {
     cat("Non-positive predictions implied by final fitted coefficients in Gamma(inverse)-response model.\n")
   }

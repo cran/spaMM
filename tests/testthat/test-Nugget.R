@@ -1,4 +1,4 @@
-cat("\ntest Nugget:")
+cat(crayon::yellow("\ntest Nugget:"))
 
 data("Loaloa")
 ## use 1st 30 obs as this is slow:
@@ -9,7 +9,8 @@ data("Loaloa")
 corrpars <- get_ranPars(loafit,which="corrPars")
 testthat::expect_equal(attr(corrpars,"type")[["1"]],list(nu="fix",Nugget="outer",rho="outer"))
 try(testthat::expect_equal(corrpars[["1"]]$Nugget,0.04575572,tolerance=5e-5)) # bobyqa finds 0.04582924 ('flat' p_bv)
-## NB flat p_bv for Nugget; nloptr and bobyqa reach slightly diff values and L-BFGS-B performs poorly
+## NB flat p_bv for Nugget; 
+# with fitme() too, .safe_opt, nloptr and bobyqa reach slightly diff values and bobyqa is poor wrt optimization of p_bv 
 set.seed(123)
 Loaloa$id <- seq(nrow(Loaloa))
 
