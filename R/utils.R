@@ -109,3 +109,28 @@ print.spcall <- function (x, digits = NULL, quote = TRUE, na.print = NULL, print
   target_call <- grep(which, call_names)
   return(length(target_call))
 }
+
+.mvrnorm <- function(n = 1, mu, Sigma, tol = 1e-6, empirical = FALSE, tcross_Sigma=NULL) {
+  if (is.null(tcross_Sigma)) {
+    return(mvrnorm(n, mu, Sigma, tol, empirical))
+  } else { # simplification of MASS::mvrnorm code
+    p <- length(mu)
+    nr <- nrow(tcross_Sigma)
+    nc <- ncol(tcross_Sigma)
+    if (nr != p) stop("incompatible arguments (nrow(tcross_Sigma) != length(mu))")
+    X <- matrix(rnorm(nc * n), n)
+    if (empirical) { # not tested
+      X <- scale(X, TRUE, FALSE)
+      X <- X %*% svd(X, nu = 0)$v
+      X <- scale(X, FALSE, TRUE)
+    }
+    X <- drop(mu) + tcrossprod(tcross_Sigma, X) #eS$vectors %*% diag(sqrt(pmax(ev, 0)), p) %*% t(X)
+    nm <- names(mu)
+    if (is.null(nm) && !is.null(dn <- dimnames(tcross_Sigma))) 
+      nm <- dn[[1L]]
+    dimnames(X) <- list(nm, NULL)
+    if (n == 1) 
+      drop(X)
+    else as.matrix(t(X))
+  }
+}

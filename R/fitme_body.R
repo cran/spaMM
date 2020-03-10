@@ -16,7 +16,7 @@ fitme_body <- function(processed,
   } else proc1 <- processed
   verbose <-  proc1$verbose
   HLnames <- (c(names(formals(HLCor)),names(formals(HLfit)),
-                names(formals(.spaMM.data$options$mat_sqrt_fn)),names(formals(make_scaled_dist))))  ## cf parallel code in HLCor.obj
+                names(formals(mat_sqrt)),names(formals(make_scaled_dist))))  ## cf parallel code in HLCor.obj
   ## fill HLCor.args
   good_dotnames <- intersect(names(dotlist),HLnames) ## those specifically for the called fns as def'd by HLnames
   if (length(good_dotnames)) {

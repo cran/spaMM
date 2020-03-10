@@ -2,7 +2,7 @@
 # HLfit(Reaction ~ 1 + (Days|Subject), data = sleepstudy,HLmethod="ML")
 # HLfit(Reaction ~ Days + (Days|Subject), data = sleepstudy,HLmethod="ML")
 
-.calc_latentL <- function(compactcovmat, use_tri_Nspprec=TRUE, spprecBool, try_chol=FALSE, condnum=condnum) {
+.calc_latentL <- function(compactcovmat, use_tri_Nspprec=TRUE, spprecBool, try_chol=FALSE) {
   # returns a *t*crossfactor 
   ## L and L_Q are distinct matrices used jointly in a fit (L in ZAL...) andmust be deduced from each other.
   #  In sparse precision code We want chol_Q to be lower triangular (dtCMatrix can be Up or Lo) 
@@ -17,13 +17,10 @@
                                                              compactcovmat=compactcovmat))
   }
   # ELSE:
-  #compactcovmat <- .regularize_Wattr(compactcovmat, condnum=condnum) 
   compactcovmat <- .smooth_regul(compactcovmat, epsi=.spaMM.data$options$tol_ranCoefs_inner["regul"]) 
   #   value of epsi utlmately also affects whether bobyqa has to be run 
-  # .smooth_regul(compactcovmat, epsi=1/condnum) # appears to work except wild result for test sph transfo
-  # # _F I X M E_ if this new code stands, then we might be able to get rid of .regularize_Wattr()
-  d_regul <- attr(compactcovmat,"d_regul")
-  esys <- attr(compactcovmat,"esys")
+  esys <- attr(compactcovmat,"esys") 
+  d_regul <- esys$d_regul
   if (spprecBool || use_tri_Nspprec) { ## Competing for clumsy code prize... ## sparse version elsewhere
     ## need triangular factor for spprec case in particular hence the default value of use_tri_Nspprec
     crossfac_prec <- .Dvec_times_matrix(sqrt(1/d_regul), t(esys$vectors))
@@ -164,12 +161,6 @@
   spprecBool <- processed$sparsePrecisionBOOL
   use_tri_Nspprec <- .spaMM.data$options$use_tri_for_makeCovEst
   verbose <- processed$verbose["TRACE"]
-  if (spprecBool) {
-    condnum <- .spaMM.data$options[["condnum_for_latentL_spprec"]] # may be higher here than in  .process_ranCoefs()
-    #cat(condnum)
-  } else if (use_tri_Nspprec) {
-    condnum <- .spaMM.data$options[["condnum_for_latentL_tri_inner"]]
-  } else condnum <- .spaMM.data$options[["condnum_for_latentL_other"]]
   try_chol <- ( ! spprecBool ) # && (.spaMM.data$options[["rC_transf_inner"]]=="chol") ## "sph" works with chol latentL now
   augZXy_cond <- attr(processed$augZXy_cond,"inner")
   test <- FALSE
@@ -185,7 +176,7 @@
       ########## brute force optimization
       objfn <- function(trRancoef) { ## to be MINimized
         compactcovmat <- .calc_cov_from_trRancoef(trRancoef, Xi_ncol, rC_transf=rC_transf_inner)
-        latentL_blob <- .calc_latentL(compactcovmat, use_tri_Nspprec=use_tri_Nspprec, spprecBool=spprecBool, try_chol= try_chol , condnum=condnum)
+        latentL_blob <- .calc_latentL(compactcovmat, use_tri_Nspprec=use_tri_Nspprec, spprecBool=spprecBool, try_chol= try_chol)
         # Build Xscal
         working_LMatrices[[rt]] <- .makelong(latentL_blob$design_u,longsize=ncol(ZAlist[[rt]]), 
                                              template=processed$ranCoefs_blob$longLv_templates[[rt]]) ## the variances are taken out in $d
@@ -268,7 +259,7 @@
       ################# 
       ## reproduces representation in objfn
       compactcovmat <- .calc_cov_from_trRancoef(optr$solution, Xi_ncol, rC_transf=rC_transf_inner)
-      latentL_blob <- .calc_latentL(compactcovmat, use_tri_Nspprec=use_tri_Nspprec, spprecBool=spprecBool, try_chol= try_chol , condnum=condnum)
+      latentL_blob <- .calc_latentL(compactcovmat, use_tri_Nspprec=use_tri_Nspprec, spprecBool=spprecBool, try_chol= try_chol)
       loc_lambda_est[u.range] <- .make_long_lambda(latentL_blob$d, n_levels, Xi_ncol) 
       #if (.spaMM.data$options$rC_transf_inner!="chol") loc_lambda_est[loc_lambda_est<1e-08] <- 1e-08 
       next_LMatrix <- .makelong(latentL_blob$design_u,longsize=ncol(ZAlist[[rt]]), 

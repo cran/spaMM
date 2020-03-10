@@ -244,11 +244,12 @@
 ## modmat stores (<this info>| ...) => numeric for random slope model  
 .calc_raw_ZA <- function(incidMat, modmat) {
   if (ncol(modmat)==1L && (length(umm <- unique(modmat[,1L]))==1L) && umm==1) { # classic (1|.) case
-    if (nrow(incidMat)>1 && .is_identity(incidMat)) { ## if nrow=1 we may be optimizing point predictions and Diagonal is not worth the cost. 
+    if (nrow(incidMat)>1L && .is_identity(incidMat)) { ## if nrow=1 we may be optimizing point predictions and Diagonal is not worth the cost. 
       ZA <- Diagonal(n=nrow(incidMat))
       colnames(ZA) <- rownames(incidMat) 
     } else ZA <- t(incidMat)
     # incidMat has no colnames and modmat does not provide names in the alternative general code
+    attr(ZA,"is_diag_tcross") <- TRUE
   } else { ## first conceived for ranCoefs, with ncol(modmat)>1L. But also handles e.g. Matern(not-1|.) 
     ZA <- vector("list",ncol(modmat))
     for (col in seq_len(ncol(modmat))) {
@@ -258,6 +259,7 @@
       ZA[[col]] <- t(ZA_col)
     }
     ZA <- do.call(cbind, ZA) ## colnames are repeated if modmat has several cols...
+    attr(ZA,"is_diag_tcross") <- FALSE
   }
   return(ZA)
 }

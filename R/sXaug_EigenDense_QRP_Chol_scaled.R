@@ -50,7 +50,9 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug, # already ZAL_scaled
   if ( ! is.null(szAug)) {
     rhs <- .crossprodCpp(sXaug, szAug)
     if ( ! is.null(BLOB$perm)) rhs <- rhs[BLOB$perm,,drop=FALSE]
-    rhs <- backsolve(BLOB$R_scaled, forwardsolve(BLOB$R_scaled, rhs, upper.tri = TRUE, transpose = TRUE))
+    # test-adjacency-corrMatrix (R_scaled of dim 114): replicate(100,{source(...)},simplify=FALSE) finds 5e-3s advantage per replicate for backsolve over .Rcpp_backsolve .
+    # I.e., fairly NS; and other tests are not more discriminating
+    rhs <- backsolve(BLOB$R_scaled, backsolve(BLOB$R_scaled, rhs, transpose = TRUE))
     if ( is.null(BLOB$sortPerm)) {
       return(rhs)
     } else return(rhs[BLOB$sortPerm,,drop=FALSE])
@@ -88,7 +90,11 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug, # already ZAL_scaled
       ## t(sXaug) is scaled such that the left block is an identity matrix, so we can work 
       ## on two separate blocks if the Cholesky is not permuted. Then 
       if (is.null(lev_lambda <- BLOB$inv_factor_wd2hdv2w)) {
-        lev_lambda <- BLOB$inv_factor_wd2hdv2w <- backsolve(BLOB$R_R_v,diag(ncol(BLOB$R_R_v)),transpose=TRUE)
+        #lev_lambda <- BLOB$inv_factor_wd2hdv2w <- backsolve(BLOB$R_R_v,diag(ncol(BLOB$R_R_v)),transpose=TRUE)
+        # test-spaMM # measurable time gain by .Rcpp_backsolve() possibly bc it's the full inverse which is computed. 
+        lev_lambda <- BLOB$inv_factor_wd2hdv2w <- .Rcpp_backsolve(BLOB$R_R_v, NULL, # i.e., diag(), but without creating it 
+                                                                  #                   (but this does not explain most of the time gain)
+                                                                  transpose=TRUE) 
       } 
       lev_lambda <- lev_lambda^2
       lev_lambda <- colSums(lev_lambda)
@@ -107,13 +113,13 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug, # already ZAL_scaled
       if ( ! is.null(BLOB$sortPerm)) {
         X <- BLOB$R_scaled[,BLOB$sortPerm,drop=FALSE] ## has colnames
       } else X <- BLOB$R_scaled
-      BLOB$R_scaled_blob <- list(X=X, diag_pRtRp = colSums(X^2))
+      BLOB$R_scaled_blob <- list(X=X, diag_pRtRp = colSums(X^2), XDtemplate=.XDtemplate(X))
     }
     return(BLOB$R_scaled_blob)
   } else if (which=="R_scaled_v_h_blob") {
     if (is.null(BLOB$R_scaled_v_h_blob)) {
       diag_pRtRp_scaled_v_h <- colSums(BLOB$R_R_v^2)
-      BLOB$R_scaled_v_h_blob <- list(R_scaled_v_h=BLOB$R_R_v, diag_pRtRp_scaled_v_h=diag_pRtRp_scaled_v_h)
+      BLOB$R_scaled_v_h_blob <- list(R_scaled_v_h=BLOB$R_R_v, diag_pRtRp_scaled_v_h=diag_pRtRp_scaled_v_h, XDtemplate=.XDtemplate(BLOB$R_R_v))
     }
     return(BLOB$R_scaled_v_h_blob)
   } else if (which=="R_beta_blob") {
@@ -123,7 +129,7 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug, # already ZAL_scaled
       X <- as.matrix(sXaug[-seq_n_u_h,-seq_n_u_h]) ## follwoing code assuming it is dense...
       R_beta <- .lmwithQR(X,yy=NULL,returntQ=FALSE,returnR=TRUE)$R_scaled
       diag_pRtRp_beta <-  colSums(R_beta^2)
-      BLOB$R_beta_blob <- list(R_beta=R_beta,diag_pRtRp_beta=diag_pRtRp_beta)
+      BLOB$R_beta_blob <- list(R_beta=R_beta,diag_pRtRp_beta=diag_pRtRp_beta, XDtemplate=.XDtemplate(R_beta))
     }
     return(BLOB$R_beta_blob)
   } else if (which=="d2hdv2") {
@@ -142,8 +148,8 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug, # already ZAL_scaled
     rhs <- B
     rhs[seq_n_u_h] <- BLOB$invsqrtwranef * rhs[seq_n_u_h]
     if (is.null(BLOB$perm)) {
-      rhs <- forwardsolve(BLOB$R_scaled, rhs, upper.tri = TRUE, transpose = TRUE)
-    } else rhs <- forwardsolve(BLOB$R_scaled, rhs[BLOB$perm], upper.tri = TRUE, transpose = TRUE)
+      rhs <- backsolve(BLOB$R_scaled, rhs, transpose = TRUE)
+    } else rhs <- backsolve(BLOB$R_scaled, rhs[BLOB$perm], transpose = TRUE)
     return(sum(rhs^2))
   } 
   if (which=="Mg_invXtWX_g") { ## 
@@ -168,8 +174,8 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug, # already ZAL_scaled
         if (is.matrix(B)) {
           rhs <- .Dvec_times_matrix(BLOB$invsqrtwranef,B)
         } else rhs <- BLOB$invsqrtwranef * B
-        if (is.null(BLOB$inv_factor_wd2hdv2w)) {
-          rhs <- backsolve(BLOB$R_R_v, forwardsolve(BLOB$R_R_v, rhs, upper.tri = TRUE, transpose = TRUE))
+        if (is.null(BLOB$inv_factor_wd2hdv2w)) { # test-spaMM Nugget multinomial inverse-Gamma .... no clear benefit in using .Rcpp_chol2solve()
+          rhs <- backsolve(BLOB$R_R_v, backsolve(BLOB$R_R_v, rhs, transpose = TRUE))
         } else rhs <- .crossprod(BLOB$inv_factor_wd2hdv2w) %*% rhs
         if (is.matrix(rhs)) {
           rhs <- .Dvec_times_matrix(BLOB$invsqrtwranef,rhs)
@@ -238,21 +244,21 @@ get_from_MME.sXaug_EigenDense_QRP_Chol_scaled <- function(sXaug,which="",szAug=N
                  "LevMar_step" = {
                    R_scaled_blob <- .sXaug_EigenDense_QRP_Chol_scaled(sXaug,which="R_scaled_blob")
                    dampDpD <- damping*R_scaled_blob$diag_pRtRp ## NocedalW p. 266
-                   list(dVscaled_beta = .damping_to_solve(X=R_scaled_blob$X,dampDpD=dampDpD,rhs=LMrhs), 
+                   list(dVscaled_beta = .damping_to_solve(XDtemplate=R_scaled_blob$XDtemplate, dampDpD=dampDpD,rhs=LMrhs), 
                         dampDpD = dampDpD) 
                  },
                  "LevMar_step_v_h" = {
                    ## FR->FR probably not the most elegant implementation 
                    R_scaled_v_h_blob <- .sXaug_EigenDense_QRP_Chol_scaled(sXaug,which="R_scaled_v_h_blob")
                    dampDpD <- damping*R_scaled_v_h_blob$diag_pRtRp_scaled_v_h ## NocedalW p. 266
-                   list(dVscaled = .damping_to_solve(X=R_scaled_v_h_blob$R_scaled_v_h, dampDpD=dampDpD, rhs=LMrhs), 
+                   list(dVscaled = .damping_to_solve(XDtemplate=R_scaled_v_h_blob$XDtemplate, dampDpD=dampDpD, rhs=LMrhs), 
                         dampDpD = dampDpD) 
                  },
                  "LevMar_step_beta" = {
                    if ( ! length(LMrhs)) stop("LevMar_step_beta called with 0-length LMrhs: pforpv=0?")
                    R_beta_blob <- .sXaug_EigenDense_QRP_Chol_scaled(sXaug,which="R_beta_blob")
                    dampDpD <- damping*R_beta_blob$diag_pRtRp_beta
-                   list(dbeta = .damping_to_solve(X=R_beta_blob$R_beta, dampDpD=dampDpD, rhs=LMrhs), 
+                   list(dbeta = .damping_to_solve(XDtemplate=R_beta_blob$XDtemplate, dampDpD=dampDpD, rhs=LMrhs), 
                         dampDpD = dampDpD) 
                  },
                  ## all other cases:

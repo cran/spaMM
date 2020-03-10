@@ -95,8 +95,9 @@ if (FALSE) {
   # v[v<2*epsi] <- (v+correction)[v<2*epsi] # *increasing* from epsi to 2*epsi as v goes from 0 to 2*epsi, derivable in 2*epsi.
   # i.e.:
   v[v<2*epsi] <- (4*epsi)*v[v<2*epsi]^2+epsi ## inverse is w[w<2*epsi] <- sqrt( (4*epsi)*(w[w<2*epsi]-epsi) )
+  es$d_regul <- v
   covmat <- .ZWZt(es$vector,v)
-  return(structure(covmat, esys=es, d_regul=v))
+  return(structure(covmat, esys=es))
 }
 
 # called only at the begining of inner or outer optim 
@@ -739,22 +740,3 @@ if (FALSE) {
   }
   return(esys)
 }
-
-.regularize_Wattr <- function(compactcovmat, condnum, regul_ranCoefs=.spaMM.data$options$regul_ranCoefs) {
-  esys <- .eigen_sym(compactcovmat)
-  target_min_d <- max(esys$values)/condnum ## so that corrected condition number is at most the denominator:     
-  # (yes, but with high 'condnum' and large negative esys$values, target_min_d may not be numerically 
-  # distinct from target_min_d-esys$values and then output matrix has a zero eigenvalue... hence add small regul_ranCoefs[1L] here:
-  d_corr <- max(c(0,(target_min_d-esys$values)*(1+regul_ranCoefs[1L])))
-  ## ... but then target_min_d loses its verbatim meaning...
-  d_regul <- esys$values+ d_corr # all diag is corrected => added a constant diagonal matrix to compactcovmat
-  ############ previously, esys$values were uncorrected hence still distinct from d_regul
-  # correcting them negatively impacted one of the test-ranCoefs in older versions
-  # More recently, this has become important for the rC_transf test HLfit3 when .safe_opt() more closely approaches singularity
-  # Hence:
-  esys$values <- esys$values+ d_corr # 26/12/2019 => redundant info now. _F I X M E_ remove redundant info if the code stands.
-  #
-  compactcovmat <- .ZWZt(esys$vectors, d_regul) # at least for return value
-  return(structure(compactcovmat, esys=esys, d_regul=d_regul))
-}
-

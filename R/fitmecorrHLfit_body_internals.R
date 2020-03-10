@@ -139,30 +139,45 @@
   return(geoMats)
 }
 
-.provide_AR_factorization <- function(adjMatrix, sparse_precision, corr.model) {
-  if (corr.model  %in% c("SAR_WWt")) {
-    decomp <- eigen(adjMatrix,symmetric=FALSE) ## FIXME not RcppEigen-optimized
-    return(list(u=decomp$vectors,d=decomp$values,u.=solve(decomp$vectors)))
-  }
-  # ELSE
-  
-  if (corr.model  %in% c("adjacency")) {
-    ## eigenvalues needed in all cases for the bounds. Full decomp not always needed
-    #if (isSymmetric(adjMatrix)) { # should have been checkedby .preprocess -> ... -> .sym_checked(adjMatrix)
+
+.provide_AR_factorization_info <- local({
+  RSpectra_warned <- FALSE
+  function(adjMatrix, sparse_precision, corr.model) {
+    if (corr.model  %in% c("SAR_WWt")) {
+      decomp <- eigen(adjMatrix,symmetric=FALSE) ## could be symmetric=TRUE if adjMatrix is dsC as in adjacency case.
+      return(list(u=decomp$vectors,d=decomp$values,u.=solve(decomp$vectors)))
+    }
+    # ELSE
+    
+    if (corr.model  %in% c("adjacency")) { # adjMatrix is dsC from .preprocess -> ... -> .sym_checked(adjMatrix)
+      ## extreme eigenvalues needed in all cases for the bounds. Full decomp not always needed
       if ( sparse_precision) { 
-        decomp <- list(d=eigen(adjMatrix,only.values = TRUE)$values) ## only eigenvalues
+        if (requireNamespace("RSpectra",quietly=TRUE)) { #https://scicomp.stackexchange.com/questions/26786/eigen-max-and-minimum-eigenvalues-of-a-sparse-matrix
+          eigrange <- RSpectra::eigs(adjMatrix, k=2, which="BE", opts=list(retvec=FALSE))$values
+          decomp <- list(d=NaN, # _F I X M E_ bug-catching tempo code
+            eigrange=eigrange) # only the extreme eigenvalues
+        } else {
+          if ( ! RSpectra_warned) { #if ( ! identical(spaMM.getOption("RSpectra_warned"),TRUE)) {
+            message("If the 'RSpectra' package were installed, an eigenvalue computation could be faster.")
+            RSpectra_warned <<- TRUE # .spaMM.data$options$RSpectra_warned <- TRUE
+          }
+          eigvals <- eigen(adjMatrix, symmetric=TRUE, only.values = TRUE)$values
+          decomp <- list(d=NaN, # _F I X M E_ bug-catching tempo code
+            eigrange=range(eigvals)) ## only eigenvalues # but first converts to dense matrix, so quite inefficient.
+        }
       } else {
         decomp <- eigen(adjMatrix, symmetric=TRUE)
         svdnames <- names(decomp)
         svdnames[svdnames=="values"] <- "d"
         svdnames[svdnames=="vectors"] <- "u"
         names(decomp) <- svdnames
+        decomp$adjd <- decomp$d
+        decomp$eigrange=range(decomp$adjd)
       }
       return(decomp)
-    #} else stop("'adjMatrix' is not symmetric") ## => invalid cov mat for MVN
+    }
   }
-
-}
+})
 
 .check_conflict_init_fixed <- function(fixed, init, errstring) {
   fixed_cP <- fixed$corrPars

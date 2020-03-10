@@ -17,7 +17,7 @@ if(requireNamespace("lme4", quietly = TRUE)) {
     (ares <- fitme(Reaction ~ Days + AR1(1|Days) + (Days|Subject), data = sleepstudy, verbose=c(TRACE=TRUE)))
     spaMM.options(oldopt)
   }
-  (ares <- fitme(Reaction ~ Days + AR1(1|Days) + (Days|Subject), data = sleepstudy))  ## AR-lambda is ~0 hence lik is flat  wrt ARphi
+  (ares <- fitme(Reaction ~ Days + AR1(1|Days) + (Days|Subject), data = sleepstudy, verbose=c(TRACE=TRUE)))  ## AR-lambda is ~0 hence lik is flat  wrt ARphi
   testthat::expect_equal(logLik(ares),c(p_v=-875.969672803))
   if (spaMM.getOption("example_maxtime")>1.5) { ## approx time v2.4.129 ten times faster than v2.3.33
     sm <- fitme(Reaction ~ Days + (Days|Subject) + Matern(1|Days), fixed=list(nu=0.5),data = sleepstudy)

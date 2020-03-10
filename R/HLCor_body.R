@@ -159,7 +159,7 @@ HLCor_body <- function(processed, ## single environment
   # * modifies processed$AUGI0_ZX$envir by .init_precision_info(...) 
   # * computes processed$AUGI0_ZX$envir$LMatrices except for ranCoefs (the latter being filled in HLfit_body)
   .assign_geoinfo_and_LMatrices_but_ranCoefs(processed, corr_types, spatial_terms, ranPars, control.dist, 
-                                argsfordesignL=dotlist[intersect(names(dotlist),names(formals(.spaMM.data$options$mat_sqrt_fn)))] )
+                                argsfordesignL=dotlist[intersect(names(dotlist),names(formals(mat_sqrt)))] )
   if (any(vec_normIMRF <- processed$AUGI0_ZX$vec_normIMRF ) ) {
     processed$ZAlist <- .normalize_IMRF(processed$ZAlist, 
                                         vec_normIMRF=vec_normIMRF,
@@ -258,7 +258,7 @@ HLCor_body <- function(processed, ## single environment
   
   HLCor.formals <- names(formals(HLCor))
   names_formals_HLfit <- names(formals(HLfit))
-  designL.formals <- names(formals(.spaMM.data$options$mat_sqrt_fn))
+  designL.formals <- names(formals(mat_sqrt))
   makescaled.formals <- names(formals(make_scaled_dist))
   HLnames <- (c(HLCor.formals,names_formals_HLfit,designL.formals,makescaled.formals))  ## cf parallel code in corrHLfit
   HLCor.call <- mc[c(1,which(names(mc) %in% HLnames))] ## keep the call structure

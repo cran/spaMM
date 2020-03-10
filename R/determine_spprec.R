@@ -71,7 +71,7 @@
     #     sparse_precision <- FALSE
     #   }
     # }
-    ## best decision rule not obvious. For adjacency, trade off between repeated sparse Cholesky and a sym_eigen() . 
+    ## best decision rule not obvious. For adjacency, trade off between repeated sparse Cholesky and a eigen() . 
     if (is.null(sparse_precision)) {
       inner_estim_adj_rho <- (length(intersect(attr(ZAlist,"exp_ranef_types"),c("SAR_WWt","adjacency"))) && 
                                 ( processed$For=="HLCor" || (.get_cP_stuff(init.HLfit,"rho",count=TRUE))))

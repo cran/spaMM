@@ -222,10 +222,24 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
     for (new_rd in seq_len(nrand)) { # we don't vectorize to avoid evaluating isDiagonal when it's not needed.  
       old_rd <- newinold[new_rd]
       if (ori_exp_ranef_types[old_rd] != "IMRF") { # we don't need cov matrices for IMRF terms ! bc their Evar is always FALSE
-        need_Cnn[new_rd] <- (attr(object$strucList,"isRandomSlope")[old_rd] | variances$cov) 
+        need_Cnn[new_rd] <- (attr(object$strucList,"isRandomSlope")[old_rd] | variances$cov ) 
         # that is, we need them also for prediction variances (not cov) for random-slope.
         # and we check another condition where we may need them for prediction variances: 
-        if ( !  need_Cnn[new_rd]) need_Cnn[new_rd] <- ( ! isDiagonal(tcrossprod(newZAlist[[new_rd]])))
+        if ( !  need_Cnn[new_rd]) {
+          if (is.null(not_diag_tcross <- ! attr(newZAlist[[new_rd]],"is_diag_tcross"))) {
+            # typically occurs bc there was an A matrix (though not for IMRF) so that ZA differs from Z
+            if (is.null(attr(newZAlist,"AMatrices"))) {
+              message("Possibly inefficient code in .calc_new_X_ZAC().")
+              # awful code potentially huge calculation to detect a nondiagonal element...
+              # i could consider that the case is rare enough and not bother
+              # or I could consider that the tcrossprod is unlikely to be diagonal...
+              need_Cnn[new_rd] <- ( ! isDiagonal(.tcrossprod(newZAlist[[new_rd]]))) 
+              # another approach requiring less computation is to check the sum of the values of non-diagonal elements of the tcrossp of abs(ZA), 
+              # absZA <- abs(newZAlist[[new_rd]])
+              # need_Cnn[new_rd] <- ((sum(rowSums(absZA)^2)-sum(absZA^2))>0)
+            } else need_Cnn[new_rd] <- TRUE # assumin that the tcrossprod is unlikely to be diagonal...
+          } else need_Cnn[new_rd] <- not_diag_tcross
+        }
         # (depends on AMatrices in particular, but again for IMRF the Evar in nodes is 0 and so is ZA %*% Evar %*% t(ZA) )
       } # else it remains FALSE
     }

@@ -7,7 +7,6 @@ data("scotlip")
 ## same without optim: run in scotlip examples; cf also autoregressive.Rd for ML fits
 
 #set.seed(124)
-#eigenv <- sym_eigen(Nmatrix) ## could use eigen(,symmetric=TRUE)
 set.seed(129) ## many samples will diverge (ML on binary response) or undemonstratively be fitted by extreme rho values
 eigenv <- eigen(Nmatrix, symmetric=TRUE) 
 Lmat <- eigenv$vectors %*% diag(sqrt(1/(1-0.17*eigenv$values)))

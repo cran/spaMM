@@ -138,7 +138,9 @@ is_separated <- local(
     else if(status == 3)
       ans$separation <- TRUE
     else {
-      stop("unexpected result for primal test.")
+      warning(paste0("unexpected result (status=",status,") for separation test."),immediate. = TRUE)
+      # and this may have taken far more tiem than expected
+      ans$separation <- FALSE # wishful thinking
     }
   }
   

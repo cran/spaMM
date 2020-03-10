@@ -46,11 +46,14 @@ MaternCorr.default <- function (d, rho=1, smoothness, nu=smoothness, Nugget=NULL
   isd0 <- d == 0L
   dscal[isd0] <- 1e-10 ## avoids errors on distance =0; but the resulting corrvals can be visibly < 1 for small nu ## FIXME make value dependent on rho, nu ?
   logcon <- (nu - 1)*log(2)+ lgamma(nu) 
+  ## base::besselK() is fast but not very accurate; 
+  ## gsl::bessel_lnKnu() [v2.1-6] is sensitively slower; I derived from an older version .bessel_lnKnu() which is in-between;
+  ## Bessel::BesselK() is much slower
+  # corrvals <- - logcon + nu*log(dscal)+ log(gsl::bessel_lnKnu(x=dscal, nu=nu)) 
+  # corrvals <- - logcon + nu*log(dscal)+ log(Bessel::BesselK(z=dscal,nu=nu,expon.scaled = TRUE))-dscal 
   corrvals <- - logcon + nu*log(dscal)+ .bessel_lnKnu(x=dscal, nu=nu) 
-  ##    corrvals <- - logcon + nu*log(dscal)+ log(gsl::besselK(x=dscal, nu=nu)) 
   corrvals <- exp(corrvals) 
   if ( ! is.null(Nugget)) corrvals[!isd0] <- (1-Nugget)* corrvals[!isd0]
-  #if (identical(spaMM.getOption("ad_hoc"),TRUE)) corrvals <- (1+corrvals)/2 ## ad hoc temporary 
   corrvals[isd0] <- 1 ## 
   corrvals[corrvals < 1e-16] <- 0L ## an attempt to deal with problem in chol/ldl/svd which don't like 'nearly-identity' matrices
   attr(corrvals,"corr.model") <- "Matern"
@@ -88,7 +91,7 @@ if (F) {
 }
 
 # tcrossprod factor, Ltri or not.
-mat_sqrt <- function(m=NULL, symSVD=NULL, try.chol=TRUE, condnum=1e12) { ## also once for d2hdv2
+mat_sqrt <- function(m=NULL, symSVD=NULL, try.chol=TRUE, condnum=1e12) { ## also once for d2hdv2 and once for predVar
   ## cf return value: the code must compute 'L', and if the type of L is not chol, also 'corr d' and 'u'
   type <- NULL
   
@@ -129,7 +132,7 @@ mat_sqrt <- function(m=NULL, symSVD=NULL, try.chol=TRUE, condnum=1e12) { ## also
     } 
     colnames(L) <- rownames(L) <- colnames(m) ## for checks in HLfit ## currently typically missing from symSVD  
   } else {
-    decomp <- symSVD[c("d","u","adjd")] # keep any $adjd  useful for SEM CAR; otherwise may be NULL
+    decomp <- symSVD[c("d","u","adjd","eigrange")] # keep any $adjd  useful for SEM CAR; otherwise may be NULL 
     decomp$d[decomp$d<1e-16] <- 1e-16
     L <- .ZWZt(symSVD$u,sqrt(symSVD$d))  
     type <- "symsvd"      
@@ -139,102 +142,6 @@ mat_sqrt <- function(m=NULL, symSVD=NULL, try.chol=TRUE, condnum=1e12) { ## also
   if (type != "cholL_LLt") attr(L,type) <- decomp
   return(L)
 } 
-
-
-## FR->FR we also use this function once on d2hdv2 in HLfit...
-`designL.from.Corr` <- function(m=NULL, symSVD=NULL, try.chol=TRUE, try.eigen=FALSE,threshold=1e-06,SVDfix=1/10) {
-  ## cf return value: the code must compute 'L', and if the type of L is not chol, also 'corr d' and 'u'
-  type <- NULL
-  
-  if (is.null(symSVD)) {
-    dim_m <- dim(m)
-    if (dim_m[1L]!=dim_m[2L]) { stop("matrix is not square") }
-    if (try.chol) {
-      L <- try(.wrap_Ltri_t_chol(m),silent=TRUE)
-      if (inherits(L,"try-error")) {
-        mreg <- m *(1-1e-08)
-        diag(mreg) <- diag(mreg) + 1e-8 * diag(m) ## allows covMatrix; diag(m) has 1's if m is correlation matrix
-        L <- try(.wrap_Ltri_t_chol(mreg),silent=TRUE)
-      } 
-      if ( ! inherits(L,"try-error") ) {
-        type <- "cholL_LLt"  
-      } ## else type remains NULL      
-    }
-    if ( is.null(type) ) { ## hence if none of the chol algos (nor symSVD input) has been used 
-      ## slower by more stable. Not triangular but should not be a pb
-      if (try.eigen) { ## R's eigen()
-        LDL <- try(eigen(m,symmetric=TRUE),silent=TRUE) ## may _hang_ in R2.15.2 on nearly-I matrices
-        if ( ! inherits(LDL,"try-error")) d <- LDL$values 
-      }
-      if ( (! try.eigen) || inherits(LDL,"try-error") || any(d < -1e-08)) {
-        if (.spaMM.data$options$USEEIGEN) { 
-          symSVD <- sym_eigen(m) ## such that v= t(u) without any sign issue 
-          u <- symSVD$vectors
-          d <- symSVD$values  
-          type <- "symsvd" ## RcppEigen's SVD: ## "the SVD implementation of Eigen (...) is not a particularly fast SVD method." (RcppEigen vignette)          
-        } else { ## (! $USEEIGEN); buggy code for testing 
-          SVD <- try(svd(m)) # R's svd()
-          if (inherits(SVD,"try-error")) {
-            print("spaMM retries SVD following 'svd' failure.") 
-            ## numerically different but otherwise equivalent computation
-            m <- diag(rep(1-SVDfix,ncol(m))) + m*SVDfix 
-            SVD <- try(svd(m)) 
-            if (! inherits(SVD,"try-error") ) SVD$d <- 1+ (SVD$d-1)/SVDfix # valid for covMatrix, but maybe not optimal
-          } 
-          if (inherits(SVD,"try-error")) {
-            ## typically m is I + a few large elements
-            ## Most informative post: http://r.789695.n4.nabble.com/Observations-on-SVD-linpack-errors-and-a-workaround-td837282.html
-            print("Singular value decomposition failed.") 
-            print(" See documentation of the 'SVDfix' argument of 'designL.from.Corr'")
-            print("   for ways to handle this.")
-            return(SVD) ## passes control to calling function if it checks try-error
-          } else {
-            d <- SVD$d
-            ## must be valid for sym (semi) PD matrices using U, V being eigenvectors of m %*% t(m)
-            ## symm matrix => $u, $v match left and right eigenvectors of original Corr matrix
-            ## FR->FR but they can be of opposite sign with negative $d...
-            ## => bug in this code not normally used
-            u <- SVD$u
-            type <- "svd"          
-          }         
-        } ## svd by R
-      } else { ## we have an LDL decomp
-        u <- LDL$vectors
-        d <- LDL$values
-        type <- "eigen"
-      }
-      if (any(d< -1e-08)) {
-        ## could occur for two reasons: wrong input matrix; or problem with R's svd which $d are the eigenvalues up to the sign, 
-        ##   and thus $d can be <0 for eigenvalues >0 (very rare, observed in a 2x2 matrix) 
-        message("correlation matrix has suspiciously large negative eigenvalue(s).")
-        return(structure("correlation matrix has suspiciously large negative eigenvalue(s).",
-                         class="try-error", ## passes control to calling function to print further info
-                         call=match.call())) ## not fully conformant to "try-error" class ?"
-      } else { ## we have a not-too-suspect decomp
-        # d[d< threshold]<- threshold ## wrong for corrmats, would be OK for d2hdv2 computation which uses this function 
-        if (any(d<threshold)) d <- threshold + (1-threshold) * d ## 17/05/2014
-        L <- .ZWZt(u,sqrt(d))
-      }
-    } 
-    colnames(L) <- rownames(L) <- colnames(m) ## for checks in HLfit ## currently typically missing from symSVD  
-    attr(L,"corr.model") <- attr(m,"corr.model")
-  } else {
-    u <- symSVD$u ## local copy needed for processing attributes at the end of the function
-    d <- symSVD$d ## of corr matrix !
-    L <- .ZWZt(u,sqrt(d))  
-    type <- "symsvd"      
-    attr(L,"corr.model") <- symSVD$corr.model
-  }
-  attr(L,"type") <- type
-  ## add the 'sanitized' matrix decomp as attribute of the L matrix
-  if (type != "cholL_LLt") {
-    decomp <- list(u=u,d=d)
-    if ( ! is.null(symSVD)) decomp$adjd <- symSVD$adjd ## useful for SEM CAR; otherwise may be NULL
-    attr(L,type) <- decomp
-  }
-  return(L)
-} 
-
 
 make_scaled_dist <- local({
   Chord_warned <- FALSE

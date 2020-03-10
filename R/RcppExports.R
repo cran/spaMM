@@ -109,3 +109,15 @@
     .Call(`_spaMM_Rcpp_crossprod`, AA, BB, eval_dens)
 }
 
+.Rcpp_Csum <- function(AA, BB) {
+    .Call(`_spaMM_Rcpp_Csum`, AA, BB)
+}
+
+.Rcpp_backsolve <- function(r, x, upper_tri = TRUE, transpose = FALSE) {
+    .Call(`_spaMM_Rcpp_backsolve`, r, x, upper_tri, transpose)
+}
+
+.Rcpp_chol2solve <- function(r, x) {
+    .Call(`_spaMM_Rcpp_chol2solve`, r, x)
+}
+

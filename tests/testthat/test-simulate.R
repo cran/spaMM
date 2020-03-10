@@ -31,4 +31,15 @@ sim1 <- simulate(fit1, 10000, 1)  # ignores uncertainty
 var(t(sim1))
 sim1 <- simulate(fit1, nsim=10000, seed=1, type="predVar", variances=list(predVar=TRUE))
 var(t(sim1)) # \approx 6 
+#
+fit1 <- HLfit(x1~1+(1|x2),data=data.frame(x1=c(1,1),x2=c(1,2)), ranFix=list(lambda=1),family=poisson)
+sim1 <- simulate(fit1, nsim=3, seed=1, type="predVar", variances=list(predVar=TRUE)) # test of .calc_invV_factors() for ZAfix=ZAL= Identity
+
+cat("simulate for Gamma response:\n") 
+set.seed(123)
+gr <- data.frame(y=rgamma(1000,shape=9/2,scale=2/3)) # mean mu=3=exp(1.0986), variance=2 => phi=2/9
+# Here fitme uses HLfit methods which provide cond. SE for phi by default:
+(gamfit <- fitme(y~1,data=gr,family=Gamma(log)))
+var(simulate(gamfit,type="residual")) ## must approach 2
+
 

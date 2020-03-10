@@ -1,11 +1,7 @@
 cat(crayon::yellow("\nTest of adjacency (long fits):"))
 
-if (spaMM.getOption("example_maxtime")>227) { # 
-  ## fixme This is sparse_precision LevM: improve efficiency? 
+if (spaMM.getOption("example_maxtime")>71) { # actually 52 but don't run it in every 'long test'
   ## example suggested by Jeroen van den Ochtend jeroenvdochtend@gmail.com Jeroen.vandenochtend@business.uzh.ch
-  ## it's no use to try sparse_precision=FALSE bc bc the augmented sigma matrix is huge
-  ###################### spaMM.options(sparse_precision=FALSE) 
-  ## make sure that the wrong value is not set:
   data("adjlg")
   oldop <- spaMM.options(sparse_precision=NULL, warn=FALSE) 
   system.time({
@@ -14,8 +10,8 @@ if (spaMM.getOption("example_maxtime")>227) { #
                           #control.HLfit=list(LevenbergM=FALSE), 
                           verbose=c(TRACE=interactive()), # to trace convergence 
                           adjMatrix=adjlgMat
-    ) ## F I X M E refitting lambda (by request) gives a lower lik... (-1552.946 v2.7.19)
-  }) # now times as LevM=FALSE bc no longer start as LM by default
+    ) ## _F I X M E_ refitting lambda (by request) gives a lower lik... (-1552.946 v2.7.19 & v3.1.2) (point estimates are clearly different)
+  }) # now it times as LevM=FALSE bc no longer start as LM by default
   # timings:
   # LevenbergM=FALSE
   ## 48.79util in v.3.0.35 #53.49util in v2.7.27 # 55.12util in v2.7.6 # 64.43utilin v2.7.1 ## 99.99 in v2.6.53 ## 102 in v.2.5.34 ## ~107 (v.2.4.102) 

@@ -28,7 +28,17 @@ twolambda <- corrHLfit(migStatus ~ 1 +  Matern(1|latitude+longitude) +Matern(1|l
 ## any attempt at computing a non-singular loglamInfo will amplify floating point error.
 onelambda <- corrHLfit(migStatus ~ 1 + Matern(1|latitude+longitude),data=blackcap,
                        ranFix=list(nu=4,rho=0.4,phi=0.05))
-testthat::expect_true(diff(range(get_predVar(twolambda)[1:5]-get_predVar(onelambda)[1:5]))<1e-7) ## was dependent on H_scale_regul ?
+testthat::expect_true(diff(range(get_predVar(twolambda)[1:5]-get_predVar(onelambda)[1:5]))<1e-7) ## affected by .Rcpp_backsolve()
+
+
+# as_tcrossfac_list with newdata
+blackfit <- fitme(migStatus ~ 1 +  (1|grp) +Matern(1|latitude+longitude),data=somegrp)
+newdat <- with(somegrp,data.frame(latitude=latitude+5,longitude=longitude+5,grp=grp^2))
+tcrossfac_list <- get_predVar(blackfit, newdata=newdat, variances=list(as_tcrossfac_list=TRUE))
+var1 <- Reduce("+",lapply(tcrossfac_list,tcrossprod))
+var2 <- get_predVar(blackfit, newdata=newdat, variances=list(cov=TRUE))
+testthat::expect_true(diff(range(var1-var2))<1e-07) # difference is ~imprecision on eigenvalue of one Evar term not exactly symmPosDef
+
 
 # examples from Booth & Hobert 1998 JASA
 
@@ -148,6 +158,7 @@ p1 <- predict(voff)
 p2 <- predict(voff, newdata=check_off)
 testthat::expect_true(max(abs(range(p1-p2)))<1e-12)
 #
+cat("(Check formula w/o fixed effect, Note expected:)")
 voff <- corrHLfit(migStatus ~ offset(off) + Matern(1|latitude+longitude), 
                   data=check_off,  ranFix=list(nu=4,rho=0.4))
 p3 <- predict(voff)
@@ -168,4 +179,9 @@ testthat::expect_true(max(abs(range(naive2-naive1)))<1e-12)
 testthat::expect_true(max(abs(range(naive3-naive1)))<1e-12)
 testthat::expect_true(max(abs(range(naive4-naive1)))<1e-12)
 
-
+# as_tcrossfac_list
+fit1 <- HLfit(x1~1+(1|x2),data=data.frame(x1=c(1,10,1),x2=c(1,1,2)), family=poisson)
+tcrossfac_list <- get_predVar(fit1, variances=list(as_tcrossfac_list=TRUE))
+var1 <- tcrossprod(tcrossfac_list[[1L]])+ tcrossprod(tcrossfac_list[[2L]])
+var2 <- get_predVar(fit1, variances=list(cov=TRUE))
+testthat::expect_true(diff(range(var1-var2))<1e-12)

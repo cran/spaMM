@@ -135,7 +135,8 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
   if (ncol(X.pv)==0L) { # sXaug may be NULL bc not accessible in all calls.
     return(diag(nrow=0L))
   } else {
-    crossr22 <- .ZtWZwrapper(X.pv,w.resid)-crossprod(r12) ## typically dsyMatrix (dense symmetric)
+    #crossr22 <- .ZtWZwrapper(X.pv,w.resid)-crossprod(r12) ## typically dsyMatrix (dense symmetric)
+    crossr22 <- .ZtWZwrapper(X.pv,w.resid)-crossprod(as.matrix(r12)) ## avoids a lot of bureaucraty in '-' that is useless given what .wrap_Utri_chol() does 
     return(.wrap_Utri_chol(crossr22)) # rather than (Matrix::)chol()
   }
   ## lots of alternatives here, removed from [v2.6.54
@@ -177,7 +178,7 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
     .provide_assignment_qrXa_or_r22(BLOB, sXaug, AUGI0_ZX, w.ranef=attr(sXaug,"w.ranef")) 
     ## : currently provides r12, r22 ratehr than qrXaand the follwing code assumes so.
     crossprod_r12_z_pwy_o <- crossprod(BLOB$r12,lev_phi_z_pwy_o) ## R_12^T . R_11^{-T}.Ztw.pwy_o
-    lev_phi_x_pwy_o <- backsolve(BLOB$r22, Xt_sqrtw_pwy_o - crossprod_r12_z_pwy_o, 
+    lev_phi_x_pwy_o <- backsolve(BLOB$r22, Xt_sqrtw_pwy_o - as.matrix(crossprod_r12_z_pwy_o), # as.matrix() has a notable effect on ohio|fitme test, and no visible drawback
                                  transpose=TRUE) ## -  R_22^{-T}.R_12^T . R_11^{-T}.Ztw.pwy_o + R_22^{-T}.Xtw.pwy_o
     return(c(drop(lev_phi_z_pwy_o),lev_phi_x_pwy_o))
   } else return(drop(lev_phi_z_pwy_o))
@@ -294,7 +295,7 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
     }
     dampdG <- (damping*BLOB$dG) ## not always diagonal...
     if (as_sym) {
-      G_dG <- BLOB$Gmat + dampdG ## probably not so sparse... 
+      G_dG <- .dsCsum(BLOB$Gmat, dampdG) # BLOB$Gmat + dampdG ## probably not so sparse... 
       #G_dG <- .dsC_plus_dsC(BLOB$Gmat,dampdG) ##
     } else G_dG <- forceSymmetric(BLOB$Gmat + dampdG)
     return(list(G_dG=G_dG, dampDpD_2=damping * BLOB$D_Md2hdv2))
@@ -356,8 +357,13 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
     if (length(precisionBlocks)>1L) {
       precisionMatrix <- forceSymmetric(do.call(Matrix::bdiag, precisionBlocks)) # bdiag degrades dsC into dgC
     } else precisionMatrix <- (precisionBlocks[[1L]]) # forceSymmetric removed bc input should in principle be dsC
-    tmp <- .ZtWZwrapper(AUGI0_ZX$ZAfix,attr(sXaug,"w.resid")) # should return a symmetric-type matrix (dsC or ddi...)
-    tmp <- tmp + precisionMatrix # may be dsC + dsC yet FIXME takes some time as this calls forceSymmetric(callGeneric(as(e1, "dgCMatrix"), as(e2, "dgCMatrix")))
+    tmp <- .ZtWZwrapper(AUGI0_ZX$ZAfix,attr(sXaug,"w.resid")) # should return a symmetric-type matrix (dsC, not ddi...)
+    if (inherits(tmp,"dsCMatrix") && inherits(precisionMatrix,"dsCMatrix") ) { # test introduced 02/2020. In principle always true
+      tmp <- .dsCsum(tmp, precisionMatrix) # faster than tmp + precisionMatrix where '+' calls forceSymmetric(callGeneric(as(e1, "dgCMatrix"), as(e2, "dgCMatrix")))
+    } else { 
+      warning("possibly inefficient code in .AUGI0_ZX_sparsePrecision(). Please report to the package maintainer.", immediate.=TRUE) 
+      tmp <- tmp + precisionMatrix
+    }
     BLOB$Gmat <- drop0(tmp) ## depends on w.ranef and w.resid
     # if (inherits(BLOB$Gmat,"dgCMatrix")) stop("ICI") 
     if (is.null(template <- AUGI0_ZX$template_G_CHM)) { 
@@ -419,8 +425,7 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
       }
       rhs <- (BLOB$factor_inv_Md2hdv2 %*% grad_v)[,1L]
       dbeta_rhs <- grad_p_v - .crossprod(BLOB$r12, rhs)[,1L] # numeric  vector
-      dbeta_eta <- backsolve(BLOB$r22, forwardsolve(BLOB$r22, dbeta_rhs, 
-                                                    upper.tri = TRUE, transpose = TRUE)) # ie (chol2inv(BLOB$r22) %*% dbeta_rhs)[,1L]
+      dbeta_eta <- backsolve(BLOB$r22, backsolve(BLOB$r22, dbeta_rhs, transpose = TRUE)) # ie (chol2inv(BLOB$r22) %*% dbeta_rhs)[,1L]
       dv_h <- .crossprod(BLOB$factor_inv_Md2hdv2, rhs - (BLOB$r12 %*% dbeta_eta)[,1])[,1]
     } else {
       dbeta_eta <- numeric(0)
@@ -518,7 +523,7 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
       grad_beta <- LM_z$scaled_grad[-seq(ncol(BLOB$chol_Q))]
       if ((useQR <- FALSE)) {
         if (is.null(BLOB$D_Md2hdv2)) {
-          ## t() bc .damping_to_solve implictly uses crossprod ( as in solve(X'X)=solve(R'R) ) (or equivalently tcrossprod(solve))
+          ## t() bc .damping_to_solve implicitly uses crossprod ( as in solve(X'X)=solve(R'R) ) (or equivalently tcrossprod(solve))
           BLOB$Hfac <- tmp <- t(drop0(solve(BLOB$chol_Q,  
                                             crossprod(as(BLOB$G_CHMfactor,"pMatrix"), as(BLOB$G_CHMfactor,"sparseMatrix"))))) ## probably not so sparse...
           tmp@x <- tmp@x^2

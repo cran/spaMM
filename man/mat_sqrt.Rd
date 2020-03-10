@@ -9,8 +9,6 @@
   \code{mat_sqrt} is not usually directly called by users, but arguments may be passed to it through higher-level calls (see Examples).  
   For given matrix \bold{C}, it computes a factor \bold{L} such that \bold{C} = \bold{L} * t(\bold{L}), handling issues with nearly-singular matrices.   The default behavior is to try Cholesky factorization, and use \code{\link{eigen}} if it fails. 
 Matrix roots are not unique (for example, they are lower triangular for \code{t(chol(.))}, and symmetric for \code{svd(.)}. As matrix roots are used to simulate samples under the fitted model (in particular in the parametric bootstrap implemented in \code{fixedLRT}), this implies that for given seed of random numbers, these samples will differ with these different methods (although their distribution should be identical). 
-  
-  \code{\link{designL.from.Corr}} is an older procedure with the same purpose. Set \code{spaMM.options(mat_sqrt_fn="designL.from.Corr")} to restore its use. 
 }
 \usage{
 mat_sqrt(m = NULL, symSVD = NULL, try.chol = TRUE, condnum=1e12)

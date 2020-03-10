@@ -680,14 +680,14 @@ as_precision <- function(corrMatrix) {
   return(adjMatrix)
 }
 
-.sym_checked <- function(mMatrix, mname="matrix") { ## return a Matrix; user input may be a matrix
+.sym_checked <- function(mMatrix, mname="matrix") { ## should return a dsCMatrix; user input may be a matrix
   if (ncol(mMatrix)!=nrow(mMatrix)) {stop(paste0("Some ",mname," that should be symmetric is found to be not even square."))}
   if ( ! identical(colnames(mMatrix), rownames(mMatrix))) {
     warning("Forcing colnames(mMatrix) <- rownames(mMatrix) before calling isSymmetric().")
     colnames(mMatrix) <- rownames(mMatrix)
   }
   if (isSymmetric(mMatrix)) {
-    return(forceSymmetric(drop0(mMatrix))) # Matrix!
+    return(forceSymmetric(drop0(mMatrix))) # dsCMatrix! spaMM:::.sym_checked(diag(3)) is dsCMatrix
   } else {
     stop(paste0("Some ",mname," appears not to be symmetric."))
   }
@@ -703,10 +703,11 @@ as_precision <- function(corrMatrix) {
     corr_type <- corr_types[it]
     if ( ! is.na(corr_type)) {
       if (corr_type=="adjacency" || corr_type=="SAR_WWt") {
-        if ( is.null(adjMatrix) ) {
-          adjMatrix <- .get_adjMatrix_from_covStruct(covStruct,it)
-        } else adjMatrix <- .sym_checked(adjMatrix,"adjMatrix")   
-        corr_info$adjMatrices[[it]] <- .sym_checked(adjMatrix,"adjMatrix")
+        if ( is.null(adjMatrix) ) adjMatrix <- .get_adjMatrix_from_covStruct(covStruct,it)
+        nc <- ncol(adjMatrix)
+        dsCdiag <- .symDiagonal(nc, x = rep.int(1,nc), uplo = "U",   kind="d")
+        corr_info$adjMatrices[[it]] <- structure(.sym_checked(adjMatrix,"adjMatrix"), # dsCMatrix
+                                                 dsCdiag=dsCdiag)
       } else if (corr_type=="corrMatrix") {
         if (is.null(corrMatrix)) {
           corr_info$corrMatrices[[it]] <- .get_corr_prec_from_covStruct(covStruct,it) 
@@ -761,10 +762,9 @@ as_precision <- function(corrMatrix) {
           # given the decomp is computed, we try to make it available for other computations.
           # But others computs should not assume it is available.
           # HLCor_body can also compute "symSVD" attribute and add in each processed environment
-          decomp <- .provide_AR_factorization(corr_info$adjMatrices[[it]], sparse_precision, corr_type)
+          decomp <- .provide_AR_factorization_info(corr_info$adjMatrices[[it]], sparse_precision, corr_type)
           if (corr_type=="SAR_WWt") attr(corr_info$adjMatrices[[it]],"UDU.") <- decomp
           if (corr_type=="adjacency") {
-            #corr_info$adjMatrices[[it]] <- forceSymmetric(drop0(corr_info$adjMatrices[[it]])) # now in .sym_checked()
             attr(corr_info$adjMatrices[[it]],"symSVD") <- decomp
           } 
         }

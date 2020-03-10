@@ -26,7 +26,6 @@
   use_G_dG=TRUE, # meaningful only for spprec
   spprec_LevM_D="1", # form of the perturbation of Md2hdv2 in .calc_G_dG() (alternatives are "colSums" or "rowSums")
   #
-  mat_sqrt_fn="mat_sqrt",
   USEEIGEN=TRUE, # Whether to use the Eigen C++ library for some matrix computations. The source code should be consulted for further information. 
   lev_by_sparse_Q=20000L, # switch to sparse QR in .leveragesWrap()
   X_scaling=TRUE,
@@ -64,13 +63,8 @@
                        ), # controls .makeCovEst1() bounds (and .calc_latentL(.)$lambda_est)
   tol_ranCoefs_outer=c(inner=FALSE,lo_lam=1e-4,up_lam=1e5,corr=1e-4,regul=1e-08), ## corr must be < 1 ! # controls fitme() bounds in "sph" case
   max_bound_ranCoefs=1, # adjustment in transformed coordinates; 1 means no adjustment# previously 0.99999, affects HLfit(Reaction ~ Days + (Days|Subject), data = sleepstudy)
-  regul_ranCoefs=c(10*.Machine$double.eps), ## used to avoid zero eigenvalue after correction in .regularize_Wattr()
+  regul_ranCoefs=c(10*.Machine$double.eps), ## used to avoid zero eigenvalue after correction in .smooth_regul()
                    #,covregulcor=0L), # OL inhibits correction by .CovRegulCor(); otherwise covregulcor give the correction in that fn) )
-  # Lower condnum for inner estimation (bc of hatval computation)? 
-  # svd and qr *allow* lower condnum than eigen and Cholesky, but they also allow good fits with low condnum
-  condnum_for_latentL_spprec=1e11, ## spprec cholmod is inherently fragile: fitme3 test fails in spprec for higher values. (formerly: was replaced by condnum_for_latentL_tri_inner=1e12 in .makeCovEst1); 
-  condnum_for_latentL_tri_inner=1e100, ## .makeCovEst1 (hence protected by .regularize_Wattr()) using tri NOT spprec; was 1e12 before optional use of bobyqa
-  condnum_for_latentL_other=1e100, ## other cases, e.g. *!*spprec & augZXy; WAS 1e30; tests are fitme6 or fitme(Clim ~ year + (yearStd|id), resid.model = ...) 
   # .calc_latentL() control: (triangular facto. is ALWAYS used for spprec)
   use_tri_for_augZXy=FALSE, # *!*spprec; fitme -> .HLfit_body_augZXy[_W]; Seems marginally faster with no drawback.
   use_tri_for_makeCovEst=FALSE, # *!*spprec; TRUE WAS required for acceptable result in HLfit3 rC_transf_inner="sph" test! Affects numerical precision of calc_latentL() in .makeCovEst1() [ultimately using sXaug, not augZXy method].
@@ -126,6 +120,9 @@
   H_scale_regul=1e-4,
   ## only to avoid warnings when using spaMM.options()
   nb_cores=NULL,
-  fix_predVar=list("NA"="MSL|bboptim|isoscape|isofit|calibfit|optimthroughSmooth|spaMM_rhullByEI","TRUE"=NULL,"FALSE"=NULL) 
+  #        add control=list(fix_predVar=NA) in predict() calls in the following calls? Probably not worth the mess.
+  fix_predVar=list("NA"="MSL|bboptim|isoscape|isofit|calibfit|optimthroughSmooth|spaMM_rhullByEI",
+                   "TRUE"=NULL,"FALSE"=NULL), 
+  thr_backsolve=0L # for devel testing of .backsolve(); 0L means that .Rcpp_backsolve may be called irrespective of matrix dimension
 )
 

@@ -211,7 +211,7 @@ SEXP LogAbsDetCpp( SEXP AA ) {
 
 // contrary to svd(), the following function ensures that for symm matrices A=u.d.t(u) [with svd, v  can be -u and d can be the opposite of the eigenvalues]
 // [[Rcpp::export(.selfAdjointSolverCpp)]]
-SEXP selfAdjointSolverCpp( SEXP AA ){ 
+SEXP selfAdjointSolverCpp( SEXP AA ){ // not currently used (was for removed fn sym_eigen())
   if (printDebug)   Rcout <<"debut selfAdjointSolverCpp()"<<std::endl;
   const Map<MatrixXd> A(as<Map<MatrixXd> >(AA));
   Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es;
@@ -328,7 +328,7 @@ SEXP crossprod_not_dge( SEXP AA, SEXP BB, bool eval_dens ) {
   int type_BB=get_type(BB);
   int c;
   bool A_sp=false,B_sp=false;
-  MatrixXd Ad,Bd; // we would like to be able to declare a common type for MatrixXd, Map<MatriXd> and Map<parseMatirx<double> > ...
+  MatrixXd Ad,Bd; // we would like to be able to declare a common type for MatrixXd, Map<MatriXd> and Map<sparseMatrix<double> > ...
   RObject Xout;
   RObject AAdimnames;
   RObject BBdimnames;
@@ -339,9 +339,7 @@ SEXP crossprod_not_dge( SEXP AA, SEXP BB, bool eval_dens ) {
     double denseness_A=double(A.nonZeros())/(A.rows()* A.cols());
     if ( eval_dens) {
       A_sp = (denseness_A<=0.35);
-      if (denseness_A>0.35) {
-        Ad=MatrixXd(A);
-      } else A_sp=true;
+      if ( ! A_sp) Ad=MatrixXd(A);
     } else A_sp=true;
     const S4 Ain(AA); 
     AAdimnames = clone(as<SEXP>(Ain.slot("Dimnames"))); // clone() to copy values rather than address
@@ -353,9 +351,8 @@ SEXP crossprod_not_dge( SEXP AA, SEXP BB, bool eval_dens ) {
     const Map<SparseMatrix<double> > B(as<Map<SparseMatrix<double> > >(BB)); 
     double denseness_B=double(B.nonZeros())/(B.rows()* B.cols());
     if ( eval_dens) {
-      if (denseness_B>0.35) {
-        Bd=MatrixXd(B);
-      } else B_sp=true;
+      B_sp = (denseness_B<=0.35);
+      if ( ! B_sp) Bd=MatrixXd(B);
     } else B_sp=true;
     const S4 Bin(BB); 
     BBdimnames = clone(as<SEXP>(Bin.slot("Dimnames"))); // clone() to copy values rather than address
@@ -439,6 +436,7 @@ SEXP crossprod_not_dge( SEXP AA, SEXP BB, bool eval_dens ) {
 
 // [[Rcpp::export(.Rcpp_crossprod)]]
 SEXP Rcpp_crossprod( SEXP AA, SEXP BB, bool eval_dens=true ) {
+  // this converts dge to NumericMatrix then calls crossprod_not_dge() that should handle all types (dense|sparse) except dge
   //Rcout<<"debut"<<std::flush;
   bool Adge=Rf_inherits( AA, "dgeMatrix" );
   bool Bdge=Rf_inherits( BB, "dgeMatrix" );
@@ -463,5 +461,67 @@ SEXP Rcpp_crossprod( SEXP AA, SEXP BB, bool eval_dens=true ) {
   return(crossprod_not_dge( AA, BB, eval_dens ));
 }
 
+// will work on dgC and dsC
+// [[Rcpp::export(.Rcpp_Csum)]]
+SEXP Rcpp_Csum( SEXP AA, SEXP BB) {  
+  // const Map<SparseMatrix<double> > A(as<Map<SparseMatrix<double> > >(AA)); 
+  // const Map<SparseMatrix<double> > B(as<Map<SparseMatrix<double> > >(BB));
+  // : works only for dgC; more general code as in Rspectra package:
+  S4 Ain(AA);
+  S4 Bin(BB);
+  IntegerVector dim(Ain.slot("Dim")), Ai(Ain.slot("i")), Ap(Ain.slot("p")), Bi(Bin.slot("i")), Bp(Bin.slot("p"));
+  NumericVector Ax(Ain.slot("x")), Bx(Bin.slot("x"));
+  const Map<SparseMatrix<double> > A(Map<SparseMatrix<double> >(
+      dim[0], dim[1], Ap[dim[1]], Ap.begin(), Ai.begin(), Ax.begin()
+  )); 
+  const Map<SparseMatrix<double> > B(Map<SparseMatrix<double> >(
+      dim[0], dim[1], Bp[dim[1]], Bp.begin(), Bi.begin(), Bx.begin()
+  ));
+  //
+  S4 Xout(wrap(A + B));
+  return(Xout); // without Dimnames... see dgCprod() for template code to add them here.
+}
 
+// [[Rcpp::export(.Rcpp_backsolve)]]
+SEXP Rcpp_backsolve(SEXP r, SEXP x, bool upper_tri=true, bool transpose=false) { 
+  const Map<MatrixXd> A(as<Map<MatrixXd> >(r));
+  if (Rf_isNull(x)) {
+    int c(A.cols());
+    MatrixXd Id= MatrixXd::Identity(c,c);
+    if (upper_tri) {
+      if (transpose) {
+        return(wrap(A.adjoint().triangularView<Eigen::Lower>().solve(Id)));
+      } else return(wrap(A.triangularView<Eigen::Upper>().solve(Id)));
+    } else {
+      if (transpose) {
+        return(wrap(A.adjoint().triangularView<Eigen::Upper>().solve(Id)));
+      } else return(wrap(A.triangularView<Eigen::Lower>().solve(Id)));
+    }
+  } else {
+    const Map<MatrixXd> B(as<Map<MatrixXd> >(x));
+    if (upper_tri) {
+      if (transpose) {
+        return(wrap(A.adjoint().triangularView<Eigen::Lower>().solve(B)));
+      } else return(wrap(A.triangularView<Eigen::Upper>().solve(B)));
+    } else {
+      if (transpose) {
+        return(wrap(A.adjoint().triangularView<Eigen::Upper>().solve(B)));
+      } else return(wrap(A.triangularView<Eigen::Lower>().solve(B)));
+    }
+  }
+}
 
+// [[Rcpp::export(.Rcpp_chol2solve)]]
+SEXP Rcpp_chol2solve(SEXP r, SEXP x) {
+  const Map<MatrixXd> A(as<Map<MatrixXd> >(r));
+  if (Rf_isNull(x)) { // \equiv chol2inv(r)
+    int c(A.cols());
+    MatrixXd Id= MatrixXd::Identity(c,c);
+    MatrixXd B = A.adjoint().triangularView<Eigen::Lower>().solve(Id);
+    return(wrap(A.triangularView<Eigen::Upper>().solve(B)));
+  } else {
+    const Map<MatrixXd> B(as<Map<MatrixXd> >(x));
+    MatrixXd rhs = A.adjoint().triangularView<Eigen::Lower>().solve(B); // not in-place as that would modify memory mapped from R.
+    return(wrap(A.triangularView<Eigen::Upper>().solve(rhs)));
+  }
+}

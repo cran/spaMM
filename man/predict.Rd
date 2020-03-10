@@ -73,6 +73,8 @@ get_intervals(...)
    otherwise it returns only the (co)variance for given \eqn{\lambda} and \eqn{\phi}. 
    The latter component can be requested by \code{variances$linPred=TRUE}. 
    
+   \code{as_tcrossfac_list=TRUE} can be used to return a list of matrices \eqn{X_i} such that the \code{predVar}\eqn{=\sum_i X_i X'_i}. It thus provides a representation of the \code{predVar} that may be useful in particular when the \code{predVar} has large dimension, as the component \eqn{X_i}s may require less memory (being possibly non-square or sparse). 
+   
    \code{residVar} provides the residual variances (for Gaussian or Gamma responses). 
    It is called by \code{variances$residVar=TRUE}.
   

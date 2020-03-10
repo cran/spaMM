@@ -50,7 +50,7 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
        (which %in% c("logdet_R_scaled_v","hatval_Z","d2hdv2","solve_d2hdv2","R_scaled_v_h_blob", "Mg_invH_g"))
   ) {
     seq_n_u_h <- seq_len(attr(sXaug,"n_u_h"))
-    wd2hdv2w <- crossprod(BLOB$R_scaled[,BLOB$sortPerm[ seq_n_u_h ]] ) # Matrix::crossprod
+    wd2hdv2w <- .crossprod(BLOB$R_scaled[,BLOB$sortPerm[ seq_n_u_h ]], allow_as_mat = FALSE ) 
     BLOB$CHMfactor_wd2hdv2w <- Cholesky(wd2hdv2w,LDL=FALSE,
                                                 perm=FALSE ) ## perm=FALSE useful for leverage computation as explained below
   }
@@ -66,7 +66,7 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
   if (which=="Mg_invH_g") {
     if (is.null(BLOB$invsqrtwranef)) BLOB$invsqrtwranef <- 1/sqrt(attr(sXaug,"w.ranef")) 
     rhs <- BLOB$invsqrtwranef * B
-    if (is.null(BLOB$inv_factor_wd2hdv2w)) {
+    if (is.null(BLOB$inv_factor_wd2hdv2w)) { ## can be assigned elsewhere by lev_lambda <- BLOB$inv_factor_wd2hdv2w <- ....
       rhs <- Matrix::solve(BLOB$CHMfactor_wd2hdv2w,rhs,system="L")
     } else rhs <- BLOB$inv_factor_wd2hdv2w %*% rhs
     return(sum(rhs^2))
@@ -148,7 +148,7 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
     if (is.null(BLOB$R_scaled_blob)) {
       tmp <- X <- BLOB$R_scaled[ , BLOB$sortPerm]
       tmp@x <- tmp@x^2
-      BLOB$R_scaled_blob <- list(X=X, diag_pRtRp=colSums(tmp))
+      BLOB$R_scaled_blob <- list(X=X, diag_pRtRp=colSums(tmp), XDtemplate=.XDtemplate(X))
     }
     return(BLOB$R_scaled_blob)
   } else if (which=="R_scaled_v_h_blob") {
@@ -157,7 +157,7 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
       tmp <- R_scaled_v_h 
       tmp@x <- tmp@x^2
       diag_pRtRp_scaled_v_h <- colSums(tmp)
-      BLOB$R_scaled_v_h_blob <- list(R_scaled_v_h=R_scaled_v_h,diag_pRtRp_scaled_v_h=diag_pRtRp_scaled_v_h)
+      BLOB$R_scaled_v_h_blob <- list(R_scaled_v_h=R_scaled_v_h,diag_pRtRp_scaled_v_h=diag_pRtRp_scaled_v_h, XDtemplate=.XDtemplate(R_scaled_v_h))
     }
     return(BLOB$R_scaled_v_h_blob)
   } else if (which=="R_beta_blob") {
@@ -167,7 +167,7 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
       X <- as.matrix(sXaug[-seq_n_u_h,-seq_n_u_h]) ## folloing code assuming it is dense...
       R_beta <- .lmwithQR(X,yy=NULL,returntQ=FALSE,returnR=TRUE)$R_scaled
       diag_pRtRp_beta <-  colSums(R_beta^2)
-      BLOB$R_beta_blob <- list(R_beta=R_beta,diag_pRtRp_beta=diag_pRtRp_beta)
+      BLOB$R_beta_blob <- list(R_beta=R_beta,diag_pRtRp_beta=diag_pRtRp_beta, XDtemplate=.XDtemplate(R_beta))
     }
     return(BLOB$R_beta_blob)
   # } else if (which=="sortPerm") { 
@@ -227,7 +227,7 @@ get_from_MME.sXaug_Matrix_QRP_CHM_scaled <- function(sXaug,which="",szAug=NULL,B
                    R_scaled_blob <- .sXaug_Matrix_QRP_CHM_scaled(sXaug,which="R_scaled_blob")
                    dampDpD <- damping*R_scaled_blob$diag_pRtRp ## NocedalW p. 266
                    # Extend the X in X'X = P'R'RP:
-                   list(dVscaled_beta=.damping_to_solve(X=R_scaled_blob$X, dampDpD=dampDpD, rhs=LMrhs), 
+                   list(dVscaled_beta=.damping_to_solve(XDtemplate=R_scaled_blob$XDtemplate, dampDpD=dampDpD, rhs=LMrhs), 
                         dampDpD = dampDpD) 
                  },
                  "LevMar_step_v_h" = {
@@ -235,14 +235,14 @@ get_from_MME.sXaug_Matrix_QRP_CHM_scaled <- function(sXaug,which="",szAug=NULL,B
                    R_scaled_v_h_blob <- .sXaug_Matrix_QRP_CHM_scaled(sXaug,which="R_scaled_v_h_blob")
                    dampDpD <- damping*R_scaled_v_h_blob$diag_pRtRp_scaled_v_h ## NocedalW p. 266
                    # Extend the X in X'X = P'R'RP: 
-                   list(dVscaled = .damping_to_solve(X=R_scaled_v_h_blob$R_scaled_v_h, dampDpD=dampDpD, rhs=LMrhs), 
+                   list(dVscaled = .damping_to_solve(XDtemplate=R_scaled_v_h_blob$XDtemplate, dampDpD=dampDpD, rhs=LMrhs), 
                         dampDpD = dampDpD) 
                  },
                  "LevMar_step_beta" = {
                    if ( ! length(LMrhs)) stop("LevMar_step_beta called with 0-length LMrhs: pforpv=0?")
                    R_beta_blob <- .sXaug_Matrix_QRP_CHM_scaled(sXaug,which="R_beta_blob")
                    dampDpD <- damping*R_beta_blob$diag_pRtRp_beta ## NocedalW p. 266
-                   list(dbeta = .damping_to_solve(X=R_beta_blob$R_beta, dampDpD=dampDpD, rhs=LMrhs), 
+                   list(dbeta = .damping_to_solve(XDtemplate=R_beta_blob$XDtemplate, dampDpD=dampDpD, rhs=LMrhs), 
                         dampDpD = dampDpD) 
                  } ,
                  ## all other cases:

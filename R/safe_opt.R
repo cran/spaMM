@@ -40,7 +40,7 @@
       if ( ! is.null(adjust_init$upper)) init <- pmin(adjust_init$upper, init)
       #
       optr <- minqa::bobyqa(par=init, fn=objfn, lower=lower, upper=upper, control=bobyqa_controls, ...) ## does not use gradients
-      if (optr$fval > prevmin-1e-8) { #○ i.e. progress is at most 1e-8
+      if (optr$fval > prevmin-1e-8) { # i.e. progress is at most 1e-8
         if (optr$fval > prevmin) optr <- prev_optr # bobyqa may return much worse than initial value! if the objfn diverges at the bounds
         if (inherits(optr,"bobyqa")) { # may be FALSE if prev_optr was brought back.
           optr$solution <- optr$par ## let's stick to the nloptr() return elements (solution, objective)

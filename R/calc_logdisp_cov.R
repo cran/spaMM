@@ -63,7 +63,8 @@
       W_ZinvG_ZtW_ZA <- invV_factors$n_x_r %*% as(invV_factors$r_x_n %*% ZAfix, "dgeMatrix")
     } else W_ZinvG_ZtW_ZA <- invV_factors$n_x_r %*% invV_factors$r_x_r  # precomput r_x_r controls its type relative to $r_x_n
     lhs_invV.dVdlam <- invV_factors$n_x_r - W_ZinvG_ZtW_ZA # (w.resid- n_x_r %*% r_x_n) %*% ZA 
-  } else if (missing(ZALd)) { # To produce "iVZA|L" factorization
+  } else if (missing(ZALd)) { # To produce "iVZA|L" factorization 
+    # ZALd missing eiher for spprec (above or TRY_dense_iVZA (FALSE)); r_x_r used only in these cases
     W_ZinvG_ZtW_ZA <- invV_factors$n_x_r %*% invV_factors$r_x_r  # precomput r_x_r controls its type relative to $r_x_n
     lhs_invV.dVdlam <- invV_factors$n_x_r - W_ZinvG_ZtW_ZA # (w.resid- n_x_r %*% r_x_n) %*% ZA 
   } else {
@@ -98,7 +99,7 @@
       ## we end here if not sparse (sparse => outer optim of rho) and inner optim of lambda was allowed
       lambda_list[[randit]] <- with(lambda.object,linkinvS[[glmit]](coefficients_lambdaS[[randit]][1]))
       RES$rho <- - with(lambda.object,coefficients_lambdaS[[randit]][2]/coefficients_lambdaS[[randit]][1])
-      adjd <- attr(lmatrix,"symsvd")$adjd ## svd not SVD because went through mat_sqrt_fn which changed attributes
+      adjd <- attr(lmatrix,"symsvd")$adjd ## svd not SVD because went through mat_sqrt which changed attributes
       denom <- 1-RES$rho*adjd
       RES$adjd_denom2 <- adjd/(denom^2) 
       ZAL_to_ZALd_vec[u.range] <- 1/sqrt(denom)
@@ -120,7 +121,7 @@
     RES$type <- "|L" # "iVZA | (Ld!dL)AZ" 
     ## traceAB will use iVZA as lhs and Ld!dL'A'Z' as rhs: we store iVZA and A'Z and .fill_rhs_invV.dVdlam() factors by (Ld!dL)
   } else {
-    if (identical(.spaMM.data$options$TRY_dense_iVZA,TRUE)) { # (ZALd argument missing in next call) 
+    if (identical(.spaMM.data$options$TRY_dense_iVZA,TRUE)) { # (ZALd argument missing in next call) # only for deve purpose
       # I may not yet have good tests of the efficiency of this code, but I keep it ready for use ## F I X M E Not convincing. Retry
       RES$lhs_invV.dVdlam <- .calc_lhs_invV.dVdlam(object, invV_factors=invV_factors) ## invV %*% ZA 
       #

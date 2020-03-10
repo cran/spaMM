@@ -29,7 +29,7 @@
     }
     # Accounting only for the cost of the non-sparse structures (and of "(.|.)"):
     noAR <- .compute_ZAL(XMatrix=loccorrlist,ZAlist,as_matrix = FALSE)
-    cross_noAR <- .crossprod(noAR, use_Rcpp=TRUE, as_sym=TRUE) ## forces a call to forceSymmetric => result is Matrix either dsy or sparse.
+    cross_noAR <- .crossprod(noAR) ## forces a call to forceSymmetric => result is Matrix either dsy or sparse.
     if (any(exp_ranef_types %in% c("adjacency", "IMRF", "AR1"))) { # then we need to evaluate the cost of the sparse structures 
       which_nested <- grep("%in%", names(attr(ZAlist,"exp_ranef_terms")))
       for (rd in which(exp_ranef_types %in% c("adjacency", "IMRF", "AR1"))) {
@@ -45,7 +45,7 @@
       }
       # 
       ZC <- .compute_ZAL(XMatrix=loccorrlist,ZAlist,as_matrix = FALSE)
-      cross_ZC <- .crossprod(ZC, use_Rcpp=TRUE, as_sym=TRUE) ## forces a call to forceSymmetric => result is Matrix either dsy or sparse.
+      cross_ZC <- .crossprod(ZC) ## forces a call to forceSymmetric => result is Matrix either dsy or sparse.
       crossZC_is_dsy <- inherits(cross_ZC,"dsyMatrix") 
       len_crossZC <- length(cross_ZC@x)
     } else {

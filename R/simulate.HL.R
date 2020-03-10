@@ -33,7 +33,7 @@
                     poisson = .rpois(length(mu),mu,zero_truncated=zero_truncated), 
                     binomial = rbinom(length(mu),size=sizes,prob=mu),
                     Gamma = {
-                      y <- rgamma(length(mu),shape= mu^2 / phiW, scale=phiW/mu)
+                      y <- rgamma(length(mu),shape= 1 / phiW, scale=mu*phiW) # mean=sh*sc=mu, var=sh*sc^2 = mu^2 phiW
                       Gamma_min_y <- .spaMM.data$options$Gamma_min_y
                       is_low_y <- (y < Gamma_min_y)
                       if (any(is_low_y)) { y[which(is_low_y)] <- Gamma_min_y }
@@ -68,7 +68,7 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
   }
   if (inherits(object,"HLfitlist")) { ## testing for list is not valid since an HLfit object is always a list
     message("simulate does not yet work on list of fits as returned by multinomial fit:")
-    message(" run simulate on each of the individual fit in the list")
+    message(" run simulate on each of the individual fits in the list")
     stop() ## FR->FR also some basic changes in fixedLRT but more would be needed 
   }  
   if ( ! is.null(conditional)) {
@@ -133,12 +133,22 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
           } else cat("Simulation from linear predictor variance | observed response:\n") 
         } 
         if (all(attr(object$rand.families,"lcrandfamfam")=="gaussian")){
-          variances$cov <- (NROW(newdata)!=1L)
+          variances$cov <- (NROW(newdata)!=1L) # simulate() always need a covmatrix but for a signle response it is trivial
+          # detect all cases where the cov mat is large:
+          if (is.null(variances$as_tcrossfac_list)) variances$as_tcrossfac_list <- ( (is.null(newdata) && length(object$y)>200L) ||
+                                                                                      NROW(newdata)>200L)
           point_pred_eta <- predict(object,newdata=newdata, type="link", control=list(fix_predVar=NA),
                                     variances=variances, ...) 
           predVar <- attr(point_pred_eta,"predVar")
           if (is.null(predVar)) stop("A 'variances' argument should be provided so that prediction variances are computed.") 
-          rand_eta <- mvrnorm(n=needed,mu=point_pred_eta[,1L], predVar)
+          if (is.list(predVar)) {
+            rand_eta <- vector('list',length(predVar))
+            for (it in seq_len(length(predVar))) {
+              if (it==1L) {mu <- point_pred_eta[,1L]} else {mu <- rep(0,length(point_pred_eta[,1L]))}
+              rand_eta[[it]] <- .mvrnorm(n=needed,mu=mu, tcross_Sigma = predVar[[it]])
+            }
+            rand_eta <- Reduce("+",rand_eta)
+          } else rand_eta <- mvrnorm(n=needed,mu=point_pred_eta[,1L], predVar)
           if (needed>1L) rand_eta <- t(rand_eta) ## else mvrnorn value is a vector
           if ( ! is.null(zero_truncated <- object$family$zero_truncated)) {
             mu <- object$family$linkinv(rand_eta,mu_truncated=zero_truncated)
@@ -182,12 +192,9 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
                                                vec_normIMRF=object$ranef_info$vec_normIMRF, 
                                                strucList=object$strucList)
           ZALlist <- .compute_ZAXlist(object$strucList,newZAlist)
-          ##### the following code ignores spatial effects with newdata:
-          # to overcome this we need to calculate the unconditional covmat including for the (new) positions
+          ZAL <- .ad_hoc_cbind(ZALlist, as_matrix=FALSE ) 
           vec_n_u_h <- unlist(lapply(ZALlist,ncol)) ## nb cols each design matrix = nb realizations each ranef
           cum_n_u_h <- cumsum(c(0,vec_n_u_h))
-          ZALlist <- lapply(ZALlist,as.matrix)
-          ZAL <- do.call(cbind,ZALlist)
         }
         lcrandfamfam <- attr(object$rand.families,"lcrandfamfam") ## unlist(lapply(object$rand.families, function(rf) {tolower(rf$family)}))
         if (inherits(re.form,"formula")) lcrandfamfam[newinold] <- "conditional" ## if is.na(re.form), lcrandfamfam is unchanged

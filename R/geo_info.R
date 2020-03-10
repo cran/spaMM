@@ -64,29 +64,32 @@
       adj_rho_is_inner_estimated <- (corr_type=="adjacency"
                                      && is.null(rho) ) ## can occur in direct call of HLCor 
       if (corr_type == "adjacency") {
-        adjMatrix <- processed$corr_info$adjMatrices[[rd]] # must be sparse when spprec algo is used
+        adjMatrix <- processed$corr_info$adjMatrices[[rd]] # dsC whether spprec or not
         symSVD <- attr(adjMatrix,"symSVD")
-        if (is.null(symSVD) && adj_rho_is_inner_estimated) { 
-          ## Can occur in direct call of HLCor, or more genrally if(list(processed)),
-          #  bc symSVD added to proc1 in fitme/corrHLfit as side effect of determining rhorange
-          # We tray to avoid the computation when its cost/benefit ratio is low.
-          # Nevertheless if computed here, it is added to the proc envir hence computed only once per environment
-          rho <- attr(ranPars,"init.HLfit")$corrPars[[char_rd]]$rho
-          #if (isSymmetric(adjMatrix)) { # should have been checkedby .preprocess -> ... -> .sym_checked(adjMatrix)
-            symSVD <- eigen(adjMatrix, symmetric=TRUE)
-            svdnames <- names(symSVD)
-            svdnames[svdnames=="values"] <- "d"
-            svdnames[svdnames=="vectors"] <- "u"
-            names(symSVD) <- svdnames
-          #}             
+        if ( ! adj_rho_is_inner_estimated) { # typical fitme() call
+          sparse_Qmat <- - rho * adjMatrix
+          sparse_Qmat <- .dsCsum(sparse_Qmat, attr(adjMatrix,"dsCdiag")) #diag(sparse_Qmat) <- diag(sparse_Qmat)+1 # a maybe-not-yet-perfect solution to the poor perf of 'diag<-' which is not doc'ed for dsCMatrix
+          if (is.null(symSVD)) {
+            if (ncol(sparse_Qmat>200L)) { # a bit of an ad hoc guess based on ohio...
+              cov_info_mat <- as.matrix(solve(sparse_Qmat))
+            } else cov_info_mat <- solve(as.matrix(sparse_Qmat))
+          } 
+        } else { # inner estimation of adjacency rho
+          if (is.null(symSVD)) {
+            ## Direct call of HLCor (SEM or not), 
+            ## I also wrote that this could occur in fitme/corrHLfit if(list(processed)) "bc symSVD added to proc1 (i.e. not to all proc's)"
+            ##   but there is not go tests of this case...
+            symSVD <- .provide_AR_factorization_info(
+              adjMatrix, 
+              sparse_precision=processed$sparsePrecisionBOOL, # this must be FALSE for inner estimation of adjacency rho (and there is bug-catching code for this)
+              corr.model=corr_type)
+            attr(processed$corr_info$adjMatrices[[rd]],"symSVD") <- symSVD
+            #
+            # typically an *initial* value:
+            rho <- attr(ranPars,"init.HLfit")$corrPars[[char_rd]]$rho # a bit unclear, but we will compute Lmatrix from this 'initial value' below
+          } 
+          # symSVD may be modified below
         }
-        if (is.null(symSVD)) {
-          cov_info_mat <- as.matrix(solve(diag(nrow(adjMatrix))-rho*(adjMatrix))) 
-        } else {
-          symSVD$adjd <- symSVD$d
-          # fixme remove $d from symSVD to avoid later confusions ?
-        }
-        # symSVD may be modified below
       } else if (corr_type =="IMRF") {
         kappa <- .get_cP_stuff(ranPars,"kappa",which=char_rd)
         pars <- attr(attr(spatial_term,"type"),"pars")
@@ -98,10 +101,12 @@
         }
       } else if (corr_type =="SAR_WWt") { 
         adjMatrix <- processed$corr_info$adjMatrices[[rd]]
+        sparse_Qmat <- - rho * adjMatrix
+        sparse_Qmat <- .dsCsum(sparse_Qmat, attr(adjMatrix,"dsCdiag")) #diag(sparse_Qmat) <- diag(sparse_Qmat)+1 # a maybe-not-yet-perfect solution to the poor perf of 'diag<-' which is not doc'ed for dsCMatrix
         UDU. <- attr(adjMatrix,"UDU.")
         if (is.null(UDU.)) {
           # cf comments on symSVD above
-          cov_info_mat <- as.matrix(solve(diag(nrow(adjMatrix))-rho*(adjMatrix))) 
+          cov_info_mat <- as.matrix(solve(sparse_Qmat)) 
         } else {
           cov_info_mat <- .ZWZt(UDU.$u, 1/(1-rho*UDU.$d)) # UDU.$u %*% sweep(UDU.$u.,MARGIN=1,1/(1-rho*UDU.$d),`*`) 
         }
@@ -158,8 +163,7 @@
         } else if (corr_type=="adjacency" 
                    && ! adj_rho_is_inner_estimated) {
           ## Implies call from fitme_body with outer rho estim.
-          sparse_Qmat <- - rho * adjMatrix
-          diag(sparse_Qmat) <- diag(sparse_Qmat)+1
+          # sparse_Qmat already computed 
           ## Cholesky gives proper LL' (think LDL')  while chol() gives L'L...
         } else if (corr_type=="AR1") { 
           types <- processed$AUGI0_ZX$envir$finertypes
@@ -209,7 +213,7 @@
           }
           envir$precisionFactorList[[rd]]$chol_Q <- as(Q_CHMfactor, "sparseMatrix") # Linv
           ## fitme sparse_precision has an incomplete symSVD=> corr mattrix not computed, 
-          ##    and try(<mat_sqrt_fn>(symSVD=symSVD)) fails. Instead use code always valid:
+          ##    and try(mat_sqrt(symSVD=symSVD)) fails. Instead use code always valid:
           if (
             (
               (is.null(TRY_ZAX <- .spaMM.data$options$TRY_ZAX) && processed$augZXy_cond) # default for augZXy_cond
@@ -232,10 +236,10 @@
         ## densePrecision cases with outer rho estimation, and some residual inner rho estimation cases
         if ( ! is.null(symSVD)) {
           symSVD$d <- 1/(1-rho*symSVD$adjd) ## from adjMatrix to correlation matrix
-          # outer optim -> LMatrix recomputed from this for each rho  
-          Lunique <- do.call(.spaMM.data$options$mat_sqrt_fn,list(symSVD=symSVD)) ## using $d not $adjd
-          if (inherits(Lunique,"try-error")) { ## mat_sqrt_fn has try()'s and can return "try-error"'s
-            print("correlation parameter was rho=:",rho,quote=FALSE) ## makes sense if mat_sqrt_fn already issued some warning
+          # outer optim, not spprec -> LMatrix recomputed from this for each rho  
+          Lunique <- mat_sqrt(symSVD=symSVD) ## using $d not $adjd : $d=NaN should catch erroneous calls to mat_sqrt.
+          if (inherits(Lunique,"try-error")) { ## mat_sqrt has try()'s and can return "try-error"'s
+            print("correlation parameter was rho=:",rho,quote=FALSE) ## makes sense if mat_sqrt already issued some warning
             stop()
           }
           if ( adj_rho_is_inner_estimated ) { # contrived way of construction Lunique with the correct attributes.
@@ -244,9 +248,9 @@
         } else { ## cov_info_mat must exist
           if (processed$HL[1L]=="SEM") argsfordesignL$try.chol <- FALSE
           if (inherits(cov_info_mat,"dist")) {cov_info_mat <- proxy::as.matrix(cov_info_mat, diag=1)} ## else full matrix may be a COV matrix with non-unit diag
-          Lunique <- do.call(.spaMM.data$options$mat_sqrt_fn,c(list(m=cov_info_mat),argsfordesignL)) ## mat_sqrt_fn has try()'s and can return "try-error"'s
+          Lunique <- do.call(mat_sqrt,c(list(m=cov_info_mat),argsfordesignL)) ## mat_sqrt has try()'s and can return "try-error"'s
           if (inherits(Lunique,"try-error")) { 
-            print("correlation parameters were:",quote=FALSE) ## makes sense if mat_sqrt_fn already issued some warning
+            print("correlation parameters were:",quote=FALSE) ## makes sense if mat_sqrt already issued some warning
             print(unlist(argsfordesignL))    
             stop()
           }
@@ -313,6 +317,6 @@
       }
     }
     attr(Zlist, "AMatrices") <- AMatrices
-  }
+  } ## else attr(Zlist, "AMatrices") remains nULL
   return(Zlist) ## with other attributes unchanged
 }

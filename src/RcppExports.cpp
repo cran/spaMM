@@ -344,6 +344,44 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// Rcpp_Csum
+SEXP Rcpp_Csum(SEXP AA, SEXP BB);
+RcppExport SEXP _spaMM_Rcpp_Csum(SEXP AASEXP, SEXP BBSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type AA(AASEXP);
+    Rcpp::traits::input_parameter< SEXP >::type BB(BBSEXP);
+    rcpp_result_gen = Rcpp::wrap(Rcpp_Csum(AA, BB));
+    return rcpp_result_gen;
+END_RCPP
+}
+// Rcpp_backsolve
+SEXP Rcpp_backsolve(SEXP r, SEXP x, bool upper_tri, bool transpose);
+RcppExport SEXP _spaMM_Rcpp_backsolve(SEXP rSEXP, SEXP xSEXP, SEXP upper_triSEXP, SEXP transposeSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type r(rSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type x(xSEXP);
+    Rcpp::traits::input_parameter< bool >::type upper_tri(upper_triSEXP);
+    Rcpp::traits::input_parameter< bool >::type transpose(transposeSEXP);
+    rcpp_result_gen = Rcpp::wrap(Rcpp_backsolve(r, x, upper_tri, transpose));
+    return rcpp_result_gen;
+END_RCPP
+}
+// Rcpp_chol2solve
+SEXP Rcpp_chol2solve(SEXP r, SEXP x);
+RcppExport SEXP _spaMM_Rcpp_chol2solve(SEXP rSEXP, SEXP xSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type r(rSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type x(xSEXP);
+    rcpp_result_gen = Rcpp::wrap(Rcpp_chol2solve(r, x));
+    return rcpp_result_gen;
+END_RCPP
+}
 
 static const R_CallMethodDef CallEntries[] = {
     {"_spaMM_Rcpp_COMP_Z", (DL_FUNC) &_spaMM_Rcpp_COMP_Z, 4},
@@ -373,6 +411,9 @@ static const R_CallMethodDef CallEntries[] = {
     {"_spaMM_dgCtcrossprod", (DL_FUNC) &_spaMM_dgCtcrossprod, 2},
     {"_spaMM_crossprod_not_dge", (DL_FUNC) &_spaMM_crossprod_not_dge, 3},
     {"_spaMM_Rcpp_crossprod", (DL_FUNC) &_spaMM_Rcpp_crossprod, 3},
+    {"_spaMM_Rcpp_Csum", (DL_FUNC) &_spaMM_Rcpp_Csum, 2},
+    {"_spaMM_Rcpp_backsolve", (DL_FUNC) &_spaMM_Rcpp_backsolve, 4},
+    {"_spaMM_Rcpp_chol2solve", (DL_FUNC) &_spaMM_Rcpp_chol2solve, 2},
     {NULL, NULL, 0}
 };
 

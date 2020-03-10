@@ -3,6 +3,25 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 3.1.27}{
+\subsection{FIXED BUGS}{
+\itemize{
+\item simulate(<Gamma-response fit>) simulated according to an incorrect residual variance.
+}
+}
+\subsection{NEW FEATURES}{
+\itemize{
+\item Faster code for some autoregressive models (mostly for autoregressive LMMs fitted by fitme(), as in tests described at the end of the ''gentle Introduction'' which are ca. 50\% faster).
+\item Faster and more memory-efficient code computation of prediction variance for large designs. 'variances$as_tcrossfac_list' control for more memory-efficient (albeit less human-readable) reporting of large prediction covariance matrices.
+\item The obsolete functions designL.from.Corr() and sym_eigen() have been removed.
+}
+}
+\subsection{NEW DEPENDENCIES}{
+\itemize{
+\item 'RSpectra' suggested for a step in fitting autoregressive models.   
+}
+}
+}
 \section{CHANGES UP TO VERSION 3.1.2}{
 \subsection{NEW FEATURES: Numerical robustness}{
 \itemize{
@@ -41,7 +60,7 @@
 \itemize{
 \item fitme() will select iterative methods, rather than "outer" optimization, in some cases where it did not but where it is faster.
 \item Computations using the Levenberg-Marquardt-like algorithm tend to be longer than before (there may be exceptions due to other changes).
-\item Changes in formal arguments of LRT() (a.k.a. anova.LRT()) and fixedLRT(). These should be backward compatible, as important removed arguments are now handled through the '...'.
+\item Changes in formal arguments of LRT() (a.k.a. anova.HLfit()) and fixedLRT(). These should be backward compatible, as important removed arguments are now handled through the '...'.
 \item SpatialPolygonsDataFrame objects 'worldcountries' and 'oceanmask' removed from the package. See help("seaMask") for availability.
 }
 }

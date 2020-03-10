@@ -182,7 +182,18 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
   return(as.vector(neg.d2f_dv_dloglam))
 }
 
-
+# .solve_CHM <- function(chm, B) { # ~ solve on a CHMfactor objects, but assuming there is a BLOB attribute to store additional info
+# This is not useful, bc the CHMfactor class does so well...
+#   BLOB <- attr(chm,"BLOB") ## an environment
+#   if (is.null(B)) {
+#     if (is.null(BLOB$inv_d2hdv2)) BLOB$inv_d2hdv2 <- - Matrix::solve(chm) 
+#     return(BLOB$inv_d2hdv2) # dsC
+#   } else { 
+#     if (is.null(BLOB$inv_d2hdv2)) {
+#       return( - Matrix::solve(chm,B,system="A"))
+#     } else return(BLOB$inv_d2hdv2 %*% B)
+#   }
+# }
 
 .calc_dvdloglamMat_new <- function(neg.d2f_dv_dloglam,
                                    sXaug, d2hdv2_info=NULL ## use either one
@@ -194,10 +205,13 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
       } else  dvdloglamMat <- get_from_MME(sXaug,"solve_d2hdv2",B=Diagonal(x= neg.d2f_dv_dloglam))
     } else {
       # Avoids the inelegant test is.matrix(sXaug), but... less accurate!
-      inv_d2hdv2 <- get_from_MME(sXaug,"solve_d2hdv2") # slow step (test-negbin1 with large nobs is good example)
+      inv_d2hdv2 <- get_from_MME(sXaug,"solve_d2hdv2") # slow step ("test negbin1" with large nobs is good example)
       dvdloglamMat <- .m_Matrix_times_Dvec(inv_d2hdv2, neg.d2f_dv_dloglam)# get_from_MME(sXaug,"solve_d2hdv2",B=diag( neg.d2f_dv_dloglam)) ## square matrix, by  the formulation of the algo 
     }
-  } else if (inherits(d2hdv2_info,"qr") || inherits(d2hdv2_info,"sparseQR") ) {
+  } else if (inherits(d2hdv2_info,"CHMfactor")) {# CHM of ***-*** d2hdv2
+    dvdloglamMat <- solve(d2hdv2_info, Diagonal(x= - neg.d2f_dv_dloglam ))  # rXr !       # .symDiagonal() is equivalent here
+  } else if (inherits(d2hdv2_info,"qr") || inherits(d2hdv2_info,"sparseQR") ) { ## much slower than using CHMfactor
+    if (length(neg.d2f_dv_dloglam)>5000L) message("[one-time solve()ing of large matrix, which may be slow]") 
     dvdloglamMat <- solve(d2hdv2_info, diag( neg.d2f_dv_dloglam ))  # rXr !       
   } else if (is.environment(d2hdv2_info)) {
     # dvdloglamMat <- solve(d2hdv2_info, diag( neg.d2f_dv_dloglam ))  # rXr !       
@@ -217,9 +231,11 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
                                    sXaug,d2hdv2_info=NULL, ## either one
                                    stop.on.error) {
   ## cf calcul dhdv, but here we want to keep each d/d phi_i distinct hence not sum over observations i 
-  neg.d2h0_dv_dlogphi <- .m_Matrix_times_Dvec(t(ZAL), drop(dh0deta)) # dh0dv <- t(ZAL) %*% diag(as.vector(dh0deta)) ## nXr each ith column is a vector of derivatives wrt v_k
+  neg.d2h0_dv_dlogphi <- .m_Matrix_times_Dvec(t(ZAL), drop(dh0deta)) # n_u_h*nobs: each ith column is a vector of derivatives wrt v_k# dh0dv <- t(ZAL) %*% diag(as.vector(dh0deta)) 
   if (is.null(d2hdv2_info)) { # call by HLfit_body
     dvdlogphiMat <- get_from_MME(sXaug,"solve_d2hdv2",B=neg.d2h0_dv_dlogphi) 
+  } else if (inherits(d2hdv2_info,"CHMfactor")) { # CHM of ***-*** d2hdv2
+    dvdlogphiMat <- solve(d2hdv2_info, - neg.d2h0_dv_dlogphi) # efficient without as.matrix()!        
   } else if (inherits(d2hdv2_info,"qr") || inherits(d2hdv2_info,"sparseQR") ) {
     dvdlogphiMat <- solve(d2hdv2_info, as.matrix(neg.d2h0_dv_dlogphi))  # rXn       
   } else if (is.environment(d2hdv2_info)) {
@@ -452,7 +468,11 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
   #   } else ZeroZAL <- matrix(0,ncol=ncol(AUGI0_ZX$I),nrow=nrow(AUGI0_ZX$X.pv)) 
   #   # etc
   # } else {
-    if (length(ZAL_scaling)==1) stop("ZAL_scaling should be a full-length vector, or NULL.")
+    if (length(ZAL_scaling)==1L) {
+      if (ncol(ZAL)==1L) {
+        stop("Found a single random effect with a *single level*. Check formula.")
+      } else stop("ZAL_scaling should be a full-length vector, or NULL.")
+    }
     if ( ! is.null(ZAL_scaling)) ZAL <- .m_Matrix_times_Dvec(ZAL,ZAL_scaling)
     if (is.null(Zero_sparseX <- AUGI0_ZX$Zero_sparseX)) Zero_sparseX <- rbind2(AUGI0_ZX$ZeroBlock, AUGI0_ZX$X.pv)
     if (inherits(ZAL,"dgCMatrix")) {
@@ -559,12 +579,17 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
   XW <- sXaug_blocks$XW
   ZtWX <- .crossprod(ZW, XW)
   Rzx <- solve(CHM_ZZ, solve(CHM_ZZ,ZtWX,system="P"), system="L")
-  cross_Rxx <- as.matrix(.crossprod(XW,as_sym=FALSE))-as.matrix(.crossprod(Rzx,as_sym=FALSE)) # as(,"dpoMatrix) involves a chol() factorization...
-  chol_XX <- chol(cross_Rxx)
   ZtWy <- .crossprod(ZW, pwy_o)
   r_Zy <-  solve(CHM_ZZ, solve(CHM_ZZ,ZtWy,system="P"), system="L")
   XtWy <- .crossprod(XW, pwy_o)
-  r_Xy <- backsolve(chol_XX, XtWy-.crossprod(Rzx, r_Zy), transpose=TRUE) ## transpose since chol() provides a tcrossfac
+  #
+  cross_Rxx <- as.matrix(.crossprod(XW,as_sym=FALSE))-as.matrix(.crossprod(Rzx,as_sym=FALSE)) # as(,"dpoMatrix) involves a chol() factorization...
+  chol_XX <- .Utri_chol_by_qr(cross_Rxx) # chol(cross_Rxx) # chol_XX matrix is quite small -> same algos as in .calc_r22()
+  # ## test-poly test-random-slope test-ranCoefs; 
+  # test-random-slope  is slower by .Rcpp_backsolve() but only because of more precise, but longer, outer optim in (ares <- ...)
+  # this better result is by accumulated effects on the optimization path rather than by functional improvement.
+  # also .Rcpp_backsolve() visibly increases range(get_predVar(twolambda)[1:5]-get_predVar(onelambda)[1:5]) 
+  r_Xy <- backsolve(chol_XX, XtWy-.crossprod(Rzx, r_Zy), transpose=TRUE) ## transpose since chol() provides a tcrossfac 
   ryy2 <- sum(pwy_o^2) - sum(r_Zy^2) - sum(r_Xy^2)
   absdiagR_terms <- list(logdet_v=determinant(CHM_ZZ)$modulus[1], 
                          logdet_b=sum(log(abs(diag(chol_XX)))), ryy2=ryy2)
@@ -850,6 +875,11 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
 #   do.call(".calc_APHLs_from_ZX", APHLs_args)[[which]]
 # } 
 
-
+.dsCsum <- function(A, B, keep_names=FALSE) {
+  X <- .Rcpp_Csum(A,B)
+  X <- forceSymmetric(X)
+  if (keep_names) dimnames(X) <- dimnames(A)
+  return(X)
+}
 
 

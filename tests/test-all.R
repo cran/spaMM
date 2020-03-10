@@ -6,11 +6,11 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") { ## set in etc/Renviron.site (cf R Win
     if (interactive()) {
       # options(error=recover)
       # spaMM.options(TRY_ZAX=TRUE)
-      # abyss <- matrix(runif(2e7),nrow=1000); gc(reset=TRUE) ## partial control of gc trigger...
+      abyss <- matrix(runif(2e7),nrow=1000); gc(reset=TRUE) ## partial control of gc trigger...
       while (dev.cur()>1L) dev.off()
       op <- devAskNewPage(ask=FALSE)
       testfiles <- dir("C:/home/francois/travail/stats/spaMMplus/spaMM/package/tests/testthat/",pattern="*.R",full.names = TRUE)
-      #oldmaxt <- spaMM.options(example_maxtime=70)
+      # oldmaxt <- spaMM.options(example_maxtime=70)
       timings <- t(sapply(testfiles, function(fich){system.time(source(fich))}))
       #spaMM.options(oldmaxt)
       print(colSums(timings))

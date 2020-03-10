@@ -248,7 +248,7 @@ adjacency <- function(...) {
   }
   #
   calc_moreargs <- function(decomp, verbose, lower, upper, char_rd, ...) {
-    rhorange <- sort(1/range(decomp$d)) ## keeping in mind that the bounds can be <>0
+    rhorange <- sort(1/range(decomp$eigrange)) ## keeping in mind that the bounds can be <>0
     if(verbose["SEM"])  cat(paste("Feasible rho range: ",paste(signif(rhorange,6),collapse=" -- "),"\n"))
     rhorange[1L] <- max(rhorange[1L],lower$corrPars[[char_rd]][["rho"]])
     rhorange[2L] <- min(rhorange[2L],upper$corrPars[[char_rd]][["rho"]])

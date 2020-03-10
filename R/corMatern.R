@@ -176,7 +176,7 @@ corMatrix.corMatern <-  function(object, covariate = getCovariate(object),
     if (corr) { ## returns a list of correlation matrices
       val[[it]] <- tmp
     } else {
-      tmp <- do.call(.spaMM.data$options$mat_sqrt_fn,list(m=tmp))
+      tmp <- mat_sqrt(m=tmp)
       val[[it]] <- solve(tmp) #  t(solve(chol(tmp)))
       lD[it] <- determinant(val[[it]])$modulus
       lD <- sum(lD)
@@ -243,7 +243,7 @@ corFactor.corMatern <- function(object, ...) {
   for (it in seq_along(distmats)) {
     tmp <- MaternCorr(distmats[[it]], nu=nu, rho=rho,Nugget=Nugget)
     tmp <- proxy::as.matrix(tmp, diag=1)
-    tmp <- do.call(.spaMM.data$options$mat_sqrt_fn,list(m=tmp))
+    tmp <- mat_sqrt(m=tmp)
     tmp <- solve(tmp) #  t(solve(chol(tmp)))
     lD <- lD + determinant(tmp)$modulus[[1L]]
     val[[it]] <- as.vector(tmp) 
@@ -285,7 +285,7 @@ recalc.corMatern <- function(object, conLin, ...) {
   for (it in seq_along(distmats)) {
     tmp <- MaternCorr(distmats[[it]], nu=nu, rho=rho,Nugget=Nugget)
     tmp <- proxy::as.matrix(tmp, diag=1)
-    tmp <- do.call(.spaMM.data$options$mat_sqrt_fn,list(m=tmp))
+    tmp <- mat_sqrt(m=tmp)
     tmp <- solve(tmp) #  t(solve(chol(tmp)))
     yrange <- (cumranges[it]+1L):(cumranges[it+1L])
     conLin[["Xy"]][yrange,] <- tmp %*% conLin[["Xy"]][yrange,,drop=FALSE]

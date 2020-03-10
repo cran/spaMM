@@ -28,7 +28,7 @@
   } ## as.list() would flatten rho vectors
   #
   HLnames <- (c(names(formals(HLCor)),names(formals(HLfit)),
-                names(formals(.spaMM.data$options$mat_sqrt_fn)),names(formals(make_scaled_dist))))  
+                names(formals(mat_sqrt)),names(formals(make_scaled_dist))))  
   dotnames <- setdiff(names(mc)[-1],names(formals(fitme)))
   argcheck <- setdiff(dotnames,HLnames)
   if (length(argcheck)) warning(paste("suspect argument(s) ",paste(argcheck, collapse=",")," in fitme call."))
@@ -152,7 +152,7 @@ fitme <- function(formula,data, ## matches minimal call of HLfit
   } ## as.list() would flatten rho vectors
   #
   HLnames <- (c(names(formals(HLCor)),names(formals(HLfit)),
-                names(formals(.spaMM.data$options$mat_sqrt_fn)),names(formals(make_scaled_dist))))  
+                names(formals(mat_sqrt)),names(formals(make_scaled_dist))))  
   dotnames <- setdiff(names(mc)[-1],names(formals(fitme)))
   argcheck <- setdiff(dotnames,HLnames)
   if (length(argcheck)) warning(paste("suspect argument(s) ",paste(argcheck, collapse=",")," in fitme call."))

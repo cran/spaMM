@@ -260,31 +260,49 @@
     RES$r_x_r <- object$envir$invG_ZtW %*% ZAfix
     return(RES)
   } else {
-    # FIXME inelegant ZAL computation only to test if it is diagonal
-    ZAL <- .compute_ZAL(XMatrix=object$strucList, ZAlist=object$ZAlist,as_matrix=.eval_as_mat_arg(object)) 
-    if (inherits(ZAL,"diagonalMatrix")) { # direct but ad hoc
-      w.resid <- object$w.resid
-      RES <- list(n_x_r=Diagonal(x = w.resid),
-                  r_x_n=Diagonal(x = w.resid/(w.resid + object$w.ranef/diag(ZAL)^2))) 
-    } else {
-      ZAfix <- .get_ZAfix(object, as_matrix=FALSE)
-      wrZ <- .Dvec_times_m_Matrix(object$w.resid, ZAfix) # suppressMessages(sweep(t(ZA), 2L, w.resid,`*`)) 
-      invL <- .get_invL_HLfit(object) # equivalent to t(chol_Q)
+    ZAfix <- .get_ZAfix(object, as_matrix=FALSE)
+    if (.is_identity(ZAfix)) {
+      # FIXME inelegant ZAL computation only to test if it is diagonal
+      ZAL <- .compute_ZAL(XMatrix=object$strucList, ZAlist=object$ZAlist,as_matrix=.eval_as_mat_arg(object)) 
+      if (inherits(ZAL,"diagonalMatrix")) { 
+        w.resid <- object$w.resid
+        RES <- list(n_x_r=Diagonal(x = w.resid),
+                    r_x_n=Diagonal(x = w.resid/(w.resid + object$w.ranef/diag(ZAL)^2))) 
+        return(RES)
+      } ## ELSE
+    } ## ELSE
+    #
+    invL <- .get_invL_HLfit(object) # equivalent to t(chol_Q)
+    wrZ <- .Dvec_times_m_Matrix(object$w.resid, ZAfix) # suppressMessages(sweep(t(ZA), 2L, w.resid,`*`)) 
+    if (TRUE) { 
+      ZtwrZ <- .crossprod(ZAfix, wrZ, as_sym=TRUE) ## seems more precise and we must compute wrZ anyway
+    } else ZtwrZ <- .ZtWZwrapper(ZAfix,object$w.resid) ## -> calls .crossprod(., y=NULL) affects numerical precision of twolambda test in test-predVar.R
+    ## is general ZtwrZ should be sparse, while invL may not. Large dense invL will away be a problem
+    ## for small Z, ZtwrZ may bedsy, but this an un-intersting subcase that does not call for a special treatment
+    if (inherits(ZtwrZ,"dsCMatrix") || inherits(ZtwrZ,"dsyMatrix")) {
+      # (NB: dsy+dsy faster than dsC+dsy but maybe just because of conversion from dsC to dsy ?) => no obvious improvement
+      if (.is_identity(invL)) {
+        precmat <- .symDiagonal(x=object$w.ranef) # dsC+dsC
+      } else precmat <- .ZtWZwrapper(invL,object$w.ranef) # dsC+whatever 
+    } else if (inherits(ZtwrZ,"ddiMatrix")) {
+      if (.is_identity(invL)) {
+        precmat <- Diagonal(x=object$w.ranef) # ddi+ddi...
+      } else precmat <- .ZtWZwrapper(invL,object$w.ranef) # ddi+whatever
+    } else { # ("matrix") may never occur 
       if (.is_identity(invL)) {
         precmat <- diag(x=object$w.ranef)
       } else precmat <- .ZtWZwrapper(invL,object$w.ranef)
-      ZtwrZ <- .crossprod(ZAfix, wrZ) 
-      ## avoid formation of a large nxn matrix:
-      Gmat <- precmat+as.matrix(ZtwrZ)
-      invG_ZtW <- try(solve(Gmat, t(wrZ)),silent=TRUE)
-      if (inherits(invG_ZtW,"try-error")) { ## but that should be well behaved when precmat is.
-        invG <- ginv(as.matrix(Gmat)) ## FIXME quick patch at least
-        invG_ZtW <- .tcrossprod(invG, wrZ)
-      }  
-      RES <- list(n_x_r=wrZ, r_x_n=invG_ZtW)
+      message("Possibly inefficient code in .calc_invV_factors().")
     } 
-    ZAfix <- .get_ZAfix(object, as_matrix=FALSE)
-    RES$r_x_r <- invG_ZtW %*% ZAfix
+    ## avoid formation of a large nxn matrix:
+    Gmat <- precmat + ZtwrZ ## try to sum dsC or to sum dense matrix but not to mix types...
+    invG_ZtW <- try(solve(Gmat, t(wrZ)),silent=TRUE)
+    if (inherits(invG_ZtW,"try-error")) { ## but that should be well behaved when precmat is.
+      invG <- ginv(as.matrix(Gmat)) ## FIXME quick patch at least
+      invG_ZtW <- .tcrossprod(invG, wrZ)
+    }  
+    RES <- list(n_x_r=wrZ, r_x_n=invG_ZtW)
+    #RES$r_x_r <- invG_ZtW %*% ZAfix  ## only for spprec (above) or  TRY_dense_iVZA (FALSE)
     return(RES)
   }
 }
@@ -374,12 +392,8 @@
 
 .calc_newZACvar <- function(newZAlist,cov_newLv_oldv_list) {
   newZACvarlist <- vector("list",length(newZAlist))
-  for (new_rd in seq_along(newZAlist)) {
-    terme <- newZAlist[[new_rd]] %ZA*gI% cov_newLv_oldv_list[[new_rd]]
-    terme <- as.matrix(terme)
-    newZACvarlist[[new_rd]] <- as.matrix(terme)
-  }
-  return(do.call(cbind,newZACvarlist))
+  for (new_rd in seq_along(newZAlist)) newZACvarlist[[new_rd]] <- newZAlist[[new_rd]] %ZA*gI% cov_newLv_oldv_list[[new_rd]]
+  return(.ad_hoc_cbind(newZACvarlist, as_matrix=FALSE))
 }
 
 ## Aggregate info on corrpars, inner-estimated and inner-fixed.
