@@ -103,6 +103,28 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
   return(locsXaug)
 }
 
+.calc_sXaug_Re_spprec <- function(locsXaug, ## conforming template
+                                  X.Re) {
+  distinct.X.ReML <- attr(X.Re,"distinct.X.ReML") # This fn should be called only for non-stdd REML
+  AUGIO_ZX <- as.list(locsXaug$AUGI0_ZX)
+  locX <- AUGIO_ZX$X.pv
+  if ( distinct.X.ReML[1L] ) {
+    locX <- locX[,-(attr(X.Re,"unrestricting_cols"))]
+  } 
+  if ( distinct.X.ReML[2L] ) {
+    extra_vars <- attr(X.Re,"extra_vars") ## may be NULL
+    suppl_cols <- X.Re[,extra_vars, drop=FALSE]
+    locX <- cbind(locX,suppl_cols)
+  }
+  AUGIO_ZX$X.pv <- locX
+  locsXaug <- def_AUGI0_ZX_sparsePrecision(AUGI0_ZX = list2env(AUGIO_ZX),
+                                           w.ranef=attr(locsXaug,"w.ranef"),
+                                           cum_n_u_h=attr(locsXaug,"cum_n_u_h"),
+                                           w.resid=attr(locsXaug,"w.resid"),
+                                           corrPars=attr(locsXaug,"corrPars") )
+  return(locsXaug)
+}
+
 
 # function to get the hatvalues (only: not the other similar computations on t_Q_scaled)
 # no permutation issues for Q => a single get_hatvalues function should handle all sXaug classes
@@ -113,23 +135,30 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
     hatval <- get_from_MME(sXaug,which="hatval_Z")
   } else {#<non-standard REML>
     distinct.X.ReML <- attr(X.Re,"distinct.X.ReML")
-    if ( distinct.X.ReML[2L] ) { 
-      locsXaug <- .calc_sXaug_Re(locsXaug=sXaug,X.Re,weight_X) 
-      hatval <- .leveragesWrap(locsXaug) ## Rcpp version of computation through computation of Q
-    } else if ( distinct.X.ReML[1L] ) { 
-      whichcols <- attr(X.Re,"unrestricting_cols")
-      if (length(whichcols)==attr(sXaug,"pforpv")) { ## should be ML standard
-        stop("Ideally this case is not reached") #hatval <- get_from_MME(sXaug,which="hatval_Z")
-      } else { ## non-standard case
-        t_Q_scaled <- get_from_MME(sXaug,which="t_Q_scaled")
-        n_u_h <- attr(sXaug,"n_u_h")
-        ## substract cols directly from Q ! -- FR->FR working on t_Q for non-pivoted case only !
-        t_Q_scaled <- t_Q_scaled[-(n_u_h+whichcols),] ## test TRUE for standard ML 
-        ## [, -integer(0)] would empty the matrix...
-        hatval <- colSums(t_Q_scaled*t_Q_scaled)
-      }
-    } else { # etaFix with formula=REMLformula: REML de factor standard by non-standard REML syntax
-      hatval <- get_from_MME(sXaug,which="hatval") 
+    if (inherits(sXaug,"AUGI0_ZX_sparsePrecision")) {
+      if (any(distinct.X.ReML)) {
+        locsXaug <- .calc_sXaug_Re_spprec(locsXaug=sXaug,X.Re) 
+        hatval <- get_from_MME(locsXaug,which="hatval") 
+      } else hatval <- get_from_MME(sXaug,which="hatval") # etaFix with formula=REMLformula: REML de factor standard by non-standard REML syntax
+    } else { ## not spprec: code with shortcuts and checks but less clear
+      if ( distinct.X.ReML[2L] ) { 
+        locsXaug <- .calc_sXaug_Re(locsXaug=sXaug,X.Re,weight_X) 
+        hatval <- .leveragesWrap(locsXaug) ## Rcpp version of computation through computation of Q
+      } else if ( distinct.X.ReML[1L] ) { 
+        whichcols <- attr(X.Re,"unrestricting_cols")
+        if (length(whichcols)==attr(sXaug,"pforpv")) { ## should be ML standard
+          stop("Ideally this case is not reached") #hatval <- get_from_MME(sXaug,which="hatval_Z")
+        } else { ## non-standard case
+          t_Q_scaled <- get_from_MME(sXaug,which="t_Q_scaled")
+          n_u_h <- attr(sXaug,"n_u_h")
+          ## substract cols directly from Q ! => t_Q_scaled must have cols in the order that give the "hatval"by get_from_MME(.,which="hatval")
+          t_Q_scaled <- t_Q_scaled[-(n_u_h+whichcols),] ## test TRUE for standard ML 
+          ## [, -integer(0)] would empty the matrix...
+          hatval <- colSums(t_Q_scaled*t_Q_scaled)
+        }
+      } else { # etaFix with formula=REMLformula: REML de factor standard by non-standard REML syntax
+        hatval <- get_from_MME(sXaug,which="hatval") 
+      }      
     }
   }
   if (is.list(hatval)) hatval <- unlist(hatval) ## assuming order lev_lambda,lev_phi
@@ -657,14 +686,6 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
         absdiagR_terms <- .get_absdiagR_blocks(sXaug_blocks=sXaug, pwy_o, n_u_h, processed, 
                                             augZXy_solver=augZXy_solver,
                                             update_info=update_info) 
-        #if (diff(range(unlist(absdiagR_terms1)-unlist(absdiagR_terms)))>1e-10) browser("ICI")
-        # 
-        # 
-        # zut <- .get_absdiagR_new(sXaug=attr(sXaug,"TRUE_sXaug"), pwy_o, n_u_h, processed, 
-        #                   augZXy_solver=augZXy_solver,
-        #                   update_info=update_info)
-        # if (diff(range(unlist(absdiagR_terms)-unlist(zut)))>1e-6) browser()
-        
         pwSSE <- absdiagR_terms$ryy2/extranorm
         logdet_R_scaled_b_v <- absdiagR_terms$logdet_v+absdiagR_terms$logdet_b
         X_scaled_H_unscaled_logdet_r22 <- absdiagR_terms$logdet_b -pforpv*log(H_global_scale)/2 
@@ -844,22 +865,26 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
       augZX_resu$p_bv <- augZX_resu$p_v
     } else {## non-standard REML: => no X-scaling
       locXscal <- auglinmodblob$sXaug   
-      weight_X <- auglinmodblob$weight_X ## FIXME may not work with sparse results
-      nobs <- auglinmodblob$nobs
-      H_global_scale <- attr(auglinmodblob$sXaug,"H_global_scale")
-      w.ranef <- attr(auglinmodblob$sXaug,"w.ranef")
-      if (inherits(locXscal,"Matrix")) {
-        locXscal <- .Dvec_times_Matrix_lower_block(1/weight_X,locXscal,n_u_h)
-        mMatrix_method <- .spaMM.data$options$Matrix_method
+      if (inherits(locXscal, "AUGI0_ZX_sparsePrecision")) {
+        locsXaug <- .calc_sXaug_Re_spprec(locXscal,X.Re)   
       } else {
-        Xrows <- n_u_h+seq(nobs)
-        locXscal[Xrows,] <- .Dvec_times_matrix(1/weight_X,locXscal[Xrows,]) ## get back to unweighted scaled matrix
-        mMatrix_method <- .spaMM.data$options$matrix_method
+        weight_X <- auglinmodblob$weight_X 
+        nobs <- auglinmodblob$nobs
+        H_global_scale <- attr(auglinmodblob$sXaug,"H_global_scale")
+        w.ranef <- attr(auglinmodblob$sXaug,"w.ranef")
+        if (inherits(locXscal,"Matrix")) {
+          locXscal <- .Dvec_times_Matrix_lower_block(1/weight_X,locXscal,n_u_h)
+          mMatrix_method <- .spaMM.data$options$Matrix_method
+        } else {
+          Xrows <- n_u_h+seq(nobs)
+          locXscal[Xrows,] <- .Dvec_times_matrix(1/weight_X,locXscal[Xrows,]) ## get back to unweighted scaled matrix
+          mMatrix_method <- .spaMM.data$options$matrix_method
+        }
+        locXscal <- .calc_sXaug_Re(locXscal,X.Re,rep(1,nobs))   ## non-standard REML: => no X-scaling
+        locsXaug <- do.call(mMatrix_method,
+                            list(Xaug=locXscal, weight_X=weight_X, w.ranef=w.ranef, H_global_scale=H_global_scale))
       }
-      locXscal <- .calc_sXaug_Re(locXscal,X.Re,rep(1,nobs))   
-      locsXaug <- do.call(mMatrix_method,
-                          list(Xaug=locXscal, weight_X=weight_X, w.ranef=w.ranef, H_global_scale=H_global_scale))
-      loc_unscaled_logdet_r22 <- get_from_MME(locsXaug,"logdet_r22") ## non-standard REML: => no X-scaling
+      loc_unscaled_logdet_r22 <- get_from_MME(locsXaug,"logdet_r22") 
       augZX_resu$p_bv <- augZX_resu$p_v - loc_unscaled_logdet_r22 + ncol(X.Re)*log(2*pi)/2
     }
   }
@@ -876,6 +901,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
 # } 
 
 .dsCsum <- function(A, B, keep_names=FALSE) {
+  if ( any(dim(A)!=dim(B))) stop("Dimensions of the two matrices are not identical") # if unprotected, causing hard crash
   X <- .Rcpp_Csum(A,B)
   X <- forceSymmetric(X)
   if (keep_names) dimnames(X) <- dimnames(A)

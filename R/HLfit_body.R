@@ -964,11 +964,11 @@ HLfit_body <- local({
     res$lambda.object <- .make_lambda_object(nrand, lambda_models=models[["lambda"]], cum_n_u_h, lambda_est, 
                                             process_resglm_blob, rand.families=processed$rand.families,
                                             ZAlist, LMatrices, lambdaType=attr(init.lambda,"type"))
-    # lambda.object$lambda is a list that contains lambdas for ranCoefs too !
-    res$"lambda" <- structure(unlist(res$lambda.object$lambda),cum_n_u_h=cum_n_u_h) ## redundant but very convenient except for programming
     #### building a comprehensive list of descriptors of the structure of random effects:
     res$strucList <- .post_process_LMatrices(LMatrices, ZAlist, ranCoefs_blob=ranCoefs_blob) 
-    ####
+    ##### lambda.object$lambda is a list that contains lambdas for ranCoefs too !
+    res$"lambda" <- structure(unlist(res$lambda.object$lambda),cum_n_u_h=cum_n_u_h) ## redundant but very convenient except for programming
+    # res$"lambda" <- .rename_res_lambda(object) ## __F I X M E__ try this.
   } ## else all these res$ elements are NULL
   ###################
   ## ALL other PHI returns

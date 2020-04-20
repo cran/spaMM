@@ -17,5 +17,7 @@ if (spaMM.getOption("example_maxtime")>2.23) {
   testthat::expect_equal(optr$par,5.781816,tolerance=1e-6)
 }
 # GLMM with under-dispersed conditional response
-hlfit <- HLfit(broken ~ transfers+(1|id), data=freight, family = COMPoisson(nu=10),HLmethod="ML")
-testthat::expect_equal(hlfit$lambda[[1]],0.4573305,tolerance=1e-6)
+compmm <- HLfit(broken ~ transfers+(1|id), data=freight, family = COMPoisson(nu=10),HLmethod="ML")
+testthat::expect_equal(compmm$lambda[[1]],0.4573305,tolerance=1e-6)
+
+# Also test simulate() through test-DHARMa.R

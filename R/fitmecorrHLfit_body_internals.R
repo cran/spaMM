@@ -499,6 +499,8 @@
         #
         lampos <- rev(length(rc) -cumsum(seq(Xi_ncol))+1L)  ## NOT cumsum(seq(Xi_cols))
         rc[lampos] <- fam_corrected_guess/(Xi_ncol)
+        #rc[lampos] <- 1e-3*fam_corrected_guess/(Xi_ncol)
+        #rc[lampos[1]] <- fam_corrected_guess/(Xi_ncol)
         init.optim$ranCoefs[[char_rt]] <- rc ## see help(ranCoefs)
       }
     }
@@ -637,3 +639,12 @@
               fixed=fixed, corr_types=corr_types, LUarglist=LUarglist,LowUp=LowUp))
 } 
 
+.is.multi <- function(family) {
+  # Where call at the end of fitting fn, 'family' is the evaluated argument of the call, possibly not yet interpreted as final family()
+  # i.e,, "negbin" -> character, negbin-> function, negbin() -> family (which is also a list!)
+  # EXCEPT that multi(...) -> list but not family
+  return(
+    is.list(family) && # i.e. value of multi(...), or value of <family>() 
+      family$family=="multi"
+  )
+}

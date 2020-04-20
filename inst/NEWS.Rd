@@ -3,6 +3,30 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 3.2.0}{ 
+\subsection{NEW FEATURES}{
+\itemize{
+\item Modified criterion for default selection of sparse precision methods. 
+\item is_separated.formula() to test separation with the same arguments as for a fitting function call.
+\item Newly exported and documented function dopar() for parallel execution of a function on columns of a matrix. Not logically restricted to mixed-effect applications, hence it can be used more widely.
+\item Finer control of verbosity in simulate.HLfit() and predict.HLfit().
+\item New 'format' argument for how.HLfit().
+}
+}
+\subsection{NEW DEPENDENCIES}{
+\itemize{
+\item 'ROI' and 'ROI.plugin.glpk' replace 'lpSolveAPI'.   
+}
+}
+\subsection{FIXED BUGS}{
+\itemize{
+\item Several errors in simulate() called on COMPoisson-reponse models.
+\item Anecdotal glitches in how() when the object was fitted by a "non-vanilla" call of the fitting function.
+\item non-default 'REMLformula', as illustrated in example("update.HLfit"), could not be fitted by sparse-precision algorithms.
+\item Sparse-precision fits of CAR models could crash for some format of the adjacency matrix.
+}
+}
+}
 \section{CHANGES UP TO VERSION 3.1.27}{
 \subsection{FIXED BUGS}{
 \itemize{
@@ -551,7 +575,7 @@ Widespread improvement in speed for large data sets, thanks to some of the  foll
 \item Some other moderate but noticeable improvements in speed. 
 \item Users no longer need to explicitly request AIC computation when calling the fit of a model. The new extractor function get_any_IC() (or its more conventionnally named alias, AIC()) can be used to compute them from a fitted model object.
 \item Negative binomial response models can be fitted by 'family=negbin()'.
-\item The syntax 'family=COMPoisson()', with unknown 'nu' parameter, works. This means that COMpoisson() models can now be fitted with unknown values of this parameter, by corrHLfit() or by the new fitme() function. The same is true for the parameter of the 'negbin' family. 
+\item The syntax 'family=COMPoisson()', with unknown 'nu' parameter, works. This means that COMPoisson() models can now be fitted with unknown values of this parameter, by corrHLfit() or by the new fitme() function. The same is true for the parameter of the 'negbin' family. 
 \item Initial or fixed values of the variance of random effects can be controlled independently when there are several random effects.
 \item spaMM_glm() gains a new argument 'strict' for finer control. spaMM_glm.fit() has increased default 'control$maxit'.  
 \item filled.mapMM() now returns a predictor of the response surface. It also gains a new argument 'smoothObject' that takes such a predictor, allowing for faster redrawing.   

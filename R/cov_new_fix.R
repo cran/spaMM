@@ -226,8 +226,9 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
         # that is, we need them also for prediction variances (not cov) for random-slope.
         # and we check another condition where we may need them for prediction variances: 
         if ( !  need_Cnn[new_rd]) {
-          if (is.null(not_diag_tcross <- ! attr(newZAlist[[new_rd]],"is_diag_tcross"))) {
+          if (is.null(is_incid <- attr(newZAlist[[new_rd]],"is_incid"))) {
             # typically occurs bc there was an A matrix (though not for IMRF) so that ZA differs from Z
+            # or by subsetting (ZAlist[[it]][,.] is .preprocess) 
             if (is.null(attr(newZAlist,"AMatrices"))) {
               message("Possibly inefficient code in .calc_new_X_ZAC().")
               # awful code potentially huge calculation to detect a nondiagonal element...
@@ -238,7 +239,7 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
               # absZA <- abs(newZAlist[[new_rd]])
               # need_Cnn[new_rd] <- ((sum(rowSums(absZA)^2)-sum(absZA^2))>0)
             } else need_Cnn[new_rd] <- TRUE # assumin that the tcrossprod is unlikely to be diagonal...
-          } else need_Cnn[new_rd] <- not_diag_tcross
+          } else need_Cnn[new_rd] <- ( ! is_incid)
         }
         # (depends on AMatrices in particular, but again for IMRF the Evar in nodes is 0 and so is ZA %*% Evar %*% t(ZA) )
       } # else it remains FALSE

@@ -21,7 +21,7 @@ importFrom("stats", "as.formula", "coefficients", "dgamma", "dnorm", "family", "
            "as.dist", "AIC", "qnbinom", "qpois", "rnbinom", "integrate", "poisson",".getXlevels", "na.omit",
            "cov2cor", "pcauchy", "pnorm")
 importFrom("utils", "relist", "txtProgressBar", "setTxtProgressBar", "modifyList", "strOptions", "str",
-           "write.table", "packageVersion", "packageDescription", "capture.output")
+           "write.table", "packageVersion", "packageDescription", "capture.output", "tail")
 importFrom("Matrix", "Matrix", "drop", "isDiagonal", "diag", "t", "solve", "Diagonal", "crossprod", "tcrossprod", "rowSums", "colSums",
            "sparseMatrix", "qr", "qrR", "qr.R", "qr.Q", "qr.coef", "isSymmetric", "forceSymmetric", "Cholesky","determinant",
            "chol2inv", "drop0", ".symDiagonal",".trDiagonal")
@@ -33,6 +33,8 @@ importFrom("nlme", "getGroups", "fixef", "ranef", "corMatrix", "Initialize", "Va
 importFrom("pbapply", "pbapply", "pboptions")
 importFrom("crayon","green","blue","cyan","yellow","red","underline")
 importFrom("minqa","bobyqa")
+importFrom("ROI", "L_constraint", "OP", "ROI_solve", "V_bound", "bounds<-", "constraints<-", "leq", "solution")
+import("ROI.plugin.glpk")
 export(coef) ## from stats namespace
 # From nlme namespace:
 export("fixef", "ranef", "corMatrix", "Initialize", "Variogram", "coef<-", "corFactor", "getCovariate", "logDet", "recalc", "VarCorr") 

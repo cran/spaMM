@@ -327,6 +327,17 @@ summary.HLfitlist <- function(object, ...) {
   invisible(lambda_table) ## not currently correct as it is truncated
 }
 
+# Nice names for the raw lambda vector in the HLfit object:
+.rename_res_lambda <- function (object) {
+  lambda.object <- object$lambda.object
+  namesTerms <- lambda.object$print_namesTerms ## list of vectors of variable length
+  linklam_coeff_list <- lambda.object$coefficients_lambdaS 
+  lambda_table <- .lambda_table_fn(namesTerms, object, lambda.object,linklam_coeff_list) ## uses object$strucList
+  attribs <- attributes(lambda_table)
+  displayrows <- unlist(attribs$row_map)
+  lambda <- unlist(lambda.object$lambda)
+  structure(lambda, names=names(displayrows))
+}
 
 
 

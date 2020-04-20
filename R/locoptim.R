@@ -65,9 +65,10 @@
     for (st in names(LowUp$lower)) if(st=="trRanCoefs") {
       len <- length(unlist(LowUp$lower[[st]]))
       Xi_ncol <- floor(sqrt(len*2))
-      if (rC_transf=="chol") {
-        xtol_abs[[st]] <- rep(1e-12,len) # note that order of elements is that of upper.tri 
-      } else xtol_abs[[st]] <- c(rep(factors["rcLam"],Xi_ncol),rep(factors["rcCor"],len-Xi_ncol)) # "sph" etc
+      # if (rC_transf=="chol") {
+      #   xtol_abs[[st]] <- rep(1e-12,len) # note that order of elements is that of upper.tri 
+      # } else 
+        xtol_abs[[st]] <- c(rep(factors["rcLam"],Xi_ncol),rep(factors["rcCor"],len-Xi_ncol)) # "sph" etc
     } else {xtol_abs[[st]] <- rep(factors["others"],length(unlist(LowUp$lower[[st]])))}
     rng <- unlist(LowUp$upper)-unlist(LowUp$lower)
     xtol_abs <- unlist(xtol_abs)# not clear why

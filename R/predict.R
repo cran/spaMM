@@ -235,7 +235,8 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
                logdispObject=logdispObject,
                newinold=newinold,
                covMatrix=covMatrix,blockSize=blockSize,
-               diag_cov_newLv_newLv_list=locDiag_cov_newLv_newLv_list)
+               diag_cov_newLv_newLv_list=locDiag_cov_newLv_newLv_list,
+               showpbar=FALSE)
 }
 
 .calcPredVar <- function(cov_newLv_oldv_list,
@@ -250,7 +251,8 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
                         newinold, 
                         covMatrix=FALSE,blockSize,
                         diag_cov_newLv_newLv_list,
-                        as_tcrossfac_list=FALSE
+                        as_tcrossfac_list=FALSE,
+                        showpbar
                         ) {
   # predVar (in observed points or elsewhere) uses C rather than L hence we need to compute ZA.C in all cases ('newZAC")
   # and then we need newZA and cov_newLv_oldv_list.
@@ -262,7 +264,7 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
     nslices <- length(slices)-1L
     predVar <- vector("list",nslices)
     newZAlist_slice <- vector("list",length(newZAlist))
-    if (showpbar <- interactive()) pb <- txtProgressBar(style = 3, char="s") # FIXME could implement parallee computation
+    if (showpbar) pb <- txtProgressBar(style = 3, char="s") # FIXME could implement parallee computation
     for (it in seq_len(nslices)) {
       slice <- (slices[it]+1L):slices[it+1L]
       X.pv_slice <- X.pv[slice,,drop=FALSE]
@@ -693,7 +695,7 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
 
 
 .predict_body <- function(object, newdata, re.form, type,
-                          variances, binding, intervals, level, blockSize, control) {
+                          variances, binding, intervals, level, blockSize, control, showpbar) {
   delayedAssign("invCov_oldLv_oldLv_list", .get_invColdoldList(object, control=control))
   new_X_ZACblob <- .calc_new_X_ZAC(object=object, newdata=newdata, re.form = re.form,
                                    variances=variances, invCov_oldLv_oldLv_list=invCov_oldLv_oldLv_list) ## (fixme) still some unnecessary computation for predict(object)
@@ -772,7 +774,8 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
                               ## list for Cnewnew, which enters in  newZA %*% Cnewnew %*% tnewZA, hence should not represent newZA itself 
                               cov_newLv_newLv_list=new_X_ZACblob$cov_newLv_newLv_list,
                               diag_cov_newLv_newLv_list=new_X_ZACblob$diag_cov_newLv_newLv_list,
-                              as_tcrossfac_list=variances$as_tcrossfac_list) 
+                              as_tcrossfac_list=variances$as_tcrossfac_list,
+                              showpbar=showpbar) 
       if ( ! is.list(respVar)) {
         if (variances$cov) {
           respVar <- as.matrix(respVar) ## matrix, not Matrix (assumed below)
@@ -924,6 +927,7 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
                           blockSize = 2000L,
                           type = "response", 
                           control=list(),
+                          verbose=c(showpbar=interactive()),
                           ...) { ## but not new Y
   if (is.null(object$envir)) object$envir <- list2env(list(), ## back-compatibility fix for old objects
                                                      parent=environment(HLfit_body))
@@ -942,6 +946,7 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
   # }
   nrX <-  NROW(newdata)
   if (!is.null(re.form) && inherits(re.form,"formula")) re.form <- .preprocess_formula(re.form)
+  showpbar <- verbose[["showpbar"]]
   ############################## if (nrX>0L) newdata <- droplevels(newdata) FIXME perhaps here ? 
   if ( (! variances$cov) && nrX > blockSize) {
     ### this part of code is tested by the test-predVar code on Loaloa data
@@ -950,14 +955,14 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
     slices <- unique(c(seq(0L,nrX,blockSize),nrX))
     nslices <- length(slices)-1L
     res <- vector("list",nslices)
-    if (showpbar <- interactive()) pb <- txtProgressBar(style = 3, char="s") # FIXME could implement parallee computation
+    if (showpbar) pb <- txtProgressBar(style = 3, char="s") # FIXME could implement parallee computation
     for (it in seq_len(nslices)) {
       slice <- (slices[it]+1L):slices[it+1L]
       newdata_slice <- newdata[slice,,drop=FALSE]
       ## newdata_slice <- droplevels(newdata_slice) 
       res[[it]] <- .predict_body(object=object, newdata=newdata_slice, re.form = re.form, variances=variances, 
                                  binding=binding, type=type, intervals=intervals, level=level, blockSize=blockSize, ## blockSize should not be useful *here*
-                                 control=control)
+                                 control=control, showpbar=verbose)
       if (showpbar) setTxtProgressBar(pb, slices[it+1L]/nrX) ## update progress bar
     }
     if (showpbar) close(pb)
@@ -968,7 +973,7 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
   } else .predict_body(object=object, newdata=newdata, re.form = re.form,
                 variances=variances, binding=binding, type=type,
                 intervals=intervals, level=level, blockSize=blockSize, ## but blockSize could be useful *here* if newdata was NULL
-                control=control) 
+                control=control, showpbar=showpbar) 
 }
 
 print.vcov.HLfit <- function(x, expanded=FALSE, ...) {

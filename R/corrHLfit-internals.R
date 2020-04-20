@@ -129,6 +129,7 @@ if (FALSE) {
   if (rC_transf=="chol") { # trRancoef in upper.tri order
     cholmat <- diag(nrow=Xi_ncol) 
     cholmat[upper.tri(cholmat,diag = TRUE)] <- trRancoef
+    cholmat <- cholmat/.spaMM.data$options$rC_transf_fac
     diag(cholmat) <- pmax(1e-32, diag(cholmat)) # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     return(structure(crossprod(cholmat),chol_crossfac=cholmat))
   } else if (rC_transf=="corr") { # trRancoef in (log(sigma), corr) order
@@ -225,7 +226,8 @@ if (FALSE) {
     compactcovmat[diagPos] <- 1
     compactcovmat <- sigmas %*% compactcovmat %*% sigmas ## using lower tri only
     if (rC_transf=="chol") {
-      trRancoef <- structure(.chlFn(compactcovmat[lowerbloc],Xi_ncol=Xi_ncol),
+      sc_chol <- .chlFn(compactcovmat[lowerbloc],Xi_ncol=Xi_ncol)*.spaMM.data$options$rC_transf_fac
+      trRancoef <- structure(sc_chol,
                              canon=vec,
                              Xi_ncol=Xi_ncol)
     } else if (rC_transf=="corr") {
@@ -440,28 +442,6 @@ if (FALSE) {
                                                         "corrHLfit" = FALSE, "fitme" = FALSE)
   return(verbose)
 }
-
-.preprocess_LevM <- function(user_LM, processed) {
-  if (is.null(user_LM)) user_LM <- .spaMM.data$options$LevenbergM
-  if (is.list(user_LM)) stop("is.list(LevenbergM)")
-  # we may want: 
-  # no Levenberg: user's LevenbergM=FALSE
-  # Levenberg from start: user's LevenbergM=TRUE
-  # optional LevenbergM, with start as decided by following code: user's LevenbergM=NULL
-  # full control overriding code below: e.g. user's LevenbergM=c(user_LM=TRUE, LM_start=TRUE) (not API)
-  if (length(setdiff(c("user_LM","LM_start"), names(user_LM)))) {
-    if ( ! is.logical(user_LM)) user_LM <- NA # handles default case where user_LM is NULL 
-    if (is.na(user_LM)) { 
-      if (processed$bin_all_or_none ) { 
-        if (processed$HL[1L]==0L) {
-          LM_start <- TRUE ## PQL/L + LevenbergM combine safely and relatively fast.
-        } else LM_start <- FALSE  ## BINARYboot test to assess effect on timings
-      } else LM_start <- FALSE
-    } else LM_start <- user_LM[[1L]] # important to drop name else the names of the vector are wrong
-    return(c(user_LM=user_LM[[1L]], LM_start=LM_start) ) 
-  } else return(user_LM) # allows a full vector to be user-provided, for full control
-}
-
 
 .calc_inits_ranCoefs <- function(init,init.optim,init.HLfit,ranFix,user.lower,user.upper) {
   # fixme c/should allow a user-provided init.HLfit$ranCoefs to control what remains in init.optim relative to init.HLfit 

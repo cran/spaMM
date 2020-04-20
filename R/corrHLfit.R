@@ -103,7 +103,7 @@
   } else hlcor$call <- oricall ## this is a call to corrHLfit()
   attr(hlcor,"HLCorcall") <- NULL
   lsv <- c("lsv",ls())
-  if ( ! identical(paste(family[[1L]]),"multi"))  {
+  if ( ! .is.multi(family) )  {
     hlcor$how$fit_time <- .timerraw(time1)
     hlcor$fit_time <- structure(hlcor$how$fit_time,
                                 message="Please use how(<fit object>)[['fit_time']] to extract this information cleanly.")
@@ -200,7 +200,7 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
   } else hlcor$call <- oricall ## this is a call to corrHLfit()
   #attr(hlcor,"HLCorcall") <- NULL # not necess?
   lsv <- c("lsv",ls())
-  if ( ! identical(paste(family[[1L]]),"multi") && ! is.call(hlcor) )  {
+  if ( ! .is.multi(family) && ! is.call(hlcor) )  {
     hlcor$how$fit_time <- .timerraw(time1)
     hlcor$fit_time <- structure(hlcor$how$fit_time,
                                 message="Please use how(<fit object>)[['fit_time']] to extract this information cleanly.")
@@ -208,4 +208,6 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
   rm(list=setdiff(lsv,"hlcor")) 
   return(hlcor)
 }
+
+
 

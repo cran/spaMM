@@ -28,7 +28,6 @@
   use_bobyqa <- (min(c(init-lower,upper-init))<1e-4)
   while (TRUE) {
     if (use_bobyqa) {
-      #browser()
       if (verbose) cat("bobyqa: ")
       # This only bc bobyqa is more sensitive to the 14th decimal than nloptr at the boundaries  
       bobyqa_margin <- .spaMM.data$options$bobyqa_margin

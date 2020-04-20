@@ -324,6 +324,7 @@ fixef.HLfit <- function(object,...) {
                       mu, # mu is a list (or data frame) whose length() is the # of replicates needed
                       prior.weights=object$prior.weights, phi_type, needed) { # phi/prior.weights
   phi_model <-  object$models[["phi"]]
+  is_phiW_fix_btwn_sims <- FALSE
   if (phi_model == "") { ## the count families, or user-given phi
     if (length(object$phi)>1L) {
       if (is.null(newdata)) {
@@ -334,6 +335,7 @@ fixef.HLfit <- function(object,...) {
     newphiMat <- matrix(object$phi,ncol=length(mu),nrow=length(mu[[1L]]))
     if (identical(attr(prior.weights,"unique"),TRUE)) {
       phiW <- newphiMat/prior.weights[1L]
+      is_phiW_fix_btwn_sims <- TRUE
     } else phiW <- .Dvec_times_matrix(1/prior.weights,newphiMat)  ## warnings or errors if something suspect
   } else if (phi_type=="predict") {
     newphiVec <- switch(phi_model,
@@ -342,9 +344,10 @@ fixef.HLfit <- function(object,...) {
                         "phiHGLM" = predict(object$phi_model, newdata=newdata, type=phi_type)[ ,1L],
                         "phiScal" = rep(object$phi,length(mu[[1L]])),
                         stop('Unhandled object$models[["phi"]]')
-    ) ## vector in all cases
+    ) ## VECTOR in all cases, becomes matrix later
     if (identical(attr(prior.weights,"unique"),TRUE)) {
       phiW <- newphiVec/prior.weights[1L]
+      if (phi_model %in% c("phiScal","phiGLM")) is_phiW_fix_btwn_sims <- TRUE
     } else phiW <- newphiVec/prior.weights  ## warnings or errors if something suspect
     phiW <- matrix(phiW,nrow=length(phiW), ncol=length(mu))  # vector -> matrix
   } else { # any other phi_type 
@@ -354,13 +357,15 @@ fixef.HLfit <- function(object,...) {
                         "phiHGLM" = simulate(object$phi_model, newdata=newdata, type=phi_type, nsim=needed),
                         "phiScal" = matrix(object$phi,ncol=length(mu),nrow=length(mu[[1L]])),
                         stop('Unhandled object$models[["phi"]]')
-    )
+    ) ## already MATRIX in all cases
     if (identical(attr(prior.weights,"unique"),TRUE)) {
       phiW <- newphiMat/prior.weights[1L]
+      if (phi_model=="phiScal") is_phiW_fix_btwn_sims <- TRUE
     } else phiW <- .Dvec_times_matrix(1/prior.weights,newphiMat)  ## warnings or errors if something suspect
     # F I X M E add diagnostics ?
   } # phiW is always a matrix
-  return(phiW)
+  attr(phiW,"is_phiW_fix_btwn_sims") <- is_phiW_fix_btwn_sims
+  return(phiW) ## always MATRIX
 }
 
 
@@ -717,25 +722,44 @@ model.matrix.HLfit <- function(object, ...) object$X.pv
 
 how.default <- function(object, ...) {message(paste("No 'how' method defined for objects of class",class(object)))} 
 
-how.HLfit <- function(object, devel=FALSE, verbose=TRUE, ...) {
+how.HLfit <- function(object, devel=FALSE, verbose=TRUE, format=print, ...) {
   info <- object$how
   if (is.null(info)) {
     info <- list(MME_method=setdiff(object$MME_method,c("list")),
                  fit_time=object$fit_time,
                  "spaMM.version"=object$spaMM.version)
   }
-  if (verbose) print(paste0("Model fitted by spaMM::", paste(getCall(object)[[1L]]),", version ",info[["spaMM.version"]],
-               ", in ",info$fit_time,"s using method: ",paste(info$MME_method,collapse=","),"."))
+  if (verbose) {
+    fun <- getCall(object)[[1L]]
+    if (is.function(fun)) { # from do.call(spaMM::fitme, args = args) => it's a closure
+      fnname <- names(which(sapply(list(fitme=spaMM::fitme,
+                                        HLfit=spaMM::HLfit,
+                                        HLCor=spaMM::HLCor,
+                                        corrHLfit=spaMM::corrHLfit), identical, y=fun)))
+    } else { # assuming it's a 'name' (direct call or do.call("fitme", args = args)) or fn got by by get(...)
+      fnname <- paste(sub("^.*?::","",fun)) ## remove any "spaMM::" in the name, from which paste() would return c("::","spaMM",<>)
+    }
+    if ( ! length(fnname)) {
+      format(paste0("Model fitted by spaMM, version ",info[["spaMM.version"]],
+                   ", in ",info$fit_time,"s using method: ",paste(info$MME_method,collapse=","),"."))
+      if (packageVersion("spaMM")==info[["spaMM.version"]]) {
+        message("(Fitting function could not be identified)") # and it's not clear why
+      } else { # object fitted with different version of spaMM, identical() may not work
+        # function could not be identified, but we know why
+      }
+    } else format(paste0("Model fitted by spaMM::", paste(fnname),", version ",info[["spaMM.version"]],
+                 ", in ",info$fit_time,"s using method: ",paste(info$MME_method,collapse=","),"."))
+  }
   if  (!  is.null(resid_fit <- object$resid_fit)) {
     resid_info <- object$resid_fit$how
     if (is.null(resid_info)) {
       resid_info <- list( MME_method=setdiff(object$resid_fit$MME_method,c("list")) )
     }
-    if (verbose) print(paste0("Residual model fitted using method: ",paste(resid_info$MME_method, collapse=","),"."))
+    if (verbose) format(paste0("Residual model fitted using method: ",paste(resid_info$MME_method, collapse=","),"."))
     info$resid_info <- resid_info
   }
   if (devel && ! is.null(switches <- info$switches)) {
-    if (verbose) print(paste(paste(names(switches),"=",switches), collapse = ", "))
+    if (verbose) format(paste(paste(names(switches),"=",switches), collapse = ", "))
   }  
   invisible(info)
 }

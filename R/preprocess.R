@@ -49,19 +49,28 @@
 }
 
 .checkRespFam <- function(family, spaMM.=TRUE) {
-  envname <- environmentName(environment(family))
-  if ( ! envname %in% c("stats","spaMM","")) { ## " typically occurs when family has laready been checked...
-    message(paste("family from namespace environment",envname,"possibly not correctly handled"))
-    if (envname=="mgcv" && identical(paste(formals(family)$theta)[1],"stop")) { ## a call via family=family prevents testing the name
-      mess <- "spaMM::negbin is masked by mgcv::negbin. Use explicitly 'family=spaMM::negbin', or assign 'negbin <- spaMM::negbin'"
+  family <- try(family,silent=TRUE)
+  if (inherits(family, "try-error")) { # presumably 'mgcv::negbin()' ['mgcv::negbin' handled below]
+    if ( attr(family,"condition")$message == "'theta' must be specified") {
+      mess <- "spaMM::negbin is masked by mgcv::negbin. Unload mgcv, or use 'family=spaMM::negbin'."
       stop(mess)
+      #family <- spaMM::negbin()
     }
-  }
-  ## four lines from glm(), which should have no effect on processed$family, spec. those with a param.
-  if (is.character(family)) 
+  } 
+  ## lines derived from glm().
+  if (is.character(family)) {
     family <- get(family, mode = "function", envir = parent.frame())
-  if (is.function(family)) 
+  }
+  if (is.function(family)) {
+    envname <- environmentName(environment(family))
+    if ( ! envname %in% c("stats","spaMM","")) { ## " typically occurs when family has already been checked...
+      if (envname=="mgcv") {
+        mess <- "spaMM::negbin is masked by mgcv::negbin. Unload  mgcv, or use 'family=spaMM::negbin'."
+        stop(mess)
+      } else message(paste("family from namespace environment",envname,"possibly not correctly handled"))
+    }
     family <- family()
+  }  
   if (is.language(family)) { # to bypass spaMM_Gamma by using family=quote(stats::Gamma(log))
     spaMM. <- (! length(grep("stats::",paste(family)[1L]))) ## spaMM. becomes FALSE if explicit quote(stats::...)
     family <- eval(family) 
@@ -69,7 +78,7 @@
   if (family$family=="Gamma" && spaMM.) {
     family <- spaMM_Gamma(link=family$link) 
   }
-  return(family) ## input negbin(...) or COMPoisson(...) are returned as is => nu/shape unaffected
+  return(family) ## input negbin(...) or COMPoisson(...) are evaluated without error and returned as is => nu/shape unaffected
 }
 
 .eval_v_h_bounds <- function(cum_n_u_h, rand.families) {
@@ -948,6 +957,44 @@ as_precision <- function(corrMatrix) {
   return(AUGI0_ZX)
 }
 
+.assign_X.Re_objective <- local({
+  obj_warned <- FALSE
+  function(processed, 
+           X.Re, # previously determined value, to be modified if REMLformula is not NULL 
+           REMLformula, data, X.pv, objective) {
+    if ( ! is.null(REMLformula) ) { # ML or non-standard REML... 
+      REMLFrames <- .HLframes(formula=REMLformula,data=data) ## design matrix X, Y...
+      X.Re <- REMLFrames$X
+      # wAugX will have lost its colnames...
+      unrestricting_cols <- which(colnames(X.pv) %in% setdiff(colnames(X.pv),colnames(X.Re))) ## not in X.Re
+      extra_vars <- setdiff(colnames(X.Re),colnames(X.pv)) ## example("update") tests this. # should occur too with etaFix + REMLformula
+      distinct.X.ReML <- c(length(unrestricting_cols), length(extra_vars)) ## TWO booleans
+      if (ncol(X.Re)) { # non-standard REML... 
+        attr(X.Re,"distinct.X.ReML") <- distinct.X.ReML 
+        if (any(distinct.X.ReML)){ # *subcase* of non-standard REML (other subcase when formula= explicit REMLformula... with ranFix...)
+          if (attr(X.Re,"distinct.X.ReML")[1L]) attr(X.Re,"unrestricting_cols") <- unrestricting_cols
+          if (attr(X.Re,"distinct.X.ReML")[2L]) attr(X.Re,"extra_vars") <- extra_vars ## example("update") tests this.
+        } 
+      }
+      processed$X.Re <- X.Re 
+    } ## else this should be standard REML; let processed$X.Re be NULL 
+    # if standard ML: there is an REMLformula ~ 0 (or with ranefs ?); local X.Re and processed$X.Re is 0-col matrix
+    # if standard REML: REMLformula is NULL: $X.Re is X.pv, processed$X.Re is NULL
+    # non standard REML: other REMLformula: $X.Re and processed$X.Re identical, and may take essentially any value
+    # So a testing pattern is if ( is.null(X.Re)) {<REML standard>} else if ( ncol(X.Re)==0L) {<ML standard>} else {<non-standard REML>}
+    if (is.null(objective)) {
+      if (ncol(X.Re)) { ## standard or non-standard REML
+        processed$objective <- "p_bv"  ## info for fitme_body and corrHLfit_body, while HLfit instead may use return_only="p_bvAPHLs"
+      } else processed$objective <- "p_v"
+    } else {
+      if ( ! obj_warned) {
+        warning("Non-NULL 'objective' is deprecated except for development purposes.", immediate. = TRUE)
+        obj_warned <<- TRUE
+      }
+      processed$objective <- objective
+    }
+  }
+})
 
 .preprocess <- function(control.HLfit, ranFix=NULL, HLmethod, 
                        predictor, resid.model,
@@ -1137,7 +1184,6 @@ as_precision <- function(corrMatrix) {
   HL <- eval(parse(text=paste0("c",substr(HLmethod,3,100)))) ## extracts the (...) part into a vector
   if (length(HL)==2) HL <- c(HL,1)
   processed$HL <- HL ## ! this may be modified locally !!
-  processed$LevenbergM <- .preprocess_LevM(control.HLfit$LevenbergM, processed) # uses processed$bin_all_or_non & $HL
   ####
   ####
   ## X.pv post-processing; later extract column for fixed oefficients, but we need the offset for that
@@ -1158,7 +1204,8 @@ as_precision <- function(corrMatrix) {
     if (inherits(X.pv,"sparseMatrix") && ncol(X.pv)> sum(unlist(lapply(ZAlist,ncol)))) { ## f i x m e heuristic rule
       sparse_precision <- FALSE ## presumably efficient use of Matrix::qr by .sXaug_Matrix_QRP_CHM_scaled algo
     } else { # general case
-      sparse_precision <- .determine_spprec(ZAlist, processed, init.HLfit=init.HLfit) ## possibly writes $corr_info$G_diagnosis! .../...
+      sparse_precision <- .determine_spprec(ZAlist, processed, #HLmethod=HLmethod, 
+                                            init.HLfit=init.HLfit) ## possibly writes $corr_info$G_diagnosis! .../...
       ## F I X M E: ZAL diagnosis uses elements that may be modified afterwards and before .choose_QRmethod() reuses $G_diagnosis
     }
     processed$sparsePrecisionBOOL <- sparse_precision
@@ -1176,7 +1223,7 @@ as_precision <- function(corrMatrix) {
   }
   attr(processed$predictor,"no_offset") <- predictor
   ## Extract columns for fixed oefficients (involves offset; ! can conflict with .rankTrim() results)
-  X.Re <- X.pv ## may be updated from etaFix$beta or REMLformula, but this line makes it possible to avoid this updating when we need to avoid it
+  X.Re <- X.pv ## may be overwritten from etaFix$beta or REMLformula, but this line provides the values for all (complex) cases where it is not overwritten.
   ## reimplementation of etaFix$beta (2015/03)
   if ( length(betaFix <- etaFix$beta)>0 ) {
     namesbetafix <- names(betaFix)
@@ -1191,7 +1238,10 @@ as_precision <- function(corrMatrix) {
         off <- offFromEtaFix
       } else off <- off + offFromEtaFix
       ## TRUE by default:
-      if ( is.null( keepInREML <- attr(betaFix,"keepInREML") ) ||  ( ! keepInREML) ) X.Re <- X.pv ## can be overwritten according to REMLformula
+      if ( is.null( keepInREML <- attr(betaFix,"keepInREML") ) ||  ( ! keepInREML) ) {
+        X.Re <- X.pv # X.Re and X.pv kept identical
+      } # else X.Re and X.pv are now different, X.Re being the X.pv before .subcol_wAttr()ing
+      ## X.Re can be overwritten according to REMLformula
     } else {
       stop("The names of elements of etaFix$beta should all match column names of the design matrix.")
     }
@@ -1205,7 +1255,9 @@ as_precision <- function(corrMatrix) {
   pforpv <- ncol(X.pv)
   #
   if(family$family == "binomial" && processed$bin_all_or_none && pforpv) {
-    isSeparated <- is_separated(X.pv, as.numeric(y))
+    if (For=="is_separated") {
+      return(is_separated(X.pv, as.numeric(y),verbose=FALSE)) 
+    } else isSeparated <- is_separated(X.pv, as.numeric(y))
   }
   if (HL[1L]=="SEM") processed$SEMargs <- .preprocess_SEMargs(BinomialDen, nobs, control.HLfit, y)
   if (HL[1L]==0L) {processed$p_v_obj <-"hlik"} else processed$p_v_obj <-"p_v" ## objective for beta(_v) estim only: != outer obj 
@@ -1228,31 +1280,7 @@ as_precision <- function(corrMatrix) {
   } ## else do nothing: keeps input REMLformula, which may be NULL or a non-trivial formula
   # REMLformula <- .preprocess_formula(REMLformula)
   processed$REMLformula <- REMLformula  
-  if ( ! is.null(REMLformula) ) { # ML or non-standard REML... 
-    REMLFrames <- .HLframes(formula=REMLformula,data=data) ## design matrix X, Y...
-    X.Re <- REMLFrames$X
-    # wAugX will have lost its colnames...
-    unrestricting_cols <- which(colnames(X.pv) %in% setdiff(colnames(X.pv),colnames(X.Re))) ## not in X.Re
-    extra_vars <- setdiff(colnames(X.Re),colnames(X.pv)) ## example("update") tests this. # should occur too with etaFix + REMLformula
-    distinct.X.ReML <- c(length(unrestricting_cols), length(extra_vars)) ## TWO booleans
-    if (ncol(X.Re)) { # non-standard REML... 
-      attr(X.Re,"distinct.X.ReML") <- distinct.X.ReML 
-      if (any(distinct.X.ReML)){ # *subcase* of non-standard REML (other subcase when formula= explicit REMLformula... with ranFix...)
-        if (attr(X.Re,"distinct.X.ReML")[1L]) attr(X.Re,"unrestricting_cols") <- unrestricting_cols
-        if (attr(X.Re,"distinct.X.ReML")[2L]) attr(X.Re,"extra_vars") <- extra_vars ## example("update") tests this.
-      } 
-    }
-    processed$X.Re <- X.Re 
-  } ## else this should be standard REML; let processed$X.Re be NULL 
-  # if standard ML: there is an REMLformula ~ 0 (or with ranefs ?); local X.Re and processed$X.Re is 0-col matrix
-  # if standard REML: REMLformula is NULL: $X.Re is X.pv, processed$X.Re is NULL
-  # non standard REML: other REMLformula: $X.Re and processed$X.Re identical, and may take essentially any value
-  # So a testing pattern is if ( is.null(X.Re)) {<REML standard>} else if ( ncol(X.Re)==0L) {<ML standard>} else {<non-standard REML>}
-  if (is.null(objective)) {
-    if (ncol(X.Re)) { ## standard or non-standard REML
-      processed$objective <- "p_bv"  ## info for fitme_body and corrHLfit_body, while HLfit instead may use return_only="p_bvAPHLs"
-    } else processed$objective <- "p_v"
-  } else processed$objective <- objective
+  .assign_X.Re_objective(processed, X.Re, REMLformula, data, X.pv, objective) ##] assigns processed$X.Re and processed$objective
   #
   models <- list(eta="",lambda="",phi="")
   if ( nrand) {
@@ -1287,7 +1315,10 @@ as_precision <- function(corrMatrix) {
                   rownames(ugeo) <- apply(ugeo,1L,paste0,collapse=":")
                   geo_info[[it]]$uniqueGeo <- ugeo[(dataordered_unique_levels),,drop=FALSE]
                   #
+                  is_incid <- attr(ZAlist[[it]],"is_incid") 
                   ZAlist[[it]] <- ZAlist[[it]][,(dataordered_unique_levels)]
+                  # so that nice attributes are lost: "is_incid" "leftOfBar_mf" "namesTerm" "dataordered_unique_levels" "AR1_block_n_u_h_s" "uniqueGeo"  
+                  attr(ZAlist[[it]],"is_incid") <- is_incid 
                 } else {
                   for (nam in names(ugeo)) if (is.factor(fac <- ugeo[[nam]])) ugeo[[nam]] <- as.character(levels(fac))[fac]
                   geo_info[[it]]$uniqueGeo <- ugeo
@@ -1302,7 +1333,9 @@ as_precision <- function(corrMatrix) {
               } else if (corr_type %in% c("Matern","Cauchy")) { 
                 if (attr(ZAlist[[it]],"namesTerm") != "(Intercept)") {
                   geo_info[[it]]$activelevels <- activelevels <- which(colSums(ZAlist[[it]]!=0L)>0L)
+                  is_incid <- attr(ZAlist[[it]],"is_incid") 
                   ZAlist[[it]] <- ZAlist[[it]][,activelevels,drop=FALSE]
+                  attr(ZAlist[[it]],"is_incid") <- is_incid 
                 } 
               } else if ( ! is.null(uniqueGeo)) { ## user-provided uniqueGeo (no example anywhere! :-) )
                 if (is.list(uniqueGeo)) { ## spaMM3.0 extended syntax
@@ -1337,6 +1370,7 @@ as_precision <- function(corrMatrix) {
       }
     }
     processed$cum_n_u_h <- cum_n_u_h <- cumsum(c(0L, vec_n_u_h)) ## if two ranef,  with q=(3,3), this is 0,3,6 ;
+    processed$LevenbergM <- .preprocess_LevM(control.HLfit$LevenbergM, processed) # uses processed$bin_all_or_non & $HL & $cum_n_u_h
     vec_normIMRF <- .calc_vec_normIMRF(exp_ranef_terms=attr(ZAlist, "exp_ranef_terms"), corr_types=corr_types)   
     if (any(vec_normIMRF)) attr(ZAlist,"Zlist") <- Zlist
     processed$ZAlist <- ZAlist 
@@ -1369,7 +1403,7 @@ as_precision <- function(corrMatrix) {
   }
   if (.spaMM.data$options$X_scaling) { ## use scaling by default v.2.4.83
     ##       standard REML    ||      ML 
-    if ( is.null(REMLformula) || ncol(X.Re)==0L) AUGI0_ZX$X.pv <- .scale(AUGI0_ZX$X.pv) # scales and adds "scaled:scale" attribute
+    if ( is.null(REMLformula) || ncol(processed$X.Re)==0L) AUGI0_ZX$X.pv <- .scale(AUGI0_ZX$X.pv) # scales and adds "scaled:scale" attribute
   }
   #if (nrand &&  ! sparse_precision ) { AUGI0_ZX$template_Xscal <- .make_Xscal(ZAL=NULL, ZAL_scaling = NULL, AUGI0_ZX=AUGI0_ZX) } # ## failure to use it efficiently
   if (nrand &&  ! sparse_precision ) { 

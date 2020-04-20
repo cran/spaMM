@@ -260,14 +260,18 @@ spaMM_glm.fit <- local({
             } else LevenbergMstep_result <- .LevenbergMstepCallingCpp(wAugX=wX, LM_wAugz=LM_wz, damping=damping)
             ## LevenbergMstep_result contains rhs, the gradient of the objective, essentially  crossprod(wX,LM_wz)
             #
-            ## Uses a function call to keep the change in beta->start,eta,mu,dev private
+            ## Use a function call to keep the change in beta->start,eta,mu,dev private:
             levMblob <- .eval_gain_LevM_spaMM_GLM(LevenbergMstep_result,family, x ,coefold,devold, offset,y,weights) 
-            ## (dev crit in glm.fit style, vs $dbeta in auglinmodfit style)
-            ## But it seems to make sense that the gradient must vanish.
-            ## D(dev) and dbetav may be small for non-zero gradient, part. with large damping.
             gainratio <- levMblob$gainratio
-            conv_crit <- max(levMblob$conv_dev, 
-                             abs(LevenbergMstep_result$rhs)/(1+dev))
+            if (beta_bounded) {
+              conv_crit <- levMblob$conv_dev ## (dev crit in glm.fit style, vs $dbeta in auglinmodfit style)
+              ## But D(dev) and dbetav may be small for non-zero gradient, part. with large damping.
+              ## Hence additional check, worth when ( ! beta_bounded).
+              ## It might make sense to make a stricter comparison on $conv_dev when (beta_bounded).
+            } else { # we also check that the gradient vanish
+              conv_crit <- max(levMblob$conv_dev, 
+                               abs(LevenbergMstep_result$rhs)/(1+dev))
+            }
             if (is.nan(gainratio)) {
               if (control$trace) cat("!")
               break

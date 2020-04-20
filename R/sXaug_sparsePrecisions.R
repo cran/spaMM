@@ -323,11 +323,25 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
 
 .provide_BLOB_factor_inv_Md2hdv2 <- function(BLOB) { ## Code encapsulated in a function for easier profiling
   LL <- Matrix::solve(BLOB$G_CHMfactor, as(BLOB$G_CHMfactor,"pMatrix") %*% BLOB$chol_Q,system="L") ## dgCMatrix 
+  # Even is BLOB$chol_Q is Identy, this this hardly slower than Matrix::solve(BLOB$G_CHMfactor, system="L") so cannot be improved.
   BLOB$factor_inv_Md2hdv2 <- drop0(LL,tol=.Machine$double.eps) ## crossfactor
   #factor_Md2hdv2 <- as.matrix(Matrix::solve(BLOB$chol_Q,as(BLOB$G_CHMfactor,"sparseMatrix")))
   #BLOB$chol_Md2hdv2 <- Rcpp_chol_R(tcrossprod(factor_Md2hdv2)) #A = R'.R as in R's chol()
 }
 
+.ad_hoc_dsy_warning <- local({
+  dsy_warned <- FALSE
+  function() {
+    if ( ! dsy_warned) {
+      dsy_warned <<- TRUE
+      if (is.null(.spaMM.data$options$sparse_precision)) {
+        warning("Sparse-precision algorithm (automatically selected) possibly inefficient. Please report to the package maintainer.", immediate.=TRUE)
+      } else {
+        warning("Sparse-precision algorithm (selected by user) possibly inefficient.", immediate.=TRUE)
+      }
+    }
+  }
+})
 
 .AUGI0_ZX_sparsePrecision <- function(sXaug,which="",z=NULL,B=NULL,
                                       damping,LM_z) {
@@ -357,11 +371,19 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
     if (length(precisionBlocks)>1L) {
       precisionMatrix <- forceSymmetric(do.call(Matrix::bdiag, precisionBlocks)) # bdiag degrades dsC into dgC
     } else precisionMatrix <- (precisionBlocks[[1L]]) # forceSymmetric removed bc input should in principle be dsC
-    tmp <- .ZtWZwrapper(AUGI0_ZX$ZAfix,attr(sXaug,"w.resid")) # should return a symmetric-type matrix (dsC, not ddi...)
-    if (inherits(tmp,"dsCMatrix") && inherits(precisionMatrix,"dsCMatrix") ) { # test introduced 02/2020. In principle always true
+    tmp <- .ZtWZwrapper(AUGI0_ZX$ZAfix,attr(sXaug,"w.resid")) # should return a symmetric-type matrix (dsC or possibly dsy, not ddi...)
+    if (inherits(tmp,"dsyMatrix")) { 
+      # if tmp is small (2*2 and diagonal: ranef with two levels...), then it may have been returned by .ZtWZwrapper -> .crossprod as dsy, not dsC.
+      # then, as(tmp,"sparseMatrix") is dgC not dsC
+      #  and  as(tmp,"symmetricMatrix") is dsy not dsC
+      # so there is no way to make sure that the result is dsC without adding as(.,"dsCMatrix") in .ZtWZwrapper or .crossprod
+      .ad_hoc_dsy_warning()
+      tmp <- as(tmp,"dsCMatrix")
+    }
+    if (inherits(tmp,"dsCMatrix") && inherits(precisionMatrix,"dsCMatrix") ) { # test introduced 02/2020. 
       tmp <- .dsCsum(tmp, precisionMatrix) # faster than tmp + precisionMatrix where '+' calls forceSymmetric(callGeneric(as(e1, "dgCMatrix"), as(e2, "dgCMatrix")))
     } else { 
-      warning("possibly inefficient code in .AUGI0_ZX_sparsePrecision(). Please report to the package maintainer.", immediate.=TRUE) 
+      warning("Possibly inefficient code in .AUGI0_ZX_sparsePrecision(). Please report to the package maintainer.", immediate.=TRUE) 
       tmp <- tmp + precisionMatrix
     }
     BLOB$Gmat <- drop0(tmp) ## depends on w.ranef and w.resid
@@ -582,7 +604,6 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
     ## Here I deleted from v2.4.100 a variant using .damping_to_solve()
     grad_v <- LM_z$scaled_grad[seq(ncol(BLOB$chol_Q))]
     if (.spaMM.data$options$use_G_dG) {
-      #browser()
       G_dG_blob <- .calc_G_dG(BLOB, damping) # list(G_dG=G_dG, dampDpD_2=damping * BLOB$D_Md2hdv2)
       rhs <- BLOB$chol_Q %*% grad_v
       rhs <- Matrix::solve(G_dG_blob$G_dG,rhs)

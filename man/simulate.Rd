@@ -14,9 +14,9 @@
 \usage{
 \method{simulate}{HLfit}(object, nsim = 1, seed = NULL, newdata = NULL, 
                          type = "marginal", re.form, conditional = NULL, 
-                         verbose = TRUE, sizes = NULL, resp_testfn = NULL, 
-                         phi_type = "predict", prior.weights = object$prior.weights, 
-                         variances=list(), ...)
+                         verbose = c(type=TRUE,showpbar=interactive()), 
+                         sizes = NULL, resp_testfn = NULL, phi_type = "predict", 
+                         prior.weights = object$prior.weights, variances=list(), ...)
 \method{simulate}{HLfitlist}(object, nsim = 1, seed = NULL, 
                              newdata = object[[1]]$data, sizes = NULL, ...)
 }
@@ -43,7 +43,7 @@
     Obsolete and will be deprecated. Boolean; TRUE and FALSE are equivalent to \code{type="residual"} and \code{type="marginal"}, respectively. 
   }
   \item{verbose}{
-    Boolean; whether to print some information or not. 
+    Either a single boolean (which determines \code{verbose[["type"]]}, or a vector of booleans with possible elements \code{"type"} (to display basic information about the type of simulation) and \code{"showpbar"} (see code{predict(.,verbose)}). 
   }
   \item{sizes}{
   A vector of sample sizes to simulate in the case of a binomial fit. Defaults to the sizes in the original data. 

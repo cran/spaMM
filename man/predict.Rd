@@ -20,10 +20,10 @@ Prediction of the response variable by its expected value obtained as (the inver
 \method{predict}{HLfit}(object, newdata = newX, newX = NULL, re.form = NULL,
                         variances=list(), binding = FALSE, intervals = NULL,
                         level = 0.95, blockSize = 2000L, type = "response", 
-                        control=list(), ...)
+                        control=list(), verbose=c(showpbar=interactive()), ...)
 get_predCov_var_fix(object, newdata = NULL, fix_X_ZAC.object, fixdata, re.form = NULL,
                     variances=list(disp=TRUE,residVar=FALSE,cov=FALSE), 
-                    control=list(), ...)    
+                    control=list(),  ...)    
 preprocess_fix_corr(object, fixdata, re.form = NULL,
                    variances=list(residVar=FALSE, cov=FALSE), control=list())
 get_fixefVar(...)
@@ -101,6 +101,7 @@ get_intervals(...)
  }
 \item{type}{character string; The returned point prediction is on the response scale if \code{type="response"} (the default). It is on the linear predictor scale if \code{type="link"}. }
 \item{control}{A list; a warning will direct you to relevant usage when needed.}
+\item{verbose}{A vector of booleans; it single currently used element is \code{"showpbar"}, which controls whether to show a progress bar in certain prediction variance computations.}
 \item{\dots}{
   further arguments passed to or from other methods. For the \code{get_}... functions, they are passed to \code{predict}. 
 }

@@ -329,7 +329,7 @@
   ## 
   envform <- environment(formula)  
   ## The aim is to reduce environment(formula) to almost nothing as all vars should be in the data. 
-  #  The revised Infusion code shows how to use the 'data' tfor prior.weights in programming, using eval(parse(text=paste(<...>,priorwName,<...>)))
+  #  The revised Infusion code shows how to use the 'data' for prior.weights in programming, using eval(parse(text=paste(<...>,priorwName,<...>)))
   # As long as prior.weights was still using the environment, fitting functions still had
   #     mc <- oricall
   #     oricall$formula <- .preprocess_formula(formula) 
@@ -346,8 +346,8 @@
   }
   check <- grep('$',frame.form,fixed=TRUE)
   if (length(check)) {
-    warning("'$' detected in formula: suspect and best avoided. 
-            In particular, one should never needs to specify the 'data' in the 'formula'. 
+    message("'$' detected in formula: suspect and best avoided. 
+            In particular, one should never need to specify the 'data' in the 'formula'. 
             See help('good-practice') for explanations.")
   }
   frame.form <- as.formula(frame.form)
@@ -493,6 +493,12 @@
       }
       # handles offset:  (without the small shortcut used in .HLframes())
       fixef_mf <- model.frame(Terms, data, xlev = fitobject$HLframes$fixef_levels) ## xlev gives info about the original levels
+      # :here for a poly(age,.) Terms and age=Inf in the 'data', fixef_mf had zero rows and linkinv will fail on numeric(0) 'eta'
+      if (nrow(fixef_mf)!=nrow(data)) {
+        if (any(pb <- which( ! sapply(lapply(data,is.finite), all)))) {
+          stop(paste0("NA/NaN/Inf in 'data' for fixed-effects prediction: check variable(s) '", paste(names(pb), collapse="', '"),"'."))
+        } else stop("nrow(fixef_mf)!=nrow(data) for undetermined reason") 
+      }
       X <- model.matrix(Terms, fixef_mf, contrasts.arg=attr(fitobject$X.pv,"contrasts")) 
       ## : original contrasts definition is used to define X cols that match those of original X, whatever was the contrast definition when the model was fitted
     } else {

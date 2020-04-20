@@ -40,7 +40,7 @@ HLfit <- function(formula,
     ## mix of mc$family and family:
     ## only the evaluated multi() family is certain to have a $binResponse and ad $binfamily
     ## error for missing "npos" typically follows from lack of explicit $binResponse 
-    if (identical(paste(family[[1L]]),"multi")) { ## test syntax valid for all formats of 'family'
+    if (identical(paste(family[[1L]]),"multi")) { ## test syntax valid for all formats of 'family' (except function...)
       if ( ! inherits(data,"list")) {
         if(family$binfamily$family=="binomial") {
           familyargs <- family ## must be the evaluated multi() 
@@ -116,7 +116,7 @@ HLfit <- function(formula,
     return(hlfit)    ########################   R E T U R N   a list with $APHLs
   }
   hlfit$call <- oricall ## potentially used by getCall(object) in update.HL
-  if ( ! identical(paste(family[[1L]]),"multi")) {
+  if ( ! .is.multi(family) ) {
     hlfit$how$fit_time <- .timerraw(time1)
     hlfit$fit_time <- structure(hlfit$how$fit_time,
                                 message="Please use how(<fit object>)[['fit_time']] to extract this information cleanly.")

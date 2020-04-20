@@ -20,7 +20,7 @@
   meth1 <- object$HL
   meth2 <- object2$HL
   if (! identical(object$family[c("family","link")],object2$family[c("family","link")] ) ) {
-    stop("Models may not be nested (distinct families)") ## but COMpoisson vs poisson ?
+    stop("Models may not be nested (distinct families)") ## but COMPoisson vs poisson ?
   }
   if (! identical(meth1,meth2) || length(REML)>1 ) {
     stop("object fitted by different methods cannot be compared")
@@ -392,11 +392,6 @@ eval_replicate <- function(y) { # no additional arguments, to ease parallel prog
   } # end while()
   # print(logLik(new_fullfit,which=test_obj) - logLik(new_nullfit,which=test_obj)) 
   resu <- c(full=best_logL_full,null=best_logL_null)
-  #if (best_logL_full<best_logL_null-0.01) browser()
-  # if ( ! is.null(.condition)) {
-  #   condition <- with(list(nullfit=best_nullfit, fullfit=best_fullfit), eval(.condition))
-  #   resu <- c(resu, condition=condition)
-  # }
   return(resu)
 }
 

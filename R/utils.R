@@ -134,3 +134,8 @@ print.spcall <- function (x, digits = NULL, quote = TRUE, na.print = NULL, print
     else as.matrix(t(X))
   }
 }
+
+projpath <- function() {
+  fn <- get("getActiveProject",envir = asNamespace("rstudioapi"))
+  fn()
+}

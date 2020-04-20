@@ -65,20 +65,22 @@ betavals <- c(5.55,0.08,-0.14,-0.21,-0.08,-0.09,-0.09)
 # reconstruct fitted phi value from predictor for log(phi)
 Xphi <- with(wafers,cbind(1,X3,X3^2)) ## design matrix
 phifit <- exp(Xphi \%*\% c(-2.90,0.1,0.95))
-update(wFit,formula.= . ~ offset(wFit$`X.pv` \%*\% betavals)+(1|batch),
+upd_wafers <- wafers
+upd_wafers$off_b <- wFit$`X.pv` \%*\% betavals
+update(wFit,formula.= . ~ offset(off_b)+(1|batch), data=upd_wafers,
        ranFix=list(lambda=exp(-3.67),phi=phifit))
 
 ## There are subtlety in performing REML fits of constrained models,
 ##   illustrated by the fact that the following fit does not recover 
 ##   the original likelihood values, because dispersion parameters are
 ##   estimated but the REML correction changes with the formula:
-update(wFit,formula.= . ~ offset(wFit$`X.pv` \%*\% fixef(wFit))+(1|batch))
+upd_wafers$off_f <- wFit$`X.pv` \%*\% fixef(wFit) ## = predict(wFit,re.form=NA,type="link")
+update(wFit,formula.= . ~ offset(off_f)+(1|batch), data=upd_wafers)
 ## To maintain the original REML correction, Consider instead
-update(wFit,formula.= . ~ offset(wFit$`X.pv` \%*\% fixef(wFit))+(1|batch),
+update(wFit,formula.= . ~ offset(off_f)+(1|batch), data=upd_wafers,
        REMLformula=formula(wFit))  ## recover original p_v and p_bv     
 ## Alternatively, show original wFit as differences from betavals:  
-update(wFit,formula.= . ~ . +offset(wFit$`X.pv` \%*\% betavals))
-
+update(wFit,formula.= . ~ . +offset(off_f), data=upd_wafers)
 }
 % Add one or more standard keywords, see file 'KEYWORDS' in the
 % R documentation directory.

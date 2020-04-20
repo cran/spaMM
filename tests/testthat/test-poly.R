@@ -15,7 +15,7 @@ testthat::expect_true(diff(range(c(0.1018852,p1,p2,p3)))<1e-7)
 
 ## with a random effect
 set.seed(123)
-data_test <- data.frame(x = rnorm(100), id = as.character(1:100))
+data_test <- data.frame(x = rnorm(100), id = as.factor(1:100))
 d <- data_test[rep(1:nrow(data_test), each = 10), ]
 d$y <- rnorm(nrow(d))
 modtp <- fitme(y ~ poly(x, 2) + (1|id), data = d)
@@ -25,7 +25,7 @@ abyss <- simulate(modtp, newdata = new_data[rep(1L,100),], type="residual")
 ## 
 if (spaMM.getOption("example_maxtime")>6) {
   set.seed(123)
-  data_test <- data.frame(x = factor(runif(100)>0.5), id = as.character(1:100))
+  data_test <- data.frame(x = factor(runif(100)>0.5), id = as.factor(1:100))
   d <- data_test[rep(1:nrow(data_test), each = 10), ]
   ranef <- structure(rnorm(length(unique(d$id)),sd = 0.666),names=levels(d$id))
   d$y <- rnorm(nrow(d))+ranef[d$id]

@@ -10,7 +10,7 @@
     splt <- NULL
     aslocator <- parse(text=paste(".ULI(",gsub("\\+|:", "\\,", txt),")"))
     dataordered_levels <- eval(expr=aslocator,envir=mf) ## associates ordered levels 1...n to unique combin of rhs variables ordered as in the data.
-  } else { ## handles "nested nesting" for AR1_sparse_Q || raneftype=="corrMatrix"
+  } else { ## handles "nested nesting" for AR1 spprec || raneftype=="corrMatrix"
     splt <- strsplit(txt,c("%in%|:|\\+| "))[[1L]] ## things to be removed so that only variable names remain
     splt <- splt[splt!=""]
     if ( ! all(splt %in% names(mf)) ) stop(" ! all(splt %in% names(mf))")
@@ -123,12 +123,12 @@
     ## if sparse_precision is not yet determined
     #  this build the design matrix as if it was TRUE,
     #  but adds the info dataordered_levels that allows a later modif of the design matrix if sparse_precision is set to FALSE
-    AR1_sparse_Q <- info_mat_is_prec <- FALSE
+    assuming_spprec <- info_mat_is_prec <- FALSE
     raneftype <- attr(x,"type")
     #if (identical(raneftype, "(.|.)")) stop("this does not occur") # does not occurs here, as explained in calling fn, .calc_Zlist()
     if (( ! is.null(raneftype))){ ## Any term with a 'spatial' keyword (incl. corrMatrix); cf comment in last case
-      ## if sparse not yet determined for AR1, we generate the required info for sparse (and non-sparse) and thus assume AR1_sparse_Q: 
-      if (is.null(AR1_sparse_Q <- sparse_precision)) AR1_sparse_Q <- (raneftype=="AR1")  
+      ## if sparse not yet determined for AR1, we generate the required info for sparse (and non-sparse) and thus assume spprec: 
+      if (is.null(assuming_spprec <- sparse_precision)) assuming_spprec <- (raneftype=="AR1")  
       info_mat_is_prec <- (raneftype=="corrMatrix" && inherits(corrMat_info,"precision")) 
       ## for AR1_sparse and corrMatrix, we cannot use dummy levels as created by .ULI() of factor(). The level names have special meaning
       #   matching a time concept, or user-provided names for the corrMatrix.
@@ -145,7 +145,7 @@
         #     dataordered_levels_blob <- .calc_dataordered_levels(txt=txt,mf=mf,type=.spaMM.data$options$levels_type)
         #   } else stop("Unhandled model class for IMRF")
         # }
-      } else if (AR1_sparse_Q || raneftype=="corrMatrix") {
+      } else if (assuming_spprec || raneftype=="corrMatrix") {
         dataordered_levels_blob <- .calc_dataordered_levels(txt=txt,mf=mf,type="mf")
       } else dataordered_levels_blob <- .calc_dataordered_levels(txt=txt,mf=mf,type=type)
       #
@@ -157,8 +157,8 @@
         } else {
           ff <- dataordered_levels_blob$factor
         }
-      } else if (AR1_sparse_Q) { 
-        AR1_sparse_Q_ranges_blob <- .calc_AR1_sparse_Q_ranges(mf=mf,dataordered_levels_blob)
+      } else if (assuming_spprec && raneftype=="AR1") { 
+        AR1_sparse_Q_ranges_blob <- .calc_AR1_sparse_Q_ranges(mf=mf,dataordered_levels_blob) # we need all 'time steps' for AR1 by spprec
         ff <- factor(dataordered_levels_blob$factor,levels=AR1_sparse_Q_ranges_blob$seq_levelrange) ## rebuild a new factor with new levels
         if (anyNA(ff)) {
           stop(paste("Levels of the factor for an AR1 random effect should take integer values\n",
@@ -188,8 +188,11 @@
       if (all(is.na(ff))) stop("Invalid grouping factor specification, ", deparse(rhs),call.=FALSE)
       ## note additional code in lme4::mkBlist for handling lhs in particular
     }
+    ## If info_mat was corr then it must have the levels that a precision matrix would need
+    ## If info_mat_is_prec we drop nothing
+    ## if assuming_spprec (i.e. if spprec already determined, or AR1) we drop nothing.
+    if (drop && ! (info_mat_is_prec || assuming_spprec))  ff <- droplevels(ff)
     ## Done with ff. Now the incidence matrix: 
-    if (drop && ! (AR1_sparse_Q || info_mat_is_prec))  ff <- droplevels(ff)
     if (nrow(mf)==1L && levels(ff)=="1") {
       im <- trivial_incidMat ## massive time gain when optimizing spatial point predictions
     } else im <- sparseMatrix(i=as.integer(ff),j=seq(length(ff)),x=1L, # ~ as(ff, "sparseMatrix") except that empty levels are not dropped
@@ -221,7 +224,7 @@
     attr(Z_,"leftOfBar_mf") <- leftOfBar_mf
     attr(Z_, "namesTerm") <- colnames(modmat) ## length=npar
     if (identical(raneftype,"AR1")) {
-      if (AR1_sparse_Q) { ## this is TRUE is sparse_precision has not yet been determined !
+      if (assuming_spprec) { ## this is TRUE is sparse_precision has not yet been determined !
         ## Following is different from levels(dataordered_levels_blob$factor) which are reordered as character
         #  Effect in first fit in test-AR1, when spprec goes from NULL to FALSE
         attr(Z_,"dataordered_unique_levels") <- unique(as.character(dataordered_levels_blob$factor)) ## allow reformatting for ! sparse prec
@@ -249,7 +252,7 @@
       colnames(ZA) <- rownames(incidMat) 
     } else ZA <- t(incidMat)
     # incidMat has no colnames and modmat does not provide names in the alternative general code
-    attr(ZA,"is_diag_tcross") <- TRUE
+    attr(ZA,"is_incid") <- TRUE # we use for predVar that it then has a digonal tcrossprod
   } else { ## first conceived for ranCoefs, with ncol(modmat)>1L. But also handles e.g. Matern(not-1|.) 
     ZA <- vector("list",ncol(modmat))
     for (col in seq_len(ncol(modmat))) {
@@ -259,7 +262,7 @@
       ZA[[col]] <- t(ZA_col)
     }
     ZA <- do.call(cbind, ZA) ## colnames are repeated if modmat has several cols...
-    attr(ZA,"is_diag_tcross") <- FALSE
+    attr(ZA,"is_incid") <- FALSE
   }
   return(ZA)
 }

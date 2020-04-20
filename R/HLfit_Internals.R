@@ -1339,22 +1339,6 @@ spaMM_Gamma <- function (link = "inverse") {
   }
 }
 
-# currently not used:
-.Matrix_crossprod <- function(x,y, as_sym=TRUE) { # x Matrix; y Matrix or NULL
-  if (inherits(x,"dgCMatrix")) {
-    if (is.null(y)) {
-      txy <- .dgCcrossprod(x,NULL) 
-      #if (class(Matrix::crossprod(x)) != class(forceSymmetric(.dgCcrossprod(x,NULL)))) browser()
-      if (as_sym) {
-        return(forceSymmetric(txy)) ## not as(.,"sparseMatrix") which checks -> slow
-      } else return(txy)    
-    } else if (inherits(y,"dgCMatrix")) {
-      #txy <- Matrix::crossprod(x,y); if (!inherits(txy,"dgCMatrix")) browser(); 
-      return(.dgCcrossprod(x,y)) ## return(Matrix::crossprod(x,y)) ## 
-    } else return(Matrix::crossprod(x,y))
-  } else return(Matrix::crossprod(x,y))
-}
-
 .crossprod <- function(x, y=NULL, allow_as_mat=TRUE, as_sym=is.null(y), use_Rcpp_cp=.spaMM.data$options$Rcpp_crossprod, 
                        eval_dens=TRUE) {
   if (is.null(x)) return(NULL) ## allows lapply(,.tcrossprod) on a list of (matrix or NULL)
@@ -1394,8 +1378,8 @@ spaMM_Gamma <- function (link = "inverse") {
           if (as_sym) {
             return(forceSymmetric(resu)) 
           } else return(resu)
-        } else return(Matrix::crossprod(x)) ## return(.Matrix_crossprod(x,y=NULL,as_sym=as_sym)) ## 
-      } else return(Matrix::crossprod(x)) ## return(.Matrix_crossprod(x,y=NULL,as_sym=as_sym)) ## 
+        } else return(Matrix::crossprod(x)) 
+      } else return(Matrix::crossprod(x)) 
     } else if (FALSE && inherits(x,"dgCMatrix") &&  inherits(y,"dgCMatrix") ) { ## FASTer when (FALSE &&)
       txy <- .dgCcrossprod(x,y) 
       return(txy)
@@ -1410,8 +1394,8 @@ spaMM_Gamma <- function (link = "inverse") {
       }
       if (is.matrix(x) && is.matrix(y)) { # sparsity overhead is ~ 1/0.35
         return(.crossprodCpp(x, y)) # .crossprodCpp() slightly better than crossprod()
-      } else return(Matrix::crossprod(x,y)) ## return(.Matrix_crossprod(x,y)) ## either is <0.35 so Matrix was retained. but dgeMatrix-y ends here
-    } else return(Matrix::crossprod(x,y)) ## return(.Matrix_crossprod(x,y)) ## ! allow_as_mat
+      } else return(Matrix::crossprod(x,y)) 
+    } else return(Matrix::crossprod(x,y)) 
   } else {
     if (is.integer(x)) storage.mode(x) <- "double"
     if (is.integer(y)) storage.mode(y) <- "double"

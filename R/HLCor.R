@@ -104,7 +104,7 @@ HLCor <- function(formula,
   # FR->FR 10/2016 remis une ligne supp de 1.9.24 (mais ça doit être supprimé par fitme ou corrHLfit)
   hlcor$call <- oricall ## potentially used by getCall(object) in update.HL ./., NOT processed
   # ./. and more directly by confint (very convenient)
-  if ( ! identical(paste(family[[1L]]),"multi")) {
+  if ( ! .is.multi(family) ) {
     hlcor$how$fit_time <- .timerraw(time1)
     hlcor$fit_time <- structure(hlcor$how$fit_time,
                                 message="Please use how(<fit object>)[['fit_time']] to extract this information cleanly.")

@@ -1,5 +1,7 @@
 \name{spaMM-internal}
 
+\alias{projpath} % for local tests
+
 \alias{fitme_body}
 \alias{HLfit.obj}
 \alias{.HLfit_body_augZXy} % alias bc exported bc it must be exported to be traceable

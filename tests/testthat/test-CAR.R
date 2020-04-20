@@ -7,12 +7,14 @@ data("scotlip")
 ## same without optim: run in scotlip examples; cf also autoregressive.Rd for ML fits
 
 #set.seed(124)
-set.seed(129) ## many samples will diverge (ML on binary response) or undemonstratively be fitted by extreme rho values
-eigenv <- eigen(Nmatrix, symmetric=TRUE) 
-Lmat <- eigenv$vectors %*% diag(sqrt(1/(1-0.17*eigenv$values)))
-lp <- 0.1 + 3* Lmat %*% rnorm(ncol(Lmat)) ## single intercept beta =0.1; lambda=3
-resp <- rbinom(ncol(Lmat),1,1/(1+exp(-lp)))
-donn <- data.frame(npos=resp,nneg=1-resp,gridcode=scotlip$gridcode)
+{
+  set.seed(129) ## many samples will diverge (ML on binary response) or undemonstratively be fitted by extreme rho values
+  eigenv <- eigen(Nmatrix, symmetric=TRUE) 
+  Lmat <- eigenv$vectors %*% diag(sqrt(1/(1-0.17*eigenv$values)))
+  lp <- 0.1 + 3* Lmat %*% rnorm(ncol(Lmat)) ## single intercept beta =0.1; lambda=3
+  resp <- rbinom(ncol(Lmat),1,1/(1+exp(-lp)))
+  donn <- data.frame(npos=resp,nneg=1-resp,gridcode=scotlip$gridcode)
+}
 
 # CAR by Laplace with 'inner' estimation of rho
 blob1 <- HLCor(cbind(npos,nneg)~1 +adjacency(1|gridcode),

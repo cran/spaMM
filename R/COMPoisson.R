@@ -321,7 +321,7 @@
   facs <- c(lambda,(seqn/(seqn-1L))*lambda/(seqn^nu))
   cumprodfacs <- cumprod(facs)
   cumprodfacs[floorn+1L] <- cumprodfacs[floorn+1L]*epsn
-  sample(floorn+1L,size=nsim,prob=cumprodfacs/sum(cumprodfacs))
+  sample(floorn+1L,size=nsim,prob=cumprodfacs/sum(cumprodfacs), replace=TRUE)
 }
 
 .CMP_linkinvi <- function(lambda,nu) {
@@ -443,11 +443,18 @@
   wts <- object$prior.weights
   if (any(wts != 1)) 
     warning("ignoring prior weights")
-  lambdas <- exp(object$eta)
+  if (inherits(object,"glm")) { # if COMPoisson() used in a glm() call simulate.lm -> family$simulate -> here
+    lambdas <- attr(object$fitted.values,"lambda")
+    if (is.null(lambdas)) lambdas <- sapply(mu, family$linkfun,log=FALSE)
+  } else { # HLfit object: 
+    mu <- object$muetablob$mu
+    lambdas <- attr(mu,"lambda") # exp(object$eta)
+    if (is.null(lambdas)) lambdas <- sapply(mu, family$linkfun,log=FALSE)
+  }
   nu <- parent.env(environment())$nu
-  resu <- sapply(lambdas,.COMP_simulate,nu=nu,nsim=nsim)
+  resu <- sapply(lambdas,.COMP_simulate,nu=nu,nsim=nsim) # vector if nsim=1, nsim-row matrix otherwise
   if (nsim>1) resu <- t(resu)
-  return(resu)
+  return(resu)  # vector if nsim=1, nsim-col matrix otherwise
 }
 
 .CMP_mu.eta <- function (eta,lambda=exp(eta)) {

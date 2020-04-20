@@ -10,13 +10,14 @@ Extract information about how an object was obtained
 }
 \usage{
 how(object, ...)
-\method{how}{HLfit}(object, devel=FALSE, verbose=TRUE, ...)
+\method{how}{HLfit}(object, devel=FALSE, verbose=TRUE, format=print, ...)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
   \item{object}{Any R object.}
   \item{devel}{Boolean; Whether to provide additional cryptic information. For development purposes, not further documented.}
   \item{verbose}{Boolean; Whether to print information about the input object.}
+  \item{format}{wrapper for printing format. E.g., \code{cat(crayon::yellow(s));cat("\n")} could be used instead of the default.}
   \item{\dots}{Other arguments that may be needed by some method.}
 }
 \value{

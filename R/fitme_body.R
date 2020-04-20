@@ -130,7 +130,7 @@ fitme_body <- function(processed,
         refit_info <- control[["refit"]] ## may be a NULL/ NA/ boolean or a list of booleans 
         if ( is.null(refit_info) || is.na(refit_info)) refit_info <- FALSE ## alternatives are TRUE or an explicit list or NULL
       } else {
-        optPars <- .new_locoptim(init.optim, ## try to use gradient? But neither minnqa nor _LN_BOBYQA use gradients. optim() can
+        optPars <- .new_locoptim(init.optim, ## try to use gradient? But neither minqa nor _LN_BOBYQA use gradients. optim() can
                                  LowUp, 
                                  control, objfn_locoptim=.objfn_locoptim, 
                                  HLcallfn.obj=HLcallfn.obj, anyHLCor_obj_args=anyHLCor_obj_args, 

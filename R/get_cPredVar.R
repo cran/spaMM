@@ -85,12 +85,12 @@ get_cPredVar <- function(pred_object, newdata=NULL, nsim, seed=NULL, type="resid
       new_args <- list(init.corrHLfit=newinits$init.corrHLfit[names_not_cP], init.HLfit=newinits$init.HLfit, control.corrHLfit=ctrl_opt)
       if (! is.null(newinits$init.corrHLfit[["corrPars"]])) new_args$ranFix <- .modify_list(eval(fit_call$ranFix),newinits$init.corrHLfit["corrPars"])
     } else new_args <- list(init.HLfit=newinits$init.HLfit) ## could include HLCor with inner estimation of corrPars 
-    simuland <- function(y, ...) { # always a dot args in the fn for .dopar()
+    simuland <- function(y, ...) { # always a dot args in the fn for dopar()
       hpff <- do.call(update_resp, c(list(object=pred_object, newresp = y),new_args)) 
       return(attr(predict(hpff,newdata=newdata, variances=list(naive=TRUE,cov=variances$cov)),"naive")) 
     }
     #
-    bootreps <- .dopar(newresp = sim_ys,nb_cores = nb_cores,fn = simuland, fit_env = fit_env)
+    bootreps <- dopar(newresp = sim_ys,nb_cores = nb_cores,fn = simuland, fit_env = fit_env)
     naive <- attr(predict(pred_object,newdata=newdata,variances=list(naive=TRUE,cov=variances$cov)),"naive") 
     bias <- rowMeans(bootreps)-naive
     SEs <- apply(bootreps,1L,sd)/sqrt(nsim)

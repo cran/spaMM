@@ -374,7 +374,7 @@
 
 .solve_IRLS_as_ZX <- 
   function(X.pv, 
-           ZAL, y, ## could be taken fom processed ? 
+           ZAL, y, ## could be taken from processed ? 
            n_u_h, 
            H_global_scale, 
            lambda_est, muetablob=NULL, off, maxit.mean, etaFix,
@@ -460,6 +460,7 @@
                       v=.spaMM.data$options$stylefns$vloop,
                       V_IN_B=.spaMM.data$options$stylefns$v_in_loop,
                       .spaMM.data$options$stylefns$betaloop )
+    if (LevenbergM) cat("LM")
     cat(stylefn("."))
   }
   sXaug <- do.call(mMatrix_method,
@@ -736,8 +737,10 @@
     beta_eta <- Vscaled_beta[n_u_h+seq_len(pforpv)]
     ##### assessment of convergence
     if (innerj==maxit.mean) {
-      if (maxit.mean>1L) { # we have reached the "!"
-        if (LevenbergM) processed$LevenbergM["LM_start"] <- TRUE # _F I X M E_ think again
+      if (maxit.mean>1L) { 
+        if (LevenbergM) {
+          processed$LevenbergM["LM_start"] <- TRUE # _F I X M E_ think again
+        } ## but by default the local 'LevenbergM' is FALSE and will not become true until divergence is detected
         if (trace) {
           cat(crayon::red("!"))
         } else if ( ! identical(processed$warned_maxit_mean, TRUE)) {
@@ -776,7 +779,7 @@
         # not_moving_Wattr <- .diagnose_coeff_not_moving(coeff_not_moving = not_moving,relV_beta, damped_WLS_blob, innerj, 
         #                                                damping, is_HL1_1, oldAPHLs, Ftol=processed$spaMM_tol$Ftol_LM, trace, LevenbergM,stylefn=identity)
         break
-      } 
+      } #else if (F_I_X_M_E && innerj==maxit.mean-1L) browser()
       # More ad hoc breaks for cases where the coefficients keep moving although the total potential is low:
       if ( ! is.null(damped_WLS_blob) ) {
         if (is_HL1_1) {

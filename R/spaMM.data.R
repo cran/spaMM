@@ -6,7 +6,9 @@
   perm_G=TRUE, 
   TRY_ZAX=NULL, # default may be TRUE for augZxy_cond=TRUE
   sparsity_threshold=0.05,
-  separation_max=1000,
+  spprec_threshold=5000, 
+  separation_max=10,
+  sep_solver="glpk",
   spprec_method="def_AUGI0_ZX_sparsePrecision", 
   matrix_method="def_sXaug_EigenDense_QRP_Chol_scaled", 
   Matrix_method= "def_sXaug_Matrix_QRP_CHM_scaled", 
@@ -49,6 +51,7 @@
   maxeval=quote(10^(3+(log(length(initvec))-log(5))/log(4))), # nloptr; *modified for bobyqa (which recommends > 10 * npar^2)
   maxeval_corr=1, # devel: for easy control of maxeval in .safe_opt()
   xtol_abs_factors=c(rcLam=5e-7,rcCor=5e-6,others=5e-11,abs=1e-7), # nloptr!
+  #xtol_abs_factors=c(rcLam=5e-5,rcCor=5e-5,others=5e-11,abs=1e-7), # nloptr! __F I X M E__
   xtol_abs=quote(.xtol_abs_fn(LowUp,  rC_transf = rC_transf)), # nloptr; zero's for max precision (?)
   ############## ranCoefs settings: (see also xtol_abs_factors)
   optim_inner=".safe_opt",
@@ -56,6 +59,7 @@
   rC_unbounded=FALSE, # unbounded parametrization as in PinheiroB96
   rC_transf="chol", 
   rC_transf_inner="chol", 
+  rC_transf_fac=1, # should be made dependent on link __F I X M E__ # >1 to reduce effect in canon sp of steps in transf sp
   tol_ranCoefs_inner=c(inner=TRUE,
                        cholmax=Inf, # in "chol" case # so it's always Inf... 
                        lo_lam=1e-6,up_lam=1e6,corr=1e-12,tol=1e-5 # in "sph" case ## corr must be < 1 ! 

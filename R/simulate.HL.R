@@ -26,32 +26,40 @@
   return(etaFix)
 }
 
-.r_resid_var <- function(mu,phiW,sizes,COMP_nu,NB_shape,zero_truncated, famfam) { 
+.r_resid_var <- function(mu,phiW,sizes,family,
+                         COMP_nu,NB_shape,zero_truncated, famfam, nsim=1L) { 
   # we cannot use family()$simulate bc it assumes a fit object as input
-  switch(famfam,
-                    gaussian = rnorm(length(mu),mean=mu,sd=sqrt(phiW)),
-                    poisson = .rpois(length(mu),mu,zero_truncated=zero_truncated), 
-                    binomial = rbinom(length(mu),size=sizes,prob=mu),
+  resu <- switch(famfam,
+                    gaussian = rnorm(nsim*length(mu),mean=mu,sd=sqrt(phiW)),
+                    poisson = .rpois(nsim*length(mu),mu,zero_truncated=zero_truncated), 
+                    binomial = rbinom(nsim*length(mu),size=sizes,prob=mu),
                     Gamma = {
-                      y <- rgamma(length(mu),shape= 1 / phiW, scale=mu*phiW) # mean=sh*sc=mu, var=sh*sc^2 = mu^2 phiW
+                      y <- rgamma(nsim*length(mu), shape= 1 / phiW, scale=mu*phiW) # mean=sh*sc=mu, var=sh*sc^2 = mu^2 phiW
                       Gamma_min_y <- .spaMM.data$options$Gamma_min_y
                       is_low_y <- (y < Gamma_min_y)
                       if (any(is_low_y)) { y[which(is_low_y)] <- Gamma_min_y }
                       return(y)
                     }, ## ie shape increase with prior weights, consistent with Gamma()$simulate / spaMM_Gamma()$simulate
-                    COMPoisson = sapply(mu, function(muv) {
-                      lambda <- family$linkfun(muv,log=FALSE)
-                      .COMP_simulate(lambda=lambda,nu=COMP_nu)
-                    }),
-                    negbin = .rnbinom(length(mu),size=NB_shape, mu_str=mu, zero_truncated=zero_truncated), 
+                    COMPoisson = {
+                      lambdas <- attr(mu,"lambda") # F I X M E an environment would keep values ?
+                      if (is.null(lambdas)) {
+                        sapply(mu, function(muv) {
+                          lambda <- family$linkfun(muv,log=FALSE)
+                          .COMP_simulate(lambda=lambda,nu=COMP_nu)
+                        })
+                      } else sapply(lambdas,.COMP_simulate,nu=COMP_nu, nsim=1)
+                    },
+                    negbin = .rnbinom(nsim*length(mu), size=NB_shape, mu_str=mu, zero_truncated=zero_truncated), 
                     stop("(!) random sample from given family not yet implemented")
   )
+  if (nsim>1L) dim(resu) <- c(length(mu),nsim)
+  resu
 } ## vector-valued function from vector input
 
 # simulate.HLfit(fullm[[2]],newdata=fullm[[1]]$data,size=fullm[[1]]$data$total) for multinomial avec binomial nichées de dimension différentes
 # FR->FR misses the computation of random effects for new spatial positions: cf comments in the code below
 simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
-                           type = "marginal", re.form, conditional=NULL, verbose=TRUE,
+                           type = "marginal", re.form, conditional=NULL, verbose=c(type=TRUE, showpbar=interactive()),
                            sizes=NULL , resp_testfn=NULL, phi_type="predict", prior.weights=object$prior.weights, 
                            variances=list(), ...) { ## object must have class HLfit; corr pars are not used, but the ZAL matrix is.
   ## RNG stuff copied from simulate.lm
@@ -75,6 +83,10 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
     warning("argument 'conditional' is obsolete and will be deprecated. Use 'type' instead.")
     if (conditional) {type <- "residual"} else type <- "marginal"
   }
+  if (is.na(verbose["showpbar"])) { # e.g. verbose =TRUE or verbose=c(type=TRUE)
+    if (is.na(verbose["type"])) verbose["type"] <- verbose # need at least a boolean argument here
+    verbose["showpbar"] <- interactive()
+  } else if (is.na(verbose["type"])) verbose["type"] <- TRUE # user set verbose=c(showpbar=.) but not type
   if (type=="predVar") {
     pred_type <- "predVar_s.lato" 
     if ( ! length(variances)) stop("A 'variances' argument must be specified (e.g., variances=list(predVar=TRUE))")
@@ -103,17 +115,17 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
   }
   resu <- NULL
   done <- 0L
+  verbtype <- verbose[["type"]]
+  is_mu_fix_btwn_sims <- FALSE
   while((needed <- nsim-done)) { ## loop operates only for resp_testfn
-    if (nrand==0L) {
+    if (nrand==0L) { ## note that replicate mu's can still be variable for non-standard pred_type
       if (pred_type=="predVar_s.lato") { ## re.form ignored so de facto NULL
-        if (verbose) {
-          if (type=="(ranef|response)") {
-            stop("meaningless argument type='(ranef|response)' for a fixed-effect model")
-          } else cat("Simulation from linear predictor variance | observed response:\n") 
-        }
+        if (type=="(ranef|response)") {
+          stop("meaningless argument type='(ranef|response)' for a fixed-effect model")
+        } else if (verbtype) cat("Simulation from linear predictor variance | observed response:\n") 
         variances$cov <- (NROW(newdata)!=1L)
         point_pred_eta <- predict(object,newdata=newdata, type="link", control=list(fix_predVar=NA),
-                                  variances=variances, ...) 
+                                  variances=variances, verbose=verbose, ...) 
         predVar <- attr(point_pred_eta,"predVar")
         if (is.null(predVar)) stop("A 'variances' argument should be provided so that prediction variances are computed.") 
         rand_eta <- mvrnorm(n=needed,mu=point_pred_eta[,1L], predVar)
@@ -122,12 +134,13 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
           mu <- object$family$linkinv(rand_eta,mu_truncated=zero_truncated)
         } else mu <- object$family$linkinv(rand_eta) ## ! freqs for binomial, counts for poisson: suitable for final code
       } else {
-        mu <- predict(object,newdata=newdata,binding=NA,control=list(fix_predVar=FALSE))
+        mu <- predict(object,newdata=newdata,binding=NA,control=list(fix_predVar=FALSE), verbose=verbose)
+        is_mu_fix_btwn_sims <- TRUE
         mu <- replicate(needed,mu,simplify=FALSE) # always a list at this stage
       }
     } else { ## MIXED MODEL
       if (pred_type=="predVar_s.lato") { ## re.form ignored so de facto NULL
-        if (verbose) {
+        if (verbtype) {
           if (type=="(ranef|response)") {
             cat("Simulation from random-effects variance | observed response:\n")
           } else cat("Simulation from linear predictor variance | observed response:\n") 
@@ -138,7 +151,7 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
           if (is.null(variances$as_tcrossfac_list)) variances$as_tcrossfac_list <- ( (is.null(newdata) && length(object$y)>200L) ||
                                                                                       NROW(newdata)>200L)
           point_pred_eta <- predict(object,newdata=newdata, type="link", control=list(fix_predVar=NA),
-                                    variances=variances, ...) 
+                                    variances=variances, verbose=verbose, ...) 
           predVar <- attr(point_pred_eta,"predVar")
           if (is.null(predVar)) stop("A 'variances' argument should be provided so that prediction variances are computed.") 
           if (is.list(predVar)) {
@@ -155,16 +168,17 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
           } else mu <- object$family$linkinv(rand_eta) ## ! freqs for binomial, counts for poisson: suitable for final code
         } else stop("This conditional simulation is not implemented for non-gaussian random-effects")
       } else if ( is.null(re.form)) { ## conditional on (all) predicted ranefs, type = "residual"
-        if (verbose) cat("simulation of residuals, conditional on point predictions (hence on random effects):\n") 
-        mu <- predict(object,newdata=newdata,binding=NA,control=list(fix_predVar=FALSE))
+        if (verbtype) cat("simulation of residuals, conditional on point predictions (hence on random effects):\n") 
+        mu <- predict(object,newdata=newdata,binding=NA,control=list(fix_predVar=FALSE), verbose=verbose)
+        is_mu_fix_btwn_sims <- TRUE
         mu <- replicate(needed,mu,simplify=FALSE) #matrix(rep(mu,nsim),ncol=nsim)
       } else if ( inherits(re.form,"formula") || is.na(re.form) ){ ## explicit re.form; or unconditional MIXED MODEL, type= "marginal"
-        if (verbose) {
+        if (verbtype) {
           if (inherits(re.form,"formula")) {
             cat("Simulation conditional on random effect(s) retained in 're.form':\n")
           } else cat("Unconditional simulation:\n") 
         }
-        mu_fixed <- predict(object, newdata=newdata, re.form=re.form,binding=NA,control=list(fix_predVar=FALSE)) ## mu_T
+        mu_fixed <- predict(object, newdata=newdata, re.form=re.form,binding=NA,control=list(fix_predVar=FALSE), verbose=verbose) ## mu_T
         if ( ! is.null(zero_truncated <- object$family$zero_truncated)) {
           eta_fixed <- object$family$linkfun(mu_fixed, mu_truncated=zero_truncated) ## back to _U to add ranefs to the linear predictor.
         } else eta_fixed <- object$family$linkfun(mu_fixed)
@@ -233,23 +247,40 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
     if ( ! inherits(mu,"list")) mu <- data.frame(mu) ## makes it always a list
     if (length(mu) != needed) stop("Programming error in simulate.HLfit() (ncol(mu) != needed).")
     #
-    phiW <- .get_phiW(object=object, newdata=newdata, mu=mu, phi_type=phi_type, needed=needed, 
+    phiW <- .get_phiW(object=object, newdata=newdata, 
+                      mu=mu, ## must be a list
+                      phi_type=phi_type, needed=needed, 
                       prior.weights=prior.weights) # phiW is always a matrix
     family <- object$family
     famfam <- object$family$family
-    # resu <- object$family$simulate(object,nsim=nsim) ## could be OK and more efficient for CONDITIONAL simulation
-    if (famfam =="COMPoisson") {
-      COMP_nu <- environment(object$family$aic)$nu
-    } else if (famfam == "negbin") {
-      NB_shape <- environment(object$family$aic)$shape
-      zero_truncated <- identical(object$family$zero_truncated,TRUE)
-    } else if (famfam == "poisson") {
-      zero_truncated <- identical(object$family$zero_truncated,TRUE)
+    if (is_mu_fix_btwn_sims &&  
+        attr(phiW,"is_phiW_fix_btwn_sims") # should be trivially true for binomial, poisson, COMPoisson (phi=1, no prior.weights)
+       ) {
+      # particularly useful with COMPoisson to avoid computing the distribution (cumprodfacs in .COMP_simulate()) nsim times
+      if (famfam=="COMPoisson") {  
+        block <- object$family$simulate(object, nsim=nsim) # vector or nsim-col matrix
+      } else {
+        block <- 
+          .r_resid_var(mu[[1]], phiW=phiW[,1],sizes=sizes,# COMP_nu=environment(object$family$aic)$nu,
+                       NB_shape=environment(object$family$aic)$shape, 
+                       zero_truncated=identical(object$family$zero_truncated,TRUE), 
+                       famfam=famfam, family=family, nsim=nsim) # vector or nsim-col matrix
+      }
+      # plus: some earlier computations may be useless in that case (but currently .get_phiW(., <mu must be a list> ) )
+    } else {
+      block <- NA*phiW
+      if (famfam =="COMPoisson") {
+        COMP_nu <- environment(object$family$aic)$nu
+      } else if (famfam == "negbin") {
+        NB_shape <- environment(object$family$aic)$shape
+        zero_truncated <- identical(object$family$zero_truncated,TRUE)
+      } else if (famfam == "poisson") {
+        zero_truncated <- identical(object$family$zero_truncated,TRUE)
+      }
+      for (ii in seq_len(needed)) block[,ii] <- 
+          .r_resid_var(mu[[ii]], phiW=phiW[,ii],sizes=sizes,COMP_nu=COMP_nu,NB_shape=NB_shape, 
+                       zero_truncated=zero_truncated, famfam=famfam, family=family)
     }
-    block <- NA*phiW
-    for (ii in seq_len(needed)) block[,ii] <- 
-      .r_resid_var(mu[[ii]], phiW=phiW[,ii],sizes=sizes,COMP_nu=COMP_nu,NB_shape=NB_shape, 
-                   zero_truncated=zero_truncated, famfam=famfam)
     if (is.null(resp_testfn)) {
       if (nsim==1L) block <- drop(block)
       return(block) 

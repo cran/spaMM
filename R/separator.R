@@ -35,189 +35,94 @@
   }
 )
 
-
-
-is_separated <- local(
-  {
-    warned_is <- FALSE
-    function(x,y, verbose=TRUE) {
-      if (requireNamespace("lpSolveAPI",quietly=TRUE)) {
-        pb_size <- 1e-13*prod(dim(x))^3
-        if (pb_size> spaMM.getOption("separation_max")) {
-          message(paste("Increase spaMM.options(separation_max=<.>) to at least", ceiling(pb_size),
-                        "if you want to check separation (see 'help(separation)')."))
-          return(FALSE)
-        } else {        
-          ## test for and/or find the direction of separation
-          ## x a design matrix and y a 0-1 binary response vector
-          time1 <- Sys.time()
-          separation <- .separator(x, as.numeric(y), purpose = "test")$separation
-          sep_time <- .timerraw(time1)
-          if (sep_time>1) message(paste0("Checking separation for binomial-response model took ",sep_time," s."))
-          if(separation) {
-            beta <- .separator(x, as.numeric(y), purpose = "find")$beta
-            separating.terms <- dimnames(x)[[2]][abs(beta) > 1e-09]
-            if(length(separating.terms)) {
-              mess <- paste("The following terms are causing separation among the sample points:",
-                            paste(separating.terms, collapse = ", "))
-              if (verbose) message(paste(mess,
-                                         "\n\tsome estimates of fixed-effect coefficients could be practically infinite,",
-                                         "\n\tcausing numerical issues in various functions."))
-              warning(mess)
-            }
-          }
-          return(separation)
-        }
-      } else {
-        if ( ! warned_is) {
-          message("If the 'lpSolveAPI' package were installed, spaMM could properly check (quasi-)separation in binary regression problem.")
-          warned_is <<- TRUE
-        }
-        varcols <- logical(ncol(x))
-        for (it in seq_len(ncol(x))) varcols[it] <- (diff(range(x[,it])) > .Machine$double.eps ^ 0.5)
-        if (any(varcols)) {
-          if (length(y)> spaMM.getOption("separation_max")) {
-            message(paste("Increase spaMM.options(separation_max=<.>) to at least",length(y),
-                          "if you want to check separation (see 'help(separation)')."))
-            return(FALSE)
-          } else {
-            time1 <- Sys.time()
-            if (inherits(x,"sparseMatrix")) x <- as.matrix(x) ## bc next line ->  model.frame.default...
-            arglist <- list(formula= y~x[,varcols,drop=FALSE],type='C-classification', kernel='linear')
-            svmfit <- .do_call_wrap("svm",arglist=arglist)
-            sep_time <- .timerraw(time1)
-            if (sep_time>1) message(paste0("Checking separation for binomial-response model took ",sep_time," s."))
-            if ( ! is.null(svmfit)) {
-              zut <- cbind(y=y,fv=svmfit$fitted)
-              #return( ! any(svmfit$fitted!=y)) ## wrong ,this tested for perfect prediction of all response levels
-              ## Better but (still) fails to detect quasi-separation:
-              return(any(by(zut,zut[,1],function(v) length(unique(v[,2])))==1L)) ## this tests for perfect prediction of some response level
-            } else return(FALSE)
-          }
-        } else return(FALSE)
-      }
-    }
-  }
-)
-
-
-## assuming  Imports lpSolveAPI (>= 5.5.0.14)
-## code derived from the glm() function in the safeBinaryRegression package
-## does not import all package to prevent interference between glm fns and different error handling 
-
-##FR See also Zorn, A Solution to Separation in Binary Response Models, Political Analysis (2005) 13:157-170
-##FR see also http://www.ats.ucla.edu/stat/mult_pkg/faq/general/complete_separation_logit_models.htm
-##FR there is a Firth method for dealing with this (and a package, brglm... brglm(locform,offset=Offset) ).
-.separator <- function(x, y, method = "primal", # else "dual" 
-                       purpose = "test", # else "find"
-                      tol = 1e-3)
-{
-  n <- dim(x)[1]
-  p <- dim(x)[2]
-  
-  #dimnames(x) <- list(NULL,NULL)
+## See also Zorn, A Solution to Separation in Binary Response Models, Political Analysis (2005) 13:157-170
+## see also http://www.ats.ucla.edu/stat/mult_pkg/faq/general/complete_separation_logit_models.htm
+## there is a Firth method for dealing with this (and a package, brglm... brglm(locform,offset=Offset) ).
+.test_and_find_sep <- function(x, y, solver, tol = 1e-3, verbose=TRUE, ...) {
+  n <- nrow(x)
+  p <- ncol(x)
   
   y.bar <- -sign(y - 0.5)
   x.bar <- y.bar * x
   
-  ans <- list()
+  op <- OP(colSums(x.bar))
+  constraints(op) <- L_constraint(L = x.bar, dir = leq(n), rhs = double(n))
+  bounds(op) <- V_bound(lb = rep.int(-Inf, p), ub = rep.int(Inf, p))
   
-  if(method == "primal" && purpose == "test") {
-    lp <- lpSolveAPI::make.lp(n, p)
-    for(j in 1:p) status <- lpSolveAPI::set.column(lp, j, x.bar[, j])
-    status <- lpSolveAPI::set.rhs(lp, rep(0.0, n))
-    status <- lpSolveAPI::set.constr.type(lp, rep(1, n))
-    status <- lpSolveAPI::set.objfn(lp, -colSums(x.bar))
-    status <- lpSolveAPI::set.bounds(lp, lower = rep(-Inf, p), upper = rep(Inf, p))
-    control <- lpSolveAPI::lp.control(lp, pivoting = "firstindex", sense = "max",
-                          simplextype = c("primal", "primal"))
-    status <- lpSolveAPI::solve.lpExtPtr(lp)
-    
-    if(status == 0)
-      ans$separation <- FALSE
-    else if(status == 3)
-      ans$separation <- TRUE
-    else {
-      warning(paste0("unexpected result (status=",status,") for separation test."),immediate. = TRUE)
-      # and this may have taken far more tiem than expected
-      ans$separation <- FALSE # wishful thinking
+  time1 <- Sys.time()
+  s <- ROI_solve(op, solver = solver, ...)
+  sep_time <- .timerraw(time1)
+  if (sep_time>1) message(paste0("Re-checking separation for binomial-response model took ",sep_time," s."))
+  separation <- as.logical(solution(s, "status_code"))
+  if (separation) { # some problem
+    if (solution(s, "msg")$status==6) { # unbounded: separation
+      bounds(op) <- V_bound(lb = rep.int(-1, p), ub = rep.int(1, p))
+      
+      s <- ROI_solve(op, solver = solver, ...)
+      beta <- solution(s, force = TRUE)
+      separating.terms <- dimnames(x)[[2]][abs(beta) > tol]
+      if(length(separating.terms)) {
+        mess <- paste("The following terms are causing separation among the sample points:",
+                      paste(separating.terms, collapse = ", "))
+        if (verbose) message(paste(mess,
+                                   "\n\tsome estimates of fixed-effect coefficients could be practically infinite,",
+                                   "\n\tcausing numerical issues in various functions."))
+        warning(mess)
+      } 
+    } else { # unidentified problem
+      warning(paste("ROI solver returned",s$status$msg$message,"during check for separation."),immediate. = TRUE)
+      separation <- FALSE
     }
   }
-  
-  if(method == "primal" && purpose == "find") {
-    lp <- lpSolveAPI::make.lp(n, p)
-    for(j in 1:p) status <- lpSolveAPI::set.column(lp, j, x.bar[, j])
-    status <- lpSolveAPI::set.rhs(lp, rep(0.0, n))
-    status <- lpSolveAPI::set.constr.type(lp, rep(1, n))
-    status <- lpSolveAPI::set.objfn(lp, -colSums(x.bar))
-    status <- lpSolveAPI::set.bounds(lp, lower = rep(-1, p), upper = rep(1, p))
-    control <- lpSolveAPI::lp.control(lp, pivoting = "firstindex", sense = "max",
-                          simplextype = c("primal", "primal"))
-    status <- lpSolveAPI::solve.lpExtPtr(lp)
-    
-    if(status != 0) {
-      stop("unexpected result for primal test.")
-    }
-    beta <- lpSolveAPI::get.variables(lp)
-    
-    if(sum(abs(beta)) > tol)
-      ans$separation <- TRUE
-    else
-      ans$separation <- FALSE
-    
-    ans$beta <- beta
-  }
-  
-  if(method == "dual" && purpose == "test") {
-    lp <- lpSolveAPI::make.lp(p, n)
-    for(j in 1:n)  status <- lpSolveAPI::set.column(lp, j, x.bar[j, ])
-    status <- lpSolveAPI::set.rhs(lp, -colSums(x.bar))
-    status <- lpSolveAPI::set.constr.type(lp, rep(3, p))
-    status <- lpSolveAPI::set.objfn(lp, rep(0.0, n))
-    status <- lpSolveAPI::set.bounds(lp, lower = rep(0.0, n), upper = rep(Inf, n))
-    control <- lpSolveAPI::lp.control(lp, pivoting = "firstindex", sense = "min",
-                          simplextype = c("primal", "primal"))
-    status <- lpSolveAPI::solve.lpExtPtr(lp)
-    
-    if(status == 0)
-      ans$separation <- FALSE
-    else if(status == 2)
-      ans$separation <- TRUE
-    else {
-      stop("unexpected result for dual test.")
-    }
-  }
-  
-  if(method == "dual" && purpose == "find") {
-    lp <- lpSolveAPI::make.lp(p, n + 2*p)
-    for(j in 1:n)
-      status <- lpSolveAPI::set.column(lp, j, x.bar[j, ])
-    for(j in 1:p)
-      status <- lpSolveAPI::set.column(lp, n+j, -1.0, j)
-    for(j in 1:n)
-      status <- lpSolveAPI::set.column(lp, n+p+j, 1.0, j)
-    b <- -colSums(x.bar)
-    status <- lpSolveAPI::set.rhs(lp, b)
-    status <- lpSolveAPI::set.constr.type(lp, rep(3, p))
-    status <- lpSolveAPI::set.objfn(lp, rep(c(0.0, 1.0), c(n, 2*p)))
-    status <- lpSolveAPI::set.bounds(lp, lower = rep(0.0, n + 2*p), upper = rep(Inf, n + 2*p))
-    control <- lpSolveAPI::lp.control(lp, pivoting = "firstindex", sense = "min",
-                          simplextype = c("primal", "primal"))
-    basis <- 1:p
-    basis[b >= 0.0] <- basis[b >= 0.0] + p
-    status <- lpSolveAPI::set.basis(lp, -(n + p + basis))
-    status <- lpSolveAPI::solve.lpExtPtr(lp)
-    
-    beta <- lpSolveAPI::get.dual.solution(lp)[2:(p+1)]
-    
-    if(sum(abs(beta)) > tol)
-      ans$separation <- TRUE
-    else
-      ans$separation <- FALSE
-    
-    ans$beta <- beta
-  }
-  
-  ans
+  return(separation)
 }
+
+is_separated <- local(
+  {
+    warned_is <- FALSE
+    function(x,y, verbose=TRUE, solver=spaMM.getOption("sep_solver")) {
+      pb_size <- (1e-5*prod(dim(x)))
+      if (pb_size> spaMM.getOption("separation_max")) {
+        message(paste("Increase spaMM.options(separation_max=<.>) to at least", ceiling(pb_size),
+                      "if you want to check separation (see 'help(separation)')."))
+        return(FALSE)
+      } else separation <- .test_and_find_sep(x, y, verbose=verbose, solver=solver)
+    }
+  }
+)
+
+is_separated.formula <- function(formula, ..., separation_max=spaMM.getOption("separation_max"),
+                                 solver=spaMM.getOption("sep_solver")) { 
+  # is_separated.formula -> .preprocess(,For="is_separated") -> is_separated(X.pv, as.numeric(y))
+  mc <- match.call(expand.dots=TRUE) ## mc including dotlist
+  HLnames <- (c(names(formals(HLCor)),names(formals(HLfit)),
+                names(formals(mat_sqrt)),names(formals(make_scaled_dist))))  
+  dotnames <- setdiff(names(mc)[-1],names(formals(fitme)))
+  argcheck <- setdiff(dotnames,HLnames)
+  if (length(argcheck)) warning(paste("suspect argument(s) ",paste(argcheck, collapse=",")," in is_separated() call."))
+  # 
+  FHF <- formals(HLfit) ## makes sure about default values 
+  names_FHF <- names(FHF)
+  names_nondefault  <- intersect(names(mc),names_FHF) ## mc including dotlist
+  FHF[names_nondefault] <- mc[names_nondefault] ##  full HLfit args
+  preprocess.formal.args <- FHF[which(names_FHF %in% names(formals(.preprocess)))] 
+  preprocess.formal.args$For <- "is_separated"
+  preprocess.formal.args$family <- binomial() 
+  preprocess.formal.args$rand.families <- FHF$rand.family ## because preprocess expects $rand.families 
+  preprocess.formal.args$predictor <- FHF$formula ## because preprocess stll expects $predictor 
+  preprocess.formal.args$ranFix <- mc$fixed ## because preprocess expects ranFix # note that etaFix is handled in the FHF's
+  preprocess.formal.args$adjMatrix <- mc$adjMatrix ## because adjMatrix not in formals(HLfit)
+  preprocess.formal.args$corrMatrix <- mc$corrMatrix ## because corrMatrix not in formals(HLfit)    #
+  preprocess.formal.args$covStruct <- mc$covStruct ## because covStruct not in formals(HLfit)    #
+  preprocess.formal.args$method <- mc$method ## forces evaluation
+  preprocess.formal.args$init <- mc$init ## because init not in formals(HLfit)    #
+  #
+  oldopt <- spaMM.options(separation_max=separation_max, sep_solver=solver)
+  isSeparated <- do.call(.preprocess,preprocess.formal.args,envir=parent.frame(1L))
+  spaMM.options(oldopt)
+  return(isSeparated)
+}
+
+
+
 
