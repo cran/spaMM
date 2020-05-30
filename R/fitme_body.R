@@ -1,5 +1,3 @@
-## next steps are COMPoisson optim, detection des modeles lambda, gestion des lambda multiples
-#  et meilleurs default phi, lambda 
 fitme_body <- function(processed,
                        init=list(),
                        #                       init.HLfit=list(),
@@ -120,7 +118,6 @@ fitme_body <- function(processed,
         ## its names should match the colnames of the data in Krigobj = the  parameters of the likelihood surface. Current code maybe not general.
         loclist <- list(anyHLCor_obj_args=anyHLCor_obj_args,  ## contains $processed
                         LowUp=LowUp,init.corrHLfit=init.optim, ## F I X M E usage of user_init_optim probably not definitive
-                        #preprocess.formal.args=preprocess.formal.args, 
                         control.corrHLfit=control,
                         verbose=verbose[["iterateSEM"]],
                         nb_cores=nb_cores)

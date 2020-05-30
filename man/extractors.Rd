@@ -85,7 +85,7 @@ See \code{\link{residuals.glm}} for more information about the types of residual
 With \code{which="LogL_Lap"}, \code{logLik()} returns a Laplace approximation of log-likelihood based on the observed Hessian, rather than the expected Hessian. This is implemented only for the case \code{family=Gamma(log)}, for demonstration purposes.
 }
 \seealso{
-See \code{\link{get_matrix}} \code{\link{vcov.HLfit}} to extract covariances matrices from a fit. 
+See \code{\link{hatvalues}} to extract leverages, \code{\link{get_matrix}} to extract the model matrix and derived matrices, and \code{\link{vcov.HLfit}} to extract covariances matrices from a fit. 
 }
 \references{
 McCullagh, P. and Nelder J. A. (1989) Generalized linear models. Second ed. Chapman & Hall: London.
@@ -99,8 +99,8 @@ h-likelihood. Chapman & Hall: London.
 }
 \examples{
 data("wafers")
-m1 <- HLfit(y ~X1+X2+(1|batch),
-          resid.model = ~ 1 ,data=wafers,HLmethod="ML")
+m1 <- HLfit(y ~ X1+X2+(1|batch), resid.model = ~ 1,
+            data=wafers, method="ML")
 fixef(m1)
 ranef(m1)
 }

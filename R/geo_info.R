@@ -191,7 +191,8 @@
           ## If the order of columns of ZAlist[[it]] had been permuted by .calc_Zmatrix(), we ould need something like:
           # ZAnames <- colnames(processed$ZAlist[[rd]])
           # cov_info_mat <- cov_info_mat[ZAnames,ZAnames]
-          # but this would require controlling the names of Z to be those of cov_info_mat (spMMFactorList_locfn() does not care for that)
+          # but this would require controlling the names of Z to be those of cov_info_mat 
+          # (spMMFactorList_locfn() does not care for that but .preprocess() does something similar for the Z of precision matrices)
           sparse_Qmat <- as_precision(cov_info_mat)$matrix
         } else if (corr_type== "IMRF") {
           # Remember that we need dtCMatrix'es 'chol_Q' so that bdiag() gives a dtCMatrix
@@ -201,7 +202,7 @@
         if (corr_type != "AR1") { ## General code for "Matern", etc that is correct for AR1 too (good template ?)
           ## Provides precisionFactorList[[rd]] as expected by .reformat_Qmat_info()
           ## solve(sparse_Qmat) gives the correlation matrix
-          envir$precisionFactorList[[rd]]$Qmat <- sparse_Qmat # should by symmetric by format (typically dsCMatrix)
+          envir$precisionFactorList[[rd]]$Qmat <- sparse_Qmat # should by *dsC*  
           if (is.null(template <- envir$precisionFactorList[[rd]]$template)) { 
             Q_CHMfactor <- Cholesky(sparse_Qmat,LDL=FALSE,perm=FALSE) 
             if (identical(.spaMM.data$options$TRY_update,TRUE) 
@@ -249,6 +250,7 @@
           if (processed$HL[1L]=="SEM") argsfordesignL$try.chol <- FALSE
           if (inherits(cov_info_mat,"dist")) {cov_info_mat <- proxy::as.matrix(cov_info_mat, diag=1)} ## else full matrix may be a COV matrix with non-unit diag
           Lunique <- do.call(mat_sqrt,c(list(m=cov_info_mat),argsfordesignL)) ## mat_sqrt has try()'s and can return "try-error"'s
+          # Lunique is a tcrossfac: tcrossprod(mat_sqrt(X))=X
           if (inherits(Lunique,"try-error")) { 
             print("correlation parameters were:",quote=FALSE) ## makes sense if mat_sqrt already issued some warning
             print(unlist(argsfordesignL))    

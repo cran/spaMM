@@ -135,7 +135,30 @@ print.spcall <- function (x, digits = NULL, quote = TRUE, na.print = NULL, print
   }
 }
 
-projpath <- function() {
-  fn <- get("getActiveProject",envir = asNamespace("rstudioapi"))
-  fn()
+
+projpath <- local({
+  pp <- NULL
+  function() {
+    if (is.null(pp)) {
+      tryres <- try(get("getActiveProject",envir = asNamespace("rstudioapi"))) # fails if rstudioapi not installed
+      if ( ! inherits(tryres,"try-error")) tryres <- try(tryres()) # fails if package not running ie not an Rstudio session
+      if (inherits(tryres,"try-error")) {
+        if (interactive()) {
+          message('Need to give the project path, say "C:/home/francois/travail/stats/spaMMplus/spaMM":')
+          tryres <- readline(prompt="Enter path: ")
+        } else {
+          message('Need to start in the projpath, say "C:/home/francois/travail/stats/spaMMplus/spaMM", so that getwd() finds it.')
+          tryres <- getwd()
+        }
+      } 
+      pp <<- tryres
+    }
+    return(pp)
+  }
+})
+
+.bracket <- function(vec, min, max) {
+  vec[vec < min] <- min
+  vec[vec > max] <- max
+  vec
 }

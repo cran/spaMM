@@ -2,6 +2,7 @@ HLCor <- function(formula,
                   data,family=gaussian(),
                   ranPars=NULL, ## all dispersion and correlation params ideally provided through ranPars
                   distMatrix,uniqueGeo=NULL,adjMatrix,corrMatrix, covStruct=NULL,
+                  method="REML",
                   verbose=c(trace=FALSE), 
                   control.dist=list(), ## provided by <corrfitme>_body if called through this function. Otherwise processed in not available and control.dist will be preprocessed.
                   ...) { # may contain processed
@@ -50,26 +51,18 @@ HLCor <- function(formula,
       return(fitlist) ## list of HLfit object + one attribute
     } else {## there is a single data set, still without processed
       mc <- oricall
-      FHF <- formals(HLfit) ## makes sure about default values 
-      names_FHF <- names(FHF)
-      names_nondefault  <- intersect(names(mc),names_FHF) ## mc including dotlist
-      FHF[names_nondefault] <- mc[names_nondefault] ##  full HLfit args
-      preprocess.formal.args <- FHF[which(names_FHF %in% names(formals(.preprocess)))] 
-      preprocess.formal.args$For <- "HLCor"
-      preprocess.formal.args$family <- family ## already checked 
-      preprocess.formal.args$rand.families <- FHF$rand.family ## because preprocess expects $rand.families 
-      preprocess.formal.args$predictor <- FHF$formula ## because preprocess stll expects $predictor 
-      preprocess.formal.args$ranFix <- ranPars ## because preprocess expects ranFix
-      if (! missing(adjMatrix)) preprocess.formal.args$adjMatrix <- adjMatrix ## because adjMatrix not in formals(HLfit)
-      if (! missing(corrMatrix)) preprocess.formal.args$corrMatrix <- corrMatrix ## because corrMatrix not in formals(HLfit)    #
-      preprocess.formal.args$covStruct <- mc$covStruct ## because covStruct not in formals(HLfit)    #
-      preprocess.formal.args$uniqueGeo <- mc$uniqueGeo ## because uniqueGeo not in formals(HLfit)    #
-      preprocess.formal.args$distMatrix <- mc$distMatrix ## because distMatrix not in formals(HLfit)    #
-      preprocess.formal.args[["control.dist"]] <- control.dist ## because control.dist not in formals(HLfit)    #
-      mc$processed <- do.call(.preprocess,preprocess.formal.args,envir=parent.frame(1L))
-      # HLCor() DOES expect a DISTINCT control.dist argument in a call with a 'processed' argument
-      oricall$control.dist <- mc$processed$control_dist ## fix bug 26/12/2018 wrong extraction from processed.
-      # HLCor_body() called below
+      preprocess_args <- .get_inits_preprocess_args(For="HLCor")
+      names_nondefault  <- intersect(names(mc),names(preprocess_args)) ## mc including dotlist
+      preprocess_args[names_nondefault] <- mc[names_nondefault] 
+      preprocess_args$family <- family ## already checked 
+      if ( ! is.null(mc$rand.family)) preprocess_args$rand.families <- mc$rand.family ## because preprocess expects $rand.families 
+      preprocess_args$predictor <- mc$formula ## because preprocess stll expects $predictor 
+      preprocess_args$init <- mc$init.corrHLfit ## because preprocess init
+      if ( ! missing(method)) preprocess_args$HLmethod <- method
+      preprocess_args$ranFix <- ranPars ## because preprocess expects ranFix
+      mc$processed <- do.call(.preprocess, preprocess_args, envir=parent.frame(1L))
+      # HLCor() DOES expect a DISTINCT control.dist argument in a call with a 'processed' argument so we extract it:
+      oricall$control.dist <- mc$processed$control_dist ## fix bug 26/12/2018 (wrong name) => v2.5.32.
     }
   } else { ## 'processed' is available
     if (  is.list(processed) )  { ## "multiple" processed list 
@@ -92,7 +85,7 @@ HLCor <- function(formula,
   ################# single processed, single data analysis: 
   if (identical(mc$processed[["verbose"]]["getCall"][[1L]],TRUE)) return(oricall) ## returns a call is verbose["getCall"'"] is TRUE
   #
-  pnames <- c("data","family","formula","prior.weights","HLmethod","rand.family","control.glm","REMLformula",
+  pnames <- c("data","family","formula","prior.weights","HLmethod","method","rand.family","control.glm","REMLformula",
               "resid.model", "verbose","distMatrix","uniqueGeo","adjMatrix") ## try covStruct too...
   for (st in pnames) mc[st] <- NULL 
   mc[[1L]] <- get("HLCor_body", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with

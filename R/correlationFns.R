@@ -91,7 +91,7 @@ if (F) {
 }
 
 # tcrossprod factor, Ltri or not.
-mat_sqrt <- function(m=NULL, symSVD=NULL, try.chol=TRUE, condnum=1e12) { ## also once for d2hdv2 and once for predVar
+mat_sqrt <- function(m=NULL, symSVD=NULL, try.chol=TRUE, condnum=1e12) { ## tcrossprod(mat_sqrt(X))=X
   ## cf return value: the code must compute 'L', and if the type of L is not chol, also 'corr d' and 'u'
   type <- NULL
   

@@ -10,7 +10,7 @@
   fitted.values <- x$fv
   ## possible modif of 'which':
   if (is.null(residuals)) {## possible if disp pars in ranFix
-    if ("mean" %in% "which") {
+    if ("mean" %in% which) {
       message("No 'mean' plot produced because computation of leverages for phi was not needed to fit the model.")
       which <- setdiff(which,c("mean")) ## all 'mean' diagnostic plots involve these residuals
     }
@@ -21,9 +21,9 @@
   }
   if ("ranef" %in% which) {
     if (x$family$family %in% c("poisson","binomial","COMPoisson","negbin")) {
-      lev_phi <- NULL  ## currently (10/2013) <HLfit>$lev_phi non-null even for poisson, binomial
-    } else lev_phi <- x$lev_phi
-    lev_lambda <- x$lev_lambda
+      lev_phi <- NULL # i.e. no plot for them
+    } else lev_phi <- hatvalues(x, type="std", which="resid")
+    lev_lambda <- hatvalues(x, type="std", which="ranef")
     ranef <- x$ranef ## u
     nranplots <- length(which(c(length(lev_lambda)>0,length(lev_phi)>0,length(ranef)>0)))
     if (nranplots==0L) which <- which[which!="ranef"]

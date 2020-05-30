@@ -1,4 +1,4 @@
-## the following must match the'unique' method in .ULI as explained there
+## the following must match the 'unique' method in .ULI as explained there
 .calcUniqueGeo <- function(data) {
   redondGeo <- apply(data,1,paste,collapse=" ") ## creates character string
   dfforunique <- cbind(data,redondGeo) ## associates rownames of data to redondGeo
@@ -45,21 +45,22 @@
 .preprocess_covStruct <- function(covStruct) {
   if ( ! inherits(covStruct,"list")) stop("covStruct must inherit from class 'list'.")
   types <- attr(covStruct,'types') ## 1st way of specifying types
-  if (is.null(types)) types <- names(covStruct) ## 2nd way of specifying types
+  if (is.null(types)) {
+    types <- names(covStruct) ## 2nd way of specifying types
+  } else names(covStruct) <- types ## repeated names possible
   known_types <- c("adjMatrix","corrMatrix","precision","SAR_WWt","distMatrix", "IMRF") 
   checktypes <- setdiff(types,c(known_types,"")) ## "" for unhandled ranefs
   if (length(checktypes)) stop(paste("Unhandled name(s)/type(s)",
                                      paste0("'",checktypes,"'",collapse=", "),"in 'covStruct'."))
-  resu <- vector("list",length(covStruct)) ## list with sublists(?); compatible with spaMM3.0 extended syntax
   for (lit in seq_along(covStruct)) {
     if (types[[lit]]=="precision") {
-      resu[[lit]] <- forceSymmetric(covStruct[[lit]])
-    } else resu[[lit]] <- covStruct[[lit]]
+      if (is.list(covStruct[[lit]])) { # always the case ?
+        covStruct[[lit]]$matrix <- forceSymmetric(covStruct[[lit]]$matrix)
+      } else covStruct[[lit]] <- forceSymmetric(covStruct[[lit]])
+    } 
   }
-  names(resu) <- types ## repeated names possible
-  attr(resu,'AMatrices') <- AMatrices <- attr(covStruct,'AMatrices')
-  if ( ! is.null(AMatrices) && ! is.list(AMatrices)) {stop("attr(covStruct,'AMatrices') must be a list.")} 
-  return(resu)
+  if ( ! is.null(AMatrices <- attr(covStruct,'AMatrices')) && ! is.list(AMatrices)) {stop("attr(covStruct,'AMatrices') must be a list.")} 
+  return(covStruct)
 }
 
 .check_corrMatrix <- function(corrMatrix) {
@@ -69,65 +70,6 @@
   if (dim_corrMatrix[1L]!=dim_corrMatrix[2L])  stop("corrMatrix is not square") 
 }
 
-
-.check_subset_corrMatrix <- function(corrMatrix,ZA) {
-  ZAnames <- colnames(ZA) ## set by .calc_Zlist() or .calc_ZAlist(), with two cases for corrMatrix 
-  if (is.null(ZAnames)) {
-    stop("NULL colnames in (a block of) the design matrix for random effects. Some mishandling of 'AMatrices'?")
-  }
-  if (inherits(corrMatrix,"dist")) {
-    corrnames <- labels(corrMatrix) ## unclear
-  } else if (inherits(corrMatrix,c("matrix","Matrix"))) {
-    corrnames <- rownames(corrMatrix)
-  } else if ( inherits(corrMatrix,"precision")) {
-    corrnames <- rownames(corrMatrix[["matrix"]])
-  } else stop("Unhandled class of corrMatrix object.")
-  if (is.null(corrnames)) {
-    mess <- paste("(!) corrMatrix without labels or row names: the grouping levels, in order",
-                  paste0(ZAnames[1L:min(5L,length(ZAnames))], collapse=" "),if(length(ZAnames)>5L){"...,"} else{","},
-                  "\n are matched in this order to rows and columns of corrMatrix, without further check.",
-                  "\n This may cause later visible errors (notably, wrongly dimensioned matrices)",
-                  "\n or even silent errors. See help(\"corrMatrix\") for a safer syntax.")
-    warning(mess)
-  } else if (is.null(colnames(corrMatrix))) {
-    if (inherits(corrMatrix, c("matrix", "Matrix"))) {
-      colnames(corrMatrix) <- corrnames
-    }
-    else if (inherits(corrMatrix, "precision")) {
-      colnames(corrMatrix[["matrix"]]) <- corrnames
-    }
-  }
-  if ( length(setdiff(ZAnames,corrnames)) ==0L ) { ## i.e. all ZAnames in corrnames
-    ## : should be the case when generator = "as.factor"
-    if ( inherits(corrMatrix,"precision")) { ## reordering only 
-      if (any(corrnames!=ZAnames)) {
-        cov_info_mat <- corrMatrix[ZAnames,ZAnames] 
-        if ( morelevels <- length(setdiff(corrnames,ZAnames))) {
-          message(paste("Note: precision matrix has", morelevels, "more levels than there are in the data."))
-        }
-      } else cov_info_mat <- corrMatrix
-    } else if ( length(setdiff(corrnames,ZAnames)) || any(corrnames!=ZAnames) ) { # reordering and subsetting
-      if (inherits(corrMatrix,"dist")) {
-        cov_info_mat <- (proxy::as.matrix(corrMatrix,diag=1)[ZAnames,ZAnames]) ## IF diag missing in input corrMatrix THEN assume a correlation matrix
-        ## it's not useful to convert back to dist (either uglily by as.dist(); or package 'seriation' has (permute.dist-> C code)
-      } else cov_info_mat <- corrMatrix[ZAnames,ZAnames]  
-    } else cov_info_mat <- corrMatrix ## orders already match
-  } else {
-    ## : expected when generator = ".ULI"
-    if ( ! is.null(corrnames)) {
-      message("Incompletely checked case: corrMatrix may be invalid, or with complex grouping term\n that spaMM is not able to match to the names of corrMatrix.")
-      message("First grouping levels will be matched\n  to first rows of corrMatrix, without further check. \n See help(\"corrMatrix\") for a safer syntax.")
-      if ( length(corrnames)!=length(ZAnames)){ 
-        message("First grouping levels could not be matched to first rows of corrMatrix, because of inconsistent dimensions.")
-        stop("The dimension of corrMatrix does not match the number of levels of the grouping variable.")
-        #message("Summary of grouping levels that do not appear in the corrMatrix:")
-        #str(checknames)
-      }
-    }
-    cov_info_mat <- corrMatrix ## no clear reordering
-  }
-  return(cov_info_mat)
-}
 
 .calc_AR1_t_chol_Q_block <- function(n_u, ARphi) {
   # denom <- sqrt(1-ARphi^2)

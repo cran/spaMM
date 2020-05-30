@@ -5,7 +5,7 @@
   nrand <- length(processed$ZAlist)
   rand_to_glm_map <- integer(nrand)
   resglm_lambdaS <- list()
-  print_lambdas <- as.list(rep(NA,nrand)) ## to be _partially filled_ by this function uing available glm's
+  lambda_pred_list <- as.list(rep(NA,nrand)) ## to be _partially filled_ by this function uing available glm's
   ## je peux avoir SEM sans adjacency (SEM-Matern) et adjacency sans SEM (Poisson-adjacency)
   if (all(models[[2]]=="lamScal")) { 
     ####### includes SEM
@@ -15,7 +15,7 @@
         attr(glm_lambda,"whichrand") <- done <- 1L
         resglm_lambdaS[["SEM"]] <- glm_lambda
         ## following syntax OK for all adjacency case or for ~1 (but not random slope)
-        print_lambdas[attr(glm_lambda,"whichrand")] <- predict(glm_lambda,newdata=data.frame("X.Intercept."=1,adjd=0),type="response")[1L] ## le [1L] en cas d'offset... 
+        lambda_pred_list[attr(glm_lambda,"whichrand")] <- predict(glm_lambda,newdata=data.frame("X.Intercept."=1,adjd=0),type="response")[1L] ## le [1L] en cas d'offset... 
       }
     } else {
       ## checks whether a previous resglm was computed for adjacency model  
@@ -23,12 +23,12 @@
       if ( ! is.null(glm_lambda)) { ## includes this adjacency fit
         done <- attr(glm_lambda,"whichrand") ## index according to ordering of attr(ZAlist,"exp_ranef_strings")
         resglm_lambdaS[["adjacency_from_calcRanefPars_blob"]] <- glm_lambda
-        print_lambdas[attr(glm_lambda,"whichrand")] <- predict(glm_lambda,newdata=data.frame("X.Intercept."=1,adjd=0),type="response")[1L] ## le [1L] en cas d'offset... 
+        lambda_pred_list[attr(glm_lambda,"whichrand")] <- predict(glm_lambda,newdata=data.frame("X.Intercept."=1,adjd=0),type="response")[1L] ## le [1L] en cas d'offset... 
       } else done <- NULL
     }
     rand_to_glm_map[done] <- length(resglm_lambdaS)
     ## next builds a resglm for all other random effects
-    notdone <- setdiff(seq(nrand),done)
+    notdone <- setdiff(seq_len(nrand),done)
     if (length(notdone)) {
       cum_Xi_cols <- cumsum(c(0,attr(processed$ZAlist,"Xi_cols")))
       for(it in notdone) { ## CAR here if old corrHLfit method (or rho fixed?)
@@ -67,7 +67,7 @@
           rand_to_glm_map[it] <- length(resglm_lambdaS)  ## gives the position of just-added glm
           ## following syntax OK for for ~1 and for random-slope (but not adjacency)
           # [single] <- (multiple) is not correctly interpreted
-          for (lit in attr(glm_lambda,"whichrand")) print_lambdas[[lit]] <- predict(glm_lambda,
+          for (lit in attr(glm_lambda,"whichrand")) lambda_pred_list[[lit]] <- predict(glm_lambda,
                                                                                     newdata=unique(glm_lambda$data),type="response")
         } ## else no glm for outer/fixed lambda
       }
@@ -80,6 +80,6 @@
   ## now reformat all resglm's results
   process_resglm_blob <- .process_resglm_list(resglm_lambdaS,nrand=nrand)
   process_resglm_blob$rand_to_glm_map <- rand_to_glm_map
-  process_resglm_blob$print_lambdas <- print_lambdas
+  process_resglm_blob$lambda_pred_list <- lambda_pred_list
   return(process_resglm_blob)
 } 

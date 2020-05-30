@@ -3,11 +3,9 @@ if(requireNamespace("lme4", quietly = TRUE)) {
   data("sleepstudy",package = "lme4")
   (res <- HLfit(Reaction ~ Days + (Days|Subject), data = sleepstudy)) 
   testthat::expect_equal(logLik(res),c(p_bv=-871.8141),tolerance=2e-4) 
-  # lambda dependent on internal representation of the cov mat
-  # which itself depends on a try_chol and whether chol facto succeeds...
-  verif_lam <- try(testthat::expect_equal(res$lambda[[2]],35.07115,tolerance=1e-5), silent=TRUE) # if sparse_precision=TRUE which inhibits try_chol 
-  if (inherits(verif_lam,"try-error")) verif_lam <- try(testthat::expect_equal(res$lambda[[2]],1,tolerance=1e-5), silent=TRUE)
-  if (inherits(verif_lam,"try-error")) message("(!) verif_lam not equal to 35.07115 nor to 1")
+  # lambda from lambda.object$lambda_list potentially dependent on internal representation of the cov mat
+  # which itself depends on a try_chol and whether chol facto succeeds... but the following should be consistent:
+  verif_lam <- testthat::expect_equal(VarCorr(res)[[2,3]],35.07163,tolerance=1e-5) # 35.07155 by spprec
   try(testthat::expect_equal(predict(res)[1:6,],predict(res,newdata=sleepstudy[1:6,],re.form= ~ (Days|Subject))[,1])) 
   ## tests of predVar with re.form and ranCoefs in test-devel-predVar-ranCoefs.R
   ## a bit slow but detects many problem: (+ effect of refit$lambda)

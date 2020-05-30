@@ -31,7 +31,7 @@ if (file.exists((privdata <- "C:/home/francois/travail/stats/spaMMplus/spaMM/pac
     oldopt <- spaMM.options(augZXy_fitfn=".HLfit_body_augZXy_invL", check_alt_augZXy=FALSE) # F I X_invL no check_alt_augZXy bc it fails. But the final logLik is checked
     (mini_rC <- fitme(total_red ~ 1 + (sex|env), data = my.data[perm[1:20],], method="ML"))
     spaMM.options(oldopt)
-  }
+  } else message(".HLfit_body_augZXy_invL() not included in build => test not performed on pckage istalled from build")
   
   # Plus an augZXy test (not ranCoefs):
   (vanilla <- fitme(total_red ~ sex*env + (1|rep) + (1|line), data = my.data, method="ML"))
@@ -40,12 +40,12 @@ if (file.exists((privdata <- "C:/home/francois/travail/stats/spaMMplus/spaMM/pac
     essainola <- fitme(total_red ~ sex*env + (1|rep) + (1|line), data = my.data, method="ML")
     spaMM.options(oldopt)
     testthat::expect_true((diff(range(logLik(vanilla),logLik(essainola)))<1e-8)) 
-  }
+  } else message(".HLfit_body_augZXy_W() not included in build => test not performed on pckage istalled from build")
   if (exists(".HLfit_body_augZXy_invL",envir = asNamespace("spaMM"))) {
     oldopt <- spaMM.options(augZXy_fitfn=".HLfit_body_augZXy_invL", check_alt_augZXy=TRUE)
     essainola <- fitme(total_red ~ sex*env + (1|rep) + (1|line), data = my.data, method="ML")
     spaMM.options(oldopt)
     testthat::expect_true((diff(range(logLik(vanilla),logLik(essainola)))<1e-8)) 
-  }
+  } else message(".HLfit_body_augZXy_invL() not included in build => test not performed on pckage istalled from build")
 }
 

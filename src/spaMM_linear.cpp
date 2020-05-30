@@ -484,32 +484,100 @@ SEXP Rcpp_Csum( SEXP AA, SEXP BB) {
 
 // [[Rcpp::export(.Rcpp_backsolve)]]
 SEXP Rcpp_backsolve(SEXP r, SEXP x, bool upper_tri=true, bool transpose=false) { 
-  const Map<MatrixXd> A(as<Map<MatrixXd> >(r));
-  if (Rf_isNull(x)) {
-    int c(A.cols());
-    MatrixXd Id= MatrixXd::Identity(c,c);
-    if (upper_tri) {
-      if (transpose) {
-        return(wrap(A.adjoint().triangularView<Eigen::Lower>().solve(Id)));
-      } else return(wrap(A.triangularView<Eigen::Upper>().solve(Id)));
+  int type_r=get_type(r);
+  if (type_r==S4SXP) {
+    if ( ! Rf_inherits( r, "dgCMatrix" ) ) return(wrap("Unhandled type for first argument."));
+    const Map<SparseMatrix<double> > A(as<Map<SparseMatrix<double> > >(r));
+    if (Rf_isNull(x)) {
+      int c(A.cols());
+      MatrixXd Id= MatrixXd::Identity(c,c);
+      if (upper_tri) {
+        if (transpose) {
+          return(wrap(A.adjoint().triangularView<Eigen::Lower>().solve(Id)));
+        } else return(wrap(A.triangularView<Eigen::Upper>().solve(Id)));
+      } else {
+        if (transpose) {
+          return(wrap(A.adjoint().triangularView<Eigen::Upper>().solve(Id)));
+        } else return(wrap(A.triangularView<Eigen::Lower>().solve(Id)));
+      }
     } else {
-      if (transpose) {
-        return(wrap(A.adjoint().triangularView<Eigen::Upper>().solve(Id)));
-      } else return(wrap(A.triangularView<Eigen::Lower>().solve(Id)));
+      const Map<MatrixXd> B(as<Map<MatrixXd> >(x));
+      if (upper_tri) {
+        if (transpose) {
+          return(wrap(A.adjoint().triangularView<Eigen::Lower>().solve(B)));
+        } else return(wrap(A.triangularView<Eigen::Upper>().solve(B)));
+      } else {
+        if (transpose) {
+          return(wrap(A.adjoint().triangularView<Eigen::Upper>().solve(B)));
+        } else return(wrap(A.triangularView<Eigen::Lower>().solve(B)));
+      }
     }
   } else {
-    const Map<MatrixXd> B(as<Map<MatrixXd> >(x));
-    if (upper_tri) {
-      if (transpose) {
-        return(wrap(A.adjoint().triangularView<Eigen::Lower>().solve(B)));
-      } else return(wrap(A.triangularView<Eigen::Upper>().solve(B)));
+    const Map<MatrixXd> A(as<Map<MatrixXd> >(r));
+    if (Rf_isNull(x)) {
+      int c(A.cols());
+      MatrixXd Id= MatrixXd::Identity(c,c);
+      if (upper_tri) {
+        if (transpose) {
+          return(wrap(A.adjoint().triangularView<Eigen::Lower>().solve(Id)));
+        } else return(wrap(A.triangularView<Eigen::Upper>().solve(Id)));
+      } else {
+        if (transpose) {
+          return(wrap(A.adjoint().triangularView<Eigen::Upper>().solve(Id)));
+        } else return(wrap(A.triangularView<Eigen::Lower>().solve(Id)));
+      }
     } else {
-      if (transpose) {
-        return(wrap(A.adjoint().triangularView<Eigen::Upper>().solve(B)));
-      } else return(wrap(A.triangularView<Eigen::Lower>().solve(B)));
+      const Map<MatrixXd> B(as<Map<MatrixXd> >(x));
+      if (upper_tri) {
+        if (transpose) {
+          return(wrap(A.adjoint().triangularView<Eigen::Lower>().solve(B)));
+        } else return(wrap(A.triangularView<Eigen::Upper>().solve(B)));
+      } else {
+        if (transpose) {
+          return(wrap(A.adjoint().triangularView<Eigen::Upper>().solve(B)));
+        } else return(wrap(A.triangularView<Eigen::Lower>().solve(B)));
+      }
     }
   }
 }
+
+// [[Rcpp::export(.Rcpp_backsolve_M_M)]]
+SEXP Rcpp_backsolve_M_M(SEXP r, SEXP x, bool upper_tri=true, bool transpose=false) { 
+  int type_r=get_type(r);
+  if (type_r==S4SXP) {
+    if ( ! Rf_inherits( r, "dgCMatrix" ) ) return(wrap("Unhandled type for first argument."));
+    const Map<SparseMatrix<double> >A(as<Map<SparseMatrix<double> > >(r));
+    SparseMatrix<double> B;
+    if (Rf_isNull(x)) {
+      int c(A.cols());
+      B= SparseMatrix<double>(c,c);
+      B.setIdentity();
+    } else B=SparseMatrix<double>(as<SparseMatrix<double> >(x));
+    //  solveInPlace() does not compile with .adjoint() (or .transpose())
+    // moreover, .triangularView<Eigen::Lower>().solveInPlace(B) appears to return wrong results if not not explicit(SparseMatrix<double>())
+    if (upper_tri) {
+      if (transpose) {
+        //A.adjoint().triangularView<Eigen::Lower>().solveInPlace(B); // ideal call, 
+        //   but does not compile with .adjoint() (or .transpose())
+        SparseMatrix<double> At(A.transpose());
+        At.triangularView<Eigen::Lower>().solveInPlace(B);
+        //return(wrap(SparseMatrix<double>(B)));
+      } else A.triangularView<Eigen::Upper>().solveInPlace(B);
+    } else {
+      if (transpose) {
+        //A.adjoint().triangularView<Eigen::Upper>().solveInPlace(B);
+        SparseMatrix<double> At(A.transpose());
+        At.triangularView<Eigen::Upper>().solveInPlace(B);
+      } else {
+        A.triangularView<Eigen::Lower>().solveInPlace(B); 
+        //return(wrap(SparseMatrix<double>(B))); // return misformed dgCMatrix if not explicit(SparseMatrix<double>())
+      }
+    }
+    return(wrap(SparseMatrix<double>(B)));
+  } else return(wrap("Unhandled type for first argument."));
+}
+
+
 
 // [[Rcpp::export(.Rcpp_chol2solve)]]
 SEXP Rcpp_chol2solve(SEXP r, SEXP x) {

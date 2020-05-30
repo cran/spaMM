@@ -28,10 +28,10 @@ Y. Lee and J. A. Nelder. 1996. Hierarchical generalized linear models (with disc
 }
 \examples{
 data("seeds") 
-## An extended quasi-likelihood (EQL) fit as considered by Lee and Nelder (1996):
-HLfit(cbind(r,n-r)~seed*extract+(1|plate),family=binomial(),
-  rand.family=Beta(),
-  HLmethod="HL(0,0)",
-  data=seeds)
+fitme(cbind(r,n-r)~seed*extract+(1|plate),family=binomial(),
+      rand.family=Beta(),
+      ## For an extended quasi-likelihood (EQL) fit as considered by Lee & Nelder (1996):
+      # method="HL(0,0)",
+      data=seeds)
 }
 \keyword{datasets}

@@ -29,6 +29,13 @@
 # V, section 13.2.2 de mes notes;  template was .calc_Evar; 
 .calc_Var_given_fixef <- function(object, new_X_ZACblob, covMatrix, fix_X_ZAC.object=NULL) {
   newinold <- new_X_ZACblob$newinold # should be trivial since get_cPredVar() has no re.from argument
+  if ( ! (newnrand <- length(newinold))) { ## fixed-effect model: no d2hdv2 hence no variance due to it
+    nr <- nrow(new_X_ZACblob$newX.pv)
+    if (covMatrix) {
+      return(matrix(0,nrow=nr,ncol=nr))
+    } else return(rep(0,nr))
+  }
+  
   cov_newLv_oldv_list <- new_X_ZACblob$cov_newLv_oldv_list
   cov_newLv_newLv_list <- new_X_ZACblob$cov_newLv_newLv_list
   diag_cov_newLv_newLv_list <- new_X_ZACblob$diag_cov_newLv_newLv_list
@@ -37,7 +44,6 @@
   cov_fixLv_oldv_list <- fix_X_ZAC.object$cov_newLv_oldv_list
   fixZAlist <- fix_X_ZAC.object$newZAlist
   d2hdv2_info <- .calc_d2hdv2_info(object, ZAL) 
-  newnrand <- length(newinold)
   Vlist <- vector("list",newnrand)
   for (new_rd in seq_along(Vlist)) {
     #old_rd <- newinold[new_rd]

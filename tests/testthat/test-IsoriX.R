@@ -44,4 +44,6 @@ if (requireNamespace("IsoriX",quietly=TRUE)) { ## Checks that exports/imports ar
   } else if ( exists("assignment.GP")) { ## !exists if IsoriX.getOption("example_maxtime") too low
     try(testthat::expect_equal(AssignedGP$group$pv@data@values[12240],0.7814368255))
   }
+  try(rm(list=c("GermanFit","GermanScape", "GNIPDataDEagg")))
+  unloadNamespace("IsoriX")
 }

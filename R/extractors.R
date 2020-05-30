@@ -22,11 +22,11 @@
           type <-  attr(lmatrix,"type")
           invlmatrix <- NULL
           if ( ! is.null(latentL_blob <- attr(lmatrix,"latentL_blob"))) { ## from .process_ranCoefs
-            compactchol_Q <- latentL_blob$compactchol_Q 
-            if (is.null(compactchol_Q)) {
-              invlmatrix <- .makelong(solve(latentL_blob$design_u),longsize=ncol(lmatrix),as_matrix=TRUE)
-            } else invlmatrix <- .makelong(t(compactchol_Q),longsize=ncol(lmatrix),as_matrix=TRUE) ## L=Q^{-T} => invL=Q^T
-            # as_matrix necessary for resu[u.range, u.range] <- invlmatrix
+            if ( ! is.null(latent_d <- latentL_blob[["d"]])) { 
+              compactchol_Q_w <- .Matrix_times_Dvec(latentL_blob$compactchol_Q, 1/sqrt(latent_d)) # tcrossfac of full precision matrix
+              invlmatrix <- .makelong(t(compactchol_Q_w),longsize=ncol(lmatrix),as_matrix=TRUE) 
+            } else invlmatrix <- .makelong(t(latentL_blob$compactchol_Q),longsize=ncol(lmatrix),as_matrix=TRUE) 
+            # as_matrix=TRUE necessary for resu[u.range, u.range] <- invlmatrix
           } else if (inherits(lmatrix,"dCHMsimpl")) { # before any test on type...
             invlmatrix <- t(as(lmatrix, "sparseMatrix"))
           } else if (type == "from_AR1_specific_code")  {
@@ -100,99 +100,23 @@
   }
 }
 
-.useless_get_sp_invL_HLfit <- function(object, regul.threshold=1e-7) { ## computes inv(L) [not inv(Corr): see calc_invColdoldList]
-  strucList <- object$strucList
-  if (is.null(strucList)) {
-    return(NULL) ## no ranefs
-  } else if (is.null(unlist(strucList))) { ## ranefs with trivial strucList
-    if (is.null(object$envir$invL)) {
-      cum_n_u_h <- attr(object$lambda,"cum_n_u_h")
-      object$envir$invL <- Diagonal(n=cum_n_u_h[length(cum_n_u_h)])
-    }
-    return(object$envir$invL)
-  } else {
-    if (is.null(object$envir$invL)) {
-      cum_n_u_h <- attr(object$lambda,"cum_n_u_h")
-      seq_n_u_h <- diff(cum_n_u_h)
-      resu <- vector("list", length(strucList))
-      if (object$spaMM.version < "2.2.116") {
-        ranefs <- attr(object$ZAlist,"ranefs") 
-      } else ranefs <- attr(object$ZAlist,"exp_ranef_strings") 
-      for (Lit in seq_len(length(strucList))) {
-        lmatrix <- strucList[[Lit]]
-        if ( is.null(lmatrix)) {
-          resu[[Lit]] <- Diagonal(n=seq_n_u_h[Lit])
-        } else if (inherits(lmatrix,"dCHMsimpl")) { # before any test on type...
-          resu[[Lit]] <- t(as(lmatrix, "sparseMatrix"))
-        } else {
-          type <-  attr(lmatrix,"type")
-          if ( ! is.null(latentL_blob <- attr(lmatrix,"latentL_blob"))) { ## from .process_ranCoefs
-            compactchol_Q <- latentL_blob$compactchol_Q 
-            if (is.null(compactchol_Q)) {
-              resu[[Lit]] <- .makelong(solve(latentL_blob$design_u),longsize=ncol(lmatrix),as_matrix=FALSE)
-            } else resu[[Lit]] <- .makelong(t(compactchol_Q),longsize=ncol(lmatrix),as_matrix=FALSE) ## L=Q^{-T} => invL=Q^T
-            # as_matrix necessary for resu[u.range, u.range] <- invlmatrix
-          } else if (type == "from_AR1_specific_code")  {
-            resu[[Lit]] <- solve(lmatrix) # cost of solve sparse triangular matrix
-          } else if (type == "from_Q_CHMfactor")  {
-            resu[[Lit]] <- t(as(attr(lmatrix,"Q_CHMfactor"),"sparseMatrix")) ## L=Q^{-T} => invL=Q^T ## correct but requires the attribute => numerical issues in computing Q_CHMfactor
-          } else if (type == "cholL_LLt")  {
-            condnum <- kappa(lmatrix,norm="1")
-            if (condnum<1/regul.threshold) {
-              resu[[Lit]] <- try(forwardsolve(lmatrix,diag(ncol(lmatrix))),silent=TRUE)
-              if (inherits(resu[[Lit]],"try-error")) invlmatrix <- NULL
-            }
-            if (is.null(resu[[Lit]])) {
-              Rmatrix <- t(lmatrix)
-            } else resu[[Lit]] <- as(resu[[Lit]],"sparseMatrix")
-          } else { ## Rcpp's symSVD, or R's eigen() => LDL (also possible bad use of R's svd, not normally used)
-            condnum <- kappa(lmatrix,norm="1")
-            if (condnum<1/regul.threshold) {
-              decomp <- attr(lmatrix,attr(lmatrix,"type")) ## of corr matrix !
-              if ( all(abs(decomp$d) > regul.threshold) ) {
-                resu[[Lit]] <-  try(.ZWZt(decomp$u,sqrt(1/decomp$d)),silent=TRUE) ## try() still allowing for no (0) regul.threshold; not useful ?
-                if (inherits(resu[[Lit]],"try-error")) resu[[Lit]] <- NULL
-              }
-            }
-            if (is.null(resu[[Lit]])) {
-              Rmatrix <- .lmwithQR(t(lmatrix),yy=NULL,returntQ=FALSE,returnR=TRUE)$R_scaled # no pivoting compared to qr.R(qr(t(lmatrix))) 
-            } else resu[[Lit]] <- as(resu[[Lit]],"sparseMatrix")
-          }
-          if (is.null(resu[[Lit]])){
-            # chol2inv is quite robust in the sense of not stopping, even without any regularization.
-            # Nevertheless (1) lmatrix %*% invlmatrix may be only roughly = I:
-            #   if we don't regularize we expect departures from I due to numerical precision;
-            #   if we regularize we expect departures from I even with exact arithmetic...
-            #
-            # But regul. chol2inv result still causes problems in later computations!
-            #
-            # singular <- which(abs(diag(Rmatrix))<regul.threshold) 
-            # if (length(singular)) {
-            #   if (spaMM.getOption("wRegularization")) warning("regularization required.")
-            #   nc <- ncol(Rmatrix)
-            #   diagPos <- seq.int(1L,nc^2,nc+1L)[singular]
-            #   Rmatrix[diagPos] <- sign(Rmatrix[diagPos])* regul.threshold
-            # }
-            # invLLt <- chol2inv(Rmatrix) ## 
-            #
-            invLLt <- try(chol2inv(Rmatrix),silent=TRUE)
-            if (inherits(invLLt,"try-error") || max(abs(range(invLLt)))> 1e12) {
-              invLLt <- ginv(crossprod(Rmatrix))
-            }
-            resu[[Lit]] <- .crossprod(lmatrix, invLLt) ## regularized (or not) solve(lmatrix)
-            resu[[Lit]] <- as(resu[[Lit]],"sparseMatrix")
-          }
-        }
-        resu <- do.call(Matrix::bdiag,resu)
-      }
-      object$envir$invL <- resu
-    }
-    return(object$envir$invL)
-  }
-}
-
-
-
+## possibly useful comment from a removed function:
+# chol2inv is quite robust in the sense of not stopping, even without any regularization.
+# Nevertheless (1) lmatrix %*% invlmatrix may be only roughly = I:
+#   if we don't regularize we expect departures from I due to numerical precision;
+#   if we regularize we expect departures from I even with exact arithmetic...
+#
+# But regul. chol2inv result still causes problems in later computations!
+#
+# singular <- which(abs(diag(Rmatrix))<regul.threshold) 
+# if (length(singular)) {
+#   if (spaMM.getOption("wRegularization")) warning("regularization required.")
+#   nc <- ncol(Rmatrix)
+#   diagPos <- seq.int(1L,nc^2,nc+1L)[singular]
+#   Rmatrix[diagPos] <- sign(Rmatrix[diagPos])* regul.threshold
+# }
+# invLLt <- chol2inv(Rmatrix) ## 
+#
 
 ## fitted= X.beta + ZLv where we want to be able to write Lv as Cw = L.L'.w 
 # => w = inv(L').v
@@ -210,6 +134,12 @@
         ## dense calculation on not necess triangular lmatrix (!?). 
         ## solve( _t_(lmatrix)) may not allow the efficient use of solveWrap. 
         ## But this is a one-time calculation whose results are saved. No optimization attempted.
+        if (! is.null(latent_d <- attr(lmatrix,"latentL_blob")[["d"]])) {
+          # if I changed the meaning of strucList[[]] between the fit and the postfit (in .post_process_LMatrices)
+          # I must adjust accordingly here. This is uglier.
+          # and here we used the compact 'd' for testing and use the already expanded one next:
+          newcoeffs[u.range] <- newcoeffs[u.range]/sqrt(object$envir$sXaug$AUGI0_ZX$envir$latent_d_list[[Lit]])   
+        }
         newcoeffs[u.range] <- solve(t(lmatrix),newcoeffs[u.range])   ## newcoeffs must be a _vector_
       }
     }
@@ -298,7 +228,9 @@ ranef.HLfit <- function(object,type="correlated",...) {
       }
     } else {
       if (type == "correlated" && ! is.null(strucList[[it]])) {
-        res <- as.vector(strucList[[it]] %*% res) ## vector
+        if (inherits(strucList[[it]], "dCHMsimpl")) {
+          res <- as.vector(solve(strucList[[it]], res, system="Lt"))
+        } else res <- as.vector(strucList[[it]] %*% res) ## vector
       } 
       names(res) <- colNames[[it]]
     }
@@ -448,20 +380,32 @@ Corr <- function(object,...) { ## compare ?VarCorr
 }
 
 # for a lme4::VarCorr() equivalent; generic is nlme::VarCorr 
-VarCorr.HLfit <- function(x, sigma=1, message.=TRUE, ...) {
-  if (message.) message("The design of VarCorr.HLfit() is not yet fully specified.") 
-  lambda.object <- x$lambda.object
-  namesTerms <- lambda.object$print_namesTerms ## list of vectors of variable length
-  linklam_coeff_list <- lambda.object$coefficients_lambdaS ## used beyond the next line
-  lamtable <- .lambda_table_fn(namesTerms, x, lambda.object,linklam_coeff_list)
-  loctable <- data.frame(Group=lamtable[,"Group"],Term=lamtable[,"Term"],Variance=lamtable[,"Var."],"Std.Dev."=sqrt(lamtable[,"Var."]))
-  if ("Corr." %in% colnames(lamtable)) loctable <- cbind(loctable,Corr=lamtable[,"Corr."])
-  rownames(loctable) <- lamtable[,"Term"]
+VarCorr.HLfit <- function(x, sigma=1, ...) {
+  loctable <- NULL
+  if ( ! is.null(lambda.object <- x$lambda.object)) {
+    #.legend_lambda(object, type = "family")
+    namesTerms <- lambda.object$print_namesTerms ## list of vectors of variable length
+    linklam_coeff_list <- lambda.object$coefficients_lambdaS ## used beyond the next line
+    lamtable <- .lambda_table_fn(namesTerms, x, lambda.object,linklam_coeff_list)
+    nonunique_colnames <- colnames(lamtable)
+    lamtable <- lamtable[,seq_len(ncol(lamtable))] # subsetting automatically generates unique names for the Corr. columns
+    for (it in seq_len(nrow(lamtable))) {
+      if (is.na(lamtable[[it,"Var."]])) lamtable[[it,"Var."]] <- lambda.object$lambda_list[[lamtable[[it,"Group"]]]][["(Intercept)"]]
+    }
+    loctable <- data.frame(Group=lamtable[,"Group"],Term=lamtable[,"Term"],Variance=lamtable[,"Var."],"Std.Dev."=sqrt(lamtable[,"Var."]))
+    if ("Corr." %in% colnames(lamtable)) {
+      corrFill <- lamtable[, nonunique_colnames=="Corr.", drop=FALSE]
+      loctable <- cbind(loctable, corrFill, row.names=NULL)
+      corrFill <- corrFill[1, , drop=FALSE]
+      corrFill[] <- NA
+    }
+    #rownames(loctable) <- rownames(lamtable)
+  } # else lamtable <- NULL
   if (x$family$family %in% c("gaussian","Gamma")) {
     phi.object <- x$phi.object
     if ( ! is.null(phi_outer <- phi.object$phi_outer)) {
       phi_line <- data.frame(Group="Residual",Term="(Intercept)",Variance=phi_outer, "Std.Dev."=sqrt(phi_outer))
-      if ("Corr." %in% colnames(lamtable)) phi_line <- cbind(phi_line,Corr=NA)
+      if ("Corr." %in% colnames(loctable)) phi_line <- cbind(phi_line,corrFill, row.names=NULL)
       loctable <- rbind(loctable,phi_line)
     } else {
       if (x$models[["phi"]]=="phiHGLM") {
@@ -478,12 +422,13 @@ VarCorr.HLfit <- function(x, sigma=1, message.=TRUE, ...) {
           phi_est <- resid.family$linkinv(phi_est)
         } ## else phi not constant; We don't try to display it
         phi_line <- data.frame(Group="Residual",Term="(Intercept)",Variance=phi_est, "Std.Dev."=sqrt(phi_est))
-        if ("Corr." %in% colnames(lamtable)) phi_line <- cbind(phi_line,Corr=NA)
+        if ("Corr." %in% colnames(loctable)) phi_line <- cbind(phi_line, corrFill, row.names=NULL)
         loctable <- rbind(loctable,phi_line)
       }                                                 
     }
   }
   rownames(loctable) <- NULL
+  if (is.null(loctable)) message("VarCorr() found no variance to report.")
   return(loctable)
 } 
 
@@ -512,7 +457,7 @@ get_predVar <- function(..., variances=list(), which="predVar") {
   } else if (which=="fixefVar") {
     variances$fixefVar <- TRUE
   } else if (which=="intervals") {
-    if (is.null(mc$intervals)) mc$intervals <- "predVar" # but other intervals can be obtained if mc$intervals is not NULL
+    # if (is.null(mc$intervals)) mc$intervals <- "predVar" # but other intervals can be obtained if mc$intervals is not NULL
   } else variances$predVar <- TRUE
   mc$variances <- variances
   mc[[1L]] <- get("predict.HLfit", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
@@ -527,8 +472,8 @@ get_respVar <- function(...) {
   get_predVar(...,which="respVar")
 }
 
-get_intervals <- function(...) {
-  get_predVar(...,which="intervals")
+get_intervals <- function(..., intervals="predVar") {
+  get_predVar(...,intervals=intervals, which="intervals")
 }
 
 get_fixefVar <- function(...) {
@@ -661,8 +606,12 @@ get_ZALMatrix <- function(object,as_matrix, force_bind=FALSE) {
 }
 
 .get_ZAfix <- function(object, as_matrix) {
-  if (is.null(object$envir$ZAfix)) object$envir$ZAfix <- .ad_hoc_cbind(object$ZAlist, as_matrix=as_matrix)  
-  return(object$envir$ZAfix)
+  if (inherits(object$envir$sXaug,"AUGI0_ZX_sparsePrecision")) { 
+    return(object$envir$sXaug$AUGI0_ZX$ZAfix) # using new (v3.2.19) spprec object$envir$sXaug
+  }  else { # (( !spprec) || older spaMM) 
+    if (is.null(object$envir$ZAfix)) object$envir$ZAfix <- .ad_hoc_cbind(object$ZAlist, as_matrix=as_matrix)  
+    return(object$envir$ZAfix)
+  }
 }
 
 # left pseudo inverse of (augmented) design matrix, (X_a' W X_a)^{-1} X_a' W
@@ -737,7 +686,7 @@ how.HLfit <- function(object, devel=FALSE, verbose=TRUE, format=print, ...) {
                                         HLCor=spaMM::HLCor,
                                         corrHLfit=spaMM::corrHLfit), identical, y=fun)))
     } else { # assuming it's a 'name' (direct call or do.call("fitme", args = args)) or fn got by by get(...)
-      fnname <- paste(sub("^.*?::","",fun)) ## remove any "spaMM::" in the name, from which paste() would return c("::","spaMM",<>)
+      fnname <- sub("^.*?::","",deparse(fun)) ## remove any "spaMM::" in the name, from which paste() would return c("::","spaMM",<>)
     }
     if ( ! length(fnname)) {
       format(paste0("Model fitted by spaMM, version ",info[["spaMM.version"]],

@@ -16,5 +16,5 @@ if (FALSE) { ## useful to have it handy, but not useful to test on a routine bas
   
   #safeBinaryRegression::glm(y ~ x, family = binomial())
   #stats::glm(y ~ x, family = binomial()) ## detects nothing !
-  HLfit(y ~ x, family = binomial(), data=data.frame(x,y))
+  HLfit(y ~ x, family = binomial(), data=data.frame(x,y)) # separation+non-convergence
 }

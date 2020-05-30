@@ -176,8 +176,8 @@ IMRF <- function(...) {
   blob <- .get_dist_nested_or_not(term, data=data, distMatrix=NULL, uniqueGeo=NULL, 
                                   dist.method = dist.method, needed=c(uniqueGeo=TRUE),  geo_envir=NULL)
   uniqueScal <- blob$uniqueGeo
-  uniqueScal_levels_blob <- .calc_dataordered_levels(txt=paste(colnames(uniqueScal), collapse="+"), 
-                                                     mf=uniqueScal, type=.spaMM.data$options$levels_type) # to match the call in .calc_Zmatrix()
+  uniqueScal_levels_blob <- .as_factor(txt=paste(colnames(uniqueScal), collapse="+"), 
+                                       mf=uniqueScal, type=.spaMM.data$options$uGeo_levels_type) # to match the call in .calc_Zmatrix()
   if ( ! is.null(spde_info <- pars$model)) { # F I X M E does not handle nesting
     # Amatrix <- INLA:::inla.spde.make.A(spde_info$mesh, as.matrix(uniqueScal)) 
     if (inherits(spde_info,"inla.spde2")) {

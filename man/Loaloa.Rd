@@ -43,6 +43,10 @@ Trop. Med. Parasitol. 101, 499-509.
 \examples{
 
 data("Loaloa")
+if (spaMM.getOption("example_maxtime")>5) {
+  fitme(cbind(npos,ntot-npos)~1 +Matern(1|longitude+latitude),
+        data=Loaloa, family=binomial()) 
+}
 
 ### Variations on the model fit by Diggle et al. 
 ###    on a subset of the Loaloa data
@@ -52,7 +56,7 @@ data("Loaloa")
 
 if (spaMM.getOption("example_maxtime")>4) {
   corrHLfit(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
-                   +Matern(1|longitude+latitude),HLmethod="HL(0,1)",
+                   +Matern(1|longitude+latitude),method="HL(0,1)",
                  data=Loaloa,family=binomial(),ranFix=list(nu=0.5)) 
 }
 if (spaMM.getOption("example_maxtime")>1.6) {
@@ -61,24 +65,24 @@ if (spaMM.getOption("example_maxtime")>1.6) {
                  data=Loaloa,family=binomial(),fixed=list(nu=0.5)) 
 }
 
-if (spaMM.getOption("example_maxtime")>6.8) {
+if (spaMM.getOption("example_maxtime")>5.8) {
   corrHLfit(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
             +Matern(1|longitude+latitude),
               data=Loaloa,family=binomial(),ranFix=list(nu=0.5))  
 }
-if (spaMM.getOption("example_maxtime")>2.9) {
+if (spaMM.getOption("example_maxtime")>2.5) {
   fitme(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
             +Matern(1|longitude+latitude),
               data=Loaloa,family=binomial(),fixed=list(nu=0.5),method="REML")
 }
 
 ## Diggle and Ribeiro (2007) assumed (in this package notation) Nugget=2/7:
-if (spaMM.getOption("example_maxtime")>7.3) {
+if (spaMM.getOption("example_maxtime")>7) {
   corrHLfit(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
            +Matern(1|longitude+latitude),
              data=Loaloa,family=binomial(),ranFix=list(nu=0.5,Nugget=2/7))  
 }
-if (spaMM.getOption("example_maxtime")>1.9) {
+if (spaMM.getOption("example_maxtime")>1.3) {
   fitme(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
            +Matern(1|longitude+latitude),method="REML",
              data=Loaloa,family=binomial(),fixed=list(nu=0.5,Nugget=2/7))  

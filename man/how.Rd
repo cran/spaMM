@@ -24,6 +24,6 @@ how(object, ...)
   A list, returned invisibly, whose elements are not further described here. If \code{verbose} is \code{TRUE}, the function prints a message presenting these elements, some of which may be slightly cryptic (it is a clean way of getting the fit time, though). This function is work in progress.
 }
 \examples{
-foo <- HLfit(y~x, data=data.frame(x=runif(3),y=runif(3)),HLmethod="ML",ranFix=list(phi=1))
+foo <- HLfit(y~x, data=data.frame(x=runif(3), y=runif(3)), method="ML", ranFix=list(phi=1))
 how(foo)
 }

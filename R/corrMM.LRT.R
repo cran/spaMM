@@ -32,6 +32,7 @@ fixedLRT <- function(  ## interface to .LRT or (for devel only) .corrMM_LRT
   control.boot="DEPRECATED",
   fittingFunction, 
   #nb_cores=NULL,
+  seed=NULL,
   resp_testfn=NULL, 
   # type="marginal", # not necess sing fixedLRT -> .LRT -> spaMM_boot( type="marginal" hard coded)
   ...) {  ## since .corrMM_LRT is not doc'ed, REMLformula=NULL,boot.repl=0 cannot go into '...' 
@@ -42,7 +43,7 @@ fixedLRT <- function(  ## interface to .LRT or (for devel only) .corrMM_LRT
   # method mess
   if (missing(method)) {
     if (missing(HLmethod)) {
-      stop("'method' and 'HLmethod' arguments are missing, with no default. Provide 'method'.")
+      stop("'method' (or 'HLmethod') argument is missing, with no default. Provide 'method'.")
     } else {
       METHOD <- eval(HLmethod,parent.frame())
     }

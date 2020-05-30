@@ -53,7 +53,7 @@
 
 .calc_lhs_invV.dVdlam <- function(object, ZALd, invV_factors) { 
   if ("AUGI0_ZX_sparsePrecision" %in% object$MME_method) { # alternative code is always valid! BUT....
-    # dgeMatrix is more efficient in products usiçng the result 'lhs_invV.dVdlam':
+    # dgeMatrix is more efficient in products using the result 'lhs_invV.dVdlam':
     # Further, we have dgeMatrices where the alternative code produces dgCMatrices, 
     # W_ZinvG_ZtW_ZA <- invV_factors$n_x_r =W Z       
     #                                  %*% invV_factors$r_x_n=Matrix::solve(object$envir$G_CHMfactor, object$envir$ZtW) 
@@ -84,7 +84,7 @@
                                ) {
   strucList <- object$strucList
   lambda.object <- object$lambda.object
-  cum_n_u_h <- attr(lambda.object$lambda,"cum_n_u_h")
+  cum_n_u_h <- attr(lambda.object$lambda_list,"cum_n_u_h")
   lambda_list <- vector("list",length(strucList))
   RES <- list(cum_n_u_h=cum_n_u_h)
   ZAL_to_ZALd_vec <- rep(0,cum_n_u_h[length(cum_n_u_h)]) 
@@ -109,14 +109,14 @@
       ZAL_to_ZALd_vec[u.range] <- 1
       coeff <- lambda.object$coefficients_lambdaS[[randit]] ## corrHLfit or fitme with control$refit=TRUE
       if (is.null(coeff)) {
-        lambda_list[[randit]] <- lambda.object$lambda[[randit]] ## basic fitme (may numerically differ)
+        lambda_list[[randit]] <- lambda.object$lambda_list[[randit]] ## basic fitme (may numerically differ)
       } else lambda_list[[randit]] <- exp(coeff)
     }
   }
   RES$lambda_list <- lambda_list
   if ("AUGI0_ZX_sparsePrecision" %in% object$MME_method) {
     RES$lhs_invV.dVdlam <- .calc_lhs_invV.dVdlam(object, invV_factors=invV_factors) ## invV %*% ZA
-    RES$envir <- object$envir # to use $chol_Q and $ZAfix without any copy here
+    RES$envir <- object$envir # to use $chol_Q and $ZAfix without any copy here 
     RES$ZAL_to_ZALd_vec <- ZAL_to_ZALd_vec
     RES$type <- "|L" # "iVZA | (Ld!dL)AZ" 
     ## traceAB will use iVZA as lhs and Ld!dL'A'Z' as rhs: we store iVZA and A'Z and .fill_rhs_invV.dVdlam() factors by (Ld!dL)
@@ -151,18 +151,23 @@
 
 .fill_rhs_invV.dVdlam <- function(template, urange, invV.dV_info) { ## to localise template and urange
   template[urange] <- 1L
-  if (invV.dV_info$type=="|L") { 
-    tcrossfac <- solve(t(invV.dV_info$envir$chol_Q), Diagonal(x=invV.dV_info$ZAL_to_ZALd_vec * template)) # Ld
+  if (invV.dV_info$type=="|L") { # only spprec
+    latent_d_list <- invV.dV_info$envir$sXaug$AUGI0_ZX$envir$latent_d_list
+    chol_Q_w <- .Matrix_times_Dvec(t(invV.dV_info$envir$chol_Q),1/sqrt(unlist(latent_d_list)))
+    # ZAL_to_ZALd_vec is a correction for adjacency not for ranCoefs
+    tcrossfac <- solve(chol_Q_w, Diagonal(x=invV.dV_info$ZAL_to_ZALd_vec * template)) # Ld
     lhs <- .tcrossprod(tcrossfac) # LddL'
-    return(as.matrix(.tcrossprod(lhs, invV.dV_info$envir$ZAfix))) # LddL'A'Z'
+    return(as.matrix(.tcrossprod(lhs, invV.dV_info$envir$sXaug$AUGI0_ZX$ZAfix))) # LddL'A'Z'
     #lhs <- .ZWZtwrapper(invV.dV_info$LMatrix, (invV.dV_info$ZAL_to_ZALd_vec^2 * template)) 
     #return(.tcrossprod(lhs, invV.dV_info$ZAfix)) ## effectively dense lhs => slow
-    # #rhs <- .Dvec_times_m_Matrix(template,invV.dV_info$rhs_invV.dVdlam)
-    # #return(solve(t(invV.dV_info$chol_Q), rhs))
-  } else if (invV.dV_info$type=="iVZA|L") { 
+  } else if (invV.dV_info$type=="iVZA|L") { # this is only devel code
+    warning("devel code not tested after redef of structList for ranCoefs")
+    # => now (if $replace_design_u is TRUE), this seems correct
+    # Further, we won't see any pb as long as the ranCoefs $d are 1, which is so if *!*spprec and chol() worked in .calc_latentL()
+    # Thus this devel code must be OK unless $replace_design_u is set to FALSE and if chol() fails on final estimates (since we are in post-fit code) 
     tcrossfac <- .m_Matrix_times_Dvec(invV.dV_info$Lmatrix, invV.dV_info$ZAL_to_ZALd_vec * template) # Ld
     lhs <- .tcrossprod(tcrossfac) # LddL'
-    return(as.matrix(.tcrossprod(lhs, invV.dV_info$envir$ZAfix))) # LddL'A'Z'
+    return(as.matrix(.tcrossprod(lhs, invV.dV_info$envir$sXaug$AUGI0_ZX$ZAfix))) # LddL'A'Z'
   } else {
     # (FIXME) I could add a drop0 when there are several lambda's and matrices are sparse
     return(.Dvec_times_m_Matrix(template, invV.dV_info$rhs_rhs_invV.dVdlam)) # sweep( invV.dV_info$rhs_invV.dVdlam,1L,iloc,`*`))
@@ -245,7 +250,7 @@
     dispcolinfo$loglambda <- "loglambda"
     #dvdloglam <- matrix(0,nrow=NROW(dvdloglamMat), ncol=sum(Xi_cols))
     strucList <- object$strucList
-    cum_n_u_h <- attr(lambda.object$lambda,"cum_n_u_h")
+    cum_n_u_h <- attr(lambda.object$lambda_list,"cum_n_u_h")
     n_u_h <- diff(cum_n_u_h)
     cum_Xi_cols <- cumsum(c(0,Xi_cols))
     ## dwdloglam will include cols of zeros for fixed lambda; matching with reduced logdisp_cov is performed at the end of the function.
@@ -463,7 +468,7 @@
     dispcolinfo$loglambda <- "loglambda"
     #dvdloglam <- matrix(0,nrow=NROW(dvdloglamMat), ncol=sum(Xi_cols))
     strucList <- object$strucList
-    cum_n_u_h <- attr(lambda.object$lambda,"cum_n_u_h")
+    cum_n_u_h <- attr(lambda.object$lambda_list,"cum_n_u_h")
     n_u_h <- diff(cum_n_u_h)
     cum_Xi_cols <- cumsum(c(0,Xi_cols))
     ## dwdloglam will include cols of zeros for fixed lambda; matching with reduced logdisp_cov is performed at the end of the function.

@@ -10,7 +10,7 @@ then estimating fixed effects and dispersion parameters using \code{HLfit}.
 \usage{
 HLCor(formula, data, family = gaussian(), ranPars = NULL, distMatrix,
       uniqueGeo = NULL, adjMatrix, corrMatrix, covStruct=NULL,
-      verbose = c(trace=FALSE),
+      method = "REML", verbose = c(trace=FALSE),
       control.dist = list(), ...)
 }
 %- maybe also 'usage' for other objects documented here.
@@ -43,6 +43,8 @@ HLCor(formula, data, family = gaussian(), ranPars = NULL, distMatrix,
   \item{covStruct}{
     An interface for specifying correlation structures for different types of random effect (\code{corrMatrix} or \code{adjacency}). See \code{\link{covStruct}} for details.
   }
+  \item{method}{Character: the fitting method to be used, such as \code{"ML"}, \code{"REML"} or \code{"PQL/L"}. \code{"REML"} is the default. Other possible values of \code{HLfit}'s \code{method} argument are handled.
+}
   \item{verbose}{
     A vector of booleans. \code{trace} controls various diagnostic (possibly messy) messages about the iterations.
   }
@@ -59,15 +61,14 @@ HLCor(formula, data, family = gaussian(), ranPars = NULL, distMatrix,
 }
 }
 \details{
-  The correlation matrix for random effects can be specified by various combination of formula terms and other arguments  (see Examples):
+ For approximations of likelihood, see \code{\link{method}}.  For the possible structures of random effects, see \code{\link{random-effects}}, but note that \code{HLCor} cannot adjust parameters of correlation models (with the exception of conditional autoregressive ones). Any such parameter must be specified by the \code{ranPars} argument. More generally, the correlation matrix for random effects can be specified by various combinations of formula terms and other arguments  (see Examples):
     \describe{
     \item{Basic Matérn model}{\code{Matern(1|<...>)}, using the spatial coordinates in \code{<...>}. This will construct a correlation matrix according to the Matérn correlation function (see \code{\link{MaternCorr}});}
     \item{Matérn model with given distance matrix}{\code{Matern(1|<...>)} with \code{distMatrix};}
     \item{Given correlation matrix}{\code{corrMatrix(1|<...>)} with \code{corrMatrix} argument. See \code{\link{corrMatrix}} for further details.}
     \item{CAR model with given adjacency matrix}{\code{adjacency(1|<...>)} with \code{adjMatrix}. See \code{\link{adjacency}} for further details;}
-    \item{AR1 model}{\code{AR1(1|<...>)} See \code{\link{AR1}} for forther details.} 
+    \item{AR1 model}{\code{AR1(1|<...>)} See \code{\link{AR1}} for further details.} 
   }
-  All these models except \code{corrMatrix} have additional parameters that must be specified by the \code{ranPars} argument.
 }
 
 \value{
@@ -87,8 +88,8 @@ HLCor(formula, data, family = gaussian(), ranPars = NULL, distMatrix,
 if (spaMM.getOption("example_maxtime")>0.8) {
  data("Loaloa")
  HLCor(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
-              +Matern(1|longitude+latitude),data=Loaloa,
-      family=binomial(),ranPars=list(nu=0.5,rho=1/0.7)) 
+              +Matern(1|longitude+latitude), data=Loaloa,
+       family=binomial(), ranPars=list(nu=0.5,rho=1/0.7)) 
 }
 %- : tested in simulate.HLCor.Rd
 
@@ -96,7 +97,7 @@ if (spaMM.getOption("example_maxtime")>0.8) {
 data("blackcap")
 MLdistMat <- as.matrix(proxy::dist(blackcap[,c("latitude","longitude")]))
 HLCor(migStatus ~ means+ Matern(1|latitude+longitude),data=blackcap,
-      distMatrix=MLdistMat,HLmethod="ML",ranPars=list(nu=0.6285603,rho=0.0544659))
+      distMatrix=MLdistMat, method="ML", ranPars=list(nu=0.6285603,rho=0.0544659))
 
 }
 \keyword{ model }

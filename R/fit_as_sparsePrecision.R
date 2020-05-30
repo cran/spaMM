@@ -429,9 +429,10 @@
                                 for_init_z_args,
                                 #
                                 mget(c("cum_n_u_h","rand.families","stop.on.error"),envir=processed))
-      constant_u_h_v_h_args <- c(mget(c("cum_n_u_h","rand.families"),envir=processed),
-                                 processed$u_h_info, ## elements of u_h_info as elements of constant_u_h_v_h_args  
-                                 list(lcrandfamfam=lcrandfamfam))
+      delayedAssign("constant_u_h_v_h_args", 
+                    c(mget(c("cum_n_u_h","rand.families"),envir=processed),
+                      processed$u_h_info, ## elements of u_h_info as elements of constant_u_h_v_h_args, NOT u_h_info as element of...  
+                      list(lcrandfamfam=lcrandfamfam)))
       updateW_ranefS_constant_arglist <- c(mget(c("cum_n_u_h","rand.families"),envir=processed),list(lambda=lambda_est))
     } 
   } 

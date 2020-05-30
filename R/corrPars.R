@@ -131,3 +131,21 @@ remove_from_parlist <- function(parlist, removand=NULL, rm_names=names(unlist(re
   structure(.remove_from_cP(parlist,u_names=rm_names),
             type=type )
 }
+
+# not yet used in spaMM
+#extract a sublist from a (structured) list x according to a skeleton
+.sublist <- function (x, skeleton) { 
+  xnames <- names(x)
+  sknames <- names(skeleton)
+  sknames <- sknames[nzchar(sknames)]
+  for (v in sknames) {
+    if (v %in% xnames) {
+      if (( is.list(x[[v]]) || inherits(x[[v]],"R6")) && is.list(skeleton[[v]])) {
+        skeleton[[v]] <- .sublist(x[[v]], skeleton[[v]])
+      } else if ( ! is.null(nam <- names(skeleton[[v]]))) {
+        skeleton[[v]][nam] <- x[[v]]
+      } else skeleton[[v]] <- x[[v]]
+    } else skeleton[[v]] <- x[[v]]
+  }
+  skeleton
+}

@@ -8,7 +8,11 @@ Matern correlation function and Matern formula term.
 }
 \description{
  The Matérn correlation function describes realizations of Gaussian spatial processes with different smoothnesses 
- (i.e. either smooth or rugged surfaces). It also includes a scaling and a 'nugget' parameter. It can be invoked in two ways. First, the \code{MaternCorr} function evaluates these correlations, using distances as input. Second, a term of the form \code{Matern(1|}\emph{<...>}\code{)} in a \code{formula} specifies a random effect with Matérn correlation function, using coordinates found in a data frame as input. In the latter case, the correlations between realizations of the random effect for any two observations in the data will be the value of the Matérn function at the scaled Euclidean distance between coordinates specified in \emph{<...>}, using \dQuote{+} as separator (e.g., \code{Matern(1|latitude + longitude)}). 
+ (i.e. either smooth or rugged surfaces, controlled by the \eqn{\nu} parameter). It also includes a \eqn{\rho} scaling parameter and an optional 'nugget' parameter. A random effect specified in a model formula as \code{Matern(1|}\emph{<...>}\code{)} has pairwise correlations given by the Matérn function at the scaled Euclidean distance between coordinates specified in \emph{<...>}, using \dQuote{+} as separator (e.g., \code{Matern(1|latitude + longitude)}). The Matern family can be used in Euclidean spaces of any dimension; and also for correlations on a sphere (with maximum smoothness \code{nu=0.5}). 
+ 
+By default, \code{fitme} and \code{corrHLfit} performs optimization over the \eqn{\rho} and \eqn{\nu} parameters. It is possible to estimate different scaling parameters for the different Euclidean dimensions: see examples in \code{\link{make_scaled_dist}}.
+ 
+The \code{MaternCorr} function may be used to vizualise these correlations, using distances as input. 
 }
 \usage{
 \method{MaternCorr}{default}(d, rho = 1, smoothness, nu = smoothness, Nugget = NULL)
@@ -34,6 +38,9 @@ The correlation at distance \eqn{d>0} is
                          (1-Nugget)  2^(1-\nu) (\rho d)^\nu  K_\nu(\rho d) / \Gamma(\nu)} 
 where
 \eqn{K_\nu} is the \code{\link{besselK}} function of order \eqn{\nu}.
+
+By default the Nugget is set to 0. See one of the examples on data set \code{\link{Loaloa}} 
+for a fit including the estimation of the Nugget.
 }
 \value{Scalar/vector/matrix depending on input.}
 \references{
@@ -41,13 +48,10 @@ Stein, M.L. (1999) Statistical Interpolation of Spatial Data: Some Theory for Kr
 }
 \seealso{
 See \code{\link{corMatern}} for an implementation of this correlation function as a \code{corSpatial} object for use with \code{lme} or \code{glmmPQL}.
-
-By default the Nugget is set to 0. See one of the examples on data set \code{\link{Loaloa}} 
-for a fit including the estimation of the Nugget.
 }
 \examples{
-## See examples in help("spaMM"), help("HLCor"), help("Loaloa"), etc.
-## The Matern family can be used in Euclidean spaces of any dimension:
+## See examples in help("HLCor"), help("Loaloa"),  help("make_scaled_dist"), etc.
+## Matern correlations in 4-dimensional space:
 set.seed(123)
 randpts <- matrix(rnorm(20),nrow=5)
 distMatrix <- as.matrix(proxy::dist(randpts))

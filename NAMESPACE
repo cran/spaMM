@@ -16,6 +16,7 @@ importFrom("stats", "as.formula", "coefficients", "dgamma", "dnorm", "family", "
            "rbeta", "rbinom", "rgamma", "rnorm", "rpois", "runif", "terms", "extractAIC", "step",
            "terms.formula", "var", "sd", "weights", "glm.fit",".lm.fit", "lm.wfit", "qbeta",
            "nobs", ## bc spaMM defines an HLfit method, although I do not currently use it
+           "hatvalues", ## bc spaMM defines an HLfit method, 
            "simulate", "anova", "confint", "fitted", "predict", "update", "logLik", "vcov", "coef",
            "gaussian", "binomial", "dpois", "Gamma", "resid", "uniroot", "deviance", "dbinom", "plogis", 
            "as.dist", "AIC", "qnbinom", "qpois", "rnbinom", "integrate", "poisson",".getXlevels", "na.omit",
@@ -34,7 +35,7 @@ importFrom("pbapply", "pbapply", "pboptions")
 importFrom("crayon","green","blue","cyan","yellow","red","underline")
 importFrom("minqa","bobyqa")
 importFrom("ROI", "L_constraint", "OP", "ROI_solve", "V_bound", "bounds<-", "constraints<-", "leq", "solution")
-import("ROI.plugin.glpk")
+importFrom("boot", "boot.ci")
 export(coef) ## from stats namespace
 # From nlme namespace:
 export("fixef", "ranef", "corMatrix", "Initialize", "Variogram", "coef<-", "corFactor", "getCovariate", "logDet", "recalc", "VarCorr") 
@@ -70,6 +71,7 @@ S3method(fixef, HLfit)
 S3method(ranef, HLfit)
 S3method(fitted, HLfitlist)
 S3method(residuals, HLfit)
+S3method(hatvalues, HLfit)
 S3method(plot, HLfit)
 S3method(predict, HLfit)
 S3method(simulate, HLfitlist)

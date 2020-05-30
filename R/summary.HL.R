@@ -189,7 +189,7 @@ summary.HLfitlist <- function(object, ...) {
   nicertypes[ ! (posf | posfh | posoh )] <- ""
   nicertypes <- rep(nicertypes, unlist(lapply(row_map[displaypos], length)))
   if ( ! is.null(displayrows)) {
-    print_lambda <- unlist(lambda.object$lambda)
+    print_lambda <- unlist(lambda.object$lambda_list)
     cat(paste("  ",
               names(displayrows)," : ", 
               signif(print_lambda[displayrows],4),
@@ -211,12 +211,13 @@ summary.HLfitlist <- function(object, ...) {
   lambda_table <- data.frame(Group=repGroupNames,Term=unlist(namesTerms))
   in_table <- rep(FALSE,nrand)
   in_pointLambda <- rep(TRUE,nrand)
+  maxnrow <- cum_nrows[nrand+1] ## maxnrow should = nrow(lambda_table)
+  summ_variances <- data.frame(matrix(NA,ncol=1L,nrow=maxnrow))
+  colnames(summ_variances) <- "Var."
   cov.mats <- .get_compact_cov_mats(object$strucList)
   if ( length(cov.mats)) { ## fixme ? rename cov.mats to refer to ranCoefs ?
-    maxnrow <- cum_nrows[nrand+1] ## maxnrow should = nrow(lambda_table)
     #.varcorr <- function(nrows, maxnrow, cov.mats, in_table, in_pointLambda, cum_nrows) {
     summ_corr_cols <- data.frame(matrix(NA,ncol=max(nrows-1L),nrow=maxnrow))
-    summ_variances <- data.frame(matrix(NA,ncol=1L,nrow=maxnrow))
     for (mt in seq_len(length(cov.mats))) { 
       m <- cov.mats[[mt]]
       if ( ! is.null(m)) {
@@ -233,11 +234,13 @@ summary.HLfitlist <- function(object, ...) {
       }
     }
     colnames(summ_corr_cols) <- rep("Corr.",ncol(summ_corr_cols))
-    colnames(summ_variances) <- "Var."
     # }
     random_slope_pos <- which( ! unlist(lapply(cov.mats,is.null))) ## fixme ? equivalentto isRandomSlope that might be available
     random_slope_rows <- unlist(row_map[ random_slope_pos ])
-  } else random_slope_rows <- random_slope_pos <- integer(0)
+  } else {
+    random_slope_rows <- random_slope_pos <- integer(0)
+    summ_corr_cols <- NULL
+  }
   if ( ! is.null(linklam_coeff_list)) {
     in_table[which( ! unlist(lapply(linklam_coeff_list,is.null)))] <- TRUE
     lambda_table <- cbind(lambda_table, Estimate=unlist(linklam_coeff_list), 
@@ -251,7 +254,8 @@ summary.HLfitlist <- function(object, ...) {
       in_table[it] <- TRUE 
     } 
   }
-  if ( length(cov.mats)) lambda_table <- cbind(lambda_table, summ_variances, summ_corr_cols)
+  lambda_table <- cbind(lambda_table, summ_variances)
+  if ( length(cov.mats)) lambda_table <- cbind(lambda_table, summ_corr_cols)
   lambda_table <- structure(lambda_table, 
                             class=c("lambda_table",class(lambda_table)), info_rows=info_rows,
                             random_slope_rows=random_slope_rows,random_slope_pos=random_slope_pos,
@@ -327,17 +331,28 @@ summary.HLfitlist <- function(object, ...) {
   invisible(lambda_table) ## not currently correct as it is truncated
 }
 
-# Nice names for the raw lambda vector in the HLfit object:
-.rename_res_lambda <- function (object) {
-  lambda.object <- object$lambda.object
-  namesTerms <- lambda.object$print_namesTerms ## list of vectors of variable length
-  linklam_coeff_list <- lambda.object$coefficients_lambdaS 
-  lambda_table <- .lambda_table_fn(namesTerms, object, lambda.object,linklam_coeff_list) ## uses object$strucList
-  attribs <- attributes(lambda_table)
-  displayrows <- unlist(attribs$row_map)
-  lambda <- unlist(lambda.object$lambda)
-  structure(lambda, names=names(displayrows))
-}
+# # Nice names for the raw lambda vector in the HLfit object:
+# .rename_res_lambda <- function (object) {
+#   lambda.object <- object$lambda.object
+#   namesTerms <- lambda.object$print_namesTerms ## list of vectors of variable length
+#   linklam_coeff_list <- lambda.object$coefficients_lambdaS 
+#   lambda_table <- .lambda_table_fn(namesTerms, object, lambda.object,linklam_coeff_list) ## uses object$strucList
+#   attribs <- attributes(lambda_table)
+#   displayrows <- unlist(attribs$row_map)
+#   lambda <- unlist(lambda.object$lambda_list)
+#   structure(lambda, names=names(displayrows))
+# }
+# # => this function is not used. Later I wrote:
+# .print_lambda <- function(lambda_list) { # to have the right names for a 'lambda' vector by unlisting à 'lambda_list'.
+#   for (rd in seq_along(lambda_list)) {
+#     if (length(lambda_list[[rd]])==1L && names(lambda_list[[rd]])=="(Intercept)") names(lambda_list[[rd]]) <- NULL
+#     # in which case unlisting will paste the group label (say "Subject2") and NULL => "Subject2. 
+#     # In all other cases unlisting lambda_list will paste the unique group label 
+#     #   (say "Subject1") and the coefficient names (say "(Intercept)" and "age") => "Subject1.(Intercept)" and "Subject1.age"
+#   }
+#   unlist(lambda_list)
+# }
+
 
 
 

@@ -169,6 +169,7 @@
                  data,
                  resp_testfn=NULL,
                  #                 .condition = NULL, ## only an argument of the internal function .LRT() so not visible at user level.
+                 seed=NULL,
                  nb_cores=NULL, 
                  debug.=FALSE, 
                  #type="marginal", # explicit in call to spaMM_boot() below.
@@ -272,7 +273,8 @@
                              nb_cores = nb_cores, #in the dots
                              resp_testfn = resp_testfn, ## for simulate
                              debug.=debug., #in the dots
-                             type="marginal" # mandatory arg of spaMM_boot()
+                             type="marginal", # mandatory arg of spaMM_boot()
+                             seed=seed
       )
       resu <- .add_boot_results(bootblob, resu, LRTori, df, test_obj)
     } ## end bootstrap

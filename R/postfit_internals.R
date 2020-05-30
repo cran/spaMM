@@ -9,13 +9,14 @@
     foreach_args <- list(it = seq_len(nslices), .combine = "sum")
     foreach_blob <- do.call(foreach::foreach,foreach_args)
     abyss <- foreach::`%do%`(foreach_blob, Sys.setenv(LANG = "en"))
-    pb <- txtProgressBar(max = nslices, style = 3, char="s")
+    progrbar_setup <- .set_progrbar(max = nslices, style = 3, char="s")
     pd <- foreach::`%do%`(foreach_blob, {
       slice <- (slices[it]+1L):slices[it+1L]
       tmp <- t(.crossprod(tcrossfac_v_beta_cov, Md2clikdvb2[,slice]))
-      setTxtProgressBar(pb, it)
+      progrbar_setup$progress(it)
       return(sum(tcrossfac_v_beta_cov[slice,] * tmp)) 
     })
+    close(progrbar_setup$pb)
     # We could parallelize using %dopar% (twice) but is that worth the overhead? 
   } else {
     # logic of following code is
@@ -194,15 +195,16 @@
 }
 
 .get_logdispObject <- function(object) { ## 
-  if (is.null(object$envir$logdispObject) && object$models[["eta"]]=="etaHGLM" ) { 
-    dvdloglamMat <- object$envir$dvdloglamMat
+  envir <- object$envir
+  if (is.null(envir$logdispObject) && object$models[["eta"]]=="etaHGLM" ) { 
+    dvdloglamMat <- envir$dvdloglamMat
     dvdloglamMat_needed <- ( is.null(dvdloglamMat) && 
                                # (comment this => allows random slope)  all(unlist(attr(object$ZAlist,"namesTerms"))=="(Intercept)") && ## (1|.) or CAR or Matern
                                any( ! object$lambda.object$type %in% c("fixed","fix_ranCoefs","fix_hyper")) ) ## some lambda params were estimated
-    dvdlogphiMat <- object$envir$dvdlogphiMat
+    dvdlogphiMat <- envir$dvdlogphiMat
     dvdlogphiMat_needed <- (is.null(dvdlogphiMat) && 
                               object$models[["phi"]]=="phiScal") ## cf comment in calc_logdisp_cov
-    dvdlogphiMat_needed <- dvdlogphiMat_needed || identical(object$envir$forcePhiComponent,TRUE) ## hack for code testing !
+    dvdlogphiMat_needed <- dvdlogphiMat_needed || identical(envir$forcePhiComponent,TRUE) ## hack for code testing !
     if (dvdloglamMat_needed || dvdlogphiMat_needed) {
       ZAL <- get_ZALMatrix(object)     
       d2hdv2_info <- .calc_d2hdv2_info(object, ZAL) # F I X M E a gentle message for long computations ? 
@@ -219,14 +221,17 @@
     }
     if (dvdlogphiMat_needed) {
       muetablob <- object$muetablob
-      if ( ! is.null(object$envir$G_CHMfactor)) { # possibly generalisable code not using math-dense ZAL
-        # rhs <- .Matrix_times_Dvec(t(object$envir$ZAfix), - dh0deta) # efficient
-        # rhs <- solve(object$envir$G_CHMfactor,rhs,system="A") # efficient
+      if ( ! is.null(envir$G_CHMfactor)) { # possibly generalisable code not using math-dense ZAL
+        # rhs <- .Matrix_times_Dvec(t(envir$sXaug$AUGI0_ZX$ZAfix), - dh0deta) # efficient
+        # rhs <- solve(envir$G_CHMfactor,rhs,system="A") # efficient
         unW_dh0deta <- (object$y-muetablob$mu)/muetablob$dmudeta ## (soit Bin -> phi fixe=1, soit BinomialDen=1)
-        if (is.null(object$envir$invG_ZtW)) object$envir$invG_ZtW <- solve(object$envir$G_CHMfactor, 
-                                                                           object$envir$ZtW, system="A") # hardly avoidable has there is no comparable operation elsewhere (check "A")
-        rhs <- .Matrix_times_Dvec(object$envir$invG_ZtW, -unW_dh0deta) # efficient
-        dvdlogphiMat <- .crossprod(object$envir$chol_Q, rhs) # _FIXME_ bottleneck in large spprec but .crossprodCpp not useful here 
+        if (is.null(envir$invG_ZtW)) {
+          if (is.null(envir$ZtW)) envir$ZtW <- t(.Dvec_times_m_Matrix(attr(envir$sXaug,"w.resid"), envir$sXaug$AUGI0_ZX$ZAfix)) 
+          envir$invG_ZtW <- solve(envir$G_CHMfactor, 
+                                  envir$ZtW, system="A") # hardly avoidable has there is no comparable operation elsewhere (check "A")
+        }
+        rhs <- .Matrix_times_Dvec(envir$invG_ZtW, -unW_dh0deta) # efficient
+        dvdlogphiMat <- .crossprod(envir$chol_Q, rhs) # _FIXME_ bottleneck in large spprec but .crossprodCpp not useful here 
       } else {
         dh0deta <- ( object$w.resid *(object$y-muetablob$mu)/muetablob$dmudeta ) ## (soit Bin -> phi fixe=1, soit BinomialDen=1)
         dvdlogphiMat  <- .calc_dvdlogphiMat_new(dh0deta=dh0deta, ZAL=ZAL,
@@ -236,13 +241,13 @@
     }
     invV_factors <- .calc_invV_factors(object) ## of invV as w.resid- [n_x_r %*% r_x_n]
     if ( (dvdloglamMat_needed || dvdlogphiMat_needed)  && inherits(ZAL,"ZAXlist")) { # I cannot test ZAL directly bc it has not necessarily been computed
-      object$envir$logdispObject <- .calc_logdisp_cov_ZAX(object, dvdloglamMat=dvdloglamMat, ## square matrix, by  the formulation of the algo
+      envir$logdispObject <- .calc_logdisp_cov_ZAX(object, dvdloglamMat=dvdloglamMat, ## square matrix, by  the formulation of the algo
                                                           dvdlogphiMat=dvdlogphiMat, invV_factors=invV_factors)
     } else
-      object$envir$logdispObject <- .calc_logdisp_cov(object, dvdloglamMat=dvdloglamMat, ## square matrix, by  the formulation of the algo 
+      envir$logdispObject <- .calc_logdisp_cov(object, dvdloglamMat=dvdloglamMat, ## square matrix, by  the formulation of the algo 
                                                       dvdlogphiMat=dvdlogphiMat, invV_factors=invV_factors)
   } 
-  return(object$envir$logdispObject)
+  return(envir$logdispObject)
 } # if dvdloglamMat or dvdlogphiMat were computed ex-tempo, they are NOT saved.
 
 ## This use the representation of invV as w.resid- [n_x_r %*% r_x_n = t(Ztw) %*% invG.ZtW]  (nXr  %*% rxn)
@@ -251,10 +256,13 @@
   ## Store Compute inv( G=[{precmat=inv(L invWranef Lt)} +ZtWZ] ) as two matrix nXr and rXn rather than their nXn product
   # F I X M E yet there will be cases where n<r and then it's better to store the n x n product !  
   if ("AUGI0_ZX_sparsePrecision" %in% object$MME_method) {
+    envir <- object$envir
     ## code clearly related to .Sigsolve_sparsePrecision() algorithm:
-    if (is.null(object$envir$invG_ZtW)) object$envir$invG_ZtW <- solve(object$envir$G_CHMfactor, object$envir$ZtW, system="A") # hardly avoidable has there is no comparable operation elsewhere (check "A")
-    RES <- list(n_x_r=t(object$envir$ZtW),
-                r_x_n=as.matrix(object$envir$invG_ZtW)) 
+    if (is.null(envir$invG_ZtW)) {
+      if (is.null(envir$ZtW)) envir$ZtW <- t(.Dvec_times_m_Matrix(attr(envir$sXaug,"w.resid"), envir$sXaug$AUGI0_ZX$ZAfix))
+      object$envir$invG_ZtW <- solve(envir$G_CHMfactor, envir$ZtW, system="A") # hardly avoidable has there is no comparable operation elsewhere (check "A")
+    }    
+    RES <- list(n_x_r=t(envir$ZtW), r_x_n=as.matrix(envir$invG_ZtW)) # requires both being kept in the envir 
     # if as(,"dgeMatrix"), .calc_denseness() -> drop0() wastes time.
     ZAfix <- .get_ZAfix(object, as_matrix=FALSE)
     RES$r_x_r <- object$envir$invG_ZtW %*% ZAfix
@@ -272,7 +280,7 @@
       } ## ELSE
     } ## ELSE
     #
-    invL <- .get_invL_HLfit(object) # equivalent to t(chol_Q)
+    invL <- .get_invL_HLfit(object) # t(tcrossfac(precision_matrix))
     wrZ <- .Dvec_times_m_Matrix(object$w.resid, ZAfix) # suppressMessages(sweep(t(ZA), 2L, w.resid,`*`)) 
     if (TRUE) { 
       ZtwrZ <- .crossprod(ZAfix, wrZ, as_sym=TRUE) ## seems more precise and we must compute wrZ anyway
@@ -332,11 +340,12 @@
 
 
 
-.calc_beta_cov_info_from_sXaug <- function(BLOB, sXaug, B) {
+.calc_beta_cov_info_from_sXaug <- function(BLOB, sXaug) { 
   tcrossfac_v_beta_cov <-  solve(BLOB$R_scaled) # solve(as(BLOB$R_scaled,"dtCMatrix"))
   pforpv <- attr(sXaug,"pforpv")
   X_scaling <- sqrt(rep(attr(sXaug,"H_global_scale"),pforpv))
-  if ( ! is.null(B)) X_scaling <- X_scaling/B
+  X_scale <- attr(sXaug,"scaled:scale") # this is (! spprec) code and the X.pv attribute has been copied here
+  if ( ! is.null(X_scale)) X_scaling <- X_scaling/X_scale
   diagscalings <- c(1/sqrt(attr(sXaug,"w.ranef")), X_scaling)
   if ( ! is.null(BLOB$sortPerm)) { # depending on method used for QR facto
     tPmat <- sparseMatrix(seq_along(BLOB$sortPerm), BLOB$sortPerm, x=1)
@@ -367,8 +376,8 @@
     return(.calc_beta_cov_info_spprec(X.pv=res$X.pv, envir=res$envir, w.resid=res$w.resid)) 
   } else if (! is.null(res$envir$sXaug)) { # excludes SEM *and* fixed-effect models 
     if (prod(dim(res$envir$sXaug))>1e7) message("[one-time computation of covariance matrix, which may be slow]")
-    res$envir$beta_cov_info <- get_from_MME(res$envir$sXaug,which="beta_cov_info_from_sXaug", 
-                                  B=attr(res$envir$sXaug,"scaled:scale")) 
+    if (res$spaMM.version<"2.7.34") attr(res$envir$sXaug,"scaled:scale") <- attr(res$X.pv,"scaled:scale")
+    res$envir$beta_cov_info <- get_from_MME(res$envir$sXaug,which="beta_cov_info_from_sXaug") 
   } else { ## older code, generic for non-spprec.
     # What this [block -> .calc_beta_cov_info_others()] provides is a beta_cov + full beta_v_cov
     if (is.matrix(beta_cov_info <- res$envir$beta_cov_info) || ## old format (old fit object), should be a list now

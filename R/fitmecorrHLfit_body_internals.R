@@ -371,10 +371,12 @@
 .init_precision_info <- function(processed, LMatrices=NULL) {
   envir <- processed$AUGI0_ZX$envir
   precisionFactorList <- envir$precisionFactorList
+  latent_d_list <- envir$latent_d_list
   # I N I T
   if (is.null(precisionFactorList)) {
     nranef <- length(envir$finertypes)
-    precisionFactorList <- vector("list",nranef) ## will contain diagonal matrices/info for non-trivial (diagonal) precision matrices 
+    precisionFactorList <- latent_d_list <- vector("list",nranef) ## will contain diagonal matrices/info for non-trivial (diagonal) precision matrices
+    cum_n_u_h <- processed$cum_n_u_h
     for (it in seq_len(nranef)) {
       if ( envir$finertypes[it] %in% c("adjacency","corrMatrix","AR1", "IMRF") ) {
         ## terms of these types must be dealt with by ad hoc code for each type elsewhere
@@ -387,6 +389,8 @@
         ## leave precisionFactorList[[it]] NULL
       } else stop(paste("sparse-precision methods were requested, but",envir$finertypes[it],"terms are not yet handled by sparse precision code."))
     }
+    diff_n_u_h <- diff(cum_n_u_h)
+    for (it in seq_along(diff_n_u_h)) latent_d_list[[it]] <- rep(1,diff_n_u_h[it])
   }
   # F I L L
   if ( ! is.null(LMatrices)) {
@@ -401,6 +405,8 @@
       precisionFactorList[[rt]] <- list(chol_Q=chol_Q,
                                         precmat=.makelong(latentL_blob$compactprecmat,longsize=ncol((LMatrices[[rt]])), 
                                                           template=processed$ranCoefs_blob$longLv_templates[[rt]] ))
+      d_rt <- latentL_blob[["d"]]
+      latent_d_list[[rt]] <- d_rt[gl(length(d_rt), length(latent_d_list[[rt]])/length(d_rt))]
     }
     for (rt in which(is_given_by=="inner_ranCoefs")) {
       # : need to initialize because spprec IRLS requires .init_precision_info to have filled all matrices
@@ -410,6 +416,7 @@
     }
   }
   envir$precisionFactorList <- precisionFactorList
+  envir$latent_d_list <- latent_d_list
   ## environment modified, no return value
 }
 

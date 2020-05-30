@@ -2,7 +2,7 @@
 \alias{get_ranPars}
 \alias{remove_from_parlist}
 \title{
-Operations on lists of parameters
+Operations on lists of parameters. A distinct documentation exists for \code{\link{get_inits_from_fit}} which is most useful to extract parameters from a fit in a form suitable to initialize another fit. \code{\link{VarCorr}} is yet another extractor for dispersion parameters.
 }
 \description{
 \code{get_ranPars} returns various subsets of random-effect parameters.
@@ -32,12 +32,11 @@ remove_from_parlist(parlist, removand=NULL, rm_names=names(unlist(removand)))
 The bias estimated by bootstrap is one of two terms included in the \code{get_cPredVar} computation, which together account for uncertainty in fixed effects and dispersion parameters. The computation does not account for uncertainty in correlation parameters \dQuote{outer-optimized} by \code{fitme} or \code{corrHLfit}. The bias computation would not be sufficient to account for the latter uncertainty, and thus the correlation parameters are fixed when the model is refitted on the bootstrap replicates. To account for uncertainty in correlation parameters, one should rather perform a parametric boostrap of the full model (typically using \code{spaMM_boot(., type="residual")}), which may take much more time.
 }
 \seealso{
-\code{\link{get_inits_from_fit}}
+\code{\link{get_inits_from_fit}} and \code{\link{VarCorr}}.
 }
 \examples{
 data("wafers")
-m1 <- HLfit(y ~X1+X2+(1|batch),
-          resid.model = ~ 1 ,data=wafers,HLmethod="ML")
+m1 <- HLfit(y ~X1+X2+(1|batch), resid.model = ~ 1, data=wafers, method="ML")
 get_ranPars(m1,which="corrPars") # NULL since no correlated random effect     
 
 parlist1 <- list(lambda=1,phi=2,corrPars=list("1"=list(rho=3,nu=4),"2"=list(rho=5)))

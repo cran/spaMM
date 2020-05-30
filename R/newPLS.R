@@ -40,8 +40,8 @@ get_from_MME.sparseMatrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
   } else {
     ## using match.call() is terribly slow! => passing ... without match.call
   #  warning("method without ad hoc code in get_from.sparseMatrix")
-    do.call(what=method,
-            args=c(list(sXaug=sXaug,which=which,szAug=szAug,B=B),list(...)))
+    locfn <- get(method,asNamespace("spaMM"))
+    locfn(sXaug=sXaug,which=which,szAug=szAug,B=B,...)
   }
   ## direct calls of the function may be faster but require ad hoc programming...
 }
@@ -245,8 +245,8 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
   } else if (is.environment(d2hdv2_info)) {
     # dvdloglamMat <- solve(d2hdv2_info, diag( neg.d2f_dv_dloglam ))  # rXr !       
     rhs <- .Matrix_times_Dvec(d2hdv2_info$chol_Q, neg.d2f_dv_dloglam )
-    rhs <- solve(d2hdv2_info$G_CHMfactor,rhs)
-    dvdloglamMat <- - .crossprod(d2hdv2_info$chol_Q,rhs) # don't forget '-'
+    rhs <- solve(d2hdv2_info$G_CHMfactor, rhs)
+    dvdloglamMat <- - .crossprod(d2hdv2_info$chol_Q, rhs) # don't forget '-'
   } else { ## then d2hdv2_info is ginv(d2hdv2) or some other form of inverse
     dvdloglamMat <- .m_Matrix_times_Dvec(as(d2hdv2_info, "dgCMatrix"), # otherwise Matrix_times_Dvec() with dsC defaults detect a problem
                                          neg.d2f_dv_dloglam) ## sweep(d2hdv2_info,MARGIN=2L,neg.d2f_dv_dloglam,`*`) ## ginv(d2hdv2) %*% diag( as.vector(neg.d2f_dv_dloglam))      

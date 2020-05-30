@@ -39,57 +39,87 @@
 ## see also http://www.ats.ucla.edu/stat/mult_pkg/faq/general/complete_separation_logit_models.htm
 ## there is a Firth method for dealing with this (and a package, brglm... brglm(locform,offset=Offset) ).
 .test_and_find_sep <- function(x, y, solver, tol = 1e-3, verbose=TRUE, ...) {
-  n <- nrow(x)
-  p <- ncol(x)
-  
-  y.bar <- -sign(y - 0.5)
-  x.bar <- y.bar * x
-  
-  op <- OP(colSums(x.bar))
-  constraints(op) <- L_constraint(L = x.bar, dir = leq(n), rhs = double(n))
-  bounds(op) <- V_bound(lb = rep.int(-Inf, p), ub = rep.int(Inf, p))
-  
-  time1 <- Sys.time()
-  s <- ROI_solve(op, solver = solver, ...)
-  sep_time <- .timerraw(time1)
-  if (sep_time>1) message(paste0("Re-checking separation for binomial-response model took ",sep_time," s."))
-  separation <- as.logical(solution(s, "status_code"))
-  if (separation) { # some problem
-    if (solution(s, "msg")$status==6) { # unbounded: separation
-      bounds(op) <- V_bound(lb = rep.int(-1, p), ub = rep.int(1, p))
-      
-      s <- ROI_solve(op, solver = solver, ...)
-      beta <- solution(s, force = TRUE)
-      separating.terms <- dimnames(x)[[2]][abs(beta) > tol]
-      if(length(separating.terms)) {
-        mess <- paste("The following terms are causing separation among the sample points:",
-                      paste(separating.terms, collapse = ", "))
-        if (verbose) message(paste(mess,
-                                   "\n\tsome estimates of fixed-effect coefficients could be practically infinite,",
-                                   "\n\tcausing numerical issues in various functions."))
-        warning(mess)
-      } 
-    } else { # unidentified problem
-      warning(paste("ROI solver returned",s$status$msg$message,"during check for separation."),immediate. = TRUE)
-      separation <- FALSE
+  if (solver=="svm") {
+    varcols <- logical(ncol(x))
+    for (it in seq_len(ncol(x))) varcols[it] <- (diff(range(x[,it])) > .Machine$double.eps ^ 0.5)
+    if (any(varcols)) {
+      time1 <- Sys.time()
+      if (inherits(x,"sparseMatrix")) x <- as.matrix(x) ## bc next line ->  model.frame.default...
+      arglist <- list(formula= y~x[,varcols,drop=FALSE],type='C-classification', kernel='linear')
+      svmfit <- .do_call_wrap("svm",arglist=arglist)
+      sep_time <- .timerraw(time1)
+      if (sep_time>1) message(paste0("Checking separation for binomial-response model took ",sep_time," s."))
+      if ( ! is.null(svmfit)) {
+        zut <- cbind(y=y,fv=svmfit$fitted)
+        #return( ! any(svmfit$fitted!=y)) ## wrong ,this tested for perfect prediction of all response levels
+        ## Better but (still) fails to detect quasi-separation:
+        separation <- (any(by(zut,zut[,1],function(v) length(unique(v[,2])))==1L)) ## this tests for perfect prediction of some response level
+      } else separation <- FALSE
+    } else separation <- FALSE
+  } else { # ROI-based methods
+    n <- nrow(x)
+    p <- ncol(x)
+    
+    y.bar <- -sign(y - 0.5)
+    x.bar <- y.bar * x
+    
+    op <- OP(colSums(x.bar))
+    constraints(op) <- L_constraint(L = x.bar, dir = leq(n), rhs = double(n))
+    bounds(op) <- V_bound(lb = rep.int(-Inf, p), ub = rep.int(Inf, p))
+    
+    time1 <- Sys.time()
+    s <- ROI_solve(op, solver = solver, ...)
+    sep_time <- .timerraw(time1)
+    if (sep_time>1) message(paste0("checking separation for binomial-response model took ",sep_time," s."))
+    separation <- as.logical(solution(s, "status_code"))
+    if (separation) { # some problem
+      if (solution(s, "msg")$status==6) { # unbounded: separation
+        bounds(op) <- V_bound(lb = rep.int(-1, p), ub = rep.int(1, p))
+        
+        s <- ROI_solve(op, solver = solver, ...)
+        beta <- solution(s, force = TRUE)
+        separating.terms <- dimnames(x)[[2]][abs(beta) > tol]
+        if(length(separating.terms)) {
+          mess <- paste("The following terms are causing separation among the sample points:",
+                        paste(separating.terms, collapse = ", "))
+          if (verbose) message(paste(mess,
+                                     "\n\tsome estimates of fixed-effect coefficients could be practically infinite,",
+                                     "\n\tcausing numerical issues in various functions."))
+          warning(mess)
+        } 
+      } else { # unidentified problem
+        warning(paste("ROI solver returned",s$status$msg$message,"during check for separation."),immediate. = TRUE)
+        separation <- FALSE
+      }
     }
   }
   return(separation)
 }
 
-is_separated <- local(
-  {
+is_separated <- local({
     warned_is <- FALSE
     function(x,y, verbose=TRUE, solver=spaMM.getOption("sep_solver")) {
-      pb_size <- (1e-5*prod(dim(x)))
+      if (solver!="svm") {
+        if (requireNamespace("ROI.plugin.glpk",quietly=TRUE)) {
+          pb_size <- (1e-5*prod(dim(x)))
+        } else {
+          if ( ! warned_is) {
+            message(paste0("If the 'ROI.plugin.glpk' package were installed,\n",
+                           "spaMM could properly check (quasi-)separation in binary regression problem.\n",
+                           "See help('libraries') if you have troubles installing 'ROI.plugin.glpk'."))
+            warned_is <<- TRUE
+          }
+          pb_size <- length(y)/100
+          solver <- "svm"
+        }
+      }
       if (pb_size> spaMM.getOption("separation_max")) {
         message(paste("Increase spaMM.options(separation_max=<.>) to at least", ceiling(pb_size),
                       "if you want to check separation (see 'help(separation)')."))
         return(FALSE)
       } else separation <- .test_and_find_sep(x, y, verbose=verbose, solver=solver)
     }
-  }
-)
+})
 
 is_separated.formula <- function(formula, ..., separation_max=spaMM.getOption("separation_max"),
                                  solver=spaMM.getOption("sep_solver")) { 
@@ -101,24 +131,14 @@ is_separated.formula <- function(formula, ..., separation_max=spaMM.getOption("s
   argcheck <- setdiff(dotnames,HLnames)
   if (length(argcheck)) warning(paste("suspect argument(s) ",paste(argcheck, collapse=",")," in is_separated() call."))
   # 
-  FHF <- formals(HLfit) ## makes sure about default values 
-  names_FHF <- names(FHF)
-  names_nondefault  <- intersect(names(mc),names_FHF) ## mc including dotlist
-  FHF[names_nondefault] <- mc[names_nondefault] ##  full HLfit args
-  preprocess.formal.args <- FHF[which(names_FHF %in% names(formals(.preprocess)))] 
-  preprocess.formal.args$For <- "is_separated"
-  preprocess.formal.args$family <- binomial() 
-  preprocess.formal.args$rand.families <- FHF$rand.family ## because preprocess expects $rand.families 
-  preprocess.formal.args$predictor <- FHF$formula ## because preprocess stll expects $predictor 
-  preprocess.formal.args$ranFix <- mc$fixed ## because preprocess expects ranFix # note that etaFix is handled in the FHF's
-  preprocess.formal.args$adjMatrix <- mc$adjMatrix ## because adjMatrix not in formals(HLfit)
-  preprocess.formal.args$corrMatrix <- mc$corrMatrix ## because corrMatrix not in formals(HLfit)    #
-  preprocess.formal.args$covStruct <- mc$covStruct ## because covStruct not in formals(HLfit)    #
-  preprocess.formal.args$method <- mc$method ## forces evaluation
-  preprocess.formal.args$init <- mc$init ## because init not in formals(HLfit)    #
+  preprocess_args <- .get_inits_preprocess_args(For="is_separated") 
+  # the doc says about '...' "possibly other arguments of a fitme call" but many will be ignored and the following code cannot be as in fitme()
+  names_nondefault  <- intersect(names(mc),names(preprocess_args)) ## mc including dotlist
+  preprocess_args[names_nondefault] <- mc[names_nondefault] # Notably handling etaFix, one of the few relevant arguments for is_separated()  
+  preprocess_args$predictor <- mc$formula ## because preprocess stll expects $predictor 
   #
   oldopt <- spaMM.options(separation_max=separation_max, sep_solver=solver)
-  isSeparated <- do.call(.preprocess,preprocess.formal.args,envir=parent.frame(1L))
+  isSeparated <- do.call(.preprocess, preprocess_args, envir=parent.frame(1L))
   spaMM.options(oldopt)
   return(isSeparated)
 }

@@ -35,20 +35,30 @@
     tcrossfac_prec <- .m_Matrix_times_Dvec(tcrossfac_prec,diagsigns)
     # now with triangular factor:
     invdcp <- 1/.diagfast(x=tcrossfac_prec)
-    tcrossfac_Q <- .m_Matrix_times_Dvec(tcrossfac_prec, invdcp) ## for design_u, and independently in sparse precision algo. ## compactprecmat=.ZWZtwrapper(chol_Q,1/invdcp^2)
-    tcrossfac_corr <- t(solve(tcrossfac_Q)) ## upper tri (while eigen provides a "full" U matrix)
-    blob <- list(design_u=tcrossfac_corr, # UPPER tri tcrossprod factor
+    compactchol_Q <- .m_Matrix_times_Dvec(tcrossfac_prec, invdcp) ## for design_u, and independently in sparse precision algo. ## compactprecmat=.ZWZtwrapper(chol_Q,1/invdcp^2)
+    blob <- list(design_u=t(solve(compactchol_Q)), # tcrossprod factor, not orthonormed, UPPER tri (while eigen provides an orthonormed "full" U matrix)
                  d=invdcp^2, # given variances of latent independent ranefs outer optim algo and iterative algo
                  compactcovmat=compactcovmat ## not used for the fit
     ) 
     if (spprecBool) {
       ## (1) direct conversion from matrix to dtC is remarkably slower than going through the as(.,"sparseMatrix") step !
       ## (2) Even with two steps as(.,"dtCMatrix") is costly hence the spprecBool condition (dtCMatrix useful only for chol_Q)
-      tcrossfac_Q <- as(tcrossfac_Q,"sparseMatrix") # precision factor for sparse_precision algo
-      blob$compactchol_Q <- as(tcrossfac_Q,"dtCMatrix") # precision factor for sparse_precision algo
+      compactchol_Q <- as(compactchol_Q,"sparseMatrix") # precision factor for sparse_precision algo
+      blob$compactchol_Q <- as(compactchol_Q,"dtCMatrix") # precision factor for sparse_precision algo; # compactcovmat=.ZtWZwrapper(solve(compactchol_Q),d  )
       evec <- as(esys$vectors,"dgCMatrix")
       blob$compactprecmat <- .ZWZtwrapper(evec, 1/d_regul) # dsCMatrix
-    }
+    } else blob$compactchol_Q <- compactchol_Q ## not used for the fit
+    #
+    # if (identical(spaMM.data$options$safe_spprec,TRUE)) { # debug algo: d=1 and design_u is t(solve(compactchol_prec)) not t(solve(compactchol_Q))
+    #   cat(crayon::red("TRUE"))
+    #   blob$design_u <- blob$design_u %*% diag(x=invdcp) # OK for corr not for prec
+    #   blob$d <- rep(1,length(invdcp))
+    #   blob$compactchol_Q <- as(as(tcrossfac_prec,"sparseMatrix"),"dtCMatrix") # precision factor for sparse_precision algo; # compactcovmat=.ZtWZwrapper(solve(compactchol_Q),d  )
+    #   blob$compactprecmat <- solve(blob$compactcovmat)
+    # } else {
+    #   cat(crayon::green("FALSE"))
+    #   # design_u is t(solve(tcrossfac_Q))=t(solve(compactchol_Q)) and $d is not necess 1
+    # }
   } else if (FALSE) { ## Would be much nicer if it was OK for HLfit
     # qr always produces a crossprod factor so if we want a tcrossprod factor, it must be t(qr.R()) hence lower tri...); unless we qr() the preci mat...
     qrand <- t(.m_Matrix_times_Dvec(esys$vectors,sqrt(d_regul)))
@@ -59,13 +69,14 @@
     } 
     tcrossfac <- t(crossfac) # lower.tri
     sqrt_d <- .diagfast(x=tcrossfac) 
-    tcrossfac_corr <- .m_Matrix_times_Dvec(tcrossfac, 1/sqrt_d)
-    blob <- list(design_u=tcrossfac_corr, # LOWER tri tcrossprod factor
-                 d= sqrt_d^2, # rep(1,length(d_regul)), # given variances of latent independent ranefs outer optim algo and iterative algo
+    design_u <- .m_Matrix_times_Dvec(tcrossfac, 1/sqrt_d)
+    blob <- list(design_u=design_u, # LOWER tri tcrossprod factor
+                 d= sqrt_d^2, # rep(1,length(d_regul)), # The given variances of latent independent ranefs outer optim algo and iterative algo
                  compactcovmat=compactcovmat ## not used for the fit
     ) ## and one might use (solve(design_u)) as a $crossfac_Q precision factor
   } else {blob <- list(design_u=esys$vectors, 
-                       d=d_regul, compactcovmat=compactcovmat)}
+                       d=d_regul, # *!* spprec case where d!=1; occurs when Cholesky failed.
+                       compactcovmat=compactcovmat)}
   return(blob)
   ## for sparse precision we want chol_Q to be (dtCMatrix: Csparse triangular) so that efficient solve methods can be used.
   ## This is not provided by this function

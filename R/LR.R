@@ -162,7 +162,7 @@
   return(locinit)
 }
 
-.get_rC_inits_from_hlfit <- function(hlfit) {
+.get_rC_inits_from_hlfit <- function(hlfit, type) {
   reinit <- .get_compact_cov_mats(hlfit$strucList)
   seq_rd <- seq_along(reinit)
   if (length(seq_rd)) {
@@ -171,34 +171,71 @@
         ini_corr <- cov2cor(ini_mix)
         ini_mix[lower.tri(ini_corr,diag=FALSE)] <-  ini_corr[lower.tri(ini_corr,diag=FALSE)] # replaces covby corr
         reinit[[rd]] <- ini_mix[lower.tri(ini_mix,diag=TRUE)] ## mix cov/corr in vector form
-      } else reinit[[rd]] <- NA # the syntax undestood by fitting functions
+      } else reinit[rd] <- NA # the syntax understood by fitting functions
     }
     names(reinit) <- paste(seq_rd)
+    if ( ! is.null(type)) {
+      reinit[hlfit$lambda.object$type!=type] <- NA
+      reinit <- reinit[ ! is.na(reinit)] # otherwise for "outer" type the NA ends in the optimizer's init...
+    }
   }
   return(reinit)
+}
+
+.get_lambdas_notrC_from_hlfit <- function(hlfit, type, keep_names=(type=="adhoc")) {
+  compacts <- .get_compact_cov_mats(hlfit$strucList) ## the "compacts" characterize ranCoefs. MAY BE NULL EVEN IF RANEFS
+  lambdas <- hlfit$lambda.object$lambda_list
+  seq_rd <- seq_along(lambdas)
+  if (length(seq_rd)) {
+    any_ranCoef <- FALSE
+    for (rd in seq_rd) {
+      if ( is.null(compacts[[rd]])) { # not ranCoefs
+        # pretty renaming of simple lambda:
+        if (type=="adhoc")  if (length(lambdas[[rd]])==1L && names(lambdas[[rd]])=="(Intercept)") names(lambdas[[rd]]) <- NULL
+      } else {
+        lambdas[[rd]] <- NA # the syntax understood by fitting functions
+        any_ranCoef <- TRUE  
+      }
+    }
+    lambdas <- unlist(lambdas)
+    if ( ! keep_names) names(lambdas) <- paste(seq_rd)
+    if (type !="adhoc") lambdas[hlfit$lambda.object$type!=type] <- NA
+    lambdas <- lambdas[ ! is.na(lambdas)] # otherwise for "outer" type the NA ends in the optimizer's init...
+    # for "inner" NA's are harmless but not necessary when names are paste(seq_rd)
+    if (any_ranCoef && type=="adhoc") lambdas <- structure(lambdas,
+                                           message="Random-coefficient variances removed. Use e.g. VarCorr() to get them.")
+  }
+  return(lambdas) # vector wwith NAs for everything not wanted
 }
 
 # to initiate a *f*ullfit
 get_inits_from_fit <- function(from, template=NULL, to_fn=NULL ) { # 'to_fn' may differ from that of 'from' and 'to'
   new_outer_inits <- .get_outer_inits_from_fit(fitobject=from, keep_canon_user_inits = FALSE)
-  fromfn <- paste(getCall(from)[[1]])
-  init.HLfit <- NULL
-  if (fromfn=="HLfit") { 
-    rC_inits <- .get_rC_inits_from_hlfit(from)
-    if (length(rC_inits)) init.HLfit <- list(ranCoefs=rC_inits)
-  }
+  # check fromfn and to_fn
   if (is.null(to_fn)) {
+    fromfn <- paste(getCall(from)[[1]])
     if (is.null(template)) {
       to_fn <- fromfn
     } else if (inherits(template,"HLfit")) {
       to_fn <- paste(getCall(template)[[1]])
     } else stop("Invalid 'template' argument.")
-  }
+  } else if (to_fn=="fitme_body") { ## using to_fn to modify fromfn...
+    ## ad hoc fix for residModel: fitme_body is called directly so the final object's call is to HLCor of HLfit
+    fromfn <- "fitme"
+  } else fromfn <- paste(getCall(from)[[1]])
+  # Inner-estimated lambda and ranCoefs (FIXME could add phi)
+  init.HLfit <- NULL
+  rC_inner_inits <- .get_rC_inits_from_hlfit(from, type="inner")
+  if (length(rC_inner_inits)) init.HLfit <- list(ranCoefs=rC_inner_inits)
+#  lambda_inner_inits <- .get_lambdas_notrC_from_hlfit(from, type="inner")
+#  if (length(lambda_inner_inits)) init.HLfit <- c(init.HLfit, list(lambda=lambda_inner_inits))
+  #
   if (to_fn=="fitme") {
     new_inits <- list(init=new_outer_inits,init.HLfit=init.HLfit)
   } else if (to_fn=="corrHLfit") {
     new_inits <- list(init.corrHLfit=new_outer_inits,init.HLfit=init.HLfit)
   } else new_inits <- list(init.HLfit=init.HLfit)
+  # Add initial value for fixed effects
   if (length(fixef_from <- fixef(from))) {
     if (inherits(template,"HLfit")) { # This was motivated by the Leucadendron_hard.R bootstrap replicates.
       new_HLfit_inits <- fixef(template)
@@ -267,16 +304,18 @@ eval_replicate <- function(y) { # no additional arguments, to ease parallel prog
   # }
   # #
   newinits <- get_inits_from_fit(from=re_nullfit, template=fullfit, to_fn=full_fit_fn )
-  for (it in seq_along(newinits)) if ( ! length(newinits[[it]])) newinits[it] <- NULL
+  lens <- rep(NA, length(newinits))
+  for (it in seq_along(newinits)) lens[it] <- length(newinits[[it]])
+  newinits <- newinits[lens>0L]
   subsets_inits <- .all.subsets(newinits) ## limited scope: could effectively do this is a nested way (with a skeleton+relist technique)
   # subsets_inits is always a list of lists, with at least one element (minimally: list(list()))
   for (it in seq_along(subsets_inits)) {
     inits <- subsets_inits[[it]]
     if (full_fit_fn=="fitme") {
-      new_args <- list(init=inits$init, init.HLfit=inits$init.HLfit, control=ctrl_opt)
+      new_args <- list(init=inits[["init"]], init.HLfit=inits[["init.HLfit"]], control=ctrl_opt)
     } else if (full_fit_fn=="corrHLfit") {
-      new_args <- list(init.corrHLfit=inits$init.corrHLfit, init.HLfit=inits$init.HLfit, control.corrHLfit=ctrl_opt)
-    } else new_args <- list(init.HLfit=inits$init.HLfit)
+      new_args <- list(init.corrHLfit=inits[["init.corrHLfit"]], init.HLfit=inits[["init.HLfit"]], control.corrHLfit=ctrl_opt)
+    } else new_args <- list(init.HLfit=inits[["init.HLfit"]])
     if (debug.==2) {
       re_fullfit <- do.call(update_resp, c(list(object=fullfit, newresp = y),new_args)) # may stop on error
     } else {
@@ -348,16 +387,18 @@ eval_replicate <- function(y) { # no additional arguments, to ease parallel prog
     # ELSE
     prev_logL_null <- logL_new_null
     newinits <- get_inits_from_fit(from=best_nullfit, template=fullfit, to_fn=full_fit_fn )
-    for (it in seq_along(newinits)) if ( ! length(newinits[[it]])) newinits[it] <- NULL
+    lens <- rep(NA, length(newinits))
+    for (it in seq_along(newinits)) lens[it] <- length(newinits[[it]])
+    newinits <- newinits[lens>0L]
     subsets_inits <- .all.subsets(newinits) ## limited scope: could effectively do this is a nested way (with a skeleton+relist technique)
     # subsets_inits is always a list of lists, with at least one element (minimally: list(list()))
     for (it in seq_along(subsets_inits)) {
       inits <- subsets_inits[[it]]
       if (full_fit_fn=="fitme") {
-        new_args <- list(init=inits$init, init.HLfit=inits$init.HLfit, control=ctrl_opt)
+        new_args <- list(init=inits[["init"]], init.HLfit=inits[["init.HLfit"]], control=ctrl_opt)
       } else if (full_fit_fn=="corrHLfit") {
-        new_args <- list(init.corrHLfit=inits$init.corrHLfit, init.HLfit=inits$init.HLfit, control.corrHLfit=ctrl_opt)
-      } else new_args <- list(init.HLfit=inits$init.HLfit)
+        new_args <- list(init.corrHLfit=inits[["init.corrHLfit"]], init.HLfit=inits[["init.HLfit"]], control.corrHLfit=ctrl_opt)
+      } else new_args <- list(init.HLfit=inits[["init.HLfit"]])
       if (debug.==2) {
         new_fullfit <- do.call(update_resp, c(list(object=fullfit, newresp = y),new_args)) # may stop on error
       } else {

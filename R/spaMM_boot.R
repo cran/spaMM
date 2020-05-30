@@ -1,11 +1,13 @@
 spaMM_boot <- local({
   doSNOW_warned <- FALSE
   function(object, simuland, nsim, nb_cores=NULL,
+           seed=NULL,
            resp_testfn=NULL, control.foreach=list(),
            debug. = FALSE, 
            type,
            fit_env=NULL,
            cluster_args=NULL,
+           showpbar= eval(spaMM.getOption("barstyle")),
            ...) {
     if (missing(type)) {
       warning("'type' is now a mandatory argument of spaMM_boot().\n Assuming type='marginal' for consistency with previous versions.",
@@ -23,17 +25,64 @@ spaMM_boot <- local({
       return(list())
     }
     ####
-    newy_s <- simulate(object,nsim = nsim,verbose=FALSE,resp_testfn=resp_testfn, type=type) 
+    newy_s <- simulate(object,nsim = nsim,verbose=c(type=FALSE,showpbar=showpbar), resp_testfn=resp_testfn, type=type, seed=seed) 
     if (nsim==1L) dim(newy_s) <- c(length(newy_s),1L)
     #
     # If the simuland has (say) arguments y, what=NULL, lrt, ...   , we should not have lrt in the dots. Since the dots are not directly manipulable
     # we have to convert them to a list, and ultimately to use do.call()
     control.foreach$.combine <- "rbind"
     bootreps <- dopar(newresp = newy_s, nb_cores = nb_cores,fn = simuland, fit_env = fit_env, 
-                       control=control.foreach, debug.=debug., ...) 
+                       control=control.foreach, debug.=debug., pretest_cores = .pretest_fn_on_cores, 
+                      showpbar = showpbar, ...) 
     return(list(bootreps=bootreps,RNGstates=RNGstate))
   }
 })
+
+.set_progrbar <- function(style, ...) {
+  if (style==0L) {
+    setup <- list(progress=NULL)
+  } else {
+    pb <- txtProgressBar(style=style, ...)
+    progress <- function(n) setTxtProgressBar(pb, n)
+    setup <- list(pb=pb, progress = progress)
+  }
+  setup
+}
+
+.check_call_on_core <- function(fitobject) { # this is run on a node
+  obj_call <- getCall(fitobject)
+  expr_list <- as.list(obj_call)
+  checkand <- setdiff(names(expr_list),c("","formula","data","prior.weights"))
+  errors <- list()
+  for (st in checkand) {
+    arg <- expr_list[[st]] # an expression
+    chk <- try(eval(arg))
+    if (inherits(chk, "try-error")) errors[[st]] <- attr(chk,"condition")$message
+  }
+  errors  <- unlist(errors)
+  return(errors)
+}
+
+.pretest_fn_on_cores <- function(fn, cluster) { # this is run on the parent process 
+  errors_null <- errors_full <- NULL
+  pbopt <- pboptions(type="none") 
+  nullfit <- environment(fn)$nullfit
+  if ( ! is.null(nullfit)) errors_null <- pbapply::pbreplicate(1, .check_call_on_core(fitobject = nullfit), cl=cluster)
+  #foreach_blob <- foreach::foreach(i=1)
+  #if ( ! is.null(nullfit)) errors_null <- foreach::`%dopar%`(foreach_blob, .check_call_on_core(fitobject = nullfit))
+  fullfit <- environment(fn)$fullfit
+  if ( ! is.null(fullfit)) errors_full <- pbapply::pbreplicate(1, .check_call_on_core(fitobject = fullfit), cl=cluster)
+  #if ( ! is.null(fullfit)) errors_null <- foreach::`%dopar%`(foreach_blob, .check_call_on_core(fitobject = fullfit))
+  errors <- unique(unlist(c(errors_null,errors_full)))
+  if (length(errors)) { 
+    errmess <- paste0("'",unlist(lapply(strsplit(errors, split="'"),`[`,i=2)),"'", collapse=", ")
+    errmess <- paste("Object(s)",errmess,"not found on cluster node:\n add them to 'fit_env' argument? (see ?spaMM_boot for details).")
+    warning(.spaMM.data$options$stylefns$hardwarn(errmess),immediate.=TRUE)
+  }
+  pboptions(pbopt) 
+}  # warnings on the parent process, no return value
+
+
 
 # fn more generic than spaMM_boot: there is no call to other spaMM fns such as simulate(object, .) so this acts as a general wrapper for 
 # foreach or pbapply, and not specifically for bootstrap computations.
@@ -41,7 +90,8 @@ dopar <- local({
   doSNOW_warned <- FALSE
   function(newresp, fn, nb_cores=NULL, 
            fit_env, control=list(), cluster_args=NULL,
-           debug.=FALSE, iseed=NULL,
+           debug.=FALSE, iseed=NULL, showpbar=eval(spaMM.getOption("barstyle")),
+           pretest_cores=NULL,
            ... # passed to fn
   ) {
     if (is.list(fit_env)) fit_env <- list2env(fit_env)
@@ -66,17 +116,16 @@ dopar <- local({
         i <- NULL ## otherwise R CMD check complains that no visible binding for global variable 'i' (in expression newy_s[,i])
         foreach_blob <- foreach::foreach(i=1:nb_cores)
         abyss <- foreach::`%dopar%`(foreach_blob, Sys.setenv(LANG = "en")) # before setting the progress bar...
+        if (is.function(pretest_cores)) pretest_cores(fn, cl)
         # define the progress bar:
-        pb <- txtProgressBar(max = nsim, style = 3, char="P")
-        progress <- function(n) setTxtProgressBar(pb, n)
-        opts <- list(progress = progress)
+        progrbar_setup <- .set_progrbar(max = nsim, style = 3, char="P")
         # :where opts are needed to define a second foreach_blob
         foreach_args <- list( 
           i = 1:ncol(newresp), 
           .combine = "cbind", 
           .inorder = TRUE, .packages = "spaMM", 
           .errorhandling = "remove", ## use "pass" to see problems
-          .options.snow = opts
+          .options.snow = progrbar_setup["progress"]
         )
         foreach_args[names(control)] <- control # replaces the above defaults by user controls
         foreach_blob <- do.call(foreach::foreach,foreach_args) ## rbinds 1-row data frames (into a data frame) as well as vectors (into a matrix) (result has nsim rows)
@@ -94,7 +143,7 @@ dopar <- local({
         # the try() is useful if the user interrupts the dopar, in which case it allows close(pb) to be run. (? But doSNOW appear to close the nodes asynchronously?)
         foreach::registerDoSEQ() ## https://stackoverflow.com/questions/25097729/un-register-a-doparallel-cluster
         parallel::stopCluster(cl)
-        close(pb)
+        if (showpbar) close(progrbar_setup$pb)
       } else {
         # in that case, ## We will use pbapply, with argument cl=cl; a direct call to foreach would require doParallel::registerDoParallel(cl)
         if ( ! doSNOW_warned) {
@@ -104,7 +153,10 @@ dopar <- local({
         pb_char <- "p"
         parallel::clusterEvalQ(cl, library("spaMM")) 
         if (is.environment(fit_env)) try(parallel::clusterExport(cl=cl, varlist=ls(fit_env), envir=fit_env)) 
-        pbopt <- pboptions(nout=min(100L,2L*nsim),type="timer",char=pb_char) 
+        if (is.function(pretest_cores)) pretest_cores(fn, cl)
+        if (eval(.spaMM.data$options$barstyle)) {
+          pbopt <- pboptions(nout=min(100L,2L*nsim),type="timer",char=pb_char) 
+        } else pbopt <- pboptions(type="none") 
         #try() so that an interrupt does not prevent running stopCluster():
         bootreps <- try(pbapply(X=newresp,MARGIN = 2L,FUN = fn, cl=cl, ...))
         parallel::stopCluster(cl)
@@ -113,7 +165,9 @@ dopar <- local({
       }
     } else { ## nb_cores=1L
       pb_char <- "s"
-      pbopt <- pboptions(nout=min(100L,2L*nsim),type="timer",char=pb_char) 
+      if (eval(.spaMM.data$options$barstyle)) {
+        pbopt <- pboptions(nout=min(100L,2L*nsim),type="timer",char=pb_char) 
+      } else pbopt <- pboptions(type="none") 
       bootreps <- pbapply(X=newresp,MARGIN = 2L,FUN = fn, cl=NULL, ...)
       pboptions(pbopt)
       if (identical(control$.combine,"rbind")) bootreps <- t(bootreps)

@@ -73,8 +73,8 @@
       }
       famfams[oldrd] <- lcrandfamfam[oldrd]
       if (famfams[oldrd]=="gaussian") {
-        sdvars[[oldrd]] <- sqrt(object$lambda.object$lambda[[oldrd]]) 
-      } else sdvars[[oldrd]] <- object$lambda.object$lambda[[oldrd]]
+        sdvars[[oldrd]] <- sqrt(object$lambda.object$lambda_list[[oldrd]]) 
+      } else sdvars[[oldrd]] <- object$lambda.object$lambda_list[[oldrd]]
     } else newZAXlist[[oldrd]] <- list(NULL)
   }
   eta_fix <- new_X_ZACblob$eta_fix

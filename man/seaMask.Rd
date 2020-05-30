@@ -32,17 +32,15 @@ The removed objects \code{worldcountries} and \code{oceanmask} were suitable for
 }
 \seealso{\url{http://kimura.univ-montp2.fr/~rousset/spaMM/example_raster.html} for access to, and use of \code{worldcountries} and \code{oceanmask}; \url{https://cran.r-project.org/package=IsoriX} for replacement \code{CountryBorders} and \code{OceanMask} for these objects.} 
 \examples{
-if (spaMM.getOption("example_maxtime")>1.1) {
-
-data("seaMask")
-## plot of predictions of behaviour for a land bird:
- data("blackcap")
- bfit <- corrHLfit(migStatus ~ means+ Matern(1|longitude+latitude),data=blackcap,
-                  HLmethod="ML",
-                  ranFix=list(lambda=0.5537,phi=1.376e-05,rho=0.0544740,nu=0.6286311))
- ## We add small masks to the points on small islands to see the predictions there
- ll <- blackcap[,c("longitude","latitude")]
- pointmask <- function(xy,r=1,npts=12) {
+## Predicting behaviour for a land bird: simplified fit for illustration
+data("blackcap")
+bfit <- fitme(migStatus ~ means+ Matern(1|longitude+latitude),data=blackcap,
+               fixed=list(lambda=0.5537,phi=1.376e-05,rho=0.0544740,nu=0.6286311))
+                  
+## the plot itself, with a sea mask,
+## and an ad hoc 'pointmask' to see better the predictions on small islands 
+#
+def_pointmask <- function(xy,r=1,npts=12) {
   theta <- 2*pi/npts *seq(npts)
   hexas <- lapply(seq(nrow(xy)), function(li){
     p <- as.numeric(xy[li,])
@@ -50,16 +48,20 @@ data("seaMask")
     rbind(rep(NA,2),hexa) ## initial NA before each polygon
   })
   do.call(rbind,hexas)
- }
- pmasks <- pointmask(ll[c(2,4,5,6,7),],r=0.8) ## small islands only
- filled.mapMM(bfit,add.map=TRUE,
+}
+ll <- blackcap[,c("longitude","latitude")]
+pointmask <- def_pointmask(ll[c(2,4,5,6,7),],r=0.8) ## small islands only
+#
+data("seaMask")
+#
+filled.mapMM(bfit,add.map=TRUE,
              plot.title=title(main="Inferred migration propensity of blackcaps",
                                xlab="longitude",ylab="latitude"),
              decorations=quote(points(pred[,coordinates],cex=1,pch="+")),
              plot.axes=quote({axis(1);axis(2);
-                        polypath(rbind(seaMask,pmasks),border=FALSE,
+                        polypath(rbind(seaMask,pointmask),border=FALSE,
                                  col="grey", rule="evenodd")
              }))
-}
+
 }
 \keyword{datasets}

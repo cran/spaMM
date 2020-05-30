@@ -195,7 +195,7 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug, # already ZAL_scaled
     }
     return(BLOB$logdet_R_scaled_v)
   } else if (which=="beta_cov_info_from_sXaug") {  
-    return(.calc_beta_cov_info_from_sXaug(BLOB=BLOB, sXaug=sXaug, B=B))
+    return(.calc_beta_cov_info_from_sXaug(BLOB=BLOB, sXaug=sXaug))
   } else if (which=="beta_cov_info_from_wAugX") { ## using a weighted Henderson's augmented design matrix, not a true sXaug  
     if (TRUE) {
       tcrossfac_beta_v_cov <- solve(BLOB$R_scaled) # solve(as(BLOB$R_scaled,"dtCMatrix"))

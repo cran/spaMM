@@ -36,15 +36,19 @@ The name \code{COMP_nu} should be used to set initial values or bounds on \code{
 	Sellers KF, Shmueli G (2010) A Flexible Regression Model for Count Data. Ann. Appl. Stat. 4: 943–961
 }
 \examples{
-# Fitting COMPoisson model with estimated nu parameter:
-data("freight") ## example from Sellers & Shmueli, Ann. Appl. Stat. 4: 943–961 (2010)
-fitme(broken ~ transfers, data=freight, family = COMPoisson())
-# GLMM with under-dispersed conditional response
-HLfit(broken ~ transfers+(1|id), data=freight, family = COMPoisson(nu=10),HLmethod="ML")
+if (spaMM.getOption("example_maxtime")>0.9) {
+  # Fitting COMPoisson model with estimated nu parameter:
+  #
+  data("freight") ## example from Sellers & Shmueli, Ann. Appl. Stat. 4: 943–961 (2010)
+  fitme(broken ~ transfers, data=freight, family = COMPoisson())
 
-\dontrun{
-  data("freight")
+  # glm(), HLCor() and HLfit() handle spaMM::COMPoisson() with fixed overdispersion:
+  #
+  glm(broken ~ transfers, data=freight, family = COMPoisson(nu=10))
+  HLfit(broken ~ transfers+(1|id), data=freight, family = COMPoisson(nu=10),method="ML")
+  
   # Equivalence of poisson() and COMPoisson(nu=1):
+  #
   COMPglm <- glm(broken ~ transfers, data=freight, family = poisson())
   coef(COMPglm)
   logLik(COMPglm)
@@ -52,6 +56,7 @@ HLfit(broken ~ transfers+(1|id), data=freight, family = COMPoisson(nu=10),HLmeth
   coef(COMPglm)
   logLik(COMPglm)
   HLfit(broken ~ transfers, data=freight, family = COMPoisson(nu=1))
+
 }
 }
 \keyword{models}

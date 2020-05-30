@@ -428,9 +428,10 @@
                                 for_init_z_args,
                                 #
                                 mget(c("cum_n_u_h","rand.families","stop.on.error"),envir=processed))
-      constant_u_h_v_h_args <- c(mget(c("cum_n_u_h","rand.families"),envir=processed),
-                                 processed$u_h_info, ## elements of u_h_info as elements of constant_u_h_v_h_args  
-                                 list(lcrandfamfam=lcrandfamfam))
+      delayedAssign("constant_u_h_v_h_args", 
+                    c(mget(c("cum_n_u_h","rand.families"),envir=processed),
+                      processed$u_h_info, ## elements of u_h_info as elements of constant_u_h_v_h_args, NOT u_h_info as element of...  
+                      list(lcrandfamfam=lcrandfamfam)))
       updateW_ranefS_constant_arglist <- c(mget(c("cum_n_u_h","rand.families"),envir=processed),list(lambda=lambda_est))
     } 
   } 
@@ -463,8 +464,8 @@
     if (LevenbergM) cat("LM")
     cat(stylefn("."))
   }
-  sXaug <- do.call(mMatrix_method,
-                   list(Xaug=Xscal, weight_X=weight_X, w.ranef=wranefblob$w.ranef, H_global_scale=H_global_scale))
+  locfn <- get(mMatrix_method,asNamespace("spaMM"))
+  sXaug <- locfn(Xaug=Xscal, weight_X=weight_X, w.ranef=wranefblob$w.ranef, H_global_scale=H_global_scale)
   if ( ! is.null(for_intervals)) {
     Vscaled_beta <- c(v_h/ZAL_scaling ,for_intervals$beta_eta)
   } else if (LevenbergM) {
@@ -753,6 +754,9 @@
       relV_beta <- c(v_h*sqrt(wranefblob$w.ranef),beta_eta)  ## convergence on v_h relative to sqrt(w.ranef)
       abs_d_relV_beta <- abs(relV_beta - old_relV_beta) ## for ML, comparison between estimates when ( hlik_stuck || ! need_v_step )
       ## abs_d_relV_beta is needed outside this block, and old_relV_beta updated after v_h updating.
+      ## Attempt: strongly degrades the perf of nloptr/bobyqa in nloptr test 
+      # dlogLdvb <- crossprod(sXaug,wzAug) # is that correct ?
+      # abs_d_relV_beta <- drop(100*abs_d_relV_beta*dlogLdvb) # that would actually be d_logL... OK we may need to sum() it... (__F I X M E__)
       if (is_HL1_1 && LevenbergM) {
         # if((which_LevMar_step %in% c("v", "V_IN_B","strict_v|b") || default_b_step=="v_in_b") &&
         #    ! is.null(old_relV_beta)) {

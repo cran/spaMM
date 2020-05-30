@@ -10,8 +10,8 @@
 }
 \usage{
 HLfit(formula, data, family = gaussian(), rand.family = gaussian(), 
-      resid.model = ~1, REMLformula = NULL, 
-      verbose = c(trace = FALSE), HLmethod = "HL(1,1)", control.HLfit = list(), 
+      resid.model = ~1, REMLformula = NULL, verbose = c(trace = FALSE), 
+      HLmethod = "HL(1,1)", method="REML", control.HLfit = list(), 
       control.glm = list(), init.HLfit = list(), ranFix = list(), 
       etaFix = list(), prior.weights = NULL, processed = NULL)
 ## see 'rand.family' argument for inverse.Gamma
@@ -52,17 +52,18 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
 
   For example, if only random effects are included in \code{REMLformula}, an ML fit is performed and \code{p_bv} equals
   the marginal likelihood (or its approximation), \code{p_v}. This ML fit can be performed more simply by setting 
-  \code{HLmethod="ML"} and leaving \code{REMLformula} at its default NULL value.
+  \code{method="ML"} and leaving \code{REMLformula} at its default NULL value.
 }
   \item{verbose}{
     A vector of booleans. \code{trace} controls various diagnostic messages (possibly messy) about the iterations. \code{TRACE=TRUE} is most useful to follow the progress of a long computation, particularly in \code{fitme} or \code{corrHLfit} calls, for which it displays some mysterious output for each set of correlation and dispersion parameter values considered by the optimiser. Non-boolean values of \code{TRACE} are meaningful, but the source code of \code{spaMM:::.doTRACE} should be consulted for their meaning. \code{phifit} (which defaults to \code{TRUE}) controls messages about the progress of residual dispersion fits in DHGLMs. 
   }
-  \item{HLmethod}{
-  Allowed values are \code{"REML"}, \code{"ML"}, \code{"EQL-"} and \code{"EQL+"} for all models;  
+  \item{method}{Character: the fitting method. 
+  allowed values are \code{"REML"}, \code{"ML"}, \code{"EQL-"} and \code{"EQL+"} for all models;  
   \code{"PQL"} (=\code{"REPQL"}) and \code{"PQL/L"} for GLMMs only; and further values 
-  for those curious to experiment (see Details). \bold{The default is REML} (standard REML for LMMs, 
-  an extended definition for other models). REML can be viewed as a fom of conditional inference, and non-standard  conditionings can be called as \dQuote{REML} with a non-standard \code{REMLformula}. See Details for further information.
+  for those curious to experiment (see \code{\link{method}}). \bold{The default is REML} (standard REML for LMMs, 
+  an extended definition for other models). REML can be viewed as a form of conditional inference, and non-standard conditionings can be called by using a non-standard \code{REMLformula}.
 }
+  \item{HLmethod}{Same as \code{method}. It is useless to specify \code{HLmethod} when \code{method} is specified. The default value \code{"HL(1,1)"} means the same as \code{method="REML"}, but more accurately relates to definitions of approximations of likelihoo in the \eqn{h}-likelihood literature.}
   \item{control.HLfit}{
   A list of parameters controlling the fitting algorithms, which should be ignored in routine use. In addition, a \code{resid.family} parameter was previously documented here (before version 2.6.40), and will still operate as previously documented, but should not be used in new code. 
 
@@ -113,42 +114,13 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
 }
 \details{
 
- \bold{I. Fitting methods:}
- Many approximations for likelihood have been defined to fit mixed models (e.g. Noh and Lee (2007) for some overview), 
- and this function implements several of them, and some additional ones. In particular, 
- PQL as originally defined by Breslow and Clayton (1993) uses REML to estimate dispersion parameters, but this function allows one to use an ML variant of PQL. Moreover, it allows some non-standard specification of the model formula that determines the conditional distribution used in REML.
- 
-  EQL stands for the EQL method of Lee and Nelder (2001). The '+' version includes the d v/ d tau correction 
-  described p. 997 of that paper, and the '-' version ignores it.
-  PQL can be seen as the version of EQL- for GLMMs. It estimates fixed effects by maximizing h-likelihood and dispersion parameters by an approximation of REML, i.e. by maximization of an approximation of restricted likelihood.
-  PQL/L is PQL without the leverage corrections that define REML estimation of random-effect parameters. Thus, it estimates dispersion parameters by an approximation of marginal likelihood.
+ \bold{I. Approximations of likelihood:} see \code{\link{method}}.
 
- \code{HLmethod} also accepts values of the form \code{"HL(<...>)"}, \code{"ML(<...>)"} and \code{"RE(<...>)"}, e.g. \code{HLmethod="RE(1,1)"}, which allow a more direct specification of the approximations used. 
- HL and RE are equivalent (both imply an REML correction).   
- The first '1' means that a first order Laplace approximation to the likelihood is used to estimate fixed effects 
- (a '0' would instead mean that the h likelihood is used as the objective function).
-  The second  '1' means that a first order Laplace approximation to the likelihood or restricted likelihood 
-  is used to estimate dispersion parameters, this approximation including the dv/d tau term specifically discussed by Lee & Nelder 2001, p. 997 (a '0' would instead mean that these terms are ignored).
-  
-  It is possible to enforce the EQL approximation for estimation of dispersion parameter (i.e., Lee and Nelder's (2001) method) by adding a third index with value 0. \code{"EQL+"} is thus \code{"HL(0,1,0)"}, while \code{"EQL-"} is \code{"HL(0,0,0)"}. \code{"PQL"} is EQL- for GLMMs. \code{"REML"} is \code{"HL(1,1)"}. \code{"ML"} is \code{"ML(1,1)"}. 
-  
-  Some of these distinctions make sense for \bold{GLMs}, and \code{\link[stats]{glm}} methods use approximations, which make a difference for Gamma GLMs. This means in particular that, (as stated in \code{stats::\link[stats]{logLik}}) the logLik of a Gamma GLM fit by \code{glm} differs from the exact likelihood. Further, the dispersion estimate returned by \code{summary.glm} differs from the one implied by \code{logLik}, because \code{summary.glm} uses Pearson residuals instead of deviance residuals, and no \code{HLmethod} tries to reproduce simultaneously these distinct behaviours. An \code{"ML(0,0,0)"} approximation of true ML provides the same log likelihood as \code{stats::logLik}, and the dispersion estimate returned by an \code{"HL(.,.,0)"} fit matches what can be computed from residual deviance and residual degrees of freedom of a glm fit, but this is not the estimate displayed by \code{summary.glm}. With a log link, the fixed effect estimates are unaffected by these distinctions.     
-
-  \bold{II. Random effects} are constructed in several steps. first, a vector \bold{u} of independent and identically distributed (iid) random effects is drawn from some distribution;
- second, a transformation \bold{v}=f(\bold{u}) is applied to each element (this defines \bold{v} which elements are still iid); third, correlated random effects are obtained as \bold{Lv} 
-  where \bold{L} is the \dQuote{square root} of a correlation matrix (this may be meaningful only for Gaussian random effects). Coefficients in a random-coefficient model correspond to \bold{Lv}.  
-  Finally, a matrix \bold{Z} (or sometimes \bold{ZA}, see \code{\link{Predictor}}) allows to specify how the correlated random effects
-  affect the response values. In particular, \bold{Z} is the identity matrix if there is a single observation (response) for each location, but otherwise
-  its elements \eqn{z_{ji}} are 1 for the \eqn{j}th observation in the \eqn{i}th location. 
-  The design matrix for \bold{v} is then of the form \bold{ZL}. 
-
- The specification of the random effects u and v handles the following cases: 
- \bold{Gaussian} with zero mean, unit variance, and identity link; \bold{Beta}-distributed, where \eqn{u ~ B(1/(2\lambda),1/(2\lambda))} with mean=1/2, and var\eqn{=\lambda/[4(1+\lambda)]}; and with logit link \code{v=logit(u)};
- \bold{Gamma}-distributed random effects, where \eqn{u ~ }\code{Gamma(shape=}1+1/\eqn{\lambda},\bold{scale=}1/\eqn{\lambda}): see \code{\link{Gamma}} for allowed links and further details; and \bold{Inverse-Gamma}-distributed random effects, where \eqn{u ~ }inverse-Gamma(\code{shape=}1+1/\eqn{\lambda},\bold{rate=}1/\eqn{\lambda}): see \code{\link{inverse.Gamma}} for allowed links and further details.
+  \bold{II. Possible structure of Random effects:} see \code{\link{random-effects}}, but note that \code{HLfit} does not fit models with autocorrelated random effects).
 
   \bold{III. The standard errors} reported may sometimes be misleading. For each set of parameters among \eqn{\beta}, \eqn{\lambda}, and \eqn{\phi} parameters these are computed assuming that the other parameters are known without error. This is why they are labelled \code{Cond. SE} (conditional standard error). This is most uninformative in the unusual case where \eqn{\lambda} and \eqn{\phi} are not separately estimable parameters. Further, the SEs for \eqn{\lambda} and \eqn{\phi} are rough approximations as discussed in particular by Smyth et al. (2001; \eqn{V_1} method).    
   
-  \bold{IV. prior weigths}. This controls the likelihood analysis of heteroscedastic models. In particular, increasing the weights by a constant factor \emph{f} should, and will, yield (Intercept) estimates of \code{phi} also increased by \emph{f} (except if a non-trivial \code{resid.formula} with log link is used). This is consistent with what \code{glm} does, but some widely used packages do not follow this logic.
+  \bold{IV. prior weights}. This controls the likelihood analysis of heteroscedastic models. In particular, changing the weights by a constant factor \emph{f} should, and will, yield a fit with unchanged likelihood and (Intercept) estimates of \code{phi} also increased by \emph{f} (except if a non-trivial \code{resid.formula} with log link is used). This is consistent with what \code{glm} does, but other packages may not follow this logic (whatever their documentation may say: check by yourself by changing the weights by a constant factor).
 
 }
 \value{
@@ -194,18 +166,12 @@ Finally, the object includes programming tools: \code{call, spaMM.version, fit_t
 
 }
 \references{
-Breslow, NE, Clayton, DG. (1993). Approximate Inference in Generalized Linear Mixed Models.
-Journal of the American Statistical Association 88, 9-25.
-
 Lee, Y., Nelder, J. A. (2001)  Hierarchical generalised linear models: A
 synthesis of generalised linear models, random-effect models and structured
 dispersions. Biometrika 88, 987-1006.
 
 Lee, Y., Nelder, J. A. and Pawitan, Y. (2006). Generalized linear models with random effects: unified analysis via
 h-likelihood. Chapman & Hall: London.
-
-Noh, M., and Lee, Y. (2007). REML estimation for binary data in GLMMs, J.
-Multivariate Anal. 98, 896-915.
 
 Smyth GK, Huele AF, Verbyla AP (2001). Exact and approximate REML for heteroscedastic regression. Statistical Modelling 1, 161-175. 
 }
@@ -219,12 +185,12 @@ Smyth GK, Huele AF, Verbyla AP (2001). Exact and approximate REML for heterosced
 data("wafers")
 ## Gamma GLMM with log link
 % example also in main page...
-HLfit(y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch),family=Gamma(log),
+HLfit(y ~ X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch), family=Gamma(log),
           resid.model = ~ X3+I(X3^2) ,data=wafers)
 %- : tested in update.Rd
 ## Gamma - inverseGamma HGLM with log link
-HLfit(y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch),family=Gamma(log),
-          HLmethod="HL(1,1)",rand.family=inverse.Gamma(log),
-          resid.model = ~ X3+I(X3^2) ,data=wafers)
+HLfit(y ~ X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch), family=Gamma(log),
+          rand.family=inverse.Gamma(log),
+          resid.model = ~ X3+I(X3^2) , data=wafers)
 }          
 \keyword{ model }

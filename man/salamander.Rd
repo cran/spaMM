@@ -35,15 +35,10 @@ Molas, M., Lesaffre, E. (2011) Hierarchical Generalized Linear Models: The R Pac
 data("salamander")
 
 \dontrun{ 
-% in test-salamander.R
-if (spaMM.getOption("example_maxtime")>0.7) {
-  HLfit(cbind(Mate,1-Mate)~TypeF+TypeM+TypeF*TypeM+(1|Female)+(1|Male),
-    family=binomial(),data=salamander,HLmethod="ML",control.HLfit=list(LevenbergM=FALSE))
-}
-}
-if (spaMM.getOption("example_maxtime")>0.7) {
- fitme(cbind(Mate,1-Mate)~TypeF+TypeM+TypeF*TypeM+(1|Female)+(1|Male),
-    family=binomial(),data=salamander,control.HLfit=list(LevenbergM=FALSE))
+% cf test-salamander.R
+HLfit(cbind(Mate,1-Mate)~TypeF+TypeM+TypeF*TypeM+(1|Female)+(1|Male),
+      family=binomial(),data=salamander,method="ML")
+# equivalent fo using fitme(), but here a bit faster
 }
 }
 \keyword{datasets}

@@ -103,7 +103,7 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
   }
 }
 
-.calc_Evar <- function(newZAlist, newinold, cov_newLv_oldv_list, lambda, invCov_oldLv_oldLv_list, covMatrix,## arguments for all calls
+.calc_Evar <- function(newZAlist, newinold, cov_newLv_oldv_list, invCov_oldLv_oldLv_list, covMatrix,## arguments for all calls
                        # arguments for standard diag or full Evar matrix:
                        cov_newLv_newLv_list, 
                        ## arguments for non-diagonal block of Evar matrix:
@@ -115,7 +115,7 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
   if (as_tcrossfac_list && ! is.null(fixZAlist)) {stop("Incompatible arguments: as_tcrossfac_list=TRUE and use of fix_X_ZAC object")}
   newnrand <- length(newinold)
   Evarlist <- vector("list",newnrand)
-  
+  lambda_list <- object$lambda.object$lambda_list
   for (new_rd in seq_along(Evarlist)) {
     old_rd <- newinold[new_rd]
     exp_ranef_types <- attr(newZAlist,"exp_ranef_types")
@@ -128,10 +128,10 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
     } else if ( ! is.null(isEachNewLevelInOld)) { ## non correlated effect: a vector of booleans indicating whether new is in old (qualifies cols of Cnewold)
       if ( ! is.null(fixZAlist)) { 
         Cno_InvCoo_Cof <- cov_newLv_oldv_list[[new_rd]] %id*id% t(cov_fixLv_oldv_list[[new_rd]])
-        Evar <- lambda[old_rd] * (cov_newLv_fixLv_list[[new_rd]] - Cno_InvCoo_Cof) # !=0 only for (new=fiw) not in old
+        Evar <- lambda_list[[old_rd]] * (cov_newLv_fixLv_list[[new_rd]] - Cno_InvCoo_Cof) # !=0 only for (new=fiw) not in old
         terme <- newZAlist[[new_rd]] %id*id% Evar %id*id% t(fixZAlist[[new_rd]])
       } else {
-        Evardiag <- lambda[old_rd] * as.numeric(! isEachNewLevelInOld)
+        Evardiag <- lambda_list[[old_rd]] * as.numeric(! isEachNewLevelInOld)
         if (is.null(cov_newLv_newLv_list[[new_rd]])) { ## we compute only the var vector
           terme <- .calcZWZt_mat_or_diag(Z=newZAlist[[new_rd]], W=Evardiag, cholW=sqrt(Evardiag), returnMat=covMatrix)
         } else {
@@ -141,13 +141,20 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
         }
       }
     } else { ## autocorr effect (spatial, ranCoefs...) EXCEPT IMRF (first case above)
+      if ((lam_len <- length(lambda_list[[old_rd]]))>1L && any(lambda_list[[old_rd]]!=1)) { 
+        # this must be a ranCoef fitted by spprec. Then we have a specific problem if there are new levels 
+        # (so that diag_cov_newLv_newLv_list[[new_rd]] - diag_Cno_InvCoo_Con) is nonzero
+        # (although not just a single level).
+        # Then these lambda _must_ be taken into account elsewhere, _so that_ we can write
+        loc_lambda <- 1
+      }  else loc_lambda <- lambda_list[[old_rd]]
       if ( ! is.null(fixZAlist)) {
         Cno_InvCoo_Cof <- cov_newLv_oldv_list[[new_rd]] %gI*gI% invCov_oldLv_oldLv_list[[old_rd]] %gI*gI% t(cov_fixLv_oldv_list[[new_rd]]) # (invCoo.t() could have been precomputed.)
-        Evar_C <- lambda[old_rd] * (cov_newLv_fixLv_list[[new_rd]] - Cno_InvCoo_Cof)
+        Evar_C <- loc_lambda * (cov_newLv_fixLv_list[[new_rd]] - Cno_InvCoo_Cof)  
         if (inherits(Evar_C,"bigq")) Evar_C <- .mMatrix_bigq(Evar_C)
         terme <- newZAlist[[new_rd]] %id*id% Evar_C %id*id% t(fixZAlist[[new_rd]])
       } else {
-        ## We're hoping for a simplification of the form Evar <- lambda[old_rd] * (1 - diag_Cno_InvCoo_Con)
+        ## We're hoping for a simplification of the form Evar <- lambda_list[[old_rd]] * (1 - diag_Cno_InvCoo_Con)
         ## There are underlying assumptions:
         ## (1) The diagonal of W should be sufficient to have the diagonal of ZA % W % t(ZA);
         ##     that is, tcrossprod(ZA) is diagonal (in particular, if ZA is an incidence matrix : one 1 per row and 0 otherwise)   
@@ -163,12 +170,14 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
             #diag_Cno_InvCoo_Con <- numeric(nr)
             #for (it in seq_len(nr)) diag_Cno_InvCoo_Con[it] <- gmp::asNumeric(sum(tmp[it,]))
           } else diag_Cno_InvCoo_Con <- rowSums( ( cov_newLv_oldv_list[[new_rd]] %gI*gI%  invCov_oldLv_oldLv_list[[old_rd]]) * cov_newLv_oldv_list[[new_rd]] )
-          Evar_C <- lambda[old_rd] * (diag_cov_newLv_newLv_list[[new_rd]] - diag_Cno_InvCoo_Con)
+          Evar_C <- loc_lambda * (diag_cov_newLv_newLv_list[[new_rd]] - diag_Cno_InvCoo_Con)
           if (inherits(Evar_C,"bigq")) Evar_C <- .mMatrix_bigq(Evar_C)
           terme <- .calcZWZt_mat_or_diag(Z=newZAlist[[new_rd]],W=Evar_C,cholW=sqrt(Evar_C), returnMat=covMatrix) # READ the above comments to understand the complexity of this case
         } else { ## full cov matrix
           Cno_InvCoo_Con <- cov_newLv_oldv_list[[new_rd]] %gI*gI%  invCov_oldLv_oldLv_list[[old_rd]] %gI*gI%  t(cov_newLv_oldv_list[[new_rd]])
-          Evar_C <- lambda[old_rd] * (cov_newLv_newLv_list[[new_rd]] - Cno_InvCoo_Con)
+          Evar_C <- loc_lambda * (cov_newLv_newLv_list[[new_rd]] - Cno_InvCoo_Con)
+          #cat(crayon::red("cov_newLv_newLv_list"));str(cov_newLv_newLv_list[[new_rd]])
+          #cat(crayon::red("Cno_InvCoo_Con"));str(Cno_InvCoo_Con)
           if (inherits(Evar_C,"bigq")) Evar_C <- .mMatrix_bigq(Evar_C)
           if (as_tcrossfac_list) {
             eS <- eigen(Evar_C, symmetric = TRUE) # chol() typically fails and mat_sqrt() corrects more than below
@@ -264,7 +273,7 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
     nslices <- length(slices)-1L
     predVar <- vector("list",nslices)
     newZAlist_slice <- vector("list",length(newZAlist))
-    if (showpbar) pb <- txtProgressBar(style = 3, char="s") # FIXME could implement parallee computation
+    progrbar_setup <- .set_progrbar(style = showpbar, char="s") # FIXME could implement parallee computation
     for (it in seq_len(nslices)) {
       slice <- (slices[it]+1L):slices[it+1L]
       X.pv_slice <- X.pv[slice,,drop=FALSE]
@@ -283,13 +292,12 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
                                       newinold=newinold, 
                                       covMatrix=covMatrix,blockSize=blockSize,
                                       diag_cov_newLv_newLv_list=diag_cov_newLv_newLv_list) # (! covMatrix) hence as_tcrossfac_list must be FALSE
-      if (showpbar) setTxtProgressBar(pb, slices[it+1L]/nrX) ## update progress bar
+      if (showpbar) progrbar_setup$progress(slices[it+1L]/nrX) ## update progress bar
     }
-    if (showpbar) close(pb)
+    if (showpbar) close(progrbar_setup$pb)
     return(unlist(predVar))
   }
   ############################################################
-  lambda <- object$lambda
   newZACvar <- .calc_newZACvar(newZAlist,cov_newLv_oldv_list)
   if (ncol(X.pv)>ncol(object$X.pv)) { # detection etaFix$beta case
     XZAC <- cbind2(X.pv[,colnames(object$X.pv),drop=FALSE],newZACvar) ## no such thing in point pred as fix vs. estim does not matter there.
@@ -303,12 +311,13 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
     predVar <- .calcZWZt_mat_or_diag(Z=XZAC, W=NULL, 
                                      tcrossfac_W=tcrossfac_beta_w_cov, returnMat=covMatrix) ## component for linPred=TRUE,disp=FALSE when newdata=ori data
   }
+  #cat(crayon::red("predVar"));str(predVar)
   ## Second component of predVar: 
   # Evar: expect over distrib of (hat(beta),new hat(v)) of [variance of Xbeta+Zb given (hat(beta),old hat(v))]
   # Evar must be 0 when newdata=ori data
   if ( ! is.null(invCov_oldLv_oldLv_list)) { ## must be equivalent to the presence of newdata
     Evar <- .calc_Evar(newZAlist=newZAlist,newinold=newinold, cov_newLv_oldv_list=cov_newLv_oldv_list, 
-               lambda=lambda, invCov_oldLv_oldLv_list=invCov_oldLv_oldLv_list, 
+               invCov_oldLv_oldLv_list=invCov_oldLv_oldLv_list, 
                cov_newLv_newLv_list=cov_newLv_newLv_list, covMatrix=covMatrix,
                diag_cov_newLv_newLv_list=diag_cov_newLv_newLv_list, object=object,
                as_tcrossfac_list=as_tcrossfac_list)
@@ -316,6 +325,7 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
       predVar <- c(predVar,Evar) # join lists
     } else predVar <- predVar + Evar ## component for linPred=TRUE,disp=FALSE whether newdata=ori data or not
   }
+  #cat(crayon::red("Evar"));str(Evar)
   # If components for uncertainty in dispersion params were requested,
   #   logdispObject is not NULL
   # If some components are computable, $$dwdlogdisp should not be NULL
@@ -424,16 +434,15 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
           repnames <- rep(oldornew, numnamesTerms)
           newcols <- repnames %in% newlevels ## handle replicates (don't `[` newoldC using names !)
           oldcols <- repnames %in% oldlevels
-          if ( ! is.null(gmp_design_u <- attr(strucList[[old_rd]],"latentL_blob")$gmp_design_u)) {
-            #cat(crayon::yellow("YES"))
-            bigq_C <- gmp::tcrossprod(gmp_design_u)
-            newoldC <- .makelong(bigq_C, longsize=length(oldornew)*numnamesTerms)
+          if ( ! is.null(gmp_compactcovmat <- attr(strucList[[old_rd]],"latentL_blob")$gmp_compactcovmat)) {
+            newoldC <- .makelong(gmp_compactcovmat, longsize=length(oldornew)*numnamesTerms)
             #attr(newoldC,"DIMNAMES") <- list(repnames,repnames) # will be lost in next subsetting
           } else {
-            design_u <- attr(strucList[[old_rd]],"latentL_blob")$design_u
-            newoldC <- .makelong(.tcrossprod(design_u), longsize=length(oldornew)*numnamesTerms)
+            compactcovmat <- attr(strucList[[old_rd]],"latentL_blob")$compactcovmat
+            newoldC <- .makelong(compactcovmat, longsize=length(oldornew)*numnamesTerms)
             colnames(newoldC) <- rownames(newoldC) <- repnames ## these will be needed by .match_old_new_levels()
-          }
+            #cat(crayon::red("newoldC"));str(newoldC)
+          } 
           if (which_mats$no) {
             cov_newLv_oldv_list[[new_rd]] <- structure(newoldC[which(newcols),which(oldcols),drop=FALSE],ranefs=ranefs[[new_rd]])
             if (inherits(newoldC,"bigq")) attr(cov_newLv_oldv_list[[new_rd]], "DIMNAMES") <- list(repnames[newcols],repnames[oldcols]) ## these will be needed by .match_old_new_levels()
@@ -455,13 +464,13 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
             oldlevels <- colnames(fix_info$newZAlist[[old_rd]]) ## old_rd despite the "newZAlist" name: specific to fix_info
           } else oldlevels <- colnames(object$ZAlist[[old_rd]])
           newlevels <- colnames(newZAlist[[new_rd]])
-          ## currently newdata are not allowed with corrMatrix so that newlevels should = oldlevels...
+          # "test-predVar-Matern-corrMatrix" shows newdata working with corrMatrix, when newlevels are within oldlevels 
           if (length(setdiff(newlevels,oldlevels))) stop(paste0("Found new levels for a '",corr.model,"' random effect."))
           newoldC <- .tcrossprod(object$strucList[[old_rd]]) ## reconstructs permuted (according to cols of Z) corrMatrix from its L factor
           colnames(newoldC) <- rownames(newoldC) <- oldlevels
           if (which_mats$no) cov_newLv_oldv_list[[new_rd]] <- structure(newoldC[newlevels, ,drop=FALSE],ranefs=ranefs[[new_rd]])
           if (which_mats$nn[new_rd]) {
-            cov_newLv_newLv_list[[new_rd]] <- newoldC[newlevels, ,drop=FALSE]
+            cov_newLv_newLv_list[[new_rd]] <- newoldC[newlevels, newlevels ,drop=FALSE]
           } else {
             # diag(x=newoldC,names=TRUE)[newlevels] # does not work: names=TRUE is ignored
             tmp <- diag(x=newoldC)
@@ -890,9 +899,17 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
         sd <- qnorm(pv)*sqrt(varcomp)
       }
       if (! is.null(zero_truncated <- object$family$zero_truncated)) { ## interval for mu_T
-        interval <- cbind(object$family$linkinv(eta-sd, mu_truncated=zero_truncated),
-                          object$family$linkinv(eta+sd, mu_truncated=zero_truncated)) 
-      } else interval <- cbind(object$family$linkinv(eta-sd),object$family$linkinv(eta+sd))
+        if (variances$respVar) { # sd is already on response scale
+          mu <- object$family$linkinv(eta, mu_truncated=zero_truncated)
+          interval <- cbind(mu-sd,mu+sd)
+        } else interval <- cbind(object$family$linkinv(eta-sd, mu_truncated=zero_truncated),
+                                 object$family$linkinv(eta+sd, mu_truncated=zero_truncated)) 
+      } else {
+        if (variances$respVar) { # sd is already on response scale
+          mu <- object$family$linkinv(eta)
+          interval <- cbind(mu-sd,mu+sd)
+        } else interval <- cbind(object$family$linkinv(eta-sd),object$family$linkinv(eta+sd))
+      }
       colnames(interval) <- paste(st,c(signif(1-pv,4),signif(pv,4)),sep="_")
       intervalresu <- cbind(intervalresu,interval)
     }
@@ -920,15 +937,10 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
 ## (1) for surface prediction: (developed in InferentialSimulation/InferentialSimulation.R)
 ## (2) But also for generation of fixed effects in simulation of nested-effects models
 predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
-                          variances=list(),
-                          binding = FALSE, 
-                          intervals = NULL,
-                          level = 0.95,
-                          blockSize = 2000L,
-                          type = "response", 
-                          control=list(),
-                          verbose=c(showpbar=interactive()),
-                          ...) { ## but not new Y
+                          variances=list(), binding = FALSE, intervals = NULL,
+                          level = 0.95, blockSize = 2000L, type = "response", 
+                          verbose=c(showpbar=eval(spaMM.getOption("barstyle"))), 
+                          control=list(), ...) { ## but not new Y
   if (is.null(object$envir)) object$envir <- list2env(list(), ## back-compatibility fix for old objects
                                                      parent=environment(HLfit_body))
   ## the final components returned as attributes have names ...Var, other terms should be named differently
@@ -955,17 +967,17 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
     slices <- unique(c(seq(0L,nrX,blockSize),nrX))
     nslices <- length(slices)-1L
     res <- vector("list",nslices)
-    if (showpbar) pb <- txtProgressBar(style = 3, char="s") # FIXME could implement parallee computation
+    progrbar_setup <- .set_progrbar(style = showpbar, char="s") # FIXME could implement parallee computation
     for (it in seq_len(nslices)) {
       slice <- (slices[it]+1L):slices[it+1L]
       newdata_slice <- newdata[slice,,drop=FALSE]
       ## newdata_slice <- droplevels(newdata_slice) 
       res[[it]] <- .predict_body(object=object, newdata=newdata_slice, re.form = re.form, variances=variances, 
                                  binding=binding, type=type, intervals=intervals, level=level, blockSize=blockSize, ## blockSize should not be useful *here*
-                                 control=control, showpbar=verbose)
-      if (showpbar) setTxtProgressBar(pb, slices[it+1L]/nrX) ## update progress bar
+                                 control=control, showpbar=showpbar)
+      if (showpbar) progrbar_setup$progress(slices[it+1L]/nrX)  ## update progress bar
     }
-    if (showpbar) close(pb)
+    if (showpbar) close(progrbar_setup$pb)
     res <- .unlist_with_attributes(res)
     return(res)
   } else if (type=="marginal") {

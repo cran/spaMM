@@ -3,6 +3,53 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 3.3.0}{ 
+\subsection{NEW FEATURES}{
+\itemize{
+\item confint.HLfit() can now compute bootstrap confidence intervals by acting as a wrapper for boot::boot.ci(), and is then not limited to fixed-effect coefficients.
+\item New hatvalues() extractor.
+\item Faster and more memory-efficient step in Levenberg-Marquardt-like algorithm for "big" random effects fitted by sparse-correlation algorithms.
+\item Faster and more memory-efficient step in prediction code for "big" random effects.
+\item New option 'barstyle' to control globally the style of progress bars. New argument 'showpbar' for function dopar() and spaMM_boot().
+\item Informative warning when some variables are not found in parallel context. New argument 'pretest_fn' for function dopar().
+\item Better criteria for selection of sparse-precision algorithm, though far from perfect.
+\item VarCorr() extractor should now handle all spaMM fit results.
+\item Added 'seed' argument to spaMM_boot() and fixedLRT().
+}
+}
+\subsection{DEPENDENCIES}{
+\itemize{
+\item 'ROI.plugin.glpk' moved from Imports to Suggests, removing a "hard" dependency to the external library glpk.
+\item 'boot' in Imports.
+}
+}
+\subsection{USER-LEVEL CHANGES}{
+\itemize{
+\item Added formal argument 'intervals' for get_intervals(). This does not affect any functionality, but explictly shows that different intervals can be computed by changing this argument.  
+\item All mixed-effect fitting functions now have a formal argument 'method' equivalent to 'HLmethod'. 'HLmethod' can still be used in a backward-compatible way.
+}
+}
+\subsection{FIXED BUGS}{
+\itemize{
+\item simulate(<Gamma-response fit>) could return incorrectly formatted results when nsim>1.
+\item get_intervals(, which="respVar") (and equivalent syntaxes) returned an incorrect result when the family link was not 'identity'.
+\item Failure of fitting by sparse-precision method a model specified by a 'corrMatrix' argument with more levels than present in the data.
+\item ranef() extractor failed on sparse-precision fits with correlated random effects.
+\item prediction variance could be wrong for models with random-coefficient terms and fitted by sparse-precision methods.
+\item get_cPredVar() and and confint() no longer stop on fixed-effects models.
+\item plot.HLfit() could stop in some cases.
+\item eval_replicate() could stop in some cases.
+\item Non-default optimizer optim() failed for models with random-coefficient terms. Selecting optim() is not recommended anyway. 
+\item Re-emergent glitches in how() when the object was fitted by a "non-vanilla" call of the fitting function.
+}
+}
+\subsection{DOCUMENTATION}{
+\itemize{
+\item Substantial sections of the documentation have been rewritten, including new documentation items 'method' and 'random-effects', for easier navigation, updating information, and removing obscurities tracing back to early versions of spaMM. 
+\item New documentation 'external-libraries'.
+}
+}
+}
 \section{CHANGES UP TO VERSION 3.2.0}{ 
 \subsection{NEW FEATURES}{
 \itemize{

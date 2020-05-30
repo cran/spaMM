@@ -1,12 +1,13 @@
 .spaMM.data <- new.env(parent = emptyenv())
 .spaMM.data$options <- list(
+  F_I_X_M_E=FALSE,
   Rcpp_crossprod=TRUE, # integer with usual bool interp., and >1: .crossprod() prints types when .Rcpp_crossprod() not called; >2: always prints types;
   TRY_R_new=TRUE, # 
   TRY_update=TRUE, # measurable benefits only if Cholesky(., perm=TRUE) hence Q_CHMfactor do not benefit from it.... (fixme)
   perm_G=TRUE, 
   TRY_ZAX=NULL, # default may be TRUE for augZxy_cond=TRUE
   sparsity_threshold=0.05,
-  spprec_threshold=5000, 
+  spprec_threshold=60, # ohio small by correlation algo, large by spprec: threshold is n>=140 has crit 'near' 62 (varying betw replicates).  
   separation_max=10,
   sep_solver="glpk",
   spprec_method="def_AUGI0_ZX_sparsePrecision", 
@@ -72,6 +73,7 @@
   # .calc_latentL() control: (triangular facto. is ALWAYS used for spprec)
   use_tri_for_augZXy=FALSE, # *!*spprec; fitme -> .HLfit_body_augZXy[_W]; Seems marginally faster with no drawback.
   use_tri_for_makeCovEst=FALSE, # *!*spprec; TRUE WAS required for acceptable result in HLfit3 rC_transf_inner="sph" test! Affects numerical precision of calc_latentL() in .makeCovEst1() [ultimately using sXaug, not augZXy method].
+  replace_design_u=TRUE, # the strucList[[<ranCoef>]] is not $design_u if $d were not all 1
   #•
   invL_threshold=1e6, ## for devel code .HLfit_body_augZXy_invL(); compare to prod(sqrt(lambda)) ## F I X_invL but test "set.seed(666)" fails for invL_threshold>100
   ###############
@@ -110,7 +112,7 @@
   rankTolerance=quote(max(1e-7,.Machine$double.eps*10*ncol(X.pv))), ## private, used  by preprocess
   qrTolerance=1e-10, ## private, used by select qr() calls for predVar computation
   # , sparse_X=NULL## private
-  levels_type="mf", # explicit names, useful for debugging. ALternative is ".ULI" (which is faster?)
+  uGeo_levels_type="mf", # same type to be used by .calc_AMatrix_IMRF() and .calc_Zmatrix() for IMRFs. Explicit names, useful for debugging. ALternative is ".ULI" (which is faster?)
   #
   stylefns=list(v_in_loop=crayon::green, 
                 v_in_last=crayon::green$underline, # final output of v_h .do_damped_WLS_v_in_b
@@ -120,12 +122,16 @@
                 v_out_last=crayon::cyan$underline, # final output of v_h .do_damped_WLS_outer; also also bracketing each .solve_v_h_IRLS loop for v_h( tentative beta(damping) ) 
                 # colors tell what the numbers are for: grad of objective for v, versus grad of objective for beta (or joint beta,v) 
                 betaloop=crayon::yellow, # also bracketing the damped_WLS loop for new beta when  which_LevMar_step=="b_&_v_in_b"
-                betalast=crayon::yellow$underline),
+                betalast=crayon::yellow$underline,
+                # 
+                # not for LevM:
+                hardwarn=crayon::bold),
   H_scale_regul=1e-4,
   ## only to avoid warnings when using spaMM.options()
   nb_cores=NULL,
+  barstyle=quote(if(interactive()) {3L} else {0L}),
   #        add control=list(fix_predVar=NA) in predict() calls in the following calls? Probably not worth the mess.
-  fix_predVar=list("NA"="MSL|bboptim|isoscape|isofit|calibfit|optimthroughSmooth|spaMM_rhullByEI",
+  fix_predVar=list("NA"="MSL|bboptim|isoscape|isofit|calibfit|optimthroughSmooth|spaMM_rhullByEI|sampleByResp",
                    "TRUE"=NULL,"FALSE"=NULL), 
   thr_backsolve=0L # for devel testing of .backsolve(); 0L means that .Rcpp_backsolve may be called irrespective of matrix dimension
 )

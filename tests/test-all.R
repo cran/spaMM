@@ -17,7 +17,8 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") { ## set in etc/Renviron.site (cf R Win
       ## testthat::test_package(pkg) ## for an installed package
       if (FALSE) { ## tests not included in package (using unpublished data, etc.)
         priv_testfiles <- dir(paste0(projpath(),"/package/tests_private/"),pattern="*.R",full.names = TRUE)
-        priv_timings <- t(sapply(priv_testfiles, function(fich){system.time(source(fich))}))
+        priv_testfiles <- setdiff(priv_testfiles,paste0(projpath(),"/package/tests_private/knit_LM2GLMM.R"))
+        priv_timings <- t(sapply(priv_testfiles, function(fich){system.time(try(source(fich)))}))
         #spaMM.options(oldmaxt)
         print(colSums(priv_timings))
       }

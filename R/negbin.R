@@ -1,11 +1,35 @@
 .TNB_dev_integrand <- function(t) {} 
 
+# Far from perfect: how to substitute a warning to another ?
+.rnbinom_warn <- function(cond) {
+  if (grep("NA", conditionMessage(cond))) {
+    enclosing_env <- parent.env(environment())
+    mu_str <- get("mu_str",enclosing_env)
+    if (any(is.infinite(mu_str))) { # # (n=10, size=0.1, mu=1e309)
+      message("Infinite 'mu' in rnbinom() call.") 
+    } else {
+      size <- get("size",enclosing_env)
+      if (all(mu_str>0) && all(size>0)) { # (n=10, size=0.1, mu=1e308)
+        message("NAs produced by rnbinom() despite finite expectation: large 'mu' & small 'size' can result in infinite values of latent gamma draw. ")
+        # pb is at level of base C sources.
+      } else withRestarts({
+        signalCondition(cond)
+      }, muffleWarning = function() NULL)
+    }
+  } 
+}
+
 .rnbinom <- function(n, size, mu_str, zero_truncated=FALSE) { ## mu is either the standard mean (lambda) or a structure depending on trunc
   if (zero_truncated) {
     p0 <- attr(mu_str,"p0") ## or recompute it ? 
     Tunif <- runif(n,min=p0,max=1) ## truncated uniform
     resu <- qnbinom(Tunif, size=size, mu=attr(mu_str,"mu_U"))
-  } else resu <- rnbinom(n, size=size, mu=mu_str)  
+  } else {
+    ## rnbinom() is rpois(rgamma(shape=size,scale=mu/shape))
+    ## if rgamma generates Inf [hard to control], rpois() then produces NA
+    environment(.rnbinom_warn) <- environment()
+    resu <- withCallingHandlers(rnbinom(n, size=size, mu=mu_str), warning=.rnbinom_warn)
+  }
   return(resu)
 }
 

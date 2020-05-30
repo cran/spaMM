@@ -32,11 +32,14 @@ A list with elements
 }
 }
 }
+\seealso{
+\code{\link{get_ranPars}} and \code{\link{VarCorr}}.
+}
 \examples{
 \dontrun{
 data("blackcap")
 (corrhlfit <- corrHLfit(migStatus ~ means+ Matern(1|latitude+longitude),data=blackcap,
-                    HLmethod="ML")) 
+                        method="ML")) 
 inits <- get_inits_from_fit(corrhlfit, to_fn = "fitme")                    
 (fitfit <- fitme(migStatus ~ means+ Matern(1|latitude+longitude),data=blackcap, 
                   init=inits$init)) 
@@ -44,6 +47,6 @@ inits <- get_inits_from_fit(corrhlfit, template = fitfit)
 fitme(migStatus ~ means+ Matern(1|latitude+longitude),data=blackcap, 
       init=inits$init)
 # In these examples, inits$init.HLfit is useless 
-# as it is ignored by when LMMs are fitted.
+# as it is ignored when LMMs are fitted by fitme().
 }
 }

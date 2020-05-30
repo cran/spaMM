@@ -1,37 +1,40 @@
 ## alternative to lmerFactorList or so. Now see mkReTrms 
 
-.calc_dataordered_levels <- function(txt,mf,type) {
+.as_factor <- function(txt,mf,type) {
   ## Standard (.|.) ranefs are NOT handled by this function but by code calling as.factor()
   if (type=="seq_len") { ## does not try to find redundant levels. Used by predict.HLfit() for spatial terms
     splt <- NULL
-    dataordered_levels <- seq_len(nrow(mf))
-  } else if (type==".ULI") { # spaMM's special ranef types that have no "nested nesting" : 
-    # handles ( | ...+...) A N D importantly differs from the standard (.|.) code below,
+    raw_levels <- seq_len(nrow(mf))
+  } else if (type==".ULI") { # has been the default type of .calc_Zlist(). Now .ULI() no longer called through this case. 
+    # handles ( | ...+...) but not nested groups, while the general alternative below may handle both (at least separately)
+    # Used to make sure that results are data_ordered, but type="data_order" may now handle that. 
     splt <- NULL
     aslocator <- parse(text=paste(".ULI(",gsub("\\+|:", "\\,", txt),")"))
-    dataordered_levels <- eval(expr=aslocator,envir=mf) ## associates ordered levels 1...n to unique combin of rhs variables ordered as in the data.
-  } else { ## handles "nested nesting" for AR1 spprec || raneftype=="corrMatrix"
+    raw_levels <- eval(expr=aslocator,envir=mf) ## associates ordered levels 1...n to unique combin of rhs variables ordered as in the data.
+  } else { ## all other types such as "mf" or "data_order"; handles "nested nesting" for AR1 spprec || raneftype=="corrMatrix"
     splt <- strsplit(txt,c("%in%|:|\\+| "))[[1L]] ## things to be removed so that only variable names remain
     splt <- splt[splt!=""]
     if ( ! all(splt %in% names(mf)) ) stop(" ! all(splt %in% names(mf))")
     if (length(splt)==1L) {
-      dataordered_levels <- mf[[splt[1L]]]  ## depending on the user, mf[[splt[1L]]] may be integer or factor...
+      raw_levels <- mf[[splt[1L]]]  ## depending on the user, mf[[splt[1L]]] may be integer or factor...
     } else {
       ## without the next line, apply(mf[,splt] -> as.matrix(mf) produces artefacts such as space characters. 
       # the same artefacts should then be produced by seq_levelrange <- apply(uniqueGeo,1L,paste0,collapse=":")
       # mf[splt] <- lapply(mf[splt],factor)
-      dataordered_levels <- apply(mf[splt],1,paste,collapse=":") ## paste gives a character vector, not a factor.
+      raw_levels <- apply(mf[splt],1,paste,collapse=":") ## paste gives a character vector, not a factor.
       
     } 
   } 
-  return(list(factor=as.factor(dataordered_levels),splt=splt))
+  if (type=="data_order") {
+    return(list(factor=factor(raw_levels,levels=unique(raw_levels)),splt=splt))
+  } else return(list(factor=as.factor(raw_levels),splt=splt)) # ".ULI" already data_ordered
 }
 
-.calc_AR1_sparse_Q_ranges <- function(mf,dataordered_levels_blob) {
+.calc_AR1_sparse_Q_ranges <- function(mf,levels_blob) {
   res <- list()
-  splt <- dataordered_levels_blob$splt
+  splt <- levels_blob$splt
   if (length(splt)==1L) {
-    levelrange <- range(as.integer(levels(dataordered_levels_blob$factor))) 
+    levelrange <- range(as.integer(levels(levels_blob$factor))) 
     AR1_block_n_u_h_s <- diff(levelrange)+1L
     uniqueGeo <- seq_levelrange <- levelrange[1L]:levelrange[2L]
     dim(uniqueGeo) <- c(length(uniqueGeo),1)
@@ -106,7 +109,9 @@
   trivial_incidMat <- sparseMatrix(i=1L,j=1L,x=1L, dimnames=list("1",NULL)) 
   function(x,mf,
            rmInt, ## remove Intercept
-           drop,sparse_precision,type=".ULI",
+           drop,sparse_precision, 
+           geo_type, # note that "data_order", "seq_len" and ".ULI" are all data-ordered, and others ('"mf"') are not
+           # "data_order" is faster than ".ULI" and seems to work. attr(fitobject,"info.uniqueGeo") is unaffected.
            corrMat_info, old_leftOfBar_mf=NULL,
            lcrandfamfam) {
     ## le bidule suivant evalue le bout de formule x[[3]] et en fait un facteur. 
@@ -133,50 +138,53 @@
       ## for AR1_sparse and corrMatrix, we cannot use dummy levels as created by .ULI() of factor(). The level names have special meaning
       #   matching a time concept, or user-provided names for the corrMatrix.
       ## Further, we can drop rows/cols of a correlation matrix, but not of a precision matrix
-      if (raneftype %in% c("Matern","Cauchy")) {
-        dataordered_levels_blob <- .calc_dataordered_levels(txt=txt,mf=mf,type=type) ## even in sparse case
+      if (raneftype %in% c("Matern","Cauchy")) { ## even in sparse case
+        levels_blob <- .as_factor(txt=txt,mf=mf,type=geo_type) ## should a priori produce the same levels as .calcUniqueGeo() which mimics .ULI() 
       } else if (raneftype =="IMRF") {
         # for IMRF Z matches geo to uniqueGeo and A matches uniqueGeo to nodes
-        dataordered_levels_blob <- .calc_dataordered_levels(txt=txt,mf=mf,type=.spaMM.data$options$levels_type)
+        levels_blob <- .as_factor(txt=txt,mf=mf,type=.spaMM.data$options$uGeo_levels_type) # $uGeo_levels_type used to make sure 
+        #                                               that same type is used in .calc_AMatrix_IMRF() -> .as_factor()
         # if (is.null(spde_info <- attr(raneftype,"model"))) {
-        #   dataordered_levels_blob <- .calc_dataordered_levels(txt=txt,mf=mf,type=.spaMM.data$options$levels_type) #,type=".ULI") 
+        #   levels_blob <- .as_factor(txt=txt,mf=mf,type=.spaMM.data$options$uGeo_levels_type) #,type=".ULI") 
         # } else {
         #   if (inherits(spde_info,"inla.spde2")) {
-        #     dataordered_levels_blob <- .calc_dataordered_levels(txt=txt,mf=mf,type=.spaMM.data$options$levels_type)
+        #     levels_blob <- .as_factor(txt=txt,mf=mf,type=.spaMM.data$options$uGeo_levels_type)
         #   } else stop("Unhandled model class for IMRF")
         # }
       } else if (assuming_spprec || raneftype=="corrMatrix") {
-        dataordered_levels_blob <- .calc_dataordered_levels(txt=txt,mf=mf,type="mf")
-      } else dataordered_levels_blob <- .calc_dataordered_levels(txt=txt,mf=mf,type=type)
+        levels_blob <- .as_factor(txt=txt,mf=mf,type="data_order") # at some point I may have changed the type (from ".ULI" to "mf"?)
+        #                                       and not seen the effect on a corrMatrix example, now included in the tests
+      } else { # e.g. ranefType="adjacency", *!*assuming_spprec (immediate in the tests)
+        levels_blob <- .as_factor(txt=txt,mf=mf,type=geo_type)
+      }
       #
       if (raneftype %in% c("Matern","Cauchy", "IMRF")) {
-        ff <- dataordered_levels_blob$factor ## so that Z cols will not be reordered.
+        ff <- levels_blob$factor ## so that Z cols will not be reordered.
       } else if (raneftype=="corrMatrix") {
         if (info_mat_is_prec) { ## we have to keep all levels even those absent from the data
-          ff <- factor(dataordered_levels_blob$factor, levels=colnames(corrMat_info$matrix))
+          ff <- factor(levels_blob$factor, levels=colnames(corrMat_info$matrix))
         } else {
-          ff <- dataordered_levels_blob$factor
+          ff <- levels_blob$factor
         }
       } else if (assuming_spprec && raneftype=="AR1") { 
-        AR1_sparse_Q_ranges_blob <- .calc_AR1_sparse_Q_ranges(mf=mf,dataordered_levels_blob) # we need all 'time steps' for AR1 by spprec
-        ff <- factor(dataordered_levels_blob$factor,levels=AR1_sparse_Q_ranges_blob$seq_levelrange) ## rebuild a new factor with new levels
+        AR1_sparse_Q_ranges_blob <- .calc_AR1_sparse_Q_ranges(mf=mf,levels_blob) # we need all 'time steps' for AR1 by spprec
+        ff <- factor(levels_blob$factor,levels=AR1_sparse_Q_ranges_blob$seq_levelrange) ## rebuild a new factor with new levels
         if (anyNA(ff)) {
           stop(paste("Levels of the factor for an AR1 random effect should take integer values\n",
                      "(for convenient use of sparse-precision methods).")
           )
         }
-      } else { # other raneftype's: handles for ( | ...+...) A N D importantly differs from the standard (.|.) code below,
-        # which creates a Zt matrix with rows (then ZA cols) reordered as the automatic levels of the factor
-        # while the cov mats / LMatrix has the original order
-        # In particular im <- as(ff... creates a non-diagonal matrix in the he standard (.|.) code to represent this reordering.
-        ff <- dataordered_levels_blob$factor
+      } else { # other non-NULL raneftype's (hence not (.|.) ranefs) 
+        ff <- levels_blob$factor
       }
     } else if (length(grep("c\\(\\w*\\)",txt))) { ## c(...,...) was used (actually detects ...c(...)....) (but in which context ?)
       aslocator <-  parse(text=gsub("c\\(", ".ULI(", txt)) ## slow pcq ULI() est slow
       ff <- as.factor(eval(expr=aslocator,envir=mf))
-    } else { ## standard ( | ) rhs 
+    } else { ## standard ( | ) rhs: automatically converts grouping variables to factors as in lme4::mkBlist (10/2014)
+      # This creates a Zt matrix with rows (then ZA cols) reordered as the automatic levels of the factor
+      # Hence Z is not 'ordered' (eventually diagonal) if levels are not 'ordered' in the data.
       mfloc <- mf
-      ## automatically converts grouping variables to factors as in lme4::mkBlist (10/2014)
+      ## 
       for (i in all.vars(rhs)) { if ( ! is.null(curf <- mfloc[[i]])) mfloc[[i]] <- as.factor(curf)}
       if (is.null(ff <- tryCatch(eval(substitute(as.factor(fac), list(fac = rhs)), mfloc),
                                  error=function(e) NULL))) {
@@ -225,9 +233,9 @@
     attr(Z_, "namesTerm") <- colnames(modmat) ## length=npar
     if (identical(raneftype,"AR1")) {
       if (assuming_spprec) { ## this is TRUE is sparse_precision has not yet been determined !
-        ## Following is different from levels(dataordered_levels_blob$factor) which are reordered as character
+        ## Following is different from levels(levels_blob$factor) which are reordered as character
         #  Effect in first fit in test-AR1, when spprec goes from NULL to FALSE
-        attr(Z_,"dataordered_unique_levels") <- unique(as.character(dataordered_levels_blob$factor)) ## allow reformatting for ! sparse prec
+        attr(Z_,"dataordered_unique_levels") <- unique(as.character(levels_blob$factor)) ## allow reformatting for ! sparse prec
         colnames(Z_) <- AR1_sparse_Q_ranges_blob$seq_levelrange ## allow reformatting for ! sparse prec
         # ! ! ! caveat when changing the name of the following elements here, to change it elsewhere ! ! !
         attr(Z_,"AR1_block_n_u_h_s") <- AR1_sparse_Q_ranges_blob$AR1_block_n_u_h_s ## required for t_chol_Q computation
@@ -252,7 +260,7 @@
       colnames(ZA) <- rownames(incidMat) 
     } else ZA <- t(incidMat)
     # incidMat has no colnames and modmat does not provide names in the alternative general code
-    attr(ZA,"is_incid") <- TRUE # we use for predVar that it then has a digonal tcrossprod
+    attr(ZA,"is_incid") <- TRUE # we use for predVar that it then has a diagonal tcrossprod
   } else { ## first conceived for ranCoefs, with ncol(modmat)>1L. But also handles e.g. Matern(not-1|.) 
     ZA <- vector("list",ncol(modmat))
     for (col in seq_len(ncol(modmat))) {
@@ -270,7 +278,8 @@
 
 
 .calc_Zlist <- function (formula, mf, rmInt, drop, sparse_precision=spaMM.getOption("sparse_precision"),
-                         type=".ULI", corrMats_info, 
+                         geo_type="data_order", # cf comment for Matern case in .calc_ZMatrix(); there is one non-default use in post-fit code
+                         corrMats_info, 
                          old_ZAlist=NULL,newinold=NULL, ## for prediction
                          barlist, ## missing and NULL ust be distinguished 
                          lcrandfamfam # for heteroscedastic non-gaussian random effects
@@ -287,7 +296,7 @@
   ZAlist <- vector("list",length(exp_ranef_terms))
   for (lit in seq_along(exp_ranef_terms)) {
     ZAlist[[lit]] <- .calc_Zmatrix(exp_ranef_terms[[lit]], mf=mf, rmInt=rmInt,
-                                   drop=drop, sparse_precision=sparse_precision, type=type, 
+                                   drop=drop, sparse_precision=sparse_precision, geo_type=geo_type, 
                                    corrMat_info=corrMats_info[[lit]],
                                    old_leftOfBar_mf = attr(old_ZAlist[[newinold[lit]]],"leftOfBar_mf"),
                                    lcrandfamfam=lcrandfamfam[[lit]])

@@ -26,7 +26,7 @@
 The data were retrieved from \code{http://bergelson.uchicago.edu/regmap-data/climate-genome-scan} on 22 February 2013 (they may no longer be available from there).
 }
 \details{
-  The  response is binary so \code{HLmethod="PQL/L"} seems warranted (see Rousset and Ferdy, 2014).  
+  The  response is binary so \code{method="PQL/L"} seems warranted (see Rousset and Ferdy, 2014).  
 }
 \references{
  Fournier-Level A, Korte A., Cooper M. D., Nordborg M., Schmitt J., Wilczek AM (2011). A map of local adaptation in Arabidopsis thaliana. Science 334: 86-89.
@@ -40,12 +40,12 @@ The data were retrieved from \code{http://bergelson.uchicago.edu/regmap-data/cli
 }
 \examples{
 data("arabidopsis")
-if (spaMM.getOption("example_maxtime")>8) {
-  HLCor(cbind(pos1046738,1-pos1046738)~seasonal+Matern(1|LAT+LONG),
-        ranPars=list(rho=0.1192779,nu=0.2369892,lambda=8.599),
-        family=binomial(),HLmethod="PQL/L",data=arabidopsis)
+if (spaMM.getOption("example_maxtime")>3) {
+  fitme(cbind(pos1046738,1-pos1046738)~seasonal+Matern(1|LAT+LONG),
+        fixed=list(rho=0.119278,nu=0.236990,lambda=8.599),
+        family=binomial(),method="PQL/L",data=arabidopsis)
 }
-## The above ranPars are deduced from the following fit:
+## The above 'fixed' values are deduced from the following fit:
 if (spaMM.getOption("example_maxtime")>46) {
   SNPfit <- fitme(cbind(pos1046738,1-pos1046738)~seasonal+Matern(1|LAT+LONG),
               verbose=c(TRACE=TRUE), 

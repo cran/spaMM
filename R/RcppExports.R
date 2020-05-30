@@ -117,6 +117,10 @@
     .Call(`_spaMM_Rcpp_backsolve`, r, x, upper_tri, transpose)
 }
 
+.Rcpp_backsolve_M_M <- function(r, x, upper_tri = TRUE, transpose = FALSE) {
+    .Call(`_spaMM_Rcpp_backsolve_M_M`, r, x, upper_tri, transpose)
+}
+
 .Rcpp_chol2solve <- function(r, x) {
     .Call(`_spaMM_Rcpp_chol2solve`, r, x)
 }

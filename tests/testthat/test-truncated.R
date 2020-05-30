@@ -9,7 +9,7 @@ testthat::expect_equal(attr(predict(fit2, intervals="predVar"),"intervals")[1,1]
 simulate(fit2,nsim=3)
 
 ## check simulation and estimation:
-if (spaMM.getOption("example_maxtime")>105) { ## if NOT sparse_precision
+if (spaMM.getOption("example_maxtime")>105) { # (~twice longer by spprec)
   lll <- Loaloa
   lll$ID <- seq(nrow(lll))
   lll$resp <- 1+floor(log(1+lll$npos))

@@ -49,8 +49,7 @@ Vaida, F., and Blanchard, S. (2005) Conditional Akaike information for mixed-eff
 }
 \examples{
 data("wafers")
-m1 <- HLfit(y ~X1+X2+(1|batch),
-          resid.model = ~ 1 ,data=wafers,HLmethod="ML")
+m1 <- HLfit(y ~ X1+X2+(1|batch), resid.model = ~ 1, data=wafers, method="ML")
 get_any_IC(m1) 
 extractAIC(m1)
 }

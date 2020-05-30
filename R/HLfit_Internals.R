@@ -265,9 +265,9 @@ if (FALSE) {
           ranCoefs[[isRandomSlope]] <- ranCoefs
         } else stop("Cannot match numeric ranCoefs to a single random-coefficient term.")
       } else if (length(ranCoefs) < nrand ){
-        posnames <- setdiff(seq(nrand), names(ranCoefs))
+        posnames <- setdiff(seq_len(nrand), names(ranCoefs))
         ranCoefs <- c(ranCoefs,structure(vector("list",length(posnames)),names=posnames))
-        ranCoefs <- ranCoefs[as.character(seq(nrand))]
+        ranCoefs <- ranCoefs[as.character(seq_len(nrand))]
       }
       newly_set <- ! (sapply(ranCoefs,is.null) | sapply(ranCoefs,identical,y=NA)) ## is.na would test each element of each ranCoefs element  
       # newly_set contains some TRUE (unless the user provided an uninformative ranCoefs) => final return() 
@@ -279,9 +279,9 @@ if (FALSE) {
     ## assume 'incomplete' list
     nrand <- length(isRandomSlope)
     if (length(ranCoefs) < nrand ){
-      posnames <- setdiff(seq(nrand), names(ranCoefs))
+      posnames <- setdiff(seq_len(nrand), names(ranCoefs))
       ranCoefs <- c(ranCoefs,structure(vector("list",length(posnames)),names=posnames))
-      ranCoefs <- ranCoefs[as.character(seq(nrand))]
+      ranCoefs <- ranCoefs[as.character(seq_len(nrand))]
     }
     newly_set <- ! (sapply(ranCoefs,is.null) | sapply(ranCoefs,identical,y=NA)) ## is.na would test each element of each ranCoefs element  
     newly_set <- newly_set & ( ! ranCoefs_blob$is_set)
@@ -881,7 +881,8 @@ spaMM_Gamma <- function (link = "inverse") {
 
 
 .muetafn <-   function(eta,BinomialDen,processed) { ## note outer var BinomialDen 
-  names(eta) <- NULL
+  ### if ( ! is.null(names(eta))) stop(" ! is.null(names(eta))")
+  # names(eta) <- NULL ## no longer useful because rownames(X.pv) <- NULL and rownames(ZAL) <- NULL
   family <- processed$family
   eta <- .sanitize_eta(eta, family=family)
   if (family$family == "binomial") { ## 
@@ -1025,21 +1026,21 @@ spaMM_Gamma <- function (link = "inverse") {
   switch(link,
          logit= { # .Call(C_logit_linkinv, eta) de facto corrects eta has follows before computing mu:
            thresh <- -qlogis(tol)
-           pmin(pmax(eta, -thresh), thresh)
+           .bracket(eta, -thresh, thresh) #pmin(pmax(eta, -thresh), thresh)
          },
          probit= {
            ### .muetafn has called binomial(probit)$linkinv to compute mu(FREQS), which first corrected eta as follows:
            thresh <- -qnorm(tol)
-           pmin(pmax(eta, -thresh), thresh) # so that abs(dnorm(eta)) is bounded by .Machine$double.eps   
+           .bracket(eta, -thresh, thresh) # pmin(pmax(eta, -thresh), thresh) # so that abs(dnorm(eta)) is bounded by .Machine$double.eps   
          },
          cloglog= {
            lo <- log(-log1p(-tol))
            up <- log(-log(tol))
-           pmin(pmax(eta, lo), up) 
+           .bracket(eta, lo, up) #pmin(pmax(eta, lo), up) 
           },
          cauchit= {
            thresh <- -qcauchy(tol)
-           pmin(pmax(eta, -thresh), thresh)
+           .bracket(eta, -thresh, thresh) # pmin(pmax(eta, -thresh), thresh)
           },
          stop("Unhandled link")
   )
@@ -1416,8 +1417,12 @@ spaMM_Gamma <- function (link = "inverse") {
     if ("AUGI0_ZX_sparsePrecision" %in% fit$MME_method) {
       tcrossfac_beta_v_cov <- .get_tcrossfac_beta_v_cov(fit$X.pv, fit$envir, fit$w.resid) ## typically permuted from triangular
       pforpv <- ncol(fit$X.pv)
-      lhs <- Matrix::bdiag(new("dtCMatrix",i= 0:(pforpv-1L), p=0:(pforpv), Dim=c(pforpv,pforpv),x=rep(1,pforpv)),
-                           fit$envir$chol_Q)
+      long_latent_d <- unlist(fit$envir$sXaug$AUGI0_ZX$envir$latent_d_list)
+      lhs <- .Matrix_times_Dvec(fit$envir$chol_Q, 1/long_latent_d)
+      if (pforpv) {
+        lhs_Xpv <- new("dtCMatrix",i= 0:(pforpv-1L), p=0:(pforpv), Dim=c(pforpv,pforpv),x=rep(1,pforpv))
+        lhs <- Matrix::bdiag(lhs_Xpv, lhs )
+      } 
       fit$envir$tcrossfac_beta_w_cov <- drop0(lhs %*% tcrossfac_beta_v_cov, tol=1e-16) 
     } else {
       if (is.matrix(beta_cov_info <- fit$envir$beta_cov_info) || ## matrix is old format, should be a list now
@@ -1468,16 +1473,14 @@ spaMM_Gamma <- function (link = "inverse") {
       } else ranefs <- attr(res$ZAlist,"exp_ranef_strings") 
       for (Lit in seq_len(length(strucList))) {
         lmatrix <- strucList[[Lit]]
-        if (!is.null(lmatrix)) {
+        if ( ! is.null(lmatrix)) {
           ## end of mat_sqrt implies either type is cholL_LLt or we have decomp $design_u and $d 
           type <-  attr(lmatrix,"type")
           invCoo <- NULL
           if ( ! is.null(latentL_blob <- attr(lmatrix,"latentL_blob"))) { ## from .process_ranCoefs
-            if ( ! is.null(gmp_design_u <- latentL_blob$gmp_design_u)) {
-              #cat(crayon::red("YES"))
-              invC <- gmp::solve.bigq(gmp::tcrossprod(gmp_design_u))
-            } else {
-              invC <- solve(.tcrossprod(latentL_blob$design_u ))
+            if ( is.null(invC <- latentL_blob$gmp_compactprecmat) && 
+                 is.null(invC <- latentL_blob$compactprecmat)) {
+              invC <- solve(latentL_blob$compactcovmat) 
             }
             invCoo <- .makelong(invC,longsize=ncol(lmatrix))
           } else if (inherits(lmatrix,"dCHMsimpl")) { # before any test on type...
@@ -1489,24 +1492,32 @@ spaMM_Gamma <- function (link = "inverse") {
           } else if (type == "cholL_LLt")  {
             Rmatrix <- t(lmatrix)
             if (attr(lmatrix,"need_gmp")) {
-              if (is.null(fix_predVar <- control$fix_predVar)) { # best avoided in programming, to avoid the .check_frames() stuff
+              # In the context of external packages, the user can only modify package options. So default values used by these packages
+              # should be taken from these packages' options. Then the control$fix_predVar that appears below comes from those options.
+              if (is.null(fix_predVar <- control$fix_predVar)) { # NULL best avoided in programming, to avoid the .check_frames() stuff
                 # Hence calling predict() with explicit control$fix_predVar is recommended in programming.
-                # Yet without explicit control$fix_predVar, this block will not be called for all predict() calls, only once for any problematic fit 
-                # so the impact .check_frames() on performance should be negligible. 
+                # Yet without explicit control$fix_predVar, either 
+                # .spaMM.data$options$fix_predVar lists a calling function => 
+                #   this block will not be called for all predict() calls, only once for any problematic fit 
+                #    so the impact .check_frames() on performance should be negligible. 
+                # or 
+                # .spaMM.data$options$fix_predVar does NOT list a calling function 
+                #   (e.g., blackbox::sampleByResp was forgotten at some stage) => repeated warnings
+                # as fix (invCoo <- ginv(crossprod(Rmatrix))) only local since save in envir occurs only if ( ! fix_predVar_NULL)
                 predVar_exceptions <- .spaMM.data$options$fix_predVar
                 if (.check_frames(which=predVar_exceptions$"NA")) {
-                  fix_predVar <- NA
+                  fix_predVar <- NA # single message + ginv + saved in envir  = (FALSE+warning)
                 } else if (.check_frames(which=predVar_exceptions$"TRUE")) {
-                  fix_predVar <- TRUE
+                  fix_predVar <- TRUE # NO warning + gmp + saved in envir; gmp is presumptuous and so is TRUE as default 
                 } else if (.check_frames(which=predVar_exceptions$"FALSE")) {
-                  fix_predVar <- FALSE
-                } 
+                  fix_predVar <- FALSE # NO warning + ginv + saved in envir  = (NA - warning)
+                } # else fix_predVar remains NULL => # repeated warnings + ginv + NOT saved in envir  
               }
               if (is.null(fix_predVar)) { # when user can handle this
                 warning("A nearly-singular correlation matrix was fitted; see help('fix_predVar') for handling this", immediate. = TRUE)
                 fix_predVar_NULL <- TRUE
               } else if (is.na(fix_predVar)) { # When user can do nothing and gmp cannot be assumed: warning+fallback computation below 
-                warning("A nearly-singular correlation matrix was fitted", immediate. = TRUE)
+                message("A nearly-singular correlation matrix was fitted; ginv() will be used.")
               } else if (fix_predVar) { 
                 invCoo <- gmp::tcrossprod(gmp::solve.bigq(gmp::as.bigq(Rmatrix))) 
                 #invCoo <- Rmpfr::mpfr(invCoo,128)
@@ -1673,9 +1684,11 @@ spaMM_Gamma <- function (link = "inverse") {
 
 .calc_Md2hdvb2_info_spprec_by_QR <- function(envir, which="tcrossfac_v_beta_cov") {## sparse qr is fast
   qr_R <- qrR(envir$qrXa, backPermute=FALSE) 
-  X_scale <- envir$X_scale
-  if ( ! is.null(X_scale)) {
-    Xnames <- names(X_scale)
+  X_scale <- envir$X_scale # pre v.2.7.34
+  if (is.null(X_scale)) X_scale <- attr(envir$sXaug,"scaled:scale") # from v2.7.34 to 3.2.18 
+  if (is.null(X_scale)) X_scale <- attr(envir$sXaug$AUGI0_ZX$X.pv,"scaled:scale") # from version 3.2.19
+  if ( ! is.null(X_scale)) { ## X_scale impacts post-fit computations. 
+    Xnames <- names(X_scale) 
     qr_R[,Xnames] <- .m_Matrix_times_Dvec(qr_R[,Xnames,drop=FALSE], X_scale)
   }
   if (which=="tcrossfac_v_beta_cov") { ## 
@@ -1706,28 +1719,28 @@ spaMM_Gamma <- function (link = "inverse") {
       # such that chol_Md2hdv2 = t(solve(factor_inv_Md2hdv2))
     }
     if (is.null(r22 <- envir$r22)){
-      if (ncol(X.pv)==0L) { 
-        r12 <- matrix(nrow=nrow(factor_inv_Md2hdv2),ncol=0L)
-        r22 <- diag(nrow=0L)
-      } else {
+      if (ncol(X.pv)) {
+        if (is.null(envir$ZtW)) envir$ZtW <- t(.Dvec_times_m_Matrix(attr(envir$sXaug,"w.resid"), envir$sXaug$AUGI0_ZX$ZAfix)) 
         r12 <- as(Matrix::solve(envir$G_CHMfactor, as(envir$G_CHMfactor,"pMatrix") %*% envir$ZtW %*% X.pv,system="L"),"sparseMatrix") ## solve(as(envir$G_CHMfactor,"sparseMatrix"), envir$ZtW %*% AUGI0_ZX$X.pv)
         r22 <- .calc_r22(X.pv,w.resid,r12, sXaug=NULL) ## both lines as explained in working doc
-      }
+        r22 <- as(r22,"sparseMatrix") 
+      } else r22 <- diag(nrow=0L) # don't leave it NULL; + we use its ncol
     } else r12 <- envir$r12 
-    r22 <- as(r22,"sparseMatrix") 
-    n_u_h <- ncol(envir$chol_Q)
-    pforpv <- ncol(X.pv)
     if (which=="R_Md2hdbv2") { ## not called in the source, and the single occurrence of solve(factor_inv_Md2hdv2)
-      R_Md2hdbv2 <- rbind(cbind(t(solve(factor_inv_Md2hdv2)),r12), # cbind(chol_Md2hdv2,r12),
-                          cbind(Matrix(0,nrow=pforpv,ncol=n_u_h),r22)) ## R_a in the working doc
+      if (ncol(r22)) {
+        R_Md2hdbv2 <- rbind(cbind(t(solve(factor_inv_Md2hdv2)), r12), # cbind(chol_Md2hdv2,r12),
+                            cbind(Matrix(0,nrow=ncol(X.pv),ncol=ncol(envir$chol_Q)), r22)) ## R_a in the working doc
+      } else R_Md2hdbv2 <- t(solve(factor_inv_Md2hdv2))
       return(R_Md2hdbv2) ## such that tcrossprod(R_invMd2hdvb2) = solve(Md2hdbv2) = solve(crossprod(R_Md2hdbv2))
     } else {
       # weirdly solve(chol_Md2hdv2,system="L") (with/out b) is slower that solving the sparseMatrix.
-      inv11 <- t(factor_inv_Md2hdv2)# solve(chol_Md2hdv2)
-      inv22 <- solve(r22)
-      inv12 <- -1* inv11 %*% (r12 %*% inv22) ## does not seem to understand unary '-'
-      R_invMd2hdvb2 <- rbind(cbind(inv11,inv12),
-                             cbind(Matrix(0,nrow=pforpv,ncol=n_u_h),inv22))
+      if (ncol(r22)) {
+        inv11 <- t(factor_inv_Md2hdv2)# solve(chol_Md2hdv2)
+        inv22 <- solve(r22)
+        inv12 <- -1* inv11 %*% (r12 %*% inv22) ## does not seem to understand unary '-'
+        R_invMd2hdvb2 <- rbind(cbind(inv11,inv12),
+                               cbind(Matrix(0,nrow=ncol(X.pv),ncol=ncol(envir$chol_Q)), inv22))
+      } else R_invMd2hdvb2 <- t(factor_inv_Md2hdv2)# only the inv11 block, solve(chol_Md2hdv2)
       if (.spaMM.data$options$perm_G) {
         tcrossfac_v_beta_cov <- as(R_invMd2hdvb2,"sparseMatrix") # not necess. triangular
       } else tcrossfac_v_beta_cov <- as(R_invMd2hdvb2,"triangularMatrix") ## not sure that being triangular would be of any use.
@@ -1743,7 +1756,7 @@ spaMM_Gamma <- function (link = "inverse") {
 
 
 .calc_Md2hdvb2_info_spprec <- function(X.pv,envir, w.resid, which="tcrossfac_v_beta_cov") { ## this is called post-fit
-  if ( ! is.null(envir$qrXa) ) { # If we have a qr facto of augmented X, wecan use it efficiently
+  if ( ! is.null(envir$qrXa) ) { # If we have a qr facto of augmented X, we can use it efficiently
     # This is tested for example by get_predVar(fitsparse,newdata=newXandZ) on 'landsat' data
     .calc_Md2hdvb2_info_spprec_by_QR(envir, which)
   } else {
@@ -1812,10 +1825,18 @@ spaMM_Gamma <- function (link = "inverse") {
           locnc <- ncol(ZA)
           locnr <- nrow(xmatrix)
           if ( locnc %% locnr !=0) {
-            mess <- paste0("The number of levels of the grouping variable in random term ", 
-                           attr(ZAlist,"exp_ranef_strings")[Lit])
-            mess <- paste0(mess,"\n  is not a multiple of the dimension of the correlation matrix.") ## by distMatrix checking in corrHLfit or no.info check somewhere...
-            stop(mess)
+            # then names are needed to match the row and columns
+            if (length(setdiff(colnames(ZA),rownames(xmatrix)))) { # some names missing from xmatrix 
+              mess <- "Cannot match the correlation matrix:\n"
+              mess <- paste0(mess, "The number of levels of the grouping variable in random term ", 
+                             attr(ZAlist,"exp_ranef_strings")[Lit])
+              mess <- paste0(mess,"\n  is not a multiple of the dimension of the correlation matrix;") ## by distMatrix checking in corrHLfit or no.info check somewhere...
+              mess <- paste0(mess,"\n  and levels of the grouping variable cannot all be matched by name to dimnames of the correlation matrix.")
+              stop(mess)
+            } else {
+              xmatrix <- xmatrix[colnames(ZA),colnames(ZA),drop=FALSE]
+              locnr <- locnc
+            }
           }         
           nblocks <- locnc %/% locnr 
           if (nblocks>1) {
@@ -1860,6 +1881,15 @@ spaMM_Gamma <- function (link = "inverse") {
   return(ZAX)
 }
 
+## replace missing (as(<ddi>, "dGCMatrix)) method
+# also handles missing 'Z' but explicit 'ncol_Z' and 'x'
+.as_ddi_dgC <- function(Z=NULL, ncol_Z=ncol(Z), x=Z@x) { 
+  if ( ! length(x)) x <- rep(1,ncol_Z)
+  Z <- new("dgCMatrix",i= 0:(ncol_Z-1L), p=c(0L:(ncol_Z)), Dim=c(ncol_Z,ncol_Z),x=x)
+  return(Z)
+}
+
+
 # even though the Z's were sparse postmultplication by LMatrix leads some of the ZAL's to dgeMatrix (dense) 
 #                                 [and replacement by LMatrix may give a *m*atrix !]
 .ad_hoc_cbind <- function(ZALlist, as_matrix ) {
@@ -1892,6 +1922,7 @@ spaMM_Gamma <- function (link = "inverse") {
     return(new("ZAXlist", LIST=ZALlist))
   } else {
     ZAL <- .ad_hoc_cbind(ZALlist, as_matrix )
+    rownames(ZAL) <- NULL
     return(ZAL)
   }
 }
@@ -1990,10 +2021,15 @@ spaMM_Gamma <- function (link = "inverse") {
   namesnames <- names(print_namesTerms)
   for (it in seq_len(length(namesnames))) if (nchar(namesnames[it])>10) namesnames[it] <- paste0(substr(namesnames[it],0,9),".")
   names(print_namesTerms) <- make.unique(namesnames,sep=".") ## makes group identifiers unique (names of coeffs are unchanged); using base::make.unique
-  print_lambda <- vector("list",nrand) 
+  # these names are used e.g. in VarCorr. There a ranCoefs has an Intercept and a <predictor>  coefficient, 
+  #  and we create a conflict if "(Intercept)" is replaced by <predictor> (ie, by a namesname)
+  # OTOH
+  # now print_namesTerms is a list with unique names but possibly with repeated elements "(Intercept)" which is bad as only the elements will be used
+  # => we keep here an informative lambda_list with redundant names and extract elsewhere a cosy $lambda by an ad hoc function .print_lambda().
+  lambda_list <- vector("list",nrand) 
   Xi_cols <- attr(ZAlist,"Xi_cols")
   for (rd in seq_len(nrand)) {
-    plam_rd <- process_resglm_blob$print_lambdas[[rd]]
+    plam_rd <- process_resglm_blob$lambda_pred_list[[rd]]
     if (anyNA(plam_rd)) { ## those for which no glm was available, such as fixed lambdas...
       Xi_ncol <- Xi_cols[rd]
       plam_rd <- numeric(Xi_ncol)
@@ -2002,17 +2038,19 @@ spaMM_Gamma <- function (link = "inverse") {
       for (colit in seq_len(Xi_cols[rd])) {
         u.subrange <- u.range[((colit-1L)*blocksize+1L):(colit*blocksize)]
         plam_rd[colit] <- unique(lambda_est[u.subrange])
-      } # With "chol" transfo pour ranCoefs, all the lambda's are 1, so subrange'ing is essential
+      } # With "chol" transfo pour ranCoefs, all the lambda's are 1, so subrange'ing is essential # all 1 ? not sure for inner-estimated ones.
     }
-    if (lambdaType[rd]!="inner" && ## bc for inner, plam_rd is $print_lambdas[[rd]] and is already the single lambda param
+    # lambdaType does not distinguish ranCoefs
+    if (lambdaType[rd]!="inner" && ## bc for inner, plam_rd is $lambda_pred_list[[rd]] and is already the single lambda param
         ! is.null(prior_lam_fac <- rand.families[[rd]]$prior_lam_fac)) {
       plam_rd <- plam_rd[1L]/prior_lam_fac[1L]
     } ## F I X M E It would be better to use a lambda_par attribute for lambda_est
-    print_lambda[[rd]] <- structure(plam_rd, names=print_namesTerms[[rd]])
+    lambda_list[[rd]] <- structure(plam_rd, names=print_namesTerms[[rd]])
   }
-  attr(print_lambda,"cum_n_u_h") <- cum_n_u_h
+  names(lambda_list) <- names(print_namesTerms)
+  attr(lambda_list,"cum_n_u_h") <- cum_n_u_h
   lambda.object <- list(lambda_est = lambda_est,  ## full vector for simulate() calc_logdisp_cov()
-                        lambda=print_lambda)  ## nrand-elements list, in output -> used by simulate, useful for init another fit, may substitute to the coefficients_lambdaS when the latter have not bee computed from  glm, etc.
+                        lambda_list=lambda_list)  ## nrand-elements list, multiple uses beyond unlisting it into hlfit's $lambda. 
   lambda.object$type <- lambdaType
   if (any(lambdaType=="inner")) { ## modifies default namesTerms
     coefficients_lambdaS <- process_resglm_blob$coefficients_lambdaS
@@ -2039,8 +2077,8 @@ spaMM_Gamma <- function (link = "inverse") {
   return(round(as.numeric(difftime(Sys.time(), time1, units = "secs")), 1))
 }
 
-.post_process_LMatrices <- function(next_LMatrices, ZAlist, ranCoefs_blob) { 
-  strucList <- vector("list", length(ZAlist)) 
+.post_process_LMatrices <- function(next_LMatrices, ZAlist, ranCoefs_blob, cum_n_u_h) { 
+  strucList <- vector("list", length(ZAlist))
   for (it in seq_len(length(ZAlist))) {
     lmatrix <- next_LMatrices[[it]]
     ## keep in mind that str(S4...) does not show extra attributes
@@ -2050,9 +2088,16 @@ spaMM_Gamma <- function (link = "inverse") {
       corr.model <- attr(lmatrix, "corr.model") 
       if (is.null(corr.model)) warning('attr(next_LMatrix, "corr.model") is NULL')
       if (corr.model=="random-coef") {
-        design_u <- attr(lmatrix,"latentL_blob")$design_u
-        if ( ( ! is.null(design_u)) && kappa(design_u)>1e06) attr(lmatrix,"latentL_blob")$gmp_design_u <- gmp::as.bigq(design_u)
-        # singularity issues not handled here in spprec (crossfac_Q representation)
+        latentL_blob <- attr(lmatrix,"latentL_blob")
+        design_u <- latentL_blob$design_u
+        if (kappa(design_u)>1e06) { # occurs in HLfit3 example
+          attr(lmatrix,"latentL_blob")$gmp_compactcovmat <- gmp::as.bigq(attr(lmatrix,"latentL_blob")$compactcovmat)
+          attr(lmatrix,"latentL_blob")$gmp_compactprecmat <- gmp::solve.bigq(attr(lmatrix,"latentL_blob")$gmp_compactcovmat)
+          if (is.null(latentL_blob$compactchol_Q)) latentL_blob$compactchol_Q <- t(gmp::asNumeric(gmp::solve.bigq(gmp::as.bigq(design_u))))
+        } else if (is.null(latentL_blob$compactchol_Q)) latentL_blob$compactchol_Q <- t(solve(design_u))
+        # We will use $d and $compactchol_Q in .get_invL_HLfit() and we remove $design_u for easier-to-maintain code
+        latentL_blob$design_u <- NULL
+        attr(lmatrix,"latentL_blob") <- latentL_blob
       } else if (! is.null(msd.arglist <- attr(lmatrix,"msd.arglist"))) { ## Matern, Cauchy
         ## remove potentially large distMatrix to save space, but stores its "call" attribute for getDistMat()
         if ( ! is.null(dM <- msd.arglist$distMatrix) ) { 
@@ -2067,6 +2112,9 @@ spaMM_Gamma <- function (link = "inverse") {
       if (attr(lmatrix,"type")=="cholL_LLt" && corr.model %in% c("Matern","Cauchy")) {
         attr(lmatrix,"need_gmp") <- (kappa(lmatrix)>1e05)
       } else attr(lmatrix,"need_gmp") <- FALSE ## it's not that we may not need it, it's that we may not handle it
+      #
+      ## Now fill strucList[[it]]
+      #
       if (FALSE && inherits(lmatrix,"dCHMsimpl")) { # inhibited => dCHMsimpl goes into strucList
         extras <- setdiff(names(attributes(lmatrix)),c("class",slotNames(lmatrix)))
         lmatrix_ <- as(lmatrix,"pMatrix") %*% solve(lmatrix, system="Lt") 
@@ -2074,6 +2122,20 @@ spaMM_Gamma <- function (link = "inverse") {
         attr(lmatrix_,"Q_CHMfactor") <- lmatrix 
         attr(lmatrix_, "type") <- "from_Q_CHMfactor"
         strucList[[it]] <- lmatrix_ 
+      } else if (corr.model=="random-coef" && .spaMM.data$options$replace_design_u) {
+        latent_d <- latentL_blob[["d"]] 
+        if ( ! all(latent_d==1)) { # spprec, AND there's one case in .calc_latentL() where d!=1 (when cholesky failed).
+          strucList[[it]] <- .makelong(.m_Matrix_times_Dvec(design_u,sqrt(latent_d)), longsize=ncol(lmatrix))
+          # so now [if replace_design_u] strucList[[]] is always the tcrossfac of the covmat, whatever the internal repres of the covmat
+          # !! Changing the meaning of strucList[[]] between the fit and the postfit requires an adjustment in .calc_invL_coeffs()
+          #    Hence we must keep the original $d in the object.
+          # putting back attributes, including the modified latentL_blob.
+          supp_attr <- setdiff(names(attributes(lmatrix)),names(attributes(strucList[[it]])))
+          attributes(strucList[[it]])[supp_attr] <- attributes(lmatrix)[supp_attr] 
+        } else {
+          attr(lmatrix,"latentL_blob")[["d"]] <- NULL # so that we know they are all 1 without testing them
+          strucList[[it]] <- lmatrix
+        }
       } else strucList[[it]] <- lmatrix  
     } 
   }
@@ -2188,10 +2250,16 @@ spaMM_Gamma <- function (link = "inverse") {
       if (is.null(rhs)) {
         return(list(inv=Matrix::chol2inv(qrR(RP,backPermute = FALSE)),Rperm=RP@q+1L,RRsP=RRsP))
       } else {
-        ## ::chol2inv (-> essentially tcrossprod(solve()) without any particular optimization): very slow tcrossprod for large matrices,
+        # test cloglog (with large enough maxtime) and test dhglm reaches here
+        # test DHGLM ncol(XD)=21 or 23 (v or v_b) is already faster by .backsolve()
+        # test cloglog ncol(XD)=144 or 192 is indistinct
+        # Other tests would be 'bigranefs' with forced LevM; twinR
+        # apparently Matrix::chol2inv -> tcrossprod(solve(as(x, "triangularMatrix")))  # cf getMethod("chol2inv",signature=c(x="sparseMatrix"))
+        ## very slow tcrossprod for large matrices,
         ## not specifically bc of the tcrossprod implementation (compared to crossprod) but because the result is *much* denser (bigranefs example) 
-        ## It's then much better to avoid chol2inv(), at least when there is a RHS! 
-        if (ncol(XD)<1000L) { # F I X M E ad hoc (fast tests vs 'bigranefs' test)
+        ## It's then much better to avoid chol2inv(), at least when there is a RHS!
+        ## PLUS 05/2020 : more efficient .backsolve avoids backsolve -> as.matrix(). 
+        if (FALSE) { 
           if (is.matrix(rhs)) {
             resu <- (Matrix::chol2inv(qrR(RP,backPermute = FALSE)) %*% rhs[RP@q+1L,])[RRsP,]
           } else { ## if rhs is one col 
@@ -2199,12 +2267,12 @@ spaMM_Gamma <- function (link = "inverse") {
           }
         } else {
           if (TRUE) {
-            qrr <- qrR(RP,backPermute = FALSE)
+            qrr <- qrR(RP,backPermute = FALSE) # must be dtC
+            qrr <- as(qrr,"dgCMatrix") ## avoid conversions in each call to .backsolve()
+            resu <- .backsolve(qrr, .backsolve(qrr, rhs[RP@q + 1], transpose = TRUE))
             if (is.matrix(rhs)) {
-              resu <- backsolve(qrr, backsolve(qrr,rhs[RP@q+1L,],transpose=TRUE))[RRsP,]
-            } else { ## if rhs is one col 
-              resu <- backsolve(qrr, backsolve(qrr,rhs[RP@q+1L],transpose=TRUE))[RRsP]
-            }
+              resu <- resu[RRsP,]
+            } else resu <- resu[RRsP,1]
           } else {
             solveR <- solve(qrR(RP,backPermute = FALSE))
             if (is.matrix(rhs)) {
@@ -2435,7 +2503,7 @@ spaMM_Gamma <- function (link = "inverse") {
         processed$residProcessed$port_env$port_fit_values[["init_HLfit"]] <- phifit_init_HLfit
         processed$residProcessed$port_env$port_fit_values$corrPars <- .new_phifit_init_corrPars(phifit,innershift=0) 
         ## $corrPars : canonical and with full info about types including "outer"
-        processed$residProcessed$port_env$port_fit_values$lambda_object <- phifit$lambda.object ## disp fit lambda info.
+        processed$residProcessed$port_env$port_fit_values$lambda.object <- phifit$lambda.object ## disp fit lambda info.
       }          
     }
   } else { ## keep objective value; two cases for init values:
@@ -2521,18 +2589,31 @@ spaMM_Gamma <- function (link = "inverse") {
   }
 }
 
-# .backsolve() and .chol2solve are not used in operational code. They are best used once at a time, with variable thr_backsolve values.
+# For sparse 'r', .Rcpp_backsolve has a definite advantage over backsolve() and possibly also solve().
 .backsolve <- function(r, x=NULL, upper.tri = TRUE, transpose = FALSE) {
-  anyMatrix <- (inherits(r,"Matrix") || inherits(x,"Matrix"))
-  if (anyMatrix) warning("*M*atrix argument in call to .backsolve()")
-  if ( anyMatrix || ncol(r)< .spaMM.data$options$thr_backsolve) { 
-    if (is.null(x)) x <- diag(nrow=ncol(r))
-    return(backsolve(r=r, x=x, upper.tri = upper.tri, transpose=transpose))
-  } else {
-    return(.Rcpp_backsolve(r=r, x=x, upper_tri = upper.tri, transpose=transpose))
+  if (inherits(r,"Matrix")) { ## then dgCMatrix or dtCMatrix expected. 
+    if ( ! inherits(r,"dgCMatrix")) { # .Rcpp_backsolve requires dtCMatrix # it would be nice to be able to pass a dtCMatrix to Eigen
+      if ( ! inherits(r,"dtCMatrix")) warning("*possibly inefficient call to .backsolve().")
+      r <- as(r,"dgCMatrix") 
+    }
   }
+  if (inherits(x,"Matrix")) { 
+    stop(".backsolve does not handle case inherits(x,'Matrix').")
+    # .Rcpp_backsolve_M_M() does not work.
+  } else return(.Rcpp_backsolve(r=r, x=x, upper_tri = upper.tri, transpose=transpose))
 }
 
+# .backsolve_thr() and .chol2solve are not used in operational code. 
+# They are best used once at a time, with variable thr_backsolve values, to test the efficiency of the call to .Rcpp_ versions for dense matrices.
+.backsolve_thr <- function(r, x=NULL, upper.tri = TRUE, transpose = FALSE, thr_backsolve=.spaMM.data$options$thr_backsolve) {
+  if (inherits(r,"Matrix")) {
+    return(.Rcpp_backsolve(r=r, x=x, upper_tri = upper.tri, transpose=transpose))
+  } else if (ncol(r) >= thr_backsolve) {
+    return(.Rcpp_backsolve(r=r, x=x, upper_tri = upper.tri, transpose=transpose))
+  } else return(backsolve(r=r, x=x, upper.tri = upper.tri, transpose=transpose))
+}
+
+# .chol2solve is not up-to-date
 .chol2solve <- function(r, x=NULL) {
   anyMatrix <- (inherits(r,"Matrix") || inherits(x,"Matrix"))
   if (anyMatrix) warning("*M*atrix argument in call to .chol2solve()")

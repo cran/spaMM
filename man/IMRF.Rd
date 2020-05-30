@@ -74,12 +74,13 @@ D. Nychka, D. Hammerling, Mitchel. Krock, A. Wiens (2018) Modeling and emulation
 Lindgren F., Rue H., Lindström J. (2011) An explicit link between Gaussian fields and Gaussian Markov random fields: the stochastic partial differential equation approach Journal of the Royal Statistical Society: Series B (Statistical Methodology), 73: 423-498. \doi{10.1111/j.1467-9868.2011.00777.x}
 }
 \examples{
+
+if (spaMM.getOption("example_maxtime")>6) {
+
 data("blackcap") ## toy examples; but IMRF may be useful only for much larger datasets
 
 ########################## Irregular lattice specified by 'model':
-
-if (spaMM.getOption("example_maxtime")>1.6) {
-
+#
 data("small_spde") ## load object of class 'inla.spde2', created and saved by :
   # spd <- sp::SpatialPointsDataFrame(coords = blackcap[, c("longitude", "latitude")],
   #                            data = blackcap)
@@ -88,29 +89,34 @@ data("small_spde") ## load object of class 'inla.spde2', created and saved by :
   #                           max.edge = c(3, 20)) 
   # small_spde <- INLA::inla.spde2.matern(small_mesh)
   # save(small_spde, file="small_spde.RData", version=2)
-  
+#  
 fit_SPDE <- fitme(migStatus ~ means + IMRF(1|longitude+latitude, model=small_spde), 
                   data=blackcap)
-}
-
+                  
 ########################## Regular lattices:   
-  # Using 'hyper' to control fixed hyper-parameters
-  (mrf <- fitme(migStatus ~ 1 + (1|pos) + 
-                            multIMRF(1|latitude+longitude,margin=5,levels=2), 
-                data=blackcap, method="ML", fixed =list(phi=1,lambda=c("1"=0.5),
-                hyper=list("1"=list(hy_kap=0.1,hy_lam=1)))) )
-  if (spaMM.getOption("example_maxtime")>5) {
-    # Using 'hyper' to control initial hyper-parameters
-    (mrf <- fitme(migStatus ~ 1 + multIMRF(1|latitude+longitude,margin=5,levels=2),
-                  data=blackcap, method="ML",fixed =list(phi=1),
-                  init=list(hyper=list("1"=list(hy_kap=0.1,hy_lam=1)))) )
-    # *Independent* IMRF terms (often giving dubious results)
-    (mrf <- HLCor(migStatus ~ 1 + IMRF(1|latitude+longitude,margin=5, nd=4L)
-                                + IMRF(1|latitude+longitude,margin=5, nd=7L),
-            data=blackcap, HLmethod="ML",
-            ranPars=list(phi=1,lambda=c(1/4,1/16),
-                         corrPars=list("1"=list(kappa=0.1),"2"=list(kappa=0.1)))))
-  }
+# 
+#Using 'hyper' to control fixed hyper-parameters
+#
+(mrf <- fitme(migStatus ~ 1 + (1|pos) + 
+                          multIMRF(1|latitude+longitude,margin=5,levels=2), 
+              data=blackcap, fixed=list(phi=1,lambda=c("1"=0.5),
+              hyper=list("1"=list(hy_kap=0.1,hy_lam=1)))) )
+              
+# Using 'hyper' to control initial hyper-parameters
+#
+(mrf <- fitme(migStatus ~ 1 + multIMRF(1|latitude+longitude,margin=5,levels=2),
+                data=blackcap, method="ML", fixed =list(phi=1),
+                init=list(hyper=list("1"=list(hy_kap=0.1,hy_lam=1)))) )
+                
+# *Independent* IMRF terms (often giving dubious results)
+#
+(mrf <- fitme(migStatus ~ 1 + IMRF(1|latitude+longitude,margin=5, nd=4L)
+                              + IMRF(1|latitude+longitude,margin=5, nd=7L),
+          data=blackcap,  
+          fixed=list(phi=1,lambda=c(1/4,1/16),
+                       corrPars=list("1"=list(kappa=0.1),"2"=list(kappa=0.1)))))
+                    
+}
 }
 % Add one or more standard keywords, see file 'KEYWORDS' in the
 % R documentation directory.

@@ -8,7 +8,7 @@
   for (nam in names(mc)[-1]) {
     call_it <- match.call(get("fitme", asNamespace("spaMM")), mc[[nam]]) # matches args, e.g. adding formula= if first arg was unnamed, necess for next line.
     oricall[[nam]]$formula <- .preprocess_formula(call_it$formula) # cf comments in fitme()
-    call_it[[1L]] <- get(".preprocess_call", asNamespace("spaMM"))
+    call_it[[1L]] <- get(".preprocess_fitme", asNamespace("spaMM"))
     mc[[nam]] <- eval(call_it,parent.frame()) ## returns a call with changed arguments, typically with argument "processed"
     # could be evaluated by mc[[nam]][[1L]] <- get("fitmv_body", asNamespace("spaMM")) ; eval(mc[[nam]])
   }

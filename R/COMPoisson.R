@@ -517,6 +517,8 @@
 COMPoisson <- function(nu = stop("COMPoisson's 'nu' must be specified"), 
                         link = "loglambda" # eta <-> mu link, not the eta <-> lambda log link
                         ) {
+  .spaMM.data$options$COMP_maxn_warned <- FALSE # much better here than in .preprocess(); works with glm()
+  .spaMM.data$options$COMP_geom_approx_warned <- FALSE
   mc <- match.call()
   linktemp <- substitute(link)
   if (!is.character(linktemp)) 

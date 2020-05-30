@@ -2,6 +2,7 @@
 \alias{spaMM.options}
 \alias{spaMM.getOption}
 \alias{LevenbergM}
+\alias{barstyle}
 \title{spaMM options settings}
 \description{
   Allow the user to set and examine a variety of \emph{options}
@@ -43,6 +44,7 @@ The approximate running time of given examples on one author's laptop is compare
 \item{\code{Matrix_method}:}{A character string, to control the factorization of sparse model matrices. Default value is \code{"def_sXaug_Matrix_QRP_scaled"}. The source code should be consulted for further information.}
 
 \item{\code{stylefns}:}{Default colors of some screen output (notably that of some fitting functions when called with argument \code{verbose=c(TRACE=TRUE)})}
+\item{\code{barstyle}:}{Integer, or Boolean interpreted as Integer, or quoted expression evaluating to such types; controlling the display of some progress bars. If zero, no progress bar should be displayed; otherwise, a bar should be displayed. Further, when \code{\link[utils]{txtProgressBar}} is called, \code{barstyle} is passed as its \code{style} argument. Default is \code{quote(if(interactive()) {3L} else {0L})}.}
 }
 and many other undocumented values for programming or development purposes. Additional options without default values can also be used (e.g., see \code{\link{sparse_precision}}).
 

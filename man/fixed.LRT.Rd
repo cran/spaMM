@@ -12,7 +12,7 @@ This function differs from \code{LRT} in its arguments (model fits for \code{LRT
 \usage{
 fixedLRT(null.formula, formula, data, method, HLmethod = method, 
          REMLformula = NULL, boot.repl=0, control="DEPRECATED",
-         control.boot="DEPRECATED", fittingFunction, 
+         control.boot="DEPRECATED", fittingFunction, seed=NULL,
          resp_testfn = NULL, ...)  
 }
 \arguments{
@@ -25,7 +25,7 @@ Either a \code{formula} or a \code{predictor} for the full model.
   \item{data}{A data frame containing the variables in the model.}
   \item{method}{
    A method to fit the full and null models. 
-   See \code{\link{HLfit}}'s \code{HLmethod} argument for background information about such methods. 
+   See \code{\link{method}} information about such methods. 
    The two most meaningful values of \code{method} in \code{fixedLRT} calls are: 
    \code{'ML'} for an LRT based on ML fits (generally recommended); and
    \code{'PQL/L'} for an LRT based on PQL/L fits (recommended for spatial binary data). 
@@ -36,7 +36,7 @@ Either a \code{formula} or a \code{predictor} for the full model.
    Further, REML will not be effective on a given dispersion parameter if a non-trivial init.corrHLfit value is provided for this parameter.  
 }
  \item{HLmethod}{
-   Kept for back-compatibility. Same as \code{method}, but wll work only for \code{fittingFunction=corrHLfit}.
+   Kept for back-compatibility. Same as \code{method}, but may work only for \code{fittingFunction=corrHLfit}.
  }
   \item{REMLformula}{
   a formula specifying the fixed effects which design matrix is used in the REML correction 
@@ -49,6 +49,7 @@ Either a \code{formula} or a \code{predictor} for the full model.
   \item{control}{Deprecated.}
   \item{control.boot}{Deprecated.}
 \item{fittingFunction}{Character string giving the function used to fit each model: either \code{"corrHLfit"} or \code{"fitme"}. Default is \code{"corrHLfit"} for small data sets (fewer than 300 observations), and \code{"fitme"} otherwise, but this may change in future versions.}
+\item{seed}{Passed to \code{\link{simulate.HLfit}}}
 \item{resp_testfn}{See argument \code{resp_testfn} of \code{\link{spaMM_boot}}}
 %\item{type}{Passed to \code{\link{simulate.HLfit}}}
   \item{\dots}{
@@ -89,13 +90,13 @@ if (spaMM.getOption("example_maxtime")>1.9) {
  ## result comparable to the corrHLfit examples based on blackcap
  fixedLRT(null.formula=migStatus ~ 1 + Matern(1|latitude+longitude),
        formula=migStatus ~ means + Matern(1|latitude+longitude), 
-       HLmethod='ML',data=blackcap)
+       method='ML',data=blackcap)
 }
 if (spaMM.getOption("example_maxtime")>156) {
  ## longer version with bootstrap
  fixedLRT(null.formula=migStatus ~ 1 + Matern(1|latitude+longitude),
        formula=migStatus ~ means + Matern(1|latitude+longitude), 
-       HLmethod='ML',data=blackcap, boot.repl=100, seed=123) 
+       method='ML',data=blackcap, boot.repl=100, seed=123) 
  }
 }
 \keyword{ htest }

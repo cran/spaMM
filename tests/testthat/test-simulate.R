@@ -1,4 +1,4 @@
-cat(crayon::yellow("\ntest-simulate\n"))
+cat(crayon::yellow("\ntest-simulate:\n"))
 data("Loaloa")
 HLC <- HLCor(cbind(npos,ntot-npos)~Matern(1|longitude+latitude),
              data=Loaloa,family=binomial(),

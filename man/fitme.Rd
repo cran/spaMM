@@ -35,9 +35,9 @@ An optional list of initial values for correlation and/or dispersion parameters 
 A list similar to \code{init}, but specifying fixed values of the parameters not estimated. See \code{\link{fixed}} for further information; and keep in mind that fixed fixed-effect coefficients can be passed as the \code{etaFix} argument as part of the \sQuote{\ldots}.
 }
   \item{lower}{
-An optional list of values of parameters specified through \code{init.corrHLfit}, used as lower values in calls to \code{optim}. See Details for default values.
+An optional (sub)list of values of the parameters specified through \code{init}, in the same format as  \code{init}, used as lower values in calls to \code{optim}. See Details for default values.
 }
-  \item{upper}{Same as \code{lower}, but upper values.}
+  \item{upper}{Same as \code{lower}, but for upper values.}
 \item{resid.model}{ See identically named \code{\link{HLfit}} argument. }
   \item{init.HLfit}{ See identically named \code{\link{HLfit}} argument. }
   \item{control}{   A list of control parameters, with two possible elements: 
@@ -47,8 +47,7 @@ An optional list of values of parameters specified through \code{init.corrHLfit}
   }   
 }
   \item{control.dist}{ See \code{control.dist} in \code{\link{HLCor}} }
-  \item{method, HLmethod}{
-  \code{"ML"} or \code{"REML"}. \code{"ML"} is the default, in contrast to \code{"REML"} for the \code{HLmethod} argument of other fitting functions. Other possible values of \code{HLfit}'s \code{HLmethod} argument are handled and should give results close to the other fitting methods with the same \code{HLmethod} argument, the most notable exception being \code{PQL/L} for binary response data, as \code{fitme} does not take into account the specific way leverages are computed in \code{PQL/L}.
+  \item{method, HLmethod}{Character: the fitting method to be used, such as \code{"ML"}, \code{"REML"} or \code{"PQL/L"}. \code{"ML"} is the default, in contrast to \code{"REML"} for the other fitting functions. Other possible values of \code{HLfit}'s \code{method} argument are handled.
 }
   \item{nb_cores}{\bold{Not yet operative}, only for development purposes. Number of cores to use for parallel computations.}
   \item{processed}{ For programming purposes, not documented.}
@@ -60,6 +59,8 @@ Optional arguments passed to \code{\link{HLCor}}, \code{\link{HLfit}} or  \code{
 }
 }
 \details{
+ For approximations of likelihood, see \code{\link{method}}. For the possible structures of random effects, see \code{\link{random-effects}},
+
 For \code{phi}, \code{lambda}, and \code{ranCoefs}, \code{fitme} may or may not use the internal fitting methods of \code{HLfit}. The latter methods are well suited for structured dispersion models, but require computations which can be slow for large datasets. Therefore, \code{fitme} tends to outer-optimize by default for large datasets, unless there is a non-trivial \code{resid.model}. The precise criteria for selection of default method by \code{fitme} are liable to future changes. 
 
 Further, the internal fitting methods of \code{HLfit} also provide some more information such as the \dQuote{cond. SE} (about which see warning in Details of \code{\link{HLfit}}). To force the evaluation of such information after an outer-optimization by a \code{fitme} call, use the \code{control$refit} argument (see Example). Alternatively (and possibly of limited use), one can force inner-optimization of \code{lambda} for a given random effect, or of \code{phi}, by setting it to \code{NaN} in \code{init} (see Example using \sQuote{blackcap} data). The same syntax may be tried for \code{phi}.
@@ -68,6 +69,8 @@ Further, the internal fitting methods of \code{HLfit} also provide some more inf
 The return value of an \code{HLCor} or an \code{HLfit} call, with additional attributes. The \code{HLCor} call is evaluated at the estimated correlation parameter values. These values are included in the return object as its \code{$corrPars} member. The attributes added by \code{fitme} include the original call of the function (which can be retrived by \code{getCall}(<fitted object>), and information about the optimization call within \code{fitme}. 
 }
 \examples{
+## See many examples in help("spaMM")
+
 ## Contrasting different optimization methods:
 # We simulate Gamma deviates with mean mu=3 and variance=2, 
 #  ie. phi= var/mu^2= 2/9 in the (mu, phi) parametrization of a Gamma 
@@ -91,7 +94,7 @@ if (spaMM.getOption("example_maxtime")>1.6) {
   fitme(migStatus ~ means+ Matern(1|latitude+longitude),data=blackcap) # poor
   #  Compare with the following two ways of avoiding outer-optimization of lambda:
   corrHLfit(migStatus ~ means+ Matern(1|latitude+longitude),data=blackcap,
-            HLmethod="ML")
+            method="ML")
   fitme(migStatus ~ means+ Matern(1|latitude+longitude),data=blackcap, 
         init=list(lambda=NaN))
 }

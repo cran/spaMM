@@ -8,7 +8,9 @@ An interface to apply some function \code{fn} in parallel on columns of a matrix
 }
 \usage{
 dopar(newresp, fn, nb_cores = NULL, fit_env, control = list(), 
-      cluster_args = NULL, debug. = FALSE, iseed = NULL, ...)
+      cluster_args = NULL, debug. = FALSE, iseed = NULL, 
+      showpbar = eval(spaMM.getOption("barstyle")), 
+      pretest_cores =NULL, ...)
 }
 \arguments{
   \item{newresp}{
@@ -36,6 +38,12 @@ Integer. Number of cores to use for parallel computations. If >1, a cluster of \
 }
   \item{iseed}{
 Integer, or NULL. If an integer, \code{parallel::clusterSetRNGStream(cl = cl, iseed)} is called, setting and initializing \code{"L'Ecuyer-CMRG"} random-number generator on the nodes. This is useful if random numbers are used on the nodes (see \code{\link[parallel]{clusterSetRNGStream}}). If \code{iseed} is \code{NULL}, the default generator is selected on each node, where its seed is not controlled. 
+}
+  \item{showpbar}{
+Controls display of progress bar. See \code{\link{barstyle}} option for details.
+}
+  \item{pretest_cores}{
+A function to run on the cores before running \code{fn}. It may be used to check that all arguments of the \code{fn} can be evaluated in the cores' environments (the internal function \code{.pretest_fn_on_cores} provides an example).   
 }
   \item{\dots}{
 Further arguments to be passed (unevaluated) to \code{fn}.

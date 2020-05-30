@@ -35,6 +35,9 @@ Breslow, NE, Clayton, DG. (1993). Approximate Inference in Generalized Linear Mi
 Journal of the American Statistical Association: 88 9-25.
 }
 \examples{
-## see 'help(autoregressive)' for several exampels involving 'scotlip'.
+data("scotlip")
+fitme(cases~I(log(expec)), data=scotlip, adjMatrix=Nmatrix, family=poisson)
+
+## see 'help(autoregressive)' for additional examples involving 'scotlip'.
 }
 \keyword{datasets}

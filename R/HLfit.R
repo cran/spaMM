@@ -15,6 +15,7 @@ HLfit <- function(formula,
                   resid.model= ~ 1, REMLformula=NULL,
                   verbose=c(trace=FALSE),
                   HLmethod="HL(1,1)",
+                  method="REML",
                   control.HLfit=list(),
                   control.glm=list(),
                   init.HLfit = list(), 
@@ -72,19 +73,16 @@ HLfit <- function(formula,
       return(multiHLfit())
     } else {## there is a single data set, still without processed
       mc <- oricall
-      FHF <- formals(HLfit) ## makes sure about default values 
-      names_FHF <- names(FHF)
-      names_nondefault  <- intersect(names(mc),names_FHF) ## mc including dotlist
-      FHF[names_nondefault] <- mc[names_nondefault] ##  full HLfit args
-      preprocess.formal.args <- FHF[which(names_FHF %in% names(formals(.preprocess)))] 
-      preprocess.formal.args$For <- "HLfit"
-      preprocess.formal.args$family <- family ## already checked 
-      preprocess.formal.args$rand.families <- FHF$rand.family ## because preprocess expects $rand.families 
-      preprocess.formal.args$predictor <- FHF$formula ## because preprocess stll expects $predictor 
-      mc$processed <- do.call(.preprocess,preprocess.formal.args,envir=parent.frame(1L))
-      # oricall$resid.model <- mc$processed$residModel
-      # HLfit_body() called below
-    }
+      preprocess_args <- .get_inits_preprocess_args(For="HLfit")
+      names_nondefault  <- intersect(names(mc),names(preprocess_args)) ## mc including dotlist
+      preprocess_args[names_nondefault] <- mc[names_nondefault] 
+      preprocess_args$family <- family ## checked version of 'family'
+      if ( ! is.null(mc$rand.family)) preprocess_args$rand.families <- mc$rand.family ## because preprocess expects $rand.families 
+      preprocess_args$predictor <- mc$formula ## because preprocess still expects $predictor 
+#      preprocess_args$HLmethod <- HLmethod ## forces evaluation
+      if ( ! missing(method)) preprocess_args$HLmethod <- method
+      mc$processed <- do.call(.preprocess, preprocess_args, envir=parent.frame(1L))
+   }
   } else { ## 'processed' is available
     if (  is.list(processed))  { ## "multiple" processed list 
       ## RUN THIS LOOP and return
@@ -105,7 +103,7 @@ HLfit <- function(formula,
     }
   }
   #
-  pnames <- c("data","family","formula","prior.weights","HLmethod","rand.family","control.glm","REMLformula",
+  pnames <- c("data","family","formula","prior.weights","HLmethod","method","rand.family","control.glm","REMLformula",
               "resid.model","verbose")
   for (st in pnames) mc[st] <- NULL ## info in processed
   mc[[1L]] <- get("HLfit_body", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with

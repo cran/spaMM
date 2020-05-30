@@ -1,5 +1,5 @@
 # spaMM.options(example_maxtime=70) # keep it handy...
-if (file.exists((privdata <- paste0(projpath(),"/package/tests_private/all_fitness.txt")))) {
+if (file.exists((privdata <- paste0(projpath(),"/../tests_misc/ranCoefs/all_fitness.txt")))) {
   cat(crayon::yellow("\ntest ranCoefs:"))
   my.data <- read.table(privdata, header = TRUE, sep = "\t",dec = ".")
   my.data$line <- factor(as.character(my.data$line))

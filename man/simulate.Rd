@@ -14,7 +14,8 @@
 \usage{
 \method{simulate}{HLfit}(object, nsim = 1, seed = NULL, newdata = NULL, 
                          type = "marginal", re.form, conditional = NULL, 
-                         verbose = c(type=TRUE,showpbar=interactive()), 
+                         verbose = c(type=TRUE,
+                                     showpbar=eval(spaMM.getOption("barstyle"))), 
                          sizes = NULL, resp_testfn = NULL, phi_type = "predict", 
                          prior.weights = object$prior.weights, variances=list(), ...)
 \method{simulate}{HLfitlist}(object, nsim = 1, seed = NULL, 

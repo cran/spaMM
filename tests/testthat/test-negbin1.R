@@ -45,7 +45,7 @@ if (spaMM.getOption("example_maxtime")>1) {
       it <- it+1L
       dat$wei <- wei 
     }
-    testthat::expect_equal(mfit$lambda[1],c(wei=1.4710451324)) 
+    testthat::expect_equal(mfit$lambda[1],c(id.wei=1.4710451324)) 
     ## estimation of the Gamma variance is not precise, but approaches disp=2 in larger samples
   }
   simulate(mfit)

@@ -12,5 +12,6 @@ testthat::expect_equal(AIC(hlfit)[2],c("    conditional AIC:"=-1607.22365),toler
 if (FALSE) {  
   hlfit <- HLfit(y~crack0+(1|specimen),family=Gamma(log),data=crack, HLmethod="REML", 
                  rand.family=inverse.Gamma(log), resid.model=list(formula=~cycle+(1|specimen),fixed=list(lambda=0.666))   )
+  # message bc no explicit fixed=list(phi=NA) in resid.model
 }
 

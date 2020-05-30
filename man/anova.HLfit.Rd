@@ -13,10 +13,13 @@ This function differ from \code{fixedLRT} in its arguments (model fits for \code
 }
 \usage{
 \method{anova}{HLfit}(object, object2, ..., method="")
-LRT(object, object2, boot.repl = 0, 
-    resp_testfn = NULL, 
-    simuland = eval_replicate, %.condition = NULL, 
-    ...)  
+LRT(object, object2, boot.repl = 0, resp_testfn = NULL, 
+    simuland = eval_replicate, 
+    #     many further arguments can be passed to spaMM_boot via the '...'
+    #     These include arguments for parallel computations, such as
+    # nb_cores, fit_env,
+    #     as well as other named arguments and spaMM_boot's own '...'
+    ...)    
 }
 \arguments{
   \item{object,object2}{Two models fits being compared (their order does not matter).}
@@ -28,7 +31,7 @@ LRT(object, object2, boot.repl = 0,
   a function, passed to \code{\link{spaMM_boot}}. See argument \code{\link{eval_replicate}} for default value and requirements.
 }  
 \item{\dots}{
-  Further arguments, passed to \code{spaMM_boot} since version 3.1.0. They may thus include the latter function's \code{control_args} for parallel computation, \code{nb_cores}, \code{debug.} or \code{type}, as well as \code{spaMM_boot}'s own \ldots arguments.
+  Further arguments, passed to \code{spaMM_boot} since version 3.1.0.
 }
 }
 \details{
@@ -63,7 +66,7 @@ See also \code{\link{fixedLRT}}.
 data("wafers")
 ## Gamma GLMM with log link
 m1 <- HLfit(y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch),family=Gamma(log),
-          resid.model = ~ X3+I(X3^2) ,data=wafers,HLmethod="ML")
+          resid.model = ~ X3+I(X3^2) ,data=wafers,method="ML")
 m2 <- update(m1,formula.= ~ . -I(X2^2))
 anova(m1,m2)
 

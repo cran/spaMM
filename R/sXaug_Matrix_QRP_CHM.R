@@ -36,7 +36,12 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
   if ( is.null(BLOB$t_Q_scaled) && 
        ( which %in% c("t_Q_scaled","hatval") || (which=="hatval_Z" && BLOB$u_h_cols_on_left)
        ) ) {
-    BLOB$t_Q_scaled <- solve(t(BLOB$R_scaled),t(sXaug[,BLOB$perm])) ## Matrix::solve ## this is faster than qr.Q and returns dgCMatrix rather than qr.Q -> dge !
+    if (FALSE) { # after efforts to find an Eigen syntax that works without storing a dense matrix in memory 
+      # (solveInPlace may be the only way), we see that it's slow! (e.g test bigranefs)
+      # https://stackoverflow.com/questions/53290521/eigen-solver-for-sparse-matrix-product
+      BLOB$t_Q_scaled <- .Rcpp_backsolve_M_M(r=as(BLOB$R_scaled,"dgCMatrix"),x=t(sXaug[,BLOB$perm]),transpose=TRUE)
+      # base::backsolve() calls as.matrix()...
+    } else BLOB$t_Q_scaled <- solve(t(BLOB$R_scaled),t(sXaug[,BLOB$perm])) ## Matrix::solve ## this is faster than qr.Q and returns dgCMatrix rather than qr.Q -> dge !
   }
   if ( ! is.null(szAug)) {
     if (is.null(BLOB$t_Q_scaled)) {
@@ -60,7 +65,7 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
     seq_n_u_h <- seq_len(attr(sXaug,"n_u_h"))
     rhs <- B
     rhs[seq_n_u_h] <- BLOB$invsqrtwranef * rhs[seq_n_u_h]
-    rhs <- Matrix::solve(BLOB$R_scaled,rhs[BLOB$perm],system="L")
+    rhs <- Matrix::solve(BLOB$R_scaled,rhs[BLOB$perm])
     return(sum(rhs^2))
   } 
   if (which=="Mg_invH_g") {
@@ -181,7 +186,7 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
     if (is.null(BLOB$logdet_R_scaled_v)) BLOB$logdet_R_scaled_v <- Matrix::determinant(BLOB$CHMfactor_wd2hdv2w)$modulus[1]
     return(BLOB$logdet_R_scaled_v)
   } else if (which=="beta_cov_info_from_sXaug") {
-    return(.calc_beta_cov_info_from_sXaug(BLOB=BLOB, sXaug=sXaug, B=B))
+    return(.calc_beta_cov_info_from_sXaug(BLOB=BLOB, sXaug=sXaug))
   } else if (which=="beta_cov_info_from_wAugX") { ## using a weighted Henderson's augmented design matrix, not a true sXaug  
     if (TRUE) {
       tcrossfac_beta_v_cov <- solve(BLOB$R_scaled)

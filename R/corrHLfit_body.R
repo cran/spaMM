@@ -91,7 +91,6 @@ corrHLfit_body <- function(processed, ## possibly a list of environments
     ## its names should match the colnames of the data in Krigobj = the  parameters of the likelihood surface. Current code maybe not general.
     loclist <- list(anyHLCor_obj_args=anyHLCor_obj_args,  ## contains $processed
                     LowUp=LowUp,init.corrHLfit=user_init_optim, ## FIXME usage of user_init_optim probably not definitive
-                    #preprocess.formal.args=preprocess.formal.args, 
                     control.corrHLfit=control.corrHLfit,
                     verbose=verbose[["iterateSEM"]],
                     nb_cores=nb_cores)

@@ -37,8 +37,8 @@
                       y <- rgamma(nsim*length(mu), shape= 1 / phiW, scale=mu*phiW) # mean=sh*sc=mu, var=sh*sc^2 = mu^2 phiW
                       Gamma_min_y <- .spaMM.data$options$Gamma_min_y
                       is_low_y <- (y < Gamma_min_y)
-                      if (any(is_low_y)) { y[which(is_low_y)] <- Gamma_min_y }
-                      return(y)
+                      if (any(is_low_y)) y[which(is_low_y)] <- Gamma_min_y 
+                      y
                     }, ## ie shape increase with prior weights, consistent with Gamma()$simulate / spaMM_Gamma()$simulate
                     COMPoisson = {
                       lambdas <- attr(mu,"lambda") # F I X M E an environment would keep values ?
@@ -59,7 +59,8 @@
 # simulate.HLfit(fullm[[2]],newdata=fullm[[1]]$data,size=fullm[[1]]$data$total) for multinomial avec binomial nichées de dimension différentes
 # FR->FR misses the computation of random effects for new spatial positions: cf comments in the code below
 simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
-                           type = "marginal", re.form, conditional=NULL, verbose=c(type=TRUE, showpbar=interactive()),
+                           type = "marginal", re.form, conditional=NULL, 
+                           verbose=c(type=TRUE, showpbar= eval(spaMM.getOption("barstyle"))),
                            sizes=NULL , resp_testfn=NULL, phi_type="predict", prior.weights=object$prior.weights, 
                            variances=list(), ...) { ## object must have class HLfit; corr pars are not used, but the ZAL matrix is.
   ## RNG stuff copied from simulate.lm
@@ -85,7 +86,7 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
   }
   if (is.na(verbose["showpbar"])) { # e.g. verbose =TRUE or verbose=c(type=TRUE)
     if (is.na(verbose["type"])) verbose["type"] <- verbose # need at least a boolean argument here
-    verbose["showpbar"] <- interactive()
+    verbose["showpbar"] <- eval(.spaMM.data$options$barstyle)
   } else if (is.na(verbose["type"])) verbose["type"] <- TRUE # user set verbose=c(showpbar=.) but not type
   if (type=="predVar") {
     pred_type <- "predVar_s.lato" 
@@ -216,11 +217,11 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
         locfn <- function(it) {
           nr <- vec_n_u_h[it]
           u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
-          if ( ! is.null(object$rand.families[[it]]$prior_lam_fac) && ! is.null(newdata)) {
+          if ( ! is.null(object$rand.families[[it]]$prior_lam_fac) && ! is.null(newdata)) { # prior_lam_fac is the 'design' for non-ranCoef (wei-1|.)
             leftOfBar_terms <- attr(object$ZAlist,"exp_ranef_terms")[[it]][[2L]]
             leftOfBar_mf <- model.frame(as.formula(paste("~",leftOfBar_terms)), newdata, xlev = NULL) 
             prior_lam_fac <- leftOfBar_mf[,1L]^2 ## assumes simple syntax (wei-1|.)
-            loclambda <- object$lambda[it]* prior_lam_fac
+            loclambda <- object$lambda.object$lambda_list[[it]]* prior_lam_fac
           } else loclambda <- fittedLambda[u.range] ## includes prior_lam_fac
           newU <- replicate(needed,{
             switch(lcrandfamfam[it], ## remainder of code should be OK for rand.families

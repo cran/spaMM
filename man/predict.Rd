@@ -20,7 +20,8 @@ Prediction of the response variable by its expected value obtained as (the inver
 \method{predict}{HLfit}(object, newdata = newX, newX = NULL, re.form = NULL,
                         variances=list(), binding = FALSE, intervals = NULL,
                         level = 0.95, blockSize = 2000L, type = "response", 
-                        control=list(), verbose=c(showpbar=interactive()), ...)
+                        verbose=c(showpbar=eval(spaMM.getOption("barstyle"))), 
+                        control=list(), ...)
 get_predCov_var_fix(object, newdata = NULL, fix_X_ZAC.object, fixdata, re.form = NULL,
                     variances=list(disp=TRUE,residVar=FALSE,cov=FALSE), 
                     control=list(),  ...)    
@@ -30,7 +31,7 @@ get_fixefVar(...)
 get_predVar(..., variances=list(), which="predVar")
 get_residVar(...)
 get_respVar(...)
-get_intervals(...)
+get_intervals(..., intervals="predVar")
 }
 \arguments{
   \item{object}{
@@ -194,9 +195,9 @@ get_predVar(vphifit,newdata=data.frame(latitude=1,longitude=1))
 
 ## point predictions and variances with new X and Z
 if(requireNamespace("rsae", quietly = TRUE)) {
-  data("landsat")
-  fitobject <- HLfit(HACorn ~ PixelsCorn + PixelsSoybeans + (1|CountyName),
-                     data=landsat[-33,],HLmethod="ML")
+  data("landsat", package = "rsae")
+  fitobject <- fitme(HACorn ~ PixelsCorn + PixelsSoybeans + (1|CountyName),
+                     data=landsat[-33,])
   newXandZ <- unique(data.frame(PixelsCorn=landsat$MeanPixelsCorn,
                                 PixelsSoybeans=landsat$MeanPixelsSoybeans,
                                 CountyName=landsat$CountyName))

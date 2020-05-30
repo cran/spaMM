@@ -141,6 +141,7 @@
     optr$objective <- optr$fval # for easy tests on the results, e.g. test-ranCoefs.R
   } else if (Optimizer=="L-BFGS-B") { # legacy
     parscale <- (upperb-lowerb) 
+    parscale[is.infinite(parscale)] <- 2000 # ad hoc patch. Inf occurs for ranCoefs and 2000 is of the order of parscale for 'simple lambdas'
     # nlminb code removed 11/2016 ## maxcorners code removed in v2.1.94
     control_optim <- list(parscale=parscale,factr=1e9) ## factr was the stricter 1e8 up to 23/01/13
     control_optim[names(control[["optim"]]$control)] <- control[["optim"]]$control ## ...which may be overwritten 

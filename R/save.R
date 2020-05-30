@@ -4,8 +4,18 @@ stripHLfit <- function(object,...) {
   if (inherits(object,"HLfit")) {
     ######## clean matrices
     stripnames <- names(object$envir)
-    stripnames <- setdiff(stripnames,c("G_CHMfactor","sXaug","chol_Q","ZtW","qrXa","X_scaling","ZAfix")) ## exception for those that are not reconstructed on request
-    for (st in stripnames) object$envir[[st]] <- NULL
+    if (object$spaMM.version < "3.2.19") {
+      stripnames <- setdiff(stripnames,c("sXaug", # ( ! spprec)
+                                         "G_CHMfactor","chol_Q") # spprec
+                            ) ## exceptions for those that are not reconstructed on request
+    } else { # 
+      # keep in mind that for spprec, envir \equiv envir$sXaug$BLOB
+      stripnames <- setdiff(stripnames,c("sXaug", # all
+                                         "G_CHMfactor","chol_Q") # spprec #_F I X M E_: could we remove remaining spprec elements? 
+      ) 
+    }    
+    #for (st in stripnames) object$envir[[st]] <- NULL
+    rm(list=stripnames, pos=object$envir)
     if (object$spaMM.version <= "1.10.3") { ## for later version, this part of code documents some obscure issues.
       ######### family matters ...
       ## family$variance, $simulate, $validmu, $aic, $dev.resids get an environment that seems to be 

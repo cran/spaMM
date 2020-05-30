@@ -97,6 +97,9 @@ testthat::expect_equal(attr(p, "respVar")[1],c(`1`=0.918197),tolerance=1e-6)
 pp <- predict(hlfit, newdata=data.test[1,], variances=list(respVar=TRUE))
 testthat::expect_equal(pp[1],c(`1`=1.074626),tolerance=1e-6)
 
+# can capture errors missed by other tests: (cPredVar on fixed-effect model; gamma())
+get_cPredVar(fitme(Sepal.Length ~ Petal.Length, data = iris, method = "REML", family=Gamma(log)), nsim = 3)
+
 ## multiple tests with two ranefs 
 set.seed(123)
 data("Loaloa")

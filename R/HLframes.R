@@ -1,9 +1,11 @@
-.ULI <- function(...) {
+.ULI <- function(...) { # Try to rmeove its last uses ? _F I X M E_
   redondGeo <- cbind(...) ## NOT always a matrix: if ... is a model frame, there may be $ poly(x, 2, raw = TRUE): 'poly' num  inside
-  if (ncol(redondGeo)==0L) return(rep(1L,nrow(redondGeo))) ## .generateInitPhi with constant predictor led here
-  if (nrow(redondGeo)==1L) return(1L) ##  trivial case where the forllowingcode fails
+  if (ncol(redondGeo)==0L) return(rep(1L,nrow(redondGeo))) ## .generateInitPhi [removed] with constant predictor led here
+  if (nrow(redondGeo)==1L) return(1L) ##  trivial case where the following code fails
   ## redondGeo is NOT always a matrix: if ... is a model frame, there may be <$ poly(x, 2, raw = TRUE): 'poly' num>  inside
-  ## poly may be a two-col matrix and ncol(redoncGeo) is *1*
+  ## poly may be a two-col matrix and ncol(redondGeo) is *1*. Then
+  # for (colit in seq_len(ncol(redondGeo))) redondGeo[,colit] <- factor(redondGeo[,colit],labels="") 
+  ## fails in poly() case...
   redondFac <- apply(redondGeo,2L,factor,labels="") # not cute use of labels... 
   redondFac <- apply(redondFac,1L,paste,collapse=":") ## paste factors
   #redondFac <- as.character(factor(redondFac))
@@ -12,20 +14,6 @@
   names(uniqueIdx) <- uniqueFac
   return(uniqueIdx[redondFac])
 }
-
-.ULI_failure <- function(...) { # doc for the code of .ULI()...
-  redondGeo <- cbind(...) ## NOT always a matrix: if ... is a model frame, there may be $ poly(x, 2, raw = TRUE): 'poly' num  inside
-  if (ncol(redondGeo)==0L) return(rep(1L,nrow(redondGeo))) 
-  if (nrow(redondGeo)==1L) return(1L) 
-  for (colit in seq_len(ncol(redondGeo))) redondGeo[,colit] <- factor(redondGeo[,colit],labels="") # fails in poly() case...
-  redondFac <- character(nrow(redondGeo))
-  for (rowit in seq_len(nrow(redondGeo))) redondFac[rowit] <- paste(redondGeo[rowit,],collapse=":") 
-  uniqueFac <- unique(redondFac) 
-  uniqueIdx <- seq(length(uniqueFac))
-  names(uniqueIdx) <- uniqueFac
-  return(uniqueIdx[redondFac])
-}
-
 
 ### Utilities for parsing the mixed model formula
 
@@ -383,8 +371,44 @@
   return(validname)
 }
 
+.sanitize_Y <- local({
+  #int_warned <- FALSE
+  function(y, famfam) {
+    if ( famfam %in% c("binomial","poisson","COMPoisson","negbin")) {
+      ## the response variable should always be Counts
+      safe_y <- as.integer(y+0.5) # non-negative values only # non-array from array, hence:
+      if (NCOL(y)) dim(safe_y) <- dim(y)
+      if (max(abs(y-safe_y))>1e-05) {
+        anynegy <- any(y<0L)
+        if (anynegy) { # at this point, there are 'large' negative values
+          stop(paste0("negative values not allowed for the '",famfam,"' family"))
+        } else stop("response variable should be integral values.")
+      } else {
+        # if ( ! int_warned) {
+        #   int_warned <<- TRUE
+        #   message("Response converted to integer for integral-response families")
+        # }
+        y <- safe_y # silent sanitizing # tiny negative values would stop() later
+      }
+    } else if (famfam=="Gamma") {
+      Gamma_min_y <- .spaMM.data$options$Gamma_min_y
+      is_low_y <- (y < Gamma_min_y)
+      if (any(is_low_y)) {
+        #y[which(is_low_y)] <- Gamma_min_y
+        warning(paste0("Found Gamma response < (Gamma_min_y=",Gamma_min_y,") . Troubles may happen."))
+      }
+      is_high_y <- (y > 1/Gamma_min_y)
+      if (any(is_high_y)) {
+        #y[which(is_low_y)] <- Gamma_min_y
+        warning(paste0("Found Gamma response > (1/Gamma_min_y=",1/Gamma_min_y,") . Troubles may happen."))
+      }
+    }
+    return(y)
+  }
+})
+
 ## cf model.frame.default from package stats mais ne traite pas les effets alea !
-.HLframes <- function (formula, data) {
+.HLframes <- function (formula, data, famfam) {
   ## m gives either the position of the matched term in the matched call 'mc', or 0
   formula <- .asNoCorrFormula(formula) ## strips out the spatial information, retaining the variables
   if (is.character(formula[[2]])) {
@@ -408,6 +432,7 @@
       Y <- as.matrix(Y) ## to cope with array1d, and see $y <- ... code in .preprocess
     }
   }
+  Y <- .sanitize_Y(Y, famfam) # sanitize Y, rather than processed$y which is not used by .get_inits_by_glm()
   res$Y <- Y
   #
   # compare to .calc_newFrames_fixed() to keep changes in code consistent

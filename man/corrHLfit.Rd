@@ -5,7 +5,7 @@
   Fits a mixed model, typically a spatial GLMM.
 }
 \description{
-  \code{corrHLfit} performs the joint estimation of correlation parameters, fixed effect and dispersion parameters. 
+  This was the first function for fitting all spatial models in spaMM, and is still fully functional, but it is recommended to use \code{\link{fitme}} which has different defaults and generally selects more efficient fitting methods, and will handle all classes of models that spaMM can fit, including non-spatial ones. \code{corrHLfit} performs the joint estimation of correlation parameters, fixed effect and dispersion parameters. 
 }
 \usage{
 corrHLfit(formula, data, init.corrHLfit = list(), 
@@ -13,7 +13,7 @@ corrHLfit(formula, data, init.corrHLfit = list(),
           upper = list(), 
           objective = NULL, resid.model = ~1, 
           control.dist = list(), control.corrHLfit = list(),
-          processed = NULL, family = gaussian(), 
+          processed = NULL, family = gaussian(), method="REML",
           nb_cores = NULL, ...)
 }
 %- maybe also 'usage' for other objects documented here.
@@ -35,9 +35,9 @@ a dispersion parameter changes the ways it is estimated (see Details).
   }
   \item{ranFix}{A list similar to \code{init.corrHLfit}, but specifying fixed values of the parameters not estimated. See \code{\link{ranFix}} for further information.}
   \item{lower}{
-An optional list of values of parameters specified through \code{init.corrHLfit}, used as lower values in calls to \code{optim}. See Details for default values.
+An optional (sub)list of values of the parameters specified through \code{init.corrHLfit}, in the same format as \code{init.corrHLfit}, used as lower values in calls to \code{optim}. See Details for default values.
 }
-  \item{upper}{Same as \code{lower}, but upper values.}
+  \item{upper}{Same as \code{lower}, but for upper values.}
   \item{objective}{ For development purpose, not documented (this had a distinct use in the first version of spaMM, but has been deprecated as such).}
   \item{resid.model}{See identically named \code{\link{HLfit}} argument.}
 \item{control.dist}{See \code{control.dist} in \code{\link{HLCor}}}
@@ -45,6 +45,8 @@ An optional list of values of parameters specified through \code{init.corrHLfit}
   This may be used control the optimizer. See \code{\link{spaMM.options}}} for default values.
   \item{processed}{For programming purposes, not documented.  }
   \item{family}{Either a \code{\link{family}} or a \code{\link{multi}} value. }
+  \item{method}{Character: the fitting method to be used, such as \code{"ML"}, \code{"REML"} or \code{"PQL/L"}. \code{"REML"} is the default. Other possible values of \code{HLfit}'s \code{method} argument are handled.
+}
   \item{nb_cores}{\bold{Not yet operative}, only for development purposes. Number of cores to use for parallel computations. }
   \item{\dots}{
 Optional arguments passed to \code{\link{HLCor}}, \code{\link{HLfit}} or  \code{\link{mat_sqrt}}, for example the \code{distMatrix} argument 
@@ -52,12 +54,11 @@ of \code{HLCor}. Arguments that do not fit within these functions are detected a
 }
 }
 \details{
-  Under the Matérn correlation model, corrHLfit typically performs a optimization over the \eqn{\rho} and \eqn{\nu} parameters, 
-  with maximum possible values as set by \code{\link{spaMM.options}}.\cr 
+ For approximations of likelihood, see \code{\link{method}}.  For the possible structures of random effects, see \code{\link{random-effects}},
 
   By default \code{corrHLfit} will estimate correlation parameters by maximizing the \code{objective} value returned by \code{HLCor} calls wherein the dispersion parameters are estimated jointly with fixed effects for given correlation parameters. If dispersion parameters are specified in \code{init.corrHLfit}, they will also be estimated by maximizing the \code{objective} value, and \code{HLCor calls} will not estimate them jointly with fixed effects. This means that in general the fixed effect estimates may vary depending on \code{init.corrHLfit} when any form of REML correction is applied. 
   
-Correctly using \code{corrHLfit} for likelihood ratio tests of fixed effects may then be tricky. It is safe to perform full ML fits of all parameters (using \code{HLmethod="ML"}) for such tests (see Examples).   The higher level function \code{\link{fixedLRT}} is a safe interface for likelihood ratio tests using some form of REML estimation in \code{corrHLfit}.  
+Correctly using \code{corrHLfit} for likelihood ratio tests of fixed effects may then be tricky. It is safe to perform full ML fits of all parameters (using \code{method="ML"}) for such tests (see Examples).   The higher level function \code{\link{fixedLRT}} is a safe interface for likelihood ratio tests using some form of REML estimation in \code{corrHLfit}.  
   
   \code{attr(<fitted object>,"optimInfo")$lower} and ...\code{$upper} gives the lower and upper bounds for optimization of correlation parameters. These are the default values if the user did not provide explicit values. For the adjacency model, the default values are the inverse of the maximum and minimum eigenvalues of the \code{adjMatrix}. For the Matérn model, the default values are not so easily summarized: they are intended to cover the range of values for which there is statistical information to distinguish among them.
 }
@@ -66,26 +67,27 @@ The return value of an \code{HLCor} call, with additional attributes. The \code{
 }
 %% ~Make other sections like Warning with \section{Warning }{....} ~
 \seealso{
-  See more examples on data set \code{\link{Loaloa}}.
+  See more examples on data set \code{\link{Loaloa}}, to compare fit times by \code{corrHLfit} and \code{fitme}.
   See \code{\link{fixedLRT}} for likelihood ratio tests.
 }
 \examples{
 # Example with an adjacency matrix (autoregressive model):
-# see 'adjacency' documentation page
+if (spaMM.getOption("example_maxtime")>0.7) {          
+  corrHLfit(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(expec)),
+          adjMatrix=Nmatrix,family=poisson(),data=scotlip,method="ML") 
+}
 
 #### Examples with Matern correlations
 ## A likelihood ratio test based on the ML fits of a full and of a null model.
 if (spaMM.getOption("example_maxtime")>1.4) {
  data("blackcap")
  (fullfit <- corrHLfit(migStatus ~ means+ Matern(1|latitude+longitude),data=blackcap,
-                    HLmethod="ML") )
+                    method="ML") )
  (nullfit <- corrHLfit(migStatus ~ 1 + Matern(1|latitude+longitude),data=blackcap,
-                    HLmethod="ML",init.corrHLfit=list(phi=1e-6))) 
+                    method="ML",init.corrHLfit=list(phi=1e-6))) 
  ## p-value:
  1-pchisq(2*(logLik(fullfit)-logLik(nullfit)),df=1)
 }
-
-## see data set Loaloa for additional examples
 }
 \keyword{ model }
 

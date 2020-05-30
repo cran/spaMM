@@ -370,6 +370,20 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// Rcpp_backsolve_M_M
+SEXP Rcpp_backsolve_M_M(SEXP r, SEXP x, bool upper_tri, bool transpose);
+RcppExport SEXP _spaMM_Rcpp_backsolve_M_M(SEXP rSEXP, SEXP xSEXP, SEXP upper_triSEXP, SEXP transposeSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type r(rSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type x(xSEXP);
+    Rcpp::traits::input_parameter< bool >::type upper_tri(upper_triSEXP);
+    Rcpp::traits::input_parameter< bool >::type transpose(transposeSEXP);
+    rcpp_result_gen = Rcpp::wrap(Rcpp_backsolve_M_M(r, x, upper_tri, transpose));
+    return rcpp_result_gen;
+END_RCPP
+}
 // Rcpp_chol2solve
 SEXP Rcpp_chol2solve(SEXP r, SEXP x);
 RcppExport SEXP _spaMM_Rcpp_chol2solve(SEXP rSEXP, SEXP xSEXP) {
@@ -413,6 +427,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_spaMM_Rcpp_crossprod", (DL_FUNC) &_spaMM_Rcpp_crossprod, 3},
     {"_spaMM_Rcpp_Csum", (DL_FUNC) &_spaMM_Rcpp_Csum, 2},
     {"_spaMM_Rcpp_backsolve", (DL_FUNC) &_spaMM_Rcpp_backsolve, 4},
+    {"_spaMM_Rcpp_backsolve_M_M", (DL_FUNC) &_spaMM_Rcpp_backsolve_M_M, 4},
     {"_spaMM_Rcpp_chol2solve", (DL_FUNC) &_spaMM_Rcpp_chol2solve, 2},
     {NULL, NULL, 0}
 };

@@ -28,17 +28,17 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
   corr_list <- vector("list", length(strucList))
   for (it in seq_len(length(strucList))) {
     if (! is.null(strucList[[it]])) {
-      if ( ! is.null(newZAlist)) {
-        if (attr(strucList[[it]],"corr.model")=="random-coef" &&
-            ncol(newZAlist[[it]]) != nrow(strucList[[it]]) ## new groups for the random-coef term
-        ) {
-          strucList[[it]] <- .makelong(attr(strucList[[it]],"latentL_blob")$design_u,longsize = ncol(newZAlist[[it]]))
-          rownames(strucList[[it]]) <- colnames(newZAlist[[it]]) 
+      if (attr(strucList[[it]],"corr.model")=="random-coef") {
+        if ( ! is.null(newZAlist) || # banal
+             ! .spaMM.data$options$replace_design_u # then strucList may not contain expanded-covmat ## in principle only devel case.
+             ) {
+          abyss <- is.null(longsize <- ncol(newZAlist[[it]])) && (longsize <- ncol(strucList[[it]])) # handling devel case
+          corr_list[[it]] <- .makelong(attr(strucList[[it]],"latentL_blob")$compactcovmat,longsize = longsize)
+          rownames(corr_list[[it]]) <- colnames(corr_list[[it]]) <- colnames(newZAlist[[it]]) 
           # .tcrossprod gets names from rownames
           ## names required for a predict(,newdata) on a random-coef model
-        }
-      }
-      corr_list[[it]] <- .tcrossprod(strucList[[it]],y=NULL)
+        } else corr_list[[it]] <- .tcrossprod(strucList[[it]],y=NULL) # else we can use the original strucList[[it]] which is now and expanded covmat
+      } else corr_list[[it]] <- .tcrossprod(strucList[[it]],y=NULL)
       attr(corr_list[[it]],"ranefs") <- attr(strucList[[it]],"ranefs")
       attr(corr_list[[it]],"corr.model") <- attr(strucList[[it]],"corr.model")
     }
@@ -53,21 +53,40 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
     newoldC <- Diagonal(n=length(oldlevels)) ## replaces old identityMatrix
     colnames(newoldC) <- oldlevels ## provides colnames for some XMatrix'es -> some ZAX'es -> used by .match_old_new_levels
   } else {
-    numnamesTerms <- length(namesTerms) ## 2 for random-coef
+    numnamesTerms <- length(namesTerms) 
     if (numnamesTerms==1L) {
       nold <- length(oldlevels)
       nnew <- length(newlevels)
-      newoldC <- matrix(0,nrow=nnew,ncol=nold)
       newinold <- match(newlevels,oldlevels)
       matched <- (!is.na(newinold))
-      newoldC[cbind(seq(nnew)[matched],newinold[matched])] <- 1 # cbind() ! don't fill a block !     
+      #newoldC <- matrix(0,nrow=nnew,ncol=nold)
+      #newoldC[cbind(seq(nnew)[matched],newinold[matched])] <- 1 # cbind() ! don't fill a block !  
+      newoldC <- as(sparseMatrix(i=seq(nnew)[matched], j=newinold[matched], dims=c(nnew,nold)),"dgCMatrix")
       colnames(newoldC) <- oldlevels
       rownames(newoldC) <- newlevels
-    } else {
-      oldornew <- unique(c(oldlevels,newlevels))
-      newoldC <- diag(length(oldornew)*numnamesTerms)
-      colnames(newoldC) <- rownames(newoldC) <- rep(oldornew, numnamesTerms)
-      newoldC <- newoldC[newlevels,oldlevels,drop=FALSE]
+    } else {## random-coef.. but .calc_sub_diagmat_cov_newLv_oldv appears never called in that case...
+      nc <- length(oldlevels)
+      nr <- length(newlevels)
+      bloc_i <- which(newlevels %in% oldlevels)
+      bloc_j <- which(oldlevels %in% newlevels)
+      lb <- length(bloc_i)
+      ii <- rep(bloc_i+(as.integer(gl(numnamesTerms,lb,lb*numnamesTerms))-1L)*nr, numnamesTerms)
+      jj <- outer(rep(bloc_j,numnamesTerms), (seq(numnamesTerms)-1L)*nc,"+")
+      dim(jj) <- NULL
+      newoldC <- as(sparseMatrix(x=rep(1,length(ii)), i=ii, j=jj, dims=c(nr,nc)*numnamesTerms),
+                    "dgCMatrix")
+      colnames(newoldC) <- rep(oldlevels,numnamesTerms)
+      rownames(newoldC) <- rep(newlevels,numnamesTerms)
+      if (FALSE) { # NOT the same thing but could be useful elsewhere.
+        oldornew <- unique(c(oldlevels,newlevels))
+        x <- oldornew %in% intersect(oldlevels,newlevels)
+        xx <- rep(x,numnamesTerms)
+        nc <- length(x)*numnamesTerms
+        newoldC <- as(sparseMatrix(x=rep(1,numnamesTerms^2), i=rep(which(xx),numnamesTerms), j=which(xx)[j],
+                                   dims=c(nc,nc)),
+                   "dgCMatrix")
+        colnames(newoldC) <- rownames(newoldC) <- rep(oldornew, numnamesTerms)
+      }
     }
   } 
   attr(newoldC,"isEachNewLevelInOld") <- newlevels %in% oldlevels  ## but this attr is unevaluated (-> NULL) for spatial models 
@@ -181,7 +200,7 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
     } else {
       new_exp_ranef_strings <- ori_exp_ranef_strings
       nrand <- length(new_exp_ranef_strings)
-      newinold <- seq(nrand) ## keep all ranefs
+      newinold <- seq_len(nrand) ## keep all ranefs
       RESU$subZAlist <- object$ZAlist
     }    
     RESU$newinold <- newinold
@@ -197,11 +216,10 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
       ranef_form <- as.formula(paste("~",(paste(exp_ranef_strings,collapse="+")))) ## effective '.noFixef'
       new_mf_ranef <- .calc_newFrames_ranef(formula=ranef_form,data=locdata,fitobject=object)$mf ## also used for predVar computations
       newZlist <- .calc_Zlist(locform, new_mf_ranef, rmInt=0L, drop=TRUE,sparse_precision=FALSE, 
-                              type="seq_len", ## superseded in specific cases: notably, 
-                              ## the same type has to be used by .calc_AMatrix_IMRF() -> .calc_dataordered_levels()
-                              ##   as in .calc_Zmatrix() -> .calc_dataordered_levels()
-                              ## This is why the type in .calc_dataordered_levels(,type) has to be the same in both case
-                              ##    (here type = "mf" as the most explicit; using ".ULI" in both cases appears OK)
+                              geo_type="seq_len", ## superseded in specific cases: notably, 
+                              ## the same type has to be used by .calc_AMatrix_IMRF() -> .as_factor() 
+                              ##  as by .calc_Zmatrix() -> .as_factor() for IMRFs.
+                              ## This is controlled by option uGeo_levels_type (default = "mf" as the most explicit; using ".ULI" appears OK).
                               ## The sames functions are called with the same arguments for predict with newdata.
                               corrMats_info=object$strucList, ## use is to provide info about levels in .calc_ZMatrix()
                               old_ZAlist=object$ZAlist, newinold=newinold, barlist=barlist, 
@@ -369,7 +387,7 @@ get_predCov_var_fix <- function(object, newdata = NULL, fix_X_ZAC.object,fixdata
     # Evar: expect over distrib of (hat(beta),new hat(v)) of [covariance of Xbeta+Zb given (hat(beta),orig hat(v))]
     Evar <- .calc_Evar(newZAlist=new_X_ZACblob$newZAlist,newinold=fix_X_ZAC.object$newinold, 
                        cov_newLv_oldv_list=new_X_ZACblob$cov_newLv_oldv_list, 
-                       lambda=object$lambda, invCov_oldLv_oldLv_list=invCov_oldLv_oldLv_list, 
+                       invCov_oldLv_oldLv_list=invCov_oldLv_oldLv_list, 
                        cov_newLv_fixLv_list=cov_newLv_fixLv_list, cov_fixLv_oldv_list=fix_X_ZAC.object$cov_newLv_oldv_list, 
                        fixZAlist=fix_X_ZAC.object$newZAlist,covMatrix=TRUE,
                        diag_cov_newLv_newLv_list=fix_X_ZAC.object$diag_cov_newLv_newLv_list,
