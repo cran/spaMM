@@ -679,15 +679,7 @@ how.HLfit <- function(object, devel=FALSE, verbose=TRUE, format=print, ...) {
                  "spaMM.version"=object$spaMM.version)
   }
   if (verbose) {
-    fun <- getCall(object)[[1L]]
-    if (is.function(fun)) { # from do.call(spaMM::fitme, args = args) => it's a closure
-      fnname <- names(which(sapply(list(fitme=spaMM::fitme,
-                                        HLfit=spaMM::HLfit,
-                                        HLCor=spaMM::HLCor,
-                                        corrHLfit=spaMM::corrHLfit), identical, y=fun)))
-    } else { # assuming it's a 'name' (direct call or do.call("fitme", args = args)) or fn got by by get(...)
-      fnname <- sub("^.*?::","",deparse(fun)) ## remove any "spaMM::" in the name, from which paste() would return c("::","spaMM",<>)
-    }
+    if (is.null(fnname <- object$how$fnname)) fnname <- .get_bare_fnname(fun=getCall(object)[[1L]])
     if ( ! length(fnname)) {
       format(paste0("Model fitted by spaMM, version ",info[["spaMM.version"]],
                    ", in ",info$fit_time,"s using method: ",paste(info$MME_method,collapse=","),"."))

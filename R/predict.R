@@ -120,11 +120,15 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
     old_rd <- newinold[new_rd]
     exp_ranef_types <- attr(newZAlist,"exp_ranef_types")
     isEachNewLevelInOld <- attr(cov_newLv_oldv_list[[new_rd]],"isEachNewLevelInOld") ## non autocorr effect: a vector of booleans indicating whether new is in old (qualifies cols of Cnewold)
-    if (exp_ranef_types[new_rd]=="IMRF") { ## in that case the newLv = the oldLv Cno=Coo... and actually the Evar term is zero 
-      terme <- rep(0, nrow(newZAlist[[new_rd]]))
-      if (as_tcrossfac_list) {
-        terme <- NULL
-      } else if (covMatrix) terme <- diag(x=terme)
+    if (exp_ranef_types[new_rd] %in% c("IMRF","adjacency","corrMatrix")) { ## in that case the newLv = the oldLv Cno=Coo... and actually the Evar term is zero 
+      if ( ! is.null(fixZAlist)) {
+        terme <- Matrix(0,nrow=nrow(newZAlist[[new_rd]]),ncol=nrow(fixZAlist[[new_rd]]))
+      } else {
+        terme <- rep(0, nrow(newZAlist[[new_rd]]))
+        if (as_tcrossfac_list) {
+          terme <- NULL
+        } else if (covMatrix) terme <- diag(x=terme, nrow=length(terme))
+      }
     } else if ( ! is.null(isEachNewLevelInOld)) { ## non correlated effect: a vector of booleans indicating whether new is in old (qualifies cols of Cnewold)
       if ( ! is.null(fixZAlist)) { 
         Cno_InvCoo_Cof <- cov_newLv_oldv_list[[new_rd]] %id*id% t(cov_fixLv_oldv_list[[new_rd]])
@@ -420,8 +424,15 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
               ) 
           } else { ## else the list elements remained NULL... until .calc_Var_given_fixef() needed them
             if (which_mats$nn[new_rd]) {
-              cov_newLv_newLv_list[[new_rd]] <- 1
-            } else diag_cov_newLv_newLv_list[[new_rd]] <- diag(nrow = ncol(newZAlist[[old_rd]]))
+              cov_newLv_newLv_list[[new_rd]] <- 1 ## just 1 must suffice except if we subsetted (slice...) in which case we would need the names as in:
+              # zut <- .symDiagonal(n=ncol(newZAlist[[old_rd]])) 
+              # dimnames(zut) <- list(colnames(newZAlist[[old_rd]]),colnames(newZAlist[[old_rd]])) 
+              # cov_newLv_newLv_list[[new_rd]] <- zut
+              ## BUT slicing does not occur when any which_mats$nn[new_rd] is true. 
+            } else { # occurs even in simulate if (new)ZAlist is an incidence matrix
+              # and further tested in particular by 'HACorn' in test-predVar.
+              diag_cov_newLv_newLv_list[[new_rd]] <- rep(1,ncol(newZAlist[[old_rd]])) # allowing subsetting
+            }
           }
         } else if ( corr.model=="random-coef") {
           namesTerms <- attr(newZAlist,"namesTerms")[[new_rd]]

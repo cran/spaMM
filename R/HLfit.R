@@ -30,11 +30,11 @@ HLfit <- function(formula,
   time1 <- Sys.time()
   oricall <- match.call()  ## there is no dots in HLfit
   if (is.null(processed)) { 
-    oricall$formula <- .preprocess_formula(formula)
     if (missing(data)) {
       data <- environment(formula)
       warning("It is _strongly_ recommended to use the 'data' argument\n for any application beyond a single fit (e.g. for predict(), etc.)")
     }
+    #oricall$formula <- .preprocess_formula(formula, env=control.HLfit$formula_env)
     ################### create data list if family is multi #################################
     family <- .checkRespFam(family)
     #family <- .as_call_family(family) ## same, family as HLCor argument ?
@@ -73,6 +73,8 @@ HLfit <- function(formula,
       return(multiHLfit())
     } else {## there is a single data set, still without processed
       mc <- oricall
+      mc[[1L]] <- get(".preprocess_formula", asNamespace("spaMM"))  ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
+      oricall$formula <- mc$formula <- eval(mc,parent.frame()) # 
       preprocess_args <- .get_inits_preprocess_args(For="HLfit")
       names_nondefault  <- intersect(names(mc),names(preprocess_args)) ## mc including dotlist
       preprocess_args[names_nondefault] <- mc[names_nondefault] 
@@ -116,6 +118,7 @@ HLfit <- function(formula,
   hlfit$call <- oricall ## potentially used by getCall(object) in update.HL
   if ( ! .is.multi(family) ) {
     hlfit$how$fit_time <- .timerraw(time1)
+    hlfit$how$fnname <- "HLfit"
     hlfit$fit_time <- structure(hlfit$how$fit_time,
                                 message="Please use how(<fit object>)[['fit_time']] to extract this information cleanly.")
   }

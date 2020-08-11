@@ -28,7 +28,7 @@ HLCor(formula, data, family = gaussian(), ranPars = NULL, distMatrix,
   \item{family}{A \code{family} object describing the distribution of the response variable. See \code{\link{HLfit}} for further information.
   }
   \item{distMatrix}{
-    A distance matrix between geographic locations, forwarded to \code{MaternCorr}
+    A distance matrix between geographic locations, forwarded to \code{MaternCorr} or \code{CauchyCorr}. It overrides the (by default, Euclidean) distance matrix that would otherwise be deduced from the variables in a \code{Matern(.))} or \code{Cauchy(.)} term.   
 }
   \item{uniqueGeo}{
     A matrix of non-redundant geographic locations. Such a matrix is typically constructed automatically from the data and the model formula, but otherwise could be useful if further the \code{rho} parameter is a vector with different values for different coordinates, in which case a scaled distance matrix has to be reconstructed from \code{uniqueGeo} and \code{rho}. 
@@ -64,7 +64,8 @@ HLCor(formula, data, family = gaussian(), ranPars = NULL, distMatrix,
  For approximations of likelihood, see \code{\link{method}}.  For the possible structures of random effects, see \code{\link{random-effects}}, but note that \code{HLCor} cannot adjust parameters of correlation models (with the exception of conditional autoregressive ones). Any such parameter must be specified by the \code{ranPars} argument. More generally, the correlation matrix for random effects can be specified by various combinations of formula terms and other arguments  (see Examples):
     \describe{
     \item{Basic Matérn model}{\code{Matern(1|<...>)}, using the spatial coordinates in \code{<...>}. This will construct a correlation matrix according to the Matérn correlation function (see \code{\link{MaternCorr}});}
-    \item{Matérn model with given distance matrix}{\code{Matern(1|<...>)} with \code{distMatrix};}
+    \item{Basic Cauchy model}{\code{Cauchy(1|<...>)}, as for Matern (see \code{\link{CauchyCorr}});}
+    \item{Same models with given distance matrix}{as provided by \code{distMatrix} (see Examples);}
     \item{Given correlation matrix}{\code{corrMatrix(1|<...>)} with \code{corrMatrix} argument. See \code{\link{corrMatrix}} for further details.}
     \item{CAR model with given adjacency matrix}{\code{adjacency(1|<...>)} with \code{adjMatrix}. See \code{\link{adjacency}} for further details;}
     \item{AR1 model}{\code{AR1(1|<...>)} See \code{\link{AR1}} for further details.} 
@@ -85,19 +86,19 @@ HLCor(formula, data, family = gaussian(), ranPars = NULL, distMatrix,
 # see 'adjacency' documentation page
 
 #### Matern correlation using only the Matern() syntax
-if (spaMM.getOption("example_maxtime")>0.8) {
- data("Loaloa")
- HLCor(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
-              +Matern(1|longitude+latitude), data=Loaloa,
-       family=binomial(), ranPars=list(nu=0.5,rho=1/0.7)) 
-}
-%- : tested in simulate.HLCor.Rd
-
-#### Matern correlation using a distMatrix
 data("blackcap")
-MLdistMat <- as.matrix(proxy::dist(blackcap[,c("latitude","longitude")]))
-HLCor(migStatus ~ means+ Matern(1|latitude+longitude),data=blackcap,
-      distMatrix=MLdistMat, method="ML", ranPars=list(nu=0.6285603,rho=0.0544659))
+(fitM <- HLCor(migStatus ~ means+ Matern(1|latitude+longitude),data=blackcap,
+      method="ML", ranPars=list(nu=0.6285603,rho=0.0544659)))
 
+#### Using the 'distMatrix' argument
+data("blackcap")
+#
+# Build distance matrix (here equivalent to the default one for a Matern() term)
+MLdistMat <- as.matrix(proxy::dist(blackcap[,c("latitude","longitude")]))
+#
+(fitD <- HLCor(migStatus ~ means+ Matern(1|latitude+longitude),data=blackcap,
+      distMatrix=MLdistMat, method="ML", ranPars=list(nu=0.6285603,rho=0.0544659)))
+# : result here must be equivalent to the one without the distMatrix.
+diff(c(logLik(fitM),logLik(fitD)))
 }
 \keyword{ model }

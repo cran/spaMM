@@ -53,7 +53,7 @@ An optional (sub)list of values of the parameters specified through \code{init},
   \item{processed}{ For programming purposes, not documented.}
   \item{objective}{ For development purpose, not documented.}
   \item{\dots}{
-Optional arguments passed to \code{\link{HLCor}}, \code{\link{HLfit}} or  \code{\link{mat_sqrt}}, for example the \code{distMatrix} argument of \code{HLCor}. 
+Optional arguments passed to (or operating as if passed to) \code{\link{HLCor}}, \code{\link{HLfit}} or  \code{\link{mat_sqrt}}, for example  \code{control.HLfit} or the \code{distMatrix} argument of \code{HLCor} (so that estimation of Matern or Cauchy parameters can be combined with use of an ad hoc distance matrix). 
 % FIXME : ? :
 %Arguments that do not fit within these functions are detected and a warning is issued.
 }

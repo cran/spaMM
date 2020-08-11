@@ -74,18 +74,22 @@ overcat <- function(msg, prevmsglength) {
   return(X)
 }
 
-## F I X M E not yet used, to be tested next time I see an inline call from do.call(...)
-print.spcall <- function (x, digits = NULL, quote = TRUE, na.print = NULL, print.gap = NULL, 
-          right = FALSE, max = NULL, useSource = TRUE, ...) {
-  ## print.default: 
-  # args <- pairlist(digits = digits, quote = quote, na.print = na.print, 
-  #                  print.gap = print.gap, right = right, max = max, useSource = useSource, 
-  #                  ...)
-  # missings <- c(missing(digits), missing(quote), missing(na.print), 
-  #               missing(print.gap), missing(right), missing(max), missing(useSource))
-  # .Internal(print.default(x, args, missings))
-  ##
-  abyss <- lapply(x, str) 
+.call4print <- function (x, max.print=10L) {
+  x <- as.list(x)
+  for (it in seq_along(x)) {
+    xx <- x[[it]]
+    if (is.numeric(xx) & length(xx)> max.print) {
+      x[[it]] <- capture.output(str(xx))
+      names(x)[it] <- paste0("str(long numeric '",names(x[it]),"')")
+    }
+  }
+  as.call(x)
+}
+
+print.bootci4print <- function(x, ...) {
+  x$call <- .call4print(x$call)
+  class(x) <- "bootci"
+  print(x)
 }
 
 .all.subsets <- function(set) {
@@ -161,4 +165,17 @@ projpath <- local({
   vec[vec < min] <- min
   vec[vec > max] <- max
   vec
+}
+
+.get_bare_fnname <- function(fun) {
+  if (is.function(fun)) { # from do.call(spaMM::fitme, args = args) => it's a closure
+    fnname <- names(which(sapply(list(fitme=spaMM::fitme,
+                                      HLfit=spaMM::HLfit,
+                                      HLCor=spaMM::HLCor,
+                                      corrHLfit=spaMM::corrHLfit), identical, y=fun)))
+    # the fact that we can rename functions shows how this can fail...
+  } else { # assuming it's a 'name' (direct call or do.call("fitme", args = args)) or fn got by by get(...)
+    fnname <- sub("^.*?::","",deparse(fun)) ## remove any "spaMM::" in the name, from which paste() would return c("::","spaMM",<>)
+  }
+  return(fnname)
 }

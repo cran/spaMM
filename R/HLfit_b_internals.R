@@ -154,6 +154,7 @@
         } else sqrt.ww <- sqrt(w.resid)
         wX <- .calc_wAugX(XZ_0I=X.pv,sqrt.ww=sqrt.ww)
         LM_wz <- z1*sqrt.ww - (wX %*% old_beta_eta)
+        restarted <- FALSE
         while(TRUE) { 
           if (inherits(wX,"Matrix")) {
             LevenbergMstep_result <- .LevenbergMsolve_Matrix(wAugX=wX,LM_wAugz=LM_wz,damping=damping) 
@@ -179,9 +180,9 @@
             break
           } else if (dampingfactor>4 ## iter not accessible for test
                      && gainratio==0) { # apparently flat deviance
+            dbetaV <- LevenbergMstep_result$dbetaV ## ...hmm first test in test-formula_env requires this...
             if (conv_crit < 1e-8) { # we were at optimum
               damping <- 1e-7
-              dbetaV <- LevenbergMstep_result$dbetaV ## needed to break the innerj loop
               if (verbose["trace"]) cat("#")
               break ## apparently flat dev
             } else { ## measurable gradient, but we don't move => too high damping ? (if damping from previous LevM step was too high)

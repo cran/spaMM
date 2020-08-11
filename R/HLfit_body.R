@@ -7,6 +7,7 @@ HLfit_body <- local({
                        ranFix=list(), ## phi, lambda, possibly nu, rho if not in init.HLfit
                        etaFix=list() ## beta, v_h (or even u_h)
 ) {
+  processed$envir$ranFix <- ranFix # for diagnostics reported by div_info() [__F I X M E__ rethink] 
   data <- processed$data
   verbose <- processed$verbose
   family <- processed$family
@@ -44,7 +45,7 @@ HLfit_body <- local({
   n_u_h <- cum_n_u_h[nrand+1L] 
   vec_n_u_h <- diff(cum_n_u_h)
   if (models[["eta"]]=="etaHGLM") {
-    sparse_precision <- processed$sparsePrecisionBOOL
+    sparse_precision <- processed$is_spprec
     ranCoefs.Fix <- .getPar(ranFix,"ranCoefs") ## may be NULL
     ranCoefs_blob <- .process_ranCoefs(processed, ranCoefs.Fix, use_tri_Nspprec=TRUE) ## UPDATES preexisting object # no augZXy pb here
     LMatrices <- processed$AUGI0_ZX$envir$LMatrices
@@ -58,7 +59,7 @@ HLfit_body <- local({
       attr(LMatrices,"is_given_by")[ranCoefs_blob$is_set] <- "ranCoefs"
       # lambda_est initialized from ranCoefs_blob later !
     }
-    if (processed$sparsePrecisionBOOL) { 
+    if (processed$is_spprec) { 
       which_inner_ranCoefs <- which(ranCoefs_blob$isRandomSlope & ( ! ranCoefs_blob$is_set))
       attr(LMatrices,"is_given_by")[which_inner_ranCoefs] <- "inner_ranCoefs"
       .init_precision_info(processed,LMatrices) ## modifies processed$AUGI0_ZX$envir  
@@ -149,9 +150,10 @@ HLfit_body <- local({
     ## Initial estimate for u_h, v_h 
     gaussian_u_ranges <- processed$gaussian_u_ranges 
     psi_M <- rep(attr(rand.families,"unique.psi_M"),diff(cum_n_u_h))
-    v_h <- .initialize_v_h(psi_M=psi_M, etaFix=etaFix, 
-                          init.HLfit=init.HLfit, ## checks init.HLfit$v_h
-                          cum_n_u_h=cum_n_u_h, rand.families=rand.families, port_env=processed$port_env)
+    v_h <- processed$intervalInfo$init_v_h
+    if (is.null(v_h)) v_h <- .initialize_v_h(psi_M=psi_M, etaFix=etaFix, 
+                                            init.HLfit=init.HLfit, ## checks init.HLfit$v_h
+                                            cum_n_u_h=cum_n_u_h, rand.families=rand.families, port_env=processed$port_env)
     u_h <- .u_h_v_h_from_v_h(v_h, rand.families=rand.families, cum_n_u_h=cum_n_u_h,
                             lcrandfamfam=lcrandfamfam, lower.v_h=NULL, upper.v_h=NULL)
     ## Initial estimate for lambda in 'compact" form
@@ -261,7 +263,7 @@ HLfit_body <- local({
         intervalInfo$beta_eta <- beta_eta ## ex tempo: the current estimate of the CI bound
       } ## else intervalInfo remains NULL
       H_global_scale <- .calc_H_global_scale(w.resid)
-      if ( processed$sparsePrecisionBOOL ) { 
+      if ( processed$is_spprec ) { 
         adj_rho <- corr_est$rho
         if (is.null(adj_rho)) adj_rho <- .getPar(ranFix,"rho") ## could this occur with test_inner_estim_rho ?
         if (is.null(adj_rho)) adj_rho <- init.HLfit$rho
@@ -636,7 +638,7 @@ HLfit_body <- local({
         if (need_ranefPars_estim) { ## next_lambda_est/ next ranCoefs/ next rho adjacency available:
           if (any(ranCoefs_blob$isRandomSlope)) {
             LMatrices <- calcRanefPars_blob$next_LMatrices ## keep L factor of corr mats for all models 
-            if (processed$sparsePrecisionBOOL && any(which_inner_ranCoefs)) {
+            if (processed$is_spprec && any(which_inner_ranCoefs)) {
               .update_precision_info(processed, LMatrices, which.="inner_ranCoefs")
             }
             ZAL <- .compute_ZAL(XMatrix=LMatrices, ZAlist=processed$ZAlist,as_matrix=( ! inherits(ZAL,"Matrix"))) 

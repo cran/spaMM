@@ -159,9 +159,10 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
             rand_eta <- vector('list',length(predVar))
             for (it in seq_len(length(predVar))) {
               if (it==1L) {mu <- point_pred_eta[,1L]} else {mu <- rep(0,length(point_pred_eta[,1L]))}
-              rand_eta[[it]] <- .mvrnorm(n=needed,mu=mu, tcross_Sigma = predVar[[it]])
+              if ( ! is.null(predVar[[it]])) rand_eta[[it]] <- .mvrnorm(n=needed,mu=mu, tcross_Sigma = predVar[[it]])
+              # else predVar[[it]] remains NULL [cf IMRF terms for newdata] and lengths() is used to remove them:
             }
-            rand_eta <- Reduce("+",rand_eta)
+            rand_eta <- Reduce("+",rand_eta[lengths(rand_eta)>0L])
           } else rand_eta <- mvrnorm(n=needed,mu=point_pred_eta[,1L], predVar)
           if (needed>1L) rand_eta <- t(rand_eta) ## else mvrnorn value is a vector
           if ( ! is.null(zero_truncated <- object$family$zero_truncated)) {

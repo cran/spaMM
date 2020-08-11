@@ -28,7 +28,7 @@ fitme_body <- function(processed,
   # 'processed' may be modified below, then will be copied in HLCor.args (and then removed from this envir for safety)
   optim.scale <- control[["optim.scale"]] 
   if (is.null(optim.scale)) optim.scale="transformed" ## currently no public alternative
-  sparse_precision <- proc1$sparsePrecisionBOOL
+  sparse_precision <- proc1$is_spprec
   #
   user_init_optim <- init ## user_init_optim only for a check in new_locoptim, true initial value init.optim is modified below
   optim_blob <- .calc_optim_args(proc1=proc1, processed=processed,
@@ -259,6 +259,11 @@ fitme_body <- function(processed,
       logLapp <- optr$value
       attr(logLapp,"method") <- "  logL (smoothed)" 
       hlcor$APHLs$logLapp <- logLapp
+    }
+    if ( ! is.null(PQLdivinfo <- processed$envir$PQLdivinfo)) {
+      hlcor$divinfo <- PQLdivinfo
+      hlcor$warnings$divinfo <- "Numerical issue detected; see div_info(<fit object>) for more information."
+      warning(hlcor$warnings$divinfo)
     }
   }
   ## substantial effect on object size! :

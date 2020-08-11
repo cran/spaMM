@@ -37,7 +37,7 @@ Integer. Number of cores to use for parallel computations. If >1, a cluster of \
   For debugging purposes. Effect, if any, is to be defined by the \code{fn} as provided by the user.
 }
   \item{iseed}{
-Integer, or NULL. If an integer, \code{parallel::clusterSetRNGStream(cl = cl, iseed)} is called, setting and initializing \code{"L'Ecuyer-CMRG"} random-number generator on the nodes. This is useful if random numbers are used on the nodes (see \code{\link[parallel]{clusterSetRNGStream}}). If \code{iseed} is \code{NULL}, the default generator is selected on each node, where its seed is not controlled. 
+Integer, or NULL. If an integer, \code{parallel::clusterSetRNGStream(cl = cl, iseed)} is called, setting and initializing \code{"L'Ecuyer-CMRG"} random-number generator on the nodes. This is useful if random numbers are used on the nodes (see \code{\link[parallel:RngStream]{clusterSetRNGStream}}). If \code{iseed} is \code{NULL}, the default generator is selected on each node, where its seed is not controlled. 
 }
   \item{showpbar}{
 Controls display of progress bar. See \code{\link{barstyle}} option for details.

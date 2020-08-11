@@ -77,15 +77,17 @@
         } 
       } else {# "(.|.)" 
         ## tnb <- fitme(resp~1+(1|ID), data=lll,family=Tnegbin(2)) is a test case where spprec is clearly slower
-        adjlist[[rd]] <- diag(TRUE,nrow=ncol(ZAlist[[rd]])) ## (null corrlist[[rd]] must mean the same thing)
+        adjlist[[rd]] <- .symDiagonal(TRUE,n=ncol(ZAlist[[rd]])) # .symDiagonal(TRUE,n=ncol(ZAlist[[rd]]))  ## (null corrlist[[rd]] must mean the same thing) 
       }
     }
+    ### > qq s for large ZA 
     ZL <- suppressMessages( .compute_ZAL(XMatrix=corrlist,ZAlist,as_matrix = FALSE) )  
     if (is.logical(ZL)) {# logical corr by identity Z gives logi ZL, not handled by .crossprod
       cross_ZL <- crossprod(ZL)
     } else cross_ZL <- .crossprod(ZL) ## forces a call to forceSymmetric => result is Matrix either dsy or sparse.
     denseness_via_ZL <- .calc_denseness(cross_ZL) # crossprod ideally dsC except if ZL is really dense
     crossZL_is_dsy <- inherits(cross_ZL,"dsyMatrix") 
+    ###
     if (fast) {
       corr_info$G_diagnosis <- list(denseness_noAR=.calc_denseness(noAR), 
                                     crossZL_is_dsy=crossZL_is_dsy,
@@ -113,13 +115,19 @@
 }
 
 # even though the Z's were sparse postmultplication by LMatrix leads some of the ZAL's to dgeMatrix (dense)
-.choose_QRmethod <- function(ZAlist, predictor, corr_info, trySparse=TRUE) {
+.choose_QRmethod <- function(ZAlist, predictor, corr_info, trySparse=TRUE,is_spprec) {
   if ( is.null(QRmethod <- .spaMM.data$options$QRmethod) ) { ## user setting. The code should NOT write into it. 
     nrand <- length(ZAlist)
     if (trySparse && nrand>0L) {
       # adjacency speed to be tested on 2nd example from test-spaMM.R
       densecorrs <- attr(ZAlist,"exp_ranef_types") %in% c("adjacency", "IMRF", "Matern","Cauchy", "corrMatrix","AR1") 
-      if (all(densecorrs)) { ## simple subcase of the next case
+      sparseprecs <- attr(ZAlist,"exp_ranef_types") %in% c("adjacency", "IMRF", "AR1")
+      if (is_spprec && all(sparseprecs)) {
+        totdim <- colSums(do.call(rbind,lapply(ZAlist,dim)))
+        if (totdim[2L]>1000L) { # a bit a hoc (ohio/adjacency-long/large IMRF)
+          return("sparse")
+        } else return("dense")
+      } else if (( ! is_spprec) && all(densecorrs) ) { ## simple subcase of the next case
         ## LMatrices are not available, and it may be better to use the density of the correlation matrices anyway:
         ## for maximally sparse Z, ZL's denseness is that of the retained rows of L. This suggests that ZL could be made sparser 
         ## by reordering the levels of the correlation matrix so that the most represented levsl come first in a triangular L factor. 
@@ -197,7 +205,7 @@
                   "\n are matched in this order to rows and columns of corrMatrix, without further check.",
                   "\n This may cause later visible errors (notably, wrongly dimensioned matrices)",
                   "\n or even silent errors. See help(\"corrMatrix\") for a safer syntax.")
-    warning(mess)
+    warning(mess, immediate. = TRUE)
   } else if (is.null(colnames(corrMatrix))) {
     if (inherits(corrMatrix, c("matrix", "Matrix"))) {
       colnames(corrMatrix) <- corrnames
@@ -249,5 +257,22 @@
   Z
 }
 
+.preprocess_pw <- function(subs_p_weights, nobs, validdata) {
+  if (is.null(subs_p_weights)) {
+    prior.weights <- structure(rep(1L,nobs),unique=TRUE,is_call=FALSE) ## <- 1L prevented by glm -> model.frame(... prior.weights)
+  } else if ( ! (inherits(subs_p_weights,"call") && subs_p_weights[[1L]] == "quote") )  {
+    prior.weights <- as.vector(stats::model.weights(validdata)) ## as.vector as in say lm() protects against array1d
+    if ( ! is.numeric(prior.weights)) 
+      stop("'weights' must be a numeric vector")
+    if (any(prior.weights < 0)) 
+      stop("negative weights not allowed")
+    prior.weights <- structure(prior.weights, unique= length(unique(prior.weights))==1L, is_call=FALSE)
+    #attr(prior.weights,"only1") <- all(upw==1L)
+  } else {## 'prior.weights' is a quoted expression
+    attr(prior.weights,"unique") <- FALSE 
+    attr(prior.weights,"is_call") <- TRUE
+  }   
+  return(prior.weights)
+}
 
 

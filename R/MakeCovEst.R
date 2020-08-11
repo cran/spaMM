@@ -169,7 +169,7 @@
   updated_LMatrices <- working_LMatrices <- prev_LMatrices
   Xi_cols <- attr(ZAlist,"Xi_cols")
   loc_lambda_est <- prev_lambda_est # estimates not provided by the loop are necessary when (! augZXy_cond) -> .solve_IRLS_as_ZX()
-  spprecBool <- processed$sparsePrecisionBOOL
+  spprecBool <- processed$is_spprec
   use_tri_Nspprec <- .spaMM.data$options$use_tri_for_makeCovEst
   verbose <- processed$verbose["TRACE"]
   try_chol <- ( ! spprecBool ) # && (.spaMM.data$options[["rC_transf_inner"]]=="chol") ## "sph" works with chol latentL now

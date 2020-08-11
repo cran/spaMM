@@ -12,7 +12,7 @@
   nrand <- length(processed$ZAlist)
   cum_n_u_h <- processed$cum_n_u_h
   n_u_h <- cum_n_u_h[nrand+1L] 
-  sparse_precision <- processed$sparsePrecisionBOOL
+  sparse_precision <- processed$is_spprec
   ranCoefs.Fix <- .getPar(ranFix,"ranCoefs") ## may be NULL
   # Updates processed$ranCoefs_blob which contains no globally fixed ranCoefs as this has been excluded by .determine_augZXy() 
   ranCoefs_blob <- .process_ranCoefs(processed, ranCoefs.Fix,use_tri_Nspprec=.spaMM.data$options$use_tri_for_augZXy) ## *updates* *locally* a preexisting object
@@ -26,10 +26,10 @@
     attr(LMatrices,"is_given_by")[ranCoefs_blob$is_set] <- "ranCoefs"
     # lambda_est initialized from ranCoefs_blob later !
   }
-  if (processed$sparsePrecisionBOOL) { 
+  if (processed$is_spprec) { 
     .init_precision_info(processed,LMatrices) ## modifies processed$AUGI0_ZX$envir  
   }
-  if (processed$sparsePrecisionBOOL) {
+  if (processed$is_spprec) {
     ZAL <- NULL # we practically don't need it (though F I X M E: it would be nice to provide alternative info to .eval_init_lambda_guess)
   } else if ( any((attr(LMatrices,"is_given_by") !="")) ) {
     ZAL <- .compute_ZAL(XMatrix=LMatrices, ZAlist=processed$ZAlist,as_matrix=.eval_as_mat_arg(processed))
@@ -64,7 +64,7 @@
     w.resid <- .calc_w_resid(muetablob$GLMweights,1)
   } else w.resid <- .calc_w_resid(muetablob$GLMweights,phi_est) ## 'weinu', must be O(n) in all cases
   H_global_scale <- .calc_H_global_scale(w.resid)
-  if (processed$sparsePrecisionBOOL) {
+  if (processed$is_spprec) {
     # .HLfit_body_augZXy has called .init_precision_info(processed,LMatrices)...
     if (trace) cat(".")
     sXaug <- do.call(processed$AUGI0_ZX$envir$method, # ie, def_AUGI0_ZX_sparsePrecision

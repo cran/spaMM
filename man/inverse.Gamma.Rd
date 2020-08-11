@@ -17,7 +17,7 @@ inverse.Gamma(link = "-1/mu")
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
-  \item{link}{For \code{Gamma}, allowed links are \code{log} and \code{identity} (the default link from \code{\link[stats]{Gamma}}, \code{"inverse"}, cannot be used for the random effect specification). For \code{inverse.Gamma}, allowed links are \code{"-1/mu"} (default) and \code{log}.}
+  \item{link}{For \code{Gamma}, allowed links are \code{log} and \code{identity} (the default link from \code{\link[stats:family]{Gamma}}, \code{"inverse"}, cannot be used for the random effect specification). For \code{inverse.Gamma}, allowed links are \code{"-1/mu"} (default) and \code{log}.}
 }
 \examples{
 # see help("HLfit") for fits using the inverse.Gamma distribution.

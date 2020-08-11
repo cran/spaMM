@@ -76,6 +76,7 @@ print.arglist <- function(x,...) {
     # but also dtC for which the warning is not warranted
     X <- X %*% Diagonal(x=Dvec)
   } 
+  if (methods::.hasSlot(X, "factors")) X@factors <- list()
   return(X)
 }
 
@@ -144,6 +145,7 @@ if (FALSE) {
     ## if it is really a dgeMatrix then Dvec * X appears correct. (FIXME double check and implement ?)
     X <- Diagonal(x=Dvec) %*% X
   } 
+  if (methods::.hasSlot(X, "factors")) X@factors <- list()
   return(X)
 }
 
@@ -291,7 +293,7 @@ if (FALSE) {
     } else return(ranCoefs_blob)
   }
   ## newly_set contains some TRUE
-  spprecBool <- processed$sparsePrecisionBOOL
+  spprecBool <- processed$is_spprec
   nrand <- length(ZAlist)
   if (is.null(LMatrices <- ranCoefs_blob$LMatrices)) LMatrices <- vector("list", nrand)
   if (is.null(lambda_est <- ranCoefs_blob$lambda_est)) lambda_est <- numeric(cum_n_u_h[nrand+1L])
@@ -560,8 +562,14 @@ if (FALSE) {
 
 ## spaMM_Gamma() fixes Gamma()$dev.resids(1e10+2,1e10,1) is < 0
 # dev.resids() must be >0 for computation deviance_residual in fitting Gamma GLMM, and also for $aic() computation.
-spaMM_Gamma <- function (link = "inverse") {
+spaMM_Gamma <- local({
+  link_warned <- FALSE
+  function (link = "inverse") {
   mc <- match.call()
+  if (is.null(mc$link) && ! link_warned) {
+    message("Gamma family's default link is 'inverse', not 'log'")
+    link_warned <- TRUE
+  }
   linktemp <- substitute(link) ## does not evaluate
   if (!is.character(linktemp)) 
     linktemp <- deparse(linktemp) ## converts to char the unevaluated expression
@@ -634,6 +642,7 @@ spaMM_Gamma <- function (link = "inverse") {
                  validmu = validmu, valideta = stats$valideta, simulate = simfun), 
             class = "family")
 }
+  })
 
 
 .get_clik_fn <- function(family) {
@@ -778,7 +787,8 @@ spaMM_Gamma <- function (link = "inverse") {
 # using y is important in cases where a comparison btwn eta (or mu) and y is important for convergence of an algo
 # In that case we sanitize only to the extant that individual values of y allow.
 # If this sanitization is not enough, then it is y than must be sanitized.
-.sanitize_eta <- function(eta, y=NULL,family,max=.spaMM.data$options$sanitize_eta["otherlog"]) {
+.sanitize_eta <- function(eta, y=NULL,family,max=.spaMM.data$options$sanitize_eta["otherlog"],
+                          bin_mu_tol=.spaMM.data$options$bin_mu_tol) {
   if (family$link =="log") {
     if (family$family=="gaussian") {
       eta <- .sanitize_eta_log_link(eta, max=.spaMM.data$options$sanitize_eta["gauslog"],  y=y) 
@@ -796,7 +806,7 @@ spaMM_Gamma <- function (link = "inverse") {
     #for binomial cases stats::binomial(...)$linkinv corrects eta for all links so that mu is always .Machine$double.eps from 0 or 1
     # This may not be enough... or inconsistent with corrections used elsewhere, so we overcome the stats:: correction
     # by correcting eta differently here and by computing mu <- .binomial_raw_linkinv(eta,link=family$link) (in .muetafn and possibly elsewhere)
-    eta <- .binomial_corr_eta(eta,link=family$link, tol=.spaMM.data$options$bin_mu_tol)
+    eta <- .binomial_corr_eta(eta,link=family$link, tol=bin_mu_tol)
   }
   return(eta)
 }
@@ -884,7 +894,7 @@ spaMM_Gamma <- function (link = "inverse") {
   ### if ( ! is.null(names(eta))) stop(" ! is.null(names(eta))")
   # names(eta) <- NULL ## no longer useful because rownames(X.pv) <- NULL and rownames(ZAL) <- NULL
   family <- processed$family
-  eta <- .sanitize_eta(eta, family=family)
+  eta <- .sanitize_eta(eta, family=family) #, bin_mu_tol=processed$envir$bin_mu_tol)
   if (family$family == "binomial") { ## 
     #for binomial cases stats::binomial(...)$linkinv corrects eta for all links so that mu is always .Machine$double.eps from 0 or 1
     # This may not be enough... or inconsistent with corrections used elsewhere, so we overcome the stats:: correction
@@ -913,6 +923,7 @@ spaMM_Gamma <- function (link = "inverse") {
     attr(GLMweights,"unique") <- attr(processed$prior.weights,"unique") ## might actually be true sometimes
   } else {
     # in Gamma() (inverse) case dmudeta=Vmu => dmudeta^2 /Vmu= Vmu
+    # this can diverge: add a warning/protection ? (__F I X M E__)
     GLMweights <- eval(processed$prior.weights) * dmudeta^2 /Vmu ## must be O(n) in binomial cases
     attr(GLMweights,"unique") <- FALSE ## might actually be true sometimes
   }
@@ -1231,8 +1242,8 @@ spaMM_Gamma <- function (link = "inverse") {
   if (inherits(mat,"sparseMatrix")) {
     return(chol(mat)) ## Matrix::chol
   } else if (inherits(mat,"Matrix")) {
-    ## this was the typical case for crossr22: a dsyMatrix (dense symmetric)
-    # so in fact it's better to avoid costly Matrix operations in .calc_r22 that yields crossr22 as a dsyMatrix
+    ## this was the typical case when crossr22 in .calc_r22 was a dsyMatrix (dense symmetric)
+    # but we now avoid costly Matrix operations that yields crossr22 as a dsyMatrix
     mat <- as.matrix(mat) 
   } 
   if (use_eigen) {
@@ -1450,7 +1461,9 @@ spaMM_Gamma <- function (link = "inverse") {
 .eval_as_mat_arg <- function(object) { 
   (
     object$HL[1L]=="SEM" || ## SEM code does not yet handle sparse as it uses a dense Sig matrix
-    ! identical(object$QRmethod,"sparse") ## => conversion to matrix if object$QRmethod is NULL
+    ( ( ! identical(object$is_spprec,TRUE) ) && # this may be called post-fit in which case object has no $is_spprec
+      ! identical(object$QRmethod,"sparse") ## => conversion to matrix if object$QRmethod is NULL
+    )
   )
 }
 
@@ -1722,7 +1735,7 @@ spaMM_Gamma <- function (link = "inverse") {
       if (ncol(X.pv)) {
         if (is.null(envir$ZtW)) envir$ZtW <- t(.Dvec_times_m_Matrix(attr(envir$sXaug,"w.resid"), envir$sXaug$AUGI0_ZX$ZAfix)) 
         r12 <- as(Matrix::solve(envir$G_CHMfactor, as(envir$G_CHMfactor,"pMatrix") %*% envir$ZtW %*% X.pv,system="L"),"sparseMatrix") ## solve(as(envir$G_CHMfactor,"sparseMatrix"), envir$ZtW %*% AUGI0_ZX$X.pv)
-        r22 <- .calc_r22(X.pv,w.resid,r12, sXaug=NULL) ## both lines as explained in working doc
+        r22 <- .calc_r22(X.pv,w.resid,r12) ## both lines as explained in working doc
         r22 <- as(r22,"sparseMatrix") 
       } else r22 <- diag(nrow=0L) # don't leave it NULL; + we use its ncol
     } else r12 <- envir$r12 

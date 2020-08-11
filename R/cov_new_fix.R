@@ -216,7 +216,7 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
       ranef_form <- as.formula(paste("~",(paste(exp_ranef_strings,collapse="+")))) ## effective '.noFixef'
       new_mf_ranef <- .calc_newFrames_ranef(formula=ranef_form,data=locdata,fitobject=object)$mf ## also used for predVar computations
       newZlist <- .calc_Zlist(locform, new_mf_ranef, rmInt=0L, drop=TRUE,sparse_precision=FALSE, 
-                              geo_type="seq_len", ## superseded in specific cases: notably, 
+                              levels_type= "seq_len", ## superseded in specific cases: notably, 
                               ## the same type has to be used by .calc_AMatrix_IMRF() -> .as_factor() 
                               ##  as by .calc_Zmatrix() -> .as_factor() for IMRFs.
                               ## This is controlled by option uGeo_levels_type (default = "mf" as the most explicit; using ".ULI" appears OK).
@@ -225,9 +225,20 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
                               old_ZAlist=object$ZAlist, newinold=newinold, barlist=barlist, 
                               lcrandfamfam=attr(object$rand.families,"lcrandfamfam")) 
       amatrices <- .get_new_AMatrices(object,new_mf_ranef=new_mf_ranef)
+      ## ! complications:
+      ## even if we used perm_Q for Matern, the permution A matrix should not be necessary 
+      ##  in building the new correlation matrix, although it night be used as well 
+      ## explict colnames should handle both cases, so that
+      ## newZAlist <- .calc_normalized_ZAlist( ignoring those A matrices)
+      ## and 
+      ## newZAlist <- object$ZAlist
+      ## should be OK.
+      ## But the other Amatrices should be processed before newZACpplist <- .compute_ZAXlist(.) is called
+      requires_ZCpL <- (attr(newZlist,"exp_ranef_types") %in% c("Matern","Cauchy"))
       vec_normIMRF <- object$ranef_info$vec_normIMRF
       newZAlist <- .calc_normalized_ZAlist(Zlist=newZlist,
-                                           AMatrices=amatrices,
+                                           # newZlist has names not necessarily starting at "1"
+                                           AMatrices=amatrices[names(newZlist)[ ! requires_ZCpL]],
                                            vec_normIMRF=object$ranef_info$vec_normIMRF, 
                                            strucList=strucList)
       ## must be ordered as parseBars result for the next line to be correct.
@@ -239,7 +250,7 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
     need_Cnn <- rep(FALSE, nrand) # i.e. length of newZAlist
     for (new_rd in seq_len(nrand)) { # we don't vectorize to avoid evaluating isDiagonal when it's not needed.  
       old_rd <- newinold[new_rd]
-      if (ori_exp_ranef_types[old_rd] != "IMRF") { # we don't need cov matrices for IMRF terms ! bc their Evar is always FALSE
+      if ( ! ori_exp_ranef_types[old_rd] %in% c("IMRF","adjacency","corrMatrix")) { 
         need_Cnn[new_rd] <- (attr(object$strucList,"isRandomSlope")[old_rd] | variances$cov ) 
         # that is, we need them also for prediction variances (not cov) for random-slope.
         # and we check another condition where we may need them for prediction variances: 
@@ -247,7 +258,7 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
           if (is.null(is_incid <- attr(newZAlist[[new_rd]],"is_incid"))) {
             # typically occurs bc there was an A matrix (though not for IMRF) so that ZA differs from Z
             # or by subsetting (ZAlist[[it]][,.] is .preprocess) 
-            if (is.null(attr(newZAlist,"AMatrices"))) {
+      #####if (is.null(attr(newZAlist,"AMatrices"))) {
               message("Possibly inefficient code in .calc_new_X_ZAC().")
               # awful code potentially huge calculation to detect a nondiagonal element...
               # i could consider that the case is rare enough and not bother
@@ -256,11 +267,10 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
               # another approach requiring less computation is to check the sum of the values of non-diagonal elements of the tcrossp of abs(ZA), 
               # absZA <- abs(newZAlist[[new_rd]])
               # need_Cnn[new_rd] <- ((sum(rowSums(absZA)^2)-sum(absZA^2))>0)
-            } else need_Cnn[new_rd] <- TRUE # assumin that the tcrossprod is unlikely to be diagonal...
+      #####} else need_Cnn[new_rd] <- TRUE # assumin that the tcrossprod is unlikely to be diagonal...
           } else need_Cnn[new_rd] <- ( ! is_incid)
         }
-        # (depends on AMatrices in particular, but again for IMRF the Evar in nodes is 0 and so is ZA %*% Evar %*% t(ZA) )
-      } # else it remains FALSE
+      } # else for IMRF it remains FALSE bc for IMRF the Evar in nodes is 0 and so is ZA %*% Evar %*% t(ZA) )
     }
     #
     which_mats <- list(no= need_new_design, 
@@ -309,6 +319,8 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
       #  newZACvar constructed there must match those of beta_w_cov for  ZWZt_mat_or_diag( <cbind(newX,newZAC)> ,beta_w_cov)
       #  cov_newLv_oldv_list() provides the info for the expansion from the newZA cols to the oldZA cols.
       #  In that case one does not need to match levels. .calc_newZACvar() performs a simpler operation than .compute_ZAXlist.
+      if (need_new_design) RESU$newZACpplist <- .calc_ZAlist(Zlist=RESU$newZACpplist,
+                                   AMatrices=amatrices[names(newZlist)[requires_ZCpL]])
     }
     #############################
     info_olduniqueGeo <- attr(object,"info.uniqueGeo") ## test TRUE for version > 2.3.18:
@@ -401,18 +413,33 @@ get_predCov_var_fix <- function(object, newdata = NULL, fix_X_ZAC.object,fixdata
   #   for any 'problem'. But there may some 'problem' and still a valid logdispObject
   # => In new version, dwdlogdisp should be either NULL or a conforming matrix;
   #  'problems" should not be tested.
-  submatrices <- .get_logdispObject(object)
-  if (variances$disp && ! is.null(submatrices$dwdlogdisp) ) {
+  logdispObject <- .get_logdispObject(object)
+  if (variances$disp && ! is.null(logdispObject$dwdlogdisp) ) {
+    dwdlogdisp <- logdispObject$dwdlogdisp
+    logdisp_cov <- logdispObject$logdisp_cov ## idem
+    phi_cols <- attr(dwdlogdisp,"col_info")$phi_cols ## make local copy before subsetting the matrix!
     if ( ! is.null(re_form_col_indices) ) { ## selection of blocks for re.form ranefs 
-      col_info <- attr(submatrices$dwdlogdisp,"col_info") ## ranefs for which there is a col in dwdlogdisp
-      whichcols <- c(re_form_col_indices$which_ranef_cols,col_info$phi_cols)
-      submatrices$dwdlogdisp <- submatrices$dwdlogdisp[re_form_col_indices$subrange,whichcols]
-      submatrices$logdisp_cov <- submatrices$logdisp_cov[whichcols,whichcols]
+      whichcols <- c(re_form_col_indices$which_ranef_cols, phi_cols)
+      dwdlogdisp <- dwdlogdisp[re_form_col_indices$subrange,whichcols] ## permuted ranefs => permuted rows and cols
+      logdisp_cov <- logdisp_cov[whichcols,whichcols] ## permuted ranefs => permuted rows and cols
     } 
+    if (!is.null(hyper_info <- .get_from_ranef_info(object, "hyper_info"))) {
+      summingMat <- hyper_info$summingMat
+      if (!is.null(re_form_col_indices)) {
+        summingMat <- summingMat[newinold, , drop = FALSE]
+        colids <- numeric(nrow(summingMat))
+        for (it in seq(nrow(summingMat))) colids[it] <- which(summingMat[it, ] > 0)
+        colids <- unique(colids)
+        summingMat <- summingMat[, colids, drop = FALSE]
+      }
+      summingMat <- as.matrix(Matrix::bdiag(summingMat, rep(1, length(phi_cols))))
+      dwdlogdisp <- dwdlogdisp %*% summingMat
+      logdisp_cov <- t(summingMat) %*% logdisp_cov %*% summingMat
+    }
     # newZACvar = (ZAC_ranef1 | ZAC_ranef3... ) %*% dwdlogdisp which rows match the successive v_h (all ranefs) and cols match disp pars
-    newZACw <- newZACvar %*% submatrices$dwdlogdisp ## typically (nnew * n_u_h) %*% (n_u_h * 2) = nnew * 2 hence small 
-    fixZACw <- fixZACvar %*% submatrices$dwdlogdisp ## typically (nnew * n_u_h) %*% (n_u_h * 2) = nnew * 2 hence small 
-    disp_effect_on_newZACw <- newZACw %*% submatrices$logdisp_cov %*% t(fixZACw)      
+    newZACw <- newZACvar %*% dwdlogdisp ## typically (nnew * n_u_h) %*% (n_u_h * 2) = nnew * 2 hence small 
+    fixZACw <- fixZACvar %*% dwdlogdisp ## typically (nnew * n_u_h) %*% (n_u_h * 2) = nnew * 2 hence small 
+    disp_effect_on_newZACw <- newZACw %*% logdisp_cov %*% t(fixZACw)      
     predVar <- predVar + disp_effect_on_newZACw
   }
   return(predVar)

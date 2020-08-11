@@ -110,6 +110,12 @@
       # activelevels are data-ordered levels whose ranef values affect the likelihood
       # .calcUniqueGeo must produce data-ordered values.
       if (!is.null(geo_envir$activelevels)) uniqueGeo <- uniqueGeo[geo_envir$activelevels,,drop=FALSE]
+      # Setting 'raw_levels' as row names to allow levels check in .calc_ZAlist(): 
+      x <- t(uniqueGeo)
+      pastestring <- paste("list(",paste("x","[",seq_len(nrow(x)),",]",sep="",collapse=","),")",sep="")
+      raw_levels <- do.call(paste,c(eval(parse(text = pastestring)),sep=":"))
+      attr(uniqueGeo,"names_ori") <- rownames(uniqueGeo) 
+      rownames(uniqueGeo) <- raw_levels 
     } 
     geoMats$nbUnique <- nrow(uniqueGeo) ## only serves to control RHOMAX and should not be computed from the final uniqueGeo in case of nesting
     if (length(coords_nesting) && any(needed[c("distMatrix","uniqueGeo")]) ) {
@@ -325,7 +331,7 @@
       suppressMessages(trace(traced_fn, where=asNamespace("spaMM"), print=FALSE, 
                              tracer=tracing_op,
                              exit=exit_op)) 
-      # if (processed$sparsePrecisionBOOL) {
+      # if (processed$is_spprec) {
       #   suppressMessages(trace(.solve_IRLS_as_spprec, where=asNamespace("spaMM"),print=FALSE,tracer=quote(cat(">"))))
       # } else suppressMessages(trace(.solve_IRLS_as_ZX, where=asNamespace("spaMM"), print=FALSE,tracer=quote(cat(">"))))
       #suppressMessages(trace(spaMM.getOption("matrix_method"),print=FALSE,tracer=quote(cat("."))))
@@ -349,7 +355,7 @@
     } else { # TRACE=0
       suppressMessages(try(untrace(HLfit_body, where=asNamespace("spaMM")), silent=TRUE))      
       suppressMessages(try(untrace(.HLfit_body_augZXy, where=asNamespace("spaMM")), silent=TRUE))      
-      # if (processed$sparsePrecisionBOOL) {
+      # if (processed$is_spprec) {
       #   suppressMessages(try(untrace(.solve_IRLS_as_spprec, where=asNamespace("spaMM")), silent=TRUE))
       # } else suppressMessages(try(untrace(.solve_IRLS_as_ZX, where=asNamespace("spaMM")), silent=TRUE))
       #suppressMessages(untrace(spaMM.getOption("matrix_method"), where=asNamespace("spaMM")))

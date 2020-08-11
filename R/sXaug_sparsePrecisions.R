@@ -79,7 +79,8 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
 .get_inv_L_G_ZtsqrW <- function(BLOB, sXaug) {
   if (is.null(BLOB$inv_L_G_ZtsqrW)) {
     sqrtwZ <- .Dvec_times_Matrix(sqrt(attr(sXaug,"w.resid")), sXaug$AUGI0_ZX$ZAfix)
-    if (is.null(BLOB$invL_G.P)) BLOB$invL_G.P <- Matrix::solve(BLOB$G_CHMfactor, as(BLOB$G_CHMfactor,"pMatrix"), system="L")
+    if (is.null(BLOB$invL_G.P)) BLOB$invL_G.P <- drop0(Matrix::solve(BLOB$G_CHMfactor, 
+                                                                     as(BLOB$G_CHMfactor,"pMatrix"), system="L"))
     BLOB$inv_L_G_ZtsqrW <- tcrossprod(BLOB$invL_G.P, sqrtwZ)
   }
   return(BLOB$inv_L_G_ZtsqrW)
@@ -92,7 +93,8 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
     if (is.null(BLOB$inv_L_G_ZtsqrW)) { 
       #inv_L_G_ZtsqrW <- .get_inv_L_G_ZtsqrW(BLOB, sXaug)
       if (is.null(BLOB$ZtWX)) BLOB$ZtWX <- .calc_ZtWX(sXaug) # *m*atrix
-      if (is.null(BLOB$invL_G.P)) BLOB$invL_G.P <- Matrix::solve(BLOB$G_CHMfactor, as(BLOB$G_CHMfactor,"pMatrix"), system="L")
+      if (is.null(BLOB$invL_G.P)) BLOB$invL_G.P <- drop0(Matrix::solve(BLOB$G_CHMfactor, 
+                                                                       as(BLOB$G_CHMfactor,"pMatrix"), system="L"))
       BLOB$r12 <- BLOB$invL_G.P %*% BLOB$ZtWX
     } else {
       sqrtwX <- .Dvec_times_m_Matrix(sqrt(attr(sXaug,"w.resid")),sXaug$AUGI0_ZX$X.pv)
@@ -101,6 +103,7 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
   }
 }
 
+# cf comments in .calc_r22 that also computes crossprod_r22 but returns its chol.
 .calc_inv_beta_cov <- function(sXaug) { ## crossprod_r22 without computing r22 (nor r12) when r22 is ot already available
   pforpv <- attr(sXaug, "pforpv") 
   if (pforpv==0L) return(Diagonal(n=0L))
@@ -131,16 +134,19 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
   return(crossprod_r22) # dgeMatrix
 }
 
-.calc_r22 <- function(X.pv, w.resid, r12, sXaug) { ## given r12 is known
+.calc_r22 <- function(X.pv, w.resid, r12) { 
   ## i's vain to try to regularize crossr22 by manipulating diagonal or eigenvalues. 
   #  It would be better to control the accuracy of the computation of crossr22 as a difference.
-  if (ncol(X.pv)==0L) { # sXaug may be NULL bc not accessible in all calls.
-    return(diag(nrow=0L))
-  } else {
+  if (ncol(X.pv)) { 
     #crossr22 <- .ZtWZwrapper(X.pv,w.resid)-crossprod(r12) ## typically dsyMatrix (dense symmetric)
-    crossr22 <- .ZtWZwrapper(X.pv,w.resid)-crossprod(as.matrix(r12)) ## avoids a lot of bureaucraty in '-' that is useless given what .wrap_Utri_chol() does 
+    crossr22 <- .ZtWZwrapper(X.pv,w.resid)-crossprod(as.matrix(r12)) ## avoids a lot of bureaucracy in '-' that is useless given what .wrap_Utri_chol() does 
+    # Different numerics for the same pb: 
+    #  .calc_inv_beta_cov(sXaug) computes crossr22 from sXaug, handling some complication, 
+    #   but otherwise use as.matrix(.crossprod(BLOB$r12)), with possibly less accurate Rcpp_crossprod called (_F I X M E_?)
+    # .get_absdiagR_blocks() face similar pbs and finally calls .Utri_chol_by_qr()
+    # rankUpdate could be use dbut https://stackoverflow.com/questions/52888650/eigenselfadjointviewrankupdate-slower-than-a-ww-transpose
     return(.wrap_Utri_chol(crossr22)) # rather than (Matrix::)chol()
-  }
+  } else return(diag(nrow=0L))
   ## lots of alternatives here, removed from [v2.6.54
 }
 
@@ -150,7 +156,7 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
       if (is.null(BLOB$r22)) {
         # the code assumes that when r22 is available, r12 is, so I cannot simply compute crossprod_r12 here
         .provide_BLOB_r12(BLOB, sXaug) 
-        BLOB$r22 <- .calc_r22(AUGI0_ZX$X.pv,attr(sXaug,"w.resid"),BLOB$r12, sXaug)        ## both lines as explained in working doc
+        BLOB$r22 <- .calc_r22(AUGI0_ZX$X.pv,attr(sXaug,"w.resid"),BLOB$r12)        ## both lines as explained in working doc
       }
     }
     if ( is.null(dim(BLOB$r22))) { ## not attempted to compute or failed computation
@@ -174,7 +180,8 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
   AUGI0_ZX <- sXaug$AUGI0_ZX
   Zt_sqrtw_pwy_o <- crossprod(AUGI0_ZX$ZAfix, sqrt(attr(sXaug,"w.resid"))*pwy_o) 
   Xt_sqrtw_pwy_o <- crossprod(AUGI0_ZX$X.pv, sqrt(attr(sXaug,"w.resid"))*pwy_o)
-  if (is.null(BLOB$invL_G.P)) BLOB$invL_G.P <- Matrix::solve(BLOB$G_CHMfactor, as(BLOB$G_CHMfactor,"pMatrix"), system="L")
+  if (is.null(BLOB$invL_G.P)) BLOB$invL_G.P <- drop0(Matrix::solve(BLOB$G_CHMfactor, 
+                                                                   as(BLOB$G_CHMfactor,"pMatrix"), system="L"))
   lev_phi_z_pwy_o <-  BLOB$invL_G.P %*% Zt_sqrtw_pwy_o ## R_11^{-T}.Ztw.pwy_o
   if (attr(sXaug,"pforpv")>0L) {
     .provide_assignment_qrXa_or_r22(BLOB, sXaug, AUGI0_ZX, w.ranef=attr(sXaug,"w.ranef")) 
@@ -218,7 +225,8 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
     # no complete simplif for AUGI0_ZX$is_unitary_ZAfix bc lev_phi_x is not the diag of a Z...Zt matrix
     # but we can still use p*n matrices instead of r*n matrices to compute the lev_phi_x component
     ## 
-    if (is.null(BLOB$invL_G.P)) BLOB$invL_G.P <- Matrix::solve(BLOB$G_CHMfactor, as(BLOB$G_CHMfactor,"pMatrix"), system="L")
+    if (is.null(BLOB$invL_G.P)) BLOB$invL_G.P <- drop0(Matrix::solve(BLOB$G_CHMfactor, 
+                                                                     as(BLOB$G_CHMfactor,"pMatrix"), system="L"))
     sqrtwZ <- .Dvec_times_Matrix(sqrt(attr(sXaug,"w.resid")), AUGI0_ZX$ZAfix)
     crossprod_r12_z_rows <- crossprod(crossprod(BLOB$invL_G.P, BLOB$r12),t(sqrtwZ)) 
     lev_phi_z <- colSums(BLOB$invL_G.P^2)
@@ -312,7 +320,8 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
     lev_lambda <- .Matrix_times_Dvec(lev_lambda, w.ranef)
     lev_lambda <- colSums(lev_lambda)
     if (AUGI0_ZX$is_unitary_ZAfix) { ## then only diagonal values of invG matter  ## adjacency-long case...?
-      if (is.null(BLOB$invL_G.P)) BLOB$invL_G.P <- Matrix::solve(BLOB$G_CHMfactor, as(BLOB$G_CHMfactor,"pMatrix"), system="L")
+      if (is.null(BLOB$invL_G.P)) BLOB$invL_G.P <- drop0(Matrix::solve(BLOB$G_CHMfactor, 
+                                                                      as(BLOB$G_CHMfactor,"pMatrix"), system="L"))
       lev_phi <- colSums(BLOB$invL_G.P^2)
       lev_phi <- drop(AUGI0_ZX$ZAfix %*% lev_phi)*attr(sXaug,"w.resid")
     } else {
@@ -326,9 +335,10 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
 }
 
 .provide_BLOB_factor_inv_Md2hdv2 <- function(BLOB) { ## Code encapsulated in a function for easier profiling
-  if (is.null(BLOB$invL_G.P)) BLOB$invL_G.P <- Matrix::solve(BLOB$G_CHMfactor, as(BLOB$G_CHMfactor,"pMatrix"), system="L")
+  if (is.null(BLOB$invL_G.P)) BLOB$invL_G.P <- drop0(Matrix::solve(BLOB$G_CHMfactor, 
+                                                                   as(BLOB$G_CHMfactor,"pMatrix"), system="L"))
   LL <- BLOB$invL_G.P %*% BLOB$chol_Q ## dgCMatrix 
-  # Even is BLOB$chol_Q is Identy, this this hardly slower than Matrix::solve(BLOB$G_CHMfactor, system="L") so cannot be improved.
+  # Even is BLOB$chol_Q is Identity, this this hardly slower than Matrix::solve(BLOB$G_CHMfactor, system="L") so cannot be improved.
   # The pattern Matrix::solve(BLOB$G_CHMfactor, as(BLOB$G_CHMfactor,"pMatrix") %*% ., system="L")  occurs repeatedly and is costly
   # so the Q is whether to store the (rel dense) solve(BLOB$G_CHMfactor, as(BLOB$G_CHMfactor,"pMatrix"))
   BLOB$factor_inv_Md2hdv2 <- drop0(LL,tol=.Machine$double.eps) ## crossfactor
@@ -391,7 +401,7 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
     if (inherits(tmp,"dsCMatrix") && inherits(precisionMatrix,"dsCMatrix") ) { # test introduced 02/2020. 
       tmp <- .dsCsum(tmp, precisionMatrix) # faster than tmp + precisionMatrix where '+' calls forceSymmetric(callGeneric(as(e1, "dgCMatrix"), as(e2, "dgCMatrix")))
     } else { 
-      stop("Unexpected matrix types in .AUGI0_ZX_sparsePrecision(). Please report to the package maintainer.", immediate.=TRUE) 
+      stop("Unexpected matrix types in .AUGI0_ZX_sparsePrecision(). Please report to the package maintainer.") 
       # actually there is some other step that is silently wrong if both matrices are not dsC...
       tmp <- tmp + precisionMatrix
     }
@@ -431,8 +441,9 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
   if (which=="solve_d2hdv2") { 
       if ( is.null(B) ) {
         # stop("B is NULL") # this would actually 'work' bc this case never occurs in current code (v2.6.3)
-        return( - .crossprod(BLOB$factor_inv_Md2hdv2))
-      } else {return( - .crossprod(BLOB$factor_inv_Md2hdv2, BLOB$factor_inv_Md2hdv2 %*% B))}
+        sol <-  - .crossprod(BLOB$factor_inv_Md2hdv2)
+      } else sol <-  - .crossprod(BLOB$factor_inv_Md2hdv2, BLOB$factor_inv_Md2hdv2 %*% B)
+      return(sol)
   }
   if (which=="half_logdetQ") {
     half_logdetQ <-  sum(log(diag(BLOB$chol_Q))) 
@@ -452,7 +463,7 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
       grad_p_v <- z$m_grad_obj[-seq(ncol(BLOB$chol_Q))]
       if (is.null(BLOB$r22)) {
         .provide_BLOB_r12(BLOB, sXaug) 
-        BLOB$r22 <- .calc_r22(AUGI0_ZX$X.pv,attr(sXaug,"w.resid"), BLOB$r12, sXaug)        ## both lines as explained in working doc
+        BLOB$r22 <- .calc_r22(AUGI0_ZX$X.pv,attr(sXaug,"w.resid"), BLOB$r12)        ## both lines as explained in working doc
       }
       rhs <- (BLOB$factor_inv_Md2hdv2 %*% grad_v)[,1L]
       dbeta_rhs <- grad_p_v - .crossprod(BLOB$r12, rhs)[,1L] # numeric  vector
@@ -491,7 +502,6 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
         logdet_r22 <- determinant(qrR(qrX,backPermute = FALSE))$modulus[1] - get_from_MME(sXaug,"logdet_sqrt_d2hdv2")
       } else {
         #cat("cross_r22:") # FIXME should use X.Re for non-standard REML? (don't modify thia but code which may call for it)
-        # _FIXME_ is it faster to compute crossprod_r22 or r22 by .calc_r22() ?
         crossprod_r22 <- .calc_inv_beta_cov(sXaug) # inv_beta_cov is crossprod_r22 as shown in working doc.
         logdet_r22 <- determinant(crossprod_r22)$modulus[1]/2
       }
@@ -657,6 +667,8 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
 if (FALSE) {
   trace(".AUGI0_ZX_sparsePrecision", where=asNamespace("spaMM"), print=FALSE, tracer=quote(print(which)),
         exit=quote(if ( ! is.null(z)) {str(dv_h)} else switch(which,
+                                                              "hatval_Z"=str(BLOB$hatval_Z_),
+                                                              "solve_d2hdv2"= str(sol), 
                                                               "logdet_r22"=print(logdet_r22,digits = 12),
                                                               "half_logdetQ"=print(half_logdetQ,digits = 12),
                                                               "half_logdetG"=print(half_logdetG,digits = 12),

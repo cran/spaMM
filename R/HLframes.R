@@ -186,13 +186,24 @@
     if ( ! is.null(pars$model)) {
       pars$no <- FALSE
       # it's hard to guess the alpha parameter from the object!
-      if (pars$model$param.inla[["B0"]][1,3]!=0) {
-        stop("Apparently fractional SPDE model, not implemented in spaMM.")
+      # diagnose the object
+      if (pars$model$mesh$manifold=="R1") {dim_ <- 1} else dim_ <- 2
+      # test for # inla.spde.matern with default parameters B.tau and B.kappa
+      is_default_spde2_matern <- (diff(range((pars$model$param.inla$BLC[c("tau.1","kappa.1"),] - matrix(c(0,0,1,0,0,1),ncol=3))))==0)
+      if (is_default_spde2_matern) {
+        # 'pars' looks like the result of inla.spde2.matern() with default B.tau
+        if (pars$model$param.inla[["B0"]][1,3]!=0) {
+          pars$SPDE_alpha <- 2+pars$model$param.inla$B0[1,3] # 2+ seem OK in 1D
+        } else {
+          # ' only the case d=2 and alpha= 1 or 2' is implemented in spaMM => only in that case the following code is true
+          pars$SPDE_alpha <- pars$model$param.inla[["B1"]][1,3]
+          if ( ! (pars$SPDE_alpha  %in% c(1,2))) stop("Unrecognized model from inla.spde2. Contact the spaMM maintainer to extend spaMM.")
+        }
       } else {
-        SPDE_alpha <- pars$model$param.inla[["B1"]][1,3]
-        if ( ! (SPDE_alpha  %in% c(1,2))) stop("Unrecognized model from inla.spde2. Contact the spaMM maintainer to extend spaMM.")
-        pars$SPDE_alpha <- SPDE_alpha
+        #  'pars' looks like the result of inla.spde2.pcmatern() (which uses non-default B.tau)
+        pars$SPDE_alpha <- dim_/2 + pars$model$param.inla[["BLC"]][["tau.1",2]] 
       }
+      # print((c(dim_,pars$SPDE_alpha)))
     } else if (is.null(pars$no)) pars$no <- TRUE
     if (is.null(pars$ce)) pars$ce <- TRUE
     attr(term,"type") <- structure("IMRF", pars=pars) # pars as attr to type avoid problems in building the return value.
@@ -306,7 +317,7 @@
   aschar <- gsub("multIMRF\\((.+?\\|[^,]+?), ([^)]+?)\\)", "\\(\\1\\)", aschar, fixed = FALSE) # removes IMRF and the parameters
   aschar <- gsub("IMRF\\((.+?\\|[^,]+?), ([^)]+?)\\)", "\\(\\1\\)", aschar, fixed = FALSE) # removes IMRF and the parameters
   ## thank you https://regex101.com/ ... ? (:lazy matching) is essential
-  as.formula(aschar)
+  as.formula(aschar, env=environment(formula))
 }
 
 ## function that handles prior.weights too:

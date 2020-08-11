@@ -21,6 +21,8 @@
     # if (is.null(nloptr_controls$xtol_rel)) xtol_rel <- 5e-6 
     # if (is.null(nloptr_controls$print_level)) print_level <- 0
     if (is.null(nloptr_controls$maxeval)) nloptr_controls$maxeval <-  eval(.spaMM.data$options$maxeval,list(initvec=init))*maxeval_corr
+    if (is.null(nloptr_controls$xtol_abs)) nloptr_controls$xtol_abs <- eval(.spaMM.data$options$xtol_abs, 
+                                                                            list(LowUp=list(lower=lower,upper=upper), rC_transf=.spaMM.data$options$rC_transf))
     if (is.null(nloptr_controls$xtol_abs)) nloptr_controls$xtol_abs <- 1e-12
     #nloptr_controls$print_level <- 3L # can be controlled by spaMM.options()!
     nloptr_controls

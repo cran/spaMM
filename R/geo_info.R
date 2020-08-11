@@ -19,28 +19,96 @@
   return(geo_envir) ## some elements may still be NULL
 }
 
-.calc_IMRF_Qmat <- function(pars, grid_arglist, kappa) {
+.inla_spde2_theta2phi0 <- function (spde, theta) {
+  if (spde$n.theta > 0) {
+    return(exp(spde$param.inla$B0[, 1, drop = TRUE] + 
+                 spde$param.inla$B0[,-1, drop = FALSE] %*% theta))
+  } else return(exp(spde$param.inla$B0[, 1, drop = TRUE]))
+}
+
+.inla_spde2_theta2phi1 <- function (spde, theta) {
+  if (spde$n.theta > 0) {
+    return(exp(spde$param.inla$B1[, 1, drop = TRUE] + 
+                 spde$param.inla$B1[, -1, drop = FALSE] %*% theta))
+  } else return(exp(spde$param.inla$B1[, 1, drop = TRUE]))
+}
+
+.inla_spde2_theta2phi2 <- function (spde, theta) {
+  if (spde$n.theta > 0) {
+    phi = ((spde$param.inla$B2[, 1, drop = TRUE] + 
+              spde$param.inla$B2[, -1, drop = FALSE] %*% theta))
+  } else {
+    phi = ((spde$param.inla$B2[, 1, drop = TRUE]))
+  }
+  if (spde$param.inla$transform == "identity") {
+    return(phi)
+  } else if (spde$param.inla$transform == "logit") {
+    return(cos(pi/(1 + exp(-phi))))
+  } else if (spde$param.inla$transform == "log") {
+    return(2 * exp(phi) - 1)
+  } else {
+    warning(paste("Unknown link function '", spde$param.inla$transform, 
+                  "' phi2.  Using identity link instead.", sep = ""))
+    return(phi)
+  }
+}
+
+.inla_spde_precision_inla_spde2 <- function (spde, theta = NULL, 
+                                            phi0 = .inla_spde2_theta2phi0(spde, theta), 
+                                            phi1 = .inla_spde2_theta2phi1(spde, theta), 
+                                            phi2 = .inla_spde2_theta2phi2(spde, theta), ...) 
+{
+  if (spde$f$model != "spde2") {
+    stop("spaMM only supports some internal inla models 'spde2'")
+  }
+  # matches formula for Q p.5 of https://www.jstatsoft.org/article/view/v063i19
+  D0 = Diagonal(spde$n.spde, phi0) # T
+  D1 = Diagonal(spde$n.spde, phi1) # K^2
+  D12 = Diagonal(spde$n.spde, phi1 * phi2) # K^2 ....
+  # for $MO = C, $M1 = G_1, $M2 = G_2
+  Q = (D0 %*% (D1 %*% spde$param.inla$M0 %*% D1 + D12 %*% spde$param.inla$M1 + 
+                 t(spde$param.inla$M1) %*% D12 + spde$param.inla$M2) %*% D0)
+  return(Q)
+}
+
+.calc_IMRF_Qmat <- function(pars, grid_arglist, kappa, test=FALSE) {
   if (is.null(spde_info <- pars$model)) { 
     crossfac_Q <- .IMRFcrossfactor(xstwm=length(grid_arglist[[1]]), ystwm=length(grid_arglist[[2]]),kappa=kappa)
     sparse_Qmat <- crossprod(crossfac_Q) # same relation as for t_chol_Q ## automatically dsCMatrix
   } else {
     if (inherits(spde_info,"inla.spde2")) { # F I X M E only for d=2 
-      if (pars$SPDE_alpha==2) { # nu=1, alpha=nu+d/2=2
-        Cmat <- spde_info$param.inla$M0
-        Gmat <- spde_info$param.inla$M1
-        Kmat <- kappa^2 * Cmat +Gmat
-        if (isDiagonal(Cmat)) {
-          # solvesqC <- Cmat
-          # solvesqC@x <- 1/sqrt(solvesqC@x)
-          # crossfac_Q <- Kmat %*% solvesqC
-          tcrossfac_Q <- .Matrix_times_Dvec(Kmat, 1/sqrt(Cmat@x))
-          sparse_Qmat <- tcrossprod(tcrossfac_Q) # same relation as for t_chol_Q ## automatically dsCMatrix
-        } else {stop("Cmat does not appear to be diagonal")}
-      } else if (pars$SPDE_alpha==1) { # nu=0, alpha=nu+d/2=1
-        Cmat <- spde_info$param.inla$M0
-        Gmat <- spde_info$param.inla$M2
-        sparse_Qmat <- as(kappa^2 * Cmat +Gmat,"symmetricMatrix")
-      } 
+      sparse_Qmat <- NULL
+      # spacial cases for sparse_Qmat:
+      # test for # inla.spde.matern with default parameters B.tau and B.kappa
+      theta_system <- pars$model$param.inla$BLC[c("tau.1","kappa.1"),] 
+      is_default_spde2_matern <- (diff(range((theta_system - matrix(c(0,0,1,0,0,1),ncol=3))))==0)
+      if (test || is_default_spde2_matern) { 
+        if (pars$SPDE_alpha==2) { # nu=1, alpha=nu+d/2=2
+          Cmat <- spde_info$param.inla$M0
+          Gmat <- spde_info$param.inla$M1
+          Kmat <- kappa^2 * Cmat +Gmat
+          if (isDiagonal(Cmat)) {
+            # solvesqC <- Cmat
+            # solvesqC@x <- 1/sqrt(solvesqC@x)
+            # crossfac_Q <- Kmat %*% solvesqC
+            tcrossfac_Q <- .Matrix_times_Dvec(Kmat, 1/sqrt(Cmat@x))
+            sparse_Qmat <- tcrossprod(tcrossfac_Q) # same relation as for t_chol_Q ## automatically dsCMatrix
+          } else {stop("Cmat does not appear to be diagonal")}
+        } else if (pars$SPDE_alpha==1) { # nu=0, alpha=nu+d/2=1
+          Cmat <- spde_info$param.inla$M0
+          Gmat <- spde_info$param.inla$M2
+          sparse_Qmat <- as(kappa^2 * Cmat +Gmat,"symmetricMatrix")
+        }      
+      }
+      if (is.null(sparse_Qmat)) { # that should be the general method
+        # 'theta_system' represents the system for log(tau) and log(kappa) given p.5 of https://www.jstatsoft.org/article/view/v063i19.
+        # The following code inverts this system so that .inla_spde_precision_inla_spde2() always returns the same sparse_Qmat
+        # irrespective of the value of theta_system; and thus it always gives the same sparse_Qmat as a call of 
+        # inla.spde2.matrix() with default B.tau and B.kappa, which we know to match well the Matern() results.
+        theta <- solve(theta_system[,2:3],c(0,log(kappa))-theta_system[,1]) # theta reduces to c(0,log(kappa)) if (is_default_spde2_matern)
+        sparse_Qmat <- .inla_spde_precision_inla_spde2(pars$model, theta=theta)
+        sparse_Qmat <- as(sparse_Qmat,"symmetricMatrix")
+      }
     } else stop("Unhandled model class for IMRF")
   }
   return(sparse_Qmat)
@@ -52,7 +120,7 @@
   # * modifies processed$AUGI0_ZX$envir by .init_precision_info(...) 
   # * computes processed$AUGI0_ZX$envir$LMatrices except for ranCoefs (the latter being filled in HLfit_body)
   envir <- processed$AUGI0_ZX$envir
-  if (processed$sparsePrecisionBOOL) .init_precision_info(processed,NULL) ## modifies processed$AUGI0_ZX$envir  
+  if (processed$is_spprec) .init_precision_info(processed,NULL) ## modifies processed$AUGI0_ZX$envir  
   for (rd in seq_along(corr_types)) {
     corr_type <- corr_types[rd]
     symSVD <- NULL ## reinitialize as rd is tested within the loop
@@ -81,7 +149,7 @@
             ##   but there is not go tests of this case...
             symSVD <- .provide_AR_factorization_info(
               adjMatrix, 
-              sparse_precision=processed$sparsePrecisionBOOL, # this must be FALSE for inner estimation of adjacency rho (and there is bug-catching code for this)
+              sparse_precision=processed$is_spprec, # this must be FALSE for inner estimation of adjacency rho (and there is bug-catching code for this)
               corr.model=corr_type)
             attr(processed$corr_info$adjMatrices[[rd]],"symSVD") <- symSVD
             #
@@ -96,7 +164,7 @@
         sparse_Qmat <- .calc_IMRF_Qmat(pars, 
                                        grid_arglist=attr(attr(processed$ZAlist,"AMatrices")[[char_rd]],"grid_arglist"), # promise for spde case
                                        kappa)
-        if ( ! processed$sparsePrecisionBOOL) {
+        if ( ! processed$is_spprec) {
           cov_info_mat <- chol2inv(chol(sparse_Qmat)) # solve(sparse_Qmat) 
         }
       } else if (corr_type =="SAR_WWt") { 
@@ -111,7 +179,7 @@
           cov_info_mat <- .ZWZt(UDU.$u, 1/(1-rho*UDU.$d)) # UDU.$u %*% sweep(UDU.$u.,MARGIN=1,1/(1-rho*UDU.$d),`*`) 
         }
         cov_info_mat <- .tcrossprodCpp(cov_info_mat,NULL)
-      }  else if (corr_type=="AR1" && ! processed$sparsePrecisionBOOL) {
+      }  else if (corr_type=="AR1" && ! processed$is_spprec) {
         geo_envir <- .get_geo_info(processed, which_ranef=rd, which=c("distMatrix"), 
                                    dist.method=control.dist[[char_rd]]$dist.method)
         cov_info_mat <- .get_cP_stuff(ranPars,"ARphi",which=char_rd)^(geo_envir$distMatrix)  
@@ -155,7 +223,7 @@
         cov_info_mat <- processed$corr_info$cov_info_mats[[rd]] ## correlation or precision...
       } 
       ## Provide Lunique if not already available (and optionally additional stuff)
-      if (processed$sparsePrecisionBOOL) {
+      if (processed$is_spprec) {
         .init_precision_info(processed,NULL) ## modifies processed$AUGI0_ZX$envir  
         ## (1) Provide sparse_Qmat
         if (corr_type=="corrMatrix" && inherits(cov_info_mat,"precision")) {
@@ -202,16 +270,57 @@
         if (corr_type != "AR1") { ## General code for "Matern", etc that is correct for AR1 too (good template ?)
           ## Provides precisionFactorList[[rd]] as expected by .reformat_Qmat_info()
           ## solve(sparse_Qmat) gives the correlation matrix
-          envir$precisionFactorList[[rd]]$Qmat <- sparse_Qmat # should by *dsC*  
+          #
+          # Cholesky() or update()
           if (is.null(template <- envir$precisionFactorList[[rd]]$template)) { 
-            Q_CHMfactor <- Cholesky(sparse_Qmat,LDL=FALSE,perm=FALSE) 
+            ###  ONE-TIME CODE
+            Amat <- attr(processed$ZAlist,"AMatrices")[[as.character(rd)]]
+            perm_Q <- force_A <- .spaMM.data$options$perm_Q 
+            #  perm_Q=TRUE seems always OK for fitting but...
+            #  cf test-predVar-Matern-corrMatrix -> predict(f2,.)
+            # new ZA is Z_1x1 * A_nxn[identified row] -> 1xn and cov_newLv_oldv_list is 1xn
+            # so the product fails. The new ZA should instead be 1x1
+            # Preexisting code using A matrices in prediction avoid this pb in some way
+            # so .spaMM.data$options$perm_Q is null by default -> permuted Cholesky is ony used in controlled case
+            # Setting it to TRUE allows testing devel code.
+            if (is.null(perm_Q)) {
+              perm_Q <- ( ! is.null(Amat) || corr_type=="adjacency") # 1st condition => IMRFs
+              force_A <- TRUE
+            } 
+            Q_CHMfactor <- Cholesky(sparse_Qmat,LDL=FALSE,perm=perm_Q) 
             if (identical(.spaMM.data$options$TRY_update,TRUE) 
                 && ! isDiagonal(sparse_Qmat)) { # protection against silly bugs 
               envir$precisionFactorList[[rd]]$template <- Q_CHMfactor
+              if (perm_Q) {
+                tPmat <- t(as(Q_CHMfactor,"pMatrix"))
+                if (force_A || ! .is_identity(tPmat)) {
+                  levelnames <- colnames(processed$ZAlist[[rd]])
+                  RRsP <- sort.list(tPmat@perm) 
+                  colnames(tPmat) <- levelnames[RRsP]
+                  if (is.null(Amat)) {
+                    rownames(tPmat) <- colnames(processed$ZAlist[[rd]])
+                    # : when there is an A matrix, .calc_normalized_ZAlist() checks its names 
+                    attr(processed$ZAlist,"AMatrices")[[as.character(rd)]] <- structure(tPmat, permuted_Q=TRUE)
+                  } else {
+                    Amat <- .subcol_wAttr(Amat,j=RRsP, drop=FALSE) # Amat %*% tPmat
+                    attr(Amat,"perm") <- RRsP # used by .get_new_AMatrices()
+                    attr(processed$ZAlist,"AMatrices")[[as.character(rd)]] <- structure(Amat, permuted_Q=TRUE)
+                  }
+                  processed$ZAlist[[rd]] <- processed$ZAlist[[rd]] %*% tPmat
+                  .assign_ZAfix(processed)
+                } # else ignre identity tPmat
+              } # else no permuted Cholesky stuff
             }
-          } else {
+            ### END OF ONE-TIME CODE
+          } else { # template for updating already exists
             Q_CHMfactor <- Matrix::update(template, parent=sparse_Qmat) 
           }
+          #
+          permuted_Q <- attr(attr(processed$ZAlist,"AMatrices")[[as.character(rd)]],"permuted_Q") # clumsy but need to get info from one-time code
+          if (identical(permuted_Q,TRUE)) { # important to update sparse_Qmat as Gmat constructed from $Qmat -> precisionBlocks -> precisionMatrix
+            sparse_Qmat <- tcrossprod(as(Q_CHMfactor,"sparseMatrix")) 
+          }
+          envir$precisionFactorList[[rd]]$Qmat <- sparse_Qmat # should by *dsC*  
           envir$precisionFactorList[[rd]]$chol_Q <- as(Q_CHMfactor, "sparseMatrix") # Linv
           ## fitme sparse_precision has an incomplete symSVD=> corr mattrix not computed, 
           ##    and try(mat_sqrt(symSVD=symSVD)) fails. Instead use code always valid:
@@ -301,20 +410,26 @@
                             strucList) {
   if (length(Zlist) && length(AMatrices)) {
     for (char_rd in  names(Zlist)) { # critically uses names here; Zlist and AMatrices are incomplete lists
-      if ( ! is.null(AMatrices[[char_rd]])) {
+      if ( ! is.null(Amatrix <- AMatrices[[char_rd]])) {
         colnams <- colnames(Zlist[[char_rd]])
-        if ( ! setequal(rownames(AMatrices[[char_rd]]), colnams)) {
+        if (length(setdiff(colnams,rownames(Amatrix)))) {
           stop(paste0("Any 'A' matrix must have row names that match the levels of the random effects\n", 
                       "(i.e. the colnames of the 'Z' design matrix)"))
         } ## ELSE
         rd <- as.integer(char_rd) # I cannot yet assume strucList[[char_rd]] (nor vec_normIMRF[char_rd])
         if (vec_normIMRF[rd]) { 
-          AL <- AMatrices[[char_rd]] %*% strucList[[rd]]
+          AL <- Amatrix %*% strucList[[rd]]
           invnorm <- 1/sqrt(rowSums(AL^2)) # diag(tcrossprod...)
-          normAL <- .Dvec_times_Matrix(invnorm, AMatrices[[char_rd]])
-          Zlist[[char_rd]] <- Zlist[[char_rd]] %id*% normAL[colnams,]
+          normAL <- .Dvec_times_Matrix(invnorm, Amatrix)
+          Zlist[[char_rd]] <- Zlist[[char_rd]] %id*% normAL[colnams,,drop=FALSE]
         } else {
-          Zlist[[char_rd]] <- Zlist[[char_rd]] %*% AMatrices[[char_rd]][colnams, ]
+          is_incid <- attr(Zlist[[char_rd]],"is_incid")
+          if (inherits(Amatrix,"pMatrix")) {
+            # subsetting by rownames does not generally work on permutation matrices
+            Amatrix <- as(Amatrix,"ngTMatrix")
+          } else is_incid <- NULL
+          Zlist[[char_rd]] <- Zlist[[char_rd]] %*% Amatrix[colnams,,drop=FALSE]
+          attr(Zlist[[char_rd]],"is_incid") <- is_incid
         }
       }
     }

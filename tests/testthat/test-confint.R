@@ -2,9 +2,17 @@ cat(crayon::yellow("\ntest confint() for HLfit, corrHLfit, and fitme:\n"))
 data("wafers")
 wfit <- HLfit(y ~X1+(1|batch),family=Gamma(log),data=wafers,HLmethod="ML")
 ci <- confint(wfit,"X1")
-
 testthat::expect_equal(ci$interval[[1]],0.01828659,tolerance=1e-4)
 testthat::expect_equal(ci$interval[[2]],0.17271333,tolerance=1e-4)
+
+# HGLM... DHGLM!
+wfit <- HLfit(y ~ X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch), family=Gamma(log),HLmethod="ML", 
+              rand.family=inverse.Gamma(log),
+              resid.model = ~ X3+I(X3^2) , data=wafers)
+ci <- confint(wfit,"X1")
+testthat::expect_equal(ci$interval[[1]],0.0361157,tolerance=1e-4)
+testthat::expect_equal(ci$interval[[2]],0.1313484,tolerance=1e-4)
+
 
 #### Checks of consistency of procedures for profiling out one or two parameters (with fixed phi and lambda only for a faster test).
 ## The CI's of the more constrained model should be within the other (even if both fits coincide at the ML, the additional constraint may matter at the bounds)
@@ -50,7 +58,7 @@ testthat::expect_equal(ci$interval[[2]],0.10567544,tolerance=1e-4)
 HLM <- fitme(obs~pred+Matern(1|x+y),init=list(nu=48.96201,rho=59.11287),fixed=list(phi=0.447761,lambda=0.3697),data=d1,method="ML")
 ci <- confint(HLM,"pred") ## practically identical in the two fits (+ nu drifts to higher values whatever the initial one)
 testthat::expect_equal(ci$interval[[1]],0.06483437,tolerance=1e-4)  
-testthat::expect_equal(ci$interval[[2]],0.10567543,tolerance=1e-4)  
+testthat::expect_equal(ci$interval[[2]],0.10567543,tolerance=1e-4)
 
 # compar to lme4
 if(requireNamespace("lme4", quietly = TRUE)) {

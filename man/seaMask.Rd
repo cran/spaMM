@@ -23,14 +23,14 @@ Its contents are suitable for use with \code{\link{polypath}}: they define diffe
 \code{worldcountries} and \code{oceanmask} were \code{sp::SpatialPolygonsDataFrame} objects previously included in spaMM (see Details for replacement). Such objects were useful for creating land masks for different geographical projections. 
 }
 \details{
-The removed objects \code{worldcountries} and \code{oceanmask} were suitable for plots involving geographical projections not available through \code{map}, and more generally for raster plots. A land mask could be produced out of \code{worldcountries} by filling the countries, as by \code{fill="black"} in the code for \code{country.layer} in the Examples in \url{http://kimura.univ-montp2.fr/~rousset/spaMM/example_raster.html}. These objects may now be available through the same web page, but a better place to look for the same functionality is the \code{IsoriX} package (objects \code{CountryBorders} and \code{OceanMask}).   
+The removed objects \code{worldcountries} and \code{oceanmask} were suitable for plots involving geographical projections not available through \code{map}, and more generally for raster plots. A land mask could be produced out of \code{worldcountries} by filling the countries, as by \code{fill="black"} in the code for \code{country.layer} in the Examples in \url{https://kimura.univ-montp2.fr/~rousset/spaMM/example_raster.html}. These objects may now be available through the same web page, but a better place to look for the same functionality is the \code{IsoriX} package (objects \code{CountryBorders} and \code{OceanMask}).   
 
 \code{seaMask} and \code{landMask} were created from the world map in the maps package. 
 \code{polypath} requires polygons, while \code{map(interior=FALSE,plot=FALSE)} returns small segments. \code{landMask} is the result of reconnecting the segments into full coastlines of all land blocks. 
 
 
 }
-\seealso{\url{http://kimura.univ-montp2.fr/~rousset/spaMM/example_raster.html} for access to, and use of \code{worldcountries} and \code{oceanmask}; \url{https://cran.r-project.org/package=IsoriX} for replacement \code{CountryBorders} and \code{OceanMask} for these objects.} 
+\seealso{\url{https://kimura.univ-montp2.fr/~rousset/spaMM/example_raster.html} for access to, and use of \code{worldcountries} and \code{oceanmask}; \url{https://cran.r-project.org/package=IsoriX} for replacement \code{CountryBorders} and \code{OceanMask} for these objects.} 
 \examples{
 ## Predicting behaviour for a land bird: simplified fit for illustration
 data("blackcap")

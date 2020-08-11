@@ -3,6 +3,40 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 3.4.0}{ 
+\subsection{NEW FEATURES}{
+\itemize{
+\item \code{IMRF()} terms now also handle objects created by INLA::inla.spde2.matern() with non-integer alpha values, and therefore a broader range of smoothness values.
+\item objects created by INLA::inla.spde2.pcmatern() are also handled.
+\item 'sparse_precision' fitting method can be notably faster than before for large data sets. By default, this will affect fits of models with adjacency or IMRF terms. 
+\item Fitting family=Gamma(log) mixed models will be faster than before, twofold or possibly more for large data sets.
+\item confint.HLfit() now returns a list of confidence intervals when \code{parm} defines a vector of parameters. In the bootstrap case, the same bootstrap simulations can thus be used for several parameters.
+\item get_predCov_var_fix() can now handle 'multIMRF' random effects correctly (for the happy few who would combine these two relatively cryptic functionalities).
+\item \code{formula_env} specification to control a formula environment: see help("formula_env").
+}
+}
+\subsection{USER-LEVEL CHANGES}{
+\itemize{
+\item The structure of the confint.HLfit() result is modified as this function no longer hacks the boot::boot.ci() results for printing purposes.
+}
+}
+\subsection{FIXED BUGS}{
+\itemize{
+\item The 'distMatrix' argument was no longer effective. 
+\item Prediction variance computations could fail for 'IMRF' random effects with 'newdata'.
+\item confint() could fail when the object had been fitted by a "non-vanilla" call of the fitting function (e.g., 'spaMM::fitme' instead of 'fitme').
+\item confint() by sparse-precision method could return incorrect results.
+\item is_separated.formula() was not returning results properly for binomial non-binary response.
+\item A case where LevenbergM for PQL could underfit was found.
+\item confint(.,parm=<fixed-effect coefficient>) failed (stop) on sparse-precision fits with a single fixed-effect coefficient (typically "(Intercept)").
+}
+}
+\subsection{DEPENDENCIES}{
+\itemize{
+\item spaMM is now formally declared to enhance 'INLA'.
+}
+}
+}
 \section{CHANGES UP TO VERSION 3.3.0}{ 
 \subsection{NEW FEATURES}{
 \itemize{
@@ -25,7 +59,7 @@
 }
 \subsection{USER-LEVEL CHANGES}{
 \itemize{
-\item Added formal argument 'intervals' for get_intervals(). This does not affect any functionality, but explictly shows that different intervals can be computed by changing this argument.  
+\item Added formal argument 'intervals' for get_intervals(). This does not affect any functionality, but explicitly shows that different intervals can be computed by changing this argument.  
 \item All mixed-effect fitting functions now have a formal argument 'method' equivalent to 'HLmethod'. 'HLmethod' can still be used in a backward-compatible way.
 }
 }
@@ -40,7 +74,7 @@
 \item plot.HLfit() could stop in some cases.
 \item eval_replicate() could stop in some cases.
 \item Non-default optimizer optim() failed for models with random-coefficient terms. Selecting optim() is not recommended anyway. 
-\item Re-emergent glitches in how() when the object was fitted by a "non-vanilla" call of the fitting function.
+\item Re-emergent glitches in how() when the object had been fitted by a "non-vanilla" call of the fitting function.
 }
 }
 \subsection{DOCUMENTATION}{

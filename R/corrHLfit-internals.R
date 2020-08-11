@@ -362,7 +362,7 @@ if (FALSE) {
 
 
 
-.match_coords_in_tUniqueGeo <- function(coords,tUniqueGeo) {any(apply(tUniqueGeo,1L,identical,y=coords))}
+.match_coords_in_uniqueGeo <- function(coords,uniqueGeo) {any(apply(uniqueGeo,1L,identical,y=coords))}
 
 .checkDistMatrix <- function(distMatrix,data,coordinates) {
   ## HLCor + non-null distMatrix (cf example ?HLCor MLdistMat) => plantage un peu bizarre dans .checkDistMatrix, 
@@ -386,8 +386,8 @@ if (FALSE) {
       stop("The dimension of 'distMatrix' does not match the number of levels of the grouping variable")
     } else { ## check order
       redondGeo <- data[,coordinates,drop=F]
-      tUniqueGeo <- t(uniqueGeo)
-      designRU <- apply(redondGeo, 1L, .match_coords_in_tUniqueGeo, tUniqueGeo=tUniqueGeo) ## has no names
+      # tUniqueGeo <- t(uniqueGeo)
+      designRU <- apply(redondGeo, 1L, .match_coords_in_uniqueGeo, uniqueGeo=uniqueGeo) ## has no names
       # designRU <- apply(redondGeo,1, function(v) {which(apply(v==t(uniqueGeo),2,all))}) ## has no names
       ## eg 1 1 2 2 3 2 3 4 is valid for 8 obs, 4 unique locations
       designRU <- unique(as.vector(designRU)) ## should then be 1 2 3 4
@@ -439,7 +439,7 @@ if (FALSE) {
   ## when a fit is by HLCor or HLfit, the serious message at the end of HLfit_body are by default displayed,
   ## but not in the other cases:
   if (is.na(verbose["all_objfn_calls"])) verbose["all_objfn_calls"] <- switch(For, "HLCor" = TRUE, "HLfit" = TRUE, 
-                                                        "corrHLfit" = FALSE, "fitme" = FALSE)
+                                                        "corrHLfit" = FALSE, "fitme" = FALSE, "is_separated" = FALSE)
   return(verbose)
 }
 

@@ -102,6 +102,10 @@ mat_sqrt <- function(m=NULL, symSVD=NULL, try.chol=TRUE, condnum=1e12) { ## tcro
       L <- try(.wrap_Ltri_t_chol(m),silent=TRUE)
       if (inherits(L,"try-error")) {
         blob <- eigen(m, symmetric=TRUE,only.values = TRUE) ## COV= blob$u %*% diag(blob$d) %*% t(blob$u) ##
+        if (min(blob$values)< -1e-4) {
+          mess <- paste0("Matrix has suspiciously large negative eigenvalue(s): is it a valid correlation matrix?")
+          warning(mess)
+        }
         min_d <- max(blob$values)/condnum ## so that corrected condition number is at most the denominator
         diagcorr <- max(c(0,min_d-blob$values)) # all diag is corrected => added a constant diagonal matrix to compactcovmat
         nc <- ncol(m)

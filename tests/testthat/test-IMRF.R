@@ -49,7 +49,8 @@ if (spaMM.getOption("example_maxtime")>6) {
   (mrf <- fitme(migStatus ~ 1 + (1|pos) + multIMRF(1|latitude+longitude,margin=2,levels=3, coarse=7),data=blackcap,
                 method="ML",fixed=list(phi=0.1,lambda=0.1,hyper=list("1"=list(hy_kap=1)))) )
   set.seed(123)
-  plot(predict(mrf),rowMeans(simulate(mrf,nsim=100,type="predVar", variances=list(linPred=TRUE,disp=FALSE)))) 
+  plot(predict(mrf),rowMeans(simulate(mrf,nsim=100,type="predVar", newdata=mrf$data, # using 'newdata' only to check more code
+                                      variances=list(linPred=TRUE,disp=FALSE)))) 
   # (type="predVar" is not statistically meaningful here, but this makes a test of its code)
 }
 

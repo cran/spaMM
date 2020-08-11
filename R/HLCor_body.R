@@ -107,12 +107,7 @@ HLCor_body <- function(processed, ## single environment
                                         vec_normIMRF=vec_normIMRF,
                                         #ranges=processed$hyper_info$ranges,
                                         strucList=processed$AUGI0_ZX$envir$LMatrices)
-    ZAfix <- .ad_hoc_cbind(processed$ZAlist, as_matrix=FALSE)   
-    if (processed$sparsePrecisionBOOL) {
-      if ( ! inherits(ZAfix,"sparseMatrix")) ZAfix <- as(ZAfix,"dgCMatrix") # .Rcpp_as_dgCMatrix(ZAfix) ## 
-      processed$AUGI0_ZX$is_unitary_ZAfix <- FALSE
-    }
-    processed$AUGI0_ZX$ZAfix <- ZAfix
+    .assign_ZAfix(processed)
   }
   ########################################################################################################################
   ###

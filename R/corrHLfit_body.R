@@ -33,7 +33,7 @@ corrHLfit_body <- function(processed, ## possibly a list of environments
   # 'processed' may be modified below, then will be copied in HLCor.args (and then removed from this envir for safety) => NO NEED to copy any processed element in HLCor.args now.
   optim.scale <- control.corrHLfit$optim.scale 
   if (is.null(optim.scale)) optim.scale="transformed" ## currently no public alternative
-  sparse_precision <- proc1$sparsePrecisionBOOL
+  sparse_precision <- proc1$is_spprec
   # test-Nugget -> different p_v / p_bv compromise (!)
   #
   # modify HLCor.args and <>bounds;   
@@ -143,6 +143,11 @@ corrHLfit_body <- function(processed, ## possibly a list of environments
       logLapp <- optr$value
       attr(logLapp,"method") <- "  logL (smoothed)" 
       hlcor$APHLs$logLapp <- logLapp
+    }
+    if ( ! is.null(PQLdivinfo <- processed$envir$PQLdivinfo)) {
+      hlcor$divinfo <- PQLdivinfo
+      hlcor$warnings$divinfo <- "Numerical issue detected; see div_info(<fit object>) for more information."
+      warning(hlcor$warnings$divinfo)
     }
   }
   lsv <- c("lsv",ls())

@@ -3,8 +3,9 @@
   F_I_X_M_E=FALSE,
   Rcpp_crossprod=TRUE, # integer with usual bool interp., and >1: .crossprod() prints types when .Rcpp_crossprod() not called; >2: always prints types;
   TRY_R_new=TRUE, # 
-  TRY_update=TRUE, # measurable benefits only if Cholesky(., perm=TRUE) hence Q_CHMfactor do not benefit from it.... (fixme)
+  TRY_update=TRUE, # measurable benefits only if Cholesky(., perm=TRUE)
   perm_G=TRUE, 
+  perm_Q=NULL, 
   TRY_ZAX=NULL, # default may be TRUE for augZxy_cond=TRUE
   sparsity_threshold=0.05,
   spprec_threshold=60, # ohio small by correlation algo, large by spprec: threshold is n>=140 has crit 'near' 62 (varying betw replicates).  
@@ -113,6 +114,7 @@
   qrTolerance=1e-10, ## private, used by select qr() calls for predVar computation
   # , sparse_X=NULL## private
   uGeo_levels_type="mf", # same type to be used by .calc_AMatrix_IMRF() and .calc_Zmatrix() for IMRFs. Explicit names, useful for debugging. ALternative is ".ULI" (which is faster?)
+  INLA_A=TRUE,
   #
   stylefns=list(v_in_loop=crayon::green, 
                 v_in_last=crayon::green$underline, # final output of v_h .do_damped_WLS_v_in_b

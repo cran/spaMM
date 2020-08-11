@@ -21,8 +21,6 @@ HLCor <- function(formula,
   # frst steps as in HLFit: (no need to test missing(data) in several functions)
   if (is.null(processed <- oricall$processed)) { ## no 'processed'
     ## FR->FR suggests we should add processed as argument of HLCor...
-    oricall$formula <- .preprocess_formula(formula)
-    #
     family <- .checkRespFam(family)
     if ( identical(family$family,"multi")) {
       if ( ! inherits(data,"list")) {
@@ -51,6 +49,9 @@ HLCor <- function(formula,
       return(fitlist) ## list of HLfit object + one attribute
     } else {## there is a single data set, still without processed
       mc <- oricall
+      #mc$formula <- .preprocess_formula(formula, env=eval(oricall$control.HLfit)$formula_env)
+      mc[[1L]] <- get(".preprocess_formula", asNamespace("spaMM"))  ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
+      oricall$formula <- mc$formula <- eval(mc,parent.frame()) # 
       preprocess_args <- .get_inits_preprocess_args(For="HLCor")
       names_nondefault  <- intersect(names(mc),names(preprocess_args)) ## mc including dotlist
       preprocess_args[names_nondefault] <- mc[names_nondefault] 
@@ -99,6 +100,7 @@ HLCor <- function(formula,
   # ./. and more directly by confint (very convenient)
   if ( ! .is.multi(family) ) {
     hlcor$how$fit_time <- .timerraw(time1)
+    hlcor$how$fnname <- "HLCor"
     hlcor$fit_time <- structure(hlcor$how$fit_time,
                                 message="Please use how(<fit object>)[['fit_time']] to extract this information cleanly.")
   }

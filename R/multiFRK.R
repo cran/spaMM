@@ -37,20 +37,48 @@ IMRF <- function(...) {
       Cmat <- spde_info$param.inla$M0
       if (IMRF_pars$SPDE_alpha==2) { # nu=1, alpha=nu+d/2=2
         Gmat <- spde_info$param.inla$M1
+        Gzut <- Cholesky(Gmat)
+        # Here we may see that G is numerically singular with a small negative eigenvalue:
+        eigvals_chol_G <- suppressWarnings(diag(as(Gzut,"sparseMatrix"))) 
+        posbad <- which.min(eigvals_chol_G)
+        badgval <- eigvals_chol_G[posbad]
+        cval <- Cmat@x[posbad]
+        # minimum value of kappa such that minimal eigen of Qmat is '1e-12' (?)
+        moreargs_rd$minKappa <- sqrt((1e-5*sqrt(cval)-badgval)/cval) # solving (k^2 cval+badgval)^2 / cval =1e-10
       } else if (IMRF_pars$SPDE_alpha==1) { # nu=0, alpha=nu+d/2=1
         Gmat <- spde_info$param.inla$M2
-      } 
-      Gzut <- Cholesky(Gmat)
-      # Here we may see that G is numerically singular with a small negative eigenvalue:
-      eigvals_chol_G <- suppressWarnings(diag(as(Gzut,"sparseMatrix"))) 
-      posbad <- which.min(eigvals_chol_G)
-      badgval <- eigvals_chol_G[posbad]
-      cval <- Cmat@x[posbad]
-      if (IMRF_pars$SPDE_alpha==2) { # minimum value of kappa such that minimal eigen of Qmat is 1e-12
-        moreargs_rd$minKappa <- sqrt((1e-5*sqrt(cval)-badgval)/cval) # solving (k^2 cval+badgval)^2 / cval =1e-10
-      } else if (IMRF_pars$SPDE_alpha==1) { 
+        Gzut <- Cholesky(Gmat)
+        # Here we may see that G is numerically singular with a small negative eigenvalue:
+        eigvals_chol_G <- suppressWarnings(diag(as(Gzut,"sparseMatrix"))) 
+        posbad <- which.min(eigvals_chol_G)
+        badgval <- eigvals_chol_G[posbad]
+        cval <- Cmat@x[posbad]
         moreargs_rd$minKappa <- sqrt(1e-10-badgval) # solving k^2 cval+badgval=1e-10
-      } 
+      } else {
+        # more generally there are two matrices G_1 and G_2 in $M1 and $M2
+        x_p <- 0.005
+        while (TRUE) {
+          chol_p <- Cholesky(.calc_IMRF_Qmat(IMRF_pars,kappa=x_p))
+          min_p <- min(suppressWarnings(diag(as(chol_p,"sparseMatrix"))))
+          if (min_p>1e-05) break
+          x_p <- x_p*10
+        } 
+        x_m <- x_p/(dlog <- 10)
+        while (TRUE) {
+          chol_m <- Cholesky(.calc_IMRF_Qmat(IMRF_pars,kappa=x_m))
+          min_m <- min(suppressWarnings(diag(as(chol_m,"sparseMatrix"))))
+          if (min_m > 0) break
+          x_m <- x_m * 9
+        }
+        # assuming a log-log relationship:
+        slope <- (log(min_p)-log(min_m))/log(dlog)
+        # targeting a min eigenvalue=1e-10 hence 1e-05 for chol factor
+        minKappa <- exp((log(1e-5)-log(min_p))/slope)*x_p 
+        while ((min(suppressWarnings(diag(as(Cholesky(.calc_IMRF_Qmat(IMRF_pars,kappa=minKappa)),"sparseMatrix")))))<5e-6) {
+          minKappa  <- minKappa*exp(log(2)/slope)
+        }
+        moreargs_rd$minKappa <- minKappa
+      }
     }
     return(moreargs_rd)
   }
@@ -131,12 +159,16 @@ IMRF <- function(...) {
   }
   solve_tvMs <- do.call(rbind,solve_tvM_table)
   solve_origins <- unlist(solve_origins_table)
+  allWeights <- solve_tvMs %*% t(points) - solve_origins
+  seqpos <- seq(nrow(tv))*2
+  allmW <- pmin(1-allWeights[seqpos-1L,]-allWeights[seqpos,],allWeights[seqpos-1L,],allWeights[seqpos,]) ## minimum coord in each triangle
   for (pt_it in seq_len(nr)) {
-    point <- points[pt_it,] ## drops...
-    Weights <- solve_tvMs %*% point - solve_origins
-    seqpos <- seq(nrow(tv))*2
-    mW <- pmin(1-Weights[seqpos-1L]-Weights[seqpos],Weights[seqpos-1L],Weights[seqpos]) ## minimum coord in each triangle
-    which_t <- which(mW>0) # It the point is in a triangle there is one such value
+    #point <- points[pt_it,] ## drops...
+    #Weights <- solve_tvMs %*% point - solve_origins
+    #Weights <- allWeights[,pt_it]
+    #mW <- pmin(1-Weights[seqpos-1L]-Weights[seqpos],Weights[seqpos-1L],Weights[seqpos]) ## minimum coord in each triangle
+    mW <- allmW[,pt_it]
+    which_t <- which(mW>0) # If the point is in a triangle there is one such value
     if ( length(which_t) != 1L ) {
       # either the length is 0 (point seems out of tesselation) = we take the best candidate triangle and apply the next test
       #    or langth>1: numerical precision issue => a point appears to be in two triangles. We again take the best candidate.
@@ -146,6 +178,7 @@ IMRF <- function(...) {
     if (mW[which_t] > - 1e-12) { # numerical threshold for out-of-mesh
       p2m.t[pt_it] <- which_t
       pos <- seqpos[which_t]
+      Weights <- allWeights[,pt_it]
       p2m.b[pt_it,] <- c(1-Weights[pos-1L]-Weights[pos],Weights[pos-1L],Weights[pos])
     } # else (point is out of tesselation) p2m.t remains NA_integer and p2m.b remains NA
   }
@@ -181,14 +214,17 @@ IMRF <- function(...) {
   if ( ! is.null(spde_info <- pars$model)) { # F I X M E does not handle nesting
     # Amatrix <- INLA:::inla.spde.make.A(spde_info$mesh, as.matrix(uniqueScal)) 
     if (inherits(spde_info,"inla.spde2")) {
-      if (identical(.spaMM.data$options$INLA_A,TRUE)) { # for debugging; use trace(INLA::inla.spde.make.A) to see the fmesher.args args contained in "mesh", etc.
+      Amatrix <- NULL
+      if (identical(.spaMM.data$options$INLA_A,TRUE)) { # for debugging, use trace(INLA::inla.spde.make.A) to see the fmesher.args args contained in "mesh", etc.
         Amatrix <- .do_call_wrap("inla.spde.make.A", 
                                  arglist=list(mesh=spde_info$mesh, # or simply mesh=spde_info, as doc'ed
                                               loc=as.matrix(uniqueScal)), 
                                  pack="INLA")
-        Amatrix <- drop0(Amatrix) ## there is some noise
-      } else Amatrix <- .spaMM_spde.make.A(mesh=spde_info$mesh, # FIXME ? save the matrix precomputations from .locate_in_tv() ?
+      } # Amatrix still NULL if INLA not available.
+      if (is.null(Amatrix)) {
+        Amatrix <- .spaMM_spde.make.A(mesh=spde_info$mesh, # FIXME ? save the matrix precomputations from .locate_in_tv() ?
                                            points=as.matrix(uniqueScal))
+      } else Amatrix <- drop0(Amatrix) ## there is some noise
       # Amatrix rows are, with the default arguments, ordered as uniqueScal rows
       rownames(Amatrix) <- uniqueScal_levels_blob$factor # not levels(.) which are alphanumerically ordered !  
       return(Amatrix)
@@ -220,15 +256,12 @@ IMRF <- function(...) {
     #
     uniqueScal <- .to_grid_coord(uniqueScal, origin=origin, steplen=steplen)
   }
-  ###################
-  #### rownames(uniqueScal) <- seq(nrow(uniqueScal)) # these names must be retained in the output (otherwise visible error in .calc_ZAlist())  
-  rownames(uniqueScal) <- uniqueScal_levels_blob$factor 
-  ###################
+  rownames(uniqueScal) <- uniqueScal_levels_blob$factor # these names must be retained in the output (otherwise visible error in .calc_ZAlist())  
   grid <- expand.grid(grid_arglist) ## INTEGER GRID
   #
   scaldistmat <- proxy::dist(x=uniqueScal,y=grid,method=dist.method) ## coordinates of data in grid units
   if ( ! is.null(old_AMatrix_rd)) {  
-    colnames(scaldistmat) <- colnames(old_AMatrix_rd) 
+    # colnames(scaldistmat) <- colnames(old_AMatrix_rd) # not always true as old_AMatrix_rd cols may have been permuted after original call to .calc_AMatrix_IMRF() 
     return(as(.Wendland(scaldistmat[]/scale),"sparseMatrix")) ## dividing the matrix not most economical but clearer # [] convert crossdist to matrix
   } else {
     colnames(scaldistmat) <- apply(grid,1L,paste0,collapse=":") ## provide colnames(ZA), expected at least by ranef.HLfit 
@@ -258,9 +291,11 @@ IMRF <- function(...) {
   isIMRF <- (attr(exp_spatial_terms,"type") == "IMRF")
   for (rd in which(isIMRF)) {
     char_rd <- as.character(rd)
+    perm <- attr(amatrices[[char_rd]], "perm") # provided by .assign_geoinfo_and_LMatrices_but_ranCoefs()
     amatrices[[char_rd]] <- .calc_AMatrix_IMRF(term=exp_spatial_terms[[rd]], data=new_mf_ranef, 
                                          dist.method=.get_control_dist(object,char_rd)$dist.method, 
                                          old_AMatrix_rd = amatrices[[char_rd]])
+    if ( ! is.null(perm)) amatrices[[char_rd]] <- .subcol_wAttr(amatrices[[char_rd]], j=perm, drop=FALSE)
   }
   return(amatrices)
 }

@@ -139,7 +139,7 @@ By contrast, \bold{filled.mapMM} handles arguments which are language expression
 
 \bold{mapMM} can handles language expressions, but also accepts at least some calls.
 }
-\seealso{\url{http://kimura.univ-montp2.fr/~rousset/spaMM/example_raster.html} for more elaborate plot procedures.}
+\seealso{\url{https://kimura.univ-montp2.fr/~rousset/spaMM/example_raster.html} for more elaborate plot procedures.}
 \examples{
 data("blackcap")
 bfit <- fitme(migStatus ~ means+ Matern(1|longitude+latitude),data=blackcap,

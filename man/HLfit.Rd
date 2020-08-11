@@ -55,7 +55,7 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
   \code{method="ML"} and leaving \code{REMLformula} at its default NULL value.
 }
   \item{verbose}{
-    A vector of booleans. \code{trace} controls various diagnostic messages (possibly messy) about the iterations. \code{TRACE=TRUE} is most useful to follow the progress of a long computation, particularly in \code{fitme} or \code{corrHLfit} calls, for which it displays some mysterious output for each set of correlation and dispersion parameter values considered by the optimiser. Non-boolean values of \code{TRACE} are meaningful, but the source code of \code{spaMM:::.doTRACE} should be consulted for their meaning. \code{phifit} (which defaults to \code{TRUE}) controls messages about the progress of residual dispersion fits in DHGLMs. 
+    A vector of booleans. \code{trace} controls various diagnostic messages (possibly messy) about the iterations. \code{TRACE=TRUE} is most useful to follow the progress of a long computation, particularly in \code{fitme} or \code{corrHLfit} calls, for which it displays some mysterious output for each set of correlation and dispersion parameter values considered by the optimiser. Non-boolean values of \code{TRACE} are meaningful, but the source code of \code{spaMM:::.do_TRACE} should be consulted for their meaning. \code{phifit} (which defaults to \code{TRUE}) controls messages about the progress of residual dispersion fits in DHGLMs. 
   }
   \item{method}{Character: the fitting method. 
   allowed values are \code{"REML"}, \code{"ML"}, \code{"EQL-"} and \code{"EQL+"} for all models;  

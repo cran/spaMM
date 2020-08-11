@@ -624,4 +624,31 @@ print.HLfitlist <- function(x,...) {
   invisible(x)
 }
 
+div_info <- function(object, ...) {
+  if ( ! is.null(ranFixes <- object$divinfo$high_kappa$ranFixes)) {
+    if (length(ranFixes)>1L) {
+      ranges <- t(apply(do.call(rbind,lapply(ranFixes,unlist)),2L,range))
+      message("Numerical issue for the following ranges of parameters:")
+      colnames(ranges) <- c("lower","upper") 
+      print(ranges)
+      message("It may be worth refitting in a constrained parameter space excluding some of these ranges.")
+    } else {
+      message("Numerical issue for the following parameters:")
+      print(ranges <- unlist(ranges[[1L]]))
+    }  
+  }
+  if ( ! is.null(ranFixes <- object$divinfo$unknown$ranFixes)) {
+    if (length(ranFixes)>1L) {
+      ranges <- t(apply(do.call(rbind,lapply(ranFixes,unlist)),2L,range))
+      message("Uncharacterized numerical issue for the following ranges of parameters:")
+      colnames(ranges) <- c("lower","upper") 
+      print(ranges)
+      message("It may be worth refitting in a constrained parameter space excluding some of these ranges.")
+    } else {
+      message("Numerical issue for the following parameters:")
+      print(ranges <- unlist(ranges[[1L]]))
+    }  
+  }
+  invisible(ranges)
+}
 

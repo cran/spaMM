@@ -2,6 +2,8 @@
 \alias{IMRF}
 \alias{multIMRF}
 \alias{str.inla.spde2}
+\alias{inla.spde2.matern}
+\alias{inla.spde2.pcmatern}
 \alias{small_spde}
 \title{
 Interpolated Markov Random Field models
@@ -9,7 +11,7 @@ Interpolated Markov Random Field models
 \description{
 
 \code{IMRF} is a syntax to specify random-effect terms of the forms considered by Lindgren et al. (2011) or Nychka et al. (2015, 2019).
-For example, using \code{IMRF} with its \code{model} argument provides good approximations of random effects with \code{Matern} correlation structure win smoothness=1. 
+For example, using \code{IMRF} with its \code{model} argument provides good approximations of random effects with \code{Matern} correlation structure with fixed smoothness<2. 
 
 The random effects considered here all involve a multivariate Gaussian random effect over a lattice, from which the random-effect value in any spatial position is determined by interpolation of values on the lattice. \bold{IMRF} stands for \bold{I}nterpolated \bold{M}arkov \bold{R}andom \bold{F}ield because the specific process considered on the lattice is currently known as a Gaussian Markov Random Field (see the Details for further information). Lindgren et al. considered irregular lattices that can be specified by the \code{model} argument, while Nychka et al. considered regular grids that can be specified by the other arguments. 
 
@@ -22,11 +24,15 @@ The common idea is the Markov-like property that the distribution of each elemen
 
 Given the inferred vector \bold{b} of values of the MRF on the lattice, the interpolation of the MRF in any focal point is of the form \bold{Ab} where each row of \bold{A} weights the values of \bold{b} according to the position of the focal point relative to the vertices of the lattice. Following the original publications, for regular grids (NULL \code{model}), the weights are computed as <Wendland function>(<scaled Euclidean distances beween focal point and vertices>); and for grids given by \code{model=<inla.spde2 object>}, the non-zero weights are the barycentric coordinates of the focal point in the enclosing triangle from the mesh triangulation (points from outside the mesh would have zero weights, so the predicted effect \bold{Ab=0}). 
 
-The \code{IMRF} model defines both a lattice in space, the precision matrix for a Gaussian MRF over this lattice, and the \bold{A} weights. The full specification of the MRF on \bold{irregular lattices} is complex. The \eqn{\kappa} parameter considered by \code{spaMM} is the \eqn{\kappa} considered by Lindgren et al.; only the case \emph{d=2} and \eqn{alpha=} 1 or 2, approximating a Matérn correlation model with \eqn{nu=0} or \eqn{nu=1} (\eqn{alpha=nu + d/2}), is currently implemented in \code{spaMM}.  
+The \code{IMRF} model defines both a lattice in space, the precision matrix for a Gaussian MRF over this lattice, and the \bold{A} weights. The full specification of the MRF on \bold{irregular lattices} is complex. The \eqn{\kappa} parameter considered by \code{spaMM} is the \eqn{\kappa} considered by Lindgren et al. The \eqn{\alpha} argument of the \code{INLA::inla.spde2.matern} controls the smoothness of the approximated Matern model, as \eqn{\alpha=\nu + d/2}) where \eqn{d} is the dimension of the space. Currently \code{IMRF} terms handle only the case \emph{d=2}, where \eqn{\alpha=} 1 or 2 thus approximate a Matérn correlation model with \eqn{\nu=0} or \eqn{\nu=1}.  
+Correlation models created by \code{INLA::inla.spde2.pcmatern} are handled so as to give the same results as when \code{INLA::inla.spde2.matern} is used with the same \code{mesh} and \code{alpha} argument (thus, the extra functionalities of \dQuote{\code{pc}}\code{matern} are ignored). 
+
+Not all options of the INLA functions my be compatible or meaningful when used with spaMM (only the effect of \code{alpha} and \code{cutoff} has been checked). The correlation models thus defined are fitted by the same methods as other models in spaMM. spaMM does not call INLA code except optionally \code{INLA::inla.spde.make.A} (if available to the R session) to construct the \bold{A} matrix. 
+% cf bit of code in .calc_IMRF_Qmat()
 
 For the MRFs on \bold{regular grids} implemented here, the precision matrix is defined (up to a variance parameter) as \bold{M'M} where the diagonal elements \eqn{m_{ii}} of \bold{M} are 4+\eqn{\kappa^2} and the \eqn{m_{ij}} for the four nearest neighbours are -1 (note that \bold{M'M} involves more than these four neighbours). 
 
-The precision matrix defined in this way is the inverse of an heteroscedastic covariance matrix \bold{C}, but by default a normalization is applied so that the random effect is homoscedastic. As for other random effects, the variance is further controlled by a multiplicative factor \eqn{\lambda}.  The \bold{ormalization} is as follows: the design matrix of the random effect term is viewed as \bold{WAL} where \bold{W} is a diagonal normalization matrix, \bold{A} is the above-described weight matrix, and \bold{L} is a \dQuote{square root} of \bold{C}. If no normalization is applied, the covariance matrix of the random effect is of the form \eqn{\lambda}\bold{ALL'A'}, which is heteroscedastic; \eqn{\lambda} may then be quite different from the marginal variance of the random effect, and is difficult to describe in a simple way. Hence, by default,  \bold{W} is defined such that \bold{WALL'A'W'} has unit diagonal; then, \eqn{\lambda} is the marginal variance of the random effect. 
+The precision matrix defined in this way is the inverse of an heteroscedastic covariance matrix \bold{C}, but by default a normalization is applied so that the random effect is homoscedastic. As for other random effects, the variance is further controlled by a multiplicative factor \eqn{\lambda}.  The \bold{normalization} is as follows: the design matrix of the random effect term is viewed as \bold{WAL} where \bold{W} is a diagonal normalization matrix, \bold{A} is the above-described weight matrix, and \bold{L} is a \dQuote{square root} of \bold{C}. If no normalization is applied, the covariance matrix of the random effect is of the form \eqn{\lambda}\bold{ALL'A'}, which is heteroscedastic; \eqn{\lambda} may then be quite different from the marginal variance of the random effect, and is difficult to describe in a simple way. Hence, by default,  \bold{W} is defined such that \bold{WALL'A'W'} has unit diagonal; then, \eqn{\lambda} is the marginal variance of the random effect. 
 
 By default, the IMRF lattice is rectangular (currently the only option) and is made of a core lattice, to which margins of \code{margin} steps are added on each side. The core lattice is defined as follows: in each of the two spatial dimensions, the range of axial coordinates is determined. The largest range is divided in \code{nd-1} steps, determining \code{nd} values and step length \eqn{L}. The other range is divided in steps of the same length \eqn{L}. If it extends over (say) \eqn{2.5 L}, a grid of 2 steps and 3 values is defined, and by default centered on the range (the extreme points therefore typically extend slightly beyond the grid, within the first of the additional steps defined by the \code{margin}; if not centered, the grid start from the lower coordinate of the range).
 
@@ -42,7 +48,7 @@ To control initial or fixed values of \code{multIMRF} \eqn{\kappa} and variance 
 % IMRF( 1 | <coordinates>, model, nd, m, no, ce, ...) defaults implemented in .parseBars()
 % multIMRF( 1 | . ) defaults in .expand_multIMRF() default args
 \arguments{
-  \item{model}{An \code{inla.spde2} object as produced by \code{INLA::inla.spde2.matern} (see Examples below, and \url{http://www.r-inla.org} for further information).
+  \item{model}{An \code{inla.spde2} object as produced by \code{INLA::inla.spde2.matern} or \code{INLA::inla.spde2.pcmatern} (see Examples below, and \url{http://www.r-inla.org} for further information).
 }
   \item{levels}{integer; 
 Number of levels in the hierarchy, i.e. number of component IMRFs.

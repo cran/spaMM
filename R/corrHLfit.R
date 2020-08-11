@@ -88,12 +88,14 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
   assign("spaMM_glm_conv_crit",list(max=-Inf) , envir=environment(spaMM_glm.fit))
   time1 <- Sys.time()
   oricall <- match.call(expand.dots=TRUE) ## mc including dotlist
-  oricall$formula <- .preprocess_formula(formula) ## Cf comment in .getValidData
+  #oricall$formula <- .preprocess_formula(formula, env=control.corrHLfit$formula_env) ## Cf comment in .getValidData
   mc <- oricall
+  mc[[1L]] <- get(".preprocess_formula", asNamespace("spaMM"))  ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
+  oricall$formula <- mc$formula <- eval(mc,parent.frame()) # 
   mc[[1L]] <- get(".check_args_corrHLfit", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
   mc <- eval(mc,parent.frame()) # returns modified call 
   mc[[1L]] <- get(".preprocess_corrHLfit", asNamespace("spaMM")) 
-  mc <- eval(mc,parent.frame()) # returns modified call including and element 'processed'
+  mc <- eval(mc,parent.frame()) # returns modified call including an element 'processed'
   mc[[1L]] <- get("corrHLfit_body", asNamespace("spaMM")) 
   hlcor <- eval(mc,parent.frame()) 
   .check_conv_glm_reinit()
@@ -106,6 +108,7 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
   lsv <- c("lsv",ls())
   if ( ! .is.multi(mc$family) && ! is.call(hlcor) )  {
     hlcor$how$fit_time <- .timerraw(time1)
+    hlcor$how$fnname <- "corrHLfit"
     hlcor$fit_time <- structure(hlcor$how$fit_time,
                                 message="Please use how(<fit object>)[['fit_time']] to extract this information cleanly.")
   }
