@@ -56,7 +56,7 @@
   dR21 <- setdiff(ranterms2,ranterms1)
   if (length(dR12) && length(dR21)) { 
     stop(paste("Fixed-effects specifications from both models seem equivalent,\n",
-               "andd random-effect specifications may be non-nested\n", 
+               "and random-effect specifications may be non-nested\n", 
                "(a better algorithm would be required to check this properly).\n",
                "This case is not handled.")) 
   } else if (length(dR12)) {
@@ -182,6 +182,7 @@
   return(reinit)
 }
 
+# for inner CAR it returns the single lambda factor which is OK 
 .get_lambdas_notrC_from_hlfit <- function(hlfit, type, keep_names=(type=="adhoc")) {
   compacts <- .get_compact_cov_mats(hlfit$strucList) ## the "compacts" characterize ranCoefs. MAY BE NULL EVEN IF RANEFS
   lambdas <- hlfit$lambda.object$lambda_list
@@ -208,27 +209,30 @@
   return(lambdas) # vector wwith NAs for everything not wanted
 }
 
-# to initiate a *f*ullfit
-get_inits_from_fit <- function(from, template=NULL, to_fn=NULL ) { # 'to_fn' may differ from that of 'from' and 'to'
+# to initiate a *f*ullfit                                     # , inner_lambdas= TRUE
+get_inits_from_fit <- function(from, template=NULL, to_fn=NULL, inner_lambdas=FALSE) { # 'to_fn' may differ from that of 'from' and 'to'
   new_outer_inits <- .get_outer_inits_from_fit(fitobject=from, keep_canon_user_inits = FALSE)
   # check fromfn and to_fn
   if (is.null(to_fn)) {
-    fromfn <- paste(getCall(from)[[1]])
+    # recent objects should have how$fnname. Otherwise, .get_bare_fnname() may not return a valid name.
+    fromfn <- .get_bare_fnname.HLfit(from)
     if (is.null(template)) {
       to_fn <- fromfn
     } else if (inherits(template,"HLfit")) {
-      to_fn <- paste(getCall(template)[[1]])
+      to_fn <- .get_bare_fnname.HLfit(template)
     } else stop("Invalid 'template' argument.")
   } else if (to_fn=="fitme_body") { ## using to_fn to modify fromfn...
     ## ad hoc fix for residModel: fitme_body is called directly so the final object's call is to HLCor of HLfit
     fromfn <- "fitme"
-  } else fromfn <- paste(getCall(from)[[1]])
+  } else fnname <- .get_bare_fnname.HLfit(from)
   # Inner-estimated lambda and ranCoefs (FIXME could add phi)
   init.HLfit <- NULL
   rC_inner_inits <- .get_rC_inits_from_hlfit(from, type="inner")
-  if (length(rC_inner_inits)) init.HLfit <- list(ranCoefs=rC_inner_inits)
-#  lambda_inner_inits <- .get_lambdas_notrC_from_hlfit(from, type="inner")
-#  if (length(lambda_inner_inits)) init.HLfit <- c(init.HLfit, list(lambda=lambda_inner_inits))
+  if (length(rC_inner_inits) ) init.HLfit <- list(ranCoefs=rC_inner_inits)
+  if (inner_lambdas) {
+    lambda_inner_inits <- .get_lambdas_notrC_from_hlfit(from, type="inner")
+    if (length(lambda_inner_inits)) init.HLfit <- c(init.HLfit, list(lambda=lambda_inner_inits))
+  } 
   #
   if (to_fn=="fitme") {
     new_inits <- list(init=new_outer_inits,init.HLfit=init.HLfit)
@@ -275,8 +279,8 @@ eval_replicate <- function(y) { # no additional arguments, to ease parallel prog
   debug. <- get("debug.", enclosing_env)
   #  .condition <- get(".condition", enclosing_env)
   null_call <- getCall(nullfit)
-  null_fit_fn <- paste(null_call[[1]]) 
-  full_fit_fn <- paste(getCall(fullfit)[[1]]) 
+  null_fit_fn <- .get_bare_fnname.HLfit(nullfit, call.=null_call)
+  full_fit_fn <- .get_bare_fnname.HLfit(fullfit) 
   newinits <- .get_outer_inits_from_fit(fitobject=nullfit, keep_canon_user_inits = FALSE) # for next new_nullfit
   ctrl_opt <- .update_control(fit_call=null_call, optim_boot=.spaMM.data$options$optim_boot, from_fn=null_fit_fn) # need .safe_opt when newinits are at bound.
   if (null_fit_fn=="fitme") {
@@ -350,8 +354,8 @@ eval_replicate <- function(y) { # no additional arguments, to ease parallel prog
   debug. <- get("debug.", enclosing_env)
 #  .condition <- get(".condition", enclosing_env)
   null_call <- getCall(nullfit)
-  null_fit_fn <- paste(null_call[[1]]) 
-  full_fit_fn <- paste(getCall(fullfit)[[1]]) 
+  null_fit_fn <- .get_bare_fnname.HLfit(nullfit, call.=null_call)
+  full_fit_fn <- .get_bare_fnname.HLfit(fullfit)
   conv_full <- conv_null <- FALSE
   best_logL_full <- best_logL_null <- prev_logL_full <- prev_logL_null <- -Inf
   # Allows the user to control the starting values of the initial new_nullfit
@@ -386,7 +390,7 @@ eval_replicate <- function(y) { # no additional arguments, to ease parallel prog
     if (conv_null) break # no point in refitting the full model if the new inits from null fit don't change
     # ELSE
     prev_logL_null <- logL_new_null
-    newinits <- get_inits_from_fit(from=best_nullfit, template=fullfit, to_fn=full_fit_fn )
+    newinits <- get_inits_from_fit(from=best_nullfit, template=fullfit, to_fn=full_fit_fn) # using default 'inner_lambdas' argument
     lens <- rep(NA, length(newinits))
     for (it in seq_along(newinits)) lens[it] <- length(newinits[[it]])
     newinits <- newinits[lens>0L]

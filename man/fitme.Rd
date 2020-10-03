@@ -69,7 +69,15 @@ Further, the internal fitting methods of \code{HLfit} also provide some more inf
 The return value of an \code{HLCor} or an \code{HLfit} call, with additional attributes. The \code{HLCor} call is evaluated at the estimated correlation parameter values. These values are included in the return object as its \code{$corrPars} member. The attributes added by \code{fitme} include the original call of the function (which can be retrived by \code{getCall}(<fitted object>), and information about the optimization call within \code{fitme}. 
 }
 \examples{
-## See many examples in help("spaMM")
+## Examples with Matern correlations
+## A likelihood ratio test based on the ML fits of a full and of a null model.
+ data("blackcap")
+ (fullfit <- fitme(migStatus ~ means+ Matern(1|latitude+longitude),data=blackcap) )
+ (nullfit <- fitme(migStatus ~ 1 + Matern(1|latitude+longitude),data=blackcap)) 
+ ## p-value:
+ 1-pchisq(2*(logLik(fullfit)-logLik(nullfit)),df=1)
+
+## See ?spaMM for examples of conditional autoregressive model and of non-spatial models. 
 
 ## Contrasting different optimization methods:
 # We simulate Gamma deviates with mean mu=3 and variance=2, 

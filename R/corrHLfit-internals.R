@@ -416,6 +416,21 @@ if (FALSE) {
   return(list(distMatrix=distMatrix))
 }
 
+.expand_grouping <- function(w_uniqueGeo, e_uniqueGeo, coords_nesting, coord_within) {
+  rownames(e_uniqueGeo) <- seq(nrow(e_uniqueGeo)) ## local & unique rownames
+  ## Remarkably the next line works only if the cols are not factors ! Unless we have a fix for this,
+  #  uniqueGeo classes should be integer not factor: see instances of as.numeric(levels(fac)) in the sources.
+  rows_bynesting <- by(e_uniqueGeo ,e_uniqueGeo[,coords_nesting],rownames) 
+  notSameGrp <- matrix(TRUE,ncol=nrow(e_uniqueGeo),nrow =nrow(e_uniqueGeo))
+  rownames(notSameGrp) <- colnames(notSameGrp) <- rownames(e_uniqueGeo) ## same trivial rownames
+  for (lit in seq_len(length(rows_bynesting))) {
+    blockrows <- rows_bynesting[[lit]]
+    notSameGrp[blockrows,blockrows] <- FALSE
+  }
+  return(notSameGrp)
+}
+
+
 .calc_fullrho <- function(rho, coordinates,rho_mapping) {
   if ( is.null(rho_mapping) ) {
     if (length(rho)==1L ) rho <- rep(rho,length(coordinates))

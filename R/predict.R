@@ -541,7 +541,7 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
             if (which_mats$nn[new_rd]) {
               uuCnewnew <- blob$distMatrix[uli_new,uli_new,drop=FALSE]
             }
-          } else if (corr.model %in% c("Cauchy", "Matern")) { 
+          } else if (corr.model %in% c("Cauchy", "Matern")) {
             ### rho only used to compute scaled distances
             rho <- .get_cP_stuff(object$ranFix,"rho", which=old_char_rd)
             if ( ! is.null(rho_mapping <- control_dist_rd$rho.mapping) 
@@ -549,15 +549,42 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
             # : if control_dist_rd comme from the call (vs from moreargs) rho_mapping may still be NULL 
             #     and then the code assumes that calling  .calc_fullrho() is not necessary (that seems OK) 
             ## rows from newuniqueGeo, cols from olduniqueGeo:
-            msd.arglist <- list(uniqueGeo=newuniqueGeo,uniqueGeo2=olduniqueGeo,
+            txt <- paste(c(spatial_terms[[old_rd]][[2]][[3]])) ## the RHS of the ( . | . ) # c() to handle very long RHS
+            if (length(rho)>1L && length(grep("%in%",txt))) { # nested geostatistical effect
+              coord_within <- .extract_check_coords_within(spatial_term=spatial_terms[[old_rd]]) 
+              msd.arglist <- list(uniqueGeo=newuniqueGeo[,coord_within,drop=FALSE],
+                                  uniqueGeo2=olduniqueGeo[,coord_within,drop=FALSE],
+                                  rho=rho,return_matrix=TRUE)
+            } else msd.arglist <- list(uniqueGeo=newuniqueGeo,uniqueGeo2=olduniqueGeo,
                                 rho=rho,return_matrix=TRUE)
-            if ( ! is.null(dist.method <- control_dist_rd$dist.method)) msd.arglist$dist.method <- dist.method ## make_scaled_dist does not handle NULL
+            # If control_dist_rd$dist.method is NULL, do not over-write the non-NULL default of make_scaled_dist():
+            if ( ! is.null(dist.method <- control_dist_rd$dist.method)) msd.arglist$dist.method <- dist.method 
             if (which_mats$no) uuCnewold <- do.call(make_scaled_dist,msd.arglist) ## ultimately allows products with Matrix ## '*cross*dist' has few methods, not even as.matrix
             if (which_mats$nn[new_rd])  {
               msd.arglist$uniqueGeo2 <- NULL
               if (nrow(msd.arglist$uniqueGeo)==1L) {
                 uuCnewnew <- matrix(0) ## trivial _distance_ matrix for single point (converted to trivial cov below!)
               } else uuCnewnew <- do.call(make_scaled_dist,msd.arglist) 
+            }
+            if (length(grep("%in%",txt))) { # nested geostatistical effect
+              onGeo <- rbind(newuniqueGeo,olduniqueGeo) # includes nesting factor
+              isInf <- .get_dist_nested_or_not(spatial_term=spatial_terms[[old_rd]], 
+                                               data=onGeo, distMatrix=NULL, 
+                                               uniqueGeo=NULL, 
+                                               dist.method = dist.method,needed=c(notSameGrp=TRUE),
+                                               geo_envir=NULL)$notSameGrp
+              ## we merged old and new so need to get the respective cols (which may overlap) 
+              uli_onGeo <- .ULI(onGeo) # this should give row and columns in the blob ## FIXME how to make sure of that? .get_dist_nested_or_not must use .ULI()
+              uli_new <- uli_onGeo[seq(nrow(newuniqueGeo))]
+              uli_old <- uli_onGeo[-seq(nrow(newuniqueGeo))]
+              if (which_mats$no) {
+                isInfno <- isInf[uli_new,uli_old,drop=FALSE]
+                uuCnewold[isInfno] <- Inf ## ultimately allows products with Matrix ## '*cross*dist' has few methods, not even as.matrix
+              }
+              if (which_mats$nn[new_rd]) {
+                isInfnn <- isInf[uli_new,uli_new,drop=FALSE]
+                uuCnewnew[isInfnn] <- Inf
+              }
             }
           } else stop("Unhandled corr.model.")
           if (object$spaMM.version<"2.4.49") {

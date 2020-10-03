@@ -115,14 +115,31 @@
 }
 
 # even though the Z's were sparse postmultplication by LMatrix leads some of the ZAL's to dgeMatrix (dense)
-.choose_QRmethod <- function(ZAlist, predictor, corr_info, trySparse=TRUE,is_spprec) {
+.choose_QRmethod <- function(ZAlist, predictor, corr_info, trySparse=TRUE,is_spprec, processed) {
   if ( is.null(QRmethod <- .spaMM.data$options$QRmethod) ) { ## user setting. The code should NOT write into it. 
     nrand <- length(ZAlist)
     if (trySparse && nrand>0L) {
       # adjacency speed to be tested on 2nd example from test-spaMM.R
-      densecorrs <- attr(ZAlist,"exp_ranef_types") %in% c("adjacency", "IMRF", "Matern","Cauchy", "corrMatrix","AR1") 
+      densecorrs <- attr(ZAlist,"exp_ranef_types") %in% c("adjacency", "IMRF", "Matern","Cauchy", "corrMatrix", "AR1") 
+      notsodensecorrs <- attr(ZAlist,"exp_ranef_types") %in% c("Matern","Cauchy") & grepl("%in%", attr(ZAlist, "exp_ranef_string"), fixed=TRUE)
+      densecorrs <- densecorrs & ( ! notsodensecorrs)
       sparseprecs <- attr(ZAlist,"exp_ranef_types") %in% c("adjacency", "IMRF", "AR1")
-      if (is_spprec && all(sparseprecs)) {
+      if (any(notsodensecorrs)) {
+        totdim <- colSums(do.call(rbind,lapply(ZAlist,dim)))
+        totsize <- prod(totdim)
+        nonzeros <- unlist(lapply(ZAlist, .nonzeros))
+        for (rd in which(notsodensecorrs)) {
+          SameGrp <- ! .get_geo_info(processed, which_ranef=rd, which=c("notSameGrp"))$notSameGrp
+          SameGrp[upper.tri(SameGrp,diag=FALSE)] <- FALSE # create a fake L matrix
+          nonzeros[rd] <- .nonzeros(ZAlist[[rd]] %*% SameGrp)
+        }
+        nonzeros <- sum(nonzeros)          
+        if (nonzeros/totsize < .spaMM.data$options$sparsity_threshold) { 
+          return("sparse")
+        } else {
+          return("dense") ## ZAlist actually not so sparse
+        }
+      } else if (is_spprec && all(sparseprecs)) {
         totdim <- colSums(do.call(rbind,lapply(ZAlist,dim)))
         if (totdim[2L]>1000L) { # a bit a hoc (ohio/adjacency-long/large IMRF)
           return("sparse")

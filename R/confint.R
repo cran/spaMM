@@ -73,7 +73,7 @@
     attr(parm,"col") <- parmcol
   }
   llc <- getCall(object)
-  if (is.null(fnname <- object$how$fnname)) fnname <- .get_bare_fnname(llc[[1L]])
+  fnname <-.get_bare_fnname.HLfit(object, call.=llc)
   lc <- switch(fnname,
                "corrHLfit" = get_HLCorcall(object,fixed=llc$ranFix),
                "fitme" = get_HLCorcall(object,fixed=llc$fixed), # HLfit or HLCor call

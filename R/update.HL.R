@@ -26,7 +26,7 @@ get_HLCorcall <- function(outer_object, ## accepts fit object, or call, or list 
   
   outer_call <- getCall(outer_object) ## corrHLfit/fitme/HLCor/HLfit call
   outer_call$data <- outer_object$data ## removes dependence on promise
-  if (is.null(outer_fn <- outer_object$how$fnname)) outer_fn <- .get_bare_fnname(outer_call[[1L]])
+  outer_fn <-.get_bare_fnname.HLfit(outer_object, call.=outer_call)
   if (outer_fn=="fitme") {
     outer_call$fixed <- fixed
   } else if (outer_fn=="HLCor") {

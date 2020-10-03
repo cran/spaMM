@@ -34,6 +34,16 @@
     }
 }
 
+.nuln_plus_bessel_lnKnu <- function (nu, x) { 
+  jj <- .HL_process.args(nu, x) ## converts (nu, distance matrice to (nu vector, distance vector)
+  nu.vec <- jj$arg1
+  x.vec <- jj$arg2
+  jj <- .nuln_plus_bessel_lnKnu_e(jj$arg1,jj$arg2)
+  val <- .HL_strictify(jj$val, jj$status)
+  attributes(val) <- attributes(x) ## FIXME is this useful here ?
+  return(val)
+}
+
 "MaternCorr" <- function(d, rho=1, smoothness, nu=smoothness, Nugget=0L) UseMethod("MaternCorr") 
 
 #Matern.corr <- MaternCorr ## for back compat as it is in spMMjob.R
@@ -51,11 +61,12 @@ MaternCorr.default <- function (d, rho=1, smoothness, nu=smoothness, Nugget=NULL
   ## Bessel::BesselK() is much slower
   # corrvals <- - logcon + nu*log(dscal)+ log(gsl::bessel_lnKnu(x=dscal, nu=nu)) 
   # corrvals <- - logcon + nu*log(dscal)+ log(Bessel::BesselK(z=dscal,nu=nu,expon.scaled = TRUE))-dscal 
-  corrvals <- - logcon + nu*log(dscal)+ .bessel_lnKnu(x=dscal, nu=nu) 
+  # corrvals <- - logcon + nu*log(dscal)+ .bessel_lnKnu(x=dscal, nu=nu) 
+  corrvals <- - logcon + .nuln_plus_bessel_lnKnu(x=dscal, nu=nu) 
   corrvals <- exp(corrvals) 
   if ( ! is.null(Nugget)) corrvals[!isd0] <- (1-Nugget)* corrvals[!isd0]
   corrvals[isd0] <- 1 ## 
-  corrvals[corrvals < 1e-16] <- 0L ## an attempt to deal with problem in chol/ldl/svd which don't like 'nearly-identity' matrices
+  corrvals[corrvals < 1e-16] <- 0 ## an attempt to deal with problem in chol/ldl/svd which don't like 'nearly-identity' matrices
   attr(corrvals,"corr.model") <- "Matern"
   return(corrvals)
 }

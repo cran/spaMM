@@ -3,6 +3,27 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 3.5.0}{ 
+\subsection{NEW FEATURES}{
+\itemize{
+\item 'Nested' Matern() or Cauchy() random effects are now fitted, using a syntax of the form Matern(1|x+y \%in\% grouping_factor).
+\item 'barstyle' option controls more progress bars than previously.
+\item New extractor get_RLRsim_args() extends previousy existing get_RLRTSim_args().
+\item get_ranPars() handles new 'which' values for extraction of variance parameters.
+}
+}
+\subsection{USER-LEVEL CHANGES}{
+\itemize{
+\item More judicious and limited production of warnings in some prediction variance computations.
+}
+}
+\subsection{FIXED BUGS}{
+\itemize{
+\item An 'invalid type/length (S4/0) in vector allocation' bug occurring for recent spaMM versions on 3.6-ish versions of R.
+\item Glitch in VarCorr() for conditional autoregressive fits (a line is now filled with NA's rather than with inappropriate values).
+}
+}
+}
 \section{CHANGES UP TO VERSION 3.4.0}{ 
 \subsection{NEW FEATURES}{
 \itemize{

@@ -28,7 +28,9 @@ twolambda <- corrHLfit(migStatus ~ 1 +  Matern(1|latitude+longitude) +Matern(1|l
 ## any attempt at computing a non-singular loglamInfo will amplify floating point error.
 onelambda <- corrHLfit(migStatus ~ 1 + Matern(1|latitude+longitude),data=blackcap,
                        ranFix=list(nu=4,rho=0.4,phi=0.05))
-testthat::expect_true(diff(range(get_predVar(twolambda)[1:5]-get_predVar(onelambda)[1:5]))<1e-7) ## affected by .Rcpp_backsolve()
+if ("dgCMatrix" %in% how(twolambda, verbose=FALSE)$MME_method) { # if QRmethod="sparse" was requested
+  testthat::expect_true(diff(range(get_predVar(twolambda)[1:5]-get_predVar(onelambda)[1:5]))<1e-5)
+} else testthat::expect_true(diff(range(get_predVar(twolambda)[1:5]-get_predVar(onelambda)[1:5]))<1e-7) ## affected by .Rcpp_backsolve()
 
 
 # as_tcrossfac_list with newdata

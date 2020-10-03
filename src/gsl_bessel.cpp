@@ -680,9 +680,6 @@ int gsl_sf_bessel_lnKnu_e(const double nu, const double x, gsl_sf_result * resul
 }
 
 
-
-
-
 // [[Rcpp::export(.bessel_lnKnu_e)]]
 List bessel_lnKnu_e(Rcpp::NumericVector nu, Rcpp::NumericVector x) { //computes log BesselK_nu
   size_t len=x.size();
@@ -697,4 +694,26 @@ List bessel_lnKnu_e(Rcpp::NumericVector nu, Rcpp::NumericVector x) { //computes 
     err[i] = result.err;
   }
   return(List::create(Named("val") = val,Named("err")=err,Named("status")=status));
+}
+
+// [[Rcpp::export(.nuln_plus_bessel_lnKnu_e)]]
+List nuln_plus_bessel_lnKnu_e(Rcpp::NumericVector nu, Rcpp::NumericVector x) { //computes log BesselK_nu
+  size_t len=x.size();
+  gsl_sf_result result;
+  result.val = 0;
+  result.err = 0; // both to avoid -Wuninitialized
+  IntegerVector status(len);
+  NumericVector err(len),val(len);
+  for(size_t i = 0; i< len ; i++){
+    if (std::isinf(x[i])) {
+      status[i]=1;
+      val[i]= - std::numeric_limits<double>::infinity();
+      //err[i]=0;
+    } else {
+      status[i] = gsl_sf_bessel_lnKnu_e(nu[i], x[i], &result) ;
+      val[i] = result.val+nu[i]*log(x[i]);
+      //err[i] = result.err;
+    }
+  }
+  return(List::create(Named("val") = val, Named("status")=status));
 }

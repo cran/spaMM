@@ -21,6 +21,7 @@ blob1 <- HLCor(cbind(npos,nneg)~1 +adjacency(1|gridcode),
           adjMatrix=Nmatrix,family=binomial(probit),data=donn,HLmethod="ML",control.HLfit = list(LevenbergM=FALSE)) ## 2 s.
 try(testthat::expect_true(abs(get_ranPars(blob1,which = "corrPars")[["1"]]$rho- 0.07961275)<1e-9))
 #AIC(blob1)
+VarCorr(blob1)
 
 if (FALSE) { ## HLCor/corrHlfit already compared on scotlip by test-spaMM.R
   # corrHLfit without corners was poor here

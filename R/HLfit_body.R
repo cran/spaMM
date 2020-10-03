@@ -7,7 +7,7 @@ HLfit_body <- local({
                        ranFix=list(), ## phi, lambda, possibly nu, rho if not in init.HLfit
                        etaFix=list() ## beta, v_h (or even u_h)
 ) {
-  processed$envir$ranFix <- ranFix # for diagnostics reported by div_info() [__F I X M E__ rethink] 
+  processed$envir$ranFix <- ranFix # for diagnostics reported by div_info() (seek '$ranFixes') [_F I X M E_ rethink] 
   data <- processed$data
   verbose <- processed$verbose
   family <- processed$family
@@ -926,10 +926,18 @@ HLfit_body <- local({
   ## OBJECTIVE and ALGORITHMs
   ###################
   res$HL <- HL ## info on fitting objective
+  if (HL[1]=="SEM") {
+    MME_method <- "stochastic EM"
+  } else {
+    get_from <- attr(auglinmodblob$sXaug,"get_from")
+    if (is.null(get_from)) { # not sure that it happens
+      MME_method <- setdiff(class(auglinmodblob$sXaug),c("list")) # "dgCMatrix" for _Matrix_QRP_CHM bc the class of this S4 object cannot be modified... hence the alternative code  
+    } else {
+      MME_method <- unique(c(substring(get_from,14), setdiff(class(auglinmodblob$sXaug),c("list"))))
+    }
+  }
   res$how <- list(spaMM.version=packageVersion("spaMM"),
-                  MME_method=if (HL[1]!="SEM") { 
-                    setdiff(class(auglinmodblob$sXaug),c("list"))
-                  } else { "stochastic EM"},
+                  MME_method=MME_method,
                   switches=c(augZXy_cond=processed$augZXy_cond,
                              use_spprec_QR=.spaMM.data$options$use_spprec_QR)
                   )

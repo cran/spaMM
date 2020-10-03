@@ -65,15 +65,16 @@ fitme(cases ~ 1+(1|gridcode), data=scotlip, family=poisson)
 # Random-slope model (mind the output!)        
 fitme(y~X1+(X2|batch),data=wafers, method="REML")
 
-# Spatial, conditional-autoregressive GLMM
+## Spatial, conditional-autoregressive GLMM
 if (spaMM.getOption("example_maxtime")>2) {   
   fitme(cases ~ I(log(population))+adjacency(1|gridcode), data=scotlip, family=poisson, 
         adjMatrix=Nmatrix) # with adjacency matrix provided by data("scotlip")
 } 
 # see ?adjacency for more details on these models 
 
-##     Spatial, geostatistical GLMM: 
-#see e.g. examples in ?blackcap, ?Loaloa, or ?arabidopsis
+## Spatial, geostatistical GLMM: 
+# see e.g. examples in ?fitme, ?corrHLfit, ?Loaloa, or ?arabidopsis;
+# see examples in ?Matern for group-specific spatial effects.
 
 ##     Hierachical GLMs with non-gaussian random effects
  data("salamander")

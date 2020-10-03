@@ -219,7 +219,35 @@
   sub_lambda_vec <- unlist(lambda_list[which]) 
   loglamInfo <- loglamInfo * (sub_lambda_vec %*% t(sub_lambda_vec))
   return(list(loglamInfo=loglamInfo,rhs_invV.dVdlam_list=rhs_invV.dVdlam_list))
-} 
+}
+
+.wrap_solve_logdispinfo <- function(logdispInfo, object) {
+  logdisp_cov <- try(solve(logdispInfo), silent = TRUE)
+  problem <- inherits(logdisp_cov, "try-error")
+  if (!problem) {
+    problem <- any(diag(logdisp_cov) < 0) # strngly suggest major inaccuracy or bug in computing the matrix
+    if (problem) {
+      warning(paste("Numerical precision issue or something else?\n", 
+                    "  Information matrix for dispersion parameters does not seem positive-definite.\n", 
+                    "  The prediction variance may be inaccurate."))
+    }
+  } else { # solve() failed
+    lambdas <- VarCorr(object)[,"Variance"]
+    if (any(lambdas<1e-6)) { ## may not be appropriate for all models (cf non-gaussian ranefs?)
+      # we could message() that a ranef has low variance, but why do that here?
+      # .force_solve will use regularization
+      # regularization should lead to underestimate the logdisp_cov where it is tiny, so it should be OK
+      # *If* there is still a potential for inaccuracies, this should be dealt at the fix_predVar level ?
+    } else if (all(lambdas>1e-4) && any(eigen(logdispInfo, only.values=TRUE)$values==0)) { # suggests exactly singular matrix i.e. redundant ranefs (twolambda example)
+      message("Suspiciously-looking information matrix for dispersion parameters: maybe redundant random effects?")
+    } else warning(paste("Numerical precision issue in computation of the information matrix for dispersion parameters:\n", 
+                         "  the prediction variance may be inaccurate."))
+  }
+  if (problem) {
+    logdisp_cov <- .force_solve(logdispInfo)
+  }
+  return(list(logdisp_cov=logdisp_cov, problem=problem))
+}
 
 .calc_logdisp_cov <- function(object, dvdloglamMat=NULL, dvdlogphiMat=NULL, invV_factors=NULL) { 
   if (object$spaMM.version<="1.11.60") stop("objects created with spaMM versions <= 1.11.60 are no longer supported.")
@@ -415,26 +443,17 @@
       }
     } 
     logdispInfo <- logdispInfo/2
-    logdisp_cov <- try(solve(logdispInfo),silent=TRUE)
-    problem <- inherits(logdisp_cov,"try-error")
-    if ( ! problem ) {
-      problem <- any(diag(logdisp_cov)<0)
-      if ( problem ) {
-        warning(paste("Numerical precision issue or something else?\n",
-                      "  Information matrix for dispersion parameters does not seem positive-definite.\n",
-                      "  The prediction variance may be inaccurate.")) ## message should match whether this is regularized or not?
-      }
-    } else warning(paste("Numerical precision issue in computation of the information matrix for dispersion parameters:\n",
-                         "  the prediction variance may be inaccurate."))
-    if (problem) {logdisp_cov <- .force_solve(logdispInfo)}
+    resu <- .wrap_solve_logdispinfo(logdispInfo, object)
     if (any( ! checklambda )) { ## if cols missing from logdisp_cov compared to dwdlogdisp
       ncd <- ncol(dwdlogdisp)
       full_logdisp_cov <- matrix(0,ncd,ncd)
       cols_in_logdisp_cov <- rep(checklambda,Xi_cols) ## which cols in dwdloglam match loglambda col in logdisp_cov
       if ( ! is.null(dwdlogphi)) cols_in_logdisp_cov <- c(cols_in_logdisp_cov,TRUE)  ## col for dwdlogphi
-      full_logdisp_cov[cols_in_logdisp_cov,cols_in_logdisp_cov] <- logdisp_cov
-      return(list(dwdlogdisp=dwdlogdisp,logdisp_cov=full_logdisp_cov,problems=problems)) 
-    } else return(list(dwdlogdisp=dwdlogdisp,logdisp_cov=logdisp_cov,problems=problems)) 
+      full_logdisp_cov[cols_in_logdisp_cov,cols_in_logdisp_cov] <- resu$logdisp_cov
+      resu$logdisp_cov <- full_logdisp_cov
+    }  
+    resu$dwdlogdisp <- dwdlogdisp
+    return(resu)
     ## more compact than storing ww %*% logdisp_cov %*% t(ww) which is nobs*nobs 
   }
 }
@@ -634,26 +653,17 @@
       }
     } 
     logdispInfo <- logdispInfo/2
-    logdisp_cov <- try(solve(logdispInfo),silent=TRUE)
-    problem <- inherits(logdisp_cov,"try-error")
-    if ( ! problem ) {
-      problem <- any(diag(logdisp_cov)<0)
-      if ( problem ) {
-        warning(paste("Numerical precision issue or something else?\n",
-                      "  Information matrix for dispersion parameters does not seem positive-definite.\n",
-                      "  The prediction variance may be inaccurate.")) ## message should match whether this is regularized or not?
-      }
-    } else warning(paste("Numerical precision issue in computation of the information matrix for dispersion parameters:\n",
-                         "  the prediction variance may be inaccurate."))
-    if (problem) {logdisp_cov <- .force_solve(logdispInfo)}
+    resu <- .wrap_solve_logdispinfo(logdispInfo, object)
     if (any( ! checklambda )) { ## if cols missing from logdisp_cov compared to dwdlogdisp
       ncd <- ncol(dwdlogdisp)
       full_logdisp_cov <- matrix(0,ncd,ncd)
       cols_in_logdisp_cov <- rep(checklambda,Xi_cols) ## which cols in dwdloglam match loglambda col in logdisp_cov
       if ( ! is.null(dwdlogphi)) cols_in_logdisp_cov <- c(cols_in_logdisp_cov,TRUE)  ## col for dwdlogphi
-      full_logdisp_cov[cols_in_logdisp_cov,cols_in_logdisp_cov] <- logdisp_cov
-      return(list(dwdlogdisp=dwdlogdisp,logdisp_cov=full_logdisp_cov,problems=problems)) 
-    } else return(list(dwdlogdisp=dwdlogdisp,logdisp_cov=logdisp_cov,problems=problems)) 
+      full_logdisp_cov[cols_in_logdisp_cov,cols_in_logdisp_cov] <- resu$logdisp_cov
+      resu$logdisp_cov <- full_logdisp_cov
+    }  
+    resu$dwdlogdisp <- dwdlogdisp
+    return(resu)
     ## more compact than storing ww %*% logdisp_cov %*% t(ww) which is nobs*nobs 
   }
 }

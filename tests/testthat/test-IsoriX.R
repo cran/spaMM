@@ -2,6 +2,7 @@ cat(crayon::yellow("\ntest of IsoriX compatibility:"))
 
 # bug correction in v2.4.87, and last decimals updated after v3.0.24
 if (requireNamespace("IsoriX",quietly=TRUE)) { ## Checks that exports/imports are OK
+  # oldmaxt <- spaMM.options(example_maxtime=70)
   IsoriX::options_IsoriX(spaMM.options("example_maxtime")) ## Set to 201 for running  the full test
   IsoriX::options_IsoriX(dont_ask = TRUE) ## for plots
   if ( exists("GermanFit")) rm("GermanFit")

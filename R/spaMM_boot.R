@@ -118,7 +118,8 @@ dopar <- local({
         abyss <- foreach::`%dopar%`(foreach_blob, Sys.setenv(LANG = "en")) # before setting the progress bar...
         if (is.function(pretest_cores)) pretest_cores(fn, cl)
         # define the progress bar:
-        progrbar_setup <- .set_progrbar(max = nsim, style = 3, char="P")
+        barstyle <- eval(spaMM.getOption("barstyle"))
+        progrbar_setup <- .set_progrbar(max = nsim, style = barstyle, char="P")
         # :where opts are needed to define a second foreach_blob
         foreach_args <- list( 
           i = 1:ncol(newresp), 

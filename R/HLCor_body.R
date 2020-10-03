@@ -8,20 +8,20 @@
 }
 
 
-.extract_check_coords <- function(spatial_term,datanames) {
+.extract_check_coords <- function(spatial_term,datanames, check=TRUE) {
   if ( ! is.null(spatial_term)) {
     bars <- spatial_term[[2]] 
     coordinates <- .DEPARSE(bars[[3]]) ## "x + y"
     coordinates <-  strsplit(coordinates," ")[[1]]
     coordinates <- setdiff(coordinates,c("+","%in%",":","/","")) ## "" for hidden linebreaks (?)
   } else {
-    stop("Call to 'HLCor' without a spatial term in the formula is suspect.")
-    ## very old code handling old syntax with (1|pos) and default values of the coordinates argument
-    coordinates <- c("x","y") ## back compat
+    stop("Spatial term is NULL.")
   }
-  coordcols <- which(datanames %in% coordinates)
-  if ( length(coordcols) != length(coordinates) ) {
-    stop("variables 'coordinates' not all found in the 'data'")
+  if (check) {
+    coordcols <- which(datanames %in% coordinates)
+    if ( length(coordcols) != length(coordinates) ) {
+      stop("variables 'coordinates' not all found in the 'data'")
+    }
   }
   return(coordinates) ## should be ordered as bars[[3]] (important for predict)
 }
@@ -37,6 +37,7 @@
   } else if (length(grep_in <- grep("%in%|:",coordinates))) {
     coordinates <- coordinates[1L:(min(grep_in)-1L)]
   }
+  coordinates <- setdiff(coordinates,c("+","")) ## "" for hidden linebreaks (?)
   return(coordinates) ## should be ordered as bars[[3]] (important for predict)
 }
 

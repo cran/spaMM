@@ -26,7 +26,6 @@
 \alias{deviance.HLfit}
 \alias{response}
 \alias{dev_resids}
-\alias{get_RLRTSim_args}
 %- Also NEED an '\alias' for EACH other topic documented here.
 \title{
 Functions to extract various components of a fit
@@ -45,7 +44,6 @@ Functions to extract various components of a fit
 \code{fixef} extracts the fixed effects coefficients, \eqn{\beta}.
 \code{ranef} extracts the predicted random effects, \bold{Lv} (default since version 1.12.0), or \bold{u} (see Details in \code{\link{HLfit}} for definitions), \code{print.ranef} controls their printing. 
 \code{getDistMat} returns a distance matrix for a Matérn correlation model.
-\code{get_RLRTSim_args} returns a list of arguments suitable for calls to \code{RLRsim::RLRTSim()}
 }
 \usage{
 \method{formula}{HLfit}(x, which="hyper", ...)
@@ -62,7 +60,6 @@ Functions to extract various components of a fit
 getDistMat(object, scaled=FALSE, which = 1L)
 response(object,...)
 dev_resids(object,...)
-get_RLRTSim_args(object,...)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -76,8 +73,6 @@ get_RLRTSim_args(object,...)
 }
 \value{
 Return values are numeric (for \code{logLik}), vectors (most cases), matrices or dist objects (for \code{getDistMat}), or a family object (for \code{family}). \code{ranef} returns a list of vectors or matrices (the latter for random-coefficient terms). \code{terms} returns an object of class \code{c("terms", "formula")} which contains the \emph{terms} representation of a symbolic model.  See \code{\link[stats]{terms.object}} for its structure.
-
-\code{get_RLRTSim_args} extracts a list of arguments suitable for a call to \code{RLRsim::RLRTSim()} for a small-sample test of the presence of a random effect by an efficient simulation procedure. The test can be run by\cr \code{do.call("RLRTSim",<get_RLRTSim_args return value>)}.  
 }
 \details{
 See \code{\link{residuals.glm}} for more information about the types of residuals.
@@ -85,7 +80,7 @@ See \code{\link{residuals.glm}} for more information about the types of residual
 With \code{which="LogL_Lap"}, \code{logLik()} returns a Laplace approximation of log-likelihood based on the observed Hessian, rather than the expected Hessian. This is implemented only for the case \code{family=Gamma(log)}, for demonstration purposes.
 }
 \seealso{
-See \code{\link{hatvalues}} to extract leverages, \code{\link{get_matrix}} to extract the model matrix and derived matrices, and \code{\link{vcov.HLfit}} to extract covariances matrices from a fit. 
+See \code{\link{hatvalues}} to extract leverages, \code{\link{get_matrix}} to extract the model matrix and derived matrices, and \code{\link{vcov.HLfit}} to extract covariances matrices from a fit, \code{\link{get_RLRsim_args}} to extract arguments for (notably) tests of random effects in LMMs.
 }
 \references{
 McCullagh, P. and Nelder J. A. (1989) Generalized linear models. Second ed. Chapman & Hall: London.

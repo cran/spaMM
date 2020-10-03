@@ -98,9 +98,12 @@
   if (is.na(needed["distMatrix"])) needed["distMatrix"] <- FALSE 
   if (is.na(needed["uniqueGeo"])) needed["uniqueGeo"] <- FALSE 
   if (is.na(needed["nbUnique"])) needed["nbUnique"] <- FALSE 
+  if (is.na(needed["notSameGrp"])) needed["notSameGrp"] <- FALSE 
   coordinates <- .get_coordinates(spatial_term=spatial_term, data=data)
   geoMats <- list(coordinates=coordinates)
-  if (is.null(distMatrix)) { 
+  if (is.null(distMatrix) || needed["notSameGrp"]) { # In principle we avoid computing anything new if 
+    #                     distMatrix (implying uniqueGeo too )has been computed
+    #                     but for grouped effects, defining the optim range may have used distMatrix in a case where we now need notSameGrp.
     coord_within <- .extract_check_coords_within(spatial_term=spatial_term) 
     coords_nesting <- setdiff(coordinates,coord_within)
     coord_within <- setdiff(coordinates, coords_nesting)
@@ -118,7 +121,7 @@
       rownames(uniqueGeo) <- raw_levels 
     } 
     geoMats$nbUnique <- nrow(uniqueGeo) ## only serves to control RHOMAX and should not be computed from the final uniqueGeo in case of nesting
-    if (length(coords_nesting) && any(needed[c("distMatrix","uniqueGeo")]) ) {
+    if (length(coords_nesting) && any(needed[c("distMatrix","uniqueGeo","notSameGrp")]) ) {
       ## should now (>2.3.9) work on data.frames, nesting factor not numeric.
       e_uniqueGeo <- .calcUniqueGeo(data=data[,coordinates,drop=FALSE])
       ## The rows_bynesting <- by(e_uniqueGeo ,e_uniqueGeo[,coords_nesting],rownames) line in.expand_GeoMatrices()
@@ -126,9 +129,13 @@
       #  e_uniqueGeo classes should not be factor; and as.integer(<factor>) can produce NA's hence as.character()
       # same operation was performed to generate uniqueGeo in .calc_AR1_sparse_Q_ranges()
       for (nam in coords_nesting) {if (is.factor(fac <- e_uniqueGeo[[nam]])) e_uniqueGeo[[nam]] <- as.character(levels(fac))[fac]}
-      eGM <- .expand_GeoMatrices(w_uniqueGeo=uniqueGeo, e_uniqueGeo=e_uniqueGeo, 
-                                 coords_nesting=coords_nesting, coord_within=coord_within,dist.method=dist.method)
-      distMatrix <- eGM$distMatrix 
+      if (needed["notSameGrp"]) geoMats$notSameGrp <- .expand_grouping(w_uniqueGeo=uniqueGeo, e_uniqueGeo=e_uniqueGeo, 
+                                                            coords_nesting=coords_nesting, coord_within=coord_within)
+      if (any(needed[c("distMatrix","uniqueGeo")])) {
+        eGM <- .expand_GeoMatrices(w_uniqueGeo=uniqueGeo, e_uniqueGeo=e_uniqueGeo, 
+                                   coords_nesting=coords_nesting, coord_within=coord_within,dist.method=dist.method)
+        distMatrix <- eGM$distMatrix
+      }
       uniqueGeo <- e_uniqueGeo
     } else if (needed["distMatrix"]) {
       notnumeric <- ! unlist(lapply(uniqueGeo,is.numeric))
@@ -160,16 +167,14 @@
       if ( sparse_precision) { 
         if (requireNamespace("RSpectra",quietly=TRUE)) { #https://scicomp.stackexchange.com/questions/26786/eigen-max-and-minimum-eigenvalues-of-a-sparse-matrix
           eigrange <- RSpectra::eigs(adjMatrix, k=2, which="BE", opts=list(retvec=FALSE))$values
-          decomp <- list(d=NaN, # _F I X M E_ bug-catching tempo code
-            eigrange=eigrange) # only the extreme eigenvalues
+          decomp <- list(eigrange=eigrange) # only the extreme eigenvalues
         } else {
           if ( ! RSpectra_warned) { #if ( ! identical(spaMM.getOption("RSpectra_warned"),TRUE)) {
             message("If the 'RSpectra' package were installed, an eigenvalue computation could be faster.")
             RSpectra_warned <<- TRUE # .spaMM.data$options$RSpectra_warned <- TRUE
           }
-          eigvals <- eigen(adjMatrix, symmetric=TRUE, only.values = TRUE)$values
-          decomp <- list(d=NaN, # _F I X M E_ bug-catching tempo code
-            eigrange=range(eigvals)) ## only eigenvalues # but first converts to dense matrix, so quite inefficient.
+          eigvals <- eigen(adjMatrix, symmetric=TRUE, only.values = TRUE)$values # first converts to dense matrix, so quite inefficient.
+          decomp <- list(eigrange=range(eigvals)) 
         }
       } else {
         decomp <- eigen(adjMatrix, symmetric=TRUE)
@@ -216,7 +221,6 @@
   if (rho.size<2) { ## can be 0 if no explicit rho in the input  
     if (is.list(processed)) {
       dist.method <- control_dist_rd$dist.method 
-      locdist <- vector("list",length(processed))
       maxs <- numeric(length(processed))
       mins <- numeric(length(processed))
       nbUnique <- 0L
@@ -233,8 +237,8 @@
       geo_envir <- .get_geo_info(processed, which_ranef=it, which=c("distMatrix","uniqueGeo","nbUnique"), 
                                  dist.method=control_dist_rd$dist.method) ## this is all for ranef [[it]]:
       ## => assuming, if (is.list(processed)), the same matrices accross data for the given ranef term.
-      locdist <- geo_envir$distMatrix   ## specific to the it'th ranef
-      maxrange <- max(geo_envir$distMatrix)-min(geo_envir$distMatrix)
+      # handling infinite values used in nested geostatistical models
+      maxrange <- max(geo_envir$distMatrix[! is.infinite(geo_envir$distMatrix)])-min(geo_envir$distMatrix)
       nbUnique <- geo_envir$nbUnique
     }
     return(list(maxrange=maxrange,nbUnique=nbUnique))

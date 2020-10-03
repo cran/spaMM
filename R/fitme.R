@@ -20,7 +20,12 @@
                 names(formals(mat_sqrt)),names(formals(make_scaled_dist))))  
   dotnames <- setdiff(names(mc)[-1],names(formals(fitme)))
   argcheck <- setdiff(dotnames,HLnames)
-  if (length(argcheck)) warning(paste("suspect argument(s) ",paste(argcheck, collapse=",")," in fitme call."))
+  if (length(argcheck)) {
+    warning(paste("suspect argument(s) ",paste(argcheck, collapse=",")," in fitme call."))
+    if ("offset" %in% argcheck) {
+      stop("the offset should be a formula term, not a distinct argument.")
+    }
+  }
   # 
   return(mc)
 }

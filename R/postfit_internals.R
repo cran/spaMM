@@ -9,14 +9,15 @@
     foreach_args <- list(it = seq_len(nslices), .combine = "sum")
     foreach_blob <- do.call(foreach::foreach,foreach_args)
     abyss <- foreach::`%do%`(foreach_blob, Sys.setenv(LANG = "en"))
-    progrbar_setup <- .set_progrbar(max = nslices, style = 3, char="s")
+    barstyle <- eval(spaMM.getOption("barstyle"))
+    progrbar_setup <- .set_progrbar(max = nslices, style = barstyle, char="s")
     pd <- foreach::`%do%`(foreach_blob, {
       slice <- (slices[it]+1L):slices[it+1L]
       tmp <- t(.crossprod(tcrossfac_v_beta_cov, Md2clikdvb2[,slice]))
-      progrbar_setup$progress(it)
+      if (barstyle) progrbar_setup$progress(it)
       return(sum(tcrossfac_v_beta_cov[slice,] * tmp)) 
     })
-    close(progrbar_setup$pb)
+    if (barstyle) close(progrbar_setup$pb)
     # We could parallelize using %dopar% (twice) but is that worth the overhead? 
   } else {
     # logic of following code is

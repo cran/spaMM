@@ -92,14 +92,16 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
   if ( distinct.X.ReML[1L] ) {
     locsXaug <- locsXaug[,-(n_u_h+attr(X.Re,"unrestricting_cols"))]
   } 
-  extra_vars <- attr(X.Re,"extra_vars") ## may be NULL
-  if (inherits(locsXaug,"Matrix")) {
-    suppl_cols <- Matrix(0,ncol=length(extra_vars),nrow=nrow(locsXaug))
-  } else {
-    suppl_cols <- matrix(0,ncol=length(extra_vars),nrow=nrow(locsXaug))
+  extra_vars <- attr(X.Re,"extra_vars") ## may be NULL, in which case the following block works with dense matrices but not sparse ones...
+  if (nc <- length(extra_vars)) {
+    if (inherits(locsXaug,"Matrix")) {
+      suppl_cols <- Matrix(0,ncol=nc,nrow=nrow(locsXaug))
+    } else {
+      suppl_cols <- matrix(0,ncol=nc,nrow=nrow(locsXaug))
+    }
+    suppl_cols[n_u_h+seq(nrow(X.Re)),] <- .Dvec_times_m_Matrix(weight_X,X.Re[,extra_vars, drop=FALSE])#  Diagonal(x=weight_X) %*% X.Re[,extra_vars]
+    locsXaug <- cbind(locsXaug,suppl_cols)
   }
-  suppl_cols[n_u_h+seq(nrow(X.Re)),] <- .Dvec_times_m_Matrix(weight_X,X.Re[,extra_vars, drop=FALSE])#  Diagonal(x=weight_X) %*% X.Re[,extra_vars]
-  locsXaug <- cbind(locsXaug,suppl_cols)
   return(locsXaug)
 }
 
@@ -251,9 +253,9 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
     dvdloglamMat <- .m_Matrix_times_Dvec(as(d2hdv2_info, "dgCMatrix"), # otherwise Matrix_times_Dvec() with dsC defaults detect a problem
                                          neg.d2f_dv_dloglam) ## sweep(d2hdv2_info,MARGIN=2L,neg.d2f_dv_dloglam,`*`) ## ginv(d2hdv2) %*% diag( as.vector(neg.d2f_dv_dloglam))      
   }
-  #return(as.matrix(dvdloglamMat)) ## square matrix, by  the formulation of the algo ## quite dense even if many small values and we subset it
-  return(dvdloglamMat) ## square matrix, by  the formulation of the algo ## as.matrix() is terribly inefficient in bigranefs case (_F I X M E_ more adaptive code?)
-}
+  #return(as.matrix(dvdloglamMat)) ## quite dense even if many small values and we subset it;
+  return(dvdloglamMat) ## ./. but as.matrix() is terribly inefficient in bigranefs case (_F I X M E_ more adaptive code?)
+} ## square matrix, by  the formulation of the algo 
 
 
 .calc_dvdlogphiMat_new <- function(dh0deta,ZAL,

@@ -4,7 +4,7 @@
 Prediction from models with nearly-singular covariance matrices
 }
 \description{
-This explains how to handle a warning occur in computation of prediction variance, where the user is directed here. 
+This explains how to handle a warning occurring in computation of prediction variance, where the user is directed here. 
 
 For \bold{Matern or Cauchy} correlation models with vanishing scale factor for distances, a warning may be produced when \code{predict.HLfit} (or \code{get_predVar}, etc.) is called with non-NULL \code{newdata}, because a nearly-singular correlation matrix of the random effect is met. \bold{To decide what to do} in that case, users should compare the values of \code{get_predVar(.)} and \code{get_predVar(., newdata=myfit$data)}(see Example below). In the absence of numerical inacuracies, The two values should be identical, and in the presence of such inaccuracies, the more reliable value is the first one. In really poor cases, the second syntax may yield negative prediction variances. If users deem the inaccuracies too large, they should use \code{control=list(fix_predVar=TRUE)} in the next call to \code{predict.HLfit} (or \code{get_predVar}, etc.) as shown in the Example. The drawback of this control is that the computation may be slower, and might even exceed memory capacity for large problems (some matrix operations being performed with exact rational arithmetic, which is memory-consuming for large matrices). it is also still experimental, in the sense that I fear that bugs (\code{stop}) may occur. If the user instead chooses \code{control=list(fix_predVar=FALSE)}, the default standard floating-point arithmetic is used, but no warning is issued. 
 

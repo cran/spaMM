@@ -140,6 +140,18 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// nuln_plus_bessel_lnKnu_e
+List nuln_plus_bessel_lnKnu_e(Rcpp::NumericVector nu, Rcpp::NumericVector x);
+RcppExport SEXP _spaMM_nuln_plus_bessel_lnKnu_e(SEXP nuSEXP, SEXP xSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type nu(nuSEXP);
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type x(xSEXP);
+    rcpp_result_gen = Rcpp::wrap(nuln_plus_bessel_lnKnu_e(nu, x));
+    return rcpp_result_gen;
+END_RCPP
+}
 // rankinfo
 SEXP rankinfo(SEXP x, SEXP tol);
 RcppExport SEXP _spaMM_rankinfo(SEXP xSEXP, SEXP tolSEXP) {
@@ -408,6 +420,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_spaMM_Rcpp_dense_cbind_mat_mat", (DL_FUNC) &_spaMM_Rcpp_dense_cbind_mat_mat, 2},
     {"_spaMM_Rcpp_dense_cbind_mat_vec", (DL_FUNC) &_spaMM_Rcpp_dense_cbind_mat_vec, 2},
     {"_spaMM_bessel_lnKnu_e", (DL_FUNC) &_spaMM_bessel_lnKnu_e, 2},
+    {"_spaMM_nuln_plus_bessel_lnKnu_e", (DL_FUNC) &_spaMM_nuln_plus_bessel_lnKnu_e, 2},
     {"_spaMM_rankinfo", (DL_FUNC) &_spaMM_rankinfo, 2},
     {"_spaMM_leverages", (DL_FUNC) &_spaMM_leverages, 1},
     {"_spaMM_sweepZ1W", (DL_FUNC) &_spaMM_sweepZ1W, 2},

@@ -3,7 +3,8 @@
   if (is.null(geo_envir)) stop("The required environment was not created during preprocessing.")
   needed <- c("distMatrix"=("distMatrix" %in% which && is.null(geo_envir$distMatrix)),
               "uniqueGeo"=("uniqueGeo" %in% which && is.null(geo_envir$uniqueGeo)),
-              "nbUnique"=("nbUnique" %in% which && is.null(geo_envir$nbUnique)) )
+              "nbUnique"=("nbUnique" %in% which && is.null(geo_envir$nbUnique)),
+              "notSameGrp"=("notSameGrp" %in% which && is.null(geo_envir$notSameGrp)) )
   if (any(needed)) {
     blob <- .get_dist_nested_or_not(spatial_term=attr(processed$ZAlist,"exp_spatial_terms")[[which_ranef]], 
                                 data=processed$data, distMatrix=geo_envir$distMatrix, 
@@ -14,6 +15,7 @@
     if (is.null(geo_envir$distMatrix)) geo_envir$distMatrix <- blob$distMatrix 
     if (is.null(geo_envir$uniqueGeo)) geo_envir$uniqueGeo <- blob$uniqueGeo  
     if (is.null(geo_envir$nbUnique)) geo_envir$nbUnique <- blob$nbUnique 
+    if (is.null(geo_envir$notSameGrp)) geo_envir$notSameGrp <- blob$notSameGrp 
     if (is.null(geo_envir$coordinates)) geo_envir$coordinates <- blob$coordinates 
   }
   return(geo_envir) ## some elements may still be NULL
@@ -186,23 +188,34 @@
         cov_info_mat[geo_envir$distMatrix==Inf] <- 0 ## should not be necess, but is.
       } else  if (corr_type %in% c("Matern","Cauchy")) {
         control_dist_rd <- control.dist[[char_rd]]
-        txt <- paste(c(spatial_term[[2]][[3]])) ## the RHS of the ( . | . ) # c() to handle very long RHS
-        if (length(grep("%in%",txt))) {
-          stop(paste0("(!) ",corr_type,"( . | <coord> %in% <grp>) is not yet handled."))
-        } 
         msd.arglist <- list(rho = rho)
         msd.arglist$`dist.method` <- control_dist_rd$`dist.method` ## may be NULL
+        # .get_geo_info() is *the* code that accounts for grouping but never uses rho (hence never returns a scaled distMatrix)
+        # So for non-trivial rho we cannot directly use the distMatrix, and make_scaled_dist() won't have access to grouping info in distMatrix.
+        # So for non-trivial rho plus grouping we need both the uniqueGeo and the distMatrix
         if (length(rho)>1L) {
-          geo_envir <- .get_geo_info(processed, which_ranef=rd, which=c("uniqueGeo"), 
+          txt <- paste(c(spatial_term[[2]][[3]])) ## the RHS of the ( . | . ) # c() to handle very long RHS
+          if (length(grep("%in%",txt))) {
+            needed <- c("uniqueGeo", "notSameGrp")
+          } else needed <- "uniqueGeo"
+          geo_envir <- .get_geo_info(processed, which_ranef=rd, which=needed, 
                                      dist.method=control_dist_rd$dist.method)
-          msd.arglist$uniqueGeo <- geo_envir$uniqueGeo
+          coord_within <- .extract_check_coords_within(spatial_term=spatial_term)
+          msd.arglist$uniqueGeo <- geo_envir$uniqueGeo[,coord_within,drop=FALSE]
           msd.arglist$`rho.mapping` <- control_dist_rd$`rho.mapping` ## may be NULL
+          cov_info_mat <- do.call("make_scaled_dist",msd.arglist)
+          #
+          if (length(grep("%in%",txt))) { # hmmmf
+            cov_info_mat <- as.matrix(cov_info_mat)
+            cov_info_mat[geo_envir$notSameGrp] <- Inf
+            cov_info_mat <- proxy::as.simil(cov_info_mat)
+          }
         } else {
           geo_envir <- .get_geo_info(processed, which_ranef=rd, which=c("distMatrix"), 
                                      dist.method=control_dist_rd$dist.method)
           msd.arglist$distMatrix <- geo_envir$distMatrix   
+          cov_info_mat <- do.call("make_scaled_dist",msd.arglist)
         }
-        cov_info_mat <- do.call("make_scaled_dist",msd.arglist)
         ## at this point if a single location, dist_mat should be dist(0) and make_scaled_dist was modified to that effect
         if ( nrow(cov_info_mat)>1 ) { ## >1 locations
           Nugget <- .get_cP_stuff(ranPars,"Nugget",which=char_rd)

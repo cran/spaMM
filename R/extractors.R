@@ -390,7 +390,13 @@ VarCorr.HLfit <- function(x, sigma=1, ...) {
     nonunique_colnames <- colnames(lamtable)
     lamtable <- lamtable[,seq_len(ncol(lamtable))] # subsetting automatically generates unique names for the Corr. columns
     for (it in seq_len(nrow(lamtable))) {
-      if (is.na(lamtable[[it,"Var."]])) lamtable[[it,"Var."]] <- lambda.object$lambda_list[[lamtable[[it,"Group"]]]][["(Intercept)"]]
+      # That's not good bc the two lines for Group 'gridcode' are filled with the Intercept ($lambda_list never contains the adjd...)
+      # if (is.na(lamtable[[it,"Var."]])) lamtable[[it,"Var."]] <- lambda.object$lambda_list[[lamtable[[it,"Group"]]]][[lamtable[[it,"Term"]]]]
+      if (is.na(lamtable[[it,"Var."]])) {
+        if ((term. <- lamtable[[it,"Term"]])=="(Intercept)") {
+          lamtable[[it,"Var."]] <- lambda.object$lambda_list[[lamtable[[it,"Group"]]]][[lamtable[[it,"Term"]]]] # not a glm coef (cf inverse link)
+        } # else do nothing bc it's not clear what to do
+      }
     }
     loctable <- data.frame(Group=lamtable[,"Group"],Term=lamtable[,"Term"],Variance=lamtable[,"Var."],"Std.Dev."=sqrt(lamtable[,"Var."]))
     if ("Corr." %in% colnames(lamtable)) {
@@ -482,7 +488,7 @@ get_fixefVar <- function(...) {
 
 
 
-get_RLRTSim_args <- function(object,...) {
+.get_RLRTsim_args <- function(object) { 
   if (object$family$family !="gaussian" 
       || (object$models[["eta"]]=="etaHGLM" && any(attr(object$rand.families,"lcrandfamfam")!="gaussian"))) {
     warning("'object' is not the fit of a LMM, while RLRTSim() methods were conceived for LMMs.")
@@ -494,6 +500,34 @@ get_RLRTSim_args <- function(object,...) {
   sqrt.s <- diag(ncol(ZAL))
   return(list(X=X.pv, Z=ZAL, qrX = qrX.pv, sqrt.Sigma=sqrt.s))
 }
+
+.get_LRTsim_args <- function(object) { 
+  if (object$family$family !="gaussian" 
+      || (object$models[["eta"]]=="etaHGLM" && any(attr(object$rand.families,"lcrandfamfam")!="gaussian"))) {
+    warning("'object' is not the fit of a LMM, while RLRTSim() methods were conceived for LMMs.")
+  }
+  X.pv <- as.matrix(object$X.pv)
+  ZAL <- get_ZALMatrix(object)
+  if(inherits(ZAL,"Matrix")) ZAL <- as.matrix(ZAL)
+  sqrt.s <- diag(ncol(ZAL))
+  return(list(X=X.pv, Z=ZAL, q=object$dfs[["pforpv"]], sqrt.Sigma=sqrt.s))
+}
+
+get_RLRsim_args <- function(object, verbose=TRUE, REML=NA, ...) {
+  is_REML <-  .REMLmess(object,return_message=FALSE)
+  if ( ! is.na(REML)) if (REML!=is_REML) warning("'object' is not a restricted likelihood fit. LRTSim() should be used next.")
+  if (is_REML) {
+    args <- .get_RLRTsim_args(object)
+    if (verbose) message("input for LRTSim() from package 'RLRsim' produced.")
+  } else {
+    args <- .get_LRTsim_args(object)
+    if (verbose) message("input for RLRTSim() from package 'RLRsim' produced.")
+  }
+  return(args)
+}
+
+get_RLRTSim_args <- function(object, verbose=TRUE, ...) get_RLRsim_args(object, verbose=verbose, REML=TRUE, ...)
+
 # get_dispVar : dispVar in not a returned attribute
 
 get_rankinfo <- function(object) return(attr(object$X.pv,"rankinfo")) 
@@ -507,10 +541,22 @@ get_ranPars <- function(object, which=NULL, ...) {
     if ( ! is.null(resu)) resu <- structure(resu, type=attr(CorrEst_and_RanFix,"type")$corrPars)
     return(resu)
   } else if (which=="lambda") {
+    resu <- na.omit(VarCorr(object))
+    resu <- structure(resu[,"Variance"], names=paste(resu[,"Group"],resu[,"Term"],sep="."))
+    return(resu)
+  } else if (which=="outer_lambda") { 
     resu <- CorrEst_and_RanFix$lambda
     if ( ! is.null(resu)) resu <- structure(resu, type=attr(CorrEst_and_RanFix,"type")$lambda)
     return(resu)
-  } 
+  } else if (which=="ranef_var") {
+    resu <- na.omit(VarCorr(object))
+    resu <- list(Var=structure(resu[,"Variance"], names=paste(resu[,"Group"],resu[,"Term"],sep=".")))
+    resu$outer <- CorrEst_and_RanFix$lambda
+    resu$lambda_est <- object$lambda.object$lambda_est
+    resu$lambda_list <-  object$lambda.object$lambda_list
+    if ( ! is.null(resu)) resu <- structure(resu, type=attr(CorrEst_and_RanFix,"type")$lambda)
+    return(resu)
+  } else warning("'which' value not handled.")
 }
 
 .get_from_ranef_info <- function(object,which="sub_corr_info") {
@@ -679,7 +725,7 @@ how.HLfit <- function(object, devel=FALSE, verbose=TRUE, format=print, ...) {
                  "spaMM.version"=object$spaMM.version)
   }
   if (verbose) {
-    if (is.null(fnname <- object$how$fnname)) fnname <- .get_bare_fnname(fun=getCall(object)[[1L]])
+    fnname <- .get_bare_fnname.HLfit(object)
     if ( ! length(fnname)) {
       format(paste0("Model fitted by spaMM, version ",info[["spaMM.version"]],
                    ", in ",info$fit_time,"s using method: ",paste(info$MME_method,collapse=","),"."))

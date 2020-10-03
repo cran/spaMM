@@ -198,7 +198,7 @@
       # intnames[is.na(intnames)] <- (seq_len(length(AMatrices)))[is.na(intnames)]
       # names(AMatrices) <- as.character(intnames)
       attr(Zlist,"AMatrices") <- AMatrices 
-    }
+    } else attr(Zlist,"AMatrices") <- list() # to allow any later fn such as .assign_geoinfo.... to safely set named elements to it. 
   } 
   return(Zlist)
 }
@@ -842,7 +842,7 @@ as_precision <- function(corrMatrix) {
   return(vec_normIMRF)
 }
 
-.add_ZAfix_info <- function(AUGI0_ZX, ZAlist, sparse_precision, processed) {
+.add_ZAfix_info <- function(AUGI0_ZX, ZAlist, sparse_precision, as_mat) {
   if ( ! any(AUGI0_ZX$vec_normIMRF)) {
     ZAfix <- .ad_hoc_cbind(ZAlist, as_matrix=FALSE)  
     if (sparse_precision) {
@@ -850,7 +850,7 @@ as_precision <- function(corrMatrix) {
       rsZA <- rowSums(ZAfix) ## test that there a '1' per row and '0's otherwise:  
       AUGI0_ZX$is_unitary_ZAfix <- (all(unique(rsZA)==1L) && all(rowSums(ZAfix^2)==rsZA)) ## $ rather than attribute to S4 ZAfix
     } else {
-      if (.eval_as_mat_arg(processed)) ZAfix <- as.matrix(ZAfix)  
+      if (as_mat) ZAfix <- as.matrix(ZAfix)  
     }
     AUGI0_ZX$ZAfix <- ZAfix # Used in code for ZAL in HLfit_body(); and extensively to fit  by spprec. 
                             # Special care is required when A is later modified (as by .calc_normalized_ZAlist())
@@ -1284,7 +1284,7 @@ as_precision <- function(corrMatrix) {
     processed$hyper_info <- .preprocess_hyper(processed=processed) # uses$ZAlist and $predictor
     #
     processed$QRmethod <- .choose_QRmethod(ZAlist, predictor, corr_info=corr_info,
-                                           is_spprec=processed$is_spprec) 
+                                           is_spprec=processed$is_spprec, processed=processed) 
     nrd <- cum_n_u_h[nrand+1L]
     if ( ! .eval_as_mat_arg(processed)) {
       AUGI0_ZX <- list2env( list(I=.trDiagonal(n=nrd), ## avoids repeated calls to as() through rbind2...
@@ -1300,7 +1300,7 @@ as_precision <- function(corrMatrix) {
                                parent=environment(.preprocess))
     #
     if (sparse_precision) AUGI0_ZX$envir$method <- .spaMM.data$options$spprec_method  
-    AUGI0_ZX <- .add_ZAfix_info(AUGI0_ZX, ZAlist, sparse_precision, processed)
+    AUGI0_ZX <- .add_ZAfix_info(AUGI0_ZX, ZAlist, sparse_precision, as_mat=.eval_as_mat_arg(processed))
     
     # processed info for u_h inference
     processed$u_h_info <- .eval_v_h_bounds(cum_n_u_h, rand.families) 

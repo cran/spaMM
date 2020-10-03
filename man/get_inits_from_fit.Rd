@@ -8,7 +8,7 @@ Initiate a fit from another fit
 \code{get_inits_from_fit} is an extractor of some fitted values from a fit in a convenient format to initiate a next fit. This function is work in progress, and may not extract all values that can be used to initiate a fit (see Value).  
 }
 \usage{
-get_inits_from_fit(from, template = NULL, to_fn = NULL)
+get_inits_from_fit(from, template = NULL, to_fn = NULL, inner_lambdas=FALSE)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -20,6 +20,9 @@ Another fit object. Usage with a \code{template} fit object is suitable for refi
 }
   \item{to_fn}{
   NULL or character: the name of the function to be used the next fit. If NULL, taken from \code{template} (if available), else from \code{from}. It is meaningful to provide a \code{to_fn} distinct from the function used to fit a \code{template}. 
+} 
+\item{inner_lambdas}{ Boolean; 
+  Whether the output should include estimates of the dispersion parameters estimated by the iterative methods implemented in \code{HLfit}.
 }
 }
 \value{

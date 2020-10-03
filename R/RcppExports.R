@@ -41,6 +41,10 @@
     .Call(`_spaMM_bessel_lnKnu_e`, nu, x)
 }
 
+.nuln_plus_bessel_lnKnu_e <- function(nu, x) {
+    .Call(`_spaMM_nuln_plus_bessel_lnKnu_e`, nu, x)
+}
+
 .rankinfo <- function(x, tol) {
     .Call(`_spaMM_rankinfo`, x, tol)
 }

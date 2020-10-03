@@ -173,9 +173,15 @@ projpath <- local({
                                       HLfit=spaMM::HLfit,
                                       HLCor=spaMM::HLCor,
                                       corrHLfit=spaMM::corrHLfit), identical, y=fun)))
-    # the fact that we can rename functions shows how this can fail...
+    # the fact that we can rename functions shows how this can fail... 
+    # solution is to have fnname in object$how$fnname, called before .get_bare_fnname()
   } else { # assuming it's a 'name' (direct call or do.call("fitme", args = args)) or fn got by by get(...)
     fnname <- sub("^.*?::","",deparse(fun)) ## remove any "spaMM::" in the name, from which paste() would return c("::","spaMM",<>)
   }
+  return(fnname)
+}
+
+.get_bare_fnname.HLfit <- function(object, call.=getCall(object)) {
+  if (is.null(fnname <- object$how$fnname)) fnname <- .get_bare_fnname(fun=call.[[1L]])
   return(fnname)
 }

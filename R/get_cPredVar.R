@@ -80,7 +80,7 @@ get_cPredVar <- function(pred_object, newdata=NULL, nsim, seed=NULL, type="resid
     }
     sim_ys <- simulate(sim_object, type=type, nsim=nsim, seed=seed) # the bootstrap reproduces the source of error we wish to measure (cf cAIC)
     fit_call <- getCall(pred_object)
-    fittingFunction <- paste(fit_call[[1]]) 
+    fittingFunction <- .get_bare_fnname.HLfit(pred_object, call.=fit_call) 
     ctrl_opt <- .update_control(fit_call=fit_call, optim_boot=.spaMM.data$options$optim_boot, from_fn=fittingFunction) # need .safe_opt when newinits are at bound.
     newinits <- get_inits_from_fit(from=pred_object) 
     names_not_cP <- setdiff(names(newinits$init),"corrPars")
