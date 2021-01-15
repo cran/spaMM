@@ -40,7 +40,8 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
       # (solveInPlace may be the only way), we see that it's slow! (e.g test bigranefs)
       # https://stackoverflow.com/questions/53290521/eigen-solver-for-sparse-matrix-product
       BLOB$t_Q_scaled <- .Rcpp_backsolve_M_M(r=as(BLOB$R_scaled,"dgCMatrix"),x=t(sXaug[,BLOB$perm]),transpose=TRUE)
-      # base::backsolve() calls as.matrix()...
+      # base::backsolve() calls as.matrix()... 
+      # .tcrossprod(t(solve(BLOB$R_scaled))[,BLOB$sortPerm], sXaug)
     } else BLOB$t_Q_scaled <- solve(t(BLOB$R_scaled),t(sXaug[,BLOB$perm])) ## Matrix::solve ## this is faster than qr.Q and returns dgCMatrix rather than qr.Q -> dge !
   }
   if ( ! is.null(szAug)) {
@@ -55,7 +56,7 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
        (which %in% c("logdet_R_scaled_v","hatval_Z","d2hdv2","solve_d2hdv2","R_scaled_v_h_blob", "Mg_invH_g"))
   ) {
     seq_n_u_h <- seq_len(attr(sXaug,"n_u_h"))
-    wd2hdv2w <- .crossprod(BLOB$R_scaled[,BLOB$sortPerm[ seq_n_u_h ]], allow_as_mat = FALSE ) 
+    wd2hdv2w <- .crossprod(BLOB$R_scaled[,BLOB$sortPerm[ seq_n_u_h ], drop=FALSE], allow_as_mat = FALSE ) 
     BLOB$CHMfactor_wd2hdv2w <- Cholesky(wd2hdv2w,LDL=FALSE,
                                                 perm=FALSE ) ## perm=FALSE useful for leverage computation as explained below
   }
@@ -181,7 +182,7 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
   } else if (which=="t_Q_scaled") { ## used in get_hatvalues for nonstandard case
     return(BLOB$t_Q_scaled)
   } else if (which %in% c("logdet_R_scaled_b_v")) {
-    if (is.null(BLOB$logdet_R_scaled_b_v)) BLOB$logdet_R_scaled_b_v <- sum(log(abs(diag(BLOB$R_scaled))))
+    if (is.null(BLOB$logdet_R_scaled_b_v)) BLOB$logdet_R_scaled_b_v <- sum(log(abs(diag(x=BLOB$R_scaled))))
     return(BLOB$logdet_R_scaled_b_v)
   } else if (which %in% c("logdet_R_scaled_v")) {
     if (is.null(BLOB$logdet_R_scaled_v)) BLOB$logdet_R_scaled_v <- Matrix::determinant(BLOB$CHMfactor_wd2hdv2w)$modulus[1]

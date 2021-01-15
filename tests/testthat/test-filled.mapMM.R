@@ -29,7 +29,7 @@ lfit <- corrHLfit(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
 # test of syntax, no expect_ yet
 
 ## local maximum issue
-# obj <- function(v) {logLik(corrHLfit(formula=migStatus ~ 1 + Matern(1|latitude+longitude),
+# obj <- function(v) {logLik(corrHLfit(formula=migStatus ~ 1 + Matern(1|longitude+latitude),
 #                                      HLmethod='ML',data=blackcap,ranFix=as.list(v)))}
 # mygrid <- expand.grid(rho=seq(0.2,0.5,0.025),nu=seq(16))
 # apply(mygrid,1L,obj) -> blu

@@ -42,7 +42,7 @@ Poisson <- function (link = "log", trunc=-1L) {
   validmu <- function(mu) all(is.finite(mu)) && all(mu > 0)
   if (trunc==0L) {
     dev.resids <- function(y, mu, wt) {
-      r <- (wt * (y * log(y/mu) - (y - mu)  + log( (1-exp(-mu))/(1-exp(-y)) ) )) # MolasL p. 3309
+      r <- (wt * (y * log(y/mu) - (y - mu)  + log( (1-exp(-mu))/(1-exp(-y)) ) )) # MolasL p. 3309 (here and there, fn of latent mu, not mu of truncated response)
       2 * r
     }
     aic <- function(y, n, mu, wt, dev) -2 * sum((dpois(y, mu, log = TRUE)-log(1-exp(-mu))) * wt) ## where (-) - log() gives + log(1-p0)

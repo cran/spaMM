@@ -8,7 +8,7 @@ Matern correlation function and Matern formula term.
 }
 \description{
  The Matérn correlation function describes realizations of Gaussian spatial processes with different smoothnesses 
- (i.e. either smooth or rugged surfaces, controlled by the \eqn{\nu} parameter). It also includes a \eqn{\rho} scaling parameter and an optional 'nugget' parameter. A random effect specified in a model formula as \code{Matern(1|}\emph{<...>}\code{)} has pairwise correlations given by the Matérn function at the scaled Euclidean distance between coordinates specified in \emph{<...>}, using \dQuote{+} as separator (e.g., \code{Matern(1|latitude + longitude)}). A syntax of the form \code{Matern(1|latitude + longitude \%in\% grp)} can be used to specify a Matern random effect with independent realizations for each level of the grouping variable \code{grp}. The Matern family can be used in Euclidean spaces of any dimension; and also for correlations on a sphere (with maximum smoothness \code{nu=0.5}). 
+ (i.e. either smooth or rugged surfaces, controlled by the \eqn{\nu} parameter). It also includes a \eqn{\rho} scaling parameter and an optional 'nugget' parameter. A random effect specified in a model formula as \code{Matern(1|}\emph{<...>}\code{)} has pairwise correlations given by the Matérn function at the scaled Euclidean distance between coordinates specified in \emph{<...>}, using \dQuote{+} as separator (e.g., \code{Matern(1|longitude+latitude)}). A syntax of the form \code{Matern(1|longitude+latitude \%in\% grp)} can be used to specify a Matern random effect with independent realizations for each level of the grouping variable \code{grp}. The Matern family can be used in Euclidean spaces of any dimension; and also for correlations on a sphere (with maximum smoothness \code{nu=0.5}). 
  
 By default, \code{fitme} and \code{corrHLfit} performs optimization over the \eqn{\rho} and \eqn{\nu} parameters. It is possible to estimate different scaling parameters for the different Euclidean dimensions: see examples in \code{\link{make_scaled_dist}}.
  
@@ -30,7 +30,7 @@ The \code{MaternCorr} function may be used to vizualise these correlations, usin
   \item{Nugget}{(Following the jargon of Kriging) a parameter describing a discontinuous decrease in 
     correlation at zero distance. Correlation will always be 1 at \eqn{d=0}, and from which it immediately drops to 
     (1-Nugget)}
-  \item{\dots}{Names of coordinates, using \dQuote{+} as separator (e.g., \code{Matern(1|latitude + longitude)}}
+  \item{\dots}{Names of coordinates, using \dQuote{+} as separator (e.g., \code{Matern(1|longitude+latitude)}}
 }
 \details{
 The correlation at distance \eqn{d>0} is 
@@ -62,13 +62,13 @@ if (spaMM.getOption("example_maxtime")>1.6) {
    data("blackcap")
  # grouped effect using the '\%in\%' syntax:
    fm <- cbind(blackcap,sex=c(rep(TRUE,7),rep(FALSE,7))) 
-   fitme(migStatus ~ 1 + Matern(1|latitude+longitude \%in\% sex),data=fm)
+   fitme(migStatus ~ 1 + Matern(1|longitude+latitude \%in\% sex),data=fm)
     
  # Superficially similar aim for distinct random effects for each sex,
  # but here with distinct covariance parameters for each of them:
    fm$female <- fm$sex; fm$male <- ! fm$female
-   fitme(migStatus ~ 1 + Matern(female|latitude+longitude)+ 
-                         Matern(male|latitude+longitude),data=fm)
+   fitme(migStatus ~ 1 + Matern(female|longitude+latitude)+ 
+                         Matern(male|longitude+latitude),data=fm)
 } 
 }
 \keyword{ models }% use one of  RShowDoc("KEYWORDS")

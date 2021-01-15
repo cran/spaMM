@@ -75,7 +75,7 @@ and, if a bootstrap was performed, the additional elements described in \code{\l
 
 \references{
   Rousset F., Ferdy, J.-B. (2014) Testing environmental and genetic effects in the presence of spatial autocorrelation. Ecography, 37: 781-790.
-    \url{http://dx.doi.org/10.1111/ecog.00566}
+    \doi{10.1111/ecog.00566}
 
   Welham, S. J., and Thompson, R. (1997) Likelihood ratio tests for fixed model
   terms using residual maximum likelihood, J. R. Stat. Soc. B 59, 701-714.
@@ -88,14 +88,14 @@ See also \code{\link{corrHLfit}} and \code{\link{LRT}}.
 if (spaMM.getOption("example_maxtime")>1.9) {
  data("blackcap")
  ## result comparable to the corrHLfit examples based on blackcap
- fixedLRT(null.formula=migStatus ~ 1 + Matern(1|latitude+longitude),
-       formula=migStatus ~ means + Matern(1|latitude+longitude), 
+ fixedLRT(null.formula=migStatus ~ 1 + Matern(1|longitude+latitude),
+       formula=migStatus ~ means + Matern(1|longitude+latitude), 
        method='ML',data=blackcap)
 }
 if (spaMM.getOption("example_maxtime")>156) {
  ## longer version with bootstrap
- fixedLRT(null.formula=migStatus ~ 1 + Matern(1|latitude+longitude),
-       formula=migStatus ~ means + Matern(1|latitude+longitude), 
+ fixedLRT(null.formula=migStatus ~ 1 + Matern(1|longitude+latitude),
+       formula=migStatus ~ means + Matern(1|longitude+latitude), 
        method='ML',data=blackcap, boot.repl=100, seed=123) 
  }
 }

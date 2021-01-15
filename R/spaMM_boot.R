@@ -155,7 +155,7 @@ dopar <- local({
         parallel::clusterEvalQ(cl, library("spaMM")) 
         if (is.environment(fit_env)) try(parallel::clusterExport(cl=cl, varlist=ls(fit_env), envir=fit_env)) 
         if (is.function(pretest_cores)) pretest_cores(fn, cl)
-        if (eval(.spaMM.data$options$barstyle)) {
+        if (showpbar) {
           pbopt <- pboptions(nout=min(100L,2L*nsim),type="timer",char=pb_char) 
         } else pbopt <- pboptions(type="none") 
         #try() so that an interrupt does not prevent running stopCluster():
@@ -166,7 +166,7 @@ dopar <- local({
       }
     } else { ## nb_cores=1L
       pb_char <- "s"
-      if (eval(.spaMM.data$options$barstyle)) {
+      if (showpbar) {
         pbopt <- pboptions(nout=min(100L,2L*nsim),type="timer",char=pb_char) 
       } else pbopt <- pboptions(type="none") 
       bootreps <- pbapply(X=newresp,MARGIN = 2L,FUN = fn, cl=NULL, ...)

@@ -246,7 +246,10 @@
       init_trRancoef <- attr(prev_LMatrices[[rt]],"trRancoef")
       if (is.null(init_trRancoef)) {
         init_ranCoef <- init_ranCoefs[[as.character(rt)]]
-        if (is.null(init_ranCoef)) init_ranCoef <- diag(x=rep(1, Xi_ncol)) # F I X M E adapt to the data ?
+        if (is.null(init_ranCoef)) {
+          init_ranCoef <- diag(x=rep(1, Xi_ncol))
+          #init_ranCoef[lower.tri(init_ranCoef,diag=FALSE)] <- 0.001
+        } 
         init_trRancoef <- .ranCoefsFn(init_ranCoef[lower.tri(init_ranCoef,diag=TRUE)], rC_transf=rC_transf_inner) # rep(0,Xi_ncol*(Xi_ncol+1L)/2L)
       }
       trRancoef_LowUp <- .calc_LowUp_trRancoef(init_trRancoef, Xi_ncol=Xi_ncol,
@@ -255,9 +258,10 @@
       lowerb <- trRancoef_LowUp$lower
       upperb <- trRancoef_LowUp$upper
       Optimizer <- .spaMM.data$options$optim_inner
-      if (Optimizer==".safe_opt") { # not that optimizer is not preprocessed (and that would require some thoughts)
+      if (Optimizer==".safe_opt") { # note that optimizer is not preprocessed (and that would require some thoughts)
         optr <- .safe_opt(init=init_trRancoef, objfn=objfn, lower=lowerb, upper=upperb, verbose=verbose,
-                          adjust_init=trRancoef_LowUp$adjust_init) 
+                          adjust_init=trRancoef_LowUp$adjust_init, LowUp=list(lower=list(trRanCoefs=list("1"=trRancoef_LowUp$lower)),
+                                                                              upper=list(trRanCoefs=list("1"=trRancoef_LowUp$upper)))) 
       } else if (Optimizer=="nloptr") {
         optr <- .optim_by_nloptr(initvec=init_trRancoef,lowerb=lowerb,upperb=upperb,objfn_locoptim=objfn,
                                  local_control=NULL,LowUp=trRancoef_LowUp)

@@ -13,10 +13,10 @@ HLCor <- function(formula,
     stop("!From HLCor: ranFix found in '...'. Make sure to use ranPars only")
   }
   if (!is.null(oricall$LamFix)) {
-    stop("argument LamFix of HLCor is obsolete")
+    stop("argument 'LamFix' of HLCor is obsolete")
   }
   if (!is.null(oricall$PhiFix)) {
-    stop("argument PhiFix of HLCor is obsolete")
+    stop("argument 'PhiFix' of HLCor is obsolete")
   }  
   # frst steps as in HLFit: (no need to test missing(data) in several functions)
   if (is.null(processed <- oricall$processed)) { ## no 'processed'
@@ -98,7 +98,9 @@ HLCor <- function(formula,
   # FR->FR 10/2016 remis une ligne supp de 1.9.24 (mais ça doit être supprimé par fitme ou corrHLfit)
   hlcor$call <- oricall ## potentially used by getCall(object) in update.HL ./., NOT processed
   # ./. and more directly by confint (very convenient)
-  if ( ! .is.multi(family) ) {
+  if ( inherits(hlcor,"HLfitlist") ) {
+    attr(hlcor,"how") <- list(fit_time=.timerraw(time1),fnname="HLCor", spaMM.version=hlcor[[1L]]$how$spaMM.version)
+  } else {
     hlcor$how$fit_time <- .timerraw(time1)
     hlcor$how$fnname <- "HLCor"
     hlcor$fit_time <- structure(hlcor$how$fit_time,

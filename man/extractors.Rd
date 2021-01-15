@@ -33,7 +33,7 @@ Functions to extract various components of a fit
 \description{
 \code{formula} extracts the model formula.
 \code{family} extracts the response family.
-\code{terms} extracts the \bold{fixed-effect} terms.
+\code{terms} extracts the formula, with attributes describing the \bold{fixed-effect} terms. 
 \code{nobs} returns the length of the response vector.
 \code{logLik} extracts the log-likelihood (exact or approximated).
 \code{dev_resids} returns a vector of squared (unscaled) deviance residuals (the summands in McCullagh and Nelder 1989, p. 34). 
@@ -57,6 +57,7 @@ Functions to extract various components of a fit
 \method{print}{ranef}(x, max.print = 40L, ...)
 \method{deviance}{HLfit}(object, ...)
 \method{residuals}{HLfit}(object, type = c("deviance", "pearson", "response"), ...)
+##
 getDistMat(object, scaled=FALSE, which = 1L)
 response(object,...)
 dev_resids(object,...)
@@ -72,7 +73,11 @@ dev_resids(object,...)
   \item{\dots}{Other arguments that may be needed by some method.}
 }
 \value{
-Return values are numeric (for \code{logLik}), vectors (most cases), matrices or dist objects (for \code{getDistMat}), or a family object (for \code{family}). \code{ranef} returns a list of vectors or matrices (the latter for random-coefficient terms). \code{terms} returns an object of class \code{c("terms", "formula")} which contains the \emph{terms} representation of a symbolic model.  See \code{\link[stats]{terms.object}} for its structure.
+\code{formula} returns a \code{formula}, except a list of them from \code{fitmv()} output.
+
+\code{terms} returns an object of class \code{c("terms", "formula")} which contains the \emph{terms} representation of a symbolic model.  See \code{\link[stats]{terms.object}} for its structure. \code{terms(<fitmv() result>)} returns a list of such terms.
+
+Other return values are numeric (for \code{logLik}), vectors (most cases), matrices or dist objects (for \code{getDistMat}), or a family object (for \code{family}). \code{ranef} returns a list of vectors or matrices (the latter for random-coefficient terms). 
 }
 \details{
 See \code{\link{residuals.glm}} for more information about the types of residuals.
@@ -80,7 +85,7 @@ See \code{\link{residuals.glm}} for more information about the types of residual
 With \code{which="LogL_Lap"}, \code{logLik()} returns a Laplace approximation of log-likelihood based on the observed Hessian, rather than the expected Hessian. This is implemented only for the case \code{family=Gamma(log)}, for demonstration purposes.
 }
 \seealso{
-See \code{\link{hatvalues}} to extract leverages, \code{\link{get_matrix}} to extract the model matrix and derived matrices, and \code{\link{vcov.HLfit}} to extract covariances matrices from a fit, \code{\link{get_RLRsim_args}} to extract arguments for (notably) tests of random effects in LMMs.
+See \code{\link{residVar}} to extract residual variances or information about residual variance models, \code{\link{hatvalues}} to extract leverages, \code{\link{get_matrix}} to extract the model matrix and derived matrices, and \code{\link{vcov.HLfit}} to extract covariances matrices from a fit, \code{\link{get_RLRsim_args}} to extract arguments for (notably) tests of random effects in LMMs.
 }
 \references{
 McCullagh, P. and Nelder J. A. (1989) Generalized linear models. Second ed. Chapman & Hall: London.

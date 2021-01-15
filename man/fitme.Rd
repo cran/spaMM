@@ -22,7 +22,7 @@ Either a linear model \code{\link{formula}} (as handled  by various fitting func
 A data frame containing the variables in the response and the model formula.
 }
   \item{family}{
-  Either a \code{\link{family}} or a \code{\link{multi}} value. 
+  Either a response \code{\link{family}} or a \code{\link{multi}} value. 
 }
   \item{init}{
 An optional list of initial values for correlation and/or dispersion parameters and/or response family parameters, e.g. 
@@ -47,13 +47,13 @@ An optional (sub)list of values of the parameters specified through \code{init},
   }   
 }
   \item{control.dist}{ See \code{control.dist} in \code{\link{HLCor}} }
-  \item{method, HLmethod}{Character: the fitting method to be used, such as \code{"ML"}, \code{"REML"} or \code{"PQL/L"}. \code{"ML"} is the default, in contrast to \code{"REML"} for the other fitting functions. Other possible values of \code{HLfit}'s \code{method} argument are handled.
+  \item{method, HLmethod}{Character: the fitting method to be used, such as \code{"ML"}, \code{"REML"} or \code{"PQL/L"}. \code{"ML"} is the default, in contrast to \code{"REML"} for \code{HLfit}, \code{HLCor} and \code{corrHLfit}. Other possible values of \code{HLfit}'s \code{method} argument are handled.
 }
   \item{nb_cores}{\bold{Not yet operative}, only for development purposes. Number of cores to use for parallel computations.}
   \item{processed}{ For programming purposes, not documented.}
   \item{objective}{ For development purpose, not documented.}
   \item{\dots}{
-Optional arguments passed to (or operating as if passed to) \code{\link{HLCor}}, \code{\link{HLfit}} or  \code{\link{mat_sqrt}}, for example  \code{control.HLfit} or the \code{distMatrix} argument of \code{HLCor} (so that estimation of Matern or Cauchy parameters can be combined with use of an ad hoc distance matrix). 
+Optional arguments passed to (or operating as if passed to) \code{\link{HLCor}}, \code{\link{HLfit}} or  \code{\link{mat_sqrt}}, for example \code{rand.family}, \code{control.HLfit} or the \code{distMatrix} argument of \code{HLCor} (so that estimation of Matern or Cauchy parameters can be combined with use of an ad hoc distance matrix). 
 % FIXME : ? :
 %Arguments that do not fit within these functions are detected and a warning is issued.
 }
@@ -72,8 +72,8 @@ The return value of an \code{HLCor} or an \code{HLfit} call, with additional att
 ## Examples with Matern correlations
 ## A likelihood ratio test based on the ML fits of a full and of a null model.
  data("blackcap")
- (fullfit <- fitme(migStatus ~ means+ Matern(1|latitude+longitude),data=blackcap) )
- (nullfit <- fitme(migStatus ~ 1 + Matern(1|latitude+longitude),data=blackcap)) 
+ (fullfit <- fitme(migStatus ~ means+ Matern(1|longitude+latitude),data=blackcap) )
+ (nullfit <- fitme(migStatus ~ 1 + Matern(1|longitude+latitude),data=blackcap)) 
  ## p-value:
  1-pchisq(2*(logLik(fullfit)-logLik(nullfit)),df=1)
 
@@ -99,11 +99,11 @@ fitme(y~1,data=gr,family=Gamma(log),,init=list(phi=1),
 #  particularly when there is little statistical information in the data:  
 if (spaMM.getOption("example_maxtime")>1.6) {
   data("blackcap")
-  fitme(migStatus ~ means+ Matern(1|latitude+longitude),data=blackcap) # poor
+  fitme(migStatus ~ means+ Matern(1|longitude+latitude),data=blackcap) # poor
   #  Compare with the following two ways of avoiding outer-optimization of lambda:
-  corrHLfit(migStatus ~ means+ Matern(1|latitude+longitude),data=blackcap,
+  corrHLfit(migStatus ~ means+ Matern(1|longitude+latitude),data=blackcap,
             method="ML")
-  fitme(migStatus ~ means+ Matern(1|latitude+longitude),data=blackcap, 
+  fitme(migStatus ~ means+ Matern(1|longitude+latitude),data=blackcap, 
         init=list(lambda=NaN))
 }
 

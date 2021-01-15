@@ -36,7 +36,9 @@ Lee et al. (2006) and Ha et al (2007) defined a corrected AIC [i.e., AIC(D*) in 
   \item{edf}{the degree of freedom of the fixed-effect terms of the model
     for the fitted model \code{fit}.}
 
-\item{AIC}{the (marginal) Akaike Information Criterion for \code{fit}.}
+  \item{AIC}{the (marginal) Akaike Information Criterion for \code{fit}.}
+
+This output aims to be equivalent (except for the explicit names) to the one from \code{stats::extractAIC}, despite the obscurities of the latter's documentation, and is indeed equivalent in value for GLMs (see Examples). 
 }
 \references{
 Cox, D. R. and Donnelly C. A. (2011) Principles of Applied Statistics. Cambridge Univ. Press.
@@ -52,5 +54,17 @@ data("wafers")
 m1 <- HLfit(y ~ X1+X2+(1|batch), resid.model = ~ 1, data=wafers, method="ML")
 get_any_IC(m1) 
 extractAIC(m1)
+
+\dontrun{
+# Checking consistency with glm example from help("stats::extractAIC"):
+utils::example(glm)
+dataf <- data.frame(counts=counts,outcome=outcome, treatment=treatment)
+extractAIC(glm.D93) 
+extractAIC(fitme(counts ~ outcome + treatment, family = poisson(), data=dataf))
+lm.D93 <- glm(counts ~ outcome + treatment)
+extractAIC(lm.D93)
+extractAIC(fitme(counts ~ outcome + treatment, data=dataf))
+}
+
 }
 \keyword{models}

@@ -1,6 +1,6 @@
 # processed$hyper_info <- .preprocess_hyper(.) provides a list used by .calc_inits() -> .calc_inits_hyper() and by .expand_hyper()
 # .calc_inits_hyper() fills init.optim$hyper <- structure(hyper,map=hyper_info$map,ranges=hyper_info$ranges), 
-#                           whic his a nested list of params with attr. The nested list  serves as a template for .makeLowerUpper.
+#                           which is a nested list of params with attr. The nested list  serves as a template for .makeLowerUpper.
 # expand_hyper() is used (notably) by HLCor.obj to fill $corrPars and $trLambda from [ranPars derived from ranefParsVec] and processed$hyper_info
 
 
@@ -203,7 +203,8 @@ IMRF <- function(...) {
 }
 
 .calc_AMatrix_IMRF <- function(term, # its attr(.,"pars") carries grid parameters
-                               data, dist.method, old_AMatrix_rd=NULL, 
+                               data, # only for .get_dist_nested_or_not() 
+                               dist.method, old_AMatrix_rd=NULL, 
                                scale) { ## scale is in steps units so does not depend on the step length in users' coordinates
   pars <- attr(attr(term,"type"),"pars")
   blob <- .get_dist_nested_or_not(term, data=data, distMatrix=NULL, uniqueGeo=NULL, 
@@ -215,11 +216,12 @@ IMRF <- function(...) {
     # Amatrix <- INLA:::inla.spde.make.A(spde_info$mesh, as.matrix(uniqueScal)) 
     if (inherits(spde_info,"inla.spde2")) {
       Amatrix <- NULL
-      if (identical(.spaMM.data$options$INLA_A,TRUE)) { # for debugging, use trace(INLA::inla.spde.make.A) to see the fmesher.args args contained in "mesh", etc.
+      if (identical(.spaMM.data$options$INLA_A,TRUE)) { # *TRIES* to use INLA. OK is INLA not available
         Amatrix <- .do_call_wrap("inla.spde.make.A", 
                                  arglist=list(mesh=spde_info$mesh, # or simply mesh=spde_info, as doc'ed
                                               loc=as.matrix(uniqueScal)), 
                                  pack="INLA")
+        # for debugging, use trace(INLA::inla.spde.make.A) to see the fmesher.args args contained in "mesh", etc.
       } # Amatrix still NULL if INLA not available.
       if (is.null(Amatrix)) {
         Amatrix <- .spaMM_spde.make.A(mesh=spde_info$mesh, # FIXME ? save the matrix precomputations from .locate_in_tv() ?
@@ -285,7 +287,7 @@ IMRF <- function(...) {
   }
 }
 
-.get_new_AMatrices <- function(object, new_mf_ranef) {
+.get_new_AMatrices <- function(object, new_mf_ranef) { # __F I X M E__ rename 'new_mf_ranef' arg as 'data' when sure about v3.5.121 changes in calling code
   amatrices <- attr(object$ZAlist,"AMatrices")
   exp_spatial_terms <- attr(object$ZAlist,"exp_spatial_terms")
   isIMRF <- (attr(exp_spatial_terms,"type") == "IMRF")
@@ -383,8 +385,9 @@ IMRF <- function(...) {
     # 'init.optim' must still have expanded values for use in remove_from_parlist
     init.optim <- remove_from_parlist(init.optim, inits$ranFix) # removes fixed 'hyper', for example
     # if hyper still there, we add attributes (which would have been lost by remove_from_parlist())
-    if ( ! is.null(init.optim$hyper)) init.optim$hyper <- structure(init.optim$hyper,
-                                                                    map=hyper_info$map,ranges=hyper_info$ranges )
+    if ( ! is.null(init.optim$hyper)) init.optim$hyper <- 
+      structure(init.optim$hyper,
+                hy_info=hyper_info) # hy_info: *environment*: for .makeLowerUpper, with distinct name for easier tracking 
     # Now it is important to remove NA's from expanded values:
     init.optim$lambda <- init.optim$lambda[!is.na(init.optim$lambda)]
     inits[["init.optim"]] <- init.optim
@@ -395,9 +398,37 @@ IMRF <- function(...) {
   return(inits)
 }
 
+.calc_summingMat_hyper <- function(nrand, hyper_map, ranges) {
+  blocs <- list()
+  rd <- blocit <- 1L
+  # Matrix::bdiag ignores names
+  rowN <- colN <- list()
+  while (rd < nrand+1L) {
+    if (is.na(hyper_it <- hyper_map[rd])) {
+      char_rd <- as.character(rd)
+      blocs[[blocit]] <- 1
+      rowN[[blocit]] <- colN[[blocit]] <- char_rd 
+      rd <- rd+1L
+    } else {
+      bllen <- length(ranges[[hyper_it]])
+      blocs[[blocit]] <- rep(1,bllen)
+      seq_rd <- rd-1L + seq(bllen)
+      rowN[[blocit]] <- paste(seq_rd)
+      colN[[blocit]] <- paste0(seq_rd[1L],":",seq_rd[bllen]) 
+      rd <- rd+bllen
+    }
+    blocit <- blocit+1L
+  }
+  summingMat <- as.matrix(Matrix::bdiag(blocs))
+  rownames(summingMat) <- unlist(rowN)
+  colnames(summingMat) <- unlist(colN)
+  summingMat
+}
+
+
 .preprocess_hyper <- function(processed) { ## needs $predictor, $ZAlist
-  level_info <- attr(processed$predictor,"hyper_info")$levels ## a vector of number of levels, provided by .expand_multiMRFs()
-  hy_levels <- na.omit(level_info) 
+  level_info <- attr(processed$predictor,"hyper_info")$levels
+  hy_levels <- na.omit(level_info)   ## level_info is a vector of number of levels, provided by .expand_multiMRFs()
   NA_pos <- attr(hy_levels,"na.action") # position of non-multIMRF IMRFs
   if (len <- length(hy_levels)) { # if multIMRF's...
     template <- ranges <- structure(vector("list",len),names=paste(seq(len))) # could we use ranges as template ?
@@ -408,37 +439,16 @@ IMRF <- function(...) {
     which_IMRF <- which(attr(processed$ZAlist,"exp_ranef_types") =="IMRF")
     hy_pos <- seq_along(level_info)
     if ( ! is.null(NA_pos)) hy_pos <- hy_pos[- NA_pos]
-    for (it in seq_along(hy_pos)) { 
+    for (it in seq_along(hy_pos)) { # the names of the 'ranges' list do NOT refer to ranefs. They are just 1,2... whatever the affected ranefs
       hy_it <- hy_pos[it]
       rd_range <- which_IMRF[(IMRF_ranges[hy_it]+1L):(IMRF_ranges[hy_it+1L])]
       hyper_map[rd_range] <- it 
-      ranges[[as.character(it)]] <- rd_range ## inverse map
+      ranges[[as.character(it)]] <- rd_range ## inverse map ; ranges not an ideal name
     }
     names(hyper_map) <- paste(seq_len(length(hyper_map)))
-    blocs <- list()
-    rd <- blocit <- 1L
-    # Matrix::bdiag ignores names
-    rowN <- colN <- list()
-    while (rd < nrand+1L) {
-      if (is.na(hyper_it <- hyper_map[rd])) {
-        char_rd <- as.character(rd)
-        blocs[[blocit]] <- 1
-        rowN[[blocit]] <- colN[[blocit]] <- char_rd 
-        rd <- rd+1L
-      } else {
-        bllen <- length(ranges[[hyper_it]])
-        blocs[[blocit]] <- rep(1,bllen)
-        seq_rd <- rd-1L + seq(bllen)
-        rowN[[blocit]] <- paste(seq_rd)
-        colN[[blocit]] <- paste0(seq_rd[1L],":",seq_rd[bllen]) 
-        rd <- rd+bllen
-      }
-      blocit <- blocit+1L
-    }
-    summingMat <- as.matrix(Matrix::bdiag(blocs))
-    rownames(summingMat) <- unlist(rowN)
-    colnames(summingMat) <- unlist(colN)
-    return(list(map=hyper_map,ranges=ranges, template= template, summingMat=summingMat) )
+    summingMat <- .calc_summingMat_hyper(nrand, hyper_map, ranges)
+    return(list2env(list(map=hyper_map,ranges=ranges, template= template, summingMat=summingMat),
+                    parent=emptyenv()) )
   }
 }
 
@@ -448,7 +458,7 @@ IMRF <- function(...) {
     ranges <- hyper_info$ranges ## e.g list("1"=1:3)
     trLam <- hyper_info$map # template
     trLam[] <- NA
-    trLam[seq_along(ranPars$trLambda)] <- ranPars$trLambda ## initialization with value for other ranefs
+    trLam[names(ranPars$trLambda)] <- ranPars$trLambda ## initialization with value for other ranefs
     ## ranPars$trLambda typically NULL from user input (in $lambda), but no longer so after ranPars_in_refit <- ... 
     ## FIXME ideally ranPars$trLambda has char_rd names... but I'm not sure it's always the case.
     for (rg_it in seq_along(ranges)) { # then: 1

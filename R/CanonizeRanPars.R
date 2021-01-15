@@ -51,8 +51,19 @@
     attr(ranPars,"type")$trLambda <- NULL
   } ## else ranPars$lambda unchanged  
   if ( ! is.null(trRanCoefs <- ranPars$trRanCoefs)) {
+    constraints <- ranPars$ranCoefs # hack that uses the presence of the constraint there, jointly with $trRanCoefs =>
+    # This and similar operation in .get_refit_args() are the core implementation of partially-fixed ranCoefs, as a trivial projection of ranCoefs into a subspace
+    # This bears the cost of optimizing in more dimensions (of trRancoefs) than there are independent parameters,
+    # But is simple, in particular as there is no simple way of expressing the constraint in transformed space.
     ranPars$ranCoefs <- trRanCoefs ## copies the non-trivial names
-    for (rd in seq_along(trRanCoefs)) ranPars$ranCoefs[[rd]] <- .ranCoefsInv(trRanCoefs[[rd]], rC_transf=rC_transf)
+    for (char_rd in names(trRanCoefs)) {
+      ranCoef <- .ranCoefsInv(trRanCoefs[[char_rd]], rC_transf=rC_transf)
+      if ( ! is.null(constraint <- constraints[[char_rd]])) {
+        ranCoef[ ! is.na(constraint)] <- constraint[ ! is.na(constraint)]
+        attr(ranCoef,"transf") <- NULL
+      }
+      ranPars$ranCoefs[[char_rd]] <- ranCoef
+    }
     ranPars$trRanCoefs <- NULL
   }
   if ( ! is.null(ranPars$trNB_shape)) {

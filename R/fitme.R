@@ -1,27 +1,30 @@
-.check_args_fitme <- function(...,HLmethod, ranPars=NULL,ranFix=NULL, fixed=list(),lower=list(),upper=list()) {
+.check_args_fitme <- function(...,HLmethod, ranPars=NULL,ranFix=NULL, fixed=list(), init=list(), lower=list(),upper=list(), what_checked="fitme() call") {
   mc <- match.call(expand.dots = TRUE)
   if ( missing(HLmethod)) {
     mc$HLmethod <- mc$method
-  } else message("'HLmethod' argument for fitme() may become obsolete: use 'method' instead. ")  
+  } else message(paste0("'HLmethod' argument in ",what_checked," may become obsolete: use 'method' instead. "))  
   if (is.null(fixed)) mc$fixed <- list() ## deep reason is that relist(., fixed) will need a list ## fitme-specific
   ## Preventing confusions
   if (!is.null(mc$ranPars)) {
-    stop("incorrect 'ranPars' argument in fitme() call. Use 'fixed' (ranPars is for HLCor() only)")
+    stop(paste0("incorrect 'ranPars' argument in ",what_checked,". Use 'fixed' (ranPars is for HLCor() only)"))
   }
   if (!is.null(mc$ranFix)) {
-    stop("incorrect 'ranFix' argument in fitme() call. Use 'fixed' (ranFix is for HLfit() and corrHLfit() only)")
+    stop(paste0("incorrect 'ranFix' argument in ",what_checked,". Use 'fixed' (ranFix is for HLfit() and corrHLfit() only)"))
   }
   if ( ! (is.list(lower) && is.list(upper))) {
     wrongclass <- setdiff(unique(c(class(lower),class(upper))),"list")
     stop(paste("'lower' and 'upper' must be of class list, not",paste(wrongclass,collapse=" or ")))
-  } ## as.list() would flatten rho vectors
+    ## as.list() would flatten rho vectors
+  } # else if ((length(lower$phi) || length(upper$phi)) && ! length(init$phi)) {
+  #   warning("'lower' or 'upper' specifications without matching 'init' have no effect",immediate. = TRUE)
+  # }
   #
   HLnames <- (c(names(formals(HLCor)),names(formals(HLfit)),
                 names(formals(mat_sqrt)),names(formals(make_scaled_dist))))  
-  dotnames <- setdiff(names(mc)[-1],names(formals(fitme)))
+  dotnames <- setdiff(names(mc)[-1],c(names(formals(fitme)),"what_checked"))
   argcheck <- setdiff(dotnames,HLnames)
   if (length(argcheck)) {
-    warning(paste("suspect argument(s) ",paste(argcheck, collapse=",")," in fitme call."))
+    warning(paste0("suspect argument(s) '",paste(argcheck, sep="'", collapse=","),"' in ",what_checked,"."))
     if ("offset" %in% argcheck) {
       stop("the offset should be a formula term, not a distinct argument.")
     }
@@ -44,6 +47,7 @@
                              processed=NULL, 
                              nb_cores = NULL, # to be used by SEM...
                              objective=NULL,
+                             For="fitme", # alternative is "fitmv"
                              ... 
 ) {
   # Here if e.g. 'data' is a promise, str(data) is OK but eval(mc$data) fails. We can manipulate mc elements 
@@ -53,7 +57,7 @@
   mc <- match.call(expand.dots = TRUE)
   if (is.null(processed)) {
     family <- .checkRespFam(family) ## beware negbin not shadowed by mgcv::negbin()
-    preprocess_args <- .get_inits_preprocess_args(For="fitme")
+    preprocess_args <- .get_inits_preprocess_args(For=For)
     names_nondefault  <- intersect(names(mc),names(preprocess_args)) ## mc including dotlist
     preprocess_args[names_nondefault] <- mc[names_nondefault] 
     preprocess_args$family <- family ## checked version of 'family'
@@ -100,7 +104,7 @@ fitme <- function(formula,data, ## matches minimal call of HLfit
                   processed=NULL, 
                   nb_cores = NULL, # to be used by SEM...
                   objective=NULL,
-                  ... 
+                  ... # control.HLfit passed through the dots to .preprocess_fitme() -> .preprocess()
 ) {
   assign("spaMM_glm_conv_crit",list(max=-Inf) , envir=environment(spaMM_glm.fit))
   time1 <- Sys.time()
@@ -125,11 +129,15 @@ fitme <- function(formula,data, ## matches minimal call of HLfit
   }
 #  attr(hlcor,"HLCorcall") <- NULL # presumably no more needed
   lsv <- c("lsv",ls())
-  if ( ! .is.multi(family) && ! is.call(hlcor) ) {
-    hlcor$how$fit_time <- .timerraw(time1)
-    hlcor$how$fnname <- "fitme"
-    hlcor$fit_time <- structure(hlcor$how$fit_time,
-                                message="Please use how(<fit object>)[['fit_time']] to extract this information cleanly.")
+  if ( ! is.call(hlcor) ) {
+    if ( inherits(hlcor,"HLfitlist") ) {
+      attr(hlcor,"how") <- list(fit_time=.timerraw(time1),fnname="fitme", spaMM.version=hlcor[[1L]]$how$spaMM.version)
+    } else {
+      hlcor$how$fit_time <- .timerraw(time1)
+      hlcor$how$fnname <- "fitme"
+      hlcor$fit_time <- structure(hlcor$how$fit_time,
+                                  message="Please use how(<fit object>)[['fit_time']] to extract this information cleanly.")
+    }
   }
   rm(list=setdiff(lsv,"hlcor")) ## empties the whole local envir except the return value
   return(hlcor)

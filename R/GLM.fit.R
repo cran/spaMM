@@ -103,7 +103,7 @@ spaMM_glm.fit <- local({
     validmu <- family$validmu
     # Check whether beta will be constrained by the need for postive eta
     beta_bounded <- ( ( ! valideta(-1e-8) )|| # test not sufficient! next test needed for Gamma(inverse of identity)
-                      ( ! validmu(linkinv(-1e-8)) ))
+                        ( ! validmu(linkinv(-1e-8)) ))
     #
     # delayedAssign("positive_eta", {
     #   pos_eta <- (family$family=="Gamma" && family$link %in% c("identity","inverse"))
@@ -450,11 +450,11 @@ spaMM_glm.fit <- local({
 })
 
 spaMM_glm <- function(formula, family = gaussian, data, weights, subset,
-                na.action, start = NULL, etastart, mustart, offset,
-                control = list(...), model = TRUE, method = c("glm.fit","spaMM_glm.fit"),
-                ## new 'method's such as spaMM_glm.fit must have the same arguments as R's default method.  
-                #  When the latter are changed the new method fails. Cf introduction of singular.ok in R-devel, Sept. 2017  
-                x = FALSE, y = TRUE, singular.ok = TRUE, contrasts = NULL, strict=FALSE,...) {
+                      na.action, start = NULL, etastart, mustart, offset,
+                      control = list(...), model = TRUE, method = c("glm.fit","spaMM_glm.fit"),
+                      ## new 'method's such as spaMM_glm.fit must have the same arguments as R's default method.  
+                      #  When the latter are changed the new method fails. Cf introduction of singular.ok in R-devel, Sept. 2017  
+                      x = FALSE, y = TRUE, singular.ok = TRUE, contrasts = NULL, strict=FALSE,...) {
   mc <- match.call(expand.dots=TRUE)
   mc$strict <- NULL
   ## This code should not interfere with processed$family with possibly assigned param

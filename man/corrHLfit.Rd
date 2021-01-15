@@ -81,9 +81,9 @@ if (spaMM.getOption("example_maxtime")>0.7) {
 ## A likelihood ratio test based on the ML fits of a full and of a null model.
 if (spaMM.getOption("example_maxtime")>1.4) {
  data("blackcap")
- (fullfit <- corrHLfit(migStatus ~ means+ Matern(1|latitude+longitude),data=blackcap,
+ (fullfit <- corrHLfit(migStatus ~ means+ Matern(1|longitude+latitude),data=blackcap,
                     method="ML") )
- (nullfit <- corrHLfit(migStatus ~ 1 + Matern(1|latitude+longitude),data=blackcap,
+ (nullfit <- corrHLfit(migStatus ~ 1 + Matern(1|longitude+latitude),data=blackcap,
                     method="ML",init.corrHLfit=list(phi=1e-6))) 
  ## p-value:
  1-pchisq(2*(logLik(fullfit)-logLik(nullfit)),df=1)

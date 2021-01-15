@@ -41,13 +41,13 @@ A list with elements
 \examples{
 \dontrun{
 data("blackcap")
-(corrhlfit <- corrHLfit(migStatus ~ means+ Matern(1|latitude+longitude),data=blackcap,
+(corrhlfit <- corrHLfit(migStatus ~ means+ Matern(1|longitude+latitude),data=blackcap,
                         method="ML")) 
 inits <- get_inits_from_fit(corrhlfit, to_fn = "fitme")                    
-(fitfit <- fitme(migStatus ~ means+ Matern(1|latitude+longitude),data=blackcap, 
+(fitfit <- fitme(migStatus ~ means+ Matern(1|longitude+latitude),data=blackcap, 
                   init=inits$init)) 
 inits <- get_inits_from_fit(corrhlfit, template = fitfit)                    
-fitme(migStatus ~ means+ Matern(1|latitude+longitude),data=blackcap, 
+fitme(migStatus ~ means+ Matern(1|longitude+latitude),data=blackcap, 
       init=inits$init)
 # In these examples, inits$init.HLfit is useless 
 # as it is ignored when LMMs are fitted by fitme().

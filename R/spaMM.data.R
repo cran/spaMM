@@ -6,7 +6,7 @@
   TRY_update=TRUE, # measurable benefits only if Cholesky(., perm=TRUE)
   perm_G=TRUE, 
   perm_Q=NULL, 
-  TRY_ZAX=NULL, # default may be TRUE for augZxy_cond=TRUE
+  use_ZA_L=TRUE, # NULL may act as TRUE when augZxy_cond=TRUE
   sparsity_threshold=0.05,
   spprec_threshold=60, # ohio small by correlation algo, large by spprec: threshold is n>=140 has crit 'near' 62 (varying betw replicates).  
   separation_max=10,
@@ -67,7 +67,8 @@
                        lo_lam=1e-6,up_lam=1e6,corr=1e-12,tol=1e-5 # in "sph" case ## corr must be < 1 ! 
                        ,regul=1e-09
                        ), # controls .makeCovEst1() bounds (and .calc_latentL(.)$lambda_est)
-  tol_ranCoefs_outer=c(inner=FALSE,lo_lam=1e-4,up_lam=1e5,corr=1e-4,regul=1e-08), ## corr must be < 1 ! # controls fitme() bounds in "sph" case
+  tol_ranCoefs_outer=c(inner=FALSE,lo_lam=1e-4,up_lam=1e5,corr=1e-4, # controls fitme() bounds in "sph" case, not in default rc_transf="chol"; corr must be < 1 ! 
+                       regul=1e-08), ## regul used also for chol. 
   max_bound_ranCoefs=1, # adjustment in transformed coordinates; 1 means no adjustment# previously 0.99999, affects HLfit(Reaction ~ Days + (Days|Subject), data = sleepstudy)
   regul_ranCoefs=c(10*.Machine$double.eps), ## used to avoid zero eigenvalue after correction in .smooth_regul()
                    #,covregulcor=0L), # OL inhibits correction by .CovRegulCor(); otherwise covregulcor give the correction in that fn) )

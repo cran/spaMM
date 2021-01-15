@@ -63,9 +63,9 @@
   dlogL <- qchisq(level,df=1)/2
   znorm <- qnorm((1+level)/2)
   if (is.character(parm)) {
-    whichcol <- which(names(object$fixef)==parm)
-    if (length(whichcol)==0L) stop("Parameter not in the model")
-    attr(parm,"col") <- whichcol 
+    parmcol <- which(names(object$fixef)==parm)
+    if (length(parmcol)==0L) stop("Parameter not in the model")
+    attr(parm,"col") <- parmcol 
   } else {
     parmcol <- parm
     if (parm > length(object$fixef)) stop("'parm' not compatible with # of fixed-effects coefficients")
@@ -79,11 +79,14 @@
                "fitme" = get_HLCorcall(object,fixed=llc$fixed), # HLfit or HLCor call
                "HLCor" = get_HLCorcall(object,fixed=llc$ranPars),
                "HLfit" = get_HLCorcall(object,fixed=llc$ranFix),
+               "fitmv" = get_HLCorcall(object,fixed=llc$fixed), 
                stop("Unhandled getCall(object) in confint.HLfit()")
-  ) # uniformly calls get_HLCorcall() -> .preprocess() so that $processed is always available 
+  ) # uniformly calls get_HLCorcall() -> .preprocess() so that $processed is always available, 
+    # .makeLowerUpper() is called. THe optimInfo$LUarglist is used only later 
+    # For fitmv, .makeLowerUpper() is called several times.
   HL <- object$HL
-  lik <- switch(paste(HL[1L]),
-                "0"="hlik",
+  fixeflik <- switch(paste(HL[1L]),
+                "0"=if (object$models[["eta"]]=="etaGLM") "p_v" else "hlik", # if the user fitted a GLM by PQL/L there is no hlik 
                 "1"="p_v",
                 stop(paste("confint does not yet handle HLmethod",paste(HL,collapse=" "),
                            "(or ",c(llc$method,llc$HLmethod),").",sep=" ")))
@@ -94,9 +97,18 @@
   X_is_scaled <- ( ! is.null(attr(X.pv,"scaled:scale")))
   #
   # FIXME test processed nature to prevent multinom stuff here
-  intervalinfo <- list(fitlik=object$APHLs[[lik]],
-                       targetlik=object$APHLs[[lik]]-dlogL,
+  warnlik <- "p_v" # bc calling on an REML fit is poor anyway.
+  likfns <- unique(c(fixeflik,warnlik))
+  fixeflik <- unlist(object$APHLs[fixeflik]) # named
+  warnlik <- unlist(object$APHLs[warnlik])
+  intervalinfo <- list(fixeflik=fixeflik,
+                       warnlik=warnlik, 
+                       likfns=likfns,
+                       targetlik=fixeflik-dlogL,
                        parm=parm, # name, vs $MLparm: ML value
+                       parmcol_X=parmcol,
+                       parmcol_ZX=length(object$lambda.object$lambda_est)+parmcol, 
+                       no_phi_pred= ! ("phiHGLM" %in% object$models[["phi"]]), # %in% for mv
                        asympto_abs_Dparm=asympto_abs_Dparm)
   oldopt <- .options.processed(lc$processed, intervalInfo=intervalinfo, augZXy_cond=FALSE)
   if (X_is_scaled) {
@@ -144,6 +156,10 @@
       }
     }
     rC_transf <- .spaMM.data$options$rC_transf
+    LUarglist$canon.init <- .canonizeRanPars(ranPars=trTemplate,
+                                             corr_info=.get_from_ranef_info(object), 
+                                             checkComplete=FALSE, rC_transf=rC_transf)
+    LowUp <- do.call(.makeLowerUpper,LUarglist)
     optim_bound_over_nuisance_pars <- function(posforminimiz) { ## optimize the CI bound and returns the parameters that optimize this bound
       user_init_optim <- switch(paste(llc[[1L]]),
                                 "corrHLfit" = llc[["init.corrHLfit"]],
@@ -174,13 +190,6 @@
       #  with high enough lik. In that case the returned value of the focal parameter is the ML estimate and the interval reduces to the ML estimate.
       return(optr) ## the bound, relist()'ed according to trTemplate
     }
-    # corr_types <- LUarglist$corr_types
-    # corr_families <- vector('list',length(corr_types))
-    # for (rd in which( ! is.na(corr_types))) corr_families[[rd]] <- do.call(corr_types[rd],list())
-    LUarglist$canon.init <- .canonizeRanPars(ranPars=trTemplate,
-                                             corr_info=.get_from_ranef_info(object), 
-                                             checkComplete=FALSE, rC_transf=rC_transf)
-    LowUp <- do.call(.makeLowerUpper,LUarglist)
   }
   ## lowerfit
   fac <- 1L 
@@ -249,12 +258,19 @@
       fac <- 2L*fac
     }
   }
+  if (verbose && prevmsglength) cat("\n")
   options(warnori)
   .options.processed(lc$processed, oldopt)
   interval <- c(lowerfit$fixef[parm],upperfit$fixef[parm])
   names(interval) <- paste(c("lower","upper"),parm)
   if (verbose) print(interval)
-  return(list(lowerfit=lowerfit,upperfit=upperfit,interval=interval))
+  resu <- list(lowerfit=lowerfit,upperfit=upperfit,interval=interval)
+  if (! is.null(resu$confint_best_fit <- lc$processed$envir$confint_best)) {
+    locmess <- paste("Element 'confint_best_fit' of the return object contain information about a possible better fit to the data",
+                     "\nYou can for example refit the model using the parameter values shown in that element as initial values.")
+    message(locmess)
+  }
+  return(resu)
 }
 
 

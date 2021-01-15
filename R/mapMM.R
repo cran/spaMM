@@ -398,8 +398,8 @@ mapMM <- function (fitobject,Ztransf=NULL,coordinates,
   if (is.null(plot.axes)) {
     if (axes) {
       plot.axes <- quote({title(main = "", xlab = "", ylab = "")
-                         Axis(x, side = 1)
-                         Axis(y, side = 2)})
+        Axis(x, side = 1)
+        Axis(y, side = 2)})
     } else plot.axes <- quote(NULL)
   } 
   xGrid <- seq(xrange[1], xrange[2], length.out = gridSteps)
@@ -445,4 +445,89 @@ mapMM <- function (fitobject,Ztransf=NULL,coordinates,
     eval(add.map)
   }, plot.title=eval(plot.title),map.asp = map.asp, ...)
   invisible(smoothObject)
+}
+
+map_ranef <- function(fitobject, re.form, Ztransf=NULL, xrange = NULL, yrange = NULL, 
+                      margin = 1/20, gridSteps = 41, 
+                      decorations = quote(points(fitobject$data[, coordinates], cex = 1, lwd = 2)), 
+                      add.map = FALSE, axes = TRUE, plot.title=NULL, plot.axes=NULL, map.asp = NULL,
+                      ...) 
+{
+  corr_types <- .get_from_ranef_info(fitobject)$corr_types
+  spatialone <- which(corr_types %in% c("Matern","Cauchy", "IMRF"))
+  if (length(spatialone)>1L && missing(re.form)) {
+    stop("Model includes >1 spatial random effect.\n Please specify one through 're.form'.")
+  } else re.form <- as.formula(paste(". ~", attr(fitobject$ZAlist,"exp_ranef_strings")[[spatialone]])) 
+  #
+  info_olduniqueGeo <- attr(fitobject,"info.uniqueGeo")
+  coordinates <- colnames(info_olduniqueGeo[[as.character(spatialone)]]) # code OK for version > 2.3.18.
+  if (length(coordinates) != 2L) {
+    stop(paste("'map' plots only 2D maps, while coordinates are of length ", 
+               length(coordinates), sep = ""))
+  }
+  olddata <- fitobject$data
+  x <- olddata[, coordinates[1]]
+  y <- olddata[, coordinates[2]]
+  if (is.null(xrange)) {
+    xrange <- range(x)
+    margex <- (xrange[2] - xrange[1]) * margin
+    xrange <- xrange + margex * c(-1, 1)
+  }
+  if (is.null(yrange)) {
+    yrange <- range(y)
+    margey <- (yrange[2] - yrange[1]) * margin
+    yrange <- yrange + margey * c(-1, 1)
+  }
+  if (is.null(plot.axes)) {
+    if (axes) {
+      plot.axes <- quote({title(main = "", xlab = "", ylab = "")
+        Axis(x, side = 1)
+        Axis(y, side = 2)})
+    } else plot.axes <- quote(NULL)
+  } 
+  xGrid <- seq(xrange[1], xrange[2], length.out = gridSteps)
+  yGrid <- seq(yrange[1], yrange[2], length.out = gridSteps)
+  newdata <- expand.grid(xGrid, yGrid)
+  colnames(newdata) <- coordinates
+  rownames(newdata) <- NULL
+  template <- olddata[1,setdiff(colnames(olddata),coordinates),drop=FALSE] 
+  newdata <- cbind(template[rep(1,nrow(newdata)),],newdata) # all coord or levels of 'other' ranefs are fixed over newdata
+  pred_noranef <- predict(fitobject, newdata = newdata, re.form=NA, type="link") 
+  pred_oneranef <- predict(fitobject, newdata = newdata, re.form=re.form, type="link")
+  if ( ! is.null(allvarsS <- attr(attr(pred_oneranef,"frame"),"allvarsS"))) { # mv case, detected by presence of this attr that we need here.
+    cum_nobs <- cumsum(c(0L, sapply(attr(pred_oneranef,"frame"), nrow)))
+    submod_it <- which(sapply(allvarsS, length)>0)[1] # finds (first) submodel that had the spatial ranef
+    pred_noranef <- pred_noranef[.subrange(cum_nobs, submod_it)]
+    pred_oneranef <- pred_oneranef[.subrange(cum_nobs, submod_it)]
+  }
+  gridpred <- pred_oneranef-pred_noranef 
+  if (is.logical(add.map)) {
+    if (add.map) {
+      if (requireNamespace("maps",quietly=TRUE)) {
+        add.map <- quote(maps::map(, xlim = xrange, ylim = yrange, 
+                                   add = TRUE))
+      }
+      else {
+        message("Package 'maps' not available, 'add.map' is ignored.")
+        add.map <- quote(NULL)
+      }
+    }
+    else add.map <- quote(NULL)
+  }
+  else add.map <- quote(add.map)
+  Zvalues <- matrix(gridpred, ncol = gridSteps)
+  if ( ! is.null(Ztransf)) {
+    Zvalues <- do.call(Ztransf,list(Z=Zvalues))
+    if (any(is.nan(Zvalues))) stop("NaN in Ztransf'ormed values: see Details of 'filled.mapMM' documentation.")
+    if (any(is.infinite(Zvalues))) stop("+/-Inf in Ztransf'ormed values.")
+  } 
+  spaMM.filled.contour(x = xGrid, y = yGrid, z = Zvalues, margin=margin, plot.axes = {
+    eval(plot.axes) ## eval in the parent envir= that of filled.mapMM; 
+    ## allows ref to internal var of filled.mapMM in the call of filled.mapMM... see ?filled.mapMM 
+    ## plot.new() will be evaluated before these promises are evaluated
+    ## does not work if plot.new() is called one level further in a call stack...
+    eval(decorations) ## evalbc it uses a local variable 'pred'
+    eval(add.map)
+  }, plot.title=eval(plot.title),map.asp = map.asp, ...)
+  invisible(cbind(newdata[,coordinates], z=gridpred))
 }

@@ -20,7 +20,7 @@
     abline(0,1)
   }
   if ("ranef" %in% which) {
-    if (x$family$family %in% c("poisson","binomial","COMPoisson","negbin")) {
+    if (x$family$family %in% c("poisson","binomial","COMPoisson","negbin")) { ## ___FIXME___ how to plot ?
       lev_phi <- NULL # i.e. no plot for them
     } else lev_phi <- hatvalues(x, type="std", which="resid")
     lev_lambda <- hatvalues(x, type="std", which="ranef")

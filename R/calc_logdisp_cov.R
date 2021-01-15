@@ -1,15 +1,14 @@
+# evaluate tr(A %*% B)= sum(A*B) where A and B are large matrices but each of the form l %*% r for 'narrow' l
+# this function avoids the formation of the large 'n x n' matrices, using a form of commutation of trace arguments.
+# However the computation of 'r x r' matrix by the crossproducts may still be quite long
+# e.g. 792*62388 matrices => (792^2)*62388 = 39 133 746 432 flop'product' and quite a few 'sum'
+# That's something that 'should' be easy to paralellise
 .traceAB <- function(lA,rA,lB,rB, B_is_tA=FALSE) {
   if (nrow(lA)>ncol(lA)) { # lA is typically nXr so this occurs when more obs than ranef levels
     if (B_is_tA) {
       rr <- rA %*% lA # not A= lA %*% rA
-      return(sum(t(rr)*rr))
-    } else {
-      # evaluate tr(A %*% B)= sum(A*B) where A and B are large matrices but each of the form l %*% r for 'narrow' l
-      # this function avoids the formation of the large 'n x n' matrices, using a form of commutation of trace arguments.
-      # However the computation of 'r x r' matrix by the crossproducts may still be quite long
-      # e.g. 792*62388 matrices => (792^2)*62388 = 39 133 746 432 flop'product' and quite a few 'sum'
-      # FIXME that's something that 'should' be easy to paralellise
-      # This code can handle the case lB=NULL && rB=NULL meaning that B=A:
+      return(sum(t(rr)*rr)) ## not sum(rr^2) which is the result when B=A (as used below)
+    } else { # more subtly handling the case of NULL B than in  'more ranefs' case (the crossprds are trivial)
       ll <- .crossprod(lA, lB)
       rr <- .tcrossprod(rA, rB) ## slower if *both* matrices have sparse storage though being dense
       return(sum(ll*rr))
@@ -17,7 +16,7 @@
   } else {
     A <- lA %*% rA
     if (B_is_tA) {
-      return(sum(A*t(A)))
+      return(sum(A*t(A))) 
     } else if (is.null(lB) && is.null(rB)) {  # meaning that B=A
       return(sum(A^2)) # sum(diag(tcrossprod(A)))
     } else {
@@ -108,7 +107,7 @@
       # For adjacency case, sparse_precision  forces outer optim of rho and thus we end here too
       ZAL_to_ZALd_vec[u.range] <- 1
       coeff <- lambda.object$coefficients_lambdaS[[randit]] ## corrHLfit or fitme with control$refit=TRUE
-      if (is.null(coeff)) {
+      if (is.null(coeff) || is.na(coeff)) { # NA appeared in mv code...
         lambda_list[[randit]] <- lambda.object$lambda_list[[randit]] ## basic fitme (may numerically differ)
       } else lambda_list[[randit]] <- exp(coeff)
     }
@@ -153,7 +152,7 @@
   template[urange] <- 1L
   if (invV.dV_info$type=="|L") { # only spprec
     latent_d_list <- invV.dV_info$envir$sXaug$AUGI0_ZX$envir$latent_d_list
-    chol_Q_w <- .Matrix_times_Dvec(t(invV.dV_info$envir$chol_Q),1/sqrt(unlist(latent_d_list)))
+    chol_Q_w <- .Matrix_times_Dvec(t(invV.dV_info$envir$chol_Q),1/sqrt(.unlist(latent_d_list)))
     # ZAL_to_ZALd_vec is a correction for adjacency not for ranCoefs
     tcrossfac <- solve(chol_Q_w, Diagonal(x=invV.dV_info$ZAL_to_ZALd_vec * template)) # Ld
     lhs <- .tcrossprod(tcrossfac) # LddL'
@@ -216,7 +215,7 @@
       }
     }
   }
-  sub_lambda_vec <- unlist(lambda_list[which]) 
+  sub_lambda_vec <- .unlist(lambda_list[which]) 
   loglamInfo <- loglamInfo * (sub_lambda_vec %*% t(sub_lambda_vec))
   return(list(loglamInfo=loglamInfo,rhs_invV.dVdlam_list=rhs_invV.dVdlam_list))
 }
@@ -232,7 +231,7 @@
                     "  The prediction variance may be inaccurate."))
     }
   } else { # solve() failed
-    lambdas <- VarCorr(object)[,"Variance"]
+    lambdas <- VarCorr(object, add_residVars=FALSE)[,"Variance"]
     if (any(lambdas<1e-6)) { ## may not be appropriate for all models (cf non-gaussian ranefs?)
       # we could message() that a ranef has low variance, but why do that here?
       # .force_solve will use regularization
@@ -262,216 +261,7 @@
   checklambda <- ( ! (lambda.object$type %in% c("fixed","fix_ranCoefs","fix_hyper"))) 
   if (any(checklambda)) {
     corr.models <- lapply(strucList,attr,which="corr.model") ## not unlist bc it may contain NULLs
-    checkadj <- unlist(lapply(corr.models,identical,y="adjacency"))
-    if(any(checkadj)) {
-      ## several blocks of code are "maintained" below for a future dispVar computation for rho
-      # il me manque dwdrho (et meme dwdloglam pour ce modele ?) donc on inactive les lignes suivantes:
-      #       if (is.null(lambda.object$lambda.fix)) dispnames <- c(dispnames,"loglambda")
-      #       corrFixNames <- names(unlist(object$corrPars[which(attr(corrPars,"type")=="fix")]))
-      #       if (! ("rho" %in% corrFixNames) ) dispnames <- c(dispnames,"rho")
-    }
-    
-    if (is.null(dvdloglamMat)) {
-      ## note that .get_logdispObject is computed on request by .get_logdispObject()
-      problems$stopmiss <- warning("is.null(dvdloglamMat) in a case where it should be available.") 
-    }
-    dispcolinfo$loglambda <- "loglambda"
-    #dvdloglam <- matrix(0,nrow=NROW(dvdloglamMat), ncol=sum(Xi_cols))
-    strucList <- object$strucList
-    cum_n_u_h <- attr(lambda.object$lambda_list,"cum_n_u_h")
-    n_u_h <- diff(cum_n_u_h)
-    cum_Xi_cols <- cumsum(c(0,Xi_cols))
-    ## dwdloglam will include cols of zeros for fixed lambda; matching with reduced logdisp_cov is performed at the end of the function.
-    dwdloglam <- matrix(0,ncol=sum(Xi_cols),nrow=NROW(dvdloglamMat)) ## likewise dwdlogdisp
-    for (randit in seq_len(nrand)) { ## ALL ranefs!
-      range_in_dw <- (cum_n_u_h[randit]+1L):(cum_n_u_h[randit+1L])
-      if ( ! is.null(lmatrix <- strucList[[randit]])) {
-        for_dw_i <- solve(t(lmatrix),dvdloglamMat[range_in_dw,]) ## f i x m e for efficiency ? store info about solve(t(lmatrix)) in object ? 
-      } else { ## implicit identity lmatrix
-        for_dw_i <- dvdloglamMat[range_in_dw,] ## assuming each lambda_i = lambda in each block
-      }
-      nblocks_randit <- Xi_cols[randit]
-      rowranges_in_dw_i <- matrix(seq(n_u_h[randit]),ncol=nblocks_randit) ## this _splits_ seq(n_u_h[randit]) over two columns for a random-slope model
-      for (row_block in seq_len(nblocks_randit)) { ## half-ranges for random-slope model
-        rowrange_in_dw_i <- rowranges_in_dw_i[,row_block]
-        cum_rowrange_in_dw <- rowrange_in_dw_i + cum_n_u_h[randit]
-        for (randjt in which(checklambda)) { ## NOT all ranefs!
-          nblocks_randjt <- Xi_cols[randjt]
-          cum_colrange_in_dw_i <- (cum_n_u_h[randjt]+1L):(cum_n_u_h[randjt+1L])
-          cum_colranges_in_dw_i <- matrix(cum_colrange_in_dw_i,ncol=nblocks_randjt) ## this _splits_ seq(n_u_h[randit]) over two columns for a random-slope model
-          for (col_in_colranges_dw_i in nblocks_randjt) { ## half-ranges for random-slope model
-            cum_col_in_dw <- cum_Xi_cols[randjt]+col_in_colranges_dw_i
-            cum_cols_in_dw_i <- cum_colranges_in_dw_i[,col_in_colranges_dw_i] 
-            dwdloglam[cum_rowrange_in_dw, cum_col_in_dw] <- rowSums(for_dw_i[rowrange_in_dw_i, cum_cols_in_dw_i,drop=FALSE])  
-          }
-        }
-      }
-    }
-    ## dwdloglam includes cols of zeros for fixed lambda; matching with reduced logdisp_cov is performed at the end of the function.
-    ranef_ids <- rep(seq_len(nrand),Xi_cols) ## (repeated for ranCoefs) indices of ranefs, not cols of ranefs
-  } else ranef_ids <- NULL
-  ###
-  phimodel <- object$models[["phi"]]
-  if (phimodel=="phiScal" ||  
-      identical(object$envir$forcePhiComponent,TRUE) ## hack for code testing: force dispVar computation as if phi was not fixed.
-      ) { ## semble impliquer pas outer phi.Fix... => no need to test object$phi.object$phi_outer,"type")
-    phi_est <- object$phi ## no need to get object$phi.object$phi_outer
-    if (length(phi_est)!=1L) problems$stopphi <- warning("phimodel=\"phiScal\" but length(phi_est)!=1L.")
-    if ( ! is.null(dvdlogphiMat)) {
-      dvdlogphi <- rowSums(dvdlogphiMat) ## using each phi_i = phi # always a vector, even from 0-col matrix
-      # => r-vector over r v's with element k = sum_over_responses (dv_k/d phi_i)
-      # for distinct phi_i we would have a correspondingly expanded information matrix 
-      # and then dvdlogphi and dwdlogphi would retain distinct columns
-      dwdlogphi <- .calc_invL_coeffs(object,dvdlogphi) # input always a vector, output always a vector
-      col_info$phi_cols=length(ranef_ids)+1L ## cols indices for phi 
-      dispcolinfo$logphi <- "logphi"
-    } else if (object$models[["eta"]]=="etaHGLM") stop("phimodel=='phiScal' but is.null(dvdlogphiMat)")
-  } else {  ## else phimodel="", e.g. binomial
-    # if binomial or poisson, phimodel=""; warning for other phimodels
-    if (phimodel!="") {
-      problems$structphi <- "phi dispVar component not yet available for phi model != ~1."
-      if ( ! identical(spaMM.getOption("phi_dispVar_comp_warned"),TRUE)) {
-        warning(problems$structphi)
-        .spaMM.data$options$phi_dispVar_comp_warned <- TRUE
-      }
-    }
-  }
-  ## compute info matrix:
-  if ((length(dispcolinfo))==0L) {
-    return(list(problems=problems))
-  } else {
-    dwdlogdisp <- cbind(dwdloglam,dwdlogphi) ## typically nobs * 2
-    attr(dwdlogdisp,"col_info") <- col_info
-    # cf my documentation, based on McCullochSN08 6.62 and 6.74
-    # lambda and phi factors enter in dV/dlog(.), computed instead of dV/d(.) to match dwdlog(.) vectors.
-    #
-    # use repres of two matrices large A and B, each as (thin) lhs %*% (flat) rhs   
-    ZAL <- get_ZALMatrix(object)
-    if ("loglambda" %in% names(dispcolinfo) || "rho" %in% names(dispcolinfo)) {
-      invV.dV_info <- .calc_invV.dV_info(object, checklambda, invV_factors=invV_factors, ZAL=ZAL) ## $lhs= invV %*% ZALd and $lhs= t(ZALd)
-      sublambda <- unlist(invV.dV_info$lambda_list[checklambda])
-      dispcolinfo$loglambda <- rep("loglambda",length(sublambda))
-    }
-    cum_n_disp_pars <- cumsum(c(0,lapply(dispcolinfo,length))) # #ncols for phi, lambda[checklambda], etc.
-    dispcols <- lapply(seq_along(dispcolinfo), function(varit) {
-      cum_n_disp_pars[varit]+ seq_along(dispcolinfo[[varit]])
-    }) ## col ranges for phi, lambda[checklambda], etc
-    names(dispcols) <- dispnames <- names(dispcolinfo) ## list names
-    nrc <- cum_n_disp_pars[length(cum_n_disp_pars)]
-    #
-    logdispInfo <- matrix(NA,nrow=nrc,ncol=nrc)
-    colnames(logdispInfo) <- rownames(logdispInfo) <- unlist(dispcolinfo)
-    if ("loglambda" %in% dispnames) { 
-      loglamInfo_blob <- .calc_loglamInfo(invV.dV_info,which=which(checklambda))
-      logdispInfo[dispcols$loglambda,dispcols$loglambda] <- loglamInfo_blob$loglamInfo 
-    }
-    if ("rho" %in% dispnames) { ## will occur only when if (any(checkadj)) {...} block above is fixed and active. 
-      # no use of sqrt because adjd can be negative
-      #invV.dVdrho <- (invV %id*id% ZAL) %*% ( Diagonal(x=lambda*adjd/(denom^2)) %id*id% t(ZAL))
-      lhs_invV.dVdrho <- .calc_lhs_invV.dVdlam(object, ZAL, invV_factors) # sweep( ZAL,1L,object$w.resid,`*`) - lhs_invV.dVdrho
-      lambda_adjd <- invV.dV_info$lambda_list[[which(checkadj)]] ## asumes single adjd
-      rhs_invV.dVdrho <- ( Diagonal(x=lambda_adjd*invV.dV_info$adjd_denom2) %id*id% t(ZAL)) ## FIXME curently meaningful for only one lambda element
-      #logdispInfo["rho","rho"] <- sum(invV.dVdrho*t(invV.dVdrho))
-      logdispInfo[dispcols$rho,dispcols$rho] <- .traceAB(lhs_invV.dVdrho,rhs_invV.dVdrho,t(rhs_invV.dVdrho),t(lhs_invV.dVdrho))
-      if ("loglambda" %in% dispnames) {
-        sublambda <- unlist(invV.dV_info$lambda)
-        logdispInfoBlock <- numeric(nrand)
-        cum_n_u_h <- invV.dV_info$cum_n_u_h
-        zerotemplate <- rep(0,cum_n_u_h[nrand+1L])
-        for (randit in which(checklambda)) {
-          u.range <- (cum_n_u_h[randit]+1L):(cum_n_u_h[randit+1L])
-          Xi_ncol <- Xi_cols[randit] # say '1 2' for ranCoefs
-          uirange <- matrix(u.range,ncol=Xi_ncol)
-          for (ilam in seq_len(Xi_ncol)) { 
-            i_rhs_invV.dVdlam <- loglamInfo_blob$rhs_invV.dVdlam_list[[paste0(randit,"_",ilam)]]  #.fill_rhs_invV.dVdlam(template=zerotemplate, urange=uirange[,ilam], invV.dV_info)
-            colit <- cum_Xi_cols[randit]+ilam
-            logdispInfoBlock[colit] <- .traceDB(object$w.resid, t(rhs_invV.dVdrho),t(lhs_invV.dVdrho)) -
-              .traceAB(invV.dV_info$lhs_invV.dVdlam, i_rhs_invV.dVdlam,t(rhs_invV.dVdrho),t(lhs_invV.dVdrho))
-          }
-        }
-        logdispInfoBlock <- logdispInfoBlock[which(checklambda)] * sublambda  #lambda * sum(invV.dVdlam*t(invV.dVdrho))
-        logdispInfo[dispcols$loglambda,dispcols$rho] <- 
-          logdispInfo[dispcols$rho,dispcols$loglambda] <- logdispInfoBlock
-      }
-    } 
-    ## if (! is.null(dwdlogphi)) { ## currently length(phi)==1L && ! is.null(dvdlogphiMat)
-    if ("logphi" %in% dispnames) { ## more transparent, but error if mismatch of conditions
-      ## next lines assume that  the design matrix for the residual error is I
-      # using the pattern (D-nXr.rXn)^2 = D^2 - 2 D nXr.rXn + (nXr.rXn)^2
-      if ("AUGI0_ZX_sparsePrecision" %in% object$MME_method) {
-        #A <- solve(object$envir$G_CHMfactor, .tcrossprod(object$envir$ZtW), system="A")
-        A <- invV_factors$r_x_n %*% invV_factors$n_x_r
-        trAB <- sum(A^2)
-        logdispInfo[dispcols$logphi,dispcols$logphi] <- phi_est^2 * (
-          sum(object$w.resid^2) -2 * .traceDB(object$w.resid,invV_factors$n_x_r, invV_factors$r_x_n) + 
-            trAB
-        ) # phi_est^2 * sum(invV^2)
-      } else {
-        logdispInfo[dispcols$logphi,dispcols$logphi] <- phi_est^2 * (
-          sum(object$w.resid^2) -2 * .traceDB(object$w.resid,invV_factors$n_x_r, invV_factors$r_x_n) + 
-            .traceAB(lA=invV_factors$n_x_r, rA=invV_factors$r_x_n, lB=NULL, rB=NULL) # ie B=A
-        ) # phi_est^2 * sum(invV^2)
-      }
-      if ("loglambda" %in% dispnames) {
-        sublambda <- unlist(invV.dV_info$lambda)
-        logdispInfoBlock <- numeric(nrand)
-        cum_n_u_h <- invV.dV_info$cum_n_u_h
-        zerotemplate <- rep(0,cum_n_u_h[nrand+1L])
-        for (randit in which(checklambda)) {
-          u.range <- (cum_n_u_h[randit]+1L):(cum_n_u_h[randit+1L])
-          Xi_ncol <- Xi_cols[randit] # say '1 2' for ranCoefs
-          uirange <- matrix(u.range,ncol=Xi_ncol)
-          for (ilam in seq_len(Xi_ncol)) { 
-            i_rhs_invV.dVdlam <- loglamInfo_blob$rhs_invV.dVdlam_list[[paste0(randit,"_",ilam)]] #.fill_rhs_invV.dVdlam(template=zerotemplate, urange=uirange[,ilam], invV.dV_info)
-            colit <- cum_Xi_cols[randit]+ilam
-            # sum(diag(diag(w.resid) %*% lhs_invV.dVdlam)) - sum(diag(lhs_invV.dVdlam %*% invV_factors))
-            logdispInfoBlock[colit] <- .traceDB(object$w.resid, invV.dV_info$lhs_invV.dVdlam, i_rhs_invV.dVdlam) -
-              .traceAB(invV.dV_info$lhs_invV.dVdlam, i_rhs_invV.dVdlam, invV_factors$n_x_r, invV_factors$r_x_n) 
-            # The tcrossprod (                       i_rhs_invV.dVdlam,                     invV_factors$r_x_n) is a bottleneck for large (n>r)
-            # while crossprod(           .                              lB=object$envir$ZtW                   ) has quite sparse lB
-                      }
-        }
-        logdispInfoBlock <- logdispInfoBlock[which(checklambda)] * sublambda * phi_est # lambda * phi_est * sum(invV.dVdlam * invV)
-        logdispInfo[dispcols$loglambda,dispcols$logphi] <- 
-          logdispInfo[dispcols$logphi,dispcols$loglambda] <- logdispInfoBlock
-      }
-      if ("rho" %in% dispnames) {
-        logdispInfo[dispcols$rho,dispcols$logphi] <- 
-          logdispInfo[dispcols$logphi,dispcols$rho] <- phi_est * .traceAB(lhs_invV.dVdrho,rhs_invV.dVdrho, 
-                                                                          invV_factors$n_x_r, invV_factors$r_x_n)  
-        # phi_est * sum(invV.dVdrho * invV)  
-      }
-    } 
-    logdispInfo <- logdispInfo/2
-    resu <- .wrap_solve_logdispinfo(logdispInfo, object)
-    if (any( ! checklambda )) { ## if cols missing from logdisp_cov compared to dwdlogdisp
-      ncd <- ncol(dwdlogdisp)
-      full_logdisp_cov <- matrix(0,ncd,ncd)
-      cols_in_logdisp_cov <- rep(checklambda,Xi_cols) ## which cols in dwdloglam match loglambda col in logdisp_cov
-      if ( ! is.null(dwdlogphi)) cols_in_logdisp_cov <- c(cols_in_logdisp_cov,TRUE)  ## col for dwdlogphi
-      full_logdisp_cov[cols_in_logdisp_cov,cols_in_logdisp_cov] <- resu$logdisp_cov
-      resu$logdisp_cov <- full_logdisp_cov
-    }  
-    resu$dwdlogdisp <- dwdlogdisp
-    return(resu)
-    ## more compact than storing ww %*% logdisp_cov %*% t(ww) which is nobs*nobs 
-  }
-}
-
-.calc_logdisp_cov_ZAX <- function(object, dvdloglamMat, dvdlogphiMat=NULL, invV_factors=NULL) { 
-  if (object$spaMM.version<="1.11.60") stop("objects created with spaMM versions <= 1.11.60 are no longer supported.")
-  lambda.object <- object$lambda.object
-  strucList <- object$strucList
-  dwdlogphi <- dwdloglam <- NULL ## always a cbind at the end of calc_logdisp_cov
-  dispcolinfo <- list()
-  problems <- list() ## Its elements' names are tested in calcPredVar, and the strings are 'development info'
-  nrand <- length(strucList)
-  col_info <- list(nrand=nrand, phi_cols=NULL) 
-  Xi_cols <- attr(object$ZAlist, "Xi_cols")
-  checklambda <- ( ! (lambda.object$type %in% c("fixed","fix_ranCoefs","fix_hyper"))) 
-  if (any(checklambda)) {
-    corr.models <- lapply(strucList,attr,which="corr.model") ## not unlist bc it may contain NULLs
-    checkadj <- unlist(lapply(corr.models,identical,y="adjacency"))
+    checkadj <- .unlist(lapply(corr.models,identical,y="adjacency"))
     if(any(checkadj)) {
       ## several blocks of code are "maintained" below for a future dispVar computation for rho
       # il me manque dwdrho (et meme dwdloglam pour ce modele ?) donc on inactive les lignes suivantes:
@@ -525,7 +315,7 @@
   phimodel <- object$models[["phi"]]
   if (phimodel=="phiScal" ||  
       identical(object$envir$forcePhiComponent,TRUE) ## hack for code testing: force dispVar computation as if phi was not fixed.
-  ) { ## semble impliquer pas outer phi.Fix... => no need to test object$phi.object$phi_outer,"type")
+      ) { ## semble impliquer pas outer phi.Fix... => no need to test object$phi.object$phi_outer,"type")
     phi_est <- object$phi ## no need to get object$phi.object$phi_outer
     if (length(phi_est)!=1L) problems$stopphi <- warning("phimodel=\"phiScal\" but length(phi_est)!=1L.")
     if ( ! is.null(dvdlogphiMat)) {
@@ -534,16 +324,16 @@
       # for distinct phi_i we would have a correspondingly expanded information matrix 
       # and then dvdlogphi and dwdlogphi would retain distinct columns
       dwdlogphi <- .calc_invL_coeffs(object,dvdlogphi) # input always a vector, output always a vector
-      col_info$phi_cols=length(ranef_ids)+1L ## cols indices for phi 
+      col_info$phi_cols <- length(ranef_ids)+1L ## cols indices for phi 
       dispcolinfo$logphi <- "logphi"
     } else if (object$models[["eta"]]=="etaHGLM") stop("phimodel=='phiScal' but is.null(dvdlogphiMat)")
   } else {  ## else phimodel="", e.g. binomial
     # if binomial or poisson, phimodel=""; warning for other phimodels
-    if (phimodel!="") {
+    if (any(phimodel!="")) {
       problems$structphi <- "phi dispVar component not yet available for phi model != ~1."
       if ( ! identical(spaMM.getOption("phi_dispVar_comp_warned"),TRUE)) {
         warning(problems$structphi)
-        .spaMM.data$options$phi_dispVar_comp_warned <- TRUE 
+        .spaMM.data$options$phi_dispVar_comp_warned <- TRUE
       }
     }
   }
@@ -560,7 +350,7 @@
     ZAL <- get_ZALMatrix(object)
     if ("loglambda" %in% names(dispcolinfo) || "rho" %in% names(dispcolinfo)) {
       invV.dV_info <- .calc_invV.dV_info(object, checklambda, invV_factors=invV_factors, ZAL=ZAL) ## $lhs= invV %*% ZALd and $lhs= t(ZALd)
-      sublambda <- unlist(invV.dV_info$lambda_list[checklambda])
+      sublambda <- .unlist(invV.dV_info$lambda_list[checklambda])
       dispcolinfo$loglambda <- rep("loglambda",length(sublambda))
     }
     cum_n_disp_pars <- cumsum(c(0,lapply(dispcolinfo,length))) # #ncols for phi, lambda[checklambda], etc.
@@ -571,7 +361,7 @@
     nrc <- cum_n_disp_pars[length(cum_n_disp_pars)]
     #
     logdispInfo <- matrix(NA,nrow=nrc,ncol=nrc)
-    colnames(logdispInfo) <- rownames(logdispInfo) <- unlist(dispcolinfo)
+    colnames(logdispInfo) <- rownames(logdispInfo) <- .unlist(dispcolinfo)
     if ("loglambda" %in% dispnames) { 
       loglamInfo_blob <- .calc_loglamInfo(invV.dV_info,which=which(checklambda))
       logdispInfo[dispcols$loglambda,dispcols$loglambda] <- loglamInfo_blob$loglamInfo 
@@ -585,7 +375,7 @@
       #logdispInfo["rho","rho"] <- sum(invV.dVdrho*t(invV.dVdrho))
       logdispInfo[dispcols$rho,dispcols$rho] <- .traceAB(lhs_invV.dVdrho,rhs_invV.dVdrho,t(rhs_invV.dVdrho),t(lhs_invV.dVdrho))
       if ("loglambda" %in% dispnames) {
-        sublambda <- unlist(invV.dV_info$lambda)
+        sublambda <- .unlist(invV.dV_info$lambda)
         logdispInfoBlock <- numeric(nrand)
         cum_n_u_h <- invV.dV_info$cum_n_u_h
         zerotemplate <- rep(0,cum_n_u_h[nrand+1L])
@@ -594,7 +384,7 @@
           Xi_ncol <- Xi_cols[randit] # say '1 2' for ranCoefs
           uirange <- matrix(u.range,ncol=Xi_ncol)
           for (ilam in seq_len(Xi_ncol)) { 
-            i_rhs_invV.dVdlam <- loglamInfo_blob$rhs_invV.dVdlam_list[[paste0(randit,"_",ilam)]] #.fill_rhs_invV.dVdlam(template=zerotemplate, urange=uirange[,ilam], invV.dV_info)
+            i_rhs_invV.dVdlam <- loglamInfo_blob$rhs_invV.dVdlam_list[[paste0(randit,"_",ilam)]]  #.fill_rhs_invV.dVdlam(template=zerotemplate, urange=uirange[,ilam], invV.dV_info)
             colit <- cum_Xi_cols[randit]+ilam
             logdispInfoBlock[colit] <- .traceDB(object$w.resid, t(rhs_invV.dVdrho),t(lhs_invV.dVdrho)) -
               .traceAB(invV.dV_info$lhs_invV.dVdlam, i_rhs_invV.dVdlam,t(rhs_invV.dVdrho),t(lhs_invV.dVdrho))
@@ -624,7 +414,7 @@
         ) # phi_est^2 * sum(invV^2)
       }
       if ("loglambda" %in% dispnames) {
-        sublambda <- unlist(invV.dV_info$lambda)
+        sublambda <- .unlist(invV.dV_info$lambda)
         logdispInfoBlock <- numeric(nrand)
         cum_n_u_h <- invV.dV_info$cum_n_u_h
         zerotemplate <- rep(0,cum_n_u_h[nrand+1L])
@@ -639,7 +429,8 @@
             logdispInfoBlock[colit] <- .traceDB(object$w.resid, invV.dV_info$lhs_invV.dVdlam, i_rhs_invV.dVdlam) -
               .traceAB(invV.dV_info$lhs_invV.dVdlam, i_rhs_invV.dVdlam, invV_factors$n_x_r, invV_factors$r_x_n) 
             # The tcrossprod (                       i_rhs_invV.dVdlam,                     invV_factors$r_x_n) is a bottleneck for large (n>r)
-          }
+            # while crossprod(           .                              lB=object$envir$ZtW                   ) has quite sparse lB
+                      }
         }
         logdispInfoBlock <- logdispInfoBlock[which(checklambda)] * sublambda * phi_est # lambda * phi_est * sum(invV.dVdlam * invV)
         logdispInfo[dispcols$loglambda,dispcols$logphi] <- 
@@ -667,4 +458,3 @@
     ## more compact than storing ww %*% logdisp_cov %*% t(ww) which is nobs*nobs 
   }
 }
-

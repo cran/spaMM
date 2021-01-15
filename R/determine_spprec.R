@@ -20,7 +20,7 @@
   warned1 <- warned2 <- FALSE
   function(ZAlist, 
            processed, ## single envir, not list of envirs
-           init.HLfit,
+           init.HLfit=processed$init_HLfit,
            X.pv,
            #HLmethod, 
            fast=TRUE,
@@ -61,7 +61,7 @@
       } 
       # WHEN I CHANGE THE CODE HERE, I MUST CHECK THE CONTENTS OF help("sparse_precision")
       if (is.null(sparse_precision)) {
-        ## mrf <- fitme(migStatus ~ 1 + (1|pos) + multIMRF(1|latitude+longitude,margin=2,levels=2, coarse=4)... better in spprec
+        ## mrf <- fitme(migStatus ~ 1 + (1|pos) + multIMRF(1|longitude+latitude,margin=2,levels=2, coarse=4)... better in spprec
         any_IMRF <- any(exp_ranef_types== "IMRF")
         if (any_IMRF) {
           if ( ! fast) {

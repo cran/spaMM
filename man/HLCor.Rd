@@ -4,8 +4,7 @@
                     Fits a (spatially) correlated mixed model, for given correlation parameters 
 }
 \description{
-A convenient interface for \code{\link{HLfit}}, constructing the correlation matrix of random effects from the arguments, 
-then estimating fixed effects and dispersion parameters using \code{HLfit}.
+A fitting function acting as a convenient interface for \code{\link{HLfit}}, constructing the correlation matrix of random effects from the arguments, then estimating fixed effects and dispersion parameters using \code{HLfit}. Various arguments are available to constrain the correlation structure, \code{covStruct} and \code{distMatrix} being the more general ones (for any number of random effects), and \code{adjMatrix} and \code{corrMatrix} being alternatives to \code{covStruct} for a single correlated random effect. \code{uniqueGeo} is deprecated.
 }
 \usage{
 HLCor(formula, data, family = gaussian(), ranPars = NULL, distMatrix,
@@ -28,17 +27,21 @@ HLCor(formula, data, family = gaussian(), ranPars = NULL, distMatrix,
   \item{family}{A \code{family} object describing the distribution of the response variable. See \code{\link{HLfit}} for further information.
   }
   \item{distMatrix}{
-    A distance matrix between geographic locations, forwarded to \code{MaternCorr} or \code{CauchyCorr}. It overrides the (by default, Euclidean) distance matrix that would otherwise be deduced from the variables in a \code{Matern(.))} or \code{Cauchy(.)} term.   
+    \bold{Either} a distance matrix between geographic locations, forwarded to \code{MaternCorr} or \code{CauchyCorr}. It overrides the (by default, Euclidean) distance matrix that would otherwise be deduced from the variables in a \code{Matern(.))} or \code{Cauchy(.)} term; \cr
+    \bold{or} a list of such matrices. The list format is useful when there are several Matern/Cauchy terms, to avoid that all of them are affected by the same \code{distMatrix}. \code{NULL} list elements may be necessary, e.g.\cr 
+\code{distMatrix=list("1"=NULL,"2"=<.>)}) when a matrix is specified only for the second random effect.
 }
   \item{uniqueGeo}{
-    A matrix of non-redundant geographic locations. Such a matrix is typically constructed automatically from the data and the model formula, but otherwise could be useful if further the \code{rho} parameter is a vector with different values for different coordinates, in which case a scaled distance matrix has to be reconstructed from \code{uniqueGeo} and \code{rho}. 
+    Effectively deprecated. No current example or code check uses it. This is a remnant of early versions of spaMM, where it specified a matrix of non-redundant geographic locations, as now such a matrix is typically constructed automatically from the data and the model formula. 
 }
   \item{adjMatrix}{
-    An adjacency matrix, used if a random effect of the form\cr
+    An single adjacency matrix, used if a random effect of the form\cr
     \code{y ~ adjacency(1|<location index>)} is present. See \code{\link{adjacency}} for further details.
+    If adjacency matrices are needed for several random effects, use \code{covStruct}.
 }
   \item{corrMatrix}{
     A matrix \bold{C} used if a random effect term of the form \code{corrMatrix(1|<stuff>)} is present. This allows to analyze non-spatial model by giving for example a matrix of genetic correlations. Each row corresponds to levels of a variable <stuff>. The covariance matrix of the random effects for each level is then \eqn{\lambda}\bold{C}, where as usual \eqn{\lambda} denotes a variance factor for the random effects (if \bold{C} is a correlation matrix, then  \eqn{\lambda} is the variance, but other cases are possible). See \code{\link{corrMatrix}} for further details.
+    If matrices are needed for several random effects, use \code{covStruct}.
 }
   \item{covStruct}{
     An interface for specifying correlation structures for different types of random effect (\code{corrMatrix} or \code{adjacency}). See \code{\link{covStruct}} for details.
@@ -87,7 +90,7 @@ HLCor(formula, data, family = gaussian(), ranPars = NULL, distMatrix,
 
 #### Matern correlation using only the Matern() syntax
 data("blackcap")
-(fitM <- HLCor(migStatus ~ means+ Matern(1|latitude+longitude),data=blackcap,
+(fitM <- HLCor(migStatus ~ means+ Matern(1|longitude+latitude),data=blackcap,
       method="ML", ranPars=list(nu=0.6285603,rho=0.0544659)))
 
 #### Using the 'distMatrix' argument
@@ -96,7 +99,7 @@ data("blackcap")
 # Build distance matrix (here equivalent to the default one for a Matern() term)
 MLdistMat <- as.matrix(proxy::dist(blackcap[,c("latitude","longitude")]))
 #
-(fitD <- HLCor(migStatus ~ means+ Matern(1|latitude+longitude),data=blackcap,
+(fitD <- HLCor(migStatus ~ means+ Matern(1|longitude+latitude),data=blackcap,
       distMatrix=MLdistMat, method="ML", ranPars=list(nu=0.6285603,rho=0.0544659)))
 # : result here must be equivalent to the one without the distMatrix.
 diff(c(logLik(fitM),logLik(fitD)))

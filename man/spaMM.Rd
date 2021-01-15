@@ -23,9 +23,13 @@ Both maximum likelihood (ML) and restricted likelihood (REML) can be used for li
   
      All handled models can be formulated in terms of a linear predictor of the traditional form \code{offset}+ \bold{X}\eqn{\beta} + \bold{Z b}, where \bold{X} is the design matrix of fixed effects, \eqn{\beta} (\code{beta}) is a vector of fixed-effect coefficients, \bold{Z} is a \dQuote{design matrix} for the random effects (which is instead denoted \bold{M}=\bold{ZAL} elsewhere in the package documentation), and \bold{b} a vector of random effect values. The general structure of \code{Mb} is described in \code{\link{random-effects}}.
   
-   The syntax for formulas extends that used in the \code{lme4} package. In particular, \bold{non-autocorrelated} random effects are specified using the \code{(1|<block>)} syntax, and \emph{Gaussian} random-coefficient terms by \code{(<rhs>|<block>)}.The double-vertical syntax, \code{( rhs || lhs )}, is interpreted as in \code{lme4}. Any such term is immediately converted to \code{( ( 1 | lhs ) + ( 0 + lhs | rhs ) )}, and should be counted as two random effects for all purposes (e.g., for fixing the variances of the random effects). \bold{Autocorrelated} random effects are specified by adding some prefix to this syntax, \code{<prefix>(1|.)}, e.g. \code{Matern(1|long+lat)}. 
+   The syntax for formulas extends that used in the \code{lme4} package. In particular, \bold{non-autocorrelated} random effects are specified using the \code{(1|<block>)} syntax, and \emph{Gaussian} random-coefficient terms by \code{(<lhs>|<block>)}. The double-vertical syntax, \code{( lhs || rhs )}, is interpreted as in \code{lme4} (see \code{help('expandDoubleVerts')} in lme4, including the comment that it will fail to break up factors into separate terms). Any such term is immediately converted to \code{( ( 1 | rhs ) + ( 0 + lhs | rhs ) )}, and should be counted as two random effects for all purposes (e.g., for fixing the variances of the random effects). \bold{Autocorrelated} random effects are specified by adding some prefix to this syntax, \code{<prefix>(1|.)}, e.g. \code{Matern(1|long+lat)}. 
    
-   Since version 2.6.0, it is possible to fit some \dQuote{some autocorrelated random-coefficient} models by a syntax consistent with that of random-coefficient terms, \code{<prefix>(<rhs>|.)}. For example, independent Matérn effects can be fitted for males and females by using the syntax \code{Matern(male|.) + Matern(female|.)}, where \code{male} and \code{female} are TRUE/FALSE factors. A numeric variable \code{z} can also be considered, in which case the proper syntax is \code{Matern(0+z|.)}, which represents an autocorrelated random-slope (only) term (or, equivalently, a direct specification of heteroscedasticy of the Matérn random effect). All these effects are achieved by direct control of the elements of the incidence matrix \bold{Z} through the \code{<rhs>} term: for numeric \code{z}, such elements are multiplied by \code{z} values, and thus provide a variance of order O(\code{z} \bold{squared}). By contrast, \code{Matern(z|.)} is not defined. It could mean that a correlation structure between random intercepts and random slopes is to be combined with a Matérn correlation structure, but no way of combining them is yet defined and implemented.  
+If one wishes to fit uncorrelated group-specific random-effects (say random effects with distinct variances for males and females or for different response variables), none of these syntaxes appears useful. In particular, using factors or boolean in the lhs of the term generally results in a correlated random-coefficient term being fitted, even when \dQuote{\code{0 + .}} is used. Instead, one should define \bold{numeric} (0|1) variables such as \code{numF <- as.numeric(<boolean for females>)} and a term of the form \code{(0 + numF| <block>)}. See \dQuote{Elementary multivariate-response} example below.    
+   
+   Since version 2.6.0, it is possible to fit some \dQuote{some autocorrelated random-coefficient} models by a syntax consistent with that of random-coefficient terms, \code{<prefix>(<rhs>|.)}. For example, independent Matérn effects can be fitted for males and females by using the syntax \code{Matern(male|.) + Matern(female|.)}, where \code{male} and \code{female} are TRUE/FALSE factors. A numeric variable \code{z} can also be considered, in which case the proper syntax is \code{Matern(0+z|.)}, which represents an autocorrelated random-slope (only) term (or, equivalently, a direct specification of heteroscedasticy of the Matérn random effect). Thus, for boolean \code{z}, \code{Matern(z|.)} is de facto automatically converted to \code{Matern(0+<as.numeric(z)>|.)}). These effects are achieved by direct control of the elements of the incidence matrix \bold{Z} through the \code{<rhs>} term: for numeric \code{z}, such elements are multiplied by \code{z} values, and thus provide a variance of order O(\code{z} \bold{squared}). 
+   
+   By contrast, \code{Matern(z|.)} is not defined for numeric \code{z}. It could mean that a correlation structure between random intercepts and random slopes is to be combined with a Matérn correlation structure, but no way of combining them is yet defined and implemented (though this may change in some later version).  
 % cf fns .calc_Z_model_matrix() and .calc_raw_ZA().
 % tests: test-spaMM.R and in tests_private/test-syntax-Matern-RHS.R
 
@@ -40,7 +44,7 @@ Lee, Y., Nelder, J. A. and Pawitan, Y. (2006). Generalized linear models with ra
 h-likelihood. Chapman & Hall: London.
 
 Rousset F., Ferdy, J.-B. (2014) Testing environmental and genetic effects in the presence of spatial autocorrelation. Ecography, 37: 781-790.
-    \url{http://dx.doi.org/10.1111/ecog.00566}
+    \doi{10.1111/ecog.00566}
 
 }
 \seealso{
@@ -99,6 +103,23 @@ if (spaMM.getOption("example_maxtime")>1.5) {
   fitme(y ~ 1+(1|batch),family=Gamma(log),
         resid.model = ~ 1+(1|batch) ,data=wafers)
 }
+
+## Elementary multivariate-response model (see fitmv() for less elementary ones) 
+# Data preparation
+fam <- rep(c(1,2),rep(6,2)) # define two biological 'families'
+ID <- gl(6,2) # define 6 'individuals'
+resp <- as.factor(rep(c("x","y"),6)) # distinguishes two responses per individual
+set.seed(123)
+toymv <- data.frame(
+  fam = as.factor(fam), ID = ID, resp = resp, 
+  y = 1 + (resp=="x") + rnorm(4)[2*(resp=="x")+fam] + rnorm(12)[6*(resp=="x")+as.integer(ID)],
+  respX = as.numeric(resp=="x"),
+  respY = as.numeric(resp=="y")
+)
+#
+# fit response-specific variances of random effect and residuals: 
+(fitme(y ~ resp+ (0+respX|fam)+ (0+respY|fam), resid.model = ~ 0+resp ,data=toymv))
+
 }
 \keyword{ package }
 \keyword{spatial}

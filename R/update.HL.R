@@ -24,10 +24,10 @@ get_HLCorcall <- function(outer_object, ## accepts fit object, or call, or list 
                           ... # anything needed to overcome promises in the call
                           ) { 
   
-  outer_call <- getCall(outer_object) ## corrHLfit/fitme/HLCor/HLfit call
+  outer_call <- getCall(outer_object) ## corrHLfit/fitme/HLCor/HLfit/fitmv call
   outer_call$data <- outer_object$data ## removes dependence on promise
   outer_fn <-.get_bare_fnname.HLfit(outer_object, call.=outer_call)
-  if (outer_fn=="fitme") {
+  if (outer_fn=="fitme" || outer_fn=="fitmv" ) {
     outer_call$fixed <- fixed
   } else if (outer_fn=="HLCor") {
     outer_call$ranPars <- fixed
@@ -46,11 +46,11 @@ get_HLCorcall <- function(outer_object, ## accepts fit object, or call, or list 
     }
   }
   #
-  HLCorcall <- eval(as.call(outer_call)) ## calls outer fn and bypasses any optimization to get the inner call HLCor/HLfit
+  HLCorcall <- eval(as.call(outer_call)) ## calls outer fn and bypasses any optimization to get the inner call HLCor/HLfit... / fitmv?
   HLCorcall$call <- NULL ## $call kept the outer call! 
   if (outer_fn=="HLfit") {
     HLCorcall[[1L]] <- quote(HLfit)
-  } else if (outer_fn=="fitme") {
+  } else if (outer_fn=="fitme" || outer_fn=="fitmv" ) {
     if (is.null(HLCorcall$ranPars)) {
       HLCorcall[[1L]] <- quote(HLfit)
     } else HLCorcall[[1L]] <- quote(HLCor)
@@ -59,15 +59,35 @@ get_HLCorcall <- function(outer_object, ## accepts fit object, or call, or list 
   return(HLCorcall)
 }
 
-update.HLfit <- function (object, formula., ..., evaluate = TRUE) {
+# update is a generic, update.formula is not a generic...
+# stats::update.default is  function (object, formula., ..., evaluate = TRUE) 
+# stats::update.formula is function (old, new, ...) 
+# which  does not look like a method for # stats::update ! But it is. The src/library/stats/man/update.formula.Rd file  has
+#  \method{update}{formula}(old, new, \dots)
+
+#update <- function(object, formula., ..., evaluate = TRUE) UseMethod("update")
+#update.default <- function(object, formula., ..., evaluate = TRUE) stats::update(object, formula., ..., evaluate = evaluate)
+
+update.HLfit <- function(object, formula., ..., evaluate = TRUE) {
   if (is.null(call <- getCall(object))) 
     stop("need an object with call component")
   extras <- match.call(expand.dots = FALSE)$...
   if (!missing(formula.)) {
-    oriform <- formula.HLfit(object, which="hyper") ## with hyper-ranefs and offset
     ## fixme A long time ago I wrote "does not handle etaFix$beta"... 
     if (is.null(data <- extras$data)) data <- object$data ## fortunately keeping more than the variables required in the original formula
-    call$formula <- .update_formula(oriform,formula.) 
+    oriform <- formula.HLfit(object, which="hyper") ## with hyper-ranefs and offset
+    if (inherits(oriform,"list")) { 
+      if ( ! inherits(formula.,"list")) stop("Old formula is list (presumably from fitmv()) but new formula is not")
+      for (mv_it in seq_along(formula.)) {
+        formula.[[mv_it]] <- .update_formula(oriform[[mv_it]],formula.[[mv_it]], ...)
+      }
+      call[["formula."]] <- formula.
+      # # the easy part would be updating the list of formulas
+      # # the challenge would be to modify the formulas in the expression for the structured list of submodels...
+      # if ( ! is.null(object$families) ) {
+      #   stop("the 'formula.' argument cannot be used to modify a multivariate-response fit")
+      # } else stop("Something wrong; the object is not a multivariate-response fit but its original formula is a list.")
+    } else call$formula <- .update_formula(oriform,formula.) 
   }
   if (length(extras)) {
     existing <- !is.na(match(names(extras), names(call))) ## which to replace and which to add to the call
@@ -93,6 +113,26 @@ update.HLfit <- function (object, formula., ..., evaluate = TRUE) {
   re_data <- object$data
   mf <- model.frame(object)
   #form <- formula.HLfit(object, which="hyper")
+  if (inherits(mf,"list")) { # list of data.frames (with attributes): mv case : then newresp is assumed to be the result of simulate, an overlong vector.
+    nobs <- nrow(re_data)
+    frst <- 0L
+    for (mv_it in seq_along(mf)) {
+      lst <- frst+nobs
+      resp_i <- newresp[(frst+1L):lst]
+      frst <- lst
+      Y <- model.response(mf[[mv_it]])
+      if (NCOL(Y)==2L) {
+        colY <- colnames(Y)
+        if (colY[1L]!="") re_data[,colY[1L]] <- resp_i
+        if (colY[2L]!="") re_data[,colY[2L]] <- rowSums(Y)-resp_i
+      } else { # colnames(Y) is typically NULL
+        if (inherits(mf[[mv_it]][[1L]],"AsIs")) {
+          stop("the response of the original fit is as 'AsIs' term, I(.), which is not handled by code updating response.")
+        } else re_data[colnames(mf[[mv_it]])[1L]] <- resp_i 
+      }
+    }
+    return(re_data)
+  }
   Y <- model.response(mf)
   if (NCOL(Y)==2L) { ## paste(form[[2L]])[[1L]]=="cbind"
     # model.frame is a data frame whose 1st element is a 2-col matrix with unamed first column
@@ -115,6 +155,71 @@ update.HLfit <- function (object, formula., ..., evaluate = TRUE) {
   }
   return(re_data)
 }
+
+if (FALSE) {
+  .bind_resp <- function(newresp, object, re_data=object$data, only_resp=FALSE) {
+  mf <- model.frame(object)
+  #form <- formula.HLfit(object, which="hyper")
+  respnames <- c()
+  if (inherits(mf,"list")) { # list of data.frames (with attributes): mv case : then newresp is assumed to be the result of simulate, an overlong vector.
+    nobs <- nrow(object$data)
+    frst <- 0L
+    for (mv_it in seq_along(mf)) {
+      lst <- frst+nobs
+      resp_i <- newresp[(frst+1L):lst]
+      frst <- lst
+      Y <- model.response(mf[[mv_it]])
+      if (NCOL(Y)==2L) {
+        colY <- colnames(Y)
+        if (colY[1L]!="") re_data[,colY[1L]] <- resp_i
+        if (colY[2L]!="") re_data[,colY[2L]] <- rowSums(Y)-resp_i
+        respnames <- c(respnames, colY)
+      } else { # colnames(Y) is typically NULL
+        if (inherits(mf[[mv_it]][[1L]],"AsIs")) {
+          stop("the response of the original fit is as 'AsIs' term, I(.), which is not handled by code updating response.")
+        } else {
+          coly <- colnames(mf[[mv_it]])[1L]
+          re_data[coly] <- resp_i
+          respnames <- c(respnames, coly)
+        } 
+      }
+    }
+    if (only_resp) re_data <- re_data[,respnames,drop=FALSE]
+    return(re_data)
+  }
+  Y <- model.response(mf)
+  if (NCOL(Y)==2L) { ## paste(form[[2L]])[[1L]]=="cbind"
+    # model.frame is a data frame whose 1st element is a 2-col matrix with unamed first column
+    # model.response() extracts this matrix:
+    # If formula is cbind(npos,nneg) ~... the two columns have names "npos", "nneg"
+    # If formula is cbind(npos,ntot-npos) ~... the two columns have names "npos", ""
+    # If formula is cbind(ntot-nneg,nneg) ~... the two columns have names "", "nneg"
+    colY <- colnames(Y)
+    if (colY[1L]!="") re_data[,colY[1L]] <- newresp
+    if (colY[2L]!="") re_data[,colY[2L]] <- rowSums(Y)-newresp
+    # any "ntot" col is left unchanged. In particular, from # cbind(ntot-nneg,nneg)
+    #  thsi code changes nneg to ntot-newresp so that ntot-nneg will be newresp
+    if (only_resp) re_data <- re_data[,colY]
+  } else { # colnames(Y) is typically NULL
+    ## : from a formula of the form formula I(<fn>(var...)) ~ ... colnames(mf)[1L] is "I(<fn>(var...))" 
+    # for a variable of class 'AsIs' which is NOT used in the refit... 
+    if (inherits(mf[[1L]],"AsIs")) {
+      stop("the response of the original fit is as 'AsIs' term, I(.), which is not handled by code updating response.")
+      # the alternative would be to change internally the lhs of the formula...
+    } else {
+      if (only_resp) {
+        re_data <- data.frame(newresp)
+        colnames(re_data) <- colnames(mf)[1L]
+      } else re_data[colnames(mf)[1L]] <- newresp
+    } 
+  }
+  return(re_data)
+  }
+  
+  .update_data  <- function(object, newresp) .bind_resp(newresp=newresp, object=object)
+  
+}
+
 
 update_resp <- function(object, newresp, ...,  evaluate = TRUE) {
   if (is.null(re_call <- getCall(object))) stop("need an object with call component")
@@ -166,6 +271,7 @@ if (FALSE) {
   else formula(paste("~", rhs))
 }
 
+
 .update_formula <- function (old, new, ...) { 
   C_updateform <- get("C_updateform",asNamespace("stats")) ## not kocher?
   tmp <- do.call(".Call",list(C_updateform, as.formula(old), as.formula(new))) # circumventing RcppExports' kind bureaucracy...  
@@ -179,4 +285,18 @@ if (FALSE) {
   if (!inherits(out, "formula")) 
     class(out) <- c(oldClass(out), "formula")
   return(out)
+}
+
+#update.formula <- function(object, formula., ...) UseMethod("update.formula")
+#update.formula.default <- function(object, formula., ...) stats::update.formula(old=object, new=formula., ...)
+
+update_formulas <- function(object, formula., ...) {
+  old <- formula(object)
+  if (inherits(old,"list")) { # mv case
+    if ( ! inherits(formula.,"list")) stop("Old formula is list (presumably from fitmv()) but new formula is not")
+    for (mv_it in seq_along(old)) {
+      old[[mv_it]] <- .update_formula(old[[mv_it]],formula.[[mv_it]], ...)
+    }
+    return(old)
+  } else .update_formula(old, new=formula., ...)
 }

@@ -15,7 +15,7 @@ if(requireNamespace("lme4", quietly = TRUE)) {
     (ares <- fitme(Reaction ~ Days + AR1(1|Days) + (Days|Subject), data = sleepstudy, verbose=c(TRACE=TRUE)))
     spaMM.options(oldopt)
   }
-  (ares <- fitme(Reaction ~ Days + AR1(1|Days) + (Days|Subject), data = sleepstudy, verbose=c(TRACE=TRUE)))  ## AR-lambda is ~0 hence lik is flat  wrt ARphi
+  (ares <- fitme(Reaction ~ Days + AR1(1|Days) + (Days|Subject), data = sleepstudy, verbose=c(TRACE=FALSE)))  ## AR-lambda is ~0 hence lik is flat  wrt ARphi
   testthat::expect_equal(logLik(ares),c(p_v=-875.969672803))
   if (spaMM.getOption("example_maxtime")>1.5) { ## approx time v2.4.129 ten times faster than v2.3.33
     sm <- fitme(Reaction ~ Days + (Days|Subject) + Matern(1|Days), fixed=list(nu=0.5),data = sleepstudy)
@@ -25,6 +25,18 @@ if(requireNamespace("lme4", quietly = TRUE)) {
     fitme(Reaction ~ Days + (Days|Subject) + AR1(1|Days), method="REML",
           fixed=list(lambda=c(NA,10),ranCoefs=list("1"=c(612.1,0.06555,35.07)),phi=654.9),
           data = sleepstudy,verbose=c(TRACE=interactive()))
+    chkfx <- fitme(Reaction ~ Days + (Days|Subject), method="REML",
+          fixed=list(ranCoefs=list("1"=c(612.666,NA,NA)),phi=654.9),
+          data = sleepstudy)
+    testthat::expect_equal(get_ranPars(chkfx)$ranCoefs[[1]][1],612.666)
+    chkfx <- fitme(Reaction ~ Days + (Days|Subject), method="REML",
+          fixed=list(ranCoefs=list("1"=c(612.666,0.06666,NA)),phi=654.9),
+          data = sleepstudy,verbose=c(TRACE=interactive()))
+    testthat::expect_equal(get_ranPars(chkfx)$ranCoefs[[1]][2],0.06666)
+    fitme(Reaction ~ Days + (Days|Subject) + AR1(1|Days), method="REML",
+          fixed=list(lambda=c(NA,10),ranCoefs=list("1"=c(NA,0,NA)),phi=654.9),
+          data = sleepstudy,verbose=c(TRACE=interactive()))
+    
     spaMM.options(sparse_precision = TRUE) 
     HLfit(Reaction ~ Days + (Days|Subject), data = sleepstudy,ranFix =list(ranCoefs=list("1"=c(612.1,0.06555,35.07)),phi=654.9))
     fitme(Reaction ~ Days + (Days|Subject) + AR1(1|Days), method="REML",

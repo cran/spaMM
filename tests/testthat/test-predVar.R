@@ -8,7 +8,7 @@ set.seed(123)
 somegrp <- cbind(blackcap,grp=sample(2,14,replace=TRUE))
 if (rngcheck) RNGkind("Mersenne-Twister", "Inversion", "Rejection"  )
 #somegrp <- cbind(blackcap,grp=c(rep(1,7),rep(2,7))) ## to test cov mat with nonzero var of grp effect
-tworanefs <- corrHLfit(migStatus ~ 1 +  (1|grp) +Matern(1|latitude+longitude),data=somegrp,
+tworanefs <- corrHLfit(migStatus ~ 1 +  (1|grp) +Matern(1|longitude+latitude),data=somegrp,
                        ranFix=list(nu=4,rho=0.4,phi=0.05))
 expected <- c("Gibraltar"=0.04880579, "CapeVerde"=0.04884620, "SouthernFrance"=0.04197530, 
               "LaPalma"=0.03337928, "Madeira"=0.04360190)
@@ -16,17 +16,17 @@ p1 <- get_predVar(tworanefs)[1:5]
 testthat::expect_true(diff(range(p1 - expected))<1e-8)
 p1p <- get_predVar(tworanefs,newdata=somegrp[1:5,])
 testthat::expect_true(diff(range(p1p -p1))<1e-10)
-ranefstwo <- corrHLfit(migStatus ~ 1  +Matern(1|latitude+longitude)+  (1|grp),data=somegrp,
+ranefstwo <- corrHLfit(migStatus ~ 1  +Matern(1|longitude+latitude)+  (1|grp),data=somegrp,
                        ranFix=list(nu=4,rho=0.4,phi=0.05))
 p2 <- get_predVar(ranefstwo,newdata=somegrp[1:5,])
 testthat::expect_true(diff(range(p1-p2))<1e-10)
 
-twolambda <- corrHLfit(migStatus ~ 1 +  Matern(1|latitude+longitude) +Matern(1|latitude+longitude),data=blackcap,
+twolambda <- corrHLfit(migStatus ~ 1 +  Matern(1|longitude+latitude) +Matern(1|longitude+latitude),data=blackcap,
                        ranFix=list(corrPars=list("1"=list(nu=4,rho=0.4),"2"=list(nu=4,rho=0.4)),phi=0.05))
 ## but in that case the exact loglamInfo is exactly singular! 
 ## (this makes sense: ones cannot separately estimate the two lambda's)
 ## any attempt at computing a non-singular loglamInfo will amplify floating point error.
-onelambda <- corrHLfit(migStatus ~ 1 + Matern(1|latitude+longitude),data=blackcap,
+onelambda <- corrHLfit(migStatus ~ 1 + Matern(1|longitude+latitude),data=blackcap,
                        ranFix=list(nu=4,rho=0.4,phi=0.05))
 if ("dgCMatrix" %in% how(twolambda, verbose=FALSE)$MME_method) { # if QRmethod="sparse" was requested
   testthat::expect_true(diff(range(get_predVar(twolambda)[1:5]-get_predVar(onelambda)[1:5]))<1e-5)
@@ -34,7 +34,7 @@ if ("dgCMatrix" %in% how(twolambda, verbose=FALSE)$MME_method) { # if QRmethod="
 
 
 # as_tcrossfac_list with newdata
-blackfit <- fitme(migStatus ~ 1 +  (1|grp) +Matern(1|latitude+longitude),data=somegrp)
+blackfit <- fitme(migStatus ~ 1 +  (1|grp) +Matern(1|longitude+latitude),data=somegrp)
 newdat <- with(somegrp,data.frame(latitude=latitude+5,longitude=longitude+5,grp=grp^2))
 tcrossfac_list <- get_predVar(blackfit, newdata=newdat, variances=list(as_tcrossfac_list=TRUE))
 var1 <- Reduce("+",lapply(tcrossfac_list,tcrossprod))
@@ -127,7 +127,7 @@ testthat::expect_equivalent(p4[101],p5[1]) ## _equivalent does not check names a
 data("blackcap")
 set.seed(123)
 varphi <- cbind(blackcap,logphi=runif(14))
-vphifit <- corrHLfit(migStatus ~ 1 + Matern(1|latitude+longitude), 
+vphifit <- corrHLfit(migStatus ~ 1 + Matern(1|longitude+latitude), 
                      resid.model = list(formula=~0+offset(logphi)),
                      data=varphi,  ranFix=list(nu=4,rho=0.4))
 # eg  to catch catch problems with wrong application of a-la-Bates formula:
@@ -144,27 +144,36 @@ fix_X_ZAC.object <- preprocess_fix_corr(vphifit,fixdata=blackcap)
 p2 <- get_predCov_var_fix(vphifit,newdata=blackcap[14,],fix_X_ZAC.object=fix_X_ZAC.object)
 testthat::expect_true(max(abs(range(p1-p2)))<1e-12)
 
+# Another check of get_predCov_var_fix, but with rho mapping:
+checkmap <- fitme(migStatus ~ 1 + Matern(1|longitude+latitude+means),
+                  data=blackcap, fixed=list(nu=0.5,phi=0.1),
+                  init=list(rho=c(1,1)), control.dist=list(rho.mapping=c(1,1,2)))
+p1 <- get_predVar(checkmap,variances=list(cov=TRUE))[14,]
+fix_X_ZAC.object <- preprocess_fix_corr(checkmap,fixdata=blackcap)
+p2 <- get_predCov_var_fix(checkmap,newdata=blackcap[14,],fix_X_ZAC.object=fix_X_ZAC.object)
+testthat::expect_true(max(abs(range(p1-p2)))<1e-12)
+
 # # verif calc_logdisp_cov runs after outer optimisation => now tested in many other places
-# fitfit <- fitme(migStatus ~ 1 + Matern(1|latitude+longitude),
+# fitfit <- fitme(migStatus ~ 1 + Matern(1|longitude+latitude),
 #                      data=blackcap,  fixed=list(nu=4,rho=0.4))
 # get_respVar(fitfit,newdata=data.frame(latitude=1,longitude=1))
 
 # check corret handling of offset in predictions
 check_off <- cbind(blackcap,off=runif(14))
-voff <- corrHLfit(migStatus ~ 1 + offset(off) + Matern(1|latitude+longitude), 
+voff <- corrHLfit(migStatus ~ 1 + offset(off) + Matern(1|longitude+latitude), 
                   data=check_off,  ranFix=list(nu=4,rho=0.4))
 p1 <- predict(voff)
 p2 <- predict(voff, newdata=check_off)
 testthat::expect_true(max(abs(range(p1-p2)))<1e-12)
 #
-voff <- corrHLfit(migStatus ~ 0 + offset(off) + Matern(1|latitude+longitude), 
+voff <- corrHLfit(migStatus ~ 0 + offset(off) + Matern(1|longitude+latitude), 
                   data=check_off,  ranFix=list(nu=4,rho=0.4))
 p1 <- predict(voff)
 p2 <- predict(voff, newdata=check_off)
 testthat::expect_true(max(abs(range(p1-p2)))<1e-12)
 #
 cat("(Check formula w/o fixed effect, Note expected:)")
-voff <- corrHLfit(migStatus ~ offset(off) + Matern(1|latitude+longitude), 
+voff <- corrHLfit(migStatus ~ offset(off) + Matern(1|longitude+latitude), 
                   data=check_off,  ranFix=list(nu=4,rho=0.4))
 p3 <- predict(voff)
 p4 <- predict(voff, newdata=check_off)
@@ -173,7 +182,7 @@ testthat::expect_true(max(abs(range(p1-p4)))<1e-12)
 
 # Check of different syntaxes to get naive term 
 # Note that naive depend on the L matrix root and thus not comparable accross equivalent fits (e.g. sparse/dense prec)
-fitobject <- corrHLfit(migStatus ~ 1 + Matern(1|latitude+longitude),data=blackcap,
+fitobject <- corrHLfit(migStatus ~ 1 + Matern(1|longitude+latitude),data=blackcap,
                        ranFix=list(nu=1,rho=0.1, phi=0.1)) 
 (naive1 <- get_predVar(fitobject,which="naive"))
 (naive2 <- get_predVar(fitobject,newdata=fitobject$data, which="naive"))

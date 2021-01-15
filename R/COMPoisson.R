@@ -23,7 +23,16 @@
     res <- opt_maxn
     if ( ! identical(spaMM.getOption("COMP_maxn_warned"),TRUE)) {
       warning(paste0("maxn truncated to ",res," for (lambda,nu)= (",lambda,",",nu,") and possibly other values."))
-      .spaMM.data$options$COMP_maxn_warned <- TRUE 
+      .spaMM.data$options$COMP_maxn_warned <- TRUE
+      ### This is first called through 
+      # .get_inits_by_glm(processed, family = family, reset = quote(family$family %in% c("COMPoisson", "negbin")))
+      # -> .calc_inits_by_glm(processed)
+      # -> .tryCatch_W_E(glm.fit ...)
+      ### so the first warning is suppressed, and no further ones will be emitted UNLESS... 
+      # unless we reset .spaMM.data$options$COMP_maxn_warned <- FALSE after the .tryCatch_W_E()
+      # and as .get_inits_by_glm() is called repeatedly for COMPoisson, we do so only if a warning was emitted by the glm
+      # which means that COMP_maxn_warned was FALSE in entry to .get_inits_by_glm()
+      # which means that COMP_maxn_warned is not set to FALSE .get_inits_by_glm() when it was TRUE in entry to it.
     }
   }
   res
@@ -36,7 +45,8 @@
   res
 }
 
-## N O T the moments of the proba distr
+## N O T the moments of the proba distr, Rather the 'num' for a moment obtained by .COMP_Z_ratio(num,denum)
+# we call it repeatedly for nu=1 (and variable lambda) but this may be needed to get the continuity correction in nu=1
 .COMP_Z_moment <- function(eta,nu,lambda=exp(eta), moment, 
                            pow_lam_nu = exp(eta/nu),
                            maxn=.COMP_maxn(lambda,nu),
@@ -122,7 +132,7 @@
     if ("1" %in% moments) {
       num <- .COMP_Z_n(lambda=lambda,nu=nu)
       resu["1"] <- .COMP_Z_ratio(num,denum)
-      # cotinuity correction wrt poisson: 
+      # continuity correction wrt poisson: 
       corr <- .COMP_Z_ratio(.COMP_Z_n(lambda=lambda,nu=1), denum_corr) ## poisson value by general approx
       resu["1"] <- resu["1"]+(lambda-corr) ## approx_any_nu+(exact_poi-approx_poi): exact in nu=1
     }
@@ -302,9 +312,10 @@
   return(sum(summand))
 }
 
-.dCOMP <- function(x, mu, nu,
-                  lambda=COMPoisson(nu=nu)$linkfun(mu,log=FALSE),
-                  log = FALSE, maxn=.COMP_maxn(lambda,nu)) {
+.dCOMP <- function(x, mu, family_env,
+                   nu=family_env$nu,
+                   lambda= family_env$linkfun(mu,log=FALSE), # COMPoisson(nu=nu)$linkfun(mu,log=FALSE),
+                   log = FALSE, maxn=.COMP_maxn(lambda,nu)) {
   compz <- .COMP_Z(lambda=lambda,nu=nu,maxn=maxn)
   logd <- x * log(lambda) - nu* lfactorial(x) - compz[["logScaleFac"]] -log(compz[["scaled"]])
   if (log) { 
@@ -433,9 +444,9 @@
 }
 
 .CMP_aic <- function(y, n, mu, wt, dev) {
-  nu <- parent.env(environment())$nu
+  family_env <- parent.env(environment())
   aici <- numeric(length(y))
-  for (i in seq_len(length(y))) { aici[i] <- .dCOMP(y[i], mu[i], nu=nu, log = TRUE) }
+  for (i in seq_len(length(y))) { aici[i] <- .dCOMP(y[i], mu[i], family_env=family_env, log = TRUE) }
   -2 * sum(aici * wt)
 }
 

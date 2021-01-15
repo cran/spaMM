@@ -60,15 +60,15 @@ negbin <- function (shape = stop("negbin's 'shape' must be specified"), link = "
   if (trunc==0L) {
     dev.resids <- function(y, mu, wt) {
       ## the dev.resids serves in MM to estimate phi (hence not here) or lambda in ranCoefs models (=> trunc.neg.bin with ranCoefs)
-      # computation is in Mathelatica notebook.
+      # computation is in Mathematica notebook.
       2 * wt * (y * log(pmax(1, y)/mu) - (y + shape) * log((y + shape)/(mu + shape))
                 +log( (1-(shape/(mu+shape))^shape) / (1-(shape/(y+shape))^shape) )
       )
     }
     aic <- function(y, n, mu, wt, dev) { ## not really the aic... -2 clik
       term <- (y + shape) * log(mu + shape) - y * log(mu) + 
-        lgamma(y + 1) - shape * log(shape) + lgamma(shape) - lgamma(shape + y) + 
-        + log(1-(shape/(mu + shape))^shape) ## log(1-p0)
+        lgamma(y + 1) - shape * log(shape) + lgamma(shape) - lgamma(shape + y) +
+        log(1-(shape/(mu + shape))^shape) ## log(1-p0)
       2 * sum(term * wt)
     }
   } else {

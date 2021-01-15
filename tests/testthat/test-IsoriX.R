@@ -25,7 +25,9 @@ if (requireNamespace("IsoriX",quietly=TRUE)) { ## Checks that exports/imports ar
     }
   } else if (spaMM.options("example_maxtime")>30) {
     # ad-hoc bc builing the sphere is not worth the time
+    oldwarn <- options(warn=0L) # avoid stop on warning("Prior weights are not taken in account in residVar computation.") 
     source("C:/home/francois/travail/stats/spaMMplus/spaMM/package/tests/testthat/nestedFiles/isoscape.R")
+    options(oldwarn)
     try(testthat::expect_equal(GermanScape$isoscapes@data@values[1,"disp_predVar"],c(disp_predVar=0.08379127),tol=1e-7)) 
   }
   if (spaMM.options("example_maxtime")>700) { ## that would be tests' total time

@@ -1,6 +1,7 @@
 .do_call_wrap <- local(
   {
     warned_dcw <- list()
+    inla_already <- FALSE
     function(chr_fnname,arglist, pack="e1071", info_mess) {
       if (length(grep(pack,packageDescription("spaMM")$Imports))) {
         ## then the necessary functions are imported-from in the NAMESPACE  
@@ -19,11 +20,18 @@
           return(NULL)
         }
       } else { ## package not declared in DESCRIPTION
-        if (suppressWarnings(do.call("require",list(package=pack, quietly = TRUE)))) { ## 'quietly' only inhibits the startup message
+        if (pack=="INLA") {
+          success <- suppressMessages(do.call("require",list(package=pack))) # messge might suggest that the fit is by INLE...
+          if ( ! inla_already) {
+            message("INLA::inla.spde.make.A() will be used to construct the IMRF models fitted by spaMM.")
+            inla_already <<- TRUE
+          }
+        } else success <- suppressWarnings(do.call("require",list(package=pack, quietly = TRUE)))
+        if (success) { ## 'quietly' only inhibits 'Le chargement a necessite le package :'... 
           do.call(chr_fnname,arglist) 
         } else {
           if ( ! identical(warned_dcw[[pack]],TRUE)) {
-            if (pack=="INLA") message("If the 'INLA' package were installed, spaMM could use INLA:::inla.spde2.make.A().")
+            if (pack=="INLA") message("If the 'INLA' package were installed, spaMM could use INLA:::inla.spde.make.A().")
             if (pack=="e1071") message("If the 'e1071' package were installed, spaMM could check separation in binary regression problem.")
             if (pack=="cubature") message("If the 'cubature' package were installed, spaMM could compute a requested marginal prediction.")
             if (pack=="pracma") message(info_mess)
@@ -107,7 +115,7 @@ is_separated <- local({
           if ( ! warned_is) {
             message(paste0("If the 'ROI.plugin.glpk' package were installed,\n",
                            "spaMM could properly check (quasi-)separation in binary regression problem.\n",
-                           "See help('libraries') if you have troubles installing 'ROI.plugin.glpk'."))
+                           "See help('external-libraries') if you have troubles installing 'ROI.plugin.glpk'."))
             warned_is <<- TRUE
           }
           pb_size <- length(y)/100

@@ -58,20 +58,26 @@
   return(optr)
 }
 
-.xtol_abs_fn <- function(LowUp,factors=.spaMM.data$options$xtol_abs_factors, rC_transf=.spaMM.data$options$rC_transf) {
-  xtol_abs <- vector("list",length(LowUp$lower))
+.xtol_abs_fn <- function(LowUp, # must be a structured list, not simply a list of two vectors, for it to have some effect.
+                         factors=.spaMM.data$options$xtol_abs_factors, rC_transf=.spaMM.data$options$rC_transf) {
   parnames <- names(LowUp$lower)
   if ("trRanCoefs" %in% parnames) {
-    for (st in names(LowUp$lower)) if(st=="trRanCoefs") {
-      len <- length(unlist(LowUp$lower[[st]]))
-      Xi_ncol <- floor(sqrt(len*2))
-      # if (rC_transf=="chol") {
-      #   xtol_abs[[st]] <- rep(1e-12,len) # note that order of elements is that of upper.tri 
-      # } else 
-        xtol_abs[[st]] <- c(rep(factors["rcLam"],Xi_ncol),rep(factors["rcCor"],len-Xi_ncol)) # "sph" etc
-    } else {xtol_abs[[st]] <- rep(factors["others"],length(unlist(LowUp$lower[[st]])))}
-    rng <- unlist(LowUp$upper)-unlist(LowUp$lower)
-    xtol_abs <- unlist(xtol_abs)# not clear why
+    xtol_abs <- relist(rep(NA,length(.unlist(LowUp$lower))),LowUp$lower)
+    for (st in parnames) {
+      if (st=="trRanCoefs") {
+        trRanCoefs <- LowUp$lower$trRanCoefs
+        for (rc in names(trRanCoefs)) {
+          len <- length(trRanCoefs[[rc]])
+          Xi_ncol <- floor(sqrt(len*2))
+          # if (rC_transf=="chol") {
+          #   xtol_abs[[st]] <- rep(1e-12,len) # note that order of elements is that of upper.tri 
+          # } else 
+          xtol_abs$trRanCoefs[[rc]] <- c(rep(factors["rcLam"],Xi_ncol),rep(factors["rcCor"],len-Xi_ncol)) # "sph" etc
+        }
+      } else {xtol_abs[[st]] <- rep(factors["others"],length(.unlist(LowUp$lower[[st]])))}
+    }
+    rng <- unlist(LowUp$upper, use.names = FALSE)-unlist(LowUp$lower, use.names = FALSE)
+    xtol_abs <- unlist(xtol_abs, use.names = FALSE)
     rng_finite <- is.finite(rng)
     xtol_abs[rng_finite] <- xtol_abs[rng_finite] * rng[rng_finite]
   } else xtol_abs <- factors["abs"]
@@ -81,7 +87,7 @@
 # returns optPars which is a list given by relist(.,init.optim), with attributes the optimMethod and (+:- raw) optr 
 .new_locoptim <- function(init.optim, LowUp, control, objfn_locoptim, 
                           anyHLCor_obj_args, HLcallfn.obj="HLCor.obj", 
-                          user_init_optim, ## only purpose is to check whether (some of the) init.optim comes from explicit user info.
+                          user_init_optim, ## only purpose is to make sure that if the user provides an explicit init in 1D, optimize() is not used.
                           grad_locoptim=NULL,
                           verbose
 ) {
@@ -91,7 +97,7 @@
   lowerb <- unlist(LowUp$lower)
   upperb <- unlist(LowUp$upper) 
   Optimizer <- control[["optimizer"]] ## consistent with control.corrHLfit
-  # If user provides an explicit init in 1D, optimize) is not used:
+  # If user provides an explicit init in 1D, optimize() is not used:
   if (is.null(Optimizer)) {
     if (use_optimizer1D <- (length(initvec)==1L)) {
       uuinit <- unlist(user_init_optim)
@@ -130,7 +136,7 @@
     optr <- .safe_opt(init=initvec, lower=lowerb, upper=upperb, 
                       objfn=objfn_locoptim, # minimization of -logL
                       verbose=max(0L,verbose-1L), 
-                      anyHLCor_obj_args=anyHLCor_obj_args, HLcallfn.obj=HLcallfn.obj #, init.optim=init.optim
+                      anyHLCor_obj_args=anyHLCor_obj_args, HLcallfn.obj=HLcallfn.obj , LowUp=LowUp
                       ) ## does not use gradients
     optPars <- relist(optr$solution,init.optim)
   } else if (Optimizer=="bobyqa") { ## May more narrowly approach lowerb and upperb, ~> longer computation times

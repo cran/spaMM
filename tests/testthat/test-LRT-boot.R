@@ -18,8 +18,8 @@ if (spaMM.getOption("example_maxtime")>18) { ## user time + system.time for para
   data("blackcap")
   
   # Generate fits of null and full models:
-  lrt <- fixedLRT(null.formula=migStatus ~ 1 + Matern(1|latitude+longitude),
-                  formula=migStatus ~ means + Matern(1|latitude+longitude), 
+  lrt <- fixedLRT(null.formula=migStatus ~ 1 + Matern(1|longitude+latitude),
+                  formula=migStatus ~ means + Matern(1|longitude+latitude), 
                   HLmethod='ML',data=blackcap)
   
   myfun <- function(y, what=NULL, lrt, ...) { 

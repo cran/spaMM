@@ -2,7 +2,7 @@ if (FALSE) {  ## DOC:
   ## Il semble difficile de garder une info sur chaque element de lambda ou ranCoefs, particulierement parce que 
   #  les elements NULL de ranCoefs poseraient probleme pour relist(). Il faut plutôt utiliser les noms.
   essai <- list(a=1,b=NULL,c=2)
-  relist(c(3,5),skeleton=essai) ## error mal documentée
+  relist(c(3,5),skeleton=essai) ## error mal documentee
   
   ## idiom for merging parameters
   varNames <- setdiff(names(init.HLfit),c("fixef","v_h")) ## maybe also corrPars ? empty list in init.HLfit...
@@ -33,24 +33,39 @@ if (FALSE) {  ## DOC:
 
 }
 
-.modify_list <- function (x, val) { ## derived from utils::modifyList
+.modify_list <- function (x, val, obey_NULLs=TRUE) { ## derived from utils::modifyList
   if( is.null(x)) {
     if (is.null(val)) {
       return(NULL)
     } else return(val)
-  } else if (is.null(val)) return(x) 
+  } else if (is.null(val)) return(x) # but if val is a named list with explicit NULLs, those explicit NULLs will replace the corresponding LHS elements 
   #stopifnot(is.list(x), is.list(val)) # inefficient
   xnames <- names(x)
   vnames <- names(val)
+  if ( ! obey_NULLs ) {
+    is_null_vec <- sapply(val, is.null)
+    vnames <- vnames[which( ! is_null_vec)]
+  }
   vnames <- vnames[nzchar(vnames)]
   for (v in vnames) {
     if (v %in% xnames) {
       if ( is.list(x[[v]]) && is.list(val[[v]])) {
         x[[v]] <- .modify_list(x[[v]], val[[v]])
-      } else if ( ! is.null(nam <- names(val[[v]]))) {
+      } else if ( ! is.null(dim(val[[v]]))) { # if val[[v]] is a matrix names(val[[v]]) is not what we need here
+        x[[v]] <- val[[v]]
+      } else if ( ! is.null(nam <- names(val[[v]]))) { # handles val[[v]] being list, or vector 
         x[[v]][nam] <- val[[v]]
       } else x[[v]] <- val[[v]]
     } else x[[v]] <- val[[v]] 
+  }
+  x
+}
+
+.denullify <- function(x, modifier, vec_nobs=NULL) { # changes NULL's and not to NULLs
+  if (is.null(vec_nobs)) {
+    if (is.null(x)) x <- modifier
+  } else if (.anyNULL(x) ) {
+    for (mv_it in seq_along(modifier)) if ( is.null(x[[mv_it]])) x[mv_it] <- list(unlist(modifier[as.character(mv_it)])) # handling missing data properly
   }
   x
 }
@@ -132,18 +147,19 @@ remove_from_parlist <- function(parlist, removand=NULL, rm_names=names(unlist(re
             type=type )
 }
 
-# not yet used in spaMM
-#extract a sublist from a (structured) list x according to a skeleton
-.sublist <- function (x, skeleton) { 
+#extract a sublist from a (structured) list x according to a skeleton; used for mv code
+.subPars <- function (x, skeleton) { 
   xnames <- names(x)
   sknames <- names(skeleton)
   sknames <- sknames[nzchar(sknames)]
   for (v in sknames) {
     if (v %in% xnames) {
       if (( is.list(x[[v]]) || inherits(x[[v]],"R6")) && is.list(skeleton[[v]])) {
-        skeleton[[v]] <- .sublist(x[[v]], skeleton[[v]])
-      } else if ( ! is.null(nam <- names(skeleton[[v]]))) {
-        skeleton[[v]][nam] <- x[[v]]
+        skeleton[[v]] <- .subPars(x[[v]], skeleton[[v]])
+      } else if ( ! is.null(nam <- names(skeleton[[v]]))) { # ideally this test is always TRUE when it is reached 
+        if (length(subnames <- intersect(nam, names(x[[v]])))) {
+          skeleton[[v]] <- x[[v]][subnames] # sub-vector here
+        } else skeleton[v] <- NULL # remove element from list
       } else skeleton[[v]] <- x[[v]]
     } else skeleton[[v]] <- x[[v]]
   }

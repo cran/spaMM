@@ -31,7 +31,7 @@
       } else if (corr_type =="IMRF") {
         KAPPAMAX <- moreargs[[char_rd]]$KAPPAMAX
         hyper <- init.optim$hyper
-        hyper_map <- attr(hyper,"map")
+        hyper_map <- attr(hyper,"hy_info")$map # hy_info is environment, same as in 'processed', the later which is not itself locally accessible
         trKappa <- hyper[[hyper_map[it]]]$hy_trK 
         if (is.null(trKappa)) { ## NOT hyper (independent IMRF terms)    or   fixed hyper
           if ( ! is.null(.get_cP_stuff(canon.init,"kappa",char_rd))) { ## optimized, independent IMRF term
@@ -165,40 +165,56 @@
     }
   }
   
-  if (! is.null(canon.init$phi)) {
+  if (! is.null(canon.init$phi)) { # *p*min, *p*max introduced for vector phi's for fitmv : might affect univariate-response fits
     phi <- user.lower$phi
-    if (is.null(phi)) phi <- max(min(1e-6,canon.init$phi/1.01),canon.init$phi/1e5) # >=1e-6 if canon.init$phi>1e-6
+    if (is.null(phi)) phi <- pmax(pmin(1e-6,canon.init$phi/1.01),canon.init$phi/1e5) # >=1e-6 if canon.init$phi>1e-6
+    names(phi) <- names(canon.init$phi) # late addition for mv code (merging inits...)
     lower$trPhi <- .dispFn(phi)
     phi <- user.upper$phi
-    if (is.null(phi)) phi <-  min(max(1e8,canon.init$phi*1.01),canon.init$phi*1e7) 
+    if (is.null(phi)) phi <- pmin(pmax(1e8,canon.init$phi*1.01),canon.init$phi*1e7) 
+    names(phi) <- names(canon.init$phi) # late addition for mv code
     ## if phi is badly initialized then it gets a default which may cause hard to catch problems in the bootstrap...
     upper$trPhi <- .dispFn(phi)
   }
   if (! is.null(canon.init$lambda)) {
     lambda <- user.lower$lambda
     if (is.null(lambda)) lambda <- pmax(1e-6,canon.init$lambda/1e5)
+    names(lambda) <- names(canon.init$lambda) # late addition for mv code
     lower$trLambda <- .dispFn(lambda)
     lambda <- user.upper$lambda
     if (is.null(lambda)) lambda <- pmin(1e8,canon.init$lambda*1e7)
+    names(lambda) <- names(canon.init$lambda) # late addition for mv code
     upper$trLambda <- .dispFn(lambda)
   }
   if (! is.null(canon.init$COMP_nu)) {
-    COMP_nu <- user.lower$COMP_nu
-    if (is.null(COMP_nu)) COMP_nu <- min(canon.init$COMP_nu/2,0.05)
-    lower$COMP_nu <- COMP_nu
-    COMP_nu <- user.upper$COMP_nu
-    if (is.null(COMP_nu)) COMP_nu <- max(canon.init$COMP_nu*10,10)
-    upper$COMP_nu <- COMP_nu
-  } else if (! is.null(canon.init$NB_shape)) { ## for Gamma(1:sh,sh) with mean 1 and variance sh
-    NB_shape <- user.lower$NB_shape
-    if (is.null(NB_shape)) NB_shape <- 1e-6 
-    lower$trNB_shape <- .NB_shapeFn(NB_shape)
-    NB_shape <- user.upper$NB_shape
-    if (is.null(NB_shape)) NB_shape <- max(100*canon.init$NB_shape,1e6)
-    upper$trNB_shape <- .NB_shapeFn(NB_shape)
+    if (length(canon.init$COMP_nu)>1L) { # mv case with >1 COMPoisson submodels
+      # then all vectors mus be named and canon.init must have values for all COMpoisson submodels
+      lower$COMP_nu <- .modify_list(pmin(canon.init$COMP_nu/2,0.05), user.lower$COMP_nu)
+      upper$COMP_nu <- .modify_list(pmax(canon.init$COMP_nu*10,10), user.upper$COMP_nu)
+    } else {
+      if (is.null(COMP_nu <- user.lower$COMP_nu)) COMP_nu <- pmin(canon.init$COMP_nu/2,0.05)
+      lower$COMP_nu <- COMP_nu
+      if (is.null(COMP_nu <- user.upper$COMP_nu)) COMP_nu <- pmax(canon.init$COMP_nu*10,10)
+      upper$COMP_nu <- COMP_nu
+    }
   }
-  if ( ! is.null( ranCoefs <- canon.init$ranCoefs)) { ## whenever there are ranCoefs to outer-optimize (FIXME? no user control on canon.init?)
-    upper$trRanCoefs <- lower$trRanCoefs <- ranCoefs
+  if (! is.null(canon.init$NB_shape)) { ## shape param of latent [Gamma(1:sh,sh) with mean 1 and variance sh]
+    if (length(canon.init$NB_shape)>1L) { # mv case with >1 COMPoisson submodels
+      # then all vectors mus be named and canon.init must have values for all COMpoisson submodels
+      NB_shape <- .modify_list(rep(1e-6, length(canon.init$NB_shape)), user.lower$NB_shape)
+      lower$trNB_shape <- .NB_shapeFn(NB_shape)
+      NB_shape <- .modify_list(pmax(100*canon.init$NB_shape,1e6), user.upper$NB_shape)
+      upper$trNB_shape <- .NB_shapeFn(NB_shape)
+    } else {
+      if (is.null(NB_shape <- user.lower$NB_shape)) NB_shape <- 1e-6
+      lower$trNB_shape <- .NB_shapeFn(NB_shape)
+      if (is.null(NB_shape <- user.upper$NB_shape)) NB_shape <- max(100*canon.init$NB_shape,1e6)
+      upper$trNB_shape <- .NB_shapeFn(NB_shape)
+    }
+    
+  }
+  if ( ! is.null( ranCoefs <- canon.init$ranCoefs)) { ## whenever there are ranCoefs to outer-optimize 
+    upper$trRanCoefs <- lower$trRanCoefs <- ranCoefs # so that assignments such as lower$trRanCoefs[[it]] <- ... will not fail
     for (it in seq_along(ranCoefs)) {
       init_trRancoef <- .ranCoefsFn(ranCoefs[[it]], rC_transf=rC_transf)
       trRancoef_LowUp <- .calc_LowUp_trRancoef(init_trRancoef,Xi_ncol=attr(init_trRancoef,"Xi_ncol"),

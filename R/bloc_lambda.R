@@ -1,13 +1,13 @@
 .bloc_lambda <- function(models, #init.lambda, 
                          SEMblob=NULL, 
                         calcRanefPars_blob=NULL, ## contains $next_lambda_est (one step ahead of the last updated lambda_est)
-                        processed, lambda.Fix, cum_n_u_h, lev_lambda=NULL, next_LMatrices) {
+                        processed, lam_fix_or_outer_or_NA, cum_n_u_h, lev_lambda=NULL, next_LMatrices) {
   nrand <- length(processed$ZAlist)
   rand_to_glm_map <- integer(nrand)
   resglm_lambdaS <- list()
   lambda_pred_list <- as.list(rep(NA,nrand)) ## to be _partially filled_ by this function uing available glm's
   ## je peux avoir SEM sans adjacency (SEM-Matern) et adjacency sans SEM (Poisson-adjacency)
-  if (all(models[[2]]=="lamScal")) { 
+  if (all(models[["lambda"]]=="lamScal")) { 
     ####### includes SEM
     if ( ! is.null(SEMblob)) {
       glm_lambda <- SEMblob$glm_lambda
@@ -32,7 +32,7 @@
     if (length(notdone)) {
       cum_Xi_cols <- cumsum(c(0,attr(processed$ZAlist,"Xi_cols")))
       for(it in notdone) { ## CAR here if old corrHLfit method (or rho fixed?)
-        if (is.na(lambda.Fix[it])) {
+        if (is.na(lam_fix_or_outer_or_NA[it])) {
           colrange <- (cum_Xi_cols[it]+1L):cum_Xi_cols[it+1L] 
           u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
           loclamdata <- data.frame(processed$X_lamres[u.range,colrange,drop=FALSE])

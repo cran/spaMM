@@ -35,7 +35,7 @@ The data were retrieved from \code{http://bergelson.uchicago.edu/regmap-data/cli
  Adaptation to climate across the Arabidopsis thaliana genome, Science 334: 83-86.
  
   Rousset F., Ferdy, J.-B. (2014) Testing environmental and genetic effects in the presence of spatial autocorrelation. Ecography, 37: 781-790.
-    \url{http://dx.doi.org/10.1111/ecog.00566}
+    \doi{10.1111/ecog.00566}
  
 }
 \examples{

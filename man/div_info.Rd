@@ -14,7 +14,7 @@ div_info(object, ...)
   \item{object}{An object of class \code{HLfit}, as returned by the fitting functions in \code{spaMM}.}
   \item{\dots}{Currently not used}
 }
-\value{Used mainly for the side effects (printed output) but returns invisibly either a single parameter vector (if a single numerical problem occurred) or a matrix of parameter ranges.
+\value{Used mainly for the side effects (printed output) but returns invisibly either a single parameter vector (if a single numerical problem occurred) or a matrix of parameter ranges, or NULL if there is no problem to report.
 }
 \examples{
 if (spaMM.getOption("example_maxtime")>25) {

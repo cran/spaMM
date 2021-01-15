@@ -70,8 +70,8 @@ if (spaMM.getOption("example_maxtime")>7) {
  data("blackcap")
  
  # Generate fits of null and full models:
- lrt <- fixedLRT(null.formula=migStatus ~ 1 + Matern(1|latitude+longitude),
-                 formula=migStatus ~ means + Matern(1|latitude+longitude), 
+ lrt <- fixedLRT(null.formula=migStatus ~ 1 + Matern(1|longitude+latitude),
+                 formula=migStatus ~ means + Matern(1|longitude+latitude), 
                  method='ML',data=blackcap)
 
  # The 'simuland' argument: 

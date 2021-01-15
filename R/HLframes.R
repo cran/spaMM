@@ -60,14 +60,14 @@
   if (term[[1]] == as.name("IMRF") || term[[1]] == as.name("multIMRF")) {
     return(.subbarsMM(term[[2]]))
   }
-  if (length(term) == 2) {
+  if (length(term) == 2L) {
     term[[2]] <- .subbarsMM(term[[2]])
     return(term)
   }
   # stopifnot(length(term) >= 3) ## inefficient
   if (is.call(term) && term[[1]] == as.name("|")) 
     term[[1]] <- as.name("+")
-  for (j in 2:length(term)) term[[j]] <- .subbarsMM(term[[j]])
+  for (j in 2L:length(term)) term[[j]] <- .subbarsMM(term[[j]])
   term
 }
 
@@ -209,7 +209,11 @@
     attr(term,"type") <- structure("IMRF", pars=pars) # pars as attr to type avoid problems in building the return value.
     return(term) # (lhs|rhs) (language, with the ()); or character string.
   }
-  if (term[[1]] == as.name("multIMRF")) { # useful for .findSpatial() before preprocessing, as in filled.mapMM()
+  # terms are of class call, so expectedly ',' separates different elements in a term
+  # E.g., if not handled specifically, <somekeyword>(1,2|.) would be parsed as term[[2]]=1, term[[3]]=2|batch
+  # That means that the test length(term) == 2 is not appropriate for terms with some ','
+  # <somekeyword>(1 2|.) does not work natively: R doesn't know what to do about the 2 (unexpected numeric constant).
+  if (term[[1]] == as.name("multIMRF") ) { # useful for .findSpatial() before preprocessing, as in filled.mapMM()
     attr(term,"type") <- as.character(term[[1]])
     return(term) 
   }
@@ -262,11 +266,14 @@
                           as_character= (which.==""), # return strings vs. full <keyword>(.|.) terms
                           which.="") {
   if (missing(barlist)) barlist <- .parseBars(formula)
-  # NULL barlist is a result from a previous.parseBars / .process_bars call !   
-  if (expand) {
-    barlist <- .spMMexpandSlash(barlist)
+  if ( ! is.null(barlist)) {
+    names(barlist) <- seq_along(barlist)
+    # NULL barlist is a result from a previous.parseBars / .process_bars call !   
+    if (expand) {
+      barlist <- .spMMexpandSlash(barlist)
+    }
+    attr(barlist,"type") <- unlist(lapply(barlist,attr,which="type")) # before the element attributes are hacked by .lhs_rhs_bars()
   }
-  attr(barlist,"type") <- unlist(lapply(barlist,attr,which="type")) # before the element attributes are hacked by .lhs_rhs_bars()
   if (which.=="exp_ranef_terms") {
     return(.lhs_rhs_bars(barlist)) # keeps the "type" attribute of the list
   } else if (as_character) {
@@ -305,6 +312,21 @@
   c(.findOffset(term[[2]]), .findOffset(term[[3]]))
 }
 
+#mv <- function(...) return(unlist(list(...)))
+
+if (FALSE) { # seems correct, but ultimately not needed
+  .asNoPoly <- function(formula) {
+    aschar <- .DEPARSE(formula)
+    while(TRUE) {
+      newaschar <- gsub("poly\\(cbind\\((.+?),(.+?)\\)(.+?)\\)", "poly(cbind(\\1+\\2)\\3)", aschar, fixed = FALSE)
+      if (newaschar==aschar) break
+      aschar <- newaschar 
+    } # replaces ',' separating variables in cbind() by '+'
+    aschar <- gsub("poly\\(cbind\\((.+?)\\),(.+?)\\)", "poly\\(\\1\\)", aschar, fixed = FALSE) # keeps only the argument within cbind()
+    aschar <- gsub("poly\\(([^,]+?),(.+?)\\)", "\\1", aschar, fixed = FALSE) # or keeps only the variable
+    as.formula(aschar, env=environment(formula))
+  }
+}
 
 .asNoCorrFormula <- function(formula) {
   aschar <- .DEPARSE(formula)
@@ -317,6 +339,8 @@
   aschar <- gsub("multIMRF\\((.+?\\|[^,]+?), ([^)]+?)\\)", "\\(\\1\\)", aschar, fixed = FALSE) # removes IMRF and the parameters
   aschar <- gsub("IMRF\\((.+?\\|[^,]+?), ([^)]+?)\\)", "\\(\\1\\)", aschar, fixed = FALSE) # removes IMRF and the parameters
   ## thank you https://regex101.com/ ... ? (:lazy matching) is essential
+  # Handling the 'virtual' factor represented by an mv() expression; necess for .preprocess -> .getValidData() as the virtual levels are not in the data.
+  aschar <- gsub("mv\\([^|]+", "1 ", aschar, fixed=FALSE) # finds mv(.... up to the closing ')' included and replaces it by '1' 
   as.formula(aschar, env=environment(formula))
 }
 
@@ -337,10 +361,10 @@
   #     oricall$formula <- .preprocess_formula(formula) 
   #     mc <- oricall
   formula <- .asNoCorrFormula(formula) ## removes spatial tags
-  frame.form <- .subbarsMM(formula) ## this comes from lme4 and converts (...|...) terms to some "+" form
-  if (!is.null(resid.formula)) {
-    resid.formula <- .asNoCorrFormula(resid.formula) ## removes spatial tags
-    frame.resid.form <- .subbarsMM(resid.formula) ## this comes from lme4 and converts (...|...) terms to some "+" form
+  frame.form <- .subbarsMM(formula) ## this converts (...|...) terms to some "+" form
+  if (!is.null(resid.formula)) { 
+    resid.formula <- .asNoCorrFormula(resid.formula)
+    frame.resid.form <- .subbarsMM(resid.formula) 
     frame.form <- paste(.DEPARSE(frame.form),"+",.DEPARSE(frame.resid.form[[2]]))
   }
   check <- grep('$',frame.form,fixed=TRUE)
@@ -348,6 +372,14 @@
     message("'$' detected in formula: suspect and best avoided. 
             In particular, one should never need to specify the 'data' in the 'formula'. 
             See help('good-practice') for explanations.")
+  }
+  check <- grep('c(',frame.form,fixed=TRUE)
+  if (length(check)) {
+    if ((inherits(frame.form,"formula") && check[1L]==length(frame.form)-1L) ||
+        is.character(frame.form) && check[1L]==1L
+        )
+    warning("'c(' detected in formula: did you mean cbind() for binomial response or for poly()?", immediate.=TRUE)
+    # warning useful as eval(mf) generates an obscure error.
   }
   frame.form <- as.formula(frame.form)
   environment(frame.form) <- envform
@@ -441,10 +473,11 @@
     } ## indeed as in  binomial()$initialize
     if (NCOL(Y)==1L) { ## test on NCOL excludes the case cbind-LHS -> matrix Y (with any array1d stuff already erased)
       Y <- as.matrix(Y) ## to cope with array1d, and see $y <- ... code in .preprocess
-    }
+      respname <- colnames(full_frame)[1]
+    } else respname <- colnames(full_frame[[1]])[1] ## binomial, full_frame[[1]] is a matrix with cols for npos and nneg
+    Y <- .sanitize_Y(Y, famfam) # sanitize Y, rather than processed$y which is not used by .get_inits_by_glm()
+    res$Y <- structure(Y, respname=respname) # respname drops automatically when processed$y is evaluated
   }
-  Y <- .sanitize_Y(Y, famfam) # sanitize Y, rather than processed$y which is not used by .get_inits_by_glm()
-  res$Y <- Y
   #
   # compare to .calc_newFrames_fixed() to keep changes in code consistent
   fixef_off_form <- .stripRanefs_(formula) 
@@ -509,10 +542,10 @@
   } else return(NULL)
 }
 
-.calc_newFrames_fixed <- function (formula, data, fitobject, need_allFrames=TRUE) {
+.calc_newFrames_fixed <- function (formula, data, fitobject, need_allFrames=TRUE, mv_it=NULL) {
   ## X may or may not contain offset info, which should not be used (see .newEtaFix()) 
   #  but fixef_mf should contain such info bc .newEtaFix calls off <- model.offset( newMeanFrames$mf)
-  fixef_off_terms <- .get_fixef_off_terms(fitobject) 
+  fixef_off_terms <- .get_from_HLframes(object=fitobject, mv_it=mv_it) 
   if (is.null(formula)) {
     X <- matrix(nrow=nrow(data),ncol=0L) ## model without fixed effects, not even an Intercept 
     fixef_mf <- NULL 
@@ -528,7 +561,7 @@
         attr(Terms,"intercept") <- 0L # removes offset that terms() assumes if there is no explicit '0'.
       }
       # handles offset:  (without the small shortcut used in .HLframes())
-      fixef_mf <- model.frame(Terms, data, xlev = fitobject$HLframes$fixef_levels) ## xlev gives info about the original levels
+      fixef_mf <- model.frame(Terms, data, xlev = .get_from_HLframes(object=fitobject, which="fixef_levels", mv_it=mv_it)) ## xlev gives info about the original levels
       # :here for a poly(age,.) Terms and age=Inf in the 'data', fixef_mf had zero rows and linkinv will fail on numeric(0) 'eta'
       if (nrow(fixef_mf)!=nrow(data)) {
         if (any(pb <- which( ! sapply(lapply(data,is.finite), all)))) {
@@ -536,7 +569,12 @@
         } else stop("nrow(fixef_mf)!=nrow(data) for undetermined reason") 
       }
       X <- model.matrix(Terms, fixef_mf, contrasts.arg=attr(fitobject$X.pv,"contrasts")) 
-      ## : original contrasts definition is used to define X cols that match those of original X, whatever was the contrast definition when the model was fitted
+      ## : where original contrasts definition is used to define X cols that match those of original X, whatever was the contrast definition when the model was fitted
+      if ( ! is.null(mv_it)) {
+        cum_ncol_X <- attr(fitobject$X.pv,"cum_ncol")
+        col_range <- cum_ncol_X[mv_it]+seq_len(cum_ncol_X[mv_it+1L]-cum_ncol_X[mv_it]) # avoid (n+1:n) problem 
+        colnames(X) <- colnames(fitobject$X.pv)[col_range]
+      }
     } else {
       fixef_mf <- NULL
       X <- matrix(nrow=nrow(data), ncol=0L) ## Not using NROW(Y) which is 0 if formula has no LHS
@@ -546,14 +584,18 @@
   return(list(X = X, mf = fixef_mf)) 
 }
 
-.calc_newFrames_ranef <- function (formula, data, fitobject) {
-  formula <- .asNoCorrFormula(formula) ## strips out the correlation information, retaining the ranefs as (.|.)
-  if (is.character(formula[[2L]])) formula <- formula[-2L] ## something like ".phi" ....
-  plusForm <- .subbarsMM(formula) ## this comes from lme4 and converts (.|.) terms to (.+.) form 
-  environment(plusForm) <- environment(formula)
-  Terms <- terms(plusForm) ## assumes an Intercept implicitly
-  Terms <- stats::delete.response(Terms)
-  attr(Terms,"predvars") <- .calc_newpredvars(fitobject$HLframes$all_terms, Terms) ## for poly in ranefs ? which never worked
-  mf <- model.frame(Terms, data, drop.unused.levels=TRUE) 
-  return(list(mf = mf))
+if (FALSE) { # v3.5.121 managed to get rid of it 
+  .calc_newFrames_ranef <- function (formula, data, fitobject) {
+    formula <- .asNoCorrFormula(formula) ## strips out the correlation information, retaining the ranefs as (.|.)
+    if (is.character(formula[[2L]])) formula <- formula[-2L] ## something like ".phi" ....
+    plusForm <- .subbarsMM(formula) ## this comes from lme4 and converts (.|.) terms to (.+.) form 
+    environment(plusForm) <- environment(formula)
+    Terms <- terms(plusForm) ## assumes an Intercept implicitly
+    Terms <- stats::delete.response(Terms)
+    #attr(Terms,"predvars") <- .calc_newpredvars(fitobject$HLframes$all_terms, Terms) ## for poly in ranefs ? 
+    mf <- model.frame(Terms, data, drop.unused.levels=TRUE) 
+    return(list(mf = mf))
+  }
+# } else {
+#   .calc_newFrames_ranef <- function (formula, data, fitobject) {list(mf=data)}
 }

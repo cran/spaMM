@@ -37,14 +37,14 @@
 .calc_summand_gainratio_spprec <- function(processed, which_LevMar_step, LevMarblob, seq_n_u_h, ZAL_scaling, gainratio_grad) {
   if (processed$HL[1L]==1L) { ## ML fit 
     if (which_LevMar_step=="v_b") { 
-      tempodvhbeta <- unlist(LevMarblob[c("dVscaled","dbeta_eta")])
+      tempodvhbeta <- .unlist(LevMarblob[c("dVscaled","dbeta_eta")])
       tempodvhbeta[seq_n_u_h] <- tempodvhbeta[seq_n_u_h]*ZAL_scaling
       summand <- tempodvhbeta*(gainratio_grad+ LevMarblob$dampDpD * tempodvhbeta)
     } else if (which_LevMar_step=="b_&_v_in_b") {  # summand is computed after v_h ha been modified too
       # dbeta <- LevMarblob$dVscaled_beta[-seq_n_u_h]
       # summand <- dbeta*(gainratio_grad[-seq_n_u_h]+ LevMarblob$dampDpD * dbeta) 
       #### soame as for "v_b", *assuming* that we have put back the v_h changes in $dVscaled_beta
-      tempodvhbeta <- unlist(LevMarblob[c("dVscaled","dbeta_eta")])
+      tempodvhbeta <- .unlist(LevMarblob[c("dVscaled","dbeta_eta")])
       tempodvhbeta[seq_n_u_h] <- tempodvhbeta[seq_n_u_h]*ZAL_scaling
       summand <- tempodvhbeta*(gainratio_grad+ LevMarblob$dampDpD * tempodvhbeta)
     } else if (which_LevMar_step=="b") {
@@ -56,7 +56,7 @@
       summand <- LevMarblob$dbeta_eta*(gainratio_grad[-seq_n_u_h]+ LevMarblob$dampDpD * LevMarblob$dbeta_eta) 
     } else stop("Unhandled 'which_LevMar_step'")
   } else { ## joint hlik maximization
-    tempodvhbeta <- unlist(LevMarblob[c("dVscaled","dbeta_eta")])
+    tempodvhbeta <- .unlist(LevMarblob[c("dVscaled","dbeta_eta")])
     tempodvhbeta[seq_n_u_h] <- tempodvhbeta[seq_n_u_h]*ZAL_scaling
     summand <- tempodvhbeta*(gainratio_grad+ LevMarblob$dampDpD * tempodvhbeta)
   }

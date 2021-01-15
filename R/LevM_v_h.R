@@ -25,8 +25,8 @@
     seq_n_u_h <- seq_len(n_u_h)
     ypos <- n_u_h+seq_len(nobs)
     lcrandfamfam <- attr(processed$rand.families,"lcrandfamfam")
-    LMMbool <- processed$LMMbool
-    GLMMbool <- processed$GLMMbool
+    LMMbool <-  attr(processed[["models"]],"LMMbool")
+    GLMMbool <- attr(processed[["models"]],"GLMMbool") 
     not_moving <- FALSE
     old_relV <- NULL
     damped_WLS_blob <- NULL
@@ -40,7 +40,7 @@
                                 # fit_as_ZX args specific for ! GLMM:
                                 for_init_z_args,
                                 #
-                                mget(c("cum_n_u_h","rand.families","stop.on.error"),envir=processed))
+                                mget(c("cum_n_u_h","rand.families"),envir=processed))
       delayedAssign("constant_u_h_v_h_args", 
                     c(mget(c("cum_n_u_h","rand.families"),envir=processed),
                       processed$u_h_info, ## elements of u_h_info as elements of constant_u_h_v_h_args, NOT u_h_info as element of...  

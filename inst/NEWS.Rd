@@ -3,6 +3,52 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 3.6.0}{ 
+\subsection{NEW FEATURES}{
+\itemize{
+\item (major) New function fitmv() to fit multivariate-response models, extending most of the features of fitme().
+\item LRT() (aka anova.HLfit()) can now perform a bootstrap test for models differing (also) by their random effects. 
+\item fitme(), and the new fitmv(), accept partially-fixed random coefficients parameters, as in 'fixed=list(ranCoefs=list("1"=c(NA,0.5,NA)))'
+\item get_inits_from_fit() now gets also the estimates of the shape parameters of the negbin and COMPoisson families. 
+\item New function map_ranef() to plot a map of a spatial random effect (using only graphic functions from base R, but other functions can use the returned grid of values).
+\item Improved control of names of user-provided fixed lambda values (new error message may result).
+\item poly() in random-coefficient terms is now handled.
+\item New extractor residVar() for residual variances, with features different from get_residVar(). 
+}
+}
+\subsection{USER-LEVEL CHANGES}{
+\itemize{
+\item Most GLMM fits using sparse-precision algorithm should be substantially faster (near 50\% for long fits).
+\item Better control of progress bars as the global 'barstyle' option is no longer used in some cases where a local argument should be used.
+\item The 'uniqueGeo' argument of HLCor() has long been obsolete and is now deprecated. 
+\item VarCorr.HLfit() gets a new argument 'add_residVars' to make information about residual variance optional (also fixing potential bugs).
+\item residuals() did not always return a vector.
+}
+}
+\subsection{FIXED BUGS}{
+\itemize{
+\item confint() on PQL[/L] fits had several issues, in particular easily producing spurious messages suggesting that the fit was inaccurate.  
+\item One could not use a Matern(RHS|.) (for non-unit RHS) together with a distMatrix for this Matern term.
+\item Improve a backward incompatibility issue in the (internal) post-fit function determining which fitting function was used to produce a fit.
+\item The recently introduced extractor get_RLRsim_args() did not correctly handle marginal LR tests (as opposed to REML ones).
+\item the global 'barstyle' option was always directly used, so that the 'showpbar' argument did not control the progress bar in dopar().
+\item plot.HLfit() reported incorrect standardized deviance residuals for binomial, non-binary response.
+\item Several post-fit functions such as predict() could report incorrect results for 'IMRF' (and perhaps 'adjacency') models since version 3.4.1.
+\item The (hardly ever tested) 'sqrt' family link was not fully implemented for families that allows it. 
+\item summary() printed an incorrect number of groups for random-coefficients terms (long known and not bothered about until now). 
+\item Documentation for the 'distMatrix' argument of HLCor() and 'higher' fitting functions was incomplete.
+\item simulate(., re.form=NULL) was broken.
+\item random-coefficient parameters fitted by "outer optimization" where not counted in the degrees of freedom for AIC.
+\item Fitting some LMMs with fixed 'lambda' could return incorrect results. 
+\item Typo in printed summary for rand.family=Gamma (wrong 'scale' value).
+}
+}
+\subsection{ALL THE ABOVE for the 'multi' family}{
+\itemize{
+\item It was given a new scrutiny, leading to a display bug fix, a revised fitted() output, improved summary() information, a new how.HLfitlist() extractor, and revised documentation. But fitmv() might ultimately be more useful to fit multinomial data. % ___FIXME___
+}
+}
+}
 \section{CHANGES UP TO VERSION 3.5.0}{ 
 \subsection{NEW FEATURES}{
 \itemize{
@@ -27,7 +73,7 @@
 \section{CHANGES UP TO VERSION 3.4.0}{ 
 \subsection{NEW FEATURES}{
 \itemize{
-\item \code{IMRF()} terms now also handle objects created by INLA::inla.spde2.matern() with non-integer alpha values, and therefore a broader range of smoothness values.
+\item \code{IMRF()} terms now also handle objects created by INLA::inla.spde2.matern() with non-integer alpha values, and therefore a broader range of smoothness values (PS: doc corrected wrt this only in version 3.6.0).
 \item objects created by INLA::inla.spde2.pcmatern() are also handled.
 \item 'sparse_precision' fitting method can be notably faster than before for large data sets. By default, this will affect fits of models with adjacency or IMRF terms. 
 \item Fitting family=Gamma(log) mixed models will be faster than before, twofold or possibly more for large data sets.
@@ -265,7 +311,7 @@
 }
 }
 }
-\section{CHANGES UP TO VERSION 2.6.0}{ 
+\section{CHANGES UP TO VERSION 2.6.1}{ 
 \subsection{USER-LEVEL CHANGES}{
 \itemize{
 \item Informative message when plot.HLfit does not produce a 'mean' plot. 

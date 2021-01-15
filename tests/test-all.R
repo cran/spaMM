@@ -5,20 +5,23 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") { ## set in etc/Renviron.site (cf R Win
     # options(error = quote({dump.frames(to.file = TRUE)})) # useful for bugs in .do_TRACE()
     if (interactive()) {
       # options(error=recover)
-      # spaMM.options(TRY_ZAX=TRUE)
+      # spaMM.options(use_ZA_L=NULL)
       abyss <- matrix(runif(2e7),nrow=1000); gc(reset=TRUE) ## partial control of gc trigger...
       while (dev.cur()>1L) dev.off()
       op <- devAskNewPage(ask=FALSE)
       testfiles <- dir(paste0(projpath(),"/package/tests/testthat/"),pattern="*.R",full.names = TRUE)
       # oldmaxt <- spaMM.options(example_maxtime=70)
       timings <- t(sapply(testfiles, function(fich){system.time(source(fich))}))
-      #spaMM.options(oldmaxt)
+      # spaMM.options(oldmaxt)
       print(colSums(timings))
       ## testthat::test_package(pkg) ## for an installed package
       if (FALSE) { ## tests not included in package (using unpublished data, etc.)
         priv_testfiles <- dir(paste0(projpath(),"/package/tests_private/"),pattern="*.R",full.names = TRUE)
         priv_testfiles <- setdiff(priv_testfiles,paste0(projpath(),"/package/tests_private/knit_LM2GLMM.R"))
-        priv_timings <- t(sapply(priv_testfiles, function(fich){system.time(try(source(fich)))}))
+        priv_timings <- t(sapply(priv_testfiles, function(fich){
+          cat(crayon::green(paste0("\n",fich)))
+          system.time(try(source(fich)))
+        }))
         #spaMM.options(oldmaxt)
         print(colSums(priv_timings))
       }

@@ -1,6 +1,12 @@
 .safe_opt <- function(init, objfn, lower, upper, verbose, maxeval_corr=.spaMM.data$options$maxeval_corr, 
                       recheck_at_bound=.spaMM.data$options$recheck_at_bound, 
-                      adjust_init=list(), ...) { # minimization
+                      adjust_init=list(), 
+                      LowUp=list(), # default deals with absence of argument in .safe_opt() calls in Infusion 
+                      # ___F I X M E___ in this order:
+                      # => update spaMM on CRAN => update Infusion to require latest spaMM
+                      # => possible to put explicit LowUp=list() args in .safe_opt() calls in Infusion 
+                      # => possible to remove the default here => safer code that forces programmer to think about argument
+                      ...) { # minimization
   names_init <- names(init) # may be lost in later operations
   prevmin <- Inf
   delayedAssign("bobyqa_controls", {
@@ -22,7 +28,7 @@
     # if (is.null(nloptr_controls$print_level)) print_level <- 0
     if (is.null(nloptr_controls$maxeval)) nloptr_controls$maxeval <-  eval(.spaMM.data$options$maxeval,list(initvec=init))*maxeval_corr
     if (is.null(nloptr_controls$xtol_abs)) nloptr_controls$xtol_abs <- eval(.spaMM.data$options$xtol_abs, 
-                                                                            list(LowUp=list(lower=lower,upper=upper), rC_transf=.spaMM.data$options$rC_transf))
+                                                                            list(LowUp=LowUp, rC_transf=.spaMM.data$options$rC_transf))
     if (is.null(nloptr_controls$xtol_abs)) nloptr_controls$xtol_abs <- 1e-12
     #nloptr_controls$print_level <- 3L # can be controlled by spaMM.options()!
     nloptr_controls

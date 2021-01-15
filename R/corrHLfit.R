@@ -1,4 +1,4 @@
-.check_args_corrHLfit <- function(...,ranFix=list(),ranPars=NULL,fixed=NULL,lower=list(),upper=list()) {
+.check_args_corrHLfit <- function(...,ranFix=list(),ranPars=NULL,fixed=NULL, init.corrHLfit=list(), lower=list(), upper=list()) {
   mc <- match.call(expand.dots = TRUE)
   if (is.null(ranFix)) mc$ranFix <- list() ## deep reason is that relist(., HLCor$ranPars) will need a list ## corrHLfit-spacific
   ## Preventing confusions
@@ -11,7 +11,10 @@
   if ( ! (is.list(lower) && is.list(upper))) {
     wrongclass <- setdiff(unique(c(class(lower),class(upper))),"list")
     stop(paste("'lower' and 'upper' must be of class list, not",paste(wrongclass,collapse=" or ")))
-  } ## as.list() would flatten rho vectors
+    ## as.list() would flatten rho vectors
+  } # else if ((length(lower) || length(upper)) && ! length(init.corrHLfit)) {
+  #   warning("'lower' or 'upper' specifications without matching 'init.corrHLfit' have no effect",immediate. = TRUE)
+  # }
   HLnames <- (c(names(formals(HLCor)),names(formals(HLfit)),
                 names(formals(mat_sqrt)),names(formals(make_scaled_dist))))  
   dotnames <- setdiff(names(mc)[-1],names(formals(corrHLfit)))
@@ -111,11 +114,15 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
     hlcor$call <- oricall ## this is a call to corrHLfit()
   }
   lsv <- c("lsv",ls())
-  if ( ! .is.multi(mc$family) && ! is.call(hlcor) )  {
-    hlcor$how$fit_time <- .timerraw(time1)
-    hlcor$how$fnname <- "corrHLfit"
-    hlcor$fit_time <- structure(hlcor$how$fit_time,
-                                message="Please use how(<fit object>)[['fit_time']] to extract this information cleanly.")
+  if ( ! is.call(hlcor) ) {
+    if ( inherits(hlcor,"HLfitlist") ) {
+      attr(hlcor,"how") <- list(fit_time=.timerraw(time1), fnname="corrHLfit", spaMM.version=hlcor[[1L]]$how$spaMM.version)
+    } else {
+      hlcor$how$fit_time <- .timerraw(time1)
+      hlcor$how$fnname <- "corrHLfit"
+      hlcor$fit_time <- structure(hlcor$how$fit_time,
+                                  message="Please use how(<fit object>)[['fit_time']] to extract this information cleanly.")
+    }
   }
   rm(list=setdiff(lsv,"hlcor")) 
   return(hlcor)

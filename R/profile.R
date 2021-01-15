@@ -11,10 +11,14 @@ spaMM.options <- function(..., warn=TRUE) {
   if (length(temp) == 0) return(.spaMM.data$options)
   argnames <- names(temp)
   if (is.null(argnames)) stop("options must be given by name")
-  old <- .spaMM.data$options[argnames]
-  if (anyNA(names(old))) {
-    if (warn) warning(paste0("'",paste(argnames[which(is.na(names(old)))],collapse="', '")),
-                      "' not previously in spaMM.options. Check such name(s)?", immediate. = TRUE)
+  old <- .spaMM.data$options[argnames] 
+  if (anyNA(names(old))) { # has element(s) $<NA>=NULL 
+    if (warn) {
+      checknames <- argnames[which(is.na(names(old)))]
+      checknames <- setdiff(checknames, c("sparse_precision")) # exception for valid names not in default spaMM.options()
+      if (length(checknames)) warning(paste0("'",paste(checknames,collapse="', '")),
+                                      "' not previously in spaMM.options. Check such name(s)?", immediate. = TRUE)
+    }
     names(old) <- argnames 
   }
   .spaMM.data$options[argnames] <- temp

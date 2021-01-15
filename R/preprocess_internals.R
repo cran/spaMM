@@ -115,7 +115,7 @@
 }
 
 # even though the Z's were sparse postmultplication by LMatrix leads some of the ZAL's to dgeMatrix (dense)
-.choose_QRmethod <- function(ZAlist, predictor, corr_info, trySparse=TRUE,is_spprec, processed) {
+.choose_QRmethod <- function(ZAlist, corr_info, trySparse=TRUE,is_spprec, processed) {
   if ( is.null(QRmethod <- .spaMM.data$options$QRmethod) ) { ## user setting. The code should NOT write into it. 
     nrand <- length(ZAlist)
     if (trySparse && nrand>0L) {
@@ -181,7 +181,7 @@
 }
 
 .preprocess_LevM <- function(user_LM, processed, nrand) {
-  if (processed$LMMbool) user_LM <- FALSE  # (_F I X M E_) removing this and forcing LevM creates an error in the tests.
+  if (attr(processed[["models"]],"LMMbool")) user_LM <- FALSE  # (_F I X M E_) removing this and forcing LevM creates an error in the tests, meaning that LevM does not handle LMMs (OK)
   if (is.null(user_LM)) user_LM <- .spaMM.data$options$LevenbergM
   if (is.list(user_LM)) stop("is.list(LevenbergM)")
   # we may want: 
@@ -196,7 +196,8 @@
         if (nrand>0 && processed$HL[1L]==0L) {
           ## PQL/L + LevenbergM combine safely and relatively fast.... for small data
           # bigranefs -> PQL/L+LevM much smaller than ML!
-          LM_start <- (tail(processed$cum_n_u_h,n=1)<500L) ## adjlg has 1000 levels and is faster without LevM 
+          ## adjlg has 1000 levels and is faster without LevM 
+          LM_start <- (tail(processed$cum_n_u_h,n=1)<500L)[[1]] # drop the automatic name from cum_n_u_h...
         } else LM_start <- FALSE  ## BINARYboot test to assess effect on timings
       } else LM_start <- FALSE
     } else LM_start <- user_LM[[1L]] # important to drop name else the names of the vector are wrong
@@ -290,6 +291,254 @@
     attr(prior.weights,"is_call") <- TRUE
   }   
   return(prior.weights)
+}
+
+################################################################################
+# for a random slope term, ie v= v_1+x v_2 , the x went into the general ZAL matrix 
+# (construction of Zlist by .calc_Zlist(), and
+# we are still estimating the lambda's using a X_lamres with 0/1's only
+# unless there is a non-trivial model for the lambdas
+################################################################################
+.calc_X_lamres <- function(processed, models=processed$models, ZAlist=processed$ZAlist, nrand=length(ZAlist)) {
+  if (all(models[["lambda"]]=="lamScal")) { ## all mixed models handled in 06/2015 (random slope, adjacency...) hence currently always TRUE
+    Xi_cols <- attr(ZAlist,"Xi_cols")
+    if (any(Xi_cols>1 & ! processed$lcrandfamfam=="gaussian")) {
+      stop("(!) random slope models implying correlated non-gaussian random effects are not fitted.")
+    }
+    cum_Xi_cols <- cumsum(c(0, Xi_cols)) ## if two ranef,  with n_u_h=(3,3), this is 0,3,6. cum_h_u_h[nrand+1] is then 6, the total # of realizations
+    n_u_h <- rep(0, sum(Xi_cols))
+    #for (i in 1:nrand) n_u_h[(cum_Xi_cols[i]+1L):cum_Xi_cols[i+1L]] <- ncol(ZAlist[[i]]) ##  nlevels(Subject[[i]])
+    # if 18 responses in a random slope model ncol(ZAlist[[i]]) is 36 while nlevels(Subject[[i]]) was 18
+    for (i in seq_len(nrand)) n_u_h[cum_Xi_cols[i]+seq(Xi_cols[i])] <- ncol(ZAlist[[i]])/Xi_cols[i]
+    # h_u_h not n_u_h ...
+    cum_h_u_h <- cumsum(c(0, n_u_h)) ## if two "Intercept" ranefs,  with n_u_h=(3,3), this is 0,3,6. cum_h_u_h[nrand+1] is then 6, the total # of realizations
+    ## if (1+X|...) +(1|...),  with n_u_h=(3,4), this is 0,3,6,10. cum_h_u_h[sum(Xi_cols)+1] is then 10, the total # of realizations
+    X_lamres <- matrix(0,cum_h_u_h[sum(Xi_cols)+1L],sum(Xi_cols))
+    colnames(X_lamres) <- unlist(attr(ZAlist,"namesTerms"))
+    for (i in seq_len(nrand)) {
+      for (j in (cum_Xi_cols[i]+1L):cum_Xi_cols[i+1L]) {
+        X_lamres[(cum_h_u_h[j]+1L):cum_h_u_h[j+1L],j] <- 1L ## this maps the deviance residuals to the lambda's to be estimated from them. None of the random-slope columns is a constant full column because each dev res is used for estimating only one lambda. Nevertheless, the first col will be called "(Intercept)", and this makes a valid output.
+      }
+    }
+    return(X_lamres)
+  } else {  ## linear predictor for variance of random effects (lambda) (lamGLM or lamHGLM) 
+    if (any(models[["lambda"]]=="lamHGLM")) { ##need distinct calls... to fit each lambda model  
+      if (length(formulaLambda)==2) formulaLambda <- as.formula(paste('"lambda"',paste(formulaLambda,collapse=" ")))
+      if (!is.null(.parseBars(formulaLambda))) {  ## lamHGLM
+        models[["lambda"]] <- list("lamHGLM")
+      } else models[["lambda"]] <- list("lamGLM")  
+      colnames(X_lambda) <- colnames(fr_lambda$X) ## but code not effective, fr_lambda not computed
+    } else { ## can use a single design matrix for all random effects, which is convenient.
+      stop("LIKELY missing code to handle linear predictor for lambda.")
+      # la suite c'est dexu residus de code a assembler: il faut une liste de HLframes du type
+      fr_lambda <- .HLframes(formula=formulaLambda,data="data", famfam="famfam") ## but the "data" should probably be distinct data here, with nrow=number of reals of ranefs 
+      # (pobablement calculee en amont pour determiner lamScal aussi...) ensuite extraire les design matrices
+      #X_lamres ? Xi_cols ?
+    }
+  } 
+}
+
+.preprocess_resid <- function(preprocess_arglist) {
+  residProcessed <- do.call(.preprocess,preprocess_arglist) ## cf verbose explicitly set to NULL 
+  # preprocess here plays the role of fitme as wrapper bringing the following info to fitme_body:
+  #
+  # we add ".phi" to attr(residProcessed$predictor - for summary() only ? But then same operation on version with hyper-ranefs
+  fullform <-  .preprocess_formula(as.formula(paste(".phi",.DEPARSE(residProcessed$predictor))))
+  mostattributes(fullform) <- attributes(residProcessed$predictor)
+  if ( ! is.null(hy_form <- attr(fullform,"hyper_info")$formula)) attr(fullform,"hyper_info")$formula <- as.formula(paste(".phi",.DEPARSE(hy_form)))
+  residProcessed$predictor <- fullform
+  return(residProcessed)
+}
+
+.check_identifiability_LMM <- function(processed, nobs) {
+  ## identifiability checks cf modular.R -> checkNlevels() in lmer:
+  vec_n_u_h <- diff(processed$cum_n_u_h)
+  if (any(vec_n_u_h<2L) && is.null(processed$phi.Fix)) {
+    problems <- which(vec_n_u_h<2L) 
+    for (rd in problems) {
+      mess <- paste0("Only ",vec_n_u_h[rd]," level for random effect ",
+                     attr(processed$ZAlist,"exp_ranef_strings")[rd],
+                     ";\n   this model cannot be fitted unless phi is fixed.")
+      warning(mess, immediate.=TRUE)
+    }
+  }
+  if (any(vec_n_u_h==nobs) && processed$models[["phi"]] %in% c("phiScal","phiGLM")) { 
+    if (attr(processed$residModel$formula,"has_intercept")) { ## there is an intercept in the resid.model formula
+      # ideally for random-coefficients models we should compare the design columns... 
+      ## FR->FR cf isNested check as in https://github.com/lme4/lme4/blob/master/R/utilities.R, 
+      problems <- which(vec_n_u_h==nobs) 
+      for (rd in problems) {
+        term_ranef <- attr(processed$ZAlist,"exp_ranef_strings")[rd]
+        if (substr(term_ranef, 1, 1)=="(" ## excludes spatial (and more generally 'keyword') ranefs 
+          && ! is.numeric(processed$lambda.Fix[rd])
+        ) {
+          mess <- paste0("Number of levels = number of observations for random effect ", term_ranef,
+                         ";\n   this model cannot be fitted unless phi is fixed, or the variance",
+                         "\n   of this effect is fixed, or a non-trivial correlation matrix is given.") 
+          stop(mess)
+        }          
+      }
+    }
+  }
+}
+
+.check_phi_Fix <- function(phi.Fix, family, processed) {
+  if ( ! (constr_fit <- ! is.null(phi.Fix))) {
+    if (constr_fam <- family$family %in% c("poisson","binomial","COMPoisson","negbin")) {
+      phi.Fix <- 1 
+    } # else if (var(y)==0) phi.Fix <- .spaMM.data$options$min_disp
+  } else if (any(phi.Fix==0)) stop("phi cannot be fixed to 0.")
+  if ( ! is.null(phi.Fix)) phi.Fix <- structure(phi.Fix,
+                                                          constr_fit= constr_fit,
+                                                          constr_phi= (constr_fit || constr_fam) ) 
+  # so that the fitobject$phi gets these attributes.
+  return(phi.Fix)
+}
+
+.preprocess_phi_model <- function(processed, resid.model, control.HLfit, HLmethod, data, 
+                                  control.glm, models, family) {
+  residFrames <- NULL
+  resid.formula <- resid.model$formula
+  if ( is.null(processed$phi.Fix)) {
+    if ( ! is.null(.parseBars(resid.formula))) {
+      if (is.null(resid.model$rand.family)) resid.model$rand.family <- gaussian() # avoids rand.families being NULL in .preprocess_resid() -> .preprocess()
+      preprocess_arglist <- list(control.HLfit=control.HLfit, ## constrained
+                                 ranFix=resid.model$fixed, 
+                                 HLmethod=HLmethod, ## constrained
+                                 predictor=resid.formula, ## obvious
+                                 resid.model=resid.model$resid.model, # potentially allows nested resid.model's... 
+                                 REMLformula=NULL, # constrained
+                                 data=data, # obvious (?) 
+                                 family=resid.model$family, # obvious
+                                 BinomialDen=NULL, # obviously no binomial response
+                                 rand.families=resid.model$rand.family, # (NULL not handled by preprocess); 
+                                 #   outer preprocess calls *receive* a default value from formals(HLfit)
+                                 etaFix=resid.model$etaFix, ## not constrained, but should rather use 'resid.model$fixed'
+                                 prior.weights=NULL, ## currently defined  dynamically using lev_phi...
+                                 control.glm=control.glm, ## constrained
+                                 verbose=NULL, ## TRACE would be overriden by the final do_TRACE call of the parent .preprocess()
+                                 For="fitme", ## constrained: preprocess must allow spatial and non-spatial models
+                                 init.HLfit=as.list(resid.model$init.HLfit) ## converts NULL to list() as exp'd by .preprocess()
+      )
+      ## preprocess formal arguments that were ignored up to v.2.4.30 14/05/2018:
+      other_preprocess_args <- setdiff(names(formals(.preprocess)),names(preprocess_arglist))
+      preprocess_arglist[other_preprocess_args] <- resid.model[other_preprocess_args]
+      processed$residProcessed <- .preprocess_resid(preprocess_arglist)
+      if (identical(names(resid.model$fixed$phi),"default")) message("'phi' of residual dispersion model set to 1 by default")
+      models[["phi"]] <- "phiHGLM" 
+      p_phi <- NA
+    } else {
+      residFrames <- .HLframes(formula=resid.formula,data=data,famfam=resid.model$family$family)
+      attr(resid.formula,"off") <- model.offset(residFrames$mf) ## only for summary.HLfit() (and below)
+      attr(resid.formula,"has_intercept") <- (attr(residFrames$fixef_off_terms,"intercept")!=0L) ## for identifiability checks
+      ## if formula= ~1 and data is an environment, there is no info about nobs, => fr_disp$X has zero rows, which is a problem later 
+      p_phi <- NCOL(residFrames$X)
+      namesX_disp <- colnames(residFrames$X)
+      if (p_phi==1 && namesX_disp[1]=="(Intercept)"
+          && is.null(attr(resid.formula,"off")) ## added 06/2016 (bc phiScal does not handle offset in a phi formula) 
+      ) {
+        models[["phi"]] <- "phiScal"
+      } else { 
+        models[["phi"]] <- "phiGLM"
+      }
+      resid.model$formula <- resid.formula  ## absent  if phiHGLM has been detected
+    } 
+    processed$p_fixef_phi <- p_phi # no X_disp is saved in processed
+  } else {
+    processed$p_fixef_phi <- 0L
+    if ( family$family %in% c("binomial","poisson","COMPoisson","negbin")) {
+      if ( .DEPARSE(resid.formula) != "~1") {
+        warning(paste0("resid.model is ignored in ",family$family,"-response models"))
+      }
+    }
+  }
+  processed$models <- models
+  processed$residModel <- resid.model 
+#  return(residFrames) # result of residFrames <- .HLframes(.): $mf... processed 
+}
+
+.do_TRACE <- local({
+  mess_scaling <- FALSE
+  function(processed) { ## no need for an 'unTRACE' call at the end of each fit since the next fit will cope with everything.
+    ## trouble when called from another package while not attached (bboptim example)
+    # THe syntax spaMM::HLfit_body, where=spaMM::fitme does not stop() in that case, 
+    #     but HLfit_body is not effectively traced when using spaMM directly attached (standard library(spaMM))
+    # The syntax spaMM::HLfit_body without where=also does not trace when using spaMM directly attached
+    level <- processed$verbose["TRACE"]
+    if ("package:spaMM" %in% search()) {
+      if ( level ) {
+        if (processed$augZXy_cond) {
+          traced_fn <- quote(.HLfit_body_augZXy)
+          if ( ! mess_scaling) {
+            message("'y-augmented' algorithm: in TRACE displays, variable lambda values are shown relative to phi values.")
+            mess_scaling <<- TRUE
+          }
+        } else traced_fn <- quote(HLfit_body)
+        if (level >= 1L ) {
+          tracing_op <- quote(try(.TRACE_fn(ranFix, processed)))
+          exit_op <- quote({
+            aphl <- unlist(res$APHLs[c("p_bv","p_v","logLapp")])[1L] ## unlist drops NULL values
+            if (is.null(aphl)) {
+              print("(objective not found)",quote=FALSE)
+            } else print(paste0(names(aphl),"= ",.prettify_num(aphl,nsmall=4)),quote=FALSE)
+          })
+        } else { ## e.g. level=0.5 : will print only the "progress bars"  
+          tracing_op <- quote({})
+          exit_op <- quote({})
+        }
+        suppressMessages(trace(traced_fn, where=asNamespace("spaMM"), print=FALSE, 
+                               tracer=tracing_op,
+                               exit=exit_op)) 
+        # if (processed$is_spprec) {
+        #   suppressMessages(trace(.solve_IRLS_as_spprec, where=asNamespace("spaMM"),print=FALSE,tracer=quote(cat(">"))))
+        # } else suppressMessages(trace(.solve_IRLS_as_ZX, where=asNamespace("spaMM"), print=FALSE,tracer=quote(cat(">"))))
+        #suppressMessages(trace(spaMM.getOption("matrix_method"),print=FALSE,tracer=quote(cat("."))))
+        #suppressMessages(trace(spaMM.getOption("Matrix_method"),print=FALSE,tracer=quote(cat("."))))
+        #suppressMessages(trace(spaMM.getOption("spprec_method"),print=FALSE,tracer=quote(cat("."))))
+        if (level>3L) {
+          fn <- paste("get_from_MME",strsplit(spaMM.getOption("matrix_method"),"def_")[[1L]][2],sep=".") ## get_from_MME.sXaug_EigenDense_QRP_Chol_scaled
+          suppressMessages(trace(fn,print=FALSE,tracer=quote(cat(which))))
+          fn <- paste("get_from_MME",strsplit(spaMM.getOption("Matrix_method"),"def_")[[1L]][2],sep=".") ## get_from_MME.sXaug_Matrix_QRP_CHM_scaled
+          suppressMessages(trace(fn,print=FALSE,tracer=quote(cat(which))))
+          fn <- paste("get_from_MME",strsplit(spaMM.getOption("spprec_method"),"def_")[[1L]][2],sep=".") #
+          suppressMessages(trace(fn,print=FALSE,tracer=quote(cat(which))))
+        } else {
+          fn <- paste("get_from_MME",strsplit(spaMM.getOption("matrix_method"),"def_")[[1L]][2],sep=".") ## get_from_MME.sXaug_EigenDense_QRP_Chol_scaled
+          suppressMessages(untrace(fn, where=asNamespace("spaMM")))
+          fn <- paste("get_from_MME",strsplit(spaMM.getOption("Matrix_method"),"def_")[[1L]][2],sep=".") ## get_from_MME.sXaug_Matrix_QRP_CHM_scaled
+          suppressMessages(untrace(fn, where=asNamespace("spaMM")))
+          fn <- paste("get_from_MME",strsplit(spaMM.getOption("spprec_method"),"def_")[[1L]][2],sep=".") 
+          suppressMessages(untrace(fn, where=asNamespace("spaMM")))
+        }
+      } else { # TRACE=0
+        suppressMessages(try(untrace(HLfit_body, where=asNamespace("spaMM")), silent=TRUE))      
+        suppressMessages(try(untrace(.HLfit_body_augZXy, where=asNamespace("spaMM")), silent=TRUE))      
+        # if (processed$is_spprec) {
+        #   suppressMessages(try(untrace(.solve_IRLS_as_spprec, where=asNamespace("spaMM")), silent=TRUE))
+        # } else suppressMessages(try(untrace(.solve_IRLS_as_ZX, where=asNamespace("spaMM")), silent=TRUE))
+        #suppressMessages(untrace(spaMM.getOption("matrix_method"), where=asNamespace("spaMM")))
+        #suppressMessages(untrace(spaMM.getOption("Matrix_method"), where=asNamespace("spaMM")))
+        #suppressMessages(untrace(spaMM.getOption("spprec_method"), where=asNamespace("spaMM")))
+        fn <- paste("get_from_MME",strsplit(spaMM.getOption("matrix_method"),"def_")[[1L]][2],sep=".") ## get_from_MME.sXaug_EigenDense_QRP_Chol_scaled
+        suppressMessages(untrace(fn, where=asNamespace("spaMM")))
+        fn <- paste("get_from_MME",strsplit(spaMM.getOption("Matrix_method"),"def_")[[1L]][2],sep=".") ## get_from_MME.sXaug_Matrix_QRP_CHM_scaled
+        suppressMessages(untrace(fn, where=asNamespace("spaMM")))
+        fn <- paste("get_from_MME",strsplit(spaMM.getOption("spprec_method"),"def_")[[1L]][2],sep=".") 
+        suppressMessages(untrace(fn, where=asNamespace("spaMM")))
+      } 
+    } else if (level) {warning("The 'spaMM' package must be *attached* for verbose(TRACE=...) tracing to fully operate",
+                               immediate.=TRUE)}
+  } 
+})
+
+.preprocess_init.HLfit <- function(init.HLfit, corr_info) {
+  if ( ! is.null(rho <- init.HLfit$rho)) {
+    init.HLfit$corrPars <- list()
+    if (length(adj_rd <- which(corr_info$corr_types=="adjacency"))) {
+      init.HLfit$corrPars[[as.character(adj_rd)]][["rho"]] <- rho
+      init.HLfit$rho <- NULL
+    } else stop("Invalid ambiguous 'init.HLfit' argument: single 'rho' but not single adjacency random-effect term.")
+  }
 }
 
 

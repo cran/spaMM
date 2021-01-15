@@ -143,21 +143,23 @@ print.bootci4print <- function(x, ...) {
 projpath <- local({
   pp <- NULL
   function() {
-    if (is.null(pp)) {
-      tryres <- try(get("getActiveProject",envir = asNamespace("rstudioapi"))) # fails if rstudioapi not installed
-      if ( ! inherits(tryres,"try-error")) tryres <- try(tryres()) # fails if package not running ie not an Rstudio session
-      if (inherits(tryres,"try-error")) {
-        if (interactive()) {
-          message('Need to give the project path, say "C:/home/francois/travail/stats/spaMMplus/spaMM":')
-          tryres <- readline(prompt="Enter path: ")
-        } else {
-          message('Need to start in the projpath, say "C:/home/francois/travail/stats/spaMMplus/spaMM", so that getwd() finds it.')
-          tryres <- getwd()
-        }
-      } 
-      pp <<- tryres
-    }
-    return(pp)
+    if (is.null(ppp <- .spaMM.data$options$projpath)) {
+      if (is.null(pp)) {
+        tryres <- try(get("getActiveProject",envir = asNamespace("rstudioapi"))) # fails if rstudioapi not installed
+        if ( ! inherits(tryres,"try-error")) tryres <- try(tryres()) # fails if package not running ie not an Rstudio session
+        if (inherits(tryres,"try-error")) {
+          if (interactive()) {
+            message('Need to give the project path, say "C:/home/francois/travail/stats/spaMMplus/spaMM":')
+            tryres <- readline(prompt="Enter path: ")
+          } else {
+            message('Need to start in the projpath, say "C:/home/francois/travail/stats/spaMMplus/spaMM", so that getwd() finds it.')
+            tryres <- getwd()
+          }
+        } 
+        pp <<- tryres
+      }
+      return(pp)
+    } else return(ppp)
   }
 })
 
@@ -175,6 +177,20 @@ projpath <- local({
                                       corrHLfit=spaMM::corrHLfit), identical, y=fun)))
     # the fact that we can rename functions shows how this can fail... 
     # solution is to have fnname in object$how$fnname, called before .get_bare_fnname()
+    # but this is not backward-compatible, in which case...
+    if ( ! length(fnname)) {
+      funtext <- capture.output(fun)
+      if (length(grep("fitme_body",funtext))) {
+        fnname <- "fitme"
+      } else if (length(grep("corrHLfit_body",funtext))) {
+        fnname <- "fitme"
+      } else if (length(grep("HLCor_body",funtext))) {
+        fnname <- "HLCor"
+      } else if (length(grep("HLfit_body",funtext))) {
+        fnname <- "HLfit"
+      } else stop("Unable to find the function that created the fit object. Retry after assigning its name to <fit object>$how$fnname .")
+    }
+    
   } else { # assuming it's a 'name' (direct call or do.call("fitme", args = args)) or fn got by by get(...)
     fnname <- sub("^.*?::","",deparse(fun)) ## remove any "spaMM::" in the name, from which paste() would return c("::","spaMM",<>)
   }
@@ -185,3 +201,5 @@ projpath <- local({
   if (is.null(fnname <- object$how$fnname)) fnname <- .get_bare_fnname(fun=call.[[1L]])
   return(fnname)
 }
+
+.unlist <- function(x) unlist(x, recursive=FALSE, use.names = FALSE)

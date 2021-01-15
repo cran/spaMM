@@ -42,8 +42,8 @@ get_intervals(..., intervals="predVar")
   
   If \code{NULL}, the original data are reused. Otherwise, all variables required to evaluate model formulas must be included. Which variables are required may depend on other arguments: see \dQuote{prediction with given phi's} example, also illustrating the syntax when formulas include an offset.  
   
-  \bold{or} a numeric vector, which names (if any) are ignored. This makes it easier to use \code{predict} as an objective function for an 
-  optimization procedure such as \code{optim}, which calls the objective function on unnamed vectors. However, one must make sure that the order of elements in the vector is  the order of first occurrence of the variables in the model formula. This order can be checked in the error message returned when calling \code{predict} on a \code{newX} vector of clearly wrong size, e.g. \code{predict(<object>,newdata=numeric(0))}.
+  If \code{newdata} is a numeric vector, its names (if any) are ignored. This makes it easier to use \code{predict} as an objective function for an 
+  optimization procedure such as \code{optim}, which calls the objective function on unnamed vectors. However, one must make sure that the order of elements in the vector is the order of first occurrence of the variables in the model formula. This order can be checked in the error message returned when calling \code{predict} on a \code{newX} vector of clearly wrong size, e.g. \code{predict(<object>,newdata=numeric(0))}.
 }
  \item{newX}{equivalent to newdata, available for back-compatibility} 
  \item{re.form}{
@@ -95,7 +95,7 @@ get_intervals(..., intervals="predVar")
   If \code{binding} is \code{FALSE}, The predicted values are returned as a one-column matrix and the data frame used for prediction is returned as an attribute
   (unless it was \code{NULL}). If \code{binding} is \code{NA}, a vector is returned, without the previous attributes.
  }
- \item{fixdata}{A data frame describing reference data which covariances with variable \code{newdata} may be requested.}
+ \item{fixdata}{A data frame describing reference data whose covariances with variable \code{newdata} may be requested.}
  \item{fix_X_ZAC.object}{The return value of calling \code{preprocess_fix_corr} (see trivial Example). This is a more efficient way of providing information about the \code{fixdata} for repeated calls to \code{get_predCov_var_fix} with variable \code{newdata}.}
  \item{blockSize}{
    Mainly for development purposes. For original or new data with many rows, it may be more efficient to split these data in small blocks, and this gives the maximum number or rows of the blocks. However, this will be ignored if a prediction covariance matrix is requested.    
@@ -147,11 +147,12 @@ In the \bold{point prediction} of the linear predictor, the unconditional expect
 }
 \seealso{
 \code{\link{get_cPredVar}} for a bootstrap-corrected version of \code{get_predVar}.
+\code{\link{residVar}} for an alternative extractor for residual variances, more general than \code{get_residVar}.
 }
 
 \examples{
 data("blackcap")
-fitobject <- corrHLfit(migStatus ~ 1 + Matern(1|latitude+longitude),data=blackcap,
+fitobject <- corrHLfit(migStatus ~ 1 + Matern(1|longitude+latitude),data=blackcap,
                        ranFix=list(nu=4,rho=0.4,phi=0.05))
 predict(fitobject)
 getDistMat(fitobject)
@@ -159,11 +160,11 @@ getDistMat(fitobject)
 #### multiple controls of prediction variances
 ## (1) fit with an additional random effect
 grouped <- cbind(blackcap,grp=c(rep(1,7),rep(2,7))) 
-fitobject <- corrHLfit(migStatus ~ 1 +  (1|grp) +Matern(1|latitude+longitude),
+fitobject <- corrHLfit(migStatus ~ 1 +  (1|grp) +Matern(1|longitude+latitude),
                        data=grouped,  ranFix=list(nu=4,rho=0.4,phi=0.05))
 
 ## (2) re.form usage to remove a random effect from point prediction and variances: 
-predict(fitobject,re.form= ~ 1 +  Matern(1|latitude+longitude))
+predict(fitobject,re.form= ~ 1 +  Matern(1|longitude+latitude))
 
 ## (3) comparison of covariance matrices for two types of new data
 moregroups <- grouped[1:5,]
@@ -184,7 +185,7 @@ get_predCov_var_fix(fitobject,newdata=blackcap[14,],fix_X_ZAC.object=fix_X_ZAC.o
 
 ## prediction with distinct given phi's in different locations:
 varphi <- cbind(blackcap,logphi=runif(14))
-vphifit <- corrHLfit(migStatus ~ 1 + Matern(1|latitude+longitude), 
+vphifit <- corrHLfit(migStatus ~ 1 + Matern(1|longitude+latitude), 
                      resid.model = list(formula=~0+offset(logphi)),
                      data=varphi,  ranFix=list(nu=4,rho=0.4))
 # for respVar computation, one needs the resid.model formula to specify phi:

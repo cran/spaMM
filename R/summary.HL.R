@@ -1,17 +1,29 @@
 ## FR->FR accessors : http://glmm.wikidot.com/pkg-comparison
 
-.get_methods_disp <- function(object) {
-  iterativeEsts<-character(0)
-  optimEsts<-character(0)
+.get_methods_disp <- function(object, family=object$family, families=object$families, phi.object=object$phi.object, mv_it=NULL) {
+  iterativeEsts <- character(0)
+  optimEsts <- character(0)
+  if ( ! is.null(families)) {
+    for (mv_it in seq_along(families)) {
+      methods_disp <- .get_methods_disp(object, family=families[[mv_it]], families=NULL, phi.object=phi.object[[mv_it]], mv_it=mv_it) 
+      iterativeEsts <- c(iterativeEsts,methods_disp$iterativeEsts)
+      optimEsts <- c(optimEsts,methods_disp$optimEsts)
+    }
+    return(list(iterativeEsts=unique(iterativeEsts),optimEsts=unique(optimEsts)))
+  }
   ## What the HLfit call says:
   if ( object$models[["eta"]] != "etaGLM") { 
     if ( any(object$lambda.object$type=="outer")) optimEsts <- c(optimEsts,"lambda")
     if ( any(object$lambda.object$type=="inner")) iterativeEsts <- c(iterativeEsts,"lambda")
   }
-  if ( ! (object$family$family %in% c("binomial","poisson","COMPoisson","negbin"))) {
-    if ( ! is.null(object$phi.object$fixef) ) {
+  if ( ! (family$family %in% c("binomial","poisson","COMPoisson","negbin"))) {
+    if ( ! is.null(phi.object$fixef) ) {
       iterativeEsts <- c(iterativeEsts,"phi")
-    } else if ( identical(attr(object$phi.object$phi_outer,"type"),"var")) optimEsts <- c(optimEsts,"phi")
+    } else if ( identical(attr(phi.object$phi_outer,"type"),"var")) {
+      if (is.null(mv_it)) {
+        optimEsts <- c(optimEsts,"phi")
+      } else optimEsts <- c(optimEsts,paste("phi",mv_it,sep="_"))
+    } 
     # confint (fitme HLfitoide -> 3e cas)
   }
   optimNames <- names(attr(object,"optimInfo")$LUarglist$canon.init) ## will contain eg NB_shape
@@ -30,7 +42,7 @@
   beta_se <- sqrt(diag(betaOri_cov))
   fixef_z <- object$fixef/beta_se
   beta_table <- cbind(Estimate=object$fixef,"Cond. SE"=beta_se,"t-value"=fixef_z)
-  if (p_value=="Wald") {beta_table <- cbind(beta_table,"p-value"=1-pchisq(fixef_z^2,df=1))} ## FIXEM F_test: need to extract dfs
+  if (p_value=="Wald") {beta_table <- cbind(beta_table,"p-value"=1-pchisq(fixef_z^2,df=1))} ## FIXME F_test: need to extract dfs
   rownames(beta_table) <- names(object$fixef)
   return(beta_table)
 }
@@ -44,7 +56,7 @@
   rfl <- sapply(rff, switch, 
     #        "Beta" = "log(lambda)", ## u ~ Beta(1/(2lambda),1/(2lambda))
     #        "inverse.Gamma" = "log(lambda)", ## u ~ I-Gamma(1+1/lambda,1/lambda)
-    #        "log(lambda)" ## gaussian, or gamma with u ~ Gamma(lambda,1/lambda)
+    #        "log(lambda)" ## gaussian, or gamma with u ~ Gamma(sh=1/lambda,sc=lambda)
     "log(lambda)" ## currently constant except as modified below for adjd
   )
   check_adjd <- any(unlist(lapply(object$lambda.object$coefficients_lambdaS, names))=="adjd")
@@ -62,7 +74,7 @@
     abyss <- lapply(urff, switch,
                     "Beta" = cat("lambda = 4 var(u)/(1 - 4 var(u)) for u ~ Beta[1/(2*lambda),1/(2*lambda)]; \n"),
                     "inverse.Gamma" = cat("lambda = var(u)/(1 + var(u)) for u ~ inverse-Gamma(sh=1+1/lambda, rate=1/lambda); \n"),
-                    "Gamma" = cat("lambda = var(u) for u ~ Gamma(sh=1/lambda, sc=1/lambda); \n"),
+                    "Gamma" = cat("lambda = var(u) for u ~ Gamma(sh=1/lambda, sc=lambda); \n"),
                     "gaussian" = cat("lambda = var(u) for u ~ Gaussian; \n")
     )
   } else if (type=="link") {
@@ -77,7 +89,12 @@
 .MLmess <- function(object,ranef=FALSE) {
   if (object$models[["eta"]]=="etaGLM") {
     return("by ML.")
-  } else if (object$family$family=="gaussian" && all(attr(object$rand.families,"lcrandfamfam")=="gaussian")) { 
+  } else if (identical(attr(object$models,"LMMbool"),TRUE)) { # v3.5.9+
+    return("by ML.")
+  } else if (object$spaMM.version < "3.5.9" && ## back compat
+             object$family$family=="gaussian" && 
+             object$family$link=="identity" && 
+             all(attr(object$rand.families,"lcrandfamfam")=="gaussian")) {  
     return("by ML.") 
   } else {
     if (object$HL[1]=='SEM')  {
@@ -100,12 +117,16 @@
     if (is.null(object$REMLformula)) { ## default REML case
       if (object$HL[1]=='SEM')  {
         resu <- ("by stochastic EM.")
-      } else if (object$family$family !="gaussian" 
-                 || (object$models[["eta"]]=="etaHGLM" && any(attr(object$rand.families,"lcrandfamfam")!="gaussian"))) { 
-        resu <- ("by Laplace REML approximation (p_bv).") 
-      } else {
+      } else if (object$models[["eta"]]=="etaGLM" && object$family$family =="gaussian") { 
+        resu <- ("by REML.") 
+      } else if ( identical(attr(object$models,"LMMbool"),TRUE))  {
         resu <- ("by REML.")
-      }  
+      } else if (object$spaMM.version < "3.5.9" && 
+                 object$family$family=="gaussian" && 
+                 object$family$link=="identity" && 
+                 all(attr(object$rand.families,"lcrandfamfam")=="gaussian")) {
+        resu <- ("by REML.")
+      } else resu <- ("by Laplace REML approximation (p_bv).") 
     } else {
       if (identical(attr(object$REMLformula,"isML"),TRUE)) { ## FALSE also if object created by spaMM <1.9.15 
         resu <- (.MLmess(object, ranef=TRUE))
@@ -123,7 +144,15 @@ summary.HLfitlist <- function(object, ...) {
   if (object[[1]]$spaMM.version<"1.11.57") {
     warning("This fit object was created with spaMM version<1.11.57, and is no longer supported.\n Please recompute it.")
   } ## warning added in v2.2.43 2017/10/28
-  sapply(object,summary.HLfit) ## because summary(list object) displays nothing (contrary to print(list.object)) => rather call summary(each HLfit object)
+  cumlvls <- character(0)
+  for (it in seq_along(object)) {
+    lvl <- attr(object[[it]]$data,"identifier")
+    cat(crayon::underline(paste0("Category ",lvl," vs. other one(s)")))
+    if (it>1L) cat(crayon::underline(paste0(" except ",paste(cumlvls, collapse=", "))))
+    cumlvls <- c(cumlvls,lvl)
+    cat("\n")
+    summary.HLfit(object[[it]])
+  }
   cat(" ======== Global likelihood values  ========\n")    
   zut <- attr(object,"APHLs")
   cat(paste0(names(zut),": ",signif(unlist(zut),6), collapse="; "),"\n")
@@ -134,8 +163,8 @@ summary.HLfitlist <- function(object, ...) {
   famfam <- family$family
   if ( ! is.null(withArgs <- attr(famfam,"withArgs"))) {
     withArgs <- eval(withArgs,envir=environment(family$aic))
-    legend <- paste(withArgs, "( link =", family$link,")")
-  } else legend <- paste(famfam, "( link =", family$link,")")
+    legend <- paste0(withArgs, "( ",linkstring, family$link," )")
+  } else legend <- paste0(famfam, "( ",linkstring, family$link," )")
   if (identical(family$zero_truncated, TRUE)) legend <- paste("0-truncated", legend)
   return(legend)
 }
@@ -264,7 +293,7 @@ summary.HLfitlist <- function(object, ...) {
 }
 
 .print_adj_ests <- function(object, namesTerms, linklam) {
-  ncoeffs <- attr(object$ZAlist,"Xi_cols") ## RHS = 2 for random slope, else 1
+  ncoeffs <- attr(object$ZAlist,"Xi_cols") ## Xi_cols elements may be not 1 for ranCoefs terms
   any_adjd <- FALSE
   for (it in seq_len(length(namesTerms))) if ("adjd" %in% namesTerms[[it]]) {
     ncoeffs[it] <- 2L
@@ -353,6 +382,99 @@ summary.HLfitlist <- function(object, ...) {
 #   unlist(lambda_list)
 # }
 
+.table_glm_phi <- function(glm_phi, loc_p_phi, phi.object, summ, object, family, # 'family' is response fam (of mv_it submodel if mv)
+                           phiform=.get_phiform(object), resid.family=eval(.get_phifam(object))
+                           ) { 
+  
+  phi_se <- summary(glm_phi,dispersion=1)$coefficients[(loc_p_phi+1L):(2L*loc_p_phi)] 
+  ## note dispersion set to 1 to match SmythHV's 'V_1' method, which for a log link has steps:
+  #SmythHVsigd <- as.vector(sqrt(2)*phi_est);SmythHVG <- as.vector(phi_est); tmp <- SmythHVG / SmythHVsigd 
+  ## tmp is here sqrt(2) !
+  #if (length(tmp)>1) {SmythHVZstar <- diag(tmp) %*% X_disp} else SmythHVZstar <- tmp * X_disp
+  #SmythHVcovmat <- solve(.ZtWZ(SmythHVZstar,(1-lev_phi))); phi_se <- sqrt(diag(SmythHVcovmat)) print(phi_se)
+  #
+  phi_table <- cbind(phi.object$fixef,phi_se)
+  colnames(phi_table) <- c("Estimate", "Cond. SE")
+  rownames(phi_table) <- namesX_disp <- names(phi.object$fixef)
+  summ$phi_table <- phi_table
+  phiinfo <- resid.family$link 
+  if (phiinfo=="identity") {phiinfo="phi "} else {phiinfo <- paste0(phiinfo,"(phi) ")}
+  phiinfo <- paste("Coefficients for",phiinfo,paste0(phiform,collapse=" ")," :\n")
+  cat(phiinfo)
+  print(phi_table,4)
+  dispOffset <- attr(phiform,"off")
+  if (!is.null(dispOffset)) dispOffset <- unique(dispOffset)
+  if (length(namesX_disp)==1 && namesX_disp[1]=="(Intercept)" && length(dispOffset)<2L) {
+    # constant phi: we can display it
+    phi_est <- (phi.object$fixef)
+    if (length(dispOffset)==1L) phi_est <- phi_est+dispOffset
+    phi_est <- resid.family$linkinv(phi_est)
+    if (family$family=="Gamma") {
+      cat(paste("Estimate of phi: ",signif(phi_est,4),"\n"))
+      ## la var c'est phi mu^2...
+    } else cat(paste("Estimate of phi=residual var: ",signif(phi_est,4),"\n"))
+  } ## else phi not constant; We don't try to display it
+  wa <- glm_phi$warnmess
+  if ( ! is.null(wa)) {
+    if (wa=="glm.fit: algorithm did not converge") {
+      cat("glm.fit for estimation of phi SE did not converge; this suggests\n")
+      cat(" non-identifiability of some phi (and possibly also lambda) coefficients.\n")
+    } else {
+      cat("warning in glm.fit for estimation of phi SE: \n")
+      cat(wa,"\n")
+    }
+  }
+  return(summ)
+}
+
+
+.summary_phi_object <- function(object, phi.object=object$phi.object, family=object$family, 
+                                pw=object$prior.weights, summ, phimodel, mv_it=NULL) { # 'mv_it' needed for non-trivial  .get_glm_phi(object, it=it)
+  if (family$family %in% c("gaussian","Gamma")) {
+    if (! is.null(mv_it)) {
+      cat(crayon::underline("* response", mv_it))
+      if (family$family=="Gamma") {
+        cat(" (Gamma) residual var = phi * mu^2:\n")
+      } else cat(" (gaussian) residual variance:  \n")    
+    } else {
+      cat(" -")
+      if (family$family=="Gamma") {
+        cat("-- Residual variation ( var = phi * mu^2 )  --\n")
+      } else cat("------------- Residual variance  -------------\n")    
+    }
+    if ( ! (identical(attr(pw,"unique"),TRUE) && pw[1]==1L)) cat(paste("Prior weights:",
+                                                                       paste(signif(pw[1:min(5,length(pw))],6),collapse=" "),
+                                                                       "...\n"))
+    if ( ! is.null(phi_outer <- phi.object$phi_outer)) {
+      if ( identical(attr(phi_outer,"type"),"fix") ) {
+        if (length(phi_outer)==1L) {
+          cat(paste("phi was fixed to",signif(phi_outer,6),"\n"))
+        } else  cat(paste("phi was fixed.\n"))
+      } else {
+        if (length(phi_outer)==1L) {
+          cat(paste("phi estimate was",signif(phi_outer,6),"\n"))
+        } else  cat(paste("phi was estimated.\n"))
+      }
+      #summ$phi_outer <- phi.object$phi_outer ## mv: {actually from phi.object[[mv_it]]; overwrites previous mv_it} 
+                                              # spaMM does nothing of it anyway so I remove
+    } else {
+      if (phimodel=="phiHGLM") {
+        if (! is.null(mv_it)) {
+          cat(paste0("Residual dispersion model includes random effects:\n  use summary(<fit object>$resid_fits[[",mv_it,"]]) to display results.\n"))
+        } else cat("Residual dispersion model includes random effects:\n  use summary(<fit object>$resid_fit) to display results.\n")       
+      } else if ((loc_p_phi <- length(phi.object$fixef))) { # there are phi params (possibly outer estimated), but...
+        glm_phi <- .get_glm_phi(object, mv_it=mv_it) ## ... no phi glm
+        summ <- .table_glm_phi(glm_phi, loc_p_phi, phi.object, summ, object, family=family,
+                               phiform=.get_phiform(object,mv_it), resid.family=eval(.get_phifam(object,mv_it)))
+      } else {
+        phiform <- .get_phiform(object, mv_it)
+        if (length(phiform)==2) phiform <- as.formula(paste('"phi"',paste(phiform,collapse=" "))) ##FR->FR how does _dglm_ deal with this
+        cat(paste("phi was fixed by an offset term: ",deparse(phiform) ,"\n")) ## quick fix 06/2016 
+      }                                                 
+    }
+  } ## else binomial or poisson, no dispersion param
+  return(summ)
+}
 
 
 
@@ -369,15 +491,18 @@ summary.HLfitlist <- function(object, ...) {
   for (st in c("ranCoefs")) if (is.null(details[[st]])) details[st] <- FALSE
   for (st in c("p_value")) if (is.null(details[[st]])) details[st] <- "" ## a string such as "Wald"
   models <- object$models
-  phi.object <- object$phi.object
   famfam <- object$family$family ## response !
   lcrandfamfam <- attr(object$rand.families,"lcrandfamfam") 
   randfamfamlinks <- unlist(lapply(object$rand.families, .prettify_family))
   randfamlinks <- unlist(lapply(object$rand.families, getElement, name="link"))
   summ <- list()
-  cat("formula: ")
   form <- formula.HLfit(object, which="hyper")
-  print(form,showEnv=FALSE)
+  if (is.list(form)) {
+    for (mv_it in seq_along(form)) {cat("formula_",mv_it,": ",sep=""); print(form[[mv_it]],showEnv=FALSE)}
+  } else {
+    cat("formula: ")
+    print(form,showEnv=FALSE)
+  }
   #
   #  HLchar <- paste(as.character(object$HL),collapse="")
   #  cat(paste0("[code: ",HLchar,"]"," method: "))
@@ -390,13 +515,18 @@ summary.HLfitlist <- function(object, ...) {
   locblob <- .get_methods_disp(object)
   iterativeEsts <- locblob$iterativeEsts
   optimEsts <- locblob$optimEsts
-  RE_Ests <- unique(c(iterativeEsts,optimEsts))
+  RE_Ests <- c(iterativeEsts,optimEsts)
+  RE_Ests <- gsub("phi_.*", "phi", RE_Ests) # for mv
+  RE_Ests <- unique(RE_Ests)
   len <- length(RE_Ests)
   lenIt <- length(iterativeEsts) ## p_v maxim, or p_bv(X.Re)
   lenOpt <- length(optimEsts) ## p_v maxim, or p_bv(X.Re)
-  if (lenIt > 1) iterativeEsts <- paste(c(paste(iterativeEsts[-lenIt],collapse=", "),iterativeEsts[lenIt]),collapse=" and ")
   if (len > 1) RE_Ests <- paste(c(paste(RE_Ests[-len],collapse=", "),RE_Ests[len]),collapse=" and ")
-  if (lenIt) {
+  #if (lenIt > 1) iterativeEsts <- paste(c(paste(iterativeEsts[-lenIt],collapse=", "),iterativeEsts[lenIt]),collapse=" and ") # nothing is done of that
+  ## The next block outputs classes of estimated parameters and method, and further code prints apart those that are outer estimated
+  ## However, if there is no iterative est, only the latter 'outer' message (without the words 'Laplace... approximation') is output 
+  ## So if no fixed effect is estimated, no message with the words 'Laplace... approximation' is output (subliminal imperfection)
+  if (lenIt) { # if there are inner estimated parameter,s we output a message distinct from the 'outer' pars message, listing all estimated disp params
     if (messlist[["ranef"]]=="by REML.") {## REMLmess has checked that this is a LMM
       cat("REML: Estimation of ")
       cat(RE_Ests);
@@ -443,7 +573,15 @@ summary.HLfitlist <- function(object, ...) {
       cat(outst) 
     }
   }
-  cat("Family:", .prettify_family(object$family, linkstring = "link = ") , "\n") 
+  if (is.null(object$family)) {
+    cat("Families: ")
+    famst <- character(length(object$families))
+    for (mv_it in seq_along(object$families)) {
+      famst[mv_it] <- paste0(mv_it,": ", .prettify_family(object$families[[mv_it]], linkstring = "") , sep="") 
+    }
+    cat(paste0(famst, collapse="; ")) 
+    cat("\n")
+  } else cat("family:", .prettify_family(object$family, linkstring = "link = ") , "\n") 
   summ$family <- object$family
   if (length(object$fixef)==0L) {
     cat("No fixed effect\n")
@@ -492,83 +630,23 @@ summary.HLfitlist <- function(object, ...) {
       summ$lambda_table <- lambda_table <- .lambda_table_fn(namesTerms, object, lambda.object,linklam_coeff_list)
       .print_lambda_table(object,lambda_table, details=details, namesTerms, linklam_coeff_list) 
     } 
+    groups_n <- unlist(lapply(object$ZAlist,ncol))/attr(object$ZAlist,"Xi_cols")
     cat(paste0("# of obs: ",nrow(object$data),"; # of groups: ",
-              paste0(names(namesTerms),", ",unlist(lapply(object$ZAlist,ncol)), collapse="; ")
+              paste0(names(namesTerms),", ",groups_n, collapse="; ")
               ), "\n")
   }
   ##
-  if (object$family$family %in% c("gaussian","Gamma")) {
-    if (object$family$family=="Gamma") {
-      cat(" -- Residual variation ( var = phi * mu^2 )  --\n")
-    } else cat(" ------------- Residual variance  -------------\n")    
-    pw <- object$prior.weights
-    if ( ! (identical(attr(pw,"unique"),TRUE) && pw[1]==1L)) cat(paste("Prior weights:",
-                                                          paste(signif(pw[1:min(5,length(pw))],6),collapse=" "),
-                                                          "...\n"))
-    if ( ! is.null(phi_outer <- phi.object$phi_outer)) {
-      if ( identical(attr(phi_outer,"type"),"fix") ) {
-        if (length(phi_outer)==1L) {
-          cat(paste("phi was fixed to",signif(phi_outer,6),"\n"))
-        } else  cat(paste("phi was fixed.\n"))
-      } else {
-        if (length(phi_outer)==1L) {
-          cat(paste("phi estimate was",signif(phi_outer,6),"\n"))
-        } else  cat(paste("phi was estimated.\n"))
+  if (length(vec_nobs <- object$vec_nobs)) { # fitmv case; then object$phi.object must be a list of phi objects 
+    if (any(unlist(lapply(object$families,`[[`, "family")) %in% c("gaussian","Gamma"))) {
+      cat("-------------- Residual variation -------------\n")    
+      for (mv_it in seq_along(form)) {
+        summ <- .summary_phi_object(object, phi.object=object$phi.object[[mv_it]], 
+                                    family=object$families[[mv_it]],
+                                    pw=object$prior.weights[[mv_it]],
+                                    summ=summ, phimodel=models[["phi"]][[mv_it]], mv_it=mv_it)
       }
-      summ$phi_outer <- phi_outer
-    } else {
-      if (models[["phi"]]=="phiHGLM") {
-        cat("Residual dispersion model includes random effects:\n  use summary(<fit object>$resid_fit) to display results.\n")       
-      } else if ((loc_p_phi <- length(phi.object$fixef))) {
-        glm_phi <- phi.object[["glm_phi"]]
-        if (is.null(glm_phi)) glm_phi <- .get_glm_phi(object)
-        phi_se <- summary(glm_phi,dispersion=1)$coefficients[(loc_p_phi+1L):(2L*loc_p_phi)]
-        ## note dispersion set to 1 to match SmythHV's 'V_1' method, which for a log link has steps:
-        #SmythHVsigd <- as.vector(sqrt(2)*phi_est);SmythHVG <- as.vector(phi_est); tmp <- SmythHVG / SmythHVsigd 
-        ## tmp is here sqrt(2) !
-        #if (length(tmp)>1) {SmythHVZstar <- diag(tmp) %*% X_disp} else SmythHVZstar <- tmp * X_disp
-        #SmythHVcovmat <- solve(.ZtWZ(SmythHVZstar,(1-lev_phi))); phi_se <- sqrt(diag(SmythHVcovmat)) print(phi_se)
-        #
-        phi_table <- cbind(phi.object$fixef,phi_se)
-        colnames(phi_table) <- c("Estimate", "Cond. SE")
-        rownames(phi_table) <- namesX_disp <- names(phi.object$fixef)
-        summ$phi_table <- phi_table
-        phiform <- object$resid.predictor
-        resid.family <- eval(object$resid.family)
-        phiinfo <- resid.family$link 
-        if (phiinfo=="identity") {phiinfo="phi "} else {phiinfo <- paste0(phiinfo,"(phi) ")}
-        phiinfo <- paste("Coefficients for",phiinfo,paste0(phiform,collapse=" ")," :\n")
-        cat(phiinfo)
-        print(phi_table,4)
-        dispOffset <- attr(object$resid.predictor,"off")
-        if (!is.null(dispOffset)) dispOffset <- unique(dispOffset)
-        if (length(namesX_disp)==1 && namesX_disp[1]=="(Intercept)" && length(dispOffset)<2L) {
-          # constant phi: we can display it
-          phi_est <- (phi.object$fixef)
-          if (length(dispOffset)==1L) phi_est <- phi_est+dispOffset
-          phi_est <- resid.family$linkinv(phi_est)
-          if (object$family$family=="Gamma") {
-            cat(paste("Estimate of phi: ",signif(phi_est,4),"\n"))
-            ## la var c'est phi mu^2...
-          } else cat(paste("Estimate of phi=residual var: ",signif(phi_est,4),"\n"))
-        } ## else phi not constant; We don't try to display it
-        wa <- glm_phi$warnmess
-        if ( ! is.null(wa)) {
-          if (wa=="glm.fit: algorithm did not converge") {
-            cat("glm.fit for estimation of phi SE did not converge; this suggests\n")
-            cat(" non-identifiability of some phi (and possibly also lambda) coefficients.\n")
-          } else {
-            cat("warning in glm.fit for estimation of phi SE: \n")
-            cat(wa,"\n")
-          }
-        }
-      } else {
-        phiform <- object$resid.predictor
-        if (length(phiform)==2) phiform <- as.formula(paste('"phi"',paste(phiform,collapse=" "))) ##FR->FR how does _dglm_ deal with this
-        cat(paste("phi was fixed by an offset term: ",deparse(phiform) ,"\n")) ## quick fix 06/2016 
-      }                                                 
     }
-  } ## else binomial or poisson, no dispersion param
+  } else summ <- .summary_phi_object(object, summ=summ, phimodel=models[["phi"]])
   if (object$HL[1]==0L) { 
     validnames <- intersect(names(object$APHLs),c("hlik","p_v","p_bv"))
   } else validnames <- intersect(names(object$APHLs),c("p_v","p_bv"))
@@ -625,6 +703,7 @@ print.HLfitlist <- function(x,...) {
 }
 
 div_info <- function(object, ...) {
+  ranges <- NULL # avoid bug when no divinfo
   if ( ! is.null(ranFixes <- object$divinfo$high_kappa$ranFixes)) {
     if (length(ranFixes)>1L) {
       ranges <- t(apply(do.call(rbind,lapply(ranFixes,unlist)),2L,range))

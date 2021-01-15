@@ -57,6 +57,11 @@ scotlip$verif <- scotlip$expec/2
                     family=poisson(), adjMatrix=Nmatrix, data=scotlip)) ## explicit spaMM::negbin() may be needed.
 testthat::expect_true(abs(ranSlope2$lambda-4*ranSlope1$lambda)<1e-5)
 
+# test dfs
+testthat::expect_true(sum(unlist(HLfit(y~X1+(X2|batch), data=wafers)$dfs))==6L) # 3 df in p_lambda for ranCoefs
+testthat::expect_true(sum(unlist(fitme(y~X1+(X2|batch)+(X2|batch), # stupid formula but effective test
+                                       data=wafers, fixed=list(ranCoefs=list("1"=c(NA, -0.1, NA))))$dfs))==8L) # 5 df in p_lambda for ranCoefs
+
 if (FALSE) { # examples from update.Rd in handy test form
   data("wafers")
   ## First the fit to be updated:

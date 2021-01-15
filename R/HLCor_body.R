@@ -1,5 +1,5 @@
 ## the following must match the 'unique' method in .ULI as explained there
-.calcUniqueGeo <- function(data) {
+.calcUniqueGeo <- function(data) { # unique() on a character representation of the data
   redondGeo <- apply(data,1,paste,collapse=" ") ## creates character string
   dfforunique <- cbind(data,redondGeo) ## associates rownames of data to redondGeo
   uniqueGeo <- unique(dfforunique[,ncol(dfforunique),drop=FALSE]) ## keeps rownames of first instances
@@ -50,7 +50,7 @@
     types <- names(covStruct) ## 2nd way of specifying types
   } else names(covStruct) <- types ## repeated names possible
   known_types <- c("adjMatrix","corrMatrix","precision","SAR_WWt","distMatrix", "IMRF") 
-  checktypes <- setdiff(types,c(known_types,"")) ## "" for unhandled ranefs
+  checktypes <- setdiff(types,c(known_types,"", paste(seq_along(covStruct)))) ## "" for unhandled ranefs
   if (length(checktypes)) stop(paste("Unhandled name(s)/type(s)",
                                      paste0("'",checktypes,"'",collapse=", "),"in 'covStruct'."))
   for (lit in seq_along(covStruct)) {
@@ -95,7 +95,7 @@ HLCor_body <- function(processed, ## single environment
   spatial_terms <- attr(processed$ZAlist,"exp_spatial_terms")
   corr_types <- processed$corr_info$corr_types
   ## convert back ranPars to canonical scale:
-  ranPars <- .post_process_parlist(ranPars,corr_families=processed$corr_info$corr_families) 
+  ranPars <- .reformat_corrPars(ranPars,corr_families=processed$corr_info$corr_families) 
   ranPars <- .canonizeRanPars(ranPars=ranPars, corr_info=processed$corr_info, rC_transf=.spaMM.data$options$rC_transf) ## with init.HLfit as attribute # expands hyper params.
   ########################################################################################################################
   # * assigns geo_envir <- .get_geo_info(...)
@@ -114,8 +114,8 @@ HLCor_body <- function(processed, ## single environment
   ###
   if ( (! is.null(processed$return_only)) && processed$augZXy_cond) {
     hlfit <- do.call(.spaMM.data$options$augZXy_fitfn,list(processed=processed, ranFix=ranPars))
-    if (FALSE) { ## this test interferes with the results (fitme3, fitme6 tests)
-      processed$augZXy_cond <- FALSE
+    if (FALSE) { ## this test interfered with the results (fitme3, fitme6 tests), presumably bc of the inner attribute (now added here, ignored during the test):
+      processed$augZXy_cond <- structure(FALSE, inner=attr(processed$augZXy_cond,"inner"))
       HLFormals <- names(formals(HLfit)) 
       good_dotnames <- intersect(names(dotlist),HLFormals)
       if (length(good_dotnames)) {
@@ -130,7 +130,7 @@ HLCor_body <- function(processed, ## single environment
       locrp$lambda <- locrp$lambda * hlfit$APHLs$phi_est
       HL.info$ranFix <- locrp
       vanilla <- do.call("HLfit",HL.info) 
-      processed$augZXy_cond <- TRUE
+      processed$augZXy_cond <- structure(TRUE, inner=attr(processed$augZXy_cond,"inner"))
       #print(vanilla$APHLs$p_bv-hlfit$APHLs$p_bv)
       #if ((vanilla$APHLs$p_bv-hlfit$APHLs$p_bv)>1e-2) browser() # to catch in part. when phi-profiled p_bv is lower than non profiled !
       # hmmm aug_ZXy's p_bv is suspicious close to vanilla's p_v
@@ -201,7 +201,7 @@ HLCor_body <- function(processed, ## single environment
   HLnames <- (c(HLCor.formals,names_formals_HLfit,designL.formals,makescaled.formals))  ## cf parallel code in corrHLfit
   HLCor.call <- mc[c(1,which(names(mc) %in% HLnames))] ## keep the call structure
   ranefParsList <- relist(ranefParsVec,skeleton)
-  print_phiHGLM_info <- ( ! is.null(processed$residProcessed) && processed$verbose["phifit"])
+  print_phiHGLM_info <- ( ! is.null(processed$residProcessed) && processed$verbose["phifit"]) ## ___FIME___ need code for printing in mv
   if (print_phiHGLM_info) {
     urP <- unlist(.canonizeRanPars(ranefParsList, corr_info=processed$corr_info,checkComplete=FALSE, rC_transf=.spaMM.data$options$rC_transf))
     processed$port_env$prefix <- paste0("HLCor for ", paste(signif(urP,6), collapse=" "), ": ")
@@ -211,18 +211,7 @@ HLCor_body <- function(processed, ## single environment
   moreargs <- attr(skeleton,"moreargs")
   ranPars <- .expand_hyper(ranPars, processed$hyper_info,moreargs=moreargs) ## input ranPars contains both unconstrained ranPars and $hyper
   # => failing to expand leads to unconstrained optimization
-  if ( ! is.null(ranPars$resid) ) { ## mmm FIXME never operational ?
-    resid_ranPars <- structure(ranPars$resid, ## but not sure that the attributes are necessary...
-                               type=rpType$resid, 
-                               moreargs=moreargs$resid)
-    # canonize bc fitme_body(,fixed=.) does not handle transformed parameters
-    processed$residProcessed$envir$ranPars <- .canonizeRanPars(ranPars=resid_ranPars,
-                                corr_info=processed$residProcessed$corr_info,
-                                checkComplete = FALSE, rC_transf=.spaMM.data$options$rC_transf) 
-    ranPars$resid <- NULL
-    rpType$resid <- NULL
-    moreargs$resid <- NULL
-  }
+  # removed 'ranPars$resid' code here [ v3.5.52
   HLCor.call$ranPars <- structure(ranPars, ## adds given values of the optimized variables 
                                   type=rpType, ## adds "fix"'s... somewhat confusing 
                                   moreargs=moreargs )

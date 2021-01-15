@@ -15,15 +15,15 @@ if (spaMM.getOption("example_maxtime")>0.7) { ##  not based on real timing
     spaMM.options(sparse_precision=TRUE)
     (f1 <- HLCor(migStatus ~ means+ corrMatrix(1|name),data=blackcap,
                  corrMatrix=MLcorMat,method="ML"))
-    f2 <- corrHLfit(migStatus ~ means+ Matern(1|latitude+longitude),data=blackcap,
+    f2 <- corrHLfit(migStatus ~ means+ Matern(1|longitude+latitude),data=blackcap,
                     ranFix=list(corrPars=list("1"=list(nu=4,rho=0.4))),method="ML")
     spaMM.options(sparse_precision=FALSE)
     f3 <- HLCor(migStatus ~ means+ corrMatrix(1|name),data=blackcap,
                 corrMatrix=MLcorMat,HLmethod="ML")
-    f4 <- corrHLfit(migStatus ~ means+ Matern(1|latitude+longitude),data=blackcap,
+    f4 <- corrHLfit(migStatus ~ means+ Matern(1|longitude+latitude),data=blackcap,
                     ranFix=list(corrPars=list("1"=list(nu=4,rho=0.4))),method="ML")
     spaMM.options(sparse_precision=NULL)
-    f5 <- HLCor(migStatus ~ means+ corrMatrix(1|latitude+longitude),data=blackcap,
+    f5 <- HLCor(migStatus ~ means+ corrMatrix(1|longitude+latitude),data=blackcap,
                 corrMatrix=MLcorMat,method="ML") # Check that order of data is respected in the Zmatrix for this "unsafe" input.
     # imput as precision matrix
     f6 <- fitme(migStatus ~ means + corrMatrix(1|name), data=blackcap,
@@ -71,5 +71,5 @@ pmat <- as.matrix(MLcorMat)[perm,perm]
 HLCor(migStatus ~ means+ corrMatrix(1|name),data=blackcap,
       corrMatrix=as.dist(pmat),method="ML")
 ## (3) Other grouping terms (note the messages):
-HLCor(migStatus ~ means+ corrMatrix(1|latitude+longitude),data=blackcap,
+HLCor(migStatus ~ means+ corrMatrix(1|longitude+latitude),data=blackcap,
       corrMatrix=MLcorMat,method="ML")

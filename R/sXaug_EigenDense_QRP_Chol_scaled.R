@@ -64,9 +64,9 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug, # already ZAL_scaled
     # remove $u_h_cols_on_left code in version 2.1.61 since there is a bug in it: further code may require 
     #  no nontrivial perm_R_v, so we remove perm_R_v it from further code (as in Matrix_QRP_CHM_scaled version)
     if ( is.null(BLOB$sortPerm)) {
-      BLOB$R_R_v <- BLOB$R_scaled[seq_n_u_h,seq_n_u_h]
+      BLOB$R_R_v <- BLOB$R_scaled[seq_n_u_h,seq_n_u_h, drop=FALSE]
     } else {
-      wd2hdv2w <- .crossprodCpp(BLOB$R_scaled[,BLOB$sortPerm[ seq_n_u_h ]], NULL)
+      wd2hdv2w <- .crossprodCpp(BLOB$R_scaled[,BLOB$sortPerm[ seq_n_u_h ], drop=FALSE], NULL)
       BLOB$R_R_v <- .Rcpp_chol_R(wd2hdv2w)$R
     }
   }
@@ -186,11 +186,11 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug, # already ZAL_scaled
       }
     }
   } else if (which %in% c("logdet_R_scaled_b_v")) {
-    if (is.null(BLOB$logdet_R_scaled_b_v)) BLOB$logdet_R_scaled_b_v <- sum(log(abs(diag(BLOB$R_scaled))))
+    if (is.null(BLOB$logdet_R_scaled_b_v)) BLOB$logdet_R_scaled_b_v <- sum(log(abs(diag(x=BLOB$R_scaled))))
     return(BLOB$logdet_R_scaled_b_v)
   } else if (which %in% c("logdet_R_scaled_v")) {
     if (is.null(BLOB$logdet_R_scaled_v)) {
-      if (is.null(BLOB$absdiag_R_v)) BLOB$absdiag_R_v <- abs(diag(BLOB$R_R_v)) ## as in "absdiag_R_v"
+      if (is.null(BLOB$absdiag_R_v)) BLOB$absdiag_R_v <- abs(diag(x=BLOB$R_R_v)) ## as in "absdiag_R_v"
       BLOB$logdet_R_scaled_v <- sum(log(BLOB$absdiag_R_v)) 
     }
     return(BLOB$logdet_R_scaled_v)
@@ -219,7 +219,7 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug, # already ZAL_scaled
     # otherwise, dropO(,tol=...), + some fix in summary.HLfit for matrix[] <- Matrix assignment, would be useful.  
     return(beta_v_cov)
   } else if (which %in% c("absdiag_R_v")) { 
-    if (is.null(BLOB$absdiag_R_v)) BLOB$absdiag_R_v <- abs(diag(BLOB$R_R_v)) 
+    if (is.null(BLOB$absdiag_R_v)) BLOB$absdiag_R_v <- abs(diag(x=BLOB$R_R_v)) 
     return(BLOB$absdiag_R_v)
   # } else if (which=="sortPerm") { 
   #   return(BLOB$sortPerm)

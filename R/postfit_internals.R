@@ -135,13 +135,20 @@
     APHLs <- object$APHLs
     w.resid <- object$w.resid
     info_crits <- list()
-    if  ( ! is.null(resid_fit <- object$resid_fit)) { ## fit includes a resid_fit
+    if  ( ! is.null(resid_fits <- object$resid_fits)) { 
+      p_phi <- sum(na.omit(unlist(p_phi)),
+                   sum(unlist(lapply(resid_fits, `[[`, x="dfs"), recursive = TRUE, use.names = FALSE)) )
+    } else if  ( ! is.null(resid_fit <- object$resid_fit)) { 
       # input p_phi (above) is typically set to NA, and will be ignored
-      p_phi <- sum(resid_fit$dfs) ## phi_pd is relevant only for measuring quality of prediction by the resid_fit!
-    } else p_phi <- object$dfs[["p_fixef_phi"]]
+      p_phi <- sum(.unlist(resid_fit$dfs)) ## phi_pd is relevant only for measuring quality of prediction by the resid_fit! 
+    } else p_phi <- sum(.unlist(object$dfs[["p_fixef_phi"]])) # .unlist() for mv
     names_est_ranefPars <- unlist(.get_methods_disp(object))  
-    p_GLM_family <- length(intersect(names_est_ranefPars,c("NB_shape","NU_COMP")))
-    p_phi <- p_phi+p_GLM_family ## effectively part of the model for residual error structure
+    fam_disp_parsnames <- intersect(names_est_ranefPars,c("NB_shape","NU_COMP"))
+    if (length(fam_disp_parsnames)) {
+      p_GLM_family <- length( # compatible with mv:
+        .unlist(.get_outer_inits_from_fit(object, keep_canon_user_inits = FALSE)[fam_disp_parsnames]))
+      p_phi <- p_phi+p_GLM_family ## effectively part of the model for residual error structure
+    }
     # poisson-Gamma and negbin should have similar similar mAIC => NB_shape as one df or lambda as one df   
     forAIC <- APHLs
     if (object$models[[1]]=="etaHGLM") {
@@ -204,7 +211,7 @@
                                any( ! object$lambda.object$type %in% c("fixed","fix_ranCoefs","fix_hyper")) ) ## some lambda params were estimated
     dvdlogphiMat <- envir$dvdlogphiMat
     dvdlogphiMat_needed <- (is.null(dvdlogphiMat) && 
-                              object$models[["phi"]]=="phiScal") ## cf comment in calc_logdisp_cov
+                              any((phimodel <- object$models[["phi"]])=="phiScal")) 
     dvdlogphiMat_needed <- dvdlogphiMat_needed || identical(envir$forcePhiComponent,TRUE) ## hack for code testing !
     if (dvdloglamMat_needed || dvdlogphiMat_needed) {
       ZAL <- get_ZALMatrix(object)     
@@ -236,14 +243,14 @@
       } else {
         dh0deta <- ( object$w.resid *(object$y-muetablob$mu)/muetablob$dmudeta ) ## (soit Bin -> phi fixe=1, soit BinomialDen=1)
         dvdlogphiMat  <- .calc_dvdlogphiMat_new(dh0deta=dh0deta, ZAL=ZAL,
-                                                d2hdv2_info=d2hdv2_info, ## either a qr factor or a matrix inverse or envir
-                                                stop.on.error=TRUE)
+                                                d2hdv2_info=d2hdv2_info ## either a qr factor or a matrix inverse or envir
+                                                )
       }
     }
-    invV_factors <- .calc_invV_factors(object) ## of invV as w.resid- [n_x_r %*% r_x_n]
-    if ( (dvdloglamMat_needed || dvdlogphiMat_needed)  && inherits(ZAL,"ZAXlist")) { # I cannot test ZAL directly bc it has not necessarily been computed
-      envir$logdispObject <- .calc_logdisp_cov_ZAX(object, dvdloglamMat=dvdloglamMat, ## square matrix, by  the formulation of the algo
-                                                          dvdlogphiMat=dvdlogphiMat, invV_factors=invV_factors)
+    invV_factors <- .calc_invV_factors(object) ## n_x_r and r_x_n in repres of invV as diag(w.resid)- [n_x_r %*% r_x_n]
+    if (length(phimodel)>1L) {
+      envir$logdispObject <- .calc_logdisp_cov_mv(object, dvdloglamMat=dvdloglamMat, ## square matrix, by  the formulation of the algo 
+                                               dvdlogphiMat=dvdlogphiMat, invV_factors=invV_factors)
     } else
       envir$logdispObject <- .calc_logdisp_cov(object, dvdloglamMat=dvdloglamMat, ## square matrix, by  the formulation of the algo 
                                                       dvdlogphiMat=dvdlogphiMat, invV_factors=invV_factors)
@@ -251,10 +258,10 @@
   return(envir$logdispObject)
 } # if dvdloglamMat or dvdlogphiMat were computed ex-tempo, they are NOT saved.
 
-## This use the representation of invV as w.resid- [n_x_r %*% r_x_n = t(Ztw) %*% invG.ZtW]  (nXr  %*% rxn)
+## This provides factor n_x_r and r_x_n of the representation of invV as diag(w.resid)- [n_x_r %*% r_x_n = t(Ztw) %*% invG.ZtW]  (nXr  %*% rxn)
 ## slow computation the one time .get_logdispObject() is called, for variances$disp (no need to store the result in an $envir)
 .calc_invV_factors <- function(object) { ## used by .get_logdispObject
-  ## Store Compute inv( G=[{precmat=inv(L invWranef Lt)} +ZtWZ] ) as two matrix nXr and rXn rather than their nXn product
+  ## Store inv( G=[{precmat=inv(L invWranef Lt)} +ZtWZ] ) as two matrix nXr and rXn rather than their nXn product
   # F I X M E yet there will be cases where n<r and then it's better to store the n x n product !  
   if ("AUGI0_ZX_sparsePrecision" %in% object$MME_method) {
     envir <- object$envir

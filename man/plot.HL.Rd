@@ -56,7 +56,7 @@ each random deviate divided by \eqn{\sqrt(1-q)} where \eqn{q} is the correspondi
 }
 \examples{
 data("blackcap")
-fit <- fitme(migStatus ~ 1+ Matern(1|latitude+longitude),data=blackcap,
+fit <- fitme(migStatus ~ 1+ Matern(1|longitude+latitude),data=blackcap,
              fixed=list(lambda=1,nu=1,rho=1))
 plot(fit)
 }

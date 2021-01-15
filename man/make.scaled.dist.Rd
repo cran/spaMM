@@ -49,7 +49,7 @@ A matrix or \code{\link[proxy]{dist}} object. If there are two input matrices, r
 \examples{
 data("blackcap")
 ## a biologically not very meaningful, but syntactically correct example of rho.mapping
-fitme(migStatus ~ 1 + Matern(1|latitude+longitude+means),
+fitme(migStatus ~ 1 + Matern(1|longitude+latitude+means),
       data=blackcap, fixed=list(nu=0.5,phi=1e-6),
       init=list(rho=c(1,1)), control.dist=list(rho.mapping=c(1,1,2)))
 ## Using orthodromic distances: order of variables in Matern(.|longitude+latitude) matters

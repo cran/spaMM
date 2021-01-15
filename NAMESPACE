@@ -93,6 +93,7 @@ S3method(update, HLfit)
 S3method(vcov, HLfit)
 S3method(MaternCorr, default)
 S3method("[", predictions)
+#S3method(as.matrix, predictions)
 S3method("[", precision)
 #S3method(get_from_MME,sXaug_EigenDense_QRP_scaled)
 S3method(get_from_MME,sXaug_EigenDense_QRP_Chol_scaled)
@@ -114,6 +115,13 @@ S3method(get_from_MME_default,matrix)
 S3method(get_from_MME_default,Matrix)
 S3method(how,default)
 S3method(how,HLfit)
+S3method(how,HLfitlist)
+#
+#S3method(update,default) # redefine update() generic...
+S3method(update,HLfit) 
+#S3method(update,formula) # and update.formula() : we redefine it as a generic, so it itself has methods:
+#S3method(update.formula,default) # 
+#S3method(update.formula,HLfit)
 #
 S3method(str,inla.spde2)
 # S4 class ZAXlist

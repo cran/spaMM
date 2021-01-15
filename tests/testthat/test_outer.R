@@ -1,3 +1,3 @@
-if (file.exists((privtest <- "C:/home/francois/travail/stats/spaMMplus/spaMM/package/tests_private/test_outer.R"))) {
+if (file.exists((privtest <- paste0(projpath(),"/package/tests_private/test_outer.R")))) {
   source(privtest)
 }

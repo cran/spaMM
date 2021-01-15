@@ -6,8 +6,8 @@ data("blackcap")
 set.seed(123)
 nb_cores <- 1 ## don't use parallel here (slow for boot.repl=3 ) and may be other 'check' issues
 # nb_cores <- parallel::detectCores()-1
-fl <- fixedLRT(null.formula=migStatus ~ 1 + Matern(1|latitude+longitude),
-         formula=migStatus ~ means + Matern(1|latitude+longitude), 
+fl <- fixedLRT(null.formula=migStatus ~ 1 + Matern(1|longitude+latitude),
+         formula=migStatus ~ means + Matern(1|longitude+latitude), 
          HLmethod='ML',data=blackcap,init.corrHLfit=list(phi=1e-6),boot.repl=3,nb_cores=nb_cores) 
 ## phi=1e-6 must be automatically converted to 1e-4 : potential test of changes in .calc_inits_dispPars()
 

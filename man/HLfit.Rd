@@ -1,5 +1,6 @@
 \name{HLfit}
 \alias{HLfit}
+\alias{REMLformula}
 \alias{Beta-distribution-random-effects}
 \alias{Beta}
 \title{Fit mixed models with given correlation matrix}
@@ -47,12 +48,7 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
   and additional possible elements (all named as \code{fitme} arguments) if its formula involves random effects:  see \code{\link{phiHGLM}}.
 }
   \item{REMLformula}{
-  A model \code{formula} that allows the estimation of dispersion parameters, and 
-  computation of restricted likelihood (\code{p_bv}) under a model different from the predictor \code{formula}.
-
-  For example, if only random effects are included in \code{REMLformula}, an ML fit is performed and \code{p_bv} equals
-  the marginal likelihood (or its approximation), \code{p_v}. This ML fit can be performed more simply by setting 
-  \code{method="ML"} and leaving \code{REMLformula} at its default NULL value.
+  A model \code{formula} that controls the estimation of dispersion parameters and the computation of restricted likelihood (\code{p_bv}), where the conditioning inherent in REML is defined by a model different from the predictor \code{formula}. A simple example (useless in practice) of its effect is to replicate an ML fit by specifying \code{method="REML"} and an \code{REMLformula} with no fixed effect. The latter implies that no conditioning is performed and that \code{p_bv} equals the marginal likelihood (or its approximation), \code{p_v}. One of the examples in \code{\link{update.HLfit}} shows how \code{REMLformula} can be useful, but otherwise this argument may never be needed for standard REML or ML fits. For non-standard likelihood ratio tests using \code{REMLformula}, see \code{\link{fixedLRT}}.    
 }
   \item{verbose}{
     A vector of booleans. \code{trace} controls various diagnostic messages (possibly messy) about the iterations. \code{TRACE=TRUE} is most useful to follow the progress of a long computation, particularly in \code{fitme} or \code{corrHLfit} calls, for which it displays some mysterious output for each set of correlation and dispersion parameter values considered by the optimiser. Non-boolean values of \code{TRACE} are meaningful, but the source code of \code{spaMM:::.do_TRACE} should be consulted for their meaning. \code{phifit} (which defaults to \code{TRUE}) controls messages about the progress of residual dispersion fits in DHGLMs. 

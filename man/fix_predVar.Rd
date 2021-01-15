@@ -21,7 +21,7 @@ Nearly-singular correlation matrices of random effects occur in several contexts
 }
 \examples{
 data("blackcap")
-fitobject <- corrHLfit(migStatus ~ 1 + Matern(1|latitude+longitude),data=blackcap,
+fitobject <- corrHLfit(migStatus ~ 1 + Matern(1|longitude+latitude),data=blackcap,
                        ranFix=list(nu=10,rho=0.001)) ## numerically singular C
 get_predVar(fitobject,newdata=blackcap[6,]) 
 ## => warning => let us apply the recommended procedure:

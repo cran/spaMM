@@ -15,10 +15,13 @@ Chambers J.M. (2008) Software for data analysis: Programming with R. Springer-Ve
 \examples{
 set.seed(123)
 d2 <- data.frame(y = seq(10)/2+rnorm(5)[gl(5,2)], x1 = sample(10), grp=gl(5,2), seq10=seq(10))
-# Using only variables in the data:
+# Using only variables in the data: basic usage
+# HLfit(y ~ x1 + seq10+(1|grp), data = d2)
+# is practically equivalent to
 HLfit(y ~ x1 + seq10+(1|grp), data = d2, 
       control.HLfit = list(formula_env=list2env(list(data=d2))))
 # 
+# The 'formula_env' avoids the need for the 'seq10' variable:
 HLfit(y ~ x1 + I(seq_len(nrow(data)))+(1|grp), data = d2, 
       control.HLfit = list(formula_env=list2env(list(data=d2))))
 #

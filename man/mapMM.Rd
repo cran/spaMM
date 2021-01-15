@@ -2,14 +2,17 @@
 \alias{spaMMplot2D}
 \alias{mapMM}
 \alias{filled.mapMM} 
+\alias{map_ranef} 
 
 \title{
-  Colorful plots of predicted responses in two-dimensional space. 
+  Colorful plots of predictions in two-dimensional space. 
 }
 \description{
-  These functions provide either a map of predicted response in analyzed locations, or a predicted surface. \code{mapMM} is a straightforward representation of the analysis of the data, while \code{filled.mapMM} uses interpolation to cope with the fact that all predictor variables may not be known in all locations on a fine spatial grid. Both functions takes an \code{HLfit} object as input. \code{mapMM} calls \code{spaMMplot2D}, which is similar but takes a more conventional (x,y,z) input. 
+  These functions provide either a map of predicted response in analyzed locations, or a predicted surface. \code{mapMM} is a straightforward representation of the analysis of the data, while \code{filled.mapMM} uses interpolation to cope with the fact that all predictor variables may not be known in all locations on a fine spatial grid.  \code{map_ranef} maps a single spatial random effect. These three functions takes an \code{HLfit} object as input. \code{mapMM} calls \code{spaMMplot2D}, which is similar but takes a more conventional (x,y,z) input. 
   
   Using \code{filled.mapMM} may involve questionable choices. Plotting a filled contour generally requires prediction in non-observed locations, where predictor variables used in the original data analysis may be missing. In that case, the original model formula cannot be used and an alternative model (controlled by the \code{map.formula} argument) must be used to interpolate (not smooth) the predicted values in observed locations (these predictions still resulting from the original analysis based on predictor variables). \code{filled.mapMM} always performs such interpolation (it does not allow one to provide values for the predictor variables). As a result (1) \code{filled.mapMM} will be slower than a mere plotting function, since it involves the analysis of spatial data; (2) the results may have little useful meaning if the effect of the original predictor variables is not correctly represented by this interpolation step. For example, prediction by interpolation may be biased in a way analogous to prediction of temperature in non-observed locations while ignoring effect of variation in altitude in such locations. Likewise, the\code{variance} argument of \code{filled.mapMM} allows one only to plot the prediction variance of its own interpolator, rather than that of the input object. 
+  
+  \code{map_ranef} is free of the limitations of \code{filled.mapMM}. 
 }
 \usage{
 spaMMplot2D(x, y, z,xrange=range(x, finite = TRUE),
@@ -31,6 +34,12 @@ filled.mapMM(fitobject, Ztransf = NULL, coordinates, xrange = NULL,
              add.map = FALSE, axes = TRUE, plot.title = NULL,
              plot.axes = NULL, map.asp = NULL, variance = NULL,
              var.contour.args = list(), smoothObject = NULL, ...)
+
+map_ranef(fitobject, re.form, Ztransf=NULL, xrange = NULL, yrange = NULL, 
+          margin = 1/20, gridSteps = 41, 
+          decorations = quote(points(fitobject$data[, coordinates], cex = 1, lwd = 2)), 
+          add.map = FALSE, axes = TRUE, plot.title=NULL, 
+          plot.axes=NULL, map.asp = NULL, ...)
 }
 \arguments{
   \item{fitobject}{
@@ -40,6 +49,9 @@ filled.mapMM(fitobject, Ztransf = NULL, coordinates, xrange = NULL,
   \item{x,y,z}{
   Three vectors of coordinates, with \code{z} being expectedly the response.
 %~ adjMatrix valid for mapMM ?
+}
+\item{re.form}{
+  A model formula giving the single random effect term to plot, needed only if there are several spatial random effects in the fitted model. In that case, it must be formatted as \code{ . ~ <term>}, as for the \code{re.form} argument of \code{predict.HLfit}.
 }
 \item{Ztransf}{
   A transformation of the predicted response, given as a function whose only required argument can be a one-column matrix. The name of this argument must be 
@@ -114,11 +126,11 @@ statements which draw axes on the plot key.
 \item{smoothObject}{Either NULL, or an object inheriting from class \code{HLfit} (hence, an object on which \code{predict.HLfit} can be called), predicting the response surface in any coordinates. See Details for typical usages.}
 
 \item{\dots}{
-  further arguments passed to or from other methods. For \code{mapMM}, all such arguments are passed to \code{spaMMplot2D}; for \code{spaMMplot2D}, currently only additional graphical parameters passed to \code{title()} (see Details).  For \code{filled.mapMM}, these parameters are those that can be passed to \code{\link{spaMM.filled.contour}}. 
+  further arguments passed to or from other methods. For \code{mapMM}, all such arguments are passed to \code{spaMMplot2D}; for \code{spaMMplot2D}, currently only additional graphical parameters passed to \code{title()} (see Details).  For \code{filled.mapMM} and \code{map_ranef}, these parameters are those that can be passed to \code{\link{spaMM.filled.contour}}. 
 }
 }
 \value{
-  \code{filled.mapMM} returns invisibly a predictor of the response surface. \code{mapMM} has no return value. Plots are produced as side-effects. 
+  \code{filled.mapMM} returns invisibly the fit object predicting the interpolated response surface. \code{map_ranef} returns invisibly a 3-column matrix containing the spatial coordinates, and the predicted effect \code{z} on the linear predictor scale (which is also the scale of the plot, unless a \code{Ztransf} is used). \code{mapMM} has no return value. Plots are produced as side-effects. 
 }
 \details{
 
@@ -139,12 +151,16 @@ By contrast, \bold{filled.mapMM} handles arguments which are language expression
 
 \bold{mapMM} can handles language expressions, but also accepts at least some calls.
 }
-\seealso{\url{https://kimura.univ-montp2.fr/~rousset/spaMM/example_raster.html} for more elaborate plot procedures.}
+\seealso{
+\code{\link{seaMask}} for masking areas in a filled map;
+\url{https://kimura.univ-montp2.fr/~rousset/spaMM/example_raster.html} for more elaborate plot procedures.
+}
 \examples{
 data("blackcap")
 bfit <- fitme(migStatus ~ means+ Matern(1|longitude+latitude),data=blackcap,
               fixed=list(lambda=0.5537,phi=1.376e-05,rho=0.0544740,nu=0.6286311))
-  mapMM(bfit,color.palette = function(n){spaMM.colors(n,redshift=1/2)},add.map=TRUE)
+mapMM(bfit,color.palette = function(n){spaMM.colors(n,redshift=1/2)},add.map=TRUE)
+map_ranef(bfit) # providing argument re.form= . ~ Matern(1|longitude+latitude)
 
 if (spaMM.getOption("example_maxtime")>1) {
   ## filled.mapMM takes a bit longer

@@ -39,7 +39,7 @@ corrHLfit_body <- function(processed, ## possibly a list of environments
   # modify HLCor.args and <>bounds;   
   user_init_optim <- init.corrHLfit 
   
-  optim_blob <- .calc_optim_args(proc1=proc1, processed=processed,
+  optim_blob <- .calc_optim_args(proc_it=proc1, processed=processed,
                                  init=init.corrHLfit, fixed=ranFix, lower=lower, upper=upper, 
                                  verbose=verbose, optim.scale=optim.scale, For="corrHLfit") 
   init.corrHLfit <- NaN ## make clear it's not to be used
@@ -54,8 +54,8 @@ corrHLfit_body <- function(processed, ## possibly a list of environments
   init.HLfit <- optim_blob$inits$`init.HLfit` ## list; subset as name implies
   fixed <- optim_blob$fixed
   corr_types <- optim_blob$corr_types
-  moreargs <- optim_blob$moreargs
   LUarglist <- optim_blob$LUarglist
+  moreargs <- LUarglist$moreargs
   LowUp <- optim_blob$LowUp
   lower <- LowUp$lower ## list ! which elements may have length >1 !
   upper <- LowUp$upper ## list !

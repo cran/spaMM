@@ -1,5 +1,5 @@
 .calc_CARdispGammaGLM <- function(data,family=spaMM_Gamma("inverse"),lev=NULL,
-                                lambda.Fix, control) {
+                                lambda_rd, control) {
   if ( ! is.null(lev)) {
     resp <- data$resp/(1-lev) 
     resp[resp==0L] <- 1e-100
@@ -8,12 +8,12 @@
     weights <- (1-lev)/2 
     loclist <- list(data=data, family=family, weights=weights)
   } else loclist <- list(data=data, family=family)
-  if (is.na(lambda.Fix)) {
+  if (is.na(lambda_rd)) {
     loclist$formula <- resp~1+adjd
     #loclist$start <- c(1/mean(data$resp),0)
   } else {
     loclist$formula <- resp ~ adjd -1
-    loclist$offset <- rep(1/lambda.Fix,nrow(data))
+    loclist$offset <- rep(1/lambda_rd,nrow(data))
     loclist$start <- c(0)
   }
   loclist$control <- control

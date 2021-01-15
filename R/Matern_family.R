@@ -248,7 +248,14 @@ adjacency <- function(...) {
   }
   #
   calc_moreargs <- function(decomp, verbose, lower, upper, char_rd, ...) {
-    rhorange <- sort(1/range(decomp$eigrange)) ## keeping in mind that the bounds can be <>0
+    if (is.null(decomp$eigrange)) { # this may occur when processing submodel info in mv case
+      # then range(NULL) is -Inf Inf and rhorange would be 0 0, and by the code below.
+      # -> would go into lower, upper -> would constrain any further attempt to define rhorange. Hence, Instead...
+      rhorange <- .Machine$double.xmax*c(-0.1,0.1) # diff(rhorange)  should not overflow
+      # and .makeLowUp_stuff_mv() should provide the true bounds
+    } else {
+      rhorange <- sort(1/range(decomp$eigrange)) ## keeping in mind that the bounds can be <>0
+    }
     if(verbose["SEM"])  cat(paste("Feasible rho range: ",paste(signif(rhorange,6),collapse=" -- "),"\n"))
     rhorange[1L] <- max(rhorange[1L],lower$corrPars[[char_rd]][["rho"]])
     rhorange[2L] <- min(rhorange[2L],upper$corrPars[[char_rd]][["rho"]])
@@ -263,7 +270,7 @@ adjacency <- function(...) {
             class="corr_family")
 }
 
-SAR_WWt <- adjacency ## for .calc_initsand .calc_moreargs: implied by older code where only argument values may differ between adjacency and SAR_WWt 
+SAR_WWt <- adjacency ## for .calc_inits and .calc_moreargs: implied by older code where only argument values may differ between adjacency and SAR_WWt 
 
 print.corr_family <- function (x, ...) {
   cat("\nCorrelation family:", x$corr_family, "\n")

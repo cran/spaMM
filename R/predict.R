@@ -162,6 +162,7 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
         ## There are underlying assumptions:
         ## (1) The diagonal of W should be sufficient to have the diagonal of ZA % W % t(ZA);
         ##     that is, tcrossprod(ZA) is diagonal (in particular, if ZA is an incidence matrix : one 1 per row and 0 otherwise)   
+        ##                       seems also OK if there are also rows of 0's (conditional ranef, (female|.))
         ##     In other cases we need cov_newLv_newLv_list (the full-cov-matrix code is OK) 
         ## (2) The '1': L is the chol factor of a correlation matrix itself with a diag of 1's
         ##     Otherwise, even if we do not need the full cov matrix, we need its diagonal.
@@ -380,16 +381,29 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
 }
 
 
-.calcResidVar <- function(object,newdata=NULL) {
-  phi.object <- object$phi.object
-  if (is.null(phi_outer <- phi.object$phi_outer)) { ## valid whether newdata are NULL or not:
-    glm_phi <- phi.object[["glm_phi"]]
-    if (is.null(glm_phi)) glm_phi <- .get_glm_phi(object)
+.calcResidVar <- function(object,newdata=NULL, phi.object=object$phi.object, families=object$families, 
+                          mv_it=NULL, #  used to pass non-default to .get_glm_phi()
+                          family=object$family, fv,
+                          nobs_info=nrow(object$X.pv)) {
+  if ( ! is.null(families)) {
+    residVars <- vector("list", length(families))
+    cum_nobs <- attr(families,"cum_nobs")
+    for (mv_it in seq_along(families)) {
+      residVars[[mv_it]] <- .calcResidVar(object, newdata=newdata, phi.object=phi.object[[mv_it]], families=NULL, 
+                                          mv_it=mv_it, 
+                                          family=families[[mv_it]], fv=fv[.subrange(cumul=cum_nobs, it=mv_it)],
+                                          nobs_info=object$vec_nobs[mv_it])
+    }
+    residVar <- unlist(residVars, recursive = FALSE, use.names = FALSE)
+  } else if (family$family %in% c("poisson","binomial","COMPoisson","negbin")) {
+    residVar <- family$variance(fv)
+  } else if (is.null(phi_outer <- phi.object$phi_outer)) { ## valid whether newdata are NULL or not:      
+    glm_phi <- .get_glm_phi(object, mv_it)
     residVar <- predict(glm_phi, newdata=newdata, type="response")
   } else { ## phi, but not glm_phi
     if (length(phi_outer)==1L) {
       if (is.null(newdata)) {
-        residVar <- rep(phi_outer,nrow(object$X.pv)) ## assumes (length(phi_outer)==1L)           
+        residVar <- rep(phi_outer,nobs_info) ## assumes (length(phi_outer)==1L)           
       } else residVar <- rep(phi_outer,nrow(newdata))
     } else stop("Unable to compute 'residVar' given length(phi_outer)!=1L.") ## and no glm_phi
     ## FR->FR we could improve this if we get a glm_phi when phi was estimed by outer iterations
@@ -477,7 +491,7 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
           newlevels <- colnames(newZAlist[[new_rd]])
           # "test-predVar-Matern-corrMatrix" shows newdata working with corrMatrix, when newlevels are within oldlevels 
           if (length(setdiff(newlevels,oldlevels))) stop(paste0("Found new levels for a '",corr.model,"' random effect."))
-          newoldC <- .tcrossprod(object$strucList[[old_rd]]) ## reconstructs permuted (according to cols of Z) corrMatrix from its L factor
+          newoldC <- .tcrossprod(object$strucList[[old_rd]], perm=TRUE) ## reconstructs permuted (according to cols of Z) corrMatrix from its L factor
           colnames(newoldC) <- rownames(newoldC) <- oldlevels
           if (which_mats$no) cov_newLv_oldv_list[[new_rd]] <- structure(newoldC[newlevels, ,drop=FALSE],ranefs=ranefs[[new_rd]])
           if (which_mats$nn[new_rd]) {
@@ -491,7 +505,7 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
         } else if (corr.model == "IMRF") {
           ## in this case a new A matrix (by .get_new_AMatrices()) must be computed (elsewhere: it goes in newZAlist)
           ## but the corr matrix between the nodes is unchanged as node positions do not depend on response position => nn=no
-          if (which_mats$no || which_mats$nn[new_rd]) uuColdold <- .tcrossprod(object$strucList[[old_rd]])
+          if (which_mats$no || which_mats$nn[new_rd]) uuColdold <- .tcrossprod(object$strucList[[old_rd]], perm=TRUE) # perm=TRUE means for ranefs permuted as in ZA
           if (which_mats$no) cov_newLv_oldv_list[[new_rd]] <- structure(uuColdold,ranefs=ranefs[[new_rd]]) ## always necess for .compute_ZAXlist(XMatrix = cov_newLv_oldv_list, ZAlist = newZAlist)
           ## correct code but should be useless:
           # warning("Suspect code: covariance matrix computation requested for IMRF term.")
@@ -512,9 +526,9 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
           if ( is.data.frame(locdata)) {
             geonames <- colnames(olduniqueGeo) 
             newuniqueGeo <- locdata[,geonames,drop=FALSE] ## includes nesting factor
-          } else { ## locdata is 'preprocessed' list of arrays 
+          } else { ## locdata is 'preprocessed' list of arrays (tested by get_predCov_var_fix() tests)
             newuniqueGeo <- locdata[[as.character(old_rd)]] ## preprocessed, [,geonames,drop=FALSE] not necess ## includes nesting factor 
-            geonames <- colnames(locdata) ## should be true
+            geonames <- colnames(newuniqueGeo)
           }
           ## distance matrix and then call to correl fn:
           control_dist_rd <- .get_control_dist(object, old_char_rd)
@@ -622,9 +636,14 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
 .process_variances <- local({
   link_warned <- FALSE
   function(variances, object) {
-    if ( (! link_warned) && identical(variances$predVar, TRUE) && object$family$link!="identity") {
-      link_warned <<- TRUE
-      message("Non-identity link: predVar is on linear-predictor scale.") #        [This message appears only once per session]")
+    if ( (! link_warned) && identical(variances$predVar, TRUE)) {
+      if (is.null(families <- object$families)) {
+        any_nonid_link <- object$family$link!="identity"
+      } else for (mv_it in seq_along(families)) if (any_nonid_link <- (families[[mv_it]]$link!="identity")) {break}
+      if (any_nonid_link) {
+        link_warned <<- TRUE
+        message("Non-identity link: predVar is on linear-predictor scale.") #        [This message appears only once per session]")
+      }
     }
     if ( ! is.null(variances$ranef)) {
       message("'variances$ranef' is obsolete: I interpret this as 'variances$linPred'.")
@@ -657,26 +676,27 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
   }
 })
 
-.match_old_new_levels <- function(new_rd, old_cum_n_u_h, newinold, spatial_old_rd, w_h_coeffs, subZAlist, newZACpplist, lcrandfamfam, object) {
-  old_rd <- newinold[new_rd]
+.match_old_new_levels <- function(new_rd, new_X_ZACblob,
+                                  old_cum_n_u_h, w_h_coeffs, rand.families) {
+  old_rd <- new_X_ZACblob$newinold[new_rd]
   oldu.range <- (old_cum_n_u_h[old_rd]+1L):(old_cum_n_u_h[old_rd+1L])
-  if (old_rd %in% spatial_old_rd) { 
+  if (old_rd %in% new_X_ZACblob$spatial_old_rd) { 
     return(w_h_coeffs[oldu.range])          
   } else {
-    oldlevels <- colnames(subZAlist[[new_rd]])
-    newlevels <- colnames(newZACpplist[[new_rd]])
+    oldlevels <- colnames(new_X_ZACblob$subZAlist[[new_rd]]) 
+    newlevels <- colnames(new_X_ZACblob$newZACpplist[[new_rd]])
     interlevels <- intersect(oldlevels,newlevels)
     oldpos <- which(oldlevels %in% interlevels) ## positions: handle replicates for random-coef
     newpos <- which(newlevels %in% interlevels)
     oldv <- w_h_coeffs[oldu.range]
     names(oldv) <- oldlevels
-    psi_M <- switch(lcrandfamfam[new_rd], 
+    psi_M <- switch(attr(rand.families,"lcrandfamfam")[old_rd], # __F I X M E__ I could start to get rid of lcrandfamfam ?
                     gaussian = 0,
                     gamma = 1, 
                     beta = 1/2, 
                     "inverse.gamma" = 1
     )
-    vpsi_M <- object$rand.families[[old_rd]]$linkfun(psi_M) 
+    vpsi_M <- rand.families[[old_rd]]$linkfun(psi_M) 
     ## since vpsi_M can be non-zero, the expectation of the response can be modified in a re.form model compared to the original
     newv <- rep(vpsi_M,length(newlevels)) ## fills new levels with psi_M
     names(newv) <- newlevels
@@ -685,21 +705,103 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
   }
 }
 
-.point_predict <- function(object, newdata, variances, eta_fix, re.form,
-                           newinold, spatial_old_rd, subZAlist, newZACpplist, type ) {
+.eta_linkfun <- function(mu_T, # must be vector, even in mv case 
+                         family, families=NULL) { 
+  if (! is.null(families)) {
+    cum_nobs <- attr(families,"cum_nobs")
+    eta <- vector("list", length(cum_nobs)-1L)
+    for (mv_it in seq_along(eta)) {
+      resp_range <- .subrange(cumul=cum_nobs, it=mv_it)
+      eta[[mv_it]] <- .eta_linkfun(mu_T[resp_range], family=families[[mv_it]]) 
+    }
+    return(unlist(eta, recursive = FALSE, use.names = TRUE))
+    # : a redundant object with a list 'mv' of sub-muetablob's added to a synthetic muetablob with itself a list of sub-GLMweights'
+  } else if ( ! is.null(zero_truncated <- family$zero_truncated)) {
+    eta <- family$linkfun(mu_T, mu_truncated=zero_truncated) ## back to _U to add ranefs to the linear predictor.
+  } else eta <- family$linkfun(mu_T)
+  return(eta)
+}
+
+.subrange <- function(cumul, it) {cumul[it]+ seq_len(cumul[it+1L]-cumul[it])}
+
+.fv_linkinv <- function(eta, # vector, not matrix : simulate(., nsim) -> .fv_linkinv(eta[, it], ...)
+                        family, families=NULL, cum_nobs= attr(families,"cum_nobs")) {
+  if (! is.null(families)) {
+    fv <- p0 <- mu_U <- vector("list", length(cum_nobs)-1L)
+    for (mv_it in seq_along(fv)) {
+      resp_range <- .subrange(cumul=cum_nobs, it=mv_it)
+      if (length(resp_range)) fv[[mv_it]] <- .fv_linkinv(eta[resp_range], family=families[[mv_it]])
+      # simulate(<mv>) with a Tnegbin shows the need to keep the attribute (-> .r_resid_var). 
+      #     There is no code to compute it from mu_T without some attribute.
+      p0[mv_it] <- list(attr(fv[[mv_it]], "p0"))
+      mu_U[mv_it] <- list(attr(fv[[mv_it]], "mu_U"))
+    }
+    return(structure(unlist(fv, recursive = FALSE, use.names = TRUE), p0=p0, mu_U=mu_U))
+  } else if ( ! is.null(zero_truncated <- family$zero_truncated)) {
+    fv <- family$linkinv(eta,mu_truncated=zero_truncated)
+  } else fv <- family$linkinv(eta) ## ! freqs for binomial, counts for poisson
+  return(fv)
+}
+
+.calc_ZACw <- function(newZACpplist, augm_w_h_coeffs, map_rd_mv, newinold=NULL, cum_nobs) {
+  if ( ! is.null(map_rd_mv)) {
+    ZACwS <- vector("list", length(map_rd_mv))
+    # newZACpplist should only contain the new ranefs
+    for (mv_it in seq_along(map_rd_mv)) {
+      # which(map_rd_mv[[mv_it]] %in% newinold) intersect two maps to old indices, and returns their position in the submodel
+      # eg if newinold =2,3 and map_rd_mv ={{1,2},{3}} ....
+      # pos_in_old <- which(map_rd_mv[[mv_it]] %in% newinold) # ... for 1st submodel, which= 2
+      # newinold_it <- which(newinold %in% pos_in_old) # and this is the first ranef in newinold hence in the lists
+      # which is simply...
+      newinold_it <- which(newinold %in% map_rd_mv[[mv_it]])
+      if (length(newinold_it)) {
+        resp_range <- .subrange(cumul=cum_nobs, it=mv_it)
+        ZACwS[[mv_it]] <- .calc_ZACw(newZACpplist[newinold_it], 
+                                     augm_w_h_coeffs[newinold_it], map_rd_mv=NULL)[resp_range]
+      } else ZACwS[[mv_it]] <- numeric(cum_nobs[mv_it+1L]-cum_nobs[mv_it])
+      # => final [resp_range] sacrificing mv performance to univariate one
+    }
+    return(unlist(ZACwS))
+  }
+  newnrand <- length(newZACpplist)
+  if (newnrand>1L) {
+    ZACw <- vector("list", length=newnrand )
+    for (new_rd in seq_len(newnrand)) ZACw[[new_rd]] <- drop(newZACpplist[[new_rd]] %*% augm_w_h_coeffs[[new_rd]])
+    ZACw <- do.call(cbind,ZACw)
+    ZACw <- rowSums(ZACw)
+  } else ZACw <- drop(newZACpplist[[1]] %*% augm_w_h_coeffs[[1]])
+  return(ZACw)
+}
+
+.mvize <- function(fv, cum_nobs) {
+  if (is.null(cum_nobs)) return(fv)
+  # else:
+  len <- length(cum_nobs)-1L
+  fvs <- vector("list", len)  
+  for (mv_it in seq_len(len)) {
+    resp_range <- .subrange(cumul=cum_nobs, it=mv_it)
+    fvs[[mv_it]] <- fv[resp_range]
+  }
+  structure(fv, mv=fvs)
+}
+
+.point_predict <- function(object, newdata, new_X_ZACblob, variances, re.form, type, 
+                           eta_fix=new_X_ZACblob$eta_fix ## may be NULL. addition of random-effect terms in the function
+                           ) {
   if (.noRanef(re.form)) {
     if (type=="link") { # in those cases, we return eta but no useful $fv 
       fv <- NULL 
-    } else if ( ! is.null(zero_truncated <- object$family$zero_truncated)) { ## fv is mu_truncated !
-      fv <- object$family$linkinv(eta_fix, mu_truncated=zero_truncated) ## fv is mu_truncated when zero_truncated is TRUE
-    } else fv <- object$family$linkinv(eta_fix) 
+    } else {
+      fv <- .fv_linkinv(eta_fix, object$family, object$families) ## ! freqs for binomial, counts for poisson
+      fv <- .mvize(fv=fv, cum_nobs=new_X_ZACblob$cum_nobs)
+    }
     return(list(fv=fv,eta=eta_fix))
   } else if ( is.null(newdata) && ! inherits(re.form,"formula")) {
     if (type=="link") {
       return(list(eta=object$eta)) 
     } else return(list(fv=object$fv)) ## eta will be reconstructed from fv on request
   } else { ## 
-    newnrand <- length(subZAlist)
+    newnrand <- length(new_X_ZACblob$subZAlist)
     if ( newnrand==0L ) {
       ZACw <- 0 
     } else {
@@ -714,67 +816,168 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
       if (is.null(w_h_coeffs <- object$envir$w_h_coeffs)) { 
         object$envir$w_h_coeffs <- w_h_coeffs <- .calc_invL_coeffs(object,object$v_h)
       }
-      lcrandfamfam <- attr(object$`rand.families`,"lcrandfamfam")[newinold]
       augm_w_h_coeffs <- vector("list", newnrand)
       for (new_rd in seq_len(newnrand)) {
-        augm_w_h_coeffs[[new_rd]] <- .match_old_new_levels(new_rd,
-                                                           old_cum_n_u_h=attr(object$lambda,"cum_n_u_h"), newinold=newinold, 
-                                                           spatial_old_rd=spatial_old_rd, w_h_coeffs=w_h_coeffs, 
-                                                           subZAlist=subZAlist, newZACpplist=newZACpplist, lcrandfamfam=lcrandfamfam, object=object)
+        augm_w_h_coeffs[[new_rd]] <- .match_old_new_levels(new_rd, new_X_ZACblob,
+                                                           old_cum_n_u_h=attr(object$lambda,"cum_n_u_h"), 
+                                                           w_h_coeffs=w_h_coeffs, 
+                                                           rand.families=object$rand.families)
       }
-      if (newnrand>1L) {
-        ZACw <- vector("list", length=newnrand )
-        for (new_rd in seq_len(newnrand)) ZACw[[new_rd]] <- drop(newZACpplist[[new_rd]] %*% augm_w_h_coeffs[[new_rd]])
-        ZACw <- do.call(cbind,ZACw)
-        ZACw <- rowSums(ZACw)
-      } else ZACw <- drop(newZACpplist[[1]] %*% augm_w_h_coeffs[[1]])
+      # Here we use a single rd-list of 'design' matrices new_X_ZACblob$newZACpplist for all submodels, 
+      # which is thus redundant whenever there are redundant lines among different locdataS[[mv_it]]
+      # .calc_ZACw() handles this by subsetting by resp_range's
+      # The alternative would be to compute one new_X_ZACblob per submodel and call .point_predict() on each submodel 
+      # This looks like asking for troubles.
+      ZACw <- .calc_ZACw(newZACpplist=new_X_ZACblob$newZACpplist, 
+                         augm_w_h_coeffs, map_rd_mv=attr(object$ZAlist, "map_rd_mv"), 
+                         newinold=new_X_ZACblob$newinold,
+                         cum_nobs=new_X_ZACblob$cum_nobs)
     }
     eta <- eta_fix + ZACw ## (length(eta)) col vector from coeffs = length(eta) row vector...
     # done with eta
     if (type=="link") {
       fv <- NULL # but eta will be returned
-    } else if ( ! is.null(zero_truncated <- object$family$zero_truncated)) {
-      fv <- object$family$linkinv(eta,mu_truncated=zero_truncated)
-    } else fv <- object$family$linkinv(eta) ## ! freqs for binomial, counts for poisson
+    } else {
+      fv <- .fv_linkinv(eta, object$family, object$families, cum_nobs=new_X_ZACblob$cum_nobs) ## ! freqs for binomial, counts for poisson
+      fv <- .mvize(fv=fv, cum_nobs=new_X_ZACblob$cum_nobs)
+    }
     return(list(fv=fv,eta=eta))
   }
 } 
+
+.get_phiform <- function(object, mv_it=NULL) {
+  if (object$spaMM.version < "3.5.23") {
+    object$resid.predictor
+  } else if (is.null(mv_it)) {
+    object$residModel$formula
+  } else object$residModels[[mv_it]]$formula
+  
+}
+
+.get_phifam <- function(object, mv_it=NULL) { 
+  if (object$spaMM.version < "3.5.23") {
+    object$resid.family
+  } else if (is.null(mv_it)) {
+    object$residModel$family
+  } else object$residModels[[mv_it]]$family
+}
+
+.to_respScale_var <- function(respVar, ppblob, object) {
+  dmudeta <- NULL
+  if ( ! is.null(families <- object$families)) {
+    nonid_linkS <- logical(length(families))
+    for (mv_it in seq_along(families)) nonid_linkS[mv_it] <- (families[[mv_it]]$link!="identity")
+    if (any(nonid_linkS)) {
+      cum_nobs <- attr(families,"cum_nobs")
+      dmudetaS <- vector("list", length(nonid_linkS))
+      if (is.null(eta <- ppblob$eta)) eta <- .eta_linkfun(ppblob$fv, family = NULL, families=families) 
+      for (mv_it in seq_along(families)) {
+        resp_range <- .subrange(cumul=cum_nobs, it=mv_it)
+        if (nonid_linkS[mv_it] && length(resp_range)) {
+          dmudetaS[[mv_it]] <- families[[mv_it]]$mu.eta(eta[resp_range])
+        } else dmudetaS[[mv_it]] <- rep(1, (cum_nobs[mv_it + 1L] - cum_nobs[mv_it]))
+      }
+      dmudeta <- unlist(dmudetaS, recursive = FALSE, use.names = TRUE)
+    }
+  } else if (object$family$link!="identity") {
+    if (is.null(eta <- ppblob$eta)) eta <- object$family$linkfun(ppblob$fv) 
+    dmudeta <- object$family$mu.eta(eta)
+  }
+  if ( ! is.null(dmudeta)) {
+    if (is.list(respVar)) {  # (as_tcrossfac_list: repres of respVar as matrix factorization
+      for (it in seq_len(length(respVar))) respVar[[it]] <- .Dvec_times_m_Matrix(dmudeta, respVar[[it]])
+    } else if (!is.null(dim(respVar))) {
+      respVar <-  .Dvec_times_m_Matrix(dmudeta, respVar) # sweep(respVar, MARGIN = 1, dmudeta, `*`)
+      rownames(respVar) <- colnames(respVar) # _FIXME_ # Question is what is the logical behaviour here between the following two:
+      # Rcpp_sweepZ1W loses names, not equivalent to sweepn and .Dvec_times_matrix() put backs the colnames only (by design)
+      # sweep() keep all names
+      ## Further _FIXME_ .matrix_times_Dvec(respVar, dmudeta) -> sweep(., MARGIN = 2...) keeps all names
+      ##  (sparse matrix algo manipulating @x directly will also keep names)
+      # so the reciprocal Dvec functions have inconsistent effects here
+      # Anyway, for a symmetric respVar matrix, it makes sense to keep the rownames
+      # and names are checked in a test-predVar item.
+      respVar <- .m_Matrix_times_Dvec(respVar, dmudeta) # sweep(respVar, MARGIN = 2, dmudeta, `*`)
+    } else respVar <- respVar*(dmudeta^2)
+  }
+  respVar
+}
+
+.warn_pw <- local({
+  prior_weights_residvar_warned <- FALSE
+  function(object) {
+    pw <- object$prior.weights
+    if (inherits(pw, "list")) {
+      for (mv_it in seq_along(pw)) {
+        if ((! prior_weights_residvar_warned ) && ! (attr(pw[[mv_it]],"unique") && pw[[mv_it]][1L]==1L)) {
+          warning("Prior weights are not taken in account in residVar computation.")
+          prior_weights_residvar_warned <<- TRUE
+        }
+      }
+    } else if ((! prior_weights_residvar_warned) && ! (attr(pw,"unique") && pw[1L]==1L)) {
+      warning("Prior weights are not taken in account in residVar computation.")
+      prior_weights_residvar_warned <<- TRUE
+    }
+  }
+})
+ 
+
+.add_residVar <- function(object, resu, fv, locdata, respVar, variances) {
+  .warn_pw(object)
+  attr(resu,"residVar") <- .calcResidVar(object,newdata=locdata, fv=fv) 
+  if (inherits(respVar,"matrix")) {
+    nc <- ncol(respVar)
+    diagPos <- seq.int(1L,nc^2,nc+1L)
+    respVar[diagPos] <- respVar[diagPos] + attr(resu,"residVar")
+  } else if ( is.list(respVar)) { # (as_tcrossfac_list)
+    respVar[["residVar"]] <- Diagonal(x=sqrt(attr(resu,"residVar")))
+  } else respVar <- respVar + attr(resu,"residVar")
+  if (variances$respVar) attr(resu,"respVar") <- respVar
+  return(resu)
+}
 
 
 .predict_body <- function(object, newdata, re.form, type,
                           variances, binding, intervals, level, blockSize, control, showpbar) {
   delayedAssign("invCov_oldLv_oldLv_list", .get_invColdoldList(object, control=control))
-  new_X_ZACblob <- .calc_new_X_ZAC(object=object, newdata=newdata, re.form = re.form,
+  if ( ! is.null(object$vec_nobs)) {
+    new_X_ZACblob <- .calc_new_X_ZAC_mv(object=object, newdata=newdata, re.form = re.form,
+                                     variances=variances, invCov_oldLv_oldLv_list=invCov_oldLv_oldLv_list)
+  } else new_X_ZACblob <- .calc_new_X_ZAC(object=object, newdata=newdata, re.form = re.form,
                                    variances=variances, invCov_oldLv_oldLv_list=invCov_oldLv_oldLv_list) ## (fixme) still some unnecessary computation for predict(object)
-  newinold <- new_X_ZACblob$newinold ## says which ranef is kept by re.form
   #
   ## (1) computes fv (2) compute predVar
   ##### fv
-  ppblob <- .point_predict(object, newdata, variances, 
-                       eta_fix=new_X_ZACblob$eta_fix, ## may be NULL. addition of random-effect terms in the function
-                       re.form, newinold=newinold, spatial_old_rd= new_X_ZACblob$spatial_old_rd,
-                       subZAlist=new_X_ZACblob$subZAlist, ## (subset of) the original object$ZAlist 
-                       newZACpplist=new_X_ZACblob$newZACpplist, type=type)
+  ppblob <- .point_predict(object, newdata, new_X_ZACblob, variances, re.form, type) 
   if (type=="link" ) {
     resu <- ppblob$eta
   } else resu <- ppblob$fv ## mu(_T) by default
-  if ( ! is.na(binding)) resu <- structure(as.matrix(resu),mu_U=attr(resu,"mu_U"),p0=attr(resu,"p0")) ## suitable for objective function of optim() etc ## matrix ! maybe more suitable than data frame as objective function
+  # default binding appears to be FALSE ; map functions and blackbox::rbb use binding=<name>; binding=NA is used by simulate()
+  if ( ! is.na(binding)){ ## suitable for objective function of optim() etc                ## ambiguous comment (about NA or !NA ?)    
+    resu <- structure(as.matrix(resu),mu_U=attr(resu,"mu_U"),p0=attr(resu,"p0"),
+                      mv=attr(resu,"mv") ## matrix ! maybe more suitable than data frame as objective function
+    ) 
+  }
   # if (identical(object$family$zero_truncated,TRUE)) {
   #   attr(resu,"p0") <- attr(ppblob$fv,"p0")
   #   attr(resu,"mu_U") <- attr(ppblob$fv,"mu_U")
   # }
   #\item 'make.names(.,unique= TRUE)' is applied to the input data, so the row names may be modified, if the input data did not contain unique, syntactically valid row names as defined by 'help(make.names)'.
   #rownames(resu) <- make.names(rownames(resu),unique = TRUE)
-  locdata <- new_X_ZACblob$locdata
+  locdata <- new_X_ZACblob$locdata 
   if ( ! is.logical(binding) ) { ## expecting a string
-    binding <- .makenewname(base=binding,varnames=colnames(locdata)) ## 09/11/2014 = posterior to CRAN 1.4.1 
-    resu <- structure(data.frame(resu), mu_U=attr(resu,"mu_U"),p0=attr(resu,"p0"))
-    colnames(resu) <- binding
-    resu <- cbind(locdata,resu) ## becomes a data frame !
-    attr(resu,"fittedName") <- binding
-  } else { ## expecting binding= FALSE
-    if (! is.na(binding) && ncol(locdata))  attr(resu,"frame") <- locdata 
+    if (inherits(locdata,"list")) { # mv case
+      stop("'binding' operation not yet defined for multivariate-response models. Ask the maintainer.") # wait for real-life example. (___FIXME___)
+    } else {
+      binding <- .makenewname(base=binding,varnames=colnames(locdata)) 
+      resu <- structure(data.frame(resu), mu_U=attr(resu,"mu_U"),p0=attr(resu,"p0"))
+      colnames(resu) <- binding
+      resu <- cbind(locdata,resu) 
+      attr(resu,"fittedName") <- binding
+    }
+  } else { ## alternative expecting binding= FALSE (but also handling binding = NA by doing nothing)
+    if (! is.na(binding))  attr(resu,"frame") <- locdata 
   }
+  if (inherits(locdata,"list")) attr(resu,"respnames") <- .get_from_HLframes(HLframes=object$HLframes, which="respnames")
   ##### (2) predVar
   if (variances$naive) { # the 'naive' estimate in BH98 (nu_i, without beta)
     naive <- .calc_Var_given_fixef(object, new_X_ZACblob=new_X_ZACblob, covMatrix=variances$cov, fix_X_ZAC.object=NULL)
@@ -824,20 +1027,29 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
                               as_tcrossfac_list=variances$as_tcrossfac_list,
                               showpbar=showpbar) 
       if ( ! is.list(respVar)) {
+        if (inherits(locdata,"list")) { # mv
+          respVnames <- .unlist(lapply(locdata,rownames))
+        } else respVnames <- rownames(locdata)
         if (variances$cov) {
           respVar <- as.matrix(respVar) ## matrix, not Matrix (assumed below)
-          rownames(respVar) <- colnames(respVar) <- rownames(locdata)
+          rownames(respVar) <- colnames(respVar) <- respVnames
         } else {
-          names(respVar) <- rownames(locdata)
+          names(respVar) <- respVnames
         }
       } 
     } else { # no ranefs
+      if (inherits(locdata,"list")) { # mv
+        respVnrow <- sum(.unlist(lapply(locdata,nrow)))
+      } else respVnrow <- nrow(locdata)
       if (variances$cov) {
-        respVar <- matrix(0,nrow=nrow(locdata),ncol=nrow(locdata))
-      } else respVar <- rep(0,nrow(locdata))
+        respVar <- matrix(0,nrow=respVnrow,ncol=respVnrow)
+      } else respVar <- rep(0,respVnrow)
     }
   } else if (any(unlist(variances))) {
-    respVar <- rep(0,nrow(locdata))
+    if (inherits(locdata,"list")) { # mv
+      respVnrow <- sum(.unlist(lapply(locdata,nrow)))
+    } else respVnrow <- nrow(locdata)
+    respVar <- rep(0,respVnrow)
   } else respVar <- NULL 
   if ( variances$fixefVar || (newnrand==0L && variances$linPred) ) {
     beta_cov <- .get_beta_cov_any_version(object)
@@ -857,44 +1069,8 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
     if (variances$cov) respVar <- (respVar+t(respVar))/2 ## if numerically asym, rand_eta <- mvrnorm(.,Sigma=attr(point_pred_eta,"predVar")) fails
     attr(resu,"predVar") <- respVar ## vector or matrix
   }
-  if ( ! is.null(respVar) && object$family$link!="identity") {
-    if (is.null(eta <- ppblob$eta)) eta <- object$family$linkfun(ppblob$fv) 
-    dmudeta <- object$family$mu.eta(eta)
-    if (is.list(respVar)) {
-      for (it in seq_len(length(respVar))) respVar[[it]] <- .Dvec_times_m_Matrix(dmudeta, respVar[[it]])
-    } else if (!is.null(dim(respVar))) {
-      respVar <-  .Dvec_times_m_Matrix(dmudeta, respVar) # sweep(respVar, MARGIN = 1, dmudeta, `*`)
-      rownames(respVar) <- colnames(respVar) # _FIXME_ # Question is what is the logical behaviour here between the following two:
-      # Rcpp_sweepZ1W loses names, not equivalent to sweepn and .Dvec_times_matrix() put backs the colnames only (by design)
-      # sweep() keep all names
-      ## Further _FIXME_ .matrix_times_Dvec(respVar, dmudeta) -> sweep(., MARGIN = 2...) keeps all names
-      ##  (sparse matrix algo manipulating @x directly will also keep names)
-      # so the reciprocal Dvec functions have inconsistent effects here
-      # Anyway, for a symmetric respVar matrix, it makes sense to keep the rownames
-      # and names are checked in a test-predVar item.
-      respVar <- .m_Matrix_times_Dvec(respVar, dmudeta) # sweep(respVar, MARGIN = 2, dmudeta, `*`)
-    } else respVar <- respVar*(dmudeta^2)
-  }
-  if (variances$residVar) {
-    pw <- object$prior.weights
-    if ( ! (attr(pw,"unique") && pw[1L]==1L)) {
-      if (! identical(spaMM.getOption("prior_weights_residvar_warned"),TRUE)) {
-        warning("Prior weights are not taken in account in residVar computation.")
-        .spaMM.data$options$prior_weights_residvar_warned <- TRUE
-      }
-    }
-    if (object$family$family %in% c("poisson","binomial","COMPoisson","negbin")) {
-      attr(resu,"residVar") <- object$family$variance(ppblob$fv)
-    } else attr(resu,"residVar") <- .calcResidVar(object,newdata=locdata) 
-    if (inherits(respVar,"matrix")) {
-      nc <- ncol(respVar)
-      diagPos <- seq.int(1L,nc^2,nc+1L)
-      respVar[diagPos] <- respVar[diagPos] + attr(resu,"residVar")
-    } else if ( is.list(respVar)) { # (as_tcrossfac_list)
-      respVar[["residVar"]] <- Diagonal(x=sqrt(attr(resu,"residVar")))
-    } else respVar <- respVar + attr(resu,"residVar")
-  }
-  if (variances$respVar) attr(resu,"respVar") <- respVar
+  if ( ! is.null(respVar)) respVar <- .to_respScale_var(respVar, ppblob, object)
+  if (variances$residVar) resu <- .add_residVar(object, resu, fv=ppblob$fv, locdata, respVar, variances)
   if ( is.matrix(resu) && NCOL(resu)==1L) {
     class(resu) <- c("predictions",class(resu))
   } ## for print.predictions method which expects a 1-col matrix
@@ -905,7 +1081,7 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
                   "not available for interval computation.\n Check arguments."))
     intervals <- intersect(intervals,names(attributes(resu)))
   } 
-  if(length(intervals)) {
+  if(length(intervals)) { # for e.g. intervals="predVar"
     intervalresu <- NULL
     for (st in intervals) {
       varcomp <- attr(resu,st)
@@ -913,17 +1089,13 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
       if (is.matrix(varcomp)) varcomp <- diag(varcomp)
       if (type=="link") {
         eta <- resu[,1L]
-      } else if ( ! is.null(zero_truncated <- object$family$zero_truncated)) {
-        eta <- object$family$linkfun(resu,mu_truncated=zero_truncated)[seq(nrow(resu))] 
-      } else {
+      } else eta <- .eta_linkfun(resu, object$family, object$families)[seq(nrow(resu))] ## mv: 'resu' still a single vector ('center' of intervals) 
         ## [] with explicit indices, to drop possible mu attribute otherwise linkinv(eta+/-sd) uses it! 
-        eta <- object$family$linkfun(resu)[seq(nrow(resu))] 
-      }
       pv <- 1-(1-level)/2
       ## special case for simple LM
       if (length(object$rand.families)==0L && # not mixed
-          object$family$family=="gaussian" &&
-          .DEPARSE(object$resid.predictor)=="~1" # not heteroscedastic
+          object$family$family=="gaussian" && ## __FIXME__ so calling this on a mv-GLM will bug.
+          .DEPARSE(.get_phiform(object))=="~1" # not heteroscedastic
       ) { 
         nobs <- length(object$y)
         resdf <- nobs - ncol(object$X.pv) ## don't use fixef here, that contains bot NAs and argument etaFix$beta! 
@@ -932,22 +1104,16 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
           vart <- varcomp*nobs/resdf
         } else vart <- varcomp
         ## FR->FR (use a type attribute for fixef ?)
-        sd <- stats::qt(pv,df=resdf)*sqrt(vart)
+        sd <- stats::qt(pv,df=resdf)*sqrt(vart) # student for LM (not LMM)
       } else {
-        sd <- qnorm(pv)*sqrt(varcomp)
+        sd <- qnorm(pv)*sqrt(varcomp) 
+        # for GLMMs a better bound might be obtained by convolution of residual error distrib and of predVar  ~gaussian on linear scale
       }
-      if (! is.null(zero_truncated <- object$family$zero_truncated)) { ## interval for mu_T
-        if (variances$respVar) { # sd is already on response scale
-          mu <- object$family$linkinv(eta, mu_truncated=zero_truncated)
-          interval <- cbind(mu-sd,mu+sd)
-        } else interval <- cbind(object$family$linkinv(eta-sd, mu_truncated=zero_truncated),
-                                 object$family$linkinv(eta+sd, mu_truncated=zero_truncated)) 
-      } else {
-        if (variances$respVar) { # sd is already on response scale
-          mu <- object$family$linkinv(eta)
-          interval <- cbind(mu-sd,mu+sd)
-        } else interval <- cbind(object$family$linkinv(eta-sd),object$family$linkinv(eta+sd))
-      }
+      if (variances$respVar) { # sd is already on response scale
+        mu <- .fv_linkinv(eta=eta, family=object$family, families=object$families)
+        interval <- cbind(mu-sd,mu+sd)
+      } else interval <- cbind(.fv_linkinv(eta=eta-sd, family=object$family, families=object$families),
+                               .fv_linkinv(eta=eta+sd, family=object$family, families=object$families))
       colnames(interval) <- paste(st,c(signif(1-pv,4),signif(pv,4)),sep="_")
       intervalresu <- cbind(intervalresu,interval)
     }
@@ -1005,7 +1171,7 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
     slices <- unique(c(seq(0L,nrX,blockSize),nrX))
     nslices <- length(slices)-1L
     res <- vector("list",nslices)
-    progrbar_setup <- .set_progrbar(style = showpbar, char="s") # FIXME could implement parallee computation
+    progrbar_setup <- .set_progrbar(style = showpbar, char="s") # FIXME could implement parallel computation
     for (it in seq_len(nslices)) {
       slice <- (slices[it]+1L):slices[it+1L]
       newdata_slice <- newdata[slice,,drop=FALSE]
@@ -1016,14 +1182,14 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
       if (showpbar) progrbar_setup$progress(slices[it+1L]/nrX)  ## update progress bar
     }
     if (showpbar) close(progrbar_setup$pb)
-    res <- .unlist_with_attributes(res)
-    return(res)
+    res <- .unlist_with_attributes(res) 
   } else if (type=="marginal") {
-    .predict_marg(object=object, newdata=newdata, re.form = re.form, control=control)
-  } else .predict_body(object=object, newdata=newdata, re.form = re.form,
+    res <- .predict_marg(object=object, newdata=newdata, re.form = re.form, control=control)
+  } else res <- .predict_body(object=object, newdata=newdata, re.form = re.form,
                 variances=variances, binding=binding, type=type,
                 intervals=intervals, level=level, blockSize=blockSize, ## but blockSize could be useful *here* if newdata was NULL
-                control=control, showpbar=showpbar) 
+                control=control, showpbar=showpbar)
+  return(res)
 }
 
 print.vcov.HLfit <- function(x, expanded=FALSE, ...) {
@@ -1065,38 +1231,52 @@ print.vcov.HLfit <- function(x, expanded=FALSE, ...) {
 }
 
 
-`[.predictions` <- function (x, i, j, 
-                             drop = TRUE ## by default, this function will return scalar/vector  
-                             ) {
-  class(x) <- "matrix" ## avoids recursive call to `[.predictions` 
-  resu <- x[i,j,drop=drop]
-  if ( ! drop) {
-    fixefVar <- attr(x, "fixefVar")
-    if ( ! is.null(fixefVar)) {
-      if (is.null(dim(fixefVar))) {
-        fixefVar <- fixefVar[x]
-      } else fixefVar <- fixefVar[x,x,drop=FALSE]
-    }
-    predVar <- attr(x, "predVar")
-    if ( ! is.null(predVar)) {
-      if (is.null(dim(predVar))) {
-        predVar <- predVar[x]
-      } else predVar <- predVar[x,x,drop=FALSE]
-    }
-    frame <- attr(x, "frame")
-    if ( ! is.null(frame)) frame <- frame[i,] ## dataframe => nodrop
-    residVar <- attr(x, "residVar")
-    if ( ! is.null(frame)) residVar <- residVar[i,drop=FALSE]
-    respVar <- attr(x, "respVar")
-    if ( ! is.null(respVar)) {
-      if (is.null(dim(respVar))) {
-        respVar <- respVar[i]
-      } else respVar <- respVar[i,i,drop=FALSE]
-    }
-    class(resu) <- c("predictions","matrix")
-    structure(resu,fixefVar=fixefVar,predVar=predVar,residVar=residVar,frame=frame,fittedName=attr(x, "fittedName"))
-  } else return(resu)
-} # Use unlist() to remove attributes from the return value
+`[.predictions` <- local({
+  mv_warned <- FALSE # we need special handling for all attributes that become lists in mv code.
+                    # => only 'frame' attribute ?
+  function (x, i, j, 
+            drop = TRUE ## by default, this function will return scalar/vector 
+  ) {
+    class(x) <- "matrix" ## avoids recursive call to `[.predictions` 
+    resu <- x[i,j,drop=drop]
+    if ( ! drop) {
+      fixefVar <- attr(x, "fixefVar")
+      if ( ! is.null(fixefVar)) {
+        if (is.null(dim(fixefVar))) {
+          fixefVar <- fixefVar[x]
+        } else fixefVar <- fixefVar[x,x,drop=FALSE]
+      }
+      predVar <- attr(x, "predVar")
+      if ( ! is.null(predVar)) {
+        if (is.null(dim(predVar))) {
+          predVar <- predVar[x]
+        } else predVar <- predVar[x,x,drop=FALSE]
+      }
+      frame <- attr(x, "frame")
+      if ( ! is.null(frame)) {
+        if (inherits(frame,"list")) {
+          # base unique() -> unique.matrix() -> do.call("[", c(list(x), args, list(drop = FALSE)))
+          # -> bug on mv output where the frame attribute is a list of frames.
+          # 'frame' might be needed only in the context of binding predictions, so best code not yet clear
+          if ( ! mv_warned) {
+            warning("'frame' attribute of predictions not yet handled for predictions from multivariate fits.\n Contact the maintaner if you encounter problems.")
+            mv_warned <<- TRUE
+          }
+        } else frame <- frame[i,] ## dataframe => nodrop
+      }
+      residVar <- attr(x, "residVar")
+      if ( ! is.null(frame)) residVar <- residVar[i,drop=FALSE]
+      respVar <- attr(x, "respVar")
+      if ( ! is.null(respVar)) {
+        if (is.null(dim(respVar))) {
+          respVar <- respVar[i]
+        } else respVar <- respVar[i,i,drop=FALSE]
+      }
+      class(resu) <- c("predictions","matrix")
+      structure(resu,fixefVar=fixefVar,predVar=predVar,residVar=residVar,frame=frame,fittedName=attr(x, "fittedName"))
+    } else return(resu)
+  } # Use unlist() to remove attributes from the return value
+}) 
 
 print.predictions <- function (x, expanded=FALSE, ...) {
   asvec <- as.vector(x) ## important to remove names and keep them separately
@@ -1141,3 +1321,15 @@ print.predictions <- function (x, expanded=FALSE, ...) {
   }
   invisible()
 }
+
+# usage: 
+# as.matrix(<1-col matrix inheriting from class "predictions" resulting from predict(, binding=FALSE)>, ...)
+# or 
+# as.matrix.predictions(<vector resulting from predict(, binding=NA)>, ...)
+# as.matrix.predictions <- function(x, colnames.=attr(x, "respnames"), ...) {
+#   #mv <- attr(x,"mv")
+#   #vec_nobs <- sapply(mv, nrow)
+#   resu <- matrix(x,ncol=length(attr(x,"mv"))) # or do.call(rbind, attr(x,"mv")) ?
+#   colnames(resu) <- colnames.
+#   resu
+# } 

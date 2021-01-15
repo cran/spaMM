@@ -1,10 +1,12 @@
 # Adapted from the code provided by B&G 2009, http://www.math.tau.ac.il/~ybenja/Software/MSFDR.r
 MSFDR <- function(  nullfit, fullfit , q = 0.05 , verbose = TRUE) {
+  if ( ! is.null(nullfit$families)) stop("MSFDR() does not work on multivariate-response fits.") # bc step() won't work; 
+  #                                 would need to make sure of appropirateness of .get_from_HLframes() output too.
   if (is.null(nullfit$REMLformula) || ! identical(attr(nullfit$REMLformula,"isML"),TRUE)) {
     warning("nullfit used REML, hence all further fits will. This is not recommended for inferences about fixed effects.")
   }
-  scope <- list(lower=(.get_fixef_off_terms(nullfit)), ## only the fixed-effect terms
-                upper=(.get_fixef_off_terms(fullfit)))
+  scope <- list(lower=(.get_from_HLframes(object=nullfit)), 
+                upper=(.get_from_HLframes(object=fullfit)))
   #trace.stepAIC <- ifelse(print.the.steps , 1,0)
   iter <- 1L
   nslopes_f <- extractAIC(fullfit)[1L] - 1 # B&G comment: 'check if the full model should include the intercept or not !!!!!!'

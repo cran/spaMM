@@ -30,7 +30,7 @@ as '2.5'.
 }
 \source{
 Data from Mueller et al. (2011), including supplementary material now available from
-\url{https://doi.org/10.1098/rspb.2010.2567}.
+\doi{10.1098/rspb.2010.2567}.
 }
 \references{
 Mueller, J. C., Pulido, F., and Kempenaers, B. 2011. Identification of a
@@ -38,6 +38,6 @@ gene associated with avian migratory behaviour, Proc. Roy. Soc. (Lond.)
 B 278, 2848-2856.
 }
 \examples{
-## see 'corrHLfit' and 'fixedLRT' for examples involving these data
+## see 'fitme', 'corrHLfit' and 'fixedLRT' for examples involving these data
 }
 \keyword{datasets}

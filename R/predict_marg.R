@@ -78,7 +78,6 @@
     } else newZAXlist[[oldrd]] <- list(NULL)
   }
   eta_fix <- new_X_ZACblob$eta_fix
-  zero_truncated <- object$family$zero_truncated
   #
   integrand <- function(u, eta_fix, newZAXrow, cum_nactive, object
                         #, sdvars, famfams, zero_truncated ## defined n envir where integrand is defined 
@@ -97,9 +96,7 @@
       )
     }
     eta <- eta_fix + sum(newZAXrow*v)
-    if ( ! is.null(zero_truncated)) {
-      fv <- object$family$linkinv(eta,mu_truncated=zero_truncated)
-    } else fv <- object$family$linkinv(eta)
+    fv <- .fv_linkinv(eta=eta, family=object$family, families=object$families)
     return(fv * prod(u_densities)) ## predicted value|u * density(u)
   }
   #

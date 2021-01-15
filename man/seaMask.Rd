@@ -52,9 +52,10 @@ def_pointmask <- function(xy,r=1,npts=12) {
 ll <- blackcap[,c("longitude","latitude")]
 pointmask <- def_pointmask(ll[c(2,4,5,6,7),],r=0.8) ## small islands only
 #
-data("seaMask")
-#
-filled.mapMM(bfit,add.map=TRUE,
+if (spaMM.getOption("example_maxtime")>1) {
+  data("seaMask")
+  
+  filled.mapMM(bfit,add.map=TRUE,
              plot.title=title(main="Inferred migration propensity of blackcaps",
                                xlab="longitude",ylab="latitude"),
              decorations=quote(points(pred[,coordinates],cex=1,pch="+")),
@@ -62,6 +63,6 @@ filled.mapMM(bfit,add.map=TRUE,
                         polypath(rbind(seaMask,pointmask),border=FALSE,
                                  col="grey", rule="evenodd")
              }))
-
+}
 }
 \keyword{datasets}

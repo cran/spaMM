@@ -4,6 +4,23 @@
   return(all(abs(proj2in1 -X2)<tol))
 }
 
+.process_ranef_case <- function(object, object2, nest="") {
+  l1 <- logLik(object)
+  l2 <- logLik(object2)
+  testlik <- unique(c(names(l1),names(l2)))
+  if (length(testlik)!=1L) stop(paste("Unable to determine a unique objective function from logLik() names.\n",
+                                      "Check that both fits are fitted by the same 'method'."))
+  if (nest=="2in1" || (nest!="1in2" && l1>l2)) {
+    nullfit <- object2
+    fullfit <- object
+  } else { # nest=="1in2" || l2>l1
+    nullfit <- object
+    fullfit <- object2
+  }
+  return(list(fullfit=fullfit,nullfit=nullfit,test_obj=testlik,df=NA))
+}
+
+
 .compare_model_structures <- function(object,object2) {
   if (inherits(object,"HLfitlist") || inherits(object2,"HLfitlist")) {
     stop("This does not yet work on HLfitlist objects")
@@ -54,110 +71,119 @@
   ranterms2 <- paste(ranterms2,randist2) ## joins each term and its distrib
   dR12 <- setdiff(ranterms1,ranterms2)
   dR21 <- setdiff(ranterms2,ranterms1)
-  if (length(dR12) && length(dR21)) { 
-    stop(paste("Fixed-effects specifications from both models seem equivalent,\n",
-               "and random-effect specifications may be non-nested\n", 
-               "(a better algorithm would be required to check this properly).\n",
-               "This case is not handled.")) 
-  } else if (length(dR12)) {
+  if (length(dR12) && length(dR21)) { # no obvious nested structure on ranefs
+    if (is.null(Xnest)) { # fixed effects are identical
+      warning(paste("Fixed-effects specifications from both models seem equivalent,\n",
+                    "and random-effect specifications may be non-nested\n", 
+                    "(a better algorithm would be required to check this properly).\n",
+                    "Caveat emptor."), immediate. = TRUE) 
+    } else warning(paste("Fixed-effects specifications differ between the models,\n",
+                          "and random-effect specifications may be non-nested\n", 
+                          "(a better algorithm would be required to check this properly).\n",
+                          "Caveat emptor."), immediate. = TRUE) 
+    return(.process_ranef_case(object, object2))
+  } 
+  # ELSE nestedness can be assessed
+  if (length(dR12)) {
     Rnest <- "2in1"
-    warning(paste("Random-effect specifications appear distinct.\n", 
-                  "This procedure is unreliable for comparing models with different random effects."),
-            immediate.=TRUE)
   } else if (length(dR21)) {
     Rnest <- "1in2"
-    warning(paste("Random-effect specifications appear distinct.\n", 
-                  "This procedure is unreliable for comparing models with different random effects."),
-            immediate.=TRUE)
-  } else {
-    Rnest <- NULL
-    if (is.null(Xnest)) stop(paste("The two models appear equivalent (except perhaps for residual dispersion models).\n", 
-                                   "This case is not handled."))
-  }
+  } else Rnest <- NULL
   nest <- c(Xnest,Rnest)
   unest <- unique(nest)
-  if (length(unest)==2L) {
-    stop("Models not nested (opposite nestings for fixed and random terms). ")
-  } else {
-    df1 <- length(X1[!is.na(fixef(object))])
-    df2 <- length(X2[!is.na(fixef(object2))])
-    if (!is.null(Rnest)) {
-      lambda.object <- object$lambda.object
-      if (!is.null(lambda.object)) df1 <- df1+length(unlist(lambda.object$coefficients_lambdaS))
-      cov.mats <- .get_compact_cov_mats(object$strucList)
-      if (length(cov.mats)) {
-        nrows <- unlist(lapply(cov.mats,NROW))
-        df1 <- df1+sum(nrows*(nrows-1)/2)
-      }
-      lambda.object <- object2$lambda.object
-      if (!is.null(lambda.object)) df2 <- df2+length(unlist(lambda.object$coefficients_lambdaS))
-      cov.mats <- .get_compact_cov_mats(object2$strucList)
-      if ( length(cov.mats)) {
-        nrows <- unlist(lapply(cov.mats,NROW))
-        df2 <- df2+sum(nrows*(nrows-1)/2)
-      }
+  if (length(unest)==2L) stop("Models not nested (opposite nestings for fixed and random terms). ")
+  # ELSE
+  if (length(unest)==0L) stop(paste("The two models appear equivalent (except perhaps for residual dispersion models).\n", 
+                                    "This case is not handled."))
+  if (length(Rnest)) return(.process_ranef_case(object, object2, nest=Rnest)) # nested models, differing at least by their random effects.
+  ###############################
+  # ELSE nested fixef, identical ranefs
+  df1 <- length(X1[!is.na(fixef(object))])
+  df2 <- length(X2[!is.na(fixef(object2))])
+  if (!is.null(Rnest)) {
+    lambda.object <- object$lambda.object
+    if (!is.null(lambda.object)) df1 <- df1+length(unlist(lambda.object$coefficients_lambdaS))
+    cov.mats <- .get_compact_cov_mats(object$strucList)
+    if (length(cov.mats)) {
+      nrows <- unlist(lapply(cov.mats,NROW))
+      df1 <- df1+sum(nrows*(nrows-1)/2)
     }
-    if (unest=="1in2") {
-      fullm <- object2
-      nullm <- object
-      df <- df2-df1
-    } else {
-      fullm <- object
-      nullm <- object2
-      df <- df1-df2
+    lambda.object <- object2$lambda.object
+    if (!is.null(lambda.object)) df2 <- df2+length(unlist(lambda.object$coefficients_lambdaS))
+    cov.mats <- .get_compact_cov_mats(object2$strucList)
+    if ( length(cov.mats)) {
+      nrows <- unlist(lapply(cov.mats,NROW))
+      df2 <- df2+sum(nrows*(nrows-1)/2)
     }
-    if (length(nest)==2) {
-      message("Nested models differing both by in their fixed and in their random terms. ")
-      message("Tentatively using marginal likelihood to compare them... ")
-      testlik <- "p_v" 
-    } else {
-      if (is.null(Rnest)) { ## fixed effect test 
-        if (REML) {
-          ## checking the comparability of REML fits
-          if ( ! is.null(fullm$distinctX.Re) ) {
-            df.f.Re <- ncol(fullm$distinctX.Re)
-          } else df.f.Re <- ncol(fullm$`X.pv`)
-          if ( ! is.null(nullm$distinctX.Re) ) {
-            df.n.Re <- ncol(nullm$distinctX.Re)
-          } else df.n.Re <- ncol(nullm$`X.pv`)
-          if ( df.f.Re !=  df.n.Re ) {
-            warning("LRT comparing REML fits with different designs is highly suspect")
-          }
-        }
-        testlik <- "p_v"
-      } else { ## random effect test
-        if ( ! REML) warning("ML fits used to compare different random-effects models...")
-        testlik <- "p_bv" ## used in both case, identical to p_v in the non-standard case
-        stop("The two models have identical fixed-effect formulas\n and cannot yet be compared properly by this function.")
-        ## need to take into account correlations in random slope models for example
-      }
-    } 
   }
+  if (unest=="1in2") {
+    fullm <- object2
+    nullm <- object
+    df <- df2-df1
+  } else {
+    fullm <- object
+    nullm <- object2
+    df <- df1-df2
+  }
+  if (length(nest)==2) {
+    message("Nested models differing both by in their fixed and in their random terms. ")
+    message("Tentatively using marginal likelihood to compare them... ")
+    testlik <- "p_v" 
+  } else {
+    if (is.null(Rnest)) { ## fixed effect test 
+      if (REML) {
+        ## checking the comparability of REML fits
+        if ( ! is.null(fullm$distinctX.Re) ) {
+          df.f.Re <- ncol(fullm$distinctX.Re)
+        } else df.f.Re <- ncol(fullm$`X.pv`)
+        if ( ! is.null(nullm$distinctX.Re) ) {
+          df.n.Re <- ncol(nullm$distinctX.Re)
+        } else df.n.Re <- ncol(nullm$`X.pv`)
+        if ( df.f.Re !=  df.n.Re ) {
+          warning("LRT comparing REML fits with different designs is highly suspect")
+        }
+      }
+      testlik <- "p_v"
+    } else { ## random effect test
+      if ( ! REML) warning("ML fits used to compare different random-effects models...")
+      testlik <- "p_bv" ## used in both case, identical to p_v in the non-standard case
+      stop("The two models have identical fixed-effect formulas\n and cannot yet be compared properly by this function.")
+      ## need to take into account correlations in random slope models for example
+    }
+  } 
   return(list(fullfit=fullm,nullfit=nullm,test_obj=testlik,df=df))
 }
 
 .get_outer_inits_from_fit <- function(fitobject, keep_canon_user_inits) {
   canon.init <- attr(fitobject,"optimInfo")$LUarglist$canon.init ## includes user init
   #
-  nullranPars <- get_ranPars(fitobject)
-  names_u_nullranPars <- names(unlist(nullranPars))
+  outer_ests <- get_ranPars(fitobject) ## CorrEst_and_RanFix only
+  names_u_o_ests <- names(unlist(outer_ests))
   names_u_c_inits <- names(unlist(canon.init))
+  if ("NB_shape" %in% names_u_c_inits) {
+    outer_ests$NB_shape <- environment(fitobject$family$aic)$shape
+    attr(outer_ests,"type")$NB_shape <- "outer" # there may already be attr(outer_ests,"type")$trNB_shape but let's not assume that messy thing
+  }
+  if ("COMP_nu" %in% names_u_c_inits) {
+    outer_ests$COMP_nu <- environment(fitobject$family$aic)$nu
+    attr(outer_ests,"type")$COMP_nu <- "outer" # there may already be attr(outer_ests,"type")$trNB_shape but let's not assume that messy thing
+  }
   if (keep_canon_user_inits) { # keep them (as interpreted in canon.init: minimum phi is 1e-4, etc) in return value
     # => remove the fitted values from the nullranPars used to modify_list
     # => keep them in 'removand' list of pars to remove from nullranPars
     # => exclude them from 'not_user_inits_names' to remove from 'removand' !
-    user_inits <- .post_process_parlist(getCall(fitobject)$init,corr_families=fitobject$corr_info$corr_families)
+    user_inits <- .reformat_corrPars(getCall(fitobject)$init,corr_families=fitobject$corr_info$corr_families)
     names_u_u_inits <- names(unlist(user_inits))
     not_user_inits_names <- setdiff(names_u_c_inits, names_u_u_inits) # names, excluding those of parameters with user inits
-    removand <- setdiff(names_u_nullranPars, not_user_inits_names) ## removand: user_inits, fixed, or inner optimized corrPars
+    removand <- setdiff(names_u_o_ests, not_user_inits_names) ## removand: user_inits, fixed, or inner optimized corrPars
     ## removand: user_inits, fixed, or inner optimized corrPars
     # locinit will retain parameters that were outer optimized without an explicit user init
-  } else removand <- setdiff(names_u_nullranPars, names_u_c_inits)
+  } else removand <- setdiff(names_u_o_ests, names_u_c_inits)
   if ( is.null(removand)) {
-    locinit <- .modify_list(canon.init,nullranPars)
+    locinit <- .modify_list(canon.init, outer_ests)
   } else { ## leaves user_inits as there are in LUarglist$canon.init, and do not add any fixed or inner-optimized par
     locinit <- .modify_list(canon.init,
-                            .remove_from_cP(nullranPars,u_names=removand)) ## loses attributes
+                            .remove_from_cP(outer_ests, u_names=removand)) ## loses attributes
   }
   return(locinit)
 }
@@ -183,19 +209,19 @@
 }
 
 # for inner CAR it returns the single lambda factor which is OK 
-.get_lambdas_notrC_from_hlfit <- function(hlfit, type, keep_names=(type=="adhoc")) {
-  compacts <- .get_compact_cov_mats(hlfit$strucList) ## the "compacts" characterize ranCoefs. MAY BE NULL EVEN IF RANEFS
+.get_lambdas_notrC_from_hlfit <- function(hlfit, type, keep_names=(type=="adhoc"), 
+                                          isRandomSlope=attr(hlfit$strucList,"isRandomSlope")) {
   lambdas <- hlfit$lambda.object$lambda_list
   seq_rd <- seq_along(lambdas)
   if (length(seq_rd)) {
     any_ranCoef <- FALSE
     for (rd in seq_rd) {
-      if ( is.null(compacts[[rd]])) { # not ranCoefs
-        # pretty renaming of simple lambda:
-        if (type=="adhoc")  if (length(lambdas[[rd]])==1L && names(lambdas[[rd]])=="(Intercept)") names(lambdas[[rd]]) <- NULL
-      } else {
+      if (isRandomSlope[[rd]]) {
         lambdas[[rd]] <- NA # the syntax understood by fitting functions
         any_ranCoef <- TRUE  
+      } else {
+        # pretty renaming of simple lambda:
+        if (type=="adhoc")  if (length(lambdas[[rd]])==1L && names(lambdas[[rd]])=="(Intercept)") names(lambdas[[rd]]) <- NULL
       }
     }
     lambdas <- unlist(lambdas)
@@ -234,7 +260,7 @@ get_inits_from_fit <- function(from, template=NULL, to_fn=NULL, inner_lambdas=FA
     if (length(lambda_inner_inits)) init.HLfit <- c(init.HLfit, list(lambda=lambda_inner_inits))
   } 
   #
-  if (to_fn=="fitme") {
+  if (to_fn %in% c("fitme", "fitmv", "fitme_body")) {
     new_inits <- list(init=new_outer_inits,init.HLfit=init.HLfit)
   } else if (to_fn=="corrHLfit") {
     new_inits <- list(init.corrHLfit=new_outer_inits,init.HLfit=init.HLfit)
@@ -455,12 +481,15 @@ LRT <- function(object,object2,boot.repl=0,# nb_cores=NULL,
   nullfit <- info$nullfit
   fullfit <- info$fullfit
   test_obj <- info$test_obj
-  df <- info$df
   LRTori <- 2*(logLik(fullfit,which=test_obj)-logLik(nullfit,which=test_obj))
-  pvalue <- 1-pchisq(LRTori,df=df) ## but not valid for testing null components of variance
-  resu <- list(nullfit=nullfit,fullfit=fullfit,basicLRT = data.frame(chi2_LR=LRTori,df=df,p_value=pvalue)) ## format appropriate for more tests  
+  if (is.na(df <- info$df)) {
+    resu <- list(nullfit=nullfit,fullfit=fullfit,basicLRT = data.frame(chi2_LR=LRTori,df=NA,p_value=NA))
+  } else {
+    pvalue <- 1-pchisq(LRTori,df=df) ## but not valid for testing null components of variance
+    resu <- list(nullfit=nullfit,fullfit=fullfit,basicLRT = data.frame(chi2_LR=LRTori,df=df,p_value=pvalue)) ## format appropriate for more tests  
+  }
   if (boot.repl) {
-    if (boot.repl<100L) message("It is recommended to set boot.repl>=100 for Bartlett correction")
+    if (boot.repl<100L && ! is.na(df)) message("It is recommended to set boot.repl>=100 for Bartlett correction")
 #    dotargs <- match.call(expand.dots = FALSE)$... ## produce a pairlist of (essentially) promises. No quote() needed
     isdebugd <- isdebugged(simuland) # bc the assignment of environment drops this status
     environment(simuland) <- environment() # enclosing env(simuland) <- evaluation env(LRT)

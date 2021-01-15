@@ -5,22 +5,22 @@
 # We additionally want TRUE if argument is ~<only fixef> (fixed effect will be ignored anyway)
 # The following is equivalent to noReForm() except for the last test, is.null(.parseBars(re.form)) 
 # ~0 returns TRUE, ~Days returns TRUE [as the last test is TRUE in both cases], ~<including ranefs> returns FALSE 
-.noRanef <- function(re.form) {
+.noRanef <- function(re.form) { # Stupidly returns FALSE for explicit formula with LHS. So re.form better not have a LHS.
   (!is.null(re.form) && !inherits(re.form,"formula") && is.na(re.form)) ||
     (inherits(re.form,"formula") && length(re.form)==2 && is.null(.parseBars(re.form)))
 }
 
-.newetaFix <- function(object, newMeanFrames,validnames=NULL) {
+.newetaFix <- function(object, newMeanFrames,validnames=NULL) { # newMeanFrames must have cols for the fixed beta's, absent from the object's $X.pv 
   ## newdata -> offset must be recomputed. 
-  ## dans l'état actuel $fixef et complet, incluant les etaFix$beta: pas besoin de les séparer
+  ## dans l'état actuel $fixef et complet, incluant les etaFix$beta: pas besoin de les separer
   ## mais il peut contenir des NA ! à enlever
-  # le newX contient a priori les cols des etaFix$beta, contrairement à object$X.pv => don't use the latter cols 
+  # le newMeanFrames$X contient a priori les cols des etaFix$beta, contrairement à object$X.pv => don't use the latter cols 
   if (is.null(validnames)) {
     est_and_fix <- names(which(!is.na(object$fixef))) ## estimated + etaFix$beta
-    validnames <- intersect(colnames(newMeanFrames$X) ,est_and_fix) # newX.pv may  contain names of unestimated coeff for the sam reason asthe original MenanFrames$X...
+    validnames <- intersect(colnames(newMeanFrames$X) ,est_and_fix) # would be colnames(newMeanFrames$X) when there is no NA if object$fixef. would validnames=est_and_fix suffice ?
   }
   if (length(validnames)==0L) validnames <- c() ## without this, validnames could be character(0) and [,validnames,drop=FALSE] fails.
-  etaFix <-  drop(newMeanFrames$X[,validnames,drop=FALSE] %*% object$fixef[validnames]) ## valide even if ncol(newMeanFrames$X) = 0
+  etaFix <-  drop(newMeanFrames$X[,validnames,drop=FALSE] %*% object$fixef[validnames]) ## valid even if ncol(newMeanFrames$X) = 0
   off <- model.offset( newMeanFrames$mf) ### look for offset from (ori)Formula 
   if ( ! is.null(off)) etaFix <- etaFix + off   
   return(etaFix)
@@ -45,9 +45,9 @@
                       if (is.null(lambdas)) {
                         sapply(mu, function(muv) {
                           lambda <- family$linkfun(muv,log=FALSE)
-                          .COMP_simulate(lambda=lambda,nu=COMP_nu)
+                          .COMP_simulate(lambda=lambda,nu=COMP_nu, nsim=nsim)
                         })
-                      } else sapply(lambdas,.COMP_simulate,nu=COMP_nu, nsim=1)
+                      } else sapply(lambdas,.COMP_simulate,nu=COMP_nu, nsim=nsim)
                     },
                     negbin = .rnbinom(nsim*length(mu), size=NB_shape, mu_str=mu, zero_truncated=zero_truncated), 
                     stop("(!) random sample from given family not yet implemented")
@@ -55,6 +55,107 @@
   if (nsim>1L) dim(resu) <- c(length(mu),nsim)
   resu
 } ## vector-valued function from vector input
+
+.r_resid_var_over_cols <- function(needed, 
+                                   mu,  # a list over nsim !
+                                   phiW, sizes, family, families, resp_range=NULL, is_mu_fix_btwn_sims,
+                                   is_phiW_fix_btwn_sims=attr(phiW,"is_phiW_fix_btwn_sims"), nsim=1L, as_matrix=FALSE, mv_it=NULL) {
+  if ( ! is.null(families)) {
+    cum_nobs <- attr(families,"cum_nobs")
+    rowS <- vector("list", length(families))
+    for (mv_it in seq_along(families)) {
+      resp_range <- .subrange(cumul=cum_nobs, it=mv_it)
+      rowS[[mv_it]] <- .r_resid_var_over_cols(needed, mu, phiW=phiW[resp_range,,drop=FALSE], sizes=sizes[resp_range], 
+                                              family=families[[mv_it]], families=NULL, resp_range=resp_range,
+                                              is_mu_fix_btwn_sims=is_mu_fix_btwn_sims,
+                                              is_phiW_fix_btwn_sims=is_phiW_fix_btwn_sims[mv_it], nsim=nsim, as_matrix=TRUE, mv_it=mv_it)
+    }
+    return(do.call(rbind, rowS))
+  }
+  block <- NA*phiW
+  famfam <- family$family
+  if (is_mu_fix_btwn_sims && is_phiW_fix_btwn_sims) { # 2nd condition should be trivially true for binomial, poisson, COMPoisson (phi=1, no prior.weights)
+    if (is.null(resp_range)) {
+      mu_all <- mu[[1L]] 
+    } else mu_all <- structure(mu[[1L]][resp_range], p0=attr(mu[[1L]],"p0")[[mv_it]], mu_U=attr(mu[[1L]],"mu_U")[[mv_it]])
+    # : subsetting otherwise loses crucial p0 and mu_U attributes for Tnegbin
+    # These attributes also exists for Tpoisson
+    block <- .r_resid_var(mu_all, phiW=phiW[,1L],sizes=sizes, COMP_nu=environment(family$aic)$nu,
+                          NB_shape=environment(family$aic)$shape, 
+                          zero_truncated=identical(family$zero_truncated,TRUE), 
+                          famfam=famfam, family=family, nsim=nsim) # vector or nsim-col matrix
+    if (as_matrix && is.null(dim(block))) dim(block) <- c(length(block),1L) # forces matrix for mv code using rbind()
+  } else {
+    # get these variables once for all cols:
+    if (famfam =="COMPoisson") {
+      COMP_nu <- environment(family$aic)$nu
+    } else if (famfam == "negbin") {
+      NB_shape <- environment(family$aic)$shape
+      zero_truncated <- identical(family$zero_truncated,TRUE) 
+    } else if (famfam == "poisson") {
+      zero_truncated <- identical(family$zero_truncated,TRUE) 
+    }
+    for (sim_it in seq_len(needed)) {
+      if (is.null(resp_range)) {
+        mu_it <- mu[[sim_it]]
+      } else mu_it <- structure(mu[[sim_it]][resp_range], p0=attr(mu[[sim_it]],"p0")[[mv_it]], mu_U=attr(mu[[sim_it]],"mu_U")[[mv_it]])
+      block[ ,sim_it] <- .r_resid_var(mu_it, phiW=phiW[ ,sim_it], sizes=sizes, COMP_nu=COMP_nu, NB_shape=NB_shape, 
+                                  zero_truncated=zero_truncated, famfam=famfam, family=family, nsim=1L)
+    }
+  }
+  return(block)
+}
+
+.calc_ZAlist_newdata <- function(object, newdata) {
+  ## newdata and re.form to handle
+  #   ## [-2] so that HLframes does not try to find the response variables  
+  # we simulate with all ranefs (treated conditionnally|ranef or marginally) hence 
+  # * we need design matrices for all ranefs
+  # * we need values of all the original variables
+  # hence we use an "## effective '.noFixef'" : formula with only ranefs of the fit. But 1st version fails for mv; second may be more straightforward anyway
+  #old_ranef_form <- formula.HLfit(object, which="")[-2L] 
+  #old_ranef_form <- as.formula(paste("~",(paste(.process_bars(old_ranef_form),collapse="+")))) ## 
+  #frame_ranefs <- .calc_newFrames_ranef(formula=old_ranef_form,data=newdata, fitobject=object)$mf 
+  #exp_ranef_terms <- .process_bars(old_ranef_form[[2L]], # barlist must remain missing here
+  #                                 expand=TRUE, which. = "exp_ranef_terms")
+  if (is.null(vec_nobs <- object$vec_nobs)) {
+    old_ranef_form <- as.formula(paste("~",(paste(attr(object$ZAlist,"exp_ranef_strings"),collapse="+")))) 
+    exp_ranef_terms <- attr(object$ZAlist, "exp_ranef_terms")
+    Zlist <- .calc_Zlist(exp_ranef_terms=exp_ranef_terms, data=newdata, rmInt=0L, drop=TRUE,sparse_precision=FALSE,
+                         corrMats_info=object$strucList,
+                         lcrandfamfam=attr(object$rand.families,"lcrandfamfam"))
+    amatrices <- .get_new_AMatrices(object,new_mf_ranef=newdata) # .calc_newFrames_ranef(formula=old_ranef_form,data=newdata, fitobject=object)$mf)
+    newZAlist <- .calc_normalized_ZAlist(Zlist=Zlist,
+                                         AMatrices=amatrices,
+                                         vec_normIMRF=object$ranef_info$vec_normIMRF, 
+                                         strucList=object$strucList)
+  } else { 
+    map_rd_mv <- attr(object$ZAlist, "map_rd_mv")
+    ori_exp_ranef_terms <- attr(object$ZAlist, "exp_ranef_terms")
+    ori_exp_ranef_strings <- attr(object$ZAlist,"exp_ranef_strings")
+    for (mv_it in seq_along(vec_nobs)) {
+      rd_in_mv <- map_rd_mv[[mv_it]]
+      exp_ranef_strings_it <- ori_exp_ranef_strings[rd_in_mv]
+      old_ranef_form <- as.formula(paste("~",(paste(exp_ranef_strings_it,collapse="+")))) 
+      exp_ranef_terms_it <- structure(ori_exp_ranef_terms[rd_in_mv], type=attr(ori_exp_ranef_terms,"type")[rd_in_mv])
+      Zlist <- .calc_Zlist(exp_ranef_terms=exp_ranef_terms_it, data=newdata, rmInt=0L, drop=TRUE,sparse_precision=FALSE,
+                           corrMats_info=object$strucList[rd_in_mv],
+                           lcrandfamfam=attr(object$rand.families,"lcrandfamfam")[rd_in_mv])
+      amatrices <- .get_new_AMatrices(object,new_mf_ranef=newdata) # .calc_newFrames_ranef(formula=old_ranef_form,data=newdata, fitobject=object)$mf)[rd_in_mv]
+      ZAlist_it <- .calc_normalized_ZAlist(Zlist=Zlist,
+                                           AMatrices=amatrices,
+                                           vec_normIMRF=object$ranef_info$vec_normIMRF,
+                                           strucList=object$strucList[rd_in_mv])
+      names(ZAlist_it) <- rd_in_mv
+      attr(ZAlist_it,"exp_ranef_strings") <- exp_ranef_strings_it
+      if (mv_it>1L) {
+        newZAlist <- .merge_ZAlists(newZAlist, ZAlist_it, nobs1=nrow(newdata), nobs2=nrow(newdata), mv_it)
+      } else newZAlist <- ZAlist_it
+    }  
+  }
+  return(newZAlist)
+}
+
 
 # simulate.HLfit(fullm[[2]],newdata=fullm[[1]]$data,size=fullm[[1]]$data$total) for multinomial avec binomial nichées de dimension différentes
 # FR->FR misses the computation of random effects for new spatial positions: cf comments in the code below
@@ -75,7 +176,7 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
     RNGstate <- structure(seed, kind = as.list(RNGkind()))
     on.exit(assign(".Random.seed", R.seed, envir = .GlobalEnv))
   }
-  if (inherits(object,"HLfitlist")) { ## testing for list is not valid since an HLfit object is always a list
+  if (inherits(object,"HLfitlist")) { 
     message("simulate does not yet work on list of fits as returned by multinomial fit:")
     message(" run simulate on each of the individual fits in the list")
     stop() ## FR->FR also some basic changes in fixedLRT but more would be needed 
@@ -110,7 +211,7 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
       ori_exp_ranef_strings <- attr(object$ZAlist,"exp_ranef_strings")
       new_exp_ranef_strings <- .process_bars(re.form,expand=TRUE)
       newinold <- unlist(sapply(lapply(new_exp_ranef_strings, `==`, y= ori_exp_ranef_strings), which)) ## unlist() bc empty list() can otherwise occur  
-    } else if (is.na(re.form)) {
+    } else if (anyNA(re.form)) { # anyNA rather than is.na, to handle NULL
       if (pred_type=="predVar_s.lato") warning("Non-default 're.form' is *currently* ignored when type='",type,"'.")
     }
   }
@@ -131,9 +232,7 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
         if (is.null(predVar)) stop("A 'variances' argument should be provided so that prediction variances are computed.") 
         rand_eta <- mvrnorm(n=needed,mu=point_pred_eta[,1L], predVar)
         if (needed>1L) rand_eta <- t(rand_eta) ## else mvrnorn value is a vector
-        if ( ! is.null(zero_truncated <- object$family$zero_truncated)) {
-          mu <- object$family$linkinv(rand_eta,mu_truncated=zero_truncated)
-        } else mu <- object$family$linkinv(rand_eta) ## ! freqs for binomial, counts for poisson: suitable for final code
+        mu <- .fv_linkinv(eta=rand_eta, family=object$family, families=object$families)
       } else {
         mu <- predict(object,newdata=newdata,binding=NA,control=list(fix_predVar=FALSE), verbose=verbose)
         is_mu_fix_btwn_sims <- TRUE
@@ -165,9 +264,7 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
             rand_eta <- Reduce("+",rand_eta[lengths(rand_eta)>0L])
           } else rand_eta <- mvrnorm(n=needed,mu=point_pred_eta[,1L], predVar)
           if (needed>1L) rand_eta <- t(rand_eta) ## else mvrnorn value is a vector
-          if ( ! is.null(zero_truncated <- object$family$zero_truncated)) {
-            mu <- object$family$linkinv(rand_eta,mu_truncated=zero_truncated)
-          } else mu <- object$family$linkinv(rand_eta) ## ! freqs for binomial, counts for poisson: suitable for final code
+          mu <- .fv_linkinv(eta=rand_eta, family=object$family, families=object$families) ## ! freqs for binomial, counts for poisson: suitable for final code
         } else stop("This conditional simulation is not implemented for non-gaussian random-effects")
       } else if ( is.null(re.form)) { ## conditional on (all) predicted ranefs, type = "residual"
         if (verbtype) cat("simulation of residuals, conditional on point predictions (hence on random effects):\n") 
@@ -180,33 +277,16 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
             cat("Simulation conditional on random effect(s) retained in 're.form':\n")
           } else cat("Unconditional simulation:\n") 
         }
-        mu_fixed <- predict(object, newdata=newdata, re.form=re.form,binding=NA,control=list(fix_predVar=FALSE), verbose=verbose) ## mu_T
-        if ( ! is.null(zero_truncated <- object$family$zero_truncated)) {
-          eta_fixed <- object$family$linkfun(mu_fixed, mu_truncated=zero_truncated) ## back to _U to add ranefs to the linear predictor.
-        } else eta_fixed <- object$family$linkfun(mu_fixed)
+        # mu_fixed <- predict(object, newdata=newdata, re.form=re.form,binding=NA,control=list(fix_predVar=FALSE), verbose=verbose) ## mu_T
+        # eta_fixed <- .eta_linkfun(mu_fixed, object$family, object$families)
+        eta_fixed <- predict(object, newdata=newdata, type="link",
+                             re.form=re.form,binding=NA,control=list(fix_predVar=FALSE), verbose=verbose)
         if (is.null(newdata)) { ## we simulate with all ranefs (treated conditionnally|ranef or marginally) hence no selection of matrix
           ZAL <- get_ZALMatrix(object)
           cum_n_u_h <- attr(object$lambda,"cum_n_u_h")
           vec_n_u_h <- diff(cum_n_u_h)
-        } else { ## newdata and re.form to handle
-          #   ## [-2] so that HLframes does not try to find the response variables  
-          # we simulate with all ranefs (treated conditionnally|ranef or marginally) hence 
-          # * we need design matrices for all ranefs
-          # * we need values of all the original variables
-          # hence we use the old_ranef_form
-          old_ranef_form <- formula.HLfit(object, which="")[-2]
-          old_ranef_form <- as.formula(paste("~",(paste(.process_bars(old_ranef_form),collapse="+")))) ## effective '.noFixef'
-          frame_ranefs <- .calc_newFrames_ranef(formula=old_ranef_form,data=newdata, fitobject=object)$mf 
-          ## : F I X M E suboptimal since we call also .calc_newFrames_ranef() in predict -> . -> .calc_new_X_ZAC()
-          Zlist <- .calc_Zlist(formula=formula.HLfit(object, which="no_offset"), # F I X M E may which="" work ?
-                               mf=frame_ranefs, rmInt=0L, drop=TRUE,sparse_precision=FALSE,
-                               corrMats_info=object$strucList,
-                               lcrandfamfam=attr(object$rand.families,"lcrandfamfam"))
-          amatrices <- .get_new_AMatrices(object,new_mf_ranef=frame_ranefs)
-          newZAlist <- .calc_normalized_ZAlist(Zlist=Zlist,
-                                               AMatrices=amatrices,
-                                               vec_normIMRF=object$ranef_info$vec_normIMRF, 
-                                               strucList=object$strucList)
+        } else {
+          newZAlist <-  .calc_ZAlist_newdata(object, newdata)
           ZALlist <- .compute_ZAXlist(object$strucList,newZAlist)
           ZAL <- .ad_hoc_cbind(ZALlist, as_matrix=FALSE ) 
           vec_n_u_h <- unlist(lapply(ZALlist,ncol)) ## nb cols each design matrix = nb realizations each ranef
@@ -239,9 +319,7 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
         newV <- do.call(rbind,newV) ## each column a simulation
         eta <-  matrix(rep(eta_fixed,needed),ncol=needed) + as.matrix(ZAL %id*% newV) ## nobs rows, nsim col
         mu <- vector("list",needed)
-        if ( ! is.null(zero_truncated <- object$family$zero_truncated)) {
-          for (it in seq_len(needed)) mu[[it]] <- object$family$linkinv(eta[,it],mu_truncated=zero_truncated)
-        } else for (it in seq_len(needed)) mu[[it]] <- object$family$linkinv(eta[,it]) 
+        for (it in seq_len(needed)) mu[[it]] <- .fv_linkinv(eta[,it], object$family, object$families)
       } else stop("Unknown simulate 'type' value.")
     }
     ## ! mu := freqs for binomial, counts for poisson ## vector or matrix
@@ -253,36 +331,13 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
                       mu=mu, ## must be a list
                       phi_type=phi_type, needed=needed, 
                       prior.weights=prior.weights) # phiW is always a matrix
-    family <- object$family
-    famfam <- object$family$family
-    if (is_mu_fix_btwn_sims &&  
-        attr(phiW,"is_phiW_fix_btwn_sims") # should be trivially true for binomial, poisson, COMPoisson (phi=1, no prior.weights)
-       ) {
-      # particularly useful with COMPoisson to avoid computing the distribution (cumprodfacs in .COMP_simulate()) nsim times
-      if (famfam=="COMPoisson") {  
-        block <- object$family$simulate(object, nsim=nsim) # vector or nsim-col matrix
-      } else {
-        block <- 
-          .r_resid_var(mu[[1]], phiW=phiW[,1],sizes=sizes,# COMP_nu=environment(object$family$aic)$nu,
-                       NB_shape=environment(object$family$aic)$shape, 
-                       zero_truncated=identical(object$family$zero_truncated,TRUE), 
-                       famfam=famfam, family=family, nsim=nsim) # vector or nsim-col matrix
-      }
-      # plus: some earlier computations may be useless in that case (but currently .get_phiW(., <mu must be a list> ) )
-    } else {
-      block <- NA*phiW
-      if (famfam =="COMPoisson") {
-        COMP_nu <- environment(object$family$aic)$nu
-      } else if (famfam == "negbin") {
-        NB_shape <- environment(object$family$aic)$shape
-        zero_truncated <- identical(object$family$zero_truncated,TRUE)
-      } else if (famfam == "poisson") {
-        zero_truncated <- identical(object$family$zero_truncated,TRUE)
-      }
-      for (ii in seq_len(needed)) block[,ii] <- 
-          .r_resid_var(mu[[ii]], phiW=phiW[,ii],sizes=sizes,COMP_nu=COMP_nu,NB_shape=NB_shape, 
-                       zero_truncated=zero_truncated, famfam=famfam, family=family)
-    }
+    # up to version 3.5.49, there was ad hoc code calling COMPoisson()$simulate(object, nsim=nsim) when 
+    #    the mu and phi vectors are constant accross the nsim simulations, 
+    #    to avoid computing the distribution (cumprodfacs in .COMP_simulate()) nsim times.
+    # The updated .r_resid_var() -> appears to manage that too (without calling COMPoisson()$simulate()), 
+    #  .r_resid_var_over_cols() too (a distinct issue is that multivariate mu may loose the (COMP)-lambda attribute: __FIXME__?)
+    block <- .r_resid_var_over_cols(needed, mu, phiW, sizes, family=object$family, families=object$families, is_mu_fix_btwn_sims=is_mu_fix_btwn_sims,
+                                    nsim=nsim)
     if (is.null(resp_testfn)) {
       if (nsim==1L) block <- drop(block)
       return(block) 

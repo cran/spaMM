@@ -31,7 +31,7 @@ fitme_body <- function(processed,
   sparse_precision <- proc1$is_spprec
   #
   user_init_optim <- init ## user_init_optim only for a check in new_locoptim, true initial value init.optim is modified below
-  optim_blob <- .calc_optim_args(proc1=proc1, processed=processed,
+  optim_blob <- .calc_optim_args(proc_it=proc1, processed=processed,
                                  init=user_init_optim, fixed=fixed, lower=lower, upper=upper, 
                                  verbose=verbose, optim.scale=optim.scale, For="fitme") 
   # modify HLCor.args and <>bounds;   ## distMatrix or uniqueGeo potentially added to HLCor.args:
@@ -40,8 +40,8 @@ fitme_body <- function(processed,
   init.HLfit <- optim_blob$inits$`init.HLfit` ## list; subset as name implies 
   fixed <- optim_blob$fixed
   corr_types <- optim_blob$corr_types
-  moreargs <- optim_blob$moreargs
   LUarglist <- optim_blob$LUarglist
+  moreargs <- LUarglist$moreargs
   LowUp <- optim_blob$LowUp
   lower <- LowUp$lower ## list ! which elements may have length >1 !
   upper <- LowUp$upper ## list !
@@ -51,7 +51,7 @@ fitme_body <- function(processed,
   if ( ! is.null(residproc1 <- proc1$residProcessed) && identical(spaMM.getOption("outer_optim_resid"),TRUE)) {
     ## Problem is that outer optim at the mean model level is useful if we can avoid computation of the leverages 
     ## But here anyway we need the leverages of the 'mean' model to define the resid model response.
-    resid_optim_blob <- .calc_optim_args(proc1=residproc1, processed=proc1,
+    resid_optim_blob <- .calc_optim_args(proc_it=residproc1, processed=proc1,
                                          init=proc1$residModel$init, fixed=proc1$residModel$fixed, ## all user input must be in proc1$residModel
                                          lower=proc1$residModel$lower, upper=proc1$residModel$upper, ## all user input must be in proc1$residModel
                                          verbose=c(SEM=FALSE), optim.scale=optim.scale, For="fitme") 
@@ -65,7 +65,7 @@ fitme_body <- function(processed,
     lower <- c(lower,list(resid=resid_optim_blob$LowUp$lower))
     upper <- c(upper,list(resid=resid_optim_blob$LowUp$upper))
     LowUp <- list(lower=lower,upper=upper)
-    moreargs <- c(moreargs,list(resid=resid_optim_blob$moreargs))
+    moreargs <- c(moreargs,list(resid=resid_optim_blob$LUarglist$moreargs))
   }
   
   
@@ -136,89 +136,10 @@ fitme_body <- function(processed,
         refit_info <- attr(optPars,"refit_info") ## 'derives' from control[["refit"]] with modification ## may be NULL but not NA
       }
       optim_time <- .timerraw(time2)
-      ranPars_in_refit <- structure(.modify_list(fixed,optPars),
-                                   type=.modify_list(relist(rep("fix",length(unlist(fixed))),fixed), #attr(fixed,"type"),
-                                                     relist(rep("outer",length(unlist(optPars))),optPars)))
-      ranPars_in_refit <- .expand_hyper(ranPars_in_refit, processed$hyper_info,moreargs=moreargs)
       augZXy_phi_est <- proc1$augZXy_env$phi_est ## may be NULL: if phi was not estimated by augZXy
-      
-      #any_nearly_singular_covmat <- FALSE
-      if (! is.null(optPars$trRanCoefs)) {
-        ranCoefs <- optPars$trRanCoefs # copy names...
-        for (char_rd in names(optPars$trRanCoefs)) {
-          ranCoefs[[char_rd]] <- .ranCoefsInv(optPars$trRanCoefs[[char_rd]], rC_transf=.spaMM.data$options$rC_transf)
-          covmat <- .calc_cov_from_ranCoef(ranCoefs[[char_rd]])
-          #if (kappa(covmat)>1e14 || min(eigen(covmat,only.values = TRUE)$values)<1e-6) any_nearly_singular_covmat <- TRUE # use of this removed 2019/12/16
-        }
-      }
-      init_refit <- list()
-      if ( is.null(refit_info) ) { ## not the case with SEM
-        refit_info <- list(phi=FALSE,lambda=(! is.null(optPars$trRanCoefs)),ranCoefs=FALSE)
-      } else if ( is.list(refit_info) ) { ## never the default
-        refit_info <- .modify_list( list(phi=FALSE,lambda=(! is.null(optPars$trRanCoefs)),
-                                         ranCoefs=FALSE), refit_info) 
-        ## lambda=TRUE becomes the default (test random-slope 'ares' shows the effect)
-      } else {
-        refit_info <- list(phi=refit_info,lambda=refit_info,ranCoefs=refit_info) # default with SEM is all FALSE
-      }
-      # refit: (change ranPars_in_refit depending on what's already in and on refit_info)
-      if (identical(refit_info$phi,TRUE)) {
-        if ( ! is.null(optPars$trPhi)) {
-          init_refit$phi <- .dispInv(optPars$trPhi)
-          ranPars_in_refit$trPhi <- NULL
-          attr(ranPars_in_refit,"type")$trPhi <- NULL 
-        } else if (proc1$augZXy_cond ) {
-          init_refit$phi <- augZXy_phi_est # might still be NULL...
-        }
-      } else if (proc1$augZXy_cond &&  ! is.null(augZXy_phi_est)) ranPars_in_refit$trPhi <- .dispFn(augZXy_phi_est)
-      # refit, or rescale by augZXy_phi_est even if no refit:
-      if ( ! is.null(augZXy_phi_est) || identical(refit_info$lambda,TRUE)) {
-        if (length(optPars$trLambda)) { # does NOT include the lambdas of the ranCoefs
-          lambdapos <- as.integer(names(optPars$trLambda))
-          lambda <- rep(NA,max(lambdapos))
-          names(lambda) <- paste(seq_len(length(lambda)))
-          lambda[lambdapos] <- .dispInv(optPars$trLambda)
-          if ( ! is.null(augZXy_phi_est)) { lambda <- lambda * augZXy_phi_est }
-          if (identical(refit_info$lambda,TRUE)) {
-            init_refit$lambda <- lambda
-            ranPars_in_refit$trLambda <- NULL
-            attr(ranPars_in_refit,"type")$trLambda <- NULL
-          } else ranPars_in_refit$trLambda <- .dispFn(lambda) ## rescale, but no refit
-        }
-      }
-      # rescaling hyper-controlled lambdas
-      if ( ! is.null(augZXy_phi_est) && ! is.null(optPars$hyper)) {
-        ranges <- attr(optPars$hyper,"ranges")
-        for (rg_it in names(ranges)) {
-          hyper_el <- ranPars_in_refit$hyper[[rg_it]]
-          if ( ! is.null(hy_trL <- hyper_el$hy_trL)) {
-            ranPars_in_refit$hyper[[rg_it]]$hy_trL <- .dispFn(.dispInv(hy_trL)*augZXy_phi_est) # no direct effect on refit
-            char_rd_range <- as.character(ranges[[rg_it]]) 
-            trL <- ranPars_in_refit$trLambda[char_rd_range]
-            ranPars_in_refit$trLambda[char_rd_range] <- .dispFn(.dispInv(trL)*augZXy_phi_est) # the effective rescaling
-          }
-        } 
-      }
-      ## refit, or rescale by augZXy_phi_est even if no refit:
-      if ( ! is.null(augZXy_phi_est)  || identical(refit_info$ranCoefs,TRUE)) {
-        if (! is.null(optPars$trRanCoefs)) {
-          for (char_rd in names(ranCoefs)) {
-            rancoef <- ranCoefs[[char_rd]]
-            if ( ! is.null(augZXy_phi_est)) {
-              Xi_ncol <- attr(rancoef,"Xi_ncol")
-              lampos <- rev(length(rancoef) -cumsum(seq(Xi_ncol))+1L)  ## NOT cumsum(seq(Xi_cols))
-              rancoef[lampos] <- rancoef[lampos] *augZXy_phi_est
-              rancoef <- as.vector(rancoef) ## as.vector drops attributes
-            } 
-            if (identical(refit_info$ranCoefs,TRUE)) { 
-              init_refit$ranCoefs[[char_rd]] <- rancoef
-              ranPars_in_refit$trRanCoefs[char_rd] <- NULL
-              attr(ranPars_in_refit,"type")$trRanCoefs[char_rd] <- NULL
-            } else ranPars_in_refit$trRanCoefs[[char_rd]] <- .ranCoefsFn(rancoef, rC_transf=.spaMM.data$options$rC_transf_inner)  
-          }
-        }      
-      }
-      if (length(init_refit)) HLCor.args$init.HLfit <- .modify_list(HLCor.args$init.HLfit, init_refit)  
+      refit_args <- .get_refit_args(fixed, optPars, processed, moreargs, proc1, refit_info, HLCor.args, augZXy_phi_est)
+      HLCor.args <- refit_args$HLCor.args
+      ranPars_in_refit <- refit_args$ranPars_in_refit
     } ## end if ...getCall... else
     #
     # refit_info is list if so provided by user, else typically boolean. An input NA should have been converted to something else (not documented).

@@ -1,11 +1,46 @@
-.post_process_family <- function(family, ranFix) {
+.post_process_family_it <- function(family, ranFix, char_mv_it) {
+  if (family$family=="COMPoisson") {
+    if ( ! is.null(ranFix$COMP_nu) && ! is.na(COMP_nu <- ranFix$COMP_nu[char_mv_it])) { ## optimisation call 
+      #  COMP_nu[char_mv_it] to get a NA where [[char_mv_it]] generates an error
+      #  But it is important to drop the name that, if present, would mess names of return values of .COMPxxx() fns
+      assign("nu",COMP_nu[[1]],envir=environment(family$aic))
+      ranFix$COMP_nu[char_mv_it] <- NA
+      ranFix$COMP_nu <- na.omit(ranFix$COMP_nu)
+    } else {
+      checknu <- substitute(nu, env=environment(family$aic)) 
+      if (inherits(checknu,"call")) eval(checknu)
+    }
+  } else if (family$family == "negbin") {
+    if ( ! is.null(ranFix$NB_shape) && ! is.na(NB_shape <- ranFix$NB_shape[char_mv_it])) { ## fitme -> HLCor -> HLfit
+      assign("shape",NB_shape,envir=environment(family$aic))
+      ranFix$NB_shape[char_mv_it] <- NA
+      ranFix$NB_shape <- na.omit(ranFix$NB_shape)
+    } else if ( ! is.null(ranFix$trNB_shape) && ! is.na(trNB_shape <- ranFix$trNB_shape[char_mv_it])) { ## fitme -> HLCor -> HLfit
+      assign("shape",.NB_shapeInv(trNB_shape),envir=environment(family$aic))
+      ranFix$trNB_shape[char_mv_it] <- NA
+      ranFix$trNB_shape <- na.omit(ranFix$trNB_shape)
+    } else {
+      checktheta <- substitute(shape, env=environment(family$aic)) 
+      if (inherits(checktheta,"call")) eval(checktheta)
+    }
+  }
+  return(ranFix)
+}
+
+.post_process_family <- function(family, ranFix, families=NULL) {
+  if ( ! is.null(families)) {
+    for (mv_it in seq_along(families)) {
+      ranFix <- .post_process_family_it(family=families[[mv_it]], ranFix, char_mv_it=as.character(mv_it)) 
+    }
+    return(ranFix)
+  }
   if (family$family=="COMPoisson") {
     if ( ! is.null(ranFix$COMP_nu)) { ## optimisation call
       assign("nu",ranFix$COMP_nu,envir=environment(family$aic))
       ranFix$COMP_nu <- NULL
     } else {
-      checknu <- suppressWarnings(try(environment(family$aic)$nu,silent=TRUE))
-      if (inherits(checknu,"try-error")) stop(attr(checknu,"condition")$message)
+      checknu <- substitute(nu, env=environment(family$aic)) 
+      if (inherits(checknu,"call")) eval(checknu)
     }
   } else if (family$family == "negbin") {
     if ( ! is.null(ranFix$NB_shape)) { ## fitme -> HLCor -> HLfit
@@ -15,8 +50,8 @@
       assign("shape",.NB_shapeInv(ranFix$trNB_shape),envir=environment(family$aic))
       ranFix$trNB_shape <- NULL
     } else {
-      checktheta <- suppressWarnings(try(environment(family$aic)$shape,silent=TRUE))
-      if (inherits(checktheta,"try-error")) stop(attr(checktheta,"condition")$message)
+      checktheta <- substitute(shape, env=environment(family$aic)) 
+      if (inherits(checktheta,"call")) eval(checktheta)
     }
   }
   return(ranFix)
@@ -46,16 +81,34 @@
                        summand=FALSE) { 
   BinomialDen <- processed$BinomialDen
   y <- processed$y
-  family <- processed$family
-  theta <- .theta.mu.canonical(mu/BinomialDen,family)  
-  if (family$family=="binomial") {
-    cliks <- clik_fn(theta,y/BinomialDen,BinomialDen,eval(prior.weights)/(phi_est))
+  if ( ! is.null(vec_nobs <- processed$vec_nobs)) { # mv case, list of families
+    cum_nobs <- attr(processed$families,"cum_nobs")
+    cliks <- vector("list",length(vec_nobs)) # clik_fn returns a single value when it uses family()$aic  (e.g., poisson) (so summand=FALSE fails) and a vector otherwise
+    for (mv_it in seq_along(vec_nobs)) {
+      fam <- processed$families[[mv_it]]
+      resp_range <- .subrange(cumul=cum_nobs, it=mv_it)
+      theta <- .theta.mu.canonical(mu[resp_range]/BinomialDen[resp_range],fam)
+      if (fam$family=="binomial") {
+        cliks[[mv_it]] <- clik_fn[[mv_it]](theta, y[resp_range]/BinomialDen[resp_range], BinomialDen[resp_range], eval(prior.weights[[mv_it]])/phi_est[[mv_it]])
+      } else {
+        phi <- phi_est[[mv_it]]
+        phi[phi<1e-12] <- 1e-10
+        cliks[[mv_it]] <- clik_fn[[mv_it]](theta, y[resp_range], eval(prior.weights[[mv_it]])/phi)
+      }
+    }
+    cliks <- unlist(cliks, recursive = FALSE, use.names = FALSE)
   } else {
-    phi_est[phi_est<1e-12] <- 1e-10 ## 2014/09/04 local correction, has to be finer than any test for convergence 
-    ## creates upper bias on clik but should be more than compensated by the lad
-    ## correcting the lad makes an overall upper bias for small (y-theta) at "constant" corrected phi 
-    ## this can be compensated by correcting the lad LESS.
-    cliks <- clik_fn(theta,y,eval(prior.weights)/phi_est)
+    family <- processed$family
+    theta <- .theta.mu.canonical(mu/BinomialDen,family)  
+    if (family$family=="binomial") {
+      cliks <- clik_fn(theta, y/BinomialDen, BinomialDen, eval(prior.weights)/phi_est)
+    } else {
+      phi_est[phi_est<1e-12] <- 1e-10 ## 2014/09/04 local correction, has to be finer than any test for convergence 
+      ## creates upper bias on clik but should be more than compensated by the lad
+      ## correcting the lad makes an overall upper bias for small (y-theta) at "constant" corrected phi 
+      ## this can be compensated by correcting the lad LESS.
+      cliks <- clik_fn(theta, y, eval(prior.weights)/phi_est)
+    }
   }
   if (summand) {
     attr(cliks,"unique") <- NULL
@@ -94,8 +147,8 @@
 # called by HLfit_body for models[[1]]=="etaGLM"; tested eg by test-COMPoisson:
 .calc_etaGLMblob <- function(processed, 
                          mu, eta, muetablob, 
-                         old_beta_eta, ## scaled since X.pv is scaled; same fro return beta_eta. An init.HLfit$fixef would be (.)/attr(spaMM:::.scale(zut$X.pv),"scaled:scale")
-                         w.resid, ## those in output
+                         old_beta_eta, ## scaled since X.pv is scaled; same for return beta_eta. An init.HLfit$fixef would be (.)/attr(spaMM:::.scale(zut$X.pv),"scaled:scale")
+                         w.resid,
                          phi_est, 
                          off, 
                          maxit.mean, 
@@ -106,38 +159,43 @@
     X.pv <- processed$AUGI0_ZX$X.pv
     y <- processed$y
     family <- processed$family
-    stop.on.error <- processed$stop.on.error
     damping <- 1e-7 ## as suggested by Madsen-Nielsen-Tingleff... # Smyth uses abs(mean(diag(XtWX)))/nvars
     dampingfactor <- 2
     newclik <- .calc_clik(mu=mu,phi_est=phi_est,processed=processed) ## handles the prior.weights from processed
     for (innerj in seq_len(maxit.mean)) {
       ## breaks when Xtol_rel is reached
       clik <- newclik
-      # Historical oddity: this has worked with .ZtWZwrapper(X.pv,w.resid) rather than a scaled X; and 
-      # likewise a premultiplied rhs. This was OK for solving, but not for CI as the CI code suppresses 
-      # a column of the design matrix, which is not sufficient on the premultiplied system.
+      # Historical oddity: the fit has worked with code which was OK for solving, but not for CI as the CI code suppresses 
+      # a column of the design matrix, which is not sufficient on the premultiplied (scaled X) system.
+      z1 <- .calc_z1(muetablob, w.resid, y, off, cum_nobs=attr(processed$families,"cum_nobs"))
       if (is.list(w.resid)) {
-        sqrtW <- sqrt(w.resid$w_resid)
-        z1 <- as.vector(eta+w.resid$WU_WT*(y-mu-w.resid$dlogMthdth)/muetablob$dmudeta-off) 
-      } else {
-        sqrtW <- sqrt(w.resid)
-        z1 <- eta+(y-mu)/muetablob$dmudeta-off ## LeeNP 182 bas. GLM-adjusted response variable; O(n)*O(1/n)
-      }
-      sXaug <- .Dvec_times_m_Matrix(sqrtW, X.pv) ## keeps colnames: important for intervalStep_glm
+        sqrtW <- sqrt(w.resid$w_resid)        
+      } else sqrtW <- sqrt(w.resid)
+      wX <- .Dvec_times_m_Matrix(sqrtW, X.pv) ## keeps colnames: important for intervalStep_glm
       szAug <- sqrtW * z1  
       names(szAug) <- colnames(X.pv) ## also important for intervalStep_glm
       ## simple QR solve with LevM fallback
       if ( ! is.null(for_intervals)) {
-        currentDy <- (for_intervals$fitlik-newclik)
-        if (currentDy < -1e-4) .warn_intervalStep(newclik,for_intervals)
+        currentDy <- (for_intervals$fixeflik-newclik)
+        if (currentDy < -1e-4 && 
+            (is.null(bestlik <- processed$envir$confint_best$lik) || newclik > bestlik)) {
+          if (is.null(bestlik)) {
+            locmess <- paste("A higher",names(for_intervals$fixeflik),"was found than for the original fit.",
+                             "\nThis suggests the original fit did not fully maximize",names(for_intervals$fixeflik),
+                             "\nExpect more information at end of computation.")
+            message(locmess)
+          }
+          processed$envir$confint_best$lik <- newclik
+          processed$envir$confint_best$beta_eta <- .unscale(X.pv, old_beta_eta)
+        }
         intervalBlob <- .intervalStep_glm(old_beta=old_beta_eta,
-                                         sXaug=sXaug,
+                                         sXaug=wX,
                                          szAug=szAug,
                                          for_intervals=for_intervals,
                                          currentlik=newclik,currentDy=currentDy)
         beta_eta <- intervalBlob$beta
       } else {
-        qr_X <- qr(sXaug,tol=spaMM.getOption("qrTolerance")) 
+        qr_X <- qr(wX,tol=spaMM.getOption("qrTolerance")) 
         beta_eta <- .safesolve_qr_vector(qr_X, szAug)
         beta_eta <- drop(beta_eta)
       }
@@ -149,11 +207,7 @@
       if ( is.null(for_intervals) &&
         (newclik < clik-1e-5 || anyNA(beta_eta) || any(is.infinite(beta_eta))) ) { 
         ## more robust LevM
-        if (is.list(w.resid)) {
-          sqrt.ww <- sqrt(w.resid$w_resid)        
-        } else sqrt.ww <- sqrt(w.resid)
-        wX <- .calc_wAugX(XZ_0I=X.pv,sqrt.ww=sqrt.ww)
-        LM_wz <- z1*sqrt.ww - (wX %*% old_beta_eta)
+        LM_wz <- z1*sqrtW - (wX %*% old_beta_eta)
         restarted <- FALSE
         while(TRUE) { 
           if (inherits(wX,"Matrix")) {

@@ -6,9 +6,8 @@
   nobs <- nrow(processed$data) ## before prior.weights is evaluated
   ### a bit of post processing
   nobs <- NROW(processed$AUGI0_ZX$X.pv)
-  LMMbool <- processed$LMMbool
   models <- processed$models
-  if (models[["eta"]]!="etaHGLM") stop("Not a mixed-effect model.") ## not handled
+  LMMbool <- attr(models,"LMMbool")
   nrand <- length(processed$ZAlist)
   cum_n_u_h <- processed$cum_n_u_h
   n_u_h <- cum_n_u_h[nrand+1L] 
@@ -51,7 +50,7 @@
   if (identical(processed$return_only,"p_vAPHLs")) {
     whichAPHLs <- "p_v"
   } else if (identical(processed$return_only,"p_bvAPHLs")) {
-    whichAPHLs <- "p_bv" ## retrun value may still include p_v if it is used to compute p_bv
+    whichAPHLs <- "p_bv" ## return value may still include p_v if it is used to compute p_bv
   } else whichAPHLs <- c("p_v","p_bv")
   ####################################################################################################
   # we don't want anything specific on u_h values:

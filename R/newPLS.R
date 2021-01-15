@@ -163,7 +163,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
       }      
     }
   }
-  if (is.list(hatval)) hatval <- unlist(hatval) ## assuming order lev_lambda,lev_phi
+  if (is.list(hatval)) hatval <- .unlist(hatval) ## assuming order lev_lambda,lev_phi
   return(hatval)
 }
 
@@ -209,7 +209,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
       neg.d2f_dv_dloglam[[it]] <- (dlogfthdth[u.range]) ## (neg => -) (-)(psi_M-u)/lambda^2    *    lambda.... 
     } 
   }
-  neg.d2f_dv_dloglam <- unlist(neg.d2f_dv_dloglam)
+  neg.d2f_dv_dloglam <- .unlist(neg.d2f_dv_dloglam)
   return(as.vector(neg.d2f_dv_dloglam))
 }
 
@@ -259,8 +259,8 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
 
 
 .calc_dvdlogphiMat_new <- function(dh0deta,ZAL,
-                                   sXaug,d2hdv2_info=NULL, ## either one
-                                   stop.on.error) {
+                                   sXaug,d2hdv2_info=NULL ## either one
+                                   ) {
   ## cf calcul dhdv, but here we want to keep each d/d phi_i distinct hence not sum over observations i 
   neg.d2h0_dv_dlogphi <- .m_Matrix_times_Dvec(t(ZAL), drop(dh0deta)) # n_u_h*nobs: each ith column is a vector of derivatives wrt v_k# dh0dv <- t(ZAL) %*% diag(as.vector(dh0deta)) 
   if (is.null(d2hdv2_info)) { # call by HLfit_body
@@ -318,11 +318,13 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
     }
     vecdi <- vecdi1+vecdi2+vecdi3 ## k_i in MolasL; le d_i de LeeL app. p. 4
     sscaled <- vecdi /2  ## sscaled := detadmu s_i= detadmu d*dmudeta/2 =d/2 in LeeL12; or dz1 = detadmu (y*-y) = detadmu m_i=0.5 k_i dmudeta = 0.5 k_i in MolasL 
+    if ( ! is.null(WU_WT)) sscaled <- sscaled * WU_WT
   } else sscaled <- 0
   return(sscaled)
 }
 
-.init_resp_z_corrections_new <- function(lcrandfamfam, w.ranef, nobs, nrand, cum_n_u_h, rand.families, u_h, lambda_est, psi_M, v_h, dvdu, sXaug, stop.on.error, ranFix, ZAL, w.resid) {
+.init_resp_z_corrections_new <- function(lcrandfamfam, w.ranef, nobs, nrand, cum_n_u_h, rand.families, u_h, lambda_est, psi_M, v_h, dvdu, 
+                                         sXaug, ZAL, w.resid) {
   if (all(lcrandfamfam=="gaussian")) {
     z2 <- rep(0,length(w.ranef)) 
     a <- rep(0,nobs)
@@ -339,7 +341,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
         psi_corr[[it]] <- (psi_M[u.range])  
       } 
     }
-    psi_corr <- unlist(psi_corr)
+    psi_corr <- .unlist(psi_corr)
     # w.ranef v^0 + dlogfv_dv ('dlogfvdv' elsewhere) is represented as w.ranef (z2:= v_h + (psi_corr-u_h)*dvdu) 
     #    as detailed in 'Adjustments of the score equations for different random effect ($v$) distributions'
     z2 <- v_h + (psi_corr-u_h)*dvdu ## update since u_h,v_h updated (yes)
@@ -374,6 +376,22 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
 }
 
 
+.calc_z1 <- function(muetablob, w.resid, y, off, cum_nobs) { # (__FIXME__) if y and off were lists, I would not need resp_range etc.
+  if (is.list(w.resid)) {
+    if (is.null(mvlist <- w.resid$mvlist)) {
+      z1 <- as.vector(muetablob$sane_eta+w.resid$WU_WT*(y-muetablob$mu-w.resid$dlogMthdth)/muetablob$dmudeta-off) ## MolasL10
+    } else {
+      z1s <- vector("list",length(mvlist)) 
+      for (mv_it in seq_along(mvlist)) {
+        resp_range <- .subrange(cumul=cum_nobs, it=mv_it)
+        z1s[[mv_it]] <- .calc_z1(muetablob=muetablob$mv[[mv_it]], w.resid=w.resid$mvlist[[mv_it]], y=y[resp_range], off=off[resp_range])
+      }
+      z1 <- .unlist(z1s)
+    }
+  } else z1 <- as.vector(muetablob$sane_eta+(y-muetablob$mu)/muetablob$dmudeta-off) ## LeeNP 182 bas. GLM-adjusted response variable; O(n)*O(1/n)
+  return(z1)  
+}
+
 .calc_zAug_not_LMM <- function(n_u_h, nobs, pforpv, y, off, ZAL, 
                       # variable within fit_as_ZX:
                       muetablob, dlogWran_dv_h, sXaug, w.resid, w.ranef, 
@@ -381,20 +399,13 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
                       init_z_args, 
                       #
                       processed) {
-  GLMMbool <- processed$GLMMbool
-  
-  
-  mu <- muetablob$mu
-  dmudeta <- muetablob$dmudeta
-  eta <- muetablob$sane_eta
+  GLMMbool <- attr(processed[["models"]],"GLMMbool") 
   ######## According to 'theorem 1' of LeeL12, new beta estimate from z1-a(i), where z1 is
-  if (is.list(w.resid)) {
-    z1 <- as.vector(eta+w.resid$WU_WT*(y-mu-w.resid$dlogMthdth)/dmudeta-off) ## MolasL10
-  } else z1 <- as.vector(eta+(y-mu)/dmudeta-off) ## LeeNP 182 bas. GLM-adjusted response variable; O(n)*O(1/n)
+  z1 <- .calc_z1(muetablob, w.resid, y, off, cum_nobs=attr(processed$families,"cum_nobs"))
   ## and a(i) (for HL(i,1)) is a(0) or a(0)+ something
   ## and a(0) depends on z2, as follows :
   if ( ! GLMMbool) {
-    z2 <- do.call(".init_resp_z_corrections_new",init_z_args)$z20 
+    z2 <- do.call(".init_resp_z_corrections_new",init_z_args)$z20
   } else z2 <- rep(0,n_u_h)
   if (processed$HL[1L]) { 
     ########## HL(1,.) adjustment for mean ################## and specifically the a(1) term in LeeL 12 p. 963
@@ -409,41 +420,28 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
       } else WU_WT <- NULL
       sscaled <- .calc_sscaled_new(vecdisneeded=vecdisneeded,
                               dlogWran_dv_h=dlogWran_dv_h, ## dlogWran_dv_h was computed when w.ranef was computed
-                              coef12= .calc_dlW_deta(dmudeta=drop(dmudeta), mu=drop(mu), eta=drop(eta), 
+                              coef12= .calc_dlW_deta(muetablob,
                                                     family=processed$family, 
                                                     BinomialDen=processed$BinomialDen, 
-                                                    canonicalLink=processed$canonicalLink,
                                                     calcCoef1=TRUE,
-                                                    w.resid=w.resid), ## promise evaluated if any vecdisneeded[-3]
+                                                    w.resid=w.resid, families=processed$families), ## promise evaluated if any vecdisneeded[-3]
                               n_u_h=n_u_h, 
                               sXaug=sXaug,
                               ZAL=ZAL, # vecdi2
                               WU_WT=WU_WT ## NULL except for truncated model
       )
-    } else sscaled <- 0
-    ## sscaled if an 
-    if (is.list(w.resid)) {
-      sscaled <- sscaled * w.resid$WU_WT
-      y2_sscaled <- z2+ as.vector((sscaled * w.resid$w_resid ) %*% ZAL )/w.ranef ## that's the y_2 in "Methods of solution based on the augmented matrix"
-      # it is unaffected by the matrix rescaling bc it is a fn of z1 and z2. But rescaled is alays taken into account bc we uuse y2_sscaled only 
-      #      in the context wzAug <- c(zInfo$y2_sscaled/ZAL_scaling, (zInfo$z1_sscaled)*weight_X)
-    } else y2_sscaled <- z2+ as.vector((sscaled * w.resid ) %*% ZAL )/w.ranef
+      if (is.list(w.resid)) { # both the truncated and the mv cases
+        y2_sscaled <- z2+ as.vector((sscaled * w.resid$w_resid ) %*% ZAL )/w.ranef ## that's the y_2 in "Methods of solution based on the augmented matrix"
+        # it is unaffected by the matrix rescaling bc it is a fn of z1 and z2. But rescaled is alays taken into account bc we uuse y2_sscaled only 
+        #      in the context wzAug <- c(zInfo$y2_sscaled/ZAL_scaling, (zInfo$z1_sscaled)*weight_X)
+      } else y2_sscaled <- z2+ as.vector((sscaled * w.resid ) %*% ZAL )/w.ranef
+    } else { # notably after observing that general code with sscaled=0 and large ZAL is slow!
+      sscaled <- 0
+      y2_sscaled <- z2
+    }
     zInfo <- list(sscaled=sscaled, z1=z1, z2=z2, z1_sscaled=z1-sscaled, y2_sscaled=y2_sscaled)
   } else zInfo <- list(sscaled=0, z1=z1, z2=z2, z1_sscaled=z1, y2_sscaled=z2) 
   return(zInfo)
-}
-
-
-
-.warn_intervalStep <- function(currentlik,for_intervals) {
-  locmess <- paste("A higher",for_intervals$likfn,"was found than for the original fit.",
-                   "\nThis suggests the original fit did not fully maximize",for_intervals$likfn," (REML?)\n or numerical accuracy issues.")
-  message(locmess)
-  dispCorrPars <- .get_CorrEst_and_RanFix(for_intervals$ranFix,for_intervals$corr_est)$corrPars
-  if (length(dispCorrPars)) message(paste("Current dispersion and correlation parameters are ",
-                                            paste(names(dispCorrPars),"=",signif(unlist(dispCorrPars),6),collapse=", ")))
-  message("Current log likelihood is =",currentlik)                    
-  message("logLik of the fit=",for_intervals$fitlik)    
 }
 
 .cbind_dgC_dgC <- function(leftcols, rightcols) { # expects @x,i,p => dgCMatrix
@@ -493,26 +491,17 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
 }
 
 .make_Xscal <- function(ZAL, ZAL_scaling=NULL, AUGI0_ZX) {
-  # if (is.null(ZAL)) { ## has been used to construct template in .preprocess(), but not currently used 
-  #   if (inherits(AUGI0_ZX$I,"sparseMatrix")) {
-  #     ZeroZAL <- Matrix(0,ncol=ncol(AUGI0_ZX$I),nrow=nrow(AUGI0_ZX$X.pv))
-  #   } else ZeroZAL <- matrix(0,ncol=ncol(AUGI0_ZX$I),nrow=nrow(AUGI0_ZX$X.pv)) 
-  #   # etc
-  # } else {
-    if (length(ZAL_scaling)==1L) {
-      if (ncol(ZAL)==1L) {
-        stop("Found a single random effect with a *single level*. Check formula.")
-      } else stop("ZAL_scaling should be a full-length vector, or NULL.")
-    }
-    if ( ! is.null(ZAL_scaling)) ZAL <- .m_Matrix_times_Dvec(ZAL,ZAL_scaling)
-    if (is.null(Zero_sparseX <- AUGI0_ZX$Zero_sparseX)) Zero_sparseX <- rbind2(AUGI0_ZX$ZeroBlock, AUGI0_ZX$X.pv)
-    if (inherits(ZAL,"dgCMatrix")) {
-      I_ZAL <- .adhoc_rbind_I_dgC(nrow(AUGI0_ZX$I), ZAL) ## this is faster...
-    } else I_ZAL <- rbind2(AUGI0_ZX$I, ZAL)
-    if (inherits(I_ZAL,"dgCMatrix") &&  inherits(Zero_sparseX,"dgCMatrix") ) {
-      Xscal <- .cbind_dgC_dgC(I_ZAL, Zero_sparseX) # substantially faster than the general alternative 
-    } else Xscal <- cbind2(I_ZAL, Zero_sparseX)
-  # }
+  # capture programming error for ZAL_scaling:
+  if (length(ZAL_scaling)==1L && ncol(ZAL)!=1L) stop("ZAL_scaling should be a full-length vector, or NULL. Contact the maintainer.")
+  # ncol(ZAL)=1L could occur in 'legal' (albeit dubious) use. The total number of levels of random effects has been checked in preprocessing.
+  if ( ! is.null(ZAL_scaling)) ZAL <- .m_Matrix_times_Dvec(ZAL,ZAL_scaling)
+  if (is.null(Zero_sparseX <- AUGI0_ZX$Zero_sparseX)) Zero_sparseX <- rbind2(AUGI0_ZX$ZeroBlock, AUGI0_ZX$X.pv)
+  if (inherits(ZAL,"dgCMatrix")) {
+    I_ZAL <- .adhoc_rbind_I_dgC(nrow(AUGI0_ZX$I), ZAL) ## this is faster...
+  } else I_ZAL <- rbind2(AUGI0_ZX$I, ZAL)
+  if (inherits(I_ZAL,"dgCMatrix") &&  inherits(Zero_sparseX,"dgCMatrix") ) {
+    Xscal <- .cbind_dgC_dgC(I_ZAL, Zero_sparseX) # substantially faster than the general alternative 
+  } else Xscal <- cbind2(I_ZAL, Zero_sparseX)
   return(Xscal)
 }
 
@@ -598,14 +587,14 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
                     collapse="\n"))
       cross_Z <- as(cross_Z,"sparseMatrix")
     } 
-    CHM_ZZ <- Cholesky(cross_Z+sXaug_blocks$I, perm=TRUE, LDL=FALSE)
+    CHM_ZZ <- Cholesky(cross_Z, perm=TRUE, LDL=FALSE, Imult=1) # Imult !
     if (update_info$allow) { 
       processed$AUGI0_ZX$template_CHM_ZZ_blocks <- CHM_ZZ
     }
   } else {
     cross_Z <- .crossprod(ZW, eval_dens=FALSE) 
     #cross_Z <- as(cross_Z,"sparseMatrix") ## should generally be useless
-    CHM_ZZ <- Matrix::update(template, cross_Z, mult=1)
+    CHM_ZZ <- Matrix::.updateCHMfactor(template, cross_Z, mult=1)
   }
   XW <- sXaug_blocks$XW
   ZtWX <- .crossprod(ZW, XW)
@@ -615,15 +604,27 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
   XtWy <- .crossprod(XW, pwy_o)
   #
   cross_Rxx <- as.matrix(.crossprod(XW,as_sym=FALSE))-as.matrix(.crossprod(Rzx,as_sym=FALSE)) # as(,"dpoMatrix) involves a chol() factorization...
-  chol_XX <- .Utri_chol_by_qr(cross_Rxx) # chol(cross_Rxx) # chol_XX matrix is quite small -> same algos as in .calc_r22()
-  # ## test-poly test-random-slope test-ranCoefs; 
-  # test-random-slope  is slower by .Rcpp_backsolve() but only because of more precise, but longer, outer optim in (ares <- ...)
-  # this better result is by accumulated effects on the optimization path rather than by functional improvement.
-  # also .Rcpp_backsolve() visibly increases range(get_predVar(twolambda)[1:5]-get_predVar(onelambda)[1:5]) 
-  r_Xy <- backsolve(chol_XX, XtWy-.crossprod(Rzx, r_Zy), transpose=TRUE) ## transpose since chol() provides a tcrossfac 
-  ryy2 <- sum(pwy_o^2) - sum(r_Zy^2) - sum(r_Xy^2)
-  absdiagR_terms <- list(logdet_v=determinant(CHM_ZZ)$modulus[1], 
-                         logdet_b=sum(log(abs(diag(chol_XX)))), ryy2=ryy2)
+  if (use_crossr22 <- TRUE) { 
+    # No need for the complex Utri_chol computation here, as sum(r_Xy^2) is easy to compute without it.
+    # Another place where one can avoid it is also labelled 'use_crossr22' in .solve_crossr22()
+    u_of_quadratic_utAu <- XtWy-.crossprod(Rzx, r_Zy)
+    sum_r_Ry_2 <- .crossprod(u_of_quadratic_utAu, solve(cross_Rxx, u_of_quadratic_utAu))
+    ryy2 <- sum(pwy_o^2) - sum(r_Zy^2) - sum_r_Ry_2
+    absdiagR_terms <- list(logdet_v=determinant(CHM_ZZ)$modulus[1], 
+                           logdet_b=determinant(cross_Rxx)$modulus[1]/2, ryy2=ryy2)
+  } else {
+    chol_XX <- .Utri_chol_by_qr(cross_Rxx) # chol(cross_Rxx) # chol_XX matrix is quite small -> same algos as in .calc_r22()
+    # ## test-poly test-random-slope test-ranCoefs; 
+    # test-random-slope  is slower by .Rcpp_backsolve() but only because of more precise, but longer, outer optim in (ares <- ...)
+    # this better result is by accumulated effects on the optimization path rather than by functional improvement.
+    # also .Rcpp_backsolve() visibly increases range(get_predVar(twolambda)[1:5]-get_predVar(onelambda)[1:5]) 
+    r_Xy <- backsolve(chol_XX, XtWy-.crossprod(Rzx, r_Zy), transpose=TRUE) ## transpose since chol() provides a tcrossfac 
+    # .crossprod(Rzx, r_Zy) appears to be .crossprod(ZtWX, solve(CHM_ZZ, ZtWy, system = "A")) 
+    # but we still need Rzx and r_Zy 
+    ryy2 <- sum(pwy_o^2) - sum(r_Zy^2) - sum(r_Xy^2)
+    absdiagR_terms <- list(logdet_v=determinant(CHM_ZZ)$modulus[1], 
+                           logdet_b=sum(log(abs(diag(chol_XX)))), ryy2=ryy2)
+  }
   return(absdiagR_terms)
 }
 
@@ -714,9 +715,12 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
       y_o <- (processed$y-processed$off)
       pwy_o <- y_o*sqrt(extranorm/pwphi) # extranorm is for better accuracy of next step
       if (inherits(sXaug,"AUGI0_ZX_sparsePrecision")) {
-        pwt_Q_y_o <- .calc_Qt_pwy_o(sXaug,pwy_o)
-      } else pwt_Q_y_o <- get_from_MME(sXaug,"t_Q_scaled")%*% c(rep(0,n_u_h),pwy_o) 
-      pwSSE <- (sum(pwy_o^2)-sum(pwt_Q_y_o^2))/extranorm ## sum() : vectors of different lengths !
+        sum_pwt_Q_y_o_2 <- .calc_sum_pwt_Q_y_o_2(sXaug,pwy_o)
+      } else {
+        pwt_Q_y_o <- get_from_MME(sXaug,"t_Q_scaled")%*% c(rep(0,n_u_h),pwy_o) 
+        sum_pwt_Q_y_o_2 <- sum(pwt_Q_y_o^2)
+      }
+      pwSSE <- (sum(pwy_o^2)-sum_pwt_Q_y_o_2)/extranorm ## sum() : vectors of different lengths !
       if (inherits(sXaug,"AUGI0_ZX_sparsePrecision")) {
         logdet_R_scaled_v <- get_from_MME(sXaug,"logdet_sqrt_d2hdv2") - sum(log(attr(sXaug,"w.ranef")))/2  
         X_scaled_H_unscaled_logdet_r22 <- get_from_MME(sXaug,"logdet_r22")
@@ -747,9 +751,12 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
     pwphi <- phi_est/(prior_weights) ## vectorize phi if not already vector
     pwy_o <- (processed$y-processed$off)/sqrt(pwphi/extranorm) # extranorm is for better accuracy of next step
     if (inherits(sXaug,"AUGI0_ZX_sparsePrecision")) {
-      pwt_Q_y_o <- .calc_Qt_pwy_o(sXaug,pwy_o)
-    } else pwt_Q_y_o <- get_from_MME(sXaug,"t_Q_scaled")%*% c(rep(0,n_u_h),pwy_o) 
-    pwSSE <- (sum(pwy_o^2)-sum(pwt_Q_y_o^2))/extranorm ## vectors of different lengths !
+      sum_pwt_Q_y_o_2 <- .calc_sum_pwt_Q_y_o_2(sXaug,pwy_o)
+    } else {
+      pwt_Q_y_o <- get_from_MME(sXaug,"t_Q_scaled")%*% c(rep(0,n_u_h),pwy_o) 
+      sum_pwt_Q_y_o_2 <- sum(pwt_Q_y_o^2)
+    }
+    pwSSE <- (sum(pwy_o^2)-sum_pwt_Q_y_o_2)/extranorm ## vectors of different lengths !
     if (inherits(sXaug,"AUGI0_ZX_sparsePrecision")) {
       logdet_R_scaled_v <- get_from_MME(sXaug,"logdet_sqrt_d2hdv2") - sum(log(attr(sXaug,"w.ranef")))/2  
       X_scaled_H_unscaled_logdet_r22 <- get_from_MME(sXaug,"logdet_r22") 
@@ -829,8 +836,6 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
     dvdu <- auglinmodblob$wranefblob$dvdu
   }
   #
-  family <- processed$family
-  famfam <- family$family
   augZX_resu$clik <- .calc_clik(mu,phi_est,processed)
   if (all(which =="clik")) return(augZX_resu)
   if (processed$models[["eta"]]=="etaGLM") {
@@ -844,7 +849,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
     u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
     likranU[[it]] <- .loglfn_ranU(lcrandfamfam[it],u_h[u.range],1/lambda_est[u.range])
   }
-  likranU <- unlist(likranU)
+  likranU <- .unlist(likranU)
   log.du_dv <- - log(dvdu) 
   likranV <- sum(likranU + log.du_dv)
   augZX_resu$hlik <- augZX_resu$clik + likranV

@@ -68,7 +68,7 @@ hatvalues.HLfit <- function(model, type="projection", which="resid", force=FALSE
                                   #object=model, # 'processed' or fit object
                                   HL=model$HL, models=model$models, need_simple_lambda=( ! fully_constr_lam_fit), 
                                   muetablob=model$muetablob, family=model$family, mu=model$muetablob$mu, 
-                                  BinomialDen=model$BinomialDen, canonicalLink=.is_link_canonical(model$family) , w.resid=model$w.resid, 
+                                  BinomialDen=model$BinomialDen, w.resid=model$w.resid, 
                                   wranefblob=.updateW_ranefS(cum_n_u_h=cum_n_u_h, rand.families=rand.families, model$lambda, u_h=u_h, model$v_h), 
                                   nobs=length(model$y), ZAL=get_ZALMatrix(model), #psi_M=rep(attr(rand.families,"unique.psi_M"),diff(cum_n_u_h)), 
                                   lambda_est=model$lambda.object$lambda_est, cum_n_u_h=cum_n_u_h, #lcrandfamfam=attr(rand.families,"lcrandfamfam"), 
@@ -96,9 +96,9 @@ hatvalues.HLfit <- function(model, type="projection", which="resid", force=FALSE
 
 # Semantics: hat values: from a projection matrix, vs leverages: final standardizing coefficients
 .calc_lev_from_hat <- function(hatvals, sXaug, is_null_phi.Fix, u_h,
-                               object, # all what can be deduced from the 'object'
+                               #object, # all what can be deduced from the 'object'
                                HL, models, need_simple_lambda, muetablob, family, mu, 
-                               BinomialDen, canonicalLink, w.resid, wranefblob, nobs, ZAL, 
+                               BinomialDen, w.resid, wranefblob, nobs, ZAL, 
                                psi_M=rep(attr(rand.families,"unique.psi_M"),diff(cum_n_u_h)), 
                                lambda_est, cum_n_u_h, lcrandfamfam=attr(rand.families,"lcrandfamfam"), rand.families, y,  
                                prior.weights, nrand=length(lcrandfamfam), phi_est) {
@@ -111,9 +111,9 @@ hatvalues.HLfit <- function(model, type="projection", which="resid", force=FALSE
     ## first the d log hessian / d log lambda or phi corrections
     ### For the d log hessian first the derivatives of GLM weights wrt eta 
     ##################### noter que c'est le coef2 de HL(1,.), but mu,eta may have been updated since coef2 was computed
-    dlW_deta <- .calc_dlW_deta(dmudeta=drop(muetablob$dmudeta),family=family,mu=drop(mu),eta=drop(muetablob$sane_eta),
-                               BinomialDen=BinomialDen,canonicalLink=canonicalLink,
-                               w.resid=w.resid)$dlW_deta
+    dlW_deta <- .calc_dlW_deta(muetablob=muetablob,family=family,
+                               BinomialDen=BinomialDen,
+                               w.resid=w.resid, families=family)$dlW_deta
     ### we join this with the deriv of log w.ranef wrt v_h
     dlW_deta_or_v <- c(dlW_deta, wranefblob$dlogWran_dv_h )  ## vector with n+'r' elements
     # dlogWran_dv_h is 0 gaussian ranef; d2mudeta2 is 0 for identity link => vector is 0 for LMM
@@ -150,10 +150,22 @@ hatvalues.HLfit <- function(model, type="projection", which="resid", force=FALSE
     if (models[[1L]]=="etaHGLM" && need_simple_lambda) ## d h/ d !log! lambda correction     
       hatvals$ranef <- hatvals$ranef + .corr_notEQL_lambda(nrand,cum_n_u_h,lambda_est,lcrandfamfam) 
     # phi hence not poiss,binom:
-    if (family$family=="Gamma" && is_null_phi.Fix ) { ## d h/ d !log! phi correction (0 for gauss. resid. error). Not tied to REML
-      phiscaled <- phi_est/eval(prior.weights) ## 08/2014 ## bug "*" corrected -> "/" 2015/03/05
-      hatvals$resid <- hatvals$resid +  1+2*(log(phiscaled)+digamma(1/phiscaled))/phiscaled ## LNP p. 89 and as in HGLMMM IWLS_Gamma
-    }    
+    if (inherits(family,"family")) {
+      if (family$family=="Gamma" && is_null_phi.Fix ) { ## d h/ d !log! phi correction (0 for gauss. resid. error). Not tied to REML
+        phiscaled <- phi_est/eval(prior.weights) ## 08/2014 ## bug "*" corrected -> "/" 2015/03/05
+        hatvals$resid <- hatvals$resid +  1+2*(log(phiscaled)+digamma(1/phiscaled))/phiscaled ## LNP p. 89 and as in HGLMMM IWLS_Gamma
+      }    
+    } else { # mv case, list of families
+      cum_nobs <- attr(family,"cum_nobs")
+      for (mv_it in seq_along(family)) {
+        fam <- family[[mv_it]]
+        if (fam$family=="Gamma" && is_null_phi.Fix ) { ## d h/ d !log! phi correction (0 for gauss. resid. error). Not tied to REML
+          resp_range <- .subrange(cumul=cum_nobs, it=mv_it)
+          phiscaled <- phi_est[[mv_it]]/eval(prior.weights[[mv_it]]) 
+          hatvals$resid[resp_range] <- hatvals$resid[resp_range] +  1+2*(log(phiscaled)+digamma(1/phiscaled))/phiscaled ## LNP p. 89 and as in HGLMMM IWLS_Gamma
+        }    
+      }
+    }
   }
   hatvals
 }

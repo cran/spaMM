@@ -50,7 +50,7 @@ if (FALSE) {
 ## spherical transfo of Pinheiro and Bates 96; see further explanation
 # https://math.stackexchange.com/questions/1326462/spherical-parametrization-of-a-cholesky-decomposition/1329660#1329660
 # Called only by .ranCoefsFn() in devel code, for optim bound, and to convert back the optim results for refit
-.sphFn <- function(covpars,Xi_ncol=NULL) { ## from *cov* parameter in lower.tri order vector to trRancoefs
+.sphFn <- function(covpars,Xi_ncol=NULL) { ## from *cov* parameter in lower.tri order vector to trRanCoefs
   if (is.null(Xi_ncol)) Xi_ncol <- floor(sqrt(length(covpars)*2))
   cholmat <- diag(Xi_ncol)
   cholmat[lower.tri(cholmat,diag = TRUE)] <- covpars
@@ -60,18 +60,13 @@ if (FALSE) {
   cholmat <- tocorr %*% cholmat %*% tocorr
   diag(cholmat) <- diag(cholmat)/2
   cholmat <- t(cholmat) + cholmat
-  # 
-  # cholmat <- solve(cholmat)
-  # 
-  if (TRUE){ ## svd +qr more precise ? .sphFn is not often called... (only in inits outer optim)
-    esys <- .eigen_sym(cholmat)
-    crossfac <- .Dvec_times_matrix(sqrt(esys$values), t(esys$vectors))
-    qrblob <- qr(crossfac)
-    cholmat <- qr.R(qrblob) # applying .lmwithQR() systematically (badly) affects numerical precision
-    if (! all(unique(diff(qrblob$pivot))==1L)) { # eval an unpermuted triangular R
-      cholmat <- .lmwithQR(cholmat[, sort.list(qrblob$pivot)] ,yy=NULL,returntQ=FALSE,returnR=TRUE)$R
-    } 
-  } else cholmat <- .CHOL(cholmat) ### potential source of problems as crossprod() in .tr2cov() may not be the exact inverse
+  esys <- .eigen_sym(cholmat)
+  crossfac <- .Dvec_times_matrix(sqrt(esys$values), t(esys$vectors))
+  qrblob <- qr(crossfac)
+  cholmat <- qr.R(qrblob) # applying .lmwithQR() systematically (badly) affects numerical precision
+  if (! all(unique(diff(qrblob$pivot))==1L)) { # eval an unpermuted triangular R
+    cholmat <- .lmwithQR(cholmat[, sort.list(qrblob$pivot)] ,yy=NULL,returntQ=FALSE,returnR=TRUE)$R
+  } 
   # sequel assumes UPPER triangular cholmat (cholmat[i:1, i]...)
   corrpars <- numeric(0)
   for (i in 2:Xi_ncol) {
@@ -101,7 +96,7 @@ if (FALSE) {
 }
 
 # called only at the begining of inner or outer optim 
-.chlFn <- function(covpars,Xi_ncol=NULL) { # from *cov* parameter in lower.tri order vector to trRancoefs
+.chlFn <- function(covpars,Xi_ncol=NULL) { # from *cov* parameter in lower.tri order vector to trRanCoefs
   if (is.null(Xi_ncol)) Xi_ncol <- floor(sqrt(length(covpars)*2))
   svdv <- diag(Xi_ncol)
   svdv[lower.tri(svdv,diag = TRUE)] <- covpars
@@ -110,7 +105,7 @@ if (FALSE) {
   return(crossfac[upper.tri(crossfac,diag = TRUE)]) ## returned as vector 
 }
 
-.corrFn <- function(covpars,Xi_ncol=NULL) { ## from *cov* parameter in lower.tri order vector to trRancoefs
+.corrFn <- function(covpars,Xi_ncol=NULL) { ## from *cov* parameter in lower.tri order vector to trRanCoefs
   if (is.null(Xi_ncol)) Xi_ncol <- floor(sqrt(length(covpars)*2))
   covcorr <- diag(Xi_ncol)
   covcorr[lower.tri(covcorr,diag = TRUE)] <- covpars
@@ -125,12 +120,13 @@ if (FALSE) {
 
 .calc_cov_from_trRancoef <- function(trRancoef, Xi_ncol=NULL, rC_transf) { 
   if (is.null(Xi_ncol)) Xi_ncol <- attr(trRancoef,"Xi_ncol")
-  if (is.null(Xi_ncol)) Xi_ncol <- floor(sqrt(length(trRancoef)*2))
+  if (is.null(Xi_ncol)) Xi_ncol <- floor(sqrt(length(trRancoef)*2L))
   if (rC_transf=="chol") { # trRancoef in upper.tri order
-    cholmat <- diag(nrow=Xi_ncol) 
+    trRancoef <- trRancoef/.spaMM.data$options$rC_transf_fac
+    lampos <- cumsum(seq(Xi_ncol)) 
+    trRancoef[lampos] <-  pmax(1e-32, trRancoef[lampos]) # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+    cholmat <- matrix(0, nrow=Xi_ncol, ncol=Xi_ncol) 
     cholmat[upper.tri(cholmat,diag = TRUE)] <- trRancoef
-    cholmat <- cholmat/.spaMM.data$options$rC_transf_fac
-    diag(cholmat) <- pmax(1e-32, diag(cholmat)) # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     return(structure(crossprod(cholmat),chol_crossfac=cholmat))
   } else if (rC_transf=="corr") { # trRancoef in (log(sigma), corr) order
     covmat <- diag(Xi_ncol)/2
@@ -259,8 +255,8 @@ if (FALSE) {
   return(compactcovmat)
 }  
 
-# not called in inner optimization...
-.tr2cov <- function(trRancoef,Xi_ncol=NULL, rC_transf) { ## from trRancoefs to *cov* parameter vector
+# not called in inner optimization; only called is ranCoefsInv()
+.tr2cov <- function(trRancoef,Xi_ncol=NULL, rC_transf) { ## from trRanCoefs to *cov* parameter vector
   if (is.null(Xi_ncol)) Xi_ncol <- floor(sqrt(length(trRancoef)*2))
   covmat <- .calc_cov_from_trRancoef(trRancoef,Xi_ncol=Xi_ncol, rC_transf=rC_transf) # must handle all transfos so there is no .chlInv() nor .sphInv()
   covmat <- .smooth_regul(covmat)
@@ -278,16 +274,17 @@ if (FALSE) {
       return(resu)
     }
     Xi_ncol <- attr(trRancoef,"Xi_ncol")
-    if (is.null(Xi_ncol)) Xi_ncol <- floor(sqrt(length(trRancoef)*2))
+    if (is.null(Xi_ncol)) Xi_ncol <- floor(sqrt(length(trRancoef)*2L))
     covpars <- .tr2cov(trRancoef, Xi_ncol=Xi_ncol, rC_transf=rC_transf) # to vector of parameters with *cov*ariances
     # from vector with *cov*ariances to canonical vector with *corr*elations:
+    lampos <- rev(length(covpars) -cumsum(seq(Xi_ncol))+1L)
+    lambdas <- covpars[lampos]
     rancoefs <- diag(nrow=Xi_ncol)
     rancoefs[lower.tri(rancoefs,diag = TRUE)] <- covpars
-    diagPos <- seq.int(1L,Xi_ncol^2,Xi_ncol+1L)
-    lambdas <- rancoefs[diagPos]
     # lambdas <- lambdas + 1e-10 # here affecting also the conversion from covariances to correlations
-    torancoefs <- diag(x=sqrt(1/lambdas))
-    rancoefs <- torancoefs %*% rancoefs %*% torancoefs ## lower tri of corr mat
+    torancoefs <- sqrt(1/lambdas)
+    rancoefs <- torancoefs * rancoefs * rep(torancoefs, each = Xi_ncol) # cf cov2cor()
+    diagPos <- seq.int(1L,Xi_ncol^2,Xi_ncol+1L)
     rancoefs[diagPos] <- lambdas
     varcorr <- structure(rancoefs[lower.tri(rancoefs,diag = TRUE)],
                       transf=trRancoef,
@@ -359,47 +356,6 @@ if (FALSE) {
   return(list(lower=lower,upper=upper,adjust_init=adjust_init)) ## transformed scale with log sigma in first positions
 }
 
-
-
-
-.match_coords_in_uniqueGeo <- function(coords,uniqueGeo) {any(apply(uniqueGeo,1L,identical,y=coords))}
-
-.checkDistMatrix <- function(distMatrix,data,coordinates) {
-  ## HLCor + non-null distMatrix (cf example ?HLCor MLdistMat) => plantage un peu bizarre dans .checkDistMatrix, 
-  #   problème de transposition de matrice uniqueGeo. A priori le code actuel est correct, mais logique pas claire.
-  if (inherits(distMatrix,"dist")) {
-    usernames <- labels(distMatrix)
-  } else if (inherits(distMatrix,"matrix")) {
-    usernames <- rownames(distMatrix)
-  } else message(paste("(!) 'distMatrix' is neither a 'matrix' or 'dist' object. Check the input. I exit."))
-  ## chol() fails on distances matrices with repeated locations (which are pos SD)... but chol() not used by default
-  ## the following code assumes that distMatrix deals only with unique locations, and checks this
-  ## HENCE ******* distMatrix must refer to unique values of a grouping variable *********
-  checknames <- all(sapply(usernames,`%in%`, table=rownames(data))) ## 
-  if (!checknames) {
-    warning("The rownames of 'distMatrix' are not rownames of the 'data'. Further checking of 'distMatrix' is not possible.")
-    nbUnique <- NA
-  } else {
-    uniqueGeo <- .calcUniqueGeo(data=data[usernames,coordinates,drop=FALSE]) ## check that this corresponds to unique locations
-    nbUnique <- nrow(uniqueGeo)
-    if (nbUnique != nrow(distMatrix)) {
-      stop("The dimension of 'distMatrix' does not match the number of levels of the grouping variable")
-    } else { ## check order
-      redondGeo <- data[,coordinates,drop=F]
-      # tUniqueGeo <- t(uniqueGeo)
-      designRU <- apply(redondGeo, 1L, .match_coords_in_uniqueGeo, uniqueGeo=uniqueGeo) ## has no names
-      # designRU <- apply(redondGeo,1, function(v) {which(apply(v==t(uniqueGeo),2,all))}) ## has no names
-      ## eg 1 1 2 2 3 2 3 4 is valid for 8 obs, 4 unique locations
-      designRU <- unique(as.vector(designRU)) ## should then be 1 2 3 4
-      ## but if distMatrix in reverse order, the first row of redondGeo would match the 4th of uniqueGeo and then the following test is FALSE:
-      if ( ! all (designRU==seq_len(length(designRU))) ) {
-        stop("The rows of 'distMatrix' are not ordered as rows of the 'data'.")
-      }
-    } 
-  }
-  nbUnique ## if stop() did not occur
-}
-
 .expand_GeoMatrices <- function(w_uniqueGeo, e_uniqueGeo, coords_nesting, coord_within, dist.method) {
   rownames(e_uniqueGeo) <- seq(nrow(e_uniqueGeo)) ## local & unique rownames
   ## Remarkably the next line works only if the cols are not factors ! Unless we have a fix for this,
@@ -459,10 +415,8 @@ if (FALSE) {
 }
 
 .calc_inits_ranCoefs <- function(init,init.optim,init.HLfit,ranFix,user.lower,user.upper) {
-  # fixme c/should allow a user-provided init.HLfit$ranCoefs to control what remains in init.optim relative to init.HLfit 
   if ( ! is.null(init.optim$ranCoefs)) { ## should always be a complete ordered list in the case for random-coefficient models
     if (! is.null(init$ranCoefs)) for (st in names(init$ranCoefs)) init.optim$ranCoefs[[st]] <- init$ranCoefs[[st]]
-    # fixme ideally the code whould check that st corresponds to a random-coefficient term so that the user does not mess everything....
     init$ranCoefs <- init.optim$ranCoefs
     trRanCoefs <- lapply(init.optim$ranCoefs,.ranCoefsFn, rC_transf=.spaMM.data$options$rC_transf)
     init.optim$trRanCoefs <- trRanCoefs
@@ -610,7 +564,7 @@ if (FALSE) {
       } else { ## non-default: inner optim, already with init value
         init.optim$corrPars[[char_rd]] <- NULL 
       }
-    } else if (For=="fitme") { ## with fitme, default is inner optim. We provide init.HLfit
+    } else if (For=="fitme" || For=="fitmv") { ## with fitme, default is inner optim. We provide init.HLfit
       if (is.null(init_rho)) {
         init_rho <- .get_cP_stuff(init.optim,"rho",which=char_rd)
         if ( ! is.numeric(init_rho) ) { ## default: outer optim, but no numeric init
@@ -669,7 +623,9 @@ if (FALSE) {
     init.optim$corrPars[[char_rd]] <- optim_cP
   } 
   if (is.null(ranFix$lambda) || is.na(ranFix$lambda[char_rd])) { 
-    if (is.null(moreargs_rd$minKappa)) { # slightly cryptic way of excludig spde case
+    if (is.null(moreargs_rd$minKappa)) { # slightly cryptic way of excluding spde case # ___F I X M E___ safer way ?
+      # I tracked a bug where user's init.lambda was not obeyed bc the wrong moreargs_rd was passed
+      # but otherwise this means that in spde case, such user's init.lambda is over-written... ___F I X M E___
       init$lambda[char_rd] <- 200 # but this will be ignored by optimize (i.e., in the comparison to LatticeKrig)
       init.optim$lambda[char_rd] <- 200 
     } # else control of initial value should be as by default method (~that for Matern)
@@ -683,9 +639,9 @@ if (FALSE) {
                        optim.scale, For, hyper_info) { 
   # final $ranFix should be suitable for .modify_list()... hence may contain NA's (in trLambda notably: cf mixing of ["1"] optimized, ["2"] fixed)
   # final $init.optim should be suitable for optimizer
-  # final $[canon.]init should track $init.optim. It start different from $init.optim, though.
+  # final $[canon.]init should track $init.optim. It starts different from $init.optim, though.
   init.optim$lambda <- .rename_lambda(init.optim$lambda) 
-  ranFix$lambda <- .rename_lambda(ranFix$lambda) # Now, to allow name matching in .calc_inits_IMRF()
+  ranFix$lambda <- .rename_lambda(ranFix$lambda) # Now, to allow name matching in IMRF()$calc_inits()
   inits <- list(init=list(corrPars=list()), ## minimal structure for assignments $corrPars[[char_rd]][[<name>]] to work.
                 init.optim=init.optim, init.HLfit=init.HLfit, ranFix=ranFix,
                 user.lower=user.lower, user.upper=user.upper, init=list()) 
@@ -707,12 +663,25 @@ if (FALSE) {
   # random coefficients
   inits <- .calc_inits_ranCoefs(init=inits$init,init.optim=inits$init.optim,init.HLfit=inits$init.HLfit,ranFix=inits$ranFix,
                                 user.lower=user.lower,user.upper=user.upper)
+  # If inits are not forced to be in user bounds at this step, .safe_opt() will detect that init is 'too close to bounds',
+  # and will use bobyqa with locally corrected init that happen to satisfy the bounds. The optimInfo bears hardly any trace of that:
+  # It does not show the locally corrected init, and one can only guess from it that nloptr() was not used from the 'optr' format.
   # GLM family parameters
-  inits$init$COMP_nu <- inits$init.optim$COMP_nu ## may be NULL. No checks needed
-  inits$init$NB_shape <- inits$init.optim$NB_shape ## may be NULL. No checks needed
-  if (! is.null(inits$init.optim$NB_shape)) {
-    inits$init.optim$trNB_shape <- .NB_shapeFn(inits$init.optim$NB_shape)
-    inits$init.optim$NB_shape <- NULL
+  if (is.null(COMP_nu <- inits[["init"]]$COMP_nu)) COMP_nu <- inits[["init.optim"]]$COMP_nu # 'if user did not provide any, use the default one present in init.optim'
+  if ( ! is.null(COMP_nu)) {
+    if ( ! is.null(user.upper$COMP_nu)) COMP_nu <- min(user.upper$COMP_nu,COMP_nu) # mv: this is only called on submodels, so pmin, pman NOT needed.
+    if ( ! is.null(user.lower$COMP_nu)) COMP_nu <- max(user.lower$COMP_nu,COMP_nu)
+    inits[["init.optim"]]$COMP_nu <- inits[["init"]]$COMP_nu <- COMP_nu
+  } # else I could add warnings that lower|upper values will be ignored... 
+  if (is.null(NB_shape <- inits[["init"]]$NB_shape)) NB_shape <- inits[["init.optim"]]$NB_shape 
+  if ( ! is.null(NB_shape)) {
+    if ( ! is.null(user.upper$NB_shape)) NB_shape <- min(user.upper$NB_shape,NB_shape)
+    if ( ! is.null(user.lower$NB_shape)) NB_shape <- max(user.lower$NB_shape,NB_shape)
+    inits[["init"]]$NB_shape <- NB_shape
+  }
+  if (! is.null(inits[["init"]]$NB_shape)) {
+    inits[["init.optim"]]$trNB_shape <- .NB_shapeFn(inits[["init"]]$NB_shape)
+    inits[["init.optim"]]$NB_shape <- NULL
   }
   inits <- eval(inits) ## not sure why
   if ( ! length(inits[["init.optim"]][["corrPars"]])) { ## remove corrParslist()
@@ -732,6 +701,11 @@ if (FALSE) {
     esys <- with(svdv,list(values=d,vectors=(u+sign(u*v)*v)/2)) # a bit heuristic, but this appears more accurate than simpler alternatives.
   } else {
     esys <- eigen(X,symmetric = TRUE) ## COV= .ZwZt(esys$vectors,esys$values) ##
+    # => bare-bone version, which R CMD check does not like, but that passes the long tests:
+    # z <- .Internal(La_rs(X, FALSE))
+    # ord <- rev(seq_along(z$values))
+    # esys <- structure(class = "eigen", list(values = z$values[ord], 
+    #                                 vectors = z$vectors[, ord, drop = FALSE]))
   }
   return(esys)
 }

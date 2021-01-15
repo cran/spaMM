@@ -148,7 +148,7 @@
           if (is.null(symSVD)) {
             ## Direct call of HLCor (SEM or not), 
             ## I also wrote that this could occur in fitme/corrHLfit if(list(processed)) "bc symSVD added to proc1 (i.e. not to all proc's)"
-            ##   but there is not go tests of this case...
+            ##   but there is not good tests of this case...
             symSVD <- .provide_AR_factorization_info(
               adjMatrix, 
               sparse_precision=processed$is_spprec, # this must be FALSE for inner estimation of adjacency rho (and there is bug-catching code for this)
@@ -157,6 +157,7 @@
             #
             # typically an *initial* value:
             rho <- attr(ranPars,"init.HLfit")$corrPars[[char_rd]]$rho # a bit unclear, but we will compute Lmatrix from this 'initial value' below
+            if (is.null(rho)) stop("'rho' missing. Contact the maintainer") # protection to avoid programming errors resulting in segfaults.
           } 
           # symSVD may be modified below
         }
@@ -337,10 +338,11 @@
           envir$precisionFactorList[[rd]]$chol_Q <- as(Q_CHMfactor, "sparseMatrix") # Linv
           ## fitme sparse_precision has an incomplete symSVD=> corr mattrix not computed, 
           ##    and try(mat_sqrt(symSVD=symSVD)) fails. Instead use code always valid:
+          use_ZA_L <- .spaMM.data$options$use_ZA_L
           if (
             (
-              (is.null(TRY_ZAX <- .spaMM.data$options$TRY_ZAX) && processed$augZXy_cond) # default for augZXy_cond
-              || identical(TRY_ZAX,TRUE) # TRY_ZAX may still be NULL if ! augZXy_cond
+              identical(use_ZA_L,TRUE) ||
+              (is.null(use_ZA_L) && processed$augZXy_cond) # default is to use_ZA_L for augZXy_cond
             )
             && ! processed$AUGI0_ZX$vec_normIMRF[rd]) { # solve may be OK when IMRF is normalized (otherwise more code needed in .normalize_IMRF) 
             Lunique <- Q_CHMfactor # representation of Lunique, not Lunique itself
@@ -403,7 +405,7 @@
   for (rd in  seq_len(length(ZAlist))) { 
     if (vec_normIMRF[rd]) { 
       char_rd <- as.character(rd)
-      colnams <- colnames(Zlist[[rd]]) ## unfortunately I cannot yet assume char_rd here (03/2019)
+      colnams <- colnames(Zlist[[char_rd]]) 
       if ( ! setequal(rownames(AMatrices[[char_rd]]), colnams)) {
         stop(paste0("Any 'A' matrix must have row names that match the levels of the random effects\n",
                     "(i.e. the colnames of the 'Z' design matrix)"))
@@ -411,7 +413,7 @@
       AL <- AMatrices[[char_rd]] %*% strucList[[rd]]
       invnorm <- 1/sqrt(rowSums(AL^2)) # diag(tcrossprod...)
       normAL <- .Dvec_times_Matrix(invnorm, AMatrices[[char_rd]])
-      ZAlist[[char_rd]] <- Zlist[[rd]] %id*% normAL[colnams,]
+      ZAlist[[char_rd]] <- Zlist[[char_rd]] %id*% normAL[colnams,]
     }
   }
   return(ZAlist) ## with unchanged attributes
@@ -449,4 +451,103 @@
     attr(Zlist, "AMatrices") <- AMatrices
   } ## else attr(Zlist, "AMatrices") remains nULL
   return(Zlist) ## with other attributes unchanged
+}
+
+.init_assign_geoinfo <- function(processed, ZAlist, For=processed$For, corr_info=processed$corr_info, corr_types=corr_info$corr_types, 
+                             exp_barlist, nrand=length(ZAlist), distMatrix, 
+                             sparse_precision=processed$is_spprec, uniqueGeo) {
+  if ( length(corr_types[ ! is.na(corr_types)])) {
+    
+    if (For=="HLfit") {
+      ranef_string <- attr(ZAlist,"exp_ranef_strings")[ ! is.na(corr_types)][1L]
+      stop(paste("Term",ranef_string,"not allowed in HLfit(). Try another fitting function such as fitme()."))
+    } else {
+      ## Cannot be unlisted bc cf ?unlist " Non-vector elements ... are not coerced, and so a list containing ... remains a list":
+      attr(ZAlist,"exp_spatial_terms") <- exp_spatial_terms <- .findSpatial(barlist=exp_barlist, nomatch=NA, expand=TRUE) ## match ZAlist for predict()
+      if (For != "fitmv") {
+        geo_info <- structure(vector("list",nrand), names=seq_len(nrand)) ## each element will be an environment with typical elements $distMatrix, $uniqueGeo, $nbUnique
+        cov_info_mats <- vector("list",nrand)
+        for (it in seq_along(corr_types)) {
+          corr_type <- corr_types[it]
+          if ( ! is.na(corr_type)) {
+            if (corr_type== "corrMatrix") { ## could cover all specifications of a constant 'cov' Matrix without correlation parameter
+              ## .check_subset_corrMatrix has the effect that the corr or prec mat used in later computation is a permutation of the inputed one
+              #  according to the order of columns of ZAlist[[it]] 
+              ## In the spprec case corr_info$corrMatrices[[it]] already contains a precision matrix
+              cov_info_mats[[it]] <- .check_subset_corrMatrix(corrMatrix=corr_info$corrMatrices[[it]],ZA=ZAlist[[it]]) ## correlation or precision...
+              if ( inherits(cov_info_mats[[it]],"precision")) {
+                # fast test by verif3 in test pedigree (no new cols) and longer test by test-Matern-spprec.R#9 (new cols)
+                precmat <- cov_info_mats[[it]][["matrix"]]
+                precnames <- colnames(precmat)
+                is_incid <- attr(ZAlist[[it]],"is_incid") 
+                ZAlist[[it]] <- .addrightcols_Z(Z=ZAlist[[it]], precnames)
+                # now we are sure that they have the same names, only the orders are uncertain, so we can test order by any( != )
+                ZAnames <- colnames(ZAlist[[it]])
+                if (any(precnames!=ZAnames)) {
+                  if (FALSE) { 
+                    ZAlist[[it]] <- ZAlist[[it]][ ,precnames]
+                  } else cov_info_mats[[it]] <- cov_info_mats[[it]][ZAnames,ZAnames]
+                }
+                attr(ZAlist[[it]],"is_incid") <- is_incid 
+              }
+            } else { ## all cases where geo_info (even empty) is needed 
+              geo_info[[it]] <- new.env(parent=emptyenv())
+              if ( ! is.null(distMatrix)) { ## user-provided distMatrix )
+                if (is.list(distMatrix)) { ## spaMM3.0 extended syntax
+                  geo_info[[it]]$distMatrix <- distMatrix[[it]] 
+                } else geo_info[[it]]$distMatrix <- distMatrix 
+              } # geo_info[[it]]$distMatrix may be modified below for Matern(LHS|.)
+              if (corr_type == "AR1") {
+                ugeo <-  attr(ZAlist[[it]],"uniqueGeo")
+                if ( ! sparse_precision &&
+                     ! is.null(dataordered_unique_levels <- attr(ZAlist[[it]],"dataordered_unique_levels"))) {
+                  # The above test implies "if not already ! sparse when ZAlist was first evaluated"
+                  # Subsetting ZAlist drops useful attributes => "uniqueGeo" must be secured in a more consistent place
+                  rownames(ugeo) <- apply(ugeo,1L,paste0,collapse=":")
+                  geo_info[[it]]$uniqueGeo <- ugeo[(dataordered_unique_levels), ,drop=FALSE]
+                  #
+                  is_incid <- attr(ZAlist[[it]],"is_incid") 
+                  ZAlist[[it]] <- ZAlist[[it]][ ,(dataordered_unique_levels)]
+                  # so that nice attributes are lost: "is_incid" "LHS_levels" "namesTerm" "dataordered_unique_levels" "AR1_block_n_u_h_s" "uniqueGeo"  
+                  attr(ZAlist[[it]],"is_incid") <- is_incid 
+                } else {
+                  for (nam in names(ugeo)) if (is.factor(fac <- ugeo[[nam]])) ugeo[[nam]] <- as.character(levels(fac))[fac]
+                  geo_info[[it]]$uniqueGeo <- ugeo
+                }
+                # } else if (corr_type %in% c("Matern","Cauchy") ) {
+                # in that case we either
+                # (1) have columns in ZAlist[[it]] not reordered: no further issues. This is the current design
+                #  or
+                # (2) have columns in ZAlist[[it]] not reordered in .calc_Zmatrix Then
+                #     the cov_info_mats[[it]] info is not yet available at preprocessing time...
+                #     See further comment in .assign_geoinfo_and_LMatrices_but_ranCoefs()
+              } else if (corr_type %in% c("Matern","Cauchy")) { 
+                if (attr(ZAlist[[it]],"namesTerm") != "(Intercept)") { # Matern(LHS|.)
+                  geo_info[[it]]$activelevels <- activelevels <- which(colSums(ZAlist[[it]]!=0L)>0L)
+                  geo_info[[it]]$distMatrix <- geo_info[[it]]$distMatrix[activelevels,activelevels, drop=FALSE]
+                  is_incid <- attr(ZAlist[[it]],"is_incid") 
+                  ZAlist[[it]] <- ZAlist[[it]][ ,activelevels,drop=FALSE]
+                  attr(ZAlist[[it]],"is_incid") <- is_incid 
+                } 
+              }
+              # not "else" because Matern/Cauchy must be combined with this!
+              if ( ! is.null(uniqueGeo)) { ## user-provided uniqueGeo (no example anywhere! :-) )
+                if (is.list(uniqueGeo)) { ## spaMM3.0 extended syntax
+                  geo_info[[it]]$uniqueGeo <- uniqueGeo[[it]] 
+                } else geo_info[[it]]$uniqueGeo <- uniqueGeo #
+              } 
+            }
+          }
+        }
+        corr_info$cov_info_mats <- cov_info_mats
+        processed$geo_info <- geo_info
+      }
+    }
+  } else { ## no true_corr_types
+    if ( For %in% c("HLCor","corrHLfit")) {
+      stop("Correlation model not specified in 'formula': was valid in version 1.0 but not later.")
+      ## Matern or corrMatrix were allowed without a tag then
+    }
+  }
+  return(ZAlist)
 }

@@ -105,6 +105,7 @@ HLfit <- function(formula,
     }
   }
   #
+  
   pnames <- c("data","family","formula","prior.weights","HLmethod","method","rand.family","control.glm","REMLformula",
               "resid.model","verbose")
   for (st in pnames) mc[st] <- NULL ## info in processed
@@ -116,7 +117,9 @@ HLfit <- function(formula,
     return(hlfit)    ########################   R E T U R N   a list with $APHLs
   }
   hlfit$call <- oricall ## potentially used by getCall(object) in update.HL
-  if ( ! .is.multi(family) ) {
+  if ( inherits(hlfit,"HLfitlist") ) {
+    attr(hlfit,"how") <- list(fit_time=.timerraw(time1),fnname="HLfit", spaMM.version=hlfit[[1L]]$how$spaMM.version)
+  } else {
     hlfit$how$fit_time <- .timerraw(time1)
     hlfit$how$fnname <- "HLfit"
     hlfit$fit_time <- structure(hlfit$how$fit_time,
@@ -158,7 +161,7 @@ HLfit <- function(formula,
     HLfit.call[[1L]] <- get("HLfit", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
   } 
   ranefParsList <- relist(ranefParsVec,skeleton)
-  print_phiHGLM_info <- ( ! is.null(processed$residProcessed) && processed$verbose["phifit"])
+  print_phiHGLM_info <- ( ! is.null(processed$residProcessed) && processed$verbose["phifit"]) ## ___FIME___ need code for printing in mv
   if (print_phiHGLM_info) {
     urP <- unlist(.canonizeRanPars(ranefParsList, corr_info=processed$corr_info,checkComplete=FALSE, rC_transf=.spaMM.data$options$rC_transf))
     processed$port_env$prefix <- paste0("HLfit for ", paste(signif(urP,6), collapse=" "), ": ")
@@ -166,18 +169,7 @@ HLfit <- function(formula,
   ranFix <- .modify_list(HLfit.call$ranFix, ranefParsList)
   rpType <- .modify_list(attr(HLfit.call$ranFix,"type"),attr(skeleton,"type"))
   moreargs <- attr(skeleton,"moreargs") 
-  if ( ! is.null(ranFix$resid) ) {
-    resid_ranPars <- structure(ranFix$resid, ## but not sure that the attributes are necessary...
-                               type=rpType$resid, 
-                               moreargs=moreargs$resid)
-    # canonize bc fitme_body(,fixed=.) does not handle transformed parameters
-    processed$residProcessed$envir$ranPars <- .canonizeRanPars(ranPars=resid_ranPars,
-                                                               corr_info=processed$residProcessed$corr_info,
-                                                               checkComplete = FALSE, rC_transf=.spaMM.data$options$rC_transf) 
-    ranFix$resid <- NULL
-    rpType$resid <- NULL
-    #moreargs$resid <- NULL
-  }
+  # removed 'ranPars$resid' code here [ v3.5.52
   HLfit.call$ranFix <- structure(ranFix, type=rpType) 
   hlfit <- eval(HLfit.call)
   aphls <- hlfit$APHLs

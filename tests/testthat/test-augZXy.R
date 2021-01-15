@@ -1,21 +1,25 @@
 cat(crayon::yellow("test aug_ZXy:\n"))
+data("blackcap")
+chk <- fitme(migStatus ~ 1+ Matern(1|latitude+longitude), fixed=list(lambda=2), data=blackcap)
+if (how(chk, verbose=FALSE)$switches[["augZXy_cond"]]) stop("y-augmented method used with fixed lambda.")
 
 #cat("\ntest no fixef, pw & REMLformula, by augZXy:\n")
-if(requireNamespace("lme4", quietly = TRUE)
-   && spaMM.getOption("example_maxtime")>0.7) { # but it's faster than that.)
-  data("sleepstudy",package = "lme4")
-  oldopt <- spaMM.options(allow_augZXy=FALSE)
-  (fit <- fitme(Reaction ~ 0 + (1|Subject), data = sleepstudy))
-  set.seed(123)
-  sleepstudy$pw <- 1 + runif(180)
-  (fit <- fitme(Reaction ~ 0 + (1|Subject), data = sleepstudy, prior.weights=pw))
-  spaMM.options(allow_augZXy=2)
-  (fit <- fitme(Reaction ~ 0 + (1|Subject), data = sleepstudy, prior.weights=pw))
-  (fit <- fitme(Reaction ~ 0 + (1|Subject), data = sleepstudy, prior.weights=pw, REMLformula=Reaction ~ 1 + (1|Subject), method="REML"))
-  spaMM.options(allow_augZXy=FALSE)
-  (fit <- fitme(Reaction ~ 0 + (1|Subject), data = sleepstudy, prior.weights=pw, REMLformula=Reaction ~ 1 + (1|Subject), method="REML"))
-  spaMM.options(oldopt) # spaMM.options(allow_augZXy=NULL)
-  # works also with .HLfit_body_augZXy_W()
+if (FALSE) { # old tests of functionality. May be useful for later devels
+  if(requireNamespace("lme4", quietly = TRUE)) { # but it's faster than that.)
+    data("sleepstudy",package = "lme4")
+    oldopt <- spaMM.options(allow_augZXy=FALSE)
+    (fit <- fitme(Reaction ~ 0 + (1|Subject), data = sleepstudy))
+    set.seed(123)
+    sleepstudy$pw <- 1 + runif(180)
+    (fit <- fitme(Reaction ~ 0 + (1|Subject), data = sleepstudy, prior.weights=pw))
+    spaMM.options(allow_augZXy=2) # no longer quite effective ?
+    (fit <- fitme(Reaction ~ 0 + (1|Subject), data = sleepstudy, prior.weights=pw))
+    (fit <- fitme(Reaction ~ 0 + (1|Subject), data = sleepstudy, prior.weights=pw, REMLformula=Reaction ~ 1 + (1|Subject), method="REML"))
+    spaMM.options(allow_augZXy=FALSE)
+    (fit <- fitme(Reaction ~ 0 + (1|Subject), data = sleepstudy, prior.weights=pw, REMLformula=Reaction ~ 1 + (1|Subject), method="REML"))
+    spaMM.options(oldopt) # spaMM.options(allow_augZXy=NULL)
+    # works also with .HLfit_body_augZXy_W()
+  }
 }
 
 
