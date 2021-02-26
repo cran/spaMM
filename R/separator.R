@@ -73,6 +73,7 @@
     x.bar <- y.bar * x
     
     op <- OP(colSums(x.bar))
+    if (inherits(x.bar,"sparseMatrix")) x.bar <- as.matrix(x.bar) ## bc L_constraint does not handle sparse...
     constraints(op) <- L_constraint(L = x.bar, dir = leq(n), rhs = double(n))
     bounds(op) <- V_bound(lb = rep.int(-Inf, p), ub = rep.int(Inf, p))
     

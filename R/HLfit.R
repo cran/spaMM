@@ -128,12 +128,10 @@ HLfit <- function(formula,
   return(hlfit)
 }
 
-`HLfit.obj` <- function(ranefParsVec,skeleton,objective=processed$objective,processed,...) { ## name of first arg MUST differ from names in dotlist...
-  mc <- match.call(expand.dots=TRUE) ## (1) expand.dots added 11/04/2014 for the multinomial... eval 
-
-  if (is.null(processed)) { stop("Call to HLfit.obj() without a 'processed' argument is invalid") } 
+`HLfit.obj` <- function(ranefParsVec, skeleton, objective=processed$objective, processed, ranFix=list(), ...) { ## name of first arg MUST differ from names in dotlist...
 
   if (  is.list(processed))  { ## "multiple" processed list 
+    mc <- match.call(expand.dots=TRUE) 
     ## RUN THIS LOOP and return
     fitlist <- lapply(seq_len(length(processed)), function(it){
       locmc <- mc
@@ -144,43 +142,44 @@ HLfit <- function(formula,
     }) ## a pure list of HLfit objects
     resu <- sum(unlist(fitlist))
     return(resu)
-  } else { ## there is one processed for a single data set 
-    family <- processed$family
-    data <- processed$data
-  }
+  } #else there is one processed for a single data set 
+
+  ranefParsList <- relist(ranefParsVec, skeleton)
+  ranFix <- .modify_list(ranFix, ranefParsList)
+  rpType <- .modify_list(attr(ranFix, "type"), attr(skeleton, "type"))
+  attr(ranFix, "type") <- rpType
   if (processed$augZXy_cond) { 
-    HLnames <- names(formals(.HLfit_body_augZXy))
-    HLfit.call <- mc[c(1L,which(names(mc) %in% HLnames))] ## keep the call structure
-    HLfit.call[[1L]] <- get(.spaMM.data$options$augZXy_fitfn, asNamespace("spaMM"))
+    hlfit <- eval(call(.spaMM.data$options$augZXy_fitfn, processed=processed, ranFix=ranFix)) # .HLfit_body_augZXy has only these two arguments
+    aphls <- hlfit$APHLs
+    resu <- aphls[[objective]]
+    if (objective=="cAIC") resu <- - resu ## for minimization of cAIC (private & experimental)
+    if (resu>processed$augZXy_env$objective) {
+      processed$augZXy_env$objective <- resu
+      processed$augZXy_env$phi_est <- aphls[["phi_est"]]
+    }
   } else {
+    print_phiHGLM_info <- ( ! is.null(processed$residProcessed) && processed$verbose["phifit"])  
+    if (print_phiHGLM_info) {
+      # set a 'prefix' for the line to be printed for each iteration of the phi fit when outer optimization is used for the main response. 
+      # In that case a *distinct line* of the form HLfit for <outer opt pars>: phi fit's iter=<say up to 6>, .phi[1]=... 
+      # is written for each call of the outer objfn (=> multi-line output).
+      # Currently there is no such 'prefix' for mv (_F I X M E_)
+      # That would require checking processed$residProcesseds (with -'s') and some further effort.
+      urP <- unlist(.canonizeRanPars(ranefParsList, corr_info=processed$corr_info,checkComplete=FALSE, rC_transf=.spaMM.data$options$rC_transf))
+      processed$port_env$prefix <- paste0("HLfit for ", paste(signif(urP,6), collapse=" "), ": ")
+    } 
     # since there is a $processed, we can call HLfit_body here (with HLnames <- names(formals(HLfit_body))), rather than HLfit
     # The main difference is a more definite selection of arguments in the HLfit_body() call through HLfit()
     # and the call to .check_conv_glm_reinit()
+    mc <- match.call(expand.dots=TRUE) 
     HLnames <- names(formals(HLfit))
     HLfit.call <- mc[c(1L,which(names(mc) %in% HLnames))] ## keep the call structure
+    HLfit.call$ranFix <- ranFix
     HLfit.call[[1L]] <- get("HLfit", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
+    hlfit <- eval(HLfit.call)
+    resu <- hlfit$APHLs[[objective]]
+    if (print_phiHGLM_info) cat(paste0(objective,"=",resu)) # verbose["phifit"]
+    if (objective=="cAIC") resu <- - resu ## for minimization of cAIC (private & experimental)
   } 
-  ranefParsList <- relist(ranefParsVec,skeleton)
-  print_phiHGLM_info <- ( ! is.null(processed$residProcessed) && processed$verbose["phifit"]) ## ___FIME___ need code for printing in mv
-  if (print_phiHGLM_info) {
-    urP <- unlist(.canonizeRanPars(ranefParsList, corr_info=processed$corr_info,checkComplete=FALSE, rC_transf=.spaMM.data$options$rC_transf))
-    processed$port_env$prefix <- paste0("HLfit for ", paste(signif(urP,6), collapse=" "), ": ")
-  } 
-  ranFix <- .modify_list(HLfit.call$ranFix, ranefParsList)
-  rpType <- .modify_list(attr(HLfit.call$ranFix,"type"),attr(skeleton,"type"))
-  moreargs <- attr(skeleton,"moreargs") 
-  # removed 'ranPars$resid' code here [ v3.5.52
-  HLfit.call$ranFix <- structure(ranFix, type=rpType) 
-  hlfit <- eval(HLfit.call)
-  aphls <- hlfit$APHLs
-  resu <- aphls[[objective]]
-  if (print_phiHGLM_info) cat(paste0(objective,"=",resu)) # verbose["phifit"]
-  if (objective=="cAIC") resu <- - resu ## for minimization of cAIC (private & experimental)
-  if (processed$augZXy_cond && resu>processed$augZXy_env$objective) {
-    processed$augZXy_env$objective <- resu
-    processed$augZXy_env$phi_est <- aphls[["phi_est"]]
-  }
-  lsv <- c("lsv",ls())
-  rm(list=setdiff(lsv,"resu"))
   return(resu) #
 }

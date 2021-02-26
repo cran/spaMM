@@ -75,7 +75,7 @@ All arguments except \code{strict} are common to these functions and their \code
   \item{model}{a logical value indicating whether \emph{model frame}
     should be included as a component of the returned value.}
     
-  \item{method}{A 2-elements vector specifying first the method to be used by \code{spaMM_glm} in the firt attempt at fitting the model, second the method to be used in a second attempt if the first failed. Possible methods include those shown in the default, \code{"model.frame"}, which returns the model frame and does no fitting, or user-supplied fitting functions. These functions can be supplied either as a function or a character string naming a function, with a function which takes the same arguments as \code{glm.fit}.  
+  \item{method}{A 2-elements vector specifying first the method to be used by \code{spaMM_glm} in the first attempt to fit the model, second the method to be used in a second attempt if the first failed. Possible methods include those shown in the default, \code{"model.frame"}, which returns the model frame and does no fitting, or user-supplied fitting functions. These functions can be supplied either as a function or a character string naming a function, with a function which takes the same arguments as \code{glm.fit}.  
   }
   
 

@@ -18,7 +18,7 @@
   }
   #
   allvars <- unique(.unlist(allvarsS))
-  locdata <- .get_locdata(newdata, allvars, object) # *seems* always required (cf when newdata is not a data frame)
+  locdata <- .get_locdata(newdata=newdata, locvars=allvars, object=object, variances=variances) # *seems* always required (cf when newdata is not a data frame)
   ## matching ranef terms of re.form
   if (length(object$ZAlist)) { 
     re.form_allows_ranefs <- ( is.null(re.form) || any( ! sapply(re.formS, .noRanef))) # but there may still be no ranef if no ranef in object's formula
@@ -99,7 +99,7 @@
                                 ## This is controlled by package option 'uGeo_levels_type' (default = "mf" as the most explicit; using ".ULI" appears OK).
                                 ## The sames functions are called with the same arguments for predict with newdata.
                                 ##
-                                ## This means that if there are repeated geo positions in the newdata (-> new_mf_ranef) 
+                                ## This means that if there are repeated geo positions in the newdata 
                                 ## we save the time of trying to find them (which perhaps is less justifiable in mv case? __FIXME__)
                                 corrMats_info=object$strucList, ## use is to provide info about levels in .calc_ZMatrix()
                                 old_ZAlist=object$ZAlist, newinold=newinold, # barlist=barlist, 
@@ -117,7 +117,7 @@
           newZlist[[new_rd]] <- structure(.Dvec_times_Matrix(newrd_in_obs, newZlist[[new_rd]]),
                                           is_incid=attr(newZlist[[new_rd]],"is_incid"))
         }
-        amatrices <- .get_new_AMatrices(object, new_mf_ranef=ranefdata) # .calc_newFrames_ranef(formula=ranef_form,data=ranefdata,fitobject=object)$mf)
+        amatrices <- .get_new_AMatrices(object, newdata=ranefdata) # .calc_newFrames_ranef(formula=ranef_form,data=ranefdata,fitobject=object)$mf)
         ## ! complications:
         ## even if we used perm_Q for Matern, the permutation A matrix should not be necessary 
         ##  in building the new correlation matrix, although it night be used as well 

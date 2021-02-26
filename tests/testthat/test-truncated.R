@@ -1,7 +1,5 @@
 cat(crayon::yellow("\ntest truncated families:\n"))
 
-environment(fit2$family$aic)
-
 data(scotlip)
 
 fitT <- fitme(I(1+cases)~1+(1|id),family=Tnegbin(),fixed=list(lambda=0.1),data=scotlip)
@@ -17,7 +15,7 @@ set.seed(123)
 simulate(fit2,nsim=3)
 
 ## check simulation and estimation:
-if (spaMM.getOption("example_maxtime")>105) { # (~twice longer by spprec)
+if (spaMM.getOption("example_maxtime")>60) { # (~ and twice longer by spprec)
   data("Loaloa")
   lll <- Loaloa
   lll$ID <- seq(nrow(lll))

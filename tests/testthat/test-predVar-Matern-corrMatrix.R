@@ -38,7 +38,10 @@ if (spaMM.getOption("example_maxtime")>0.7) { ##  not based on real timing
     testthat::expect_true(diff(range(c(predict(f1, newdata=f1$data[1,]), predict(f2, newdata=f1$data[1,]), predict(f3, newdata=f1$data[1,]),
                                        predict(f4, newdata=f1$data[1,]), predict(f5, newdata=f1$data[1,]), predict(f6, newdata=f1$data[1,]), 
                                        predict(f7, newdata=f1$data[1,]))))<1e-5)  
-    
+    #  I once had a problem with perm_Q=TRUE in test-predVar-Matern-corrMatrix -> predict(f2,.) 
+    # so make sure to check this when changing relevant code. Seems OK now.
+    # New ZA was Z_1x1 * A_nxn[identified row] -> 1xn and cov_newLv_oldv_list was 1xn
+    # so the product failed. The new ZA should instead be 1x1.
     (c4a <- get_predVar(f4,variances=list(cov=TRUE))[3:2,3:2])
     (c4b <- get_predVar(f4,newdata=f4$data[c(3,2),],variances=list(cov=TRUE)))
     (c1 <- get_predVar(f1,newdata=f4$data[c(3,2),],variances=list(cov=TRUE)))

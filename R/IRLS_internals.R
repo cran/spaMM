@@ -89,26 +89,30 @@
   )
   # optional *single* "v_in_b" IRLS for given beta REPLACES the previous one
   if (rescue && is.null(v_infer_args) && # loc_LevMar_step != "b_&_v_in_b" && ## not already "strict_v|b", V_IN_B or v_in_b
-      ((breakcond <- damped_WLS_blob$breakcond)=="stuck_obj" || breakcond=="div_gain") ## suspect fit: if they are *both* low, the fit is presumably good
+  #      ...                                                ||    proving specifically useful for COMPoisson fits    
+      ((breakcond <- damped_WLS_blob$breakcond)=="div_gain" || (breakcond=="stuck_obj" && loc_LevMar_step=="v"))
   ) { # coefficients do not move despite evidence that they should:
     # then we know that the heuristic procedure fails, and we will use the rigorous one;
     # But before that we perform a correct HL11 fit for the current beta (v_in_b truncated by damping=Inf argument):
     v_infer_args <- constant_v_infer_args
     v_infer_args$looseness <- .spaMM.data$options$spaMM_tol$loose_resc 
-    ## this use the damped_WLS_fn function but in a way that does not call anny outer damping loop
+    ## this use the damped_WLS_fn function but in a way that does not call any outer damping loop
+    #save_damping <- damped_WLS_blob$damping
     damped_WLS_blob <- 
       damped_WLS_fn(v_infer_args=v_infer_args, 
                     which_LevMar_step="strict_v|b", # for v_in_b ! # "v_b" neither handled nor really meaningful when damping=Inf
                     outer=TRUE,
                     damping=Inf, ## there are comparisons of damping to numerical values
-                    stylefn=.spaMM.data$options$stylefns$rescue,
+                    stylefn=.spaMM.data$options$stylefns$rescue,  # typically crayon::red
                     ...)
     attr(damped_WLS_blob,"step") <- "rescue"
+    #damped_WLS_blob$damping <- save_damping
   }
   return(damped_WLS_blob)
 }
 
 .calc_Xscal_newscaled <- function(newXscal, newZAL_scaling, ZAL, which_i_affected_rows, n_u_h, seq_n_u_h, processed) {
+  if (inherits(ZAL,"ZAXlist")) ZAL <- .ad_hoc_cbind(ZAL@LIST, as_matrix=.eval_as_mat_arg(processed) )
   if (TRUE) { ## alternative clause shows the meaning, but this version is distinctly faster. 
     scaledZAL <- .m_Matrix_times_Dvec(ZAL, newZAL_scaling)
     if (inherits(ZAL,"Matrix")) {
@@ -164,18 +168,18 @@
 }
 
 .wrap_v_h_IRLS <- function(v_h, beta_eta, seq_n_u_h, GLMMbool, wranefblob, 
-                           constant_u_h_v_h_args, updateW_ranefS_constant_arglist, v_infer_args, Trace, IRLS_fn) {
+                           constant_u_h_v_h_args, updateW_ranefS_subarglist, v_infer_args, Trace, IRLS_fn) {
   if (GLMMbool) {
     u_h <- v_h 
     newwranefblob <- wranefblob ## keep input wranefblob since GLMM and lambda_est not changed
   } else {
     u_h_v_h_from_v_h_args <- c(constant_u_h_v_h_args,list(v_h=v_h))
     u_h <- do.call(".u_h_v_h_from_v_h",u_h_v_h_from_v_h_args)
-    if ( ! is.null(attr(u_h,"v_h"))) { ## second test = if u_h_info$upper.v_h or $lower.v_h non NULL
+    if ( ! is.null(attr(u_h,"v_h"))) { ## second test = if constant_u_h_v_h_args$upper.v_h or $lower.v_h non NULL
       v_h <- attr(u_h,"v_h")
     }
     ## update functions u_h,v_h
-    newwranefblob <- do.call(".updateW_ranefS",c(updateW_ranefS_constant_arglist,list(u_h=u_h,v_h=v_h)))
+    newwranefblob <- do.call(".updateW_ranefS",c(updateW_ranefS_subarglist,list(u_h=u_h,v_h=v_h)))
   } 
   #
   v_infer_args$wranefblob <- newwranefblob

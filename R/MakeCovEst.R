@@ -114,30 +114,18 @@
     if (as_matrix) {
       template <- as.matrix(template)
     } else {
-      template <- drop0(template) ## LHS is *M*atrix in all cases
+      #if ( ! inherits(template,"sparseMatrix")) stop()
+      if (any(Lcompact==0L)) template <- drop0(template) ## LHS is *M*atrix in all cases    
       if ( inherits(Lcompact,"dtCMatrix")) {
         template <- as(template,"dtCMatrix")
       } else if ( inherits(Lcompact,"dsCMatrix")) template <- forceSymmetric(template)
     } 
     return(template) 
   } else {
-    n_levels <- longsize/ncol(Lcompact)
-    if (longsize>180L) {
-      longLv <- Diagonal(n=longsize) ## declaration ## FIXME with some effort, we could produce better sparse code.
-    } else longLv <- diag(nrow=longsize) ## declaration
-    for (it in seq_len(ncol(Lcompact))) {
-      urange1 <- (it-1)*n_levels + seq(n_levels)
-      longLv[cbind(urange1,urange1)] <- Lcompact[it,it]
-      for (jt in seq_len(it-1)) {
-        urange2 <- (jt-1)*n_levels + seq(n_levels)
-        longLv[cbind(urange1,urange2)] <- Lcompact[it,jt]
-        longLv[cbind(urange2,urange1)] <- Lcompact[jt,it]
-      }
-    }
+    longLv <- .C_makelong(Lcompact, longsize) ## efficient, sparse matrix code replaces in v3.6.39 previous R code.
     if (as_matrix) {
       longLv <- as.matrix(longLv)
     } else {
-      longLv <- drop0(longLv) ## drop0() returns a *M*atrix
       if ( inherits(Lcompact,"dtCMatrix")) { 
         longLv <- as(longLv,"dtCMatrix")
       } else if ( inherits(Lcompact,"dsCMatrix")) { 
@@ -147,7 +135,6 @@
     }
     return(longLv) 
   }
-  #return(longLv)
 } ## end def makelong
 
 .makeCovEst1 <- function(u_h,ZAlist,cum_n_u_h,prev_LMatrices,
@@ -202,9 +189,8 @@
           ####################################################################################################
           n_u_h <- length(u_h)
           # we don't want anything specific on u_h values:
-          locwranefblob <- .updateW_ranefS(processed$cum_n_u_h, processed$rand.families, lambda=loc_lambda_est, 
-                                           u_h=rep(NA,n_u_h),v_h=rep(NA,n_u_h)) ## indeed
-          ZAL_scaling <- 1/sqrt(locwranefblob$w.ranef*H_global_scale) ## Q^{-1/2}/s
+          w.ranef <- 1/loc_lambda_est # call to .updateW_ranefS() reduced to this for v3.6.39
+          ZAL_scaling <- sqrt(loc_lambda_est/H_global_scale) # sqrt(w.ranef*H_global_scale) ## Q^{-1/2}/s
           Xscal <- .make_Xscal(ZAL=locZAL, ZAL_scaling = ZAL_scaling, AUGI0_ZX=processed$AUGI0_ZX)
           if (inherits(Xscal,"Matrix")) { # same type as ZAL
             mMatrix_method <- .spaMM.data$options$Matrix_method
@@ -212,12 +198,13 @@
             mMatrix_method <- .spaMM.data$options$matrix_method
           }
           sXaug <- do.call(mMatrix_method,
-                           list(Xaug=Xscal, weight_X=weight_X, w.ranef=locwranefblob$w.ranef, H_global_scale=H_global_scale))
+                           list(Xaug=Xscal, weight_X=weight_X, w.ranef=w.ranef, H_global_scale=H_global_scale))
           ####################################################################################################
         } else sXaug <- NULL
         if ( ! augZXy_cond || test) {
           ####################################################################################################
-          locw.ranefSblob <- .updateW_ranefS(cum_n_u_h,processed$rand.families,lambda=loc_lambda_est,u_h,v_h) 
+          W_ranefS_constant_args <- processed$reserve$W_ranefS_constant_args
+          locw.ranefSblob <- do.call(".updateW_ranefS",c(W_ranefS_constant_args, list(u_h=u_h,v_h=v_h,lambda=loc_lambda_est)))
           locarglist <- c(MakeCovEst_pars_not_ZAL_or_lambda, list(ZAL=locZAL, lambda_est=loc_lambda_est, wranefblob=locw.ranefSblob))
           # it would be really nonsense to compute the objective for constant u_h;
           ## the u_h should be evaluated at the BLUPs (or equivalent) for given parameters
@@ -281,9 +268,9 @@
                                 template=processed$ranCoefs_blob$longLv_templates[[rt]]) ## il faut updater pour estimer les ranef correctement...
       attr(next_LMatrix,"latentL_blob") <- latentL_blob ## kept for updating in next iteration and for output
       attr(next_LMatrix,"trRancoef") <- optr$solution ## kept for updating in next iteration and for output
-      attr(next_LMatrix,"ranefs") <-  structure(attr(ZAlist,"exp_ranef_strings")[rt], 
-                                                ## type is "(.|.)" if LMatrix is for random slope ## ajout 2015/06
-                                                type= attr(ZAlist,"exp_ranef_types")[rt] )
+      ranef_info <- attr(ZAlist,"exp_ranef_strings")[rt]
+      attr(ranef_info, "type") <- attr(ZAlist,"exp_ranef_types")[rt]## type is "(.|.)" if LMatrix is for random slope ## ajout 2015/06
+      attr(next_LMatrix,"ranefs") <-  ranef_info
       attr(next_LMatrix, "corr.model") <- "random-coef"
       updated_LMatrices[[rt]] <- next_LMatrix # (fixme ??) working_LMatrices[[rt]] <-
       ### in the HLfit6 example, one element of compactcovmat appears to move without affecting logL, preventing compactcovmat convergence

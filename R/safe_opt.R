@@ -1,38 +1,34 @@
+.get_bobyqa_controls <- function(init, upper, lower, maxeval_corr=.spaMM.data$options$maxeval_corr) {
+  bobyqa_controls <- .spaMM.data$options$bobyqa
+  if (is.null(bobyqa_controls$npt)) bobyqa_controls$npt <- 2*length(init)+1L
+  if (is.null(bobyqa_controls$rhobeg)) bobyqa_controls$rhobeg <- .spaMM.data$options$bobyqa_rhofn(lower,upper)
+  if (is.null(bobyqa_controls$rhoend)) bobyqa_controls$rhoend <- bobyqa_controls$rhobeg*1e-8 # bobyqa's default is rhobeg*1e-6 which is unsafe in the test_rC_transf sph case
+  if (is.null(bobyqa_controls$maxfun)) {
+    bobyqa_controls$maxfun <- max(2*( eval(.spaMM.data$options$maxeval,envir=list(initvec=init)))*maxeval_corr,
+                                  1+10*length(init)^2) # bobyqa will complain if not > second value
+  }
+  bobyqa_controls
+}
+
+.get_nloptr_controls <- function(init, LowUp, maxeval_corr=.spaMM.data$options$maxeval_corr) {
+  nloptr_controls <- .spaMM.data$options$nloptr
+  if (is.null(nloptr_controls$maxeval)) nloptr_controls$maxeval <-  eval(.spaMM.data$options$maxeval,list(initvec=init))*maxeval_corr
+  if (is.null(nloptr_controls$xtol_abs)) nloptr_controls$xtol_abs <- eval(.spaMM.data$options$xtol_abs, 
+                                                                          list(LowUp=LowUp, rC_transf=.spaMM.data$options$rC_transf))
+  if (is.null(nloptr_controls$xtol_abs)) nloptr_controls$xtol_abs <- 1e-12
+  #nloptr_controls$print_level <- 3L # can be controlled by spaMM.options()!
+  nloptr_controls
+}
+
 .safe_opt <- function(init, objfn, lower, upper, verbose, maxeval_corr=.spaMM.data$options$maxeval_corr, 
                       recheck_at_bound=.spaMM.data$options$recheck_at_bound, 
                       adjust_init=list(), 
-                      LowUp=list(), # default deals with absence of argument in .safe_opt() calls in Infusion 
-                      # ___F I X M E___ in this order:
-                      # => update spaMM on CRAN => update Infusion to require latest spaMM
-                      # => possible to put explicit LowUp=list() args in .safe_opt() calls in Infusion 
-                      # => possible to remove the default here => safer code that forces programmer to think about argument
+                      LowUp,  
                       ...) { # minimization
   names_init <- names(init) # may be lost in later operations
   prevmin <- Inf
-  delayedAssign("bobyqa_controls", {
-    bobyqa_controls <- spaMM.getOption("bobyqa")
-    if (is.null(bobyqa_controls$npt)) bobyqa_controls$npt <- 2*length(init)+1L
-    if (is.null(bobyqa_controls$rhobeg)) bobyqa_controls$rhobeg <- min(0.95, 0.2*min(upper-lower)) # <0.95
-    if (is.null(bobyqa_controls$rhoend)) bobyqa_controls$rhoend <- bobyqa_controls$rhobeg*1e-8 # bobyqa's default is rhobeg*1e-6 which is unsafe in the test_rC_transf sph case
-    if (is.null(bobyqa_controls$maxfun)) {
-      bobyqa_controls$maxfun <- max(2*( eval(.spaMM.data$options$maxeval,envir=list(initvec=init)))*maxeval_corr,
-                                    1+10*length(init)^2) # bobyqa will complain if not > second value
-    }
-    bobyqa_controls
-  })
-  delayedAssign("nloptr_controls", {
-    nloptr_controls <- spaMM.getOption("nloptr") 
-    # next lines double-code the defaults... we need a default_options object _F I X M E_
-    # if (is.null(nloptr_controls$algorithm)) algorithm <- "NLOPT_LN_BOBYQA" 
-    # if (is.null(nloptr_controls$xtol_rel)) xtol_rel <- 5e-6 
-    # if (is.null(nloptr_controls$print_level)) print_level <- 0
-    if (is.null(nloptr_controls$maxeval)) nloptr_controls$maxeval <-  eval(.spaMM.data$options$maxeval,list(initvec=init))*maxeval_corr
-    if (is.null(nloptr_controls$xtol_abs)) nloptr_controls$xtol_abs <- eval(.spaMM.data$options$xtol_abs, 
-                                                                            list(LowUp=LowUp, rC_transf=.spaMM.data$options$rC_transf))
-    if (is.null(nloptr_controls$xtol_abs)) nloptr_controls$xtol_abs <- 1e-12
-    #nloptr_controls$print_level <- 3L # can be controlled by spaMM.options()!
-    nloptr_controls
-  })
+  delayedAssign("bobyqa_controls", .get_bobyqa_controls(init, upper, lower, maxeval_corr))
+  delayedAssign("nloptr_controls", .get_nloptr_controls(init, LowUp, maxeval_corr))
   use_bobyqa <- (min(c(init-lower,upper-init))<1e-4)
   while (TRUE) {
     if (use_bobyqa) {

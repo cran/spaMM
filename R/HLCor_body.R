@@ -99,7 +99,7 @@ HLCor_body <- function(processed, ## single environment
   ranPars <- .canonizeRanPars(ranPars=ranPars, corr_info=processed$corr_info, rC_transf=.spaMM.data$options$rC_transf) ## with init.HLfit as attribute # expands hyper params.
   ########################################################################################################################
   # * assigns geo_envir <- .get_geo_info(...)
-  # * modifies processed$AUGI0_ZX$envir by .init_precision_info(...) 
+  # * modifies processed$AUGI0_ZX$envir by .init_AUGI0_ZX_envir_spprec_info(...) 
   # * computes processed$AUGI0_ZX$envir$LMatrices except for ranCoefs (the latter being filled in HLfit_body)
   .assign_geoinfo_and_LMatrices_but_ranCoefs(processed, corr_types, spatial_terms, ranPars, control.dist, 
                                 argsfordesignL=dotlist[intersect(names(dotlist),names(formals(mat_sqrt)))] )
@@ -201,8 +201,13 @@ HLCor_body <- function(processed, ## single environment
   HLnames <- (c(HLCor.formals,names_formals_HLfit,designL.formals,makescaled.formals))  ## cf parallel code in corrHLfit
   HLCor.call <- mc[c(1,which(names(mc) %in% HLnames))] ## keep the call structure
   ranefParsList <- relist(ranefParsVec,skeleton)
-  print_phiHGLM_info <- ( ! is.null(processed$residProcessed) && processed$verbose["phifit"]) ## ___FIME___ need code for printing in mv
+  print_phiHGLM_info <- ( ! is.null(processed$residProcessed) && processed$verbose["phifit"]) 
   if (print_phiHGLM_info) {
+    # set a 'prefix' for the line to be printed for each iteration of the phi fit when outer optimization is used for the main response. 
+    # In that case a *distinct line* of the form HLCor for <outer opt pars>: phi fit's iter=<say up to 6>, .phi[1]=... 
+    # is written for each call of the outer objfn (=> multi-line output).
+    # Currently there is no such 'prefix' for mv (_F I X M E_)
+    # That would require checking processed$residProcesseds (with -'s') and some further effort.
     urP <- unlist(.canonizeRanPars(ranefParsList, corr_info=processed$corr_info,checkComplete=FALSE, rC_transf=.spaMM.data$options$rC_transf))
     processed$port_env$prefix <- paste0("HLCor for ", paste(signif(urP,6), collapse=" "), ": ")
   } 

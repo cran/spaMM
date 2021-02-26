@@ -19,8 +19,9 @@
     est_and_fix <- names(which(!is.na(object$fixef))) ## estimated + etaFix$beta
     validnames <- intersect(colnames(newMeanFrames$X) ,est_and_fix) # would be colnames(newMeanFrames$X) when there is no NA if object$fixef. would validnames=est_and_fix suffice ?
   }
-  if (length(validnames)==0L) validnames <- c() ## without this, validnames could be character(0) and [,validnames,drop=FALSE] fails.
-  etaFix <-  drop(newMeanFrames$X[,validnames,drop=FALSE] %*% object$fixef[validnames]) ## valid even if ncol(newMeanFrames$X) = 0
+  if (length(validnames)) {
+    etaFix <-  drop(newMeanFrames$X[,validnames,drop=FALSE] %*% object$fixef[validnames]) ## valid even if ncol(newMeanFrames$X) = 0
+  } else etaFix <- rep(0, nrow(newMeanFrames$X))
   off <- model.offset( newMeanFrames$mf) ### look for offset from (ori)Formula 
   if ( ! is.null(off)) etaFix <- etaFix + off   
   return(etaFix)
@@ -107,8 +108,6 @@
 }
 
 .calc_ZAlist_newdata <- function(object, newdata) {
-  ## newdata and re.form to handle
-  #   ## [-2] so that HLframes does not try to find the response variables  
   # we simulate with all ranefs (treated conditionnally|ranef or marginally) hence 
   # * we need design matrices for all ranefs
   # * we need values of all the original variables
@@ -124,7 +123,7 @@
     Zlist <- .calc_Zlist(exp_ranef_terms=exp_ranef_terms, data=newdata, rmInt=0L, drop=TRUE,sparse_precision=FALSE,
                          corrMats_info=object$strucList,
                          lcrandfamfam=attr(object$rand.families,"lcrandfamfam"))
-    amatrices <- .get_new_AMatrices(object,new_mf_ranef=newdata) # .calc_newFrames_ranef(formula=old_ranef_form,data=newdata, fitobject=object)$mf)
+    amatrices <- .get_new_AMatrices(object,newdata=newdata) # .calc_newFrames_ranef(formula=old_ranef_form,data=newdata, fitobject=object)$mf)
     newZAlist <- .calc_normalized_ZAlist(Zlist=Zlist,
                                          AMatrices=amatrices,
                                          vec_normIMRF=object$ranef_info$vec_normIMRF, 
@@ -141,7 +140,7 @@
       Zlist <- .calc_Zlist(exp_ranef_terms=exp_ranef_terms_it, data=newdata, rmInt=0L, drop=TRUE,sparse_precision=FALSE,
                            corrMats_info=object$strucList[rd_in_mv],
                            lcrandfamfam=attr(object$rand.families,"lcrandfamfam")[rd_in_mv])
-      amatrices <- .get_new_AMatrices(object,new_mf_ranef=newdata) # .calc_newFrames_ranef(formula=old_ranef_form,data=newdata, fitobject=object)$mf)[rd_in_mv]
+      amatrices <- .get_new_AMatrices(object,newdata=newdata) # .calc_newFrames_ranef(formula=old_ranef_form,data=newdata, fitobject=object)$mf)[rd_in_mv]
       ZAlist_it <- .calc_normalized_ZAlist(Zlist=Zlist,
                                            AMatrices=amatrices,
                                            vec_normIMRF=object$ranef_info$vec_normIMRF,

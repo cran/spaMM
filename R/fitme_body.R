@@ -79,6 +79,10 @@ fitme_body <- function(processed,
     for (nam in names(moreargs)) control.dist[[nam]] <- moreargs[[nam]]$control.dist 
     HLCor.args[["control.dist"]] <- control.dist ## always reconstructed locally, not in the fitme_body call
     HLCor.args$ranPars <- fixed ## to be modified by objective function
+  # } else if (processed$augZXy_cond) { # an interesting experiment, but not consistently used as replacement for HLfit.obj throughout spaMM)
+  #   HLcallfn.obj <- ".augZXy_obj"
+  #   HLcallfn <- "HLfit"
+  #   HLCor.args$ranFix <- fixed  
   } else {
     HLcallfn.obj <- "HLfit.obj"
     HLcallfn <- "HLfit"
@@ -181,6 +185,7 @@ fitme_body <- function(processed,
       attr(logLapp,"method") <- "  logL (smoothed)" 
       hlcor$APHLs$logLapp <- logLapp
     }
+    hlcor$warnings$suspectRho <- .check_suspect_rho(corr_types, ranPars_in_refit, LowUp)
     if ( ! is.null(PQLdivinfo <- processed$envir$PQLdivinfo)) {
       hlcor$divinfo <- PQLdivinfo
       hlcor$warnings$divinfo <- "Numerical issue detected; see div_info(<fit object>) for more information."

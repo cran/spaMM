@@ -14,7 +14,7 @@
     rhs <- d2hdv2_info$chol_Q %*% rhs
     rhs <- solve(d2hdv2_info$G_CHMfactor,rhs)
     inv_D2hdv2_rhs <- - .crossprod(d2hdv2_info$chol_Q,rhs) # inv_D2hdv2 in - t(chol_Q).inv(G).chol_Q
-  } else { ## call on an spprec fit may reach here as .calc_d2hdv2_info -> -.crossprodCpp(as.matrix(factor_inv_Md2hdv2), yy = NULL) provides inv_d2hdv2 as a matrix.
+  } else { ## call on an spprec fit may reach here as .calc_d2hdv2_info -> -.crossprodCpp_d(as.matrix(factor_inv_Md2hdv2), yy = NULL) provides inv_d2hdv2 as a matrix.
     if (inherits(d2hdv2_info,"dsCMatrix")) {
       d2hdv2_info <- as(d2hdv2_info,"dgeMatrix") ## more efficient if inv_d2hdv2 is math-dense
     }

@@ -82,18 +82,18 @@
       }
       resu <- as(resu,"sparseMatrix") # previously broke test twolambda vs onelambda by effect on nearly singular matrix:
       # ...by changing the twolambda result.
-      # # Without it I haD two messages : 
+      # # Without it I had two messages : 
       # 1: In .calc_logdisp_cov(object, dvdloglamMat = dvdloglamMat, dvdlogphiMat = dvdlogphiMat,  :
       # Numerical precision issue in computation of the information matrix for dispersion parameters:
       #   the prediction variance may be inaccurate.
       # 2: In .force_solve(logdispInfo) : The matrix looks exactly singular.
-      # # While with it I haD only the first message, and a result less consistent with onelambda
+      # # While with it I had only the first message, and a result less consistent with onelambda
       # Alternatively to the present conversion, 
       # I could reproduce these two symptoms (only the first message, and a result less consistent) 
-      # by calling .crossprodCpp in .calc_invV_factors() -> .crossprod(ZAfix, wrZ)
+      # by calling .crossprodCpp_d in .calc_invV_factors() -> .crossprod(ZAfix, wrZ)
       # (as tested by hacking the return value of  the single call to .crossprod() in this get_predVar() test)
       # and the only impact of the .crossprod() is here to change the numerical precision of the $r_x_n element in the 
-      # return value of .calc_invV_factors() by effects of order 1e-13 (this element being dgeMatrix whether .crossprodCpp was called or not).
+      # return value of .calc_invV_factors() by effects of order 1e-13 (this element being dgeMatrix whether .crossprodCpp_d was called or not).
       object$envir$invL <- resu
     }
     return(object$envir$invL) # May be Diagonal() => calling code must handle that case.
@@ -257,7 +257,7 @@ ranef.HLfit <- function(object,type="correlated",...) {
   }
   names(RESU) <- ranefs
   class(RESU) <- c("ranef", "list")
-  RESU ## TODO: ~lme4:::ranef.merMod(mod, condVar = TRUE) & ajouter des arguments "variances" et "intervals" à ta fonction ranef() (Alex 7/5/2018)
+  RESU ## __F I X M E__ TODO: ~lme4:::ranef.merMod(mod, condVar = TRUE) & ajouter des arguments "variances" et "intervals" à ta fonction ranef() (Alex 7/5/2018)
 }
 
 print.ranef <- function(x, max.print=40L, ...) {
@@ -422,7 +422,7 @@ logLik.HLfit <- function(object, which=NULL, ...) {
   }
   if (which=="logL_Lap") {
     if (all(unlist(object$family[c("family","link")]==c("Gamma","log")))) {
-      ZAL <- .compute_ZAL(XMatrix=object$strucList, ZAlist=object$ZAlist,as_matrix=.eval_as_mat_arg(object)) 
+      ZAL <- .compute_ZAL(XMatrix=object$strucList, ZAlist=object$ZAlist,as_matrix=.eval_as_mat_arg.HLfit(object)) 
       w.obs <- structure(object$w.resid * (object$y/object$fv)[,1],unique=FALSE)
       d2hdv2 <- .calcD2hDv2(ZAL,w.obs,object$w.ranef) ## update d2hdv2= - t(ZAL) %*% diag(w.resid) %*% ZAL - diag(w.ranef)
       hlik <- object$APHLs$hlik
@@ -965,25 +965,33 @@ family.HLfit <- function(object, ...) {
   family
 }
 
-model.frame.HLfit <- function(formula, ...) {# the generic was poorly conceived... formula is not a formula
-  object <- formula 
+.model.frame <- function(formula., object, 
+                         is_framed= ! is.null(attr(object$data, "terms")), ...) {
+  if (is_framed) return(object$data)
+  # ELSE
+  frame.form <- .subbarsMM(formula.) ## this comes from lme4 and converts (...|...) terms to some "+" form 
+  environment(frame.form) <- environment(formula.)
+  mf_call <- call("model.frame", data=object$data, formula=frame.form, drop.unused.levels=TRUE, 
+                  weights=getCall(object)$prior.weights) # language object reused later
+  eval(mf_call) ## data.frame with all vars required for fixef and for ranef, and a "terms" attribute
+}
+
+# (1) multcomp::glht() calls model.frame() so this is not purely internal and thus arguments such as with_resid must have defaults
+# (2) https://developer.r-project.org/model-fitting-functions.html provide some thoughts
+model.frame.HLfit <- function(formula, # the generic was poorly conceived... formula is not a formula
+                              ...) {
+  object <- formula # .../... so we rename for clarity
   formula. <- formula(object) 
-  if (inherits(formula.,"list")) {
+  if (inherits(formula.,"list")) { 
+    # in mv case the merged case should still have a single data frame without attributes, even if submodels's processed stored the model frames
     resu <- vector("list", length(formula.))
     for (mv_it in seq_along(formula.)) {
-      form <- .asNoCorrFormula(formula.[[mv_it]]) ## strips out the spatial information, retaining the variables
-      frame.form <- .subbarsMM(form) ## this comes from lme4 and converts (...|...) terms to some "+" form 
-      environment(frame.form) <- environment(form)
-      mf_call <- call("model.frame", data=object$data, formula=frame.form,  drop.unused.levels=TRUE) # language object reused later
-      resu[[mv_it]] <- eval(mf_call) ## data.frame with all vars required for fixef and for ranef, and a "terms" attribute
+      form <- formula.[[mv_it]] 
+      resu[[mv_it]] <- .model.frame(formula.=form, object, is_framed=FALSE, ...)
     }
     return(resu)
   }
-  form <- .asNoCorrFormula(formula.) ## strips out the spatial information, retaining the variables
-  frame.form <- .subbarsMM(form) ## this comes from lme4 and converts (...|...) terms to some "+" form 
-  environment(frame.form) <- environment(form)
-  mf_call <- call("model.frame", data=object$data, formula=frame.form,  drop.unused.levels=TRUE) # language object reused later
-  eval(mf_call) ## data.frame with all vars required for fixef and for ranef, and a "terms" attribute
+  .model.frame(formula., object, ...)
 } ## model frame -> data.frame; model.matrix -> matrix...
 
 ## Might eventually try to match the merMod version:
@@ -1006,10 +1014,10 @@ model.frame.HLfit <- function(formula, ...) {# the generic was poorly conceived.
 #     .. ..- attr(*, "predvars")= language list(observedResponse, Environment1, group)
 #   .. ..- attr(*, "dataClasses")= Named chr [1:3] "numeric" "numeric" "factor"
 #   .. .. ..- attr(*, "names")= chr [1:3] "observedResponse" "Environment1" "group"
-#   .. ..- attr(*, "predvars.fixed")= language list(observedResponse, Environment1)
-#   .. ..- attr(*, "varnames.fixed")= chr [1:2] "observedResponse" "Environment1"
-#   .. ..- attr(*, "predvars.random")= language list(observedResponse, group)
-#   - attr(*, "formula")=Class 'formula'  language observedResponse ~ Environment1 + (1 | group)
+#   .. ..- attr(*, "predvars.fixed")= language list(observedResponse, Environment1)   # <==============================
+#   .. ..- attr(*, "varnames.fixed")= chr [1:2] "observedResponse" "Environment1"     # <==============================
+#   .. ..- attr(*, "predvars.random")= language list(observedResponse, group)         # <==============================
+#   - attr(*, "formula")=Class 'formula'  language observedResponse ~ Environment1 + (1 | group)     # <==============================
 #   .. ..- attr(*, ".Environment")=<environment: R_GlobalEnv> 
 #     
 #     

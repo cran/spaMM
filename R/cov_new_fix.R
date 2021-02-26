@@ -185,14 +185,6 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
   return(newuniqueGeo)
 }
 
-
-# .get_new_mf_ranef <- function(barlist, locdata, object) {
-#   exp_ranef_strings <- .process_bars(barlist=barlist,expand=FALSE, as_character=TRUE) ## no need to expand again
-#   ranef_form <- as.formula(paste("~",(paste(exp_ranef_strings,collapse="+")))) ## effective '.noFixef'
-#   new_mf_ranef <- .calc_newFrames_ranef(formula=ranef_form,data=locdata,fitobject=object)$mf ## also used for predVar computations
-#   new_mf_ranef
-# }
-
 # Return with original fixed-effect terms + only shared ranefs 
 .update_formula_shared_ranefs <- function(locform, re.form, rm_RHS) {
   if ( .noRanef(re.form)) { ## i.e. if re.form implies that there is no random effect
@@ -209,33 +201,97 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
   return(locform)
 }
 
-.get_locdata <- function(newdata, allvars, object) {
-  if (is.vector(newdata)) { ## ## less well controlled case, but useful for maximization
-    newdata <- data.frame(matrix(newdata,nrow=1))
-    if (length(allvars)==ncol(newdata)) {
-      names(newdata) <- allvars
-    } else {
-      stop(paste("(!) newdata has incorrect length. It should match the following variables:\n",paste(allvars,collapse=" ")))
-    }
-  } 
-  ## it is important that newdata remains NULL if it was so initially because it is tested below. Hence copy in locdata
+.get_locdata <- function(newdata, locvars=NULL, locform, object, variances) {
   if (is.null(newdata)) {
-    locdata <- object$data[ , allvars,drop=FALSE]
+    return(object$data)
+  } 
+  # ELSE  
+  if (is.null(locvars)) {
+    locvars <- all.vars(.strip_IMRF_args(locform)) ## strip to avoid e.g. 'stuff' being retained as a var from IMRF(..., model=stuff)
+    if (variances$residVar) locvars <- unique(c(locvars,all.vars(.strip_IMRF_args(.get_phiform(object)))))  
+  }
+  #
+  if (is.vector(newdata)) { ## ## less well controlled case, but useful for maximization
+    locdata <- data.frame(matrix(newdata,nrow=1))
+    if (length(locvars)==ncol(locdata)) {
+      names(locdata) <- locvars
+    } else {
+      stop(paste("(!) newdata has incorrect length. It should match the following variables:\n",paste(locvars,collapse=" ")))
+    }
   } else {
     if( is.matrix(newdata) ) newdata <- as.data.frame(newdata)  
     # so that matrix 'newdata' arguments can be used as in some other predict methods.
-    locdata <- try(newdata[ , allvars,drop=FALSE]) ## allvars checks only RHS variables
+    locdata <- try(newdata[ , locvars,drop=FALSE]) ## allvars checks only RHS variables
     if (inherits(locdata,"try-error")) stop(paste0("Variable(s) ",
-                                                   paste(setdiff(allvars,colnames(newdata)), collapse=","),
+                                                   paste(setdiff(locvars,colnames(newdata)), collapse=","),
                                                    " appear to be missing from newdata."))
-    checkNAs <- apply(locdata,1L,anyNA)
-    if (any(checkNAs)) {
-      message("NA's in required variables from 'newdata'. Prediction not always possible.")
-      locdata <- locdata[!checkNAs, ]
-    }
+  }
+  # => for any non-NULL newdata, locadta is a data.frame with valid variables. Check NAs:
+  checkNAs <- apply(locdata,1L,anyNA)
+  if (any(checkNAs)) {
+    message("NA's in required variables from 'newdata'. Prediction not always possible.")
+    locdata <- locdata[!checkNAs, ]
   }
   locdata
 }
+
+.calc_newFrames_fixed <- function (formula, data, fitobject, need_allFrames=TRUE, mv_it=NULL) {
+  ## X may or may not contain offset info, which should not be used (see .newEtaFix()) 
+  #  but fixef_mf should contain such info bc .newEtaFix calls off <- model.offset( newMeanFrames$mf)
+  if (is.null(formula)) {
+    X <- matrix(nrow=nrow(data),ncol=0L) ## model without fixed effects, not even an Intercept 
+    fixef_mf <- NULL 
+  } else { 
+    fixef_off_form <- .stripRanefs_(formula) 
+    if (inherits(fixef_off_form, "formula")) {
+      if (is.character(formula[[2L]])) fixef_off_form <- fixef_off_form[-2L] ## something like ".phi" ....
+      Terms <- terms(fixef_off_form)
+      Terms <- stats::delete.response(Terms)
+      attr(Terms,"predvars") <- .calc_newpredvars(fitobject, fixef_off_form) ## for poly()
+      fixef_form <- .stripOffset_(fixef_off_form) # formula if something remains after the offset has been removed
+      if ( ! inherits(fixef_form, "formula")) { ## only an offset in formula, not even an explicit 0: .stripOffset_(fixef_off_form) produced a 'name'
+        attr(Terms,"intercept") <- 0L # removes offset that terms() assumes if there is no explicit '0'.
+      }
+      # handles offset:  (without the small shortcut used in .get_terms_info())
+      fixef_mf <- model.frame(Terms, data, xlev = .get_from_terms_info(object=fitobject, which="fixef_levels", mv_it=mv_it)) ## xlev gives info about the original levels
+      # :here for a poly(age,.) Terms and age=Inf in the 'data', fixef_mf had zero rows and linkinv will fail on numeric(0) 'eta'
+      if (nrow(fixef_mf)!=nrow(data)) {
+        if (any(pb <- which( ! sapply(lapply(data,is.finite), all)))) {
+          stop(paste0("NA/NaN/Inf in 'data' for fixed-effects prediction: check variable(s) '", paste(names(pb), collapse="', '"),"'."))
+        } else stop("nrow(fixef_mf)!=nrow(data) for undetermined reason") 
+      }
+      X <- model.matrix(Terms, fixef_mf, contrasts.arg=attr(fitobject$X.pv,"contrasts")) 
+      ## : where original contrasts definition is used to define X cols that match those of original X, whatever was the contrast definition when the model was fitted
+      if ( ! is.null(mv_it)) {
+        cum_ncol_X <- attr(fitobject$X.pv,"cum_ncol")
+        col_range <- cum_ncol_X[mv_it]+seq_len(cum_ncol_X[mv_it+1L]-cum_ncol_X[mv_it]) # avoid (n+1:n) problem 
+        colnames(X) <- colnames(fitobject$X.pv)[col_range]
+      }
+    } else {
+      fixef_mf <- NULL
+      X <- matrix(nrow=nrow(data), ncol=0L) ## Not using NROW(Y) which is 0 if formula has no LHS
+    }
+  }
+  storage.mode(X) <- "double" ## otherwise X may be logi[] rather than num[] in particular when ncol=0
+  return(list(X = X, mf = fixef_mf)) 
+}
+
+if (FALSE) { # v3.5.121 managed to get rid of it 
+  .calc_newFrames_ranef <- function (formula, data, fitobject) {
+    formula <- .asNoCorrFormula(formula) ## strips out the correlation information, retaining the ranefs as (.|.)
+    if (is.character(formula[[2L]])) formula <- formula[-2L] ## something like ".phi" ....
+    plusForm <- .subbarsMM(formula) ## this comes from lme4 and converts (.|.) terms to (.+.) form 
+    environment(plusForm) <- environment(formula)
+    Terms <- terms(plusForm) ## assumes an Intercept implicitly
+    Terms <- stats::delete.response(Terms)
+    #attr(Terms,"predvars") <- .calc_newpredvars(fitobject$main_terms_info$all_terms, Terms) ## for poly in ranefs ? 
+    mf <- model.frame(Terms, data, drop.unused.levels=TRUE) 
+    return(list(mf = mf))
+  }
+  # } else {
+  #   .calc_newFrames_ranef <- function (formula, data, fitobject) {list(mf=data)}
+}
+
 
 .get_newX_info <- function(locform, locdata, object, mv_it=NULL) {
   newFrames_fixed <- .calc_newFrames_fixed(formula=.stripRanefs(locform),data=locdata,fitobject=object, mv_it=mv_it) ## also used for predVar computations
@@ -273,23 +329,29 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
   newinold
 }
 
+.get_newfixef_info <- function(newdata, locform, locdata, object, re.form) {
+  if (  ! is.null(newdata) ) {
+    RESU <- .get_newX_info(locform, locdata, object) # includes element 'eta_fix' which includes the offset
+    RESU$locdata <- locdata
+  } else if (! is.null(re.form)) { # then I still need eta_fix
+    eta_fix <- drop(object$X.pv %*% fixef(object))
+    off <- model.offset(model.frame(object)) # so if I later store the model.frame I would no longer need the raw data here.
+    if (!is.null(off)) eta_fix <- eta_fix+off
+    RESU <- list(locdata=locdata,newX.pv=object$X.pv, eta_fix=eta_fix)
+  } else RESU <- list(locdata=locdata,newX.pv=object$X.pv) 
+  RESU
+}
+
 # Currently never called for mv: cf .calc_new_X_ZAC_mv() instead
 .calc_new_X_ZAC <- function(object, newdata=NULL, re.form = NULL,
-                         variances=list(residVar=FALSE, cov=FALSE),invCov_oldLv_oldLv_list,
-                         locform=formula.HLfit(object, which="")) {
+                            variances=list(residVar=FALSE, cov=FALSE),invCov_oldLv_oldLv_list,
+                            locform=formula.HLfit(object, which="")) {
   ## possible change of random effect terms
   locform <- .update_formula_shared_ranefs(locform, re.form, rm_RHS=TRUE)
   # checking variables in the data
-  allvars <- all.vars(.strip_IMRF_args(locform)) ## strip to avoid e.g. 'stuff' being retained as a var from IMRF(..., model=stuff)
-  if (variances$residVar) allvars <- unique(c(allvars,all.vars(.strip_IMRF_args(.get_phiform(object)))))  
+  locdata <- .get_locdata(newdata, locform=locform, object=object, variances=variances) # always required (cf when newdata is not a data frame)
   #
-  locdata <- .get_locdata(newdata, allvars, object) # always required (cf when newdata is not a data frame)
-  #
-  need_new_design <- ( ( ! is.null(newdata) ) || ! is.null(re.form)) ## newdata or new model
-  if (need_new_design) {
-    RESU <- .get_newX_info(locform, locdata, object)
-    RESU$locdata <- locdata
-  } else RESU <- list(locdata=locdata,newX.pv=object$X.pv) 
+  RESU <- .get_newfixef_info(newdata, locform, locdata, object, re.form)
   #
   ## subZAlist is a subset of the old ZA, newZAlist contains new ZA ; different uses=> computation required under disticnt conditions for each.
   ## calling .make_corr_list(object$strucList,...) is always OK bc the fist argument may be a superset of the required list
@@ -324,6 +386,7 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
     if (nrand <- length(newinold)) {
       strucList <- object$strucList
       if (object$spaMM.version<"1.11.57") stop("This fit object was created with spaMM version<1.11.57, and is no longer supported.\n Please recompute it.")
+      need_new_design <- ( ( ! is.null(newdata) ) || ! is.null(re.form)) ## newdata or new model
       if (need_new_design) {
         ## with newdata we need Evar and then we need nn... if newdata=ori data the Evar (computed with the proper nn) should be 0
         #barlist <- .process_bars(locform,as_character=FALSE) 
@@ -341,7 +404,7 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
                                 corrMats_info=object$strucList, ## use is to provide info about levels in .calc_ZMatrix()
                                 old_ZAlist=object$ZAlist, newinold=newinold, #barlist=barlist, 
                                 lcrandfamfam=attr(object$rand.families,"lcrandfamfam")) 
-        amatrices <- .get_new_AMatrices(object, new_mf_ranef=locdata) # .calc_newFrames_ranef(formula=ranef_form,data=locdata,fitobject=object)$mf)
+        amatrices <- .get_new_AMatrices(object, newdata=locdata) # .calc_newFrames_ranef(formula=ranef_form,data=locdata,fitobject=object)$mf)
         ## ! complications:
         ## even if we used perm_Q for Matern, the permutation A matrix should not be necessary 
         ##  in building the new correlation matrix, although it night be used as well 

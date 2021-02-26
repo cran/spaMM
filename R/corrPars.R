@@ -33,7 +33,7 @@ if (FALSE) {  ## DOC:
 
 }
 
-.modify_list <- function (x, val, obey_NULLs=TRUE) { ## derived from utils::modifyList
+.modify_list <- function (x, val, obey_NULLs=TRUE) { ## derived from utils::modifyList  # obey_NULLs = FALSE => NULL elements in val are ignored, as is inexistent
   if( is.null(x)) {
     if (is.null(val)) {
       return(NULL)

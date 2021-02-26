@@ -20,7 +20,7 @@ importFrom("stats", "as.formula", "coefficients", "dgamma", "dnorm", "family", "
            "simulate", "anova", "confint", "fitted", "predict", "update", "logLik", "vcov", "coef",
            "gaussian", "binomial", "dpois", "Gamma", "resid", "uniroot", "deviance", "dbinom", "plogis", 
            "as.dist", "AIC", "qnbinom", "qpois", "rnbinom", "integrate", "poisson",".getXlevels", "na.omit",
-           "cov2cor", "pcauchy", "pnorm")
+           "cov2cor", "pcauchy", "pnorm","model.weights")
 importFrom("utils", "relist", "txtProgressBar", "setTxtProgressBar", "modifyList", "strOptions", "str",
            "write.table", "packageVersion", "packageDescription", "capture.output", "tail")
 importFrom("Matrix", "Matrix", "drop", "isDiagonal", "diag", "t", "solve", "Diagonal", "crossprod", "tcrossprod", "rowSums", "colSums",

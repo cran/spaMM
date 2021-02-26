@@ -41,11 +41,8 @@
                                 for_init_z_args,
                                 #
                                 mget(c("cum_n_u_h","rand.families"),envir=processed))
-      delayedAssign("constant_u_h_v_h_args", 
-                    c(mget(c("cum_n_u_h","rand.families"),envir=processed),
-                      processed$u_h_info, ## elements of u_h_info as elements of constant_u_h_v_h_args, NOT u_h_info as element of...  
-                      list(lcrandfamfam=lcrandfamfam)))
-      updateW_ranefS_constant_arglist <- c(mget(c("cum_n_u_h","rand.families"),envir=processed),list(lambda=lambda_est))
+      updateW_ranefS_subarglist <- processed$reserve$W_ranefS_constant_args
+      updateW_ranefS_subarglist$lambda <- lambda_est
     } 
     
     ##### initial sXaug
@@ -121,8 +118,7 @@
                                         Trace=trace,
                                         ypos=ypos,off=off,
                                         GLMMbool=GLMMbool,etaFix=etaFix,
-                                        constant_u_h_v_h_args=constant_u_h_v_h_args,
-                                        updateW_ranefS_constant_arglist=updateW_ranefS_constant_arglist,
+                                        updateW_ranefS_subarglist=updateW_ranefS_subarglist,
                                         wranefblob=wranefblob,seq_n_u_h=seq_n_u_h,
                                         update_sXaug_constant_arglist=update_sXaug_constant_arglist,
                                         ZAL_scaling=ZAL_scaling,

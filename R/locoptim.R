@@ -8,11 +8,8 @@
 }
 
 .optim_by_nloptr <- function(lowerb, upperb, initvec, objfn_locoptim, local_control, grad_locoptim=NULL, LowUp, ...) {
-  nloptr_controls <-.spaMM.data$options$nloptr
-  nloptr_controls[names(local_control)] <-local_control ## Overwrite defaults with any element of $nloptr
-  if (is.null(nloptr_controls$maxeval)) nloptr_controls$maxeval <- eval(.spaMM.data$options$maxeval)
-  if (is.null(nloptr_controls$xtol_abs)) nloptr_controls$xtol_abs <- eval(.spaMM.data$options$xtol_abs, 
-                                                                          list(LowUp=LowUp, rC_transf=.spaMM.data$options$rC_transf))
+  nloptr_controls <- .get_nloptr_controls(init=initvec, LowUp=LowUp)
+  nloptr_controls[names(local_control)] <- local_control ## Overwrite defaults with any element of $nloptr
   ## this is also called if length(lower)=0 by  (SEM or not) and optPars is then null 
   optr <- nloptr::nloptr(x0=initvec, eval_f=objfn_locoptim,
                          eval_grad_f=grad_locoptim, # ignored with NLOPT_LN_BOBYQA
@@ -31,14 +28,10 @@
   return(optr)
 }
 
+#
 .optim_by_bobyqa <- function(lowerb, upperb, initvec, objfn_locoptim, local_control, adjust_init=list(), ...) {
-  bobyqa_controls <- .spaMM.data$options$bobyqa
-  bobyqa_controls$npt <- 2*length(initvec)+1
-  bobyqa_controls$rhobeg <- min(0.95, 0.2*min(upperb-lowerb))
-  bobyqa_controls$rhoend <- min(bobyqa_controls$rhobeg/1e6, 1e-6)
+  bobyqa_controls <- .get_bobyqa_controls(init=initvec, upper=upperb, lower=lowerb)
   bobyqa_controls[names(local_control)] <- local_control ## Overwrite defaults with any element of $bobyqa
-  if (is.null(bobyqa_controls$maxfun)) bobyqa_controls$maxfun <- max(2*( eval(.spaMM.data$options$maxeval)),1+10*length(initvec)^2) # bobyqa will complain if not > second value
-  #
   bobyqa_margin <- .spaMM.data$options$bobyqa_margin
   margin <- (upperb-lowerb)*bobyqa_margin 
   margin <- pmin(bobyqa_margin,margin) # handles infinite ranges (but not only)
@@ -114,8 +107,8 @@
   }
   if (Optimizer=="optimize") {
     # since explicit init by user is heeded, the following message is only helpful to me in a tracing session...
-    if (verbose) message(paste("1D optimization by optimize(): spaMM's default initial value is ignored.\n",
-                  "Provide initial value, or change spaMM option 'optimizer1D' to override this."))
+    if (verbose) message(paste("1D optimization by optimize(): spaMM's *default* initial value is ignored.\n",
+                  "Provide explicit initial value, or change spaMM option 'optimizer1D' for initial value to be taken into account."))
     if (is.character(HLcallfn.obj)) HLcallfn.obj <- eval(as.name(HLcallfn.obj)) # ## do.call("optimize", c(<list>, list(fn = objfn))) does not work with a char string
     locarglist <- c(anyHLCor_obj_args,list(f=HLcallfn.obj, interval=c(lowerb,upperb), maximum=TRUE))
     tol <- control[["optimize"]]$tol

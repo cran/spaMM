@@ -74,7 +74,7 @@ spaMM.getOption <- function (x) {spaMM.options(x, warn=FALSE)[[1]]}
 .Dist.earth.mat <- function (x, y=NULL, radius=6371.009) { # x and y are both matrices. In each, first col is longitude, second is latitude
   ## Earth radius used for approximation = 6371.009 = 1/3*(2*6378.137+6356.752)  [details on https://en.wikipedia.org/wiki/Great-circle_distance]
   ## This function computes orthodromic distances in Km between locations.
-  rad_deg <- pi/180
+  rad_deg <- pi/180 # input should be in degrees, and this converts to radians.
   x <- x*rad_deg
   if(is.null(y)) { ## distances within matrice
     coslat <- cos(x[, 2]) ## [,2] is latitude

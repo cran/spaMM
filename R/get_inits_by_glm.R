@@ -1,6 +1,6 @@
 .calc_inits_by_glm <- function(processed, X.pv=processed$AUGI0_ZX$X.pv, family=processed$family,
                                y=processed$y, ## requested by the formula
-                               Y=.get_from_HLframes(HLframes=processed$HLframes, which="Y"),
+                               Y=.get_from_terms_info(terms_info=processed$main_terms_info, which="Y"),
                                prior.weights=processed$prior.weights,   ## do not try to eval() it outside of the .wfit function call; else nasty crashes may occur.
                                off=processed$off
                                ) {
@@ -132,7 +132,7 @@
         new_mvlist[[mv_it]] <- .calc_inits_by_glm(processed, X.pv=X.pv[resp_range,col_range, drop=FALSE], 
                                                   family=processed$families[[mv_it]],
                                                   y=processed$y[resp_range], ## requested by the formula
-                                                  Y=.get_from_HLframes(HLframes=processed$HLframes, which="Y", mv_it=mv_it), 
+                                                  Y=.get_from_terms_info(terms_info=processed$main_terms_info, which="Y", mv_it=mv_it), 
                                                   prior.weights=processed$prior.weights[[mv_it]], ## do not try to eval() it outside of the .wfit function call; else nasty crashes may occur.
                                                   off=processed$off[resp_range] )
         beta_eta[col_range] <- new_mvlist[[mv_it]]$beta_eta

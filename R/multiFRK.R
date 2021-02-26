@@ -287,14 +287,14 @@ IMRF <- function(...) {
   }
 }
 
-.get_new_AMatrices <- function(object, new_mf_ranef) { # __F I X M E__ rename 'new_mf_ranef' arg as 'data' when sure about v3.5.121 changes in calling code
+.get_new_AMatrices <- function(object, newdata) { 
   amatrices <- attr(object$ZAlist,"AMatrices")
   exp_spatial_terms <- attr(object$ZAlist,"exp_spatial_terms")
   isIMRF <- (attr(exp_spatial_terms,"type") == "IMRF")
   for (rd in which(isIMRF)) {
     char_rd <- as.character(rd)
     perm <- attr(amatrices[[char_rd]], "perm") # provided by .assign_geoinfo_and_LMatrices_but_ranCoefs()
-    amatrices[[char_rd]] <- .calc_AMatrix_IMRF(term=exp_spatial_terms[[rd]], data=new_mf_ranef, 
+    amatrices[[char_rd]] <- .calc_AMatrix_IMRF(term=exp_spatial_terms[[rd]], data=newdata, 
                                          dist.method=.get_control_dist(object,char_rd)$dist.method, 
                                          old_AMatrix_rd = amatrices[[char_rd]])
     if ( ! is.null(perm)) amatrices[[char_rd]] <- .subcol_wAttr(amatrices[[char_rd]], j=perm, drop=FALSE)

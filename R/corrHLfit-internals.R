@@ -99,8 +99,8 @@ if (FALSE) {
 .chlFn <- function(covpars,Xi_ncol=NULL) { # from *cov* parameter in lower.tri order vector to trRanCoefs
   if (is.null(Xi_ncol)) Xi_ncol <- floor(sqrt(length(covpars)*2))
   svdv <- diag(Xi_ncol)
-  svdv[lower.tri(svdv,diag = TRUE)] <- covpars
-  svdv[upper.tri(svdv)] <- t(svdv)[upper.tri(svdv)]
+  .lower.tri(svdv,diag = TRUE) <- covpars
+  svdv[upper.tri(svdv)] <- t(svdv)[upper.tri(svdv)] ## __F I X M E__ ugly...
   crossfac <- .Utri_chol_by_qr(svdv) ## upper.tri crossfac
   return(crossfac[upper.tri(crossfac,diag = TRUE)]) ## returned as vector 
 }
@@ -108,7 +108,7 @@ if (FALSE) {
 .corrFn <- function(covpars,Xi_ncol=NULL) { ## from *cov* parameter in lower.tri order vector to trRanCoefs
   if (is.null(Xi_ncol)) Xi_ncol <- floor(sqrt(length(covpars)*2))
   covcorr <- diag(Xi_ncol)
-  covcorr[lower.tri(covcorr,diag = TRUE)] <- covpars
+  .lower.tri(covcorr,diag = TRUE) <- covpars
   lambdas <- diag(covcorr)
   covcorr[upper.tri(covcorr)] <- t(covcorr)[upper.tri(covcorr)]
   covcorr <- cov2cor(covcorr) # cov2cor works only o nthe full matrix
@@ -126,8 +126,10 @@ if (FALSE) {
     lampos <- cumsum(seq(Xi_ncol)) 
     trRancoef[lampos] <-  pmax(1e-32, trRancoef[lampos]) # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
     cholmat <- matrix(0, nrow=Xi_ncol, ncol=Xi_ncol) 
-    cholmat[upper.tri(cholmat,diag = TRUE)] <- trRancoef
-    return(structure(crossprod(cholmat),chol_crossfac=cholmat))
+    .upper.tri(cholmat,diag = TRUE) <- trRancoef
+    covmat <- crossprod(cholmat)
+    attr(covmat,"chol_crossfac") <- cholmat
+    return(covmat)
   } else if (rC_transf=="corr") { # trRancoef in (log(sigma), corr) order
     covmat <- diag(Xi_ncol)/2
     covmat[lower.tri(covmat)] <- trRancoef[-seq(Xi_ncol)]
@@ -169,7 +171,7 @@ if (FALSE) {
   if (is.null(Xi_ncol)) Xi_ncol <- floor(sqrt(length(trRancoef)*2))
   if (rC_transf=="chol") {
     cholmat <- diag(nrow=Xi_ncol)
-    cholmat[upper.tri(cholmat,diag=TRUE)] <- trRancoef ## upper tri crossfac (usual chol() convention)
+    .upper.tri(cholmat,diag = TRUE) <- trRancoef## upper tri crossfac (usual chol() convention)
     crossfac_precmat <- t(solve(cholmat)) ## lower tri crossfac
   } else { # "sph"
     cumnp <- c(0,cumsum(seq(Xi_ncol-1)))
@@ -198,15 +200,14 @@ if (FALSE) {
 }
 
 
-
+# __F I X M E__ C version ? inelegant + repetitive call in ..process_ranCoefs() could be avoided sometimes... but profiling shows it's a non-issue
 .ranCoefsFn <- function(vec, rC_transf) { # from canonical vector (var+corr) space in lower.tri order
   if ( ! is.null(vec)) {
     transf <- attr(vec,"transf")
-    if ( TRUE &&  ! is.null(transf)) { 
-      resu <- structure(transf,
-                        canon=as.vector(vec), # as.vector() to drop attributes
-                        Xi_ncol=attr(vec,"Xi_ncol"))
-      return(resu)
+    if ( ! is.null(transf)) { 
+      attr(transf,"canon") <- as.vector(vec) # as.vector() to drop attributes
+      attr(transf,"Xi_ncol") <- attr(vec,"Xi_ncol")
+      return(transf)
     }
     Xi_ncol <- attr(vec,"Xi_ncol")
     if (is.null(Xi_ncol)) Xi_ncol <- floor(sqrt(length(vec)*2))
@@ -240,18 +241,18 @@ if (FALSE) {
   } else return(NULL)
 }
 
+# obsolete: there is a  .C_ version of it
 .calc_cov_from_ranCoef <- function(ranCoef, Xi_ncol=attr(ranCoef,"Xi_ncol")) {
   # assume input is marginal variances + correlation as in user input, but ordered as in lower.tri
   compactcovmat <- matrix(0,nrow=Xi_ncol,ncol=Xi_ncol)
-  lowerbloc <- lower.tri(compactcovmat,diag=TRUE) ## a matrix of T/F !
-  compactcovmat[lowerbloc] <- ranCoef
+  .lower.tri(compactcovmat,diag=TRUE) <- ranCoef
   diagPos <- seq.int(1L,Xi_ncol^2,Xi_ncol+1L)
   lambdas <- pmin(1e12,compactcovmat[diagPos]) # motivated by \ref{ares_bobyqa_ssprec}
   # lambdas <- lambdas + 1e-10 # here that would affect the conversion from correlation to covariances
-  sigmas <- diag(x=sqrt(lambdas)) 
+  sigmas <- sqrt(lambdas) 
   compactcovmat <- (compactcovmat+t(compactcovmat))
   compactcovmat[diagPos] <- 1
-  compactcovmat <- sigmas %*% compactcovmat %*% sigmas # cov2cor use distinct, recommended syntax for the last operations
+  compactcovmat <- sigmas * compactcovmat * rep(sigmas, each = Xi_ncol)
   return(compactcovmat)
 }  
 
@@ -267,30 +268,36 @@ if (FALSE) {
 .ranCoefsInv <- function(trRancoef, rC_transf) { # from transformed parameter space to correlation parameter vector
   if ( ! is.null(trRancoef)) {
     canon <- attr(trRancoef,"canon")
-    if (TRUE &&  ! is.null(canon)) {
-      resu <- structure(canon,
-                        transf=as.vector(trRancoef), # as.vector() to drop attributes
-                        Xi_ncol=attr(trRancoef,"Xi_ncol"))
-      return(resu)
+    if ( ! is.null(canon)) {
+      attr(canon,"transf") <- as.vector(trRancoef) # as.vector() to drop attributes
+      attr(canon,"Xi_ncol") <- attr(trRancoef,"Xi_ncol")
+      return(canon)
     }
+    if (rC_transf=="chol") return(.rC_inv_chol_cpp(trRancoef))
     Xi_ncol <- attr(trRancoef,"Xi_ncol")
     if (is.null(Xi_ncol)) Xi_ncol <- floor(sqrt(length(trRancoef)*2L))
-    covpars <- .tr2cov(trRancoef, Xi_ncol=Xi_ncol, rC_transf=rC_transf) # to vector of parameters with *cov*ariances
-    # from vector with *cov*ariances to canonical vector with *corr*elations:
-    lampos <- rev(length(covpars) -cumsum(seq(Xi_ncol))+1L)
-    lambdas <- covpars[lampos]
-    rancoefs <- diag(nrow=Xi_ncol)
-    rancoefs[lower.tri(rancoefs,diag = TRUE)] <- covpars
-    # lambdas <- lambdas + 1e-10 # here affecting also the conversion from covariances to correlations
+    diagPos <- seq.int(1L,Xi_ncol^2,Xi_ncol+1L)
+    if (FALSE) {
+      covpars <- .tr2cov(trRancoef, Xi_ncol=Xi_ncol, rC_transf=rC_transf) # to vector of parameters with *cov*ariances
+      # from vector with *cov*ariances to canonical vector with *corr*elations:
+      lampos <- rev(length(covpars) -cumsum(seq(Xi_ncol))+1L)
+      lambdas <- covpars[lampos]
+      rancoefs <- diag(nrow=Xi_ncol)
+      rancoefs[lower.tri(rancoefs,diag = TRUE)] <- covpars
+      # lambdas <- lambdas + 1e-10 # here affecting also the conversion from covariances to correlations
+    } else {
+      covmat <- .calc_cov_from_trRancoef(trRancoef, Xi_ncol = Xi_ncol, rC_transf = rC_transf)
+      rancoefs <- .smooth_regul(covmat)
+      lambdas <- rancoefs[diagPos]
+    }
     torancoefs <- sqrt(1/lambdas)
     rancoefs <- torancoefs * rancoefs * rep(torancoefs, each = Xi_ncol) # cf cov2cor()
-    diagPos <- seq.int(1L,Xi_ncol^2,Xi_ncol+1L)
     rancoefs[diagPos] <- lambdas
-    varcorr <- structure(rancoefs[lower.tri(rancoefs,diag = TRUE)],
-                      transf=trRancoef,
-                      Xi_ncol=Xi_ncol)
+    varcorr <- rancoefs[lower.tri(rancoefs,diag = TRUE)]
     if (any( ! is.finite(varcorr))) stop(paste("Random-coefficient fitting failed. Trying spaMM.options(rC_transf='sph')", 
                                                "or spaMM.options(rC_transf_inner='sph') may be useful.", collapse="\n"))
+    attr(varcorr,"transf") <- trRancoef
+    attr(varcorr,"Xi_ncol") <- Xi_ncol
     return(varcorr) # to canonical vector (var+corr) space
   } else return(NULL)
 }
@@ -330,7 +337,7 @@ if (FALSE) {
     if (tol_ranCoefs["inner"]) {
       cholmax <- tol_ranCoefs["cholmax"] ## Inf by default...
     } else cholmax <- Inf
-    bnd1[upper.tri(bnd1)] <- rep(-cholmax, Xi_ncol*(Xi_ncol-1L)/2L)  
+    .upper.tri(bnd1, diag=FALSE) <- rep(-cholmax, Xi_ncol*(Xi_ncol-1L)/2L)  
     lower <- bnd1[upper.tri(bnd1,diag=TRUE)]
     upper <- rep(cholmax, Xi_ncol*(Xi_ncol+1L)/2L) 
     adjust_init <- NULL
@@ -623,12 +630,15 @@ if (FALSE) {
     init.optim$corrPars[[char_rd]] <- optim_cP
   } 
   if (is.null(ranFix$lambda) || is.na(ranFix$lambda[char_rd])) { 
-    if (is.null(moreargs_rd$minKappa)) { # slightly cryptic way of excluding spde case # ___F I X M E___ safer way ?
-      # I tracked a bug where user's init.lambda was not obeyed bc the wrong moreargs_rd was passed
-      # but otherwise this means that in spde case, such user's init.lambda is over-written... ___F I X M E___
+    # We need to distinguish IMRF(.| model=.) from multIMRF and currently the info seem to be only in $minKappa.
+    # I tracked a bug where user's init.lambda was not obeyed bc the wrong moreargs_rd was passed
+    # One would have to modify IMRF$calc_moreArgs() to provide extra info allowing to define a more explicit condition?
+    if (is.null(moreargs_rd$minKappa)) { # multIMRF: then we provide default init values for lambda.
+      # But these default values are overwritten by any init$hyper value (i.e., init=list(hyper=list("1"=list(hy_lam=666))) works)
+      # so the user retains control.
       init$lambda[char_rd] <- 200 # but this will be ignored by optimize (i.e., in the comparison to LatticeKrig)
       init.optim$lambda[char_rd] <- 200 
-    } # else control of initial value should be as by default method (~that for Matern)
+    } # else case IMRF(.| model=.): control of initial lambda value should be done by default method for scalar lambdas (~that for Matern)
   }
   return(list(init=init,init.optim=init.optim,init.HLfit=init.HLfit,ranFix=ranFix))
 }

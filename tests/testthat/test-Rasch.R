@@ -6,7 +6,7 @@ cat(crayon::yellow("Multilevel Rasch Model example by Doran et al. (2007):"))
 ## j stat software 2007 DOI:  	10.18637/jss.v020.i02
 
 if( requireNamespace("multilevel", quietly = TRUE)) {
-  if (spaMM.getOption("example_maxtime")>10) {
+  if (spaMM.getOption("example_maxtime")>7) {
     data("lq2002", package = "multilevel")
     wrk <- lq2002
     for (i in 3:16) wrk[[i]] <- ordered(wrk[[i]])
@@ -34,7 +34,7 @@ if( requireNamespace("multilevel", quietly = TRUE)) {
         source(privtest)
       }
     }
-  } else cat(" requires example_maxtime>10")
+  } else cat(" requires example_maxtime>7")
 } else cat(" requires 'multilevel' package")
 cat("\n")
   

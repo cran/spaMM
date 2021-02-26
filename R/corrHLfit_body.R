@@ -144,6 +144,7 @@ corrHLfit_body <- function(processed, ## possibly a list of environments
       attr(logLapp,"method") <- "  logL (smoothed)" 
       hlcor$APHLs$logLapp <- logLapp
     }
+    hlcor$warnings$suspectRho <- .check_suspect_rho(corr_types, ranPars_in_refit, LowUp)
     if ( ! is.null(PQLdivinfo <- processed$envir$PQLdivinfo)) {
       hlcor$divinfo <- PQLdivinfo
       hlcor$warnings$divinfo <- "Numerical issue detected; see div_info(<fit object>) for more information."

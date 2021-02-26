@@ -5,17 +5,15 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug, # already ZAL_scaled
   n_u_h <- length(w.ranef)
   Xrows <- n_u_h+seq(length(weight_X)) 
   Xaug[Xrows,] <- .Dvec_times_matrix(weight_X, Xaug[Xrows,,drop=FALSE]) ## applying def of mathcal{W}_w in the doc
-  resu <- structure(Xaug,
-                    get_from="get_from_MME.sXaug_EigenDense_QRP_Chol_scaled",
-                    BLOB=list2env(list(), parent=environment(.sXaug_EigenDense_QRP_Chol_scaled)),
-                    w.ranef=w.ranef,
-                    n_u_h=n_u_h, # mandatory for all sXaug types
-                    pforpv=ncol(Xaug)-n_u_h, # mandatory for all sXaug types
-                    weight_X=weight_X, # new mandatory 08/2018
-                    H_global_scale=H_global_scale
-  )
-  class(resu) <- c("sXaug_EigenDense_QRP_Chol_scaled", class(resu))
-  return( resu ) 
+  attr(Xaug, "get_from") <- "get_from_MME.sXaug_EigenDense_QRP_Chol_scaled"
+  attr(Xaug, "BLOB") <- list2env(list(), parent=environment(.sXaug_EigenDense_QRP_Chol_scaled))
+  attr(Xaug, "w.ranef") <- w.ranef
+  attr(Xaug, "n_u_h") <- n_u_h # mandatory for all sXaug types
+  attr(Xaug, "pforpv") <- ncol(Xaug)-n_u_h # mandatory for all sXaug types
+  attr(Xaug, "weight_X") <- weight_X # new mandatory 08/2018
+  attr(Xaug, "H_global_scale") <- H_global_scale
+  class(Xaug) <- c("sXaug_EigenDense_QRP_Chol_scaled", class(Xaug))
+  return( Xaug ) 
 }
 
 
@@ -23,22 +21,23 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug, # already ZAL_scaled
   BLOB <- attr(sXaug,"BLOB") ## an environment
   if (is.null(BLOB$R_scaled)) {
     EigenDense_QRP_method <- .spaMM.data$options$EigenDense_QRP_method ## pre-09/2018 used .lmwithQRP
+    # .lmwithQR() is fast - much faster than qr() and even than chol(crossprod())... 
     if (EigenDense_QRP_method=="qr") {
-      ## avoiding EigenDense_QRP ! But .lmwithQRP(?,returntQ=FALSE) is OK  (+ this slightly affects predVar in onelambda vs twolambda)
-      blob <- qr(as(sXaug,"dgCMatrix")) ## blob <- qr(.Rcpp_as_dgCMatrix(sXaug))  ## Matrix::qr
+      ## ( this slightly affects predVar in onelambda vs twolambda)
+      blob <- qr(as(sXaug[],"dgCMatrix")) ## blob <- qr(.Rcpp_as_dgCMatrix(sXaug))  ## Matrix::qr
       BLOB$perm <- blob@q + 1L
       BLOB$R_scaled <- as.matrix(qrR(blob,backPermute = FALSE))
       BLOB$sortPerm <- sort.list(BLOB$perm) 
       if ( ! is.null(szAug)) return(qr.coef(blob,szAug))   
     } else if (EigenDense_QRP_method==".lmwithQR") { 
       lmwithqr <- .lmwithQR(sXaug,yy=szAug,returntQ=FALSE,returnR=TRUE) ## using RcppEigen; szAug may be NULL
-      ## we don't request (t) Q from Eigen bc it is terribly slow (maybe bc it goes through a full Q)
-      for (st in names(lmwithqr)) BLOB[[st]] <- lmwithqr[[st]] ## "perm", "R_scaled" and optionally "coef"
+      ## we don't request (t) Q from Eigen bc it is comparatively slow 
+      for (st in names(lmwithqr)) BLOB[[st]] <- lmwithqr[[st]] ## "R_scaled" and optionally "coef"
       # perm and sortPerm remain NULL
       if ( ! is.null(szAug)) return(BLOB$coef)   
     } else {
       lmwithqrp <- .lmwithQRP(sXaug,yy=szAug,returntQ=FALSE,returnR=TRUE) ## using RcppEigen; szAug may be NULL
-      ## we don't request (t) Q from Eigen bc it is terribly slow (maybe bc it goes through a full Q)
+      ## we don't request (t) Q from Eigen 
       for (st in names(lmwithqrp)) BLOB[[st]] <- lmwithqrp[[st]] ## "perm", "R_scaled" and optionally "coef"
       BLOB$perm <- BLOB$perm +1L
       BLOB$sortPerm <- sort.list(BLOB$perm) 
@@ -48,7 +47,7 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug, # already ZAL_scaled
     #seq_n_u_h <- seq(n_u_h)
   } 
   if ( ! is.null(szAug)) {
-    rhs <- .crossprodCpp(sXaug, szAug)
+    rhs <- .crossprodCpp_d(sXaug, szAug)
     if ( ! is.null(BLOB$perm)) rhs <- rhs[BLOB$perm,,drop=FALSE]
     # test-adjacency-corrMatrix (R_scaled of dim 114): replicate(100,{source(...)},simplify=FALSE) finds 5e-3s advantage per replicate for backsolve over .Rcpp_backsolve .
     # I.e., fairly NS; and other tests are not more discriminating
@@ -62,32 +61,39 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug, # already ZAL_scaled
                                            "logdet_R_scaled_v","Mg_invH_g")) {
     seq_n_u_h <- seq_len(attr(sXaug,"n_u_h"))
     # remove $u_h_cols_on_left code in version 2.1.61 since there is a bug in it: further code may require 
-    #  no nontrivial perm_R_v, so we remove perm_R_v it from further code (as in Matrix_QRP_CHM_scaled version)
+    #  no nontrivial perm_R_v, so we remove perm_R_v from further code (as in Matrix_QRP_CHM_scaled version)
     if ( is.null(BLOB$sortPerm)) {
       BLOB$R_R_v <- BLOB$R_scaled[seq_n_u_h,seq_n_u_h, drop=FALSE]
     } else {
-      wd2hdv2w <- .crossprodCpp(BLOB$R_scaled[,BLOB$sortPerm[ seq_n_u_h ], drop=FALSE], NULL)
+      wd2hdv2w <- .crossprodCpp_d(BLOB$R_scaled[,BLOB$sortPerm[ seq_n_u_h ], drop=FALSE], NULL)
       BLOB$R_R_v <- .Rcpp_chol_R(wd2hdv2w)$R
     }
   }
   # 
-  if (which=="t_Q_scaled") { 
-    if ( is.null(BLOB$t_Q_scaled) ) {
-      if ( ! is.null(BLOB$perm)) {
-        BLOB$t_Q_scaled <- backsolve(BLOB$R_scaled,t(sXaug[,BLOB$perm]),transpose=TRUE)
-      } else BLOB$t_Q_scaled <- backsolve(BLOB$R_scaled,t(sXaug),transpose=TRUE)
-    }
-    return(BLOB$t_Q_scaled)
-  } else if (which=="hatval") {
-    if ( is.null(BLOB$t_Q_scaled) ) {
-      if ( ! is.null(BLOB$perm)) {
-        BLOB$t_Q_scaled <- backsolve(BLOB$R_scaled,t(sXaug[,BLOB$perm]),transpose=TRUE)
-      } else BLOB$t_Q_scaled <- backsolve(BLOB$R_scaled,t(sXaug),transpose=TRUE)
-    }
-    return(colSums(BLOB$t_Q_scaled^2))
-  } else if (which=="hatval_Z") { ## Pdiag; note that these leverages are constant wrt to any diagonal rescaling of the Z block
+  if (which=="Qt_leftcols*B") { # use tQ=R^{-T}sX^T in a context where we need only the leftcols of sX^T ie bottom rows of sX
+    if ( ! is.null(BLOB$perm)) {
+      return(backsolve(BLOB$R_scaled,.crossprod(sXaug[-seq(attr(sXaug,"n_u_h")),BLOB$perm], B),transpose=TRUE))
+    } else return(backsolve(BLOB$R_scaled,.crossprod(sXaug[-seq(attr(sXaug,"n_u_h")),], B),transpose=TRUE))
+  }
+  if (which=="hatval_Z") { ## Pdiag; note that these leverages are constant wrt to any diagonal rescaling of the Z block
     if (is.null(BLOB$hatval_Z_)) {
-      ## t(sXaug) is scaled such that the left block is an identity matrix, so we can work 
+      if (FALSE) { # that is correct when .lmwithQR was used but not .lmwithQRP. 
+        # Further, I would need an u_h_cols_on_the_left instead of BLOB$perm for maximum use of this.  
+        n_u_h <- attr(sXaug,"n_u_h")
+        if ( is.null(BLOB$t_Q_scaled) ) {
+          if ( ! is.null(BLOB$perm)) {
+            BLOB$t_Q_scaled <- backsolve(BLOB$R_scaled,t(sXaug[,BLOB$perm]),transpose=TRUE)
+          } else BLOB$t_Q_scaled <- backsolve(BLOB$R_scaled,t(sXaug),transpose=TRUE)
+        }
+        tmp_t_Qq_scaled <- BLOB$t_Q_scaled[seq_len(n_u_h),]
+        tmp_t_Qq_scaled <- tmp_t_Qq_scaled^2
+        tmp <- colSums(tmp_t_Qq_scaled)
+        phipos <- n_u_h+seq_len(nrow(sXaug)-n_u_h)
+        BLOB$hatval_Z_ <-  list(lev_lambda=tmp[-phipos],lev_phi=tmp[phipos])
+        return(BLOB$hatval_Z_)
+      }  
+      ## As for the sparse version:
+      ## t(sXaug[,u_h cols]= (I, scaled t(ZAL)) i.e. is scaled such that the left block is an identity matrix, so we can work 
       ## on two separate blocks if the Cholesky is not permuted. Then 
       if (is.null(lev_lambda <- BLOB$inv_factor_wd2hdv2w)) {
         #lev_lambda <- BLOB$inv_factor_wd2hdv2w <- backsolve(BLOB$R_R_v,diag(ncol(BLOB$R_R_v)),transpose=TRUE)
@@ -106,41 +112,86 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug, # already ZAL_scaled
       BLOB$hatval_Z_ <-  list(lev_lambda=lev_lambda,lev_phi=lev_phi)
     }
     return(BLOB$hatval_Z_)
-  } else if (which=="R_scaled") { ## for logdet_r22
+  } 
+  if (which=="solve_d2hdv2") { ## R'R[seq_n_u_h, seq_n_u_h] gives -d2hd_scaled_v2.
+    if ( is.null(B) ) {
+      if ( is.null(BLOB$inv_d2hdv2)) {
+        if (is.null(BLOB$invsqrtwranef)) BLOB$invsqrtwranef <- 1/sqrt(attr(sXaug,"w.ranef")) 
+        if (is.null(BLOB$inv_factor_wd2hdv2w)) {
+          inv_d2hdv2 <- chol2inv(BLOB$R_R_v)
+        } else inv_d2hdv2 <- .crossprod(BLOB$inv_factor_wd2hdv2w) # i.e., crossfactor
+        inv_d2hdv2 <- .m_Matrix_times_Dvec(inv_d2hdv2, BLOB$invsqrtwranef) ## _m_atrix sweep 2L
+        BLOB$inv_d2hdv2 <- - .Dvec_times_matrix(BLOB$invsqrtwranef,inv_d2hdv2)
+      }
+      return(BLOB$inv_d2hdv2)
+    } else { ## solve (matrix,y)
+      if (is.null(BLOB$inv_d2hdv2)) {
+        if (is.null(BLOB$invsqrtwranef)) BLOB$invsqrtwranef <- 1/sqrt(attr(sXaug,"w.ranef")) 
+        if (is.matrix(B)) {
+          rhs <- .Dvec_times_matrix(BLOB$invsqrtwranef,B)
+        } else rhs <- BLOB$invsqrtwranef * B
+        if (is.null(BLOB$inv_factor_wd2hdv2w)) {
+          # test-spaMM Nugget multinomial inverse-Gamma .... no clear benefit in using .Rcpp_chol2solve()
+          rhs <- backsolve(BLOB$R_R_v, backsolve(BLOB$R_R_v, rhs, transpose = TRUE))
+        } else rhs <- .crossprod(BLOB$inv_factor_wd2hdv2w, drop(BLOB$inv_factor_wd2hdv2w %*% rhs)) # typical sscaled computation
+        if (is.matrix(rhs)) {
+          rhs <- .Dvec_times_matrix(BLOB$invsqrtwranef,rhs)
+        } else rhs <- BLOB$invsqrtwranef * rhs
+        return( - rhs)
+      } else {
+        return(BLOB$inv_d2hdv2 %*% B) ## inv_d2hdv2 tends to be dense
+      }
+    }
+  } 
+  if (which=="R_scaled") { ## for logdet_r22
     return(BLOB$R_scaled)
-  } else if (which=="R_scaled_blob") {
+  } 
+  if (which=="R_scaled_blob") {
     if (is.null(BLOB$R_scaled_blob)) {
       if ( ! is.null(BLOB$sortPerm)) {
         X <- BLOB$R_scaled[,BLOB$sortPerm,drop=FALSE] ## has colnames
       } else X <- BLOB$R_scaled
-      BLOB$R_scaled_blob <- list(X=X, diag_pRtRp = colSums(X^2), XDtemplate=.XDtemplate(X))
+      BLOB$R_scaled_blob <- list(X=X, diag_pRtRp = colSums(X^2), 
+                                 XDtemplate=structure(.XDtemplate(X),upperTri=is.null(BLOB$sortPerm)))
     }
     return(BLOB$R_scaled_blob)
-  } else if (which=="R_scaled_v_h_blob") {
+  } 
+  if (which=="R_scaled_v_h_blob") {
     if (is.null(BLOB$R_scaled_v_h_blob)) {
       diag_pRtRp_scaled_v_h <- colSums(BLOB$R_R_v^2)
-      BLOB$R_scaled_v_h_blob <- list(R_scaled_v_h=BLOB$R_R_v, diag_pRtRp_scaled_v_h=diag_pRtRp_scaled_v_h, XDtemplate=.XDtemplate(BLOB$R_R_v))
+      BLOB$R_scaled_v_h_blob <- list(R_scaled_v_h=BLOB$R_R_v, diag_pRtRp_scaled_v_h=diag_pRtRp_scaled_v_h,
+                                     XDtemplate=structure(.XDtemplate(BLOB$R_R_v),upperTri=TRUE))
     }
     return(BLOB$R_scaled_v_h_blob)
-  } else if (which=="R_beta_blob") {
+  } 
+  if (which=="R_beta_blob") {
     if (is.null(BLOB$R_beta_blob)) {
       n_u_h <- attr(sXaug,"n_u_h")
       seq_n_u_h <- seq(n_u_h)
-      X <- as.matrix(sXaug[-seq_n_u_h,-seq_n_u_h]) ## follwoing code assuming it is dense...
+      X <- as.matrix(sXaug[-seq_n_u_h,-seq_n_u_h]) ## following code assuming it is dense...
       R_beta <- .lmwithQR(X,yy=NULL,returntQ=FALSE,returnR=TRUE)$R_scaled
       diag_pRtRp_beta <-  colSums(R_beta^2)
-      BLOB$R_beta_blob <- list(R_beta=R_beta,diag_pRtRp_beta=diag_pRtRp_beta, XDtemplate=.XDtemplate(R_beta))
+      BLOB$R_beta_blob <- list(R_beta=R_beta,diag_pRtRp_beta=diag_pRtRp_beta, 
+                               XDtemplate=structure(.XDtemplate(R_beta), upperTri=TRUE)) 
+      ## seems to be tested only by testmv (one of the independent-fit tests on adjacency)
     }
     return(BLOB$R_beta_blob)
-  } else if (which=="d2hdv2") {
-    stop("d2hdv2 requested")
-    # don't forget that the factored matrix is not the augmented design matrix ! hence w.ranef needed here
-    w.ranef <- attr(sXaug,"w.ranef")
-    w_R_R_v <- .Matrix_times_Dvec(BLOB$R_R_v, sqrt(w.ranef))  #BLOB$R_R_v %*% diag(sqrt(w.ranef))
-    BLOB$d2hdv2 <- - .crossprodCpp(w_R_R_v,yy=NULL)
   } 
-  if (which=="Mg_invH_g") {
-    return(sum(solve(BLOB$R_R_v,B)^2))
+  if (which=="hatval") {
+    if ( is.null(BLOB$t_Q_scaled) ) {
+      if ( ! is.null(BLOB$perm)) {
+        BLOB$t_Q_scaled <- backsolve(BLOB$R_scaled,t(sXaug[,BLOB$perm]),transpose=TRUE)
+      } else BLOB$t_Q_scaled <- backsolve(BLOB$R_scaled,t(sXaug),transpose=TRUE)
+    }
+    return(colSums(BLOB$t_Q_scaled^2))
+  } 
+  if (which=="Mg_invH_g") { # - sum(B %*% inv_d2hdv2 %*% B) # was oddly inconsistent with the Matrix_QRP_CHM code until change in v3.6.4
+    if (is.null(BLOB$invsqrtwranef)) BLOB$invsqrtwranef <- 1/sqrt(attr(sXaug,"w.ranef")) 
+    rhs <- BLOB$invsqrtwranef * B
+    if (is.null(BLOB$inv_factor_wd2hdv2w)) {
+      rhs <- .Rcpp_backsolve(BLOB$R_R_v,rhs,transpose=TRUE)
+    } else rhs <- BLOB$inv_factor_wd2hdv2w %*% rhs
+    return(sum(rhs^2))
   } 
   if (which=="Mg_solve_g") {
     if (is.null(BLOB$invsqrtwranef)) BLOB$invsqrtwranef <- 1/sqrt(attr(sXaug,"w.ranef")) 
@@ -157,46 +208,21 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug, # already ZAL_scaled
     Mg_invXtWX_g <- crossprod(B,solve(BLOB$XtWX,B))[1L] # [1L] drops possible Matrix class...
     return(Mg_invXtWX_g)
   } 
-  if (which=="solve_d2hdv2") { ## R'R[seq_n_u_h, seq_n_u_h] gives -d2hd_scaled_v2.
-    if ( is.null(B) ) {
-      if ( is.null(BLOB$inv_d2hdv2)) {
-        if (is.null(BLOB$invsqrtwranef)) BLOB$invsqrtwranef <- 1/sqrt(attr(sXaug,"w.ranef")) 
-        if (is.null(BLOB$inv_factor_wd2hdv2w)) {
-          inv_d2hdv2 <- chol2inv(BLOB$R_R_v)
-        } else inv_d2hdv2 <- .crossprod(BLOB$inv_factor_wd2hdv2w)
-        inv_d2hdv2 <- .m_Matrix_times_Dvec(inv_d2hdv2, BLOB$invsqrtwranef) ## _m_atrix sweep 2L
-        BLOB$inv_d2hdv2 <- - .Dvec_times_matrix(BLOB$invsqrtwranef,inv_d2hdv2)
-      }
-      return(BLOB$inv_d2hdv2)
-    } else { ## solve (matrix,y)
-      if (is.null(BLOB$inv_d2hdv2)) {
-        if (is.null(BLOB$invsqrtwranef)) BLOB$invsqrtwranef <- 1/sqrt(attr(sXaug,"w.ranef")) 
-        if (is.matrix(B)) {
-          rhs <- .Dvec_times_matrix(BLOB$invsqrtwranef,B)
-        } else rhs <- BLOB$invsqrtwranef * B
-        if (is.null(BLOB$inv_factor_wd2hdv2w)) { # test-spaMM Nugget multinomial inverse-Gamma .... no clear benefit in using .Rcpp_chol2solve()
-          rhs <- backsolve(BLOB$R_R_v, backsolve(BLOB$R_R_v, rhs, transpose = TRUE))
-        } else rhs <- .crossprod(BLOB$inv_factor_wd2hdv2w) %*% rhs
-        if (is.matrix(rhs)) {
-          rhs <- .Dvec_times_matrix(BLOB$invsqrtwranef,rhs)
-        } else rhs <- BLOB$invsqrtwranef * rhs
-        return( - rhs)
-      } else {
-        return(BLOB$inv_d2hdv2 %*% B) ## inv_d2hdv2 tends to be dense
-      }
-    }
-  } else if (which %in% c("logdet_R_scaled_b_v")) {
-    if (is.null(BLOB$logdet_R_scaled_b_v)) BLOB$logdet_R_scaled_b_v <- sum(log(abs(diag(x=BLOB$R_scaled))))
+  if (which %in% c("logdet_R_scaled_b_v")) {
+    if (is.null(BLOB$logdet_R_scaled_b_v)) BLOB$logdet_R_scaled_b_v <- sum(log(abs(.diagfast(x=BLOB$R_scaled))))
     return(BLOB$logdet_R_scaled_b_v)
-  } else if (which %in% c("logdet_R_scaled_v")) {
+  } 
+  if (which %in% c("logdet_R_scaled_v")) {
     if (is.null(BLOB$logdet_R_scaled_v)) {
       if (is.null(BLOB$absdiag_R_v)) BLOB$absdiag_R_v <- abs(diag(x=BLOB$R_R_v)) ## as in "absdiag_R_v"
       BLOB$logdet_R_scaled_v <- sum(log(BLOB$absdiag_R_v)) 
     }
     return(BLOB$logdet_R_scaled_v)
-  } else if (which=="beta_cov_info_from_sXaug") {  
+  } 
+  if (which=="beta_cov_info_from_sXaug") {  
     return(.calc_beta_cov_info_from_sXaug(BLOB=BLOB, sXaug=sXaug))
-  } else if (which=="beta_cov_info_from_wAugX") { ## using a weighted Henderson's augmented design matrix, not a true sXaug  
+  } 
+  if (which=="beta_cov_info_from_wAugX") { ## using a weighted Henderson's augmented design matrix, not a true sXaug  
     if (TRUE) {
       tcrossfac_beta_v_cov <- solve(BLOB$R_scaled) # solve(as(BLOB$R_scaled,"dtCMatrix"))
       if ( ! is.null(BLOB$sortPerm)) { # depending on method used for QR facto
@@ -224,6 +250,22 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug, # already ZAL_scaled
   # } else if (which=="sortPerm") { 
   #   return(BLOB$sortPerm)
   }
+  if (which=="t_Q_scaled") { # residual call for non-standard REML 
+    if ( is.null(BLOB$t_Q_scaled) ) {
+      if ( ! is.null(BLOB$perm)) {
+        BLOB$t_Q_scaled <- backsolve(BLOB$R_scaled,t(sXaug[,BLOB$perm]),transpose=TRUE)
+      } else BLOB$t_Q_scaled <- backsolve(BLOB$R_scaled,t(sXaug),transpose=TRUE)
+    }
+    return(BLOB$t_Q_scaled)
+  }
+  if (which=="d2hdv2") {
+    stop("d2hdv2 requested")
+    # don't forget that the factored matrix is not the augmented design matrix ! hence w.ranef needed here
+    w.ranef <- attr(sXaug,"w.ranef")
+    w_R_R_v <- .Matrix_times_Dvec(BLOB$R_R_v, sqrt(w.ranef))  #BLOB$R_R_v %*% diag(sqrt(w.ranef))
+    BLOB$d2hdv2 <- - .crossprodCpp_d(w_R_R_v,yy=NULL)
+    return(BLOB$d2hdv2)
+  } 
   stop("invalid 'which' value.")
 } 
 

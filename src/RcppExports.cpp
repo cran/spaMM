@@ -50,6 +50,17 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// update_R_in_place
+SEXP update_R_in_place(SEXP RD);
+RcppExport SEXP _spaMM_update_R_in_place(SEXP RDSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type RD(RDSEXP);
+    rcpp_result_gen = Rcpp::wrap(update_R_in_place(RD));
+    return rcpp_result_gen;
+END_RCPP
+}
 // lmwithQR
 SEXP lmwithQR(SEXP XX, SEXP yy, bool returntQ, bool returnR);
 RcppExport SEXP _spaMM_lmwithQR(SEXP XXSEXP, SEXP yySEXP, SEXP returntQSEXP, SEXP returnRSEXP) {
@@ -152,6 +163,101 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// lowertri
+SEXP lowertri(NumericMatrix A, bool diag, NumericVector value);
+RcppExport SEXP _spaMM_lowertri(SEXP ASEXP, SEXP diagSEXP, SEXP valueSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type A(ASEXP);
+    Rcpp::traits::input_parameter< bool >::type diag(diagSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type value(valueSEXP);
+    rcpp_result_gen = Rcpp::wrap(lowertri(A, diag, value));
+    return rcpp_result_gen;
+END_RCPP
+}
+// uppertri
+SEXP uppertri(NumericMatrix A, bool diag, NumericVector value);
+RcppExport SEXP _spaMM_uppertri(SEXP ASEXP, SEXP diagSEXP, SEXP valueSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type A(ASEXP);
+    Rcpp::traits::input_parameter< bool >::type diag(diagSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type value(valueSEXP);
+    rcpp_result_gen = Rcpp::wrap(uppertri(A, diag, value));
+    return rcpp_result_gen;
+END_RCPP
+}
+// rC_inv_chol_cpp
+SEXP rC_inv_chol_cpp(SEXP trCoef);
+RcppExport SEXP _spaMM_rC_inv_chol_cpp(SEXP trCoefSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type trCoef(trCoefSEXP);
+    rcpp_result_gen = Rcpp::wrap(rC_inv_chol_cpp(trCoef));
+    return rcpp_result_gen;
+END_RCPP
+}
+// C_calc_cov_from_ranCoef
+SEXP C_calc_cov_from_ranCoef(SEXP ranCoef, Nullable<IntegerVector> Xi_ncol);
+RcppExport SEXP _spaMM_C_calc_cov_from_ranCoef(SEXP ranCoefSEXP, SEXP Xi_ncolSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type ranCoef(ranCoefSEXP);
+    Rcpp::traits::input_parameter< Nullable<IntegerVector> >::type Xi_ncol(Xi_ncolSEXP);
+    rcpp_result_gen = Rcpp::wrap(C_calc_cov_from_ranCoef(ranCoef, Xi_ncol));
+    return rcpp_result_gen;
+END_RCPP
+}
+// makelong
+SEXP makelong(NumericMatrix Lcompact, int Lsize);
+RcppExport SEXP _spaMM_makelong(SEXP LcompactSEXP, SEXP LsizeSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type Lcompact(LcompactSEXP);
+    Rcpp::traits::input_parameter< int >::type Lsize(LsizeSEXP);
+    rcpp_result_gen = Rcpp::wrap(makelong(Lcompact, Lsize));
+    return rcpp_result_gen;
+END_RCPP
+}
+// makelong2
+SEXP makelong2(NumericMatrix Lcompact, int Lsize);
+RcppExport SEXP _spaMM_makelong2(SEXP LcompactSEXP, SEXP LsizeSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type Lcompact(LcompactSEXP);
+    Rcpp::traits::input_parameter< int >::type Lsize(LsizeSEXP);
+    rcpp_result_gen = Rcpp::wrap(makelong2(Lcompact, Lsize));
+    return rcpp_result_gen;
+END_RCPP
+}
+// C_dispInv
+SEXP C_dispInv(NumericVector x);
+RcppExport SEXP _spaMM_C_dispInv(SEXP xSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type x(xSEXP);
+    rcpp_result_gen = Rcpp::wrap(C_dispInv(x));
+    return rcpp_result_gen;
+END_RCPP
+}
+// logit
+SEXP logit(NumericVector mu);
+RcppExport SEXP _spaMM_logit(SEXP muSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type mu(muSEXP);
+    rcpp_result_gen = Rcpp::wrap(logit(mu));
+    return rcpp_result_gen;
+END_RCPP
+}
 // rankinfo
 SEXP rankinfo(SEXP x, SEXP tol);
 RcppExport SEXP _spaMM_rankinfo(SEXP xSEXP, SEXP tolSEXP) {
@@ -235,15 +341,15 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// crossprodCpp
-SEXP crossprodCpp(SEXP Mat, SEXP yy);
-RcppExport SEXP _spaMM_crossprodCpp(SEXP MatSEXP, SEXP yySEXP) {
+// crossprodCpp_d
+SEXP crossprodCpp_d(SEXP Mat, SEXP yy);
+RcppExport SEXP _spaMM_crossprodCpp_d(SEXP MatSEXP, SEXP yySEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< SEXP >::type Mat(MatSEXP);
     Rcpp::traits::input_parameter< SEXP >::type yy(yySEXP);
-    rcpp_result_gen = Rcpp::wrap(crossprodCpp(Mat, yy));
+    rcpp_result_gen = Rcpp::wrap(crossprodCpp_d(Mat, yy));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -307,14 +413,15 @@ BEGIN_RCPP
 END_RCPP
 }
 // dgCcrossprod
-SEXP dgCcrossprod(SEXP AA, SEXP BB);
-RcppExport SEXP _spaMM_dgCcrossprod(SEXP AASEXP, SEXP BBSEXP) {
+SEXP dgCcrossprod(SEXP AA, SEXP BB, bool as_mat);
+RcppExport SEXP _spaMM_dgCcrossprod(SEXP AASEXP, SEXP BBSEXP, SEXP as_matSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< SEXP >::type AA(AASEXP);
     Rcpp::traits::input_parameter< SEXP >::type BB(BBSEXP);
-    rcpp_result_gen = Rcpp::wrap(dgCcrossprod(AA, BB));
+    Rcpp::traits::input_parameter< bool >::type as_mat(as_matSEXP);
+    rcpp_result_gen = Rcpp::wrap(dgCcrossprod(AA, BB, as_mat));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -331,28 +438,30 @@ BEGIN_RCPP
 END_RCPP
 }
 // crossprod_not_dge
-SEXP crossprod_not_dge(SEXP AA, SEXP BB, bool eval_dens);
-RcppExport SEXP _spaMM_crossprod_not_dge(SEXP AASEXP, SEXP BBSEXP, SEXP eval_densSEXP) {
+SEXP crossprod_not_dge(SEXP AA, SEXP BB, bool eval_dens, bool as_mat);
+RcppExport SEXP _spaMM_crossprod_not_dge(SEXP AASEXP, SEXP BBSEXP, SEXP eval_densSEXP, SEXP as_matSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< SEXP >::type AA(AASEXP);
     Rcpp::traits::input_parameter< SEXP >::type BB(BBSEXP);
     Rcpp::traits::input_parameter< bool >::type eval_dens(eval_densSEXP);
-    rcpp_result_gen = Rcpp::wrap(crossprod_not_dge(AA, BB, eval_dens));
+    Rcpp::traits::input_parameter< bool >::type as_mat(as_matSEXP);
+    rcpp_result_gen = Rcpp::wrap(crossprod_not_dge(AA, BB, eval_dens, as_mat));
     return rcpp_result_gen;
 END_RCPP
 }
 // Rcpp_crossprod
-SEXP Rcpp_crossprod(SEXP AA, SEXP BB, bool eval_dens);
-RcppExport SEXP _spaMM_Rcpp_crossprod(SEXP AASEXP, SEXP BBSEXP, SEXP eval_densSEXP) {
+SEXP Rcpp_crossprod(SEXP AA, SEXP BB, bool eval_dens, bool as_mat);
+RcppExport SEXP _spaMM_Rcpp_crossprod(SEXP AASEXP, SEXP BBSEXP, SEXP eval_densSEXP, SEXP as_matSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< SEXP >::type AA(AASEXP);
     Rcpp::traits::input_parameter< SEXP >::type BB(BBSEXP);
     Rcpp::traits::input_parameter< bool >::type eval_dens(eval_densSEXP);
-    rcpp_result_gen = Rcpp::wrap(Rcpp_crossprod(AA, BB, eval_dens));
+    Rcpp::traits::input_parameter< bool >::type as_mat(as_matSEXP);
+    rcpp_result_gen = Rcpp::wrap(Rcpp_crossprod(AA, BB, eval_dens, as_mat));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -413,6 +522,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_spaMM_Rcpp_COMP_Z", (DL_FUNC) &_spaMM_Rcpp_COMP_Z, 4},
     {"_spaMM_lmwith_sparse_LDLp", (DL_FUNC) &_spaMM_lmwith_sparse_LDLp, 5},
     {"_spaMM_lmwith_sparse_LLp", (DL_FUNC) &_spaMM_lmwith_sparse_LLp, 5},
+    {"_spaMM_update_R_in_place", (DL_FUNC) &_spaMM_update_R_in_place, 1},
     {"_spaMM_lmwithQR", (DL_FUNC) &_spaMM_lmwithQR, 4},
     {"_spaMM_lmwithQRP", (DL_FUNC) &_spaMM_lmwithQRP, 4},
     {"_spaMM_lmwith_sparse_QRp", (DL_FUNC) &_spaMM_lmwith_sparse_QRp, 5},
@@ -421,6 +531,14 @@ static const R_CallMethodDef CallEntries[] = {
     {"_spaMM_Rcpp_dense_cbind_mat_vec", (DL_FUNC) &_spaMM_Rcpp_dense_cbind_mat_vec, 2},
     {"_spaMM_bessel_lnKnu_e", (DL_FUNC) &_spaMM_bessel_lnKnu_e, 2},
     {"_spaMM_nuln_plus_bessel_lnKnu_e", (DL_FUNC) &_spaMM_nuln_plus_bessel_lnKnu_e, 2},
+    {"_spaMM_lowertri", (DL_FUNC) &_spaMM_lowertri, 3},
+    {"_spaMM_uppertri", (DL_FUNC) &_spaMM_uppertri, 3},
+    {"_spaMM_rC_inv_chol_cpp", (DL_FUNC) &_spaMM_rC_inv_chol_cpp, 1},
+    {"_spaMM_C_calc_cov_from_ranCoef", (DL_FUNC) &_spaMM_C_calc_cov_from_ranCoef, 2},
+    {"_spaMM_makelong", (DL_FUNC) &_spaMM_makelong, 2},
+    {"_spaMM_makelong2", (DL_FUNC) &_spaMM_makelong2, 2},
+    {"_spaMM_C_dispInv", (DL_FUNC) &_spaMM_C_dispInv, 1},
+    {"_spaMM_logit", (DL_FUNC) &_spaMM_logit, 1},
     {"_spaMM_rankinfo", (DL_FUNC) &_spaMM_rankinfo, 2},
     {"_spaMM_leverages", (DL_FUNC) &_spaMM_leverages, 1},
     {"_spaMM_sweepZ1W", (DL_FUNC) &_spaMM_sweepZ1W, 2},
@@ -428,16 +546,16 @@ static const R_CallMethodDef CallEntries[] = {
     {"_spaMM_ZtWZ", (DL_FUNC) &_spaMM_ZtWZ, 2},
     {"_spaMM_Rcpp_d2hdv2", (DL_FUNC) &_spaMM_Rcpp_d2hdv2, 3},
     {"_spaMM_RcppChol", (DL_FUNC) &_spaMM_RcppChol, 1},
-    {"_spaMM_crossprodCpp", (DL_FUNC) &_spaMM_crossprodCpp, 2},
+    {"_spaMM_crossprodCpp_d", (DL_FUNC) &_spaMM_crossprodCpp_d, 2},
     {"_spaMM_tcrossprodCpp", (DL_FUNC) &_spaMM_tcrossprodCpp, 2},
     {"_spaMM_LevenbergMsolveCpp", (DL_FUNC) &_spaMM_LevenbergMsolveCpp, 3},
     {"_spaMM_LogAbsDetCpp", (DL_FUNC) &_spaMM_LogAbsDetCpp, 1},
     {"_spaMM_selfAdjointSolverCpp", (DL_FUNC) &_spaMM_selfAdjointSolverCpp, 1},
     {"_spaMM_dgCprod", (DL_FUNC) &_spaMM_dgCprod, 2},
-    {"_spaMM_dgCcrossprod", (DL_FUNC) &_spaMM_dgCcrossprod, 2},
+    {"_spaMM_dgCcrossprod", (DL_FUNC) &_spaMM_dgCcrossprod, 3},
     {"_spaMM_dgCtcrossprod", (DL_FUNC) &_spaMM_dgCtcrossprod, 2},
-    {"_spaMM_crossprod_not_dge", (DL_FUNC) &_spaMM_crossprod_not_dge, 3},
-    {"_spaMM_Rcpp_crossprod", (DL_FUNC) &_spaMM_Rcpp_crossprod, 3},
+    {"_spaMM_crossprod_not_dge", (DL_FUNC) &_spaMM_crossprod_not_dge, 4},
+    {"_spaMM_Rcpp_crossprod", (DL_FUNC) &_spaMM_Rcpp_crossprod, 4},
     {"_spaMM_Rcpp_Csum", (DL_FUNC) &_spaMM_Rcpp_Csum, 2},
     {"_spaMM_Rcpp_backsolve", (DL_FUNC) &_spaMM_Rcpp_backsolve, 4},
     {"_spaMM_Rcpp_backsolve_M_M", (DL_FUNC) &_spaMM_Rcpp_backsolve_M_M, 4},

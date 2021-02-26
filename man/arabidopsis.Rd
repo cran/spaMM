@@ -40,7 +40,7 @@ The data were retrieved from \code{http://bergelson.uchicago.edu/regmap-data/cli
 }
 \examples{
 data("arabidopsis")
-if (spaMM.getOption("example_maxtime")>3) {
+if (spaMM.getOption("example_maxtime")>2.5) {
   fitme(cbind(pos1046738,1-pos1046738)~seasonal+Matern(1|LAT+LONG),
         fixed=list(rho=0.119278,nu=0.236990,lambda=8.599),
         family=binomial(),method="PQL/L",data=arabidopsis)

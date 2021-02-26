@@ -21,7 +21,7 @@
         attr(ranCoef,"transf") <- NULL
       }
       ranCoefs[[char_rd]] <- ranCoef
-      covmat <- .calc_cov_from_ranCoef(ranCoefs[[char_rd]])
+      covmat <- .C_calc_cov_from_ranCoef(ranCoefs[[char_rd]])
       #if (kappa(covmat)>1e14 || min(eigen(covmat,only.values = TRUE)$values)<1e-6) any_nearly_singular_covmat <- TRUE # use of this removed 2019/12/16
     }
   }

@@ -44,18 +44,18 @@
 .preprocess_data <- function(data, null.formula, formula, resid.model, prior.weights, callargs) {
   if ( inherits(data,"list")) {
     for (lit in seq_along(data)) {
-      null.validdata <- .getValidData(formula=null.formula[-2],resid.formula=resid.model$formula,data=data[[lit]],
-                                      callargs=callargs["prior.weights"]) ## will remove rows with NA's in required variables
-      full.validdata <- .getValidData(formula=formula[-2],resid.formula=resid.model$formula,data=data[[lit]],
-                                      callargs=callargs["prior.weights"]) ## will remove rows with NA's in required variables
-      data[[lit]] <- data[[lit]][intersect(rownames(null.validdata),rownames(full.validdata)),,drop=FALSE]
+      null.rownames <- .GetValidData_info(formula=null.formula[-2],resid.formula=resid.model$formula,data=data[[lit]],
+                                      callargs=callargs["prior.weights"])$rownames ## will remove rows with NA's in required variables
+      full.rownames <- .GetValidData_info(formula=formula[-2],resid.formula=resid.model$formula,data=data[[lit]],
+                                      callargs=callargs["prior.weights"])$rownames ## will remove rows with NA's in required variables
+      data[[lit]] <- data[[lit]][intersect(null.rownames,full.rownames),,drop=FALSE]
     }
   } else {
-    null.validdata <- .getValidData(formula=null.formula[-2],resid.formula=resid.model$formula,data=data,
-                                    callargs=callargs["prior.weights"]) ## will remove rows with NA's in required variables
-    full.validdata <- .getValidData(formula=formula[-2],resid.formula=resid.model$formula,data=data,
-                                    callargs=callargs["prior.weights"]) ## will remove rows with NA's in required variables
-    data <- data[intersect(rownames(null.validdata),rownames(full.validdata)),,drop=FALSE]     
+    null.rownames <- .GetValidData_info(formula=null.formula[-2],resid.formula=resid.model$formula,data=data,
+                                    callargs=callargs["prior.weights"])$rownames ## will remove rows with NA's in required variables
+    full.rownames <- .GetValidData_info(formula=formula[-2],resid.formula=resid.model$formula,data=data,
+                                    callargs=callargs["prior.weights"])$rownames ## will remove rows with NA's in required variables
+    data <- data[intersect(null.rownames,full.rownames),,drop=FALSE]     
   }  
   return(data)
 }

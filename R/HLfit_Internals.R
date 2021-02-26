@@ -214,10 +214,7 @@ if (FALSE) {
 #.ZWZtbase <- function(ZAL,w) tcrossprod(sweep(ZAL,MARGIN=2L,w,`*`),ZAL) # slower that Rcpp version, with no obvious benefits
 #  !  not the same as     ZAL %*% sweep(ZAL,MARGIN=1L,w,`*`) 
 
-.ZtWZwrapper <- function(ZAL,w) { ## used in several contexts
-  # if (ncol(ZAL)==0L) {
-  #   stop(".ZtWZwrapper called with ncol(ZAL)=0") ## temporary devel code since all calls are in principle protected 
-  # } else 
+.ZtWZwrapper <- function(ZAL,w, allow_as_mat=TRUE) { ## used in several contexts
   if (inherits(ZAL,"ZAXlist")) {
     tcrossfac <- .crossprod(ZAL,Diagonal(x=sqrt(w))) # t() %*% sqrtw as dsCMatrix # by ad-hoc 
     return(.tcrossprod(tcrossfac))  #
@@ -234,12 +231,30 @@ if (FALSE) {
       DZAL@x <- DZAL@x * sqrtW[DZAL@i+1L] ## W Z
       ## a triangular matrix with unitary diagonal may be stored as @diag=="U" and only non-diag elements specified...
       if (  methods::.hasSlot(DZAL, "diag") &&  DZAL@diag=="U") Matrix::diag(DZAL) <- sqrtW
-      return(.crossprod(DZAL))  
+      return(.crossprod(DZAL,allow_as_mat=allow_as_mat))  
     }
   } else return(.ZtWZ(ZAL,w)) ## but this uses sqrt() hence assumes w>0
 } # Matrix result is always of symmetric type (dsC or ddi)
 
-.process_ranCoefs <- function(processed, ranCoefs, trRanCoefs, invLs=NULL, use_tri_Nspprec, need_longLv=TRUE) {
+.sapply <- function(liste, FUN, ...) {
+  resu <- lapply(X = liste, FUN = FUN, ...)
+  .unlist(resu)
+}
+
+.sapply_null_or_NA <- function(liste) {
+  resu <- logical(length(liste))
+  for (it in seq_along(liste)) resu[it] <- length(liste[[it]])<2L # length is 0 fo NULL, 1 for NA; 
+  # is.null(liste[[it]]) || is.na(liste[[it]]) is inappropriate for any vector 1,0,1 or Na,0,NA
+  resu
+}
+
+.sapply_anyNA <- function(liste) {
+  resu <- logical(length(liste))
+  for (it in seq_along(liste)) resu[it] <- anyNA(liste[[it]])
+  resu
+}
+
+.process_ranCoefs <- function(processed, ranCoefs, trRanCoefs, invLs=NULL, use_tri_Nspprec) {
   if (! is.null(invLs)) ranCoefs <- trRanCoefs
   ranCoefs_blob <- processed$ranCoefs_blob
   ZAlist <- processed$ZAlist 
@@ -254,12 +269,12 @@ if (FALSE) {
       for(rd in seq_len(length(Xi_cols))) {
         if ((Xi_ncol <- Xi_cols[rd])>1L) {
           templa <- matrix(seq(Xi_ncol^2),nrow=Xi_ncol,ncol=Xi_ncol)
-          longLv_templates[[rd]] <- .makelong(templa, ncol(ZAlist[[rd]])) ## templa is dense array of indices
+          longLv_templates[[rd]] <- .makelong(templa, ncol(ZAlist[[rd]])) ## templa is (compact) dense array of indices, here serving to build the sparse long template 
         }
       }
     }
     ranCoefs_blob <- list(isRandomSlope=isRandomSlope, is_set=(isRandomSlope & FALSE),
-                          longLv_templates=longLv_templates)
+                          longLv_templates=longLv_templates, one_time_check_not_done=TRUE)
     if (hasRandomSlope && ! is.null(ranCoefs)) { ## ranCoefs in preprocess: fixed values
       nrand <- length(isRandomSlope)
       if (is.numeric(ranCoefs)) {
@@ -268,17 +283,14 @@ if (FALSE) {
           ranCoefs[[isRandomSlope]] <- ranCoefs
         } else stop("Cannot match numeric ranCoefs to a single random-coefficient term.")
       } else if (length(ranCoefs) < nrand ){
-        posnames <- setdiff(seq_len(nrand), names(ranCoefs))
-        ranCoefs <- c(ranCoefs,structure(vector("list",length(posnames)),names=posnames))
-        ranCoefs <- ranCoefs[as.character(seq_len(nrand))]
+        rand_list <- processed$reserve$rand_list
+        rand_list[names(ranCoefs)] <- ranCoefs
+        ranCoefs <- rand_list
       }
-      not_constr_or_set <- (sapply(ranCoefs,is.null) | sapply(ranCoefs,identical,y=NA))
-      newly_set <- ! (not_constr_or_set | sapply(ranCoefs,anyNA))  
-      # newly_set contains some TRUE (unless the user provided an uninformative ranCoefs) => final return() 
-      # no return yet ! => final return() 
-      #is_constrained <- ( ! newly_set & ! not_constr_or_set )
-      #constraints[is_constrained] <- ranCoefs[is_constrained]
-      #ranCoefs_blob$constraints <- constraints
+      not_constr_or_set <- .sapply_null_or_NA(ranCoefs) 
+      newly_set <- ! (not_constr_or_set | .sapply_anyNA(ranCoefs))  
+      # newly_set contains some TRUE (unless the user provided an uninformative ranCoefs) =>  no return yet ! 
+      ranCoefs_blob$is_set <- newly_set
     } else return(ranCoefs_blob)
   } else if (is.null(ranCoefs) || ! any(isRandomSlope <- ranCoefs_blob$isRandomSlope)) {
     return(ranCoefs_blob)
@@ -286,11 +298,11 @@ if (FALSE) {
     ## assume 'incomplete' list
     nrand <- length(isRandomSlope)
     if (length(ranCoefs) < nrand ){
-      posnames <- setdiff(seq_len(nrand), names(ranCoefs))
-      ranCoefs <- c(ranCoefs,structure(vector("list",length(posnames)),names=posnames))
-      ranCoefs <- ranCoefs[as.character(seq_len(nrand))]
+      rand_list <- processed$reserve$rand_list
+      rand_list[names(ranCoefs)] <- ranCoefs
+      ranCoefs <- rand_list
     }
-    newly_set <- ! (sapply(ranCoefs,is.null) | sapply(ranCoefs,identical,y=NA))
+    newly_set <- ! .sapply_null_or_NA(ranCoefs) 
     ##### Handling of partially fixed ranCoefs:
     # in post-processing, we reach here from various fitting functions (fitme, HLfit...)
     # If from fitme, ranCoefs should no longer have NA
@@ -301,9 +313,10 @@ if (FALSE) {
     # One would have also to provide access to the constraint in .makeCovEst1. This is apparently not currently the case
     #   although this might be done by adding the constraint in processed$ranCoefs_blob
     # Hence:
-    if (any( newly_set &  sapply(ranCoefs,anyNA))) {
+    if (ranCoefs_blob$one_time_check_not_done && any( newly_set &  .sapply_anyNA(ranCoefs))) {
       stop("Partial constraints on ranCoefs are not handled by this function. Use fitme() instead.")
     }
+    ranCoefs_blob$one_time_check_not_done <- FALSE
     #####
     newly_set <- newly_set & ( ! ranCoefs_blob$is_set)
     if ( any(newly_set)) {
@@ -319,8 +332,8 @@ if (FALSE) {
   min_lam <- .spaMM.data$options$tol_ranCoefs_inner["tol"]
   for (rt in which(isRandomSlope & newly_set)) {
     Xi_ncol <- Xi_cols[rt]
-    if (need_longLv || is.null(invLs)) { ## only the econd case appears to be true sometimes, and only in develcode...
-      compactcovmat <- .calc_cov_from_ranCoef(ranCoef=ranCoefs[[rt]], Xi_ncol=Xi_ncol)
+    if (is.null(invLs)) { ## General case 
+      compactcovmat <- .C_calc_cov_from_ranCoef(ranCoef=ranCoefs[[rt]], Xi_ncol=Xi_ncol) ## hfff made a test in test-poly relative as Eigen remains light on numerical precision
       latentL_blob <- .calc_latentL(compactcovmat, use_tri_Nspprec=use_tri_Nspprec, spprecBool=spprecBool, try_chol= ! spprecBool)
       #  with(latentL_blob,.ZWZt(design_u,d)) = compactcovmat hence design_u is more of a tcrossprod factor
       ## we have a repres in terms of ZAL and of a diag matrix of variances; only the latter affects hlik computation
@@ -328,7 +341,7 @@ if (FALSE) {
                           template=ranCoefs_blob$longLv_templates[[rt]]) ## the variances are taken out in $d
       attr(longLv,"trRancoef") <- .ranCoefsFn(ranCoefs[[rt]], rC_transf=.spaMM.data$options$rC_transf_inner) # used for init_trRancoef in .MakeCovEst()
       attr(longLv,"Ltype") <- "cov"
-    } else {
+    } else { # only in devel code... (augZXy variants)
       char_rt <- as.character(rt)
       latentL_blob <- list(crossfac_Q=invLs[[char_rt]], Xi_ncol=Xi_ncol,
                            d=rep(1,Xi_ncol) ## used a few lines below
@@ -339,8 +352,9 @@ if (FALSE) {
       attr(longLv,"Ltype") <- "prec"
     }
     attr(longLv,"latentL_blob") <- latentL_blob ## kept for updating in next iteration, strucList, predVar, and output
-    attr(longLv,"ranefs") <-  structure(attr(ZAlist,"exp_ranef_strings")[rt], 
-                                              type= attr(ZAlist,"exp_ranef_types")[rt] )
+    ranef_info <- attr(ZAlist,"exp_ranef_strings")[rt]
+    attr(ranef_info, "type") <- attr(ZAlist,"exp_ranef_types")[rt]## type is "(.|.)" if LMatrix is for random slope ## ajout 2015/06
+    attr(longLv,"ranefs") <-  ranef_info
     attr(longLv, "corr.model") <- "random-coef"
     LMatrices[[rt]] <- longLv
     n_levels <- ncol(ZAlist[[rt]])/Xi_ncol 
@@ -595,30 +609,35 @@ if (FALSE) {
 
 .calc_w_resid <- function(GLMweights,phi_est) { ## One should not correct this phi_est argument by prior.weights (checked)
   if (inherits(GLMweights,"mvlist")) { # an mvlist of lists
-    res <- vector("list",length(GLMweights))
+    mv_res <- vector("list",length(GLMweights))
     islist <- logical(length(GLMweights))
-    for (mv_it in seq_along(res)) {
-      res[[mv_it]] <- .calc_w_resid(GLMweights[[mv_it]],phi_est[[mv_it]]) # a single vector, 
+    for (mv_it in seq_along(mv_res)) {
+      mv_res[[mv_it]] <- .calc_w_resid(GLMweights[[mv_it]],phi_est[[mv_it]]) # a single vector, 
                       #                or a list with the elements of the GLMweights[[mv_it]] list, plus $w_resid
-      islist[mv_it] <- is.list(res[[mv_it]])
+      islist[mv_it] <- is.list(mv_res[[mv_it]])
     }
     if (any(islist)) { # one of the families of the mv model is zero_truncated
       w_resid <- WU_WT <- vector("list",length(GLMweights))
       for (mv_it in seq_along(w_resid)) {
         if (islist[mv_it]) {
-          w_resid[[mv_it]] <- res[[mv_it]]$w_resid
-          WU_WT[[mv_it]] <- res[[mv_it]][["WU_WT"]]  
+          w_resid[[mv_it]] <- mv_res[[mv_it]]$w_resid
+          WU_WT[[mv_it]] <- mv_res[[mv_it]][["WU_WT"]]  
         } else {
-          w_resid[[mv_it]] <- res[[mv_it]]
-          WU_WT[[mv_it]] <- rep(1, length( res[[mv_it]]))  
+          w_resid[[mv_it]] <- mv_res[[mv_it]]
+          WU_WT[[mv_it]] <- rep(1, length( mv_res[[mv_it]]))  
         }
       }
-      return(list(w_resid=structure(.unlist(w_resid), 
-                                    unique=FALSE), # .calc_H_global_scale() assumes the attribute is here, for mv or not.
-                  WU_WT=.unlist(WU_WT),
-                  mvlist=res)) # mvlist being a list with elements of tow possible types as described above
+      w_resid <- .unlist(w_resid)
+      attr(w_resid,"unique") <- attr(w_resid,"is_unit") <- FALSE 
+      return(list(w_resid=w_resid, WU_WT=.unlist(WU_WT), mvlist=mv_res)) # mvlist being a list with elements of tow possible types as described above
       # each element of 'mvlist' has all the info in the expected info for a single response
-    } else return(structure(.unlist(res), unique=FALSE)) # vector
+    } else {
+      w_resid <- .unlist(mv_res) # vector
+      attr(w_resid,"unique") <- attr(w_resid,"is_unit") <- FALSE 
+      # .calc_H_global_scale() assumes the "unique" attribute is here, for mv or not.
+      # is_unit expected to be true only for augZXy hence not for mv 
+      return(w_resid) # mvlist being a list with elements of tow possible types as described above
+    }
     # in mv model w_resid are not 'unique' although blocks may be ben,for gaussian submodels.
   }
   phi_est[phi_est<1e-12] <- 1e-11 ## 2014/09/04 local correction, cf comment in calc_APHLS...
@@ -627,7 +646,9 @@ if (FALSE) {
     GLMweights <- GLMweights$truncGLMweights
   }
   #if (any(is.nan(GLMweights/phi_est))) stop("any(is.nan(GLMweights/phi_est))")
-  w.resid <- structure(as.vector(GLMweights/phi_est),unique= (attr(GLMweights,"unique") && length(phi_est)==1L))
+  w.resid <- as.vector(GLMweights/phi_est)
+  attr(w.resid,"unique") <- (attr(GLMweights,"unique") && length(phi_est)==1L)
+  attr(w.resid,"is_unit") <- FALSE
   if (ilg) {
     res[["w_resid"]] <- w.resid 
     return(res) # a list with the elements of the 'GLMweights' list, plus $w_resid
@@ -799,23 +820,40 @@ spaMM_Gamma <- local({
   } else famfam <- family
   switch(famfam,
          gaussian = mu ,
-         poisson = structure(log(mu),mu=mu) ,
-         binomial = make.link("logit")$linkfun(mu),  
-         ## if this does no work, use 
+         poisson = { # structure(log(mu),mu=mu)
+           th <- log(mu)
+           # attr(th,"mu") <- mu # mu # presumably not used
+           th
+         },
+         binomial = .logit(mu), #                
+         # or slow access to C_logit_link:         
+         #   make.link("logit")$linkfun(mu), # wraps C_logit_link, but make.link calls structure()... 
+         ## if any numerical issue, use 
          #                 { 
-         #                    theta <- logit(mu)
+         #                    theta <- .logit(mu)
          #                    theta[theta>27.6310] <- 27.6310 ## mu>1-1e-12
          #                    theta[theta < -27.6310] <- -27.6310 
          #                    theta
          #                 },
-         Gamma = structure(-1/mu,mu=mu), ## "-": McC&N p. 290
-         COMPoisson = {
+         Gamma = { # structure(-1/mu,mu=mu), ## "-": McC&N p. 290
+           th <- -1/mu
+           attr(th,"mu") <- mu # for clik_fn, as attr(theta,"mu")
+           th
+         },
+         COMPoisson = { 
            if (is.null(lambda <- attr(mu,"lambda"))) {
              lambda <-  family$linkfun(mu,log=FALSE) ## valid bc only the canonical link is implemented 
            }  
-           structure(log(lambda),mu=mu)
+          
+           th <- log(lambda)
+           attr(th,"mu") <- mu # structure(log(lambda),mu=mu) with mu used by .CMP_linkinv
+           th
          },
-         negbin = structure(-log(1+(environment(family$aic)$shape)/mu),mu=mu), ## keep mu b/c useful for clik_fn
+         negbin = { #structure(-log(1+(environment(family$aic)$shape)/mu),mu=mu)
+           th <- -log(1+(environment(family$aic)$shape)/mu)
+           attr(th,"mu") <- mu ## keep mu b/c useful for clik_fn, as attr(theta,"mu")
+           th
+         },
          stop("code missing for this family") 
   )
 } ## returns values for given mu
@@ -856,7 +894,7 @@ spaMM_Gamma <- local({
   ### BUT: additional concept in v.3.0.49; extend bound according to y (for both sanitized eta & sanitized y)
   #  test code with huge .calc_dispGammaGLM() response:
   # {
-  #   spaMM.options(example_maxtime=70)
+  #   spaMM.options(example_maxtime=60)
   #   Infusion::Infusion.options(spaMM.options("example_maxtime"))
   #   options(warn=2)
   #   options(error=recover)
@@ -1043,17 +1081,15 @@ spaMM_Gamma <- local({
     mu <- mu * BinomialDen
     dmudeta <- dmudeta * BinomialDen
   } 
-  if (LMbool) {
-    GLMweights <- eval(pw) ## with attr(.,"unique")
-    attr(GLMweights,"unique") <- attr(pw,"unique") ## might actually be true sometimes
-  } else  if (family$family=="Gamma" && family$link=="log") {
-    GLMweights <- eval(pw)  ## with attr(.,"unique")
-    attr(GLMweights,"unique") <- attr(pw,"unique") ## might actually be true sometimes
+  if (LMbool || (family$family=="Gamma" && family$link=="log") ) {
+    GLMweights <- pw
+    GLMweights[] <- eval(pw) # a way of keeping attributes of pw in GLMweights, including "is_unit"
   } else {
     # in Gamma() (inverse) case dmudeta=Vmu => dmudeta^2 /Vmu= Vmu
     # this can diverge: add a warning/protection ? (__F I X M E__ need examples)
     GLMweights <- eval(pw) * dmudeta^2 /Vmu ## must be O(n) in binomial cases
-    attr(GLMweights,"unique") <- FALSE ## might actually be true sometimes
+    attr(GLMweights, "unique") <- FALSE ## might actually be true sometimes
+    attr(GLMweights, "is_unit") <- FALSE
   }
   if (identical(family$zero_truncated,TRUE)) {
     resu <- .muetafn_truncated(family, mu, GLMweights, Vmu)
@@ -1101,28 +1137,28 @@ spaMM_Gamma <- local({
   }
   ## dudv/V_M may be 1 as both diverge: 
   w.ranef <- as.numeric((dudv/V_M)*(dudv/lambda)) ## semble valide quand v=g(u) = th(u): not previous return()
+  w.ranef[w.ranef>1e10] <- 1e10 ## patch useful to avoid singular d2hdv2 in PLoG model
   return(list(w.ranef=w.ranef,dlogWran_dv_h=dlogWran_dv_h,dvdu=1/dudv))
 }
 
-.updateW_ranefS <- function(cum_n_u_h,rand.families,lambda,u_h,v_h) {
+
+.updateW_ranefS <- function(cum_n_u_h, rand.families, lambda, u_h, v_h, 
+                            w.ranef_list=vector("list", length(rand.families)), 
+                            dlogWran_dv_h_list=vector("list", length(rand.families)), 
+                            dvdu_list=vector("list", length(rand.families))) {
   nrand <- length(rand.families)
-  w.ranef <- dlogWran_dv_h <- dvdu <- vector("list",nrand)
   for (it in seq_len(nrand)) {
     u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
     blob <- .updateWranef(rand.family=rand.families[[it]],lambda[u.range],u_h[u.range],v_h[u.range])
-    w.ranef[[it]] <- blob$w.ranef
-    dlogWran_dv_h[[it]] <- blob$dlogWran_dv_h
-    dvdu[[it]] <- blob$dvdu
+    w.ranef_list[[it]] <- blob$w.ranef
+    dlogWran_dv_h_list[[it]] <- blob$dlogWran_dv_h
+    dvdu_list[[it]] <- blob$dvdu
   }
-  w.ranef <- .unlist(w.ranef)
-  w.ranef[w.ranef>1e10] <- 1e10 ## patch useful to avoid singular d2hdv2 in PLoG model
-  dlogWran_dv_h <- .unlist(dlogWran_dv_h)
-  dvdu <- .unlist(dvdu)
-  resu <- list(w.ranef=w.ranef,dlogWran_dv_h=dlogWran_dv_h,dvdu=dvdu)
+  resu <- list(w.ranef=.unlist(w.ranef_list),dlogWran_dv_h=.unlist(dlogWran_dv_h_list),dvdu=.unlist(dvdu_list))
   ## the test is invalid for ranCoefs:
   # if (nrand==1L && rand.families[[1L]]$family=="gaussian") resu$unique_w.ranef <- w.ranef[[1L]] # used in sparsePrecision code
   #if (length(unique_w.ranef <- unique(w.ranef))==1L) resu$unique_w.ranef <- unique_w.ranef # used in sparsePrecision code
-  return(resu)
+  resu
 }
 
 .calc_d2mudeta2 <- function(link,mu=NULL,eta=NULL,BinomialDen=NULL) { ## d2 MuCOUNTS d etaFREQS^2
@@ -1494,6 +1530,7 @@ spaMM_Gamma <- local({
     if (is.integer(x)) storage.mode(x) <- "double"
     if (is.integer(y)) storage.mode(y) <- "double"
     resu <- .tcrossprodCpp(x,y)
+    # Tried calling directly .tcrossprodCpp and ignoring the names for dense hatval_Z but gains are negligible
     if (is.null(y)) {
       colnames(resu) <- rownames(resu) <- rownames(x)
     } else {
@@ -1504,34 +1541,52 @@ spaMM_Gamma <- local({
   }
 }
 
-.crossprod <- function(x, y=NULL, allow_as_mat=TRUE, as_sym=is.null(y), use_Rcpp_cp=.spaMM.data$options$Rcpp_crossprod, 
-                       eval_dens=TRUE) {
+.asmatMatcrossprod <- function(x,y=NULL,as_mat=FALSE) { # wraps an inefficient bit of code, to be avoided 
+  if (as_mat) {
+    return(as.matrix(Matrix::crossprod(x,y))) # that's the ineff code, not called in the long tests.
+  } else {
+    return(Matrix::crossprod(x,y)) # perfectly OK and routine ()
+  }
+}
+
+## .crossprod() designed to handle all cases. It may call:
+#  .crossprodCpp_d(dense) which is remarkably fast when y=NULL at least (what about y!=NULL?) so method of choice for as_mat=TRUE
+#  .Rcpp_crossprod() for most cases except vector y. .Rcpp_crossprod calls itself .crossprod_not_dge() after conversion of dge
+#  For remaining vector y and unanticipated cases, .dgCcrossprod is called (for dgC matrices), or 
+#         the above wrapper for Matrix::crossprod(x,y), or .crossprodCpp_d() again.  
+
+
+
+# as_mat=TRUE and as_sym=TRUE may return inconsistent results
+.crossprod <- function(x, y=NULL, allow_as_mat=TRUE, as_sym=( ! as_mat && is.null(y)), use_Rcpp_cp=.spaMM.data$options$Rcpp_crossprod, 
+                       eval_dens=TRUE, as_mat=FALSE) {
   if (is.null(x)) return(NULL) ## allows lapply(,.tcrossprod) on a list of (matrix or NULL)
   if (inherits(x,"ZAXlist")) {
     return(crossprod(x,y)) # ZAXlist method
+  } else if (as_mat && is.null(y)) {
+    return(.crossprodCpp_d(as.matrix(x),yy=NULL)) # fast relative to .Rcpp_crossprod(sparse)... probably not general !
   } else if (use_Rcpp_cp) {
     if ( inherits(x,c("dgCMatrix","dgeMatrix","matrix"))
-         && inherits(y,c("dgCMatrix","dgeMatrix", "matrix","NULL"))) {
-      if (use_Rcpp_cp>2L) {
-        print(c("+",class(x),class(y))) ## ddi...
-        utils::flush.console()
-      }
-      txy <- .Rcpp_crossprod(x, y, eval_dens) # returns dge; next forceSymmetric() can produce dgC (sp) OR dsy (dense)
-      if (as_sym) { txy <- forceSymmetric(txy) } # absolutely necessary for use as update(., parent=txy); see ?`CHMfactor-class`
+         && inherits(y,c("dgCMatrix","dgeMatrix", "matrix","NULL"))) { ## all cases handled by .Rcpp_crossprod()
+      txy <- .Rcpp_crossprod(x, y, eval_dens, as_mat=as_mat) # returns 'matrix' or 'dgCMatrix' (the latter for sparse input not converted to dens after eval_dens check); 
+      #                                         next forceSymmetric() can produce dgC (sp) OR dsy (dense)
+      if (as_sym) { txy <- forceSymmetric(txy) } # absolutely necessary for use as .updateCHMfactor(., parent=txy) with a (t)crossprod 'parent'; see ?`CHMfactor-class`
+      #                                            BUT:  computing the (t)crossfac in the first place is not needed.
       if ( ( ! allow_as_mat) && ( ! inherits(txy,"sparseMatrix"))) txy <- as(txy,"sparseMatrix") # fortunately rarely needed but occurs in HLCor(lh~1 +AR1(1|time) example
       return(txy)
-    } else { ## show unhandled classes and continue
+    } else { ## show unhandled classes (ddi...) and continue (but vector y reaches here - OK - and eval_dens is ignored - OK - )
       if (use_Rcpp_cp>1L) {
-        print(c("-",class(x),class(y))) ## ddi...
+        print(c("-",class(x),class(y))) 
         utils::flush.console()
       }
     }
   }
+  # vector y reaches here; would also operate if ! use_Rcpp_cp and in other unanticipated cases
   if (inherits(x,"Matrix") || inherits(y,"Matrix")) { 
-    # it's OK to use Matrix::crossprod() rather than .crossprod() when x has a known quite-sparse structure such as chol_Q
-    if (is.null(y)) {
+    if (is.null(y)) { # if ! use_Rcpp_cp and in other unanticipated cases
       if (TRUE && inherits(x,"dgCMatrix")) { ## FAST when (TRUE &&)
-        txx <- .dgCcrossprod(x,y) 
+        # .dgCcrossprod+forceSymmetric manages to be faster than Matrix::crossprod() 
+        txx <- .dgCcrossprod(x,y, as_mat=as_mat) 
         if (as_sym) {
           return(forceSymmetric(txx)) ## not as(.,"sparseMatrix") which checks -> slow
         } else return(txx)
@@ -1539,14 +1594,14 @@ spaMM_Gamma <- local({
         x_denseness <- .calc_denseness(x)/maxd 
         if (x_denseness>0.35) {
           ## Matrix::crossprod() is inefficient on math-dense matrices, even for dgeMatrix ! We try to maintain its return type, typically dsCMatrix:
-          resu <- .crossprodCpp(as.matrix(x),y)
+          resu <- .crossprodCpp_d(as.matrix(x),y)
           if (as_sym) {
             return(forceSymmetric(resu)) 
           } else return(resu)
-        } else return(Matrix::crossprod(x)) 
-      } else return(Matrix::crossprod(x)) 
+        } else return(.asmatMatcrossprod(x, as_mat=as_mat)) 
+      } else return(.asmatMatcrossprod(x, as_mat=as_mat)) 
     } else if (FALSE && inherits(x,"dgCMatrix") &&  inherits(y,"dgCMatrix") ) { ## FASTer when (FALSE &&)
-      txy <- .dgCcrossprod(x,y) 
+      txy <- .dgCcrossprod(x,y, as_mat=as_mat) 
       return(txy)
     } else if (allow_as_mat) {
       if (inherits(x,"Matrix") && (maxd <- prod(dim(x)))>1L) { # trivial >1L bc the alternatives to Matrix::tcrossprod are always useful
@@ -1558,13 +1613,13 @@ spaMM_Gamma <- local({
         if (y_denseness>0.35) y <- as.matrix(y)
       }
       if (is.matrix(x) && is.matrix(y)) { # sparsity overhead is ~ 1/0.35
-        return(.crossprodCpp(x, y)) # .crossprodCpp() slightly better than crossprod()
-      } else return(Matrix::crossprod(x,y)) 
-    } else return(Matrix::crossprod(x,y)) 
-  } else {
+        return(.crossprodCpp_d(x, y)) # .crossprodCpp_d() slightly better than crossprod()
+      } else return(.asmatMatcrossprod(x, y, as_mat=as_mat)) 
+    } else return(.asmatMatcrossprod(x, y, as_mat=as_mat)) 
+  } else { # *m*atrix case
     if (is.integer(x)) storage.mode(x) <- "double"
     if (is.integer(y)) storage.mode(y) <- "double"
-    resu <- .crossprodCpp(x,y) ## faster than base::crossprod, but the matrix cannot be integer
+    resu <- .crossprodCpp_d(x,y) ## faster than base::crossprod, but the matrix cannot be integer
     if (is.null(y)) {
       colnames(resu) <- rownames(resu) <- colnames(x)
     } else {
@@ -1602,7 +1657,7 @@ spaMM_Gamma <- local({
           fit$envir$tcrossfac_beta_w_cov <- rbind(tcrossfac_beta_w_cov[-v.range,],
                                                   .crossprod(invL, tcrossfac_beta_w_cov[v.range,], allow_as_mat = FALSE, eval_dens=FALSE))
         } else {
-          tcrossfac_beta_w_cov[v.range,] <- as.matrix(.crossprod(invL, tcrossfac_beta_w_cov[v.range,])) # invL may be sparse
+          tcrossfac_beta_w_cov[v.range,] <- .crossprod(invL, tcrossfac_beta_w_cov[v.range,], as_mat=TRUE) # invL may be sparse
           fit$envir$tcrossfac_beta_w_cov <- tcrossfac_beta_w_cov
         }
       } else fit$envir$tcrossfac_beta_w_cov <- tcrossfac_beta_w_cov
@@ -1611,14 +1666,24 @@ spaMM_Gamma <- local({
   return(fit$envir$tcrossfac_beta_w_cov) ## repeated calls to predVar suffices to make it useful to save it.
 }
 
-.eval_as_mat_arg <- function(object) { 
+.eval_as_mat_arg <- function(processed) {
+  if (is.null(processed$as_matrix)) {
+    processed$as_matrix <- (
+      processed$HL[1L]=="SEM" || ## SEM code does not yet handle sparse as it uses a dense Sig matrix
+        ( ! processed$is_spprec && processed$QRmethod!="sparse" )
+    )
+  }
+  processed$as_matrix
+}
+
+.eval_as_mat_arg.HLfit <- function(object) { 
   (
     object$HL[1L]=="SEM" || ## SEM code does not yet handle sparse as it uses a dense Sig matrix
-    ( ( ! identical(object$is_spprec,TRUE) ) && # this may be called post-fit in which case object has no $is_spprec
-      ! identical(object$QRmethod,"sparse") ## => conversion to matrix if object$QRmethod is NULL
-    )
+      ! identical(object$QRmethod,"sparse")
   )
 }
+
+
 
 .get_invColdoldList <- function(res,regul.threshold=1e-7, control) {
   ## the validity of this fn is tested by checking that Evar (in predVar) is null in the case where explicit newdata=ori data
@@ -1658,23 +1723,28 @@ spaMM_Gamma <- local({
           } else if (type == "cholL_LLt")  {
             Rmatrix <- t(lmatrix)
             if (attr(lmatrix,"need_gmp")) {
-              # In the context of external packages, the user can only modify package options. So default values used by these packages
-              # should be taken from these packages' options. Then the control$fix_predVar that appears below comes from those options.
-              if (is.null(fix_predVar <- control$fix_predVar)) { # NULL best avoided in programming, to avoid the .check_frames() stuff
-                # Hence calling predict() with explicit control$fix_predVar is recommended in programming.
-                # Yet without explicit control$fix_predVar, either 
-                # .spaMM.data$options$fix_predVar lists a calling function => 
+              # control$fix_predVar controls what do do when there is a near singularity identified by "need_gmp".
+              # In some cases it would be OK to use gmp, but not for large matrices => the default is thus to use ginv().
+              # There is further control whether to output a message or not 
+              # In the context of external packages, the user can only modify those packages' options. So to allow user control, 
+              # the control$fix_predVar values used by these packages should be taken from these packages' options. 
+              # That would also avoid checking the call stack by .check_frames(); more generally, for this reason,
+              # calling predict() with explicit control$fix_predVar is recommended in programming.
+              # But I doubt I have implemented this anywhere (but _F I X M E_ wait for a 'pb' to rethink this)
+              if (is.null(fix_predVar <- control$fix_predVar)) {
+                predVar_exceptions <- .spaMM.data$options$fix_predVar
+                # Either 
+                # .spaMM.data$options$fix_predVar lists a calling function in its NA|TRUE|FALSE components => 
                 #   this block will not be called for all predict() calls, only once for any problematic fit 
                 #    so the impact .check_frames() on performance should be negligible. 
                 # or 
                 # .spaMM.data$options$fix_predVar does NOT list a calling function 
                 #   (e.g., blackbox::sampleByResp was forgotten at some stage) => repeated warnings
                 # as fix (invCoo <- ginv(crossprod(Rmatrix))) only local since save in envir occurs only if ( ! fix_predVar_NULL)
-                predVar_exceptions <- .spaMM.data$options$fix_predVar
                 if (.check_frames(which=predVar_exceptions$"NA")) {
                   fix_predVar <- NA # single message + ginv + saved in envir  = (FALSE+warning)
                 } else if (.check_frames(which=predVar_exceptions$"TRUE")) {
-                  fix_predVar <- TRUE # NO warning + gmp + saved in envir; gmp is presumptuous and so is TRUE as default 
+                  fix_predVar <- TRUE # NO warning + gmp + saved in envir; gmp would be a problem for large matrices, and so TRUE cannot be a default 
                 } else if (.check_frames(which=predVar_exceptions$"FALSE")) {
                   fix_predVar <- FALSE # NO warning + ginv + saved in envir  = (NA - warning)
                 } # else fix_predVar remains NULL => # repeated warnings + ginv + NOT saved in envir  
@@ -1811,7 +1881,9 @@ spaMM_Gamma <- local({
         d2hdv2_info <- .force_solve(d2hdv2) # inverse(d2hdv2)
       } # else we keep the QR facto.
     }
-  } else d2hdv2_info <- - .crossprodCpp(as.matrix(factor_inv_Md2hdv2), yy=NULL) # inverse(d2hdv2) # much faster than Matrix::crossprod(dsCMatrix...)
+  } else d2hdv2_info <- - .crossprodCpp_d(as.matrix(factor_inv_Md2hdv2), yy=NULL) # inverse(d2hdv2) # much faster than Matrix::crossprod(dsCMatrix...)
+  #                       and still faster than any of the as_mat variants, eg .Rcpp_crossprod(factor_inv_Md2hdv2, BB = NULL, as_mat=TRUE) 
+  #                       bc .crossprodCpp_d(dense) is fast relative to .Rcpp_crossprod(sparse), irrespective of as_mat
   return(d2hdv2_info)
 }
 
@@ -1871,8 +1943,8 @@ spaMM_Gamma <- local({
 .calc_Md2hdvb2_info_spprec_by_QR <- function(envir, which="tcrossfac_v_beta_cov") {## sparse qr is fast
   qr_R <- qrR(envir$qrXa, backPermute=FALSE) 
   X_scale <- envir$X_scale # pre v.2.7.34
-  if (is.null(X_scale)) X_scale <- attr(envir$sXaug,"scaled:scale") # from v2.7.34 to 3.2.18 
   if (is.null(X_scale)) X_scale <- attr(envir$sXaug$AUGI0_ZX$X.pv,"scaled:scale") # from version 3.2.19
+  if (is.null(X_scale)) X_scale <- attr(envir$sXaug,"scaled:scale") # from v2.7.34 to 3.2.18 
   if ( ! is.null(X_scale)) { ## X_scale impacts post-fit computations. 
     Xnames <- names(X_scale) 
     qr_R[,Xnames] <- .m_Matrix_times_Dvec(qr_R[,Xnames,drop=FALSE], X_scale)
@@ -1908,7 +1980,7 @@ spaMM_Gamma <- local({
       if (ncol(X.pv)) {
         if (is.null(envir$ZtW)) envir$ZtW <- t(.Dvec_times_m_Matrix(attr(envir$sXaug,"w.resid"), envir$sXaug$AUGI0_ZX$ZAfix)) 
         r12 <- as(Matrix::solve(envir$G_CHMfactor, as(envir$G_CHMfactor,"pMatrix") %*% envir$ZtW %*% X.pv,system="L"),"sparseMatrix") ## solve(as(envir$G_CHMfactor,"sparseMatrix"), envir$ZtW %*% AUGI0_ZX$X.pv)
-        r22 <- .calc_r22(X.pv,w.resid,r12) ## both lines as explained in working doc
+        r22 <- .calc_r22(X.pv,w.resid,r12, XtX=envir$XtX) ## both lines as explained in working doc
         r22 <- as(r22,"sparseMatrix") 
       } else r22 <- diag(nrow=0L) # don't leave it NULL; + we use its ncol
     } else r12 <- envir$r12 
@@ -1950,6 +2022,8 @@ spaMM_Gamma <- local({
   }
 }
 
+# This *may* be called during a fit, by  .calc_beta_cov_info_spprec(... envir = sXaug$BLOB ...) -> .calc_beta_cov_info_spprec -> .get_tcrossfac_beta_v_cov
+# in the diagnostic code for poor breakcond.
 .get_tcrossfac_beta_v_cov <- function(X.pv, envir, w.resid) {
   if (is.null(envir$beta_cov_info$tcrossfac_beta_v_cov)) {
     ## Using sparse matrices as much as possible for computation:
@@ -2037,42 +2111,28 @@ spaMM_Gamma <- local({
               xmatrix <- xmatrix[colnames(ZA),colnames(ZA),drop=FALSE]
               locnr <- locnc
             }
-          }         
-          nblocks <- locnc %/% locnr 
-          if (nblocks>1) {
-            # no longer clear when it occurs. (___F I X M E___ remove this code?) Nested AR1 now uses full-dim chol_Q (see "from_AR1_specific_code")
-            # and currently AR1 does not use ZAXlist, even when use_ZA_L=TRUE (F I X M E?)
-            # Any example of nested corrMatrix ?
-            if (inherits(xmatrix,"dCHMsimpl")) {
-              warning(paste0("Possibly inefficient code here (nested random effect+use_ZA_L). Please notify the maintainer; ",
-                             "\n and if in trouble, try spaMM.options(use_ZAL=NULL) (or even =FALSE) for this fit.")) 
-              xmatrix <- as(xmatrix,"pMatrix") %*% solve(xmatrix, system="Lt") 
-            }
-            locZA <- ZA
-            for (bt in 1:nblocks) 
-              locZA[,locnr*(bt-1)+(1:locnr)] <- locZA[,locnr*(bt-1)+(1:locnr)] %*% xmatrix
-            ZAX[[Lit]] <- locZA
+          } 
+          #
+          # removed (=>3.6.1) here code beginning with nblocks <- locnc %/% locnr, maybe for an obsolete version of nested AR1. 
+          #
+          ## With a proxy::dist or 'crossdist' matrix, it is likely that ZA was = I and we don't reach this code;
+          ## However, exceptions can occur: cf Infusion with CIpoint = MLE => replicate in points where MSEs are to be estimated
+          ## Then the xmatrix must have been converted from proxy style to a matrix.
+          if (inherits(xmatrix,"dCHMsimpl")) {
+            zax <- structure(list(ZA=ZA, Q_CHMfactor=xmatrix), class=c("ZA_QCHM","list")) 
+            # F I X M E not sure about colnames handling here. Can this occur for the xmatrix of a random-coef?
+          } else if (inherits(ZA,"dgCMatrix") &&  inherits(xmatrix,"dgCMatrix") ) {
+            # In random slope models, xmatrix can be a Matrix
+            #   matmult <- getMethod(`%*%`, c("CsparseMatrix", "CsparseMatrix"))
+            #   zax <- matmult(ZA, xmatrix)
+            zax <- .dgCprod(ZA, xmatrix) 
+            #zax@Dimnames[2] <- xmatrix@Dimnames[2] # now in cpp code
+            ## : colnames needed for predict(., newdata) -> match_old_new_levels(), and maybe elsewhere. 
           } else {
-            ## With a proxy::dist or 'crossdist' matrix, it is likely that ZA was = I and we don't reach this code;
-            ## However, exceptions can occur: cf Infusion with CIpoint = MLE => replicate in points where MSEs are to be estimated
-            ## Then the xmatrix must have been converted from proxy style to a matrix.
-            if (inherits(xmatrix,"dCHMsimpl")) {
-              zax <- structure(list(ZA=ZA, Q_CHMfactor=xmatrix), class=c("ZA_QCHM","list")) 
-              # F I X M E not sure about colnames handling here. Can this occur for the xmatrix of a random-coef?
-            } else if (inherits(ZA,"dgCMatrix") &&  inherits(xmatrix,"dgCMatrix") ) {
-              # In random slope models, xmatrix can be a Matrix
-              #   matmult <- getMethod(`%*%`, c("CsparseMatrix", "CsparseMatrix"))
-              #   zax <- matmult(ZA, xmatrix)
-              zax <- .dgCprod(ZA, xmatrix) 
-              #zax@Dimnames[2] <- xmatrix@Dimnames[2] # now in cpp code
-              ## : colnames needed for predict(., newdata) -> match_old_new_levels(), and maybe elsewhere. 
-            } else {
-              zax <- ZA %*% xmatrix # measurably slow... 
-              #if (identical(attr(xmatrix,"corr.model"),"random-coef")) colnames(zax) <- colnames(ZA) ## presumably obsolete. xmatrix must provide colnames
-            }
-            ZAX[[Lit]] <- zax
+            zax <- ZA %*% xmatrix # measurably slow... 
+            #if (identical(attr(xmatrix,"corr.model"),"random-coef")) colnames(zax) <- colnames(ZA) ## presumably obsolete. xmatrix must provide colnames
           }
-          
+          ZAX[[Lit]] <- zax
         }
       }
     }
@@ -2117,13 +2177,12 @@ spaMM_Gamma <- local({
   return(ZAL)
 }
 
-.compute_ZAL <- function(XMatrix, ZAlist, as_matrix, force_bind=FALSE) {
+.compute_ZAL <- function(XMatrix, ZAlist, as_matrix, force_bind=FALSE, try_bind=TRUE) {
   ZALlist <- .compute_ZAXlist(XMatrix,ZAlist, force_bindable=force_bind)
-  if (inherits(ZALlist,"notBindable")) {
+  if ( ! try_bind || inherits(ZALlist,"notBindable")) {
     return(new("ZAXlist", LIST=ZALlist))
   } else {
     ZAL <- .ad_hoc_cbind(ZALlist, as_matrix )
-    rownames(ZAL) <- NULL
     return(ZAL)
   }
 }
@@ -2179,27 +2238,26 @@ if (FALSE) { # that's not used.
   return(.unlist(notEQL))
 }
 
-.initialize_v_h <- function(psi_M,etaFix,init.HLfit,cum_n_u_h,rand.families,port_env) {
+.initialize_v_h <- function(psi_M,etaFix,init.HLfit,cum_n_u_h,rand.families,port_env, v_h_list) {
   v_h <- etaFix$v_h
   if (is.null(v_h) ) v_h <- port_env$port_fit_values$v_h
   if (is.null(v_h) ) v_h <- init.HLfit$v_h
   if (is.null(v_h) ) {
-    v_h <- vector("list", length(rand.families))
     for (it in seq_len(length(rand.families))) {
       u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
-      v_h[[it]] <- rand.families[[it]]$linkfun(psi_M[u.range]) ## v as link(mean(u)) 
+      v_h_list[[it]] <- rand.families[[it]]$linkfun(psi_M[u.range]) ## v as link(mean(u)) 
     }
-    v_h <- .unlist(v_h)
+    v_h <- .unlist(v_h_list)
   }
-  return(v_h)
+  v_h
 }
 
 ## u_h and v_h in box constraints fro m unconstrainted v_h
-.u_h_v_h_from_v_h <- function(v_h,rand.families,cum_n_u_h,lcrandfamfam,lower.v_h,upper.v_h) {
+.u_h_v_h_from_v_h <- function(v_h, rand.families, cum_n_u_h, lcrandfamfam, lower.v_h, upper.v_h, 
+                              u_list=vector("list", length(rand.families))) {
   if(!is.null(lower.v_h)) {v_h[v_h<lower.v_h] <- lower.v_h}
   if(!is.null(upper.v_h)) {v_h[v_h>upper.v_h] <- upper.v_h}
   nrand <- length(rand.families)
-  u_list <- vector("list", nrand)
   for (it in seq_len(nrand)) {
     u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
     u_list[[it]] <- rand.families[[it]]$linkinv(v_h[u.range])
@@ -2278,7 +2336,7 @@ if (FALSE) { # that's not used.
 }
 
 .timerraw <- function(time1) {
-  return(round(as.numeric(difftime(Sys.time(), time1, units = "secs")), 1))
+  return(round(as.numeric(difftime(Sys.time(), time1, units = "secs")), 2))
 }
 
 .post_process_LMatrices <- function(next_LMatrices, ZAlist, ranCoefs_blob, cum_n_u_h) { 
@@ -2294,9 +2352,9 @@ if (FALSE) { # that's not used.
       if (corr.model=="random-coef") {
         latentL_blob <- attr(lmatrix,"latentL_blob")
         design_u <- latentL_blob$design_u
-        if (kappa(design_u)>1e06) { # occurs in HLfit3 example
-          attr(lmatrix,"latentL_blob")$gmp_compactcovmat <- gmp::as.bigq(attr(lmatrix,"latentL_blob")$compactcovmat)
-          attr(lmatrix,"latentL_blob")$gmp_compactprecmat <- gmp::solve.bigq(attr(lmatrix,"latentL_blob")$gmp_compactcovmat)
+        if ((kappa(design_u)>1e06)) { # occurs in HLfit3 example; also good test in test-devel-predVar-ranCoefs
+          latentL_blob$gmp_compactcovmat <- gmp::as.bigq(latentL_blob$compactcovmat)
+          latentL_blob$gmp_compactprecmat <- gmp::solve.bigq(latentL_blob$compactcovmat)
           if (is.null(latentL_blob$compactchol_Q)) latentL_blob$compactchol_Q <- t(gmp::asNumeric(gmp::solve.bigq(gmp::as.bigq(design_u))))
         } else if (is.null(latentL_blob$compactchol_Q)) latentL_blob$compactchol_Q <- t(solve(design_u))
         # We will use $d and $compactchol_Q in .get_invL_HLfit() and we remove $design_u for easier-to-maintain code
@@ -2312,11 +2370,12 @@ if (FALSE) { # that's not used.
           attr(lmatrix,"msd.arglist") <- msd.arglist
         }
       }
+      # need_gmp attribute does not control use of above gmp object; rather it control use of gmp in other cases
       # 'given' that I cannot modify strucList in post_fit code, the need_gmp attribute must be assigned now.  
       if (attr(lmatrix,"type")=="cholL_LLt" && corr.model %in% c("Matern","Cauchy")) {
         attr(lmatrix,"need_gmp") <- (kappa(lmatrix)>1e05)
-      } else attr(lmatrix,"need_gmp") <- FALSE ## it's not that we may not need it, it's that we may not handle it
-      #
+      } else attr(lmatrix,"need_gmp") <- FALSE ## it's not that we may not need it, it's that we may not handle it 
+      #                                           (cf inter-package dependence in .get_invColdoldList() (__F I X M E__?))
       ## Now fill strucList[[it]]
       #
       if (FALSE && inherits(lmatrix,"dCHMsimpl")) { # inhibited => dCHMsimpl goes into strucList
@@ -2358,7 +2417,7 @@ if (FALSE) { # that's not used.
     v_h <- etaFix$v_h
     u_h <- etaFix$u_h
     if (is.null(u_h)) {u_h <- .u_h_v_h_from_v_h(v_h,rand.families=rand.families,cum_n_u_h=cum_n_u_h,
-                                                lcrandfamfam=lcrandfamfam,lower.v_h=NULL,upper.v_h=NULL)}
+                                                lcrandfamfam=lcrandfamfam,lower.v_h=NULL,upper.v_h=NULL, u_list=processed$envir$u_list)}
     lambda_est <- .resize_lambda(lambda.Fix,vec_n_u_h,n_u_h, adjacency_info=fixed_adjacency_info)
     eta <- eta + drop(ZAL  %id*id%  etaFix$v_h) ## updated at each iteration
   } ## FREQS
@@ -2366,7 +2425,8 @@ if (FALSE) { # that's not used.
   muetablob <- .muetafn(eta=eta,BinomialDen=BinomialDen,processed=processed) 
   w.resid <- .calc_w_resid(muetablob$GLMweights,phi_est) ## 'weinu', must be O(n) in all cases
   if (models[[1]]=="etaHGLM") { ## linear predictor for mean with ranef
-    wranefblob <- .updateW_ranefS(cum_n_u_h,rand.families,lambda_est,u_h,v_h) ## no fit, likelihood computation
+    W_ranefS_constant_args <- processed$reserve$W_ranefS_constant_args
+    wranefblob <- do.call(".updateW_ranefS",c(W_ranefS_constant_args, list(u_h=u_h,v_h=v_h,lambda=lambda_est)))
     H_global_scale <- .calc_H_global_scale(w.resid)
     ZAL_scaling <- 1/sqrt(wranefblob$w.ranef*H_global_scale) ## Q^{-1/2}/s
     Xscal <- .make_Xscal(ZAL, ZAL_scaling, AUGI0_ZX=processed$AUGI0_ZX)
@@ -2437,15 +2497,15 @@ if (FALSE) { # that's not used.
   } else return(rbind(X, diag(nrow=ncol(X))))
 }
 
-.damping_to_solve <- function(X, XDtemplate=NULL, dampDpD, rhs=NULL,method="QR", .drop=TRUE) { ##  
+.damping_to_solve <- function(X, XDtemplate=NULL, dampDpD, rhs=NULL,method="QR", .drop=TRUE) { ## cf my notes on Mor\'e 1977 
   if (.drop) rhs <- drop(rhs) ## 1-col m/Matrix to vector ## affects indexing below but the result of the chol2inv line is always Matrix
   if (method=="QR") { ## seem always true
     if (is.null(XDtemplate)) {
       warning("Possibly inefficient call to .damping_to_solve() without precomputed XDtemplate")
-      XDtemplate <- .XDtemplate(X)
+      XDtemplate <- structure(.XDtemplate(X), upperTri=FALSE)
     }
     nr <- nrow(XDtemplate)-length(dampDpD)
-    if (inherits(XDtemplate,"Matrix")) { # both cases occur in routine use
+    if (inherits(XDtemplate,"Matrix")) { # both cases occur in routine use # presumably spprec, ou sparse-correl
       XD <- .Dvec_times_Matrix_lower_block(Dvec=sqrt(dampDpD),X=XDtemplate,min_row=nr)
       RP <- qr(XD) ## i.e. Matrix::qr
       RRsP <- sort.list(RP@q) 
@@ -2488,23 +2548,38 @@ if (FALSE) { # that's not used.
         }
       }
       ## assuming rhs is 'slim', this minimizes permutations. For computation of dv_h, it is square rather than slim...
-    } else {
+    } else { # dense correl ?
       XD <- .Dvec_times_matrix(Dvec=c(rep(1,nr),sqrt(dampDpD)), X=XDtemplate)
-      RP <- .lmwithQRP(XD,yy=NULL,returntQ=FALSE,returnR=TRUE) ## Eigen QR OK since we don't request Q
-      RRsP <- sort.list(RP$perm)
-      # dVscaled <- chol2inv(RP$R_scaled)[RRsP,RRsP] %*% rhs
-      if (is.null(rhs)) {
-        return(list(inv=chol2inv(RP$R_scaled),Rperm=RP$perm+1L,RRsP=RRsP))
+      if (TRUE) { 
+        # on test-levM.R arabidopsis example, .lmwithQR faster than .lmwithQRP faster than a firsr .update_R_in_place_essai() (code in givens.R) 
+        # Finally a revised .update_R_in_place() may be marginally faster than .lmwithQR()
+        # check: test-spaMM.R#8: try(fitme(I(1 + cases) ~ I(prop.ag/10)...
+        if (attr(XDtemplate,"upperTri")) { # The update does not work when ".lmwithQRP() has been used.
+          R_scaled <- .update_R_in_place(XD) # bypass QR factorization code to get new R (for unknown new Q) with XD modified in place.
+        } else R_scaled <- .lmwithQR(XD,yy=NULL,returntQ=FALSE,returnR=TRUE)$R_scaled ## Eigen QR OK since we don't request Q
+         # dVscaled <- chol2inv(RP$R_scaled)[RRsP,RRsP] %*% rhs
+        if (is.null(rhs)) {
+          return(list(inv=chol2inv(R_scaled),Rperm=seq(ncol(R_scaled)),RRsP=seq(ncol(R_scaled))))
+        } else {
+          resu <- backsolve(R_scaled, backsolve(R_scaled,rhs,transpose=TRUE))
+        }
       } else {
-        if (is.matrix(rhs)) {
-          ## case never run, hence not tested.
-          # resu <- (chol2inv(RP$R_scaled) %*% rhs[RP$perm+1L,])[RRsP,]  ## assuming rhs is 'slim', this minimizes permutations   
-          # resu <- .Rcpp_chol2solve(RP$R_scaled,rhs[RP$perm+1L,])[RRsP,] 
-          resu <- backsolve(RP$R_scaled, backsolve(RP$R_scaled,rhs[RP$perm+1L,],transpose=TRUE))[RRsP,]
-        } else { ## if rhs is one col 
-          ## test-spaMM replicated 20 times ->  .Rcpp_chol2solve has no obvious benefit
-          # resu <- .chol2solve(RP$R_scaled,rhs[RP$perm+1L])[RRsP] 
-          resu <- backsolve(RP$R_scaled, backsolve(RP$R_scaled,rhs[RP$perm+1L],transpose=TRUE))[RRsP] 
+        RP <- .lmwithQRP(XD,yy=NULL,returntQ=FALSE,returnR=TRUE) ## Eigen QR OK since we don't request Q
+        RRsP <- sort.list(RP$perm)
+        # dVscaled <- chol2inv(RP$R_scaled)[RRsP,RRsP] %*% rhs
+        if (is.null(rhs)) {
+          return(list(inv=chol2inv(RP$R_scaled),Rperm=RP$perm+1L,RRsP=RRsP))
+        } else {
+          if (is.matrix(rhs)) {
+            ## case never run, hence not tested.
+            # resu <- (chol2inv(RP$R_scaled) %*% rhs[RP$perm+1L,])[RRsP,]  ## assuming rhs is 'slim', this minimizes permutations   
+            # resu <- .Rcpp_chol2solve(RP$R_scaled,rhs[RP$perm+1L,])[RRsP,] 
+            resu <- backsolve(RP$R_scaled, backsolve(RP$R_scaled,rhs[RP$perm+1L,],transpose=TRUE))[RRsP,]
+          } else { ## if rhs is one col 
+            ## test-spaMM replicated 20 times ->  .Rcpp_chol2solve has no obvious benefit
+            # resu <- .chol2solve(RP$R_scaled,rhs[RP$perm+1L])[RRsP] 
+            resu <- backsolve(RP$R_scaled, backsolve(RP$R_scaled,rhs[RP$perm+1L],transpose=TRUE))[RRsP] 
+          }
         }
       }
     }
@@ -2626,14 +2701,19 @@ if (FALSE) { # that's not used.
     u.range <- (cum_n_u_h[rd]+1L):cum_n_u_h[rd+1L]
     lambda_est[u.range] <- ranCoefs_blob$lambda_est[u.range]
   }
-  return(structure(lambda_est,init.lambda=init.lambda)) ## keep init.lambda provisionally bc SEMwrap expects it (FIXME)
-  # F I X M E: I should add a lambda_par attribute
+  attr(lambda_est,"init.lambda") <- init.lambda ## keep init.lambda provisionally bc SEMwrap expects it (FIXME)
+  return(lambda_est) 
 }
 
 .calc_initial_init_lambda <- function(lambda.Fix, nrand, processed, ranCoefs_blob, init.HLfit, fixed) {
   init.lambda <- lambda.Fix ## already the right size 'nrand' with NA's or non-fixed ones
-  lambdaType <- rep("",nrand) 
-  lambdaType[processed$ranCoefs_blob$is_set] <- "fix_ranCoefs" 
+  if (is.null(lambdaType <- processed$envir$lambdaType)) { # _F I X M E_ that's midway from pushing this to .preprocess. But...
+    # the hyper stuff cannot be fully included in this block and I will wait a better opportunity to dissect what could be done about it. 
+    lambdaType <- rep("",nrand) 
+    lambdaType[processed$ranCoefs_blob$is_set] <- "fix_ranCoefs" 
+    lambdaType[lambdaType=="" & ! is.na(processed$lambda.Fix)] <- "fixed" 
+    processed$envir$lambdaType <- lambdaType
+  }
   if ( ! is.null((hyper_info <- processed$hyper_info)$map)) {
     hyper_type <- attr(fixed,"type")$hyper
     hy_lam_types <- character(length(hyper_type))
@@ -2645,13 +2725,11 @@ if (FALSE) { # that's not used.
       hy_lam_types[char_hyper_it] <- hy_lam_type
     }
     hy_lam_types[] <- paste0(hy_lam_types,"_hyper")
-    pos <- unlist(hyper_info$ranges[hy_names])  
+    pos <- .unlist(hyper_info$ranges[hy_names])  
     lambdaType[pos] <- hy_lam_types[hyper_info$map[pos]]
   }
   lambdaType[lambdaType=="" & ranCoefs_blob$is_set] <- "outer_ranCoefs" 
   ## "fixed" (not "fix" -- confusing) is tested eg to compute dfs p_lambda, in summary, in calc_logdisp_cov.R, in .get_logdispObject.
-  lambdaType[lambdaType=="" & ! is.na(processed$lambda.Fix)] <- "fixed" 
-  # F I X M E it seems that lambdaType evaluation up to this point can be preprocessed EXCEPT "outer_ranCoefs" (ranCoefs_blob$is_set !=processed$ranCoefs_blob$is_set)
   lambdaType[(lambdaType=="" & ! (is.na(lambda.Fix)))] <- "outer" # outer charac. by difference between processed$lambda.Fix and lambda.Fix
   lambdaType[whichInner <- (lambdaType=="")] <- "inner"  
   if (! is.null(init.HLfit$lambda)) init.lambda[whichInner] <- init.HLfit$lambda[whichInner]
@@ -2856,9 +2934,10 @@ if (FALSE) { # that's not used.
   if (is.null(phi.Fix)) { # here it is not a list
     beta_phi <- PHIblob$beta_phi 
     names_beta_phi <- names(beta_phi)
-    for (it in seq_len(length(names_beta_phi))) {
-      if (substr(names_beta_phi[[it]],1,1)=="X") names_beta_phi[[it]] <- substring(names_beta_phi[[it]],2)
-    } ## removes "X" without guessing any order or length
+    # for (it in seq_len(length(names_beta_phi))) {
+    #   if (substr(names_beta_phi[[it]],1,1)=="X") names_beta_phi[[it]] <- substring(names_beta_phi[[it]],2)
+    # } ## removes "X" without guessing any order or length
+    # : no longer clear when it's needed. (If put back, will removes initial X's for resid model of wafers fits, where it shouldn't... ) 
     names(beta_phi) <- names_beta_phi 
     # FR->FR redundant info for summary, a nettoyer 
     phi.object <- list(fixef=beta_phi)
@@ -2904,7 +2983,7 @@ if (FALSE) { # that's not used.
   residProcessed$y <- residProcessed$data$.phi
   residProcessed$iter_mean_dispFix <- max(200L,ceiling(100* mean(abs(log2(residProcessed$y)))))
   residProcessed$iter_mean_dispVar <- max(50L,ceiling(100* mean(abs(log2(residProcessed$y)))))
-  residProcessed$HLframes$Y <- as.matrix(residProcessed$data$.phi)
+  residProcessed$main_terms_info$Y <- as.matrix(residProcessed$data$.phi)
   #  residProcessed$port_fit_values allows a previous 'close' [as defined by condition on logLik change] outer fit 
   #   to be used to initialize the 1st inner fitme of the new HLfit.
   #  residProcessed$fixed, until modified below, contains preprocessed resid.model's fixed lambda, and phi.

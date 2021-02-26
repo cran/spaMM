@@ -110,10 +110,10 @@ update.HLfit <- function(object, formula., ..., evaluate = TRUE) {
 }
 
 .update_data <- function(object, newresp) {
-  re_data <- object$data
   mf <- model.frame(object)
   #form <- formula.HLfit(object, which="hyper")
   if (inherits(mf,"list")) { # list of data.frames (with attributes): mv case : then newresp is assumed to be the result of simulate, an overlong vector.
+    re_data <- object$data
     nobs <- nrow(re_data)
     frst <- 0L
     for (mv_it in seq_along(mf)) {
@@ -134,8 +134,9 @@ update.HLfit <- function(object, formula., ..., evaluate = TRUE) {
     return(re_data)
   }
   Y <- model.response(mf)
+  re_data <- object$data
   if (NCOL(Y)==2L) { ## paste(form[[2L]])[[1L]]=="cbind"
-    # model.frame is a data frame whose 1st element is a 2-col matrix with unamed first column
+    # model.frame is a data frame whose 1st element is a 2-col matrix with unnamed first column
     # model.response() extracts this matrix:
     # If formula is cbind(npos,nneg) ~... the two columns have names "npos", "nneg"
     # If formula is cbind(npos,ntot-npos) ~... the two columns have names "npos", ""
@@ -151,9 +152,43 @@ update.HLfit <- function(object, formula., ..., evaluate = TRUE) {
     if (inherits(mf[[1L]],"AsIs")) {
       stop("the response of the original fit is as 'AsIs' term, I(.), which is not handled by code updating response.")
       # the alternative would be to change internally the lhs of the formula...
-    } else re_data[colnames(mf)[1L]] <- newresp 
+    } else re_data[colnames(mf)[1L]] <- newresp # could use all.vars(formula(object)[-3]) to get a single var from an expression... but if expression has several variabls...
   }
   return(re_data)
+}
+
+.update_main_terms_info <- function(object, newresp) {
+  mf <- model.frame(object)
+  if (inherits(mf,"list")) { # list of data.frames (with attributes): mv case : then newresp is assumed to be the result of simulate, an overlong vector.
+    vec_nobs <- object$vec_nobs
+    frst <- 0L
+    for (mv_it in seq_along(mf)) {
+      lst <- frst+vec_nobs[mv_it]
+      resp_range <- (frst+1L):lst
+      resp_i <- newresp[resp_range]
+      frst <- lst
+      Y <- model.response(mf[[mv_it]])
+      if (NCOL(Y) == 2L) {
+        Y <- cbind(resp_i, object$BinomialDen[resp_range] - resp_i)
+      } else Y <- resp_i
+      mf[[mv_it]][1] <- Y
+    }
+  } else {
+    Y <- model.response(mf)
+    if (NCOL(Y)==2L) { ## paste(form[[2L]])[[1L]]=="cbind"
+      # model.frame is a data frame whose 1st element is a 2-col matrix with unnamed first column
+      Y <- cbind(newresp, object$BinomialDen-newresp)
+    } else Y <- newresp # could use all.vars(formula(object)[-3]) to get a single var from an expression... but if expression has several variabls...
+    mf[1] <- Y
+  }
+  main_terms_info <- object$main_terms_info # no longer true: 'of class "HLframes"'
+  mf <- structure(mf, # model.frame, or list of them for mv
+                  # fixef_terms=.get_from_terms_info(object, which="fixef_terms"), # already in main_terms_info
+                  # fixef_levels=.get_from_terms_info(object, which="fixef_levels"),  # already in main_terms_info
+                  fixefvarnames=.get_from_data_attrs(object, which="fixefvarnames"), 
+                  fixefpredvars=.get_from_data_attrs(object, which="fixefpredvars"))
+  main_terms_info$mf <- mf # adding $mf keeps the class (in contrast to subsetting)
+  return(main_terms_info)    ############################# no longer true: 'of class "HLframes", the class set to object$HLframes' 
 }
 
 if (FALSE) {
@@ -233,7 +268,11 @@ update_resp <- function(object, newresp, ...,  evaluate = TRUE) {
       re_call <- as.call(re_call)
     }
   }
-  re_call$data <- .update_data(object, newresp=newresp)
+  if (preprocess_handles_terms_info_attr <- TRUE) {
+    re_call$data <- structure(object$data, updated_terms_info=.update_main_terms_info(object, newresp=newresp))
+    # the data are not updated, so their main response info should not be used (but still used for resid model)
+    #if ( ! inherits(re_call$data, "HLframes")) stop("*F I X M E*")
+  } else re_call$data <- .update_data(object, newresp=newresp)
   if (evaluate) 
     eval(re_call, parent.frame())
   else re_call
@@ -275,10 +314,6 @@ if (FALSE) {
 .update_formula <- function (old, new, ...) { 
   C_updateform <- get("C_updateform",asNamespace("stats")) ## not kocher?
   tmp <- do.call(".Call",list(C_updateform, as.formula(old), as.formula(new))) # circumventing RcppExports' kind bureaucracy...  
-  ## at some point I started to write another fn where 'tmp' was actually 'out' and that continued as :
-  #HLframes <- .HLframes(formula=out, data=old$data) ## design matrix X, Y... 
-  #attributes(out) <- attributes(HLframes$fixef_off_terms)
-  ## Was it useful ?
   out <- formula(terms.formula(tmp, simplify = FALSE))
   out <- .fixFormulaObject(out)
   environment(out) <- environment(tmp)

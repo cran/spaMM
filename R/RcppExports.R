@@ -13,6 +13,10 @@
     .Call(`_spaMM_lmwith_sparse_LLp`, XX, yy, returntQ, returnR, pivot)
 }
 
+.update_R_in_place <- function(RD) {
+    .Call(`_spaMM_update_R_in_place`, RD)
+}
+
 .lmwithQR <- function(XX, yy, returntQ, returnR) {
     .Call(`_spaMM_lmwithQR`, XX, yy, returntQ, returnR)
 }
@@ -45,6 +49,38 @@
     .Call(`_spaMM_nuln_plus_bessel_lnKnu_e`, nu, x)
 }
 
+`.lower.tri<-` <- function(A, diag, value) {
+    .Call(`_spaMM_lowertri`, A, diag, value)
+}
+
+`.upper.tri<-` <- function(A, diag, value) {
+    .Call(`_spaMM_uppertri`, A, diag, value)
+}
+
+.rC_inv_chol_cpp <- function(trCoef) {
+    .Call(`_spaMM_rC_inv_chol_cpp`, trCoef)
+}
+
+.C_calc_cov_from_ranCoef <- function(ranCoef, Xi_ncol = NULL) {
+    .Call(`_spaMM_C_calc_cov_from_ranCoef`, ranCoef, Xi_ncol)
+}
+
+.C_makelong <- function(Lcompact, Lsize) {
+    .Call(`_spaMM_makelong`, Lcompact, Lsize)
+}
+
+.C_makelong2 <- function(Lcompact, Lsize) {
+    .Call(`_spaMM_makelong2`, Lcompact, Lsize)
+}
+
+.C_dispInv <- function(x) {
+    .Call(`_spaMM_C_dispInv`, x)
+}
+
+.logit <- function(mu) {
+    .Call(`_spaMM_logit`, mu)
+}
+
 .rankinfo <- function(x, tol) {
     .Call(`_spaMM_rankinfo`, x, tol)
 }
@@ -73,8 +109,8 @@
     .Call(`_spaMM_RcppChol`, AA)
 }
 
-.crossprodCpp <- function(Mat, yy) {
-    .Call(`_spaMM_crossprodCpp`, Mat, yy)
+.crossprodCpp_d <- function(Mat, yy) {
+    .Call(`_spaMM_crossprodCpp_d`, Mat, yy)
 }
 
 .tcrossprodCpp <- function(Mat, yy) {
@@ -97,20 +133,20 @@
     .Call(`_spaMM_dgCprod`, AA, BB)
 }
 
-.dgCcrossprod <- function(AA, BB) {
-    .Call(`_spaMM_dgCcrossprod`, AA, BB)
+.dgCcrossprod <- function(AA, BB, as_mat = FALSE) {
+    .Call(`_spaMM_dgCcrossprod`, AA, BB, as_mat)
 }
 
 .dgCtcrossprod <- function(AA, BB) {
     .Call(`_spaMM_dgCtcrossprod`, AA, BB)
 }
 
-.crossprod_not_dge <- function(AA, BB, eval_dens) {
-    .Call(`_spaMM_crossprod_not_dge`, AA, BB, eval_dens)
+.crossprod_not_dge <- function(AA, BB, eval_dens, as_mat) {
+    .Call(`_spaMM_crossprod_not_dge`, AA, BB, eval_dens, as_mat)
 }
 
-.Rcpp_crossprod <- function(AA, BB, eval_dens = TRUE) {
-    .Call(`_spaMM_Rcpp_crossprod`, AA, BB, eval_dens)
+.Rcpp_crossprod <- function(AA, BB, eval_dens = TRUE, as_mat = FALSE) {
+    .Call(`_spaMM_Rcpp_crossprod`, AA, BB, eval_dens, as_mat)
 }
 
 .Rcpp_Csum <- function(AA, BB) {

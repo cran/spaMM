@@ -22,7 +22,10 @@ adjfitsp <- fitme(cases~I(prop.ag/10) +adjacency(1|gridcode)+(1|gridcode)+offset
 testthat::expect_true("AUGI0_ZX_sparsePrecision" %in% adjfitsp$MME_method)
 spaMM.options(oldop)
 if (spaMM.getOption("EigenDense_QRP_method")==".lmwithQR") {
-  testthat::expect_true(diff(range(logLik(adjfit),logLik(adjfitsp)))<4e-8) 
+  crit <- diff(range(logLik(adjfit),logLik(adjfitsp)))
+  if (spaMM.getOption("fpot_tol")>0) {
+    testthat::test_that(paste0("criterion was ",signif(crit,6)," from -168.1298"), testthat::expect_true(crit<4e-8) )
+  } else testthat::expect_true(crit<4e-8)
   testthat::expect_true(max(abs(range(get_predVar(adjfit)-get_predVar(adjfitsp))))<1.8e-5)
 } else {
   testthat::expect_true(diff(range(logLik(adjfit),logLik(adjfitsp)))<2e-8) 
@@ -63,7 +66,10 @@ if (spaMM.getOption("example_maxtime")>6.90) {
                     #fixed=list(lambda=c(0.1,0.05)), 
                     family=poisson(),data=scotlip,control.HLfit=list(LevenbergM=TRUE)) ## 
   if (spaMM.getOption("EigenDense_QRP_method")==".lmwithQR") {
-    testthat::expect_true(diff(range(logLik(covfit),logLik(covfitLM),logLik(precfitLM),logLik(adjfit),logLik(adjfitsp)))<5e-8) 
+    crit <- diff(range(logLik(covfit),logLik(covfitLM),logLik(precfitLM),logLik(adjfit),logLik(adjfitsp)))
+    if (spaMM.getOption("fpot_tol")>0) {
+      testthat::test_that(paste0("criterion was ",signif(crit,6)," from -168.12966973"), testthat::expect_true(crit<5e-8) )
+    } else testthat::expect_true(crit<5e-8)
   } else testthat::expect_true(diff(range(logLik(covfit),logLik(covfitLM),logLik(precfitLM),logLik(adjfit),logLik(adjfitsp)))<3e-8) 
   # : correctness sensitive to w.resid <- damped_WLS_blob$w.resid.
   

@@ -185,14 +185,9 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
 
 .leveragesWrap <- function(X) { 
   # Matrix::qr.Q fails is X had zero columns. The call to this function assumes ncol>0
-  #
   if (inherits(X,"sparseMatrix")) {
-    return(rowSums(qr.Q(qr(X))^2)) ## perhaps not optimal and certainly not optimized as first met in LM with sparse X.pv 01/2018
-  } else if (nrow(X)> .spaMM.data$options$lev_by_sparse_Q) { ## Eigen's QR does not seem memory-efficient for large nrow.
-    #  so we convert to sparse. There is no big overhead in doing this only here (but there are drawbacks in doing it upstream)
-    X <- as(X,"dgCMatrix") # X <- .Rcpp_as_dgCMatrix(X) 
-    return(rowSums(qr.Q(qr(X))^2)) ## perhaps not optimal and certainly not optimized as first met in LM with sparse X.pv 01/2018
-  } else .leverages(X) ## requests Q from Eigen QR hich is inefficient for large nrow(X)
+    return(rowSums(qr.Q(qr(X))^2)) ## perhaps not optimal. Use hlfit <- HLfit(y ~ x, data=data.test) to profile it.
+  } else .leverages(X) ## requests thinQ from Eigen QR
 }
 
 .calc_neg_d2f_dv_dloglam <- function(dlogfthdth, cum_n_u_h, lcrandfamfam, rand.families, u_h) {
@@ -287,21 +282,16 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
 
 .calc_sscaled_new <- function(vecdisneeded, dlogWran_dv_h, coef12, 
                               n_u_h, sXaug, ZAL,WU_WT) {
-  vecdis <- vecdisneeded
-  vecdis[vecdisneeded] <- NA
-  vecdis[!vecdisneeded] <- 0
-  vecdi1 <- vecdis[1L]
-  vecdi2 <- vecdis[2L]
-  vecdi3 <- vecdis[3L]
   if (any(vecdisneeded)) { ## but the call to .calc_sscaled_new is conditional to the same condition 
-    ## here version 1.5.3 has an interesting signed.wAugX concept
+    ## here version 1.5.3 had an interesting signed.wAugX concept
+    vecdi1 <- vecdi2 <- vecdi3 <- 0
     ## P is P in LeeL appendix p. 4 and is P_R in MolasL p. 3307; X cols are excluded.
-    Pdiag <- get_from_MME(sXaug,"hatval_Z") 
+    Pdiag <- get_from_MME(sXaug,"hatval_Z", B=unique(c("phi","phi","lambda")[which(vecdisneeded)])) # currently only spprec takes advantage of this.
     if (vecdisneeded[1L]) vecdi1 <- Pdiag$lev_phi * coef12$coef1 # coef1 is the factor of P_ii in d1
     # K2 = solve(d2hdv2,tZAL) is K2 matrix in LeeL appendix p. 4 and is -D in MolasL p. 3307 
     # W is Sigma^-1 ; TWT = t(ZALI)%*%W%*%ZALI = ZAL'.Wresid.ZAL+Wranef = -d2hdv2 !
     if (vecdisneeded[2L]) { # ( ZAL %*% K2 ) is K1 in LeeL appendix p. 4 and is A=-ZD in MolasL p. 3307-8 
-      # vecdi2 <- as.vector( ((Pdiag$lev_phi * coef2) %*id% ZAL) %*% K2)
+      # vecdi2 <- as.vector( ((Pdiag$lev_phi * coef2) %*% ZAL) %*% K2)
       coef2 <- coef12$dlW_deta # coef2 is the factor between P_jj and K1 in d2
       vecdi2 <- get_from_MME(sXaug,"solve_d2hdv2",B=as.vector((Pdiag$lev_phi * coef2) %*id% ZAL))
       vecdi2 <- as.vector(ZAL %*% vecdi2) ## equiv  post-multiplication by Z^T in the expression for D p.3307 bottom.
@@ -490,7 +480,8 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
   return(ZAL)
 }
 
-.make_Xscal <- function(ZAL, ZAL_scaling=NULL, AUGI0_ZX) {
+.make_Xscal <- function(ZAL, ZAL_scaling=NULL, AUGI0_ZX, as_matrix) {
+  if (inherits(ZAL,"ZAXlist")) ZAL <- .ad_hoc_cbind(ZAL@LIST, as_matrix=as_matrix )
   # capture programming error for ZAL_scaling:
   if (length(ZAL_scaling)==1L && ncol(ZAL)!=1L) stop("ZAL_scaling should be a full-length vector, or NULL. Contact the maintainer.")
   # ncol(ZAL)=1L could occur in 'legal' (albeit dubious) use. The total number of levels of random effects has been checked in preprocessing.
@@ -577,9 +568,9 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
 
 .get_absdiagR_blocks <- function(sXaug_blocks, pwy_o, n_u_h, processed, augZXy_solver,update_info) {
   seq_n_u_h <- seq(n_u_h)
-  ZW <- sXaug_blocks$ZW # actually a ZL rather than a Z.
+  tZW <- t(sXaug_blocks$ZW) # actually a ZL rather than a Z.
   if (is.null(template <- processed$AUGI0_ZX$template_CHM_ZZ_blocks)) { 
-    cross_Z <- .crossprod(ZW) 
+    cross_Z <- .tcrossprod(tZW) 
     if (inherits(cross_Z,"dsyMatrix")) { ## Matrix considered the matrix as effectively dense
       message(paste("Possibly poor selection of methods: Z stored as sparse, but Z'Z assessed as dense by Matrix's as(., 'symmetricMatrix').",
                     "spaMM.options(QRmethod='dense') may be used to control this on an ad-hoc basis (but should otherwise be reset to NULL!).",
@@ -591,23 +582,26 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
     if (update_info$allow) { 
       processed$AUGI0_ZX$template_CHM_ZZ_blocks <- CHM_ZZ
     }
-  } else {
-    cross_Z <- .crossprod(ZW, eval_dens=FALSE) 
-    #cross_Z <- as(cross_Z,"sparseMatrix") ## should generally be useless
-    CHM_ZZ <- Matrix::.updateCHMfactor(template, cross_Z, mult=1)
-  }
+  } else CHM_ZZ <- Matrix::.updateCHMfactor(template, tZW, mult=1) # no need to compute the crossprod for updating: the tcrossfac is enough.
   XW <- sXaug_blocks$XW
-  ZtWX <- .crossprod(ZW, XW)
-  Rzx <- solve(CHM_ZZ, solve(CHM_ZZ,ZtWX,system="P"), system="L")
-  ZtWy <- .crossprod(ZW, pwy_o)
-  r_Zy <-  solve(CHM_ZZ, solve(CHM_ZZ,ZtWy,system="P"), system="L")
+  ZtWX <- tZW %*% XW
+  # perm <- as(CHM_ZZ,"pMatrix")@perm # remarkably slow...
+  Rzx <- solve(CHM_ZZ, solve(CHM_ZZ,ZtWX,system="P"), system="L") # solve(CHM_ZZ, ZtWX[perm,], system="L") # 
+  ZtWy <- tZW %*% pwy_o
+  r_Zy <- solve(CHM_ZZ, solve(CHM_ZZ,ZtWy,system="P"), system="L") # solve(CHM_ZZ, ZtWy[perm], system="L")  # 
   XtWy <- .crossprod(XW, pwy_o)
   #
-  cross_Rxx <- as.matrix(.crossprod(XW,as_sym=FALSE))-as.matrix(.crossprod(Rzx,as_sym=FALSE)) # as(,"dpoMatrix) involves a chol() factorization...
-  if (use_crossr22 <- TRUE) { 
+  cross_Rxx <- .crossprod(XW,as_mat=TRUE)-.crossprod(Rzx,as_mat=TRUE) # as(,"dpoMatrix) involves a chol() factorization...
+  u_of_quadratic_utAu <- XtWy-.crossprod(Rzx, r_Zy)
+  if (TRUE) { # not clear why solve(cross_Rxx,.) would work and not chol() 
+    chol_XX <- chol(cross_Rxx)
+    r_Xy <- backsolve(chol_XX, u_of_quadratic_utAu, transpose=TRUE) ## transpose since chol() provides a tcrossfac 
+    ryy2 <- sum(pwy_o^2) - sum(r_Zy^2) - sum(r_Xy^2)
+    absdiagR_terms <- list(logdet_v=determinant(CHM_ZZ)$modulus[1], 
+                           logdet_b=sum(log(abs(.diagfast(chol_XX)))), ryy2=ryy2)
+  } else if (use_crossr22 <- TRUE) { 
     # No need for the complex Utri_chol computation here, as sum(r_Xy^2) is easy to compute without it.
     # Another place where one can avoid it is also labelled 'use_crossr22' in .solve_crossr22()
-    u_of_quadratic_utAu <- XtWy-.crossprod(Rzx, r_Zy)
     sum_r_Ry_2 <- .crossprod(u_of_quadratic_utAu, solve(cross_Rxx, u_of_quadratic_utAu))
     ryy2 <- sum(pwy_o^2) - sum(r_Zy^2) - sum_r_Ry_2
     absdiagR_terms <- list(logdet_v=determinant(CHM_ZZ)$modulus[1], 
@@ -618,12 +612,12 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
     # test-random-slope  is slower by .Rcpp_backsolve() but only because of more precise, but longer, outer optim in (ares <- ...)
     # this better result is by accumulated effects on the optimization path rather than by functional improvement.
     # also .Rcpp_backsolve() visibly increases range(get_predVar(twolambda)[1:5]-get_predVar(onelambda)[1:5]) 
-    r_Xy <- backsolve(chol_XX, XtWy-.crossprod(Rzx, r_Zy), transpose=TRUE) ## transpose since chol() provides a tcrossfac 
+    r_Xy <- backsolve(chol_XX, u_of_quadratic_utAu, transpose=TRUE) ## transpose since chol() provides a tcrossfac 
     # .crossprod(Rzx, r_Zy) appears to be .crossprod(ZtWX, solve(CHM_ZZ, ZtWy, system = "A")) 
     # but we still need Rzx and r_Zy 
     ryy2 <- sum(pwy_o^2) - sum(r_Zy^2) - sum(r_Xy^2)
     absdiagR_terms <- list(logdet_v=determinant(CHM_ZZ)$modulus[1], 
-                           logdet_b=sum(log(abs(diag(chol_XX)))), ryy2=ryy2)
+                           logdet_b=sum(log(abs(.diagfast(chol_XX)))), ryy2=ryy2)
   }
   return(absdiagR_terms)
 }
@@ -635,6 +629,16 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
   return(abs(R_aug_ZXy[diagPos]))
 }
 
+.sum_pwt_Q_y_o_2 <- function(sXaug,pwy_o) {
+  if (inherits(sXaug,"AUGI0_ZX_sparsePrecision")) {
+    sum_pwt_Q_y_o_2 <- .calc_sum_pwt_Q_y_o_2(sXaug,pwy_o)
+  } else {
+    #pwt_Q_y_o <- get_from_MME(sXaug,"t_Q_scaled")%*% c(rep(0,n_u_h),pwy_o) 
+    pwt_Q_y_o <- get_from_MME(sXaug,"Qt_leftcols*B", B=pwy_o)
+    sum_pwt_Q_y_o_2 <- sum(pwt_Q_y_o^2)
+  }
+  sum_pwt_Q_y_o_2
+}
 
 .calc_APHLs_by_augZXy_or_sXaug <- function(processed, auglinmodblob=NULL, 
                                      sXaug, W00_R_qr_ZXy=NULL, which, phi_est,
@@ -714,12 +718,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
       pwphi <- 1/(prior_weights) ## vector
       y_o <- (processed$y-processed$off)
       pwy_o <- y_o*sqrt(extranorm/pwphi) # extranorm is for better accuracy of next step
-      if (inherits(sXaug,"AUGI0_ZX_sparsePrecision")) {
-        sum_pwt_Q_y_o_2 <- .calc_sum_pwt_Q_y_o_2(sXaug,pwy_o)
-      } else {
-        pwt_Q_y_o <- get_from_MME(sXaug,"t_Q_scaled")%*% c(rep(0,n_u_h),pwy_o) 
-        sum_pwt_Q_y_o_2 <- sum(pwt_Q_y_o^2)
-      }
+      sum_pwt_Q_y_o_2 <- .sum_pwt_Q_y_o_2(sXaug,pwy_o)
       pwSSE <- (sum(pwy_o^2)-sum_pwt_Q_y_o_2)/extranorm ## sum() : vectors of different lengths !
       if (inherits(sXaug,"AUGI0_ZX_sparsePrecision")) {
         logdet_R_scaled_v <- get_from_MME(sXaug,"logdet_sqrt_d2hdv2") - sum(log(attr(sXaug,"w.ranef")))/2  
@@ -750,12 +749,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
   } else { ## phi_est available; no lamphifac estimation; in particular for .makeCovEst1
     pwphi <- phi_est/(prior_weights) ## vectorize phi if not already vector
     pwy_o <- (processed$y-processed$off)/sqrt(pwphi/extranorm) # extranorm is for better accuracy of next step
-    if (inherits(sXaug,"AUGI0_ZX_sparsePrecision")) {
-      sum_pwt_Q_y_o_2 <- .calc_sum_pwt_Q_y_o_2(sXaug,pwy_o)
-    } else {
-      pwt_Q_y_o <- get_from_MME(sXaug,"t_Q_scaled")%*% c(rep(0,n_u_h),pwy_o) 
-      sum_pwt_Q_y_o_2 <- sum(pwt_Q_y_o^2)
-    }
+    sum_pwt_Q_y_o_2 <- .sum_pwt_Q_y_o_2(sXaug,pwy_o)
     pwSSE <- (sum(pwy_o^2)-sum_pwt_Q_y_o_2)/extranorm ## vectors of different lengths !
     if (inherits(sXaug,"AUGI0_ZX_sparsePrecision")) {
       logdet_R_scaled_v <- get_from_MME(sXaug,"logdet_sqrt_d2hdv2") - sum(log(attr(sXaug,"w.ranef")))/2  

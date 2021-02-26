@@ -31,11 +31,12 @@ SEXP leverages( SEXP XX ){
   const Map<MatrixXd> X(as<Map<MatrixXd> >(XX));
   const int c(X.cols()); 
   const Eigen::HouseholderQR<MatrixXd> QR(X);
-  MatrixXd Qthin(MatrixXd(QR.householderQ()).leftCols(c)); /* householderQ SLOW and memory-inefficient (full Q)
-  The main weakness of Eigen's QR is that Qthin computation requires Qfull computation*/
-  // transpose -> 1-row matrix OK for return as VectorXd -> R vector 
+  MatrixXd thinQ(X.rows(),X.cols());
+  thinQ.setIdentity();
+  thinQ = QR.householderQ() * thinQ; // v3.6.8 markedly faster than older code, see https://forum.kde.org/viewtopic.php?f=74&t=106635
   if (printDebug)   Rcout <<"fin leverages()"<<std::endl;
-  return wrap(VectorXd(Qthin.cwiseProduct(Qthin).rowwise().sum().transpose())); //returns vector of leverages rather than thin Q matrix
+  return wrap(VectorXd(thinQ.cwiseProduct(thinQ).rowwise().sum().transpose())); //returns vector of leverages rather than thin Q matrix
+  
 }
 
 // [[Rcpp::export(.Rcpp_sweepZ1W)]]
@@ -150,9 +151,11 @@ SEXP RcppChol( SEXP AA ){ // returns t(base::chol)
   return out;
 } // such that A = L.Lt ie standard, NOT R's chol()
 
+///// ..crossprodCpp_d: Eigen version of base::crossprod (dense input, dense output)
+
 // https://gist.github.com/bobthecat/6509321 // wrapped bu .crossprod. Remain clearly faster for large matrices 09/2018 but not 3*3 matrix...
-// [[Rcpp::export(.crossprodCpp)]]
-SEXP crossprodCpp(SEXP Mat, SEXP yy){
+// [[Rcpp::export(.crossprodCpp_d)]]
+SEXP crossprodCpp_d(SEXP Mat, SEXP yy){
   if (printDebug)   Rcout <<"debut crossprodCpp()"<<std::endl;
   const Map<MatrixXd> A(as<Map<MatrixXd> >(Mat));
   MatrixXd tAA;
@@ -241,36 +244,43 @@ SEXP dgCprod( SEXP AA, SEXP BB ){
 }
 
 // [[Rcpp::export(.dgCcrossprod)]]
-SEXP dgCcrossprod( SEXP AA, SEXP BB ){ 
+SEXP dgCcrossprod( SEXP AA, SEXP BB, bool as_mat=false ){ 
   const Map<SparseMatrix<double> > A(as<Map<SparseMatrix<double> > >(AA)); 
+  RObject Xout;
+  RObject newDimNames(Rf_allocVector(VECSXP, 2));
+  S4 Ain(AA); 
+  RObject AAdimnames(clone(as<SEXP>((Ain.slot("Dimnames"))))); // clone() to copy values rather than address
   if (Rf_isNull(BB)) {
     const int c(A.cols());
     SparseMatrix<double> XX= SparseMatrix<double>(c, c).selfadjointView<Lower>().rankUpdate(A.transpose());
-    S4 Xout(wrap(XX));
-    if (true) { // I could make this conditional but this has no measurable impact on computation times
-      S4 Ain(AA); 
-      RObject newDimNames(Rf_allocVector(VECSXP, 2));
-      RObject AAdimnames(clone(as<SEXP>((Ain.slot("Dimnames"))))); // clone() to copy values rather than address
-      if ( ! Rf_isNull(AAdimnames)) {
-        SET_VECTOR_ELT(newDimNames, 0, VECTOR_ELT(AAdimnames, 1));
-        SET_VECTOR_ELT(newDimNames, 1, VECTOR_ELT(AAdimnames, 1));
-      }
-      Xout.slot("Dimnames") = newDimNames; 
+    if ( ! Rf_isNull(AAdimnames)) {
+      SET_VECTOR_ELT(newDimNames, 0, VECTOR_ELT(AAdimnames, 1));
+      SET_VECTOR_ELT(newDimNames, 1, VECTOR_ELT(AAdimnames, 1));
     }
+    if (as_mat) {
+      MatrixXd Xd=MatrixXd(XX);
+      Xout=wrap(Xd);        
+      Xout.attr("dimnames") = newDimNames; 
+    } else {
+      Xout=wrap(XX);
+      Xout.slot("Dimnames") = newDimNames; 
+    } 
     return Xout;
   } else {
     const Map<SparseMatrix<double> > B(as<Map<SparseMatrix<double> > >(BB));
-    S4 Xout(wrap(A.adjoint() * B));
-    if (true) { // I could make this conditional
-      S4 Ain(AA); 
-      S4 Bin(BB);
-      RObject newDimNames(Rf_allocVector(VECSXP, 2));
-      RObject AAdimnames(clone(as<SEXP>((Ain.slot("Dimnames"))))); // clone() to copy values rather than address
-      RObject BBdimnames(clone(as<SEXP>((Bin.slot("Dimnames")))));
-      if ( ! Rf_isNull(AAdimnames)) SET_VECTOR_ELT(newDimNames, 0, VECTOR_ELT(AAdimnames, 1));
-      if ( ! Rf_isNull(BBdimnames)) SET_VECTOR_ELT(newDimNames, 1, VECTOR_ELT(BBdimnames, 1));
+    S4 Bin(BB);
+    RObject BBdimnames(clone(as<SEXP>((Bin.slot("Dimnames")))));
+    if ( ! Rf_isNull(AAdimnames)) SET_VECTOR_ELT(newDimNames, 0, VECTOR_ELT(AAdimnames, 1));
+    if ( ! Rf_isNull(BBdimnames)) SET_VECTOR_ELT(newDimNames, 1, VECTOR_ELT(BBdimnames, 1));
+    if (as_mat) {
+      SparseMatrix<double> XX=A.adjoint() * B;
+      MatrixXd Xd=MatrixXd(XX);
+      Xout=wrap(Xd);        
+      Xout.attr("dimnames") = newDimNames; 
+    } else {
+      Xout=wrap(A.adjoint() * B);
       Xout.slot("Dimnames") = newDimNames; 
-    }
+    } 
     return Xout;
   }  
 }
@@ -323,7 +333,7 @@ int get_type(SEXP x) {
 // Distingusihing types: http://lists.r-forge.r-project.org/pipermail/rcpp-devel/2013-February/005352.html
 
 // [[Rcpp::export(.crossprod_not_dge)]]
-SEXP crossprod_not_dge( SEXP AA, SEXP BB, bool eval_dens ) {  
+SEXP crossprod_not_dge( SEXP AA, SEXP BB, bool eval_dens, bool as_mat ) {  
   int type_AA=get_type(AA);
   int type_BB=get_type(BB);
   int c;
@@ -368,8 +378,14 @@ SEXP crossprod_not_dge( SEXP AA, SEXP BB, bool eval_dens ) {
       const Map<SparseMatrix<double> > A(as<Map<SparseMatrix<double> > >(AA)); 
       c=A.cols();
       SparseMatrix<double> tmp = SparseMatrix<double>(c, c).selfadjointView<Lower>().rankUpdate(A.transpose());
-      Xout = S4(wrap(tmp));
-      Xout.slot("Dimnames") = newDimNames; 
+      if (as_mat) {
+        MatrixXd Xd=MatrixXd(tmp);
+        Xout=wrap(Xd);        
+        Xout.attr("dimnames") = newDimNames; 
+      } else {
+        Xout = S4(wrap(tmp));
+        Xout.slot("Dimnames") = newDimNames;
+      } 
     } else {
       MatrixXd txx;
       if (type_AA==S4SXP) { // Ad created by conversion
@@ -390,8 +406,14 @@ SEXP crossprod_not_dge( SEXP AA, SEXP BB, bool eval_dens ) {
       const Map<SparseMatrix<double> > A(as<Map<SparseMatrix<double> > >(AA)); 
       if (B_sp) {
         const Map<SparseMatrix<double> > B(as<Map<SparseMatrix<double> > >(BB)); 
-        Xout = S4(wrap(A.adjoint() * B));
-        Xout.slot("Dimnames") = newDimNames; 
+        if (as_mat) {
+          MatrixXd Xd=MatrixXd(A.adjoint() * B);
+          Xout=wrap(Xd);        
+          Xout.attr("dimnames") = newDimNames; 
+        } else {
+          Xout = S4(wrap(A.adjoint() * B));
+          Xout.slot("Dimnames") = newDimNames; 
+        }
       } else {
         if (type_BB==S4SXP) { // Bd created by conversion
           Xout = wrap(A.adjoint() * Bd);
@@ -434,8 +456,13 @@ SEXP crossprod_not_dge( SEXP AA, SEXP BB, bool eval_dens ) {
   return(Xout);  
 }
 
+///// .Rcpp_crossprod :
+// dense input will return a 'matrix'                                        
+// sparse input with eval_dens=FALSE will return a 'dgCMatrix'                                        
+// sparse input with eval_dens=TRUE will return a 'matrix' or 'dgCMatrix'                                 
+
 // [[Rcpp::export(.Rcpp_crossprod)]]
-SEXP Rcpp_crossprod( SEXP AA, SEXP BB, bool eval_dens=true ) {
+SEXP Rcpp_crossprod( SEXP AA, SEXP BB, bool eval_dens=true, bool as_mat=false ) {
   // this converts dge to NumericMatrix then calls crossprod_not_dge() that should handle all types (dense|sparse) except dge
   //Rcout<<"debut"<<std::flush;
   bool Adge=Rf_inherits( AA, "dgeMatrix" );
@@ -456,9 +483,9 @@ SEXP Rcpp_crossprod( SEXP AA, SEXP BB, bool eval_dens=true ) {
       b.attr("dimnames") = clone(as<SEXP>(Bin.slot("Dimnames"))); // clone() to copy values rather than address
       B=as<NumericMatrix>(b);
     } else B=BB;
-    return(crossprod_not_dge( wrap(A), wrap(B), eval_dens ));
+    return(crossprod_not_dge( wrap(A), wrap(B), eval_dens, as_mat ));
   } // ELSE:
-  return(crossprod_not_dge( AA, BB, eval_dens ));
+  return(crossprod_not_dge( AA, BB, eval_dens, as_mat ));
 }
 
 // will work on dgC and dsC
@@ -553,6 +580,8 @@ SEXP Rcpp_backsolve_M_M(SEXP r, SEXP x, bool upper_tri=true, bool transpose=fals
       B= SparseMatrix<double>(c,c);
       B.setIdentity();
     } else B=SparseMatrix<double>(as<SparseMatrix<double> >(x));
+    // https://stackoverflow.com/questions/53290521/eigen-solver-for-sparse-matrix-product
+    // ...
     //  solveInPlace() does not compile with .adjoint() (or .transpose())
     // moreover, .triangularView<Eigen::Lower>().solveInPlace(B) appears to return wrong results if not not explicit(SparseMatrix<double>())
     if (upper_tri) {

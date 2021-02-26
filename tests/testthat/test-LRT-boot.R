@@ -1,5 +1,5 @@
 cat(crayon::yellow("test LRT with bootstrap, parallel or not:\n"))
-if (spaMM.getOption("example_maxtime")>(13.7+24)) { ## user time + system.time for parallele setup
+if (spaMM.getOption("example_maxtime")>(13.7+24)) { ## user time + system.time for parallel setup
   cat("test LRT()")
   data("salamander")
   fullfit <- HLfit(cbind(Mate,1-Mate)~TypeF+(1|Female)+(1|Male),family=binomial(),data=salamander,
@@ -10,10 +10,11 @@ if (spaMM.getOption("example_maxtime")>(13.7+24)) { ## user time + system.time f
   pv1 <- LRT(nullfit,fullfit,boot.repl=10)$BartBootLRT$p_value
   set.seed(123)
   pv3 <- LRT(nullfit,fullfit,boot.repl=10,nb_cores=2)$BartBootLRT$p_value
-  testthat::expect_equal(pv1,pv3,tolerance=1e-6)
+  crit <- diff(range(pv1-pv3))
+  testthat::test_that(paste0("Max difference in prediction was",signif(crit,6)," >1e-6"), testthat::expect_true(crit<1e-6)) 
 } else cat("increase example_maxtime (38s) to run LRT() test.\n")
 
-if (spaMM.getOption("example_maxtime")>18) { ## user time + system.time for parallele setup
+if (spaMM.getOption("example_maxtime")>18) { ## user time + system.time for parallel setup
   cat("test spaMM_boot() with different backends:\n")
   data("blackcap")
   

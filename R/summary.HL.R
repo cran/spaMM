@@ -218,7 +218,9 @@ summary.HLfitlist <- function(object, ...) {
   nicertypes[ ! (posf | posfh | posoh )] <- ""
   nicertypes <- rep(nicertypes, unlist(lapply(row_map[displaypos], length)))
   if ( ! is.null(displayrows)) {
-    print_lambda <- unlist(lambda.object$lambda_list)
+    lambda_list <- lambda.object$lambda_list
+    if (is.null(lambda_list)) lambda_list <- lambda.object$lambda # back-compatibility fix (from test on v2.5.0 object stored in package vullioud2018)
+    print_lambda <- unlist(lambda_list)
     cat(paste("  ",
               names(displayrows)," : ", 
               signif(print_lambda[displayrows],4),

@@ -231,13 +231,25 @@
   return(parlist)
 } 
 
+.merge_lambdas_mv <- function(lambda_merger, optim_blob) {
+  for (char_rd in names(lambda_merger)) { 
+    if ((len_lam <- length(lambdas <- lambda_merger[[char_rd]]))>1L) {
+      lambda_merger[[char_rd]] <- exp(mean(log( lambda_merger[[char_rd]])))
+    } # else if (len_lam==0L) lambda_merger[char_rd] <- NULL
+  }
+  lambda_merger <- unlist(lambda_merger)
+  lambda_merger <- list(inits=list(init=list(lambda=lambda_merger),
+                                   init.optim=list(trLambda=.dispFn(lambda_merger))))
+  .modify_list(optim_blob,lambda_merger, obey_NULLs=FALSE) 
+}
 
 .calc_optim_args_mv <- function(processed, map_rd_mv, user_init_optim, fixedS, user.lower, user.upper, verbose, optim.scale) {
   unmerged <- processed$unmerged 
   optim_blob <-  NULL
   hyper_info <- processed$hyper_info
   if (has_hy <- (length(hyper_info$template)>0L)) {map_hy_mv <- hyper_info$map_hy_mv}  
-  #
+  nrand <- length(processed$ZAlist)
+  lambda_merger <- structure(vector("list", nrand), names=seq_len(nrand))
   for (mv_it in seq_along(unmerged)) {
     rd_in_mv <- map_rd_mv[[mv_it]]
     # operation requiring full model indices:
@@ -306,8 +318,14 @@
         names(optim_blob_it$LUarglist[["moreargs"]]) <- rd_in_mv[names(optim_blob_it$LUarglist[["moreargs"]])]
       }
     }
+    lambdas <- optim_blob_it$inits$init$lambda
+    for (char_rd in names(lambdas)) lambda_merger[[char_rd]] <- c(lambda_merger[[char_rd]], lambdas[[char_rd]]) 
     optim_blob <- .modify_list(optim_blob,optim_blob_it, obey_NULLs=FALSE) 
   } 
+  if ( ! is.null(optim_blob$inits$init$lambda)) {
+    optim_blob <- .merge_lambdas_mv(lambda_merger, optim_blob)
+  }
+  
   if ( ! is.null(optim_blob$inits$init.optim$hyper)) {
     attr(optim_blob$inits$init.optim$hyper,"hy_info") <- processed$hyper_info # *environment*: for .makeLowerUpper, with distinct name for easier tracking 
   }
@@ -333,21 +351,21 @@
   exp_barlist
 }
 
-.determine_sparse_X_mv <- function(HLframes, X.pv, vec_nobs, unmerged) {
+.determine_sparse_X_mv <- function(terms_info, X.pv, vec_nobs, unmerged) {
   sparse_X <- spaMM.getOption("sparse_X") 
   ## forcing sparse_X may (1) be slow for small problems 
   ## (2) entails the use of Matrix::Cholesky, which is less accurate => small bu visible effect on predVar in singular 'twolambda' case
   if (is.null(sparse_X)) {
-    nmodels <- length(HLframes$Y)
+    nmodels <- length(terms_info$Y)
     col_heuristic_densenesseS <- vector("list", nmodels)
     rel_nobs <- vec_nobs/sum(vec_nobs)
     for (mv_it in seq_along(nmodels)) {
       asgn <- attr(unmerged[[mv_it]][["AUGI0_ZX"]]$X.pv,"assign") ## "for each column in the matrix ... the term in the formula which gave rise to the column"
       col_heuristic_denseness_it <- rep(rel_nobs[mv_it],length(asgn))
-      if ( length(fixef_levels <- .get_from_HLframes(HLframes=HLframes, which="fixef_levels", mv_it=mv_it)) ) {
+      if ( length(fixef_levels <- .get_from_terms_info(terms_info=terms_info, which="fixef_levels", mv_it=mv_it)) ) {
         terms_densenesses_it <- rel_nobs[mv_it] * 
-          .calc_terms_heuristic_denseness(HLframes,
-                                          fixef_off_terms=.get_from_HLframes(HLframes=HLframes, which="fixef_off_terms", mv_it=mv_it),
+          .calc_terms_heuristic_denseness(terms_info,
+                                          fixef_off_terms=.get_from_terms_info(terms_info=terms_info, which="fixef_off_terms", mv_it=mv_it),
                                           fixef_levels=fixef_levels) 
         for (jt in seq_along(asgn)) if (asgn[jt]>0L) col_heuristic_denseness_it[jt] <- terms_densenesses_it[asgn[jt]]
       }
@@ -511,7 +529,7 @@
   namedlist <- structure(vector("list",nmodels), names=seq_len(nmodels))
   ### Fill lists for further processing:
   unmerged <- predictors <- families <- prior.weights <- clik_fns <- phiFixs <- Ys <- pS_fixef_phi <- namedlist
-  AMatrices <- adjMatrices <- corrMatrices <- fixef_off_termsS <- fixef_levelsS <- namedlist
+  AMatrices <- adjMatrices <- corrMatrices <- fixef_off_termsS <- fixef_termsS <- fixef_levelsS <- namedlist
   for (mv_it in seq_len(nmodels)) {
     unmerged[[mv_it]] <- calls_W_processed[[mv_it]][["processed"]]
     predictors[[mv_it]] <- unmerged[[mv_it]][["predictor"]]
@@ -519,10 +537,11 @@
     prior.weights[[mv_it]] <- unmerged[[mv_it]][["prior.weights"]] ## may be quote extression, etc.
     clik_fns[[mv_it]] <- unmerged[[mv_it]][["clik_fn"]]
     phiFixs[mv_it] <- list(unmerged[[mv_it]][["phi.Fix"]]) # ! syntax to allow explicit NULL's
-    HLframes_it <- unmerged[[mv_it]][["HLframes"]]
-    Ys[[mv_it]] <- HLframes_it[["Y"]] # one reason for parsing frames that way is to allow $Y as argument of .get_inits_from_glm()
-    fixef_off_termsS[[mv_it]] <- HLframes_it[["fixef_off_terms"]]
-    fixef_levelsS[mv_it] <- list(HLframes_it[["fixef_levels"]]) 
+    terms_info_it <- unmerged[[mv_it]][["main_terms_info"]]
+    Ys[[mv_it]] <- terms_info_it[["Y"]] # one reason for parsing frames that way is to allow $Y as argument of .get_inits_from_glm()
+    fixef_off_termsS[[mv_it]] <- terms_info_it[["fixef_off_terms"]]
+    fixef_termsS[mv_it] <- list(terms_info_it[["fixef_terms"]]) 
+    fixef_levelsS[mv_it] <- list(terms_info_it[["fixef_levels"]]) 
     corr_info_it <- unmerged[[mv_it]][["corr_info"]]     # already preprocessed info for:
     AMatrices[mv_it] <- list(corr_info_it$AMatrices)
     adjMatrices[mv_it] <- list(corr_info_it$adjMatrices)
@@ -534,7 +553,7 @@
   #attr(phiFixs,"anyNULL") <- .anyNULL(phiFixs); attr(phiFixs,"allNULL") <- .allNULL(phiFixs) ## not a good idea bc its too easy to change the elements withouth changing the attributes
   #
   ### initialize 'merged' from unmerged[[1L]]:
-  merged <- new.env()
+  merged <- list2env(list(envir=list2env(list(), parent=environment(HLfit))))
   ## From unmerged[[1L]][[st]] to 'merged': that assignment should ultimately be only for elements not recursively updated:
   for (st in c("data",#"AUGI0_ZX",
                "REMLformula", # __FIXME__ this will really handle only standard ML (REMLformula has an isML attr) 
@@ -545,6 +564,7 @@
                "break_conv_logL",
                "objective","port_env")
   ) assign(st,value=unmerged[[1L]][[st]],envir=merged)
+  
   merged[["For"]] <- "fitme" # does not appear necessary except with adjmatrixas $For needed to determine inner_estim_adj_rho in .determine_spprec()
   merged[["phi.Fix"]] <- phiFixs
   merged[["p_fixef_phi"]] <- pS_fixef_phi
@@ -553,7 +573,7 @@
   #
   ### Local values from unmerged[[1L]]:
   # That block should ultimately be for elements recursively updated
-  for (st in c("off","y","BinomialDen","HLframes","iter_mean_dispVar","iter_mean_dispFix",
+  for (st in c("off","y","BinomialDen","main_terms_info","iter_mean_dispVar","iter_mean_dispFix",
                "max.iter","maxLambda","models","vecdisneeded","bin_all_or_none")) assign(st,value=unmerged[[1L]][[st]])
   # Operatiosn on 'models' form the first submodel:
   LMMbool  <- attr(models,"LMMbool")
@@ -680,7 +700,7 @@
   #   }
   # }
   merged_X <- .post_process_X(X.pv=merged_X, HL=merged$HL, rankinfo=NULL, 
-                              sparse_X=.determine_sparse_X_mv(merged$HLframes, X.pv= merged_X, vec_nobs=vec_nobs, unmerged=unmerged) ) 
+                              sparse_X=.determine_sparse_X_mv(merged$main_terms_info, X.pv= merged_X, vec_nobs=vec_nobs, unmerged=unmerged) ) 
   # processing of merged_X and other elements of AUGI0_ZX:
   attr(merged_X,"cum_ncol") <- cumsum(c(0L,vec_ncol_X))
   attr(merged_X,"cum_nobs") <- cum_nobs
@@ -697,10 +717,11 @@
   dim(y) <- c(length(y),1L) # cf comments in .preprocess(); but vector format worked in all tests for fitmv up to version 3.5.115; 
   merged[["y"]] <- y
   merged[["BinomialDen"]] <- BinomialDen
-  HLframes[["Y"]] <- Ys 
-  HLframes[["fixef_off_terms"]] <- fixef_off_termsS
-  HLframes[["fixef_levels"]] <- fixef_levelsS
-  merged[["HLframes"]] <- structure(HLframes, vec_nobs=vec_nobs)
+  main_terms_info[["Y"]] <- Ys 
+  main_terms_info[["fixef_off_terms"]] <- fixef_off_termsS
+  main_terms_info[["fixef_terms"]] <- fixef_termsS
+  main_terms_info[["fixef_levels"]] <- fixef_levelsS
+  merged[["main_terms_info"]] <- structure(main_terms_info, vec_nobs=vec_nobs)
   attr(ZAlist,"map_rd_mv") <- map_rd_mv <- .map_rd_mv(ZAlist, unmerged)
   # ZAlist including map_rd_mv available -> rand.families
   merged[["rand.families"]] <- rand.families <- .merge_rand_families(unmerged, ZAlist=ZAlist) 
@@ -783,52 +804,26 @@
   merged$QRmethod <- .choose_QRmethod(ZAlist, corr_info=merged$corr_info, 
                                       is_spprec=merged$is_spprec, processed=merged)
   #
-  
+  # merged_X <- .scale(merged_X) not necessary since the merged X's are already scaled
   if (nrand) {
+    merged$models[["eta"]] <- "etaHGLM" 
     vec_n_u_h <- unlist(lapply(merged$ZAlist,ncol)) 
     merged[["cum_n_u_h"]] <- cumsum(c(0L, vec_n_u_h))
     nrd <- merged[["cum_n_u_h"]][nrand+1L]
     if (nrd==1L) {
       warning("Found a single random effect with a *single level*. Check formula?", immediate.=TRUE)
     }
-    if ( ! .eval_as_mat_arg(merged)) {
-      AUGI0_ZX <- list2env( list(I=.trDiagonal(n=nrd),
-                                 ZeroBlock= Matrix(0,nrow=nrd,ncol=ncol(merged_X))) )
-    } else {
-      AUGI0_ZX <- list2env( list(I=diag(nrow=nrd),ZeroBlock= matrix(0,nrow=nrd,ncol=ncol(merged_X))) )
-    }
-    merged$models[["eta"]] <- "etaHGLM" 
-    # in uni-response case the ZAfix is merely a cbind()ing as all Z are for the same response levels
-    # here this is more complex...
-    AUGI0_ZX$vec_normIMRF <- vec_normIMRF
-    AUGI0_ZX$envir <- list2env(list(finertypes=attr(ZAlist,"exp_ranef_types"), ## to be modified later
-                                    LMatrices=structure(vector("list",nrand),
-                                                        is_given_by=rep("",nrand))),    
-                               parent=environment(.preprocess))
-    #
-    if (merged$is_spprec) AUGI0_ZX$envir$method <- .spaMM.data$options$spprec_method  
-    AUGI0_ZX <- .add_ZAfix_info(AUGI0_ZX, ZAlist=merged$ZAlist, sparse_precision=merged$is_spprec, 
-                                as_mat=.eval_as_mat_arg(merged)) 
-    AUGI0_ZX$X.pv <- merged_X
     merged$models[["lambda"]] <- rep("lamScal",nrand) ## even for adjacency, random slope...
-    # processed info for u_h inference
-    merged[["u_h_info"]] <- .eval_v_h_bounds(merged[["cum_n_u_h"]], merged[["rand.families"]])
+    merged[["reserve"]] <- .preprocess_arglists(merged)
     # Need this as long as we need  .calc_optim_args_mv(processed$unmerged....) ie as long as  .calc_optim_args() handles only single $family 
     for (mv_it in seq_along(unmerged)) {
       rd_in_mv <- map_rd_mv[[mv_it]]
       unmerged[[mv_it]]$geo_info <- merged$geo_info[rd_in_mv]
     }
-  } else {
-    merged$models[["eta"]] <- "etaGLM" 
-    AUGI0_ZX <- list(X.pv=merged_X)
-  }
-  # AUGI0_ZX$X.pv <- .scale(merged_X) not necessary since the merged X's are already scaled
-  if (nrand &&  ! merged$is_spprec ) { 
-    if (inherits(AUGI0_ZX$ZeroBlock,"sparseMatrix")) {
-      AUGI0_ZX$Zero_sparseX <- rbind2(AUGI0_ZX$ZeroBlock, as(AUGI0_ZX$X.pv,"CsparseMatrix"))
-    } else AUGI0_ZX$Zero_sparseX <- rbind2(AUGI0_ZX$ZeroBlock, AUGI0_ZX$X.pv)
-  }
-  merged$AUGI0_ZX <- AUGI0_ZX
+  } else merged$models[["eta"]] <- "etaGLM" 
+  merged[["AUGI0_ZX"]] <- .init_AUGI0_ZX(X.pv=merged_X, vec_normIMRF, ZAlist=merged$ZAlist, nrand, n_u_h=nrd, 
+                                         sparse_precision=merged$is_spprec, 
+                                         as_mat=.eval_as_mat_arg(merged))
   if (nrand) {
     merged[["X_lamres"]] <- .calc_X_lamres(merged, models=merged$models, ZAlist=ZAlist, nrand=nrand)
     # ranCoefs processing moved to after merging the ranCoefs in fitmv(); 
@@ -902,6 +897,13 @@ fitmv <- function(submodels, data, fixed=NULL, init=list(), lower=list(), upper=
     call_["what_checked"] <- NULL 
     #
     call_[["For"]] <- "fitmv"
+    if ( ! is.null(main_terms_info <- attr(data,"updated_terms_info"))) { # from update_resp -> .update_main_terms_info() 
+      main_terms_info_it <- list(mf=main_terms_info$mf[[mv_it]],fixef_off_terms=main_terms_info$fixef_off_terms[[mv_it]],
+                      fixef_terms=main_terms_info$fixef_terms[[mv_it]],
+                      fixef_levels=main_terms_info$fixef_levels[[mv_it]])
+      #class(main_terms_info_it) <- "HLframes" # we tag the result again so that .preprocess() will recognize it as coming from .update_data()
+      call_[["data"]] <- structure(data, updated_terms_info=main_terms_info_it)
+    }
     call_[[1L]] <- get(".preprocess_fitme", asNamespace("spaMM")) 
     calls_W_processed[[mv_it]] <- eval(call_,parent.frame()) # returns modified call including an element 'processed'
     # this calls .preprocess with for each submodel

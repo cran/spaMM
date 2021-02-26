@@ -42,7 +42,8 @@
       len_lam <- seq(length(lambda))
       type <- attr(ranPars,"type")$lambda
       if (is.null(names(lambda))) names(lambda) <- paste(len_lam) ## but do not try to assign a vector of names for a single 'type' value
-      fromTr <- .dispInv(ranPars$trLambda[! is.na(ranPars$trLambda)])
+      fromTr <- .C_dispInv(ranPars$trLambda[! is.na(ranPars$trLambda)])
+      #if (diff(range(fromTr-.dispInv(ranPars$trLambda[! is.na(ranPars$trLambda)])))>1e-15) browser()
       lambda[paste(names(fromTr))] <- fromTr  
       ranPars$lambda <- lambda
     }

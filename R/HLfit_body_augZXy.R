@@ -1,19 +1,14 @@
 # y-augmented method withOUT precomputation of R_aug_ZXy
 .HLfit_body_augZXy <- function(processed, ranFix=list()) { 
   trace <- processed$verbose["TRACE"]
-  ranFix <- .post_process_family(processed$family,ranFix) ## assign 'extra' pars and cleans ranFix
   ranFix <- .canonizeRanPars(ranPars=ranFix,corr_info=NULL, checkComplete = FALSE, rC_transf=.spaMM.data$options$rC_transf)## including full-size lambda
-  nobs <- nrow(processed$data) ## before prior.weights is evaluated
-  ### a bit of post processing
-  nobs <- NROW(processed$AUGI0_ZX$X.pv)
-  models <- processed$models
-  LMMbool <- attr(models,"LMMbool")
+  nobs <- length(processed$y) ## before prior.weights is evaluated
   nrand <- length(processed$ZAlist)
   cum_n_u_h <- processed$cum_n_u_h
   n_u_h <- cum_n_u_h[nrand+1L] 
   sparse_precision <- processed$is_spprec
   ranCoefs.Fix <- .getPar(ranFix,"ranCoefs") ## may be NULL
-  # Updates processed$ranCoefs_blob which contains no globally fixed ranCoefs as this has been excluded by .determine_augZXy() 
+  # Updates processed$ranCoefs_blob which contains no globally fixed ranCoefs as this has been excluded by .preprocess_augZXy() 
   ranCoefs_blob <- .process_ranCoefs(processed, ranCoefs.Fix,use_tri_Nspprec=.spaMM.data$options$use_tri_for_augZXy) ## *updates* *locally* a preexisting object
   LMatrices <- processed$AUGI0_ZX$envir$LMatrices
   # HLCor_body has prefilled $LMatrices for :
@@ -26,7 +21,8 @@
     # lambda_est initialized from ranCoefs_blob later !
   }
   if (processed$is_spprec) { 
-    .init_precision_info(processed,LMatrices) ## modifies processed$AUGI0_ZX$envir  
+    .init_AUGI0_ZX_envir_spprec_info(processed)
+    .update_AUGI0_ZX_envir_ranCoefs_info(processed,LMatrices)
   }
   if (processed$is_spprec) {
     ZAL <- NULL # we practically don't need it (though F I X M E: it would be nice to provide alternative info to .eval_init_lambda_guess)
@@ -45,7 +41,7 @@
   init.lambda <- .calc_initial_init_lambda(lambda.Fix, nrand, processed, ranCoefs_blob, 
                                            init.HLfit=NULL, fixed=ranFix)
   # expand:
-  lambda_est <- .HLfit_finalize_init_lambda(models, init.lambda, processed, ZAL=ZAL, cum_n_u_h, 
+  lambda_est <- .HLfit_finalize_init_lambda(models=processed$models, init.lambda, processed, ZAL=ZAL, cum_n_u_h, 
                                             vec_n_u_h=diff(cum_n_u_h), n_u_h, ranCoefs_blob)
   if (identical(processed$return_only,"p_vAPHLs")) {
     whichAPHLs <- "p_v"
@@ -54,33 +50,33 @@
   } else whichAPHLs <- c("p_v","p_bv")
   ####################################################################################################
   # we don't want anything specific on u_h values:
-  wranefblob <- .updateW_ranefS(processed$cum_n_u_h, processed$rand.families, lambda=lambda_est, 
-                                u_h=rep(NA,n_u_h),v_h=rep(NA,n_u_h)) ## indeed
-  muetablob <- .muetafn(eta=rep(NA,nobs),BinomialDen=processed$BinomialDen,processed=processed) 
+  w.ranef <- 1/lambda_est # call to .updateW_ranefS() reduced to this for v3.6.37
+  # call to m.muetablob reduced to elementary GLMweigths computation for v3.6.37:
+  GLMweights <- processed$prior.weights ## with attr(.,"unique")=TRUE ; .preprocess_augZXy() has checked that. 
   phi_est <- ranFix$phi 
   if (is.null(phi_est)) phi_est <- processed$phi.Fix ## not sure this is needed
   if (is.null(phi_est)) { 
-    w.resid <- .calc_w_resid(muetablob$GLMweights,1)
-  } else w.resid <- .calc_w_resid(muetablob$GLMweights,phi_est) ## 'weinu', must be O(n) in all cases
+    w.resid <- GLMweights 
+  } else w.resid <- structure(GLMweights/phi_est, unique=TRUE, is_unit=FALSE) ## 'weinu', must be O(n) in all cases
   H_global_scale <- .calc_H_global_scale(w.resid)
   if (processed$is_spprec) {
-    # .HLfit_body_augZXy has called .init_precision_info(processed,LMatrices)...
+    # .HLfit_body_augZXy has called .init_AUGI0_ZX_envir_spprec_info(processed,LMatrices)...
     if (trace) cat(".")
     sXaug <- do.call(processed$AUGI0_ZX$envir$method, # ie, def_AUGI0_ZX_sparsePrecision
-                       list(AUGI0_ZX=processed$AUGI0_ZX, corrPars=ranFix$corrPars,w.ranef=wranefblob$w.ranef,
+                       list(AUGI0_ZX=processed$AUGI0_ZX, corrPars=ranFix$corrPars,w.ranef=w.ranef,
                             cum_n_u_h=cum_n_u_h,w.resid=w.resid))
   } else {
-    ZAL_scaling <- 1/sqrt(wranefblob$w.ranef*H_global_scale) ## Q^{-1/2}/s
+    ZAL_scaling <- 1/sqrt(w.ranef*H_global_scale) ## Q^{-1/2}/s
     weight_X <- .calc_weight_X(w.resid, H_global_scale) ## sqrt(s^2 W.resid) ## should not affect the result up to precision
     if (.spaMM.data$options$TRY_R_new && inherits(ZAL,"sparseMatrix")) {
       ZW <- .Dvec_times_Matrix(weight_X,.Matrix_times_Dvec(ZAL,ZAL_scaling))
       XW <- .Dvec_times_m_Matrix(weight_X,processed$AUGI0_ZX$X.pv)
-      sXaug <- structure(list(ZW=ZW,XW=XW,I=processed$AUGI0_ZX$I),
-                         w.ranef=wranefblob$w.ranef,
-                         n_u_h=ncol(ZW), # mandatory for all sXaug types
-                         pforpv=ncol(XW),  # mandatory for all sXaug types
-                         weight_X=weight_X, # new mandatory 08/2018
-                         H_global_scale=H_global_scale)
+      sXaug <- list(ZW=ZW,XW=XW,I=processed$AUGI0_ZX$I)
+      attr(sXaug,"w.ranef") <- w.ranef
+      attr(sXaug,"n_u_h") <- ncol(ZW) # mandatory for all sXaug types
+      attr(sXaug,"pforpv") <- ncol(XW) # mandatory for all sXaug types
+      attr(sXaug,"weight_X") <- weight_X # new mandatory 08/2018
+      attr(sXaug,"H_global_scale") <- H_global_scale
       class(sXaug) <- c(class(sXaug),"sXaug_blocks")
     } else {
       Xscal <- .make_Xscal(ZAL=ZAL, ZAL_scaling = ZAL_scaling, AUGI0_ZX=processed$AUGI0_ZX) # does not weights the I
@@ -91,14 +87,14 @@
       }
       if (trace) cat(".")
       sXaug <- do.call(mMatrix_method,
-                       list(Xaug=Xscal, weight_X=weight_X, w.ranef=wranefblob$w.ranef, H_global_scale=H_global_scale))
+                       list(Xaug=Xscal, weight_X=weight_X, w.ranef=w.ranef, H_global_scale=H_global_scale))
     }
   }
   ####################################################################################################
   augZXy_resu <- .calc_APHLs_by_augZXy_or_sXaug(sXaug=sXaug, phi_est=phi_est, # may be NULL
                                              processed=processed, which=whichAPHLs,
-                                              update_info=list(allow= (! any(unlist(ranCoefs.Fix)==0))))
-  res <- list(APHLs=augZXy_resu)
+                                             update_info=list(allow= all(processed$AUGI0_ZX$envir$updateable))) #update_info=list(allow= (! any(unlist(ranCoefs.Fix)==0))))
+  res <- list(APHLs=augZXy_resu) # may contain $phi_est
   return(res)    ########################   R E T U R N
 }
 

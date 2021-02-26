@@ -3,6 +3,25 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 3.7.0}{  
+\subsection{NEW FEATURES}{
+\itemize{
+\item Expressions such as I(y>0) or even y>0 are now accepted in the left-hand side of a model formula (up to now update_resp() and bootstrap functions failed on them, and I(.) was explicitly disallowed). 
+}
+}
+\subsection{USER-LEVEL CHANGES}{
+\itemize{
+\item 5-10\% speed gains in many fits (at least non-spatial ones), and even more, notably (1) for Levenberg-Marquard-like algorithm (hence for fits affected by convergence issues, which tend to be the longest ones), and (2) for fits by sparse-precision methods for (2a) Gamma(log) GLMMs (>fifthfold in a large problem!) or (2b) other GLMMs when fitted by PQL rather than ML.
+\item In addition, the criterion for using ``inner'' iterative methods rather than ``outer'' optimization ones for fitting dispersion parameters has been modified, resulting in substantially faster fits in some non-spatial models. 
+\item New diagnostic message pointing a potential issue when fitting models with group-specific geostatistical effects without matching Intercept terms.
+}
+}
+\subsection{FIXED BUGS}{
+\itemize{
+\item Back-compatibility fixes for summaries and AIC computations on old fit objects (tested against v2.5.0 objects).
+}
+}
+}
 \section{CHANGES UP TO VERSION 3.6.0}{ 
 \subsection{NEW FEATURES}{
 \itemize{

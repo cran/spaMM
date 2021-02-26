@@ -1,14 +1,16 @@
 .spaMM.data <- new.env(parent = emptyenv())
 .spaMM.data$options <- list(
   F_I_X_M_E=FALSE,
+  store_data_as_mf=FALSE, # Surely many issues.
   Rcpp_crossprod=TRUE, # integer with usual bool interp., and >1: .crossprod() prints types when .Rcpp_crossprod() not called; >2: always prints types;
   TRY_R_new=TRUE, # 
-  TRY_update=TRUE, # measurable benefits only if Cholesky(., perm=TRUE)
+  update_CHM=TRUE, # measurable benefits only if Cholesky(., perm=TRUE)
   perm_G=TRUE, 
-  perm_Q=NULL, 
+  perm_Q=NULL,  
   use_ZA_L=TRUE, # NULL may act as TRUE when augZxy_cond=TRUE
+  bind_ZAL=TRUE, # set it to FALSE to use ZAXlist beyond spprec 
   sparsity_threshold=0.05,
-  spprec_threshold=60, # ohio small by correlation algo, large by spprec: threshold is n>=140 has crit 'near' 62 (varying betw replicates).  
+  spprec_threshold=50, # ohio small by correlation algo, large by spprec: threshold is n>=140 has crit 'near' 62 (varying betw replicates). 
   separation_max=10,
   sep_solver="glpk",
   spprec_method="def_AUGI0_ZX_sparsePrecision", 
@@ -31,7 +33,6 @@
   spprec_LevM_D="1", # form of the perturbation of Md2hdv2 in .calc_G_dG() (alternatives are "colSums" or "rowSums")
   #
   USEEIGEN=TRUE, # Whether to use the Eigen C++ library for some matrix computations. The source code should be consulted for further information. 
-  lev_by_sparse_Q=20000L, # switch to sparse QR in .leveragesWrap()
   X_scaling=TRUE,
   maxLambda=1e10,
   regul_lev_lambda=1e-8,
@@ -46,14 +47,17 @@
   optimizer=".safe_opt", ## "nloptr", ##  "bobyqa", ## "L-BFGS-B",
   optim_boot=".safe_opt",
   #
+  fpot_tol= - Inf, #newer criterion for IRLS NOT LevM # cf implicit ftol_abs for coherence
   optimize_tol=.Machine$double.eps^0.25, ## default tol value for optimize
   bobyqa_margin=1e-14, # horrors may happen if bobyqa's init is precisely at a boundary
-  bobyqa=list(),
-  nloptr=list(algorithm="NLOPT_LN_BOBYQA",xtol_rel=5e-6, print_level=0),
+  bobyqa_rhofn= function(lower,upper) min(155.2475, 0.1*min(upper-lower)), # min() to avoid infiniy here; 155.2475 is diff(spaMM:::.dispFn(c(1e-6,1e6)))/10
+  # For a long time this was effectively min(0.95.2475, 0.1*min(upper-lower)), where 0.95 is mysterious value from minqa doc.                                    
+  #                                   0.1 seems the right balance between time (increase with lower value) and effective minimization (cf 21 selected examples from test-nloptr) 
+  bobyqa=list(), 
+  nloptr=list(algorithm="NLOPT_LN_BOBYQA",xtol_rel=5e-6, print_level=0), # nloptr options only control the termination criteria, not the step sizes. Nothing like rhobeg
   maxeval=quote(10^(3+(log(length(initvec))-log(5))/log(4))), # nloptr; *modified for bobyqa (which recommends > 10 * npar^2)
   maxeval_corr=1, # devel: for easy control of maxeval in .safe_opt()
-  xtol_abs_factors=c(rcLam=5e-7,rcCor=5e-6,others=5e-11,abs=1e-7), # nloptr!
-  #xtol_abs_factors=c(rcLam=5e-5,rcCor=5e-5,others=5e-11,abs=1e-7), # nloptr! __F I X M E__
+  xtol_abs_factors=c(rcLam=5e-7,rcCor=5e-6,others=5e-11,abs=1e-7), # nloptr! # laxer rcLam=5e-5 strongly affect tests spherical transfo (+minor effect in test-poly)
   xtol_abs=quote(.xtol_abs_fn(LowUp,  rC_transf = rC_transf)), # nloptr; zero's for max precision (?)
   ############## ranCoefs settings: (see also xtol_abs_factors)
   optim_inner=".safe_opt",
@@ -94,7 +98,7 @@
                  d_relV_b_tol=1e-05, # for solve_IRLS; critical termination test for outer IRLS loop; strong impact on timings of test_all.
                  #                     Lax d_relV_b_tol not good for large data as small d(v,b) has large p_v impact;
                  # LevMar HL11: (cf optim_LevM.R for optimization of this)
-                 v_pot_tol_rescue=1e-06, # critical Q/P trade-off
+                 v_pot_tol_rescue=1e-06, # critical Q/P trade-off (e.g. test-nloptr 362)
                  v_pot_tol_noresc=1e-04, # 
                  b_pot_tol=1e-05, # wrap_do_damped.; sensitive and 1e-04 was previously bad but seems mostly OK now (v3.0.35) though still suspect in a COMPoisson difficult case
                  d_relV_b_tol_LM=1e-05, # critical termination test for outer !HL11! IRLS loop; 1e-04 => too good lik in some lines of LevM.Frailty test.

@@ -13,7 +13,10 @@ tworanefs <- corrHLfit(migStatus ~ 1 +  (1|grp) +Matern(1|longitude+latitude),da
 expected <- c("Gibraltar"=0.04880579, "CapeVerde"=0.04884620, "SouthernFrance"=0.04197530, 
               "LaPalma"=0.03337928, "Madeira"=0.04360190)
 p1 <- get_predVar(tworanefs)[1:5]
-testthat::expect_true(diff(range(p1 - expected))<1e-8)
+crit <- diff(range(p1 - expected))
+testthat::test_that(paste0("get_predVar(tworanefs)[1:5]: criterion was ",signif(crit,4)," >1e-8"),
+                    testthat::expect_true(crit<1e-8) 
+)
 p1p <- get_predVar(tworanefs,newdata=somegrp[1:5,])
 testthat::expect_true(diff(range(p1p -p1))<1e-10)
 ranefstwo <- corrHLfit(migStatus ~ 1  +Matern(1|longitude+latitude)+  (1|grp),data=somegrp,
@@ -30,7 +33,12 @@ onelambda <- corrHLfit(migStatus ~ 1 + Matern(1|longitude+latitude),data=blackca
                        ranFix=list(nu=4,rho=0.4,phi=0.05))
 if ("dgCMatrix" %in% how(twolambda, verbose=FALSE)$MME_method) { # if QRmethod="sparse" was requested
   testthat::expect_true(diff(range(get_predVar(twolambda)[1:5]-get_predVar(onelambda)[1:5]))<1e-5)
-} else testthat::expect_true(diff(range(get_predVar(twolambda)[1:5]-get_predVar(onelambda)[1:5]))<1e-7) ## affected by .Rcpp_backsolve()
+} else {
+  crit <- diff(range(get_predVar(twolambda)[1:5]-get_predVar(onelambda)[1:5]))
+  testthat::test_that(paste0("singular 'twolambda' model: criterion was ",signif(crit,4)," >1e-7"),
+                     testthat::expect_true(crit<1e-7) ## affected by .Rcpp_backsolve()
+  )
+}
 
 
 # as_tcrossfac_list with newdata
@@ -86,8 +94,13 @@ if(requireNamespace("rsae", quietly = TRUE)) {
 
 # simple LM
 set.seed(123)
-n <- 100
-k <- rep(1:(n/10), each=10)
+if (TRUE) {
+  n <- 100
+  k <- rep(1:(n/10), each=10)
+} else {
+  n <- 100000 # used to profile .leveragesWrap()
+  k <- rep(1:200, each=500) # design mat 100000*200
+}
 data.test <- data.frame(y=rnorm(n, mean=k), x=factor(k))
 hlfit <- HLfit(y ~ x, data=data.test)
 p <- predict(hlfit, newdata=data.frame(x=unique(data.test$x)), variances=list(respVar=TRUE))

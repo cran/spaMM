@@ -46,14 +46,18 @@ if (spaMM.getOption("example_maxtime")>6) {
 if(requireNamespace("lme4", quietly = TRUE)) {
   data("sleepstudy",package = "lme4")
   # merfit <- lme4::lmer(Reaction ~ 1 + (poly(Days,2)|Subject), data = sleepstudy)
-  m1 <- fitme(Reaction ~ 1 + (poly(Days,2)|Subject), data = sleepstudy, method="REML")
-  m2 <- fitme(Reaction ~ 1 + (poly(Days,2, raw=TRUE)|Subject), data = sleepstudy, method="REML")
-  testthat::expect_true(diff(range(c(-877.895899884,logLik(m1),logLik(m2))))<1e-9) 
+  (m1 <- fitme(Reaction ~ 1 + (poly(Days,2)|Subject), data = sleepstudy, method="REML"))
+  (m2 <- fitme(Reaction ~ 1 + (poly(Days,2, raw=TRUE)|Subject), data = sleepstudy, method="REML"))
+  crit <- diff(range(c(-877.895899884,logLik(m1),logLik(m2))))
+  testthat::test_that(paste0("criterion was ",signif(crit,6)," from -877.895899884"), # affected by xtol_abs_factors$rcLam
+                      testthat::expect_true(crit<1e-09))
   p1 <- predict(m1)
   p1n <- predict(m1, newdata=m1$data)
   testthat::expect_true(diff(range(p1-p1n))<1e-12) 
   p2 <- predict(m2)
   p2n <- predict(m2, newdata=m1$data)
   testthat::expect_true(diff(range(p2-p2n))<1e-12) 
-  testthat::expect_true(diff(range(p1-p2))<3e-4) # not precise, but the variance estimates are large
+  crit <- diff(range(p1/p2-1))
+  testthat::test_that(paste0("criterion for ratios of predictions was ",signif(crit,6)," from 1"), # affected by xtol_abs_factors$rcLam
+                      testthat::expect_true(crit<3e-5)) # not precise, but the variance estimates are large
 }

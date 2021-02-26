@@ -9,7 +9,7 @@ if(requireNamespace("lme4", quietly = TRUE)) {
   try(testthat::expect_equal(predict(res)[1:6,],predict(res,newdata=sleepstudy[1:6,],re.form= ~ (Days|Subject))[,1])) 
   ## tests of predVar with re.form and ranCoefs in test-devel-predVar-ranCoefs.R
   ## a bit slow but detects many problem: (+ effect of refit$lambda)
-  if (FALSE) { # \label{ares_bobyqa_ssprec} # this case produced a bug before bound in .calc_cov_from_ranCoef (+ bobyqa margin is used in the bobyqa_wrapper + ).
+  if (FALSE) { # \label{ares_bobyqa_ssprec} # this case produced a bug before found in .calc_cov_from_ranCoef (+ bobyqa margin is used in the bobyqa_wrapper + ).
     #spaMM.options(allow_augZXy=TRUE) # make sure of this; even if it's the default
     oldopt <- spaMM.options(optimizer="bobyqa", sparse_precision=TRUE)
     (ares <- fitme(Reaction ~ Days + AR1(1|Days) + (Days|Subject), data = sleepstudy, verbose=c(TRACE=TRUE)))
@@ -20,28 +20,40 @@ if(requireNamespace("lme4", quietly = TRUE)) {
   if (spaMM.getOption("example_maxtime")>1.5) { ## approx time v2.4.129 ten times faster than v2.3.33
     sm <- fitme(Reaction ~ Days + (Days|Subject) + Matern(1|Days), fixed=list(nu=0.5),data = sleepstudy)
     testthat::expect_true(diff(range((c(logLik(sm),logLik(ares)))))<1e-5)
-    spaMM.options(sparse_precision = FALSE, warn=FALSE)
+    # some syntax checks. The fitme() fits have an addition AR1 term.
+    spaMM.options(sparse_precision = FALSE)
     HLfit(Reaction ~ Days + (Days|Subject), data = sleepstudy,ranFix =list(ranCoefs=list("1"=c(612.1,0.06555,35.07)),phi=654.9))
     fitme(Reaction ~ Days + (Days|Subject) + AR1(1|Days), method="REML",
           fixed=list(lambda=c(NA,10),ranCoefs=list("1"=c(612.1,0.06555,35.07)),phi=654.9),
-          data = sleepstudy,verbose=c(TRACE=interactive()))
+          data = sleepstudy,verbose=c(TRACE=FALSE))
     chkfx <- fitme(Reaction ~ Days + (Days|Subject), method="REML",
           fixed=list(ranCoefs=list("1"=c(612.666,NA,NA)),phi=654.9),
           data = sleepstudy)
     testthat::expect_equal(get_ranPars(chkfx)$ranCoefs[[1]][1],612.666)
     chkfx <- fitme(Reaction ~ Days + (Days|Subject), method="REML",
           fixed=list(ranCoefs=list("1"=c(612.666,0.06666,NA)),phi=654.9),
-          data = sleepstudy,verbose=c(TRACE=interactive()))
+          data = sleepstudy,verbose=c(TRACE=FALSE))
     testthat::expect_equal(get_ranPars(chkfx)$ranCoefs[[1]][2],0.06666)
     fitme(Reaction ~ Days + (Days|Subject) + AR1(1|Days), method="REML",
           fixed=list(lambda=c(NA,10),ranCoefs=list("1"=c(NA,0,NA)),phi=654.9),
-          data = sleepstudy,verbose=c(TRACE=interactive()))
+          data = sleepstudy,verbose=c(TRACE=FALSE))
     
     spaMM.options(sparse_precision = TRUE) 
     HLfit(Reaction ~ Days + (Days|Subject), data = sleepstudy,ranFix =list(ranCoefs=list("1"=c(612.1,0.06555,35.07)),phi=654.9))
     fitme(Reaction ~ Days + (Days|Subject) + AR1(1|Days), method="REML",
           fixed=list(lambda=c(NA,10),ranCoefs=list("1"=c(612.1,0.06555,35.07)),phi=654.9),
-          data = sleepstudy,verbose=c(TRACE=interactive())) 
+          data = sleepstudy,verbose=c(TRACE=FALSE)) 
+    fitme(Reaction ~ Days + (Days|Subject) + AR1(1|Days), method="REML",
+          fixed=list(lambda=c(NA,10),ranCoefs=list("1"=c(612.1,0.06555,35.07)),phi=654.9),
+          data = sleepstudy,verbose=c(TRACE=FALSE))
+    chkfx <- fitme(Reaction ~ Days + (Days|Subject), method="REML",
+                   fixed=list(ranCoefs=list("1"=c(612.666,NA,NA)),phi=654.9),
+                   data = sleepstudy)
+    testthat::expect_equal(get_ranPars(chkfx)$ranCoefs[[1]][1],612.666)
+    chkfx <- fitme(Reaction ~ Days + (Days|Subject), method="REML",
+                   fixed=list(ranCoefs=list("1"=c(612.666,0.06666,NA)),phi=654.9),
+                   data = sleepstudy,verbose=c(TRACE=FALSE))
+    testthat::expect_equal(get_ranPars(chkfx)$ranCoefs[[1]][2],0.06666)
     spaMM.options(sparse_precision = NULL)
   }
 } else {

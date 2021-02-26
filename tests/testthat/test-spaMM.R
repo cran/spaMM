@@ -4,6 +4,7 @@ cat(crayon::yellow("\ntest old examples and new tests:\n"))
 data("scotlip") ## loads 'scotlip' data frame, but also 'Nmatrix'
 
 # including a test of mgcv::negbin handling mechanism
+# and apparently there are not so many tests of .solve_v_h_IRLS() in routine tests.
 (hl <- try(fitme(I(1+cases)~I(prop.ag/10)+offset(log(expec))+adjacency(1|gridcode),
            family=negbin(), adjMatrix=Nmatrix, data=scotlip), silent=TRUE)) 
 if (inherits(hl,"try-error")) {
@@ -99,3 +100,9 @@ if (FALSE) { # examples from update.Rd in handy test form
   testthat::expect_true(diff(range(fixef(rerewFit)))<1e-14)
 }
 
+# Code added to check model frame issues when updating a model with variable in resid model not in main response model (+ syntax I() ). 
+data("wafers")
+## Gamma GLMM with log link
+m1 <- HLfit(y ~X1+X2+I(X2^2),family=Gamma(log),
+            resid.model = ~ X3+I(X3^2) ,data=wafers,method="ML") 
+update_resp(m1,newresp=simulate(m1))

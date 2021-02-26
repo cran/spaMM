@@ -16,7 +16,7 @@
   ## Ideally we should identify those cases.
   ## Special case of LMM pure block effects : correl algo is always OK in that case but spprec can be marginally better (augZXy case!)
   ## 'useful_for_det_spprec' in test-for-scaled-spprec is an AR1 fit by augZXy. It is fast by spprec or not.
-  ## Ideally we should identify those cases. but .determine_augZXy() is evaluated long after spprec (_F I X M E_?)
+  ## Ideally we should identify those cases. but .preprocess_augZXy() is evaluated long after spprec (_F I X M E_?)
   warned1 <- warned2 <- FALSE
   function(ZAlist, 
            processed, ## single envir, not list of envirs

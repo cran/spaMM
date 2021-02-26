@@ -438,34 +438,76 @@
 }
 
 
-## creates precisionFactorList if it doesn't exist, and partially fills it with Diagonal()'s
-## updates precisionFactorList with LMatrices info
-.init_precision_info <- function(processed, LMatrices=NULL) {
-  envir <- processed$AUGI0_ZX$envir
-  precisionFactorList <- envir$precisionFactorList
-  latent_d_list <- envir$latent_d_list
-  # I N I T
-  if (is.null(precisionFactorList)) {
-    nranef <- length(envir$finertypes)
+## creates precisionFactorList if it doesn't exist, and partially fills it with Diagonal()'s + corrMatrix info
+.init_AUGI0_ZX_envir_spprec_info <- function(processed) {
+  AUGI0_ZX_envir <- processed$AUGI0_ZX$envir
+  if (is.null(precisionFactorList <- AUGI0_ZX_envir$precisionFactorList)) {
+    nranef <- length(AUGI0_ZX_envir$finertypes)
+    updateable <- rep(FALSE,nranef)
     precisionFactorList <- latent_d_list <- vector("list",nranef) ## will contain diagonal matrices/info for non-trivial (diagonal) precision matrices
     cum_n_u_h <- processed$cum_n_u_h
-    for (it in seq_len(nranef)) {
-      if ( envir$finertypes[it] %in% c("adjacency","corrMatrix","AR1", "IMRF") ) {
+    for (rd in seq_len(nranef)) {
+      finertype <- AUGI0_ZX_envir$finertypes[rd]
+      if ( finertype %in% c("adjacency","AR1") ) {
         ## terms of these types must be dealt with by ad hoc code for each type elsewhere
-      } else if ( envir$finertypes[it] =="(.|.)" ) { # EXcludes "ranCoefs"
-        nc <- ncol(processed$ZAlist[[it]])
-        precisionFactorList[[it]] <- list(Qmat=.symDiagonal(n=nc), ## used independently of chol_Q_list, see precisionBlocks
+      } else if ( finertype=="corrMatrix") {
+        cov_info_mat <- processed$corr_info$cov_info_mats[[rd]]
+        if (inherits(cov_info_mat,"precision")) {
+          sparse_Qmat <- drop0(cov_info_mat[["matrix"]])
+        } else stop(' ! inherits(cov_info_mat,"precision")')
+        ####
+        # Compared to more general case, we don't need to store a template! This is always ONE-TIME CODE.
+        #  I once had a problem with perm_Q=TRUE in test-predVar-Matern-corrMatrix -> predict(f2,.) so make sure to check this when changing the code
+        if (is.null(perm_Q <- .spaMM.data$options$perm_Q)) { # assuming dsC...
+          perm_Q <- (length(sparse_Qmat@x)/ncol(sparse_Qmat)^2)<0.8 # quick exclusion of precision matrices that are fully dense so that no permutation would be useful. 
+        }
+        Q_CHMfactor <- Cholesky(sparse_Qmat,LDL=FALSE,perm=perm_Q) 
+        if (perm_Q) {
+          .ZA_update(rd, Q_CHMfactor, processed, 
+                     Amat=attr(processed$ZAlist,"AMatrices")[[as.character(rd)]])
+          # One-time ZA updating, but also here specifically for corrMatrix, one-time construction of sparse_Qmat
+          permuted_Q <- attr(attr(processed$ZAlist,"AMatrices")[[as.character(rd)]],"permuted_Q") 
+          # $Qmat <- sparse_Qmat will be used together with ZA independently from the CHM to construct the Gmat
+          # If we use permuted Chol, then we must permute sparse_Qmat, by 
+          if (identical(permuted_Q,TRUE)) sparse_Qmat <- tcrossprod(as(Q_CHMfactor,"sparseMatrix")) 
+          # precisionFactorList[[rd]]$template <- Q_CHMfactor # No updating ever needed
+        }
+        precisionFactorList[[rd]] <- list(Qmat=sparse_Qmat, # should by *dsC* 
+                                          chol_Q=as(Q_CHMfactor, "sparseMatrix")) # Linv
+        ####
+        .assign_Lunique_from_Q_CHM(processed=processed, rd=rd, Q_CHMfactor=Q_CHMfactor, corr_type="corrMatrix", 
+                                   spatial_term=attr(processed$ZAlist,"exp_spatial_terms")[[rd]], type="from_Q_CHMfactor") ## assigns to AUGI0_ZX$envir
+      } else if ( finertype=="IMRF" ) {
+        ## terms of these types must be dealt with by ad hoc code for each type elsewhere, but we can set
+        updateable[rd] <- TRUE
+      } else if ( finertype =="(.|.)" ) { # EXcludes "ranCoefs"
+        nc <- ncol(processed$ZAlist[[rd]])
+        precisionFactorList[[rd]] <- list(Qmat=.symDiagonal(n=nc), ## used independently of chol_Q_list, see precisionBlocks
                                           chol_Q=new("dtCMatrix",i= 0:(nc-1L), p=0:(nc), Dim=c(nc,nc),x=rep(1,nc)) )
         # All chol_Q's must be dtCMatrix so that bdiag() gives a dtCMatrix
-      } else if ( envir$finertypes[it] %in% c("ranCoefs", "Matern", "Cauchy") ) { 
-        ## leave precisionFactorList[[it]] NULL
-      } else stop(paste("sparse-precision methods were requested, but",envir$finertypes[it],"terms are not yet handled by sparse precision code."))
+        updateable[rd] <- TRUE
+      } else if ( finertype %in% c("Matern", "Cauchy") ) { 
+        ## leave precisionFactorList[[rd]] NULL
+        updateable[rd] <- TRUE
+      } else if ( finertype != "ranCoefs") stop(paste("sparse-precision methods were requested, but",
+                                                      finertype,"terms are not yet handled by sparse precision code."))
     }
     diff_n_u_h <- diff(cum_n_u_h)
-    for (it in seq_along(diff_n_u_h)) latent_d_list[[it]] <- rep(1,diff_n_u_h[it])
+    for (rd in seq_along(diff_n_u_h)) latent_d_list[[rd]] <- rep(1,diff_n_u_h[rd])
+    AUGI0_ZX_envir$precisionFactorList <- precisionFactorList
+    AUGI0_ZX_envir$latent_d_list <- latent_d_list
+    AUGI0_ZX_envir$updateable <- updateable
   }
-  # F I L L
+  ## environment modified, no return value
+}
+
+## updates precisionFactorList with LMatrices info
+.update_AUGI0_ZX_envir_ranCoefs_info <- function(processed, LMatrices=NULL) {
   if ( ! is.null(LMatrices)) {
+    AUGI0_ZX_envir <- processed$AUGI0_ZX$envir
+    precisionFactorList <- AUGI0_ZX_envir$precisionFactorList
+    latent_d_list <- AUGI0_ZX_envir$latent_d_list
+    updateable <- AUGI0_ZX_envir$updateable
     is_given_by <- attr(LMatrices,"is_given_by")
     for (rt in which(is_given_by %in% c("ranCoefs"))) {
       latentL_blob <- attr(LMatrices[[rt]],"latentL_blob")
@@ -478,19 +520,24 @@
                                         precmat=.makelong(latentL_blob$compactprecmat,longsize=ncol((LMatrices[[rt]])), 
                                                           template=processed$ranCoefs_blob$longLv_templates[[rt]] ))
       d_rt <- latentL_blob[["d"]]
-      latent_d_list[[rt]] <- d_rt[gl(length(d_rt), length(latent_d_list[[rt]])/length(d_rt))]
+      nc <- length(d_rt) 
+      latent_d_list[[rt]] <- d_rt[gl(nc, length(latent_d_list[[rt]])/nc)]
+      updateable[rt] <- (length(which(compactchol_Q@x!=0)) == nc*(nc+1L)/2L)
     }
     for (rt in which(is_given_by=="inner_ranCoefs")) {
-      # : need to initialize because spprec IRLS requires .init_precision_info to have filled all matrices
+      # : need to initialize because spprec IRLS requires .update_AUGI0_ZX_envir_ranCoefs_info() to have filled all matrices
       nc <- ncol(processed$ranCoefs_blob$longLv_templates[[rt]] )
       precisionFactorList[[rt]] <- list(precmat=.symDiagonal(n=nc), 
                                         chol_Q=new("dtCMatrix",i= 0:(nc-1L), p=0:(nc), Dim=c(nc,nc),x=rep(1,nc)) )
+      updateable[rt] <- TRUE
     }
+    AUGI0_ZX_envir$precisionFactorList <- precisionFactorList
+    AUGI0_ZX_envir$latent_d_list <- latent_d_list
+    AUGI0_ZX_envir$updateable <- updateable
   }
-  envir$precisionFactorList <- precisionFactorList
-  envir$latent_d_list <- latent_d_list
   ## environment modified, no return value
 }
+
 
 .update_precision_info <- function(processed, LMatrices, which.) {
   envir <- processed$AUGI0_ZX$envir
@@ -509,6 +556,7 @@
                                                           template=processed$ranCoefs_blob$longLv_templates[[rt]] ))
     } else stop("'which.' value not handled ")
   }
+  # envir$updateable[rt] should be TRUE and remain so for those terms
   envir$precisionFactorList <- precisionFactorList
   ## environment modified, no return value
 }
@@ -537,7 +585,7 @@
 
 .eval_init_lambda_guess <- function(processed, stillNAs, ZAL=NULL, cum_n_u_h,For) {
   nrand <-  length(processed$ZAlist)
-  if (is.null(processed$HLframes$Y)) { ## for resid model
+  if (is.null(processed$main_terms_info$Y)) { ## for resid model
     if (For=="optim") { 
       guess_from_glm_lambda <- 0.1 ## (FIXME ad hoc) Cannot let it NA as this will be ignored by further code, namely
       #                               optim_lambda_with_NAs[which_NA_simplelambda] <- init_lambda[which_NA_simplelambda]
@@ -585,7 +633,7 @@
 
 .init_optim_lambda_ranCoefs <- function(proc1, not_inner_phi, init.optim, nrand, ranCoefs_blob, var_ranCoefs) {
   lFix <- proc1$lambda.Fix ## only for 'simple" ranefs with Xi_cols=1
-  if (proc1$augZXy_cond || 
+  if (proc1$augZXy_cond || anyNA(init.optim$lambda) ||
       not_inner_phi) { ## Tests show it is very inefficient to use outer optim on lambda (at least) when phi must be inner optimized
     optim_lambda_with_NAs <- .reformat_init_lambda_with_NAs(init.optim$lambda, nrand=nrand, default=NA)
     ## handling fitme call for resid fit with meanfit-optimized parameters (if input is NULL, output is all NA):
@@ -640,49 +688,52 @@
 .more_init_optim <- function(proc1, processed, corr_types, init.optim, phi_by_augZXy) {
   ## trying to guess all cases where optimization is useful. But FIXME: create all init and decide afterwardsS
   phimodel1 <- proc1$models[['phi']]
-  allPhiScal <- all(processed$models[['phi']] == "phiScal")
+  allPhiScalorFix <- all(processed$models[['phi']] == "phiScal" | processed$models[['phi']] == "")
   ranCoefs_blob <- processed$ranCoefs_blob
   is_MixedM <- ( ! is.null(ranCoefs_blob) )
   if (is_MixedM) {
     var_ranCoefs <- (ranCoefs_blob$isRandomSlope & ! ranCoefs_blob$is_set) # vector !
     has_corr_pars <- length(corr_types[ ! is.na(corr_types)])
   } else var_ranCoefs <- has_corr_pars <- FALSE
-  delayedAssign("has_estim_families_par", 
-                identical(attr(processed$families,"has_estim_families_par"), TRUE)) ## identical bc absent in multi() case
+  sufficient_reasons_for_outer <- (anyNA(init.optim$lambda) || # first one meaning that the user explictly set a NA init lambda
+                                 any(var_ranCoefs) || 
+                                 has_corr_pars ||
+                                 ( has_family_par <- (( ! is.null(init.optim$COMP_nu)) || ( ! is.null(init.optim$NB_shape))) ) || # lambda + family pars # motivated by 'ahzut' example in private test-COMPoisson-difficult.R
+                                 ( has_estim_families_par <- identical(attr(processed$families,"has_estim_families_par"), TRUE))) ## identical bc absent in multi() case
   if (
-    any(var_ranCoefs) ||
-    has_corr_pars || # lambda + corr pars
-    ( has_family_par <- (( ! is.null(init.optim$COMP_nu)) || ( ! is.null(init.optim$NB_shape))) ) || # lambda + family pars # motivated by 'ahzut' example in private test-COMPoisson-difficult.R
-    has_estim_families_par ||  
+    sufficient_reasons_for_outer ||  
     var(proc1$y)<1e-3 || # mixed model with low response variance (including case where phi is fixed (phimodel="") )
     (phimodel1 == "phiHGLM" && identical(spaMM.getOption("outer_optim_resid"),TRUE)) ||
-    allPhiScal || # lambda + phi
+    allPhiScalorFix || # lambda + phi
     { # reach here if several (lambda || fixed ranCoefs) and no var_ranCoefs; 
       lFix <- processed$lambda.Fix
       if (! is.null(ranCoefs_blob)) lFix <- lFix[ ! ranCoefs_blob$isRandomSlope] # Fixed ranCoefs count as a NA in $lambda.Fix so we remove them to count variable lambda's
       length(which(is.na(lFix)))>1L # so that two lambdas is handled as 1 lambda+phi
     } 
-  ) { ## All cases where outer optimization MAY be better for dispersion parameters
+  ) { ## All cases where outer optimization MAY be better for dispersion parameters (or forced outer optim)
     nrand1 <- length(proc1$ZAlist)
-    ## we look whether the hatval_Z are needed or not in .calc_sscaled_new(), hence in fitme() with outer estim of dispersion params
-    inner_requires_costly_calc_dvdlogdisp <- ( 
-      ( calc_dvdlogdisp_needed_for_inner_ML <-  (processed$HL[2L] && any(processed$vecdisneeded)) ) && ## condition not exact?
-        (calc_dvdlogdisp_costly <- (NROW(processed$y)>200L || 
-                                      (length(processed$ZAlist)>0L && processed$cum_n_u_h[length(processed$cum_n_u_h)]>200L)))
-    )
-    outer_does_not_require_costly_hatval_Z <- ( ## "but inner requires it"
-      allPhiScal &&
-      ( 
-        ! (hatval_Z_needed_for_sscaled <- (processed$HL[1L] && any(processed$vecdisneeded)))
-      )  && ## otherwise we need it also for outer
-        ( 
-          ( hatval_Z_needed_for_inner_ML <-  (! NCOL(processed$X.Re)) ) && ## X.Re is a 0-col matrix
-            (hatval_Z_costly <- (NROW(processed$y)>200L || 
-                                   (length(processed$ZAlist)>0L && processed$cum_n_u_h[length(processed$cum_n_u_h)]>200L)))
-        )
-    )
-    reasons_for_outer <- (inner_requires_costly_calc_dvdlogdisp || outer_does_not_require_costly_hatval_Z || 
-                            any(var_ranCoefs) || (has_corr_pars) || (has_family_par || has_estim_families_par))
+    reasons_for_outer <- sufficient_reasons_for_outer
+    if ( ! reasons_for_outer) {
+      reasons_for_outer <- outer_spares_costly_dleve_comput <- ( 
+        # the dleve computations for HL[2L] with costly .calc_dvdlog...Mat_new() occur in inner for HL[2L] irrespective of vecdisneeded[3]
+        # and in particular even for canonical link GLMM. The dleve terms should be nonzero when GLM weights !=1 i.e vecdisneeded[2] (or [1])
+        (nrand1 > 0L && processed$cum_n_u_h[length(processed$cum_n_u_h)] > 1000L) &&
+          ( calc_dvdlogdisp_needed_for_inner_ML <-  (processed$vecdisneeded[2] && processed$HL[2L]) ) 
+      )
+    }
+    if ( ! reasons_for_outer) {
+      ## we look whether the hatval_Z are needed or not in .calc_sscaled_new(), hence in fitme() with outer estim of dispersion params
+      hatval_Z_is_costly <- ( NROW(processed$y)>1000L || 
+                                (nrand1>0L && processed$cum_n_u_h[length(processed$cum_n_u_h)]>200L))
+      reasons_for_outer <- outer_spares_costly_hatval_Z <- ( ## "but inner requires it"
+        hatval_Z_is_costly && allPhiScalorFix && (
+          hatval_Z_needed_for_inner_ML <-  (! NCOL(processed$X.Re)) ## X.Re is a 0-col matrix
+        ) && ( 
+          hatval_Z_not_needed_for_sscaled <- ! (processed$HL[1L] && any(processed$vecdisneeded)) 
+        )  
+      )
+    }
+    # so that reasons_for_outer = ( sufficient_reasons_for_outer || outer_spares_costly_dleve_comput || outer_spares_costly_hatval_Z)
     if (is.null(proc1$phi.Fix) && ! phi_by_augZXy ) { # Set (or not) outer optimization for phi: 
       init_optim_phi_blob <- .init_optim_phi(phimodel1, proc1, init.optim, nrand1, reasons_for_outer)
       not_inner_phi <- init_optim_phi_blob$not_inner_phi # which may indicate outer phi or no phi estimation
@@ -757,19 +808,19 @@
   if (For %in% c("fitme","fitmv") && proc_it$HL[1]!="SEM") { ## for SEM, it's better to let SEMbetalambda find reasonable estimates
     augZXy_cond <- proc_it$augZXy_cond # processed$augZXy_cond would fail in multi() case
     # We may use augZXy to estimate lambda and phi (more exactly, a scaling factor common to them), or lambda only
-    # In .determine_augZXy(), we decided not to use it to estimate lambda when there is an init phi. 
+    # In .preprocess_augZXy(), we decided not to use it to estimate lambda when there is an init phi. 
     # But we could have decided otherwise (still use augZXy to estimate lambda in that case)
     # Now we check if there is an upper|lower phi, in which case we cannot use it to estimate phi
     # But we face the same question of using augZXy to estimate lambda in that case
     if (FALSE) { # This is hypothetical code for the case where we wish to maximize use of augZXy:
-      # In that case .determine_augZXy() should be modified to allow augZXy to estimate lambda in the presence of an init phi;
+      # In that case .preprocess_augZXy() should be modified to allow augZXy to estimate lambda in the presence of an init phi;
       # phi_by_augZXy should depend on this init; and phi_by_augZXy should not affect proc1$augZXy_cond
       phi_by_augZXy <- ( augZXy_cond && is.null(init.optim$phi) && is.null(user.lower$phi) && is.null(user.upper$phi)) 
       # NOTHING TO DO to processed$augZXy_cond
       # but 'phi_by_augZXy' still separately needed in call below.
     } else { # This is for the case where we decide not to use augZXy_cond for lambda whene we cannot use it for phi:
       # (yet we seem to do that in .makeCovEst1()... as controlled by the "inner" attribute)
-      # In that case .determine_augZXy() must have set augZXy to FALSE in the presence of an init phi; and:
+      # In that case .preprocess_augZXy() must have set augZXy to FALSE in the presence of an init phi; and:
       phi_by_augZXy <- ( augZXy_cond && is.null(user.lower$phi) && is.null(user.upper$phi)) 
       if (augZXy_cond && ! phi_by_augZXy) {
         proc_it$augZXy_cond <- structure(phi_by_augZXy, inner=attr(proc_it$augZXy_cond, "inner"))
@@ -861,3 +912,27 @@
     return(allNULL)
   } else  return(FALSE) # stop("Unhandled 'x' class in .allNULL().") # if numeric, not all null...
 }
+
+.check_suspect_rho <- function(corr_types, ranPars_in_refit, LowUp) {
+  locmess <- NULL
+  if (any(geostat <- corr_types %in% c("Matern","Cauchy"))) {
+    char_rnf <- as.character(which(geostat))
+    corlow <- unlist(LowUp$lower$corrPars[char_rnf])
+    if (length(corlow)) {
+      corpars <- unlist(ranPars_in_refit$corrPars[char_rnf])[names(corlow)]
+      corup <- unlist(LowUp$upper$corrPars[char_rnf])
+      at_lower_bound <- which((corpars-corlow)/(corup-corlow)<1e-5)
+      if ( length(at_lower_bound) && 
+           length(which(grepl("trRho", names(corpars))))>1L && ## at least two rho's 
+           #  (case with one rho at the bound would deserve another message; NB occurs in the vignette...)
+           any(grepl("trRho", names(at_lower_bound)))) {
+        locmess <- paste0("The estimate(s) of some 'rho' scale parameter(s) = their lower bound in numerical optimization.\n",
+                          "This suggests that the expected value of some ranef(s) should be non-zero,\n ",
+                          "but that the model term(s) for intercept(s) do not account for that.")
+      }
+    }
+  }
+  locmess
+}
+
+

@@ -11,7 +11,8 @@ if (spaMM.getOption("example_maxtime")>8) { # fit itself < 8s
   plot(obs)
   fake <- data.frame(obs=obs,age=1:nobs)
   fitar1 <- corrHLfit(obs ~ 1+AR1(1|age),family=poisson(),data=fake,verbose=c(TRACE=TRUE))
-  testthat::expect_equal(logLik(fitar1), c(p_bv=-1269.06022553))
+  crit <- diff(range(logLik(fitar1), c(p_bv=-1269.06022553)))
+  testthat::test_that(paste0("criterion was ",signif(crit,4)," from 1269.06022553"), testthat::expect_true(crit<1e-9)) 
 }
 
 ## same with nested AR1 within individual
@@ -50,7 +51,10 @@ if (TRUE) {
   p1 <- predict(zut,newdata=rezut$data[rownames(rezut$data)>30,])["39"] 
   p2 <- predict(rezut,newdata=rerezut$data[rownames(rerezut$data)>30,])["39"]
   p3 <- predict(rerezut,newdata=zut$data[rownames(zut$data)>30,])["39"]
-  try(testthat::expect_true(diff(range(c(p1,p2,p3, 2.35717079935)))<1e-10)) ## last decimals sensitive to d_relV_b_tol
+  crit <- diff(range(c(p1,p2,p3, 2.35717079935)))## last decimals sensitive to d_relV_b_tol
+  if (spaMM.getOption("fpot_tol")>0) {
+    testthat::test_that(paste0("criterion was ",signif(crit,6)," from 2.35717079935"), testthat::expect_true(crit<1e-10)) 
+  } else testthat::expect_true(crit<1e-10)
   if (rngcheck) RNGkind("Mersenne-Twister", "Inversion", "Rejection"  )
 }
 
@@ -79,7 +83,10 @@ if (spaMM.getOption("example_maxtime")>13) {
   spaMM.options(sparse_precision=FALSE)
   rerezut <- corrHLfit(obs ~ 1+AR1(1|idx %in% ind),family=poisson(),data=fake[20+sample(20),])
   spaMM.options(sparse_precision=NULL)
-  testthat::expect_true(diff(range((c(logLik(zut),logLik(rezut),logLik(rerezut)))))<1e-8)
+  crit <- diff(range(c(logLik(zut),logLik(rezut),logLik(rerezut))))
+  if (spaMM.getOption("fpot_tol")>0) {
+    testthat::test_that(paste0("criterion was ",signif(crit,6)," from  -47.31300"), testthat::expect_true(crit<1e-8) )
+  } else testthat::expect_true(crit<1e-8)
   ## full data
   fit_ar1nested <- corrHLfit(obs ~ 1+AR1(1|age %in% ind),family=poisson(),data=fake,verbose=c(TRACE=interactive())) 
   testthat::expect_equal(logLik(fit_ar1nested), c(p_bv=-2295.67792783))
@@ -88,12 +95,12 @@ if (spaMM.getOption("example_maxtime")>13) {
 if (spaMM.getOption("example_maxtime")>0.5) {
   requireNamespace("nlme")
   data("Orthodont",package = "nlme")
-  if (FALSE) {
+  if (TRUE) { # fitme has (finally) become as fast as corrHLfit on this example
     checkinput <- fitme(distance ~ age + factor(Sex)+( 1 | Subject)+ AR1(1|age %in% Subject), fixed=list(phi=1e-6), 
-                        data = Orthodont,verbose=c(TRACE=interactive()),method="REML")  
-  } else { # remains faster...
+                        data = Orthodont,method="REML")  
+  } else { 
     checkinput <- corrHLfit(distance ~ age + factor(Sex)+( 1 | Subject)+ AR1(1|age %in% Subject), ranFix=list(phi=1e-6),
-                            data = Orthodont,verbose=c(TRACE=interactive()),HLmethod="REML")
+                            data = Orthodont,HLmethod="REML")
   }
   testthat::expect_equal(logLik(checkinput), c(p_bv=-218.69839984))
   # consistent with 

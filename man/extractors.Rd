@@ -1,5 +1,5 @@
 \name{extractors}
-\alias{model.frame.HLfit} % undocumented as long as it is not stable (and not yet used)
+\alias{model.frame.HLfit} % undocumented as long as it is not stable (this has limitations)
 \alias{model.matrix.HLfit} % FIXME not used in spaMM code, and undocumented
 \alias{extractors}
 \alias{getDistMat}

@@ -24,7 +24,6 @@ if(requireNamespace("pedigreemm", quietly=TRUE)) {
   obs$y01 <- ifelse(y<1.3,0,1)
   verif2 <- fitme(y01 ~ 1+ corrMatrix(1|IDgen)+(1|IDenv), corrMatrix=A,data=obs, 
         family=binomial(), method="ML")
-  testthat::expect_true(diff(range((c(logLik(verif2),-13.943504068))))<1e-6)
   ## test-adjacency-corrMatrix also tests variants of corrMatrix + covStruct, but is longer
   prec_mat <- solve(A)
   colnames(prec_mat) <- rownames(prec_mat) <- rownames(A) # important
@@ -33,5 +32,6 @@ if(requireNamespace("pedigreemm", quietly=TRUE)) {
   # or
   verif4 <- HLCor(y01 ~ 1+ corrMatrix(1|IDgen)+(1|IDenv) , covStruct=list(precision=prec_mat),
                   data=obs,family=binomial(), HLmethod="ML")
-  testthat::expect_true(diff(range((c(logLik(verif2),logLik(verif3),logLik(verif4),-13.943504068))))<1e-6)
+  crit <- diff(range((c(logLik(verif2),logLik(verif3),logLik(verif4),-13.943504068))))
+  testthat::test_that(paste0("criterion was ",signif(crit,6)," from -13.943504068"), testthat::expect_true(crit<1e-6))
 }

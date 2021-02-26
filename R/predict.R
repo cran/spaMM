@@ -473,7 +473,7 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
             if (inherits(newoldC,"bigq")) attr(cov_newLv_oldv_list[[new_rd]], "DIMNAMES") <- list(repnames[newcols],repnames[oldcols]) ## these will be needed by .match_old_new_levels()
           }
           if (which_mats$nn[new_rd]) {
-            cov_newLv_newLv_list[[new_rd]] <- newoldC[which(newcols),which(newcols),drop=FALSE] ## __F I X M E__ bug report sent...
+            cov_newLv_newLv_list[[new_rd]] <- newoldC[which(newcols),which(newcols),drop=FALSE] ## gmp bug report sent a long time ago
             #names presumably not used
             #if (inherits(newoldC,"bigq")) attr(diag_cov_newLv_newLv_list[[new_rd]], "DIMNAMES") <- list(repnames[newcols],repnames[newcols])
           } else {
@@ -977,7 +977,7 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
   } else { ## alternative expecting binding= FALSE (but also handling binding = NA by doing nothing)
     if (! is.na(binding))  attr(resu,"frame") <- locdata 
   }
-  if (inherits(locdata,"list")) attr(resu,"respnames") <- .get_from_HLframes(HLframes=object$HLframes, which="respnames")
+  if (inherits(locdata,"list")) attr(resu,"respnames") <- .get_from_terms_info(object=object, which="respnames")
   ##### (2) predVar
   if (variances$naive) { # the 'naive' estimate in BH98 (nu_i, without beta)
     naive <- .calc_Var_given_fixef(object, new_X_ZACblob=new_X_ZACblob, covMatrix=variances$cov, fix_X_ZAC.object=NULL)

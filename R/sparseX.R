@@ -1,6 +1,6 @@
 .spaMM_lm.wfit <- function(x, y, offset=NULL,w=NULL) {
   if (!is.null(w)) {
-    XtWX <- .ZtWZwrapper(x,w)
+    XtWX <- .ZtWZwrapper(x,w, allow_as_mat=FALSE) # without allow_as_mat, result might be dsy (eg if I forced sparse_X on an inherently dense X)
     rhs <- crossprod(x,w*y)
   } else {
     XtWX <- crossprod(x)

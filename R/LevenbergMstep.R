@@ -12,7 +12,7 @@
 
 .LevenbergMstepCallingCpp <- function(wAugX,LM_wAugz,damping) {
   ## FIXME perhaps http://eigen.tuxfamily.org/dox/unsupported/LMonestep_8h_source.html could be useful ???
-  rhs <- as.vector(.crossprodCpp(wAugX,LM_wAugz)) ## t(wAugX) %*% LM_wAugz ## backward: A'.z* ## rhs needed further below to assess gainratio
+  rhs <- as.vector(.crossprodCpp_d(wAugX,LM_wAugz)) ## t(wAugX) %*% LM_wAugz ## backward: A'.z* ## rhs needed further below to assess gainratio
   resu <- .LevenbergMsolveCpp(wAugX, rhs, damping ) 
   #resu <- .e_LevenbergMsolveCpp(wAugX, LM_wAugz, damping ) ## essai 07/2016, using Eigen QR, not convincing
   resu$rhs <- rhs

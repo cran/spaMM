@@ -1,3 +1,4 @@
+# hatvalues is a generic
 hatvalues.HLfit <- function(model, type="projection", which="resid", force=FALSE, ...) { 
   loctype <- switch(type,
                     marginal="hatval_Z",

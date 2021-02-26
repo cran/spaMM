@@ -6,7 +6,10 @@
 
 # see also http://bbolker.github.io/mixedmodels-misc/notes/cloglogsim.html
 
-if (spaMM.getOption("example_maxtime")>4.3) {
+cat(crayon::yellow("\ntest-cloglog:\n"))
+
+
+if (spaMM.getOption("example_maxtime")>2.1) {
   if (requireNamespace("MASS", quietly = TRUE)) {
     artSim <- function(){
       #

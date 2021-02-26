@@ -38,10 +38,10 @@
 
 .calc_cAIC_pd_spprec <- function(object) {
   w.resid <- object$w.resid
-  #ZAL <- .compute_ZAL(XMatrix=object$strucList, ZAlist=object$ZAlist,as_matrix=.eval_as_mat_arg(object)) 
+  #ZAL <- .compute_ZAL(XMatrix=object$strucList, ZAlist=object$ZAlist,as_matrix=.eval_as_mat_arg.HLfit(object)) 
   ZAL <- get_ZALMatrix(object) # allows ZAXlist; but if a non-ZAXlist is already in the $envir, no effect; + we will solve(chol_Q, Diagonal()) so the gain is not obvious
   if ( ncol(object$X.pv) ) {
-    M12 <- as.matrix(.crossprod(ZAL, .Dvec_times_m_Matrix(w.resid, object$X.pv)))
+    M12 <- .crossprod(ZAL, .Dvec_times_m_Matrix(w.resid, object$X.pv), as_mat=TRUE)
     Md2clikdvb2 <- rbind2(cbind2(as.matrix(.ZtWZwrapper(ZAL,w.resid)), M12), ## this .ZtWZwrapper() takes time
                           cbind2(t(M12), as.matrix(.ZtWZwrapper(object$X.pv,w.resid)))) 
     # _FIXME_ any way to avoid formation of this matrix ? Or otherwise message() ?           
@@ -68,10 +68,10 @@
   tcrossfac_v_beta_cov <- tcrossfac_beta_v_cov[perm,,drop=FALSE] # useful to keep it for predVar computations?
   
   w.resid <- object$w.resid
-  #ZAL <- .compute_ZAL(XMatrix=obje17ct$strucList, ZAlist=object$ZAlist,as_matrix=.eval_as_mat_arg(object)) 
+  #ZAL <- .compute_ZAL(XMatrix=obje17ct$strucList, ZAlist=object$ZAlist,as_matrix=.eval_as_mat_arg.HLfit(object)) 
   ZAL <- get_ZALMatrix(object) # allows ZAXlist; but if a non-ZAXlist is already in the $envir, no effect; + we will solve(chol_Q, Diagonal()) so the gain is not obvious
   if ( ncol(object$X.pv) ) {
-    M12 <- as.matrix(.crossprod(ZAL, .Dvec_times_m_Matrix(w.resid, object$X.pv)))
+    M12 <- .crossprod(ZAL, .Dvec_times_m_Matrix(w.resid, object$X.pv), as_mat=TRUE)
     Md2clikdvb2 <- rbind2(cbind2(as.matrix(.ZtWZwrapper(ZAL,w.resid)), M12), ## this .ZtWZwrapper() takes time
                           cbind2(t(M12), as.matrix(.ZtWZwrapper(object$X.pv,w.resid)))) 
     # _FIXME_ any way to avoid formation of this matrix ? Or otherwise message() ?           
@@ -129,9 +129,11 @@
 
 .get_info_crits <- function(object, also_cAIC=TRUE) {
   if (is.null(info_crits <- object$envir$info_crits) || (also_cAIC && is.null(info_crits$cAIC))) { 
-    pforpv <- object$dfs[["pforpv"]]
-    p_phi <- object$dfs[["p_fixef_phi"]]
-    p_lambda <- object$dfs[["p_lambda"]]
+    dfs <- object$dfs
+    if ( ! inherits(dfs,"list")) dfs <- as.list(dfs) ## back compatibility
+    pforpv <- dfs[["pforpv"]]
+    p_phi <- dfs[["p_fixef_phi"]]
+    p_lambda <- dfs[["p_lambda"]]
     APHLs <- object$APHLs
     w.resid <- object$w.resid
     info_crits <- list()
@@ -141,7 +143,7 @@
     } else if  ( ! is.null(resid_fit <- object$resid_fit)) { 
       # input p_phi (above) is typically set to NA, and will be ignored
       p_phi <- sum(.unlist(resid_fit$dfs)) ## phi_pd is relevant only for measuring quality of prediction by the resid_fit! 
-    } else p_phi <- sum(.unlist(object$dfs[["p_fixef_phi"]])) # .unlist() for mv
+    } else p_phi <- sum(.unlist(dfs[["p_fixef_phi"]])) # .unlist() for mv
     names_est_ranefPars <- unlist(.get_methods_disp(object))  
     fam_disp_parsnames <- intersect(names_est_ranefPars,c("NB_shape","NU_COMP"))
     if (length(fam_disp_parsnames)) {
@@ -173,8 +175,15 @@
       #                                   cbind2(hessnondiag, .ZtWZwrapper(ZAL,w.resid))))            
       # }
       X.pv <- object$X.pv
-      #corrPars <- get_ranPars(object,which="corrPars")
-      p_corrPars <- object$dfs[["p_corrPars"]] # length(intersect(names_est_ranefPars,names(corrPars)))
+      if (is.null(p_corrPars <- dfs[["p_corrPars"]])) { ## back compatibility code, 
+        # old code, presumably missing inner-estimated adjacency params 
+        #corrPars <- get_ranPars(object,which="corrPars")
+        #p_corrPars <- length(intersect(names_est_ranefPars,names(corrPars)))
+        # Here inner-estimated adjacency params are in the "vars" 
+        p_corrPars <- length(which(unlist(attr(object$CorrEst_and_RanFix,"type")$corrPars, use.names = FALSE) %in% c("outer","var")))
+        # This is not the full count for up-to date spaMM (hyper param are missing), 
+        # but should be OK for old objects to which this back compat code applies.
+      }
       info_crits$mAIC <- -2*forAIC$p_v + 2 *(pforpv+p_lambda+p_corrPars+p_phi)
       info_crits$dAIC <- -2*forAIC$p_bv + 2 * (p_lambda+p_phi+p_corrPars) ## HaLM07 (eq 10) focussed for dispersion params
       #                                                                             including the rho param of an AR model
@@ -184,7 +193,7 @@
         } else if ( ! is.null(object$envir$sXaug)) {
           pd <- .calc_cAIC_pd_from_sXaug(object)
         } else {
-          ZAL <- .compute_ZAL(XMatrix=object$strucList, ZAlist=object$ZAlist,as_matrix=.eval_as_mat_arg(object)) 
+          ZAL <- .compute_ZAL(XMatrix=object$strucList, ZAlist=object$ZAlist,as_matrix=.eval_as_mat_arg.HLfit(object)) 
           d2hdv2 <- .calcD2hDv2(ZAL,w.resid,object$w.ranef) ## update d2hdv2= - t(ZAL) %*% diag(w.resid) %*% ZAL - diag(w.ranef)
           pd <- .calc_cAIC_pd_others(X.pv, ZAL, w.resid, d2hdv2)
         }
@@ -239,7 +248,7 @@
                                   envir$ZtW, system="A") # hardly avoidable has there is no comparable operation elsewhere (check "A")
         }
         rhs <- .Matrix_times_Dvec(envir$invG_ZtW, -unW_dh0deta) # efficient
-        dvdlogphiMat <- .crossprod(envir$chol_Q, rhs) # _FIXME_ bottleneck in large spprec but .crossprodCpp not useful here 
+        dvdlogphiMat <- .crossprod(envir$chol_Q, rhs) # _FIXME_ bottleneck in large spprec but .crossprodCpp_d not useful here 
       } else {
         dh0deta <- ( object$w.resid *(object$y-muetablob$mu)/muetablob$dmudeta ) ## (soit Bin -> phi fixe=1, soit BinomialDen=1)
         dvdlogphiMat  <- .calc_dvdlogphiMat_new(dh0deta=dh0deta, ZAL=ZAL,
@@ -279,7 +288,7 @@
     ZAfix <- .get_ZAfix(object, as_matrix=FALSE)
     if (.is_identity(ZAfix)) {
       # FIXME inelegant ZAL computation only to test if it is diagonal
-      ZAL <- .compute_ZAL(XMatrix=object$strucList, ZAlist=object$ZAlist,as_matrix=.eval_as_mat_arg(object)) 
+      ZAL <- .compute_ZAL(XMatrix=object$strucList, ZAlist=object$ZAlist,as_matrix=.eval_as_mat_arg.HLfit(object)) 
       if (inherits(ZAL,"diagonalMatrix")) { 
         w.resid <- object$w.resid
         RES <- list(n_x_r=Diagonal(x = w.resid),

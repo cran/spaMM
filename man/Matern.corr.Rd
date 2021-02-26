@@ -8,7 +8,11 @@ Matern correlation function and Matern formula term.
 }
 \description{
  The Matérn correlation function describes realizations of Gaussian spatial processes with different smoothnesses 
- (i.e. either smooth or rugged surfaces, controlled by the \eqn{\nu} parameter). It also includes a \eqn{\rho} scaling parameter and an optional 'nugget' parameter. A random effect specified in a model formula as \code{Matern(1|}\emph{<...>}\code{)} has pairwise correlations given by the Matérn function at the scaled Euclidean distance between coordinates specified in \emph{<...>}, using \dQuote{+} as separator (e.g., \code{Matern(1|longitude+latitude)}). A syntax of the form \code{Matern(1|longitude+latitude \%in\% grp)} can be used to specify a Matern random effect with independent realizations for each level of the grouping variable \code{grp}. The Matern family can be used in Euclidean spaces of any dimension; and also for correlations on a sphere (with maximum smoothness \code{nu=0.5}). 
+ (i.e. either smooth or rugged surfaces, controlled by the \eqn{\nu} parameter). It also includes a \eqn{\rho} scaling parameter and an optional 'nugget' parameter. A random effect specified in a model formula as \code{Matern(1|}\emph{<...>}\code{)} has pairwise correlations given by the Matérn function at the scaled Euclidean distance between coordinates specified in \emph{<...>}, using \dQuote{+} as separator (e.g., \code{Matern(1|longitude+latitude)}). The Matern family can be used in Euclidean spaces of any dimension; and also for correlations on a sphere (with maximum smoothness \code{nu=0.5}). 
+ 
+A syntax of the form \code{Matern(1|longitude+latitude \%in\% grp)} can be used to specify a Matern random effect with independent realizations (but identical correlation parameters) for each level of the grouping variable \code{grp}. Alternatively, the \code{Matern(<T/F factor>|longitude+latitude)} may be used to specify Matern effects specific to individuals identified by the \code{<T/F factor>} (see Example with females and males). In that case distinct correlation parameters are fitted for each such Matern term.
+
+When group-specific autocorrelated random effects are fitted, it may be wise to allow for different means for each group in the Intercept (a message will point this out if the fit results for Matern or Cauchy terms suggest so). 
  
 By default, \code{fitme} and \code{corrHLfit} performs optimization over the \eqn{\rho} and \eqn{\nu} parameters. It is possible to estimate different scaling parameters for the different Euclidean dimensions: see examples in \code{\link{make_scaled_dist}}.
  
@@ -69,6 +73,9 @@ if (spaMM.getOption("example_maxtime")>1.6) {
    fm$female <- fm$sex; fm$male <- ! fm$female
    fitme(migStatus ~ 1 + Matern(female|longitude+latitude)+ 
                          Matern(male|longitude+latitude),data=fm)
+ # Although the results of these fits do not explicitly call for it,
+ # adding a group-specific intercept may make more sense, as in e.g. 
+   fitme(migStatus ~ sex + Matern(1|longitude+latitude \%in\% sex), data=fm)
 } 
 }
 \keyword{ models }% use one of  RShowDoc("KEYWORDS")

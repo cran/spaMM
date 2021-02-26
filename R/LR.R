@@ -195,7 +195,8 @@
     for (rd in seq_rd) {
       if ( ! is.null(ini_mix <- reinit[[rd]])) {
         ini_corr <- cov2cor(ini_mix)
-        ini_mix[lower.tri(ini_corr,diag=FALSE)] <-  ini_corr[lower.tri(ini_corr,diag=FALSE)] # replaces covby corr
+        lowerblocF <- lower.tri(ini_corr,diag=FALSE)
+        ini_mix[lowerblocF] <-  ini_corr[lowerblocF] # replaces covby corr
         reinit[[rd]] <- ini_mix[lower.tri(ini_mix,diag=TRUE)] ## mix cov/corr in vector form
       } else reinit[rd] <- NA # the syntax understood by fitting functions
     }
@@ -316,16 +317,19 @@ eval_replicate <- function(y) { # no additional arguments, to ease parallel prog
   } else new_args <- NULL
   # pbbly never good not to use try(). It's the handling of try-error that may vary
   # debug(pbapply) (or pblapply ?) may be useful to 
-  re_nullfit <- try(do.call(update_resp, c(list(object=nullfit, newresp = y),new_args)))
-  if (inherits(re_nullfit,"try-error")) { ## (debug.= TRUE or 1L) to return error info in parallel mode: return the try-error object
-    if (debug.==2) stop() # it's really a bad idea in a parallel session 
-    if (debug.) {
-      utils::dump.frames(dumpto="dump_on_re_nullfit", to.file=TRUE) # but doesn't stop
-      return(list(full=structure(NA,info="no fullfit"), 
-               null=structure(NA,re_nullfit=re_nullfit)))
-    } else return(c(full=NA, null=NA)) # attributes would be lost at the level of the pbapply() closure. 
-               # cf apply -> array -> as.vector -> loses all attributes as doc'ed in apply and as.vector
-  } ## ELSE continue
+  if (debug.==2) {# Shuld be prevented by spaMM's calling fns in a parallel session   
+    re_nullfit <- do.call(update_resp, c(list(object=nullfit, newresp = y),new_args))
+  } else {
+    re_nullfit <- try(do.call(update_resp, c(list(object=nullfit, newresp = y),new_args)))
+    if (inherits(re_nullfit,"try-error")) { ## (debug.= TRUE or 1L) to return error info in parallel mode: return the try-error object
+      if (debug.) {
+        utils::dump.frames(dumpto="dump_on_re_nullfit", to.file=TRUE) # but doesn't stop
+        return(list(full=structure(NA,info="no fullfit"), 
+                    null=structure(NA,re_nullfit=re_nullfit)))
+      } else return(c(full=NA, null=NA)) # attributes would be lost at the level of the pbapply() closure. 
+      # cf apply -> array -> as.vector -> loses all attributes as doc'ed in apply and as.vector
+    } ## ELSE continue
+  }
   logL_re_null <- logLik(re_nullfit,which=test_obj)
   # Allows the user to control the starting values of the re_fullfit:
   # edotargs <- dotargs
@@ -351,7 +355,6 @@ eval_replicate <- function(y) { # no additional arguments, to ease parallel prog
     } else {
       re_fullfit <- try(do.call(update_resp, c(list(object=fullfit, newresp = y),new_args)))
       if (inherits(re_fullfit,"try-error")) { ## (debug.= TRUE or 1L) to return error info in parallel mode: return the try-error object
-        if (debug.==2) stop() # it's really a bad idea in a parallel session 
         if (debug.) {
           utils::dump.frames(dumpto="dump_on_re_fullfit", to.file=TRUE) # but doesn't stop
           return(list(full=structure(NA,re_fullfit=re_fullfit), # but the attributes seem lost at the level of the pbapply() closure.
@@ -397,15 +400,18 @@ eval_replicate <- function(y) { # no additional arguments, to ease parallel prog
     new_args <- list(init.corrHLfit=newinits, control.corrHLfit=ctrl_opt)
   } else new_args <- NULL
   while ( TRUE ) {
-    new_nullfit <- try(do.call(update_resp, c(list(object=nullfit, newresp = y),new_args)))
-    if (inherits(new_nullfit,"try-error")) { ## (debug.= TRUE or 1L) to return error info in parallel mode: return the try-error object
-      if (debug.==2) stop() # it's really a bad idea in a parallel session 
-      if (debug.) {
-        utils::dump.frames(dumpto="dump_on_new_nullfit", to.file=TRUE) # but doesn't stop
-        return(list(full=structure(NA,new_nullfit=new_nullfit), # but the attributes seem lost at the level of the pbapply() closure.
-                    null=structure(NA,info="no nullfit")))
-      } else return(c(full=NA, null=NA)) # attributes would be lost at the level of the pbapply() closure. 
-    } ## ELSE continue
+    if (debug.==2) {# Shuld be prevented by spaMM's calling fns in a parallel session   
+      new_nullfit <- do.call(update_resp, c(list(object=nullfit, newresp = y),new_args))
+    } else {
+      new_nullfit <- try(do.call(update_resp, c(list(object=nullfit, newresp = y),new_args)))
+      if (inherits(new_nullfit,"try-error")) { ## (debug.= TRUE or 1L) to return error info in parallel mode: return the try-error object
+        if (debug.) {
+          utils::dump.frames(dumpto="dump_on_new_nullfit", to.file=TRUE) # but doesn't stop
+          return(list(full=structure(NA,new_nullfit=new_nullfit), # but the attributes seem lost at the level of the pbapply() closure.
+                      null=structure(NA,info="no nullfit")))
+        } else return(c(full=NA, null=NA)) # attributes would be lost at the level of the pbapply() closure. 
+      } ## ELSE continue
+    }
     logL_new_null <- logLik(new_nullfit,which=test_obj)
     #cat(logL_new_null)
     conv_null <- (abs(logL_new_null - prev_logL_null)<1e-4)
@@ -434,7 +440,6 @@ eval_replicate <- function(y) { # no additional arguments, to ease parallel prog
       } else {
         new_fullfit <- try(do.call(update_resp, c(list(object=fullfit, newresp = y),new_args)))
         if (inherits(new_fullfit,"try-error")) { ## (debug.= TRUE or 1L) to return error info in parallel mode: return the try-error object
-          if (debug.==2) stop() # it's really a bad idea in a parallel session 
           if (debug.) {
             utils::dump.frames(dumpto="dump_on_new_fullfit", to.file=TRUE) # but doesn't stop
             return(list(full=structure(NA,new_fullfit=new_fullfit), # but the attributes seem lost at the level of the pbapply() closure.

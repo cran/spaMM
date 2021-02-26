@@ -1,4 +1,5 @@
-# spaMM.options(example_maxtime=70) # keep it handy...
+# spaMM.options(example_maxtime=60) # keep it handy...
+# spaMM.options(projpath="C:/home/francois/travail/stats/spaMMplus/spaMM")
 if (file.exists((privdata <- paste0(projpath(),"/../tests_misc/ranCoefs/all_fitness.txt")))) {
   cat(crayon::yellow("\ntest ranCoefs:"))
   my.data <- read.table(privdata, header = TRUE, sep = "\t",dec = ".")
@@ -34,7 +35,7 @@ if (file.exists((privdata <- paste0(projpath(),"/../tests_misc/ranCoefs/all_fitn
     testthat::expect_true(diff(range(c(p1,p2,p3)))<1e-8) 
     #
   }
-  if (spaMM.getOption("example_maxtime")>69) {
+  if (spaMM.getOption("example_maxtime")>20) {
     if (file.exists((privtest <- paste0(projpath(),"/package/tests_private/test-rc_transf.R")))) {
       source(privtest)
     }

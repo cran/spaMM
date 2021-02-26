@@ -1,5 +1,6 @@
 #include "spaMM_linear.h"
 #include "PLS.h"
+//#include <Eigen/Jacobi> 
 
 using namespace Rcpp;
 using namespace std;
@@ -30,6 +31,52 @@ SEXP lmwith_sparse_LLp( SEXP XX, SEXP yy, bool returntQ, bool returnR, bool pivo
                                                                     returnR, pivot )); 
 }
 
+int givens(std::vector<double>& resu, double& a, double& b) { // GolubL algo 5.1.3
+  double tau, f;
+  if (b==0.0) { 
+    resu[0]=1.0;
+    resu[1]=0.0;
+  } else if (fabs(b)> fabs(a)) {
+    tau=-a/b;
+    f=1.0/sqrt(1.0+tau*tau);
+    resu[0]=f*tau;
+    resu[1]=f;
+  } else {
+    tau=-b/a;
+    f=1.0/sqrt(1.0+tau*tau);
+    resu[0]=f;
+    resu[1]=f*tau;
+  }
+  return(0);
+}
+
+// [[Rcpp::export(.update_R_in_place)]]
+SEXP update_R_in_place(SEXP RD) {
+  Map<MatrixXd> A(as<Map<MatrixXd> >(RD));
+  std::vector<double> ROT;
+  ROT.resize(2);
+  double x1,x2;
+  Eigen::Index k, n_col=A.cols();
+  for (Eigen::Index dt=0; dt<n_col; dt++) { 
+/* perform the n(n-1)/2 Givens rotations suggested by Mor\'e 77 and slighlty mor detailed in NocedalW p.265
+ #iteration dt=0 sets zeros on the diagonal of the diagonal block, but introduces non-zero 
+ # on the upper-right triangle of what was the diagonal block
+ #iteration dt=1 then fill the first super diagonal with zeros, still altering the triangle above it
+ #iteration dt=2 then fill the next super diagonal with zeros, still altering the triangle above it
+ #... iterate over super diagonals until the upper triangle is done. */
+    for (Eigen::Index it=n_col-1; it>=dt; it--) {
+      k=n_col-dt+it;
+      givens(ROT, A(it,it), A(k,it));
+      for (Eigen::Index jj=it; jj<n_col; jj++) {
+        x1=A(it,jj);
+        x2=A(k,jj);
+        A(it,jj)=ROT[0]*x1-ROT[1]*x2;
+        A(k,jj)=ROT[1]*x1+ROT[0]*x2;
+      }
+    }
+  }
+  return(wrap(A.topRows(n_col)));
+}
 
 // [[Rcpp::export(.lmwithQR)]]
 SEXP lmwithQR( SEXP XX, SEXP yy, bool returntQ, bool returnR ){
@@ -42,8 +89,10 @@ SEXP lmwithQR( SEXP XX, SEXP yy, bool returntQ, bool returnR ){
     resu["coef"] = VectorXd(QR.solve(y));
   }
   if (returntQ) {
-    MatrixXd Q(QR.householderQ());
-    resu["t_Q_scaled"] = MatrixXd(Q.leftCols(X.cols()).transpose()); 
+    MatrixXd thinQ(X.rows(),X.cols());
+    thinQ.setIdentity();
+    thinQ= QR.householderQ() * thinQ; // v3.6.8 markedly faster than older code, see https://forum.kde.org/viewtopic.php?f=74&t=106635 ... but still comparatively slow.
+    resu["t_Q_scaled"] = MatrixXd(thinQ.transpose()); 
   }
   if (returnR) {
     const int r(X.cols()); // r(QRP.rank());
@@ -64,8 +113,10 @@ SEXP lmwithQRP( SEXP XX, SEXP yy, bool returntQ, bool returnR ){
     resu["coef"] = VectorXd(QRP.solve(y));
   }
   if (returntQ) {
-    MatrixXd Q(QRP.householderQ());
-    resu["t_Q_scaled"] = Q.leftCols(X.cols()).transpose(); 
+    MatrixXd thinQ(X.rows(),X.cols());
+    thinQ.setIdentity();
+    thinQ= QRP.householderQ() * thinQ; 
+    resu["t_Q_scaled"] = thinQ.transpose(); 
   }
   if (returnR) {
     resu["perm"] = QRP.colsPermutation().indices();

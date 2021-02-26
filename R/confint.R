@@ -167,13 +167,6 @@
                                 NULL)
       init <- unlist(trTemplate)
       if (paste(lc[[1]])=="HLCor") { HLcallfn_obj <- "HLCor.obj" } else HLcallfn_obj <- "HLfit.obj"
-      nloptr_controls <- spaMM.getOption("nloptr") 
-      if (is.null(nloptr_controls$maxeval)) nloptr_controls$maxeval <- eval(.spaMM.data$options$maxeval,
-                                                                            list(initvec=init))
-      if (is.null(nloptr_controls$xtol_abs)) {
-        nloptr_controls$xtol_abs <- eval(.spaMM.data$options$xtol_abs, 
-                                         list(LowUp=LowUp, rC_transf=rC_transf)) 
-      }
       .assignWrapper(anyObjfnCall.args$processed,
                      paste0("return_only <- \"confint_bound\""))
       optr <- .new_locoptim(init.optim=trTemplate,LowUp=LowUp,

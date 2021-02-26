@@ -96,7 +96,7 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
   assign("spaMM_glm_conv_crit",list(max=-Inf) , envir=environment(spaMM_glm.fit))
   time1 <- Sys.time()
   oricall <- match.call(expand.dots=TRUE) ## mc including dotlist
-  #oricall$formula <- .preprocess_formula(formula, env=control.corrHLfit$formula_env) ## Cf comment in .getValidData
+  #oricall$formula <- .preprocess_formula(formula, env=control.corrHLfit$formula_env) ## Cf comment in .GetValidData_info()
   mc <- oricall
   mc[[1L]] <- get(".preprocess_formula", asNamespace("spaMM"))  ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
   oricall$formula <- mc$formula <- eval(mc,parent.frame()) # 
