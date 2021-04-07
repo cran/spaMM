@@ -253,6 +253,37 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
                showpbar=FALSE)
 }
 
+.get_disp_effect_on_newZACw <- function(logdisp_cov, newZACw, fixZACw=NULL, covMatrix) {
+  if (any(logdisp_cov>1e8)) {
+    newZACw <- gmp::as.bigz(as.matrix(newZACw))
+    logdisp_cov <- gmp::as.bigz(logdisp_cov)
+    premul <- gmp::`%*%`(newZACw, logdisp_cov)
+    if (covMatrix) {
+      if (is.null(fixZACw)) {
+        disp_effect_on_newZACw <- gmp::asNumeric(gmp::`%*%`(premul, t(newZACw)))   
+      } else { # for get_predCov_var_fix(); then covMatrix is always TRUE
+        fixZACw <- gmp::as.bigz(as.matrix(fixZACw))
+        disp_effect_on_newZACw <- gmp::asNumeric(gmp::`%*%`(premul, t(fixZACw)))   
+      }
+    } else {
+      disp_effect_on_newZACw <- rowSums(gmp::asNumeric(premul * newZACw))
+    }
+  } else {
+    premul <- newZACw %*% logdisp_cov
+    if (covMatrix) {
+      if (is.null(fixZACw)) {
+        disp_effect_on_newZACw <- premul %*% t(newZACw)  
+      } else { # for get_predCov_var_fix(); then covMatrix is always TRUE
+        disp_effect_on_newZACw <- premul %*% t(fixZACw)  
+      }
+    } else {
+      disp_effect_on_newZACw <- rowSums(premul * newZACw)
+    }
+  }
+  disp_effect_on_newZACw
+}
+
+
 .calcPredVar <- function(cov_newLv_oldv_list,
                          X.pv,newZAlist,
                          re_form_col_indices=NULL,
@@ -368,12 +399,7 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
     if (as_tcrossfac_list) { 
       predVar[["tcross_disp_effect"]] <- newZACw %*% mat_sqrt(logdisp_cov)
     } else {
-      if (covMatrix) {
-        disp_effect_on_newZACw <- newZACw %*% logdisp_cov %*% t(newZACw)  
-      } else {
-        premul <- newZACw %*% logdisp_cov
-        disp_effect_on_newZACw <- rowSums(premul * newZACw)
-      }
+      disp_effect_on_newZACw <- .get_disp_effect_on_newZACw(logdisp_cov, newZACw, covMatrix=covMatrix)
       predVar <- predVar + disp_effect_on_newZACw
     }
   }
@@ -401,12 +427,18 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
     glm_phi <- .get_glm_phi(object, mv_it)
     residVar <- predict(glm_phi, newdata=newdata, type="response")
   } else { ## phi, but not glm_phi
+    if (is.null(newdata)) {
+      nobs <- nobs_info            
+    } else nobs <- nrow(newdata)
     if (length(phi_outer)==1L) {
-      if (is.null(newdata)) {
-        residVar <- rep(phi_outer,nobs_info) ## assumes (length(phi_outer)==1L)           
-      } else residVar <- rep(phi_outer,nrow(newdata))
-    } else stop("Unable to compute 'residVar' given length(phi_outer)!=1L.") ## and no glm_phi
-    ## FR->FR we could improve this if we get a glm_phi when phi was estimed by outer iterations
+      residVar <- rep(phi_outer,nobs)            
+    } else {
+      glm_phi <- .get_glm_phi(object, mv_it, only_offset=TRUE) # look whether phi.Fix was set by a phiGLM with only an offset
+      if (is.null(glm_phi)) {
+        stop(paste0("Unable to compute 'residVar' given length(<fixed phi>)!=1L.\n", 
+                    "A 'resid.model' argument, perhaps with only an offset term, might be the only way forward.")) 
+      } else residVar <- predict(glm_phi, newdata=newdata, type="response")
+    }
   }
   residVar
 } 

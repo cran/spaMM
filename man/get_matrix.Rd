@@ -25,7 +25,7 @@ get_ZALMatrix(object, as_matrix, force_bind=FALSE)
 A matrix, possibly in sparse-matrix format.
 }
 \details{
-(Given the pain that is to to write maths in R documentation files, readers are gently asked to be tolerant about any imperfections of the following).
+(Given the pain that it is to write maths in R documentation files, readers are gently asked to be tolerant about any imperfections of the following).
 
 Model coefficents estimates of a (weighted) linear model can be written as \bold{(X'WX)}\eqn{^{-1}}\bold{X'Wy} where \bold{X} is the design matrix for fixed effects, \bold{W} a diagonal weight matrix, and \bold{y} the response vector. In a linear mixed model, the same expression holds in terms of Henderson's augmented design matrix, of an augmented (still diagonal) weight matrix, and of an augmented response vector. For GLMMs and hierarchical GLMs generally, the solution of each step of the iteratively reweighted least squares algorithm again has the same expression in terms of appropriately defined augmented matrices and vectors.  
 

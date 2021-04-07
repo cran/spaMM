@@ -15,28 +15,21 @@
 
 ## hides stats::poisson (check poisson()$zero_truncated)
 Poisson <- function (link = "log", trunc=-1L) {
-  linktemp <- substitute(link)
-  if (!is.character(linktemp)) 
-    linktemp <- deparse(linktemp)
+  linktemp <- substitute(link)  # if link was char LHS is char ; else deparse will create a char from a language object 
+  if ( ! is.character(linktemp)) linktemp <- deparse(linktemp)
   okLinks <- c("log", "identity", "sqrt")
-  if (linktemp %in% okLinks) 
-    stats <- make.link(linktemp)
-  else if (is.character(link)) {
+  if (linktemp %in% okLinks) {
+    stats <- make.link(linktemp) # from char to make.link() return value
+  } else if (is.character(link)) { # does not seem useful
     stats <- make.link(link)
     linktemp <- link
-  }
-  else {
-    if (inherits(link, "link-glm")) {
-      stats <- link
-      if (!is.null(stats$name)) 
-        linktemp <- stats$name
-    }
-    else {
-      stop(gettextf("link \"%s\" not available for poisson family; available links are %s", 
-                    linktemp, paste(sQuote(okLinks), collapse = ", ")), 
-           domain = NA)
-    }
-  }
+  } else if (inherits(link, "link-glm")) { # a make.link() object was provided
+    stats <- link
+    if (!is.null(stats$name)) linktemp <- stats$name
+  } # at this point 'stats' is always the result of make.link and 'linktemp' is always char. 
+  # In stats:: families, the following check is in an else statement that is never reached !!
+  if ( ! linktemp %in% okLinks) stop(gettextf("link \"%s\" not available for poisson family; available links are %s", 
+                                              linktemp, paste(sQuote(okLinks), collapse = ", ")),       domain = NA)
   if ( ! is.integer(trunc)) {trunc <- round(trunc)}
   variance <- function(mu) mu
   validmu <- function(mu) all(is.finite(mu)) && all(mu > 0)

@@ -314,7 +314,7 @@
 
 .dCOMP <- function(x, mu, family_env,
                    nu=family_env$nu,
-                   lambda= family_env$linkfun(mu,log=FALSE), # COMPoisson(nu=nu)$linkfun(mu,log=FALSE),
+                   lambda= family_env$mu2lambda(mu), # COMPoisson(nu=nu)$linkfun(mu,log=FALSE),
                    log = FALSE, maxn=.COMP_maxn(lambda,nu)) {
   compz <- .COMP_Z(lambda=lambda,nu=nu,maxn=maxn)
   logd <- x * log(lambda) - nu* lfactorial(x) - compz[["logScaleFac"]] -log(compz[["scaled"]])
@@ -335,7 +335,7 @@
   sample(floorn+1L,size=nsim,prob=cumprodfacs/sum(cumprodfacs), replace=TRUE)
 }
 
-.CMP_linkinvi <- function(lambda,nu) {
+.CMP_lambda2mui <- function(lambda,nu) { # mu(lambda)
   if (lambda==0) {
     return(1e-8)  
   } else {
@@ -345,7 +345,39 @@
   }
 }
 
-.CMP_linkfuni <- function(mu,nu, CMP_linkfun_objfn) {
+.CMP_lambda2mu <- function(lambda) { # mu(lambda)  
+  mus <- attr(lambda,"mu") 
+  if (is.null(mus)) {
+    if (nu==0) {
+      mus <- lambda/(1-lambda) 
+    } else {
+      nu <- parent.env(environment())$nu
+      mus <- sapply(lambda, .CMP_lambda2mui,nu=nu) 
+    }
+    dim(mus) <- dim(lambda) ## may be NULL
+  }
+  attributes(lambda) <- NULL
+  return(structure(mus,lambda=lambda))
+}
+
+.CMP_loglambda_linkinv <- function(eta,lambda=exp(eta)) { # \equiv .CMP_lambda2mu(lambda) but with nu properly passed...
+  mus <- attr(lambda,"mu") 
+  if (is.null(mus)) {
+    if (nu==0) {
+      mus <- lambda/(1-lambda) 
+    } else {
+      nu <- parent.env(environment())$nu # for canonical link .CMP_loglambda_linkinv has been copied to $linkinv with nu in its parent env.
+      mus <- sapply(lambda, .CMP_lambda2mui,nu=nu)
+    }
+    dim(mus) <- dim(lambda) ## may be NULL
+  }
+  attributes(lambda) <- NULL
+  return(structure(mus,lambda=lambda))
+}
+
+
+
+..CMP_mu2lambda <- function(mu,nu, CMP_linkfun_objfn) { 
   if (nu==1) {
     lambda <- mu ## pb du code general est qu'objfn n'est alors que l'erreur numérique de linkinv()
   } else if (mu==Inf) {
@@ -384,6 +416,31 @@
   return(lambda)
 }
 
+# different arguments
+.CMP_mu2lambda <- function(mu) {## scalar or vector
+  lambdas <- attr(mu,"lambda")
+  if ( is.null(lambdas)) {
+    nu <- parent.env(environment())$nu
+    if (nu==0) {
+      lambdas <- mu/(1+mu) 
+    } else lambdas <- sapply(mu, ..CMP_mu2lambda,nu=nu, CMP_linkfun_objfn=parent.env(environment())$CMP_linkfun_objfn)
+  } 
+  attributes(mu) <- NULL ## avoids 'mise en abime'
+  return(structure(lambdas,mu=mu))
+}
+
+.CMP_loglambda_linkfun <- function(mu) {## scalar or vector
+  lambdas <- attr(mu,"lambda")
+  if ( is.null(lambdas)) {
+    nu <- parent.env(environment())$nu
+    if (nu==0) {
+      lambdas <- mu/(1+mu) 
+    } else lambdas <- sapply(mu, ..CMP_mu2lambda,nu=nu, CMP_linkfun_objfn=parent.env(environment())$CMP_linkfun_objfn)
+  } 
+  attributes(mu) <- NULL ## avoids 'mise en abime'
+  return(structure(log(lambdas),mu=mu)) ## eta (ie standard linkfun value) for the Shmueli version
+}
+
 .CMP_dev.resid <- function(yi,lambdai,nu, CMP_linkfun_objfn) {
   Z2 <- .COMP_Z(lambda=lambdai,nu=nu)
   if (yi==0) { # lambda = 0,  Z1 = 1
@@ -416,7 +473,7 @@
 
 .CMP_dev_resids <- function(y, mu, wt){
   # must accept, among others, vector y and scalar mu.
-  lambdas <- parent.env(environment())$linkfun(mu=mu,log=FALSE)
+  lambdas <- parent.env(environment())$mu2lambda(mu=mu) # parent envir of COMPoisson()$dev.resids
   n <- length(y)
   if (length(mu)==1L) lambdas <- rep(lambdas,n)
   devs <- numeric(n)
@@ -426,21 +483,6 @@
   devs <- devs*wt
   devs[devs==Inf] <- .Machine$double.xmax/n ## so that total deviance may be finite 
   return(devs) 
-}
-
-.CMP_linkinv <- function(eta,lambda=exp(eta)) {
-  mus <- attr(lambda,"mu") 
-  if (is.null(mus)) {
-    if (nu==0) {
-      mus <- lambda/(1-lambda) 
-    } else {
-      nu <- parent.env(environment())$nu
-      mus <- sapply(lambda, .CMP_linkinvi,nu=nu)
-    }
-    dim(mus) <- dim(lambda) ## may be NULL
-  }
-  attributes(lambda) <- NULL
-  return(structure(mus,lambda=lambda))
 }
 
 .CMP_aic <- function(y, n, mu, wt, dev) {
@@ -456,11 +498,11 @@
     warning("ignoring prior weights")
   if (inherits(object,"glm")) { # if COMPoisson() used in a glm() call simulate.lm -> family$simulate -> here
     lambdas <- attr(object$fitted.values,"lambda")
-    if (is.null(lambdas)) lambdas <- sapply(mu, family$linkfun,log=FALSE)
+    if (is.null(lambdas)) lambdas <- sapply(mu, family$mu2lambda)
   } else { # HLfit object: 
     mu <- object$muetablob$mu
     lambdas <- attr(mu,"lambda") # exp(object$eta)
-    if (is.null(lambdas)) lambdas <- sapply(mu, family$linkfun,log=FALSE)
+    if (is.null(lambdas)) lambdas <- sapply(mu, family$mu2lambda)
   }
   nu <- parent.env(environment())$nu
   resu <- sapply(lambdas,.COMP_simulate,nu=nu,nsim=nsim) # vector if nsim=1, nsim-row matrix otherwise
@@ -493,7 +535,7 @@
   if (nu==0) {
     return(mu*(1+mu)) 
   } else {
-    lambdas <- parent.env(environment())$linkfun(mu,log=FALSE)
+    lambdas <- parent.env(environment())$mu2lambda(mu)
     resu <- numeric(length(lambdas))
     for (it in seq_len(length(lambdas))) {
       if (lambdas[it]==0) {
@@ -508,64 +550,59 @@
   }
 }
 
-.CMP_linkfun <- function(mu, ## scalar or vector
-                         log=TRUE) { ## log=TRUE => returns eta; else returns lambda, with mu attribute
-  lambdas <- attr(mu,"lambda")
-  if ( is.null(lambdas)) {
-    nu <- parent.env(environment())$nu
-    if (nu==0) {
-      lambdas <- mu/(1+mu) 
-    } else lambdas <- sapply(mu, .CMP_linkfuni,nu=nu, CMP_linkfun_objfn=parent.env(environment())$CMP_linkfun_objfn)
-  } 
-  attributes(mu) <- NULL ## avoids 'mise en abime'
-  if (log) {
-    return(structure(log(lambdas),mu=mu)) ## eta, ie standard linkfun value
-  } else {
-    return(structure(lambdas,mu=mu))
-  }
-}
-
 COMPoisson <- function(nu = stop("COMPoisson's 'nu' must be specified"), 
-                        link = "loglambda" # eta <-> mu link, not the eta <-> lambda log link
-                        ) {
+                       link = "loglambda" # eta <-> mu link, not the eta <-> lambda log link
+) { 
   .spaMM.data$options$COMP_maxn_warned <- FALSE # much better here than in .preprocess(); works with glm()
   .spaMM.data$options$COMP_geom_approx_warned <- FALSE
-  mc <- match.call()
-  linktemp <- substitute(link)
-  if (!is.character(linktemp)) 
-    linktemp <- deparse(linktemp)
-  okLinks <- c("loglambda")
-  if (linktemp %in% okLinks) {} else {
-      stop(gettextf("link \"%s\" not available for COMPoisson family; available links are %s", 
-                    linktemp, paste(sQuote(okLinks), collapse = ", ")), 
-           domain = NA)
+  if (inherits(nuch <- substitute(nu),"character")) {
+    nuchar <- paste0('"',nuch,'"')
+    errmess <- paste0('It looks like COMPoisson(',nuchar,') was called, which absurdly means COMPoisson(nu=',nuchar,
+                      ').\n  Use named argument: COMPoisson(link=',nuchar,') instead.')
+    stop(errmess)
   }
-  linkinv <- .CMP_linkinv
-  CMP_linkfun_objfn <- function(lambda, mu) {linkinv(lambda=lambda) -mu} ## def'd locally to handle the call to linkinv()
-  linkfun <- .CMP_linkfun
-  variance <- .CMP_variance
+  linktemp <- substitute(link) # if link was char LHS is char ; else deparse will create a char from a language object 
+  if (!is.character(linktemp)) linktemp <- deparse(linktemp)
+  okLinks <- c("loglambda", "log", "identity", "sqrt")
+  if (inherits(link, "link-glm")) { # a make.link() object was provided
+    stats <- link
+    if ( ! is.null(stats$name)) linktemp <- stats$name
+  } else if (linktemp=="loglambda") {
+    linkfun <- .CMP_loglambda_linkfun # need to associate nu to this one (not to more classical linkfun's)
+    linkinv <- .CMP_loglambda_linkinv
+    mu.eta <- .CMP_mu.eta
+    environment(linkfun) <- environment(linkinv) <- environment(mu.eta) <- environment()  ## containing nu
+  } else if (linktemp %in% okLinks) {
+    stats <- make.link(linktemp)
+    linkfun <- stats$linkfun
+    linkinv <- stats$linkinv
+    mu.eta <- stats$mu.eta
+  } # at this point 'stats' is always the result of make.link and 'linktemp' is always char. 
+  if ( ! linktemp %in% okLinks) stop(gettextf("link \"%s\" not available for COMPoisson family; available links are %s", 
+                                              linktemp, paste(sQuote(okLinks), collapse = ", ")),           domain = NA)
   validmu <- function(mu) all(is.finite(mu)) && all(mu > 0) ## from poisson()
   valideta <- function(eta) TRUE ## from poisson()
-  mu.eta <- .CMP_mu.eta
+  mu2lambda <- .CMP_mu2lambda # copy to pass nu, used in in .CMP_dev_resids2()
+  lambda2mu <- .CMP_lambda2mu # ## copied locally to pass nu to .CMP_lambda2mui() through the lambda2mu parent envir
+  CMP_linkfun_objfn <- function(lambda, mu) {lambda2mu(lambda=lambda) -mu} # objective fn of ~.CMP_mu2lambda # called by .CMP_dev.resid() to find lambda=lambda(mu)
+  variance <- .CMP_variance
   dev.resids <- .CMP_dev_resids
   aic <- .CMP_aic
   initialize <- expression({
-    if (any(y < 0L)) stop("negative values not allowed for the 'Poisson' family")
+    if (any(y < 0L)) stop("negative values not allowed for the 'COMPoisson' family")
     n <- rep.int(1, nobs)
     mustart <- y + 0.1
   })
-  simfun <- .CMP_simfun
-  environment(dev.resids) <- environment(linkinv) <- environment(aic) <- environment(simfun) <- 
-    environment(mu.eta) <- environment(variance) <- environment(linkfun) <- environment() ## containing nu
-  ## changes the parent.env of all functions: 
+  simfun <- .CMP_simfun 
+  environment(dev.resids) <- environment(aic) <- environment(simfun) <- environment(mu2lambda) <- 
+    environment(variance) <- environment(lambda2mu) <- environment() ## containing nu
+  ## Change the parent.env of all functions that have the same envir as aic(): 
   parent.env(environment(aic)) <- environment(.dCOMP) ## gives access to spaMM:::.dCOMP and other .COMP_ fns
   structure(list(family = structure("COMPoisson",
                                     withArgs=quote(paste0("COMPoisson(nu=",signif(nu,4),")"))), 
-                 link = linktemp, linkfun = linkfun, 
+                 link = linktemp, linkfun = linkfun,           mu2lambda=mu2lambda,
                  linkinv = linkinv, variance = variance, dev.resids = dev.resids, 
                  aic = aic, mu.eta = mu.eta, initialize = initialize, 
-                 validmu = validmu, valideta = valideta, 
-                 simulate = simfun), 
+                 validmu = validmu, valideta = valideta, simulate = simfun), 
             class = "family")
 }
-

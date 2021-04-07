@@ -68,7 +68,7 @@
   } else {
     ZAL_scaling <- 1/sqrt(w.ranef*H_global_scale) ## Q^{-1/2}/s
     weight_X <- .calc_weight_X(w.resid, H_global_scale) ## sqrt(s^2 W.resid) ## should not affect the result up to precision
-    if (.spaMM.data$options$TRY_R_new && inherits(ZAL,"sparseMatrix")) {
+    if (.spaMM.data$options$TRY_R_new && inherits(ZAL,"sparseMatrix")) { ## current default for sparse ZAL
       ZW <- .Dvec_times_Matrix(weight_X,.Matrix_times_Dvec(ZAL,ZAL_scaling))
       XW <- .Dvec_times_m_Matrix(weight_X,processed$AUGI0_ZX$X.pv)
       sXaug <- list(ZW=ZW,XW=XW,I=processed$AUGI0_ZX$I)
@@ -77,13 +77,14 @@
       attr(sXaug,"pforpv") <- ncol(XW) # mandatory for all sXaug types
       attr(sXaug,"weight_X") <- weight_X # new mandatory 08/2018
       attr(sXaug,"H_global_scale") <- H_global_scale
-      class(sXaug) <- c(class(sXaug),"sXaug_blocks")
+      class(sXaug) <- c(class(sXaug),"sXaug_blocks") # current default for sparse ZAL; .calc_APHLs_by_augZXy_or_sXaug uses .get_absdiagR_blocks -> .updateCHMfactor, with QR fall-back 
     } else {
       Xscal <- .make_Xscal(ZAL=ZAL, ZAL_scaling = ZAL_scaling, AUGI0_ZX=processed$AUGI0_ZX) # does not weights the I
       if (inherits(Xscal,"sparseMatrix")) { # 
         mMatrix_method <- .spaMM.data$options$Matrix_method # does not weights the I
+        attr(Xscal,"AUGI0_ZX") <- processed$AUGI0_ZX # for .sXaug_Matrix_cholP_scaled(). But ... this block is not currently used
       } else {
-        mMatrix_method <- .spaMM.data$options$matrix_method
+        mMatrix_method <- .spaMM.data$options$matrix_method # current default for dense ZAL; uses chol with QR fall-back 
       }
       if (trace) cat(".")
       sXaug <- do.call(mMatrix_method,

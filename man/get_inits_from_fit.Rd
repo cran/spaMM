@@ -5,7 +5,7 @@
 Initiate a fit from another fit 
 }
 \description{
-\code{get_inits_from_fit} is an extractor of some fitted values from a fit in a convenient format to initiate a next fit. This function is work in progress, and may not extract all values that can be used to initiate a fit (see Value).  
+\code{get_inits_from_fit} is an extractor of some fitted values from a fit in a convenient format to initiate a next fit.  
 }
 \usage{
 get_inits_from_fit(from, template = NULL, to_fn = NULL, inner_lambdas=FALSE)

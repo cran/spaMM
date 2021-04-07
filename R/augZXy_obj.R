@@ -91,6 +91,9 @@
           Xscal <- .make_Xscal(ZAL=ZAL, ZAL_scaling = ZAL_scaling, AUGI0_ZX=processed$AUGI0_ZX) # does not weights the I
           if (inherits(Xscal,"sparseMatrix")) { # 
             mMatrix_method <- .spaMM.data$options$Matrix_method # does not weights the I
+            # attr(Xscal,"AUGI0_ZX") <- processed$AUGI0_ZX # for experimental .sXaug_Matrix_cholP_scaled(). But useless bc 
+            # .calc_APHLs_by_augZXy_or_sXaug won't use the methods associated to the Matrix_method.
+            # Instead it uses .get_absdiagR_blocks -> .updateCHMfactor 
           } else {
             mMatrix_method <- .spaMM.data$options$matrix_method
           }

@@ -2,12 +2,6 @@
   boot.ci_args$t0 <- t0
   boot.ci_args$t <- ts
   boot.ci_args$boot.out <- list(R = length(ts), sim="parametric")
-  if (is.null(boot.ci_args$ci_type)) {
-    boot.ci_args$type <- c("basic","perc","norm")
-  } else {
-    boot.ci_args$type <- boot.ci_args$ci_type
-    boot.ci_args$ci_type <- NULL
-  }
   resu <- do.call("boot.ci", boot.ci_args)
   ## resu$call is shown and this may be ugly bc of the long t vector. print.bootci() uses dput(), which has no generic for that. We will wrap the 
   ## print.bootci() call in a print.bootci4call() that locally alterns the $call for nicer printing.
@@ -25,6 +19,12 @@
   boot.ci_args <- intersect(names(boot_args),names(formals(boot.ci)))
   boot.ci_args <- boot_args[boot.ci_args]
   boot.ci_args$conf <- level
+  if (is.null(boot.ci_args$ci_type)) {
+    boot.ci_args$type <- c("basic","perc","norm")
+  } else {
+    boot.ci_args$type <- boot.ci_args$ci_type
+    boot.ci_args$ci_type <- NULL
+  }
   if (is.null(t_fn)) {
     spaMM_boot_args$simuland <- function(y, ...) {
       upd <- update_resp(object, newresp=y)
@@ -39,25 +39,59 @@
     t0 <- t_fn(object, ...)
   }
   ts <- drop(do.call(spaMM_boot,spaMM_boot_args, ...)[["bootreps"]])
-  if ((np <- NCOL(ts))>1L) {
+  hasnorm <- "norm" %in% boot.ci_args$type
+  hasperc <- "perc" %in% boot.ci_args$type
+  hasbasic <- "basic" %in% boot.ci_args$type
+  np <- NCOL(ts)
+  template <- matrix(NA,ncol=2,nrow=np)
+  marg <- (1-level)*50
+  colnames(template) <- paste(c(marg, 100-marg),"%")
+  rownames(template) <- colnames(ts) # parm is not correct if parm is a function etc. # in which case the names may remain NULL
+  tl <- list()
+  if (hasnorm) tl$normal <- template
+  if (hasperc) tl$percent <- template
+  if (hasbasic) tl$basic <- template
+  if (np>1L) {
     resu <- vector("list",np)
-    for (colit in seq_len(np)) resu[[colit]] <- .boot_single_par(boot.ci_args, t0=t0[colit], ts=ts[,colit], verbose=verbose)
-    names(resu) <- colnames(ts)
-  } else resu <- .boot_single_par(boot.ci_args, t0=t0, ts=ts, verbose=verbose)
+    for (colit in seq_len(np)) {
+      resu[[colit]] <- .boot_single_par(boot.ci_args, t0=t0[colit], ts=ts[,colit], verbose=verbose)
+      if (hasnorm) tl$normal[colit,] <- tail(resu[[colit]]$normal[1,],n=2L)
+      if (hasperc) tl$percent[colit,] <- tail(resu[[colit]]$percent[1,],n=2L)
+      if (hasbasic) tl$basic[colit,] <- tail(resu[[colit]]$basic[1,],n=2L)
+    }
+  } else {
+    resu <- .boot_single_par(boot.ci_args, t0=t0, ts=ts, verbose=verbose)
+    if (hasnorm) tl$normal[1,] <- tail(resu$normal[1,],n=2L)
+    if (hasperc) tl$percent[1,] <- tail(resu$percent[1,],n=2L)
+    if (hasbasic) tl$basic[1,] <- tail(resu$basic[1,],n=2L)
+  }
+  names(tl) <- colnames(ts)
+  attr(resu,"table") <- tl
   return(resu)
 }
 
 .confint_LRT <- function(level, parm, object, verbose) {
   if ((np <- length(parm))>1L) {
     resu <- vector("list",np)
-    for (colit in seq_len(np)) resu[[colit]] <- .confint_LRT_single_par(level=level, parm=parm[colit], object=object, verbose=verbose)
+    lower <- upper <- numeric(np)
+    for (colit in seq_len(np)) {
+      resu[[colit]] <- .confint_LRT_single_par(level=level, parm=parm[colit], object=object, verbose=verbose)
+      lower[colit] <- resu[[colit]]$interval[[1]]
+      upper[colit] <- resu[[colit]]$interval[[2]]
+    }
     names(resu) <- parm
+    table. <- cbind(lower,upper)
   } else {
     resu <- .confint_LRT_single_par(level=level, parm=parm, object=object, verbose=verbose)
+    table. <- resu$interval
+    dim(table.) <- c(1L,2L)
   }
+  rownames(table.) <- parm
+  marg <- (1-level)*50
+  colnames(table.) <- paste(c(marg, 100-marg),"%")
+  attr(resu,"table") <- table.
   return(resu)
 }
-
 
 .confint_LRT_single_par <- function(level, parm, object, verbose) {
   dlogL <- qchisq(level,df=1)/2
@@ -268,7 +302,7 @@
 
 
 confint.HLfit <- function(object, parm, level=0.95, verbose=TRUE, 
-                          boot_args=NULL,...) {
+                          boot_args=NULL, format="default",...) {
    
   if (is.character(parm)) {
     if (is.list(boot_args)) expr_t <- substitute(fixef(hlfit)[parm], list(parm=parm))
@@ -282,12 +316,16 @@ confint.HLfit <- function(object, parm, level=0.95, verbose=TRUE,
   }
   if (  is.list(boot_args)) {
     boot_res <- .confint_boot(boot_args, object, expr_t, t_fn, parm, boot.ci, level, verbose = verbose) 
-    invisible(boot_res)
+    if (format=="stats") {
+      attr(boot_res,"table")
+    } else invisible(boot_res)
   } else {
     if ( .REMLmess(object,return_message=FALSE)) {
       warning("REML fits are not quite suitable for computing intervals for fixed effects.")
     }
     resu <- .confint_LRT(level, parm, object, verbose)
-    invisible(resu)
+    if (format=="stats") {
+      attr(resu,"table")
+    } else invisible(resu)
   }
 }

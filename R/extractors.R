@@ -147,7 +147,7 @@
   return(newcoeffs)
 }
 
-
+# this must be for back compat since currently all fit object meet the first condition.
 .getHLfit <- function(fitobject) {
   if (inherits(fitobject,"HLfit")) {
     fitobject    
@@ -301,6 +301,17 @@ residVar <- function(object, which="var", submodel=NULL) {
   } else if (which=="family") {
     if (length(phi_model)>1L && is.null(submodel)) stop("'submodel' index required to extract residual-model family") 
     eval(.get_phifam(object, mv_it=submodel))
+  } else if (which=="fam_parm") {
+    family <- object$family
+    if (is.null(family)) {
+      if (is.null(submodel)) stop("'submodel' index required to extract residual-model family parameter") 
+      family <- object$families[[submodel]]
+    }
+    if (family$family=="COMPoisson") {
+      return(environment(family$aic)$nu)
+    } else if (family$family=="negbin") {
+      return(environment(family$aic)$shape)
+    } else return(NA)
   } else if (which=="fit") {
     if (length(phi_model)>1L && is.null(submodel)) stop("'submodel' index required to extract residual-model fit") 
     .get_phi_fit(object, mv_it=submodel)
@@ -620,7 +631,7 @@ get_predVar <- function(..., variances=list(), which="predVar") {
     # if (is.null(mc$intervals)) mc$intervals <- "predVar" # but other intervals can be obtained if mc$intervals is not NULL
   } else variances$predVar <- TRUE
   mc$variances <- variances
-  mc[[1L]] <- get("predict.HLfit", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
+  mc[[1L]] <- get("predict.HLfit", asNamespace("spaMM"), inherits=FALSE) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
   resu <- eval(mc,parent.frame())
   structure(attr(resu,which), respnames=attr(resu,"respnames"))
 }
@@ -887,6 +898,33 @@ get_matrix <- function(object, which="model.matrix", augmented=TRUE, ...) {
 
 model.matrix.HLfit <- function(object, ...) object$X.pv
 
+.prettify_method <- function(MME_method, by_y_augm) {
+  if (by_y_augm) {
+    for (it in seq_along(MME_method)) {
+      MME_method[it] <- switch(MME_method[it],
+                               AUGI0_ZX_sparsePrecision = "sparse-precision method for y-augmented matrix",
+                               sXaug_EigenDense_QRP_Chol_scaled="dense-correlation method for y-augmented matrix (chol with QR fallback)",
+                               sXaug_Matrix_QRP_CHM_scaled="sparse-correlation method for y-augmented matrix (Cholesky)", # get_absdiagR_blocks, not sXaug method
+                               sXaug_Matrix_cholP_scaled="sparse-correlation method for y-augmented matrix (Cholesky)", # get_absdiagR_blocks, not sXaug method
+                               dgCMatrix=NA,
+                               matrix=NA,
+                               array=NA,
+                               MME_method[it])
+    }
+  } else for (it in seq_along(MME_method)) {
+    MME_method[it] <- switch(MME_method[it],
+                             AUGI0_ZX_sparsePrecision = "sparse-precision methods",
+                             sXaug_EigenDense_QRP_Chol_scaled="dense-correlation (QR) methods",
+                             sXaug_Matrix_QRP_CHM_scaled="sparse-correlation (QR) methods",
+                             sXaug_Matrix_cholP_scaled="sparse-correlation (Cholesky) methods",
+                             dgCMatrix=NA,
+                             matrix=NA,
+                             array=NA,
+                             MME_method[it])
+  }
+  MME_method
+}
+
 "how" <- function(object, ...) UseMethod("how")
 
 how.default <- function(object, ...) {message(paste("No 'how' method defined for objects of class",class(object)))} 
@@ -908,9 +946,9 @@ how.HLfit <- function(object, devel=FALSE, verbose=TRUE, format=print, ...) {
       }
       mess <- "Model fitted by spaMM"
     } else mess <- paste0("Model fitted by spaMM::", paste(fnname))
+    pretty_method <- .prettify_method(info$MME_method, by_y_augm=identical(info$switches["augZXy_cond"][[1]], TRUE))
     mess <- paste0(mess,", version ",info[["spaMM.version"]],
-                   ", in ",info$fit_time,"s using method: ",paste(info$MME_method,collapse=","),".")
-    if (identical(info$switches["augZXy_cond"][[1]], TRUE)) mess <- paste(mess, "and y-augmented matrix.")
+                   ", in ",info$fit_time,"s using ",paste(na.omit(pretty_method),collapse=","),".")
     format(mess)  
   }
   if  (!  is.null(resid_fits <- object$resid_fits)) {

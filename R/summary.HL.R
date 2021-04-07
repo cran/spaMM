@@ -218,7 +218,7 @@ summary.HLfitlist <- function(object, ...) {
   nicertypes[ ! (posf | posfh | posoh )] <- ""
   nicertypes <- rep(nicertypes, unlist(lapply(row_map[displaypos], length)))
   if ( ! is.null(displayrows)) {
-    lambda_list <- lambda.object$lambda_list
+    lambda_list <- lambda.object$lambda_list # this includes a vector of 1's for ranCoefs with Xi_ncol>1L, and the actual lambda for Xi_ncol=1
     if (is.null(lambda_list)) lambda_list <- lambda.object$lambda # back-compatibility fix (from test on v2.5.0 object stored in package vullioud2018)
     print_lambda <- unlist(lambda_list)
     cat(paste("  ",
@@ -243,15 +243,28 @@ summary.HLfitlist <- function(object, ...) {
   in_table <- rep(FALSE,nrand)
   in_pointLambda <- rep(TRUE,nrand)
   maxnrow <- cum_nrows[nrand+1] ## maxnrow should = nrow(lambda_table)
-  summ_variances <- data.frame(matrix(NA,ncol=1L,nrow=maxnrow))
-  colnames(summ_variances) <- "Var."
+  #
+  ############### better initialization of the table (03/2021)
+  template <- lambda.object$lambda_list # RHS has elements for each of the rows of the table, except the "adjd" coeff. Hence: 
+  for (it in seq_len(length(namesTerms))) {
+    if ("adjd" %in% namesTerms[[it]]) {
+      template[[it]][2] <- NA
+    } 
+  }
+  summ_variances <- data.frame("Var."=matrix(.unlist(template),ncol=1L,nrow=maxnrow))
+  # So now this df has a col with: 
+  # lambda values for 'simple lambdas', and ranCoefs without corr matrix (Xi_ncol=1L) 
+  # '1's for the lambdas of ranCoefs with corr matrix (Xi_ncol>1)
+  # a variance and an NA for adjacency terms
+  # Previously the column was initiated with NA's and lambdas for ranCoefs without corr matrix (Xi_ncol=1L) were never filled in => defective VarCorr().
+  ################
   cov.mats <- .get_compact_cov_mats(object$strucList)
   if ( length(cov.mats)) { ## fixme ? rename cov.mats to refer to ranCoefs ?
     #.varcorr <- function(nrows, maxnrow, cov.mats, in_table, in_pointLambda, cum_nrows) {
     summ_corr_cols <- data.frame(matrix(NA,ncol=max(nrows-1L),nrow=maxnrow))
     for (mt in seq_len(length(cov.mats))) { 
       m <- cov.mats[[mt]]
-      if ( ! is.null(m)) {
+      if ( ! is.null(m)) { # Xi_ncol>1L...
         in_table[mt] <- TRUE
         in_pointLambda[mt] <- FALSE
         inrows <-  cum_nrows[mt]+(1:nrow(m))
@@ -266,10 +279,10 @@ summary.HLfitlist <- function(object, ...) {
     }
     colnames(summ_corr_cols) <- rep("Corr.",ncol(summ_corr_cols))
     # }
-    random_slope_pos <- which( ! unlist(lapply(cov.mats,is.null))) ## fixme ? equivalentto isRandomSlope that might be available
-    random_slope_rows <- unlist(row_map[ random_slope_pos ])
+    random_slope_ncol_geq_1_pos <- which( ! unlist(lapply(cov.mats,is.null))) ## fixme ? equivalentto isRandomSlope that might be available
+    random_slope_ncol_geq_1_rows <- unlist(row_map[ random_slope_ncol_geq_1_pos ])
   } else {
-    random_slope_rows <- random_slope_pos <- integer(0)
+    random_slope_ncol_geq_1_rows <- random_slope_ncol_geq_1_pos <- integer(0)
     summ_corr_cols <- NULL
   }
   if ( ! is.null(linklam_coeff_list)) {
@@ -289,7 +302,8 @@ summary.HLfitlist <- function(object, ...) {
   if ( length(cov.mats)) lambda_table <- cbind(lambda_table, summ_corr_cols)
   lambda_table <- structure(lambda_table, 
                             class=c("lambda_table",class(lambda_table)), info_rows=info_rows,
-                            random_slope_rows=random_slope_rows,random_slope_pos=random_slope_pos,
+                            random_slope_ncol_geq_1_rows=random_slope_ncol_geq_1_rows,
+                            random_slope_ncol_geq_1_pos=random_slope_ncol_geq_1_pos, # not used
                             in_pointLambda=in_pointLambda,row_map=row_map, in_table=in_table)
   return(lambda_table)
 }
@@ -322,9 +336,9 @@ summary.HLfitlist <- function(object, ...) {
   attribs <- attributes(lambda_table) 
   # strings for screen output:
   lambda_table <- .aschar_adhoc(lambda_table)
-  if (length(attribs$random_slope_rows)) {
+  if (length(attribs$random_slope_ncol_geq_1_rows)) {
     keep <- which( ! colnames(lambda_table) %in% c("Estimate","Cond.SE")) ## may be null if only outer... + fixed
-    cov_table <- lambda_table[attribs$random_slope_rows,keep] ## EXCLUDES the "Estimate","Cond.SE" cols
+    cov_table <- lambda_table[attribs$random_slope_ncol_geq_1_rows,keep] ## EXCLUDES the "Estimate","Cond.SE" cols
     cat("         --- Random-coefficients Cov matrices:\n")
     print(cov_table, digits = 4, row.names = FALSE)
   }
@@ -347,7 +361,7 @@ summary.HLfitlist <- function(object, ...) {
   #
   # NOW the (Gamma-GLM) coefficients and SEs
   info_rows <- attribs$info_rows
-  if ( ! details$ranCoefs) info_rows <- setdiff(info_rows, attribs$random_slope_rows) ## removes random-coef info except if detaisl are requested
+  if ( ! details$ranCoefs) info_rows <- setdiff(info_rows, attribs$random_slope_ncol_geq_1_rows) ## removes random-coef info except if detaisl are requested
   lambda_table <- lambda_table[ info_rows ,]
   in_table <- attribs$in_table
   if (nrow(lambda_table)) { 
@@ -451,7 +465,12 @@ summary.HLfitlist <- function(object, ...) {
       if ( identical(attr(phi_outer,"type"),"fix") ) {
         if (length(phi_outer)==1L) {
           cat(paste("phi was fixed to",signif(phi_outer,6),"\n"))
-        } else  cat(paste("phi was fixed.\n"))
+        } else if (phimodel=="phiGLM") { # fixed by an offset in a resid.formula (see .preprocess_phi_model)
+          phiform <- .get_phiform(object, mv_it)
+          if (length(phiform)==2) phiform <- as.formula(paste('"phi"',paste(phiform,collapse=" "))) 
+          cat(paste("phi was fixed [through ",deparse(phiform),"] to", 
+                    paste(signif(phi_outer[1:min(5,length(phi_outer))],6),collapse=" "),"...\n"))
+        } else cat(paste("phi was fixed to",paste(signif(phi_outer[1:min(5,length(phi_outer))],6),collapse=" "),"...\n"))
       } else {
         if (length(phi_outer)==1L) {
           cat(paste("phi estimate was",signif(phi_outer,6),"\n"))
@@ -464,14 +483,13 @@ summary.HLfitlist <- function(object, ...) {
         if (! is.null(mv_it)) {
           cat(paste0("Residual dispersion model includes random effects:\n  use summary(<fit object>$resid_fits[[",mv_it,"]]) to display results.\n"))
         } else cat("Residual dispersion model includes random effects:\n  use summary(<fit object>$resid_fit) to display results.\n")       
-      } else if ((loc_p_phi <- length(phi.object$fixef))) { # there are phi params (possibly outer estimated), but...
-        glm_phi <- .get_glm_phi(object, mv_it=mv_it) ## ... no phi glm
+      } else if ((loc_p_phi <- length(phi.object$fixef))) { # there are phi params (possibly outer estimated), 
+        glm_phi <- .get_glm_phi(object, mv_it=mv_it) 
         summ <- .table_glm_phi(glm_phi, loc_p_phi, phi.object, summ, object, family=family,
                                phiform=.get_phiform(object,mv_it), resid.family=eval(.get_phifam(object,mv_it)))
       } else {
-        phiform <- .get_phiform(object, mv_it)
-        if (length(phiform)==2) phiform <- as.formula(paste('"phi"',paste(phiform,collapse=" "))) ##FR->FR how does _dglm_ deal with this
-        cat(paste("phi was fixed by an offset term: ",deparse(phiform) ,"\n")) ## quick fix 06/2016 
+        # Other cases should have been handled by  identical(attr(phi_outer,"type"),"fix") && phimodel=="phiGLM" above
+        warning("Unexpected case in .summary_phi_object(): maybe harmless, but please contact the maintainer.") # warning set on 3.7.24 03/2021
       }                                                 
     }
   } ## else binomial or poisson, no dispersion param
@@ -481,10 +499,11 @@ summary.HLfitlist <- function(object, ...) {
 
 
 `summary.HLfit` <- function(object, details=FALSE, max.print=100L, verbose=TRUE, ...) { 
+  parent_from_there <- parent.frame()
   if ( ! verbose) {
     mc <- match.call(expand.dots = TRUE)
     mc$verbose <- TRUE
-    capture.output({silent <- eval(mc)})
+    capture.output({silent <- eval(mc, envir=parent_from_there)})
     return(silent)
   }
   oldopt <- options(max.print=max.print)

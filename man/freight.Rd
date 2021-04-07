@@ -19,7 +19,7 @@ data("freight")
   }
 }
 \source{
-The data set is reported by Kutner et al. (2003) and used by Sellers and Shmueli (2010) to illustrate COMPoisson analyses.
+The data set is reported by Kutner et al. (2003) and used by Sellers & Shmueli (2010) to illustrate COMPoisson analyses.
 }
 \references{
 	Kutner MH, Nachtsheim CJ, Neter J, Li W (2005, p. 35). Applied Linear Regression Models, Fourth Edition. McGraw-Hill.

@@ -1,4 +1,4 @@
-if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") { ## set in etc/Renviron.site (cf R Windows FAQ)
+if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") { ## set in <R_HOME>/etc/Renviron.site (cf R Windows FAQ)
   if(requireNamespace("testthat", quietly = TRUE)) {
     pkg   <- "spaMM"
     require(pkg, character.only=TRUE, quietly=TRUE)

@@ -8,8 +8,9 @@
         do.call(chr_fnname,arglist) 
       } else if (length(grep(pack,packageDescription("spaMM")$Suggests))) {
         ## then the necessary functions are not imported-from in the NAMESPACE  (and the package must be written in an appropriate way)
+        ##  stats:::confint.glm likewise handles an 'undeclared dependency'
         if ( requireNamespace(pack, quietly = TRUE)) {
-          myfun <- get(chr_fnname, asNamespace(pack)) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
+          myfun <- get(chr_fnname, asNamespace(pack), inherits=FALSE) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
           do.call(myfun,arglist) 
         } else {
           if ( ! identical(warned_dcw[[pack]],TRUE)) {

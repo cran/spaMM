@@ -81,6 +81,14 @@
     .Call(`_spaMM_logit`, mu)
 }
 
+.is_evaluated <- function(name, env) {
+    .Call(`_spaMM_is_evaluated`, name, env)
+}
+
+.is_promise <- function(name, env) {
+    .Call(`_spaMM_is_promise2`, name, env)
+}
+
 .rankinfo <- function(x, tol) {
     .Call(`_spaMM_rankinfo`, x, tol)
 }

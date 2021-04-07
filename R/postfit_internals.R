@@ -145,7 +145,7 @@
       p_phi <- sum(.unlist(resid_fit$dfs)) ## phi_pd is relevant only for measuring quality of prediction by the resid_fit! 
     } else p_phi <- sum(.unlist(dfs[["p_fixef_phi"]])) # .unlist() for mv
     names_est_ranefPars <- unlist(.get_methods_disp(object))  
-    fam_disp_parsnames <- intersect(names_est_ranefPars,c("NB_shape","NU_COMP"))
+    fam_disp_parsnames <- intersect(names_est_ranefPars,c("NB_shape","COMP_nu"))
     if (length(fam_disp_parsnames)) {
       p_GLM_family <- length( # compatible with mv:
         .unlist(.get_outer_inits_from_fit(object, keep_canon_user_inits = FALSE)[fam_disp_parsnames]))
@@ -357,18 +357,17 @@
 
 
 
-.calc_beta_cov_info_from_sXaug <- function(BLOB, sXaug) { 
-  tcrossfac_v_beta_cov <-  solve(BLOB$R_scaled) # solve(as(BLOB$R_scaled,"dtCMatrix"))
+.calc_beta_cov_info_from_sXaug <- function(BLOB, sXaug, tcrossfac) { 
   pforpv <- attr(sXaug,"pforpv")
   X_scaling <- sqrt(rep(attr(sXaug,"H_global_scale"),pforpv))
   X_scale <- attr(sXaug,"scaled:scale") # this is (! spprec) code and the X.pv attribute has been copied here
   if ( ! is.null(X_scale)) X_scaling <- X_scaling/X_scale
   diagscalings <- c(1/sqrt(attr(sXaug,"w.ranef")), X_scaling)
   if ( ! is.null(BLOB$sortPerm)) { # depending on method used for QR facto
-    tPmat <- sparseMatrix(seq_along(BLOB$sortPerm), BLOB$sortPerm, x=1)
-    tPmat <- .Dvec_times_Matrix(diagscalings, tPmat) # Pmat <- .Matrix_times_Dvec(Pmat,diagscalings)
-    tcrossfac_v_beta_cov <- tPmat %*% tcrossfac_v_beta_cov
-  } else tcrossfac_v_beta_cov <- .Dvec_times_m_Matrix(diagscalings, tcrossfac_v_beta_cov) ## loses colnames...
+    sctPmat <- sparseMatrix(seq_along(BLOB$sortPerm), BLOB$sortPerm, x=1)
+    sctPmat <- .Dvec_times_Matrix(diagscalings, sctPmat) # Pmat <- .Matrix_times_Dvec(Pmat,diagscalings)
+    tcrossfac_v_beta_cov <- sctPmat %*% tcrossfac
+  } else tcrossfac_v_beta_cov <- .Dvec_times_m_Matrix(diagscalings, tcrossfac) ## loses colnames...
   dgC_good <- (inherits(tcrossfac_v_beta_cov, "dgCMatrix") && 
                  .calc_denseness(tcrossfac_v_beta_cov)/prod(dim(tcrossfac_v_beta_cov))<0.35 )
   if ( ! dgC_good) tcrossfac_v_beta_cov <- as.matrix(tcrossfac_v_beta_cov) # bigranefs.R shows that conversion is not always good.

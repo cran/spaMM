@@ -67,7 +67,8 @@ if(requireNamespace("lme4", quietly = TRUE)) {
   mlfit <- fitme(Reaction ~ Days + (1|Subject), data = sleepstudy)
   fitci <- confint(mlfit, parm = "Days",verbose=FALSE)$interval
   rl_mer <- lme4::lmer(Reaction ~ Days + (1|Subject), data = sleepstudy)
-  testthat::expect_true(diff(range(suppressWarnings(confint(rl_mer))[4, ]-fitci))<1e-5) ## suppress bobyqa conv warning in lme4:::optwrap
+  ci_mer <- suppressMessages(suppressWarnings(confint(rl_mer)))[4, ] ## suppress bobyqa conv warning in lme4:::optwrap, and message "Computing profile confidence intervals ..."
+  testthat::expect_true(diff(range(ci_mer-fitci))<1e-5) 
 }
 
 # GLM with a 'method'...

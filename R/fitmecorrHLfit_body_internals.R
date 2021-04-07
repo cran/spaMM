@@ -633,7 +633,8 @@
 
 .init_optim_lambda_ranCoefs <- function(proc1, not_inner_phi, init.optim, nrand, ranCoefs_blob, var_ranCoefs) {
   lFix <- proc1$lambda.Fix ## only for 'simple" ranefs with Xi_cols=1
-  if (proc1$augZXy_cond || anyNA(init.optim$lambda) ||
+  if (proc1$augZXy_cond || 
+      anyNA(init.optim$lambda) || # NA or NaN in user's explict lambda
       not_inner_phi) { ## Tests show it is very inefficient to use outer optim on lambda (at least) when phi must be inner optimized
     optim_lambda_with_NAs <- .reformat_init_lambda_with_NAs(init.optim$lambda, nrand=nrand, default=NA)
     ## handling fitme call for resid fit with meanfit-optimized parameters (if input is NULL, output is all NA):
@@ -642,13 +643,17 @@
                                      is.na(optim_resid_lambda_with_NAs) & 
                                      (is.na(optim_lambda_with_NAs) & ! is.nan(optim_lambda_with_NAs)) & ## explicit NaN's will be inner-optimized
                                      ! ranCoefs_blob$isRandomSlope) ## exclude random slope whether set or not
-    if (length(which_NA_simplelambda)) { 
+    if (length(which_NA_simplelambda)) { # user's explicit lambda=NaN have been removed from the count, but explicit NA count
       init_lambda <- .eval_init_lambda_guess(proc1, stillNAs=which_NA_simplelambda, For="optim")
       optim_lambda_with_NAs[which_NA_simplelambda] <- init_lambda[which_NA_simplelambda]
       init.optim$lambda <- optim_lambda_with_NAs[ ! is.na(optim_lambda_with_NAs)] ## NaN now rmoved if still there (cf is.na(c(1,NA,NaN))) BUT
       # ... it's dubious that we have augZXy_cond || not_inner_phi if we requested inner estimation of lambda by a NaN                                                  
     }
-  } ## else use inner optimization  for simple lambdas if inner_phi is necessary
+  } else { ## else use inner optimization  for simple lambdas if inner_phi is necessary
+    if (identical(attr(proc1$family,"multi"),TRUE)) { # __F I X M E__ more elegant test?
+      warning("No initial lambda provided: the model fitted may change over spaMM versions. See help('multi') for how to avoid that.")
+    }
+  }
   init.optim$lambda <- init.optim$lambda[ ! is.nan(init.optim$lambda)] ## removes users's explicit NaN, which effect is documented in help(fitme)
   #
   if (any(var_ranCoefs)) {
@@ -684,7 +689,7 @@
   return(init.optim)
 }
 
-
+# NOT called by corrHLfit...
 .more_init_optim <- function(proc1, processed, corr_types, init.optim, phi_by_augZXy) {
   ## trying to guess all cases where optimization is useful. But FIXME: create all init and decide afterwardsS
   phimodel1 <- proc1$models[['phi']]
@@ -695,13 +700,18 @@
     var_ranCoefs <- (ranCoefs_blob$isRandomSlope & ! ranCoefs_blob$is_set) # vector !
     has_corr_pars <- length(corr_types[ ! is.na(corr_types)])
   } else var_ranCoefs <- has_corr_pars <- FALSE
-  sufficient_reasons_for_outer <- (anyNA(init.optim$lambda) || # first one meaning that the user explictly set a NA init lambda
-                                 any(var_ranCoefs) || 
-                                 has_corr_pars ||
-                                 ( has_family_par <- (( ! is.null(init.optim$COMP_nu)) || ( ! is.null(init.optim$NB_shape))) ) || # lambda + family pars # motivated by 'ahzut' example in private test-COMPoisson-difficult.R
-                                 ( has_estim_families_par <- identical(attr(processed$families,"has_estim_families_par"), TRUE))) ## identical bc absent in multi() case
-  if (
-    sufficient_reasons_for_outer ||  
+  sufficient_reasons_for_outer_lambda <- (
+    anyNA(init.optim$lambda) || # first one meaning that the user explictly set a NA init lambda
+      any(var_ranCoefs) || # includes mv()
+      # *** next case ad hoc but motivated by 'ahzut' example in private test-COMPoisson-difficult.R ***
+    ( has_family_par <- (( ! is.null(init.optim$COMP_nu)) || ( ! is.null(init.optim$NB_shape))) ) # lambda + family pars 
+  ) 
+  other_reasons_to_chech_inner_costs <- ( # when there are other outer-estimated parameters ## 
+    has_corr_pars ||
+    ( other_submodel_has_family_par <- identical(attr(processed$families,"has_estim_families_par"), TRUE)) ## identical bc absent in multi() case
+  )
+  if ( # TRUE || ## why not always check?
+    sufficient_reasons_for_outer_lambda || other_reasons_to_chech_inner_costs ||  
     var(proc1$y)<1e-3 || # mixed model with low response variance (including case where phi is fixed (phimodel="") )
     (phimodel1 == "phiHGLM" && identical(spaMM.getOption("outer_optim_resid"),TRUE)) ||
     allPhiScalorFix || # lambda + phi
@@ -712,38 +722,38 @@
     } 
   ) { ## All cases where outer optimization MAY be better for dispersion parameters (or forced outer optim)
     nrand1 <- length(proc1$ZAlist)
-    reasons_for_outer <- sufficient_reasons_for_outer
-    if ( ! reasons_for_outer) {
-      reasons_for_outer <- outer_spares_costly_dleve_comput <- ( 
-        # the dleve computations for HL[2L] with costly .calc_dvdlog...Mat_new() occur in inner for HL[2L] irrespective of vecdisneeded[3]
-        # and in particular even for canonical link GLMM. The dleve terms should be nonzero when GLM weights !=1 i.e vecdisneeded[2] (or [1])
-        (nrand1 > 0L && processed$cum_n_u_h[length(processed$cum_n_u_h)] > 1000L) &&
-          ( calc_dvdlogdisp_needed_for_inner_ML <-  (processed$vecdisneeded[2] && processed$HL[2L]) ) 
-      )
-    }
-    if ( ! reasons_for_outer) {
+    # Up to public version 3.7.2, reasons_for_outer_phi [or rather "reasons_for_outer"] was initiated by sufficient_reasons_for_outer_lambda ["sufficient_reasons_for_outer"] 
+    # The reasons_for_outer_phi may be ineffective (if phi is fixed...)
+    #
+    outer_phiScal_spares_costly_comput <- outer_spares_costly_dleve_comput <- ( 
+      # the dleve computations for HL[2L] with costly .calc_dvdlog...Mat_new() occur in inner for HL[2L] irrespective of vecdisneeded[3]
+      # and in particular even for canonical link GLMM. The dleve terms should be nonzero when GLM weights !=1 i.e vecdisneeded[2] (or [1])
+      (nrand1 && tail(processed$cum_n_u_h,1) > 500L) && # matters for test_adjacency_long which has n_u_h=1000
+        ( calc_dvdlogdisp_needed_for_inner_ML <-  (processed$vecdisneeded[2] && processed$HL[2L]) ) 
+    )
+    if ( ! outer_phiScal_spares_costly_comput) {
       ## we look whether the hatval_Z are needed or not in .calc_sscaled_new(), hence in fitme() with outer estim of dispersion params
-      hatval_Z_is_costly <- ( NROW(processed$y)>1000L || 
+      hatval_xx_is_costly <- ( NROW(processed$y)>1000L || 
                                 (nrand1>0L && processed$cum_n_u_h[length(processed$cum_n_u_h)]>200L))
-      reasons_for_outer <- outer_spares_costly_hatval_Z <- ( ## "but inner requires it"
-        hatval_Z_is_costly && allPhiScalorFix && (
-          hatval_Z_needed_for_inner_ML <-  (! NCOL(processed$X.Re)) ## X.Re is a 0-col matrix
-        ) && ( 
-          hatval_Z_not_needed_for_sscaled <- ! (processed$HL[1L] && any(processed$vecdisneeded)) 
+      outer_phiScal_spares_costly_comput <- outer_spares_costly_hatval_xx <- ( ## "but inner requires it"
+        hatval_xx_is_costly && allPhiScalorFix && (
+        #   hatval_Z_needed_for_inner_ML <-  (! NCOL(processed$X.Re)) ## X.Re is a 0-col matrix
+        # ) && ( 
+          hatval_xx_not_needed_for_sscaled <- ! (processed$HL[1L] && any(processed$vecdisneeded)) 
         )  
       )
     }
-    # so that reasons_for_outer = ( sufficient_reasons_for_outer || outer_spares_costly_dleve_comput || outer_spares_costly_hatval_Z)
+    # so that outer_phiScal_spares_costly_comput = ( outer_spares_costly_dleve_comput || outer_spares_costly_hatval_xx)
+    # But is phiGLM/HGLM, these hatval computations cannot be spared => two cases for other_reasons_for_outer_lambda
     if (is.null(proc1$phi.Fix) && ! phi_by_augZXy ) { # Set (or not) outer optimization for phi: 
-      init_optim_phi_blob <- .init_optim_phi(phimodel1, proc1, init.optim, nrand1, reasons_for_outer)
-      not_inner_phi <- init_optim_phi_blob$not_inner_phi # which may indicate outer phi or no phi estimation
+      init_optim_phi_blob <- .init_optim_phi(phimodel1, proc1, init.optim, nrand1, 
+                                             reasons_for_outer=outer_phiScal_spares_costly_comput || var_ranCoefs) # outer estim may be numerically more stable for ranCoefs
+      other_reasons_for_outer_lambda <- init_optim_phi_blob$not_inner_phi 
       init.optim <- init_optim_phi_blob$init.optim
-    } else {
-      not_inner_phi <- reasons_for_outer
-    }
-    if (length(proc1$ZAlist)>0L) {
+    } else other_reasons_for_outer_lambda <- outer_phiScal_spares_costly_comput
+    if (nrand1) {
       # Set outer optimization for lambda and ranCoefs (handling incomplete ranFix$lambda vectors) through call to .init_optim_lambda_ranCoefs()
-      init.optim <- .init_optim_lambda_ranCoefs(proc1, not_inner_phi, init.optim, nrand1, proc1$ranCoefs_blob, var_ranCoefs)
+      init.optim <- .init_optim_lambda_ranCoefs(proc1, (sufficient_reasons_for_outer_lambda || other_reasons_for_outer_lambda), init.optim, nrand1, proc1$ranCoefs_blob, var_ranCoefs)
     } 
     if (length(init.optim$lambda) > nrand1) {
       mess <- paste0("Initial value for lambda: (",
@@ -913,6 +923,15 @@
   } else  return(FALSE) # stop("Unhandled 'x' class in .allNULL().") # if numeric, not all null...
 }
 
+.canonizeNames <- function(trNames) {
+  trNames <- gsub("trNu","nu",trNames)
+  trNames <- gsub("trRho","rho",trNames)
+  trNames <- gsub("trPhi","phi",trNames)
+  trNames <- gsub("trLambda","lambda",trNames)
+  trNames <- gsub("trNB_shape","NB_shape",trNames)
+  trNames
+}
+
 .check_suspect_rho <- function(corr_types, ranPars_in_refit, LowUp) {
   locmess <- NULL
   if (any(geostat <- corr_types %in% c("Matern","Cauchy"))) {
@@ -923,12 +942,16 @@
       corup <- unlist(LowUp$upper$corrPars[char_rnf])
       at_lower_bound <- which((corpars-corlow)/(corup-corlow)<1e-5)
       if ( length(at_lower_bound) && 
-           length(which(grepl("trRho", names(corpars))))>1L && ## at least two rho's 
-           #  (case with one rho at the bound would deserve another message; NB occurs in the vignette...)
            any(grepl("trRho", names(at_lower_bound)))) {
-        locmess <- paste0("The estimate(s) of some 'rho' scale parameter(s) = their lower bound in numerical optimization.\n",
-                          "This suggests that the expected value of some ranef(s) should be non-zero,\n ",
-                          "but that the model term(s) for intercept(s) do not account for that.")
+        if (length(which(grepl("trRho", names(corpars))))>1L) {## at least two rho's (but not necess both at lower bound)
+          locmess <- paste0("The estimate(s) of some 'rho' scale parameter(s) equal(s) their lower optimization bound.\n",
+                            "This suggests that distinct intercepts should be fitted for some group-specific random effects,\n ",
+                            "but that the model term(s) for intercepts do not allow that.")
+          
+        } else {
+          cnames <- .canonizeNames(names(at_lower_bound) )
+          locmess <- paste0(paste(cnames, collapse=", "), " are at their lower optimization bound.")
+        }
       }
     }
   }

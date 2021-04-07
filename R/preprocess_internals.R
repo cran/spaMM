@@ -434,10 +434,15 @@
       ## if formula= ~1 and data is an environment, there is no info about nobs, => fr_disp$X has zero rows, which is a problem later 
       p_phi <- NCOL(residFrames$X)
       namesX_disp <- colnames(residFrames$X)
-      if (p_phi==1 && namesX_disp[1]=="(Intercept)"
+      if (p_phi==1L && namesX_disp[1]=="(Intercept)"
           && is.null(attr(resid.formula,"off")) ## added 06/2016 (bc phiScal does not handle offset in a phi formula) 
       ) {
         models[["phi"]] <- "phiScal"
+      } else if (p_phi==0L) { # resid.formula has only an offset term.
+        # set phi.Fix so that it is used by fitting functions, instead of running phiGLM code : 
+        #   leverages, dev.res , .calc_dispGammaGLM() -> model.frame(), model.matrix()... to find that there is nothing to fit!
+        processed$phi.Fix <- resid.model$family$linkinv(model.offset(residFrames$mf)) # fitting fns see this as phi.Fix
+        models[["phi"]] <- "phiGLM" # meaningful: see how new offset values are predicted in .calcResidVar()
       } else { 
         models[["phi"]] <- "phiGLM"
       }
@@ -669,8 +674,6 @@
     #
     if (sparse_precision) {
       AUGI0_ZX$envir$method <- .spaMM.data$options$spprec_method  
-      delayedAssign("XtX", crossprod(as.matrix(X.pv), NULL, as_mat=TRUE), 
-                    eval.env=AUGI0_ZX, assign.env=AUGI0_ZX)
     } else { 
       if (inherits(AUGI0_ZX$ZeroBlock,"sparseMatrix")) {
         AUGI0_ZX$Zero_sparseX <- rbind2(AUGI0_ZX$ZeroBlock, as(AUGI0_ZX$X.pv,"CsparseMatrix"))

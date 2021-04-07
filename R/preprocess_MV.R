@@ -522,14 +522,14 @@
 
 
 
-.merge_processed <- function(calls_W_processed, init=list(), control.HLfit=list(), method="ML", verbose=NULL, init.HLfit=list(),
+.merge_processed <- function(calls_W_processed, data, init=list(), control.HLfit=list(), method="ML", verbose=NULL, init.HLfit=list(),
                              covStruct=NULL, corrMatrix=NULL, adjMatrix=NULL, distMatrix=NULL, control.dist=list()) {
   # this fn passes no '...' so has no '...'
   nmodels <- length(calls_W_processed)
   namedlist <- structure(vector("list",nmodels), names=seq_len(nmodels))
   ### Fill lists for further processing:
   unmerged <- predictors <- families <- prior.weights <- clik_fns <- phiFixs <- Ys <- pS_fixef_phi <- namedlist
-  AMatrices <- adjMatrices <- corrMatrices <- fixef_off_termsS <- fixef_termsS <- fixef_levelsS <- namedlist
+  AMatrices <- adjMatrices <- corrMatrices <- fixef_off_termsS <- fixef_termsS <- fixef_levelsS <- validrownames <- namedlist
   for (mv_it in seq_len(nmodels)) {
     unmerged[[mv_it]] <- calls_W_processed[[mv_it]][["processed"]]
     predictors[[mv_it]] <- unmerged[[mv_it]][["predictor"]]
@@ -555,7 +555,7 @@
   ### initialize 'merged' from unmerged[[1L]]:
   merged <- list2env(list(envir=list2env(list(), parent=environment(HLfit))))
   ## From unmerged[[1L]][[st]] to 'merged': that assignment should ultimately be only for elements not recursively updated:
-  for (st in c("data",#"AUGI0_ZX",
+  for (st in c(#"AUGI0_ZX",
                "REMLformula", # __FIXME__ this will really handle only standard ML (REMLformula has an isML attr) 
                #                                                      or standard REML (REMLformula is NULL). 
                # => no attempt to look REMLformula over models below (But  is built iteratively). 
@@ -595,11 +595,13 @@
   merged_X.Re <- .merge_Xs(NULL, unmerged[[1L]][["X.Re"]], mv_it=1L, REML=TRUE)
   vec_ncol_X <- integer(nmodels)
   vec_ncol_X[1L] <- ncol(merged_X)
+  validrownames[[1L]] <- rownames(unmerged[[1L]][["data"]])
   # Recursive updating:
   for (mv_it in (seq_len(nmodels-1L)+1L)) {
     p_i <- unmerged[[mv_it]]
     # merged$predictor... I should try to get rid of its use in HLfit_body, at least... FIXME
     ### random effects stuff
+    validrownames[[mv_it]] <- rownames(p_i[["data"]])
     vec_nobs[mv_it] <- length(p_i[["y"]])  
     cum_nobs <- cumsum(c(0L, vec_nobs)) # quick & dirty rebuild cum_nobs from scratch in each iteration.
     ZAlist_i <- p_i$ZAlist
@@ -642,6 +644,8 @@
     phi_models[[mv_it]] <- p_i[["models"]][["phi"]]
   }
   .check_mv_in_submodels(ZAlist)
+  attr(data,"validrownames") <- validrownames
+  merged[["data"]] <- data
   merged[["vec_nobs"]] <- structure(vec_nobs, cum_nobs=cum_nobs) # objetc will contain multiple copies of cum_nobs attribute, for conveniency
   merged[["prior.weights"]] <- prior.weights
   merged[["off"]] <- off
@@ -892,7 +896,7 @@ fitmv <- function(submodels, data, fixed=NULL, init=list(), lower=list(), upper=
     call_$formula <- .preprocess_formula(call_$formula)
     #
     call_[["what_checked"]] <- "arguments for .preprocess_fitme()" 
-    call_[[1L]] <- get(".check_args_fitme", asNamespace("spaMM")) 
+    call_[[1L]] <- get(".check_args_fitme", asNamespace("spaMM"), inherits=FALSE) 
     call_ <- eval(call_,parent.frame()) # 
     call_["what_checked"] <- NULL 
     #
@@ -904,8 +908,13 @@ fitmv <- function(submodels, data, fixed=NULL, init=list(), lower=list(), upper=
       #class(main_terms_info_it) <- "HLframes" # we tag the result again so that .preprocess() will recognize it as coming from .update_data()
       call_[["data"]] <- structure(data, updated_terms_info=main_terms_info_it)
     }
-    call_[[1L]] <- get(".preprocess_fitme", asNamespace("spaMM")) 
+    call_[[1L]] <- get(".preprocess_fitme", asNamespace("spaMM"), inherits=FALSE) 
     calls_W_processed[[mv_it]] <- eval(call_,parent.frame()) # returns modified call including an element 'processed'
+    residProcessed <- calls_W_processed[[mv_it]]$processed$residProcessed
+    if ( ! is.null(validrownames <- attr(residProcessed$data, "validrownames"))) { # post-fit (confint...)
+      residProcessed$data <- residProcessed$data[validrownames[[mv_it]],, drop=FALSE]
+      attr(residProcessed$data, "validrownames") <- NULL
+    }
     # this calls .preprocess with for each submodel
     calls_W_processed[[mv_it]][["processed"]][["augZXy_cond"]] <- FALSE # not only to ensure the merged value but also for init.optim for each  
   }
@@ -915,16 +924,15 @@ fitmv <- function(submodels, data, fixed=NULL, init=list(), lower=list(), upper=
   mc["submodels"] <- NULL
   mc["formula."] <- NULL 
   mc[["what_checked"]] <- "fitmv() call" 
-  mc[[1L]] <- get(".check_args_fitme", asNamespace("spaMM")) 
+  mc[[1L]] <- get(".check_args_fitme", asNamespace("spaMM"), inherits=FALSE) 
   eval(mc,parent.frame()) # -> abyss 
   mc["what_checked"] <- NULL 
-  mc["data"] <- NULL
   mc["fixed"] <- NULL
   mc["upper"] <- NULL # to be used only in fitmv_body()
   mc["lower"] <- NULL
   mc["control"] <- NULL
   mc[["calls_W_processed"]] <- calls_W_processed
-  mc[[1L]] <-  get(".merge_processed", asNamespace("spaMM"))
+  mc[[1L]] <-  get(".merge_processed", asNamespace("spaMM"), inherits=FALSE)
   merged <- eval(mc, parent.frame()) # means that arguments of *.merge_processed()* must have default values as mc does not contains defaults of fitmv()
   #
   fixed <- .reformat_parlist(fixed,processed = merged) # reformat user's global 'fixed' argument
@@ -947,7 +955,7 @@ fitmv <- function(submodels, data, fixed=NULL, init=list(), lower=list(), upper=
   mc["formula."] <- NULL 
   mc[["fixedS"]] <- fixedS # to build and merge the inits
   mc$processed <- merged
-  mc[[1L]] <-  get("fitmv_body", asNamespace("spaMM"))
+  mc[[1L]] <-  get("fitmv_body", asNamespace("spaMM"), inherits=FALSE)
   hlcor <- eval(mc,parent.frame()) 
   #
   for (mit in seq_along(calls_W_processed)) {

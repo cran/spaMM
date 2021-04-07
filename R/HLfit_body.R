@@ -746,7 +746,10 @@ HLfit_body <- function(processed,
     return(res)    ########################   R E T U R N fixef + APHLs
   }
   res$eta <- muetablob$sane_eta ## convenient for defining starting values... and also sometimes used by predict() 
-  names(res$eta) <- rownames(processed$data)
+  etanames <- .unlist(attr(processed$data,"validrownames"))
+  if (is.null(etanames)) { # must be all case except main (ie not residModel) fit of a fitmv (=> code to make sure of post-fit residProcessed$data in fitmv())
+    names(res$eta) <- rownames(processed$data)
+  } else names(res$eta) <- etanames
   res$muetablob <- muetablob[c("mu","dmudeta")] # for get_logdispObject, added 11/2016
   ###################
   ## DATA
@@ -927,15 +930,19 @@ HLfit_body <- function(processed,
       ## for beta_v_cov and cAIC's p_d
       # These elements are protected from deletion in stripHLfit() by explicit setdiff(stripnames,c("G_CHMfactor",...)):
       if ("AUGI0_ZX_sparsePrecision" %in% res$MME_method) {
-        BLOB <- auglinmodblob$sXaug$BLOB # 
-        removand <- setdiff(names(BLOB), c("chol_Q","G_CHMfactor","qrXa","factor_inv_Md2hdv2"))
-        # for (st in removand) BLOB[[st]] <- NULL
-        rm(list=removand, pos=BLOB)
-        BLOB$sXaug <- auglinmodblob$sXaug # => BLOB within itself; memory-cheap solution to pb of providing sXaug while easily keeping older contents ofenvir
-        BLOB$dvdloglamMat <- dvdloglamMat
-        BLOB$dvdlogphiMat <- dvdlogphiMat
+        sXaug <- auglinmodblob$sXaug # 
+        #sXaug$AUGI0_ZX$X.pv <- res[["X.pv"]] # NO that would affect the confint -> int_sXaug
+        .init_promises_spprec(sXaug, non_X_ones=FALSE, nullify_X_ones =TRUE) # initialize no promise, only removes X ones...
+        #                                             (but confint might fully reinit them)
+        # qrXa is generally an unevaluated promise => .calc_Md2hdvb2_info_spprec() tests its status. NULLified here
+        # factor_inv_Md2hdv2 is used by spprec code for .calc_d2hdv2_info(). Kept as promise here
+        # $envir aims to provide both the BLOB functionality and the $sXaug itself:
+        envir <- sXaug$BLOB
+        envir$sXaug <- sXaug # => BLOB within itself; memory-cheap 
+        envir$dvdloglamMat <- dvdloglamMat
+        envir$dvdlogphiMat <- dvdlogphiMat
         # somewhere in the object there is sXaug including $AUGI0_ZX$envir$latent_d_list
-        res$envir <- BLOB 
+        res$envir <- envir 
       } else {
         res$envir <- list2env(list(dvdloglamMat=dvdloglamMat, dvdlogphiMat=dvdlogphiMat,## provided if available
                                    sXaug=auglinmodblob$sXaug), ## F I X M E definitely useful, but could we remove some elements?

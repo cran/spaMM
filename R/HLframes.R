@@ -182,8 +182,16 @@
 }
 
 .parseBars <- function (term) { ## derived from findbars, ... 
-  if (inherits(term,"formula") && length(term) == 2L) ## added 2015/03/23
-    return(.parseBars(term[[2]]))  ## process RHS
+  if (inherits(term,"formula") && length(term) == 2L) {## corrected 2021/03/07
+    resu <- .parseBars(term[[2]]) ## process RHS
+    if (is.call(resu)) { # top call spaMM:::.parseBars(~(1|a)) leads here (no LHS, single ranef). resu is not (yet) a list here;
+      #  Then .process_bars => names(barlist) <- seq_along(barlist) on a call leads to nonsense and bug for get_predVar(, re.form=~(1|a))
+      # So we need to convert to list.  (testing if resu is a list in wrong: resu may be NULL)
+      resu <- list(resu)
+      attr(resu,"type") <- attr(resu[[1]],"type") 
+    }
+    return(resu)
+  }
   if (is.name(term) || !is.language(term)) 
     return(NULL)
   if (term[[1]] == as.name("(")) ## i.e. (blob) but not ( | ) 

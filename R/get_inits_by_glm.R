@@ -8,7 +8,9 @@
   if (family$family=="negbin") {
     if (inherits(substitute(shape, env=environment(family$aic)),"call")) family <- Poisson(family$link, trunc=environment(family$aic)$trunc) 
   } else if (family$family=="COMPoisson") {
-    if (inherits(substitute(nu, env=environment(family$aic)),"call")) family <- poisson() ## do not use the loglambda link of the COMPoisson!
+    loc_link <- family$link
+    if (loc_link=="loglambda") loc_link <- "log"
+    if (inherits(substitute(nu, env=environment(family$aic)),"call")) family <- poisson(loc_link) 
   }
   
   if (family$family=="binomial" && NCOL(y)==1L) { 

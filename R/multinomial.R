@@ -2,7 +2,8 @@
 ## explicit argument <=> default values visible in doc
 ## ... <=> no default value eg for responses
 multi <- function(binResponse=c("npos","nneg"),binfamily=binomial(),input="types",...) {
-    return(c(list(family="multi",binResponse=binResponse,binfamily=binfamily,input=input),list(...)))
+  attr(binfamily,"multi") <- TRUE
+  return(c(list(family="multi",binResponse=binResponse,binfamily=binfamily,input=input),list(...)))
 }
 
 binomialize <- function(data,responses,sortedTypes=NULL,binResponse=c("npos","nneg"),depth=Inf,input="types") {

@@ -98,13 +98,13 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
   oricall <- match.call(expand.dots=TRUE) ## mc including dotlist
   #oricall$formula <- .preprocess_formula(formula, env=control.corrHLfit$formula_env) ## Cf comment in .GetValidData_info()
   mc <- oricall
-  mc[[1L]] <- get(".preprocess_formula", asNamespace("spaMM"))  ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
+  mc[[1L]] <- get(".preprocess_formula", asNamespace("spaMM"), inherits=FALSE)  ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
   oricall$formula <- mc$formula <- eval(mc,parent.frame()) # 
-  mc[[1L]] <- get(".check_args_corrHLfit", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
+  mc[[1L]] <- get(".check_args_corrHLfit", asNamespace("spaMM"), inherits=FALSE) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
   mc <- eval(mc,parent.frame()) # returns modified call 
-  mc[[1L]] <- get(".preprocess_corrHLfit", asNamespace("spaMM")) 
+  mc[[1L]] <- get(".preprocess_corrHLfit", asNamespace("spaMM"), inherits=FALSE) 
   mc <- eval(mc,parent.frame()) # returns modified call including an element 'processed'
-  mc[[1L]] <- get("corrHLfit_body", asNamespace("spaMM")) 
+  mc[[1L]] <- get("corrHLfit_body", asNamespace("spaMM"), inherits=FALSE) 
   hlcor <- eval(mc,parent.frame()) 
   .check_conv_glm_reinit()
   if (inherits(hlcor,"HLfitlist")) {

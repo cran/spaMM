@@ -4,7 +4,9 @@ cat(crayon::yellow("\ntest of COMPoisson family:"))
 data("freight")
 # estimation of nu in COMPoisson GLM (Sellers & Shmueli 2010):
 (fitfit <- fitme(broken ~ transfers, data=freight, family = COMPoisson(),method="ML"))
-testthat::expect_equal(environment(fitfit$family$aic)$nu,5.781809,tolerance=1e-6) ## FIXME need a better extractor ## decimals depend on optimzer
+testthat::expect_equal(residVar(fitfit,"fam_parm"),5.781809,tolerance=1e-6) ## decimals depend on optimzer # more public extractor: get_inits_from_fit(fitfitlog)$init$COMP_nu
+(fitfitlog <- fitme(broken ~ transfers, data=freight, family = COMPoisson(link="log"),method="ML"))
+testthat::expect_equal(residVar(fitfitlog,"fam_parm"),5.733456,tolerance=1e-6) 
 # COMPoissonReg::glm.cmp(broken ~ transfers, data=freight)
 ## Crude way to the same result:
 if (spaMM.getOption("example_maxtime")>2.23) {

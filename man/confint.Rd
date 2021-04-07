@@ -6,11 +6,11 @@
 Confidence intervals
 }
 \description{
-This computes confidence intervals for a given parameter, based either on parametric bootstrap or, for \bold{fixed-effect} parameters, on the \code{p_v}-based approximation of the profile likelihood ratio for this parameter. The profiling is over all other fitted parameters, including fixed effects, as well as variances of random effects and spatial correlations if these were fitted. The bootstrap is performed if the \code{parm} argument is a function or a quoted expression or if the \code{boot_args} argument is a list. The profile confidence interval is computed if neither of these conditions is true; in that case \code{parm} must be the name of a \bold{fixed-effect} coefficient.
+This computes confidence intervals for given parameter(s), based either on parametric bootstrap or, for \bold{fixed-effect} parameters, on the \code{p_v}-based approximation of the profile likelihood ratio for this parameter. The profiling is over all other fitted parameters, including fixed effects, as well as variances of random effects and spatial correlations if these were fitted. The bootstrap is performed if the \code{parm} argument is a function or a quoted expression or if the \code{boot_args} argument is a list. The profile confidence interval is computed if neither of these conditions is true; in that case \code{parm} must be the name(s) of some \bold{fixed-effect} coefficient.
 }
 \usage{
 \method{confint}{HLfit}(object, parm, level=0.95, verbose=TRUE, 
-                          boot_args=NULL, ...)
+                          boot_args=NULL, format="default", ...)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -21,15 +21,19 @@ This computes confidence intervals for a given parameter, based either on parame
   this printing is the only visible output.}
   \item{boot_args}{NULL or a list of arguments passed to functions \code{\link{spaMM_boot}} and \code{\link[boot]{boot.ci}}. It must contain element \code{nsim} (for \code{spaMM_boot}). The \code{type} argument of \code{boot.ci} can only be given as element \code{ci_type}, to avoid conflict with the \code{type} argument of \code{spaMM_boot}.
   }
+  \item{format}{Only effective non-default value is \code{"stats"} to return results in the format of the \code{stats::\link[stats]{confint}} result (see Value).}
   \item{\dots}{Additional arguments (maybe not used, but conforming to the generic definition of \code{confint}).}
 }
-\value{For each parameter, if a bootstrap was performed, the result of the \code{boot.ci} call is returned. Otherwise, a list is returned including the confidence \code{interval} for the target parameter, and the fits \code{lowerfit} and \code{upperfit} giving the profile fits at the confidence bounds.
+\value{
+The format of the value varies, but in all cases distinguished below, one or more tables are included, as a \code{table} attribute, in the format of the \code{stats::\link[stats]{confint}} result, to facilitate consistent extraction of results. By default \code{confint} returns invisibly the full values described below, but if \code{format="stats"}, only the \code{table} attribute is returned. 
 
-If intervals are returned for several parameters, a list of such structures is returned.
+If a profile CI has been computed for a single parameter, a list is returned including the confidence \code{interval} as shown by \code{verbose=TRUE}, and the fits \code{lowerfit} and \code{upperfit} giving the profile fits at the confidence bounds. This list bears the \code{table} attribute. 
 
-These results are returned invisibly.
+If a profile CI has been computed for several parameters, a structured list, named according to the parameter names, of such single-parameter results is returned, and a single \code{table} attribute for all parameters is attached to the upper level of the list. 
 
-The \code{boot.ci} return value includes the call to \code{boot.ci}. This call includes the \code{t} vector that makes a bulky display. Some versions of spaMM hacked the object to hide this, but spaMM now only hacks the printing, not the object.
+If a bootstrap was performed, for a single parameter the result of the \code{boot.ci} call is returned, to which a \code{table} attribute is added. This \code{table} is now a list of tables for the different bootstrap CI types (default being \code{normal}, \code{percent}, and \code{basic}), each such table in the format of the \code{stats::confint} results. For several parameters, a named list of \code{boot.ci} results is returned, its names being the parameter names, and the \code{table} attribute is attached to the upper level of the list. 
+
+The \code{boot.ci} return value for each parameter includes the call to \code{boot.ci}. This call is typically shown including a long \code{t} vector, which makes a bulky display. spaMM hacks the printing to abbreviate long \code{t}s.
 }
 \examples{
 % checked in test-confint.R

@@ -37,7 +37,7 @@
 \alias{overcat} % used in probitgem. Infusion and blackbox both have .overcat()
 
 \alias{crack} % not doc'ed but used in an example :-)
-
+\alias{recond} % not doc'ed and used in test
 
 \title{Internal spaMM Functions}
 \description{

@@ -312,7 +312,7 @@ if (FALSE) {
 
 
 .update_formula <- function (old, new, ...) { 
-  C_updateform <- get("C_updateform",asNamespace("stats")) ## not kocher?
+  C_updateform <- get("C_updateform",asNamespace("stats"), inherits=FALSE) ## not kocher?
   tmp <- do.call(".Call",list(C_updateform, as.formula(old), as.formula(new))) # circumventing RcppExports' kind bureaucracy...  
   out <- formula(terms.formula(tmp, simplify = FALSE))
   out <- .fixFormulaObject(out)

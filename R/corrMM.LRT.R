@@ -58,26 +58,20 @@ fixedLRT <- function(  ## interface to .LRT or (for devel only) .corrMM_LRT
   ## but fixedLRT is not used in these scripts, so it can make a different assumption
   spatial <- .findSpatial(formula)
   if ( length(spatial)) { ## not list()
-    if (missing(fittingFunction)) { ## guessing:
-      if (nrow(data)<300L) {
-        mc$fittingFunction <- "corrHLfit" ## leverage computation is fast
-        mc$method <- NULL
-        mc$HLmethod <- METHOD
-      } else {
-        mc$fittingFunction <- "fitme"
-        mc$HLmethod <- NULL
-        mc$method <- METHOD
-      }
+    if (missing(fittingFunction)) { # __F I X M E__ review change in v 3.7.16 (corrHLfit...)
+      mc$fittingFunction <- "fitme"
+      mc$HLmethod <- NULL
+      mc$method <- METHOD
     }
     ## both will use p_v for the optim steps, we need to distinguish whether some REML correction is used in iterative algo :
     if ( METHOD %in% c("ML","PQL/L","SEM") || substr(METHOD,0,2) == "ML") {
-      mc[[1L]] <- get(".LRT", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
+      mc[[1L]] <- get(".LRT", asNamespace("spaMM"), inherits=FALSE) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
     } else { ## EQL, REPQL or REML variants: 
       stop(paste0("Likelihood-ratio test not (or no longer) implemented for method ",METHOD)) # .corrMM_LRT long removed
       # FIXME typos (e.g. "PQLL") are not detected...
     }
   } else {
-    mc[[1L]] <- get(".LRT", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
+    mc[[1L]] <- get(".LRT", asNamespace("spaMM"), inherits=FALSE) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
     mc$method <- NULL
     mc$HLmethod <- METHOD
     ## No maxit, restarts
@@ -95,10 +89,22 @@ fixedLRT <- function(  ## interface to .LRT or (for devel only) .corrMM_LRT
       mc[["init"]] <- mc$init.corrHLfit
       mc["init.corrHLfit"] <- NULL
     }
-    fixed <- c(mc$ranFix,mc$ranPars) #,mc$etaFix)
+    fixed <- c(eval(mc$ranFix),eval(mc$ranPars)) #,mc$etaFix)
     if ( ! is.null(fixed)) {
       mc[["fixed"]] <- fixed
       mc["ranFix"] <- NULL
+      mc["ranPars"] <- NULL
+      #mc["etaFix"] <- NULL
+    }
+  } else if (mc$fittingFunction=="corrHLfit") {
+    if ( ! is.null(mc$"init")) {
+      mc[["init.corrHLfit"]] <- mc$init
+      mc["init"] <- NULL
+    }
+    fixed <- c(eval(mc$ranFix),eval(mc$ranPars)) #,mc$etaFix)
+    if ( ! is.null(fixed)) {
+      mc[["ranFix"]] <- fixed
+      mc["fixed"] <- NULL
       mc["ranPars"] <- NULL
       #mc["etaFix"] <- NULL
     }

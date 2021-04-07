@@ -258,6 +258,30 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// is_evaluated
+bool is_evaluated(Symbol name, Environment env);
+RcppExport SEXP _spaMM_is_evaluated(SEXP nameSEXP, SEXP envSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Symbol >::type name(nameSEXP);
+    Rcpp::traits::input_parameter< Environment >::type env(envSEXP);
+    rcpp_result_gen = Rcpp::wrap(is_evaluated(name, env));
+    return rcpp_result_gen;
+END_RCPP
+}
+// is_promise2
+bool is_promise2(Symbol name, Environment env);
+RcppExport SEXP _spaMM_is_promise2(SEXP nameSEXP, SEXP envSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Symbol >::type name(nameSEXP);
+    Rcpp::traits::input_parameter< Environment >::type env(envSEXP);
+    rcpp_result_gen = Rcpp::wrap(is_promise2(name, env));
+    return rcpp_result_gen;
+END_RCPP
+}
 // rankinfo
 SEXP rankinfo(SEXP x, SEXP tol);
 RcppExport SEXP _spaMM_rankinfo(SEXP xSEXP, SEXP tolSEXP) {
@@ -539,6 +563,8 @@ static const R_CallMethodDef CallEntries[] = {
     {"_spaMM_makelong2", (DL_FUNC) &_spaMM_makelong2, 2},
     {"_spaMM_C_dispInv", (DL_FUNC) &_spaMM_C_dispInv, 1},
     {"_spaMM_logit", (DL_FUNC) &_spaMM_logit, 1},
+    {"_spaMM_is_evaluated", (DL_FUNC) &_spaMM_is_evaluated, 2},
+    {"_spaMM_is_promise2", (DL_FUNC) &_spaMM_is_promise2, 2},
     {"_spaMM_rankinfo", (DL_FUNC) &_spaMM_rankinfo, 2},
     {"_spaMM_leverages", (DL_FUNC) &_spaMM_leverages, 1},
     {"_spaMM_sweepZ1W", (DL_FUNC) &_spaMM_sweepZ1W, 2},

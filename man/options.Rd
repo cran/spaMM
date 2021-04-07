@@ -23,7 +23,7 @@ spaMM.getOption(x)
   \describe{
 \item{\code{LevenbergM=NULL}:}{NULL or boolean. Whether to use a Levenberg-Marquardt-like algorithm (see Details) by default in most computations. But it is advised to use instead \code{control.HLfit=list(LevenbergM=...)} to control this on a case-by-case basis. The joint default behaviour is that Levenberg-Marquardt is used by default for binomial response data that takes only extreme values (in particular, for binary 0/1 response), and that for other models the fitting algorithm switches to it if divergence is suspected. \code{FALSE} inhibits its use; \code{TRUE} forces its use for all iterative least-square fits, except when 'confint()' is called.}
 
-\item{\code{example_maxtime=0.7}:}{Used in the documentation to control whether the longer examples should be run. 
+\item{\code{example_maxtime=0.7}:}{Used in the documentation and tests to control whether the longer examples should be run. 
 The approximate running time of given examples on one author's laptop is compared to this value.} 
 \item{\code{optimizer1D="optimize"}:}{Optimizer for one-dimensional optimization. If you want to control the initial value, you should select another optimizer.}
 \item{\code{optimizer=".safe_opt"}:}{Optimizer for optimization in several dimensions. Use \code{optimizer="nloptr"} to call \code{\link[nloptr]{nloptr}} with method \code{"NLOPT_LN_BOBYQA"}; use \code{optimizer="bobyqa"} to call \code{\link[minqa]{bobyqa}}; and use \code{optimizer="L-BFGS-B"} to call \code{\link{optim}} with method \code{"L-BFGS-B"}. The default \code{".safe_opt"} uses \code{nloptr} except in some cases where it expects or detects problems with it (the source coe should be consulted for details). The optimizer can also be specified on a fit-by-fit basis as the value of \code{control$optimizer} in a \code{fitme} call, or as the value of \code{control.corrHLfit$optimizer}.
@@ -66,7 +66,7 @@ Jorge Nocedal and Stephen J. Wright (1999) Numerical Optimization. Springer-Verl
   \code{NULL} if the option is unset.
 
   For \code{spaMM.options()}, a list of all set options.  For
-  \code{spaMM.options(name)}, a list of length one containing the set value,
+  \code{spaMM.options(<name>)}, a list of length one containing the set value,
   or \code{NULL} if it is unset.  For uses setting one or more options,
   a list with the previous values of the options changed (returned
   invisibly).

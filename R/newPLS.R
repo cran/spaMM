@@ -23,14 +23,12 @@ get_from_MME.default <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
 
 get_from_MME.sparseMatrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
   method <- attr(sXaug,"get_from")
-  if (length(method)==0L) {
+  if (is.null(method)) {
     method <- "'sXaug' has no 'get_from' attribute."
     ## : useful for trace(get_from.sparseMatrix,exit=quote(print(method)))
     get_from_MME_default.Matrix(sXaug=sXaug,which=which,szAug=szAug,B=B,...)
   # } else if ( method=="sXaug_Matrix_QRP_scaled") {
   #   get_from.sXaug_Matrix_QRP_scaled(sXaug=sXaug,which=which,szAug=szAug,B=B,...)
-  # } else if ( method=="sXaug_Matrix_cholP_scaled") {
-  #   get_from.sXaug_Matrix_cholP_scaled(sXaug=sXaug,which=which,szAug=szAug,B=B,...)
   # } else if ( method=="sXaug_EigenSparse_QR_scaled") {
   #   get_from.sXaug_EigenSparse_QR_scaled(sXaug=sXaug,which=which,szAug=szAug,B=B,...)
   # } else if ( method=="sXaug_EigenSparse_QRP_scaled") {
@@ -40,7 +38,7 @@ get_from_MME.sparseMatrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
   } else {
     ## using match.call() is terribly slow! => passing ... without match.call
   #  warning("method without ad hoc code in get_from.sparseMatrix")
-    locfn <- get(method,asNamespace("spaMM"))
+    locfn <- get(method,asNamespace("spaMM"), inherits=FALSE)
     locfn(sXaug=sXaug,which=which,szAug=szAug,B=B,...)
   }
   ## direct calls of the function may be faster but require ad hoc programming...
@@ -207,19 +205,6 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
   neg.d2f_dv_dloglam <- .unlist(neg.d2f_dv_dloglam)
   return(as.vector(neg.d2f_dv_dloglam))
 }
-
-# .solve_CHM <- function(chm, B) { # ~ solve on a CHMfactor objects, but assuming there is a BLOB attribute to store additional info
-# This is not useful, bc the CHMfactor class does so well...
-#   BLOB <- attr(chm,"BLOB") ## an environment
-#   if (is.null(B)) {
-#     if (is.null(BLOB$inv_d2hdv2)) BLOB$inv_d2hdv2 <- - Matrix::solve(chm) 
-#     return(BLOB$inv_d2hdv2) # dsC
-#   } else { 
-#     if (is.null(BLOB$inv_d2hdv2)) {
-#       return( - Matrix::solve(chm,B,system="A"))
-#     } else return(BLOB$inv_d2hdv2 %*% B)
-#   }
-# }
 
 .calc_dvdloglamMat_new <- function(neg.d2f_dv_dloglam,
                                    sXaug, d2hdv2_info=NULL ## use either one
@@ -720,14 +705,8 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
       pwy_o <- y_o*sqrt(extranorm/pwphi) # extranorm is for better accuracy of next step
       sum_pwt_Q_y_o_2 <- .sum_pwt_Q_y_o_2(sXaug,pwy_o)
       pwSSE <- (sum(pwy_o^2)-sum_pwt_Q_y_o_2)/extranorm ## sum() : vectors of different lengths !
-      if (inherits(sXaug,"AUGI0_ZX_sparsePrecision")) {
-        logdet_R_scaled_v <- get_from_MME(sXaug,"logdet_sqrt_d2hdv2") - sum(log(attr(sXaug,"w.ranef")))/2  
-        X_scaled_H_unscaled_logdet_r22 <- get_from_MME(sXaug,"logdet_r22")
-        logdet_R_scaled_b_v <- logdet_R_scaled_v+X_scaled_H_unscaled_logdet_r22 ## p_bv substract all of this and p_v cancels the r22 part 
-      } else {
-        if ( ! is.null(processed$X.Re)) X_scaled_H_unscaled_logdet_r22 <- get_from_MME(sXaug,"logdet_r22")
-        logdet_R_scaled_b_v <- get_from_MME(sXaug,"logdet_R_scaled_b_v")
-      }    
+      logdet_R_scaled_b_v <- get_from_MME(sXaug,"logdet_R_scaled_b_v") # logdet_R_scaled_v+X_scaled_H_unscaled_logdet_r22 ## p_bv substract all of this and p_v cancels the r22 part 
+      X_scaled_H_unscaled_logdet_r22 <- get_from_MME(sXaug,"logdet_r22") # if spprec: already available in BLOB from logdet_R_scaled_b_v computation...
     }
     # We obtain phi_est IN ANOTHER MODEL than in the general formulation as this phi also impacts the ranef variances
     ## SSE [sum of nobs+nr terms]/nobs provides an estimate of a scaling factor
@@ -751,13 +730,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
     pwy_o <- (processed$y-processed$off)/sqrt(pwphi/extranorm) # extranorm is for better accuracy of next step
     sum_pwt_Q_y_o_2 <- .sum_pwt_Q_y_o_2(sXaug,pwy_o)
     pwSSE <- (sum(pwy_o^2)-sum_pwt_Q_y_o_2)/extranorm ## vectors of different lengths !
-    if (inherits(sXaug,"AUGI0_ZX_sparsePrecision")) {
-      logdet_R_scaled_v <- get_from_MME(sXaug,"logdet_sqrt_d2hdv2") - sum(log(attr(sXaug,"w.ranef")))/2  
-      X_scaled_H_unscaled_logdet_r22 <- get_from_MME(sXaug,"logdet_r22") 
-      logdet_R_scaled_b_v <- logdet_R_scaled_v + X_scaled_H_unscaled_logdet_r22 ## p_bv substract all of this and p_v cancels the r22 part 
-    } else {
-      logdet_R_scaled_b_v <- get_from_MME(sXaug,"logdet_R_scaled_b_v")
-    }    
+    logdet_R_scaled_b_v <- get_from_MME(sXaug,"logdet_R_scaled_b_v")
     # we don't assume here that phi_est is at its MLE (in contrast to null-phi_est case => Bates's formulas)
     cliklike <- (pwSSE+sum(log(2*pi*pwphi)))/2
     if (FALSE) {
@@ -784,8 +757,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
       if (is.null(processed$X.Re)) { # canonical REML
         X_scaled_p_bv <- p_base + pforpv*log(2*pi)/2
       } else {
-        if ( ! inherits(sXaug,"AUGI0_ZX_sparsePrecision")) X_scaled_H_unscaled_logdet_r22 <- get_from_MME(sXaug,"logdet_r22")
-        resu$p_v <- p_base + X_scaled_H_unscaled_logdet_r22 
+        resu$p_v <- p_base + get_from_MME(sXaug,"logdet_r22") 
       }
     }
   }

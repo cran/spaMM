@@ -897,17 +897,21 @@
   rhs <- attr(sXaug, "w.resid")*(etamo-off_newparm- i_etamo)
   zInfo$m_grad_obj <- zInfo$m_grad_obj[-parmcol_ZX]+
     c(drop(crossprod(ZAL,rhs)),drop(crossprod(sXaug$AUGI0_ZX$X.pv[,-parmcol_X,drop=FALSE],rhs))) # tjrs zInfoo$m_grad_obj
-  ## sXaug changes: 
-  int_AUGI0_ZX <- as.list(sXaug$AUGI0_ZX) ## as.list() local copy avoids global modifs of original sXaug$AUGI0_ZX envir
+  #
+  int_sXaug <- sXaug # list with two elements: environments AUGI0_ZX and BLOB  
+  # Modify $AUGI0_ZX:
+  int_AUGI0_ZX <- as.list(sXaug$AUGI0_ZX) ## as.list() local copy avoids global modifs of original sXaug$AUGI0_ZX which is an envir
   int_AUGI0_ZX$X.pv <- int_AUGI0_ZX$X.pv[,-(parmcol_X),drop=FALSE]
   int_AUGI0_ZX$ZeroBlock <- int_AUGI0_ZX$ZeroBlock[,-(parmcol_X),drop=FALSE]
-  # Assuming sXaug not being an envir, sXaug$AUGI0_ZX <- int_AUGI0_ZX would be correct, creating a local copy of sXaug, 
-  #  but less explicit than the following: 
-  int_sXaug <- sXaug ## Assuming sXaug not being an envir, then the following does not affect sXaug.
-  int_sXaug$AUGI0_ZX <- int_AUGI0_ZX ## Replaces an envir by a list i nthe local copy; 
-  # ?__F I X M E__? it's unsafe as $BLOB is left unchanged (and still belong to the original object) while it might contain info reused to solve the system:
-  # Theis attr(.,"pforpv") is used to determined whether there are beta coeffs to compute in .AUGI0_ZX_sparsePrecision()
-  # int_sXaug$BLOB <- list2env(list(), parent=environment(.AUGI0_ZX_sparsePrecision))
+  int_sXaug$AUGI0_ZX <- int_AUGI0_ZX ## Replaces an envir by a list in the local copy;
+  # Modify $BLOB, leaving untouched "G_CHMfactor" "Gmat" "chol_Q" "perm" .
+  #  ***which will presumably be written over since they are not treated as promises***
+  # But any preexisting evaluated promise should in principle be written over. 
+  # A conflict in dimension between functions of X would likely be a conflict between previously and newly evaluated promise  
+  .init_promises_spprec(sXaug=int_sXaug) # reinit X.pv promises (ZtWX XtX XtWX r12 qrXa DpD LZtWX...)
+  #    and non-X.Pv promises (Md2hdv2 tcrossfac_Md2hdv2 inv_L_G_ZtsqrW invL_G.P sortPerm...), which may not be needed. 
+  # This won't use the original fit promises anyway (as .confint_LRT_single_par() -> get_HLCorcall() -> .preprocess() -> fresh .init_promises_spprec)
+  # This attr(.,"pforpv") is used to determined whether there are beta coeffs to compute in .AUGI0_ZX_sparsePrecision()
   attr(int_sXaug,"pforpv") <- attr(int_sXaug,"pforpv") - length(parmcol_X) # a priori  -1
   v_h_beta_vec[-(parmcol_ZX)] <- old_v_h_beta_vec[-(parmcol_ZX)]+ unlist(get_from_MME(int_sXaug,szAug=zInfo)) 
   return(list(v_h_beta=relist(v_h_beta_vec,old_v_h_beta))) 

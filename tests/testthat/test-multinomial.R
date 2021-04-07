@@ -30,7 +30,7 @@ if (spaMM.getOption("example_maxtime")>1.7) {
   } 
   ## Fitting the same variance for all binomial responses           
   multifit <- fitme(cbind(npos,nneg)~1+Matern(1|x+y),data=genoInSpace, 
-                    family=multi(responses=c("type1","type2")),
+                    family=multi(responses=c("type1","type2")), init=list(lambda=NA),
                     fixed=list(rho=1,nu=0.5), method=method)
   if (packageVersion("spaMM")>"3.5.59") {
     abyss <- capture.output(summary(multifit)) # to capture display bugs

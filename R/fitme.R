@@ -110,15 +110,15 @@ fitme <- function(formula,data, ## matches minimal call of HLfit
   time1 <- Sys.time()
   oricall <- match.call(expand.dots=TRUE) ## mc including dotlist
   mc <- oricall
-  mc[[1L]] <- get(".preprocess_formula", asNamespace("spaMM"))  ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
+  mc[[1L]] <- get(".preprocess_formula", asNamespace("spaMM"), inherits=FALSE)  ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
   oricall$formula <- mc$formula <- eval(mc,parent.frame()) # 
   ## : among other effects, forces eval of promise for formula, so re-evaluating the call later will work 
   ## [cf probitgem re-evaluating fitme(form,.....) in eval_smoothtest()]
-  mc[[1L]] <- get(".check_args_fitme", asNamespace("spaMM")) 
+  mc[[1L]] <- get(".check_args_fitme", asNamespace("spaMM"), inherits=FALSE) 
   mc <- eval(mc,parent.frame()) # 
-  mc[[1L]] <- get(".preprocess_fitme", asNamespace("spaMM"))
+  mc[[1L]] <- get(".preprocess_fitme", asNamespace("spaMM"), inherits=FALSE)
   mc <- eval(mc,parent.frame()) # returns modified call including an element 'processed'
-  mc[[1L]] <- get("fitme_body", asNamespace("spaMM")) 
+  mc[[1L]] <- get("fitme_body", asNamespace("spaMM"), inherits=FALSE) 
   hlcor <- eval(mc,parent.frame()) 
   .check_conv_glm_reinit()
   if (inherits(hlcor,"HLfitlist")) {

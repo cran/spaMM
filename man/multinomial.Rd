@@ -56,14 +56,16 @@ binomialize(data,responses,sortedTypes=NULL,binResponse=c("npos","nneg"),
   } 
 }
 \details{
-  A multinomial response, say counts 17, 13, 25, 8, 3, 1 for types \code{type1} to \code{type6} can be represented as a series of nested binomials
+  A multinomial response, say counts 17, 13, 25, 8, 3, 1 for types \code{type1} to \code{type6}, can be represented as a series of nested binomials
   e.g. \code{type1} against others (17 vs 50) then among these 50 others, \code{type2} versus others (13 vs 37), etc.
   The \code{binomialize} function generates such a representation. By default the representation considers types in decreasing order of the number of positives, i.e. first \code{type3} against others (25 vs 42), then \code{type1} against others within these 42, etc. It stops if it has reached \code{depth} nested binomial responses. This can be modified by the \code{sortedTypes} argument, e.g. \code{sortedTypes=c("type6","type4","type2")}. 
 \code{binomialize} returns a list of data frames which can be directly provided as a \code{data} argument for the fitting functions, with binomial response.
 
-Alternatively, one can provide the multinomial response data frame, which will be internally converted to nested binomial data if the \code{family} argument is a call to \code{multinomial} (see examples).    
+Alternatively, one can provide the multinomial response data frame, which will be internally converted to nested binomial data if the \code{family} argument is a call to \code{multinomial} (see Examples).    
 
-For mixed models, the multinomial data can be fitted to a model with the same correlation parameters, and either the same or different variances of random effects, for all binomial responses. Which analysis is performed depends on whether the variance are fitted by \dQuote{outer optimization} or by \code{HLfit}'s iterative algorithm, as controlled by the \code{init} or \code{init.corrHLfit} arguments (see Examples).   
+For mixed models, the multinomial data can be fitted to a model with the same correlation parameters, and either the same or different variances of random effects, for all binomial responses. Which analysis is performed depends on whether the variances are fitted by \dQuote{outer optimization} or by \code{HLfit}'s \dQuote{inner iterative} algorithm, as controlled by the \code{init} or \code{init.corrHLfit} arguments (see Examples). These initial values therefore affect the definition of the model being fitted.      
+\code{corrHLfit} will fit different variances by default. Adding an \code{init.corrHLfit} will force estimation of a single variance accross models. \code{fitme}'s default optimization strategy is more complex, and has changed and still change over versions. This creates a \bold{back-compatibility issue} where the model to be fitted may change over versions of spaMM. To avoid that, it is strongly advised to use an explicit initial value when fitting a \code{multi} model by \code{fitme}.        
+
 }
 \value{
 \code{binomialize} returns a list of data frames appropriate for analysis as binomial response. Each data frame contains the original one plus
@@ -82,7 +84,7 @@ set.seed(123) # Simulate colours, then fit colour frequencies:
 iriscol$col <- sample(c("yellow", "purple", "blue"),replace = TRUE, 
                       size = nrow(iriscol), prob=c(0.5,0.3,0.2))
 colfit <- fitme(cbind(npos,nneg) ~ 1+(1|Species), family=multi(responses="col"), 
-                data=iriscol)
+                data=iriscol, init=list(lambda=NA)) # note warning if no 'init'...
 head(fitted(colfit))
 
 # To only generate the binomial datasets:
@@ -110,7 +112,7 @@ genoInSpace <- data.frame(type1=alleles[genecopy1],type2=alleles[genecopy2],
                           x=runif(50),y=runif(50))
 method <- "PQL" # for faster exampple
 
-## Fitting the same variance for all binomial responses:           
+## Fitting distinct variances for all binomial responses:           
 
 multifit <- corrHLfit(cbind(npos,nneg)~1+Matern(1|x+y),data=genoInSpace, 
                       family=multi(responses=c("type1","type2")),
@@ -119,24 +121,23 @@ length(unique(unlist(lapply(multifit, get_ranPars, which="lambda")))) # 3
 
 multifit <- fitme(cbind(npos,nneg)~1+Matern(1|x+y),data=genoInSpace, 
                   family=multi(responses=c("type1","type2")),
-                  fixed=list(rho=1,nu=0.5), 
                   init=list(lambda=NaN), # forcing 'inner' estimation for fitme 
-                  method=method)
+                  fixed=list(rho=1,nu=0.5), method=method)
 length(unique(unlist(lapply(multifit, get_ranPars, which="lambda")))) # 3          
 
 ## Fitting the same variance for all binomial responses:           
 
 multifit <- fitme(cbind(npos,nneg)~1+Matern(1|x+y),data=genoInSpace, 
                   family=multi(responses=c("type1","type2")),
+                  init=list(lambda=NA), # forcing 'outer' estimation for fitme 
                   fixed=list(rho=1,nu=0.5), method=method)
 length(unique(unlist(lapply(multifit, get_ranPars, which="lambda")))) # 1          
 
 multifit <- 
   corrHLfit(cbind(npos,nneg)~1+Matern(1|x+y),data=genoInSpace, 
             family=multi(responses=c("type1","type2")),
-            ranFix=list(rho=1,nu=0.5), 
-            init.corrHLfit=list(lambda=1),  # forcing 'outer' estimation for corrHLfit 
-            method=method)
+            init.corrHLfit=list(lambda=1), # forcing 'outer' estimation for corrHLfit 
+            ranFix=list(rho=1,nu=0.5), method=method)
 length(unique(unlist(lapply(multifit, get_ranPars, which="lambda")))) # 1          
 }
 }

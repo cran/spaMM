@@ -3,6 +3,32 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 3.7.34}{   
+\subsection{NEW FEATURES}{
+\itemize{
+\item Non-canonical links implemented for the COMPoisson family. 
+\item More precise computation of prediction variance for some cases with vanishing residual variance (and possibly a few other cases). 
+\item New 'which' value in residVar(.,which="fam_parm") to extract the family dispersion parameter of COMPoisson and [T]negbin families. 
+\item A "table" attribute in the format of the stats::confint() result is added to the confint.HLfit() result for profile confidence intervals.
+}
+}
+\subsection{USER-LEVEL CHANGES}{
+\itemize{
+\item Possibly large speed gains for a small class of REML fits on large data sets/random effects with many levels, due to these being now more likely to be fitted by ``outer'' optimization. 
+\item Fits of models with a resid.model of the form ~ 0 + offset(.) should also be faster. This affects the 'mean_fit' performed by IsoriX::isofit(), for example. 
+\item how.HLfit()'s message about fitting method is less cryptic. Its return value is unchanged.
+\item Warning added about potential back-compatibility issue in some multinomial fits due to changes in default optimization strategy.
+}
+}
+\subsection{FIXED BUGS}{
+\itemize{
+\item Issue with missing data in multivariate-response fits, that could show up when summary()zing the fit.
+\item Prediction variance calculations with a re.form of the form '[no LHS] ~ <single random-effect>' ignored that random-effect (this did not occur with a dummy LHS nor with several random effects).
+\item VarCorr() would report NA instead of the variance for random-slope terms without correlation parameter [cf terms of the form ( 0 + X |  <grouping factor> )].
+\item summary.HLfit() could fail in some programming contexts.
+}
+}
+}
 \section{CHANGES UP TO VERSION 3.7.0}{  
 \subsection{NEW FEATURES}{
 \itemize{

@@ -206,3 +206,15 @@ SEXP logit(NumericVector mu) {
   for (int it=0; it<mu.size(); it++) mu[it]=log(x_d_omx(mu[it]));
   return(wrap(mu));
 }
+
+// [[Rcpp::export(.is_evaluated)]]
+bool is_evaluated(Symbol name, Environment env) {
+  SEXP object = Rf_findVar(name, env);
+  return PRVALUE(object) != R_UnboundValue;
+}
+
+// [[Rcpp::export(.is_promise)]]
+bool is_promise2(Symbol name, Environment env) {
+  SEXP object = Rf_findVar(name, env);
+  return (TYPEOF (object) == PROMSXP);
+}

@@ -3,7 +3,7 @@
 ## the print(summary()) is required if the "arglist" is a member (eg as.list(<call>));
 ## summary alone would print nothing
 print.arglist <- function(x,...) {
-  if (inherits(x,"environment")) { ## not claer that this case shoudl occur, but it occurs notably in HLCor.args of refit
+  if (inherits(x,"environment")) { ## not clear that this case should occur, but it occurs notably in HLCor.args of refit
     str(x) ## bc summary(<env>) is a bug
   } else print(summary(x,...))
 }
@@ -258,8 +258,9 @@ if (FALSE) {
   if (! is.null(invLs)) ranCoefs <- trRanCoefs
   ranCoefs_blob <- processed$ranCoefs_blob
   ZAlist <- processed$ZAlist 
+  nrand <- length(ZAlist)
   cum_n_u_h <- processed$cum_n_u_h
-  if (is.null(ranCoefs_blob)) { ## in call from .preprocess(), allows simplified user input as numeric vector
+  if (nrand && is.null(ranCoefs_blob)) { ## in call from .preprocess(), allows simplified user input as numeric vector
     Xi_cols <- attr(ZAlist, "Xi_cols")
     isRandomSlope <- Xi_cols>1L ## FIXME seems oK for later code but semantically sloppy, cf (X-1|id) terms
     hasRandomSlope <- any(isRandomSlope)
@@ -276,7 +277,6 @@ if (FALSE) {
     ranCoefs_blob <- list(isRandomSlope=isRandomSlope, is_set=(isRandomSlope & FALSE),
                           longLv_templates=longLv_templates, one_time_check_not_done=TRUE)
     if (hasRandomSlope && ! is.null(ranCoefs)) { ## ranCoefs in preprocess: fixed values
-      nrand <- length(isRandomSlope)
       if (is.numeric(ranCoefs)) {
         if (sum(isRandomSlope)==1L) {
           ranCoefs <- vector("list", nrand)
@@ -842,11 +842,10 @@ spaMM_Gamma <- local({
          },
          COMPoisson = { 
            if (is.null(lambda <- attr(mu,"lambda"))) {
-             lambda <-  family$linkfun(mu,log=FALSE) ## valid bc only the canonical link is implemented 
+             lambda <-  family$mu2lambda(mu) 
            }  
-          
-           th <- log(lambda)
-           attr(th,"mu") <- mu # structure(log(lambda),mu=mu) with mu used by .CMP_linkinv
+           th <- log(lambda) 
+           attr(th,"mu") <- mu # structure(log(lambda),mu=mu) with mu used by .CMP_loglambda_linkinv
            th
          },
          negbin = { #structure(-log(1+(environment(family$aic)$shape)/mu),mu=mu)
@@ -858,8 +857,35 @@ spaMM_Gamma <- local({
   )
 } ## returns values for given mu
 
+.CMP_thetaMuDerivs <- function(mu,family) { # computation of derivatives of inverse of .CMP_calc_dlW_deta_locfn...
+  CMP_env <- environment(family$aic)
+  COMP_nu <- CMP_env$nu
+  if (COMP_nu==1) return(list(Dtheta.Dmu=1/mu, D2theta.Dmu2= - 1/mu^2))
+  # ELSE
+  lambdas <- CMP_env$mu2lambda(mu)
+  len <- length(mu)
+  Dtheta.Dmu <- D2theta.Dmu2 <- numeric(len)
+  for (i in seq_len(len)) {
+    lambdai <- lambdas[[i]]
+    if (lambdai==0) {
+      Dtheta.Dmu <- 1e8 # 1/lambda
+      D2theta.Dmu2 <- - 1e16 # -1/lambda^2
+    } else {
+      moments <- .COMP_Pr_moments(lambda=lambdai,nu=COMP_nu,moments=c("2","3"))
+      mui <- mu[[i]]
+      V <- moments[["2"]] - mui^2 # ...that's the family $variance()...
+      Dtheta.Dmu[i] <- 1/V
+      D2theta.Dmu2[i] <- (moments[["2"]] * (1 + mui) - moments[["3"]] - V*(1-2*mui) - mui^2)/V^3 # computation appended to COMP_Z.nb
+    }
+  }
+  return(list(Dtheta.Dmu=Dtheta.Dmu,D2theta.Dmu2=D2theta.Dmu2))
+}
+
+
+
 .thetaMuDerivs <- function(mu,BinomialDen,family) { ## used for non-canonical links
   familyfam <- family$family
+  if (familyfam == "COMPoisson") return(.CMP_thetaMuDerivs(mu, family))
   if (familyfam=="binomial") muFREQS <- mu/BinomialDen
   if (familyfam == "negbin") NB_shape <- environment(family$aic)$shape
   ## these definitions depend only on the canonical link
@@ -869,8 +895,8 @@ spaMM_Gamma <- local({
                        binomial = 1/(muFREQS*(1-muFREQS)),
                        Gamma = 1/mu^2,
                        negbin = 1/(mu*(1+mu/NB_shape)),
+                       # COMPoisson = 1/CMP_env$variance(mu), # dealt as special case above 
                        stop("code missing")
-                       # COMPoisson has no implemented non-canonical link in which case this point should not be reached
   ) ## values for given mu
   if (familyfam=="binomial") Dtheta.Dmu <- Dtheta.Dmu/BinomialDen
   D2theta.Dmu2 <- switch(familyfam,
@@ -879,8 +905,8 @@ spaMM_Gamma <- local({
                          binomial = -(1-2*muFREQS)/(muFREQS*(1-muFREQS))^2,
                          Gamma = -2/mu^3,
                          negbin = -(1+2*mu/NB_shape)/(mu*(1+mu/NB_shape))^2,
-                         stop("code missing")
-                         # COMPoisson again has no implemented non-canonical link
+                         # COMPoisson dealt as special case above
+                         stop("code missing") 
   ) ## values for given mu
   if (familyfam=="binomial") D2theta.Dmu2 <- D2theta.Dmu2/(BinomialDen^2)
   return(list(Dtheta.Dmu=Dtheta.Dmu,D2theta.Dmu2=D2theta.Dmu2))
@@ -1184,7 +1210,7 @@ spaMM_Gamma <- local({
 } 
 
 #derivatives of GLM weights wrt eta 
-.CMP_calc_dlW_deta_locfn <- function(i,lambdas,mu,COMP_nu) {
+.CMP_calc_dlW_deta_locfn <- function(i,lambdas,mu,COMP_nu) { # (only used for canonical link case)
   lambdai <- lambdas[[i]]
   if (lambdai==0) {
     return(c(dmudeta=0, d2mudeta2=0))
@@ -1192,7 +1218,7 @@ spaMM_Gamma <- local({
   ## ELSE
   moments <- .COMP_Pr_moments(lambda=lambdai,nu=COMP_nu,moments=c("2","3"))
   mui <- mu[[i]]
-  dmu.dlogLambda <- moments[["2"]] - mui^2 # =family$mu.eta() without repeating some computations
+  dmu.dlogLambda <- moments[["2"]] - mui^2 # =family$mu.eta() without repeating some computations    # ...that's the family $variance()...
   d2mu.dlogLambda2 <- moments[["3"]]-mui*moments[["2"]]-2*mui*dmu.dlogLambda
   return(c(dmudeta=dmu.dlogLambda, d2mudeta2=d2mu.dlogLambda2))
 }
@@ -1852,16 +1878,15 @@ spaMM_Gamma <- local({
   return(invX)
 }
 
-.calc_d2hdv2_info <- function(object, ZAL) {
-  if (is.null(factor_inv_Md2hdv2 <- object$envir$factor_inv_Md2hdv2)) {
-    if ( ! is.null(object$envir$G_CHMfactor)) {
-      if (length(object$y) > ncol(object$envir$chol_Q)) { # We precompute inverse(d2hdv2) so that .calc_dvdlogphiMat_new() has ONE costly (r*r) %*% (r*n).
-        if (is.null(factor_inv_Md2hdv2 <- object$envir$factor_inv_Md2hdv2)) {
-          LL <- with(object$envir, Matrix::solve(object$envir$G_CHMfactor, as(object$envir$G_CHMfactor,"pMatrix") %*% chol_Q,system="L")) ## dgCMatrix 
-          object$envir$factor_inv_Md2hdv2 <- Matrix::drop0(LL,tol=.Machine$double.eps)
-        }
-        d2hdv2_info <- - .crossprod(object$envir$factor_inv_Md2hdv2) 
-      } else d2hdv2_info <- object$envir # then .calc_dvdlogphiMat_new() has TWO  (r*r) %*% (r*n) (plus an efficient solve())
+.old_calc_d2hdv2_info <- function(object, ZAL) {
+  envir <- object$envir
+  if (is.null(factor_inv_Md2hdv2 <- envir$factor_inv_Md2hdv2)) { ## old code not using promises
+    if ( ! is.null(envir$G_CHMfactor)) {
+      if (length(object$y) > ncol(envir$chol_Q)) { # We precompute inverse(d2hdv2) so that .calc_dvdlogphiMat_new() has ONE costly (r*r) %*% (r*n).
+        LL <- Matrix::solve(envir$G_CHMfactor, as(envir$G_CHMfactor,"pMatrix") %*% envir$chol_Q,system="L") ## dgCMatrix 
+        envir$factor_inv_Md2hdv2 <- Matrix::drop0(LL,tol=.Machine$double.eps)
+        d2hdv2_info <- - .crossprod(envir$factor_inv_Md2hdv2) 
+      } else d2hdv2_info <- envir # then .calc_dvdlogphiMat_new() has TWO  (r*r) %*% (r*n) (plus an efficient solve())
     } else {
       d2hdv2 <- .calcD2hDv2(ZAL,object$w.resid,object$w.ranef) 
       if (inherits(d2hdv2,"sparseMatrix")) {
@@ -1887,7 +1912,43 @@ spaMM_Gamma <- local({
   return(d2hdv2_info)
 }
 
-.get_glm_phi <- function(fitobject, mv_it=NULL) { 
+.calc_d2hdv2_info <- function(object, ZAL) {
+  if (TRUE) return(.old_calc_d2hdv2_info(object, ZAL))
+  # ELSE
+  envir <- object$envir
+  if ( ! is.null(envir$G_CHMfactor)) { ## spprec code
+    if (! .is_evaluated("factor_inv_Md2hdv2", envir)) {
+      if (length(object$y) > ncol(envir$chol_Q)) { # We precompute inverse(d2hdv2) so that .calc_dvdlogphiMat_new() has ONE costly (r*r) %*% (r*n).
+        d2hdv2_info <- - .crossprod(envir$factor_inv_Md2hdv2) 
+      } else d2hdv2_info <- envir # then .calc_dvdlogphiMat_new() has TWO  (r*r) %*% (r*n) (plus an efficient solve())
+    } else d2hdv2_info <- - .crossprodCpp_d(as.matrix(envir$factor_inv_Md2hdv2), yy=NULL)
+  } else {
+    if (is.null(factor_inv_Md2hdv2 <- envir$factor_inv_Md2hdv2)) { 
+      d2hdv2 <- .calcD2hDv2(ZAL,object$w.resid,object$w.ranef) 
+      if (inherits(d2hdv2,"sparseMatrix")) {
+        d2hdv2_info <- suppressWarnings(try(Cholesky( - d2hdv2,LDL=FALSE,perm=TRUE ), silent=TRUE )) #  '-' ! 
+        if (inherits(d2hdv2_info, "CHMfactor")) {
+          #d2hdv2_info <- structure(d2hdv2_info, BLOB=list2env(list(), parent=environment(.solve_CHM)))
+          rank <- ncol(d2hdv2)
+        } else {
+          d2hdv2_info <- qr(d2hdv2, tol=spaMM.getOption("qrTolerance")) # sparseQR
+          rank <- sum(abs(diag(qrR(d2hdv2_info,backPermute=FALSE)))>1e-7)
+        }
+      } else { # d2hdv2 was a matrix or a Matrix in dense format (dgeMatrix...)
+        d2hdv2_info <- qr(d2hdv2, tol=spaMM.getOption("qrTolerance")) # qr 
+        rank <- d2hdv2_info$rank
+      }
+      if (rank<ncol(d2hdv2)) {
+        d2hdv2_info <- .force_solve(d2hdv2) # inverse(d2hdv2)
+      } # else we keep the QR facto.
+    } else d2hdv2_info <- - .crossprodCpp_d(as.matrix(envir$factor_inv_Md2hdv2), yy=NULL) # inverse(d2hdv2) # much faster than Matrix::crossprod(dsCMatrix...)
+    #                       and still faster than any of the as_mat variants, eg .Rcpp_crossprod(factor_inv_Md2hdv2, BB = NULL, as_mat=TRUE) 
+    #                  
+  }
+  return(d2hdv2_info)
+}
+
+.get_glm_phi <- function(fitobject, mv_it=NULL, only_offset=FALSE) { 
   # gets always a single glm fit, not the list of the mv case
   if ( ! is.null(mv_it)) { # fitmv case. Then glm_phi may be (1) an element of phi.object[[mv_it]] (2) envir$glmS_phi[[mv_it]]
     glm_phi <- fitobject$phi.object[[mv_it]][["glm_phi"]] 
@@ -1897,9 +1958,16 @@ spaMM_Gamma <- local({
       if (is.null(fitobject$envir$glmS_phi)) fitobject$envir$glmS_phi <- vector("list", length(vec_nobs)) 
       cum_nobs <- c(0L,cumsum(vec_nobs))
       resp_range <- .subrange(cumul=cum_nobs, it=mv_it)
-      glm_phi_args <- c(fitobject$phi.object[[mv_it]]$glm_phi_args, 
+      validrownames <- attr(fitobject$data,"validrownames")[[mv_it]]
+      if (only_offset) {
+        nobs <- length(resp_range)
+        glm_phi_args <- list(formula=.get_phiform(fitobject, mv_it), 
+                             lev=rep(0,nobs), dev.res=rep(1,nobs), control=list(), # dummy values
+                             data=fitobject$data[validrownames,,drop=FALSE], 
+                             family= .get_phifam(fitobject, mv_it))
+      } else glm_phi_args <- c(fitobject$phi.object[[mv_it]]$glm_phi_args, 
                         list(formula=.get_phiform(fitobject, mv_it), 
-                             lev=fitobject$lev_phi[resp_range], data=fitobject$data, 
+                             lev=fitobject$lev_phi[resp_range], data=fitobject$data[validrownames,,drop=FALSE], 
                              family= .get_phifam(fitobject, mv_it))
       )
       fitobject$envir$glmS_phi[[mv_it]] <- glm_phi <- do.call(".calc_dispGammaGLM", glm_phi_args)
@@ -1908,7 +1976,13 @@ spaMM_Gamma <- local({
     glm_phi <- fitobject$phi.object[["glm_phi"]] 
     if (is.null(glm_phi)) glm_phi <- fitobject$envir$glm_phi
     if (is.null(glm_phi)) { 
-      glm_phi_args <- c(fitobject$phi.object$glm_phi_args, 
+      if (only_offset) {
+        nobs <- nrow(fitobject$X.pv)
+        glm_phi_args <- list(formula=.get_phiform(fitobject),
+                             lev=rep(0,nobs), dev.res=rep(1,nobs), control=list(), # dummy values
+                             data=fitobject$data, 
+                             family= .get_phifam(fitobject))
+      } else glm_phi_args <- c(fitobject$phi.object$glm_phi_args, 
                         list(formula=.get_phiform(fitobject),
                              lev=fitobject$lev_phi, data=fitobject$data, 
                              family= .get_phifam(fitobject))
@@ -1918,8 +1992,6 @@ spaMM_Gamma <- local({
   }
   return(glm_phi)
 }
-
-
 
 .calc_wAugX <- function(XZ_0I,sqrt.ww) {
   return(.Dvec_times_m_Matrix(sqrt.ww, XZ_0I)) # sweep(TT,MARGIN=1,sqrt.ww,`*`) # rWW %*%TT
@@ -1940,8 +2012,9 @@ spaMM_Gamma <- local({
   return(XZ_0I) ## aug design matrix 
 }
 
+# mostly post-fit
 .calc_Md2hdvb2_info_spprec_by_QR <- function(envir, which="tcrossfac_v_beta_cov") {## sparse qr is fast
-  qr_R <- qrR(envir$qrXa, backPermute=FALSE) 
+  qr_R <- qrR(envir$qrXa, backPermute=FALSE) # the function was called on the condition that envir$qrXa had been evaluated 
   X_scale <- envir$X_scale # pre v.2.7.34
   if (is.null(X_scale)) X_scale <- attr(envir$sXaug$AUGI0_ZX$X.pv,"scaled:scale") # from version 3.2.19
   if (is.null(X_scale)) X_scale <- attr(envir$sXaug,"scaled:scale") # from v2.7.34 to 3.2.18 
@@ -1964,8 +2037,9 @@ spaMM_Gamma <- local({
   }
 }
 
-.calc_Md2hdvb2_info_spprec_by_r22 <- function(X.pv, envir, w.resid, which="tcrossfac_v_beta_cov") {
-  # currently called for "tcrossfac_v_beta_cov" for which r12,r22 needed
+# mostly post-fit
+.old_calc_Md2hdvb2_info_spprec_by_r22 <- function(X.pv, envir, w.resid, which="tcrossfac_v_beta_cov") {
+  # called e.g. for "tcrossfac_v_beta_cov" for which r12,r22 needed
   # same if it is called for "R_Md2hdbv2" (as through .get_tcrossfac_beta_w_cov())  
   # if we used it for v_beta_cov, could we simplify the code by only computing crossprod_r22 using $invG_ZtWX ? What about r_12 ?
   
@@ -2012,9 +2086,54 @@ spaMM_Gamma <- local({
   }
 }
 
+# mostly post-fit
+.calc_Md2hdvb2_info_spprec_by_r22 <- function(X.pv, # currently the unscaled one (the object's $X.pv)
+                                              envir, w.resid, which="tcrossfac_v_beta_cov") {
+  # called e.g. for "tcrossfac_v_beta_cov" for which r12,r22 needed
+  # same if it is called for "R_Md2hdbv2" (as through .get_tcrossfac_beta_w_cov())  
+  # if we used it for v_beta_cov, could we simplify the code by only computing crossprod_r22 using $invG_ZtWX ? What about r_12 ?
+  
+  if (FALSE) { # if ( ! object$spaMM.version < "3.7.10")  except that "object" not easily accessible
+    #if (is.null(tcrossfac_v_beta_cov <- envir$tcrossfac_v_beta_cov)) # No strong reason to save it. The only re-use is for cAIC_pd
+    # scaled_X <- envir$sXaug$AUGI0_ZX$X.pv # !! use the scaled X.pv to compute quantities consistent with other promises !!
+    # # !!! but then R_invMd2hdvb2 etc will refer to a scaled X !!! 
+    {
+      if (which=="R_Md2hdbv2") { ## not called in the source, and the single occurrence of solve(factor_inv_Md2hdv2)
+        if (ncol(X.pv)) {
+          r22 <- as(envir$r22,"sparseMatrix") # not sure why
+          R_Md2hdbv2 <- rbind(cbind(t(solve(envir$factor_inv_Md2hdv2)), envir$r12), # cbind(chol_Md2hdv2,r12),
+                              cbind(Matrix(0,nrow=ncol(X.pv),ncol=ncol(envir$chol_Q)), r22)) ## R_a in the working doc
+        } else R_Md2hdbv2 <- t(solve(envir$factor_inv_Md2hdv2))
+        return(R_Md2hdbv2) ## such that tcrossprod(R_invMd2hdvb2) = solve(Md2hdbv2) = solve(crossprod(R_Md2hdbv2))
+      } else {
+        # weirdly solve(chol_Md2hdv2,system="L") (with/out b) is slower that solving the sparseMatrix.
+        if (ncol(X.pv)) {
+          inv11 <- t(envir$factor_inv_Md2hdv2)# solve(chol_Md2hdv2)
+          inv22 <- solve(envir$r22)
+          inv12 <- -1* inv11 %*% (envir$r12 %*% inv22) ## does not seem to understand unary '-' (late PS: in old version of Matrix?)
+          R_invMd2hdvb2 <- rbind(cbind(inv11,inv12),
+                                 cbind(Matrix(0,nrow=ncol(X.pv),ncol=ncol(envir$chol_Q)), inv22))
+        } else R_invMd2hdvb2 <- t(envir$factor_inv_Md2hdv2)# only the inv11 block, solve(chol_Md2hdv2)
+        if (.spaMM.data$options$perm_G) {
+          tcrossfac_v_beta_cov <- as(R_invMd2hdvb2,"sparseMatrix") # not necess. triangular
+        } else tcrossfac_v_beta_cov <- as(R_invMd2hdvb2,"triangularMatrix") ## not sure that being triangular would be of any use.
+      }
+    }
+    if (which=="tcrossfac_v_beta_cov") {
+      return(tcrossfac_v_beta_cov)  
+    } else { 
+      v_beta_cov <- .tcrossprod(tcrossfac_v_beta_cov) ## it happens that the beta,beta block is solve(crossprod(r22)), a property used in .calc_inv_beta_cov() but not here.
+      return(v_beta_cov)
+    }
+  } else .old_calc_Md2hdvb2_info_spprec_by_r22(X.pv, envir, w.resid, which) # if ( ! object$spaMM.version < "3.7.10")  except that "object" not easily accessible
+}
 
-.calc_Md2hdvb2_info_spprec <- function(X.pv,envir, w.resid, which="tcrossfac_v_beta_cov") { ## this is called post-fit
-  if ( ! is.null(envir$qrXa) ) { # If we have a QR factorization of augmented X, we can use it efficiently
+
+
+.calc_Md2hdvb2_info_spprec <- function(X.pv,envir, w.resid, which="tcrossfac_v_beta_cov") { 
+  # called by post-fit functions, but else by .get_tcrossfac_beta_v_cov which *may* be called in-fit 
+  # Hence from spprec there *may* be an envir$qrXa promise. 
+  if ( .is_evaluated("qrXa",envir)) { # If we have a QR factorization of augmented X, we can use it efficiently
     # This is tested for example by get_predVar(fitsparse,newdata=newXandZ) on 'landsat' data
     .calc_Md2hdvb2_info_spprec_by_QR(envir, which)
   } else {
@@ -2022,8 +2141,9 @@ spaMM_Gamma <- local({
   }
 }
 
-# This *may* be called during a fit, by  .calc_beta_cov_info_spprec(... envir = sXaug$BLOB ...) -> .calc_beta_cov_info_spprec -> .get_tcrossfac_beta_v_cov
-# in the diagnostic code for poor breakcond.
+# called by .get_tcrossfac_beta_w_cov() post-fit; or by .calc_beta_cov_info_spprec(), in-fit or post-fit:
+# ie this *may* be called during a fit, by  .calc_beta_cov_info_spprec(... envir = sXaug$BLOB ...) -> .calc_beta_cov_info_spprec -> .get_tcrossfac_beta_v_cov
+#    in the diagnostic code for poor breakcond.
 .get_tcrossfac_beta_v_cov <- function(X.pv, envir, w.resid) {
   if (is.null(envir$beta_cov_info$tcrossfac_beta_v_cov)) {
     ## Using sparse matrices as much as possible for computation:
@@ -2038,6 +2158,7 @@ spaMM_Gamma <- local({
   return(envir$beta_cov_info$tcrossfac_beta_v_cov) ## Used for beta_v_cov itself, then for (beta_w_cov for predVar). Seem useful to  keep it
 }
 
+# may be called in-fit or post-fit
 .calc_beta_cov_info_spprec <- function(X.pv, envir, w.resid) { 
   tcrossfac_beta_v_cov <- .get_tcrossfac_beta_v_cov(X.pv, envir, w.resid)
   if (is.null(beta_cov <- envir$beta_cov_info$beta_cov)) { # if stripHLfit()ed

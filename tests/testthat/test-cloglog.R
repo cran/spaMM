@@ -59,8 +59,8 @@ if (spaMM.getOption("example_maxtime")>2.1) {
     artsim <- artSim()
     fit1 <- fitme(cbind(Dead,Alive) ~ (Trt + 0)/x + (x | Rep),
                   family=binomial(link="cloglog"),
-                  data=artsim, method="ML",verbose=c(TRACE=FALSE)) ## 
-    testthat::expect_equal(logLik(fit1)[[1]],-1413.207,tolerance=1e-4) ## This is works in spprec too, with version 2.5.33
+                  data=artsim, method="ML",verbose=c(TRACE=FALSE)) 
+    testthat::expect_equal(logLik(fit1)[[1]],-1413.207,tolerance=1e-4) 
     if (FALSE) { ## not useful in routine tests
       if (file.exists((privtest <- "C:/home/francois/travail/stats/spaMMplus/spaMM/package/tests_other_pack/test-cloglog-lme4-glmmTMB.R"))) {
         source(privtest)

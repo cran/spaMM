@@ -555,7 +555,7 @@ get_predCov_var_fix <- function(object, newdata = NULL, fix_X_ZAC.object,fixdata
     # newZACvar = (ZAC_ranef1 | ZAC_ranef3... ) %*% dwdlogdisp which rows match the successive v_h (all ranefs) and cols match disp pars
     newZACw <- newZACvar %*% dwdlogdisp ## typically (nnew * n_u_h) %*% (n_u_h * 2) = nnew * 2 hence small 
     fixZACw <- fixZACvar %*% dwdlogdisp ## typically (nnew * n_u_h) %*% (n_u_h * 2) = nnew * 2 hence small 
-    disp_effect_on_newZACw <- newZACw %*% logdisp_cov %*% t(fixZACw)      
+    disp_effect_on_newZACw <- .get_disp_effect_on_newZACw(logdisp_cov, newZACw, fixZACw=fixZACw, covMatrix=TRUE) # newZACw %*% logdisp_cov %*% t(fixZACw)
     predVar <- predVar + disp_effect_on_newZACw
   }
   return(predVar)

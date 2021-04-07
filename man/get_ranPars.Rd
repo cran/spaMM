@@ -5,7 +5,7 @@
 Operations on lists of parameters
 }
 \description{
-\code{get_ranPars} returns various subsets of random-effect parameters (correlation or variance parameters), as controlled by its \code{which} argument. A distinct documentation exists for \code{\link{get_inits_from_fit}} which is most useful to extract parameters from a fit in a form suitable to initialize another fit. \code{\link{VarCorr}} is yet another extractor for dispersion parameters.
+\code{get_ranPars} returns various subsets of random-effect parameters (correlation or variance parameters), as controlled by its \code{which} argument. A distinct documentation exists for \code{\link{get_inits_from_fit}} which extracts a broader set of estimated parameters from a fit, in a form suitable to initialize another fit. \code{\link{VarCorr}} is yet another extractor for dispersion parameters.
 
 \code{remove_from_parlist} removes elements from a list of parameters, and from its \code{type} attribute. 
 }
@@ -45,7 +45,8 @@ For heteroscedastic models, such as conditional autoregressive models, the varia
 }
 
 \seealso{
-\code{\link{get_inits_from_fit}} and \code{\link{VarCorr}}.
+See \code{\link{residVar}} to extract residual variances or information about residual variance models.
+\code{\link{get_inits_from_fit}} and \code{\link{VarCorr}} can extract random effect parameters in different formats. 
 }
 \examples{
 data("wafers")

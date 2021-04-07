@@ -152,7 +152,7 @@ HLCor_body <- function(processed, ## single environment
   ## Here there was debug code that saved HL.info in case of error; before 1.8.5
   if ( ! is.null(processed$return_only)) {
     return(hlfit)    ########################   R E T U R N   a list with $APHLs, with class "list"
-  } else class(hlfit) <- c("HLCor", class(hlfit))
+  } # else class(hlfit) <- c("HLCor", class(hlfit)) seems totally obsolete; object has class HLfit.
   #### Infos in the final fit object: 
   hlfit$spatial_terms <- spatial_terms
   info_uniqueGeo <- msd_arglist <- list()
@@ -182,7 +182,7 @@ HLCor_body <- function(processed, ## single environment
     ## RUN THIS LOOP and return
     fitlist <- lapply(seq_len(length(processed)), function(proc_it){
       locmc <- mc
-      locmc[[1L]] <- get("HLCor.obj", asNamespace("spaMM")) # as.name("HLCor.obj") ## replaces "f" !
+      locmc[[1L]] <- get("HLCor.obj", asNamespace("spaMM"), inherits=FALSE) # as.name("HLCor.obj") ## replaces "f" !
       locmc$ranefParsVec <- ranefParsVec ## replaces "arg" !
       locmc$processed <- processed[[proc_it]] 
       eval(locmc)
@@ -222,7 +222,7 @@ HLCor_body <- function(processed, ## single environment
                                   moreargs=moreargs )
   # ranPars may have $trLambda (from notlambda) for what is optimized,
   #              and $lambda (from ranPars$lambda) for what was fixed in the whole outer fit  
-  HLCor.call[[1L]] <- get("HLCor", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
+  HLCor.call[[1L]] <- get("HLCor", asNamespace("spaMM"), inherits=FALSE) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
   #HLCor.call[[1L]] <- quote(spaMM::HLCor)
   hlfit <- eval(HLCor.call) ## returns fit or call 
   #

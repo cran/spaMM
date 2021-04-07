@@ -73,7 +73,7 @@ HLfit <- function(formula,
       return(multiHLfit())
     } else {## there is a single data set, still without processed
       mc <- oricall
-      mc[[1L]] <- get(".preprocess_formula", asNamespace("spaMM"))  ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
+      mc[[1L]] <- get(".preprocess_formula", asNamespace("spaMM"), inherits=FALSE)  ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
       oricall$formula <- mc$formula <- eval(mc,parent.frame()) # 
       preprocess_args <- .get_inits_preprocess_args(For="HLfit")
       names_nondefault  <- intersect(names(mc),names(preprocess_args)) ## mc including dotlist
@@ -109,7 +109,7 @@ HLfit <- function(formula,
   pnames <- c("data","family","formula","prior.weights","HLmethod","method","rand.family","control.glm","REMLformula",
               "resid.model","verbose")
   for (st in pnames) mc[st] <- NULL ## info in processed
-  mc[[1L]] <- get("HLfit_body", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
+  mc[[1L]] <- get("HLfit_body", asNamespace("spaMM"), inherits=FALSE) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
   if (identical(mc$processed[["verbose"]]["getCall"][[1L]],TRUE)) return(mc) ## returns a call if verbose["getCall"'"] is TRUE
   hlfit <- eval(mc,parent.frame())
   .check_conv_glm_reinit()
@@ -135,7 +135,7 @@ HLfit <- function(formula,
     ## RUN THIS LOOP and return
     fitlist <- lapply(seq_len(length(processed)), function(it){
       locmc <- mc
-      locmc[[1L]] <- get("HLfit.obj", asNamespace("spaMM")) # as.name("HLfit.obj") ## replaces "f" !
+      locmc[[1L]] <- get("HLfit.obj", asNamespace("spaMM"), inherits=FALSE) # as.name("HLfit.obj") ## replaces "f" !
       locmc$ranefParsVec <- ranefParsVec ## replaces "arg" !
       locmc$processed <- processed[[it]] ## The data are in processed !
       eval(locmc)
@@ -175,7 +175,7 @@ HLfit <- function(formula,
     HLnames <- names(formals(HLfit))
     HLfit.call <- mc[c(1L,which(names(mc) %in% HLnames))] ## keep the call structure
     HLfit.call$ranFix <- ranFix
-    HLfit.call[[1L]] <- get("HLfit", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
+    HLfit.call[[1L]] <- get("HLfit", asNamespace("spaMM"), inherits=FALSE) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
     hlfit <- eval(HLfit.call)
     resu <- hlfit$APHLs[[objective]]
     if (print_phiHGLM_info) cat(paste0(objective,"=",resu)) # verbose["phifit"]

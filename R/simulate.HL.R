@@ -45,7 +45,7 @@
                       lambdas <- attr(mu,"lambda") # F I X M E an environment would keep values ?
                       if (is.null(lambdas)) {
                         sapply(mu, function(muv) {
-                          lambda <- family$linkfun(muv,log=FALSE)
+                          lambda <- family$mu2lambda(muv)
                           .COMP_simulate(lambda=lambda,nu=COMP_nu, nsim=nsim)
                         })
                       } else sapply(lambdas,.COMP_simulate,nu=COMP_nu, nsim=nsim)

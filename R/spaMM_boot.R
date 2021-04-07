@@ -106,7 +106,7 @@ dopar <- local({
       if (has_doSNOW) {
         # loading (?) the namespace of 'snow' changes the *parent* RNG state (as well as sons' ones)! so we save and restore it 
         R.seed <- get(".Random.seed", envir = .GlobalEnv) # save parent RNG state
-        rdS_fn <- get("registerDoSNOW", asNamespace("doSNOW")) # syntax for using an undeclared package...
+        rdS_fn <- get("registerDoSNOW", asNamespace("doSNOW"), inherits=FALSE) # syntax for using an undeclared package (cf stats:::confint.glm)
         do.call(rdS_fn,list(cl=cl)) # this is what makes foreach see it and perform parallel computations
         assign(".Random.seed", R.seed, envir = .GlobalEnv) # restore parent RNG state
         if ( ! is.null(iseed) ) parallel::clusterSetRNGStream(cl = cl, iseed) 

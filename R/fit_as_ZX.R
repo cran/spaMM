@@ -75,7 +75,7 @@
       } else if ( which_LevMar_step=="b_from_v_b") { 
         LevMarblob <- get_from_MME(sXaug=sXaug, which="LevMar_step", LMrhs=zInfo$scaled_grad, damping=damping)
         Vscaled_beta[-seq_n_u_h] <- Vscaled_beta[-seq_n_u_h] + LevMarblob$dVscaled_beta[-seq_n_u_h]
-      } else if ( which_LevMar_step=="b") { ## probably not used ## If called when pforpv=0, get_from_MME -> .damping_to_solve() crashes badly.
+      } else if ( which_LevMar_step=="b") { ## currently not used ## If called when pforpv=0, get_from_MME -> .damping_to_solve() crashes badly.
         LevMarblob <- get_from_MME(sXaug=sXaug, which="LevMar_step_beta", LMrhs=zInfo$scaled_grad[-seq_n_u_h], damping=damping)
         Vscaled_beta[-seq_n_u_h] <- Vscaled_beta[-seq_n_u_h] + LevMarblob$dbeta 
       } 
@@ -477,7 +477,8 @@
   Xscal <- .make_Xscal(ZAL, ZAL_scaling = ZAL_scaling, AUGI0_ZX=processed$AUGI0_ZX, as_matrix=.eval_as_mat_arg(processed))
   if (inherits(Xscal,"Matrix")) { # same type as ZAL
     mMatrix_method <- .spaMM.data$options$Matrix_method
-    
+    attr(Xscal,"AUGI0_ZX") <- processed$AUGI0_ZX # for .sXaug_Matrix_cholP_scaled() (allows and controls .updateCHM...);
+                                                 # Typically an envir, but see int_sXaug hack. Should itself contain an $envir.
     #@p[c] must contain the index _in @x_ of the first nonzero element of column c, x[p[c]] in col c and row i[p[c]])  
     elmts_affected_cols <- seq_len(Xscal@p[n_u_h+1L]) ## corresponds to cols seq_n_u_h
     which_i_affected_rows <- which(Xscal@i[elmts_affected_cols]>(n_u_h-1L))    
@@ -500,7 +501,7 @@
     if (LevenbergM) cat("LM")
     cat(stylefn("."))
   }
-  mMatrix_method_fn <- get(mMatrix_method,asNamespace("spaMM"))
+  mMatrix_method_fn <- get(mMatrix_method,asNamespace("spaMM"), inherits=FALSE)
   sXaug <- mMatrix_method_fn(Xaug=Xscal, weight_X=weight_X, w.ranef=wranefblob$w.ranef, H_global_scale=H_global_scale)
   if ( ! is.null(for_intervals)) {
     Vscaled_beta <- c(v_h/ZAL_scaling ,for_intervals$beta_eta)

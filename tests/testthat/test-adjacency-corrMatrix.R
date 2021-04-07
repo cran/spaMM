@@ -24,8 +24,8 @@ spaMM.options(oldop)
 if (spaMM.getOption("EigenDense_QRP_method")==".lmwithQR") {
   crit <- diff(range(logLik(adjfit),logLik(adjfitsp)))
   if (spaMM.getOption("fpot_tol")>0) {
-    testthat::test_that(paste0("criterion was ",signif(crit,6)," from -168.1298"), testthat::expect_true(crit<4e-8) )
-  } else testthat::expect_true(crit<4e-8)
+    testthat::test_that(paste0("criterion was ",signif(crit,6)," from -168.1298"), testthat::expect_true(crit<2e-6) )
+  } else testthat::expect_true(crit<2e-6)
   testthat::expect_true(max(abs(range(get_predVar(adjfit)-get_predVar(adjfitsp))))<1.8e-5)
 } else {
   testthat::expect_true(diff(range(logLik(adjfit),logLik(adjfitsp)))<2e-8) 
@@ -56,7 +56,7 @@ if (spaMM.getOption("example_maxtime")>6.90) {
                   family=poisson(),data=scotlip)
   testthat::expect_true("matrix" %in% covfit$MME_method)
   testthat::expect_equal(logLik(covfit),c(p_v=-168.12966973),tol=5e-5) ## all methods are equally sensitive to the initial value (note that one lambda->0)
-  testthat::expect_true(max(abs(range(get_predVar(covfit)-get_predVar(precfit))))<4e-6)  
+  testthat::expect_true(max(abs(range(get_predVar(covfit)-get_predVar(precfit))))<9e-6)  
   if (spaMM.getOption("EigenDense_QRP_method")==".lmwithQR") {
     testthat::expect_true(max(abs(range(get_predVar(adjfit)-get_predVar(covfit))))<9e-6) 
   } else testthat::expect_true(max(abs(range(get_predVar(adjfit)-get_predVar(covfit))))<6e-6) 
@@ -68,8 +68,8 @@ if (spaMM.getOption("example_maxtime")>6.90) {
   if (spaMM.getOption("EigenDense_QRP_method")==".lmwithQR") {
     crit <- diff(range(logLik(covfit),logLik(covfitLM),logLik(precfitLM),logLik(adjfit),logLik(adjfitsp)))
     if (spaMM.getOption("fpot_tol")>0) {
-      testthat::test_that(paste0("criterion was ",signif(crit,6)," from -168.12966973"), testthat::expect_true(crit<5e-8) )
-    } else testthat::expect_true(crit<5e-8)
+      testthat::test_that(paste0("criterion was ",signif(crit,6)," from -168.12966973"), testthat::expect_true(crit<2e-6) )
+    } else testthat::expect_true(crit<2e-6)
   } else testthat::expect_true(diff(range(logLik(covfit),logLik(covfitLM),logLik(precfitLM),logLik(adjfit),logLik(adjfitsp)))<3e-8) 
   # : correctness sensitive to w.resid <- damped_WLS_blob$w.resid.
   

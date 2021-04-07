@@ -50,7 +50,7 @@ HLCor <- function(formula,
     } else {## there is a single data set, still without processed
       mc <- oricall
       #mc$formula <- .preprocess_formula(formula, env=eval(oricall$control.HLfit)$formula_env)
-      mc[[1L]] <- get(".preprocess_formula", asNamespace("spaMM"))  ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
+      mc[[1L]] <- get(".preprocess_formula", asNamespace("spaMM"), inherits=FALSE)  ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
       oricall$formula <- mc$formula <- eval(mc,parent.frame()) # 
       preprocess_args <- .get_inits_preprocess_args(For="HLCor")
       names_nondefault  <- intersect(names(mc),names(preprocess_args)) ## mc including dotlist
@@ -89,7 +89,7 @@ HLCor <- function(formula,
   pnames <- c("data","family","formula","prior.weights","HLmethod","method","rand.family","control.glm","REMLformula",
               "resid.model", "verbose","distMatrix","uniqueGeo","adjMatrix") ## try covStruct too...
   for (st in pnames) mc[st] <- NULL 
-  mc[[1L]] <- get("HLCor_body", asNamespace("spaMM")) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
+  mc[[1L]] <- get("HLCor_body", asNamespace("spaMM"), inherits=FALSE) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
   hlcor <- eval(mc,parent.frame())
   .check_conv_glm_reinit()
   if ( ! is.null(processed$return_only)) {
