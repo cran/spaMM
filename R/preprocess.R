@@ -621,14 +621,16 @@ as_precision <- function(corrMatrix) {
 .calc_terms_heuristic_denseness <- function(terms_info, fixef_off_terms=terms_info$fixef_off_terms,
                                             fixef_levels=terms_info$fixef_levels) {
   vars_terms_table <- attr(fixef_off_terms,"factors") ## ""factors"" is a misleading name as table includes quantitative predictors
-  n_levels <- sapply(fixef_levels,length)
-  terms_heuristic_denseness <- rep(1,ncol(vars_terms_table)) 
-  names(terms_heuristic_denseness) <- colnames(vars_terms_table)
-  for (term in colnames(vars_terms_table)) { ## the cols of vars_terms_table should match the terms in the order used by attr(X.pv,"assign")...
-    vars_in_term <- names(which(vars_terms_table[ ,term]>0))
-    factors_in_terms <- intersect(names(fixef_levels),vars_in_term)
-    if (any(vars_terms_table[ ,term]>0)) terms_heuristic_denseness[term] <- 1/prod(n_levels[factors_in_terms])
-  }
+  if (length(vars_terms_table)) {
+    n_levels <- sapply(fixef_levels,length)
+    terms_heuristic_denseness <- rep(1,ncol(vars_terms_table)) 
+    names(terms_heuristic_denseness) <- colnames(vars_terms_table)
+    for (term in colnames(vars_terms_table)) { ## the cols of vars_terms_table should match the terms in the order used by attr(X.pv,"assign")...
+      vars_in_term <- names(which(vars_terms_table[ ,term]>0))
+      factors_in_terms <- intersect(names(fixef_levels),vars_in_term)
+      if (any(vars_terms_table[ ,term]>0)) terms_heuristic_denseness[term] <- 1/prod(n_levels[factors_in_terms])
+    }
+  } else terms_heuristic_denseness <- NA
   return(terms_heuristic_denseness)
 }
 
@@ -638,10 +640,10 @@ as_precision <- function(corrMatrix) {
   ## forcing sparse_X may (1) be slow for small problems 
   ## (2) entails the use of Matrix::Cholesky, which is less accurate => small bu visible effect on predVar in singular 'twolambda' case
   if (is.null(sparse_X)) {
-    if ( length(terms_info$fixef_levels) ) {
+    asgn <- attr(X.pv,"assign") ## "for each column in the matrix ... the term in the formula which gave rise to the column"
+    if (any(asgn>0L) &&  length(terms_info$fixef_levels)) { # tests asgn bc terms_info$fixef_levels may be spuriously non-empty for terms that are added and removed within the formula
       col_heuristic_denseness <- rep(1,ncol(X.pv))
       terms_heuristic_denseness <- .calc_terms_heuristic_denseness(terms_info)
-      asgn <- attr(X.pv,"assign") ## "for each column in the matrix ... the term in the formula which gave rise to the column"
       for (it in seq_along(asgn)) if (asgn[it]>0L) col_heuristic_denseness[it] <- terms_heuristic_denseness[asgn[it]]
       sparse_X <- (mean(col_heuristic_denseness)<0.11) ## FIXME not enough tests of threshold; could use data.test in test-predVar which has mean density=0.19
     } else sparse_X <- FALSE
@@ -1067,7 +1069,7 @@ as_precision <- function(corrMatrix) {
     processed$lcrandfamfam <- attr(rand.families,"lcrandfamfam") ## else remains NULL
     ## Assigns $corr_info$corrMatrices, $adjMatrices, $AMatrices using $corr_info$corr_type: BEFORE determining sparse precision:
     Zlist <- .calc_Zlist(exp_ranef_terms=exp_ranef_terms, data=data, rmInt=0L, drop=TRUE, 
-                         corrMats_info=corr_info$corrMatrices, 
+                         corr_info=corr_info,
                          lcrandfamfam=processed$lcrandfamfam) 
     # rand.fam.fam info needed for Zlist and Zlist needed for next line => prevents merging this in .preprocess_rand_families()
     for (rd in seq_len(nrand)) {

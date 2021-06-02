@@ -62,12 +62,12 @@ Matern <- function(...) {
     msd.arglist$`dist.method` <- control_dist_rd$`dist.method` ## may be NULL
     if (length(rho)>1L) {
       geo_envir <- .get_geo_info(processed, which_ranef=rd, which=c("uniqueGeo"), 
-                                 dist.method=control_dist_rd$dist.method)
+                                 dist_method_rd=control_dist_rd$dist.method)
       msd.arglist$uniqueGeo <- geo_envir$uniqueGeo
       msd.arglist$`rho.mapping` <- control_dist_rd$`rho.mapping` ## may be NULL
     } else {
       geo_envir <- .get_geo_info(processed, which_ranef=rd, which=c("distMatrix"), 
-                                 dist.method=control_dist_rd$dist.method)
+                                 dist_method_rd=control_dist_rd$dist.method)
       msd.arglist$distMatrix <- geo_envir$distMatrix   
     }
     cov_info_mat <- do.call("make_scaled_dist",msd.arglist)

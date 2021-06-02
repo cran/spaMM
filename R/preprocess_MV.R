@@ -439,9 +439,9 @@
           if (substr(term_ranef, 1, 1)=="(" ## excludes spatial (and more generally 'keyword') ranefs 
               && ! is.numeric(processed$lambda.Fix[rd])
           ) {
-            mess <- paste0("Unable to ascertain identifiablity from information for submodel ",which_submodels,
-                           " alone, where number of levels = number of observations for random effect ", term_ranef,
-                           ";\n   this model might not be identifiable unless phi is fixed",
+            mess <- paste0("Unable to ascertain full-model identifiablity from information for submodel ",which_submodels,
+                           " alone,\n   where number of levels = number of observations for random effect ", term_ranef,
+                           ";\n   Full model might not be identifiable unless phi is fixed",
                            ",\n   or the variance of this effect is fixed, or a non-trivial correlation matrix is given.") 
             message(mess) # warning bc not sure of correct detection; would be stop() otherwise
           }          

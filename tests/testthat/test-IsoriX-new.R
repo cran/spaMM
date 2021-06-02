@@ -4,6 +4,6 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE" && spaMM.options("example_maxtime")>40 &
 }
 # older tests:
 if (FALSE) {
-  source(path=paste0(projpath(), "/package/tests_private/test-IsoriX.R"))
+  source(file=paste0(projpath(), "/package/tests_private/test-IsoriX.R"))
   # itself sourcing files in /nestedFiles
 }

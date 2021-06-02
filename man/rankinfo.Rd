@@ -27,3 +27,18 @@ get_rankinfo(object)
 \value{
   A list with elements \code{rank}, \code{whichcols} (a set of columns that define a non-singular matrix), and \code{method} (identifying the algorithm used).
 }
+\examples{
+## Data preparation
+# Singular matrix from ?Matrix::qr :
+singX <- cbind(int = 1,
+           b1=rep(1:0, each=3), b2=rep(0:1, each=3),
+           c1=rep(c(1,0,0), 2), c2=rep(c(0,1,0), 2), c3=rep(c(0,0,1),2))
+rownames(singX) <- paste0("r", seq_len(nrow(singX)))
+donn <- as.data.frame(singX)
+set.seed(123)
+donn$y <- runif(6)
+
+fitlm <- fitme(y~int+ b1+b2+c1+c2+c3,data=donn)
+get_rankinfo(fitlm)
+
+}

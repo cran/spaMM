@@ -87,7 +87,7 @@ spaMM_boot <- local({
 # fn more generic than spaMM_boot: there is no call to other spaMM fns such as simulate(object, .) so this acts as a general wrapper for 
 # foreach or pbapply, and not specifically for bootstrap computations.
 dopar <- local({
-  doSNOW_warned <- FALSE
+  doSNOW_warned <- pbmclapply_warned <- FALSE
   function(newresp, fn, nb_cores=NULL, 
            fit_env, control=list(), cluster_args=NULL,
            debug.=FALSE, iseed=NULL, showpbar=eval(spaMM.getOption("barstyle")),
@@ -101,69 +101,116 @@ dopar <- local({
     nsim <- ncol(newresp)
     time1 <- Sys.time() 
     if (nb_cores>1L) {
-      cl <- do.call(parallel::makeCluster, c(list(spec=nb_cores), cluster_args)) 
-      has_doSNOW <- ("package:doSNOW" %in% search())
-      if (has_doSNOW) {
-        # loading (?) the namespace of 'snow' changes the *parent* RNG state (as well as sons' ones)! so we save and restore it 
-        R.seed <- get(".Random.seed", envir = .GlobalEnv) # save parent RNG state
-        rdS_fn <- get("registerDoSNOW", asNamespace("doSNOW"), inherits=FALSE) # syntax for using an undeclared package (cf stats:::confint.glm)
-        do.call(rdS_fn,list(cl=cl)) # this is what makes foreach see it and perform parallel computations
-        assign(".Random.seed", R.seed, envir = .GlobalEnv) # restore parent RNG state
-        if ( ! is.null(iseed) ) parallel::clusterSetRNGStream(cl = cl, iseed) 
-        #
-        if (is.environment(fit_env)) parallel::clusterExport(cl=cl, varlist=ls(fit_env), envir=fit_env) 
-        # A first foreach_blob for a first dopar before defining the progress bar (otherwise we see a progress bar on this dopar)
-        i <- NULL ## otherwise R CMD check complains that no visible binding for global variable 'i' (in expression newy_s[,i])
-        foreach_blob <- foreach::foreach(i=1:nb_cores)
-        abyss <- foreach::`%dopar%`(foreach_blob, Sys.setenv(LANG = "en")) # before setting the progress bar...
-        if (is.function(pretest_cores)) pretest_cores(fn, cl)
-        # define the progress bar:
-        barstyle <- eval(spaMM.getOption("barstyle"))
-        progrbar_setup <- .set_progrbar(max = nsim, style = barstyle, char="P")
-        # :where opts are needed to define a second foreach_blob
-        foreach_args <- list( 
-          i = 1:ncol(newresp), 
-          .combine = "cbind", 
-          .inorder = TRUE, .packages = "spaMM", 
-          .errorhandling = "remove", ## use "pass" to see problems
-          .options.snow = progrbar_setup["progress"]
-        )
-        foreach_args[names(control)] <- control # replaces the above defaults by user controls
-        foreach_blob <- do.call(foreach::foreach,foreach_args) ## rbinds 1-row data frames (into a data frame) as well as vectors (into a matrix) (result has nsim rows)
-        if (TRUE) {
-          fn_dots <- list(...)
-          for (st in names(fn_dots)) {
-            # Add an enclusing quote():
-            if ( is.language(fn_dots[[st]])) fn_dots[[st]] <- substitute(quote(what),list(what=fn_dots[[st]]))
-          }
-          bootreps <- try(foreach::`%dopar%`(foreach_blob, do.call(fn, c(list(newresp[, i]), fn_dots)))) 
-        } else {
-          # Standard passing of the dots with foreach does not seem to work. (good test is the doSNOW case nested within test-LRT-boot.R)
-          #bootreps <- try(foreach::`%dopar%`(foreach_blob, fn(newresp[, i], ...)))
+      type_user <- cluster_args$type
+      if (.Platform$OS.type == "windows") {
+        if (is.null(type_user)) {
+          cluster_args$type <- "PSOCK" # default, but explicit => can be tested # On windows, or on linux if explicitly requested
+        } else if (type_user=="FORK") {
+          message('cluster_args$type=="FORK" not feasible under Windows')
+          cluster_args$type <- "PSOCK"
         }
-        # the try() is useful if the user interrupts the dopar, in which case it allows close(pb) to be run. (? But doSNOW appear to close the nodes asynchronously?)
-        foreach::registerDoSEQ() ## https://stackoverflow.com/questions/25097729/un-register-a-doparallel-cluster
-        parallel::stopCluster(cl)
-        if (showpbar) close(progrbar_setup$pb)
-      } else {
-        # in that case, ## We will use pbapply, with argument cl=cl; a direct call to foreach would require doParallel::registerDoParallel(cl)
-        if ( ! doSNOW_warned) {
-          message("If the 'doSNOW' package were attached, better load-balancing might be possible.")
-          doSNOW_warned <<- TRUE
-        } 
-        pb_char <- "p"
-        parallel::clusterEvalQ(cl, library("spaMM")) 
-        if (is.environment(fit_env)) try(parallel::clusterExport(cl=cl, varlist=ls(fit_env), envir=fit_env)) 
-        if (is.function(pretest_cores)) pretest_cores(fn, cl)
-        if (showpbar) {
-          pbopt <- pboptions(nout=min(100L,2L*nsim),type="timer",char=pb_char) 
-        } else pbopt <- pboptions(type="none") 
-        #try() so that an interrupt does not prevent running stopCluster():
-        bootreps <- try(pbapply(X=newresp,MARGIN = 2L,FUN = fn, cl=cl, ...))
-        parallel::stopCluster(cl)
-        pboptions(pbopt)
-        if (identical(control$.combine,"rbind")) bootreps <- t(bootreps)
+      } else { # linux alikes
+        if (is.null(type_user)) {
+          if (.inRstudio(silent=TRUE)) {
+            cluster_args$type <- "PSOCK"
+          } else cluster_args$type <- "FORK"
+        } else if (type_user=="FORK" && .inRstudio(silent=TRUE)) {
+          message('cluster_args$type=="FORK" not feasible when R is called from an Rstudio session.')
+          cluster_args$type <- "PSOCK"
+        }
       }
+      if (cluster_args$type=="FORK") {
+        if ( ! is.null(iseed) ) {
+          ori <- RNGkind("L'Ecuyer-CMRG")
+          set.seed(iseed)
+        }
+        if (is.null(mc.silent <- control$mc.silent)) mc.silent <- TRUE 
+        has_pbmclapply <- ("package:pbmclapply" %in% search())
+        if (has_pbmclapply) {
+          apply_fn <- get("pbmclapply", asNamespace("pbmcapply"), inherits=FALSE) # syntax for using an undeclared package (cf stats:::confint.glm)
+          bootreps <- try(do.call(apply_fn, 
+                                  list(seq_len(ncol(newresp)),FUN = function(it) fn(newresp[,it], ...), mc.silent=mc.silent, mc.cores=nb_cores)))
+        } else {
+          if ( ! pbmclapply_warned) {
+            message("If the 'pbmcapply' package were attached, a progress bar would be available.")
+            pbmclapply_warned <<- TRUE
+          } 
+          bootreps <- try(parallel::mclapply(seq_len(ncol(newresp)),FUN = function(it) fn(newresp[,it], ...), mc.silent=mc.silent, mc.cores=nb_cores))
+        }
+        bootreps <- do.call(rbind,bootreps)
+        if ( ! is.null(iseed) ) RNGkind(ori)
+      } else { # PSOCK
+        cl <- do.call(parallel::makeCluster, c(list(spec=nb_cores), cluster_args)) # note that _this_ line would make sense for fork clusters too. BUT
+        # ... the foreach = dot args combination may not work for FORK type. Only pbapply would work with makeCluster+FORK, 
+        # but pbmclapply is a better way to get a pb one a fork cluster as [pb]mclapply have better load balancing than pbapply. 
+        has_doSNOW <- ("package:doSNOW" %in% search())
+        if (has_doSNOW) {
+          # loading (?) the namespace of 'snow' changes the *parent* RNG state (as well as sons' ones)! so we save and restore it 
+          R.seed <- get(".Random.seed", envir = .GlobalEnv) # save parent RNG state
+          rdS_fn <- get("registerDoSNOW", asNamespace("doSNOW"), inherits=FALSE) # syntax for using an undeclared package (cf stats:::confint.glm)
+          do.call(rdS_fn,list(cl=cl)) # this is what makes foreach see it and perform parallel computations
+          assign(".Random.seed", R.seed, envir = .GlobalEnv) # restore parent RNG state
+          if ( ! is.null(iseed) ) parallel::clusterSetRNGStream(cl = cl, iseed) 
+          #
+          if (cluster_args$type == "PSOCK") {
+            if (is.environment(fit_env)) parallel::clusterExport(cl=cl, varlist=ls(fit_env), envir=fit_env) 
+            pb_char <- "P"
+          } else pb_char <- "F"
+          # A first foreach_blob for a first dopar before defining the progress bar (otherwise we see a progress bar on this dopar)
+          i <- NULL ## otherwise R CMD check complains that no visible binding for global variable 'i' (in expression newy_s[,i])
+          foreach_blob <- foreach::foreach(i=1:nb_cores)
+          if (cluster_args$type == "PSOCK") {
+            abyss <- foreach::`%dopar%`(foreach_blob, Sys.setenv(LANG = "en")) # before setting the progress bar...
+            if (is.function(pretest_cores)) pretest_cores(fn, cl)
+          }
+          # define the progress bar:
+          barstyle <- eval(spaMM.getOption("barstyle"))
+          progrbar_setup <- .set_progrbar(max = nsim, style = barstyle, char=pb_char)
+          # :where opts are needed to define a second foreach_blob
+          foreach_args <- list( 
+            i = 1:ncol(newresp), 
+            .combine = "cbind", 
+            .inorder = TRUE, .packages = "spaMM", 
+            .errorhandling = "remove", ## use "pass" to see problems
+            .options.snow = progrbar_setup["progress"]
+          )
+          foreach_args[names(control)] <- control # replaces the above defaults by user controls
+          foreach_blob <- do.call(foreach::foreach,foreach_args) 
+          if (TRUE) {
+            fn_dots <- list(...)
+            for (st in names(fn_dots)) {
+              # Add an enclusing quote():
+              if ( is.language(fn_dots[[st]])) fn_dots[[st]] <- substitute(quote(what),list(what=fn_dots[[st]]))
+            }
+            bootreps <- try(foreach::`%dopar%`(foreach_blob, do.call(fn, c(list(newresp[, i]), fn_dots)))) 
+          } else {
+            # Standard passing of the dots with foreach does not seem to work. (good test is the doSNOW case nested within test-LRT-boot.R)
+            # bootreps <- try(foreach::`%dopar%`(foreach_blob, fn(newresp[, i], ...)))
+          }
+          # the try() is useful if the user interrupts the dopar, in which case it allows close(pb) to be run. (? But doSNOW appear to close the nodes asynchronously?)
+          foreach::registerDoSEQ() ## https://stackoverflow.com/questions/25097729/un-register-a-doparallel-cluster
+          parallel::stopCluster(cl)
+          if (showpbar) close(progrbar_setup$pb)
+        } else { # no doSNOW
+          # in that case, ## We will use pbapply, with argument cl=cl; a direct call to foreach would require doParallel::registerDoParallel(cl)
+          if ( ! doSNOW_warned) {
+            message("If the 'doSNOW' package were attached, better load-balancing might be possible.")
+            doSNOW_warned <<- TRUE
+          } 
+          pb_char <- "p"
+          parallel::clusterEvalQ(cl, library("spaMM")) 
+          if (is.environment(fit_env)) try(parallel::clusterExport(cl=cl, varlist=ls(fit_env), envir=fit_env)) 
+          if (is.function(pretest_cores)) pretest_cores(fn, cl)
+          if (showpbar) {
+            pbopt <- pboptions(nout=min(100L,2L*nsim),type="timer",char=pb_char) 
+          } else pbopt <- pboptions(type="none") 
+          #try() so that an interrupt does not prevent running stopCluster():
+          bootreps <- try(pbapply(X=newresp,MARGIN = 2L,FUN = fn, cl=cl, ...))
+          parallel::stopCluster(cl)
+          pboptions(pbopt)
+          if (identical(control$.combine,"rbind")) bootreps <- t(bootreps)
+        } # has_doSNOW ... else
+      } # FORK ... else
     } else { ## nb_cores=1L
       pb_char <- "s"
       if (showpbar) {

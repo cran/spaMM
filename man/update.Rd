@@ -3,7 +3,7 @@
 \alias{update.formula}
 \alias{update_formulas}
 \alias{update_resp}
-\alias{refit}
+\alias{refit} % a refit() fn could conflict with the generic defined by lme4
 \title{
   Updates a fit 
 }

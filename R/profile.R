@@ -78,7 +78,7 @@ spaMM.getOption <- function (x) {spaMM.options(x, warn=FALSE)[[1]]}
   ## This function computes orthodromic distances in Km between locations.
   rad_deg <- pi/180 # input should be in degrees, and this converts to radians.
   x <- x*rad_deg
-  if(is.null(y)) { ## distances within matrice
+  if(is.null(y)) { ## distances within matrix
     coslat <- cos(x[, 2]) ## [,2] is latitude
     sinlat <- sin(x[, 2])
     coslon <- cos(x[, 1]) ## [,1] is longitude
@@ -104,7 +104,7 @@ spaMM.getOption <- function (x) {spaMM.options(x, warn=FALSE)[[1]]}
   return(pp)
 }
 
-.Dist.chord.mat <- function(x,y=NULL, radius=6371.009) {
+.Dist.chord.mat <- function(x,y=NULL, radius=6371.009) { # part of EarthChord implementation
   pp <- .Dist.earth.mat(x,y,radius=1)
   pp <- radius * 2*sin(pp/2)
   if (is.null(y)) pp <- as.dist(pp)  ## spaMM wants an half matrix in this case, not a full one

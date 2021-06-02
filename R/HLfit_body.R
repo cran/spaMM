@@ -1023,13 +1023,13 @@ HLfit_body <- function(processed,
   if ( identical(processed$return_only,"cAICAPHLs")) {
     APHLs <- .get_info_crits(res)["cAIC"]
     if ( ! is.null(oldcAIC <- processed$port_env$objective)) {
-      .update_port_fit_values(old_obj= - oldcAIC,new_obj= - APHLs$cAIC, 
+      .update_port_fit_values(old_obj= - oldcAIC,new_obj= - APHLs[["cAIC"]], 
                               port_fit_values=list(fixef=beta_eta,v_h=v_h,phi_est=phi_est), 
                               models=models, processed=processed, control.HLfit=control.HLfit,
                               lambda_est=lambda_est, 
                               PHIblob=PHIblob)
     } else if ( ! identical(control.HLfit$write_port_env,FALSE)) {
-      assign("objective",APHLs$cAIC,envir=processed$port_env)
+      assign("objective",APHLs[["cAIC"]],envir=processed$port_env)
     }
     res <- list(APHLs=APHLs)
     return(res)    ########################   R E T U R N

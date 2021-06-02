@@ -161,7 +161,7 @@ HLCor_body <- function(processed, ## single environment
   for (rd in which(is_uniqueGeo_needed)) {
     char_rd <- as.character(rd)
     geo_envir <- .get_geo_info(processed, which_ranef=rd, which="uniqueGeo", 
-                               dist.method=control.dist[[char_rd]]$dist.method) 
+                               dist_method_rd=control.dist[[char_rd]]$dist.method) 
     info_uniqueGeo[[char_rd]] <- geo_envir$uniqueGeo 
   }
   attr(hlfit,"info.uniqueGeo") <- info_uniqueGeo

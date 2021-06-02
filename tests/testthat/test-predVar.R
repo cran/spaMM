@@ -113,7 +113,12 @@ pp <- predict(hlfit, newdata=data.test[1,], variances=list(respVar=TRUE))
 testthat::expect_equal(pp[1],c(`1`=1.074626),tolerance=1e-6)
 
 # can capture errors missed by other tests: (cPredVar on fixed-effect model; gamma())
-get_cPredVar(fitme(Sepal.Length ~ Petal.Length, data = iris, method = "REML", family=Gamma(log)), nsim = 3)
+gammafit <- fitme(Sepal.Length ~ Petal.Length, data = iris, method = "REML", family=Gamma(log))
+get_cPredVar(gammafit, nsim = 3)
+v1 <- residVar(gammafit, which="var")
+v2 <- attr(predict(gammafit,variances=list(residVar=TRUE)),"residVar")
+testthat::expect_true(diff(range(v1-v2))<1e-7)
+# distinct from            residVar(gammafit, which="phi")
 
 ## multiple tests with two ranefs 
 set.seed(123)
@@ -126,7 +131,7 @@ p1 <- predict(hl,variances=list(respVar=TRUE))
 p2 <- predict(hl,newdata=ll[1,],variances=list(respVar=TRUE))
 testthat::expect_equal(attr(p1,"respVar")[1],attr(p2,"respVar")[1])
 testthat::expect_equal(p1[1],p2[1])
-# verif 'slice' mechanism including Evar (hence new levels of ranef) 
+# verif 'subsetting' mechanism including Evar (hence new levels of ranef) 
 lll <- ll
 lll$idx <- lll$idx+1
 lll$latitude <- lll$latitude+1
@@ -134,6 +139,13 @@ p4 <- predict(hl,newdata=lll[1:101,],variances=list(respVar=TRUE))
 p5 <- predict(hl,newdata=lll[101:102,],variances=list(respVar=TRUE))
 testthat::expect_equal(attr(p4,"respVar")[101],attr(p5,"respVar")[1])
 testthat::expect_equivalent(p4[101],p5[1]) ## _equivalent does not check names and other attributes
+# verif binding with blocking
+pp <- predict(hl, newdata = lll[1:6,], binding = "pred", blocksize=3)
+#testthat::test_that("Fails if predict(hl, binding = < chr >, blocksize=.) does not return a data frame", 
+                     testthat::expect_true(is.data.frame(pp))
+#                     ) 
+
+
 
 ## dontrun example from help(predict):
 ## prediction with distinct given phi's in different locations:
@@ -212,3 +224,4 @@ tcrossfac_list <- get_predVar(fit1, variances=list(as_tcrossfac_list=TRUE))
 var1 <- tcrossprod(tcrossfac_list[[1L]])+ tcrossprod(tcrossfac_list[[2L]])
 var2 <- get_predVar(fit1, variances=list(cov=TRUE))
 testthat::expect_true(diff(range(var1-var2))<1e-12)
+

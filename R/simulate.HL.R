@@ -121,7 +121,7 @@
     old_ranef_form <- as.formula(paste("~",(paste(attr(object$ZAlist,"exp_ranef_strings"),collapse="+")))) 
     exp_ranef_terms <- attr(object$ZAlist, "exp_ranef_terms")
     Zlist <- .calc_Zlist(exp_ranef_terms=exp_ranef_terms, data=newdata, rmInt=0L, drop=TRUE,sparse_precision=FALSE,
-                         corrMats_info=object$strucList,
+                         ZAlist_info=object$ZAlist,
                          lcrandfamfam=attr(object$rand.families,"lcrandfamfam"))
     amatrices <- .get_new_AMatrices(object,newdata=newdata) # .calc_newFrames_ranef(formula=old_ranef_form,data=newdata, fitobject=object)$mf)
     newZAlist <- .calc_normalized_ZAlist(Zlist=Zlist,
@@ -138,7 +138,7 @@
       old_ranef_form <- as.formula(paste("~",(paste(exp_ranef_strings_it,collapse="+")))) 
       exp_ranef_terms_it <- structure(ori_exp_ranef_terms[rd_in_mv], type=attr(ori_exp_ranef_terms,"type")[rd_in_mv])
       Zlist <- .calc_Zlist(exp_ranef_terms=exp_ranef_terms_it, data=newdata, rmInt=0L, drop=TRUE,sparse_precision=FALSE,
-                           corrMats_info=object$strucList[rd_in_mv],
+                           ZAlist_info=object$ZAlist[rd_in_mv], # OK if we use only colnames, not attributes of the list...
                            lcrandfamfam=attr(object$rand.families,"lcrandfamfam")[rd_in_mv])
       amatrices <- .get_new_AMatrices(object,newdata=newdata) # .calc_newFrames_ranef(formula=old_ranef_form,data=newdata, fitobject=object)$mf)[rd_in_mv]
       ZAlist_it <- .calc_normalized_ZAlist(Zlist=Zlist,
@@ -261,7 +261,7 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
               # else predVar[[it]] remains NULL [cf IMRF terms for newdata] and lengths() is used to remove them:
             }
             rand_eta <- Reduce("+",rand_eta[lengths(rand_eta)>0L])
-          } else rand_eta <- mvrnorm(n=needed,mu=point_pred_eta[,1L], predVar)
+          } else rand_eta <- mvrnorm(n=needed,mu=point_pred_eta[,1L], predVar) # n=needed means we will get nsim distinct eta vectors
           if (needed>1L) rand_eta <- t(rand_eta) ## else mvrnorn value is a vector
           mu <- .fv_linkinv(eta=rand_eta, family=object$family, families=object$families) ## ! freqs for binomial, counts for poisson: suitable for final code
         } else stop("This conditional simulation is not implemented for non-gaussian random-effects")

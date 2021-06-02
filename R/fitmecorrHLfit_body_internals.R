@@ -223,6 +223,11 @@
     ## needed in most cases for evaluation of further elements:
     if (is.null(uniqueGeo) ) { ## then construct it from the data ## this should be the routine case, except for AR1
       uniqueGeo <- .calcUniqueGeo(data=data[,coord_within,drop=FALSE])
+      if ( ! is.null(dist.method) && dist.method %in% c("Earth","EarthChord") ) {
+        if (grepl("lat", coord_within[1])) warning("Hmm... the first coordinate should be longitude, but seems to be latitude.")
+        if (max(abs(uniqueGeo[,1])-180>1e-14)) warning("Hmm... max(abs(longitude)) should be <= 180, but is not.")
+        if (max(abs(uniqueGeo[,1])-90>1e-14)) warning("Hmm... max(abs(latitude)) should be <= 90, but is not.")
+      }
       # activelevels are data-ordered levels whose ranef values affect the likelihood
       # .calcUniqueGeo must produce data-ordered values.
       if (!is.null(geo_envir$activelevels)) uniqueGeo <- uniqueGeo[geo_envir$activelevels,,drop=FALSE]
@@ -339,7 +344,7 @@
       nbUnique <- 0L
       for (lit in seq_along(processed)) {
         geo_envir <- .get_geo_info(processed[[lit]], which_ranef=it, which=c("distMatrix","uniqueGeo","nbUnique"), 
-                                   dist.method=dist.method) ## this is all for ranef [[it]]:
+                                   dist_method_rd=dist.method) ## this is all for ranef [[it]]:
         maxs[lit] <- max(c(-Inf,geo_envir$distMatrix)) ## les Inf to handle dist(0)..
         mins[lit] <- min(c(Inf,geo_envir$distMatrix)) ## list over proc envirs not over ranefs!
         nbUnique <- nbUnique + geo_envir$nbUnique
@@ -348,7 +353,7 @@
       nbUnique <- nbUnique/length(processed)
     } else {
       geo_envir <- .get_geo_info(processed, which_ranef=it, which=c("distMatrix","uniqueGeo","nbUnique"), 
-                                 dist.method=control_dist_rd$dist.method) ## this is all for ranef [[it]]:
+                                 dist_method_rd=control_dist_rd$dist.method) ## this is all for ranef [[it]]:
       ## => assuming, if (is.list(processed)), the same matrices accross data for the given ranef term.
       # handling infinite values used in nested geostatistical models
       maxrange <- max(geo_envir$distMatrix[! is.infinite(geo_envir$distMatrix)])-min(geo_envir$distMatrix)
@@ -362,7 +367,7 @@
       nbUnique <- 0L
       for (lit in seq_along(processed)) {
         geo_envir <- .get_geo_info(processed[[lit]], which_ranef=it, which=c("distMatrix","uniqueGeo","nbUnique"), 
-                                   dist.method=dist.method) ## this is all for ranef [[it]]:
+                                   dist_method_rd=dist.method) ## this is all for ranef [[it]]:
         uniqueGeo[[lit]] <- geo_envir$uniqueGeo   
         nbUnique <- nbUnique + geo_envir$nbUnique
       }
@@ -378,7 +383,7 @@
       nbUnique <- nbUnique/length(processed)
     } else { 
       geo_envir <- .get_geo_info(processed, which_ranef=it, which=c("distMatrix","uniqueGeo","nbUnique"), 
-                                 dist.method=control_dist_rd$dist.method) ## this is all for ranef [[it]]:
+                                 dist_method_rd=control_dist_rd$dist.method) ## this is all for ranef [[it]]:
       ## => assuming, if (is.list(processed)), the same matrices accross data for the given ranef term.
       rho_mapping <- .provide_rho_mapping(control_dist_rd, geo_envir$coordinates, rho.size)
       u_rho_mapping <- unique(rho_mapping)
@@ -703,6 +708,7 @@
   sufficient_reasons_for_outer_lambda <- (
     anyNA(init.optim$lambda) || # first one meaning that the user explictly set a NA init lambda
       any(var_ranCoefs) || # includes mv()
+      has_corr_pars || # Loaloa fit used in compar to glmmTMB shows this is useful
       # *** next case ad hoc but motivated by 'ahzut' example in private test-COMPoisson-difficult.R ***
     ( has_family_par <- (( ! is.null(init.optim$COMP_nu)) || ( ! is.null(init.optim$NB_shape))) ) # lambda + family pars 
   ) 
@@ -748,7 +754,7 @@
     if (is.null(proc1$phi.Fix) && ! phi_by_augZXy ) { # Set (or not) outer optimization for phi: 
       init_optim_phi_blob <- .init_optim_phi(phimodel1, proc1, init.optim, nrand1, 
                                              reasons_for_outer=outer_phiScal_spares_costly_comput || var_ranCoefs) # outer estim may be numerically more stable for ranCoefs
-      other_reasons_for_outer_lambda <- init_optim_phi_blob$not_inner_phi 
+      other_reasons_for_outer_lambda <- init_optim_phi_blob$not_inner_phi
       init.optim <- init_optim_phi_blob$init.optim
     } else other_reasons_for_outer_lambda <- outer_phiScal_spares_costly_comput
     if (nrand1) {

@@ -396,7 +396,13 @@ if (FALSE) { # seems correct, but ultimately not needed
   }
   frame.form <- as.formula(frame.form)
   environment(frame.form) <- envform
-  call2mf <- call("model.frame", data = data, formula= frame.form, drop.unused.levels = TRUE, weights=callargs$prior.weights)
+  # model.frame calls terms(formula, data) [if the 'formula' is not already terms]. 
+  # Here we call terms(formula) without data to detect use of '.'
+  chkterms <- try(terms(frame.form), silent=TRUE)
+  if (inherits(chkterms,"try-error") && length(grep("'.'",attr(chkterms,"condition")$message))) {
+      warning("It looks like there is a '.' in the RHS of the formula.\n Fitting may be successful, but post-fit functions such as predict() will fail.", immediate.=TRUE)
+      call2mf <- call("model.frame", data = data, formula= frame.form, drop.unused.levels = TRUE, weights=callargs$prior.weights)
+  } else call2mf <- call("model.frame", data = data, formula= chkterms, drop.unused.levels = TRUE, weights=callargs$prior.weights)
   call2mf <- eval(call2mf) ## # directly calling model.frame fails to handle the callargs
   return(list(rownames=rownames(call2mf), weights=model.weights(call2mf))) # so that valid rows and weights always have the same length.
 }

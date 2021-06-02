@@ -121,8 +121,8 @@
       } else if ( inherits(Lcompact,"dsCMatrix")) template <- forceSymmetric(template)
     } 
     return(template) 
-  } else {
-    longLv <- .C_makelong(Lcompact, longsize) ## efficient, sparse matrix code replaces in v3.6.39 previous R code.
+  } else { # no template... (both cases occur)
+    longLv <- .C_makelong(Lcompact, longsize) ## efficient, "sparse matrix code" (input Lcompact not S4!) replaces in v3.6.39 previous R code.
     if (as_matrix) {
       longLv <- as.matrix(longLv)
     } else {

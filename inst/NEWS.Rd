@@ -3,6 +3,29 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 3.8.0}{    
+\subsection{NEW FEATURES}{
+\itemize{
+\item Parallel computations can now use forking via parallel::mclapply.
+\item The conditional AIC can now be evaluated by a bootstrap procedure.
+\item Checks that coordinates are consistent with longitude and latitude for Earth and EarthChord distances.
+\item Previous version had become slower for some spatial GLMMs without residual dispersion parameter. This is fixed.  
+}
+}
+\subsection{FIXED BUGS}{
+\itemize{
+\item Fits with "adjacency" random effects failed when data were missing for some locations. 
+\item predict(., binding= < char string >, blockSize = < any value > ) no longer worked when predicting more than 'blockSize' values. 
+\item For Gamma-response model, get_residVar() (and same computation through call to predict()) returned the dispersion parameter phi rather than the residual variances. 
+\item Use of the dot in a formula, to refer "to the remaining variables contained in data" (cf ?terms.formula), is now handled, with a warning about its limitations. It could previously lead to errors (stop), e.g. if all such variables were then removed  ( ~ . - ... - ...) to leave only the Intercept.
+}
+}
+\subsection{DOCUMENTATION}{
+\itemize{
+\item Substantially revised documentation for prediction variances, with new ?predVar page, and for AIC computations.
+}
+}
+}
 \section{CHANGES UP TO VERSION 3.7.34}{   
 \subsection{NEW FEATURES}{
 \itemize{

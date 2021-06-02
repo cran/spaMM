@@ -101,8 +101,7 @@
                                 ##
                                 ## This means that if there are repeated geo positions in the newdata 
                                 ## we save the time of trying to find them (which perhaps is less justifiable in mv case? __FIXME__)
-                                corrMats_info=object$strucList, ## use is to provide info about levels in .calc_ZMatrix()
-                                old_ZAlist=object$ZAlist, newinold=newinold, # barlist=barlist, 
+                                ZAlist_info=object$ZAlist[newinold],  
                                 lcrandfamfam=attr(object$rand.families,"lcrandfamfam"))
         # Each Z in newZlist then has non-zero rows even for response levels that are not affected by the ranef
         # bc it's built from 'ranefdata' built as if all submodels were affected by each (new) ranef

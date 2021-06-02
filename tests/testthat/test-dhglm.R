@@ -9,7 +9,7 @@ hlfit <- HLfit(y~crack0+(1|specimen),family=Gamma(log),data=crack, HLmethod="REM
 
 # testthat::expect_equal(hlfit$APHLs$p_v,789.60762,tolerance=1e-4)
 # testthat::expect_equal(hlfit$APHLs$p_bv,785.36745,tolerance=1e-4)
-testthat::expect_equal(AIC(hlfit)[2],c("    conditional AIC:"=-1607.22365),tolerance=1e-4) 
+testthat::expect_equal(AIC(hlfit,short.names = TRUE)[2],c(cAIC=-1607.22365),tolerance=1e-4) 
 
 set.seed(123)
 simulate(hlfit)

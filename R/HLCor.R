@@ -95,8 +95,7 @@ HLCor <- function(formula,
   if ( ! is.null(processed$return_only)) {
     return(hlcor)    ########################   R E T U R N   a list with $APHLs
   }
-  # FR->FR 10/2016 remis une ligne supp de 1.9.24 (mais ça doit être supprimé par fitme ou corrHLfit)
-  hlcor$call <- oricall ## potentially used by getCall(object) in update.HL ./., NOT processed
+  hlcor$call <- oricall ## potentially used by getCall(object) in update.HL ./., NOT processed ; potentially overwritten by calling function
   # ./. and more directly by confint (very convenient)
   if ( inherits(hlcor,"HLfitlist") ) {
     attr(hlcor,"how") <- list(fit_time=.timerraw(time1),fnname="HLCor", spaMM.version=hlcor[[1L]]$how$spaMM.version)

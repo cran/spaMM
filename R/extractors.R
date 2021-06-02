@@ -573,7 +573,6 @@ VarCorr.HLfit <- function(x, sigma=1, add_residVars=TRUE, ...) {
 
 .dev_resids <- function(object, fv=object$fv, y=object$y, BinomialDen=object$BinomialDen, family=object$family, 
                         families=object$families, phi_est=NULL, lev_phi,...) {
-  #BinomialDen <- .get_BinomialDen(object) 
   if ( ! is.null(families)) { # mv case, list of families
     cum_nobs <- attr(families,"cum_nobs")
     dev_res <- vector("list",length(families))
@@ -771,27 +770,43 @@ formula.HLfit <- function(x, which="hyper", ...) {
 
 nobs.HLfit <- function(object, ...) {length(object$y)} # see Details in help("nobs") for what it is useful for.
 
-get_any_IC <- function(object,...,verbose=interactive(),also_cAIC=TRUE) {
-  info_crits <- .get_info_crits(object,also_cAIC=also_cAIC)
-  likelihoods <- numeric(0)
-  if (!is.null(info_crits$mAIC))  likelihoods <- c(likelihoods,"       marginal AIC:"=info_crits$mAIC)
-  if (!is.null(info_crits$cAIC))  likelihoods <- c(likelihoods,"    conditional AIC:"=info_crits$cAIC)
-  if (!is.null(info_crits$dAIC))  likelihoods <- c(likelihoods,"     dispersion AIC:"=info_crits$dAIC)
-  if (!is.null(info_crits$GoFdf)) likelihoods <- c(likelihoods,"       effective df:"=info_crits$GoFdf)
+get_any_IC <- function(object, nsim=0L, ...,verbose=interactive(), also_cAIC=TRUE, short.names=NULL) {
+  info_crits <- .get_info_crits(object,also_cAIC=also_cAIC, nsim=nsim, ...)
+  info_crits <- info_crits[intersect(c("mAIC","cAIC","b_cAIC","dAIC","GoFdf"),names(info_crits))] # standard order better for display
+  descriptive <- c(mAIC="       marginal AIC:",
+                   dAIC="     dispersion AIC:",
+                   GoFdf="       effective df:",
+                   cAIC="    conditional AIC:",
+                   b_cAIC="    conditional AIC:")
+  comments <- c(mAIC  ="           ",
+                dAIC  ="           ",
+                GoFdf ="           ",
+                cAIC  ="(plug-in)  ",
+                b_cAIC="(bootstrap)")
+  likelihoods <- uIC <- unlist(info_crits)
+  names(likelihoods) <- descriptive[names(info_crits)]
+  comments <- comments[names(info_crits)]
   if (verbose) {
     astable <- as.matrix(likelihoods)
-    write.table(format(astable, justify="right"), col.names=FALSE, quote=FALSE) 
+    astable <- format(astable, justify="right")
+    astable <- cbind(astable, comments, names(uIC))
+    firstcolname <- paste0("         criterion", paste(substr("           ",1,nchar(astable[1,1])-3L)),"value")
+    astable <- rbind(c(firstcolname, "  method   ", "short name"), astable)
+    write.table(astable, col.names=FALSE, quote=FALSE) 
   }
-  invisible(likelihoods)
+  if (is.null(short.names)) short.names <-  ! is.null(info_crits$b_cAIC)
+  if (short.names) {
+    invisible(uIC)
+  } else invisible(likelihoods)
 }
 
-AIC.HLfit <- function(object, ..., k,verbose=interactive(),also_cAIC=TRUE) {
-  get_any_IC(object,...,verbose=verbose,also_cAIC=also_cAIC)
+AIC.HLfit <- function(object, nsim=0L, ..., k, verbose=interactive(), also_cAIC=TRUE, short.names=NULL) {
+  get_any_IC(object, nsim=nsim, ..., verbose=verbose, also_cAIC=also_cAIC, short.names=short.names)
 }
 
 extractAIC.HLfit <- function(fit, scale, k=2L, ..., verbose=FALSE) { ## stats::extractAIC generic
   df <- fit$dfs[["pforpv"]] # cf Value and Examples of extractAIC.HLfit showing in which sense this is the correct value.
-  aic <- AIC(object=fit, ..., verbose = verbose,also_AIC=FALSE)[["       marginal AIC:"]] # does not use k
+  aic <- AIC(object=fit, ..., verbose = verbose,also_AIC=FALSE, short.names=TRUE)[["mAIC"]] # does not use k
   if (k !=2L) aic <- aic + (k - 2)*df
   c(edf=df, AIC=aic) 
 }

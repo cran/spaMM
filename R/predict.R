@@ -421,24 +421,27 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
                                           nobs_info=object$vec_nobs[mv_it])
     }
     residVar <- unlist(residVars, recursive = FALSE, use.names = FALSE)
-  } else if (family$family %in% c("poisson","binomial","COMPoisson","negbin")) {
-    residVar <- family$variance(fv)
-  } else if (is.null(phi_outer <- phi.object$phi_outer)) { ## valid whether newdata are NULL or not:      
-    glm_phi <- .get_glm_phi(object, mv_it)
-    residVar <- predict(glm_phi, newdata=newdata, type="response")
-  } else { ## phi, but not glm_phi
-    if (is.null(newdata)) {
-      nobs <- nobs_info            
-    } else nobs <- nrow(newdata)
-    if (length(phi_outer)==1L) {
-      residVar <- rep(phi_outer,nobs)            
-    } else {
-      glm_phi <- .get_glm_phi(object, mv_it, only_offset=TRUE) # look whether phi.Fix was set by a phiGLM with only an offset
-      if (is.null(glm_phi)) {
-        stop(paste0("Unable to compute 'residVar' given length(<fixed phi>)!=1L.\n", 
-                    "A 'resid.model' argument, perhaps with only an offset term, might be the only way forward.")) 
-      } else residVar <- predict(glm_phi, newdata=newdata, type="response")
+  } else {
+    if (family$family %in% c("poisson","binomial","COMPoisson","negbin")) {
+      residVar <- family$variance(fv)
+    } else if (is.null(phi_outer <- phi.object$phi_outer)) { ## valid whether newdata are NULL or not:      
+      glm_phi <- .get_glm_phi(object, mv_it)
+      residVar <- predict(glm_phi, newdata=newdata, type="response")
+    } else { ## phi, but not glm_phi
+      if (is.null(newdata)) {
+        nobs <- nobs_info            
+      } else nobs <- nrow(newdata)
+      if (length(phi_outer)==1L) {
+        residVar <- rep(phi_outer,nobs)            
+      } else {
+        glm_phi <- .get_glm_phi(object, mv_it, only_offset=TRUE) # look whether phi.Fix was set by a phiGLM with only an offset
+        if (is.null(glm_phi)) {
+          stop(paste0("Unable to compute 'residVar' given length(<fixed phi>)!=1L.\n", 
+                      "A 'resid.model' argument, perhaps with only an offset term, might be the only way forward.")) 
+        } else residVar <- predict(glm_phi, newdata=newdata, type="response")
+      }
     }
+    if (family$family=="Gamma") residVar <- residVar * fv^2
   }
   residVar
 } 
@@ -1214,7 +1217,9 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
       if (showpbar) progrbar_setup$progress(slices[it+1L]/nrX)  ## update progress bar
     }
     if (showpbar) close(progrbar_setup$pb)
-    res <- .unlist_with_attributes(res) 
+    if (is.character(binding)) {
+      res <- do.call(rbind, res) # rbind data frames
+    } else res <- .unlist_with_attributes(res) # vector for binding=NA, 1-col matrix for binding=FALSE
   } else if (type=="marginal") {
     res <- .predict_marg(object=object, newdata=newdata, re.form = re.form, control=control)
   } else res <- .predict_body(object=object, newdata=newdata, re.form = re.form,
@@ -1313,6 +1318,7 @@ print.vcov.HLfit <- function(x, expanded=FALSE, ...) {
 print.predictions <- function (x, expanded=FALSE, ...) {
   asvec <- as.vector(x) ## important to remove names and keep them separately
   rnames <- rownames(x)
+  if (is.null(rnames)) rnames <- rownames(attr(x,"frame"))
   toolong <- nchar(rnames)>9
   rnames[toolong] <- paste0(substr(rnames[toolong],0,8),".")
   names(asvec) <- rnames

@@ -1736,10 +1736,10 @@ spaMM_Gamma <- local({
           invCoo <- NULL
           if ( ! is.null(latentL_blob <- attr(lmatrix,"latentL_blob"))) { ## from .process_ranCoefs
             if ( is.null(invC <- latentL_blob$gmp_compactprecmat) && 
-                 is.null(invC <- latentL_blob$compactprecmat)) {
+                 is.null(invC <- as.matrix(latentL_blob$compactprecmat))) {
               invC <- solve(latentL_blob$compactcovmat) 
-            }
-            invCoo <- .makelong(invC,longsize=ncol(lmatrix))
+            } # invC should be bigq or numeric matrix but not Matrix because:
+            invCoo <- .makelong(invC,longsize=ncol(lmatrix)) # (no template arg) => .makelong_bigq() or [.C_makelong() => invC must be numeric matrix]
           } else if (inherits(lmatrix,"dCHMsimpl")) { # before any test on type...
             invCoo <- tcrossprod(as(lmatrix,"sparseMatrix")) # assuming 'lmatrix' is an unpermuted CHM factor of the precision factor (as for attr(lmatrix,"Q_CHMfactor"))
           } else if (type == "from_AR1_specific_code")  {

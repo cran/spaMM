@@ -104,15 +104,27 @@
   return(modmat)
 }
 
+.add_levels <- function(ff, adj_or_prec, old_ZA) {
+  if (is.null(old_ZA)) {
+    RHS_levels <- colnames(adj_or_prec) # may well be NULL (=> later error only if automatic matching of ZA and 'L' is not possible)
+  } else RHS_levels <- colnames(old_ZA)
+  if ( ! is.null(RHS_levels)) {  # factor() does not satisfactorily handle levels=NULL
+    ff <- factor(ff, levels=RHS_levels)
+  }
+  ff
+}
 
 .calc_Zmatrix <- local({
   trivial_incidMat <- sparseMatrix(i=1L,j=1L,x=1L, dimnames=list("1",NULL)) 
   function(x, data, 
            rmInt, ## remove Intercept
-           drop,sparse_precision, 
+           drop, sparse_precision, 
            levels_type, # note that "data_order", "seq_len" and ".ULI" are all data-ordered, and others ('"mf"') are not
            # "data_order" is faster than ".ULI" and seems to work. attr(fitobject,"info.uniqueGeo") is unaffected.
-           corrMat_info, old_LHS_levels=NULL,
+           # extra info avout levels, for preprocessing vs for post-fit (we cannot simply pass corr_info bc we would need a ranef index 'lit' too):
+           corrMat_info, # is corr_info$corrMatrices[[lit]] 
+           adjMatrix=NULL, # is corr_info$adjMatrices[[lit]] 
+           old_ZA=NULL, # post_fit
            lcrandfamfam) {
     ## le bidule suivant evalue le bout de formule x[[3]] et en fait un facteur. 
     ## but fac may be any vector returned by the evaluation of x[[3]] in the envir 
@@ -128,13 +140,12 @@
     ## if sparse_precision is not yet determined
     #  this build the design matrix as if it was TRUE,
     #  but adds the info dataordered_levels that allows a later modif of the design matrix if sparse_precision is set to FALSE
-    assuming_spprec <- info_mat_is_prec <- FALSE
+    assuming_spprec <- FALSE
     raneftype <- attr(x,"type")
     #if (identical(raneftype, "(.|.)")) stop("this does not occur") # does not occurs here, as explained in calling fn, .calc_Zlist()
     if ( ! is.null(raneftype)) { ## Any term with a 'spatial' keyword (incl. corrMatrix); cf comment in last case
       ## if sparse not yet determined for AR1, we generate the required info for sparse (and non-sparse) and thus assume spprec: 
       if (is.null(assuming_spprec <- sparse_precision)) assuming_spprec <- (raneftype=="AR1")  
-      info_mat_is_prec <- (raneftype=="corrMatrix" && inherits(corrMat_info,"precision")) 
       ## for AR1_sparse and corrMatrix, we cannot use dummy levels as created by .ULI() of factor(). The level names have special meaning
       #   matching a time concept, or user-provided names for the corrMatrix.
       ## Further, we can drop rows/cols of a correlation matrix, but not of a precision matrix
@@ -155,14 +166,23 @@
       if (raneftype %in% c("Matern","Cauchy", "IMRF")) {
         ff <- levels_blob$factor ## so that Z cols will not be reordered.
       } else if (raneftype=="corrMatrix") {
-        if (info_mat_is_prec) { ## we have to keep all levels even those absent from the data
-          ff <- factor(levels_blob$factor, levels=colnames(corrMat_info$matrix))
+        if ( ! is.null(corrMat_info) && inherits(corrMat_info,"precision")) { # PRE-FIT ONLY:
+          # cf example with  covStruct=list(precision=as_precision(MLdistMat)):
+          # The user provided a precision matrix for a ranef of type corrMatrix
+          ## we have to keep all levels of the precision matrix even those absent from the data
+          # this info is in corr_info$corrMatrices, not in $adjMatrices (a prec mat is not an adj mat)
+          ff <- .add_levels(ff=levels_blob$factor, adj_or_prec=corrMat_info$matrix, old_ZA=NULL)
+          drop <- FALSE
         } else {
           ff <- levels_blob$factor
         }
+      } else if (raneftype=="adjacency") { ## pre-fit AND post-fit: we have to keep all levels even those absent from the data
+        ff <- .add_levels(ff=levels_blob$factor, adj_or_prec=adjMatrix, old_ZA=old_ZA)
+        drop <- FALSE
       } else if (assuming_spprec && raneftype=="AR1") { 
         AR1_sparse_Q_ranges_blob <- .calc_AR1_sparse_Q_ranges(mf=data,levels_blob) # we need all 'time steps' for AR1 by spprec
         ff <- factor(levels_blob$factor,levels=AR1_sparse_Q_ranges_blob$seq_levelrange) ## rebuild a new factor with new levels
+        drop <- FALSE
         if (anyNA(ff)) {
           stop(
             paste("Something wrong in levels of the factor for AR1 effects.") # levels_blob$factor does not match AR1_sparse_Q_ranges_blob$seq_levelrange
@@ -195,7 +215,7 @@
     ## If info_mat was corr then it must have the levels that a precision matrix would need
     ## If info_mat_is_prec we drop nothing
     ## if assuming_spprec (i.e. if spprec already determined, or AR1) we drop nothing.
-    if (drop && ! (info_mat_is_prec || assuming_spprec))  ff <- droplevels(ff)
+    if (drop)  ff <- droplevels(ff)
     ## Done with ff. Now the incidence matrix: 
     if (nrow(data)==1L && levels(ff)=="1") {
       im <- trivial_incidMat ## massive time gain when optimizing spatial point predictions
@@ -216,8 +236,7 @@
       submv <- sub("mv\\([^|]+",".mv", .DEPARSE(tempexp))
       leftOfBar_form <- as.formula(paste("~", submv))
       leftOfBar_terms <- terms(leftOfBar_form)
-      leftOfBar_mf <- model.frame(leftOfBar_terms, data.frame(.mv=factor(model_ids)), xlev = old_LHS_levels)
-      # or a mf with the actual level of mv, if it was known here, and other levels through old_LHS_levels ?
+      leftOfBar_mf <- model.frame(leftOfBar_terms, data.frame(.mv=factor(model_ids)), xlev = attr(old_ZA,"LHS_levels"))
       dummymodmat <- .calc_Z_model_matrix(leftOfBar_terms, leftOfBar_mf, raneftype = NULL, lcrandfamfam = "gaussian")
       modmat <- matrix(1, nrow=nrow(data), ncol=ncol(dummymodmat)) 
       colnames(modmat) <- colnames(dummymodmat) # the model_ids 
@@ -228,9 +247,7 @@
       # LHS_levels for prediction:
       # for poly() terms, there is a crucial difference between the data (with raw variables) 
       #   and the [value of model.frame(), with monomials]. Then one cannot call recursively model.frame() on a mf.  
-      if ( length(old_LHS_levels)) { ## excludes NULL, or 0-col data.frames as in Matern(1|.) in *OLD* leftOfBar_mf 
-        leftOfBar_mf <- model.frame(leftOfBar_terms, data, xlev = old_LHS_levels) 
-      } else leftOfBar_mf <- model.frame(leftOfBar_terms, data) ## Matern(1|.) => [0 col; nrow=nrow(mf)]
+      leftOfBar_mf <- model.frame(leftOfBar_terms, data, xlev = attr(old_ZA,"LHS_levels")) 
       # note the test of contrasts on predict with ranCoefs with factors, in test-ranCoefs.R
       modmat <- .calc_Z_model_matrix(leftOfBar_terms, leftOfBar_mf, raneftype, lcrandfamfam) ## handles non-trivial LHS in e.g. Matern(LHS|rhs)
     }
@@ -291,12 +308,11 @@
   return(ZA)
 }
 
-
-
 .calc_Zlist <- function (exp_ranef_terms, data, rmInt, drop, sparse_precision=spaMM.getOption("sparse_precision"),
                          levels_type="data_order", # cf comment for Matern case in .calc_ZMatrix(); there is one non-default use in post-fit code
-                         corrMats_info, 
-                         old_ZAlist=NULL,newinold=NULL, ## for prediction
+                         # two alternative ways to provide info about levels in .calc_ZMatrix():
+                         corr_info=NULL, # pre-fit
+                         ZAlist_info=NULL, # post-fit: (subset by newinold of) object$ZAlist
                          lcrandfamfam # for heteroscedastic non-gaussian random effects
                          
 ) {
@@ -309,18 +325,19 @@
   nrand <- length(exp_ranef_terms)
   Zlist <- structure(vector("list", nrand), names=seq_len(nrand))
   for (lit in seq_along(exp_ranef_terms)) {
-    # if ( ! is.null(old_ZAlist)) {
-    #   if ( attr(old_ZAlist,"exp_ranef_types")[lit] %in% c("Matern","Cauchy")
-    #        && is.null(attr(old_ZAlist,"AMatrices")[[as.character(lit)]])) {
+    # if ( ! is.null(ZAlist_info)) {
+    #   if ( attr(ZAlist_info,"exp_ranef_types")[lit] %in% c("Matern","Cauchy")
+    #        && is.null(attr(ZAlist_info,"AMatrices")[[as.character(lit)]])) {
     #     # cases where we can avoid some level-matching checks; but _F I X M E_ can we generalize this? 
     #     levels_type <- "seq_len" # bc new_old corr mat will have names as seq_len, 
     #     # even though "data order" was used for the original Z matrix
-    #   } else levels_type <- attr(old_ZAlist, "levels_types")[lit]
+    #   } else levels_type <- attr(ZAlist_info, "levels_types")[lit]
     # }
     Zlist[[lit]] <- .calc_Zmatrix(exp_ranef_terms[[lit]], data=data, rmInt=rmInt,
                                    drop=drop, sparse_precision=sparse_precision, levels_type=levels_type, 
-                                   corrMat_info=corrMats_info[[lit]],
-                                  old_LHS_levels = attr(old_ZAlist[[newinold[lit]]],"LHS_levels"),
+                                   corrMat_info=corr_info$corrMatrices[[lit]],
+                                  adjMatrix=corr_info$adjMatrices[[lit]],
+                                  old_ZA=ZAlist_info[[lit]],
                                   lcrandfamfam=lcrandfamfam[[lit]])
     ## ALL Zlist[[i]] are either 
     #     diagonal matrix (ddiMatrix) with @diag = "U"
@@ -330,9 +347,7 @@
     ##  @i contains the row indices of nonzero elements (except diagonal elements if @diag represents them)
     ##  @p[c] must contain the index _in x_ of the first nonzero element of column c, x[p[c]] in col c and row i[p[c]])  
   }
-  if ( ! is.null(newinold)) {
-    names(Zlist) <- paste(newinold) ## bc .calc_ZAlist() matches AMatrices by names (itself useful for re.form) 
-  } ## F I X M E try char naming in all cases... 
+  if ( ! is.null(ZAlist_info)) names(Zlist) <- names(ZAlist_info) ## bc .calc_ZAlist() matches AMatrices by names (itself useful for re.form) 
   ## Subject <- list(0) ## keep this as comment; see below
   namesTerms <- vector("list", nrand)
   #levels_types <- character(nrand)

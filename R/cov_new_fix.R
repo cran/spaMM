@@ -401,8 +401,7 @@ if (FALSE) { # v3.5.121 managed to get rid of it
                                 ##  as by .calc_Zmatrix() -> .as_factor() for IMRFs.
                                 ## This is controlled by option uGeo_levels_type (default = "mf" as the most explicit; using ".ULI" appears OK).
                                 ## The sames functions are called with the same arguments for predict with newdata.
-                                corrMats_info=object$strucList, ## use is to provide info about levels in .calc_ZMatrix()
-                                old_ZAlist=object$ZAlist, newinold=newinold, #barlist=barlist, 
+                                ZAlist_info=object$ZAlist[newinold], 
                                 lcrandfamfam=attr(object$rand.families,"lcrandfamfam")) 
         amatrices <- .get_new_AMatrices(object, newdata=locdata) # .calc_newFrames_ranef(formula=ranef_form,data=locdata,fitobject=object)$mf)
         ## ! complications:

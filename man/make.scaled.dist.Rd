@@ -52,7 +52,10 @@ data("blackcap")
 fitme(migStatus ~ 1 + Matern(1|longitude+latitude+means),
       data=blackcap, fixed=list(nu=0.5,phi=1e-6),
       init=list(rho=c(1,1)), control.dist=list(rho.mapping=c(1,1,2)))
-## Using orthodromic distances: order of variables in Matern(.|longitude+latitude) matters
+
+## Using orthodromic distances: 
+# order of variables in Matern(.|longitude+latitude) matters; 
+# Matern(1|latitude+longitude) should cause a warning
 fitme(migStatus ~ 1 + Matern(1|longitude+latitude),data=blackcap,
       method="ML", fixed=list(nu=0.5,phi=1e-6),
       control.dist=list(dist.method="Earth"))

@@ -5,7 +5,7 @@
 Leverage extractor for HLfit objects
 }
 \description{
-This gets \dQuote{leverages} or \dQuote{hat values} from an object. However, ther is hidden complexity in what this may mean, so care must be used in selecting proper arguments for a given use.
+This gets \dQuote{leverages} or \dQuote{hat values} from an object. However, there is hidden complexity in what this may mean, so care must be used in selecting proper arguments for a given use (see Details). To get the full hat matrix, see \code{\link{get_matrix}(., which="hat_matrix")}.
 }
 \usage{
 \method{hatvalues}{HLfit}(model, type = "projection", which = "resid", force=FALSE, ...)

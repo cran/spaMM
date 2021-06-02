@@ -43,7 +43,7 @@ Functions to extract various components of a fit
 \code{response} extracts the response (as a vector).
 \code{fixef} extracts the fixed effects coefficients, \eqn{\beta}.
 \code{ranef} extracts the predicted random effects, \bold{Lv} (default since version 1.12.0), or \bold{u} (see Details in \code{\link{HLfit}} for definitions), \code{print.ranef} controls their printing. 
-\code{getDistMat} returns a distance matrix for a Matérn correlation model.
+\code{getDistMat} returns a distance matrix for a geostatistical (Matérn etc.) random effect.
 }
 \usage{
 \method{formula}{HLfit}(x, which="hyper", ...)
@@ -103,6 +103,12 @@ m1 <- HLfit(y ~ X1+X2+(1|batch), resid.model = ~ 1,
             data=wafers, method="ML")
 fixef(m1)
 ranef(m1)
+
+data("blackcap")
+fitobject <- fitme(migStatus ~ 1 + Matern(1|longitude+latitude),data=blackcap,
+                       fixed=list(nu=4,rho=0.4,phi=0.05))
+getDistMat(fitobject)
+
 }
 % Add one or more standard keywords, see file 'KEYWORDS' in the
 % R documentation directory.

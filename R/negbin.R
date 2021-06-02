@@ -36,6 +36,15 @@
 
 negbin <- function (shape = stop("negbin's 'shape' must be specified"), link = "log", trunc=-1L) {
   mc <- match.call()
+  if (inherits(shch <- substitute(shape),"character") ||
+      (inherits(shch,"name") && inherits(shape, "function")) # "name" is for e.g. negbin(log)
+      # (but testing only "name" would catch e.g. negbin(shape=shape) )
+  ) { 
+    if (inherits(shch,"character")) shch <- paste0('"',shch,'"')
+    errmess <- paste0('It looks like negbin(',shch,') was called, which absurdly means negbin(shape=',shch,
+                      ').\n  Use named argument: negbin(link=',shch,') instead.')
+    stop(errmess)
+  }
   linktemp <- substitute(link)
   if (!is.character(linktemp)) 
     linktemp <- deparse(linktemp)

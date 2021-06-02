@@ -1,4 +1,4 @@
-.get_geo_info <- function(processed, which_ranef, which="", dist.method) {
+.get_geo_info <- function(processed, which_ranef, which="", dist_method_rd=processed$control_dist[[which_ranef]]$dist.method) {
   geo_envir <- processed$geo_info[[which_ranef]] ## should be an environment, possibly empty. Check:
   if (is.null(geo_envir)) stop("The required environment was not created during preprocessing.")
   needed <- c("distMatrix"=("distMatrix" %in% which && is.null(geo_envir$distMatrix)),
@@ -9,7 +9,7 @@
     blob <- .get_dist_nested_or_not(spatial_term=attr(processed$ZAlist,"exp_spatial_terms")[[which_ranef]], 
                                 data=processed$data, distMatrix=geo_envir$distMatrix, 
                                 uniqueGeo=geo_envir$uniqueGeo, ## precomputed only for AR1
-                                dist.method = dist.method,needed=needed,
+                                dist.method = dist_method_rd, needed=needed,
                                 geo_envir=geo_envir)
     ## Avoid overwriting preexisting ones with possible NULL's:
     if (is.null(geo_envir$distMatrix)) geo_envir$distMatrix <- blob$distMatrix 
@@ -233,13 +233,13 @@
         cov_info_mat <- .tcrossprodCpp(cov_info_mat,NULL)
       }  else if (corr_type=="AR1" && ! processed$is_spprec) {
         geo_envir <- .get_geo_info(processed, which_ranef=rd, which=c("distMatrix"), 
-                                   dist.method=control.dist[[char_rd]]$dist.method)
+                                   dist_method_rd=control.dist[[char_rd]]$dist.method)
         cov_info_mat <- .get_cP_stuff(ranPars,"ARphi",which=char_rd)^(geo_envir$distMatrix)  
         cov_info_mat[geo_envir$distMatrix==Inf] <- 0 ## should not be necess, but is.
       } else  if (corr_type %in% c("Matern","Cauchy")) {
         control_dist_rd <- control.dist[[char_rd]]
         msd.arglist <- list(rho = rho)
-        msd.arglist$`dist.method` <- control_dist_rd$`dist.method` ## may be NULL
+        msd.arglist$`dist.method` <- dist_method_rd <- control_dist_rd$`dist.method` ## may be NULL
         # .get_geo_info() is *the* code that accounts for grouping but never uses rho (hence never returns a scaled distMatrix)
         # So for non-trivial rho we cannot directly use the distMatrix, and make_scaled_dist() won't have access to grouping info in distMatrix.
         # So for non-trivial rho plus grouping we need both the uniqueGeo and the distMatrix
@@ -249,9 +249,14 @@
             needed <- c("uniqueGeo", "notSameGrp")
           } else needed <- "uniqueGeo"
           geo_envir <- .get_geo_info(processed, which_ranef=rd, which=needed, 
-                                     dist.method=control_dist_rd$dist.method)
+                                     dist_method_rd=dist_method_rd)
           coord_within <- .extract_check_coords_within(spatial_term=spatial_term)
           msd.arglist$uniqueGeo <- geo_envir$uniqueGeo[,coord_within,drop=FALSE]
+          if ( ! is.null(dist_method_rd) && dist_method_rd %in% c("Earth","EarthChord") ) {
+            if (grepl("lat", coord_within[1])) warning("Hmm... the first coordinate should be longitude, but seems to be latitude.")
+            if (max(abs(msd.arglist$uniqueGeo[,1])-180>1e-14)) warning("Hmm... max(abs(longitude)) should be <= 180, but is not.")
+            if (max(abs(msd.arglist$uniqueGeo[,1])-90>1e-14)) warning("Hmm... max(abs(latitude)) should be <= 90, but is not.")
+          }
           msd.arglist$`rho.mapping` <- control_dist_rd$`rho.mapping` ## may be NULL
           cov_info_mat <- do.call("make_scaled_dist",msd.arglist)
           #
@@ -262,7 +267,7 @@
           }
         } else {
           geo_envir <- .get_geo_info(processed, which_ranef=rd, which=c("distMatrix"), 
-                                     dist.method=control_dist_rd$dist.method)
+                                     dist_method_rd=dist_method_rd)
           msd.arglist$distMatrix <- geo_envir$distMatrix   
           cov_info_mat <- do.call("make_scaled_dist",msd.arglist)
         }

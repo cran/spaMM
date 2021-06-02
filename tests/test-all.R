@@ -1,9 +1,13 @@
+# tools::check_packages_in_dir(".", check_args = "--no-multiarch")
+# devtools::check(".", args ="--no-multiarch", manual=TRUE)
 if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") { ## set in <R_HOME>/etc/Renviron.site (cf R Windows FAQ)
   if(requireNamespace("testthat", quietly = TRUE)) {
     pkg   <- "spaMM"
     require(pkg, character.only=TRUE, quietly=TRUE)
     # options(error = quote({dump.frames(to.file = TRUE)})) # useful for bugs in .do_TRACE()
     if (interactive()) {
+      # install.packages("INLA",repos=c(getOption("repos"),INLA="https://inla.r-inla-download.org/R/stable"), dep=TRUE)
+      # install.packages(c("probitgem", "DHARMa", "inlabru"))
       # options(error=recover)
       # spaMM.options(use_ZA_L=NULL)
       abyss <- matrix(runif(2e7),nrow=1000); gc(reset=TRUE) ## partial control of gc trigger...
@@ -16,6 +20,8 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") { ## set in <R_HOME>/etc/Renviron.site 
       print(sums <- colSums(timings))
       ## testthat::test_package(pkg) ## for an installed package
       if (FALSE) { ## tests not included in package (using unpublished data, etc.)
+        #install.packages(c("FactoMineR"))
+        # see also includes in test_back_compat.R
         priv_testfiles <- dir(paste0(projpath(),"/package/tests_private/"),pattern="*.R",full.names = TRUE)
         priv_testfiles <- setdiff(priv_testfiles,paste0(projpath(),"/package/tests_private/knit_LM2GLMM.R"))
         priv_timings <- t(sapply(priv_testfiles, function(fich){

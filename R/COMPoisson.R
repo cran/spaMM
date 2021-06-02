@@ -555,10 +555,13 @@ COMPoisson <- function(nu = stop("COMPoisson's 'nu' must be specified"),
 ) { 
   .spaMM.data$options$COMP_maxn_warned <- FALSE # much better here than in .preprocess(); works with glm()
   .spaMM.data$options$COMP_geom_approx_warned <- FALSE
-  if (inherits(nuch <- substitute(nu),"character")) {
-    nuchar <- paste0('"',nuch,'"')
-    errmess <- paste0('It looks like COMPoisson(',nuchar,') was called, which absurdly means COMPoisson(nu=',nuchar,
-                      ').\n  Use named argument: COMPoisson(link=',nuchar,') instead.')
+  if (inherits(nuch <- substitute(nu),"character") ||
+      (inherits(nuch,"name") && inherits(nu, "function")) # "name" is for e.g. COMPoisson(log)
+      # (but testing only "name" would catch e.g. COMPoisson(nu=nu) )
+     ) { 
+    if (inherits(nuch,"character")) nuch <- paste0('"',nuch,'"')
+    errmess <- paste0('It looks like COMPoisson(',nuch,') was called, which absurdly means COMPoisson(nu=',nuch,
+                      ').\n  Use named argument: COMPoisson(link=',nuch,') instead.')
     stop(errmess)
   }
   linktemp <- substitute(link) # if link was char LHS is char ; else deparse will create a char from a language object 

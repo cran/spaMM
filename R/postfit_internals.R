@@ -125,32 +125,51 @@
   return(pd)
 }
 
+# Consistent with cAIC4:::conditionalBootstrap
+.calc_AIC_dfs <- function (object, nsim, type="residual", seed=NULL, 
+                           nb_cores=NULL, fit_env=NULL) {
+  bootsims <- simulate(object, nsim = nsim, type = type, verbose=FALSE, seed=seed) # the corresponding lmer code returns a data frame
+  muFREQS <- dopar(bootsims, function(x) {
+    predict(update_resp(object, newresp=x), type="response") # predict(refit(object, newresp = x))
+  }, nb_cores=nb_cores, fit_env=fit_env)
+  thetas <- .theta.mu.canonical(muFREQS,family(object))
+  # if (is.factor(bootsims[1])) dataMatrix <- as.numeric(dataMatrix) - 1 # in cAIC4:::conditionalBootstrap
+  bootsims <- bootsims - rowMeans(bootsims)
+  phis <- residVar(object, which="phi") # For Gamma(), the phis are still those of he canonical form of the exponential family, 
+  # not the full residual variance (name 'get_residVar' is ambiguous)
+  bootBC <- sum(colSums(thetas * bootsims/phis))/(nsim-1) # Handles the case Where the phis are heteroscedastic, 
+  return(bootBC)
+}
 
+.calc_p_phi <- function(object, dfs=object$dfs) {
+  p_phi <- dfs[["p_fixef_phi"]]
+  if  ( ! is.null(resid_fits <- object$resid_fits)) { 
+    p_phi <- sum(na.omit(unlist(p_phi)),
+                 sum(unlist(lapply(resid_fits, `[[`, x="dfs"), recursive = TRUE, use.names = FALSE)) )
+  } else if  ( ! is.null(resid_fit <- object$resid_fit)) { 
+    # input p_phi (above) is typically set to NA, and will be ignored
+    p_phi <- sum(.unlist(resid_fit$dfs)) ## phi_pd is relevant only for measuring quality of prediction by the resid_fit! 
+  } else p_phi <- sum(.unlist(dfs[["p_fixef_phi"]])) # .unlist() for mv
+  names_est_ranefPars <- unlist(.get_methods_disp(object))  
+  fam_disp_parsnames <- intersect(names_est_ranefPars,c("NB_shape","COMP_nu"))
+  if (length(fam_disp_parsnames)) {
+    p_GLM_family <- length( # compatible with mv:
+      .unlist(.get_outer_inits_from_fit(object, keep_canon_user_inits = FALSE)[fam_disp_parsnames]))
+    p_phi <- p_phi+p_GLM_family ## effectively part of the model for residual error structure
+  }
+  p_phi
+}
 
-.get_info_crits <- function(object, also_cAIC=TRUE) {
-  if (is.null(info_crits <- object$envir$info_crits) || (also_cAIC && is.null(info_crits$cAIC))) { 
+.get_info_crits <- function(object, also_cAIC=TRUE, nsim=0L, ...) {
+  if (is.null(info_crits <- object$envir$info_crits) || (also_cAIC && is.null(info_crits[["cAIC"]]))) { 
     dfs <- object$dfs
     if ( ! inherits(dfs,"list")) dfs <- as.list(dfs) ## back compatibility
     pforpv <- dfs[["pforpv"]]
-    p_phi <- dfs[["p_fixef_phi"]]
+    p_phi <- .calc_p_phi(object, dfs)
     p_lambda <- dfs[["p_lambda"]]
     APHLs <- object$APHLs
     w.resid <- object$w.resid
     info_crits <- list()
-    if  ( ! is.null(resid_fits <- object$resid_fits)) { 
-      p_phi <- sum(na.omit(unlist(p_phi)),
-                   sum(unlist(lapply(resid_fits, `[[`, x="dfs"), recursive = TRUE, use.names = FALSE)) )
-    } else if  ( ! is.null(resid_fit <- object$resid_fit)) { 
-      # input p_phi (above) is typically set to NA, and will be ignored
-      p_phi <- sum(.unlist(resid_fit$dfs)) ## phi_pd is relevant only for measuring quality of prediction by the resid_fit! 
-    } else p_phi <- sum(.unlist(dfs[["p_fixef_phi"]])) # .unlist() for mv
-    names_est_ranefPars <- unlist(.get_methods_disp(object))  
-    fam_disp_parsnames <- intersect(names_est_ranefPars,c("NB_shape","COMP_nu"))
-    if (length(fam_disp_parsnames)) {
-      p_GLM_family <- length( # compatible with mv:
-        .unlist(.get_outer_inits_from_fit(object, keep_canon_user_inits = FALSE)[fam_disp_parsnames]))
-      p_phi <- p_phi+p_GLM_family ## effectively part of the model for residual error structure
-    }
     # poisson-Gamma and negbin should have similar similar mAIC => NB_shape as one df or lambda as one df   
     forAIC <- APHLs
     if (object$models[[1]]=="etaHGLM") {
@@ -207,8 +226,15 @@
       info_crits$mAIC <- -2*forAIC$p_v+2*(pforpv+p_phi) 
     }
     object$envir$info_crits <- info_crits
+  } else p_phi <- NULL
+  if ( nsim>0L ) {
+    if (is.null(p_phi)) p_phi <- .calc_p_phi(object)
+    b_pd <- .calc_AIC_dfs(object, nsim=nsim, ...)
+    if (object$models[[1]]=="etaHGLM") {
+      object$envir$info_crits$b_cAIC <- -2*object$APHLs$clik + 2*(b_pd+p_phi)
+    } else object$envir$info_crits$b_cAIC <- -2*object$APHLs$p_v + 2*(b_pd+p_phi) # as documented
   } 
-  return(info_crits)
+  return(object$envir$info_crits)
 }
 
 .get_logdispObject <- function(object) { ## 

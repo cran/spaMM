@@ -40,3 +40,13 @@ if ( (! "covr" %in% loadedNamespaces()) &&
      file.exists((privtest <- "C:/home/francois/travail/stats/spaMMplus/spaMM/package/tests_other_pack/test-probitgem.R"))) {
   source(privtest)  
 } # including another AIC() check
+
+## test handling of missing data
+if (spaMM.getOption("example_maxtime")>0.7) {
+  scotli <- scotlip
+  scotli$cases[1] <- NA
+  rownames(Nmatrix) <- colnames(Nmatrix) <- scotli$gridcode # needed here
+  mdfit <- fitme(cases~I(prop.ag/10)+adjacency(1|gridcode)+offset(log(expec)), data=scotli, adjMatrix=Nmatrix, family=poisson)
+  predict(mdfit, newdata=scotlip) # on 56 positions
+} 
+

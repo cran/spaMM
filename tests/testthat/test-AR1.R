@@ -16,7 +16,7 @@ if (spaMM.getOption("example_maxtime")>8) { # fit itself < 8s
 }
 
 ## same with nested AR1 within individual
-## il faut pas mal de donnees pour estimer ARphi (et le reste) de façon convainquante 
+## Large data necess for good estimation of ARphi and other params 
 
 # quick version for routine tests
 if (TRUE) {

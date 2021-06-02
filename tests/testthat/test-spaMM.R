@@ -106,3 +106,35 @@ data("wafers")
 m1 <- HLfit(y ~X1+X2+I(X2^2),family=Gamma(log),
             resid.model = ~ X3+I(X3^2) ,data=wafers,method="ML") 
 update_resp(m1,newresp=simulate(m1))
+
+# Handling of ~ . :
+testthat::test_that(
+  "Warning expected for ~ . ", 
+  {
+    warn <- ""
+    withCallingHandlers(
+      fitme(Sepal.Length ~ . -Species + (1|Species), data=iris), warning=function(w) {
+        warn <<- conditionMessage(w)
+        invokeRestart("muffleWarning")
+      })
+    testthat::expect_true(
+      warn=="It looks like there is a '.' in the RHS of the formula.\n Fitting may be successful, but post-fit functions such as predict() will fail."
+    )}
+)
+
+# Handling of ~ . :
+testthat::test_that(
+  "Warning expected for Earth + .(.|latitude+longitude) ", 
+  {
+    warn <- ""
+    withCallingHandlers(
+      fitme(migStatus ~ 1 + Matern(1|latitude+longitude),data=blackcap,
+            method="ML", fixed=list(nu=0.5,phi=1e-6),
+            control.dist=list(dist.method="Earth")), warning=function(w) {
+        warn <<- conditionMessage(w)
+        invokeRestart("muffleWarning")
+      })
+    testthat::expect_true(
+      warn=="Hmm... the first coordinate should be longitude, but seems to be latitude."
+    )}
+)
