@@ -25,9 +25,9 @@ if( requireNamespace("multilevel", quietly = TRUE)) {
     ## spaMM expects integer response
     lql$resp <- as.integer(lql$dichot)-1
     # 12s s WITHOUT LevenbergM NOR sparse_precision; see the privtest for other comparisons.
-    hl1 <- HLfit(cbind(resp,1-resp) ~ 0+itype+(1|subj)+(1|COMPID)+(1|item), 
-                 data=lql, family=binomial() ,HLmethod="ML",verbose=c(TRACE=interactive()),
-                 control.HLfit=list(LevenbergM=FALSE)) 
+    hl1 <- fitme(cbind(resp,1-resp) ~ 0+itype+(1|subj)+(1|COMPID)+(1|item), 
+                 #verbose=c(TRACE=interactive()),
+                 data=lql, family=binomial()) 
     testthat::expect_equal(logLik(hl1),c(p_v=-20354.8828))
     if (FALSE) { ## not useful in routine tests
       if (file.exists((privtest <- "C:/home/francois/travail/stats/spaMMplus/spaMM/package/tests_other_pack/test-Rasch-lme4.R"))) {

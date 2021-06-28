@@ -295,7 +295,7 @@
     #  ./. -> .init_optim_lambda_ranCoefs() has to check not globally fixed lambdas ;
     # Maybe not optimal but need to distinguish globally fixed param at some point? (_F I X M E_) 
     optim_blob_it <- .calc_optim_args(proc_it=unmerged[[mv_it]], processed=processed,
-                                      init=user_init_optim_it, fixed=fixed_it, lower=user_lower_it, upper=user_upper_it, 
+                                      user_init_optim=user_init_optim_it, fixed=fixed_it, lower=user_lower_it, upper=user_upper_it, 
                                       verbose=verbose, optim.scale=optim.scale, For="fitmv") 
     # operation requiring full model indices:
     # .modify_list() requires that all vectors are named; and moreover, that ranef indices are those of the mv model, not of each sub-model

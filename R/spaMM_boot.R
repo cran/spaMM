@@ -31,7 +31,8 @@ spaMM_boot <- local({
     # If the simuland has (say) arguments y, what=NULL, lrt, ...   , we should not have lrt in the dots. Since the dots are not directly manipulable
     # we have to convert them to a list, and ultimately to use do.call()
     control.foreach$.combine <- "rbind"
-    bootreps <- dopar(newresp = newy_s, nb_cores = nb_cores,fn = simuland, fit_env = fit_env, 
+    wrap_parallel <- get(.spaMM.data$options$wrap_parallel, asNamespace("spaMM"), inherits=FALSE)
+    bootreps <- wrap_parallel(newresp = newy_s, nb_cores = nb_cores,fn = simuland, fit_env = fit_env, 
                        control=control.foreach, debug.=debug., pretest_cores = .pretest_fn_on_cores, 
                       showpbar = showpbar, ...) 
     return(list(bootreps=bootreps,RNGstates=RNGstate))
@@ -48,6 +49,16 @@ spaMM_boot <- local({
   }
   setup
 }
+
+.warn_once_progressr <- local({
+  progressr_warned <- FALSE
+  function() {
+    if ( ! progressr_warned) {
+      message("If the 'progressr' package were attached, a progress bar would be available.")
+      progressr_warned <<- TRUE
+    } 
+  }
+})
 
 .check_call_on_core <- function(fitobject) { # this is run on a node
   obj_call <- getCall(fitobject)
@@ -82,12 +93,35 @@ spaMM_boot <- local({
   pboptions(pbopt) 
 }  # warnings on the parent process, no return value
 
-
+.set_cluster_type <- function(cluster_args, nb_cores) {
+  if (is.null(cluster_args$spec)) cluster_args$spec <- .check_nb_cores(nb_cores=nb_cores)
+  if (cluster_args$spec>1L) {
+    type_user <- cluster_args$type
+    if (.Platform$OS.type == "windows") {
+      if (is.null(type_user)) {
+        cluster_args$type <- "PSOCK" # default, but explicit => can be tested # On windows, or on linux if explicitly requested
+      } else if (type_user=="FORK") {
+        message('cluster_args$type=="FORK" not feasible under Windows')
+        cluster_args$type <- "PSOCK"
+      }
+    } else { # linux alikes
+      if (is.null(type_user)) {
+        if (.inRstudio(silent=TRUE)) {
+          cluster_args$type <- "PSOCK"
+        } else cluster_args$type <- "PSOCK" # default is socket cluster in all cases
+      } else if (type_user=="FORK" && .inRstudio(silent=TRUE)) {
+        message('cluster_args$type=="FORK" not feasible when R is called from an Rstudio session.')
+        cluster_args$type <- "PSOCK"
+      }
+    }
+  }
+  cluster_args
+}
 
 # fn more generic than spaMM_boot: there is no call to other spaMM fns such as simulate(object, .) so this acts as a general wrapper for 
 # foreach or pbapply, and not specifically for bootstrap computations.
 dopar <- local({
-  doSNOW_warned <- pbmclapply_warned <- FALSE
+  doSNOW_warned <- FALSE
   function(newresp, fn, nb_cores=NULL, 
            fit_env, control=list(), cluster_args=NULL,
            debug.=FALSE, iseed=NULL, showpbar=eval(spaMM.getOption("barstyle")),
@@ -95,54 +129,53 @@ dopar <- local({
            ... # passed to fn
   ) {
     if (is.list(fit_env)) fit_env <- list2env(fit_env)
-    nb_cores <- .check_nb_cores(nb_cores=nb_cores) 
+    cluster_args <- .set_cluster_type(cluster_args, nb_cores) # PSOCK vs FORK
+    nb_cores <- cluster_args$spec
     if (debug. && nb_cores>1L ) debug. <- 1L 
     assign("debug.", debug., environment(fn))
     nsim <- ncol(newresp)
     time1 <- Sys.time() 
     if (nb_cores>1L) {
-      type_user <- cluster_args$type
-      if (.Platform$OS.type == "windows") {
-        if (is.null(type_user)) {
-          cluster_args$type <- "PSOCK" # default, but explicit => can be tested # On windows, or on linux if explicitly requested
-        } else if (type_user=="FORK") {
-          message('cluster_args$type=="FORK" not feasible under Windows')
-          cluster_args$type <- "PSOCK"
-        }
-      } else { # linux alikes
-        if (is.null(type_user)) {
-          if (.inRstudio(silent=TRUE)) {
-            cluster_args$type <- "PSOCK"
-          } else cluster_args$type <- "FORK"
-        } else if (type_user=="FORK" && .inRstudio(silent=TRUE)) {
-          message('cluster_args$type=="FORK" not feasible when R is called from an Rstudio session.')
-          cluster_args$type <- "PSOCK"
-        }
-      }
       if (cluster_args$type=="FORK") {
         if ( ! is.null(iseed) ) {
           ori <- RNGkind("L'Ecuyer-CMRG")
           set.seed(iseed)
         }
         if (is.null(mc.silent <- control$mc.silent)) mc.silent <- TRUE 
-        has_pbmclapply <- ("package:pbmclapply" %in% search())
-        if (has_pbmclapply) {
-          apply_fn <- get("pbmclapply", asNamespace("pbmcapply"), inherits=FALSE) # syntax for using an undeclared package (cf stats:::confint.glm)
-          bootreps <- try(do.call(apply_fn, 
-                                  list(seq_len(ncol(newresp)),FUN = function(it) fn(newresp[,it], ...), mc.silent=mc.silent, mc.cores=nb_cores)))
+        has_progressr <- ("package:progressr" %in% search())
+        seq_nr <- seq_len(ncol(newresp))
+        if (has_progressr) {
+          # progressor is the only progress function that 'works' with mclapply
+          # although not with load-balancing (mc.preschedule=FALSE)
+          # Here we use the default (no balancing), and it is the steps with max value shown below that are reported.  
+          prog_fn <- get("progressor", asNamespace("progressr"), inherits=FALSE) # syntax for using an undeclared package (cf stats:::confint.glm)
+          with_fn <- get("with_progress", asNamespace("progressr"), inherits=FALSE) # syntax for using an undeclared package (cf stats:::confint.glm)
+          with_fn({
+            p <- prog_fn(steps=ceiling(ncol(newresp)/nb_cores))
+            p_fn <- function(it, ...) { # it OK for mclapply... not for apply on a matrix
+              res <- fn(newresp[,it], ...)
+              p() # p() call necessary for actual progress report 
+              res
+            }
+            bootreps <- try(
+              parallel::mclapply(seq_nr, FUN = p_fn, mc.silent=mc.silent, mc.cores=nb_cores)
+            )
+          })
+          
         } else {
-          if ( ! pbmclapply_warned) {
-            message("If the 'pbmcapply' package were attached, a progress bar would be available.")
-            pbmclapply_warned <<- TRUE
-          } 
-          bootreps <- try(parallel::mclapply(seq_len(ncol(newresp)),FUN = function(it) fn(newresp[,it], ...), mc.silent=mc.silent, mc.cores=nb_cores))
+          .warn_once_progressr()
+          bootreps <- try(
+            parallel::mclapply(seq_nr, FUN = function(it) fn(newresp[,it], ...), mc.silent=mc.silent, mc.cores=nb_cores)
+          )
         }
-        bootreps <- do.call(rbind,bootreps)
-        if ( ! is.null(iseed) ) RNGkind(ori)
+        if (identical(control$.combine,"rbind")) {
+          bootreps <- do.call(rbind,bootreps)
+        } else bootreps <- do.call(cbind,bootreps)
+        if ( ! is.null(iseed) ) do.call("RNGkind", as.list(ori)) # reste to state pre-parallel computation
       } else { # PSOCK
-        cl <- do.call(parallel::makeCluster, c(list(spec=nb_cores), cluster_args)) # note that _this_ line would make sense for fork clusters too. BUT
+        cl <- do.call(parallel::makeCluster, cluster_args) # note that _this_ line would make sense for fork clusters too. BUT
         # ... the foreach = dot args combination may not work for FORK type. Only pbapply would work with makeCluster+FORK, 
-        # but pbmclapply is a better way to get a pb one a fork cluster as [pb]mclapply have better load balancing than pbapply. 
+        # but pbmcapply is a better way to get a pb one a fork cluster as [pb]mclapply have better load balancing than pbapply. 
         has_doSNOW <- ("package:doSNOW" %in% search())
         if (has_doSNOW) {
           # loading (?) the namespace of 'snow' changes the *parent* RNG state (as well as sons' ones)! so we save and restore it 
@@ -198,6 +231,7 @@ dopar <- local({
             doSNOW_warned <<- TRUE
           } 
           pb_char <- "p"
+          if ( ! is.null(iseed) ) parallel::clusterSetRNGStream(cl = cl, iseed) 
           parallel::clusterEvalQ(cl, library("spaMM")) 
           if (is.environment(fit_env)) try(parallel::clusterExport(cl=cl, varlist=ls(fit_env), envir=fit_env)) 
           if (is.function(pretest_cores)) pretest_cores(fn, cl)

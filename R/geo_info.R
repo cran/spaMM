@@ -255,7 +255,7 @@
           if ( ! is.null(dist_method_rd) && dist_method_rd %in% c("Earth","EarthChord") ) {
             if (grepl("lat", coord_within[1])) warning("Hmm... the first coordinate should be longitude, but seems to be latitude.")
             if (max(abs(msd.arglist$uniqueGeo[,1])-180>1e-14)) warning("Hmm... max(abs(longitude)) should be <= 180, but is not.")
-            if (max(abs(msd.arglist$uniqueGeo[,1])-90>1e-14)) warning("Hmm... max(abs(latitude)) should be <= 90, but is not.")
+            if (max(abs(msd.arglist$uniqueGeo[,2])-90>1e-14)) warning("Hmm... max(abs(latitude)) should be <= 90, but is not.")
           }
           msd.arglist$`rho.mapping` <- control_dist_rd$`rho.mapping` ## may be NULL
           cov_info_mat <- do.call("make_scaled_dist",msd.arglist)

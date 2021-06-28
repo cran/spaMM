@@ -30,9 +30,9 @@ fitme_body <- function(processed,
   if (is.null(optim.scale)) optim.scale="transformed" ## currently no public alternative
   sparse_precision <- proc1$is_spprec
   #
-  user_init_optim <- init ## user_init_optim only for a check in new_locoptim, true initial value init.optim is modified below
+  user_init_optim <- init #
   optim_blob <- .calc_optim_args(proc_it=proc1, processed=processed,
-                                 init=user_init_optim, fixed=fixed, lower=lower, upper=upper, 
+                                 user_init_optim=user_init_optim, fixed=fixed, lower=lower, upper=upper, 
                                  verbose=verbose, optim.scale=optim.scale, For="fitme") 
   # modify HLCor.args and <>bounds;   ## distMatrix or uniqueGeo potentially added to HLCor.args:
   # init <- optim_blob$inits$`init` ## list; keeps all init values, all in untransformed scale
@@ -52,7 +52,7 @@ fitme_body <- function(processed,
     ## Problem is that outer optim at the mean model level is useful if we can avoid computation of the leverages 
     ## But here anyway we need the leverages of the 'mean' model to define the resid model response.
     resid_optim_blob <- .calc_optim_args(proc_it=residproc1, processed=proc1,
-                                         init=proc1$residModel$init, fixed=proc1$residModel$fixed, ## all user input must be in proc1$residModel
+                                         user_init_optim=proc1$residModel$init, fixed=proc1$residModel$fixed, ## all user input must be in proc1$residModel
                                          lower=proc1$residModel$lower, upper=proc1$residModel$upper, ## all user input must be in proc1$residModel
                                          verbose=c(SEM=FALSE), optim.scale=optim.scale, For="fitme") 
     resid_init.optim <- resid_optim_blob$inits$`init.optim` ## list; subset of all estimands, as name implies, and in transformed scale

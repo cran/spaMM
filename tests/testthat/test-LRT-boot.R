@@ -29,14 +29,14 @@ if (spaMM.getOption("example_maxtime")>18) { ## user time + system.time for para
     full_call <- getCall(lrt$fullfit) ## call for full fit
     full_call$data <- data
     ReSu <- eval(full_call) ## fits the full model on the simulated response
-    if (!is.null(what)) ReSu <- eval(what)
+    if (!is.null(what)) ReSu <- eval(what)(ReSu=ReSu)
     return(ReSu) ## the fit, or anything produced by evaluating 'what'
   }
 
   ## nb_cores=1, serial pbapply 
   set.seed(123)
   spaMM_boot(lrt$nullfit, simuland = myfun, nsim=4, type="marginal", 
-             what=quote(fixef(ReSu)[2L]), lrt=lrt,nb_cores=1L)[["bootreps"]]    
+             what=quote(function(ReSu) fixef(ReSu)[2]), lrt=lrt,nb_cores=1L)[["bootreps"]]    
   
   ## foreach+doSNOW
   if ( (! "covr" %in% loadedNamespaces()) && 
@@ -51,9 +51,9 @@ if (spaMM.getOption("example_maxtime")>18) { ## user time + system.time for para
   
   ## parallel pbapply 
   set.seed(123)
-  if (exists("ReSu")) rm(ReSu) ## otherwise any error in the following code may result in a confusing message
+  # if (exists("ReSu")) rm(ReSu) ## otherwise any error in the following code may result in a confusing message
   spaMM_boot(lrt$nullfit, simuland = myfun, nsim=4, control.foreach = list(.errorhandling="pass"),
-             type="marginal", what=quote(fixef(ReSu)[2L]), lrt=lrt,nb_cores=4L)[["bootreps"]]    
+             type="marginal", what=quote(function(ReSu) fixef(ReSu)[2]), lrt=lrt,nb_cores=4L)[["bootreps"]]    
   
 } 
 

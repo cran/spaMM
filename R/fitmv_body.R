@@ -68,7 +68,7 @@ fitmv_body <- function(processed,
     ## Problem is that outer optim at the mean model level is useful if we can avoid computation of the leverages 
     ## But here anyway we need the leverages of the 'mean' model to define the resid model response.
     resid_optim_blob <- .calc_optim_args(proc_it=residproc1, processed=proc1,
-                                         init=proc1$residModel$init, fixed=proc1$residModel$fixed, ## all user input must be in proc1$residModel
+                                         user_init_optim=proc1$residModel$init, fixed=proc1$residModel$fixed, ## all user input must be in proc1$residModel
                                          lower=proc1$residModel$lower, upper=proc1$residModel$upper, ## all user input must be in proc1$residModel
                                          verbose=c(SEM=FALSE), optim.scale=optim.scale, For="fitme") 
     resid_init.optim <- resid_optim_blob$inits$`init.optim` ## list; subset of all estimands, as name implies, and in transformed scale

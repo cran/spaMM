@@ -578,7 +578,7 @@
     } else zInfo$dlogfvdv <- (zInfo$z2 - v_h) * wranefblob$w.ranef
     ## $gainratio_grad is the rhs in the direct solution of the full system (by chol2inv in the dense QR case)
     ## and thus propto the gradient of the objective.
-    ## The 'betaFirst' algo in sparsePrecision does not use it, only the gainratio code does  
+    ## only the gainratio code uses it.  
     ## the gradient for -p_v (or -h), independent of the scaling
     zInfo$m_grad_obj <- c( ## drop() avoids c(Matrix..); attr(sXaug,"w.resid") correct for truncated models too.
       m_grad_v <- drop(.crossprod(ZAL, attr(sXaug,"w.resid") * zInfo$z1_eta) +zInfo$dlogfvdv), # Z'W(z_1-eta) + dlogfvfv

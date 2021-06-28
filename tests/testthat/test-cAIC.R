@@ -18,6 +18,7 @@ if (spaMM.getOption("example_maxtime")>3) {
   }
   
   #### Non-canonical link
+  data("wafers")
   # z <- fitme(y ~ 1+(1|batch), family=Gamma(log), data=wafers)
   z <- fitme(y ~ 1+(1|batch), family=Gamma(log), data=wafers, fixed=list(lambda=0.01212))
   get_any_IC(z, nsim=100L)

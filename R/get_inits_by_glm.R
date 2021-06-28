@@ -11,6 +11,7 @@
     loc_link <- family$link
     if (loc_link=="loglambda") loc_link <- "log"
     if (inherits(substitute(nu, env=environment(family$aic)),"call")) family <- poisson(loc_link) 
+    # ___F I X M E___ inherits((nu <- substitute(nu, env=environment(family$aic))),"call") || nu <= 1 ...
   }
   
   if (family$family=="binomial" && NCOL(y)==1L) { 

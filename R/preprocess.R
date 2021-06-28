@@ -1166,14 +1166,6 @@ as_precision <- function(corrMatrix) {
   coef3needed <- any(attr(processed$rand.families,"unique.psi_M")!=0) # psi_M happening to be 0 only for gaussian(identity) ranef
   processed$vecdisneeded <- c( coef12needed, coef12needed, coef3needed )
   #
-  ## algorithms (control of defaults remains in the HLfit code)
-  if (is.null(betaFirst <- control.HLfit$betaFirst)) {
-    betaFirst <- FALSE
-  } else if (betaFirst && processed$HL[1]=="SEM") {
-    message("betaFirst && HLmethod= SEM: betaFirst turned to FALSE")
-    betaFirst <- FALSE
-  }
-  processed$betaFirst <- betaFirst ##
   ## models: ## progressively add info to 'processed' and to 'models' before storing final 'models' in 'processed.'
   if (is.null(ranFix)) ranFix <- list()
   processed$lambda.Fix <- .reformat_lambda(.getPar(ranFix,"lambda"), nrand, namesTerms=attr(ZAlist,"namesTerms"), full_lambda = TRUE) # should always have nrand elements

@@ -81,7 +81,7 @@ if (spaMM.getOption("example_maxtime")>7) {
     full_call <- getCall(lrt$fullfit) ## call for full fit
     full_call$data <- data
     res <- eval(full_call) ## fits the full model on the simulated response
-    if (!is.null(what)) res <- eval(what) ## post-process the fit
+    if (!is.null(what)) res <- eval(what)(res=res) ## post-process the fit
     return(res) ## the fit, or anything produced by evaluating 'what'
   }
   # where the 'what' argument (not required) of myfun() allows one to control 
@@ -92,7 +92,7 @@ if (spaMM.getOption("example_maxtime")>7) {
   
   # Return only a model coefficient for each fit: 
   spaMM_boot(lrt$nullfit, simuland = myfun, nsim=7,
-               what=quote(fixef(res)[2L]), lrt=lrt, type ="marginal")[["bootreps"]]       
+               what=quote(function(res) fixef(res)[2L]), lrt=lrt, type ="marginal")[["bootreps"]]       
 }
 }
 \keyword{ htest }

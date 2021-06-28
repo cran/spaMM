@@ -636,11 +636,12 @@
 
 
 
-.init_optim_lambda_ranCoefs <- function(proc1, not_inner_phi, init.optim, nrand, ranCoefs_blob, var_ranCoefs) {
+.init_optim_lambda_ranCoefs <- function(proc1, other_reasons_for_outer_lambda, init.optim, nrand, 
+                                        ranCoefs_blob, var_ranCoefs, user_init_optim) {
   lFix <- proc1$lambda.Fix ## only for 'simple" ranefs with Xi_cols=1
   if (proc1$augZXy_cond || 
-      anyNA(init.optim$lambda) || # NA or NaN in user's explict lambda
-      not_inner_phi) { ## Tests show it is very inefficient to use outer optim on lambda (at least) when phi must be inner optimized
+      anyNA(init.optim$lambda) || # NA or NaN in user's explicit lambda
+      other_reasons_for_outer_lambda) { ## Tests show it is very inefficient to use outer optim on lambda (at least) when phi must be inner optimized
     optim_lambda_with_NAs <- .reformat_init_lambda_with_NAs(init.optim$lambda, nrand=nrand, default=NA)
     ## handling fitme call for resid fit with meanfit-optimized parameters (if input is NULL, output is all NA):
     optim_resid_lambda_with_NAs <- .reformat_init_lambda_with_NAs(proc1$envir$ranPars$lambda, nrand=nrand, default=NA)
@@ -652,14 +653,16 @@
       init_lambda <- .eval_init_lambda_guess(proc1, stillNAs=which_NA_simplelambda, For="optim")
       optim_lambda_with_NAs[which_NA_simplelambda] <- init_lambda[which_NA_simplelambda]
       init.optim$lambda <- optim_lambda_with_NAs[ ! is.na(optim_lambda_with_NAs)] ## NaN now rmoved if still there (cf is.na(c(1,NA,NaN))) BUT
-      # ... it's dubious that we have augZXy_cond || not_inner_phi if we requested inner estimation of lambda by a NaN                                                  
+      # ... it's dubious that we have augZXy_cond || other_reasons_for_outer_lambda if we requested inner estimation of lambda by a NaN                                                  
     }
+    init.optim$lambda <- init.optim$lambda[ ! is.nan(init.optim$lambda)] ## removes users's explicit NaN, which effect is documented in help(fitme)
   } else { ## else use inner optimization  for simple lambdas if inner_phi is necessary
     if (identical(attr(proc1$family,"multi"),TRUE)) { # __F I X M E__ more elegant test?
       warning("No initial lambda provided: the model fitted may change over spaMM versions. See help('multi') for how to avoid that.")
     }
+    init.optim$lambda <- user_init_optim$lambda # we reach here when there was no NA in user's init lambda
+    # but there was possibly explicit numerical values (e.g. test-nloptr comparisons)
   }
-  init.optim$lambda <- init.optim$lambda[ ! is.nan(init.optim$lambda)] ## removes users's explicit NaN, which effect is documented in help(fitme)
   #
   if (any(var_ranCoefs)) {
     # Not super clear why I considered nranterms (user level ??) instead of nrand. FIXME.
@@ -695,7 +698,7 @@
 }
 
 # NOT called by corrHLfit...
-.more_init_optim <- function(proc1, processed, corr_types, init.optim, phi_by_augZXy) {
+.more_init_optim <- function(proc1, processed, corr_types, init.optim, phi_by_augZXy,user_init_optim) {
   ## trying to guess all cases where optimization is useful. But FIXME: create all init and decide afterwardsS
   phimodel1 <- proc1$models[['phi']]
   allPhiScalorFix <- all(processed$models[['phi']] == "phiScal" | processed$models[['phi']] == "")
@@ -705,10 +708,12 @@
     var_ranCoefs <- (ranCoefs_blob$isRandomSlope & ! ranCoefs_blob$is_set) # vector !
     has_corr_pars <- length(corr_types[ ! is.na(corr_types)])
   } else var_ranCoefs <- has_corr_pars <- FALSE
+  calc_dvdlogdisp_needed_for_inner_ML <-  (processed$vecdisneeded[2] && processed$HL[2L]) 
   sufficient_reasons_for_outer_lambda <- (
     anyNA(init.optim$lambda) || # first one meaning that the user explictly set a NA init lambda
       any(var_ranCoefs) || # includes mv()
-      has_corr_pars || # Loaloa fit used in compar to glmmTMB shows this is useful
+      (has_corr_pars && calc_dvdlogdisp_needed_for_inner_ML) || # should be TRUE for Loaloa fit used gentle intro'scomparisons, 
+                                                                #       and FALSE for fit_REML in test-devel-predVar-AR1
       # *** next case ad hoc but motivated by 'ahzut' example in private test-COMPoisson-difficult.R ***
     ( has_family_par <- (( ! is.null(init.optim$COMP_nu)) || ( ! is.null(init.optim$NB_shape))) ) # lambda + family pars 
   ) 
@@ -719,6 +724,8 @@
   if ( # TRUE || ## why not always check?
     sufficient_reasons_for_outer_lambda || other_reasons_to_chech_inner_costs ||  
     var(proc1$y)<1e-3 || # mixed model with low response variance (including case where phi is fixed (phimodel="") )
+    # Next two lines of code quite contrived: basic idea is that we might switch to outer lambda estim 
+    #  if phi is outer/Fix or if we enforce outer_optim_resid 
     (phimodel1 == "phiHGLM" && identical(spaMM.getOption("outer_optim_resid"),TRUE)) ||
     allPhiScalorFix || # lambda + phi
     { # reach here if several (lambda || fixed ranCoefs) and no var_ranCoefs; 
@@ -734,8 +741,10 @@
     outer_phiScal_spares_costly_comput <- outer_spares_costly_dleve_comput <- ( 
       # the dleve computations for HL[2L] with costly .calc_dvdlog...Mat_new() occur in inner for HL[2L] irrespective of vecdisneeded[3]
       # and in particular even for canonical link GLMM. The dleve terms should be nonzero when GLM weights !=1 i.e vecdisneeded[2] (or [1])
-      (nrand1 && tail(processed$cum_n_u_h,1) > 500L) && # matters for test_adjacency_long which has n_u_h=1000
-        ( calc_dvdlogdisp_needed_for_inner_ML <-  (processed$vecdisneeded[2] && processed$HL[2L]) ) 
+      #  "dense" : test_adjacency_long which has n_u_h=1000 one tested the threshold (not currently the case)
+      # "sparse" : bigranefs has n_u_h=23290 and rasch has 2110
+      (nrand1 && (tail(processed$cum_n_u_h,1) > (if (processed$QRmethod=="dense") {500L} else {5000L}) )) && 
+        calc_dvdlogdisp_needed_for_inner_ML 
     )
     if ( ! outer_phiScal_spares_costly_comput) {
       ## we look whether the hatval_Z are needed or not in .calc_sscaled_new(), hence in fitme() with outer estim of dispersion params
@@ -759,7 +768,12 @@
     } else other_reasons_for_outer_lambda <- outer_phiScal_spares_costly_comput
     if (nrand1) {
       # Set outer optimization for lambda and ranCoefs (handling incomplete ranFix$lambda vectors) through call to .init_optim_lambda_ranCoefs()
-      init.optim <- .init_optim_lambda_ranCoefs(proc1, (sufficient_reasons_for_outer_lambda || other_reasons_for_outer_lambda), init.optim, nrand1, proc1$ranCoefs_blob, var_ranCoefs)
+      init.optim <- .init_optim_lambda_ranCoefs(
+        proc1, 
+        other_reasons_for_outer_lambda = (sufficient_reasons_for_outer_lambda || other_reasons_for_outer_lambda), 
+        init.optim, nrand1, proc1$ranCoefs_blob, var_ranCoefs,
+        user_init_optim=user_init_optim
+      )
     } 
     if (length(init.optim$lambda) > nrand1) {
       mess <- paste0("Initial value for lambda: (",
@@ -775,23 +789,22 @@
 # called by fitme_body/corrHLfit_body/(fitmv_body on individual models) hence no multivariate input except possibly through 'processed'
 .calc_optim_args <- function(proc_it, 
                              processed, # multi() and mv
-                             init, fixed, lower, upper, verbose, optim.scale, For) {
+                             user_init_optim, fixed, lower, upper, verbose, optim.scale, For) {
   corr_info <- proc_it$corr_info 
   # modify HLCor.args and <>bounds;   ## distMatrix or uniqueGeo potentially added to HLCor.args:
   corr_types <- corr_info$corr_types
   if ( ! is.null(fixed)) fixed <- .reformat_corrPars(fixed, corr_families=corr_info$corr_families)
-  if ( ! is.null(init$phi) ) {
+  if ( ! is.null(user_init_optim$phi) ) {
     if (proc_it$models[["phi"]]=="") {
       warning("initial value for 'phi' is ignored when there is no phi parameter (e.g. poisson or binomial families)") # i.e. anything but Intercept model
-      init$phi <- NULL # erase the un-usable value otherwise the residModel would be ignored!
+      user_init_optim$phi <- NULL # erase the un-usable value otherwise the residModel would be ignored!
     } else if (proc_it$models[["phi"]]!="phiScal") {
       warning("initial value for 'phi' is ignored when there is a non-default resid.model") # i.e. anything but Intercept model
-      init$phi <- NULL # erase the un-usable value otherwise the residModel would be ignored!
+      user_init_optim$phi <- NULL # erase the un-usable value otherwise the residModel would be ignored!
     }
   }
-  init.optim <- .reformat_corrPars(init, corr_families=corr_info$corr_families)
+  init.optim <- .reformat_corrPars(user_init_optim, corr_families=corr_info$corr_families)
   init.HLfit <- proc_it$init_HLfit #to be modified below ## dhglm uses fitme_body not (fitme-> .preprocess) => dhglm code modifies processed$init_HLfit
-  init <- NaN ## make clear it's not to be used
   # used by .more_init_optim:
   family <- proc_it$family
   if (family$family=="COMPoisson") {
@@ -848,11 +861,13 @@
       init.optim <- .more_init_optim(proc1=proc_it, 
                                      processed=processed, # critical mv info 
                                      corr_types=corr_types, init.optim=init.optim, 
-                                     phi_by_augZXy = phi_by_augZXy)  
+                                     phi_by_augZXy = phi_by_augZXy,
+                                     user_init_optim=user_init_optim)  
     } else init.optim <- .more_init_optim(proc1=proc_it, 
                                           processed=proc_it, # even for multi()
                                           corr_types=corr_types, init.optim=init.optim, 
-                                          phi_by_augZXy = phi_by_augZXy)  
+                                          phi_by_augZXy = phi_by_augZXy,
+                                          user_init_optim=user_init_optim)  
   }
   .check_conflict_init_fixed(fixed,init.optim, "given as element of both 'fixed' and 'init'. Check call.")
   .check_conflict_init_fixed(init.HLfit,init.optim, "given as element of both 'init.HLfit' and 'init'. Check call.") ## has quite poor effect on fits

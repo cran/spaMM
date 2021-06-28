@@ -4,8 +4,7 @@
 Interface for parallel computations
 }
 \description{
-An interface to apply some function \code{fn} in parallel on columns of a matrix. Depending on the \code{nb_cores} argument, parallel or serial computation is performed. This was first conceived for \dQuote{socket} clusters, available on all operating systems. For such clusters, depending whether the \code{doSNOW} package is attached, \code{foreach} or \code{pbapply} is called (\code{doSNOW} allows more efficient load balancing than \code{pbapply}). A fork cluster can also be called on linux(-alikes), currently through \code{mclapply}. Forking is the default on linux(-alikes) when not in an Rstudio session.
-\code{dopar} wraps these calls, handling all cluster management. It is used internally in spaMM, but is not logically restricted to mixed-effect applications, hence it can be used more widely. 
+An interface to apply some function \code{fn} in parallel on columns of a matrix. \code{dopar} is used internally in spaMM, but is not logically restricted to mixed-effect applications, hence it can be used more widely. Depending on the \code{nb_cores} argument, parallel or serial computation is performed. A socket cluster is used by default for parallel computations, but a fork cluster can be requested on linux and alike operating systems by using argument \code{cluster_args=list(type="FORK")}.
 }
 \usage{
 dopar(newresp, fn, nb_cores = NULL, fit_env, control = list(), 
@@ -34,13 +33,13 @@ Integer. Number of cores to use for parallel computations. If >1, a cluster of \
 Alternatively, if a for cluster is used, \code{control$mc.silent} can be used to control the \code{mc.silent} argument of \code{\link[parallel]{mclapply}}.
 }
   \item{cluster_args}{
- A list of arguments passed to \code{parallel::makeCluster}. E.g., \code{outfile="log.txt"} may be useful to collect output from the nodes, and \code{type="PSOCK"} to force a socket cluster on linux(-alikes).
+ A list of arguments passed to \code{parallel::makeCluster}. E.g., \code{outfile="log.txt"} may be useful to collect output from the nodes, and \code{type="FORK"} to force a fork cluster on linux(-alikes).
 }
   \item{debug.}{
 (for socket clusters only:)   For debugging purposes. Effect, if any, is to be defined by the \code{fn} as provided by the user.
 }
   \item{iseed}{
-(all parallel contexts:) Integer, or NULL. If an integer, it is used to initialize \code{"L'Ecuyer-CMRG"} random-number generator. If \code{iseed} is \code{NULL}, the default generator is selected on each node, where its seed is not controlled. 
+(all parallel contexts:) Integer, or NULL. If an integer, it is used to initialize \code{"L'Ecuyer-CMRG"} random-number generator (\code{iseed} argument of \code{\link[parallel]{clusterSetRNGStream}}), yet not ensuring identical control of random number generator accross different parallelisation options (see alternative function \code{\link{dofuture}} for such control). If \code{iseed} is \code{NULL}, the default generator is selected on each node, where its seed is not controlled. 
 }
   \item{showpbar}{
 (for socket clusters only:) Controls display of progress bar. See \code{\link{barstyle}} option for details.
@@ -55,6 +54,9 @@ Further arguments to be passed (unevaluated) to \code{fn}.
 \value{
 The result of calling \code{foreach}, \code{pbapply} or \code{mclapply}, as dependent on the \code{control} argument. A side-effect of \code{dopar} is to show a progress bar that informs about the type of parallelisation performed: a default \code{"="} character for fork clusters, and otherwise\code{"P"} for parallel computation via \code{foreach} and \code{doSNOW}, \code{"p"} for parallel computation via \code{pbapply}, and \code{"s"} for serial computation  via \code{pbapply}.
 }
+\seealso{
+\code{\link{dofuture}} for an alternative implementation of (essentially) the same functionalities, and \code{\link{wrap_parallel}} for its differences from \code{dopar}.
+}
 \examples{
 ## See source code of spaMM_boot()
 
@@ -65,8 +67,8 @@ foo <- function(y, somearg, ...) {
 }
 
 # Whether FORK can be used depends on OS and whether Rstudio is used:
-dopar(matrix(1,ncol=3,nrow=3), foo, fit_env=list(), somearg=NULL, 
-  nb_cores=3, cluster_args=list(type="FORK"))
+dopar(matrix(1,ncol=4,nrow=3), foo, fit_env=list(), somearg=NULL, 
+  nb_cores=2, cluster_args=list(type="FORK"))
 }
 }
 

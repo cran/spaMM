@@ -40,7 +40,7 @@ corrHLfit_body <- function(processed, ## possibly a list of environments
   user_init_optim <- init.corrHLfit 
   
   optim_blob <- .calc_optim_args(proc_it=proc1, processed=processed,
-                                 init=init.corrHLfit, fixed=ranFix, lower=lower, upper=upper, 
+                                 user_init_optim=init.corrHLfit, fixed=ranFix, lower=lower, upper=upper, 
                                  verbose=verbose, optim.scale=optim.scale, For="corrHLfit") 
   init.corrHLfit <- NaN ## make clear it's not to be used
   # #  code correct mais opaque pour l'utilisateur: init.optim va être ignore en cas de 1D optimization... (OK in fitme)

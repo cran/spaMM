@@ -137,6 +137,7 @@
   ## only to avoid warnings when using spaMM.options()
   nb_cores=NULL,
   barstyle=quote(if(interactive()) {3L} else {0L}),
+  wrap_parallel="dopar",
   #        add control=list(fix_predVar=NA) in predict() calls in the following calls? Probably not worth the mess.
   fix_predVar=list("NA"="MSL|bboptim|isoscape|isofit|calibfit|optimthroughSmooth|spaMM_rhullByEI|sampleByResp",
                    "TRUE"=NULL,"FALSE"=NULL), 

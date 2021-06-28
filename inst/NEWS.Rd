@@ -3,6 +3,27 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 3.8.9}{   
+\subsection{NEW FEATURES}{
+\itemize{
+\item Modified selection between ''outer'' optimization versus ''inner'' iterations to acheive faster default fitme() fits of some non-spatial GLMMs. 
+\item The default cluster type is now "PSOCK" in all cases.
+\item New interface dofuture() for parallelisation. See help("wrap_parallel") for differences from dopar().
+}
+}
+\subsection{FIXED BUGS}{
+\itemize{
+\item Typo in a recently introduced check of geographical coordinates led to a warning when abs(longitude) values >90 occurred.  
+\item Tests using the 'adjlg' data set no longer worked. It was the code generating the data set, rather than any spaMM procedure, that required fixing.
+\item Using fork clusters provided statistically correct results but could not be controlled as documented (the random number generator and progress bar could not be properly controlled, and incorrect warnings could be displayed). 
+}
+}
+\subsection{DEPENDENCIES}{
+\itemize{
+\item New 'Suggests': 'future' and 'future.apply'.
+}
+}
+}
 \section{CHANGES UP TO VERSION 3.8.0}{    
 \subsection{NEW FEATURES}{
 \itemize{
