@@ -246,6 +246,7 @@ summary.HLfitlist <- function(object, ...) {
   #
   ############### better initialization of the table (03/2021)
   template <- lambda.object$lambda_list # RHS has elements for each of the rows of the table, except the "adjd" coeff. Hence: 
+  if (is.null(template)) template <- lambda.object$lambda # back compat fix (pointed by fits in vullioud2018 by version 2.5.0)
   for (it in seq_len(length(namesTerms))) {
     if ("adjd" %in% namesTerms[[it]]) {
       template[[it]][2] <- NA

@@ -15,7 +15,7 @@
 \details{
 Early versions of \code{spaMM}'s \code{update} method relied on \code{stats::update.formula} whose results endorse \code{stats}'s (sometimes annoying) convention that a formula without an explicit intercept term actually includes an intercept. \code{spaMM::update.HLfit} was then defined to avoid this problem. \bold{Formula updates should still be carefully checked}, as getting them perfect has not been on the priority list. 
 
-Various post-fit functions from base R may use \code{update.formula} directly, rather than using automatic method selection for \code{update}. \code{update.formula} is not itself a generic, which leads to the following problem. To make \code{update.formula()} work on multivariate-response fits, one would like to be able to redefine it as a generic, with an \code{HLfit} method that would perform what \code{update_formulas} does, but this appears to be forbidden in a package distributed on CRAN. Instead it is suggested to define a new generic \code{spaMM::update}, which could have a \code{spaMM::update.formula} as a method (possibly itself a generic). This would be of limited interest as the new \code{spaMM::update.formula} would be visible to \code{spaMM::update} but not to \code{stats::update}, and thus the post-fit functions from base R would still not use this method.  
+Various post-fit functions from base R may use \code{update.formula} directly, rather than using automatic method selection for \code{update}. \code{update.formula} is not itself a generic, which leads to the following problem. To make \code{update.formula()} work on multivariate-response fits, one would like to be able to redefine it as a generic, with an \code{HLfit} method that would perform what \code{update_formulas} does, but redefinition appears to be forbidden in a package distributed on CRAN. Instead it is suggested to define a new generic \code{spaMM::update}, which could have a \code{spaMM::update.formula} as a method (possibly itself a generic). This would be of limited interest as the new \code{spaMM::update.formula} would be visible to \code{spaMM::update} but not to \code{stats::update}, and thus the post-fit functions from base R would still not use this method.  
 
 \code{update(<fit>, ...)}, as a general rule, is tricky. \code{update} methods are easily affected in a non-transparent way by changes in variables used in the original call. For example
 \code{
@@ -25,6 +25,8 @@ rm(foo)
 update(m, .~.) # Error
 }
 To avoid such problems, \code{spaMM} tries to avoid references to variables in the global environment, by enforcing that the data are explicitly provided to the fitting functions by the \code{data} argument, and that any variable used in the \code{prior.weights} argument is in the data.
+
+Bugs can also result when calling \code{update} on a fit produced within some function, say function \code{somefn} calling \code{fitme(data=mydata,...)}, as e.g. \code{update(<fit>)} will then seek a global variable \code{mydata} that may differ from the fitted \code{mydata} which was local to \code{somefn}.   
 }
 \usage{
 \method{update}{HLfit}(object, formula., ..., evaluate = TRUE)

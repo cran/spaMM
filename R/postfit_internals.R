@@ -395,7 +395,7 @@
     tcrossfac_v_beta_cov <- sctPmat %*% tcrossfac
   } else tcrossfac_v_beta_cov <- .Dvec_times_m_Matrix(diagscalings, tcrossfac) ## loses colnames...
   dgC_good <- (inherits(tcrossfac_v_beta_cov, "dgCMatrix") && 
-                 .calc_denseness(tcrossfac_v_beta_cov)/prod(dim(tcrossfac_v_beta_cov))<0.35 )
+                 .calc_denseness(tcrossfac_v_beta_cov, relative=TRUE)<0.35 )
   if ( ! dgC_good) tcrossfac_v_beta_cov <- as.matrix(tcrossfac_v_beta_cov) # bigranefs.R shows that conversion is not always good.
   rownames(tcrossfac_v_beta_cov) <- colnames(sXaug) ## necessary for summary.HLfit, already lost in BLOB$R_scaled
   seqp <- seq_len(pforpv)

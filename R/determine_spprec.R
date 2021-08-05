@@ -1,13 +1,15 @@
-.calc_denseness <- function(X) {
+.calc_denseness <- function(X, relative=FALSE) {
   if ( ! ( inherits(X,"ddiMatrix") || inherits(X,"dtCMatrix") || 
            inherits(X,"dsCMatrix") || inherits(X,"dgCMatrix")) ) X <- drop0(X) # result always Csparse
   if (inherits(X,"ddiMatrix")) {
-    return(ncol(X))
+    absolute <- ncol(X)
   } else {
-    res <- length(X@x) # this counts only once the symmetric elements
-    if (methods::.hasSlot(X, "diag")) res <- res + ncol(X) # possible for dtC (but not dsc)
-    return(res)
+    absolute <- length(X@x) # this counts only once the symmetric elements
+    if (methods::.hasSlot(X, "diag")) absolute <- absolute + ncol(X) # possible for dtC (but not dsc)
   }
+  if (relative) {
+    return(absolute/prod(dim(X)))
+  } else return(absolute)
 }
 
 .determine_spprec <- local({
@@ -64,19 +66,33 @@
         ## mrf <- fitme(migStatus ~ 1 + (1|pos) + multIMRF(1|longitude+latitude,margin=2,levels=2, coarse=4)... better in spprec
         any_IMRF <- any(exp_ranef_types== "IMRF")
         if (any_IMRF) {
-          if ( ! fast) {
-            G_diagnosis <- .provide_G_diagnosis(corr_info=processed$corr_info, ZAlist=ZAlist, fast=fast)
-            sparse_precision <-  G_diagnosis$crit
+          if (FALSE) { 
+            G_diagnosis <- .provide_G_diagnosis(corr_info=processed$corr_info, ZAlist=ZAlist, fast=FALSE)
+            sparse_precision <-  with(G_diagnosis, (dens_G_rel_ZL<1 && density_G*dens_G_rel_ZL<0.05))
             if (FALSE && ! sparse_precision ) {
               cat(crayon::red(unlist(G_diagnosis)))
               cat(crayon::red(sparse_precision))
             }
-          } else sparse_precision <- TRUE 
+          } else sparse_precision <- TRUE  # always for IMRF
         } else {
-          G_diagnosis <- .provide_G_diagnosis(corr_info=processed$corr_info, ZAlist=ZAlist,fast=fast)
-          rel_ZAL_denseness <- G_diagnosis$denseness_via_ZL/G_diagnosis$denseness_noAR 
-          crit <-  rel_ZAL_denseness*nr/nc # can reach high values (e.g. adjacency-long > 400)
-          sparse_precision <- crit >.spaMM.data$options$spprec_threshold ## from numerical experiments on ohio
+          G_diagnosis <- .provide_G_diagnosis(corr_info=processed$corr_info, ZAlist=ZAlist)
+          if (G_diagnosis$fast) { # as determined internally by .provide_G_diagnosis()
+            # actually no G diagnosis ; instead compares ZL to a ZL_without_AR, 
+            # which amounts to assume that the cost of spprec is that of ZL without AR 
+            rel_ZAL_denseness <- G_diagnosis$denseness_via_ZL/G_diagnosis$denseness_noAR 
+            crit <-  rel_ZAL_denseness*nr/nc # can reach high values (e.g. adjacency-long > 400)
+            sparse_precision <- crit >.spaMM.data$options$spprec_threshold ## from numerical experiments on ohio
+          } else {
+            rel_ZAL_denseness <- G_diagnosis$denseness_via_ZL/G_diagnosis$denseness_noAR 
+            crit <-  rel_ZAL_denseness*nr/nc # can reach high values (e.g. adjacency-long > 400)
+            sparse_precision <- crit >.spaMM.data$options$spprec_threshold ## from numerical experiments on ohio
+            # Gryphon has second criterion below 4e-5 and covfit in test-adjacency-corrMatrix has it >2e-3
+            sparse_precision <-  with(G_diagnosis, (dens_G_rel_ZL<1 && density_G*dens_G_rel_ZL<2e-4)) 
+            if (FALSE) {
+              cat(crayon::yellow(unlist(G_diagnosis)))
+              cat(crayon::yellow(sparse_precision))
+            }
+          }
           if ( FALSE ) {
             old_rel_ZAL_denseness <- (G_diagnosis$denseness_via_ZL-G_diagnosis$denseness_noAR)/(nc^2) # rel_ZAL_denseness=0 for pure block effects
             old_sparse_precision <- old_rel_ZAL_denseness*nc*nr>5000 ## from numerical experiments

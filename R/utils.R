@@ -58,7 +58,7 @@ overcat <- function(msg, prevmsglength) {
   lapply(li,.prettify_num,nsmall=nsmall)
 }
 
-.prompt <- function() { # levite qq lourdeurs de browser(); 
+.prompt <- function() { # evite qq lourdeurs de browser(); 
   cat("\nPause: 'c' to continue, 'b' for browsing, 's' to stop") # other ahrs equivalent to c
   res <- readLines(n = 1)
   if (res=='s') stop("User-requested stop().")

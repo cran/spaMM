@@ -1,7 +1,7 @@
 HLCor <- function(formula,
                   data,family=gaussian(),
                   ranPars=NULL, ## all dispersion and correlation params ideally provided through ranPars
-                  distMatrix,uniqueGeo=NULL,adjMatrix,corrMatrix, covStruct=NULL,
+                  distMatrix, adjMatrix, corrMatrix, covStruct=NULL,
                   method="REML",
                   verbose=c(trace=FALSE), 
                   control.dist=list(), ## provided by <corrfitme>_body if called through this function. Otherwise processed in not available and control.dist will be preprocessed.
@@ -18,6 +18,7 @@ HLCor <- function(formula,
   if (!is.null(oricall$PhiFix)) {
     stop("argument 'PhiFix' of HLCor is obsolete")
   }  
+  oricall$control.HLfit <- eval(oricall$control.HLfit, parent.frame()) # to evaluate variables in the formula_env, otherwise there are bugs in waiting 
   # frst steps as in HLFit: (no need to test missing(data) in several functions)
   if (is.null(processed <- oricall$processed)) { ## no 'processed'
     ## FR->FR suggests we should add processed as argument of HLCor...
@@ -39,7 +40,7 @@ HLCor <- function(formula,
         if (identical(family$family,"multi")) locmc$family <- family$binfamily
         locmc$data <- data[[data_it]]
         locmc$distMatrix <- oricall$distMatrix[[data_it]]
-        locmc$uniqueGeo <- oricall$uniqueGeo[[data_it]]
+        # locmc$uniqueGeo <- oricall$uniqueGeo[[data_it]] # formal removal of uniqueGeo argument 2021/08/03
         eval(locmc)
       }) ## a pure list of HLCor objects
       liks <- sapply(fitlist, function(v) {unlist(v$APHLs)})

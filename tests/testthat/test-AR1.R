@@ -38,13 +38,12 @@ if (TRUE) {
   fake <- data.frame(obs=obs,age=age,ind=as.factor(ind+1L), ## as.factor( [all > 1] ) to test the dark side of uniqueGeo
                      idx=seq_len(length(obs)))
   ## the sample() calls provides a check that permutations of the data have no effect
-  spaMM.options(sparse_precision=NULL, warn=FALSE) ## checks the sparse->non-sparse case (assuming .determine_spprec() returns FALSE)
+  ## checks the sparse->non-sparse case (assuming .determine_spprec() returns FALSE)
   zut <- corrHLfit(obs ~ 1+AR1(1|idx %in% ind),family=poisson(),data=fake[20+sample(20),],ranFix=list(ARphi=0.7040234,lambda=0.7308))
-  spaMM.options(sparse_precision=TRUE)
-  rezut <- corrHLfit(obs ~ 1+AR1(1|idx %in% ind),family=poisson(),data=fake[20+sample(20),],ranFix=list(ARphi=0.7040234,lambda=0.7308))
-  spaMM.options(sparse_precision=FALSE)
-  rerezut <- corrHLfit(obs ~ 1+AR1(1|idx %in% ind),family=poisson(),data=fake[20+sample(20),],ranFix=list(ARphi=0.7040234,lambda=0.7308))
-  spaMM.options(sparse_precision=NULL)
+  rezut <- corrHLfit(obs ~ 1+AR1(1|idx %in% ind),family=poisson(),data=fake[20+sample(20),],ranFix=list(ARphi=0.7040234,lambda=0.7308), 
+                     control.HLfit=list(sparse_precision=TRUE))
+  rerezut <- corrHLfit(obs ~ 1+AR1(1|idx %in% ind),family=poisson(),data=fake[20+sample(20),],ranFix=list(ARphi=0.7040234,lambda=0.7308), 
+                       control.HLfit=list(sparse_precision=FALSE))
   # The data are permuted between each fit, which could contributed to (in principle trivial) differences among fits
   testthat::expect_true(diff(range((c(logLik(zut),logLik(rezut),logLik(rerezut),-47.3130016607291))))<1e-8)
   ## check predict on each fit and subset of (permuted) data:
@@ -76,13 +75,12 @@ if (spaMM.getOption("example_maxtime")>13) {
   
   fake <- data.frame(obs=obs,age=age,ind=ind,idx=seq_len(length(obs)))
   ## the sample() provides a check that permutations of the data have no effect
-  spaMM.options(sparse_precision=NULL) ## checks the sparse->non-sparse case
+  ## checks the sparse->non-sparse case
   (zut <- corrHLfit(obs ~ 1+AR1(1|idx %in% ind),family=poisson(),data=fake[20+sample(20),]))
-  spaMM.options(sparse_precision=TRUE)
-  (rezut <- corrHLfit(obs ~ 1+AR1(1|idx %in% ind),family=poisson(),data=fake[20+sample(20),]))
-  spaMM.options(sparse_precision=FALSE)
-  rerezut <- corrHLfit(obs ~ 1+AR1(1|idx %in% ind),family=poisson(),data=fake[20+sample(20),])
-  spaMM.options(sparse_precision=NULL)
+  (rezut <- corrHLfit(obs ~ 1+AR1(1|idx %in% ind),family=poisson(),data=fake[20+sample(20),], 
+                      control.HLfit=list(sparse_precision=TRUE)))
+  rerezut <- corrHLfit(obs ~ 1+AR1(1|idx %in% ind),family=poisson(),data=fake[20+sample(20),], 
+                       control.HLfit=list(sparse_precision=FALSE))
   crit <- diff(range(c(logLik(zut),logLik(rezut),logLik(rerezut))))
   if (spaMM.getOption("fpot_tol")>0) {
     testthat::test_that(paste0("criterion was ",signif(crit,6)," from  -47.31300"), testthat::expect_true(crit<1e-8) )

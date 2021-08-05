@@ -3,13 +3,13 @@ if (spaMM.getOption("example_maxtime")>(13.7+24)) { ## user time + system.time f
   cat("test LRT()")
   data("salamander")
   fullfit <- HLfit(cbind(Mate,1-Mate)~TypeF+(1|Female)+(1|Male),family=binomial(),data=salamander,
-                  HLmethod="ML",control.HLfit = list(LevenbergM=FALSE))
+                  HLmethod="ML")
   nullfit <- HLfit(cbind(Mate,1-Mate)~1+(1|Female)+(1|Male),family=binomial(),data=salamander,
-                  HLmethod="ML",control.HLfit = list(LevenbergM=FALSE))
+                  HLmethod="ML")
   set.seed(123)
   pv1 <- LRT(nullfit,fullfit,boot.repl=10)$BartBootLRT$p_value
   set.seed(123)
-  pv3 <- LRT(nullfit,fullfit,boot.repl=10,nb_cores=2)$BartBootLRT$p_value
+  pv3 <- LRT(nullfit,fullfit,boot.repl=10,nb_cores=5)$BartBootLRT$p_value
   crit <- diff(range(pv1-pv3))
   testthat::test_that(paste0("Max difference in prediction was",signif(crit,6)," >1e-6"), testthat::expect_true(crit<1e-6)) 
 } else cat("increase example_maxtime (38s) to run LRT() test.\n")

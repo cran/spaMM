@@ -181,9 +181,53 @@
   term
 }
 
-.parseBars <- function (term) { ## derived from findbars, ... 
+
+.process_IMRF_bar <- function(term, env) {
+  pars <- paste0(paste0(names(term),"=",term)[-c(1,2)], collapse=",") 
+  pars <- try(eval(parse(text = paste("list(",pars,")")), envir=env))
+  if (inherits(pars,"try-error")) {
+    stop("Hmmm... it looks like you should put some object(s) in control.HLfit$formula_env.")
+  }
+  if ( ! is.null(pars$spde)) {
+    warning("'spde' argument is obsolete. Use 'model' instead.")
+    pars$model <- pars$spde
+    pars$spde <- NULL
+  }
+  if ( ! is.null(pars$model)) {
+    pars$no <- FALSE
+    # it's hard to guess the alpha parameter from the object!
+    # diagnose the object
+    if (pars$model$mesh$manifold=="R1") {dim_ <- 1} else dim_ <- 2
+    # test for # inla.spde.matern with default parameters B.tau and B.kappa
+    is_default_spde2_matern <- (diff(range((pars$model$param.inla$BLC[c("tau.1","kappa.1"),] - matrix(c(0,0,1,0,0,1),ncol=3))))==0)
+    if (is_default_spde2_matern) {
+      # 'pars' looks like the result of inla.spde2.matern() with default B.tau
+      if (pars$model$param.inla[["B0"]][1,3]!=0) {
+        pars$SPDE_alpha <- 2+pars$model$param.inla$B0[1,3] # 2+ seem OK in 1D
+      } else {
+        # ' only the case d=2 and alpha= 1 or 2' is implemented in spaMM => only in that case the following code is true
+        pars$SPDE_alpha <- pars$model$param.inla[["B1"]][1,3]
+        if ( ! (pars$SPDE_alpha  %in% c(1,2))) stop("Unrecognized model from inla.spde2. Contact the spaMM maintainer to extend spaMM.")
+      }
+    } else {
+      #  'pars' looks like the result of inla.spde2.pcmatern() (which uses non-default B.tau)
+      pars$SPDE_alpha <- dim_/2 + pars$model$param.inla[["BLC"]][["tau.1",2]] 
+    }
+    # print((c(dim_,pars$SPDE_alpha)))
+  } else if (is.null(pars$no)) pars$no <- TRUE
+  if (is.null(pars$ce)) pars$ce <- TRUE
+  attr(term,"type") <- structure("IMRF", pars=pars) # pars as attr to type avoid problems in building the return value.
+  return(term) # (lhs|rhs) (language, with the ()); or character string.
+}
+
+## derived from findbars, ... 
+# Must add a type attr to each formula term: 
+.parseBars <- function (term, # term or formula
+                        env=environment(term) # parent call typically has a formula as argument, so the default env is that of the formula,
+                        #                       which is then passed recursively by explicit env=env 
+                        ) { 
   if (inherits(term,"formula") && length(term) == 2L) {## corrected 2021/03/07
-    resu <- .parseBars(term[[2]]) ## process RHS
+    resu <- .parseBars(term[[2]], env=env) ## process RHS
     if (is.call(resu)) { # top call spaMM:::.parseBars(~(1|a)) leads here (no LHS, single ranef). resu is not (yet) a list here;
       #  Then .process_bars => names(barlist) <- seq_along(barlist) on a call leads to nonsense and bug for get_predVar(, re.form=~(1|a))
       # So we need to convert to list.  (testing if resu is a list in wrong: resu may be NULL)
@@ -195,7 +239,7 @@
   if (is.name(term) || !is.language(term)) 
     return(NULL)
   if (term[[1]] == as.name("(")) ## i.e. (blob) but not ( | ) 
-  {return(.parseBars(term[[2]]))} 
+  {return(.parseBars(term[[2]], env=env))} 
   if (!is.call(term)) 
     stop("term must be of class call")
   if (term[[1]] == as.name("|")) { ## i.e.  .|. expression
@@ -203,38 +247,8 @@
     return(term)
   } ## le c() donne .|. et non |..
   if (term[[1]] == as.name("IMRF")) {
-    pars <- paste0(paste0(names(term),"=",term)[-c(1,2)], collapse=",") 
-    pars <- eval(parse(text = paste("list(",pars,")")))
-    if ( ! is.null(pars$spde)) {
-      warning("'spde' argument is obsolete. Use 'model' instead.")
-      pars$model <- pars$spde
-      pars$spde <- NULL
-    }
-    if ( ! is.null(pars$model)) {
-      pars$no <- FALSE
-      # it's hard to guess the alpha parameter from the object!
-      # diagnose the object
-      if (pars$model$mesh$manifold=="R1") {dim_ <- 1} else dim_ <- 2
-      # test for # inla.spde.matern with default parameters B.tau and B.kappa
-      is_default_spde2_matern <- (diff(range((pars$model$param.inla$BLC[c("tau.1","kappa.1"),] - matrix(c(0,0,1,0,0,1),ncol=3))))==0)
-      if (is_default_spde2_matern) {
-        # 'pars' looks like the result of inla.spde2.matern() with default B.tau
-        if (pars$model$param.inla[["B0"]][1,3]!=0) {
-          pars$SPDE_alpha <- 2+pars$model$param.inla$B0[1,3] # 2+ seem OK in 1D
-        } else {
-          # ' only the case d=2 and alpha= 1 or 2' is implemented in spaMM => only in that case the following code is true
-          pars$SPDE_alpha <- pars$model$param.inla[["B1"]][1,3]
-          if ( ! (pars$SPDE_alpha  %in% c(1,2))) stop("Unrecognized model from inla.spde2. Contact the spaMM maintainer to extend spaMM.")
-        }
-      } else {
-        #  'pars' looks like the result of inla.spde2.pcmatern() (which uses non-default B.tau)
-        pars$SPDE_alpha <- dim_/2 + pars$model$param.inla[["BLC"]][["tau.1",2]] 
-      }
-      # print((c(dim_,pars$SPDE_alpha)))
-    } else if (is.null(pars$no)) pars$no <- TRUE
-    if (is.null(pars$ce)) pars$ce <- TRUE
-    attr(term,"type") <- structure("IMRF", pars=pars) # pars as attr to type avoid problems in building the return value.
-    return(term) # (lhs|rhs) (language, with the ()); or character string.
+    attr(term,"type") <- as.character(term[[1]])
+    return(.process_IMRF_bar(term, env=env)) # 
   }
   # terms are of class call, so expectedly ',' separates different elements in a term
   # E.g., if not handled specifically, <somekeyword>(1,2|.) would be parsed as term[[2]]=1, term[[3]]=2|batch
@@ -244,7 +258,7 @@
     attr(term,"type") <- as.character(term[[1]])
     return(term) 
   }
-  if (length(term) == 2) { # no extra args ater the grouping rhs !
+  if (length(term) == 2) { # no extra args after the grouping rhs !
     term1 <- as.character(term[[1]])
     if (term1 %in% c("adjacency","Matern","Cauchy","AR1","corrMatrix")) {
       attr(term,"type") <- term1
@@ -252,8 +266,8 @@
     } else return(NULL) 
   }
   # This point may not be reached by the outer .parseBars() call, so the following is not consistently terminal code.
-  bT2 <- .parseBars(term[[2]])
-  bT3 <- .parseBars(term[[3]])
+  bT2 <- .parseBars(term[[2]], env=env)
+  bT3 <- .parseBars(term[[3]], env=env)
   res <- c(bT2, bT3) ## if the bT's are language objects, c() creates a *list* of them
   attr(res,"type") <- c(attr(bT2,"type"),attr(bT3,"type"))
   # res is a list or a vector, depending on as_character
@@ -302,7 +316,7 @@
     attr(barlist,"type") <- unlist(lapply(barlist,attr,which="type")) # before the element attributes are hacked by .lhs_rhs_bars()
   }
   if (which.=="exp_ranef_terms") {
-    return(.lhs_rhs_bars(barlist)) # keeps the "type" attribute of the list
+    return(.lhs_rhs_bars(barlist)) # keeps the "type" attribute of the list # but removes the type keyword from the term
   } else if (as_character) {
     return(.as_char_bars(barlist)) # keeps the "type" attribute of the list
   } else return(barlist)

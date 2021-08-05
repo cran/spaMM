@@ -578,10 +578,12 @@ as_precision <- function(corrMatrix) {
                                                    dsCdiag=dsCdiag)
         }
       } else if (corr_type=="corrMatrix") {
-        if (is.null(corrMatrix)) {
-          corrMatrix <- .get_corr_prec_from_covStruct(covStruct,it, required=required) 
-          if ( ! is.null(corrMatrix)) corr_info$corrMatrices[[it]] <- corrMatrix
-        } else corr_info$corrMatrices[[it]] <- corrMatrix
+        if (is.null(corrMatrix)) corrMatrix <- .get_corr_prec_from_covStruct(covStruct,it, required=required) 
+        if ( (is.matrix(corrMatrix) || inherits(corrMatrix,"Matrix")) && 
+             # : need to exclude "dist" and "precision" objects
+             # (I defined a dim.precision() method) so dim() would not exclude precision
+             .calc_denseness(sparseCorr <- drop0(corrMatrix), relative=TRUE) < 0.15) corrMatrix <- sparseCorr
+        if ( ! is.null(corrMatrix)) corr_info$corrMatrices[[it]] <- corrMatrix 
         if (required) .check_corrMatrix(corr_info$corrMatrices[[it]]) 
       } 
       # IMRF AMatrices are assigned later from Zlist info, not from covStruct info
@@ -933,14 +935,10 @@ as_precision <- function(corrMatrix) {
                        control.glm, # under user control! => impacts inits_by_glm
                        adjMatrix=NULL, verbose=NULL, For,
                        init.HLfit=list(),corrMatrix=NULL,covStruct=NULL,
-                       uniqueGeo=NULL,distMatrix=NULL, 
+                       distMatrix=NULL, 
                        control.dist=NULL,
                        init=NULL # for .preprocess_augZXy()
                        ) {
-  if (!is.null(uniqueGeo)) {
-    stop("argument 'uniqueGeo' is deprecated") # stop() set on 2020/12/08. __F I X M E__ Wait a few months ./. 
-    #  before removing dependent code in HLCor() and here. 
-  }  
   callargs <- match.call() 
   #
   ################ handling list of data #######################
@@ -1046,7 +1044,7 @@ as_precision <- function(corrMatrix) {
   } else processed$maxLambda <- .spaMM.data$options$maxLambda
   #
   exp_barlist <- .process_bars(predictor,as_character=FALSE) ## but default expand =TRUE
-  exp_ranef_strings <- .process_bars(barlist=exp_barlist,expand=FALSE, as_character=TRUE) ## no need to expand again
+  exp_ranef_strings <- .process_bars(barlist=exp_barlist,expand=FALSE, as_character=TRUE) ## no need to expand again 
   #
   nrand <- length(exp_ranef_strings)
   if (nrand <- length(exp_ranef_strings)) {
@@ -1060,6 +1058,16 @@ as_precision <- function(corrMatrix) {
     exp_ranef_terms <- .process_bars(predictor[[length(predictor)]], 
                                      barlist=exp_barlist, 
                                      expand=TRUE, which. = "exp_ranef_terms")
+    ## 
+    # # Possible special treatment for IMRF term. We instead do that in .process_bars if passing the formula env recursively
+    # # But if we were to avoid that. we need to reproduce all operations otherwise performed by .process_bars(): 
+    # for (rd in seq_len(nrand)) {
+    #   # RHS must still use the exp_barlist (terms with their type keyword as first element) instead of exp_ranef_terms
+    #   if (attr(exp_ranef_terms,"type")[rd]=="IMRF") {
+    #     full_term_with_attr <- .process_IMRF_bar(exp_barlist[[rd]], env=environment(predictor)) # 'predictor' has received the (evaluated) control.HLfitformula_env
+    #     exp_ranef_terms[[rd]] <- .lhs_rhs_bars(list(full_term_with_attr))[[1]]
+    #       }
+    # }
     #####
     if (inherits(rand.families,"family")) rand.families <- list(rand.families) 
     if (nrand != 1L && length(rand.families)==1L) rand.families <- rep(rand.families,nrand) 
@@ -1102,7 +1110,9 @@ as_precision <- function(corrMatrix) {
     if (For_fitmv) {
       sparse_precision <- FALSE
     } else {
-      sparse_precision <- .determine_spprec(ZAlist=ZAlist, processed=processed, # uses $For, $corr_info, $init_HLfit
+      sparse_precision <- control.HLfit$sparse_precision
+      if (is.null(sparse_precision)) sparse_precision <- 
+          .determine_spprec(ZAlist=ZAlist, processed=processed, # uses $For, $corr_info, $init_HLfit
                                             X.pv=X.pv) ## possibly writes $corr_info$G_diagnosis! .../...
       ## F I X M E: ZAL diagnosis uses elements that may be modified afterwards and before .choose_QRmethod() reuses $G_diagnosis
       ## post-processing of corr_info depending on sparse_precision
@@ -1133,8 +1143,7 @@ as_precision <- function(corrMatrix) {
   if ( nrand) {
     models[["eta"]] <- "etaHGLM" 
     ZAlist <- .init_assign_geoinfo(processed=processed, ZAlist=ZAlist, For=callargs$For,
-                               exp_barlist=exp_barlist, nrand=nrand, 
-                               distMatrix=distMatrix, uniqueGeo=uniqueGeo)
+                               exp_barlist=exp_barlist, nrand=nrand, distMatrix=distMatrix)
     vec_normIMRF <- .calc_vec_normIMRF(exp_ranef_terms=attr(ZAlist, "exp_ranef_terms"), corr_types=corr_info$corr_types)   
     if (any(vec_normIMRF)) attr(ZAlist,"Zlist") <- Zlist
     processed$ZAlist <- ZAlist 

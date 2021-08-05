@@ -64,6 +64,19 @@ spaMM.getOption <- function (x) {spaMM.options(x, warn=FALSE)[[1]]}
       distance = TRUE
     )
   } else warning("'EarthChord' entry already present in proxy::pr_DB database.")
+  success <- suppressMessages(do.call("require",list(package="memoise"))) # messge might suggest that the fit is by INLE...
+  .spaMM.data$options$need_memoise_warning <- ! success
+  if (success) {
+    ..CMP_mu2lambda <<- .do_call_wrap("memoise",
+                                      arglist=list(f=..CMP_mu2lambda, omit_args="CMP_linkfun_objfn",
+                                                  cache = .do_call_wrap("cache_mem", arglist=list(max_size = 10 * 1024^2), pack="cachem")),
+                                      pack="memoise")
+    .Rcpp_COMP_Z <<- .do_call_wrap("memoise",
+                                   arglist=list(f=.Rcpp_COMP_Z,
+                                               cache = .do_call_wrap("cache_mem", arglist=list(max_size = 10 * 1024^2), pack="cachem")),
+                                   pack="memoise")
+    #  str(environment(spaMM:::.Rcpp_COMP_Z)$"_cache"$keys()) to get info on the cache...
+  } 
 }
 
 ".onUnload" <- function (libpath) {
@@ -72,6 +85,14 @@ spaMM.getOption <- function (x) {spaMM.options(x, warn=FALSE)[[1]]}
   library.dynam.unload("spaMM", libpath)
 } ## testable by calling unloadNamespace("spaMM")
 #  pkgpath <- system.file(package="OKsmooth") # https://github.com/hadley/devtools/issues/119
+
+# unloadNampespace() calls .onUnload only after after checking dependencies, so the following would be useless in .onUnload()
+.unloads4spaMM <- function() {
+  unloadNamespace("probitgem")
+  unloadNamespace("IsoriX")
+  unloadNamespace("Infusion")
+  unloadNamespace("blackbox")
+}
 
 .Dist.earth.mat <- function (x, y=NULL, radius=6371.009) { # x and y are both matrices. In each, first col is longitude, second is latitude
   ## Earth radius used for approximation = 6371.009 = 1/3*(2*6378.137+6356.752)  [details on https://en.wikipedia.org/wiki/Great-circle_distance]

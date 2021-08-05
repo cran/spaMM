@@ -82,12 +82,23 @@
   replace_design_u=TRUE, # the strucList[[<ranCoef>]] is not $design_u if $d were not all 1
   #•
   invL_threshold=1e6, ## for devel code .HLfit_body_augZXy_invL(); compare to prod(sqrt(lambda)) ## F I X_invL but test "set.seed(666)" fails for invL_threshold>100
+  ## Family-speific numerical controls
+  # Gaunt et al:
+  # Based on the numerical results
+  # of Section 4, we consider that a safe rule of thumb for obtaining accurate approximations
+  # using the asymptotic approximation (1.4), ******with the first three terms,**** is for both [lambda] >= 1.5
+  # and [pow_lam_nu] >= 1.5 to hold (the absolute error was always less than 0.5% in our tests),
+  #
+  # but this is only for the limited set of  values in the Table.
+  CMP_asympto_cond=quote((pow_lam_nu > 3 && lambda>5)),
+  # CMP_asympto_cond=quote((#nu<1 && ## affects test-COMPoisson
+  #   pow_lam_nu > 10/nu) || 1+pow_lam_nu+6*sqrt(pow_lam_nu/nu) > .spaMM.data$options$COMP_maxn),
+  COMP_maxn=1e4,
+  sanitize_eta=c(gauslog=20,COMPlog=16,otherlog=20), # otherlog value affects difficult Gamma(log) fits (cf Leucadendron_hard.R)
+  Gamma_min_y = 1e-10, ## for warnings in .preprocess(), and automatic correction in simulate() -> .r_resid_var(); .calc_dispGammaGLM() has indep, and much less strict, correction
   ###############
   example_maxtime=0.7,
-  COMP_maxn=1e4,
   bin_mu_tol=.Machine$double.eps, # was 1e12 for a long time
-  sanitize_eta=c(gauslog=20,otherlog=20), # otherlog value affects difficult Gamma(log) fits (cf Leucadendron_hard.R)
-  Gamma_min_y = 1e-10, ## for warnings in .preprocess(), and automatic correction in simulate() -> .r_resid_var(); .calc_dispGammaGLM() has indep, and much less strict, correction
   QRmethod=NULL, ## For user-provided values. The code does not and should not change this.
   #
   # Most useful tests of LevM controls: initial updates in tests_private/optim_LevM.R, and the tough newy in Leucadendron_hard.R
@@ -111,9 +122,6 @@
                  #,Ftol_v_in_b=1e-6, # NO IMPACT on current fits : only for diagnosis of not_moving in IRLS_v_h fns
                  #Ftol_LM=1e-5 # some not_moving diagnostics 
   ), 
-  #
-  CMP_asympto_cond=quote((#nu<1 && ## affects test-COMPoisson
-    pow_lam_nu > 10/nu) || 1+pow_lam_nu+6*sqrt(pow_lam_nu/(nu)) > .spaMM.data$options$COMP_maxn),
   rankMethod="qr", ## private
   rankTolerance=quote(max(1e-7,.Machine$double.eps*10*ncol(X.pv))), ## private, used  by preprocess
   qrTolerance=1e-10, ## private, used by select qr() calls for predVar computation

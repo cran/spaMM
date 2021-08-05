@@ -14,31 +14,12 @@
     return(val)
 }
 
-.bessel_lnKnu <- function (nu, x, give = FALSE, strict = TRUE) { ## from bessel_lnKnu in gsl package
-    jj <- .HL_process.args(nu, x) ## converts (nu, distance matrice to (nu vector, distance vector)
-    nu.vec <- jj$arg1
-    x.vec <- jj$arg2
-    if (give) attr <- jj$attr
-    jj <- .bessel_lnKnu_e(jj$arg1,jj$arg2)
-    val <- jj$val
-    err <- jj$err
-    status <- jj$status
-    if (strict) val <- .HL_strictify(val, status)
-    attributes(val) <- attributes(x) ## FIXME is this useful here ?
-    if (give) {
-      attributes(status) <- attr
-      attributes(err) <- attr
-      return(list(val = val, err = err, status = status))
-    } else {
-      return(val)
-    }
-}
-
 .nuln_plus_bessel_lnKnu <- function (nu, x) { 
   jj <- .HL_process.args(nu, x) ## converts (nu, distance matrice to (nu vector, distance vector)
   nu.vec <- jj$arg1
   x.vec <- jj$arg2
-  jj <- .nuln_plus_bessel_lnKnu_e(jj$arg1,jj$arg2)
+  jj <- .nuln_plus_bessel_lnKnu_e(jj$arg1,jj$arg2) 
+  # jj <- .nuln_plus_bessel_lnKnu_e_boost(jj$arg1,jj$arg2)  # boost attempt (v3.8.11) was quite correct but slower
   val <- .HL_strictify(jj$val, jj$status)
   attributes(val) <- attributes(x) ## FIXME is this useful here ?
   return(val)

@@ -2,7 +2,7 @@
   {
     warned_dcw <- list()
     inla_already <- FALSE
-    function(chr_fnname,arglist, pack="e1071", info_mess) {
+    function(chr_fnname,arglist, pack, info_mess) {
       if (length(grep(pack,packageDescription("spaMM")$Imports))) {
         ## then the necessary functions are imported-from in the NAMESPACE  
         do.call(chr_fnname,arglist) 
@@ -14,7 +14,6 @@
           do.call(myfun,arglist) 
         } else {
           if ( ! identical(warned_dcw[[pack]],TRUE)) {
-            if (pack=="e1071") message("If the 'e1071' package were installed, spaMM could check separation in binary regression problem.")
             if (pack=="cubature") message("If the 'cubature' package were installed, spaMM could compute a requested marginal prediction.")
             warned_dcw[[pack]] <<- TRUE
           }
@@ -33,6 +32,7 @@
         } else {
           if ( ! identical(warned_dcw[[pack]],TRUE)) {
             if (pack=="INLA") message("If the 'INLA' package were installed, spaMM could use INLA:::inla.spde.make.A().")
+            # seek "svm" for instance of possible use of e1071. Fairly obsolete but maybe needed for full back-compat.
             if (pack=="e1071") message("If the 'e1071' package were installed, spaMM could check separation in binary regression problem.")
             if (pack=="cubature") message("If the 'cubature' package were installed, spaMM could compute a requested marginal prediction.")
             if (pack=="pracma") message(info_mess)
@@ -56,7 +56,7 @@
       time1 <- Sys.time()
       if (inherits(x,"sparseMatrix")) x <- as.matrix(x) ## bc next line ->  model.frame.default...
       arglist <- list(formula= y~x[,varcols,drop=FALSE],type='C-classification', kernel='linear')
-      svmfit <- .do_call_wrap("svm",arglist=arglist)
+      svmfit <- .do_call_wrap("svm",arglist=arglist, pack="e1071")
       sep_time <- .timerraw(time1)
       if (sep_time>1) message(paste0("Checking separation for binomial-response model took ",sep_time," s."))
       if ( ! is.null(svmfit)) {

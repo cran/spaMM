@@ -5,6 +5,14 @@
     .Call(`_spaMM_Rcpp_COMP_Z`, moment, nu, lambda, maxn)
 }
 
+.COMP_Z_integrand <- function(z, eta = NULL, lambda = NULL, nu = 0.5, moment = 0L, logScaleFac = 0) {
+    .Call(`_spaMM_COMP_Z_integrand`, z, eta, lambda, nu, moment, logScaleFac)
+}
+
+.Rcpp_COMP_Z_asympto <- function(nu, pow_lam_nu) {
+    .Call(`_spaMM_Rcpp_COMP_Z_asympto`, nu, pow_lam_nu)
+}
+
 .lmwith_sparse_LDLp <- function(XX, yy, returntQ, returnR, pivot) {
     .Call(`_spaMM_lmwith_sparse_LDLp`, XX, yy, returntQ, returnR, pivot)
 }

@@ -58,8 +58,8 @@ fixedLRT <- function(  ## interface to .LRT or (for devel only) .corrMM_LRT
   ## but fixedLRT is not used in these scripts, so it can make a different assumption
   spatial <- .findSpatial(formula)
   if ( length(spatial)) { ## not list()
-    if (missing(fittingFunction)) { # __F I X M E__ review change in v 3.7.16 (corrHLfit...)
-      mc$fittingFunction <- "fitme"
+    if (missing(fittingFunction)) { 
+      mc$fittingFunction <- "fitme" # only changed from corrHLfit to fitme in v 3.7.16
       mc$HLmethod <- NULL
       mc$method <- METHOD
     }

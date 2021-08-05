@@ -475,7 +475,7 @@
 
 .init_assign_geoinfo <- function(processed, ZAlist, For=processed$For, corr_info=processed$corr_info, corr_types=corr_info$corr_types, 
                              exp_barlist, nrand=length(ZAlist), distMatrix, 
-                             sparse_precision=processed$is_spprec, uniqueGeo) {
+                             sparse_precision=processed$is_spprec) {
   if ( length(corr_types[ ! is.na(corr_types)])) {
     
     if (For=="HLfit") {
@@ -551,11 +551,6 @@
                 } 
               }
               # not "else" because Matern/Cauchy must be combined with this!
-              if ( ! is.null(uniqueGeo)) { ## user-provided uniqueGeo (no example anywhere! :-) )
-                if (is.list(uniqueGeo)) { ## spaMM3.0 extended syntax
-                  geo_info[[it]]$uniqueGeo <- uniqueGeo[[it]] 
-                } else geo_info[[it]]$uniqueGeo <- uniqueGeo #
-              } 
             }
           }
         }

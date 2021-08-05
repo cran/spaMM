@@ -21,12 +21,14 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") { ## set in <R_HOME>/etc/Renviron.site 
       ## testthat::test_package(pkg) ## for an installed package
       if (FALSE) { ## tests not included in package (using unpublished data, etc.)
         #install.packages(c("FactoMineR"))
-        # see also includes in test_back_compat.R
+        # see also includes in tests_private/test-back-compat.R
         priv_testfiles <- dir(paste0(projpath(),"/package/tests_private/"),pattern="*.R",full.names = TRUE)
         priv_testfiles <- setdiff(priv_testfiles,paste0(projpath(),"/package/tests_private/knit_LM2GLMM.R"))
         priv_timings <- t(sapply(priv_testfiles, function(fich){
           cat(crayon::green(paste0("\n",fich)))
-          system.time(try(source(fich)))
+          tps <- system.time(chk <- try(source(fich)))
+          if (inherits(chk,"try-error")) warning(paste0(fich," generated an error"))
+          tps
         }))
         #spaMM.options(oldmaxt)
         print(colSums(priv_timings))

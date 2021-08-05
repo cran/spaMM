@@ -10,8 +10,10 @@
   } else if (family$family=="COMPoisson") {
     loc_link <- family$link
     if (loc_link=="loglambda") loc_link <- "log"
-    if (inherits(substitute(nu, env=environment(family$aic)),"call")) family <- poisson(loc_link) 
-    # ___F I X M E___ inherits((nu <- substitute(nu, env=environment(family$aic))),"call") || nu <= 1 ...
+    if (inherits(substitute(nu, env=environment(family$aic)),"call")) family <- poisson(loc_link)
+    # problm with test glmmTMB: most of the time is spent on inits for glm when nu<1
+    # if (inherits(nuchk <- substitute(nu, env=environment(family$aic)),"call") || nuchk >0.25) family <- poisson(loc_link)
+    # : This helps for he GLM but not much otherwise. Other ideas ? __F I X M E__
   }
   
   if (family$family=="binomial" && NCOL(y)==1L) { 
@@ -44,6 +46,7 @@
     } else resu$lambda <- resu$phi_est <- sum(dev)/resglm$df.residual # /lam_fac
   } else { ## GLM
     #
+    if (family$family=="COMPoisson") glm.fit <- glm.nodev.fit 
     tryglm <- .tryCatch_W_E(glm.fit(x=X.pv, 
                                     y=Y, 
                                     weights = eval(prior.weights), 
@@ -52,7 +55,7 @@
     if (inherits((resglm <- tryglm$value),"error") || 
         ( ! resglm$converged && any(fitted(resglm)>1e20)) # this occurred in Gamma(log) models or negbin(log)
     ) {
-      resglm <- spaMM_glm.fit(x=X.pv, 
+      resglm <- spaMM_glm.fit(x=X.pv, # ->LevM -> COMP bottleneck
                               y=Y, 
                               weights = eval(prior.weights), 
                               offset = off, family = family, 

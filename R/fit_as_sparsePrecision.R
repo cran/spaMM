@@ -505,7 +505,8 @@
     if( ! LevenbergM && allow_LM_restart) { ## FIXME the next step improvement would be 
       #  ./. to keep track of lowest lambda that created problem and use LM by default then
       if (innerj>3) {
-        LMcond <- LMcond + mean(abs_d_relV_beta/(old_abs_d_relV_beta+1e-8))
+        crit <- abs_d_relV_beta/(old_abs_d_relV_beta+1e-8)
+        LMcond <- LMcond + mean(sqrt(crit))^2 
         ## cat(mean(abs_d_relV_beta/old_abs_d_relV_beta)," ")
         # cat(LMcond/innerj," ")
         if (LMcond/innerj>0.5) {

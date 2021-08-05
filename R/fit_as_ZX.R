@@ -532,9 +532,11 @@
     if( ! LevenbergM && allow_LM_restart) { ## FIXME the next step improvement would be 
       #  ./. to keep track of lowest lambda that created problem and use LM by default then
       if (innerj>3) {
-        LMcond <- LMcond + mean(abs_d_relV_beta/(old_abs_d_relV_beta+1e-8))
-        ## cat(mean(abs_d_relV_beta/old_abs_d_relV_beta)," ")
-        # cat(LMcond/innerj," ")
+        crit <- abs_d_relV_beta/(old_abs_d_relV_beta+1e-8)
+        LMcond <- LMcond + mean(sqrt(crit))^2 
+        #previously, mean(crit) could be upset by *one* small old_abs_d_relV_beta() value ()eg glmmTMB COMPoisson example)
+        # conversely, "median is too insensitive (long tests globally)
+        # we could adapt the "norm()" to the expected costs/benefit of different thresholds (higher cost for COMPoisson) __F I X M E__ 
         if (LMcond/innerj>0.5) {
           LevenbergM <- TRUE
           if (trace) cat("!LM") 
@@ -836,7 +838,7 @@
         # not_moving_Wattr <- .diagnose_coeff_not_moving(coeff_not_moving = not_moving,relV_beta, damped_WLS_blob, innerj, 
         #                                                damping, is_HL1_1, oldAPHLs, Ftol=processed$spaMM_tol$Ftol_LM, trace, LevenbergM,stylefn=identity)
         break
-      } #else if (F_I_X_M_E && innerj==maxit.mean-1L) browser()
+      } # else if (F_I_X_M_E && innerj==maxit.mean-1L) browser()
       # More ad hoc breaks for cases where the coefficients keep moving although the total potential is low:
       if ( ! is.null(damped_WLS_blob) ) {
         if (is_HL1_1) {

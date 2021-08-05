@@ -1,4 +1,4 @@
-.CMP_use_asympto <- function(pow_lam_nu, nu) {
+.CMP_use_asympto <- function(pow_lam_nu, nu, lambda) {
   ## Gaunt et al suggest lambda>1.5 and pow_lam_nu>1.5
   ## this ensures that nu*pow_lam_nu>1.1 but the expansion is clearly better for nu*pow_lam_nu >> 1 
   return(eval(.spaMM.data$options$CMP_asympto_cond))
@@ -6,22 +6,28 @@
 
 .COMP_maxn <- function(lambda,nu) { ## this uses the simplest asympto approx to determine the discrete sum bound 
   # most pbatic case is nu->0, lambda->1^- where E -> lambda/(1-lambda) ->Inf while the first En approx <1 or <<1
-  if (nu>1) { 
-    app_En <- lambda^(1/(nu+1e-6)) ## .COMP_asympto_P_moment(pow_lam_nu,nu+1e-6,1L) would be lower
-    app_Vn <- 5*app_En/(nu+1e-6)
-  } else { # combination of geom (for nu=0) and Poisson cases
-    hack <- (1-nu)*lambda # we make sure that 1/(1-hack) dominates when nu->0 and lambda->1^-
-    app_En <- hack/(1-hack)+exp(lambda)
-    app_Vn <- 5*hack/(1-hack)^2+exp(lambda)
-  } # 6*sqrt(app_Vn) to keep all but 1e-6 of the distrib (Feller p.245). 
-  #   For same effect with geom maxn=-6/log10(lambda) and with log(lambda)~lambda-1 we need 6*sqrt(app_Vn)~ 6/[log(10)*(1-lambda)]
-  #   But we apparently need a wider range of the distribution to get fast convergence in data_session_compil test.
-  res <- 1+app_En+6*sqrt(app_Vn)  ## real, to allow continuity correction 
-  # minimal value 9 to obtain identical values in "Aliens' test in old version, no longer necessary...
-  opt_maxn <- spaMM.getOption("COMP_maxn")
+  Pr_moments <- .COMP_Pr_moments(pow_lam_nu=lambda^(1/nu), lambda, nu, moments=c(1,2),use_asympto=TRUE)
+  res <- app_En <- Pr_moments[1]
+  opt_maxn <- .spaMM.data$options$COMP_maxn
+  if (res< opt_maxn) {
+    app_En2 <- Pr_moments[2]
+    app_Vn <- app_En2-app_En^2 # should be positive when nu>1, see comment in source fro the asympto approx
+    # BUT: app_En can be negative for lambda <<1, nu moderately > 1
+    app_Vn <- max(app_Vn,lambda^(1/nu)/nu)
+    app_En <- max(app_En,lambda^(1/nu))
+    # the max() ensures continuity in nu=1 as the .COMP_Pr_moments equals the simpler approx there  
+    res <- 4+app_En+6*sqrt(app_Vn)  ## real, to allow continuity correction 
+    # 6*sqrt(app_Vn) to keep all but 1e-6 of the distrib (Feller p.245). 
+    # But in fact this uses Guassian approx and fails for e.g. y=0, mu=0.09568245 => visible diff between dpois and .dCOMP
+    # => add 4. 
+    #   For same effect with geom maxn=-6/log10(lambda) and with log(lambda)~lambda-1 we need 6*sqrt(app_Vn)~ 6/[log(10)*(1-lambda)]
+    # To ensure continuity ( & with log10() argument always <1):
+    if (nu<1 && lambda<1) res <- -((1-nu)^2)*6/log10(nu+(1-nu)*lambda)+(1-(1-nu)^2)*res  ## real, to allow continuity correction 
+    # => in nu->1 the correction is zero for all 1>lambda>0, in nu->0 res is -6/log10(lambda)
+  }
   if (res>opt_maxn) {
     res <- opt_maxn
-    if ( ! identical(spaMM.getOption("COMP_maxn_warned"),TRUE)) {
+    if ( ! identical(.spaMM.data$options$COMP_maxn_warned,TRUE)) {
       warning(paste0("maxn truncated to ",res," for (lambda,nu)= (",lambda,",",nu,") and possibly other values."))
       .spaMM.data$options$COMP_maxn_warned <- TRUE
       ### This is first called through 
@@ -33,12 +39,20 @@
       # and as .get_inits_by_glm() is called repeatedly for COMPoisson, we do so only if a warning was emitted by the glm
       # which means that COMP_maxn_warned was FALSE in entry to .get_inits_by_glm()
       # which means that COMP_maxn_warned is not set to FALSE .get_inits_by_glm() when it was TRUE in entry to it.
+      if (.spaMM.data$options$need_memoise_warning) {
+        warning("If the memoise package had been installed (prior to loading spaMM), faster computation could be possible.")
+        .spaMM.data$options$need_memoise_warning <- FALSE
+      }
     }
   }
   res
 }
 
-.COMP_Z_integrand <- function(z,lambda,eta=log(lambda),nu,moment=0,logScaleFac=0) {
+# debug version including R version replaced by Rcpp version
+.debug_COMP_Z_integrand <- function(z,lambda,eta=log(lambda),nu,moment=0,logScaleFac=0) {
+  if (missing(lambda)) {
+    Cres <- .COMP_Z_integrand(z=z,eta=eta,nu=nu,moment=moment,logScaleFac=logScaleFac)
+  } else Cres <- .COMP_Z_integrand(z,lambda,eta,nu,moment,logScaleFac)
   logint <- moment*log(z)+ z*eta - nu*lfactorial(z)
   res <- exp(logint-logScaleFac)
   res <- pmin(.Machine$double.xmax, res)
@@ -50,25 +64,29 @@
 .COMP_Z_moment <- function(eta,nu,lambda=exp(eta), moment, 
                            pow_lam_nu = exp(eta/nu),
                            maxn=.COMP_maxn(lambda,nu),
-                           use_asympto=.CMP_use_asympto(pow_lam_nu,nu)) {
+                           use_asympto=.CMP_use_asympto(pow_lam_nu,nu,lambda)) {
   if (use_asympto) { 
     if (moment) {
       stop("Execution should not reach this point.")  
     } else { ## moment=0
-      logScaleFac <- nu*pow_lam_nu[[1L]] ## drop any name ! otherwise return value has wrong names
-      # using Gaunt et al.:
-      c1 <- (nu^2-1)/24
-      c2 <- (nu^2-1)*(nu^2+23)/1152
-      c3 <- (nu^2-1)*(5*nu^4-298*nu^2+11237)/414720
-      c4 <- (nu^2-1)*(5*nu^6-1887*nu^4-241041*nu^2+2482411)/39813120
-      c5 <- (nu^2-1)*(7*nu^8-7420*nu^6+1451274*nu^4-220083004*nu^2+1363929895)/6688604160
-      c6 <- (nu^2-1)*(35*nu^10 - 78295*nu^8 + 76299326*nu^6 + 25171388146*nu^4 
-                      - 915974552561*nu^2 + 4175309343349)/4815794995200
-      c7 <- (nu^2-1)*(5*nu^12- 20190*nu^10 + 45700491*nu^8 - 19956117988*nu^6
-                      +7134232164555*nu^4-142838662997982*nu^2 + 525035501918789)/115579079884800
-      scaled <- (1+c1/logScaleFac+c2/logScaleFac^2+c3/logScaleFac^3+c4/logScaleFac^4+c5/logScaleFac^5+c6/logScaleFac^6+c7/logScaleFac^7)
-      scaled <- (scaled/((2*pi*pow_lam_nu)^((nu-1)/2)*sqrt(nu)))[[1L]] ## drop any name !
-      resu <- c(logScaleFac=logScaleFac, scaled=scaled)
+      if (FALSE) {
+        logScaleFac <- nu*pow_lam_nu[[1L]] ## drop any name ! otherwise return value has wrong names
+        # using Gaunt et al.:
+        c1 <- (nu^2-1)/24
+        c2 <- (nu^2-1)*(nu^2+23)/1152
+        # c3 <- (nu^2-1)*(5*nu^4-298*nu^2+11237)/414720
+        # c4 <- (nu^2-1)*(5*nu^6-1887*nu^4-241041*nu^2+2482411)/39813120
+        # c5 <- (nu^2-1)*(7*nu^8-7420*nu^6+1451274*nu^4-220083004*nu^2+1363929895)/6688604160
+        # c6 <- (nu^2-1)*(35*nu^10 - 78295*nu^8 + 76299326*nu^6 + 25171388146*nu^4 
+        #                 - 915974552561*nu^2 + 4175309343349)/4815794995200
+        # c7 <- (nu^2-1)*(5*nu^12- 20190*nu^10 + 45700491*nu^8 - 19956117988*nu^6
+        #                 +7134232164555*nu^4-142838662997982*nu^2 + 525035501918789)/115579079884800
+        # scaled <- (1+c1/logScaleFac+c2/logScaleFac^2+c3/logScaleFac^3+c4/logScaleFac^4+
+        #              c5/logScaleFac^5+c6/logScaleFac^6+c7/logScaleFac^7)
+        scaled <- (1+c1/logScaleFac+c2/logScaleFac^2)
+        scaled <- (scaled/((2*pi*pow_lam_nu)^((nu-1)/2)*sqrt(nu)))[[1L]] ## drop any name !
+        resu <- c(logScaleFac=logScaleFac, scaled=scaled)
+      } else resu <- .Rcpp_COMP_Z_asympto(nu, pow_lam_nu)
     }
   } else {
     resu <- .Rcpp_COMP_Z(moment=moment,nu=nu,lambda=lambda,maxn=maxn)
@@ -77,40 +95,43 @@
     if (is.infinite(lfac)) { ## Should not occur as the asymptotic approx for the moments of the *PDF* should have been used 
       stop(paste("Practically infinite sum for COMPoisson's nu=",nu,". The asymptotic approx for the moments of the *PDF* should have been used."))
     } 
-    logScaleFac <- (k_maxim*eta - nu*lfac)[[1L]] ## drop any name !
-    ## Add approximation for tail beyond summation from zero to maxn: 
-    ## integrating directly from maxn to Inf may not work, as integrate() may then miss the mode of the integrand. So:
-    # (1) Always add tail beyond the highest of maxn and k_maxim
-    taildef <- max(k_maxim,maxn)
-    if (taildef>1e10) {
-      # nintegrate behaves more poorly that what can be handled by max(0,.)
-      # E.g., compare the value of 'scaled' in (spaMM:::.COMP_Z_n(lambda=exp(7.321), nu=0.25)) verss (spaMM:::.COMP_Z_n(lambda=exp(7.32), nu=0.25))
-      scaled <- .do_call_wrap("quadinf", 
-                              arglist=list(f=.COMP_Z_integrand, xa = taildef, xb = Inf, 
-                                           eta = eta, nu = nu, moment = 1,logScaleFac = logScaleFac),
-                              pack="pracma",
-                              info_mess=paste0("If the 'pracma' package were available,\n",
-                                               "more accurate evaluation of an integral would be possible.")
-                              )$Q
-      if (is.null(scaled)) scaled <- max(0,integrate(.COMP_Z_integrand,lower=taildef,upper=Inf,eta=eta,nu=nu,moment=moment,
-                                                     logScaleFac=logScaleFac)$value)
-    } else {
-      scaled <- max(0,integrate(.COMP_Z_integrand,lower=taildef,upper=Inf,eta=eta,nu=nu,moment=moment,
-                                logScaleFac=logScaleFac)$value)
+    if (maxn>.spaMM.data$options$COMP_maxn-1) {
+      logScaleFac <- (k_maxim*eta - nu*lfac)[[1L]] ## drop any name !
+      ## Add approximation for tail beyond summation from zero to maxn: 
+      ## integrating directly from maxn to Inf may not work, as integrate() may then miss the mode of the integrand. So:
+      # (1) Always add tail beyond the highest of maxn and k_maxim
+      taildef <- max(k_maxim,maxn)
+      if (taildef>1e10) {
+        # nintegrate behaves more poorly that what can be handled by max(0,.)
+        # E.g., compare the value of 'scaled' in (spaMM:::.COMP_Z_n(lambda=exp(7.321), nu=0.25)) verss (spaMM:::.COMP_Z_n(lambda=exp(7.32), nu=0.25))
+        scaled <- .do_call_wrap("quadinf", 
+                                arglist=list(f=.COMP_Z_integrand, xa = taildef, xb = Inf, 
+                                             eta = eta, nu = nu, moment = 1,logScaleFac = logScaleFac),
+                                pack="pracma",
+                                info_mess=paste0("If the 'pracma' package were available,\n",
+                                                 "more accurate evaluation of an integral would be possible.")
+        )$Q
+        if (is.null(scaled)) scaled <- max(0,integrate(.COMP_Z_integrand,lower=taildef,upper=Inf,eta=eta,nu=nu,moment=moment,
+                                                       logScaleFac=logScaleFac)$value)
+      } else {
+        scaled <- max(0,integrate(.COMP_Z_integrand,lower=taildef,upper=Inf,eta=eta,nu=nu,moment=moment,
+                                  logScaleFac=logScaleFac)$value)
+      }
+      if (maxn<k_maxim) { ## then add integral from maxn to k_maxim 
+        scaled <- scaled + max(0,integrate(.COMP_Z_integrand,lower=maxn,upper=k_maxim,eta=eta,nu=nu,moment=moment,
+                                           logScaleFac=logScaleFac)$value)
+      }
+      scaled <- pmin(.Machine$double.xmax,scaled)
+      resu <- .COMP_Z_sum(resu, c(logScaleFac=logScaleFac,scaled=scaled))
     }
-    if (maxn<k_maxim) { ## then add integral from maxn to k_maxim 
-      scaled <- scaled + max(0,integrate(.COMP_Z_integrand,lower=maxn,upper=k_maxim,eta=eta,nu=nu,moment=moment,
-                                         logScaleFac=logScaleFac)$value)
-    }
-    scaled <- pmin(.Machine$double.xmax,scaled)
-    resu <- .COMP_Z_sum(resu, c(logScaleFac=logScaleFac,scaled=scaled))
   }
   return(resu)
 }
 
 ##  the moments of the proba distr
 
-.COMP_Pr_moments <- function(pow_lam_nu=lambda^(1/nu), lambda, nu, moments,use_asympto=.CMP_use_asympto(pow_lam_nu,nu)) {
+.COMP_Pr_moments <- function(pow_lam_nu=lambda^(1/nu), lambda, nu, moments,
+                             use_asympto=.CMP_use_asympto(pow_lam_nu,nu, lambda)) {
   resu <- rep(NA,length(moments))
   names(resu) <- moments
   if (use_asympto) {
@@ -119,20 +140,20 @@
     mu1 <- pow_lam_nu*( 1 -(nu-1)/(2*nu*pow_lam_nu) - c1/((nu*pow_lam_nu)^2)- c1/((nu*pow_lam_nu)^3))
     if ("1" %in% moments) resu["1"] <- mu1
     if ("2" %in% moments || "3" %in% moments) {
-      Var <- (pow_lam_nu/nu)*( 1 + c1/((nu*pow_lam_nu)^2) + 2*c1/((nu*pow_lam_nu)^3))
-      if ("2" %in% moments) resu["2"] <- mu1^2 + Var
+      Var <- (pow_lam_nu/nu)*( 1 + c1/((nu*pow_lam_nu)^2) + 2*c1/((nu*pow_lam_nu)^3)) # >0 when nu>1
+      if ("2" %in% moments) resu["2"] <- mu1^2 + Var # supp to mu1^2 when nu>1
     }
     if ("3" %in% moments) {
       k3 <- (pow_lam_nu/nu^2)*( 1 - c1/((nu*pow_lam_nu)^2) -4*c1/((nu*pow_lam_nu)^3))
       resu["3"] <- mu1^3 + 3*mu1*Var +k3
     }
   } else {
-    denum <- .COMP_Z(lambda=lambda,nu=nu)
+    denum <- .COMP_Z(lambda=lambda,nu=nu) # -> calling .COMP_Pr_moments( use_asympto=TRUE) ... 
     denum_corr <- .COMP_Z(lambda=lambda,nu=1) # for continuity correction in nu=1
     if ("1" %in% moments) {
       num <- .COMP_Z_n(lambda=lambda,nu=nu)
       resu["1"] <- .COMP_Z_ratio(num,denum)
-      # continuity correction wrt poisson: 
+      # continuity correction wrt poisson: corr =lambda + error of the COMP_Z... functions
       corr <- .COMP_Z_ratio(.COMP_Z_n(lambda=lambda,nu=1), denum_corr) ## poisson value by general approx
       resu["1"] <- resu["1"]+(lambda-corr) ## approx_any_nu+(exact_poi-approx_poi): exact in nu=1
     }
@@ -352,7 +373,9 @@
       mus <- lambda/(1-lambda) 
     } else {
       nu <- parent.env(environment())$nu
-      mus <- sapply(lambda, .CMP_lambda2mui,nu=nu) 
+      # mus <- sapply(lambda, .CMP_lambda2mui,nu=nu) 
+      mus <- numeric(length(lambda))
+      for (it in seq_along(lambda)) mus[it] <- .CMP_lambda2mui(lambda[it],nu=nu)
     }
     dim(mus) <- dim(lambda) ## may be NULL
   }
@@ -360,6 +383,7 @@
   return(structure(mus,lambda=lambda))
 }
 
+# different input
 .CMP_loglambda_linkinv <- function(eta,lambda=exp(eta)) { # \equiv .CMP_lambda2mu(lambda) but with nu properly passed...
   mus <- attr(lambda,"mu") 
   if (is.null(mus)) {
@@ -367,7 +391,9 @@
       mus <- lambda/(1-lambda) 
     } else {
       nu <- parent.env(environment())$nu # for canonical link .CMP_loglambda_linkinv has been copied to $linkinv with nu in its parent env.
-      mus <- sapply(lambda, .CMP_lambda2mui,nu=nu)
+      #mus <- sapply(lambda, .CMP_lambda2mui,nu=nu)
+      mus <- numeric(length(lambda))
+      for (it in seq_along(lambda)) mus[it] <- .CMP_lambda2mui(lambda[it],nu=nu)
     }
     dim(mus) <- dim(lambda) ## may be NULL
   }
@@ -385,7 +411,7 @@
     lambda <- 1 - 1e-8 ## 1 -> mu.eta = NaN. mu.eta being Inf would not be OK bc Inf GLMweights -> 1/w.resid=0 -> singular Sig or d2hdv2
   } else {
     app_lambda <-  max(c(0,(mu+max(0,(nu-1)/(2*nu)))))^(nu)
-    lambdamin <- max(c(.Machine$double.eps, app_lambda-1)) ## (the ultimate contraint is that log(lambda)> -Inf)
+    lambdamin <- max(c(.Machine$double.eps, app_lambda-1)) ## (the ultimate constraint is that log(lambda)> -Inf)
     lambdamax <- max(c(.Machine$double.eps, (app_lambda+1)*c(1.01))) ## not perfect...
     # last one for low lambda,nu values
     fupper <- CMP_linkfun_objfn(lambdamax, mu=mu)
@@ -423,19 +449,28 @@
     nu <- parent.env(environment())$nu
     if (nu==0) {
       lambdas <- mu/(1+mu) 
-    } else lambdas <- sapply(mu, ..CMP_mu2lambda,nu=nu, CMP_linkfun_objfn=parent.env(environment())$CMP_linkfun_objfn)
+    } else {
+      #lambdas <- sapply(mu, ..CMP_mu2lambda,nu=nu, CMP_linkfun_objfn=parent.env(environment())$CMP_linkfun_objfn)
+      lambdas <- numeric(length(mu))
+      for (it in seq_along(mu)) lambdas[it] <- ..CMP_mu2lambda(mu[it],nu=nu, CMP_linkfun_objfn=parent.env(environment())$CMP_linkfun_objfn)
+    }
   } 
   attributes(mu) <- NULL ## avoids 'mise en abime'
   return(structure(lambdas,mu=mu))
 }
 
+# different return value
 .CMP_loglambda_linkfun <- function(mu) {## scalar or vector
   lambdas <- attr(mu,"lambda")
   if ( is.null(lambdas)) {
     nu <- parent.env(environment())$nu
     if (nu==0) {
       lambdas <- mu/(1+mu) 
-    } else lambdas <- sapply(mu, ..CMP_mu2lambda,nu=nu, CMP_linkfun_objfn=parent.env(environment())$CMP_linkfun_objfn)
+    } else {
+      #lambdas <- sapply(mu, ..CMP_mu2lambda,nu=nu, CMP_linkfun_objfn=parent.env(environment())$CMP_linkfun_objfn)
+      lambdas <- numeric(length(mu))
+      for (it in seq_along(mu)) lambdas[it] <- ..CMP_mu2lambda(mu[it],nu=nu, CMP_linkfun_objfn=parent.env(environment())$CMP_linkfun_objfn)
+    }
   } 
   attributes(mu) <- NULL ## avoids 'mise en abime'
   return(structure(log(lambdas),mu=mu)) ## eta (ie standard linkfun value) for the Shmueli version

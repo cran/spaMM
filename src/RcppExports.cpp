@@ -6,6 +6,11 @@
 
 using namespace Rcpp;
 
+#ifdef RCPP_USE_GLOBAL_ROSTREAM
+Rcpp::Rostream<true>&  Rcpp::Rcout = Rcpp::Rcpp_cout_get();
+Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
+#endif
+
 // Rcpp_COMP_Z
 SEXP Rcpp_COMP_Z(int moment, double nu, double lambda, int maxn);
 RcppExport SEXP _spaMM_Rcpp_COMP_Z(SEXP momentSEXP, SEXP nuSEXP, SEXP lambdaSEXP, SEXP maxnSEXP) {
@@ -17,6 +22,34 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< double >::type lambda(lambdaSEXP);
     Rcpp::traits::input_parameter< int >::type maxn(maxnSEXP);
     rcpp_result_gen = Rcpp::wrap(Rcpp_COMP_Z(moment, nu, lambda, maxn));
+    return rcpp_result_gen;
+END_RCPP
+}
+// COMP_Z_integrand
+SEXP COMP_Z_integrand(Rcpp::NumericVector z, Nullable<NumericVector> eta, Nullable<NumericVector> lambda, double nu, int moment, double logScaleFac);
+RcppExport SEXP _spaMM_COMP_Z_integrand(SEXP zSEXP, SEXP etaSEXP, SEXP lambdaSEXP, SEXP nuSEXP, SEXP momentSEXP, SEXP logScaleFacSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type z(zSEXP);
+    Rcpp::traits::input_parameter< Nullable<NumericVector> >::type eta(etaSEXP);
+    Rcpp::traits::input_parameter< Nullable<NumericVector> >::type lambda(lambdaSEXP);
+    Rcpp::traits::input_parameter< double >::type nu(nuSEXP);
+    Rcpp::traits::input_parameter< int >::type moment(momentSEXP);
+    Rcpp::traits::input_parameter< double >::type logScaleFac(logScaleFacSEXP);
+    rcpp_result_gen = Rcpp::wrap(COMP_Z_integrand(z, eta, lambda, nu, moment, logScaleFac));
+    return rcpp_result_gen;
+END_RCPP
+}
+// Rcpp_COMP_Z_asympto
+SEXP Rcpp_COMP_Z_asympto(double nu, double pow_lam_nu);
+RcppExport SEXP _spaMM_Rcpp_COMP_Z_asympto(SEXP nuSEXP, SEXP pow_lam_nuSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< double >::type nu(nuSEXP);
+    Rcpp::traits::input_parameter< double >::type pow_lam_nu(pow_lam_nuSEXP);
+    rcpp_result_gen = Rcpp::wrap(Rcpp_COMP_Z_asympto(nu, pow_lam_nu));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -544,6 +577,8 @@ END_RCPP
 
 static const R_CallMethodDef CallEntries[] = {
     {"_spaMM_Rcpp_COMP_Z", (DL_FUNC) &_spaMM_Rcpp_COMP_Z, 4},
+    {"_spaMM_COMP_Z_integrand", (DL_FUNC) &_spaMM_COMP_Z_integrand, 6},
+    {"_spaMM_Rcpp_COMP_Z_asympto", (DL_FUNC) &_spaMM_Rcpp_COMP_Z_asympto, 2},
     {"_spaMM_lmwith_sparse_LDLp", (DL_FUNC) &_spaMM_lmwith_sparse_LDLp, 5},
     {"_spaMM_lmwith_sparse_LLp", (DL_FUNC) &_spaMM_lmwith_sparse_LLp, 5},
     {"_spaMM_update_R_in_place", (DL_FUNC) &_spaMM_update_R_in_place, 1},

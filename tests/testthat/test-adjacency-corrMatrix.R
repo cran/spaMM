@@ -13,14 +13,13 @@ if (interactive()) {
     message(paste('! ("',expectedMethod,'" %in% adjfit$MME_method): was a non-default option selected?'))
   }
 } else testthat::expect_true(expectedMethod %in% adjfit$MME_method) 
-oldop <- spaMM.options(sparse_precision=TRUE, warn=FALSE)
 adjfitsp <- fitme(cases~I(prop.ag/10) +adjacency(1|gridcode)+(1|gridcode)+offset(log(expec)),
                   adjMatrix=Nmatrix,
                   rand.family=list(gaussian(),Gamma(log)), #verbose=c(TRACE=1L),
                   fixed=list(rho=0.1), 
-                  family=poisson(),data=scotlip)
+                  family=poisson(),data=scotlip, 
+                  control.HLfit=list(sparse_precision=TRUE))
 testthat::expect_true("AUGI0_ZX_sparsePrecision" %in% adjfitsp$MME_method)
-spaMM.options(oldop)
 if (spaMM.getOption("EigenDense_QRP_method")==".lmwithQR") {
   crit <- diff(range(logLik(adjfit),logLik(adjfitsp)))
   if (spaMM.getOption("fpot_tol")>0) {
@@ -74,17 +73,16 @@ if (spaMM.getOption("example_maxtime")>6.90) {
   # : correctness sensitive to w.resid <- damped_WLS_blob$w.resid.
   
   if (FALSE) { ## single IRLS fit sensitive to w.resid <- damped_WLS_blob$w.resid
-    oldop <- spaMM.options(sparse_precision=FALSE)
     aaaa <- fitme(cases~I(prop.ag/10) +corrMatrix(1|gridcode)+(1|gridcode)+offset(log(expec)),
                   covStruct=list(corrMatrix=covmat),
                   rand.family=list(gaussian(),Gamma(log)), #verbose=c(TRACE=3L),
                   fixed=list(lambda=c(0.05,0.05)), 
-                  family=poisson(),data=scotlip,control.HLfit=list(LevenbergM=c(LevenbergM=TRUE)))
+                  family=poisson(),data=scotlip,control.HLfit=list(LevenbergM=c(LevenbergM=TRUE,sparse_precision=FALSE)))
     bbbb <- fitme(cases~I(prop.ag/10) +corrMatrix(1|gridcode)+(1|gridcode)+offset(log(expec)),
                   covStruct=list(precision=precmat),
                   rand.family=list(gaussian(),Gamma(log)), #verbose=c(TRACE=3L),
                   fixed=list(lambda=c(0.05,0.05)), 
-                  family=poisson(),data=scotlip,control.HLfit=list(LevenbergM=TRUE))
+                  family=poisson(),data=scotlip,control.HLfit=list(LevenbergM=TRUE,sparse_precision=FALSE))
   }
 }
 

@@ -29,6 +29,7 @@ HLfit <- function(formula,
   assign("spaMM_glm_conv_crit",list(max=-Inf) , envir=environment(spaMM_glm.fit))
   time1 <- Sys.time()
   oricall <- match.call()  ## there is no dots in HLfit
+  oricall$control.HLfit <- eval(oricall$control.HLfit, parent.frame()) # to evaluate variables in the formula_env, otherwise there are bugs in waiting 
   if (is.null(processed)) { 
     if (missing(data)) {
       data <- environment(formula)

@@ -1001,7 +1001,8 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
   locdata <- new_X_ZACblob$locdata 
   if ( ! is.logical(binding) ) { ## expecting a string
     if (inherits(locdata,"list")) { # mv case
-      stop("'binding' operation not yet defined for multivariate-response models. Ask the maintainer.") # wait for real-life example. (___FIXME___)
+      stop("'binding' operation not yet defined for multivariate-response models. Ask the maintainer.") 
+      # wait for real-life example. (___FIXME___) and beware of code for intervals below
     } else {
       binding <- .makenewname(base=binding,varnames=colnames(locdata)) 
       resu <- structure(data.frame(resu), mu_U=attr(resu,"mu_U"),p0=attr(resu,"p0"))
@@ -1118,14 +1119,24 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
   } 
   if(length(intervals)) { # for e.g. intervals="predVar"
     intervalresu <- NULL
+    # need eta as vector in all cases (if eta is data.frame execution stops on cbind(<NULL>, interval))
+    if (type=="link") {
+      if (is.character(binding)) { # then resu is data.frame
+        eta <- resu[[binding]] # data.frame -> vector
+      } else {eta <- resu; dim(eta) <- NULL} # matrix -> vector
+    } else {
+      if (is.character(binding)) { # then resu is data.frame
+        eta <- .eta_linkfun(resu[[binding]] , object$family, object$families) # with possible mu attribute
+      } else eta <- .eta_linkfun(resu , object$family, object$families)  # with possible mu attribute
+      ## mv: 'resu' ('center' of intervals) still a single column 
+      eta <- eta[seq(nrow(resu))] ## [] with explicit indices, needed here to drop possible mu attribute otherwise linkinv(eta+/-sd) uses it! 
+      #                           #   and so -> vector in all case  
+    } 
+    # 
     for (st in intervals) {
       varcomp <- attr(resu,st)
       if (is.null(varcomp)) warning(paste("Prediction variance component",st,"requested but not available: check input."))
       if (is.matrix(varcomp)) varcomp <- diag(varcomp)
-      if (type=="link") {
-        eta <- resu[,1L]
-      } else eta <- .eta_linkfun(resu, object$family, object$families)[seq(nrow(resu))] ## mv: 'resu' still a single vector ('center' of intervals) 
-        ## [] with explicit indices, to drop possible mu attribute otherwise linkinv(eta+/-sd) uses it! 
       pv <- 1-(1-level)/2
       ## special case for simple LM
       if (length(object$rand.families)==0L && # not mixed
@@ -1150,7 +1161,7 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
       } else interval <- cbind(.fv_linkinv(eta=eta-sd, family=object$family, families=object$families),
                                .fv_linkinv(eta=eta+sd, family=object$family, families=object$families))
       colnames(interval) <- paste(st,c(signif(1-pv,4),signif(pv,4)),sep="_")
-      intervalresu <- cbind(intervalresu,interval)
+      intervalresu <- cbind(intervalresu,interval) # recursive cbind over types of intervals
     }
     attr(resu,"intervals") <- intervalresu
   }

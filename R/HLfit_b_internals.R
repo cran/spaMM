@@ -99,7 +99,7 @@
     cliks <- unlist(cliks, recursive = FALSE, use.names = FALSE)
   } else {
     family <- processed$family
-    theta <- .theta.mu.canonical(mu/BinomialDen,family)  
+    theta <- .theta.mu.canonical(mu/BinomialDen,family)  # bobttleneck for CMP
     if (family$family=="binomial") {
       cliks <- clik_fn(theta, y/BinomialDen, BinomialDen, eval(prior.weights)/phi_est)
     } else {

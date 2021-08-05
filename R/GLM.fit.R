@@ -159,6 +159,7 @@ spaMM_glm.fit <- local({
         COMP_nu <- environment(family$aic)$nu 
         eta <- .sanitize_eta_log_link(eta, max=40, y=y, nu=COMP_nu)
       }
+      # : __F I X M E__ why not use general code : .sanitize_eta(eta,y=y, family=family) #, which default max?  
       mu <- linkinv(eta)
       if (!(validmu(mu) && valideta(eta))) 
         stop("cannot find valid starting values: please specify some", 

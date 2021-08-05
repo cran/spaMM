@@ -34,8 +34,8 @@ Quality Control Association.
 \examples{
 data("welding")
 ## toy example from Smyth et al.
-HLfit(Strength ~ Drying + Material,resid.model = ~ Material+Preheating ,data=welding)
+fitme(Strength ~ Drying + Material,resid.model = ~ Material+Preheating ,data=welding, method="REML")
 ## toy example of overparameterized model
-HLfit(Strength ~ Rods+Thickness*Angle+(1|Rods),resid.model = ~ Rods+Thickness*Angle ,data=welding)
+fitme(Strength ~ Rods+Thickness*Angle+(1|Rods),resid.model = ~ Rods+Thickness*Angle ,data=welding)
 }
 \keyword{datasets}

@@ -1,6 +1,11 @@
 \name{spaMM-internal}
 
+% TODO ___F I X M E___
+% * implement outer optime of beta starting from the etaFix (+ REMLformula) code => avoid LevM costs for COMP ? 
+
 \alias{projpath} % for local tests
+
+\alias{glm.nodev.fit} % __F I X M E__ possible temporary
 
 \alias{fitme_body}
 \alias{fitmv_body}

@@ -1,9 +1,8 @@
 cat(crayon::yellow("\nTest of adjacency (long fits):"))
 
-if (spaMM.getOption("example_maxtime")>61) { # actually quite faster ~20s
+if (spaMM.getOption("example_maxtime")>61) { # actually quite faster ~20.89s
   ## example suggested by Jeroen van den Ochtend jeroenvdochtend@gmail.com Jeroen.vandenochtend@business.uzh.ch
   data("adjlg")
-  oldop <- spaMM.options(sparse_precision=NULL, warn=FALSE) 
   system.time({
     fit.Frailty <- fitme(BUY ~ factor(month) + AGE + GENDER + X1*X2 + adjacency(1|ID),
                           data=adjlg,family = binomial(link = cloglog),method = "ML",
@@ -28,5 +27,4 @@ if (spaMM.getOption("example_maxtime")>61) { # actually quite faster ~20s
     }
   } else testthat::expect_true(expectedMethod %in% IRLS.Frailty$MME_method) 
   # Older comment: spprec_LevM_D=="colSums" gives the highest lik, but "1" is fastest; "rowSums" may be slowest.
-  spaMM.options(oldop)
-} else cat(crayon::bgGreen("\nIncrease maxtime above 61 to run the adjacency-long test !"))
+} else if (spaMM.getOption("example_maxtime")>20) cat(crayon::bgGreen("\nIncrease maxtime above 61 to run the adjacency-long test !"))

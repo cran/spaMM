@@ -8,7 +8,7 @@ A fitting function acting as a convenient interface for \code{\link{HLfit}}, con
 }
 \usage{
 HLCor(formula, data, family = gaussian(), ranPars = NULL, distMatrix,
-      uniqueGeo = NULL, adjMatrix, corrMatrix, covStruct=NULL,
+      adjMatrix, corrMatrix, covStruct=NULL,
       method = "REML", verbose = c(trace=FALSE),
       control.dist = list(), ...)
 }
@@ -30,9 +30,6 @@ HLCor(formula, data, family = gaussian(), ranPars = NULL, distMatrix,
     \bold{Either} a distance matrix between geographic locations, forwarded to \code{MaternCorr} or \code{CauchyCorr}. It overrides the (by default, Euclidean) distance matrix that would otherwise be deduced from the variables in a \code{Matern(.))} or \code{Cauchy(.)} term; \cr
     \bold{or} a list of such matrices. The list format is useful when there are several Matern/Cauchy terms, to avoid that all of them are affected by the same \code{distMatrix}. \code{NULL} list elements may be necessary, e.g.\cr 
 \code{distMatrix=list("1"=NULL,"2"=<.>)}) when a matrix is specified only for the second random effect.
-}
-  \item{uniqueGeo}{
-    Effectively deprecated. No current example or code check uses it. This is a remnant of early versions of spaMM, where it specified a matrix of non-redundant geographic locations, as now such a matrix is typically constructed automatically from the data and the model formula. 
 }
   \item{adjMatrix}{
     An single adjacency matrix, used if a random effect of the form\cr

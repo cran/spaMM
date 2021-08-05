@@ -3,12 +3,43 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 3.8.23}{    
+\subsection{NEW FEATURES}{
+\itemize{
+\item Improved condition for selection of sparse-precision methods for models with 'corrMatrix' terms, with quite substantial gains in speed for affected fits. 
+\item Numerical approximations for COMPoisson-family models have been substantially revised, with disappointing gains in speed. Additional gains are possible if the 'memoise' package has been installed on your R system. 
+\item The 'control.HLfit' argument of fitting functions now handles a 'sparse_precision' parameter (previously controllable only globally through spaMM.options()). See help("sparse_precision") for possible usage. 
+\item The criterion for switching to Levenberg-Marquardt-like algorithm has been slightly modified and hopefully improved. 
+\item New 'Gryphon' data set.
+}
+}
+\subsection{USER-LEVEL CHANGES}{
+\itemize{
+\item Long-deprecated argument 'uniqueGeo' of HLCor() is now formally removed.
+}
+}
+\subsection{FIXED BUGS}{
+\itemize{
+\item Prediction variance computations could fail for models with random-coefficient terms and not fitted by sparse-precision methods,
+due to a bug introduced in v3.7.48 (i.e., CRAN versions 3.8.0 and 3.8.9)
+\item Better control of arguments to avoid bugs [eval() looking for the IMRF 'model' in the global environment] when fitting is called in a programming context.  
+\item Bug (stop) when calling predict.HLfit() with both 'intervals' calculation and binding of point predictions to data.
+}
+}
+\subsection{DOCUMENTATION}{
+\itemize{
+\item Substantially revised documentation for "sparse_precision".
+}
+}
+}
 \section{CHANGES UP TO VERSION 3.8.9}{   
 \subsection{NEW FEATURES}{
 \itemize{
 \item Modified selection between ''outer'' optimization versus ''inner'' iterations to acheive faster default fitme() fits of some non-spatial GLMMs. 
 \item The default cluster type is now "PSOCK" in all cases.
 \item New interface dofuture() for parallelisation. See help("wrap_parallel") for differences from dopar().
+\item The 'control.HLfit' argument of fitting functions now handles a 'sparse_precision' parameter (previously controllable only globally through spaMM.options()). See help("sparse_precision") for possible usage. 
+\item Improved condition for selection of sparse-precision methods for models with 'corrMatrix' terms. 
 }
 }
 \subsection{FIXED BUGS}{

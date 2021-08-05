@@ -61,7 +61,7 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
 }
   \item{HLmethod}{Same as \code{method}. It is useless to specify \code{HLmethod} when \code{method} is specified. The default value \code{"HL(1,1)"} means the same as \code{method="REML"}, but more accurately relates to definitions of approximations of likelihoo in the \eqn{h}-likelihood literature.}
   \item{control.HLfit}{
-  A list of parameters controlling the fitting algorithms, which should be ignored in routine use. In addition, a \code{resid.family} parameter was previously documented here (before version 2.6.40), and will still operate as previously documented, but should not be used in new code. 
+  A list of parameters controlling the fitting algorithms, which should be ignored in routine use. Suche a parameter, \code{resid.family},  was previously documented here (before version 2.6.40), and will still operate as previously documented, but should not be used in new code.
 
 %%%%%  As it just a list memeber and not formal arg, we can just remove the doc.
 %  \code{resid.family} Allows one to change the link for modeling of residual variance \eqn{\phi}, which is \code{"log"} by default. The family is always Gamma, so the non-default possible values of \code{resid.family} are \code{Gamma(identity)} or \code{Gamma(inverse)}. Only the default value ensures that the fitted \eqn{\phi} is positive.     
@@ -81,6 +81,7 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
   \code{max.iter}, the number of iterations of the iterative algorithm for joint estimation of dispersion parameters and
         of coefficients of the linear predictor. Defaults to 200. This is typically much more than necessary, 
         unless there is little information to separately estimate \eqn{\lambda} and \eqn{\phi} parameters.
+  \code{sparse_precision}{See \code{\link{sparse_precision}}.}
 }
   \item{control.glm}{
     List of parameters controlling GLM fits, passed to \code{glm.control}; e.g. \code{control.glm=list(maxit=100)}. See \code{\link{glm.control}} for further details.  

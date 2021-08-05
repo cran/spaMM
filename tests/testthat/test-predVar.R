@@ -77,14 +77,13 @@ if(requireNamespace("rsae", quietly = TRUE)) {
   
   ## comparison dense vs. spprec with use_spprec_qr on an REML non-spatial fit 
   # (bc spprec does not handle Matern and use_spprec_qr affects only REML)
-  oldop <- spaMM.options(sparse_precision=FALSE)
-  fitdense <- HLfit(HACorn ~ PixelsCorn + PixelsSoybeans + (1|CountyName),data=landsat[-33,],HLmethod="REML")
-  spaMM.options(sparse_precision=TRUE)
+  fitdense <- HLfit(HACorn ~ PixelsCorn + PixelsSoybeans + (1|CountyName),data=landsat[-33,],HLmethod="REML", 
+                    control.HLfit=list(sparse_precision=FALSE))
   oldop2 <- spaMM.options(use_spprec_QR=TRUE)
   # trace(spaMM:::.calc_spprec_hatval_ZX_by_QR,tracer=quote(print(".calc_spprec_hatval_ZX_by_QR")))
   # trace(spaMM:::.calc_Md2hdvb2_info_spprec_by_QR,tracer=quote(print(".calc_Md2hdvb2_info_spprec_by_QR")))
   fitsparse <- HLfit(HACorn ~ PixelsCorn + PixelsSoybeans + (1|CountyName),data=landsat[-33,],HLmethod="REML")
-  spaMM.options(oldop); spaMM.options(oldop2)
+  spaMM.options(oldop2)
   testthat::expect_true(diff(range(get_predVar(fitdense,newdata=newXandZ)-get_predVar(fitsparse,newdata=newXandZ)))<1e-8)
   testthat::expect_true(diff(range(get_predVar(fitdense,newdata=newXandZ,variances=list(disp=FALSE)) - 
                                    get_predVar(fitsparse,newdata=newXandZ,variances=list(disp=FALSE))))<1e-8)

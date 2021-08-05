@@ -954,15 +954,17 @@ spaMM_Gamma <- local({
 
 # using y is important in cases where a comparison btwn eta (or mu) and y is important for convergence of an algo
 # In that case we sanitize only to the extant that individual values of y allow.
-# If this sanitization is not enough, then it is y than must be sanitized.
+# If this sanitization is not enough, then it is y which must be sanitized.
 .sanitize_eta <- function(eta, y=NULL,family,max=.spaMM.data$options$sanitize_eta["otherlog"],
                           bin_mu_tol=.spaMM.data$options$bin_mu_tol) {
   if (family$link =="log") {
     if (family$family=="gaussian") {
       eta <- .sanitize_eta_log_link(eta, max=.spaMM.data$options$sanitize_eta["gauslog"],  y=y) 
+    } else if (family$family=="COMPoisson") {
+      eta <- .sanitize_eta_log_link(eta, max=.spaMM.data$options$sanitize_eta["COMPlog"],  y=y) 
     } else eta <- .sanitize_eta_log_link(eta, max=max,  y=y)
   } else if (family$family == "COMPoisson" && family$link =="loglambda") {
-    # this should be consistent with poisson(log) when nu=1
+    # this should be consistent with poisson(log) when nu=1, except that we may wish to avoid the computational burden of large eta values
     COMP_nu <- environment(family$aic)$nu 
     eta <- .sanitize_eta_log_link(eta, max=max, y=y, nu=COMP_nu) ## will use log(mu) ~ eta/nu for large eta and small nu
   } else if (family$link=="inverse" && family$family=="Gamma") {
@@ -1095,6 +1097,7 @@ spaMM_Gamma <- local({
   } else if (family$family == "poisson") { ## same troubles as for binomial
     mu <- .poisson_raw_linkinv(eta,link=family$link)
   } else mu <- family$linkinv(eta) ## linkinv(eta) is FREQS for binomial, COUNTS for poisson...
+  # if (any(is.infinite(mu))) stop()
   dmudeta <- family$mu.eta(eta) ## aberrant at hoc code for cloglog 'elsewhere'...
   Vmu <- family$variance(mu) 
   if (family$family=="binomial") {
@@ -1406,7 +1409,7 @@ spaMM_Gamma <- local({
   }
 }
 
-.Cholwrap <- .wrap_Ltri_t_chol <- function(mat, use_eigen=.spaMM.data$options$USEEIGEN) { 
+.wrap_Ltri_t_chol <- function(mat, use_eigen=.spaMM.data$options$USEEIGEN) { 
   ## returns lower tri as transpose(base::chol) in all cases; 
   if (inherits(mat,"sparseMatrix")) {
     return( t(Matrix::chol(mat))) ## matches Cholesky !
@@ -1420,6 +1423,8 @@ spaMM_Gamma <- local({
     } else stop("chol$Status !=1L") ## best used in combination with try()
   } else return(t(chol(mat))) 
 } 
+
+.Cholwrap <- .wrap_Ltri_t_chol
 
 .Utri_chol_by_qr <- function(mat) { # transpose of .wrap_Ltri_t_chol
   esys <- .eigen_sym(mat) 
@@ -1735,9 +1740,10 @@ spaMM_Gamma <- local({
           type <-  attr(lmatrix,"type")
           invCoo <- NULL
           if ( ! is.null(latentL_blob <- attr(lmatrix,"latentL_blob"))) { ## from .process_ranCoefs
-            if ( is.null(invC <- latentL_blob$gmp_compactprecmat) && 
-                 is.null(invC <- as.matrix(latentL_blob$compactprecmat))) {
-              invC <- solve(latentL_blob$compactcovmat) 
+            if ( is.null(invC <- latentL_blob$gmp_compactprecmat)) {
+              if (is.null(invC <- latentL_blob$compactprecmat)) {
+                invC <- solve(latentL_blob$compactcovmat) 
+              } else invC <- as.matrix(invC)
             } # invC should be bigq or numeric matrix but not Matrix because:
             invCoo <- .makelong(invC,longsize=ncol(lmatrix)) # (no template arg) => .makelong_bigq() or [.C_makelong() => invC must be numeric matrix]
           } else if (inherits(lmatrix,"dCHMsimpl")) { # before any test on type...

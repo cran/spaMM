@@ -12,17 +12,16 @@ if (spaMM.getOption("example_maxtime")>0.7) { ##  not based on real timing
   for (nam in c("T","N")) { # so it ends on default, NULL
     spaMM.options(perm_Q=bidon[[nam]])
     ## (1) Single variable present in the data 
-    spaMM.options(sparse_precision=TRUE)
     (f1 <- HLCor(migStatus ~ means+ corrMatrix(1|name),data=blackcap,
-                 corrMatrix=MLcorMat,method="ML"))
+                 corrMatrix=MLcorMat,method="ML", 
+                 control.HLfit=list(sparse_precision=TRUE)))
     f2 <- corrHLfit(migStatus ~ means+ Matern(1|longitude+latitude),data=blackcap,
                     ranFix=list(corrPars=list("1"=list(nu=4,rho=0.4))),method="ML")
-    spaMM.options(sparse_precision=FALSE)
     f3 <- HLCor(migStatus ~ means+ corrMatrix(1|name),data=blackcap,
-                corrMatrix=MLcorMat,HLmethod="ML")
+                corrMatrix=MLcorMat,HLmethod="ML", 
+                control.HLfit=list(sparse_precision=FALSE))
     f4 <- corrHLfit(migStatus ~ means+ Matern(1|longitude+latitude),data=blackcap,
                     ranFix=list(corrPars=list("1"=list(nu=4,rho=0.4))),method="ML")
-    spaMM.options(sparse_precision=NULL)
     f5 <- HLCor(migStatus ~ means+ corrMatrix(1|longitude+latitude),data=blackcap,
                 corrMatrix=MLcorMat,method="ML") # Check that order of data is respected in the Zmatrix for this "unsafe" input.
     # imput as precision matrix

@@ -777,8 +777,7 @@
     merged$is_spprec <- .determine_spprec(ZAlist=ZAlist, processed=merged, X.pv=merged_X)
     # Heavily using corr_info, and spprec:
     ZAlist <- .init_assign_geoinfo(processed=merged, ZAlist=ZAlist, For="fitme", 
-                                   exp_barlist=exp_barlist, distMatrix=distMatrix, 
-                                   uniqueGeo=NULL)  # uniqueGeo now declared as deprecated.
+                                   exp_barlist=exp_barlist, distMatrix=distMatrix)  
     vec_normIMRF <- .calc_vec_normIMRF(exp_ranef_terms=attr(ZAlist, "exp_ranef_terms"), corr_types=corr_info$corr_types)   
     if (any(vec_normIMRF)) {
       Zlist <- .merge_Zlists(list(), attr(unmerged[[1L]]$ZAlist,"Zlist"), 0L, vec_nobs[1L], 
@@ -863,6 +862,7 @@ fitmv <- function(submodels, data, fixed=NULL, init=list(), lower=list(), upper=
   assign("spaMM_glm_conv_crit",list(max=-Inf) , envir=environment(spaMM_glm.fit))
   time1 <- Sys.time()
   oricall <- match.call(expand.dots=TRUE) ## mc including dotlist
+  oricall$control.HLfit <- eval(oricall$control.HLfit, parent.frame()) # to evaluate variables in the formula_env, otherwise there are bugs in waiting 
   n_models <- length(submodels) # so the promise is already evaluated here...
   calls_W_processed <- fixedS <- vector("list",n_models)
   for (mv_it in seq_along(calls_W_processed)) { # call .preprocess() on each submodel
@@ -915,7 +915,6 @@ fitmv <- function(submodels, data, fixed=NULL, init=list(), lower=list(), upper=
       residProcessed$data <- residProcessed$data[validrownames[[mv_it]],, drop=FALSE]
       attr(residProcessed$data, "validrownames") <- NULL
     }
-    # this calls .preprocess with for each submodel
     calls_W_processed[[mv_it]][["processed"]][["augZXy_cond"]] <- FALSE # not only to ensure the merged value but also for init.optim for each  
   }
   #

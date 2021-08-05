@@ -2,8 +2,8 @@ Package: spaMM
 Type: Package
 Title: Mixed-Effect Models, Particularly Spatial Models
 Encoding: UTF-8
-Version: 3.8.9
-Date: 2021-06-28
+Version: 3.8.23
+Date: 2021-08-05
 Authors@R: c(person("François", "Rousset", role = c("aut", "cre", "cph"),
                      email = "francois.rousset@umontpellier.fr",
                      comment = c(ORCID = "0000-0003-4670-0371")),
@@ -29,11 +29,11 @@ URL: https://www.r-project.org,
         https://gitlab.mbb.univ-montp2.fr/francois/spamm-ref
 RoxygenNote: 6.1.1
 ByteCompile: true
-Packaged: 2021-06-27 23:31:29 UTC; francois.rousset
+Packaged: 2021-08-05 11:42:55 UTC; francois.rousset
 Author: François Rousset [aut, cre, cph]
     (<https://orcid.org/0000-0003-4670-0371>),
   Jean-Baptiste Ferdy [aut, cph],
   Alexandre Courtiol [aut] (<https://orcid.org/0000-0003-0637-2959>),
   GSL authors [ctb] (src/gsl_bessel.*)
 Repository: CRAN
-Date/Publication: 2021-06-28 05:00:06 UTC
+Date/Publication: 2021-08-05 13:20:02 UTC
