@@ -68,7 +68,7 @@
   #
   ## newZAlist and subZAlist appear to have distinct usages since they are created under different conditions.
   ## subZAlist is a subset of the old ZA, newZAlist contains new ZA
-  ## calling .make_corr_list(object$strucList,...) is always OK bc the fist argument may be a superset of the required list
+  ## calling .make_corr_list(object,...) is always OK bc the fist argument may be a superset of the required list
   ## all matching in .make_corr_list is through the ranef attributes.
   #
   if (nrand <- length(newinold)) {  
@@ -78,7 +78,6 @@
     RESU$spatial_old_rd <- which(ori_exp_ranef_types != "(.|.)") 
     if (nrand <- length(newinold)) {
       strucList <- object$strucList
-      if (object$spaMM.version<"1.11.57") stop("This fit object was created with spaMM version<1.11.57, and is no longer supported.\n Please recompute it.")
       if (need_new_design) {
         ## with newdata we need Evar and then we need nn... if newdata=ori data the Evar (computed with the proper nn) should be 0
         # barlist <- .process_bars_mv(predictors=formula.HLfit(object,which = ""),
@@ -96,7 +95,7 @@
                                 levels_type= "seq_len", ## superseded in specific cases: notably, 
                                 ## the same type has to be used by .calc_AMatrix_IMRF() -> .as_factor() 
                                 ##  as by .calc_Zmatrix() -> .as_factor() for IMRFs.
-                                ## This is controlled by package option 'uGeo_levels_type' (default = "mf" as the most explicit; using ".ULI" appears OK).
+                                ## This is controlled by package option 'uGeo_levels_type' (default = "data_order" as the most explicit).
                                 ## The sames functions are called with the same arguments for predict with newdata.
                                 ##
                                 ## This means that if there are repeated geo positions in the newdata 
@@ -118,9 +117,8 @@
         }
         amatrices <- .get_new_AMatrices(object, newdata=ranefdata) # .calc_newFrames_ranef(formula=ranef_form,data=ranefdata,fitobject=object)$mf)
         ## ! complications:
-        ## even if we used perm_Q for Matern, the permutation A matrix should not be necessary 
-        ##  in building the new correlation matrix, although it night be used as well 
-        ## explict colnames should handle both cases, so that
+        ## even if we used perm_Q for *fitting* Matern , the permutation A matrix should not be necessary in building the new correlation matrix, bc ./.
+        ## explicit colnames should handle both cases, so that
         ## newZAlist <- .calc_normalized_ZAlist( ignoring those A matrices)
         ## and 
         ## newZAlist <- object$ZAlist
@@ -134,6 +132,13 @@
                                              strucList=strucList)
         ## must be ordered as parseBars result for the next line to be correct.
         attr(newZAlist,"exp_ranef_strings") <- new_exp_ranef_strings ## required pour .compute_ZAXlist to match the ranefs of LMatrix
+        newZAlist <- .correct_newZAlist_mv_ranCoefs(ZAlist=newZAlist, 
+                                                    cum_nobs=cumsum(c(0L,sapply(locdataS,nrow))))
+        # : distinct .correct_...() function needed here bc [
+        #   we cannot run an outer loop on mv_it, calling.merge_ZAlists(., ZAlist2 = newZAlist_i...) bc
+        #     expected format of final newZAlist differs from that for the fit: for some ranef types
+        #     we do not try to match the columns of ZA_i's different submodels, instead building larger but diagonal ZA's 
+        #  ]
       } else {
         newZAlist <- object$ZAlist
         ranefdata <- object$data
@@ -227,12 +232,12 @@
 .calc_logdisp_cov_mv <- function(object, dvdloglamMat=NULL, dvdlogphiMat=NULL, invV_factors=NULL) { 
   lambda.object <- object$lambda.object
   strucList <- object$strucList
-  dwdlogphi <- dwdloglam <- NULL ## always a cbind at the end of calc_logdisp_cov
   dispcolinfo <- list()
   problems <- list() ## Its elements' names are tested in calcPredVar, and the strings are 'development info'
   nrand <- length(strucList)
   col_info <- list(nrand=nrand, phi_cols=NULL) 
   Xi_cols <- attr(object$ZAlist, "Xi_cols")
+  dwdloglam <- matrix(0,ncol=sum(Xi_cols),nrow=length(object$v_h)) # cols will remain 0 for fixed lambda params
   checklambda <- ( ! (lambda.object$type %in% c("fixed","fix_ranCoefs","fix_hyper"))) 
   if (any(checklambda)) {
     corr.models <- lapply(strucList,attr,which="corr.model") ## not unlist bc it may contain NULLs
@@ -256,7 +261,6 @@
     n_u_h <- diff(cum_n_u_h)
     cum_Xi_cols <- cumsum(c(0,Xi_cols))
     ## dwdloglam will include cols of zeros for fixed lambda; matching with reduced logdisp_cov is performed at the end of the function.
-    dwdloglam <- matrix(0,ncol=sum(Xi_cols),nrow=NROW(dvdloglamMat)) ## likewise dwdlogdisp
     for (randit in seq_len(nrand)) { ## ALL ranefs!
       range_in_dw <- (cum_n_u_h[randit]+1L):(cum_n_u_h[randit+1L])
       if ( inherits(strucList[[randit]],"dCHMsimpl")) { # (not expected in default use in mv, for reasons explained in mv, sinc AUG_ZXy presumably FALSE )
@@ -318,6 +322,7 @@
         .spaMM.data$options$phi_dispVar_comp_warned <- TRUE
       }
     }
+    dwdlogphi <- NULL
   }
   ## compute info matrix:
   if ((length(dispcolinfo))==0L) {
@@ -427,10 +432,13 @@
     logdispInfo <- logdispInfo/2
     resu <- .wrap_solve_logdispinfo(logdispInfo, object)
     if (any( ! checklambda )) { ## if cols missing from logdisp_cov compared to dwdlogdisp
-      ncd <- ncol(dwdlogdisp)
-      full_logdisp_cov <- matrix(0,ncd,ncd)
+      #ncd <- ncol(dwdlogdisp)
+      #full_logdisp_cov <- matrix(0,ncd,ncd)
+      # : alternative ncd below should be equivalent but more self contained
       cols_in_logdisp_cov <- rep(checklambda,Xi_cols) ## which cols in dwdloglam match loglambda col in logdisp_cov
       if ( ! is.null(dwdlogphi)) cols_in_logdisp_cov <- c(cols_in_logdisp_cov,TRUE)  ## col for dwdlogphi
+      ncd <- length(cols_in_logdisp_cov)
+      full_logdisp_cov <- matrix(0,ncd,ncd)
       full_logdisp_cov[cols_in_logdisp_cov,cols_in_logdisp_cov] <- resu$logdisp_cov
       resu$logdisp_cov <- full_logdisp_cov
     }  

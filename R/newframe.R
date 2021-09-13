@@ -65,7 +65,7 @@
   #
   #
   ## subZAlist is a subset of the old ZA, newZAlist contains new ZA ; different uses=> computation required under disticnt conditions for each.
-  ## calling .make_corr_list(object$strucList,...) is always OK bc the fist argument may be a superset of the required list
+  ## calling .make_corr_list(object,...) is always OK bc the fist argument may be a superset of the required list
   ## all matching in .make_corr_list is through the ranef attributes.
   #
   ## matching ranef terms of re.form
@@ -108,15 +108,14 @@
                                 levels_type= "seq_len", ## superseded in specific cases: notably, 
                                 ## the same type has to be used by .calc_AMatrix_IMRF() -> .as_factor() 
                                 ##  as by .calc_Zmatrix() -> .as_factor() for IMRFs.
-                                ## This is controlled by option uGeo_levels_type (default = "mf" as the most explicit; using ".ULI" appears OK).
+                                ## This is controlled by option uGeo_levels_type (default = "data_order" as the most explicit).
                                 ## The sames functions are called with the same arguments for predict with newdata.
                                 ZAlist_info=object$ZAlist[newinold],  
                                 lcrandfamfam=attr(object$rand.families,"lcrandfamfam")) 
         amatrices <- .get_new_AMatrices(object, newdata=locdata) # .calc_newFrames_ranef(formula=ranef_form,data=locdata,fitobject=object)$mf)
         ## ! complications:
-        ## even if we used perm_Q for Matern, the permutation A matrix should not be necessary 
-        ##  in building the new correlation matrix, although it night be used as well 
-        ## explict colnames should handle both cases, so that
+        ## even if we used perm_Q for *fitting* Matern , the permutation A matrix should not be necessary in building the new correlation matrix, bc ./.
+        ## explicit colnames should handle both cases, so that
         ## newZAlist <- .calc_normalized_ZAlist( ignoring those A matrices)
         ## and 
         ## newZAlist <- object$ZAlist

@@ -8,10 +8,28 @@
   } else return(sum(spm !=0)) ## AMatrices reaches here
 }
 
-.provide_G_diagnosis <- function(corr_info, ZAlist, fast=TRUE) {
+## Fast assessment of relative SPPREC vs CORREL cost, by comparing the denseness ZAX(corrlist) products "noAR" and "ZL", 
+## where low noAR denseness relative to ZL favors SPPREC. The corrlist elements are NOT actual L model matrices.  
+## For corrMatrix specified as precision matrix, the corrlist element is NULL for noAR then a full triangular matrix for ZL
+## For corrMatrix specified as correlation matrix, then the inverse is computed (chol2inv() call). If it is sparse (denseness<0.05), 
+##   same assessment as for corrMatrix specified as precision matrix: the element is NULL for noAR and a full triangular matrix for ZL (despite
+##   the actual correl mat being available, but bringing consistency with assessment when corrMatrix specified as precision matrix).
+##   If denseness>0.05, we use the chol factor in noAR (case not totally clear)
+## For Mater, Cauchy, full dense dummy factor in noAR, triangular dummy factor in ZL (hence disfavoring SPPREC)
+## For ranCoefs (composite or not -- note that $is_composite is not yet available to this fn nor elsewhere for simple syntaxes),
+##   we further perform kronecker products (distinct for noAR and ZL) with LHS a full triangular matrix 
+##     (except for NULL-for-noAR RHS, which are left NULL-for-noAR). 
+## For (.|.)...) the elements for noAR and ZL are left NULL. 
+## For other ranef types (AR1, IMRF) the elements for noAR are left NULL,  Dummy dense triangular matrices are build for ZL (if the preclist was NULL)
+## The unexpected ime-consuming step may then be compute_ZAL on potentially huge dummy dense triangular matrices. (__F I X M E__)
+.provide_G_diagnosis <- local({
+  time_warned <- FALSE
+  diagnosis_time <- 0
+  function(corr_info, ZAlist, fast=TRUE) {
   # .assign_geoinfo_and_LMatrices_but_ranCoefs() may serve as a template, but we don't want actual matrices except to assess computation costs
   if (is.null(corr_info$G_diagnosis)) {
-    adjlist <- corr_info$adjMatrices
+    if ( ! time_warned) time1 <- Sys.time()
+    preclist <- corr_info$adjMatrices
     corrlist <- corr_info$corrMatrices
     # Don't try to drop0(corrMatrices) here before evaluating various densenesses: these densenesses would not hold for the
     # corr_info$cov_info_mats used to compute QMat. 
@@ -21,90 +39,94 @@
     for (rd in seq_along(exp_ranef_types)) {
       if (exp_ranef_types[rd]=="corrMatrix" ) {
         # If we specified adjmatrix, we suspect it's better (but spprec is not automatic); this block 
-        # is not executed and corlist[[rd]] is (locally) NULL
+        # is not executed and corflist[[rd]] is (locally) NULL
         #
         ## cov_info_mats elements may be correlation matrices, or they may be lists...
-        if (inherits(corrlist[[rd]],"dist")) {
-          corrlist[[rd]] <- proxy::as.matrix(corrlist[[rd]], diag=1)
-        } else if (is.list(corrlist[[rd]])) {
-          corrlist[rd] <- list(NULL) ## hmmm that is a quick patch... (F I X M E ?) but this suggests we aim at spprec
-        } 
-        if (got_chol <- (is.matrix(corrlist[[rd]]) || is(corrlist[[rd]],"Matrix"))) { # testing dim() is not appropriate bc there is a dim.precision method
-          cholcorr <- try(chol(corrlist[[rd]])) # base::chol or Matrix::chol 
-          if (inherits(cholcorr,"try-error")) stop("A correlation matrix is (nearly) singular. Check the correlation model and/or see help('sparse_precision').") 
-        } 
-        if (got_chol && is.null(adjlist[[rd]])) { 
-          adjlist[[rd]] <- drop0(chol2inv(cholcorr), tol = .Machine$double.eps)
-          # If we specifed corrMatrix, 
-          #
-          ZAlist[[rd]] <- .addrightcols_Z(Z=ZAlist[[rd]], colnames(corrlist[[rd]]), verbose=FALSE)
-          adjm_rel_denseness <- .calc_denseness(adjlist[[rd]], relative=TRUE)
-          if (adjm_rel_denseness<0.05) {
-            if (fast) corrlist[rd] <- list(NULL) # Leads to the same criterion whether corrmMatrix or a sparse adjMatrix was specified
-          } else {
-            ## using the corrMatrix rather than a chol factor overestimates the computational weight, 
-            # and the chol factor of a relatedness matrix appears as sparse as its precmat. So its worth evaluating it.
-            ## Example of that would be Gryphon (except that its adjm_rel_denseness<0.05), 
-            corrlist[[rd]] <- cholcorr 
-          }
+        if (is.list(corrlist[[rd]])) { 
+          preclist[[rd]] <- corrlist[[rd]]$matrix
+          corrlist[rd] <- list(NULL) # see general explanation of the function
+        } else {
+          if (inherits(corrlist[[rd]],"dist")) {
+            corrlist[[rd]] <- proxy::as.matrix(corrlist[[rd]], diag=1)
+          }  
+          if (got_chol <- (is.matrix(corrlist[[rd]]) || is(corrlist[[rd]],"Matrix"))) { # testing dim() is not appropriate bc there is a dim.precision method
+            cholcorr <- try(chol(corrlist[[rd]])) # base::chol or Matrix::chol 
+            if (inherits(cholcorr,"try-error")) stop("A correlation matrix is (nearly) singular. Check the correlation model and/or see help('sparse_precision').") 
+            preclist[[rd]] <- drop0(chol2inv(cholcorr), tol = .Machine$double.eps)
+            # If we specifed corrMatrix, 
+            #
+            ZAlist[[rd]] <- .addrightcols_Z(Z=ZAlist[[rd]], colnames(corrlist[[rd]]), verbose=FALSE)
+            adjm_rel_denseness <- .calc_denseness(preclist[[rd]], relative=TRUE)
+            if (adjm_rel_denseness<0.05) {
+              corrlist[rd] <- list(NULL) ## see general explanation of the function
+            } else {
+              ## using the corrMatrix rather than a chol factor overestimates the computational weight, 
+              # and the chol factor of a relatedness matrix appears as sparse as its precmat. So its worth evaluating it.
+              ## Example of that would be Gryphon (except that its adjm_rel_denseness<0.05), 
+              corrlist[[rd]] <- cholcorr 
+            }
+          } 
         }
       } else if (exp_ranef_types[rd]%in% c("Matern","Cauchy")  ) {
         nc <- ncol(ZAlist[[rd]])
-        adjlist[[rd]] <- matrix(TRUE,ncol=nc,nrow=nc) # as(allTRUE,"lgCMatrix") #new("lgCMatrix",i=rep(c(0L,seq_len(nc-1L)),nc),p=c(0L,seq_len(nc))*nc,x=rep(TRUE,nc^2),Dim=c(nc,nc)) 
-        corrlist[[rd]] <- lower.tri(adjlist[[rd]],diag = TRUE) # logi
+        if ( rd %in% which_nested ) {
+          RHS_nesting_info <- attr(ZAlist[[rd]],"RHS_nesting_info")
+          blcks <- lapply(RHS_nesting_info$blocksizes, function(nc) matrix(TRUE,ncol=nc,nrow=nc))
+          preclist[[rd]] <- Matrix::bdiag(blcks)
+          blcks <- lapply(blcks, lower.tri, diag=TRUE)
+          corrlist[[rd]] <- Matrix::bdiag(blcks)
+        } else {
+          preclist[[rd]] <- matrix(TRUE,ncol=nc,nrow=nc) # as(allTRUE,"lgCMatrix") #new("lgCMatrix",i=rep(c(0L,seq_len(nc-1L)),nc),p=c(0L,seq_len(nc))*nc,x=rep(TRUE,nc^2),Dim=c(nc,nc)) 
+          corrlist[[rd]] <- lower.tri(preclist[[rd]],diag = TRUE) # logi
+        } 
+      }
+      if ((LHS_nlev <- length(attr(ZAlist[[rd]],"namesTerm")))>1L ) { # before .compute_ZAL()
+        if ( ! is.null(corrlist[[rd]])) corrlist[[rd]] <- kronecker(lower.tri(matrix(1,ncol=LHS_nlev,nrow=LHS_nlev),diag=TRUE), corrlist[[rd]])
+        # It is was NULL it remains NULL, which looks OK for noAR
       } 
     }
     # suppressMessages here and below as .provide_G_diagnosis() is not the right context for messages.
-    noAR <- suppressMessages( .compute_ZAL(XMatrix=corrlist,ZAlist,as_matrix = FALSE) )# without the cost of the sparse structures
-    #
+    noAR <- suppressMessages( .compute_ZAL(XMatrix=corrlist,ZAlist,as_matrix = FALSE) )# without the implied corrlist cost of terms with sparse precision structures 
+    
+    
+    ## next we fill more matrices in corrlist for ZL denseness.
     for (rd in seq_along(exp_ranef_types)) {
-      # for the AR models, build (possibly fake) adj matrix, soon used to construct fake corr matrix
-      if (exp_ranef_types[rd] %in% c("AR1", "IMRF") ) { # for "adjacency" we assume adjlist[[rd]] is filled
-        if (is.null(adjlist[[rd]])) {
-          nc <- ncol(ZAlist[[rd]])
-          locmat <- diag(nrow=nc)
-          if ( ! (rd %in% which_nested)) {
-            diag(locmat[-1,]) <- 1 ## for nested AR1 this overestimates the computational cost.
-          } else {
-            diag(locmat[-1,]) <- 1 
-          }
-          adjlist[[rd]] <- (locmat+t(locmat))/2
-        }
-      } else if (exp_ranef_types[rd] == c("adjacency")) { # adjlist[[rd]] presumably has 0s on diagonal
-        rowmax <- max(rowSums(adjlist[[rd]]))
-        adjlist[[rd]] <- adjlist[[rd]] + Diagonal(n=ncol(adjlist[[rd]]),x=rowmax+1) # make it diagonally dominant
-      } else if ( ! is.null(corrlist[[rd]])) { # possible for corrMatrix case
+      ## much better in spprec: adjacency-long and some in test AR1 (long):
+      ## fitar1 <- corrHLfit(obs ~ 1+AR1(1|age),family=poisson(),data=fake,verbose=c(TRACE=TRUE)) 
+      ## fit_ar1nested <- ... also
+      ## correlation algos can still be selected and are better (ohio small and many scotlip tests)
+      ## SPPREC and CORREL roughly as fast for fitNF in test-devel-predVar-AR1; which has crit=43
+      updated <- FALSE
+      if (exp_ranef_types[rd] %in% c("AR1", "IMRF", "adjacency") ) { # If the user provided e.g. a huge adjmatrix it's risky to compute a huge inverse
+        nc <- ncol(ZAlist[[rd]])
+        corrlist[[rd]] <- lower.tri(matrix(TRUE,ncol=nc,nrow=nc),diag = TRUE) # template matrix created in faster way than diag()
+        updated <- TRUE
+      } else if (exp_ranef_types[rd] == "corrMatrix" && fast && is.null(corrlist[[rd]]) &&  ! is.null(preclist[[rd]])) {
+        nc <- ncol(preclist[[rd]]) # cf the .addrightcols() call above
+        corrlist[[rd]] <- lower.tri(matrix(TRUE,ncol=nc,nrow=nc),diag = TRUE) # template matrix created in faster way than diag()
+        updated <- TRUE
+      } else  if ( is.null(corrlist[[rd]]) &&  ! is.null(preclist[[rd]])) { # not clear when this can occur, beyond speculative "not fast" code
+        tcrossfac_adj <- mat_sqrt(preclist[[rd]]) # tcrossfac hence t(solve()) is the tcrossfac of the corr mat (<=> Lunique) which is the following backsolve
+        if ( attr(tcrossfac_adj,"type")=="cholL_LLt") {
+          corrlist[[rd]] <- .backsolve(tcrossfac_adj,upper.tri = FALSE, transpose=TRUE) 
+        } else corrlist[[rd]] <- t(solve(tcrossfac_adj)) # quick patch when another facto used.  
+        updated <- TRUE
       }
-      # Then build the fake corr matrix 
-      if ( is.null(corrlist[[rd]]) &&  ! is.null(adjlist[[rd]])) { 
-        if (exp_ranef_types[rd] %in% c("AR1", "IMRF","adjacency", "corrMatrix"[fast])) {
-          # much better in spprec: adjacency-long and some in test AR1 (long):
-          # fitar1 <- corrHLfit(obs ~ 1+AR1(1|age),family=poisson(),data=fake,verbose=c(TRACE=TRUE)) 
-          # fit_ar1nested <- ... also
-          # If the user provided a huge adjmatrix it's risky to compute a huge dense corrMatrix... 
-          # correlation algos can still be selected and are better (ohio small and many scotlip tests)
-          # spprec and ! roughly as fast for fitNF in test-devel-predVar-AR1; which has crit=43
-          nc <- ncol(adjlist[[rd]])
-          corrlist[[rd]] <- lower.tri(matrix(TRUE,ncol=nc,nrow=nc),diag = TRUE) # template matrix created in faster way than diag()
-        } else { # not clear when this can occur; maybe corrMatrix() specified by its precision factor
-          tcrossfac_adj <- mat_sqrt(adjlist[[rd]]) # tcrossfac hence t(solve()) is the tcrossfac of the corr mat (<=> Lunique) which is the following backsolve
-          if ( attr(tcrossfac_adj,"type")=="cholL_LLt") {
-            corrlist[[rd]] <- .backsolve(tcrossfac_adj,upper.tri = FALSE, transpose=TRUE) 
-          } else corrlist[[rd]] <- t(solve(tcrossfac_adj)) # quick patch when another facto used.  
-        }
-      }
+      if (updated && (LHS_nlev <- length(attr(ZAlist[[rd]],"namesTerm")))>1L ) {
+        corrlist[[rd]] <- kronecker(lower.tri(matrix(1,ncol=LHS_nlev,nrow=LHS_nlev),diag=TRUE), corrlist[[rd]])
+      } 
     }
-    # so for the explicit AR cases, the corrlist for ZL differs from that for noAR by a fully dense triangular matrix
-    # but for corrMatrix specified by a corr m/Matrix, they do not differ?
-    ### > qq s for large ZA 
-    ZL <- suppressMessages( .compute_ZAL(XMatrix=corrlist,ZAlist,as_matrix = FALSE) )  
+    
+    ZL <- suppressMessages( .compute_ZAL(XMatrix=corrlist,ZAlist,as_matrix = FALSE) )  ## > qq s for large ZA 
+    
+    
     if (is.logical(ZL)) {# logical corr by identity Z gives logi ZL, not handled by .crossprod
       cross_ZL <- crossprod(ZL)
     } else cross_ZL <- .crossprod(ZL) ## forces a call to forceSymmetric => result is Matrix either dsy or sparse.
     denseness_via_ZL <- .calc_denseness(cross_ZL) # crossprod ideally dsC except if ZL is really dense
     crossZL_is_dsy <- inherits(cross_ZL,"dsyMatrix") 
     ###
-    if (fast) { # always TRUE bc I didn't find a better 'slow' method. Does not use adjlist
+    if (fast) { # always TRUE bc I didn't find a better 'slow' method. Does not use preclist
       corr_info$G_diagnosis <- list(denseness_noAR=.calc_denseness(noAR), # using corrlist
                                     crossZL_is_dsy=crossZL_is_dsy,
                                     denseness_via_ZL=denseness_via_ZL, fast=TRUE)
@@ -112,13 +134,31 @@
     } else { # trying to assess adj matrices sparsity
       # the Z_ cols may have be extended above by .addrightcols_Z() to levels of Q that are not in the data ; e.g., Gryphon)
       for (rd in seq_along(exp_ranef_types)) {
-        if ( is.null(adjlist[[rd]])) { # "(.|.)" 
-          ## tnb <- fitme(resp~1+(1|ID), data=lll,family=Tnegbin(2)) is a test case where spprec is clearly slower
-          adjlist[[rd]] <- .symDiagonal(TRUE,n=ncol(ZAlist[[rd]])) # .symDiagonal(TRUE,n=ncol(ZAlist[[rd]]))  ## (null corrlist[[rd]] must mean the same thing) 
+        if (exp_ranef_types[rd] == c("adjacency")) { # preclist[[rd]] presumably has 0s on diagonal
+          rowmax <- max(rowSums(preclist[[rd]]))
+          preclist[[rd]] <- preclist[[rd]] + Diagonal(n=ncol(preclist[[rd]]),x=rowmax+1) # make it diagonally dominant
+        } else if (exp_ranef_types[rd] %in% c("AR1", "IMRF") ) { 
+          if (is.null(preclist[[rd]])) {
+            nc <- ncol(ZAlist[[rd]])
+            locmat <- diag(nrow=nc)
+            if ( (rd %in% which_nested)) {
+              # This is non-fast code hence effectively not used... 
+              diag(locmat[-1,]) <- 1 ## same as alternative case <=> no better code yet; but for here nested AR1 this only slightly overestimates the computational cost.
+            } else {
+              diag(locmat[-1,]) <- 1
+            }
+            preclist[[rd]] <- (locmat+t(locmat))/2
+          }
         }
-        adjlist[[rd]] <- as(forceSymmetric(adjlist[[rd]]),"dsCMatrix")
+        if ( is.null(preclist[[rd]])) { # "(.|.)" 
+          ## tnb <- fitme(resp~1+(1|ID), data=lll,family=Tnegbin(2)) is a test case where spprec is clearly slower
+          preclist[[rd]] <- .symDiagonal(TRUE,n=ncol(ZAlist[[rd]])) # .symDiagonal(TRUE,n=ncol(ZAlist[[rd]]))  ## (null corrlist[[rd]] must mean the same thing) 
+        }
+        if ( ! is.null(preclist[[rd]])) preclist[[rd]] <- kronecker(lower.tri(matrix(1,ncol=LHS_nlev,nrow=LHS_nlev),diag=TRUE), 
+                                                                    preclist[[rd]]) 
+        preclist[[rd]] <- as(forceSymmetric(preclist[[rd]]),"dsCMatrix")
       }
-      locQ <- do.call(Matrix::bdiag, list(adjlist)) # dsC
+      locQ <- do.call(Matrix::bdiag, list(preclist)) # dsC
       Z_ <- suppressMessages( .compute_ZAL(XMatrix=NULL,ZAlist,as_matrix = FALSE) )
       locG <- .crossprod(Z_)+locQ # ideally dsC except if Z_ is really dense
       denseness_G <- .calc_denseness(locG)
@@ -132,15 +172,43 @@
                                     dens_G_rel_ZL=dens_G_rel_ZL, density_G=density_G,
                                     fast=FALSE)
     }
+    if ( ! time_warned) {
+      time1 <- .timerraw(time1)
+      if (time1>1) diagnosis_time <<- time1
+    }
   }
   return(corr_info$G_diagnosis)
 }
 
+})
+
+
+
+.wrap_determine_spprec <- function(control.HLfit, ZAlist, processed, X.pv) {
+  algebra <- control.HLfit$algebra
+  if (is.null(algebra)) {
+    sparse_precision <- control.HLfit$sparse_precision
+    if (is.null(sparse_precision)) {
+      sparse_precision <- 
+        .determine_spprec(ZAlist=ZAlist, processed=processed, # uses $For, $corr_info, $init_HLfit
+                          X.pv=X.pv) ## possibly writes $corr_info$G_diagnosis! .../...
+    }
+  } else sparse_precision <- (algebra=="spprec")
+  sparse_precision
+}
+
 # even though the Z's were sparse postmultplication by LMatrix leads some of the ZAL's to dgeMatrix (dense)
-.choose_QRmethod <- function(ZAlist, corr_info, trySparse=TRUE,is_spprec, processed) {
+.choose_QRmethod <- function(ZAlist, corr_info, is_spprec, processed, control.HLfit) {
+  if (is_spprec) return("sparse") # 08/2021: currently QRmethod operates only though .eval_as_mat_arg() 
+  # which ignores QRmethod when is_spprec is TRUE (so returning NULL or NaN should have the same effect).
+  if ( ! is.null(algebra <- control.HLfit$algebra)) {
+    if (algebra=="decorr") return("dense")
+    if (algebra=="spcorr") return("sparse")
+    # other case ignred => continue:
+  }
   if ( is.null(QRmethod <- .spaMM.data$options$QRmethod) ) { ## user setting. The code should NOT write into it. 
     nrand <- length(ZAlist)
-    if (trySparse && nrand>0L) {
+    if (nrand>0L) {
       # adjacency speed to be tested on 2nd example from test-spaMM.R
       densecorrs <- attr(ZAlist,"exp_ranef_types") %in% c("adjacency", "IMRF", "Matern","Cauchy", "corrMatrix", "AR1") 
       notsodensecorrs <- attr(ZAlist,"exp_ranef_types") %in% c("Matern","Cauchy") & grepl("%in%", attr(ZAlist, "exp_ranef_string"), fixed=TRUE)
@@ -161,11 +229,11 @@
         } else {
           return("dense") ## ZAlist actually not so sparse
         }
-      } else if (is_spprec && all(sparseprecs)) {
-        totdim <- colSums(do.call(rbind,lapply(ZAlist,dim)))
-        if (totdim[2L]>1000L) { # a bit a hoc (ohio/adjacency-long/large IMRF)
-          return("sparse")
-        } else return("dense")
+      # } else if (is_spprec && all(sparseprecs)) {                                               # see comment 08/2021 about spprec above.
+      #   totdim <- colSums(do.call(rbind,lapply(ZAlist,dim)))
+      #   if (totdim[2L]>1000L) { # a bit a hoc (ohio/adjacency-long/large IMRF)
+      #     return("sparse")
+      #   } else return("dense")
       } else if (( ! is_spprec) && all(densecorrs) ) { ## simple subcase of the next case
         ## LMatrices are not available, and it may be better to use the density of the correlation matrices anyway:
         ## for maximally sparse Z, ZL's denseness is that of the retained rows of L. This suggests that ZL could be made sparser 
@@ -202,6 +270,22 @@
   return(QRmethod)
 }
 
+.check_time_G_diagnosis <- function(.provide_G_diagnosis, processed) {
+  if (( ! environment(.provide_G_diagnosis)$time_warned) && 
+      (time1 <- environment(.provide_G_diagnosis)$diagnosis_time)) {
+    if (processed$is_spprec) {
+      algebra <-"spprec"
+    } else if (.eval_as_mat_arg(processed)) {
+      algebra <- "decorr"
+    } else algebra <- "spcorr"
+    message(paste0("(One-time message:) Choosing matrix methods took ",time1," s.\n",
+                   "  If you perform many similarly costly fits, setting the method\n",
+                   '  by control.HLfit=list(algebra=<"spprec"|"spcorr"|"decorr">) may be useful,\n',
+                   '  see help("algebra"). "',algebra,'" appears to have been selected here.')) 
+    environment(.provide_G_diagnosis)$time_warned <- TRUE
+  }
+}
+
 .preprocess_LevM <- function(user_LM, processed, nrand) {
   if (attr(processed[["models"]],"LMMbool")) user_LM <- FALSE  # (_F I X M E_) removing this and forcing LevM creates an error in the tests, meaning that LevM does not handle LMMs (OK)
   if (is.null(user_LM)) user_LM <- .spaMM.data$options$LevenbergM
@@ -228,7 +312,7 @@
 }
 
 .check_subset_corrMatrix <- function(corrMatrix,ZA) {
-  ZAnames <- colnames(ZA) ## set by .calc_Zlist() or .calc_ZAlist(), with two cases for corrMatrix 
+  ZAnames <- colnames(ZA) ## set by .calc_Zlist() or .calc_ZAlist(), with two cases for corrMatrix # with repeated names for ranCoefs sensu lato. 
   if (is.null(ZAnames)) {
     stop("NULL colnames in (a block of) the design matrix for random effects. Some mishandling of 'AMatrices'?")
   }
@@ -246,29 +330,39 @@
                   "\n This may cause later visible errors (notably, wrongly dimensioned matrices)",
                   "\n or even silent errors. See help(\"corrMatrix\") for a safer syntax.")
     warning(mess, immediate. = TRUE)
-  } else if (is.null(colnames(corrMatrix))) {
+  } else if (is.null(colnames(corrMatrix))) { # copy row names to col names
     if (inherits(corrMatrix, c("matrix", "Matrix"))) {
-      colnames(corrMatrix) <- corrnames
+      colnames(corrMatrix) <- corrnames 
     }
     else if (inherits(corrMatrix, "precision")) {
       colnames(corrMatrix[["matrix"]]) <- corrnames
     }
   }
-  if ( inherits(corrMatrix,"precision")) { 
-    # do not subset a precmat => nothing here but the corresponding Z matrix may be modified by .preprocess() 
-  } else if ( length(setdiff(ZAnames,corrnames)) ==0L ) { ## i.e. all ZAnames in corrnames
-    ## : should be the case when generator = "as.factor"
-    if ( length(setdiff(corrnames,ZAnames)) || any(corrnames!=ZAnames) ) { # reordering and subsetting
-      if (inherits(corrMatrix,"dist")) {
-        corrMatrix <- (proxy::as.matrix(corrMatrix,diag=1)[ZAnames,ZAnames]) ## IF diag missing in input corrMatrix THEN assume a correlation matrix
-        ## it's not useful to convert back to dist (either uglily by as.dist(); or package 'seriation' has (permute.dist-> C code)
-      } else corrMatrix <- corrMatrix[ZAnames,ZAnames]  
-    } ## else orders already match
-  } else {
-    if ( ! is.null(corrnames)) {
-      if ( length(corrnames)!=length(ZAnames)){ 
-        stop("The dimension of corrMatrix does not match the number of levels of the grouping variable.")
-      } else { ## no clear reordering
+  
+  if ( ! length(extraZAnames <- setdiff(ZAnames,corrnames))) { ## i.e. if all ZAnames in corrnames
+    if ( inherits(corrMatrix,"precision")) { 
+      # do not subset a precmat => nothing here but the corresponding Z matrix may be modified (.addrightcols) by .init_assign_geoinfo() 
+      # and then the precision matrix may be reordered according to the cols of this possibly augmented Z. 
+    } else {
+      uZAnames <- unique(ZAnames)
+      if ( length(setdiff(corrnames,uZAnames)) || any(corrnames!=uZAnames) ) { # reordering and subsetting
+        if (inherits(corrMatrix,"dist")) {
+          corrMatrix <- (proxy::as.matrix(corrMatrix,diag=1)[uZAnames,uZAnames]) ## IF diag missing in input corrMatrix THEN assume a correlation matrix
+          ## it's not useful to convert back to dist (either uglily by as.dist(); or package 'seriation' has (permute.dist-> C code)
+        } else corrMatrix <- corrMatrix[uZAnames,uZAnames]  
+      } ## else orders already match
+    }
+  } else { # Not all ZAnames in corrnames. Different sets of names may have been used. 
+    if  (inherits(corrMatrix,"precision")) {
+      ## Uses a strict approach bc it's already complicated enough, and later code will again compare the names.
+      stop("Some levels of the grouping variable are missing from the row names of the precision matrix\n: check corrMatrix dimensions and/or names.")
+    } else {
+      ## For true covariance matrix spaMM tries to accomodate: it tries to match matrices by row order,
+      # but need identical dimensions for such a match.
+      uZAnames <- unique(ZAnames)
+      if ( length(corrnames)!=length(uZAnames)){ 
+        stop("The corrMatrix does not match the levels of the grouping variable: different levels (names) and different dimensions.")
+      } else { ## same dimensions, but names do not match
         message(paste0("spaMM is not able to match levels of the random effect to the names of corrMatrix,\n",
                        " and matches levels to rows of the matrix by their respective orders.\n",
                        " See help(\"corrMatrix\") for a safer syntax."))
@@ -284,7 +378,24 @@
   ncol_Z <- ncol(Z)
   # We have tested in .check_subset_corrMatrix() whether all ZAnames were in precnames 
   # so the only possible difference between sets of names is additional names in precnames
-  if (suppcols <- ncol_prec-ncol_Z) { # (names=levels) in precmat but not in the data
+  if ((LHS_nlev <- length(attr(Z,"namesTerm")))>1L ) {
+    nlev_RHS <- ncol_Z/LHS_nlev 
+    suppblockcols <- ncol_prec-nlev_RHS
+    if (suppblockcols) { # possibly poorly tested ode
+      if (verbose) message(paste("Note: Precision matrix has", suppblockcols, 
+                                 "more levels than there are in the data.")) # and <0 values are a bug...
+      supplevels <- setdiff(precnames,ZAnames)
+      # add cols of zeros one the right; cols to be reordered next.
+      Zp <- Z@p
+      colindices <- matrix(seq(ncol_Z),ncol=LHS_nlev)
+      colindices <- rbind(colindices,
+                          matrix(rep(colindices[nlev_RHS,],suppblockcols),ncol=LHS_nlev,byrow = TRUE))
+      dim(colindices) <- NULL
+      Z@p <-  c(0L,Zp[colindices+1L])
+      Z@Dim[2L] <- ncol_prec*LHS_nlev
+      Z@Dimnames[[2L]] <- rep(c(ZAnames[seq(nlev_RHS)],supplevels) , LHS_nlev)
+    }
+  } else if (suppcols <- ncol_prec-ncol_Z) { # (names=levels) in precmat but not in the data
     if (verbose) message(paste("Note: Precision matrix has", suppcols, 
                                "more levels than there are in the data.")) # and <0 values are a bug...
     supplevels <- setdiff(precnames,ZAnames)
@@ -393,7 +504,7 @@
       for (rd in problems) {
         term_ranef <- attr(processed$ZAlist,"exp_ranef_strings")[rd]
         if (substr(term_ranef, 1, 1)=="(" ## excludes spatial (and more generally 'keyword') ranefs 
-          && ! is.numeric(processed$lambda.Fix[rd])
+            && ! is.numeric(processed$lambda.Fix[rd])
         ) {
           mess <- paste0("Number of levels = number of observations for random effect ", term_ranef,
                          ";\n   this model cannot be fitted unless phi is fixed, or the variance",
@@ -412,8 +523,8 @@
     } # else if (var(y)==0) phi.Fix <- .spaMM.data$options$min_disp
   } else if (any(phi.Fix==0)) stop("phi cannot be fixed to 0.")
   if ( ! is.null(phi.Fix)) phi.Fix <- structure(phi.Fix,
-                                                          constr_fit= constr_fit,
-                                                          constr_phi= (constr_fit || constr_fam) ) 
+                                                constr_fit= constr_fit,
+                                                constr_phi= (constr_fit || constr_fam) ) 
   # so that the fitobject$phi gets these attributes.
   return(phi.Fix)
 }
@@ -490,8 +601,8 @@
     models[["lambda"]] <- rep("lamScal",nrand) ## even for adjacency, random slope...
     processed$X_lamres <- .calc_X_lamres(processed, models=models, ZAlist=ZAlist, nrand=nrand) ## for glm for lambda, and SEMbetalambda
     ranCoefs <- .getPar(ranFix,"ranCoefs") ## may be NULL
-    processed$ranCoefs_blob <- .process_ranCoefs(processed, ranCoefs, use_tri_Nspprec=TRUE) 
-    processed$AUGI0_ZX$envir$finertypes[processed$ranCoefs_blob$isRandomSlope] <- "ranCoefs" ## (*creates* the variable in the *environment* so that .evalWrapper() finds it)
+    processed$ranCoefs_blob <- .process_ranCoefs(processed, ranCoefs, use_tri_CORREL=TRUE) 
+    processed$AUGI0_ZX$envir$finertypes[processed$ranCoefs_blob$isRandomSlope] <- "ranCoefs" #
   }
   models
 } 
@@ -685,14 +796,17 @@
     if ( ! as_mat) {
       AUGI0_ZX <- list2env( list(I=.trDiagonal(n=n_u_h), ## avoids repeated calls to as() through rbind2...
                                  ZeroBlock= Matrix(0,nrow=n_u_h,ncol=ncol(X.pv)), X.pv=X.pv) )
+      # delayedAssign("Ilarge", .trDiagonal(n=ncol(I)+ncol(X.pv), unitri = FALSE), eval.env = AUGI0_ZX, assign.env = AUGI0_ZX) # hmf: .trDiagonal  ~ 8e-4 s. (but delayedA is 500 times faster)
     } else {
-      ## here in version up to 2.4.100 I had code trying to guess available memory by memory.limit() or /proc/meminfo
       AUGI0_ZX <- list2env( list(I=diag(nrow=n_u_h),ZeroBlock= matrix(0,nrow=n_u_h,ncol=ncol(X.pv)), X.pv=X.pv) )
     } ## $ZAfix added later   and   X.pv scaled below  !!
     AUGI0_ZX$vec_normIMRF <- vec_normIMRF
     AUGI0_ZX$envir <- list2env(list(finertypes=attr(ZAlist,"exp_ranef_types"), ## to be modified later
                                     LMatrices=structure(vector("list",nrand),
-                                                        is_given_by=rep("",nrand))),    
+                                                        is_given_by=rep("",nrand)), ## to be modified later
+                                    kron_Y=structure(vector("list",nrand),
+                                                     is_given_by=rep("",nrand)) ## to be modified later
+                                    ),    
                                parent=environment(.preprocess))
     #
     if (sparse_precision) {

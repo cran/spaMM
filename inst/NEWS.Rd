@@ -3,6 +3,33 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 3.9.0}{    
+\subsection{NEW FEATURES}{
+\itemize{
+\item New type of random effect handled: "composite" random effects such as corrMatrix(<variable>|ID) or corrMatrix(mv(1,2)|ID), combining features of a random-coefficient model and of a corrMatrix (see help("composite-ranef")). Such random effects are considered in quantitative genetic analyses of multivariate response, for example.
+\item residuals.HLfit() can now also return standardized deviance residuals used in fitting methods and in diagnostic plots.
+\item Much more memory-efficient (and faster) fits for 'nested-geostatistical' random effects (e.g., Matern(1|long+lat \%in\% year) ).
+\item The 'control.HLfit' argument of fitting functions now handles an 'algebra' parameter for easier control of matrix-algebraic methods. See help("algebra") for possible usage. 
+\item Procedures which rest on the stats::gaussian(<"log"|"inverse">) family object to fit models with such response family to data with zero(es) in the response may fail to find valid starting values, which is not totally defensible. spaMM now circumvents this obstruction. Whether asking for fits of such data by such families is a good idea is another matter; the principle adopted here is to allow the fit and let its results contribute to answer this question.
+\item pdep_effects() now handles 'length.out=0L' with the effect that predictions are made for actual values of the predictor variables, then allowing for adding informative plots of fit-residuals on the partial-dependence plots. 
+}
+}
+\subsection{USER-LEVEL CHANGES}{
+\itemize{
+\item For random-coefficient terms fitted by sparse-precision methods, there was a discrepancy between some elements stored in the fitted object. Neither the fits nor predictions were affected, but trying to use together the results of extractors get_ZALMatrix() and ranef.HLfit() would have been confusing. This discrepancy has been removed. 
+\item plot.HLfit() should now return a diagnostic plot for standardized deviance residuals in all cases. 
+\item More consistent default value of the residual variance of the residual variance model (sic): it is now set to a fixed value in mixed-effect residual-variance models specified by resid.model=<formula>, as was already effectively so for other specifications of the residual-dispersion model. 
+}
+}
+\subsection{FIXED BUGS}{
+\itemize{
+\item predict(., <with newdata>) results were incorrect for models with multivariate random-coefficient terms (i.e., using the mv() syntax) fitted by sparse-precision methods.
+\item Prediction variance was incorrect for models with random-coefficient terms.
+\item Prediction variance computation could fail when all random-effect variances were fixed.
+\item residVar(., which="var") had incorrect results for gaussian-response models. This did not affect response-variance computations nor get_residVar(), which did not call this extractor. residVar() could also fail on objects with an offset-only formula for phi.
+}
+}
+}
 \section{CHANGES UP TO VERSION 3.8.23}{    
 \subsection{NEW FEATURES}{
 \itemize{
@@ -165,7 +192,7 @@ due to a bug introduced in v3.7.48 (i.e., CRAN versions 3.8.0 and 3.8.9)
 }
 \subsection{ALL THE ABOVE for the 'multi' family}{
 \itemize{
-\item It was given a new scrutiny, leading to a display bug fix, a revised fitted() output, improved summary() information, a new how.HLfitlist() extractor, and revised documentation. But fitmv() might ultimately be more useful to fit multinomial data. % ___FIXME___
+\item It was given a new scrutiny, leading to a display bug fix, a revised fitted() output, improved summary() information, a new how.HLfitlist() extractor, and revised documentation. But fitmv() might ultimately be more useful to fit multinomial data. 
 }
 }
 }

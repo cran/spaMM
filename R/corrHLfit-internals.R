@@ -363,6 +363,7 @@ if (FALSE) {
   return(list(lower=lower,upper=upper,adjust_init=adjust_init)) ## transformed scale with log sigma in first positions
 }
 
+# obsolete:
 .expand_GeoMatrices <- function(w_uniqueGeo, e_uniqueGeo, coords_nesting, coord_within, dist.method) {
   rownames(e_uniqueGeo) <- seq(nrow(e_uniqueGeo)) ## local & unique rownames
   ## Remarkably the next line works only if the cols are not factors ! Unless we have a fix for this,
@@ -376,6 +377,51 @@ if (FALSE) {
     w_dist <- proxy::dist(within_values,method=dist.method)
     distMatrix[blockrows,blockrows] <- as.matrix(w_dist)
   }
+  return(list(distMatrix=distMatrix))
+}
+
+## replacement for .expand_GeoMatrices() (<= ~3.8.23) producing sparser matrices 
+# produces "dsCDIST" matrices where implicit 0's mean infinite distance, while Na on diagonal means 0 distance 
+# seems to work for the 3 "algebra"s, but would be useful for spcorr
+# Possible problems:
+# vector 'rho' scale argument not checked
+# production, in e.g. predict() of matrix types other that those handled by MaternCorr methods.
+# test-nested-geostat for basic tests:
+.sparse_expand_GeoMatrices <- function(w_uniqueGeo, e_uniqueGeo, coords_nesting, coord_within, dist.method,
+                                       allow_DIST) {
+  rownames(e_uniqueGeo) <- seq(nrow(e_uniqueGeo)) ## local & unique rownames
+  ## Remarkably the next line works only if the cols are not factors ! Unless we have a fix for this,
+  #  uniqueGeo classes should be integer not factor: see instances of as.numeric(levels(fac)) in the sources.
+  rows_bynesting <- by(e_uniqueGeo ,e_uniqueGeo[,coords_nesting],rownames) # disjoints subsets of rownames since rownames are unique
+  if (FALSE) { # assignments to blockrows (not in sequential order!) of sparse matrices is quite inefficient
+    distMatrix <- Matrix(0,ncol=nrow(e_uniqueGeo),nrow =nrow(e_uniqueGeo)) 
+    rownames(distMatrix) <- colnames(distMatrix) <- rownames(e_uniqueGeo) ## same trivial rownames
+    for (lit in seq_len(length(rows_bynesting))) {
+      blockrows <- rows_bynesting[[lit]]
+      within_values <- e_uniqueGeo[blockrows,coord_within]
+      w_dist <- proxy::dist(within_values,method=dist.method)
+      distMatrix[blockrows,blockrows] <- as.matrix(w_dist)
+    }
+  } else {
+    distMatrix <- vector("list", length(rows_bynesting))
+    for (lit in seq_along(rows_bynesting)) {
+      blockrows <- rows_bynesting[[lit]]
+      within_values <- e_uniqueGeo[blockrows,coord_within]
+      w_dist <- proxy::dist(within_values,method=dist.method)
+      distMatrix[[lit]] <- as(as.matrix(w_dist),"dsCMatrix")
+    }
+    distMatrix <- Matrix::bdiag(distMatrix)
+    rowperm <- sort.list(as.integer(unlist(rows_bynesting)))
+    distMatrix <- distMatrix[rowperm,rowperm]
+    rownames(distMatrix) <- colnames(distMatrix) <- rownames(e_uniqueGeo) ## trivial rownames -- not sure we need them now
+  }
+  if( ! inherits(distMatrix,"dsCMatrix")) stop("code missing in .sparse_expand_GeoMatrices()")
+  if (allow_DIST) { # should be TRUE when the @x is to be used directly for conversion from distances to correlations
+    diag(distMatrix) <- NA
+    attr(distMatrix,"dsCDIST") <- TRUE # should mean 'dsC with NA on the diagonal'
+  } else diag(distMatrix) <- 1
+  # the diag<- are a bit slow, but there is no point in trying to assign on the blocks; 
+  # moreover, proxy::as.matrix(,diag=NA) does not have the desired effect.
   return(list(distMatrix=distMatrix))
 }
 

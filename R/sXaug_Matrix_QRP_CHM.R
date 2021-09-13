@@ -17,11 +17,64 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
   return( Xaug ) 
 }
 
+.calc_t_Q_scaled <- function(BLOB, sXaug) {
+  # after efforts to find an Eigen syntax that works without storing a dense matrix in memory # (solveInPlace may be the only way), 
+  #   we see that it's slow! (e.g test bigranefs)
+  # https://stackoverflow.com/questions/53290521/eigen-solver-for-sparse-matrix-product
+  #### BLOB$t_Q_scaled <- .Rcpp_backsolve_M_M(r=as(BLOB$R_scaled,"dgCMatrix"),x=t(sXaug[,BLOB$perm]),transpose=TRUE)
+  # base::backsolve() calls as.matrix()... 
+  # Do not try Matrix::qr.qty() on large RHS! (not memory efficient).
+  # 
+  if (eval(.spaMM.data$options$presolve_cond) && .calc_denseness(sXaug,relative = TRUE)>0.004 ) { # nested_Matern
+    # Below, solve(t(BLOB$R_scaled),t(sXaug[,BLOB$perm])) is slow when the result is rather dense. 
+    #   It calls .sortCsparse(.Call(dtCMatrix_sparse_solve, a, b)), and its difficult to see whether the .sortCSparse itself is the culprit
+    # nested Matern has denseness = 0.00509... and presolving is better
+    # bigranefs has denseness 0.0001865483 and presolving is worse
+    #
+    #Matrix::crossprod(BLOB$solve_R_scaled, t(sXaug[,BLOB$perm])) # Rather avoid transpose on the larger matrix:
+    Matrix::tcrossprod(t(BLOB$solve_R_scaled), sXaug[,BLOB$perm])
+  } else { # bigranefs
+    ## Matrix::solve ## this is faster than qr.Q and returns dgCMatrix rather than qr.Q -> dge ! 
+    solve(t(BLOB$R_scaled),t(sXaug[,BLOB$perm])) # a bit ugly, but (1) see comment wrt .Rcpp_backsolve_M_M() call;
+    # (2) for dense vector LHS, there is a simple function cs_ltsolve() in suiteSparse, but otherwise see the complex code
+    # of (suiteSparse) Cholesky/cholmod_spsolve as integrated in Matrix   (and not even handling the t()) 
+  }
+}
+
+.calc_hatval_Z_u_h_cols_on_left <- function(BLOB, sXaug) {
+  # previously to v2.1.46 there were comments showing slow code using qr.qy 
+  n_u_h <- attr(sXaug,"n_u_h") 
+  tmp_t_Qq_scaled <- BLOB$t_Q_scaled[BLOB$seq_n_u_h,]
+  tmp_t_Qq_scaled@x <- tmp_t_Qq_scaled@x^2
+  tmp <- colSums(tmp_t_Qq_scaled)
+  phipos <- n_u_h+seq_len(nrow(sXaug)-n_u_h)
+  hatval_Z_ <-  list(lev_lambda=tmp[-phipos],lev_phi=tmp[phipos])
+}
+
+.calc_Z_lev_lambda <- function(BLOB) {      
+  lev_lambda <- BLOB$inv_factor_wd2hdv2w
+  lev_lambda@x <- lev_lambda@x^2
+  lev_lambda <- colSums(lev_lambda)
+}
+
+.calc_Z_lev_phi <- function(BLOB, sXaug) {      
+  n_u_h <- attr(sXaug,"n_u_h")
+  phipos <- (n_u_h+1L):nrow(sXaug)                 # ZAL block:
+  lev_phi <- .tcrossprod(BLOB$inv_factor_wd2hdv2w, sXaug[phipos, BLOB$seq_n_u_h ], allow_as_mat = FALSE) # Matrix::solve(BLOB$CHMfactor_wd2hdv2w, t(sXaug[phipos, seq_len(n_u_h) ]),system="L") ## fixme the t() may still be costly
+  # :if QRmethod is forced to "sparse" on mathematically dense matrices, we may reach this code yielding a *m* atrix lev_phi unless allow_as_mat = FALSE
+  lev_phi@x <- lev_phi@x^2
+  lev_phi <- colSums(lev_phi)
+}
+
 # trace(get_from_MME, print=FALSE, tracer=quote(cat("'",crayon::yellow(which),"'")))
 # trace(spaMM:::.sXaug_Matrix_QRP_CHM_scaled, print=FALSE, tracer=quote(cat("'",which,"'")))
 #
 .sXaug_Matrix_QRP_CHM_scaled <- function(sXaug,which="",szAug=NULL,B=NULL) {
   BLOB <- attr(sXaug,"BLOB") ## an environment
+  # attr(sXaug,"AUGI0_ZX") is presumably inherited from the Xaug argument of def_sXaug_Matrix_QRP_CHM_scaled
+  # but this may or may not be present (Xaug=Xscal with attr(Xscal,"AUGI0_ZX") <- processed$AUGI0_ZX in .solve_IRLS_as_ZX(),
+  # but not in .solve_v_h_IRLS)
+  # => we cannot generally assume it is present.
   if (is.null(BLOB$blob)) {
     BLOB$blob <- qr(sXaug) ##  Matrix::qr
     # sXaug = t(tQ) %*% R[,sP] but then also sXaug = t(tQ)[,sP'] %*% R[sP',sP] for any sP'
@@ -32,26 +85,36 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
     delayedAssign("seq_n_u_h", seq(attr(sXaug,"n_u_h")), assign.env = BLOB ) # repeatedly used for levM
     delayedAssign("sortPerm_u_h", BLOB$sortPerm[ BLOB$seq_n_u_h], assign.env = BLOB ) # repeatedly used for levM
     delayedAssign("u_h_cols_on_left", (max(BLOB$sortPerm_u_h)==attr(sXaug,"n_u_h")), assign.env = BLOB ) 
-    delayedAssign("use_R_block", (BLOB$u_h_cols_on_left && FALSE) , assign.env = BLOB ) 
     # : TRUE for Rasch, bigranefs... 
     # : FALSE for cloglog (also test-ranCoefs but .sXaug_Matrix_QRP_CHM_scaled is used only in refit). 
+    delayedAssign("use_R_block", (BLOB$u_h_cols_on_left && FALSE) , assign.env = BLOB ) 
     delayedAssign("invsqrtwranef", 1/sqrt(attr(sXaug,"w.ranef")), assign.env = BLOB )
-    delayedAssign("t_Q_scaled", solve(t(BLOB$R_scaled),t(sXaug[,BLOB$perm])), assign.env = BLOB )  ## Matrix::solve ## this is faster than qr.Q and returns dgCMatrix rather than qr.Q -> dge ! 
+    delayedAssign("solve_R_scaled", 
+      # solve(BLOB$R_scaled) is as(.Call(dtCMatrix_sparse_solve, a, .trDiagonal(n, unitri = FALSE)), "dtCMatrix")
+      # as(solve(BLOB$R_scaled, attr(sXaug,"AUGI0_ZX")$Ilarge),"dtCMatrix"), 
+      as(solve(BLOB$R_scaled,  .trDiagonal(n=ncol(BLOB$R_scaled), unitri = FALSE)),"dtCMatrix"), 
+      assign.env = BLOB ) # Matrix::solve
+    delayedAssign("t_Q_scaled", .calc_t_Q_scaled(BLOB, sXaug), assign.env = BLOB )
     delayedAssign("CHMfactor_wd2hdv2w", {
       wd2hdv2w <- .crossprod(BLOB$R_scaled[,BLOB$sortPerm_u_h, drop=FALSE], allow_as_mat = FALSE ) # R_scaled is crossfac; CHMfactor ~ tcrossfac
-      Cholesky(wd2hdv2w,LDL=FALSE, perm=FALSE ) ## perm=TRUE seems simple to implement except 
-      #    for which="R_scaled_v_h_blob". Ascertaining when updating might be correct is not obvious. __F I X M E__
+      Cholesky(wd2hdv2w,LDL=FALSE, perm=FALSE ) ## perm=TRUE seems 'simple'(*) to implement except 
+      #    for which="R_scaled_v_h_blob". whether perm=TRUE (for updating) might be correct is not obvious:
+      # There, R_scaled_v_h <- t( as(BLOB$CHMfactor_wd2hdv2w,"sparseMatrix") ) must be triangular and without permutation of the v's
+      # (*) the SPPREC code seems better structured to reach the 'updateable' info.
+      #  __F I X M E__? progress is not obvious: would need to make updateable info accessible, and even so it might not be useful.
     }, assign.env = BLOB )
-    delayedAssign("inv_factor_wd2hdv2w", { if (BLOB$use_R_block) { 
-      sortPerm_u_h <- BLOB$sortPerm_u_h
-      solve(t(BLOB$R_scaled))[sortPerm_u_h,sortPerm_u_h, drop=FALSE] # triangular solve remains sparse... 
-      #  !! this is totally wrong if ! u_h_cols_on_left
-      ## equivalences:
-      # str(a <- Matrix::solve(BLOB$CHMfactor_wd2hdv2w, system="A") ) # inv_d2dhdv2 # includes permuations
-      # str(b <- crossprod(Matrix::solve(BLOB$CHMfactor_wd2hdv2w,system="L"))) # Matrix::solve(BLOB$CHMfactor_wd2hdv2w,system="L")
-      # str(b <- drop0(Matrix::tcrossprod(solve(BLOB$R_scaled[BLOB$sortPerm_u_h,BLOB$sortPerm_u_h, drop=FALSE]))))
-      # range(a-b)
-    } else Matrix::solve(BLOB$CHMfactor_wd2hdv2w,system="L") } , assign.env = BLOB )  # crossfac
+    delayedAssign("inv_factor_wd2hdv2w", { 
+      if (BLOB$use_R_block) { # seems not to be tested by the routine tests
+        sortPerm_u_h <- BLOB$sortPerm_u_h
+        # solve(t(BLOB$R_scaled))[sortPerm_u_h,sortPerm_u_h, drop=FALSE] # triangular solve remains sparse...
+        t(BLOB$solve_R_scaled)[sortPerm_u_h,sortPerm_u_h, drop=FALSE] # triangular solve remains sparse... 
+        #  !! this is totally wrong if ! u_h_cols_on_left
+        ## equivalences:
+        # str(a <- Matrix::solve(BLOB$CHMfactor_wd2hdv2w, system="A") ) # inv_d2dhdv2 # includes permuations
+        # str(b <- crossprod(Matrix::solve(BLOB$CHMfactor_wd2hdv2w,system="L"))) # Matrix::solve(BLOB$CHMfactor_wd2hdv2w,system="L")
+        # str(b <- drop0(Matrix::tcrossprod(solve(BLOB$R_scaled[BLOB$sortPerm_u_h,BLOB$sortPerm_u_h, drop=FALSE]))))
+        # range(a-b)
+      } else Matrix::solve(BLOB$CHMfactor_wd2hdv2w,system="L") } , assign.env = BLOB )  # crossfac
     delayedAssign("inv_d2hdv2", {        
       if (.is_evaluated("inv_factor_wd2hdv2w",BLOB)) {
         inv_d2hdv2 <- .Matrix_times_Dvec(.crossprod(BLOB$inv_factor_wd2hdv2w), BLOB$invsqrtwranef) 
@@ -60,6 +123,8 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
     }, assign.env = BLOB )
     delayedAssign("logdet_R_scaled_b_v", sum(log(abs(diag(x=BLOB$R_scaled)))), assign.env = BLOB )  # not .diagfast() on sparse matrix
     delayedAssign("logdet_R_scaled_v", {
+      # the tests led to use_R_block being FALSE in all cases. Gain is obviously not here, 
+      # so it must be through making CHMfactor_wd2hdv2w available and efficient for other operations... not transparent.
       if (BLOB$use_R_block) { # but BLOB$logdet_R_scaled_v may not be requested in that case
         sum(log(abs(diag(x=BLOB$R_scaled)[BLOB$seq_n_u_h])))
       } else Matrix::determinant(BLOB$CHMfactor_wd2hdv2w)$modulus[1]
@@ -78,6 +143,10 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
       tmp@x <- tmp@x^2
       colSums(tmp)
     } , assign.env = BLOB )
+    delayedAssign("hatval_Z_u_h_cols_on_left", .calc_hatval_Z_u_h_cols_on_left(BLOB, sXaug), assign.env = BLOB )
+    delayedAssign("Z_lev_lambda", .calc_Z_lev_lambda(BLOB), assign.env = BLOB )
+    delayedAssign("Z_lev_phi", .calc_Z_lev_phi(BLOB, sXaug), assign.env = BLOB )
+    
     ##############################
     if ( ! is.null(szAug)) return(qr.coef(BLOB$blob,szAug))   
   } 
@@ -93,32 +162,32 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
   #   The first option seems faster, but this is not commonly profileable. u_h_cols are generally on the left. An exception occurs
   #   in test-cloglog.R#57: fitme(cbind(Dead, Alive) ~ ... confirming the expectation
   # }
-  if (FALSE) { # after efforts to find an Eigen syntax that works without storing a dense matrix in memory 
-    # (solveInPlace may be the only way), we see that it's slow! (e.g test bigranefs)
-    # https://stackoverflow.com/questions/53290521/eigen-solver-for-sparse-matrix-product
-    BLOB$t_Q_scaled <- .Rcpp_backsolve_M_M(r=as(BLOB$R_scaled,"dgCMatrix"),x=t(sXaug[,BLOB$perm]),transpose=TRUE)
-    # base::backsolve() calls as.matrix()... 
-    # .tcrossprod(t(solve(BLOB$R_scaled))[,BLOB$sortPerm], sXaug)
-    # 
-    #   We will use:
-    # BLOB$t_Q_scaled <- solve(t(BLOB$R_scaled),t(sXaug[,BLOB$perm])) ## Matrix::solve ## this is faster than qr.Q and returns dgCMatrix rather than qr.Q -> dge 
-  } 
   if ( ! is.null(szAug)) {
-    if (.is_evaluated("t_Q_scaled", BLOB)) {
-      return(solve(BLOB$R_scaled, BLOB$t_Q_scaled %*% szAug)[BLOB$sortPerm,,drop=FALSE]) ## Matrix::solve
-    } else {
+    # if (.is_evaluated("solve_R_scaled", BLOB)) {
+      #return((BLOB$solve_R_scaled %*% (BLOB$t_Q_scaled %*% szAug))[BLOB$sortPerm,,drop=FALSE]) 
+      #return((BLOB$solve_R_scaled %*% (Matrix::qr.qty(BLOB$blob,szAug)[seq(ncol(BLOB$solve_R_scaled))]))[BLOB$sortPerm,,drop=FALSE]) 
+    # } else if (.is_evaluated("t_Q_scaled", BLOB)) { 
+    # even in that case qr.coef seems faster(cf nested_Matern example: poisson -> Pdiag for gradient calculation -> hatval_Z -> t_Q_scaled is computed)
+      #return(solve(BLOB$R_scaled, BLOB$t_Q_scaled %*% szAug)[BLOB$sortPerm,,drop=FALSE]) # => one solve R_scaled for t_Q, one in this line  
+    # } else {
       return(qr.coef(BLOB$blob,szAug)) # avoid t_Q_computation there ## Matrix::qr.coef
-    }
+    # }
   }
   # ELSE 
   if (which=="Qt_leftcols*B") {
-    return(solve(t(BLOB$R_scaled), .crossprod(sXaug[-BLOB$seq_n_u_h,BLOB$perm], B)))
+    if (.is_evaluated("solve_R_scaled", BLOB)) {
+      # not so many tests? HLfit(distance ~ age + (age | Subject), data = Orthodont, HLmethod = "REML"): then solve_R_scaled is evaluated
+      # corresponding fitme() oes not reahc here
+      return(.crossprod(BLOB$solve_R_scaled, .crossprod(sXaug[-BLOB$seq_n_u_h,BLOB$perm], B)))
+    } else return(solve(t(BLOB$R_scaled), .crossprod(sXaug[-BLOB$seq_n_u_h,BLOB$perm], B))) 
   }
   if (which=="Mg_solve_g") {
     seq_n_u_h <- BLOB$seq_n_u_h
     rhs <- B
     rhs[seq_n_u_h] <- BLOB$invsqrtwranef * rhs[seq_n_u_h]
-    rhs <- Matrix::solve(BLOB$R_scaled,rhs[BLOB$perm])
+    if (.is_evaluated("solve_R_scaled", BLOB)) {
+      rhs <- BLOB$solve_R_scaled %*% rhs[BLOB$perm]
+    } else rhs <- Matrix::solve(BLOB$R_scaled,rhs[BLOB$perm]) 
     return(sum(rhs^2))
   } 
   if (which=="Mg_invH_g") {
@@ -134,48 +203,38 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
     Mg_invXtWX_g <- crossprod(B,solve(BLOB$XtWX,B))[1L] # [1L] drops possible Matrix class...
     return(Mg_invXtWX_g)
   }
-  if (which=="hatval_Z") { ## sscaled Pdiag
-    if (is.null(BLOB$hatval_Z_)) {
-      # X[,cols] = Q R P[,cols] = Q q r p => t(Q q) given by:
-      n_u_h <- attr(sXaug,"n_u_h")
-      if (BLOB$u_h_cols_on_left) { # Rasch... bigranefs... and that is remarkably fast compared to alternative software
-        # as well as faster than the alternative code when u_h cols are not on the left. 
-        # So, forming inv_factor_wd2hdv2w seems slow compared to this + only using $CHMfactor_wd2hdv2w
-        tmp_t_Qq_scaled <- BLOB$t_Q_scaled[BLOB$seq_n_u_h,]
-        tmp_t_Qq_scaled@x <- tmp_t_Qq_scaled@x^2
-        tmp <- colSums(tmp_t_Qq_scaled)
-        phipos <- n_u_h+seq_len(nrow(sXaug)-n_u_h)
-        BLOB$hatval_Z_ <-  list(lev_lambda=tmp[-phipos],lev_phi=tmp[phipos])
-        # previously to v2.1.46 there were comments showing slow code using qr.qy 
-      } else if (FALSE) { #  correct but only for pedagogy. 
+  if (which=="hatval_Z") { ## sscaled Pdiag (or HLfit ML )
+    # X[,cols] = Q R P[,cols] = Q q r p => t(Q q) given by:
+    if (BLOB$u_h_cols_on_left) { # Rasch... bigranefs... and that is remarkably fast compared to alternative software
+      # as well as faster than the alternative code when u_h cols are not on the left. 
+      # So, forming inv_factor_wd2hdv2w seems slow compared to this + only using $CHMfactor_wd2hdv2w
+      return(BLOB$hatval_Z_u_h_cols_on_left) # no clear benefits in separating lev_phi and lev_lambda computations
+    } else if (FALSE) { #  correct but only for pedagogy. 
+      if (is.null(BLOB$hatval_Z_)) {
         #  Cf comments above. So forming inv_factor_wd2hdv2w, albeit slow,, is faster than a new QR factorization. 
         tq <- drop0(.lmwithQR(as.matrix(BLOB$R_scaled[,BLOB$sortPerm][,BLOB$seq_n_u_h]) ,yy=NULL,returntQ=TRUE,returnR=FALSE)$t_Q_scaled,
                     tol=1e-16)
         tmp_t_Qq_scaled <- tq %*% BLOB$t_Q_scaled
         tmp_t_Qq_scaled@x <- tmp_t_Qq_scaled@x^2
         tmp <- colSums(tmp_t_Qq_scaled)
+        n_u_h <- attr(sXaug,"n_u_h")
         phipos <- n_u_h+seq_len(nrow(sXaug)-n_u_h)
         BLOB$hatval_Z_ <-  list(lev_lambda=tmp[-phipos],lev_phi=tmp[phipos])
-      } else {
-        # X[,cols] = Q R P[,cols] = Q q r p => t(Q q) given by:
-        #t_Qq_scaled <- solve(BLOB$CHMfactor_wd2hdv2w, ## likely bottleneck for large data 
-        #                          t(sXaug[, seq_len(attr(sXaug,"n_u_h"))[BLOB$perm_R_v] ]),system="L")
-        ## 
-        ## t(sXaug[,u_h cols]= (I, scaled t(ZAL)) i.e. is scaled such that the left block is an identity matrix, so we can work 
-        ## on two separate blocks if the Cholesky is not permuted. Then 
-        lev_lambda <- BLOB$inv_factor_wd2hdv2w
-        lev_lambda@x <- lev_lambda@x^2
-        lev_lambda <- colSums(lev_lambda)
-        phipos <- (n_u_h+1L):nrow(sXaug)                 # ZAL block:
-        lev_phi <- .tcrossprod(BLOB$inv_factor_wd2hdv2w, sXaug[phipos, BLOB$seq_n_u_h ], allow_as_mat = FALSE) # Matrix::solve(BLOB$CHMfactor_wd2hdv2w, t(sXaug[phipos, seq_len(n_u_h) ]),system="L") ## fixme the t() may still be costly
-        # :if QRmethod is forced to "sparse" on mathematically dense matrices, we may reach this code yielding a *m* atrix lev_phi unless allow_as_mat = FALSE
-        lev_phi@x <- lev_phi@x^2
-        lev_phi <- colSums(lev_phi)
-        BLOB$hatval_Z_ <-  list(lev_lambda=lev_lambda,lev_phi=lev_phi)
       }
+      return(BLOB$hatval_Z_)
+    } else {
+      # X[,cols] = Q R P[,cols] = Q q r p => t(Q q) given by:
+      #t_Qq_scaled <- solve(BLOB$CHMfactor_wd2hdv2w, ## likely bottleneck for large data 
+      #                          t(sXaug[, seq_len(attr(sXaug,"n_u_h"))[BLOB$perm_R_v] ]),system="L")
+      ## 
+      ## t(sXaug[,u_h cols]= (I, scaled t(ZAL)) i.e. is scaled such that the left block is an identity matrix, so we can work 
+      ## on two separate blocks if the Cholesky is not permuted. Then 
+      hatval_Z_ <- list()
+      if ("lambda" %in% B) hatval_Z_$lev_lambda <- BLOB$Z_lev_lambda
+      if ("phi" %in% B) hatval_Z_$lev_phi <- BLOB$Z_lev_phi
+      return(hatval_Z_)
     }
-    return(BLOB$hatval_Z_)
-  } 
+  }
   if (which=="solve_d2hdv2") {
     # don't forget that the factored matrix is not the augmented design matrix ! hence w.ranef needed here
     #if (is.null(BLOB$sortPerm_R_v)) BLOB$sortPerm_R_v <- sort.list(BLOB$perm_R_v)
@@ -251,26 +310,21 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
   if (which=="t_Q_scaled") { return(BLOB$t_Q_scaled) } ## used in get_hatvalues for nonstandard REML case
   if (which=="logdet_R_scaled_b_v") { return(BLOB$logdet_R_scaled_b_v)} 
   if (which=="beta_cov_info_from_sXaug") {
-    return(.calc_beta_cov_info_from_sXaug(BLOB=BLOB, sXaug=sXaug, tcrossfac=solve(BLOB$R_scaled)))
+    return(.calc_beta_cov_info_from_sXaug(BLOB=BLOB, sXaug=sXaug, tcrossfac=BLOB$solve_R_scaled)) 
   } 
   if (which=="beta_cov_info_from_wAugX") { ## using a weighted Henderson's augmented design matrix, not a true sXaug  
-    if (TRUE) {
-      tcrossfac_beta_v_cov <- solve(BLOB$R_scaled)
-      tPmat <- sparseMatrix(seq_along(BLOB$sortPerm), BLOB$sortPerm, x=1)
-      tcrossfac_beta_v_cov <- as.matrix(tPmat %*% tcrossfac_beta_v_cov)
-      rownames(tcrossfac_beta_v_cov) <- colnames(sXaug) ## necessary for summary.HLfit, already lost in BLOB$R_scaled
-      #beta_v_cov <- .tcrossprod(tcrossfac_beta_v_cov)
-      pforpv <- attr(sXaug,"pforpv")
-      seqp <- seq_len(pforpv)
-      beta_cov <- .tcrossprod(tcrossfac_beta_v_cov[seqp,,drop=FALSE])
-      return( list(beta_cov=beta_cov, 
-                   #beta_v_cov=beta_v_cov,
-                   tcrossfac_beta_v_cov=tcrossfac_beta_v_cov) )
-    }
-    ####################
-    beta_v_cov <- as.matrix(Matrix::chol2inv(BLOB$R_scaled)[BLOB$sortPerm,BLOB$sortPerm])
+    tPmat <- sparseMatrix(seq_along(BLOB$sortPerm), BLOB$sortPerm, x=1)
+    tcrossfac_beta_v_cov <- as.matrix(tPmat %*% BLOB$solve_R_scaled)
+    rownames(tcrossfac_beta_v_cov) <- colnames(sXaug) ## necessary for summary.HLfit, already lost in BLOB$R_scaled
+    #beta_v_cov <- .tcrossprod(tcrossfac_beta_v_cov)
+    pforpv <- attr(sXaug,"pforpv")
+    seqp <- seq_len(pforpv)
+    beta_cov <- .tcrossprod(tcrossfac_beta_v_cov[seqp,,drop=FALSE])
+    # beta_v_cov <- as.matrix(Matrix::chol2inv(BLOB$R_scaled)[BLOB$sortPerm,BLOB$sortPerm])
     # this tends to be dense bc v_h estimates covary   
-    return(beta_v_cov)
+    return( list(beta_cov=beta_cov, 
+                 #beta_v_cov=beta_v_cov,
+                 tcrossfac_beta_v_cov=tcrossfac_beta_v_cov) )
   } 
   if (which=="d2hdv2") { ## does not seem to be used
     #   # don't forgetthat the factored matrix is not the augmented design matrix ! hence w.ranef needed here

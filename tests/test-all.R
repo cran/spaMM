@@ -30,8 +30,17 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") { ## set in <R_HOME>/etc/Renviron.site 
           if (inherits(chk,"try-error")) warning(paste0(fich," generated an error"))
           tps
         }))
-        #spaMM.options(oldmaxt)
         print(colSums(priv_timings))
+      }
+      if (FALSE) { ## kept separate bc obscure interference as if there was a bug in setTimeLimit()*Rstudio ?
+        useR2021_testfiles <- dir(paste0(projpath(),"/package/useR2021/"),pattern="*.R",full.names = TRUE)
+        useR2021_timings <- t(sapply(useR2021_testfiles, function(fich){
+          cat(crayon::green(paste0("\n",fich)))
+          tps <- system.time(chk <- try(source(fich)))
+          if (inherits(chk,"try-error")) warning(paste0(fich," generated an error"))
+          tps
+        }))
+        print(colSums(useR2021_timings))
       }
       devAskNewPage(op)
       if (FALSE) {

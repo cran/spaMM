@@ -34,7 +34,11 @@ Matern <- function(...) {
     return(inits)
   }
   calc_corr_from_dist <- function(ranFix,char_rd,distmat,...) {
-    corr_mat <- MaternCorr(nu=.get_cP_stuff(ranFix,"nu",which=char_rd),
+    nu <- .get_cP_stuff(ranFix,"nu",which=char_rd)
+    #if (is.null(nu)) stop("NULL 'nu' here...") 
+    # if (is.null(nu)) nu <- .nuInv(.get_cP_stuff(ranFix,"trNu",which=char_rd),  # not sure test is ever TRUE
+    #                               NUMAX =.getPar(attr(ranFix,"moreargs"),"NUMAX"))
+    corr_mat <- MaternCorr(nu=nu,
                            Nugget=.get_cP_stuff(ranFix,"Nugget",which=char_rd),
                            d=distmat)  ## so that rho=1 in MaternCorr
     return(corr_mat)
@@ -164,6 +168,8 @@ Cauchy <- function(...) {
   }
   #
   calc_corr_from_dist <- function(ranFix, char_rd, distmat,...) {
+    #longdep <- .get_cP_stuff(ranFix,"longdep",which=char_rd)
+    # #if (is.null(longdep)) longdep <- .longdepInv(.get_cP_stuff(ranFix,"trLongdep"), LDMAX =.getPar(attr(ranFix,"moreargs"),"LDMAX")) # not sure test is ever TRUE
     corr_mat <- CauchyCorr(shape=.get_cP_stuff(ranFix,"shape",which=char_rd),
                            longdep=.get_cP_stuff(ranFix,"longdep",which=char_rd),
                            Nugget=.get_cP_stuff(ranFix,"Nugget",which=char_rd),
@@ -217,7 +223,16 @@ AR1 <- function(...) {
   }
   #
   calc_corr_from_dist <- function(ranFix, char_rd, distmat, ...) {
-    corr_mat <- .get_cP_stuff(ranFix,"ARphi",which=char_rd)^distmat 
+    if (methods::.hasSlot(distmat,"x")) { # "dsCDIST"; or dgCMatrix after subsetting in prediction code  
+      corr_mat <- distmat
+      corr_mat@x <- .get_cP_stuff(ranFix,"ARphi",which=char_rd)^(corr_mat@x)  
+      corr_mat@x[is.na(corr_mat@x)] <- 1
+      attr(corr_mat,"dsCDIST") <- NULL
+    } else {
+      corr_mat <- .get_cP_stuff(ranFix,"ARphi",which=char_rd)^distmat   
+      corr_mat[distmat==Inf] <- 0 # instead of the NaN resulting from negative rho...
+    }
+    corr_mat
   }
   #
   structure(list(corr_family="AR1",

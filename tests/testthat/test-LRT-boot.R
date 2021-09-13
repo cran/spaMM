@@ -38,7 +38,7 @@ if (spaMM.getOption("example_maxtime")>18) { ## user time + system.time for para
   spaMM_boot(lrt$nullfit, simuland = myfun, nsim=4, type="marginal", 
              what=quote(function(ReSu) fixef(ReSu)[2]), lrt=lrt,nb_cores=1L)[["bootreps"]]    
   
-  ## foreach+doSNOW
+  ## foreach+doSNOW (this was slow until the firewall settings were modified...)
   if ( (! "covr" %in% loadedNamespaces()) && 
        file.exists((privtest <- "C:/home/francois/travail/stats/spaMMplus/spaMM/package/tests_other_pack/test-doSNOW.R"))) {
     source(privtest)

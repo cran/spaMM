@@ -2,6 +2,7 @@ cat(crayon::yellow("\ntest-mv:"))
 
 if (FALSE) {
   source(paste0(projpath(),"/package/tests/testthat/nestedFiles/test-mv-nested.R"))
+  source(paste0(projpath(),"/package/tests/testthat/nestedFiles/test-composite-nested.R"))
 } else {
   data("wafers")
   me <- fitme(y ~ 1+(1|batch), family=Gamma(log), data=wafers)

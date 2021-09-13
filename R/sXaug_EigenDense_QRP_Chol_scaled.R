@@ -67,6 +67,18 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug, # already ZAL_scaled
     } , assign.env = BLOB )
     delayedAssign("logdet_sqrt_d2hdv2", { sum(log( sqrt(attr(sXaug,"w.ranef"))*BLOB$absdiag_R_v )) } , assign.env = BLOB )
     delayedAssign("hatval", {colSums(BLOB$t_Q_scaled^2)} , assign.env = BLOB ) # also named hatval_ZX
+    delayedAssign("Z_lev_lambda", {      
+      lev_lambda <- BLOB$inv_factor_wd2hdv2w 
+      lev_lambda <- lev_lambda^2
+      lev_lambda <- colSums(lev_lambda)
+    }, assign.env = BLOB )
+    delayedAssign("Z_lev_phi", {      
+      n_u_h <- attr(sXaug,"n_u_h")
+      phipos <- (n_u_h+1L):nrow(sXaug) #                get the scaled-ZAL block:
+      lev_phi <- .tcrossprod(BLOB$inv_factor_wd2hdv2w, sXaug[phipos, BLOB$seq_n_u_h ]) # backsolve(BLOB$R_R_v, t(sXaug[phipos, seq_len(n_u_h) ]),transpose=TRUE) 
+      lev_phi <- lev_phi^2
+      lev_phi <- colSums(lev_phi)
+    }, assign.env = BLOB )
     ##############################
     EigenDense_QRP_method <- .spaMM.data$options$EigenDense_QRP_method ## pre-09/2018 used .lmwithQRP
     if (EigenDense_QRP_method==".lmwithQR") {     # .lmwithQR() is fast - much faster than qr() and even than chol(crossprod())... 
@@ -115,32 +127,24 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug, # already ZAL_scaled
   if (which=="logdet_sqrt_d2hdv2") { return(BLOB$logdet_sqrt_d2hdv2)} 
   if (which=="logdet_r22") { return(BLOB$logdet_r22) }
   if (which=="hatval_Z") { ## Pdiag; note that these leverages are constant wrt to any diagonal rescaling of the Z block
-    if (is.null(BLOB$hatval_Z_)) {
-      if (FALSE) { # that is correct when .lmwithQR was used but not .lmwithQRP. 
-        # Further, I would need an u_h_cols_on_left instead of BLOB$perm for maximum use of this.  
-        tmp_t_Qq_scaled <- BLOB$t_Q_scaled[BLOB$seq_n_u_h,]
-        tmp_t_Qq_scaled <- tmp_t_Qq_scaled^2
-        tmp <- colSums(tmp_t_Qq_scaled)
-        phipos <- n_u_h+seq_len(nrow(sXaug)-n_u_h)
-        BLOB$hatval_Z_ <-  list(lev_lambda=tmp[-phipos],lev_phi=tmp[phipos])
-        return(BLOB$hatval_Z_)
-      }  
-      ## As for the sparse version:
-      ## t(sXaug[,u_h cols]= (I, scaled t(ZAL)) i.e. is scaled such that the left block is an identity matrix, so we can work 
-      ## on two separate blocks if the Cholesky is not permuted. Then 
-      #lev_lambda <- BLOB$inv_factor_wd2hdv2w <- backsolve(BLOB$R_R_v,diag(ncol(BLOB$R_R_v)),transpose=TRUE)
-      # test-spaMM # measurable time gain by .Rcpp_backsolve() possibly bc it's the full inverse which is computed. 
-      lev_lambda <- BLOB$inv_factor_wd2hdv2w 
-      lev_lambda <- lev_lambda^2
-      lev_lambda <- colSums(lev_lambda)
-      n_u_h <- attr(sXaug,"n_u_h")
-      phipos <- (n_u_h+1):nrow(sXaug) #                get the scaled-ZAL block:
-      lev_phi <- .tcrossprod(BLOB$inv_factor_wd2hdv2w, sXaug[phipos, BLOB$seq_n_u_h ]) # backsolve(BLOB$R_R_v, t(sXaug[phipos, seq_len(n_u_h) ]),transpose=TRUE) 
-      lev_phi <- lev_phi^2
-      lev_phi <- colSums(lev_phi)
-      BLOB$hatval_Z_ <-  list(lev_lambda=lev_lambda,lev_phi=lev_phi) # __F I X M E__ could separate comput of the two elements ? when is that useful?
+    ## As for the sparse version:
+    ## t(sXaug[,u_h cols]= (I, scaled t(ZAL)) i.e. is scaled such that the left block is an identity matrix, so we can work 
+    ## on two separate blocks if the Cholesky is not permuted. Then 
+    #lev_lambda <- BLOB$inv_factor_wd2hdv2w <- backsolve(BLOB$R_R_v,diag(ncol(BLOB$R_R_v)),transpose=TRUE)
+    # test-spaMM # measurable time gain by .Rcpp_backsolve() possibly bc it's the full inverse which is computed. 
+    if (FALSE) { # that is correct when .lmwithQR was used but not .lmwithQRP. 
+      # Further, I would need an u_h_cols_on_left instead of BLOB$perm for maximum use of this.  
+      tmp_t_Qq_scaled <- BLOB$t_Q_scaled[BLOB$seq_n_u_h,]
+      tmp_t_Qq_scaled <- tmp_t_Qq_scaled^2
+      tmp <- colSums(tmp_t_Qq_scaled)
+      phipos <- n_u_h+seq_len(nrow(sXaug)-n_u_h)
+      hatval_Z_ <-  list(lev_lambda=tmp[-phipos],lev_phi=tmp[phipos])
+    } else {
+      hatval_Z_ <- list()
+      if ("lambda" %in% B) hatval_Z_$lev_lambda <- BLOB$Z_lev_lambda
+      if ("phi" %in% B) hatval_Z_$lev_phi <- BLOB$Z_lev_phi
     }
-    return(BLOB$hatval_Z_)
+    return(hatval_Z_)
   } 
   if (which=="solve_d2hdv2") { ## R'R[seq_n_u_h, seq_n_u_h] gives -d2hd_scaled_v2.
     if ( is.null(B) ) {

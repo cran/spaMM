@@ -52,10 +52,26 @@ MaternCorr.default <- function (d, rho=1, smoothness, nu=smoothness, Nugget=NULL
   return(corrvals)
 }
 
+.MaternCorr_hasSlotx <- function(d, rho=1, smoothness, nu=smoothness, Nugget=NULL) { ## rho is alpha in fields
+  # such that NA's are treated as zero distances and implicit 0's as infinite distances 
+  corrvals <- d
+  x <- d@x
+  x[is.na(x)] <- 0
+  corrvals@x <- MaternCorr.default(x, rho, smoothness, nu, Nugget)
+  attr(corrvals,"corr.model") <- "Matern"
+  return(corrvals)
+}
+
+MaternCorr.dsCMatrix <- .MaternCorr_hasSlotx
+
+MaternCorr.dgCMatrix <- .MaternCorr_hasSlotx
+
 
 ## ess <- function(nu,d) {exp(-(d/(2*sqrt(nu)))^2)} ...
 
-CauchyCorr <- function(d, rho=1, shape, longdep, Nugget=NULL) { ## rho is 1/c in Gneiting
+"CauchyCorr" <- function(d, rho=1, shape, longdep, Nugget=NULL) UseMethod("CauchyCorr") 
+
+CauchyCorr.default <- function(d, rho=1, shape, longdep, Nugget=NULL) { ## rho is 1/c in Gneiting
   ## ideally (but not necess) on a 'dist' so the diagonal is not  manipulated 
   if (any(d < 0)) 
     stop("distance argument must be nonnegative")
@@ -69,6 +85,19 @@ CauchyCorr <- function(d, rho=1, shape, longdep, Nugget=NULL) { ## rho is 1/c in
   return(corrvals)
 }
 
+.CauchyCorr_hasSlotx <- function(d, rho=1, shape, longdep, Nugget=NULL) { ## rho is alpha in fields
+  # such that NA's are treated as zero distances and implicit 0's as infinite distances 
+  corrvals <- d
+  x <- d@x
+  x[is.na(x)] <- 0
+  corrvals@x <- CauchyCorr.default(d, rho, shape, longdep, Nugget)
+  attr(corrvals,"corr.model") <- "Cauchy"
+  return(corrvals)
+}
+
+CauchyCorr.dsCMatrix <- .CauchyCorr_hasSlotx
+
+CauchyCorr.dgCMatrix <- .CauchyCorr_hasSlotx
 
 #### demo
 if (F) {
@@ -186,7 +215,7 @@ make_scaled_dist <- local({
   if (return_matrix) {
     if (inherits(scaled.dist,"dist")) {
       scaled.dist <- as.matrix(scaled.dist)
-    } else if (inherits(scaled.dist,"crossdist")) scaled.dist <- scaled.dist[] ## []: same effect as what oen would expect from non-existent as.matrix.crossdist()
+    } else if (inherits(scaled.dist,"crossdist")) scaled.dist <- scaled.dist[] ## []: same effect as what one would expect from non-existent as.matrix.crossdist()
   }
   return(scaled.dist)
   }

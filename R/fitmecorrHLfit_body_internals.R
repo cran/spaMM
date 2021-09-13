@@ -205,9 +205,14 @@
   nbUnique ## if stop() did not occur
 }
 
+.check_Earth_coords <- function(coord_within, uniqueGeo) {
+  if (grepl("lat", coord_within[1])) warning("Hmm... the first coordinate should be longitude, but seems to be latitude.")
+  if (max(abs(uniqueGeo[,1])-180>1e-14)) warning("Hmm... max(abs(longitude)) should be <= 180, but is not.")
+  if (max(abs(uniqueGeo[,2])-90>1e-14)) warning("Hmm... max(abs(latitude)) should be <= 90, but is not.")
+}
 
 .get_dist_nested_or_not <- function(spatial_term, data, distMatrix, uniqueGeo, dist.method, as_matrix=FALSE,
-                                    needed=c(), geo_envir) {
+                                    needed=c(), geo_envir, allow_DIST=TRUE) {
   if (is.na(needed["distMatrix"])) needed["distMatrix"] <- FALSE 
   if (is.na(needed["uniqueGeo"])) needed["uniqueGeo"] <- FALSE 
   if (is.na(needed["nbUnique"])) needed["nbUnique"] <- FALSE 
@@ -223,11 +228,8 @@
     ## needed in most cases for evaluation of further elements:
     if (is.null(uniqueGeo) ) { ## then construct it from the data ## this should be the routine case, except for AR1
       uniqueGeo <- .calcUniqueGeo(data=data[,coord_within,drop=FALSE])
-      if ( ! is.null(dist.method) && dist.method %in% c("Earth","EarthChord") ) {
-        if (grepl("lat", coord_within[1])) warning("Hmm... the first coordinate should be longitude, but seems to be latitude.")
-        if (max(abs(uniqueGeo[,1])-180>1e-14)) warning("Hmm... max(abs(longitude)) should be <= 180, but is not.")
-        if (max(abs(uniqueGeo[,1])-90>1e-14)) warning("Hmm... max(abs(latitude)) should be <= 90, but is not.")
-      }
+      if ( ! is.null(dist.method) && 
+           dist.method %in% c("Earth","EarthChord") ) .check_Earth_coords(coord_within, uniqueGeo) 
       # activelevels are data-ordered levels whose ranef values affect the likelihood
       # .calcUniqueGeo must produce data-ordered values.
       if (!is.null(geo_envir$activelevels)) uniqueGeo <- uniqueGeo[geo_envir$activelevels,,drop=FALSE]
@@ -235,14 +237,14 @@
       x <- t(uniqueGeo)
       pastestring <- paste("list(",paste("x","[",seq_len(nrow(x)),",]",sep="",collapse=","),")",sep="")
       raw_levels <- do.call(paste,c(eval(parse(text = pastestring)),sep=":"))
-      attr(uniqueGeo,"names_ori") <- rownames(uniqueGeo) 
-      rownames(uniqueGeo) <- raw_levels 
+      rownames(uniqueGeo) <- raw_levels # same levels in .as_factor. Nevertheless, not needed when (coords_nesting)...?
+      # BUT : this uniqueGeo overwritten if (length(coords_nesting)...). 
     } 
     geoMats$nbUnique <- nrow(uniqueGeo) ## only serves to control RHOMAX and should not be computed from the final uniqueGeo in case of nesting
     if (length(coords_nesting) && any(needed[c("distMatrix","uniqueGeo","notSameGrp")]) ) {
       ## should now (>2.3.9) work on data.frames, nesting factor not numeric.
       e_uniqueGeo <- .calcUniqueGeo(data=data[,coordinates,drop=FALSE])
-      ## The rows_bynesting <- by(e_uniqueGeo ,e_uniqueGeo[,coords_nesting],rownames) line in.expand_GeoMatrices()
+      ## The rows_bynesting <- by(e_uniqueGeo ,e_uniqueGeo[,coords_nesting],rownames) line in .[sparse_]expand_GeoMatrices()
       #  works only if the cols are not factors ! (an as.matrix() ?). Unless we have a fix for this,
       #  e_uniqueGeo classes should not be factor; and as.integer(<factor>) can produce NA's hence as.character()
       # same operation was performed to generate uniqueGeo in .calc_AR1_sparse_Q_ranges()
@@ -250,8 +252,10 @@
       if (needed["notSameGrp"]) geoMats$notSameGrp <- .expand_grouping(w_uniqueGeo=uniqueGeo, e_uniqueGeo=e_uniqueGeo, 
                                                             coords_nesting=coords_nesting, coord_within=coord_within)
       if (any(needed[c("distMatrix","uniqueGeo")])) {
-        eGM <- .expand_GeoMatrices(w_uniqueGeo=uniqueGeo, e_uniqueGeo=e_uniqueGeo, 
-                                   coords_nesting=coords_nesting, coord_within=coord_within,dist.method=dist.method)
+        # NOTE does not obey the present fn's 'as_matrix' argument (which would be inappropriate)
+        eGM <- .sparse_expand_GeoMatrices(w_uniqueGeo=uniqueGeo, e_uniqueGeo=e_uniqueGeo, 
+                                   coords_nesting=coords_nesting, coord_within=coord_within,dist.method=dist.method,
+                                   allow_DIST=allow_DIST)
         distMatrix <- eGM$distMatrix
       }
       uniqueGeo <- e_uniqueGeo
@@ -263,6 +267,7 @@
       if (as_matrix) distMatrix <- as.matrix(distMatrix) ## useful to select rows or cols in predict() 
     }
     if (needed["distMatrix"]) geoMats$distMatrix <- distMatrix ## not always computed
+    uniqueGeo <- structure(uniqueGeo, coord_within=coord_within, coords_nesting=coords_nesting)
     geoMats$uniqueGeo <- uniqueGeo ## always computed (needed for distMatrix)
   } else { ## there is a distMatrix, this is what will be used by HLCor
     if (needed["nbUnique"]) geoMats$nbUnique <- .checkDistMatrix(distMatrix,data,coordinates)
@@ -356,7 +361,9 @@
                                  dist_method_rd=control_dist_rd$dist.method) ## this is all for ranef [[it]]:
       ## => assuming, if (is.list(processed)), the same matrices accross data for the given ranef term.
       # handling infinite values used in nested geostatistical models
-      maxrange <- max(geo_envir$distMatrix[! is.infinite(geo_envir$distMatrix)])-min(geo_envir$distMatrix)
+      if ( inherits(geo_envir$distMatrix,"dsCMatrix") ) { # "dsCDIST" case
+        maxrange <- diff(range( na.omit(geo_envir$distMatrix@x) ))
+      } else maxrange <- max(geo_envir$distMatrix[! is.infinite(geo_envir$distMatrix)])-min(geo_envir$distMatrix)
       nbUnique <- geo_envir$nbUnique
     }
     return(list(maxrange=maxrange,nbUnique=nbUnique))
@@ -442,6 +449,38 @@
   }
 }
 
+.calc_corrMatrix_precisionFactor__assign_Lunique <- function(processed, rd) {
+  
+  cov_info_mat <- processed$corr_info$cov_info_mats[[rd]]
+  if (inherits(cov_info_mat,"precision")) {
+    sparse_Qmat <- drop0(cov_info_mat[["matrix"]])
+  } else stop(' ! inherits(cov_info_mat,"precision")')
+  ####
+  # Compared to more general case, we don't need to store a template! This is always ONE-TIME CODE.
+  #  I once had a problem with perm_Q=TRUE in test-predVar-Matern-corrMatrix -> predict(f2,.) so make sure to check this when changing the code
+  if (is.null(perm_Q <- .spaMM.data$options$perm_Q)) { # assuming dsC...
+    perm_Q <- (length(sparse_Qmat@x)/ncol(sparse_Qmat)^2)<0.8 # quick exclusion of precision matrices that are fully dense so that no permutation would be useful. 
+  }
+  Q_CHMfactor <- Cholesky(sparse_Qmat,LDL=FALSE,perm=perm_Q) 
+  if (perm_Q) {
+    .ZA_update(rd, Q_CHMfactor, processed, 
+               Amat=attr(processed$ZAlist,"AMatrices")[[as.character(rd)]])
+    # One-time ZA updating, but also here specifically for corrMatrix, one-time construction of sparse_Qmat
+    permuted_Q <- attr(attr(processed$ZAlist,"AMatrices")[[as.character(rd)]],"permuted_Q") 
+    # $Qmat <- sparse_Qmat will be used together with ZA independently from the CHM to construct the Gmat
+    # If we use permuted Chol, then we must permute sparse_Qmat, by 
+    if (identical(permuted_Q,TRUE)) sparse_Qmat <- tcrossprod(as(Q_CHMfactor,"sparseMatrix")) 
+    # precisionFactorList[[rd]]$template <- Q_CHMfactor # No updating ever needed
+  }
+  
+  processed$AUGI0_ZX$envir$LMatrices[[rd]] <- .Lunique_info_from_Q_CHM(
+    processed=processed, rd=rd, Q_CHMfactor=Q_CHMfactor, type="from_Q_CHMfactor") # with default corr_type and spatial_term
+  attr(processed$AUGI0_ZX$envir$LMatrices,"is_given_by")[rd] <- "from_Q_CHMfactor" 
+  
+  list(Qmat=sparse_Qmat, # should by *dsC* 
+       chol_Q=as(Q_CHMfactor, "sparseMatrix")) # Linv
+}
+
 
 ## creates precisionFactorList if it doesn't exist, and partially fills it with Diagonal()'s + corrMatrix info
 .init_AUGI0_ZX_envir_spprec_info <- function(processed) {
@@ -453,35 +492,15 @@
     cum_n_u_h <- processed$cum_n_u_h
     for (rd in seq_len(nranef)) {
       finertype <- AUGI0_ZX_envir$finertypes[rd]
-      if ( finertype %in% c("adjacency","AR1") ) {
+      if (processed$ranCoefs_blob$is_composite[rd]) { 
+        if (processed$corr_info$corr_types[[rd]]=="corrMatrix") {
+          # .process_ranCoefs needs this: 
+          processed$ranCoefs_blob$new_compos_info[rd] <- TRUE 
+        }
+      } else if ( finertype %in% c("adjacency","AR1") ) {
         ## terms of these types must be dealt with by ad hoc code for each type elsewhere
       } else if ( finertype=="corrMatrix") {
-        cov_info_mat <- processed$corr_info$cov_info_mats[[rd]]
-        if (inherits(cov_info_mat,"precision")) {
-          sparse_Qmat <- drop0(cov_info_mat[["matrix"]])
-        } else stop(' ! inherits(cov_info_mat,"precision")')
-        ####
-        # Compared to more general case, we don't need to store a template! This is always ONE-TIME CODE.
-        #  I once had a problem with perm_Q=TRUE in test-predVar-Matern-corrMatrix -> predict(f2,.) so make sure to check this when changing the code
-        if (is.null(perm_Q <- .spaMM.data$options$perm_Q)) { # assuming dsC...
-          perm_Q <- (length(sparse_Qmat@x)/ncol(sparse_Qmat)^2)<0.8 # quick exclusion of precision matrices that are fully dense so that no permutation would be useful. 
-        }
-        Q_CHMfactor <- Cholesky(sparse_Qmat,LDL=FALSE,perm=perm_Q) 
-        if (perm_Q) {
-          .ZA_update(rd, Q_CHMfactor, processed, 
-                     Amat=attr(processed$ZAlist,"AMatrices")[[as.character(rd)]])
-          # One-time ZA updating, but also here specifically for corrMatrix, one-time construction of sparse_Qmat
-          permuted_Q <- attr(attr(processed$ZAlist,"AMatrices")[[as.character(rd)]],"permuted_Q") 
-          # $Qmat <- sparse_Qmat will be used together with ZA independently from the CHM to construct the Gmat
-          # If we use permuted Chol, then we must permute sparse_Qmat, by 
-          if (identical(permuted_Q,TRUE)) sparse_Qmat <- tcrossprod(as(Q_CHMfactor,"sparseMatrix")) 
-          # precisionFactorList[[rd]]$template <- Q_CHMfactor # No updating ever needed
-        }
-        precisionFactorList[[rd]] <- list(Qmat=sparse_Qmat, # should by *dsC* 
-                                          chol_Q=as(Q_CHMfactor, "sparseMatrix")) # Linv
-        ####
-        .assign_Lunique_from_Q_CHM(processed=processed, rd=rd, Q_CHMfactor=Q_CHMfactor, corr_type="corrMatrix", 
-                                   spatial_term=attr(processed$ZAlist,"exp_spatial_terms")[[rd]], type="from_Q_CHMfactor") ## assigns to AUGI0_ZX$envir
+        precisionFactorList[[rd]] <- .calc_corrMatrix_precisionFactor__assign_Lunique(processed, rd)
       } else if ( finertype=="IMRF" ) {
         ## terms of these types must be dealt with by ad hoc code for each type elsewhere, but we can set
         updateable[rd] <- TRUE
@@ -494,8 +513,11 @@
       } else if ( finertype %in% c("Matern", "Cauchy") ) { 
         ## leave precisionFactorList[[rd]] NULL
         updateable[rd] <- TRUE
-      } else if ( finertype != "ranCoefs") stop(paste("sparse-precision methods were requested, but",
-                                                      finertype,"terms are not yet handled by sparse precision code."))
+      # } else if ( finertype == "ranCoefs") {
+      #   # precisionFactorList[[rd]] will be filled by .wrap_precisionFactorize_ranCoefs(), with elements chol_Q and precmat,
+      #   # including for case with LHS_levels
+      } else if (finertype != "ranCoefs") stop(paste("sparse-precision methods were requested, but",
+                        finertype,"terms are not yet handled by sparse precision code."))
     }
     diff_n_u_h <- diff(cum_n_u_h)
     for (rd in seq_along(diff_n_u_h)) latent_d_list[[rd]] <- rep(1,diff_n_u_h[rd])
@@ -506,31 +528,133 @@
   ## environment modified, no return value
 }
 
-## updates precisionFactorList with LMatrices info
-.update_AUGI0_ZX_envir_ranCoefs_info <- function(processed, LMatrices=NULL) {
+.get_long_chol_Q_phantom_map <- function(envir, Xi_ncol) {
+  if (is.null(envir$long_chol_Q_phantom_map)) {
+    #
+    map_X <- matrix(seq(Xi_ncol^2),nrow=Xi_ncol,ncol=Xi_ncol)
+    phantom_X <- lower.tri(map_X, diag=TRUE)
+    map_X <- map_X*phantom_X
+    #
+    phantom_Y <- as(envir$kron_Y_chol_Q,"ltCMatrix") # sparse logical matrix...
+    LHS <- .makelong(map_X, kron_Y=phantom_Y) # dropping O's but others values are integers in numeric format
+    #
+    phantom_X <- as(phantom_X,"ltCMatrix")
+    envir$long_chol_Q_phantom_map <- list(
+      phantom_X=phantom_X,
+      LHS_x= as.integer(LHS@x), # OK bc with a tolerance of .Machine$double.eps
+      RHS=.makelong(phantom_X, kron_Y=envir$kron_Y_chol_Q) # likewise, dropping 0's but other values should be more than a previous drop0(,tol>0) tolerance
+    )
+  }
+  envir$long_chol_Q_phantom_map
+}
+
+.get_long_precmat_phantom_map <- function(cov_info_mat, Xi_ncol) {
+  envir <- attr(cov_info_mat,"blob")
+  if (is.null(envir$long_precmat_phantom_map)) {
+    #
+    map_X <- forceSymmetric(matrix(seq(Xi_ncol^2),nrow=Xi_ncol,ncol=Xi_ncol))
+    phantom_Y <- as(cov_info_mat$matrix,"lsCMatrix") # sparse logical matrix...
+    LHS <- .makelong(map_X, kron_Y=phantom_Y) 
+    phantom_X <- as(map_X,"lsyMatrix") # (why does conversion to lsC does not work?) 
+    #
+    envir$long_precmat_phantom_map <- list(
+      LHS_x= as.integer(LHS@x), # OK bc with a tolerance of .Machine$double.eps
+      RHS=.makelong(phantom_X, kron_Y=cov_info_mat$matrix) 
+    )
+  }
+  envir$long_precmat_phantom_map
+}
+
+
+.precisionFactorize <- function(latentL_blob, rt, 
+                                longsize, # from LMatrices or ZAlist
+                                processed,
+                                cov_info_mat,
+                                template=processed$ranCoefs_blob$longLv_templates[[rt]]) {
+  
+  if ( ! is.null(attr(cov_info_mat,"blob")) # && 
+       # inherits(cov_info_mat$matrix, "dsCMatrix")
+       ) { ## (could it be otherwise ? symDiag ?).
+    ## Cf logic in .wrap_makelong_outer_composite:
+    Xi_ncol <- ncol(latentL_blob$compactchol_Q)
+    phantasmapic <- .get_long_chol_Q_phantom_map(envir=attr(cov_info_mat,"blob"), Xi_ncol = Xi_ncol)
+    chol_Q <- phantasmapic$RHS
+    asmat_ccQ <- as.matrix(latentL_blob$compactchol_Q) # as.matrix() before subsetting.
+    chol_Q@x <- chol_Q@x * asmat_ccQ[phantasmapic$LHS_x] 
+    # if (any(asmat_ccQ[phantasmapic$phantom_X]==0)) chol_Q <- drop0(chol_Q) 
+    
+    phantasmapic <- .get_long_precmat_phantom_map(cov_info_mat, Xi_ncol=Xi_ncol)
+    precmat <- phantasmapic$RHS
+    asmat_cpm <- as.matrix(latentL_blob$compactprecmat) # as.matrix() before subsetting.
+    precmat@x <- precmat@x * asmat_cpm[phantasmapic$LHS_x]
+    # if (any(asmat_cpm==0)) precmat <- drop0(precmat) 
+  } else {
+    chol_Q <- .makelong(latentL_blob$compactchol_Q, longsize=longsize, template=template, 
+                        kron_Y=attr(cov_info_mat,"blob")$kron_Y_chol_Q) ## from promise created by .init_assign_geoinfo()
+    precmat <- .makelong(latentL_blob$compactprecmat,longsize=longsize, template=template, 
+                         kron_Y=cov_info_mat$matrix )  
+  }
+  
+  if ( ! inherits(chol_Q,"dtCMatrix")) stop("chol_Q should be a 'dtCMatrix'.") ## and lower tri
+  #
+  list(chol_Q=chol_Q,precmat=precmat)
+}
+
+
+## updates precisionFactorList with LMatrices info for outer ranCoefs.
+.wrap_precisionFactorize_ranCoefs <- function(processed, LMatrices=NULL) { # called by <HLfit_body> functions
   if ( ! is.null(LMatrices)) {
     AUGI0_ZX_envir <- processed$AUGI0_ZX$envir
     precisionFactorList <- AUGI0_ZX_envir$precisionFactorList
     latent_d_list <- AUGI0_ZX_envir$latent_d_list
     updateable <- AUGI0_ZX_envir$updateable
     is_given_by <- attr(LMatrices,"is_given_by")
-    for (rt in which(is_given_by %in% c("ranCoefs"))) {
+    for (rt in which(is_given_by %in% c("ranCoefs")) ) {# ie _outer_ ranCoefs
       latentL_blob <- attr(LMatrices[[rt]],"latentL_blob")
-      compactchol_Q <- latentL_blob$compactchol_Q
-      chol_Q <- .makelong(compactchol_Q,longsize=ncol((LMatrices[[rt]])), 
-                          template=processed$ranCoefs_blob$longLv_templates[[rt]] ) 
-      if ( ! inherits(chol_Q,"dtCMatrix")) stop("chol_Q should be a 'dtCMatrix'.") ## FIXME check lower tri too
-      #
-      precisionFactorList[[rt]] <- list(chol_Q=chol_Q,
-                                        precmat=.makelong(latentL_blob$compactprecmat,longsize=ncol((LMatrices[[rt]])), 
-                                                          template=processed$ranCoefs_blob$longLv_templates[[rt]] ))
+      nc <- ncol(latentL_blob$compactcovmat)
+      necess4updateable <- (length(which(latentL_blob$compactchol_Q@x!=0)) == nc*(nc+1L)/2L)
+      
       d_rt <- latentL_blob[["d"]]
-      nc <- length(d_rt) 
       latent_d_list[[rt]] <- d_rt[gl(nc, length(latent_d_list[[rt]])/nc)]
-      updateable[rt] <- (length(which(compactchol_Q@x!=0)) == nc*(nc+1L)/2L)
+      
+      if (processed$ranCoefs_blob$is_composite[rt]) { 
+        cov_info_mat <- processed$corr_info$cov_info_mats[[rt]]
+        if (use_corrMatrix_fast_code <- TRUE) { # ____TAG___ OK bc unpermuted Chol for corrMatrix
+          # only makelongs and ranCoefs's compact-matrix operations 
+          
+          precisionFactorList[[rt]] <- 
+            .precisionFactorize(latentL_blob=latentL_blob,
+                                rt=rt, processed=processed,
+                                cov_info_mat=cov_info_mat)
+          
+          updateable[rt] <- necess4updateable
+        } else { # allowing permuted cholesky:
+          # use possible structures of Lmatrix for ranCoefs spprec (cf .Lunique_info_from_Q_CHM()):
+          long_Q_CHMfactor <- LMatrices[[rt]]
+          if ( ! inherits(long_Q_CHMfactor, "dCHMsimpl")) long_Q_CHMfactor <- attr(long_Q_CHMfactor,"Q_CHMfactor")  
+          # permuted_Q <- attr(attr(processed$ZAlist,"AMatrices")[[as.character(rt)]],"permuted_Q") # clumsy but need to get info from one-time code
+          
+          precisionFactorList[[rt]] <- list(
+            chol_Q= as(long_Q_CHMfactor,"sparseMatrix"), 
+            ## compactprecmat= .ZWZtwrapper(latentL_blob$compactchol_Q,1/latentL_blob[["d"]])  (compactchol_Q unpermuted)
+            ## precmat =.ZWZtwrapper(chol_Q,1/latent_d_list[[rt]])    (+ permutation?)
+            precmat=.makelong(latentL_blob$compactprecmat,
+                              template= processed$ranCoefs_blob$longLv_templates[[rt]],
+                              kron_Y=cov_info_mat$matrix # should be dsC 
+            )
+          )
+          updateable[rt] <- necess4updateable ## ___TAG___   corrMatrix specific ! additional conditions needed for parametric correlation models
+        }
+      } else {
+        precisionFactorList[[rt]] <- 
+          .precisionFactorize(latentL_blob=latentL_blob,
+                              rt=rt, longsize=ncol(LMatrices[[rt]]), processed=processed,
+                              cov_info_mat=NULL)
+        updateable[rt] <- necess4updateable
+      } 
     }
     for (rt in which(is_given_by=="inner_ranCoefs")) {
-      # : need to initialize because spprec IRLS requires .update_AUGI0_ZX_envir_ranCoefs_info() to have filled all matrices
+      # : need to initialize because spprec IRLS requires the present function to have filled all matrices
       nc <- ncol(processed$ranCoefs_blob$longLv_templates[[rt]] )
       precisionFactorList[[rt]] <- list(precmat=.symDiagonal(n=nc), 
                                         chol_Q=new("dtCMatrix",i= 0:(nc-1L), p=0:(nc), Dim=c(nc,nc),x=rep(1,nc)) )
@@ -539,30 +663,7 @@
     AUGI0_ZX_envir$precisionFactorList <- precisionFactorList
     AUGI0_ZX_envir$latent_d_list <- latent_d_list
     AUGI0_ZX_envir$updateable <- updateable
-  }
-  ## environment modified, no return value
-}
-
-
-.update_precision_info <- function(processed, LMatrices, which.) {
-  envir <- processed$AUGI0_ZX$envir
-  precisionFactorList <- envir$precisionFactorList
-  is_given_by <- attr(LMatrices,"is_given_by")
-  for (rt in which(is_given_by %in% which.)) {
-    if (is_given_by[rt] =="inner_ranCoefs") { 
-      latentL_blob <- attr(LMatrices[[rt]],"latentL_blob")
-      compactchol_Q <- latentL_blob$compactchol_Q
-      chol_Q <- .makelong(compactchol_Q,longsize=ncol((LMatrices[[rt]])), 
-                          template=processed$ranCoefs_blob$longLv_templates[[rt]] ) 
-      if ( ! inherits(chol_Q,"dtCMatrix")) stop("chol_Q should be a 'dtCMatrix'.") ## FIXME check lower tri too
-      #
-      precisionFactorList[[rt]] <- list(chol_Q=chol_Q,
-                                        precmat=.makelong(latentL_blob$compactprecmat,longsize=ncol((LMatrices[[rt]])), 
-                                                          template=processed$ranCoefs_blob$longLv_templates[[rt]] ))
-    } else stop("'which.' value not handled ")
-  }
-  # envir$updateable[rt] should be TRUE and remain so for those terms
-  envir$precisionFactorList <- precisionFactorList
+  } 
   ## environment modified, no return value
 }
 

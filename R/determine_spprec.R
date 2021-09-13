@@ -46,7 +46,7 @@
                       "fitme() may be more efficient for this combination of corrMatrix and random-coefficient terms."))
       } else sparse_precision <- TRUE ## force sparse
     } else {
-      sparse_precision <- spaMM.getOption("sparse_precision") ## global user control
+      sparse_precision <- .spaMM.data$options$sparse_precision ## global user control
     }
     ## best decision rule not obvious. For adjacency, trade off between repeated sparse Cholesky and a eigen() . 
     if (is.null(sparse_precision)) {

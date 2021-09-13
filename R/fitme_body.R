@@ -160,6 +160,7 @@ fitme_body <- function(processed,
   # not local to anyHLCor_obj_args$processed: change processed globally
   .assignWrapper(HLCor.args$processed,"return_only <- NULL") 
   .assignWrapper(HLCor.args$processed,"verbose['warn'] <- TRUE") ## important!
+  # Run in all cases to produce the full object (rather than only the optimization result):
   hlcor <- do.call(HLcallfn,HLCor.args) ## recomputation post optimization, or only computation if length(initvec)=0
   if (is.call(hlcor)) {
     ## then do.call(HLcallfn,HLCor.args) has retuned the call, not the fit. 

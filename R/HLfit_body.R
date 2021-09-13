@@ -44,7 +44,7 @@ HLfit_body <- function(processed,
   if (models[["eta"]]=="etaHGLM") {
     sparse_precision <- processed$is_spprec
     ranCoefs.Fix <- .getPar(ranFix,"ranCoefs") ## may be NULL
-    ranCoefs_blob <- .process_ranCoefs(processed, ranCoefs.Fix, use_tri_Nspprec=TRUE) ## UPDATES preexisting object # no augZXy pb here
+    ranCoefs_blob <- .process_ranCoefs(processed, ranCoefs.Fix, use_tri_CORREL=TRUE) ## UPDATES preexisting object # no augZXy pb here
     LMatrices <- processed$AUGI0_ZX$envir$LMatrices
     # HLCor_body has prefilled $LMatrices for :
     #    for Matern...
@@ -60,7 +60,7 @@ HLfit_body <- function(processed,
       which_inner_ranCoefs <- which(ranCoefs_blob$isRandomSlope & ( ! ranCoefs_blob$is_set))
       attr(LMatrices,"is_given_by")[which_inner_ranCoefs] <- "inner_ranCoefs"
       .init_AUGI0_ZX_envir_spprec_info(processed)
-      .update_AUGI0_ZX_envir_ranCoefs_info(processed,LMatrices)
+      .wrap_precisionFactorize_ranCoefs(processed,LMatrices)
     }
     if ( any((attr(LMatrices,"is_given_by") !="")) ) { # if there are non-trivial L matrices
       try_bind <- (.spaMM.data$options$bind_ZAL || HL[1L]=="SEM")
@@ -512,8 +512,13 @@ HLfit_body <- function(processed,
         if (need_ranefPars_estim) { ## next_lambda_est/ next ranCoefs/ next rho adjacency available:
           if (any(ranCoefs_blob$isRandomSlope)) {
             LMatrices <- calcRanefPars_blob$next_LMatrices ## keep L factor of corr mats for all models 
-            if (processed$is_spprec && any(which_inner_ranCoefs)) {
-              .update_precision_info(processed, LMatrices, which.="inner_ranCoefs")
+            if (processed$is_spprec) {
+              for (rt in which_inner_ranCoefs) {
+                processed$AUGI0_ZX$envir$precisionFactorList[[rt]] <- 
+                  .precisionFactorize(latentL_blob=attr(LMatrices[[rt]],"latentL_blob"),
+                                      rt=rt, longsize=ncol(LMatrices[[rt]]), processed=processed,
+                                      cov_info_mat=processed$corr_info$cov_info_mats[[rt]])
+              }
             }
             ZAL <- .compute_ZAL(XMatrix=LMatrices, ZAlist=processed$ZAlist,as_matrix=( ! inherits(ZAL,"Matrix"))) 
             if ( ! LMMbool ) {
@@ -859,8 +864,6 @@ HLfit_body <- function(processed,
   ###################
   res$rand.families <- rand.families 
   ##
-  res$ranef <- structure(u_h,cum_n_u_h=cum_n_u_h) ## FR->FR added cum_n_u_h attribute 11/2014: slightly duplicates info in lambda object
-  res$v_h <- v_h
   res$QRmethod <- processed$QRmethod
   #
   ## $w.ranef and $w.resid not doc'ed, as there is no mention of the augmented mode lin the doc.
@@ -871,7 +874,13 @@ HLfit_body <- function(processed,
   if (is.null(attr(res$w.resid,"unique"))) attr(res$w.resid,"unique") <- length(unique(res$w.resid))==1L # is.null() => for mv    
   #
   if (models[["eta"]]=="etaHGLM") {
-    sub_corr_info <- mget(c("corr_families","corr_types"), processed$corr_info) ## (AMatrices are kept as attribute to ZAlist)
+    #
+    sub_corr_info <- mget(c("corr_families","corr_types"), ## (AMatrices are kept as attribute to ZAlist)
+                          processed$corr_info) 
+    kron_Y_LMatrices <- vector("list", nrand)
+    for (it in seq_len(nrand)) kron_Y_LMatrices[it] <- list(attr(processed$corr_info$cov_info_mats[[it]],"blob")$Lunique)
+    sub_corr_info$kron_Y_LMatrices <- kron_Y_LMatrices
+    # 
     res$ranef_info <- list(sub_corr_info=sub_corr_info, hyper_info=processed$hyper_info,
                            vec_normIMRF=processed$AUGI0_ZX$vec_normIMRF)
     res$w.ranef <- wranefblob$w.ranef ## useful for .get_info_crits() and get_LSmatrix()
@@ -879,8 +888,11 @@ HLfit_body <- function(processed,
     res$lambda.object <- .make_lambda_object(nrand, lambda_models=models[["lambda"]], cum_n_u_h, lambda_est, 
                                              process_resglm_blob, rand.families=processed$rand.families,
                                              ZAlist, LMatrices, lambdaType=attr(init.lambda,"type"))
-    #### building a comprehensive list of descriptors of the structure of random effects:
-    res$strucList <- .post_process_LMatrices(LMatrices, ZAlist, ranCoefs_blob=ranCoefs_blob, cum_n_u_h=cum_n_u_h) 
+    
+    strucBlob <- .post_process_v_h_LMatrices(next_LMatrices=LMatrices, v_h=v_h, u_h=u_h,
+                                             processed=processed, ranCoefs_blob=ranCoefs_blob) 
+    res$strucList <- strucBlob$strucList
+    res$v_h <- strucBlob$v_h
     # $lambda is a vector that NO LONGER contains lambdas for ranCoefs (too confusing, the more so as they are often 1)
     res[["lambda"]] <- structure(.get_lambdas_notrC_from_hlfit(res, type="adhoc"), cum_n_u_h=cum_n_u_h) ## redundant but very convenient except for programming
   } ## else all these res$ elements are NULL

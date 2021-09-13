@@ -250,15 +250,15 @@
     dvdlogphiMat_needed <- dvdlogphiMat_needed || identical(envir$forcePhiComponent,TRUE) ## hack for code testing !
     if (dvdloglamMat_needed || dvdlogphiMat_needed) {
       ZAL <- get_ZALMatrix(object)     
-      d2hdv2_info <- .calc_d2hdv2_info(object, ZAL) # F I X M E a gentle message for long computations ? 
+      d2hdv2_info <- .calc_d2hdv2_info(object, ZAL) # may be a qr object, or not (SPPREC). F I X M E a gentle message for long computations ? 
     } 
     if (dvdloglamMat_needed) { 
-      cum_n_u_h <- attr(object$ranef,"cum_n_u_h")
+      cum_n_u_h <- attr(.get_u_h(object),"cum_n_u_h")
       psi_M <- rep(attr(object$rand.families,"unique.psi_M"),diff(cum_n_u_h))
-      dlogfthdth <- (psi_M - object$ranef)/object$lambda.object$lambda_est ## the d log density of th(u)
+      dlogfthdth <- (psi_M - .get_u_h(object))/object$lambda.object$lambda_est ## the d log density of th(u)
       neg.d2f_dv_dloglam <- .calc_neg_d2f_dv_dloglam(dlogfthdth, cum_n_u_h, 
                                                      lcrandfamfam=attr(object$rand.families,"lcrandfamfam"), 
-                                                     rand.families=object$rand.families, u_h=object$ranef)
+                                                     rand.families=object$rand.families, u_h=.get_u_h(object))
       dvdloglamMat <- .calc_dvdloglamMat_new(neg.d2f_dv_dloglam,
                                              d2hdv2_info=d2hdv2_info) ## d2hdv2_info is either a qr factor or the inverse as a matrix or an environment
     }
@@ -430,7 +430,7 @@
       nrd <- length(res$w.ranef)
       pforpv <- ncol(res$X.pv)
       if (inherits(ZAL,"Matrix")) {
-        AUGI0_ZX <- list(I=.trDiagonal(n=nrd),
+        AUGI0_ZX <- list(I=.trDiagonal(n=nrd), # Ilarge=.trDiagonal(n=nrd+pforpv),
                          ZeroBlock=Matrix(0,nrow=nrd,ncol=pforpv),X.pv=res$X.pv)
       } else {
         AUGI0_ZX <- list(I=diag(nrow=nrd),ZeroBlock=matrix(0,nrow=nrd,ncol=pforpv),X.pv=res$X.pv)

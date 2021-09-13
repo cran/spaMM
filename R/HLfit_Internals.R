@@ -47,8 +47,7 @@ print.arglist <- function(x,...) {
       X <- Diagonal(x=Dvec)
     } else X@x <- X@x * Dvec ## raw diag matrix
   } else if (inherits(X,c("dgCMatrix", "dtCMatrix"))) {
-    col_indices <- rep(1L:(ncol(X)),diff(X@p))
-    X@x <- X@x * Dvec[col_indices]    
+    X@x <- X@x * rep(Dvec,diff(X@p))    
     ## a triangular matrix (dtC) with unitary diagonal may be stored as @diag=="U" and only non-diag elements specified...
     if ( methods::.hasSlot(X, "diag") && X@diag=="U") Matrix::diag(X) <- Dvec
   } else if (inherits(X,"dsCMatrix")) { 
@@ -58,18 +57,16 @@ print.arglist <- function(x,...) {
         # We go through dgC (correct result in all cases) and may try converting back to dsC afterwards.
         X <- as(X,"dgCMatrix")
       }
-      col_indices <- rep(1L:(ncol(X)),diff(X@p))
-      X@x <- X@x * Dvec[col_indices]
+      X@x <- X@x * rep(Dvec,diff(X@p))    
       if (generally_dgC) {
         if (keep_dsC) {
           warning("Suspect call: return value presumably not symmetric, but dsCMatrix requested.")
           X <- as(X,"symmetricMatrix")
-        } # else warning(".Matrix_times_Dvec(<dsCMatrix>,...) returns a dgCMatrix.") # we explictly used non-default keep_dsC, so warning not useful
+        } # else warning(".Matrix_times_Dvec(<dsCMatrix>,...) returns a dgCMatrix.") # we explicitly used non-default keep_dsC, so warning not useful
       } # else we already have a correct dsC
     } else { # we assume that keeping dsC is OK: risky, non-default, but for precisionBlocks it's really hat we want (so no warning).
       # warning("call to .Matrix_times_Dvec(<dsCMatrix>, ..., check_dsC=FALSE) is possibly inefficient code.")
-      col_indices <- rep(1L:(ncol(X)),diff(X@p))
-      X@x <- X@x * Dvec[col_indices]
+      X@x <- X@x * rep(Dvec,diff(X@p))    
     }
   } else {
     warning("inefficient code in .make_Xscal or .Matrix_times_Dvec") ## eg dgeMatrix: dense matrix in the S4 Matrix representation
@@ -254,10 +251,76 @@ if (FALSE) {
   resu
 }
 
-.process_ranCoefs <- function(processed, ranCoefs, trRanCoefs, invLs=NULL, use_tri_Nspprec) {
-  if (! is.null(invLs)) ranCoefs <- trRanCoefs
+.get_rC_longLv_phantom_map <- function(envir, Xi_ncol) {
+  if (is.null(envir$rC_longLv_phantom_map)) {
+    #
+    map_X <- matrix(seq(Xi_ncol^2),nrow=Xi_ncol,ncol=Xi_ncol)
+    phantom_X <- upper.tri(map_X, diag=TRUE)
+    map_X <- as(map_X*phantom_X,"dtCMatrix")
+    #
+    phantom_Y <- as(envir$Lunique,"ltCMatrix") # sparse logical matrix...
+    LHS <- .makelong(map_X, kron_Y=phantom_Y) 
+    #
+    phantom_X <- as(phantom_X,"ltCMatrix")
+    envir$rC_longLv_phantom_map <- list(
+      phantom_X=phantom_X,
+      LHS_x= as.integer(LHS@x), # OK bc with a tolerance of .Machine$double.eps
+      RHS=.makelong(phantom_X, kron_Y=envir$Lunique) 
+    )
+  }
+  envir$rC_longLv_phantom_map
+}
+
+
+.wrap_makelong_outer_composite <- function(processed, rt, latentL_blob) { # called by process_ranCoefs()
+  # template <- processed$ranCoefs_blob$longLv_templates[[rt]]
+  cov_info_mat <- processed$corr_info$cov_info_mats[[rt]]
+  if (use_corrMatrix_fast_code <- TRUE) { # ____TAG___ OK bc unpermuted Chol for corrMatrix
+    # only makelongs and ranCoefs's compact-matrix operations 
+    if (FALSE) { # safe code using slow, repetitive Matrix::kronecker() cals 
+      rC_blob_longLvMatrix <- .makelong(solve(t(latentL_blob$compactchol_Q)),#longsize=ncol(processed$ZAlist[[rt]]),
+                                        # template=template,
+                                        kron_Y=attr(cov_info_mat,"blob")$Lunique) # $Lunique is upper tri
+    } else { # code with precomputation of two "phantoms" of the final kronecker product kronecker(X,Y),
+      # the 'RHS' with indices of the elements of X that will factor with elements of Y 
+      # the 'LHS' with copies of the actual Y (say copies of Lunique)
+      # then kronecker product = RHS@x * X[LHS@x] is the only computation for each new X
+      phantasmapic <- .get_rC_longLv_phantom_map(envir=attr(cov_info_mat,"blob"), Xi_ncol=ncol(latentL_blob$compactchol_Q))
+      kron_X <- solve(t(latentL_blob$compactchol_Q)) 
+      rC_blob_longLvMatrix <- phantasmapic$RHS
+      kron_X <- as.matrix(kron_X) # as.matrix() before subsetting.
+      rC_blob_longLvMatrix@x <- rC_blob_longLvMatrix@x * kron_X[phantasmapic$LHS_x] 
+      # if (any(kron_X[phantasmapic$phantom_X]==0)) rC_blob_longLvMatrix <- drop0(rC_blob_longLvMatrix) 
+      ## : the $phantom_X serves here to test whether the kron_X factor is even sparser than phantom_X allows 
+      ## but costs may outweight benefits
+    }
+  } else { # allowing permuted cholesky:
+    cov_long <- .makelong(tcrossprod(latentL_blob$compactchol_Q),#longsize=ncol(processed$ZAlist[[rt]]), 
+                          # template=template,
+                          kron_Y=cov_info_mat$matrix # should be dsC 
+    )
+    # calling/updating Cholesky for any new compact chol Q:
+    long_Q_CHMfactor <- 
+      .get_Q_CHMfactor__assign_template__perm_ZA(processed$AUGI0_ZX$envir, rt, processed, cov_long) 
+    #
+    rC_blob_longLvMatrix <- .Lunique_info_from_Q_CHM(
+      processed=processed, rd=rt, Q_CHMfactor=long_Q_CHMfactor, 
+      # with default corr_type 
+      # with default spatial_term=attr(processed$ZAlist,"exp_spatial_terms")[[rt]], 
+      type="from_Q_CHMfactor") # result is either the (long)Q_CHMfactor or has the (long) Q_CHMfactor as attribute
+  }
+  rC_blob_longLvMatrix
+}
+
+.process_ranCoefs <- function(processed, ranCoefs, trRanCoefs, use_tri_CORREL) {
   ranCoefs_blob <- processed$ranCoefs_blob
   ZAlist <- processed$ZAlist 
+  exp_ranef_types <- attr(ZAlist,"exp_ranef_types")
+  # For composite ranef:
+  # exp_ranef_types[] is the is the <corrMatrix|...> type (vs (.|.) for a pure ranCoefs)
+  # processed$corr_info$corr_types[] is the <corrMatrix|...> type ( vs NA for a pure ranCoef)
+  # finertypes[] is 'ranCoefs'
+  # corr.model[] is "random-coef"
   nrand <- length(ZAlist)
   cum_n_u_h <- processed$cum_n_u_h
   if (nrand && is.null(ranCoefs_blob)) { ## in call from .preprocess(), allows simplified user input as numeric vector
@@ -270,12 +333,17 @@ if (FALSE) {
       for(rd in seq_len(length(Xi_cols))) {
         if ((Xi_ncol <- Xi_cols[rd])>1L) {
           templa <- matrix(seq(Xi_ncol^2),nrow=Xi_ncol,ncol=Xi_ncol)
-          longLv_templates[[rd]] <- .makelong(templa, ncol(ZAlist[[rd]])) ## templa is (compact) dense array of indices, here serving to build the sparse long template 
-        }
+          longLv_templates[[rd]] <- .makelong(templa, ncol(ZAlist[[rd]]), ## templa is (compact) dense array of indices, here serving to build the sparse long template 
+                                              kron_Y=NULL)         
+        } # in corrMatrix(mv(1,2)), kron_Y mauy be NULL in the two .preprocess() calls, then non-NULL in the .merge... call  
       }
     }
-    ranCoefs_blob <- list(isRandomSlope=isRandomSlope, is_set=(isRandomSlope & FALSE),
+    ranCoefs_blob <- list(isRandomSlope=isRandomSlope, 
+                          is_composite=(isRandomSlope & exp_ranef_types != "(.|.)"), 
+                          is_set=(isRandomSlope & FALSE), # vector
+                          new_compos_info=(isRandomSlope & FALSE), # vector 
                           longLv_templates=longLv_templates, one_time_check_not_done=TRUE)
+    
     if (hasRandomSlope && ! is.null(ranCoefs)) { ## ranCoefs in preprocess: fixed values
       if (is.numeric(ranCoefs)) {
         if (sum(isRandomSlope)==1L) {
@@ -291,8 +359,9 @@ if (FALSE) {
       newly_set <- ! (not_constr_or_set | .sapply_anyNA(ranCoefs))  
       # newly_set contains some TRUE (unless the user provided an uninformative ranCoefs) =>  no return yet ! 
       ranCoefs_blob$is_set <- newly_set
-    } else return(ranCoefs_blob)
-  } else if (is.null(ranCoefs) || ! any(isRandomSlope <- ranCoefs_blob$isRandomSlope)) {
+    } else return(ranCoefs_blob) # still preprocess case
+  } else if (is.null(ranCoefs) || # after preprocess: occurs if nrand=0
+             ! any(isRandomSlope <- ranCoefs_blob$isRandomSlope)) {
     return(ranCoefs_blob)
   } else { ## both ranCoefs_blob and ranCoefs non-NULL, && any(isRandomSlope)
     ## assume 'incomplete' list
@@ -319,50 +388,69 @@ if (FALSE) {
     ranCoefs_blob$one_time_check_not_done <- FALSE
     #####
     newly_set <- newly_set & ( ! ranCoefs_blob$is_set)
-    if ( any(newly_set)) {
+    if ( any(newly_set | ranCoefs_blob$new_compos_info)) {
       Xi_cols <- attr(ZAlist, "Xi_cols")
       ##  & continue final block of code untilfinal return(), skipping immediate return 
     } else return(ranCoefs_blob)
   }
-  ## newly_set contains some TRUE
+  ## newly_set or ranCoefs_blob$new_compos_info contains some TRUE
   spprecBool <- processed$is_spprec
   nrand <- length(ZAlist)
   if (is.null(LMatrices <- ranCoefs_blob$LMatrices)) LMatrices <- vector("list", nrand)
   if (is.null(lambda_est <- ranCoefs_blob$lambda_est)) lambda_est <- numeric(cum_n_u_h[nrand+1L])
   min_lam <- .spaMM.data$options$tol_ranCoefs_inner["tol"]
-  for (rt in which(isRandomSlope & newly_set)) {
+  ## fitme/fitmv
+  # For an composite ranef:
+  # if ranCoefs is fixed: the call from .[merge_]processed has newly_set=TRUE (the ranCoefs ARE newly available) 
+  #                       and new_compos_info=FALSE (never TRUE at this point). The latentL_blob must then be created 
+  #                       hence the condition below is (newly_set | ...) ( using '&' leads to a NaN loglik)
+  #                       The first call from HLfit_body builds the full info (newly_set=FALSE but 
+  #                         new_compos_info=TRUE).
+  # if ranCoefs is variable: the call from .[merge_]processed has both tests FALSE
+  #                       the call from  HLfit_body has both tests TRUE
+  # => In neither case new_compos_info is true before newly_set
+  ## Now if we try refit = TRUE... 
+  for (rt in which(isRandomSlope & (newly_set | 
+                                    ( ranCoefs_blob$is_set & ranCoefs_blob$new_compos_info)))) {
     Xi_ncol <- Xi_cols[rt]
-    if (is.null(invLs)) { ## General case 
-      compactcovmat <- .C_calc_cov_from_ranCoef(ranCoef=ranCoefs[[rt]], Xi_ncol=Xi_ncol) ## hfff made a test in test-poly relative as Eigen remains light on numerical precision
-      latentL_blob <- .calc_latentL(compactcovmat, use_tri_Nspprec=use_tri_Nspprec, spprecBool=spprecBool, try_chol= ! spprecBool)
-      #  with(latentL_blob,.ZWZt(design_u,d)) = compactcovmat hence design_u is more of a tcrossprod factor
-      ## we have a repres in terms of ZAL and of a diag matrix of variances; only the latter affects hlik computation
-      longLv <- .makelong(latentL_blob$design_u,longsize=ncol(ZAlist[[rt]]),
-                          template=ranCoefs_blob$longLv_templates[[rt]]) ## the variances are taken out in $d
-      attr(longLv,"trRancoef") <- .ranCoefsFn(ranCoefs[[rt]], rC_transf=.spaMM.data$options$rC_transf_inner) # used for init_trRancoef in .MakeCovEst()
-      attr(longLv,"Ltype") <- "cov"
-    } else { # only in devel code... (augZXy variants)
-      char_rt <- as.character(rt)
-      latentL_blob <- list(crossfac_Q=invLs[[char_rt]], Xi_ncol=Xi_ncol,
-                           d=rep(1,Xi_ncol) ## used a few lines below
-      )
-      longLv <- .makelong(latentL_blob$crossfac_Q, longsize=ncol(ZAlist[[rt]]), 
-                          template=ranCoefs_blob$longLv_templates[[rt]])  
-      attr(longLv,"trRancoef") <- trRanCoefs[[char_rt]]
-      attr(longLv,"Ltype") <- "prec"
-    }
-    attr(longLv,"latentL_blob") <- latentL_blob ## kept for updating in next iteration, strucList, predVar, and output
+    
+    compactcovmat <- .C_calc_cov_from_ranCoef(ranCoef=ranCoefs[[rt]], Xi_ncol=Xi_ncol) ## hfff made a test in test-poly relative as Eigen remains light on numerical precision
+    latentL_blob <- .calc_latentL(compactcovmat, use_tri_CORREL=use_tri_CORREL, spprecBool=spprecBool)
+    #  with(latentL_blob,.ZWZt(design_u,d)) = compactcovmat hence design_u is more of a tcrossprod factor
+    ## we have a repres in terms of ZAL and of a diag matrix of variances; the latter affects only the hlik computation
+    #
+    if (ranCoefs_blob$new_compos_info[rt]) {
+      if (spprecBool) { 
+        rC_blob_longLvMatrix <- .wrap_makelong_outer_composite(processed, rt=rt, latentL_blob=latentL_blob) 
+      } else {
+        rC_blob_longLvMatrix <- .makelong(latentL_blob$design_u,longsize=ncol(ZAlist[[rt]]),# the variances are taken out in $d
+                                          template=ranCoefs_blob$longLv_templates[[rt]],
+                                          kron_Y=attr(processed$corr_info$cov_info_mats[[rt]],"blob")$Lunique) # CORREL algos
+      }
+      ranCoefs_blob$new_compos_info[rt] <- FALSE # might be reset to TRUE by some external code
+    } else if (newly_set[rt]) {
+      rC_blob_longLvMatrix <- .makelong(latentL_blob$design_u,longsize=ncol(ZAlist[[rt]]),# the variances are taken out in $d
+                                        template=ranCoefs_blob$longLv_templates[[rt]],
+                                        kron_Y=NULL)
+    } 
+    attr(rC_blob_longLvMatrix,"trRancoef") <- .ranCoefsFn(ranCoefs[[rt]], rC_transf=.spaMM.data$options$rC_transf_inner) # used for init_trRancoef in .MakeCovEst()
+    attr(rC_blob_longLvMatrix,"Ltype") <- "cov"
+    
+    attr(rC_blob_longLvMatrix,"latentL_blob") <- latentL_blob ## kept for updating in next iteration, strucList, predVar, and output
     ranef_info <- attr(ZAlist,"exp_ranef_strings")[rt]
-    attr(ranef_info, "type") <- attr(ZAlist,"exp_ranef_types")[rt]## type is "(.|.)" if LMatrix is for random slope ## ajout 2015/06
-    attr(longLv,"ranefs") <-  ranef_info
-    attr(longLv, "corr.model") <- "random-coef"
-    LMatrices[[rt]] <- longLv
+    attr(ranef_info, "type") <- exp_ranef_types[rt]## type is "(.|.)" if LMatrix is for pure random slope ## ajout 2015/06
+    attr(rC_blob_longLvMatrix,"ranefs") <-  ranef_info
+    attr(rC_blob_longLvMatrix, "corr.model") <- "random-coef"
+    LMatrices[[rt]] <- rC_blob_longLvMatrix
     n_levels <- ncol(ZAlist[[rt]])/Xi_ncol 
     u.range <- (cum_n_u_h[rt]+1L):(cum_n_u_h[rt+1L])
     lambda_est[u.range] <- .make_long_lambda(latentL_blob$d, n_levels, Xi_ncol=Xi_ncol)
     lambda_est[lambda_est<min_lam] <- min_lam ## arbitrarily small eigenvalue is possible for corr=+/-1 even for 'large' parvec
   }
-  ranCoefs_blob$is_set <- newly_set
+  # with ranCoefs_blob$new_compos_info we can reach with is_set TRUE and newly_set FALSE
+  # so previous code ranCoefs_blob$is_set <- newly_set is clearly wrong
+  # but it was also suspect for mixed types of ranCoefs?
+  ranCoefs_blob$is_set <- (ranCoefs_blob$is_set | newly_set) 
   ranCoefs_blob$LMatrices <- LMatrices
   ranCoefs_blob$lambda_est <- lambda_est
   return(ranCoefs_blob)
@@ -1740,19 +1828,25 @@ spaMM_Gamma <- local({
           type <-  attr(lmatrix,"type")
           invCoo <- NULL
           if ( ! is.null(latentL_blob <- attr(lmatrix,"latentL_blob"))) { ## from .process_ranCoefs
+            if ( ! is.null(kron_Y <- res$ranef_info$sub_corr_info$kron_Y_LMatrices[[Lit]])) {
+              # for CORREL kron_Y_LMatrices[[]] is the result of mat_sqrt(); 
+              # for SPPREC it is the result of solve(blob$Q_CHMfactor,system="Lt") and the next solve() is not maximally efficient
+              ## but in both case this is a *t*crossfac so 
+              kron_Y <- crossprod(.inv_Lmatrix(kron_Y, regul.threshold=regul.threshold) ) # errors here should be easily detectable by 'newdata' tests
+            }
             if ( is.null(invC <- latentL_blob$gmp_compactprecmat)) {
               if (is.null(invC <- latentL_blob$compactprecmat)) {
                 invC <- solve(latentL_blob$compactcovmat) 
               } else invC <- as.matrix(invC)
-            } # invC should be bigq or numeric matrix but not Matrix because:
-            invCoo <- .makelong(invC,longsize=ncol(lmatrix)) # (no template arg) => .makelong_bigq() or [.C_makelong() => invC must be numeric matrix]
+            } # If kron_Y is NULL invC should be bigq or numeric matrix but not Matrix because:
+            invCoo <- .makelong(invC,longsize=ncol(lmatrix),kron_Y=kron_Y) # (no template arg && NULL kron_Y) => .makelong_bigq() or [.C_makelong() => invC must be numeric matrix]
           } else if (inherits(lmatrix,"dCHMsimpl")) { # before any test on type...
             invCoo <- tcrossprod(as(lmatrix,"sparseMatrix")) # assuming 'lmatrix' is an unpermuted CHM factor of the precision factor (as for attr(lmatrix,"Q_CHMfactor"))
           } else if (type == "from_AR1_specific_code")  {
             invCoo <- crossprod(solve(lmatrix)) # cost of a sparse triangular solve.
           } else if (type == "from_Q_CHMfactor")  {
             invCoo <- tcrossprod(as(attr(lmatrix,"Q_CHMfactor"),"sparseMatrix")) ## correct but requires the attribute => numerical issues in computing Q_CHMfactor
-          } else if (type == "cholL_LLt")  {
+          } else if (type %in% c("cholL_LLt","t(Matrix::chol)"))  { # Rmatrix upper tri in both case => suitable for chol2inv
             Rmatrix <- t(lmatrix)
             if (attr(lmatrix,"need_gmp")) {
               # control$fix_predVar controls what do do when there is a near singularity identified by "need_gmp".
@@ -1784,7 +1878,7 @@ spaMM_Gamma <- local({
               if (is.null(fix_predVar)) { # when user can handle this
                 warning("A nearly-singular correlation matrix was fitted; see help('fix_predVar') for handling this", immediate. = TRUE)
                 fix_predVar_NULL <- TRUE
-              } else if (is.na(fix_predVar)) { # When user can do nothing and gmp cannot be assumed: warning+fallback computation below 
+              } else if (is.na(fix_predVar)) { # When user can do nothing and gmp cannot be assumed: warning+fallback 'if (is.null(invCoo))' computation below 
                 message("A nearly-singular correlation matrix was fitted; ginv() will be used.")
               } else if (fix_predVar) { 
                 invCoo <- gmp::tcrossprod(gmp::solve.bigq(gmp::as.bigq(Rmatrix))) 
@@ -1795,12 +1889,13 @@ spaMM_Gamma <- local({
             condnum <- kappa(lmatrix,norm="1")
             if (condnum<1/regul.threshold) {
               decomp <- attr(lmatrix,attr(lmatrix,"type")) ## of corr matrix !
-              invCoo <-  try(.ZWZt(decomp$u,1/decomp$d),silent=TRUE) ## the idea is to use ginv() if thisfails, rather than 
+              invCoo <-  try(.ZWZt(decomp$u,1/decomp$d),silent=TRUE) ## the idea is to use ginv() if this fails, rather than 
               #                                                         to attempt regularization, given that condnum has been tested as not large.
               if (inherits(invCoo,"try-error")) invCoo <- NULL
             }
             if (is.null(invCoo)) Rmatrix <- .lmwithQR(t(lmatrix),yy=NULL,returntQ=FALSE,returnR=TRUE)$R_scaled # no pivoting compared to qr.R(qr(t(lmatrix))) 
           }
+          #
           if (is.null(invCoo)){ 
             invCoo <- try(chol2inv(Rmatrix),silent=TRUE)
             if (inherits(invCoo,"try-error") || max(abs(range(invCoo)))> 1e12) {
@@ -1919,7 +2014,12 @@ spaMM_Gamma <- local({
 }
 
 .calc_d2hdv2_info <- function(object, ZAL) {
-  if (TRUE) return(.old_calc_d2hdv2_info(object, ZAL))
+  if (TRUE) return(.old_calc_d2hdv2_info(object, ZAL)) # rediscovered ong afterwards... so ./.
+  ## The code below first checks for a "factor_inv_Md2hdv2" promise. But 
+  ##   there is no such promise in the current object bc HLfit_body() has run  
+  ##   .init_promises_spprec(sXaug, non_X_ones=FALSE, nullify_X_ones =TRUE) 
+  ##   and non_X_ones=FALSE implies that there is no "factor_inv_Md2hdv2" promise.
+  #
   # ELSE
   envir <- object$envir
   if ( ! is.null(envir$G_CHMfactor)) { ## spprec code
@@ -1954,7 +2054,7 @@ spaMM_Gamma <- local({
   return(d2hdv2_info)
 }
 
-.get_glm_phi <- function(fitobject, mv_it=NULL, only_offset=FALSE) { 
+.get_glm_phi <- function(fitobject, mv_it=NULL) { 
   # gets always a single glm fit, not the list of the mv case
   if ( ! is.null(mv_it)) { # fitmv case. Then glm_phi may be (1) an element of phi.object[[mv_it]] (2) envir$glmS_phi[[mv_it]]
     glm_phi <- fitobject$phi.object[[mv_it]][["glm_phi"]] 
@@ -1965,7 +2065,7 @@ spaMM_Gamma <- local({
       cum_nobs <- c(0L,cumsum(vec_nobs))
       resp_range <- .subrange(cumul=cum_nobs, it=mv_it)
       validrownames <- attr(fitobject$data,"validrownames")[[mv_it]]
-      if (only_offset) {
+      if (length(fitobject$phi.object[[mv_it]]$phi_outer)>1L) {
         nobs <- length(resp_range)
         glm_phi_args <- list(formula=.get_phiform(fitobject, mv_it), 
                              lev=rep(0,nobs), dev.res=rep(1,nobs), control=list(), # dummy values
@@ -1982,9 +2082,9 @@ spaMM_Gamma <- local({
     glm_phi <- fitobject$phi.object[["glm_phi"]] 
     if (is.null(glm_phi)) glm_phi <- fitobject$envir$glm_phi
     if (is.null(glm_phi)) { 
-      if (only_offset) {
+      if (length(fitobject$phi.object$phi_outer)>1L) {
         nobs <- nrow(fitobject$X.pv)
-        glm_phi_args <- list(formula=.get_phiform(fitobject),
+        glm_phi_args <- list(formula=.get_phiform(fitobject), # formula with offset only: see explanations in .calcResidVar()
                              lev=rep(0,nobs), dev.res=rep(1,nobs), control=list(), # dummy values
                              data=fitobject$data, 
                              family= .get_phifam(fitobject))
@@ -2418,7 +2518,7 @@ if (FALSE) { # that's not used.
   lambda_list <- vector("list",nrand) 
   Xi_cols <- attr(ZAlist,"Xi_cols")
   for (rd in seq_len(nrand)) {
-    plam_rd <- process_resglm_blob$lambda_pred_list[[rd]]
+    plam_rd <- process_resglm_blob$lambda_pred_list[[rd]] # from .calc_dispGammaGLM our CAR dispGammaGLM
     if (anyNA(plam_rd)) { ## those for which no glm was available, such as fixed lambdas...
       Xi_ncol <- Xi_cols[rd]
       plam_rd <- numeric(Xi_ncol)
@@ -2466,10 +2566,11 @@ if (FALSE) { # that's not used.
   return(round(as.numeric(difftime(Sys.time(), time1, units = "secs")), 2))
 }
 
-.post_process_LMatrices <- function(next_LMatrices, ZAlist, ranCoefs_blob, cum_n_u_h) { 
+.post_process_v_h_LMatrices <- function(next_LMatrices, v_h, u_h, processed, ZAlist=processed$ZAlist, ranCoefs_blob, 
+                                    cum_n_u_h=processed$cum_n_u_h) { 
   strucList <- vector("list", length(ZAlist))
-  for (it in seq_len(length(ZAlist))) {
-    lmatrix <- next_LMatrices[[it]]
+  for (rd in seq_len(length(ZAlist))) {
+    lmatrix <- next_LMatrices[[rd]]
     ## keep in mind that str(S4...) does not show extra attributes
     ## lmatrix is an S4 object...
     ## ranefs itself has attribute type="(.|.)"
@@ -2479,14 +2580,33 @@ if (FALSE) { # that's not used.
       if (corr.model=="random-coef") {
         latentL_blob <- attr(lmatrix,"latentL_blob")
         design_u <- latentL_blob$design_u
-        if ((kappa(design_u)>1e06)) { # occurs in HLfit3 example; also good test in test-devel-predVar-ranCoefs
-          latentL_blob$gmp_compactcovmat <- gmp::as.bigq(latentL_blob$compactcovmat)
-          latentL_blob$gmp_compactprecmat <- gmp::solve.bigq(latentL_blob$compactcovmat)
-          if (is.null(latentL_blob$compactchol_Q)) latentL_blob$compactchol_Q <- t(gmp::asNumeric(gmp::solve.bigq(gmp::as.bigq(design_u))))
-        } else if (is.null(latentL_blob$compactchol_Q)) latentL_blob$compactchol_Q <- t(solve(design_u))
-        # We will use $d and $compactchol_Q in .get_invL_HLfit() and we remove $design_u for easier-to-maintain code
+        sqrt_latent_d <- sqrt(latentL_blob[["d"]])
+        {
+          # I fitted a model with L (->strucList) based on design$u and lambda_est contains the $d
+          # if the d's are 1 (typical CORREL algo) this block has no impact
+          # Otherwise, This block aims to put them back into the compact L. 
+          # BUT then, the long L (=>strucList) and the lambda may need fixing 
+          # For example, the lambda's are distinctly needed in (predVar with new data) -> .get_logdispObject() -> (dvdloglamMat_needed)
+          # This led to negligible imprecisions in tests (see successive versiosn of test-devel-predVar-rC_spprec.R)
+          # until composite corrMatrix models were tested. 
+          # Instead of fixing a lot of stuff, it appears better to use latent_d=1 even for spprec
+          if ((kappa(design_u)>1e06)) { # occurs in HLfit3 example; also ./. 
+                                        # testthat check for fit_small in test-devel-predVar-ranCoefs)
+            latentL_blob$gmp_compactcovmat <- gmp::as.bigq(latentL_blob$compactcovmat)
+            # the gmp bug [str() failing] reported in Jan 2020 is still there in version 0.6.2.
+            # MRE:  str(gmp::as.bigq(matrix(seq(4),ncol=2)))
+            latentL_blob$gmp_compactprecmat <- gmp::solve.bigq(latentL_blob$gmp_compactcovmat)
+            latentL_blob$compactchol_Q_w <- .m_Matrix_times_Dvec(t(gmp::asNumeric(gmp::solve.bigq(gmp::as.bigq(design_u)))),
+                                                                 1/sqrt_latent_d) # returns bigq matrix 
+          } else if (is.null(latentL_blob$compactchol_Q)) {
+            latentL_blob$compactchol_Q_w <- .m_Matrix_times_Dvec(t(solve(design_u)), 1/sqrt_latent_d)
+          } else {
+            latentL_blob$compactchol_Q_w <- .m_Matrix_times_Dvec(latentL_blob$compactchol_Q, 1/sqrt_latent_d) # tcrossfac of full precision matrix
+          }
+        }
+        latentL_blob$compactchol_Q <- NULL
         latentL_blob$design_u <- NULL
-        attr(lmatrix,"latentL_blob") <- latentL_blob
+        attr(lmatrix,"latentL_blob") <- latentL_blob 
       } else if (! is.null(msd.arglist <- attr(lmatrix,"msd.arglist"))) { ## Matern, Cauchy
         ## remove potentially large distMatrix to save space, but stores its "call" attribute for getDistMat()
         if ( ! is.null(dM <- msd.arglist$distMatrix) ) { 
@@ -2505,31 +2625,56 @@ if (FALSE) { # that's not used.
       #                                           (cf inter-package dependence in .get_invColdoldList() (__F I X M E__?))
       ## Now fill strucList[[it]]
       #
-      if (FALSE && inherits(lmatrix,"dCHMsimpl")) { # inhibited => dCHMsimpl goes into strucList
-        extras <- setdiff(names(attributes(lmatrix)),c("class",slotNames(lmatrix)))
-        lmatrix_ <- as(lmatrix,"pMatrix") %*% solve(lmatrix, system="Lt") 
-        for (st in extras) attr(lmatrix_,"st") <- attr(lmatrix,"st")
-        attr(lmatrix_,"Q_CHMfactor") <- lmatrix 
-        attr(lmatrix_, "type") <- "from_Q_CHMfactor"
-        strucList[[it]] <- lmatrix_ 
-      } else if (corr.model=="random-coef" && .spaMM.data$options$replace_design_u) {
-        latent_d <- latentL_blob[["d"]] 
-        if ( ! all(latent_d==1)) { # spprec, AND there's one case in .calc_latentL() where d!=1 (when cholesky failed).
-          strucList[[it]] <- .makelong(.m_Matrix_times_Dvec(design_u,sqrt(latent_d)), longsize=ncol(lmatrix))
-          # so now [if replace_design_u] strucList[[]] is always the tcrossfac of the covmat, whatever the internal repres of the covmat
-          # !! Changing the meaning of strucList[[]] between the fit and the postfit requires an adjustment in .calc_invL_coeffs()
-          #    Hence we must keep the original $d in the object.
-          # putting back attributes, including the modified latentL_blob.
-          supp_attr <- setdiff(names(attributes(lmatrix)),names(attributes(strucList[[it]])))
-          attributes(strucList[[it]])[supp_attr] <- attributes(lmatrix)[supp_attr] 
+      if (corr.model=="random-coef") { 
+        #
+        if (inherits(lmatrix,"dCHMsimpl")) { 
+          #   # ranef() assumes strucList[[it]] is a mMatrix so we cannot simply copy the dCHMsimpl.
+          lmatrix_ <- as(lmatrix,"pMatrix") %*% solve(lmatrix, system="Lt") 
         } else {
-          attr(lmatrix,"latentL_blob")[["d"]] <- NULL # so that we know they are all 1 without testing them
-          strucList[[it]] <- lmatrix
+          lmatrix_ <- next_LMatrices[[rd]]
         }
-      } else strucList[[it]] <- lmatrix  
+        #
+        if (isS4(lmatrix_)) {
+          extras_attr <- setdiff(names(attributes(lmatrix)),c("class",slotNames(lmatrix)))
+        } else extras_attr <- setdiff(names(attributes(lmatrix)),names(attributes(strucList[[rd]])))
+        #
+        d_map <- gl(length(sqrt_latent_d), ncol(lmatrix)/length(sqrt_latent_d))
+        sqrt_long_d <- sqrt_latent_d[d_map]
+        lmatrix_ <- .m_Matrix_times_Dvec(lmatrix_, sqrt_long_d)
+        # so now strucList[[]] is always the tcrossfac of the covmat, whatever the internal repres of the covmat
+        # !! Changing the meaning of strucList[[]] between the fit and the postfit requires an adjustment 
+        # in .calc_invL_coeffs() (using the original d's stored in the object) OR [in the $d's and the ranefs].
+        # The latter solution was adopted in v3.8.34, the former in previous versions:
+        u.range <- (cum_n_u_h[rd] + 1L):(cum_n_u_h[rd + 1L])
+        v_h[u.range] <- v_h[u.range]/sqrt_long_d
+        u_h[u.range] <- u_h[u.range]/sqrt_long_d
+        #
+        # Add descriptor of the correlation model necessary to predict with new data:
+        #
+        if (processed$ranCoefs_blob$is_composite[rd]) {
+          # nothing to do yet
+          ## # ___TAG___ code potentially needed here  to extend composite ranefs beyond corrMatrix
+          
+          ### for corrMatrix:
+          # * processed$corr_info$cov_info_mats[[.]] contains (~user-level) info for corrMatrix, plus a handy "blob" attribute
+          # that should be used whether the info is a list (SPPREC) or not (CORREL).
+          # It holds the "short" $Lunique and possibly other elements
+          
+          ## For CORREL algos:
+          # * next_LMatrices and ranCoefs_blob$LMatrices (but not processed$ranCoefs_blob...) should contain an rC_blob_longLvMatrix;
+          # * processed$ranCoefs_blob$LMatrices contains a useless matrix (until something is changed in the code);
+          # * processed$AUGI0_ZX$envir$LMatrices has a NULL element
+          #      ( BUT for standard corrMatrix, the SPPREC code -> .Lunique_info_from_Q_CHM() + assign Lunique in $AUGI0_ZXenvir$LMatrices).;
+        }
+        attributes(lmatrix_)[extras_attr] <- attributes(lmatrix)[extras_attr] 
+        #if (all(latent_d ==1)) attr(lmatrix_,"latentL_blob")[["d"]] <- NULL # so that we know they are all 1 without testing them
+        attr(lmatrix_,"latentL_blob")[["d"]] <- NULL # so that we know they are all 1 without testing them
+        strucList[[rd]] <- lmatrix_ 
+      } else strucList[[rd]] <- lmatrix  
     } 
   }
-  return(structure(strucList, isRandomSlope=ranCoefs_blob$isRandomSlope)) ## isRandomSlope is boolean vector
+  return(list(strucList = structure(strucList, isRandomSlope=ranCoefs_blob$isRandomSlope),## isRandomSlope is boolean vector
+              v_h = structure(v_h, u_h= structure(u_h, cum_n_u_h=cum_n_u_h)))) ## cum_n_u_h  duplicates info in lambda object. But it's handy.)) 
 }
 
 
@@ -3136,7 +3281,8 @@ if (FALSE) { # that's not used.
   lambda_source <- NULL 
   ##### (1) get info to add to phifit_init
   if (iter==0L) { 
-    if (is.null(processed$residModel$fixed[["phi"]])) { ## ie if user set fixed$phi=NA, processed in .reformat_resid_model()
+    # Late bug fixed here (several instance below): reference to processed$residModel: this is NULL for multivariate-resp fits (instead having processed$residModel*s*)
+    if (is.null(residModel$fixed[["phi"]])) { ## ie if user set fixed$phi=NA, processed in .reformat_resid_model()
       phifit_init$phi <- 1 ## A case can be made for fixing it to 1; see working doc, end of 'Gamma GLM formulation of REML estimators'
     } # and  keeps other init values as given by user.
     if ( ! is.null(processed$port_env$objective) && verbose["phifit"]) cat("\n")
@@ -3161,13 +3307,13 @@ if (FALSE) { # that's not used.
   } else { ## iter>0
     #phifit_init_HLfit created at iteration 0 and stored here:
     phifit_init_HLfit <- residProcessed[["init_HLfit"]]
-    if (is.null(processed$residModel$fixed$fixef)) phifit_init_HLfit$fixef <- fixef(phifit) ## : Use an init if the parameters are not fixed. 
+    if (is.null(residModel$fixed$fixef)) phifit_init_HLfit$fixef <- fixef(phifit) ## : Use an init if the parameters are not fixed. 
     phifit_init_HLfit$v_h <- phifit$v_h
     # FIXME one could *update* a corrPars[[.]]$rho element in init_HLfit... not done currently... instead
     # use ranef parameters from previous 'iter' to initiate new optimization (corrPars likely to be very slightly shifted) 
     phifit_init$corrPars <- .new_phifit_init_corrPars(phifit, innershift=1e-7) 
     lambda_source <- phifit
-    if (is.null(processed$residModel$fixed$phi)) phifit_init$phi <- phifit$phi 
+    if (is.null(residModel$fixed$phi)) phifit_init$phi <- phifit$phi 
     resid_corrPars <- residProcessed$port_env$port_fit_values$corrPars
   } ## end if iter==0L else ...
   # _F I X M E_ I should think about merging this with get_inits_from_fit() but the source is phifit or port_env so there must be differences.

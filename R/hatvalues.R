@@ -78,7 +78,7 @@ hatvalues.HLfit <- function(model, type="projection", which="resid", force=FALSE
         if (which=="resid") lev <- lev$resid
         if (which=="ranef") lev <- lev$ranef
       } else {
-        lev <- get_from_MME(sXaug,which=loctype)
+        lev <- get_from_MME(sXaug,which=loctype, B=c("phi", "lambda"))
         if (is.list(lev)) { # depedns on mMatrix_method
           if (which=="resid") lev <- lev$lev_phi
           if (which=="ranef") lev <- lev$lev_lambda 

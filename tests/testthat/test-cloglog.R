@@ -9,7 +9,7 @@
 cat(crayon::yellow("\ntest-cloglog:\n"))
 
 
-if (spaMM.getOption("example_maxtime")>2.1) {
+if (spaMM.getOption("example_maxtime")>1.8) {
   if (requireNamespace("MASS", quietly = TRUE)) {
     artSim <- function(){
       #
@@ -66,5 +66,5 @@ if (spaMM.getOption("example_maxtime")>2.1) {
         source(privtest)
       }
     }
-  } else cat("test cloglog random slope: increase example_maxtime (4.3) to run this test.\n")  
+  } else cat("test cloglog random slope: increase example_maxtime (1.8) to run this test.\n")  
 }

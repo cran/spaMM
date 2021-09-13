@@ -184,9 +184,9 @@ summary.HLfitlist <- function(object, ...) {
 }
 
 # conversion of columns of data frames:
-.aschar_adhoc <- function(data) {
+.aschar_adhoc <- function(data, digits=4) {
   for (colit in seq_len(ncol(data))) if (is.numeric(colval <- data[,colit])) {
-    charvec <- as.character(signif(colval,4))
+    charvec <- as.character(signif(colval,digits))
     charvec[is.na(charvec)] <- "" ## the reason why we create an ad hoc fn.
     data[,colit] <- charvec
   }
@@ -333,10 +333,10 @@ summary.HLfitlist <- function(object, ...) {
   return(any_adjd)
 }
 
-.print_lambda_table <- function(object,lambda_table, details, namesTerms, linklam_coeff_list) {
+.print_lambda_table <- function(object,lambda_table, details, namesTerms, linklam_coeff_list, digits=4) {
   attribs <- attributes(lambda_table) 
   # strings for screen output:
-  lambda_table <- .aschar_adhoc(lambda_table)
+  lambda_table <- .aschar_adhoc(lambda_table, digits=digits)
   if (length(attribs$random_slope_ncol_geq_1_rows)) {
     keep <- which( ! colnames(lambda_table) %in% c("Estimate","Cond.SE")) ## may be null if only outer... + fixed
     cov_table <- lambda_table[attribs$random_slope_ncol_geq_1_rows,keep] ## EXCLUDES the "Estimate","Cond.SE" cols
@@ -510,8 +510,9 @@ summary.HLfitlist <- function(object, ...) {
   oldopt <- options(max.print=max.print)
   if (is.null(names(details))) details <- structure(rep(details,2),names=c("ranCoefs","p_value")) ## handle FALSE or TRUE input
   details <- as.list(details)
-  for (st in c("ranCoefs")) if (is.null(details[[st]])) details[st] <- FALSE
-  for (st in c("p_value")) if (is.null(details[[st]])) details[st] <- "" ## a string such as "Wald"
+  if (is.null(details[["ranCoefs"]])) details["ranCoefs"] <- FALSE
+  if (is.null(details[["p_value"]])) details["p_value"] <- "" ## a string such as "Wald"
+  if (is.null(details[["digits"]])) details["digits"] <- 4 # ___F I X M E___ document this
   models <- object$models
   famfam <- object$family$family ## response !
   lcrandfamfam <- attr(object$rand.families,"lcrandfamfam") 
@@ -650,7 +651,8 @@ summary.HLfitlist <- function(object, ...) {
     } else {
       linklam_coeff_list <- lambda.object$coefficients_lambdaS ## used beyond the next line
       summ$lambda_table <- lambda_table <- .lambda_table_fn(namesTerms, object, lambda.object,linklam_coeff_list)
-      .print_lambda_table(object,lambda_table, details=details, namesTerms, linklam_coeff_list) 
+      .print_lambda_table(object,lambda_table, details=details, namesTerms, linklam_coeff_list,
+                          digits=details$digits) 
     } 
     groups_n <- unlist(lapply(object$ZAlist,ncol))/attr(object$ZAlist,"Xi_cols")
     cat(paste0("# of obs: ",nrow(object$data),"; # of groups: ",

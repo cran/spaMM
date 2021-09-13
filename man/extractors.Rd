@@ -7,8 +7,6 @@
 \alias{logLik.HLfit}
 \alias{fitted}
 \alias{fitted.HLfit}
-\alias{residuals}
-\alias{residuals.HLfit}
 \alias{fixef}
 \alias{fixef.HLfit}
 \alias{formula}
@@ -39,7 +37,6 @@ Functions to extract various components of a fit
 \code{dev_resids} returns a vector of squared (unscaled) deviance residuals (the summands in McCullagh and Nelder 1989, p. 34). 
 \code{deviance} returns the sum of squares of these (unscaled) deviance residuals, that is (consistently with \code{stats::deviance}) the unscaled deviance.
 \code{fitted} extracts fitted values (see \code{\link{fitted.values}}).
-\code{residuals} extracts residuals of the fit.
 \code{response} extracts the response (as a vector).
 \code{fixef} extracts the fixed effects coefficients, \eqn{\beta}.
 \code{ranef} extracts the predicted random effects, \bold{Lv} (default since version 1.12.0), or \bold{u} (see Details in \code{\link{HLfit}} for definitions), \code{print.ranef} controls their printing. 
@@ -56,7 +53,6 @@ Functions to extract various components of a fit
 \method{ranef}{HLfit}(object, type = "correlated", ...)
 \method{print}{ranef}(x, max.print = 40L, ...)
 \method{deviance}{HLfit}(object, ...)
-\method{residuals}{HLfit}(object, type = c("deviance", "pearson", "response"), ...)
 ##
 getDistMat(object, scaled=FALSE, which = 1L)
 response(object,...)
@@ -65,7 +61,7 @@ dev_resids(object,...)
 %- maybe also 'usage' for other objects documented here.
 \arguments{
   \item{object}{An object of class \code{HLfit}, as returned by the fitting functions in \code{spaMM}.}
-  \item{type}{For \code{ranef}, use \code{type="correlated"} (default) to display the correlated random effects (\bold{Lv}), whether in a spatial model, or a random- coefficient model. Use \code{type="uncorrelated"} to pretty-print the elements of the \code{<object>$ranef} vector (\bold{u}). For \code{residuals}, the type of residuals which should be returned. The alternatives are: "deviance" (default), "pearson", and "response".}
+  \item{type}{For \code{ranef}, use \code{type="correlated"} (default) to display the correlated random effects (\bold{Lv}), whether in a spatial model, or a random- coefficient model. Use \code{type="uncorrelated"} to pretty-print the elements of the \code{<object>$ranef} vector (\bold{u}).}
   \item{which}{For \code{logLik}, the name of the element of the \code{APHLs} list to return (see Details for any further possibility). The default depends on the fitting method. In particular, if it was REML or one of its variants, the function returns the log restricted likelihood (exact or approximated). For \code{getDistMat}, an integer, to select a random effect from several for which a distance matrix may be constructed. For \code{formula}, by default the model formula with non-expanded \code{multIMRF} random-effect terms is returned, while for \code{which=""} a formula with \code{multIMRF} terms expanded as \code{IMRF} terms is returned.}
   \item{scaled}{If \code{FALSE}, the function ignores the scale parameter \eqn{rho} and returns unscaled distance.}
   \item{x}{For \code{print.ranef}: the return value of \code{ranef.HLfit}.}
@@ -80,12 +76,10 @@ dev_resids(object,...)
 Other return values are numeric (for \code{logLik}), vectors (most cases), matrices or dist objects (for \code{getDistMat}), or a family object (for \code{family}). \code{ranef} returns a list of vectors or matrices (the latter for random-coefficient terms). 
 }
 \details{
-See \code{\link{residuals.glm}} for more information about the types of residuals.
-
-With \code{which="LogL_Lap"}, \code{logLik()} returns a Laplace approximation of log-likelihood based on the observed Hessian, rather than the expected Hessian. This is implemented only for the case \code{family=Gamma(log)}, for demonstration purposes.
+ With \code{which="LogL_Lap"}, \code{logLik()} returns a Laplace approximation of log-likelihood based on the observed Hessian, rather than the expected Hessian. This is implemented only for the case \code{family=Gamma(log)}, for demonstration purposes.
 }
 \seealso{
-See \code{\link{residVar}} to extract residual variances or information about residual variance models, \code{\link{hatvalues}} to extract leverages, \code{\link{get_matrix}} to extract the model matrix and derived matrices, and \code{\link{vcov.HLfit}} to extract covariances matrices from a fit, \code{\link{get_RLRsim_args}} to extract arguments for (notably) tests of random effects in LMMs.
+See \code{\link{residuals.HLfit}} to extract various residuals, \code{\link{residVar}} to extract residual variances or information about residual variance models, \code{\link{hatvalues}} to extract leverages, \code{\link{get_matrix}} to extract the model matrix and derived matrices, and \code{\link{vcov.HLfit}} to extract covariances matrices from a fit, \code{\link{get_RLRsim_args}} to extract arguments for (notably) tests of random effects in LMMs.
 }
 \references{
 McCullagh, P. and Nelder J. A. (1989) Generalized linear models. Second ed. Chapman & Hall: London.

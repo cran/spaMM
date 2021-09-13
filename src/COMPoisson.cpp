@@ -74,7 +74,7 @@ SEXP COMP_Z_integrand(Rcpp::NumericVector z,
   //                       Named("logScaleFac")=logScaleFac,
   //                       Named("raw")=exp(logint-logScaleFac)));
   // } else {
-    res = pmin(DOUBLE_XMAX, res);
+    res = pmin(DBL_MAX, res);
     return(wrap(res));
   // }
 }
@@ -101,7 +101,7 @@ SEXP Rcpp_COMP_Z_asympto(double nu, double pow_lam_nu) {
   double invLSF= 1/logScaleFac;
   //double scaled = 1 + invLSF*(c1+invLSF*(c2+invLSF*(c3+invLSF*(c4+invLSF*(c5+invLSF*(c6+invLSF*c7))))));
   double scaled = 1 + invLSF*(c1+invLSF*c2);
-  scaled = scaled/(pow(2*PI*pow_lam_nu,(nu-1)/2)*sqrt(nu));
+  scaled = scaled/(pow(2*M_PI*pow_lam_nu,(nu-1)/2)*sqrt(nu));
   NumericVector comp_z= NumericVector::create(_["logScaleFac"]=logScaleFac, _["scaled"]=scaled);
   return(comp_z);
 }

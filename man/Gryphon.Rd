@@ -37,6 +37,48 @@ Wilson AJ, et al. (2010) An ecologist's guide to the animal model. Journal of An
 \doi{10.1111/j.1365-2656.2009.01639.x}
 }
 \examples{
-# See help("sparse_precision")
+
+#### Bivariate-response model used as example in Wilson et al. (2010):
+# joint modelling of birth weight (BWT) and tarsus length (TARSUS).
+
+# The relatedness matrix is specified as a 'corrMatrix'. The random 
+# effect 'corrMatrix(0+mv(1,2)|ID)' then represents genetic effects 
+# correlated over traits and individuals (see help("composite-ranef")).
+# The ...(0+...) syntax avoids contrasts being used in the design 
+# matrix of the random effects, as it would not does make much sense 
+# to represent TARSUS as a contrast to BWT. 
+
+# The relatedness matrix will be specified through its inverse,
+# using as_precision(), so that spaMM does not have to find out and 
+# inform the user that using the inverse is better (as is typically 
+# the case for relatedness matrices). But using as_precision() is 
+# not required. See help("algebra") for Details.
+
+# The second random effect '(0+mv(1,2)|ID)' represents correlated 
+# environmental effects. Since measurements are not repeated within 
+# individuals, this effect also absorbs all residual variation. The 
+# residual variances 'phi' must then be fixed to some negligible values 
+# in order to avoid non-identifiability.
+
+if (spaMM.getOption("example_maxtime")>14) { 
+data("Gryphon")
+  gry_GE <- fitmv(
+    submodels=list(BWT ~ 1 + corrMatrix(0+mv(1,2)|ID)+(0+mv(1,2)|ID), 
+                  TARSUS ~ 1 + corrMatrix(0+mv(1,2)|ID)+(0+mv(1,2)|ID)), 
+    fixed=list(phi=c(1e-6,1e-6)), 
+    corrMatrix = as_precision(Gryphon_A), 
+    data = Gryphon_df, method = "REML")
+    
+  # Estimates are practically identical to those reported for package 
+  # 'asreml' (https://www.vsni.co.uk/software/asreml-r) 
+  # according to Supplementary File 3 of Wilson et al., p.7:
+
+  lambda_table <- summary(gry_GE, digits=5,verbose=FALSE)$lambda_table 
+  by_spaMM <- na.omit(unlist(lambda_table[,c("Var.","Corr.")]))[1:6]
+  by_asreml <- c(3.368449,12.346304,3.849875,17.646017,0.381463,0.401968)
+  by_spaMM/by_asreml-1  # relative differences ~ O(1e-4)
+
+}
+
 }
 \keyword{datasets}

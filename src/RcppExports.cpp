@@ -495,8 +495,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // crossprod_not_dge
-SEXP crossprod_not_dge(SEXP AA, SEXP BB, bool eval_dens, bool as_mat);
-RcppExport SEXP _spaMM_crossprod_not_dge(SEXP AASEXP, SEXP BBSEXP, SEXP eval_densSEXP, SEXP as_matSEXP) {
+SEXP crossprod_not_dge(SEXP AA, SEXP BB, bool eval_dens, bool as_mat, bool keep_names);
+RcppExport SEXP _spaMM_crossprod_not_dge(SEXP AASEXP, SEXP BBSEXP, SEXP eval_densSEXP, SEXP as_matSEXP, SEXP keep_namesSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -504,13 +504,14 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< SEXP >::type BB(BBSEXP);
     Rcpp::traits::input_parameter< bool >::type eval_dens(eval_densSEXP);
     Rcpp::traits::input_parameter< bool >::type as_mat(as_matSEXP);
-    rcpp_result_gen = Rcpp::wrap(crossprod_not_dge(AA, BB, eval_dens, as_mat));
+    Rcpp::traits::input_parameter< bool >::type keep_names(keep_namesSEXP);
+    rcpp_result_gen = Rcpp::wrap(crossprod_not_dge(AA, BB, eval_dens, as_mat, keep_names));
     return rcpp_result_gen;
 END_RCPP
 }
 // Rcpp_crossprod
-SEXP Rcpp_crossprod(SEXP AA, SEXP BB, bool eval_dens, bool as_mat);
-RcppExport SEXP _spaMM_Rcpp_crossprod(SEXP AASEXP, SEXP BBSEXP, SEXP eval_densSEXP, SEXP as_matSEXP) {
+SEXP Rcpp_crossprod(SEXP AA, SEXP BB, bool eval_dens, bool as_mat, bool keep_names);
+RcppExport SEXP _spaMM_Rcpp_crossprod(SEXP AASEXP, SEXP BBSEXP, SEXP eval_densSEXP, SEXP as_matSEXP, SEXP keep_namesSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -518,7 +519,8 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< SEXP >::type BB(BBSEXP);
     Rcpp::traits::input_parameter< bool >::type eval_dens(eval_densSEXP);
     Rcpp::traits::input_parameter< bool >::type as_mat(as_matSEXP);
-    rcpp_result_gen = Rcpp::wrap(Rcpp_crossprod(AA, BB, eval_dens, as_mat));
+    Rcpp::traits::input_parameter< bool >::type keep_names(keep_namesSEXP);
+    rcpp_result_gen = Rcpp::wrap(Rcpp_crossprod(AA, BB, eval_dens, as_mat, keep_names));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -615,8 +617,8 @@ static const R_CallMethodDef CallEntries[] = {
     {"_spaMM_dgCprod", (DL_FUNC) &_spaMM_dgCprod, 2},
     {"_spaMM_dgCcrossprod", (DL_FUNC) &_spaMM_dgCcrossprod, 3},
     {"_spaMM_dgCtcrossprod", (DL_FUNC) &_spaMM_dgCtcrossprod, 2},
-    {"_spaMM_crossprod_not_dge", (DL_FUNC) &_spaMM_crossprod_not_dge, 4},
-    {"_spaMM_Rcpp_crossprod", (DL_FUNC) &_spaMM_Rcpp_crossprod, 4},
+    {"_spaMM_crossprod_not_dge", (DL_FUNC) &_spaMM_crossprod_not_dge, 5},
+    {"_spaMM_Rcpp_crossprod", (DL_FUNC) &_spaMM_Rcpp_crossprod, 5},
     {"_spaMM_Rcpp_Csum", (DL_FUNC) &_spaMM_Rcpp_Csum, 2},
     {"_spaMM_Rcpp_backsolve", (DL_FUNC) &_spaMM_Rcpp_backsolve, 4},
     {"_spaMM_Rcpp_backsolve_M_M", (DL_FUNC) &_spaMM_Rcpp_backsolve_M_M, 4},

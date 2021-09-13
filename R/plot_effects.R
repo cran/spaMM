@@ -18,9 +18,11 @@ pdep_effects <- function(object,focal_var,newdata =object$data, length.out=20, l
     }
     length.out <- length(focal_values)
   } else if (is.numeric(ori_values)) {
-    focal_values <- seq(min(ori_values),
-                        max(ori_values),
-                        length.out = length.out)
+    if (length.out) {
+      focal_values <- seq(min(ori_values),
+                          max(ori_values),
+                          length.out = length.out)
+    } else focal_values <- sort(unique(ori_values))
   } else {
     stop("Unhandled class for 'focal_var'.")
   }
@@ -30,7 +32,7 @@ pdep_effects <- function(object,focal_var,newdata =object$data, length.out=20, l
     resu <- data.frame(focal_var = focal_values)
     resu$pointp <- resu$low <- resu$up <- numeric(nrow(resu))
   }
-  for (it in seq_len(length.out)) {
+  for (it in seq_along(focal_values)) {
     newdata[,focal_var] <- focal_values[it]
     pred <- predict(object,newdata,intervals = intervals, control=list(fix_predVar=NA),, ...)
     CIs <- attr(pred,"intervals") ## not intervals <- ... within the loop!...
@@ -55,7 +57,7 @@ plot_effects <- function(object, focal_var, newdata=object$data,
                         xlab = focal_var, ylab=NULL, rgb.args=col2rgb("blue"), add=FALSE, ylim=NULL, ...) {
   # If focal_var remains NULL, the idea is probably to run over all predictor variables (not all regressors), 
   #             but this entails other graphic decisions... 
-  if (is.null(effects)) effects <- pdep_effects(object, newdata=newdata, focal_var=focal_var, indiv=FALSE, ...) 
+  if (is.null(effects)) effects <- pdep_effects(object, newdata=newdata, focal_var=focal_var, indiv=FALSE, ...) # 'predict on hacked values'
   # : could imagine plotting the results of indiv=TRUE (requires more code)
   if (object$family$family=="binomial") {
     resp <- object$y/object$BinomialDen

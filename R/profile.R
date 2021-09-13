@@ -64,7 +64,7 @@ spaMM.getOption <- function (x) {spaMM.options(x, warn=FALSE)[[1]]}
       distance = TRUE
     )
   } else warning("'EarthChord' entry already present in proxy::pr_DB database.")
-  success <- suppressMessages(do.call("require",list(package="memoise"))) # messge might suggest that the fit is by INLE...
+  success <- suppressMessages(do.call("require",list(package="memoise"))) 
   .spaMM.data$options$need_memoise_warning <- ! success
   if (success) {
     ..CMP_mu2lambda <<- .do_call_wrap("memoise",

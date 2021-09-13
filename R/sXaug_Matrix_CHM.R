@@ -24,6 +24,10 @@ def_sXaug_Matrix_cholP_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale) 
 # if which="solve_d2hdv2", B ! NULL: returns solve(d2hdv2,B)
 .sXaug_Matrix_cholP_scaled <- function(sXaug,which="",szAug=NULL,B=NULL) {
   BLOB <- attr(sXaug,"BLOB") ## an environment
+  # attr(sXaug,"AUGI0_ZX") is presumably inherited from the Xaug argument of def_sXaug_Matrix_QRP_CHM_scaled
+  # but this may or may not be present (Xaug=Xscal with attr(Xscal,"AUGI0_ZX") <- processed$AUGI0_ZX in .solve_IRLS_as_ZX(),
+  # but not in .solve_v_h_IRLS)
+  # => we cannot generally assume it is present.
   if (is.null(BLOB$CHMfactor)) {
     AUGI0_ZX_envir <- attr(sXaug,"AUGI0_ZX")$envir # immediately used, but we could imagine extending AUGI0_ZX usage
                                        # both to block operations here, and to other sXaug methods, which would thus all 
@@ -43,8 +47,7 @@ def_sXaug_Matrix_cholP_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale) 
     delayedAssign("CHMfactor_wd2hdv2w", {
       seq_n_u_h <- seq_len(attr(sXaug,"n_u_h"))
       wd2hdv2w <- Matrix::tcrossprod(BLOB$L_scaled[BLOB$sortPerm[ seq_n_u_h ],] ) # L_scaled is tcrossfac; CHMfactor too
-      Cholesky(wd2hdv2w,LDL=FALSE, perm=FALSE ) ## perm=TRUE seems simple to implement except 
-      #    for which="R_scaled_v_h_blob". Ascertaining when updating might be correct is not obvious. __F I X M E__ but check that FALSE is not used for leverage computation
+      Cholesky(wd2hdv2w,LDL=FALSE, perm=FALSE ) ##  __F I X M E__?  see comments on updateable etc in QRP_CHM version
     }, assign.env = BLOB )
     delayedAssign("inv_d2hdv2", {        
       if (is.null(BLOB$inv_factor_wd2hdv2w)) {
@@ -61,6 +64,32 @@ def_sXaug_Matrix_cholP_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale) 
       tmp@x <- tmp@x^2
       colSums(tmp)
     }, assign.env = BLOB )
+    delayedAssign("hatval_Z_u_h_cols_on_left", {
+      n_u_h <- attr(sXaug,"n_u_h")
+      tmp_t_Qq_scaled <- BLOB$t_Q_scaled[seq_len(n_u_h),]
+      tmp_t_Qq_scaled@x <- tmp_t_Qq_scaled@x^2
+      tmp <- colSums(tmp_t_Qq_scaled)
+      phipos <- n_u_h+seq_len(nrow(sXaug)-n_u_h)
+      hatval_Z_ <-  list(lev_lambda=tmp[-phipos],lev_phi=tmp[phipos])
+    }, assign.env = BLOB )
+    delayedAssign("Z_lev_lambda", {      
+      if (is.null(lev_lambda <- BLOB$inv_factor_wd2hdv2w)) {
+        lev_lambda <- BLOB$inv_factor_wd2hdv2w <- solve(BLOB$CHMfactor_wd2hdv2w,system="L")
+      }  
+      lev_lambda@x <- lev_lambda@x^2
+      lev_lambda <- colSums(lev_lambda)
+    }, assign.env = BLOB )
+    delayedAssign("Z_lev_phi", {      
+      n_u_h <- attr(sXaug,"n_u_h")
+      phipos <- (n_u_h+1L):nrow(sXaug)                 # ZAL block:
+      if (is.null(BLOB$inv_factor_wd2hdv2w)) {
+        BLOB$inv_factor_wd2hdv2w <- solve(BLOB$CHMfactor_wd2hdv2w,system="L")
+      } 
+      lev_phi <- .tcrossprod(BLOB$inv_factor_wd2hdv2w, sXaug[phipos, seq_len(n_u_h) ], allow_as_mat = FALSE) # Matrix::solve(BLOB$CHMfactor_wd2hdv2w, t(sXaug[phipos, seq_len(n_u_h) ]),system="L") ## fixme the t() may still be costly
+      # :if QRmethod is forced to "sparse" on mathematically dense matrices, we may reach this code yielding a *m* atrix lev_phi unless allow_as_mat = FALSE
+      lev_phi@x <- lev_phi@x^2
+      lev_phi <- colSums(lev_phi)
+    }, assign.env = BLOB )
     #############################################
     ## t_Q_scaled needed for the solve(); but we don't request (t) Q from Eigen bc it is terribly slow
     if ( ! is.null(szAug)) return(solve(BLOB$CHMfactor,Matrix::crossprod(sXaug, szAug))) 
@@ -74,7 +103,7 @@ def_sXaug_Matrix_cholP_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale) 
       return(Matrix::solve(BLOB$CHMfactor,crossprod(sXaug, szAug)))
     }
     ## valid alternative but requesting the computation of t(Q):
-    ###### #return(solve(BLOB$R_scaled[,BLOB$sortPerm], BLOB$t_Q_scaled %*% szAug)) ## sort the vector instaed of the matrix?
+    ###### #return(solve(BLOB$R_scaled[,BLOB$sortPerm], BLOB$t_Q_scaled %*% szAug)) ## sort the vector instead of the matrix?
   }
   # ELSE
   if (which=="Qt_leftcols*B") {
@@ -102,35 +131,20 @@ def_sXaug_Matrix_cholP_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale) 
     return(Mg_invXtWX_g)
   } 
   if (which=="hatval_Z") { ## hat values ML or calc_sscaled_new -> Pdiag
-    if (is.null(BLOB$hatval_Z_)) {
-      # X[,cols] = Q R P[,cols] = Q q r p => t(Q q) given by:
-      #t_Qq_scaled <- solve(BLOB$CHMfactor_wd2hdv2w, ## likely bottleneck for large data 
-      #                          t(sXaug[, seq_len(attr(sXaug,"n_u_h"))[BLOB$perm_R_v] ]),system="L")
-      ## 
-      ## but t(sXaug) is scaled such that the left block is an identity matrix, so we can work 
-      ## on two separate blocks if the Cholesky is not permuted. Then 
-      n_u_h <- attr(sXaug,"n_u_h")
-      if (BLOB$u_h_cols_on_left) { # Rasch... bigranefs... 
-        tmp_t_Qq_scaled <- BLOB$t_Q_scaled[seq_len(n_u_h),]
-        tmp_t_Qq_scaled@x <- tmp_t_Qq_scaled@x^2
-        tmp <- colSums(tmp_t_Qq_scaled)
-        phipos <- n_u_h+seq_len(nrow(sXaug)-n_u_h)
-        BLOB$hatval_Z_ <-  list(lev_lambda=tmp[-phipos],lev_phi=tmp[phipos])
-      } else {
-        if (is.null(lev_lambda <- BLOB$inv_factor_wd2hdv2w)) {
-          lev_lambda <- BLOB$inv_factor_wd2hdv2w <- solve(BLOB$CHMfactor_wd2hdv2w,system="L")
-        }  
-        lev_lambda@x <- lev_lambda@x^2
-        lev_lambda <- colSums(lev_lambda)
-        phipos <- (n_u_h+1L):nrow(sXaug)                 # ZAL block:
-        lev_phi <- .tcrossprod(BLOB$inv_factor_wd2hdv2w, sXaug[phipos, seq_len(n_u_h) ], allow_as_mat = FALSE) # Matrix::solve(BLOB$CHMfactor_wd2hdv2w, t(sXaug[phipos, seq_len(n_u_h) ]),system="L") ## fixme the t() may still be costly
-        # :if QRmethod is forced to "sparse" on mathematically dense matrices, we may reach this code yielding a *m* atrix lev_phi unless allow_as_mat = FALSE
-        lev_phi@x <- lev_phi@x^2
-        lev_phi <- colSums(lev_phi)
-        BLOB$hatval_Z_ <-  list(lev_lambda=lev_lambda,lev_phi=lev_phi)
-      }
+    # X[,cols] = Q R P[,cols] = Q q r p => t(Q q) given by:
+    #t_Qq_scaled <- solve(BLOB$CHMfactor_wd2hdv2w, ## likely bottleneck for large data 
+    #                          t(sXaug[, seq_len(attr(sXaug,"n_u_h"))[BLOB$perm_R_v] ]),system="L")
+    ## 
+    ## but t(sXaug) is scaled such that the left block is an identity matrix, so we can work 
+    ## on two separate blocks if the Cholesky is not permuted. Then 
+    if (BLOB$u_h_cols_on_left) { # Rasch... bigranefs... 
+      return(BLOB$hatval_Z_u_h_cols_on_left) # no clear benefits in separating lev_phi and lev_lambda computations
+    } else {
+      hatval_Z_ <- list()
+      if ("lambda" %in% B) hatval_Z_$lev_lambda <- BLOB$Z_lev_lambda
+      if ("phi" %in% B) hatval_Z_$lev_phi <- BLOB$Z_lev_phi
+      return(hatval_Z_)
     }
-    return(BLOB$hatval_Z_) 
   }
   if (which=="solve_d2hdv2") {
     # don't forget that the factored matrix is not the augmented design matrix ! hence w.ranef needed here

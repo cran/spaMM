@@ -8,19 +8,20 @@ Residual variance extractor
 Extracts from a fit object the residual variance. If a non-default \code{which} values is used, it can also return a vector of values of the dispersion parameter phi, which is not the residual variance itself for gamma-response models, or further information about the residual variance model. 
 }
 \usage{
-residVar(object, which = "var", submodel = NULL)
+residVar(object, which = "var", submodel = NULL, newdata = NULL)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
   \item{object}{An object of class \code{HLfit}, as returned by the fitting functions in \code{spaMM}.}
   \item{which}{Character: \code{"var"} for the fitted residual variances, \code{"phi"} for the fitted phi values, \code{"fam_parm"} for the dispersion parameter of \code{COMPoisson} and \code{negbin} families, \code{"fit"} for the fitted residual model (a GLM or a mixed model for residual variances, if not a simpler object),  and \code{"family"} or \code{"formula"} for such properties of the residual model.}
   \item{submodel}{integer: the index of a submodel, if \code{object} is a multivariate-response model fitted by \code{fitmv}. This argument is mandatory for all \code{which} values except \code{"var"} and \code{"phi"}.}
+    \item{newdata}{\bold{Either} NULL, a matrix or data frame, or a numeric vector. See \code{\link{predict.HLfit}} for details.}
 }
 \value{
-Default \code{which="var"} (or \code{"phi"}) always return a vector of residual variances (or phi values) of length the number of responses of the fit (or only the number of responses for a submodel, if relevant). \code{which="var"} returns an object of class \code{HLfit}, \code{glm}, or a single scalar depending on the residual dispersion model. Other \code{which} values return an object of class \code{family} or \code{formula} as expected. 
+Default \code{which="var"} (or \code{"phi"}) always return a vector of residual variances (or, alternatively, phi values) of length the number of responses of the fit (or only the number of responses for a submodel, if relevant). \code{which="fit"} returns an object of class \code{HLfit}, \code{glm}, or a single scalar depending on the residual dispersion model. Other \code{which} values return an object of class \code{family} or \code{formula} as expected. 
 }
 \seealso{
-\code{\link{get_residVar}} is a alternative extractor of residual variances with different features inherited from \code{get_predVar}.
+\code{\link{get_residVar}} is a alternative extractor of residual variances with different features inherited from \code{get_predVar}. In particular, it is more suited for computing the residual variances of new realizations of a fitted model, not accounting for prior weights used in fitting the model (basic examples of using the \code{IsoriX} package provide a context where this is the appropriate design decision). By contrast, \code{residVar} aims to account for prior weights.
 }
 \examples{
 # data preparation: simulated trivial life-history data

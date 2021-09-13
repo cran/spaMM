@@ -27,7 +27,7 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
       if (inherits(envir$precisionFactorList[[rd]],c("Matrix","matrix"))) stop("list expected here in .reformat_Qmat_info()") 
       chol_Q_list[[rd]] <- envir$precisionFactorList[[rd]]$chol_Q
       if (envir$finertypes[rd]=="ranCoefs") {
-        precisionBlocks[[rd]] <- envir$precisionFactorList[[rd]]$precmat ## full already including lambda 
+        precisionBlocks[[rd]] <- envir$precisionFactorList[[rd]]$precmat ## full already including lambda
       } else { ## both Q and factorization provided (see .assign_geoinfo_and_LMatrices_but_ranCoefs())
         precisionBlocks[[rd]] <- envir$precisionFactorList[[rd]]$Qmat ## indep of w.ranef (lambda); should be dsC at this point
       }
@@ -299,7 +299,7 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
 }
 
 .provide_BLOB_factor_inv_Md2hdv2 <- function(BLOB) { ## Code encapsulated in a function for easier profiling
-  # .calc_sscaled_new() -> (Pdiag <- get_from_MME(sXaug,"hatval_Z")) -> appears to be the last big bottleneck for fitme(). 
+  # .calc_sscaled_new() -> (Pdiag <- get_from_MME(sXaug,"hatval_Z", B=...)) -> appears to be the last big bottleneck for fitme(). 
   # We need a diag(crossprod(factor)) =colSums(factor$x^2) needing the full factor
   LL <- BLOB$invL_G.P %*% BLOB$chol_Q ## dgCMatrix 
   # Even is BLOB$chol_Q is Identity, this this hardly slower than Matrix::solve(BLOB$G_CHMfactor, system="L") so cannot be improved.
@@ -363,7 +363,7 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
     delayedAssign("factor_inv_Md2hdv2",.provide_BLOB_factor_inv_Md2hdv2(BLOB), assign.env = BLOB )
     #delayedAssign("half_logdetQ",  sum(log(diag(x=BLOB$chol_Q))), assign.env = BLOB ) ## currently not used (in variant of LevMar step)
     #delayedAssign("half_logdetG", Matrix::determinant(BLOB$G_CHMfactor)$modulus[1], assign.env = BLOB ) ## currently not used (in variant of LevMar step)
-    delayedAssign("logdet_sqrt_d2hdv2", { 
+    delayedAssign("logdet_sqrt_d2hdv2", { # keep in mind that L, u and hlik will differ from correl algos; Lu, mu, clik and p_v will match  
       half_logdetG <- Matrix::determinant(BLOB$G_CHMfactor)$modulus[1]
       half_logdetQ <- sum(log(diag(x=BLOB$chol_Q)))
       half_logdetG - half_logdetQ 
@@ -488,7 +488,6 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
       tmp <- tmp + precisionMatrix
     }
     BLOB$Gmat <- drop0(tmp) ## depends on w.ranef and w.resid
-    # if (inherits(BLOB$Gmat,"dgCMatrix")) stop("ICI") 
     if (is.null(template <- AUGI0_ZX$template_G_CHM)) { ## occurs if $update_CHM is FALSE, OR first comput. of CHM, OR precision factors not yet all $updateable
       BLOB$G_CHMfactor <- Cholesky(BLOB$Gmat,LDL=FALSE,perm=.spaMM.data$options$perm_G) ## costly
       if (.spaMM.data$options$update_CHM && all(AUGI0_ZX$envir$updateable)) AUGI0_ZX$template_G_CHM <- BLOB$G_CHMfactor
@@ -503,7 +502,7 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
     ## calcul correct; 
     # TT <- rbind(diag(sqrt(w.ranef)),diag(sqrt(attr(AUGI0_ZX, "w.resid"))) %*% AUGI0_ZX$ZAfix %*% t(solve(BLOB$chol_Q)) )
     # diag(TT %*% (solve(crossprod(TT))) %*% t(TT)) ## lev_lambda, lev_phi
-    if (is.null(B)) B <- c("lambda","phi")
+    ### if (is.null(B)) B <- c("lambda","phi") 
     return(.provide_BLOB_hatval_Z_(BLOB, w.ranef, AUGI0_ZX, sXaug, needed=B))
   }
   if (which=="Mg_solve_g") {
@@ -682,7 +681,7 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
 if (FALSE) {
   trace(".AUGI0_ZX_sparsePrecision", where=asNamespace("spaMM"), print=FALSE, tracer=quote(print(which)),
         exit=quote(if ( ! is.null(z)) {str(dv_h)} else switch(which,
-                                                              "hatval_Z"=str(BLOB$hatval_Z_),
+                                                              "hatval_Z"=str(BLOB$hatval_Z_), # but sometimes this should be "Z_lev_phi" / "Z_lev_lambda"
                                                               "solve_d2hdv2"= str(sol), 
                                                               "logdet_r22"=print(logdet_r22,digits = 12),
                                                               "half_logdetQ"=print(half_logdetQ,digits = 12),

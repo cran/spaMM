@@ -55,6 +55,15 @@
     if (inherits((resglm <- tryglm$value),"error") || 
         ( ! resglm$converged && any(fitted(resglm)>1e20)) # this occurred in Gamma(log) models or negbin(log)
     ) {
+      if (family$family=="gaussian" && family$link %in% c("log","inverse") && any(Y==0)) {
+        ## gaussian(<"log"|"inverse">)$initialize is deficient
+        family$initialize <- expression({
+          if (any(y < 0)) 
+            stop("negative values not allowed for the 'gaussian' family with such link")
+          n <- rep.int(1, nobs)
+          mustart <- y + 0.1
+        })
+      }
       resglm <- spaMM_glm.fit(x=X.pv, # ->LevM -> COMP bottleneck
                               y=Y, 
                               weights = eval(prior.weights), 

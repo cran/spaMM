@@ -508,8 +508,8 @@ as_precision <- function(corrMatrix) {
   precmat <- solve(forceSymmetric(corrMatrix))
   # still, the solve() result may be dgC rather than dsC, and
   #   We need to cast bc the result must ultimately be dsC in precisionFactorList[[rd]]$Qmat. 
-  # as(.,"dsCMatrix") is not enough [as(solve(forceSymmetric(diag(2))),"symmetricMatrix") is dsy]
-  # and as(., "symmetricMatrix") directly warns that it is deprecated, so we need
+  # as(.,"symmetricMatrix") is not enough [as(solve(forceSymmetric(diag(2))),"symmetricMatrix") is dsy]
+  # and as(<not symmetric type>, "dsCMatrix") may warn that it is deprecated, so we need
   precmat <- as(as(precmat,"symmetricMatrix"),"dsCMatrix") # sigh
   #
   colnames(precmat) <- rownames(precmat) <- colnames(corrMatrix) 
@@ -758,15 +758,15 @@ as_precision <- function(corrMatrix) {
   if ( ! is.null(resid.model)) { 
     if ( ! is.null(form <- resid.model$formula)) {
       resid.model$formula <- .preprocess_formula(form)
-      # control of phi matters for phiHGLM but the phi model has not yet been determined
-      if (is.null(fixed[["phi"]])) {
-        fixed[["phi"]] <- c(default=1)
-        #        message("'phi' of residual dispersion model set to 1 by default") ## inappropriate when resid.model=~1
-      } else if (is.na(fixed[["phi"]])) fixed[["phi"]] <- NULL ## to force estimation of this phi; 
     } else { ## including resid.model=~1
       resid.model <- list(formula=.preprocess_formula(resid.model), ## otherwise it retains the local environment of the fn in which it is match.call()ed!
                           family=check_old_syntax) # may be NULL, in which case it is later processed as spaMM_Gamma(log)
     }
+    # control of phi matters for phiHGLM but the phi model has not yet been determined
+    if (is.null(fixed[["phi"]])) {
+      fixed[["phi"]] <- c(default=1)
+      #        message("'phi' of residual dispersion model set to 1 by default") ## inappropriate when resid.model=~1
+    } else if (is.na(fixed[["phi"]])) fixed[["phi"]] <- NULL ## to force estimation of this phi; 
     resid.model$fixed <- fixed
     if (is.null(resid.model$resid.model)) resid.model$resid.model <- .preprocess_formula(~1)
   } 
@@ -1110,10 +1110,7 @@ as_precision <- function(corrMatrix) {
     if (For_fitmv) {
       sparse_precision <- FALSE
     } else {
-      sparse_precision <- control.HLfit$sparse_precision
-      if (is.null(sparse_precision)) sparse_precision <- 
-          .determine_spprec(ZAlist=ZAlist, processed=processed, # uses $For, $corr_info, $init_HLfit
-                                            X.pv=X.pv) ## possibly writes $corr_info$G_diagnosis! .../...
+      sparse_precision <- .wrap_determine_spprec(control.HLfit, ZAlist, processed, X.pv)
       ## F I X M E: ZAL diagnosis uses elements that may be modified afterwards and before .choose_QRmethod() reuses $G_diagnosis
       ## post-processing of corr_info depending on sparse_precision
       .process_corr_info_spprec(corr_info=corr_info, For=processed$For,sparse_precision=sparse_precision)
@@ -1162,7 +1159,8 @@ as_precision <- function(corrMatrix) {
     processed$reserve <- .preprocess_arglists(processed)
     processed$hyper_info <- .preprocess_hyper(processed=processed) # uses$ZAlist and $predictor
     processed$QRmethod <- .choose_QRmethod(processed$ZAlist, corr_info=corr_info,
-                                           is_spprec=processed$is_spprec, processed=processed) 
+                                           is_spprec=processed$is_spprec, processed=processed, control.HLfit=control.HLfit)
+    .check_time_G_diagnosis(.provide_G_diagnosis, processed)
     nrd <- processed$cum_n_u_h[nrand+1L]
     if (( ! For_fitmv) && nrd==1L) warning("Found a single random effect with a *single level*. Check formula?", immediate.=TRUE)
   } else models[["eta"]] <- "etaGLM"

@@ -21,12 +21,12 @@ importFrom("stats", "as.formula", "coefficients", "dgamma", "dnorm", "family", "
            "simulate", "anova", "confint", "fitted", "predict", "update", "logLik", "vcov", "coef",
            "gaussian", "binomial", "dpois", "Gamma", "resid", "uniroot", "deviance", "dbinom", "plogis", 
            "as.dist", "AIC", "qnbinom", "qpois", "rnbinom", "integrate", "poisson",".getXlevels", "na.omit",
-           "cov2cor", "pcauchy", "pnorm","model.weights", "median")
+           "cov2cor", "pcauchy", "pnorm","model.weights")
 importFrom("utils", "relist", "txtProgressBar", "setTxtProgressBar", "modifyList", "strOptions", "str",
            "write.table", "packageVersion", "packageDescription", "capture.output", "tail")
 importFrom("Matrix", "Matrix", "drop", "isDiagonal", "diag", "t", "solve", "Diagonal", "crossprod", "tcrossprod", "rowSums", "colSums",
            "sparseMatrix", "qr", "qrR", "qr.R", "qr.Q", "qr.coef", "isSymmetric", "forceSymmetric", "Cholesky","determinant",
-           "chol2inv", "drop0", ".symDiagonal",".trDiagonal","chol")
+           "chol2inv", "drop0", ".symDiagonal",".trDiagonal","chol", "kronecker","nnzero")
 importFrom("proxy", "dist", "pr_DB")
 importFrom("Rcpp", "evalCpp")
 importFrom("MASS", "ginv", "gamma.shape", "mvrnorm") ## gamma.shape is actually a generic with a 'glm' method.
@@ -93,6 +93,11 @@ S3method(print, bootci4print)
 S3method(update, HLfit)
 S3method(vcov, HLfit)
 S3method(MaternCorr, default)
+S3method(MaternCorr, dsCMatrix)
+S3method(MaternCorr, dgCMatrix)
+S3method(CauchyCorr, default)
+S3method(CauchyCorr, dsCMatrix)
+S3method(CauchyCorr, dgCMatrix)
 S3method("[", predictions)
 #S3method(as.matrix, predictions)
 S3method("[", precision)

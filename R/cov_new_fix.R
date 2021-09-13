@@ -1,4 +1,9 @@
-.calc_corr_from_dist <- function(distmat, object, corr.model,char_rd) { ## FIXME later we can pass only ranFix$corrPars[[char_rd]]
+.calc_corr_from_dist <- function(distmat, object, corr.model,char_rd) { 
+  # Only for back compat for objects from $spaMM.version<"2.4.49"that had no $sub_corr_info$corr_families
+  #
+  # *************************** so DO NOT TRY to update it. ************************* 
+  #
+  # It's not tested by the testthat checks.
   if (corr.model=="AR1") {
     corr_mat <- .get_cP_stuff(object$ranFix,"ARphi",which=char_rd)^distmat 
   } else if (corr.model=="Cauchy") {
@@ -12,8 +17,7 @@
                            d=distmat)  ## so that rho=1 in MaternCorr
   } else stop("Unhandled corr.model")
   return(corr_mat) 
-} ## FIXME .calc_corr_from_dist() will ultimately become obsolete, being tied to object$spaMM.version<"2.4.49"
-
+} 
 
 # public wrapper for more transparent workflow
 preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
@@ -24,16 +28,18 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
 }
 ###############################################
 
-.make_corr_list <- function(strucList, newZAlist) {
+.make_corr_list <- function(object, strucList=object$strucList, newZAlist) {
   corr_list <- vector("list", length(strucList))
   for (it in seq_len(length(strucList))) {
     if (! is.null(strucList[[it]])) {
       if (attr(strucList[[it]],"corr.model")=="random-coef") {
-        if ( ! is.null(newZAlist) || # banal
-             ! .spaMM.data$options$replace_design_u # then strucList may not contain expanded-covmat ## in principle only devel case.
-             ) {
+        if ( ! is.null(newZAlist)) {
           abyss <- is.null(longsize <- ncol(newZAlist[[it]])) && (longsize <- ncol(strucList[[it]])) # handling devel case
-          corr_list[[it]] <- .makelong(attr(strucList[[it]],"latentL_blob")$compactcovmat,longsize = longsize)
+          if ( ! is.null(kron_Y <- object$ranef_info$sub_corr_info$kron_Y_LMatrices[[it]])) {
+            # see comments about in kron_Y_LMatrices in .get_invColdoldList()
+            kron_Y <- tcrossprod(kron_Y) 
+          }
+          corr_list[[it]] <- .makelong(attr(strucList[[it]],"latentL_blob")$compactcovmat,longsize = longsize, kron_Y=kron_Y) 
           rownames(corr_list[[it]]) <- colnames(corr_list[[it]]) <- colnames(newZAlist[[it]]) 
           # .tcrossprod gets names from rownames
           ## names required for a predict(,newdata) on a random-coef model
@@ -354,7 +360,7 @@ if (FALSE) { # v3.5.121 managed to get rid of it
   RESU <- .get_newfixef_info(newdata, locform, locdata, object, re.form)
   #
   ## subZAlist is a subset of the old ZA, newZAlist contains new ZA ; different uses=> computation required under disticnt conditions for each.
-  ## calling .make_corr_list(object$strucList,...) is always OK bc the fist argument may be a superset of the required list
+  ## calling .make_corr_list(object,...) is always OK bc the fist argument may be a superset of the required list
   ## all matching in .make_corr_list is through the ranef attributes.
   #
   ## matching ranef terms of re.form
@@ -399,7 +405,7 @@ if (FALSE) { # v3.5.121 managed to get rid of it
                                 levels_type= "seq_len", ## superseded in specific cases: notably, 
                                 ## the same type has to be used by .calc_AMatrix_IMRF() -> .as_factor() 
                                 ##  as by .calc_Zmatrix() -> .as_factor() for IMRFs.
-                                ## This is controlled by option uGeo_levels_type (default = "mf" as the most explicit; using ".ULI" appears OK).
+                                ## This is controlled by option uGeo_levels_type (default = "data_order" as the most explicit).
                                 ## The sames functions are called with the same arguments for predict with newdata.
                                 ZAlist_info=object$ZAlist[newinold], 
                                 lcrandfamfam=attr(object$rand.families,"lcrandfamfam")) 

@@ -1,88 +1,129 @@
-# HLfit(Reaction ~ 0 + (Days|Subject), data = sleepstudy,HLmethod="ML")
-# HLfit(Reaction ~ 1 + (Days|Subject), data = sleepstudy,HLmethod="ML")
-# HLfit(Reaction ~ Days + (Days|Subject), data = sleepstudy,HLmethod="ML")
-
-.calc_latentL <- function(compactcovmat, use_tri_Nspprec=TRUE, spprecBool, try_chol=FALSE) {
-  # returns a *t*crossfactor 
-  ## L and L_Q are distinct matrices used jointly in a fit (L in ZAL...) andmust be deduced from each other.
-  #  In sparse precision code We want chol_Q to be lower triangular (dtCMatrix can be Up or Lo) 
-  #    to obtain a dtCMatrix by bdiag(list of lower tri dtCMatrices).
-  # Beyond this, design_u may be lower or upper tri
-  if (try_chol) {
-    if (is.null(chol_crossfac <- attr(compactcovmat, "chol_crossfac"))) {
-      chol_crossfac <- try(chol(compactcovmat), silent=TRUE)
-    }
-    if ( ! inherits(chol_crossfac, "try-error")) return(list(design_u=t(chol_crossfac), 
-                                                             d=rep(1,ncol(compactcovmat)), 
-                                                             compactcovmat=compactcovmat))
-  }
-  # ELSE:
-  compactcovmat <- .smooth_regul(compactcovmat, epsi=.spaMM.data$options$tol_ranCoefs_inner["regul"]) 
-  #   value of epsi utlmately also affects whether bobyqa has to be run 
-  esys <- attr(compactcovmat,"esys") 
-  d_regul <- esys$d_regul
-  if (spprecBool || use_tri_Nspprec) { ## Competing for clumsy code prize... ## sparse version elsewhere
-    ## need triangular factor for spprec case in particular hence the default value of use_tri_Nspprec
-    crossfac_prec <- .Dvec_times_matrix(sqrt(1/d_regul), t(esys$vectors))
-    qrblob <- qr(crossfac_prec)
-    crossfac_prec <- qr.R(qrblob) # applying .lmwithQR() systematically (badly) affects numerical precision
-    if (! all(unique(diff(qrblob$pivot))==1L)) { # eval an unpermuted triangular R
-      crossfac_prec <- .lmwithQR(crossfac_prec[, sort.list(qrblob$pivot)] ,yy=NULL,returntQ=FALSE,returnR=TRUE)$R
-    } 
-    tcrossfac_prec <- t(crossfac_prec) ## tcrossprod(tcrossfac_prec)=compactprecmat
-    # Correct signs:
-    diagsigns <- sign(.diagfast(tcrossfac_prec))
-    tcrossfac_prec <- .m_Matrix_times_Dvec(tcrossfac_prec,diagsigns)
-    # now with triangular factor:
-    invdcp <- 1/.diagfast(x=tcrossfac_prec)
-    compactchol_Q <- .m_Matrix_times_Dvec(tcrossfac_prec, invdcp) ## for design_u, and independently in sparse precision algo. ## compactprecmat=.ZWZtwrapper(chol_Q,1/invdcp^2)
-    blob <- list(design_u=t(solve(compactchol_Q)), # tcrossprod factor, not orthonormed, UPPER tri (while eigen provides an orthonormed "full" U matrix)
-                 d=invdcp^2, # given variances of latent independent ranefs outer optim algo and iterative algo
-                 compactcovmat=compactcovmat ## not used for the fit
+.upper_tri_tcrossfactorize <- function( esys, d_regul=esys$d_regul, compactcovmat) {
+  # SPPREC or use triangular facto for NON-spprec   # currently with d=1
+  ## Competing for clumsy code prize... 
+  ## need triangular factor for spprec case in particular hence the default value of use_tri_Nspprec
+  crossfac_prec <- .Dvec_times_matrix(sqrt(1/d_regul), t(esys$vectors))
+  qrblob <- qr(crossfac_prec)
+  crossfac_prec <- qr.R(qrblob) # applying .lmwithQR() systematically (badly) affects numerical precision
+  if (! all(unique(diff(qrblob$pivot))==1L)) { # eval an unpermuted triangular R
+    crossfac_prec <- .lmwithQR(crossfac_prec[, sort.list(qrblob$pivot)] ,yy=NULL,returntQ=FALSE,returnR=TRUE)$R
+  } 
+  tcrossfac_prec <- t(crossfac_prec) ## tcrossprod(tcrossfac_prec)=compactprecmat
+  # Correct signs:
+  diagsigns <- sign(.diagfast(tcrossfac_prec))
+  tcrossfac_prec <- .m_Matrix_times_Dvec(tcrossfac_prec,diagsigns)
+  # now with triangular factor:
+  invdcp <- 1/.diagfast(x=tcrossfac_prec)
+  safe_solvand <- .m_Matrix_times_Dvec(tcrossfac_prec, invdcp) 
+  if (TRUE) { 
+    blob <- list(design_u=t(solve(safe_solvand)) %*% diag(x=invdcp), # tcrossprod factor, not orthonormed, UPPER tri (while eigen provides an orthonormed "full" U matrix)
+                 d=rep(1,ncol(compactcovmat)), # given variances of latent independent ranefs outer optim algo and iterative algo
+                 compactcovmat=compactcovmat, ## not used for the fit
+                 compactchol_Q=tcrossfac_prec ## for sparse precision algo. ## compactprecmat=.ZWZtwrapper(chol_Q,1/invdcp^2)
     ) 
-    if (spprecBool) {
-      ## (1) direct conversion from matrix to dtC is remarkably slower than going through the as(.,"sparseMatrix") step !
-      ## (2) Even with two steps as(.,"dtCMatrix") is costly hence the spprecBool condition (dtCMatrix useful only for chol_Q)
-      compactchol_Q <- as(compactchol_Q,"sparseMatrix") # precision factor for sparse_precision algo
-      blob$compactchol_Q <- as(compactchol_Q,"dtCMatrix") # precision factor for sparse_precision algo; # compactcovmat=.ZtWZwrapper(solve(compactchol_Q),d  )
-      evec <- as(esys$vectors,"dgCMatrix")
-      blob$compactprecmat <- .ZWZtwrapper(evec, 1/d_regul) # dsCMatrix
-    } else blob$compactchol_Q <- compactchol_Q ## not used for the fit
-    #
-    # if (identical(spaMM.data$options$safe_spprec,TRUE)) { # debug algo: d=1 and design_u is t(solve(compactchol_prec)) not t(solve(compactchol_Q))
-    #   cat(crayon::red("TRUE"))
-    #   blob$design_u <- blob$design_u %*% diag(x=invdcp) # OK for corr not for prec
-    #   blob$d <- rep(1,length(invdcp))
-    #   blob$compactchol_Q <- as(as(tcrossfac_prec,"sparseMatrix"),"dtCMatrix") # precision factor for sparse_precision algo; # compactcovmat=.ZtWZwrapper(solve(compactchol_Q),d  )
-    #   blob$compactprecmat <- solve(blob$compactcovmat)
-    # } else {
-    #   cat(crayon::green("FALSE"))
-    #   # design_u is t(solve(tcrossfac_Q))=t(solve(compactchol_Q)) and $d is not necess 1
-    # }
-  } else if (FALSE) { ## Would be much nicer if it was OK for HLfit
-    # qr always produces a crossprod factor so if we want a tcrossprod factor, it must be t(qr.R()) hence lower tri...); unless we qr() the preci mat...
-    qrand <- t(.m_Matrix_times_Dvec(esys$vectors,sqrt(d_regul)))
-    qrblob <- qr(qrand)
-    crossfac <- qr.R(qrblob) # applying .lmwithQR() systematically (badly) affects numerical precision
-    if (! all(unique(diff(qrblob$pivot))==1L)) { # eval an unpermuted triangular R
-      crossfac <- .lmwithQR(crossfac[, sort.list(qrblob$pivot)] ,yy=NULL,returntQ=FALSE,returnR=TRUE)$R
-    } 
-    tcrossfac <- t(crossfac) # lower.tri
-    sqrt_d <- .diagfast(x=tcrossfac) 
-    design_u <- .m_Matrix_times_Dvec(tcrossfac, 1/sqrt_d)
-    blob <- list(design_u=design_u, # LOWER tri tcrossprod factor
-                 d= sqrt_d^2, # rep(1,length(d_regul)), # The given variances of latent independent ranefs outer optim algo and iterative algo
-                 compactcovmat=compactcovmat ## not used for the fit
-    ) ## and one might use (solve(design_u)) as a $crossfac_Q precision factor
-  } else {blob <- list(design_u=esys$vectors, 
-                       d=d_regul, # *!* spprec case where d!=1; occurs when Cholesky failed.
-                       compactcovmat=compactcovmat)}
-  return(blob)
-  ## for sparse precision we want chol_Q to be (dtCMatrix: Csparse triangular) so that efficient solve methods can be used.
-  ## This is not provided by this function
+  } else {
+    ## compactprecmat=.ZWZtwrapper(chol_Q,1/invdcp^2)
+    blob <- list(design_u=t(solve(safe_solvand)), # tcrossprod factor, not orthonormed, UPPER tri (while eigen provides an orthonormed "full" U matrix)
+                 d=invdcp^2, # given variances of latent independent ranefs outer optim algo and iterative algo
+                 compactcovmat=compactcovmat, ## not used for the fit
+                 compactchol_Q=safe_solvand
+    ) 
+  }
+  blob
 }
 
-.makelong_bigq <- function(Lcompact, longsize) { ## ad hoc version with restricted usage
+.calc_latentL <- function(compactcovmat, use_tri_CORREL=TRUE, spprecBool) {
+  # returns a *t*crossfactor 
+  ## L and L_Q are distinct matrices used jointly in a fit (L in ZAL...) and must be deduced from each other.
+  if (spprecBool) {
+
+    # always regularize first
+    compactcovmat <- .smooth_regul(compactcovmat, epsi=.spaMM.data$options$tol_ranCoefs_inner["regul"]) 
+    #   value of epsi utlmately also affects whether bobyqa has to be run 
+    esys <- attr(compactcovmat,"esys") 
+    blob <- .upper_tri_tcrossfactorize( esys, compactcovmat=compactcovmat)
+    ## for sparse precision we want chol_Q to be (dtCMatrix: Csparse triangular) so that efficient solve methods can be used.
+    ## (1) direct conversion from matrix to dtC is remarkably slower than going through the as(.,"sparseMatrix") step !
+    ## (2) Even with two steps as(.,"dtCMatrix") is costly hence the spprecBool condition (dtCMatrix useful only for chol_Q)
+    blob$compactchol_Q <- as(as(blob$compactchol_Q,"sparseMatrix"),"dtCMatrix") # precision factor for sparse_precision algo; # compactcovmat=.ZtWZwrapper(solve(compactchol_Q),d  )
+    #  We also want chol_Q it to be lower triangular (dtCMatrix can be Up or Lo) 
+    #    to obtain a dtCMatrix by bdiag(list of lower tri dtCMatrices). It already is lower tri.
+    # Beyond this, design_u may be lower or upper tri
+    evec <- as(esys$vectors,"dgCMatrix")
+    blob$compactprecmat <- .ZWZtwrapper(evec, 1/esys$d_regul) # dsCMatrix
+    
+  } else { # CORREL algos
+    if (is.null(chol_crossfac <- attr(compactcovmat, "chol_crossfac")))  chol_crossfac <- try(chol(compactcovmat), silent=TRUE)
+    if ( ! inherits(chol_crossfac, "try-error")) {
+      blob <- list(design_u=t(chol_crossfac), 
+                   d=rep(1,ncol(compactcovmat)), 
+                   compactcovmat=compactcovmat)
+    } else { # RESCUE CODE
+      # regularize the matrix, then choose between different representations of it.
+      compactcovmat <- .smooth_regul(compactcovmat, epsi=.spaMM.data$options$tol_ranCoefs_inner["regul"]) 
+      #   value of epsi utlmately also affects whether bobyqa has to be run 
+      esys <- attr(compactcovmat,"esys")
+      #
+      if (use_tri_CORREL) {  
+        blob <- .upper_tri_tcrossfactorize( esys, compactcovmat=compactcovmat)
+      } else if (TRUE) { ## # LOWER tri tcrossprod factor. 
+        # Simple code and this may well be a correct alternative to .upper_tri_tcrossfactorize() as rescue code:
+        # (1) checks for v3.8.39 suggests that this works as a general replacement for chol() (although slower).
+        # (2) it passes the rC_transf check.
+        # So given that .upper_tri_tcrossfactorize always return d=1L, with (TRUE) here, this function 
+        # always returns d=1 and we could simplify a lot of problematic code if it proves stable ___F I X M E___
+        #
+        # qr always produces a crossprod factor so if we want a tcrossprod factor, it must be t(qr.R()) hence lower tri...); unless we qr() the preci mat...
+        qrand <- t(.m_Matrix_times_Dvec(esys$vectors,sqrt(esys$d_regul)))
+        qrblob <- qr(qrand)
+        crossfac <- qr.R(qrblob) # applying .lmwithQR() systematically (badly) affects numerical precision
+        if (! all(unique(diff(qrblob$pivot))==1L)) { # eval an unpermuted triangular R
+          crossfac <- .lmwithQR(crossfac[, sort.list(qrblob$pivot)] ,yy=NULL,returntQ=FALSE,returnR=TRUE)$R
+        } 
+        tcrossfac <- t(crossfac) # lower.tri
+        blob <- list(design_u=tcrossfac, # LOWER tri tcrossprod factor
+                     d= rep(1,ncol(compactcovmat)), # rep(1,length(d_regul)), # The given variances of latent independent ranefs outer optim algo and iterative algo
+                     compactcovmat=compactcovmat ## not used for the fit
+        ) ## and one might use (solve(design_u)) as a $crossfac_Q precision factor
+      } else {
+        if (TRUE) { # (RESCUE in) spherical rCtransf remains more precise by this code. So cannot eliminate d!=1 at this point.
+          blob <- list(design_u=esys$vectors, 
+                       d=esys$d_regul, # *NOT-spprec* case where d!=1; occurs when Cholesky failed. # still more precise for 
+                       compactcovmat=compactcovmat)
+        } else {
+          blob <- list(design_u=esys$vectors %*% sqrt(esys$d_regul), 
+                       d=rep(1,ncol(compactcovmat)), # *NOT-spprec* case where d!=1; occurs when Cholesky failed.
+                       compactcovmat=compactcovmat)
+        }
+      }
+    }
+  }
+  
+  blob
+}
+
+.gmp.kronecker2D <- function(X,Y) { # X, Y are 2D arrays of gmp type or not
+  # cf base::.kronecker, but we perform operations on seq(length(p)) 
+  # because they cannot be performed directly on the gmp:: object
+  p <- outer(X,Y)
+  i <- seq(length(p))
+  dim(i) <- c(dim(X),dim(Y))
+  dp <- as.vector(t(matrix(1L:4L, ncol = 2L)[, 2:1])) 
+  pi <- aperm(i,dp)
+  dim(pi) <- dim(X)*dim(Y)
+  pp <- p[[pi]]
+  dim(pp) <- dim(pi)
+  pp
+}
+
+# kronecker(matrix(seq(6),nrow=2,ncol=3),matrix(seq(20),nrow=4,ncol=5))
+# .gmp.kronecker2D(as.bigq(matrix(seq(6),nrow=2,ncol=3)),as.bigq(matrix(seq(20),nrow=4,ncol=5)))
+# .gmp.kronecker2D(as.bigq(matrix(seq(6),nrow=2,ncol=3)),matrix(seq(20),nrow=4,ncol=5))
+# .gmp.kronecker2D(matrix(seq(6),nrow=2,ncol=3), as.bigq(matrix(seq(20),nrow=4,ncol=5)))
+
+.makelong_bigq <- function(Lcompact, longsize, kron_Y) { ## ad hoc version with restricted usage
+  if ( ! is.null(kron_Y)) return(.gmp.kronecker2D(Lcompact,kron_Y)) 
+  # ELSE
   n_levels <- longsize/ncol(Lcompact)
   longLv <- gmp::as.bigq(diag(nrow=longsize))
   pos_template <- matrix(FALSE,nrow=longsize,ncol=longsize)
@@ -104,18 +145,31 @@
   return(longLv) 
 } ## end def .makelong_bigq
 
+
+
+
 ## Build Lmatrix between all pairs of u_h (nr*nr) from parameter estimates (2*2) for the design matrix, longsize is final dim of matrix
 .makelong <- function(Lcompact, ## may also be a compact precmat, symmetric rather than triangular
-                      longsize,as_matrix=FALSE,template=NULL) { ## always returns a Matrix unless explicitly as_matrix
-  
-  if (inherits(Lcompact, "bigq")) return(.makelong_bigq(Lcompact, longsize))
+                      longsize,as_matrix=FALSE,template=NULL, kron_Y) { ## always returns a Matrix unless explicitly as_matrix
+  if ( ! is.null(kron_Y)) {
+    if (methods::.hasSlot(Lcompact,"x") && any(Lcompact@x==0)) Lcompact <- drop0(Lcompact) # Seems cheap
+    kronprod <- kronecker(Lcompact,kron_Y) # sparse as inferred from argument structure
+    # so if the Lcompact has explicit zeros in @x, a drop0() would be useful. But do it on the LHS, not on the product!
+    if ( inherits(Lcompact,c("dtCMatrix","ltCMatrix")) && 
+         inherits(kron_Y,c("dtCMatrix","ltCMatrix"))) return(as(kronprod,"dtCMatrix"))
+    if ( inherits(Lcompact,c("dsCMatrix","lsCMatrix", "lsyMatrix", "dsyMatrix")) && 
+         inherits(kron_Y,c("dsCMatrix","lsCMatrix"))) return(forceSymmetric(kronprod))
+    if ( inherits(kronprod,"dtTMatrix")) return(as(kronprod,"dtCMatrix")) 
+    if ( inherits(kronprod,"dgTMatrix")) return(as(kronprod,"dgCMatrix")) 
+    return(kronprod) # *this* return occurs when LHS is full (square, not triangular) map matrix
+  }
+  if (inherits(Lcompact, "bigq")) return(.makelong_bigq(Lcompact, longsize, kron_Y=kron_Y))
   if ( ! is.null(template)) { ## allows efficient filling of long template
-    template@x <- Lcompact[template@x]
+    template@x <- Lcompact[template@x] ## template must be *M*atrix 
     if (as_matrix) {
       template <- as.matrix(template)
     } else {
-      #if ( ! inherits(template,"sparseMatrix")) stop()
-      if (any(Lcompact==0L)) template <- drop0(template) ## LHS is *M*atrix in all cases    
+      if (nnzero(Lcompact)<ncol(Lcompact)^2) template <- drop0(template) # any(<Matrix>==0L) would be rather inefficient (new logical matrix created...).
       if ( inherits(Lcompact,"dtCMatrix")) {
         template <- as(template,"dtCMatrix")
       } else if ( inherits(Lcompact,"dsCMatrix")) template <- forceSymmetric(template)
@@ -123,6 +177,7 @@
     return(template) 
   } else { # no template... (both cases occur)
     longLv <- .C_makelong(Lcompact, longsize) ## efficient, "sparse matrix code" (input Lcompact not S4!) replaces in v3.6.39 previous R code.
+    #  Matrix::kronecker(Lcompact,<Diagonal matrix>) can be used to obtain the 'same' (dgT...) Matrix but it's slower (even with precomputed Diag)
     if (as_matrix) {
       longLv <- as.matrix(longLv)
     } else {
@@ -157,9 +212,8 @@
   Xi_cols <- attr(ZAlist,"Xi_cols")
   loc_lambda_est <- prev_lambda_est # estimates not provided by the loop are necessary when (! augZXy_cond) -> .solve_IRLS_as_ZX()
   spprecBool <- processed$is_spprec
-  use_tri_Nspprec <- .spaMM.data$options$use_tri_for_makeCovEst
+  use_tri_CORREL <- .spaMM.data$options$use_tri_for_makeCovEst
   verbose <- processed$verbose["TRACE"]
-  try_chol <- ( ! spprecBool ) # && (.spaMM.data$options[["rC_transf_inner"]]=="chol") ## "sph" works with chol latentL now
   augZXy_cond <- attr(processed$augZXy_cond,"inner")
   test <- FALSE
   #test <- TRUE
@@ -174,10 +228,12 @@
       ########## brute force optimization
       objfn <- function(trRancoef) { ## to be MINimized
         compactcovmat <- .calc_cov_from_trRancoef(trRancoef, Xi_ncol, rC_transf=rC_transf_inner)
-        latentL_blob <- .calc_latentL(compactcovmat, use_tri_Nspprec=use_tri_Nspprec, spprecBool=spprecBool, try_chol= try_chol)
+        latentL_blob <- .calc_latentL(compactcovmat, use_tri_CORREL=use_tri_CORREL, spprecBool=spprecBool)
         # Build Xscal
         working_LMatrices[[rt]] <- .makelong(latentL_blob$design_u,longsize=ncol(ZAlist[[rt]]), 
-                                             template=processed$ranCoefs_blob$longLv_templates[[rt]]) ## the variances are taken out in $d
+                                             template=processed$ranCoefs_blob$longLv_templates[[rt]], 
+                                             kron_Y=attr(processed$corr_info$cov_info_mats[[rt]],"blob")$Lunique 
+        ) ## the variances are taken out in $d
         attr(working_LMatrices[[rt]],"ranefs") <- attr(ZAlist,"exp_ranef_strings")[[rt]] 
         locZAL <- .compute_ZAL(XMatrix=working_LMatrices, ZAlist=ZAlist, as_matrix=as_matrix) 
         # w.ranef argument
@@ -261,11 +317,13 @@
       ################# 
       ## reproduces representation in objfn
       compactcovmat <- .calc_cov_from_trRancoef(optr$solution, Xi_ncol, rC_transf=rC_transf_inner)
-      latentL_blob <- .calc_latentL(compactcovmat, use_tri_Nspprec=use_tri_Nspprec, spprecBool=spprecBool, try_chol= try_chol)
+      latentL_blob <- .calc_latentL(compactcovmat, use_tri_CORREL=use_tri_CORREL, spprecBool=spprecBool)
       loc_lambda_est[u.range] <- .make_long_lambda(latentL_blob$d, n_levels, Xi_ncol) 
       #if (.spaMM.data$options$rC_transf_inner!="chol") loc_lambda_est[loc_lambda_est<1e-08] <- 1e-08 
       next_LMatrix <- .makelong(latentL_blob$design_u,longsize=ncol(ZAlist[[rt]]), 
-                                template=processed$ranCoefs_blob$longLv_templates[[rt]]) ## il faut updater pour estimer les ranef correctement...
+                                template=processed$ranCoefs_blob$longLv_templates[[rt]], 
+                                kron_Y=attr(processed$corr_info$cov_info_mats[[rt]],"blob")$Lunique 
+                                ) ## il faut updater pour estimer les ranef correctement...
       attr(next_LMatrix,"latentL_blob") <- latentL_blob ## kept for updating in next iteration and for output
       attr(next_LMatrix,"trRancoef") <- optr$solution ## kept for updating in next iteration and for output
       ranef_info <- attr(ZAlist,"exp_ranef_strings")[rt]

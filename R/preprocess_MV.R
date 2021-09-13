@@ -69,9 +69,9 @@
   if ( ! length(ZAlist1)) ranefs1 <- c() # here we need to handle case where first list is empty 
   if ( ! length(ZAlist2)) ranefs2 <- c() # here rather the case where second list is NULL
   Zlist <- .merge_ZZlists(ZAlist1, ZAlist2, nobs1, nobs2, 
-                 ranefs1=ranefs1,
-                 ranefs2=ranefs2,
-                 mv_it, type="Zlist")  
+                          ranefs1=ranefs1,
+                          ranefs2=ranefs2,
+                          mv_it, type="Zlist")  
   names(Zlist) <- unique(c(ranefs1,ranefs2))
   Zlist
 }
@@ -118,7 +118,7 @@
         if ((Xi_ncol <- attr(ZAlist1,"Xi_cols")[in1])>1L) {
           #allsortedlevels <- as.character(sort(as.integer(alllevels))) # ugly but clear
           nlev1 <- length(ulevels1)
-          # assuming some king of ordering with each orginal matrix, we don't reorder after naming
+          # assuming some kind of ordering with each original matrix, we don't reorder after naming
           ZA1_colblocks <- vector("list",Xi_ncol)
           for (it in seq_len(Xi_ncol)) {
             ZA1_colblock <-  .adhoc_cbind_dgC_0(ZA1[,(it-1L)*nlev1+seq_len(nlev1),drop=FALSE],
@@ -409,6 +409,31 @@
   return(ZAlist)
 }
 
+.correct_newZAlist_mv_ranCoefs <- function(ZAlist, Xi_cols=attr(ZAlist,'Xi_cols'), cum_nobs) {
+  for(rd in seq_along(ZAlist)) {
+    LHS_levels <- attr(ZAlist[[rd]],"LHS_levels") # "2", "3' for all relevant matrices if mv(2,3) or 0+(mv(2,3)) 
+    if ( ! is.null(model_ids <- LHS_levels[[".mv"]])) { # "mv("-specific code 
+      Xi_ncol <- Xi_cols[rd]
+      ZA <- ZAlist[[rd]]
+      n_levels <- ncol(ZA)/Xi_ncol
+      ZAattr <- attributes(ZA)
+      namesTerm <- attr(ZA,"namesTerm") # "(Intercept)" ".mv2" or ".mv1" ".mv2" for all relevant matrices depending on absence/presence of 0+
+      for (mv_it in as.integer(model_ids)) { 
+        obs.range <- (cum_nobs[mv_it]+1L):cum_nobs[mv_it+1L]
+        ZA[obs.range,] <- .Matrix_times_Dvec(ZA[obs.range,], rep(as.numeric(namesTerm %in% c("(Intercept)",paste0(".mv",mv_it))),
+                                                                 rep(n_levels,Xi_ncol)))
+      }
+      ZA <- drop0(ZA)
+      attr(ZA,"is_incid") <- ! ("(Intercept)" %in% namesTerm) # while is_incid was FALSE for the template...
+      names_lostattrs <- setdiff(names(ZAattr), names(attributes(ZA)))
+      attributes(ZA)[names_lostattrs] <- ZAattr[names_lostattrs] 
+      ZAlist[[rd]] <- ZA
+    }
+  }
+  ZAlist
+}
+
+
 .check_identifiability_LMM_mv <- function(processed, vec_nobs, map_rd_mv, unmerged=processed$unmerged) {
   ## identifiability checks cf modular.R -> checkNlevels() in lmer:
   vec_n_u_h <- diff(processed$cum_n_u_h)
@@ -514,13 +539,11 @@
     # unique(map_it[.]) Then gives the submodel hyper indices of these ranefs
     hy_in_submv <- unique(map_it[inverse_map[names(hy_full_indices)]])
     map_hy_mv[[mv_it]] <- structure(unique(hy_full_indices), names=hy_in_submv) # values are full-model hyper-indices, names are submodel hyper indices
-                                                                             # same value/names relationship as for map_rd_mv 
+    # same value/names relationship as for map_rd_mv 
   }
   return(list2env(list(map=merged_map,ranges=merged_ranges, template= template, summingMat=summingMat, map_hy_mv=map_hy_mv),
                   parent=emptyenv()))
 }
-
-
 
 .merge_processed <- function(calls_W_processed, data, init=list(), control.HLfit=list(), method="ML", verbose=NULL, init.HLfit=list(),
                              covStruct=NULL, corrMatrix=NULL, adjMatrix=NULL, distMatrix=NULL, control.dist=list()) {
@@ -556,13 +579,13 @@
   merged <- list2env(list(envir=list2env(list(), parent=environment(HLfit))))
   ## From unmerged[[1L]][[st]] to 'merged': that assignment should ultimately be only for elements not recursively updated:
   for (st in c(#"AUGI0_ZX",
-               "REMLformula", # __FIXME__ this will really handle only standard ML (REMLformula has an isML attr) 
-               #                                                      or standard REML (REMLformula is NULL). 
-               # => no attempt to look REMLformula over models below (But  is built iteratively). 
-               "verbose","control.glm","HL","p_v_obj",#"rand.families",
-               "spaMM_tol",
-               "break_conv_logL",
-               "objective","port_env")
+    "REMLformula", # __FIXME__ this will really handle only standard ML (REMLformula has an isML attr) 
+    #                                                      or standard REML (REMLformula is NULL). 
+    # => no attempt to look REMLformula over models below (But  is built iteratively). 
+    "verbose","control.glm","HL","p_v_obj",#"rand.families",
+    "spaMM_tol",
+    "break_conv_logL",
+    "objective","port_env")
   ) assign(st,value=unmerged[[1L]][[st]],envir=merged)
   
   merged[["For"]] <- "fitme" # does not appear necessary except with adjmatrixas $For needed to determine inner_estim_adj_rho in .determine_spprec()
@@ -774,7 +797,10 @@
     merged$control_dist <- .preprocess_control.dist(control.dist, corr_info$corr_types)
     #
     merged$init_HLfit <- .preprocess_init.HLfit(init.HLfit, corr_info)
-    merged$is_spprec <- .determine_spprec(ZAlist=ZAlist, processed=merged, X.pv=merged_X)
+  
+    merged$is_spprec <- .wrap_determine_spprec(control.HLfit, ZAlist=ZAlist, processed=merged, X.pv=merged_X)
+    ## post-processing of corr_info depending on sparse_precision
+    .process_corr_info_spprec(corr_info=corr_info, For="fitme",sparse_precision=merged$is_spprec)
     # Heavily using corr_info, and spprec:
     ZAlist <- .init_assign_geoinfo(processed=merged, ZAlist=ZAlist, For="fitme", 
                                    exp_barlist=exp_barlist, distMatrix=distMatrix)  
@@ -798,14 +824,13 @@
     attr(ZAlist,"AMatrices") <- corr_info$AMatrices 
     merged[["ZAlist"]] <- ZAlist
     merged$hyper_info <- .merge_hyper_infos(ZAlist, unmerged)
-    ## post-processing of corr_info depending on sparse_precision
-    .process_corr_info_spprec(corr_info=corr_info, For="fitme",sparse_precision=merged$is_spprec)
   } else {
     merged$is_spprec <- FALSE ## for .do_TRACE()
     merged$init_HLfit <- init.HLfit
   }
   merged$QRmethod <- .choose_QRmethod(ZAlist, corr_info=merged$corr_info, 
-                                      is_spprec=merged$is_spprec, processed=merged)
+                                      is_spprec=merged$is_spprec, processed=merged, control.HLfit=control.HLfit)
+  .check_time_G_diagnosis(.provide_G_diagnosis, processed=merged)
   #
   # merged_X <- .scale(merged_X) not necessary since the merged X's are already scaled
   if (nrand) {
@@ -903,8 +928,8 @@ fitmv <- function(submodels, data, fixed=NULL, init=list(), lower=list(), upper=
     call_[["For"]] <- "fitmv"
     if ( ! is.null(main_terms_info <- attr(data,"updated_terms_info"))) { # from update_resp -> .update_main_terms_info() 
       main_terms_info_it <- list(mf=main_terms_info$mf[[mv_it]],fixef_off_terms=main_terms_info$fixef_off_terms[[mv_it]],
-                      fixef_terms=main_terms_info$fixef_terms[[mv_it]],
-                      fixef_levels=main_terms_info$fixef_levels[[mv_it]])
+                                 fixef_terms=main_terms_info$fixef_terms[[mv_it]],
+                                 fixef_levels=main_terms_info$fixef_levels[[mv_it]])
       #class(main_terms_info_it) <- "HLframes" # we tag the result again so that .preprocess() will recognize it as coming from .update_data()
       call_[["data"]] <- structure(data, updated_terms_info=main_terms_info_it)
     }
@@ -931,6 +956,12 @@ fitmv <- function(submodels, data, fixed=NULL, init=list(), lower=list(), upper=
   mc["lower"] <- NULL
   mc["control"] <- NULL
   mc[["calls_W_processed"]] <- calls_W_processed
+  # the fact that promises are evaluated within a call-execution is "local": they will appear not evaluated
+  # when we reuse a call (here mc). E.g. corrMatrix=as_precision(.) would be evaluated twice 
+  # => We need to put the evaluated value in the call list. 
+  # Next line ad-hoc for corrMatrix (__F I X M E__?: What about other arguments ? Which would benefit from some preprocessing?)
+  # if ("corrMatrix" %in% ...names()) # is an R >= 4.1.0 syntax 
+  if ("corrMatrix" %in% names(mc)) mc["corrMatrix"] <- list(eval(mc[["corrMatrix"]])) 
   mc[[1L]] <-  get(".merge_processed", asNamespace("spaMM"), inherits=FALSE)
   merged <- eval(mc, parent.frame()) # means that arguments of *.merge_processed()* must have default values as mc does not contains defaults of fitmv()
   #
@@ -945,13 +976,16 @@ fitmv <- function(submodels, data, fixed=NULL, init=list(), lower=list(), upper=
   # HLfit_body() expects merged[["phi.Fix]] to be a full-length list, possibly with explicit NULLs.
   # merged[["phi.Fix"]] from .merge_processed() should be so, and .modify_list() should keep it so.
   merged[["phi.Fix"]] <- .modify_list(merged[["phi.Fix"]], fixedS$phi)
-  ranCoefs <- .getPar(fixedS,"ranCoefs") ## may be NULL
-  merged$ranCoefs_blob <- .process_ranCoefs(merged, ranCoefs, use_tri_Nspprec=TRUE) 
-  merged$AUGI0_ZX$envir$finertypes[merged$ranCoefs_blob$isRandomSlope] <- "ranCoefs" ## (*creates* the variable in the *environment* so that .evalWrapper() finds it)
   #
-  mc <- oricall
-  mc["submodels"] <- NULL
-  mc["formula."] <- NULL 
+  ranCoefs <- .getPar(fixedS,"ranCoefs") ## may be NULL
+  merged$ranCoefs_blob <- .process_ranCoefs(merged, ranCoefs, use_tri_CORREL=TRUE) 
+  merged$AUGI0_ZX$envir$finertypes[merged$ranCoefs_blob$isRandomSlope] <- "ranCoefs" 
+  #
+  mc["fixed"] <- oricall["fixed"]
+  mc["upper"] <- oricall["upper"]
+  mc["lower"] <- oricall["lower"]
+  mc["control"] <- oricall["control"]
+  mc["calls_W_processed"] <- NULL
   mc[["fixedS"]] <- fixedS # to build and merge the inits
   mc$processed <- merged
   mc[[1L]] <-  get("fitmv_body", asNamespace("spaMM"), inherits=FALSE)

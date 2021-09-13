@@ -1,7 +1,7 @@
 \name{pedigree}
 \alias{pedigree}
 \title{Fit mixed-effects models incorporating pedigrees}
-\description{This illustrates how to use spaMM for quantitative genetic analyses. spaMM appears competitive in terms of speed for GLMMs with large data sets, particularly when using the PQL method, which may be a quite good approximation in such cases. For large pedigrees it may be useful to compute the inverse of the relationship matrix using some efficient ad hoc algorithm, then to provide it as argument of the fit using the \code{\link{covStruct}(list(precision=...))} syntax. If the precision matrix is not specified, spaMM will generally evaluate it to assess whether it should use sparse-precision methods. see \code{\link{sparse_precision}} for further control of this computation, on another example from quantitative genetics.
+\description{This example illustrates how to use spaMM for quantitative genetic analyses. spaMM appears competitive in terms of speed for GLMMs with large data sets, particularly when using the PQL method, which may be a quite good approximation in such cases. For large pedigrees it may be useful to compute the inverse of the relationship matrix using some efficient ad hoc algorithm, then to provide it as argument of the fit using the \code{\link{covStruct}(list(precision=...))} syntax. If the precision matrix is not specified, spaMM will generally evaluate it to assess whether it should use sparse-precision methods. see \code{\link{sparse_precision}} for further control of this computation, on another example from quantitative genetics.
 }
 \seealso{\code{\link{sparse_precision}}}
 \examples{

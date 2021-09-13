@@ -102,7 +102,7 @@ update.HLfit <- function(object, formula., ..., evaluate = TRUE) {
     if (missing(formula.)) { # message misleading if we change between FixedM and MixedM
       spprec_ori <- ("AUGI0_ZX_sparsePrecision" %in% object$MME_method)
       spprec_upd <- ("AUGI0_ZX_sparsePrecision" %in% updated$MME_method)
-      if (spprec_ori!=spprec_upd) message("Note: one of original and updated objects used sparse-precision methods, the other did not.")
+      if (spprec_ori!=spprec_upd) message("Note: *one of* original or updated objects used sparse-precision methods, the other did not.")
       # this is useful to diagnose 'unreproducible' problems due to setting the spaMM option in one session but not in the other. 
     }
     updated

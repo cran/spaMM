@@ -81,7 +81,7 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
   \code{max.iter}, the number of iterations of the iterative algorithm for joint estimation of dispersion parameters and
         of coefficients of the linear predictor. Defaults to 200. This is typically much more than necessary, 
         unless there is little information to separately estimate \eqn{\lambda} and \eqn{\phi} parameters.
-  \code{sparse_precision}{See \code{\link{sparse_precision}}.}
+  \code{algebra, sparse_precision}{See \code{\link{algebra}}.}
 }
   \item{control.glm}{
     List of parameters controlling GLM fits, passed to \code{glm.control}; e.g. \code{control.glm=list(maxit=100)}. See \code{\link{glm.control}} for further details.  
@@ -131,8 +131,7 @@ Elements include \bold{descriptors of the fit}:
 \item{eta}{Fitted values on the linear scale  (including the predicted random effects);}
 \item{fv}{Fitted values (\eqn{\mu=}<inverse-link>(\eqn{\eta})) of the response variable (returned by the \code{fitted} function);}
 \item{fixef}{The fixed effects coefficients, \eqn{\beta} (returned by the \code{fixef} function);}
-\item{ranef}{The random effects \eqn{u} (returned by \code{ranef(*,type="uncorrelated")};}
-\item{v_h}{The random effects on the linear scale, \eqn{v};}
+\item{v_h}{The random effects on the linear scale, \eqn{v}, with atttribute the random effects \eqn{u} (returned by \code{ranef(*,type="uncorrelated")};}
 \item{phi}{The residual variance \eqn{\phi};}
 \item{phi.object}{A possibly more complex object describing \eqn{\phi};}
 \item{lambda}{The random-effect (\eqn{u}) variance(s) \eqn{\lambda} in compact form;}

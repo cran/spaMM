@@ -1,17 +1,13 @@
 ## alternative to lmerFactorList or so. Now see mkReTrms 
 
 .as_factor <- function(txt,mf,type) {
-  ## Standard (.|.) ranefs are NOT handled by this function but by code calling as.factor()
+  ## Standard (.|.) ranefs are NOT handled by this function but by .rhs2factor -> base::as.factor()
   if (type=="seq_len") { ## does not try to find redundant levels. Used by predict.HLfit() for spatial terms
     splt <- NULL
     raw_levels <- seq_len(nrow(mf))
-  } else if (type==".ULI") { # has been the default type of .calc_Zlist(). Now .ULI() no longer called through this case. 
-    # handles ( | ...+...) but not nested groups, while the general alternative below may handle both (at least separately)
-    # Used to make sure that results are data_ordered, but type="data_order" may now handle that. 
-    splt <- NULL
-    aslocator <- parse(text=paste(".ULI(",gsub("\\+|:", "\\,", txt),")"))
-    raw_levels <- eval(expr=aslocator,envir=mf) ## associates ordered levels 1...n to unique combin of rhs variables ordered as in the data.
-  } else { ## all other types such as "mf" or "data_order"; handles "nested nesting" for AR1 spprec || raneftype=="corrMatrix"
+    # ___TAG___ look for potential problem for future devel of <correlated>(mv(.)|.)
+    return(list(factor=as.factor(raw_levels),splt=splt))
+  } else if (type=="data_order") { ## all <keyword>() ranefs, including those with "nested nesting" for AR1 spprec || raneftype=="corrMatrix"
     splt <- strsplit(txt,c("%in%|:|\\+| "))[[1L]] ## things to be removed so that only variable names remain
     splt <- splt[splt!=""]
     if ( ! all(splt %in% names(mf)) ) stop(" ! all(splt %in% names(mf))")
@@ -24,10 +20,9 @@
       pastestring <- paste("list(",paste("x","[",seq_len(nrow(x)),",]",sep="",collapse=","),")",sep="")
       raw_levels <- do.call(paste,c(eval(parse(text = pastestring)),sep=":"))
     } 
-  } 
-  if (type=="data_order") {
     return(list(factor=factor(raw_levels,levels=unique(raw_levels)),splt=splt))
-  } else return(list(factor=as.factor(raw_levels),splt=splt)) # ".ULI" already data_ordered
+  } # I previously had type "mf" which produced the raw_levels as "data_order but returned 
+    # list(factor=as.factor(raw_levels),splt=splt). By contrast, levels=. forces the order produced by unique().
 }
 
 .calc_AR1_sparse_Q_ranges <- function(mf,levels_blob) {
@@ -73,23 +68,24 @@
 .calc_Z_model_matrix <- function(leftOfBar_terms, leftOfBar_mf, raneftype,lcrandfamfam) {
   modmat <- model.matrix(leftOfBar_terms, leftOfBar_mf) ## contrasts.arg not immed useful, maybe later.
   #if (raneftype == "(.|.)") stop("this does not occur") # does not seem to occur here
-  if (! (is.null(raneftype))) {  ## NULL for ranCoefs! 
+  if ( ! (is.null(raneftype))) {  ## to exclude (1|.) and ranCoefs! 
     if (ncol(modmat)>1L) { 
       # allowed: the variable was logical, or numeric (not factor, for which (fac|.) as well as (0+fac|.) generates cols for each level of the factor)
       # if numeric, should have used (0+z|.)
       classe <- attr(attr(leftOfBar_mf,"terms"),"dataClasses")
-      if (classe=="logical") {
-        ## TRUE/FALSE has created an intercept column...
+      if (classe=="logical" || ## TRUE/FALSE (not factor) 
+          (classe=="factor" && setequal(levels(leftOfBar_mf[,1L]),c("TRUE","FALSE"))) ## TRUE/FALSE *factor* 
+         ) { # in both cases an has created an intercept column has been created and must be removed
         modmat <- modmat[,colnames(modmat) != "(Intercept)",drop=FALSE]
-      } else if (classe=="factor") {
-        ## TRUE/FALSE factor has created an intercept column... 0+. syntax not useful here => remove col and check again
-        modmat <- modmat[,colnames(modmat) != "(Intercept)",drop=FALSE]
-        if (ncol(modmat)>1L) stop(paste0("Unhandled expression in ", raneftype,"(<factor>|.):\n",
-                                         " only TRUE/FALSE factor is allowed; '0 + <factor>' syntax is not allowed."))
-      } else if (classe=="numeric") { ## true for integer variables  
-        stop(paste0("Unhandled expression in ", raneftype,"(<numeric>|.): use explicit '0 + .' syntax to remove Intercept."))
-      } else 
-        stop(paste0("Unhandled expression in ", raneftype, "(<LHS>|.) for this type of random effect"))
+      } else if (raneftype !="corrMatrix") {# ___TAG___ modify to extend composite ranefs
+        if (classe=="factor") { 
+          stop(paste0("Unhandled expression in ", raneftype,"(<factor>|.):\n",
+                      " only TRUE/FALSE factor is allowed; '0 + <factor>' syntax is not allowed."))
+        } else if (classe=="numeric") { ## true for integer variables  
+          stop(paste0("Unhandled expression in ", raneftype,"(<numeric>|.): use explicit '0 + .' syntax to remove Intercept."))
+        } else 
+          stop(paste0("Unhandled expression in ", raneftype, "(<LHS>|.) for this type of random effect"))
+      }
     }
   } else if (ncol(leftOfBar_mf)==1L) { ## ncol=0L is for (1|.) ## single variable, but modmat may have an intercept col
     if (lcrandfamfam != "gaussian" && 
@@ -114,13 +110,30 @@
   ff
 }
 
+.rhs2factor <- function(data, rhs) { 
+  ## standard ( | ) rhs: automatically converts grouping variables to factors as in lme4::mkBlist (10/2014)
+  # This creates a Zt matrix with rows (then ZA cols) reordered as the automatic levels of the factor
+  # Hence Z is not 'ordered' (eventually diagonal) if levels are not 'ordered' in the data.
+  mfloc <- data
+  ## 
+  for (i in all.vars(rhs)) { if ( ! is.null(curf <- mfloc[[i]])) mfloc[[i]] <- as.factor(curf)}
+  if (is.null(ff <- tryCatch(eval(substitute(as.factor(fac), list(fac = rhs)), mfloc),
+                             error=function(e) NULL))) {
+    message("couldn't evaluate grouping factor ", deparse(rhs)," within model frame:")
+    if (length(grep("as.factor",rhs))) {
+      stop("'as.factor' found in grouping factor term is not necessary and should be removed.",call.=FALSE)
+    } else stop(" try adding grouping factor to data frame explicitly if possible",call.=FALSE)        
+  }
+  if (all(is.na(ff))) stop("Invalid grouping factor specification, ", deparse(rhs),call.=FALSE)
+  ff
+}
+
 .calc_Zmatrix <- local({
   trivial_incidMat <- sparseMatrix(i=1L,j=1L,x=1L, dimnames=list("1",NULL)) 
   function(x, data, 
            rmInt, ## remove Intercept
            drop, sparse_precision, 
-           levels_type, # note that "data_order", "seq_len" and ".ULI" are all data-ordered, and others ('"mf"') are not
-           # "data_order" is faster than ".ULI" and seems to work. attr(fitobject,"info.uniqueGeo") is unaffected.
+           levels_type, # note that "data_order" and "seq_len" are all data-ordered, and others are not handled...
            # extra info avout levels, for preprocessing vs for post-fit (we cannot simply pass corr_info bc we would need a ranef index 'lit' too):
            corrMat_info, # is corr_info$corrMatrices[[lit]] 
            adjMatrix=NULL, # is corr_info$adjMatrices[[lit]] 
@@ -135,7 +148,10 @@
       splittxt <- strsplit(txt,"%in%")[[1]]
       rhs <- as.formula(paste("~",splittxt[1],":",splittxt[2]))[[2]]
       txt <- .DEPARSE(rhs)
-    }
+      RHS_nesting_info <- list(
+        blocksizes=table(data[,paste(as.formula(paste("~",splittxt[2]))[[2]])]) # ugly code to remove spaces...
+      )
+    } else RHS_nesting_info <- NULL
     #    if (length(grep("\\+",txt))) { ## coordinates is a vector with a single string; grep is 1 if  + was found in this single string and numeric(0) otherwise
     ## if sparse_precision is not yet determined
     #  this build the design matrix as if it was TRUE,
@@ -149,17 +165,16 @@
       ## for AR1_sparse and corrMatrix, we cannot use dummy levels as created by .ULI() of factor(). The level names have special meaning
       #   matching a time concept, or user-provided names for the corrMatrix.
       ## Further, we can drop rows/cols of a correlation matrix, but not of a precision matrix
-      if (raneftype %in% c("Matern","Cauchy")) { ## even in sparse case
-        # uses default levels_type
+      if (raneftype %in% c("Matern","Cauchy")) { ## even in sparse case, so this must be checked here, rather than be default final case
+        # uses .calc_Zlist()'s default levels_type: "data_order"; or "seq_len" in post-fit calls  (permuted newdata tests important here)
       } else if (raneftype =="IMRF") {
         # for IMRF Z matches geo to uniqueGeo and A matches uniqueGeo to nodes
         levels_type <- .spaMM.data$options$uGeo_levels_type # $uGeo_levels_type used to make sure 
         #                                               that same type is used in .calc_AMatrix_IMRF() -> .as_factor()
       } else if (assuming_spprec || raneftype=="corrMatrix") {
-        levels_type <- "data_order" # at some point I may have changed the type (from ".ULI" to "mf"?)
-        #                                       and not seen the effect on a corrMatrix example, now included in the tests
-      } else { # e.g. ranefType="adjacency", *!*assuming_spprec (immediate in the tests)
-        # uses this function's default levels_type
+        levels_type <- "data_order" 
+      } else { # e.g. ranefType="adjacency", NOT assuming_spprec (immediate in the tests)
+        # uses .calc_Zlist()'s default levels_type: "data_order"; or "seq_len" in post-fit calls (permuted newdata tests important here)
       }
       levels_blob <- .as_factor(txt=txt,mf=data,type=levels_type) # levelstype not further needed below
       #
@@ -192,26 +207,9 @@
         ff <- levels_blob$factor
       }
     } else if (length(grep("c\\(\\w*\\)",txt))) { ## c(...,...) was used (actually detects ...c(...)....) (but in which context ?)
-      #levels_type <- ".ULI"
       aslocator <-  parse(text=gsub("c\\(", ".ULI(", txt)) ## slow pcq ULI() est slow
       ff <- as.factor(eval(expr=aslocator,envir=data))
-    } else { ## standard ( | ) rhs: automatically converts grouping variables to factors as in lme4::mkBlist (10/2014)
-      # This creates a Zt matrix with rows (then ZA cols) reordered as the automatic levels of the factor
-      # Hence Z is not 'ordered' (eventually diagonal) if levels are not 'ordered' in the data.
-      #levels_type <- "as.factor"
-      mfloc <- data
-      ## 
-      for (i in all.vars(rhs)) { if ( ! is.null(curf <- mfloc[[i]])) mfloc[[i]] <- as.factor(curf)}
-      if (is.null(ff <- tryCatch(eval(substitute(as.factor(fac), list(fac = rhs)), mfloc),
-                                 error=function(e) NULL))) {
-        message("couldn't evaluate grouping factor ", deparse(rhs)," within model frame:")
-        if (length(grep("as.factor",rhs))) {
-          stop("'as.factor' found in grouping factor term is not necessary and should be removed.",call.=FALSE)
-        } else stop(" try adding grouping factor to data frame explicitly if possible",call.=FALSE)        
-      }
-      if (all(is.na(ff))) stop("Invalid grouping factor specification, ", deparse(rhs),call.=FALSE)
-      ## note additional code in lme4::mkBlist for handling lhs in particular
-    }
+    } else ff <- .rhs2factor(data, rhs) # standard ( | ), including ranCoefs case
     ## If info_mat was corr then it must have the levels that a precision matrix would need
     ## If info_mat_is_prec we drop nothing
     ## if assuming_spprec (i.e. if spprec already determined, or AR1) we drop nothing.
@@ -238,9 +236,8 @@
       leftOfBar_terms <- terms(leftOfBar_form)
       leftOfBar_mf <- model.frame(leftOfBar_terms, data.frame(.mv=factor(model_ids)), xlev = attr(old_ZA,"LHS_levels"))
       dummymodmat <- .calc_Z_model_matrix(leftOfBar_terms, leftOfBar_mf, raneftype = NULL, lcrandfamfam = "gaussian")
-      modmat <- matrix(1, nrow=nrow(data), ncol=ncol(dummymodmat)) 
-      colnames(modmat) <- colnames(dummymodmat) # the model_ids 
-      #levels_type <- "model_ids"
+      modmat <- matrix(1, nrow=nrow(data), ncol=ncol(dummymodmat)) # assuming later .correct_ZA_mv_ranCoefs() call.
+      colnames(modmat) <- colnames(dummymodmat) # matching the model_ids 
     } else {
       leftOfBar_form <- eval(substitute(~expr, list(expr = tempexp)))
       leftOfBar_terms <- terms(leftOfBar_form) ## Implicitly assumes Intercept is included
@@ -260,10 +257,9 @@
     ## This is building Z not Z(A)L hence reasonably sparse even in spatial models
     Z_ <- .calc_raw_ZA(incidMat=im, modmat) ## modmat allows simple forms of heteroscedasticity of lambda.
     if ( length(leftOfBar_mf)) { ## excludes NULL, or 0-col data.frames as in Matern(1|.)
-      attr(Z_,"LHS_levels") <- .getXlevels(attr(leftOfBar_mf,"terms"), leftOfBar_mf) 
-      # "                      1", "2" even if the model matrix is of the form (Intercept, contrast)
-    } # else attr(Z_,"LHS_levels") <- c() # leaving it NULL is risky 
-    attr(Z_, "namesTerm") <- colnames(modmat) ## e.g., "(Intercept)" ".mv2" ;  length=npar # and, consistently, the number of models in an 'mv' term
+      attr(Z_,"LHS_levels") <- .getXlevels(attr(leftOfBar_mf,"terms"), leftOfBar_mf)
+      # : a list as defined for xlev argument of model.matrix().
+    }  
     if (identical(raneftype,"AR1")) {
       if (assuming_spprec) { ## this is TRUE is sparse_precision has not yet been determined !
         ## Following is different from levels(levels_blob$factor) which are reordered as character
@@ -279,6 +275,7 @@
       }
     } 
     attr(Z_,"prior_lam_fac") <- attr(modmat,"prior_lam_fac") 
+    attr(Z_,"RHS_nesting_info") <- RHS_nesting_info # solely for .provide_G_diagnosis(). Can save a lot of memory (and some time)
     return(Z_)
   }
 })
@@ -305,10 +302,12 @@
     ZA <- do.call(cbind, ZA) ## colnames are repeated if modmat has several cols...
     attr(ZA,"is_incid") <- FALSE ## ___FIXME___ hmmm could be set to TRUE when  modmat is an incid matrix ? 0+ case ?
   }
+  attr(ZA, "namesTerm") <- colnames(modmat) ## e.g., "(Intercept)" ".mv2" ;  length=npar # and, consistently, the number of models in an 'mv' term
   return(ZA)
 }
 
-.calc_Zlist <- function (exp_ranef_terms, data, rmInt, drop, sparse_precision=spaMM.getOption("sparse_precision"),
+.calc_Zlist <- function (exp_ranef_terms, data, rmInt, drop, 
+                         sparse_precision=.spaMM.data$options$sparse_precision,
                          levels_type="data_order", # cf comment for Matern case in .calc_ZMatrix(); there is one non-default use in post-fit code
                          # two alternative ways to provide info about levels in .calc_ZMatrix():
                          corr_info=NULL, # pre-fit
@@ -325,14 +324,6 @@
   nrand <- length(exp_ranef_terms)
   Zlist <- structure(vector("list", nrand), names=seq_len(nrand))
   for (lit in seq_along(exp_ranef_terms)) {
-    # if ( ! is.null(ZAlist_info)) {
-    #   if ( attr(ZAlist_info,"exp_ranef_types")[lit] %in% c("Matern","Cauchy")
-    #        && is.null(attr(ZAlist_info,"AMatrices")[[as.character(lit)]])) {
-    #     # cases where we can avoid some level-matching checks; but _F I X M E_ can we generalize this? 
-    #     levels_type <- "seq_len" # bc new_old corr mat will have names as seq_len, 
-    #     # even though "data order" was used for the original Z matrix
-    #   } else levels_type <- attr(ZAlist_info, "levels_types")[lit]
-    # }
     Zlist[[lit]] <- .calc_Zmatrix(exp_ranef_terms[[lit]], data=data, rmInt=rmInt,
                                    drop=drop, sparse_precision=sparse_precision, levels_type=levels_type, 
                                    corrMat_info=corr_info$corrMatrices[[lit]],
@@ -350,7 +341,6 @@
   if ( ! is.null(ZAlist_info)) names(Zlist) <- names(ZAlist_info) ## bc .calc_ZAlist() matches AMatrices by names (itself useful for re.form) 
   ## Subject <- list(0) ## keep this as comment; see below
   namesTerms <- vector("list", nrand)
-  #levels_types <- character(nrand)
   GrpNames <- names(exp_ranef_terms)
   for (rd in seq_len(nrand)) {
     ###################
@@ -360,12 +350,10 @@
     ###################
     namesTerms[[rd]] <- attr(Zlist[[rd]],"namesTerm") ## possibly several variables, eg intercept or slope... 
     names(namesTerms)[rd] <- GrpNames[rd] ## the name of the list member namesTerms[i]
-    #levels_types[rd] <- attr(Zlist[[rd]],"levels_type")
   }
   return(structure(Zlist,  
                    exp_ranef_terms=exp_ranef_terms, ## matches ZAlist elements
                    exp_ranef_types=attr(exp_ranef_terms,"type"), ## matches ZAlist elements
-                   #levels_types=levels_types, ## matches ZAlist elements
                    namesTerms=namesTerms, ## contains info for identifying random-coef terms
                    Xi_cols= unlist(lapply(namesTerms,length)))
   )

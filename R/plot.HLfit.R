@@ -6,15 +6,15 @@
                                       levphi=expression(paste("Leverages for ",phi)), levlambda=expression(paste("Leverages for ",lambda)))
                            ),
                          control = list() , ask=TRUE, ...) {
-  residuals <- x$std_dev_res 
+  residuals <- residuals(x, which="std_dev_res") 
   fitted.values <- x$fv
   ## possible modif of 'which':
-  if (is.null(residuals)) {## possible if disp pars in ranFix
-    if ("mean" %in% which) {
-      message("No 'mean' plot produced because computation of leverages for phi was not needed to fit the model.")
-      which <- setdiff(which,c("mean")) ## all 'mean' diagnostic plots involve these residuals
-    }
-  }
+  # if (is.null(residuals)) {## possible if disp pars in ranFix
+  #   if ("mean" %in% which) {
+  #     message("No 'mean' plot produced because computation of leverages for phi was not needed to fit the model.")
+  #     which <- setdiff(which,c("mean")) ## all 'mean' diagnostic plots involve these residuals
+  #   }
+  # }
   if ("predict" %in% which) {
     plot(x$y,predict(x),xlab="Response",ylab="Predicted response",...)
     abline(0,1)
@@ -24,7 +24,7 @@
       lev_phi <- NULL # i.e. no plot for them
     } else lev_phi <- hatvalues(x, type="std", which="resid")
     lev_lambda <- hatvalues(x, type="std", which="ranef")
-    ranef <- x$ranef ## u
+    ranef <- .get_u_h(x)
     nranplots <- length(which(c(length(lev_lambda)>0,length(lev_phi)>0,length(ranef)>0)))
     if (nranplots==0L) which <- which[which!="ranef"]
   } 

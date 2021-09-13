@@ -16,7 +16,7 @@ stripHLfit <- function(object,...) {
     }    
     #for (st in stripnames) object$envir[[st]] <- NULL
     rm(list=stripnames, pos=object$envir)
-    if (object$spaMM.version <= "1.10.3") { ## for later version, this part of code documents some obscure issues.
+    if (object$spaMM.version <= "1.10.3") { ## Keep in current code as documentation for some obscure issues.
       ######### family matters ...
       ## family$variance, $simulate, $validmu, $aic, $dev.resids get an environment that seems to be 
       ##    the same as object formula (unless the formula itself has been cleaned)

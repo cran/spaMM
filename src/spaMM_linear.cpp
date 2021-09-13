@@ -333,7 +333,7 @@ int get_type(SEXP x) {
 // Distingusihing types: http://lists.r-forge.r-project.org/pipermail/rcpp-devel/2013-February/005352.html
 
 // [[Rcpp::export(.crossprod_not_dge)]]
-SEXP crossprod_not_dge( SEXP AA, SEXP BB, bool eval_dens, bool as_mat ) {  
+SEXP crossprod_not_dge( SEXP AA, SEXP BB, bool eval_dens, bool as_mat, bool keep_names ) {  
   int type_AA=get_type(AA);
   int type_BB=get_type(BB);
   int c;
@@ -352,9 +352,9 @@ SEXP crossprod_not_dge( SEXP AA, SEXP BB, bool eval_dens, bool as_mat ) {
       if ( ! A_sp) Ad=MatrixXd(A);
     } else A_sp=true;
     const S4 Ain(AA); 
-    AAdimnames = clone(as<SEXP>(Ain.slot("Dimnames"))); // clone() to copy values rather than address
+    if (keep_names) AAdimnames = clone(as<SEXP>(Ain.slot("Dimnames"))); // clone() to copy values rather than address
   } else if (type_AA!=NILSXP) {
-    AAdimnames = Rf_getAttrib(AA, R_DimNamesSymbol);
+    if (keep_names) AAdimnames = Rf_getAttrib(AA, R_DimNamesSymbol);
   }
   if (type_BB==S4SXP) {
     if ( ! Rf_inherits( BB, "dgCMatrix" ) ) return(wrap("Unhandled type for second argument."));
@@ -365,12 +365,12 @@ SEXP crossprod_not_dge( SEXP AA, SEXP BB, bool eval_dens, bool as_mat ) {
       if ( ! B_sp) Bd=MatrixXd(B);
     } else B_sp=true;
     const S4 Bin(BB); 
-    BBdimnames = clone(as<SEXP>(Bin.slot("Dimnames"))); // clone() to copy values rather than address
+    if (keep_names) BBdimnames = clone(as<SEXP>(Bin.slot("Dimnames"))); // clone() to copy values rather than address
   } else if (type_BB!=NILSXP) {
-    BBdimnames = Rf_getAttrib(BB, R_DimNamesSymbol); // appears to work in NILSXP case too
+    if (keep_names) BBdimnames = Rf_getAttrib(BB, R_DimNamesSymbol); // appears to work in NILSXP case too
   }
   if (type_BB==NILSXP) {
-    if ( ! Rf_isNull(AAdimnames)) {
+    if ( keep_names && ! Rf_isNull(AAdimnames)) {
       SET_VECTOR_ELT(newDimNames, 0, VECTOR_ELT(AAdimnames, 1));
       SET_VECTOR_ELT(newDimNames, 1, VECTOR_ELT(AAdimnames, 1));
     }
@@ -381,10 +381,10 @@ SEXP crossprod_not_dge( SEXP AA, SEXP BB, bool eval_dens, bool as_mat ) {
       if (as_mat) {
         MatrixXd Xd=MatrixXd(tmp);
         Xout=wrap(Xd);        
-        Xout.attr("dimnames") = newDimNames; 
+        if (keep_names) Xout.attr("dimnames") = newDimNames; 
       } else {
         Xout = S4(wrap(tmp));
-        Xout.slot("Dimnames") = newDimNames;
+        if (keep_names) Xout.slot("Dimnames") = newDimNames;
       } 
     } else {
       MatrixXd txx;
@@ -397,11 +397,13 @@ SEXP crossprod_not_dge( SEXP AA, SEXP BB, bool eval_dens, bool as_mat ) {
         txx=MatrixXd(c, c).setZero().selfadjointView<Lower>().rankUpdate(Am.transpose());
       }
       Xout = wrap(txx);  
-      Xout.attr("dimnames") = newDimNames; 
+      if (keep_names) Xout.attr("dimnames") = newDimNames; 
     }
   } else {
-    if ( ! Rf_isNull(AAdimnames)) SET_VECTOR_ELT(newDimNames, 0, VECTOR_ELT(AAdimnames, 1));
-    if ( ! Rf_isNull(BBdimnames)) SET_VECTOR_ELT(newDimNames, 1, VECTOR_ELT(BBdimnames, 1));
+    if (keep_names) {
+      if ( ! Rf_isNull(AAdimnames)) SET_VECTOR_ELT(newDimNames, 0, VECTOR_ELT(AAdimnames, 1));
+      if ( ! Rf_isNull(BBdimnames)) SET_VECTOR_ELT(newDimNames, 1, VECTOR_ELT(BBdimnames, 1));
+    }
     if (A_sp) {
       const Map<SparseMatrix<double> > A(as<Map<SparseMatrix<double> > >(AA)); 
       if (B_sp) {
@@ -409,10 +411,10 @@ SEXP crossprod_not_dge( SEXP AA, SEXP BB, bool eval_dens, bool as_mat ) {
         if (as_mat) {
           MatrixXd Xd=MatrixXd(A.adjoint() * B);
           Xout=wrap(Xd);        
-          Xout.attr("dimnames") = newDimNames; 
+          if (keep_names) Xout.attr("dimnames") = newDimNames; 
         } else {
           Xout = S4(wrap(A.adjoint() * B));
-          Xout.slot("Dimnames") = newDimNames; 
+          if (keep_names) Xout.slot("Dimnames") = newDimNames; 
         }
       } else {
         if (type_BB==S4SXP) { // Bd created by conversion
@@ -421,7 +423,7 @@ SEXP crossprod_not_dge( SEXP AA, SEXP BB, bool eval_dens, bool as_mat ) {
           const Map<MatrixXd> Bm(as<Map<MatrixXd> >(BB)); // wrapping, no deep copy
           Xout = wrap(A.adjoint() * Bm);
         }
-        Xout.attr("dimnames") = newDimNames; 
+        if (keep_names) Xout.attr("dimnames") = newDimNames; 
       } 
     } else {
       if (B_sp) {
@@ -450,7 +452,7 @@ SEXP crossprod_not_dge( SEXP AA, SEXP BB, bool eval_dens, bool as_mat ) {
           }
         }
       } 
-      Xout.attr("dimnames") = newDimNames; 
+      if (keep_names) Xout.attr("dimnames") = newDimNames; 
     }
   }
   return(Xout);  
@@ -462,7 +464,7 @@ SEXP crossprod_not_dge( SEXP AA, SEXP BB, bool eval_dens, bool as_mat ) {
 // sparse input with eval_dens=TRUE will return a 'matrix' or 'dgCMatrix'                                 
 
 // [[Rcpp::export(.Rcpp_crossprod)]]
-SEXP Rcpp_crossprod( SEXP AA, SEXP BB, bool eval_dens=true, bool as_mat=false ) {
+SEXP Rcpp_crossprod( SEXP AA, SEXP BB, bool eval_dens=true, bool as_mat=false, bool keep_names=true ) {
   // this converts dge to NumericMatrix then calls crossprod_not_dge() that should handle all types (dense|sparse) except dge
   //Rcout<<"debut"<<std::flush;
   bool Adge=Rf_inherits( AA, "dgeMatrix" );
@@ -483,9 +485,9 @@ SEXP Rcpp_crossprod( SEXP AA, SEXP BB, bool eval_dens=true, bool as_mat=false ) 
       b.attr("dimnames") = clone(as<SEXP>(Bin.slot("Dimnames"))); // clone() to copy values rather than address
       B=as<NumericMatrix>(b);
     } else B=BB;
-    return(crossprod_not_dge( wrap(A), wrap(B), eval_dens, as_mat ));
+    return(crossprod_not_dge( wrap(A), wrap(B), eval_dens, as_mat, keep_names=keep_names ));
   } // ELSE:
-  return(crossprod_not_dge( AA, BB, eval_dens, as_mat ));
+  return(crossprod_not_dge( AA, BB, eval_dens, as_mat, keep_names=keep_names ));
 }
 
 // will work on dgC and dsC

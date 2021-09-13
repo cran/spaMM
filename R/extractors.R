@@ -1,5 +1,66 @@
-# LMatrix assumed to be dense except in the trivial case of identity matrix
-.get_invL_HLfit <- function(object, regul.threshold=1e-7) { ## computes inv(L) [not inv(Corr): see calc_invColdoldList]
+.get_u_h <- function(object) {
+  if (is.null(u_h <- object$u_h)) u_h <- attr(object$v_h, "u_h") # non-null $ranef is before v3.8.34
+  u_h    
+}
+
+.inv_Lmatrix <- function(lmatrix, type=attr(lmatrix,"type"), regul.threshold) {
+  invlmatrix <- NULL
+  if (inherits(lmatrix,"dCHMsimpl")) { # before any test on type...
+    invlmatrix <- t(as(lmatrix, "sparseMatrix"))
+  } else if (type == "from_AR1_specific_code")  {
+    invlmatrix <- solve(lmatrix) # cost of solve sparse triangular matrix
+    invlmatrix <- as.matrix(invlmatrix) ## for [<-.matrix
+  } else if (type == "from_Q_CHMfactor")  {
+    invlmatrix <- t(as(attr(lmatrix,"Q_CHMfactor"),"sparseMatrix")) ## L=Q^{-T} => invL=Q^T ## correct but requires the attribute => numerical issues in computing Q_CHMfactor
+    invlmatrix <- as.matrix(invlmatrix) ## for [<-.matrix
+  } else if (type == "cholL_LLt")  {
+    condnum <- kappa(lmatrix,norm="1")
+    if (condnum<1/regul.threshold) {
+      invlmatrix <- try(forwardsolve(lmatrix,diag(ncol(lmatrix))),silent=TRUE)
+      if (inherits(invlmatrix,"try-error")) invlmatrix <- NULL
+    }
+    if (is.null(invlmatrix)) Rmatrix <- t(lmatrix)
+  } else { ## Rcpp's symSVD, or R's eigen() => LDL (also possible bad use of R's svd, not normally used)
+    condnum <- kappa(lmatrix,norm="1")
+    if (condnum<1/regul.threshold) {
+      decomp <- attr(lmatrix,attr(lmatrix,"type")) ## of corr matrix !
+      if ( all(abs(decomp$d) > regul.threshold) ) {
+        invlmatrix <-  try(.ZWZt(decomp$u,sqrt(1/decomp$d)),silent=TRUE) ## try() still allowing for no (0) regul.threshold; not useful ?
+        if (inherits(invlmatrix,"try-error")) invlmatrix <- NULL
+      }
+    }
+    if (is.null(invlmatrix)) Rmatrix <- .lmwithQR(t(lmatrix),yy=NULL,returntQ=FALSE,returnR=TRUE)$R_scaled # no pivoting compared to qr.R(qr(t(lmatrix))) 
+  }
+  #
+  if (is.null(invlmatrix)){
+    # chol2inv is quite robust in the sense of not stopping, even without any regularization.
+    # Nevertheless (1) lmatrix %*% invlmatrix may be only roughly = I:
+    #   if we don't regularize we expect departures from I due to numerical precision;
+    #   if we regularize we expect departures from I even with exact arithmetic...
+    #
+    # But regul. chol2inv result still causes problems in later computations!
+    #
+    # singular <- which(abs(diag(Rmatrix))<regul.threshold) 
+    # if (length(singular)) {
+    #   if (spaMM.getOption("wRegularization")) warning("regularization required.")
+    #   nc <- ncol(Rmatrix)
+    #   diagPos <- seq.int(1L,nc^2,nc+1L)[singular]
+    #   Rmatrix[diagPos] <- sign(Rmatrix[diagPos])* regul.threshold
+    # }
+    # invLLt <- chol2inv(Rmatrix) ## 
+    #
+    invLLt <- try(chol2inv(Rmatrix),silent=TRUE)
+    if (inherits(invLLt,"try-error") || max(abs(range(invLLt)))> 1e12) {
+      invLLt <- ginv(crossprod(Rmatrix))
+    }
+    invlmatrix <- .crossprod(lmatrix, invLLt) ## regularized (or not) solve(lmatrix)
+  }
+  invlmatrix
+}
+
+## Old comment: computes inv(L) [not inv(Corr): see .get_invColdoldList];
+## => not so clear now that latent d's are removed
+.get_invL_HLfit <- function(object, regul.threshold=1e-7) { 
   strucList <- object$strucList
   if (is.null(strucList)) {
     return(NULL) ## no ranefs
@@ -20,62 +81,20 @@
         lmatrix <- strucList[[Lit]]
         if ( ! is.null(lmatrix)) {
           type <-  attr(lmatrix,"type")
-          invlmatrix <- NULL
           if ( ! is.null(latentL_blob <- attr(lmatrix,"latentL_blob"))) { ## from .process_ranCoefs
-            if ( ! is.null(latent_d <- latentL_blob[["d"]])) { 
+            if (is.null(compactchol_Q_w <- latentL_blob$compactchol_Q_w)) { # object$spaMM.version < "3.8.33"
+              latent_d <- latentL_blob[["d"]] # will be needed for back compat whatever future devel
               compactchol_Q_w <- .Matrix_times_Dvec(latentL_blob$compactchol_Q, 1/sqrt(latent_d)) # tcrossfac of full precision matrix
-              invlmatrix <- .makelong(t(compactchol_Q_w),longsize=ncol(lmatrix),as_matrix=TRUE) 
-            } else invlmatrix <- .makelong(t(latentL_blob$compactchol_Q),longsize=ncol(lmatrix),as_matrix=TRUE) 
+            }
+            if ( ! is.null(kron_Y <- object$ranef_info$sub_corr_info$kron_Y_LMatrices[[Lit]])) {
+              # longL = solve(t(compactchol_Q_w)) \otimes Lunique
+              # invL =solve(A=t(compactchol_Q_w) \otimes B=Lunique) = solve(A) \otimes solve(B)
+              # see comments about in kron_Y_LMatrices in .get_invColdoldList()
+              kron_Y <- .inv_Lmatrix(kron_Y, regul.threshold=regul.threshold)
+            }
+            invlmatrix <- .makelong(t(compactchol_Q_w),longsize=ncol(lmatrix),as_matrix=TRUE, kron_Y=kron_Y) 
             # as_matrix=TRUE necessary for resu[u.range, u.range] <- invlmatrix
-          } else if (inherits(lmatrix,"dCHMsimpl")) { # before any test on type...
-            invlmatrix <- t(as(lmatrix, "sparseMatrix"))
-          } else if (type == "from_AR1_specific_code")  {
-            invlmatrix <- solve(lmatrix) # cost of solve sparse triangular matrix
-            invlmatrix <- as.matrix(invlmatrix) ## for [<-.matrix
-          } else if (type == "from_Q_CHMfactor")  {
-            invlmatrix <- t(as(attr(lmatrix,"Q_CHMfactor"),"sparseMatrix")) ## L=Q^{-T} => invL=Q^T ## correct but requires the attribute => numerical issues in computing Q_CHMfactor
-            invlmatrix <- as.matrix(invlmatrix) ## for [<-.matrix
-          } else if (type == "cholL_LLt")  {
-            condnum <- kappa(lmatrix,norm="1")
-            if (condnum<1/regul.threshold) {
-              invlmatrix <- try(forwardsolve(lmatrix,diag(ncol(lmatrix))),silent=TRUE)
-              if (inherits(invlmatrix,"try-error")) invlmatrix <- NULL
-            }
-            if (is.null(invlmatrix)) Rmatrix <- t(lmatrix)
-          } else { ## Rcpp's symSVD, or R's eigen() => LDL (also possible bad use of R's svd, not normally used)
-            condnum <- kappa(lmatrix,norm="1")
-            if (condnum<1/regul.threshold) {
-              decomp <- attr(lmatrix,attr(lmatrix,"type")) ## of corr matrix !
-              if ( all(abs(decomp$d) > regul.threshold) ) {
-                invlmatrix <-  try(.ZWZt(decomp$u,sqrt(1/decomp$d)),silent=TRUE) ## try() still allowing for no (0) regul.threshold; not useful ?
-                if (inherits(invlmatrix,"try-error")) invlmatrix <- NULL
-              }
-            }
-            if (is.null(invlmatrix)) Rmatrix <- .lmwithQR(t(lmatrix),yy=NULL,returntQ=FALSE,returnR=TRUE)$R_scaled # no pivoting compared to qr.R(qr(t(lmatrix))) 
-          }
-          if (is.null(invlmatrix)){
-            # chol2inv is quite robust in the sense of not stopping, even without any regularization.
-            # Nevertheless (1) lmatrix %*% invlmatrix may be only roughly = I:
-            #   if we don't regularize we expect departures from I due to numerical precision;
-            #   if we regularize we expect departures from I even with exact arithmetic...
-            #
-            # But regul. chol2inv result still causes problems in later computations!
-            #
-            # singular <- which(abs(diag(Rmatrix))<regul.threshold) 
-            # if (length(singular)) {
-            #   if (spaMM.getOption("wRegularization")) warning("regularization required.")
-            #   nc <- ncol(Rmatrix)
-            #   diagPos <- seq.int(1L,nc^2,nc+1L)[singular]
-            #   Rmatrix[diagPos] <- sign(Rmatrix[diagPos])* regul.threshold
-            # }
-            # invLLt <- chol2inv(Rmatrix) ## 
-            #
-            invLLt <- try(chol2inv(Rmatrix),silent=TRUE)
-            if (inherits(invLLt,"try-error") || max(abs(range(invLLt)))> 1e12) {
-              invLLt <- ginv(crossprod(Rmatrix))
-            }
-            invlmatrix <- .crossprod(lmatrix, invLLt) ## regularized (or not) solve(lmatrix)
-          }
+          } else invlmatrix <- .inv_Lmatrix(lmatrix, regul.threshold=regul.threshold)
           u.range <- (cum_n_u_h[Lit]+1L):(cum_n_u_h[Lit+1L])
           resu[u.range,u.range] <- invlmatrix   
         }
@@ -134,8 +153,9 @@
         ## dense calculation on not necess triangular lmatrix (!?). 
         ## solve( _t_(lmatrix)) may not allow the efficient use of solveWrap. 
         ## But this is a one-time calculation whose results are saved. No optimization attempted.
-        if (! is.null(latent_d <- attr(lmatrix,"latentL_blob")[["d"]])) {
-          # if I changed the meaning of strucList[[]] between the fit and the postfit (in .post_process_LMatrices)
+        # Ugly, BUT only back-compat code since now all latent_d's are nullified for post-fit computations: 
+        if (! is.null(latent_d <- attr(lmatrix,"latentL_blob")[["d"]])) { # should be FALSE in current spaMM version
+          # if I changed the meaning of strucList[[]] between the fit and the postfit (in .post_process_v_h_LMatrices)
           # I must adjust accordingly here. This is uglier.
           # and here we used the compact 'd' for testing and use the already expanded one next:
           newcoeffs[u.range] <- newcoeffs[u.range]/sqrt(object$envir$sXaug$AUGI0_ZX$envir$latent_d_list[[Lit]])   
@@ -176,7 +196,7 @@ fitted.HLfit <- function(object,...) {
   drop(res)
 }
 
-residuals.HLfit <- function(object, type = c("deviance", "pearson", "response"), ...) {
+residuals.HLfit <- function(object, type = c("deviance", "pearson", "response", "std_dev_res"), force=FALSE, ...) {
   object <- .getHLfit(object)
   type <- match.arg(type)
   BinomialDen <- .get_BinomialDen(object) 
@@ -185,6 +205,12 @@ residuals.HLfit <- function(object, type = c("deviance", "pearson", "response"),
   mu <- object$fv # on 0-1 probability scale for binomial models
   if (type=="response") {
     return(drop(y-mu))
+  } else if (type=="std_dev_res") {
+    if (force || is.null(res <- object$std_dev_res[,1])) {
+      std_dev_res <- .std_dev_resids(object, phi_est=residVar(object, which="phi"), 
+                                     lev_phi=hatvalues(object, type="std"))$std_dev_res
+      res <- (sign(y-mu) * std_dev_res)[,1]
+    }
   } else {
     pw <- object$prior.weights
     family <- object$family
@@ -216,8 +242,8 @@ ranef.HLfit <- function(object,type="correlated",...) {
   })) ## makes group identifiers unique (names of coeffs are unchanged)
   if (type=="correlated") {
     uv_h <- object$v_h 
-  } else uv_h <- object$ranef #random effects \eqn{u}
-  cum_n_u_h <- attr(object$ranef,"cum_n_u_h")
+  } else uv_h <- .get_u_h(object) #random effects \eqn{u}
+  cum_n_u_h <- attr(.get_u_h(object),"cum_n_u_h")
   if (object$spaMM.version < "2.2.116") {
     ranefs <- attr(object$ZAlist,"ranefs") 
   } else ranefs <- attr(object$ZAlist,"exp_ranef_strings") 
@@ -293,7 +319,24 @@ fixef.HLfit <- function(object,...) {
   return(phi_fit)
 }
 
-residVar <- function(object, which="var", submodel=NULL) {
+#------------------------------       get_residVar vs residVar (or simulate)      -------------------------
+# get_residVar() (anything that leads to variances$residVar being TRUE)
+# |-> .predict_body()
+#     |-> .add_residVar()
+#         |-> .warn_pw() + **.calcResidVar()**: no pw computations
+#                           |-> .get_glm_phi() + predict( ,newdata) + Gamma-specif code
+#                                     ^ 
+#                                     |
+#                                    v
+#        |-> uses hard-coded pw + [.get_glm_phi() or .get_phi_fit()] + predict(, newdata allowed)
+# |-> **.get_phiW(, newdata)** + Gamma-specif code
+# residVar() or simulate()
+#
+# The source code of .calcResidVar_phiW() (not actually used) shows how we could substitute .get_phiW() to some of its code,
+# and illustrates with this is not such a good idea.
+#__________________________________________________________________________________________________________
+
+residVar <- function(object, which="var", submodel=NULL, newdata=NULL) {
   phi_model <- object$models[["phi"]]
   if (which=="formula") {
     if (length(phi_model)>1L && is.null(submodel)) stop("'submodel' index required to extract residual-model formula.") 
@@ -316,45 +359,46 @@ residVar <- function(object, which="var", submodel=NULL) {
     if (length(phi_model)>1L && is.null(submodel)) stop("'submodel' index required to extract residual-model fit") 
     .get_phi_fit(object, mv_it=submodel)
   } else if (which %in% c("phi","var")) {
-    mu <- predict(object)
+    mu <- predict(object, newdata=newdata) # 1-col matrix
     cum_nobs <- attr(object$families,"cum_nobs")
     if ( ! is.null(submodel)) {
       resp_range <- .subrange(cumul=cum_nobs, it=submodel)
-      phi <- .get_phiW(object=object, newdata=NULL, mu=as.data.frame(mu),
+      phi <- .get_phiW(object=object, newdata=newdata, dims=c(length(resp_range), 1L),
                        phi_type="predict",prior.weights=object$prior.weights[[submodel]],
-                       phi_mod_class=phi_model[submodel], mv_it=submodel,resp_len=length(resp_range))
-      if (which=="var" && residVar(object, which="family",submodel=submodel)$family=="Gamma") {
+                       phi_mod_class=phi_model[submodel], mv_it=submodel)
+      if (which=="var" && object$families[[submodel]]$family=="Gamma") {
         return(as.vector(phi * mu[resp_range]^2)) # var
       } else return(as.vector(phi)) # phi
     } else {
-      phi <- .get_phiW(object=object, newdata=NULL, 
-                            mu=as.data.frame(mu), phi_type="predict")
+      phi <- .get_phiW(object=object, newdata=newdata, 
+                            dims=dim(mu), phi_type="predict")
       if (which=="var") {
         if ( ! is.null(cum_nobs)) {
           var <- phi
           for (mv_it in seq_len(length(cum_nobs)-1L)) {
-            if (residVar(object, which="family",submodel=mv_it)$family=="Gamma") {
+            if (object$families[[mv_it]]$family=="Gamma") {
               resp_range <- .subrange(cumul=cum_nobs, it=mv_it)
               var[resp_range] <- var[resp_range] * mu[resp_range]^2
             }
           }
           return(as.vector(var)) # var
         } else {
-          if (residVar(object, which="family")$family=="Gamma") {
+          if (object$family$family=="Gamma") {
             return(phi * mu^2) # var
           } else return(as.vector(phi)) # var
         }
       } else return(as.vector(phi)) 
     }
   } else stop("Unknown 'which' type")
-}
+} 
+
+# __F I X M E__: from R v3.3.0: New S3 generic function sigma() with methods for extracting the estimated standard deviation aka “residual standard deviation” from a fitted model. 
 
 .get_phiW <- function(object, newdata, 
-                      mu, # mu is a list (or data frame) whose length() is the # of replicates needed; otherwise the mu[[1]] below will be incorrect
-                      # currently we use only the dimensions of 'mu' (part) so the code could perhaps be simplified.
+                      dims, 
                       prior.weights=object$prior.weights, phi_type, needed,
                       phi_mod_class=object$models[["phi"]],
-                      mv_it=NULL, resp_len=length(mu[[1L]])
+                      mv_it=NULL
                       ) { # returns phi/prior.weights
   if (length(phi_mod_class)>1L) {
     cum_nobs <- attr(object$families,"cum_nobs")
@@ -362,10 +406,10 @@ residVar <- function(object, which="var", submodel=NULL) {
     for (mv_it in seq_along(phiWs)) {
       resp_range <- .subrange(cumul=cum_nobs, it=mv_it)
       phiWs[[mv_it]] <- .get_phiW(object, newdata, 
-                                  mu, # mu is a list (or data frame) whose length() is the # of replicates needed
+                                  dims=c(length(resp_range),dims[2]), 
                                   prior.weights=prior.weights[[mv_it]], phi_type, needed,
                                   phi_mod_class=phi_mod_class[mv_it],
-                                  mv_it=mv_it, resp_len=length(resp_range))
+                                  mv_it=mv_it)
     }
     vec_is_phiW_fix_btwn_sims <- lapply(phiWs, attr, which="is_phiW_fix_btwn_sims")
     vec_is_phiW_fix_btwn_sims <- unlist(vec_is_phiW_fix_btwn_sims, recursive=FALSE, use.names = FALSE)
@@ -373,44 +417,49 @@ residVar <- function(object, which="var", submodel=NULL) {
                      is_phiW_fix_btwn_sims=vec_is_phiW_fix_btwn_sims))
   }
   is_phiW_fix_btwn_sims <- FALSE
-  phi_fit <- .get_phi_fit(object, mv_it=mv_it)
   if (phi_mod_class == "") { ## the count families, or user-given phi
+    phi_fit <- .get_phi_fit(object, mv_it=mv_it)
     if (length(phi_fit)>1L) {
       if (is.null(newdata)) {
         message(paste0("simulate.HLfit() called on an original fit where phi was given but not constant.\n",
                        "This phi will be used, but is that relevant?"))
       } else stop("I do not know what to simulate when 'newdata' is not NULL and the original fit's phi was given but not constant.")
     }  
-    newphiMat <- matrix(phi_fit, ncol=length(mu), nrow=resp_len) # length(mu) is typically 1, or nsim
+    newphiMat <- matrix(phi_fit, nrow=dims[1], ncol=dims[2]) # n_repl is typically 1, or nsim
     if (identical(attr(prior.weights,"unique"),TRUE)) {
       phiW <- newphiMat/prior.weights[1L]
       is_phiW_fix_btwn_sims <- TRUE
     } else phiW <- .Dvec_times_matrix(1/prior.weights, newphiMat)  ## warnings or errors if something suspect
-  } else if (phi_type=="predict") {
-    newphiVec <- switch(phi_mod_class,
-                        "phiGLM" = predict(phi_fit, newdata=newdata, type="response"), ## vector
-                        "phiHGLM" = predict(phi_fit, newdata=newdata, type="predict")[ ,1L],
-                        "phiScal" = rep(phi_fit, resp_len),
-                        stop('Unhandled object$models[["phi"]]')
-    ) ## VECTOR in all cases, becomes matrix later
-    if (identical(attr(prior.weights,"unique"),TRUE)) {
-      phiW <- newphiVec/prior.weights[1L]
-      if (phi_mod_class %in% c("phiScal","phiGLM")) is_phiW_fix_btwn_sims <- TRUE
-    } else phiW <- newphiVec/prior.weights  ## warnings or errors if something suspect
-    phiW <- matrix(phiW,nrow=length(phiW), ncol=length(mu))  # vector -> matrix
-  } else { # any other phi_type 
-    newphiMat <- switch(phi_mod_class,
-                        "phiGLM" = as.matrix(simulate(phi_fit, newdata=newdata, nsim=needed)), ## data frame -> matrix
-                        "phiHGLM" = simulate(phi_fit, newdata=newdata, type=phi_type, nsim=needed),
-                        "phiScal" = matrix(phi_fit,ncol=length(mu),nrow=resp_len),
-                        stop('Unhandled object$models[["phi"]]')
-    ) ## already MATRIX in all cases
-    if (identical(attr(prior.weights,"unique"),TRUE)) {
-      phiW <- newphiMat/prior.weights[1L]
-      if (phi_mod_class=="phiScal") is_phiW_fix_btwn_sims <- TRUE
-    } else phiW <- .Dvec_times_matrix(1/prior.weights,newphiMat)  ## warnings or errors if something suspect
-    # F I X M E add diagnostics ?
-  } # phiW is always a matrix
+  } else {
+    if (phi_mod_class=="phiGLM") {
+      phi_fit <- .get_glm_phi(object, mv_it=mv_it) # object of class "glm"
+    } else phi_fit <- .get_phi_fit(object, mv_it=mv_it) # more diverse object
+    if (phi_type=="predict") {
+      newphiVec <- switch(phi_mod_class,
+                          "phiGLM" = predict(phi_fit, newdata=newdata, type="response"), ## vector
+                          "phiHGLM" = predict(phi_fit, newdata=newdata, type="predict")[ ,1L],
+                          "phiScal" = rep(phi_fit, dims[1]),
+                          stop('Unhandled object$models[["phi"]]')
+      ) ## VECTOR in all cases, becomes matrix later
+      if (identical(attr(prior.weights,"unique"),TRUE)) {
+        phiW <- newphiVec/prior.weights[1L]
+        if (phi_mod_class %in% c("phiScal","phiGLM")) is_phiW_fix_btwn_sims <- TRUE
+      } else phiW <- newphiVec/prior.weights  ## warnings or errors if something suspect
+      phiW <- matrix(phiW,nrow=length(phiW), ncol=dims[2])  # vector -> matrix
+    } else { # any other phi_type 
+      newphiMat <- switch(phi_mod_class,
+                          "phiGLM" = as.matrix(simulate(phi_fit, newdata=newdata, nsim=needed)), ## data frame -> matrix
+                          "phiHGLM" = simulate(phi_fit, newdata=newdata, type=phi_type, nsim=needed),
+                          "phiScal" = matrix(phi_fit,nrow=dims[1],ncol=dims[2]),
+                          stop('Unhandled object$models[["phi"]]')
+      ) ## already MATRIX in all cases
+      if (identical(attr(prior.weights,"unique"),TRUE)) {
+        phiW <- newphiMat/prior.weights[1L]
+        if (phi_mod_class=="phiScal") is_phiW_fix_btwn_sims <- TRUE
+      } else phiW <- .Dvec_times_matrix(1/prior.weights,newphiMat)  ## warnings or errors if something suspect
+      # F I X M E add diagnostics ?
+    } # phiW is always a matrix
+  }
   attr(phiW,"is_phiW_fix_btwn_sims") <- is_phiW_fix_btwn_sims
   return(phiW) ## always MATRIX
 }
@@ -448,7 +497,7 @@ logLik.HLfit <- function(object, which=NULL, ...) {
       mu <- muFREQS * object$BinomialDen
     }
     clik_fn <- .get_clik_fn(object$family)
-    phi_est <- .get_phiW(object=object, newdata=NULL, mu=as.data.frame(mu), phi_type="predict", needed=1L,...)[,1L] # ... allows to overcome the default prior.weights
+    phi_est <- .get_phiW(object=object, newdata=NULL, dims=c(length(mu),1L), phi_type="predict", needed=1L,...)[,1L] # ... allows to overcome the default prior.weights
     reweiclik <- .calc_clik(mu=mu,phi_est=phi_est,object, clik_fn=clik_fn, summand=TRUE, ...) # ... allows to overcome the default prior.weights
     colnames(reweiclik) <- "clik"
     return(reweiclik) ## currently 1-col matrix; avoids names(resu) <- which !
@@ -606,6 +655,7 @@ VarCorr.HLfit <- function(x, sigma=1, add_residVars=TRUE, ...) {
 }
 
 dev_resids <- function(object, ...) .dev_resids(object, ...) # hides the default argumentt of .dev_resids()
+
 .std_dev_resids <- function(object, phi_est, lev_phi, ...) .dev_resids(object, phi_est=phi_est,lev_phi=lev_phi, ...) # idem and more
 
 

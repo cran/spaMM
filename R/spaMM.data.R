@@ -3,7 +3,6 @@
   F_I_X_M_E=FALSE,
   store_data_as_mf=FALSE, # Surely many issues.
   Rcpp_crossprod=TRUE, # integer with usual bool interp., and >1: .crossprod() prints types when .Rcpp_crossprod() not called; >2: always prints types;
-  TRY_R_new=TRUE, # 
   update_CHM=TRUE, # measurable benefits only if Cholesky(., perm=TRUE)
   perm_G=TRUE, 
   perm_Q=NULL,  
@@ -18,6 +17,7 @@
   Matrix_method= "def_sXaug_Matrix_QRP_CHM_scaled", 
   EigenDense_QRP_method=".lmwithQR", # .lmwithQR seems fast cf bootstrap
   use_spprec_QR=FALSE, # TRUE visibly slows several of the long tests (incl fitar1) 
+  presolve_cond=quote(ncol(BLOB$R_scaled)>20000L), # may be slightly faster and more memory efficient for huge data (nested-Matern 40000L subset) 
   #Matrix_method="def_sXaug_Matrix_cholP_scaled", 
   #Matrix_method= "def_sXaug_Matrix_QRP_scaled", 
   ## possible values: matches to def_sXaug_
@@ -77,9 +77,8 @@
   regul_ranCoefs=c(10*.Machine$double.eps), ## used to avoid zero eigenvalue after correction in .smooth_regul()
                    #,covregulcor=0L), # OL inhibits correction by .CovRegulCor(); otherwise covregulcor give the correction in that fn) )
   # .calc_latentL() control: (triangular facto. is ALWAYS used for spprec)
-  use_tri_for_augZXy=FALSE, # *!*spprec; fitme -> .HLfit_body_augZXy[_W]; Seems marginally faster with no drawback.
-  use_tri_for_makeCovEst=FALSE, # *!*spprec; TRUE WAS required for acceptable result in HLfit3 rC_transf_inner="sph" test! Affects numerical precision of calc_latentL() in .makeCovEst1() [ultimately using sXaug, not augZXy method].
-  replace_design_u=TRUE, # the strucList[[<ranCoef>]] is not $design_u if $d were not all 1
+  use_tri_for_augZXy=FALSE, # *NOT-spprec*; fitme -> .HLfit_body_augZXy[_W]; Seems marginally faster with no drawback.
+  use_tri_for_makeCovEst=FALSE, # *NOT-spprec*; TRUE WAS required for acceptable result in HLfit3 rC_transf_inner="sph" test! Affects numerical precision of calc_latentL() in .makeCovEst1() [ultimately using sXaug, not augZXy method].
   #•
   invL_threshold=1e6, ## for devel code .HLfit_body_augZXy_invL(); compare to prod(sqrt(lambda)) ## F I X_invL but test "set.seed(666)" fails for invL_threshold>100
   ## Family-speific numerical controls
@@ -99,7 +98,7 @@
   ###############
   example_maxtime=0.7,
   bin_mu_tol=.Machine$double.eps, # was 1e12 for a long time
-  QRmethod=NULL, ## For user-provided values. The code does not and should not change this.
+  QRmethod=NULL, ## For user-provided values. The code does not and should not change this. Cf control.HLfit$algebra too
   #
   # Most useful tests of LevM controls: initial updates in tests_private/optim_LevM.R, and the tough newy in Leucadendron_hard.R
   #
@@ -126,7 +125,7 @@
   rankTolerance=quote(max(1e-7,.Machine$double.eps*10*ncol(X.pv))), ## private, used  by preprocess
   qrTolerance=1e-10, ## private, used by select qr() calls for predVar computation
   # , sparse_X=NULL## private
-  uGeo_levels_type="mf", # same type to be used by .calc_AMatrix_IMRF() and .calc_Zmatrix() for IMRFs. Explicit names, useful for debugging. ALternative is ".ULI" (which is faster?)
+  uGeo_levels_type="data_order", # same type to be used by .calc_AMatrix_IMRF() and .calc_Zmatrix() for IMRFs. Explicit names, useful for debugging.
   INLA_A=TRUE,
   #
   stylefns=list(v_in_loop=crayon::green, 

@@ -161,9 +161,9 @@
     #return(.tcrossprod(lhs, invV.dV_info$ZAfix)) ## effectively dense lhs => slow
   } else if (invV.dV_info$type=="iVZA|L") { # this is only devel code
     warning("devel code not tested after redef of structList for ranCoefs")
-    # => now (if $replace_design_u is TRUE), this seems correct
+    # => now, this seems correct
     # Further, we won't see any pb as long as the ranCoefs $d are 1, which is so if *!*spprec and chol() worked in .calc_latentL()
-    # Thus this devel code must be OK unless $replace_design_u is set to FALSE and if chol() fails on final estimates (since we are in post-fit code) 
+    # Thus this devel code must be OK 
     tcrossfac <- .m_Matrix_times_Dvec(invV.dV_info$Lmatrix, invV.dV_info$ZAL_to_ZALd_vec * template) # Ld
     lhs <- .tcrossprod(tcrossfac) # LddL'
     return(as.matrix(.tcrossprod(lhs, invV.dV_info$envir$sXaug$AUGI0_ZX$ZAfix))) # LddL'A'Z'
@@ -252,12 +252,12 @@
   if (object$spaMM.version<="1.11.60") stop("objects created with spaMM versions <= 1.11.60 are no longer supported.")
   lambda.object <- object$lambda.object
   strucList <- object$strucList
-  dwdlogphi <- dwdloglam <- NULL ## always a cbind at the end of calc_logdisp_cov
   dispcolinfo <- list()
   problems <- list() ## Its elements' names are tested in calcPredVar, and the strings are 'development info'
   nrand <- length(strucList)
   col_info <- list(nrand=nrand, phi_cols=NULL) 
   Xi_cols <- attr(object$ZAlist, "Xi_cols")
+  dwdloglam <- matrix(0,ncol=sum(Xi_cols),nrow=length(object$v_h)) # cols will remain 0 for fixed lambda params
   checklambda <- ( ! (lambda.object$type %in% c("fixed","fix_ranCoefs","fix_hyper"))) 
   if (any(checklambda)) {
     corr.models <- lapply(strucList,attr,which="corr.model") ## not unlist bc it may contain NULLs
@@ -281,7 +281,6 @@
     n_u_h <- diff(cum_n_u_h)
     cum_Xi_cols <- cumsum(c(0,Xi_cols))
     ## dwdloglam will include cols of zeros for fixed lambda; matching with reduced logdisp_cov is performed at the end of the function.
-    dwdloglam <- matrix(0,ncol=sum(Xi_cols),nrow=NROW(dvdloglamMat)) ## likewise dwdlogdisp
     for (randit in seq_len(nrand)) { ## ALL ranefs!
       range_in_dw <- (cum_n_u_h[randit]+1L):(cum_n_u_h[randit+1L])
       if ( inherits(strucList[[randit]],"dCHMsimpl")) {
@@ -296,11 +295,11 @@
       for (row_block in seq_len(nblocks_randit)) { ## half-ranges for random-slope model
         rowrange_in_dw_i <- rowranges_in_dw_i[,row_block]
         cum_rowrange_in_dw <- rowrange_in_dw_i + cum_n_u_h[randit]
-        for (randjt in which(checklambda)) { ## NOT all ranefs!
+        for (randjt in which(checklambda)) { ## NOT all ranefs! # iteraction over ranefs, not lambdas ranCoef: one ranef, several lambdas)
           nblocks_randjt <- Xi_cols[randjt]
           cum_colrange_in_dw_i <- (cum_n_u_h[randjt]+1L):(cum_n_u_h[randjt+1L])
           cum_colranges_in_dw_i <- matrix(cum_colrange_in_dw_i,ncol=nblocks_randjt) ## this _splits_ seq(n_u_h[randit]) over two columns for a random-slope model
-          for (col_in_colranges_dw_i in nblocks_randjt) { ## half-ranges for random-slope model
+          for (col_in_colranges_dw_i in seq(nblocks_randjt)) { ## half-ranges for random-slope model; trivial bug here detected 08/2021 thanks to test-composite.R
             cum_col_in_dw <- cum_Xi_cols[randjt]+col_in_colranges_dw_i
             cum_cols_in_dw_i <- cum_colranges_in_dw_i[,col_in_colranges_dw_i] 
             dwdloglam[cum_rowrange_in_dw, cum_col_in_dw] <- rowSums(for_dw_i[rowrange_in_dw_i, cum_cols_in_dw_i,drop=FALSE])  
@@ -336,6 +335,7 @@
         .spaMM.data$options$phi_dispVar_comp_warned <- TRUE
       }
     }
+    dwdlogphi <- NULL
   }
   ## compute info matrix:
   if ((length(dispcolinfo))==0L) {
@@ -445,14 +445,25 @@
     } 
     logdispInfo <- logdispInfo/2
     resu <- .wrap_solve_logdispinfo(logdispInfo, object)
-    if (any( ! checklambda )) { ## if cols missing from logdisp_cov compared to dwdlogdisp
-      ncd <- ncol(dwdlogdisp)
-      full_logdisp_cov <- matrix(0,ncd,ncd)
+    if (any( ! checklambda )) { ## if (lambda) cols missing from logdisp_cov compared to dwdlogdisp
+      #ncd <- ncol(dwdlogdisp)
+      #full_logdisp_cov <- matrix(0,ncd,ncd)
+      # : alternative ncd below should be equivalent but more self contained
       cols_in_logdisp_cov <- rep(checklambda,Xi_cols) ## which cols in dwdloglam match loglambda col in logdisp_cov
       if ( ! is.null(dwdlogphi)) cols_in_logdisp_cov <- c(cols_in_logdisp_cov,TRUE)  ## col for dwdlogphi
+      ncd <- length(cols_in_logdisp_cov)
+      full_logdisp_cov <- matrix(0,ncd,ncd)
       full_logdisp_cov[cols_in_logdisp_cov,cols_in_logdisp_cov] <- resu$logdisp_cov
       resu$logdisp_cov <- full_logdisp_cov
     }  
+    # Example(s):
+    #
+    # mrf <- fitme(migStatus ~ 1 + (1|pos) + multIMRF(1|longitude+latitude,margin=2,levels=2, coarse=4) ...
+    # with fixed lambda for (1|pos). logdispInfo will be 3*3, 3 being the number of parameters whether fixed or not 
+    #  [one lambda for (.|.), one lambda hyper-par for IMRF, one phi]
+    # but full_logdisp_cov is 4*4, (from IMRF(...levels=2)), with a summingMat later operating the match.
+    # The first row and column of full_logdisp_cov remain zero bc the first lambda is fixed.
+    #
     resu$dwdlogdisp <- dwdlogdisp
     return(resu)
     ## more compact than storing ww %*% logdisp_cov %*% t(ww) which is nobs*nobs 

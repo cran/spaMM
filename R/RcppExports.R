@@ -157,12 +157,12 @@
     .Call(`_spaMM_dgCtcrossprod`, AA, BB)
 }
 
-.crossprod_not_dge <- function(AA, BB, eval_dens, as_mat) {
-    .Call(`_spaMM_crossprod_not_dge`, AA, BB, eval_dens, as_mat)
+.crossprod_not_dge <- function(AA, BB, eval_dens, as_mat, keep_names) {
+    .Call(`_spaMM_crossprod_not_dge`, AA, BB, eval_dens, as_mat, keep_names)
 }
 
-.Rcpp_crossprod <- function(AA, BB, eval_dens = TRUE, as_mat = FALSE) {
-    .Call(`_spaMM_Rcpp_crossprod`, AA, BB, eval_dens, as_mat)
+.Rcpp_crossprod <- function(AA, BB, eval_dens = TRUE, as_mat = FALSE, keep_names = TRUE) {
+    .Call(`_spaMM_Rcpp_crossprod`, AA, BB, eval_dens, as_mat, keep_names)
 }
 
 .Rcpp_Csum <- function(AA, BB) {

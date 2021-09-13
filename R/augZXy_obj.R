@@ -19,7 +19,7 @@
       sparse_precision <- processed$is_spprec
       ranCoefs.Fix <- .getPar(ranFix,"ranCoefs") ## may be NULL
       # Updates processed$ranCoefs_blob which contains no globally fixed ranCoefs as this has been excluded by .preprocess_augZXy() 
-      ranCoefs_blob <- .process_ranCoefs(processed, ranCoefs.Fix,use_tri_Nspprec=.spaMM.data$options$use_tri_for_augZXy) ## *updates* *locally* a preexisting object
+      ranCoefs_blob <- .process_ranCoefs(processed, ranCoefs.Fix,use_tri_CORREL=.spaMM.data$options$use_tri_for_augZXy) ## *updates* *locally* a preexisting object
       LMatrices <- processed$AUGI0_ZX$envir$LMatrices
       # HLCor_body has prefilled $LMatrices for :
       #    for Matern...
@@ -32,7 +32,7 @@
       }
       if (processed$is_spprec) { 
         .init_AUGI0_ZX_envir_spprec_info(processed)
-        .update_AUGI0_ZX_envir_ranCoefs_info(processed,LMatrices)
+        .wrap_precisionFactorize_ranCoefs(processed,LMatrices)
       }
       if (processed$is_spprec) {
         ZAL <- NULL # we practically don't need it (though F I X M E: it would be nice to provide alternative info to .eval_init_lambda_guess)
@@ -77,7 +77,7 @@
       } else {
         ZAL_scaling <- 1/sqrt(w.ranef*H_global_scale) ## Q^{-1/2}/s
         weight_X <- .calc_weight_X(w.resid, H_global_scale) ## sqrt(s^2 W.resid) ## should not affect the result up to precision
-        if (.spaMM.data$options$TRY_R_new && inherits(ZAL,"sparseMatrix")) {
+        if (inherits(ZAL,"sparseMatrix")) {
           ZW <- .Dvec_times_Matrix(weight_X,.Matrix_times_Dvec(ZAL,ZAL_scaling))
           XW <- .Dvec_times_m_Matrix(weight_X,processed$AUGI0_ZX$X.pv)
           sXaug <- structure(list(ZW=ZW,XW=XW,I=processed$AUGI0_ZX$I),

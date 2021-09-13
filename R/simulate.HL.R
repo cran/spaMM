@@ -327,7 +327,7 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
     if (length(mu) != needed) stop("Programming error in simulate.HLfit() (ncol(mu) != needed).")
     #
     phiW <- .get_phiW(object=object, newdata=newdata, 
-                      mu=mu, ## must be a list
+                      dims=c(length(mu[[1]]), length(mu)), # (nrow= response length, ncol= # of replicates)
                       phi_type=phi_type, needed=needed, 
                       prior.weights=prior.weights) # phiW is always a matrix
     # up to version 3.5.49, there was ad hoc code calling COMPoisson()$simulate(object, nsim=nsim) when 
