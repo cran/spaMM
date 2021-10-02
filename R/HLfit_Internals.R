@@ -33,6 +33,8 @@ print.arglist <- function(x,...) {
 .m_Matrix_times_Dvec <- function(X, Dvec) {
   if (inherits(X,"ZAXlist")) {
     return(.ZAXlist_times_Dvec(X=X, Dvec=Dvec))
+  } else if (inherits(X,"Kronfacto")) {
+    return(.m_Matrix_times_Dvec(X=X@BLOB$long, Dvec=Dvec))
   } else if (inherits(X,"Matrix")) {
     return(.Matrix_times_Dvec(X=X, Dvec=Dvec))
   } else return(sweep(X, MARGIN=2L, Dvec, `*`))
@@ -286,7 +288,7 @@ if (FALSE) {
       # the 'LHS' with copies of the actual Y (say copies of Lunique)
       # then kronecker product = RHS@x * X[LHS@x] is the only computation for each new X
       phantasmapic <- .get_rC_longLv_phantom_map(envir=attr(cov_info_mat,"blob"), Xi_ncol=ncol(latentL_blob$compactchol_Q))
-      kron_X <- solve(t(latentL_blob$compactchol_Q)) 
+      kron_X <- .rawsolve(t(latentL_blob$compactchol_Q)) 
       rC_blob_longLvMatrix <- phantasmapic$RHS
       kron_X <- as.matrix(kron_X) # as.matrix() before subsetting.
       rC_blob_longLvMatrix@x <- rC_blob_longLvMatrix@x * kron_X[phantasmapic$LHS_x] 
@@ -421,7 +423,10 @@ if (FALSE) {
     #
     if (ranCoefs_blob$new_compos_info[rt]) {
       if (spprecBool) { 
-        rC_blob_longLvMatrix <- .wrap_makelong_outer_composite(processed, rt=rt, latentL_blob=latentL_blob) 
+        if (TRUE) {
+          rC_blob_longLvMatrix <- .def_Kronfacto(lhs=.rawsolve(t(latentL_blob$compactchol_Q)), 
+                                                 rhs=attr(processed$corr_info$cov_info_mats[[rt]],"blob")$Lunique)
+        } else rC_blob_longLvMatrix <- .wrap_makelong_outer_composite(processed, rt=rt, latentL_blob=latentL_blob) 
       } else {
         rC_blob_longLvMatrix <- .makelong(latentL_blob$design_u,longsize=ncol(ZAlist[[rt]]),# the variances are taken out in $d
                                           template=ranCoefs_blob$longLv_templates[[rt]],
@@ -431,7 +436,7 @@ if (FALSE) {
     } else if (newly_set[rt]) {
       rC_blob_longLvMatrix <- .makelong(latentL_blob$design_u,longsize=ncol(ZAlist[[rt]]),# the variances are taken out in $d
                                         template=ranCoefs_blob$longLv_templates[[rt]],
-                                        kron_Y=NULL)
+                                        kron_Y=NULL) # ___F I X M E___ can we save time in ZAL <- by using a Kronfacto ? not clear 
     } 
     attr(rC_blob_longLvMatrix,"trRancoef") <- .ranCoefsFn(ranCoefs[[rt]], rC_transf=.spaMM.data$options$rC_transf_inner) # used for init_trRancoef in .MakeCovEst()
     attr(rC_blob_longLvMatrix,"Ltype") <- "cov"
@@ -444,7 +449,7 @@ if (FALSE) {
     LMatrices[[rt]] <- rC_blob_longLvMatrix
     n_levels <- ncol(ZAlist[[rt]])/Xi_ncol 
     u.range <- (cum_n_u_h[rt]+1L):(cum_n_u_h[rt+1L])
-    lambda_est[u.range] <- .make_long_lambda(latentL_blob$d, n_levels, Xi_ncol=Xi_ncol)
+    lambda_est[u.range] <- 1
     lambda_est[lambda_est<min_lam] <- min_lam ## arbitrarily small eigenvalue is possible for corr=+/-1 even for 'large' parvec
   }
   # with ranCoefs_blob$new_compos_info we can reach with is_set TRUE and newly_set FALSE
@@ -717,7 +722,7 @@ if (FALSE) {
       }
       w_resid <- .unlist(w_resid)
       attr(w_resid,"unique") <- attr(w_resid,"is_unit") <- FALSE 
-      return(list(w_resid=w_resid, WU_WT=.unlist(WU_WT), mvlist=mv_res)) # mvlist being a list with elements of tow possible types as described above
+      return(list(w_resid=w_resid, WU_WT=.unlist(WU_WT), mvlist=mv_res)) # mvlist being a list with elements of two possible types as described above
       # each element of 'mvlist' has all the info in the expected info for a single response
     } else {
       w_resid <- .unlist(mv_res) # vector
@@ -1595,7 +1600,7 @@ spaMM_Gamma <- local({
   } else return(Matrix::tcrossprod(x,y))
 }
 
-.tcrossprod <-  function(x, y=NULL, allow_as_mat=TRUE, as_sym=TRUE, perm) { # XX' tcrossprod, or more general concept for dCHMsimpl
+.tcrossprod <-  function(x, y=NULL, chk_sparse2mat=TRUE, as_sym=TRUE, perm) { # XX' tcrossprod, or more general concept for dCHMsimpl
   # this function can be used to compute a cov matrix from its tcrossfac;
   # but also to compute a cov matrix of a permuted cov matrix from the dCHMsimpl of an unpermuted precision matrix.
   # Hence the ad hoc code in the latter case, and the absence of default value of 'perm' argument, as a default could cause hard to track bugs. 
@@ -1619,7 +1624,7 @@ spaMM_Gamma <- local({
         if (as_sym) {
           return(forceSymmetric(xxt)) ## not as(.,"sparseMatrix") which checks -> slow
         } else return(xxt)
-      } else if (allow_as_mat && (maxd <- prod(dim(x)))>1L ) { 
+      } else if (chk_sparse2mat && inherits(x,"sparseMatrix") && (maxd <- prod(dim(x)))>1L ) { 
         x_denseness <- .calc_denseness(x)/maxd 
         if (x_denseness>0.35) {
           resu <- .tcrossprodCpp(as.matrix(x),y) ##  so much faster (simulate(mrf,...) )-- poor Matrix:: coding ?
@@ -1632,12 +1637,12 @@ spaMM_Gamma <- local({
     } else if (FALSE && inherits(x,"dgCMatrix") &&  inherits(y,"dgCMatrix") ) { ## FASTer when (FALSE &&)
       xyt <- .dgCtcrossprod(x,y) 
       return(xyt)
-    } else if (allow_as_mat) {
-      if (inherits(x,"Matrix") && (maxd <- prod(dim(x)))>1L) { # trivial >1L bc the alternatives to Matrix::tcrossprod are always useful
+    } else if (chk_sparse2mat) { 
+      if (inherits(x,"sparseMatrix") && (maxd <- prod(dim(x)))>1L) { # trivial >1L bc the alternatives to Matrix::tcrossprod are always useful
         x_denseness <- .calc_denseness(x)/maxd 
         if (x_denseness>0.35) x <- as.matrix(x)
       } #else x_denseness <- 0 ## ie if the test is FALSE, no explicit conversion is attempted
-      if (inherits(y,"Matrix") && (maxd <- prod(dim(y)))>1L) { # idem
+      if (inherits(y,"sparseMatrix") && (maxd <- prod(dim(y)))>1L) { # idem
         y_denseness <- .calc_denseness(y)/maxd
         if (y_denseness>0.35) y <- as.matrix(y)
       } #else y_denseness <- 0 ## idem
@@ -1660,11 +1665,13 @@ spaMM_Gamma <- local({
   }
 }
 
-.asmatMatcrossprod <- function(x,y=NULL,as_mat=FALSE) { # wraps an inefficient bit of code, to be avoided 
-  if (as_mat) {
+.Matcrossprod <- function(x,y=NULL,return_mat=FALSE) { # wraps an inefficient bit of code, to be avoided 
+  if (return_mat) {
     return(as.matrix(Matrix::crossprod(x,y))) # that's the ineff code, not called in the long tests.
   } else {
-    return(Matrix::crossprod(x,y)) # perfectly OK and routine ()
+    return(Matrix::crossprod(x,y)) # perfectly OK and routine () ...except...
+    # the time of Matrix::crossprod(x,<dge>, y) seems eqivalent to that of crossprod(as.matrix(x),y) so the question is whether as.matrix(x) should be prevcomputed or not
+    
   }
 }
 
@@ -1676,9 +1683,17 @@ spaMM_Gamma <- local({
 
 
 
-# as_mat=TRUE and as_sym=TRUE may return inconsistent results
-.crossprod <- function(x, y=NULL, allow_as_mat=TRUE, as_sym=( ! as_mat && is.null(y)), use_Rcpp_cp=.spaMM.data$options$Rcpp_crossprod, 
+# as_mat=TRUE and as_sym=TRUE may return inconsistent results.
+# It is distinctly better to call directly .Rcpp_crossprod() if we know in advance that it will be called by .crossprod 
+.crossprod <- function(x, y=NULL, 
+                       allow_as_mat=TRUE, # controls chk_sparse2mat AND an automatic conversion.
+                       chk_sparse2mat=allow_as_mat, # means that .calc_denseness may be called.on a sparseMatrix
+                       # If so and if the Matrix is really sparse and we waste the tiem of checking that;
+                       # is not chk_sparse2mat, Matrix::crossprod is called. So as much as possible we should JOINTLY
+                       # let x be sparseMatrix only when it is truely sparse; and set chk_sparse2mat=FALSE  
+                       as_sym=( ! as_mat && is.null(y)), use_Rcpp_cp=.spaMM.data$options$Rcpp_crossprod, 
                        eval_dens=TRUE, as_mat=FALSE) {
+  #if (inherits(x,"dgeMatrix")) stop("Possibly inefficient use of 'dgeMatrix' caught by .calc_denseness.") 
   if (is.null(x)) return(NULL) ## allows lapply(,.tcrossprod) on a list of (matrix or NULL)
   if (inherits(x,"ZAXlist")) {
     return(crossprod(x,y)) # ZAXlist method
@@ -1709,7 +1724,7 @@ spaMM_Gamma <- local({
         if (as_sym) {
           return(forceSymmetric(txx)) ## not as(.,"sparseMatrix") which checks -> slow
         } else return(txx)
-      } else if (allow_as_mat && (maxd <- prod(dim(x)))>1L ) { 
+      } else if (chk_sparse2mat && (maxd <- prod(dim(x)))>1L ) { 
         x_denseness <- .calc_denseness(x)/maxd 
         if (x_denseness>0.35) {
           ## Matrix::crossprod() is inefficient on math-dense matrices, even for dgeMatrix ! We try to maintain its return type, typically dsCMatrix:
@@ -1717,24 +1732,25 @@ spaMM_Gamma <- local({
           if (as_sym) {
             return(forceSymmetric(resu)) 
           } else return(resu)
-        } else return(.asmatMatcrossprod(x, as_mat=as_mat)) 
-      } else return(.asmatMatcrossprod(x, as_mat=as_mat)) 
+        } else return(.Matcrossprod(x, return_mat=as_mat)) 
+      } else return(.Matcrossprod(x, return_mat=as_mat)) 
     } else if (FALSE && inherits(x,"dgCMatrix") &&  inherits(y,"dgCMatrix") ) { ## FASTer when (FALSE &&)
       txy <- .dgCcrossprod(x,y, as_mat=as_mat) 
       return(txy)
-    } else if (allow_as_mat) {
-      if (inherits(x,"Matrix") && (maxd <- prod(dim(x)))>1L) { # trivial >1L bc the alternatives to Matrix::tcrossprod are always useful
+    } else if (chk_sparse2mat) {
+      # .calc_denseness() is fast on Csparse but slow on dge
+      if (inherits(x,"sparseMatrix") && (maxd <- prod(dim(x)))>1L) { 
         x_denseness <- .calc_denseness(x)/maxd 
         if (x_denseness>0.35) x <- as.matrix(x)
       } #else x_denseness <- 0 ## ie if the test is FALSE, no explicit conversion is attempted
-      if (inherits(y,"Matrix") && (maxd <- prod(dim(y)))>1L) { # idem
+      if (inherits(y,"sparseMatrix") && (maxd <- prod(dim(y)))>1L) { # idem
         y_denseness <- .calc_denseness(y)/maxd
         if (y_denseness>0.35) y <- as.matrix(y)
       }
       if (is.matrix(x) && is.matrix(y)) { # sparsity overhead is ~ 1/0.35
         return(.crossprodCpp_d(x, y)) # .crossprodCpp_d() slightly better than crossprod()
-      } else return(.asmatMatcrossprod(x, y, as_mat=as_mat)) 
-    } else return(.asmatMatcrossprod(x, y, as_mat=as_mat)) 
+      } else return(.Matcrossprod(x, y, return_mat=as_mat)) 
+    } else return(.Matcrossprod(x, y, return_mat=as_mat)) 
   } else { # *m*atrix case
     if (is.integer(x)) storage.mode(x) <- "double"
     if (is.integer(y)) storage.mode(y) <- "double"
@@ -2316,9 +2332,17 @@ spaMM_Gamma <- local({
       } else if (inherits(xmatrix,"bigq") ) {
         xmatrix <- .mMatrix_bigq(xmatrix) # this does not seem to be used for the Evar computation so we may drop precision
       } 
-      if ( ! is.null(xmatrix)) {
+      if ( is.null(xmatrix)) {
+        # do nothing, ZAX[[Lit]] remains equal to ZA[[Lit]]
+      } else {
         ZA <- ZAlist[[Lit]]
-        if (.is_identity(ZA)) {
+        if (inherits(xmatrix,"Kronfacto")) {
+          if (force_bindable) {
+            xmatrix <- xmatrix@BLOB$long 
+          } else if (.is_identity(ZA)) {
+            ZAX[[Lit]] <- xmatrix 
+          } else ZAX[[Lit]] <- structure(list(ZA=ZA, Kronfacto=xmatrix), class=c("ZA_Kron","list")) 
+        } else if (.is_identity(ZA)) {
           if (inherits(xmatrix,"dCHMsimpl")) {
             ZAX[[Lit]] <- structure(list(ZA=ZA, Q_CHMfactor=xmatrix), class=c("ZA_QCHM","list")) 
           } else ZAX[[Lit]] <- xmatrix ## matrix may replace Matrix here...          
@@ -2383,12 +2407,16 @@ spaMM_Gamma <- local({
 .ad_hoc_cbind <- function(ZALlist, as_matrix ) {
   nrand <- length(ZALlist)
   if ( as_matrix ) {
-    for (rd in seq_len(nrand)) ZALlist[[rd]] <- as.matrix(ZALlist[[rd]]) 
+    for (rd in seq_len(nrand)) {
+      if (inherits(ZALlist[[rd]],"Kronfacto")) ZALlist[[rd]] <- ZALlist[[rd]]@BLOB$long
+      ZALlist[[rd]] <- as.matrix(ZALlist[[rd]]) 
+    }
     if (nrand>1L) {ZAL <- do.call(cbind,ZALlist)} else ZAL <- ZALlist[[1L]]
   } else {
-    for (it in seq_len(nrand)) {
-      if ( # is.matrix(ZALlist[[it]]) || ## seems to work but at a cost for speed.
-        inherits(ZALlist[[it]],"dgeMatrix")) ZALlist[[it]] <- as(ZALlist[[it]],"dgCMatrix")
+    for (rd in seq_len(nrand)) {
+      if (inherits(ZALlist[[rd]],"Kronfacto")) ZALlist[[rd]] <- ZALlist[[rd]]@BLOB$long
+      if ( # is.matrix(ZALlist[[rd]]) || ## seems to work but at a cost for speed.
+        inherits(ZALlist[[rd]],"dgeMatrix")) ZALlist[[rd]] <- as(ZALlist[[rd]],"dgCMatrix")
     }
     ## but leave diagonal matrix types unchanged 
     if (nrand>1L) { ## ZAL <- suppressMessages(do.call(cbind,ZALlist))
@@ -2404,14 +2432,12 @@ spaMM_Gamma <- local({
   return(ZAL)
 }
 
-.compute_ZAL <- function(XMatrix, ZAlist, as_matrix, force_bind=FALSE, try_bind=TRUE) {
-  ZALlist <- .compute_ZAXlist(XMatrix,ZAlist, force_bindable=force_bind)
-  if ( ! try_bind || inherits(ZALlist,"notBindable")) {
-    return(new("ZAXlist", LIST=ZALlist))
-  } else {
+.compute_ZAL <- function(XMatrix, ZAlist, as_matrix, bind.=TRUE, force_bindable=bind.) { # ideally force_bindable should be ( ! processed$is_spprec)
+  ZALlist <- .compute_ZAXlist(XMatrix, ZAlist, force_bindable=force_bindable) # force_bindable=TRUE to avoid Kronfacto in result 
+  if ( bind. && ! inherits(ZALlist,"notBindable")) {
     ZAL <- .ad_hoc_cbind(ZALlist, as_matrix )
     return(ZAL)
-  }
+  } else return(new("ZAXlist", LIST=ZALlist)) # __F I X M E__ could add warning if bind. was TRUE
 }
 
 
@@ -2726,7 +2752,7 @@ if (FALSE) { # that's not used.
   newx[Ipos] <- dvec
   newx[-Ipos] <- X@x
   newi <- integer(newlen)
-  newi[Ipos] <- Ilen-1L+Iseq
+  newi[Ipos] <- X@Dim[1L]-1L+Iseq
   newi[-Ipos] <- X@i
   #
   X@i <- newi

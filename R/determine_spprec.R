@@ -1,6 +1,7 @@
 .calc_denseness <- function(X, relative=FALSE) {
+  #if (inherits(X,"dgeMatrix")) warning("Possibly inefficient use of 'dgeMatrix' caught by .calc_denseness.") 
   if ( ! ( inherits(X,"ddiMatrix") || inherits(X,"dtCMatrix") || 
-           inherits(X,"dsCMatrix") || inherits(X,"dgCMatrix")) ) X <- drop0(X) # result always Csparse
+           inherits(X,"dsCMatrix") || inherits(X,"dgCMatrix")) ) X <- drop0(X) # eg drop0(<dge>) result always Csparse 
   if (inherits(X,"ddiMatrix")) {
     absolute <- ncol(X)
   } else {

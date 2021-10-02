@@ -120,7 +120,7 @@ options(error=recover)
                           data=wafmv))
   testthat::expect_true(diff(range(logLik(zut1),logLik(zut2)))<1e-10)
   
-  cat(crayon::yellow("full dhglm; "))
+  cat(crayon::yellow("full dhglm (the 5 'phi' message are from different fits); "))
   (mod1 <- fitme(formula=y ~ 1+(1|batch), family=Gamma(log),resid.model= ~ 1+(1|batch), data=wafmv))
   (mod2 <- fitme(formula=y2 ~ 1+(1|batch2), family=Gamma(log), data=wafmv))
   (zut1 <- fitmv(submodels=list(mod1=list(formula=y ~ 1+(1|batch), family=Gamma(log),resid.model= ~ 1+(1|batch)),

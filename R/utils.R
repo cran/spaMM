@@ -211,3 +211,86 @@ projpath <- local({
 }
 
 .unlist <- function(x) unlist(x, recursive=FALSE, use.names = FALSE)
+
+..trDiagonal <- function(n) .trDiagonal(n=n, unitri = FALSE)
+
+.rawsolve <- function(A) Matrix::solve(A, ..trDiagonal(n=ncol(A))) 
+
+## specializations of Matrix::bdiag() and ::.bdiag():
+.bdiag_dtC <- function(..., uplo="L") {  # if not all matrices are not consistently lower triangular (resp upper triangular) we should transpose some
+  # if ((nA <- nargs()) == 0) return(new("dgCMatrix"))
+  if ((nA <- nargs()) == 1L && !is.list(...)) 
+    return(as(..., "CsparseMatrix"))
+  alis <- if (nA == 1 && is.list(..1)) 
+    ..1
+  else list(...)
+  if (length(alis) == 1L) 
+    return(as(alis[[1]], "CsparseMatrix"))
+  #
+  nl <- length(alis)
+  Tlst <- vector("list", nl)
+  for (it in seq_len(nl)) alis[[it]] <- Matrix::.diagU2N(alis[[it]], cl="CsparseMatrix") # using Matrix::.diagU2N() as public version of Matrix:::as_Csp2()
+  i_off <- c(0L, cumsum(vapply(alis, nrow, 1L)))
+  i <- p <- x <- vector("list", nl)
+  cumsum_p <- 0L
+  for (it in seq_len(nl)) {
+    i[[it]] <- alis[[it]]@i + i_off[it]
+    p[[it]] <- cumsum_p+alis[[it]]@p[-1]
+    x[[it]] <- alis[[it]]@x
+    cumsum_p <- cumsum_p+length(i[[it]])
+  }
+  nc <- i_off[nl+1L]
+  r <- new("dtCMatrix")
+  r@x <- .unlist(x) 
+  r@i <- .unlist(i)
+  r@p <- c(0L,.unlist(p))
+  r@Dim <- c(nc,nc)
+  r@uplo <- uplo
+  r
+}
+
+.bdiag_dsC <- function(...) {  
+  # if ((nA <- nargs()) == 0) return(new("dgCMatrix"))
+  if ((nA <- nargs()) == 1L && !is.list(...)) 
+    return(as(..., "CsparseMatrix"))
+  alis <- if (nA == 1 && is.list(..1)) 
+    ..1
+  else list(...)
+  if (length(alis) == 1L) 
+    return(as(alis[[1]], "CsparseMatrix"))
+  #
+  nl <- length(alis)
+  Tlst <- vector("list", nl)
+  for (it in seq_len(nl)) alis[[it]] <- Matrix::.diagU2N(alis[[it]], cl="CsparseMatrix") # using Matrix::.diagU2N() as public version of Matrix:::as_Csp2()
+  #
+  uplos <- vapply(alis, slot, ".", "uplo")
+  tLU <- table(uplos)
+  if (length(tLU) == 1) {
+    useU <- uplos[1] == "U"
+  } else {
+    useU <- diff(tLU) >= 0L
+    if (useU && (hasL <- tLU[1] > 0L)) {
+      for (it in which(hasL)) Tlst[[hasL]] <- t(Tlst[[hasL]])
+    } else if (!useU && (hasU <- tLU[2] > 0L)) {
+      for (it in which(hasU)) Tlst[[hasU]] <- t(Tlst[[hasU]])
+    }
+  }
+  i_off <- c(0L, cumsum(vapply(alis, nrow, 1L)))
+  i <- p <- x <- vector("list", nl)
+  cumsum_p <- 0L
+  for (it in seq_len(nl)) {
+    i[[it]] <- alis[[it]]@i + i_off[it]
+    p[[it]] <- cumsum_p+alis[[it]]@p[-1]
+    x[[it]] <- alis[[it]]@x
+    cumsum_p <- cumsum_p+length(i[[it]])
+  }
+  nc <- i_off[nl+1L]
+  r <- new("dsCMatrix")
+  r@x <- .unlist(x) 
+  r@i <- .unlist(i)
+  r@p <- c(0L,.unlist(p))
+  r@Dim <- c(nc,nc)
+  r@uplo <-   if (useU) "U" else "L"
+  r
+}
+

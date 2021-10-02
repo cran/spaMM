@@ -49,6 +49,10 @@
     .Call(`_spaMM_Rcpp_dense_cbind_mat_vec`, a, b)
 }
 
+.RcppMatrixCb2 <- function(matrix1, matrix2) {
+    .Call(`_spaMM_RcppMatrixCb2`, matrix1, matrix2)
+}
+
 .bessel_lnKnu_e <- function(nu, x) {
     .Call(`_spaMM_bessel_lnKnu_e`, nu, x)
 }

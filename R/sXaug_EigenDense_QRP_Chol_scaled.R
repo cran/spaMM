@@ -76,6 +76,7 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug, # already ZAL_scaled
       n_u_h <- attr(sXaug,"n_u_h")
       phipos <- (n_u_h+1L):nrow(sXaug) #                get the scaled-ZAL block:
       lev_phi <- .tcrossprod(BLOB$inv_factor_wd2hdv2w, sXaug[phipos, BLOB$seq_n_u_h ]) # backsolve(BLOB$R_R_v, t(sXaug[phipos, seq_len(n_u_h) ]),transpose=TRUE) 
+      #lev_phi <- .tcrossprod(BLOB$inv_factor_wd2hdv2w, .leftcols.matrix(sXaug,n_u_h)[phipos, ]) # backsolve(BLOB$R_R_v, t(sXaug[phipos, seq_len(n_u_h) ]),transpose=TRUE)
       lev_phi <- lev_phi^2
       lev_phi <- colSums(lev_phi)
     }, assign.env = BLOB )

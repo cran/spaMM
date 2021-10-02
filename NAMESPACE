@@ -9,7 +9,7 @@ importFrom("graphics", ".filled.contour", "Axis", "abline", "axis", "box", "hist
            "lcm", "lines", "par", "plot.new", "plot.window", "points", "polygon", "rect", "title")
 importFrom("graphics", "plot")
 importFrom("grDevices", "devAskNewPage", "topo.colors", "adjustcolor", "col2rgb", "rgb", "dev.new")
-importFrom("methods", "as", "is", "cbind2", "rbind2", "new")
+importFrom("methods", "as", "is", "cbind2", "rbind2", "new", "slot")
 importFrom("stats", "as.formula", "coefficients", "dgamma", "dnorm", "family", "formula", "getCall", 
            "glm", "lm", "make.link", "model.frame", "model.matrix", "model.offset", "model.response", 
            "optim", "optimize", "pchisq", 
@@ -51,6 +51,7 @@ S3method(getCovariate, corMatern)
 S3method(logDet, corMatern)
 S3method(recalc, corMatern)
 S3method(dim, precision)
+S3method(dim, Kronfacto)
 S3method(VarCorr, HLfit)
 S3method(getCall, HLfit)
 S3method(deviance, HLfit)
@@ -131,6 +132,8 @@ S3method(update,HLfit)
 #
 S3method(str,inla.spde2)
 # S4 class ZAXlist
+S3method(t,ZAXlist)
+# S4 methods:
 exportMethods("%*%")
 exportMethods(crossprod)
 exportMethods(tcrossprod)

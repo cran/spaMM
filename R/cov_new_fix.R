@@ -39,7 +39,7 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
             # see comments about in kron_Y_LMatrices in .get_invColdoldList()
             kron_Y <- tcrossprod(kron_Y) 
           }
-          corr_list[[it]] <- .makelong(attr(strucList[[it]],"latentL_blob")$compactcovmat,longsize = longsize, kron_Y=kron_Y) 
+          corr_list[[it]] <- .makelong(attr(strucList[[it]],"latentL_blob")$compactcovmat,longsize = longsize, kron_Y=kron_Y) # ___FIXME___ allow kron_long=FALSE ?
           rownames(corr_list[[it]]) <- colnames(corr_list[[it]]) <- colnames(newZAlist[[it]]) 
           # .tcrossprod gets names from rownames
           ## names required for a predict(,newdata) on a random-coef model

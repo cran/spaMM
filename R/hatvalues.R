@@ -71,7 +71,7 @@ hatvalues.HLfit <- function(model, type="projection", which="resid", force=FALSE
                                   muetablob=model$muetablob, family=model$family, mu=model$muetablob$mu, 
                                   BinomialDen=model$BinomialDen, w.resid=model$w.resid, 
                                   wranefblob=.updateW_ranefS(cum_n_u_h=cum_n_u_h, rand.families=rand.families, model$lambda, u_h=u_h, model$v_h), 
-                                  nobs=length(model$y), ZAL=get_ZALMatrix(model), #psi_M=rep(attr(rand.families,"unique.psi_M"),diff(cum_n_u_h)), 
+                                  nobs=length(model$y), ZAL=get_ZALMatrix(model, force_bind=FALSE), #psi_M=rep(attr(rand.families,"unique.psi_M"),diff(cum_n_u_h)), 
                                   lambda_est=model$lambda.object$lambda_est, cum_n_u_h=cum_n_u_h, #lcrandfamfam=attr(rand.families,"lcrandfamfam"), 
                                   rand.families=rand.families, y=model$y, prior.weights=model$prior.weights, #nrand=length(lcrandfamfam), 
                                   phi_est=model$phi)

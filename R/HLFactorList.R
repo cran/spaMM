@@ -290,7 +290,8 @@
       colnames(ZA) <- rownames(incidMat) 
     } else ZA <- t(incidMat)
     # incidMat has no colnames and modmat does not provide names in the alternative general code
-    attr(ZA,"is_incid") <- TRUE # we use for predVar that it then has a diagonal tcrossprod
+    attr(ZA,"is_incid") <- TRUE # Misleading name: we use it for predVar that it then has a diagonal tcrossprod. There is no other obvious use, .../...
+    # so actually what we need to know is whether the tcrossprod is diagonal. Elements of this diagonal need not be 1.
   } else { ## first conceived for ranCoefs, with ncol(modmat)>1L. But also handles e.g. Matern(not-1|.) .... Matern(female|.)
     ZA <- vector("list",ncol(modmat))
     for (col in seq_len(ncol(modmat))) {

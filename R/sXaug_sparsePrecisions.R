@@ -33,7 +33,8 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
       }
     } ## ELSE NULL precisionFactorList element <-> chol_Q_list element prefilled
   }
-  BLOB$chol_Q <- as(Matrix::.bdiag(chol_Q_list),"dtCMatrix") # !not dtC by default! (!). Has worked as (triangular) dgCMatrix for a long time.
+  #BLOB$chol_Q <- as(Matrix::.bdiag(chol_Q_list),"dtCMatrix") # !not dtC by default! (!). Has worked as (triangular) dgCMatrix for a long time.
+  BLOB$chol_Q <- .bdiag_dtC(chol_Q_list) # assuming all chol_Q are lower triangular
   return(precisionBlocks)
 }
 
@@ -87,9 +88,9 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
     row_blocs <- split(seqncol, ceiling(seq_along(seqncol)/bloclength))
     crossprod_r22 <- vector("list",length(row_blocs))
     for (it in seq_along(row_blocs)) {
-      crossprod_r22[[it]] <- .crossprod(BLOB$r12, BLOB$r12[,row_blocs[[it]],drop=FALSE])
+      crossprod_r22[[it]] <- crossprod(BLOB$r12, BLOB$r12[,row_blocs[[it]],drop=FALSE]) # don't use .crossprod on BLOB$r12 as explained elsewhere.
       if(! is.null(BLOB$G_scaling)) crossprod_r22[[it]] <- crossprod_r22[[it]]/BLOB$G_scaling
-      crossprod_r22[[it]] <- .crossprod(sqrtWX, sqrtWX[,row_blocs[[it]],drop=FALSE]) - crossprod_r22[[it]]
+      crossprod_r22[[it]] <- crossprod(sqrtWX, sqrtWX[,row_blocs[[it]],drop=FALSE]) - crossprod_r22[[it]]
     }
     crossprod_r22 <- do.call(cbind, crossprod_r22)
   } else {
@@ -104,8 +105,8 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
   #  It would be better to control the accuracy of the computation of crossr22 as a difference.
   if (ncol(X.pv)) { 
     if (attr(w.resid,"is_unit") && ! is.null(XtX)) { # 2nd test needed bc currently in post-fit calls, XtX remains NULL (__F I X M E__ ?)
-      crossr22 <- XtX - crossprod(as.matrix(r12),NULL,as_mat=TRUE) 
-    } else crossr22 <- as.matrix(.ZtWZwrapper(X.pv,w.resid))-crossprod(as.matrix(r12),NULL,as_mat=TRUE)# Make sure that '-' operates on *m*atrices 
+      crossr22 <- XtX - crossprod(r12) 
+    } else crossr22 <- as.matrix(.ZtWZwrapper(X.pv,w.resid))-crossprod(r12)# Make sure that '-' operates on *m*atrices 
     # (1)
     # as.matrix(.ZtWZwrapper(X.pv,w.resid)) is then a safety for rare case where X.pv is sparse
     # (2)
@@ -163,7 +164,7 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
 # called only for spprec "hatval", given conditions calling for the use of qrXa 
 .calc_spprec_hatval_ZX_by_QR <- function(BLOB, sXaug, AUGI0_ZX, w.ranef) { ## sparse qr is fast
   qrQ <- qr.Q(BLOB$qrXa)
-  qrQ@x <- qrQ@x^2
+  qrQ@x <- qrQ@x*qrQ@x
   tmp <- rowSums(qrQ)
   n_u_h <- ncol(AUGI0_ZX$I)
   phipos <- n_u_h+seq_len(length(tmp)-n_u_h)
@@ -174,13 +175,13 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
   # We use the  Chol factorization of T'T as explained in the working doc
   # We know one of its block is the same as for the ML leverages, we compute two additional blocks: 
   lev_lambda_z <- BLOB$factor_inv_Md2hdv2 ## ul block of R^{-T} as described in working doc
-  lev_lambda_z@x <- lev_lambda_z@x^2 
+  lev_lambda_z@x <- lev_lambda_z@x*lev_lambda_z@x 
   lev_lambda_z <- .Matrix_times_Dvec(lev_lambda_z,w.ranef)
   lev_lambda_z <- colSums(lev_lambda_z)
   #
   if (attr(sXaug,"pforpv")>0L) {
     lev_lambda_x <- - backsolve(BLOB$r22,crossprod(BLOB$r12, BLOB$factor_inv_Md2hdv2),transpose=TRUE) ## ll block of R^{-T} as described in working doc
-    lev_lambda_x <- lev_lambda_x^2
+    lev_lambda_x <- lev_lambda_x*lev_lambda_x
     ## one dimension is dropped when (?) X is a single column matrix
     if ( is.matrix(lev_lambda_x)) {  ## m ou M atrix
       lev_lambda_x <- colSums(.m_Matrix_times_Dvec(lev_lambda_x,w.ranef))
@@ -200,7 +201,7 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
   } else {
     lev_phi_z <- BLOB$inv_L_G_ZtsqrW
     crossprod_r12_z_rows <- crossprod(BLOB$r12,lev_phi_z)
-    lev_phi_z@x <- lev_phi_z@x^2
+    lev_phi_z@x <- lev_phi_z@x*lev_phi_z@x
     lev_phi_z <- colSums(lev_phi_z) 
   }
   if (attr(sXaug,"pforpv")>0L) {
@@ -251,7 +252,7 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
         ## part of the problem is avoiding tall matrices from tall ZA (and X), but for squarish ZA, using solve(chol_Q,... ) looks complicated.
         ## solve(chol_Q,... ) further assuming that we have not stored the LMatrix
         tmp <- BLOB$tcrossfac_Md2hdv2 ## (Hfac)
-        tmp@x <- tmp@x^2
+        tmp@x <- tmp@x*tmp@x
         # def of pertubration D_Md2hdv2 affects decimals in test-adjacency-long
         if (spprec_LevM_D=="rowSums") { ## [as originally used for (full) LevMar_step]
           BLOB$D_Md2hdv2 <- rowSums(tmp) # the diagonal elements since *row*Sums = diag Tcrossprod(tcrossfac) (= invQ G Gt invQt)
@@ -276,7 +277,7 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
   if ("lambda" %in% needed) {
     if (is.null(BLOB$hatval_Z_$lev_lambda)) {
       lev_lambda <- BLOB$factor_inv_Md2hdv2
-      lev_lambda@x <- lev_lambda@x^2 
+      lev_lambda@x <- lev_lambda@x*lev_lambda@x
       BLOB$hatval_Z_$lev_lambda <- colSums(lev_lambda) * w.ranef
     }
   }
@@ -290,7 +291,7 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
       } else {
         # inv_L_G_ZtsqrW arises as simplif of BLOB$factor_inv_Md2hdv2 %*% t(sqrtwZL) (L and chol_Q cancel each other)
         lev_phi <- BLOB$inv_L_G_ZtsqrW ## solve(as(BLOB$G_CHMfactor,"sparseMatrix"), t(sqrtwZ))
-        lev_phi@x <- lev_phi@x^2
+        lev_phi@x <- lev_phi@x*lev_phi@x
         BLOB$hatval_Z_$lev_phi <- colSums(lev_phi)
       }
     }
@@ -381,7 +382,7 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
     delayedAssign("qrXa", { ## used for "hatval" in case of failure of computation of BLOB$r22
       X.pv <- as(AUGI0_ZX$X.pv,"dgCMatrix")#  .Rcpp_as_dgCMatrix(AUGI0_ZX$X.pv)
       Xscal <- with(sXaug,rbind(cbind(AUGI0_ZX$I, AUGI0_ZX$ZeroBlock), # I0_ZX order
-                                cbind(AUGI0_ZX$ZAfix %*% t(solve(BLOB$chol_Q)), X.pv)))
+                                cbind(AUGI0_ZX$ZAfix %*% t(.rawsolve(BLOB$chol_Q)), X.pv)))
       Xscal <- .Dvec_times_Matrix(sqrt(c(attr(sXaug,"w.ranef"),attr(sXaug,"w.resid"))),Xscal)
       qrXa <- qr(Xscal)
     }, assign.env = BLOB )
@@ -402,6 +403,9 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
         r12 <- BLOB$invL_G.P %*% BLOB$ZtWX
       } else r12 <-  Matrix::solve(BLOB$G_CHMfactor, as(BLOB$G_CHMfactor,"pMatrix") %*% BLOB$ZtWX, system="L")
       # : not computing invL_G.P here is big improvement for test IMRF rawGNIPdataEU.1, and also for pcmatern LMM
+      r12 <- as.matrix(r12) # it tends to be dense (dge) and is used in a few crossprod operations that are faster on matrix (Matrix::crossprod time ~time crossprod(as.matrix)).
+                            # Using .Rcpp_crossprod() on the result may be even faster, but overall a notable waste of time by loss of numerical precision
+                            # => DON'T use .crossprod() not .Rcpp_crossprod on it.
     }, assign.env = BLOB )
     delayedAssign("r22", .calc_r22(AUGI0_ZX$X.pv,attr(sXaug,"w.resid"),BLOB$r12, XtX=BLOB$XtX), assign.env = BLOB )
     delayedAssign("DpD", c(BLOB$D_Md2hdv2,diag(x=BLOB$XtWX)), assign.env = BLOB )
@@ -469,7 +473,8 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
       }
     }
     if (length(precisionBlocks)>1L) {
-      precisionMatrix <- forceSymmetric(Matrix::bdiag(precisionBlocks)) # bdiag degrades dsC into dgC
+      #precisionMatrix <- forceSymmetric(Matrix::bdiag(precisionBlocks)) # bdiag degrades dsC into dgC
+      precisionMatrix <- .bdiag_dsC(precisionBlocks)
     } else precisionMatrix <- (precisionBlocks[[1L]]) # forceSymmetric removed bc input should in principle be dsC
     tmp <- .ZtWZwrapper(AUGI0_ZX$ZAfix,attr(sXaug,"w.resid")) # should return a symmetric-type matrix (dsC or possibly dsy, not ddi...)
     if (inherits(tmp,"dsyMatrix")) { 
@@ -540,7 +545,8 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
     if (attr(sXaug,"pforpv")) { ## if there are fixed effect coefficients to estimate
       # rhs for beta
       grad_p_v <- z$m_grad_obj[-seq(ncol(BLOB$chol_Q))]
-      dbeta_rhs <- grad_p_v - .crossprod(BLOB$r12, rhs)[,1L] # numeric  vector
+      dbeta_rhs <- grad_p_v - crossprod(BLOB$r12, rhs)[,1L] # numeric vector # using crossprod() rather than .crossprod() -> .Rcpp_crossprod() appears important here ./.
+      #                                                      for numerical precision => for overall computation time.     
       dbeta_eta <-  .solve_crossr22(BLOB, AUGI0_ZX, sXaug, dbeta_rhs)
       rhs <- rhs - (BLOB$r12 %*% dbeta_eta)[,1]
     } else {
@@ -590,7 +596,7 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
           ## t() bc .damping_to_solve implicitly uses (or used) crossprod ( as in solve(X'X)=solve(R'R) ) (or equivalently tcrossprod(solve))
           BLOB$Hfac <- tmp <- t(drop0(solve(BLOB$chol_Q,  
                                             crossprod(as(BLOB$G_CHMfactor,"pMatrix"), as(BLOB$G_CHMfactor,"sparseMatrix"))))) ## probably not so sparse...
-          tmp@x <- tmp@x^2
+          tmp@x <- tmp@x*tmp@x
           BLOB$D_Md2hdv2 <- colSums(tmp) ## colSums bc t() above // rowSums for diag Tcrossprod(invQ G)  = invQ G Gt invQt
         }
         dampDpD_2 <- damping * BLOB$D_Md2hdv2

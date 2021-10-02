@@ -3,6 +3,23 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 3.9.13}{     
+\subsection{NEW FEATURES}{
+\itemize{
+\item Faster fits by sparse-precision methods when (1) several random effects are present (2) random-coefficient terms are present. (Very) small speed gains in many other fits.
+}
+}
+\subsection{BUG FIXES (ALMOST)}{
+\itemize{
+\item Fixed an inconsequential clang compiler warning (... indeed, no real bug fix in this version).  
+}
+}
+\subsection{DEPENDENCIES}{
+\itemize{
+\item New 'Suggests': 'memoise', memoisation being optionally used on a few spaMM functions.
+}
+}
+}
 \section{CHANGES UP TO VERSION 3.9.0}{    
 \subsection{NEW FEATURES}{
 \itemize{

@@ -10,12 +10,16 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") { ## set in <R_HOME>/etc/Renviron.site 
       # install.packages(c("probitgem", "DHARMa", "inlabru"))
       # options(error=recover)
       # spaMM.options(use_ZA_L=NULL)
-      abyss <- matrix(runif(2e7),nrow=1000); gc(reset=TRUE) ## partial control of gc trigger...
+      # abyss <- matrix(runif(2e7),nrow=1000); gc(reset=TRUE) ## partial control of gc trigger...
+      tfun <- function(x) {
+        gc()# cf doc of system.time(., gcFirst) => but if gc timings are highly variable, gcFirst=TRUE is pointless (and the whole is misleading). 
+        system.time(source(x), gcFirst=FALSE)
+      }
       while (dev.cur()>1L) dev.off()
       op <- devAskNewPage(ask=FALSE)
       testfiles <- dir(paste0(projpath(),"/package/tests/testthat/"),pattern="*.R",full.names = TRUE)
       # oldmaxt <- spaMM.options(example_maxtime=60)
-      timings <- t(sapply(testfiles, function(fich){system.time(source(fich))}))
+      timings <- t(sapply(testfiles, function(fich){tfun(fich)}))
       # spaMM.options(oldmaxt)
       print(sums <- colSums(timings))
       ## testthat::test_package(pkg) ## for an installed package
@@ -26,17 +30,20 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") { ## set in <R_HOME>/etc/Renviron.site 
         priv_testfiles <- setdiff(priv_testfiles,paste0(projpath(),"/package/tests_private/knit_LM2GLMM.R"))
         priv_timings <- t(sapply(priv_testfiles, function(fich){
           cat(crayon::green(paste0("\n",fich)))
-          tps <- system.time(chk <- try(source(fich)))
+          gc()
+          tps <- system.time(chk <- try(source(fich)), gcFirst=FALSE)
           if (inherits(chk,"try-error")) warning(paste0(fich," generated an error"))
           tps
         }))
         print(colSums(priv_timings))
       }
       if (FALSE) { ## kept separate bc obscure interference as if there was a bug in setTimeLimit()*Rstudio ?
+        # abyss <- matrix(runif(2e7),nrow=1000); gc(reset=TRUE) ## partial control of gc trigger... but RESTARTING R appears more efficient.
         useR2021_testfiles <- dir(paste0(projpath(),"/package/useR2021/"),pattern="*.R",full.names = TRUE)
         useR2021_timings <- t(sapply(useR2021_testfiles, function(fich){
           cat(crayon::green(paste0("\n",fich)))
-          tps <- system.time(chk <- try(source(fich)))
+          gc()
+          tps <- system.time(chk <- try(source(fich)), gcFirst=FALSE)
           if (inherits(chk,"try-error")) warning(paste0(fich," generated an error"))
           tps
         }))

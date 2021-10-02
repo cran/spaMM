@@ -61,10 +61,10 @@ HLfit_body <- function(processed,
       attr(LMatrices,"is_given_by")[which_inner_ranCoefs] <- "inner_ranCoefs"
       .init_AUGI0_ZX_envir_spprec_info(processed)
       .wrap_precisionFactorize_ranCoefs(processed,LMatrices)
-    }
-    if ( any((attr(LMatrices,"is_given_by") !="")) ) { # if there are non-trivial L matrices
-      try_bind <- (.spaMM.data$options$bind_ZAL || HL[1L]=="SEM")
-      ZAL <- .compute_ZAL(XMatrix=LMatrices, ZAlist=ZAlist,as_matrix=.eval_as_mat_arg(processed), try_bind=try_bind)
+      ZAL <- .compute_ZAL(XMatrix=LMatrices, ZAlist=ZAlist,as_matrix=.eval_as_mat_arg(processed), bind.=FALSE)
+    } else if ( any((attr(LMatrices,"is_given_by") !="")) ) { # if there are non-trivial L matrices
+      ZAL <- .compute_ZAL(XMatrix=LMatrices, ZAlist=ZAlist,as_matrix=.eval_as_mat_arg(processed), 
+                          bind.=(.spaMM.data$options$bind_ZAL || HL[1L]=="SEM")) # always TRUE in practice except for devel experiments
       ## ZAL may be modified by other call to .compute_ZAL()   
     } else { 
       ZAL <- processed$AUGI0_ZX$ZAfix ## default ZA 
@@ -520,7 +520,8 @@ HLfit_body <- function(processed,
                                       cov_info_mat=processed$corr_info$cov_info_mats[[rt]])
               }
             }
-            ZAL <- .compute_ZAL(XMatrix=LMatrices, ZAlist=processed$ZAlist,as_matrix=( ! inherits(ZAL,"Matrix"))) 
+            ZAL <- .compute_ZAL(XMatrix=LMatrices, ZAlist=processed$ZAlist,as_matrix=( ! inherits(ZAL,"Matrix")),
+                                bind.= ! processed$is_spprec) 
             if ( ! LMMbool ) {
               ## ZAL is modified hence wranefblob must be modified (below) but also eta-> mu->GLMweights
               ## .makeCovEst1 may have reestimated beta but we do not take this into account nor any resulting change in the 'blobs'

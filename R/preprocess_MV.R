@@ -161,7 +161,7 @@
         ZA1 <- ZAlist1[[in1]]
         namesTerm <- attr(ZA1,"namesTerm")
         LHS_levels <- attr(ZA1,"LHS_levels")
-        is_incid <- attr(ZA1,"is_incid") ## will surely need to be tested ___FIXME___ vs <- FALSE
+        is_incid <- attr(ZA1,"is_incid") ## OK when adding rows of zeroes  
         ZA2 <- Matrix(0,ncol=ncol(ZA1), nrow=nobs2)
       } else {
         Zlistori <- ZAlist2
@@ -170,7 +170,7 @@
         ZA2 <- ZAlist2[[in2]]
         namesTerm <- attr(ZA2,"namesTerm")
         LHS_levels <- attr(ZA2,"LHS_levels")
-        is_incid <- attr(ZA2,"is_incid") ## will surely need to be tested ___FIXME___ vs <- FALSE
+        is_incid <- attr(ZA2,"is_incid") 
         ZA1 <- Matrix(0,ncol=ncol(ZA2), nrow=nobs1)
       } 
     } 
@@ -988,6 +988,10 @@ fitmv <- function(submodels, data, fixed=NULL, init=list(), lower=list(), upper=
   mc["calls_W_processed"] <- NULL
   mc[["fixedS"]] <- fixedS # to build and merge the inits
   mc$processed <- merged
+  removand <- intersect(names(mc), c("corrMatrix","distMatrix" ,"covStruct" ,"method" ,"HLmethod" ,"formula" ,"data" ,"family" ,"rand.family",
+                                     "resid.model", "REMLformula"))
+  # Didn't check:"verbose"       "control.dist"  "control.HLfit" "control.glm"   "init.HLfit"    "etaFix"        "prior.weights"
+  for (st in removand) mc[[st]] <- NULL # NaN to catch ay remaining use
   mc[[1L]] <-  get("fitmv_body", asNamespace("spaMM"), inherits=FALSE)
   hlcor <- eval(mc,parent.frame()) 
   #

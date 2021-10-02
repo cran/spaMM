@@ -64,18 +64,15 @@ spaMM.getOption <- function (x) {spaMM.options(x, warn=FALSE)[[1]]}
       distance = TRUE
     )
   } else warning("'EarthChord' entry already present in proxy::pr_DB database.")
-  success <- suppressMessages(do.call("require",list(package="memoise"))) 
+  success <- suppressMessages(do.call("require",list(package="memoise", quietly=TRUE))) # 'quietly' needed to suppress *warning* when memoise is not attached.
   .spaMM.data$options$need_memoise_warning <- ! success
-  if (success) {
-    ..CMP_mu2lambda <<- .do_call_wrap("memoise",
-                                      arglist=list(f=..CMP_mu2lambda, omit_args="CMP_linkfun_objfn",
-                                                  cache = .do_call_wrap("cache_mem", arglist=list(max_size = 10 * 1024^2), pack="cachem")),
-                                      pack="memoise")
-    .Rcpp_COMP_Z <<- .do_call_wrap("memoise",
-                                   arglist=list(f=.Rcpp_COMP_Z,
-                                               cache = .do_call_wrap("cache_mem", arglist=list(max_size = 10 * 1024^2), pack="cachem")),
-                                   pack="memoise")
+  if (success) { # remarkably, no need for special wrapper. R CMD check handling of .onLoad must be special
+    ..CMP_mu2lambda <<- memoise(f=..CMP_mu2lambda, omit_args="CMP_linkfun_objfn", 
+                                cache = .do_call_wrap("cache_mem", arglist=list(max_size = 10 * 1024^2), pack="cachem"))
+    .Rcpp_COMP_Z <<- memoise(f=.Rcpp_COMP_Z, cache = .do_call_wrap("cache_mem", arglist=list(max_size = 10 * 1024^2), pack="cachem"))
     #  str(environment(spaMM:::.Rcpp_COMP_Z)$"_cache"$keys()) to get info on the cache...
+    ..trDiagonal <<- memoise(f=..trDiagonal, cache = .do_call_wrap("cache_mem", arglist=list(max_size = 1024^2), pack="cachem"))
+    .get_phantom_map <<- memoise(f=.get_phantom_map, cache = .do_call_wrap("cache_mem", arglist=list(max_size = 1024^2), pack="cachem"))
   } 
 }
 

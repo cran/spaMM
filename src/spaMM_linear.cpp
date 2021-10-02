@@ -29,7 +29,6 @@ SEXP rankinfo( SEXP x, SEXP tol){
 SEXP leverages( SEXP XX ){
   if (printDebug)   Rcout <<"debut leverages()"<<std::endl;
   const Map<MatrixXd> X(as<Map<MatrixXd> >(XX));
-  const int c(X.cols()); 
   const Eigen::HouseholderQR<MatrixXd> QR(X);
   MatrixXd thinQ(X.rows(),X.cols());
   thinQ.setIdentity();
@@ -485,9 +484,9 @@ SEXP Rcpp_crossprod( SEXP AA, SEXP BB, bool eval_dens=true, bool as_mat=false, b
       b.attr("dimnames") = clone(as<SEXP>(Bin.slot("Dimnames"))); // clone() to copy values rather than address
       B=as<NumericMatrix>(b);
     } else B=BB;
-    return(crossprod_not_dge( wrap(A), wrap(B), eval_dens, as_mat, keep_names=keep_names ));
+    return(crossprod_not_dge( wrap(A), wrap(B), eval_dens, as_mat, keep_names ));
   } // ELSE:
-  return(crossprod_not_dge( AA, BB, eval_dens, as_mat, keep_names=keep_names ));
+  return(crossprod_not_dge( AA, BB, eval_dens, as_mat, keep_names ));
 }
 
 // will work on dgC and dsC

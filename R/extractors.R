@@ -92,7 +92,7 @@
               # see comments about in kron_Y_LMatrices in .get_invColdoldList()
               kron_Y <- .inv_Lmatrix(kron_Y, regul.threshold=regul.threshold)
             }
-            invlmatrix <- .makelong(t(compactchol_Q_w),longsize=ncol(lmatrix),as_matrix=TRUE, kron_Y=kron_Y) 
+            invlmatrix <- .makelong(t(compactchol_Q_w),longsize=ncol(lmatrix),as_matrix=TRUE, kron_Y=kron_Y) # ___FIXME___ allow kron_long=FALSE ?
             # as_matrix=TRUE necessary for resu[u.range, u.range] <- invlmatrix
           } else invlmatrix <- .inv_Lmatrix(lmatrix, regul.threshold=regul.threshold)
           u.range <- (cum_n_u_h[Lit]+1L):(cum_n_u_h[Lit+1L])
@@ -877,12 +877,12 @@ extractAIC.HLfit <- function(fit, scale, k=2L, ..., verbose=FALSE) { ## stats::e
   return(XZ_0I)
 }
 
-get_ZALMatrix <- function(object,as_matrix, force_bind=FALSE) {
-  if ( ! missing(as_matrix)) stop("'as_matrix' is deprecated")
+get_ZALMatrix <- function(object, force_bind=TRUE) {
   if (length(ZAlist <- object$ZAlist)) { ## ou tester if (object$models[["eta"]]=="etaGLM")
     if (is.null(object$envir$ZALMatrix) ||
         (force_bind && inherits(object$envir$ZALMatrix,"ZAXlist")) ) {
-      object$envir$ZALMatrix <- .compute_ZAL(XMatrix=object$strucList, ZAlist=ZAlist,as_matrix=FALSE, force_bind=force_bind) 
+      object$envir$ZALMatrix <- .compute_ZAL(XMatrix=object$strucList, ZAlist=ZAlist,as_matrix=FALSE, 
+                                             bind. = TRUE, force_bindable=force_bind) 
     }
     return(object$envir$ZALMatrix)
   } else return(NULL) 
@@ -892,7 +892,8 @@ get_ZALMatrix <- function(object,as_matrix, force_bind=FALSE) {
   if (length(ZAlist <- object$ZAlist)) { ## ou tester if (object$models[["eta"]]=="etaGLM")
     if (is.null(object$envir$LMatrix)) {
       for (rd in seq_along(ZAlist)) ZAlist[[rd]] <- .symDiagonal(n = ncol(ZAlist[[rd]])) #  strucList elements may be null and then we need this.
-      object$envir$LMatrix <- .compute_ZAL(XMatrix=object$strucList, ZAlist=ZAlist,as_matrix=FALSE) 
+      object$envir$LMatrix <- .compute_ZAL(XMatrix=object$strucList, ZAlist=ZAlist, as_matrix=FALSE, 
+                                           bind.=TRUE, force_bindable=FALSE) # reproduces old defaults; __F I X M E__ set force_bindable=TRUE? 
     }
     return(object$envir$LMatrix)
   } else return(NULL) 
@@ -937,7 +938,7 @@ get_ZALMatrix <- function(object,as_matrix, force_bind=FALSE) {
 get_matrix <- function(object, which="model.matrix", augmented=TRUE, ...) {
   switch(which,
          "model.matrix"= object$X.pv, #model.matrix(object, ...), ## X
-         "ZAL"=get_ZALMatrix(object),                             ## ZAL
+         "ZAL"=get_ZALMatrix(object, force_bind=TRUE),            ## ZAL
          "L"= .get_LMatrix(object),                               ## L
          "ZA"= .get_ZAfix(object,as_matrix=FALSE),                ## ZA   
          "AugX"=.get_XZ_0I(object),                               ## X_a

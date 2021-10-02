@@ -60,13 +60,14 @@ Wilson AJ, et al. (2010) An ecologist's guide to the animal model. Journal of An
 # residual variances 'phi' must then be fixed to some negligible values 
 # in order to avoid non-identifiability.
 
-if (spaMM.getOption("example_maxtime")>14) { 
-data("Gryphon")
+if (spaMM.getOption("example_maxtime")>7) { 
+  data("Gryphon")
+  gry_prec <- as_precision(Gryphon_A)
   gry_GE <- fitmv(
     submodels=list(BWT ~ 1 + corrMatrix(0+mv(1,2)|ID)+(0+mv(1,2)|ID), 
                   TARSUS ~ 1 + corrMatrix(0+mv(1,2)|ID)+(0+mv(1,2)|ID)), 
     fixed=list(phi=c(1e-6,1e-6)), 
-    corrMatrix = as_precision(Gryphon_A), 
+    corrMatrix = gry_prec, 
     data = Gryphon_df, method = "REML")
     
   # Estimates are practically identical to those reported for package 

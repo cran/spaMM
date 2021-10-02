@@ -27,7 +27,7 @@
   if (processed$is_spprec) {
     ZAL <- NULL # we practically don't need it (though F I X M E: it would be nice to provide alternative info to .eval_init_lambda_guess)
   } else if ( any((attr(LMatrices,"is_given_by") !="")) ) {
-    ZAL <- .compute_ZAL(XMatrix=LMatrices, ZAlist=processed$ZAlist,as_matrix=.eval_as_mat_arg(processed))
+    ZAL <- .compute_ZAL(XMatrix=LMatrices, ZAlist=processed$ZAlist, as_matrix=.eval_as_mat_arg(processed)) # with default bind.=TRUE: we must bind ZA_Kron objects, and the whole ZAL should be bindable for **corr algos
     ## ZAL may be modified by other call to .compute_ZAL()   
   } else { 
     ZAL <- processed$AUGI0_ZX$ZAfix ## default ZA 

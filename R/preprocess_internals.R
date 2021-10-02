@@ -1,3 +1,4 @@
+# there is Matrix::nnzero() that may be useful in more general contexts but which is slower.
 .nonzeros <- function(spm) {
   if (inherits(spm,"ddiMatrix") && spm@diag=="U") {
     return(ncol(spm))
@@ -159,7 +160,7 @@
         preclist[[rd]] <- as(forceSymmetric(preclist[[rd]]),"dsCMatrix")
       }
       locQ <- do.call(Matrix::bdiag, list(preclist)) # dsC
-      Z_ <- suppressMessages( .compute_ZAL(XMatrix=NULL,ZAlist,as_matrix = FALSE) )
+      Z_ <- suppressMessages( .compute_ZAL(XMatrix=NULL,ZAlist,as_matrix = FALSE, bind.=TRUE, force_bindable=FALSE) )
       locG <- .crossprod(Z_)+locQ # ideally dsC except if Z_ is really dense
       denseness_G <- .calc_denseness(locG)
       dens_G_rel_ZL <- denseness_G/denseness_via_ZL
@@ -215,9 +216,11 @@
       densecorrs <- densecorrs & ( ! notsodensecorrs)
       sparseprecs <- attr(ZAlist,"exp_ranef_types") %in% c("adjacency", "IMRF", "AR1")
       if (any(notsodensecorrs)) {
-        totdim <- colSums(do.call(rbind,lapply(ZAlist,dim)))
+        totdim <- 0L
+        for (it in seq_along(ZAlist)) totdim <- totdim + dim(ZAlist[[it]])
         totsize <- prod(totdim)
-        nonzeros <- unlist(lapply(ZAlist, .nonzeros))
+        nonzeros <- 0L
+        for (it in seq_along(ZAlist)) nonzeros <- nonzeros + .nonzeros(ZAlist[[it]])
         for (rd in which(notsodensecorrs)) {
           SameGrp <- ! .get_geo_info(processed, which_ranef=rd, which=c("notSameGrp"))$notSameGrp
           SameGrp[upper.tri(SameGrp,diag=FALSE)] <- FALSE # create a fake L matrix
@@ -256,9 +259,11 @@
         return("sparse") ## special case for poisson or binomial with saturated ranef
       } else { ## several block effects...
         # could use .crossprod() here too to assess sparsity.
-        totdim <- colSums(do.call(rbind,lapply(ZAlist,dim)))
+        totdim <- 0L
+        for (it in seq_along(ZAlist)) totdim <- totdim + dim(ZAlist[[it]])
         totsize <- prod(totdim)
-        nonzeros <- sum(unlist(lapply(ZAlist, .nonzeros)))          
+        nonzeros <- 0L
+        for (it in seq_along(ZAlist)) nonzeros <- nonzeros + .nonzeros(ZAlist[[it]])
         if (nonzeros/totsize < .spaMM.data$options$sparsity_threshold) { 
           return("sparse")
         } else {

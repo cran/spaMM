@@ -27,7 +27,7 @@ def_sXaug_Matrix_cholP_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale) 
   # attr(sXaug,"AUGI0_ZX") is presumably inherited from the Xaug argument of def_sXaug_Matrix_QRP_CHM_scaled
   # but this may or may not be present (Xaug=Xscal with attr(Xscal,"AUGI0_ZX") <- processed$AUGI0_ZX in .solve_IRLS_as_ZX(),
   # but not in .solve_v_h_IRLS)
-  # => we cannot generally assume it is present.
+  # => we cannot generally assume it is present. # ___F I X M E___ .sXaug_Matrix_cholP_scaled() limitation
   if (is.null(BLOB$CHMfactor)) {
     AUGI0_ZX_envir <- attr(sXaug,"AUGI0_ZX")$envir # immediately used, but we could imagine extending AUGI0_ZX usage
                                        # both to block operations here, and to other sXaug methods, which would thus all 
@@ -61,13 +61,13 @@ def_sXaug_Matrix_cholP_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale) 
     delayedAssign("logdet_r22", { BLOB$logdet_R_scaled_b_v - BLOB$logdet_R_scaled_v - attr(sXaug,"pforpv")*log(attr(sXaug,"H_global_scale"))/2 }, assign.env = BLOB )
     delayedAssign("hatval", { # colSums(t_Q_scaled@x^2)
       tmp <- BLOB$t_Q_scaled
-      tmp@x <- tmp@x^2
+      tmp@x <- tmp@x*tmp@x
       colSums(tmp)
     }, assign.env = BLOB )
     delayedAssign("hatval_Z_u_h_cols_on_left", {
       n_u_h <- attr(sXaug,"n_u_h")
       tmp_t_Qq_scaled <- BLOB$t_Q_scaled[seq_len(n_u_h),]
-      tmp_t_Qq_scaled@x <- tmp_t_Qq_scaled@x^2
+      tmp_t_Qq_scaled@x <- tmp_t_Qq_scaled@x*tmp_t_Qq_scaled@x
       tmp <- colSums(tmp_t_Qq_scaled)
       phipos <- n_u_h+seq_len(nrow(sXaug)-n_u_h)
       hatval_Z_ <-  list(lev_lambda=tmp[-phipos],lev_phi=tmp[phipos])
@@ -76,7 +76,7 @@ def_sXaug_Matrix_cholP_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale) 
       if (is.null(lev_lambda <- BLOB$inv_factor_wd2hdv2w)) {
         lev_lambda <- BLOB$inv_factor_wd2hdv2w <- solve(BLOB$CHMfactor_wd2hdv2w,system="L")
       }  
-      lev_lambda@x <- lev_lambda@x^2
+      lev_lambda@x <- lev_lambda@x*lev_lambda@x
       lev_lambda <- colSums(lev_lambda)
     }, assign.env = BLOB )
     delayedAssign("Z_lev_phi", {      
@@ -85,9 +85,9 @@ def_sXaug_Matrix_cholP_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale) 
       if (is.null(BLOB$inv_factor_wd2hdv2w)) {
         BLOB$inv_factor_wd2hdv2w <- solve(BLOB$CHMfactor_wd2hdv2w,system="L")
       } 
-      lev_phi <- .tcrossprod(BLOB$inv_factor_wd2hdv2w, sXaug[phipos, seq_len(n_u_h) ], allow_as_mat = FALSE) # Matrix::solve(BLOB$CHMfactor_wd2hdv2w, t(sXaug[phipos, seq_len(n_u_h) ]),system="L") ## fixme the t() may still be costly
-      # :if QRmethod is forced to "sparse" on mathematically dense matrices, we may reach this code yielding a *m* atrix lev_phi unless allow_as_mat = FALSE
-      lev_phi@x <- lev_phi@x^2
+      lev_phi <- .tcrossprod(BLOB$inv_factor_wd2hdv2w, sXaug[phipos, seq_len(n_u_h) ], chk_sparse2mat = FALSE) # Matrix::solve(BLOB$CHMfactor_wd2hdv2w, t(sXaug[phipos, seq_len(n_u_h) ]),system="L") ## fixme the t() may still be costly
+      # :if QRmethod is forced to "sparse" on mathematically dense matrices, we may reach this code yielding a *m* atrix lev_phi unless chk_sparse2mat = FALSE
+      lev_phi@x <- lev_phi@x*lev_phi@x
       lev_phi <- colSums(lev_phi)
     }, assign.env = BLOB )
     #############################################
@@ -173,7 +173,7 @@ def_sXaug_Matrix_cholP_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale) 
   if (which=="R_scaled_blob") { ## used for LevMar
     if (is.null(BLOB$R_scaled_blob)) {
       tmp <- X <- t(BLOB$L_scaled[BLOB$sortPerm,, drop=FALSE] ) # crossfac needed here
-      tmp@x <- tmp@x^2
+      tmp@x <- tmp@x*tmp@x
       BLOB$R_scaled_blob <- list(X=X, diag_pRtRp=colSums(tmp), 
                                  XDtemplate=structure(.XDtemplate(X),upperTri=FALSE))
     }
@@ -183,7 +183,7 @@ def_sXaug_Matrix_cholP_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale) 
     if (is.null(BLOB$R_scaled_v_h_blob)) {
       R_scaled_v_h <- t( as(BLOB$CHMfactor_wd2hdv2w,"sparseMatrix") ) ## the t() for .damping_to_solve... (fixme: if we could avoid t()...)
       tmp <- R_scaled_v_h 
-      tmp@x <- tmp@x^2
+      tmp@x <- tmp@x*tmp@x
       diag_pRtRp_scaled_v_h <- colSums(tmp)
       BLOB$R_scaled_v_h_blob <- list(R_scaled_v_h=R_scaled_v_h,diag_pRtRp_scaled_v_h=diag_pRtRp_scaled_v_h, 
                                      XDtemplate=structure(.XDtemplate(R_scaled_v_h), upperTri=TRUE))

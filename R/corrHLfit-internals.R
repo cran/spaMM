@@ -105,6 +105,20 @@ if (FALSE) {
   return(crossfac[upper.tri(crossfac,diag = TRUE)]) ## returned as vector 
 }
 
+# Quickly implemented but operational: repres as (log) variances + (lower.tri of) logarithm of correlation matrix.
+# Named "Fish"..  bc the resulting correlation param is (1/2) log[(1+rho)/(1-rho)] i.e. Fisher's tranformation of the corr coef.
+.FishFn <- function(covpars,Xi_ncol=NULL) { # from *cov* parameter in lower.tri order vector to trRanCoefs
+  if (is.null(Xi_ncol)) Xi_ncol <- floor(sqrt(length(covpars)*2))
+  svdv <- diag(Xi_ncol)
+  .lower.tri(svdv,diag = TRUE) <- covpars
+  svdv[upper.tri(svdv)] <- t(svdv)[upper.tri(svdv)] ## __F I X M E__ ugly...
+  logvars <- .rcDispFn(diag(svdv))
+  svdv <- cov2cor(svdv)
+  svdv <- eigen(svdv)
+  svdv <- with(svdv, vectors %*% diag(log(values)) %*% t(vectors))
+  return(c(logvars/2, svdv[lower.tri(svdv,diag = FALSE)])) ## returned as vector 
+}
+
 .corrFn <- function(covpars,Xi_ncol=NULL) { ## from *cov* parameter in lower.tri order vector to trRanCoefs
   if (is.null(Xi_ncol)) Xi_ncol <- floor(sqrt(length(covpars)*2))
   covcorr <- diag(Xi_ncol)
@@ -134,6 +148,16 @@ if (FALSE) {
     covmat <- diag(Xi_ncol)/2
     covmat[lower.tri(covmat)] <- trRancoef[-seq(Xi_ncol)]
     covmat <- covmat+t(covmat)
+    sigmas <- sqrt(.rcDispInv(2*trRancoef[seq(Xi_ncol)])) 
+    ds <- diag(x=sigmas)
+    covmat <- ds %*% covmat %*% ds
+    return(covmat)
+  } else if (rC_transf=="Fish") { # 
+    covmat <- diag(Xi_ncol)/2
+    covmat[lower.tri(covmat)] <- trRancoef[-seq(Xi_ncol)]
+    covmat <- covmat+t(covmat)
+    covmat <- eigen(covmat)
+    covmat <- with(covmat, vectors %*% diag(exp(values)) %*% t(vectors))
     sigmas <- sqrt(.rcDispInv(2*trRancoef[seq(Xi_ncol)])) 
     ds <- diag(x=sigmas)
     covmat <- ds %*% covmat %*% ds
@@ -229,6 +253,10 @@ if (FALSE) {
                              Xi_ncol=Xi_ncol)
     } else if (rC_transf=="corr") {
       trRancoef <- structure(.corrFn(compactcovmat[lowerbloc],Xi_ncol=Xi_ncol),
+                             canon=vec,
+                             Xi_ncol=Xi_ncol)
+    } else if (rC_transf=="Fish") {
+      trRancoef <- structure(.FishFn(compactcovmat[lowerbloc],Xi_ncol=Xi_ncol),
                              canon=vec,
                              Xi_ncol=Xi_ncol)
     } else {

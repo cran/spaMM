@@ -4,6 +4,16 @@ cat(crayon::yellow("\ntest-composite.R: "))
 # "tests_private/VarCorr.R" (numeric LHS); 
 # "nested/test-composite-nested.R" (mv()); 
 
+if (FALSE) { # __F I X M E__ Interesting alternative numerical setings: only small effects on numerical precision, and some effects on speed (visibly on spherical fit)
+  spaMM.options(
+    nloptr=list(algorithm="NLOPT_LN_BOBYQA",xtol_rel=1e-5, print_level=0), # distinct xtol_rel
+    xtol_abs_factors=c(rcLam=5e-6,rcCor=5e-5,others=5e-11,abs=1e-7), # distinct rcLam and rcCor
+    doSeeMe=warning
+  )
+}
+
+doSeeMe <- spaMM.getOption("doSeeMe")
+
 if (spaMM.getOption("example_maxtime")>8) {
   { # testthat's on examples for composite-ranef. 
     
@@ -41,7 +51,7 @@ if (spaMM.getOption("example_maxtime")>8) {
     get_predVar(fit1)
     get_predVar(fit1, newdata=fit1$data[14:1,])[14:1]
     
-    
+    hatvalues(fit1)
     
     ### <RHS> is a factor built from a logical => same a 'logical' case above:
     #
@@ -60,7 +70,7 @@ if (spaMM.getOption("example_maxtime")>8) {
     #
     (fit1 <- fitme(migStatus ~ grp +  corrMatrix(grp|loc), data=toy, corrMatrix=rcov))
     (fit2 <- fitme(migStatus ~ grp +  corrMatrix(0+grp|loc), data=toy, corrMatrix=rcov))
-    (crit <- diff(range(c(logLik(fit1),logLik(fit2)))))
+    (crit <- diff(range(c(logLik(fit1),logLik(fit2),-17.07165))))
     testthat::test_that(paste0("grp vs 0+grp LHS: criterion was ",signif(crit,4)," >1e-4"),
                         testthat::expect_true(crit<1e-4) )
     # 
@@ -105,7 +115,7 @@ if (spaMM.getOption("example_maxtime")>8) {
     #eigen(rcov)$values
     # OK even for clearly non-unit rcov:
     (res1 <- fitme(Reaction ~ Days + corrMatrix(Days|Subject), data = sleepstudy, corrMatrix=rcov18))
-    (res2 <- fitme(Reaction ~ Days + corrMatrix(Days|Subject), data = sleepstudy, corrMatrix=rcov18, control=list(sparse_precision=TRUE)))
+    (res2 <- fitme(Reaction ~ Days + corrMatrix(Days|Subject), data = sleepstudy, corrMatrix=rcov18, control.HLfit=list(sparse_precision=TRUE)))
     (res3 <- fitme(Reaction ~ Days + corrMatrix(Days|Subject), data = sleepstudy, corrMatrix=rcov18, control=list(refit=TRUE),
                    control.HLfit=list(sparse_precision=TRUE)))
     (res4 <- fitme(Reaction ~ Days + corrMatrix(Days|Subject), data = sleepstudy, corrMatrix=rcov18, control=list(refit=TRUE),
@@ -113,7 +123,7 @@ if (spaMM.getOption("example_maxtime")>8) {
     (crit <- diff(range(c(logLik(res1),logLik(res2),logLik(res3),logLik(res4)))))
     FIXME <- testthat::test_that(paste0("sleepstudy spprec F/T and refit F/T: criterion was ",signif(crit,4)," >1e-09"),
                         testthat::expect_true(crit<1e-09) )
-    if ( ! FIXME) stop("Do see me!") # ___FIXME___
+    if ( ! FIXME) doSeeMe("Do see me!") 
   }
   
   { # spprec T/F, refit T/F; two corrMatrix terms vs ranCoefs;
@@ -134,7 +144,7 @@ if (spaMM.getOption("example_maxtime")>8) {
     (crit <- diff(range(c(logLik(fit1),logLik(fit2),logLik(fit3),logLik(fit4)))))
     FIXME <- testthat::test_that(paste0("Orthodont spprec F/T and refit F/T: criterion was ",signif(crit,4)," >1e-09"),
                         testthat::expect_true(crit<1e-09) )
-    if ( ! FIXME) stop("Do see me!") # ___FIXME___
+    if ( ! FIXME) doSeeMe("Do see me!") 
     if (FALSE) {
       trace(spaMM:::.makeCovEst1,print=TRUE)
       (fit <- fitme(distance ~ age+corrMatrix(age|Subject), data = Orthodont, corrMatrix=rcov27, control.HLfit=list(sparse_precision=TRUE),
@@ -153,9 +163,9 @@ if (spaMM.getOption("example_maxtime")>8) {
                    covStruct=list(corrMatrix=rcov27,corrMatrix=rcov27), 
                    fixed=list(phi=1.7),control.HLfit=list(sparse_precision=T))) 
     (crit <- diff(range(c(logLik(fit1),logLik(fit2),logLik(fit3),logLik(fit4)))))
-    FIXME <- testthat::test_that(paste0("two corrMatrix terms vs ranCoefs: spprec F/T: criterion was ",signif(crit,4)," >1e-08"),
-                        testthat::expect_true(crit<1e-08) )
-    if ( ! FIXME) stop("Do see me!") # ___FIXME___
+    FIXME <- testthat::test_that(paste0("two corrMatrix terms vs ranCoefs: spprec F/T: criterion was ",signif(crit,4)," >1e-07"),
+                        testthat::expect_true(crit<1e-07) )
+    if ( ! FIXME) doSeeMe("Do see me!") 
     predict(fit1)[1:6]
     predict(fit1, newdata=fit1$data[1:6,])
     predict(fit1, newdata=fit1$data[6:1,])[6:1,]  ## OK
@@ -171,9 +181,9 @@ if (spaMM.getOption("example_maxtime")>8) {
     p2 <- get_predVar(fit2,which=wh, variances=list(disp=dsp))[1:6] ## OK
     p2n <- get_predVar(fit2,which=wh, variances=list(disp=dsp), newdata=fit1$data[1:6,])[1:6]
     (crit <- diff(range(c(p1-p1n,p1-p2,p1-p2n))))
-    FIXME <- testthat::test_that(paste0("predVar spprec F/T: criterion was ",signif(crit,4)," >1e-08"),
-                        testthat::expect_true(crit<1e-08) )
-    if ( ! FIXME) stop("Do see me!") # ___FIXME___
+    FIXME <- testthat::test_that(paste0("predVar spprec F/T: criterion was ",signif(crit,4)," >1e-07"),
+                        testthat::expect_true(crit<1e-07) )
+    if ( ! FIXME) doSeeMe("Do see me!") 
     
     (p3 <- get_predVar(fit3,which=wh, variances=list(disp=dsp))[1:6]) ## 3 vs 4 OK
     p3n <- get_predVar(fit3,which=wh, variances=list(disp=dsp), newdata=fit1$data[1:6,])[1:6]
@@ -182,13 +192,13 @@ if (spaMM.getOption("example_maxtime")>8) {
     (crit <- diff(range(c(p3-p3n,p3-p4,p4-p4n))))
     FIXME <- testthat::test_that(paste0("not composite predVar spprec F/T: criterion was ",signif(crit,4)," >1e-08"),
                         testthat::expect_true(crit<1e-08) )
-    if ( ! FIXME) stop("Do see me!") # ___FIXME___
+    if ( ! FIXME) doSeeMe("Do see me!") 
 
     (crit <- diff(range(c(p1-p3))))
     FIXME <- testthat::test_that(paste0("two corrMatrix terms vs ranCoefs (Important test .calc_logdisp_cov() code for ranCoefs!)",
                                         signif(crit,4)," >1e-05"),
                                  testthat::expect_true(crit<1e-05) )
-    if ( ! FIXME) stop("Do see me!") 
+    if ( ! FIXME) doSeeMe("Do see me!") 
     
     
     # clear predVar difference between fixing the corr or not in orrMatrix(age|Subject).

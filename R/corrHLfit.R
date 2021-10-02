@@ -105,6 +105,10 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
   mc <- eval(mc,parent.frame()) # returns modified call 
   mc[[1L]] <- get(".preprocess_corrHLfit", asNamespace("spaMM"), inherits=FALSE) 
   mc <- eval(mc,parent.frame()) # returns modified call including an element 'processed'
+  removand <- intersect(names(mc), c("corrMatrix","distMatrix" ,"covStruct" ,"method" ,"HLmethod" ,"formula" ,"data" ,"family" ,"rand.family",
+                                     "resid.model", "REMLformula"))
+  # Didn't check:"verbose"       "control.dist"  "control.HLfit" "control.glm"   "init.HLfit"    "etaFix"        "prior.weights"
+  for (st in removand) mc[[st]] <- NULL # NaN to catch ay remaining use
   mc[[1L]] <- get("corrHLfit_body", asNamespace("spaMM"), inherits=FALSE) 
   hlcor <- eval(mc,parent.frame()) 
   .check_conv_glm_reinit()

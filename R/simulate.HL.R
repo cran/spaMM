@@ -281,7 +281,7 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
         eta_fixed <- predict(object, newdata=newdata, type="link",
                              re.form=re.form,binding=NA,control=list(fix_predVar=FALSE), verbose=verbose)
         if (is.null(newdata)) { ## we simulate with all ranefs (treated conditionnally|ranef or marginally) hence no selection of matrix
-          ZAL <- get_ZALMatrix(object)
+          ZAL <- get_ZALMatrix(object, force_bind = ! ("AUGI0_ZX_sparsePrecision" %in% object$MME_method) )
           cum_n_u_h <- attr(object$lambda,"cum_n_u_h")
           vec_n_u_h <- diff(cum_n_u_h)
         } else {

@@ -39,7 +39,7 @@
 .calc_cAIC_pd_spprec <- function(object) {
   w.resid <- object$w.resid
   #ZAL <- .compute_ZAL(XMatrix=object$strucList, ZAlist=object$ZAlist,as_matrix=.eval_as_mat_arg.HLfit(object)) 
-  ZAL <- get_ZALMatrix(object) # allows ZAXlist; but if a non-ZAXlist is already in the $envir, no effect; + we will solve(chol_Q, Diagonal()) so the gain is not obvious
+  ZAL <- get_ZALMatrix(object, force_bind=FALSE) # allows ZAXlist; but if a non-ZAXlist is already in the $envir, no effect; + we will solve(chol_Q, Diagonal()) so the gain is not obvious
   if ( ncol(object$X.pv) ) {
     M12 <- .crossprod(ZAL, .Dvec_times_m_Matrix(w.resid, object$X.pv), as_mat=TRUE)
     Md2clikdvb2 <- rbind2(cbind2(as.matrix(.ZtWZwrapper(ZAL,w.resid)), M12), ## this .ZtWZwrapper() takes time
@@ -69,7 +69,7 @@
   
   w.resid <- object$w.resid
   #ZAL <- .compute_ZAL(XMatrix=obje17ct$strucList, ZAlist=object$ZAlist,as_matrix=.eval_as_mat_arg.HLfit(object)) 
-  ZAL <- get_ZALMatrix(object) # allows ZAXlist; but if a non-ZAXlist is already in the $envir, no effect; + we will solve(chol_Q, Diagonal()) so the gain is not obvious
+  ZAL <- get_ZALMatrix(object, force_bind=FALSE) # allows ZAXlist; but if a non-ZAXlist is already in the $envir, no effect; + we will solve(chol_Q, Diagonal()) so the gain is not obvious
   if ( ncol(object$X.pv) ) {
     M12 <- .crossprod(ZAL, .Dvec_times_m_Matrix(w.resid, object$X.pv), as_mat=TRUE)
     Md2clikdvb2 <- rbind2(cbind2(as.matrix(.ZtWZwrapper(ZAL,w.resid)), M12), ## this .ZtWZwrapper() takes time
@@ -249,7 +249,7 @@
                               any((phimodel <- object$models[["phi"]])=="phiScal")) 
     dvdlogphiMat_needed <- dvdlogphiMat_needed || identical(envir$forcePhiComponent,TRUE) ## hack for code testing !
     if (dvdloglamMat_needed || dvdlogphiMat_needed) {
-      ZAL <- get_ZALMatrix(object)     
+      ZAL <- get_ZALMatrix(object, force_bind = ! ("AUGI0_ZX_sparsePrecision" %in% object$MME_method) )     
       d2hdv2_info <- .calc_d2hdv2_info(object, ZAL) # may be a qr object, or not (SPPREC). F I X M E a gentle message for long computations ? 
     } 
     if (dvdloglamMat_needed) { 
@@ -306,7 +306,6 @@
       object$envir$invG_ZtW <- solve(envir$G_CHMfactor, envir$ZtW, system="A") # hardly avoidable has there is no comparable operation elsewhere (check "A")
     }    
     RES <- list(n_x_r=t(envir$ZtW), r_x_n=as.matrix(envir$invG_ZtW)) # requires both being kept in the envir 
-    # if as(,"dgeMatrix"), .calc_denseness() -> drop0() wastes time.
     ZAfix <- .get_ZAfix(object, as_matrix=FALSE)
     RES$r_x_r <- object$envir$invG_ZtW %*% ZAfix
     return(RES)
@@ -426,7 +425,7 @@
         is.null(beta_cov_info$tcrossfac_beta_v_cov)) { ## Use .calc_beta_cov_info_others -> get_from_MME()
       # F I X M E test useless if call to .get_beta_cov_info() already dependent on the test
       # Further, can $tcrossfac_beta_v_cov be NULL if $beta_cov_info is list ?
-      ZAL <- get_ZALMatrix(res) # note that .calc_beta_cov_info_others -> ... -> rbind2() but ZAL should not be a ZAXlist here
+      ZAL <- get_ZALMatrix(res, force_bind=FALSE) # note that .calc_beta_cov_info_others -> ... -> rbind2() but ZAL should not be a ZAXlist here
       nrd <- length(res$w.ranef)
       pforpv <- ncol(res$X.pv)
       if (inherits(ZAL,"Matrix")) {
@@ -444,7 +443,9 @@
 .calc_newZACvar <- function(newZAlist,cov_newLv_oldv_list) {
   newZACvarlist <- vector("list",length(newZAlist))
   for (new_rd in seq_along(newZAlist)) newZACvarlist[[new_rd]] <- newZAlist[[new_rd]] %ZA*gI% cov_newLv_oldv_list[[new_rd]]
-  return(.ad_hoc_cbind(newZACvarlist, as_matrix=FALSE))
+  newZAC <- .ad_hoc_cbind(newZACvarlist, as_matrix=FALSE)
+  if (inherits(newZAC,"sparseMatrix") && .calc_denseness(newZAC, relative=TRUE)>0.35) newZAC <- as.matrix(newZAC)
+  newZAC
 }
 
 ## Aggregate info on corrpars, inner-estimated and inner-fixed.

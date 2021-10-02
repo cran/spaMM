@@ -85,7 +85,9 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
       } 
     } else { ## .tcrossprod() is memory bottleneck (for lhs nobs* ~n_u_h) => use as_tcrossfac_list to bypass .calcZWZt_mat_or_diag()
       lhs <- Z %*% tcrossfac_W # Z tcW 
-      return(.tcrossprod(lhs)) # Z tcW tcW' Z' 
+      if (inherits(lhs,"dgeMatrix")) { # Z sparse, but decorr was used => tcrossfac_W is matrix (totally OK)
+        return(.tcrossprodCpp(as.matrix(lhs),yy=NULL))
+      } else return(.tcrossprod(lhs)) # Z tcW tcW' Z' 
     }
   } else { ## returns only the diagonal
     if (is.vector(W)) {
@@ -336,7 +338,11 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
   ############################################################
   newZACvar <- .calc_newZACvar(newZAlist,cov_newLv_oldv_list)
   if (ncol(X.pv)>ncol(object$X.pv)) { # detection etaFix$beta case
-    XZAC <- cbind2(X.pv[,colnames(object$X.pv),drop=FALSE],newZACvar) ## no such thing in point pred as fix vs. estim does not matter there.
+    if (is.matrix(newZACvar)) {
+      XZAC <- cbind2(as.matrix(X.pv)[,colnames(object$X.pv),drop=FALSE],newZACvar)
+    } else XZAC <- cbind2(X.pv[,colnames(object$X.pv),drop=FALSE],newZACvar) ## no such thing in point pred as fix vs. estim does not matter there.
+  } else if (is.matrix(newZACvar)) { # when C is dense, cbind2(X.pv,newZACvar) is quite dense and further operations from it may handle inefficient dge
+    XZAC <- cbind2(as.matrix(X.pv),newZACvar)
   } else XZAC <- cbind2(X.pv,newZACvar) ## uses C (in C.w) rather than L (in L.v)
   ## First component of predVar
   # variance of expectation of Xbeta+Zb due to var of (hat(beta),old hat(v)) using E[b] as function of old hat(v)
@@ -603,7 +609,7 @@ if (FALSE) {# This fn is documentation,
             if (length(setdiff(newlevels,oldlevels))) stop(paste0("Found new levels for a '",corr.model,"' random effect."))
             # all newlevels must be in oldlevels hence the construction of the matrix is a little simplified
             compactcovmat <- attr(strucList[[old_rd]],"latentL_blob")$compactcovmat
-            newoldC <- .makelong(compactcovmat, longsize=length(oldlevels)*numnamesTerms, kron_Y=kron_Y[newlevels,oldlevels]) 
+            newoldC <- .makelong_kronprod(compactcovmat, kron_Y=kron_Y[newlevels,oldlevels]) 
             #colnames(newoldC) <- rep(oldlevels, numnamesTerms) ## these will be needed by .match_old_new_levels() or .assign_newLv_for_newlevels_corrMatrix()
             #rownames(newoldC) <- rep(newlevels, numnamesTerms)
             if (which_mats$no) {

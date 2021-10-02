@@ -536,13 +536,13 @@
     map_X <- map_X*phantom_X
     #
     phantom_Y <- as(envir$kron_Y_chol_Q,"ltCMatrix") # sparse logical matrix...
-    LHS <- .makelong(map_X, kron_Y=phantom_Y) # dropping O's but others values are integers in numeric format
+    LHS <- .makelong_kronprod(map_X, kron_Y=phantom_Y) # dropping O's but others values are integers in numeric format
     #
     phantom_X <- as(phantom_X,"ltCMatrix")
     envir$long_chol_Q_phantom_map <- list(
       phantom_X=phantom_X,
       LHS_x= as.integer(LHS@x), # OK bc with a tolerance of .Machine$double.eps
-      RHS=.makelong(phantom_X, kron_Y=envir$kron_Y_chol_Q) # likewise, dropping 0's but other values should be more than a previous drop0(,tol>0) tolerance
+      RHS=.makelong_kronprod(phantom_X, kron_Y=envir$kron_Y_chol_Q) # likewise, dropping 0's but other values should be more than a previous drop0(,tol>0) tolerance
     )
   }
   envir$long_chol_Q_phantom_map
@@ -554,15 +554,37 @@
     #
     map_X <- forceSymmetric(matrix(seq(Xi_ncol^2),nrow=Xi_ncol,ncol=Xi_ncol))
     phantom_Y <- as(cov_info_mat$matrix,"lsCMatrix") # sparse logical matrix...
-    LHS <- .makelong(map_X, kron_Y=phantom_Y) 
+    LHS <- .makelong_kronprod(map_X, kron_Y=phantom_Y) 
     phantom_X <- as(map_X,"lsyMatrix") # (why does conversion to lsC does not work?) 
     #
     envir$long_precmat_phantom_map <- list(
       LHS_x= as.integer(LHS@x), # OK bc with a tolerance of .Machine$double.eps
-      RHS=.makelong(phantom_X, kron_Y=cov_info_mat$matrix) 
+      RHS=.makelong_kronprod(phantom_X, kron_Y=cov_info_mat$matrix) 
     )
   }
   envir$long_precmat_phantom_map
+}
+
+.get_phantom_map <- function(longsize, Xi_ncol) {
+  Ysize <- longsize %/% Xi_ncol
+  mapX <- matrix(seq(Xi_ncol^2),nrow=Xi_ncol,ncol=Xi_ncol)
+  #
+  map_X <- mapX*lower.tri(mapX, diag=TRUE)
+  phantom_Y_ltC <- new("ltCMatrix",i=seq(0,Ysize-1L),p=seq(0,Ysize), x=rep(TRUE,Ysize),Dim=c(Ysize,Ysize),uplo="L")
+  ltCLHS <- .makelong_kronprod(map_X, kron_Y=phantom_Y_ltC) # dropping O's but others values are integers in numeric format
+  #
+  map_X <- forceSymmetric(mapX)
+  phantom_Y_lsC <- new("lsCMatrix",i=seq(0,Ysize-1L),p=seq(0,Ysize), x=rep(TRUE,Ysize),Dim=c(Ysize,Ysize),uplo="L")
+  lsyLHS <- .makelong_kronprod(map_X, kron_Y=phantom_Y_lsC) 
+  #
+  list(
+    lsyLHS_x= as.integer(lsyLHS@x), 
+    ltCLHS_x= as.integer(ltCLHS@x), 
+    lsyRHS=.makelong_kronprod(as(map_X,"lsyMatrix"), 
+                              kron_Y=phantom_Y_lsC), 
+    ltCRHS=.makelong_kronprod(as(lower.tri(map_X, diag=TRUE),"ltCMatrix"), 
+                              kron_Y=phantom_Y_ltC) 
+  )
 }
 
 
@@ -572,7 +594,7 @@
                                 cov_info_mat,
                                 template=processed$ranCoefs_blob$longLv_templates[[rt]]) {
   
-  if ( ! is.null(attr(cov_info_mat,"blob")) # && 
+  if ( ! is.null(attr(cov_info_mat,"blob")) # &&                       ## *fixed* corrMatrix => use "blob" envir with chol_Q (etc) of kron_Y corrMatrix
        # inherits(cov_info_mat$matrix, "dsCMatrix")
        ) { ## (could it be otherwise ? symDiag ?).
     ## Cf logic in .wrap_makelong_outer_composite:
@@ -588,6 +610,16 @@
     asmat_cpm <- as.matrix(latentL_blob$compactprecmat) # as.matrix() before subsetting.
     precmat@x <- precmat@x * asmat_cpm[phantasmapic$LHS_x]
     # if (any(asmat_cpm==0)) precmat <- drop0(precmat) 
+  } else if (is.null(cov_info_mat)) { # no kronecker product. Same result as .makelong() [except that explicit zeros remain]
+    # ___F I X M E___ generalize to other uses of .makelong()?
+    Xi_ncol <- ncol(latentL_blob$compactchol_Q)
+    phantasmapic <- .get_phantom_map(longsize=longsize, Xi_ncol = Xi_ncol) # *memoized*
+    chol_Q <- phantasmapic$ltCRHS
+    asmat_ccQ <- as.matrix(latentL_blob$compactchol_Q) # as.matrix() before subsetting.
+    chol_Q@x <- chol_Q@x * asmat_ccQ[phantasmapic$ltCLHS_x] 
+    precmat <- phantasmapic$lsyRHS
+    asmat_cpm <- as.matrix(latentL_blob$compactprecmat) # as.matrix() before subsetting.
+    precmat@x <- precmat@x * asmat_cpm[phantasmapic$lsyLHS_x]
   } else {
     chol_Q <- .makelong(latentL_blob$compactchol_Q, longsize=longsize, template=template, 
                         kron_Y=attr(cov_info_mat,"blob")$kron_Y_chol_Q) ## from promise created by .init_assign_geoinfo()
@@ -716,7 +748,7 @@
       ZA <- processed$ZAlist[[rd]]
     } else if (inherits(ZAL,"ZAXlist")) {
       ZA <- ZAL@LIST[[rd]]
-      if (inherits(ZA,"ZA_QCHM")) ZA <- ZA$ZA
+      if (inherits(ZA,c("ZA_QCHM","ZA_Kron"))) ZA <- ZA$ZA
     } else {
       u.range <- (cum_n_u_h[rd]+1L):cum_n_u_h[rd+1L]
       ZA <- ZAL[,u.range,drop=FALSE]

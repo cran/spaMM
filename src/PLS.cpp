@@ -216,3 +216,13 @@ NumericMatrix Rcpp_dense_cbind_mat_vec(NumericMatrix a, NumericVector b) {
   out(_, acoln) = b;
   return out;
 }
+
+// https://stackoverflow.com/questions/45875668/rcpp-eigen-sparse-matrix-cbind
+// [[Rcpp::export(.RcppMatrixCb2)]]
+Eigen::SparseMatrix<double> RcppMatrixCb2(Eigen::MappedSparseMatrix<double>& matrix1,
+                                          Eigen::MappedSparseMatrix<double>& matrix2) {
+  Eigen::SparseMatrix<double> out(matrix1.rows(), matrix1.cols() + matrix2.cols());
+    out.leftCols(matrix1.cols()) = matrix1; 
+    out.rightCols(matrix2.cols()) = matrix2; 
+    return out;
+  }

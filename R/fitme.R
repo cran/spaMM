@@ -120,6 +120,12 @@ fitme <- function(formula,data, ## matches minimal call of HLfit
   mc <- eval(mc,parent.frame()) # 
   mc[[1L]] <- get(".preprocess_fitme", asNamespace("spaMM"), inherits=FALSE)
   mc <- eval(mc,parent.frame()) # returns modified call including an element 'processed'
+  # We should remove all processed arguments, in particular those thatgoe into the 'dotlist", otherwise their promises are evaluated again
+  ## which is a waste of time (cf corrMatrix=as_precision(...))
+  removand <- intersect(names(mc), c("corrMatrix","distMatrix" ,"covStruct" ,"method" ,"HLmethod" ,"formula" ,"data" ,"family" ,"rand.family",
+                                     "resid.model", "REMLformula"))
+  # Didn't check:"verbose"       "control.dist"  "control.HLfit" "control.glm"   "init.HLfit"    "etaFix"        "prior.weights"
+  for (st in removand) mc[[st]] <- NULL # NaN to catch ay remaining use
   mc[[1L]] <- get("fitme_body", asNamespace("spaMM"), inherits=FALSE) 
   hlcor <- eval(mc,parent.frame()) 
   .check_conv_glm_reinit()

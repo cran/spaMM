@@ -82,14 +82,14 @@ logLik(zut0s)-(logLik(zuta)+logLik(zutb))
 (zut1s <- fitmv(submodels=list(mod1=list(status ~ 1+ corrMatrix(0+mv(1,2)|name), fixed=list(phi=0.1)),
                               mod2=list(status2 ~ 1+ corrMatrix(0+mv(1,2)|name), fixed=list(phi=0.1))), #verbose=c(TRACE=TRUE),
                data=cap_mv, corrMatrix=MLcorMat2, 
-               fixed=list(ranCoefs=list("1"=c(1,0.5,1))),
+               fixed=list(ranCoefs=list("1"=c(1,0.5,1))), # meaning dependent on using (0+mv()).
                control.HLfit=list(sparse_precision=TRUE))) 
 predict(zut1d)[,1] - predict(zut1s)[,1]
 logLik(zut1s)-logLik(zut1d) 
 
-ranef(zut1s, type="uncorrelated") # distinct chol factors, distinct u_h 
+ranef(zut1s, type="uncorrelated") # distinct chol factors, distinct u_h ...
 ranef(zut1d, type="uncorrelated")
-r1 <- ranef(zut1s)[[1]] # but the correlated ranefs are i"dentical ! up to differences in the latentL_blob$d !" (0+mv()) important here !
+r1 <- ranef(zut1s)[[1]] # ... but the correlated ranefs are identical.
 r2 <- ranef(zut1d)[[1]]
 crit <- diff(range(r1-r2))
 testthat::test_that(paste0("ranef corrMatrix(mv()...): criterion was ",signif(crit,4)," >1e-7"),
@@ -116,7 +116,7 @@ testthat::test_that(paste0("ranef corrMatrix(mv()...): criterion was ",signif(cr
 ####################################################################"
 
 
-if (FALSE) {
+if (FALSE) { # that was devel scratch, not tidy tests
   ZUT1 <- function(fit1, caveat="assuming lambda=1") {
     Lmat <- t(chol(proxy::as.matrix(MLcorMat2,diag=1))) # 
     

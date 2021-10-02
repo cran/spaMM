@@ -347,7 +347,7 @@
     # lambda and phi factors enter in dV/dlog(.), computed instead of dV/d(.) to match dwdlog(.) vectors.
     #
     # use repres of two matrices large A and B, each as (thin) lhs %*% (flat) rhs   
-    ZAL <- get_ZALMatrix(object)
+    ZAL <- get_ZALMatrix(object, force_bind = ! ("AUGI0_ZX_sparsePrecision" %in% object$MME_method) )
     if ("loglambda" %in% names(dispcolinfo) || "rho" %in% names(dispcolinfo)) {
       invV.dV_info <- .calc_invV.dV_info(object, checklambda, invV_factors=invV_factors, ZAL=ZAL) ## $lhs= invV %*% ZALd and $lhs= t(ZALd)
       sublambda <- .unlist(invV.dV_info$lambda_list[checklambda])

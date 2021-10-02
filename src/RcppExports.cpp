@@ -172,6 +172,18 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// RcppMatrixCb2
+Eigen::SparseMatrix<double> RcppMatrixCb2(Eigen::MappedSparseMatrix<double>& matrix1, Eigen::MappedSparseMatrix<double>& matrix2);
+RcppExport SEXP _spaMM_RcppMatrixCb2(SEXP matrix1SEXP, SEXP matrix2SEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Eigen::MappedSparseMatrix<double>& >::type matrix1(matrix1SEXP);
+    Rcpp::traits::input_parameter< Eigen::MappedSparseMatrix<double>& >::type matrix2(matrix2SEXP);
+    rcpp_result_gen = Rcpp::wrap(RcppMatrixCb2(matrix1, matrix2));
+    return rcpp_result_gen;
+END_RCPP
+}
 // bessel_lnKnu_e
 List bessel_lnKnu_e(Rcpp::NumericVector nu, Rcpp::NumericVector x);
 RcppExport SEXP _spaMM_bessel_lnKnu_e(SEXP nuSEXP, SEXP xSEXP) {
@@ -590,6 +602,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_spaMM_Rcpp_chol_R", (DL_FUNC) &_spaMM_Rcpp_chol_R, 1},
     {"_spaMM_Rcpp_dense_cbind_mat_mat", (DL_FUNC) &_spaMM_Rcpp_dense_cbind_mat_mat, 2},
     {"_spaMM_Rcpp_dense_cbind_mat_vec", (DL_FUNC) &_spaMM_Rcpp_dense_cbind_mat_vec, 2},
+    {"_spaMM_RcppMatrixCb2", (DL_FUNC) &_spaMM_RcppMatrixCb2, 2},
     {"_spaMM_bessel_lnKnu_e", (DL_FUNC) &_spaMM_bessel_lnKnu_e, 2},
     {"_spaMM_nuln_plus_bessel_lnKnu_e", (DL_FUNC) &_spaMM_nuln_plus_bessel_lnKnu_e, 2},
     {"_spaMM_lowertri", (DL_FUNC) &_spaMM_lowertri, 3},

@@ -415,7 +415,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
   return(zInfo)
 }
 
-.cbind_dgC_dgC <- function(leftcols, rightcols) { # expects @x,i,p => dgCMatrix
+.oldcbind_dgC_dgC <- function(leftcols, rightcols) { # expects @x,i,p => dgCMatrix
   leftcols@p <- c(leftcols@p, leftcols@p[length(leftcols@p)] + rightcols@p[-1L])
   leftcols@i <- c(leftcols@i, rightcols@i) 
   leftcols@x <- c(leftcols@x, rightcols@x)
@@ -429,8 +429,28 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
     } else leftcols@Dimnames[[2L]] <- c(leftcols@Dimnames[[2L]],rightcols@Dimnames[[2L]])
   } 
   leftcols@Dim[2L] <- leftcols@Dim[2L]+rightcols@Dim[2L]
+  # the old code should have included:
+  leftcols@factors <- list()
+  attr(leftcols,"is_incid") <- FALSE
+  attr(leftcols,"namesTerm") <- NULL
   return(leftcols)
 }
+
+# Sligthly faster than the old, pure R version:
+.cbind_dgC_dgC <- function(leftcols, rightcols) {
+  res <- .RcppMatrixCb2(leftcols, rightcols)
+  if (is.null(leftcols@Dimnames[[2L]])) {
+    if ( ! is.null(rightcols@Dimnames[[2L]])) {
+      res@Dimnames[[2L]] <- c(rep("",leftcols@Dim[2L]),rightcols@Dimnames[[2L]])
+    } ## else all colnames are NULL
+  } else {
+    if ( is.null(rightcols@Dimnames[[2L]])) {
+      res@Dimnames[[2L]] <- c(leftcols@Dimnames[[2L]],rep("",rightcols@Dim[2L]))
+    } else res@Dimnames[[2L]] <- c(leftcols@Dimnames[[2L]],rightcols@Dimnames[[2L]])
+  } 
+  return(res)
+}
+
 
 .adhoc_cbind_dgC_0 <- function(leftcols, newcoln) { # expects @x,i,p => dgCMatrix
   leftcols@p <- c(leftcols@p, rep(leftcols@p[length(leftcols@p)],newcoln))
@@ -575,7 +595,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
   } else CHM_ZZ <- Matrix::.updateCHMfactor(template, tZW, mult=1) # no need to compute the crossprod for updating: the tcrossfac is enough.
   XW <- sXaug_blocks$XW
   ZtWX <- tZW %*% XW
-  # perm <- as(CHM_ZZ,"pMatrix")@perm # remarkably slow...
+  # perm <- as(CHM_ZZ,"pMatrix")@perm # remarkably slow... and using   perm <- CHM_ZZ@perm+1L + [perm,] is much slower than:
   Rzx <- solve(CHM_ZZ, solve(CHM_ZZ,ZtWX,system="P"), system="L") # (maybe) dense but dge... # solve(CHM_ZZ, ZtWX[perm,], system="L") # 
   ZtWy <- tZW %*% pwy_o
   r_Zy <- solve(CHM_ZZ, solve(CHM_ZZ,ZtWy,system="P"), system="L") # solve(CHM_ZZ, ZtWy[perm], system="L")  # 
@@ -588,10 +608,37 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
   u_of_quadratic_utAu <- XtWy-.Rcpp_crossprod(Rzx, r_Zy, keep_names=FALSE,as_mat=TRUE)
   if (TRUE) { # not clear why solve(cross_Rxx,.) would work and not chol() 
     chol_XX <- chol(cross_Rxx)
-    r_Xy <- backsolve(chol_XX, u_of_quadratic_utAu, transpose=TRUE) ## transpose since chol() provides a tcrossfac 
-    ryy2 <- sum(pwy_o^2) - sum(r_Zy^2) - sum(r_Xy^2)
+    r_Xy <- backsolve(chol_XX, u_of_quadratic_utAu, transpose=TRUE) ## I wrote "transpose since chol() provides a tcrossfac". ?? 
+    ryy2 <- sum(pwy_o*pwy_o) - sum(r_Zy@x*r_Zy@x) - sum(r_Xy*r_Xy)
     absdiagR_terms <- list(logdet_v=determinant(CHM_ZZ)$modulus[1], 
                            logdet_b=sum(log(abs(.diagfast(chol_XX)))), ryy2=ryy2)
+  } else if (FALSE) {
+    cross_X <- .crossprod(XW, as_sym=FALSE)
+    chX <- chol(cross_X)
+    # RzxL <- as(Rzx %*% solve(chX),"dgCMatrix") # block (1,2) using a previous solve(CHM_ZZ
+    # uplo <- .cbind_dgC_dgC( drop0(as(0*cross_Z,"dgCMatrix")), RzxL) # 1,1, 1,2
+    uplo <- as(Rzx %*% solve(chX),"dgCMatrix") # block (1,2) using a previous solve(CHM_ZZ
+    dimnames(uplo) <- list(NULL,NULL)
+    uplo@Dim[2L] <- uplo@Dim[2L]+ncol(CHM_ZZ) 
+    uplo@p <- c(rep(0L,ncol(CHM_ZZ)), uplo@p) # nice way of adding a LHS block of zeros. # 1:3, 1:2
+    uplo@Dim[1L] <- uplo@Dim[2L]+1L # nice way of adding rows of zeros. # 1:3, 1:2
+    #
+    LXtWy <- drop(backsolve(chX,XtWy,transpose=TRUE)) # block 2,3
+    ywy <- sum(pwy_o*pwy_o)
+    ycol <- c(drop(r_Zy),LXtWy,0)/sqrt(ywy)
+    dim(ycol) <- c(length(ycol),1L)
+    uplo <- .cbind_dgC_dgC(uplo, as(ycol,"dgCMatrix"))
+    CHM_full <- as(Cholesky(forceSymmetric(uplo),Imult=1,perm=FALSE),"sparseMatrix") # this is not efficient
+    # updating permuted cholesky would make extracting a lower triangle, as below, a dubious approach.
+    #
+    tltblock <- t(.get_dtC_lower_RHS(dtC_full=CHM_full, ncol_remove=ncol(CHM_ZZ)))
+    tltblock <- .remove_utri_last_rowcol(tltblock)
+    #
+    chol_XX <- tltblock %*% chX 
+    lastx <- tail(CHM_full@x,1)
+    ryy2 <- ywy*lastx*lastx
+    absdiagR_terms <- list(logdet_v=determinant(CHM_ZZ)$modulus[1], 
+                           logdet_b=sum(log(.diagfast(chol_XX))), ryy2=ryy2)
   } else if (use_crossr22 <- TRUE) { # a bit slower (even using .Rcpp_crossprod)
     # No need for the complex Utri_chol computation here, as sum(r_Xy^2) is easy to compute without it.
     # Another place where one can avoid it is also labelled 'use_crossr22' in .solve_crossr22()
@@ -608,7 +655,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
     r_Xy <- backsolve(chol_XX, u_of_quadratic_utAu, transpose=TRUE) ## transpose since chol() provides a tcrossfac 
     # .crossprod(Rzx, r_Zy) appears to be .crossprod(ZtWX, solve(CHM_ZZ, ZtWy, system = "A")) 
     # but we still need Rzx and r_Zy 
-    ryy2 <- sum(pwy_o^2) - sum(r_Zy^2) - sum(r_Xy^2)
+    ryy2 <- sum(pwy_o*pwy_o) - sum(r_Zy@x*r_Zy@x) - sum(r_Xy*r_Xy)
     absdiagR_terms <- list(logdet_v=determinant(CHM_ZZ)$modulus[1], 
                            logdet_b=sum(log(abs(.diagfast(chol_XX)))), ryy2=ryy2)
   }
@@ -673,7 +720,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
         ## -pforpv*log(H_global_scale)/2 for consistency with get_from_MME(sXaug,"logdet_r22") assuming the latter is correct
       } else if (inherits(sXaug,"sXaug_blocks")) {
         pwphi <- 1/(prior_weights) ## vector
-        y_o <- (processed$y-processed$off)
+        y_o <- drop(processed$y-processed$off)
         pwy_o <- y_o*sqrt(extranorm/pwphi)
         # .spaMM.data$options$ATUER <- FALSE
         # absdiagR_terms1 <- .get_absdiagR_new(sXaug, pwy_o, n_u_h, processed, 

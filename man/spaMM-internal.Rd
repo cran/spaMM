@@ -1,7 +1,7 @@
 \name{spaMM-internal}
 
 % TODO ___F I X M E___
-% * implement outer optime of beta starting from the etaFix (+ REMLformula) code => avoid LevM costs for COMP ? 
+% * implement outer optim of beta starting from the etaFix (+ REMLformula) code => avoid LevM costs for COMP ? 
 % * Something about .predictions methods when predict returns a data frame ?
 
 \alias{projpath} % for local tests
