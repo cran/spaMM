@@ -3,6 +3,25 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 3.9.25}{ %      
+\subsection{NEW FEATURES}{
+\itemize{
+\item New argument filled.mapMM(., return.) to control the return value of this function.
+\item New argument 'focal_values' for functions pdef_effects() and plot_effects(), to control values at which predictions are computed.
+\item These News for version 3.9.0 said "Much more memory-efficient (and faster) fits for 'nested-geostatistical' random effects..." but one more improvement was needed to bring down memory requirements over all steps of a fit.
+}
+}
+\subsection{USER-LEVEL CHANGES}{
+\itemize{
+\item The fixed-effect coefficients returned by get_inits_from_fit(from, template) no longer include values for coefficients that were NA in fixef(template).  
+}
+}
+\subsection{BUG FIXES}{
+\itemize{
+\item Bootstrap procedures in e.g. LRT() could fail when the fixed-effect coefficients of the "full" model fit, as returned by fixef(), included NA's (as expected when some model coefficients cannot be estimated from the data). This has been fixed by the above-mentioned change in the return value of get_inits_from_fit().
+}
+}
+}
 \section{CHANGES UP TO VERSION 3.9.13}{     
 \subsection{NEW FEATURES}{
 \itemize{

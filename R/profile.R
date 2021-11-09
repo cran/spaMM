@@ -27,11 +27,7 @@ spaMM.options <- function(..., warn=TRUE) {
 
 spaMM.getOption <- function (x) {spaMM.options(x, warn=FALSE)[[1]]}
 
-
-## large rho is not a problem
-## large nu is a problem the more so when rho is small (=> 'small scaled distance gaussian')
-# lme did not manage to go beyond nu=17.48 in case Vn phiFix...
-
+# additional (wrt .onLoad) operations when the package is visible to the user (:: not required to call a function)
 ".onAttach" <- function (lib, pkg) {
   version <- utils::packageVersion("spaMM")
   packageStartupMessage("spaMM (Rousset & Ferdy, 2014, version ", version, 
@@ -45,6 +41,7 @@ spaMM.getOption <- function (x) {spaMM.options(x, warn=FALSE)[[1]]}
   
 }
 
+# Whatever's needed for operation of the namespace (allows ::: or ::)
 .onLoad <- function(libname, pkgname) {
   if ( ! proxy::pr_DB$entry_exists("Earth")) {
     pr_DB$set_entry(FUN = .Dist.earth.mat, names = c("Earth", "dist.earth"))
@@ -67,6 +64,7 @@ spaMM.getOption <- function (x) {spaMM.options(x, warn=FALSE)[[1]]}
   success <- suppressMessages(do.call("require",list(package="memoise", quietly=TRUE))) # 'quietly' needed to suppress *warning* when memoise is not attached.
   .spaMM.data$options$need_memoise_warning <- ! success
   if (success) { # remarkably, no need for special wrapper. R CMD check handling of .onLoad must be special
+    # the error ".onLoad failed in loadNamespace() ......`CMP_linkfun_objfn` must be a formula." has been solved at least once by updating the memoise package (=> DESCRIPTION now requests v2.0.0) 
     ..CMP_mu2lambda <<- memoise(f=..CMP_mu2lambda, omit_args="CMP_linkfun_objfn", 
                                 cache = .do_call_wrap("cache_mem", arglist=list(max_size = 10 * 1024^2), pack="cachem"))
     .Rcpp_COMP_Z <<- memoise(f=.Rcpp_COMP_Z, cache = .do_call_wrap("cache_mem", arglist=list(max_size = 10 * 1024^2), pack="cachem"))

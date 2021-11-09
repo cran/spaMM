@@ -267,9 +267,11 @@ get_inits_from_fit <- function(from, template=NULL, to_fn=NULL, inner_lambdas=FA
     new_inits <- list(init.corrHLfit=new_outer_inits,init.HLfit=init.HLfit)
   } else new_inits <- list(init.HLfit=init.HLfit)
   # Add initial value for fixed effects
-  if (length(fixef_from <- fixef(from))) {
+  if (length(fixef_from <- na.omit(fixef(from)))) {
+    # fixef() returns a vector with NA's ifor non-estimable parameters; 
+    #     but these NA should not reach the code initializing eta as X.beta in HLfit_body, using beta from the inits... => na.omit
     if (inherits(template,"HLfit")) { # This was motivated by the Leucadendron_hard.R bootstrap replicates.
-      new_HLfit_inits <- fixef(template)
+      new_HLfit_inits <- na.omit(fixef(template))
       new_HLfit_inits[names(new_HLfit_inits)] <- 0
       shared_names <- intersect(names(new_HLfit_inits), names(fixef_from))
       new_HLfit_inits[shared_names] <- fixef_from[shared_names]

@@ -164,9 +164,35 @@
   Lunique # expanded, in composite case
 }
 
+.mat_sqrt_dsCMatrix <- function(cov_info_mat, condnum=1e12) {
+  # arising from processing of "dsCDIST" matrices created by .sparse_expand_GeoMatrices()
+  Lunique <- try(t(Matrix::chol(cov_info_mat)), silent=TRUE) 
+  if (inherits(Lunique,"try-error")) { # nu large, in particular
+    # in the basic nested-Matern example, for 10000L locations, the Matrix::chol() call takes ~0.13s
+    if (ncol(cov_info_mat)>10000L) message(paste0("Regularization necessary for spatial correlation matrix.\n", 
+                                            "It is suggested to constrain the spatial parameter ranges if this happens repeatedly."))
+    { # Matrix::condest() use RNG, but we do not want any global effect on RNG! 
+      R.seed <- get(".Random.seed", envir = .GlobalEnv)
+      set.seed(123) # makes the condest() call deterministic
+      kappa <- Matrix::condest(cov_info_mat)$est 
+      on.exit(assign(".Random.seed", R.seed, envir = .GlobalEnv))
+    }
+    # The following code assume that the largest eigenvalue is 1
+    if (kappa<1e12) {
+      warning(paste0("Suspect correlation matrix in .mat_sqrt_dsCMatrix(), worth a close examination...\n", 
+                     "error message was: ", attr(Lunique,"condition")$message))
+      diagcorr <- 1e-11 - 1/kappa
+    } else diagcorr <- 1e-12 - 1/kappa
+    diag(cov_info_mat) <- diag(cov_info_mat) + diagcorr
+    Lunique <- try(t(Matrix::chol(cov_info_mat)),silent=TRUE)
+  }
+  attr(Lunique, "type") <- "t(Matrix::chol)"
+  Lunique
+}
+
 
 .calc_Lunique_for_correl_algos <- function(processed, symSVD, rho, adj_rho_is_inner_estimated, argsfordesignL, 
-                                           cov_info_mat) {
+                                           cov_info_mat, condnum=1) {
   if ( ! is.null(symSVD)) {
     symSVD$d <- 1/(1-rho*symSVD$adjd) ## from adjMatrix to correlation matrix
     # outer optim, not spprec -> LMatrix recomputed from this for each rho  
@@ -181,9 +207,8 @@
   } else { ## cov_info_mat must exist
     if (processed$HL[1L]=="SEM") argsfordesignL$try.chol <- FALSE
     if (inherits(cov_info_mat,"dist")) {cov_info_mat <- proxy::as.matrix(cov_info_mat, diag=1)} ## else full matrix may be a COV matrix with non-unit diag
-    if (inherits(cov_info_mat,"dsCMatrix")) { # arising from processing of "dsCDIST" matrices created by .sparse_expand_GeoMatrices()
-      Lunique <- t(Matrix::chol(cov_info_mat))
-      attr(Lunique, "type") <- "t(Matrix::chol)"
+    if (inherits(cov_info_mat,"dsCMatrix")) {
+      Lunique <- .mat_sqrt_dsCMatrix(cov_info_mat)
     } else Lunique <- do.call(mat_sqrt,c(list(m=cov_info_mat),argsfordesignL)) ## mat_sqrt has try()'s and can return "try-error"'s
     # Lunique is a tcrossfac: tcrossprod(mat_sqrt(X))=X
     if (inherits(Lunique,"try-error")) { 
@@ -468,13 +493,15 @@
           }
           # In that specific case, (CORREL algo, composite ranef) AUGI0_ZX_envir$LMatrices[[rd]] remains empty
         } else {
-          Lunique <- .calc_Lunique_for_correl_algos(processed, symSVD, rho, adj_rho_is_inner_estimated, argsfordesignL, 
-                                                    cov_info_mat)
-          attr(Lunique,"msd.arglist") <- msd.arglist ## NULL except for Matern, Cauchy
-          attr(Lunique,"corr.model") <- corr_type
-          attr(Lunique,"ranefs") <- paste(c(spatial_term)) ## essentiel pour la construction de ZAL! ## paste(c()) handles very long RHS
-          AUGI0_ZX_envir$LMatrices[[rd]] <- Lunique
-          attr(AUGI0_ZX_envir$LMatrices,"is_given_by")[rd] <- "AUGI0_ZX$envir" 
+          if (corr_type != "corrMatrix" || is.null(AUGI0_ZX_envir$LMatrices[[rd]])) { # avoid recomputation for constant corrMatrix
+            Lunique <- .calc_Lunique_for_correl_algos(processed, symSVD, rho, adj_rho_is_inner_estimated, argsfordesignL, 
+                                                      cov_info_mat)
+            attr(Lunique,"msd.arglist") <- msd.arglist ## NULL except for Matern, Cauchy
+            attr(Lunique,"corr.model") <- corr_type
+            attr(Lunique,"ranefs") <- paste(c(spatial_term)) ## essentiel pour la construction de ZAL! ## paste(c()) handles very long RHS
+            AUGI0_ZX_envir$LMatrices[[rd]] <- Lunique
+            attr(AUGI0_ZX_envir$LMatrices,"is_given_by")[rd] <- "AUGI0_ZX$envir" 
+          }
         }
       }
     } #  condition on corr_type...

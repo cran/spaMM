@@ -800,7 +800,7 @@ if (FALSE) {# This fn is documentation,
 
 .process_variances <- local({
   link_warned <- FALSE
-  function(variances, object) {
+  function(variances, object) { # __F I X M E__ for e.g. plot_effects() the message  predVar is on linear-predictor scale is useless: how to 'fix' that without inefficiencies in predict.HLfit()?
     if ( (! link_warned) && identical(variances$predVar, TRUE)) {
       if (is.null(families <- object$families)) {
         any_nonid_link <- object$family$link!="identity"

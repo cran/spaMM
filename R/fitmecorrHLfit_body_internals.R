@@ -488,7 +488,7 @@
   if (is.null(precisionFactorList <- AUGI0_ZX_envir$precisionFactorList)) {
     nranef <- length(AUGI0_ZX_envir$finertypes)
     updateable <- rep(FALSE,nranef)
-    precisionFactorList <- latent_d_list <- vector("list",nranef) ## will contain diagonal matrices/info for non-trivial (diagonal) precision matrices
+    precisionFactorList <- vector("list",nranef) ## will contain diagonal matrices/info for non-trivial (diagonal) precision matrices
     cum_n_u_h <- processed$cum_n_u_h
     for (rd in seq_len(nranef)) {
       finertype <- AUGI0_ZX_envir$finertypes[rd]
@@ -520,9 +520,7 @@
                         finertype,"terms are not yet handled by sparse precision code."))
     }
     diff_n_u_h <- diff(cum_n_u_h)
-    for (rd in seq_along(diff_n_u_h)) latent_d_list[[rd]] <- rep(1,diff_n_u_h[rd])
     AUGI0_ZX_envir$precisionFactorList <- precisionFactorList
-    AUGI0_ZX_envir$latent_d_list <- latent_d_list
     AUGI0_ZX_envir$updateable <- updateable
   }
   ## environment modified, no return value
@@ -638,16 +636,12 @@
   if ( ! is.null(LMatrices)) {
     AUGI0_ZX_envir <- processed$AUGI0_ZX$envir
     precisionFactorList <- AUGI0_ZX_envir$precisionFactorList
-    latent_d_list <- AUGI0_ZX_envir$latent_d_list
     updateable <- AUGI0_ZX_envir$updateable
     is_given_by <- attr(LMatrices,"is_given_by")
     for (rt in which(is_given_by %in% c("ranCoefs")) ) {# ie _outer_ ranCoefs
       latentL_blob <- attr(LMatrices[[rt]],"latentL_blob")
       nc <- ncol(latentL_blob$compactcovmat)
       necess4updateable <- (length(which(latentL_blob$compactchol_Q@x!=0)) == nc*(nc+1L)/2L)
-      
-      d_rt <- latentL_blob[["d"]]
-      latent_d_list[[rt]] <- d_rt[gl(nc, length(latent_d_list[[rt]])/nc)]
       
       if (processed$ranCoefs_blob$is_composite[rt]) { 
         cov_info_mat <- processed$corr_info$cov_info_mats[[rt]]
@@ -668,8 +662,6 @@
           
           precisionFactorList[[rt]] <- list(
             chol_Q= as(long_Q_CHMfactor,"sparseMatrix"), 
-            ## compactprecmat= .ZWZtwrapper(latentL_blob$compactchol_Q,1/latentL_blob[["d"]])  (compactchol_Q unpermuted)
-            ## precmat =.ZWZtwrapper(chol_Q,1/latent_d_list[[rt]])    (+ permutation?)
             precmat=.makelong(latentL_blob$compactprecmat,
                               template= processed$ranCoefs_blob$longLv_templates[[rt]],
                               kron_Y=cov_info_mat$matrix # should be dsC 
@@ -693,7 +685,6 @@
       updateable[rt] <- TRUE
     }
     AUGI0_ZX_envir$precisionFactorList <- precisionFactorList
-    AUGI0_ZX_envir$latent_d_list <- latent_d_list
     AUGI0_ZX_envir$updateable <- updateable
   } 
   ## environment modified, no return value

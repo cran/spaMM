@@ -11,19 +11,20 @@ The following functions evaluate or plot \emph{partial-dependence} effects.
 
 \code{pdep_effects} also compute intervals of the type defined by its \code{intervals} argument (by default, prediction intervals). By default, it returns a data frame of average values of point predictions and interval bounds for each value of the focal variable, but it can also return lists of all predictions.
   
-\code{plot_effects} calls \code{pdep_effects} and produces a simple plot (using only base graphic functions) of its results, including prediction bands representing the two average one-sided widths of intervals.  If added to the plot, the raw data may appear to depart from the partial-dependence predictions, since the data are a priori affected by the associations between variables which the predictions free themselves from. An adapted plot of fit residuals may be then be more useful, and the Example shows how it can be performed.   
+A plot function is available for numeric predictors: \code{plot_effects} calls \code{pdep_effects} and produces a simple plot (using only base graphic functions) of its results, including prediction bands representing the two average one-sided widths of intervals.  If added to the plot, the raw data may appear to depart from the partial-dependence predictions, since the data are a priori affected by the associations between variables which the predictions free themselves from. An adapted plot of fit residuals may be then be more useful, and the Example shows how it can be performed.   
 }
 \usage{
 pdep_effects(object, focal_var, newdata = object$data, length.out = 20, 
-             levels = NULL, intervals = "predVar", indiv = FALSE, ...)
-plot_effects(object, focal_var, newdata = object$data, effects = NULL,
-             xlab = focal_var, ylab = NULL, rgb.args = col2rgb("blue"), 
-             add = FALSE,  ylim=NULL, ...)
+             focal_values=NULL, levels = NULL, intervals = "predVar", indiv = FALSE, 
+             ...)
+plot_effects(object, focal_var, newdata = object$data, focal_values=NULL, 
+             effects = NULL, xlab = focal_var, ylab = NULL, 
+             rgb.args = col2rgb("blue"), add = FALSE,  ylim=NULL, ...)
 }
 \arguments{
   \item{object}{An object of class \code{HLfit}, as returned by the fitting functions in \code{spaMM}.}
   \item{focal_var}{
-   Character string: the name of the predictor variable whose effect is to be represented
+   Character string: the name of the predictor variable whose effect is to be represented. The variable must be numeric for \code{plot_effects} but not necessarily so for \code{pdep_effects}. 
 }
   \item{newdata}{
    If non-NULL, a data frame passed to \code{predict.HLfit}, whose documentation should be consulted for further details.
@@ -47,11 +48,9 @@ plot_effects(object, focal_var, newdata = object$data, effects = NULL,
     Boolean: whether to add graphic elements of a previous plot produced by \code{plot_effects}
 }
   \item{length.out}{
-    Numeric: for a numeric predictor variable, the number of values at which predictions are evaluated. 
-    If zero, predictions are made for the actual value of the focal predictor in the data (see a possible use in Example).
+    Integer: for a numeric predictor variable, this controls the number of values at which predictions are evaluated. By default, predictions are made at regular intervals over the range of the predictor variable. If \code{length.out=0}, predictions are made for the actual values of the focal predictor in the data. The default behaviour is also overriden by using \code{focal_values}, in which case predictions are evaluated at the given \code{focal_values} (as if \code{length.out=0}), unless a non-zero \code{length.out} is also specified. In the latter case, predictions are evaluated at regular intervals over the range of \code{focal_values}.
 }
-  \item{levels}{
-   If non-NULL, a character vector: for a factor  predictor variable, the levels for which which predictions are evaluated.
+  \item{focal_values, levels}{ \code{focal_values} may be used to specify the values of the focal variable at which predictions are evaluated. For factor variables, \code{levels} is an older implementation of this control, and is now redundant.
  }
   \item{intervals}{
    Passed to \code{predict.HLfit}, whose documentation should be consulted for further details.
@@ -82,7 +81,11 @@ hlcor <- HLCor(cases~I(prop.ag/10) +adjacency(1|gridcode)+offset(log(expec)),
 plot_effects(hlcor,focal_var="prop.ag",ylim=c(0,max(scotlip$cases)))  
 points(cases~prop.ag, data=scotlip, col="blue",pch=20)
 
-### Adding 'partial residuals' on the plot:
+# Impose specific values of a numeric predictor using 'focal_values':
+plot_effects(hlcor, focal_var="prop.ag", focal_values=1:5)
+
+### Adding 'partial residuals' [residuals relative to predict(<fit object>),
+###  but plotted relative to pdep_effects() predictions]:
 
 # One first needs predictions for actual values of the predictor variable,
 # provided by pdep_effects(.,length.out=0L):

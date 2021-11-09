@@ -25,9 +25,10 @@ def_sXaug_Matrix_cholP_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale) 
 .sXaug_Matrix_cholP_scaled <- function(sXaug,which="",szAug=NULL,B=NULL) {
   BLOB <- attr(sXaug,"BLOB") ## an environment
   # attr(sXaug,"AUGI0_ZX") is presumably inherited from the Xaug argument of def_sXaug_Matrix_QRP_CHM_scaled
-  # but this may or may not be present (Xaug=Xscal with attr(Xscal,"AUGI0_ZX") <- processed$AUGI0_ZX in .solve_IRLS_as_ZX(),
-  # but not in .solve_v_h_IRLS)
-  # => we cannot generally assume it is present. # ___F I X M E___ .sXaug_Matrix_cholP_scaled() limitation
+  # (Xaug=Xscal with attr(Xscal,"AUGI0_ZX") <- processed$AUGI0_ZX in .solve_IRLS_as_ZX(),
+  # but this attribute may not be present (in .solve_v_h_IRLS)
+  # => we cannot generally assume it is present. # ___F I X M E___ .sXaug_Matrix_cholP_scaled() "limitation" (it can still work but without CHM template: is that an inefficiency for .solve_v_h_IRLS()?)
+  # By contrast .sXaug_Matrix_QRP_CHM_scaled() does not try to use it.
   if (is.null(BLOB$CHMfactor)) {
     AUGI0_ZX_envir <- attr(sXaug,"AUGI0_ZX")$envir # immediately used, but we could imagine extending AUGI0_ZX usage
                                        # both to block operations here, and to other sXaug methods, which would thus all 

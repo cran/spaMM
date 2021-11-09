@@ -408,8 +408,8 @@ if (FALSE) {
   return(list(distMatrix=distMatrix))
 }
 
-## replacement for .expand_GeoMatrices() (<= ~3.8.23) producing sparser matrices 
-# produces "dsCDIST" matrices where implicit 0's mean infinite distance, while Na on diagonal means 0 distance 
+## replacement producing sparser matrices that older (<= ~3.8.23) .expand_GeoMatrices() 
+# produces "dsCDIST" matrices where implicit 0's mean infinite distance, while NA on diagonal means 0 distance 
 # seems to work for the 3 "algebra"s, but would be useful for spcorr
 # Possible problems:
 # vector 'rho' scale argument not checked
@@ -420,7 +420,7 @@ if (FALSE) {
   rownames(e_uniqueGeo) <- seq(nrow(e_uniqueGeo)) ## local & unique rownames
   ## Remarkably the next line works only if the cols are not factors ! Unless we have a fix for this,
   #  uniqueGeo classes should be integer not factor: see instances of as.numeric(levels(fac)) in the sources.
-  rows_bynesting <- by(e_uniqueGeo ,e_uniqueGeo[,coords_nesting],rownames) # disjoints subsets of rownames since rownames are unique
+  rows_bynesting <- by(e_uniqueGeo ,e_uniqueGeo[,coords_nesting],rownames) # disjoint subsets of rownames since rownames are unique
   if (FALSE) { # assignments to blockrows (not in sequential order!) of sparse matrices is quite inefficient
     distMatrix <- Matrix(0,ncol=nrow(e_uniqueGeo),nrow =nrow(e_uniqueGeo)) 
     rownames(distMatrix) <- colnames(distMatrix) <- rownames(e_uniqueGeo) ## same trivial rownames

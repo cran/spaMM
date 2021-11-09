@@ -478,8 +478,10 @@ spaMM_glm <- function(formula, family = gaussian, data, weights, subset,
   } else {
     if (! is.null(res$warning)
         ## some glm warnings are useful only to understand a failure, hence not useful here 
-        && res$warning$message != "step size truncated due to divergence" ) {
-      if (res$warning$message == "glm.fit: algorithm did not converge" && strict) { # by default, strict=FALSE and non-converged result is returned.
+        # To catch specific warnings, one has to catch their translations (as its not clear how to inhibit translations cleanly)
+        # If stats::lm was the called function then this seems the way: 
+        && res$warning$message != gettext("step size truncated due to divergence",domain="R-stats") ) {
+      if (res$warning$message == gettext("glm.fit: algorithm did not converge",domain="R-stats") && strict) { # by default, strict=FALSE and non-converged result is returned.
         mc$method <- method[2L] ## changes the method arg, but the called function is still stats::glm
         res <- eval(mc,parent.frame())
         res$call$family <- summaryfamily

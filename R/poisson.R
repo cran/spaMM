@@ -85,6 +85,11 @@ Poisson <- function (link = "log", trunc=-1L) {
             class = "family")
 }
 
-Tpoisson <- function(link="log") Poisson(link=link,trunc=0L)
+Tpoisson <- function(link="log") {
+  # if we directly call  Poisson(link=link,trunc=0L) and the link was a language object (say log), the Poisson code only sees link, not log. 
+  linktemp <- substitute(link)  # if link was char LHS is char ; else deparse will create a char from a language object 
+  if ( ! is.character(linktemp)) linktemp <- deparse(linktemp)
+  Poisson(link=linktemp,trunc=0L)
+}
 
 #poisson <- Poisson

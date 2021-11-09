@@ -13,9 +13,11 @@
 \code{update_resp} handles a new response vector as produced by \code{simulate}. 
 }
 \details{
+\code{update_resp} updates various components of the fitted object, but not its \code{data} element, as the latter approach would meet difficulties when the response is an expression (such as \code{I(<some variable>^2)}) rather than simply a variable in the data. This implies that the object returned by \code{update_resp} cannot be used as if the \code{data} themselves had been updated. % __F I X M E__ Adding a protection, e.g. NA's in the data could be nice, but is not straightforward, for he same reason.
+
 Early versions of \code{spaMM}'s \code{update} method relied on \code{stats::update.formula} whose results endorse \code{stats}'s (sometimes annoying) convention that a formula without an explicit intercept term actually includes an intercept. \code{spaMM::update.HLfit} was then defined to avoid this problem. \bold{Formula updates should still be carefully checked}, as getting them perfect has not been on the priority list. 
 
-Various post-fit functions from base R may use \code{update.formula} directly, rather than using automatic method selection for \code{update}. \code{update.formula} is not itself a generic, which leads to the following problem. To make \code{update.formula()} work on multivariate-response fits, one would like to be able to redefine it as a generic, with an \code{HLfit} method that would perform what \code{update_formulas} does, but redefinition appears to be forbidden in a package distributed on CRAN. Instead it is suggested to define a new generic \code{spaMM::update}, which could have a \code{spaMM::update.formula} as a method (possibly itself a generic). This would be of limited interest as the new \code{spaMM::update.formula} would be visible to \code{spaMM::update} but not to \code{stats::update}, and thus the post-fit functions from base R would still not use this method.  
+Various post-fit functions from base R may use \code{update.formula} directly, rather than using automatic method selection for \code{update}. \code{update.formula} is not itself a generic, which leads to the following problem. To make \code{update.formula()} work on multivariate-response fits, one would like to be able to redefine it as a generic, with an \code{HLfit} method that would perform what \code{update_formulas} does, but such a redefinition appears to be forbidden in a package distributed on CRAN. Instead it is suggested to define a new generic \code{spaMM::update}, which could have a \code{spaMM::update.formula} as a method (possibly itself a generic). This would be of limited interest as the new \code{spaMM::update.formula} would be visible to \code{spaMM::update} but not to \code{stats::update}, and thus the post-fit functions from base R would still not use this method.  
 
 \code{update(<fit>, ...)}, as a general rule, is tricky. \code{update} methods are easily affected in a non-transparent way by changes in variables used in the original call. For example
 \code{
@@ -53,7 +55,7 @@ Additional arguments to the call, or arguments with changed values. Use \emph{na
 }
 }
 \value{
-  \code{update.formula(object)} returns an object of the same nature as \code{formula(object)}. The other functions and methods return an HLfit fit of the same type as the input object, or a call object, depending on the \code{evaluate} value.
+  \code{update.formula(object)} returns an object of the same nature as \code{formula(object)}. The other functions and methods return an HLfit fit of the same type as the input object, or a call object, depending on the \code{evaluate} value. \bold{Warning:} The object returned by \code{update_resp} cannot be used safely for further programming, for the reason explained in the Details section.  
 }
 \seealso{
 See also \code{\link{HLCor}},  \code{\link{HLfit}}.

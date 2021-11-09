@@ -355,7 +355,7 @@ mapMM <- function (fitobject,Ztransf=NULL,coordinates,
                            add.map = FALSE, axes = TRUE, plot.title=NULL, plot.axes=NULL, map.asp = NULL,
                            variance=NULL,
                            var.contour.args=list(),
-                           smoothObject=NULL,
+                           smoothObject=NULL, return.="smoothObject",
                            ...) 
 {
   if (missing(coordinates)) {
@@ -441,10 +441,12 @@ mapMM <- function (fitobject,Ztransf=NULL,coordinates,
     ## plot.new() will be evaluated before these promises are evaluated
     ## does not work if plot.new() is called one level further in a call stack...
     eval(add.varcontour)
-    eval(decorations) ## evalbc it uses a local variable 'pred'
+    eval(decorations) ## eval bc it uses a local variable 'pred'
     eval(add.map)
   }, plot.title=eval(plot.title),map.asp = map.asp, ...)
-  invisible(smoothObject)
+  if (return.=="smoothObject") {
+    invisible(smoothObject)
+  } else return(list(x = xGrid, y = yGrid, z = Zvalues))
 }
 
 map_ranef <- function(fitobject, re.form, Ztransf=NULL, xrange = NULL, yrange = NULL, 

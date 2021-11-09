@@ -77,7 +77,7 @@
         if (is.null(lower_cP)) lower_cP <- list()
         upper_cP <- upper$corrPars[[char_rd]]
         if (is.null(upper_cP)) upper_cP <- list()
-        if (! is.null(canon_rho <- .get_cP_stuff(canon.init,"rho",char_rd))) {
+        if (! is.null(canon_rho <- .get_cP_stuff(canon.init,"rho",char_rd))) { # where canon.inits rho typically comes from .calc_inits_geostat_rho()
           RHOMAX <- moreargs[[char_rd]]$RHOMAX
           rho <- .get_cP_stuff(user.lower,"rho",char_rd)
           if (is.null(rho)) rho <- canon_rho/150

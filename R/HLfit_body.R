@@ -954,7 +954,6 @@ HLfit_body <- function(processed,
         envir$sXaug <- sXaug # => BLOB within itself; memory-cheap 
         envir$dvdloglamMat <- dvdloglamMat
         envir$dvdlogphiMat <- dvdlogphiMat
-        # somewhere in the object there is sXaug including $AUGI0_ZX$envir$latent_d_list
         res$envir <- envir 
       } else {
         res$envir <- list2env(list(dvdloglamMat=dvdloglamMat, dvdlogphiMat=dvdlogphiMat,## provided if available

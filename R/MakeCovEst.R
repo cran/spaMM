@@ -17,7 +17,7 @@
   # safe_solvand <- .m_Matrix_times_Dvec(tcrossfac_prec, invdcp)
   # list(design_u=t(solve(safe_solvand)) %*% diag(x=invdcp),
   list(design_u=t(.gmp_solve(tcrossfac_prec)), # tcrossprod factor, not orthonormed, UPPER tri (while eigen provides an orthonormed "full" U matrix)
-       d=rep(1,ncol(compactcovmat)), # given variances of latent independent ranefs outer optim algo and iterative algo
+       # radical removal of d : v3.9.19. See notably comments in .post_process_v_h_LMatrices() for good reasons not to reintroduce them.
        compactcovmat=compactcovmat, ## not used for the fit
        compactchol_Q=tcrossfac_prec ## for sparse precision algo. ## compactprecmat=.ZWZtwrapper(chol_Q,1/invdcp^2)
   ) 
@@ -27,8 +27,6 @@
   # Simple code and this may well be a correct alternative to .upper_tri_tcrossfactorize() as rescue code:
   # (1) checks for v3.8.39 suggests that this works as a general replacement for chol() (although slower).
   # (2) it passes the rC_transf check.
-  # So given that .upper_tri_tcrossfactorize always return d=1L, with (TRUE) here, this function 
-  # always returns d=1 and we could simplify a lot of problematic code if it proves stable ___F I X M E___
   #
   # qr always produces a crossprod factor so if we want a tcrossprod factor, it must be t(qr.R()) hence lower tri...); unless we qr() the preci mat...
   qrand <- t(.m_Matrix_times_Dvec(esys$vectors,sqrt(d_regul)))
@@ -39,8 +37,8 @@
   } 
   tcrossfac <- t(crossfac) # lower.tri
   list(design_u=tcrossfac, # LOWER tri tcrossprod factor
-               d= rep(1,ncol(compactcovmat)), # rep(1,length(d_regul)), # The given variances of latent independent ranefs outer optim algo and iterative algo
-               compactcovmat=compactcovmat ## not used for the fit
+       # radical removal of d : v3.9.19. See notably comments in .post_process_v_h_LMatrices() for good reasons not to reintroduce them.
+       compactcovmat=compactcovmat ## not used for the fit
   ) ## and one might use (solve(design_u)) as a $crossfac_Q precision factor
 }
 
@@ -73,7 +71,7 @@
     if (is.null(chol_crossfac <- attr(compactcovmat, "chol_crossfac")))  chol_crossfac <- try(chol(compactcovmat), silent=TRUE)
     if ( ! inherits(chol_crossfac, "try-error")) {
       blob <- list(design_u=t(chol_crossfac), 
-                   d=rep(1,ncol(compactcovmat)), 
+                   # radical removal of d : v3.9.19
                    compactcovmat=compactcovmat)
     } else { # RESCUE CODE
       if (regularize <- TRUE) { # necess bc eigensystem is not accurate enough (it may have slightly negative eigenvalues)

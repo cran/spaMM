@@ -436,7 +436,7 @@ if (FALSE) {
     } else if (newly_set[rt]) {
       rC_blob_longLvMatrix <- .makelong(latentL_blob$design_u,longsize=ncol(ZAlist[[rt]]),# the variances are taken out in $d
                                         template=ranCoefs_blob$longLv_templates[[rt]],
-                                        kron_Y=NULL) # ___F I X M E___ can we save time in ZAL <- by using a Kronfacto ? not clear 
+                                        kron_Y=NULL) # ___F I X M E___ can we save time in ZAL <- ... by using a Kronfacto even when kron_Y is NULL? not clear 
     } 
     attr(rC_blob_longLvMatrix,"trRancoef") <- .ranCoefsFn(ranCoefs[[rt]], rC_transf=.spaMM.data$options$rC_transf_inner) # used for init_trRancoef in .MakeCovEst()
     attr(rC_blob_longLvMatrix,"Ltype") <- "cov"
@@ -1771,8 +1771,7 @@ spaMM_Gamma <- local({
     if ("AUGI0_ZX_sparsePrecision" %in% fit$MME_method) {
       tcrossfac_beta_v_cov <- .get_tcrossfac_beta_v_cov(fit$X.pv, fit$envir, fit$w.resid) ## typically permuted from triangular
       pforpv <- ncol(fit$X.pv)
-      long_latent_d <- .unlist(fit$envir$sXaug$AUGI0_ZX$envir$latent_d_list)
-      lhs <- .Matrix_times_Dvec(fit$envir$chol_Q, 1/long_latent_d)
+      lhs <- fit$envir$chol_Q
       if (pforpv) {
         lhs_Xpv <- new("dtCMatrix",i= 0:(pforpv-1L), p=0:(pforpv), Dim=c(pforpv,pforpv),x=rep(1,pforpv))
         lhs <- Matrix::bdiag(lhs_Xpv, lhs )
@@ -2606,29 +2605,25 @@ if (FALSE) { # that's not used.
       if (corr.model=="random-coef") {
         latentL_blob <- attr(lmatrix,"latentL_blob")
         design_u <- latentL_blob$design_u
-        sqrt_latent_d <- sqrt(latentL_blob[["d"]])
-        {
-          # I fitted a model with L (->strucList) based on design$u and lambda_est contains the $d
-          # if the d's are 1 (typical CORREL algo) this block has no impact
-          # Otherwise, This block aims to put them back into the compact L. 
-          # BUT then, the long L (=>strucList) and the lambda may need fixing 
-          # For example, the lambda's are distinctly needed in (predVar with new data) -> .get_logdispObject() -> (dvdloglamMat_needed)
-          # This led to negligible imprecisions in tests (see successive versiosn of test-devel-predVar-rC_spprec.R)
-          # until composite corrMatrix models were tested. 
-          # Instead of fixing a lot of stuff, it appears better to use latent_d=1 even for spprec
-          if ((kappa(design_u)>1e06)) { # occurs in HLfit3 example; also ./. 
-                                        # testthat check for fit_small in test-devel-predVar-ranCoefs)
-            latentL_blob$gmp_compactcovmat <- gmp::as.bigq(latentL_blob$compactcovmat)
-            # the gmp bug [str() failing] reported in Jan 2020 is still there in version 0.6.2.
-            # MRE:  str(gmp::as.bigq(matrix(seq(4),ncol=2)))
-            latentL_blob$gmp_compactprecmat <- gmp::solve.bigq(latentL_blob$gmp_compactcovmat)
-            latentL_blob$compactchol_Q_w <- .m_Matrix_times_Dvec(t(gmp::asNumeric(gmp::solve.bigq(gmp::as.bigq(design_u)))),
-                                                                 1/sqrt_latent_d) # returns bigq matrix 
-          } else if (is.null(latentL_blob$compactchol_Q)) {
-            latentL_blob$compactchol_Q_w <- .m_Matrix_times_Dvec(t(solve(design_u)), 1/sqrt_latent_d)
-          } else {
-            latentL_blob$compactchol_Q_w <- .m_Matrix_times_Dvec(latentL_blob$compactchol_Q, 1/sqrt_latent_d) # tcrossfac of full precision matrix
-          }
+        # Old versions fitted a model with L (->strucList) based on design$u and lambda_est containing the $d
+        # if the d's were not 1,  some code here previously aimed to put them back into the compact L. 
+        # BUT then, the long L (=>strucList) and the lambda could be inconsistent with the compact L. 
+        # For example, the lambda's are distinctly needed in (predVar with new data) -> .get_logdispObject() -> (dvdloglamMat_needed)
+        # This bug led to negligible imprecisions in tests (see successive versiosn of test-devel-predVar-rC_spprec.R)
+        # until composite corrMatrix models were tested. 
+        # Instead of fixing a lot of stuff, it appeared better to use latent_d=1 even for spprec.
+        # Finally (v3.9.19) $d was removed from the latentL_blob. Only post-fit code may need to check its existence and then use it, for back compatibility. 
+        if ((kappa(design_u)>1e06)) { # occurs in HLfit3 example; also ./. 
+          # testthat check for fit_small in test-devel-predVar-ranCoefs)
+          latentL_blob$gmp_compactcovmat <- gmp::as.bigq(latentL_blob$compactcovmat)
+          # the gmp bug [str() failing] reported in Jan 2020 is still there in version 0.6.2.
+          # MRE:  str(gmp::as.bigq(matrix(seq(4),ncol=2)))
+          latentL_blob$gmp_compactprecmat <- gmp::solve.bigq(latentL_blob$gmp_compactcovmat)
+          latentL_blob$compactchol_Q_w <- t(gmp::asNumeric(gmp::solve.bigq(gmp::as.bigq(design_u)))) # returns bigq matrix 
+        } else if (is.null(latentL_blob$compactchol_Q)) {
+          latentL_blob$compactchol_Q_w <- t(solve(design_u))
+        } else {
+          latentL_blob$compactchol_Q_w <- latentL_blob$compactchol_Q
         }
         latentL_blob$compactchol_Q <- NULL
         latentL_blob$design_u <- NULL
@@ -2664,16 +2659,7 @@ if (FALSE) { # that's not used.
           extras_attr <- setdiff(names(attributes(lmatrix)),c("class",slotNames(lmatrix)))
         } else extras_attr <- setdiff(names(attributes(lmatrix)),names(attributes(strucList[[rd]])))
         #
-        d_map <- gl(length(sqrt_latent_d), ncol(lmatrix)/length(sqrt_latent_d))
-        sqrt_long_d <- sqrt_latent_d[d_map]
-        lmatrix_ <- .m_Matrix_times_Dvec(lmatrix_, sqrt_long_d)
-        # so now strucList[[]] is always the tcrossfac of the covmat, whatever the internal repres of the covmat
-        # !! Changing the meaning of strucList[[]] between the fit and the postfit requires an adjustment 
-        # in .calc_invL_coeffs() (using the original d's stored in the object) OR [in the $d's and the ranefs].
-        # The latter solution was adopted in v3.8.34, the former in previous versions:
-        u.range <- (cum_n_u_h[rd] + 1L):(cum_n_u_h[rd + 1L])
-        v_h[u.range] <- v_h[u.range]/sqrt_long_d
-        u_h[u.range] <- u_h[u.range]/sqrt_long_d
+        if (inherits(lmatrix_,"Kronfacto")) lmatrix_ <- lmatrix_@BLOB$long # because some the prediction code does not (yet) handle Kronfacto: test_composite l. 181 or 182
         #
         # Add descriptor of the correlation model necessary to predict with new data:
         #

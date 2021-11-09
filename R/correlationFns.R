@@ -56,9 +56,10 @@ MaternCorr.default <- function (d, rho=1, smoothness, nu=smoothness, Nugget=NULL
   # such that NA's are treated as zero distances and implicit 0's as infinite distances 
   corrvals <- d
   x <- d@x
-  x[is.na(x)] <- 0
+  x[is.na(x)] <- 0 # for "dsCDIST" case (maybe it should not longer by dsCDIST after this operation?)
   corrvals@x <- MaternCorr.default(x, rho, smoothness, nu, Nugget)
   attr(corrvals,"corr.model") <- "Matern"
+  attr(corrvals,"pars") <- list(rho=rho, nu=nu, Nugget=Nugget) # for diagnostic purposes
   return(corrvals)
 }
 

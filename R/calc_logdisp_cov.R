@@ -151,8 +151,9 @@
 .fill_rhs_invV.dVdlam <- function(template, urange, invV.dV_info) { ## to localise template and urange
   template[urange] <- 1L
   if (invV.dV_info$type=="|L") { # only spprec
-    latent_d_list <- invV.dV_info$envir$sXaug$AUGI0_ZX$envir$latent_d_list
-    chol_Q_w <- .Matrix_times_Dvec(t(invV.dV_info$envir$chol_Q),1/sqrt(.unlist(latent_d_list)))
+    if ( ! is.null(latent_d_list <- invV.dV_info$envir$sXaug$AUGI0_ZX$envir$latent_d_list)) {
+      chol_Q_w <- .Matrix_times_Dvec(t(invV.dV_info$envir$chol_Q),1/sqrt(.unlist(latent_d_list)))
+    } else chol_Q_w <- t(invV.dV_info$envir$chol_Q)
     # ZAL_to_ZALd_vec is a correction for adjacency not for ranCoefs
     tcrossfac <- solve(chol_Q_w, Diagonal(x=invV.dV_info$ZAL_to_ZALd_vec * template)) # Ld
     lhs <- .tcrossprod(tcrossfac) # LddL'

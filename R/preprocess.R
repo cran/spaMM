@@ -984,8 +984,10 @@ as_precision <- function(corrMatrix) {
       stop("'data' is not a data.frame.")
     }
     main_terms_info <- .get_terms_info(formula=predictor,data=data, famfam=family$family, weights=validData_info$weights) ## design matrix X, Y... 
-  } else { # results from update response -> .update_main_terms_info() provide response-update model frame for main response, not for resid model
-    attr(data,"updated_terms_info") <- NULL # immediately clean the 'data' to avoid mix-ups.
+  } else { # results from update response -> .update_main_terms_info() provide response-update model frame for main response.
+    # The data (although not any response variable) may still be needed for other purposes (=> the resid model) 
+    # (what if the response of the main model were a predictor for the residual dispersion model?)
+    attr(data,"updated_terms_info") <- NULL # immediately clean the 'data' attribute to avoid mix-ups.
     main_terms_info$Y <- .get_Y(full_frame=main_terms_info$mf, famfam=family$family)
     fixef_terms <- main_terms_info$fixef_terms
     if (fixef_terms[[length(fixef_terms)]]==0L) { ## check that the fixef are only an explicit '0' (odd that it compares to 0L, but it does)

@@ -70,10 +70,10 @@
         }
       } else if (exp_ranef_types[rd]%in% c("Matern","Cauchy")  ) {
         nc <- ncol(ZAlist[[rd]])
-        if ( rd %in% which_nested ) {
+        if ( rd %in% which_nested ) { # more memory efficient than alternative code
           RHS_nesting_info <- attr(ZAlist[[rd]],"RHS_nesting_info")
           blcks <- lapply(RHS_nesting_info$blocksizes, function(nc) matrix(TRUE,ncol=nc,nrow=nc))
-          preclist[[rd]] <- Matrix::bdiag(blcks)
+          preclist[[rd]] <- Matrix::bdiag(blcks) # slow in nested-Matern example
           blcks <- lapply(blcks, lower.tri, diag=TRUE)
           corrlist[[rd]] <- Matrix::bdiag(blcks)
         } else {
@@ -212,32 +212,11 @@
     if (nrand>0L) {
       # adjacency speed to be tested on 2nd example from test-spaMM.R
       densecorrs <- attr(ZAlist,"exp_ranef_types") %in% c("adjacency", "IMRF", "Matern","Cauchy", "corrMatrix", "AR1") 
-      notsodensecorrs <- attr(ZAlist,"exp_ranef_types") %in% c("Matern","Cauchy") & grepl("%in%", attr(ZAlist, "exp_ranef_string"), fixed=TRUE)
+      notsodensecorrs <- (attr(ZAlist,"exp_ranef_types") %in% c("Matern","Cauchy") & 
+        grepl("%in%", attr(ZAlist, "exp_ranef_string"), fixed=TRUE)) # nested geostat models
       densecorrs <- densecorrs & ( ! notsodensecorrs)
       sparseprecs <- attr(ZAlist,"exp_ranef_types") %in% c("adjacency", "IMRF", "AR1")
-      if (any(notsodensecorrs)) {
-        totdim <- 0L
-        for (it in seq_along(ZAlist)) totdim <- totdim + dim(ZAlist[[it]])
-        totsize <- prod(totdim)
-        nonzeros <- 0L
-        for (it in seq_along(ZAlist)) nonzeros <- nonzeros + .nonzeros(ZAlist[[it]])
-        for (rd in which(notsodensecorrs)) {
-          SameGrp <- ! .get_geo_info(processed, which_ranef=rd, which=c("notSameGrp"))$notSameGrp
-          SameGrp[upper.tri(SameGrp,diag=FALSE)] <- FALSE # create a fake L matrix
-          nonzeros[rd] <- .nonzeros(ZAlist[[rd]] %*% SameGrp)
-        }
-        nonzeros <- sum(nonzeros)          
-        if (nonzeros/totsize < .spaMM.data$options$sparsity_threshold) { 
-          return("sparse")
-        } else {
-          return("dense") ## ZAlist actually not so sparse
-        }
-      # } else if (is_spprec && all(sparseprecs)) {                                               # see comment 08/2021 about spprec above.
-      #   totdim <- colSums(do.call(rbind,lapply(ZAlist,dim)))
-      #   if (totdim[2L]>1000L) { # a bit a hoc (ohio/adjacency-long/large IMRF)
-      #     return("sparse")
-      #   } else return("dense")
-      } else if (( ! is_spprec) && all(densecorrs) ) { ## simple subcase of the next case
+      if (( ! is_spprec) && all(densecorrs) ) { ## simple subcase of the next case
         ## LMatrices are not available, and it may be better to use the density of the correlation matrices anyway:
         ## for maximally sparse Z, ZL's denseness is that of the retained rows of L. This suggests that ZL could be made sparser 
         ## by reordering the levels of the correlation matrix so that the most represented levsl come first in a triangular L factor. 
@@ -245,16 +224,32 @@
         ## and this leads to use "dense" whenever the correlation matrix is dense.
         ## Gryphon example is useful here, L is sparse but the "dense" QRmethod still appears as good as the "sparse" one.
         return("dense")
-      } else if (any(densecorrs)) {
+      } else if (any(densecorrs) || any(notsodensecorrs)) {
         G_diagnosis <- .provide_G_diagnosis(corr_info=corr_info, ZAlist=ZAlist)
         if (G_diagnosis$crossZL_is_dsy) { ## sufficient, but loose, condition for using dense
           return("dense")
         } else {
-          totdim <- colSums(do.call(rbind,lapply(ZAlist,dim)))
-          if (totdim[1L]>4L*totdim[2L]) {
-            return("sparse")
-          } else return("dense")
+          totdim <- 0L
+          for (it in seq_along(ZAlist)) totdim <- totdim + dim(ZAlist[[it]])
+          if (any(notsodensecorrs)) {
+            totsize <- prod(totdim)
+            nonzeros <- G_diagnosis$denseness_noAR
+            if (nonzeros/totsize < .spaMM.data$options$sparsity_threshold) { 
+              return("sparse")
+            } else {
+              return("dense") ## ZAlist actually not so sparse
+            }
+          } else { # some densecorrs, no notsodensecorrs  # this differnece of criterions appears more clearly after tydying the code, but is old
+            if (totdim[1L]>4L*totdim[2L]) {
+              return("sparse")
+            } else return("dense")
+          }
         }
+      # } else if (is_spprec && all(sparseprecs)) {                                               # see comment 08/2021 about spprec above.
+      #   totdim <- colSums(do.call(rbind,lapply(ZAlist,dim)))
+      #   if (totdim[2L]>1000L) { # a bit a hoc (ohio/adjacency-long/large IMRF)
+      #     return("sparse")
+      #   } else return("dense")
       } else if (nrand==1L && .is_identity(ZAlist[[1]])) { ## test pertinent slmt pour non-spatial models !
         return("sparse") ## special case for poisson or binomial with saturated ranef
       } else { ## several block effects...

@@ -16,30 +16,28 @@
 }
 \usage{
 spaMMplot2D(x, y, z,xrange=range(x, finite = TRUE),
-      yrange=range(y, finite = TRUE),
-      margin=1/20,add.map= FALSE, nlevels = 20, 
-      color.palette = spaMM.colors,map.asp=NULL,
-      col = color.palette(length(levels) - 1), 
-      plot.title=NULL, plot.axes=NULL, decorations=NULL,
-      key.title=NULL, key.axes=NULL, xaxs = "i", 
-      yaxs = "i", las = 1, axes = TRUE, frame.plot = axes, ...) 
+  yrange=range(y, finite = TRUE), margin=1/20,add.map= FALSE, 
+  nlevels = 20, color.palette = spaMM.colors,map.asp=NULL,
+  col = color.palette(length(levels) - 1), plot.title=NULL, plot.axes=NULL, 
+  decorations=NULL, key.title=NULL, key.axes=NULL, xaxs = "i", 
+  yaxs = "i", las = 1, axes = TRUE, frame.plot = axes, ...) 
 
 mapMM(fitobject,Ztransf=NULL,coordinates,
-      add.points,decorations=NULL,plot.title=NULL,plot.axes=NULL,envir=-3, ...)
+  add.points,decorations=NULL,plot.title=NULL,plot.axes=NULL,envir=-3, ...)
 
-filled.mapMM(fitobject, Ztransf = NULL, coordinates, xrange = NULL,
-             yrange = NULL, margin = 1/20, map.formula, phi =
-             1e-05, gridSteps = 41, decorations =
-             quote(points(pred[, coordinates], cex = 1, lwd = 2)),
-             add.map = FALSE, axes = TRUE, plot.title = NULL,
-             plot.axes = NULL, map.asp = NULL, variance = NULL,
-             var.contour.args = list(), smoothObject = NULL, ...)
+filled.mapMM(
+  fitobject, Ztransf = NULL, coordinates, xrange = NULL, yrange = NULL, 
+  margin = 1/20, map.formula, phi = 1e-05, gridSteps = 41, 
+  decorations = quote(points(pred[, coordinates], cex = 1, lwd = 2)),
+  add.map = FALSE, axes = TRUE, plot.title = NULL,plot.axes = NULL, 
+  map.asp = NULL, variance = NULL, var.contour.args = list(), 
+  smoothObject = NULL, return.="smoothObject", ...)
 
 map_ranef(fitobject, re.form, Ztransf=NULL, xrange = NULL, yrange = NULL, 
-          margin = 1/20, gridSteps = 41, 
-          decorations = quote(points(fitobject$data[, coordinates], cex = 1, lwd = 2)), 
-          add.map = FALSE, axes = TRUE, plot.title=NULL, 
-          plot.axes=NULL, map.asp = NULL, ...)
+  margin = 1/20, gridSteps = 41, 
+  decorations = quote(points(fitobject$data[, coordinates], cex = 1, lwd = 2)), 
+  add.map = FALSE, axes = TRUE, plot.title=NULL, plot.axes=NULL, 
+  map.asp = NULL, ...)
 }
 \arguments{
   \item{fitobject}{
@@ -124,13 +122,14 @@ statements which draw axes on the plot key.
 \item{axes, frame.plot}{logicals indicating if axes and a box should be drawn, as in plot.default.}
 
 \item{smoothObject}{Either NULL, or an object inheriting from class \code{HLfit} (hence, an object on which \code{predict.HLfit} can be called), predicting the response surface in any coordinates. See Details for typical usages.}
+\item{return.}{character string: see Value}
 
 \item{\dots}{
   further arguments passed to or from other methods. For \code{mapMM}, all such arguments are passed to \code{spaMMplot2D}; for \code{spaMMplot2D}, currently only additional graphical parameters passed to \code{title()} (see Details).  For \code{filled.mapMM} and \code{map_ranef}, these parameters are those that can be passed to \code{\link{spaMM.filled.contour}}. 
 }
 }
 \value{
-  \code{filled.mapMM} returns invisibly the fit object predicting the interpolated response surface. \code{map_ranef} returns invisibly a 3-column matrix containing the spatial coordinates, and the predicted effect \code{z} on the linear predictor scale (which is also the scale of the plot, unless a \code{Ztransf} is used). \code{mapMM} has no return value. Plots are produced as side-effects. 
+  \code{filled.mapMM} by default returns invisibly the fit object predicting the interpolated response surface; however, for any non-default \code{return.} argument (\code{return.="raster"} would be recommended to ensure future back-compatibility), it will return a raster of values as a list with elements \code{x}, \code{y} and\code{z}. \code{map_ranef} returns invisibly a 3-column matrix containing the spatial coordinates, and the predicted effect \code{z} on the linear predictor scale (which is also the scale of the plot, unless a \code{Ztransf} is used). \code{mapMM} has no return value. Plots are produced as side-effects. 
 }
 \details{
 
@@ -178,10 +177,12 @@ if (spaMM.getOption("example_maxtime")>3) {
                   family=binomial(), fixed=list(nu=0.5,rho=2.255197,lambda=1.075))   
 
  ## longer computation requiring interpolation of 197 points 
- filled.mapMM(lfit,add.map=TRUE,plot.axes=quote({axis(1);axis(2)}),
-             decorations=quote(points(pred[,coordinates],pch=15,cex=0.3)),
-             plot.title=title(main="Inferred prevalence, North Cameroon",
-                                xlab="longitude",ylab="latitude"))
+ ## Also illustrating effect of 'return.' argument
+ res <- filled.mapMM(lfit,add.map=TRUE,plot.axes=quote({axis(1);axis(2)}),
+    decorations=quote(points(pred[,coordinates],pch=15,cex=0.3)),
+    return.="raster", # so that 'res' is a list representing a raster. 
+    plot.title=title(main="Inferred prevalence, North Cameroon",
+                     xlab="longitude",ylab="latitude"))
 }
 
 }

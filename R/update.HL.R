@@ -270,7 +270,7 @@ update_resp <- function(object, newresp, ...,  evaluate = TRUE) {
   }
   if (preprocess_handles_terms_info_attr <- TRUE) {
     re_call$data <- structure(object$data, updated_terms_info=.update_main_terms_info(object, newresp=newresp))
-    # the data are not updated, so their main response info should not be used (but still used for resid model)
+    # the data are not updated [why? => see Details in help("update.HLfit")], but other variables in the $data may still be used for resid model.
     #if ( ! inherits(re_call$data, "HLframes")) stop("*F I X M E*")
   } else re_call$data <- .update_data(object, newresp=newresp)
   if (evaluate) 
