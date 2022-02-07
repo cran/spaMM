@@ -1,6 +1,6 @@
 # tools::check_packages_in_dir(".", check_args = "--no-multiarch")
 # devtools::check(".", args ="--no-multiarch", manual=TRUE)
-if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") { ## set in <R_HOME>/etc/Renviron.site (cf R Windows FAQ)
+if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") { ## set in <R_HOME>/etc/Renviron.site (cf R Windows FAQ) or by usethis::edit_r_environ() for 'user' one (in C:/Documents) 
   if(requireNamespace("testthat", quietly = TRUE)) {
     pkg   <- "spaMM"
     require(pkg, character.only=TRUE, quietly=TRUE)
@@ -11,17 +11,19 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") { ## set in <R_HOME>/etc/Renviron.site 
       # options(error=recover)
       # spaMM.options(use_ZA_L=NULL)
       # abyss <- matrix(runif(2e7),nrow=1000); gc(reset=TRUE) ## partial control of gc trigger...
-      tfun <- function(x) {
-        gc()# cf doc of system.time(., gcFirst) => but if gc timings are highly variable, gcFirst=TRUE is pointless (and the whole is misleading). 
-        system.time(source(x), gcFirst=FALSE)
+      {
+        tfun <- function(x) {
+          gc()# cf doc of system.time(., gcFirst) => but if gc timings are highly variable, gcFirst=TRUE is pointless (and the whole is misleading). 
+          system.time(source(x), gcFirst=FALSE)
+        }
+        while (dev.cur()>1L) dev.off()
+        op <- devAskNewPage(ask=FALSE)
+        testfiles <- dir(paste0(projpath(),"/package/tests/testthat/"),pattern="*.R",full.names = TRUE)
+        # oldmaxt <- spaMM.options(example_maxtime=60)
+        timings <- t(sapply(testfiles, function(fich){tfun(fich)}))
+        # spaMM.options(oldmaxt)
+        print(sums <- colSums(timings))
       }
-      while (dev.cur()>1L) dev.off()
-      op <- devAskNewPage(ask=FALSE)
-      testfiles <- dir(paste0(projpath(),"/package/tests/testthat/"),pattern="*.R",full.names = TRUE)
-      # oldmaxt <- spaMM.options(example_maxtime=60)
-      timings <- t(sapply(testfiles, function(fich){tfun(fich)}))
-      # spaMM.options(oldmaxt)
-      print(sums <- colSums(timings))
       ## testthat::test_package(pkg) ## for an installed package
       if (FALSE) { ## tests not included in package (using unpublished data, etc.)
         #install.packages(c("FactoMineR"))
@@ -35,7 +37,7 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") { ## set in <R_HOME>/etc/Renviron.site 
           if (inherits(chk,"try-error")) warning(paste0(fich," generated an error"))
           tps
         }))
-        print(colSums(priv_timings))
+        print(colSums(priv_timings)) # very roughly 1380 s for default maxtime (0.7)
       }
       if (FALSE) { ## kept separate bc obscure interference as if there was a bug in setTimeLimit()*Rstudio ?
         # abyss <- matrix(runif(2e7),nrow=1000); gc(reset=TRUE) ## partial control of gc trigger... but RESTARTING R appears more efficient.

@@ -7,7 +7,7 @@
 \description{
 The data give the results of an unreplicated experiment for factors affecting welding
 quality conducted by the National Railway Corporation of Japan (Taguchi and Wu, 1980, cited in Smyth et al., 2001). It is a toy example 
-for heterocedastic models and is also suitable for illustrating fit of overparameterized models.}
+for heteroscedastic models and is also suitable for illustrating fit of overparameterized models.}
 \usage{data("welding")}
 \format{
   The data frame includes 16 observations on 10 variables:

@@ -32,13 +32,14 @@
   } else { 
     ZAL <- processed$AUGI0_ZX$ZAfix ## default ZA 
   } 
-  lambda.Fix <- ranFix$lambda # .getPar(ranFix,"lambda") ## should already have length 'nrand' or else be NULL
-  if (any(lambda.Fix==0, na.rm=TRUE)) stop("lambda cannot be fixed to 0.")
+  if (any(ranFix$lambda==0, na.rm=TRUE)) stop("lambda cannot be fixed to 0.")
+  lam_fix_or_outer_or_NA <- processed$reserve$repNAnrand
+  lam_fix_or_outer_or_NA[names(ranFix$lambda)] <- ranFix$lambda # LHS should then have length 'nrand' or else be NULL
   ###
   off <- processed$off
   ##################
   ## Initial estimate for lambda in 'compact" form
-  init.lambda <- .calc_initial_init_lambda(lambda.Fix, nrand, processed, ranCoefs_blob, 
+  init.lambda <- .calc_initial_init_lambda(lam_fix_or_outer_or_NA, nrand, processed, ranCoefs_blob, 
                                            init.HLfit=NULL, fixed=ranFix)
   # expand:
   lambda_est <- .HLfit_finalize_init_lambda(models=processed$models, init.lambda, processed, ZAL=ZAL, cum_n_u_h, 
@@ -79,7 +80,7 @@
       attr(sXaug,"H_global_scale") <- H_global_scale
       class(sXaug) <- c(class(sXaug),"sXaug_blocks") # current default for sparse ZAL; .calc_APHLs_by_augZXy_or_sXaug uses .get_absdiagR_blocks -> .updateCHMfactor, with QR fall-back 
     } else {
-      Xscal <- .make_Xscal(ZAL=ZAL, ZAL_scaling = ZAL_scaling, AUGI0_ZX=processed$AUGI0_ZX) # does not weights the I
+      Xscal <- .make_Xscal(ZAL=ZAL, ZAL_scaling = ZAL_scaling, processed=processed) # does not weights the I
       if (inherits(Xscal,"sparseMatrix")) { # 
         mMatrix_method <- .spaMM.data$options$Matrix_method # does not weights the I
         attr(Xscal,"AUGI0_ZX") <- processed$AUGI0_ZX # for .sXaug_Matrix_cholP_scaled(). But ... this block is not currently used

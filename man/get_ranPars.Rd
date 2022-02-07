@@ -5,7 +5,15 @@
 Operations on lists of parameters
 }
 \description{
-\code{get_ranPars} returns various subsets of random-effect parameters (correlation or variance parameters), as controlled by its \code{which} argument. A distinct documentation exists for \code{\link{get_inits_from_fit}} which extracts a broader set of estimated parameters from a fit, in a form suitable to initialize another fit. \code{\link{VarCorr}} is yet another extractor for dispersion parameters.
+
+\code{get_ranPars} returns various subsets of random-effect parameters (correlation or variance parameters), as controlled by its \code{which} argument. 
+It is one of several extractors for fixed or estimated parameters of  different classes of parameters, for which a quick guide is
+
+\code{\link{get_ranPars}}: for random-effect parameters, excluding residual dispersion;\cr
+\code{\link{VarCorr}}: alternative extractor for random-effect (co)variance and optionally residual variance, in a data frame format;\cr
+\code{\link{residVar}}: for residual variance parameters, family dispersion parameters, or information about residual variance models;\cr
+\code{\link{get_residVar}}: alternative extractor of residual variances with different features inherited from \code{\link{get_predVar}};\cr
+\code{\link{get_inits_from_fit}}: extracts estimated parameters from a fit.\cr
 
 \code{remove_from_parlist} removes elements from a list of parameters, and from its \code{type} attribute. 
 }
@@ -45,8 +53,7 @@ For heteroscedastic models, such as conditional autoregressive models, the varia
 }
 
 \seealso{
-See \code{\link{residVar}} to extract residual variances or information about residual variance models.
-\code{\link{get_inits_from_fit}} and \code{\link{VarCorr}} can extract random effect parameters in different formats. 
+See \code{\link{VarCorr}}, \code{\link{residVar}}, \code{\link{get_residVar}}, or \code{\link{get_inits_from_fit}} as described in in the quick guide above. 
 }
 \examples{
 data("wafers")

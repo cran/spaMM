@@ -57,7 +57,7 @@ Either a \code{formula} or a \code{predictor} for the full model.
 }
 }
 \details{
-  Comparison of REML fits is a priori not suitable for performing likelihood ratio tests. Nevertheless, it is possible to contrive them for testing purposes (Wehlam & Thompson 1997). This function generalizes some of Wehlam & Thompson's methods to GLMMs. 
+  Comparison of REML fits is a priori not suitable for performing likelihood ratio tests. Nevertheless, it is possible to contrive them for testing purposes (Welham & Thompson 1997). This function generalizes some of Wehlam & Thompson's methods to GLMMs. 
   
   See Details in \code{\link{LRT}} for details of the bootstrap procedures.
 }

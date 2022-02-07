@@ -9,7 +9,13 @@
   }
 }
 
-
+# The positive half line has vertex 0 and direction 1. vrepr would look like
+# 0 1 0 # vertex (vrepr[,2]==1) 
+# 0 0 1 # direction vector (vrepr[,2]==0)
+# (the first col is not considered below)
+# To define an initial value within it we start in (vertice=0 + epsilon*direction). 
+# More generally, the Hull is defined as the set of linear combinations of the vertices or direction vectors defined by each row, 
+# with weights all positive, and summing to 1 for the vertices; for direction vectors the hull goes arbitrarily far (weight large) in such directions.
 .get_valid_beta_coefs <- function(X,offset,family,y,weights) {
   vrepr <- rcdd::scdd(rcdd::makeH(a1=-X,b1=offset))$output ## convex hull of feasible coefs
   if (nrow(vrepr)==0L) {
@@ -18,7 +24,7 @@
     verticesRows <- (vrepr[,2]==1)
     betaS <- 0
     if (any(verticesRows)) {
-      betaS <- t(vrepr[!verticesRows, -c(1:2), drop = FALSE]) ## col vectors of boundary beta values
+      betaS <- t(vrepr[verticesRows, -c(1:2), drop = FALSE]) ## col vectors of boundary beta values
       betaS <- betaS + 0.001 * rowMeans(betaS) ## moving a bit inside
     }
     if (any( ! verticesRows)) {
@@ -43,6 +49,73 @@
     } else return(betaS) ## Vrepr was a single line with  0    0    1
   }
 }
+
+# For gaussian response, there is no formal constraint on model coefficients, but good starting values may be necessary to avoid overflow,
+# and for the LevM method it is important that mustart belongs for the model family. So this code produces 'good' beta and deduces mu from it.
+# This function handles this case (distinct from .get_valid_beta_coefs() that handles formal constraint on beta, that eta must be positive)
+.get_init_in_Xbeta_image <- function(X, #  design matrix
+                                     offset, # true model offset, not a hack
+                                     family, # conceived for gaussian(log)
+                                     y, # response variable
+                                     weights, # prior 'weights' of the GLM call
+                                     which="mu"
+) {
+  link <- family$link
+  linky <- switch(link,
+                  "log" = log(pmax(1e-05, y)),
+                  "inverse" = {
+                    linky <- 1/y
+                    linky[y==0] <- 1e5
+                    linky
+                  },
+                  "identity" = stop("This function should not be called for 'identity' link"), # we should not need it, as least for gaussian
+                  stop("This function was not conceived for this link")
+  )
+  # The non-rcdd method may be sufficient but the rcdd-based one aims to reduce the  risk of overflow. Both method work on linky:='linkfun(y)' (nearly). 
+  if (requireNamespace("rcdd",quietly=TRUE)) {
+    # This code seeks the hull of coefficients that produces mu >= linky, 
+    # uses its vertices (which are beta such that some mu=linky) as candidate values of beta, 
+    # and retains the beta that has thee lowest deviance (for true y and true link)
+    offset <- offset -linky 
+    vrepr <- rcdd::scdd(rcdd::makeH(a1=-X,b1=offset))$output ## convex hull of feasible coefs
+    verticesRows <- (vrepr[, 2] == 1)
+    betaS <- t(vrepr[verticesRows, -c(1:2), drop = FALSE]) 
+    etaS <- X %*% betaS ## col vectors of predicted etaS
+    etaS <- etaS + offset
+    muS <- family$linkinv(etaS)
+    devS <- apply(muS,2, function(mu) sum(family$dev.resids(y, mu=mu, weights))) 
+    if (which=="mu") {
+      return(muS[,which.min(devS)])
+    } else return(betaS[,which.min(devS)])
+  } else {
+    # if ( ! identical(spaMM.getOption("rcdd_warned"),TRUE)) {} # message not useful here? 
+    fit <- lm.wfit(x=X, y=linky, weights=weights)
+    if (which=="mu") {
+      eta <- stats::fitted.values(fit)
+      return(family$linkinv(eta))
+    } else {
+      return(fit$coefficients) # unaffected by pivoting (they are named so that would be easy to check)
+    }
+  }
+  return(beta)
+}
+
+.gauss_initialize_in_Xbeta_image <- expression({
+  ## original gaussian(<"log"|"inverse">)$initialize fails to produce starting values in some cases... BUT...
+  n <- rep.int(1, nobs) # must be for the $aic call. stats::glm is such a weird thing. 
+  # if (is.null(etastart) && is.null(start) && is.null(mustart) && 
+  #     ((family$link == "inverse" && any(y == 0)) || 
+  #      (family$link == "log" && any(y <= 0)))) 
+  #   stop("cannot find valid starting values: please specify some")
+  # mustart <- y
+  # ... BUT moreover they are generally not in X.beta image, which is not OK for starting LevM algo.
+  # The ok links are c("inverse", "log", "identity") and we should not need LevM for identity link in which case we ignore this constraint
+  if (is.null(etastart) && is.null(start) && is.null(mustart))
+    if (family$link=="identity") {
+      mustart <- y
+    } else mustart <- .get_init_in_Xbeta_image(X=x, offset=offset, family=family, y=y, weights=weights, which="mu") 
+})
+
 
 # same algo as .eval_gain_LevM_etaGLM() but with different input, use of .calc_clik() instead of family$dev.resids()...
 .eval_gain_LevM_spaMM_GLM <- function(LevenbergMstep_result,family, x ,coefold,devold, offset,y,weights) { 
@@ -73,7 +146,9 @@
 spaMM_glm.fit <- local({
   spaMM_glm_conv_crit <- list(max=-Inf)
   function (x, y, weights = rep(1, nobs), 
-            start = NULL, ## beta coefs... needed for the LevenbergM algo
+            start = NULL, ## beta coefs... equivalent info such as mustart in Xbeta image) is needed for the LevenbergM algo: 
+                          ## either provided in the call or by some self-starting function called below (such as 
+                          ## .gauss_initialize_in_Xbeta_image; default default family$initialize won't be in Xbeta image generally).
             etastart = NULL, mustart = NULL, offset = rep(0, nobs), family = gaussian(), 
             control = list(maxit=200), intercept = TRUE, singular.ok = TRUE) 
   {
@@ -110,6 +185,7 @@ spaMM_glm.fit <- local({
     #   (pos_eta || (family$family %in% c("poisson","negbin") && family$link %in% c("identity","sqrt"))) 
     # })
     n <- NULL ## to avoid an R CMD check NOTE which cannot see that n will be set by eval(family$initialize)
+    if (family$family=="gaussian" && family$link!="identity") family$initialize <- .gauss_initialize_in_Xbeta_image
     if (is.null(mustart)) {
       eval(family$initialize) ## changes y 2 col -> 1 col 
       
@@ -309,7 +385,7 @@ spaMM_glm.fit <- local({
               dampingfactor <- dampingfactor*2
               if (control$trace) cat("+")
             } 
-            if (damping>1e100) break ## but an error may occur (NaN mu) (we should not reach this point except if gainratio<0?)
+            if (damping>1e10) break ## but an error may occur (NaN mu) (we should not reach this point except if gainratio<0?)
           } ## end of while(TRUE) {...}
           if ( conv_crit < control$epsilon) { 
             conv <- TRUE

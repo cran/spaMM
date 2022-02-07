@@ -51,7 +51,7 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
   A model \code{formula} that controls the estimation of dispersion parameters and the computation of restricted likelihood (\code{p_bv}), where the conditioning inherent in REML is defined by a model different from the predictor \code{formula}. A simple example (useless in practice) of its effect is to replicate an ML fit by specifying \code{method="REML"} and an \code{REMLformula} with no fixed effect. The latter implies that no conditioning is performed and that \code{p_bv} equals the marginal likelihood (or its approximation), \code{p_v}. One of the examples in \code{\link{update.HLfit}} shows how \code{REMLformula} can be useful, but otherwise this argument may never be needed for standard REML or ML fits. For non-standard likelihood ratio tests using \code{REMLformula}, see \code{\link{fixedLRT}}.    
 }
   \item{verbose}{
-    A vector of booleans. The \code{trace} element controls various diagnostic messages (possibly messy) about the iterations. This shoudl be distiguished from the \code{TRACE} element, meaningful in \code{fitme} or \code{corrHLfit} calls. \code{phifit} (which defaults to \code{TRUE}) controls messages about the progress of residual dispersion fits in DHGLMs. 
+    A vector of booleans. The \code{trace} element controls various diagnostic messages (possibly messy) about the iterations. This should be distinguished from the \code{TRACE} element, meaningful in \code{fitme} or \code{corrHLfit} calls. \code{phifit} (which defaults to \code{TRUE}) controls messages about the progress of residual dispersion fits in DHGLMs. 
   }
   \item{method}{Character: the fitting method. 
   allowed values are \code{"REML"}, \code{"ML"}, \code{"EQL-"} and \code{"EQL+"} for all models;  
@@ -59,7 +59,7 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
   for those curious to experiment (see \code{\link{method}}). \bold{The default is REML} (standard REML for LMMs, 
   an extended definition for other models). REML can be viewed as a form of conditional inference, and non-standard conditionings can be called by using a non-standard \code{REMLformula}.
 }
-  \item{HLmethod}{Same as \code{method}. It is useless to specify \code{HLmethod} when \code{method} is specified. The default value \code{"HL(1,1)"} means the same as \code{method="REML"}, but more accurately relates to definitions of approximations of likelihoo in the \eqn{h}-likelihood literature.}
+  \item{HLmethod}{Same as \code{method}. It is useless to specify \code{HLmethod} when \code{method} is specified. The default value \code{"HL(1,1)"} means the same as \code{method="REML"}, but more accurately relates to definitions of approximations of likelihood in the \eqn{h}-likelihood literature.}
   \item{control.HLfit}{
   A list of parameters controlling the fitting algorithms, which should be ignored in routine use. Suche a parameter, \code{resid.family},  was previously documented here (before version 2.6.40), and will still operate as previously documented, but should not be used in new code.
 

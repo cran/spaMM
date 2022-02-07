@@ -55,7 +55,11 @@ dofuture <- function(newresp, fn, nb_cores=NULL,
       } else { # PSOCK
         cl <- do.call(parallel::makeCluster, cluster_args) # create a *socket* cluster
         future::plan(future::cluster, workers=cl)
-        parallel::clusterEvalQ(cl, library("spaMM")) 
+        packages2export <- control$.packages
+        if (is.null(packages2export)) packages2export <- "spaMM"
+        parallel::clusterCall(cl,
+                              function(packages) {for (p in packages) library(p, character.only = TRUE)}, 
+                              packages2export)
         if (is.environment(fit_env)) try(parallel::clusterExport(cl=cl, varlist=ls(fit_env), envir=fit_env)) 
         bootreps <- .future_apply(newresp, cluster_args, nb_cores, fn, iseed, steps=ceiling(ncol(newresp)/nb_cores), ...)
       } # FORK ... else

@@ -457,7 +457,7 @@ summary.HLfitlist <- function(object, ...) {
       cat(" -")
       if (family$family=="Gamma") {
         cat("-- Residual variation ( var = phi * mu^2 )  --\n")
-      } else cat("------------- Residual variance  -------------\n")    
+      } else cat("------------- Residual variance  ------------\n")    
     }
     if ( ! (identical(attr(pw,"unique"),TRUE) && pw[1]==1L)) cat(paste("Prior weights:",
                                                                        paste(signif(pw[1:min(5,length(pw))],6),collapse=" "),
@@ -726,9 +726,11 @@ print.HLfitlist <- function(x,...) {
   invisible(x)
 }
 
-div_info <- function(object, ...) {
+div_info <- function(object, ...) { 
   ranges <- NULL # avoid bug when no divinfo
   if ( ! is.null(ranFixes <- object$divinfo$high_kappa$ranFixes)) {
+    corr_info <- .get_from_ranef_info(object)
+    ranFixes <- lapply(ranFixes, .canonizeRanPars, corr_info=corr_info,checkComplete = FALSE, rC_transf = .spaMM.data$options$rC_transf)
     if (length(ranFixes)>1L) {
       ranges <- t(apply(do.call(rbind,lapply(ranFixes,unlist)),2L,range))
       message("Numerical issue for the following ranges of parameters:")
@@ -741,6 +743,8 @@ div_info <- function(object, ...) {
     }  
   }
   if ( ! is.null(ranFixes <- object$divinfo$unknown$ranFixes)) {
+    corr_info <- .get_from_ranef_info(object)
+    ranFixes <- lapply(ranFixes, .canonizeRanPars, corr_info=corr_info,checkComplete = FALSE, rC_transf = .spaMM.data$options$rC_transf)
     if (length(ranFixes)>1L) {
       ranges <- t(apply(do.call(rbind,lapply(ranFixes,unlist)),2L,range))
       message("Uncharacterized numerical issue for the following ranges of parameters:")

@@ -121,7 +121,8 @@
     } else {
       newXscal[n_u_h+seq(nrow(scaledZAL)),seq_n_u_h] <- scaledZAL
     }
-  } else newXscal <- .make_Xscal(ZAL, ZAL_scaling = newZAL_scaling, AUGI0_ZX=processed$AUGI0_ZX)
+    attr(newXscal,"AUGI0_ZX") <- processed$AUGI0_ZX # environment => cheap access to its 'envir$updateable' variable or anything else 
+  } else newXscal <- .make_Xscal(ZAL, ZAL_scaling = newZAL_scaling, processed=processed)
   return(newXscal) 
 }
 

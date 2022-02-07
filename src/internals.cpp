@@ -105,6 +105,7 @@ SEXP C_calc_cov_from_ranCoef(SEXP ranCoef, Nullable<IntegerVector> Xi_ncol = R_N
   Rcpp::IntegerVector zut;
   if (Xi_ncol.isNull()) {
     RObject ncol_attr = Rf_getAttrib(ranCoef, wrap("Xi_ncol"));
+    if (Rf_isNull(ncol_attr)) stop("attribute Xi_ncol missing from 'ranCoef' argument.");
     zut=as<Rcpp::IntegerVector>(ncol_attr);
   } else zut=IntegerVector(Xi_ncol);
   int nc=zut[0];

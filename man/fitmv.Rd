@@ -32,8 +32,8 @@ Lists of initial values or bounds. The syntax is that of the same arguments in \
 Optional arguments passed to (or operating as if passed to) \code{\link{HLCor}}, \code{\link{HLfit}} or  \code{\link{mat_sqrt}}, for example  \code{control.HLfit} or the \code{covStruct}, \code{distMatrix}, \code{corrMatrix} or \code{adjMatrix} arguments of \code{HLCor}. }
 }
 \details{
-\bold{Matching random effects accross submodels, and referring to them};\cr
-Random effects are recognized as identical accross submodels by matching the formula terms. As shown in the Examples, if the two models formulas share the \code{(1|clinic)} term, this term is recognized as a single random effect shared between the two responses. But the \code{(1|clinic)} and \code{(1|clinic2)} terms are recognized as distinct random effects. In that case, the \code{init} argument \code{init=list(lambda=c('1'=1,'2'=0.5))} is shown to refer to these by names \code{1,2}... where the order is defined as the order of first appearance of the terms accross the model formulas in the order of the \code{submodels} list. 
+\bold{Matching random effects across submodels, and referring to them};\cr
+Random effects are recognized as identical across submodels by matching the formula terms. As shown in the Examples, if the two models formulas share the \code{(1|clinic)} term, this term is recognized as a single random effect shared between the two responses. But the \code{(1|clinic)} and \code{(1|clinic2)} terms are recognized as distinct random effects. In that case, the \code{init} argument \code{init=list(lambda=c('1'=1,'2'=0.5))} is shown to refer to these by names \code{1,2}... where the order is defined as the order of first appearance of the terms across the model formulas in the order of the \code{submodels} list. 
 Alternatively, the syntax \code{fixed=list(lambda=c('clinic2'=0.5,'clinic'=1))} works: this syntax makes order of input irrelevant but assumes that the user guesses names correctly (these are typically the names that appear in the summary of lambda values from the fit object or, more programmatically, \cr
 \code{names(<fit object>$lambda.object$print_namesTerms)}). Finally, fixed values of parameters can \bold{also} be specified through each sub-model, with indices referring to the order of random effects with each model.
 
@@ -59,7 +59,7 @@ may then be particularly useful to reformat simulation results. \code{newdata} w
 \bold{Which arguments belong to \code{submodels}?}:\cr 
 Overall, arguments specifying individuals submodels should go into \code{submodels}, while other arguments of \code{fitmv} should be those potentially affecting several submodels (notably, random-effect structures, \code{lower}, and \code{upper}) and fitting controls (such as \code{init} and \code{init.HLfit}). One rarely-used exception is \code{\link{REMLformula}} which controls the fitting method but should be specified through the \code{submodels}.    
 
-The function proceeds by first preprocessing all submodels independently, before merging the resulting information by matching random effects across submodels. The merging operation includes some checks of consistency accross submodels, implying that redundant arguments may be needed across submodels (e.g. specifying twice a non-default \code{rand.family} for a random effect shared by two submodels). 
+The function proceeds by first preprocessing all submodels independently, before merging the resulting information by matching random effects across submodels. The merging operation includes some checks of consistency across submodels, implying that redundant arguments may be needed across submodels (e.g. specifying twice a non-default \code{rand.family} for a random effect shared by two submodels). 
 
 %Some fits may by default be slower than is possible by playing with control arguments \code{init} and \code{init.HLfit}.
 }

@@ -243,7 +243,7 @@
           # we don't want anything specific on u_h values:
           w.ranef <- 1/loc_lambda_est # call to .updateW_ranefS() reduced to this for v3.6.39
           ZAL_scaling <- sqrt(loc_lambda_est/H_global_scale) # sqrt(w.ranef*H_global_scale) ## Q^{-1/2}/s
-          Xscal <- .make_Xscal(ZAL=locZAL, ZAL_scaling = ZAL_scaling, AUGI0_ZX=processed$AUGI0_ZX)
+          Xscal <- .make_Xscal(ZAL=locZAL, ZAL_scaling = ZAL_scaling, processed=processed)
           if (inherits(Xscal,"Matrix")) { # same type as ZAL
             mMatrix_method <- .spaMM.data$options$Matrix_method
           } else {

@@ -394,7 +394,7 @@ HLfit_body <- function(processed,
         # but the logLik differs from that given by logLik.glm(). See Details in ?HLfit
         PHIblob <- .calcPHI(processed,
                             dev.res= family$dev.resids(y,mu,wt= eval(prior.weights)), # eta-family !
-                            #: times pw to be an estimate of same phi accross level of response
+                            #: times pw to be an estimate of same phi across level of response
                             # but not same phi as when there is no pw !
                             # double pw => double phi_est so that phi_est_i :=phi_est/pw_i is unchanged
                             lev_phi=lev_phi,
@@ -791,13 +791,8 @@ HLfit_body <- function(processed,
     } else {
       p_corrPars <- p_corrPars + p_var_corrPars # consistent with df count in the case of outer optimization
     }
-    # we add outer ranCoefs to p_lambda, same as inner ranCoefs added to p_lambda previously 
-    # $ranCoefs is present only for (partially) fixed ranCoefs...
-    # its type is present only for *partially* fixed  ranCoefs!
-    # => wonderful ad-hockery:
-    p_trRanCoefs <- length(which(unlist(attr(res$CorrEst_and_RanFix,"type")$trRanCoefs, use.names = FALSE) == "outer")) 
-    p_partiallyfixed_ranCoefs <- length(which(unlist(attr(res$CorrEst_and_RanFix,"type")$ranCoefs, use.names = FALSE) == "fix")) 
-    p_lambda <- p_lambda + p_trRanCoefs - p_partiallyfixed_ranCoefs
+    # we add outer ranCoefs to p_lambda, same as inner ranCoefs added to p_lambda previously
+    p_lambda <- p_lambda + .dfs_ranCoefs(types=attr(res$CorrEst_and_RanFix,"type"))
     # at this point, the _type_ of the corrPars controlled by hyperparameters have been removed, and that for lambda is "fix" (!)
     hy_var <- which(unlist(attr(res$CorrEst_and_RanFix,"type")$hyper, use.names = FALSE) != "fix")
     if (length(hy_var)) {
@@ -820,18 +815,8 @@ HLfit_body <- function(processed,
   ## OBJECTIVE and ALGORITHMs
   ###################
   res$HL <- HL ## info on fitting objective
-  if (HL[1]=="SEM") {
-    MME_method <- "stochastic EM"
-  } else {
-    get_from <- attr(auglinmodblob$sXaug,"get_from")
-    if (is.null(get_from)) { # not sure that it happens
-      MME_method <- setdiff(class(auglinmodblob$sXaug),c("list")) # "dgCMatrix" for _Matrix_QRP_CHM bc the class of this S4 object cannot be modified... hence the alternative code  
-    } else {
-      MME_method <- unique(c(substring(get_from,14), setdiff(class(auglinmodblob$sXaug),c("list"))))
-    }
-  }
   res$how <- list(spaMM.version=packageVersion("spaMM"),
-                  MME_method=MME_method,
+                  MME_method=.get_MME_method(auglinmodblob, HL),
                   switches=c(augZXy_cond=processed$augZXy_cond,
                              use_spprec_QR=.spaMM.data$options$use_spprec_QR)
   )

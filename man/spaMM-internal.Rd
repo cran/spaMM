@@ -1,12 +1,12 @@
 \name{spaMM-internal}
 
 % TODO ___F I X M E___
-% * implement outer optim of beta starting from the etaFix (+ REMLformula) code => avoid LevM costs for COMP ? 
+% * implement outer optim of beta starting from the etaFix (+ REMLformula) code => avoid LevM costs for COMP ? also allowing ome non-linear modelling
 % * Something about .predictions methods when predict returns a data frame ?
 
 \alias{projpath} % for local tests
 
-\alias{glm.nodev.fit} % __F I X M E__ possible temporary
+\alias{glm.nodev.fit} % __F I X M E__ special version for COMPoisson
 
 \alias{fitme_body}
 \alias{fitmv_body}

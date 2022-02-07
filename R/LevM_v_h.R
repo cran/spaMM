@@ -47,7 +47,7 @@
     
     ##### initial sXaug
     ZAL_scaling <- 1/sqrt(wranefblob$w.ranef*H_global_scale) ## Q^{-1/2}/s
-    Xscal <- .make_Xscal(ZAL, ZAL_scaling = ZAL_scaling, AUGI0_ZX=processed$AUGI0_ZX, as_matrix=.eval_as_mat_arg(processed))
+    Xscal <- .make_Xscal(ZAL, ZAL_scaling = ZAL_scaling, processed=processed, as_matrix=.eval_as_mat_arg(processed))
     if (inherits(Xscal,"Matrix")) { # same type as ZAL
       mMatrix_method <- .spaMM.data$options$Matrix_method
       

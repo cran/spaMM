@@ -133,7 +133,7 @@
                 rescue=crayon::red,
                 strictv=crayon::blue,
                 vloop=crayon::cyan,
-                v_out_last=crayon::cyan$underline, # final output of v_h .do_damped_WLS_outer; also also bracketing each .solve_v_h_IRLS loop for v_h( tentative beta(damping) ) 
+                v_out_last=crayon::cyan$underline, # seen a lot for v steps... # old comment : final output of v_h .do_damped_WLS_outer; also also bracketing each .solve_v_h_IRLS loop for v_h( tentative beta(damping) ) 
                 # colors tell what the numbers are for: grad of objective for v, versus grad of objective for beta (or joint beta,v) 
                 betaloop=crayon::yellow, # also bracketing the damped_WLS loop for new beta when  which_LevMar_step=="b_&_v_in_b"
                 betalast=crayon::yellow$underline,
@@ -147,7 +147,7 @@
   wrap_parallel="dopar",
   #        add control=list(fix_predVar=NA) in predict() calls in the following calls? Probably not worth the mess.
   fix_predVar=list("NA"="MSL|bboptim|isoscape|isofit|calibfit|optimthroughSmooth|spaMM_rhullByEI|sampleByResp",
-                   "TRUE"=NULL,"FALSE"=NULL), 
-  thr_backsolve=0L # for devel testing of .backsolve(); 0L means that .Rcpp_backsolve may be called irrespective of matrix dimension
+                   "TRUE"=NULL,"FALSE"=NULL) 
+  #thr_backsolve=0L # for devel testing of .backsolve(); 0L means that .Rcpp_backsolve may be called irrespective of matrix dimension
 )
 

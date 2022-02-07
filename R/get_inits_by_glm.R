@@ -11,7 +11,7 @@
     loc_link <- family$link
     if (loc_link=="loglambda") loc_link <- "log"
     if (inherits(substitute(nu, env=environment(family$aic)),"call")) family <- poisson(loc_link)
-    # problm with test glmmTMB: most of the time is spent on inits for glm when nu<1
+    # problem with test glmmTMB: most of the time is spent on inits for glm when nu<1
     # if (inherits(nuchk <- substitute(nu, env=environment(family$aic)),"call") || nuchk >0.25) family <- poisson(loc_link)
     # : This helps for he GLM but not much otherwise. Other ideas ? __F I X M E__
   }
@@ -55,15 +55,7 @@
     if (inherits((resglm <- tryglm$value),"error") || 
         ( ! resglm$converged && any(fitted(resglm)>1e20)) # this occurred in Gamma(log) models or negbin(log)
     ) {
-      if (family$family=="gaussian" && family$link %in% c("log","inverse") && any(Y==0)) {
-        ## gaussian(<"log"|"inverse">)$initialize is deficient
-        family$initialize <- expression({
-          if (any(y < 0)) 
-            stop("negative values not allowed for the 'gaussian' family with such link")
-          n <- rep.int(1, nobs)
-          mustart <- y + 0.1
-        })
-      }
+      # if (family$family=="gaussian" && family$link %in% c("log","inverse")) family$initialize <- .gauss_initialize_in_Xbeta_image
       resglm <- spaMM_glm.fit(x=X.pv, # ->LevM -> COMP bottleneck
                               y=Y, 
                               weights = eval(prior.weights), 
@@ -110,7 +102,6 @@
   resu$converged <- resglm$converged
   return(resu)
 }
-
 
 # function called within HLfit for missing inits... 
 # but also sometimes in fitme_body prior to optimization (cf complex condition for call of .eval_init_lambda_guess())

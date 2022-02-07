@@ -70,7 +70,8 @@
 }
 
 .keywords_as_names <- c(as.name("IMRF"),as.name("multIMRF"),as.name("adjacency"),as.name("Matern"),
-                        as.name("Cauchy"),as.name("AR1"),as.name("corrMatrix"),as.name("mv"))
+                        as.name("Cauchy"),as.name("AR1"),as.name("corrMatrix"),as.name("mv"),
+                        as.name("corrFamily"))
 
 ## lme4::subbars "Substitute the '+' function for the '|' function in a mixed-model formula, recursively (hence the argument name term). This provides a formula suitable for the current model.frame function."
 ## Original version shows handling of '||'
@@ -260,7 +261,7 @@
   }
   if (length(term) == 2) { # no extra args after the grouping rhs !
     term1 <- as.character(term[[1]])
-    if (term1 %in% c("adjacency","Matern","Cauchy","AR1","corrMatrix")) {
+    if (term1 %in% c("adjacency","Matern","Cauchy","AR1","corrMatrix","corrFamily")) {
       attr(term,"type") <- term1
       return(term) 
     } else return(NULL) 

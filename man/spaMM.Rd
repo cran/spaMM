@@ -25,13 +25,12 @@ Both maximum likelihood (ML) and restricted likelihood (REML) can be used for li
 \preformatted{
 * (1|<RHS>), for non-autocorrelated random effects as in lme4;
 * (<LHS>|<RHS>), for random-coefficient terms as in lme4, *and 
-   additional terms depending on the <LHS> type* (iurther detailed below);
-* (<LHS> || <RHS>), interpreted as in lme4 (see help('expandDoubleVerts') 
-   in lme4, including the comment that it will fail to break up factors 
-   into separate terms). Any such term is immediately converted to 
-   ( (1|<RHS>) + (0+<LHS>|<RHS>) ), and should be counted as two random 
-   effects for all purposes (e.g., for fixing the variances of the 
-   random effects);
+   additional terms depending on the <LHS> type* (further detailed below);
+* (<LHS> || <RHS>) is interpreted as in lme4: any such term is immediately 
+   converted to ( (1|<RHS>) + (0+<LHS>|<RHS>) ). It should be counted as two 
+   random effects for all purposes (e.g., for fixing the variances of the 
+   random effects). However, this syntax is useless when the LHS includes a 
+   factor (see help('lme4::expandDoubleVerts')).
 * <prefix>(1|<RHS>), to specify autocorrelated random effects, 
    e.g. Matern(1|long+lat). 
 * <prefix>(<LHS>|<RHS>), where the <LHS> can be used to alter the 
@@ -50,15 +49,17 @@ Different LHS types of \strong{gaussian} \code{(<LHS>|<RHS>)} random-effect term
 * <numeric> (but not '0+<numeric>'): random-coefficient term as in lme4, 
   with 2*2 covariance matrix of effects on Intercept and slope;
 * 0 + <numeric>: no Intercept so no covariance matrix (random-slope-only 
-   term).
+   term);
+* the "experimental" dummy() specifier described in the lme4 documentation
+  has been found to work with spaMM too. 
 }
 The '0 + <numeric>' effect is achieved by direct control of the elements of the incidence matrix \bold{Z} through the \code{<LHS>} term: for numeric \code{z}, such elements are multiplied by \code{z} values, and thus provide a variance of order O(\code{z} \bold{squared}).
 
-If one wishes to fit uncorrelated group-specific random-effects (say random effects with distinct variances for males and females or for different response variables), two syntaxes are thus possible, illustrated in \dQuote{Elementary multivariate-response} example below: one can fit a (0 + <factor>| .) random-coefficient term with correlation fixed to 0; Alternatively, one can define \bold{numeric} (0|1) variables such as \code{numF <- as.numeric(<boolean for females>)} and a term of the form \code{(0 + numF| <block>)} (and similarly for males).   
+If one wishes to fit uncorrelated group-specific random-effects with distinct variances for different groups or for different response variables, three syntaxes are thus possible. The most general, suitable for fitting several variances (see {help("GxE")} for an example), is to fit a (0 + <factor>| <RHS>) random-coefficient term with correlation(s) fixed to 0. Alternatively, one can define \bold{numeric} (0|1) variables for each group (as \code{as.numeric(<boolean for given group membership>)}), and use each of them in a \verb{0 + <numeric>} LHS (so that the variance of each such random effect is zero for response not belonging to the given group). Using \code{dummy} factors for each level of the original factor can achieve the same effect without coding new variables in the data. These syntaxes are illustrated in the \dQuote{Elementary multivariate-response} example below for two groups (males and females). 
 
 The following \strong{gaussian} \code{<prefix>(<LHS>|<RHS>)} random-effect terms are handled: \cr 
 \verb{   } * Since version 3.9.0 it is possible to fit \code{corrMatrix(<LHS>|<RHS>)} terms that combines features of any of the above LHS types and of a random effect with given \code{corrMatrix}. See \code{\link{composite-ranef}} for details.\cr 
-\verb{   } * It is possible to fit some random-effect terms involving other (\code{<prefix>}) correlation models and a non-\sQuote{\code{1}} LHS. Only the LHS types that do not imply estimating a random-coefficient covariance matrix are currently handled. For example, independent Matérn effects can be fitted for males and females by using the syntax \code{Matern(male|.) + Matern(female|.)}, where \code{male} and \code{female} are TRUE/FALSE factors; and \code{Matern(0+<numeric>|.)} represents an autocorrelated random-slope (only) term (or, equivalently, a direct specification of heteroscedasticy of the Matérn random effect). By contrast, \code{Matern(z|.)} (with effect similar to that described in \code{\link{composite-ranef}}) is not yet implemented.  
+\verb{   } * It is possible to fit some random-effect terms involving other (\code{<prefix>}) correlation models and a non-\sQuote{\code{1}} LHS. Only the LHS types that do not imply estimating a random-coefficient covariance matrix are currently handled. For example, independent Matérn effects can be fitted for males and females by using the syntax \code{Matern(male|.) + Matern(female|.)}, where \code{male} and \code{female} are TRUE/FALSE factors; and \code{Matern(0+<numeric>|.)} represents an autocorrelated random-slope (only) term (or, equivalently, a direct specification of heteroscedasticity of the Matérn random effect). By contrast, \code{Matern(z|.)} (with effect similar to that described in \code{\link{composite-ranef}}) is not yet implemented.  
 \verb{   } * In these autocorrelated random effects the \code{<RHS>} is generally restricted to the simplest form, except for AR1 and geostatistical models where the \code{<.> \%in\% <.>} form of nested random effect is allowed (see example in \code{\link{MaternCorr}}). 
 % cf fns .calc_Z_model_matrix() and .calc_raw_ZA().
 % tests: test-spaMM.R and in tests_private/test-syntax-Matern-RHS.R
@@ -150,11 +151,14 @@ toymv <- data.frame(
 # fit response-specific variances of random effect and residuals: 
 (fitme(y ~ resp+ (0+respX|fam)+ (0+respY|fam), resid.model = ~ 0+resp ,data=toymv))
 #
-# Same result by different syntax:
+# Same result by different syntaxes:
 #
 (fitme(y ~ resp+ (0+resp|fam), resid.model = ~ 0+resp ,data=toymv, 
        fixed=list(ranCoefs=list("1"=c(NA,0,NA)))))
 
+# or by the dummy() specifier from lme4:
+# (fitme(y ~ resp+ (0+dummy(resp,"x")|fam)+ (0+dummy(resp,"y")|fam), 
+#        resid.model = ~ 0+resp ,data=toymv))
 }
 \keyword{ package }
 \keyword{spatial}

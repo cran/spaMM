@@ -41,16 +41,13 @@
   initdamping <- damping
   gainratio_grad <- zInfo$gainratio_grad
   # grad wrt scaled v = d f / d (v/ZAL_scaling) = ZAL_scaling * d f / d v
-  gone_thru_mini <- (damping==1e-7)
+  restarted_at_e_7 <- FALSE
   first_it <- TRUE
   prev_gainratio <- -Inf
   if (Trace && ! is.null(v_infer_args)) {
     cat(stylefn("[")) # cat(which_LevMar_step) #=> a substep of V_IN_B: "strict_v|b" or "b_&_v_in_b"
   } 
-  loc_pot_tol <- attr(low_pot,"pot_tol") ## if low_pot is not NULL, we get this info.
-  #v_total_maxit_mean <- v_infer_args$maxit.mean
   GLGLLM_const_w <- attr(processed$models,"GLGLLM_const_w")
-  pot4improv <- NULL
   while ( TRUE ) { ## loop on damping; each iteration produce blue + ul-greens + yellow
     if (processed$HL[1L]==1L) { ## ML fit 
       Vscaled_beta <- old_Vscaled_beta
@@ -80,38 +77,14 @@
         Vscaled_beta[-seq_n_u_h] <- Vscaled_beta[-seq_n_u_h] + LevMarblob$dbeta 
       } 
       if ( which_LevMar_step!="v" &&  ! is.null(v_infer_args)) {
+        
         if (Trace) cat(stylefn_v("["))
-        #v_infer_args$maxit.mean <- ceiling(v_total_maxit_mean/5)
-        v_h_blob <- .wrap_v_h_IRLS(v_h=Vscaled_beta[seq_n_u_h] * ZAL_scaling, ## use original scaling!
-                                   beta_eta=Vscaled_beta[-seq_n_u_h], seq_n_u_h, GLMMbool, wranefblob, 
-                                   processed$reserve$constant_u_h_v_h_args, updateW_ranefS_subarglist=updateW_ranefS_subarglist, 
-                                   v_infer_args, Trace, IRLS_fn=".solve_v_h_IRLS")
-        if (v_h_blob$break_info$IRLS_breakcond=="maxit") { # problematic failure: we need to do something; not perfect, but helps a lot.
-          #v_infer_args$maxit.mean <- ceiling(v_total_maxit_mean*4/5)
-          psi_M <- rep(attr(processed$rand.families,"unique.psi_M"),diff(processed$cum_n_u_h))
-          # we cannot change the beta_eta bc we're running a v_h IRLS
-          v_h_blob <- .wrap_v_h_IRLS(v_h=psi_M, ## use original scaling!
-                                     beta_eta=Vscaled_beta[-seq_n_u_h], seq_n_u_h, GLMMbool, wranefblob, 
-                                     processed$reserve$constant_u_h_v_h_args, updateW_ranefS_subarglist=updateW_ranefS_subarglist, 
-                                     v_infer_args, Trace, IRLS_fn=".solve_v_h_IRLS")
-        } 
-        # each underline green is a damping _loop_ not a damping step
+        v_h_blob <- .wrap_wrap_v_h_IRLS(IRLS_fn=".solve_v_h_IRLS", v_h=Vscaled_beta[seq_n_u_h] * ZAL_scaling, 
+                                        beta_eta=Vscaled_beta[-seq_n_u_h], seq_n_u_h, GLMMbool, wranefblob, processed, 
+                                        updateW_ranefS_subarglist, v_infer_args, Trace) # each underline green is a damping _loop_ not a damping step
         if (Trace) cat(stylefn_v("]"))
-        if (trace)  { ## prints, at the level of the outer damped_WLS, the results of the v_h IRLS
-          with(v_h_blob,cat(stylefn_v(paste0("v_h IRLS returns max(|grad|): v=",.prettify_num(break_info$maxs_grad[1L]), # grad when v_h IRLS exits
-                             " beta=",.prettify_num(break_info$maxs_grad[2L]),
-                             " after ",innerj, # number of iterations of v_h IRLS
-                             " iter"
-                             ))))
-          break_info <- v_h_blob$break_info
-          break_info$maxs_grad <- NULL
-          for (st in names(break_info)) {
-            if (is.numeric(stinfo <- break_info[[st]])) {
-              cat(stylefn_v(paste0(", ",st,"=",.prettify_num(stinfo))))
-            } else cat(stylefn_v(paste0(", ",st,"=",stinfo)))
-          }
-          cat(stylefn(";"))
-        } # else if (Trace) cat(stylefn_v(".")) ## underline blue ## But no reason since no matrix factorization
+        if (trace) .cat_break_info( v_h_blob, stylefn_v, stylefn)  ## prints, at the level of the outer damped_WLS, the results of the v_h IRLS
+        
         Vscaled_beta[seq_n_u_h] <- v_h_blob$v_h*sqrt(v_h_blob$wranefblob$w.ranef*H_global_scale)
         LevMarblob$dVscaled_beta <- Vscaled_beta - old_Vscaled_beta
       }
@@ -177,43 +150,23 @@
     }
     if ( which_LevMar_step=="strict_v|b") {
       breakcond <- "v|b_no_loop"
+      attr(breakcond,"v_pot4improv") <- .pot4improv("v", sXaug, gainratio_grad=zInfo$gainratio_grad, seq_n_u_h)
       break
     } #  =: single call to .calc_APHLs_from_ZX to only fit v_h for the input beta_eta.
-    if (is.null(pot4improv)) { # test run many times, may be true only the first time
-      switch(which_LevMar_step,
-             "v_b"= {
-               pot4improv <- get_from_MME(sXaug=sXaug, which="Mg_solve_g", B=zInfo$gainratio_grad) # 0 at full solution (althoug B is not full gradient everywhere)
-               loc_pot_tol <- processed$spaMM_tol$b_pot_tol
-             },
-             "v"= {
-               pot4improv <- get_from_MME(sXaug=sXaug, which="Mg_invH_g", B=zInfo$gainratio_grad[seq_n_u_h])  # 0 on the manifold
-               loc_pot_tol <- processed$spaMM_tol$v_pot_tol
-             },
-             "b"= { 
-               B=zInfo$gainratio_grad[-seq_n_u_h]
-               if (length(B)) {
-                 pot4improv <- get_from_MME(sXaug=sXaug, which="Mg_invXtWX_g", B=B) # hum not 0 zero at full solution (bc using only block of matrix) nor at hlik maximum (since B has full logdet gradient) 
-               } else pot4improv <- 0
-               loc_pot_tol <- processed$spaMM_tol$b_pot_tol
-             }, 
-             "b_&_v_in_b"= {
-               pot4improv <- get_from_MME(sXaug=sXaug, which="Mg_solve_g", B=zInfo$gainratio_grad) # again, 0 at full solution
-               loc_pot_tol <- processed$spaMM_tol$b_pot_tol
-             },
-             "b_from_v_b"= {
-               pot4improv <- get_from_MME(sXaug=sXaug, which="Mg_solve_g", B=zInfo$gainratio_grad) # again, 0 at full solution
-               loc_pot_tol <- processed$spaMM_tol$b_pot_tol
-             }
-      )
+    if (first_it) { # test run many times, may be true only the first time
+      pot4improv <- .pot4improv(which_LevMar_step, sXaug, gainratio_grad=zInfo$gainratio_grad, seq_n_u_h)
+      loc_pot_tol <- .loc_pot_tol(which_LevMar_step, processed$spaMM_tol)
       if (is.null(low_pot)) low_pot <- (pot4improv < loc_pot_tol) 
     } # else ... would be highly suspect here; at this point, loc_pot_tol (necess to assess "stuck_obj") must be available
     if (low_pot) { # keeping the low_pot condition may be important for the "605" tests. We may always suppress it by the spaMM.options.
       very_low_pot <- (pot4improv < loc_pot_tol/10)
+      breakcond <- "low_pot"
+      attr(breakcond, "pot4improv") <- pot4improv
+      attr(breakcond, "very_low_pot") <- very_low_pot
       if (processed$HL[1L]==1L && which_LevMar_step=="v_b") {
-        v_pot4improv <- get_from_MME(sXaug=sXaug, which="Mg_invH_g", B=zInfo$gainratio_grad[seq_n_u_h])
-        breakcond <- structure("low_pot", pot4improv=pot4improv, very_low_pot=very_low_pot,
-                               no_overfit = (v_pot4improv < processed$spaMM_tol$v_pot_tol))
-      } else breakcond <- structure("low_pot", pot4improv=pot4improv, very_low_pot=very_low_pot)
+        v_pot4improv <- .pot4improv("v", sXaug, gainratio_grad=zInfo$gainratio_grad, seq_n_u_h)
+        attr(breakcond, "no_overfit") <- ((v_pot4improv < processed$spaMM_tol$v_pot_tol))
+      } 
       break
     } 
     ## ELSE
@@ -264,34 +217,37 @@
       breakcond <- "OK_gain"
       break 
     } 
-    if ( dampingfactor>4 ## ie at least 2 iteration of the while() => prev_conv_logL is available
-                && conv_logL <1e-8 && abs(prev_conv_logL) <1e-8 
-                && gone_thru_mini ## has gone through 1e-7, # handles the cases where we started with too high damping 
-    ) { 
-      breakcond <- "stuck_obj"
-      break   ##   cases were we do not expect any significant improvement
-    } 
-    if ( (! gone_thru_mini) &&  # condition to avoid infinite loop when gainratio remains <0 for arbitrarily large damping
-                #conv_logL < 1e-9 # not useful as this may mean e were borderline making progress
-         # in which case we should damp further! low_pot is not instructive bc it must be FALSE when we reach here. Another indicator of potential is:
-         denomGainratio<loc_pot_tol/10
-                ) { 
+
+    if (
+      conditionNS_for_restart <-  (
+        initdamping>1e-7 &&
+        ( ! restarted_at_e_7 ) &&
+        denomGainratio<loc_pot_tol/10
+      )
+    ) { # then restart 
       damping <- 1e-7
       dampingfactor <- 2
-      gone_thru_mini <- TRUE
+      restarted_at_e_7 <- TRUE
       prev_gainratio <- -Inf
       if (trace) cat("-")
       # and continue 
+    } else if ( restarted_at_e_7 && ## has gone through 1e-7, # handles the cases where we started with too high damping 
+                (( odd_condition <- (dampingfactor>4 && ## ie at least 2 iteration of the while() => prev_conv_logL is available
+                                     conv_logL <1e-8 && abs(prev_conv_logL) <1e-8)) || # possible reason for odd_condition is truely stuck because of "COMPoisson" reasons?
+                 damping>initdamping)
+    ) { # restarted && damping>init must be a sufficient condition for break
+      breakcond <- "stuck_obj"
+      break   ##   cases were we do not expect any significant improvement
     } else { ## other UNsuccessful step
       prev_gainratio <- gainratio
       prev_conv_logL <- conv_logL
       damping <- damping*dampingfactor
       dampingfactor <- dampingfactor*2
-      if (damping>1e100) { # endpoint for large negative gainratio (i.e. v overfit as starting point)
+      if (damping>1e10) { # endpoint for large negative gainratio (i.e. v overfit as starting point) => ___F I X M E___ do something clever in that case ?
         breakcond <- "div_damp"
         break 
       }
-    } 
+    }
     first_it <- FALSE # : skipped if break in first iteration
   } ################# end while(TRUE)
   if (Trace && ! is.null(v_infer_args)) {
@@ -318,14 +274,15 @@
     APHLs_args$which <- processed$p_v_obj # "p_v" # 
     newAPHLs <- do.call(".calc_APHLs_from_ZX", APHLs_args) 
   }
-  RESU <- list(lik=newlik, APHLs=newAPHLs, damping=structure(damping,names=which_LevMar_step), 
+  #names(damping) <- which_LevMar_step
+  RESU <- list(lik=newlik, APHLs=newAPHLs, damping=damping, 
                sXaug=newsXaug, fitted=fitted, 
                eta=newmuetablob$sane_eta, muetablob=newmuetablob, wranefblob=newwranefblob,
                breakcond=breakcond, 
                v_h=v_h, u_h=u_h, w.resid=neww.resid, weight_X=newweight_X)
-  if ( ! first_it) { # if not break in first iteration
-    RESU$conv_logL_not_first_it <- conv_logL
-  }
+  # if ( ! first_it) { # if not break in first iteration
+  #   RESU$conv_logL_not_first_it <- conv_logL
+  # }
   if ( ! GLMMbool ) {
     RESU$ZAL_scaling <- newZAL_scaling
     RESU$Xscal <- newXscal ## newXscal contains ZAL with new scaling, but (as for any Xscal) independent from weight_X since weight_X is applied only locally in the mMatrix_method.
@@ -474,8 +431,10 @@
   
   ##### initial sXaug
   ZAL_scaling <- 1/sqrt(wranefblob$w.ranef*H_global_scale) ## Q^{-1/2}/s
-  Xscal <- .make_Xscal(ZAL, ZAL_scaling = ZAL_scaling, AUGI0_ZX=processed$AUGI0_ZX, as_matrix=.eval_as_mat_arg(processed))
-  if (inherits(Xscal,"Matrix")) { # same type as ZAL
+  Xscal <- .make_Xscal(ZAL, ZAL_scaling = ZAL_scaling, processed=processed, as_matrix=.eval_as_mat_arg(processed))
+  if (inherits(Xscal,"Matrix")) { # same type as ZAL in normal use. But if QRmethod were changed betwwen preprocessing and here (from sparse to dense, say), ./.
+    #    Xscal would still get the type of AUGI0_ZX$I and $Zero_sparseX (sparse) rather than that of ZAL (dense) ./. 
+    # where AUGI0_ZX comes from .preprocess -> .init_AUGI0_ZX(.,as_mat=.eval_as_mat_arg(processed))
     mMatrix_method <- .spaMM.data$options$Matrix_method
     attr(Xscal,"AUGI0_ZX") <- processed$AUGI0_ZX # for .sXaug_Matrix_cholP_scaled() (allows and controls .updateCHM...);
                                                  # Typically an envir, but see int_sXaug hack. Should itself contain an $envir.
@@ -551,7 +510,7 @@
             # BUT the  optim_LevM's (update(br$fullfit,fixed=... test shows one should keep using "v_b" here.
             # otherwise "!LM" differs (and is poorer) from LevM=TRUE (which indeed starts from "v_b")
             # However, it's not clear why "V_IN_B" is poorer (and it's not the step on which the loop terminates)  => _F I X M E_ 
-            from_good_v_b <- FALSE
+            strictv_parent_info <- c(from=which_LevMar_step, breakcond="")
             rescue_thr <- processed$spaMM_tol$rescue_thr
             rescue_nbr <- 0L
             prev1_rescued <- FALSE
@@ -637,41 +596,52 @@
           rescue_nbr <- rescue_nbr + 1L
           old_relV_beta <- relV_beta 
           if (prev1_rescued || rescue_nbr > rescue_thr["V_IN_B"]) {
-            which_LevMar_step <- "V_IN_B"
+            which_LevMar_step <- "V_IN_B" # # [yellow [cyan .cyan .....ul green...
           } else which_LevMar_step <- "v_b" 
         } else if (which_LevMar_step=="v_b" || which_LevMar_step=="b_from_v_b" ) { 
           if (rescue_nbr > rescue_thr["strictv"]  &&  #rescue has been previously needed in the outer loop
-               damped_WLS_blob$breakcond != "low_pot" ## in particular, if OK_gain, we play safer if we know a problem occurred previously
+              damped_WLS_blob$breakcond != "low_pot" ## in particular, if OK_gain, we play safer if we know a problem occurred previously
+                                                      ## "stuck_obj" occurs here too...
           ) { 
+            strictv_parent_info <- c(from=which_LevMar_step, breakcond=damped_WLS_blob$breakcond)
             which_LevMar_step <- "strict_v|b" # 
-            from_good_v_b <- TRUE
             # } else if (max(abs(m_grad_v)) > max(abs(old_m_grad_v))) which_LevMar_step <- "v" # test is fausse bonne idee...
-          } else which_LevMar_step <- "v"
+          } else {
+            v_parent_info <- c(from=which_LevMar_step, breakcond=damped_WLS_blob$breakcond)
+            which_LevMar_step <- "v" # standard switch from yellow to underlined cyan. It is generally not a good idea to switch immediately to "V_IN_B" 
+            v_iter <- 0L
+          }
         } else if (which_LevMar_step=="v") {
           if (damped_WLS_blob$breakcond == "low_pot") { ## LevMar apparently maximized h wrt v after several iterations
             #cat(damped_WLS_blob$breakcond)
             old_relV_beta <- relV_beta ## serves to assess convergence !!! which is thus dependent on condition ( hlik_stuck || ! need_v_step)
             which_LevMar_step <- default_b_step # We should not reach this line when RHS is "v_in_b"
           } else {
-            ## v_h estimation not yet converged, continue with it
+            v_iter <- v_iter+1L
+            # Series of "v" are series of small gains ("OK_gain"). seen in test_negbin_difficult, not in test nloptr nor COMPoisson.
+            # Assuming a geometric gain we could estimate their time until lowpot is reached
+            #  and determine from it the condition for switching: (tried: this fails massively)
+            if (v_iter>10L && pforpv) which_LevMar_step <- "V_IN_B" # [yellow [cyan .cyan .....ul green... Ie a [[v_h_IRLS]+probable beta updating]
           }
         } else if (which_LevMar_step=="strict_v|b") {
           old_relV_beta <- relV_beta 
-          if (from_good_v_b) { # strictv was called after a v_b (which implies that rescue was not just called)
+          if (strictv_parent_info[["from"]] %in% c("v_b","b_from_v_b" )
+              && strictv_parent_info[["breakcond"]] !="lowpot") { # (which implies that rescue was not just called)
             which_LevMar_step <- "v_b"
           } else { # strictv was called after V_IN_B (!)
             if (rescue_nbr > rescue_thr["re_V_IN_B"]) {
               which_LevMar_step <- "V_IN_B"
             } else which_LevMar_step <- "v_b"  
           }
-          #which_LevMar_step <- "V_IN_B" # sequence "v_b" -> "low_pot" -> "strict_v|b"
         } else if (which_LevMar_step=="V_IN_B") { 
+          ## .wrap_do_damped_WLS_outer(which_LevMar_step=="V_IN_B") has run .do_damped_WLS_outer(which_LevMar_step=="b_&_v_in_b") ie.
+          ## a damping loop of {a beta updating followed by a v_h_IRLS}'s. We assess the resulting breakcond.
           breakcond <- damped_WLS_blob$breakcond
           if (breakcond=="stuck_obj" || breakcond=="div_gain") {
+            strictv_parent_info <- c(from=which_LevMar_step,breakcond=breakcond)
             which_LevMar_step <- "strict_v|b" # the call to "strict_v|b" may seem odd but results in clean optim
             #If we did that in the wrap... then we would next compare two identical "strict_v|b" 
-            from_good_v_b <- FALSE
-          } else {
+          } else { # a good breakcond MAY result in switching back to v_b
             old_relV_beta <- relV_beta 
             if (rescue_nbr > rescue_thr["re_V_IN_B"]) {
               which_LevMar_step <- "V_IN_B"
@@ -680,12 +650,17 @@
         } else if (default_b_step=="v_in_b") { # presumably not used
           old_relV_beta <- relV_beta
         } else { ## "b" or any unanticipated case # presumably not used 
-          # as v_b cas:
+          warning("Unexpected case in .solve_IRLS_as_ZX(): please contact the package maintainer.")
+          # as v_b case:
           if (rescue_nbr > rescue_thr["strictv"] &&  #rescue has been previously needed in the outer loop
-              damped_WLS_blob$breakcond != "low_pot") { #rescue has been previously needed in the outer loop
-            which_LevMar_step <- "strict_v|b" # yet we play safer if we know a problem ocurred previously
-            from_good_v_b <- TRUE
-          } else which_LevMar_step <- "v" # yet we play safer if we know a problem ocurred previously
+              damped_WLS_blob$breakcond != "low_pot") { 
+            strictv_parent_info <- c(from=which_LevMar_step,breakcond=damped_WLS_blob$breakcond)
+            which_LevMar_step <- "strict_v|b" 
+          } else {
+            v_parent_info <- c(from=which_LevMar_step, breakcond=damped_WLS_blob$breakcond)
+            which_LevMar_step <- "v" 
+            v_iter <- 0L
+          }
         }
         prev1_rescued <- just_rescued 
       } 
@@ -715,6 +690,7 @@
           1 } else {processed$spaMM_tol$loose_fac},
         low_pot=NULL ## explicit for clarity, but its the default
       ) 
+
       #old_m_grad_v <- m_grad_v
       #damping_barring_rescue <- damped_WLS_blob$damping
       #cat(crayon::yellow(paste0(names(damping_barring_rescue),"=",damping_barring_rescue[[1]])))
@@ -728,17 +704,8 @@
           # found and floating point inaccuracies matter. We try to exclude the second case by the following test: 
           if ( ! ((breakcond <- damped_WLS_blob$breakcond)=="low_pot" && attr(breakcond,"very_low_pot"))) {
             damped_WLS_blob <- NULL
-            beta_cov_info <- get_from_MME(sXaug,which="beta_cov_info_from_sXaug")
-            if ((current_kappa <- kappa(tcrossprod(beta_cov_info$tcrossfac_beta_v_cov)))>1e08) {
-              processed$envir$PQLdivinfo$high_kappa$ranFixes <- c(processed$envir$PQLdivinfo$high_kappa$ranFixes,
-                                                                  list(processed$envir$ranFix))
-            } else {
-              # "unknown" : ideally this does not occur, if previous tests such a pot_tol checks provide explanations
-              # But if this occurs, there are several other possible things to check:
-              # check damping value ? provide info about hlik difference and about breakcond ?
-              processed$envir$PQLdivinfo$unknown$ranFixes  <- c(processed$envir$PQLdivinfo$unknown$ranFixes,
-                                                                     list(processed$envir$ranFix))
-            } 
+            .diagnose_conv_problem_LevM( beta_cov_info=get_from_MME(sXaug,which="beta_cov_info_from_sXaug"), 
+                                         w.resid, processed) # writes into 'processed'
             wzAug <- c(zInfo$y2_sscaled/ZAL_scaling, (zInfo$z1_sscaled)*weight_X)
             Vscaled_beta <- get_from_MME(sXaug,szAug=wzAug) # vscaled= v scaling so that v has 'scale' * ZAL_scaling
             if (TRUE) { # not clear what is best here
@@ -795,6 +762,7 @@
         if (LevenbergM) {
           processed$LevenbergM["LM_start"] <- TRUE # _F I X M E_ think again
         } ## but by default the local 'LevenbergM' is FALSE and will not become true until divergence is detected
+        # print(c(which_LevMar_step,damped_WLS_blob$breakcond))
         if (trace) {
           cat(crayon::red("!"))
         } else if ( ! identical(processed$warned_maxit_mean, TRUE)) {
@@ -806,6 +774,7 @@
       }
       break
     } else {    
+      # if (innerj==maxit.mean-1L)  cat(crayon::yellow(c(which_LevMar_step,damped_WLS_blob$breakcond))) # browser()
       relV_beta <- c(v_h*sqrt(wranefblob$w.ranef),beta_eta)  ## convergence on v_h relative to sqrt(w.ranef)
       abs_d_relV_beta <- abs(relV_beta - old_relV_beta) ## for ML, comparison between estimates when ( hlik_stuck || ! need_v_step )
       ## abs_d_relV_beta is needed outside this block, and old_relV_beta updated after v_h updating.
@@ -844,6 +813,19 @@
         if (is_HL1_1) {
           if ( which_LevMar_step=="v_b" && damped_WLS_blob$breakcond=="low_pot" && attr(damped_WLS_blob$breakcond,"no_overfit")) {
             break # motivated by BINARYboot (e.g., replicate 362)
+          } else if ( which_LevMar_step=="v" && 
+                      v_parent_info[["breakcond"]]=="low_pot" ## essential condition; otherwise poor fits (eg test-nloptr # 422 p_v_out_def   ) 
+                      && damped_WLS_blob$breakcond=="low_pot") {
+            break 
+          } else if ( which_LevMar_step=="v_b" && 
+                      damped_WLS_blob$breakcond=="stuck_obj" ) { 
+            # not an obvious termination condition, but seems OK following "v"&&"low_pot" (and stops the alternation between these two states)
+            break # this case occurs in the test-nloptr tests
+          } else if ( which_LevMar_step=="strict_v|b" && 
+                      # => so that the $breakcond is { "v|b_no_loop" (i.e. no damping loop in this case), with "v_pot4improv" attribute tested next:} 
+                      strictv_parent_info[["breakcond"]]=="stuck_obj" && # we don't test "low_pot" here bc this case does not occur according to previous code
+                      attr(damped_WLS_blob$breakcond,"v_pot4improv")<1e-10) {
+            break # this case occurs in the test-nloptr tests
           } else if ( which_LevMar_step =="V_IN_B" && damped_WLS_blob$breakcond=="low_pot") {
             # I could further test attr(damped_WLS_blob$breakcond,"very_low_pot") here
             break # motivated by poisson 'smaller' fit in test_COMPoisson_difficult with control.HLfit=list(max.iter.mean=1000),

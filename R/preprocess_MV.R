@@ -56,7 +56,7 @@
         if ( is.null(rand_families[[rd]])) {
           rand_families[[rd]] <- newfam
         } else if ( ! identical(rand_families[[rd]],newfam, ignore.environment=TRUE)) { 
-          stop("Conflicting families for random effect term shared accross models.")
+          stop("Conflicting families for random effect term shared across models.")
         }
       }
     }
@@ -344,8 +344,8 @@
       type_it <- attr(exp_barlist_it, 'type')
       names(exp_barlist_it) <- map_rd_mv[[mv_it]][names(exp_barlist_it)]
       names(type_it) <- map_rd_mv[[mv_it]][names(type_it)]
-      exp_barlist <- structure(.modify_list(exp_barlist, exp_barlist_it),
-                               type=.modify_list(attr(exp_barlist, 'type'), type_it))
+      exp_barlist <- .modify_list(exp_barlist, exp_barlist_it)
+      attr(exp_barlist,"type") <- .modify_list(attr(exp_barlist, 'type'), type_it)
     }
   }
   exp_barlist
@@ -552,7 +552,7 @@
   namedlist <- structure(vector("list",nmodels), names=seq_len(nmodels))
   ### Fill lists for further processing:
   unmerged <- predictors <- families <- prior.weights <- clik_fns <- phiFixs <- Ys <- pS_fixef_phi <- namedlist
-  AMatrices <- adjMatrices <- corrMatrices <- fixef_off_termsS <- fixef_termsS <- fixef_levelsS <- validrownames <- namedlist
+  AMatrices <- adjMatrices <- corrMatrices <- corrFamInfos <- fixef_off_termsS <- fixef_termsS <- fixef_levelsS <- validrownames <- namedlist
   for (mv_it in seq_len(nmodels)) {
     unmerged[[mv_it]] <- calls_W_processed[[mv_it]][["processed"]]
     predictors[[mv_it]] <- unmerged[[mv_it]][["predictor"]]
@@ -569,6 +569,7 @@
     AMatrices[mv_it] <- list(corr_info_it$AMatrices)
     adjMatrices[mv_it] <- list(corr_info_it$adjMatrices)
     corrMatrices[mv_it] <- list(corr_info_it$corrMatrices)
+    corrFamInfos[mv_it] <- list(corr_info_it$corrFamInfos)
     # corr_info_it also has ""corr_families" "corr_types""cov_info_mats" "G_diagnosis"
     pS_fixef_phi[[mv_it]] <- unmerged[[mv_it]][["p_fixef_phi"]] 
     #geo_infos[mv_it] <- list(unmerged[[mv_it]][["geo_info"]]) # each geo_info is a ranef-list of environments,  ou NULL; le list() est pourle second cas
@@ -683,7 +684,7 @@
   if (is.null(augZXy_cond_inner)) augZXy_cond_inner <- TRUE ## for .makeCovEst1()
   if (augZXy_cond_inner) augZXy_cond_inner <-   LMMbool
   if (augZXy_cond_inner) augZXy_cond_inner <- ( is.null(merged_X.Re) || ! ncol(merged_X.Re)) ## exclude non-standard REML (avoiding NCOL(NULL)=1)
-  merged$augZXy_cond <- structure(FALSE, inner=augZXy_cond_inner) # augZXy_cond would impose a unique phi accross submodels
+  merged$augZXy_cond <- structure(FALSE, inner=augZXy_cond_inner) # augZXy_cond would impose a unique phi across submodels
   #
   attr(phi_models,"anyHGLM") <- any(phi_models=="phiHGLM")
   models[["phi"]] <- phi_models # som 'models' is a list whose element 'phi' is a vector
@@ -771,6 +772,7 @@
     corr_info$corrMatrices <- .merge_mv_list(corrMatrices, merged, ZAlist=ZAlist, full=TRUE) 
     corr_info$adjMatrices <- .merge_mv_list(adjMatrices, merged, ZAlist=ZAlist, full=TRUE)
     corr_info$AMatrices <- .merge_mv_list(AMatrices, merged, ZAlist=ZAlist, full=TRUE)
+    corr_info$corrFamInfos <- .merge_mv_list(corrFamInfos, merged, ZAlist=ZAlist, full=TRUE)
     ## for (mult)IMRF:
     ## HLCor_body -> .assign_geoinfo_and_LMatrices_but_ranCoefs() expects attr(processed$ZAlist, "AMatrices")
     ## Otherwise it may stop on  .............................................. -> .calc_IMRF_Qmat()
@@ -792,6 +794,10 @@
     #
     # "cov_info_mats" will be provided by .init_assign_geoinfo(), and "G_diagnosis" is computed when needed
     ####### 
+    # if (any(exp_ranef_types== "corrFamily") && is.null(control.HLfit$algebra)) {
+    #   message("No control.HLfit$algebra specified: it is set to 'spcorr' by default.") 
+    #   control.HLfit$algebra <- "spcorr"
+    # } 
     #
     # Using corr_info:
     merged$control_dist <- .preprocess_control.dist(control.dist, corr_info$corr_types)
@@ -887,7 +893,9 @@ fitmv <- function(submodels, data, fixed=NULL, init=list(), lower=list(), upper=
   assign("spaMM_glm_conv_crit",list(max=-Inf) , envir=environment(spaMM_glm.fit))
   time1 <- Sys.time()
   oricall <- match.call(expand.dots=TRUE) ## mc including dotlist
-  oricall$control.HLfit <- eval(oricall$control.HLfit, parent.frame()) # to evaluate variables in the formula_env, otherwise there are bugs in waiting 
+  oricall$"control.HLfit" <- eval(oricall$control.HLfit, parent.frame()) # to evaluate variables in the formula_env, otherwise there are bugs in waiting
+  # where oricall[["control.HLfit"]] <- ... wouldn't work when 'control.HLfit' was absent. Same for 'fixed'
+  oricall$"fixed" <- .preprocess_fixed(fixed)
   n_models <- length(submodels) # so the promise is already evaluated here...
   calls_W_processed <- fixedS <- vector("list",n_models)
   for (mv_it in seq_along(calls_W_processed)) { # call .preprocess() on each submodel
@@ -895,7 +903,7 @@ fitmv <- function(submodels, data, fixed=NULL, init=list(), lower=list(), upper=
     call_["submodels"] <- NULL # so that it remains in call_ the arguments others than mv.
     ## I need to match the names of mv[[mit]] to those of a fitme call to make sure that they all named...
     call_["fixed"] <- NULL ## so that the lambda fixing (in particular) is not the default value for each processed call
-    ## *** global arguments => avoid to mix thenm with local arguments 
+    ## *** global arguments => avoid mixing them with local arguments 
     ##     (although this is stricly necessary only for covStruct since...) ***  
     call_["corrMatrix"] <- NULL # not strictly necess since single matrix so never a problem of matching ranefs: The global corrMatrix is a locally usable corrMatrix, 
     call_["adjMatrix"] <- NULL # not strictly necess ... same comment...
@@ -969,6 +977,7 @@ fitmv <- function(submodels, data, fixed=NULL, init=list(), lower=list(), upper=
   fixedS <- lapply(fixedS, .reformat_parlist, processed = merged)
   fixedS <- .merge_mv_parlist(fixedS, merged) # now fixedS is a single parlist from the  sub-models specifications
   fixedS <- .modify_list(fixedS,fixed) # now fixedS is a single parlist from both sub-model and global specifications
+  fixedS <- .preprocess_fixed(fixedS)
   #fixed <- .canonizeRanPars(ranPars=fixed,corr_info=merged$corr_info, checkComplete = FALSE, rC_transf=.spaMM.data$options$rC_transf)
   # These infos are ultimately used by summary() to distinguish "fix" from outer "var":
   merged[["lambda.Fix"]] <- .reformat_lambda(.getPar(fixed,"lambda"), nrand=length(merged$ZAlist), 
@@ -981,7 +990,7 @@ fitmv <- function(submodels, data, fixed=NULL, init=list(), lower=list(), upper=
   merged$ranCoefs_blob <- .process_ranCoefs(merged, ranCoefs, use_tri_CORREL=TRUE) 
   merged$AUGI0_ZX$envir$finertypes[merged$ranCoefs_blob$isRandomSlope] <- "ranCoefs" 
   #
-  mc["fixed"] <- oricall["fixed"]
+  ##   mc["fixed"] <- oricall["fixed"] # Not used AFAICS
   mc["upper"] <- oricall["upper"]
   mc["lower"] <- oricall["lower"]
   mc["control"] <- oricall["control"]

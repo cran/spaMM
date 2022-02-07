@@ -19,7 +19,7 @@ Tpoisson(link="log")
   log, sqrt or identity link, specified by any of the available ways for GLM links (name, character string, one-element character vector, or object of class \code{link-glm} as returned by \code{\link[stats]{make.link}}). 
 }
   \item{trunc}{
-  Either \code{0L} for zero-truncated distribution, or \code{-1L} for default untruncated dsitribution.
+  Either \code{0L} for zero-truncated distribution, or \code{-1L} for default untruncated distribution.
   }
   \item{eta,mu}{Numeric (scalar or array). The linear predictor; and the expectation of response, truncated or not depending on \code{mu_truncated} argument. }
   \item{mu_truncated}{Boolean. For \code{linkinv}, whether to return the expectation of truncated (\eqn{\mu_T}) or un-truncated (\eqn{\mu_U}) response. For \code{linkfun}, whether the \code{mu} argument is \eqn{\mu_T}, or is \eqn{\mu_U}  but has \eqn{\mu_T}  as attribute (\eqn{\mu_U} without the attribute is not sufficient). }

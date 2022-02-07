@@ -5,6 +5,8 @@ data(scotlip)
 fitT <- fitme(I(1+cases)~1+(1|id),family=Tnegbin(),fixed=list(lambda=0.1),data=scotlip)
 fitTf <- fitme(I(1+cases)~1+(1|id),family=Tnegbin(get_inits_from_fit(fitT)$init$NB_shape),fixed=list(lambda=0.1),data=scotlip) 
 testthat::expect_equal(logLik(fitT),logLik(fitTf),tol=1e-6) ## difference may detect error in .get_clik_fn() -> aic()  
+fitTf <- fitme(I(1+cases)~1+(1|id),family=Tnegbin(get_inits_from_fit(fitT)$init$NB_shape+0.1),fixed=list(lambda=0.1),data=scotlip) 
+testthat::expect_equal(residVar(fitTf, which="fam_parm"),get_inits_from_fit(fitT)$init$NB_shape+0.1,tol=1e-6) ## to check proper handling of shape= <call>  
 
 fit1 <- glm(I(1+cases)~1,family=Tpoisson(),data=scotlip)
 fit2 <- fitme(I(1+cases)~1+(1|id),family=Tpoisson(),fixed=list(lambda=1e-8),data=scotlip)

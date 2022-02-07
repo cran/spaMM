@@ -108,7 +108,7 @@
 }
 
 .calc_ZAlist_newdata <- function(object, newdata) {
-  # we simulate with all ranefs (treated conditionnally|ranef or marginally) hence 
+  # we simulate with all ranefs (treated conditionally|ranef or marginally) hence 
   # * we need design matrices for all ranefs
   # * we need values of all the original variables
   # hence we use an "## effective '.noFixef'" : formula with only ranefs of the fit. But 1st version fails for mv; second may be more straightforward anyway
@@ -280,7 +280,7 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
         # eta_fixed <- .eta_linkfun(mu_fixed, object$family, object$families)
         eta_fixed <- predict(object, newdata=newdata, type="link",
                              re.form=re.form,binding=NA,control=list(fix_predVar=FALSE), verbose=verbose)
-        if (is.null(newdata)) { ## we simulate with all ranefs (treated conditionnally|ranef or marginally) hence no selection of matrix
+        if (is.null(newdata)) { ## we simulate with all ranefs (treated conditionally|ranef or marginally) hence no selection of matrix
           ZAL <- get_ZALMatrix(object, force_bind = ! ("AUGI0_ZX_sparsePrecision" %in% object$MME_method) )
           cum_n_u_h <- attr(object$lambda,"cum_n_u_h")
           vec_n_u_h <- diff(cum_n_u_h)
@@ -331,7 +331,7 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
                       phi_type=phi_type, needed=needed, 
                       prior.weights=prior.weights) # phiW is always a matrix
     # up to version 3.5.49, there was ad hoc code calling COMPoisson()$simulate(object, nsim=nsim) when 
-    #    the mu and phi vectors are constant accross the nsim simulations, 
+    #    the mu and phi vectors are constant across the nsim simulations, 
     #    to avoid computing the distribution (cumprodfacs in .COMP_simulate()) nsim times.
     # The updated .r_resid_var() -> appears to manage that too (without calling COMPoisson()$simulate()), 
     #  .r_resid_var_over_cols() too (a distinct issue is that multivariate mu may loose the (COMP)-lambda attribute: __FIXME__?)

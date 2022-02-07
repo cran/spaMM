@@ -23,7 +23,7 @@ Tnegbin(shape = stop("negbin's 'shape' must be specified"), link = "log")
   log, sqrt or identity link, specified by any of the available ways for GLM links (name, character string, one-element character vector, or object of class \code{link-glm} as returned by \code{\link[stats]{make.link}}). 
 }
   \item{trunc}{
-  Either \code{0L} for zero-truncated distribution, or \code{-1L} for default untruncated dsitribution.
+  Either \code{0L} for zero-truncated distribution, or \code{-1L} for default untruncated distribution.
   }
 }
 \details{

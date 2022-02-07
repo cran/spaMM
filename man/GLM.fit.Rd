@@ -8,7 +8,7 @@
 \title{Fitting generalized linear models without initial-value or divergence headaches}
 \description{
 \code{spaMM_glm.fit} is a stand-in replacement for \code{glm.fit}, which can be called through \code{glm} by using
-\code{glm(<>, method="spaMM_glm.fit")}. Input and output structure are exactly as for \code{glm.fit}. It uses a Levenberg-Marquardt algorithm to prevent divergence of estimates. If the rcdd package is installed, the function can automatically find valid starting values or else indicate that no parameter value is feasible.
+\code{glm(<>, method="spaMM_glm.fit")}. Input and output structure are exactly as for \code{glm.fit}. It uses a Levenberg-Marquardt algorithm to prevent divergence of estimates. For models families such as \code{Gamma()} (with default inverse link) where the linear predictor is constrained to be positive, if the \pkg{rcdd} package is installed, the function can automatically find valid starting values or else indicate that no parameter value is feasible. It also automatically provides good starting values in some cases where the base functions request them from the user (notably, for \code{gaussian(log)} with some negative response). 
 \code{spaMM_glm} is a convenient wrapper, calling \code{glm} with default method \code{glm.fit}, then calling method \code{spaMM_glm.fit}, with possibly different initial values, if \code{glm.fit} failed.
 }
 \usage{
@@ -128,6 +128,19 @@ if ( ! inherits(check_error,"try-error")) stop("glm(.) call unexpectedly succeed
 if (requireNamespace("rcdd",quietly=TRUE)) {
   spaMM_glm(y~ x,data=data.frame(x,y),family=Gamma())
 }
+
+## A simple exponential regression with negative response values
+
+set.seed(123)
+x <- seq(50)
+y <- exp( -0.1 * x) + rnorm(50, sd = 0.1)
+glm(y~ x,data=data.frame(x,y),family=gaussian(log), method="spaMM_glm.fit")
+
+# => without the 'method' argument, stats::gaussian(log)$initialize() is called 
+# and stops on negative response values. 
+
+
+
 }
 \keyword{models}
 \keyword{regression}

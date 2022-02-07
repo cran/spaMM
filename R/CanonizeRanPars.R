@@ -57,14 +57,8 @@
     # This bears the cost of optimizing in more dimensions (of trRancoefs) than there are independent parameters,
     # But is simple, in particular as there is no simple way of expressing the constraint in transformed space.
     ranPars$ranCoefs <- trRanCoefs ## copies the non-trivial names
-    for (char_rd in names(trRanCoefs)) {
-      ranCoef <- .ranCoefsInv(trRanCoefs[[char_rd]], rC_transf=rC_transf)
-      if ( ! is.null(constraint <- constraints[[char_rd]])) {
-        ranCoef[ ! is.na(constraint)] <- constraint[ ! is.na(constraint)]
-        attr(ranCoef,"transf") <- NULL
-      }
-      ranPars$ranCoefs[[char_rd]] <- ranCoef
-    }
+    for (char_rd in names(trRanCoefs)) ranPars$ranCoefs[[char_rd]] <- 
+      .constr_ranCoefsInv(trRanCoef=trRanCoefs[[char_rd]], constraint=constraints[[char_rd]], rC_transf=rC_transf)
     ranPars$trRanCoefs <- NULL
   }
   if ( ! is.null(ranPars$trNB_shape)) {

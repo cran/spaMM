@@ -36,7 +36,8 @@ spaMM.getOption <- function (x) {spaMM.options(x, warn=FALSE)[[1]]}
                         ") is loaded.", 
     "\nType 'help(spaMM)' for a short introduction,",
     "\n'news(package='spaMM')' for news,",
-    "\nand 'citation('spaMM')' for proper citation.")
+    "\nand 'citation('spaMM')' for proper citation.",
+    "\nFurther infos, slides, etc. at https://gitlab.mbb.univ-montp2.fr/francois/spamm-ref.\n")
   #unlockBinding(".SpaMM", asNamespace("spaMM")) ## required when a .SpaMM list was used instead of an envir
   
 }

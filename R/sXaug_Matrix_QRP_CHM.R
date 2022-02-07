@@ -7,7 +7,7 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
   ## "Assignment of submatrices in a sparse matrix can be slow because there is so much checking that needs to be done."
   Xaug <- .Dvec_times_Matrix_lower_block(weight_X,Xaug,n_u_h)
   attr(Xaug, "get_from") <- "get_from_MME.sXaug_Matrix_QRP_CHM_scaled"
-  attr(Xaug, "BLOB") <- list2env(list(), parent=environment(.sXaug_Matrix_QRP_CHM_scaled))
+  attr(Xaug, "BLOB") <- list2env(list(), parent=baseenv())
   attr(Xaug, "w.ranef") <- w.ranef
   attr(Xaug, "n_u_h") <- n_u_h # mandatory for all sXaug types
   attr(Xaug, "pforpv") <- ncol(Xaug)-n_u_h # mandatory for all sXaug types
@@ -72,16 +72,25 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
 #
 .sXaug_Matrix_QRP_CHM_scaled <- function(sXaug,which="",szAug=NULL,B=NULL) {
   BLOB <- attr(sXaug,"BLOB") ## an environment
-  # attr(sXaug,"AUGI0_ZX") is presumably inherited from the Xaug argument of def_sXaug_Matrix_QRP_CHM_scaled
-  # but this may or may not be present (Xaug=Xscal with attr(Xscal,"AUGI0_ZX") <- processed$AUGI0_ZX in .solve_IRLS_as_ZX(),
-  # but not in .solve_v_h_IRLS)
-  # => we cannot generally assume it is present.
-  if (is.null(BLOB$blob)) {
-    BLOB$blob <- qr(sXaug) ##  Matrix::qr
+  # attr(sXaug,"AUGI0_ZX") was always present in in .solve_IRLS_as_ZX(), being inherited from the Xaug argument of def_sXaug_Matrix_QRP_CHM_scaled
+  # but was not present in .solve_v_h_IRLS(). Now it should be always present, so we could use it => so use it eg instead of the .rawsolve()? tried=> BOF)
+  if (is.null(BLOB$QRsXaug)) {
+    BLOB$QRsXaug <- qr(sXaug) ##  Matrix::qr
     # sXaug = t(tQ) %*% R[,sP] but then also sXaug = t(tQ)[,sP'] %*% R[sP',sP] for any sP'
-    BLOB$perm <- BLOB$blob@q + 1L
-    BLOB$R_scaled <- qrR(BLOB$blob,backPermute = FALSE) # crossfac
+    BLOB$perm <- BLOB$QRsXaug@q + 1L
+    BLOB$R_scaled <- qrR(BLOB$QRsXaug,backPermute = FALSE) # crossfac
     ##########################
+    # the promises below have an evaluation environment. E.g.
+    # ls(rlang:::promise_env("Z_lev_phi",BLOB)) lists  "B"        "BLOB"     "sXaug"    "szAug"    "wd2hdv2w" "which"   
+    #              [wd2hdv2 bc CHMfactor_wd2hdv2w promise has been evaluated in BLOB!?]
+    # and 
+    # > rlang::env_parents(rlang:::promise_env("Z_lev_phi",BLOB))
+    # [[1]] $ <env: namespace:spaMM>  # what's defined by spaMM
+    # [[2]] $ <env: imports:spaMM>  # what's imported by spaMM
+    # [[3]] $ <env: namespace:base>
+    # [[4]] $ <env: global> 
+    # but the contents of spaMM namespace... and the global envir are not saved in the object: 
+    # when loaded in another session (with another spaMM version etc), this points to the local versions of all objects  
     delayedAssign("sortPerm", sort.list(BLOB$perm), assign.env = BLOB ) # never NULL
     delayedAssign("seq_n_u_h", seq(attr(sXaug,"n_u_h")), assign.env = BLOB ) # repeatedly used for levM
     delayedAssign("sortPerm_u_h", BLOB$sortPerm[ BLOB$seq_n_u_h], assign.env = BLOB ) # repeatedly used for levM
@@ -149,7 +158,7 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
     delayedAssign("Z_lev_phi", .calc_Z_lev_phi(BLOB, sXaug), assign.env = BLOB )
     
     ##############################
-    if ( ! is.null(szAug)) return(qr.coef(BLOB$blob,szAug))   
+    if ( ! is.null(szAug)) return(qr.coef(BLOB$QRsXaug,szAug))   
   } 
   # In .calc_sscaled_new, I compute the hatval_Z then solve_d2hdv2. 
   # CHMfactor_wd2hdv2w is needed in all cases for solve_d2hdv2.
@@ -166,12 +175,12 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
   if ( ! is.null(szAug)) {
     # if (.is_evaluated("solve_R_scaled", BLOB)) {
       #return((BLOB$solve_R_scaled %*% (BLOB$t_Q_scaled %*% szAug))[BLOB$sortPerm,,drop=FALSE]) 
-      #return((BLOB$solve_R_scaled %*% (Matrix::qr.qty(BLOB$blob,szAug)[seq(ncol(BLOB$solve_R_scaled))]))[BLOB$sortPerm,,drop=FALSE]) 
+      #return((BLOB$solve_R_scaled %*% (Matrix::qr.qty(BLOB$QRsXaug,szAug)[seq(ncol(BLOB$solve_R_scaled))]))[BLOB$sortPerm,,drop=FALSE]) 
     # } else if (.is_evaluated("t_Q_scaled", BLOB)) { 
     # even in that case qr.coef seems faster(cf nested_Matern example: poisson -> Pdiag for gradient calculation -> hatval_Z -> t_Q_scaled is computed)
       #return(solve(BLOB$R_scaled, BLOB$t_Q_scaled %*% szAug)[BLOB$sortPerm,,drop=FALSE]) # => one solve R_scaled for t_Q, one in this line  
     # } else {
-      return(qr.coef(BLOB$blob,szAug)) # avoid t_Q_computation there ## Matrix::qr.coef
+      return(qr.coef(BLOB$QRsXaug,szAug)) # avoid t_Q_computation there ## Matrix::qr.coef
     # }
   }
   # ELSE 
@@ -273,7 +282,7 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
       tmp <- X <- BLOB$R_scaled[ , BLOB$sortPerm] ## crossfac
       tmp@x <- tmp@x*tmp@x
       BLOB$R_scaled_blob <- list(X=X, diag_pRtRp=colSums(tmp), 
-                                 XDtemplate=structure(.XDtemplate(X),upperTri=FALSE))
+                                 XDtemplate=.XDtemplate(X,upperTri=FALSE))
     }
     return(BLOB$R_scaled_blob)
   } 
@@ -288,7 +297,7 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
       tmp@x <- tmp@x*tmp@x
       diag_pRtRp_scaled_v_h <- colSums(tmp)
       BLOB$R_scaled_v_h_blob <- list(R_scaled_v_h=R_scaled_v_h,diag_pRtRp_scaled_v_h=diag_pRtRp_scaled_v_h,
-                                     XDtemplate=structure(.XDtemplate(R_scaled_v_h), upperTri=NA))
+                                     XDtemplate=.XDtemplate(R_scaled_v_h, upperTri=NA))
     }
     return(BLOB$R_scaled_v_h_blob)
   } 
@@ -300,7 +309,7 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
       R_beta <- .lmwithQR(X,yy=NULL,returntQ=FALSE,returnR=TRUE)$R_scaled
       diag_pRtRp_beta <-  colSums(R_beta^2)
       BLOB$R_beta_blob <- list(R_beta=R_beta,diag_pRtRp_beta=diag_pRtRp_beta,  
-                               XDtemplate=structure(.XDtemplate(R_beta), upperTri=TRUE))
+                               XDtemplate=.XDtemplate(R_beta, upperTri=TRUE))
     }
     return(BLOB$R_beta_blob)
   # } else if (which=="sortPerm") { 

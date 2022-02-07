@@ -269,7 +269,15 @@ if (FALSE) {
   } else return(NULL)
 }
 
-# obsolete: there is a  .C_ version of it
+.constr_ranCoefsFn <- function(vec, constraint, rC_transf) {
+  if ( ! is.null(constraint) && attr(constraint,"isDiagFamily")) { # Then vec should be a vector of variances
+    trRancoef <- .dispFn(vec)
+  } else trRancoef <- .ranCoefsFn(vec=vec, rC_transf=rC_transf)
+  trRancoef
+}
+
+
+# obsolete: there is a  .C_ version of it; but may be useful for debugging 
 .calc_cov_from_ranCoef <- function(ranCoef, Xi_ncol=attr(ranCoef,"Xi_ncol")) {
   # assume input is marginal variances + correlation as in user input, but ordered as in lower.tri
   compactcovmat <- matrix(0,nrow=Xi_ncol,ncol=Xi_ncol)
@@ -331,6 +339,22 @@ if (FALSE) {
 }
 # zut <- c(1.0000000,  0.4472136,  0.2672612,  5.0000000,  0.5976143, 14.0000000)
 #(.ranCoefsInv(.ranCoefsFn(zut))[1:6]) # test requires [1:6] otherwise the attribute is used...
+
+.constr_ranCoefsInv <- function(trRanCoef, constraint, rC_transf) {
+  if ( ! is.null(constraint) && attr(constraint,"isDiagFamily")) { # Then vec should be a vector of transformed variances
+    # reconstruct full vector
+    ranCoef <- constraint  # with Xi_ncol attribute too
+    ranCoef[is.na(constraint)] <- .dispInv(trRanCoef)
+    attr(ranCoef,"isDiagFamily") <- FALSE # a full fixed cov matrix is not treated as diag family !
+  } else { # general case allowing other forms of constraint
+    ranCoef <- .ranCoefsInv(trRanCoef, rC_transf=rC_transf)
+    if ( ! is.null(constraint)) {
+      ranCoef[ ! is.na(constraint)] <- constraint[ ! is.na(constraint)]
+      attr(ranCoef,"transf") <- NULL
+    }
+  }
+  ranCoef # with Xi_ncol attribute too
+}
 
 .NB_shapeFn <- function(x) {log(log(1+x))} ## drastic handling of flat likelihoods for high shape= LOW variance. .../...
 # .../... negbin example in gentle intro is a test (using optimize() -> initial value cannot be controlled)
@@ -499,12 +523,16 @@ if (FALSE) {
   if ( ! is.null(init.optim$ranCoefs)) { ## should always be a complete ordered list in the case for random-coefficient models
     if (! is.null(init$ranCoefs)) for (st in names(init$ranCoefs)) init.optim$ranCoefs[[st]] <- init$ranCoefs[[st]]
     init$ranCoefs <- init.optim$ranCoefs
-    trRanCoefs <- lapply(init.optim$ranCoefs,.ranCoefsFn, rC_transf=.spaMM.data$options$rC_transf)
+    trRanCoefs <- init.optim$ranCoefs
+    for (char_rd in names(trRanCoefs)) trRanCoefs[[char_rd]] <- .constr_ranCoefsFn(trRanCoefs[[char_rd]], constraint=ranFix$ranCoefs[[char_rd]], 
+                                                                                   rC_transf=.spaMM.data$options$rC_transf)
     init.optim$trRanCoefs <- trRanCoefs
     init.optim$ranCoefs <- NULL
   }
   return(list(init=init,init.optim=init.optim,init.HLfit=init.HLfit,ranFix=ranFix))
 }
+
+
 
 .rename_lambda <- function(lambda) {
   if (! is.null(lambda)) {
@@ -717,6 +745,59 @@ if (FALSE) {
   return(list(init=init,init.optim=init.optim,init.HLfit=init.HLfit,ranFix=ranFix))
 }
 
+
+.calc_inits_corrFamily <- function(corrfamily, init, char_rd, optim.scale, init.optim, init.HLfit, ranFix ,user.lower,user.upper) {
+  if (is.null(ranFix$corrPars[[char_rd]])) {
+    parnames <- corrfamily$parnames
+    np <- length(parnames)
+    parvec <- rep(0, np)
+    names(parvec) <- parnames # typically provided by the corrFamily's $tpar
+    parvec[corrfamily$diagpars] <- 0.1 # but the $diagpars are not provided by f(tpar) although they can be provided by the user. So ?___F I X M E__? user-level?
+    user_init <- init.optim$corrPars[[char_rd]]
+    ininames <- names(user_init)
+    if (is.null(user_init)) {
+      # parvec keeps its default value
+    } else if (is.null(ininames)) {
+      if (length(user_init) != np) {
+        stop("Ambiguous initial value vector for corrFamily parameters: provide parameter names or a complete vector.")
+      } else parvec <- user_init
+    } else if (length(setdiff(ininames, parnames))) {
+      stop("Invalid initial value vector for corrFamily parameters: their names do not match the 'tpar' names.")
+    } else parvec[ininames] <- user_init
+    
+    ## checking against user-provided min/max
+    lo_rd <- user.lower$corrPars[[char_rd]]
+    lonames <- names(lo_rd)
+    if (is.null(lo_rd) || length(lo_rd) != np) {
+      stop("'lower' bounds for corrFamily parameters missing or of inadequate length.")
+    } else if (is.null(lonames)) {
+      names(lo_rd) <- parnames
+    } else if (length(setdiff(parnames,lonames))) {
+      stop("Invalid 'lower' bounds for corrFamily parameters: their names do not match the 'tpar' names.")
+    } else lo_rd <- lo_rd[parnames] # ensures order is canonical as in parvec
+    parvec <- pmax(parvec, lo_rd)*1.000001
+    
+    hi_rd <- user.upper$corrPars[[char_rd]]
+    hinames <- names(hi_rd)
+    if (is.null(hi_rd) || length(hi_rd) != np) {
+      stop("'lower' bounds for corrFamily parameters missing or of inadequate length.")
+    } else if (is.null(lonames)) {
+      names(hi_rd) <- parnames
+    } else if (length(setdiff(parnames,lonames))) {
+      stop("Invalid 'lower' bounds for corrFamily parameters: their names do not match the 'tpar' names.")
+    } else hi_rd <- hi_rd[parnames] # ensures order is canonical as in parvec
+    parvec <- pmin(parvec, hi_rd)/1.000001
+    
+    # Info in canonical scale:
+    init$corrPars[[char_rd]] <- .modify_list(init$corrPars[[char_rd]], parvec) ## synthesis of user init and default init
+    # Template of what will affect init.optim$corrPars in transformed scale:
+    if (optim.scale=="transformed") {
+      stop("code missing here (7)")
+    } else init.optim$corrPars[[char_rd]] <- .modify_list(init.optim$corrPars[[char_rd]], parvec)
+  }
+  return(list(init=init,init.optim=init.optim,init.HLfit=init.HLfit,ranFix=ranFix))
+}
+
 .calc_inits <- function(init.optim,init.HLfit,ranFix,corr_info,
                         moreargs,
                         user.lower,user.upper,
@@ -736,8 +817,11 @@ if (FALSE) {
       char_rd <- as.character(rd)
       inits <- corr_info$corr_families[[rd]]$calc_inits(inits=inits, char_rd=char_rd, moreargs_rd=moreargs[[char_rd]], 
                                                         user.lower=user.lower, user.upper=user.upper, optim.scale=optim.scale, 
-                                                        ranFix=ranFix, 
                                                         init.optim=init.optim, For=For)
+      # where inits thus includes a cumulatively updated element $init.optim, distinct from argument init.optim;
+      # obviously if we used $init.optim as argument the original init.optim arguments would be ignored.
+      # For ranFix the problem appears different as the $ranFix does not seem to be updated (but only copied without modif)
+      # so the Q is whether the initial $ranFix is identical to the ranFix argument. It seems so => we suppress the ranFix argument here 2022/01/03
     }
   }
   inits <- .calc_inits_hyper(inits, hyper_info=hyper_info, fixed=inits$ranFix, moreargs=moreargs)

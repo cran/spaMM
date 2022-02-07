@@ -113,7 +113,8 @@ if (F) {
 }
 
 # tcrossprod factor, Ltri or not.
-mat_sqrt <- function(m=NULL, symSVD=NULL, try.chol=TRUE, condnum=1e12) { ## tcrossprod(mat_sqrt(X))=X
+mat_sqrt <- function(m=NULL, # coRRelation matrix
+                       symSVD=NULL, try.chol=TRUE, condnum=1e12) { ## tcrossprod(mat_sqrt(X))=X
   ## cf return value: the code must compute 'L', and if the type of L is not chol, also 'corr d' and 'u'
   type <- NULL
   
@@ -121,18 +122,27 @@ mat_sqrt <- function(m=NULL, symSVD=NULL, try.chol=TRUE, condnum=1e12) { ## tcro
     dim_m <- dim(m)
     if (dim_m[1L]!=dim_m[2L]) { stop("matrix is not square") }
     if (try.chol) {
-      L <- try(.wrap_Ltri_t_chol(m),silent=TRUE)
+      L <- try(.wrap_Ltri_t_chol(m),silent=TRUE) # That's t(Matrix::chol(corrMatrix)) for sparse matrix and an Rcpp_chol otherwise
       if (inherits(L,"try-error")) {
-        blob <- eigen(m, symmetric=TRUE,only.values = TRUE) ## COV= blob$u %*% diag(blob$d) %*% t(blob$u) ##
-        if (min(blob$values)< -1e-4) {
+        # assuming the error is due to high condition number:
+        EEV <- extreme_eig(m, symmetric=TRUE, required=TRUE) # bc required=TRUE Is what the old mat_sqrt() effectively did
+        e1 <- EEV[1]
+        en <- EEV[2]
+        if (en < -1e-4) {
           mess <- paste0("Matrix has suspiciously large negative eigenvalue(s): is it a valid correlation matrix?")
           warning(mess)
         }
-        min_d <- max(blob$values)/condnum ## so that corrected condition number is at most the denominator
-        diagcorr <- max(c(0,min_d-blob$values)) # all diag is corrected => added a constant diagonal matrix to compactcovmat
-        nc <- ncol(m)
-        diagPos <- seq.int(1L,nc^2,nc+1L)
-        m[diagPos] <- m[diagPos] + diagcorr
+        diagcorr <- (e1 - condnum * en)/(-1 + condnum + e1 - condnum * en) ## so that 
+        # corrected condition number is exactly the condnum param, given the following correction.
+        # Further if the input matrix has unit diag the corrected one also has unit diagonal.
+        # For general covariance matrices here is not such result (but no straightforward rule for a corrected matrix to belong to a declared 'corr'Family )
+        diagcorr <- max(0,diagcorr) 
+        m <- (1-diagcorr)*m
+        # OK for *m*atrix but less clear for sparse Matrix:
+        #nc <- ncol(corrMatrix)
+        #diagPos <- seq.int(1L,nc^2,nc+1L)
+        #m[diagPos] <- m[diagPos] + diagcorr
+        diag(m) <- diag(m) + diagcorr ## # all diag is corrected => added a constant diagonal matrix 
         L <- try(.wrap_Ltri_t_chol(m),silent=TRUE)
       } 
       if ( ! inherits(L,"try-error") ) type <- "cholL_LLt" ## else type remains NULL      
@@ -144,9 +154,8 @@ mat_sqrt <- function(m=NULL, symSVD=NULL, try.chol=TRUE, condnum=1e12) { ## tcro
       svdnames[svdnames=="vectors"] <- "u"
       names(decomp) <- svdnames
       type <- "eigen" 
-      if (any(decomp$d < -1e-08)) {
-        ## could occur for two reasons: wrong input matrix; or problem with R's svd which $d are the eigenvalues up to the sign, 
-        ##   and thus $d can be <0 for eigenvalues >0 (very rare, observed in a 2x2 matrix) 
+      if (any(decomp$d < -1e-08)) { # wrong test if R's svd had been used as its $d are the eigenvalues up to the sign, 
+        # and once found <0 for a positve eigenvalue of a 2x2 matrix.
         message("correlation matrix has suspiciously large negative eigenvalue(s).")
         return(structure("correlation matrix has suspiciously large negative eigenvalue(s).",
                          class="try-error", ## passes control to calling function to print further info
@@ -168,6 +177,91 @@ mat_sqrt <- function(m=NULL, symSVD=NULL, try.chol=TRUE, condnum=1e12) { ## tcro
   if (type != "cholL_LLt") attr(L,type) <- decomp
   return(L)
 } 
+
+# Speculative: not used. 
+.safe_condnum <- function(M, symmetric) {
+  condnum <- NULL
+  if ((inherits(M,"sparseMatrix") &&  ncol(M)<2000L)
+      ||  ncol(M)<1000L) decomp <- .try_RSpectra(M, symmetric=symmetric) # 1000 -> 0.28s
+  if (is.null(decomp)) {  # RSpectra was not available or probem was too large
+    # kappa() computes by default (an estimate of) the 2-norm condition number of a matrix or of 
+    # the R matrix of a QR decomposition, perhaps of a linear fit. The 2-norm condition number can 
+    # be shown to be the ratio of the largest to the smallest *non-zero* singular value of the matrix.
+    if (ncol(M)<1000L) condnum <- kappa(M) # 1000 -> 0.5s
+  } else condnum <- decomp$eigrange[2]/decomp$eigrange[1]
+  if (is.null(condnum)) { # too large sparse or dense problem
+    # Matrix::condest() use RNG, but we do not want any global effect on RNG! 
+    R.seed <- get(".Random.seed", envir = .GlobalEnv)
+    set.seed(123) # makes the condest() call deterministic
+    condnum <- Matrix::condest(M)$est 
+    on.exit(assign(".Random.seed", R.seed, envir = .GlobalEnv))
+  }
+  condnum
+}
+
+extreme_eig <- function(M, symmetric, required=TRUE) {
+  EEV <- NULL
+  if (required ||
+      (inherits(M,"sparseMatrix") &&  ncol(M)<2000L) ||
+      ncol(M)<1000L) decomp <- .try_RSpectra(M,symmetric=symmetric) # 1000 -> 0.28s   
+  if (is.null(decomp)) {  # RSpectra was not available or it failed or problem was too large
+    # we cannot use kappa() or Matrix::condest() here since we really want the two extreme eigenvalues, not simply the condnum
+    if (required ||
+        ncol(M)<1000L) {
+      values <- eigen(M,symmetric=symmetric, only.values = TRUE)$values
+      EEV <- c(values[1],tail(values,1))
+    }
+  } else EEV <- c(decomp$eigrange[2],decomp$eigrange[1])
+  EEV # in eigen order: largest first. remains NULL only if not 'required' and problem too large
+}
+
+regularize <- function(A, EEV=extreme_eig(A,symmetric=TRUE), maxcondnum=1e12) {
+  if (EEV[1]/EEV[2] > maxcondnum || EEV[2]<0)  {
+    diagcorr <- (EEV[1] - maxcondnum * EEV[2])/(-1 + maxcondnum + EEV[1] - maxcondnum * EEV[2]) ## so that 
+    A <- (1-diagcorr)*A
+    diag(x=A) <- diag(x=A) + diagcorr ## # all diag is corrected => added a constant diagonal matrix 
+  }
+  A
+}
+
+as_precision <- function(corrMatrix, condnum=1e12) {
+  # Compared to older as_precision: 
+  # * no systematic eigen computation
+  # * correction exactly achieves condnum (as corr_sqrt)
+  # default condnum 1e12 (as mat_sqrt and corr_sqrt)
+  # Compared to mat_sqrt: here input in coRR matrix, output too.
+  if (inherits(corrMatrix,"dist")) { corrMatrix <- proxy::as.matrix(corrMatrix, diag=1) }
+  corrMatrix <- forceSymmetric(corrMatrix)
+  precmat <- try(chol2inv(chol(corrMatrix)), silent=TRUE)
+  if (inherits(precmat,"try-error")) {
+    if (TRUE) {
+      EEV <- extreme_eig(corrMatrix, symmetric=TRUE, required=TRUE) # bc required=TRUE Is what the old mat_sqrt() effectively did
+      e1 <- EEV[1]
+      en <- EEV[2]
+      if (en < -1e-4) {
+        mess <- paste0("Matrix has suspiciously large negative eigenvalue(s): is it a valid correlation matrix?")
+        warning(mess)
+      }
+      diagcorr <- (e1 - condnum * en)/(-1 + condnum + e1 - condnum * en) ## so that 
+      # corrected condition number is exactly the condnum param, given the following correction.
+      # Further if the input matrix has unit diag the corrected one also has unit diagonal.
+      # For general covariance matrices here is not such result (but no straightforward rule for a corrected matrix to belong to a declared 'corr'Family )
+      diagcorr <- max(0,diagcorr) 
+    } else { # (corrected) older version
+      esys <- eigen(corrMatrix, only.values = TRUE, symmetric=TRUE)
+      evalues <- esys$values
+      min_d <- evalues[1L]/condnum ## so that corrected condition number is at most the 1e14
+      diagcorr <- max(c(0,min_d-evalues)) # SINGLE SCALAR
+    }
+    corrMatrix <- (1-diagcorr)*corrMatrix
+    diag(corrMatrix) <- diag(corrMatrix) + diagcorr ## # all diag is corrected => added a constant diagonal matrix 
+    precmat <- chol2inv(chol(corrMatrix)) # as explained in first version
+  }
+  colnames(precmat) <- rownames(precmat) <- colnames(corrMatrix) 
+  # drop0 useful to convert to sparseMarix even if no 0 to drop
+  return(structure(list(matrix=drop0(precmat)),class=c("list","precision"))) # return value must be sparse, not simply Matrix. 
+}
+
 
 make_scaled_dist <- local({
   Chord_warned <- FALSE

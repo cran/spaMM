@@ -256,7 +256,7 @@
             damping <- dampingfactor*damping
             dampingfactor <- dampingfactor*2
           } 
-          if (damping>1e100) break # stop("reached damping=1e100")
+          if (damping>1e10) break # stop("reached damping=1e10")
         } ## while TRUE
       } else dbetaV <- beta_eta - old_beta_eta
       mu <- muetablob$mu ## needed to update z1

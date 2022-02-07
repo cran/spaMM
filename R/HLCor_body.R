@@ -49,7 +49,7 @@
   if (is.null(types)) {
     types <- names(covStruct) ## 2nd way of specifying types
   } else names(covStruct) <- types ## repeated names possible
-  known_types <- c("adjMatrix","corrMatrix","precision","SAR_WWt","distMatrix", "IMRF") 
+  known_types <- c("adjMatrix","corrMatrix","precision","SAR_WWt","distMatrix", "IMRF","corrFamily") 
   checktypes <- setdiff(types,c(known_types,"", paste(seq_along(covStruct)))) ## "" for unhandled ranefs
   if (length(checktypes)) stop(paste("Unhandled name(s)/type(s)",
                                      paste0("'",checktypes,"'",collapse=", "),"in 'covStruct'."))
@@ -64,12 +64,13 @@
   return(covStruct)
 }
 
-.check_corrMatrix <- function(corrMatrix) {
+.check_corrMatrix <- function(corrMatrix, element) {
   if (is.list(corrMatrix)) {
-    dim_corrMatrix <- dim(corrMatrix[[1]])
+    dim_corrMatrix <- dim(corrMatrix[[element]])
   } else dim_corrMatrix <- dim(corrMatrix)
   if (dim_corrMatrix[1L]!=dim_corrMatrix[2L])  stop("corrMatrix is not square") 
 }
+
 
 
 .calc_AR1_t_chol_Q_block <- function(n_u, ARphi) {
@@ -114,7 +115,9 @@ HLCor_body <- function(processed, ## single environment
   ###
   if ( (! is.null(processed$return_only)) && processed$augZXy_cond) {
     hlfit <- do.call(.spaMM.data$options$augZXy_fitfn,list(processed=processed, ranFix=ranPars))
-    if (FALSE) { ## this test interfered with the results (fitme3, fitme6 tests), presumably bc of the inner attribute (now added here, ignored during the test):
+    if (FALSE) { # check consistency of aug_ZXy and non-aug_ZXy procedures
+      # This code works: reused 01/2022 to check corrFamily model. 
+      ## this test has previously interfered with the results (fitme3, fitme6 tests), presumably bc of the inner attribute (now added here, ignored during the test):
       processed$augZXy_cond <- structure(FALSE, inner=attr(processed$augZXy_cond,"inner"))
       HLFormals <- names(formals(HLfit)) 
       good_dotnames <- intersect(names(dotlist),HLFormals)
@@ -126,15 +129,24 @@ HLCor_body <- function(processed, ## single environment
       HL.info$init.HLfit <- .modify_list(HL.info$init.HLfit, attr(ranPars,"init.HLfit")) 
       locrp <- ranPars
       attr(locrp,"init.HLfit") <- NULL
-      locrp$phi <- hlfit$APHLs$phi_est
+      locrp$phi <- hlfit$APHLs$phi_est # Imporant: if we don't fix that, 'vanilla' and 'hlfit' will be inconsistent. This is expected: 
+      # "vanilla" estimates phi for lambda fixed, while "hlfit" estimate a (phi+lambda) parameter for fixed phi/lambda ratio (a given lambda being a lambda factor)
       locrp$lambda <- locrp$lambda * hlfit$APHLs$phi_est
       HL.info$ranFix <- locrp
+      oldr <- processed$return_only
+      processed$return_only <- FALSE # not essential to catch problems, but should help to diagnose problems
       vanilla <- do.call("HLfit",HL.info) 
-      processed$augZXy_cond <- structure(TRUE, inner=attr(processed$augZXy_cond,"inner"))
       #print(vanilla$APHLs$p_bv-hlfit$APHLs$p_bv)
-      #if ((vanilla$APHLs$p_bv-hlfit$APHLs$p_bv)>1e-2) browser() # to catch in part. when phi-profiled p_bv is lower than non profiled !
+      if (is.null(hlfit$APHLs$p_bv)) { # for REML fits, check p_bv
+        if (abs(vanilla$APHLs$p_v-hlfit$APHLs$p_v)>1e-4) browser("Problem in check of aug_ZXy procedure") # browser() only in devel code
+      } else if ((vanilla$APHLs$p_bv-hlfit$APHLs$p_bv)>1e-4) browser("Problem in check of aug_ZXy procedure") # browser() only in devel code
+      #if (abs(vanilla$APHLs$p_bv-hlfit$APHLs$p_bv)>1e-4) browser() # 
       # hmmm aug_ZXy's p_bv is suspicious close to vanilla's p_v
       # debug(.calc_APHLs_by_augZXy_or_sXaug)
+      
+      #  clean debugging mess before leaving
+      processed$return_only <- oldr
+      processed$augZXy_cond <- structure(TRUE, inner=attr(processed$augZXy_cond,"inner"))
     }
   } else {
     HLFormals <- names(formals(HLfit)) 

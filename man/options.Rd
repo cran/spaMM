@@ -26,7 +26,7 @@ spaMM.getOption(x)
 \item{\code{example_maxtime=0.7}:}{Used in the documentation and tests to control whether the longer examples should be run. 
 The approximate running time of given examples on one author's laptop is compared to this value.} 
 \item{\code{optimizer1D="optimize"}:}{Optimizer for one-dimensional optimization. If you want to control the initial value, you should select another optimizer.}
-\item{\code{optimizer=".safe_opt"}:}{Optimizer for optimization in several dimensions. Use \code{optimizer="nloptr"} to call \code{\link[nloptr]{nloptr}} with method \code{"NLOPT_LN_BOBYQA"}; use \code{optimizer="bobyqa"} to call \code{\link[minqa]{bobyqa}}; and use \code{optimizer="L-BFGS-B"} to call \code{\link{optim}} with method \code{"L-BFGS-B"}. The default \code{".safe_opt"} uses \code{nloptr} except in some cases where it expects or detects problems with it (the source coe should be consulted for details). The optimizer can also be specified on a fit-by-fit basis as the value of \code{control$optimizer} in a \code{fitme} call, or as the value of \code{control.corrHLfit$optimizer}.
+\item{\code{optimizer=".safe_opt"}:}{Optimizer for optimization in several dimensions. Use \code{optimizer="nloptr"} to call \code{\link[nloptr]{nloptr}} with method \code{"NLOPT_LN_BOBYQA"}; use \code{optimizer="bobyqa"} to call \code{\link[minqa]{bobyqa}}; and use \code{optimizer="L-BFGS-B"} to call \code{\link{optim}} with method \code{"L-BFGS-B"}. The default \code{".safe_opt"} uses \code{nloptr} except in some cases where it expects or detects problems with it (the source code should be consulted for details). The optimizer can also be specified on a fit-by-fit basis as the value of \code{control$optimizer} in a \code{fitme} call, or as the value of \code{control.corrHLfit$optimizer}.
 }
 \item{\code{nloptr}:}{Default control values of \code{nloptr} calls.} 
 \item{\code{bobyqa}:}{Default control values of \code{bobyqa} calls.} 
@@ -41,7 +41,7 @@ The approximate running time of given examples on one author's laptop is compare
 
 \item{\code{matrix_method}:}{A character string, to control the factorization of dense model matrices. Default value is \code{"def_sXaug_EigenDense_QRP_scaled"}. The source code should be consulted for further information.}
 
-\item{\code{Matrix_method}:}{A character string, to control the factorization of sparse model matrices. Default value is \code{"def_sXaug_Matrix_QRP_scaled"}. The source code should be consulted for further information.}
+\item{\code{Matrix_method}:}{A character string, to control the factorization of sparse model matrices. Default value is \code{"def_sXaug_Matrix_QRP_CHM_scaled"}. The source code should be consulted for further information.}
 
 \item{\code{stylefns}:}{Default colors of some screen output (notably that of some fitting functions when called with argument \code{verbose=c(TRACE=TRUE)})}
 \item{\code{barstyle}:}{Integer, or Boolean interpreted as Integer, or quoted expression evaluating to such types; controlling the display of some progress bars. If zero, no progress bar should be displayed; otherwise, a bar should be displayed. Further, when \code{\link[utils]{txtProgressBar}} is called, \code{barstyle} is passed as its \code{style} argument. Default is \code{quote(if(interactive()) {3L} else {0L})} (in a parallel setting, child processes may display the bar if the parent process is interactive).}

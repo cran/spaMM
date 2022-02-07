@@ -144,7 +144,7 @@ if (FALSE) { # that was devel scratch, not tidy tests
       }
       Lmat <- t(solve(BLOB$chol_Q)) # 
       if (FALSE) {
-        # mais alors Md2hdv2 shoudl be 
+        # mais alors Md2hdv2 should be 
         crossprod(Lmat)/fit$phi[[1]] +diag(28)
         # la version "chol_Q" de Lmat marche
         Lmat <- t(solve(BLOB$chol_Q)) # 

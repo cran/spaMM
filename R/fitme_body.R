@@ -71,7 +71,7 @@ fitme_body <- function(processed,
   
   processedHL1 <- proc1$HL[1] ## there's also HLmethod in processed<[[]]>$callargs
   needHLCor_specific_args <- (length(unlist(lower$corrPars)) || 
-                                length(intersect(corr_types,c("Matern","Cauchy","adjacency","AR1","corrMatrix", "IMRF"))))
+                                length(intersect(corr_types,c("Matern","Cauchy","adjacency","AR1","corrMatrix", "IMRF","corrFamily"))))
   if (needHLCor_specific_args) {
     HLcallfn.obj <- "HLCor.obj" 
     HLcallfn <- "HLCor"

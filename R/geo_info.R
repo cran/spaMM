@@ -164,32 +164,6 @@
   Lunique # expanded, in composite case
 }
 
-.mat_sqrt_dsCMatrix <- function(cov_info_mat, condnum=1e12) {
-  # arising from processing of "dsCDIST" matrices created by .sparse_expand_GeoMatrices()
-  Lunique <- try(t(Matrix::chol(cov_info_mat)), silent=TRUE) 
-  if (inherits(Lunique,"try-error")) { # nu large, in particular
-    # in the basic nested-Matern example, for 10000L locations, the Matrix::chol() call takes ~0.13s
-    if (ncol(cov_info_mat)>10000L) message(paste0("Regularization necessary for spatial correlation matrix.\n", 
-                                            "It is suggested to constrain the spatial parameter ranges if this happens repeatedly."))
-    { # Matrix::condest() use RNG, but we do not want any global effect on RNG! 
-      R.seed <- get(".Random.seed", envir = .GlobalEnv)
-      set.seed(123) # makes the condest() call deterministic
-      kappa <- Matrix::condest(cov_info_mat)$est 
-      on.exit(assign(".Random.seed", R.seed, envir = .GlobalEnv))
-    }
-    # The following code assume that the largest eigenvalue is 1
-    if (kappa<1e12) {
-      warning(paste0("Suspect correlation matrix in .mat_sqrt_dsCMatrix(), worth a close examination...\n", 
-                     "error message was: ", attr(Lunique,"condition")$message))
-      diagcorr <- 1e-11 - 1/kappa
-    } else diagcorr <- 1e-12 - 1/kappa
-    diag(cov_info_mat) <- diag(cov_info_mat) + diagcorr
-    Lunique <- try(t(Matrix::chol(cov_info_mat)),silent=TRUE)
-  }
-  attr(Lunique, "type") <- "t(Matrix::chol)"
-  Lunique
-}
-
 
 .calc_Lunique_for_correl_algos <- function(processed, symSVD, rho, adj_rho_is_inner_estimated, argsfordesignL, 
                                            cov_info_mat, condnum=1) {
@@ -207,12 +181,11 @@
   } else { ## cov_info_mat must exist
     if (processed$HL[1L]=="SEM") argsfordesignL$try.chol <- FALSE
     if (inherits(cov_info_mat,"dist")) {cov_info_mat <- proxy::as.matrix(cov_info_mat, diag=1)} ## else full matrix may be a COV matrix with non-unit diag
-    if (inherits(cov_info_mat,"dsCMatrix")) {
-      Lunique <- .mat_sqrt_dsCMatrix(cov_info_mat)
-    } else Lunique <- do.call(mat_sqrt,c(list(m=cov_info_mat),argsfordesignL)) ## mat_sqrt has try()'s and can return "try-error"'s
+    #Lunique <- do.call(.sym_sqrt,c(list(A=cov_info_mat),argsfordesignL)) ## .sym_sqrt has try()'s and can return "try-error"'s
+    Lunique <- do.call(mat_sqrt,c(list(m=cov_info_mat),argsfordesignL)) ## mat_sqrt has try()'s and can return "try-error"'s
     # Lunique is a tcrossfac: tcrossprod(mat_sqrt(X))=X
     if (inherits(Lunique,"try-error")) { 
-      print("correlation parameters were:",quote=FALSE) ## makes sense if mat_sqrt already issued some warning
+      print("correlation parameters were:",quote=FALSE) ## makes sense if .sym_sqrt already issued some warning
       print(unlist(argsfordesignL))    
       stop()
     }
@@ -325,16 +298,14 @@
     msd.arglist <- NULL
     if ( ! is.na(corr_type)) { # including composite ones, otherwise need:   && ! AUGI0_ZX_envir$finertypes[rd]=="ranCoefs") {
       char_rd <- as.character(rd)
-      rho <- .get_cP_stuff(ranPars,"rho",which=char_rd)
       spatial_term <- spatial_terms[[rd]] 
-      adj_rho_is_inner_estimated <- (corr_type=="adjacency"
-                                     && is.null(rho) ) ## can occur in direct call of HLCor 
-      #
       ###
       # Provide cov_info_mat and/or sparse_Qmat (with many exceptions) and sometimes symSVD or msd.arglist
       if (corr_type == "adjacency") {
         adjMatrix <- processed$corr_info$adjMatrices[[rd]] # dsC whether spprec or not
         symSVD <- attr(adjMatrix,"symSVD")
+        rho <- .get_cP_stuff(ranPars,"rho",which=char_rd)
+        adj_rho_is_inner_estimated <- (is.null(rho) ) ## can occur in direct call of HLCor 
         if ( ! adj_rho_is_inner_estimated) { # typical fitme() call
           sparse_Qmat <- - rho * adjMatrix
           sparse_Qmat <- .dsCsum(sparse_Qmat, attr(adjMatrix,"dsCdiag")) #diag(sparse_Qmat) <- diag(sparse_Qmat)+1 # a maybe-not-yet-perfect solution to the poor perf of 'diag<-' which is not doc'ed for dsCMatrix
@@ -369,6 +340,7 @@
         # cov_info_mat
         if ( ! processed$is_spprec) cov_info_mat <- chol2inv(chol(sparse_Qmat)) # solve(sparse_Qmat) 
       } else if (corr_type =="SAR_WWt") { 
+        rho <- .get_cP_stuff(ranPars,"rho",which=char_rd)
         adjMatrix <- processed$corr_info$adjMatrices[[rd]]
         # sparse_Qmat
         sparse_Qmat <- - rho * adjMatrix
@@ -403,6 +375,7 @@
           # }
         }
       } else  if (corr_type %in% c("Matern","Cauchy")) {
+        rho <- .get_cP_stuff(ranPars,"rho",which=char_rd)
         # sparse_Qmat not provided, will be deduced from cov_info_mat later => cov_info_mat needed for spprec too
         # cov_info_mat (for spprec too)
         cov_info_geostat <- .get_cov_info_geostat(control.dist, char_rd, rho, spatial_term, processed, rd, ranPars)
@@ -410,12 +383,17 @@
         msd.arglist <- cov_info_geostat$msd.arglist
       } else if (corr_type== "corrMatrix") { 
         if (processed$is_spprec) {
-          #   .init_assign_geo_info() has set a "blob" attribute to cov_info_mats[[rd]], with promises for Lunique, etc
+          #   .init_assign_geoinfo() has set a "blob" attribute to cov_info_mats[[rd]], with promises for Lunique, etc
           # (if composite ranCoefs) {
           #   the promises are there to be used.  
           # } else .init_AUGI0_ZX_envir_spprec_info() runs precisionFactorList[[rd]] <- .calc_corrMatrix_precisionFactor__assign_Lunique(processed, rd)
         } else cov_info_mat <- processed$corr_info$cov_info_mats[[rd]] ## correlation or precision or dist...
-      } 
+      } else if (corr_type== "corrFamily") {
+        # parvec <- ranPars$corrPars[[char_rd]] # .get_cP_stuff() could extract specific elements of the vector, but corrPars[[char_rd]] is not a named list
+        cov_info_mat <- .corrfamily2Matrix(processed$corr_info$corrFamInfos[[char_rd]], ranPars$corrPars[[char_rd]])
+        parvec <- ranPars$corrPars[[char_rd]]
+        AUGI0_ZX_envir$updateable[rd]=all(parvec!=0)
+      }
       ###
       #
       ## Provide Lunique if not already available (and optionally additional stuff)
@@ -453,13 +431,15 @@
             ## Implies call from fitme_body with outer rho estim.
             # sparse_Qmat already computed before in this fn
             ## Cholesky gives proper LL' (think LDL')  while chol() gives L'L...
+          } else if (corr_type=="corrFamily") {
+            sparse_Qmat <- as_precision(cov_info_mat)$matrix 
           } else if (corr_type== "IMRF") {
             # Remember that we need dtCMatrix'es 'chol_Q' so that bdiag() gives a dtCMatrix
             # Hence use next general code to produce precisionFactorList[[rd]]
           } else stop("Some error occurred (inner estimation of adjacency rho with requested sparse precision ?)") 
           #
           ## solve(sparse_Qmat) gives the correlation matrix
-          ## (2) Builds from sparse_Qmat, providing Provides precisionFactorList[[rd]] as expected by .reformat_Qmat_info()
+          ## (2) Builds from sparse_Qmat, providing precisionFactorList[[rd]] as expected by .reformat_Qmat_info()
           Q_CHMfactor <- .get_Q_CHMfactor__assign_template__perm_ZA(AUGI0_ZX_envir, rd, processed, sparse_Qmat)
           #
           # If we use permuted Chol AND a template, ZA has been permuted (once). Then we must permute each new sparse_Qmat, by 
@@ -479,7 +459,7 @@
           attr(processed$AUGI0_ZX$envir$LMatrices,"is_given_by")[rd] <- "from_Q_CHMfactor" 
 
         }
-      } else { ## sparse or dense CORRELATION algorithms
+      } else { ## sparse or dense CORRELATION algorithms. For fixed "corrMatrix" => this IS executed but only once.
         if (processed$ranCoefs_blob$is_composite[rd]) { ## ~ if(AUGI0_ZX_envir$finertypes[rd]=="ranCoefs") 
           # => provide info to be used by .process_ranCoefs()
           if (corr_type != "corrMatrix" || 
@@ -487,15 +467,43 @@
             # it would be nice to use a delayedAssign as for spprec. But how to deal with the extra arguments?
             Lunique <- .calc_Lunique_for_correl_algos(processed, symSVD, rho, adj_rho_is_inner_estimated, argsfordesignL, 
                                                       cov_info_mat)
-            attr(processed$corr_info$cov_info_mats[[rd]],"blob")$Lunique <- Lunique
+            attr(processed$corr_info$cov_info_mats[[rd]],"blob")$Lunique <- Lunique # position of computed factor for composite stuff != (! composite)
             attr(AUGI0_ZX_envir$kron_Y,"is_given_by")[rd] <- "AUGI0_ZX$envir"
             processed$ranCoefs_blob$new_compos_info[rd] <- TRUE
           }
           # In that specific case, (CORREL algo, composite ranef) AUGI0_ZX_envir$LMatrices[[rd]] remains empty
-        } else {
-          if (corr_type != "corrMatrix" || is.null(AUGI0_ZX_envir$LMatrices[[rd]])) { # avoid recomputation for constant corrMatrix
+        } else { 
+          if (ok <- (corr_type=="corrFamily" && 
+                     # inherits(cov_info_mat,"dsCMatrix") &&
+                     .calc_denseness(cov_info_mat,relative=TRUE) < 0.15 )) {
+            ## Allowing Cholesky updates
+            corr_CHMfactor <- .provide_CHMfactor(cov_info_mat, CHMtemplate=processed$corr_info$corrFamInfos[[rd]]$corr_CHM_template)
+            r <- Matrix::expand(corr_CHMfactor) # return type of expand not formally doc'ed, but example from doc => $P is a 'pMatrix' (=> .crossprod() probably not suitable) and $L a 'dtCMatrix'
+            Lunique <- crossprod(r$P,r$L) # Lunique no longer triangular ! 
+            if (processed$AUGI0_ZX$envir$updateable[rd] && is.null(processed$corr_info$corrFamInfos[[rd]]$corr_CHM_template)) {
+              processed$corr_info$corrFamInfos[[rd]]$corr_CHM_template <- corr_CHMfactor
+              if (processed$QRmethod=="sparse" && .calc_denseness(r$L,relative=TRUE) > 0.15) {
+                cat(crayon::green("Sparse-matrix methods have been selected, but it seems that setting algebra='decorr' would be better.\n"))
+                ## If r$L has high denseness, the slow step by "spcorr" will be the Matrix::qr(<sXaug>) step, not the Cholesky updates for corr_CHMfactor 
+                ## The follwing fix does not really work bc previous $QRmethod has been used by 
+                ## .preprocess -> .init_AUGI0_ZX(.,as_mat=.eval_as_mat_arg(processed)) with some irreversible effects (see e.g. comments on
+                ## type of Xscal <- .make_Xscal(...) in .solve_IRLS_as_ZX()).
+                ## so we would have to reevaluate this preprocessing step (which seems risky (but when do we first need it ?)).
+                #
+                # cat(crayon::green("Using algebra='decorr' instead\n"))
+                # processed$QRmethod <- "dense"
+                # processed$as_matrix <- NULL # will be recomputed by  .eval_as_mat_arg()
+              }
+            }
+            # Other cases typically not dsC, (except hacked type dscDIST). But any 'atypical" case worth considering ? 
+          } else if (ok <- (corr_type != "corrMatrix")) { 
             Lunique <- .calc_Lunique_for_correl_algos(processed, symSVD, rho, adj_rho_is_inner_estimated, argsfordesignL, 
                                                       cov_info_mat)
+          } else if (ok <- is.null(AUGI0_ZX_envir$LMatrices[[rd]])) { # *once* for corrMatrix !
+            Lunique <- .calc_Lunique_for_correl_algos(processed, symSVD, rho, adj_rho_is_inner_estimated, argsfordesignL, 
+                                                      cov_info_mat) # wraps mat_sqrt() as cov_info_mat is still dgC, not dsC
+          }
+          if (ok) {
             attr(Lunique,"msd.arglist") <- msd.arglist ## NULL except for Matern, Cauchy
             attr(Lunique,"corr.model") <- corr_type
             attr(Lunique,"ranefs") <- paste(c(spatial_term)) ## essentiel pour la construction de ZAL! ## paste(c()) handles very long RHS
@@ -588,6 +596,63 @@
   }, assign.env = blob ) 
 }
 
+.get_rownames_corrMatrix <- function(corrMatrix) {
+  if (inherits(corrMatrix,"dist")) {
+    corrnames <- labels(corrMatrix) ## unclear
+  } else if (inherits(corrMatrix,"precision")) {
+    corrnames <- rownames(corrMatrix[["matrix"]])
+  } else if (inherits(corrMatrix,c("matrix","Matrix"))) {
+    corrnames <- rownames(corrMatrix)
+  } else stop("Unhandled class of corrMatrix object.")
+  corrnames
+}
+
+# This fn is call by .init_assign_geoinfo() directly. 
+.check_rownames_corrMatrix <- function(corrMatrix, ZAnames, For, corrnames=.get_rownames_corrMatrix(corrMatrix)) { # 
+  if (is.null(ZAnames)) {
+    stop("NULL colnames in (a block of) the design matrix for random effects. Some mishandling of 'AMatrices'?")
+  }
+  if (is.null(corrnames)) {
+    if (For=="corrFamily$f") {
+      mess <- paste("corrFamily$f() did not provide rownames so the match with",
+                    "\n   levels of the random effect (",
+                    paste0(ZAnames[1L:min(5L,length(ZAnames))], collapse=" "),if(length(ZAnames)>5L){"...)"} else{")"},
+                    "\n   cannot be checked. Provide names.")
+      stop(mess)
+    } else {
+      mess <- paste("(!) corrMatrix without labels or row names: the grouping levels, in order",
+                    paste0(ZAnames[1L:min(5L,length(ZAnames))], collapse=" "),if(length(ZAnames)>5L){"...,"} else{","},
+                    "\n are matched in this order to rows and columns of corrMatrix, without further check.",
+                    "\n This may cause later visible errors (notably, wrongly dimensioned matrices)",
+                    "\n or even silent errors. See help(\"corrMatrix\") for a safer syntax.")
+      warning(mess, immediate. = TRUE)
+    }
+  } else if (length(extraZAnames <- setdiff(ZAnames,corrnames))) { # There are ZAnames without matching corrnames. 
+    if  (For=="corrFamily$f") {
+      ## i.e. if not all ZAnames in corrnames
+      mess <- paste("The row names provided by corrFamily$f() do not include all levels",
+                    "\n   of the random effect (",
+                    paste0(ZAnames[1L:min(5L,length(ZAnames))], collapse=" "),if(length(ZAnames)>5L){"...)."} else{")."},
+                    "\n: check the definition of $f().")
+      stop(mess)
+    } else if (inherits(corrMatrix,"precision")) {
+      ## Uses a strict approach bc it's already complicated enough, and later code will again compare the names.
+      stop("Some levels of the grouping variable are missing from the row names of the precision matrix\n: check corrMatrix dimensions and/or names.")
+    } else {
+      ## For true covariance matrix spaMM tries to accomodate: it tries to match matrices by row order,
+      # but need identical dimensions for such a match.
+      uZAnames <- unique(ZAnames)
+      if ( length(corrnames)!=length(uZAnames)){ 
+        stop("The corrMatrix does not match the levels of the grouping variable: different levels (names) and different dimensions.")
+      } else { ## same dimensions, but names do not match
+        message(paste0("spaMM is not able to match levels of the random effect to the names of corrMatrix,\n",
+                       " and matches levels to rows of the matrix by their respective orders.\n",
+                       " See help(\"corrMatrix\") for a safer syntax."))
+      }
+    }
+  }
+}
+
 .init_assign_geoinfo <- function(processed, ZAlist, For=processed$For, corr_info=processed$corr_info, corr_types=corr_info$corr_types, 
                              exp_barlist, nrand=length(ZAlist), distMatrix, 
                              sparse_precision=processed$is_spprec) {
@@ -606,16 +671,20 @@
           corr_type <- corr_types[it]
           if ( ! is.na(corr_type)) {
             if (corr_type== "corrMatrix") { 
-              ## For CORREL algos .check_subset_corrMatrix has the effect that the correl matrix used in later computations 
+              ## For CORREL algos .subset_corrMatrix has the effect that the correl matrix used in later computations 
               # is a subset & permutation of the user-level one according to the order of columns of ZAlist[[it]]
               #
               ## In the SPPREC case corr_info$corrMatrices[[it]] already contains a precision matrix
               # it cannot be subsetted. Nothing is done at this point(in particular, it would be pointless to modify the ZA argument locally)
-              # Instead, the Z matrix will be extended later, then the cov_info_mat will be reordered 
+              # Instead, the Z matrix will be extended by .addrightcols_Z(), then the cov_info_mat will be reordered 
               # according to the columns of this augmented Z matrix.
               # This implies that the order cov_info_mat will then differ from that of the $corrMatrices[[]]
               # and that the latter should not be used (=> __F I X M E__ remove this corrMatrices[[]] object?)
-              cov_info_mat <- .check_subset_corrMatrix(corrMatrix=corr_info$corrMatrices[[it]],ZA=ZAlist[[it]]) ## correlation or precision...
+              corrMatrix <- corr_info$corrMatrices[[it]]
+              corrnames <- .get_rownames_corrMatrix(corrMatrix)
+              ZAnames <- colnames(ZAlist[[it]])
+              .check_rownames_corrMatrix(corrMatrix=corrMatrix, ZAnames=ZAnames, For="", corrnames=corrnames)
+              cov_info_mat <- .subset_corrMatrix(corrMatrix=corrMatrix, ZAnames=ZAnames, corrnames=corrnames) ## correlation or precision...
               if ( inherits(cov_info_mat,"precision")) {
                 # fast test by verif3 in test pedigree (no new cols) and longer test by test-Matern-spprec.R#9 (new cols)
                 precmat <- cov_info_mat[["matrix"]]
@@ -638,7 +707,7 @@
                 if (is.list(distMatrix)) { ## spaMM3.0 extended syntax
                   geo_info[[it]]$distMatrix <- distMatrix[[it]] 
                 } else geo_info[[it]]$distMatrix <- distMatrix 
-              } # geo_info[[it]]$distMatrix may be modified below for Matern(LHS|.)
+              } # geo_info[[it]]$distMatrix may be modified below for Matern(LHS|.) => # not "else" because Matern/Cauchy must be combined with this!
               if (corr_type == "AR1") {
                 ugeo <-  attr(ZAlist[[it]],"uniqueGeo")
                 if ( ! sparse_precision &&
@@ -671,8 +740,32 @@
                   ZAlist[[it]] <- ZAlist[[it]][ ,activelevels,drop=FALSE]
                   attr(ZAlist[[it]],"is_incid") <- is_incid 
                 } 
-              }
-              # not "else" because Matern/Cauchy must be combined with this!
+              } else if (corr_type== "corrFamily") {
+                template <- corr_info$corrFamInfos[[it]]$template
+                corrnames <- .get_rownames_corrMatrix(template)
+                ZAnames <- colnames(ZAlist[[it]])
+                .check_rownames_corrMatrix(corrMatrix=template, ZAnames=ZAnames, For="corrFamily$f", corrnames=corrnames)
+                if (processed$is_spprec) {
+                  # spprec => possible extension/permutation of *ZA*
+                  is_incid <- attr(ZAlist[[it]],"is_incid") 
+                  ZAlist[[it]] <- .addrightcols_Z(Z=ZAlist[[it]], corrnames)
+                  # now we are sure that they have the same names, only the orders are uncertain, so we can test order by any( != )
+                  uZAnames <- unique(colnames(ZAlist[[it]]))
+                  if (any(corrnames!=uZAnames)) {
+                    template <- template[uZAnames,uZAnames] # only a permutation
+                    corr_info$corrFamInfos[[it]] <- .corrfamily_permute(corr_info$corrFamInfos[[it]], perm=uZAnames)
+                  }
+                  attr(ZAlist[[it]],"is_incid") <- is_incid 
+                  # AFTER the subsetting !
+                  #attr(cov_info_mat,"blob") <- new.env(parent=emptyenv()) 
+                  #.init_promises_spprec_compos_corrMatrix(cov_info_mat) # "blob" environment gets promises for Q_CHMfactor, kron_Y_chol_Q, Lunique
+                  # : this envir was conceived for composite ranefs, but could be used beyond?
+                } else { 
+                  # sp|de corr => possible reduction/permutation of *corrFamily template*
+                  corr_info$corrFamInfos[[it]] <- .subset_corrFamily(corr_info$corrFamInfos[[it]], ZAnames, corrnames) ## correlation or precision...
+                  #attr(cov_info_mat,"blob") <- new.env(parent=emptyenv()) # "blob" without promises
+                }
+              } 
             }
           }
         }

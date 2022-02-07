@@ -228,7 +228,6 @@ projpath <- local({
     return(as(alis[[1]], "CsparseMatrix"))
   #
   nl <- length(alis)
-  Tlst <- vector("list", nl)
   for (it in seq_len(nl)) alis[[it]] <- Matrix::.diagU2N(alis[[it]], cl="CsparseMatrix") # using Matrix::.diagU2N() as public version of Matrix:::as_Csp2()
   i_off <- c(0L, cumsum(vapply(alis, nrow, 1L)))
   i <- p <- x <- vector("list", nl)
@@ -294,3 +293,9 @@ projpath <- local({
   r
 }
 
+# Not used. Most efficient of several syntaxes tried in devel/code_optimizations/structure.R
+.structure_list  <- function(.Data, attr_list) {
+  attr_list$names <- names(.Data)
+  attributes(.Data) <- attr_list
+  .Data
+} 

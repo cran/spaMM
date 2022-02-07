@@ -16,7 +16,7 @@ mat_sqrt(m = NULL, symSVD = NULL, try.chol = TRUE, condnum=1e12)
 %- maybe also 'usage' for other objects documented here.
 \arguments{
   \item{m}{
-  The matrix which 'root' is to be computed. This argument is ignored if \code{symSVD} is provided.
+  The matrix whose 'root' is to be computed. This argument is ignored if \code{symSVD} is provided.
 }
   \item{symSVD}{
   A list representing the symmetric singular value decomposition of the matrix which 'root' is to be computed. Must have elements \code{$u}, a matrix of eigenvectors, and \code{$d}, a vector of eigenvalues. 
@@ -24,7 +24,7 @@ mat_sqrt(m = NULL, symSVD = NULL, try.chol = TRUE, condnum=1e12)
   \item{try.chol}{
   If \code{try.chol=TRUE}, the Cholesky factorization will be tried. 
 }
-  \item{condnum}{ (large) numeric value.  In the case \code{chol()} was tried and failed, the matrix is regularized so that its (matrix 2-norm) condition number is reduced to \code{condnum}.
+  \item{condnum}{ (large) numeric value.  In the case \code{chol()} was tried and failed, the matrix is regularized so that its (matrix 2-norm) condition number is reduced to \code{condnum} (in version 3.10.0 this correction has been implemented more exactly than in previous versions).
 }
 }
 \value{

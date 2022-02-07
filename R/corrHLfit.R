@@ -103,6 +103,7 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
   oricall$formula <- mc$formula <- eval(mc,parent.frame()) # 
   mc[[1L]] <- get(".check_args_corrHLfit", asNamespace("spaMM"), inherits=FALSE) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
   mc <- eval(mc,parent.frame()) # returns modified call 
+  # mc[["ranFix"]] <- .preprocess_fixed(ranFix) # useless bc 'Partial constraints on ranCoefs are not handled by this function. Use fitme() instead.'
   mc[[1L]] <- get(".preprocess_corrHLfit", asNamespace("spaMM"), inherits=FALSE) 
   mc <- eval(mc,parent.frame()) # returns modified call including an element 'processed'
   removand <- intersect(names(mc), c("corrMatrix","distMatrix" ,"covStruct" ,"method" ,"HLmethod" ,"formula" ,"data" ,"family" ,"rand.family",

@@ -39,7 +39,7 @@ Functions to extract various components of a fit
 \code{fitted} extracts fitted values (see \code{\link{fitted.values}}).
 \code{response} extracts the response (as a vector).
 \code{fixef} extracts the fixed effects coefficients, \eqn{\beta}.
-\code{ranef} extracts the predicted random effects, \bold{Lv} (default since version 1.12.0), or \bold{u} (see Details in \code{\link{HLfit}} for definitions), \code{print.ranef} controls their printing. 
+\code{ranef} extracts the predicted random effects, \bold{Lv} (default since version 1.12.0), or optionally \bold{u} (see \code{\link{random-effects}} for definitions). \code{print.ranef} controls their printing. 
 \code{getDistMat} returns a distance matrix for a geostatistical (Matérn etc.) random effect.
 }
 \usage{

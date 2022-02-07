@@ -493,29 +493,22 @@
   return(rankinfo)
 }
 
-as_precision <- function(corrMatrix) {
+.provide_CHMfactor <- function(corrMatrix, CHMtemplate) {
   if (inherits(corrMatrix,"dist")) { corrMatrix <- proxy::as.matrix(corrMatrix, diag=1) }
-  # Don' try solve() without regularization as this may produce a matrix with quite large negative eigenvalues.
-  esys <- eigen(corrMatrix, only.values = TRUE)
-  evalues <- esys$values
-  min_d <- evalues[1L]/1e14 ## so that corrected condition number is at most the 1e14
-  diagcorr <- max(c(0,min_d-evalues)) # SINGLE SCALAR
-  if (diagcorr>0) {
-    corrMatrix <- (1-diagcorr)*corrMatrix
-    diag(corrMatrix) <- diag(corrMatrix) + diagcorr ## # all diag is corrected => added a constant diagonal matrix 
-  }
-  # problem: forceSymmetric() after the solve can strongly perturb the eigenvalues; solve(forceSymmetric()) is much better than forceSymmetric(solve())
-  precmat <- solve(forceSymmetric(corrMatrix))
-  # still, the solve() result may be dgC rather than dsC, and
-  #   We need to cast bc the result must ultimately be dsC in precisionFactorList[[rd]]$Qmat. 
-  # as(.,"symmetricMatrix") is not enough [as(solve(forceSymmetric(diag(2))),"symmetricMatrix") is dsy]
-  # and as(<not symmetric type>, "dsCMatrix") may warn that it is deprecated, so we need
-  precmat <- as(as(precmat,"symmetricMatrix"),"dsCMatrix") # sigh
-  #
-  colnames(precmat) <- rownames(precmat) <- colnames(corrMatrix) 
-  # drop0 useful to convert to sparseMarix even if no 0 to drop
-  return(structure(list(matrix=drop0(precmat)),class=c("list","precision"))) # return value must be sparse, not simply Matrix. 
+  if ( ! inherits(corrMatrix,"sparseMatrix")) { corrMatrix <- as(corrMatrix, "sparseMatrix") }
+  if ( ! inherits(corrMatrix,"dsCMatrix")) { corrMatrix <- forceSymmetric(corrMatrix) } # essential for _correct_ .updateCHMfactor() call
+  if (is.null(CHMtemplate)) { 
+     Matrix::Cholesky(corrMatrix, perm= TRUE, LDL=FALSE)
+  } else{ 
+    Matrix::.updateCHMfactor(CHMtemplate, parent= corrMatrix, mult=0)
+  }   
 }
+# =>
+# Lunique can be deduced (as seen in geo_info code)
+# 'solve(corrMatrix)'would be computed as 
+# Linv <- Matrix::solve(corr_CHMfactor, as(corr_CHMfactor,"pMatrix"), system="L")
+# precision <- .crossprod(Linv) # ~ solve(corrMatrix)
+
 
 .get_corr_prec_from_covStruct <- function(covStruct,it, required) { 
   # this comes after .preprocess_covStruct() so covStruct must already be a list
@@ -566,6 +559,7 @@ as_precision <- function(corrMatrix) {
   namedlist <- structure(vector("list",length(corr_types)), names=seq_along(corr_types))
   if (is.null(corr_info$adjMatrices)) corr_info$adjMatrices <- namedlist
   if (is.null(corr_info$corrMatrices)) corr_info$corrMatrices <- namedlist
+  if (is.null(corr_info$corrFamInfos)) corr_info$corrFamInfos <- namedlist
   for (it in seq_along(corr_types)) {
     corr_type <- corr_types[it]
     if ( ! is.na(corr_type)) {
@@ -584,7 +578,10 @@ as_precision <- function(corrMatrix) {
              # (I defined a dim.precision() method) so dim() would not exclude precision
              .calc_denseness(sparseCorr <- drop0(corrMatrix), relative=TRUE) < 0.15) corrMatrix <- sparseCorr
         if ( ! is.null(corrMatrix)) corr_info$corrMatrices[[it]] <- corrMatrix 
-        if (required) .check_corrMatrix(corr_info$corrMatrices[[it]]) 
+        if (required) .check_corrMatrix(corr_info$corrMatrices[[it]], element=1) 
+      } else if (corr_type=="corrFamily") {
+        corr_info$corrFamInfos[[it]] <- .corrfamily2Info(corrfamily=covStruct[[it]]) # design of each corrFamily (template, poslist...)
+        corr_info$corr_families[[it]] <- corrFamily(corr_info$corrFamInfos[[it]]) # list of functions ~ "family" object
       } 
       # IMRF AMatrices are assigned later from Zlist info, not from covStruct info
     }
@@ -613,7 +610,7 @@ as_precision <- function(corrMatrix) {
         if ( is.null(corrMatrix)) {
           # should probably check that the corrMatrix is already in. (_FIXME_)
         } else corr_info$corrMatrices[[it]] <- corrMatrix
-        .check_corrMatrix(corr_info$corrMatrices[[it]]) 
+        .check_corrMatrix(corr_info$corrMatrices[[it]], element=1) 
       } 
       # IMRF AMatrices are assigned later from Zlist info, not from covStruct info
     }
@@ -723,11 +720,11 @@ as_precision <- function(corrMatrix) {
   if (augZXy_cond) augZXy_cond <- all(is.na(processed$lambda.Fix))
   # then we also wish ()as discussed in .calc_optim_args()) to exclude *forced* inner estimation of lambde, that is, NaN in init$lambda.
   if (augZXy_cond) augZXy_cond <- ! any(is.nan(init$lambda)) 
-  # Exclude (partially)-fixed lambda in ranCoefs:
+  # Exclude (partially)-fixed lambda in ranCoefs: # ___F I X M E___ rethink this if partial fixing is implemented for corrFamily 
   if (augZXy_cond) augZXy_cond <- (! any(processed$ranCoefs_blob$is_set)) ## from is_set at preprocessing stage, this excludes cases with ranCoefs set by user
   if (augZXy_cond && length(partiallyfixed <- ranFix$ranCoefs)) { #
     # we reach here if NO ranCoefs_blob$is_set => if there is a partially fixed ranCoef, which must be in fixed$ranCoefs
-    # We then look to exclude cases where lambda's are fixed (but commented out as this does not appear useful)
+    # We then look to exclude cases where lambda's are fixed
     Xi_cols <- attr(processed$ZAlist,'Xi_cols')
     for (char_rd in names(partiallyfixed)) if (augZXy_cond) {
       Xi_ncol <- Xi_cols[as.integer(char_rd)]
@@ -920,7 +917,7 @@ as_precision <- function(corrMatrix) {
 })
 
 .assign_corr_types_families <- function(corr_info, exp_ranef_types) {
-  true_corr_types <- c("adjacency","Matern","Cauchy","AR1","corrMatrix", "IMRF")
+  true_corr_types <- c("adjacency","Matern","Cauchy","AR1","corrMatrix", "IMRF", "corrFamily")
   corr_info$corr_types <- corr_types <- true_corr_types[match(exp_ranef_types, true_corr_types)] ## full length with NA's when no match
   corr_families <- vector('list',length(corr_types))
   for (rd in which( ! is.na(corr_types))) corr_families[[rd]] <- do.call(corr_types[rd],list()) # corr_types' elements are function names!
@@ -1092,8 +1089,15 @@ as_precision <- function(corrMatrix) {
     ZAlist <- .calc_ZAlist(Zlist=Zlist, AMatrices=corr_info$AMatrices)
     attr(ZAlist,"exp_ranef_strings") <- exp_ranef_strings ## expanded 
     attr(ZAlist,"exp_ranef_types") <- exp_ranef_types ## expanded
+    
+    # if (any(exp_ranef_types== "corrFamily") && is.null(control.HLfit$algebra)) {
+    #   message("No control.HLfit$algebra specified: it is set to 'spcorr' by default.") 
+    #   control.HLfit$algebra <- "spcorr"
+    # } 
+    
   } else processed$rand.families <- list() ## ## corrects the default [gaussian()] when nrand=0
   #
+  
   HLmethod <- .preprocess_HLmethod(HLmethod, family, processed$lcrandfamfam) ## not a member of the 'processed' object
   .preprocess_HL_REMLformula(HLmethod, processed, BinomialDen, nobs, control.HLfit, y, REMLformula) # $HL, $REMLformula
   ####

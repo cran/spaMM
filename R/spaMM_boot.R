@@ -136,11 +136,11 @@ dopar <- local({
     nsim <- ncol(newresp)
     time1 <- Sys.time() 
     if (nb_cores>1L) {
+      if ( ! is.null(iseed) ) {
+        ori <- RNGkind("L'Ecuyer-CMRG")
+        set.seed(iseed)
+      }
       if (cluster_args$type=="FORK") {
-        if ( ! is.null(iseed) ) {
-          ori <- RNGkind("L'Ecuyer-CMRG")
-          set.seed(iseed)
-        }
         if (is.null(mc.silent <- control$mc.silent)) mc.silent <- TRUE 
         has_progressr <- ("package:progressr" %in% search())
         seq_nr <- seq_len(ncol(newresp))
@@ -171,7 +171,6 @@ dopar <- local({
         if (identical(control$.combine,"rbind")) {
           bootreps <- do.call(rbind,bootreps)
         } else bootreps <- do.call(cbind,bootreps)
-        if ( ! is.null(iseed) ) do.call("RNGkind", as.list(ori)) # reste to state pre-parallel computation
       } else { # PSOCK
         cl <- do.call(parallel::makeCluster, cluster_args) # note that _this_ line would make sense for fork clusters too. BUT
         # ... the foreach = dot args combination may not work for FORK type. Only pbapply would work with makeCluster+FORK, 
@@ -232,7 +231,11 @@ dopar <- local({
           } 
           pb_char <- "p"
           if ( ! is.null(iseed) ) parallel::clusterSetRNGStream(cl = cl, iseed) 
-          parallel::clusterEvalQ(cl, library("spaMM")) 
+          packages2export <- control$.packages
+          if (is.null(packages2export)) packages2export <- "spaMM"
+          parallel::clusterCall(cl,
+                                function(packages) {for (p in packages) library(p, character.only = TRUE)}, 
+                                packages2export)
           if (is.environment(fit_env)) try(parallel::clusterExport(cl=cl, varlist=ls(fit_env), envir=fit_env)) 
           if (is.function(pretest_cores)) pretest_cores(fn, cl)
           if (showpbar) {
@@ -245,6 +248,7 @@ dopar <- local({
           if (identical(control$.combine,"rbind")) bootreps <- t(bootreps)
         } # has_doSNOW ... else
       } # FORK ... else
+      if ( ! is.null(iseed) ) do.call("RNGkind", as.list(ori)) # reste to state pre-parallel computation
     } else { ## nb_cores=1L
       pb_char <- "s"
       if (showpbar) {

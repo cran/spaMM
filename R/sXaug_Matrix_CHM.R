@@ -7,7 +7,7 @@ def_sXaug_Matrix_cholP_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale) 
   Xaug <- .Dvec_times_Matrix_lower_block(weight_X,Xaug,n_u_h)
   resu <- structure(Xaug,
                     # AUGI0_ZX attr already present
-                    BLOB=list2env(list(), parent=environment(.sXaug_Matrix_cholP_scaled)),
+                    BLOB=list2env(list(), parent=baseenv()),
                     get_from="get_from_MME.sXaug_Matrix_cholP_scaled",
                     w.ranef=w.ranef,
                     n_u_h=n_u_h,
@@ -18,7 +18,7 @@ def_sXaug_Matrix_cholP_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale) 
   return( resu ) 
 }
 
-# if QR not previously available, szAug=NULL: constructs the QR factorization, return value depends on 'which'
+# if QR not previously available, szAug=NULL: constructs the factorization, return value depends on 'which'
 # if QR not previously available, szAug ! NULL:   ..........................   returns the solution
 # if which="solve_d2hdv2", B=NULL: returns solve(d2hdv2)
 # if which="solve_d2hdv2", B ! NULL: returns solve(d2hdv2,B)
@@ -27,8 +27,11 @@ def_sXaug_Matrix_cholP_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale) 
   # attr(sXaug,"AUGI0_ZX") is presumably inherited from the Xaug argument of def_sXaug_Matrix_QRP_CHM_scaled
   # (Xaug=Xscal with attr(Xscal,"AUGI0_ZX") <- processed$AUGI0_ZX in .solve_IRLS_as_ZX(),
   # but this attribute may not be present (in .solve_v_h_IRLS)
-  # => we cannot generally assume it is present. # ___F I X M E___ .sXaug_Matrix_cholP_scaled() "limitation" (it can still work but without CHM template: is that an inefficiency for .solve_v_h_IRLS()?)
-  # By contrast .sXaug_Matrix_QRP_CHM_scaled() does not try to use it.
+  # => we cannot generally assume it is present. 
+  # ___F I X M E___ in version 3.9.64 I tentatively fixed this by adding
+  #     attr(Xscal,"AUGI0_ZX") <- AUGI0_ZX 
+  # in .make_Xscal and in a more ad-hoc function, but this remains to be tested.
+  # By contrast .sXaug_Matrix_QRP_CHM_scaled() worked bc it did not try to use AUGI0_ZX except as provided by preprocess for aug_ZXy's .get_absdiagR_blocks().
   if (is.null(BLOB$CHMfactor)) {
     AUGI0_ZX_envir <- attr(sXaug,"AUGI0_ZX")$envir # immediately used, but we could imagine extending AUGI0_ZX usage
                                        # both to block operations here, and to other sXaug methods, which would thus all 
@@ -176,7 +179,7 @@ def_sXaug_Matrix_cholP_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale) 
       tmp <- X <- t(BLOB$L_scaled[BLOB$sortPerm,, drop=FALSE] ) # crossfac needed here
       tmp@x <- tmp@x*tmp@x
       BLOB$R_scaled_blob <- list(X=X, diag_pRtRp=colSums(tmp), 
-                                 XDtemplate=structure(.XDtemplate(X),upperTri=FALSE))
+                                 XDtemplate=.XDtemplate(X,upperTri=FALSE))
     }
     return(BLOB$R_scaled_blob)
   } 
@@ -187,7 +190,7 @@ def_sXaug_Matrix_cholP_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale) 
       tmp@x <- tmp@x*tmp@x
       diag_pRtRp_scaled_v_h <- colSums(tmp)
       BLOB$R_scaled_v_h_blob <- list(R_scaled_v_h=R_scaled_v_h,diag_pRtRp_scaled_v_h=diag_pRtRp_scaled_v_h, 
-                                     XDtemplate=structure(.XDtemplate(R_scaled_v_h), upperTri=TRUE))
+                                     XDtemplate=.XDtemplate(R_scaled_v_h, upperTri=TRUE))
     }
     return(BLOB$R_scaled_v_h_blob)
   } 
@@ -199,7 +202,7 @@ def_sXaug_Matrix_cholP_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale) 
       R_beta <- .lmwithQR(X,yy=NULL,returntQ=FALSE,returnR=TRUE)$R_scaled
       diag_pRtRp_beta <-  colSums(R_beta^2)
       BLOB$R_beta_blob <- list(R_beta=R_beta,diag_pRtRp_beta=diag_pRtRp_beta, 
-                               XDtemplate=structure(.XDtemplate(R_beta), upperTri=TRUE))
+                               XDtemplate=.XDtemplate(R_beta, upperTri=TRUE))
     }
     return(BLOB$R_beta_blob)
   } 

@@ -77,7 +77,7 @@ if (spaMM.getOption("example_maxtime")>6.90) {
                   covStruct=list(corrMatrix=covmat),
                   rand.family=list(gaussian(),Gamma(log)), #verbose=c(TRACE=3L),
                   fixed=list(lambda=c(0.05,0.05)), 
-                  family=poisson(),data=scotlip,control.HLfit=list(LevenbergM=c(LevenbergM=TRUE,sparse_precision=FALSE)))
+                  family=poisson(),data=scotlip,control.HLfit=list(LevenbergM=TRUE,sparse_precision=FALSE))
     bbbb <- fitme(cases~I(prop.ag/10) +corrMatrix(1|gridcode)+(1|gridcode)+offset(log(expec)),
                   covStruct=list(precision=precmat),
                   rand.family=list(gaussian(),Gamma(log)), #verbose=c(TRACE=3L),

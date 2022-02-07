@@ -4,7 +4,7 @@
 Information about numerical problems
 }
 \description{
-This function displays information about parameter values for which some numerical problems have occurred. It is prelimnary, has yet no good example of application, but some warnings might suggest its use.
+This experimental function displays information about parameter values for which some numerical problems have occurred. Some warnings suggest its use.
 }
 \usage{
 div_info(object, ...)
@@ -20,14 +20,17 @@ div_info(object, ...)
 if (spaMM.getOption("example_maxtime")>25) {
   set.seed(1L)
   d <- data.frame(y = rbinom(100, 1, 0.5), time = 1:100)
-  (logLik(numpb <- fitme(y ~ 1 + AR1(1|time), data = d, 
-                         family = binomial(link=cauchit), method = "PQL")))
-  div_info(numpb) # High lambda is often part of the problem,
-                  # here only for negative AR parameter:      
+  numpb1 <- fitme(y ~ 1 + AR1(1|time), data = d, init=list(lambda=NA), 
+                         family = binomial(link=cauchit), method = "PQL")
+  div_info(numpb1) # High lambda is often part of the problem,
+                   # here only for negative AR parameter, as shown by the following 'fix':      
+  #                 
   fitme(y ~ 1 + AR1(1|time), data = d, family = binomial(link=cauchit), 
-        method = "PQL", lower=list(ARphi=0))
-  # Less successful fix (or cover-up):
-  fitme(y ~ 1 + AR1(1|time), data = d, family = binomial(link=cauchit), 
-        method = "PQL", upper=list(lambda=20))
+        method = "PQL", lower=list(ARphi=0), init=list(lambda=NA)) # no div_info
+  #
+  # Less successfull attempt to fix the problem:
+  numpb2 <- fitme(y ~ 1 + AR1(1|time), data = d, family = binomial(link=cauchit), 
+        method = "PQL", upper=list(lambda=20), init=list(lambda=NA))  
+  div_info(numpb2) # problem for negative AR parameter again
 }
 }

@@ -3,7 +3,39 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
-\section{CHANGES UP TO VERSION 3.9.25}{ %      
+\section{CHANGES UP TO VERSION 3.10.0}{       
+\subsection{NEW FEATURES}{
+\itemize{
+\item New experimental 'corrFamily' random effect to fit correlated random effects belonging to a user-defined correlation model.
+\item New convenience functions extreme_eig() and regularize() to handle nearly-singular matrices (prompted by 'corrFamily' development).
+\item The general-purpose dopar() and dofuture() functions can now execute code depending on other packages than spaMM whatever the parallel backends these functions call.
+\item spaMM fitting functions, as well as spaMM_glm.fit(), rested on stats::gaussian()$initialize() to find good starting values for gaussian-response models with log or inverse link, which means that they would sometimes fail, forcing users to provide initial values. This is no longer necessary (see exponential regression example in help("spaMM_glm")).   
+}
+}
+\subsection{USER-LEVEL CHANGES}{
+\itemize{
+\item Faster fitme/fitmv fits of random-coefficient models constrained to diagonal covariance matrix by a fixed=list(ranCoefs=<....>) argument: useful notably for (<factor>|<RHS>) or (<0+factor>|<RHS>) terms with several levels of the factor.
+\item Cryptic changes (to some loop termination condition and to a matrix operation) to improve the fitting time of various slow fits (with a fourfold reduction in one extreme case).
+\item Revised procedures for regularization of nearly-singular matrices, affecting mat_sqrt() results for them. This may in principle impact some fits.
+}
+}
+\subsection{BUG FIXES}{
+\itemize{
+\item confint() could fail in some programming contexts.
+\item Fitting some LMMs without fixed effects (not really L'M'Ms then...) could fail.
+\item summary() could fail for GLMs without estimated fixed-effect coefficient.
+\item The Levenberg-Marquardt-like algorithm could seem stuck in rares cases with large random effects (thousands of levels).
+\item The shape of the negbin() family was ignored when the shape argument was a call to some function (and likewise for COMPoisson's nu).
+}
+}
+\subsection{DOCUMENTATION}{
+\itemize{
+\item Example of analysing interactions by random effects, in new documentation topic help("GxE").
+\item Use of the (experimental) dummy() factor specifier from the lme4 package is now documented.
+}
+}
+}
+\section{CHANGES UP TO VERSION 3.9.25}{       
 \subsection{NEW FEATURES}{
 \itemize{
 \item New argument filled.mapMM(., return.) to control the return value of this function.
@@ -534,7 +566,7 @@ due to a bug introduced in v3.7.48 (i.e., CRAN versions 3.8.0 and 3.8.9)
 \item confint() had weaknesses, more likely to impact intervals for simple LMMs since the introduction of new fitting algorithms in version 2.5.0.
 \item Bug in predict()'ing with an unusual combination of random effects and newdata (documented in test/testthat/test-more-predict.R).
 \item Marginal AIC computation did not exclude fixed correlation parameters from number of degrees of freedom.
-\item Sparse-precision code could fail when all fixed-effect coefficents were set by the user using the 'etaFix' argument.
+\item Sparse-precision code could fail when all fixed-effect coefficients were set by the user using the 'etaFix' argument.
 \item Failure to catch some incorrect or inefficient calls, notably of HLfit to fit random-coefficient models by sparse-precision methods (which is now a correct call!).
 }
 }
@@ -544,7 +576,7 @@ due to a bug introduced in v3.7.48 (i.e., CRAN versions 3.8.0 and 3.8.9)
 \itemize{
 \item Function get_matrix() to extract various matrices from the fit.
 \item Function remove_from_parlist() for manipulating a structured list of parameters.
-\item spaMM_boot() now rbind's into a data frame the results of the 'simuland' calls when each call returns a 1-row data frame (the previous behaviour was undocumented and effectively inconsistent accross different parallel backends). 
+\item spaMM_boot() now rbind's into a data frame the results of the 'simuland' calls when each call returns a 1-row data frame (the previous behaviour was undocumented and effectively inconsistent across different parallel backends). 
 \item More explicit error message when variables for prior weights are not in the 'data'.
 \item logLik(., which="logL_Lap") to compute Laplace approximation using observed Hessian (currently only for family=Gamma(log), for demonstration purposes).
 \item Low response variance could result in poor fits. A warning is now issued and several steps have been taken for more robust results.

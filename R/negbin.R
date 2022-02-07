@@ -45,6 +45,9 @@ negbin <- function (shape = stop("negbin's 'shape' must be specified"), link = "
                       ').\n  Use named argument: negbin(link=',shch,') instead.')
     stop(errmess)
   }
+  # When 'shape' is recognized as as call to some function ! = stop(), we eval it so it is no longer recognized as a call by .calc_optim_args()
+  if (inherits(shch,"call") && deparse(shch[[1]])!="stop") shape <- eval(shch) 
+  
   linktemp <- substitute(link)
   if (!is.character(linktemp)) 
     linktemp <- deparse(linktemp)

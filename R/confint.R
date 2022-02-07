@@ -195,7 +195,7 @@
                                              checkComplete=FALSE, rC_transf=rC_transf)
     LowUp <- do.call(.makeLowerUpper,LUarglist)
     optim_bound_over_nuisance_pars <- function(posforminimiz) { ## optimize the CI bound and returns the parameters that optimize this bound
-      user_init_optim <- switch(paste(llc[[1L]]),
+      user_init_optim <- switch(fnname,
                                 "corrHLfit" = llc[["init.corrHLfit"]],
                                 "fitme" = llc[["init"]], 
                                 NULL)

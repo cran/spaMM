@@ -599,6 +599,9 @@ COMPoisson <- function(nu = stop("COMPoisson's 'nu' must be specified"),
                       ').\n  Use named argument: COMPoisson(link=',nuch,') instead.')
     stop(errmess)
   }
+  # When 'nu' is recognized as as call to some function ! = stop(), we eval it so it is no longer recognized as a call by .calc_optim_args()
+  if (inherits(nuch,"call") && deparse(nuch[[1]])!="stop") nu <- eval(nuch) 
+  
   linktemp <- substitute(link) # if link was char LHS is char ; else deparse will create a char from a language object 
   if (!is.character(linktemp)) linktemp <- deparse(linktemp)
   okLinks <- c("loglambda", "log", "identity", "sqrt")

@@ -205,7 +205,7 @@ testthat::expect_true(max(abs(range(p3-p4)))<1e-12)
 testthat::expect_true(max(abs(range(p1-p4)))<1e-12)
 
 # Check of different syntaxes to get naive term 
-# Note that naive depend on the L matrix root and thus not comparable accross equivalent fits (e.g. sparse/dense prec)
+# Note that naive depend on the L matrix root and thus not comparable across equivalent fits (e.g. sparse/dense prec)
 fitobject <- corrHLfit(migStatus ~ 1 + Matern(1|longitude+latitude),data=blackcap,
                        ranFix=list(nu=1,rho=0.1, phi=0.1)) 
 (naive1 <- get_predVar(fitobject,which="naive"))

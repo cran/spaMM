@@ -314,6 +314,7 @@ if (FALSE) {
   rC_blob_longLvMatrix
 }
 
+
 .process_ranCoefs <- function(processed, ranCoefs, trRanCoefs, use_tri_CORREL) {
   ranCoefs_blob <- processed$ranCoefs_blob
   ZAlist <- processed$ZAlist 
@@ -357,11 +358,14 @@ if (FALSE) {
         rand_list[names(ranCoefs)] <- ranCoefs
         ranCoefs <- rand_list
       }
-      not_constr_or_set <- .sapply_null_or_NA(ranCoefs) 
+      not_constr_or_set <- .sapply_null_or_NA(ranCoefs) # tests all vectors => result is vector
       newly_set <- ! (not_constr_or_set | .sapply_anyNA(ranCoefs))  
       # newly_set contains some TRUE (unless the user provided an uninformative ranCoefs) =>  no return yet ! 
       ranCoefs_blob$is_set <- newly_set
-    } else return(ranCoefs_blob) # still preprocess case
+    } else {
+      ranCoefs_blob$is_diag_family <- rep(FALSE, length(Xi_cols))
+      return(ranCoefs_blob) # still preprocess case
+    }
   } else if (is.null(ranCoefs) || # after preprocess: occurs if nrand=0
              ! any(isRandomSlope <- ranCoefs_blob$isRandomSlope)) {
     return(ranCoefs_blob)
@@ -684,7 +688,7 @@ if (FALSE) {
                                   residProcessed=processed$residProcesseds[[mv_it]],
                                   residModel=processed$residModels[[mv_it]],
                                   dev.res= processed$families[[mv_it]]$dev.resids(y[resp_range],mu[resp_range],wt[[mv_it]]), 
-                               #: times pw to be an estimate of same phi accross level of response
+                               #: times pw to be an estimate of same phi across level of response
                                # but not same phi as when there is no pw !
                                # double pw => double phi_est so that phi_est_i :=phi_est/pw_i is unchanged
                                lev_phi=lev_phi[resp_range],
@@ -1028,20 +1032,23 @@ spaMM_Gamma <- local({
   }
   tmp1 <-  6.5663667753507884 # log(1+log(.Machine$double.xmax))
   tmpmax <- (max - tmp1)*nu # when nu<1, this shrinks both the maximum and the range over which a correction is applied
-  if ( ! is.null(y)) {
-    tmpmax <- pmax(log(y), tmpmax) ## if log(y)>tmpmax corrected eta is log(y)+(< log(1+double.xmax)=tmp1)*nu i.e. corrected eta is < log(y)+tmp1*nu
-    #   otherwise  corrected eta is < (max-tmp1)*nu+(< log(1+double.xmax)=tmp1)*nu    <   max*nu  
-    #  and "-tmpmax" ensures continuity in eta=tmpmax) as log(1+log(1+...))=0 there
-    high_eta <- (eta>tmpmax)
-    eta[high_eta] <- tmpmax[high_eta] + log(1+log(1+eta[high_eta]-tmpmax[high_eta]))*nu
-  }  else eta[eta>tmpmax] <- tmpmax + log(1+log(1+eta[eta>tmpmax]-tmpmax))*nu
-  ## smooth correction proved useful in spaMM_glm.fit (at least), presumably to avoid a plateau of objective fn
   tmpmin <- min+tmp1 # nu appears to have little effect on mu when eta is small
   if ( ! is.null(y)) {
-    tmpmin <- pmin(tmpmin,log(y))
-    low_eta <- (eta< tmpmin)
+    logy <- log(y)
+    tmpmax <- pmax(logy, tmpmax) ## if log(y)>tmpmax corrected eta is log(y)+(< log(1+double.xmax)=tmp1)*nu i.e. corrected eta is < log(y)+tmp1*nu
+    #   otherwise  corrected eta is < (max-tmp1)*nu+(< log(1+double.xmax)=tmp1)*nu    <   max*nu  
+    #  and "-tmpmax" ensures continuity in eta=tmpmax) as log(1+log(1+...))=0 there
+    high_eta <- ( (!is.nan(tmpmax)) & eta>tmpmax) # added the is.nan(tmpmax) condition to allow some negative y when fitting gaussian(log)
+    eta[high_eta] <- tmpmax[high_eta] + log(1+log(1+eta[high_eta]-tmpmax[high_eta]))*nu
+    ## smooth correction proved useful in spaMM_glm.fit (at least), presumably to avoid a plateau of objective fn
+    #
+    tmpmin <- pmin(tmpmin,logy)
+    low_eta <- ( (!is.nan(tmpmax)) & eta< tmpmin)
     eta[low_eta] <- tmpmin[low_eta] - log(1+log(1-eta[low_eta]+tmpmin[low_eta]))
-  } else eta[eta< tmpmin] <- tmpmin - log(1+log(1-eta[eta< tmpmin]+tmpmin))## symmetric correction for negative eta
+  }  else {
+    eta[eta>tmpmax] <- tmpmax + log(1+log(1+eta[eta>tmpmax]-tmpmax))*nu
+    eta[eta< tmpmin] <- tmpmin - log(1+log(1-eta[eta< tmpmin]+tmpmin))## symmetric correction for negative eta
+  }
   return(eta)
 } 
 
@@ -1602,7 +1609,7 @@ spaMM_Gamma <- local({
 
 .tcrossprod <-  function(x, y=NULL, chk_sparse2mat=TRUE, as_sym=TRUE, perm) { # XX' tcrossprod, or more general concept for dCHMsimpl
   # this function can be used to compute a cov matrix from its tcrossfac;
-  # but also to compute a cov matrix of a permuted cov matrix from the dCHMsimpl of an unpermuted precision matrix.
+  # but also to compute a permuted cov matrix from the dCHMsimpl of an unpermuted precision matrix.
   # Hence the ad hoc code in the latter case, and the absence of default value of 'perm' argument, as a default could cause hard to track bugs. 
   if (is.null(x)) return(NULL) ## allows lapply(,.tcrossprod) on a listof (matrix or NULL)
   if (inherits(x,"ZAXlist")) {
@@ -2356,7 +2363,7 @@ spaMM_Gamma <- local({
                              attr(ZAlist,"exp_ranef_strings")[Lit])
               mess <- paste0(mess,"\n  is not a multiple of the dimension of the correlation matrix;") ## by distMatrix checking in corrHLfit or no.info check somewhere...
               mess <- paste0(mess,"\n  and levels of the grouping variable cannot all be matched by name to dimnames of the correlation matrix.")
-              stop(mess)
+              stop(mess) # for spprec,  this may mean something wrong occurred in .init_assign_geoinfo() when cols where added to Z (eg non-unique names in input)
             } else {
               xmatrix <- xmatrix[colnames(ZA),colnames(ZA),drop=FALSE]
               locnr <- locnc
@@ -2713,7 +2720,7 @@ if (FALSE) { # that's not used.
     wranefblob <- do.call(".updateW_ranefS",c(W_ranefS_constant_args, list(u_h=u_h,v_h=v_h,lambda=lambda_est)))
     H_global_scale <- .calc_H_global_scale(w.resid)
     ZAL_scaling <- 1/sqrt(wranefblob$w.ranef*H_global_scale) ## Q^{-1/2}/s
-    Xscal <- .make_Xscal(ZAL, ZAL_scaling, AUGI0_ZX=processed$AUGI0_ZX)
+    Xscal <- .make_Xscal(ZAL, ZAL_scaling, processed=processed)
     weight_X <- sqrt(H_global_scale*w.resid) ## sqrt(s^2 W.resid)
     if (inherits(Xscal,"Matrix")) {
       mMatrix_method <- .spaMM.data$options$Matrix_method
@@ -2770,23 +2777,28 @@ if (FALSE) { # that's not used.
   return(X)
 }
 
-.XDtemplate <- function(X) {
+.XDtemplate <- function(X, upperTri) {
   if (inherits(X,"dtCMatrix")) {
     #XDtemplate <- .adhoc_rbind_dtC_dvec(X,dvec=rep(1,ncol(X))) # equivalent but with less ad-hoc unsafe code:
-    return(.adhoc_rbind_dgC_dvec(as(X,"dgCMatrix"),dvec=rep(1,ncol(X))))
+    res <- .adhoc_rbind_dgC_dvec(as(X,"dgCMatrix"),dvec=rep(1,ncol(X)))
   } else if (inherits(X,"dgCMatrix")) {
-    return(.adhoc_rbind_dgC_dvec(X,dvec=rep(1,ncol(X))))
+    res <- .adhoc_rbind_dgC_dvec(X,dvec=rep(1,ncol(X)))
   } else if (inherits(X,"Matrix")) {
-    return(.adhoc_rbind_dgC_dvec(X,dvec=rep(1,ncol(X))))
-  } else return(rbind(X, diag(nrow=ncol(X))))
+    res <- .adhoc_rbind_dgC_dvec(X,dvec=rep(1,ncol(X)))
+  # } else if (upperTri) {
+  #   # test whether one can get advantage of sparse QR in .damping_to_solve() (=> No)
+  #   res <- .adhoc_rbind_dgC_dvec(as(X,"dgCMatrix"),dvec=rep(1,ncol(X)))
+  } else res <- rbind(X, diag(nrow=ncol(X)))
+  attr(res,"upperTri") <- upperTri
+  res
 }
 
 .damping_to_solve <- function(X, XDtemplate=NULL, dampDpD, rhs=NULL,method="QR", .drop=TRUE) { ## cf my notes on Mor\'e 1977 
   if (.drop) rhs <- drop(rhs) ## 1-col m/Matrix to vector ## affects indexing below but the result of the chol2inv line is always Matrix
-  if (method=="QR") { ## seem always true
+  if (method=="QR") { ## seems always true
     if (is.null(XDtemplate)) {
       warning("Possibly inefficient call to .damping_to_solve() without precomputed XDtemplate")
-      XDtemplate <- structure(.XDtemplate(X), upperTri=FALSE)
+      XDtemplate <- .XDtemplate(X, upperTri=FALSE)
     }
     nr <- nrow(XDtemplate)-length(dampDpD)
     if (inherits(XDtemplate,"Matrix")) { # both cases occur in routine use # presumably spprec, ou sparse-correl
@@ -2807,32 +2819,57 @@ if (FALSE) { # that's not used.
         ## not specifically bc of the tcrossprod implementation (compared to crossprod) but because the result is *much* denser (bigranefs example) 
         ## It's then much better to avoid chol2inv(), at least when there is a RHS!
         ## PLUS 05/2020 : more efficient .backsolve avoids backsolve -> as.matrix(). 
-        if (FALSE) { 
-          if (is.matrix(rhs)) {
-            resu <- (Matrix::chol2inv(qrR(RP,backPermute = FALSE)) %*% rhs[RP@q+1L,])[RRsP,]
-          } else { ## if rhs is one col 
-            resu <- (Matrix::chol2inv(qrR(RP,backPermute = FALSE)) %*% rhs[RP@q+1L])[RRsP]
-          }
-        } else {
-          if (TRUE) {
-            qrr <- qrR(RP,backPermute = FALSE) # must be dtC
-            qrr <- as(qrr,"dgCMatrix") ## avoid conversions in each call to .backsolve()
-            resu <- .backsolve(qrr, .backsolve(qrr, rhs[RP@q + 1], transpose = TRUE))
-            if (is.matrix(rhs)) {
-              resu <- resu[RRsP,]
-            } else resu <- resu[RRsP,1]
-          } else {
-            solveR <- solve(qrR(RP,backPermute = FALSE))
-            if (is.matrix(rhs)) {
-              resu <- (solveR %*% .crossprod(solveR,rhs[RP@q+1L,]))[RRsP,]
-            } else { ## if rhs is one col 
-              resu <- (solveR %*% .crossprod(solveR,rhs[RP@q+1L]))[RRsP]
-            }
-          }
+        ## BUT 01/2022 : the naive solve(., solve(t(.), ..)) on dtC avoids any conversion => much faster
+        if (TRUE) {
+          qrr <- qrR(RP,backPermute = FALSE) # must be dtC
+          resu <- solve(qrr, solve(t(qrr), rhs[RP@q + 1])) # Matrix::solve for dtC # faster than mess below, test-nloptr's simuland example.
+          if (.drop) { # rhs has been converted to vector so is not matrix
+            resu <- resu[RRsP,1]
+          } else resu <- resu[RRsP,]
+        } else { # all attempts compared
+          # if (FALSE) { 
+          #   if (is.matrix(rhs)) {
+          #     resu <- (Matrix::chol2inv(qrR(RP,backPermute = FALSE)) %*% rhs[RP@q+1L,])[RRsP,]
+          #   } else { ## if rhs is one col 
+          #     resu <- (Matrix::chol2inv(qrR(RP,backPermute = FALSE)) %*% rhs[RP@q+1L])[RRsP]
+          #   }
+          # } else {
+          #   if (TRUE) {
+          #     qrr <- qrR(RP,backPermute = FALSE) # must be dtC
+          #     if (TRUE) {
+          #       resu <- solve(qrr, solve(t(qrr), rhs[RP@q + 1])) # Matrix::solve for dtC # faster than mess below, test-nloptr's simuland example.
+          #       if (.drop) { # rhs has been converted to vector so is not matrix
+          #         resu <- resu[RRsP,1]
+          #       } else resu <- resu[RRsP,]
+          #     } else {
+          #       qrr <- as(qrr,"dgCMatrix") ## avoid conversions in each call to .backsolve()
+          #       #if (TRUE) { # Alternatives compared while debugging a large negbin GLMM (from twins ms), => same results but faster by .backsolve
+          #       # BUT ... the singla as(.,"dgCMatrix") is much more costly...
+          #       resu <- .backsolve(qrr, .backsolve(qrr, rhs[RP@q + 1], transpose = TRUE))
+          #       if (is.matrix(rhs)) {
+          #         resu <- resu[RRsP,]
+          #       } else resu <- resu[RRsP,1]
+          #       # } else {
+          #       #   resu <- backsolve(qrr, backsolve(qrr, rhs[RP@q + 1], transpose = TRUE))
+          #       #   if (is.matrix(rhs)) {
+          #       #     resu <- resu[RRsP,]
+          #       #   } else resu <- resu[RRsP]
+          #       # }
+          #     }
+          #   } else {
+          #     solveR <- solve(qrR(RP,backPermute = FALSE))
+          #     if (is.matrix(rhs)) {
+          #       resu <- (solveR %*% .crossprod(solveR,rhs[RP@q+1L,]))[RRsP,]
+          #     } else { ## if rhs is one col 
+          #       resu <- (solveR %*% .crossprod(solveR,rhs[RP@q+1L]))[RRsP]
+          #     }
+          #   }
+          # }
+          # 
         }
       }
       ## assuming rhs is 'slim', this minimizes permutations. For computation of dv_h, it is square rather than slim...
-    } else { # dense correl ?
+    } else { # decorr
       XD <- .Dvec_times_matrix(Dvec=c(rep(1,nr),sqrt(dampDpD)), X=XDtemplate)
       if (TRUE) { 
         # on test-levM.R arabidopsis example, .lmwithQR faster than .lmwithQRP faster than a firsr .update_R_in_place_essai() (code in givens.R) 
@@ -2845,7 +2882,11 @@ if (FALSE) { # that's not used.
         if (is.null(rhs)) {
           return(list(inv=chol2inv(R_scaled),Rperm=seq(ncol(R_scaled)),RRsP=seq(ncol(R_scaled))))
         } else {
-          resu <- backsolve(R_scaled, backsolve(R_scaled,rhs,transpose=TRUE))
+          # here again I tested the speed of .Rcpp_chol2solve(R_scaled, rhs) and its slower; possible reason is that a new 
+          # matrix is allocated (solve in place not possible) while this is avoided by:
+          resu <- .Rcpp_backsolve(R_scaled, .Rcpp_backsolve(R_scaled,rhs,transpose=TRUE))
+          # which seems to bring a slight gain over
+          # resu <- backsolve(R_scaled, backsolve(R_scaled,rhs,transpose=TRUE))
         }
       } else {
         RP <- .lmwithQRP(XD,yy=NULL,returntQ=FALSE,returnR=TRUE) ## Eigen QR OK since we don't request Q
@@ -2989,8 +3030,8 @@ if (FALSE) { # that's not used.
   return(lambda_est) 
 }
 
-.calc_initial_init_lambda <- function(lambda.Fix, nrand, processed, ranCoefs_blob, init.HLfit, fixed) {
-  init.lambda <- lambda.Fix ## already the right size 'nrand' with NA's or non-fixed ones
+.calc_initial_init_lambda <- function(lam_fix_or_outer_or_NA, nrand, processed, ranCoefs_blob, init.HLfit, fixed) {
+  init.lambda <- lam_fix_or_outer_or_NA # already the right size 'nrand' with NA's or non-fixed ones"
   if (is.null(lambdaType <- processed$envir$lambdaType)) { # _F I X M E_ that's midway from pushing this to .preprocess. But...
     # the hyper stuff cannot be fully included in this block and I will wait a better opportunity to dissect what could be done about it. 
     lambdaType <- rep("",nrand) 
@@ -2998,6 +3039,7 @@ if (FALSE) { # that's not used.
     lambdaType[lambdaType=="" & ! is.na(processed$lambda.Fix)] <- "fixed" 
     processed$envir$lambdaType <- lambdaType
   }
+  
   if ( ! is.null((hyper_info <- processed$hyper_info)$map)) {
     hyper_type <- attr(fixed,"type")$hyper
     hy_lam_types <- character(length(hyper_type))
@@ -3014,7 +3056,7 @@ if (FALSE) { # that's not used.
   }
   lambdaType[lambdaType=="" & ranCoefs_blob$is_set] <- "outer_ranCoefs" 
   ## "fixed" (not "fix" -- confusing) is tested eg to compute dfs p_lambda, in summary, in calc_logdisp_cov.R, in .get_logdispObject.
-  lambdaType[(lambdaType=="" & ! (is.na(lambda.Fix)))] <- "outer" # outer charac. by difference between processed$lambda.Fix and lambda.Fix
+  lambdaType[(lambdaType=="" & ! (is.na(lam_fix_or_outer_or_NA)))] <- "outer" # outer charac. by difference between processed$lambda.Fix and lambda.Fix
   lambdaType[whichInner <- (lambdaType=="")] <- "inner"  
   if (! is.null(init.HLfit$lambda)) init.lambda[whichInner] <- init.HLfit$lambda[whichInner]
   if (! is.null(init.lambda)) attr(init.lambda,"type") <- lambdaType
@@ -3178,11 +3220,14 @@ if (FALSE) { # that's not used.
   }
 }
 
-# For sparse 'r', .Rcpp_backsolve has a definite advantage over backsolve() and possibly also solve().
+#### Old comment, presumably false: For sparse 'r', .Rcpp_backsolve has a definite advantage over backsolve() and possibly also solve().
+# actually for dtC, the process was to convert to dgC (as seen here), for which .Rcpp_backsolve() is fast; but conversion is too slow.
+# Instead one should use solve() for dtCMatrix
+# Overall this makes .backsolve() useless. It was sparsely used. We keep it as a wrapper to check arguments for .Rcpp_backsolve
 .backsolve <- function(r, x=NULL, upper.tri = TRUE, transpose = FALSE) {
   if (inherits(r,"Matrix")) { ## then dgCMatrix or dtCMatrix expected. 
-    if ( ! inherits(r,"dgCMatrix")) { # .Rcpp_backsolve requires dtCMatrix # it would be nice to be able to pass a dtCMatrix to Eigen
-      if ( ! inherits(r,"dtCMatrix")) warning("*possibly inefficient call to .backsolve().")
+    if ( ! inherits(r,"dgCMatrix")) { # .Rcpp_backsolve requires dgCMatrix # it would be nice to be able to pass a dtCMatrix to Eigen
+      warning("*possibly inefficient call to .backsolve().") # in particular, for dtCMatrix, Matrix::solve() is more efficient (even with transposition) 
       r <- as(r,"dgCMatrix") 
     }
   }
@@ -3190,28 +3235,6 @@ if (FALSE) { # that's not used.
     stop(".backsolve does not handle case inherits(x,'Matrix').")
     # .Rcpp_backsolve_M_M() does not work.
   } else return(.Rcpp_backsolve(r=r, x=x, upper_tri = upper.tri, transpose=transpose))
-}
-
-# .backsolve_thr() and .chol2solve are not used in operational code. 
-# They are best used once at a time, with variable thr_backsolve values, to test the efficiency of the call to .Rcpp_ versions for dense matrices.
-.backsolve_thr <- function(r, x=NULL, upper.tri = TRUE, transpose = FALSE, thr_backsolve=.spaMM.data$options$thr_backsolve) {
-  if (inherits(r,"Matrix")) {
-    return(.Rcpp_backsolve(r=r, x=x, upper_tri = upper.tri, transpose=transpose))
-  } else if (ncol(r) >= thr_backsolve) {
-    return(.Rcpp_backsolve(r=r, x=x, upper_tri = upper.tri, transpose=transpose))
-  } else return(backsolve(r=r, x=x, upper.tri = upper.tri, transpose=transpose))
-}
-
-# .chol2solve is not up-to-date
-.chol2solve <- function(r, x=NULL) {
-  anyMatrix <- (inherits(r,"Matrix") || inherits(x,"Matrix"))
-  if (anyMatrix) warning("*M*atrix argument in call to .chol2solve()")
-  if ( anyMatrix || ncol(r)< .spaMM.data$options$thr_backsolve) { 
-    if (is.null(x)) x <- diag(nrow=ncol(r))
-    return(backsolve(r, backsolve(r,x,transpose=TRUE)))
-  } else {
-    return(.Rcpp_chol2solve(r=r, x=x))
-  }
 }
 
 .get_phi_object <- function(phi.Fix, PHIblob, dev_res, prior.weights, phi.preFix, nobs, control) {
@@ -3406,4 +3429,43 @@ if (FALSE) { # that's not used.
     fv <- structure(unlist(fvs, recursive=FALSE, use.names=TRUE), mv=fvs)
   }
   return(fv)
+}
+
+.dfs_ranCoefs <- function(types) {
+  # $ranCoefs is present only for (partially) fixed ranCoefs...
+  # its type is present only for *partially* fixed  ranCoefs!
+  # => wonderful ad-hockery.
+  #p_trRanCoefs <- length(which(unlist(attr(res$CorrEst_and_RanFix,"type")$trRanCoefs, use.names = FALSE) == "outer")) 
+  #p_partiallyfixed_ranCoefs <- length(which(unlist(attr(res$CorrEst_and_RanFix,"type")$ranCoefs, use.names = FALSE) == "fix")) 
+  #
+  # Even better with isDiagFamily, where ranCoef has more elements than trRanCoef... hence:
+  p_rC <- 0L
+  ty_trRanCoefs <- types$trRanCoefs
+  ty_ranCoefs <- types$ranCoefs
+  for (char_rd in names(ty_trRanCoefs)) {
+    if (is.null(ty_ranCoefs[[char_rd]])) { # not partially fixed
+      p_rC <- p_rC + length(which(ty_trRanCoefs[[char_rd]]=="outer"))
+    } else { # partially fixed: trRanCoefs cannot be used bc all types are "outer" and their number differ whether isDiagFamily or not
+      p_rC <- p_rC + length(which(ty_ranCoefs[[char_rd]]=="outer"))
+    }
+  }
+  p_rC
+}
+
+.get_MME_method <- function(auglinmodblob, HL) {
+  if (HL[1]=="SEM") {
+    MME_method <- "stochastic EM"
+  } else {
+    if (is.null(auglinmodblob)) { # GLM with fixed fixef
+      MME_method <- "no model matrix"
+    } else {
+      get_from <- attr(auglinmodblob$sXaug,"get_from")
+      if (is.null(get_from)) { # Not sure this still happens: is next comment obsolete? 
+        MME_method <- setdiff(class(auglinmodblob$sXaug),c("list")) # "dgCMatrix" for _Matrix_QRP_CHM bc the class of this S4 object cannot be modified... hence the alternative code  
+      } else {
+        MME_method <- unique(c(substring(get_from,14), setdiff(class(auglinmodblob$sXaug),c("list"))))
+      }
+    }
+  }
+  MME_method
 }

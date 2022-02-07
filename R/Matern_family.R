@@ -20,14 +20,14 @@ Matern <- function(...) {
     if (is.null(rho) && checkComplete) stop("rho missing from ranPars.")
     return(list(corrPars_rd=corrPars_rd, cP_type_rd=cP_type_rd))
   }
-  calc_inits <- function(inits, char_rd, moreargs_rd, user.lower, user.upper, optim.scale, ranFix, init.optim, ...) {
+  calc_inits <- function(inits, char_rd, moreargs_rd, user.lower, user.upper, optim.scale, init.optim, ...) {
     inits <- .calc_inits_geostat_rho(init=inits$init,init.optim=inits$init.optim,init.HLfit=inits$init.HLfit,ranFix=inits$ranFix,
                                      user.lower=user.lower,user.upper=user.upper,
                                      maxrange=moreargs_rd$maxrange,optim.scale=optim.scale,RHOMAX=moreargs_rd$RHOMAX,char_rd=char_rd)
     inits <- .calc_inits_nu(init=inits$init,init.optim=inits$init.optim,init.HLfit=inits$init.HLfit,ranFix=inits$ranFix,
                             control_dist_rd=moreargs_rd$control.dist, optim.scale=optim.scale, NUMAX=moreargs_rd$NUMAX,char_rd=char_rd)
     # Nugget: remains NULL through all computations if NULL in init.optim
-    if (is.null(.get_cP_stuff(ranFix,"Nugget",which=char_rd))) { ## new spaMM3.0 code
+    if (is.null(.get_cP_stuff(inits$ranFix,"Nugget",which=char_rd))) { ## new spaMM3.0 code
       inits$init$corrPars[[char_rd]] <- .modify_list(inits$init$corrPars[[char_rd]],
                                                      list(Nugget=.get_cP_stuff(init.optim,"Nugget",which=char_rd)))
     }
@@ -153,14 +153,14 @@ Cauchy <- function(...) {
     return(list(corrPars_rd=corrPars_rd, cP_type_rd=cP_type_rd))
   }
   #
-  calc_inits <- function(inits, user.lower, user.upper, moreargs_rd, optim.scale, char_rd, ranFix, init.optim, ...) {
+  calc_inits <- function(inits, user.lower, user.upper, moreargs_rd, optim.scale, char_rd, init.optim, ...) {
     inits <- .calc_inits_geostat_rho(init=inits$init,init.optim=inits$init.optim,init.HLfit=inits$init.HLfit,ranFix=inits$ranFix,
                                      user.lower=user.lower,user.upper=user.upper,
                                      maxrange=moreargs_rd$maxrange,optim.scale=optim.scale,RHOMAX=moreargs_rd$RHOMAX,char_rd=char_rd)
     inits <- .calc_inits_cauchy(init=inits$init,init.optim=inits$init.optim,init.HLfit=inits$init.HLfit,ranFix=inits$ranFix,
                                 control_dist_rd=moreargs_rd$control.dist, optim.scale=optim.scale, LDMAX=moreargs_rd$LDMAX,char_rd=char_rd)
     # Nugget: remains NULL through all computations if NULL in init.optim
-    if (is.null(.get_cP_stuff(ranFix,"Nugget",which=char_rd))) { ## new spaMM3.0 code
+    if (is.null(.get_cP_stuff(inits$ranFix,"Nugget",which=char_rd))) { ## new spaMM3.0 code
       inits$init$corrPars[[char_rd]] <- .modify_list(inits$init$corrPars[[char_rd]],
                                                      list(Nugget=.get_cP_stuff(init.optim,"Nugget",which=char_rd)))
     }
@@ -204,8 +204,39 @@ corrMatrix <- function(...) {
                  canonize=function(...) {return(NULL)}, ## NULL OK since elements are copied in [[char_rd]], not [[rd]]
                  calc_inits=function(inits, ...) {return(inits)},
                  calc_moreargs= function(...) {return(NULL)} ## NULL OK since it returns in [[char_rd]], not [[rd]]
-                ),
-            class="corr_family")
+  ),
+  class="corr_family")
+}
+
+corrFamily <- function(corrfamily=NULL, ...) {
+  if ( ! is.null(corrfamily)) { # true initialization
+    structure(list(corr_family="corrFamily",
+                   names_for_post_process_parlist=corrfamily$parnames,
+                   canonize=function(corrPars_rd, checkComplete, ...) {list(corrPars_rd=corrPars_rd)}, ## no transfo defined yet
+                   calc_inits=function(inits, char_rd, 
+                                       optim.scale, # currently ignored (not passed)
+                                       init.optim,  
+                                       ranFix,  
+                                       user.lower,
+                                       user.upper,
+                                       ...) { # possibly add moreargs_rd
+                     inits <- .calc_inits_corrFamily(corrfamily=corrfamily, init=inits$init, char_rd=char_rd, optim.scale="", 
+                                                     init.optim=inits$init.optim, init.HLfit=inits$init.HLfit, ranFix=inits$ranFix, 
+                                                     user.lower=user.lower,user.upper=user.upper)
+                     return(inits)
+                   },
+                   calc_moreargs= function(...) {return(NULL)} ## NULL OK since it returns in [[char_rd]], not [[rd]]
+    ),
+    class="corr_family")
+  } else { # a kind of declaration
+    structure(list(corr_family="corrFamily",
+                   names_for_post_process_parlist=function(...) {stop("code missing here (1)")},
+                   canonize=function(...) {stop("code missing here (2)")}, ## NULL OK since elements are copied in [[char_rd]], not [[rd]]
+                   calc_inits=function(inits, ...) {stop("code missing here (3)")},
+                   calc_moreargs= function(...) {return(NULL)} ## NULL OK since it returns in [[char_rd]], not [[rd]]
+    ),
+    class="corr_family")
+  }
 }
 
 AR1 <- function(...) {

@@ -36,7 +36,7 @@ Number of samples to simulate and analyze.
   Boolean (or integer, interpreted as boolean). For debugging purposes, particularly from parallel computations. The effect of \code{debug.=TRUE} depends on what \code{simuland} does of it. The default \code{simuland} for likelihood ratio testing functions, \code{\link{eval_replicate}}, shows how \code{debug.} can be used.
 }
 \item{type}{
-  Character: passed to \code{simulate.HLfit}. Defaults, with a warning, to code{type="marginal"} in order to replicate the behaviour of previous versions. But this is not necessarily the appropriate \code{type} for all possible uses. See Details of \code{\link{simulate.HLfit}} for other implemented options.
+  Character: passed to \code{simulate.HLfit}. Defaults, with a warning, to \code{type="marginal"} in order to replicate the behaviour of previous versions. But this is not necessarily the appropriate \code{type} for all possible uses. See Details of \code{\link{simulate.HLfit}} for other implemented options.
 }  
 \item{fit_env}{
   An environment or list containing variables necessary to evaluate \code{simuland} on each sample, and not included in the fit \code{object}. E.g., use \code{fit_env=list(phi_fix=phi_fix)} if the fit assumed \code{fixed=list(phi=phi_fix)} 
@@ -52,7 +52,7 @@ Controls display of progress bar. See \code{\link{barstyle}} option for details.
 }
 }
 \details{
-\code{spaMM_boot} handles parallel backends with different features. \code{pbapply::pbapply} has a very simple interface (essentially equivalent to \code{apply}) and provides progress bars, but (in version 1.4.0, at least) does not have efficient load-balancing. \code{doSNOW} also provides a progress bar and allows more efficient load-balancing, but its requires \code{foreach}. \code{foreach} handles errors diferently from \code{pbapply} (which will simply stop if fitting a model to a bootstrap replicate fails): see the \code{foreach} documentation.
+\code{spaMM_boot} handles parallel backends with different features. \code{pbapply::pbapply} has a very simple interface (essentially equivalent to \code{apply}) and provides progress bars, but (in version 1.4.0, at least) does not have efficient load-balancing. \code{doSNOW} also provides a progress bar and allows more efficient load-balancing, but its requires \code{foreach}. \code{foreach} handles errors differently from \code{pbapply} (which will simply stop if fitting a model to a bootstrap replicate fails): see the \code{foreach} documentation.
 
 \code{spaMM_boot} calls \code{simulate.HLfit} on the fit \code{object} and applies \code{simuland} on each column of the matrix returned by this call. 
 \code{simulate.HLfit} uses the \code{type} argument, which must be explicitly provided.

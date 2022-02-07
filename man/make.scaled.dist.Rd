@@ -6,7 +6,7 @@
 %- Also NEED an '\alias' for EACH other topic documented here.
 \title{Scaled distances between unique locations}
 \description{
-  This fonction computes scaled distances from whichever relevant argument it can use (see Details). The result can directly by used as input for computation of the Matérn correlation matrix. It is usually called internally by HLCor, so that users may ignore it, except if they wish to control the distance used through \code{control.dist$method}, or the parametrization of the scaling through \code{control.dist$rho.mapping}. \code{control.dist$method} provide access to the distances implemented in the \code{proxy} package, as well as to \code{"EarthChord"} and \code{"Earth"} methods defined in \code{spaMM} (see Details).
+  This function computes scaled distances from whichever relevant argument it can use (see Details). The result can directly by used as input for computation of the Matérn correlation matrix. It is usually called internally by HLCor, so that users may ignore it, except if they wish to control the distance used through \code{control.dist$method}, or the parametrization of the scaling through \code{control.dist$rho.mapping}. \code{control.dist$method} provide access to the distances implemented in the \code{proxy} package, as well as to \code{"EarthChord"} and \code{"Earth"} methods defined in \code{spaMM} (see Details).
 }
 \usage{
 make_scaled_dist(uniqueGeo, uniqueGeo2=NULL, distMatrix, rho, 
@@ -32,7 +32,7 @@ make_scaled_dist(uniqueGeo, uniqueGeo2=NULL, distMatrix, rho,
 }
   \item{rho.mapping}{
      A set of indices controlling which elements of the \code{rho} scale vector scales which dimension(s) of the space in which (spatial) 
-   correlation matrices of random effects are computed. Scaled distance is generally computed as \code{<distances in each coordinate> * rho[rho.mapping]}. As shown inthe Example, if one wishes to combine isotropic geographical distance and some environmental distance, the coordinates being latitude, longitude and one environmental variable, the scaled distance may be computed
+   correlation matrices of random effects are computed. Scaled distance is generally computed as \code{<distances in each coordinate> * rho[rho.mapping]}. As shown in the Example, if one wishes to combine isotropic geographical distance and some environmental distance, the coordinates being latitude, longitude and one environmental variable, the scaled distance may be computed
   as (say) \code{(lat,long,env) *rho[c(1,1,2)]} so that the same scaling \code{rho[1]} applies for both geographical coordinates. In this case, \code{rho} should have length 2 and \code{rho.mapping} should be \code{c(1,1,2)}.
   }
   \item{dist.method}{\code{method} argument of \code{proxy::dist} function (by default, \code{"Euclidean"}, but other distances are possible (see Details).} 

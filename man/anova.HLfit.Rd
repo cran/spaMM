@@ -56,7 +56,7 @@ and, if a bootstrap was performed:
 \item{bootInfo}{a list with the following elements:
  \describe{
 \item{bootreps}{A table of fitted likelihoods for bootstrap replicates;  }
-\item{meanbootLRT}{The mean likelihood ratio chi-square statistic for boostrap replicates;  }
+\item{meanbootLRT}{The mean likelihood ratio chi-square statistic for bootstrap replicates;  }
  } %- describe
 } %- item
 } %- value

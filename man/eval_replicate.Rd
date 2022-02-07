@@ -7,7 +7,7 @@ Evaluating bootstrap replicates
 \description{
 \code{eval_replicate} is the default \code{simuland} function applied to simulated bootstrap samples by likelihood-ratio testing functions (\code{fixedLRT, LRT, anove.HLfit}). This documentation presents the requirements and possible features of this function and of possible user-defined alternatives. 
 
-An alternative function \code{spaMM:::.eval_replicate2} is also provided. It is slower, as it refits the models compared with different initial values for random-effect parameters, which is useful in some difficult cases where initial values matter. The \code{eval_replicate} function may also refit the \dQuote{full} models with different initial values when the logLik of the refitted full model is subtstantially lower than that of the refitted null model. \dQuote{Substantially} means that a tolerance of \code{1e-04} is applied to account for inaccuracies of numerical maximization. 
+An alternative function \code{spaMM:::.eval_replicate2} is also provided. It is slower, as it refits the models compared with different initial values for random-effect parameters, which is useful in some difficult cases where initial values matter. The \code{eval_replicate} function may also refit the \dQuote{full} models with different initial values when the logLik of the refitted full model is substantially lower than that of the refitted null model. \dQuote{Substantially} means that a tolerance of \code{1e-04} is applied to account for inaccuracies of numerical maximization. 
 }
 \usage{
 eval_replicate(y)

@@ -8,7 +8,7 @@
       char_rd <- as.character(it)
       if (corr_type %in% c("SAR_WWt","adjacency") && 
           ! is.null(.get_cP_stuff(init.optim,"rho",char_rd)) ## to exclude inner optimization (was not previously necessary bc 
-          # sequence was calc.inits / add rhorange conditionnally on inits$init.optim / compute LowUp)
+          # sequence was calc.inits / add rhorange conditionally on inits$init.optim / compute LowUp)
           # while now this this is calc rhorange before calc.inits )
       ) { ## adjacency model
         rhorange <- moreargs[[char_rd]]$rhorange  

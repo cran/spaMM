@@ -1,4 +1,4 @@
-cat(crayon::yellow(" -> test-mv-nested:"))
+cat(crayon::yellow(" -> test-mv-nested:")) # not part of the testthat.R tests (neither test-composite-nested.R)
 
 library(spaMM)
 options(error=recover)
@@ -91,14 +91,25 @@ options(error=recover)
                  data=wafmv))
   testthat::expect_true(diff(range(logLik(zut1),logLik(zut2)))<1e-07) 
   
-  cat(crayon::yellow("fixing ranCoefs in two ways.; "))
+  cat(crayon::yellow("fixing ranCoefs in two ways: "))
   (zut1 <- fitmv(submodels=list(mod1=list(formula=ly~X1+(X2|batch), fixed=list(ranCoefs=list("1"=c(0.02, -0.1, 0.005)))),
-                         mod2=list(formula=y3~X1+(X2|batch), family=gaussian())), 
+                                mod2=list(formula=y3~X1+(X2|batch), family=gaussian())), 
                  data=wafmv))
   (zut2 <- fitmv(submodels=list(mod1=list(formula=ly~X1+(X2|batch)),
-                         mod2=list(formula=y3~X1+(X2|batch), family=gaussian())), 
+                                mod2=list(formula=y3~X1+(X2|batch), family=gaussian())), 
                  data=wafmv, fixed=list(ranCoefs=list("1"=c(0.02, -0.1, 0.005)))))
   testthat::expect_true(diff(range(logLik(zut1),logLik(zut2)))<1e-08) 
+  
+  cat(crayon::yellow("isDiagFamily in two ways: "))
+  (zut1 <- fitmv(submodels=list(mod1=list(formula=ly~X1+(X2|batch), fixed=list(ranCoefs=list("1"=c(NA, 0, NA)))),
+                                mod2=list(formula=y3~X1+(X2|batch), family=gaussian())), 
+                 data=wafmv))
+  (zut2 <- fitmv(submodels=list(mod1=list(formula=ly~X1+(X2|batch)),
+                                mod2=list(formula=y3~X1+(X2|batch), family=gaussian())), 
+                 data=wafmv, fixed=list(ranCoefs=list("1"=c(NA, 0, NA)))))
+  testthat::expect_true(diff(range(logLik(zut1),logLik(zut2)))<1e-08) 
+  testthat::expect_true(unique(length(attr(zut1, "optimInfo")$optim.pars$trRanCoefs[["1"]]),
+                               length(attr(zut2, "optimInfo")$optim.pars$trRanCoefs[["1"]]))==2L) 
   
   cat(crayon::yellow("with resid.model; "))
   # independent-fit test
@@ -777,15 +788,15 @@ testthat::expect_true(diff(range(logLik(zut1), logLik(zut2)))<1e-08)
                    init=list(lambda=c(0.02),phi=c(0.02,0.02)),
                    data=cap_mv)) 
     crit <- diff(range(logLik(zut1), -6.4882739678))
-    testthat::test_that(paste0("criterion was ",signif(crit,6)," from -6.4882739678"), # affected by use_ZA_L or .calc_r22()
-                        testthat::expect_true(crit<1e-08))
+    try(testthat::test_that(paste0("criterion was ",signif(crit,6)," from -6.4882739678"), # affected by use_ZA_L or .calc_r22()
+                        testthat::expect_true(crit<1e-08)))
     (zut2_testr22 <- fitmv(submodels=list(mod2=list(status2 ~ 1+ IMRF(1|longitude+latitude, model=matern)),
                                           mod1=list(migStatus ~ means + IMRF(1|longitude+latitude, model=matern))), 
                            init=list(lambda=c(0.02),phi=c(0.02,0.02)),
                            data=cap_mv)) # has been sensitive to .solve_crossr22( ., use_crossr22=TRUE)
     crit <- diff(range(-6.48830317593 , logLik(zut2_testr22)))
-    testthat::test_that(paste0("criterion was ",signif(crit,6)," from -6.48830317593"), # affected by use_ZA_L or .calc_r22()
-                        testthat::expect_true(crit<1e-08))
+    try(testthat::test_that(paste0("criterion was ",signif(crit,6)," from -6.48830317593"), # affected by use_ZA_L or .calc_r22()
+                        testthat::expect_true(crit<1e-08)))
   }
   if (spaMM.getOption("example_maxtime")>119) { cat(crayon::yellow("multIMRF indep-fit tests; "))
     (mrf1fixx <- fitme(migStatus ~ 1 + (1|pos) + 

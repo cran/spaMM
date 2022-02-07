@@ -5,7 +5,7 @@
 Residual variance extractor
 }
 \description{
-Extracts from a fit object the residual variance. If a non-default \code{which} values is used, it can also return a vector of values of the dispersion parameter phi, which is not the residual variance itself for gamma-response models, or further information about the residual variance model. 
+Extracts from a fit object the residual variance or, depending on the \code{which} argument, a family dispersion parameter, or a vector of values of the dispersion parameter phi (which is not the residual variance itself for gamma-response models), or further information about the residual variance model. 
 }
 \usage{
 residVar(object, which = "var", submodel = NULL, newdata = NULL)

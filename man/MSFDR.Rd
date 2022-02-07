@@ -5,7 +5,7 @@
 Multiple-Stage False Discovery Rate procedure
 }
 \description{
-This implements the procedure described by Benjamini and Gavrilov (2009) for model-selection \bold{of fixed-effect terms} based on False Discovery Rate (FDR) concepts. It uses forward selection based on penalized likelihoods. The penalization for the number of parameters is distinct from that in Akaike's Information Criterion, and variable accross iterations of the algorithm (but functions from the \code{stats} package for AIC-based model-selection are still called, so that some screen messages refer to AIC). 
+This implements the procedure described by Benjamini and Gavrilov (2009) for model-selection \bold{of fixed-effect terms} based on False Discovery Rate (FDR) concepts. It uses forward selection based on penalized likelihoods. The penalization for the number of parameters is distinct from that in Akaike's Information Criterion, and variable across iterations of the algorithm (but functions from the \code{stats} package for AIC-based model-selection are still called, so that some screen messages refer to AIC). 
 }
 \usage{
 MSFDR(nullfit, fullfit, q = 0.05, verbose = TRUE)

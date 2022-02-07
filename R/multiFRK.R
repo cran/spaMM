@@ -18,12 +18,12 @@ IMRF <- function(...) {
     }
     return(list(corrPars_rd=corrPars_rd, cP_type_rd=cP_type_rd))
   }
-  calc_inits <- function(inits, char_rd, moreargs_rd, user.lower, user.upper, optim.scale, ranFix, init.optim, ...) {
+  calc_inits <- function(inits, char_rd, moreargs_rd, user.lower, user.upper, optim.scale, init.optim, ...) {
     inits <- .calc_inits_IMRF(init=inits$init,init.optim=inits$init.optim,init.HLfit=inits$init.HLfit,ranFix=inits$ranFix,
                              user.lower=user.lower,user.upper=user.upper,optim.scale=optim.scale,
                              moreargs_rd=moreargs_rd,char_rd=char_rd)
     # # Nugget: remains NULL through all computations if NULL in init.optim
-    if (is.null(.get_cP_stuff(ranFix,"Nugget",which=char_rd))) { ## new spaMM3.0 code
+    if (is.null(.get_cP_stuff(inits$ranFix,"Nugget",which=char_rd))) { ## new spaMM3.0 code
       inits$init$corrPars[[char_rd]] <- .modify_list(inits$init$corrPars[[char_rd]],
                                                      list(Nugget=.get_cP_stuff(init.optim,"Nugget",which=char_rd)))
     }

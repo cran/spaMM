@@ -10,7 +10,7 @@
       char_rd <- as.character(it)
       if (corr_type %in% c("SAR_WWt","adjacency") && 
           ! is.null(.get_cP_stuff(init.optim,"rho",char_rd)) ## to exclude inner optimization (was not previously necessary bc 
-          # sequence was calc.inits / add rhorange conditionnally on inits$init.optim / compute LowUp)
+          # sequence was calc.inits / add rhorange conditionally on inits$init.optim / compute LowUp)
           # while now this this is calc rhorange before calc.inits )
           ) { ## adjacency model
         rhorange <- moreargs[[char_rd]]$rhorange  
@@ -161,7 +161,11 @@
         }
         lower$corrPars[[char_rd]] <- lower_cP
         upper$corrPars[[char_rd]] <- upper_cP
-      } ## end else if Matern/Cauchy case
+        ## end else if Matern/Cauchy case
+      } else if (corr_type =="corrFamily") { # that looks like a quick patch but .calc_inits_corrFamily() checks the user input, which is required here. 
+        lower$corrPars[[char_rd]] <- user.lower$corrPars[[char_rd]]
+        upper$corrPars[[char_rd]] <- user.upper$corrPars[[char_rd]]
+      } 
     }
   }
   
@@ -215,13 +219,27 @@
   }
   if ( ! is.null( ranCoefs <- canon.init$ranCoefs)) { ## whenever there are ranCoefs to outer-optimize 
     upper$trRanCoefs <- lower$trRanCoefs <- ranCoefs # so that assignments such as lower$trRanCoefs[[it]] <- ... will not fail
-    for (it in seq_along(ranCoefs)) {
-      init_trRancoef <- .ranCoefsFn(ranCoefs[[it]], rC_transf=rC_transf)
-      trRancoef_LowUp <- .calc_LowUp_trRancoef(init_trRancoef,Xi_ncol=attr(init_trRancoef,"Xi_ncol"),
-                                               tol_ranCoefs=.spaMM.data$options$tol_ranCoefs_outer,
-                                               rC_transf=rC_transf)
-      lower$trRanCoefs[[it]] <- trRancoef_LowUp$lower
-      upper$trRanCoefs[[it]] <- trRancoef_LowUp$upper
+    for (char_rd in names(ranCoefs)) {
+      constraint <- ranFix$ranCoefs[[char_rd]]
+      init_trRancoef <- .constr_ranCoefsFn(ranCoefs[[char_rd]], constraint=constraint, rC_transf=rC_transf)
+      if ( ! is.null(constraint) && attr(constraint,"isDiagFamily")) {
+        if (! is.null(rC <- canon.init$ranCoefs[[char_rd]])) { # then same algo as for lambda; rC is vector
+          ranCoef <- user.lower$ranCoefs[[char_rd]]
+          if (is.null(ranCoef)) ranCoef <- pmax(1e-6,rC/1e5)
+          names(ranCoef) <- names(rC) # hmm non names...
+          lower$trRanCoefs[[char_rd]] <- .dispFn(ranCoef)
+          ranCoef <- user.upper$ranCoefs[[char_rd]]
+          if (is.null(ranCoef)) ranCoef <- pmin(1e8,rC*1e7)
+          names(ranCoef) <- names(rC) 
+          upper$trRanCoefs[[char_rd]] <- .dispFn(ranCoef)
+        }
+      } else {
+        trRancoef_LowUp <- .calc_LowUp_trRancoef(init_trRancoef,Xi_ncol=attr(init_trRancoef,"Xi_ncol"),
+                                                 tol_ranCoefs=.spaMM.data$options$tol_ranCoefs_outer,
+                                                 rC_transf=rC_transf)
+        lower$trRanCoefs[[char_rd]] <- trRancoef_LowUp$lower
+        upper$trRanCoefs[[char_rd]] <- trRancoef_LowUp$upper
+      }
     }
   }
   ## names() to make sure the order of elements match; remove any extra stuff (which?... hmmm erroneous inclusion of some pars...) 

@@ -77,7 +77,7 @@
           (classe=="factor" && setequal(levels(leftOfBar_mf[,1L]),c("TRUE","FALSE"))) ## TRUE/FALSE *factor* 
          ) { # in both cases an has created an intercept column has been created and must be removed
         modmat <- modmat[,colnames(modmat) != "(Intercept)",drop=FALSE]
-      } else if (raneftype !="corrMatrix") {# ___TAG___ modify to extend composite ranefs
+      } else if ( ! raneftype %in% c("corrMatrix","corrFamily")) {# ___TAG___ modify to extend composite ranefs
         if (classe=="factor") { 
           stop(paste0("Unhandled expression in ", raneftype,"(<factor>|.):\n",
                       " only TRUE/FALSE factor is allowed; '0 + <factor>' syntax is not allowed."))
@@ -217,11 +217,11 @@
     ## Done with ff. Now the incidence matrix: 
     if (nrow(data)==1L && levels(ff)=="1") {
       im <- trivial_incidMat ## massive time gain when optimizing spatial point predictions
-    } else im <- sparseMatrix(i=as.integer(ff),j=seq(length(ff)),x=1L, # ~ as(ff, "sparseMatrix") except that empty levels are not dropped
-                       dimnames=list(levels(ff),NULL)) # names important for corrMatrix case at least
-    # : this is faster than   im <- Matrix::fac2sparse(ff,drop.unused.levels = (drop && ! (AR1_sparse_Q || info_mat_is_prec)))
-    if (!isTRUE(methods::validObject(im, test = TRUE))) {
-      stop("invalid conditioning factor in random effect: ", format(rhs))
+    } else {
+      im <- sparseMatrix(i=as.integer(ff),j=seq(length(ff)),x=1L, # ~ as(ff, "sparseMatrix") except that empty levels are not dropped
+                         dimnames=list(levels(ff),NULL)) # names important for corrMatrix case at least
+      # : this is faster than   im <- Matrix::fac2sparse(ff,drop.unused.levels = (drop && ! (AR1_sparse_Q || info_mat_is_prec)))
+      if (!isTRUE(methods::validObject(im, test = TRUE))) stop("invalid conditioning factor in random effect: ", format(rhs)) #__F I X M E__ find a more economical check ?
     }
     ## model matrix for LHS in [...](LHS|rhs) (Intercept if ...(1|.)) 
     tempexp <- x[[2]] ## LHS

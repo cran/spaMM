@@ -22,10 +22,11 @@ The function \code{as_precision} can be used to perform the conversion from corr
 \code{"AMatrices"} is a list of matrices. The names of elements of the list does not matter, but the \emph{i}th \code{A} matrix, and its row names, should match the \emph{i}th \bold{Z} matrix, and its column names. This implies that \code{NULL} list members may be necessary, as for the \code{covStruct} list.
 }
 \usage{
-as_precision(corrMatrix)  
+as_precision(corrMatrix, condnum=1e12)  
 }
 \arguments{
 \item{corrMatrix}{Correlation matrix, specified as \code{matrix} or as \code{dist} object}
+\item{condnum}{Numeric: when a standard Cholesky factorization fails, the matrix is regularized so that the regularized matrix has this condition number (in version 3.10.0 this correction has been implemented more exactly than in previous versions).}
 }
 \value{
 \code{as_precision} returns a list with additional class \code{precision} and with single element a symmetric matrix of class \code{dsCMatrix}.

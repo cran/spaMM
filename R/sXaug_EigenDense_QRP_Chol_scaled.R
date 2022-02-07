@@ -92,11 +92,11 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug, # already ZAL_scaled
       # BLOB$sortPerm will be NULL
     } else if (EigenDense_QRP_method=="qr") {
       ## ( this slightly affects predVar in onelambda vs twolambda)
-      blob <- qr(as(sXaug[],"dgCMatrix")) ## blob <- qr(.Rcpp_as_dgCMatrix(sXaug))  ## Matrix::qr
-      BLOB$perm <- blob@q + 1L
-      BLOB$R_scaled <- as.matrix(qrR(blob,backPermute = FALSE))
+      QRsXaug <- qr(as(sXaug[],"dgCMatrix")) ## QRsXaug <- qr(.Rcpp_as_dgCMatrix(sXaug))  ## Matrix::qr
+      BLOB$perm <- QRsXaug@q + 1L
+      BLOB$R_scaled <- as.matrix(qrR(QRsXaug,backPermute = FALSE))
       delayedAssign("sortPerm", sort.list(BLOB$perm), assign.env = BLOB ) # never NULL
-      if ( ! is.null(szAug)) return(qr.coef(blob,szAug))   
+      if ( ! is.null(szAug)) return(qr.coef(QRsXaug,szAug))   
     } else {
       lmwithqrp <- .lmwithQRP(sXaug,yy=szAug,returntQ=FALSE,returnR=TRUE) ## using RcppEigen; szAug may be NULL
       ## we don't request (t) Q from Eigen 
@@ -174,7 +174,7 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug, # already ZAL_scaled
         X <- BLOB$R_scaled[,BLOB$sortPerm,drop=FALSE] ## has colnames
       } else X <- BLOB$R_scaled
       BLOB$R_scaled_blob <- list(X=X, diag_pRtRp = colSums(X^2), 
-                                 XDtemplate=structure(.XDtemplate(X),upperTri=is.null(BLOB$sortPerm)))
+                                 XDtemplate=.XDtemplate(X,upperTri=is.null(BLOB$sortPerm)))
     }
     return(BLOB$R_scaled_blob)
   } 
@@ -182,7 +182,7 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug, # already ZAL_scaled
     if (is.null(BLOB$R_scaled_v_h_blob)) {
       diag_pRtRp_scaled_v_h <- colSums(BLOB$R_R_v^2)
       BLOB$R_scaled_v_h_blob <- list(R_scaled_v_h=BLOB$R_R_v, diag_pRtRp_scaled_v_h=diag_pRtRp_scaled_v_h,
-                                     XDtemplate=structure(.XDtemplate(BLOB$R_R_v),upperTri=TRUE))
+                                     XDtemplate=.XDtemplate(BLOB$R_R_v,upperTri=TRUE))
     }
     return(BLOB$R_scaled_v_h_blob)
   } 
@@ -192,7 +192,7 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug, # already ZAL_scaled
       R_beta <- .lmwithQR(X,yy=NULL,returntQ=FALSE,returnR=TRUE)$R_scaled
       diag_pRtRp_beta <-  colSums(R_beta^2)
       BLOB$R_beta_blob <- list(R_beta=R_beta,diag_pRtRp_beta=diag_pRtRp_beta, 
-                               XDtemplate=structure(.XDtemplate(R_beta), upperTri=TRUE)) 
+                               XDtemplate=.XDtemplate(R_beta, upperTri=TRUE)) 
       ## seems to be tested only by testmv (one of the independent-fit tests on adjacency)
     }
     return(BLOB$R_beta_blob)
@@ -224,26 +224,29 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug, # already ZAL_scaled
   } 
   if (which=="beta_cov_info_from_wAugX") { ## using a weighted Henderson's augmented design matrix, not a true sXaug  
     if (TRUE) {
-      tcrossfac_beta_v_cov <- solve(BLOB$R_scaled) # solve(as(BLOB$R_scaled,"dtCMatrix"))
-      if ( ! is.null(BLOB$sortPerm)) { # depending on method used for QR facto
-        tPmat <- sparseMatrix(seq_along(BLOB$sortPerm), BLOB$sortPerm, x=1)
-        tcrossfac_beta_v_cov <- as.matrix(tPmat %*% tcrossfac_beta_v_cov)
-      } else tcrossfac_beta_v_cov <- as.matrix(tcrossfac_beta_v_cov)
-      rownames(tcrossfac_beta_v_cov) <- colnames(sXaug) ## necessary for summary.HLfit, already lost in BLOB$R_scaled
-      #beta_v_cov <- .tcrossprod(tcrossfac_beta_v_cov)
-      pforpv <- attr(sXaug,"pforpv")
-      seqp <- seq_len(pforpv)
-      beta_cov <- .tcrossprod(tcrossfac_beta_v_cov[seqp,,drop=FALSE])
-      return( list(beta_cov=beta_cov, 
-                   #beta_v_cov=beta_v_cov,
-                   tcrossfac_beta_v_cov=tcrossfac_beta_v_cov) )
+      if (ncol(BLOB$R_scaled)) { # excludes GLMs with fully fixed fixef. See comments in .calc_beta_cov_info_others()
+        tcrossfac_beta_v_cov <- solve(BLOB$R_scaled) # solve(as(BLOB$R_scaled,"dtCMatrix"))
+        if ( ! is.null(BLOB$sortPerm)) { # depending on method used for QR facto
+          tPmat <- sparseMatrix(seq_along(BLOB$sortPerm), BLOB$sortPerm, x=1)
+          tcrossfac_beta_v_cov <- as.matrix(tPmat %*% tcrossfac_beta_v_cov)
+        } else tcrossfac_beta_v_cov <- as.matrix(tcrossfac_beta_v_cov)
+        rownames(tcrossfac_beta_v_cov) <- colnames(sXaug) ## necessary for summary.HLfit, already lost in BLOB$R_scaled
+        # extract beta cols:
+        seqp <- seq_len( attr(sXaug,"pforpv"))
+        beta_cov <- .tcrossprod(tcrossfac_beta_v_cov[seqp,,drop=FALSE])
+        return(list(beta_cov=beta_cov, 
+                    #beta_v_cov=beta_v_cov,
+                    tcrossfac_beta_v_cov=tcrossfac_beta_v_cov)) 
+      } else return(list(beta_cov=matrix(ncol=0,nrow=0), 
+                         tcrossfac_beta_v_cov=matrix(ncol=0,nrow=0))) 
+    } else {
+      beta_v_cov <- chol2inv(BLOB$R_scaled)
+      if ( ! is.null(BLOB$sortPerm)) beta_v_cov <- beta_v_cov[BLOB$sortPerm,BLOB$sortPerm,drop=FALSE]
+      # this tends to be dense bc v_h estimates covary (example: wafers)
+      # otherwise, dropO(,tol=...), + some fix in summary.HLfit for matrix[] <- Matrix assignment, would be useful.  
+      return(beta_v_cov)
     }
     ########################
-    beta_v_cov <- chol2inv(BLOB$R_scaled)
-    if ( ! is.null(BLOB$sortPerm)) beta_v_cov <- beta_v_cov[BLOB$sortPerm,BLOB$sortPerm,drop=FALSE]
-    # this tends to be dense bc v_h estimates covary (example: wafers)
-    # otherwise, dropO(,tol=...), + some fix in summary.HLfit for matrix[] <- Matrix assignment, would be useful.  
-    return(beta_v_cov)
   } else if (which %in% c("absdiag_R_v")) { 
     return(BLOB$absdiag_R_v)
   # } else if (which=="sortPerm") { 

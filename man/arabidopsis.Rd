@@ -6,7 +6,7 @@
 }
 \description{
   For 948 \dQuote{accessions} from European Arabidopsis thaliana populations, this data set merges the genotypic information at 
-  four single nucleotide polmorphisms (SNP) putatively involved in adaptation to climate (Fournier-Level et al, 2011, Table 1), 
+  four single nucleotide polymorphisms (SNP) putatively involved in adaptation to climate (Fournier-Level et al, 2011, Table 1), 
   with 13 climatic variables from Hancock et al. (2011). 
 }
 \usage{data("arabidopsis")}

@@ -100,7 +100,7 @@ if (FALSE) {  ## DOC:
 # .getPar(list("1"=list(a=1,b=2),"2"=list(a=3,c=4)),"a",which=1) ## 1
 # .getPar(list("1"=list(a=1,b=2),"2"=list(a=3,c=4)),"d") ## NULL
 
-.get_cP_stuff <- function(typelist,name,which=NULL,count=FALSE) { ## to smooth the transition to spaMM3.0 but not yet spaMM 3.0
+.get_cP_stuff <- function(typelist,name,which=NULL,count=FALSE) { 
   if (is.null(cP_types <- typelist$corrPars)) {
     .getPar(typelist,name,which=NULL,count=count)
   } else .getPar(cP_types,name,which=which,count=count)

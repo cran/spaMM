@@ -359,8 +359,10 @@
 
 .calc_beta_cov_info_others <- function(wAugX=NULL, AUGI0_ZX, ZAL, ww) { ## post-fit fn
   if (is.null(wAugX)) {
-    if (is.null(ZAL)) {
-      wAugX <- .calc_wAugX(XZ_0I=AUGI0_ZX$X.pv,sqrt.ww=sqrt(ww))
+    if (is.null(ZAL)) { # GLM... 
+      wAugX <- .calc_wAugX(XZ_0I=AUGI0_ZX$X.pv,sqrt.ww=sqrt(ww)) 
+      # => ... may have zero cols... X.pv being a zero-col *m*atrix, in which case .spaMM.data$options$matrix_method is selected below 
+      # and then get_from_MME(<matrix_method>, "beta_cov_info_from_wAugX") must handle this case.
     } else {
       XZ_0I <- .calc_XZ_0I(AUGI0_ZX=AUGI0_ZX,ZAL) # ZAL is not ZAXlist since .calc_beta_cov_info_others not called in spprec
       wAugX <- .calc_wAugX(XZ_0I=XZ_0I,sqrt.ww=sqrt(ww))

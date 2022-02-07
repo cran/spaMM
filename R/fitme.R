@@ -88,7 +88,24 @@
   return(mc)
 }
 
-
+.preprocess_fixed <- function(fixed) {
+  # Whether we can use a chol transfo (or some others) depend on the constraints... so ad hoc code for specific constraints seems justified
+  
+  if (! is.null(ranCoefs <- fixed$ranCoefs)) {
+    for (it in seq_along(ranCoefs)) {
+      ranCoef <- ranCoefs[[it]]
+      Xi_ncol <- floor(sqrt(length(ranCoef)*2))
+      vdiagPos <- cumsum(c(1L,rev(seq(Xi_ncol-1L)+1L))) # diagpos on vector repre of half matrix, not on matrix
+      if (is.null(attr(ranCoefs[[it]],"isDiagFamily"))) {
+        attr(ranCoefs[[it]],"isDiagFamily") <-  (! anyNA(ranCoef[ - vdiagPos])) & # If all non-diag pos are set by ranCoef, this may be 'is_diag".
+          (anyNA(ranCoef[vdiagPos]))
+      } # otherwise the user can avoid the ad hoc code for diag family by explitly setting the attribute to FALSE
+      attr(ranCoefs[[it]],"Xi_ncol") <- Xi_ncol # used by .constr_ranCoefsInv()
+    }
+    fixed$ranCoefs <- ranCoefs
+  }
+  fixed
+}
 
 fitme <- function(formula,data, ## matches minimal call of HLfit
                   family=gaussian(),
@@ -109,7 +126,7 @@ fitme <- function(formula,data, ## matches minimal call of HLfit
   assign("spaMM_glm_conv_crit",list(max=-Inf) , envir=environment(spaMM_glm.fit))
   time1 <- Sys.time()
   oricall <- match.call(expand.dots=TRUE) ## mc including dotlist
-  oricall$control.HLfit <- eval(oricall$control.HLfit, parent.frame()) # to evaluate variables in the formula_env, otherwise there are bugs in waiting 
+  oricall$"control.HLfit" <- eval(oricall$control.HLfit, parent.frame()) # to evaluate variables in the formula_env, otherwise there are bugs in waiting 
   mc <- oricall
   mc[[1L]] <- get(".preprocess_formula", asNamespace("spaMM"), inherits=FALSE)  ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
   oricall$formula <- mc$formula <- eval(mc,parent.frame()) # 
@@ -118,6 +135,7 @@ fitme <- function(formula,data, ## matches minimal call of HLfit
   ## likewise, associates the evaluated formula_env to the formula
   mc[[1L]] <- get(".check_args_fitme", asNamespace("spaMM"), inherits=FALSE) 
   mc <- eval(mc,parent.frame()) # 
+  mc[["fixed"]] <- .preprocess_fixed(fixed)
   mc[[1L]] <- get(".preprocess_fitme", asNamespace("spaMM"), inherits=FALSE)
   mc <- eval(mc,parent.frame()) # returns modified call including an element 'processed'
   # We should remove all processed arguments, in particular those thatgoe into the 'dotlist", otherwise their promises are evaluated again

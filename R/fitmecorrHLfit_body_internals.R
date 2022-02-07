@@ -276,9 +276,45 @@
 }
 
 
-.provide_AR_factorization_info <- local({
+.try_RSpectra <- local({
   RSpectra_warned <- FALSE
-  function(adjMatrix, sparse_precision, corr.model) {
+  function(M, symmetric) {
+    if (requireNamespace("RSpectra",quietly=TRUE)) { # https://scicomp.stackexchange.com/questions/26786/eigen-max-and-minimum-eigenvalues-of-a-sparse-matrix
+      # may generate (Rcpp::warning): only 1 eigenvalue(s) converged, less than k = 2  
+      if (inherits(M,c("matrix", "dgeMatrix", "dgCMatrix"))) {
+        if (symmetric) {
+          eigrange <- suppressWarnings(RSpectra::eigs_sym(M, k=2, which="BE", opts=list(retvec=FALSE))$values)
+          if ( length(eigrange)==2) {
+            resu <- list(eigrange=range(eigrange)) # only the extreme eigenvalues;  range() for consistent ordering but is the reverse of the eigen one...
+          } else resu <- NULL
+        } else { # "eigs() with matrix types "matrix", "dgeMatrix", "dgCMatrix" and "dgRMatrix" can use "LM", "SM", "LR", "SR", "LI" and "SI"" =>hence not "BE"
+          largest <- suppressWarnings(RSpectra::eigs(M, k=1, which="LR", opts=list(retvec=FALSE))$values)
+          if ( length(largest)) {
+            lowest <- suppressWarnings(RSpectra::eigs(M, k=1, which="SR", opts=list(retvec=FALSE))$values)
+            if ( length(lowest)) {
+              resu <- list(eigrange=c(lowest,largest))
+            } else resu <- NULL
+          } else resu <- NULL
+        }
+      } else {
+        eigrange <- suppressWarnings(RSpectra::eigs(M, k=2, which="BE", opts=list(retvec=FALSE))$values) 
+        if ( length(eigrange)==2) {
+          resu <- list(eigrange=range(eigrange)) # only the extreme eigenvalues;  range() for consistent ordering but is the reverse of the eigen one...
+        } else resu <- NULL
+      }
+      resu
+    } else {
+      if ( ! RSpectra_warned) { #if ( ! identical(spaMM.getOption("RSpectra_warned"),TRUE)) {
+        message("If the 'RSpectra' package were installed, an extreme eigenvalue computation could be faster.")
+        RSpectra_warned <<- TRUE # .spaMM.data$options$RSpectra_warned <- TRUE
+        # an alternative would be irlba::partial_eigen but https://bwlewis.github.io/irlba/comparison.html suggests that RSpectra is faster for partial eigenvalue problems.
+      }
+      NULL
+    }
+  }
+}) # extreme eigenvalues ordered as range()
+
+.provide_AR_factorization_info <-function(adjMatrix, sparse_precision, corr.model) {
     if (corr.model  %in% c("SAR_WWt")) {
       decomp <- eigen(adjMatrix,symmetric=FALSE) ## could be symmetric=TRUE if adjMatrix is dsC as in adjacency case.
       return(list(u=decomp$vectors,d=decomp$values,u.=solve(decomp$vectors)))
@@ -287,15 +323,9 @@
     
     if (corr.model  %in% c("adjacency")) { # adjMatrix is dsC from .preprocess -> ... -> .sym_checked(adjMatrix)
       ## extreme eigenvalues needed in all cases for the bounds. Full decomp not always needed
-      if ( sparse_precision) { 
-        if (requireNamespace("RSpectra",quietly=TRUE)) { #https://scicomp.stackexchange.com/questions/26786/eigen-max-and-minimum-eigenvalues-of-a-sparse-matrix
-          eigrange <- RSpectra::eigs(adjMatrix, k=2, which="BE", opts=list(retvec=FALSE))$values
-          decomp <- list(eigrange=eigrange) # only the extreme eigenvalues
-        } else {
-          if ( ! RSpectra_warned) { #if ( ! identical(spaMM.getOption("RSpectra_warned"),TRUE)) {
-            message("If the 'RSpectra' package were installed, an eigenvalue computation could be faster.")
-            RSpectra_warned <<- TRUE # .spaMM.data$options$RSpectra_warned <- TRUE
-          }
+      if ( sparse_precision) {
+         decomp <- .try_RSpectra(adjMatrix, symmetric=TRUE)
+        if (is.null(decomp)) {
           eigvals <- eigen(adjMatrix, symmetric=TRUE, only.values = TRUE)$values # first converts to dense matrix, so quite inefficient.
           decomp <- list(eigrange=range(eigvals)) 
         }
@@ -311,7 +341,6 @@
       return(decomp)
     }
   }
-})
 
 .check_conflict_init_fixed <- function(fixed, init, errstring) {
   fixed_cP <- fixed$corrPars
@@ -319,7 +348,7 @@
   for (char_rd in unique(names(fixed_cP),names(init_cP))) {
     fixed_rd <- fixed_cP[[char_rd]]
     init_rd <- init_cP[[char_rd]]
-    for (st in c("nu","ARphi","Nugget","rho")) {
+    for (st in intersect(names(fixed_rd), names(init_rd))) {
       if ( (! is.null(fixed_rd[[st]])) && (! is.null(init_rd[[st]])) ) {
         stop(paste0("(!) '",st,"'" ,errstring))    
       }
@@ -359,7 +388,7 @@
     } else {
       geo_envir <- .get_geo_info(processed, which_ranef=it, which=c("distMatrix","uniqueGeo","nbUnique"), 
                                  dist_method_rd=control_dist_rd$dist.method) ## this is all for ranef [[it]]:
-      ## => assuming, if (is.list(processed)), the same matrices accross data for the given ranef term.
+      ## => assuming, if (is.list(processed)), the same matrices across data for the given ranef term.
       # handling infinite values used in nested geostatistical models
       if ( inherits(geo_envir$distMatrix,"dsCMatrix") ) { # "dsCDIST" case
         maxrange <- diff(range( na.omit(geo_envir$distMatrix@x) ))
@@ -391,7 +420,7 @@
     } else { 
       geo_envir <- .get_geo_info(processed, which_ranef=it, which=c("distMatrix","uniqueGeo","nbUnique"), 
                                  dist_method_rd=control_dist_rd$dist.method) ## this is all for ranef [[it]]:
-      ## => assuming, if (is.list(processed)), the same matrices accross data for the given ranef term.
+      ## => assuming, if (is.list(processed)), the same matrices across data for the given ranef term.
       rho_mapping <- .provide_rho_mapping(control_dist_rd, geo_envir$coordinates, rho.size)
       u_rho_mapping <- unique(rho_mapping)
       maxrange <- numeric(length(u_rho_mapping))
@@ -487,7 +516,7 @@
   AUGI0_ZX_envir <- processed$AUGI0_ZX$envir
   if (is.null(precisionFactorList <- AUGI0_ZX_envir$precisionFactorList)) {
     nranef <- length(AUGI0_ZX_envir$finertypes)
-    updateable <- rep(FALSE,nranef)
+    updateable <- rep(FALSE,nranef) # initial value of criterion for saving CHMfactor for reuse: elements modified immediately, or in some later fns depending on ranPars
     precisionFactorList <- vector("list",nranef) ## will contain diagonal matrices/info for non-trivial (diagonal) precision matrices
     cum_n_u_h <- processed$cum_n_u_h
     for (rd in seq_len(nranef)) {
@@ -516,6 +545,8 @@
       # } else if ( finertype == "ranCoefs") {
       #   # precisionFactorList[[rd]] will be filled by .wrap_precisionFactorize_ranCoefs(), with elements chol_Q and precmat,
       #   # including for case with LHS_levels
+      }  else if ( finertype=="corrFamily") {
+        # leave updateable[rd] FALSE (may be modified later, as fn of parvec) 
       } else if (finertype != "ranCoefs") stop(paste("sparse-precision methods were requested, but",
                         finertype,"terms are not yet handled by sparse precision code."))
     }
@@ -993,8 +1024,14 @@
                                           phi_by_augZXy = phi_by_augZXy,
                                           user_init_optim=user_init_optim)  
   }
+  
   .check_conflict_init_fixed(fixed,init.optim, "given as element of both 'fixed' and 'init'. Check call.")
   .check_conflict_init_fixed(init.HLfit,init.optim, "given as element of both 'init.HLfit' and 'init'. Check call.") ## has quite poor effect on fits
+  if ( ! is.null(rC.Fix <- fixed$ranCoefs)) {
+    for (char_rd in names(rC.Fix)) if (attr(rC.Fix[[char_rd]],"isDiagFamily")) init.optim$ranCoefs[[char_rd]] <- 
+        init.optim$ranCoefs[[char_rd]][is.na(rC.Fix[[char_rd]])] # keeps only variable ones in lambda-positions
+  }
+  
   if (For=="fitmv") { # in that case the ranefs differ across submodels and we want submodel-specific proc1 to be used eg in 
     #   IMRF_pars=attr(attr(attr(processed$ZAlist,"exp_spatial_terms")[[rd]],"type"),"pars")
     moreargs <- .calc_moreargs(processed= proc_it, 

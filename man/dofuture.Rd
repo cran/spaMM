@@ -35,10 +35,10 @@ Integer. Number of cores to use for parallel computations. If >1, a cluster of \
 (for socket clusters only:)   For debugging purposes. Effect, if any, is to be defined by the \code{fn} as provided by the user.
 }
   \item{iseed}{
-Integer, or NULL. If an integer, it is used to initialize \code{"L'Ecuyer-CMRG"} random-number generator (\code{iseed} argument of \code{\link[parallel]{clusterSetRNGStream}}), with identical effect accross different models of parallelisation. If \code{iseed} is \code{NULL}, the seed is not controlled. 
+Integer, or NULL. If an integer, it is used to initialize \code{"L'Ecuyer-CMRG"} random-number generator (\code{iseed} argument of \code{\link[parallel]{clusterSetRNGStream}}), with identical effect across different models of parallelisation. If \code{iseed} is \code{NULL}, the seed is not controlled. 
 }
   \item{showpbar,pretest_cores}{
-Currently ignored; for consistency with \code{dopar} fromal arguments.
+Currently ignored; for consistency with \code{dopar} formal arguments.
 }
   \item{\dots}{
 Further arguments to be passed (unevaluated) to \code{future.apply} (and then possibly to \code{fn}).

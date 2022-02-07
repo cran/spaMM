@@ -13,12 +13,13 @@ data("scotlip")
   Lmat <- eigenv$vectors %*% diag(sqrt(1/(1-0.17*eigenv$values)))
   lp <- 0.1 + 3* Lmat %*% rnorm(ncol(Lmat)) ## single intercept beta =0.1; lambda=3
   resp <- rbinom(ncol(Lmat),1,1/(1+exp(-lp)))
-  donn <- data.frame(npos=resp,nneg=1-resp,gridcode=scotlip$gridcode)
+  CARSEMd <- data.frame(npos=resp,nneg=1-resp,gridcode=scotlip$gridcode)
 }
 
 # CAR by Laplace with 'inner' estimation of rho
 blob1 <- HLCor(cbind(npos,nneg)~1 +adjacency(1|gridcode),
-          adjMatrix=Nmatrix,family=binomial(probit),data=donn,HLmethod="ML") ## ~1.27 s.
+          adjMatrix=Nmatrix,family=binomial(probit),data=CARSEMd,HLmethod="ML") ## ~1.27 s.
+# it is crashes the session after installing a new R version, recompile probitgem with a clean /src directory before trying anything else. 
 crit <- diff(range(get_ranPars(blob1,which = "corrPars")[["1"]]$rho, 0.07961275))
 if (spaMM.getOption("fpot_tol")>0) {
   testthat::test_that(paste0("criterion was ",signif(crit,6)," from 0.07961275"), testthat::expect_true(crit<5e-9)) # bobyqa finds 0.04582924 ('flat' p_bv)
@@ -31,7 +32,7 @@ if (FALSE) { ## HLCor/corrHlfit already compared on scotlip by test-spaMM.R
   # corrHLfit without corners was poor here
   # CAR by Laplace with 'outer' estimation of rho
   blob2 <- fitme(cbind(npos,nneg)~1 +adjacency(1|gridcode),
-                 adjMatrix=Nmatrix,family=binomial(probit),data=donn,method="ML",control.HLfit = list(LevenbergM=FALSE)) 
+                 adjMatrix=Nmatrix,family=binomial(probit),data=CARSEMd,method="ML",control.HLfit = list(LevenbergM=FALSE)) 
   #AIC(blob2) 
   testthat::expect_true(diff(range(AIC(blob2,verbose=FALSE)-AIC(blob1,verbose=FALSE)))<0.1) # effective-df calculation sensitive to small difs in fit
 }

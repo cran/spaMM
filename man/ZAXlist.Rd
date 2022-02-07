@@ -46,7 +46,7 @@ This documentation is for development purposes and may be incomplete. The object
 \section{Slots}{
   \describe{
     \item{\code{LIST}:}{A list whose each block is either a \code{(M|m)atrix}, 
-or a list with two elements (and addtional class \code{ZA_QCHM}): \code{ZA}, and the \code{\link[Matrix]{Cholesky}} factor \code{Q_CHMfactor} of the precision matrix (\code{L=solve(Q_CHMfactor,system="Lt")}).}
+or a list with two elements (and additional class \code{ZA_QCHM}): \code{ZA}, and the \code{\link[Matrix]{Cholesky}} factor \code{Q_CHMfactor} of the precision matrix (\code{L=solve(Q_CHMfactor,system="Lt")}).}
     \item{\code{BLOB}:}{An environment holding \code{lhs} and \code{rhs}, the factors of the Kronecker product, and other objects initialized as promises. See the source code of the non-exported \code{.def_Kranfacto} constructor for further information.}
   }
 }

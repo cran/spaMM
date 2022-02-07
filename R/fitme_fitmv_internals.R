@@ -14,23 +14,19 @@
   if (! is.null(optPars$trRanCoefs)) {
     constraints <- fixed$ranCoefs # hack that uses the presence of the constraint here, jointly with $trRanCoefs
     ranCoefs <- optPars$trRanCoefs # copy names...
-    for (char_rd in names(optPars$trRanCoefs)) {
-      ranCoef <- .ranCoefsInv(optPars$trRanCoefs[[char_rd]], rC_transf=.spaMM.data$options$rC_transf)
-      if ( ! is.null(constraint <- constraints[[char_rd]])) {
-        ranCoef[ ! is.na(constraint)] <- constraint[ ! is.na(constraint)]
-        attr(ranCoef,"transf") <- NULL
-      }
-      ranCoefs[[char_rd]] <- ranCoef
+    for (char_rd in names(ranCoefs)) {
+      ranCoefs[[char_rd]] <- 
+        .constr_ranCoefsInv(trRanCoef=ranCoefs[[char_rd]], constraint=constraints[[char_rd]], rC_transf=.spaMM.data$options$rC_transf)
       covmat <- .C_calc_cov_from_ranCoef(ranCoefs[[char_rd]])
       #if (kappa(covmat)>1e14 || min(eigen(covmat,only.values = TRUE)$values)<1e-6) any_nearly_singular_covmat <- TRUE # use of this removed 2019/12/16
     }
   }
   init_refit <- list()
   if ( is.null(refit_info) ) { ## not the case with SEM
-    refit_info <- list(phi=FALSE,lambda=(! is.null(optPars$trRanCoefs)),ranCoefs=FALSE)
+    refit_info <- list(phi=FALSE,lambda=(! is.null(optPars$trRanCoefs)),ranCoefs=FALSE) # defines default for refit_info
   } else if ( is.list(refit_info) ) { ## never the default
-    refit_info <- .modify_list( list(phi=FALSE,lambda=(! is.null(optPars$trRanCoefs)),
-                                     ranCoefs=FALSE), refit_info) 
+    refit_info <- .modify_list( list(phi=FALSE, lambda=(! is.null(optPars$trRanCoefs)), ranCoefs=FALSE), 
+                                refit_info) 
     ## lambda=TRUE becomes the default (test random-slope 'ares' shows the effect)
   } else {
     refit_info <- list(phi=refit_info,lambda=refit_info,ranCoefs=refit_info) # default with SEM is all FALSE
@@ -80,18 +76,23 @@
   if ( ! is.null(augZXy_phi_est)  || identical(refit_info$ranCoefs,TRUE)) {
     if (! is.null(optPars$trRanCoefs)) {
       for (char_rd in names(ranCoefs)) {
-        rancoef <- ranCoefs[[char_rd]]
+        rancoef <- ranCoefs[[char_rd]] # full size even for DiagFamily fit; at this point the vector no longer has NA so isDiagFamily has been set to FALSE
         if ( ! is.null(augZXy_phi_est)) {
           Xi_ncol <- attr(rancoef,"Xi_ncol")
           lampos <- rev(length(rancoef) -cumsum(seq(Xi_ncol))+1L)  ## NOT cumsum(seq(Xi_cols))
           rancoef[lampos] <- rancoef[lampos] *augZXy_phi_est
           rancoef <- as.vector(rancoef) ## as.vector drops attributes
+          attr(rancoef,"isDiagFamily") <- FALSE
         } 
+        #  Note that both ranCefs and trRanCoefs may be used to count dfs so they are not quite redundant
         if (identical(refit_info$ranCoefs,TRUE)) { 
           init_refit$ranCoefs[[char_rd]] <- rancoef
           ranPars_in_refit$trRanCoefs[char_rd] <- NULL
           attr(ranPars_in_refit,"type")$trRanCoefs[char_rd] <- NULL
-        } else ranPars_in_refit$trRanCoefs[[char_rd]] <- .ranCoefsFn(rancoef, rC_transf=.spaMM.data$options$rC_transf_inner)  
+        } else { # ranCoefs are fixed in the refit.
+          ranPars_in_refit$ranCoefs[[char_rd]] <- rancoef
+          ranPars_in_refit$trRanCoefs[[char_rd]] <- .ranCoefsFn(rancoef, rC_transf=.spaMM.data$options$rC_transf_inner)  
+        }
       }
     }      
   }
