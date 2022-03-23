@@ -11,7 +11,7 @@ fitme(formula, data, family = gaussian(), init = list(), fixed = list(),
       lower = list(), upper = list(), resid.model = ~1, init.HLfit = list(), 
       control = list(), control.dist = list(), method = "ML", 
       HLmethod = method, processed = NULL, nb_cores = NULL, objective = NULL, 
-      ...)
+      weights.form = NULL, ...)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -49,6 +49,9 @@ An optional (sub)list of values of the parameters specified through \code{init},
   \item{control.dist}{ See \code{control.dist} in \code{\link{HLCor}} }
   \item{method, HLmethod}{Character: the fitting method to be used, such as \code{"ML"}, \code{"REML"} or \code{"PQL/L"}. \code{"ML"} is the default, in contrast to \code{"REML"} for \code{HLfit}, \code{HLCor} and \code{corrHLfit}. Other possible values of \code{HLfit}'s \code{method} argument are handled.
 }
+  \item{weights.form}{
+  Specification of prior weights by a one-sided formula: use \code{weights.form = ~ pw} instead of \code{prior.weights = pw}. The effect will be the same except that such an argument, known to evaluate to an object of class \code{"formula"}, is suitable to enforce safe programming practices (see \code{\link{good-practice}}).  
+ }
   \item{nb_cores}{\bold{Not yet operative}, only for development purposes. Number of cores to use for parallel computations.}
   \item{processed}{ For programming purposes, not documented.}
   \item{objective}{ For development purpose, not documented.}

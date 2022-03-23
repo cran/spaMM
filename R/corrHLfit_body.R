@@ -70,7 +70,7 @@ corrHLfit_body <- function(processed, ## possibly a list of environments
   control.dist <- vector("list",length(moreargs))
   for (nam in names(moreargs)) control.dist[[nam]] <- moreargs[[nam]]$control.dist
   HLCor.args$control.dist <- control.dist # lapply(moreargs,getElement,name="control.dist")
-  processedHL1 <- proc1$HL[1] ## there's also HLmethod in processed<[[]]>$callargs
+  processedHL1 <- proc1$HL[1] 
   if (!is.null(processedHL1) && processedHL1=="SEM" && length(lower)) {
     optimMethod <- "iterateSEMSmooth"
     if (is.null(proc1$SEMargs$control_pmvnorm$maxpts)) {
@@ -126,7 +126,6 @@ corrHLfit_body <- function(processed, ## possibly a list of environments
   #
   if (is.call(hlcor)) { return(hlcor[]) } ## HLCorcall
   #
-  # hlcor should have received attr(.,"info.uniqueGeo") from HLCor_body.
   attr(hlcor,"optimInfo") <- list(LUarglist=LUarglist, optim.pars=optPars, 
                                   #augZXy_phi_est=NULL, # implicit NULL
                                   objective=proc1$objective)

@@ -105,7 +105,7 @@ glm.nodev.fit <- function (x, y, weights = rep.int(1, nobs), start = NULL, etast
       start[fit$pivot] <- fit$coefficients
       eta <- drop(x %*% start)
       if (family$link=="log") {
-        eta <- .sanitize_eta_log_link(eta, max=40,y=y)
+        eta <- .sanitize_eta_log_link(eta, max=40,y=y, warn_neg_y= (family$family !="gaussian"))
       } else if (family$link=="loglambda") {
         COMP_nu <- environment(family$aic)$nu 
         eta <- .sanitize_eta_log_link(eta, max=40, y=y, nu=COMP_nu) 

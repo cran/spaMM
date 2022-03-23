@@ -80,7 +80,6 @@ spaMM.getOption <- function (x) {spaMM.options(x, warn=FALSE)[[1]]}
   pr_DB$delete_entry("EarthChord")
   library.dynam.unload("spaMM", libpath)
 } ## testable by calling unloadNamespace("spaMM")
-#  pkgpath <- system.file(package="OKsmooth") # https://github.com/hadley/devtools/issues/119
 
 # unloadNampespace() calls .onUnload only after after checking dependencies, so the following would be useless in .onUnload()
 .unloads4spaMM <- function() {

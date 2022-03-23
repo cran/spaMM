@@ -2,7 +2,10 @@
   bobyqa_controls <- .spaMM.data$options$bobyqa
   if (is.null(bobyqa_controls$npt)) bobyqa_controls$npt <- 2*length(init)+1L
   if (is.null(bobyqa_controls$rhobeg)) bobyqa_controls$rhobeg <- .spaMM.data$options$bobyqa_rhofn(lower,upper)
-  if (is.null(bobyqa_controls$rhoend)) bobyqa_controls$rhoend <- bobyqa_controls$rhobeg*1e-8 # bobyqa's default is rhobeg*1e-6 which is unsafe in the test_rC_transf sph case
+  if (is.null(bobyqa_controls$rhoend)) {
+    bobyqa_controls$rhoend <- max(1e-8, # lower values => bobyqa bugs, trying values out of the bounds (had this on ARp fits for timevarying corr)
+                                  bobyqa_controls$rhobeg*1e-8) # bobyqa's default is rhobeg*1e-6 which is unsafe in the test_rC_transf sph case
+  }
   if (is.null(bobyqa_controls$maxfun)) {
     bobyqa_controls$maxfun <- max(2*( eval(.spaMM.data$options$maxeval,envir=list(initvec=init)))*maxeval_corr,
                                   1+10*length(init)^2) # bobyqa will complain if not > second value

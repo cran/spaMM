@@ -17,7 +17,11 @@ Such control may also be useful when the correlation matrix is nearly singular s
 \details{
 Currently the sparse-precision methods are selected by default in two cases (with possible exceptions indicated by specific messages): (1) for models including \code{\link{IMRF}} random effects; and (2) when the \code{\link{corrMatrix}} (or \code{\link{covStruct}}) syntax is used to provide a fixed precision matrix. Further, for models including autoregressive terms other than IMRF (i.e., adjacency, AR1), sparse-precision methods may or may not be selected on a simple heuristic based on the likely structure of the correlation matrix. 
 
-Algebraic methods can be controlled globally over all further fits by using \code{spaMM.options(sparse_precision= <TRUE|FALSE>)} and, among the correlation-based methods, \code{spaMM.options(QRmethod= <"sparse"|"dense">)} to select \code{"spcorr"} vs. \code{"decorr"} methods. Fit-specific controls (by \code{control.HLfit}) override these global ones.
+Algebraic methods can be controlled globally over all further fits by using\cr 
+\code{spaMM.options(sparse_precision= <TRUE|FALSE>)}\cr 
+and, among the correlation-based methods,\cr 
+\code{spaMM.options(QRmethod= <"sparse"|"dense">)}\cr 
+to select \code{"spcorr"} vs. \code{"decorr"} methods. Fit-specific controls (by \code{control.HLfit}) override these global ones.
 }
 \seealso{\code{\link{pedigree}}}
 \examples{

@@ -735,10 +735,8 @@ testthat::expect_true(diff(range(logLik(zut1), logLik(zut2)))<1e-08)
 
 {cat(crayon::yellow("IMRF; "))# fit IMRF 
   { # create IMRF model
-    spd <- sp::SpatialPointsDataFrame(coords = blackcap[, c("longitude", "latitude")],
-                                      data = blackcap)
     ## Creating the mesh 
-    mesh <- INLA::inla.mesh.2d(loc = INLA::inla.mesh.map(sp::coordinates(spd)), 
+    mesh <- INLA::inla.mesh.2d(loc = blackcap[, c("longitude", "latitude")], 
                                cutoff=30,
                                max.edge = c(3, 20)) 
     mesh$n ## 40
@@ -754,8 +752,7 @@ testthat::expect_true(diff(range(logLik(zut1), logLik(zut2)))<1e-08)
     p2 <- predict(zut1, newdata=zut1$data) # note difference in frame attribute. What do we want? _FIXME_
     testthat::expect_true(diff(range(p2-p1))<1e-14)
   }
-  
-  
+
   {   # independent-fit test
     # a bit tricky bc nloptr does not find the univariate optimum without some help (... tiny blackcap data)
     # and in mv case, it finds it by default or not depending on order...
@@ -787,15 +784,15 @@ testthat::expect_true(diff(range(logLik(zut1), logLik(zut2)))<1e-08)
                            mod2=list(status2 ~ 1+ IMRF(1|longitude+latitude, model=matern))), 
                    init=list(lambda=c(0.02),phi=c(0.02,0.02)),
                    data=cap_mv)) 
-    crit <- diff(range(logLik(zut1), -6.4882739678))
-    try(testthat::test_that(paste0("criterion was ",signif(crit,6)," from -6.4882739678"), # affected by use_ZA_L or .calc_r22()
+    crit <- diff(range(logLik(zut1), -6.48825776602))
+    try(testthat::test_that(paste0("criterion was ",signif(crit,6)," from -6.48825776602"), # affected by use_ZA_L or .calc_r22() ... and minKappa...
                         testthat::expect_true(crit<1e-08)))
     (zut2_testr22 <- fitmv(submodels=list(mod2=list(status2 ~ 1+ IMRF(1|longitude+latitude, model=matern)),
                                           mod1=list(migStatus ~ means + IMRF(1|longitude+latitude, model=matern))), 
                            init=list(lambda=c(0.02),phi=c(0.02,0.02)),
                            data=cap_mv)) # has been sensitive to .solve_crossr22( ., use_crossr22=TRUE)
-    crit <- diff(range(-6.48830317593 , logLik(zut2_testr22)))
-    try(testthat::test_that(paste0("criterion was ",signif(crit,6)," from -6.48830317593"), # affected by use_ZA_L or .calc_r22()
+    crit <- diff(range(-6.48825776601 , logLik(zut2_testr22)))
+    try(testthat::test_that(paste0("criterion was ",signif(crit,6)," from -6.48830317593"), # affected by use_ZA_L or .calc_r22()  ... and minKappa...
                         testthat::expect_true(crit<1e-08)))
   }
   if (spaMM.getOption("example_maxtime")>119) { cat(crayon::yellow("multIMRF indep-fit tests; "))
@@ -810,7 +807,7 @@ testthat::expect_true(diff(range(logLik(zut1), logLik(zut2)))<1e-08)
                    fixed=list(phi=1,lambda=c("1"=0.5), 
                               hyper=list("1"=list(hy_kap=0.1,hy_lam=1))), 
                    data=cap_mv))
-    testthat::expect_true(diff(range(logLik(zut1), logLik(mrf1fixx)+logLik(mrf2)))<1e-10)
+    testthat::expect_true(diff(range(logLik(zut1), logLik(mrf1fixx)+logLik(mrf2)))<1e-7) # precision modified (effect of changing bobyqa's rhoend?)
     #
     (mrf1fix <- fitme(migStatus ~ 1 + multIMRF(1|longitude+latitude,margin=5,levels=2), 
                       data=blackcap, fixed=list(hyper=list("1"=list(hy_kap=0.1,hy_lam=1)))) )
@@ -857,7 +854,7 @@ testthat::expect_true(diff(range(logLik(zut1), logLik(zut2)))<1e-08)
       (zut0 <- fitmv(submodels=list(mod1=list(migStatus ~ 1 + multIMRF(1|longitude+latitude,margin=5,levels=2)), 
                                     mod2=list(status2 ~ 1)), 
                      data=cap_mv, init=list(phi=list("1"=1e-4))))
-      testthat::expect_true(diff(range(logLik(zut0), logLik(mrf1T)+logLik(mrf2)))<3e-6)
+      testthat::expect_true(diff(range(logLik(zut0), logLik(mrf1T)+logLik(mrf2)))<1e-5)
       
       (mrf3 <- fitme(status2 ~ 1+ IMRF(1|longitude+latitude, model=matern), data=cap_mv)) 
       # inits to try to speed the fit () (and lambda=c("3"=.) works as it should)
@@ -867,7 +864,7 @@ testthat::expect_true(diff(range(logLik(zut1), logLik(zut2)))<1e-08)
       (zut2 <- fitmv(submodels=list(mod2=list(status2 ~ 1+ IMRF(1|longitude+latitude, model=matern)),
                                     mod1=list(migStatus ~ 1 + multIMRF(1|longitude+latitude,margin=5,levels=2))), 
                      data=cap_mv, init=list(lambda=c("1"=5),phi=list("1"=0.05,"2"=1e-4)))) 
-      testthat::expect_true(diff(range(logLik(zut1), logLik(zut2), logLik(mrf1T)+logLik(mrf3)))<3e-6)
+      testthat::expect_true(diff(range(logLik(zut1), logLik(zut2), logLik(mrf1T)+logLik(mrf3)))<1e-5)
     }
     
   } else cat(crayon::bgGreen("\n multIMRF indep-fit tests are slow (~119s). Run them once in a while; "))

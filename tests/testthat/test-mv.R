@@ -3,6 +3,7 @@ cat(crayon::yellow("\ntest-mv:"))
 if (FALSE) {
   source(paste0(projpath(),"/package/tests/testthat/nestedFiles/test-mv-nested.R"))
   source(paste0(projpath(),"/package/tests/testthat/nestedFiles/test-composite-nested.R"))
+  source(paste0(projpath(),"/package/tests/testthat/nestedFiles/test-mv-corrFamily.R"))
 } else {
   data("wafers")
   me <- fitme(y ~ 1+(1|batch), family=Gamma(log), data=wafers)
@@ -25,7 +26,7 @@ if (FALSE) {
     (zut1 <- fitmv(submodels=list(mod1=list(formula=y ~ 1+(1|batch), family=Gamma(log),resid.model= ~  1+(1|batch)),
                                   mod2=list(formula=y2 ~ 1+(1|batch), family=Gamma(log))), 
                    data=wafmv))
-    confint(zut1,"(Intercept)_1") # __FIXME__ messy display
+    confint(zut1,"(Intercept)_1") # __F I X M E__ messy display
   }
   
   data("recond") # private data set for test

@@ -3,6 +3,36 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 3.11.3}{       
+\subsection{NEW FEATURES}{
+\itemize{
+\item The features of the experimental 'corrFamily' random effect have been extended for easier definition of new random-effect correlation models, and this has been used to add predefined random-effect models, as next listed.
+\item One can fit autoregressive AR(p) and ARMA(p,q) models of any order, using formula terms of the form ARp(<.>|<.>) or ARMA(<.>|<.>).
+\item One can fit IMRF models, including (in contrast to IMRF random effect terms) estimation of the 'alpha' parameter (analogous to the Matern smoothness) of Lindren et al's (2011) approximation of the Matern model by a Gaussian Markov random field, by using the formula term MaternIMRFa(<.>|<.>).   
+\item One can fit some models for diallel experiments and other symmetric dyadic interactions, using formula terms of the form diallel(<.>|<.>) or ranGCA(<.>|<.>).
+\item The fitting functions and fixedLRT() get a new argument 'weights.form' to specify prior weights in a safe way in all programming contexts. 
+}
+}
+\subsection{USER-LEVEL CHANGES}{
+\itemize{
+\item Backward-compatible change in the 'verbose' argument of HLfit() and HLCor(): 'verbose=c(inner=<.>)' should now be preferred to 'verbose=c(trace=<.>)', to avoid confusion with the more useful 'verbose=c(TRACE=<.>)' of other fitting functions.   
+\item LRT.HLfit() (a.k.a. anova.HLfit()) will return full results in more cases where it is unable to check that models are nested (with proper messages).
+\item The computation of a large matrix is now avoided in the summary of sparse-preision fits. 
+}
+}
+\subsection{DEPENDENCIES}{
+\itemize{
+\item New dependency to geometry package [which removes a "soft" dependency to the not-on-CRAN 'INLA' package (function inla.spde.make.A) when fitting IMRFs].
+}
+}
+\subsection{FIXED BUG}{
+\itemize{
+\item 'prior.weights' in multivariate-response models could not be specified in the way recommended in help("good-practice").    
+\item Invalid code for default y-axis label for plot_effects() with binomial model where the LHS of the formula is a single variable rather than a cbind(.,.) expression.
+\item The replacement function for stats::gaussian( < non-identity link > )$initialize() introduced in the previous version did not handle the case where fixed-effect coefficients were fully fixed.
+}
+}
+}
 \section{CHANGES UP TO VERSION 3.10.0}{       
 \subsection{NEW FEATURES}{
 \itemize{

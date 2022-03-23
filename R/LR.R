@@ -4,6 +4,7 @@
   return(all(abs(proj2in1 -X2)<tol))
 }
 
+# deprecated:
 .process_ranef_case <- function(object, object2, nest="") {
   l1 <- logLik(object)
   l2 <- logLik(object2)
@@ -19,6 +20,37 @@
   }
   return(list(fullfit=fullfit,nullfit=nullfit,test_obj=testlik,df=NA))
 }
+
+.guess_Rnest <- function(object, object2, Xnest) {
+  dfR1 <- sum(unlist(object$dfs, use.names=FALSE)) - object$dfs$pforpv 
+  dfR2 <- sum(unlist(object2$dfs, use.names=FALSE)) - object2$dfs$pforpv
+  if (dfR1>dfR2) {
+    Rnest <- "2in1"
+    if (is.null(Xnest)) { # fixed effects are identical
+      message(paste("spaMM could not ascertain whether the models are nested in their random-effect specifications.\n", 
+                    "  You are responsible for that.")) 
+    } else warning(paste("Fixed-effects specifications differ between the models, and spaMM could not ascertain\n",
+                         "  whether the models are similarly nested in their random-effect specifications.\n",
+                         "  You are responsible for that. spaMM will guess nestedness from number of parameters."), immediate. = TRUE) 
+  } else if (dfR1<dfR2) { 
+    Rnest <- "1in2"
+    if (is.null(Xnest)) { # fixed effects are identical
+      message(paste("spaMM could not ascertain whether the models are nested in their random-effect specifications.\n", 
+                    "  You are responsible for that.")) 
+    } else warning(paste("Fixed-effects specifications differ between the models, and spaMM could not ascertain\n",
+                         "  whether the models are similarly nested in their random-effect specifications.\n",
+                         "  You are responsible for that. spaMM will guess nestedness from number of parameters."), immediate. = TRUE) 
+  } else if (is.null(Xnest)) { # fixed effects are identical, dfs are identical
+    stop("The models compared appear to have the same number of parameters.") 
+  } else {
+    Rnest <- NULL
+    warning(paste("The models have the same number of parameters except for fixed effects, but spaMM could not ascertain\n",
+                  "  whether the random-effect specifications are identical. You are responsible for that."), immediate. = TRUE) 
+  }
+  Rnest
+}
+
+
 
 
 .compare_model_structures <- function(object,object2) {
@@ -37,10 +69,10 @@
   meth1 <- object$HL
   meth2 <- object2$HL
   if (! identical(object$family[c("family","link")],object2$family[c("family","link")] ) ) {
-    stop("Models may not be nested (distinct families)") ## but COMPoisson vs poisson ?
+    stop("Models may not be nested (distinct families).") ## but COMPoisson vs poisson ?
   }
   if (! identical(meth1,meth2) || length(REML)>1 ) {
-    stop("object fitted by different methods cannot be compared")
+    stop("object fitted by different methods cannot be compared.")
   }
   if ( ! is.null(X1)) X1 <- sapply(strsplit(X1,':'), function(x) paste(sort(x),collapse=':')) ## JBF 2015/02/23: sort variables in interaction terms before comparison
   if ( ! is.null(X2)) X2 <- sapply(strsplit(X2,':'), function(x) paste(sort(x),collapse=':'))
@@ -71,20 +103,10 @@
   ranterms2 <- paste(ranterms2,randist2) ## joins each term and its distrib
   dR12 <- setdiff(ranterms1,ranterms2)
   dR21 <- setdiff(ranterms2,ranterms1)
-  if (length(dR12) && length(dR21)) { # no obvious nested structure on ranefs
-    if (is.null(Xnest)) { # fixed effects are identical
-      warning(paste("Fixed-effects specifications from both models seem equivalent,\n",
-                    "and random-effect specifications may be non-nested\n", 
-                    "(a better algorithm would be required to check this properly).\n",
-                    "Caveat emptor."), immediate. = TRUE) 
-    } else warning(paste("Fixed-effects specifications differ between the models,\n",
-                          "and random-effect specifications may be non-nested\n", 
-                          "(a better algorithm would be required to check this properly).\n",
-                          "Caveat emptor."), immediate. = TRUE) 
-    return(.process_ranef_case(object, object2))
-  } 
-  # ELSE nestedness can be assessed
-  if (length(dR12)) {
+  if (length(dR12) && length(dR21)) { # no obvious nested structure on ranefs. Trying to guess 'Rnest'
+    Rnest <- .guess_Rnest(object, object2, Xnest)
+    #.process_ranef_case(object, object2, Xnest=Xnest)
+  } else if (length(dR12)) {
     Rnest <- "2in1"
   } else if (length(dR21)) {
     Rnest <- "1in2"
@@ -95,27 +117,29 @@
   # ELSE
   if (length(unest)==0L) stop(paste("The two models appear equivalent (except perhaps for residual dispersion models).\n", 
                                     "This case is not handled."))
-  if (length(Rnest)) return(.process_ranef_case(object, object2, nest=Rnest)) # nested models, differing at least by their random effects.
+  # if (length(Rnest)) return(.process_ranef_case(object, object2, nest=Rnest)) # Possibly nested models, differing at least by their random effects.
   ###############################
-  # ELSE nested fixef, identical ranefs
-  df1 <- length(X1[!is.na(fixef(object))])
-  df2 <- length(X2[!is.na(fixef(object2))])
-  if (!is.null(Rnest)) {
-    lambda.object <- object$lambda.object
-    if (!is.null(lambda.object)) df1 <- df1+length(unlist(lambda.object$coefficients_lambdaS))
-    cov.mats <- .get_compact_cov_mats(object$strucList)
-    if (length(cov.mats)) {
-      nrows <- unlist(lapply(cov.mats,NROW))
-      df1 <- df1+sum(nrows*(nrows-1)/2)
-    }
-    lambda.object <- object2$lambda.object
-    if (!is.null(lambda.object)) df2 <- df2+length(unlist(lambda.object$coefficients_lambdaS))
-    cov.mats <- .get_compact_cov_mats(object2$strucList)
-    if ( length(cov.mats)) {
-      nrows <- unlist(lapply(cov.mats,NROW))
-      df2 <- df2+sum(nrows*(nrows-1)/2)
-    }
-  }
+  # # ELSE nested fixef, identical ranefs
+  # df1 <- length(X1[!is.na(fixef(object))])
+  # df2 <- length(X2[!is.na(fixef(object2))])
+  # if (!is.null(Rnest)) {
+  #   lambda.object <- object$lambda.object
+  #   if (!is.null(lambda.object)) df1 <- df1+length(unlist(lambda.object$coefficients_lambdaS))
+  #   cov.mats <- .get_compact_cov_mats(object$strucList)
+  #   if (length(cov.mats)) {
+  #     nrows <- unlist(lapply(cov.mats,NROW))
+  #     df1 <- df1+sum(nrows*(nrows-1)/2)
+  #   }
+  #   lambda.object <- object2$lambda.object
+  #   if (!is.null(lambda.object)) df2 <- df2+length(unlist(lambda.object$coefficients_lambdaS))
+  #   cov.mats <- .get_compact_cov_mats(object2$strucList)
+  #   if ( length(cov.mats)) {
+  #     nrows <- unlist(lapply(cov.mats,NROW))
+  #     df2 <- df2+sum(nrows*(nrows-1)/2)
+  #   }
+  # }
+  df1 <- sum(unlist(object$dfs, use.names=FALSE)) # but recursive=TRUE bc for fitmv the $dfs are a structured list
+  df2 <- sum(unlist(object2$dfs, use.names=FALSE))
   if (unest=="1in2") {
     fullm <- object2
     nullm <- object
@@ -126,7 +150,7 @@
     df <- df1-df2
   }
   if (length(nest)==2) {
-    message("Nested models differing both by in their fixed and in their random terms. ")
+    message("Models differing both by in their fixed and in their random terms. ")
     message("Tentatively using marginal likelihood to compare them... ")
     testlik <- "p_v" 
   } else {
@@ -140,15 +164,13 @@
           df.n.Re <- ncol(nullm$distinctX.Re)
         } else df.n.Re <- ncol(nullm$`X.pv`)
         if ( df.f.Re !=  df.n.Re ) {
-          warning("LRT comparing REML fits with different designs is highly suspect")
+          warning("LRT comparing REML fits with different fixed-effect conditions is highly suspect")
         }
       }
       testlik <- "p_v"
     } else { ## random effect test
       if ( ! REML) warning("ML fits used to compare different random-effects models...")
       testlik <- "p_bv" ## used in both case, identical to p_v in the non-standard case
-      stop("The two models have identical fixed-effect formulas\n and cannot yet be compared properly by this function.")
-      ## need to take into account correlations in random slope models for example
     }
   } 
   return(list(fullfit=fullm,nullfit=nullm,test_obj=testlik,df=df))

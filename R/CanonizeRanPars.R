@@ -8,7 +8,7 @@
   init.HLfit <- list() 
   corr_types <- corr_info$corr_types
   for (rd in seq_along(corr_types)) {
-    corr_type <- corr_types[rd]
+    corr_type <- corr_types[[rd]]
     if (! is.na(corr_type)) {
       char_rd <- as.character(rd)
       # $canonize() fails in multIMRF models if .expand_hyper() fails to convert parameters eg bc of wrong input

@@ -37,7 +37,11 @@
     
     Xi_cols <- attr(ZAlist, "Xi_cols")
     nc <- sum(unlist(lapply(ZAlist,ncol)))
-    any_corrMatrix_is_spprec <- (any(sapply(processed$corr_info$corrMatrices,inherits,"precision"))) ## derives from inherits(corrMatrix,"precision")
+    corr_info <- processed$corr_info
+    any_corrMatrix_is_spprec <- (any(sapply(corr_info$corrMatrices,inherits,"precision")) ||
+                                 any(.unlist(lapply(corr_info$corr_families,`[[`, "type"))=="precision")
+                                ) ## derives from inherits(corrMatrix,"precision")
+    
     if (any_corrMatrix_is_spprec) {
       anyRandomSlope <- any(Xi_cols>1L) ## FIXME seems oK for later code but semantically sloppy, cf (X-1|id) terms)
       if (anyRandomSlope && processed$For!="fitme" && !warned1) {
@@ -68,7 +72,7 @@
         any_IMRF <- any(exp_ranef_types== "IMRF")
         if (any_IMRF) {
           if (FALSE) { 
-            G_diagnosis <- .provide_G_diagnosis(corr_info=processed$corr_info, ZAlist=ZAlist, fast=FALSE)
+            G_diagnosis <- .provide_G_diagnosis(corr_info=corr_info, ZAlist=ZAlist, fast=FALSE)
             sparse_precision <-  with(G_diagnosis, (dens_G_rel_ZL<1 && density_G*dens_G_rel_ZL<0.05))
             if (FALSE && ! sparse_precision ) {
               cat(crayon::red(unlist(G_diagnosis)))
@@ -76,7 +80,7 @@
             }
           } else sparse_precision <- TRUE  # always for IMRF
         } else {
-          G_diagnosis <- .provide_G_diagnosis(corr_info=processed$corr_info, ZAlist=ZAlist)
+          G_diagnosis <- .provide_G_diagnosis(corr_info=corr_info, ZAlist=ZAlist)
           if (G_diagnosis$fast) { # as determined internally by .provide_G_diagnosis()
             # actually no G diagnosis ; instead compares ZL to a ZL_without_AR, 
             # which amounts to assume that the cost of spprec is that of ZL without AR 

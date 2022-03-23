@@ -44,7 +44,7 @@
     Obsolete and will be deprecated. Boolean; TRUE and FALSE are equivalent to \code{type="residual"} and \code{type="marginal"}, respectively. 
   }
   \item{verbose}{
-    Either a single boolean (which determines \code{verbose[["type"]]}, or a vector of booleans with possible elements \code{"type"} (to display basic information about the type of simulation) and \code{"showpbar"} (see code{predict(.,verbose)}). 
+    Either a single boolean (which determines \code{verbose[["type"]]}, or a vector of booleans with possible elements \code{"type"} (to display basic information about the type of simulation) and \code{"showpbar"} (see \code{predict(.,verbose)}). 
   }
   \item{sizes}{
   A vector of sample sizes to simulate in the case of a binomial fit. Defaults to the sizes in the original data. 
@@ -67,7 +67,8 @@
 \details{
 \code{type="predVar"} accounts for the uncertainty of the linear predictor, by drawing new values of the predictor in a multivariate gaussian distribution with mean and covariance matrix of prediction. In this case, the user has to provide a \code{variances} argument, passed to \code{predict}, which controls what goes into this covariance matrix. For example, with \code{variances=list(linPred=TRUE,disp=TRUE)}), the covariance matrix takes into account the joint uncertainty in the fixed-effect coefficients and of any random effects given the response and the point estimates of dispersion and correlation parameters (\code{"linPred"} variance component), and in addition accounts for uncertainty in the dispersion parameters (effect of \code{"disp"} variance component as further described in \code{\link{predict.HLfit}}).  The total simulation variance is then the response variance. Uncertainty in correlation parameters (such a parameters of the Matern family) is not taken into account. The \code{"linPred"} uncertainty is known exactly in LMMs, and otherwise approximated as a Gaussian distribution with mean vector and covariance matrix given as per the Laplace approximation. 
 
-\code{type="(ranef|response)"} can be viewed as a special version of \code{type="predVar"} where \code{variances=list(linPred=TRUE,disp=FALSE)}) and only the uncertainty in the random effects is taken into account.
+\code{type="(ranef|response)"} can be viewed as a special version of \code{type="predVar"} where\cr 
+\code{variances=list(linPred=TRUE,disp=FALSE)}) and only the uncertainty in the random effects is taken into account.
 
 A full discussion of the merits of the different \code{type}s is beyond the scope of this documentation, but these different types may not all be useful. \code{type="marginal"} is typically used for computation of confidence intervals by parametric bootstrap methods. \code{type="residual"} is used by \code{\link{get_cPredVar}} for its evaluation of a bias term. The other \code{type}s may be used to simulate the uncertainty in the random effects, conditionally on the data, and may therefore be more akin to the computation of prediction intervals conditionally on an (unknown but inferred) realization of the random effects. But these should presumably not be used in a bootstrap computation of such intervals, as this would represent a double accounting of the uncertainty that the boostrap aims to quantify.
 }

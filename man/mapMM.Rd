@@ -152,7 +152,7 @@ By contrast, \bold{filled.mapMM} handles arguments which are language expression
 }
 \seealso{
 \code{\link{seaMask}} for masking areas in a filled map;
-\url{https://kimura.univ-montp2.fr/~rousset/spaMM/example_raster.html} for more elaborate plot procedures.
+\url{https://gitlab.mbb.univ-montp2.fr/francois/spamm-ref/-/blob/master/vignettePlus/example_raster.html} for more elaborate plot procedures.
 }
 \examples{
 data("blackcap")

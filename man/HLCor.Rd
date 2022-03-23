@@ -9,8 +9,8 @@ A fitting function acting as a convenient interface for \code{\link{HLfit}}, con
 \usage{
 HLCor(formula, data, family = gaussian(), ranPars = NULL, distMatrix,
       adjMatrix, corrMatrix, covStruct=NULL,
-      method = "REML", verbose = c(trace=FALSE),
-      control.dist = list(), ...)
+      method = "REML", verbose = c(inner=FALSE),
+      control.dist = list(), weights.form = NULL, ...)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -45,8 +45,11 @@ HLCor(formula, data, family = gaussian(), ranPars = NULL, distMatrix,
   }
   \item{method}{Character: the fitting method to be used, such as \code{"ML"}, \code{"REML"} or \code{"PQL/L"}. \code{"REML"} is the default. Other possible values of \code{HLfit}'s \code{method} argument are handled.
 }
+  \item{weights.form}{
+  Specification of prior weights by a one-sided formula: use \code{weights.form = ~ pw} instead of \code{prior.weights = pw}. The effect will be the same except that such an argument, known to evaluate to an object of class \code{"formula"}, is suitable to enforce safe programming practices (see \code{\link{good-practice}}).  
+  }
   \item{verbose}{
-    A vector of booleans. \code{trace} controls various diagnostic (possibly messy) messages about the iterations.
+    A vector of booleans. \code{inner} controls various diagnostic (possibly messy) messages about the iterations. This should be distinguished from the \code{TRACE} element, meaningful in \code{fitme} or \code{corrHLfit} calls. 
   }
   \item{control.dist}{
    A list of arguments that control the computation of the distance argument of the correlation functions. Possible elements are

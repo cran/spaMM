@@ -81,8 +81,11 @@
     }
     mc$processed <- do.call(.preprocess, preprocess_args, envir=parent.frame(1L))
     ## removing all elements that are matched in processed:
-    pnames <- c("data","family","formula","prior.weights","HLmethod","method","rand.family","control.glm","REMLformula",
-                "resid.model", "verbose","distMatrix","uniqueGeo","adjMatrix", "control.dist") 
+    # We should remove all processed arguments, in particular those that go into the 'dotlist", otherwise their promises are evaluated again
+    ## which is a waste of time (cf corrMatrix=as_precision(...))
+    pnames <- c("data","family","formula","prior.weights", "weights.form","HLmethod","method","rand.family","control.glm","REMLformula",
+                "resid.model", "verbose","distMatrix","adjMatrix", "control.dist", "corrMatrix","covStruct") 
+    # control.HLfit" "init.HLfit"    "etaFix"  remain.
     for (st in pnames) mc[st] <- NULL 
   }  
   return(mc)
@@ -121,6 +124,7 @@ fitme <- function(formula,data, ## matches minimal call of HLfit
                   processed=NULL, 
                   nb_cores = NULL, # to be used by SEM...
                   objective=NULL,
+                  weights.form=NULL,
                   ... # control.HLfit passed through the dots to .preprocess_fitme() -> .preprocess()
 ) {
   assign("spaMM_glm_conv_crit",list(max=-Inf) , envir=environment(spaMM_glm.fit))
@@ -128,6 +132,17 @@ fitme <- function(formula,data, ## matches minimal call of HLfit
   oricall <- match.call(expand.dots=TRUE) ## mc including dotlist
   oricall$"control.HLfit" <- eval(oricall$control.HLfit, parent.frame()) # to evaluate variables in the formula_env, otherwise there are bugs in waiting 
   mc <- oricall
+  #
+  if ( ! is.null(weights.form)) {
+    mc[["prior.weights"]] <-  weights.form[[2]]
+  } else if ("prior.weights" %in% ...names()) {
+    p_weights <- substitute(alist(...))$prior.weights # necessary when prior weights has been passed to fitme 
+    # through the '...' of another function. In that case we reconstruct the call argument as if they had not been passed in this way.
+    # is user quoted the pw, the str() of the result of the substitute() calls is language quote(...)  ~  doubly quoted stuff... => eval 
+    if ( (inherits(p_weights,"call") && p_weights[[1L]] == "quote") ) p_weights <- eval(p_weights)
+    mc[["prior.weights"]] <- p_weights
+  }
+  #
   mc[[1L]] <- get(".preprocess_formula", asNamespace("spaMM"), inherits=FALSE)  ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
   oricall$formula <- mc$formula <- eval(mc,parent.frame()) # 
   ## : among other effects, forces eval of promise for formula, so re-evaluating the call later will work 
@@ -138,12 +153,6 @@ fitme <- function(formula,data, ## matches minimal call of HLfit
   mc[["fixed"]] <- .preprocess_fixed(fixed)
   mc[[1L]] <- get(".preprocess_fitme", asNamespace("spaMM"), inherits=FALSE)
   mc <- eval(mc,parent.frame()) # returns modified call including an element 'processed'
-  # We should remove all processed arguments, in particular those thatgoe into the 'dotlist", otherwise their promises are evaluated again
-  ## which is a waste of time (cf corrMatrix=as_precision(...))
-  removand <- intersect(names(mc), c("corrMatrix","distMatrix" ,"covStruct" ,"method" ,"HLmethod" ,"formula" ,"data" ,"family" ,"rand.family",
-                                     "resid.model", "REMLformula"))
-  # Didn't check:"verbose"       "control.dist"  "control.HLfit" "control.glm"   "init.HLfit"    "etaFix"        "prior.weights"
-  for (st in removand) mc[[st]] <- NULL # NaN to catch ay remaining use
   mc[[1L]] <- get("fitme_body", asNamespace("spaMM"), inherits=FALSE) 
   hlcor <- eval(mc,parent.frame()) 
   .check_conv_glm_reinit()

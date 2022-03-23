@@ -13,7 +13,7 @@ This function differs from \code{LRT} in its arguments (model fits for \code{LRT
 fixedLRT(null.formula, formula, data, method, HLmethod = method, 
          REMLformula = NULL, boot.repl=0, control="DEPRECATED",
          control.boot="DEPRECATED", fittingFunction, seed=NULL,
-         resp_testfn = NULL, ...)  
+         resp_testfn = NULL, weights.form = NULL, ...)  
 }
 \arguments{
   \item{null.formula}{
@@ -36,13 +36,17 @@ Either a \code{formula} or a \code{predictor} for the full model.
    Further, REML will not be effective on a given dispersion parameter if a non-trivial init.corrHLfit value is provided for this parameter.  
 }
  \item{HLmethod}{
-   Kept for back-compatibility. Same as \code{method}, but may work only for \code{fittingFunction=corrHLfit}.
+   Kept for back-compatibility. Same as \code{method}, but may work only for\cr 
+   \code{fittingFunction=corrHLfit}.
  }
   \item{REMLformula}{
   a formula specifying the fixed effects which design matrix is used in the REML correction 
   for the estimation of dispersion parameters, if these are estimated by REML. 
   This formula is by default that for the *full* model. 
 }
+  \item{weights.form}{
+  Specification of prior weights by a one-sided formula: use \code{weights.form = ~ pw} instead of \code{prior.weights = pw}. The effect will be the same except that such an argument, known to evaluate to an object of class \code{"formula"}, is suitable to enforce safe programming practices (see \code{\link{good-practice}}).  
+  }
   \item{boot.repl}{
   the number of bootstrap replicates.
 }

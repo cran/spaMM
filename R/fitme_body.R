@@ -69,7 +69,7 @@ fitme_body <- function(processed,
   }
   
   
-  processedHL1 <- proc1$HL[1] ## there's also HLmethod in processed<[[]]>$callargs
+  processedHL1 <- proc1$HL[1] 
   needHLCor_specific_args <- (length(unlist(lower$corrPars)) || 
                                 length(intersect(corr_types,c("Matern","Cauchy","adjacency","AR1","corrMatrix", "IMRF","corrFamily"))))
   if (needHLCor_specific_args) {
@@ -167,7 +167,6 @@ fitme_body <- function(processed,
     ## see def of get_HLCorcall() for further explanation
     return(hlcor) ## HLCorcall
   }
-  # hlcor may have received attr(.,"info.uniqueGeo") from HLCor_body.
   if (length(initvec)) {
     attr(hlcor,"optimInfo") <- list(LUarglist=LUarglist, optim.pars=optPars, 
                                     objective=proc1$objective,

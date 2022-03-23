@@ -28,7 +28,7 @@
         # 2nd condition => if original family was negbin with FIXED disp param, a negbin GLM is fitted; it must have an intercept otherwise 
         #                                                  eta=0=> mu untruncated=1 => y>1 is impossible (and returns negative deviance=> negative init lambda)
         (family$family == "negbin" && # with FIXED shape
-         family$zero_truncated)
+         family$zero_truncated) 
     )) X.pv <- matrix(1,ncol=1, nrow=nrow(X.pv))
   n_lambda <- sum(attr(processed$ZAlist,"Xi_cols"))
   if (family$family %in% c("Gamma","gaussian")) {lam_fac <- 1/(n_lambda+1L)} else lam_fac <- 1/n_lambda
@@ -105,7 +105,9 @@
 
 # function called within HLfit for missing inits... 
 # but also sometimes in fitme_body prior to optimization (cf complex condition for call of .eval_init_lambda_guess())
-.get_inits_by_glm <- function(processed, X.pv=processed$AUGI0_ZX$X.pv, family=processed$family, reset=FALSE) {
+.get_inits_by_glm <- function(processed, reset=FALSE,
+                              # args used only as promises:
+                              X.pv=processed$AUGI0_ZX$X.pv, family=processed$family) {
   if ( is.null(inits_by_glm <- processed$envir$inits_by_glm)) {
     if ( ! is.null(vec_nobs <- processed$vec_nobs) ) {
       do_eval <- rep(TRUE, length(vec_nobs))
@@ -135,8 +137,7 @@
       for (mv_it in which(do_eval)) {
         resp_range <- .subrange(cumul=cum_nobs, it=mv_it)
         col_range <- cum_ncol_X[mv_it]+seq_len(cum_ncol_X[mv_it+1L]-cum_ncol_X[mv_it]) # avoid (n+1:n) problem 
-        new_mvlist[[mv_it]] <- .calc_inits_by_glm(processed, X.pv=X.pv[resp_range,col_range, drop=FALSE], 
-                                                  family=processed$families[[mv_it]],
+        new_mvlist[[mv_it]] <- .calc_inits_by_glm(processed, X.pv=X.pv[resp_range,col_range, drop=FALSE],                                                   family=processed$families[[mv_it]],
                                                   y=processed$y[resp_range], ## requested by the formula
                                                   Y=.get_from_terms_info(terms_info=processed$main_terms_info, which="Y", mv_it=mv_it), 
                                                   prior.weights=processed$prior.weights[[mv_it]], ## do not try to eval() it outside of the .wfit function call; else nasty crashes may occur.
@@ -154,7 +155,7 @@
                                            lambdas=lambdas, # vector
                                            lambda=exp(mean(log(lambdas))) # scalar
       )
-    } else processed$envir$inits_by_glm <- .calc_inits_by_glm(processed)
+    } else processed$envir$inits_by_glm <- .calc_inits_by_glm(processed) # univariate response case
   }
   return(processed$envir$inits_by_glm)
 } 

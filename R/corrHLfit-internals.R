@@ -463,7 +463,7 @@ if (FALSE) {
       distMatrix[[lit]] <- as(as.matrix(w_dist),"dsCMatrix")
     }
     distMatrix <- Matrix::bdiag(distMatrix)
-    rowperm <- sort.list(as.integer(unlist(rows_bynesting)))
+    rowperm <- sort.list(as.integer(.unlist(rows_bynesting)))
     distMatrix <- distMatrix[rowperm,rowperm]
     rownames(distMatrix) <- colnames(distMatrix) <- rownames(e_uniqueGeo) ## trivial rownames -- not sure we need them now
   }
@@ -508,7 +508,10 @@ if (FALSE) {
   if (is.null(verbose)) verbose <- logical(0)
   if (is.list(verbose)) stop("is.list(verbose)")
   if (is.na(verbose["TRACE"])) verbose["TRACE"] <- FALSE ## for fitme
-  if (is.na(verbose["trace"])) verbose["trace"] <- FALSE
+  if (is.na(verbose["trace"])) {
+    verbose["trace"] <- FALSE
+  } else message("verbose$trace may be confused with $TRACE; verbose$inner is now preferred to $trace.")
+  if ( ! is.na(verbose["inner"])) verbose["trace"] <- verbose["inner"]
   if (is.na(verbose["SEM"])) verbose["SEM"] <- FALSE
   if (is.na(verbose["iterateSEM"])) verbose["iterateSEM"] <- TRUE ## summary info and plots for each iteration
   if (is.na(verbose["phifit"])) verbose["phifit"] <- TRUE ## DHGLM information
@@ -745,56 +748,98 @@ if (FALSE) {
   return(list(init=init,init.optim=init.optim,init.HLfit=init.HLfit,ranFix=ranFix))
 }
 
-
+# default generic function that should provide valid inits for all corrFamily's without a specifically defined $calc_inits 
 .calc_inits_corrFamily <- function(corrfamily, init, char_rd, optim.scale, init.optim, init.HLfit, ranFix ,user.lower,user.upper) {
-  if (is.null(ranFix$corrPars[[char_rd]])) {
-    parnames <- corrfamily$parnames
-    np <- length(parnames)
-    parvec <- rep(0, np)
+  
+  parnames <- corrfamily$parnames # corrfamily$fixed already taken into account here 
+  np <- length(parnames)
+  user_init <- init.optim$corrPars[[char_rd]]
+  if (np==0L) {
+    if (length(user_init)) {
+      message("Initial value vector for corrFamily contains fixed or unknown parameters, which will be ignored.")
+      init.optim$corrPars[[char_rd]] <- c()
+      init$corrPars[[char_rd]] <- c()
+    }
+  } else { 
+    
+    if ( ! is.null(user_lo <- user.lower$corrPars[[char_rd]])) {
+      if (length(user_lo) != np) {
+        stop("'lower' bounds for corrFamily parameters of inadequate length.") 
+      } else if (is.null(lonames <- names(user_lo))) {
+        names(user_lo) <- parnames
+      } else if (length(setdiff(parnames,lonames))) {
+        stop("Invalid 'lower' bounds for corrFamily parameters: their names do not match the 'tpar' names.")
+      } else user_lo <- user_lo[parnames] # ensures order is canonical as in parvec
+    }  
+    
+    if ( ! is.null(user_hi <- user.upper$corrPars[[char_rd]])) {
+      if (length(user_hi) != np) {
+        stop("'upper' bounds for corrFamily parameters missing or of inadequate length.")
+      } else if (is.null(hinames <- names(user_hi))) {
+        names(user_hi) <- parnames
+      } else if (length(setdiff(parnames,hinames))) {
+        stop("Invalid 'upper' bounds for corrFamily parameters: their names do not match the 'tpar' names.")
+      } else user_hi <- user_hi[parnames] # ensures order is canonical as in parvec
+    }  
+    
+    moreargs <- corrfamily$calc_moreargs(corrfamily)
+    
+    lower <- rep(NA,np)
+    upper <- rep(NA,np)
+    names(lower) <- names(upper) <- parnames
+    lower[names(moreargs$lower)] <- moreargs$lower
+    upper[names(moreargs$upper)] <- moreargs$upper
+    lower[names(user_lo)] <- user_lo
+    upper[names(user_hi)] <- user_hi
+    lower[is.na(lower)] <- -Inf
+    upper[is.na(upper)] <- Inf
+    
+    parvec <- rep(NA, np) # don't call it init since this is the name of one of the input lists...
     names(parvec) <- parnames # typically provided by the corrFamily's $tpar
-    parvec[corrfamily$diagpars] <- 0.1 # but the $diagpars are not provided by f(tpar) although they can be provided by the user. So ?___F I X M E__? user-level?
-    user_init <- init.optim$corrPars[[char_rd]]
+    parvec[names(moreargs$init)] <- moreargs$init 
+    
     ininames <- names(user_init)
     if (is.null(user_init)) {
       # parvec keeps its default value
     } else if (is.null(ininames)) {
       if (length(user_init) != np) {
         stop("Ambiguous initial value vector for corrFamily parameters: provide parameter names or a complete vector.")
-      } else parvec <- user_init
+      } else {
+        names(user_init) <- parnames
+      }
     } else if (length(setdiff(ininames, parnames))) {
       stop("Invalid initial value vector for corrFamily parameters: their names do not match the 'tpar' names.")
-    } else parvec[ininames] <- user_init
+    } 
     
-    ## checking against user-provided min/max
-    lo_rd <- user.lower$corrPars[[char_rd]]
-    lonames <- names(lo_rd)
-    if (is.null(lo_rd) || length(lo_rd) != np) {
-      stop("'lower' bounds for corrFamily parameters missing or of inadequate length.")
-    } else if (is.null(lonames)) {
-      names(lo_rd) <- parnames
-    } else if (length(setdiff(parnames,lonames))) {
-      stop("Invalid 'lower' bounds for corrFamily parameters: their names do not match the 'tpar' names.")
-    } else lo_rd <- lo_rd[parnames] # ensures order is canonical as in parvec
-    parvec <- pmax(parvec, lo_rd)*1.000001
+    parvec[names(user_init)] <- user_init # will override anything excpet the small skip fro mthe bound
     
-    hi_rd <- user.upper$corrPars[[char_rd]]
-    hinames <- names(hi_rd)
-    if (is.null(hi_rd) || length(hi_rd) != np) {
-      stop("'lower' bounds for corrFamily parameters missing or of inadequate length.")
-    } else if (is.null(lonames)) {
-      names(hi_rd) <- parnames
-    } else if (length(setdiff(parnames,lonames))) {
-      stop("Invalid 'lower' bounds for corrFamily parameters: their names do not match the 'tpar' names.")
-    } else hi_rd <- hi_rd[parnames] # ensures order is canonical as in parvec
-    parvec <- pmin(parvec, hi_rd)/1.000001
+    lo_names <- names(lower[!is.infinite(lower)])
+    hi_names <- names(upper[!is.infinite(upper)])
+    boundnames <- intersect(lo_names, hi_names)
+    parvec[intersect(names(which(is.na(parvec))),boundnames)] <- (lower[boundnames]+upper[boundnames])/2
+    parvec[intersect(names(which(is.na(parvec))),lo_names)] <- lower[boundnames]+0.1
+    parvec[intersect(names(which(is.na(parvec))),hi_names)] <- upper[boundnames]-0.1
+    parvec[intersect(names(which(is.na(parvec))),corrfamily$diagpars)] <- 0.1 # only for the primitive version
+    parvec[which(is.na(parvec))] <- 0
+    
+    ## checking against min/max
+    parvec[lo_names] <- pmax(parvec[lo_names], lower[lo_names])*1.000001
+    parvec[hi_names] <- pmin(parvec[hi_names], upper[hi_names])/1.000001
+    
+    fixednames <- names(ranFix$corrPars[[char_rd]])
+    varnames <- setdiff(parnames,fixednames)
+    
+    
     
     # Info in canonical scale:
-    init$corrPars[[char_rd]] <- .modify_list(init$corrPars[[char_rd]], parvec) ## synthesis of user init and default init
+    # using .modify_list() here is not a good idea because of conflcit between potentially unnamed user input and named parvec
+    init$corrPars[[char_rd]] <- parvec[varnames] ## synthesis of user init (parvec) and default canon.init (init$corrPars[[char_rd]])
     # Template of what will affect init.optim$corrPars in transformed scale:
     if (optim.scale=="transformed") {
       stop("code missing here (7)")
-    } else init.optim$corrPars[[char_rd]] <- .modify_list(init.optim$corrPars[[char_rd]], parvec)
+    } else init.optim$corrPars[[char_rd]] <-  parvec[varnames] ## synthesis of user init (parvec) and default init.optim 
   }
+  
   return(list(init=init,init.optim=init.optim,init.HLfit=init.HLfit,ranFix=ranFix))
 }
 
@@ -812,7 +857,7 @@ if (FALSE) {
                 user.lower=user.lower, user.upper=user.upper, init=list()) 
   corr_types <- corr_info$corr_types
   for (rd in seq_along(corr_types)) {
-    corr_type <- corr_types[rd]
+    corr_type <- corr_types[[rd]]
     if (! is.na(corr_type)) {
       char_rd <- as.character(rd)
       inits <- corr_info$corr_families[[rd]]$calc_inits(inits=inits, char_rd=char_rd, moreargs_rd=moreargs[[char_rd]], 

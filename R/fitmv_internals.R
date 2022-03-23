@@ -3,7 +3,7 @@
   lower <- LowUp$lower ## list ! which elements may have length >1 !
   upper <- LowUp$upper ## list !
   for (it in seq_along(corr_types)) {
-    corr_type <- corr_types[it]
+    corr_type <- corr_types[[it]]
     if (! is.na(corr_type)) {
       char_rd <- as.character(it)
       if (corr_type %in% c("SAR_WWt","adjacency") && 

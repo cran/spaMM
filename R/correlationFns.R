@@ -200,10 +200,10 @@ mat_sqrt <- function(m=NULL, # coRRelation matrix
 }
 
 extreme_eig <- function(M, symmetric, required=TRUE) {
-  EEV <- NULL
+  EEV <- decomp <- NULL
   if (required ||
       (inherits(M,"sparseMatrix") &&  ncol(M)<2000L) ||
-      ncol(M)<1000L) decomp <- .try_RSpectra(M,symmetric=symmetric) # 1000 -> 0.28s   
+      ncol(M)<1000L) decomp <- .try_RSpectra(M,symmetric=symmetric) # 1000 -> 0.28s   # but increases fast: squirrels...
   if (is.null(decomp)) {  # RSpectra was not available or it failed or problem was too large
     # we cannot use kappa() or Matrix::condest() here since we really want the two extreme eigenvalues, not simply the condnum
     if (required ||
@@ -319,10 +319,7 @@ make_scaled_dist <- local({
 getDistMat <- function(object,scaled=FALSE, which=1L) {
   if (! is.null(msd_arglist <- attr(object$strucList[[which]],"msd.arglist"))) {
     if (is.null(msd_arglist$distMatrix)) { ## we reconstruct it
-      info_olduniqueGeo <- attr(object,"info.uniqueGeo") 
-      if ( ! is.array(info_olduniqueGeo)) { ## test TRUE for version > 2.3.18:
-        olduniqueGeo <- info_olduniqueGeo[[as.character(which)]] ## spaMM3.0 but could be better documented
-      } else olduniqueGeo <- info_olduniqueGeo 
+      olduniqueGeo <- .get_old_info_uniqueGeo(object, char_rd=as.character(which)) 
       coordinates <- colnames(olduniqueGeo)
       msd_arglist$distMatrix <- eval(msd_arglist$distcall,
                                    list(uniqueGeo=olduniqueGeo,dist.method=msd_arglist$dist.method))

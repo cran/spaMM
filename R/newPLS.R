@@ -238,7 +238,9 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
                                    sXaug,d2hdv2_info=NULL ## either one
                                    ) {
   ## cf calcul dhdv, but here we want to keep each d/d phi_i distinct hence not sum over observations i 
-  neg.d2h0_dv_dlogphi <- .m_Matrix_times_Dvec(t(ZAL), drop(dh0deta)) # n_u_h*nobs: each ith column is a vector of derivatives wrt v_k# dh0dv <- t(ZAL) %*% diag(as.vector(dh0deta)) 
+  if (inherits(ZAL,"ZAXlist")) { # appeared in first try gaussian("logit")... with ARp()...
+    neg.d2h0_dv_dlogphi <- .crossprod(ZAL,Diagonal(x=drop(dh0deta)))
+  } else neg.d2h0_dv_dlogphi <- .m_Matrix_times_Dvec(t(ZAL), drop(dh0deta)) # n_u_h*nobs: each ith column is a vector of derivatives wrt v_k# dh0dv <- t(ZAL) %*% diag(as.vector(dh0deta)) 
   if (is.null(d2hdv2_info)) { # call by HLfit_body
     dvdlogphiMat <- get_from_MME(sXaug,"solve_d2hdv2",B=neg.d2h0_dv_dlogphi) 
   } else if (inherits(d2hdv2_info,"CHMfactor")) { # CHM of ***-*** d2hdv2
@@ -612,36 +614,10 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
     if (TRUE) { # not clear why solve(cross_Rxx,.) would work and not chol() 
       chol_XX <- chol(cross_Rxx)
       r_Xy <- backsolve(chol_XX, u_of_quadratic_utAu, transpose=TRUE) ## I wrote "transpose since chol() provides a tcrossfac". ?? 
-      ryy2 <- sum(pwy_o*pwy_o) - sum(r_Zy@x*r_Zy@x) - sum(r_Xy*r_Xy)
+      r_Zy_x <- r_Zy@x
+      ryy2 <- sum(pwy_o*pwy_o) - sum(r_Zy_x*r_Zy_x) - sum(r_Xy*r_Xy)
       absdiagR_terms <- list(logdet_v=determinant(CHM_ZZ)$modulus[1], 
                              logdet_b=sum(log(abs(.diagfast(chol_XX)))), ryy2=ryy2)
-    } else if (FALSE) {
-      cross_X <- .crossprod(XW, as_sym=FALSE)
-      chX <- chol(cross_X)
-      # RzxL <- as(Rzx %*% solve(chX),"dgCMatrix") # block (1,2) using a previous solve(CHM_ZZ
-      # uplo <- .cbind_dgC_dgC( drop0(as(0*cross_Z,"dgCMatrix")), RzxL) # 1,1, 1,2
-      uplo <- as(Rzx %*% solve(chX),"dgCMatrix") # block (1,2) using a previous solve(CHM_ZZ
-      dimnames(uplo) <- list(NULL,NULL)
-      uplo@Dim[2L] <- uplo@Dim[2L]+ncol(CHM_ZZ) 
-      uplo@p <- c(rep(0L,ncol(CHM_ZZ)), uplo@p) # nice way of adding a LHS block of zeros. # 1:3, 1:2
-      uplo@Dim[1L] <- uplo@Dim[2L]+1L # nice way of adding rows of zeros. # 1:3, 1:2
-      #
-      LXtWy <- drop(backsolve(chX,XtWy,transpose=TRUE)) # block 2,3
-      ywy <- sum(pwy_o*pwy_o)
-      ycol <- c(drop(r_Zy),LXtWy,0)/sqrt(ywy)
-      dim(ycol) <- c(length(ycol),1L)
-      uplo <- .cbind_dgC_dgC(uplo, as(ycol,"dgCMatrix"))
-      CHM_full <- as(Cholesky(forceSymmetric(uplo),Imult=1,perm=FALSE),"sparseMatrix") # this is not efficient
-      # updating permuted cholesky would make extracting a lower triangle, as below, a dubious approach.
-      #
-      tltblock <- t(.get_dtC_lower_RHS(dtC_full=CHM_full, ncol_remove=ncol(CHM_ZZ)))
-      tltblock <- .remove_utri_last_rowcol(tltblock)
-      #
-      chol_XX <- tltblock %*% chX 
-      lastx <- tail(CHM_full@x,1)
-      ryy2 <- ywy*lastx*lastx
-      absdiagR_terms <- list(logdet_v=determinant(CHM_ZZ)$modulus[1], 
-                             logdet_b=sum(log(.diagfast(chol_XX))), ryy2=ryy2)
     } else if (use_crossr22 <- TRUE) { # a bit slower (even using .Rcpp_crossprod)
       # No need for the complex Utri_chol computation here, as sum(r_Xy^2) is easy to compute without it.
       # Another place where one can avoid it is also labelled 'use_crossr22' in .solve_crossr22()
@@ -658,12 +634,14 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
       r_Xy <- backsolve(chol_XX, u_of_quadratic_utAu, transpose=TRUE) ## transpose since chol() provides a tcrossfac 
       # .crossprod(Rzx, r_Zy) appears to be .crossprod(ZtWX, solve(CHM_ZZ, ZtWy, system = "A")) 
       # but we still need Rzx and r_Zy 
-      ryy2 <- sum(pwy_o*pwy_o) - sum(r_Zy@x*r_Zy@x) - sum(r_Xy*r_Xy)
+      r_Zy_x <- r_Zy@x
+      ryy2 <- sum(pwy_o*pwy_o) - sum(r_Zy_x*r_Zy_x) - sum(r_Xy*r_Xy)
       absdiagR_terms <- list(logdet_v=determinant(CHM_ZZ)$modulus[1], 
                              logdet_b=sum(log(abs(.diagfast(chol_XX)))), ryy2=ryy2)
     }
   } else { # no fixed effects... 
-    ryy2 <- sum(pwy_o*pwy_o) - sum(r_Zy@x*r_Zy@x)
+    r_Zy_x <- r_Zy@x
+    ryy2 <- sum(pwy_o*pwy_o) - sum(r_Zy_x*r_Zy_x)
     absdiagR_terms <- list(logdet_v=determinant(CHM_ZZ)$modulus[1], 
                            logdet_b=0, ryy2=ryy2)
   }

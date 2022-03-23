@@ -14,7 +14,7 @@ corrHLfit(formula, data, init.corrHLfit = list(),
           objective = NULL, resid.model = ~1, 
           control.dist = list(), control.corrHLfit = list(),
           processed = NULL, family = gaussian(), method="REML",
-          nb_cores = NULL, ...)
+          nb_cores = NULL, weights.form = NULL, ...)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -47,6 +47,9 @@ An optional (sub)list of values of the parameters specified through \code{init.c
   \item{family}{Either a \code{\link{family}} or a \code{\link{multi}} value. }
   \item{method}{Character: the fitting method to be used, such as \code{"ML"}, \code{"REML"} or \code{"PQL/L"}. \code{"REML"} is the default. Other possible values of \code{HLfit}'s \code{method} argument are handled.
 }
+  \item{weights.form}{
+  Specification of prior weights by a one-sided formula: use \code{weights.form = ~ pw} instead of \code{prior.weights = pw}. The effect will be the same except that such an argument, known to evaluate to an object of class \code{"formula"}, is suitable to enforce safe programming practices (see \code{\link{good-practice}}).  
+ }
   \item{nb_cores}{\bold{Not yet operative}, only for development purposes. Number of cores to use for parallel computations. }
   \item{\dots}{
 Optional arguments passed to \code{\link{HLCor}}, \code{\link{HLfit}} or  \code{\link{mat_sqrt}}, for example the \code{distMatrix} argument 

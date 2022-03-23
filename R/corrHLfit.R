@@ -70,8 +70,12 @@
       }     
     }
     mc$processed <- do.call(.preprocess,preprocess_args,envir=parent.frame(1L))
-    pnames <- c("data","family","formula","prior.weights","HLmethod","method","rand.family","control.glm","REMLformula",
-                "resid.model", "verbose","distMatrix","uniqueGeo","adjMatrix") 
+    ## removing all elements that are matched in processed:
+    # We should remove all processed arguments, in particular those that go into the 'dotlist", otherwise their promises are evaluated again
+    ## which is a waste of time (cf corrMatrix=as_precision(...))
+    pnames <- c("data","family","formula","prior.weights", "weights.form","HLmethod","method","rand.family","control.glm","REMLformula",
+                "resid.model", "verbose","distMatrix","adjMatrix", "control.dist", "corrMatrix","covStruct") 
+    # control.HLfit" "init.HLfit"    "etaFix"  remain.
     for (st in pnames) mc[st] <- NULL 
   } 
   return(mc)  
@@ -79,26 +83,38 @@
 
 ## wrapper for optimization of HLCor.obj OR (iterateSEMSmooth -> HLCor directly)
 corrHLfit <- function(formula,data, ## matches minimal call of HLfit
-                       init.corrHLfit=list(),
-                       init.HLfit=list(),
-                       ranFix=list(), 
-                       lower=list(),upper=list(),
-                       objective=NULL, ## return value of HLCor.obj for optim calls... FR->FR meaningless for full SEM
-                       resid.model=~1, 
-                       control.dist=list(),
+                      init.corrHLfit=list(),
+                      init.HLfit=list(),
+                      ranFix=list(), 
+                      lower=list(),upper=list(),
+                      objective=NULL, ## return value of HLCor.obj for optim calls... FR->FR meaningless for full SEM
+                      resid.model=~1, 
+                      control.dist=list(),
                       control.corrHLfit=list(), ## optim.scale, optimizer, <Optimizer controls>
                       processed=NULL, ## added 2014/02 for programming purposes
-                       family=gaussian(),
+                      family=gaussian(),
                       method="REML", 
                       nb_cores=NULL,
-                       ... ## pb est risque de passer des args mvs genre HL.method et non HLmethod...
+                      weights.form=NULL,
+                      ... ## pb est risque de passer des args mvs genre HL.method et non HLmethod...
 ) {
   assign("spaMM_glm_conv_crit",list(max=-Inf) , envir=environment(spaMM_glm.fit))
   time1 <- Sys.time()
   oricall <- match.call(expand.dots=TRUE) ## mc including dotlist
-  #oricall$formula <- .preprocess_formula(formula, env=control.corrHLfit$formula_env) ## Cf comment in .GetValidData_info()
   oricall$control.HLfit <- eval(oricall$control.HLfit, parent.frame()) # to evaluate variables in the formula_env, otherwise there are bugs in waiting 
+  
   mc <- oricall
+  #
+  if ( ! is.null(weights.form)) {
+    mc[["prior.weights"]] <-  weights.form[[2]]
+  } else if ("prior.weights" %in% ...names()) {
+    p_weights <- substitute(alist(...))$prior.weights # necessary when prior weights has been passed to fitme 
+    # through the '...' of another function. In that case we reconstruct the call argument as if they had not been passed in this way.
+    # is user quoted the pw, the str() of the result of the substitute() calls is language quote(...)  ~  doubly quoted stuff... => eval 
+    if ( (inherits(p_weights,"call") && p_weights[[1L]] == "quote") ) p_weights <- eval(p_weights)
+    mc[["prior.weights"]] <- p_weights
+  }
+  #
   mc[[1L]] <- get(".preprocess_formula", asNamespace("spaMM"), inherits=FALSE)  ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
   oricall$formula <- mc$formula <- eval(mc,parent.frame()) # 
   mc[[1L]] <- get(".check_args_corrHLfit", asNamespace("spaMM"), inherits=FALSE) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
@@ -106,10 +122,6 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
   # mc[["ranFix"]] <- .preprocess_fixed(ranFix) # useless bc 'Partial constraints on ranCoefs are not handled by this function. Use fitme() instead.'
   mc[[1L]] <- get(".preprocess_corrHLfit", asNamespace("spaMM"), inherits=FALSE) 
   mc <- eval(mc,parent.frame()) # returns modified call including an element 'processed'
-  removand <- intersect(names(mc), c("corrMatrix","distMatrix" ,"covStruct" ,"method" ,"HLmethod" ,"formula" ,"data" ,"family" ,"rand.family",
-                                     "resid.model", "REMLformula"))
-  # Didn't check:"verbose"       "control.dist"  "control.HLfit" "control.glm"   "init.HLfit"    "etaFix"        "prior.weights"
-  for (st in removand) mc[[st]] <- NULL # NaN to catch ay remaining use
   mc[[1L]] <- get("corrHLfit_body", asNamespace("spaMM"), inherits=FALSE) 
   hlcor <- eval(mc,parent.frame()) 
   .check_conv_glm_reinit()

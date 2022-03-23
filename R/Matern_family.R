@@ -208,35 +208,19 @@ corrMatrix <- function(...) {
   class="corr_family")
 }
 
-corrFamily <- function(corrfamily=NULL, ...) {
-  if ( ! is.null(corrfamily)) { # true initialization
-    structure(list(corr_family="corrFamily",
-                   names_for_post_process_parlist=corrfamily$parnames,
-                   canonize=function(corrPars_rd, checkComplete, ...) {list(corrPars_rd=corrPars_rd)}, ## no transfo defined yet
-                   calc_inits=function(inits, char_rd, 
-                                       optim.scale, # currently ignored (not passed)
-                                       init.optim,  
-                                       ranFix,  
-                                       user.lower,
-                                       user.upper,
-                                       ...) { # possibly add moreargs_rd
-                     inits <- .calc_inits_corrFamily(corrfamily=corrfamily, init=inits$init, char_rd=char_rd, optim.scale="", 
-                                                     init.optim=inits$init.optim, init.HLfit=inits$init.HLfit, ranFix=inits$ranFix, 
-                                                     user.lower=user.lower,user.upper=user.upper)
-                     return(inits)
-                   },
-                   calc_moreargs= function(...) {return(NULL)} ## NULL OK since it returns in [[char_rd]], not [[rd]]
-    ),
-    class="corr_family")
-  } else { # a kind of declaration
-    structure(list(corr_family="corrFamily",
-                   names_for_post_process_parlist=function(...) {stop("code missing here (1)")},
-                   canonize=function(...) {stop("code missing here (2)")}, ## NULL OK since elements are copied in [[char_rd]], not [[rd]]
-                   calc_inits=function(inits, ...) {stop("code missing here (3)")},
-                   calc_moreargs= function(...) {return(NULL)} ## NULL OK since it returns in [[char_rd]], not [[rd]]
-    ),
-    class="corr_family")
-  }
+# called by .preprocess -> .assign_corr_types_families(corr_info, exp_ranef_types) -> do.call(corr_types[rd], list()) -> corrFamily().
+# NOT called by (earlier) .preprocess -> GetValidData_info() -> model.frame(< formula gone through  .subbarsMM(formula) >)
+#  bc .subbarsMM() is aware of the corrFamily keyword.
+# $___ F I X M E___ this means that any "unknown" keyword should have been converted to corrFamily before this model.frame() call.
+
+# The result is what stays in the processed $corr_info for a submodel from a fitmv call.
+corrFamily <- function(corrfamily=NULL, ...) { 
+  list(title="Stub for the corrFamily before .preprocess_corrFamily() provides all required info."
+       # ,
+       # calc_moreargs= function(...) {return(NULL)}, # so that calling .calc_moreargs() on a submodel does not generate an error.
+       # canonize = function(...) {return(NULL)}, # so that calling .calc_moreargs() on a submodel does not generate an error.
+       # calc_inits= function(...) {return(NULL)} # same idea for .calc_inits...
+       )
 }
 
 AR1 <- function(...) {

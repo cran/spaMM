@@ -113,45 +113,52 @@ predict(fitobject)
 #### multiple controls of prediction variances
 ## (1) fit with an additional random effect
 grouped <- cbind(blackcap,grp=c(rep(1,7),rep(2,7))) 
-fitobject <- fitme(migStatus ~ 1 +  (1|grp) +Matern(1|longitude+latitude),
+fitobject2 <- fitme(migStatus ~ 1 +  (1|grp) +Matern(1|longitude+latitude),
                        data=grouped,  fixed=list(nu=4,rho=0.4,phi=0.05))
 
 ## (2) re.form usage to remove a random effect from point prediction and variances: 
-predict(fitobject,re.form= ~ 1 +  Matern(1|longitude+latitude))
+predict(fitobject2,re.form= ~ 1 +  Matern(1|longitude+latitude))
 
 ## (3) comparison of covariance matrices for two types of new data
 moregroups <- grouped[1:5,]
 rownames(moregroups) <- paste0("newloc",1:5)
 moregroups$grp <- rep(3,5) ## all new data belong to an unobserved third group 
-cov1 <- get_predVar(fitobject,newdata=moregroups,
+cov1 <- get_predVar(fitobject2,newdata=moregroups,
                      variances=list(linPred=TRUE,cov=TRUE))
 moregroups$grp <- 3:7 ## all new data belong to distinct unobserved groups
-cov2 <- get_predVar(fitobject,newdata=moregroups,
+cov2 <- get_predVar(fitobject2,newdata=moregroups,
                      variances=list(linPred=TRUE,cov=TRUE))
 cov1-cov2 ## the expected off-diagonal covariance due to the common group in the first fit.
 
 \dontrun{
 #### Other extractors:
+#
 fix_X_ZAC.object <- preprocess_fix_corr(fitobject,fixdata=blackcap)
+#
 # ... for use in multiple calls to get_predCov_var_fix():
+#
 get_predCov_var_fix(fitobject,newdata=blackcap[14,],fix_X_ZAC.object=fix_X_ZAC.object)
 
 #### Prediction with distinct given phi's in different locations, 
 #   as specified by a resid.model:
+#
 varphi <- cbind(blackcap,logphi=runif(14))
 vphifit <- fitme(migStatus ~ 1 + Matern(1|longitude+latitude), 
                      resid.model = list(formula=~0+offset(logphi)),
                      data=varphi,  fixed=list(nu=4,rho=0.4))
-
+#
 # For respVar computation (i.e., response variance, often called prediction variance), 
 #   one then also needs to provide the variables used in 'resid.model', here 'logphi':
+#
 get_respVar(vphifit,newdata=data.frame(latitude=1,longitude=1,logphi=1))
-
+#
 # For default 'predVar' computation (i.e., uncertainty in point prediction), 
-#   this is not needed: 
+#   this is not needed:
+#
 get_predVar(vphifit,newdata=data.frame(latitude=1,longitude=1))                     
 
 #### point predictions and variances with new X and Z
+#
 if(requireNamespace("rsae", quietly = TRUE)) {
   data("landsat", package = "rsae")
   fitobject <- fitme(HACorn ~ PixelsCorn + PixelsSoybeans + (1|CountyName),

@@ -10,7 +10,8 @@
 
 The main use of \code{covStruct} is to specify the correlation matrix of levels of a given random effect term, or its inverse (a precision matrix). Assuming that the design matrix of each random effect term follows the structure \bold{ZAL} described in \code{\link{random-effects}}, it is thus an indirect way of specifying the \dQuote{square root} \bold{L} of the correlation matrix. The optional \bold{A} factor can also be given by the optional \code{"AMatrices"} attribute of \code{covStruct}.      
 
-\code{covStruct} is a \code{list} of matrices with names specifying the type of matrix considered: \code{covStruct=list(corrMatrix=<some matrix>)} or \code{covStruct=list(adjMatrix=<some matrix>)}, where the \dQuote{corrMatrix} or \dQuote{adjMatrix} labels are used to specify the type of information provided (accordingly, the names can be repeated: \code{covStruct=list(corrMatrix=<.>,corrMatrix=<.>)}). 
+\code{covStruct} is a \code{list} of matrices with names specifying the type of matrix considered:\cr 
+\code{covStruct=list(corrMatrix=<some matrix>)} or \code{covStruct=list(adjMatrix=<some matrix>)}, where the \dQuote{corrMatrix} or \dQuote{adjMatrix} labels are used to specify the type of information provided (accordingly, the names can be repeated: \code{covStruct=list(corrMatrix=<.>,corrMatrix=<.>)}). 
 \code{NULL} list members may be necessary, e.g.\cr 
 \code{covStruct=list(corrMatrix=<.>,"2"=NULL,corrMatrix=<.>)})\cr
 when correlations matrices are required only for the first and third random effect. 

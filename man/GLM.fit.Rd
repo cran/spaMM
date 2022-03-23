@@ -129,7 +129,7 @@ if (requireNamespace("rcdd",quietly=TRUE)) {
   spaMM_glm(y~ x,data=data.frame(x,y),family=Gamma())
 }
 
-## A simple exponential regression with negative response values
+## A simple exponential regression with some negative response values
 
 set.seed(123)
 x <- seq(50)

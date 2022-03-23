@@ -45,20 +45,21 @@
 
 .preprocess_covStruct <- function(covStruct) {
   if ( ! inherits(covStruct,"list")) stop("covStruct must inherit from class 'list'.")
-  types <- attr(covStruct,'types') ## 1st way of specifying types
+  types <- attr(covStruct,"types") ## 1st way of specifying types; immediately converted to names of list 
+                                   ## ** so the attribute can be neglected in further code.**
   if (is.null(types)) {
     types <- names(covStruct) ## 2nd way of specifying types
   } else names(covStruct) <- types ## repeated names possible
-  known_types <- c("adjMatrix","corrMatrix","precision","SAR_WWt","distMatrix", "IMRF","corrFamily") 
+  known_types <- c("adjMatrix","corrMatrix",
+                   "precision", # => not one of the built_in ranef types
+                   "SAR_WWt","distMatrix", "IMRF","corrFamily") 
   checktypes <- setdiff(types,c(known_types,"", paste(seq_along(covStruct)))) ## "" for unhandled ranefs
   if (length(checktypes)) stop(paste("Unhandled name(s)/type(s)",
                                      paste0("'",checktypes,"'",collapse=", "),"in 'covStruct'."))
-  for (lit in seq_along(covStruct)) {
-    if (types[[lit]]=="precision") {
-      if (is.list(covStruct[[lit]])) { # always the case ?
-        covStruct[[lit]]$matrix <- forceSymmetric(covStruct[[lit]]$matrix)
-      } else covStruct[[lit]] <- forceSymmetric(covStruct[[lit]])
-    } 
+  for (lit in which(types=="precision")) {
+    if (is.list(covStruct[[lit]])) { # NOT always the case. In the tests, fitme(cases ~ I(prop.ag/10) + corrMatrix(1 | gridcode) .. , covStruct = list(precision = precmat) 
+      covStruct[[lit]]$matrix <- forceSymmetric(covStruct[[lit]]$matrix)
+    } else covStruct[[lit]] <- forceSymmetric(covStruct[[lit]])
   }
   if ( ! is.null(AMatrices <- attr(covStruct,'AMatrices')) && ! is.list(AMatrices)) {stop("attr(covStruct,'AMatrices') must be a list.")} 
   return(covStruct)
@@ -86,6 +87,36 @@
   )
 }
 
+# Creating an ad hoc list may not be memory efficient but is quite convenient for prediction.
+# The .get_old_info_uniqueGeo() extractor should be used to access this info.
+.reformat_info_uniqueGeo <- function(processed, control.dist, corr_types=processed$corr_info$corr_types) {
+  info_uniqueGeo <- msd_arglist <- list() # list with char_rd-indexed elements
+  
+  # for old builtin types:
+  is_uniqueGeo_needed <- ( (! is.na(corr_types)) & 
+                             (corr_types=="Matern" | corr_types=="Cauchy" | corr_types=="AR1" |
+                                corr_types=="IMRF" ## IMRF: mapMM expects it.
+                             )
+  ) 
+  for (rd in which(is_uniqueGeo_needed)) {
+    char_rd <- as.character(rd)
+    geo_envir <- .get_geo_info(processed, which_ranef=rd, which="uniqueGeo", 
+                               dist_method_rd=control.dist[[char_rd]]$dist.method) 
+    info_uniqueGeo[[char_rd]] <- geo_envir$uniqueGeo 
+  }
+  
+  # for newer corr families:
+  corr_families <- processed$corr_info$corr_families
+  for (rd in which(corr_types=="corrFamily")) {
+    char_rd <- as.character(rd)
+    if ( ! inherits(corr_families[[rd]]$calc_corr_from_dist, "stub")) {
+      geo_envir <- .get_geo_info(processed, which_ranef=rd, which="uniqueGeo", 
+                                 dist_method_rd=control.dist[[char_rd]]$dist.method) 
+      info_uniqueGeo[[char_rd]] <- geo_envir$uniqueGeo 
+    }
+  }
+  info_uniqueGeo
+}
 
 HLCor_body <- function(processed, ## single environment
                   ranPars=NULL, ## all dispersion and correlation params ideally provided through ranPars
@@ -105,7 +136,7 @@ HLCor_body <- function(processed, ## single environment
   .assign_geoinfo_and_LMatrices_but_ranCoefs(processed, corr_types, spatial_terms, ranPars, control.dist, 
                                 argsfordesignL=dotlist[intersect(names(dotlist),names(formals(mat_sqrt)))] )
   if (any(vec_normIMRF <- processed$AUGI0_ZX$vec_normIMRF ) ) {
-    processed$ZAlist <- .normalize_IMRF(processed$ZAlist, 
+    processed$ZAlist <- .normalize_IMRF(processed, 
                                         vec_normIMRF=vec_normIMRF,
                                         #ranges=processed$hyper_info$ranges,
                                         strucList=processed$AUGI0_ZX$envir$LMatrices)
@@ -167,17 +198,7 @@ HLCor_body <- function(processed, ## single environment
   } # else class(hlfit) <- c("HLCor", class(hlfit)) seems totally obsolete; object has class HLfit.
   #### Infos in the final fit object: 
   hlfit$spatial_terms <- spatial_terms
-  info_uniqueGeo <- msd_arglist <- list()
-  is_uniqueGeo_needed <- ( (! is.na(corr_types)) & (corr_types=="Matern" | corr_types=="Cauchy" | corr_types=="AR1"
-                           | corr_types=="IMRF")) ## IMRF: mapMM expects it.
-  for (rd in which(is_uniqueGeo_needed)) {
-    char_rd <- as.character(rd)
-    geo_envir <- .get_geo_info(processed, which_ranef=rd, which="uniqueGeo", 
-                               dist_method_rd=control.dist[[char_rd]]$dist.method) 
-    info_uniqueGeo[[char_rd]] <- geo_envir$uniqueGeo 
-  }
-  attr(hlfit,"info.uniqueGeo") <- info_uniqueGeo
-  #attr(hlfit,"control_dists") <- control.dist
+  hlfit$ranef_info$info_oldUniqueGeo <- .reformat_info_uniqueGeo(processed, control.dist, corr_types) # list; previously stored as attr(hlfit,"info.uniqueGeo")
   #
   hlfit$call <- "$call removed by HLCor_body. Use getCall() to extract the call from the object." ## instead of the $call with evaluated arguments
   return(hlfit) ## 
@@ -212,7 +233,7 @@ HLCor_body <- function(processed, ## single environment
   makescaled.formals <- names(formals(make_scaled_dist))
   HLnames <- (c(HLCor.formals,names_formals_HLfit,designL.formals,makescaled.formals))  ## cf parallel code in corrHLfit
   HLCor.call <- mc[c(1,which(names(mc) %in% HLnames))] ## keep the call structure
-  ranefParsList <- relist(ranefParsVec,skeleton)
+  ranefParsList <- relist(ranefParsVec,skeleton) # converts back a vector of variable parameters to a structured list of variable parameters
   print_phiHGLM_info <- ( ! is.null(processed$residProcessed) && processed$verbose["phifit"]) 
   if (print_phiHGLM_info) {
     # set a 'prefix' for the line to be printed for each iteration of the phi fit when outer optimization is used for the main response. 
@@ -223,7 +244,9 @@ HLCor_body <- function(processed, ## single environment
     urP <- unlist(.canonizeRanPars(ranefParsList, corr_info=processed$corr_info,checkComplete=FALSE, rC_transf=.spaMM.data$options$rC_transf))
     processed$port_env$prefix <- paste0("HLCor for ", paste(signif(urP,6), collapse=" "), ": ")
   } 
-  ranPars <- .modify_list(HLCor.call$ranPars, ranefParsList)
+  ranPars <- .modify_list(HLCor.call$ranPars, ranefParsList) # merges variable and fixed params, 
+  # but result may be messy (lambda+trLambda... corrFamily parameters in wrong order...) it will be
+  # HLfit|HLCor_body -> .canonizeRanPars 's task to put this in order.
   rpType <- .modify_list(attr(HLCor.call$ranPars,"type"),attr(skeleton,"type"))
   moreargs <- attr(skeleton,"moreargs")
   ranPars <- .expand_hyper(ranPars, processed$hyper_info,moreargs=moreargs) ## input ranPars contains both unconstrained ranPars and $hyper

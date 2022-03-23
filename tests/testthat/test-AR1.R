@@ -1,6 +1,6 @@
 cat(crayon::yellow("\ntest AR1:\n"))
 
-if (spaMM.getOption("example_maxtime")>8) { # fit itself < 8s
+if (spaMM.getOption("example_maxtime")>4) { # 
   set.seed(123)
   nobs <- 500
   distm <- as.matrix(dist(1:nobs)) 
@@ -10,9 +10,14 @@ if (spaMM.getOption("example_maxtime")>8) { # fit itself < 8s
   obs <- rpois(nobs,exp(eta))
   plot(obs)
   fake <- data.frame(obs=obs,age=1:nobs)
-  fitar1 <- corrHLfit(obs ~ 1+AR1(1|age),family=poisson(),data=fake,verbose=c(TRACE=TRUE))
-  crit <- diff(range(logLik(fitar1), c(p_bv=-1269.06022553)))
-  try(testthat::test_that(paste0("criterion was ",signif(crit,4)," from 1269.06022553"), testthat::expect_true(crit<1e-9))) 
+  fitar1 <- fitme(obs ~ 1+AR1(1|age),family=poisson(),data=fake,verbose=c(TRACE=0.5),method="REML")
+  crit <- diff(range(logLik(fitar1), c(p_bv=-1269.060222885349)))
+  try(testthat::test_that(paste0("criterion was ",signif(crit,4)," from 1269.060222885349"), testthat::expect_true(crit<1e-9))) 
+  # There should be better tests elsewhere:
+  # fitar1_cF <- fitme(obs ~ 1+corrFamily(1|age),family=poisson(),data=fake,verbose=c(TRACE=0.5),
+  #                    covStruct=list("1"=ARp()), method="REML")
+  # crit <- diff(range(logLik(fitar1_cF),logLik(fitar1)))
+  # try(testthat::test_that(paste0("logLik(fitar1_cF) was ",signif(crit,4)," logLik(fitar1)"), testthat::expect_true(crit<1e-9))) 
 }
 
 ## same with nested AR1 within individual
@@ -58,7 +63,7 @@ if (TRUE) {
 }
 
 
-if (spaMM.getOption("example_maxtime")>13) {
+if (spaMM.getOption("example_maxtime")>6) {
   set.seed(123)
   age    <-    (rep(c(1:((Nage <- 30))),times=(Nind <- 30)))
   ind    <- 	 rep(c(1:Nind),	 each=(Nage))

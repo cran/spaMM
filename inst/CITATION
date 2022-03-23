@@ -19,7 +19,7 @@ citEntry(entry="Article",
 
   pages        = "781-790",
 
-  url          = "http://dx.doi.org/10.1111/ecog.00566",
+  url          = "https://dx.doi.org/10.1111/ecog.00566",
 
 
   textVersion = paste("François Rousset and Jean-Baptiste Ferdy (2014)",

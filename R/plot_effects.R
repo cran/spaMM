@@ -72,10 +72,15 @@ plot_effects <- function(object, focal_var, newdata=object$data, # doc as a data
   # : could imagine plotting the results of indiv=TRUE (requires more code)
   if (object$family$family=="binomial") {
     resp <- object$y/object$BinomialDen
-    if (is.null(ylab)) ylab <- paste("frequency(",formula.HLfit(object,which="")[[2]][[2]],")")
+    if (is.null(ylab)) {
+      form <- formula.HLfit(object,which="")
+      if (paste(form[[2L]])[[1L]]=="cbind") {
+        ylab <- paste("frequency(",form[[2L]][[2L]],")")
+      } else ylab <- paste("frequency(",form[[2L]],")")
+    }
   } else {
     resp <- object$y
-    if (is.null(ylab)) ylab <- paste(formula.HLfit(object,which="")[[2]])
+    if (is.null(ylab)) ylab <- paste(formula.HLfit(object,which="")[[2L]])
   }
   if (is.null(ylim)) ylim <- stats::quantile(resp, c(0.025, 0.975))
   rgb.args <- as.list(rgb.args)

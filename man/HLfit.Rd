@@ -11,10 +11,10 @@
 }
 \usage{
 HLfit(formula, data, family = gaussian(), rand.family = gaussian(), 
-      resid.model = ~1, REMLformula = NULL, verbose = c(trace = FALSE), 
+      resid.model = ~1, REMLformula = NULL, verbose = c(inner = FALSE), 
       HLmethod = "HL(1,1)", method="REML", control.HLfit = list(), 
       control.glm = list(), init.HLfit = list(), ranFix = list(), 
-      etaFix = list(), prior.weights = NULL, processed = NULL)
+      etaFix = list(), prior.weights = NULL, weights.form = NULL, processed = NULL)
 ## see 'rand.family' argument for inverse.Gamma
 }
 %- maybe also 'usage' for other objects documented here.
@@ -51,7 +51,7 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
   A model \code{formula} that controls the estimation of dispersion parameters and the computation of restricted likelihood (\code{p_bv}), where the conditioning inherent in REML is defined by a model different from the predictor \code{formula}. A simple example (useless in practice) of its effect is to replicate an ML fit by specifying \code{method="REML"} and an \code{REMLformula} with no fixed effect. The latter implies that no conditioning is performed and that \code{p_bv} equals the marginal likelihood (or its approximation), \code{p_v}. One of the examples in \code{\link{update.HLfit}} shows how \code{REMLformula} can be useful, but otherwise this argument may never be needed for standard REML or ML fits. For non-standard likelihood ratio tests using \code{REMLformula}, see \code{\link{fixedLRT}}.    
 }
   \item{verbose}{
-    A vector of booleans. The \code{trace} element controls various diagnostic messages (possibly messy) about the iterations. This should be distinguished from the \code{TRACE} element, meaningful in \code{fitme} or \code{corrHLfit} calls. \code{phifit} (which defaults to \code{TRUE}) controls messages about the progress of residual dispersion fits in DHGLMs. 
+    A vector of booleans. The \code{inner} element controls various diagnostic messages (possibly messy) about the iterations. This should be distinguished from the \code{TRACE} element, meaningful in \code{fitme} or \code{corrHLfit} calls, and much more useful. \code{phifit} (which defaults to \code{TRUE}) controls messages about the progress of residual dispersion fits in DHGLMs. 
   }
   \item{method}{Character: the fitting method. 
   allowed values are \code{"REML"}, \code{"ML"}, \code{"EQL-"} and \code{"EQL+"} for all models;  
@@ -84,7 +84,8 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
   \code{algebra, sparse_precision}{See \code{\link{algebra}}.}
 }
   \item{control.glm}{
-    List of parameters controlling GLM fits, passed to \code{glm.control}; e.g. \code{control.glm=list(maxit=100)}. See \code{\link{glm.control}} for further details.  
+    List of parameters controlling GLM fits, passed to \code{glm.control}; e.g.\cr 
+    \code{control.glm=list(maxit=100)}. See \code{\link{glm.control}} for further details.  
   }
 
   \item{init.HLfit}{
@@ -105,6 +106,9 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
   \item{prior.weights}{
    An optional vector of prior weights as in \code{\link{glm}}. This fits the data to a probability model with residual variance \code{phi/prior.weights}, and all further outputs are defined to be consistent with this (see section IV in Details). 
  }
+  \item{weights.form}{
+  Specification of prior weights by a one-sided formula: use \code{weights.form = ~ pw} instead of \code{prior.weights = pw}. The effect will be the same except that such an argument, known to evaluate to an object of class \code{"formula"}, is suitable to enforce safe programming practices (see \code{\link{good-practice}}).  
+  }
   \item{processed}{
     A list of preprocessed arguments, for programming purposes only (as in \code{corrHLfit}).
  }
@@ -136,9 +140,11 @@ Elements include \bold{descriptors of the fit}:
 \item{phi.object}{A possibly more complex object describing \eqn{\phi};}
 \item{lambda}{The random-effect (\eqn{u}) variance(s) \eqn{\lambda} in compact form;}
 \item{lambda.object}{A possibly more complex object describing \eqn{\lambda};}
+\item{ranef_info}{environment where information about the structure of random effects is stored;}
 \item{corrPars}{Agglomerates information on correlation parameters, either fixed, or estimated by \code{HLfit}, \code{corrHLfit} or \code{fitme};}
 \item{APHLs}{A list which elements are various likelihood components, include conditional likelihood, h-likelihood, and the two adjusted profile h-likelihoods: the (approximate) marginal \bold{likelihood} \code{p_v} and the (approximate) \bold{restricted likelihood} \code{p_bv} (the latter two available through the \code{logLik} function). See the extractor function \code{\link{get_any_IC}} for information criteria (\dQuote{AIC}) and effective degrees of freedom;}
-\item{}{The covariance matrix of \eqn{\beta} estimates is not included as such, but can be extracted by \code{\link{vcov}};}
+
+The covariance matrix of \eqn{\beta} estimates is not included as such, but can be extracted by \code{\link{vcov}}.
 
 \bold{Information about the input} is contained in output elements named as \code{HLfit} or \code{corrHLfit} arguments (\code{data,family,resid.family,ranFix,prior.weights}), with the following notable exceptions or modifications:
 
@@ -155,7 +161,7 @@ Elements include \bold{descriptors of the fit}:
 \item{models}{Additional information on model structure for \eqn{\eta}, \eqn{\lambda} and \eqn{\phi};}
 \item{HL}{A set of indices that characterize the approximations used for likelihood;}
 \item{leve_phi,lev_lambda}{Leverages;}
-\item{dfs}{degrees of freedom for different components of the model;}
+\item{dfs}{list (possibly structured): degrees of freedom for different components of the model;}
 \item{warnings}{A list of warnings for events that may have occurred during the fit.}
 
 Finally, the object includes programming tools: \code{call, spaMM.version, fit_time} and \code{envir}.

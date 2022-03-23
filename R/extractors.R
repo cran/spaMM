@@ -5,7 +5,7 @@
 
 .inv_Lmatrix <- function(lmatrix, type=attr(lmatrix,"type"), regul.threshold) {
   invlmatrix <- NULL
-  if (inherits(lmatrix,"dCHMsimpl")) { # before any test on type...
+  if (inherits(lmatrix,"dCHMsimpl")) { # before any test on type, because dCHMsimpl has a @type slot
     invlmatrix <- t(as(lmatrix, "sparseMatrix"))
   } else if (type == "from_AR1_specific_code")  {
     invlmatrix <- solve(lmatrix) # cost of solve sparse triangular matrix
@@ -247,7 +247,6 @@ ranef.HLfit <- function(object,type="correlated",...) {
   if (object$spaMM.version < "2.2.116") {
     ranefs <- attr(object$ZAlist,"ranefs") 
   } else ranefs <- attr(object$ZAlist,"exp_ranef_strings") 
-  #colNames <- lapply(object$ZAlist,"colnames") without a slow lapply():
   colNames <- vector("list", length(object$ZAlist))
   names(colNames) <- names(object$ZAlist)
   for (it in seq_along(object$ZAlist)) {
@@ -515,7 +514,8 @@ vcov.HLfit <- function(object, ...) {
 
 .get_beta_cov_any_version <- function(object) {
   if (object$spaMM.version > "2.5.20") {
-    beta_cov <- object$envir$beta_cov_info$beta_cov
+    beta_cov <- object$envir$"beta_cov" # special version assigned by .init_promises_spprec(., nullify_X_ones =TRUE) 
+    if (is.null(beta_cov)) beta_cov <- object$envir$beta_cov_info$beta_cov
   } else {
     beta_cov <- object$beta_cov
     attr(beta_cov,"beta_v_cov") <- NULL 
@@ -1145,3 +1145,14 @@ model.frame.HLfit <- function(formula, # the generic was poorly conceived... for
 #   .. ..- attr(*, "dataClasses")= Named chr [1:3] "numeric" "numeric" "factor"
 #   .. .. ..- attr(*, "names")= chr [1:3] "observedResponse" "Environment1" "group"
 
+.get_old_info_uniqueGeo <- function(fitobject, char_rd=NULL) {
+  if (fitobject$spaMM.version < "3.10.35") {
+    info <- attr(fitobject,"info.uniqueGeo")
+  } else info <- fitobject$ranef_info$info_oldUniqueGeo
+  if ( ! is.null(char_rd)) {
+    if (fitobject$spaMM.version > "2.3.18") { ## test TRUE for version > 2.3.18:
+      info <- info[[char_rd]]
+    } # else object was a single matrix 
+  }
+  info
+}

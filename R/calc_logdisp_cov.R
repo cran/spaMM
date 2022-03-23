@@ -107,7 +107,8 @@
       # For adjacency case, sparse_precision  forces outer optim of rho and thus we end here too
       ZAL_to_ZALd_vec[u.range] <- 1
       coeff <- lambda.object$coefficients_lambdaS[[randit]] ## corrHLfit or fitme with control$refit=TRUE
-      if (is.null(coeff) || is.na(coeff)) { # NA appeared in mv code...
+      # there are several coeffs, computed in .bloc_lambda(), for ranCoefs terms.
+      if (is.null(coeff) || anyNA(coeff)) { # NA appeared in mv code...(___F I X M E___ what does that mean?). 
         lambda_list[[randit]] <- lambda.object$lambda_list[[randit]] ## basic fitme (may numerically differ)
       } else lambda_list[[randit]] <- exp(coeff)
     }
@@ -261,8 +262,8 @@
   dwdloglam <- matrix(0,ncol=sum(Xi_cols),nrow=length(object$v_h)) # cols will remain 0 for fixed lambda params
   checklambda <- ( ! (lambda.object$type %in% c("fixed","fix_ranCoefs","fix_hyper"))) 
   if (any(checklambda)) {
-    corr.models <- lapply(strucList,attr,which="corr.model") ## not unlist bc it may contain NULLs
-    checkadj <- .unlist(lapply(corr.models,identical,y="adjacency"))
+    exp_ranef_types <- attr(object$ZAlist,"exp_ranef_types")
+    checkadj <- (exp_ranef_types=="adjacency")
     if(any(checkadj)) {
       ## several blocks of code are "maintained" below for a future dispVar computation for rho
       # il me manque dwdrho (et meme dwdloglam pour ce modele ?) donc on inactive les lignes suivantes:

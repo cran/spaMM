@@ -26,7 +26,8 @@ likelihood-ratio testing functions have a \code{debug.} argument whose effect de
 
 Essential information such as the originally fitted models is passed to the function not as arguments but through its environment, which is controlled by the calling functions (see the \code{eval_replicate} source code to know which are these arguments). Users should thus not assume that they can control their own \code{simuland} function's environment as this environment will be altered.
 
-Advanced users can define their own \code{simuland} function. The \code{eval_replicate} source code provides a template showing how to use the function's environment. The Example below illustrates another approach augmenting \code{eval_replicate}. A further example is provided in the file \code{tests/testthat/test-LRT-boot.R}, using \ldots to pass additional arguments beyond response values. 
+Advanced users can define their own \code{simuland} function. The \code{eval_replicate} source code provides a template showing how to use the function's environment. The Example below illustrates another approach augmenting \code{eval_replicate}. A further example is provided in the file\cr 
+\code{tests/testthat/test-LRT-boot.R}, using \ldots to pass additional arguments beyond response values. 
 }
 \seealso{
 Calling functions \code{\link{fixedLRT}, \link{LRT}}.

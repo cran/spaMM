@@ -27,28 +27,29 @@
 }
   
 .stripRanefs_ <- function (term) { ## compare to lme4:::nobars_ ; 'term is formula or any term, recursively
-  if (!("|" %in% all.names(term))) 
-    return(term)
-  if (is.call(term) && term[[1]] == as.name("|")) 
-    return(NULL)
-  if (term[[1]] == as.name("IMRF") || term[[1]] == as.name("multIMRF")) {
-    return(NULL)
-  }
-  if (length(term) == 2) {
-    nb <- .stripRanefs_(term[[2]])
+  if ( ! ("|" %in% all.names(term))) return(term) ## no bar => not a ranef term
+  termname <- term[[1L]]
+  if (is.call(term) && termname == as.vector("|", "symbol")) return(NULL) # (.|.) ranef
+  if (as.vector(termname, "character") %in% .spaMM.data$keywords$all_ranefs) return(NULL) # rather explicit
+  if (termname == as.vector("multIMRF")) return(NULL) # "multIMRF" is not (formally declared as) a ranef keyword so special handling
+  if (length(term) == 2L) { # 
+    # this would strip Matern(1 | longitude + latitude),  that has 2 elements  Matern  and  1 | longitude + latitude,
+    # if this term was not already caught by check against .spaMM.data$keywords$all_ranefs.
+    # This operated before .spaMM.data$keywords$all_ranefs was introduced to deal with user-defined ranefs with additional params (length>2) 
+    nb <- .stripRanefs_(term[[2L]])
     if (is.null(nb)) 
       return(NULL)
-    term[[2]] <- nb
+    term[[2L]] <- nb
     return(term)
   }
-  nb2 <- .stripRanefs_(term[[2]])
-  nb3 <- .stripRanefs_(term[[3]])
+  nb2 <- .stripRanefs_(term[[2L]])
+  nb3 <- .stripRanefs_(term[[3L]])
   if (is.null(nb2)) 
     return(nb3)
   if (is.null(nb3)) 
     return(nb2)
-  term[[2]] <- nb2
-  term[[3]] <- nb3
+  term[[2L]] <- nb2
+  term[[3L]] <- nb3
   term
 }
 
@@ -69,24 +70,22 @@
   as.formula(aschar, env=environment(formula))
 }
 
-.keywords_as_names <- c(as.name("IMRF"),as.name("multIMRF"),as.name("adjacency"),as.name("Matern"),
-                        as.name("Cauchy"),as.name("AR1"),as.name("corrMatrix"),as.name("mv"),
-                        as.name("corrFamily"))
-
 ## lme4::subbars "Substitute the '+' function for the '|' function in a mixed-model formula, recursively (hence the argument name term). This provides a formula suitable for the current model.frame function."
 ## Original version shows handling of '||'
 .subbarsMM <- function (term) {   
-  if (is.name(term) || !is.language(term)) 
-    return(term)
-  # even unlist(.keywords_as_names) is a list. Hence no %in% test possible
-  for (it in 1:length(.keywords_as_names)) if (term[[1]]==.keywords_as_names[[it]]) return(.subbarsMM(term[[2]])) 
-  if (length(term) == 2L) {
-    term[[2]] <- .subbarsMM(term[[2]])
+  if (is.name(term) || !is.language(term)) return(term) #  single variable (such as the LHS of a formula)
+  if (as.vector(term[[1L]], "character") %in% .spaMM.data$keywords$all_keywords)  # handles "multIMRF" and "mv", not simply ranefs
+             return(.subbarsMM(term[[2L]]))
+  if (length(term) == 2L) { 
+    # an unregistered corrFamily reaches here ARp(1 | time) would become ARp(1 + time)
+    # but also other syntaxes understood by R such as  I(prop.ag/10). So it's not easy to distinguish valid and invalid terms.
+    # The unregistered cF generates an error in .GetValidData_info -> model.frame... which catches the list returned by execution of the constructor
+    term[[2L]] <- .subbarsMM(term[[2L]])
     return(term)
   }
   # stopifnot(length(term) >= 3) ## inefficient
-  if (is.call(term) && term[[1]] == as.name("|")) 
-    term[[1]] <- as.name("+")
+  if (is.call(term) && term[[1L]] == as.vector("|", "symbol"))  term[[1L]] <- as.vector("+", "symbol")
+  # if term is   1 + <other formula terms>, term[[1]] is  +  and we reach here:
   for (j in 2L:length(term)) term[[j]] <- .subbarsMM(term[[j]])
   term
 }
@@ -228,47 +227,41 @@
                         #                       which is then passed recursively by explicit env=env 
                         ) { 
   if (inherits(term,"formula") && length(term) == 2L) {## corrected 2021/03/07
-    resu <- .parseBars(term[[2]], env=env) ## process RHS
+    resu <- .parseBars(term[[2L]], env=env) ## process RHS
     if (is.call(resu)) { # top call spaMM:::.parseBars(~(1|a)) leads here (no LHS, single ranef). resu is not (yet) a list here;
       #  Then .process_bars => names(barlist) <- seq_along(barlist) on a call leads to nonsense and bug for get_predVar(, re.form=~(1|a))
       # So we need to convert to list.  (testing if resu is a list in wrong: resu may be NULL)
       resu <- list(resu)
-      attr(resu,"type") <- attr(resu[[1]],"type") 
+      attr(resu,"type") <- attr(resu[[1L]],"type") 
     }
     return(resu)
   }
   if (is.name(term) || !is.language(term)) 
     return(NULL)
-  if (term[[1]] == as.name("(")) ## i.e. (blob) but not ( | ) 
-  {return(.parseBars(term[[2]], env=env))} 
-  if (!is.call(term)) 
-    stop("term must be of class call")
-  if (term[[1]] == as.name("|")) { ## i.e.  .|. expression
+  termname <- term[[1L]]
+  if (termname == as.vector("(","symbol")) return(.parseBars(term[[2L]], env=env)) ## i.e. (blob) but not ( | ) 
+  if (!is.call(term)) stop("term must be of class call")
+  if (termname == as.vector("|","symbol")) { ## i.e.  .|. expression
     attr(term,"type") <- rep("(.|.)",length(paste(c(term)))) ## paste is the simplest way to count terms (rather than elements of a single term)
     return(term)
   } ## le c() donne .|. et non |..
-  if (term[[1]] == as.name("IMRF")) {
-    attr(term,"type") <- as.character(term[[1]])
-    return(.process_IMRF_bar(term, env=env)) # 
-  }
-  # terms are of class call, so expectedly ',' separates different elements in a term
-  # E.g., if not handled specifically, <somekeyword>(1,2|.) would be parsed as term[[2]]=1, term[[3]]=2|batch
-  # That means that the test length(term) == 2 is not appropriate for terms with some ','
-  # <somekeyword>(1 2|.) does not work natively: R doesn't know what to do about the 2 (unexpected numeric constant).
-  if (term[[1]] == as.name("multIMRF") ) { # useful for .findSpatial() before preprocessing, as in filled.mapMM()
-    attr(term,"type") <- as.character(term[[1]])
-    return(term) 
-  }
-  if (length(term) == 2) { # no extra args after the grouping rhs !
-    term1 <- as.character(term[[1]])
-    if (term1 %in% c("adjacency","Matern","Cauchy","AR1","corrMatrix","corrFamily")) {
-      attr(term,"type") <- term1
-      return(term) 
-    } else return(NULL) 
-  }
+  if (as.vector(termname,"character") %in% .spaMM.data$keywords$all_ranefs) {
+    attr(term,"type") <- as.character(term[[1L]])
+    if (termname == as.vector("IMRF","symbol")) {
+      return(.process_IMRF_bar(term, env=env)) # 
+    } else return(term) 
+  } else if (length(term) == 2L) return(NULL) # this occurs. Maybe the extra arguments in IMRF? 
+  # # terms are of class call, so expectedly ',' separates different elements in a term
+  # # E.g., if not handled specifically, <somekeyword>(1,2|.) would be parsed as term[[2]]=1, term[[3]]=2|batch
+  # # That means that the test length(term) == 2 is not appropriate for terms with some ','
+  # # <somekeyword>(1 2|.) does not work natively: R doesn't know what to do about the 2 (unexpected numeric constant).
+  # if (term[[1L]] == as.name("multIMRF") ) { # useful for .findSpatial() before preprocessing, as in filled.mapMM()
+  #   return(term) 
+  # }
+
   # This point may not be reached by the outer .parseBars() call, so the following is not consistently terminal code.
-  bT2 <- .parseBars(term[[2]], env=env)
-  bT3 <- .parseBars(term[[3]], env=env)
+  bT2 <- .parseBars(term[[2L]], env=env)
+  bT3 <- .parseBars(term[[3L]], env=env)
   res <- c(bT2, bT3) ## if the bT's are language objects, c() creates a *list* of them
   attr(res,"type") <- c(attr(bT2,"type"),attr(bT3,"type"))
   # res is a list or a vector, depending on as_character
@@ -370,14 +363,16 @@ if (FALSE) { # seems correct, but ultimately not needed
   }
 }
 
-## function that handles prior.weights too:
-.GetValidData_info <- function(formula,resid.formula=NULL,data,
-                         callargs=list() ## expects a list from callargs, ie match.call of the parent frame, 
-                                         ## rather than an element, to avoid premature eval of refs to data variables 
+.GetValidData_info <- function(formula, resid.formula=NULL, data, prior.weights,
+                                   ... # to ignore a lot of other arguments of the call from which the .GetValidData_info() call is constructed.
 ) {
-  verif <- try(eval(callargs$prior.weights,data),silent=TRUE)
-  if (inherits(verif,"try-error")) stop("All variables should be in the 'data', including those for prior weights.")
-  ## 
+  ## As in .preprocess_pw(): 
+  # if user entered prior.weights=pw, model.frame will handle substitute(prior.weights), a 'symbol' (or 'name'), we substitute
+  # if user entered prior.weights=1/varx, model.frame will handle substitute(prior.weights) also.
+  # if user entered quote(1/varx), model.frame will handle eval(substitute(prior.weights)), a 'call'.
+  prior.weights <- substitute(prior.weights)
+  if ( (inherits(prior.weights,"call") && prior.weights[[1L]] == "quote") ) prior.weights <- eval(prior.weights)
+  #
   envform <- environment(formula)  
   ## The aim is to reduce environment(formula) to almost nothing as all vars should be in the data. 
   #  The revised Infusion code shows how to use the 'data' for prior.weights in programming, using eval(parse(text=paste(<...>,priorwName,<...>)))
@@ -401,6 +396,12 @@ if (FALSE) { # seems correct, but ultimately not needed
             In particular, one should never need to specify the 'data' in the 'formula'. 
             See help('good-practice') for explanations.")
   }
+  check <- grep('$',frame.form,fixed=TRUE)
+  if (length(check)) {
+    message("'$' detected in formula: suspect and best avoided. 
+            In particular, one should never need to specify the 'data' in the 'formula'. 
+            See help('good-practice') for explanations.")
+  }
   check <- grep('c(',frame.form,fixed=TRUE)
   if (length(check)) {
     if ((inherits(frame.form,"formula") && check[1L]==length(frame.form)-1L) ||
@@ -415,10 +416,16 @@ if (FALSE) { # seems correct, but ultimately not needed
   # Here we call terms(formula) without data to detect use of '.'
   chkterms <- try(terms(frame.form), silent=TRUE)
   if (inherits(chkterms,"try-error") && length(grep("'.'",attr(chkterms,"condition")$message))) {
-      warning("It looks like there is a '.' in the RHS of the formula.\n Fitting may be successful, but post-fit functions such as predict() will fail.", immediate.=TRUE)
-      call2mf <- call("model.frame", data = data, formula= frame.form, drop.unused.levels = TRUE, weights=callargs$prior.weights)
-  } else call2mf <- call("model.frame", data = data, formula= chkterms, drop.unused.levels = TRUE, weights=callargs$prior.weights)
-  call2mf <- eval(call2mf) ## # directly calling model.frame fails to handle the callargs
+    warning("It looks like there is a '.' in the RHS of the formula.\n Fitting may be successful, but post-fit functions such as predict() will fail.", immediate.=TRUE)
+    call2mf <- call("model.frame", data = data, formula= frame.form, drop.unused.levels = TRUE, weights=prior.weights)
+  } else call2mf <- call("model.frame", data = data, formula= chkterms, drop.unused.levels = TRUE, 
+                         weights=prior.weights # we don't want to evaluate it since we want its variables to be included in the data.
+                         )
+  call2mf <- try(eval(call2mf)) ## # directly calling model.frame failed to handle the prior weights tried again 03/2022).
+  if (inherits(call2mf,"try-error")) {
+    verif <- try(eval(prior.weights,data),silent=TRUE)
+    if (inherits(verif,"try-error")) stop("All variables should be in the 'data', including those for prior weights.")
+  }
   return(list(rownames=rownames(call2mf), weights=model.weights(call2mf))) # so that valid rows and weights always have the same length.
 }
 

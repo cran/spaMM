@@ -3,8 +3,9 @@ HLCor <- function(formula,
                   ranPars=NULL, ## all dispersion and correlation params ideally provided through ranPars
                   distMatrix, adjMatrix, corrMatrix, covStruct=NULL,
                   method="REML",
-                  verbose=c(trace=FALSE), 
+                  verbose=c(inner=FALSE), 
                   control.dist=list(), ## provided by <corrfitme>_body if called through this function. Otherwise processed in not available and control.dist will be preprocessed.
+                  weights.form=NULL,
                   ...) { # may contain processed
   assign("spaMM_glm_conv_crit",list(max=-Inf) , envir=environment(spaMM_glm.fit))
   time1 <- Sys.time()
@@ -20,6 +21,7 @@ HLCor <- function(formula,
   }  
   oricall$control.HLfit <- eval(oricall$control.HLfit, parent.frame()) # to evaluate variables in the formula_env, otherwise there are bugs in waiting 
   # frst steps as in HLFit: (no need to test missing(data) in several functions)
+  mc <- oricall
   if (is.null(processed <- oricall$processed)) { ## no 'processed'
     ## FR->FR suggests we should add processed as argument of HLCor...
     family <- .checkRespFam(family)
@@ -33,15 +35,25 @@ HLCor <- function(formula,
         }
       }
     }
+    #
+    #
+    if ( ! is.null(weights.form)) {
+      mc[["prior.weights"]] <-  weights.form[[2]]
+    } else if ("prior.weights" %in% ...names()) {
+      p_weights <- substitute(alist(...))$prior.weights # necessary when prior weights has been passed to fitme 
+      # through the '...' of another function. In that case we reconstruct the call argument as if they had not been passed in this way.
+      # is user quoted the pw, the str() of the result of the substitute() calls is language quote(...)  ~  doubly quoted stuff... => eval 
+      if ( (inherits(p_weights,"call") && p_weights[[1L]] == "quote") ) p_weights <- eval(p_weights)
+      mc[["prior.weights"]] <- p_weights
+    }
+    #
     if ( inherits(data,"list")) {
       ## RUN THIS LOOP and return
       fitlist <- lapply(seq_len(length(data)), function(data_it){
-        locmc <- oricall
-        if (identical(family$family,"multi")) locmc$family <- family$binfamily
-        locmc$data <- data[[data_it]]
-        locmc$distMatrix <- oricall$distMatrix[[data_it]]
-        # locmc$uniqueGeo <- oricall$uniqueGeo[[data_it]] # formal removal of uniqueGeo argument 2021/08/03
-        eval(locmc)
+        if (identical(family$family,"multi")) mc$family <- family$binfamily
+        mc$data <- data[[data_it]]
+        mc$distMatrix <- oricall$distMatrix[[data_it]]
+        eval(mc)
       }) ## a pure list of HLCor objects
       liks <- sapply(fitlist, function(v) {unlist(v$APHLs)})
       liks <- apply(liks,1,sum)
@@ -49,7 +61,6 @@ HLCor <- function(formula,
       class(fitlist) <- c("HLfitlist",class(fitlist)) 
       return(fitlist) ## list of HLfit object + one attribute
     } else {## there is a single data set, still without processed
-      mc <- oricall
       #mc$formula <- .preprocess_formula(formula, env=eval(oricall$control.HLfit)$formula_env)
       mc[[1L]] <- get(".preprocess_formula", asNamespace("spaMM"), inherits=FALSE)  ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
       oricall$formula <- mc$formula <- eval(mc,parent.frame()) # 
@@ -70,9 +81,8 @@ HLCor <- function(formula,
     if (  is.list(processed) )  { ## "multiple" processed list 
       ## RUN THIS LOOP and return
       fitlist <- lapply(seq_len(length(processed)), function(it){
-        locmc <- oricall
-        locmc$processed <- processed[[it]] ## The data are in processed !
-        eval(locmc)
+        mc$processed <- processed[[it]] ## The data are in processed !
+        eval(mc)
       }) ## a pure list of HLCor objects
       liks <- sapply(fitlist, function(v) {unlist(v$APHLs)})
       liks <- apply(liks,1,sum)
@@ -80,15 +90,20 @@ HLCor <- function(formula,
       class(fitlist) <- c("HLfitlist",class(fitlist)) 
       return(fitlist) ## list of HLfit object + one attribute
     } else { ## there is one processed for a single data set 
-      mc <- oricall
       # HLCor_body() called below
     }
   }
   ################# single processed, single data analysis: 
   if (identical(mc$processed[["verbose"]]["getCall"][[1L]],TRUE)) return(oricall) ## returns a call is verbose["getCall"'"] is TRUE
   #
-  pnames <- c("data","family","formula","prior.weights","HLmethod","method","rand.family","control.glm","REMLformula",
-              "resid.model", "verbose","distMatrix","uniqueGeo","adjMatrix") ## try covStruct too...
+  # In a call from fitme -> fitme_body -> .new_locoptim -> .safe_opt -> nloptr::nloptr -> HLcallfn.obj -> HLCor.obj -> here,
+  # the mc elements are "ranPars"      "processed" and possibly "control.dist" ... which correspond to the formals of HLCor_body:
+  # processed, ranPars, 
+  #  control.dist=list(), "# possibly distinct from processed info bc corrHLfit_body/fitme_body may have modified it" 
+  #  and ... for HLfit.
+  # Removing control.dist > bug in fixedLRT routine test, which has a rho mapping.
+  pnames <- c("data","family","formula","prior.weights", "weights.form","HLmethod","method","rand.family","control.glm","REMLformula",
+              "resid.model", "verbose","distMatrix","adjMatrix", "corrMatrix","covStruct") 
   for (st in pnames) mc[st] <- NULL 
   mc[[1L]] <- get("HLCor_body", asNamespace("spaMM"), inherits=FALSE) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
   hlcor <- eval(mc,parent.frame())

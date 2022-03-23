@@ -121,7 +121,8 @@
     old_ranef_form <- as.formula(paste("~",(paste(attr(object$ZAlist,"exp_ranef_strings"),collapse="+")))) 
     exp_ranef_terms <- attr(object$ZAlist, "exp_ranef_terms")
     Zlist <- .calc_Zlist(exp_ranef_terms=exp_ranef_terms, data=newdata, rmInt=0L, drop=TRUE,sparse_precision=FALSE,
-                         ZAlist_info=object$ZAlist,
+                         corr_info=.get_from_ranef_info(object),
+                         sub_oldZAlist=object$ZAlist,
                          lcrandfamfam=attr(object$rand.families,"lcrandfamfam"))
     amatrices <- .get_new_AMatrices(object,newdata=newdata) # .calc_newFrames_ranef(formula=old_ranef_form,data=newdata, fitobject=object)$mf)
     newZAlist <- .calc_normalized_ZAlist(Zlist=Zlist,
@@ -136,10 +137,12 @@
       rd_in_mv <- map_rd_mv[[mv_it]]
       exp_ranef_strings_it <- ori_exp_ranef_strings[rd_in_mv]
       old_ranef_form <- as.formula(paste("~",(paste(exp_ranef_strings_it,collapse="+")))) 
-      exp_ranef_terms_it <- structure(ori_exp_ranef_terms[rd_in_mv], type=attr(ori_exp_ranef_terms,"type")[rd_in_mv])
-      Zlist <- .calc_Zlist(exp_ranef_terms=exp_ranef_terms_it, data=newdata, rmInt=0L, drop=TRUE,sparse_precision=FALSE,
-                           ZAlist_info=object$ZAlist[rd_in_mv], # OK if we use only colnames, not attributes of the list...
-                           lcrandfamfam=attr(object$rand.families,"lcrandfamfam")[rd_in_mv])
+      #exp_ranef_terms_it <- structure(ori_exp_ranef_terms[rd_in_mv], type=attr(ori_exp_ranef_terms,"type")[rd_in_mv])
+      Zlist <- .calc_Zlist(exp_ranef_terms=ori_exp_ranef_terms, data=newdata, rmInt=0L, drop=TRUE,sparse_precision=FALSE,
+                           corr_info=.get_from_ranef_info(object), 
+                           rd_in_mv=rd_in_mv,
+                           sub_oldZAlist=object$ZAlist, # OK if we use only colnames, not attributes of the list...
+                           lcrandfamfam=attr(object$rand.families,"lcrandfamfam"))
       amatrices <- .get_new_AMatrices(object,newdata=newdata) # .calc_newFrames_ranef(formula=old_ranef_form,data=newdata, fitobject=object)$mf)[rd_in_mv]
       ZAlist_it <- .calc_normalized_ZAlist(Zlist=Zlist,
                                            AMatrices=amatrices,

@@ -151,3 +151,38 @@
   #thr_backsolve=0L # for devel testing of .backsolve(); 0L means that .Rcpp_backsolve may be called irrespective of matrix dimension
 )
 
+.spaMM.data$keywords <- new.env(parent = emptyenv())
+.spaMM.data$keywords$special_ranefs <- c("adjacency", "Matern", "Cauchy", "AR1", "corrMatrix", "IMRF", "corrFamily") 
+.spaMM.data$keywords$all_cF <- .spaMM.data$keywords$built_in_cF <- c("ARp", "ARMA", "diallel", "ranGCA", "MaternIMRFa") 
+.spaMM.data$keywords$all_ranefs <- .spaMM.data$keywords$built_in_ranefs <- 
+  unlist(c(.spaMM.data$keywords$special_ranefs,.spaMM.data$keywords$built_in_cF),recursive = FALSE, use.names = FALSE) 
+.spaMM.data$keywords$all_keywords <- .spaMM.data$keywords$built_in_keywords <- c(.spaMM.data$keywords$built_in_ranefs,
+                                                                                 "multIMRF", "mv")
+.spaMM.data$keywords$user_defined <- character(0L)
+# For comparing names and strings:
+# as.name if fastest (~8e-7 s versus as.vector(, "character") ~ 3e-6 and paste() ~ 4e-6)
+# so to conpare single string to single name, convert the string.
+# But comparing to a sequence of names requires a 'for' loop bc even unlist( < keywords as names > ) is a list. Hence no %in% test possible
+#  Then the for loop costs ~1e-5s compared to the as.vector() ~ 3e-6 => We avoid using sequences of names
+
+register_cF <- function(corrFamilies=NULL, reset=FALSE) {
+  keywords <- .spaMM.data$keywords
+  if (reset) {
+    keywords$user_defined <- character(0L)
+    keywords$all_cF <- keywords$built_in_cF    
+    keywords$all_ranefs <- keywords$built_in_ranefs
+    keywords$all_keywords <- keywords$built_in_keywords
+  }
+  if ( ! is.null(corrFamilies) ) {
+    user_defined <- unique(c(keywords$user_defined, corrFamilies))
+    if (length(shared <- intersect(keywords$built_in_keywords, user_defined))) {
+      stop(paste0("Keyword(s) '", paste(shared,collapse="', '"),"' are already defined in spaMM and cannot be redeclared."))
+    } else{ 
+      keywords$user_defined <- user_defined
+      keywords$all_cF <- unique(c(keywords$all_cF, user_defined))    
+      keywords$all_ranefs <- unique(c(keywords$all_ranefs, user_defined))
+      keywords$all_keywords <- unique(c(keywords$all_keywords, user_defined))
+    }
+  }
+}
+ 

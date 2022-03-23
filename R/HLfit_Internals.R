@@ -210,7 +210,7 @@ if (FALSE) {
   } else return(.ZWZt(ZAL,w))
 } ## so seems always dsC
 
-#.ZWZtbase <- function(ZAL,w) tcrossprod(sweep(ZAL,MARGIN=2L,w,`*`),ZAL) # slower that Rcpp version, with no obvious benefits
+#.ZWZtbase <- function(ZAL,w) tcrossprod(sweep(ZAL,MARGIN=2L,w,`*`),ZAL) # slower than Rcpp version, with no obvious benefits
 #  !  not the same as     ZAL %*% sweep(ZAL,MARGIN=1L,w,`*`) 
 
 .ZtWZwrapper <- function(ZAL,w, allow_as_mat=TRUE) { ## used in several contexts
@@ -440,7 +440,8 @@ if (FALSE) {
     } else if (newly_set[rt]) {
       rC_blob_longLvMatrix <- .makelong(latentL_blob$design_u,longsize=ncol(ZAlist[[rt]]),# the variances are taken out in $d
                                         template=ranCoefs_blob$longLv_templates[[rt]],
-                                        kron_Y=NULL) # ___F I X M E___ can we save time in ZAL <- ... by using a Kronfacto even when kron_Y is NULL? not clear 
+                                        kron_Y=NULL,
+                                        drop0template = FALSE ) # ___F I X M E___ can we save time in ZAL <- ... by using a Kronfacto even when kron_Y is NULL? not clear 
     } 
     attr(rC_blob_longLvMatrix,"trRancoef") <- .ranCoefsFn(ranCoefs[[rt]], rC_transf=.spaMM.data$options$rC_transf_inner) # used for init_trRancoef in .MakeCovEst()
     attr(rC_blob_longLvMatrix,"Ltype") <- "cov"
@@ -448,7 +449,7 @@ if (FALSE) {
     attr(rC_blob_longLvMatrix,"latentL_blob") <- latentL_blob ## kept for updating in next iteration, strucList, predVar, and output
     ranef_info <- attr(ZAlist,"exp_ranef_strings")[rt]
     attr(ranef_info, "type") <- exp_ranef_types[rt]## type is "(.|.)" if LMatrix is for pure random slope ## ajout 2015/06
-    attr(rC_blob_longLvMatrix,"ranefs") <-  ranef_info
+    #### attr(rC_blob_longLvMatrix,"ranefs") <-  ranef_info
     attr(rC_blob_longLvMatrix, "corr.model") <- "random-coef"
     LMatrices[[rt]] <- rC_blob_longLvMatrix
     n_levels <- ncol(ZAlist[[rt]])/Xi_ncol 
@@ -1009,7 +1010,7 @@ spaMM_Gamma <- local({
   return(list(Dtheta.Dmu=Dtheta.Dmu,D2theta.Dmu2=D2theta.Dmu2))
 }
 
-.sanitize_eta_log_link <- function(eta, max, min=-max,y, nu=1) { # cf reasons below to always provide y 
+.sanitize_eta_log_link <- function(eta, max, min=-max,y, nu=1, warn_neg_y=TRUE) { # cf reasons below to always provide y 
   ### Before implementation of y argument:
   ## 'max' used to sanitize eta should be higher than the max used to sanitize the response in .calc_dispGammaGLM()
   ## Otherwise we would never have sanitized eta = sanitized y in cases where this would be the correct solution.
@@ -1034,7 +1035,9 @@ spaMM_Gamma <- local({
   tmpmax <- (max - tmp1)*nu # when nu<1, this shrinks both the maximum and the range over which a correction is applied
   tmpmin <- min+tmp1 # nu appears to have little effect on mu when eta is small
   if ( ! is.null(y)) {
-    logy <- log(y)
+    if (warn_neg_y) {
+      logy <- log(y) 
+    } else logy <- suppressWarnings(log(y)) # for gaussian(log) y can be negative.
     tmpmax <- pmax(logy, tmpmax) ## if log(y)>tmpmax corrected eta is log(y)+(< log(1+double.xmax)=tmp1)*nu i.e. corrected eta is < log(y)+tmp1*nu
     #   otherwise  corrected eta is < (max-tmp1)*nu+(< log(1+double.xmax)=tmp1)*nu    <   max*nu  
     #  and "-tmpmax" ensures continuity in eta=tmpmax) as log(1+log(1+...))=0 there
@@ -1059,7 +1062,7 @@ spaMM_Gamma <- local({
                           bin_mu_tol=.spaMM.data$options$bin_mu_tol) {
   if (family$link =="log") {
     if (family$family=="gaussian") {
-      eta <- .sanitize_eta_log_link(eta, max=.spaMM.data$options$sanitize_eta["gauslog"],  y=y) 
+      eta <- .sanitize_eta_log_link(eta, max=.spaMM.data$options$sanitize_eta["gauslog"],  y=y, warn_neg_y = FALSE) 
     } else if (family$family=="COMPoisson") {
       eta <- .sanitize_eta_log_link(eta, max=.spaMM.data$options$sanitize_eta["COMPlog"],  y=y) 
     } else eta <- .sanitize_eta_log_link(eta, max=max,  y=y)
@@ -1607,7 +1610,9 @@ spaMM_Gamma <- local({
   } else return(Matrix::tcrossprod(x,y))
 }
 
-.tcrossprod <-  function(x, y=NULL, chk_sparse2mat=TRUE, as_sym=TRUE, perm) { # XX' tcrossprod, or more general concept for dCHMsimpl
+.tcrossprod <-  function(x, y=NULL, chk_sparse2mat=TRUE, as_sym=TRUE, 
+                         perm # for the dCHMsimpl case
+                         ) { # XX' tcrossprod, or more general concept for dCHMsimpl
   # this function can be used to compute a cov matrix from its tcrossfac;
   # but also to compute a permuted cov matrix from the dCHMsimpl of an unpermuted precision matrix.
   # Hence the ad hoc code in the latter case, and the absence of default value of 'perm' argument, as a default could cause hard to track bugs. 
@@ -1627,10 +1632,12 @@ spaMM_Gamma <- local({
   } else if (inherits(x,"Matrix") || inherits(y,"Matrix")) {
     if (is.null(y)) {
       if (inherits(x,"dgCMatrix")) { 
-        xxt <- .dgCtcrossprod(x,y) 
         if (as_sym) {
-          return(forceSymmetric(xxt)) ## not as(.,"sparseMatrix") which checks -> slow
-        } else return(xxt)
+          # xxt <- .dgCtcrossprod(x,y)  # might be faster than Matrix::tcrossprod() in some cases, 
+          # but not consistently so + we need forceSymmetric() + less memory efficient.
+          # return(forceSymmetric(xxt)) ## not as(.,"sparseMatrix") which checks -> slow
+          return(Matrix::tcrossprod(x)) # diresctly dsC
+        } else return(.dgCtcrossprod(x,y)) # cf case where we want to avoid "...BLOB$Gmat + dampdG is dsC + dsC..." 
       } else if (chk_sparse2mat && inherits(x,"sparseMatrix") && (maxd <- prod(dim(x)))>1L ) { 
         x_denseness <- .calc_denseness(x)/maxd 
         if (x_denseness>0.35) {
@@ -1641,9 +1648,9 @@ spaMM_Gamma <- local({
           return(resu)
         } else return(Matrix::tcrossprod(x))
       } else return(Matrix::tcrossprod(x))
-    } else if (FALSE && inherits(x,"dgCMatrix") &&  inherits(y,"dgCMatrix") ) { ## FASTer when (FALSE &&)
-      xyt <- .dgCtcrossprod(x,y) 
-      return(xyt)
+#    } else if (FALSE && inherits(x,"dgCMatrix") &&  inherits(y,"dgCMatrix") ) { ## FASTer when (FALSE &&)
+#      xyt <- .dgCtcrossprod(x,y) 
+#      return(xyt)
     } else if (chk_sparse2mat) { 
       if (inherits(x,"sparseMatrix") && (maxd <- prod(dim(x)))>1L) { # trivial >1L bc the alternatives to Matrix::tcrossprod are always useful
         x_denseness <- .calc_denseness(x)/maxd 
@@ -1862,7 +1869,7 @@ spaMM_Gamma <- local({
               } else invC <- as.matrix(invC)
             } # If kron_Y is NULL invC should be bigq or numeric matrix but not Matrix because:
             invCoo <- .makelong(invC,longsize=ncol(lmatrix),kron_Y=kron_Y) # (no template arg && NULL kron_Y) => .makelong_bigq() or [.C_makelong() => invC must be numeric matrix]
-          } else if (inherits(lmatrix,"dCHMsimpl")) { # before any test on type...
+          } else if (inherits(lmatrix,"dCHMsimpl")) { # # before any test on type, because dCHMsimpl has a @type slot
             invCoo <- tcrossprod(as(lmatrix,"sparseMatrix")) # assuming 'lmatrix' is an unpermuted CHM factor of the precision factor (as for attr(lmatrix,"Q_CHMfactor"))
           } else if (type == "from_AR1_specific_code")  {
             invCoo <- crossprod(solve(lmatrix)) # cost of a sparse triangular solve.
@@ -1906,7 +1913,7 @@ spaMM_Gamma <- local({
                 invCoo <- gmp::tcrossprod(gmp::solve.bigq(gmp::as.bigq(Rmatrix))) 
                 #invCoo <- Rmpfr::mpfr(invCoo,128)
               } # (else other cases including fix_predVar=FALSE:) fallback computation of  invCoo below.
-            }
+            } # (else ! need_gmp: fallback computation of  invCoo below.
           } else { ## Rcpp's symSVD, or R's eigen() => LDL (also possible bad use of R's svd, not normally used)
             condnum <- kappa(lmatrix,norm="1")
             if (condnum<1/regul.threshold) {
@@ -1917,7 +1924,7 @@ spaMM_Gamma <- local({
             }
             if (is.null(invCoo)) Rmatrix <- .lmwithQR(t(lmatrix),yy=NULL,returntQ=FALSE,returnR=TRUE)$R_scaled # no pivoting compared to qr.R(qr(t(lmatrix))) 
           }
-          #
+          # The fallback computation:
           if (is.null(invCoo)){ 
             invCoo <- try(chol2inv(Rmatrix),silent=TRUE)
             if (inherits(invCoo,"try-error") || max(abs(range(invCoo)))> 1e12) {
@@ -2006,7 +2013,9 @@ spaMM_Gamma <- local({
   if (is.null(factor_inv_Md2hdv2 <- envir$factor_inv_Md2hdv2)) { ## old code not using promises
     if ( ! is.null(envir$G_CHMfactor)) {
       if (length(object$y) > ncol(envir$chol_Q)) { # We precompute inverse(d2hdv2) so that .calc_dvdlogphiMat_new() has ONE costly (r*r) %*% (r*n).
-        LL <- Matrix::solve(envir$G_CHMfactor, as(envir$G_CHMfactor,"pMatrix") %*% envir$chol_Q,system="L") ## dgCMatrix 
+        if ( is.null(envir$invL_G.P)) { # allowing for old objects that did not have this element
+          LL <- Matrix::solve(envir$G_CHMfactor, as(envir$G_CHMfactor,"pMatrix") %*% envir$chol_Q,system="L") ## dgCMatrix 
+        } else  LL <- envir$invL_G.P %*% envir$chol_Q ## dgCMatrix 
         envir$factor_inv_Md2hdv2 <- Matrix::drop0(LL,tol=.Machine$double.eps)
         d2hdv2_info <- - .crossprod(envir$factor_inv_Md2hdv2) 
       } else d2hdv2_info <- envir # then .calc_dvdlogphiMat_new() has TWO  (r*r) %*% (r*n) (plus an efficient solve())
@@ -2165,7 +2174,7 @@ spaMM_Gamma <- local({
   }
 }
 
-# mostly post-fit
+# mostly post-fit. Called ".old..." but still used. 
 .old_calc_Md2hdvb2_info_spprec_by_r22 <- function(X.pv, envir, w.resid, which="tcrossfac_v_beta_cov") {
   # called e.g. for "tcrossfac_v_beta_cov" for which r12,r22 needed
   # same if it is called for "R_Md2hdbv2" (as through .get_tcrossfac_beta_w_cov())  
@@ -2174,7 +2183,9 @@ spaMM_Gamma <- local({
   #if (is.null(tcrossfac_v_beta_cov <- envir$tcrossfac_v_beta_cov)) # No strong reason to save it. The only re-use is for cAIC_pd
   {
     if (is.null(factor_inv_Md2hdv2 <- envir$factor_inv_Md2hdv2)) {
-      LL <- with(envir, Matrix::solve(G_CHMfactor, as(G_CHMfactor,"pMatrix") %*% chol_Q,system="L")) ## dgCMatrix 
+      if ( is.null(envir$invL_G.P)) { # allowing for old objects that did not have this element
+        LL <- Matrix::solve(envir$G_CHMfactor, as(envir$G_CHMfactor,"pMatrix") %*% envir$chol_Q,system="L") ## dgCMatrix 
+      } else  LL <- envir$invL_G.P %*% envir$chol_Q ## dgCMatrix 
       envir$factor_inv_Md2hdv2 <- factor_inv_Md2hdv2 <- Matrix::drop0(LL,tol=.Machine$double.eps)
       # such that chol_Md2hdv2 = t(solve(factor_inv_Md2hdv2))
     }
@@ -2290,11 +2301,12 @@ spaMM_Gamma <- local({
 .calc_beta_cov_info_spprec <- function(X.pv, envir, w.resid) { 
   tcrossfac_beta_v_cov <- .get_tcrossfac_beta_v_cov(X.pv, envir, w.resid)
   if (is.null(beta_cov <- envir$beta_cov_info$beta_cov)) { # if stripHLfit()ed
-    beta_v_cov <- .tcrossprod(tcrossfac_beta_v_cov) # if the L differs among method the meaning of v differs too, and beta_v_cov too  
+#    beta_v_cov <- .tcrossprod(tcrossfac_beta_v_cov) # if the L differs among method the meaning of v differs too, and beta_v_cov too  
     # ./. but we can check that is is = solve(crossprod(wAugX)) by reconstructing wAugX with the matching L as in .get_LSmatrix()
     pforpv <- ncol(X.pv)
     seqp <- seq_len(pforpv)
-    beta_cov <- beta_v_cov[seqp,seqp,drop=FALSE]
+#    beta_cov <- beta_v_cov[seqp,seqp,drop=FALSE]
+    beta_cov <- .tcrossprod(tcrossfac_beta_v_cov[seqp,,drop=FALSE]) # if the L differs among method the meaning of v differs too, and beta_v_cov too  
     colnames(beta_cov) <- rownames(beta_cov) <- colnames(X.pv)
     envir$beta_cov_info$beta_cov <- as.matrix(beta_cov) # make_beta_table() expects a *m*atrix
   }
@@ -2647,10 +2659,10 @@ if (FALSE) { # that's not used.
       }
       # need_gmp attribute does not control use of above gmp object; rather it control use of gmp in other cases
       # 'given' that I cannot modify strucList in post_fit code, the need_gmp attribute must be assigned now.  
-      if (attr(lmatrix,"type")=="cholL_LLt" && corr.model %in% c("Matern","Cauchy")) {
-        attr(lmatrix,"need_gmp") <- (kappa(lmatrix)>1e05)
-      } else attr(lmatrix,"need_gmp") <- FALSE ## it's not that we may not need it, it's that we may not handle it 
-      #                                           (cf inter-package dependence in .get_invColdoldList() (__F I X M E__?))
+      attr(lmatrix,"need_gmp") <- (
+        ( ! inherits(lmatrix,"dCHMsimpl") ) && ## before any test on type, because dCHMsimpl has a @type slot; very lately caught "issue "length > 1 in coercion to logical"
+          attr(lmatrix,"type")=="cholL_LLt" && corr.model %in% c("Matern","Cauchy") && kappa(lmatrix)>1e05
+      ) # in other cases, we might still 'need' it, but .get_invColdoldList) might not be ready to handle it.
       ## Now fill strucList[[it]]
       #
       if (corr.model=="random-coef") { 

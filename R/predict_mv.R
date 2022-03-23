@@ -13,8 +13,8 @@
   # checking variables in the data
   allvarsS <- vector("list", length(locformS))
   for (mv_it in seq_along(locformS)) {
-    allvarsS[[mv_it]] <- all.vars(.strip_IMRF_args(locformS[[mv_it]])) ## strip to avoid e.g. 'stuff' being retained as a var from IMRF(..., model=stuff)
-    if (variances$residVar) allvarsS[[mv_it]] <- unique(c(allvarsS[[mv_it]], all.vars(.strip_IMRF_args(.get_phiform(object, mv_it))))) 
+    allvarsS[[mv_it]] <- all.vars(.strip_cF_args(locformS[[mv_it]])) ## strip to avoid e.g. 'stuff' being retained as a var from IMRF(..., model=stuff)
+    if (variances$residVar) allvarsS[[mv_it]] <- unique(c(allvarsS[[mv_it]], all.vars(.strip_cF_args(.get_phiform(object, mv_it))))) 
   }
   #
   allvars <- unique(.unlist(allvarsS))
@@ -36,7 +36,7 @@
   if (length(newinold)) {
     new_exp_ranef_strings <- ori_exp_ranef_strings[newinold]
     ranef_form <- as.formula(paste("~",(paste(new_exp_ranef_strings,collapse="+")))) ## effective '.noFixef'
-    ranefvars <- all.vars(.strip_IMRF_args(ranef_form))
+    ranefvars <- all.vars(.strip_cF_args(ranef_form))
   } else ranefvars <- c()
   #
   need_new_design <- ( ( ! is.null(newdata) ) || ! is.null(re.form)) ## newdata or new model
@@ -68,8 +68,6 @@
   #
   ## newZAlist and subZAlist appear to have distinct usages since they are created under different conditions.
   ## subZAlist is a subset of the old ZA, newZAlist contains new ZA
-  ## calling .make_corr_list(object,...) is always OK bc the fist argument may be a superset of the required list
-  ## all matching in .make_corr_list is through the ranef attributes.
   #
   if (nrand <- length(newinold)) {  
     RESU$subZAlist <- object$ZAlist[newinold] ## and reordered
@@ -92,6 +90,7 @@
         newZlist <- .calc_Zlist(exp_ranef_terms=new_exp_ranef_terms, # .process_bars(barlist=barlist,as_character=FALSE, which.="exp_ranef_terms"), # != barlist, for IMRF notably
                                 data=ranefdata, 
                                 rmInt=0L, drop=TRUE,sparse_precision=FALSE, 
+                                corr_info=.get_from_ranef_info(object),
                                 levels_type= "seq_len", ## superseded in specific cases: notably, 
                                 ## the same type has to be used by .calc_AMatrix_IMRF() -> .as_factor() 
                                 ##  as by .calc_Zmatrix() -> .as_factor() for IMRFs.
@@ -100,7 +99,7 @@
                                 ##
                                 ## This means that if there are repeated geo positions in the newdata 
                                 ## we save the time of trying to find them (which perhaps is less justifiable in mv case? __FIXME__)
-                                ZAlist_info=object$ZAlist[newinold],  
+                                sub_oldZAlist=object$ZAlist[newinold],  
                                 lcrandfamfam=attr(object$rand.families,"lcrandfamfam"))
         # Each Z in newZlist then has non-zero rows even for response levels that are not affected by the ranef
         # bc it's built from 'ranefdata' built as if all submodels were affected by each (new) ranef
@@ -178,7 +177,7 @@
         if (need_new_design) RESU$newZACpplist <- .calc_ZAlist(Zlist=RESU$newZACpplist, AMatrices=amatrices[names(newZAlist)[requires_ZCpL]])
       }
       #
-      if (! is.null(info_olduniqueGeo <- attr(object,"info.uniqueGeo"))) {
+      if (length( info_olduniqueGeo <- .get_old_info_uniqueGeo(object) )) {
         # Despite the $newuniqueGeo name, it may be necess without newdata; 
         # cf preprocess_fix_corr() with NULL 'fixdata' providing info_olduniqueGeo <- fix_info$newuniqueGeo (univariate case).
         RESU$newuniqueGeo <- .update_newuniqueGeo(info_olduniqueGeo, newinold, need_new_design, locdata)
@@ -240,8 +239,8 @@
   dwdloglam <- matrix(0,ncol=sum(Xi_cols),nrow=length(object$v_h)) # cols will remain 0 for fixed lambda params
   checklambda <- ( ! (lambda.object$type %in% c("fixed","fix_ranCoefs","fix_hyper"))) 
   if (any(checklambda)) {
-    corr.models <- lapply(strucList,attr,which="corr.model") ## not unlist bc it may contain NULLs
-    checkadj <- .unlist(lapply(corr.models,identical,y="adjacency"))
+    exp_ranef_types <- attr(object$ZAlist,"exp_ranef_types")
+    checkadj <- (exp_ranef_types=="adjacency")
     if(any(checkadj)) {
       ## several blocks of code are "maintained" below for a future dispVar computation for rho
       # il me manque dwdrho (et meme dwdloglam pour ce modele ?) donc on inactive les lignes suivantes:

@@ -5,7 +5,7 @@
 Example of yield stability analysis
 }
 \description{
-Translation of an example that may be found at 
+Translation of an example that may be found at\cr
 \url{https://www.r-bloggers.com/2019/06/genotype-experiments-fitting-a-stability-variance-model-with-r/},
 based on yield of eight durum wheat genotypes over seven years, following a randomised block design with three replicates.
 A genotype-in-year random effect is used to quantify genotype-by-environment interactions. 

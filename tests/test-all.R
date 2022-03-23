@@ -12,24 +12,47 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") { ## set in <R_HOME>/etc/Renviron.site 
       # spaMM.options(use_ZA_L=NULL)
       # abyss <- matrix(runif(2e7),nrow=1000); gc(reset=TRUE) ## partial control of gc trigger...
       {
+        testfiles <- dir(paste0(projpath(),"/package/tests/testthat/"),pattern="*.R",full.names = TRUE)
+        # testfiles <- dir(paste0(projpath(),"/package/tests/testthat/"),full.names = TRUE)[-1L] # temporary fix for Rstudio problem
         tfun <- function(x) {
           gc()# cf doc of system.time(., gcFirst) => but if gc timings are highly variable, gcFirst=TRUE is pointless (and the whole is misleading). 
           system.time(source(x), gcFirst=FALSE)
         }
         while (dev.cur()>1L) dev.off()
         op <- devAskNewPage(ask=FALSE)
-        testfiles <- dir(paste0(projpath(),"/package/tests/testthat/"),pattern="*.R",full.names = TRUE)
         # oldmaxt <- spaMM.options(example_maxtime=60)
         timings <- t(sapply(testfiles, function(fich){tfun(fich)}))
         # spaMM.options(oldmaxt)
         print(sums <- colSums(timings))
       }
+      if (FALSE) { # long mv tests, not really for the timings
+        if (FALSE) { # 'pattern' should work, but doesn't
+          nested_testfiles <- dir(paste0(projpath(),"/package/tests/testthat/nestedFiles/"),pattern="*.R",full.names = TRUE)
+        } else {
+          nested_testfiles <- dir(paste0(projpath(),"/package/tests/testthat/nestedFiles/"),full.names = TRUE)
+          nested_testfiles <- nested_testfiles[grep("*.R$",nested_testfiles)]
+        }
+        # nested_testfiles <- dir(paste0(projpath(),"/package/tests/testthat/nestedFiles/"),full.names = TRUE)
+        nested_timings <- t(sapply(nested_testfiles, function(fich){
+          cat(crayon::green(paste0("\n",fich)))
+          gc()
+          tps <- system.time(chk <- try(source(fich)), gcFirst=FALSE)
+          if (inherits(chk,"try-error")) warning(paste0(fich," generated an error"))
+          tps
+        }))
+        print(colSums(nested_timings)) 
+      }
       ## testthat::test_package(pkg) ## for an installed package
       if (FALSE) { ## tests not included in package (using unpublished data, etc.)
         #install.packages(c("FactoMineR"))
         # see also includes in tests_private/test-back-compat.R
-        priv_testfiles <- dir(paste0(projpath(),"/package/tests_private/"),pattern="*.R",full.names = TRUE)
-        priv_testfiles <- setdiff(priv_testfiles,paste0(projpath(),"/package/tests_private/knit_LM2GLMM.R"))
+        if (FALSE) { # 'pattern' should work, but doesn't
+          priv_testfiles <- dir(paste0(projpath(),"/package/tests_private/"),pattern="*.R",full.names = TRUE)
+        } else {
+          priv_testfiles <- dir(paste0(projpath(),"/package/tests_private/"),full.names = TRUE)
+          priv_testfiles <- setdiff(priv_testfiles,paste0(projpath(),"/package/tests_private/knit_LM2GLMM.R"))
+          priv_testfiles <- priv_testfiles[grep("*.R$",priv_testfiles)]
+        }
         priv_timings <- t(sapply(priv_testfiles, function(fich){
           cat(crayon::green(paste0("\n",fich)))
           gc()
@@ -37,7 +60,7 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") { ## set in <R_HOME>/etc/Renviron.site 
           if (inherits(chk,"try-error")) warning(paste0(fich," generated an error"))
           tps
         }))
-        print(colSums(priv_timings)) # very roughly 1380 s for default maxtime (0.7)
+        print(colSums(priv_timings)) # very roughly 1205.44 s elapsed for default maxtime (0.7)
       }
       if (FALSE) { ## kept separate bc obscure interference as if there was a bug in setTimeLimit()*Rstudio ?
         # abyss <- matrix(runif(2e7),nrow=1000); gc(reset=TRUE) ## partial control of gc trigger... but RESTARTING R appears more efficient.

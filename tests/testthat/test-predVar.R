@@ -69,7 +69,8 @@ testthat::expect_equal(res[6,6],0.1061096,tolerance=2e-4) ## check that dmudeta 
 if(requireNamespace("rsae", quietly = TRUE)) {
   data("landsat", package = "rsae")
   fitobject <- HLfit(HACorn ~ PixelsCorn + PixelsSoybeans + (1|CountyName),data=landsat[-33,],HLmethod="ML")
-  newXandZ <- unique(data.frame(PixelsCorn=landsat$MeanPixelsCorn,PixelsSoybeans=landsat$MeanPixelsSoybeans,CountyName=landsat$CountyName))
+  newXandZ <- unique(data.frame(PixelsCorn=landsat$MeanPixelsCorn, PixelsSoybeans=landsat$MeanPixelsSoybeans, # replacement by Mean...
+                                CountyName=landsat$CountyName))
   (res <- get_predVar(fitobject,newdata=newXandZ))
   testthat::expect_equal(res[12],c("32"=27.80684),tolerance=2e-4)
   (res <- get_predVar(fitobject,newdata=newXandZ,variances=list(disp=FALSE))) ## sum of cols nu and beta in Table 7

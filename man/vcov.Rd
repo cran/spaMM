@@ -14,7 +14,8 @@ Extract covariance or correlation components from a fitted model object}
 
 \code{VarCorr} returns (co)variance parameters of random effects, and optionally the residual variance(s), from a fit object, in a data frame format roughly consistent with the method of objects of class \code{"lme"}, in particular including columns with consistent names for easier extraction. One may have to consult the summary of the object to check the meaning of the contents of this data frame (e.g., of 'variance' coefficients for non-gaussian random effects). Other extractors to consider are \code{\link{get_ranPars}} and \code{\link{get_inits_from_fit}}, the latter providing parameters in a form suitable for initializing a fit.
 
-The covariance matrix of residuals of a fit can be obtained as a block of the hat matrix (\code{\link{get_matrix}(., which="hat_matrix")}).  
+The covariance matrix of residuals of a fit can be obtained as a block of the hat matrix\cr 
+(\code{\link{get_matrix}(., which="hat_matrix")}).  
 This is (as other covariances matrices above) a matrix of expected values, generally assuming that the fitted model is correct and that its parameters are \dQuote{well} estimated, and should not to be confused with the computation of diagnostic correlations among inferred residuals of a fit.     
 }
 \usage{

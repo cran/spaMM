@@ -7,7 +7,7 @@
   resglm_lambdaS <- list()
   lambda_pred_list <- as.list(rep(NA,nrand)) ## to be _partially filled_ by this function uing available glm's
   ## je peux avoir SEM sans adjacency (SEM-Matern) et adjacency sans SEM (Poisson-adjacency)
-  if (all(models[["lambda"]]=="lamScal")) { 
+  if (all(models[["lambda"]]=="lamScal")) { # includes ranCoefs
     ####### includes SEM
     if ( ! is.null(SEMblob)) {
       glm_lambda <- SEMblob$glm_lambda
@@ -31,18 +31,19 @@
     notdone <- setdiff(seq_len(nrand),done)
     if (length(notdone)) {
       cum_Xi_cols <- cumsum(c(0,attr(processed$ZAlist,"Xi_cols")))
-      for(it in notdone) { ## CAR here if old corrHLfit method (or rho fixed?)
+      for(it in notdone) { ## CAR here if old corrHLfit method (or rho fixed?). But ranCoefs typically...
         if (is.na(lam_fix_or_outer_or_NA[it])) {
           colrange <- (cum_Xi_cols[it]+1L):cum_Xi_cols[it+1L] 
           u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
-          loclamdata <- data.frame(processed$X_lamres[u.range,colrange,drop=FALSE])
+          loclamdata <- data.frame(processed$X_lamres[u.range,colrange,drop=FALSE]) # virtually these 'datat' are the design matrix of the GLM 
+          # which is ans is incidence matrix for each level of the grouping factor of the ranCoef affecting each 'response' (here the leverages...)
           ## part of the problem here is that we need a formula call not an ~X-1 call
-          ## part of the problem is that in random-slope model, the Intercept column is not constant  
+          ## part of the problem is that in random-slope model, the Intercept column is not constant  (<= long after: unclear comment)
           colnames(loclamdata)[colnames(loclamdata)=="(Intercept)"] <-"\\(Intercept\\)" 
           ## FR->FR in a later version the formula should be provided by processed$ ?
-          loclamformula <- as.formula(paste("~",paste(colnames(loclamdata),collapse="+"),"-1"))
+          loclamformula <- as.formula(paste("~",paste(colnames(loclamdata),collapse="+"),"-1")) # one factor for eahc column of the incidence design matrix
           locetastart <- log(calcRanefPars_blob$next_lambda_est[u.range]) 
-          ## !! For random-slope models, this is not the solution, as the next_lambda_est do not store the final variances
+          ## !! For random-slope models, locetastart is not the solution, as the next_lambda_est do not store the final variances
           resp_lambda <- calcRanefPars_blob$resp_lambda
           locarglist <- list(formula=loclamformula, dev.res=resp_lambda[u.range],
                              lev=lev_lambda[u.range],

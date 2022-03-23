@@ -41,21 +41,25 @@
   return(res)
 }
 
-.preprocess_data <- function(data, null.formula, formula, resid.model, prior.weights, callargs) {
+.preprocess_data <- function(data, null.formula, formula, resid.formula=NULL, prior.weights, ...) {
+  mc <- match.call()
+  if ( ! "prior.weights" %in% names(mc)) mc["prior.weights"] <- list(NULL) # don't test the value of prior.weights!
+  mc[[1L]] <- get(".GetValidData_info", asNamespace("spaMM"), inherits=FALSE) 
   if ( inherits(data,"list")) {
     for (lit in seq_along(data)) {
-      null.rownames <- .GetValidData_info(formula=null.formula[-2],resid.formula=resid.model$formula,data=data[[lit]],
-                                      callargs=callargs["prior.weights"])$rownames ## will remove rows with NA's in required variables
-      full.rownames <- .GetValidData_info(formula=formula[-2],resid.formula=resid.model$formula,data=data[[lit]],
-                                      callargs=callargs["prior.weights"])$rownames ## will remove rows with NA's in required variables
+      mc[["data"]] <- data[[lit]]
+      mc[["formula"]] <- null.formula[-2L]
+      null.rownames <- eval(mc)$rownames ## will remove rows with NA's in required variables
+      mc[["formula"]] <- formula[-2L]
+      full.rownames <- eval(mc)$rownames
       data[[lit]] <- data[[lit]][intersect(null.rownames,full.rownames),,drop=FALSE]
     }
   } else {
-    null.rownames <- .GetValidData_info(formula=null.formula[-2],resid.formula=resid.model$formula,data=data,
-                                    callargs=callargs["prior.weights"])$rownames ## will remove rows with NA's in required variables
-    full.rownames <- .GetValidData_info(formula=formula[-2],resid.formula=resid.model$formula,data=data,
-                                    callargs=callargs["prior.weights"])$rownames ## will remove rows with NA's in required variables
-    data <- data[intersect(null.rownames,full.rownames),,drop=FALSE]     
+    mc[["formula"]] <- null.formula[-2L]
+    null.rownames <- eval(mc)$rownames ## will remove rows with NA's in required variables
+    mc[["formula"]] <- formula[-2L]
+    full.rownames <- eval(mc)$rownames
+    data <- data[intersect(null.rownames,full.rownames),,drop=FALSE]
   }  
   return(data)
 }
@@ -163,7 +167,7 @@
                  null.disp=list(), boot.repl=0,
                  ## currently trace always false; this is not an argument t be forwarded as is to corrHLfit! 
                  #trace=FALSE, ## T means lead to calls of corrHLfit(... trace=list(<file name>,<over/append>))
-                 verbose=c(trace=FALSE),
+                 verbose=c(TRACE=FALSE),
                  fittingFunction="corrHLfit",  
                  simuland= eval_replicate,
                  data,
@@ -175,22 +179,25 @@
                  #type="marginal", # explicit in call to spaMM_boot() below.
                  ... # I cannot use the dots to pass arguments to spaMM_boot bc they also contain arguments for the fitting functions
                  ) {
-  if (is.na(verbose["trace"])) verbose["trace"] <- FALSE
+  # if (is.na(verbose["trace"])) verbose["inner"] <- FALSE
   if (is.na(verbose["all_objfn_calls"])) verbose["all_objfn_calls"] <- FALSE   
-  callargs <- match.call(expand.dots = TRUE)
-  ## We extract relevant arguments as promises (prior.weights, in particular, are held unevaluated)
-  boot_call <- callargs[which( ! names(callargs) %in% names(formals(.LRT)))] ## includes the position of the called fn in callargs
+  oricall <- match.call(expand.dots = TRUE)
+  #
+  boot_call <- oricall[which( ! names(oricall) %in% names(formals(.LRT)))] ## includes the position of the called fn in oricall
   ## birth pangs :
-  if ("predictor" %in% names(callargs)) {
+  if ("predictor" %in% names(oricall)) {
     stop(".LRT() called with 'predictor' argument which should be 'formula'" )
   }
-  if ("null.predictor" %in% names(callargs)) {
+  if ("null.predictor" %in% names(oricall)) {
     stop(".LRT() called with 'null.predictor' argument which should be 'null.formula'" )
   }
   ## here we makes sure that *predictor variables* are available for all data to be used under both models
-  resid.model <- .reformat_resid_model(callargs$resid.model) ## family not easily checked here; not important
-  data <- .preprocess_data(data=data, null.formula=null.formula, formula=formula, resid.model=resid.model,
-                           callargs=callargs) ## this keeps the variables for the prior.weights
+  resid.model <- .reformat_resid_model(oricall$resid.model) ## family not easily checked here; not important
+  loccall <- oricall
+  loccall[[1L]] <- get(".preprocess_data", asNamespace("spaMM"), inherits=FALSE)
+  loccall$"resid.formula" <- resid.model$formula
+  data <- eval(loccall,parent.frame()) 
+  #
   boot_call$data <- data
   boot_call$verbose <- verbose 
   if (fittingFunction == "fitme") {

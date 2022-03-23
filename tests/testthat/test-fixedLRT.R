@@ -15,3 +15,18 @@ fl <- fixedLRT(null.formula=migStatus ~ 1 + Matern(1|longitude+latitude),
 testthat::expect_equal(fl$basicLRT$p_value,0.00806473,tolerance=2e-5)
 testthat::expect_equal(fl$BartBootLRT$p_value,structure(0.008546614,boot_type="marginal"),tolerance=1e-5)
 testthat::expect_true(length(fl$bootInfo$RNGstates)==626) ## check that it's there
+
+# With prior weights
+
+if (spaMM.getOption("example_maxtime")>3) {
+  data("hills", package="MASS")
+  # serial
+  (fl <- fixedLRT(null.formula=time ~ 1,
+                  formula=time ~ climb, data = hills, weights.form= ~ 1/dist^2, method="ML",
+                  boot.repl=10,nb_cores=1L, seed=123) )
+  # parallel
+  (fl <- fixedLRT(null.formula=time ~ 1,
+                  formula=time ~ climb, data = hills, weights.form= ~ 1/dist^2, method="ML",
+                  boot.repl=10,nb_cores=2L, seed=123) )
+}
+

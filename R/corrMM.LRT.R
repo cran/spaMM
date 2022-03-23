@@ -34,12 +34,24 @@ fixedLRT <- function(  ## interface to .LRT or (for devel only) .corrMM_LRT
   #nb_cores=NULL,
   seed=NULL,
   resp_testfn=NULL, 
+  weights.form=NULL,
   # type="marginal", # not necess sing fixedLRT -> .LRT -> spaMM_boot( type="marginal" hard coded)
   ...) {  ## since .corrMM_LRT is not doc'ed, REMLformula=NULL,boot.repl=0 cannot go into '...' 
   if (missing(null.formula)) stop("'null.formula' argument is missing, with no default.")
   if (missing(formula)) stop("'formula' argument is missing, with no default.")
   if (missing(data)) stop("'data' argument is missing, with no default.")
   mc <- match.call(expand.dots = TRUE)
+  #
+  if ( ! is.null(weights.form)) {
+    mc[["prior.weights"]] <-  weights.form[[2]]
+  } else if ("prior.weights" %in% ...names()) {
+    p_weights <- substitute(alist(...))$prior.weights # necessary when prior weights has been passed to fitme 
+    # through the '...' of another function. In that case we reconstruct the call argument as if they had not been passed in this way.
+    # is user quoted the pw, the str() of the result of the substitute() calls is language quote(...)  ~  doubly quoted stuff... => eval 
+    if ( (inherits(p_weights,"call") && p_weights[[1L]] == "quote") ) p_weights <- eval(p_weights)
+    mc[["prior.weights"]] <- p_weights
+  }
+  #
   # method mess
   if (missing(method)) {
     if (missing(HLmethod)) {

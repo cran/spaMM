@@ -122,7 +122,7 @@
                            init.HLfit, corr_info, verbose, lower, upper) {
   moreargs <- list() # structure(vector("list", length=length(corr_types)), names=seq_along(corr_types))
   for (rd in seq_along(corr_types)) {
-    corr_type <- corr_types[rd]
+    corr_type <- corr_types[[rd]]
     if (! is.na(corr_type)) {
       char_rd <- as.character(rd)
       has_adj <- (corr_type %in% c("SAR_WWt","adjacency") 
@@ -140,7 +140,9 @@
         # quite distinct arguments for adjacency:
         decomp=decomp, verbose=verbose, lower=lower, upper=upper,
         # IMRF...:
-        IMRF_pars=attr(attr(attr(processed$ZAlist,"exp_spatial_terms")[[rd]],"type"),"pars")
+        IMRF_pars=attr(attr(attr(processed$ZAlist,"exp_spatial_terms")[[rd]],"type"),"pars"),
+        # corrFamily:
+        corrfamily=corr_info$corr_families[[rd]] # a bit circular, but providing access to all content of a processed corrFamily
       )
       if (has_adj && ! is.null(rho <- fixed$corrPars[[char_rd]]$rho) ) {
         rhorange <- moreargs[[char_rd]]$rhorange
@@ -493,9 +495,9 @@
   Q_CHMfactor <- Cholesky(sparse_Qmat,LDL=FALSE,perm=perm_Q) 
   if (perm_Q) {
     .ZA_update(rd, Q_CHMfactor, processed, 
-               Amat=attr(processed$ZAlist,"AMatrices")[[as.character(rd)]])
+               Amat=processed$corr_info$AMatrices[[as.character(rd)]])
     # One-time ZA updating, but also here specifically for corrMatrix, one-time construction of sparse_Qmat
-    permuted_Q <- attr(attr(processed$ZAlist,"AMatrices")[[as.character(rd)]],"permuted_Q") 
+    permuted_Q <- attr(processed$corr_info$AMatrices[[as.character(rd)]],"permuted_Q") 
     # $Qmat <- sparse_Qmat will be used together with ZA independently from the CHM to construct the Gmat
     # If we use permuted Chol, then we must permute sparse_Qmat, by 
     if (identical(permuted_Q,TRUE)) sparse_Qmat <- tcrossprod(as(Q_CHMfactor,"sparseMatrix")) 
@@ -540,13 +542,13 @@
         # All chol_Q's must be dtCMatrix so that bdiag() gives a dtCMatrix
         updateable[rd] <- TRUE
       } else if ( finertype %in% c("Matern", "Cauchy") ) { 
-        ## leave precisionFactorList[[rd]] NULL
         updateable[rd] <- TRUE
       # } else if ( finertype == "ranCoefs") {
       #   # precisionFactorList[[rd]] will be filled by .wrap_precisionFactorize_ranCoefs(), with elements chol_Q and precmat,
       #   # including for case with LHS_levels
-      }  else if ( finertype=="corrFamily") {
-        # leave updateable[rd] FALSE (may be modified later, as fn of parvec) 
+      }  else if (identical(processed$corr_info$corr_types[[rd]], "corrFamily")) {
+        updateable[rd] <- TRUE # if the corrFamily $template is dense, it is always updateable; otherwise least-sparsity of each new Cf(parvec) is checked. 
+        # Note that for CORR algos, AUGI0_ZX_envir$updateable was initialized to FALSE for most finertypes, and is not modified later.  
       } else if (finertype != "ranCoefs") stop(paste("sparse-precision methods were requested, but",
                         finertype,"terms are not yet handled by sparse precision code."))
     }
@@ -689,13 +691,13 @@
           # use possible structures of Lmatrix for ranCoefs spprec (cf .Lunique_info_from_Q_CHM()):
           long_Q_CHMfactor <- LMatrices[[rt]]
           if ( ! inherits(long_Q_CHMfactor, "dCHMsimpl")) long_Q_CHMfactor <- attr(long_Q_CHMfactor,"Q_CHMfactor")  
-          # permuted_Q <- attr(attr(processed$ZAlist,"AMatrices")[[as.character(rt)]],"permuted_Q") # clumsy but need to get info from one-time code
-          
+
           precisionFactorList[[rt]] <- list(
             chol_Q= as(long_Q_CHMfactor,"sparseMatrix"), 
             precmat=.makelong(latentL_blob$compactprecmat,
                               template= processed$ranCoefs_blob$longLv_templates[[rt]],
-                              kron_Y=cov_info_mat$matrix # should be dsC 
+                              kron_Y=cov_info_mat$matrix, # should be dsC
+                              drop0template=FALSE # assuming the template is sparse and that compactprecmat won't be sparse most of the time
             )
           )
           updateable[rt] <- necess4updateable ## ___TAG___   corrMatrix specific ! additional conditions needed for parametric correlation models
@@ -764,7 +766,7 @@
   for (rd in stillNAs) { ## fam_corrected_guess for each ranef in stillNAs
     if ( ! is.null(processed$families)) {
       which_mv <- attr(processed$ZAlist[[rd]],"which_mv")
-      link_ <- unlist(lapply(processed$families[which_mv],`[[`,i="link")) 
+      link_ <- .unlist(lapply(processed$families[which_mv],`[[`,i="link")) 
     } else link_ <- processed$family$link
     if (is.null(ZAL)) {
       ZA <- processed$ZAlist[[rd]]
@@ -917,7 +919,7 @@
     # But is phiGLM/HGLM, these hatval computations cannot be spared => two cases for other_reasons_for_outer_lambda
     if (is.null(proc1$phi.Fix) && ! phi_by_augZXy ) { # Set (or not) outer optimization for phi: 
       init_optim_phi_blob <- .init_optim_phi(phimodel1, proc1, init.optim, nrand1, 
-                                             reasons_for_outer=outer_phiScal_spares_costly_comput || var_ranCoefs) # outer estim may be numerically more stable for ranCoefs
+                                             reasons_for_outer=outer_phiScal_spares_costly_comput || any(var_ranCoefs)) # outer estim may be numerically more stable for ranCoefs
       other_reasons_for_outer_lambda <- init_optim_phi_blob$not_inner_phi
       init.optim <- init_optim_phi_blob$init.optim
     } else other_reasons_for_outer_lambda <- outer_phiScal_spares_costly_comput

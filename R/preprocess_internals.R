@@ -32,7 +32,7 @@
     if ( ! time_warned) time1 <- Sys.time()
     preclist <- corr_info$adjMatrices
     corrlist <- corr_info$corrMatrices
-    corrFamlist <- corr_info$corrFamInfos
+    corrFamlist <- corr_info$corr_families
     # Don't try to drop0(corrMatrices) here before evaluating various densenesses: these densenesses would not hold for the
     # corr_info$cov_info_mats used to compute QMat. 
     # This is why the drop0() must happen earlier, in .assign_cov_matrices__from_covStruct()
@@ -40,9 +40,9 @@
     which_nested <- grep("%in%", names(attr(ZAlist,"exp_ranef_terms")))
     for (rd in seq_along(exp_ranef_types)) {
       if (exp_ranef_types[rd]=="corrMatrix" ) {
-        # If we specified adjmatrix, we suspect it's better (but spprec is not automatic); this block 
+        # If we specified "adjMatrix", we suspect it's better (but spprec is not automatic); this block 
         # is not executed and corrlist[[rd]] is (locally) NULL
-        #
+        # Alternatively, we may have specified a precision matrix by "corrMatrix"... 
         ## cov_info_mats elements may be correlation matrices, or they may be lists...
         if (is.list(corrlist[[rd]])) { 
           preclist[[rd]] <- corrlist[[rd]]$matrix
@@ -70,15 +70,20 @@
       } else if (exp_ranef_types[rd] == c("corrFamily") ) {
         if ( ! is.null(corrFamlist[[rd]][["f"]])) { # otherwise structure is ignored
           template <- corrFamlist[[rd]]$template
-          cholcorr <- try(chol(template)) # base::chol or Matrix::chol 
-          if (inherits(cholcorr,"try-error")) stop("The matrix template does not look like a symmetric positive definite matrix. Check the 'tpar' argument..") 
-          preclist[[rd]] <- drop0(chol2inv(cholcorr), tol = .Machine$double.eps)
-          ZAlist[[rd]] <- .addrightcols_Z(Z=ZAlist[[rd]], colnames(template), verbose=FALSE)
-          adjm_rel_denseness <- .calc_denseness(preclist[[rd]], relative=TRUE)
-          if (adjm_rel_denseness<0.05) {
-            corrlist[rd] <- list(NULL) ## see general explanation of the function
+          if (inherits(template,"precision")) {
+            preclist[[rd]] <- template$matrix
+            corrlist[rd] <- list(NULL) # see general explanation of the function
           } else {
-            corrlist[[rd]] <- cholcorr 
+            cholcorr <- try(chol(template)) # base::chol or Matrix::chol 
+            if (inherits(cholcorr,"try-error")) stop("The matrix template does not look like a symmetric positive definite matrix. Check the 'tpar' argument..") 
+            preclist[[rd]] <- drop0(chol2inv(cholcorr), tol = .Machine$double.eps)
+            ZAlist[[rd]] <- .addrightcols_Z(Z=ZAlist[[rd]], colnames(template), verbose=FALSE)
+            adjm_rel_denseness <- .calc_denseness(preclist[[rd]], relative=TRUE)
+            if (adjm_rel_denseness<0.05) {
+              corrlist[rd] <- list(NULL) ## see general explanation of the function
+            } else {
+              corrlist[[rd]] <- cholcorr 
+            }
           }
         }
       } else if (exp_ranef_types[rd]%in% c("Matern","Cauchy")  ) {
@@ -119,7 +124,10 @@
         nc <- ncol(preclist[[rd]]) # cf the .addrightcols() call above
         corrlist[[rd]] <- lower.tri(matrix(TRUE,ncol=nc,nrow=nc),diag = TRUE) # template matrix created in faster way than diag()
         updated <- TRUE
-      } else  if ( is.null(corrlist[[rd]]) &&  ! is.null(preclist[[rd]])) { # not clear when this can occur, beyond speculative "not fast" code
+      } else  if ( is.null(corrlist[[rd]]) &&  ! is.null(preclist[[rd]])) { 
+        # presumably for the never used .provide_G_diagnosis(., fast=FALSE), case;
+        # not clear whether this can occur for fast=TRUE. But then computing the mat_sqrt, next solve(t(.)) may be inefficient
+        warning("Possibly inefficient code in .provide_G_diagnosis(). Please contact the maintainer.") # __F I X M E__
         tcrossfac_adj <- mat_sqrt(preclist[[rd]]) # tcrossfac hence t(solve()) is the tcrossfac of the corr mat (<=> Lunique) which is the following backsolve
         if ( attr(tcrossfac_adj,"type")=="cholL_LLt") {
           if (inherits(tcrossfac_adj,"dtCMatrix")) {
@@ -391,8 +399,7 @@
     if (verbose) message(paste("Note: Precision matrix has", suppcols, 
                                "more levels than there are in the data.")) # and <0 values are a bug...
     supplevels <- setdiff(precnames,ZAnames)
-    # if (length(supplevels) ! suppcols) stop("Some colnames appear absent or duplicated in the correlation/precision matrix") ___F I X M E___ valid concern but is it the right place to test this ?
-    # add cols of zeros one the right; cols to be reoredered next.
+    # add cols of zeros on the right; cols to be reoredered next.
     if ( inherits(Z,"ddiMatrix")) Z <- .as_ddi_dgC(Z)
     Zp <- Z@p
     Z@p <- c(Zp, Zp[length(Zp)] + rep(0L,suppcols))
@@ -405,7 +412,9 @@
 .preprocess_pw <- function(subs_p_weights, nobs, model_frame) {
   if (is.null(subs_p_weights)) {
     prior.weights <- structure(rep(1L,nobs),unique=TRUE, is_unit=TRUE) ## <- 1L prevented by glm -> model.frame(... prior.weights)
-  } else if ( ! (inherits(subs_p_weights,"call") && subs_p_weights[[1L]] == "quote") )  {
+  } else if (inherits(subs_p_weights,"call") && subs_p_weights[[1L]] == "quote")  {## 'prior.weights' is a quoted expression
+    prior.weights <- structure(subs_p_weights, unique=FALSE, is_unit=FALSE)
+  } else {
     prior.weights <- as.vector(stats::model.weights(model_frame)) ## as.vector as in say lm() protects against array1d
     if ( ! is.numeric(prior.weights)) 
       stop("'weights' must be a numeric vector")
@@ -414,8 +423,6 @@
     is_unique <- length(unique(prior.weights))==1L
     prior.weights <- structure(prior.weights, unique=is_unique, is_unit=(is_unique && prior.weights[1]==1))
     #attr(prior.weights,"only1") <- all(upw==1L)
-  } else {## 'prior.weights' is a quoted expression
-    prior.weights <- structure(prior.weights, unique=FALSE, is_unit=FALSE)
   }   
   return(prior.weights)
 }
@@ -804,7 +811,7 @@
                                     updateable=attr(ZAlist, "exp_ranef_types")=="(.|.)" ## to be modified later
                                     ),    
                                parent=environment(.preprocess))
-    # ___F I X M E___ updateable introduced here 2022/01/30. For CORR methods, it is updated for some correlated ranefs in .assign_geoinfo_and_LMatrices_but_ranCoefs()
+    # updateable introduced here 2022/01/30. For CORR methods by .init_AUGI0_ZX(), it is updated for some correlated ranefs in .assign_geoinfo_and_LMatrices_but_ranCoefs()
     # That latter code would deserve to be checked (whether some FALSE could become TRUE) since it has been used only by aug_ZXy's .get_absdiagR_blocks() procedure .
     # For SPPREC, it is rebuilt by .init_AUGI0_ZX_envir_spprec_info()
     # For CORR methods, this paves the way for extended usage, but won't solve what prevents using permuted Cholesky for which="R_scaled_v_h_blob" in QRP_CHM. 

@@ -4,6 +4,8 @@
 % * implement outer optim of beta starting from the etaFix (+ REMLformula) code => avoid LevM costs for COMP ? also allowing ome non-linear modelling
 % * Something about .predictions methods when predict returns a data frame ?
 
+\alias{gridIMRF} % ___F I X M E___
+
 \alias{projpath} % for local tests
 
 \alias{glm.nodev.fit} % __F I X M E__ special version for COMPoisson

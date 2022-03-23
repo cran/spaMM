@@ -52,7 +52,7 @@
 
 # For gaussian response, there is no formal constraint on model coefficients, but good starting values may be necessary to avoid overflow,
 # and for the LevM method it is important that mustart belongs for the model family. So this code produces 'good' beta and deduces mu from it.
-# This function handles this case (distinct from .get_valid_beta_coefs() that handles formal constraint on beta, that eta must be positive)
+# This is distinct from .get_valid_beta_coefs() that handles formal constraint on beta, that eta must be positive.
 .get_init_in_Xbeta_image <- function(X, #  design matrix
                                      offset, # true model offset, not a hack
                                      family, # conceived for gaussian(log)
@@ -68,6 +68,7 @@
                     linky[y==0] <- 1e5
                     linky
                   },
+                  "logit" = pmin(1-1e-4, pmax(1e-4, y)),
                   "identity" = stop("This function should not be called for 'identity' link"), # we should not need it, as least for gaussian
                   stop("This function was not conceived for this link")
   )
@@ -113,7 +114,9 @@
   if (is.null(etastart) && is.null(start) && is.null(mustart))
     if (family$link=="identity") {
       mustart <- y
-    } else mustart <- .get_init_in_Xbeta_image(X=x, offset=offset, family=family, y=y, weights=weights, which="mu") 
+    } else if (ncol(x)) {
+      mustart <- .get_init_in_Xbeta_image(X=x, offset=offset, family=family, y=y, weights=weights, which="mu")
+    } else mustart <- family$linkinv(offset) # gaussian( ! identity ) with fully fixed beta coeffs
 })
 
 
@@ -230,7 +233,7 @@ spaMM_glm.fit <- local({
         }
       } else eta <- family$linkfun(mustart)
       if (family$link=="log") {
-        eta <- .sanitize_eta_log_link(eta, max=40,y=y)
+        eta <- .sanitize_eta_log_link(eta, max=40,y=y, warn_neg_y= (family$family !="gaussian"))
       } else if (family$link=="loglambda") {
         COMP_nu <- environment(family$aic)$nu 
         eta <- .sanitize_eta_log_link(eta, max=40, y=y, nu=COMP_nu)
@@ -552,11 +555,11 @@ spaMM_glm <- function(formula, family = gaussian, data, weights, subset,
       .spaMM.data$options$rcdd_warned <- TRUE
     } 
   } else {
-    if (! is.null(res$warning)
+    if (! is.null(res$warning) &&
         ## some glm warnings are useful only to understand a failure, hence not useful here 
         # To catch specific warnings, one has to catch their translations (as its not clear how to inhibit translations cleanly)
         # If stats::lm was the called function then this seems the way: 
-        && res$warning$message != gettext("step size truncated due to divergence",domain="R-stats") ) {
+        res$warning$message != gettext("step size truncated due to divergence",domain="R-stats") ) {
       if (res$warning$message == gettext("glm.fit: algorithm did not converge",domain="R-stats") && strict) { # by default, strict=FALSE and non-converged result is returned.
         mc$method <- method[2L] ## changes the method arg, but the called function is still stats::glm
         res <- eval(mc,parent.frame())

@@ -13,7 +13,7 @@
 HLfit <- function(formula,
                   data,family=gaussian(),rand.family=gaussian(), 
                   resid.model= ~ 1, REMLformula=NULL,
-                  verbose=c(trace=FALSE),
+                  verbose=c(inner=FALSE),
                   HLmethod="HL(1,1)",
                   method="REML",
                   control.HLfit=list(),
@@ -23,13 +23,15 @@ HLfit <- function(formula,
                   # FR->FR ranFix should be able to handle full phi.object and lambda.object ./.
                   # ./. that could be copied in return value.
                   etaFix=list(), ## beta, v_h (or even u_h)
-                  prior.weights=NULL, ## I must avoid default argument reference as formals(HLfit) serves as a template for calls to preprocess() 
+                  prior.weights=NULL, 
+                  weights.form= NULL,
                   processed=NULL
 ) {
   assign("spaMM_glm_conv_crit",list(max=-Inf) , envir=environment(spaMM_glm.fit))
   time1 <- Sys.time()
   oricall <- match.call()  ## there is no dots in HLfit
   oricall$control.HLfit <- eval(oricall$control.HLfit, parent.frame()) # to evaluate variables in the formula_env, otherwise there are bugs in waiting 
+  mc <- oricall
   if (is.null(processed)) { 
     if (missing(data)) {
       data <- environment(formula)
@@ -53,15 +55,16 @@ HLfit <- function(formula,
       }
     }    
     #
+    if ( ! is.null(weights.form)) mc[["prior.weights"]] <-  weights.form[[2]]
+    #
     if ( inherits(data,"list")) {
       ## RUN THIS LOOP and return
       multiHLfit <- function() {
         fitlist <- lapply(data, function(dt){
-          locmc <- oricall
           if (identical(paste(family[[1L]]),"multi")) 
-            locmc$family <- family$binfamily ## typically binomial()
-          locmc$data <- dt
-          eval(locmc) ## calls HLfit recursively
+          mc$family <- family$binfamily ## typically binomial()
+          mc$data <- dt
+          eval(mc) ## calls HLfit recursively
         })
         liks <- sapply(fitlist, function(v) {unlist(v$APHLs)})
         liks <- apply(liks,1,sum)
@@ -73,7 +76,6 @@ HLfit <- function(formula,
       }
       return(multiHLfit())
     } else {## there is a single data set, still without processed
-      mc <- oricall
       mc[[1L]] <- get(".preprocess_formula", asNamespace("spaMM"), inherits=FALSE)  ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
       oricall$formula <- mc$formula <- eval(mc,parent.frame()) # 
       preprocess_args <- .get_inits_preprocess_args(For="HLfit")
@@ -90,9 +92,8 @@ HLfit <- function(formula,
     if (  is.list(processed))  { ## "multiple" processed list 
       ## RUN THIS LOOP and return
       fitlist <- lapply(seq_len(length(processed)), function(it){
-        locmc <- oricall
-        locmc$processed <- processed[[it]] ## The data are in processed !
-        eval(locmc)
+        mc$processed <- processed[[it]] ## The data are in processed !
+        eval(mc)
       }) ## a pure list of HLCor objects
       liks <- sapply(fitlist, function(v) {unlist(v$APHLs)})
       liks <- apply(liks,1,sum)
@@ -100,15 +101,16 @@ HLfit <- function(formula,
       class(fitlist) <- c("HLfitlist",class(fitlist)) 
       return(fitlist) ## list of HLfit object + one attribute
     } else { ## there is one processed for a single data set 
-      mc <- oricall
       # mc$processed <- processed
       # HLfit_body() called below
     }
   }
   #
   
-  pnames <- c("data","family","formula","prior.weights","HLmethod","method","rand.family","control.glm","REMLformula",
-              "resid.model","verbose")
+  # pnames <- c("data","family","formula","prior.weights", "weights.form", "HLmethod","method","rand.family","control.glm","REMLformula",
+  #             "resid.model","verbose")
+  pnames <- c("data","family","formula","prior.weights", "weights.form","HLmethod","method","rand.family","control.glm","REMLformula",
+              "resid.model", "verbose") 
   for (st in pnames) mc[st] <- NULL ## info in processed
   mc[[1L]] <- get("HLfit_body", asNamespace("spaMM"), inherits=FALSE) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
   if (identical(mc$processed[["verbose"]]["getCall"][[1L]],TRUE)) return(mc) ## returns a call if verbose["getCall"'"] is TRUE

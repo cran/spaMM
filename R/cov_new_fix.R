@@ -28,11 +28,13 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
 }
 ###############################################
 
+# called by .make_new_corr_lists):
 .make_corr_list <- function(object, strucList=object$strucList, newZAlist) {
   corr_list <- vector("list", length(strucList))
+  isRandomSlope <- attr(object$strucList,"isRandomSlope")
   for (it in seq_len(length(strucList))) {
     if (! is.null(strucList[[it]])) {
-      if (attr(strucList[[it]],"corr.model")=="random-coef") {
+      if (isRandomSlope[[it]]) {
         if ( ! is.null(newZAlist)) {
           abyss <- is.null(longsize <- ncol(newZAlist[[it]])) && (longsize <- ncol(strucList[[it]])) # handling devel case
           if ( ! is.null(kron_Y <- object$ranef_info$sub_corr_info$kron_Y_LMatrices[[it]])) {
@@ -45,8 +47,9 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
           ## names required for a predict(,newdata) on a random-coef model
         } else corr_list[[it]] <- .tcrossprod(strucList[[it]],y=NULL, perm=TRUE) # else we can use the original strucList[[it]] which is now and expanded covmat
       } else corr_list[[it]] <- .tcrossprod(strucList[[it]],y=NULL, perm=TRUE)
-      attr(corr_list[[it]],"ranefs") <- attr(strucList[[it]],"ranefs")
-      attr(corr_list[[it]],"corr.model") <- attr(strucList[[it]],"corr.model")
+      ##### attr(corr_list[[it]],"ranefs") <- attr(strucList[[it]],"ranefs") # 
+      attr(corr_list[[it]],"corr.model") <- attr(strucList[[it]],"corr.model") # a bit reduncdant but expected by various code 
+                        # which tests whether it's not NULL => would have to be modified to tests elements vectors NA or not "(.|.)"
     }
   } 
   return(corr_list)
@@ -113,18 +116,22 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
   return(list(subrange=subrange,which_ranef_cols=which_ranef_cols))
 }
 
-.calc_need_Cnn <- function(object, newinold, ori_exp_ranef_types, variances, newZAlist) {
+.calc_need_Cnn <- function(object, newinold, ori_exp_ranef_types, variances, newZAlist, 
+                           sub_corr_info=object$ranef_info$sub_corr_info) {
   nrand <- length(newinold)
   need_Cnn <- rep(FALSE, nrand) # i.e. length of newZAlist
   for (new_rd in seq_len(nrand)) { # we don't vectorize to avoid evaluating isDiagonal when it's not needed.  
     old_rd <- newinold[new_rd]
-    if ( ! ori_exp_ranef_types[old_rd] %in% c("IMRF","adjacency","corrMatrix")) { 
-      need_Cnn[new_rd] <- (attr(object$strucList,"isRandomSlope")[old_rd] | variances$cov ) 
+    if ( ori_exp_ranef_types[old_rd] %in% c("IMRF","adjacency","corrMatrix") ) { 
+      # need_Cnn remains FALSE for models where no correlation is definedfor new positions ("adjacency","corrMatrix"),
+      # and also for IMRF bc the Evar in nodes is 0 and so is ZA %*% Evar %*% t(ZA) is 0).
+    } else {
+      need_Cnn_rd <- (attr(object$strucList,"isRandomSlope")[old_rd] | variances$cov ) 
       # that is, we need them also for prediction variances (not cov) for random-slope.
       # and we check another condition where we may need them for prediction variances: 
-      if ( ! need_Cnn[new_rd]) {
+      if ( ! need_Cnn_rd) {
         if (is.null(is_incid <- attr(newZAlist[[new_rd]],"is_incid"))) {
-          message("'is_incid' attribute missing, which suggests inefficient code in .calc_new_X_ZAC().") # should be corrected
+          message("'is_incid' attribute missing, which suggests inefficient code in a corrFamily definition,\n or in .calc_ZAlist() or .calc_new_X_ZAC().") # should be corrected
           # typically occurred bc there was an A matrix (though not for IMRF) so that ZA differs from Z
           # or by subsetting (ZAlist[[it]][,.] is .preprocess) 
           # or when forgetting to copy the is_incid attribute on .Dvec_times_Matrix(newrd_in_obs, newZlist[[new_rd]])
@@ -132,14 +139,22 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
           # awful code potentially huge calculation to detect a nondiagonal element...
           # i could consider that the case is rare enough and not bother
           # or I could consider that the tcrossprod is unlikely to be diagonal...
-          need_Cnn[new_rd] <- ( ! isDiagonal(.tcrossprod(newZAlist[[new_rd]]))) 
+          need_Cnn_rd <- ( ! isDiagonal(.tcrossprod(newZAlist[[new_rd]]))) 
           # another approach requiring less computation is to check the sum of the values of non-diagonal elements of the tcrossp of abs(ZA), 
           # absZA <- abs(newZAlist[[new_rd]])
           # need_Cnn[new_rd] <- ((sum(rowSums(absZA)^2)-sum(absZA^2))>0)
-          #####} else need_Cnn[new_rd] <- TRUE # assumin that the tcrossprod is unlikely to be diagonal...
-        } else need_Cnn[new_rd] <- ( ! is_incid)
+          #####} else need_Cnn[new_rd] <- TRUE # assuming that the tcrossprod is unlikely to be diagonal...
+        } else need_Cnn_rd <- ( ! is_incid)
       }
-    } # else for IMRF it remains FALSE bc for IMRF the Evar in nodes is 0 and so is ZA %*% Evar %*% t(ZA) )
+      if (need_Cnn_rd && identical(sub_corr_info$corr_types[[old_rd]],"corrFamily")) { # use corr_types which contains "corrFamily" 
+        # rather than ori_exp_ranef_types that contains 'finer' cF types. The more so as the cF might be unregistered post-fit -> 
+        # test against keywords$all_cF might fail.  
+        need_Cnn_rd <- sub_corr_info$corr_families[[old_rd]]$need_Cnn # TRUE by default, set to FALSE in e.g. MaternIMRFa
+        # Cnn is NOT needed mathematically for IMRF models, so <corrFamily>'s$make_new_corr_lists -> make_new_corr_lists_IMRFs() does not compute it.
+        # So if this is not identified as a model when Cnn is not needed, .calc_Evar will seek Cnn, although it has not been evaluated. 
+      } 
+      need_Cnn[new_rd] <- need_Cnn_rd
+    } 
   }
   return(need_Cnn)
 }
@@ -213,8 +228,8 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
   } 
   # ELSE  
   if (is.null(locvars)) {
-    locvars <- all.vars(.strip_IMRF_args(locform)) ## strip to avoid e.g. 'stuff' being retained as a var from IMRF(..., model=stuff)
-    if (variances$residVar) locvars <- unique(c(locvars,all.vars(.strip_IMRF_args(.get_phiform(object)))))  
+    locvars <- all.vars(.strip_cF_args(locform)) ## strip to avoid e.g. 'stuff' being retained as a var from IMRF(..., model=stuff)
+    if (variances$residVar) locvars <- unique(c(locvars,all.vars(.strip_cF_args(.get_phiform(object)))))  
   }
   #
   if (is.vector(newdata)) { ## ## less well controlled case, but useful for maximization
@@ -402,12 +417,13 @@ if (FALSE) { # v3.5.121 managed to get rid of it
         newZlist <- .calc_Zlist(exp_ranef_terms=new_exp_ranef_terms, # .process_bars(barlist=barlist,as_character=FALSE, which.="exp_ranef_terms"), # != barlist, for IMRF notably
                                 #locform, 
                                 data=locdata, rmInt=0L, drop=TRUE,sparse_precision=FALSE, 
+                                corr_info=.get_from_ranef_info(object),
                                 levels_type= "seq_len", ## superseded in specific cases: notably, 
                                 ## the same type has to be used by .calc_AMatrix_IMRF() -> .as_factor() 
                                 ##  as by .calc_Zmatrix() -> .as_factor() for IMRFs.
                                 ## This is controlled by option uGeo_levels_type (default = "data_order" as the most explicit).
                                 ## The sames functions are called with the same arguments for predict with newdata.
-                                ZAlist_info=object$ZAlist[newinold], 
+                                sub_oldZAlist=object$ZAlist[newinold], 
                                 lcrandfamfam=attr(object$rand.families,"lcrandfamfam")) 
         amatrices <- .get_new_AMatrices(object, newdata=locdata) # .calc_newFrames_ranef(formula=ranef_form,data=locdata,fitobject=object)$mf)
         ## ! complications:
@@ -466,10 +482,11 @@ if (FALSE) { # v3.5.121 managed to get rid of it
       }
       #
       ## attribute added in version 2.3.18:
-      info_olduniqueGeo <- attr(object,"info.uniqueGeo")
-      if ( ! is.null(info_olduniqueGeo)) RESU$newuniqueGeo <- .update_newuniqueGeo(info_olduniqueGeo, 
+      info_olduniqueGeo <- .get_old_info_uniqueGeo(object) 
+      if ( length(info_olduniqueGeo)) RESU$newuniqueGeo <- .update_newuniqueGeo(info_olduniqueGeo, 
                                                                                    newinold, need_new_design, locdata)
-      # Despite the 'newuniqueGeo' name, it may be necess without newdata; preprocess_fix_corr() with NULL 'fixdata' providing info_olduniqueGeo <- fix_info$newuniqueGeo
+      # Despite the 'newuniqueGeo' name, it may be necess without newdata, in which case it is simply the "old" info;
+      #        preprocess_fix_corr() with NULL 'fixdata' providing info_olduniqueGeo <- fix_info$newuniqueGeo
     }
   }
   return(RESU)

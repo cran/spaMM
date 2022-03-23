@@ -31,14 +31,14 @@
       warning(paste0("maxn truncated to ",res," for (lambda,nu)= (",lambda,",",nu,") and possibly other values."))
       .spaMM.data$options$COMP_maxn_warned <- TRUE
       ### This is first called through 
-      # .get_inits_by_glm(processed, family = family, reset = quote(family$family %in% c("COMPoisson", "negbin")))
+      # .get_inits_by_glm(processed, reset = quote(family$family %in% c("COMPoisson", "negbin")))
       # -> .calc_inits_by_glm(processed)
       # -> .tryCatch_W_E(glm.fit ...)
       ### so the first warning is suppressed, and no further ones will be emitted UNLESS... 
       # unless we reset .spaMM.data$options$COMP_maxn_warned <- FALSE after the .tryCatch_W_E()
       # and as .get_inits_by_glm() is called repeatedly for COMPoisson, we do so only if a warning was emitted by the glm
       # which means that COMP_maxn_warned was FALSE in entry to .get_inits_by_glm()
-      # which means that COMP_maxn_warned is not set to FALSE .get_inits_by_glm() when it was TRUE in entry to it.
+      # which means that COMP_maxn_warned is not set to FALSE by .get_inits_by_glm() when it was TRUE in entry to it.
       if (.spaMM.data$options$need_memoise_warning) {
         warning("If the memoise package had been installed (prior to loading spaMM), faster computation could be possible.")
         .spaMM.data$options$need_memoise_warning <- FALSE

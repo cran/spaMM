@@ -1,5 +1,5 @@
 # The 'isoscape' example without building the sphere 
-if(getOption_IsoriX("example_maxtime") > 30) {
+if(IsoriX::getOption_IsoriX("example_maxtime") > 30) {
   
   ## We prepare the data
   GNIPDataDEagg <- prepsources(data = GNIPDataDE)

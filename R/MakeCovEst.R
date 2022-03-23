@@ -157,7 +157,9 @@
 
 ## Build Lmatrix between all pairs of u_h (nr*nr) from parameter estimates (2*2) for the design matrix, longsize is final dim of matrix
 .makelong <- function(Lcompact, ## may also be a compact precmat, symmetric rather than triangular
-                      longsize,as_matrix=FALSE,template=NULL, kron_Y, kron_long=TRUE) { ## always returns a Matrix unless explicitly as_matrix
+                      longsize,as_matrix=FALSE,template=NULL, kron_Y, kron_long=TRUE,
+                      drop0template =TRUE # ___F I X M E___ use =FALSE more
+                      ) { ## always returns a Matrix unless explicitly as_matrix
   if ( ! is.null(kron_Y)) {
     if (kron_long) {
       return(.makelong_kronprod(Lcompact, kron_Y))
@@ -169,7 +171,8 @@
     if (as_matrix) {
       template <- as.matrix(template)
     } else {
-      if (.nonzeros(Lcompact)<ncol(Lcompact)^2) template <- drop0(template) 
+      if (drop0template && .nonzeros(Lcompact)<ncol(Lcompact)^2) template <- drop0(template) 
+      # hmf: Lcompact is dense so why the next code ? Lcompact is never a CsparseMatrix in the long routine tests. 
       if ( inherits(Lcompact,"dtCMatrix")) {
         template <- as(template,"dtCMatrix")
       } else if ( inherits(Lcompact,"dsCMatrix")) template <- forceSymmetric(template)
@@ -236,7 +239,7 @@
                                              template=processed$ranCoefs_blob$longLv_templates[[rt]], 
                                              kron_Y=attr(processed$corr_info$cov_info_mats[[rt]],"blob")$Lunique 
         ) ## the variances are taken out in $d
-        attr(working_LMatrices[[rt]],"ranefs") <- attr(ZAlist,"exp_ranef_strings")[[rt]] 
+        ###### attr(working_LMatrices[[rt]],"ranefs") <- attr(ZAlist,"exp_ranef_strings")[[rt]] 
         locZAL <- .compute_ZAL(XMatrix=working_LMatrices, ZAlist=ZAlist, as_matrix=as_matrix, force_bindable=FALSE) 
         if (augZXy_cond || test) {
           ####################################################################################################
@@ -322,7 +325,7 @@
       attr(next_LMatrix,"trRancoef") <- optr$solution ## kept for updating in next iteration and for output
       ranef_info <- attr(ZAlist,"exp_ranef_strings")[rt]
       attr(ranef_info, "type") <- attr(ZAlist,"exp_ranef_types")[rt]## type is "(.|.)" if LMatrix is for random slope ## ajout 2015/06
-      attr(next_LMatrix,"ranefs") <-  ranef_info
+      #####  attr(next_LMatrix,"ranefs") <-  ranef_info
       attr(next_LMatrix, "corr.model") <- "random-coef"
       updated_LMatrices[[rt]] <- next_LMatrix # (fixme ??) working_LMatrices[[rt]] <-
       ### in the HLfit6 example, one element of compactcovmat appears to move without affecting logL, preventing compactcovmat convergence

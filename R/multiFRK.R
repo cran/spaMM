@@ -3,6 +3,59 @@
 #                           which is a nested list of params with attr. The nested list  serves as a template for .makeLowerUpper.
 # expand_hyper() is used (notably) by HLCor.obj to fill $corrPars and $trLambda from [ranPars derived from ranefParsVec] and processed$hyper_info
 
+.CHM_eigrange <- function(Qmat) {
+  chol_k <- suppressWarnings(try(Matrix::chol(Qmat), silent=TRUE)) # (sigh) 'silent' blocks Error in .local(x, ...) : internal_chm_factor; suppressWarning() blocks Cholmod 'not positive definite' [...] t_cholmod_rowfac.c, ligne 430
+  if (inherits(chol_k,"try-error")) {
+    c(1e-8,1e4)
+  } else range(diag(as(chol_k,"sparseMatrix")))
+}
+
+.minKappa <- function(thr=1e5, # the target condnum
+                      init=0.005, # init kappa
+                      k2A #function from kappa:-> matrix whose condnumm is compute 
+) {
+  x_p <- init
+  while (TRUE) {
+    eigrange <-  .CHM_eigrange(k2A(kappa=x_p))
+    condnum_p <- eigrange[2L]/eigrange[1L]
+    if (condnum_p<thr) break
+    x_p <- x_p*10
+  } 
+  x_m <- x_p/(dlog <- 10)
+  while (TRUE) {
+    eigrange <-  .CHM_eigrange(k2A(kappa=x_m))
+    condnum_m <- eigrange[2L]/eigrange[1L]
+    if (condnum_m<thr) break
+    x_m <- x_m * 9
+  }
+  # assuming a log-log relationship:
+  slope <- (log(condnum_p)-log(condnum_m))/(log(x_p)-log(x_m))
+  # if (slope>0) return(x_p) # unexpected : condnum increases with kappa
+  # targeting a condnum 1e5 for chol factor
+  minKappa <- exp((log(thr)-log(condnum_m))/slope)*x_p 
+  # decrease the lower bound if possible
+  fac <- exp(log(2)/slope) # < 1 if slope <0
+  while ({
+    eigrange <- .CHM_eigrange(k2A(kappa=minKappa))
+    eigrange[2L]/eigrange[1L] < thr/2}) {
+    minKappa  <- minKappa*fac
+  }
+  minKappa/fac
+}
+
+.kappa_inits_from_spde_prior <- function(spde2) {
+  # use heuristically the INLA priors (see https://groups.google.com/g/r-inla-discussion-group/c/eqMhlbwChkQ?pli=1) 
+  theta_system <- spde2$BLC[c("tau.1","kappa.1"),] # as in .calc_IMRF_Qmat() 
+  prior_param <- spde2$f$hyper.default$theta1$param
+  mu <- prior_param[1:2]+theta_system[,1]
+  sd <- 1/sqrt(prior_param[c(3,6)]) # prior_param[c(3:6)] appears to store the precision matrix of the gaussian (see above link)
+  fac <- sqrt(7) # so that pchisq(2 fac^2 , df=2) ~0.999
+  prior_spec <- theta_system[,2:3] %*% cbind(mu-fac*sd,mu,mu+fac*sd)
+  kappa_spec <- prior_spec[2,]
+  names(kappa_spec) <- NULL
+  kappa_spec
+}
+
 
 IMRF <- function(...) {
   canonize <- function(corrPars_rd, cP_type_rd, moreargs_rd, checkComplete, ...) {
@@ -31,57 +84,18 @@ IMRF <- function(...) {
   }
   calc_corr_from_dist <- function(ranFix,char_rd,distmat,...) { stop("This should not be called for IMRF terms") }
   #
-  calc_moreargs <- function(KAPPAMAX, IMRF_pars, ...) {
+  calc_moreargs <- function(KAPPAMAX, IMRF_pars, processed, rd, ...) {
     moreargs_rd <- list(KAPPAMAX=KAPPAMAX) 
-    if ( ! is.null(spde_info <- IMRF_pars$model)) {
-      Cmat <- spde_info$param.inla$M0
-      if (IMRF_pars$SPDE_alpha==2) { # nu=1, alpha=nu+d/2=2
-        Gmat <- spde_info$param.inla$M1
-        Gzut <- Cholesky(Gmat)
-        # Here we may see that G is numerically singular with a small negative eigenvalue:
-        eigvals_chol_G <- suppressWarnings(diag(as(Gzut,"sparseMatrix"))) 
-        posbad <- which.min(eigvals_chol_G)
-        badgval <- eigvals_chol_G[posbad]
-        cval <- Cmat@x[posbad]
-        # minimum value of kappa such that minimal eigen of Qmat is '1e-12' (?)
-        moreargs_rd$minKappa <- sqrt((1e-5*sqrt(cval)-badgval)/cval) # solving (k^2 cval+badgval)^2 / cval =1e-10
-      } else if (IMRF_pars$SPDE_alpha==1) { # nu=0, alpha=nu+d/2=1
-        Gmat <- spde_info$param.inla$M2
-        Gzut <- Cholesky(Gmat)
-        # Here we may see that G is numerically singular with a small negative eigenvalue:
-        eigvals_chol_G <- suppressWarnings(diag(as(Gzut,"sparseMatrix"))) 
-        posbad <- which.min(eigvals_chol_G)
-        badgval <- eigvals_chol_G[posbad]
-        cval <- Cmat@x[posbad]
-        moreargs_rd$minKappa <- sqrt(1e-10-badgval) # solving k^2 cval+badgval=1e-10
-      } else {
-        # more generally there are two matrices G_1 and G_2 in $M1 and $M2
-        x_p <- 0.005
-        while (TRUE) {
-          chol_p <- Cholesky(.calc_IMRF_Qmat(IMRF_pars,kappa=x_p))
-          min_p <- min(suppressWarnings(diag(as(chol_p,"sparseMatrix"))))
-          if (min_p>1e-05) break
-          x_p <- x_p*10
-        } 
-        x_m <- x_p/(dlog <- 10)
-        while (TRUE) {
-          chol_m <- Cholesky(.calc_IMRF_Qmat(IMRF_pars,kappa=x_m))
-          min_m <- min(suppressWarnings(diag(as(chol_m,"sparseMatrix"))))
-          if (min_m > 0) break
-          x_m <- x_m * 9
-        }
-        # assuming a log-log relationship:
-        slope <- (log(min_p)-log(min_m))/log(dlog)
-        # targeting a min eigenvalue=1e-10 hence 1e-05 for chol factor
-        minKappa <- exp((log(1e-5)-log(min_p))/slope)*x_p 
-        while ((min(suppressWarnings(diag(as(Cholesky(.calc_IMRF_Qmat(IMRF_pars,kappa=minKappa)),"sparseMatrix")))))<5e-6) {
-          minKappa  <- minKappa*exp(log(2)/slope)
-        }
-        moreargs_rd$minKappa <- minKappa
-      }
+    if ( ! is.null(spde_info <- IMRF_pars$model)) { # alternative being the regular grid stuff (and note that this calc_moreargs() is not called by a corrFamily term)
+      
+      range_factor <- .kappa_range_factor(mesh=spde_info$mesh, IMRF_design=spde_info, EEV_required=FALSE)
+      moreargs_rd$minKappa <- 0.01/range_factor
+      
+      # here I removed a lot of experimental code  => block in devel_code_and_never_tested_functions.R and
     }
     return(moreargs_rd)
   }
+  
   make_new_corr_list <- function(object, old_char_rd, control_dist_rd, geonames, newuniqueGeo, olduniqueGeo, which_mats, make_scaled_dist, new_rd) {
     ## hmmm is that useful ?
   }
@@ -93,7 +107,7 @@ IMRF <- function(...) {
                  names_for_post_process_parlist= c("kappa"),
                  canonize=canonize,
                  calc_inits=calc_inits,
-                 calc_corr_from_dist=calc_corr_from_dist,
+                 calc_corr_from_dist=calc_corr_from_dist, # fake function for catching programming errors
                  calc_moreargs=calc_moreargs
                  #,make_new_corr_list=make_new_corr_list
   ),
@@ -137,58 +151,47 @@ IMRF <- function(...) {
   return(uniqueScal)
 }
 
-# optimized 2D version of locatePointinvT
-.locate_in_tv <- function(points, ## the points to be located
-                          tv, meshloc## mesh$graph$tv, and the mesh vertices coordinates mesh$loc
-                          ) {
+.locate_in_tv <- function(points, # the 'points to mesh', p2m in INLA
+                          tv, 
+                          meshloc
+) {
+  if (is.data.frame(points)) points <- as.matrix(points)
+  
+  # (1) p2m.t : Identify a triangle to which each point belongs  
+  p2m.t <- geometry::tsearch(meshloc[,1], meshloc[,2], tv, points[,1], points[,2]) 
+  # incidentally, when the data are those used to build the mesh, p2m.t (for redundant lcoations in the data) is in <mesh>$idx$loc
+  # so in some case we could skip this first step. But  for generally small benefits, it seems too messy to identify these cases and handle  redundancies... 
+  outofmesh <- is.na(p2m.t)
+  p2m.t[ outofmesh] <- NA_integer_
+  
+  # (2) p2m.b : compute barycentric coordinates of each point in its triangle 
+  p2m.b <- matrix(NA,nrow=nrow(points),ncol=3)
+  #for (pt_it in which( ! outofmesh )) p2m.b[pt_it,] <- cart2bary(meshloc[tv[p2m.t[pt_it],],1:2], points[pt_it,,drop=FALSE]) # slow pbbly bc many calls to external fn
   pmul <- cbind(-1,diag(nrow =2))
-  nr <- nrow(points)
-  p2m.t <- rep(NA_integer_, nr)
-  p2m.b <- matrix(NA,nrow=nr,ncol=3)
-  solve_tvM_table <- vector("list", nrow(tv))
-  solve_origins_table <- vector("list", nrow(tv))
-  origins <- meshloc[tv[,1],1:2]
-  for (tv_it in seq(nrow(tv))) {
-    simplex <- meshloc[tv[tv_it,],1:2]
+  for (pt_it in which( ! outofmesh )) { #
+    simplex <- meshloc[tv[p2m.t[pt_it],],1:2] # coordinate of vertices of identified triangle
     vM <- pmul %*% simplex # is simplex[-1,]-simplex[1,] for each simplex
     detVM <- vM[4]*vM[1]-vM[2]*vM[3]
+    dpt <- (points[pt_it,]-simplex[1L,])
     if (detVM==0) { ## which should not occur if the mesh is OK
-      solve_tvM_table[[tv_it]] <- ginv(t(vM))
-    } else solve_tvM_table[[tv_it]] <- matrix(c(vM[c(4,3,2,1)]*c(1,-1,-1,1))/detVM,ncol=2) #solve(t(vM))
-    solve_origins_table[[tv_it]] <- solve_tvM_table[[tv_it]] %*% origins[tv_it,]
+      solve_vM <- ginv(vM) 
+      p2m.b[pt_it,2:3] <- dpt %*% solve_vM    
+    } else {
+      W1 <- (vM[4]*dpt[1]-vM[2]*dpt[2])/detVM
+      W2 <- (vM[1]*dpt[2]-vM[3]*dpt[1])/detVM
+      p2m.b[pt_it,2:3] <- c(W1,W2)
+    }
   }
-  solve_tvMs <- do.call(rbind,solve_tvM_table)
-  solve_origins <- unlist(solve_origins_table)
-  allWeights <- solve_tvMs %*% t(points) - solve_origins
-  seqpos <- seq(nrow(tv))*2
-  allmW <- pmin(1-allWeights[seqpos-1L,]-allWeights[seqpos,],allWeights[seqpos-1L,],allWeights[seqpos,]) ## minimum coord in each triangle
-  for (pt_it in seq_len(nr)) {
-    #point <- points[pt_it,] ## drops...
-    #Weights <- solve_tvMs %*% point - solve_origins
-    #Weights <- allWeights[,pt_it]
-    #mW <- pmin(1-Weights[seqpos-1L]-Weights[seqpos],Weights[seqpos-1L],Weights[seqpos]) ## minimum coord in each triangle
-    mW <- allmW[,pt_it]
-    which_t <- which(mW>0) # If the point is in a triangle there is one such value
-    if ( length(which_t) != 1L ) {
-      # either the length is 0 (point seems out of tesselation) = we take the best candidate triangle and apply the next test
-      #    or langth>1: numerical precision issue => a point appears to be in two triangles. We again take the best candidate.
-      # => which.max() in both cases
-      which_t <- which.max(mW)
-    } 
-    if (mW[which_t] > - 1e-12) { # numerical threshold for out-of-mesh
-      p2m.t[pt_it] <- which_t
-      pos <- seqpos[which_t]
-      Weights <- allWeights[,pt_it]
-      p2m.b[pt_it,] <- c(1-Weights[pos-1L]-Weights[pos],Weights[pos-1L],Weights[pos])
-    } # else (point is out of tesselation) p2m.t remains NA_integer and p2m.b remains NA
-  }
+  p2m.b[,1] <- 1 - p2m.b[,2] - p2m.b[,3]
+  
+  
   return(list(p2m.t=p2m.t, # vector (rather than INLA's 1-col matrix)
               p2m.b=p2m.b))
 }
 
 .spaMM_spde.make.A <- function(mesh, points) { # replacement for inla.spde.make.A()
-  locations <- .locate_in_tv(points=points, #[1:2,]+0.01,
-                             tv=mesh$graph$tv,
+  locations <- .locate_in_tv(points=points, # the 'points to mesh', p2m in INLA
+                             tv = mesh$graph$tv, 
                              meshloc=mesh$loc[,1:2])
   ti <- locations$p2m.t # vector !
   ii <- which(ok <- (! is.na(ti)))
@@ -197,16 +200,20 @@ IMRF <- function(...) {
                     i = rep(ii, 3), 
                     j = as.vector(mesh$graph$tv[ti[ii], ]), 
                     x = as.vector(locations$p2m.b[ii, ]))
-  A <- drop0(A) 
+  A <- drop0(A) ## there is some noise (or at least, there was en using INLA::inla.spde.make.A() )
+  attr(A,"is_incid") <- (length(uAx <- unique(A@x))==1L && 
+                           uAx==1 )# correct test given constraints on the barycentric coordinates (rows of zero for out-of-mesh points also OK in incidence matrix)
   #list(t = ti, bary = locations$p2m.b, A = A, ok = ok, A = A) # this is what inla.mesh.project.inla.mesh returns
   return(A)
 }
 
 .calc_AMatrix_IMRF <- function(term, # its attr(.,"pars") carries grid parameters
-                               data, # only for .get_dist_nested_or_not() 
+                               data, # only for .get_dist_nested_or_not()  
                                dist.method, old_AMatrix_rd=NULL, 
-                               scale) { ## scale is in steps units so does not depend on the step length in users' coordinates
-  pars <- attr(attr(term,"type"),"pars")
+                               scale,
+                               pars=attr(attr(term,"type"),"pars"), # for the INLA stuff only spde_info <- pars$model is needed
+                               fit.=FALSE
+                               ) { ## scale is in steps units so does not depend on the step length in users' coordinates
   blob <- .get_dist_nested_or_not(term, data=data, distMatrix=NULL, uniqueGeo=NULL, 
                                   dist.method = dist.method, needed=c(uniqueGeo=TRUE),  geo_envir=NULL)
   uniqueScal <- blob$uniqueGeo
@@ -215,24 +222,15 @@ IMRF <- function(...) {
   if ( ! is.null(spde_info <- pars$model)) { # F I X M E does not handle nesting
     # Amatrix <- INLA:::inla.spde.make.A(spde_info$mesh, as.matrix(uniqueScal)) 
     if (inherits(spde_info,"inla.spde2")) {
-      Amatrix <- NULL
-      if (identical(.spaMM.data$options$INLA_A,TRUE)) { # *TRIES* to use INLA. OK is INLA not available
-        Amatrix <- .do_call_wrap("inla.spde.make.A", 
-                                 arglist=list(mesh=spde_info$mesh, # or simply mesh=spde_info, as doc'ed
-                                              loc=as.matrix(uniqueScal)), 
-                                 pack="INLA")
-        # for debugging, use trace(INLA::inla.spde.make.A) to see the fmesher.args args contained in "mesh", etc.
-      } # Amatrix still NULL if INLA not available.
-      if (is.null(Amatrix)) {
-        Amatrix <- .spaMM_spde.make.A(mesh=spde_info$mesh, # FIXME ? save the matrix precomputations from .locate_in_tv() ?
-                                           points=as.matrix(uniqueScal))
-      } else Amatrix <- drop0(Amatrix) ## there is some noise
+      Amatrix <- .spaMM_spde.make.A(mesh=spde_info$mesh, 
+                                      points=as.matrix(uniqueScal))
+      if (fit. && any(rowSums(Amatrix)<0.99)) message("Some 'data' locations appear out of the mesh. Mismatched inputs, or strong mesh cutoff?") # check this only for the fit.
       # Amatrix rows are, with the default arguments, ordered as uniqueScal rows
       rownames(Amatrix) <- uniqueScal_levels_blob$factor # not levels(.) which are alphanumerically ordered !  
       return(Amatrix)
     } else stop("Unhandled model class for IMRF")
   }
-  # ELSE case or regular grid+Wendland
+  # ELSE case of regular grid+Wendland
   if ( ! is.null(old_AMatrix_rd)) {
     uniqueScal <- .to_grid_coord(uniqueScal,steplen= attr(old_AMatrix_rd,"steplen"),
                                  origin=attr(old_AMatrix_rd,"origin")) #IXME would be nicer if ti kept row names.
@@ -280,24 +278,64 @@ IMRF <- function(...) {
   if (any(isIMRF, na.rm=TRUE)) {
     if (is.null(corr_info$AMatrices)) corr_info$AMatrices <- list()
     for (rd in which(isIMRF)) {
-      corr_info$AMatrices[[as.character(rd)]] <- .calc_AMatrix_IMRF(term=exp_barlist[[rd]], # its attr(.,"pars") carries grid parameters
-                                                                    data=data, 
-                                                     dist.method=control_dist[[rd]][["dist.method"]], scale=scale)
+      corr_info$AMatrices[[as.character(rd)]] <- .calc_AMatrix_IMRF(
+        term=exp_barlist[[rd]], # its attr(.,"pars") carries grid parameters
+        data=data, dist.method=control_dist[[rd]][["dist.method"]], scale=scale, fit.=TRUE)
     }
   }
 }
 
+.assign_AMatrices_corrFamily <- function(corr_info, Zlist, exp_barlist, data, control_dist, 
+                                         scale=2.5, ## scale value from Nychka et al 2015 http://dx.doi.org/10.1080/10618600.2014.914946, p. 584
+                                         ...) { 
+  corr_types <- corr_info$corr_types
+  is_corrF <- (corr_types=="corrFamily")
+  if (any(is_corrF, na.rm=TRUE)) {
+    if (is.null(corr_info$AMatrices)) corr_info$AMatrices <- list()
+    for (rd in which(is_corrF)) {
+      Af <- corr_info$corr_families[[rd]][["Af"]] # call for fit
+      if ( ! is.null(Af)) { # The corrFamily depends on an A matrix
+        corr_info$AMatrices[[as.character(rd)]] <- Af(newdata=data, 
+                                                      term=exp_barlist[[rd]],
+                                                      dist.method=control_dist[[rd]][["dist.method"]],
+                                                      fit.=TRUE, scale=scale)
+      }
+    }
+  }
+}
+
+
+
 .get_new_AMatrices <- function(object, newdata) { 
-  amatrices <- attr(object$ZAlist,"AMatrices")
+  if (object$spaMM.version > "3.10.22") {
+    amatrices <- object$ranef_info$sub_corr_info$AMatrices
+  } else amatrices <- attr(object$ZAlist,"AMatrices")
   exp_spatial_terms <- attr(object$ZAlist,"exp_spatial_terms")
-  isIMRF <- (attr(exp_spatial_terms,"type") == "IMRF")
+  corr_types <- attr(exp_spatial_terms,"type")
+  isIMRF <- (corr_types == "IMRF")
   for (rd in which(isIMRF)) {
     char_rd <- as.character(rd)
-    perm <- attr(amatrices[[char_rd]], "perm") # provided by .assign_geoinfo_and_LMatrices_but_ranCoefs()
+    perm <- attr(amatrices[[char_rd]], "perm") # the 'perm' slot of a CHMfactor
     amatrices[[char_rd]] <- .calc_AMatrix_IMRF(term=exp_spatial_terms[[rd]], data=newdata, 
                                          dist.method=.get_control_dist(object,char_rd)$dist.method, 
                                          old_AMatrix_rd = amatrices[[char_rd]])
     if ( ! is.null(perm)) amatrices[[char_rd]] <- .subcol_wAttr(amatrices[[char_rd]], j=perm, drop=FALSE)
+  }
+  corr_types <- object$ranef_info$sub_corr_info$corr_types
+  is_corrF <- (corr_types=="corrFamily")
+  if (any(is_corrF, na.rm=TRUE)) {
+    corr_families <- .get_from_ranef_info(object)$corr_families
+    for (rd in which(is_corrF)) {
+      char_rd <- as.character(rd)
+      perm <- attr(amatrices[[char_rd]], "perm") # the 'perm' slot of a CHMfactor
+      Af <- corr_families[[rd]][["Af"]] # call for new A matrix
+      if ( ! is.null(Af)) { # The corrFamily depends on an A matrix
+        amatrices[[char_rd]] <- Af(newdata=newdata, 
+                                            term=exp_spatial_terms[[rd]])
+        if ( ! is.null(perm)) amatrices[[char_rd]] <- .subcol_wAttr(amatrices[[char_rd]], j=perm, drop=FALSE)
+      } else if ( ! is.null(amatrices[[char_rd]])) # check presence of Amatrix in original fit object =>
+        warning('is.null(corr_families[[rd]][["Af"]]) is suspect here in .get_new_AMatrices()') # __F I X M E__ remove check? might be helpful to catch pb if I change the interface for AMatrix
+    }
   }
   return(amatrices)
 }
@@ -498,21 +536,21 @@ IMRF <- function(...) {
 }
 
 
-.strip_IMRF_args <- function (term) { ## compare to lme4:::nobars_ ; 'term is formula or any term, recursively
+.strip_cF_args <- function (term) { ## compare to lme4:::nobars_ ; 'term is formula or any term, recursively
   if (!("|" %in% all.names(term))) 
     return(term)
-  if (term[[1]] == as.name("IMRF") || term[[1]] == as.name("multIMRF")) {
+  if (term[[1]] == as.name("IMRF") || term[[1]] == as.name("multIMRF") || as.vector(term[[1]],"character") %in% .spaMM.data$keywords$all_cF) {
     return(term[c(1,2)]) # (lhs|rhs) without the pars 
   }
   if (length(term) == 2) {
-    nb <- .strip_IMRF_args(term[[2]])
+    nb <- .strip_cF_args(term[[2]])
     if (is.null(nb)) 
       return(NULL)
     term[[2]] <- nb
     return(term)
   }
-  nb2 <- .strip_IMRF_args(term[[2]])
-  nb3 <- .strip_IMRF_args(term[[3]])
+  nb2 <- .strip_cF_args(term[[2]])
+  nb3 <- .strip_cF_args(term[[3]])
   if (is.null(nb2)) 
     return(nb3)
   if (is.null(nb3)) 

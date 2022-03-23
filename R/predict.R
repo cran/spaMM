@@ -112,7 +112,8 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
                        cov_newLv_fixLv_list, cov_fixLv_oldv_list, fixZAlist=NULL ,
                        diag_cov_newLv_newLv_list,
                        object,
-                       as_tcrossfac_list=FALSE
+                       as_tcrossfac_list=FALSE,
+                       sub_corr_info=object$ranef_info$sub_corr_info
 ) {
   if (as_tcrossfac_list && ! is.null(fixZAlist)) {stop("Incompatible arguments: as_tcrossfac_list=TRUE and use of fix_X_ZAC object")}
   newnrand <- length(newinold)
@@ -122,7 +123,11 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
     old_rd <- newinold[new_rd]
     exp_ranef_types <- attr(newZAlist,"exp_ranef_types")
     isEachNewLevelInOld <- attr(cov_newLv_oldv_list[[new_rd]],"isEachNewLevelInOld") ## non autocorr effect: a vector of booleans indicating whether new is in old (qualifies cols of Cnewold)
-    if (exp_ranef_types[new_rd] %in% c("IMRF","adjacency","corrMatrix")) { ## in that case the newLv = the oldLv Cno=Coo... and actually the Evar term is zero 
+    if (exp_ranef_types[new_rd] %in% c("IMRF","adjacency","corrMatrix") ||
+        ( identical(sub_corr_info$corr_types[[old_rd]],"corrFamily") && ! sub_corr_info$corr_families[[old_rd]]$need_Cnn)
+       ) { ## in that case the newLv = the oldLv Cno=Coo... and actually the Evar term is zero 
+      # if this special case is not defined then the fallback code fails bc the diagonal of Cnn is sought when Cnn is not found.
+      # One could adapt the fallback code (contribute zero's when the $diag_ is not found) but this would allow cryptic bugs.
       if ( ! is.null(fixZAlist)) {
         terme <- Matrix(0,nrow=nrow(newZAlist[[new_rd]]),ncol=nrow(fixZAlist[[new_rd]]))
       } else {
@@ -544,8 +549,12 @@ if (FALSE) {# This fn is documentation,
 
 .make_new_corr_lists <- function(object,
                                  locdata, ## a list of arrays for selected ranefs, with selected coordinates, if 'preprocessed' by get_predCov_var_fix(), 
-                                          ## or a single data frame with all coordinates for all ranefs if from within .calc_new_X_ZAC()
-                                 which_mats, newZAlist, newinold, fix_info=NULL,
+                                          ## or a single data frame with all coordinates for all ranefs if from within .calc_new_X_ZAC().
+                                          ## This is currently used only  when  ! is.null(corrfamily_old_rd$calc_corr_from_dist), 
+                                          ## to provide newuniqueGeo and geonames for distance matrix construction.
+                                 which_mats, 
+                                 newZAlist, # apparently under-used in my first corrFamily programming. 
+                                 newinold, fix_info=NULL,
                                  invCov_oldLv_oldLv_list) {
   newLv_env <- new.env(parent=emptyenv())
   if (which_mats$no) {
@@ -553,8 +562,7 @@ if (FALSE) {# This fn is documentation,
   } else newLv_env$cov_newLv_oldv_list <- .make_corr_list(object,newZAlist=NULL) # we always need a non trivial value
   newLv_env$cov_newLv_newLv_list <- vector("list",length(newLv_env$cov_newLv_oldv_list))
   newLv_env$diag_cov_newLv_newLv_list <- vector("list",length(newLv_env$cov_newLv_oldv_list))
-  ranefs <- attr(newZAlist,"exp_ranef_strings") 
-  ## The following comment may be obsolete: ## only the matrices that get a "ranefs" attribute will be used in .compute_ZAXlist()
+  ranefs <- attr(newZAlist,"exp_ranef_strings") # "(.|.)" "adjacency" ...
   if (any(unlist(which_mats))) {
     strucList <- object$strucList
     spatial_terms <- attr(object$ZAlist,"exp_spatial_terms")
@@ -562,6 +570,7 @@ if (FALSE) {# This fn is documentation,
       old_rd <- newinold[new_rd]
       if ( which_mats$no || which_mats$nn[new_rd]) {
         corr.model <- attr(strucList[[old_rd]],"corr.model")
+        corrfamily_old_rd <- .get_from_ranef_info(object)$corr_families[[old_rd]]
         if (is.null(corr.model)) {
           if ( ! is.null(fix_info)) {
             if (which_mats$no) newLv_env$cov_newLv_oldv_list[[new_rd]] <- 
@@ -577,7 +586,7 @@ if (FALSE) {# This fn is documentation,
               ## BUT slicing does not occur when any which_mats$nn[new_rd] is true. 
             } else { # occurs even in simulate if (new)ZAlist is an incidence matrix
               # and further tested in particular by 'HACorn' in test-predVar.
-              newLv_env$diag_cov_newLv_newLv_list[[new_rd]] <- rep(1,ncol(newZAlist[[old_rd]])) # allowing subsetting
+              newLv_env$diag_cov_newLv_newLv_list[[new_rd]] <- rep(1,ncol(newZAlist[[new_rd]])) # allowing subsetting
             }
           }
         } else if ( corr.model=="random-coef") {
@@ -670,24 +679,28 @@ if (FALSE) {# This fn is documentation,
         } else if (corr.model == "IMRF") {
           ## in this case a new A matrix (by .get_new_AMatrices()) must be computed (elsewhere: it goes in newZAlist)
           ## but the corr matrix between the nodes is unchanged as node positions do not depend on response position => nn=no
-          if (which_mats$no || which_mats$nn[new_rd]) uuColdold <- .tcrossprod(object$strucList[[old_rd]], perm=TRUE) # perm=TRUE means for ranefs permuted as in ZA
-          if (which_mats$no) newLv_env$cov_newLv_oldv_list[[new_rd]] <- structure(uuColdold,ranefs=ranefs[[new_rd]]) ## always necess for .compute_ZAXlist(XMatrix = cov_newLv_oldv_list, ZAlist = newZAlist)
-          ## correct code but should be useless:
-          # warning("Suspect code: covariance matrix computation requested for IMRF term.")
-          # if (which_mats$nn[new_rd]) {
-          #   cov_newLv_newLv_list[[new_rd]] <- uuColdold
-          # } else diag_cov_newLv_newLv_list[[new_rd]] <- diag(x=uuColdold)
-        } else { ## all models where a correlation matrix must be computed from a distance matrix => $calc_corr_from_dist() needed
+          .make_new_corr_lists_IMRFs(newLv_env, which_mats,
+                                     object, # shows that direct access to $strucList[[old_rd]] may be useful in generic code
+                                     ranefs, new_rd, old_rd)
+        } else if (corr.model == "corrFamily" && 
+                    ! is.null(corrfamily_old_rd$make_new_corr_lists)) { 
+          # Should write in newLv_env
+          corrfamily_old_rd$make_new_corr_lists(newLv_env=newLv_env, which_mats=which_mats, ranFix=object$ranFix,
+                                                ranefs=ranefs, 
+                                                newZAlist=newZAlist, new_rd=new_rd, old_rd=old_rd, 
+                                                corrfamily=corrfamily_old_rd, # easy access to elements added by .preprocess_corrFamily 
+                                                object=object # avoid using it... but see comment on IMRFs above
+                                                )
+        } else if ( ! is.null(corrfamily_old_rd$calc_corr_from_dist) ) { 
+          ## all models where a correlation matrix must be computed from a distance matrix => $calc_corr_from_dist() needed
+          
           old_char_rd <- as.character(old_rd)
-          if ( ! is.null(fix_info)) {
-            info_olduniqueGeo <- fix_info$newuniqueGeo
-          } else {
-            info_olduniqueGeo <- attr(object,"info.uniqueGeo") 
-          }
           # olduniqueGeo needed in all cases
-          if ( ! is.array(info_olduniqueGeo)) { ## test TRUE for attr(object,"info.uniqueGeo") for version > 2.3.18:
-            olduniqueGeo <- info_olduniqueGeo[[old_char_rd]]
-          } else olduniqueGeo <- info_olduniqueGeo 
+          if ( ! is.null(fix_info)) {
+            olduniqueGeo <- fix_info$newuniqueGeo[[old_char_rd]]
+          } else {
+            olduniqueGeo <- .get_old_info_uniqueGeo(object, char_rd=old_char_rd) 
+          }
           if ( is.data.frame(locdata)) {
             geonames <- colnames(olduniqueGeo) 
             newuniqueGeo <- locdata[,geonames,drop=FALSE] ## includes nesting factor
@@ -695,9 +708,14 @@ if (FALSE) {# This fn is documentation,
             newuniqueGeo <- locdata[[as.character(old_rd)]] ## preprocessed, [,geonames,drop=FALSE] not necess ## includes nesting factor 
             geonames <- colnames(newuniqueGeo)
           }
-          ## distance matrix and then call to correl fn:
+          
+          ## ... distance matrix and then call to correl fn ...
+          
           control_dist_rd <- .get_control_dist(object, old_char_rd)
-          if (corr.model=="AR1") {
+          if (corr.model=="AR1" || 
+               identical(corrfamily_old_rd$levels_type,"time_series") # identical because Matern, etc. are corrfamily_old_rd without levels_type
+              # ARp) and ARMA() previously reached here, but no longer as they have a $make_new_corr_lists now (but this does not handle nesting)
+             ) { 
             ### older, non nested code:
             # if (which$no) resu$uuCnewold <- proxy::dist(newuniqueGeo,olduniqueGeo) 
             # if (which$nn) resu$uuCnewnew <- proxy::dist(newuniqueGeo)
@@ -766,7 +784,10 @@ if (FALSE) {# This fn is documentation,
                 uuCnewnew[isInfnn] <- Inf
               }
             }
-          } else stop("Unhandled corr.model.")
+          } else stop("Unhandled 'corr.model' (make_new_corr_lists() missing from corrFamily descriptor?).")
+          
+          # ... Finally fill the cov lists ...
+          
           if (object$spaMM.version<"2.4.49") {
             if (which_mats$no) newLv_env$cov_newLv_oldv_list[[new_rd]] <- structure(.calc_corr_from_dist(uuCnewold, object, corr.model,char_rd=old_char_rd),
                                                                           corr.model=corr.model,
@@ -774,7 +795,7 @@ if (FALSE) {# This fn is documentation,
             if (which_mats$nn[new_rd]) newLv_env$cov_newLv_newLv_list[[new_rd]] <- .calc_corr_from_dist(uuCnewnew, object, corr.model,char_rd=old_char_rd)
           } else {
             if (which_mats$no) {
-              cov_newLv_oldv <- .get_from_ranef_info(object)$corr_families[[old_rd]]$calc_corr_from_dist(
+              cov_newLv_oldv <- corrfamily_old_rd$calc_corr_from_dist(
                 ranFix=object$ranFix, char_rd=old_char_rd, distmat=uuCnewold)
               # if (attr(strucList[[old_rd]],"need_gmp") && 
               if (inherits(invCov_oldLv_oldLv_list[[old_rd]],"bigq")) cov_newLv_oldv <- structure(gmp::as.bigq(cov_newLv_oldv),
@@ -783,18 +804,18 @@ if (FALSE) {# This fn is documentation,
             }
             if (which_mats$nn[new_rd]) {
               newLv_env$cov_newLv_newLv_list[[new_rd]] <- 
-                .get_from_ranef_info(object)$corr_families[[old_rd]]$calc_corr_from_dist(
+                corrfamily_old_rd$calc_corr_from_dist(
                   ranFix=object$ranFix, char_rd=old_char_rd, distmat=uuCnewnew)
             } else {
               newLv_env$diag_cov_newLv_newLv_list[[new_rd]] <- rep(1,nrow(newuniqueGeo)) # just 1 must suffice except when we subset (slice...)
-              #   .get_from_ranef_info(object)$corr_families[[old_rd]]$calc_corr_from_dist(
+              #   corrfamily_old_rd$calc_corr_from_dist(
               # ranFix=object$ranFix, char_rd=old_char_rd, distmat=diag(x=uuCnewnew))
             }
           }
-        }
-      }
-    }
-  }
+        } # END all models where a correlation matrix must be computed from a distance matrix
+      } # end if ( which_mats$no || which_mats$nn[new_rd])
+    } # end for (new_rd in seq_along(newLv_env$cov_newLv_oldv_list)) 
+  } # end if (any(unlist(which_mats))) 
   return(newLv_env)
 }
 
@@ -1110,7 +1131,8 @@ if (FALSE) {# This fn is documentation,
     new_X_ZACblob <- .calc_new_X_ZAC_mv(object=object, newdata=newdata, re.form = re.form,
                                      variances=variances, invCov_oldLv_oldLv_list=invCov_oldLv_oldLv_list)
   } else new_X_ZACblob <- .calc_new_X_ZAC(object=object, newdata=newdata, re.form = re.form,
-                                   variances=variances, invCov_oldLv_oldLv_list=invCov_oldLv_oldLv_list) ## (fixme) still some unnecessary computation for predict(object)
+                                   variances=variances, invCov_oldLv_oldLv_list=invCov_oldLv_oldLv_list
+                                   ) 
   #
   ## (1) computes fv (2) compute predVar
   ##### fv

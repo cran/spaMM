@@ -13,12 +13,14 @@ fitmv(submodels, data, fixed=NULL, init=list(), lower=list(), upper=list(),
 }
 \arguments{
   \item{submodels}{
-A list of sublists each specifying a model for each univariate response. The names given to each submodel in the main list are currently ignored. The names and syntax of elements within each sublist are those of a \code{fitme} call. In most cases, each sublist should not contain arguments provided as formal arguments of \code{fitmv} itself (with the possible exception fo \code{fixed}).
+A list of sublists each specifying a model for each univariate response. The names given to each submodel in the main list are currently ignored. The names and syntax of elements within each sublist are those of a \code{fitme} call. In most cases, each sublist should not contain arguments whose names are those of formal arguments of \code{fitmv} itself (with the possible exception fo \code{fixed}). 
+
+\code{prior.weights} (or better, \code{weights.form}), if any, should be specified as part of a submodel. 
 }
   \item{data}{
 A data frame containing the variables in the response and the model formulas.
 }
-  \item{fixed}{A list of fixed values of the parameters controlling random effects. The syntax is that of the same argument in \code{fitme} (the optional \code{fixed} argument in each sublist of \code{submodels} may also be used but this feature may be confusing).   
+  \item{fixed}{A list of fixed values of the parameters controlling random effects. The syntax is that of the same argument in \code{fitme} (the optional \code{fixed} argument in each sublist of \code{submodels} may also be used but this feature may be confusing). Fixed \code{phi} values must be specified as a list, e.g., \code{fixed=list(phi=list("2"=0.1))} to set the value for the second submodel.   
 }
   \item{init, lower, upper}{
 Lists of initial values or bounds. The syntax is that of the same arguments in \code{fitme}. In these lists, random effects should be indexed according to their order of appearance in the total model (see Details). Any \code{init}, \code{lower}, or \code{upper} in a sublist of \code{submodels} will be ignored.   
@@ -42,7 +44,7 @@ The matching of random-effect terms occurs after expansion of \code{\link{multIM
 \bold{Capacities and limitations}:\cr
 Practically all features of models that can be fitted by \code{fitme} should be available: this includes all combinations of GLM response families, residual dispersion models, and all types of random-effect terms, whether autocorrelated or not. Among the arguments handled through the \ldots, \code{covStruct}, \code{distMatrix}, \code{corrMatrix} should be effective; \code{control.HLfit$LevenbergM} and \code{verbose=c(TRACE=TRUE)} will work but some other controls available in \code{fitme} may not. 
 
-The code{\link{multi}} family-like syntax for multinomial models should not be used, but \code{fitmv} could provide other means to model multinomial responses.
+The \code{\link{multi}} family-like syntax for multinomial models should not be used, but \code{fitmv} could provide other means to model multinomial responses.
 
 Most post-fit functions work, at least with default arguments. This includes point \code{predict}ion and prediction variances calculations sensu lato, including with \code{newdata}; but also \code{simulate}, \code{spaMM_boot}, \code{confint}, \code{anova}, \code{update_resp}, and \code{update}. Usage of the \code{re.form} argument of some of these functions has not been systematically checked.
 

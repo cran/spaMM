@@ -3,9 +3,9 @@
                                 user.lower=list(),user.upper=list(),
                                 corr_types=NULL, ranFix=list(),
                                 optim.scale, moreargs=NULL, rC_transf=.spaMM.data$options$rC_transf) {
-  lower <- upper <- init.optim   ## init.optim not further used...
+  lower <- upper <- init.optim   
   for (it in seq_along(corr_types)) {
-    corr_type <- corr_types[it]
+    corr_type <- corr_types[[it]]
     if (! is.na(corr_type)) {
       char_rd <- as.character(it)
       if (corr_type %in% c("SAR_WWt","adjacency") && 
@@ -163,8 +163,27 @@
         upper$corrPars[[char_rd]] <- upper_cP
         ## end else if Matern/Cauchy case
       } else if (corr_type =="corrFamily") { # that looks like a quick patch but .calc_inits_corrFamily() checks the user input, which is required here. 
-        lower$corrPars[[char_rd]] <- user.lower$corrPars[[char_rd]]
-        upper$corrPars[[char_rd]] <- user.upper$corrPars[[char_rd]]
+        parnames <- names(init.optim$corrPars[[char_rd]]) 
+        if (length(parnames)) {
+          user_lo <- user.lower$corrPars[[char_rd]]
+          if (is.null(user_lo)) {
+            def_lo <- moreargs[[char_rd]]$lower
+            if (is.null(def_lo)) stop("lower bounds provided neither by 'lower' nor by corrFamily's 'calc_moreargs' element.")
+            lower$corrPars[[char_rd]] <- def_lo[parnames]
+          } else {
+            if (is.null(names(user_lo))) names(user_lo) <- parnames
+            lower$corrPars[[char_rd]] <- user_lo
+          }
+          user_up <- user.upper$corrPars[[char_rd]]
+          if (is.null(user_up)) {
+            def_up <- moreargs[[char_rd]]$upper
+            if (is.null(def_up)) stop("upper bounds provided neither by 'upper' nor by corrFamily's 'calc_moreargs' element.")
+            upper$corrPars[[char_rd]] <- def_up[parnames]
+          } else {
+            if (is.null(names(user_up))) names(user_up) <- parnames
+            upper$corrPars[[char_rd]] <- user_up
+          }
+        }
       } 
     }
   }

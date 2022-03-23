@@ -28,7 +28,7 @@ Cauchy correlation function and Cauchy formula term
 }
 \details{
 The correlation at distance \eqn{d>0} is 
-  \deqn{(1-\textrm{Nugget}) (1+(\rho d)^textrm{shape})^(-textrm{longdep/shape})}{%
+  \deqn{(1-\textrm{Nugget}) (1+(\rho d)^\textrm{shape})^(-\textrm{longdep/shape})}{%
                          (1-Nugget)  (1+(\rho d)^shape)^(-longdep/shape)} 
 }
 \value{Scalar/vector/matrix depending on input.}

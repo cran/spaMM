@@ -280,7 +280,7 @@ summary.HLfitlist <- function(object, ...) {
     }
     colnames(summ_corr_cols) <- rep("Corr.",ncol(summ_corr_cols))
     # }
-    random_slope_ncol_geq_1_pos <- which( ! unlist(lapply(cov.mats,is.null))) ## fixme ? equivalentto isRandomSlope that might be available
+    random_slope_ncol_geq_1_pos <- which(attr(object$strucList,"isRandomSlope")) 
     random_slope_ncol_geq_1_rows <- unlist(row_map[ random_slope_ncol_geq_1_pos ])
   } else {
     random_slope_ncol_geq_1_rows <- random_slope_ncol_geq_1_pos <- integer(0)
@@ -661,7 +661,7 @@ summary.HLfitlist <- function(object, ...) {
   }
   ##
   if (length(vec_nobs <- object$vec_nobs)) { # fitmv case; then object$phi.object must be a list of phi objects 
-    if (any(unlist(lapply(object$families,`[[`, "family")) %in% c("gaussian","Gamma"))) {
+    if (any(.unlist(lapply(object$families,`[[`, "family")) %in% c("gaussian","Gamma"))) {
       cat("-------------- Residual variation -------------\n")    
       for (mv_it in seq_along(form)) {
         summ <- .summary_phi_object(object, phi.object=object$phi.object[[mv_it]], 

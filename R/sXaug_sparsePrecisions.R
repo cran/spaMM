@@ -165,7 +165,9 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
 # called only for spprec "hatval", given conditions calling for the use of qrXa 
 .calc_spprec_hatval_ZX_by_QR <- function(BLOB, sXaug, AUGI0_ZX, w.ranef) { ## sparse qr is fast
   qrQ <- qr.Q(BLOB$qrXa)
-  qrQ@x <- qrQ@x*qrQ@x
+  xx <- qrQ@x
+  xx <- xx*xx
+  qrQ@x <- xx
   tmp <- rowSums(qrQ)
   n_u_h <- ncol(AUGI0_ZX$I)
   phipos <- n_u_h+seq_len(length(tmp)-n_u_h)
@@ -176,7 +178,9 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
   # We use the  Chol factorization of T'T as explained in the working doc
   # We know one of its block is the same as for the ML leverages, we compute two additional blocks: 
   lev_lambda_z <- BLOB$factor_inv_Md2hdv2 ## ul block of R^{-T} as described in working doc
-  lev_lambda_z@x <- lev_lambda_z@x*lev_lambda_z@x 
+  xx <- lev_lambda_z@x
+  xx <- xx*xx
+  lev_lambda_z@x <- xx
   lev_lambda_z <- .Matrix_times_Dvec(lev_lambda_z,w.ranef)
   lev_lambda_z <- colSums(lev_lambda_z)
   #
@@ -202,7 +206,9 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
   } else {
     lev_phi_z <- BLOB$inv_L_G_ZtsqrW
     crossprod_r12_z_rows <- crossprod(BLOB$r12,lev_phi_z)
-    lev_phi_z@x <- lev_phi_z@x*lev_phi_z@x
+    xx <- lev_phi_z@x
+    xx <- xx*xx
+    lev_phi_z@x <- xx
     lev_phi_z <- colSums(lev_phi_z) 
   }
   if (attr(sXaug,"pforpv")>0L) {
@@ -253,7 +259,9 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
         ## part of the problem is avoiding tall matrices from tall ZA (and X), but for squarish ZA, using solve(chol_Q,... ) looks complicated.
         ## solve(chol_Q,... ) further assuming that we have not stored the LMatrix
         tmp <- BLOB$tcrossfac_Md2hdv2 ## (Hfac)
-        tmp@x <- tmp@x*tmp@x
+        xx <- tmp@x
+        xx <- xx*xx
+        tmp@x <- xx
         # def of pertubration D_Md2hdv2 affects decimals in test-adjacency-long
         if (spprec_LevM_D=="rowSums") { ## [as originally used for (full) LevMar_step]
           BLOB$D_Md2hdv2 <- rowSums(tmp) # the diagonal elements since *row*Sums = diag Tcrossprod(tcrossfac) (= invQ G Gt invQt)
@@ -278,7 +286,9 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
   if ("lambda" %in% needed) {
     if (is.null(BLOB$hatval_Z_$lev_lambda)) {
       lev_lambda <- BLOB$factor_inv_Md2hdv2
-      lev_lambda@x <- lev_lambda@x*lev_lambda@x
+      xx <- lev_lambda@x
+      xx <- xx*xx
+      lev_lambda@x <- xx
       BLOB$hatval_Z_$lev_lambda <- colSums(lev_lambda) * w.ranef
     }
   }
@@ -292,7 +302,9 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
       } else {
         # inv_L_G_ZtsqrW arises as simplif of BLOB$factor_inv_Md2hdv2 %*% t(sqrtwZL) (L and chol_Q cancel each other)
         lev_phi <- BLOB$inv_L_G_ZtsqrW ## solve(as(BLOB$G_CHMfactor,"sparseMatrix"), t(sqrtwZ))
-        lev_phi@x <- lev_phi@x*lev_phi@x
+        xx <- lev_phi@x
+        xx <- xx*xx
+        lev_phi@x <- xx
         BLOB$hatval_Z_$lev_phi <- colSums(lev_phi)
       }
     }
@@ -351,7 +363,7 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
   }
 })
 
-.init_promises_spprec <- function(sXaug, non_X_ones=TRUE, nullify_X_ones =FALSE) {  
+.init_promises_spprec <- function(sXaug, non_X_ones=TRUE, nullify_X_ones =FALSE, intervalInfo=NULL) {  
   BLOB <- sXaug$BLOB # environment that should contain  G_CHMfactor, chol_Q, perm when promises are evaluated
   AUGI0_ZX <- sXaug$AUGI0_ZX # envir (prime fit) or list (converted to list by confint)
   # 
@@ -390,7 +402,16 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
     }, assign.env = BLOB )
   }
   if (nullify_X_ones) {
-    BLOB$ZtWX <- BLOB$XtX <- BLOB$XtWX <- BLOB$r12 <- BLOB$r22 <- BLOB$DpD <- BLOB$LZtWX <- BLOB$crossr22 <- NULL
+    if (.is_evaluated("r22", BLOB)) {
+      # Then we use it for beta_cov but must be careful not to mix it with the other objects bc it is the r22 for a scaled X while the new promises for post fit
+      # refer to an unscaled version of X.pv. ./.
+      unsc_r22 <-  .m_Matrix_times_Dvec(BLOB$r22, attr(AUGI0_ZX$X.pv,"scaled:scale")) 
+      beta_cov <- solve(crossprod(unsc_r22))
+      colnames(beta_cov) <- rownames(beta_cov) <- setdiff(colnames(AUGI0_ZX$X.pv), intervalInfo$parm)
+      BLOB$beta_cov <- beta_cov # distinct variable from $beta_cov_info$beta_cov
+    } # ./. When BLOB$r22 is present and then $r12 is also expected by .old_calc_Md2hdvb2_info_spprec_by_r22() 
+    # => if we plan to use BLOB$r22 post fit we must also provide BLOB$r12. Currently we remove them and all X-related promises: 
+    BLOB$ZtWX <- BLOB$XtX <- BLOB$XtWX <- BLOB$DpD <- BLOB$r12 <- BLOB$r22 <- BLOB$LZtWX <- BLOB$crossr22 <- NULL 
   } else {
     delayedAssign("ZtWX", .calc_ZtWX(sXaug), assign.env = BLOB ) # *m*atrix
     delayedAssign("XtX", crossprod(as.matrix(AUGI0_ZX$X.pv), NULL, as_mat=TRUE), assign.env=BLOB)
@@ -494,7 +515,7 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
       # actually there is some other step that is silently wrong if both matrices are not dsC...
       tmp <- tmp + precisionMatrix
     }
-    BLOB$Gmat <- drop0(tmp) ## depends on w.ranef and w.resid
+    BLOB$Gmat <- tmp # drop0(tmp) ## depends on w.ranef and w.resid
     if (is.null(template <- AUGI0_ZX$template_G_CHM)) { ## occurs if $update_CHM is FALSE, OR first comput. of CHM, OR precision factors not yet all $updateable
       BLOB$G_CHMfactor <- Cholesky(BLOB$Gmat,LDL=FALSE,perm=.spaMM.data$options$perm_G) ## costly
       if (.spaMM.data$options$update_CHM && all(AUGI0_ZX$envir$updateable)) AUGI0_ZX$template_G_CHM <- BLOB$G_CHMfactor
@@ -597,7 +618,9 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars,w.ranef,cum_n_u_h,w.
         if (is.null(BLOB$D_Md2hdv2)) {
           ## t() bc .damping_to_solve implicitly uses (or used) crossprod ( as in solve(X'X)=solve(R'R) ) (or equivalently tcrossprod(solve))
           BLOB$Hfac <- tmp <- t(drop0(BLOB$tcrossfac_Md2hdv2)) ## probably not so sparse...
-          tmp@x <- tmp@x*tmp@x
+          xx <- tmp@x
+          xx <- xx*xx
+          tmp@x <- xx
           BLOB$D_Md2hdv2 <- colSums(tmp) ## colSums bc t() above // rowSums for diag Tcrossprod(invQ G)  = invQ G Gt invQt
         }
         dampDpD_2 <- damping * BLOB$D_Md2hdv2

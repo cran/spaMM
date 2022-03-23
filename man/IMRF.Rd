@@ -10,12 +10,12 @@ Interpolated Markov Random Field models
 }
 \description{
 
-\code{IMRF} is a syntax to specify random-effect terms of the forms considered by Lindgren et al. (2011) or Nychka et al. (2015, 2019).
-For example, using \code{IMRF} with its \code{model} argument provides good approximations of random effects with \code{Matern} correlation structure with fixed smoothness<2. 
+\pkg{spaMM} can fit random-effect terms of the forms considered by Lindgren et al. (2011) or Nychka et al. (2015, 2019).
+The random effects considered here all involve a multivariate Gaussian random effect over a lattice, from which the random-effect value in any spatial position is determined by interpolation of values on the lattice. \bold{IMRF} stands for \bold{I}nterpolated \bold{M}arkov \bold{R}andom \bold{F}ield because the specific process considered on the lattice is currently known as a Gaussian Markov Random Field (see the Details for further information). Lindgren et al. considered irregular lattices designed to approximate of the Matern correlation model with fixed smoothness <= 2, while Nychka et al. considered regular grids. 
 
-The random effects considered here all involve a multivariate Gaussian random effect over a lattice, from which the random-effect value in any spatial position is determined by interpolation of values on the lattice. \bold{IMRF} stands for \bold{I}nterpolated \bold{M}arkov \bold{R}andom \bold{F}ield because the specific process considered on the lattice is currently known as a Gaussian Markov Random Field (see the Details for further information). Lindgren et al. considered irregular lattices that can be specified by the \code{model} argument, while Nychka et al. considered regular grids that can be specified by the other arguments. 
+The correlation model of Lindgren et al. (2011) can be fitted by \pkg{spaMM} by declaring an \code{IMRF} random effect term in the model formula, with a \code{model} argument in the right-hand side whose value is the result of \code{INLA::inla.spde2.matern} (or \code{INLA::inla.spde2.pcmatern}) for given smoothness. The \pkg{spaMM} functions for such a fit do not call \pkg{INLA} functions. Alternatively, the same model with variable smoothness can be fitted by declaring a \code{corrFamily} term whose structure is described through the \code{\link{MaternIMRFa}} function, whose respective documentations should be considered for more details. In the latter case \code{INLA::inla.spde2.matern} is called internally by \code{spaMM}. The correlation models thus defined are fitted by the same methods as other models in \pkg{spaMM}.     
 
-The \code{multIMRF} syntax implements the multiresolution model of Nychka et al. Any \code{multIMRF} term in a formula is immediately converted to \code{IMRF} terms. This has distinct implications for controlling the parameters of these or other random effects in the model by \code{init} or \code{fixed} values: see Details if you need such control. 
+Regular lattices can also be declared as an \code{IMRF} term (with arguments distinct from \code{model}). The \code{multIMRF} syntax implements the multiresolution model of Nychka et al. Any \code{multIMRF} term in a formula is immediately converted to \code{IMRF} terms for regular grids wih different step sizes. This has distinct implications for controlling the parameters of these or other random effects in the model by \code{init} or \code{fixed} values: see Details if you need such control. 
 }
 \details{
 Gaussian Markov Random Field (MRF) and conditional autoregressive models are essentially the same thing, apart from details of specification. % Rue Held p. 28
@@ -25,9 +25,9 @@ The common idea is the Markov-like property that the distribution of each elemen
 Given the inferred vector \bold{b} of values of the MRF on the lattice, the interpolation of the MRF in any focal point is of the form \bold{Ab} where each row of \bold{A} weights the values of \bold{b} according to the position of the focal point relative to the vertices of the lattice. Following the original publications, for regular grids (NULL \code{model}), the weights are computed as <Wendland function>(<scaled Euclidean distances between focal point and vertices>); and for grids given by \code{model=<inla.spde2 object>}, the non-zero weights are the barycentric coordinates of the focal point in the enclosing triangle from the mesh triangulation (points from outside the mesh would have zero weights, so the predicted effect \bold{Ab=0}). 
 
 The \code{IMRF} model defines both a lattice in space, the precision matrix for a Gaussian MRF over this lattice, and the \bold{A} weights. The full specification of the MRF on \bold{irregular lattices} is complex. The \eqn{\kappa} parameter considered by \code{spaMM} is the \eqn{\kappa} considered by Lindgren et al. The \eqn{\alpha} argument of the \code{INLA::inla.spde2.matern} controls the smoothness of the approximated Matern model, as \eqn{\alpha=\nu + d/2}) where \eqn{d} is the dimension of the space.   
-Correlation models created by \code{INLA::inla.spde2.pcmatern} are handled so as to give the same results as when \code{INLA::inla.spde2.matern} is used with the same \code{mesh} and \code{alpha} argument (thus, the extra functionalities of \dQuote{\code{pc}}\code{matern} are ignored). 
+Correlation models created by \code{INLA::inla.spde2.pcmatern} are handled so as to give the same correlation values as when \code{INLA::inla.spde2.matern} is used with the same \code{mesh} and \code{alpha} argument (thus, the extra functionalities of \dQuote{\code{pc}}\code{matern} are ignored). 
 
-Not all options of the INLA functions may be compatible or meaningful when used with spaMM (only the effects of \code{alpha} and \code{cutoff} have been checked). The correlation models thus defined are fitted by the same methods as other models in spaMM. spaMM does not call INLA code except optionally \code{INLA::inla.spde.make.A} (if available to the R session) to construct the \bold{A} matrix. 
+Not all options of the INLA functions may be compatible or meaningful when used with spaMM (only the effects of \code{alpha} and \code{cutoff} have been checked). 
 % cf bit of code in .calc_IMRF_Qmat()
 
 For the MRFs on default \bold{regular grids} (missing \code{model} argument), the precision matrix is defined (up to a variance parameter) as \bold{M'M} where the diagonal elements \eqn{m_{ii}} of \bold{M} are 4+\eqn{\kappa^2} and the \eqn{m_{ij}} for the four nearest neighbours are -1 (note that \bold{M'M} involves more than these four neighbours). 
@@ -48,7 +48,8 @@ To control initial or fixed values of \code{multIMRF} \eqn{\kappa} and variance 
 % IMRF( 1 | <coordinates>, model, nd, m, no, ce, ...) defaults implemented in .parseBars()
 % multIMRF( 1 | . ) defaults in .expand_multIMRF() default args
 \arguments{
-  \item{model}{An \code{inla.spde2} object as produced by \code{INLA::inla.spde2.matern} or \code{INLA::inla.spde2.pcmatern} (see Examples below, and \url{https://www.r-inla.org} for further information).
+  \item{model}{An \code{inla.spde2} object as produced by \code{INLA::inla.spde2.matern} or\cr 
+  \code{INLA::inla.spde2.pcmatern} (see Examples below, and \url{https://www.r-inla.org} for further information).
 }
   \item{levels}{integer; 
 Number of levels in the hierarchy, i.e. number of component IMRFs.

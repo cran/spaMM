@@ -1,5 +1,5 @@
 # The 'isoscape' example without the additional calibration fits
-if(getOption_IsoriX("example_maxtime") > 10) {
+if(IsoriX::getOption_IsoriX("example_maxtime") > 10) {
   GNIPDataDEagg <- prepsources(data = GNIPDataDE)
   
   ## We fit the models for Germany:

@@ -322,7 +322,7 @@ mapMM <- function (fitobject,Ztransf=NULL,coordinates,
   ## currently add.points and decorations are equivalent:
   if ( ! missing(add.points)) warning("'add.points' is obsolete, use 'decorations'")
   if (missing(coordinates)) {
-    info_olduniqueGeo <- attr(fitobject,"info.uniqueGeo") 
+    info_olduniqueGeo <- .get_old_info_uniqueGeo(fitobject) 
     if ( ! is.array(info_olduniqueGeo)) { ## test TRUE for version > 2.3.18:
       coordinates <- unique(unlist(lapply(info_olduniqueGeo,colnames)))
     } else coordinates <- colnames(info_olduniqueGeo)
@@ -359,7 +359,7 @@ mapMM <- function (fitobject,Ztransf=NULL,coordinates,
                            ...) 
 {
   if (missing(coordinates)) {
-    info_olduniqueGeo <- attr(fitobject,"info.uniqueGeo") 
+    info_olduniqueGeo <- .get_old_info_uniqueGeo(fitobject) 
     if ( ! is.array(info_olduniqueGeo)) { ## test TRUE for version > 2.3.18:
       coordinates <- unique(unlist(lapply(info_olduniqueGeo,colnames)))
     } else coordinates <- colnames(info_olduniqueGeo)
@@ -461,8 +461,8 @@ map_ranef <- function(fitobject, re.form, Ztransf=NULL, xrange = NULL, yrange = 
     stop("Model includes >1 spatial random effect.\n Please specify one through 're.form'.")
   } else re.form <- as.formula(paste(". ~", attr(fitobject$ZAlist,"exp_ranef_strings")[[spatialone]])) 
   #
-  info_olduniqueGeo <- attr(fitobject,"info.uniqueGeo")
-  coordinates <- colnames(info_olduniqueGeo[[as.character(spatialone)]]) # code OK for version > 2.3.18.
+  olduniqueGeo <- .get_old_info_uniqueGeo(fitobject, char_rd=as.character(spatialone)) 
+  coordinates <- colnames(olduniqueGeo) 
   if (length(coordinates) != 2L) {
     stop(paste("'map' plots only 2D maps, while coordinates are of length ", 
                length(coordinates), sep = ""))

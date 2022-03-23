@@ -8,6 +8,7 @@ HLfit_body <- function(processed,
   processed$envir$ranFix <- ranFix # for diagnostics reported by div_info() (seek '$ranFixes') [_F I X M E_ rethink] 
   family <- processed$family # may be null in mv case
   ranFix <- .post_process_family(family, ranFix, processed$families) ## assign 'extra' COMPoisson or negbin pars and cleans ranFix of them
+  # modifications in environment(family$aic) ARE modifications in environment(processed$family$aic); there is no 'local' copy of that envir. 
   # next line to be called before we extract anything (lambda, ranCoefs... ) from ranFix:
   ranFix <- .canonizeRanPars(ranPars=ranFix,corr_info=NULL, checkComplete = FALSE, rC_transf=.spaMM.data$options$rC_transf)## including full-size lambda
   #data <- processed$data
@@ -165,10 +166,13 @@ HLfit_body <- function(processed,
   ###
   ######### missing Initial estimates for mu, phi, lambda by GLM ####################
   if (  is.null(beta_eta) || .anyNULL(phi_est) || anyNA(init.lambda) ) { 
-    inits_by_glm <- .get_inits_by_glm(processed, family=family, # using possibly postprocessed family
-                                      reset=quote(family$family %in% c("COMPoisson","negbin")) ) 
+    inits_by_glm <- .get_inits_by_glm(processed, reset=quote(family$family %in% c("COMPoisson","negbin")) ) # quoted to be applied to each family
     ## : uses processed$y, $BinomialDen, [["control.glm"]]
   }
+  # delayedAssign("inits_by_glm", {
+  #   .get_inits_by_glm(processed, reset=quote(family$family %in% c("COMPoisson","negbin")) )
+  #   }
+  # )
   ## Finalize initial values for beta_eta
   if (is.null(beta_eta) ) beta_eta <- inits_by_glm$beta_eta # from .lm.fit or lm.fit using scaled X.pv, hennce must be scaled.
   intervalInfo <- processed$intervalInfo
@@ -861,8 +865,7 @@ HLfit_body <- function(processed,
   #
   if (models[["eta"]]=="etaHGLM") {
     #
-    sub_corr_info <- mget(c("corr_families","corr_types"), ## (AMatrices are kept as attribute to ZAlist)
-                          processed$corr_info) 
+    sub_corr_info <- mget(c("corr_families","corr_types", "AMatrices"),  processed$corr_info) 
     kron_Y_LMatrices <- vector("list", nrand)
     for (it in seq_len(nrand)) kron_Y_LMatrices[it] <- list(attr(processed$corr_info$cov_info_mats[[it]],"blob")$Lunique)
     sub_corr_info$kron_Y_LMatrices <- kron_Y_LMatrices
@@ -930,7 +933,7 @@ HLfit_body <- function(processed,
       if ("AUGI0_ZX_sparsePrecision" %in% res$MME_method) {
         sXaug <- auglinmodblob$sXaug # 
         #sXaug$AUGI0_ZX$X.pv <- res[["X.pv"]] # NO that would affect the confint -> int_sXaug
-        .init_promises_spprec(sXaug, non_X_ones=FALSE, nullify_X_ones =TRUE) # initialize no promise, only removes X ones...
+        .init_promises_spprec(sXaug, non_X_ones=FALSE, nullify_X_ones =TRUE, intervalInfo=processed$intervalInfo) # initialize no promise, only removes X ones...
         #                                             (but confint might fully reinit them)
         # qrXa is generally an unevaluated promise => .calc_Md2hdvb2_info_spprec() tests its status. NULLified here
         # factor_inv_Md2hdv2 is used by spprec code for .calc_d2hdv2_info(). Kept as promise here
