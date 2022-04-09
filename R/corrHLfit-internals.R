@@ -30,6 +30,9 @@ if (FALSE) {
 .rcDispFn <- function(v) log(v) # log(log1p(v)) # .dispFn(v) # 
 .rcDispInv <- function(v) exp(v) #  exp(exp(v))-1 # .dispInv(v) # 
 
+.betaFn <- function(v) {sign(v)*log1p(abs(v))}
+.betaInv <- function(v) {sign(v)*(exp(abs(v))-1)}
+
 #sapply(sapply(10^(seq(-6,6)),dispFn),dispInv)
 ## These must be directly applicable to say lambda=c(0.1,0.1) hence need to vectorize the test on x
 # but Vectorize is not quite efficient
@@ -896,6 +899,14 @@ if (FALSE) {
     inits[["init.optim"]]$trNB_shape <- .NB_shapeFn(inits[["init"]]$NB_shape)
     inits[["init.optim"]]$NB_shape <- NULL
   }
+  
+  # Currently there is no default beta; only a user_init_optim one:
+  if (! is.null(beta <- inits[["init.optim"]]$beta)) { # at this point inits[["init.optim"]] = user's, + automatically added inits (none yet for beta)
+    inits[["init.optim"]]$trBeta <- .betaFn(beta)
+    inits[["init.optim"]]$beta <- NULL
+    inits[["init"]]$beta <- beta # ---> canon.init
+  }
+  
   inits <- eval(inits) ## not sure why
   if ( ! length(inits[["init.optim"]][["corrPars"]])) { ## remove corrParslist()
     inits[["init.optim"]]["corrPars"] <- NULL

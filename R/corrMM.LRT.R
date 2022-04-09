@@ -44,7 +44,7 @@ fixedLRT <- function(  ## interface to .LRT or (for devel only) .corrMM_LRT
   #
   if ( ! is.null(weights.form)) {
     mc[["prior.weights"]] <-  weights.form[[2]]
-  } else if ("prior.weights" %in% ...names()) {
+  } else if ("prior.weights" %in%  evalq(names(substitute(...())))) {
     p_weights <- substitute(alist(...))$prior.weights # necessary when prior weights has been passed to fitme 
     # through the '...' of another function. In that case we reconstruct the call argument as if they had not been passed in this way.
     # is user quoted the pw, the str() of the result of the substitute() calls is language quote(...)  ~  doubly quoted stuff... => eval 

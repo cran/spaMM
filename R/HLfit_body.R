@@ -619,7 +619,7 @@ HLfit_body <- function(processed,
       APHLs <- .calc_APHLs_from_ZX(auglinmodblob,which=whichAPHLs,processed)
     } else { 
       APHLs <- .calc_APHLs_from_ZX(auglinmodblob=NULL,processed, which="p_v",
-                                   sXaug=NULL, phi_est, lambda_est=NULL, dvdu=NULL, u_h=NULL, mu ) 
+                                   sXaug=NULL, phi_est, lambda_est=NULL, dvdu=NULL, u_h=NULL, muetablob=muetablob ) 
     }
   }
   ######################### potential R E T U R N here: cases without p_bv
@@ -741,17 +741,18 @@ HLfit_body <- function(processed,
     res$X.pv <- .unscale(res$X.pv) ## usefully not in an environment
   } 
   ## Assuming beta_eta is a vector, not a matrix
-  if ( ! is.null(namesOri <- attr(processed$AUGI0_ZX$X.pv,"namesOri"))) { ## includins NA's names (and etaFix$beta names)
-    nc <- length(namesOri)
-    beta_etaOri <- rep(NA,nc)
-    names(beta_etaOri) <- namesOri
-    beta_etaOri[names(beta_eta)] <- beta_eta ## keeps the original NA's
-    beta_etaOri[names(etaFix$beta)] <- etaFix$beta  ## no longer in X.pv 2015/03
-    res$fixef <- beta_etaOri ## fixme I should keep out the fixed ones for summary ? newetaFix code assumes the opposite
-  } else {
-    names(beta_eta) <- colnames(processed$AUGI0_ZX$X.pv)
-    res$fixef <- beta_eta 
-  } 
+  #  if ( ! is.null(namesOri <- attr(processed$AUGI0_ZX$X.pv,"namesOri"))) { ## including NA's names (and etaFix$beta names) # Condition always TRUE ?
+  namesOri <- attr(processed$AUGI0_ZX$X.pv,"namesOri")
+  nc <- length(namesOri)
+  beta_etaOri <- rep(NA,nc)
+  names(beta_etaOri) <- namesOri
+  beta_etaOri[names(beta_eta)] <- beta_eta ## keeps the original NA's
+  beta_etaOri[names(etaFix$beta)] <- etaFix$beta  ## no longer in X.pv 2015/03
+  res$fixef <- beta_etaOri ## fixme I should keep out the fixed ones for summary ? newetaFix code assumes the opposite
+  # } else {
+  #   names(beta_eta) <- colnames(processed$AUGI0_ZX$X.pv)
+  #   res$fixef <- beta_eta 
+  # } 
   if (identical(processed$return_only,"confint_bound")) {
     return(res)    ########################   R E T U R N fixef + APHLs
   }
@@ -760,7 +761,7 @@ HLfit_body <- function(processed,
   if (is.null(etanames)) { # must be all case except main (ie not residModel) fit of a fitmv (=> code to make sure of post-fit residProcessed$data in fitmv())
     names(res$eta) <- rownames(processed$data)
   } else names(res$eta) <- etanames
-  res$muetablob <- muetablob[c("mu","dmudeta")] # for get_logdispObject, added 11/2016
+  res$muetablob <- list(mu=muetablob$mu,dmudeta=muetablob$dmudeta) # for get_logdispObject, added 11/2016
   ###################
   ## DATA
   ###################

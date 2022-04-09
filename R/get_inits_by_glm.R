@@ -10,7 +10,7 @@
   } else if (family$family=="COMPoisson") {
     loc_link <- family$link
     if (loc_link=="loglambda") loc_link <- "log"
-    if (inherits(substitute(nu, env=environment(family$aic)),"call")) family <- poisson(loc_link)
+    if (inherits(substitute(nu, env=environment(family$aic)),"call")) family <- poisson(loc_link) # only if COMP_nu not assigned
     # problem with test glmmTMB: most of the time is spent on inits for glm when nu<1
     # if (inherits(nuchk <- substitute(nu, env=environment(family$aic)),"call") || nuchk >0.25) family <- poisson(loc_link)
     # : This helps for he GLM but not much otherwise. Other ideas ? __F I X M E__
@@ -155,7 +155,12 @@
                                            lambdas=lambdas, # vector
                                            lambda=exp(mean(log(lambdas))) # scalar
       )
-    } else processed$envir$inits_by_glm <- .calc_inits_by_glm(processed) # univariate response case
+    } else {
+      if (! is.null(processed$X_off_fn)) {
+        X.pv <- environment(processed$X_off_fn)$X_off
+      } else X.pv <- processed$AUGI0_ZX$X.pv
+      processed$envir$inits_by_glm <- .calc_inits_by_glm(processed, X.pv=X.pv) # univariate response case
+    }
   }
   return(processed$envir$inits_by_glm)
 } 

@@ -169,19 +169,36 @@ spaMM_glm.fit <- local({
       weights <- rep.int(1, nobs)
     if (is.null(offset)) 
       offset <- rep.int(0, nobs)
-    variance <- family$variance
-    linkinv <- family$linkinv
-    if (!is.function(variance) || !is.function(linkinv)) 
-      stop("'family' argument seems not to be a valid family object", 
-           call. = FALSE)
-    dev.resids <- family$dev.resids
     aic <- family$aic
-    mu.eta <- family$mu.eta
     valideta <- family$valideta
     validmu <- family$validmu
-    # Check whether beta will be constrained by the need for postive eta
-    beta_bounded <- ( ( ! valideta(-1e-8) )|| # test not sufficient! next test needed for Gamma(inverse of identity)
-                        ( ! validmu(linkinv(-1e-8)) ))
+    if (family$family=="COMPoisson") {
+      attr(y,"CMP") <- .CMP_attr_y(y, family)
+      muetaenv <- NULL
+      variance <- function(mu) {family$variance(mu,muetaenv=muetaenv)}
+      dev.resids <- function(y, mu, wt) {family$dev.resids(y, mu, wt, muetaenv=muetaenv)}
+      if (family$link=="loglambda") {
+        linkinv <- function(eta) {family$linkinv(eta,muetaenv=muetaenv)}
+        mu.eta <- function(eta) {family$mu.eta(eta,muetaenv=muetaenv)}
+        beta_bounded <- FALSE
+      } else {
+        linkinv <- family$linkinv
+        mu.eta <- family$mu.eta
+        beta_bounded <- ( ( ! valideta(-1e-8) )|| # test not sufficient! next test needed for Gamma(inverse of identity)
+                            ( ! validmu(linkinv(-1e-8)) ))
+      }
+    } else {
+      variance <- family$variance
+      dev.resids <- family$dev.resids
+      linkinv <- family$linkinv
+      mu.eta <- family$mu.eta
+      if (!is.function(variance) || !is.function(linkinv)) 
+        stop("'family' argument seems not to be a valid family object", 
+             call. = FALSE)
+      # Check whether beta will be constrained by the need for postive eta
+      beta_bounded <- ( ( ! valideta(-1e-8) )|| # test not sufficient! next test needed for Gamma(inverse of identity)
+                          ( ! validmu(linkinv(-1e-8)) ))
+    }
     #
     # delayedAssign("positive_eta", {
     #   pos_eta <- (family$family=="Gamma" && family$link %in% c("identity","inverse"))
@@ -209,6 +226,7 @@ spaMM_glm.fit <- local({
       if (!valideta(eta)) 
         stop("invalid linear predictor values in empty model", 
              call. = FALSE)
+      if (family$family=="COMPoisson") muetaenv <- .CMP_muetaenv(family, pw=weights, eta)
       mu <- linkinv(eta)
       if (!validmu(mu)) 
         stop("invalid fitted means in empty model", call. = FALSE)
@@ -239,6 +257,7 @@ spaMM_glm.fit <- local({
         eta <- .sanitize_eta_log_link(eta, max=40, y=y, nu=COMP_nu)
       }
       # : __F I X M E__ why not use general code : .sanitize_eta(eta,y=y, family=family) #, which default max?  
+      if (family$family=="COMPoisson") muetaenv <- .CMP_muetaenv(family, pw=weights, eta)
       mu <- linkinv(eta)
       if (!(validmu(mu) && valideta(eta))) 
         stop("cannot find valid starting values: please specify some", 
@@ -290,7 +309,8 @@ spaMM_glm.fit <- local({
           eta <- (x %*% start)[]
           eta <- eta + offset
           if ( ! beta_bounded) eta <- .sanitize_eta(eta, y=y, family=family, max=40) # else we use .get_valid_beta_coefs()
-          mu <- linkinv(eta)
+          if (family$family=="COMPoisson") muetaenv <- .CMP_muetaenv(family, pw=weights, eta)
+          mu <- linkinv(eta) # automatically using the muetaenv in the COMPoisson case
           dev <- suppressWarnings(sum(dev.resids(y, mu, weights)))
           boundary <- FALSE
           if (beta_bounded && !is.finite(dev)) { ## NaN or Inf
@@ -298,7 +318,9 @@ spaMM_glm.fit <- local({
               if (requireNamespace("rcdd",quietly=TRUE)) {
                 start <- .get_valid_beta_coefs(X=x,offset=offset,family,y,weights)
                 eta <- (x %*% start)[]
-                mu <- linkinv(eta <- eta + offset) # could sanitze it, perhaps ?
+                eta <- eta + offset
+                if (family$family=="COMPoisson") muetaenv <- .CMP_muetaenv(family, pw=weights, eta)
+                mu <- linkinv(eta) # could sanitze it, perhaps ?
                 dev <- suppressWarnings(sum(dev.resids(y, mu, weights)))
               } else if ( ! identical(spaMM.getOption("rcdd_warned"),TRUE)) {
                 message("glm() failed. If the 'rcdd' package were installed, spaMM_glm.fit() could automatically find a good starting value.")
@@ -320,7 +342,9 @@ spaMM_glm.fit <- local({
               ii <- ii + 1
               start <- (start + coefold)/2
               eta <- (x %*% start)[]
-              mu <- linkinv(eta <- eta + offset)
+              eta <- eta + offset
+              if (family$family=="COMPoisson") muetaenv <- .CMP_muetaenv(family, pw=weights, eta)
+              mu <- linkinv(eta)
               dev <- suppressWarnings(sum(dev.resids(y, mu, weights)))
             }
             boundary <- TRUE
@@ -416,7 +440,9 @@ spaMM_glm.fit <- local({
             ii <- ii + 1
             start <- (start + coefold)/2
             eta <- (x %*% start)[]
-            mu <- linkinv(eta <- eta + offset)
+            eta <- eta + offset
+            if (family$family=="COMPoisson") muetaenv <- .CMP_muetaenv(family, pw=weights, eta)
+            mu <- linkinv(eta)
           } ## stop()s or exits loop with valideta and mu
           boundary <- TRUE
           dev <- suppressWarnings(sum(dev.resids(y, mu, weights)))

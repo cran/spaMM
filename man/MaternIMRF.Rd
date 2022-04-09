@@ -45,12 +45,10 @@ mesh <- INLA::inla.mesh.2d(loc = Loaloa[, c("longitude", "latitude")],
                      max.edge = c(3, 20)) 
 
 ### Fit with fixed alpha                     
-corrfam <- MaternIMRFa(mesh, fixed=c(alpha=1.05))       # generate corrFamily descriptor                     
 
 (fit_MaternIMRF <- fitme(
   cbind(npos,ntot-npos) ~ elev1 + elev2 + elev3 + elev4 + maxNDVI1 + 
-        seNDVI + corrFamily(1|longitude+latitude),         # declare corrFamily term
-  covStruct=list(corrFamily=corrfam),                # declare corrFamily descriptor
+        seNDVI +  MaternIMRFa(1|longitude+latitude, mesh, fixed=c(alpha=1.05)),
   family=binomial(), 
   data=Loaloa, verbose=c(TRACE=interactive())) )
    
@@ -67,12 +65,10 @@ fit_Matern <- fitme(
   
   
 ### Same with variable alpha                     
-corrfam <- MaternIMRFa(mesh)       # generate corrFamily descriptor                     
 
 (fit_MaternIMRF <- fitme(
   cbind(npos,ntot-npos) ~ elev1 + elev2 + elev3 + elev4 + maxNDVI1 + 
-        seNDVI + corrFamily(1|longitude+latitude),         # declare corrFamily term
-  covStruct=list(corrFamily=corrfam),                # declare corrFamily descriptor
+        seNDVI + MaternIMRFa(1|longitude+latitude, mesh),         
   family=binomial(), 
   data=Loaloa, verbose=c(TRACE=interactive())) )
 

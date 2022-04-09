@@ -3,6 +3,23 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 3.11.14}{ 
+\subsection{FIXED COMPATIBILITY ISSUE}{
+\itemize{
+\item Use of ...names() had created an overlooked dependency on R >= 4.1. 
+}
+}
+\subsection{USER-LEVEL CHANGES}{
+\itemize{
+\item Much faster fits by COMPoisson() (>10 times generally, and even >25 times faster in some fits with default "loglambda" link).   
+}
+}
+\subsection{FIXED BUGS}{
+\itemize{
+\item get_inits_from_fit() did not properly work on all residual dispersion models. 
+}
+}
+}
 \section{CHANGES UP TO VERSION 3.11.3}{       
 \subsection{NEW FEATURES}{
 \itemize{

@@ -986,7 +986,7 @@ if(FALSE) { cat(crayon::yellow("simulation study; "))
       v <- t(L) %*% rbind(u1,u2)
       eta1 <- v[1,]
       eta2 <- 1+v[2,]
-      surv <- rbinom(length(eta1),binsize,inv.logit(eta1))
+      surv <- rbinom(length(eta1),binsize,inv.logit(eta1)) # was it boot::inv.logit ?? Also called once more below.
       feco <- rpois(length(eta2), lambda = exp(eta2))
       lfh <- data.frame(id=seq_along(eta1), surv=surv, feco=feco, binsize=binsize)
       (fitlfh <- fitmv(submodels=list(list(cbind(surv,binsize-surv) ~ 1+(mv(1,2)|id), family=binomial()),

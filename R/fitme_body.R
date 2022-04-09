@@ -105,7 +105,7 @@ fitme_body <- function(processed,
                    paste0("return_only <- \"",proc1$objective,"APHLs\""))
   if (length(initvec)) {
     augZXy_phi_est <- NULL
-    if (identical(verbose["getCall"][[1L]],TRUE)) { ## toget an optim call with its initial value. Then HLcallfn is called and its call returned.
+    if (identical(verbose["getCall"][[1L]],TRUE)) { ## to get an optim call with its initial value. Then HLcallfn is called and its call returned.
       ## confint -> get_HLCorcall needs an HLCor call with the following ranFix
       ranPars_in_refit <- structure(.modify_list(fixed,init.optim),
                                     # I label this "F I X" as a TAG for this modif type attribute:
@@ -144,6 +144,16 @@ fitme_body <- function(processed,
       refit_args <- .get_refit_args(fixed, optPars, processed, moreargs, proc1, refit_info, HLCor.args, augZXy_phi_est)
       HLCor.args <- refit_args$HLCor.args
       ranPars_in_refit <- refit_args$ranPars_in_refit
+      if ( ! is.null(trBeta <- ranPars_in_refit$trBeta)) { # outer beta
+        processed$off <- environment(processed$X_off_fn)$ori_off
+        processed$X.pv <- environment(processed$X_off_fn)$X_off
+        processed$AUGI0_ZX <- .init_AUGI0_ZX(processed$X.pv, processed$AUGI0_ZX$vec_normIMRF, processed$ZAlist, nrand=length(processed$ZAlist), n_u_h=nrow(processed$AUGI0_ZX$ZeroBlock), 
+                                             sparse_precision=processed$is_spprec, 
+                                             as_mat=.eval_as_mat_arg(processed))
+        HLCor.args$init.HLfit$fixef <- .betaInv(trBeta)
+        ranPars_in_refit$trBeta <- NULL
+        processed$port_env$port_fit_values$fixef <- NULL
+      }
     } ## end if ...getCall... else
     #
     # refit_info is list if so provided by user, else typically boolean. An input NA should have been converted to something else (not documented).
@@ -151,7 +161,7 @@ fitme_body <- function(processed,
       attr(ranPars_in_refit,"moreargs") <- moreargs 
       HLCor.args$ranPars <- ranPars_in_refit 
     } else HLCor.args$ranFix <- ranPars_in_refit 
-  } else if (len_ranPars <- length(unlist(HLCor.args$ranPars))){ ## Set attribute
+  } else if (len_ranPars <- length(unlist(HLCor.args$ranPars))) { ## Set attribute
     HLCor.args$ranPars <- structure(HLCor.args$ranPars,
                                   type = relist(rep("fix", len_ranPars), HLCor.args$ranPars),
                                   moreargs=moreargs) ## moreargs needed if user handles fixed(<transformed params>) ('hyper' tests)

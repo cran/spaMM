@@ -835,19 +835,21 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
 
 .calc_APHLs_from_ZX <- function(auglinmodblob=NULL,processed, which="p_v",
                                ## alternative to auglinmodblob, insuff pour REML non standard:
-                               sXaug, phi_est, lambda_est, dvdu, u_h, mu
+                               sXaug, phi_est, lambda_est, dvdu, u_h, muetablob
                                ) {
   augZX_resu <- list()
   if ( ! is.null(auglinmodblob)) {
     sXaug <- auglinmodblob$sXaug 
-    mu <- auglinmodblob$muetablob$mu
+    muetablob <- auglinmodblob$muetablob
     phi_est <- auglinmodblob$phi_est
     u_h <- auglinmodblob$u_h
     lambda_est <- auglinmodblob$lambda_est
     dvdu <- auglinmodblob$wranefblob$dvdu
   }
+  mu <- muetablob$mu
   #
-  augZX_resu$clik <- .calc_clik(mu,phi_est,processed)
+  augZX_resu$clik <- .calc_clik(mu,phi_est,processed, 
+                                muetaenv=muetablob) # muetaenv used in COMPoisson case
   if (all(which =="clik")) return(augZX_resu)
   if (processed$models[["eta"]]=="etaGLM") {
     augZX_resu$p_v <- augZX_resu$clik

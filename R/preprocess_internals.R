@@ -234,19 +234,20 @@
     nrand <- length(ZAlist)
     if (nrand>0L) {
       # adjacency speed to be tested on 2nd example from test-spaMM.R
-      possiblydense <- attr(ZAlist,"exp_ranef_types") %in% c("adjacency", "IMRF", "Matern","Cauchy", "corrMatrix", "AR1", "corrFamily") # possibly dense *corr* 
+      possiblydense <- attr(ZAlist,"exp_ranef_types") %in% c("adjacency", "IMRF", "Matern","Cauchy", "corrMatrix", "AR1", "corrFamily", 
+                                                             "diallel", "MaternIMRFa", "ARMA", "ARp") # possibly dense *corr*  # ___F I X M E___ ad hoc code for specific corrFamilies
       actuallysparse <- (attr(ZAlist,"exp_ranef_types") %in% c("Matern", "Cauchy", "corrFamily", "corrMatrix") & 
         grepl("%in%", attr(ZAlist, "exp_ranef_string"), fixed=TRUE)) # nested models otherwise with possibly dense *corr*
       stillpossiblydense <- possiblydense & ( ! actuallysparse)
-      sparseprecs <- attr(ZAlist,"exp_ranef_types") %in% c("adjacency", "IMRF", "AR1")
-      if (( ! is_spprec) && all(stillpossiblydense)) { ## simple subcase of the next case
+      sparseprecs <- attr(ZAlist,"exp_ranef_types") %in% c("adjacency", "IMRF", "AR1", "MaternIMRFa", "ARp")
+      if (( ! is_spprec) && all(stillpossiblydense)) { ## simple subcase of the next case => exclude SPCORR, but not SPPREC
         ## LMatrices are not available, and it may be better to use the density of the correlation matrices anyway:
         ## for maximally sparse Z, ZL's denseness is that of the retained rows of L. This suggests that ZL could be made sparser 
         ## by reordering the levels of the correlation matrix so that the most represented levsl come first in a triangular L factor. 
         ## But this would not affect the denseness of .crossprod(ZW) in .get_absdiagR_blocks(), 
         ## and this leads to use "dense" whenever the correlation matrix is dense.
         ## Gryphon example is useful here, L is sparse but the "dense" QRmethod still appears as good as the "sparse" one.
-        return("dense") # that won't prevent spprec from being possibly selected!
+        return("dense") # that WON'T prevent SPPREC from being possibly selected!
         # But for the smallest networks in the CAR_timings, for which spprec is not used, decorr is thus used.
         # But even if .provide_G_diagnosis() were run, decorr would still be selected. The reason is that the true denseness via ZL is not assessed;
         # instead L is assumed maximally dense. For those smallest networks, this is not optimal bc the actual ZL would be quite sparse.
@@ -627,19 +628,30 @@
         } else traced_fn <- quote(HLfit_body)
         if (level >= 1L ) {
           tracing_op <- quote(try(.TRACE_fn(ranFix, processed)))
-          exit_op <- quote({
-            aphl <- unlist(res$APHLs[c("p_bv","p_v","logLapp")])[1L] ## unlist drops NULL values
+          if (is.null(processed$REMLformula)) { ## default REML case
+            if (processed$HL[[1L]]=='SEM')  {
+              objLik <- "logLapp"
+            } else objLik <- "p_bv"
+          } else {
+            if (attr(processed$REMLformula,"isML")) {  
+              objLik <- "p_v"
+            } else { ## if nontrivial REML formula was used...
+              objLik <- "p_bv"
+            }
+          }
+          exit_op <- substitute({
+            aphl <- res$APHLs[[objLik]]
             if (is.null(aphl)) {
               print("(objective not found)",quote=FALSE)
-            } else print(paste0(names(aphl),"= ",.prettify_num(aphl,nsmall=4)),quote=FALSE)
-          })
+            } else print(paste0(objLik,"= ",.prettify_num(aphl,nsmall=4)),quote=FALSE)
+          }, list(objLik=objLik))
         } else { ## e.g. level=0.5 : will print only the "progress bars"  
           tracing_op <- quote({})
           exit_op <- quote({})
         }
         suppressMessages(trace(traced_fn, where=asNamespace("spaMM"), print=FALSE, 
-                               tracer=tracing_op,
-                               exit=exit_op)) 
+                               tracer=tracing_op, # shows the parameters
+                               exit=exit_op)) # shows the objective fn
         # if (processed$is_spprec) {
         #   suppressMessages(trace(.solve_IRLS_as_spprec, where=asNamespace("spaMM"),print=FALSE,tracer=quote(cat(">"))))
         # } else suppressMessages(trace(.solve_IRLS_as_ZX, where=asNamespace("spaMM"), print=FALSE,tracer=quote(cat(">"))))

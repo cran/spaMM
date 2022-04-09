@@ -8,7 +8,7 @@ if (requireNamespace("agridat", quietly = TRUE)) {
     method <- "REML"
     
     if (exists("by_cF")) rm("by_cF")
-    example("corrFamily-design")
+    example("corrFamily-design", echo=FALSE)
     if (exists("by_cF")) { # if the examples have been run, check their results:
       testthat::test_that("Check that corrFamily and ranCoef fit are consistent",testthat::expect_true(diff(range(logLik(by_rC),logLik(by_cF)))<1e-08))  
       testthat::test_that("Check that logLik(Toepfit)==-152.4187",testthat::expect_true(diff(range(logLik(Toepfit),-152.4187))<1e-4))
@@ -51,7 +51,7 @@ if (requireNamespace("agridat", quietly = TRUE)) {
   {cat(crayon::yellow("\ntest from ARp.Rd:\n"))
     
     if (exists("AR3_fix")) rm("AR3_fix")
-    example("ARp")
+    example("ARp", echo=FALSE)
     if (exists("AR3_fix")) { # if the examples have been run, check their results:
       testthat::test_that("Check that 'fixed' and covStruct=list(corrFamily=<constructor>(., fixed=.)) give equivalent results",
                           testthat::expect_true(diff(range(logLik(AR3fix),logLik(AR3_fix)))<1e-14))

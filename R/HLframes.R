@@ -471,12 +471,12 @@ if (FALSE) { # seems correct, but ultimately not needed
       is_low_y <- (y < Gamma_min_y)
       if (any(is_low_y)) {
         #y[which(is_low_y)] <- Gamma_min_y
-        warning(paste0("Found Gamma response < (Gamma_min_y=",Gamma_min_y,") . Troubles may happen."))
+        warning(paste0("Found Gamma response < (Gamma_min_y=",Gamma_min_y,") . Troubles may happen."), immediate. = TRUE)
       }
       is_high_y <- (y > 1/Gamma_min_y)
       if (any(is_high_y)) {
         #y[which(is_low_y)] <- Gamma_min_y
-        warning(paste0("Found Gamma response > (1/Gamma_min_y=",1/Gamma_min_y,") . Troubles may happen."))
+        warning(paste0("Found Gamma response > (1/Gamma_min_y=",1/Gamma_min_y,") . Troubles may happen."), immediate. = TRUE)
       }
     }
     return(y)

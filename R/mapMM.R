@@ -28,7 +28,7 @@
     ## can be replaced by:
     colorpts <- data.frame(x=x,y=rgb.tim[,k])
     # fitme very slow on this 7/5/2016
-    blob <- corrHLfit(y~ Matern(1|x),data=eval(colorpts),ranFix=list(phi=1e-07,nu=4,rho=10)) ## use rho large...
+    blob <- fitme(y~ Matern(1|x),data=eval(colorpts),fixed=list(phi=1e-07,nu=4,rho=10), method="REML") ## use rho large...
     hold <- predict(blob,newdata=data.frame(x=xg),control=list(fix_predVar=FALSE))[,1] ## binding FALSE by default -> returns vector 
     ##
     hold[hold < 0] <- 0

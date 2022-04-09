@@ -9,7 +9,7 @@ Operations on lists of parameters
 \code{get_ranPars} returns various subsets of random-effect parameters (correlation or variance parameters), as controlled by its \code{which} argument. 
 It is one of several extractors for fixed or estimated parameters of  different classes of parameters, for which a quick guide is
 
-\code{\link{get_ranPars}}: for random-effect parameters, excluding residual dispersion;\cr
+\code{\link{get_ranPars}}: for random-effect parameters, excluding residual dispersion (with a subtlety for \code{corrFamily} models: see Details);\cr
 \code{\link{VarCorr}}: alternative extractor for random-effect (co)variance and optionally residual variance, in a data frame format;\cr
 \code{\link{residVar}}: for residual variance parameters, family dispersion parameters, or information about residual variance models;\cr
 \code{\link{get_residVar}}: alternative extractor of residual variances with different features inherited from \code{\link{get_predVar}};\cr
@@ -34,6 +34,8 @@ remove_from_parlist(parlist, removand=NULL, rm_names=names(unlist(removand)))
 For heteroscedastic models, such as conditional autoregressive models, the variance parameter \dQuote{lambda} refers to a common scaling coefficient. For other random-effect models, \dQuote{lambda} typically refers to the single variance parameter.
 
 \code{remove_from_parlist} is designed to manipulate structured lists of parameters, such as a list with elements \code{phi}, \code{lambda}, and \code{corrPars}, the latter being itself a list structured as the return value of \code{get_ranPars(.,which="corrPars")}. \code{parlist} may have an attribute \code{type}, also with elements \code{phi}, \code{lambda}, and \code{corrPars}... If given, \code{removand} must have the same structure (but typically not all the elements of \code{parlist}); otherwise, \code{rm_names} must have elements which match names of \code{unlist(names(parlist))}. 
+
+If a corrFamily parameter is fixed through the formula term, as in \code{ARp(1|time, p=3, fixed=c(p2=0))}, the fixed parameter is not considered a model parameter and \code{get_ranPars} will not extract it from the object. However, the parameter will be extracted if it has been fixed through \code{fitme}'s \code{fixed} argument rather than through the formula term (see example in \code{\link{ARp}}).
 }
 \value{
 \code{get_ranPars(.,which="corrPars")} returns a (possibly nested) list of correlation parameters (or NULL if there is no such parameter). Top-level elements correspond to the different random effects. The list has a \code{"type"} attribute having the same nested-list structure and describing whether and how the parameters where fitted: \code{"fix"} means they where fixed, not fitted; \code{"var"} means they were fitted by \code{HLfit}'s specific algorithms; \code{"outer"} means they were fitted by a generic optimization method. 

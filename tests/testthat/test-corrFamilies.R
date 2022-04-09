@@ -51,7 +51,7 @@ if (spaMM.getOption("example_maxtime")>10) {
       p3 <- get_predVar(fit_cF, newdata=cap_mv[c(3,1,3),])
       testthat::test_that("get_predVar MaternIMRFa OK",
                           testthat::expect_true(diff(range(p1-p2, p1-p3))<1e-6))
-      cat(crayon::blue("Two expected warnings as bc fitmv with unregistered corrFamily:"))
+      cat(crayon::blue("Two expected warnings bc fitmv with unregistered corrFamily:"))
       (zut_IMRF <- fitmv(submodels=list(mod1=list(migStatus ~ 1),
                                         mod2=list(status2 ~ 1+ IMRF(1|longitude+latitude, model=matern))), # verbose=c(TRACE=TRUE), 
                          fixed=list(phi=c(0.02,0.02)), covStruct=list(corrFamily=MaternIMRFa(mesh=mesh, fixed=c(alpha=2))),
@@ -137,7 +137,7 @@ if (spaMM.getOption("example_maxtime")>10) {
                                          mod2=list(Selection_mean ~ Year+AR1(1|Year), 
                                                    prior.weights = quote(1/Selection_SE^2))), 
                           data=Phen_Sel))
-        cat(crayon::blue("One expected warning as bc fitmv with unregistered corrFamily:"))
+        cat(crayon::blue("One expected warning bc fitmv with unregistered corrFamily:"))
         (zut_cF <- fitmv(submodels=list(mod1=list(Selection_mean ~ 1),
                                         mod2=list(Selection_mean ~ Year+corrFamily(1|Year), 
                                                   prior.weights = quote(1/Selection_SE^2))), # verbose=c(TRACE=TRUE), 

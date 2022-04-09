@@ -16,14 +16,27 @@ glm.nodev.fit <- function (x, y, weights = rep.int(1, nobs), start = NULL, etast
     weights <- rep.int(1, nobs)
   if (is.null(offset)) 
     offset <- rep.int(0, nobs)
-  variance <- family$variance
-  linkinv <- family$linkinv
-  if (!is.function(variance) || !is.function(linkinv)) 
-    stop("'family' argument seems not to be a valid family object", 
-         call. = FALSE)
-  dev.resids <- family$dev.resids
+  if (family$family=="COMPoisson") {
+    muetaenv <- NULL
+    variance <- function(mu) {family$variance(mu,muetaenv=muetaenv)}
+    dev.resids <- function(y, mu, wt) {family$dev.resids(y, mu, wt, muetaenv=muetaenv)}
+    if (family$link=="loglambda") {
+      linkinv <- function(eta) {family$linkinv(eta,muetaenv=muetaenv)}
+      mu.eta <- function(eta) {family$mu.eta(eta,muetaenv=muetaenv)}
+    } else {
+      linkinv <- family$linkinv
+      mu.eta <- family$mu.eta
+    }
+  } else {
+    variance <- family$variance
+    dev.resids <- family$dev.resids
+    linkinv <- family$linkinv
+    mu.eta <- family$mu.eta
+    if (!is.function(variance) || !is.function(linkinv)) 
+      stop("'family' argument seems not to be a valid family object", 
+           call. = FALSE)
+  }
   aic <- family$aic
-  mu.eta <- family$mu.eta
   valideta <- family$valideta 
   validmu <- family$validmu 
   n <- NULL ## see comments on family$initialize in spaMM_glm.fit()
@@ -64,6 +77,9 @@ glm.nodev.fit <- function (x, y, weights = rep.int(1, nobs), start = NULL, etast
         eta <- offset + as.vector(if (NCOL(x) == 1L) {x * start} else {x %*% start})
       }
     } else eta <- family$linkfun(mustart)
+    if (family$family=="COMPoisson") muetaenv <- .CMP_muetaenv(family, pw=weights, eta) # In each case were this bit of code is run,
+    # The fact that we have redefined locally variance, dev.resids, and for "loglambda" link also linkinv and mu.eta,
+    # means that generic calls to these functions will use will use muetaenv when appropriate. This is so, for example, for the next line of code.
     mu <- linkinv(eta)
     if (!(validmu(mu) && valideta(eta))) 
       stop("cannot find valid starting values: please specify some", 
@@ -104,14 +120,16 @@ glm.nodev.fit <- function (x, y, weights = rep.int(1, nobs), start = NULL, etast
         stop("singular fit encountered")
       start[fit$pivot] <- fit$coefficients
       eta <- drop(x %*% start)
+      eta <- eta + offset
       if (family$link=="log") {
         eta <- .sanitize_eta_log_link(eta, max=40,y=y, warn_neg_y= (family$family !="gaussian"))
       } else if (family$link=="loglambda") {
         COMP_nu <- environment(family$aic)$nu 
         eta <- .sanitize_eta_log_link(eta, max=40, y=y, nu=COMP_nu) 
       }
+      if (family$family=="COMPoisson") muetaenv <- .CMP_muetaenv(family, pw=weights, eta)
       # : __F I X M E__ why not use general code : .sanitize_eta(eta,y=y, family=family) #, which default max?  
-      mu <- linkinv(eta <- eta + offset)
+      mu <- linkinv(eta)
       dev <- start
       if (control$trace) 
         cat("Deviance = ", dev, " Iterations - ", iter, 
@@ -131,7 +149,9 @@ glm.nodev.fit <- function (x, y, weights = rep.int(1, nobs), start = NULL, etast
           ii <- ii + 1
           start <- (start + coefold)/2
           eta <- drop(x %*% start)
-          mu <- linkinv(eta <- eta + offset)
+          eta <- eta + offset
+          if (family$family=="COMPoisson") muetaenv <- .CMP_muetaenv(family, pw=weights, eta)
+          mu <- linkinv(eta)
           dev <- start
         }
         boundary <- TRUE
@@ -153,7 +173,9 @@ glm.nodev.fit <- function (x, y, weights = rep.int(1, nobs), start = NULL, etast
           ii <- ii + 1
           start <- (start + coefold)/2
           eta <- drop(x %*% start)
-          mu <- linkinv(eta <- eta + offset)
+          eta <- eta + offset
+          if (family$family=="COMPoisson") muetaenv <- .CMP_muetaenv(family, pw=weights, eta)
+          mu <- linkinv(eta)
         }
         boundary <- TRUE
         dev <- start
@@ -218,7 +240,7 @@ glm.nodev.fit <- function (x, y, weights = rep.int(1, nobs), start = NULL, etast
   wtdmu <- if (intercept) 
     sum(weights * y)/sum(weights)
   else linkinv(offset)
-  dev <- suppressWarnings(sum(family$dev.resids(y, mu, weights))) # .calc_inits_by_glm() uses it
+  dev <- suppressWarnings(sum(dev.resids(y, mu, weights))) # "nodev" for the fit, but dev for post-fit: .calc_inits_by_glm() uses it
   # nulldev <- sum(dev.resids(y, wtdmu, weights))
   n.ok <- nobs - sum(weights == 0)
   nulldf <- n.ok - as.integer(intercept)

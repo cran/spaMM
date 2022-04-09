@@ -463,22 +463,24 @@ residVar <- function(object, which="var", submodel=NULL, newdata=NULL) {
   return(phiW) ## always MATRIX
 }
 
+.get_objLik <- function(object) { # conceived to work on both 'processed' and HLfit objects
+  mess <- .REMLmess(object)
+  which <- switch(mess, 
+                  "by stochastic EM."= "logLapp",
+                  "by Laplace ML approximation (p_v)."= "p_v",
+                  "by h-likelihood approximation."= "p_v",
+                  "by ML."= "p_v",
+                  "by Laplace REML approximation (p_bv)."= "p_bv",
+                  "by REML."= "p_bv",
+                  "by non-standard REML"= "p_bv",
+                  stop(paste0("No default '",which,"' value for '",mess,"' estimation method."))
+  ) 
+}
+
 
 logLik.HLfit <- function(object, which=NULL, ...) {
   object <- .getHLfit(object)
-  if (is.null(which)) {
-    mess <- .REMLmess(object)
-    which <- switch(mess, 
-                    "by stochastic EM."= "logLapp",
-                    "by Laplace ML approximation (p_v)."= "p_v",
-                    "by h-likelihood approximation."= "p_v",
-                    "by ML."= "p_v",
-                    "by Laplace REML approximation (p_bv)."= "p_bv",
-                    "by REML."= "p_bv",
-                    "by non-standard REML"= "p_bv",
-                    stop(paste0("No default '",which,"' value for '",mess,"' estimation method."))
-                    ) 
-  }
+  if (is.null(which)) which <- .get_objLik(object)
   if (which=="logL_Lap") {
     if (all(unlist(object$family[c("family","link")]==c("Gamma","log")))) {
       ZAL <- .compute_ZAL(XMatrix=object$strucList, ZAlist=object$ZAlist,as_matrix=.eval_as_mat_arg.HLfit(object)) 

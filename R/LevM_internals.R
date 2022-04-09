@@ -58,7 +58,7 @@
 
 .diagnose_conv_problem_LevM <- function(beta_cov_info, # __F I X M E__ redefine it to use tcrossfac_beta_v_cov rather than it tcrossprod? But RSpectra may be more efficient on symmetric matrices...
                                         w.resid, processed) {
-  condnum <- NULL
+  condnum <- decomp <- NULL
   if ( ncol(beta_cov_info$tcrossfac_beta_v_cov)<2000L) { # for larger matrices the crossprod itself may be slow, perhaps the slowest step ?
     tc <- tcrossprod(beta_cov_info$tcrossfac_beta_v_cov) # hm. it's fairly dense
     if (inherits(tc,"sparseMatrix")) decomp <- .try_RSpectra(tc, symmetric=TRUE) # 1000 -> 0.28s

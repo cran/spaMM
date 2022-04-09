@@ -133,7 +133,7 @@
     ####
     APHLs_args$dvdu <- newwranefblob$dvdu
     APHLs_args$u_h <- u_h 
-    APHLs_args$mu <- newmuetablob$mu
+    APHLs_args$muetablob <- newmuetablob
     #
     if (processed$p_v_obj=="p_v" && which_LevMar_step!="v") { ## new damping -> new weights -> new expensive computation to evaluate p_v
       if (GLGLLM_const_w) {
@@ -384,7 +384,10 @@
   fpot_cond <- processed$spaMM_tol$fpot_cond
   if (fpot_cond) fpot_tol <- processed$spaMM_tol$fpot_tol
   if ( is.null(for_intervals) && is_HL1_1) {
-    which_LevMar_step <- default_b_step <- LevM_HL11_method[["b_step"]] 
+    if (pforpv==0L) { # outer beta
+      which_LevMar_step <- "v" # appeared with outer beta estim
+      v_iter <- 0L
+    } else which_LevMar_step <- default_b_step <- LevM_HL11_method[["b_step"]] 
     rescue_thr <- processed$spaMM_tol$rescue_thr
     rescue_nbr <- 0L
     prev1_rescued <- FALSE
@@ -492,12 +495,13 @@
     ##### get the lik of the current state
     if ( ! is.null(for_intervals)) {
       loc_logLik_args <- list(sXaug=sXaug, processed=processed, phi_est=phi_est,
-                              lambda_est=lambda_est, dvdu=wranefblob$dvdu, u_h=u_h, mu=muetablob$mu)
+                              lambda_est=lambda_est, dvdu=wranefblob$dvdu, u_h=u_h, muetablob=muetablob)
       oldlik <- unlist(do.call(".calc_APHLs_from_ZX",loc_logLik_args)[fixefobjfn]) # unlist keeps name
     } else if (LevenbergM) { ## then logL is necessary to check for increase
       if (is.null(damped_WLS_blob)) {
         oldAPHLs <- .calc_APHLs_from_ZX(sXaug=sXaug, processed=processed, phi_est=phi_est, which=processed$p_v_obj, 
-                                        lambda_est=lambda_est, dvdu=wranefblob$dvdu, u_h=u_h, mu=muetablob$mu)
+                                        lambda_est=lambda_est, dvdu=wranefblob$dvdu, u_h=u_h, 
+                                        muetablob=muetablob)
       } else { ## Levenberg and innerj>1
         oldAPHLs <- damped_WLS_blob$APHLs
       }
@@ -563,7 +567,9 @@
                        v=.spaMM.data$options$stylefns$vloop,
                        V_IN_B=.spaMM.data$options$stylefns$v_in_loop,
                        .spaMM.data$options$stylefns$betaloop )
-        maxs_grad <- c(max(abs(zInfo$m_grad_obj[seq_n_u_h])),max(abs(zInfo$m_grad_obj[-seq_n_u_h])))
+        if (pforpv) {
+          maxs_grad <- c(max(abs(zInfo$m_grad_obj[seq_n_u_h])),max(abs(zInfo$m_grad_obj[-seq_n_u_h])))
+        } else maxs_grad <- c(max(abs(zInfo$m_grad_obj[seq_n_u_h])),0) # outer beta
         cat(stylefn("iter=",innerj,", max(|grad|): v=",maxs_grad[1L],"beta=",maxs_grad[2L],";"))
       }
       constant_APHLs_args <- list(processed=processed, which=processed$p_v_obj, sXaug=sXaug, phi_est=phi_est, lambda_est=lambda_est)
@@ -576,9 +582,11 @@
         if (just_rescued <- identical(attr(damped_WLS_blob, "step"), "rescue")) {
           rescue_nbr <- rescue_nbr + 1L
           old_relV_beta <- relV_beta 
-          if (prev1_rescued || rescue_nbr > rescue_thr["V_IN_B"]) {
-            which_LevMar_step <- "V_IN_B"
-          } else which_LevMar_step <- "v_b" 
+          if (pforpv) { 
+            if (prev1_rescued || rescue_nbr > rescue_thr["V_IN_B"]) {
+              which_LevMar_step <- "V_IN_B" # # [yellow [cyan .cyan .....ul green...
+            } else which_LevMar_step <- "v_b" # outer beta
+          }
         } else if (which_LevMar_step=="v_b" || which_LevMar_step=="b_from_v_b" ) { 
           if (rescue_nbr > rescue_thr["strictv"]  &&  #rescue has been previously needed in the outer loop
               damped_WLS_blob$breakcond != "low_pot" ## in particular, if OK_gain, we play safer if we know a problem occurred previously
@@ -596,7 +604,7 @@
           if (damped_WLS_blob$breakcond == "low_pot") { ## LevMar apparently maximized h wrt v after several iterations
             #cat(damped_WLS_blob$breakcond)
             old_relV_beta <- relV_beta ## serves to assess convergence !!! which is thus dependent on condition ( hlik_stuck || ! need_v_step)
-            which_LevMar_step <- default_b_step # We should not reach this line when RHS is "v_in_b"
+            if (pforpv) which_LevMar_step <- default_b_step # We should not reach this line when RHS is "v_in_b"  # ! outer beta
           } else {
             ## v_h estimation not yet converged, continue with it 
             # But this means that "stuck_obj" on a "v" step must have dealt with elsewhere, otherwise we are looping on stuck_obj
@@ -776,8 +784,11 @@
           if ( which_LevMar_step=="v_b" && damped_WLS_blob$breakcond=="low_pot" && attr(damped_WLS_blob$breakcond,"no_overfit")) {
             break 
           } else if ( which_LevMar_step=="v" && 
-                      v_parent_info[["breakcond"]]=="low_pot" ## essential condition
-                      && damped_WLS_blob$breakcond=="low_pot") {
+                      v_parent_info[["breakcond"]]=="low_pot" && ## essential condition
+                      ( ( ! pforpv ) ||  # outer beta
+                          v_parent_info[["breakcond"]]=="low_pot" ## essential condition; otherwise poor fits (eg test-nloptr # 422 p_v_out_def   ) 
+                      )
+                    ) {
             break 
           } else if ( which_LevMar_step=="v_b" && 
                       damped_WLS_blob$breakcond=="stuck_obj" ) { 
@@ -821,7 +832,9 @@
   }
   if (trace>1L && (LevenbergM))  {
     stylefn <- .spaMM.data$options$stylefns$betalast
-    maxs_grad <- c(max(abs(zInfo$m_grad_obj[seq_n_u_h])),max(abs(zInfo$m_grad_obj[-seq_n_u_h])))
+    if (pforpv) { # outer beta
+      maxs_grad <- c(max(abs(zInfo$m_grad_obj[seq_n_u_h])),max(abs(zInfo$m_grad_obj[-seq_n_u_h])))
+    } else maxs_grad <- c(max(abs(zInfo$m_grad_obj[seq_n_u_h])),0)
     cat(stylefn("iter=",innerj,", max(|grad|): v=",maxs_grad[1L],"beta=",maxs_grad[2L],";"))
   }
   names(beta_eta) <- colnames(processed$AUGI0_ZX$X.pv)

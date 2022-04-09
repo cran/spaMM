@@ -148,6 +148,10 @@ HLfit <- function(formula,
   } #else there is one processed for a single data set 
 
   ranefParsList <- relist(ranefParsVec, skeleton)
+  if ( ! is.null(trBeta <- ranefParsList$trBeta)) { # outer beta
+    ranefParsList$trBeta <- NULL
+    processed$off <- processed$X_off_fn(.betaInv(trBeta))
+  }
   ranFix <- .modify_list(ranFix, ranefParsList)
   rpType <- .modify_list(attr(ranFix, "type"), attr(skeleton, "type"))
   attr(ranFix, "type") <- rpType

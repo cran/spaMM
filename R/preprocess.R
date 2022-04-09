@@ -702,6 +702,9 @@
   # Exclude fixed hy_lam in multIMRF:
   if (augZXy_cond) augZXy_cond <- ! any(grepl("hy_lam", names(unlist(ranFix$hyper)), fixed=TRUE))
   #
+  #
+  if (augZXy_cond == 1L) augZXy_cond <- ( ! is.call(processed$prior.weights) && attr(processed$prior.weights,"unique")) ## cf APHLs_by_augZXy code
+  # which means that allow_augZXy=2L allows augZXy usage with non-constant prior weights 
   if (augZXy_cond)  {
     ######### exclude case where there is an init lambda / hy_lam / ranCoefs[<lambda positions>] 
     # bc it does not have the expected meaning when augZXY is used and it not clear how to correct that.
@@ -726,11 +729,8 @@
     if (augZXy_cond) augZXy_cond <- ! any(grepl("hy_lam", names(unlist(init$hyper)), fixed=TRUE))
     #  Conditional on verbose bc otherwise various bootstraps will repeat this message:
     if ( ! augZXy_cond && processed$verbose["TRACE"]) message("Providing initial values for some variance parameter(s)\n   prevents use of an efficient algorithm to fit LMMs.")
-    #########
+    # : that must come after all other conditions otherwise the message is issued despite other reasons for not using augZXy.
   }
-  #
-  if (augZXy_cond == 1L) augZXy_cond <- ( ! is.call(processed$prior.weights) && attr(processed$prior.weights,"unique")) ## cf APHLs_by_augZXy code
-  # which means that allow_augZXy=2L allows augZXy usage with non-constant prior weights 
   processed$augZXy_cond <- structure(augZXy_cond, inner=augZXy_cond_inner)
   if (augZXy_cond) {
     processed$augZXy_env <- new.env(parent=emptyenv()) 
@@ -963,7 +963,15 @@
 }
 
 
-
+.def_off_fn <- function(X_off, ori_off) { # outer beta
+  force(X_off)
+  force(ori_off)
+  function(beta) {
+    off <- ori_off + X_off %*% beta
+    attr(off,"beta") <- beta
+    off
+  }
+}
 
 .preprocess <- function(control.HLfit, ranFix=NULL, HLmethod, 
                        predictor, resid.model,
@@ -1214,6 +1222,12 @@
     return(ncol(X.pv) && is_separated(X.pv, as.numeric(y),verbose=FALSE)) 
   } else if (family$family == "binomial" && processed$bin_all_or_none) {
     abyss <- (ncol(X.pv) && is_separated(X.pv, as.numeric(y)))
+  }
+  if ( ! is.null(init$beta)) { # outer beta
+    betanames <- names(init$beta)
+    X_off <-.subcol_wAttr(X.pv, j=betanames, drop=FALSE)
+    X.pv <- .subcol_wAttr(X.pv, j=setdiff(colnames(X.pv),betanames), drop=FALSE)
+    processed$X_off_fn <- .def_off_fn(X_off, ori_off=processed$off)
   }
   #
   if (.spaMM.data$options$X_scaling) { ## use scaled X.pv by default v.2.4.83

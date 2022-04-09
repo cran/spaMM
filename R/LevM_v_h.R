@@ -77,7 +77,7 @@
       ##### get the lik of the current state
       if (is.null(damped_WLS_blob)) { ## innerj=1
         oldAPHLs <- .calc_APHLs_from_ZX(sXaug=sXaug, processed=processed, phi_est=phi_est, which=processed$p_v_obj, 
-                                        lambda_est=lambda_est, dvdu=wranefblob$dvdu, u_h=u_h, mu=muetablob$mu)
+                                        lambda_est=lambda_est, dvdu=wranefblob$dvdu, u_h=u_h, muetablob=muetablob)
       }
       if ( ! GLMMbool) {
         # arguments for init_resp_z_corrections_new called in calc_zAug_not_LMM
@@ -113,7 +113,9 @@
         )
       }
       if (trace>1L) {
-        maxs_grad <- c(max(abs(m_grad_obj[seq_n_u_h])),max(abs(m_grad_obj[-seq_n_u_h])))
+        if (pforpv) { 
+          maxs_grad <- c(max(abs(m_grad_obj[seq_n_u_h])),max(abs(m_grad_obj[-seq_n_u_h])))
+        } else maxs_grad <- c(max(abs(m_grad_obj[seq_n_u_h])), 0) # outer beta
         cat(stylefn(paste0("v_h iter=",innerj,", max(|grad|): v=",maxs_grad[1L],"beta=",maxs_grad[2L],";")))
       }
       zInfo$gainratio_grad <- m_grad_obj ## before rescaling
@@ -183,7 +185,9 @@
       breakcond <- "maxit"
     }
     break_info$IRLS_breakcond <- breakcond
-    break_info$maxs_grad <- c(max(abs(m_grad_obj[seq_n_u_h])),max(abs(m_grad_obj[-seq_n_u_h])))
+    if (pforpv) { # outer beta: several change in v3.11.5 without parallel changes in .solve_IRLS_as_spprec
+      break_info$maxs_grad <- c(max(abs(m_grad_obj[seq_n_u_h])),max(abs(m_grad_obj[-seq_n_u_h])))
+    } else break_info$maxs_grad <- c(max(abs(m_grad_obj[seq_n_u_h])), 0)
     names(beta_eta) <- colnames(X.pv)
     if (! is.null(damped_WLS_blob)) {
       fitted <- damped_WLS_blob$fitted

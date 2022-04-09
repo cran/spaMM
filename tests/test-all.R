@@ -60,7 +60,7 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") { ## set in <R_HOME>/etc/Renviron.site 
           if (inherits(chk,"try-error")) warning(paste0(fich," generated an error"))
           tps
         }))
-        print(colSums(priv_timings)) # very roughly 1205.44 s elapsed for default maxtime (0.7)
+        print(colSums(priv_timings)) # very roughly 1205.44 s elapsed for default maxtime (0.7) # much less after improving COMP
       }
       if (FALSE) { ## kept separate bc obscure interference as if there was a bug in setTimeLimit()*Rstudio ?
         # abyss <- matrix(runif(2e7),nrow=1000); gc(reset=TRUE) ## partial control of gc trigger... but RESTARTING R appears more efficient.

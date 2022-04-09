@@ -50,7 +50,7 @@ if(requireNamespace("lme4", quietly = TRUE)) {
   (m2 <- fitme(Reaction ~ 1 + (poly(Days,2, raw=TRUE)|Subject), data = sleepstudy, method="REML"))
   crit <- diff(range(c(-877.895899884,logLik(m1),logLik(m2))))
   try(testthat::test_that(paste0("criterion was ",signif(crit,6)," from -877.895899884"), # affected by xtol_abs_factors$rcLam
-                      testthat::expect_true(crit<1e-09)))
+                      testthat::expect_true(crit<2e-09)))
   p1 <- predict(m1)
   p1n <- predict(m1, newdata=m1$data)
   testthat::expect_true(diff(range(p1-p1n))<1e-12) 

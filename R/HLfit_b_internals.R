@@ -78,7 +78,7 @@
 .calc_clik <- function(mu, # as given by .muetafn(), ie, prediction of counts in binomial case...
                        phi_est,processed, clik_fn=processed$clik_fn, 
                        prior.weights=processed$prior.weights,
-                       summand=FALSE) { 
+                       summand=FALSE, muetaenv=NULL) { 
   BinomialDen <- processed$BinomialDen
   y <- processed$y
   if ( ! is.null(vec_nobs <- processed$vec_nobs)) { # mv case, list of families
@@ -99,9 +99,11 @@
     cliks <- unlist(cliks, recursive = FALSE, use.names = FALSE)
   } else {
     family <- processed$family
-    theta <- .theta.mu.canonical(mu/BinomialDen,family)  # bobttleneck for CMP
+    theta <- .theta.mu.canonical(mu/BinomialDen,family)  # Could be a bottleneck for CMP if attr(mu,"lambda") were missing.
     if (family$family=="binomial") {
       cliks <- clik_fn(theta, y/BinomialDen, BinomialDen, eval(prior.weights)/phi_est)
+    } else if (family$family=="COMPoisson") {
+      cliks <- clik_fn(theta, y, eval(prior.weights)/phi_est, muetaenv=muetaenv)
     } else {
       phi_est[phi_est<1e-12] <- 1e-10 ## 2014/09/04 local correction, has to be finer than any test for convergence 
       ## creates upper bias on clik but should be more than compensated by the lad

@@ -204,8 +204,10 @@ static inline double x_d_omx(double x) {return x/(1 - x);}
 
 // [[Rcpp::export(.logit)]]
 SEXP logit(NumericVector mu) {
-  for (int it=0; it<mu.size(); it++) mu[it]=log(x_d_omx(mu[it]));
-  return(wrap(mu));
+  size_t len=mu.size();
+  NumericVector eta(len);
+  for (int it=0; it<mu.size(); it++) eta[it]=log(x_d_omx(mu[it]));
+  return(wrap(eta)); 
 }
 
 // [[Rcpp::export(.is_evaluated)]]

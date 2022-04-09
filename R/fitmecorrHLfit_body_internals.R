@@ -478,6 +478,7 @@
     urP <- unlist(ranPars[[lit]]) ## ranPars$corrPars can be list() in which case urP is NULL 
     if (!is.null(urP)) cat(ntC[lit],"=",paste(signif(urP,6),collapse=" ")," ")
   }
+  if ( ! is.null(beta <- attr(processed$off,"beta"))) cat("beta=",paste(signif(beta,6),collapse=" ")," ") # outer beta
 }
 
 .calc_corrMatrix_precisionFactor__assign_Lunique <- function(processed, rd) {
@@ -858,7 +859,9 @@
 .more_init_optim <- function(proc1, processed, corr_types, init.optim, phi_by_augZXy,user_init_optim) {
   ## trying to guess all cases where optimization is useful. But FIXME: create all init and decide afterwardsS
   phimodel1 <- proc1$models[['phi']]
-  allPhiScalorFix <- all(processed$models[['phi']] == "phiScal" | processed$models[['phi']] == "")
+  allPhiScalorFix <- all(processed$models[['phi']] == "phiScal" | 
+                         (processed$models[['phi']] == "phiGLM" & .unlist(processed$p_fixef_phi)==0L) | # identify offset-only phi models. 
+                           processed$models[['phi']] == "")
   ranCoefs_blob <- processed$ranCoefs_blob
   is_MixedM <- ( ! is.null(ranCoefs_blob) )
   if (is_MixedM) {
@@ -932,6 +935,11 @@
         user_init_optim=user_init_optim
       )
     } 
+    if (anyNA(beta <- user_init_optim$beta)) {
+      inits_by_glm <- .get_inits_by_glm(processed)  
+      beta[names(is.na(beta))] <- inits_by_glm$beta_eta[names(is.na(beta))]
+      init.optim$beta <- beta      
+    }
     if (length(init.optim$lambda) > nrand1) {
       mess <- paste0("Initial value for lambda: (",
                      paste(#names(init.optim$lambda),"=",
@@ -1048,7 +1056,8 @@
                              corr_types=corr_types, fixed=fixed, init.optim=init.optim, control_dist=proc_it$control_dist, 
                              init.HLfit=init.HLfit, corr_info=corr_info, verbose=verbose, lower=lower, upper=upper)
   fixed <- .expand_hyper(fixed, hyper_info=proc_it$hyper_info, moreargs=moreargs)
-  inits <- .calc_inits(init.optim=init.optim, init.HLfit=init.HLfit,
+  inits <- .calc_inits(init.optim=init.optim, # user, + added automatic ones
+                       init.HLfit=init.HLfit,
                        ranFix=fixed,  corr_info=corr_info,
                        moreargs=moreargs,
                        user.lower=user.lower, user.upper=user.upper,

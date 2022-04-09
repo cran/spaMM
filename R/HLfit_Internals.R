@@ -154,8 +154,9 @@ if (FALSE) {
       X <- Diagonal(x=c(rep(1,min_row),Dvec))
     } else X@x <- X@x * c(rep(1,min_row),Dvec) ## raw diag matrix
   } else if (inherits(X,c("dgCMatrix", "dtCMatrix"))) { 
-    which_i_affected_rows <- X@i>(min_row-1L)
-    X@x[which_i_affected_rows] <- X@x[which_i_affected_rows]*Dvec[X@i[which_i_affected_rows]-min_row+1L]
+    Xi <- X@i
+    which_i_affected_rows <- Xi>(min_row-1L)
+    X@x[which_i_affected_rows] <- X@x[which_i_affected_rows]*Dvec[Xi[which_i_affected_rows]-min_row+1L]
     ## a triangular matrix with unitary diagonal may be stored as @diag=="U" and only non-diag elements specified...
     if ( methods::.hasSlot(X, "diag") && X@diag=="U") Matrix::diag(X) <- c(rep(1,min_row),Dvec)
   } else {
@@ -642,6 +643,7 @@ if (FALSE) {
     # It's the parent 'processed' which bears the TRACE info (cf comment in residProcessed <- .preprocess(.) arguments)
     if (verbose["TRACE"]) {cat(paste("\nBegin tracing residual dispersion fit for iter=",iter,":\n"))}
     phifit <- do.call("fitme_body",phifitarglist)
+    phifit$how$fnname <- "fitme_body" # for get_inits_from_fit()
     #if ( ! is.null(processed$port_env$port_fit_values)) undebug(glm.fit)
     if (verbose["TRACE"]) {cat(paste("... end tracing residual dispersion fit for iter=",iter,"."))}
     prevmsglength <- .overcat_phifit_progress(phifit, verbose, processed, iter, prev_PHIblob$prevmsglength)
@@ -891,15 +893,9 @@ spaMM_Gamma <- local({
          Gamma = function(theta,y,nu) {
            dgamma(y, shape=nu , scale = attr(theta,"mu")/nu, log = TRUE) 
          },
-         COMPoisson = function(theta,y,nu) { ## theta = log(lambda) 
-           COMP_nu <- environment(family$aic)$nu
-           logLs <- numeric(length(y))
-           for (i in seq(length(y))) {
-             comp_z <- .COMP_Z(lambda=exp(theta[i]),nu=COMP_nu)
-             logLs[i] <- nu[i]*(theta[i]*y[i]-comp_z[[1]]-log(comp_z[[2]])) - COMP_nu * lfactorial(y[i])
-           }
-           logLs[theta== -Inf & y==0] <- 1
-           logLs
+         COMPoisson = function(theta, y, nu, muetaenv=NULL) {
+           COMP_nu <- environment(family$aic)$nu # using the (variable nu) from the family captured in this fn's definition envir 
+           .CMP_clik_fn(theta, y, nu, COMP_nu, muetaenv=muetaenv)
          },
          negbin = function(theta,y,nu) { ## theta is the canonical param, -log(1+shape/mu)
            NB_shape <- environment(family$aic)$shape
@@ -955,35 +951,9 @@ spaMM_Gamma <- local({
   )
 } ## returns values for given mu
 
-.CMP_thetaMuDerivs <- function(mu,family) { # computation of derivatives of inverse of .CMP_calc_dlW_deta_locfn...
-  CMP_env <- environment(family$aic)
-  COMP_nu <- CMP_env$nu
-  if (COMP_nu==1) return(list(Dtheta.Dmu=1/mu, D2theta.Dmu2= - 1/mu^2))
-  # ELSE
-  lambdas <- CMP_env$mu2lambda(mu)
-  len <- length(mu)
-  Dtheta.Dmu <- D2theta.Dmu2 <- numeric(len)
-  for (i in seq_len(len)) {
-    lambdai <- lambdas[[i]]
-    if (lambdai==0) {
-      Dtheta.Dmu <- 1e8 # 1/lambda
-      D2theta.Dmu2 <- - 1e16 # -1/lambda^2
-    } else {
-      moments <- .COMP_Pr_moments(lambda=lambdai,nu=COMP_nu,moments=c("2","3"))
-      mui <- mu[[i]]
-      V <- moments[["2"]] - mui^2 # ...that's the family $variance()...
-      Dtheta.Dmu[i] <- 1/V
-      D2theta.Dmu2[i] <- (moments[["2"]] * (1 + mui) - moments[["3"]] - V*(1-2*mui) - mui^2)/V^3 # computation appended to COMP_Z.nb
-    }
-  }
-  return(list(Dtheta.Dmu=Dtheta.Dmu,D2theta.Dmu2=D2theta.Dmu2))
-}
-
-
-
-.thetaMuDerivs <- function(mu,BinomialDen,family) { ## used for non-canonical links
+.thetaMuDerivs <- function(mu,BinomialDen,family, muetablob) { ## used for non-canonical links
   familyfam <- family$family
-  if (familyfam == "COMPoisson") return(.CMP_thetaMuDerivs(mu, family))
+  if (familyfam == "COMPoisson") return(.CMP_thetaMuDerivs(mu, family, muetaenv=muetablob))
   if (familyfam=="binomial") muFREQS <- mu/BinomialDen
   if (familyfam == "negbin") NB_shape <- environment(family$aic)$shape
   ## these definitions depend only on the canonical link
@@ -1192,6 +1162,9 @@ spaMM_Gamma <- local({
     # : a redundant object with a list 'mv' of sub-muetablob's added to a synthetic muetablob with itself a list of sub-GLMweights'
   } 
   eta <- .sanitize_eta(eta, family=family) #, bin_mu_tol=processed$envir$bin_mu_tol)
+  if (family$family=="COMPoisson") {
+    return(.CMP_muetaenv(family, pw, eta))
+  } 
   if (family$family == "binomial") { ## 
     #for binomial cases stats::binomial(...)$linkinv corrects eta for all links so that mu is always .Machine$double.eps from 0 or 1
     # This may not be enough... or inconsistent with corrections used elsewhere, so we overcome the stats:: correction
@@ -1421,14 +1394,25 @@ spaMM_Gamma <- local({
       dlW_deta <- 2*mu
       if (calcCoef1) coef1 <- dlW_deta /dmudeta
     } else if (family$family=="COMPoisson") { 
-      COMP_nu <- environment(family$aic)$nu
-      lambdas <- exp(eta) ## pmin(exp(eta),.Machine$double.xmax) ##  FR->FR lambdas missing as mu attribute here ?
-      blob <- sapply(seq(length(lambdas)), .CMP_calc_dlW_deta_locfn,lambdas=lambdas,mu=mu,COMP_nu=COMP_nu)
-      dlW_deta <- blob["d2mudeta2",] / blob["dmudeta",]
-      if (family$family=="COMPoisson") dlW_deta[is.nan(dlW_deta)] <- 0 ## quick patch for cases that should have low lik
-      if (calcCoef1) {
-        coef1 <- dlW_deta / blob["dmudeta",]
-        if (family$family=="COMPoisson") coef1[is.nan(coef1)] <- 0 ## idem
+      if (TRUE) { # using the muetablob environment
+        dmudeta <- muetablob$dmudeta # = # ...that's the family $variance()...
+        d2mudeta2 <- muetablob$EX3-muetablob$EX*muetablob$EX2-2*muetablob$EX*dmudeta
+        dlW_deta <- d2mudeta2 / dmudeta
+        dlW_deta[is.nan(dlW_deta)] <- 0 ## quick patch for cases that should have low lik 
+        if (calcCoef1) {
+          coef1 <- dlW_deta / dmudeta
+          coef1[is.nan(coef1)] <- 0 ## idem
+        }
+      } else {
+        COMP_nu <- environment(family$aic)$nu
+        lambdas <- exp(eta) ## pmin(exp(eta),.Machine$double.xmax) ##  FR->FR lambdas missing as mu attribute here ?
+        blob <- sapply(seq(length(lambdas)), .CMP_calc_dlW_deta_locfn,lambdas=lambdas,mu=mu,COMP_nu=COMP_nu)
+        dlW_deta <- blob["d2mudeta2",] / blob["dmudeta",]
+        dlW_deta[is.nan(dlW_deta)] <- 0 ## quick patch for cases that should have low lik # rous$54ZOOM
+        if (calcCoef1) {
+          coef1 <- dlW_deta / blob["dmudeta",]
+          coef1[is.nan(coef1)] <- 0 ## idem
+        }
       }
     } 
   } else if (family$family=="binomial" && family$link=="probit") { ## ad hoc non canonical case 
@@ -1445,7 +1429,7 @@ spaMM_Gamma <- local({
     if (calcCoef1) coef1 <- dlW_deta
   } else { ## "negbin" only called with non-canonical links always ends here 
     ## we need to update more functions of mu...
-    tmblob <- .thetaMuDerivs(mu,BinomialDen,family)
+    tmblob <- .thetaMuDerivs(mu,BinomialDen,family, muetablob)
     Dtheta.Dmu <- tmblob$Dtheta.Dmu # calcul co fn de muFREQS puis / BinomialDen
     D2theta.Dmu2 <- tmblob$D2theta.Dmu2 # calcul co fn de muFREQS puis / BinomialDen ^2
     d2mudeta2 <- .calc_d2mudeta2(link=family$link,mu=mu,eta=eta,BinomialDen=BinomialDen)
@@ -2741,7 +2725,7 @@ if (FALSE) { # that's not used.
                      list(Xaug=Xscal, weight_X=weight_X, w.ranef=wranefblob$w.ranef, H_global_scale=H_global_scale))
   } else sXaug <- NULL 
   res <- list(APHLs=.calc_APHLs_from_ZX(processed=processed, which="p_v", sXaug=sXaug, phi_est=phi_est, 
-                                        lambda_est=lambda_est, dvdu=wranefblob$dvdu, u_h=u_h, mu=muetablob$mu))
+                                        lambda_est=lambda_est, dvdu=wranefblob$dvdu, u_h=u_h, muetablob=muetablob))
   return(res)
 }
 
@@ -3126,9 +3110,11 @@ if (FALSE) { # that's not used.
                                     PHIblob # we need more info to initiate both inner and outer optim of the next phifit
                                     ) {
   if ( new_obj> old_obj) {
+    abs_d_obj <- abs(old_obj-new_obj)
     ## Use FALSE to inhibit all port_env usage:
     if ( ! identical(control.HLfit$write_port_env,FALSE)) assign("objective",new_obj,envir=processed$port_env) 
-    if (abs(old_obj-new_obj)<5) { # from tests on fit_SPDE_spaMM <- fitme(.... Loaloa ...)
+    if (abs_d_obj<length(port_fit_values$fixef) ||  # previously '5' based on some old Loaloa IMRF example; changed in v3.11.10, 04/2022
+        processed$LevenbergM["LM_start"]) { # LM_start condition appears to improve the fit for test negbin difficult.
       # Update port_fit_values and assign it: 
       if (models[["eta"]]=="etaHGLM") {
         port_fit_values$lambda_est <- lambda_est ## mean fit lambda; to be used by .HLfit_finalise_init_lambda

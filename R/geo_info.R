@@ -553,7 +553,7 @@
                   # For dense cov_info_mat this block is not run given the .calc_denseness() check. 
                   is.null(corr_info$corr_families[[rd]]$corr_CHM_template)) {
                 corr_info$corr_families[[rd]]$corr_CHM_template <- corr_CHMfactor
-                if (processed$QRmethod=="sparse" && .calc_denseness(r$L,relative=TRUE) > 0.15) {
+                if (processed$QRmethod=="sparse" && .calc_denseness(r$L,relative=TRUE) > 0.15) { # ___F I X M E___ symmetric message for alternative case? 
                   cat(crayon::green("Sparse-matrix methods have been selected, but it seems that setting algebra='decorr' would be better.\n"))
                   ## If r$L has high denseness, the slow step by "spcorr" will be the Matrix::qr(<sXaug>) step, not the Cholesky updates for corr_CHMfactor 
                   ## The follwing fix does not really work bc previous $QRmethod has been used by 
