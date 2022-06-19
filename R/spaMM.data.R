@@ -34,8 +34,9 @@
   #
   USEEIGEN=TRUE, # Whether to use the Eigen C++ library for some matrix computations. The source code should be consulted for further information. 
   X_scaling=TRUE,
-  maxLambda=1e10,
-  regul_lev_lambda=1e-8,
+  minLambda=1e-8,
+  maxLambda=1e8,
+  regul_lev_lambda=1e-16, # ____F I X M E____
   ############## augZXy stuff (see also ranCoefs settings)
   allow_augZXy=NULL, ## interpreted as TRUE if phiScal (=>not phiFix) before further conditions are applied, and FALSE otherwise 
   # allow_augZXy=2L forces augZXy usage with non-constant prior weights, if other conditions for its usage are satisfied.

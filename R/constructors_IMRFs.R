@@ -111,6 +111,7 @@ MaternIMRFa <- function(mesh, tpar=c(alpha=1.25,kappa=0.1), fixed=NULL) {
        make_new_corr_lists=make_new_corr_lists,
        levels_type=.spaMM.data$options$uGeo_levels_type,
        need_Cnn=FALSE,
+       sparsePrec=TRUE, possiblyDenseCorr=TRUE,
        tag="MaternIMRFa") # the mesh is in the environment of the functions
 }
 
@@ -153,7 +154,7 @@ gridIMRF <- function(..., fixed=NULL) {  # internal family constructor, not desc
     grid_arglist <<- grid_arglist
     
     grid <- expand.grid(grid_arglist) ## INTEGER GRID
-    precnames <<-  apply(grid,1L,paste0,collapse=":") ## Should match colnames(ZA) 
+    precnames <<-  .pasteCols(t(grid)) # apply(grid,1L,paste0,collapse=":") ## Should match colnames(ZA) 
     
   }
   
@@ -231,6 +232,7 @@ gridIMRF <- function(..., fixed=NULL) {  # internal family constructor, not desc
        calc_inits=calc_inits, 
        normIMRF= gridpars$no, # for normalization of ZA
        make_new_corr_lists=make_new_corr_lists,
+       sparsePrec=TRUE, possiblyDenseCorr=TRUE,
        tag="gridIMRF") # the mesh is in the environment of the functions
 }
 

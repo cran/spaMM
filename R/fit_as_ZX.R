@@ -6,7 +6,7 @@
            damping,  # _F I X M E_ looks like it could be parallelized 
            dampingfactor=2, ## no need to change the input value
            ypos, off, GLMMbool, etaFix, 
-           updateW_ranefS_subarglist,
+           lambda_est,
            wranefblob, seq_n_u_h, 
            ZAL_scaling,
            processed, 
@@ -81,7 +81,7 @@
         if (Trace) cat(stylefn_v("["))
         v_h_blob <- .wrap_wrap_v_h_IRLS(IRLS_fn=".solve_v_h_IRLS", v_h=Vscaled_beta[seq_n_u_h] * ZAL_scaling, 
                                         beta_eta=Vscaled_beta[-seq_n_u_h], seq_n_u_h, GLMMbool, wranefblob, processed, 
-                                        updateW_ranefS_subarglist, v_infer_args, Trace) # each underline green is a damping _loop_ not a damping step
+                                        lambda_est, v_infer_args, Trace) # each underline green is a damping _loop_ not a damping step
         if (Trace) cat(stylefn_v("]"))
         if (trace) .cat_break_info( v_h_blob, stylefn_v, stylefn)  ## prints, at the level of the outer damped_WLS, the results of the v_h IRLS
         
@@ -98,21 +98,18 @@
     fitted[ypos] <- newmuetablob$sane_eta
     
     neww.resid <- .calc_w_resid(newmuetablob$GLMweights,phi_est)
-    newweight_X <- .calc_weight_X(neww.resid, H_global_scale) ## sqrt(s^2 W.resid)
-    
+    newweight_X <- .calc_weight_X(neww.resid, H_global_scale, processed, newmuetablob) ## sqrt(s^2 W.resid)  
+
     if (is.null(etaFix$v_h)) { 
       v_h <- Vscaled_beta[seq_n_u_h] * ZAL_scaling ## use original scaling!
       if (GLMMbool) {
         u_h <- v_h 
         newwranefblob <- wranefblob ## keep input wranefblob since GLMM and lambda_est not changed
       } else {
-        u_h_v_h_from_v_h_args <- c(processed$reserve$constant_u_h_v_h_args,list(v_h=v_h))
-        u_h <- do.call(".u_h_v_h_from_v_h",u_h_v_h_from_v_h_args)
-        if ( ! is.null(attr(u_h,"v_h"))) { ## second test = if constant_u_h_v_h_args$upper.v_h or $lower.v_h non NULL
-          v_h <- attr(u_h,"v_h")
-        }
+        u_h <- processed$u_h_v_h_from_v_h(v_h)
+        if ( ! is.null(maybe <- attr(u_h,"v_h"))) v_h <- maybe
         ## update functions u_h,v_h
-        newwranefblob <- do.call(".updateW_ranefS",c(updateW_ranefS_subarglist, list(u_h=u_h,v_h=v_h)))
+        newwranefblob <- wranefblob <- processed$updateW_ranefS(u_h=u_h,v_h=v_h, lambda=lambda_est)
       } 
     } else newwranefblob <- wranefblob
     mMatrix_arglist <- list(weight_X=newweight_X, w.ranef=newwranefblob$w.ranef, H_global_scale=H_global_scale)
@@ -298,11 +295,11 @@
 
 
 .WLS_substitute <- function(Xscal, Vscaled_beta, ypos, off, etaFix, seq_n_u_h, ZAL_scaling, mod_attr, 
-                            updateW_ranefS_subarglist, H_global_scale, ZAL, 
+                            lambda_est, H_global_scale, ZAL, 
                             which_i_affected_rows, n_u_h, nobs, processed, phi_est, mMatrix_method,
                             wranefblob, w.resid, weight_X, Trace,stylefn) {
   
-  # Vscaled_beta must have been provided by somethin else than damped_WLS_blob
+  # Vscaled_beta must have been provided by something else than damped_WLS_blob
   # drop, not as.vector(): names are then those of (final) eta and mu -> used by predict() when no new data
   fitted <- drop(Xscal %*% Vscaled_beta) ## length nobs+nr ! 
   eta <- fitted[ypos] + off
@@ -312,14 +309,11 @@
     if (mod_attr$GLMMbool) {
       RESU$u_h <- RESU$v_h <- v_h ## keep input wranefblob since lambda_est not changed
     } else {
-      u_h_v_h_from_v_h_args <- c(processed$reserve$constant_u_h_v_h_args,list(v_h=v_h))
-      RESU$u_h <- u_h <- do.call(".u_h_v_h_from_v_h",u_h_v_h_from_v_h_args)
-      if ( ! is.null(attr(u_h,"v_h"))) { ## second test = if constant_u_h_v_h_args$upper.v_h or $lower.v_h non NULL
-        v_h <- attr(u_h,"v_h")
-      }
+      RESU$u_h <- u_h <- processed$u_h_v_h_from_v_h(v_h)
+      if ( ! is.null(maybe <- attr(u_h,"v_h"))) v_h <- maybe
       RESU$v_h <- v_h
       ## update functions u_h,v_h
-      RESU$wranefblob <- wranefblob <- do.call(".updateW_ranefS",c(updateW_ranefS_subarglist, list(u_h=u_h,v_h=v_h)))
+      RESU$wranefblob <- wranefblob <- processed$updateW_ranefS(u_h=u_h,v_h=v_h, lambda=lambda_est)
       #if ( ! mod_attr$GLMMbool) { # updates ZAL_scaling and functions of it
         RESU$ZAL_scaling <- ZAL_scaling <- 1/sqrt(wranefblob$w.ranef*H_global_scale) ## Q^{-1/2}/s
         RESU$Xscal <- Xscal <- .calc_Xscal_newscaled(Xscal, ZAL_scaling, ZAL, which_i_affected_rows, 
@@ -335,7 +329,8 @@
   if ( (! mod_attr$LLM_const_w) && (! mod_attr$GLGLLM_const_w) ) {
     ## weight_X and Xscal vary within loop if ! LMM since at least the GLMweights in w.resid change
     RESU$w.resid <- .calc_w_resid(muetablob$GLMweights,phi_est)
-    RESU$weight_X <- .calc_weight_X(RESU$w.resid, H_global_scale) ## sqrt(s^2 W.resid)
+    ######## if ( is.null(w.resid) ) w.resid <- .calc_w_resid(muetablob$GLMweights,phi_est)
+    RESU$weight_X <- .calc_weight_X(RESU$w.resid, H_global_scale, processed, muetablob) ## sqrt(s^2 W.resid)  
     if (Trace) cat(stylefn("."))
     RESU$sXaug <- do.call(mMatrix_method, 
                      list(Xaug=Xscal, weight_X=RESU$weight_X, w.ranef=wranefblob$w.ranef, H_global_scale=H_global_scale))
@@ -343,24 +338,17 @@
   return(RESU) ## contains only updated quantities
 }
 
-.calc_m_grad_obj <- function(zInfo, etamo, GLMMbool, v_h, wranefblob, w.resid, ZAL, X.pv) {
+.calc_m_grad_obj <- function(zInfo, etamo, GLMMbool, v_h, wranefblob, H_w.resid, ZAL, X.pv) {
   z1_eta <- zInfo$z1-etamo
   z1_sscaled_eta <- zInfo$z1_sscaled - etamo # zAug[-seq_n_u_h]-etamo # z_1-sscaled-etamo
   if (GLMMbool) {
     zInfo$dlogfvdv <-  - v_h * wranefblob$w.ranef
   } else zInfo$dlogfvdv <- (zInfo$z2 - v_h) * wranefblob$w.ranef
   ## the gradient for -p_v (or -h), independent of the scaling
-  if (is.list(w.resid)) {
-    m_grad_obj <- c( ## drop() avoids c(Matrix..) 
-      m_grad_v <- drop(.crossprod(ZAL, w.resid$w_resid * z1_eta) + zInfo$dlogfvdv), # Z'W(z_1-eta)+ dlogfvdv
-      drop(.crossprod(X.pv, w.resid$w_resid * z1_sscaled_eta)) # X'W(z_1-sscaled-eta)
-    )
-  } else {
-    m_grad_obj <- c( ## drop() avoids c(Matrix..) 
-      m_grad_v <- drop(.crossprod(ZAL, w.resid * z1_eta) + zInfo$dlogfvdv), # Z'W(z_1-eta)+ dlogfvdv
-      drop(.crossprod(X.pv, w.resid * z1_sscaled_eta)) # X'W(z_1-sscaled-eta)
-    )
-  }
+  m_grad_obj <- c( ## drop() avoids c(Matrix..) 
+    m_grad_v <- drop(.crossprod(ZAL, H_w.resid * z1_eta) + zInfo$dlogfvdv), # Z'W(z_1-eta)+ dlogfvdv 
+    drop(.crossprod(X.pv, H_w.resid * z1_sscaled_eta)) # X'W(z_1-sscaled-eta)
+  )
   m_grad_obj
 }
 
@@ -382,7 +370,7 @@
            u_h, v_h, for_init_z_args, 
            ## supplement for intervals
            for_intervals,
-           verbose,
+           verbose=processed$verbose,
            LevM_HL11_method=.spaMM.data$options$LevM_HL11_method
   ) {
     trace <- verbose["TRACE"]
@@ -427,8 +415,6 @@
                                 for_init_z_args,
                                 #
                                 mget(c("cum_n_u_h","rand.families"),envir=processed))
-      updateW_ranefS_subarglist <- processed$reserve$W_ranefS_constant_args
-      updateW_ranefS_subarglist$lambda <- lambda_est # we add in fine u_h, v_h to make the complete arglist
     } 
   } 
   
@@ -454,7 +440,8 @@
   }
   ## weight_X and Xscal varies within loop if ! LMM since at least the GLMweights in w.resid change
   if ( is.null(w.resid) ) w.resid <- .calc_w_resid(muetablob$GLMweights,phi_est)
-  weight_X <- .calc_weight_X(w.resid, H_global_scale) ## sqrt(s^2 W.resid)  # -> .... sqrt(w.resid * H_global_scale)
+  # In the obsInfo case the weight_X are modified but not w.resid 
+  weight_X <- .calc_weight_X(w.resid, H_global_scale, processed, muetablob) ## sqrt(s^2 W.resid) # -> .... sqrt(w.resid * H_global_scale)
   if (trace) {
     stylefn <- switch(which_LevMar_step,
                       v=.spaMM.data$options$stylefns$vloop,
@@ -483,7 +470,7 @@
   allow_LM_restart <- ( ! LMMbool && ! LevenbergM && is.null(for_intervals) && is.na(processed$LevenbergM["user_LM"]) )
   LMcond <- - 10. 
   if (allow_LM_restart) {
-    keep_init <- new.env()
+    keep_init <- new.env() # ___F I X M E___ that remains an ugly bit of code...
     names_keep <- c("sXaug","wranefblob","muetablob","u_h","w.resid","v_h","ZAL_scaling","weight_X","Xscal","beta_eta",
                     "old_relV_beta")
     for (st in names_keep) keep_init[[st]] <- environment()[[st]]
@@ -575,7 +562,8 @@
       ## (w)zAug is all what is needed for the direct solution of the extended system. in GLMM case
       # Hence wZaug contains Phi z_2 including (Phi v^0 +dlogfvdv)/ZAL_scaling (from components of hlik)
       ## now we want the LHS of a d_beta_v solution
-      m_grad_obj <- .calc_m_grad_obj(zInfo, etamo=muetablob$sane_eta - off, GLMMbool, v_h, wranefblob, w.resid, ZAL, X.pv)
+      H_w.resid <- .calc_H_w.resid(w.resid, muetablob, processed) 
+      m_grad_obj <- .calc_m_grad_obj(zInfo, etamo=muetablob$sane_eta - off, GLMMbool, v_h, wranefblob, H_w.resid, ZAL, X.pv)
       if (trace>1L) {
         stylefn <- switch(which_LevMar_step,
                        v=.spaMM.data$options$stylefns$vloop,
@@ -687,7 +675,7 @@
         Trace= trace,
         ypos=ypos,off=off,
         GLMMbool=GLMMbool,etaFix=etaFix,
-        updateW_ranefS_subarglist=updateW_ranefS_subarglist,
+        lambda_est=lambda_est,
         wranefblob=wranefblob,seq_n_u_h=seq_n_u_h,ZAL_scaling=ZAL_scaling,
         processed=processed, Xscal=Xscal,mMatrix_method = mMatrix_method,
         phi_est=phi_est, H_global_scale=H_global_scale, n_u_h=n_u_h, ZAL=ZAL,
@@ -727,6 +715,7 @@
         } 
       }
     } else { ## IRLS: always accept new v_h_beta
+      ################ direct solution for Vscaled_beta
       Vscaled_beta <- get_from_MME(sXaug,szAug=wzAug) # vscaled= v scaling so that v has 'scale' * ZAL_scaling
       damped_WLS_blob <- NULL
     }
@@ -739,22 +728,27 @@
     #  Hence, the following code is useful whether a break occurs or not. 
     if ( is.null(damped_WLS_blob) ) { ## fits nothing, but updates variables in case of standard IRLS, or of intervals
       WLS_blob <- .WLS_substitute(Xscal, Vscaled_beta, ypos, off, etaFix, seq_n_u_h, ZAL_scaling, mod_attr=mod_attr, 
-                                  updateW_ranefS_subarglist=updateW_ranefS_subarglist, H_global_scale, ZAL, 
+                                  lambda_est=lambda_est, H_global_scale, ZAL, 
                                   which_i_affected_rows, n_u_h, nobs, processed, phi_est, mMatrix_method,
                                   wranefblob, w.resid, weight_X, Trace=trace, stylefn=stylefn)
       if ( ! LMMbool  && fpot_cond && is.null(for_intervals)) {
+        H_w.resid <- .calc_H_w.resid(w.resid, muetablob, processed) 
         old_m_grad_obj <- .calc_m_grad_obj(zInfo, etamo=muetablob$sane_eta - off, GLMMbool, 
-                                           v_h, wranefblob, w.resid, ZAL, X.pv)
+                                           v_h, wranefblob, H_w.resid, ZAL, X.pv)
         Mg_solve_g <- get_from_MME(sXaug=sXaug, which="Mg_solve_g", B=old_m_grad_obj) # sum((WLS_blob$Vscaled_beta - Vscaled_beta)*old_m_grad_obj) # 
         for (st in names(WLS_blob)) assign(st,WLS_blob[[st]]) 
         if (Mg_solve_g < fpot_tol) break
-      } else  for (st in names(WLS_blob)) assign(st,WLS_blob[[st]]) 
+      } else  list2env(WLS_blob, envir = environment()) # for (st in names(WLS_blob)) assign(st,WLS_blob[[st]]) 
     } else {
-      for (st in intersect(names(damped_WLS_blob), # sXaug (and the weights) need not be present if(GLGLLM_const_w) 
-                           c("w.resid", ## !important! cf test-adjacency-corrMatrix.R
-                             "weight_X", 
-                             "Vscaled_beta","wranefblob","v_h","u_h","muetablob",
-                             "sXaug"))) assign(st,damped_WLS_blob[[st]])
+      varnames <- intersect(names(damped_WLS_blob), # sXaug (and the weights) need not be present if(GLGLLM_const_w) 
+                            c("w.resid", ## !important! cf test-adjacency-corrMatrix.R
+                              "weight_X", "Vscaled_beta","wranefblob","v_h","u_h","muetablob", "sXaug"))
+      list2env(damped_WLS_blob[varnames], envir = environment()) 
+      # for (st in intersect(names(damped_WLS_blob), # sXaug (and the weights) need not be present if(GLGLLM_const_w) 
+      #                      c("w.resid", ## !important! cf test-adjacency-corrMatrix.R
+      #                        "weight_X", 
+      #                        "Vscaled_beta","wranefblob","v_h","u_h","muetablob",
+      #                        "sXaug"))) assign(st,damped_WLS_blob[[st]])
       if ( ! GLMMbool ) {
         Xscal <- damped_WLS_blob$Xscal ## contains ZAL with new scaling, but weight_X is not applied since it is applied only locally in the mMatrix_method.
         ZAL_scaling <- damped_WLS_blob$ZAL_scaling
@@ -936,7 +930,7 @@
   ## then target.dX = (current.dX)*sqrt(target.dY/current.dY) where dX,dY are relative to the ML x and y 
   ## A nice thing of this conception is that if the target lik cannot be approached, 
   ##   the inferred x converges to the ML x => this x won't be recognized as a CI bound (important for locoptim) 
-  if (is.null(names(szAug))) stop("Programming error: 'szAug' must have names")
+  # if (is.null(names(szAug))) stop("Programming error: 'szAug' must have names")
   if (is.null(colnames(sXaug))) stop("Programming error: 'sXaug' must have colnames")
   parmcol_X <- for_intervals$parmcol_X
   beta <- rep(NA,length(old_beta))
@@ -957,5 +951,5 @@
   locsXaug <- sXaug[,-(parmcol_X),drop=FALSE]
   locszAug <- as.matrix(szAug-sXaug[,parmcol_X]*beta[parmcol_X])
   beta[-(parmcol_X)] <- get_from_MME(locsXaug,szAug=locszAug) 
-  return(list(beta=beta)) # levQ ispresumably always dense
+  return(list(beta=beta)) # levQ is presumably always dense
 }

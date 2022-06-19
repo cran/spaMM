@@ -67,7 +67,7 @@
                                 resglm$iter,"(criterion:",
                                 paste(names(conv_crit),"=",signif(unlist(conv_crit),3),collapse=", "),").\n",
                                 "Use <fitting function>(., control.glm=list(maxit=<larger value>,..)) to control this.")
-        assign("spaMM_glm_conv_crit",list(max=-Inf) , envir=environment(spaMM_glm.fit)) # So that no-convergence in these glms will not be warned about
+        assign("spaMM_glm_conv_crit",list(max=-Inf) , envir=environment(spaMM_glm.fit)) # So that no-convergence in later call (dispGammaGLM) can be independently assessed
       }
     } else if ( ! is.null(tryglm$warning) && 
                 substring(tryglm$warning$message,0,14)=="maxn truncated") .spaMM.data$options$COMP_maxn_warned <- FALSE

@@ -93,8 +93,7 @@ h-likelihood. Chapman & Hall: London.
 }
 \examples{
 data("wafers")
-m1 <- HLfit(y ~ X1+X2+(1|batch), resid.model = ~ 1,
-            data=wafers, method="ML")
+m1 <- fitme(y ~ X1+X2+(1|batch), data=wafers)
 fixef(m1)
 ranef(m1)
 

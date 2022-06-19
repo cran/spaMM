@@ -25,7 +25,7 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") { ## set in <R_HOME>/etc/Renviron.site 
         # spaMM.options(oldmaxt)
         print(sums <- colSums(timings))
       }
-      if (FALSE) { # long mv tests, not really for the timings
+      if (FALSE) { # long mv tests, not really for the timings; important tests, mv_nested notably
         if (FALSE) { # 'pattern' should work, but doesn't
           nested_testfiles <- dir(paste0(projpath(),"/package/tests/testthat/nestedFiles/"),pattern="*.R",full.names = TRUE)
         } else {
@@ -44,7 +44,7 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") { ## set in <R_HOME>/etc/Renviron.site 
       }
       ## testthat::test_package(pkg) ## for an installed package
       if (FALSE) { ## tests not included in package (using unpublished data, etc.)
-        #install.packages(c("FactoMineR"))
+        # install.packages("FactoMineR")
         # see also includes in tests_private/test-back-compat.R
         if (FALSE) { # 'pattern' should work, but doesn't
           priv_testfiles <- dir(paste0(projpath(),"/package/tests_private/"),pattern="*.R",full.names = TRUE)

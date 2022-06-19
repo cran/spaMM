@@ -10,9 +10,13 @@ data("scotlip")
 {
   set.seed(129) ## many samples will diverge (ML on binary response) or undemonstratively be fitted by extreme rho values
   eigenv <- eigen(Nmatrix, symmetric=TRUE) 
-  Lmat <- eigenv$vectors %*% diag(sqrt(1/(1-0.17*eigenv$values)))
-  lp <- 0.1 + 3* Lmat %*% rnorm(ncol(Lmat)) ## single intercept beta =0.1; lambda=3
-  resp <- rbinom(ncol(Lmat),1,1/(1+exp(-lp)))
+  #Lmat <- eigenv$vectors %*% diag(sqrt(1/(1-0.17*eigenv$values)))
+  #lp <- 0.1 + 3* Lmat %*% rnorm(ncol(Lmat)) ## single intercept beta =0.1; lambda=3
+  resp <- c(0,0,1,0,0,0,0,0,0,1,1,1,0,0,0,0,0,0,0,1,0,1,0,0,0,1,1,0,1,0,0,1,0,0,0,0,0,0,0,1,0,0,1,0,0,1,0,0,0,1,0,0,1,0,0,0) 
+  # was rbinom(ncol(Lmat),1,1/(1+exp(-lp))) but 
+  # Rnews: The included LAPACK sources have been updated to 3.10.1. ... 
+  # ... Using 3.10.x may give some different signs from earlier versions in SVDs or eigendecompositions... 
+  # => Here the 44th eigenvector has opposite sign so the simulated sample is different
   CARSEMd <- data.frame(npos=resp,nneg=1-resp,gridcode=scotlip$gridcode)
 }
 
@@ -20,9 +24,9 @@ data("scotlip")
 blob1 <- HLCor(cbind(npos,nneg)~1 +adjacency(1|gridcode),
           adjMatrix=Nmatrix,family=binomial(probit),data=CARSEMd,HLmethod="ML") ## ~1.27 s.
 # it is crashes the session after installing a new R version, recompile probitgem with a clean /src directory before trying anything else. 
-crit <- diff(range(get_ranPars(blob1,which = "corrPars")[["1"]]$rho, 0.07961275))
 #if (spaMM.getOption("fpot_tol")>0) {
-  try(testthat::test_that(paste0("criterion was ",signif(crit,6)," from 0.07961275"), testthat::expect_true(crit<5e-9))) # bobyqa finds 0.04582924 ('flat' p_bv)
+crit <- diff(range(get_ranPars(blob1,which = "corrPars")[["1"]]$rho, 0.07961275))
+try(testthat::test_that(paste0("criterion was ",signif(crit,6)," from 0.07961275"), testthat::expect_true(crit<5e-9))) # bobyqa finds 0.04582924 ('flat' p_bv)
 #} else testthat::expect_true(crit<5e-9)
 
 #AIC(blob1)

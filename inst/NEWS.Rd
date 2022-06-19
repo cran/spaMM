@@ -3,6 +3,30 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 3.12.0}{ 
+\subsection{NEW FEATURES}{
+\itemize{
+\item Experimental extension of geostatistical random effects to include "composite" Matern terms, meaning in particular Matern(<LHS>|<RHS>) terms where the LHS is a numeric variable or factor.
+\item Even more experimental implementation of generic handling of <corrFamily>(.|<RHS>) for nested RHS (see last example in help("corrFamily-design")).
+\item Partial implementation of Laplace approximation using observed, rather than expected, information matrix (see help("method"), vastly rewritten on that occasion).
+\item hatvalues() extractor can now return results for multivariate-response fits.
+\item More robust convergence of algorithm for GLMs fitted by fitme().
+}
+}
+\subsection{FIXED BUGS}{
+\itemize{
+\item Predictions with 'newdata' for "adjacency" models were mostly incorrect.
+\item Nested geostatistical random effects [such as Matern( 1 | . \%in\% . )] were likely to fail except in "balanced" nested designs.
+}
+}
+\subsection{USER-LEVEL CHANGES}{
+\itemize{
+\item Minor adjustment to pdep_effects(), so that it now returns a single row of output when given a single-row 'newdata' or 'newdata' with a single value of the focal (numeric) variable.
+\item Better control of extreme random-effect variances ('lambda') may lead to numerical changes in some fits, mainly those with low variances.  
+\item Improved convergence warnings.
+}
+}
+}
 \section{CHANGES UP TO VERSION 3.11.14}{ 
 \subsection{FIXED COMPATIBILITY ISSUE}{
 \itemize{

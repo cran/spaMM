@@ -22,7 +22,13 @@
 
 # a specialized version of glm, which further constructs the response value internally; the formula has no lhs 
 .calc_dispGammaGLM <- function (formula, 
-            dev.res, ## cf comments on data argument
+            dev.res, ## info not in the 'data' argument;
+            # In the case where there was a prior_lam_fac is the 'design' for non-ranCoef (wei-1|.), the unique_lambda was obtained by
+            # computing the dev.res as fn of such weights, rather than through a non-unit design X. The present code will replicate this, as it will use 
+            # a using X, and the same dev.res passed through resp_lambda to the present 'dev.res'. Cf the block with
+            # safe_dev.res_it <- rand.families[[it]]$dev.resids(u_h[u.range],psi_M[u.range],wt=wt) ## must give d1 in table p 989 de LeeN01
+            # ...      
+            # resp_lambda[u.range] <- safe_dev.res_it                                                       (all correct but quite contrived!)
             lev,
             data, ## provide only the predictor variables ! alternatively could proceed as calc_CARdispGammaGLM
             family = spaMM_Gamma(link=log), #inverse link is used in .calc_CARdispGammaGLM()
@@ -58,13 +64,19 @@
   intercept <- FALSE ## previously tried attr(mt, "intercept") > 0L but this is wrong
   #
   weights <- (1-lev)/2 # glm() code : weights <- as.vector(stats::model.weights(mf))
-  tryfit <- .tryCatch_W_E(eval(call(method, 
-                                   x = X, y = Y, weights = weights, offset = offset, family = family, 
-                                   control = control, intercept = intercept)))
-  fit <- tryfit$value
-  warnmess <- fit$warning$message
-  #if (inherits(fit,"error") || is.na(fit$null.deviance)) { ## is.na(...): dgamma problem but returns a fit
-  if (inherits(fit,"error")) { 
+  fit <- NULL
+  if ( ! is.null(start)) {
+    tryfit <- .tryCatch_W_E(eval(call(method, 
+                                      x = X, y = Y, weights = weights, offset = offset, family = family, 
+                                      start=start, etastart=etastart, # two mandatory arguments for method= .glm_reformat(); 
+                                      control = control, intercept = intercept))) 
+    fit <- tryfit$value
+    warnmess <- fit$warning$message
+    #if (inherits(fit,"error") || is.na(fit$null.deviance)) { ## is.na(...): dgamma problem but returns a fit
+    if (inherits(fit,"error")) fit <- NULL # spaMM_glm.fit could be directly called as it should work in all cases (and 'method'=.glm_reformat) has long been called 
+    # with incomplete arguments so it failed systematically, so that spaMM_glm.fit) was called systematically).
+  }
+  if (is.null(fit)) { 
     # Gamma() with small response values... 
     ## we need a valid GLM: we fit again with a more controlled method
     control$maxit <- 1000L ## convergence is very slow when fitting y ~ 1 where most y values are <1e-12 and one is ~1e-10. 

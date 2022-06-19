@@ -39,6 +39,11 @@
     exp_ranef_types <- attr(ZAlist, "exp_ranef_types")
     which_nested <- grep("%in%", names(attr(ZAlist,"exp_ranef_terms")))
     for (rd in seq_along(exp_ranef_types)) {
+      # The following variables are not always used in the devel version, but might be used everywhere in a 'spaMM 4.0'
+      ncZA <- ncol(ZAlist[[rd]])
+      # ncol(ZA) LHS-induced times RHS-induced dimension* say LHS-dim * spatial * RHS-nesting
+      # preclist, corrlist should only have dim of the RHS of a potential kronecker product i.e. spatial * RHS-nesting
+      LHS_nlev <- length(attr(ZAlist[[rd]],"namesTerm"))
       if (exp_ranef_types[rd]=="corrMatrix" ) {
         # If we specified "adjMatrix", we suspect it's better (but spprec is not automatic); this block 
         # is not executed and corrlist[[rd]] is (locally) NULL
@@ -87,20 +92,34 @@
           }
         }
       } else if (exp_ranef_types[rd]%in% c("Matern","Cauchy")  ) {
-        nc <- ncol(ZAlist[[rd]])
+        nc <- ncZA/LHS_nlev # assuming the later kronecker  product 
         if ( rd %in% which_nested ) { # more memory efficient than alternative code
           RHS_nesting_info <- attr(ZAlist[[rd]],"RHS_nesting_info")
-          blcks <- lapply(RHS_nesting_info$blocksizes, function(nc) matrix(TRUE,ncol=nc,nrow=nc))
+          blcks <- lapply(RHS_nesting_info$nested_Zcols, function(v) {
+            nc <- length(v) 
+            matrix(TRUE,ncol=nc,nrow=nc)
+          })
           preclist[[rd]] <- Matrix::bdiag(blcks) # slow in nested-Matern example
           blcks <- lapply(blcks, lower.tri, diag=TRUE)
           corrlist[[rd]] <- Matrix::bdiag(blcks)
+          # Add names for for check in .compute_ZAXlist()
+          # The precise order of names here may not be essential, but this could be a template for other algorithms where the oreder would matter.
+          perm_ZAnames <- RHS_nesting_info$full_LEVELS[.unlist(RHS_nesting_info$nested_Zcols)] # must be (permuted) ZAnames
+          rownames(corrlist[[rd]]) <- colnames(corrlist[[rd]]) <- perm_ZAnames
+          corrlist[[rd]] <- corrlist[[rd]][RHS_nesting_info$full_LEVELS,RHS_nesting_info$full_LEVELS] # now in ZA order
         } else {
           preclist[[rd]] <- matrix(TRUE,ncol=nc,nrow=nc) # as(allTRUE,"lgCMatrix") #new("lgCMatrix",i=rep(c(0L,seq_len(nc-1L)),nc),p=c(0L,seq_len(nc))*nc,x=rep(TRUE,nc^2),Dim=c(nc,nc)) 
           corrlist[[rd]] <- lower.tri(preclist[[rd]],diag = TRUE) # logi
         } 
       }
-      if ((LHS_nlev <- length(attr(ZAlist[[rd]],"namesTerm")))>1L ) { # before .compute_ZAL()
-        if ( ! is.null(corrlist[[rd]])) corrlist[[rd]] <- kronecker(lower.tri(matrix(1,ncol=LHS_nlev,nrow=LHS_nlev),diag=TRUE), corrlist[[rd]])
+      if (LHS_nlev>1L ) { # before .compute_ZAL()
+        if ( ! is.null(corrlist[[rd]])) {
+          rownames_kron_Y <- rownames(corrlist[[rd]])
+          corrlist[[rd]] <- kronecker(lower.tri(matrix(1,ncol=LHS_nlev,nrow=LHS_nlev),diag=TRUE), corrlist[[rd]]) # make.dimnames does not seem to work with Matrix'es
+          if (! is.null(attr(ZAlist[[rd]],"RHS_nesting_info"))) {
+            rownames(corrlist[[rd]]) <- rep(rownames_kron_Y,LHS_nlev)
+          }
+        }
         # It is was NULL it remains NULL, which looks OK for noAR
       } 
     }
@@ -234,12 +253,20 @@
     nrand <- length(ZAlist)
     if (nrand>0L) {
       # adjacency speed to be tested on 2nd example from test-spaMM.R
-      possiblydense <- attr(ZAlist,"exp_ranef_types") %in% c("adjacency", "IMRF", "Matern","Cauchy", "corrMatrix", "AR1", "corrFamily", 
-                                                             "diallel", "MaternIMRFa", "ARMA", "ARp") # possibly dense *corr*  # ___F I X M E___ ad hoc code for specific corrFamilies
-      actuallysparse <- (attr(ZAlist,"exp_ranef_types") %in% c("Matern", "Cauchy", "corrFamily", "corrMatrix") & 
-        grepl("%in%", attr(ZAlist, "exp_ranef_string"), fixed=TRUE)) # nested models otherwise with possibly dense *corr*
+      exp_ranef_types <- attr(ZAlist,"exp_ranef_types") 
+      is_cF <- processed$corr_info$corr_types=="corrFamily"
+      #
+      possiblydense <- exp_ranef_types %in% c("adjacency", "IMRF", "Matern","Cauchy", "corrMatrix", "AR1",
+                               "diallel", "MaternIMRFa", "ARMA", "ARp" # ad-hoc code for some corrFamilies...
+                              )
+      for (rd in which(is_cF)) possiblydense[rd] <- processed$corr_info$corr_families[[rd]]$possiblyDenseCorr 
+      #
+      actuallysparse <- (possiblydense & grepl("%in%", attr(ZAlist, "exp_ranef_string"), fixed=TRUE)) # nested models otherwise with possibly dense *corr*
       stillpossiblydense <- possiblydense & ( ! actuallysparse)
-      sparseprecs <- attr(ZAlist,"exp_ranef_types") %in% c("adjacency", "IMRF", "AR1", "MaternIMRFa", "ARp")
+      #
+      sparseprecs <- exp_ranef_types %in% c("adjacency", "IMRF", "AR1", "MaternIMRFa", "ARp")
+      for (rd in which(is_cF)) sparseprecs[rd] <- processed$corr_info$corr_families[[rd]]$sparsePrec  
+      #
       if (( ! is_spprec) && all(stillpossiblydense)) { ## simple subcase of the next case => exclude SPCORR, but not SPPREC
         ## LMatrices are not available, and it may be better to use the density of the correlation matrices anyway:
         ## for maximally sparse Z, ZL's denseness is that of the retained rows of L. This suggests that ZL could be made sparser 
@@ -354,6 +381,7 @@
   #   }
   # }
   # 
+  # In the nested RHS case he ZAnames ahve additional :1, :2 in comparison to the corrnames. So the next test is FALSE and no subsetting/reordering is performed.
   if ( ! length(extraZAnames <- setdiff(ZAnames,corrnames))) { ## i.e. if all ZAnames in corrnames
     if ( inherits(corrMatrix,"precision")) { 
       # do not subset a precmat => nothing here but the corresponding Z matrix may be modified (.addrightcols) by .init_assign_geoinfo() 
@@ -373,40 +401,56 @@
 }
 
 .addrightcols_Z <- function(Z, precnames, verbose=TRUE) {
-  ZAnames <- colnames(Z)
-  ncol_prec <-  length(precnames)
-  ncol_Z <- ncol(Z)
   # We have tested in .init_assign_geoinfo() -> .check_rownames_corrMatrix() whether all ZAnames were in precnames 
   # so (1) There is no need to check names again before calling this fn in .provide_G_diagnosis()
   #    (2) the only possible difference between sets of names is additional names in precnames
-  if ((LHS_nlev <- length(attr(Z,"namesTerm")))>1L ) {
-    nlev_RHS <- ncol_Z/LHS_nlev 
-    suppblockcols <- ncol_prec-nlev_RHS
-    if (suppblockcols) { # possibly poorly tested ode
-      if (verbose) message(paste("Note: Precision matrix has", suppblockcols, 
-                                 "more levels than there are in the data.")) # and <0 values are a bug...
-      supplevels <- setdiff(precnames,ZAnames)
-      # add cols of zeros one the right; cols to be reordered next.
-      Zp <- Z@p
-      colindices <- matrix(seq(ncol_Z),ncol=LHS_nlev)
-      colindices <- rbind(colindices,
-                          matrix(rep(colindices[nlev_RHS,],suppblockcols),ncol=LHS_nlev,byrow = TRUE))
-      dim(colindices) <- NULL
-      Z@p <-  c(0L,Zp[colindices+1L])
-      Z@Dim[2L] <- ncol_prec*LHS_nlev
-      Z@Dimnames[[2L]] <- rep(c(ZAnames[seq(nlev_RHS)],supplevels) , LHS_nlev)
+  nestedZAnames <- .get_nestednames_ZA(Z)
+  supplevels <- setdiff(precnames,nestedZAnames)
+  if (length(supplevels)) {
+    next_nestednames <- c(nestedZAnames, supplevels)
+    ncol_prec <-  length(precnames)
+    ncol_Z <- ncol(Z)
+    LHS_nlev <- length(attr(Z,"namesTerm"))
+    nlev_RHS <- ncol_Z/LHS_nlev
+    if (suppcols <- ncol_prec-nlev_RHS) {
+      if (LHS_nlev>1L ) { # suppcols are per block; possibly poorly tested code
+        if (verbose) message(paste("Note: Precision matrix has", suppcols, 
+                                   "more levels than there are in the data.")) # and <0 values are a bug...
+        # add cols of zeros one the right; cols to be reordered next.
+        Zp <- Z@p
+        colindices <- matrix(seq(ncol_Z),ncol=LHS_nlev)
+        colindices <- rbind(colindices,
+                            matrix(rep(colindices[nlev_RHS,],suppcols),ncol=LHS_nlev,byrow = TRUE))
+        dim(colindices) <- NULL
+        Z@p <-  c(0L,Zp[colindices+1L])
+        Z@Dim[2L] <- next_ncol <- ncol_prec*LHS_nlev
+        nextcolnames <- matrix(colnames(Z),ncol=LHS_nlev)
+        nextcolnames <- rbind(nextcolnames,
+                              matrix( # paste0(supplevels,":dummy"), # ":dummy" for easy tracking in case of problem .. # NO, bc:
+                                supplevels, # set of names must be the same as precnames to allow permutation of the cov_info_mat
+                                nrow=suppcols, ncol=LHS_nlev))
+        dim(nextcolnames) <- NULL 
+        Z@Dimnames[[2L]] <- nextcolnames
+        suppcols <- nlev_RHS+seq(suppcols)
+      } else { # (names=levels) in precmat but not in the data
+        if (verbose) message(paste("Note: Precision matrix has", suppcols, 
+                                   "more levels than there are in the data.")) # and <0 values are a bug...
+        # add cols of zeros on the right; cols to be reoredered next.
+        if ( inherits(Z,"ddiMatrix")) Z <- .as_ddi_dgC(Z)
+        Zp <- Z@p
+        Z@p <- c(Zp, Zp[length(Zp)] + rep(0L,suppcols))
+        Z@Dim[2L] <- ncol_prec
+        Z@Dimnames[[2L]] <- next_nestednames
+        suppcols <- ncol_Z+seq(suppcols)
+      }
+      if ( ! is.null(RHS_nesting_info <- attr(Z,"RHS_nesting_info"))) {
+        RHS_nesting_info$full_LEVELS <- nextcolnames
+        RHS_nesting_info$nested_LEVELS <- next_nestednames
+        RHS_nesting_info$nested_Zcols[["dummy"]] <- nlev_RHS+suppcols
+        attr(Z,"RHS_nesting_info") <- RHS_nesting_info
+      }
     }
-  } else if (suppcols <- ncol_prec-ncol_Z) { # (names=levels) in precmat but not in the data
-    if (verbose) message(paste("Note: Precision matrix has", suppcols, 
-                               "more levels than there are in the data.")) # and <0 values are a bug...
-    supplevels <- setdiff(precnames,ZAnames)
-    # add cols of zeros on the right; cols to be reoredered next.
-    if ( inherits(Z,"ddiMatrix")) Z <- .as_ddi_dgC(Z)
-    Zp <- Z@p
-    Z@p <- c(Zp, Zp[length(Zp)] + rep(0L,suppcols))
-    Z@Dim[2L] <- ncol_prec
-    Z@Dimnames[[2L]] <- c(ZAnames,supplevels) 
-  } 
+  }
   Z
 }
 
@@ -702,6 +746,7 @@
       init.HLfit$rho <- NULL
     } else stop("Invalid ambiguous 'init.HLfit' argument: single 'rho' but not single adjacency random-effect term.")
   }
+  init.HLfit
 }
 
 
@@ -777,7 +822,7 @@
       } else iter_mean_dispVar <- max(50L,ceiling(100* mean(abs(log2(y)))))
     } else iter_mean_dispVar <- 50L 
   } 
-  iter_mean_dispVar <- iter_mean_dispVar  
+  iter_mean_dispVar  
 }
 
 .preprocess_HL_REMLformula <- function(HLmethod, processed, BinomialDen, nobs, control.HLfit, y, REMLformula) {
@@ -881,19 +926,45 @@
 }
 
 .preprocess_arglists <- function(processed) {
+  processed$u_h_v_h_from_v_h <- .def_u_h_v_h_from_v_h(processed)
+  processed$updateW_ranefS <- .def_updateW_ranefS(processed)
   arglists <- list() 
-  arglists$constant_u_h_v_h_args <- .eval_constant_u_h_v_h_args(processed)
   nrand <- length(processed$rand.families)
   rand_list <- vector("list", nrand) # to avoid repeating this in .initialize_v_h(). Same idea below.
   repNAnrand <- rep(NA_real_, nrand) 
   names(rand_list) <- names(repNAnrand) <- seq_len(nrand)
   arglists$rand_list <- rand_list
   arglists$repNAnrand <- repNAnrand
-  arglists$W_ranefS_constant_args <- list(cum_n_u_h=processed$cum_n_u_h, rand.families=processed$rand.families,
-                                          w.ranef_list=vector("list", nrand),
-                                          dlogWran_dv_h_list=vector("list", nrand),
-                                          dvdu_list=vector("list", nrand))
   arglists
 }
 
+.eval_check_vec_n_u_h <- function(ZAlist, nobs, processed) {
+  vec_n_u_h <- unlist(lapply(ZAlist,ncol)) ## nb cols each design matrix = nb realizations each ranef
+  if (min(nobs/vec_n_u_h)<2) {
+    if (processed$family$family == "binomial" && processed$bin_all_or_none && processed$HL[1]==1L) {
+      if ( ! identical(spaMM.getOption("PQL_warned"),TRUE)) {
+        message("Fits using Laplace approximation may diverge for (nearly) all-or-none binomial data:\n check PQL or PQL/L methods in that case.")
+        .spaMM.data$options$PQL_warned <- TRUE
+      }
+    }
+  }
+  vec_n_u_h
+}
 
+.vecdisneeded <- function(pforpv, family, processed) {
+  if (pforpv) {
+    coef12needed <- ! attr(processed$models,"unit_Hobs_weights") 
+    coef3needed <- any(attr(processed$rand.families,"unique.psi_M")!=0) # psi_M happening to be 0 only for gaussian(identity) ranef
+    vecdisneeded <- c( coef12needed, coef12needed, coef3needed )
+  } else vecdisneeded <- rep(FALSE,3L)
+  vecdisneeded
+}
+
+.obsInfo <- function(HLmethod, family) {
+  obsInfo <- (length(HLmethod)==2L && HLmethod[[2L]]=="obs" && ! attr(family,"canonicalLink"))
+  if (family$link=="cauchit") {
+    # negative Hobs_w.resid; no bug implied.
+    warning("Fitting cauchit link model with observed information matrix may fail.\n  Basic algorithm using expected information matrix should work.", immediate. = TRUE)
+  }
+  obsInfo
+}

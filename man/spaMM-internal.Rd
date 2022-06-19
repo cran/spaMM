@@ -1,6 +1,6 @@
 \name{spaMM-internal}
 
-% TODO ___F I X M E___
+% TODO ___F I X M E___ check vignette for comments on glmer; document recent changes
 % * implement outer optim of beta starting from the etaFix (+ REMLformula) code => avoid LevM costs for COMP ? also allowing ome non-linear modelling
 % * Something about .predictions methods when predict returns a data frame ?
 

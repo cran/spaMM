@@ -41,8 +41,6 @@
                                 for_init_z_args,
                                 #
                                 mget(c("cum_n_u_h","rand.families"),envir=processed))
-      updateW_ranefS_subarglist <- processed$reserve$W_ranefS_constant_args
-      updateW_ranefS_subarglist$lambda <- lambda_est
     } 
     
     ##### initial sXaug
@@ -57,13 +55,15 @@
     update_sXaug_constant_arglist <- list(AUGI0_ZX=processed$AUGI0_ZX, corrPars=corrPars, 
                                           cum_n_u_h=processed$cum_n_u_h #,H_global_scale=H_global_scale
                                           ) 
-    #weight_X <- .calc_weight_X(w.resid, H_global_scale) ## sqrt(s^2 W.resid)
+    sXaug_arglist <- c(update_sXaug_constant_arglist,
+                       list(w.ranef=wranefblob$w.ranef, 
+                            w.resid=w.resid))
+    sXaug_arglist$H_w.resid <- .calc_H_w.resid(w.resid, muetablob=muetablob, processed=processed) 
+    # .HLfit_body_augZXy has called .init_AUGI0_ZX_envir_spprec_info(processed,LMatrices)...
     if (trace) cat(stylefn(".")) ## hmff blue (vloop) F I X M E
     sXaug <- do.call(processed$AUGI0_ZX$envir$method, # ie, def_AUGI0_ZX_sparsePrecision
-                     c(update_sXaug_constant_arglist,
-                       list(w.ranef=wranefblob$w.ranef, 
-                            #weight_X=weight_X, 
-                            w.resid=w.resid)))
+                     sXaug_arglist)
+
     Vscaled_beta <- list(v_h=v_h/ZAL_scaling,beta_eta=beta_eta)
     
     break_info <- list()
@@ -97,7 +97,7 @@
       } else zInfo$dlogfvdv <- (zInfo$z2 - v_h) * wranefblob$w.ranef
       ## the gradient for -p_v (or -h), independent of the scaling
       zInfo$m_grad_obj <- c( ## drop() avoids c(Matrix..); attr(sXaug,"w.resid") presumably correct for truncated models too.
-        m_grad_v <- drop(.crossprod(ZAL, attr(sXaug,"w.resid") * zInfo$z1_eta) + zInfo$dlogfvdv), # Z'W(z_1-eta)+ dlogfvdv
+        m_grad_v <- drop(.crossprod(ZAL, sXaug$BLOB$H_w.resid * zInfo$z1_eta) + zInfo$dlogfvdv), # Z'W(z_1-eta)+ dlogfvdv
         drop(.crossprod(X.pv, attr(sXaug,"w.resid") * z1_sscaled_eta)) # X'W(z_1-sscaled-eta)
       )
       zInfo$gainratio_grad <- zInfo$m_grad_obj # needed for .do_damped_WLS_v_in_b_spprec()
@@ -120,7 +120,7 @@
                                         Trace=trace,
                                         ypos=ypos,off=off,
                                         GLMMbool=GLMMbool,etaFix=etaFix,
-                                        updateW_ranefS_subarglist=updateW_ranefS_subarglist,
+                                        lambda_est=lambda_est,
                                         wranefblob=wranefblob,seq_n_u_h=seq_n_u_h,
                                         update_sXaug_constant_arglist=update_sXaug_constant_arglist,
                                         ZAL_scaling=ZAL_scaling,
@@ -132,9 +132,11 @@
                                         stylefn=stylefn, # i.e., .spaMM.data$options$stylefns$vloop
                                         outer=FALSE
       ) 
-      for (st in c("Vscaled_beta","wranefblob","v_h","u_h","muetablob",
-                   "w.resid", 
-                   "sXaug")) assign(st,damped_WLS_blob[[st]]) 
+      list2env(damped_WLS_blob[c("w.resid", ## !important! 
+                                 "Vscaled_beta","wranefblob","v_h","u_h","muetablob", "sXaug")], envir = environment()) 
+      # for (st in c("Vscaled_beta","wranefblob","v_h","u_h","muetablob",
+      #              "w.resid", 
+      #              "sXaug")) assign(st,damped_WLS_blob[[st]]) 
       if ( ! GLMMbool ) {
         #Xscal <- damped_WLS_blob$Xscal ## contains ZAL with new scaling, but weight_X is not applied since it is applied only locally in the mMatrix_method.
         ZAL_scaling <- damped_WLS_blob$ZAL_scaling # presumably the TAGged 1

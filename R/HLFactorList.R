@@ -1,6 +1,12 @@
-## alternative to lmerFactorList or so. Now see mkReTrms 
+.pasteCols <- function(x, collapse=":") { # fast version of apply(mf[splt],1,paste,collapse=":") ; cf from plotrix::pasteCols
+  pastestring <- paste("list(",paste("x","[",seq_len(nrow(x)),",]",sep="",collapse=","),")",sep="")
+  do.call(paste,c(eval(parse(text = pastestring)),sep=collapse)) 
+}
+# spaMM:::.pasteCols(t(blackcap)) same as apply(blackcap,1L,paste0, collapse=":") = apply(blackcap,1L,paste, collapse=":") but for names
+# spaMM:::.pasteCols(t(blackcap), collapse=" ") same as apply(blackcap,1L,paste, collapse=" ") but for names
 
-.as_factor <- function(txt,mf,type) {
+## alternative to lmerFactorList or so. Now see mkReTrms 
+.as_factor <- function(txt,mf,type, has_.in.=length(grep("%in%",txt)) ) {
   ## Standard (.|.) ranefs are NOT handled by this function but by .rhs2factor -> base::as.factor()
   if (type=="seq_len") { ## does not try to find redundant levels. Used by predict.HLfit() for spatial terms
     splt <- NULL
@@ -9,19 +15,46 @@
     return(list(factor=as.factor(raw_levels),splt=splt))
   } else if (type=="data_order" || ## all <keyword>() ranefs, including those with "nested nesting" for AR1 spprec || raneftype=="corrMatrix"
              type=="time_series") {
+    
     splt <- strsplit(txt,c("%in%|:|\\+| "))[[1L]] ## things to be removed so that only variable names remain
     splt <- splt[splt!=""]
     if ( ! all(splt %in% names(mf)) ) stop(" ! all(splt %in% names(mf))")
-    if (length(splt)==1L) {
-      raw_levels <- mf[[splt[1L]]]  ## depending on the user, mf[[splt[1L]]] may be integer or factor...
+    if (has_.in.) {
+      raw_levels <- .pasteCols(x=t(mf[splt]))
+      # 
+      umf_RHS <- t(unique(mf[splt])) 
+      nest_row <- nrow(umf_RHS)
+      raw_nested_levels <- .pasteCols(x=umf_RHS[-nest_row,,drop=FALSE])
+      # I will need to go from active ZA cols to indices of unique Geo pos in data order... argh.
+      # uGeo_ind_of_raw_nested_levels <- match(raw_nested_levels,unique(raw_nested_levels))
+      umf_nestvar <- umf_RHS[nest_row,]
+      nesting_levels <- unique(umf_nestvar)
+      nested_LEVELS <- nested_Zcols <- full_LEVELS <- # uGeo_indices <- 
+                                                      vector("list",length(nesting_levels))
+      for (it in seq_along(nesting_levels)) {
+        nested_Zcols[[it]] <- which(umf_nestvar==nesting_levels[it])
+        nested_LEVELS[[it]] <- raw_nested_levels[nested_Zcols[[it]]] # e.g., geo coord for Matern; HAS TO match dimnames of a correlation matrix and lhs of colnames(ZA)
+        #uGeo_indices[[it]] <- uGeo_ind_of_raw_nested_levels[nested_Zcols[[it]]]
+        full_LEVELS[[it]] <- paste0(nested_LEVELS[[it]],":",nesting_levels[it])
+      }
+      names(nested_Zcols) <- nesting_levels
+      ZA_order <- sort.list(.unlist(nested_Zcols)) # permutation to the order of colnames(ZA)
+      return(list(factor=factor(raw_levels,levels=unique(raw_levels)), splt=splt, 
+                  nested_Zcols=nested_Zcols,
+                  nested_LEVELS=.unlist(nested_LEVELS)[ZA_order],
+                  #uGeo_indices=.unlist(uGeo_indices)[ZA_order],
+                  full_LEVELS=.unlist(full_LEVELS)[ZA_order]) 
+      )
     } else {
-      #raw_levels <- apply(mf[splt],1,paste,collapse=":") ## paste gives a character vector, not a factor.
-      # far-fetched code to the same effect (from plotrix::pasteCols)
-      x <- t(mf[splt])
-      pastestring <- paste("list(",paste("x","[",seq_len(nrow(x)),",]",sep="",collapse=","),")",sep="")
-      raw_levels <- do.call(paste,c(eval(parse(text = pastestring)),sep=":"))
+      if (length(splt)==1L) {
+        raw_levels <- mf[[splt[1L]]]  ## depending on the user, mf[[splt[1L]]] may be integer or factor...
+      } else {
+        x <- t(mf[splt])
+        # pastestring <- paste("list(",paste("x","[",seq_len(nrow(x)),",]",sep="",collapse=","),")",sep="")
+        raw_levels <- .pasteCols(x=x) # do.call(paste,c(eval(parse(text = pastestring)),sep=":"))
+      }
+      return(list(factor=factor(raw_levels,levels=unique(raw_levels)),splt=splt))
     } 
-    return(list(factor=factor(raw_levels,levels=unique(raw_levels)),splt=splt))
   } # I previously had type "mf" which produced the raw_levels as "data_order but returned 
     # list(factor=as.factor(raw_levels),splt=splt). By contrast, levels=. forces the order produced by unique().
 }
@@ -39,7 +72,7 @@
       uniqueGeos[[lit]] <- data.frame(seq_levelrange, by_values[[lit]])
     }
     uniqueGeo <- do.call(rbind,uniqueGeos)  ## data.frame (v2.3.9)
-    seq_levelrange <- apply(uniqueGeo,1L,paste0,collapse=":")
+    seq_levelrange <- .pasteCols(t(uniqueGeo)) # apply(uniqueGeo,1L,paste0,collapse=":")
     # "21:2" "22:2" "23:2" "24:2" "25:2" "26:2" "27:2" "28:2" "29:2" "30:2" "31:3" "32:3" "33:3" "34:3" "35:3" "36:3" "37:3" "38:3" "39:3" "40:3"
   }
   seq_levelrange # integer vec, or character vec from apply(.,paste0,collapse=":")
@@ -67,7 +100,7 @@
   }
 }
 
-.calc_Z_model_matrix <- function(leftOfBar_terms, leftOfBar_mf, raneftype,lcrandfamfam) {
+.calc_Z_LHS_model_matrix <- function(leftOfBar_terms, leftOfBar_mf, raneftype,lcrandfamfam) {
   modmat <- model.matrix(leftOfBar_terms, leftOfBar_mf) ## contrasts.arg not immed useful, maybe later.
   #if (raneftype == "(.|.)") stop("this does not occur") # does not seem to occur here
   if ( ! (is.null(raneftype))) {  ## to exclude (1|.) and ranCoefs! 
@@ -80,13 +113,14 @@
          ) { # in both cases an has created an intercept column has been created and must be removed
         modmat <- modmat[,colnames(modmat) != "(Intercept)",drop=FALSE]
       } else if ( ! raneftype %in% c("corrMatrix","corrFamily")) {# ___TAG___ modify to extend composite ranefs
-        if (classe=="factor") { 
-          stop(paste0("Unhandled expression in ", raneftype,"(<factor>|.):\n",
-                      " only TRUE/FALSE factor is allowed; '0 + <factor>' syntax is not allowed."))
-        } else if (classe=="numeric") { ## true for integer variables  
-          stop(paste0("Unhandled expression in ", raneftype,"(<numeric>|.): use explicit '0 + .' syntax to remove Intercept."))
-        } else 
-          stop(paste0("Unhandled expression in ", raneftype, "(<LHS>|.) for this type of random effect"))
+        # if (classe=="factor") { 
+        #   stop(paste0("Unhandled expression in ", raneftype,"(<factor>|.):\n",
+        #               " only TRUE/FALSE factor is allowed; '0 + <factor>' syntax is not allowed."))
+        # } else 
+        # if (classe=="numeric") { ## true for integer variables  
+        #   stop(paste0("Unhandled expression in ", raneftype,"(<numeric>|.): use explicit '0 + .' syntax to remove Intercept."))
+        # } else 
+        #   stop(paste0("Unhandled expression in ", raneftype, "(<LHS>|.) for this type of random effect"))
       }
     }
   } else if (ncol(leftOfBar_mf)==1L) { ## ncol=0L is for (1|.) ## single variable, but modmat may have an intercept col
@@ -145,16 +179,7 @@
   ## but fac may be any vector returned by the evaluation of x[[3]] in the envir 
   rhs <- x[[3]]
   txt <- .DEPARSE(rhs) ## should be the rhs of (|) cleanly converted to a string by terms(formula,data) in .get_terms_info()
-  ## converts '%in%' to ':' 
-  if (length(grep("%in%",txt))) {
-    splittxt <- strsplit(txt,"%in%")[[1]]
-    rhs <- as.formula(paste("~",splittxt[1],":",splittxt[2]))[[2]]
-    txt <- .DEPARSE(rhs)
-    RHS_nesting_info <- list(
-      blocksizes=table(data[,paste(as.formula(paste("~",splittxt[2]))[[2]])]) # ugly code to remove spaces...
-    )
-  } else RHS_nesting_info <- NULL
-  #    if (length(grep("\\+",txt))) { ## coordinates is a vector with a single string; grep is 1 if  + was found in this single string and numeric(0) otherwise
+  has_.in. <- length(grep("%in%",txt))
   ## if sparse_precision is not yet determined
   #  this build the design matrix as if it was TRUE,
   #  but adds the info dataordered_levels that allows a later modif of the design matrix if sparse_precision is set to FALSE
@@ -162,7 +187,7 @@
   #                                          attr(x,"type") vs corr_info$corr_types[lit]:
   # For corrFamilies, e.g., "MaternIMRFa"     "MaternIMRFa" vs "corrFamily"
   # and for (.|.),                                     NULL vs NA
-  # All code long based on attr(x,"type")... switching to corr_type would require further changes as e.g. .calc_Z_model_matrix also tests ( ! is.null(raneftype)) "## exclude (1|.) and ranCoefs! "
+  # All code long based on attr(x,"type")... switching to corr_type would require further changes as e.g. .calc_Z_LHS_model_matrix also tests ( ! is.null(raneftype)) "## exclude (1|.) and ranCoefs! "
   # so currently we stick to attr(x,"type") and test raneftype %in% .spaMM.data$keywords$all_cF   (__F I X M E__?)
   raneftype <- attr(x,"type") 
   #if (identical(raneftype, "(.|.)")) stop("this does not occur") # does not occurs here, as explained in calling fn, .calc_Zlist()
@@ -178,8 +203,8 @@
       # for IMRF Z matches geo to uniqueGeo and A matches uniqueGeo to nodes
       levels_type <- .spaMM.data$options$uGeo_levels_type # $uGeo_levels_type used to make sure 
       #                                               that same type is used in .calc_AMatrix_IMRF() -> .as_factor()
-    } else if (assuming_spprec || raneftype=="corrMatrix") {
-      levels_type <- "data_order" 
+    } else if (assuming_spprec || raneftype %in% c("corrMatrix","adjacency")) {
+      levels_type <- "data_order" # otherwise in prediction, any set of levels=location indices is reduced to 1 2 3... 
     } else if ( identical(corr_info$corr_types[[lit]],"corrFamily")) { 
       # So far I had a collection of ad-hoc cases, now I need more, first when there is an A matrix. 
       if( ! is.null(lty_cF <- corr_info$corr_families[[lit]]$levels_type)) {
@@ -192,7 +217,7 @@
     } else { # e.g. ranefType="adjacency", NOT assuming_spprec (immediate in the tests)
       # uses .calc_Zlist()'s default levels_type: "data_order"; or "seq_len" in post-fit calls (permuted newdata tests important here)
     }
-    RHS_info <- .as_factor(txt=txt,mf=data,type=levels_type) # levelstype not further needed below
+    RHS_info <- .as_factor(txt=txt,mf=data,type=levels_type,has_.in.=has_.in.) # levelstype not further needed below
     #
     if (raneftype %in% c("Matern","Cauchy", "IMRF")) {
       ff <- RHS_info$factor ## so that Z cols will not be reordered.
@@ -224,20 +249,23 @@
     } else { # other non-NULL raneftype's (hence not (.|.) ranefs) 
       ff <- RHS_info$factor
     }
-  } else if (length(grep("c\\(\\w*\\)",txt))) { ## c(...,...) was used (actually detects ...c(...)....) (but in which context ?)
-    aslocator <-  parse(text=gsub("c\\(", ".ULI(", txt)) ## slow pcq ULI() est slow
-    ff <- as.factor(eval(expr=aslocator,envir=data))
+  # } else if (length(grep("c\\(\\w*\\)",txt))) { ## c(...,...) was used (actually detects ...c(...)....) (but in which context ?)
+  #   browser('length(grep("c\\(\\w*\\)",txt))')
+  #   aslocator <-  parse(text=gsub("c\\(", ".ULI(", txt)) ## slow pcq ULI() est slow
+  #   ff <- as.factor(eval(expr=aslocator,envir=data))
   } else ff <- .rhs2factor(data, rhs) # standard ( | ), including ranCoefs case
   ## If info_mat was corr then it must have the levels that a precision matrix would need
   ## If info_mat_is_prec we drop nothing
   ## if assuming_spprec (i.e. if spprec already determined, or AR1) we drop nothing.
   if (drop)  ff <- droplevels(ff)
   ## Done with ff. Now the incidence matrix: 
-  if (nrow(data)==1L && levels(ff)=="1") {
+  if (nrow(data)==1L && 
+      nlevels(ff)==1L && # in the adjacency case levels(ff) are all the original levels => need to avoid comparing with "1"
+      levels(ff)=="1") { 
     im <- .trivial_incidMat ## precomputed => massive time gain when optimizing spatial point predictions
   } else {
     im <- sparseMatrix(i=as.integer(ff),j=seq(length(ff)),x=1L, # ~ as(ff, "sparseMatrix") except that empty levels are not dropped
-                       dimnames=list(levels(ff),NULL)) # names important for corrMatrix case at least
+                       dims=c(nlevels(ff),length(ff)), dimnames=list(levels(ff),NULL)) # names important for corrMatrix case at least
     # : this is faster than   im <- Matrix::fac2sparse(ff,drop.unused.levels = (drop && ! (AR1_sparse_Q || info_mat_is_prec)))
     # Matrix::sparse.model.matrix(< rhs formula>, data) might have been used in some cases? __F I X M E__
     if (!isTRUE(methods::validObject(im, test = TRUE))) stop("invalid conditioning factor in random effect: ", format(rhs)) #__F I X M E__ find a more economical check ?
@@ -246,7 +274,7 @@
   tempexp <- x[[2]] ## LHS
   if (grepl("mv(", .DEPARSE(tempexp), fixed=TRUE)) {
     # We construct a template Z matrix from a fake modmat. 
-    # .calc_Z_model_matrix() will 'expand' the template and .correct_ZA_mv_ranCoefs() will fill the template.
+    # .calc_Z_LHS_model_matrix() will 'expand' the template and .correct_ZA_mv_ranCoefs() will fill the template.
     # model_ids <- eval(tempexp) # using def of mv() function... 
     model_ids <- sub("(mv)(\\([^|]+)","c\\2", .DEPARSE(tempexp))
     model_ids <- eval(parse(text=model_ids))
@@ -254,7 +282,7 @@
     leftOfBar_form <- as.formula(paste("~", submv))
     leftOfBar_terms <- terms(leftOfBar_form)
     leftOfBar_mf <- model.frame(leftOfBar_terms, data.frame(.mv=factor(model_ids)), xlev = attr(sub_oldZAlist[[lit]],"LHS_levels"))
-    dummymodmat <- .calc_Z_model_matrix(leftOfBar_terms, leftOfBar_mf, raneftype = NULL, lcrandfamfam = "gaussian")
+    dummymodmat <- .calc_Z_LHS_model_matrix(leftOfBar_terms, leftOfBar_mf, raneftype = NULL, lcrandfamfam = "gaussian")
     modmat <- matrix(1, nrow=nrow(data), ncol=ncol(dummymodmat)) # assuming later .correct_ZA_mv_ranCoefs() call.
     colnames(modmat) <- colnames(dummymodmat) # matching the model_ids 
   } else {
@@ -263,9 +291,9 @@
     # LHS_levels for prediction:
     # for poly() terms, there is a crucial difference between the data (with raw variables) 
     #   and the [value of model.frame(), with monomials]. Then one cannot call recursively model.frame() on a mf.  
-    leftOfBar_mf <- model.frame(leftOfBar_terms, data, xlev = attr(sub_oldZAlist[[lit]],"LHS_levels")) 
+    leftOfBar_mf <- model.frame(leftOfBar_terms, data, drop.unused.levels=TRUE, xlev = attr(sub_oldZAlist[[lit]],"LHS_levels")) 
     # note the test of contrasts on predict with ranCoefs with factors, in test-ranCoefs.R
-    modmat <- .calc_Z_model_matrix(leftOfBar_terms, leftOfBar_mf, raneftype, lcrandfamfam[[lit]]) ## handles non-trivial LHS in e.g. Matern(LHS|rhs)
+    modmat <- .calc_Z_LHS_model_matrix(leftOfBar_terms, leftOfBar_mf, raneftype, lcrandfamfam[[lit]]) ## handles non-trivial LHS in e.g. Matern(LHS|rhs)
   }
   if (rmInt) { ## remove intercept column
     if ( ! is.na(icol <- match("(Intercept)", colnames(modmat)))) {
@@ -274,7 +302,7 @@
     }
   }
   ## This is building Z not Z(A)L hence reasonably sparse even in spatial models
-  Z_ <- .calc_raw_ZA(incidMat=im, modmat) ## modmat allows simple forms of heteroscedasticity of lambda.
+  Z_ <- .calc_raw_ZA(incidMat=im, modmat) ## 'modmat' represents LHS, 'im' represent RHS allows simple forms of heteroscedasticity of lambda.
   if ( length(leftOfBar_mf)) { ## excludes NULL, or 0-col data.frames as in Matern(1|.)
     attr(Z_,"LHS_levels") <- .getXlevels(attr(leftOfBar_mf,"terms"), leftOfBar_mf)
     # : a list as defined for xlev argument of model.matrix().
@@ -287,7 +315,15 @@
     attr(Z_,"RHS_info") <- RHS_info ## allow reformatting for ! sparse prec
   } 
   attr(Z_,"prior_lam_fac") <- attr(modmat,"prior_lam_fac") 
-  attr(Z_,"RHS_nesting_info") <- RHS_nesting_info # solely for .provide_G_diagnosis(). Can save a lot of memory (and some time)
+  if (has_.in. &&  ! is.null(raneftype)) {
+    splits <- strsplit(unique(colnames(Z_)),":") # unique() necessary for the LHS case => Z_ has repeated colnames 
+    for (it in seq_along(splits)) splits[[it]] <- tail(splits[[it]],1L)
+    attr(Z_,"RHS_nesting_info") <- RHS_info[c("nested_Zcols", # indices of Z cols
+                                              "nested_LEVELS", # names matching lhs of Z colnames
+                                              # "uGeo_indices", 
+                                              "full_LEVELS" # names matching Z colnames
+                                              )] # dropping the "factor" element from the RHS_info, and a former blocksizes=table(.unlist(splits))
+  }
   return(Z_)
 }
 
@@ -314,7 +350,7 @@
     }
     ZA <- do.call(cbind, ZA) ## colnames are repeated if modmat has several cols...
     attr(ZA,"is_incid") <- FALSE # For ranCoefs, it is not incidMat;  neither for Matern(0+verif|.) as the elements are not 0 or 1.
-                                #  Matern(female|.) would be an exception but modmat has no is_incid attribute... B/C ratio not clear...   
+                                #  Matern(female|.) would be an exception but modmat has no is_incid attribute... B/C ratio not clear...  
   }
   attr(ZA, "namesTerm") <- colnames(modmat) ## e.g., "(Intercept)" ".mv2" ;  length=npar # and, consistently, the number of models in an 'mv' term
   return(ZA)

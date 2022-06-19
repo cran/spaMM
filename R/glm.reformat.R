@@ -74,11 +74,7 @@
     ###### replaces the main loop of glm.fit
     good <- weights > 0
     varmu <- variance(mu)[good]
-    if (getRversion() > "3.1.0") {
-      if (anyNA(varmu)) stop("NAs in V(mu)")
-    } else {
-      if (anyNA(varmu)) stop("NAs in V(mu)")
-    }
+    if (anyNA(varmu)) stop("NAs in V(mu)")
     if (any(varmu == 0)) 
       stop("0s in V(mu)")
     mu.eta.val <- mu.eta(eta)

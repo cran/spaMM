@@ -9,7 +9,7 @@ setClass("ZAXlist", slots = list( LIST = "list"))
 # as.matrix.ZAXlist <- function(x, as_matrix=FALSE, ...) .ad_hoc_cbind(x@LIST, as_matrix=as_matrix )
 
 t.ZAXlist <- function(x) { # for the few uses of t(ZAL) that may occur on a ZAXlist (<-> spprec)
-  # such as .calc_lev_from_hat() -> .m_Matrix_times_Dvec(t(ZAL), drop(dh0deta))
+  # such as .hatvals2std_lev() -> .m_Matrix_times_Dvec(t(ZAL), drop(dh0deta))
   # A test code is wfit <- HLfit(..., resid.model = ~ X3+I(X3^2) , data=wafers) with forced spprec (through test-confint-spprec.R)
   t(.ad_hoc_cbind(x@LIST,as_matrix=FALSE)) # wastes the benefits of ZALlist in spprec __F I X M E__
 } 

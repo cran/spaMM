@@ -144,7 +144,7 @@
 
 .makelong_kronprod <- function(Lcompact, kron_Y) {
   if (methods::.hasSlot(Lcompact,"x") && any(Lcompact@x==0)) Lcompact <- drop0(Lcompact) # Seems cheap
-  kronprod <- kronecker(Lcompact,kron_Y) # sparse as inferred from argument structure
+  kronprod <- kronecker(Lcompact, kron_Y) # sparse as inferred from argument structure
   # so if the Lcompact has explicit zeros in @x, a drop0() would be useful. But do it on the LHS, not on the product!
   if ( inherits(Lcompact,c("dtCMatrix","ltCMatrix")) && 
        inherits(kron_Y,c("dtCMatrix","ltCMatrix"))) return(as(kronprod,"dtCMatrix"))
@@ -205,7 +205,8 @@
                         prev_lambda_est
 ) {
   H_global_scale <- .calc_H_global_scale(w.resid)
-  weight_X <- .calc_weight_X(w.resid, H_global_scale) ## sqrt(s^2 W.resid) ## should not affect the result up to precision
+  weight_X <- .calc_weight_X(w.resid, H_global_scale, obsInfo=FALSE) ## sqrt(s^2 W.resid) ## should not affect the result up to precision
+                                                                     ## F_I_X_M_E weight_X not allowed to vary over iterations; so no obsInfo with inner estim ranCoefs 
   rC_transf_inner <- .spaMM.data$options$rC_transf_inner
   nrand <- length(ZAlist)
   locX.Re <- processed$X.Re ## may be NULL 
@@ -258,8 +259,7 @@
         } else sXaug <- NULL
         if ( ! augZXy_cond || test) {
           ####################################################################################################
-          W_ranefS_constant_args <- processed$reserve$W_ranefS_constant_args
-          locw.ranefSblob <- do.call(".updateW_ranefS",c(W_ranefS_constant_args, list(u_h=u_h,v_h=v_h,lambda=loc_lambda_est)))
+          locw.ranefSblob <- processed$updateW_ranefS(u_h=u_h,v_h=v_h,lambda=loc_lambda_est)
           locarglist <- c(MakeCovEst_pars_not_ZAL_or_lambda, list(ZAL=locZAL, lambda_est=loc_lambda_est, wranefblob=locw.ranefSblob))
           # it would be really nonsense to compute the objective for constant u_h;
           ## the u_h should be evaluated at the BLUPs (or equivalent) for given parameters

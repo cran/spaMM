@@ -23,18 +23,17 @@
   )
 }
 
-.wrap_wrap_v_h_IRLS <- function(IRLS_fn, v_h, beta_eta, seq_n_u_h, GLMMbool, wranefblob, processed, updateW_ranefS_subarglist, v_infer_args, Trace) {
+.wrap_wrap_v_h_IRLS <- function(IRLS_fn, v_h, beta_eta, seq_n_u_h, GLMMbool, wranefblob, processed, lambda_est, v_infer_args, Trace) {
   #v_infer_args$maxit.mean <- ceiling(v_total_maxit_mean/5)
   v_h_blob <- .wrap_v_h_IRLS(v_h=v_h , 
                              beta_eta=beta_eta, seq_n_u_h, GLMMbool, wranefblob, 
-                             processed$reserve$constant_u_h_v_h_args, updateW_ranefS_subarglist=updateW_ranefS_subarglist, 
+                             processed, lambda_est=lambda_est, 
                              v_infer_args, Trace, IRLS_fn=IRLS_fn)
   if (v_h_blob$break_info$IRLS_breakcond=="maxit") { # problematic failure: we need to do something
     #v_infer_args$maxit.mean <- ceiling(v_total_maxit_mean*4/5)
-    psi_M <- rep(attr(processed$rand.families,"unique.psi_M"),diff(processed$cum_n_u_h))
-    v_h_blob <- .wrap_v_h_IRLS(v_h=psi_M, 
+    v_h_blob <- .wrap_v_h_IRLS(v_h=processed$psi_M, 
                                beta_eta=beta_eta, seq_n_u_h, GLMMbool, wranefblob, 
-                               processed$reserve$constant_u_h_v_h_args, updateW_ranefS_subarglist=updateW_ranefS_subarglist, 
+                               processed, lambda_est=lambda_est, 
                                v_infer_args, Trace, IRLS_fn=IRLS_fn)
   } 
   v_h_blob

@@ -31,7 +31,7 @@
           do.call(chr_fnname,arglist) 
         } else {
           if ( ! identical(warned_dcw[[pack]],TRUE)) {
-            if (pack=="INLA") message("If the 'INLA' package were installed, spaMM could use INLA:::inla.spde.make.A().")
+            if (pack=="INLA") message("If the 'INLA' package were installed, spaMM could use INLA:::inla.spde.make.A().") # but now .spaMM_spde.make.A() is fine.
             # seek "svm" for instance of possible use of e1071. Fairly obsolete but maybe needed for full back-compat.
             if (pack=="e1071") message("If the 'e1071' package were installed, spaMM could check separation in binary regression problem.")
             if (pack=="cubature") message("If the 'cubature' package were installed, spaMM could compute a requested marginal prediction.")

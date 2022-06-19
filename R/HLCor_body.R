@@ -1,6 +1,6 @@
 ## the following must match the 'unique' method in .ULI as explained there
 .calcUniqueGeo <- function(data) { # unique() on a character representation of the data
-  redondGeo <- apply(data,1,paste,collapse=" ") ## creates character string
+  redondGeo <- .pasteCols(t(data), collapse=" ") # apply(data,1,paste,collapse=" ") ## creates character string
   dfforunique <- cbind(data,redondGeo) ## associates rownames of data to redondGeo
   uniqueGeo <- unique(dfforunique[,ncol(dfforunique),drop=FALSE]) ## keeps rownames of first instances
   uniqueGeo <- data[rownames(uniqueGeo),,drop=FALSE] ## uses rownames, 'unique' numeric values based on character representations 

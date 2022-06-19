@@ -11,12 +11,14 @@ hatvalues.HLfit <- function(model, type="projection", which="resid", force=FALSE
   X.Re <- model$distinctX.Re
   if (model$models[["eta"]]=="etaGLM") {
     # no sXaug, no get_from_MME
+    H_w.resid <- .get_H_w.resid(object=model)
     if (loctype=="fit") {
-      lev <- .get_hatvalues_FM(X.Re, augX=model$X.pv, model$w.resid)
+      lev <- .get_hatvalues_FM(X.Re, augX=model$X.pv, H_w.resid)
     } else { 
-      lev <- .get_hatvalues_FM(model$X.pv, augX=model$X.pv, model$w.resid)
+      lev <- .get_hatvalues_FM(model$X.pv, augX=model$X.pv, H_w.resid)
     }
   } else {
+    #### Check available info:
     if (is.null(X.Re)) { # standard ReML, "hatval" was used in fit
       look_object_lev <- loctype %in% c("fit","hatval")
     } else if (ncol(X.Re)==0L) { # standard ReML, "hatval_Z" was used in fit
@@ -33,12 +35,14 @@ hatvalues.HLfit <- function(model, type="projection", which="resid", force=FALSE
         if (any(sapply(lev, is.null))) lev <- NULL
       }
     }
+    #### end of checks of available info.
     if (is.null(lev)) {
       sXaug <- model$envir$sXaug # NOT get_matrix() since get_matrix() provides matrices with blocks in Henderson's order,
-      
-      # not compatible with mMatrix_method or get_from_MME    
-      if (loctype=="fit") {
-        hatvals <- .get_hatvalues_MM(sXaug,X.Re=X.Re, weight_X=attr(sXaug,"weight_X"))
+      if (loctype=="fit") { 
+        #### First gte the hat values, strito sensu
+        hatvals <- .get_hatvalues_MM(sXaug,X.Re=X.Re, weight_X=attr(sXaug,"weight_X")) 
+        # => typically calls get_from_MME(sXaug,which= < "hatval"|"hatval_Z" >, B=c("phi", "lambda"))
+        #### Next correct them into standardizing leverages:
         n_u_h <- length(model$w.ranef)
         hatvals <- list(ranef=hatvals[seq_len(n_u_h)], resid=hatvals[-seq_len(n_u_h)])
         
@@ -47,38 +51,46 @@ hatvalues.HLfit <- function(model, type="projection", which="resid", force=FALSE
         
         v_h_bounds <- .eval_v_h_bounds(cum_n_u_h, rand.families)
         u_h <- .u_h_v_h_from_v_h(model$v_h, rand.families, cum_n_u_h=cum_n_u_h,
-                                 lcrandfamfam=attr(rand.families,"lcrandfamfam"),
                                  lower.v_h=v_h_bounds$lower.v_h,
                                  upper.v_h=v_h_bounds$upper.v_h)
         # We need to identify cases where phi could vary but 
         # where the estimated projection matrix is constrained away from the true one.
         # for Poisson, etc, phi is fixed but not constrained so constr_phi_fit must be FALSE
-        constr_phi_fit <- identical(attr(model$phi,"constr_fit"),TRUE)
+        if (is.list(model$phi)) { # mv fit
+          any_constr_phi_fit <- any(sapply(model$phi, function(v) identical(attr(v,"constr_phi"),TRUE)))
+        } else any_constr_phi_fit <- identical(attr(model$phi,"constr_fit"),TRUE)
         # Likewise for lambda, we identify cases where it is fixed by user 
         ismixed <- (model$models[[1]]=="etaHGLM")
         lambdaType <- model$lambda.object$type
         if (( ismixed && any(lambdaType %in% c("fixed","fix_ranCoefs"))) || 
-            constr_phi_fit) {
+            any_constr_phi_fit) {
           message("Some dispersion parameters were constrained: using leverages for diagnostic purposes is speculative.")
           # nevertheless we try to reproduce the HLfit behaviour in that case and so we evaluate 'fully_constr_lam_fit'
         }
         fully_constr_lam_fit <-  (ismixed && all(lambdaType %in% c("fixed","fix_ranCoefs")))
-        constr_phi <- identical(attr(model$phi,"constr_phi"),TRUE)
-        lev <- .calc_lev_from_hat(hatvals=hatvals, sXaug, 
-                                  is_null_phi.Fix= ( ! constr_phi ) , u_h=u_h, 
-                                  #object=model, # 'processed' or fit object
-                                  HL=model$HL, models=model$models, need_simple_lambda=( ! fully_constr_lam_fit), 
-                                  muetablob=model$muetablob, family=model$family, mu=model$muetablob$mu, 
-                                  BinomialDen=model$BinomialDen, w.resid=model$w.resid, 
-                                  wranefblob=.updateW_ranefS(cum_n_u_h=cum_n_u_h, rand.families=rand.families, model$lambda, u_h=u_h, model$v_h), 
-                                  nobs=length(model$y), ZAL=get_ZALMatrix(model, force_bind=FALSE), #psi_M=rep(attr(rand.families,"unique.psi_M"),diff(cum_n_u_h)), 
-                                  lambda_est=model$lambda.object$lambda_est, cum_n_u_h=cum_n_u_h, #lcrandfamfam=attr(rand.families,"lcrandfamfam"), 
-                                  rand.families=rand.families, y=model$y, prior.weights=model$prior.weights, #nrand=length(lcrandfamfam), 
-                                  phi_est=model$phi)
+        if (is.list(model$phi)) { # mv fit
+          constr_phi <- all(sapply(model$phi, function(v) identical(attr(v,"constr_phi"),TRUE)))
+        } else constr_phi <- identical(attr(model$phi,"constr_phi"),TRUE)
+        H_w.resid <- .get_H_w.resid(object=model)
+        # Call to .hatvals2std_lev() is a painful hack... but hatvalues() is not the most important extractor in spaMM...
+        lev <- .hatvals2std_lev( # tested e.g. by h2s <- hatvalues(adjfit,type="std")[rnge]; more generally hatvalues(.,type="std", force=TRUE)
+          hatvals=hatvals, sXaug=sXaug,
+          processed=model, # .calc_dlW_deta() may use $y
+          anynull_phi.Fix= ( ! constr_phi ) , # should replicate .anyNULL(phi.Fix) in the fit
+          u_h=u_h, 
+          need_simple_lambda=( ! fully_constr_lam_fit), muetablob=model$muetablob, 
+          w.resid=attr(H_w.resid, "w.resid"),
+          H_w.resid=H_w.resid,
+          wranefblob = .updateW_ranefS(cum_n_u_h=cum_n_u_h, rand.families=model$rand.families, model$lambda, u_h=u_h, model$v_h), 
+          nobs=length(model$y), ZAL=get_ZALMatrix(model, force_bind=FALSE), 
+          # with default psi_M=rep(attr(rand.families,"unique.psi_M"),diff(cum_n_u_h)), 
+          lambda_est=model$lambda.object$lambda_est, cum_n_u_h=cum_n_u_h, #lcrandfamfam=attr(rand.families,"lcrandfamfam"), 
+          phi_est=model$phi
+        )
         if (which=="resid") lev <- lev$resid
         if (which=="ranef") lev <- lev$ranef
       } else {
-        lev <- get_from_MME(sXaug,which=loctype, B=c("phi", "lambda"))
+        lev <- get_from_MME(sXaug,which=loctype, B=c("phi", "lambda")) # loctype=hatval or hatval_Z
         if (is.list(lev)) { # depedns on mMatrix_method
           if (which=="resid") lev <- lev$lev_phi
           if (which=="ranef") lev <- lev$lev_lambda 
@@ -96,25 +108,37 @@ hatvalues.HLfit <- function(model, type="projection", which="resid", force=FALSE
 } 
 
 # Semantics: hat values: from a projection matrix, vs leverages: final standardizing coefficients
-.calc_lev_from_hat <- function(hatvals, sXaug, is_null_phi.Fix, u_h,
-                               #object, # all what can be deduced from the 'object'
-                               HL, models, need_simple_lambda, muetablob, family, mu, 
-                               BinomialDen, w.resid, wranefblob, nobs, ZAL, 
-                               psi_M=rep(attr(rand.families,"unique.psi_M"),diff(cum_n_u_h)), 
-                               lambda_est, cum_n_u_h, lcrandfamfam=attr(rand.families,"lcrandfamfam"), rand.families, y,  
-                               prior.weights, nrand=length(lcrandfamfam), phi_est) {
+.hatvals2std_lev <- function(hatvals, sXaug, anynull_phi.Fix, u_h,
+                             processed, # (fit object in post-fit calls)
+                             HL=processed$HL, models=processed$models, need_simple_lambda, muetablob, 
+                             mu=drop(muetablob$mu), 
+                             BinomialDen=processed$BinomialDen, 
+                             w.resid,
+                             H_w.resid=.get_sXaug_H_w.resid(sXaug), # for obsInfo, we need it, generally not for H_w.resid itself but for its attributes
+                             wranefblob, nobs, ZAL, 
+                             psi_M=rep(attr(rand.families,"unique.psi_M"),diff(cum_n_u_h)), 
+                             lambda_est, cum_n_u_h, lcrandfamfam=attr(rand.families,"lcrandfamfam"), 
+                             rand.families=processed$rand.families, y=processed$y,  
+                             prior.weights=processed$prior.weights, nrand=length(lcrandfamfam), phi_est) {
   ## (HL[2]=0, HL[3]=0): previous hat matrix -> p 
   ## (HL[2]=0, HL[3]=1): notEQL -> tilde(p), (HL[2]=1 && ): full correction -> q 
   ## (HL[2]=1, HL[3]=1): full correction -> q 
   #### contribution from GLM weights
   if (HL[2L]>0L && models[[1L]]=="etaHGLM" 
-      && (need_simple_lambda || is_null_phi.Fix) ) { ## LeeN01 HL(.,1) ie the + in 'EQL+'
+      && (need_simple_lambda || anynull_phi.Fix) ) { ## LeeN01 HL(.,1) ie the + in 'EQL+'
     ## first the d log hessian / d log lambda or phi corrections
     ### For the d log hessian first the derivatives of GLM weights wrt eta 
     ##################### noter que c'est le coef2 de HL(1,.), but mu,eta may have been updated since coef2 was computed
-    dlW_deta <- .calc_dlW_deta(muetablob=muetablob,family=family,
-                               BinomialDen=BinomialDen,
-                               w.resid=w.resid, families=family)$dlW_deta
+    dlW_deta <- .calc_dlW_deta(muetablob=muetablob, 
+                               processed=processed, 
+                               # using .calc_dlW_deta()" default $family and $families from processed
+                               BinomialDen=BinomialDen, 
+                               w.resid=w.resid, # w.resid and not H_w.resid # potentially the list with $w_resid element, etc.  
+                               # in most cases the result .calc_dlW_deta() simply don't use w.resid to compute only $dlW_deta, although
+                               #      * .calc_dlW_deta()'s dlW_deta needs the structured w.resid for some truncated models
+                               #      * .calc_dlW_deta() needs w.resid in other calls for $coef1
+                               Hratio_factors=attr(H_w.resid,"Hratio_factors") # This is still needed...
+                              )$dlW_deta
     ### we join this with the deriv of log w.ranef wrt v_h
     dlW_deta_or_v <- c(dlW_deta, wranefblob$dlogWran_dv_h )  ## vector with n+'r' elements
     # dlogWran_dv_h is 0 gaussian ranef; d2mudeta2 is 0 for identity link => vector is 0 for LMM
@@ -135,8 +159,8 @@ hatvalues.HLfit <- function(model, type="projection", which="resid", force=FALSE
         hatvals$ranef <- hatvals$ranef - dleve  
       } 
       ## 
-      if (is_null_phi.Fix) {
-        dh0deta <- ( w.resid *(y-mu)/muetablob$dmudeta ) ## 12/2013 supp BinomialDen (soit Bin -> phi fixe=1, soit BinomialDen=1)
+      if (anynull_phi.Fix) { # hence not binomial hence BinomialDen (which is in w.resid anyway) is 1. No further BinomialDen here.
+        dh0deta <- ( w.resid *(y-mu)/muetablob$dmudeta ) # wafers test appears to imply that it is w.resid, not H_w.resid here.
         dvdlogphiMat <- .calc_dvdlogphiMat_new(dh0deta=dh0deta,ZAL=ZAL, 
                                                sXaug=sXaug)  # not d2hdv2_info
         dleve <- as.vector(leve__dlW_deta_or_v__ZALI %*% dvdlogphiMat) # (r+n) . (r+n)Xr . rXn = n (each element is a sum over r+n terms= a trace)
@@ -151,16 +175,16 @@ hatvalues.HLfit <- function(model, type="projection", which="resid", force=FALSE
     if (models[[1L]]=="etaHGLM" && need_simple_lambda) ## d h/ d !log! lambda correction     
       hatvals$ranef <- hatvals$ranef + .corr_notEQL_lambda(nrand,cum_n_u_h,lambda_est,lcrandfamfam) 
     # phi hence not poiss,binom:
-    if (inherits(family,"family")) {
-      if (family$family=="Gamma" && is_null_phi.Fix ) { ## d h/ d !log! phi correction (0 for gauss. resid. error). Not tied to REML
+    if (is.null(families <- processed$families)) {
+      if (processed$family$family=="Gamma" && anynull_phi.Fix ) { ## d h/ d !log! phi correction (0 for gauss. resid. error). Not tied to REML
         phiscaled <- phi_est/eval(prior.weights) ## 08/2014 ## bug "*" corrected -> "/" 2015/03/05
         hatvals$resid <- hatvals$resid +  1+2*(log(phiscaled)+digamma(1/phiscaled))/phiscaled ## LNP p. 89 and as in HGLMMM IWLS_Gamma
       }    
     } else { # mv case, list of families
-      cum_nobs <- attr(family,"cum_nobs")
-      for (mv_it in seq_along(family)) {
-        fam <- family[[mv_it]]
-        if (fam$family=="Gamma" && is_null_phi.Fix ) { ## d h/ d !log! phi correction (0 for gauss. resid. error). Not tied to REML
+      cum_nobs <- attr(families,"cum_nobs")
+      for (mv_it in seq_along(families)) {
+        fam <- families[[mv_it]]
+        if (fam$family=="Gamma" && anynull_phi.Fix ) { ## d h/ d !log! phi correction (0 for gauss. resid. error). Not tied to REML
           resp_range <- .subrange(cumul=cum_nobs, it=mv_it)
           phiscaled <- phi_est[[mv_it]]/eval(prior.weights[[mv_it]]) 
           hatvals$resid[resp_range] <- hatvals$resid[resp_range] +  1+2*(log(phiscaled)+digamma(1/phiscaled))/phiscaled ## LNP p. 89 and as in HGLMMM IWLS_Gamma

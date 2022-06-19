@@ -61,27 +61,8 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
 }
   \item{HLmethod}{Same as \code{method}. It is useless to specify \code{HLmethod} when \code{method} is specified. The default value \code{"HL(1,1)"} means the same as \code{method="REML"}, but more accurately relates to definitions of approximations of likelihood in the \eqn{h}-likelihood literature.}
   \item{control.HLfit}{
-  A list of parameters controlling the fitting algorithms, which should be ignored in routine use. Suche a parameter, \code{resid.family},  was previously documented here (before version 2.6.40), and will still operate as previously documented, but should not be used in new code.
-
-%%%%%  As it just a list memeber and not formal arg, we can just remove the doc.
-%  \code{resid.family} Allows one to change the link for modeling of residual variance \eqn{\phi}, which is \code{"log"} by default. The family is always Gamma, so the non-default possible values of \code{resid.family} are \code{Gamma(identity)} or \code{Gamma(inverse)}. Only the default value ensures that the fitted \eqn{\phi} is positive.     
-
-  Possible parameters are:
-
-  \code{conv.threshold} and \code{spaMM_tol}: \code{spaMM_tol} is a list of tolerance values, with elements \code{Xtol_rel} and \code{Xtol_abs} that define thresholds for relative and absolute changes in parameter values in iterative algorithms (used in tests of the form \dQuote{d(param)< Xtol_rel * param + Xtol_abs}, so that \code{Xtol_abs} is operative only for small parameter values). \code{conv.threshold} is the older way to control \code{Xtol_rel}. Default values are given by spaMM.getOption("spaMM_tol");
-   
-   \code{break_conv_logL}, a boolean specifying whether the iterative algorithm should terminate when log-likelihood appears to have converged (roughly, when its relative variation over on iteration is lower than 1e-8). Default is FALSE (convergence is then assessed on the parameter estimates rather than on log-likelihood).
-%
-  \code{iter.mean.dispFix}, the number of iterations of the iterative algorithm for coefficients of the linear predictor,
-       if no dispersion parameters are estimated by the iterative algorithm. Defaults to 200 except for Gamma(log)-family models; 
-%
-  \code{iter.mean.dispVar}, the number of iterations of the iterative algorithm for coefficients of the linear predictor,
-       if some dispersion parameter(s) is estimated by the iterative algorithm. Defaults to 50 except for Gamma(log)-family models;  
-%
-  \code{max.iter}, the number of iterations of the iterative algorithm for joint estimation of dispersion parameters and
-        of coefficients of the linear predictor. Defaults to 200. This is typically much more than necessary, 
-        unless there is little information to separately estimate \eqn{\lambda} and \eqn{\phi} parameters.
-  \code{algebra, sparse_precision}{See \code{\link{algebra}}.}
+  A list of parameters controlling the fitting algorithms, which should mostly be ignored in routine use. 
+  See \code{\link{control.HLfit}} for possible controls.
 }
   \item{control.glm}{
     List of parameters controlling GLM fits, passed to \code{glm.control}; e.g.\cr 
@@ -92,8 +73,8 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
   A list of initial values for the iterative algorithm, with possible elements of the list are 
   \code{fixef} for fixed effect estimates (beta),  
   \code{v_h} for random effects vector \bold{v} in the linear predictor,
-  \code{lambda} for the parameter determining the variance of random effects \eqn{u} as drawn from the \code{rand.family} distribution 
-  \code{phi} for the residual variance. 
+  \code{lambda} for the parameter determining the variance of random effects \eqn{u} as drawn from the \code{rand.family} distribution,  
+  and \code{phi} for the residual variance. 
   However, this argument can be ignored in routine use. 
 }
 % F I X M E Break this doc in smaller docs !!!
@@ -117,7 +98,7 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
 
  \bold{I. Approximations of likelihood:} see \code{\link{method}}.
 
-  \bold{II. Possible structure of Random effects:} see \code{\link{random-effects}}, but note that \code{HLfit} does not fit models with autocorrelated random effects).
+  \bold{II. Possible structure of Random effects:} see \code{\link{random-effects}}, but note that \code{HLfit} does not fit models with autocorrelated random effects.
 
   \bold{III. The standard errors} reported may sometimes be misleading. For each set of parameters among \eqn{\beta}, \eqn{\lambda}, and \eqn{\phi} parameters these are computed assuming that the other parameters are known without error. This is why they are labelled \code{Cond. SE} (conditional standard error). This is most uninformative in the unusual case where \eqn{\lambda} and \eqn{\phi} are not separately estimable parameters. Further, the SEs for \eqn{\lambda} and \eqn{\phi} are rough approximations as discussed in particular by Smyth et al. (2001; \eqn{V_1} method).    
   

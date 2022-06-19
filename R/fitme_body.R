@@ -8,7 +8,7 @@ fitme_body <- function(processed,
                        nb_cores=NULL,
                        ... ## cf dotnames processing below 
 ) {
-  dotlist <- list(...) ## forces evaluations, which makes programming easier...
+  dotlist <- list(...) ## forces evaluations, which makes programming easier... contains the user's init.HLfit
   if (is.list(processed)) {
     proc1 <- processed[[1L]]
   } else proc1 <- processed
@@ -16,14 +16,14 @@ fitme_body <- function(processed,
   HLnames <- (c(names(formals(HLCor)),names(formals(HLfit)),
                 names(formals(mat_sqrt)),names(formals(make_scaled_dist))))  ## cf parallel code in HLCor.obj
   ## fill HLCor.args
-  good_dotnames <- intersect(names(dotlist),HLnames) ## those specifically for the called fns as def'd by HLnames
+  good_dotnames <- intersect(names(dotlist),HLnames) ## those specifically for the called fns as def'd by HLnames # potentially contains "init.HLfit"
   if (length(good_dotnames)) {
-    HLCor.args <- dotlist[good_dotnames]
+    HLCor.args <- dotlist[good_dotnames] # may contain the user's init.HLfit
   } else HLCor.args <- list() 
   ## replace some HLCor.args members  
   if (  is.list(processed) ) {
     pnames <- names(processed[[1]])
-  } else pnames <- names(processed)
+  } else pnames <- names(processed) # there's an "init_HLfit" but no "init.HLfit"
   for (st in pnames) HLCor.args[st] <- NULL 
   # 'processed' may be modified below, then will be copied in HLCor.args (and then removed from this envir for safety)
   optim.scale <- control[["optim.scale"]] 
@@ -131,12 +131,14 @@ fitme_body <- function(processed,
         refit_info <- control[["refit"]] ## may be a NULL/ NA/ boolean or a list of booleans 
         if ( is.null(refit_info) || is.na(refit_info)) refit_info <- FALSE ## alternatives are TRUE or an explicit list or NULL
       } else {
+        ##### THE FIT:
         optPars <- .new_locoptim(init.optim, ## try to use gradient? But neither minqa nor _LN_BOBYQA use gradients. optim() can
                                  LowUp, 
                                  control, objfn_locoptim=.objfn_locoptim, 
                                  HLcallfn.obj=HLcallfn.obj, anyHLCor_obj_args=anyHLCor_obj_args, 
                                  user_init_optim=user_init_optim,
                                  grad_locoptim=NULL, verbose=verbose[["TRACE"]])
+        #####
         refit_info <- attr(optPars,"refit_info") ## 'derives' from control[["refit"]] with modification ## may be NULL but not NA
       }
       optim_time <- .timerraw(time2)

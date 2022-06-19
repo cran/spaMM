@@ -72,7 +72,7 @@
     #                                  %*% invV_factors$r_x_n=Matrix::solve(object$envir$G_CHMfactor, object$envir$ZtW) 
     #                                                          %*% ZALd
     W_ZinvG_ZtW_ <- invV_factors$n_x_r %*% (invV_factors$r_x_n %*% ZALd)  
-    lhs_invV.dVdlam <- .Dvec_times_m_Matrix(object$w.resid, ZALd) - W_ZinvG_ZtW_ # (w.resid- n_x_r %*% r_x_n) %*% ZALd 
+    lhs_invV.dVdlam <- .Dvec_times_m_Matrix(.get_H_w.resid(object), ZALd) - W_ZinvG_ZtW_ # (w.resid- n_x_r %*% r_x_n) %*% ZALd 
   }
   
   return(lhs_invV.dVdlam)
@@ -102,15 +102,14 @@
       denom <- 1-RES$rho*adjd
       RES$adjd_denom2 <- adjd/(denom^2) 
       ZAL_to_ZALd_vec[u.range] <- 1/sqrt(denom)
-    } else { ## standard lamScal model or ranCoefs model 
-      # as results from outer optimization; lmatrix has no attributes
-      # For adjacency case, sparse_precision  forces outer optim of rho and thus we end here too
+    } else { ## (1) standard lamScal model or ranCoefs model, as results from outer optimization; lmatrix has no attributes; or
+             ## (2) For adjacency case, sparse_precision  forces outer optim of rho and thus we end here too
       ZAL_to_ZALd_vec[u.range] <- 1
       coeff <- lambda.object$coefficients_lambdaS[[randit]] ## corrHLfit or fitme with control$refit=TRUE
       # there are several coeffs, computed in .bloc_lambda(), for ranCoefs terms.
-      if (is.null(coeff) || anyNA(coeff)) { # NA appeared in mv code...(___F I X M E___ what does that mean?). 
+      if (is.null(coeff) || anyNA(coeff)) { # NA for multIMRF and NULL for other outer optim 
         lambda_list[[randit]] <- lambda.object$lambda_list[[randit]] ## basic fitme (may numerically differ)
-      } else lambda_list[[randit]] <- exp(coeff)
+      } else lambda_list[[randit]] <- exp(coeff) # inner estimation.
     }
   }
   RES$lambda_list <- lambda_list
@@ -388,7 +387,7 @@
           for (ilam in seq_len(Xi_ncol)) { 
             i_rhs_invV.dVdlam <- loglamInfo_blob$rhs_invV.dVdlam_list[[paste0(randit,"_",ilam)]]  #.fill_rhs_invV.dVdlam(template=zerotemplate, urange=uirange[,ilam], invV.dV_info)
             colit <- cum_Xi_cols[randit]+ilam
-            logdispInfoBlock[colit] <- .traceDB(object$w.resid, t(rhs_invV.dVdrho),t(lhs_invV.dVdrho)) -
+            logdispInfoBlock[colit] <- .traceDB(.get_H_w.resid(object), t(rhs_invV.dVdrho),t(lhs_invV.dVdrho)) -
               .traceAB(invV.dV_info$lhs_invV.dVdlam, i_rhs_invV.dVdlam,t(rhs_invV.dVdrho),t(lhs_invV.dVdrho))
           }
         }
@@ -405,13 +404,15 @@
         #A <- solve(object$envir$G_CHMfactor, .tcrossprod(object$envir$ZtW), system="A")
         A <- invV_factors$r_x_n %*% invV_factors$n_x_r
         trAB <- sum(A^2)
+        H_w.resid <- .get_H_w.resid(object)
         logdispInfo[dispcols$logphi,dispcols$logphi] <- phi_est^2 * (
-          sum(object$w.resid^2) -2 * .traceDB(object$w.resid,invV_factors$n_x_r, invV_factors$r_x_n) + 
+          sum(H_w.resid^2) -2 * .traceDB(H_w.resid,invV_factors$n_x_r, invV_factors$r_x_n) + 
             trAB
         ) # phi_est^2 * sum(invV^2)
       } else {
+        H_w.resid <- .get_H_w.resid(object)
         logdispInfo[dispcols$logphi,dispcols$logphi] <- phi_est^2 * (
-          sum(object$w.resid^2) -2 * .traceDB(object$w.resid,invV_factors$n_x_r, invV_factors$r_x_n) + 
+          sum(H_w.resid^2) -2 * .traceDB(H_w.resid,invV_factors$n_x_r, invV_factors$r_x_n) + 
             .traceAB(lA=invV_factors$n_x_r, rA=invV_factors$r_x_n, lB=NULL, rB=NULL) # ie B=A
         ) # phi_est^2 * sum(invV^2)
       }
@@ -428,7 +429,7 @@
             i_rhs_invV.dVdlam <- loglamInfo_blob$rhs_invV.dVdlam_list[[paste0(randit,"_",ilam)]] #.fill_rhs_invV.dVdlam(template=zerotemplate, urange=uirange[,ilam], invV.dV_info)
             colit <- cum_Xi_cols[randit]+ilam
             # sum(diag(diag(w.resid) %*% lhs_invV.dVdlam)) - sum(diag(lhs_invV.dVdlam %*% invV_factors))
-            logdispInfoBlock[colit] <- .traceDB(object$w.resid, invV.dV_info$lhs_invV.dVdlam, i_rhs_invV.dVdlam) -
+            logdispInfoBlock[colit] <- .traceDB(.get_H_w.resid(object), invV.dV_info$lhs_invV.dVdlam, i_rhs_invV.dVdlam) -
               .traceAB(invV.dV_info$lhs_invV.dVdlam, i_rhs_invV.dVdlam, invV_factors$n_x_r, invV_factors$r_x_n) 
             # The tcrossprod (                       i_rhs_invV.dVdlam,                     invV_factors$r_x_n) is a bottleneck for large (n>r)
             # while crossprod(           .                              lB=object$envir$ZtW                   ) has quite sparse lB

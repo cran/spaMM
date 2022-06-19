@@ -31,6 +31,9 @@ if (spaMM.getOption("EigenDense_QRP_method")==".lmwithQR") {
   testthat::expect_true(max(abs(range(get_predVar(adjfit)-get_predVar(adjfitsp))))<8e-6)
 }
 
+testthat::expect_true(diff(range(predict(adjfit)[2:4,]-predict(adjfit,newdata=scotlip[2:4,])))<1e-12)
+
+
 ## same using corrMatrix()
 if (spaMM.getOption("example_maxtime")>6.90) { 
   precmat <- diag(56)-0.1*Nmatrix   ## equivalent to adjacency model with rho=0.1

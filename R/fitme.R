@@ -117,7 +117,7 @@ fitme <- function(formula,data, ## matches minimal call of HLfit
                   lower=list(),upper=list(),
                   resid.model=~1,
                   init.HLfit=list(),
-                  control=list(), ## optim.scale (private), nloptr, refit
+                  control=list(), ## optim.scale (private), nloptr, refit... ultimately passed to fitme_body
                   control.dist=list(),
                   method="ML", 
                   HLmethod=method, ## LRT fns assume HLmethod when they are called and when calling

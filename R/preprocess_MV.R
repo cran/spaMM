@@ -48,8 +48,7 @@
 # which_in_subm <- which(map_rd_mv[[mv_it]] %in% corr_info$is_cF_internally ) # so eg from (c("1"=1,"2"=3)) %in% 3), rd_in_mv is 2 
 # pos_in_sub <- map_rd_mv[[mv_it]][which_in_subm]
 # pos_in_merged <- as.integer(names(pos_in_sub)) 
-
-
+# but pos_in_merged is more directly provided by map_rd_mv[[mv_it]] (__F I X M E__ rename?)
 
 .merge_rand_families <- function(unmerged, map_rd_mv=attr(ZAlist, "map_rd_mv"), nrand=length(ZAlist), ZAlist) {
   n_submodels <- length(unmerged)
@@ -703,7 +702,7 @@
   ### Local values from unmerged[[1L]]:
   # That block should ultimately be for elements recursively updated
   for (st in c("off","y","BinomialDen","main_terms_info","iter_mean_dispVar","iter_mean_dispFix",
-               "max.iter","maxLambda","models","vecdisneeded","bin_all_or_none")) assign(st,value=unmerged[[1L]][[st]])
+               "max.iter","models","vecdisneeded","bin_all_or_none")) assign(st,value=unmerged[[1L]][[st]])
   # Operatiosn on 'models' form the first submodel:
   LMMbool  <- attr(models,"LMMbool")
   GLMMbool  <- attr(models,"GLMMbool")
@@ -711,7 +710,9 @@
   GLGLLM_const_w  <- attr(models,"GLGLLM_const_w")
   GLMbool <- (models[["eta"]]=="etaGLM")
   LMbool <- GLMbool && unmerged[[1L]]$family$family == "gaussian" && attr(unmerged[[1L]]$family, "canonicalLink")
-  const_wresid  <- attr(models,"const_wresid")
+  unit_GLMweights  <- attr(models,"unit_GLMweights")
+  unit_Hobs_weights  <- attr(models,"unit_Hobs_weights")
+  const_Hobs_wresid  <- attr(models,"const_Hobs_wresid")
   phi_models <- character(nmodels)
   phi_models[[1L]] <- models[["phi"]]
   #
@@ -725,6 +726,7 @@
   vec_ncol_X <- integer(nmodels)
   vec_ncol_X[1L] <- ncol(merged_X)
   validrownames[[1L]] <- rownames(unmerged[[1L]][["data"]])
+  obsInfo <- unmerged[[1L]][["how"]][["obsInfo"]]
   # Recursive updating:
   for (mv_it in (seq_len(nmodels-1L)+1L)) {
     p_i <- unmerged[[mv_it]]
@@ -749,26 +751,28 @@
     GLMbool_it <- p_i[["models"]][["eta"]]=="etaGLM"
     LMbool_it <- GLMbool_it && p_i$family$family == "gaussian" && attr(p_i$family, "canonicalLink")
     modattrs_it <- attributes(p_i[["models"]])
+    unit_GLMweights <- unit_GLMweights && modattrs_it[["unit_GLMweights"]]
+    unit_Hobs_weights <- unit_Hobs_weights && modattrs_it[["unit_Hobs_weights"]]
     LLM_const_w_it <- modattrs_it[["LLM_const_w"]]
     GLGLLM_const_w_it <- modattrs_it[["GLGLLM_const_w"]] 
     LMMbool_it <- modattrs_it[["LMMbool"]]
     GLMMbool_it <- modattrs_it[["GLMMbool"]]
-    const_wresid_it <- modattrs_it[["const_wresid"]]
-    LLM_const_w <- ((LLM_const_w  || (LMbool && const_wresid) ) && LLM_const_w_it) ||
-      ( LLM_const_w && LMbool_it && const_wresid_it )
-    GLGLLM_const_w <- ((GLGLLM_const_w  || (GLMbool && const_wresid) ) && GLGLLM_const_w_it) ||
-      (GLGLLM_const_w && GLMbool_it && const_wresid_it ) # (constant weights over iterations of IRLS)
+    const_Hobs_wresid_it <- modattrs_it[["const_Hobs_wresid"]]
+    LLM_const_w <- ((LLM_const_w  || (LMbool && const_Hobs_wresid) ) && LLM_const_w_it) ||
+      ( LLM_const_w && LMbool_it && const_Hobs_wresid_it )
+    GLGLLM_const_w <- ((GLGLLM_const_w  || (GLMbool && const_Hobs_wresid) ) && GLGLLM_const_w_it) ||
+      (GLGLLM_const_w && GLMbool_it && const_Hobs_wresid_it ) # (constant weights over iterations of IRLS)
     LMMbool <- ((LMMbool || LMbool) && LMMbool_it) ||
       (LMMbool && LMbool_it)
     GLMMbool <- ((GLMMbool || GLMbool) && GLMMbool_it) ||
       (GLMMbool && GLMbool_it)
-    const_wresid  <- const_wresid && const_wresid_it
+    const_Hobs_wresid  <- const_Hobs_wresid && const_Hobs_wresid_it
     GLMbool <- GLMbool && GLMbool_it
     LMbool <- LMbool && LMbool_it
+    obsInfo < obsInfo || p_i[["how"]][["obsInfo"]]
     iter_mean_dispVar <- max(iter_mean_dispVar, p_i[["iter_mean_dispVar"]])
     iter_mean_dispFix <- max(iter_mean_dispFix, p_i[["iter_mean_dispFix"]])
     max.iter <- max(max.iter, p_i[["max.iter"]])
-    maxLambda <- min(maxLambda, p_i[["maxLambda"]])
     vecdisneeded <- (vecdisneeded | p_i[["vecdisneeded"]])
     phi_models[[mv_it]] <- p_i[["models"]][["phi"]]
   }
@@ -782,8 +786,8 @@
   merged[["iter_mean_dispVar"]] <- iter_mean_dispVar
   merged[["iter_mean_dispFix"]] <- iter_mean_dispFix
   merged[["max.iter"]] <- max.iter
-  merged[["maxLambda"]] <- maxLambda
   merged[["vecdisneeded"]] <- vecdisneeded
+  merged[["how"]] <- list(obsInfo=obsInfo)
   # 
   augZXy_cond_inner <- spaMM.getOption("allow_augZXy")
   if (is.null(augZXy_cond_inner)) augZXy_cond_inner <- TRUE ## for .makeCovEst1()
@@ -797,6 +801,9 @@
   attr(models,"GLMMbool") <- GLMMbool 
   attr(models,"LLM_const_w") <- LLM_const_w 
   attr(models,"GLGLLM_const_w") <- GLGLLM_const_w 
+  attr(models,"unit_GLMweights") <- unit_GLMweights
+  attr(models,"unit_Hobs_weights") <- unit_Hobs_weights
+  attr(models,"const_Hobs_wresid") <- const_Hobs_wresid
   merged[["models"]] <- models
   models <- NULL # make sure we work on only one 'models'
   residProcesseds <- residModels <- vector("list", length(merged[["models"]][["phi"]]))
@@ -856,14 +863,15 @@
   main_terms_info[["fixef_levels"]] <- fixef_levelsS
   merged[["main_terms_info"]] <- structure(main_terms_info, vec_nobs=vec_nobs)
   attr(ZAlist,"map_rd_mv") <- map_rd_mv <- .map_rd_mv(ZAlist, unmerged)
-  # ZAlist including map_rd_mv available -> rand.families
-  merged[["rand.families"]] <- rand.families <- .merge_rand_families(unmerged, ZAlist=ZAlist) 
-  merged$lcrandfamfam <- attr(rand.families,"lcrandfamfam") ## else remains NULL
   #
   # map_rd_mv available -> exp_ranef_types -> soon used by .assign_corr_types_families()
   exp_barlist <- .process_bars_mv(predictors, map_rd_mv)
   exp_ranef_strings <- .process_bars(barlist=exp_barlist,expand=FALSE, as_character=TRUE) ## no need to expand again
   if (nrand <- length(exp_ranef_strings)) {
+    # ZAlist including map_rd_mv available -> rand.families
+    merged[["rand.families"]] <- rand.families <- .merge_rand_families(unmerged, ZAlist=ZAlist) 
+    merged$lcrandfamfam <- attr(rand.families,"lcrandfamfam") ## else remains NULL
+    
     names(ZAlist) <- seq_len(nrand) # not sure where it is used, but conform to fact that univar-resp ZAlist is named.
     exp_ranef_types <- attr(exp_ranef_strings,"type") ## expanded
     attr(ZAlist,"exp_ranef_strings") <- exp_ranef_strings ## expanded 
@@ -878,7 +886,7 @@
     # or I assign them on the merged "corr_info". In neither case .assign_AMatrices_corrFamily(corr_info, ...) is useful *here*.
     
     
-    
+    ## Some corrFamily stuff (next TWO loops)
     for (rd in which(corr_info$is_cF_internally)) { # (allows NA in $corr_types)
       # For the hard coded Matern(), AR1() etc. $corr_families[[it]] is already a list of functions $calc_moreargs, $canonize...
       # for corrFamily() by the next line it will be the corrFamily descriptor as an *environment* with $f, $tpar, $type, $template, $Af... $calc_moreargs, $canonize...
@@ -893,8 +901,10 @@
       pos_in_merged <- as.integer(names(pos_in_sub)) 
       unmerged[[mv_it]]$corr_info$corr_families[pos_in_sub] <- corr_info$corr_families[pos_in_merged]
       # there are hidden subcases: if submodel is not MM, LHS's corr_families is NULL before and after the assignment (and RHS is 'list()')
+      ##  Allow distinct maxLambda for each ranef according to the response links of the submodel(s) within which it is involved.
     }
-    
+    ## /corrFamily
+    #
     for (mv_it in seq_len(nmodels)) {
       corr_info_it <- unmerged[[mv_it]][["corr_info"]]     # already preprocessed info for:
       AMatrices[mv_it] <- list(corr_info_it$AMatrices)
@@ -986,6 +996,7 @@
   if (nrand) {
     merged$models[["eta"]] <- "etaHGLM" 
     vec_n_u_h <- unlist(lapply(merged$ZAlist,ncol)) 
+    merged[["psi_M"]] <- rep(attr(rand.families,"unique.psi_M"),vec_n_u_h)
     merged[["cum_n_u_h"]] <- cumsum(c(0L, vec_n_u_h))
     nrd <- merged[["cum_n_u_h"]][nrand+1L]
     if (nrd==1L) {
@@ -993,6 +1004,13 @@
     }
     merged$models[["lambda"]] <- rep("lamScal",nrand) ## even for adjacency, random slope...
     merged[["reserve"]] <- .preprocess_arglists(merged)
+    #
+    maxLambda <- rep(.spaMM.data$options$maxLambda, nrand) 
+    for (mv_it in seq_along(unmerged)) {
+      maxLambda[map_rd_mv[[mv_it]]] <- pmin(maxLambda[map_rd_mv[[mv_it]]], unmerged[[mv_it]][["maxLambda"]]) 
+    }
+    merged[["maxLambda"]] <- maxLambda
+    #
     # Need this as long as we need  .calc_optim_args_mv(processed$unmerged....) ie as long as  .calc_optim_args() handles only single $family 
     for (mv_it in seq_along(unmerged)) {
       rd_in_mv <- map_rd_mv[[mv_it]]

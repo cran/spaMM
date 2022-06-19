@@ -7,11 +7,13 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
   ## "Assignment of submatrices in a sparse matrix can be slow because there is so much checking that needs to be done."
   Xaug <- .Dvec_times_Matrix_lower_block(weight_X,Xaug,n_u_h)
   attr(Xaug, "get_from") <- "get_from_MME.sXaug_Matrix_QRP_CHM_scaled"
-  attr(Xaug, "BLOB") <- list2env(list(), parent=baseenv())
+  attr(Xaug, "BLOB") <- list2env(list(H_w.resid=attr(weight_X,"H_w.resid")), parent=emptyenv())
   attr(Xaug, "w.ranef") <- w.ranef
   attr(Xaug, "n_u_h") <- n_u_h # mandatory for all sXaug types
   attr(Xaug, "pforpv") <- ncol(Xaug)-n_u_h # mandatory for all sXaug types
   attr(Xaug, "weight_X") <- weight_X # new mandatory 08/2018
+   # =>  something like sqrt(H_global_scale*{ w.resid[$w_resid], potentially corrected for Hobs})
+   # so the { w.resid[$w_resid], potentially corrected for Hobs} = weight_X^2 / H_global_scale
   attr(Xaug, "H_global_scale") <- H_global_scale
   ## cannot modify the 'class' attribute... => immediate clumsy code below... and how(.) reports method: dgCMatrix.
   return( Xaug ) 
@@ -192,6 +194,7 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
     # }
   }
   # ELSE 
+  # if (which=="H_w.resid") return(BLOB$H_w.resid)
   if (which=="Qt_leftcols*B") {
     if (.is_evaluated("solve_R_scaled", BLOB)) {
       # not so many tests? HLfit(distance ~ age + (age | Subject), data = Orthodont, HLmethod = "REML"): then solve_R_scaled is evaluated

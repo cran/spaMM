@@ -117,6 +117,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
                                            w.ranef=attr(locsXaug,"w.ranef"),
                                            cum_n_u_h=attr(locsXaug,"cum_n_u_h"),
                                            w.resid=attr(locsXaug,"w.resid"),
+                                           H_w.resid=locsXaug$BLOB$H_w.resid,
                                            corrPars=attr(locsXaug,"corrPars") )
   return(locsXaug)
 }
@@ -365,6 +366,26 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
   return(z1)  
 }
 
+.calc_z1_obs <- function(muetablob, w.resid, Hobs_w.resid,
+                         y, off, cum_nobs) { # (__FIXME__) if y and off were lists, I would not need resp_range etc.
+  if (is.list(w.resid)) { # truncated model, or mv-response
+    if (is.null(mvlist <- w.resid$mvlist)) { # truncated model
+      # ___F_I_X_M_E___ not sure what this means for obsInfo case... pure cut and paste of .calc_z1()
+      z1 <- as.vector(muetablob$sane_eta+w.resid$WU_WT*(y-muetablob$mu-w.resid$dlogMthdth)/muetablob$dmudeta-off) ## MolasL10
+    } else { # mv-response
+      z1s <- vector("list",length(mvlist)) 
+      for (mv_it in seq_along(mvlist)) {
+        resp_range <- .subrange(cumul=cum_nobs, it=mv_it)
+        z1s[[mv_it]] <- .calc_z1_obs(muetablob=muetablob$mv[[mv_it]], w.resid=w.resid$mvlist[[mv_it]],
+                                     Hobs_w.resid=Hobs_w.resid[resp_range],
+                                     y=y[resp_range], off=off[resp_range])
+      }
+      z1 <- .unlist(z1s)
+    }
+  } else z1 <- as.vector(muetablob$sane_eta-off+(w.resid/Hobs_w.resid)*(y-muetablob$mu)/muetablob$dmudeta) 
+  return(z1)  
+}
+
 .calc_zAug_not_LMM <- function(n_u_h, nobs, pforpv, y, off, ZAL, 
                       # variable within fit_as_ZX:
                       muetablob, dlogWran_dv_h, sXaug, w.resid, w.ranef, 
@@ -373,8 +394,17 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
                       #
                       processed) {
   GLMMbool <- attr(processed[["models"]],"GLMMbool") 
-  ######## According to 'theorem 1' of LeeL12, new beta estimate from z1-a(i), where z1 is
-  z1 <- .calc_z1(muetablob, w.resid, y, off, cum_nobs=attr(processed$families,"cum_nobs"))
+  if (processed$how$obsInfo) {
+    if (processed$is_spprec) {
+      Hobs_w.resid <- sXaug$BLOB$H_w.resid
+    } else Hobs_w.resid <- attr(sXaug,"BLOB")$H_w.resid
+    z1 <- .calc_z1_obs(muetablob, 
+                       w.resid, Hobs_w.resid=Hobs_w.resid,
+                       y, off, cum_nobs=attr(processed$families,"cum_nobs"))
+  } else {
+    ######## According to 'theorem 1' of LeeL12, new beta estimate from z1-a(i), where z1 is
+    z1 <- .calc_z1(muetablob, w.resid, y, off, cum_nobs=attr(processed$families,"cum_nobs"))
+  }
   ## and a(i) (for HL(i,1)) is a(0) or a(0)+ something
   ## and a(0) depends on z2, as follows :
   if ( ! GLMMbool) {
@@ -391,22 +421,27 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
       if (is.list(w.resid)) {
         WU_WT <- w.resid$WU_WT 
       } else WU_WT <- NULL
-      sscaled <- .calc_sscaled_new(vecdisneeded=vecdisneeded,
-                              dlogWran_dv_h=dlogWran_dv_h, ## dlogWran_dv_h was computed when w.ranef was computed
-                              coef12= .calc_dlW_deta(muetablob,
-                                                    family=processed$family, 
-                                                    BinomialDen=processed$BinomialDen, 
-                                                    calcCoef1=TRUE,
-                                                    w.resid=w.resid, families=processed$families), ## promise evaluated if any vecdisneeded[-3]
-                              n_u_h=n_u_h, 
-                              sXaug=sXaug,
-                              ZAL=ZAL, # vecdi2
-                              WU_WT=WU_WT ## NULL except for truncated model
+      sscaled <- .calc_sscaled_new(
+        vecdisneeded=vecdisneeded,
+        dlogWran_dv_h=dlogWran_dv_h, ## dlogWran_dv_h was computed when w.ranef was computed
+        coef12= .calc_dlW_deta(
+          muetablob,
+          processed=processed,
+          calcCoef1=TRUE,
+          w.resid=w.resid, # potentially the list with $w_resid element, etc.  
+          Hratio_factors=attr(Hobs_w.resid,"Hratio_factors") # for obsInfo; this promise should not be evaluated otherwise. 
+        ), 
+        n_u_h=n_u_h, 
+        sXaug=sXaug,
+        ZAL=ZAL, # vecdi2
+        WU_WT=WU_WT ## NULL except for truncated model
       )
-      if (is.list(w.resid)) { # both the truncated and the mv cases
+      if (processed$how$obsInfo) {  
+        y2_sscaled <- z2+ as.vector((sscaled * Hobs_w.resid ) %*% ZAL )/w.ranef 
+      } else if (is.list(w.resid)) { # both the truncated and the mv cases (F_I_X_M_E obsInfo not handled here)
         y2_sscaled <- z2+ as.vector((sscaled * w.resid$w_resid ) %*% ZAL )/w.ranef ## that's the y_2 in "Methods of solution based on the augmented matrix"
-        # it is unaffected by the matrix rescaling bc it is a fn of z1 and z2. But rescaled is alays taken into account bc we uuse y2_sscaled only 
-        #      in the context wzAug <- c(zInfo$y2_sscaled/ZAL_scaling, (zInfo$z1_sscaled)*weight_X)
+        # it is unaffected by the matrix rescaling bc it is a fn of z1 and z2. But rescaled is always taken into account bc we use y2_sscaled only 
+        #      in the context wzAug <- c(zInfo$y2_sscaled/ZAL_scaling, (zInfo$z1_sscaled)*weight_X) in .solve_v_h_IRLS()
       } else y2_sscaled <- z2+ as.vector((sscaled * w.resid ) %*% ZAL )/w.ranef
     } else { # notably after observing that general code with sscaled=0 and large ZAL is slow!
       sscaled <- 0
@@ -870,7 +905,14 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
   n_u_h <- length(lambda_est)
   # beware that computation of logdet_sqrt_d2hdv2 depends on w.ranef
   if ("p_v" %in% which || "p_bv" %in% which) {
-    augZX_resu$p_v <- augZX_resu$hlik - get_from_MME(sXaug,"logdet_sqrt_d2hdv2") + n_u_h*log(2*pi)/2
+    # if (processed$how$obsInfo) { # seems a correct computation of observed-likelihood laplace approx when the model matrix is crossfac of expected info. 
+    #   w.obs <- structure(auglinmodblob$w.resid * (processed$y/muetablob$mu)[,1],unique=FALSE)
+    #   ZAL <- .compute_ZAL(XMatrix=processed$AUGI0_ZX$envir$LMatrices, 
+    #                       ZAlist=processed$ZAlist,as_matrix=.eval_as_mat_arg(processed))
+    #   d2hdv2 <- .calcD2hDv2(ZAL,w.obs,w.ranef=auglinmodblob$wranefblob$w.ranef) ## update d2hdv2= - t(ZAL) %*% diag(w.resid) %*% ZAL - diag(w.ranef)
+    #   augZX_resu$p_v <-  augZX_resu$hlik -determinant(d2hdv2)$modulus[1L]/2 + n_u_h* log(2*pi)/2
+    # } else 
+      augZX_resu$p_v <- augZX_resu$hlik - get_from_MME(sXaug,"logdet_sqrt_d2hdv2") + n_u_h*log(2*pi)/2
   }
   if ("p_bv" %in% which) {
     X.Re <- processed$X.Re

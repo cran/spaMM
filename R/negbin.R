@@ -121,6 +121,29 @@ negbin <- function (shape = stop("negbin's 'shape' must be specified"), link = "
     ftd <- fitted(object)
     .rnbinom(n=nsim * length(ftd), size=shape, mu_str=ftd, zero_truncated=zero_truncated)
   }
+  Dtheta.Dmu <- function(mu) 1/(mu*(1+mu/shape))
+  D2theta.Dmu2 <- function(mu) -(1+2*mu/shape)/(mu*(1+mu/shape))^2
+  if (trunc!=0L) { # If not truncated. (__F_I_X_M_E__ extend to truncated later)
+    dlW_detafun <- switch(
+      linktemp,
+      "log"= function(mu) shape/(mu+shape),
+      "identity"= function(mu) -(2*mu + shape)/(mu^2 + mu*shape),
+      "sqrt"= function(mu) -2 * sqrt(mu)/(mu + shape)
+    )
+    d_dlWdmu_detafun <- switch( # see Hessian_weights.nb
+      linktemp,
+      "log"= function(mu) -shape *(2*mu + shape)/(mu*(mu + shape)^2),
+      "identity"= function(mu) (2 *mu^2 + 2 *mu *shape + shape^2)/(mu^2 *(mu + shape)^2), 
+      "sqrt"= function(mu) 2*sqrt(mu)/(mu + shape)^2 
+    )
+    coef1fun <- switch(
+      linktemp,
+      "log"= function(mu) 1/mu,
+      "identity"= function(mu) - (1+2*mu/shape),
+      "sqrt"= function(mu) - sqrt(mu)/(2*shape)
+    )
+    #DvarDmu <- function(mu)1+ 2*mu/shape
+  } else dlW_detafun <- coef1fun <- d_dlWdmu_detafun <- NULL
   ## all closures defined here have parent.env the environment(spaMM_Gamma) ie <environment: namespace:spaMM>
   ## changes the parent.env of all these functions (aic, dev.resids, simfun, validmu, variance): 
   parent.env(environment(aic)) <- environment(stats::binomial) ## parent = <environment: namespace:stats>
@@ -129,7 +152,9 @@ negbin <- function (shape = stop("negbin's 'shape' must be specified"), link = "
                  link = linktemp, linkfun = linkfun, 
                  linkinv = linkinv, variance = variance, dev.resids = dev.resids, 
                  aic = aic, mu.eta = stats$mu.eta, initialize = initialize, 
-                 validmu = validmu, valideta = stats$valideta, simulate = simfun,
+                 validmu = validmu, valideta = stats$valideta, simulate = simfun, 
+                 Dtheta.Dmu=Dtheta.Dmu, D2theta.Dmu2=D2theta.Dmu2,
+                 dlW_detafun=dlW_detafun, coef1fun=coef1fun, d_dlWdmu_detafun=d_dlWdmu_detafun,
                  zero_truncated=(trunc==0L)), 
             class = "family")
 }

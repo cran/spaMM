@@ -100,7 +100,7 @@ ARp <- function(p=1L, fixed=NULL, corr=TRUE, tpar=1/(1+seq(p))) {
     # Qmat <- calc_Qmat_ARp(parvec=parvec, newlevels=newlevels)
     # corr <- .precision2cov(Qmat)  # correct but so ugly. 
     if (is.null(postfit_phivec)) postfit_phivec <<- .condcorr2canonARpar(condcorr=parvec)
-    ACF <- stats::ARMAacf(diff(levelrange),ar=postfit_phivec,ma=NULL) 
+    ACF <- stats::ARMAacf(lag.max=diff(levelrange),ar=postfit_phivec,ma=NULL) 
     corr <- stats::toeplitz(ACF)
     colnames(corr) <- rownames(corr) <- seq(levelrange[1L],levelrange[2L])
 
@@ -116,6 +116,7 @@ ARp <- function(p=1L, fixed=NULL, corr=TRUE, tpar=1/(1+seq(p))) {
        levels_type="time_series",
         #calc_corr_from_dist=calc_corr_from_dist,
        make_new_corr_lists=make_new_corr_lists,
+       sparsePrec=TRUE, possiblyDenseCorr=TRUE,
        tag="ARp")
 }
 
@@ -136,7 +137,7 @@ ARMA <- function(p=1L, q=1L, fixed=NULL, tpar=c(1/(1+seq_len(p)),1/(1+seq_len(q)
   calc_Cmat_from_dist <- function(parvec, levelrange, phivec=NULL) {
     arpos <- seq_len(p)
     if (is.null(phivec)) phivec <- .condcorr2canonARpar(condcorr=parvec[arpos]) 
-    ACF <- stats::ARMAacf(diff(levelrange),ar=phivec,ma=parvec[-arpos]) 
+    ACF <- stats::ARMAacf(lag.max=diff(levelrange),ar=phivec,ma=parvec[-arpos]) 
     Cmat <- stats::toeplitz(ACF)
     rownames(Cmat) <- colnames(Cmat) <- seq(levelrange[1L],levelrange[2L])
     Cmat
@@ -181,6 +182,7 @@ ARMA <- function(p=1L, q=1L, fixed=NULL, tpar=c(1/(1+seq_len(p)),1/(1+seq_len(q)
        levels_type="time_series",
        # calc_corr_from_dist=calc_corr_from_dist,
        make_new_corr_lists=make_new_corr_lists,
+       sparsePrec=FALSE, possiblyDenseCorr=TRUE,
        tag="ARMA")
 }
 
@@ -249,6 +251,7 @@ ranGCA <- function() {
   list(Af=Af, tpar=numeric(0L), Cf=Cf, initialize=initialize, 
        make_new_corr_lists=make_new_corr_lists,
        levels_type="data_order",
+       sparsePrec=TRUE, possiblyDenseCorr=FALSE,
        tag="ranGCA")
 }
 
@@ -401,6 +404,7 @@ diallel <- function(tpar=0.25, fixed=NULL, public=NULL) {
   list(tpar=tpar, Cf=Cf, Af=Af, initialize=initialize, fixed=fixed, calc_moreargs=calc_moreargs, 
        make_new_corr_lists=make_new_corr_lists,
        levels_type="data_order",
+       sparsePrec=FALSE, possiblyDenseCorr=TRUE,
        tag="diallel", public=public )
 }
 

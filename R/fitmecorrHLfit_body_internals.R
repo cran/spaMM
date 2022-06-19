@@ -237,15 +237,15 @@
       if (!is.null(geo_envir$activelevels)) uniqueGeo <- uniqueGeo[geo_envir$activelevels,,drop=FALSE]
       # Setting 'raw_levels' as row names to allow levels check in .calc_ZAlist(): 
       x <- t(uniqueGeo)
-      pastestring <- paste("list(",paste("x","[",seq_len(nrow(x)),",]",sep="",collapse=","),")",sep="")
-      raw_levels <- do.call(paste,c(eval(parse(text = pastestring)),sep=":"))
+      # pastestring <- paste("list(",paste("x","[",seq_len(nrow(x)),",]",sep="",collapse=","),")",sep="") 
+      raw_levels <- .pasteCols(x=x) # do.call(paste,c(eval(parse(text = pastestring)),sep=":"))
       rownames(uniqueGeo) <- raw_levels # same levels in .as_factor. Nevertheless, not needed when (coords_nesting)...?
       # BUT : this uniqueGeo overwritten if (length(coords_nesting)...). 
     } 
     geoMats$nbUnique <- nrow(uniqueGeo) ## only serves to control RHOMAX and should not be computed from the final uniqueGeo in case of nesting
     if (length(coords_nesting) && any(needed[c("distMatrix","uniqueGeo","notSameGrp")]) ) {
       ## should now (>2.3.9) work on data.frames, nesting factor not numeric.
-      e_uniqueGeo <- .calcUniqueGeo(data=data[,coordinates,drop=FALSE])
+      e_uniqueGeo <- .calcUniqueGeo(data=data[,coordinates,drop=FALSE])  # recycles .calcUniqueGeo() but here coordinates include grouping factor
       ## The rows_bynesting <- by(e_uniqueGeo ,e_uniqueGeo[,coords_nesting],rownames) line in .[sparse_]expand_GeoMatrices()
       #  works only if the cols are not factors ! (an as.matrix() ?). Unless we have a fix for this,
       #  e_uniqueGeo classes should not be factor; and as.integer(<factor>) can produce NA's hence as.character()
@@ -672,12 +672,13 @@
     precisionFactorList <- AUGI0_ZX_envir$precisionFactorList
     updateable <- AUGI0_ZX_envir$updateable
     is_given_by <- attr(LMatrices,"is_given_by")
+    ranCoefs_blob <- processed$ranCoefs_blob
     for (rt in which(is_given_by %in% c("ranCoefs")) ) {# ie _outer_ ranCoefs
       latentL_blob <- attr(LMatrices[[rt]],"latentL_blob")
       nc <- ncol(latentL_blob$compactcovmat)
       necess4updateable <- (length(which(latentL_blob$compactchol_Q@x!=0)) == nc*(nc+1L)/2L)
       
-      if (processed$ranCoefs_blob$is_composite[rt]) { 
+      if (ranCoefs_blob$is_composite[rt]) { 
         cov_info_mat <- processed$corr_info$cov_info_mats[[rt]]
         if (use_corrMatrix_fast_code <- TRUE) { # ____TAG___ OK bc unpermuted Chol for corrMatrix
           # only makelongs and ranCoefs's compact-matrix operations 
@@ -696,7 +697,7 @@
           precisionFactorList[[rt]] <- list(
             chol_Q= as(long_Q_CHMfactor,"sparseMatrix"), 
             precmat=.makelong(latentL_blob$compactprecmat,
-                              template= processed$ranCoefs_blob$longLv_templates[[rt]],
+                              template= ranCoefs_blob$longLv_templates[[rt]],
                               kron_Y=cov_info_mat$matrix, # should be dsC
                               drop0template=FALSE # assuming the template is sparse and that compactprecmat won't be sparse most of the time
             )
@@ -713,7 +714,7 @@
     }
     for (rt in which(is_given_by=="inner_ranCoefs")) {
       # : need to initialize because spprec IRLS requires the present function to have filled all matrices
-      nc <- ncol(processed$ranCoefs_blob$longLv_templates[[rt]] )
+      nc <- ncol(ranCoefs_blob$longLv_templates[[rt]] )
       precisionFactorList[[rt]] <- list(precmat=.symDiagonal(n=nc), 
                                         chol_Q=new("dtCMatrix",i= 0:(nc-1L), p=0:(nc), Dim=c(nc,nc),x=rep(1,nc)) )
       updateable[rt] <- TRUE

@@ -43,7 +43,7 @@ diallel(tpar, fixed = NULL, public = NULL)
   \item{fixed}{
 NULL or fixed value of the correlation coefficient.
 }
-\item{public}{NULL, or an environment. When an empty environment is provided, a template \code{CorNA} for the correlation matrix (with NA's in place of \eqn{rho}) will be copied therein, for inspection at user level.}
+\item{public}{NULL, or an environment. When an empty environment is provided, a template \code{CorNA} for the correlation matrix (with NA's in place of \eqn{\rho}) will be copied therein, for inspection at user level.}
 }
 \value{
 Both functions return corrFamily descriptors whose general format is described in \code{\link{corrFamily}}. The one produced by \code{ranGCA} is atypical in that only its \code{Af} element is non-trivial.

@@ -120,13 +120,14 @@
 })
 
 
-# same algo as .eval_gain_LevM_etaGLM() but with different input, use of .calc_clik() instead of family$dev.resids()...
+# same algo as .eval_gain_LevM_etaGLM() but with different input, use of .calc_clik(mu=muCOUNT) instead of family$dev.resids(mu=muFREQS)...
 .eval_gain_LevM_spaMM_GLM <- function(LevenbergMstep_result,family, x ,coefold,devold, offset,y,weights) { 
   dbeta <- LevenbergMstep_result$dbetaV
   beta <- coefold + dbeta
-  eta <- (x %*% beta)[] + offset
+  eta <- drop(x %*% beta) + offset
   eta <- .sanitize_eta(eta, y=y, family=family, max=40) 
-  mu <- family$linkinv(eta)
+  mu <- family$linkinv(eta) # muFREQS
+  # for binomial fam, $family(initialize) has redefined y as a frequency and the weights as binomial weights
   dev <- suppressWarnings(sum(family$dev.resids(y, mu, weights)))
   if (is.infinite(dev) || is.na(dev)) {  
     gainratio <- -1
@@ -142,10 +143,13 @@
     conv_dev <- abs(ddev)/(1+abs(dev))
     gainratio <- 2*ddev/denomGainratio 
   }
-  return(list(gainratio=gainratio,dev=dev,beta=beta,eta=eta,mu=mu,conv_dev=conv_dev))
+  return(list(gainratio=gainratio,dev=dev,beta=beta,eta=eta,
+              mu=mu, # muFREQS
+              conv_dev=conv_dev))
 }  
 
 
+# In a fitme calls this can be called by .get_inits_from_fit(), and by get_glm_phi) -> .calc_dispGammaGLM()
 spaMM_glm.fit <- local({
   spaMM_glm_conv_crit <- list(max=-Inf)
   function (x, y, weights = rep(1, nobs), 
@@ -218,7 +222,7 @@ spaMM_glm.fit <- local({
     }
     else {
       mukeep <- mustart
-      eval(family$initialize) ## changes y 2 col -> 1 col
+      eval(family$initialize) ## or binomial fam, changes y 2 col -> 1 col; redefines y as a frequency and the weights as binomial weights
       mustart <- mukeep
     }
     if (EMPTY) {
@@ -250,13 +254,13 @@ spaMM_glm.fit <- local({
           eta <- offset + as.vector(if (NCOL(x) == 1L) {x * start} else {x %*% start})
         }
       } else eta <- family$linkfun(mustart)
-      if (family$link=="log") {
-        eta <- .sanitize_eta_log_link(eta, max=40,y=y, warn_neg_y= (family$family !="gaussian"))
-      } else if (family$link=="loglambda") {
-        COMP_nu <- environment(family$aic)$nu 
-        eta <- .sanitize_eta_log_link(eta, max=40, y=y, nu=COMP_nu)
-      }
-      # : __F I X M E__ why not use general code : .sanitize_eta(eta,y=y, family=family) #, which default max?  
+      # if (family$link=="log") {
+      #   eta <- .sanitize_eta_log_link(eta, max=40,y=y, warn_neg_y= (family$family !="gaussian"))
+      # } else if (family$link=="loglambda") {
+      #   COMP_nu <- environment(family$aic)$nu 
+      #   eta <- .sanitize_eta_log_link(eta, max=40, y=y, nu=COMP_nu)
+      # }
+      eta <- .sanitize_eta(eta, y=y, family=family)   
       if (family$family=="COMPoisson") muetaenv <- .CMP_muetaenv(family, pw=weights, eta)
       mu <- linkinv(eta)
       if (!(validmu(mu) && valideta(eta))) 
@@ -384,7 +388,7 @@ spaMM_glm.fit <- local({
               dampingfactor <- 2
               start <- levMblob$beta 
               eta <- levMblob$eta ## FR->FR 1 -col matrix without names....
-              mu <- levMblob$mu
+              mu <- levMblob$mu # muFREQS
               dev <- levMblob$dev 
               if (control$trace) cat("|")
               break
@@ -439,7 +443,7 @@ spaMM_glm.fit <- local({
                    call. = FALSE)
             ii <- ii + 1
             start <- (start + coefold)/2
-            eta <- (x %*% start)[]
+            eta <- drop(x %*% start)
             eta <- eta + offset
             if (family$family=="COMPoisson") muetaenv <- .CMP_muetaenv(family, pw=weights, eta)
             mu <- linkinv(eta)

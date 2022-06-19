@@ -51,15 +51,23 @@
                              control=processed[["control.glm"]],
                              etastart=locetastart
           )
-          if (NCOL(loclamdata) == 1L && all(loclamdata==1)) { ## 02/2016
-            # we practically have the answer and reformat it
+          if (NCOL(loclamdata) == 1L && all(loclamdata==1) 
+              && length(start <- unique(locetastart))==1L # the last test bc currently .glm_reformat does not handle other cases, 
+              #        not all excluded by the two previous tests in the case a prior_lam_fac was used 
+              #        (very contrived... see also comments on dev.res argument of .calc_dispGammaGLM).
+              # To use .glm_reformat() in the prior_lam_fac case, one would have to get the unique_lambda, which is not in calcRanefPars_blob, as 'start' value.
+              # A test of all this is test-negbin1.R, where the final estimate 1.4710451324 is the unique_lambda, 
+              #                                             the next_lambda_est are unique_lambda*(prior_lam_fac="wei" variable) 
+              #                                             and the locetastart are their log().
+              ) {
+            # we practically have the answer and reformat it; the .calc_dispGammaGLM() first tries the $method <- ".glm_reformat", and if it fails, 
+            # uses spaMM_glm.fit()
             locarglist$method <- ".glm_reformat"
-            locarglist$start <- unique(locetastart)
+            locarglist$start <- start
             #!# locarglist$control <- list(maxit=1L)
           } else {
             ## includes random-slope
-            #!# locarglist$try <- TRUE 
-            ## 'try' removed, 04/2016: spaMM_glm.fit  should always provide a final glm
+            ## .calc_dispGammaGLM() -> spaMM_glm.fit() should always provide the final glm in these cases.
           }
           glm_lambda <- do.call(".calc_dispGammaGLM",locarglist)
           attr(glm_lambda,"whichrand") <- it

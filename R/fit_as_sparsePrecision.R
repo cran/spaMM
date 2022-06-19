@@ -6,7 +6,7 @@
   damping,
   dampingfactor=2, ## no need to change the input value
   ypos,off,GLMMbool,etaFix,
-  updateW_ranefS_subarglist,
+  lambda_est,
   wranefblob, seq_n_u_h, 
   ZAL_scaling, # locally fixed, "resident"; only changed in return value
   processed, 
@@ -86,7 +86,7 @@
         
         if (Trace) cat(stylefn_v("["))
         v_h_blob <- .wrap_wrap_v_h_IRLS(IRLS_fn=".solve_v_h_IRLS_spprec", v_h=Vscaled_beta$v_h, beta_eta=Vscaled_beta$beta_eta, 
-                                        seq_n_u_h, GLMMbool, wranefblob, processed, updateW_ranefS_subarglist, 
+                                        seq_n_u_h, GLMMbool, wranefblob, processed, lambda_est, 
                                         v_infer_args, Trace) # each underline green is a damping _loop_ not a damping step
         if (Trace) cat(stylefn_v("]"))
         if (trace) .cat_break_info( v_h_blob, stylefn_v, stylefn)  ## prints, at the level of the outer damped_WLS, the results of the v_h IRLS
@@ -116,19 +116,17 @@
         u_h <- v_h
         newwranefblob <- wranefblob ## keep input wranefblob since GLMM and lambda_est not changed
       } else {
-        u_h_v_h_from_v_h_args <- c(processed$reserve$constant_u_h_v_h_args,list(v_h=v_h))
-        u_h <- do.call(".u_h_v_h_from_v_h",u_h_v_h_from_v_h_args)
-        if ( ! is.null(attr(u_h,"v_h"))) { ## second test = if constant_u_h_v_h_args$upper.v_h or $lower.v_h non NULL
-          v_h <- attr(u_h,"v_h")
-        }
+        u_h <- processed$u_h_v_h_from_v_h(v_h)
+        if ( ! is.null(maybe <- attr(u_h,"v_h"))) v_h <- maybe
         ## update functions u_h,v_h
-        newwranefblob <- do.call(".updateW_ranefS",c(updateW_ranefS_subarglist, list(u_h=u_h,v_h=v_h)))
+        newwranefblob <- processed$updateW_ranefS(u_h=u_h,v_h=v_h, lambda=lambda_est)
       } 
     } else newwranefblob <- wranefblob
     sXaug_arglist <- c(update_sXaug_constant_arglist,
                           list(w.ranef=newwranefblob$w.ranef, 
                                #weight_X=newweight_X,
                                w.resid=neww.resid))
+    sXaug_arglist$H_w.resid <- .calc_H_w.resid(neww.resid, muetablob=newmuetablob, processed=processed) 
     if ( ! GLMMbool) {newZAL_scaling <- 1}  ## TAG: scaling for spprec
     ####
     APHLs_args$dvdu <- newwranefblob$dvdu
@@ -305,8 +303,23 @@
 # processed, Trace
 
 
+.updates_from_w.resid <- function(RESU, phi_est, update_sXaug_constant_arglist, 
+                                  wranefblob, processed, Trace, stylefn) {
+  
+  RESU$w.resid <- .calc_w_resid(RESU$muetablob$GLMweights,phi_est)
+  sXaug_arglist <- c(update_sXaug_constant_arglist, # contained H_global_scale but not longer so
+                     list(w.ranef=wranefblob$w.ranef, 
+                          w.resid=RESU$w.resid))
+  sXaug_arglist$H_w.resid <- .calc_H_w.resid(RESU$w.resid, muetablob=RESU$muetablob, processed=processed) 
+  if (Trace) cat(stylefn("."))
+  RESU$sXaug <- do.call(processed$AUGI0_ZX$envir$method, # ie, def_AUGI0_ZX_sparsePrecision
+                        sXaug_arglist)
+  RESU
+  
+}
+
 .WLS_substitute_spprec <- function(update_sXaug_constant_arglist, Vscaled_beta, off, etaFix, mod_attr, 
-                                   updateW_ranefS_subarglist, ZAL, 
+                                   lambda_est, ZAL, 
                             processed, phi_est,
                             wranefblob, Trace,stylefn) {
   
@@ -319,30 +332,22 @@
     if ( mod_attr$GLMMbool ) {
       RESU$u_h <- RESU$v_h <- v_h ## keep input wranefblob since lambda_est not changed
     } else {
-      u_h_v_h_from_v_h_args <- c(processed$reserve$constant_u_h_v_h_args,list(v_h=v_h))
-      RESU$u_h <- u_h <- do.call(".u_h_v_h_from_v_h",u_h_v_h_from_v_h_args)
-      if ( ! is.null(attr(u_h,"v_h"))) { ## second test = if constant_u_h_v_h_args$upper.v_h or $lower.v_h non NULL
-        v_h <- attr(u_h,"v_h")
-      }
+      RESU$u_h <- u_h <- processed$u_h_v_h_from_v_h(v_h)
+      if ( ! is.null(maybe <- attr(u_h,"v_h"))) v_h <- maybe
       RESU$v_h <- v_h
       ## update functions u_h,v_h
-      RESU$wranefblob <- wranefblob <- do.call(".updateW_ranefS",c(updateW_ranefS_subarglist, list(u_h=u_h,v_h=v_h)))
+      RESU$wranefblob <- wranefblob <- processed$updateW_ranefS(u_h=u_h,v_h=v_h, lambda=lambda_est)
       #if ( ! mod_attr$GLMMbool) { 
         RESU$ZAL_scaling <- 1 ## TAG: scaling for spprec
       # } 
     }
   }
-  RESU$muetablob <- muetablob <- .muetafn(eta=eta,BinomialDen=processed$BinomialDen,processed=processed) 
+  RESU$muetablob <- .muetafn(eta=eta,BinomialDen=processed$BinomialDen,processed=processed) 
   if ( (! mod_attr$LLM_const_w) && (! mod_attr$GLGLLM_const_w) ) {
-    RESU$w.resid <- .calc_w_resid(muetablob$GLMweights,phi_est)
-    sXaug_arglist <- c(update_sXaug_constant_arglist, # contained H_global_scale but not longer so
-                           list(w.ranef=wranefblob$w.ranef, 
-                                #weight_X=weight_X, 
-                                w.resid=RESU$w.resid))
-    if (Trace) cat(stylefn("."))
-    RESU$sXaug <- do.call(processed$AUGI0_ZX$envir$method, # ie, def_AUGI0_ZX_sparsePrecision
-                          sXaug_arglist)
-  } ## ergo sXaug is not updated for LMM (no need to)
+    RESU <- .updates_from_w.resid(RESU, phi_est, update_sXaug_constant_arglist,
+                                  wranefblob, # do NOT try to use RESU$wranefblob bc it does not necessarily exists (if no updated)
+                                  processed, Trace, stylefn)
+  } ## else no need to update RESU$'s w.resid, sXaug, H_w.resid
   return(RESU) ## contains only updated quantities
 }
 
@@ -363,7 +368,7 @@
            for_intervals,
            ##
            corrPars, # corrPars needed together with adjMatrix to define Qmat
-           verbose,
+           verbose=processed$verbose,
            LevM_HL11_method=.spaMM.data$options$LevM_HL11_method
   ) {
     trace <- verbose["TRACE"]
@@ -408,8 +413,6 @@
                                 for_init_z_args,
                                 #
                                 mget(c("cum_n_u_h","rand.families"),envir=processed))
-      updateW_ranefS_subarglist <- processed$reserve$W_ranefS_constant_args
-      updateW_ranefS_subarglist$lambda <- lambda_est
     } 
   } 
   
@@ -434,11 +437,13 @@
     if (LevenbergM) cat("LM")
     cat(stylefn("."))
   }
-  sXaug <- do.call(processed$AUGI0_ZX$envir$method, # ie, def_AUGI0_ZX_sparsePrecision
-                   c(update_sXaug_constant_arglist,
+  sXaug_arglist <- c(update_sXaug_constant_arglist,
                      list(w.ranef=wranefblob$w.ranef, 
-                          #weight_X=weight_X, 
-                          w.resid=w.resid)))
+                          w.resid=w.resid))
+  sXaug_arglist$H_w.resid <- .calc_H_w.resid(w.resid, muetablob=muetablob, processed=processed) 
+  sXaug <- do.call(processed$AUGI0_ZX$envir$method, # ie, def_AUGI0_ZX_sparsePrecision
+                   sXaug_arglist)
+  
   if ( ! is.null(for_intervals)) {
     Vscaled_beta <- list(v_h=v_h/ZAL_scaling, beta_eta=for_intervals$beta_eta)
     fixefobjfn <- names(for_intervals$fixeflik)
@@ -543,8 +548,8 @@
     ## only the gainratio code uses it.  
     ## the gradient for -p_v (or -h), independent of the scaling
     zInfo$m_grad_obj <- c( ## drop() avoids c(Matrix..); attr(sXaug,"w.resid") correct for truncated models too.
-      m_grad_v <- drop(.crossprod(ZAL, attr(sXaug,"w.resid") * zInfo$z1_eta) +zInfo$dlogfvdv), # Z'W(z_1-eta) + dlogfvfv
-      drop(.crossprod(processed$AUGI0_ZX$X.pv, attr(sXaug,"w.resid") * z1_sscaled_eta)) # X'W(z_1-sscaled-eta) 
+      m_grad_v <- drop(.crossprod(ZAL, sXaug$BLOB$H_w.resid * zInfo$z1_eta) +zInfo$dlogfvdv), # Z'W(z_1-eta) + dlogfvfv 
+      drop(.crossprod(processed$AUGI0_ZX$X.pv, sXaug$BLOB$H_w.resid * z1_sscaled_eta)) # X'W(z_1-sscaled-eta) # z1_sscaled_eta appears to have been tailored for this to be correct
     )
     if (LevenbergM) {
       zInfo$gainratio_grad <- zInfo$m_grad_obj 
@@ -668,7 +673,7 @@
         Trace= trace,
         ypos=ypos,off=off,
         GLMMbool=GLMMbool,etaFix=etaFix,
-        updateW_ranefS_subarglist=updateW_ranefS_subarglist,
+        lambda_est=lambda_est,
         wranefblob=wranefblob,seq_n_u_h=seq_n_u_h,
         update_sXaug_constant_arglist=update_sXaug_constant_arglist,
         #H_global_scale=H_global_scale,     
@@ -690,7 +695,7 @@
           # found and floating point innacurracies matter.  We try to exclude the second case by the following test: 
           if ( ! ((breakcond <- damped_WLS_blob$breakcond)=="low_pot" && attr(breakcond,"very_low_pot"))) {
             damped_WLS_blob <- NULL
-            .diagnose_conv_problem_LevM( beta_cov_info=.calc_beta_cov_info_spprec(X.pv = sXaug$AUGI0_ZX$X.pv,envir = sXaug$BLOB,w.resid = w.resid), 
+            .diagnose_conv_problem_LevM( beta_cov_info=.calc_beta_cov_info_spprec(X.pv = sXaug$AUGI0_ZX$X.pv,envir = sXaug$BLOB), 
                                          w.resid, processed) # writes into 'processed'
             dVscaled_beta <- get_from_MME(sXaug,szAug=zInfo) ################### FIT
             Vscaled_beta <- list(v_h=Vscaled_beta$v_h+dVscaled_beta$dv_h,
@@ -720,7 +725,7 @@
     #  Hence, the following code is useful whether a break occurs or not. 
     if ( is.null(damped_WLS_blob) ) { ## fits nothing, but updates variables in case of standard IRLS, or of intervals
       WLS_blob <- .WLS_substitute_spprec(update_sXaug_constant_arglist, Vscaled_beta, off, etaFix, mod_attr=mod_attr, 
-                                         updateW_ranefS_subarglist=updateW_ranefS_subarglist, ZAL, 
+                                         lambda_est=lambda_est, ZAL, 
                                          processed, phi_est,
                                          wranefblob, Trace=trace, stylefn)
       for (st in names(WLS_blob)) assign(st,WLS_blob[[st]]) 
@@ -888,9 +893,10 @@
   i_etamo <- drop(ZAL %*% oovb[seq_n_u_h] +
                    sXaug$AUGI0_ZX$X.pv[,-(parmcol_X),drop=FALSE] %*%  oovb[-seq_n_u_h]) # 
   #
-  rhs <- attr(sXaug, "w.resid")*(etamo-off_newparm- i_etamo)
+  rhs <- attr(sXaug, "w.resid")*(etamo-off_newparm- i_etamo) # probably correct for obsInfo too... __F_I_X_M_E__  check it
   zInfo$m_grad_obj <- zInfo$m_grad_obj[-parmcol_ZX]+
-    c(drop(crossprod(ZAL,rhs)),drop(crossprod(sXaug$AUGI0_ZX$X.pv[,-parmcol_X,drop=FALSE],rhs))) # tjrs zInfoo$m_grad_obj
+    c(drop(crossprod(ZAL,rhs)),
+      drop(crossprod(sXaug$AUGI0_ZX$X.pv[,-parmcol_X,drop=FALSE],rhs))) # tjrs zInfoo$m_grad_obj
   #
   int_sXaug <- sXaug # list with two elements: environments AUGI0_ZX and BLOB  
   # Modify $AUGI0_ZX:

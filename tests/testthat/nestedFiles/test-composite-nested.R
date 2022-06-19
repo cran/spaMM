@@ -110,8 +110,51 @@ logLik(zut1s)-logLik(zut1d)
 (p1s <- predict(zut1s))
 (p2s <- predict(zut1s, newdata=zut1s$data)) 
 (crit <- diff(range(p1d-p2d,p1d-p1s,p1s-p2s)))
-testthat::test_that(paste0("ranef corrMatrix(mv()...): criterion was ",signif(crit,4)," >1e-7"),
-                    testthat::expect_true(crit<1e-7) )
+testthat::test_that(paste0("ranef corrMatrix(mv()...): criterion was ",signif(crit,4)," >5e-7"),
+                    testthat::expect_true(crit<5e-7) )
+
+{  cat(crayon::yellow( "Matern(LHS |<nested RHS>) and more corrMatrix(LHS |<nested RHS>)... " ))
+  {
+    data("blackcap")
+    toy <- blackcap
+    toy$ID <- gl(7,2)
+    grp <- rep(1:2,7)
+    toy$migStatus <- toy$migStatus +(grp==2)
+    toy$loc <- rownames(toy) # to use as levels matching the corrMatrix dimnames
+    
+    toy$grp <- factor(grp)
+    toy$bool <- toy$grp==1L
+    toy$boolfac <- factor(toy$bool)
+    toy$num <- seq(from=1, to=2, length.out=14)
+    
+    ## Build a toy corrMatrix as perturbation of identity matrix:
+    n_rhs <- 14L
+    eps <- 0.1
+    set.seed(123)
+    rcov <- ((1-eps)*diag(n_rhs)+eps*rWishart(1,n_rhs,diag(n_rhs)/n_rhs)[,,1])
+    # eigen(rcov)$values
+    colnames(rcov) <- rownames(rcov) <- toy$loc # DON'T FORGET NAMES
+  }
+  
+  {
+    ## The unconstrained fit fits to correlation = -1 and vanishing phi by augmented-y algo, both of which complicates comparisons
+    # (fit1yaug <- fitme(migStatus ~ grp + Matern(grp|latitude %in% grp), data=toy, fixed=list(ranCoefs=list("1"=c(NA,-0.5,NA)))))
+    ## => Force non y-augmented algo and then consistently fitted phi across calls:
+    (fit1 <- fitme(migStatus ~ grp + Matern(grp|latitude %in% grp), data=toy, init=list(phi=1e-5), fixed=list(ranCoefs=list("1"=c(NA,-0.5,NA)))))
+    
+    rC <- get_ranPars(fit1)$ranCoefs[[1]]
+    corMat <- Corr(fit1)[[1]][1:14,1:14]/rC[1] 
+    colnames(corMat) <- rownames(corMat) <- toy$loc 
+    # 
+    (fit1fix_nest <- fitme(migStatus ~ grp + corrMatrix(grp|loc %in% grp), data=toy, init=list(phi=1e-5), corrMatrix=corMat, fixed=list(ranCoefs=list("1"=rC))))
+    (fit1fix <- fitme(migStatus ~ grp + corrMatrix(grp|loc), data=toy, init=list(phi=1e-5), corrMatrix=corMat, fixed=list(ranCoefs=list("1"=rC)))) 
+    
+    testthat::expect_true(diff(range(logLik(fit1),logLik(fit1fix_nest),logLik(fit1fix)))<1e-09) 
+    
+  }
+  
+}
+
 
 ####################################################################"
 

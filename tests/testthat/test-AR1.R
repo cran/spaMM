@@ -44,12 +44,15 @@ if (TRUE) {
                      idx=seq_len(length(obs)))
   ## the sample() calls provides a check that permutations of the data have no effect
   ## checks the sparse->non-sparse case (assuming .determine_spprec() returns FALSE)
-  zut <- corrHLfit(obs ~ 1+AR1(1|idx %in% ind),family=poisson(),data=fake[20+sample(20),],ranFix=list(ARphi=0.7040234,lambda=0.7308))
-  rezut <- corrHLfit(obs ~ 1+AR1(1|idx %in% ind),family=poisson(),data=fake[20+sample(20),],ranFix=list(ARphi=0.7040234,lambda=0.7308), 
+  pfake <- fake[20+sample(20),]
+  zut <- corrHLfit(obs ~ 1+AR1(1|idx %in% ind),family=poisson(),data=pfake,ranFix=list(ARphi=0.7040234,lambda=0.7308))
+  ppfake <- fake[20+sample(20),]
+  rezut <- corrHLfit(obs ~ 1+AR1(1|idx %in% ind),family=poisson(),data=ppfake,ranFix=list(ARphi=0.7040234,lambda=0.7308), 
                      control.HLfit=list(sparse_precision=TRUE))
-  rerezut <- corrHLfit(obs ~ 1+AR1(1|idx %in% ind),family=poisson(),data=fake[20+sample(20),],ranFix=list(ARphi=0.7040234,lambda=0.7308), 
+  pppfake <- fake[20+sample(20),]
+  rerezut <- corrHLfit(obs ~ 1+AR1(1|idx %in% ind),family=poisson(),data=pppfake,ranFix=list(ARphi=0.7040234,lambda=0.7308), 
                        control.HLfit=list(sparse_precision=FALSE))
-  # The data are permuted between each fit, which could contributed to (in principle trivial) differences among fits
+  # The data are permuted between each fit, which could contribute to (in principle trivial) differences among fits
   testthat::expect_true(diff(range((c(logLik(zut),logLik(rezut),logLik(rerezut),-47.3130016607291))))<1e-8)
   ## check predict on each fit and subset of (permuted) data:
   p1 <- predict(zut,newdata=rezut$data[rownames(rezut$data)>30,])["39"] 

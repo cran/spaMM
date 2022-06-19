@@ -29,7 +29,7 @@ pdep_effects <- function(object,focal_var,newdata =object$data, length.out=20L, 
     if (is.null(focal.values <- focal_values)) {
       focal.values <- ori_values
     } else if (missing(length.out)) length.out <- 0L # reverse default in that case.
-    if (length.out) {
+    if (length.out && diff(range(focal.values))>0) {
       focal.values <- seq(min(focal.values),
                           max(focal.values),
                           length.out = length.out)

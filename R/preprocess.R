@@ -143,15 +143,53 @@
   return(list(lower.v_h=lower.v_h,upper.v_h=upper.v_h))
 }
 
-.eval_constant_u_h_v_h_args <- function(processed) {
+.def_u_h_v_h_from_v_h <- function(processed) {
   rand.families <- processed$rand.families
-  constant_u_h_v_h_args <- .eval_v_h_bounds(processed$cum_n_u_h, rand.families)
-  constant_u_h_v_h_args$rand.families <- rand.families
-  constant_u_h_v_h_args$cum_n_u_h <- processed$cum_n_u_h
-  constant_u_h_v_h_args$lcrandfamfam <- processed$lcrandfamfam
-  constant_u_h_v_h_args$u_list <- vector("list", length(rand.families)) # to avoid reepated initializations within .u_h_v_h_from_v_h()
-  constant_u_h_v_h_args
+  lowup <- .eval_v_h_bounds(processed$cum_n_u_h, rand.families)
+  cum_n_u_h <- processed$cum_n_u_h
+  u_list <- vector("list", length(rand.families)) # to avoid reepated initializations within .u_h_v_h_from_v_h()
+  .u_h_v_h_from_v_h <- function(v_h, lower.v_h=lowup$lower.v_h, upper.v_h=lowup$upper.v_h) {
+    if(!is.null(lower.v_h)) {v_h[v_h<lower.v_h] <- lower.v_h}
+    if(!is.null(upper.v_h)) {v_h[v_h>upper.v_h] <- upper.v_h}
+    nrand <- length(rand.families)
+    for (it in seq_len(nrand)) {
+      u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
+      u_list[[it]] <- rand.families[[it]]$linkinv(v_h[u.range])
+      if (any(is.infinite(u_list[[it]]))) {
+        warning("infinite random values ('u_h') were constrained to finite range.") 
+        u_list[[it]] <- pmin(.Machine$double.xmax, pmax(-.Machine$double.xmax,u_list[[it]]) )
+      }
+    }
+    u_h <- .unlist(u_list)
+    ## if there were box constr, v_h may have been modified, we put it in return value
+    if ( ! (is.null(lower.v_h) && is.null(upper.v_h))) attr(u_h,"v_h") <- v_h
+    return(u_h)
+  }
+  .u_h_v_h_from_v_h
 }
+
+.def_updateW_ranefS <- function(processed) {
+  rand.families <- processed$rand.families
+  nrand <- length(rand.families)
+  w.ranef_list <- dlogWran_dv_h_list <- dvdu_list <- vector("list", nrand)
+  cum_n_u_h <- processed$cum_n_u_h
+  .updateW_ranefS <- function(u_h, v_h, lambda) {
+    for (it in seq_len(nrand)) {
+      u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
+      blob <- .updateWranef(rand.family=rand.families[[it]],lambda[u.range],u_h[u.range],v_h[u.range])
+      w.ranef_list[[it]] <- blob$w.ranef
+      dlogWran_dv_h_list[[it]] <- blob$dlogWran_dv_h
+      dvdu_list[[it]] <- blob$dvdu
+    }
+    resu <- list(w.ranef=.unlist(w.ranef_list),dlogWran_dv_h=.unlist(dlogWran_dv_h_list),dvdu=.unlist(dvdu_list))
+    ## the test is invalid for ranCoefs:
+    # if (nrand==1L && rand.families[[1L]]$family=="gaussian") resu$unique_w.ranef <- w.ranef[[1L]] # used in sparsePrecision code
+    #if (length(unique_w.ranef <- unique(w.ranef))==1L) resu$unique_w.ranef <- unique_w.ranef # used in sparsePrecision code
+    resu
+  }
+  .updateW_ranefS
+}
+
 
 # to convert back a family object to a call, EXCEPT for "multi". 
 # get_param should be TRUE only in cases we are sure that the param has a value
@@ -427,20 +465,28 @@
                                prior.weights=processed$prior.weights) {
   GLMMbool <- (length(lcrandfamfam) && all(lcrandfamfam=="gaussian") ) ## only allowed gaussian rand.family is gaussian(identity) 
   const_pw <- ( ! inherits(prior.weights,"call"))
-  const_wresid <- (
+  unit_GLMweights <- (
                      (family$family=="gaussian" && attr(family,"canonicalLink") ) ||
                      (family$family=="Gamma" && family$link=="log") 
-                  ) && const_pw
+                  )
+  unit_Hobs_weights <- (
+    (family$family=="gaussian" && attr(family,"canonicalLink") ) ||
+      (family$family=="Gamma" && family$link=="log" && ! processed$how$obsInfo) 
+  )
+  const_Hobs_wresid <- unit_Hobs_weights && const_pw # constant non-unit GLM weights do not occur in actual families otherwise that case might need to be distinguished (cd muetafn).
   if (GLMMbool) { # const w.ranef
-    GLGLLM_const_w <- const_wresid # const w.ranef && [const w.resid: including Gamma(log) GLMM...]
+    GLGLLM_const_w <- const_Hobs_wresid # const w.ranef && [const w.resid: including Gamma(log) GLMM...]
     # GLGLLM_const_w controls whether the weights and augmented matrix need to be updated over iterations of IRLS.
     # it is not that the weights are constant across augmented 'levels' (hence const_pw is not determined by unique(pw))
     # Likewise it does not mean that phi is not reestimated between IRLSs. phi valeus are always constant within IRLS.
     LMMbool <- (family$family=="gaussian" && attr(family,"canonicalLink") ) 
-    LLM_const_w <- (LMMbool && const_wresid) 
+    LLM_const_w <- (LMMbool && const_Hobs_wresid) 
   } else LMMbool <- LLM_const_w <- GLGLLM_const_w <- FALSE
   return(structure(models, LMMbool=LMMbool, GLMMbool=GLMMbool, LLM_const_w=LLM_const_w,  
-                   GLGLLM_const_w=GLGLLM_const_w, const_wresid=const_wresid))
+                   GLGLLM_const_w=GLGLLM_const_w, const_Hobs_wresid=const_Hobs_wresid, 
+                   unit_GLMweights=unit_GLMweights, # for .muetafn()
+                   unit_Hobs_weights=unit_Hobs_weights) # for .vecdisneeded()
+         )
 }
 
 .calc_rankinfo <- function(X.pv, verbose=FALSE, tol) {
@@ -980,7 +1026,8 @@
                        objective=NULL, 
                        control.glm, # under user control! => impacts inits_by_glm
                        adjMatrix=NULL, verbose=NULL, For,
-                       init.HLfit=list(),corrMatrix=NULL,covStruct=NULL,
+                       init.HLfit=list(), # user's init.HLfit here
+                       corrMatrix=NULL,covStruct=NULL,
                        distMatrix=NULL, 
                        control.dist=NULL,
                        init=NULL # for .preprocess_augZXy()
@@ -1095,10 +1142,6 @@
   # ... when some disp param is inner estimated: (HLfit_body() tells cases apart) 
   processed$iter_mean_dispVar <- .calc_iter_mean_dispVar(control.HLfit, family, y)
   #
-  if (family$link %in% c("log","loglambda"))  {
-    processed$maxLambda <- log(sqrt(.spaMM.data$options$maxLambda))^2
-  } else processed$maxLambda <- .spaMM.data$options$maxLambda
-  #
   exp_barlist <- .process_bars(predictor,as_character=FALSE) ## but default expand =TRUE; also -> .parseBars() -> .process_IMRF_bar() parses RHS info
   
   # Not wrong per se, but unsufficient for posisbly a lot of ad-hockeries 
@@ -1112,6 +1155,11 @@
   #
   nrand <- length(exp_ranef_strings)
   if (nrand <- length(exp_ranef_strings)) {
+    if (family$link %in% c("log","loglambda"))  {
+      maxLambda <- log(sqrt(.spaMM.data$options$maxLambda))^2
+    } else maxLambda <- .spaMM.data$options$maxLambda
+    processed$maxLambda <- rep(maxLambda, nrand) # rep() useful only for unified syntax with mv
+    #
     ## Initialize $corr_info (ASAP to assign_cov_matrices ASAP):
     processed$corr_info <- corr_info <- new.env() ## do not set parent=emptyenv() else with(corr_info,...) will not find trivial fns such as `[`
     exp_ranef_types <- attr(exp_ranef_strings,"type") ## expanded
@@ -1184,7 +1232,9 @@
 
   } else processed$rand.families <- list() ## ## corrects the default [gaussian()] when nrand=0
   #
-  
+  processed$how$obsInfo <- .obsInfo(HLmethod, family) 
+  HLmethod <- HLmethod[[1L]]
+  #
   HLmethod <- .preprocess_HLmethod(HLmethod, family, processed$lcrandfamfam) ## not a member of the 'processed' object
   .preprocess_HL_REMLformula(HLmethod, processed, BinomialDen, nobs, control.HLfit, y, REMLformula) # $HL, $REMLformula
   ####
@@ -1229,6 +1279,7 @@
     X.pv <- .subcol_wAttr(X.pv, j=setdiff(colnames(X.pv),betanames), drop=FALSE)
     processed$X_off_fn <- .def_off_fn(X_off, ori_off=processed$off)
   }
+  ## Now X.pv has its final ncol := pforpv
   #
   if (.spaMM.data$options$X_scaling) { ## use scaled X.pv by default v.2.4.83
     ##       standard REML    ||      ML 
@@ -1245,32 +1296,26 @@
     processed$ZAlist <- ZAlist 
     # This, together with two commented lines in .is_identity(), is not clearly useful:
     #for (rd in seq_along(ZAlist)) attr(ZAlist[[rd]], "is_identity") <- .is_identity(ZAlist[[rd]], matrixcheck=TRUE)
-    vec_n_u_h <- unlist(lapply(ZAlist,ncol)) ## nb cols each design matrix = nb realizations each ranef
-    if (min(nobs/vec_n_u_h)<2) {
-      if (family$family == "binomial" && processed$bin_all_or_none && processed$HL[1]==1L) {
-        if ( ! identical(spaMM.getOption("PQL_warned"),TRUE)) {
-          message("Fits using Laplace approximation may diverge for (nearly) all-or-none binomial data:\n check PQL or PQL/L methods in that case.")
-          .spaMM.data$options$PQL_warned <- TRUE
-        }
-      }
-    }
+    vec_n_u_h <- .eval_check_vec_n_u_h(ZAlist, nobs, processed)
+    processed$psi_M <- rep(attr(rand.families,"unique.psi_M"),vec_n_u_h) # in position suitable to make it available for fit and to drop it from fit object
     processed$cum_n_u_h <- cumsum(c(0L, vec_n_u_h)) ## if two ranef,  with q=(3,3), this is 0,3,6 ;
     processed$reserve <- .preprocess_arglists(processed)
     processed$hyper_info <- .preprocess_hyper(processed=processed) # uses$ZAlist and $predictor
-    processed$QRmethod <- .choose_QRmethod(processed$ZAlist, corr_info=corr_info,
-                                           is_spprec=processed$is_spprec, processed=processed, control.HLfit=control.HLfit)
-    .check_time_G_diagnosis(.provide_G_diagnosis, processed)
-    nrd <- processed$cum_n_u_h[nrand+1L]
-    if (( ! For_fitmv) && nrd==1L) warning("Found a single random effect with a *single level*. Check formula?", immediate.=TRUE)
-  } else models[["eta"]] <- "etaGLM"
-  #
-  processed$AUGI0_ZX <- .init_AUGI0_ZX(X.pv, vec_normIMRF, processed$ZAlist, nrand, n_u_h=nrd, sparse_precision, 
-                                       as_mat=.eval_as_mat_arg(processed))
-  #
-  coef12needed <- ! ((family$family=="gaussian" && family$link=="identity")
-                              || (family$family=="Gamma" && family$link=="log")  ) ## two ad hoc cases
-  coef3needed <- any(attr(processed$rand.families,"unique.psi_M")!=0) # psi_M happening to be 0 only for gaussian(identity) ranef
-  processed$vecdisneeded <- c( coef12needed, coef12needed, coef3needed )
+    if (For_fitmv) {
+      processed$AUGI0_ZX <- list(X.pv=X.pv) # not most elegant, but avoids distinguishing subcases when no ranef too.
+    } else {
+      processed$QRmethod <- .choose_QRmethod(processed$ZAlist, corr_info=corr_info,
+                                             is_spprec=processed$is_spprec, processed=processed, control.HLfit=control.HLfit)
+      .check_time_G_diagnosis(.provide_G_diagnosis, processed)
+      nrd <- processed$cum_n_u_h[nrand+1L]
+      if (nrd==1L) warning("Found a single random effect with a *single level*. Check formula?", immediate.=TRUE)
+          processed$AUGI0_ZX <- .init_AUGI0_ZX(X.pv, vec_normIMRF, processed$ZAlist, nrand, n_u_h=nrd, sparse_precision, 
+                                           as_mat=.eval_as_mat_arg(processed))
+    }
+  } else {
+    models[["eta"]] <- "etaGLM"
+    processed$AUGI0_ZX <- list(X.pv=X.pv)
+  }
   #
   ## models: ## progressively add info to 'processed' and to 'models' before storing final 'models' in 'processed.'
   if (is.null(ranFix)) ranFix <- list()
@@ -1280,8 +1325,11 @@
   processed$phi.Fix <- .check_phi_Fix(phi.Fix=.getPar(ranFix,"phi"), family)
   models <- .preprocess_phi_model(processed, models, resid.model, control.HLfit, HLmethod, data, 
                         processed$control.glm, family) # assigns things to 'processed' (incl $models, $residModel)
+  #
   processed$models <- .setattr_G_LMMbool(models, processed=processed) # after modif by .preprocess_phi_model()
   if (attr(processed[["models"]],"LMMbool") && ! For_fitmv) .check_identifiability_LMM(processed, nobs=nobs) # depending on mdoel booleans.
+  processed$vecdisneeded <- .vecdisneeded(pforpv=ncol(X.pv), family, processed) # after setting $models
+  #
   ##         ##
   #### Ultimate controls of algorithms
   processed$break_conv_logL <- c(control.HLfit$break_conv_logL, FALSE)[1]   ##whether to stop if logL (p_v) appears to have converged  
@@ -1336,7 +1384,7 @@
   if (is.null(argnames)) stop("options must be given by name")
   old <- mget(argnames, envir=processed, ifnotfound = list(NULL))
   names(old) <- argnames ## bc names are not valid for previously absent elements
-  for (st in argnames) assign(st, temp[[st]], envir=processed)
+  list2env(temp[argnames], envir=processed) # for (st in argnames) assign(st, temp[[st]], envir=processed)
   invisible(old)
 }
 

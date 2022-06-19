@@ -7,7 +7,7 @@
   # for (colit in seq_len(ncol(redondGeo))) redondGeo[,colit] <- factor(redondGeo[,colit],labels="") 
   ## fails in poly() case...
   redondFac <- apply(redondGeo,2L,factor,labels="") # not cute use of labels... 
-  redondFac <- apply(redondFac,1L,paste,collapse=":") ## paste factors
+  redondFac <- .pasteCols(t(redondFac)) # apply(redondFac,1L,paste,collapse=":") ## paste factors
   #redondFac <- as.character(factor(redondFac))
   uniqueFac <- unique(redondFac) ## seems to preserve order ## unique(<integer>) has unambiguous behaviour
   uniqueIdx <- seq(length(uniqueFac))

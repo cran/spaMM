@@ -372,7 +372,7 @@
           for (ilam in seq_len(Xi_ncol)) { 
             i_rhs_invV.dVdlam <- loglamInfo_blob$rhs_invV.dVdlam_list[[paste0(randit,"_",ilam)]]  #.fill_rhs_invV.dVdlam(template=zerotemplate, urange=uirange[,ilam], invV.dV_info)
             colit <- cum_Xi_cols[randit]+ilam
-            logdispInfoBlock[colit] <- .traceDB(object$w.resid, t(rhs_invV.dVdrho),t(lhs_invV.dVdrho)) -
+            logdispInfoBlock[colit] <- .traceDB(.get_H_w.resid(object), t(rhs_invV.dVdrho),t(lhs_invV.dVdrho)) -
               .traceAB(invV.dV_info$lhs_invV.dVdlam, i_rhs_invV.dVdlam,t(rhs_invV.dVdrho),t(lhs_invV.dVdrho))
           }
         }
@@ -384,7 +384,7 @@
     ## if (! is.null(dwdlogphi)) { ## currently length(phi)==1L && ! is.null(dvdlogphiMat)
     if ("logphi" %in% dispnames) { ## more transparent, but error if mismatch of conditions
       logphiInfo_blob <- .calc_logphiInfo(invV_factors, which=which(is_phiScalS), cum_nobs=cum_nobs, 
-                                            phi_est=phi_est, w.resid=object$w.resid,
+                                            phi_est=phi_est, w.resid=.get_H_w.resid(object),
                                             spprec="AUGI0_ZX_sparsePrecision" %in% object$MME_method)
       logdispInfo[dispcols$logphi,dispcols$logphi] <- logphiInfo_blob$logphiInfo 
       wresid_list <- logphiInfo_blob$wresid_list

@@ -3,7 +3,7 @@
 
 \title{Prediction and response variances}
 
-\description{spaMM allows computation of four variance components of prediction, returned by \code{predict} as \dQuote{...\code{Var}} attributes: \code{predVar}, \code{fixefVar}, \code{residVar}, or \code{respVar}. The phrase \dQuote{prediction variance} is used inconsistently in the literature. Often it is used to denote the uncertainty in the response (therefore, including the residual variance), but spaMM departs from this usage. Here, this uncertainly is called the response variance (\code{respVar}), while prediction variance (\code{predVar}) is used to denote the uncertainty in the linear predictor (as in Booth & Hobert, 1998). The \code{respVar} is the \code{predVar} plus the residual variance \code{residVar}.
+\description{spaMM allows computation of four variance components of prediction, returned by \code{predict} as \dQuote{...\code{Var}} attributes: \code{predVar}, \code{fixefVar}, \code{residVar}, or \code{respVar}. The phrase \dQuote{prediction variance} is used inconsistently in the literature. Often it is used to denote the uncertainty in the response (therefore, including the residual variance), but \pkg{spaMM} follows some literature for mixed models in departing from this usage. Here, this uncertainly is called the response variance (\code{respVar}), while prediction variance (\code{predVar}) is used to denote the uncertainty in the linear predictor (as in Booth & Hobert, 1998; see also Jeske & Harville, 1988). The \code{respVar} is the \code{predVar} plus the residual variance \code{residVar}.
 
 Which components are returned is controlled in particular by the \code{type} and \code{variances} arguments of the relevant functions. \code{variances} is a list of booleans whose possible elements either match the possible returned components: \code{predVar}, \code{fixefVar}, \code{residVar}, or \code{respVar}; or may additionally include \code{linPred}, \code{disp}, \code{cov}, \code{as_tcrossfac_list} and possibly other cryptic ones. 
 
@@ -38,6 +38,8 @@ These variance calculations are approximate except for LMMs, and cannot be guara
 }
 \references{
   Booth, J.G., Hobert, J.P. (1998) Standard errors of prediction in generalized linear mixed models. J. Am. Stat. Assoc. 93: 262-272. 
+  
+  Jeske, Daniel R. & Harville, David A. (1988) Prediction-interval procedures and (fixed-effects) confidence-interval procedures for mixed linear models. Communications in Statistics - Theory and Methods, 17: 1053-1087. \doi{10.1080/03610928808829672} 
 }
 \examples{
 \dontrun{

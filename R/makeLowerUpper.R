@@ -162,7 +162,7 @@
         lower$corrPars[[char_rd]] <- lower_cP
         upper$corrPars[[char_rd]] <- upper_cP
         ## end else if Matern/Cauchy case
-      } else if (corr_type =="corrFamily") { # that looks like a quick patch but .calc_inits_corrFamily() checks the user input, which is required here. 
+      } else if (corr_type =="corrFamily") { # that looks like a quick patch but part of the work is done elsewhere; .calc_inits_corrFamily() checks the user input, which is required here. 
         parnames <- names(init.optim$corrPars[[char_rd]]) 
         if (length(parnames)) {
           user_lo <- user.lower$corrPars[[char_rd]]

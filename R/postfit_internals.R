@@ -37,18 +37,18 @@
 
 
 .calc_cAIC_pd_spprec <- function(object) {
-  w.resid <- object$w.resid
+  H_w.resid <- .get_H_w.resid(object)
   #ZAL <- .compute_ZAL(XMatrix=object$strucList, ZAlist=object$ZAlist,as_matrix=.eval_as_mat_arg.HLfit(object)) 
   ZAL <- get_ZALMatrix(object, force_bind=FALSE) # allows ZAXlist; but if a non-ZAXlist is already in the $envir, no effect; + we will solve(chol_Q, Diagonal()) so the gain is not obvious
   if ( ncol(object$X.pv) ) {
-    M12 <- .crossprod(ZAL, .Dvec_times_m_Matrix(w.resid, object$X.pv), as_mat=TRUE)
-    Md2clikdvb2 <- rbind2(cbind2(as.matrix(.ZtWZwrapper(ZAL,w.resid)), M12), ## this .ZtWZwrapper() takes time
-                          cbind2(t(M12), as.matrix(.ZtWZwrapper(object$X.pv,w.resid)))) 
+    M12 <- .crossprod(ZAL, .Dvec_times_m_Matrix(H_w.resid, object$X.pv), as_mat=TRUE)
+    Md2clikdvb2 <- rbind2(cbind2(as.matrix(.ZtWZwrapper(ZAL,H_w.resid)), M12), ## this .ZtWZwrapper() takes time
+                          cbind2(t(M12), as.matrix(.ZtWZwrapper(object$X.pv,H_w.resid)))) 
     # _FIXME_ any way to avoid formation of this matrix ? Or otherwise message() ?           
   } else {
-    Md2clikdvb2 <-  as.matrix(.ZtWZwrapper(ZAL,w.resid))
+    Md2clikdvb2 <-  as.matrix(.ZtWZwrapper(ZAL,H_w.resid))
   }
-  tcrossfac_v_beta_cov <- .calc_Md2hdvb2_info_spprec(X.pv=object$X.pv, envir=object$envir, w.resid=w.resid, 
+  tcrossfac_v_beta_cov <- .calc_Md2hdvb2_info_spprec(X.pv=object$X.pv, envir=object$envir, 
                                                      which="tcrossfac_v_beta_cov") 
   # not triang if we used sparse QR. Following code should not assume triangularity
   pd <- .calc_pd_product(tcrossfac_v_beta_cov, Md2clikdvb2)
@@ -67,16 +67,16 @@
   perm <- c(pforpv+seq_len(n_u_h), seqp)
   tcrossfac_v_beta_cov <- tcrossfac_beta_v_cov[perm,,drop=FALSE] # useful to keep it for predVar computations?
   
-  w.resid <- object$w.resid
+  H_w.resid <- .get_H_w.resid(object)
   #ZAL <- .compute_ZAL(XMatrix=obje17ct$strucList, ZAlist=object$ZAlist,as_matrix=.eval_as_mat_arg.HLfit(object)) 
   ZAL <- get_ZALMatrix(object, force_bind=FALSE) # allows ZAXlist; but if a non-ZAXlist is already in the $envir, no effect; + we will solve(chol_Q, Diagonal()) so the gain is not obvious
   if ( ncol(object$X.pv) ) {
-    M12 <- .crossprod(ZAL, .Dvec_times_m_Matrix(w.resid, object$X.pv), as_mat=TRUE)
-    Md2clikdvb2 <- rbind2(cbind2(as.matrix(.ZtWZwrapper(ZAL,w.resid)), M12), ## this .ZtWZwrapper() takes time
-                          cbind2(t(M12), as.matrix(.ZtWZwrapper(object$X.pv,w.resid)))) 
+    M12 <- .crossprod(ZAL, .Dvec_times_m_Matrix(H_w.resid, object$X.pv), as_mat=TRUE)
+    Md2clikdvb2 <- rbind2(cbind2(as.matrix(.ZtWZwrapper(ZAL,H_w.resid)), M12), ## this .ZtWZwrapper() takes time
+                          cbind2(t(M12), as.matrix(.ZtWZwrapper(object$X.pv,H_w.resid)))) 
     # _FIXME_ any way to avoid formation of this matrix ? Or otherwise message() ?           
   } else {
-    Md2clikdvb2 <-  as.matrix(.ZtWZwrapper(ZAL,w.resid))
+    Md2clikdvb2 <-  as.matrix(.ZtWZwrapper(ZAL,H_w.resid))
   }
   # not triang if we used sparse QR. Following code should not assume triangularity
   pd <- .calc_pd_product(tcrossfac_v_beta_cov, Md2clikdvb2)
@@ -168,7 +168,7 @@
     p_phi <- .calc_p_phi(object, dfs)
     p_lambda <- dfs[["p_lambda"]]
     APHLs <- object$APHLs
-    w.resid <- object$w.resid
+    H_w.resid <- .get_H_w.resid(object)
     info_crits <- list()
     # poisson-Gamma and negbin should have similar similar mAIC => NB_shape as one df or lambda as one df   
     forAIC <- APHLs
@@ -209,12 +209,12 @@
       if (also_cAIC) {
         if ( "AUGI0_ZX_sparsePrecision" %in% object$MME_method) {
           pd <- .calc_cAIC_pd_spprec(object)
-        } else if ( ! is.null(object$envir$sXaug)) {
+        } else if ( ! is.null(object$envir$sXaug)) { 
           pd <- .calc_cAIC_pd_from_sXaug(object)
-        } else {
+        } else { # GLM and SEM
           ZAL <- .compute_ZAL(XMatrix=object$strucList, ZAlist=object$ZAlist,as_matrix=.eval_as_mat_arg.HLfit(object)) 
-          d2hdv2 <- .calcD2hDv2(ZAL,w.resid,object$w.ranef) ## update d2hdv2= - t(ZAL) %*% diag(w.resid) %*% ZAL - diag(w.ranef)
-          pd <- .calc_cAIC_pd_others(X.pv, ZAL, w.resid, d2hdv2)
+          d2hdv2 <- .calcD2hDv2(ZAL,H_w.resid,object$w.ranef) ## update d2hdv2= - t(ZAL) %*% diag(w.resid) %*% ZAL - diag(w.ranef)
+          pd <- .calc_cAIC_pd_others(X.pv, ZAL, H_w.resid, d2hdv2)
         }
         info_crits$GoFdf <- length(object$y) - pd ## <- nobs minus # df absorbed in inference of ranefs
         ## eqs 4,7 in HaLM07
@@ -264,19 +264,23 @@
     }
     if (dvdlogphiMat_needed) {
       muetablob <- object$muetablob
-      if ( ! is.null(envir$G_CHMfactor)) { # possibly generalisable code not using math-dense ZAL
+      # .get_H_w.resid() rather than .get_w.resid here. Guessing from the section mentioning "dvdloglamMat" in the long doc. (___F_I_X_M_E___) 
+      if ( ! is.null(envir$G_CHMfactor)) { # spprec; possibly generalisable code not using math-dense ZAL
         # rhs <- .Matrix_times_Dvec(t(envir$sXaug$AUGI0_ZX$ZAfix), - dh0deta) # efficient
         # rhs <- solve(envir$G_CHMfactor,rhs,system="A") # efficient
         unW_dh0deta <- (object$y-muetablob$mu)/muetablob$dmudeta ## (soit Bin -> phi fixe=1, soit BinomialDen=1)
         if (is.null(envir$invG_ZtW)) {
-          if (is.null(envir$ZtW)) envir$ZtW <- t(.Dvec_times_m_Matrix(attr(envir$sXaug,"w.resid"), envir$sXaug$AUGI0_ZX$ZAfix)) 
+          if (is.null(envir$ZtW)) {
+            # cf comments in .old_calc_Md2hdvb2_info_spprec_by_r22()
+            envir$ZtW <- t(.Dvec_times_m_Matrix(.get_H_w.resid(envir=envir), envir$sXaug$AUGI0_ZX$ZAfix))
+          }
           envir$invG_ZtW <- solve(envir$G_CHMfactor, 
                                   envir$ZtW, system="A") # hardly avoidable has there is no comparable operation elsewhere (check "A")
         }
         rhs <- .Matrix_times_Dvec(envir$invG_ZtW, -unW_dh0deta) # efficient
         dvdlogphiMat <- .crossprod(envir$chol_Q, rhs) # _FIXME_ bottleneck in large spprec but .crossprodCpp_d not useful here 
       } else {
-        dh0deta <- ( object$w.resid *(object$y-muetablob$mu)/muetablob$dmudeta ) ## (soit Bin -> phi fixe=1, soit BinomialDen=1)
+        dh0deta <- ( .get_H_w.resid(object) *(object$y-muetablob$mu)/muetablob$dmudeta ) ## (soit Bin -> phi fixe=1, soit BinomialDen=1) 
         dvdlogphiMat  <- .calc_dvdlogphiMat_new(dh0deta=dh0deta, ZAL=ZAL,
                                                 d2hdv2_info=d2hdv2_info ## either a qr factor or a matrix inverse or envir
                                                 )
@@ -302,7 +306,11 @@
     envir <- object$envir
     ## code clearly related to .Sigsolve_sparsePrecision() algorithm:
     if (is.null(envir$invG_ZtW)) {
-      if (is.null(envir$ZtW)) envir$ZtW <- t(.Dvec_times_m_Matrix(attr(envir$sXaug,"w.resid"), envir$sXaug$AUGI0_ZX$ZAfix))
+      if (is.null(envir$ZtW)) {
+        # cf comments in .old_calc_Md2hdvb2_info_spprec_by_r22()
+        H_w.resid <- .get_H_w.resid(envir=envir)
+        envir$ZtW <- t(.Dvec_times_m_Matrix(H_w.resid, envir$sXaug$AUGI0_ZX$ZAfix))
+      }
       object$envir$invG_ZtW <- solve(envir$G_CHMfactor, envir$ZtW, system="A") # hardly avoidable has there is no comparable operation elsewhere (check "A")
     }    
     RES <- list(n_x_r=t(envir$ZtW), r_x_n=as.matrix(envir$invG_ZtW)) # requires both being kept in the envir 
@@ -311,22 +319,22 @@
     return(RES)
   } else {
     ZAfix <- .get_ZAfix(object, as_matrix=FALSE)
+    H_w.resid <- .get_H_w.resid(object)
     if (.is_identity(ZAfix)) {
       # FIXME inelegant ZAL computation only to test if it is diagonal
       ZAL <- .compute_ZAL(XMatrix=object$strucList, ZAlist=object$ZAlist,as_matrix=.eval_as_mat_arg.HLfit(object)) 
       if (inherits(ZAL,"diagonalMatrix")) { 
-        w.resid <- object$w.resid
-        RES <- list(n_x_r=Diagonal(x = w.resid),
-                    r_x_n=Diagonal(x = w.resid/(w.resid + object$w.ranef/diag(ZAL)^2))) 
+        RES <- list(n_x_r=Diagonal(x = H_w.resid),
+                    r_x_n=Diagonal(x = H_w.resid/(H_w.resid + object$w.ranef/diag(ZAL)^2))) 
         return(RES)
       } ## ELSE
     } ## ELSE
     #
     invL <- .get_invL_HLfit(object) # t(tcrossfac(precision_matrix))
-    wrZ <- .Dvec_times_m_Matrix(object$w.resid, ZAfix) # suppressMessages(sweep(t(ZA), 2L, w.resid,`*`)) 
+    wrZ <- .Dvec_times_m_Matrix(H_w.resid, ZAfix) # suppressMessages(sweep(t(ZA), 2L, w.resid,`*`)) 
     if (TRUE) { 
       ZtwrZ <- .crossprod(ZAfix, wrZ, as_sym=TRUE) ## seems more precise and we must compute wrZ anyway
-    } else ZtwrZ <- .ZtWZwrapper(ZAfix,object$w.resid) ## -> calls .crossprod(., y=NULL) affects numerical precision of twolambda test in test-predVar.R
+    } else ZtwrZ <- .ZtWZwrapper(ZAfix,.get_H_w.resid(object)) ## -> calls .crossprod(., y=NULL) affects numerical precision of twolambda test in test-predVar.R
     ## is general ZtwrZ should be sparse, while invL may not. Large dense invL will away be a problem
     ## for small Z, ZtwrZ may bedsy, but this an un-intersting subcase that does not call for a special treatment
     if (inherits(ZtwrZ,"dsCMatrix") || inherits(ZtwrZ,"dsyMatrix")) {
@@ -416,7 +424,7 @@
 .get_beta_cov_info <- function(res) { 
   # Provide list(beta_cov=., tcrossfac_beta_v_cov=.)
   if ( "AUGI0_ZX_sparsePrecision" %in% res$MME_method) {
-    return(.calc_beta_cov_info_spprec(X.pv=res$X.pv, envir=res$envir, w.resid=res$w.resid)) 
+    return(.calc_beta_cov_info_spprec(X.pv=res$X.pv, envir=res$envir)) 
   } else if (! is.null(res$envir$sXaug)) { # excludes SEM *and* fixed-effect models 
     if (prod(dim(res$envir$sXaug))>1e7) message("[one-time computation of covariance matrix, which may be slow]")
     if (res$spaMM.version<"2.7.34") attr(res$envir$sXaug,"scaled:scale") <- attr(res$X.pv,"scaled:scale")
@@ -436,7 +444,7 @@
       } else {
         AUGI0_ZX <- list(I=diag(nrow=nrd),ZeroBlock=matrix(0,nrow=nrd,ncol=pforpv),X.pv=res$X.pv)
       }
-      res$envir$beta_cov_info <- .calc_beta_cov_info_others(AUGI0_ZX=AUGI0_ZX,ZAL=ZAL,ww=c(res$w.resid,res$w.ranef)) ## with beta_v_cov attribute
+      res$envir$beta_cov_info <- .calc_beta_cov_info_others(AUGI0_ZX=AUGI0_ZX,ZAL=ZAL,ww=c(.get_H_w.resid(res),res$w.ranef)) ## with beta_v_cov attribute
     }
   }
   return(res$envir$beta_cov_info)
@@ -460,5 +468,25 @@
                         type=.modify_list(attr(ranFix,"type"),relist(rep("var",length(unlist(corr_est))),corr_est)))
   } 
   return(ranFix) ## correlation params + whatever else was in ranFix
+}
+
+# Has become a postfit fn; to recycle processed$u_h_v_h_from_v_h one would have to remove processed from its defining envir.
+.u_h_v_h_from_v_h <- function(v_h, rand.families, cum_n_u_h, lower.v_h, upper.v_h, 
+                              u_list=vector("list", length(rand.families))) {
+  if(!is.null(lower.v_h)) {v_h[v_h<lower.v_h] <- lower.v_h}
+  if(!is.null(upper.v_h)) {v_h[v_h>upper.v_h] <- upper.v_h}
+  nrand <- length(rand.families)
+  for (it in seq_len(nrand)) {
+    u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
+    u_list[[it]] <- rand.families[[it]]$linkinv(v_h[u.range])
+    if (any(is.infinite(u_list[[it]]))) {
+      warning("infinite random values ('u_h') were constrained to finite range.") 
+      u_list[[it]] <- pmin(.Machine$double.xmax, pmax(-.Machine$double.xmax,u_list[[it]]) )
+    }
+  }
+  u_h <- .unlist(u_list)
+  ## if there were box constr, v_h may have been modified, we put it in return value
+  if ( ! (is.null(lower.v_h) && is.null(upper.v_h))) attr(u_h,"v_h") <- v_h
+  return(u_h)
 }
 

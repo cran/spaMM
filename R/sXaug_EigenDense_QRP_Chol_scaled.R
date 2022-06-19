@@ -6,7 +6,7 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug, # already ZAL_scaled
   Xrows <- n_u_h+seq(length(weight_X)) 
   Xaug[Xrows,] <- .Dvec_times_matrix(weight_X, Xaug[Xrows,,drop=FALSE]) ## applying def of mathcal{W}_w in the doc
   attr(Xaug, "get_from") <- "get_from_MME.sXaug_EigenDense_QRP_Chol_scaled"
-  attr(Xaug, "BLOB") <- list2env(list(), parent=environment(.sXaug_EigenDense_QRP_Chol_scaled))
+  attr(Xaug, "BLOB") <- list2env(list(H_w.resid=attr(weight_X,"H_w.resid")), parent=emptyenv())
   attr(Xaug, "w.ranef") <- w.ranef
   attr(Xaug, "n_u_h") <- n_u_h # mandatory for all sXaug types
   attr(Xaug, "pforpv") <- ncol(Xaug)-n_u_h # mandatory for all sXaug types
@@ -119,6 +119,7 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug, # already ZAL_scaled
     } else return(rhs[BLOB$sortPerm,,drop=FALSE])
   }
   # ELSE
+  # if (which=="H_w.resid") return(BLOB$H_w.resid)
   if (which=="Qt_leftcols*B") { # use tQ=R^{-T}sX^T in a context where we need only the leftcols of sX^T ie ZX rows of sX
     # if (.is_evaluated("t_Q_scaled",BLOB)) browser() # then we should surely use it, but this does not happen
     if ( ! is.null(BLOB$perm)) {

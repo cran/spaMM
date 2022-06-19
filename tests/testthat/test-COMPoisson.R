@@ -26,7 +26,5 @@ if (spaMM.getOption("example_maxtime")>0.9) {
 # GLMM with under-dispersed conditional response
 compmm <- HLfit(broken ~ transfers+(1|id), data=freight, family = COMPoisson(nu=10),HLmethod="ML")
 crit <- diff(range(compmm$lambda[[1]],0.4573305))
-if (spaMM.getOption("fpot_tol")>0) {
-  testthat::test_that(paste0("criterion was ",signif(crit,6)," from 0.4573305"), testthat::expect_true(crit<1e-6))
-} else testthat::expect_true(crit<1e-6)
+try(  testthat::test_that(paste0("criterion was ",signif(crit,6)," from 0.4573305"), testthat::expect_true(crit<1e-6)) )
 # Also test simulate() through test-DHARMa.R

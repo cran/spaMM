@@ -37,6 +37,8 @@ And for efficiency,
  \item Let us repeat that in order to favor the automatic selection of suitable algorithms, \code{tpar} should be chosen so that \code{Cf(tpar)} is \bold{least} sparse in the correlation family. For matrices of \code{CsparseMatrix}, a check is implemented to catch wrong choices of \code{tpar}.
  
  \item For challenging problems (large data, many parameters...) it may pay to optimize a bit the correlation function. The Example of nested effects with heterogenous variance below illustrates a possible trick. In the same cases,  It may also pay to try the alternative \code{\link{algebra}}ic methods, by first comparing speed of the different methods (\code{control.HLfit=list(algebra= <"spprec"|"spcorr"|"decorr">)}) for given correlation parameter values, rather than to assume that \pkg{spaMM} will find the best method (even if it often does so).
+ 
+ \item The corrFamily descriptor may optionally contain booleans \code{possiblyDenseCorr} and \code{sparsePrec} to help spaMM select the most appropriate matrix algebraic methods. \code{sparsePrec} should be set to TRUE if sparse-precision methods are expected to be efficient for fitting the random effect. \code{possiblyDenseCorr} should be set to FALSE if the correlation matrix is expected to be sparse, which means here that less than 15\% of its elements are non-zero.
 }
 }
 
@@ -119,6 +121,30 @@ diagf <- function(logvar) {
 }
 
 # but we can minimize matrix operations as follows:
+
+corr_map <- Matrix::.symDiagonal(n=8,x=seq(8))
+rownames(corr_map) <- unique(onofri.winterwheat$gen)
+      
+diagf <- function(logvar) {
+  corr_map@x <- exp(logvar)[corr_map@x]
+  corr_map
+}                 # (and this returns a dsCMatrix)
+      
+(by_cF <- spaMM::fitme(
+        yield ~ 1 + corrFamily(1|gen \%in\% year), data=onofri.winterwheat, method="REML",
+        covStruct=list(corrFamily = list(Cf=diagf, tpar=rep(1,8))), 
+        fixed=list(lambda=1),            # Don't forget to fix this redundant parameter!
+        # init=list(corrPars=list("1"=rep(log(O.1),8))), # 'init' optional 
+        lower=list(corrPars=list("1"=rep(log(1e-6),8))), # 'lower' and 'upper' required
+        upper=list(corrPars=list("1"=rep(log(1e6),8)))))
+
+# => The 'gen' effect is nested in the 'year' effect and this must be specified in the 
+# right-hand side of corrFamily(1|gen \%in\% year) so that the design matrix 'Z' for the 
+# random effects to have the correct structure. And then, as for other correlation
+# structures (say Matern) it should be necessary to specify only the correlation matrix 
+# for a given year, as done above. Should this fail, it is also possible to specify the 
+# correlation matrix over years, as done below. spaMM will automatically detect, from   
+# its size matching the number of columns of Z, that it must be the matrix over years.  
 
 corr_map <- Matrix::forceSymmetric(kronecker(Matrix::.symDiagonal(n=7),diag(x=seq(8))))
 rownames(corr_map) <- gy_levels

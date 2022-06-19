@@ -7,11 +7,12 @@ def_sXaug_Matrix_cholP_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale) 
   Xaug <- .Dvec_times_Matrix_lower_block(weight_X,Xaug,n_u_h)
   resu <- structure(Xaug,
                     # AUGI0_ZX attr already present
-                    BLOB=list2env(list(), parent=baseenv()),
+                    BLOB=list2env(list(H_w.resid=attr(weight_X,"H_w.resid")), parent=emptyenv()),
                     get_from="get_from_MME.sXaug_Matrix_cholP_scaled",
                     w.ranef=w.ranef,
                     n_u_h=n_u_h,
                     pforpv=ncol(Xaug)-n_u_h,
+                    weight_X=weight_X,
                     H_global_scale=H_global_scale
   )
   ## cannot modify the class attribute... => immediate lumsy code below...
@@ -24,13 +25,14 @@ def_sXaug_Matrix_cholP_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale) 
 # if which="solve_d2hdv2", B ! NULL: returns solve(d2hdv2,B)
 .sXaug_Matrix_cholP_scaled <- function(sXaug,which="",szAug=NULL,B=NULL) {
   BLOB <- attr(sXaug,"BLOB") ## an environment
-  # attr(sXaug,"AUGI0_ZX") is presumably inherited from the Xaug argument of def_sXaug_Matrix_QRP_CHM_scaled
+  # Peviously there was an optional attr(sXaug,"AUGI0_ZX"), 
+  # presumably inherited from the Xaug argument of def_sXaug_Matrix_QRP_CHM_scaled(), itself from 
   # (Xaug=Xscal with attr(Xscal,"AUGI0_ZX") <- processed$AUGI0_ZX in .solve_IRLS_as_ZX(),
-  # but this attribute may not be present (in .solve_v_h_IRLS)
-  # => we cannot generally assume it is present. 
-  # ___F I X M E___ in version 3.9.64 I tentatively fixed this by adding
+  # but this attribute was not necessarily present (in .solve_v_h_IRLS)
+  # => we could not generally assume it is present. 
+  # In version 3.9.64 I tentatively fixed this by adding
   #     attr(Xscal,"AUGI0_ZX") <- AUGI0_ZX 
-  # in .make_Xscal and in a more ad-hoc function, but this remains to be tested.
+  # in .make_Xscal and in a more ad-hoc function, but this remains to be tested (___F I X M E___).
   # By contrast .sXaug_Matrix_QRP_CHM_scaled() worked bc it did not try to use AUGI0_ZX except as provided by preprocess for aug_ZXy's .get_absdiagR_blocks().
   if (is.null(BLOB$CHMfactor)) {
     AUGI0_ZX_envir <- attr(sXaug,"AUGI0_ZX")$envir # immediately used, but we could imagine extending AUGI0_ZX usage
@@ -118,6 +120,7 @@ def_sXaug_Matrix_cholP_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale) 
     ###### #return(solve(BLOB$R_scaled[,BLOB$sortPerm], BLOB$t_Q_scaled %*% szAug)) ## sort the vector instead of the matrix?
   }
   # ELSE
+  # if (which=="H_w.resid") return(BLOB$H_w.resid)
   if (which=="Qt_leftcols*B") {
     return(Matrix::solve(BLOB$CHMfactor,.crossprod(sXaug[-seq(attr(sXaug,"n_u_h")),BLOB$perm], B),system="L"))
   } 

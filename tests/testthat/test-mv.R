@@ -14,7 +14,6 @@ if (FALSE) {
   wafmv$y2 <- y2
   wafmv$ly <- log(wafmv$y)
   wafmv$y3 <- log(y2)
-  (fitme(y3 ~ 1+(1|batch), family=gaussian(log), data=wafmv))
   (zut1 <- fitmv(submodels=list(mod1=list(formula=ly ~ 1+(1|batch), family=gaussian()),
                                 mod2=list(formula=y3 ~ 1+(1|batch2), family=gaussian())), 
                  data=wafmv))

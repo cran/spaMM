@@ -41,8 +41,6 @@
                                 for_init_z_args,
                                 #
                                 mget(c("cum_n_u_h","rand.families"),envir=processed))
-      updateW_ranefS_subarglist <- processed$reserve$W_ranefS_constant_args
-      updateW_ranefS_subarglist$lambda <- lambda_est
     } 
     
     ##### initial sXaug
@@ -64,7 +62,7 @@
     }
     ## weight_X and Xscal varies within loop if ! LMM since at least the GLMweights in w.resid change
     if ( is.null(w.resid) ) w.resid <- .calc_w_resid(muetablob$GLMweights,phi_est)
-    weight_X <- .calc_weight_X(w.resid, H_global_scale) ## sqrt(s^2 W.resid)
+    weight_X <- .calc_weight_X(w.resid, H_global_scale, processed, muetablob) ## sqrt(s^2 W.resid)  
     if (trace) cat(stylefn(".")) ## hmff blue (vloop) F I X M E
     sXaug <- do.call(mMatrix_method,
                      list(Xaug=Xscal, weight_X=weight_X, w.ranef=wranefblob$w.ranef, H_global_scale=H_global_scale))
@@ -101,17 +99,11 @@
         zInfo$dlogfvdv <-  - v_h * wranefblob$w.ranef
       } else zInfo$dlogfvdv <- (zInfo$z2 - v_h) * wranefblob$w.ranef
       ## the gradient for -p_v (or -h), independent of the scaling
-      if (is.list(w.resid)) {
-        m_grad_obj <- c( ## drop() avoids c(Matrix..) 
-          m_grad_v <- drop(.crossprod(ZAL, w.resid$w_resid * zInfo$z1_eta) + zInfo$dlogfvdv), # Z'W(z_1-eta)+ dlogfvdv
-          drop(.crossprod(X.pv, w.resid$w_resid * z1_sscaled_eta)) # X'W(z_1-sscaled-eta)
-        )
-      } else {
-        m_grad_obj <- c( ## drop() avoids c(Matrix..) 
-          m_grad_v <- drop(.crossprod(ZAL, w.resid * zInfo$z1_eta) + zInfo$dlogfvdv), # Z'W(z_1-eta)+ dlogfvdv
-          drop(.crossprod(X.pv, w.resid * z1_sscaled_eta)) # X'W(z_1-sscaled-eta)
-        )
-      }
+      H_w.resid <- .calc_H_w.resid(w.resid, muetablob, processed) 
+      m_grad_obj <- c( ## drop() avoids c(Matrix..) 
+        m_grad_v <- drop(.crossprod(ZAL, H_w.resid * zInfo$z1_eta) + zInfo$dlogfvdv), # Z'W(z_1-eta)+ dlogfvdv 
+        drop(.crossprod(X.pv, H_w.resid * z1_sscaled_eta)) # X'W(z_1-sscaled-eta)
+      )
       if (trace>1L) {
         if (pforpv) { 
           maxs_grad <- c(max(abs(m_grad_obj[seq_n_u_h])),max(abs(m_grad_obj[-seq_n_u_h])))
@@ -135,7 +127,7 @@
                                         Trace=trace,
                                         ypos=ypos,off=off,
                                         GLMMbool=GLMMbool,etaFix=etaFix,
-                                        updateW_ranefS_subarglist=updateW_ranefS_subarglist,
+                                        lambda_est=lambda_est,
                                         wranefblob=wranefblob,seq_n_u_h=seq_n_u_h,ZAL_scaling=ZAL_scaling,
                                         processed=processed, Xscal=Xscal,mMatrix_method = mMatrix_method,
                                         phi_est=phi_est, H_global_scale=H_global_scale, n_u_h=n_u_h, ZAL=ZAL,
@@ -145,10 +137,12 @@
                                         stylefn=stylefn, # i.e., .spaMM.data$options$stylefns$vloop
                                         outer=FALSE
       ) 
-      for (st in c("Vscaled_beta","wranefblob","v_h","u_h","muetablob",
-                   "w.resid", ## !important! cf test-adjacency-corrMatrix.R
-                   "weight_X", 
-                   "sXaug")) assign(st,damped_WLS_blob[[st]]) 
+      list2env(damped_WLS_blob[c("w.resid", ## !important! cf test-adjacency-corrMatrix.R
+                                 "Vscaled_beta","wranefblob","v_h","u_h","muetablob", "weight_X", "sXaug")], envir = environment()) 
+      # for (st in c("Vscaled_beta","wranefblob","v_h","u_h","muetablob",
+      #              "w.resid", ## !important! cf test-adjacency-corrMatrix.R
+      #              "weight_X", 
+      #              "sXaug")) assign(st,damped_WLS_blob[[st]]) 
       if ( ! GLMMbool ) {
         Xscal <- damped_WLS_blob$Xscal ## contains ZAL with new scaling, but weight_X is not applied since it is applied only locally in the mMatrix_method.
         ZAL_scaling <- damped_WLS_blob$ZAL_scaling

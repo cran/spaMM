@@ -492,6 +492,7 @@ if (FALSE) {
   ranefs <- attr(ranefEstargs$ZAlist,"exp_ranef_strings")
   nrand <- length(ranefEstargs$ZAlist) ## Cf notes du 3/6/2015
   done <- rep(FALSE,nrand)
+  anyVanishLam <- NULL
   u_h <- ranefEstargs$u_h
   cum_n_u_h <- ranefEstargs$cum_n_u_h
   resp_lambda <- matrix(0,cum_n_u_h[nrand+1L],1L)
@@ -551,15 +552,31 @@ if (FALSE) {
   for (it in which( ! done )) {
     u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
     if (is.na(unique_lambda <- lam_fix_or_outer_or_NA[it])) {
-      prior_lam_fac <- rand.families[[it]]$prior_lam_fac
+      prior_lam_fac <- rand.families[[it]]$prior_lam_fac # prior_lam_fac is the 'design' for non-ranCoef (wei-1|.)
       if (is.null(prior_lam_fac)) wt <- 1 else wt <- 1/prior_lam_fac
-      resp_lambda[u.range] <- rand.families[[it]]$dev.resids(u_h[u.range],psi_M[u.range],wt=wt) ## must give d1 in table p 989 de LeeN01
-      unique_lambda <- sum(resp_lambda[u.range])/sum(1-lev_lambda[u.range]) ## NOT in linkscale 
-      unique_lambda <- max(unique_lambda,1e-8) # FR->FR still corrected
-      unique_lambda <- min(unique_lambda,maxLambda)  
+      safe_dev.res_it <- rand.families[[it]]$dev.resids(u_h[u.range],psi_M[u.range],wt=wt) ## must give d1 in table p 989 de LeeN01
+      denom <- 1-lev_lambda[u.range]
+      unique_lambda <- sum(safe_dev.res_it)/sum(denom) ## NOT in linkscale 
       if (lcrandfamfam[it]=="gamma" && rand.families[[it]]$link=="identity") { ## Gamma(identity)
-        unique_lambda <- pmin(unique_lambda,1-1/(2^(iter+1)))  ## impose lambda<1 dans ce cas 
+        # unique_lambda <- pmin(unique_lambda,1-1/(2^(iter+1)))  ## impose lambda<1 dans ce cas 
+        while(unique_lambda>1) {
+          localmax <- max(safe_dev.res_it)*0.9999/unique_lambda
+          safe_dev.res_it <- pmin(safe_dev.res_it,localmax) # to upper-bound the lambda near max lambda=1
+          unique_lambda <- sum(safe_dev.res_it)/sum(denom) ## NOT in linkscale 
+        }
+      } else {
+        if (unique_lambda<(minLambda <- .spaMM.data$options$minLambda)) { # minLambda indep of family link
+          # Different type of correction to avoid infinite loop when min dev.res=0...
+          safe_dev.res_it <- safe_dev.res_it+denom*(minLambda-unique_lambda) # to lower-bound the lambda near 1e-8
+          unique_lambda <- sum(safe_dev.res_it)/sum(denom) ## NOT in linkscale 
+          anyVanishLam <- TRUE
+        } else while (unique_lambda>maxLambda[it]) { # processed$maxLambda depending on response-family link
+          localmax <- max(safe_dev.res_it)*0.9999*maxLambda[it]/unique_lambda
+          safe_dev.res_it <- pmin(safe_dev.res_it,localmax) # to upper-bound the lambda near max lambda=1
+          unique_lambda <- sum(safe_dev.res_it)/sum(denom) ## NOT in linkscale 
+        }
       }
+      resp_lambda[u.range] <- safe_dev.res_it # In all cases, save the final corrected dev.res for use in Gamma GLM so that the latter gives the same lambda 
     } 
     if ( ! is.null(prior_lam_fac <- rand.families[[it]]$prior_lam_fac)) {
       next_lambda_est[u.range] <- unique_lambda*prior_lam_fac
@@ -576,7 +593,8 @@ if (FALSE) {
               HLfit_corrPars=HLfit_corrPars,
               next_lambda_est=next_lambda_est, ## heterosc
               glm_lambda=glm_lambda, ## potentially to be replaced by a list of glms later
-              isRandomSlope=isRandomSlope
+              isRandomSlope=isRandomSlope,
+              anyVanishLam=anyVanishLam
               ))
 }
 
@@ -625,13 +643,18 @@ if (FALSE) {
              warnmesses = warnmesses  ))
 }
 
-.calcPHI <- function(processed, dev.res, lev_phi, phimodel, verbose, ## using verbose "TRACE", "trace" and "phifit"
-                     # glm case:
-                     method="glm", control.HLfit,
-                     # hglm case:
-                     residProcessed=processed$residProcessed, 
-                     residModel=processed$residModel, 
-                     iter, prev_PHIblob
+..calcPHI <- function(processed,
+                      dev.res,
+                      # mv case:
+                      phi.Fix,
+                      #
+                      lev_phi, phimodel, verbose, ## using verbose "TRACE", "trace" and "phifit"
+                      # glm case:
+                      method="glm", control.HLfit,
+                      # hglm case:
+                      residProcessed=processed$residProcessed, 
+                      residModel=processed$residModel, 
+                      iter, prev_PHIblob
 ) {
   if (phimodel == "phiHGLM") { ## random effect(s) in predictor for phi
     phifitarglist <- .update_phifitarglist(processed, 
@@ -657,6 +680,9 @@ if (FALSE) {
       next_phi_est <- sum(dev.res)/sum(1-lev_phi) ## NOT in linkscale
       beta_phi <- c("(Intercept)"=residFamily$linkfun(next_phi_est)) ## linkscale value
       glm_phi <- NULL
+      # to obtain the phi estimate given by summary.glm(), one must use
+      #  dev.res <- wt * ((y-mu)/family$mu.eta(eta))^2 ## wt * EQL residuals
+      # but the logLik differs from that given by logLik.glm(). See Details in ?HLfit
     } else { ## which means that calcPHI cannot be used for final estim phi
       glm_phi <- .calc_dispGammaGLM(formula=residModel$formula, dev.res=dev.res,
                                     data=processed$data,lev=lev_phi, family=residFamily,
@@ -675,35 +701,64 @@ if (FALSE) {
   }
 }
 
-.calcmultiPHIs <- function(processed, vec_nobs=processed$vec_nobs,
-                           y, mu, wt, lev_phi, phimodel, verbose, control.HLfit, phi.Fix,
-                           #
-                           iter, prev_multiPHIblob
-                           ) {
-  cum_nobs <- c(0L,cumsum(vec_nobs))
-  multiPHI <- next_phi_est <- structure(vector("list",length(vec_nobs)), names=seq_len(length(vec_nobs))) # names used in call to .Modify_list()
-  for (mv_it in seq_along(vec_nobs)) if (is.null(phi.Fix[[mv_it]])) { 
-    resp_range <- .subrange(cumul=cum_nobs, it=mv_it)
-    # to obtain the phi estimate given by summary.glm(), one must use
-    #  dev.res <- wt * ((y-mu)/family$mu.eta(eta))^2 ## wt * EQL residuals
-    # but the logLik differs from that given by logLik.glm(). See Details in ?HLfit
-    multiPHI[[mv_it]] <- .calcPHI(processed,
-                                  residProcessed=processed$residProcesseds[[mv_it]],
-                                  residModel=processed$residModels[[mv_it]],
-                                  dev.res= processed$families[[mv_it]]$dev.resids(y[resp_range],mu[resp_range],wt[[mv_it]]), 
-                               #: times pw to be an estimate of same phi across level of response
-                               # but not same phi as when there is no pw !
-                               # double pw => double phi_est so that phi_est_i :=phi_est/pw_i is unchanged
-                               lev_phi=lev_phi[resp_range],
-                               phimodel=phimodel[[mv_it]], 
-                               verbose=verbose,
-                               control.HLfit=control.HLfit,
-                               #
-                               iter=iter, prev_PHIblob=prev_multiPHIblob$multiPHI[[mv_it]] # _FIXME_ does not contain the correct prevmsglength if several phiHGLMs...
-                               )
-    next_phi_est[[mv_it]] <- multiPHI[[mv_it]]$next_phi_est # value of *phi* (not phi_i:= phi/prior.weights as pw are used in GLMweights, not here)
-  } else next_phi_est[[mv_it]] <- phi.Fix[[mv_it]]
-  return(list(multiPHI=multiPHI, next_phi_est=next_phi_est))
+.calcPHIs <- function(processed,
+                      y, mu, wt, phi.Fix,
+                      #
+                      lev_phi, phimodels, verbose, ## using verbose "TRACE", "trace" and "phifit"
+                      # glm case:
+                      method="glm", control.HLfit,
+                      # hglm case:
+                      residProcessed=processed$residProcessed, 
+                      residModel=processed$residModel, 
+                      iter, prev_PHIblob
+) {
+  if ( ! is.null(vec_nobs <- processed$vec_nobs)) { # fitmv case
+    cum_nobs <- c(0L,cumsum(vec_nobs))
+    multiPHI <- next_phi_est <- structure(vector("list",length(vec_nobs)), names=seq_len(length(vec_nobs))) # names used in call to .Modify_list()
+    for (mv_it in seq_along(vec_nobs)) if (is.null(phi.Fix[[mv_it]])) { 
+      resp_range <- .subrange(cumul=cum_nobs, it=mv_it)
+      # to obtain the phi estimate given by summary.glm(), one must use
+      #  dev.res <- wt * ((y-mu)/family$mu.eta(eta))^2 ## wt * EQL residuals
+      # but the logLik differs from that given by logLik.glm(). See Details in ?HLfit
+      multiPHI[[mv_it]] <- ..calcPHI(processed,
+                                    dev.res= processed$families[[mv_it]]$dev.resids(y[resp_range],mu[resp_range],wt[[mv_it]]), 
+                                    residProcessed=processed$residProcesseds[[mv_it]],
+                                    residModel=processed$residModels[[mv_it]],
+                                    lev_phi=lev_phi[resp_range],
+                                    phimodel=phimodels[[mv_it]], 
+                                    verbose=verbose,
+                                    control.HLfit=control.HLfit,
+                                    #
+                                    iter=iter, prev_PHIblob=prev_PHIblob$multiPHI[[mv_it]] # _FIXME_ does not contain the correct prevmsglength if several phiHGLMs...
+      )
+      next_phi_est[[mv_it]] <- multiPHI[[mv_it]]$next_phi_est # value of *phi* (not phi_i:= phi/prior.weights as pw are used in GLMweights, not here)
+    } else next_phi_est[[mv_it]] <- phi.Fix[[mv_it]]
+    return(list(multiPHI=multiPHI, next_phi_est=next_phi_est))
+  } else ..calcPHI(processed,
+                   dev.res= processed$family$dev.resids(y,mu,wt=wt), # eta-family !
+                   #: times pw to be an estimate of same phi across level of response
+                   # but not same phi as when there is no pw !
+                   # double pw => double phi_est so that phi_est_i :=phi_est/pw_i is unchanged
+                   lev_phi=lev_phi, phimodel=phimodels, verbose=verbose, 
+                   # glm:
+                   control.HLfit=control.HLfit,
+                   # hglm:
+                   iter=iter, prev_PHIblob=prev_PHIblob) # => list(next_phi_est=next_phi_est, glm_phi=glm_phi, beta_phi=beta_phi)
+}
+
+.addPhiGLMwarning <- function(PHIblob, models, warningList) {
+  if ( ! is.null(multiPHI <- PHIblob$multiPHI)) { # fitmv case
+    for (mv_it in seq_along(multiPHI)) {
+      if (models[["phi"]][mv_it]=="phiHGLM") {
+      } else {
+        if (! is.null(locw <- multiPHI[[mv_it]]$glm_phi$warnmess)) warningList$innerPhiGLM <- locw
+      }
+    }
+  } else if (models[["phi"]]=="phiHGLM") {
+  } else {
+    if (! is.null(locw <- PHIblob$glm_phi$warnmess)) warningList$innerPhiGLM <- locw
+  }
+  warningList
 }
 
 
@@ -738,7 +793,7 @@ if (FALSE) {
       # is_unit expected to be true only for augZXy hence not for mv 
       return(w_resid) # mvlist being a list with elements of tow possible types as described above
     }
-    # in mv model w_resid are not 'unique' although blocks may be ben,for gaussian submodels.
+    # in mv model w_resid are not 'unique' although blocks may be so, for gaussian submodels.
   }
   phi_est[phi_est<1e-12] <- 1e-11 ## 2014/09/04 local correction, cf comment in calc_APHLS...
   if (ilg <- inherits(GLMweights,"list")) { ## zero_truncated family
@@ -779,10 +834,195 @@ if (FALSE) {
   return(H_global_scale) 
 }
 
-.calc_weight_X <- function(w.resid, H_global_scale) {
-  if (is.list(w.resid)) {
-    return(sqrt(H_global_scale*w.resid$w_resid))
-  } else return(sqrt(H_global_scale*w.resid))
+.D_dlWdmu_Deta <- function(family,mu) { # mu is muFREQS;      detailed computations in Hessian_weights.nb
+  # .D_dlWdmu_Deta() has no fallback so it is the limiting factor in implementing obsInfo.
+  switch(family$family,
+         # "Gamma" log not needed but others missing ?
+         "negbin" = family$d_dlWdmu_detafun(mu), # using the shape parameter
+         "binomial" = {
+           switch(family$link,
+                  "logit" = (1 - 2*mu + 2*mu^2)/((-1 + mu)*mu),  # Hypothetical since not needed
+                  "cloglog" = { 
+                    log1mu <- log(1 - mu)
+                    (-2 *mu^2 - 2 *mu^2 *log1mu + (1 - 2*mu)* log1mu^2)/((-1 + mu)* mu^2 * log1mu)
+                  }, 
+                  "probit" = {
+                    eta <- qnorm(mu)
+                    denom <- ((mu*(1-mu))^2)
+                    dnorm_eta <- dnorm(eta)
+                    dnorm_eta * (1-2*mu+2*mu^2+ 2*(2*mu^3-mu^4-mu^2-denom*eta^2)/dnorm_eta^2 ) / denom
+                  },
+                  "cauchit" = {
+                    -(-1 + 2*mu - 16*mu^3 *pi^2 + 8*mu^4 *pi^2 + 
+                         mu^2 *(-2 + 8*pi^2) + (1 - 2*mu + 2*mu^2)*cos(2*mu*pi))/(
+                           2*(-1 + mu)^2 *mu^2 *pi)
+                  },
+                  stop("d(dlWdmu)deta cannot yet be computed for this link.") 
+           )
+         }, 
+         "gaussian" = {
+           switch(family$link,
+                  "log" = -2/mu
+           )
+         },
+         stop("d(dlWdmu)deta cannot yet be computed for this family.")
+  )
+}
+
+.DdetadmuDeta <- function(link, mu) { # in Hessian_weights.nb; mu is muFREQS
+  switch( # d (deta/dmu) / deta # Cf Hessian_weights.nb
+    link,
+    "log" =  -1/mu,
+    "inverse" = -2/mu, # in the Gamma(inverse) sense
+    "identity" = 0,
+    "sqrt" = -1/(2*mu),
+    "cloglog" = {(1 + 1/log(1 - mu))/(1 - mu)}, # Hypothetical, not needed in binomial(logit) fits
+    "logit" = {(1 - 2 *mu)/((-1 + mu)* mu)},
+    "probit" = {
+      eta <- qnorm(mu)
+      eta/dnorm(eta)
+    },
+    "cauchit" = -2*pi/tan(pi*mu),
+    stop("This cannot yet be computed for this family link.") # loglambda :-) __F_I_X_M_E__
+  )
+}
+
+# .D2detadmuDeta2 is defined further below
+
+
+# ~ ..calc_dlW_deta, but not needing to handle mv, and as fn of mu, not eta.
+# There are calculations of spacial cases in Hessian_weights.nb
+.dlW_dmu <- function(family, # always needed
+                     ### (possibly) needed for predefined cases: (mu always, and one of dmudeta and dmu.deta)
+                     mu, # mu or muFREQS
+                     # non binomial case:
+                     dmudeta, # = muetablob$dmudeta, # could use muetablob below
+                     # binomial case
+                     dmu.deta=family$mu.eta(family$linkfun(mu)), # for binomial, differ from dumdeta=dmu.deta*BinomialDen
+                     ### (possibly) needed for generic fallback code.
+                     muetablob, # always needed for generic fallback code. 
+                                # ____F_I_X_M_E___ make promises in .muetafn ?
+                     BinomialDen # May be needed for generic fallback code, which should use it only in binomial cases.
+                     ) {
+  dlW_dmu <- switch( # dlW_deta * [deta.dmu written as 1/dmu.deta|_eta=eta(mu)
+    family$family,
+    "Gamma" = {
+      switch(family$link,
+             "log" = 0, 
+             ..calc_dlW_deta(muetablob, family, calcCoef1=FALSE, w.resid=NULL, 
+                             processed=NULL, Hratio_factors=NULL,
+                             obsInfo=FALSE)$dlW_deta/dmudeta      
+      )
+    } 
+    ,
+    "negbin" = family$dlW_detafun(mu)/dmudeta, # family member fn for access to the shape parameter
+    "binomial" = {
+      switch(family$link,
+      "logit" = (1-2*mu)/dmu.deta,  # or (1-2*mu)/(mu*(1-mu)) # Hypothetical, not needed in binomial(logit) fits
+      "cloglog" = (1/mu + 2/log(1 - mu))/(-1 + mu), # or (2 + log(1 - mu)/mu)/dmu.deta
+      "cauchit" = (1 - 2*mu + 4*(-1 + mu)*mu*pi/tan(mu*pi))/((-1 + mu)*mu),
+      # "probit" in notebook, is ugly
+      ..calc_dlW_deta(muetablob, family, calcCoef1=FALSE, w.resid=NULL, 
+                      BinomialDen=BinomialDen, processed=NULL, Hratio_factors=NULL,
+                      obsInfo=FALSE)$dlW_deta/dmu.deta      # note difference from .../dmudeta
+      )
+    },
+    "gaussian" = {
+      switch(family$link,
+             "log" = 2/mu
+             )
+    },
+    ..calc_dlW_deta(muetablob, family, calcCoef1=FALSE, w.resid=NULL, 
+                    #BinomialDen=BinomialDen, 
+                    processed=NULL, Hratio_factors=NULL,
+                    obsInfo=FALSE)$dlW_deta/dmudeta 
+  )
+  dlW_dmu
+}
+
+
+.calc_H_w.resid <- function(w.resid, 
+                            muetablob, processed, # as providers of next variables... 
+                                                  # but in fact muetablob distinctly needed for obsInfo
+                                                  # would be a problem for a postfit call of .calc_H_w.resid().
+                            mu=muetablob$mu, y=processed$y,
+                            obsInfo=processed$how$obsInfo,
+                            family=processed$family,
+                            families=processed$families,
+                            BinomialDen=processed$BinomialDen
+                            ) {
+  if (obsInfo &&  ! is.null(cum_nobs <- attr(families,"cum_nobs"))) {
+    Hobs_w.resid <- yMmu <- partials <- numeric(length(muetablob$mu))
+    for (mv_it in seq_along(families)) {
+      resp_range <- .subrange(cumul=cum_nobs, it=mv_it)
+      # in the mv case w.resid is a list only when there are zero-truncated families
+      if (is.list(w.resid)) {
+        w.resid_it <- w.resid[["mvlist"]][[mv_it]]
+      } else w.resid_it <- w.resid[resp_range] 
+      Hobs_w.resid_it <- .calc_H_w.resid(w.resid=w.resid_it, 
+                                         muetablob=muetablob$mv[[mv_it]],
+                                         y=y[resp_range],
+                                         obsInfo=obsInfo,
+                                         family=families[[mv_it]],
+                                         BinomialDen=BinomialDen[resp_range],
+                                         families=NULL
+      )
+      Hobs_w.resid[resp_range] <- Hobs_w.resid_it
+      Hratio_factors <- attr(Hobs_w.resid_it,"Hratio_factors")
+      yMmu[resp_range] <- Hratio_factors$yMmu
+      partials[resp_range] <- Hratio_factors$partials
+    }
+    attr(Hobs_w.resid,"Hratio_factors") <- list("yMmu"=yMmu, "partials"= partials)
+    return(Hobs_w.resid)
+  }
+  # 
+  if (is.list(w.resid)) w.resid <- w.resid$w_resid
+  if (obsInfo) {
+    # we seek MINUS the derivative, derivative in with the first term is -1 from D(y MINUS mu)...
+    # ergo     -  ( -1 + (y-mu) ...)
+    if (attr(family,"canonicalLink")) { # This is reached in the mv case mixing canoncial and non-canonical links
+      Hobs_w.resid <- w.resid
+      rep0L <- rep(0L, length(w.resid))
+      attr(Hobs_w.resid,"Hratio_factors") <- list("yMmu"=rep0L, # not true but should not matter
+                                                  "partials"= rep0L) # true...
+    } else {
+      yMmu <- drop(y-mu)
+      if (family$family=="binomial") {
+        muFREQS <- mu/BinomialDen
+        partials <- .DdetadmuDeta(family$link, mu=muFREQS) + 
+          .dlW_dmu(family=family, mu=muFREQS, 
+                   ## for generic fallback code:
+                   muetablob=muetablob, BinomialDen=BinomialDen)
+        ## Hobs_w.resid <- w.resid* (1 - drop(y-mu)*(DdetadmuDeta + dlW_dmu)) :
+        ## When there is a BinomialDen, this is
+        # GLMweights * (BinomialDem- (y-muCOUNT)*partials)
+        # =  w.resid* (1 - (y-muCOUNT)*partials/BinomialDen)  bc w.resid=BinomialDen * GLMweights. Cf gradientsHobs_cloglog.nb
+        Hobs_w.resid <- w.resid* (1 - partials * yMmu/BinomialDen) 
+      } else {
+        partials <- .DdetadmuDeta(family$link, mu=mu) + 
+          .dlW_dmu(family=family, mu=mu, dmudeta = muetablob$dmudeta,
+                   ## for generic fallback code:
+                   # BinomialDen=BinomialDen, # should not be needed
+                   muetablob=muetablob)
+        Hobs_w.resid <- w.resid* (1 - partials * yMmu) 
+      }
+      # if (any(Hobs_w.resid<0)) browser()
+      attr(Hobs_w.resid,"Hratio_factors") <- list("yMmu"=yMmu, "partials"= partials)
+    }
+    return(Hobs_w.resid)
+  } else w.resid
+}
+
+.calc_weight_X <- function(w.resid, H_global_scale, processed, muetablob, obsInfo=processed$how$obsInfo) {
+  # at this point w.resid is always the result of .calc_w_resid()
+  # and when it is a list with info about mv model it has a complete vector $w_resid.
+  H_w.resid <- .calc_H_w.resid(w.resid, muetablob=muetablob, processed=processed, obsInfo=obsInfo)
+  weight_X <- sqrt(H_global_scale*H_w.resid)
+  if (obsInfo) {
+    attr(weight_X,"unique") <- FALSE
+    attr(weight_X,"H_w.resid") <- H_w.resid
+  }
+  weight_X
 }
 
 ## spaMM_Gamma() fixes Gamma()$dev.resids(1e10+2,1e10,1) is < 0
@@ -823,6 +1063,7 @@ spaMM_Gamma <- local({
     if (any(mu < 0)) return(Inf) ## 2015/04/27; shortcut; without it next line warns about NaNs produced and NaN's are returned
     dev_res <- -2 * wt * (log(ifelse(y == 0, 1, y/mu)) - (y - mu)/mu)
     dev_res[dev_res<.Machine$double.eps] <- .Machine$double.eps ##  ## FR: added this (*would* ignore NaN's)
+    ## Once in Gamma GLM, y=25.75563, y-mu=-5.996906e-08, yielded negative dev.resid
     return(dev_res)
   }
   aic <- function(y, n, mu, wt, dev) {
@@ -951,32 +1192,35 @@ spaMM_Gamma <- local({
   )
 } ## returns values for given mu
 
-.thetaMuDerivs <- function(mu,BinomialDen,family, muetablob) { ## used for non-canonical links
+.thetaMuDerivs <- function(mu, family, 
+                           muFREQS, # for Binomial 
+                           muetablob # for COMPoisson
+                           ) { ## used for non-canonical links
   familyfam <- family$family
   if (familyfam == "COMPoisson") return(.CMP_thetaMuDerivs(mu, family, muetaenv=muetablob))
-  if (familyfam=="binomial") muFREQS <- mu/BinomialDen
-  if (familyfam == "negbin") NB_shape <- environment(family$aic)$shape
   ## these definitions depend only on the canonical link
   Dtheta.Dmu <- switch(familyfam,
                        gaussian = rep(1,length(mu)) ,
                        poisson = 1/mu ,
                        binomial = 1/(muFREQS*(1-muFREQS)),
                        Gamma = 1/mu^2,
-                       negbin = 1/(mu*(1+mu/NB_shape)),
+                       negbin = family$Dtheta.Dmu(mu), # 1/(mu*(1+mu/NB_shape)),
                        # COMPoisson = 1/CMP_env$variance(mu), # dealt as special case above 
-                       stop("code missing")
+                       stop("code missing") # Dtheta.Dmu deriv(body(<family(<canonical link>)>$linkfun),"mu") but see binomial() or Gamma() for various issues
   ) ## values for given mu
-  if (familyfam=="binomial") Dtheta.Dmu <- Dtheta.Dmu/BinomialDen
+  if (familyfam=="binomial") Dtheta.Dmu <- Dtheta.Dmu # /BinomialDen removed 2022/05/01. No bug anytime, but change of design:
+  # up to that time the calling code used the present results in combination with muetablob$dmudeta which has a BinomialDen factor. 
+  # The calling code has now been modified. 
   D2theta.Dmu2 <- switch(familyfam,
                          gaussian = rep(0,length(mu)) ,
                          poisson = -1/mu^2 ,
                          binomial = -(1-2*muFREQS)/(muFREQS*(1-muFREQS))^2,
                          Gamma = -2/mu^3,
-                         negbin = -(1+2*mu/NB_shape)/(mu*(1+mu/NB_shape))^2,
+                         negbin = family$D2theta.Dmu2(mu), # -(1+2*mu/NB_shape)/(mu*(1+mu/NB_shape))^2,
                          # COMPoisson dealt as special case above
                          stop("code missing") 
   ) ## values for given mu
-  if (familyfam=="binomial") D2theta.Dmu2 <- D2theta.Dmu2/(BinomialDen^2)
+  if (familyfam=="binomial") D2theta.Dmu2 <- D2theta.Dmu2 #/(BinomialDen^2) removed 2022/05/01. Cf comment above.
   return(list(Dtheta.Dmu=Dtheta.Dmu,D2theta.Dmu2=D2theta.Dmu2))
 }
 
@@ -1045,7 +1289,7 @@ spaMM_Gamma <- local({
     neg_eta <- (eta<etamin)
     eta[neg_eta] <- etamin ## both eta and mu must be >0
     attr(eta,"any_neg_eta") <- any(neg_eta) ## actually 'not strictly positive'
-  } else if (family$family == "binomial") { ## 
+  } else if (family$family == "binomial") { ## y ignored here: important as there would be ambiguity whether y is counts or frequencies in calling function.
     #for binomial cases stats::binomial(...)$linkinv corrects eta for all links so that mu is always .Machine$double.eps from 0 or 1
     # This may not be enough... or inconsistent with corrections used elsewhere, so we overcome the stats:: correction
     # by correcting eta differently here and by computing mu <- .binomial_raw_linkinv(eta,link=family$link) (in .muetafn and possibly elsewhere)
@@ -1174,7 +1418,7 @@ spaMM_Gamma <- local({
     mu <- .poisson_raw_linkinv(eta,link=family$link)
   } else mu <- family$linkinv(eta) ## linkinv(eta) is FREQS for binomial, COUNTS for poisson...
   # if (any(is.infinite(mu))) stop()
-  dmudeta <- family$mu.eta(eta) ## aberrant at hoc code for cloglog 'elsewhere'...
+  dmudeta <- family$mu.eta(eta) 
   Vmu <- family$variance(mu) 
   if (family$family=="binomial") {
     if ( family$link=="probit") { ## _F I X M E_ other links need correction too (same Vmu function of mu), but eta-mu link not even symmetric for cloglog
@@ -1186,7 +1430,7 @@ spaMM_Gamma <- local({
     mu <- mu * BinomialDen
     dmudeta <- dmudeta * BinomialDen
   } 
-  if (LMbool || (family$family=="Gamma" && family$link=="log") ) {
+  if (LMbool || attr(processed$models,"unit_GLMweights") ) { # really needing unit weights and not simply constant ones here.
     GLMweights <- pw
     GLMweights[] <- eval(pw) # a way of keeping attributes of pw in GLMweights, including "is_unit"
   } else {
@@ -1266,21 +1510,19 @@ spaMM_Gamma <- local({
   resu
 }
 
-.calc_d2mudeta2 <- function(link,mu=NULL,eta=NULL,BinomialDen=NULL) { ## d2 MuCOUNTS d etaFREQS^2
+.calc_d2mudeta2 <- function(link,mu=NULL,eta=NULL,muFREQS=NULL) { ## d2 MuCOUNTS d etaFREQS^2 
+  # BinomialDen removed for same reason as in .thetaMuDerivs()
   switch(link,
          identity = 0,
          log = mu, 
          inverse = 2 * mu^3 , ## canonical for Gamma()
          ## next three make sense for Binomial response data
-         logit = {muFREQS <- mu/BinomialDen;
-                  d2muFREQS <- muFREQS*(1-muFREQS)*(1-2*muFREQS);
-                  d2muFREQS * BinomialDen
-         },
-         probit = -eta * dnorm(eta) * BinomialDen, # assuming eta corrected as in binomial(probit)$mu.eta
+         logit = d2muFREQS <- muFREQS*(1-muFREQS)*(1-2*muFREQS),
+         probit = -eta * dnorm(eta), # assuming eta corrected as in binomial(probit)$mu.eta
          cloglog = {
            eta <- pmin(eta,700) ## as in binomial(cloglog)$mu.eta
            ## in particular d2mudeta2/dmudeta is then numerically OK
-           exp(eta-exp(eta))*(1-exp(eta)) * BinomialDen ## D[1 - E^-E^\[Eta], {\[Eta], 2}]
+           exp(eta-exp(eta))*(1-exp(eta)) ## D[1 - E^-E^\[Eta], {\[Eta], 2}]
           }, 
          cauchit = -2 *eta/(pi * (1+eta^2)^2),
          sqrt = 2, 
@@ -1346,27 +1588,53 @@ spaMM_Gamma <- local({
   )
 }
 
-.calc_dlW_deta <- function(muetablob,family,BinomialDen,calcCoef1=FALSE,w.resid, families=NULL) {
-  if ( ! is.null(cum_nobs <- attr(families,"cum_nobs"))) {
-    coef1 <- dlW_deta <- numeric(length(muetablob$mu))
-    for (mv_it in seq_along(families)) {
-      resp_range <- .subrange(cumul=cum_nobs, it=mv_it)
-      dlW_detablob <- .calc_dlW_deta(muetablob=muetablob$mv[[mv_it]],
-                                     family=families[[mv_it]],
-                                     BinomialDen=BinomialDen[resp_range],
-                                     calcCoef1=calcCoef1,
-                                     w.resid=w.resid[["mvlist"]][[mv_it]])
-      dlW_deta[resp_range] <- dlW_detablob$dlW_deta
-      if (is.null(dlW_detablob$coef1)) {
-        coef1[resp_range] <- 0
-      } else coef1[resp_range] <- dlW_detablob$coef1
-    }
-    return(list(dlW_deta=dlW_deta, coef1=coef1))
+.D2detadmuDeta2 <- function(link, mu) { # in Hessian_weights.nb
+  switch( #  d (d (deta/dmu) / deta2
+    link,
+    "log" =  1/mu,
+    "inverse" = -2, # in the Gamma(inverse) sense 
+    "identity" = 0,
+    "sqrt" = 1/mu^(1.5),
+    "cloglog" = {(1 + log(1 - mu) + log(1 - mu)^2)/((-1 + mu)*log(1 - mu))}, 
+    "logit" = {(1 - 2*mu + 2*mu^2)/(mu - mu^2)},
+    "probit" = {
+      eta <- qnorm(mu)
+      (1+eta^2)/dnorm(eta)
+    },
+    "cauchit" = 2*pi,
+    stop("This cannot yet be computed for this family link.") # loglambda :-) __F_I_X_M_E__
+  )
+}
+
+.dlog_HratioDeta <- function(Hratio_factors, mu, family, 
+                             # binomial:
+                             BinomialDen, muFREQS=mu/BinomialDen) {
+  yMmu <- Hratio_factors$yMmu
+  partials <- Hratio_factors$partials
+  if (family$family=="binomial") {
+    # this blcok should be correct in the more general case, but then with useless divisins by vectors of 1 
+    dmu.deta <- family$mu.eta(eta=family$linkfun(muFREQS)) # as function of this fn argument, mu, and distinct from muetablob$dmudeta
+    DfactorsDeta  <- .D2detadmuDeta2(family$link, mu=muFREQS) + .D_dlWdmu_Deta(family, mu=muFREQS) # 
+    # Role of BinomialDen as explained in .calc_H_w.resid()
+    yMmuFREQS <- yMmu/BinomialDen
+    dHratio <- (dmu.deta * partials- DfactorsDeta * yMmuFREQS)
+    Hratio <- 1 - partials * yMmuFREQS 
+  } else {
+    dmudeta <- family$mu.eta(eta=family$linkfun(mu)) # as function of mu (would muetablob be accessible?)
+    DfactorsDeta  <- .D2detadmuDeta2(family$link, mu=mu) + .D_dlWdmu_Deta(family, mu=mu)  
+    dHratio <- (dmudeta * partials- DfactorsDeta * yMmu)
+    Hratio <- 1 - partials * yMmu
   }
+  dHratio / Hratio
+} # we will need to add this to the dlW_deta term in coef2
+
+..calc_dlW_deta <- function(muetablob, family, calcCoef1, w.resid, BinomialDen, processed, Hratio_factors,
+                            #
+                            dmudeta=drop(muetablob$dmudeta), mu=drop(muetablob$mu), eta=drop(muetablob$sane_eta),
+                            muFREQS=mu/BinomialDen, y=processed$y,
+                            obsInfo=processed$how$obsInfo
+                            ) {
   coef1 <- NULL
-  dmudeta <- drop(muetablob$dmudeta)
-  mu <- drop(muetablob$mu)
-  eta <- drop(muetablob$sane_eta)
   ## We first handle the canonical link cases, where comput. of coef1 depends only on the link  
   ## here w=dmudeta; d1=dwdmu dmudeta /w^2 = dlogwdeta/w = (d2mu/deta2)/(dmu/deta) /w =
   ##      (d2mu/deta2)/(dmu/deta)^2 = (d(dmudeta)/dmu)/dmudeta where d(dmudeta)/dmu is the numerator as detailed:
@@ -1386,7 +1654,7 @@ spaMM_Gamma <- local({
         if (calcCoef1) coef1 <- 1/dmudeta
       }
     } else if (family$family=="binomial") {
-      dlW_deta <- (1-2*mu/BinomialDen)  
+      dlW_deta <- (1-2*muFREQS)  
       if (calcCoef1) coef1 <- dlW_deta/dmudeta # F I X M E there's a pattern
       ## numerator is D[D[1/(1 + E^-\[Eta]), \[Eta]] /. {E^-\[Eta]->(1-\[Mu])/\[Mu]} ,\[Mu]]=1-2 mu 
     } else if (family$family=="Gamma") { ## link= "inverse" !
@@ -1408,7 +1676,7 @@ spaMM_Gamma <- local({
         lambdas <- exp(eta) ## pmin(exp(eta),.Machine$double.xmax) ##  FR->FR lambdas missing as mu attribute here ?
         blob <- sapply(seq(length(lambdas)), .CMP_calc_dlW_deta_locfn,lambdas=lambdas,mu=mu,COMP_nu=COMP_nu)
         dlW_deta <- blob["d2mudeta2",] / blob["dmudeta",]
-        dlW_deta[is.nan(dlW_deta)] <- 0 ## quick patch for cases that should have low lik # rous$54ZOOM
+        dlW_deta[is.nan(dlW_deta)] <- 0 ## quick patch for cases that should have low lik
         if (calcCoef1) {
           coef1 <- dlW_deta / blob["dmudeta",]
           coef1[is.nan(coef1)] <- 0 ## idem
@@ -1417,32 +1685,62 @@ spaMM_Gamma <- local({
     } 
   } else if (family$family=="binomial" && family$link=="probit") { ## ad hoc non canonical case 
     pmax_dnorm_eta <- dnorm(eta)
-    muFREQS <- mu/BinomialDen
     VmuFREQS <- pnorm(eta,lower.tail = FALSE)*pnorm(eta)  # more accurate than muFREQS*(1-muFREQS)
     dlW_deta <- -2*eta - pmax_dnorm_eta*(1-2*muFREQS)/VmuFREQS
-    if (calcCoef1) {
+    if (obsInfo) {
+      dlW_deta <- dlW_deta + .dlog_HratioDeta(Hratio_factors, mu, family, 
+                                              muFREQS=muFREQS, BinomialDen=BinomialDen) # and now this is the d log w_Hobs 
+      Hobs_w.resid <- w.resid * (1 -  Hratio_factors$partials * Hratio_factors$yMmu/BinomialDen)
+      if (calcCoef1) coef1 <- dlW_deta/Hobs_w.resid 
+    } else if (calcCoef1) {
       coef1 <- dlW_deta *(VmuFREQS)/ (BinomialDen * pmax_dnorm_eta^2) 
       # or coef1 <- (-1+2*(mu-VmuFREQS*eta/pmax_dnorm_eta))/(BinomialDen*pmax_dnorm_eta)
     }
   } else if (family$family=="Gamma" && family$link=="log") { ## ad hoc non canonical case 
-    dlW_deta <- rep(0L,length(mu)) ## because they both involve dW.resid/dmu= 0
-    if (calcCoef1) coef1 <- dlW_deta
+    if (obsInfo) {
+      # special case not calling Hratio_factors:
+      dlW_deta <- rep(-1,length(mu)) 
+      if (calcCoef1) coef1 <- - drop(muetablob$mu/(w.resid*y)) # should be -1/wi= -1/(w.resid*y/mu)
+    } else {
+      dlW_deta <- rep(0L,length(mu)) ## because they both involve dW.resid/dmu= 0
+      if (calcCoef1) coef1 <- dlW_deta
+    }
   } else { ## "negbin" only called with non-canonical links always ends here 
-    ## we need to update more functions of mu...
-    tmblob <- .thetaMuDerivs(mu,BinomialDen,family, muetablob)
-    Dtheta.Dmu <- tmblob$Dtheta.Dmu # calcul co fn de muFREQS puis / BinomialDen
-    D2theta.Dmu2 <- tmblob$D2theta.Dmu2 # calcul co fn de muFREQS puis / BinomialDen ^2
-    d2mudeta2 <- .calc_d2mudeta2(link=family$link,mu=mu,eta=eta,BinomialDen=BinomialDen)
-    ## ... to compute this:
-    D2theta.Deta2_Dtheta.Deta <- (D2theta.Dmu2 * dmudeta^2 + Dtheta.Dmu * d2mudeta2)/(Dtheta.Dmu * dmudeta)
-    dlW_deta <- d2mudeta2 / dmudeta + D2theta.Deta2_Dtheta.Deta
-    if (identical(family$zero_truncated,TRUE)) {  
-      # at this point we have the untruncated dlW_deta. We evaluate the truncated dlW_deta dlog_tildeW_deta
-      dlW_deta <- dlW_deta + w.resid$WU_WT *
-        (D2theta.Dmu2/Dtheta.Dmu * w.resid$d2logMthdth2 +  Dtheta.Dmu * w.resid$d3logMthdth3) * Dtheta.Dmu* dmudeta
-    } 
-    ## in truncated case we have coef1 = (truncated dlW_deta)/ W_untrunc so the following is still correct
-    if (calcCoef1) coef1 <- dlW_deta / (Dtheta.Dmu * dmudeta^2) ## note that coef2 is indep of the BinomialDen, but coef1 depends on it 
+    if ( ! is.null(dlW_detafun <- family$dlW_detafun)) { # UNtruncated negbin ... should not *yet* be present for truncated models work for later) 
+      dlW_deta <- dlW_detafun(mu) # that is only the ad-hoc version of the more general code (below) for the Hexp weights
+      if (obsInfo) {
+        dlW_deta <- dlW_deta + .dlog_HratioDeta(Hratio_factors, mu, family) # and now this is the d log w_Hobs 
+        Hobs_w.resid <- w.resid * (1 -  Hratio_factors$partials * Hratio_factors$yMmu)
+        if (calcCoef1) coef1 <- dlW_deta/Hobs_w.resid 
+      } else if (calcCoef1) coef1 <- family$coef1fun(mu)
+    } else { # general code for H_exp 
+      ## we need to update more functions of mu...
+      # Now (2022/05/01) in terms of derivatives of functions of eta and muFREQS so there is no BinomialDen factor in them.
+      # Instead yMmu/BinomialDen is used in obsInfo case and in denom of coef1 generally.
+      dmu.deta <- dmudeta/BinomialDen
+      d2mu.deta2 <- .calc_d2mudeta2(link=family$link,mu=mu,eta=eta, muFREQS=muFREQS)
+      tmblob <- .thetaMuDerivs(mu, family=family, muFREQS=muFREQS, muetablob=muetablob)
+      Dtheta.Dmu <- tmblob$Dtheta.Dmu 
+      D2theta.Dmu2 <- tmblob$D2theta.Dmu2 
+      D2theta.Deta2_Dtheta.Deta <- (D2theta.Dmu2 * dmu.deta^2 + Dtheta.Dmu * d2mu.deta2)/(Dtheta.Dmu * dmu.deta)
+      dlW_deta <- d2mu.deta2 / dmu.deta + D2theta.Deta2_Dtheta.Deta
+      if (identical(family$zero_truncated,TRUE)) {  
+        # at this point we have the untruncated dlW_deta. We evaluate the truncated dlW_deta dlog_tildeW_deta
+        dlW_deta <- dlW_deta + w.resid$WU_WT *
+          (D2theta.Dmu2/Dtheta.Dmu * w.resid$d2logMthdth2 +  Dtheta.Dmu * w.resid$d3logMthdth3) * Dtheta.Dmu* dmu.deta
+      } 
+      #
+      if (obsInfo) {
+        dlW_deta <- dlW_deta + .dlog_HratioDeta(Hratio_factors, mu=mu, family=family, 
+                                                # next two only for binomial, and provided by the ..calc_dlW_deta() promises. 
+                                                muFREQS=muFREQS, BinomialDen=BinomialDen) # and now this is the d log w_Hobs 
+        Hobs_w.resid <- w.resid * (1 -  Hratio_factors$partials * Hratio_factors$yMmu/BinomialDen)
+        if (calcCoef1) coef1 <- dlW_deta/Hobs_w.resid # (with BinomialDen in denom)
+      } else if (calcCoef1) {
+        ## in truncated case we have coef1 = (truncated dlW_deta)/ W_untrunc so the following is still correct
+        coef1 <- dlW_deta / (BinomialDen* Dtheta.Dmu * dmu.deta^2) ## note that coef2 is indep of the BinomialDen, but coef1 depends on it 
+      }
+    }
   }
   res <- list(dlW_deta=dlW_deta,## dlW_deta equiv coef2
               coef1=coef1)
@@ -1450,6 +1748,44 @@ spaMM_Gamma <- local({
     res$WU_WT <- w.resid$WU_WT
   }
   return(res) 
+}
+
+
+.calc_dlW_deta <- function(muetablob, 
+                           processed, # note use not only as provided of next arguments, in observed-Hessian case
+                           calcCoef1=FALSE, 
+                           w.resid, # potentially the list with $w_resid element, etc.  
+                           Hratio_factors=NULL,
+                           family=processed$family, 
+                           families=processed$families, 
+                           BinomialDen=processed$BinomialDen 
+) {
+  if ( ! is.null(cum_nobs <- attr(families,"cum_nobs"))) {
+    coef1 <- dlW_deta <- numeric(length(muetablob$mu))
+    for (mv_it in seq_along(families)) {
+      resp_range <- .subrange(cumul=cum_nobs, it=mv_it)
+      # in the mv case w.resid is a list only when there are zero-truncated families
+      if (is.list(w.resid)) {
+        w.resid_it <- w.resid[["mvlist"]][[mv_it]]
+      } else w.resid_it <- w.resid[resp_range] 
+      dlW_detablob <- ..calc_dlW_deta(muetablob=muetablob$mv[[mv_it]],
+                                     family=families[[mv_it]],
+                                     BinomialDen=BinomialDen[resp_range],
+                                     y=processed$y[resp_range],
+                                     processed=processed,
+                                     calcCoef1=calcCoef1,
+                                     w.resid=w.resid_it,
+                                     Hratio_factors=list(Hratio_factors$yMmu[resp_range], 
+                                                         partials=Hratio_factors$partials[resp_range])# for obsInfo 
+      )
+      dlW_deta[resp_range] <- dlW_detablob$dlW_deta
+      if (is.null(dlW_detablob$coef1)) {
+        coef1[resp_range] <- 0
+      } else coef1[resp_range] <- dlW_detablob$coef1
+    }
+    return(list(dlW_deta=dlW_deta, coef1=coef1))
+  } else ..calc_dlW_deta(muetablob=muetablob, family=family, calcCoef1=calcCoef1, w.resid=w.resid, BinomialDen=BinomialDen, 
+                  processed=processed, Hratio_factors=Hratio_factors)
 }
 
 .safesolve_qr_vector <- function(qr.a,b,silent=TRUE) { ## solve.qr with fall-back; qr.a should be a qr object, b must be a vector
@@ -1767,7 +2103,7 @@ spaMM_Gamma <- local({
 .get_tcrossfac_beta_w_cov <- function(fit) { 
   if (is.null(fit$envir$tcrossfac_beta_w_cov)) { ## tcrossfac...w stored under $envir while tcrossfac...v is under $beta_v_cov
     if ("AUGI0_ZX_sparsePrecision" %in% fit$MME_method) {
-      tcrossfac_beta_v_cov <- .get_tcrossfac_beta_v_cov(fit$X.pv, fit$envir, fit$w.resid) ## typically permuted from triangular
+      tcrossfac_beta_v_cov <- .get_tcrossfac_beta_v_cov(fit$X.pv, fit$envir) ## typically permuted from triangular
       pforpv <- ncol(fit$X.pv)
       lhs <- fit$envir$chol_Q
       if (pforpv) {
@@ -2004,7 +2340,7 @@ spaMM_Gamma <- local({
         d2hdv2_info <- - .crossprod(envir$factor_inv_Md2hdv2) 
       } else d2hdv2_info <- envir # then .calc_dvdlogphiMat_new() has TWO  (r*r) %*% (r*n) (plus an efficient solve())
     } else {
-      d2hdv2 <- .calcD2hDv2(ZAL,object$w.resid,object$w.ranef) 
+      d2hdv2 <- .calcD2hDv2(ZAL,.get_H_w.resid(object),object$w.ranef) 
       if (inherits(d2hdv2,"sparseMatrix")) {
         d2hdv2_info <- suppressWarnings(try(Cholesky( - d2hdv2,LDL=FALSE,perm=TRUE ), silent=TRUE )) #  '-' ! 
         if (inherits(d2hdv2_info, "CHMfactor")) {
@@ -2158,8 +2494,31 @@ spaMM_Gamma <- local({
   }
 }
 
+# Extractor mostly post fit, although using compatibility with spprec structure, with envir=sXaug$BLOB,
+# to use it in an spprec function called "mostly post fit" but possibly in-fit.
+.get_H_w.resid <- function(object, envir=object$envir) {
+  ## this is called in contexts where the fit object is not accessible, so 
+  H_w.resid <- envir$H_w.resid # new HLfit objects , with structured "w.resid" attribute
+  if (is.null(H_w.resid)) {
+    H_w.resid <- attr(envir$sXaug,"w.resid") # old MM
+    if (is.null(H_w.resid)) H_w.resid <- object$w.resid  # old GLM and SEM
+  }
+  if ( is.null(attr(H_w.resid,"w.resid")) && # old object
+       ! missing(object))  {
+    attr(H_w.resid,"w.resid") <- object$w.resid # back compat, so that there is always something 
+    # for old objects this is the vector so may not be appropriate in cases where old spaMM failed (e.g., hatvalues from old mv fit)
+  }
+  H_w.resid
+}
+
+.get_sXaug_H_w.resid <- function(sXaug) {
+  BLOB <- attr(sXaug,"BLOB")
+  if (is.null(BLOB <- attr(sXaug,"BLOB"))) BLOB <- sXaug$BLOB
+  BLOB$H_w.resid
+}
+
 # mostly post-fit. Called ".old..." but still used. 
-.old_calc_Md2hdvb2_info_spprec_by_r22 <- function(X.pv, envir, w.resid, which="tcrossfac_v_beta_cov") {
+.old_calc_Md2hdvb2_info_spprec_by_r22 <- function(X.pv, envir, which="tcrossfac_v_beta_cov") {
   # called e.g. for "tcrossfac_v_beta_cov" for which r12,r22 needed
   # same if it is called for "R_Md2hdbv2" (as through .get_tcrossfac_beta_w_cov())  
   # if we used it for v_beta_cov, could we simplify the code by only computing crossprod_r22 using $invG_ZtWX ? What about r_12 ?
@@ -2175,9 +2534,11 @@ spaMM_Gamma <- local({
     }
     if (is.null(r22 <- envir$r22)){
       if (ncol(X.pv)) {
-        if (is.null(envir$ZtW)) envir$ZtW <- t(.Dvec_times_m_Matrix(attr(envir$sXaug,"w.resid"), envir$sXaug$AUGI0_ZX$ZAfix)) 
+        # 'object' is not accessible here so its $spaMM.version isn't. This comes at the end of a long stack of calls...
+        H_w.resid <- .get_H_w.resid(envir=envir)
+        if (is.null(envir$ZtW)) envir$ZtW <- t(.Dvec_times_m_Matrix(H_w.resid, envir$sXaug$AUGI0_ZX$ZAfix))
         r12 <- as(Matrix::solve(envir$G_CHMfactor, as(envir$G_CHMfactor,"pMatrix") %*% envir$ZtW %*% X.pv,system="L"),"sparseMatrix") ## solve(as(envir$G_CHMfactor,"sparseMatrix"), envir$ZtW %*% AUGI0_ZX$X.pv)
-        r22 <- .calc_r22(X.pv,w.resid,r12, XtX=envir$XtX) ## both lines as explained in working doc
+        r22 <- .calc_r22(X.pv,H_w.resid,r12, XtX=envir$XtX) ## both lines as explained in working doc
         r22 <- as(r22,"sparseMatrix") 
       } else r22 <- diag(nrow=0L) # don't leave it NULL; + we use its ncol
     } else r12 <- envir$r12 
@@ -2211,7 +2572,7 @@ spaMM_Gamma <- local({
 
 # mostly post-fit
 .calc_Md2hdvb2_info_spprec_by_r22 <- function(X.pv, # currently the unscaled one (the object's $X.pv)
-                                              envir, w.resid, which="tcrossfac_v_beta_cov") {
+                                              envir, which="tcrossfac_v_beta_cov") {
   # called e.g. for "tcrossfac_v_beta_cov" for which r12,r22 needed
   # same if it is called for "R_Md2hdbv2" (as through .get_tcrossfac_beta_w_cov())  
   # if we used it for v_beta_cov, could we simplify the code by only computing crossprod_r22 using $invG_ZtWX ? What about r_12 ?
@@ -2248,29 +2609,29 @@ spaMM_Gamma <- local({
       v_beta_cov <- .tcrossprod(tcrossfac_v_beta_cov) ## it happens that the beta,beta block is solve(crossprod(r22)), a property used in .calc_inv_beta_cov() but not here.
       return(v_beta_cov)
     }
-  } else .old_calc_Md2hdvb2_info_spprec_by_r22(X.pv, envir, w.resid, which) # if ( ! object$spaMM.version < "3.7.10")  except that "object" not easily accessible
+  } else .old_calc_Md2hdvb2_info_spprec_by_r22(X.pv, envir, which) # if ( ! object$spaMM.version < "3.7.10")  except that "object" not easily accessible
 }
 
 
 
-.calc_Md2hdvb2_info_spprec <- function(X.pv,envir, w.resid, which="tcrossfac_v_beta_cov") { 
+.calc_Md2hdvb2_info_spprec <- function(X.pv,envir, which="tcrossfac_v_beta_cov") { 
   # called by post-fit functions, but else by .get_tcrossfac_beta_v_cov which *may* be called in-fit 
   # Hence from spprec there *may* be an envir$qrXa promise. 
   if ( .is_evaluated("qrXa",envir)) { # If we have a QR factorization of augmented X, we can use it efficiently
     # This is tested for example by get_predVar(fitsparse,newdata=newXandZ) on 'landsat' data
     .calc_Md2hdvb2_info_spprec_by_QR(envir, which)
   } else {
-    .calc_Md2hdvb2_info_spprec_by_r22(X.pv, envir, w.resid, which)
+    .calc_Md2hdvb2_info_spprec_by_r22(X.pv, envir, which)
   }
 }
 
 # called by .get_tcrossfac_beta_w_cov() post-fit; or by .calc_beta_cov_info_spprec(), in-fit or post-fit:
 # ie this *may* be called during a fit, by  .calc_beta_cov_info_spprec(... envir = sXaug$BLOB ...) -> .calc_beta_cov_info_spprec -> .get_tcrossfac_beta_v_cov
 #    in the diagnostic code for poor breakcond.
-.get_tcrossfac_beta_v_cov <- function(X.pv, envir, w.resid) {
+.get_tcrossfac_beta_v_cov <- function(X.pv, envir) {
   if (is.null(envir$beta_cov_info$tcrossfac_beta_v_cov)) {
     ## Using sparse matrices as much as possible for computation:
-    tcrossfac_v_beta_cov <- .calc_Md2hdvb2_info_spprec(X.pv, envir, w.resid, which="tcrossfac_v_beta_cov")
+    tcrossfac_v_beta_cov <- .calc_Md2hdvb2_info_spprec(X.pv, envir, which="tcrossfac_v_beta_cov")
     # but the v_beta_cov matrix is (mathematically) dense whatever its format
     pforpv <- ncol(X.pv)
     n_u_h <- ncol(envir$chol_Q)
@@ -2282,8 +2643,8 @@ spaMM_Gamma <- local({
 }
 
 # may be called in-fit or post-fit
-.calc_beta_cov_info_spprec <- function(X.pv, envir, w.resid) { 
-  tcrossfac_beta_v_cov <- .get_tcrossfac_beta_v_cov(X.pv, envir, w.resid)
+.calc_beta_cov_info_spprec <- function(X.pv, envir) { 
+  tcrossfac_beta_v_cov <- .get_tcrossfac_beta_v_cov(X.pv, envir)
   if (is.null(beta_cov <- envir$beta_cov_info$beta_cov)) { # if stripHLfit()ed
 #    beta_v_cov <- .tcrossprod(tcrossfac_beta_v_cov) # if the L differs among method the meaning of v differs too, and beta_v_cov too  
     # ./. but we can check that is is = solve(crossprod(wAugX)) by reconstructing wAugX with the matching L as in .get_LSmatrix()
@@ -2348,10 +2709,14 @@ spaMM_Gamma <- local({
           if (inherits(xmatrix,"dCHMsimpl")) {
             ZAX[[Lit]] <- structure(list(ZA=ZA, Q_CHMfactor=xmatrix), class=c("ZA_QCHM","list")) 
           } else ZAX[[Lit]] <- xmatrix ## matrix may replace Matrix here...          
-        } else {
+        } else { ##
+          # Including the case of composite nested ranefs i.e  <keyword>(RHS|nested LHS) 
+          # composite => there is an x matrix, we reach here
+          # nested LHS => not much difference from non nested one ?
+          # RHS => in provide G diagnosis, xmatrix is a kronecker product locnr>locnc ; some care is needed there beforethe .compute_ZAXlist() call.  
           locnc <- ncol(ZA)
           locnr <- nrow(xmatrix)
-          if ( locnc %% locnr !=0) {
+          if ( locnc %% locnr !=0L) {
             # then names are needed to match the row and columns
             if (length(setdiff(colnames(ZA),rownames(xmatrix)))) { # some names missing from xmatrix 
               mess <- "Cannot match the correlation matrix:\n"
@@ -2493,11 +2858,15 @@ if (FALSE) { # that's not used.
   return(.unlist(notEQL))
 }
 
-.initialize_v_h <- function(psi_M,etaFix,init.HLfit,cum_n_u_h,rand.families,port_env, v_h_list) {
+.initialize_v_h <- function(processed, etaFix, init.HLfit) {
   v_h <- etaFix$v_h
-  if (is.null(v_h) ) v_h <- port_env$port_fit_values$v_h
+  if (is.null(v_h) ) v_h <- processed$port_env$port_fit_values$v_h
   if (is.null(v_h) ) v_h <- init.HLfit$v_h
   if (is.null(v_h) ) {
+    psi_M <- processed$psi_M
+    cum_n_u_h <- processed$cum_n_u_h
+    rand.families <- processed$rand.families
+    v_h_list <- processed$reserve$rand_list
     for (it in seq_len(length(rand.families))) {
       u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
       v_h_list[[it]] <- rand.families[[it]]$linkfun(psi_M[u.range]) ## v as link(mean(u)) 
@@ -2505,26 +2874,6 @@ if (FALSE) { # that's not used.
     v_h <- .unlist(v_h_list)
   }
   v_h
-}
-
-## u_h and v_h in box constraints fro m unconstrainted v_h
-.u_h_v_h_from_v_h <- function(v_h, rand.families, cum_n_u_h, lcrandfamfam, lower.v_h, upper.v_h, 
-                              u_list=vector("list", length(rand.families))) {
-  if(!is.null(lower.v_h)) {v_h[v_h<lower.v_h] <- lower.v_h}
-  if(!is.null(upper.v_h)) {v_h[v_h>upper.v_h] <- upper.v_h}
-  nrand <- length(rand.families)
-  for (it in seq_len(nrand)) {
-    u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
-    u_list[[it]] <- rand.families[[it]]$linkinv(v_h[u.range])
-    if (any(is.infinite(u_list[[it]]))) {
-      warning("infinite random values ('u_h') were constrained to finite range.") 
-      u_list[[it]] <- pmin(.Machine$double.xmax, pmax(-.Machine$double.xmax,u_list[[it]]) )
-    }
-  }
-  u_h <- .unlist(u_list)
-  ## if there were box constr, v_h may have been modified, we put it in return value
-  if ( ! (is.null(lower.v_h) && is.null(upper.v_h))) attr(u_h,"v_h") <- v_h
-  return(u_h)
 }
 
 .cosy_names_lambdas <- function(namesnames) { # attempt to standardize previously messy things
@@ -2693,7 +3042,7 @@ if (FALSE) { # that's not used.
 }
 
 
-.nothing_to_fit <- function(phi.Fix, off, models, etaFix, rand.families, cum_n_u_h, lcrandfamfam, 
+.nothing_to_fit <- function(phi.Fix, off, models, etaFix, rand.families, cum_n_u_h, 
                             lambda.Fix, vec_n_u_h, n_u_h, fixed_adjacency_info, ZAL, BinomialDen, processed) {
   ## nothing to fit. We just want a likelihood
   ### a bit the same as max.iter<1 ... ?
@@ -2703,8 +3052,7 @@ if (FALSE) { # that's not used.
     ## we need u_h in calc_APHLS...() and v_h here for eta...
     v_h <- etaFix$v_h
     u_h <- etaFix$u_h
-    if (is.null(u_h)) {u_h <- .u_h_v_h_from_v_h(v_h,rand.families=rand.families,cum_n_u_h=cum_n_u_h,
-                                                lcrandfamfam=lcrandfamfam,lower.v_h=NULL,upper.v_h=NULL, u_list=processed$envir$u_list)}
+    if (is.null(u_h)) u_h <- processed$u_h_v_h_from_v_h(v_h)
     lambda_est <- .resize_lambda(lambda.Fix,vec_n_u_h,n_u_h, adjacency_info=fixed_adjacency_info)
     eta <- eta + drop(ZAL  %id*id%  etaFix$v_h) ## updated at each iteration
   } ## FREQS
@@ -2712,12 +3060,11 @@ if (FALSE) { # that's not used.
   muetablob <- .muetafn(eta=eta,BinomialDen=BinomialDen,processed=processed) 
   w.resid <- .calc_w_resid(muetablob$GLMweights,phi_est) ## 'weinu', must be O(n) in all cases
   if (models[[1]]=="etaHGLM") { ## linear predictor for mean with ranef
-    W_ranefS_constant_args <- processed$reserve$W_ranefS_constant_args
-    wranefblob <- do.call(".updateW_ranefS",c(W_ranefS_constant_args, list(u_h=u_h,v_h=v_h,lambda=lambda_est)))
+    wranefblob <- processed$updateW_ranefS(u_h=u_h,v_h=v_h,lambda=lambda_est)
     H_global_scale <- .calc_H_global_scale(w.resid)
     ZAL_scaling <- 1/sqrt(wranefblob$w.ranef*H_global_scale) ## Q^{-1/2}/s
     Xscal <- .make_Xscal(ZAL, ZAL_scaling, processed=processed)
-    weight_X <- sqrt(H_global_scale*w.resid) ## sqrt(s^2 W.resid)
+    weight_X <- .calc_weight_X(w.resid, H_global_scale, processed, muetablob) ## sqrt(s^2 W.resid)  # -> .... sqrt(w.resid * H_global_scale)
     if (inherits(Xscal,"Matrix")) {
       mMatrix_method <- .spaMM.data$options$Matrix_method
     } else mMatrix_method <- .spaMM.data$options$matrix_method
@@ -3235,7 +3582,7 @@ if (FALSE) { # that's not used.
   } else return(.Rcpp_backsolve(r=r, x=x, upper_tri = upper.tri, transpose=transpose))
 }
 
-.get_phi_object <- function(phi.Fix, PHIblob, dev_res, prior.weights, phi.preFix, nobs, control) {
+.get_phi_object <- function(phi.Fix, PHIblob, dev_res, prior.weights, phi.preFix, nobs=length(dev_res), control) {
   if (is.null(phi.Fix)) { # here it is not a list
     beta_phi <- PHIblob$beta_phi 
     names_beta_phi <- names(beta_phi)

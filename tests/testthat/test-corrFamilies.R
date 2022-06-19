@@ -2,6 +2,7 @@
 
 # library(spaMM)
 # options(error=recover)
+# spaMM.options(example_maxtime=60)
 
 if (spaMM.getOption("example_maxtime")>10) {
   cat(crayon::cyan("\ntest-corrFamilies.R"))
@@ -232,5 +233,53 @@ if (spaMM.getOption("example_maxtime")>10) {
                           testthat::expect_true(diff(range(p1-p2,p1-p3,p1-p4))<1e-8))
     }
   }
+  
+  { cat(crayon::yellow("corrFamily(1 |<nested RHS>); "))
+    
+    data("onofri.winterwheat", package="agridat")
+    
+    { # version where Cf provides the full correlation matrix
+      gy_levels <- paste0(gl(8,1,length =56,labels=levels(onofri.winterwheat$gen)),":",
+                          gl(7,8,labels=unique(onofri.winterwheat$year)))
+      
+      corr_map <- Matrix::forceSymmetric(kronecker(Matrix::.symDiagonal(n=7),diag(x=seq(8))))
+      rownames(corr_map) <- colnames(corr_map) <- gy_levels
+      
+      diagf <- function(logvar) {
+        corr_map@x <- exp(logvar)[corr_map@x]
+        corr_map
+      }                 # (and this returns a dsCMatrix)
+      
+      (by_cF <- spaMM::fitme(
+        yield ~ 1 + corrFamily(1|gen %in% year), data=onofri.winterwheat, method="REML",
+        covStruct=list(corrFamily = list(Cf=diagf, tpar=rep(1,8))), 
+        fixed=list(lambda=1),            # Don't forget to fix this redundant parameter!
+        # init=list(corrPars=list("1"=rep(log(O.1),8))), # 'init' optional 
+        lower=list(corrPars=list("1"=rep(log(1e-6),8))), # 'lower' and 'upper' required
+        upper=list(corrPars=list("1"=rep(log(1e6),8)))))
+    } 
+    
+    { # version where Cf provides the block for given group
+      corr_map <- Matrix::.symDiagonal(n=8,x=seq(8))
+      rownames(corr_map) <- unique(onofri.winterwheat$gen)
+      
+      diagf <- function(logvar) {
+        corr_map@x <- exp(logvar)[corr_map@x]
+        corr_map
+      }                 # (and this returns a dsCMatrix)
+      
+      (y_cF <- spaMM::fitme(
+        yield ~ 1 + corrFamily(1|gen %in% year), data=onofri.winterwheat, method="REML",
+        covStruct=list(corrFamily = list(Cf=diagf, tpar=rep(1,8))), 
+        fixed=list(lambda=1),            # Don't forget to fix this redundant parameter!
+        # init=list(corrPars=list("1"=rep(log(O.1),8))), # 'init' optional 
+        lower=list(corrPars=list("1"=rep(log(1e-6),8))), # 'lower' and 'upper' required
+        upper=list(corrPars=list("1"=rep(log(1e6),8)))))
+    }
+    testthat::expect_true(diff(range(logLik(by_cF),logLik(y_cF)))<1e-12) 
+    
+  }
+  
+  
 }
   

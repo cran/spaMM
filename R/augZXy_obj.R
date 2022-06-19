@@ -70,23 +70,27 @@
       } else w.resid <- .calc_w_resid(muetablob$GLMweights,phi_est) ## 'weinu', must be O(n) in all cases
       H_global_scale <- .calc_H_global_scale(w.resid)
       if (processed$is_spprec) {
+        
+        sXaug_arglist <- list(AUGI0_ZX=processed$AUGI0_ZX, corrPars=ranFix$corrPars,w.ranef=w.ranef,
+                              cum_n_u_h=cum_n_u_h,w.resid=w.resid)
+        sXaug_arglist$H_w.resid <- .calc_H_w.resid(w.resid, muetablob=muetablob, processed=processed) 
         # .HLfit_body_augZXy has called .init_AUGI0_ZX_envir_spprec_info(processed,LMatrices)...
         if (trace) cat(".")
         sXaug <- do.call(processed$AUGI0_ZX$envir$method, # ie, def_AUGI0_ZX_sparsePrecision
-                         list(AUGI0_ZX=processed$AUGI0_ZX, corrPars=ranFix$corrPars,w.ranef=w.ranef,
-                              cum_n_u_h=cum_n_u_h,w.resid=w.resid))
+                         sXaug_arglist)
+        
       } else {
         ZAL_scaling <- 1/sqrt(w.ranef*H_global_scale) ## Q^{-1/2}/s
         weight_X <- .calc_weight_X(w.resid, H_global_scale) ## sqrt(s^2 W.resid) ## should not affect the result up to precision
         if (inherits(ZAL,"sparseMatrix")) {
           ZW <- .Dvec_times_Matrix(weight_X,.Matrix_times_Dvec(ZAL,ZAL_scaling))
           XW <- .Dvec_times_m_Matrix(weight_X,processed$AUGI0_ZX$X.pv)
-          sXaug <- structure(list(ZW=ZW,XW=XW,I=processed$AUGI0_ZX$I),
-                             w.ranef=w.ranef,
-                             n_u_h=ncol(ZW), # mandatory for all sXaug types
-                             pforpv=ncol(XW),  # mandatory for all sXaug types
-                             weight_X=weight_X, # new mandatory 08/2018
-                             H_global_scale=H_global_scale)
+          sXaug <- list(ZW=ZW,XW=XW,I=processed$AUGI0_ZX$I)
+          attr(sXaug,"w.ranef") <- w.ranef
+          attr(sXaug,"n_u_h") <- ncol(ZW) # mandatory for all sXaug types
+          attr(sXaug,"pforpv") <- ncol(XW) # mandatory for all sXaug types
+          attr(sXaug,"weight_X") <- weight_X # new mandatory 08/2018
+          attr(sXaug,"H_global_scale") <- H_global_scale
           class(sXaug) <- c(class(sXaug),"sXaug_blocks")
         } else {
           Xscal <- .make_Xscal(ZAL=ZAL, ZAL_scaling = ZAL_scaling, processed=processed) # does not weights the I

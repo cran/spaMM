@@ -28,8 +28,8 @@ The study investigated the relationship between altitude, vegetation indices, an
 \source{
 The data were last retrieved on March 1, 2013 from P.J. Ribeiro's web resources
 at\cr 
-\code{www.leg.ufpr.br/doku.php/pessoais:paulojus:mbgbook:datasets}. The current (2019-06-10) link seems to be
-\url{http://www.leg.ufpr.br/lib/exe/fetch.php/pessoais:paulojus:mbgbook:datasets:loaloa.txt}).
+\code{www.leg.ufpr.br/doku.php/pessoais:paulojus:mbgbook:datasets}. A current (2022-06-18) source is
+\url{https://www.lancaster.ac.uk/staff/diggle/moredata/Loaloa.txt}).
 }
 \references{
 Diggle, P., and Ribeiro, P. 2007. Model-based geostatistics, Springer series

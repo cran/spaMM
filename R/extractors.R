@@ -481,10 +481,10 @@ residVar <- function(object, which="var", submodel=NULL, newdata=NULL) {
 logLik.HLfit <- function(object, which=NULL, ...) {
   object <- .getHLfit(object)
   if (is.null(which)) which <- .get_objLik(object)
-  if (which=="logL_Lap") {
+  if (which=="logL_Lap") { # using observed Hessian
     if (all(unlist(object$family[c("family","link")]==c("Gamma","log")))) {
       ZAL <- .compute_ZAL(XMatrix=object$strucList, ZAlist=object$ZAlist,as_matrix=.eval_as_mat_arg.HLfit(object)) 
-      w.obs <- structure(object$w.resid * (object$y/object$fv)[,1],unique=FALSE)
+      w.obs <- structure(.get_H_w.resid(object) * (object$y/object$fv)[,1],unique=FALSE)
       d2hdv2 <- .calcD2hDv2(ZAL,w.obs,object$w.ranef) ## update d2hdv2= - t(ZAL) %*% diag(w.resid) %*% ZAL - diag(w.ranef)
       hlik <- object$APHLs$hlik
       resu <- hlik -determinant(d2hdv2)$modulus[1L]/2 + ncol(d2hdv2)* log(2*pi)/2
@@ -915,7 +915,7 @@ get_ZALMatrix <- function(object, force_bind=TRUE) {
 .get_WLS_ginv <- function(object, augmented, XZ_0I=NULL) { 
   ## gets inv(tX_a invSig_a X_a).tX_a invSig_a that gives hat(beta,v_h)
   if (is.null(XZ_0I))  XZ_0I <- .get_XZ_0I(object)
-  ww <- c(object$w.resid, object$w.ranef) ## NOT sqrt()
+  ww <- c(.get_H_w.resid(object), object$w.ranef) ## NOT sqrt()
   Wei_XZ_0I <- .calc_wAugX(XZ_0I=XZ_0I, sqrt.ww=ww) ## 2nd argument name misleading
   if (is.null(tcrossfac_beta_v_cov <- object$envir$beta_cov_info$tcrossfac_beta_v_cov)) {
     tcrossfac_beta_v_cov <- .get_beta_cov_info(object)$tcrossfac_beta_v_cov
@@ -946,12 +946,12 @@ get_matrix <- function(object, which="model.matrix", augmented=TRUE, ...) {
          "AugX"=.get_XZ_0I(object),                               ## X_a
          "wAugX"={
            XZ_0I <- .get_XZ_0I(object)
-           ww <- c(object$w.resid, object$w.ranef)
+           ww <- c(.get_H_w.resid(object), object$w.ranef)
            .calc_wAugX(XZ_0I=XZ_0I, sqrt.ww=sqrt(ww)) 
          },                               
          "wei_AugX"={
            XZ_0I <- .get_XZ_0I(object)
-           ww <- c(object$w.resid, object$w.ranef) ## NOT sqrt()
+           ww <- c(.get_H_w.resid(object), object$w.ranef) ## NOT sqrt()
            Wei_XZ_0I <- .calc_wAugX(XZ_0I=XZ_0I, sqrt.ww=ww) ## 2nd argument name misleading
          },                               
          "left_ginv"= .get_WLS_ginv(object, augmented=augmented), ## X_a^- = (X_a' W X_a)^{-1} X_a' W
@@ -1016,7 +1016,9 @@ how.HLfit <- function(object, devel=FALSE, verbose=TRUE, format=print, ...) {
     } else mess <- paste0("Model fitted by spaMM::", paste(fnname))
     pretty_method <- .prettify_method(info$MME_method, by_y_augm=identical(info$switches["augZXy_cond"][[1]], TRUE))
     mess <- paste0(mess,", version ",info[["spaMM.version"]],
-                   ", in ",info$fit_time,"s using ",paste(na.omit(pretty_method),collapse=","),".")
+                   ", in ",info$fit_time,"s using ",paste(na.omit(pretty_method),collapse=","))
+    if (identical(info[["obsInfo"]], TRUE)) mess <- paste0(mess," (with obs. info. matrix)")
+    mess <- paste0(mess,".")
     format(mess)  
   }
   if  (!  is.null(resid_fits <- object$resid_fits)) {

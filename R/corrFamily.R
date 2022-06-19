@@ -9,46 +9,51 @@
   fn
 }
 
+.define_corrFamily_from_map <- function(corrfamily) {
+  # private first attempt. 
+  # build $template$parnames, $diagpars, $poslist from user input $map, $fixed ; a corr CHM template may by added by other functions  
+  map <- corrfamily$map
+  if ( ! inherits(map,"dgCMatrix")) map <- as(map,"dgCMatrix") # for sp|de corr algo early conversion to dsC leads to 
+  #  call of calc_Lunique_for_correl_algos -> mat_sqrt_dsCMatrix on unregularized matrix. Rething later (__F I X M E__)
+  corrfamily$map <- map
+  fixed <- corrfamily$fixed
+  if ( ! is.null(fixed)) {
+    if (identical(fixed,"unit diag")) fixed <- Matrix::.symDiagonal(ncol(map))
+    if (! inherits(fixed,"dgCMatrix")) fixed <- as(fixed,"dgCMatrix")
+    corrfamily$fixed <- fixed # maybe no necessary
+    augmap <- fixed
+    augmap@x <- rep(NA_real_,length(augmap@x))
+    augmap <- augmap+map # NA's is fixed positions
+  } else augmap <- map
+  ## 
+  levels_ <- unique(map@x) # those from the map 
+  poslist <- vector("list", length(levels_))
+  for (lev in seq_along(levels_)) poslist[[lev]] <- which(augmap@x==levels_[lev])
+  #
+  parnames <- corrfamily$parnames
+  if (is.null(parnames)) parnames <- paste0("p", levels_)
+  names(poslist) <- corrfamily$parnames <- parnames # parnames needed in the envir of corrFamily$canonize, at least (or restrict that function to the $Cf case)
+  corrfamily$poslist <- poslist
+  #
+  diaglevels <- unique(diag(map)) 
+  corrfamily$diagpars <- corrfamily$parnames[which(levels_ %in% diaglevels)] # for .calc_inits_corrFamily()
+  #
+  template <- map
+  template@x <- rep(NA_real_,length(template@x))
+  if ( ! is.null(fixed)) template <- template+fixed # NA's in map position
+  dim_template <- dim(template)
+  if (dim_template[1L]!=dim_template[2L])  stop("corrMatrix's template is not square")
+  corrfamily$template <- template
+  corrfamily$map <- corrfamily$fixed <- NULL
+}
+
 .preprocess_corrFamily <- function(corrfamily) { 
   ## Standardize the structure of the object:
   if ( ! inherits(corrfamily,"list")) corrfamily <- list(map=corrfamily)
   corrfamily <- list2env(corrfamily) # so that .corrfamily2Matrix() can write into it...
   
-  if (is.null(corrfamily$"Cf")) { # private first attempt. 'Real' code is in the alternative
-    # build $template$parnames, $diagpars, $poslist from user input $map, $fixed ; a corr CHM template may by added by other functions  
-    map <- corrfamily$map
-    if ( ! inherits(map,"dgCMatrix")) map <- as(map,"dgCMatrix") # for sp|de corr algo early conversion to dsC leads to 
-    #  call of calc_Lunique_for_correl_algos -> mat_sqrt_dsCMatrix on unregularized matrix. Rething later (__F I X M E__)
-    corrfamily$map <- map
-    fixed <- corrfamily$fixed
-    if ( ! is.null(fixed)) {
-      if (identical(fixed,"unit diag")) fixed <- Matrix::.symDiagonal(ncol(map))
-      if (! inherits(fixed,"dgCMatrix")) fixed <- as(fixed,"dgCMatrix")
-      corrfamily$fixed <- fixed # maybe no necessary
-      augmap <- fixed
-      augmap@x <- rep(NA_real_,length(augmap@x))
-      augmap <- augmap+map # NA's is fixed positions
-    } else augmap <- map
-    ## 
-    levels_ <- unique(map@x) # those from the map 
-    poslist <- vector("list", length(levels_))
-    for (lev in seq_along(levels_)) poslist[[lev]] <- which(augmap@x==levels_[lev])
-    #
-    parnames <- corrfamily$parnames
-    if (is.null(parnames)) parnames <- paste0("p", levels_)
-    names(poslist) <- corrfamily$parnames <- parnames # parnames needed in the envir of corrFamily$canonize, at least (or restrict that function to the $Cf case)
-    corrfamily$poslist <- poslist
-    #
-    diaglevels <- unique(diag(map)) 
-    corrfamily$diagpars <- corrfamily$parnames[which(levels_ %in% diaglevels)] # for .calc_inits_corrFamily()
-    #
-    template <- map
-    template@x <- rep(NA_real_,length(template@x))
-    if ( ! is.null(fixed)) template <- template+fixed # NA's in map position
-    dim_template <- dim(template)
-    if (dim_template[1L]!=dim_template[2L])  stop("corrMatrix's template is not square")
-    corrfamily$template <- template
-    corrfamily$map <- corrfamily$fixed <- NULL
+  if (is.null(corrfamily$"Cf")) {
+    corrfamily <- .define_corrFamily_from_map(corrfamily) # private first attempt. 'Real' code is in the alternative
   } else {
     if (is.null(corrfamily$tpar)) stop("'tpar' is required in the corrFamily descriptor (i.e., the 'covStruct' element for the random effect).")
     # so as to distinguish between forgotten tpar and no parameter case (=>numeric(0))
@@ -124,6 +129,8 @@
   if (is.null(corrfamily$levels_type)) corrfamily$levels_type <- "data_order" # this is $uGeo_levels_type
   if ( is.function(corrfamily$Af)) assign("levels_type", corrfamily$levels_type, environment(corrfamily$Af)) 
   if (is.null(corrfamily$need_Cnn)) corrfamily$need_Cnn <- TRUE
+  if (is.null(corrfamily$possiblyDenseCorr)) corrfamily$possiblyDenseCorr <- TRUE
+  if (is.null(corrfamily$sparsePrec)) corrfamily$sparsePrec <- FALSE
   
   if (is.null(corrfamily$calc_corr_from_dist)) corrfamily$calc_corr_from_dist <- 
     .stub("<corrFamily>$calc_corr_from_dist() may be be needed for some correlation models.")
@@ -135,7 +142,7 @@
 .initialize_corrFamily <- function(corrfamily, Zmatrix) {
   if ( ! is.null(corrfamily$initialize)) corrfamily$initialize(Zmatrix=Zmatrix)
   
-  if (is.null(corrfamily$"Cf")) { 
+  if (is.null(corrfamily$"Cf")) { # not API
     rownames(corrfamily$template) <- colnames(Zmatrix) 
   } else {
     if (is.null(corrfamily$template)) corrfamily$template <- corrfamily$"Cf"(corrfamily$tpar)
@@ -198,7 +205,7 @@
     corrfamily$"Cf" <- function(parvec) Cf(parvec)[perm,perm]
   }
   corrfamily$permuted <- TRUE
-  corrfamily
+  corrfamily # return value not essential since it's an envir...
 }
 
 .subset_corrFamily <- function(corrfamily, ZAnames, corrnames) {

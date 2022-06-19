@@ -56,42 +56,42 @@ Matern <- function(...) {
     return(moreargs_rd) ## with control_dist with possibly modified rho_mapping
   }
   # This fn is not used (it is an unfinished attempt), so it does not matter the Cauchy code is "not even wrong".
-  calc_cov_info_mat <- function(control.dist, char_rd, spatial_term, corr_type, rho, processed, rd, ranPars) {
-    control_dist_rd <- control.dist[[char_rd]]
-    txt <- paste(c(spatial_term[[2]][[3]])) ## the RHS of the ( . | . ) # c() to handle very long RHS
-    if (length(grep("%in%",txt))) {
-      stop(paste0("(!) ",corr_type,"( . | <coord> %in% <grp>) is not yet handled."))
-    } 
-    msd.arglist <- list(rho = rho)
-    msd.arglist$`dist.method` <- control_dist_rd$`dist.method` ## may be NULL
-    if (length(rho)>1L) {
-      geo_envir <- .get_geo_info(processed, which_ranef=rd, which=c("uniqueGeo"), 
-                                 dist_method_rd=control_dist_rd$dist.method)
-      msd.arglist$uniqueGeo <- geo_envir$uniqueGeo
-      msd.arglist$`rho.mapping` <- control_dist_rd$`rho.mapping` ## may be NULL
-    } else {
-      geo_envir <- .get_geo_info(processed, which_ranef=rd, which=c("distMatrix"), 
-                                 dist_method_rd=control_dist_rd$dist.method)
-      msd.arglist$distMatrix <- geo_envir$distMatrix   
-    }
-    cov_info_mat <- do.call("make_scaled_dist",msd.arglist)
-    ## at this point if a single location, dist_mat should be dist(0) and make_scaled_dist was modified to that effect
-    if ( nrow(cov_info_mat)>1 ) { ## >1 locations
-      Nugget <- .get_cP_stuff(ranPars,"Nugget",which=char_rd)
-      if (corr_type == "Matern") {
-        nu <- .get_cP_stuff(ranPars,"nu",which=char_rd)
-        if (is.null(nu)) nu <- .nuInv(.get_cP_stuff(ranPars,"trNu",which=char_rd), NUMAX =.getPar(attr(ranPars,"moreargs"),"NUMAX")) # not sure test is ever TRUE
-        cov_info_mat <- MaternCorr(nu=nu, Nugget=Nugget, d=cov_info_mat)        
-      } else { ## ,"Cauchy"
-        longdep <- .get_cP_stuff(ranPars,"longdep",which=char_rd)
-        #if (is.null(longdep)) longdep <- .longdepInv(.get_cP_stuff(ranPars,"trLongdep"), LDMAX =.getPar(attr(ranPars,"moreargs"),"LDMAX")) # not sure test is ever TRUE
-        shape <- .get_cP_stuff(ranPars,"shape",which=char_rd)
-        cov_info_mat <- CauchyCorr(shape=shape, longdep=longdep, Nugget=Nugget, d=cov_info_mat)        
-      }
-      # no rho because the MaternCorr input will be an already scaled distance 'cov_info_mat'
-    } 
-    return(cov_info_mat)
-  }
+  # calc_cov_info_mat <- function(control.dist, char_rd, spatial_term, corr_type, rho, processed, rd, ranPars) {
+  #   control_dist_rd <- control.dist[[char_rd]]
+  #   txt <- paste(c(spatial_term[[2]][[3]])) ## the RHS of the ( . | . ) # c() to handle very long RHS
+  #   if (length(grep("%in%",txt))) {
+  #     stop(paste0("(!) ",corr_type,"( . | <coord> %in% <grp>) is not yet handled."))
+  #   } 
+  #   msd.arglist <- list(rho = rho)
+  #   msd.arglist$`dist.method` <- control_dist_rd$`dist.method` ## may be NULL
+  #   if (length(rho)>1L) {
+  #     geo_envir <- .get_geo_info(processed, which_ranef=rd, which=c("uniqueGeo"), 
+  #                                dist_method_rd=control_dist_rd$dist.method)
+  #     msd.arglist$uniqueGeo <- geo_envir$uniqueGeo
+  #     msd.arglist$`rho.mapping` <- control_dist_rd$`rho.mapping` ## may be NULL
+  #   } else {
+  #     geo_envir <- .get_geo_info(processed, which_ranef=rd, which=c("distMatrix"), 
+  #                                dist_method_rd=control_dist_rd$dist.method)
+  #     msd.arglist$distMatrix <- geo_envir$distMatrix   
+  #   }
+  #   cov_info_mat <- do.call("make_scaled_dist",msd.arglist)
+  #   ## at this point if a single location, dist_mat should be dist(0) and make_scaled_dist was modified to that effect
+  #   if ( nrow(cov_info_mat)>1 ) { ## >1 locations
+  #     Nugget <- .get_cP_stuff(ranPars,"Nugget",which=char_rd)
+  #     if (corr_type == "Matern") {
+  #       nu <- .get_cP_stuff(ranPars,"nu",which=char_rd)
+  #       if (is.null(nu)) nu <- .nuInv(.get_cP_stuff(ranPars,"trNu",which=char_rd), NUMAX =.getPar(attr(ranPars,"moreargs"),"NUMAX")) # not sure test is ever TRUE
+  #       cov_info_mat <- MaternCorr(nu=nu, Nugget=Nugget, d=cov_info_mat)        
+  #     } else { ## ,"Cauchy"
+  #       longdep <- .get_cP_stuff(ranPars,"longdep",which=char_rd)
+  #       #if (is.null(longdep)) longdep <- .longdepInv(.get_cP_stuff(ranPars,"trLongdep"), LDMAX =.getPar(attr(ranPars,"moreargs"),"LDMAX")) # not sure test is ever TRUE
+  #       shape <- .get_cP_stuff(ranPars,"shape",which=char_rd)
+  #       cov_info_mat <- CauchyCorr(shape=shape, longdep=longdep, Nugget=Nugget, d=cov_info_mat)        
+  #     }
+  #     # no rho because the MaternCorr input will be an already scaled distance 'cov_info_mat'
+  #   } 
+  #   return(cov_info_mat)
+  # }
   
   make_new_corr_list <- function(object, old_char_rd, control_dist_rd, geonames, newuniqueGeo, olduniqueGeo, which_mats, make_scaled_dist, new_rd) {
     ### rho only used to compute scaled distances

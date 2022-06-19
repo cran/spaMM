@@ -169,18 +169,15 @@
 }
 
 .wrap_v_h_IRLS <- function(v_h, beta_eta, seq_n_u_h, GLMMbool, wranefblob, 
-                           constant_u_h_v_h_args, updateW_ranefS_subarglist, v_infer_args, Trace, IRLS_fn) {
+                           processed, lambda_est, v_infer_args, Trace, IRLS_fn) {
   if (GLMMbool) {
     u_h <- v_h 
     newwranefblob <- wranefblob ## keep input wranefblob since GLMM and lambda_est not changed
   } else {
-    u_h_v_h_from_v_h_args <- c(constant_u_h_v_h_args,list(v_h=v_h))
-    u_h <- do.call(".u_h_v_h_from_v_h",u_h_v_h_from_v_h_args)
-    if ( ! is.null(attr(u_h,"v_h"))) { ## second test = if constant_u_h_v_h_args$upper.v_h or $lower.v_h non NULL
-      v_h <- attr(u_h,"v_h")
-    }
+    u_h <- processed$u_h_v_h_from_v_h(v_h)
+    if ( ! is.null(maybe <- attr(u_h,"v_h"))) v_h <- maybe
     ## update functions u_h,v_h
-    newwranefblob <- do.call(".updateW_ranefS",c(updateW_ranefS_subarglist,list(u_h=u_h,v_h=v_h)))
+    newwranefblob <- processed$updateW_ranefS(u_h=u_h,v_h=v_h, lambda=lambda_est)
   } 
   #
   v_infer_args$wranefblob <- newwranefblob

@@ -121,14 +121,14 @@ glm.nodev.fit <- function (x, y, weights = rep.int(1, nobs), start = NULL, etast
       start[fit$pivot] <- fit$coefficients
       eta <- drop(x %*% start)
       eta <- eta + offset
-      if (family$link=="log") {
-        eta <- .sanitize_eta_log_link(eta, max=40,y=y, warn_neg_y= (family$family !="gaussian"))
-      } else if (family$link=="loglambda") {
-        COMP_nu <- environment(family$aic)$nu 
-        eta <- .sanitize_eta_log_link(eta, max=40, y=y, nu=COMP_nu) 
-      }
+      # if (family$link=="log") {
+      #   eta <- .sanitize_eta_log_link(eta, max=40,y=y, warn_neg_y= (family$family !="gaussian"))
+      # } else if (family$link=="loglambda") {
+      #   COMP_nu <- environment(family$aic)$nu 
+      #   eta <- .sanitize_eta_log_link(eta, max=40, y=y, nu=COMP_nu) 
+      # }
+      eta <- .sanitize_eta(eta,y=y, family=family)
       if (family$family=="COMPoisson") muetaenv <- .CMP_muetaenv(family, pw=weights, eta)
-      # : __F I X M E__ why not use general code : .sanitize_eta(eta,y=y, family=family) #, which default max?  
       mu <- linkinv(eta)
       dev <- start
       if (control$trace) 
