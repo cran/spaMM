@@ -182,13 +182,18 @@
   outer_ests <- get_ranPars(fitobject) ## CorrEst_and_RanFix only
   names_u_o_ests <- names(unlist(outer_ests))
   names_u_c_inits <- names(unlist(canon.init))
+  # For each of the following family param there may already be attr(outer_ests,"type")$tr<fam par> but let's not assume that messy thing
   if ("NB_shape" %in% names_u_c_inits) {
     outer_ests$NB_shape <- environment(fitobject$family$aic)$shape
-    attr(outer_ests,"type")$NB_shape <- "outer" # there may already be attr(outer_ests,"type")$trNB_shape but let's not assume that messy thing
+    attr(outer_ests,"type")$NB_shape <- "outer" 
   }
   if ("COMP_nu" %in% names_u_c_inits) {
     outer_ests$COMP_nu <- environment(fitobject$family$aic)$nu
-    attr(outer_ests,"type")$COMP_nu <- "outer" # there may already be attr(outer_ests,"type")$trNB_shape but let's not assume that messy thing
+    attr(outer_ests,"type")$COMP_nu <- "outer" 
+  }
+  if ("beta_prec" %in% names_u_c_inits) {
+    outer_ests$beta_prec <- environment(fitobject$family$aic)$prec
+    attr(outer_ests,"type")$beta_prec <- "outer" 
   }
   if (keep_canon_user_inits) { # keep them (as interpreted in canon.init: minimum phi is 1e-4, etc) in return value
     # => remove the fitted values from the nullranPars used to modify_list

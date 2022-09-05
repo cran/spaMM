@@ -111,10 +111,10 @@ hatvalues.HLfit <- function(model, type="projection", which="resid", force=FALSE
 .hatvals2std_lev <- function(hatvals, sXaug, anynull_phi.Fix, u_h,
                              processed, # (fit object in post-fit calls)
                              HL=processed$HL, models=processed$models, need_simple_lambda, muetablob, 
-                             mu=drop(muetablob$mu), 
+                             mu=muetablob$mu, 
                              BinomialDen=processed$BinomialDen, 
                              w.resid,
-                             H_w.resid=.get_sXaug_H_w.resid(sXaug), # for obsInfo, we need it, generally not for H_w.resid itself but for its attributes
+                             H_w.resid=.BLOB(sXaug)$H_w.resid, # for obsInfo, we need it, generally not for H_w.resid itself but for its attributes
                              wranefblob, nobs, ZAL, 
                              psi_M=rep(attr(rand.families,"unique.psi_M"),diff(cum_n_u_h)), 
                              lambda_est, cum_n_u_h, lcrandfamfam=attr(rand.families,"lcrandfamfam"), 

@@ -20,19 +20,16 @@ This is (as other covariances matrices above) a matrix of expected values, gener
 }
 \usage{
 \method{vcov}{HLfit}(object, ...)
-\method{VarCorr}{HLfit}(x, sigma = 1, add_residVars=TRUE, ...)
+\method{VarCorr}{HLfit}(x, sigma = 1, add_residVars=TRUE, verbose=TRUE, ...)
 Corr(object, ...)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
   \item{object, x}{A fitted model object, inheriting from class \code{"HLfit"}, as returned by the fitting functions in \code{spaMM}.}
   %\item{which}{not documented, for development purposes}
-  \item{add_residVars}{
-  Boolean; whether to include residual variance information in the returned table.
-  }
-    \item{sigma}{
-ignored argument, included for consistency with the generic function. 
-}
+  \item{add_residVars}{Boolean; whether to include residual variance information in the returned table.}
+  \item{sigma}{ ignored argument, included for consistency with the generic function. }
+  \item{verbose}{Boolean: Whether to print some notes.}
   \item{\dots}{Other arguments that may be needed by some method.}
 }
 \value{

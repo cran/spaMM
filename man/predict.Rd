@@ -71,7 +71,7 @@ get_intervals(..., intervals="predVar")
  \item{blockSize}{
    Mainly for development purposes. For original or new data with many rows, it may be more efficient to split these data in small blocks, and this gives the maximum number or rows of the blocks. However, this will be ignored if a prediction covariance matrix is requested.    
  }
-\item{type}{character string; The returned point prediction is on the response scale if \code{type="response"} (the default; for binomial response, a frequency 0<.<1). It is on the linear predictor scale if \code{type="link"}. }
+\item{type}{character string; The returned point predictions are on the response scale if \code{type="response"} (the default; for binomial response, a frequency 0<.<1). It is on the linear predictor scale if \code{type="link"}. But the \dQuote{prediction variance} (as opposed to the response variance, see \code{\link{predVar}}) that may be returned as a \code{"predVar"}  attribute of the point predictions is always on the linear predictor scale. Prediction intervals (as opposed to the response intervals) will be on the linear predictor or response scale depending on if \code{type} (new to versions more recent than 3.12.0).}
 \item{control}{A list; a warning will direct you to relevant usage when needed.}
 \item{verbose}{A vector of booleans; it single currently used element is \code{"showpbar"}, which controls whether to show a progress bar in certain prediction variance computations.}
 \item{\dots}{

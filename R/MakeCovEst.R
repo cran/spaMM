@@ -49,7 +49,7 @@
     if (regularize <- TRUE) {
       # always regularize first
       compactcovmat <- .smooth_regul(compactcovmat, epsi=.spaMM.data$options$tol_ranCoefs_inner["regul"]) 
-      #   value of epsi utlmately also affects whether bobyqa has to be run 
+      #   value of epsi ultimately also affects whether bobyqa has to be run 
       esys <- attr(compactcovmat,"esys") 
       blob <- .upper_tri_tcrossfactorize( esys, d_regul=esys$d_regul, compactcovmat=compactcovmat)
     } else {
@@ -59,14 +59,20 @@
     ## for sparse precision we want chol_Q to be (dtCMatrix: Csparse triangular) so that efficient solve methods can be used.
     ## (1) direct conversion from matrix to dtC is remarkably slower than going through the as(.,"sparseMatrix") step !
     ## (2) Even with two steps as(.,"dtCMatrix") is costly hence the spprecBool condition (dtCMatrix useful only for chol_Q)
-    blob$compactchol_Q <- as(as(blob$compactchol_Q,"sparseMatrix"),"dtCMatrix") # precision factor for sparse_precision algo; # compactcovmat=.ZtWZwrapper(solve(compactchol_Q),d  )
+    blob$compactchol_Q <- as(as(blob$compactchol_Q,"sparseMatrix"),"triangularMatrix") # precision factor for sparse_precision algo; # compactcovmat=.ZtWZwrapper(solve(compactchol_Q),d  )
     #  We also want chol_Q it to be lower triangular (dtCMatrix can be Up or Lo) 
     #    to obtain a dtCMatrix by bdiag(list of lower tri dtCMatrices). It already is lower tri.
     # Beyond this, design_u may be lower or upper tri
-    evec <- as(esys$vectors,"dgCMatrix")
+    if (.spaMM.data$options$Matrix_old) { # ugly... but such versions do not handle as(, "dMatrix"))
+      evec <- as(esys$vectors, "dgCMatrix") 
+    } else evec <- as(as(esys$vectors,"generalMatrix"),"CsparseMatrix") # the aim of converison to dgC is that ZWZt is automatically dsC through call to Matrix::tcrossprod
     if (regularize) {
       blob$compactprecmat <- .ZWZtwrapper(evec, 1/esys$d_regul) # dsCMatrix
     } else blob$compactprecmat <- .ZWZtwrapper(evec, 1/esys$values) # dsCMatrix
+    # if (regularize) {
+    #   compactprecmat <- .ZWZtwrapper(evec, 1/esys$d_regul) 
+    # } else compactprecmat <- .ZWZtwrapper(evec, 1/esys$values) 
+    # blob$compactprecmat <- as(forceSymmetric(compactprecmat),"CsparseMatrix")
   } else { # CORREL algos
     if (is.null(chol_crossfac <- attr(compactcovmat, "chol_crossfac")))  chol_crossfac <- try(chol(compactcovmat), silent=TRUE)
     if ( ! inherits(chol_crossfac, "try-error")) {
@@ -147,11 +153,10 @@
   kronprod <- kronecker(Lcompact, kron_Y) # sparse as inferred from argument structure
   # so if the Lcompact has explicit zeros in @x, a drop0() would be useful. But do it on the LHS, not on the product!
   if ( inherits(Lcompact,c("dtCMatrix","ltCMatrix")) && 
-       inherits(kron_Y,c("dtCMatrix","ltCMatrix"))) return(as(kronprod,"dtCMatrix"))
+       inherits(kron_Y,c("dtCMatrix","ltCMatrix"))) return(as(as(kronprod,"triangularMatrix"),"CsparseMatrix"))
   if ( inherits(Lcompact,c("dsCMatrix","lsCMatrix", "lsyMatrix", "dsyMatrix")) && 
-       inherits(kron_Y,c("dsCMatrix","lsCMatrix"))) return(forceSymmetric(kronprod))
-  if ( inherits(kronprod,"dtTMatrix")) return(as(kronprod,"dtCMatrix")) 
-  if ( inherits(kronprod,"dgTMatrix")) return(as(kronprod,"dgCMatrix")) 
+       inherits(kron_Y,c("dsCMatrix","lsCMatrix"))) return(as(forceSymmetric(kronprod),"CsparseMatrix")) # forceSymmetric(dgT)  previously returned dsC, now dsT argh) 
+  if ( inherits(kronprod,c("dtTMatrix","dgTMatrix"))) return(as(kronprod,"CsparseMatrix")) 
   return(kronprod) # *this* return occurs when LHS is full (square, not triangular) map matrix
 }
 
@@ -174,7 +179,7 @@
       if (drop0template && .nonzeros(Lcompact)<ncol(Lcompact)^2) template <- drop0(template) 
       # hmf: Lcompact is dense so why the next code ? Lcompact is never a CsparseMatrix in the long routine tests. 
       if ( inherits(Lcompact,"dtCMatrix")) {
-        template <- as(template,"dtCMatrix")
+        template <- as(as(template,"triangularMatrix"), "CsparseMatrix")
       } else if ( inherits(Lcompact,"dsCMatrix")) template <- forceSymmetric(template)
     } 
     return(template) 
@@ -185,7 +190,7 @@
       longLv <- as.matrix(longLv)
     } else {
       if ( inherits(Lcompact,"dtCMatrix")) { 
-        longLv <- as(longLv,"dtCMatrix")
+        longLv <- as(as(longLv,"triangularMatrix"), "CsparseMatrix")
       } else if ( inherits(Lcompact,"dsCMatrix")) { 
         longLv <- forceSymmetric(longLv)
       }
@@ -197,16 +202,14 @@
 
 .makeCovEst1 <- function(u_h,ZAlist,cum_n_u_h,prev_LMatrices,
                          var_ranCoefs,
-                         w.resid, # not variable within the function
+                         H_w.resid, 
+                         H_global_scale,
                          processed,phi_est,
                          #family, ## ignored
                         as_matrix,v_h, MakeCovEst_pars_not_ZAL_or_lambda,
                         init_ranCoefs,
                         prev_lambda_est
 ) {
-  H_global_scale <- .calc_H_global_scale(w.resid)
-  weight_X <- .calc_weight_X(w.resid, H_global_scale, obsInfo=FALSE) ## sqrt(s^2 W.resid) ## should not affect the result up to precision
-                                                                     ## F_I_X_M_E weight_X not allowed to vary over iterations; so no obsInfo with inner estim ranCoefs 
   rC_transf_inner <- .spaMM.data$options$rC_transf_inner
   nrand <- length(ZAlist)
   locX.Re <- processed$X.Re ## may be NULL 
@@ -248,19 +251,17 @@
           w.ranef <- 1/loc_lambda_est # call to .updateW_ranefS() reduced to this for v3.6.39
           ZAL_scaling <- sqrt(loc_lambda_est/H_global_scale) # sqrt(w.ranef*H_global_scale) ## Q^{-1/2}/s
           Xscal <- .make_Xscal(ZAL=locZAL, ZAL_scaling = ZAL_scaling, processed=processed)
-          if (inherits(Xscal,"Matrix")) { # same type as ZAL
-            mMatrix_method <- .spaMM.data$options$Matrix_method
-          } else {
-            mMatrix_method <- .spaMM.data$options$matrix_method
-          }
-          sXaug <- do.call(mMatrix_method,
+          weight_X <- .calc_weight_X(Hobs_w.resid=H_w.resid,
+                                     H_global_scale=H_global_scale, obsInfo=processed$how$obsInfo) ## sqrt(s^2 W.resid) ## should not affect the result up to precision
+          sXaug <- do.call(processed$mMatrix_method,
                            list(Xaug=Xscal, weight_X=weight_X, w.ranef=w.ranef, H_global_scale=H_global_scale))
           ####################################################################################################
         } else sXaug <- NULL
         if ( ! augZXy_cond || test) {
           ####################################################################################################
           locw.ranefSblob <- processed$updateW_ranefS(u_h=u_h,v_h=v_h,lambda=loc_lambda_est)
-          locarglist <- c(MakeCovEst_pars_not_ZAL_or_lambda, list(ZAL=locZAL, lambda_est=loc_lambda_est, wranefblob=locw.ranefSblob))
+          locarglist <- c(MakeCovEst_pars_not_ZAL_or_lambda, 
+                          list(ZAL=locZAL, lambda_est=loc_lambda_est, wranefblob=locw.ranefSblob, H_global_scale=H_global_scale))
           # it would be really nonsense to compute the objective for constant u_h;
           ## the u_h should be evaluated at the BLUPs (or equivalent) for given parameters
           auglinmodblob <- do.call(".solve_IRLS_as_ZX",locarglist)

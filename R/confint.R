@@ -12,19 +12,31 @@
 
 
 .confint_boot <- function(boot_args, object, expr_t, t_fn=NULL, parm, boot.ci, level, verbose, ...) {
-  spaMM_boot_args <- intersect(names(boot_args),names(formals(spaMM_boot)))
+  spaMM_boot_args <- intersect(names(boot_args),names(formals(spaMM_boot))) # possible conflict between boot.ci 'type' arg and spaMM_boot 'type' arg
   spaMM_boot_args <- boot_args[spaMM_boot_args]
   spaMM_boot_args$object <- object
-  if (is.null(spaMM_boot_args$type)) spaMM_boot_args$type <- "residual"
+  if (is.null(spaMM_boot_args$type)) {
+    spaMM_boot_args$type <- "residual"
+  } else if (length(intersect(spaMM_boot_args$type,c("basic","perc","norm")))) {
+    warning(
+      paste0("Hmmm. It looks like you are using 'boot_args$type' to pass\n", 
+             "the boot.ci() 'type' argument. Use 'boot_args$ci_type' for that purpose.\n",
+             "'boot_args$type' is for passing the spaMM_boot() 'type' argument.\n",
+             "[see help(\"confint.HLfit\") for further details].")
+      ,immediate. = TRUE)
+  }
+  #
+  if (is.null(boot_args$ci_type)) {
+    boot_args$type <- c("basic","perc","norm")
+  } else {
+    if (length(setdiff(boot_args$ci_type,c("basic","perc","norm")))) 
+      stop("Check the 'boot_args$ci_type' argument: only \"basic\", \"perc\", and \"norm\" CI types can be computed.")
+    boot_args$type <- boot_args$ci_type
+    boot_args$ci_type <- NULL
+  }
   boot.ci_args <- intersect(names(boot_args),names(formals(boot.ci)))
   boot.ci_args <- boot_args[boot.ci_args]
   boot.ci_args$conf <- level
-  if (is.null(boot.ci_args$ci_type)) {
-    boot.ci_args$type <- c("basic","perc","norm")
-  } else {
-    boot.ci_args$type <- boot.ci_args$ci_type
-    boot.ci_args$ci_type <- NULL
-  }
   if (is.null(t_fn)) {
     spaMM_boot_args$simuland <- function(y, ...) {
       upd <- update_resp(object, newresp=y)
@@ -46,7 +58,8 @@
   template <- matrix(NA,ncol=2,nrow=np)
   marg <- (1-level)*50
   colnames(template) <- paste(c(marg, 100-marg),"%")
-  rownames(template) <- colnames(ts) # parm is not correct if parm is a function etc. # in which case the names may remain NULL
+  if (is.character(parm)) rownames(template) <- parm #colnames(ts)   # parm is not correct if parm is a function etc. # in which case the names may remain NULL
+  
   tl <- list()
   if (hasnorm) tl$normal <- template
   if (hasperc) tl$percent <- template
@@ -65,8 +78,7 @@
     if (hasperc) tl$percent[1,] <- tail(resu$percent[1,],n=2L)
     if (hasbasic) tl$basic[1,] <- tail(resu$basic[1,],n=2L)
   }
-  names(tl) <- colnames(ts)
-  attr(resu,"table") <- tl
+  attr(resu,"table") <- tl # a list with elements 'normal', 'percent' 'basic', each 
   return(resu)
 }
 

@@ -299,3 +299,56 @@ projpath <- local({
   attributes(.Data) <- attr_list
   .Data
 } 
+
+.shermanMstep_de <- function(Ainv,u) { # ad-hoc code for perturbation of inverse of Qt.Q, using symmetry of Ainv, and the ad-hoc -2 factor
+  # Ainv %*% kronecker(u,tu) %*% Ainv is the kronecker product of the folowing rowSums:
+  rSAu <- rowSums(sweep(Ainv, MARGIN=2L, u, `*`)) # '.matrix_times_Dvec'
+  num <- kronecker(t(rSAu),rSAu)  
+  denom <- 1 -2*sum(u*(Ainv %*% u)[,1]) 
+  Ainv +num/(denom/2)
+}
+
+.shermanM_de <- function(Qt, indic) { # ad-hoc code for perturbation of inverse of (Qt.Q=I) 
+  # This thing is neither PD nor ND
+  steps <- which(indic !=0)
+  Ainv <- diag(nrow(Qt))
+  for (it in steps) Ainv <- .shermanMstep_de(Ainv=Ainv,u=Qt[,it])
+  Ainv
+}
+
+## The sparse version is pure Rcpp stuff, see .Rcpp_adhoc_shermanM_sp
+
+### Utility for devel, produces the sXaug matrix for spcorr algo from an spprec sXaug matrix
+### conceived for default values shown in formals, may need non-default values otherwise (sure for ZAL)
+.spprec2spcorr <- function(spprec, obsInfo=TRUE, ZAL=spprec$AUGI0_ZX$ZAfix, zInfo=NULL) {
+  AUGI0_ZX <- spprec$AUGI0_ZX
+  H_w.resid <- spprec$BLOB$H_w.resid
+  H_global_scale <- .calc_H_global_scale(H_w.resid)
+  weight_X <- .calc_weight_X(H_w.resid, H_global_scale, obsInfo=obsInfo) ## sqrt(s^2 W.resid)  # -> .... sqrt(w.resid * H_global_scale)
+  w.ranef <- attr(spprec,"w.ranef")
+  ZAL_scaling <- 1/sqrt(w.ranef*H_global_scale) ## Q^{-1/2}/s
+  ZAL <- .Matrix_times_Dvec(ZAL,ZAL_scaling) # should use another input ZAL more generally
+  Zero_sparseX <- rbind2(AUGI0_ZX$ZeroBlock, AUGI0_ZX$X.pv)
+  I_ZAL <- rbind2(AUGI0_ZX$I, ZAL)
+  Xscal <- cbind2(I_ZAL, Zero_sparseX)
+  attr(Xscal,"AUGI0_ZX") <- AUGI0_ZX # environment => cheap access to its 'envir$updateable' variable or anything else 
+  spcorr <- do.call(def_sXaug_Matrix_CHM_H_scaled,
+                    list(Xaug=Xscal, weight_X=weight_X, w.ranef=w.ranef, H_global_scale=H_global_scale))
+  if (is.null(zInfo)) {
+    spcorr
+  } else {
+    BLOBp <- .BLOB(spprec)
+    BLOBc <- .BLOB(spcorr)
+    typematch <- c(BLOBp$nonSPD, BLOBc$nonSPD, BLOBp$signs_in_WLS_mat, BLOBc$signs_in_WLS_mat)
+    if ( ! all(typematch==c(F,T,T,F))) {
+      # exclude case where  spprec G is SPD but spcorr H is nonSPD => WLS_mat differ
+      wzAug <- c(zInfo$y2_sscaled/ZAL_scaling, (zInfo$z1_sscaled)*weight_X)
+      Vscaled_beta <- get_from_MME(spcorr,szAug=wzAug) 
+      seq_n_u_h <- seq_len(length(ZAL_scaling))
+      v_h_beta <- list(v_h=Vscaled_beta[seq_n_u_h]*ZAL_scaling,
+           beta=Vscaled_beta[-seq_n_u_h])
+    } else v_h_beta <- NULL
+    list(spcorr=spcorr, typematch=typematch, v_h_beta=v_h_beta)
+  }
+}
+

@@ -359,9 +359,44 @@ if (FALSE) {
   ranCoef # with Xi_ncol attribute too
 }
 
-.NB_shapeFn <- function(x) {log(log(1+x))} ## drastic handling of flat likelihoods for high shape= LOW variance. .../...
+.scaleconstfn <- function(canon_step_x=5,canon_max=1e6) {
+  log_sym_x <-  log(canon_step_x+1/canon_step_x-1) 
+  log(2)/log(log(canon_max+1/canon_max-1)/log_sym_x) 
+}
+
+.scaleconst <- .scaleconstfn(canon_step_x = 5) # log(2)/log(log_1.5(10^6+10^{-6}-1)) 
+.log_sym_x <- log(4.2) # log(x+1/x-1) at the target x step 
+
+.NB_shapeFn <- function(x) {
+  resu <- numeric(length(x))
+  for (it in seq_along(x)) {
+    xi <- x[it]
+    if (xi>1) {
+      resu[it] <- (log(xi+1/xi-1)/.log_sym_x)^.scaleconst
+    } else {resu[it] <- -(log(xi+1/xi-1)/.log_sym_x)^.scaleconst}
+  }
+  resu
+} ## drastic handling of flat likelihoods for high shape= LOW variance. .../...
 # .../... negbin example in gentle intro is a test (using optimize() -> initial value cannot be controlled)
-.NB_shapeInv <- function(x) {exp(exp(x))-1}
+
+.NB_shapeInv <- function(x) {
+  t <- exp(.log_sym_x*abs(x)^(1/.scaleconst))
+  resu <- numeric(length(t))
+  for (it in seq_along(t)) {
+    ti <- t[it]
+    if (x[it]>0) {
+      resu[it] <- (1 + ti + sqrt(-3 + 2*ti + ti^2))/2
+    } else  resu[it] <- (1 + ti - sqrt(-3 + 2*ti + ti^2))/2
+  }
+  resu
+}
+
+# .NB_shapeInv(.NB_shapeFn(10^6))
+# .NB_shapeInv(.NB_shapeFn(1/2))
+# .NB_shapeInv(.NB_shapeFn(1))
+
+.beta_precFn <- .NB_shapeFn
+.beta_precInv <- .NB_shapeInv
 
 
 ## FR->FR rho/sqrt(nu) scaling => should be fixed nu and transformed rho to handle vectorial rho
@@ -463,9 +498,16 @@ if (FALSE) {
       blockrows <- rows_bynesting[[lit]]
       within_values <- e_uniqueGeo[blockrows,coord_within]
       w_dist <- proxy::dist(within_values,method=dist.method)
-      distMatrix[[lit]] <- as(as.matrix(w_dist),"dsCMatrix")
+      # if (.spaMM.data$options$Matrix_old) { # ugly... but such versions do not handle as(, "dMatrix"))
+      #   distMatrix[[lit]] <- as(as.matrix(w_dist), "dsCMatrix") 
+      # } else distMatrix[[lit]] <- as(as(as(as.matrix(w_dist), "dMatrix"), "symmetricMatrix"), "CsparseMatrix") 
+      nc <- ncol(w_dist)
+      distMatrix[[lit]] <- sparseMatrix(x=w_dist[], 
+                   i=unlist(rev(sapply(seq(nc-1), function(it) {nc-it+seq(it)}))), # ___F I X M E___ precompute something?
+                   j=rep(seq(nc-1),(nc-1):1),
+                   dims=c(nc,nc),symmetric=TRUE, repr="C") 
     }
-    distMatrix <- Matrix::bdiag(distMatrix)
+    distMatrix <- .bdiag_dsC(distMatrix)
     rowperm <- sort.list(as.integer(.unlist(rows_bynesting)))
     distMatrix <- distMatrix[rowperm,rowperm]
     rownames(distMatrix) <- colnames(distMatrix) <- rownames(e_uniqueGeo) ## trivial rownames -- not sure we need them now
@@ -898,6 +940,16 @@ if (FALSE) {
   if (! is.null(inits[["init"]]$NB_shape)) {
     inits[["init.optim"]]$trNB_shape <- .NB_shapeFn(inits[["init"]]$NB_shape)
     inits[["init.optim"]]$NB_shape <- NULL
+  }
+  if (is.null(beta_prec <- inits[["init"]]$beta_prec)) beta_prec <- inits[["init.optim"]]$beta_prec 
+  if ( ! is.null(beta_prec)) {
+    if ( ! is.null(user.upper$beta_prec)) beta_prec <- min(user.upper$beta_prec,beta_prec)
+    if ( ! is.null(user.lower$beta_prec)) beta_prec <- max(user.lower$beta_prec,beta_prec)
+    inits[["init"]]$beta_prec <- beta_prec
+  }
+  if (! is.null(inits[["init"]]$beta_prec)) {
+    inits[["init.optim"]]$trbeta_prec <- .beta_precFn(inits[["init"]]$beta_prec)
+    inits[["init.optim"]]$beta_prec <- NULL
   }
   
   # Currently there is no default beta; only a user_init_optim one:

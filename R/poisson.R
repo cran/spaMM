@@ -1,7 +1,13 @@
-.get_family_par <- function(family, par, try=FALSE, ...) {
-  if (try) {
-    ## not sure why I used try elsewhere...
-  } else environment(family$aic)[[par]]
+.get_family_par <- function(family) {
+  famfam <- family$family
+  if (famfam =="COMPoisson") {
+    family_par <- environment(family$aic)$nu
+  } else if (famfam =="beta_resp") {
+    family_par <- environment(family$aic)$prec
+  } else if (famfam  %in% c("negbin","negbin1")) {
+    family_par <- environment(family$aic)$shape
+  }
+  family_par
 }
 
 .rpois <- function(n,mu_str,zero_truncated=FALSE){ ## mu is either the standard mean (lambda) or a structure depending on trunc
@@ -33,12 +39,60 @@ Poisson <- function (link = "log", trunc=-1L) {
   if ( ! is.integer(trunc)) {trunc <- round(trunc)}
   variance <- function(mu) mu
   validmu <- function(mu) all(is.finite(mu)) && all(mu > 0)
-  if (trunc==0L) {
-    dev.resids <- function(y, mu, wt) {
-      r <- (wt * (y * log(y/mu) - (y - mu)  + log( (1-exp(-mu))/(1-exp(-y)) ) )) # MolasL p. 3309 (here and there, fn of latent mu, not mu of truncated response)
-      2 * r
+  if (trunc==0L) { # If truncated: 
+    D2muDeta2 <- .D2muDeta2(linktemp)
+    D3muDeta3 <- .D3muDeta3(linktemp)
+    DlogLDmu <- function(mu, y, wt, n) { # dlogL/dmu
+      term <- -1+drop(y)/mu
+      p0 <- exp(-mu) # useful to avoir overflows of exp(mu)
+      Mdlog1mp0 <- - p0/(1-p0)
+      term + Mdlog1mp0
     }
-    aic <- function(y, n, mu, wt, dev) -2 * sum((dpois(y, mu, log = TRUE)-log(1-exp(-mu))) * wt) ## where (-) - log() gives + log(1-p0)
+    D2logLDmu2 <- function(mu, y, wt, n) { 
+      term <-  -drop(y)/mu^2
+      p0 <- exp(-mu) # useful to avoir overflows of exp(mu)
+      Md2log1mp0 <- p0/(1-p0)^2
+      term + Md2log1mp0
+    }
+    D3logLDmu3 <- function(mu, y, wt, n) { # element of computation of D3logLDeta3 for d logdet Hessian
+      term <- 2*drop(y)/mu^3
+      p0 <- exp(-mu) # useful to avoir overflows of exp(mu)
+      Md3log1mp0 <- - p0*(1+p0)/(1-p0)^3
+      term + Md3log1mp0
+    }
+
+    logl <- function(y, mu, wt) {
+      resu <- dpois(y, mu, log = TRUE)-log(1-exp(-mu)) # I decided to ignore wt
+      resu[y==1L & mu==0] <- 0
+      resu
+    }
+    
+    aic <- function(y, n, mu, wt, dev) -2 * sum(logl(y, mu)) 
+    
+    sat_logL <- function(y, wt) { 
+      uniqy <- unique(y)
+      uniqmu <- rep(NA, length(uniqy))
+      uniqmu[uniqy == 1L] <- 0
+      getmu <- function(y) {
+        if (y==1L) return(0)
+        uniroot(DlogLDmu, interval=c(y-1,y), y = y)$root
+      }
+      ygt1 <- (uniqy > 1L)
+      uniqmu[ygt1] <- sapply(uniqy[ygt1], getmu)
+      uniqlogl <- logl(uniqy,mu=uniqmu,wt=1)
+      uniqlogl[match(y, uniqy)]
+    } 
+    
+    ## the dev.resids is called by glm.fit...
+    dev.resids <- function(y,mu,wt) { 2*(sat_logL(y, wt=wt)-logl(y,mu=mu,wt=wt)) } 
+    
+    ### MolasL10, pp.3309. This is weird bc their "definition" of deviance conflicts with a more fundamental def. 
+    # dev.resids <- function(y, mu, wt) {
+    #   r <- (wt * (y * log(y/mu) - (y - mu)  + log( (1-exp(-mu))/(1-exp(-y)) ) )) # MolasL p. 3309 (here and there, fn of latent mu, not mu of truncated response)
+    #   2 * r
+    # }
+    dHobs_trunc_aux_funs <- list(D2muDeta2=D2muDeta2, D3muDeta3=D3muDeta3, DlogLDmu=DlogLDmu, D2logLDmu2=D2logLDmu2, D3logLDmu3=D3logLDmu3,
+                                 logl=logl, sat_logL=sat_logL)
   } else {
     dev.resids <- function(y, mu, wt) {
       r <- mu * wt
@@ -47,6 +101,7 @@ Poisson <- function (link = "log", trunc=-1L) {
       2 * r
     }
     aic <- function(y, n, mu, wt, dev) -2 * sum(dpois(y, mu, log = TRUE) * wt)
+    dHobs_trunc_aux_funs <- NULL
   }
   linkfun <- function(mu,mu_truncated=FALSE) { ## mu_truncated gives type of I N put
     if (mu_truncated) { ## ie if input mu_T
@@ -76,13 +131,46 @@ Poisson <- function (link = "log", trunc=-1L) {
     ftd <- fitted(object)
     .rpois(n=nsim * length(ftd),mu_str=ftd,zero_truncated=zero_truncated)
   }
+  
+  Dtheta.Dmu <- function(mu) 1/mu
+  D2theta.Dmu2 <- function(mu) -1/mu^2
+  #
+  #####################################################
+  # Derivatives of Hexp for computation of those of Hobs by GLM ad-hoc algo
+  # all being the imit cases of the negbin when shape -> infty
+  dlW_Hexp__detafun <- switch( # of *Hexp* weights, as explained for the calling function .dlW_Hexp__dmu
+    linktemp,
+    "log"= function(mu) 1,
+    "identity"= function(mu) -1/mu,
+    "sqrt"= function(mu) rep(0, length(mu))
+  )
+  d_dlWdmu_detafun <- switch( # see Hessian_weights.nb # also W_H_exp
+    linktemp,
+    "log"= function(mu) -1/mu,
+    "identity"= function(mu) 1/mu^2, 
+    "sqrt"= function(mu) rep(0, length(mu))
+  )
+  coef1fun <- switch(
+    linktemp,
+    "log"= function(mu) 1/mu,
+    "identity"= function(mu) rep(-1, length(mu)),
+    "sqrt"= function(mu) rep(0, length(mu))
+  )
+  
+  
   parent.env(environment(aic)) <- environment(stats::poisson) ## parent = <environment: namespace:stats>
-  structure(list(family = "poisson", link = linktemp, linkfun = linkfun, 
-                 linkinv = linkinv, variance = variance, dev.resids = dev.resids, 
-                 aic = aic, mu.eta = stats$mu.eta, initialize = initialize, 
-                 validmu = validmu, valideta = stats$valideta, simulate = simfun,
-                 zero_truncated=(trunc==0L)), 
-            class = "family")
+  structure(c(
+    list(family = structure("poisson", patch="spaMM's *P*oisson"), 
+         link = linktemp, linkfun = linkfun, 
+         linkinv = linkinv, variance = variance, dev.resids = dev.resids, 
+         aic = aic, mu.eta = stats$mu.eta, initialize = initialize, 
+         validmu = validmu, valideta = stats$valideta, simulate = simfun, 
+         Dtheta.Dmu=Dtheta.Dmu, D2theta.Dmu2=D2theta.Dmu2,
+         dlW_Hexp__detafun=dlW_Hexp__detafun, coef1fun=coef1fun, d_dlWdmu_detafun=d_dlWdmu_detafun,
+         flags=list(obs=TRUE, exp=TRUE, canonicalLink=(linktemp=="log")),
+         zero_truncated=(trunc==0L)),
+    dHobs_trunc_aux_funs), 
+    class = "family")
 }
 
 Tpoisson <- function(link="log") {

@@ -79,6 +79,12 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
   } else stop("Unhandled arguments in get_from_MME_default.matrix")
 }
 
+.BLOB <- function(sXaug) {
+  if (inherits(sXaug,"list")) {
+    sXaug$BLOB
+  } else attr(sXaug,"BLOB")
+}
+
 .calc_sXaug_Re <- function(locsXaug, ## conforming template
                           X.Re,weight_X) {
   distinct.X.ReML <- attr(X.Re,"distinct.X.ReML") # This fn should be called only for non-stdd REML
@@ -116,7 +122,6 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
   locsXaug <- def_AUGI0_ZX_sparsePrecision(AUGI0_ZX = list2env(AUGI0_ZX),
                                            w.ranef=attr(locsXaug,"w.ranef"),
                                            cum_n_u_h=attr(locsXaug,"cum_n_u_h"),
-                                           w.resid=attr(locsXaug,"w.resid"),
                                            H_w.resid=locsXaug$BLOB$H_w.resid,
                                            corrPars=attr(locsXaug,"corrPars") )
   return(locsXaug)
@@ -217,7 +222,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
       dvdloglamMat <- .m_Matrix_times_Dvec(inv_d2hdv2, neg.d2f_dv_dloglam)# get_from_MME(sXaug,"solve_d2hdv2",B=diag( neg.d2f_dv_dloglam)) ## square matrix, by  the formulation of the algo 
     }
   } else if (inherits(d2hdv2_info,"CHMfactor")) {# CHM of ***-*** d2hdv2
-    dvdloglamMat <- solve(d2hdv2_info, Diagonal(x= - neg.d2f_dv_dloglam ))  # rXr !       # .symDiagonal() is equivalent here
+    dvdloglamMat <- solve(d2hdv2_info, .sparseDiagonal(x= - neg.d2f_dv_dloglam, shape="g"))  # rXr !       # .symDiagonal() is equivalent here?
   } else if (inherits(d2hdv2_info,"qr") || inherits(d2hdv2_info,"sparseQR") ) { ## much slower than using CHMfactor
     if (length(neg.d2f_dv_dloglam)>5000L) message("[one-time solve()ing of large matrix, which may be slow]") 
     dvdloglamMat <- solve(d2hdv2_info, diag( neg.d2f_dv_dloglam ))  # rXr !       
@@ -226,12 +231,20 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
     rhs <- .Matrix_times_Dvec(d2hdv2_info$chol_Q, neg.d2f_dv_dloglam )
     rhs <- solve(d2hdv2_info$G_CHMfactor, rhs)
     dvdloglamMat <- - .crossprod(d2hdv2_info$chol_Q, rhs) # don't forget '-'
-  } else { ## then d2hdv2_info is ginv(d2hdv2) or some other form of inverse
-    dvdloglamMat <- .m_Matrix_times_Dvec(as(d2hdv2_info, "dgCMatrix"), # otherwise Matrix_times_Dvec() with dsC defaults detect a problem
+  } else { ## then d2hdv2_info is ginv(d2hdv2) or some other form of inverse # This block seems obsolete (not in long tests anyway); 
+    # possibly related to the fact that bigranefs comment a few lines below also refers to computation no longer performed.
+    if (inherits(d2hdv2_info,"dsCMatrix")) {  
+      if (.spaMM.data$options$Matrix_old) { 
+        d2hdv2_info < as(d2hdv2_info, "dgCMatrix")
+      } else d2hdv2_info <- as(d2hdv2_info, "generalMatrix")
+      dvdloglamMat <- .Matrix_times_Dvec(d2hdv2_info, 
+                                         neg.d2f_dv_dloglam) ## sweep(d2hdv2_info,MARGIN=2L,neg.d2f_dv_dloglam,`*`) ## ginv(d2hdv2) %*% diag( as.vector(neg.d2f_dv_dloglam))      
+    } else dvdloglamMat <- .m_Matrix_times_Dvec(d2hdv2_info, # this can be simplified, but do this when the alternative is stable
                                          neg.d2f_dv_dloglam) ## sweep(d2hdv2_info,MARGIN=2L,neg.d2f_dv_dloglam,`*`) ## ginv(d2hdv2) %*% diag( as.vector(neg.d2f_dv_dloglam))      
   }
-  #return(as.matrix(dvdloglamMat)) ## quite dense even if many small values and we subset it;
-  return(dvdloglamMat) ## ./. but as.matrix() is terribly inefficient in bigranefs case (_F I X M E_ more adaptive code?)
+  # I returned as.matrix(dvdloglamMat) a long time ago, and found it terribly inefficient in bigranefs case; 
+  # but bigranefs example no longer runs calls .calc_dvdloglamMat_new()
+  return(dvdloglamMat) 
 } ## square matrix, by  the formulation of the algo 
 
 
@@ -270,7 +283,8 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
     ## here version 1.5.3 had an interesting signed.wAugX concept
     vecdi1 <- vecdi2 <- vecdi3 <- 0
     ## P is P in LeeL appendix p. 4 and is P_R in MolasL p. 3307; X cols are excluded.
-    Pdiag <- get_from_MME(sXaug, which="hatval_Z", B=unique(c("phi","phi","lambda")[which(vecdisneeded)])) # currently only spprec takes advantage of this.
+    Pdiag <- get_from_MME(sXaug, which="hatval_Z", B=unique(c("phi","phi","lambda")[which(vecdisneeded)])) 
+    # currently only spprec takes advantage of possiby skipping lev_lambda computation when it is not returned.
     if (vecdisneeded[1L]) vecdi1 <- Pdiag$lev_phi * coef12$coef1 # coef1 is the factor of P_ii in d1
     # K2 = solve(d2hdv2,tZAL) is K2 matrix in LeeL appendix p. 4 and is -D in MolasL p. 3307 
     # W is Sigma^-1 ; TWT = t(ZALI)%*%W%*%ZALI = ZAL'.Wresid.ZAL+Wranef = -d2hdv2 !
@@ -279,7 +293,28 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
       coef2 <- coef12$dlW_deta # coef2 is the factor between P_jj and K1 in d2
       vecdi2 <- get_from_MME(sXaug,"solve_d2hdv2",B=as.vector((Pdiag$lev_phi * coef2) %*id% ZAL))
       vecdi2 <- as.vector(ZAL %*% vecdi2) ## equiv  post-multiplication by Z^T in the expression for D p.3307 bottom.
-      
+      if (devel <- FALSE) { # devel code
+        if (inherits(sXaug,"list")) {
+          sXau <- .spprec2spcorr(sXaug)
+          #   str(sXau)
+          BLOBp <- .BLOB(sXaug)
+          BLOBc <- .BLOB(sXau)
+          typematch <- c(BLOBp$nonSPD, BLOBc$nonSPD, BLOBp$signs_in_WLS_mat, BLOBc$signs_in_WLS_mat)
+          # if  (all(typematch==c(F,F,T,T))) browser() # Pdiagc from hatval_Z_by_subsetinv with BLOB$signs...
+          #                                           # while Pdiagp uses as.vector(drop(AUGI0_ZX$ZAfix %*% lev_phi) *abs(sXaug$BLOB$WLS_mat_weights))
+          # if  (all(typematch==c(T,T,F,F))) browser() # 
+          #                                           # 
+          Pdiagp <- get_from_MME(sXaug, which="hatval_Z", B=unique(c("phi","phi","lambda")[which(vecdisneeded)])) 
+          Pdiagc <- get_from_MME(sXau, which="hatval_Z", B=unique(c("phi","phi","lambda")[which(vecdisneeded)])) 
+          if (diff(range(Pdiagp$lev_phi-Pdiagc$lev_phi))>1e-10) browser()
+          if ( ! all(typematch==c(F,T,T,F))) {
+            # exclude case where  spprec G is SPD but spcorr H is nonSPD => WLS_mat differ
+            a <- drop(get_from_MME(sXaug,"solve_d2hdv2",B=as.vector((Pdiagp$lev_phi * coef2) %*id% ZAL)))
+            b <- drop(get_from_MME(sXau,"solve_d2hdv2",B=as.vector((Pdiagc$lev_phi * coef2) %*id% ZAL)))
+            if (diff(range(a-b))>1e-10) browser()
+          }#
+        }
+      }
       if ( ! is.null(WU_WT)) vecdi2 <- vecdi2/WU_WT # zero-truncated model: final factor in A11 in B4
     }
     # coef3 =(1/Wran)(dWran/dv_h), the thing between P and K2 in the d3 coef. See LeeL12 appendix
@@ -362,27 +397,34 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
       }
       z1 <- .unlist(z1s)
     }
-  } else z1 <- as.vector(muetablob$sane_eta+(y-muetablob$mu)/muetablob$dmudeta-off) ## LeeNP 182 bas. GLM-adjusted response variable; O(n)*O(1/n)
+  } else z1 <- as.vector(muetablob$sane_eta-off+(y-muetablob$mu)/muetablob$dmudeta) ## LeeNP 182 bas. GLM-adjusted response variable; O(n)*O(1/n)
   return(z1)  
 }
 
-.calc_z1_obs <- function(muetablob, w.resid, Hobs_w.resid,
+.calc_z1_obs <- function(muetablob, w.resid, H_w.resid,
                          y, off, cum_nobs) { # (__FIXME__) if y and off were lists, I would not need resp_range etc.
-  if (is.list(w.resid)) { # truncated model, or mv-response
-    if (is.null(mvlist <- w.resid$mvlist)) { # truncated model
-      # ___F_I_X_M_E___ not sure what this means for obsInfo case... pure cut and paste of .calc_z1()
-      z1 <- as.vector(muetablob$sane_eta+w.resid$WU_WT*(y-muetablob$mu-w.resid$dlogMthdth)/muetablob$dmudeta-off) ## MolasL10
+  if (is.list(w.resid)) { # truncated GLM model, or mv-response
+    if (is.null(mvlist <- w.resid$mvlist)) { # truncated model, obsInfo by GLM algo: negbin(trunc), Tpoisson(not log)
+      ## tested on one example Tnegbin versus negbin2 rather than formally proven: 
+      # z1 <- as.vector(muetablob$sane_eta-off +
+      #                  w.resid$WU_WT*(w.resid$w_resid/Hobs_w.resid)*(y-muetablob$mu-w.resid$dlogMthdth)/muetablob$dmudeta)
+      ## which would also be 
+      dlogcLdeta <- as.vector(w.resid$WU_WT*w.resid$w_resid*(y-muetablob$mu-w.resid$dlogMthdth)/muetablob$dmudeta) # truncated GLM
+      z1 <- as.vector(muetablob$sane_eta-off + dlogcLdeta/H_w.resid)
     } else { # mv-response
       z1s <- vector("list",length(mvlist)) 
       for (mv_it in seq_along(mvlist)) {
         resp_range <- .subrange(cumul=cum_nobs, it=mv_it)
         z1s[[mv_it]] <- .calc_z1_obs(muetablob=muetablob$mv[[mv_it]], w.resid=w.resid$mvlist[[mv_it]],
-                                     Hobs_w.resid=Hobs_w.resid[resp_range],
+                                     H_w.resid=H_w.resid[resp_range],
                                      y=y[resp_range], off=off[resp_range])
       }
       z1 <- .unlist(z1s)
     }
-  } else z1 <- as.vector(muetablob$sane_eta-off+(w.resid/Hobs_w.resid)*(y-muetablob$mu)/muetablob$dmudeta) 
+  } else if ( ! is.null(muetablob$dlogcLdeta)) { # obsInfo, not truncated: LLF, and negbin2(possibly trunc)
+    z1 <- as.vector(muetablob$sane_eta-off + muetablob$dlogcLdeta/H_w.resid) # reason for H_w.resid here is explained in 
+    # section 'Evaluation of the gradient: total expression' (=> because these are also the weights in sscaled)
+  } else z1 <- as.vector(muetablob$sane_eta-off+(w.resid/H_w.resid)*(y-muetablob$mu)/muetablob$dmudeta) # negbin(NOT trunc) or poisson(sqrt)->Poisson
   return(z1)  
 }
 
@@ -395,11 +437,10 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
                       processed) {
   GLMMbool <- attr(processed[["models"]],"GLMMbool") 
   if (processed$how$obsInfo) {
-    if (processed$is_spprec) {
-      Hobs_w.resid <- sXaug$BLOB$H_w.resid
-    } else Hobs_w.resid <- attr(sXaug,"BLOB")$H_w.resid
+    H_w.resid <- .BLOB(sXaug)$H_w.resid # rather that WLS_mat_weights  (signed and identical in CHM_H case but not in signed QRP case)
     z1 <- .calc_z1_obs(muetablob, 
-                       w.resid, Hobs_w.resid=Hobs_w.resid,
+                       w.resid, # gradient weights
+                       H_w.resid=H_w.resid,
                        y, off, cum_nobs=attr(processed$families,"cum_nobs"))
   } else {
     ######## According to 'theorem 1' of LeeL12, new beta estimate from z1-a(i), where z1 is
@@ -418,7 +459,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
     ######################## ZAL <- .m_Matrix_times_Dvec(ZAL, ZAL_scaling)
     vecdisneeded <- processed$vecdisneeded # vecdisneeded <- c( coef12needed, coef12needed, any(dlogWran_dv_h!=0L) )
     if (any(vecdisneeded)) {
-      if (is.list(w.resid)) {
+      if ( ( ! processed$how$obsInfo) && is.list(w.resid) ) {
         WU_WT <- w.resid$WU_WT 
       } else WU_WT <- NULL
       sscaled <- .calc_sscaled_new(
@@ -429,7 +470,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
           processed=processed,
           calcCoef1=TRUE,
           w.resid=w.resid, # potentially the list with $w_resid element, etc.  
-          Hratio_factors=attr(Hobs_w.resid,"Hratio_factors") # for obsInfo; this promise should not be evaluated otherwise. 
+          Hratio_factors=attr(H_w.resid,"Hratio_factors") # for obsInfo; the coef12 promise should not be evaluated otherwise. 
         ), 
         n_u_h=n_u_h, 
         sXaug=sXaug,
@@ -437,7 +478,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
         WU_WT=WU_WT ## NULL except for truncated model
       )
       if (processed$how$obsInfo) {  
-        y2_sscaled <- z2+ as.vector((sscaled * Hobs_w.resid ) %*% ZAL )/w.ranef 
+        y2_sscaled <- z2+ as.vector((sscaled * H_w.resid ) %*% ZAL )/w.ranef 
       } else if (is.list(w.resid)) { # both the truncated and the mv cases (F_I_X_M_E obsInfo not handled here)
         y2_sscaled <- z2+ as.vector((sscaled * w.resid$w_resid ) %*% ZAL )/w.ranef ## that's the y_2 in "Methods of solution based on the augmented matrix"
         # it is unaffected by the matrix rescaling bc it is a fn of z1 and z2. But rescaled is always taken into account bc we use y2_sscaled only 
@@ -886,7 +927,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
   augZX_resu$clik <- .calc_clik(mu,phi_est,processed, 
                                 muetaenv=muetablob) # muetaenv used in COMPoisson case
   if (all(which =="clik")) return(augZX_resu)
-  if (processed$models[["eta"]]=="etaGLM") {
+  if (processed$models[["eta"]] %in% c("etaGLM")) {
     augZX_resu$p_v <- augZX_resu$clik
     return(augZX_resu)
   } # E L S E 
@@ -936,14 +977,12 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
         w.ranef <- attr(auglinmodblob$sXaug,"w.ranef")
         if (inherits(locXscal,"Matrix")) {
           locXscal <- .Dvec_times_Matrix_lower_block(1/weight_X,locXscal,n_u_h)
-          mMatrix_method <- .spaMM.data$options$Matrix_method
         } else {
           Xrows <- n_u_h+seq(nobs)
           locXscal[Xrows,] <- .Dvec_times_matrix(1/weight_X,locXscal[Xrows,]) ## get back to unweighted scaled matrix
-          mMatrix_method <- .spaMM.data$options$matrix_method
         }
         locXscal <- .calc_sXaug_Re(locXscal,X.Re,rep(1,nobs))   ## non-standard REML: => no X-scaling
-        locsXaug <- do.call(mMatrix_method,
+        locsXaug <- do.call(processed$mMatrix_method,
                             list(Xaug=locXscal, weight_X=weight_X, w.ranef=w.ranef, H_global_scale=H_global_scale))
       }
       loc_unscaled_logdet_r22 <- get_from_MME(locsXaug,"logdet_r22") 

@@ -3,6 +3,7 @@
 \alias{REMLformula}
 \alias{Beta-distribution-random-effects}
 \alias{Beta}
+\alias{prior.weights}
 \title{Fit mixed models with given correlation matrix}
 \description{
   This function fits GLMMs as well as some hierarchical generalized linear models (HGLM; Lee and Nelder 2001).
@@ -85,7 +86,7 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
    A list of given values of the coefficients of the linear predictor. See \code{\link{etaFix}} for further information.     
  }
   \item{prior.weights}{
-   An optional vector of prior weights as in \code{\link{glm}}. This fits the data to a probability model with residual variance \code{phi/prior.weights}, and all further outputs are defined to be consistent with this (see section IV in Details). 
+   An optional vector of prior weights as in \code{\link{glm}}. This fits the data to a probability model with residual variance parameter given as \code{phi/prior.weights} instead of the canonical parameter \code{phi} of the response family, and all further outputs are defined to be consistent with this (see section IV in Details). 
  }
   \item{weights.form}{
   Specification of prior weights by a one-sided formula: use \code{weights.form = ~ pw} instead of \code{prior.weights = pw}. The effect will be the same except that such an argument, known to evaluate to an object of class \code{"formula"}, is suitable to enforce safe programming practices (see \code{\link{good-practice}}).  

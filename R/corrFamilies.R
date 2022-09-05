@@ -378,8 +378,8 @@ diallel <- function(tpar=0.25, fixed=NULL, public=NULL) {
     allCorNA@x <- x
     
     allClevels <- paste0(usplitall[,1],":",usplitall[,2])
-    colnames(allCorNA) <- rownames(allCorNA) <- allClevels
-
+    rownames(allCorNA) <- colnames(allCorNA) <- allClevels
+    
     newClevels <- colnames(newZAlist[[new_rd]]) # paste0(usplitnew[,1],":",usplitnew[,2])
     
     if (which_mats$no) newLv_env$cov_newLv_oldv_list[[new_rd]] <- structure(allCorNA[newClevels, 

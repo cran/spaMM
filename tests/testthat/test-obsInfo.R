@@ -1,3 +1,5 @@
+cat(crayon::yellow("\ntest obIinfo:"))
+
 # data("Salamanders", package = "glmmTMB") 
 # (foo <- fitme(count  ~  spp  *  mined  +  (1  |site), data=Salamanders, family=negbin(link=log), method=c("ML","obs"), verbose=c(TRACE=F)))
 # testthat::expect_equal(logLik(foo), c(p_v=-815.678491998 ))

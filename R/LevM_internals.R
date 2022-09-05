@@ -1,6 +1,9 @@
 .pot4improv <- function(which_LevMar_step, sXaug, gainratio_grad, seq_n_u_h) {
+  Mg_solve_g_fac <- 250 # in selected hard 21-subset of nloptr tests, increasing to 1000 this reduced inner time but increases outer one (& opposite when reducing to 100)
+                        # <- 1 would be very poor.
+                        # (___F I X M E___ revisit these controls, adjusted under time pressure...)
   switch(which_LevMar_step,
-         "v_b"= get_from_MME(sXaug=sXaug, which="Mg_solve_g", B=gainratio_grad), # 0 at full solution (althoug B is not full gradient everywhere)
+         "v_b"= Mg_solve_g_fac*get_from_MME(sXaug=sXaug, which="Mg_solve_g", B=gainratio_grad), # 0 at full solution (althoug B is not full gradient everywhere)
          "v"= get_from_MME(sXaug=sXaug, which="Mg_invH_g", B=gainratio_grad[seq_n_u_h]),  # 0 on the manifold
          "b"= { 
            B=gainratio_grad[-seq_n_u_h]
@@ -8,8 +11,8 @@
              get_from_MME(sXaug=sXaug, which="Mg_invXtWX_g", B=B) # hum not 0 zero at full solution (bc using only block of matrix) nor at hlik maximum (since B has full logdet gradient) 
            } else {0}
          }, 
-         "b_&_v_in_b"= get_from_MME(sXaug=sXaug, which="Mg_solve_g", B=gainratio_grad), # again, 0 at full solution
-         "b_from_v_b"= get_from_MME(sXaug=sXaug, which="Mg_solve_g", B=gainratio_grad) # again, 0 at full solution
+         "b_&_v_in_b"= Mg_solve_g_fac*get_from_MME(sXaug=sXaug, which="Mg_solve_g", B=gainratio_grad), # again, 0 at full solution
+         "b_from_v_b"= Mg_solve_g_fac*get_from_MME(sXaug=sXaug, which="Mg_solve_g", B=gainratio_grad) # again, 0 at full solution
   )
 }
 

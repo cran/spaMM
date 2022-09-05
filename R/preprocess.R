@@ -204,8 +204,10 @@
       as_call <- call(family$family, link=family$link) ## need a substitute() ? 
     } else if (get_param) { ## param values are constant or dynamically assigned to processed$family
       famfam <- family$family 
-      if (famfam == "negbin") {
+      if (famfam %in% c("negbin","negbin1")) {
         as_call$shape <- environment(family$aic)$shape
+      } else if (famfam=="beta_resp") {
+        as_call$prec <- environment(family$aic)$prec
       } else if (famfam=="COMPoisson") {
         as_call$nu <- environment(family$aic)$nu
       }
@@ -226,7 +228,7 @@
         if ( ! is.null(Amatrix)) {
           is_incid <- attr(Zlist[[char_rd]],"is_incid")
           if (inherits(Amatrix,"pMatrix")) {
-            Amatrix <- as(Amatrix,"ngTMatrix")
+            Amatrix <- as(as(Amatrix, "nMatrix"), "TsparseMatrix") # => ngTMatrix 
           } else if ( ! is.null(is_incid)) {
             if (is_incid) is_incid <- attr(Amatrix,"is_incid") # .spaMM_spde.make.A() provides this attr. Otherwise, may be NULL, in which case ./.
             # ./. a later correct message may occur ("'is_incid' attribute missing, which suggests inefficient code in .calc_new_X_ZAC().)
@@ -251,7 +253,11 @@
 .assign_ZAfix <- function(processed) { # _F I X M E_ extend to all cases of ZAfix <- .ad_hoc_cbind(...) ?
   ZAfix <- .ad_hoc_cbind(processed$ZAlist, as_matrix=FALSE)   
   if (processed$is_spprec) {
-    if ( ! inherits(ZAfix,"sparseMatrix")) ZAfix <- as(ZAfix,"dgCMatrix") # .Rcpp_as_dgCMatrix(ZAfix) ## 
+    if ( ! inherits(ZAfix,"sparseMatrix")) {
+      if (.spaMM.data$options$Matrix_old) { # this block appears to evade the long tests
+        ZAfix <- as(ZAfix,"dgCMatrix") # .Rcpp_as_dgCMatrix(ZAfix) ## 
+      } else ZAfix <- as(as(ZAfix,"generalMatrix"),"CsparseMatrix") # .Rcpp_as_dgCMatrix(ZAfix) ## 
+    }
     processed$AUGI0_ZX$is_unitary_ZAfix <- FALSE
   }
   processed$AUGI0_ZX$ZAfix <- ZAfix
@@ -294,7 +300,7 @@
   ## no need to return the modified environment
 }
 
-.calc_fam_corrected_guess <- function(guess, For, processed, link_=NULL, nrand=NULL) {
+.calc_fam_corrected_guess <- function(guess, For, processed, link_=NULL, trunc_=NULL, nrand=NULL) {
   if (is.null(link_)) link_ <- processed$family$link
   link_[link_=="loglambda"] <- "log" # For mv, link_ is actually several links
   if (is.null(nrand)) nrand <- length(processed$ZAlist)
@@ -325,6 +331,7 @@
     }
     fam_corrected_guess <- min(guess, maxinit/nrand) 
   }
+  # if (any(trunc_)) fam_corrected_guess <- fam_corrected_guess/2 # quick patch but has drawbacks
   return(fam_corrected_guess)
 }
 
@@ -437,7 +444,7 @@
 }
 
 .is_link_canonical <- function(family) {
-  if (is.null(canonicalLink <- attr(family,"canonicalLink"))) {
+  if (is.null(canonicalLink <- family$flags$canonicalLink)) {
     canonicalLink <- FALSE
     if (family$family=="gaussian" && family$link=="identity") {
       canonicalLink <- TRUE
@@ -455,7 +462,7 @@
 }
 
 .is_LM <- function(family) {
-  if (is.null(LMbool <- attr(family,"LMbool"))) {
+  if (is.null(LMbool <- family$flags$LMbool)) {
     LMbool <- (family$family=="gaussian" && family$link=="identity")
   }
   return(LMbool)
@@ -466,11 +473,11 @@
   GLMMbool <- (length(lcrandfamfam) && all(lcrandfamfam=="gaussian") ) ## only allowed gaussian rand.family is gaussian(identity) 
   const_pw <- ( ! inherits(prior.weights,"call"))
   unit_GLMweights <- (
-                     (family$family=="gaussian" && attr(family,"canonicalLink") ) ||
+                     (family$family=="gaussian" && family$flags$canonicalLink ) ||
                      (family$family=="Gamma" && family$link=="log") 
                   )
   unit_Hobs_weights <- (
-    (family$family=="gaussian" && attr(family,"canonicalLink") ) ||
+    (family$family=="gaussian" && family$flags$canonicalLink ) ||
       (family$family=="Gamma" && family$link=="log" && ! processed$how$obsInfo) 
   )
   const_Hobs_wresid <- unit_Hobs_weights && const_pw # constant non-unit GLM weights do not occur in actual families otherwise that case might need to be distinguished (cd muetafn).
@@ -479,13 +486,15 @@
     # GLGLLM_const_w controls whether the weights and augmented matrix need to be updated over iterations of IRLS.
     # it is not that the weights are constant across augmented 'levels' (hence const_pw is not determined by unique(pw))
     # Likewise it does not mean that phi is not reestimated between IRLSs. phi valeus are always constant within IRLS.
-    LMMbool <- (family$family=="gaussian" && attr(family,"canonicalLink") ) 
+    LMMbool <- (family$family=="gaussian" && family$flags$canonicalLink ) 
     LLM_const_w <- (LMMbool && const_Hobs_wresid) 
   } else LMMbool <- LLM_const_w <- GLGLLM_const_w <- FALSE
+  LLFbool <- inherits(family,"LLF")
   return(structure(models, LMMbool=LMMbool, GLMMbool=GLMMbool, LLM_const_w=LLM_const_w,  
                    GLGLLM_const_w=GLGLLM_const_w, const_Hobs_wresid=const_Hobs_wresid, 
                    unit_GLMweights=unit_GLMweights, # for .muetafn()
-                   unit_Hobs_weights=unit_Hobs_weights) # for .vecdisneeded()
+                   unit_Hobs_weights=unit_Hobs_weights, # for .vecdisneeded()
+                   LLFbool=LLFbool)
          )
 }
 
@@ -837,7 +846,9 @@
   Xattr <- attributes(X.pv)
   if ( ncol(X.pv)) {
     if (sparse_X) { ## sparse_X is useful for rankinfo bc Matrix::qr can be much faster
-      X.pv <- as(X.pv,"dgCMatrix") # .Rcpp_as_dgCMatrix(X.pv) # 
+      if (.spaMM.data$options$Matrix_old) { # ugly... but such versions do not handle as(, "dMatrix"))
+        X.pv <- as(X.pv,"dgCMatrix") # .Rcpp_as_dgCMatrix(X.pv) # 
+      } else X.pv <- as(as(X.pv,"generalMatrix"),"CsparseMatrix") # .Rcpp_as_dgCMatrix(X.pv) #
     }
   } 
   if (ncol(X.pv)) {
@@ -903,7 +914,11 @@
   if ( ! any(AUGI0_ZX$vec_normIMRF)) {
     ZAfix <- .ad_hoc_cbind(ZAlist, as_matrix=FALSE)  
     if (sparse_precision) {
-      if ( ! inherits(ZAfix,"sparseMatrix")) ZAfix <- as(ZAfix,"dgCMatrix") # .Rcpp_as_dgCMatrix(ZAfix) ## 
+      if ( ! inherits(ZAfix,"sparseMatrix"))  {
+        if (.spaMM.data$options$Matrix_old) { # this block appears to evade the long tests
+          ZAfix <- as(ZAfix,"dgCMatrix") # .Rcpp_as_dgCMatrix(ZAfix) ## 
+        } else ZAfix <- as(as(ZAfix,"generalMatrix"),"CsparseMatrix") # .Rcpp_as_dgCMatrix(ZAfix) ## 
+      }
       rsZA <- rowSums(ZAfix) ## test that there a '1' per row and '0's otherwise:  
       AUGI0_ZX$is_unitary_ZAfix <- (all(unique(rsZA)==1L) && all(rowSums(ZAfix^2)==rsZA)) ## $ rather than attribute to S4 ZAfix
     } else {
@@ -1048,14 +1063,33 @@
   ############### initiate 'processed' envir ##############
   if (For_fitmv <- (For=="fitmv")) For <- "fitme" # i.e. treat as "fitme" except where identified by For_fitmv or callargs$For
   resid.model <- .reformat_resid_model(resid.model,check_old_syntax=control.HLfit$resid.family) ## calls .preprocess_formula() ## the list(...) is used even for poisson, binomial...
+  
+  ##### some family processing
   canonicalLink <- .is_link_canonical(family)
-  family <- structure(family, canonicalLink=canonicalLink, LMbool=(canonicalLink && family$family=="gaussian"))
-  #
+  if (is.null(family$flags)) { # standard stats:: family or perhaps from 3rd package
+    obs <- ( # According to the documentation:
+      canonicalLink || 
+      family$family=="binomial" ||## implemented through ad hoc bit of code outside the family object so perhaps that could have been done for Poisson)
+        (family$family %in% c("Gamma","gaussian") && family$link=="log") #" Same remark...
+    )
+    family$flags <- list(exp=TRUE,obs=obs) # represent capacity for these method, through code in the family object or not
+  }
+  obsInfo <- .obsInfo(HLmethod, family, canonicalLink) 
+  if (obsInfo && ! family$flags$obs) { # standard stats:: family or perhaps from 3rd package
+    if (family$family=="poisson") { # stats::poisson here ([T]Poisson would have TRUE $obs)
+      family <- Poisson(link=family$link) # untruncated here since was stats::poisson
+    } else stop("This family cannot yet be fitted using observed Hessian.") 
+  }
+  family$flags$canonicalLink <- canonicalLink
+  family$flags$LMbool <- (canonicalLink && family$family=="gaussian")
+  #####
+  
   processed <- list2env(list(family=family, clik_fn=.get_clik_fn(family), For=For,
                              envir=list2env(list(), parent=environment(HLfit)),
                              port_env=new.env(parent=emptyenv()),
                              verbose=.reformat_verbose(verbose,For=For),
-                             control.glm=do.call("glm.control", control.glm)
+                             control.glm=do.call("glm.control", control.glm),
+                             how=list(obsInfo=obsInfo)
                              ))
   #
   if (is.null(main_terms_info <- attr(data,"updated_terms_info"))) { # standard case
@@ -1232,10 +1266,7 @@
 
   } else processed$rand.families <- list() ## ## corrects the default [gaussian()] when nrand=0
   #
-  processed$how$obsInfo <- .obsInfo(HLmethod, family) 
-  HLmethod <- HLmethod[[1L]]
-  #
-  HLmethod <- .preprocess_HLmethod(HLmethod, family, processed$lcrandfamfam) ## not a member of the 'processed' object
+  HLmethod <- .preprocess_HLmethod(HLmethod[[1L]], family, processed$lcrandfamfam) ## not a member of the 'processed' object
   .preprocess_HL_REMLformula(HLmethod, processed, BinomialDen, nobs, control.HLfit, y, REMLformula) # $HL, $REMLformula
   ####
   ####
@@ -1264,6 +1295,9 @@
     processed$is_spprec <- FALSE ## for .do_TRACE()
     processed$init_HLfit <- init.HLfit
   }
+  if (processed$is_spprec) {
+    processed$solve_IRLS_fn <- .solve_IRLS_as_spprec
+  } else  processed$solve_IRLS_fn <- .solve_IRLS_as_ZX
   ###   
   # assigns $X.Re, $off, $objective but there is NO $X.pv
   X.pv <- .preprocess_X_XRe_off(main_terms_info, predictor, processed, X.pv, etaFix, data, objective, nobs) 
@@ -1306,7 +1340,8 @@
     } else {
       processed$QRmethod <- .choose_QRmethod(processed$ZAlist, corr_info=corr_info,
                                              is_spprec=processed$is_spprec, processed=processed, control.HLfit=control.HLfit)
-      .check_time_G_diagnosis(.provide_G_diagnosis, processed)
+      algebra <- .set_mMatrix_method(processed)
+      .check_time_G_diagnosis(.provide_G_diagnosis, processed, algebra)  # sets processed$mMatrix_method for [sp|de]corr
       nrd <- processed$cum_n_u_h[nrand+1L]
       if (nrd==1L) warning("Found a single random effect with a *single level*. Check formula?", immediate.=TRUE)
           processed$AUGI0_ZX <- .init_AUGI0_ZX(X.pv, vec_normIMRF, processed$ZAlist, nrand, n_u_h=nrd, sparse_precision, 
@@ -1327,6 +1362,10 @@
                         processed$control.glm, family) # assigns things to 'processed' (incl $models, $residModel)
   #
   processed$models <- .setattr_G_LMMbool(models, processed=processed) # after modif by .preprocess_phi_model()
+  if (attr(processed$models,"LLFbool")) {
+    processed$etaxLM_fn <- .calc_etaLLMblob
+  } else processed$etaxLM_fn <- .calc_etaGLMblob
+  
   if (attr(processed[["models"]],"LMMbool") && ! For_fitmv) .check_identifiability_LMM(processed, nobs=nobs) # depending on mdoel booleans.
   processed$vecdisneeded <- .vecdisneeded(pforpv=ncol(X.pv), family, processed) # after setting $models
   #

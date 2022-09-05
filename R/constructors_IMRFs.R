@@ -6,13 +6,15 @@
   if (is.null(IMRF_design)) { # alpha not prefixed in the fitted model => IMRF_design not precomputed
     .inla.spde2.matern <- get("inla.spde2.matern", asNamespace("INLA"), inherits = FALSE)
     if (inherits(.inla.spde2.matern,"try-error")) stop("INLA must be installed in order to design the 'MaternIMRFa' covariance.")
+    oldMDCopt <- options(Matrix.warnDeprecatedCoerce = 0) # # INLA issue
     local_design <- .inla.spde2.matern(mesh, alpha=1)
-    e1 <- extreme_eig(as(local_design$param.inla$M2,"dgCMatrix"), symmetric=TRUE, required=EEV_required)[1L]
+    options(oldMDCopt)
+    e1 <- extreme_eig(as(local_design$param.inla$M2,"CsparseMatrix"), symmetric=TRUE, required=EEV_required)[1L]
   } else {
-    e1 <- extreme_eig(as(IMRF_design$param.inla$M1,"dgCMatrix"), symmetric=TRUE, required=EEV_required)[1L]
+    e1 <- extreme_eig(as(IMRF_design$param.inla$M1,"CsparseMatrix"), symmetric=TRUE, required=EEV_required)[1L]
     if ( ! is.null(e1)) {
       e1 <- max(e1,
-                extreme_eig(as(IMRF_design$param.inla$M2,"dgCMatrix"), symmetric=TRUE, required=EEV_required)[1L])
+                extreme_eig(as(IMRF_design$param.inla$M2,"CsparseMatrix"), symmetric=TRUE, required=EEV_required)[1L])
     }
   }
   if ( ! is.null(e1)) range_factor <- min(range_factor, 0.01/sqrt((e1 - 1e5 * 0)/(-1 + 1e5 + e1 - 1e5 * 0)))
@@ -46,11 +48,18 @@ MaternIMRFa <- function(mesh, tpar=c(alpha=1.25,kappa=0.1), fixed=NULL) {
   
   IMRF_design <- NULL
   if ((  ! is.null(fixed) ) && 
-      (! is.na(fixed["alpha"]))) IMRF_design <- .inla.spde2.matern(mesh, alpha=fixed["alpha"])
-  
+      (! is.na(fixed["alpha"]))) {
+    oldMDCopt <- options(Matrix.warnDeprecatedCoerce = 0) # # INLA issue
+    IMRF_design <- .inla.spde2.matern(mesh, alpha=fixed["alpha"])
+    options(oldMDCopt)
+  }
   Cf <- function(parvec) {
     alpha <- parvec[1L]
-    if (is.null(IMRF_design)) IMRF_design <- .inla.spde2.matern(mesh, alpha=alpha) # it as been precomputed in the parent envir if alpha was fixed
+    if (is.null(IMRF_design))  {
+      oldMDCopt <- options(Matrix.warnDeprecatedCoerce = 0) # # INLA issue
+      IMRF_design <- .inla.spde2.matern(mesh, alpha=alpha) # it as been precomputed in the parent envir if alpha was fixed
+      options(oldMDCopt)
+    }
     kappa <- parvec[2L]
     Qmat <- .calc_IMRF_Qmat(pars=list(model=IMRF_design, SPDE_alpha=alpha), 
                             grid_arglist=NULL, 

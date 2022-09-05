@@ -125,9 +125,12 @@
   return(pd)
 }
 
-# Consistent with cAIC4:::conditionalBootstrap
+# Consistent with Saefken et al, only in terms of theta and mu. The linear predictor eta and link do not appear.
+# Simulations for that paper use predictions eta only in the poisson(log) case;
+# In the exponential (->Gamma(log)) they do use the theta deduced as -1/mu, not the eta. => cAIC4:::conditionalBootstrap is odd...
 .calc_AIC_dfs <- function (object, nsim, type="residual", seed=NULL, 
                            nb_cores=NULL, fit_env=NULL) {
+  if (inherits(object$family,"LLF")) stop("Bootstrap bias correction not implemented for families not from GLM (exponential family) class.")
   bootsims <- simulate(object, nsim = nsim, type = type, verbose=FALSE, seed=seed) # the corresponding lmer code returns a data frame
   muFREQS <- dopar(bootsims, function(x) {
     predict(update_resp(object, newresp=x), type="response") # predict(refit(object, newresp = x))
@@ -151,7 +154,7 @@
     p_phi <- sum(.unlist(resid_fit$dfs)) ## phi_pd is relevant only for measuring quality of prediction by the resid_fit! 
   } else p_phi <- sum(.unlist(dfs[["p_fixef_phi"]])) # .unlist() for mv
   names_est_ranefPars <- unlist(.get_methods_disp(object))  
-  fam_disp_parsnames <- intersect(names_est_ranefPars,c("NB_shape","COMP_nu"))
+  fam_disp_parsnames <- intersect(names_est_ranefPars,c("NB_shape","COMP_nu","beta_prec"))
   if (length(fam_disp_parsnames)) {
     p_GLM_family <- length( # compatible with mv:
       .unlist(.get_outer_inits_from_fit(object, keep_canon_user_inits = FALSE)[fam_disp_parsnames]))
@@ -264,7 +267,7 @@
     }
     if (dvdlogphiMat_needed) {
       muetablob <- object$muetablob
-      # .get_H_w.resid() rather than .get_w.resid here. Guessing from the section mentioning "dvdloglamMat" in the long doc. (___F_I_X_M_E___) 
+      # .get_H_w.resid() rather than .get_w.resid here. See section mentioning "dvdloglamMat" in the long doc. 
       if ( ! is.null(envir$G_CHMfactor)) { # spprec; possibly generalisable code not using math-dense ZAL
         # rhs <- .Matrix_times_Dvec(t(envir$sXaug$AUGI0_ZX$ZAfix), - dh0deta) # efficient
         # rhs <- solve(envir$G_CHMfactor,rhs,system="A") # efficient
@@ -352,8 +355,10 @@
       } else precmat <- .ZtWZwrapper(invL,object$w.ranef)
       message("Possibly inefficient code in .calc_invV_factors().")
     } 
-    ## avoid formation of a large nxn matrix:
-    Gmat <- precmat + ZtwrZ ## try to sum dsC or to sum dense matrix but not to mix types...
+    ## try to sum dsC or to sum dense matrix but not to mix types..., and to avoid formation of a large nxn matrix:
+    if (inherits(precmat,"dsCMatrix") && inherits(ZtwrZ,"dsCMatrix")) {
+      Gmat <- .dsCsum(precmat,ZtwrZ)
+    } else Gmat <- precmat + ZtwrZ  
     invG_ZtW <- try(solve(Gmat, t(wrZ)),silent=TRUE)
     if (inherits(invG_ZtW,"try-error")) { ## but that should be well behaved when precmat is.
       invG <- ginv(as.matrix(Gmat)) ## FIXME quick patch at least
@@ -367,8 +372,20 @@
 
 .calc_beta_cov_info_others <- function(wAugX=NULL, AUGI0_ZX, ZAL, ww) { ## post-fit fn
   if (is.null(wAugX)) {
-    if (is.null(ZAL)) { # GLM... 
-      wAugX <- .calc_wAugX(XZ_0I=AUGI0_ZX$X.pv,sqrt.ww=sqrt(ww)) 
+    if (is.null(ZAL)) { # GLM... or LLM
+      if (any(ww<0)) { # ... LLM
+        negHess <- crossprod(AUGI0_ZX$X.pv, .Dvec_times_m_Matrix( ww, AUGI0_ZX$X.pv))
+        cholH <- try(chol(negHess), silent=TRUE)
+        if (inherits(cholH, "try-error")) { # => brute regularization
+          warning("logLik presumably not maximized (information matrix is not positive definite at attained estimates).", immediate. = TRUE)
+          beta_cov <- tcrossfac_beta_v_cov <- matrix(NA, ncol=ncol(negHess), nrow=ncol(negHess))
+        } else {
+          beta_cov <- chol2inv(cholH)
+          tcrossfac_beta_v_cov <- t(cholH)
+        }
+        colnames(beta_cov) <- rownames(beta_cov) <- colnames(negHess) # sigh
+        return(list(beta_cov=beta_cov, tcrossfac_beta_v_cov=tcrossfac_beta_v_cov))
+      } else wAugX <- .calc_wAugX(XZ_0I=AUGI0_ZX$X.pv,sqrt.ww=sqrt(ww)) 
       # => ... may have zero cols... X.pv being a zero-col *m*atrix, in which case .spaMM.data$options$matrix_method is selected below 
       # and then get_from_MME(<matrix_method>, "beta_cov_info_from_wAugX") must handle this case.
     } else {

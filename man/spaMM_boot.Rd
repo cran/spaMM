@@ -33,13 +33,13 @@ Number of samples to simulate and analyze.
   }
   \item{control.foreach}{list of control arguments for \code{foreach}. These include in particular \code{.combine} (with default value \code{"rbind"}), and \code{.errorhandling} (with default value \code{"remove"}, but \code{"pass"} is quite useful for debugging).}
   \item{debug.}{
-  Boolean (or integer, interpreted as boolean). For debugging purposes, particularly from parallel computations. The effect of \code{debug.=TRUE} depends on what \code{simuland} does of it. The default \code{simuland} for likelihood ratio testing functions, \code{\link{eval_replicate}}, shows how \code{debug.} can be used.
+  Boolean (or integer, interpreted as boolean). For debugging purposes, given that \code{spaMM_boot} does not stop when the fit of a bootstrap replicate fails. Subject to changes with no or little notice. In serial computation, \code{debug.=2} will stop on an error. In parallel computation, this would be ignored. The effect of \code{debug.=TRUE} depends on what \code{simuland} does of it. The default \code{simuland} for likelihood ratio testing functions, \code{\link{eval_replicate}}, shows how \code{debug.} can be used to control a call to \code{dump.frames} (however, debugging user-defined functions by such a call does not require control by \code{debug.}).  
 }
 \item{type}{
   Character: passed to \code{simulate.HLfit}. Defaults, with a warning, to \code{type="marginal"} in order to replicate the behaviour of previous versions. But this is not necessarily the appropriate \code{type} for all possible uses. See Details of \code{\link{simulate.HLfit}} for other implemented options.
 }  
 \item{fit_env}{
-  An environment or list containing variables necessary to evaluate \code{simuland} on each sample, and not included in the fit \code{object}. E.g., use \code{fit_env=list(phi_fix=phi_fix)} if the fit assumed \code{fixed=list(phi=phi_fix)} 
+  An environment or list containing variables necessary to evaluate \code{simuland} on each sample, and not included in the fit \code{object}. E.g., use \code{fit_env=list(phi_fix=phi_fix)} if the fit assumed \code{fixed=list(phi=phi_fix)}: the name in \code{list(phi_fix=<.>)} must be the name of the object that will be sought by the called process when interpreting \code{fixed=list(phi=phi_fix)} (if still unsure about the proper syntax, see the \code{\link[parallel]{clusterExport}} documentation, as \code{fit_env} is used in the following context: \code{parallel::clusterExport(cl=<cluster>, varlist=ls(fit_env), envir=fit_env))}.   
 } 
 \item{cluster_args}{
   \code{NULL} or a \code{list} of arguments, passed to \code{\link[parallel]{makeCluster}}. 
@@ -92,7 +92,8 @@ if (spaMM.getOption("example_maxtime")>7) {
   
   # Return only a model coefficient for each fit: 
   spaMM_boot(lrt$nullfit, simuland = myfun, nsim=7,
-               what=quote(function(res) fixef(res)[2L]), lrt=lrt, type ="marginal")[["bootreps"]]       
+             what=quote(function(res) fixef(res)[2L]), 
+             lrt=lrt, type ="marginal")[["bootreps"]]       
 }
 }
 \keyword{ htest }

@@ -11,7 +11,9 @@ The following functions evaluate or plot \emph{partial-dependence} effects.
 
 \code{pdep_effects} also compute intervals of the type defined by its \code{intervals} argument (by default, prediction intervals). By default, it returns a data frame of average values of point predictions and interval bounds for each value of the focal variable, but it can also return lists of all predictions.
   
-A plot function is available for numeric predictors: \code{plot_effects} calls \code{pdep_effects} and produces a simple plot (using only base graphic functions) of its results, including prediction bands representing the two average one-sided widths of intervals.  If added to the plot, the raw data may appear to depart from the partial-dependence predictions, since the data are a priori affected by the associations between variables which the predictions free themselves from. An adapted plot of fit residuals may be then be more useful, and the Example shows how it can be performed.   
+A plot function is available for numeric or factor predictors: \code{plot_effects} calls \code{pdep_effects} and produces a simple plot (using only base graphic functions) of its results, including prediction bands representing the two average one-sided widths of intervals. The last section of the Examples shows how to obtain more elaborate plots including the same information using \pkg{ggplot2}. 
+
+If added to the plot, the raw data may appear to depart from the partial-dependence predictions, since the data are a priori affected by the associations between variables which the predictions free themselves from. An adapted plot of fit residuals may be then be more useful, and the Examples also show how it can be performed.   
 }
 \usage{
 pdep_effects(object, focal_var, newdata = object$data, length.out = 20, 
@@ -100,4 +102,27 @@ pdep_res <- pdep_points[paste(hlcor$data$prop.ag),"pointp"] +
               residuals(hlcor)
 
 points(x = hlcor$data$prop.ag, y = pdep_res, col = "red", pch = 20)
+
+\dontrun{ 
+
+## Plotting pdep-effects for different categories, using ggplot.
+library(ggplot2)
+
+data("Gryphon")
+tmp <- na.omit(Gryphon_df)
+spfit <- spaMM::fitme(TARSUS ~ BWT*sex, data = tmp)
+
+tmp$sex <- "1"
+pdep_1 <- pdep_effects(spfit,"BWT", newdata=tmp)
+tmp$sex <- "2"
+pdep_2 <- pdep_effects(spfit,"BWT", newdata=tmp)
+pdep_1$sex <- "1" ; pdep_2$sex <- "2"  
+pdep <- rbind(pdep_1,pdep_2)
+
+ggplot(pdep,aes(y = pointp , x = focal_var ,col = sex, fill=sex)) + geom_point() +
+  geom_ribbon(aes(ymin = low, ymax = up), alpha = 0.3) + xlab("BWT") +
+  ylab("TARSUS")
+
+
+}
 }

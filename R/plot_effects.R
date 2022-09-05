@@ -1,10 +1,10 @@
-pdep_effects <- function(object,focal_var,newdata =object$data, length.out=20L, focal_values=NULL, levels = NULL, 
+pdep_effects <- function(object, focal_var, newdata =object$data, length.out=20L, focal_values=NULL, levels = NULL, 
                          intervals = "predVar", indiv=FALSE,...) {
   was_invColdoldList_NULL <- is.null(object$envir$invColdoldList) # to be able to restore initial state 
   if (!focal_var %in% colnames(newdata)) {
     stop("'focal_var' is not found in the data.")
   }
-  ori_values <- newdata[, focal_var]
+  ori_values <- newdata[, focal_var,drop=TRUE] # drop[] bc tibbles do not automatically drop 
   if (is.logical(ori_values)) {
     if (is.null(focal.values <- focal_values)) focal.values <- c(FALSE,TRUE) 
   } else if (is.factor(ori_values)) {
@@ -24,6 +24,7 @@ pdep_effects <- function(object,focal_var,newdata =object$data, length.out=20L, 
       }
       focal.values <- levels
     }
+    focal.values <- factor(focal.values)
     length.out <- length(focal.values)
   } else if (is.numeric(ori_values)) {
     if (is.null(focal.values <- focal_values)) {
@@ -88,13 +89,18 @@ plot_effects <- function(object, focal_var, newdata=object$data, # doc as a data
   colpts <- do.call(rgb,rgb.args)
   rgb.args$alpha <- rgb.args$maxColorValue*0.1 ## should be able to control the alpha factor
   colshd <- do.call(rgb,rgb.args)
-  # Next lines clearly assuming that the predictor is numeric as now stated in the doc.
   new.x <- effects[,"focal_var"]
-  if (!add) plot(NULL, type = "l",
+  if (!add) {
+    if (inherits(new.x,"factor")) {
+      asnum.x <- as.numeric(new.x)
+      plot(NULL, type = "l", xaxt="n",
+           ylab = ylab, xlab = xlab, xlim = range(asnum.x), ylim = ylim)
+      axis(1,at=asnum.x, labels=new.x)
+    } else plot(NULL, type = "l",
        ylab = ylab, xlab = xlab, xlim = range(new.x), ylim = ylim)
+  }
   polygon(c(new.x,rev(new.x)),c(effects[,"low"],rev(effects[,"up"])),border=NA,col=colshd)
-  focal_class <- class(newdata[, focal_var])
-  if ("numeric" %in% focal_class) {
+  if (inherits(new.x,"numeric")) {
     lines(new.x,effects[,"pointp"],lwd=2,col=colpts)
   } else points(new.x,effects[,"pointp"],col=colpts,pch=19)
   graphics::rug(effects[, "focal_var"], side = 1, col = colpts) ## should be able to control the side

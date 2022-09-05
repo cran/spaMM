@@ -1,4 +1,4 @@
-cat(crayon::yellow("\ntest negbin1:\n"))
+cat(crayon::yellow("\ntest neg.bin.1 by negbin[2]:\n"))
 
 # Here 'negbin1' denotes the case where the variance of the negbin is a linear function of the mean.
 # This can be represented as a Poisson-Gamma mixture model with heteroscedastic independent Gamma random effects.

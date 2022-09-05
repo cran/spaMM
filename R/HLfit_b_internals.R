@@ -10,7 +10,18 @@
       checknu <- substitute(nu, env=environment(family$aic)) 
       if (inherits(checknu,"call")) eval(checknu)
     }
-  } else if (family$family == "negbin") {
+  } else if (family$family=="beta_resp") {
+    if ( ! is.null(ranFix$beta_prec) && ! is.na(beta_prec <- ranFix$beta_prec[char_mv_it])) { ## optimisation call 
+      #  COMP_nu[char_mv_it] to get a NA where [[char_mv_it]] generates an error
+      #  But it is important to drop the name that, if present, would mess names of return values of .COMPxxx() fns
+      assign("prec",beta_prec[[1]],envir=environment(family$aic))
+      ranFix$beta_prec[char_mv_it] <- NA
+      ranFix$beta_prec <- na.omit(ranFix$beta_prec)
+    } else {
+      checkprec <- substitute(prec, env=environment(family$aic)) 
+      if (inherits(checkprec,"call")) eval(checkprec)
+    }
+  } else if (family$family %in% c("negbin","negbin1")) {
     if ( ! is.null(ranFix$NB_shape) && ! is.na(NB_shape <- ranFix$NB_shape[char_mv_it])) { ## fitme -> HLCor -> HLfit
       assign("shape",NB_shape,envir=environment(family$aic))
       ranFix$NB_shape[char_mv_it] <- NA
@@ -19,6 +30,10 @@
       assign("shape",.NB_shapeInv(trNB_shape),envir=environment(family$aic))
       ranFix$trNB_shape[char_mv_it] <- NA
       ranFix$trNB_shape <- na.omit(ranFix$trNB_shape)
+    } else if ( ! is.null(ranFix$trbeta_prec) && ! is.na(trbeta_prec <- ranFix$trbeta_prec[char_mv_it])) { ## fitme -> HLCor -> HLfit
+      assign("prec",.beta_precInv(trbeta_prec),envir=environment(family$aic))
+      ranFix$trbeta_prec[char_mv_it] <- NA
+      ranFix$trbeta_prec <- na.omit(ranFix$trbeta_prec)
     } else {
       checktheta <- substitute(shape, env=environment(family$aic)) 
       if (inherits(checktheta,"call")) eval(checktheta)
@@ -42,7 +57,18 @@
       checknu <- substitute(nu, env=environment(family$aic)) 
       if (inherits(checknu,"call")) eval(checknu)
     }
-  } else if (family$family == "negbin") {
+  } else if (family$family=="beta_resp") {
+    if ( ! is.null(ranFix$beta_prec)) { ## optimisation call
+      assign("prec",ranFix$beta_prec,envir=environment(family$aic))
+      ranFix$beta_prec <- NULL
+    } else if ( ! is.null(ranFix$trbeta_prec)) { ## fitme -> HLfit directly (FIXME: unify both cases ?)
+      assign("prec",.beta_precInv(ranFix$trbeta_prec),envir=environment(family$aic))
+      ranFix$trbeta_prec <- NULL
+    } else {
+      checkprec <- substitute(prec, env=environment(family$aic)) 
+      if (inherits(checkprec,"call")) eval(checkprec)
+    }
+  } else if (family$family  %in% c("negbin","negbin1")) {
     if ( ! is.null(ranFix$NB_shape)) { ## fitme -> HLCor -> HLfit
       assign("shape",ranFix$NB_shape,envir=environment(family$aic))
       ranFix$NB_shape <- NULL
@@ -98,12 +124,18 @@
     }
     cliks <- unlist(cliks, recursive = FALSE, use.names = FALSE)
   } else {
+    # clik_fn has theta as argument (and may indeed may sometimes use the theta value rather than mu) hence uses the canonical link to deduce mu from theta (or gets the mu attribute of theta) 
+    # If clik_fn was written in terms of mu the .theta.mu.canonical() call could be avoided. 
+    # Indeed for 'LLM's theta=mu (identity pseudo-canonical lonk).
+    # Only other use of clik_fn is for cAIC bootstrap correction, only for GLM families...
     family <- processed$family
     theta <- .theta.mu.canonical(mu/BinomialDen,family)  # Could be a bottleneck for CMP if attr(mu,"lambda") were missing.
     if (family$family=="binomial") {
       cliks <- clik_fn(theta, y/BinomialDen, BinomialDen, eval(prior.weights)/phi_est)
     } else if (family$family=="COMPoisson") {
       cliks <- clik_fn(theta, y, eval(prior.weights)/phi_est, muetaenv=muetaenv)
+    } else if (family$family=="beta_resp") {
+      cliks <- clik_fn(theta, y, pw=eval(prior.weights))
     } else {
       phi_est[phi_est<1e-12] <- 1e-10 ## 2014/09/04 local correction, has to be finer than any test for convergence 
       ## creates upper bias on clik but should be more than compensated by the lad
@@ -205,16 +237,16 @@
 
 
 # called by HLfit_body for models[[1]]=="etaGLM"; tested eg by test-COMPoisson:
-.calc_etaGLMblob <- function(processed, 
-                         mu, eta, muetablob, 
+.calc_etaGLMblob <- function(processed, muetablob, 
+                         mu=muetablob$mu, eta=muetablob$sane_eta, 
                          old_beta_eta, ## scaled since X.pv is scaled; same for return beta_eta. An init.HLfit$fixef would be (.)/attr(spaMM:::.scale(zut$X.pv),"scaled:scale")
                          w.resid,
                          phi_est, 
-                         off, 
+                         off=processed$off, 
                          maxit.mean, 
                          verbose, 
                          for_intervals=NULL,
-                         Xtol_rel) {
+                         Xtol_rel=processed$spaMM_tol$Xtol_rel) {
     BinomialDen <- processed$BinomialDen
     X.pv <- processed$AUGI0_ZX$X.pv
     y <- processed$y
@@ -296,7 +328,7 @@
     } ## end for (innerj in 1:maxit.mean)
     names(beta_eta) <- colnames(X.pv)
     return(list(eta=muetablob$sane_eta, muetablob=muetablob, beta_eta=beta_eta, w.resid=w.resid, innerj=innerj,
-                sXaug=structure(NA,class="LM or GLM")))
+                sXaug=structure(NA,class="(G)LM")))
   }
 
 .calc_std_leverages <- function(models, need_ranefPars_estim, phi.Fix, auglinmodblob, n_u_h, nobs, processed, w.resid, u_h, 
@@ -365,4 +397,17 @@
     } else beta_eta <- numeric(0L) # don't leave it NULL so that we don't try to get it from inits_by_glm.
   } 
   beta_eta
+}
+
+.p_corr_inner_rC <- function(ranCoefs_blob, LMatrices) {
+  var_ranCoefs <- with(ranCoefs_blob, (isRandomSlope & ! is_set)) # inner ranCoefs
+  if (any(var_ranCoefs)) {
+    p_corr <- vector("list", length(LMatrices))
+    for (it in which(var_ranCoefs)) {
+      dimL <- NROW(attr(LMatrices[[it]],"latentL_blob")$compactcovmat)
+      if (dimL==0L) stop("'latentL_blob' attribute missing to LMatrices[[it]].")
+      p_corr[[it]] <- (dimL-1)*dimL/2
+    }
+    sum(.unlist(p_corr))
+  } else 0L
 }

@@ -417,7 +417,7 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
   return(predVar) ## may be a Matrix
 }
 
-
+# This ignores prior weights. I wrote a function using them => code_doc/calcResidVar_phiW.R
 .calcResidVar <- function(object,newdata=NULL, phi.object=object$phi.object, families=object$families, 
                           mv_it=NULL, #  used to pass non-default to .get_glm_phi()
                           family=object$family, fv,
@@ -433,7 +433,7 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
     }
     residVar <- unlist(residVars, recursive = FALSE, use.names = FALSE)
   } else {
-    if (family$family %in% c("poisson","binomial","COMPoisson","negbin")) {
+    if (! family$family %in% c("gaussian","Gamma")) {
       residVar <- family$variance(fv)
     } else {
       if (is.null(phi_outer <- phi.object$phi_outer)) { ## valid whether newdata are NULL or not:      
@@ -461,65 +461,6 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
   }
   residVar
 } 
-
-
-if (FALSE) {# This fn is documentation, 
-  .calcResidVar_phiW <- function(object,newdata=NULL, phi.object=object$phi.object, families=object$families, 
-                                 mv_it=NULL, #  used to pass non-default to .get_glm_phi()
-                                 family=object$family, fv,
-                                 nobs_info=nrow(object$X.pv),
-                                 prior.weights=object$prior.weights,
-                                 phi_mod_class=object$models[["phi"]]) {
-    if ( ! is.null(families)) {
-      residVars <- vector("list", length(families))
-      cum_nobs <- attr(families,"cum_nobs")
-      for (mv_it in seq_along(families)) {
-        residVars[[mv_it]] <- .calcResidVar(object, newdata=newdata, phi.object=phi.object[[mv_it]], families=NULL, 
-                                            mv_it=mv_it, 
-                                            family=families[[mv_it]], fv=fv[.subrange(cumul=cum_nobs, it=mv_it)],
-                                            nobs_info=object$vec_nobs[mv_it],
-                                            prior.weights=prior.weights[[mv_it]],
-                                            phi_mod_class=phi_mod_class[mv_it])
-      }
-      residVar <- unlist(residVars, recursive = FALSE, use.names = FALSE)
-    } else {
-      if (family$family %in% c("poisson","binomial","COMPoisson","negbin")) {
-        residVar <- family$variance(fv)
-      } else {
-        if (is.null(phi_outer <- phi.object$phi_outer)) { ## valid whether newdata are NULL or not:      
-          glm_phi <- .get_glm_phi(object, mv_it)
-          residVar <- predict(glm_phi, newdata=newdata, type="response")
-        } else { ## phi, but not glm_phi
-          if (length(phi_outer)==1L) {
-            if (is.null(newdata)) {
-              nobs <- nobs_info            
-            } else nobs <- nrow(newdata)
-            residVar <- rep(phi_outer,nobs)    # __F I X M E   N O T__ This shortcut certainly does not handle prior.weights (but this is consistent with doc)        
-          } else { # e.g. resid.model = list(formula=~0+offset(logphi)) example => there is a phi_outer vector,
-            # so .get_glm_phi() was not previously called. But even for such offset .get_glm_phi() can return an object of class "glm"
-            # so that one can predict() from it. This recycles existing code caring for links, prior weights etc...
-            # Otherwise a more direct call to model.frame(.get_phiform(object, mv_it), data=newdata) might perhaps be used.
-            glm_phi <- .get_glm_phi(object, mv_it) # look whether phi.Fix was set by a phiGLM with only an offset
-            if (is.null(glm_phi)) {
-              stop(paste0("Unable to compute 'residVar' given length(<fixed phi>)!=1L.\n", 
-                          "A 'resid.model' argument, perhaps with only an offset term, might be the only way forward.")) 
-            } else residVar <- predict(glm_phi, newdata=newdata, type="response")
-          }
-        }
-        ## isoscape(raster = ElevRasterDE, isofit = GermanFit) is a good test. 26 points were fitted with prior weights
-        ## prediction is by blocks of ~1000 points and one wants the response variance for a single obs. Prior weights are not useful here
-        ## And the next call fails if the prior weights do not have a matching length ~1000.
-        essai <- .get_phiW(object, newdata, dims=c(nobs,1L),
-                           prior.weights=prior.weights, phi_type="predict", needed=1L,
-                           phi_mod_class=phi_mod_class, mv_it)[,1]
-        if (diff(range(essai-residVar))>1e-8) {browser()} else {cat(crayon::red("OK"),"\n")}
-      }
-      if (family$family=="Gamma") residVar <- residVar * fv^2
-    }
-    residVar
-  } 
-}
-
 
 .get_oldlevels <- function(object, old_rd, fix_info) {
   if ( ! is.null(fix_info)) {
@@ -1259,7 +1200,11 @@ if (FALSE) {# This fn is documentation,
     if (variances$cov) respVar <- (respVar+t(respVar))/2 ## if numerically asym, rand_eta <- mvrnorm(.,Sigma=attr(point_pred_eta,"predVar")) fails
     attr(resu,"predVar") <- respVar ## vector or matrix
   }
-  if ( ! is.null(respVar)) respVar <- .to_respScale_var(respVar, ppblob, object)
+  # at this precise point 'respVar' is the predVar rather that the response variance (since residual variance is added next). 
+  # For interval computations we always use the predVar on the linear predictor scale, already stored as a an attribute of 'resu'.
+  # rather than the result of .to_respScale_var:
+  if ( ! is.null(respVar)) respVar <- .to_respScale_var(respVar, ppblob, object) 
+                                                                                 # which is 
   if (variances$residVar) resu <- .add_residVar(object, resu, fv=ppblob$fv, locdata, respVar, variances)
   if ( is.matrix(resu) && NCOL(resu)==1L) {
     class(resu) <- c("predictions",class(resu))
@@ -1288,17 +1233,18 @@ if (FALSE) {# This fn is documentation,
     } 
     # 
     for (st in intervals) {
-      varcomp <- attr(resu,st)
+      varcomp <- attr(resu,st) # if its is the prediction variance "predVar", this attribute is always on linear pred scale.
       if (is.null(varcomp)) warning(paste("Prediction variance component",st,"requested but not available: check input."))
       if (is.matrix(varcomp)) varcomp <- diag(varcomp)
       pv <- 1-(1-level)/2
       ## special case for simple LM
       if (length(object$rand.families)==0L && # not mixed
-          object$family$family=="gaussian" && ## __FIXME__ so calling this on a mv-GLM will bug.
+          object$family$family=="gaussian" && ## __F I X M E__ so calling this on a mv-GLM will bug.
           .DEPARSE(.get_phiform(object))=="~1" # not heteroscedastic
       ) { 
         nobs <- length(object$y)
         resdf <- nobs - ncol(object$X.pv) ## don't use fixef here, that contains bot NAs and argument etaFix$beta! 
+        if (resdf==0L) warning("Zero residual degrees of freedom. No feasible interval computation.", immediate. = TRUE)
         is_REML <- ( .REMLmess(object,return_message=FALSE))
         if ( ! is_REML) {
           vart <- varcomp*nobs/resdf
@@ -1312,6 +1258,8 @@ if (FALSE) {# This fn is documentation,
       if (variances$respVar) { # sd is already on response scale
         mu <- .fv_linkinv(eta=eta, family=object$family, families=object$families)
         interval <- cbind(mu-sd,mu+sd)
+      } else if (type=="link") {
+        interval <- cbind(eta-sd,eta=eta+sd)
       } else interval <- cbind(.fv_linkinv(eta=eta-sd, family=object$family, families=object$families),
                                .fv_linkinv(eta=eta+sd, family=object$family, families=object$families))
       colnames(interval) <- paste(st,c(signif(1-pv,4),signif(pv,4)),sep="_")
@@ -1347,13 +1295,17 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
                           control=list(), ...) { ## but not new Y
   if (is.null(object$envir)) object$envir <- list2env(list(), ## back-compatibility fix for old objects
                                                      parent=environment(HLfit_body))
+  if ( ! type %in% c("link", "response")) warning(paste("The two handled prediction 'type's are",
+                                                        '"link" and "response". Anything else is equivalent to "response".'), immediate. = TRUE)
   ## the final components returned as attributes have names ...Var, other terms should be named differently
   #
-  if ( ! is.null(intervals) && ! inherits(intervals,"character")) stop("'intervals' arguments should inherit from class 'character'.")
-  checkIntervals <- (substr(x=intervals, nchar(intervals)-2, nchar(intervals))=="Var")
-  if (any(!checkIntervals)) warning("Element(s)",intervals[!checkIntervals],"are suspect, not ending in 'Var'.")
-  # possible elements in return value: fixefVar, predVar, residVar, respVar
-  variances[intervals] <- TRUE 
+  if ( ! is.null(intervals)) {
+    if ( ! inherits(intervals,"character")) stop("'intervals' arguments should inherit from class 'character'.")
+    checkIntervals <- (substr(x=intervals, nchar(intervals)-2L, nchar(intervals))=="Var")
+    if (any(!checkIntervals)) warning("Element(s)",intervals[!checkIntervals],"are suspect, not ending in 'Var'.")
+    # possible elements in return value: fixefVar, predVar, residVar, respVar
+    variances[intervals] <- TRUE 
+  }
   variances <- .process_variances(variances, object)
   # if (type=="rand_eta") { # called by simulate(., type="[predVar" || "(ranef|response)"] ))
   #   rand_eta <- list(...)$rand_eta # this may not even be useful except to avoid a CRAN check NOTE

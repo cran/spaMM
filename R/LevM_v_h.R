@@ -47,13 +47,10 @@
     ZAL_scaling <- 1/sqrt(wranefblob$w.ranef*H_global_scale) ## Q^{-1/2}/s
     Xscal <- .make_Xscal(ZAL, ZAL_scaling = ZAL_scaling, processed=processed, as_matrix=.eval_as_mat_arg(processed))
     if (inherits(Xscal,"Matrix")) { # same type as ZAL
-      mMatrix_method <- .spaMM.data$options$Matrix_method
-      
       #@p[c] must contain the index _in @x_ of the first nonzero element of column c, x[p[c]] in col c and row i[p[c]])  
       elmts_affected_cols <- seq_len(Xscal@p[n_u_h+1L]) ## corresponds to cols seq_n_u_h
       which_i_affected_rows <- which(Xscal@i[elmts_affected_cols]>(n_u_h-1L))    
     } else {
-      mMatrix_method <- .spaMM.data$options$matrix_method
       which_i_affected_rows <- NULL
     }
     if (is.null(muetablob)) { ## NULL input eta allows NULL input muetablob
@@ -62,10 +59,16 @@
     }
     ## weight_X and Xscal varies within loop if ! LMM since at least the GLMweights in w.resid change
     if ( is.null(w.resid) ) w.resid <- .calc_w_resid(muetablob$GLMweights,phi_est)
-    weight_X <- .calc_weight_X(w.resid, H_global_scale, processed, muetablob) ## sqrt(s^2 W.resid)  
-    if (trace) cat(stylefn(".")) ## hmff blue (vloop) F I X M E
-    sXaug <- do.call(mMatrix_method,
+    # at this point w.resid is always the result of .calc_w_resid()
+    # and when it is a list with info about mv model it has a complete vector $w_resid.
+    H_w.resid <- .calc_H_w.resid(w.resid, muetablob=muetablob, processed=processed) # for LLF w.resid is not generally defined.
+    weight_X <- .calc_weight_X(Hobs_w.resid=H_w.resid, H_global_scale=H_global_scale, obsInfo=processed$how$obsInfo) ## sqrt(s^2 W.resid)  
+    sXaug <- do.call(processed$mMatrix_method,
                      list(Xaug=Xscal, weight_X=weight_X, w.ranef=wranefblob$w.ranef, H_global_scale=H_global_scale))
+    if (trace) {
+      tracechar <- ifelse(identical(attr(sXaug,"BLOB")$nonSPD,TRUE),"!",".")
+      cat(stylefn(tracechar)) # hmff blue (vloop) F I X M E
+    }
     
     Vscaled_beta <- c(v_h/ZAL_scaling ,beta_eta)
     
@@ -93,17 +96,15 @@
       zInfo <- do.call(".calc_zAug_not_LMM",calc_zAug_args) 
       wzAug <- c(zInfo$y2_sscaled/ZAL_scaling, (zInfo$z1_sscaled)*weight_X) 
       etamo <- muetablob$sane_eta - off
-      zInfo$z1_eta <- zInfo$z1-etamo
-      z1_sscaled_eta <- zInfo$z1_sscaled - etamo # zAug[-seq_n_u_h]-etamo # z_1-sscaled-etamo
-      if (GLMMbool) {
-        zInfo$dlogfvdv <-  - v_h * wranefblob$w.ranef
-      } else zInfo$dlogfvdv <- (zInfo$z2 - v_h) * wranefblob$w.ranef
       ## the gradient for -p_v (or -h), independent of the scaling
-      H_w.resid <- .calc_H_w.resid(w.resid, muetablob, processed) 
-      m_grad_obj <- c( ## drop() avoids c(Matrix..) 
-        m_grad_v <- drop(.crossprod(ZAL, H_w.resid * zInfo$z1_eta) + zInfo$dlogfvdv), # Z'W(z_1-eta)+ dlogfvdv 
-        drop(.crossprod(X.pv, H_w.resid * z1_sscaled_eta)) # X'W(z_1-sscaled-eta)
-      )
+      m_grad_obj <- .calc_m_grad_obj(zInfo, z1_eta=zInfo$z1-etamo, z1_sscaled_eta=zInfo$z1_sscaled - etamo, GLMMbool, v_h, wranefblob, 
+                                     H_w.resid=.BLOB(sXaug)$H_w.resid, ZAL, X.pv)
+      ## amounts to 
+      # m_grad_obj <- c( ## drop() avoids c(Matrix..) 
+      #   m_grad_v <- drop(.crossprod(ZAL, WLS_mat_weights * zInfo$z1_eta) + dlogfvdv), # Z'W(z_1-eta)+ dlogfvdv 
+      #   drop(.crossprod(X.pv, WLS_mat_weights * z1_sscaled_eta)) # X'W(z_1-sscaled-eta)
+      # )
+      ## where the zInfo terms must depend on WLS_mat_weights too! 
       if (trace>1L) {
         if (pforpv) { 
           maxs_grad <- c(max(abs(m_grad_obj[seq_n_u_h])),max(abs(m_grad_obj[-seq_n_u_h])))
@@ -117,6 +118,7 @@
       zInfo$scaled_grad <- scaled_grad
       constant_APHLs_args <- list(processed=processed, which="hlik", sXaug=sXaug, phi_est=phi_est, lambda_est=lambda_est)
       # the following block needs m_grad_v the new m_grad_v hence its position
+      m_grad_v <- m_grad_obj[seq_n_u_h]
       pot4improv <- get_from_MME(sXaug=sXaug, which="Mg_invH_g", B=m_grad_v)
       low_pot <- (pot4improv < pot_tol)
       damped_WLS_blob <- .do_damped_WLS_v_in_b(sXaug=sXaug, zInfo=zInfo, 
@@ -129,7 +131,7 @@
                                         GLMMbool=GLMMbool,etaFix=etaFix,
                                         lambda_est=lambda_est,
                                         wranefblob=wranefblob,seq_n_u_h=seq_n_u_h,ZAL_scaling=ZAL_scaling,
-                                        processed=processed, Xscal=Xscal,mMatrix_method = mMatrix_method,
+                                        processed=processed, Xscal=Xscal,
                                         phi_est=phi_est, H_global_scale=H_global_scale, n_u_h=n_u_h, ZAL=ZAL,
                                         which_i_affected_rows=which_i_affected_rows,
                                         which_LevMar_step = "v",

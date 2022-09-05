@@ -8,6 +8,7 @@ using Eigen::Lower;
 using Eigen::Map;
 using Eigen::SparseMatrix;
 using Eigen::MatrixXd;
+using Eigen::VectorXi;
 using Eigen::VectorXd;
 
 bool printDebug=false;
@@ -37,6 +38,75 @@ SEXP leverages( SEXP XX ){
   return wrap(VectorXd(thinQ.cwiseProduct(thinQ).rowwise().sum().transpose())); //returns vector of leverages rather than thin Q matrix
   
 }
+
+
+
+// [[Rcpp::export(.sparse_cwiseprod)]]
+SEXP sparse_cwiseprod( SEXP AA, SEXP BB ){
+  const Map<SparseMatrix<double> > A(as<Map<SparseMatrix<double> > >(AA)); 
+  const Map<SparseMatrix<double> > B(as<Map<SparseMatrix<double> > >(BB));
+  return wrap(A.cwiseProduct(B)); //cwiseProduct infinitel faster than R...
+  // to get the rowSums, one could use sparse_mat * VectorXd::Ones(sparse_mat.cols())   cf https://forum.kde.org/viewtopic.php?f=74&t=122971
+}
+// however sparse_cwiseprod(A,A) is not very useful per se: the hack on @x is fast enough => this fn may not be used
+
+
+#ifdef UNDEFINED
+// # The elements of the diag are sum( kronecker(X[l,],X[l]) * sparseinv)
+// # = sum diag(X[l,]) %*% sparseinv %*% diag(X[l,])) which is 
+// # nr <- nrow(X)
+// # hatvals <- numeric(nr)
+// # for (it in seq(nr)) {
+// #   Xi <- X[it,]  
+// #   hatvals[it] <- sum(colSums(.Dvec_times_Matrix(Xi,subsetinv))*Xi)
+// # }
+// # hatvals
+// 
+//
+// // [[Rcpp::export(.rowsums_cwise_A_AH)]]
+SEXP rowsums_cwise_A_AH( SEXP AA, SEXP HH ){
+  const Map<SparseMatrix<double> > A(as<Map<SparseMatrix<double> > >(AA)); 
+  const Map<SparseMatrix<double> > H(as<Map<SparseMatrix<double> > >(HH));
+  SparseMatrix<double> B = A*H;
+  SparseMatrix<double> C = A.cwiseProduct(B); // cwiseProduct infinitely faster than R...
+  return wrap(C * VectorXd::Ones(C.cols())); // rowSums...
+}
+
+// // [[Rcpp::export(.slow_rowsums_cwise_A_AH)]]
+SEXP slow_rowsums_cwise_A_AH( SEXP AA, SEXP HH ){
+  const Map<SparseMatrix<double> > A(as<Map<SparseMatrix<double> > >(AA)); 
+  const Map<SparseMatrix<double> > H(as<Map<SparseMatrix<double> > >(HH));
+  int nr=A.rows();
+  VectorXd hatvals(nr), Xi(nr);
+  Eigen::RowVectorXd ones = Eigen::RowVectorXd::Ones(H.rows());
+  SparseMatrix<double>  tA=A.transpose(); // it was clearly faster to work on column... but still slower than using matrix products
+  for (int it=0; it<nr; it++) {
+    Xi = tA.col(it);
+    // sum(colSums(.Dvec_times_Matrix(Xi,subsetinv))*Xi)
+    hatvals(it) =  ( ( ones * (Xi.asDiagonal() * H))*Xi).sum();
+  }
+  return wrap(hatvals); // cwiseProduct infinitely faster than R...
+  // to get the rowSums, one could use sparse_mat * VectorXd::Ones(sparse_mat.cols())   cf https://forum.kde.org/viewtopic.php?f=74&t=122971
+}
+
+// // [[Rcpp::export(.rowsums_cwise_A_AH2)]]
+SEXP rowsums_cwise_A_AH2( SEXP AA, SEXP HH ){
+  const Map<SparseMatrix<double> > A(as<Map<SparseMatrix<double> > >(AA)); 
+  const Map<SparseMatrix<double> > H(as<Map<SparseMatrix<double> > >(HH));
+  int nr=A.rows();
+  VectorXd hatvals(nr); 
+  MatrixXd Xi(nr,1),Xii(1,1);
+  SparseMatrix<double>  tA=A.transpose(); // it was clearly faster to work on column... but still slower than using matrix products
+  for (int it=0; it<nr; it++) {
+    Xi = tA.col(it);
+    Xii =  Xi.transpose() * (H*Xi);
+    hatvals(it)=Xii(0,0);
+  }
+  return wrap(hatvals); 
+}
+
+#endif
+
 
 // [[Rcpp::export(.Rcpp_sweepZ1W)]]
 SEXP sweepZ1W( SEXP ZZ, SEXP WW ){
@@ -622,4 +692,64 @@ SEXP Rcpp_chol2solve(SEXP r, SEXP x) {
     MatrixXd rhs = A.adjoint().triangularView<Eigen::Lower>().solve(B); // not in-place as that would modify memory mapped from R.
     return(wrap(A.triangularView<Eigen::Upper>().solve(rhs)));
   }
+}
+
+// [[Rcpp::export(.Rcpp_adhoc_shermanMstep_sp)]]
+SEXP adhoc_shermanMstep_sp(SEXP AAinv, SEXP uu) {
+  // R formula for reference:
+  //Ap - (Ap %*% u %*% t(v) %*% Ap)/drop(1 + t(v) %*% Ap %*% u)
+  SparseMatrix<double> Ainv(as<Map<SparseMatrix<double> > >(AAinv));
+  MatrixXd u(as<Map<MatrixXd> >(uu));
+  //  rSAu <- rowSums(.Matrix_times_Dvec(Ainv,u,check_dsC = FALSE, keep_dsC = FALSE))
+  
+  MatrixXd Au = (Ainv * u);
+  Au = Au.cwiseProduct(u);
+  double denom = 1-2*Au.sum();
+  
+  SparseMatrix<double> AU = Ainv * u.asDiagonal();
+  Au = AU * VectorXd::Ones(AU.cols());
+  
+  SparseMatrix<double> resu=Au.sparseView();
+  resu =  resu * resu.transpose(); // interpreted as kronecker product!
+  resu = resu/(denom/2);
+  resu = Ainv + resu;
+  return( wrap(resu));
+}
+
+// [[Rcpp::export(.Rcpp_adhoc_shermanM_sp)]]
+SEXP adhoc_shermanM_sp(SEXP QQt, SEXP iindic) {
+  // R formula for reference:
+  //Ap - (Ap %*% u %*% t(v) %*% Ap)/drop(1 + t(v) %*% Ap %*% u)
+  const Map<SparseMatrix<double> > Qt(as<Map<SparseMatrix<double> > >(QQt));
+  const Map<VectorXi> indic(as<Map<VectorXi > >(iindic));
+  int nc_Q=Qt.rows(); // over the thin dimension
+  SparseMatrix<double> Id;   Id.resize(nc_Q,nc_Q);  Id.setIdentity();
+  
+  SparseMatrix<double> AU, SM_perturb, u;
+  SparseMatrix<double> Ainv=Id;
+  SparseMatrix<double> as_diag_u=Id;
+  MatrixXd Au;
+  VectorXd ones = VectorXd::Ones(nc_Q);
+  double denom;
+  
+  for (int i_Q=0; i_Q < Qt.cols(); i_Q++) { // over the wide dimension
+    if (indic(i_Q)==1) {
+      u = Qt.col(i_Q); // sparse column vector of 'thin' length
+      
+      Au = (Ainv * u); // dense column vector
+      denom= (u.transpose() * Au)(0,0); // 1*1 matrix > scalar  (cwiseProduct(dense, sparse) does not return the correct result)
+      denom = 1-2*denom; 
+
+      as_diag_u.diagonal() = u; // sparse diagonal matrix (all other elements=0 from as_diag_u initialisation)
+      AU = Ainv * as_diag_u; // sparse matrix
+      Au = AU * ones; // rowSums, dense column vector
+      
+      SM_perturb=Au.sparseView();
+      SM_perturb =  SM_perturb * SM_perturb.transpose(); // sparse matrix; colvec * rowvec returns kronecker product!
+      SM_perturb = SM_perturb/(denom/2); // sparse matrix
+      Ainv = Ainv + SM_perturb; // sparse matrix
+    }
+  }
+  
+  return( wrap(Ainv));
 }

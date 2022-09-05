@@ -25,15 +25,17 @@ Tpoisson(link="log")
   \item{mu_truncated}{Boolean. For \code{linkinv}, whether to return the expectation of truncated (\eqn{\mu_T}) or un-truncated (\eqn{\mu_U}) response. For \code{linkfun}, whether the \code{mu} argument is \eqn{\mu_T}, or is \eqn{\mu_U}  but has \eqn{\mu_T}  as attribute (\eqn{\mu_U} without the attribute is not sufficient). }
 }
 \value{
-A family object.
+A \code{family} object suitable for use with \code{glm}, as \code{stats::} family objects.
 }
 \details{
-The \code{mu.eta} member function is that of the base \code{poisson} family, hence ignores truncation. 
+Molas & Lesaffre (2010) developed expressions for deviance residuals for the truncated Poisson distribution, which were the ones implemented in \pkg{spaMM} until version 3.12.0. Later versions implement the (non-equivalent) definition as \dQuote{2*(saturated_logLik - logLik)}.   
 
-\code{predict}, when applied on an object with a truncated-response family, by default returns \eqn{\mu_T}. The simplest way to predict \eqn{\mu_U} is to get the linear predictor value by \code{predict(.,type="link")}, and deduce \eqn{\mu_U} using \code{linkinv(.)} (with default argument \code{mu_truncated=FALSE}), since getting \eqn{\mu_U} from \eqn{\mu_T} is comparatively less straightforward.
+\code{predict}, when applied on an object with a truncated-response family, by default returns \eqn{\mu_T}. The simplest way to predict \eqn{\mu_U} is to get the linear predictor value by \code{predict(.,type="link")}, and deduce \eqn{\mu_U} using \code{linkinv(.)} (with default argument \code{mu_truncated=FALSE}), since getting \eqn{\mu_U} from \eqn{\mu_T} is comparatively less straightforward. The \code{mu.eta} member function is that of the base \code{poisson} family, hence its \code{mu} argument represents \eqn{\mu_U}. 
 }
 \references{
 McCullagh, P. and Nelder, J.A. (1989) Generalized Linear Models, 2nd edition. London: Chapman & Hall.
+
+Molas M. and Lesaffre E. (2010). Hurdle models for multilevel zero-inflated data via h-likelihood. Statistics in Medicine 29: 3294-3310.
 }
 \examples{
 data("scotlip")

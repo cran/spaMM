@@ -79,7 +79,7 @@ Other return values are numeric (for \code{logLik}), vectors (most cases), matri
  With \code{which="LogL_Lap"}, \code{logLik()} returns a Laplace approximation of log-likelihood based on the observed Hessian, rather than the expected Hessian. This is implemented only for the case \code{family=Gamma(log)}, for demonstration purposes.
 }
 \seealso{
-See \code{\link{residuals.HLfit}} to extract various residuals, \code{\link{residVar}} to extract residual variances or information about residual variance models, \code{\link{hatvalues}} to extract leverages, \code{\link{get_matrix}} to extract the model matrix and derived matrices, and \code{\link{vcov.HLfit}} to extract covariances matrices from a fit, \code{\link{get_RLRsim_args}} to extract arguments for (notably) tests of random effects in LMMs.
+See \code{\link{summary.HLfit}} whose return value include the tables of fixed-effects coefficients and random-effect variances displayed by the summary, \code{\link{residuals.HLfit}} to extract various residuals, \code{\link{residVar}} to extract residual variances or information about residual variance models, \code{\link{hatvalues}} to extract leverages, \code{\link{get_matrix}} to extract the model matrix and derived matrices, and \code{\link{vcov.HLfit}} to extract covariances matrices from a fit, \code{\link{get_RLRsim_args}} to extract arguments for (notably) tests of random effects in LMMs.
 }
 \references{
 McCullagh, P. and Nelder J. A. (1989) Generalized linear models. Second ed. Chapman & Hall: London.

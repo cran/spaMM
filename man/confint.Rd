@@ -38,25 +38,36 @@ The \code{boot.ci} return value for each parameter includes the call to \code{bo
 \examples{
 % checked in test-confint.R
 data("wafers")
-wfit <- HLfit(y ~X1+(1|batch),family=Gamma(log),data=wafers,method="ML")
+wfit <- HLfit(y ~X1+(1|batch), family=Gamma(log), data=wafers, method="ML")
 confint(wfit,"X1")  # profile CI
 if (spaMM.getOption("example_maxtime")>30) {
+   
    # bootstrap CI induced by 'boot_args':
    confint(wfit,names(fixef(wfit)), boot_args=list(nsim=99, seed=123)) 
+   
    # bootstrap CI induced by 'parm' being a function:
    confint(wfit,parm=function(v) fixef(v), 
            boot_args=list(nb_cores=10, nsim=199, seed=123))
+   
    # Same effect if 'parm' is a quoted expression in terms of 'hlfit':
    confint(wfit,parm=quote(fixef(hlfit)), 
            boot_args=list(nb_cores=10, nsim=199, seed=123))
            
    # CI for the variance of the random effect:          
-   ( ci <- confint(wfit,parm=function(fit){VarCorr(fit)[1,"Variance"]}, 
-        boot_args=list(nb_cores=10, nsim=199, seed=123)) )
+   ci <- confint(wfit,parm=function(fit){get_ranPars(fit)$lambda[1]}, 
+        boot_args=list(nb_cores=10, nsim=199, seed=123))
    # The distribution of bootstrap replicates:
    plot(ecdf(ci$call$t))
    # We may be far from ideal condition for accuracy of bootstrap intervals;
    # for variances, a log transformation may sometimes help, but not here.
+   
+   # Passing arguments to child processes, as documented in help("spaMM_boot"):
+   set.seed(123)
+   rvar <- runif(nrow(wafers))
+   wrfit <- fitme(y ~X1+(1|batch), family=Gamma(log), data=wafers, fixed=list(phi=rvar))
+   confint(wrfit, parm = "(Intercept)", boot_args = list(nsim = 100, nb_cores = 2,
+           fit_env = list(rvar=rvar)))
+   
 }
 }
 % Add one or more standard keywords, see file 'KEYWORDS' in the

@@ -350,6 +350,18 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// sparse_cwiseprod
+SEXP sparse_cwiseprod(SEXP AA, SEXP BB);
+RcppExport SEXP _spaMM_sparse_cwiseprod(SEXP AASEXP, SEXP BBSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type AA(AASEXP);
+    Rcpp::traits::input_parameter< SEXP >::type BB(BBSEXP);
+    rcpp_result_gen = Rcpp::wrap(sparse_cwiseprod(AA, BB));
+    return rcpp_result_gen;
+END_RCPP
+}
 // sweepZ1W
 SEXP sweepZ1W(SEXP ZZ, SEXP WW);
 RcppExport SEXP _spaMM_sweepZ1W(SEXP ZZSEXP, SEXP WWSEXP) {
@@ -588,6 +600,30 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// adhoc_shermanMstep_sp
+SEXP adhoc_shermanMstep_sp(SEXP AAinv, SEXP uu);
+RcppExport SEXP _spaMM_adhoc_shermanMstep_sp(SEXP AAinvSEXP, SEXP uuSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type AAinv(AAinvSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type uu(uuSEXP);
+    rcpp_result_gen = Rcpp::wrap(adhoc_shermanMstep_sp(AAinv, uu));
+    return rcpp_result_gen;
+END_RCPP
+}
+// adhoc_shermanM_sp
+SEXP adhoc_shermanM_sp(SEXP QQt, SEXP iindic);
+RcppExport SEXP _spaMM_adhoc_shermanM_sp(SEXP QQtSEXP, SEXP iindicSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type QQt(QQtSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type iindic(iindicSEXP);
+    rcpp_result_gen = Rcpp::wrap(adhoc_shermanM_sp(QQt, iindic));
+    return rcpp_result_gen;
+END_RCPP
+}
 
 static const R_CallMethodDef CallEntries[] = {
     {"_spaMM_Rcpp_COMP_Z", (DL_FUNC) &_spaMM_Rcpp_COMP_Z, 4},
@@ -617,6 +653,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_spaMM_is_promise2", (DL_FUNC) &_spaMM_is_promise2, 2},
     {"_spaMM_rankinfo", (DL_FUNC) &_spaMM_rankinfo, 2},
     {"_spaMM_leverages", (DL_FUNC) &_spaMM_leverages, 1},
+    {"_spaMM_sparse_cwiseprod", (DL_FUNC) &_spaMM_sparse_cwiseprod, 2},
     {"_spaMM_sweepZ1W", (DL_FUNC) &_spaMM_sweepZ1W, 2},
     {"_spaMM_ZWZt", (DL_FUNC) &_spaMM_ZWZt, 2},
     {"_spaMM_ZtWZ", (DL_FUNC) &_spaMM_ZtWZ, 2},
@@ -636,6 +673,8 @@ static const R_CallMethodDef CallEntries[] = {
     {"_spaMM_Rcpp_backsolve", (DL_FUNC) &_spaMM_Rcpp_backsolve, 4},
     {"_spaMM_Rcpp_backsolve_M_M", (DL_FUNC) &_spaMM_Rcpp_backsolve_M_M, 4},
     {"_spaMM_Rcpp_chol2solve", (DL_FUNC) &_spaMM_Rcpp_chol2solve, 2},
+    {"_spaMM_adhoc_shermanMstep_sp", (DL_FUNC) &_spaMM_adhoc_shermanMstep_sp, 2},
+    {"_spaMM_adhoc_shermanM_sp", (DL_FUNC) &_spaMM_adhoc_shermanM_sp, 2},
     {NULL, NULL, 0}
 };
 

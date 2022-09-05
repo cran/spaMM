@@ -33,6 +33,12 @@
   return(resu)
 }
 
+.negbin2_p0 <- function(mu,shape) {
+  p0 <- (shape/(mu+shape))^shape
+  bad <- mu<shape/1e4
+  p0[bad] <- exp(shape * log1p(-mu[bad]/shape)) # exp(-mu)
+  p0
+}
 
 negbin <- function (shape = stop("negbin's 'shape' must be specified"), link = "log", trunc=-1L) {
   mc <- match.call()
@@ -73,14 +79,14 @@ negbin <- function (shape = stop("negbin's 'shape' must be specified"), link = "
     dev.resids <- function(y, mu, wt) {
       ## the dev.resids serves in MM to estimate phi (hence not here) or lambda in ranCoefs models (=> trunc.neg.bin with ranCoefs)
       # computation is in Mathematica notebook.
-      2 * wt * (y * log(pmax(1, y)/mu) - (y + shape) * log((y + shape)/(mu + shape))
-                +log( (1-(shape/(mu+shape))^shape) / (1-(shape/(y+shape))^shape) )
+      2 * wt * (y * log(pmax(1, y)/mu) - (y + shape) * log((y + shape)/(mu + shape)) +
+                log( (1-.negbin2_p0(mu,shape) )/( 1-.negbin2_p0(y,shape)) )
       )
     }
     aic <- function(y, n, mu, wt, dev) { ## not really the aic... -2 clik
       term <- (y + shape) * log(mu + shape) - y * log(mu) + 
         lgamma(y + 1) - shape * log(shape) + lgamma(shape) - lgamma(shape + y) +
-        log(1-(shape/(mu + shape))^shape) ## log(1-p0)
+        log(1-.negbin2_p0(mu,shape)) ## log(1-p0)
       2 * sum(term * wt)
     }
   } else {
@@ -102,7 +108,7 @@ negbin <- function (shape = stop("negbin's 'shape' must be specified"), link = "
   linkinv <- function(eta,mu_truncated=FALSE) { ## mu_truncated gives type of O U T put
     if (mu_truncated) { ## ie if return mu_T
       mu_U <- stats$linkinv(eta) ## eta is always eta_U
-      p0 <- (shape/(mu_U + shape))^shape
+      p0 <- .negbin2_p0(mu_U,shape)
       mu_T <- mu_U/(1-p0) 
       return(structure(mu_T,p0=p0,mu_U=mu_U))
     } else return(stats$linkinv(eta))
@@ -123,40 +129,71 @@ negbin <- function (shape = stop("negbin's 'shape' must be specified"), link = "
   }
   Dtheta.Dmu <- function(mu) 1/(mu*(1+mu/shape))
   D2theta.Dmu2 <- function(mu) -(1+2*mu/shape)/(mu*(1+mu/shape))^2
-  if (trunc!=0L) { # If not truncated. (__F_I_X_M_E__ extend to truncated later)
-    dlW_detafun <- switch(
-      linktemp,
-      "log"= function(mu) shape/(mu+shape),
-      "identity"= function(mu) -(2*mu + shape)/(mu^2 + mu*shape),
-      "sqrt"= function(mu) -2 * sqrt(mu)/(mu + shape)
-    )
-    d_dlWdmu_detafun <- switch( # see Hessian_weights.nb
-      linktemp,
-      "log"= function(mu) -shape *(2*mu + shape)/(mu*(mu + shape)^2),
-      "identity"= function(mu) (2 *mu^2 + 2 *mu *shape + shape^2)/(mu^2 *(mu + shape)^2), 
-      "sqrt"= function(mu) 2*sqrt(mu)/(mu + shape)^2 
-    )
-    coef1fun <- switch(
-      linktemp,
-      "log"= function(mu) 1/mu,
-      "identity"= function(mu) - (1+2*mu/shape),
-      "sqrt"= function(mu) - sqrt(mu)/(2*shape)
-    )
-    #DvarDmu <- function(mu)1+ 2*mu/shape
-  } else dlW_detafun <- coef1fun <- d_dlWdmu_detafun <- NULL
+  #
+  #####################################################
+  # Derivatives of Hexp for computation of those of Hobs by GLM ad-hoc algo
+  dlW_Hexp__detafun <- switch( # of *Hexp* weights, as explained for the calling function .dlW_Hexp__dmu
+    linktemp,
+    "log"= function(mu) shape/(mu+shape),
+    "identity"= function(mu) -(2*mu + shape)/(mu^2 + mu*shape),
+    "sqrt"= function(mu) -2 * sqrt(mu)/(mu + shape)
+  )
+  d_dlWdmu_detafun <- switch( # see Hessian_weights.nb # also W_H_exp
+    linktemp,
+    "log"= function(mu) -shape *(2*mu + shape)/(mu*(mu + shape)^2),
+    "identity"= function(mu) (2 *mu^2 + 2 *mu *shape + shape^2)/(mu^2 *(mu + shape)^2), 
+    "sqrt"= function(mu) 2*sqrt(mu)/(mu + shape)^2 
+  )
+  coef1fun <- switch(
+    linktemp,
+    "log"= function(mu) 1/mu,
+    "identity"= function(mu) - (1+2*mu/shape),
+    "sqrt"= function(mu) - sqrt(mu)/(2*shape)
+  )
+  # => These functions are for obsInfo. For truncated obsInfo, however, another approach will be used.
+  
+  if (trunc==0L) { # If truncated. 
+    # One might try to correct the above fns the 1/WU_WT term... but it becomes too much of a mess
+    # Dl__WT_WU__Dmu <- function(mu, shape) {
+    #   p0 <- .negbin2_p0(mu=mu,shape)
+    #   (p0*shape*(2*(-1 + p0)*shape + mu*(-1 + p0 + shape + p0*shape)))/
+    #     ((-1 + p0)*(mu + shape) ((-1 + p0)*shape + mu*(-1 + p0 + p0*shape)))
+    # }
+    # dlW_Hexp__detafun <- switch( # of *Hexp* weights, as explained for the calling function .dlW_Hexp__dmu
+    #   # Here adding dl__WT_WU__deta computed as Dl__WT_WU__Dmu(mu, shape) * dmu/deta
+    #   linktemp,
+    #   "log"= function(mu) shape/(mu+shape) + Dl__WT_WU__Dmu(mu, shape)*mu,
+    #   "identity"= function(mu) -(2*mu + shape)/(mu^2 + mu*shape)+ Dl__WT_WU__Dmu(mu, shape),
+    #   "sqrt"= function(mu) -2 * sqrt(mu)/(mu + shape)+ Dl__WT_WU__Dmu(mu, shape)*2*sqrt(mu)
+    # )
+    # and it becomes worse for d_dlWdmu_detafun()
+    ## INSTEAD:
+    D2muDeta2 <- .D2muDeta2(linktemp)
+    D3muDeta3 <- .D3muDeta3(linktemp)
+    DlogLDmu <- .DlogLDmu_trunc_nb2
+    D2logLDmu2 <- .D2logLDmu2_trunc_nb2
+    D3logLDmu3 <- .D3logLDmu3_trunc_nb2
+    environment(DlogLDmu) <- environment(D2logLDmu2) <- environment(D3logLDmu3) <- environment(aic) 
+    dHobs_trunc_aux_funs <- list(D2muDeta2=D2muDeta2,D3muDeta3=D3muDeta3,DlogLDmu=DlogLDmu,D2logLDmu2=D2logLDmu2,D3logLDmu3=D3logLDmu3)
+  } else dHobs_trunc_aux_funs <- NULL
+  ##########################################################
+  #
   ## all closures defined here have parent.env the environment(spaMM_Gamma) ie <environment: namespace:spaMM>
   ## changes the parent.env of all these functions (aic, dev.resids, simfun, validmu, variance): 
-  parent.env(environment(aic)) <- environment(stats::binomial) ## parent = <environment: namespace:stats>
-  structure(list(family = structure("negbin",
-                                    withArgs=quote(paste0("Neg.binomial(shape=",signif(shape,4),")"))), 
-                 link = linktemp, linkfun = linkfun, 
-                 linkinv = linkinv, variance = variance, dev.resids = dev.resids, 
-                 aic = aic, mu.eta = stats$mu.eta, initialize = initialize, 
-                 validmu = validmu, valideta = stats$valideta, simulate = simfun, 
-                 Dtheta.Dmu=Dtheta.Dmu, D2theta.Dmu2=D2theta.Dmu2,
-                 dlW_detafun=dlW_detafun, coef1fun=coef1fun, d_dlWdmu_detafun=d_dlWdmu_detafun,
-                 zero_truncated=(trunc==0L)), 
-            class = "family")
+  # parent.env(environment(aic)) <- environment(stats::binomial) ## parent = <environment: namespace:stats>
+  structure(c(
+    list(family = structure("negbin",
+                            withArgs=quote(paste0("Neg.binomial(shape=",signif(shape,4),")"))), 
+         link = linktemp, linkfun = linkfun, 
+         linkinv = linkinv, variance = variance, dev.resids = dev.resids, 
+         aic = aic, mu.eta = stats$mu.eta, initialize = initialize, 
+         validmu = validmu, valideta = stats$valideta, simulate = simfun, 
+         Dtheta.Dmu=Dtheta.Dmu, D2theta.Dmu2=D2theta.Dmu2,
+         dlW_Hexp__detafun=dlW_Hexp__detafun, coef1fun=coef1fun, d_dlWdmu_detafun=d_dlWdmu_detafun,
+         flags=list(obs=TRUE, exp=TRUE, canonicalLink=FALSE),
+         zero_truncated=(trunc==0L)),
+    dHobs_trunc_aux_funs), 
+    class = "family")
 }
 
 Tnegbin <- function(shape = stop("negbin's 'shape' must be specified"), link = "log") {

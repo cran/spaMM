@@ -735,12 +735,14 @@ testthat::expect_true(diff(range(logLik(zut1), logLik(zut2)))<1e-08)
 {cat(crayon::yellow("IMRF; "))# fit IMRF 
   { # create IMRF model
     ## Creating the mesh 
+    oldMDCopt <- options(Matrix.warnDeprecatedCoerce = 0) # INLA issue
     mesh <- INLA::inla.mesh.2d(loc = blackcap[, c("longitude", "latitude")], 
                                cutoff=30,
                                max.edge = c(3, 20)) 
     mesh$n ## 40
     matern <- INLA::inla.spde2.matern(mesh)
-  }
+    options(oldMDCopt)
+}
   
   { # Aim was first to check mv IMRF predictions, but putting a (G)LM as first model caught many problems
     (zut1 <- fitmv(submodels=list(mod1=list(migStatus ~ 1),

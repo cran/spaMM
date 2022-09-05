@@ -72,8 +72,8 @@
       if (processed$is_spprec) {
         
         sXaug_arglist <- list(AUGI0_ZX=processed$AUGI0_ZX, corrPars=ranFix$corrPars,w.ranef=w.ranef,
-                              cum_n_u_h=cum_n_u_h,w.resid=w.resid)
-        sXaug_arglist$H_w.resid <- .calc_H_w.resid(w.resid, muetablob=muetablob, processed=processed) 
+                              cum_n_u_h=cum_n_u_h,
+                              H_w.resid=.calc_H_w.resid(w.resid, muetablob=muetablob, processed=processed)) 
         # .HLfit_body_augZXy has called .init_AUGI0_ZX_envir_spprec_info(processed,LMatrices)...
         if (trace) cat(".")
         sXaug <- do.call(processed$AUGI0_ZX$envir$method, # ie, def_AUGI0_ZX_sparsePrecision
@@ -81,7 +81,7 @@
         
       } else {
         ZAL_scaling <- 1/sqrt(w.ranef*H_global_scale) ## Q^{-1/2}/s
-        weight_X <- .calc_weight_X(w.resid, H_global_scale) ## sqrt(s^2 W.resid) ## should not affect the result up to precision
+        weight_X <- .calc_weight_X(Hobs_w.resid=w.resid, H_global_scale=H_global_scale, obsInfo=FALSE) ## sqrt(s^2 W.resid) ## should not affect the result up to precision
         if (inherits(ZAL,"sparseMatrix")) {
           ZW <- .Dvec_times_Matrix(weight_X,.Matrix_times_Dvec(ZAL,ZAL_scaling))
           XW <- .Dvec_times_m_Matrix(weight_X,processed$AUGI0_ZX$X.pv)
@@ -94,16 +94,8 @@
           class(sXaug) <- c(class(sXaug),"sXaug_blocks")
         } else {
           Xscal <- .make_Xscal(ZAL=ZAL, ZAL_scaling = ZAL_scaling, processed=processed) # does not weights the I
-          if (inherits(Xscal,"sparseMatrix")) { # 
-            mMatrix_method <- .spaMM.data$options$Matrix_method # does not weights the I
-            # attr(Xscal,"AUGI0_ZX") <- processed$AUGI0_ZX # for experimental .sXaug_Matrix_cholP_scaled(). But useless bc 
-            # .calc_APHLs_by_augZXy_or_sXaug won't use the methods associated to the Matrix_method.
-            # Instead it uses .get_absdiagR_blocks -> .updateCHMfactor 
-          } else {
-            mMatrix_method <- .spaMM.data$options$matrix_method
-          }
           if (trace) cat(".")
-          sXaug <- do.call(mMatrix_method,
+          sXaug <- do.call(processed$mMatrix_method,
                            list(Xaug=Xscal, weight_X=weight_X, w.ranef=w.ranef, H_global_scale=H_global_scale))
         }
       }

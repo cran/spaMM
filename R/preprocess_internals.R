@@ -59,7 +59,9 @@
           if (got_chol <- (is.matrix(corrlist[[rd]]) || is(corrlist[[rd]],"Matrix"))) { # testing dim() is not appropriate bc there is a dim.precision method
             cholcorr <- try(chol(corrlist[[rd]])) # base::chol or Matrix::chol 
             if (inherits(cholcorr,"try-error")) stop("A correlation matrix is (nearly) singular. Check the correlation model and/or see help('sparse_precision').") 
+            # oldMDCopt <- options(Matrix.warnDeprecatedCoerce = 0) # chol2inv(<dtC>) problem in Matrix v1.4.2
             preclist[[rd]] <- drop0(chol2inv(cholcorr), tol = .Machine$double.eps)
+            # options(oldMDCopt)
             ZAlist[[rd]] <- .addrightcols_Z(Z=ZAlist[[rd]], colnames(corrlist[[rd]]), verbose=FALSE)
             adjm_rel_denseness <- .calc_denseness(preclist[[rd]], relative=TRUE)
             if (adjm_rel_denseness<0.05) {
@@ -199,7 +201,7 @@
         }
         if ( ! is.null(preclist[[rd]])) preclist[[rd]] <- kronecker(lower.tri(matrix(1,ncol=LHS_nlev,nrow=LHS_nlev),diag=TRUE), 
                                                                     preclist[[rd]]) 
-        preclist[[rd]] <- as(forceSymmetric(preclist[[rd]]),"dsCMatrix")
+        preclist[[rd]] <- as(forceSymmetric(preclist[[rd]]),"CsparseMatrix")
       }
       locQ <- do.call(Matrix::bdiag, list(preclist)) # dsC
       Z_ <- suppressMessages( .compute_ZAL(XMatrix=NULL,ZAlist,as_matrix = FALSE, bind.=TRUE, force_bindable=FALSE) )
@@ -326,14 +328,25 @@
   return(QRmethod)
 }
 
-.check_time_G_diagnosis <- function(.provide_G_diagnosis, processed) {
+.set_mMatrix_method <- function(processed) {
+  if (.eval_as_mat_arg(processed)) {
+    algebra <- "decorr"
+    processed$mMatrix_method <- .spaMM.data$options$matrix_method
+  } else {
+    algebra <- "spcorr"
+    if (processed$how$obsInfo) {
+      processed$mMatrix_method <- .spaMM.data$options$Hobs_Matrix_method
+    } else {
+      processed$mMatrix_method <- .spaMM.data$options$Matrix_method
+    }
+  }
+  if (processed$is_spprec) algebra <-"spprec" # subtlety: in spprec we still need  processed$mMatrix_method for .MakecovEst1
+  algebra
+}
+
+.check_time_G_diagnosis <- function(.provide_G_diagnosis, processed, algebra) {
   if (( ! environment(.provide_G_diagnosis)$time_warned) && 
       (time1 <- environment(.provide_G_diagnosis)$diagnosis_time)) {
-    if (processed$is_spprec) {
-      algebra <-"spprec"
-    } else if (.eval_as_mat_arg(processed)) {
-      algebra <- "decorr"
-    } else algebra <- "spcorr"
     message(paste0("(One-time message:) Choosing matrix methods took ",time1," s.\n",
                    "  If you perform many similarly costly fits, setting the method\n",
                    '  by control.HLfit=list(algebra=<"spprec"|"spcorr"|"decorr">) may be useful,\n',
@@ -563,7 +576,7 @@
 
 .check_phi_Fix <- function(phi.Fix, family) {
   if ( ! (constr_fit <- ! is.null(phi.Fix))) {
-    if (constr_fam <- family$family %in% c("poisson","binomial","COMPoisson","negbin")) {
+    if (constr_fam <- ! family$family %in% c("gaussian","Gamma")) {
       phi.Fix <- 1 
     } # else if (var(y)==0) phi.Fix <- .spaMM.data$options$min_disp
   } else if (any(phi.Fix==0)) stop("phi cannot be fixed to 0.")
@@ -630,10 +643,8 @@
     processed$p_fixef_phi <- p_phi # no X_disp is saved in processed
   } else {
     processed$p_fixef_phi <- 0L
-    if ( family$family %in% c("binomial","poisson","COMPoisson","negbin")) {
-      if ( .DEPARSE(resid.formula) != "~1") {
-        warning(paste0("resid.model is ignored in ",family$family,"-response models"))
-      }
+    if ( ( ! family$family %in% c("gaussian","Gamma")) && .DEPARSE(resid.formula) != "~1") {
+      warning(paste0("resid.model is ignored in ",family$family,"-response models"))
     }
   }
   processed$residModel <- resid.model 
@@ -702,37 +713,24 @@
         #suppressMessages(trace(spaMM.getOption("matrix_method"),print=FALSE,tracer=quote(cat("."))))
         #suppressMessages(trace(spaMM.getOption("Matrix_method"),print=FALSE,tracer=quote(cat("."))))
         #suppressMessages(trace(spaMM.getOption("spprec_method"),print=FALSE,tracer=quote(cat("."))))
-        if (level>3L) {
-          fn <- paste("get_from_MME",strsplit(spaMM.getOption("matrix_method"),"def_")[[1L]][2],sep=".") ## get_from_MME.sXaug_EigenDense_QRP_Chol_scaled
-          suppressMessages(trace(fn,print=FALSE,tracer=quote(cat(which))))
-          fn <- paste("get_from_MME",strsplit(spaMM.getOption("Matrix_method"),"def_")[[1L]][2],sep=".") ## get_from_MME.sXaug_Matrix_QRP_CHM_scaled
-          suppressMessages(trace(fn,print=FALSE,tracer=quote(cat(which))))
-          fn <- paste("get_from_MME",strsplit(spaMM.getOption("spprec_method"),"def_")[[1L]][2],sep=".") #
-          suppressMessages(trace(fn,print=FALSE,tracer=quote(cat(which))))
-        } else {
-          fn <- paste("get_from_MME",strsplit(spaMM.getOption("matrix_method"),"def_")[[1L]][2],sep=".") ## get_from_MME.sXaug_EigenDense_QRP_Chol_scaled
-          suppressMessages(untrace(fn, where=asNamespace("spaMM")))
-          fn <- paste("get_from_MME",strsplit(spaMM.getOption("Matrix_method"),"def_")[[1L]][2],sep=".") ## get_from_MME.sXaug_Matrix_QRP_CHM_scaled
-          suppressMessages(untrace(fn, where=asNamespace("spaMM")))
-          fn <- paste("get_from_MME",strsplit(spaMM.getOption("spprec_method"),"def_")[[1L]][2],sep=".") 
-          suppressMessages(untrace(fn, where=asNamespace("spaMM")))
+        for (method_st in c("matrix_method","Matrix_method","spprec_method","Hobs_Matrix_method")) {
+          fn <- paste("get_from_MME",strsplit(spaMM.getOption(method_st),"def_")[[1L]][2],sep=".") 
+          if (level<4L) {
+            suppressMessages(untrace(fn, where=asNamespace("spaMM")))
+          } else if (level==4L) {
+            suppressMessages(trace(fn,print=FALSE,tracer=quote(cat(which))))
+          } else { # level>=5
+            suppressMessages(trace(fn,print=TRUE, exit=quote({cat(which); str(resu)})))
+          }
         }
       } else { # TRACE=0
         suppressMessages(try(untrace(HLfit_body, where=asNamespace("spaMM")), silent=TRUE))      
         suppressMessages(try(untrace(.HLfit_body_augZXy, where=asNamespace("spaMM")), silent=TRUE))      
-        # if (processed$is_spprec) {
-        #   suppressMessages(try(untrace(.solve_IRLS_as_spprec, where=asNamespace("spaMM")), silent=TRUE))
-        # } else suppressMessages(try(untrace(.solve_IRLS_as_ZX, where=asNamespace("spaMM")), silent=TRUE))
-        #suppressMessages(untrace(spaMM.getOption("matrix_method"), where=asNamespace("spaMM")))
-        #suppressMessages(untrace(spaMM.getOption("Matrix_method"), where=asNamespace("spaMM")))
-        #suppressMessages(untrace(spaMM.getOption("spprec_method"), where=asNamespace("spaMM")))
-        fn <- paste("get_from_MME",strsplit(spaMM.getOption("matrix_method"),"def_")[[1L]][2],sep=".") ## get_from_MME.sXaug_EigenDense_QRP_Chol_scaled
-        suppressMessages(untrace(fn, where=asNamespace("spaMM")))
-        fn <- paste("get_from_MME",strsplit(spaMM.getOption("Matrix_method"),"def_")[[1L]][2],sep=".") ## get_from_MME.sXaug_Matrix_QRP_CHM_scaled
-        suppressMessages(untrace(fn, where=asNamespace("spaMM")))
-        fn <- paste("get_from_MME",strsplit(spaMM.getOption("spprec_method"),"def_")[[1L]][2],sep=".") 
-        suppressMessages(untrace(fn, where=asNamespace("spaMM")))
-      } 
+        for (method_st in c("matrix_method","Matrix_method","spprec_method","Hobs_Matrix_method")) {
+          fn <- paste("get_from_MME",strsplit(spaMM.getOption(method_st),"def_")[[1L]][2],sep=".") 
+          suppressMessages(untrace(fn, where=asNamespace("spaMM")))
+        } 
+      }
     } else if (level) {warning("The 'spaMM' package must be *attached* for verbose(TRACE=...) tracing to fully operate",
                                immediate.=TRUE)}
   } 
@@ -853,7 +851,7 @@
 .init_AUGI0_ZX <- function(X.pv, vec_normIMRF, ZAlist, nrand, n_u_h, sparse_precision, as_mat) {
   if (nrand) {
     if ( ! as_mat) {
-      AUGI0_ZX <- list2env( list(I=.trDiagonal(n=n_u_h), ## avoids repeated calls to as() through rbind2...
+      AUGI0_ZX <- list2env( list(I=.sparseDiagonal(n=n_u_h, shape="g"), ## to avoid repeated calls to as() through rbind2...; previously used .trDiagonal()
                                  ZeroBlock= Matrix(0,nrow=n_u_h,ncol=ncol(X.pv)), X.pv=X.pv) )
       # delayedAssign("Ilarge", .trDiagonal(n=ncol(I)+ncol(X.pv), unitri = FALSE), eval.env = AUGI0_ZX, assign.env = AUGI0_ZX) # hmf: .trDiagonal  ~ 8e-4 s. (but delayedA is 500 times faster)
     } else {
@@ -960,11 +958,36 @@
   vecdisneeded
 }
 
-.obsInfo <- function(HLmethod, family) {
-  obsInfo <- (length(HLmethod)==2L && HLmethod[[2L]]=="obs" && ! attr(family,"canonicalLink"))
-  if (family$link=="cauchit") {
-    # negative Hobs_w.resid; no bug implied.
-    warning("Fitting cauchit link model with observed information matrix may fail.\n  Basic algorithm using expected information matrix should work.", immediate. = TRUE)
+.obsInfo_warn <- local({
+  obsInfo_warned <- FALSE
+  function() {
+    if ( ! environment(.obsInfo_warn)$obsInfo_warned) {
+      warning(paste("Expected Hessian matrix is used by default for GLM families with non-canonical link.\n",
+                    'Use spaMM.options(obsInfo=TRUE) to use observed Hessian globally in Laplace approximation,\n', 
+                    'or method=c("ML","obs") to use it on a specific fit. The default may well be reversed\n', 
+                    'in a future version, so use method=c("ML","exp") to prevent any future change in results.'),
+              call.=FALSE)
+      obsInfo_warned <<- TRUE
+    }
+  }
+})
+
+
+.obsInfo <- function(HLmethod, family, canonicalLink=family$flags$canonicalLink) {
+  # LLF -> always obsInfo
+  # GLM fam with canonical link -> this is indifferent. here obsInfo set to false, 
+  if ( ! family$flags$exp ) { # LLF family; not GLM
+    obsInfo <- TRUE
+  } else if (canonicalLink) {
+    obsInfo <- 0L # let's try to have two kinds of false; used in how.HLfit()
+  } else if (length(HLmethod)==2L) {
+    obsInfo <- switch( HLmethod[[2L]],
+                       "obs" = TRUE,
+                       "exp" = FALSE,
+                       stop("Unhandled second specifier in 'method' argument"))
+  } else {
+    obsInfo <- .spaMM.data$options$obsInfo # use default method
+    if (!obsInfo) .obsInfo_warn() 
   }
   obsInfo
 }

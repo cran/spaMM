@@ -109,6 +109,10 @@
     .Call(`_spaMM_leverages`, XX)
 }
 
+.sparse_cwiseprod <- function(AA, BB) {
+    .Call(`_spaMM_sparse_cwiseprod`, AA, BB)
+}
+
 .Rcpp_sweepZ1W <- function(ZZ, WW) {
     .Call(`_spaMM_sweepZ1W`, ZZ, WW)
 }
@@ -183,5 +187,13 @@
 
 .Rcpp_chol2solve <- function(r, x) {
     .Call(`_spaMM_Rcpp_chol2solve`, r, x)
+}
+
+.Rcpp_adhoc_shermanMstep_sp <- function(AAinv, uu) {
+    .Call(`_spaMM_adhoc_shermanMstep_sp`, AAinv, uu)
+}
+
+.Rcpp_adhoc_shermanM_sp <- function(QQt, iindic) {
+    .Call(`_spaMM_adhoc_shermanM_sp`, QQt, iindic)
 }
 

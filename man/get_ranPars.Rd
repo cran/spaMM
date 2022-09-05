@@ -18,7 +18,7 @@ It is one of several extractors for fixed or estimated parameters of  different 
 \code{remove_from_parlist} removes elements from a list of parameters, and from its \code{type} attribute. 
 }
 \usage{
-get_ranPars(object, which=NULL, ...)
+get_ranPars(object, which=NULL, verbose=TRUE, ...)
 remove_from_parlist(parlist, removand=NULL, rm_names=names(unlist(removand)))
 }
 %- maybe also 'usage' for other objects documented here.
@@ -26,6 +26,7 @@ remove_from_parlist(parlist, removand=NULL, rm_names=names(unlist(removand)))
   \item{object}{An object of class \code{HLfit}, as returned by the fitting functions in \code{spaMM}.}
   \item{which}{NULL or character string. Use \code{which="corrPars"} to get the correlation parameters. Use \code{which="lambda"} to get variances. see Details for the meaning of this for heteroscedastic models, and Value for other possible \code{which} values.}
   \item{\dots}{Other arguments that may be needed by some method.}
+  \item{verbose}{Boolean: Whether to print some notes.}
   \item{parlist}{A list of parameters. see Details.}
   \item{removand}{Optional. A list of parameters to be removed from \code{parlist}.}
   \item{rm_names}{Names of parameters to be removed from \code{parlist}. Mandatory if \code{removand} is not given.}
@@ -43,6 +44,8 @@ If a corrFamily parameter is fixed through the formula term, as in \code{ARp(1|t
 \code{get_ranPars(.,which="lambda")} returns a vector of variance values, one per random effect, including both \dQuote{outer}- and \dQuote{inner}-optimized ones.
 
 \code{get_ranPars(.,which="outer_lambda")} returns only \dQuote{outer}-optimized variance parameters, ignoring those fitted by \code{HLfit}'s specific algorithms. 
+
+\code{get_ranPars(.,which=NULL)} (the default) is not fully defined. It returns a list including the results of \code{which="lambda"} and \code{which="corrPars"}, but possibly other elements too. 
 
 \code{get_ranPars(. which="ranef_var")} (experimental) returns a list with elements
 \describe{

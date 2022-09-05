@@ -192,7 +192,7 @@ fitted.HLfit <- function(object,...) {
 .residuals_bare <- function(type, y, mu, family, wts) {
   if (type=="deviance") {
     res <- sign(y-mu)*sqrt(pmax((family$dev.resids)(y, mu, wts), 0))
-  } else if (type=="pearson") res <- (y - mu) * sqrt(wts)/sqrt(family$variance(mu))
+  } else if (type=="pearson") res <- (y - mu) * sqrt(wts)/sqrt(family$variance(mu)) # also for LLMs, cf e.g. Cribary-Neta & Zeileis
   drop(res)
 }
 
@@ -351,7 +351,9 @@ residVar <- function(object, which="var", submodel=NULL, newdata=NULL) {
     }
     if (family$family=="COMPoisson") {
       return(environment(family$aic)$nu)
-    } else if (family$family=="negbin") {
+    } else if (family$family %in% c("beta_resp")) {
+      return(environment(family$aic)$prec)
+    } else if (family$family %in% c("negbin","negbin1")) {
       return(environment(family$aic)$shape)
     } else return(NA)
   } else if (which=="fit") {
@@ -436,7 +438,7 @@ residVar <- function(object, which="var", submodel=NULL, newdata=NULL) {
     if (phi_type=="predict") {
       newphiVec <- switch(phi_mod_class,
                           "phiGLM" = predict(phi_fit, newdata=newdata, type="response"), ## vector
-                          "phiHGLM" = predict(phi_fit, newdata=newdata, type="predict")[ ,1L],
+                          "phiHGLM" = predict(phi_fit, newdata=newdata, type="response")[ ,1L],
                           "phiScal" = rep(phi_fit, dims[1]),
                           stop('Unhandled object$models[["phi"]]')
       ) ## VECTOR in all cases, becomes matrix later
@@ -467,10 +469,14 @@ residVar <- function(object, which="var", submodel=NULL, newdata=NULL) {
   mess <- .REMLmess(object)
   which <- switch(mess, 
                   "by stochastic EM."= "logLapp",
-                  "by Laplace ML approximation (p_v)."= "p_v",
+                  "by Laplace ML approximation (p_v)."= "p_v", # old objects before distinction p|p^\circ
+                  "by ML (p_v approximation of logL)."= "p_v",
+                  "by ML (P_v approximation of logL)."= "p_v",
                   "by h-likelihood approximation."= "p_v",
                   "by ML."= "p_v",
-                  "by Laplace REML approximation (p_bv)."= "p_bv",
+                  "by Laplace REML approximation (p_bv)."= "p_bv", # old objects before distinction p|^\circ
+                  "by REML (p_bv approximation of Re.logL)."= "p_bv",
+                  "by REML (P_bv approximation of Re.logL)."= "p_bv",
                   "by REML."= "p_bv",
                   "by non-standard REML"= "p_bv",
                   stop(paste0("No default '",which,"' value for '",mess,"' estimation method."))
@@ -589,7 +595,7 @@ Corr <- function(object,...) { ## compare ?VarCorr
 }
 
 # for a lme4::VarCorr() equivalent; generic is nlme::VarCorr 
-VarCorr.HLfit <- function(x, sigma=1, add_residVars=TRUE, ...) {
+VarCorr.HLfit <- function(x, sigma=1, add_residVars=TRUE, verbose=TRUE, ...) {
   loctable <- NULL
   if ( ! is.null(lambda.object <- x$lambda.object)) {
     #.legend_lambda(object, type = "family")
@@ -617,7 +623,7 @@ VarCorr.HLfit <- function(x, sigma=1, add_residVars=TRUE, ...) {
   } 
   if (add_residVars) loctable <- .add_varCorr_phi_lines(x, loctable, corrFill)
   rownames(loctable) <- NULL
-  if (is.null(loctable)) message("VarCorr() found no variance to report.")
+  if (is.null(loctable) && verbose) message("VarCorr() found no variance to report.")
   return(loctable)
 } 
 
@@ -648,7 +654,7 @@ VarCorr.HLfit <- function(x, sigma=1, add_residVars=TRUE, ...) {
     } else {
       mu <- attr(fv,"mu_U") # mu of untruncated latent variable if it exists 
       if (is.null(mu)) mu <- fv # otherwise expectation of response
-      dev_res <- family$dev.resids(y,mu,wt=1)
+      dev_res <- family$dev.resids(y,mu=fv,wt=rep(1,length(fv)))
     }
     if ( ! is.null(phi_est)) dev_res <- list(std_dev_res=dev_res/(phi_est*(1-lev_phi)),
                                              dev_res=dev_res)
@@ -666,6 +672,21 @@ deviance.HLfit <- function(object,...) {
   return(sum(dev_res2))
 }  
 
+.check_predVar_type_confusion <- local({
+  predVar_type_warned <- FALSE
+  function(variances, type="link", intervals=NULL) {
+    if ( ! environment(.check_predVar_type_confusion)$predVar_type_warned &&
+         identical(variances$predVar,TRUE) && type!="link" && is.null(intervals)) {
+      # combination of options suggesting that users tried to get a predVar on response scale 
+      warning(paste("Checking possible confusion in get_predVar() call:\n",
+                    'variances$predVar is requested with explicit type != "link" but is always returned on linear predictor scale.\n',
+                    "You may use the 'intervals' argument or get_intervals(., variances=list(predVar=TRUE))\n if you wish to translate linear predictor uncertainty on response scale."),
+              call.=FALSE)
+      predVar_type_warned <<- TRUE
+    }
+  }
+})
+
 get_predVar <- function(..., variances=list(), which="predVar") {
   mc <- match.call(expand.dots = TRUE)
   if (which=="naive") {
@@ -682,6 +703,9 @@ get_predVar <- function(..., variances=list(), which="predVar") {
     # if (is.null(mc$intervals)) mc$intervals <- "predVar" # but other intervals can be obtained if mc$intervals is not NULL
   } else variances$predVar <- TRUE
   mc$variances <- variances
+  subcall <- mc[c(1L,which(names(mc) %in% c("variances","type","intervals")))]
+  subcall[[1L]] <- get(".check_predVar_type_confusion", asNamespace("spaMM"), inherits=FALSE) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
+  resu <- eval(subcall,parent.frame())
   mc[[1L]] <- get("predict.HLfit", asNamespace("spaMM"), inherits=FALSE) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
   resu <- eval(mc,parent.frame())
   structure(attr(resu,which), respnames=attr(resu,"respnames"))
@@ -755,16 +779,24 @@ get_RLRTSim_args <- function(object, verbose=TRUE, ...) get_RLRsim_args(fullfit=
 
 get_rankinfo <- function(object) return(attr(object$X.pv,"rankinfo")) 
 
-get_ranPars <- function(object, which=NULL, ...) {
+get_ranPars <- function(object, which=NULL, 
+                        verbose=TRUE, # does not control all verbosity, only that which is TRUE by default.
+                        ...) {
   CorrEst_and_RanFix <- object$CorrEst_and_RanFix
   if (is.null(which)) {
-    return(CorrEst_and_RanFix)
+    resu <- CorrEst_and_RanFix
+    lambdatable <- na.omit(VarCorr(object, add_residVars=FALSE, verbose=FALSE))
+    if ( ! is.null(lambdatable)) {
+      resu$lambda <- structure(lambdatable[,"Variance"], 
+                               names=paste(lambdatable[,"Group"],lambdatable[,"Term"],sep="."))
+    }
+    return(resu)
   } else if (which=="corrPars") {
     resu <- CorrEst_and_RanFix$corrPars
     if ( ! is.null(resu)) resu <- structure(resu, type=attr(CorrEst_and_RanFix,"type")$corrPars)
     return(resu)
   } else if (which=="lambda") {
-    resu <- na.omit(VarCorr(object, add_residVars=FALSE))
+    resu <- na.omit(VarCorr(object, add_residVars=FALSE, verbose=verbose))
     resu <- structure(resu[,"Variance"], names=paste(resu[,"Group"],resu[,"Term"],sep="."))
     return(resu)
   } else if (which=="outer_lambda") { 
@@ -772,13 +804,15 @@ get_ranPars <- function(object, which=NULL, ...) {
     if ( ! is.null(resu)) resu <- structure(resu, type=attr(CorrEst_and_RanFix,"type")$lambda)
     return(resu)
   } else if (which=="ranef_var") {
-    resu <- na.omit(VarCorr(object, add_residVars=FALSE))
-    resu <- list(Var=structure(resu[,"Variance"], names=paste(resu[,"Group"],resu[,"Term"],sep=".")))
-    resu$outer <- CorrEst_and_RanFix$lambda
-    resu$lambda_est <- object$lambda.object$lambda_est
-    resu$lambda_list <-  object$lambda.object$lambda_list
-    if ( ! is.null(resu)) resu <- structure(resu, type=attr(CorrEst_and_RanFix,"type")$lambda)
-    return(resu)
+    lambdatable <- na.omit(VarCorr(object, add_residVars=FALSE, verbose=verbose))
+    if ( ! is.null(lambdatable)) {
+      resu <- list(Var=structure(lambdatable[,"Variance"], names=paste(lambdatable[,"Group"],resu[,"Term"],sep=".")))
+      resu$outer <- CorrEst_and_RanFix$lambda
+      resu$lambda_est <- object$lambda.object$lambda_est # long version: one value for each level of each ranef
+      resu$lambda_list <-  object$lambda.object$lambda_list
+      resu <- structure(resu, type=attr(CorrEst_and_RanFix,"type")$lambda)
+      return(resu)
+    }   # else returns NULL
   } else warning("'which' value not handled.")
 }
 
@@ -852,13 +886,50 @@ get_any_IC <- function(object, nsim=0L, ...,verbose=interactive(), also_cAIC=TRU
   } else invisible(likelihoods)
 }
 
-AIC.HLfit <- function(object, nsim=0L, ..., k, verbose=interactive(), also_cAIC=TRUE, short.names=NULL) {
-  get_any_IC(object, nsim=nsim, ..., verbose=verbose, also_cAIC=also_cAIC, short.names=short.names)
+AIC.HLfit <- function(object, ..., nsim=0L, k, verbose=interactive(), also_cAIC=TRUE, short.names=NULL) {
+  dotlist <- list(...)
+  ndots <- length(dotlist)
+  if (ndots) { # there is an unnamed second argument or further unmatched arguments
+    is_HLfit <- logical(ndots)
+    for (it in seq_len(ndots)) is_HLfit[it] <- inherits(dotlist[[it]],"HLfit")
+    which_is_HLfit <- which(is_HLfit)
+    fitlist <- dotlist[which_is_HLfit]
+    dotlist <- dotlist[which( ! is_HLfit)]
+    if (nHLfits <- length(which_is_HLfit)) {
+      dotexps <- as.list(substitute(...()))
+      dotfitnames <- dotexps[which_is_HLfit]
+      ICs <- vector("list", nHLfits+1L) 
+      mc <- match.call(expand.dots = FALSE)
+      mc[[1L]] <- get("get_any_IC", asNamespace("spaMM"), inherits=FALSE)
+      mc["..."] <- NULL
+      mc[["verbose"]] <- FALSE
+      # With the new formals, all arguments beyond the fits should be named. But we make an exception for back compat with old formals:
+      if (is.null(names(dotlist)[1L])) names(dotlist)[1L] <- "nsim" 
+      mc[names(dotlist)] <- dotlist
+      ICs[[1L]] <- eval(mc)
+      colnams <- names(ICs[[1L]])
+      objectname <- paste(mc[[2L]])
+      for (it in seq_len(nHLfits)) {
+        mc[["object"]] <- fitlist[[it]]
+        ICs[[it+1L]] <- eval(mc)
+      }
+      
+      ICs <- do.call("rbind.data.frame",ICs)
+      rownames(ICs) <- c(objectname, dotfitnames)
+      colnames(ICs) <- colnams
+      if (verbose) {return(ICs)} else {invisible(ICs)}
+    } else { # back -compatibility fix for case were second argument was unnamed, which was previously matched to the nsim argument
+      mc <- match.call()
+      names(mc)[[3L]] <- "nsim"
+      mc[[1L]] <- get("get_any_IC", asNamespace("spaMM"), inherits=FALSE)
+      eval(mc)
+    }
+  } else get_any_IC(object, nsim=nsim, ..., verbose=verbose, also_cAIC=also_cAIC, short.names=short.names) # no dots => no unnames second argument
 }
 
 extractAIC.HLfit <- function(fit, scale, k=2L, ..., verbose=FALSE) { ## stats::extractAIC generic
   df <- fit$dfs[["pforpv"]] # cf Value and Examples of extractAIC.HLfit showing in which sense this is the correct value.
-  aic <- AIC(object=fit, ..., verbose = verbose,also_AIC=FALSE, short.names=TRUE)[["mAIC"]] # does not use k
+  aic <- AIC(object=fit, ..., verbose = verbose, also_cAIC=FALSE, short.names=TRUE)[["mAIC"]] # does not use k
   if (k !=2L) aic <- aic + (k - 2)*df
   c(edf=df, AIC=aic) 
 }
@@ -929,6 +1000,38 @@ get_ZALMatrix <- function(object, force_bind=TRUE) {
   }
 }
 
+.get_fixef_WLS_ginv <- function(object, X.pv=object$X.pv) { 
+  sqrt_ww <- sqrt(.get_H_w.resid(object))
+  wX <- .Dvec_times_m_Matrix(sqrt_ww, X.pv) 
+  if (inherits(wX,"sparseMatrix")) wX <- as.matrix(wX) # avoids suspect sparse-X code
+  qrwX <- qr(wX)
+  
+  # if(inherits(wX,"sparseMatrix")) {
+  #   solve(qrwX,diag(x=sqrt_ww))
+  # } else {
+  #   # .m_Matrix_times_Dvec(backsolve(qr.R(qrwX),t(qr.Q(qrwX))),sqrt_ww)
+  qr.solve(qrwX,diag(x=sqrt_ww))
+  # }
+}
+
+
+if (FALSE) { # permuted QR example - but singular too, so notexactly what we want
+  X <- cbind(int = 1,
+             b1=rep(1:0, each=3), b2=rep(0:1, each=3),
+             c1=rep(c(1,0,0), 2), c2=rep(c(0,1,0), 2), c3=rep(c(0,0,1),2)
+  )
+  X <- as(X, "sparseMatrix")
+  qX <- qr(X)
+  drop0(R. <- qr.R(qX), tol=1e-13) # columns *permuted*: c3 b1 ..
+  Q. <- qr.Q(qX)
+  qI <- sort.list(qX@q) # the inverse 'q' permutation
+  (X. <- drop0(Q. %*% R.[, qI], tol=1e-13))## 
+  X-X.
+  X %*% qr.coef(qX, diag(6)) %*% X # bad, not pseudoinverse
+  solve(qX,diag(6)) %*% X # bad
+  solve(R.[, qI] %*% t(Q.)) %*% X # bad
+}
+
 .get_control_dist <- function(fitobject, char_rd) {
   if (is.null(optimInfo <- attr(fitobject,"optimInfo"))) {
     # HLCor, or fitme with nothing to optimize... (corrHLfit with nothing to optimize has an optimInfo...)
@@ -960,6 +1063,7 @@ get_matrix <- function(object, which="model.matrix", augmented=TRUE, ...) {
            WLS_ginv <- .get_WLS_ginv(object, augmented=TRUE, XZ_0I=XZ_0I)
            XZ_0I %*% WLS_ginv 
           },
+         "fixef_left_ginv"= .get_fixef_WLS_ginv(object, ...), ## X^- = (X' W X)^{-1} X' W    # use the dots to pass an alternative X.pv
          stop("Unhandled 'which' value in get_matrix()")
   )
 }
@@ -971,23 +1075,26 @@ model.matrix.HLfit <- function(object, ...) object$X.pv
     for (it in seq_along(MME_method)) {
       MME_method[it] <- switch(MME_method[it],
                                AUGI0_ZX_sparsePrecision = "sparse-precision method for y-augmented matrix",
-                               sXaug_EigenDense_QRP_Chol_scaled="dense-correlation method for y-augmented matrix (chol with QR fallback)",
-                               sXaug_Matrix_QRP_CHM_scaled="sparse-correlation method for y-augmented matrix (Cholesky)", # get_absdiagR_blocks, not sXaug method
-                               sXaug_Matrix_cholP_scaled="sparse-correlation method for y-augmented matrix (Cholesky)", # get_absdiagR_blocks, not sXaug method
-                               dgCMatrix=NA,
-                               matrix=NA,
-                               array=NA,
+                               sXaug_EigenDense_QRP_Chol_scaled = "dense-correlation method for y-augmented matrix (chol with QR fallback)",
+                               sXaug_Matrix_QRP_CHM_scaled = "sparse-correlation method for y-augmented matrix (Cholesky)", # get_absdiagR_blocks, not sXaug method
+                               #sXaug_Matrix_cholP_scaled = "sparse-correlation method for y-augmented matrix (Cholesky)", # get_absdiagR_blocks, not sXaug method
+                               dgCMatrix = NA,
+                               matrix = NA,
+                               array = NA,
                                MME_method[it])
     }
   } else for (it in seq_along(MME_method)) {
     MME_method[it] <- switch(MME_method[it],
                              AUGI0_ZX_sparsePrecision = "sparse-precision methods",
-                             sXaug_EigenDense_QRP_Chol_scaled="dense-correlation (QR) methods",
-                             sXaug_Matrix_QRP_CHM_scaled="sparse-correlation (QR) methods",
-                             sXaug_Matrix_cholP_scaled="sparse-correlation (Cholesky) methods",
-                             dgCMatrix=NA,
-                             matrix=NA,
-                             array=NA,
+                             sXaug_EigenDense_QRP_Chol_scaled = "dense-correlation (QR) methods",
+                             sXaug_Matrix_QRP_CHM_scaled = "sparse-correlation (QR) methods",
+                             sXaug_Matrix_CHM_H_scaled = "sparse-correlation (Cholesky) methods",
+                             #sXaug_Matrix_cholP_scaled = "sparse-correlation (Cholesky) methods (experimental)",
+                             "(G)LM" = "methods for (G)LMs",
+                             LLF = "methods for LLMs",
+                             dgCMatrix = NA,
+                             matrix = NA,
+                             array = NA,
                              MME_method[it])
   }
   MME_method
@@ -1017,7 +1124,13 @@ how.HLfit <- function(object, devel=FALSE, verbose=TRUE, format=print, ...) {
     pretty_method <- .prettify_method(info$MME_method, by_y_augm=identical(info$switches["augZXy_cond"][[1]], TRUE))
     mess <- paste0(mess,", version ",info[["spaMM.version"]],
                    ", in ",info$fit_time,"s using ",paste(na.omit(pretty_method),collapse=","))
-    if (identical(info[["obsInfo"]], TRUE)) mess <- paste0(mess," (with obs. info. matrix)")
+    if (object$models[["eta"]]=="etaHGLM") {
+      if (identical(info[["obsInfo"]], TRUE)) {
+        mess <- paste0(mess," (with obs. info. matrix)")
+      } else if (identical(info[["obsInfo"]], FALSE)) {
+        mess <- paste0(mess," (with exp. info. matrix)")
+      } # else obsInfo may be OL, which results in no parenthetical detail here (canonical link GLM)
+    } # otherwise for GLMs, the objective function does not depend on the use of obs vs exp weights . 
     mess <- paste0(mess,".")
     format(mess)  
   }

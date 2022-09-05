@@ -37,6 +37,10 @@ fitmv_body <- function(processed,
       length(na.omit(lower$NB_shape))!=length(names(lower$NB_shape)) ||
       length(na.omit(upper$NB_shape))!=length(names(upper$NB_shape)) 
   ) stop("Any non-NULL [init|lower|upper]$NB_shape should be a vector of numeric values (no NA),\n    named by index of submodels (e.g. c('2'=1)).")
+  if (length(na.omit(init$beta_prec))!=length(names(init$beta_prec)) ||
+      length(na.omit(lower$beta_prec))!=length(names(lower$beta_prec)) ||
+      length(na.omit(upper$beta_prec))!=length(names(upper$beta_prec)) 
+  ) stop("Any non-NULL [init|lower|upper]$beta_prec should be a vector of numeric values (no NA),\n    named by index of submodels (e.g. c('2'=1)).")
   if (length(na.omit(init$COMP_nu))!=length(names(init$COMP_nu)) ||
       length(na.omit(lower$COMP_nu))!=length(names(lower$COMP_nu)) ||
       length(na.omit(upper$COMP_nu))!=length(names(upper$COMP_nu)) 

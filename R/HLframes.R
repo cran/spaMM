@@ -450,7 +450,7 @@ if (FALSE) { # seems correct, but ultimately not needed
 .sanitize_Y <- local({
   #int_warned <- FALSE
   function(y, famfam) {
-    if ( famfam %in% c("binomial","poisson","COMPoisson","negbin")) {
+    if ( famfam %in% c("binomial","poisson","COMPoisson","negbin","negbin1")) { # COUNTS
       ## the response variable should always be Counts
       safe_y <- as.integer(y+0.5) # non-negative values only # non-array from array, hence:
       if (NCOL(y)) dim(safe_y) <- dim(y)

@@ -251,6 +251,8 @@
   if ( ! is.null(parlist$COMP_nu)) names(parlist$COMP_nu) <- mv_it
   if ( ! is.null(parlist$NB_shape)) names(parlist$NB_shape) <- mv_it
   if ( ! is.null(parlist$trNB_shape)) names(parlist$trNB_shape) <- mv_it
+  if ( ! is.null(parlist$beta_prec)) names(parlist$beta_prec) <- mv_it
+  if ( ! is.null(parlist$trbeta_prec)) names(parlist$beta_prec) <- mv_it
   if ( ! is.null(parlist$phi)) names(parlist$phi) <- mv_it #parlist$phi <- list(parlist$phi, names=mv_it)
   if ( ! is.null(parlist$trPhi)) names(parlist$trPhi) <- mv_it #parlist$trPhi <- list(parlist$trPhi, names=mv_it)
   
@@ -288,6 +290,7 @@
                  lambda=rd_in_submv,   
                  trLambda=rd_in_submv,
                  corrPars=rd_in_submv,# fake skeleton (not sublist here) but appears sufficient # contains kappa...
+                 beta_prec=phistr,
                  NB_shape=phistr, 
                  COMP_nu=phistr)
     # 'hyper' elements are indexed in not by ranefs but only for reference by the map, which creates a new problem
@@ -632,7 +635,7 @@
       if ( ! is.null(Amatrix)) {
         is_incid <- attr(ZAlist[[char_rd]],"is_incid")
         if (inherits(Amatrix,"pMatrix")) {
-          Amatrix <- as(Amatrix,"ngTMatrix")
+          Amatrix <- as(as(Amatrix, "nMatrix"), "TsparseMatrix") # => ngTMatrix 
         } else if ( ! is.null(is_incid)) {
           if (is_incid) is_incid <- attr(Amatrix,"is_incid") # .spaMM_spde.make.A() provides this attr. Otherwise, may be NULL, in which case ./.
           # ./. a later correct message may occur ("'is_incid' attribute missing, which suggests inefficient code in .calc_new_X_ZAC().)
@@ -704,12 +707,13 @@
   for (st in c("off","y","BinomialDen","main_terms_info","iter_mean_dispVar","iter_mean_dispFix",
                "max.iter","models","vecdisneeded","bin_all_or_none")) assign(st,value=unmerged[[1L]][[st]])
   # Operatiosn on 'models' form the first submodel:
+  LLFbool  <- attr(models,"LLFbool")
   LMMbool  <- attr(models,"LMMbool")
   GLMMbool  <- attr(models,"GLMMbool")
   LLM_const_w  <- attr(models,"LLM_const_w")
   GLGLLM_const_w  <- attr(models,"GLGLLM_const_w")
   GLMbool <- (models[["eta"]]=="etaGLM")
-  LMbool <- GLMbool && unmerged[[1L]]$family$family == "gaussian" && attr(unmerged[[1L]]$family, "canonicalLink")
+  LMbool <- unmerged[[1L]]$family$flags$LMbool
   unit_GLMweights  <- attr(models,"unit_GLMweights")
   unit_Hobs_weights  <- attr(models,"unit_Hobs_weights")
   const_Hobs_wresid  <- attr(models,"const_Hobs_wresid")
@@ -749,7 +753,7 @@
     bin_all_or_none <- bin_all_or_none && p_i[["bin_all_or_none"]]
     # .setattr_G_LMMbool() examines single phi model so would need to be extended in order to replace the following lines
     GLMbool_it <- p_i[["models"]][["eta"]]=="etaGLM"
-    LMbool_it <- GLMbool_it && p_i$family$family == "gaussian" && attr(p_i$family, "canonicalLink")
+    LMbool_it <- p_i$family$flags$LMbool
     modattrs_it <- attributes(p_i[["models"]])
     unit_GLMweights <- unit_GLMweights && modattrs_it[["unit_GLMweights"]]
     unit_Hobs_weights <- unit_Hobs_weights && modattrs_it[["unit_Hobs_weights"]]
@@ -769,6 +773,7 @@
     const_Hobs_wresid  <- const_Hobs_wresid && const_Hobs_wresid_it
     GLMbool <- GLMbool && GLMbool_it
     LMbool <- LMbool && LMbool_it
+    LLFbool <- LLFbool || modattrs_it[["LLFbool"]]
     obsInfo < obsInfo || p_i[["how"]][["obsInfo"]]
     iter_mean_dispVar <- max(iter_mean_dispVar, p_i[["iter_mean_dispVar"]])
     iter_mean_dispFix <- max(iter_mean_dispFix, p_i[["iter_mean_dispFix"]])
@@ -804,8 +809,13 @@
   attr(models,"unit_GLMweights") <- unit_GLMweights
   attr(models,"unit_Hobs_weights") <- unit_Hobs_weights
   attr(models,"const_Hobs_wresid") <- const_Hobs_wresid
+  attr(models,"LLFbool") <- LLFbool
   merged[["models"]] <- models
   models <- NULL # make sure we work on only one 'models'
+  if (LLFbool) {
+    merged$etaxLM_fn <- .calc_etaLLMblob
+  } else merged$etaxLM_fn <- .calc_etaGLMblob
+  
   residProcesseds <- residModels <- vector("list", length(merged[["models"]][["phi"]]))
   for (mv_it in seq_along(phi_models)) {
     residModels[mv_it] <- list(unmerged[[mv_it]]$residModel)
@@ -820,7 +830,9 @@
   has_estim_families_par <- FALSE
   for (mv_it in seq_along(unmerged)) {
     family_it <- families[[mv_it]]
-    has_estim_families_par <- ((family_it$family=="negbin" && inherits(substitute(shape, env=environment(family_it$aic)),"call")) ||
+    has_estim_families_par <- ((family_it$family %in% c("negbin", "negbin1") && 
+                                  inherits(substitute(shape, env=environment(family_it$aic)),"call")) ||
+                                 (family_it$family=="beta_resp" && inherits(substitute(prec, env=environment(family_it$aic)),"call"))||
                                  (family_it$family=="COMPoisson" && inherits(substitute(nu, env=environment(family_it$aic)),"call")))
     if (has_estim_families_par) break
   }
@@ -988,9 +1000,14 @@
     merged$is_spprec <- FALSE ## for .do_TRACE()
     merged$init_HLfit <- init.HLfit
   }
+  if (merged$is_spprec) {
+    merged$solve_IRLS_fn <- .solve_IRLS_as_spprec
+  } else  merged$solve_IRLS_fn <- .solve_IRLS_as_ZX
+  
   merged$QRmethod <- .choose_QRmethod(ZAlist, corr_info=merged$corr_info, 
                                       is_spprec=merged$is_spprec, processed=merged, control.HLfit=control.HLfit)
-  .check_time_G_diagnosis(.provide_G_diagnosis, processed=merged)
+  algebra <- .set_mMatrix_method(merged) # sets processed$mMatrix_method for [sp|de]corr
+  .check_time_G_diagnosis(.provide_G_diagnosis, processed=merged, algebra)
   #
   # merged_X <- .scale(merged_X) not necessary since the merged X's are already scaled
   if (nrand) {

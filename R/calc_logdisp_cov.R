@@ -9,9 +9,14 @@
       rr <- rA %*% lA # not A= lA %*% rA
       return(sum(t(rr)*rr)) ## not sum(rr^2) which is the result when B=A (as used below)
     } else { # more subtly handling the case of NULL B than in  'more ranefs' case (the crossprds are trivial)
-      ll <- .crossprod(lA, lB)
-      rr <- .tcrossprod(rA, rB) ## slower if *both* matrices have sparse storage though being dense
-      return(sum(ll*rr))
+      if (.spaMM.data$options$Matrix_old) { # ugly... but such versions do not handle as(, "generalMatrix"))
+        ll <- .crossprod(lA, lB)
+        rr <- .tcrossprod(rA, rB) ### dsC or dpo or...?    # slower if *both* matrices have sparse storage though being dense
+      } else {
+        ll <- as(.crossprod(lA, lB),"generalMatrix")
+        rr <- as(.tcrossprod(rA, rB),"generalMatrix") ## slower if *both* matrices have sparse storage though being dense
+      }
+      return(sum(ll*rr)) # elementwise product of dsC if no as(.,"generalMatrix"). Matrix v1.4-2 might complain.
     }
   } else {
     A <- lA %*% rA

@@ -13,7 +13,7 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") { ## set in <R_HOME>/etc/Renviron.site 
       # abyss <- matrix(runif(2e7),nrow=1000); gc(reset=TRUE) ## partial control of gc trigger...
       {
         testfiles <- dir(paste0(projpath(),"/package/tests/testthat/"),pattern="*.R",full.names = TRUE)
-        # testfiles <- dir(paste0(projpath(),"/package/tests/testthat/"),full.names = TRUE)[-1L] # temporary fix for Rstudio problem
+        #  testfiles <- dir(paste0(projpath(),"/package/tests/testthat/"),full.names = TRUE)[-1L] # temporary fix for Rstudio problem
         tfun <- function(x) {
           gc()# cf doc of system.time(., gcFirst) => but if gc timings are highly variable, gcFirst=TRUE is pointless (and the whole is misleading). 
           system.time(source(x), gcFirst=FALSE)

@@ -3,6 +3,37 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 3.13.0}{ 
+\subsection{NEW FEATURES}{
+\itemize{
+\item Non-GLM response families can now be fitted, the first two implemented being the 'negbin1' and 'beta_resp'. This is experimental and are limitations (notably, this is not yet possible in multivariate-response fits).
+\item plot_effects() new handles the case where the focal variable is a factor.
+\item AIC.HLfit() now handles several fitted-model objects as described for the stats::AIC generic (the AIC.HLfit formals have been modified for that purpose but no backward-incompatibility should result). 
+\item New 'which' value "fixef_left_ginv" handled by get_matrix() extractor.
+}
+}
+\subsection{DOCUMENTATION}{
+\itemize{
+\item Added example using ggplot2 in help("plot_effects").
+\item The documentation previously failed to mention summary.HLfit() as a useful *extractor*.
+}
+}
+\subsection{USER-LEVEL CHANGES}{
+\itemize{
+\item For truncated GLM families (Tpoisson, Tnegbin), the definition of deviance residuals has been changed [for details see help("Tpoisson")]. This changes the deviances reported by a glm() fit using these families; and it may theoretically affect mixed-effect model fits, as the deviance may affect initial values of some estimates, although no effect on fit results has been observed.
+\item Prediction intervals (as opposed to the response intervals) will be on the linear predictor or response scale depending on \code{type}. Previously they were always on response scale.
+\item get_ranPars(., which=NULL) (the default) did not return all lambda estimates (as get_ranPars(., which="lambda") does), but only "outer-estimated ones" (as get_ranPars(., which="outer_lambda") does). This poorly documented feature has been modified.   
+}
+}
+\subsection{FIXED BUGS}{
+\itemize{
+\item Degrees of freedom (as used by LRT(), notably) could be incorrectly counted for models mixing "outer-estimated" random-coefficient models and other, "inner-estimated", random-effect parameters.
+\item The elements of the "table" attribute of the result of confint.HLfit() could be misnomed.
+\item predict.HLfit(., re.form = <not NULL>) failed when some fixed-effect coefficients estimates were NA, or were set by etaFix argument.  
+\item Non-default specification of the type(s) of confidence interval in a confint.HLfit() call was ignored (not passed to boot::boot.ci()).
+}
+}
+}
 \section{CHANGES UP TO VERSION 3.12.0}{ 
 \subsection{NEW FEATURES}{
 \itemize{

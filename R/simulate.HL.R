@@ -28,30 +28,45 @@
 }
 
 .r_resid_var <- function(mu,phiW,sizes,family,
-                         COMP_nu,NB_shape,zero_truncated, famfam, nsim=1L) { 
+                         # COMP_nu,NB_shape,
+                         family_par=.get_family_par(family),
+                         zero_truncated, famfam, nsim=1L) { 
   # we cannot use family()$simulate bc it assumes a fit object as input
   resu <- switch(famfam,
-                    gaussian = rnorm(nsim*length(mu),mean=mu,sd=sqrt(phiW)),
-                    poisson = .rpois(nsim*length(mu),mu,zero_truncated=zero_truncated), 
-                    binomial = rbinom(nsim*length(mu),size=sizes,prob=mu),
-                    Gamma = {
-                      y <- rgamma(nsim*length(mu), shape= 1 / phiW, scale=mu*phiW) # mean=sh*sc=mu, var=sh*sc^2 = mu^2 phiW
-                      Gamma_min_y <- .spaMM.data$options$Gamma_min_y
-                      is_low_y <- (y < Gamma_min_y)
-                      if (any(is_low_y)) y[which(is_low_y)] <- Gamma_min_y 
-                      y
-                    }, ## ie shape increase with prior weights, consistent with Gamma()$simulate / spaMM_Gamma()$simulate
-                    COMPoisson = {
-                      lambdas <- attr(mu,"lambda") # F I X M E an environment would keep values ?
-                      if (is.null(lambdas)) {
-                        sapply(mu, function(muv) {
-                          lambda <- family$mu2lambda(muv)
-                          .COMP_simulate(lambda=lambda,nu=COMP_nu, nsim=nsim)
-                        })
-                      } else sapply(lambdas,.COMP_simulate,nu=COMP_nu, nsim=nsim)
-                    },
-                    negbin = .rnbinom(nsim*length(mu), size=NB_shape, mu_str=mu, zero_truncated=zero_truncated), 
-                    stop("(!) random sample from given family not yet implemented")
+                 gaussian = rnorm(nsim*length(mu),mean=mu,sd=sqrt(phiW)),
+                 poisson = .rpois(nsim*length(mu),mu,zero_truncated=zero_truncated), 
+                 binomial = rbinom(nsim*length(mu),size=sizes,prob=mu),
+                 Gamma = {
+                   y <- rgamma(nsim*length(mu), shape= 1 / phiW, scale=mu*phiW) # mean=sh*sc=mu, var=sh*sc^2 = mu^2 phiW
+                   Gamma_min_y <- .spaMM.data$options$Gamma_min_y
+                   is_low_y <- (y < Gamma_min_y)
+                   if (any(is_low_y)) y[which(is_low_y)] <- Gamma_min_y 
+                   y
+                 }, ## ie shape increase with prior weights, consistent with Gamma()$simulate / spaMM_Gamma()$simulate
+                 COMPoisson = {
+                   lambdas <- attr(mu,"lambda") # F I X M E an environment would keep values ?
+                   if (is.null(lambdas)) {
+                     sapply(mu, function(muv) {
+                       lambda <- family$mu2lambda(muv)
+                       .COMP_simulate(lambda=lambda,nu=family_par, #= COMP_nu 
+                                      nsim=nsim)
+                     })
+                   } else sapply(lambdas,.COMP_simulate,nu=family_par, #= COMP_nu 
+                                 nsim=nsim)
+                 },
+                 negbin = .rnbinom(nsim*length(mu), size=family_par, #= NB_shape
+                                   mu_str=mu, zero_truncated=zero_truncated),
+                 negbin1 = .rnbinom(nsim*length(mu), size=mu*family_par, #= NB_shape
+                                    mu_str=mu, zero_truncated=zero_truncated),
+                 negbin2 = .rnbinom(nsim*length(mu), size=family_par, #= NB_shape
+                                    mu_str=mu, zero_truncated=zero_truncated),
+                 beta_resp = {
+                   # spaMM's phi is here 1, so phiW must be 1/prior.weights and so for the precision parameter:
+                   Wfamily_par <- family_par/phiW
+                   rbeta(n=nsim * length(mu), 
+                         shape1=mu*Wfamily_par,shape2=(1-mu)*Wfamily_par)
+                 }, # fam_par being the precision parameter in the Cribari-Neto parametrisation 
+                 stop("(!) random sample from given family not yet implemented")
   )
   if (nsim>1L) dim(resu) <- c(length(mu),nsim)
   resu
@@ -81,17 +96,18 @@
     } else mu_all <- structure(mu[[1L]][resp_range], p0=attr(mu[[1L]],"p0")[[mv_it]], mu_U=attr(mu[[1L]],"mu_U")[[mv_it]])
     # : subsetting otherwise loses crucial p0 and mu_U attributes for Tnegbin
     # These attributes also exists for Tpoisson
-    block <- .r_resid_var(mu_all, phiW=phiW[,1L],sizes=sizes, COMP_nu=environment(family$aic)$nu,
-                          NB_shape=environment(family$aic)$shape, 
+    block <- .r_resid_var(mu_all, phiW=phiW[,1L],sizes=sizes, 
                           zero_truncated=identical(family$zero_truncated,TRUE), 
                           famfam=famfam, family=family, nsim=nsim) # vector or nsim-col matrix
     if (as_matrix && is.null(dim(block))) dim(block) <- c(length(block),1L) # forces matrix for mv code using rbind()
   } else {
     # get these variables once for all cols:
     if (famfam =="COMPoisson") {
-      COMP_nu <- environment(family$aic)$nu
-    } else if (famfam == "negbin") {
-      NB_shape <- environment(family$aic)$shape
+      family_par <- environment(family$aic)$nu
+    } else if (famfam =="beta_resp") {
+      family_par <- environment(family$aic)$prec
+    } else if (famfam  %in% c("negbin","negbin1")) {
+      family_par <- environment(family$aic)$shape
       zero_truncated <- identical(family$zero_truncated,TRUE) 
     } else if (famfam == "poisson") {
       zero_truncated <- identical(family$zero_truncated,TRUE) 
@@ -100,7 +116,7 @@
       if (is.null(resp_range)) {
         mu_it <- mu[[sim_it]]
       } else mu_it <- structure(mu[[sim_it]][resp_range], p0=attr(mu[[sim_it]],"p0")[[mv_it]], mu_U=attr(mu[[sim_it]],"mu_U")[[mv_it]])
-      block[ ,sim_it] <- .r_resid_var(mu_it, phiW=phiW[ ,sim_it], sizes=sizes, COMP_nu=COMP_nu, NB_shape=NB_shape, 
+      block[ ,sim_it] <- .r_resid_var(mu_it, phiW=phiW[ ,sim_it], sizes=sizes, family_par=family_par, 
                                   zero_truncated=zero_truncated, famfam=famfam, family=family, nsim=1L)
     }
   }

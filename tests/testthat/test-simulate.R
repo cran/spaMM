@@ -42,4 +42,33 @@ gr <- data.frame(y=rgamma(1000,shape=9/2,scale=2/3)) # mean mu=3=exp(1.0986), va
 (gamfit <- fitme(y~1,data=gr,family=Gamma(log)))
 var(simulate(gamfit,type="residual")) ## must approach 2
 
+{ # Without newdata, etaFix and offset() should ive equivalent results
+  set.seed(1)
+  data_resp <- data.frame(y = rnorm(100), x = rnorm(100), ID = gl(100, 10))
+  fake_fit_etaFix <- fitme(y ~ 0+offset(2+0.5*x) + (1|ID), data = data_resp,
+                    fixed = list(lambda = 5, phi = 10))
+  fake_fit_offset <- fitme(y ~ x + (1|ID), data = data_resp,
+                    etaFix = list(beta = c("(Intercept)" = 2, x = 0.5)),
+                    fixed = list(lambda = 5, phi = 10))
+  set.seed(123)
+  s1 <- simulate(fake_fit_etaFix)
+  set.seed(123)
+  s2 <- simulate(fake_fit_offset)
+  diff(range(s2-s1))
+  diff(range(get_predVar(fake_fit_etaFix)-get_predVar(fake_fit_offset)))
+  # LM:
+  fake_fit_etaFix <- fitme(y ~ 0+offset(2+0.5*x), data = data_resp,
+                           fixed = list(lambda = 5, phi = 10))
+  fake_fit_offset <- fitme(y ~ x, data = data_resp,
+                           etaFix = list(beta = c("(Intercept)" = 2, x = 0.5)),
+                           fixed = list(lambda = 5, phi = 10))
+  set.seed(123)
+  s1 <- simulate(fake_fit_etaFix)
+  set.seed(123)
+  s2 <- simulate(fake_fit_offset)
+  diff(range(s2-s1))
+  diff(range(get_predVar(fake_fit_etaFix)-get_predVar(fake_fit_offset)))
+  
+}
+
 

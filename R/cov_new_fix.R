@@ -70,7 +70,8 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
       matched <- (!is.na(newinold))
       #newoldC <- matrix(0,nrow=nnew,ncol=nold)
       #newoldC[cbind(seq(nnew)[matched],newinold[matched])] <- 1 # cbind() ! don't fill a block !  
-      newoldC <- as(sparseMatrix(i=seq(nnew)[matched], j=newinold[matched], dims=c(nnew,nold)),"dgCMatrix")
+      i <- seq(nnew)[matched] # length(i) != length(matched) as matched is boolean
+      newoldC <- sparseMatrix(i=i, j=newinold[matched], x=rep(1.0,length(i)), dims=c(nnew,nold), repr="C")
       colnames(newoldC) <- oldlevels
       rownames(newoldC) <- newlevels
     } else {## random-coef.. but .calc_sub_diagmat_cov_newLv_oldv appears never called in that case...
@@ -82,8 +83,7 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
       ii <- rep(bloc_i+(as.integer(gl(numnamesTerms,lb,lb*numnamesTerms))-1L)*nr, numnamesTerms)
       jj <- outer(rep(bloc_j,numnamesTerms), (seq(numnamesTerms)-1L)*nc,"+")
       dim(jj) <- NULL
-      newoldC <- as(sparseMatrix(x=rep(1,length(ii)), i=ii, j=jj, dims=c(nr,nc)*numnamesTerms),
-                    "dgCMatrix")
+      newoldC <- sparseMatrix(x=rep(1.0,length(ii)), i=ii, j=jj, dims=c(nr,nc)*numnamesTerms, repr="C")
       colnames(newoldC) <- rep(oldlevels,numnamesTerms)
       rownames(newoldC) <- rep(newlevels,numnamesTerms)
       if (FALSE) { # NOT the same thing but could be useful elsewhere.
@@ -91,9 +91,8 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
         x <- oldornew %in% intersect(oldlevels,newlevels)
         xx <- rep(x,numnamesTerms)
         nc <- length(x)*numnamesTerms
-        newoldC <- as(sparseMatrix(x=rep(1,numnamesTerms^2), i=rep(which(xx),numnamesTerms), j=which(xx)[j],
-                                   dims=c(nc,nc)),
-                   "dgCMatrix")
+        newoldC <- sparseMatrix(x=rep(1.0,numnamesTerms^2), i=rep(which(xx),numnamesTerms), j=which(xx)[j],
+                                   dims=c(nc,nc),repr="C")
         colnames(newoldC) <- rownames(newoldC) <- rep(oldornew, numnamesTerms)
       }
     }
@@ -351,11 +350,17 @@ if (FALSE) { # v3.5.121 managed to get rid of it
 }
 
 .get_newfixef_info <- function(newdata, locform, locdata, object, re.form) {
+  # The newX.pv from .get_newX_info will have cols for the etaFix, in contrast to the object$X.pv
+  # So we need to .get_newX_info() in more cases than simply having newdata
   if (  ! is.null(newdata) ) {
     RESU <- .get_newX_info(locform, locdata, object) # includes element 'eta_fix' which includes the offset
     RESU$locdata <- locdata
   } else if (! is.null(re.form)) { # then I still need eta_fix
-    eta_fix <- drop(object$X.pv %*% fixef(object))
+    fixef4X.pv <- na.omit(fixef(object)) # there was an etaFix
+    if (ncol(object$X.pv) != length(fixef4X.pv)) {
+      newX_info <- .get_newX_info(locform, locdata, object) 
+      eta_fix <- drop(newX_info$newX.pv %*% fixef4X.pv)
+    } else eta_fix <- drop(object$X.pv %*% na.omit(fixef(object)))
     off <- model.offset(model.frame(object)) # so if I later store the model.frame I would no longer need the raw data here.
     if (!is.null(off)) eta_fix <- eta_fix+off
     RESU <- list(locdata=locdata,newX.pv=object$X.pv, eta_fix=eta_fix)

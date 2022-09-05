@@ -61,9 +61,13 @@
       .constr_ranCoefsInv(trRanCoef=trRanCoefs[[char_rd]], constraint=constraints[[char_rd]], rC_transf=rC_transf)
     ranPars$trRanCoefs <- NULL
   }
-  if ( ! is.null(ranPars$trNB_shape)) {
+  if ( length(ranPars$trNB_shape)) { # rather than 'is.null() bc in mv_case the fampars are suppressed from a fampars vector in post_process_family_it() => final value numeric(0)
     ranPars$NB_shape <- .NB_shapeInv(ranPars$trNB_shape)
     ranPars$trNB_shape <- NULL
+  }
+  if ( length(ranPars$trbeta_prec)) {
+    ranPars$beta_prec <- .beta_precInv(ranPars$trbeta_prec)
+    ranPars$trbeta_prec <- NULL
   }
   attr(ranPars,"init.HLfit") <- init.HLfit  
   return(ranPars)

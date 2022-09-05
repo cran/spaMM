@@ -35,21 +35,36 @@ Despite its different name for different fitting functions, the argument for fix
 \dontrun{
 data("wafers")
 # Fixing random-coefficient parameters:
-HLfit(y~X1+(X2|batch), data=wafers, ranFix=list(ranCoefs=list("1"=c(2760, -0.1, 1844))))
-# fixing coefficients of the linear predictor, but with REML as if they were not fixed:
-HLfit(y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch), data=wafers, family=Gamma(log),
-      etaFix=list(beta=c("(Intercept)"=5.61208, X1=0.08818, X2=-0.21163, X3=-0.13948, 
+fitme(y~X1+(X2|batch), data=wafers, fixed=list(ranCoefs=list("1"=c(2760, -0.1, 1844))))
+##  HLfit syntax for the same effect (except that REML is used here)
+# HLfit(y~X1+(X2|batch), data=wafers, ranFix=list(ranCoefs=list("1"=c(2760, -0.1, 1844))))
+
+
+# Fixing coefficients of the linear predictor, but with REML as if they were not fixed:
+#
+fitme(y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch), data=wafers, family=Gamma(log), method="REML",
+      etaFix=list(beta=c("(Intercept)"=5.61208, X1=0.08818, X2=-0.21163, X3=-0.13948,                         
                          "I(X2^2)"=-0.10378, "X1:X3"=-0.08987, "X2:X3"=-0.08779)),
       REMLformula=y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch))
+#
+# The fixed-effect coeffcitents in this example are 'fixef(remlfit)' from 
+(remlfit <- fitme(y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch), data=wafers, 
+                  family=Gamma(log), method="REML") )
+This should give the same maraginal and estricted likelihoods 
+
+## Hence, same effect by HLfit():      
+#
+# remlfit <- HLfit(y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch), data=wafers, family=Gamma(log)) 
+# HLfit(y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch), data=wafers, family=Gamma(log),
+#       etaFix=list(beta=fixef(remlfit)),
+#       REMLformula=y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch))
 
 data("Loaloa")
-# Fixing some Matern correlation parameters, in corrHLfit:
-corrHLfit(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
-           +Matern(1|longitude+latitude),
-             data=Loaloa,family=binomial(),ranFix=list(nu=0.5,Nugget=2/7))
-# Fixing all mandatory Matern correlation parameters, in HLCor:
-HLCor(cbind(npos,ntot-npos)~elev1+elev2+elev3+elev4+maxNDVI1+seNDVI
-           +Matern(1|longitude+latitude),
+# Fixing some Matern correlation parameters, in fitme():
+fitme(cbind(npos,ntot-npos) ~ elev1 +Matern(1|longitude+latitude),
+             data=Loaloa,family=binomial(),fixed=list(nu=0.5,Nugget=2/7))
+# Fixing all mandatory Matern correlation parameters, in HLCor():
+HLCor(cbind(npos,ntot-npos) ~ elev1 + Matern(1|longitude+latitude),
              data=Loaloa,family=binomial(),ranPars=list(nu=0.5,rho=0.7))
 }
 }

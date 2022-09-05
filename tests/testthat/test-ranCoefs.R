@@ -58,8 +58,8 @@ if (file.exists((privdata <- paste0(projpath(),"/../tests_misc/ranCoefs/all_fitn
                      data = my.data, method="ML"))  
     how(fitme6) # 2.5s v3.0.34
     if (FALSE) { 
-      # ___F I X M E___ exploration of lambda by nloptr quite poor here:
-      (fitme6 <- fitme(total_red ~ sex*env + (1|rep) + (0 + sex:env|line), verbose=c(TRACE=TRUE), # control=list(optimizer="bobyqa") # finds the solution
+      # ___F I X M E___ exploration of lambda by nloptr quite poor here, while bobyqa finds the solution
+      (fitme6 <- fitme(total_red ~ sex*env + (1|rep) + (0 + sex:env|line), verbose=c(TRACE=TRUE), # control=list(optimizer="bobyqa"), 
                        data = my.data, method="ML", init=c(get_inits_from_fit(fitme6)$init["ranCoefs"])))  
     }
     testval6o <- 1536.080805076491 # chol -- good 

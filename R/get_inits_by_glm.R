@@ -5,8 +5,13 @@
                                off=processed$off
                                ) {
   ## if .get_inits_by_glm is called prior to optimization the family parameters may not be assigned, so: 
-  if (family$family=="negbin") {
+  if (family$family %in% c("negbin","negbin1")) {
     if (inherits(substitute(shape, env=environment(family$aic)),"call")) family <- Poisson(family$link, trunc=environment(family$aic)$trunc) 
+  } else if (family$family=="beta_resp") {
+    if (inherits(substitute(prec, env=environment(family$aic)),"call")) { # only if beta_prec not assigned
+      loc_link <- family$link
+      family <- beta_resp(link=loc_link, prec=1) 
+    }
   } else if (family$family=="COMPoisson") {
     loc_link <- family$link
     if (loc_link=="loglambda") loc_link <- "log"
@@ -23,11 +28,11 @@
   ###################################################if (pforpv==0) {endform <-"0"} else 
   pforpv <- ncol(X.pv)
   if( ! pforpv && # no predictor variable
-      (family$family %in% c("binomial","poisson") || 
-        # 1st condition => if original family was (T)negbin with free disp param (and pforpv=0)L, a *poisson* GLM *with* an Intercept is fitted (the resulting beta is ignored);
+      (family$family %in% c("binomial","poisson","beta_resp") || 
+        # 1st condition => includes cases where original family was (T)negbin with free disp param (and pforpv=0)L, a *poisson* GLM *with* an Intercept is fitted (the resulting beta is ignored);
         # 2nd condition => if original family was negbin with FIXED disp param, a negbin GLM is fitted; it must have an intercept otherwise 
         #                                                  eta=0=> mu untruncated=1 => y>1 is impossible (and returns negative deviance=> negative init lambda)
-        (family$family == "negbin" && # with FIXED shape
+        (family$family  %in% c("negbin","negbin1") && # with FIXED shape
          family$zero_truncated) 
     )) X.pv <- matrix(1,ncol=1, nrow=nrow(X.pv))
   n_lambda <- sum(attr(processed$ZAlist,"Xi_cols"))
@@ -44,8 +49,23 @@
     if (is.nan(guess)) { # resglm$df.residual=0, possibly wider issue with requested fit, cannot be resolved from here.
       resu$lambda <- resu$phi_est <- 1e-04
     } else resu$lambda <- resu$phi_est <- sum(dev)/resglm$df.residual # /lam_fac
+  } else if (inherits(family,"LLF")) { # at init by fixed-effect model: beta_resp
+    resglm <- llm.fit(x=X.pv, 
+                            y=drop(Y), 
+                            weights = eval(prior.weights), 
+                            offset = off, family = family, 
+                            control = processed[["control.glm"]])
+    if ( ! resglm$converged && family$family=="negbin") { # quick patch, but that points to something to fix in llm.fit or in the family.
+      resglm <- spaMM_glm.fit(x=X.pv, 
+                              y=drop(Y), 
+                              weights = eval(prior.weights), 
+                              offset = off, family = family, 
+                              control = processed[["control.glm"]])
+    }
+    resu$phi_est <- resu$lambda <- as.numeric(deviance(resglm)/resglm$df.residual) # ___F I X M E___ a bit large in the 1st beta_resp example
   } else { ## GLM
-    #
+    # (1) This handles truncated fams (since glm -> glm.fit handles Tpoisson() etc)
+    # (2) This ignores obsInfo so results will differ from the equivalent LLF family
     if (family$family=="COMPoisson") glm.fit <- glm.nodev.fit 
     tryglm <- .tryCatch_W_E(glm.fit(x=X.pv, 
                                     y=Y, 
@@ -90,7 +110,7 @@
     ## Two potential problems (1) NA's pour param non estimables (cas normal); 
     ## (2) "glm.fit: fitted probabilities numerically 0 or 1 occurred" which implies separation or large offset
     if (max(abs(c(coefficients(resglm))),na.rm=TRUE)>1e10) { ## na.rm v1.2 
-      warning(paste0("(!) Apparent divergence of estimates in a *GLM* analysis of the data.\n",
+      warning(paste0("(!) Apparent divergence of estimates in a fixed-effect pre-fit.\n",
                      "    Check your data for extreme values, separation or bad offset values."))
     } 
     beta_eta <- c(coefficients(resglm)) ## this may include NA's. Testcase: HLfit(Strength ~ Material*Preheating+Method,data=weld)

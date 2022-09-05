@@ -43,7 +43,7 @@
     } else if (which_LevMar_step=="b_&_v_in_b") {  # summand is computed after v_h ha been modified too
       # dbeta <- LevMarblob$dVscaled_beta[-seq_n_u_h]
       # summand <- dbeta*(gainratio_grad[-seq_n_u_h]+ LevMarblob$dampDpD * dbeta) 
-      #### soame as for "v_b", *assuming* that we have put back the v_h changes in $dVscaled_beta
+      #### same as for "v_b", *assuming* that we have put back the v_h changes in $dVscaled_beta
       tempodvhbeta <- .unlist(LevMarblob[c("dVscaled","dbeta_eta")])
       tempodvhbeta[seq_n_u_h] <- tempodvhbeta[seq_n_u_h]*ZAL_scaling
       summand <- tempodvhbeta*(gainratio_grad+ LevMarblob$dampDpD * tempodvhbeta)
@@ -184,6 +184,6 @@
   v_infer_args$beta_eta <- beta_eta
   v_infer_args$v_h <- v_h
   v_infer_args$u_h <- u_h
-  v_h_blob <- do.call(IRLS_fn, v_infer_args) ## blue + loop of damping loops -> loop of underline greens...
+  v_h_blob <- do.call(IRLS_fn, v_infer_args) ## blue + loop of damping loops -> loop of underline greens... (IRLS_fn = .solve_v_h_IRLS)
   return(v_h_blob)
 }

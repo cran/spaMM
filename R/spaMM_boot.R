@@ -211,7 +211,7 @@ dopar <- local({
           if (TRUE) {
             fn_dots <- list(...)
             for (st in names(fn_dots)) {
-              # Add an enclusing quote():
+              # Add an enclosing quote():
               if ( is.language(fn_dots[[st]])) fn_dots[[st]] <- substitute(quote(what),list(what=fn_dots[[st]]))
             }
             bootreps <- try(foreach::`%dopar%`(foreach_blob, do.call(fn, c(list(newresp[, i]), fn_dots)))) 
@@ -222,6 +222,23 @@ dopar <- local({
           # the try() is useful if the user interrupts the dopar, in which case it allows close(pb) to be run. (? But doSNOW appear to close the nodes asynchronously?)
           foreach::registerDoSEQ() ## https://stackoverflow.com/questions/25097729/un-register-a-doparallel-cluster
           parallel::stopCluster(cl)
+          #
+          if (foreach_args[[".errorhandling"]]=="remove" && is.null(bootreps)) {
+            cat(crayon::bold(paste0(
+              "Hmmm. It looks like all parallel processes failed. Maybe rerun spaMM_boot() \n",
+              "with  ' control.foreach=list(.errorhandling=\"stop\") '  to diagnose the problem.\n"
+            )))
+          } else if (foreach_args[[".errorhandling"]]=="stop" && inherits(bootreps,"try-error")) {            
+            # foreach alters the condition message => seel '\"' after 'could not find'
+            if (grep("could not find",(condmess <- conditionMessage(attr(bootreps,"condition"))))) {
+              firstpb <- strsplit(strsplit(condmess,"could not find")[[1]][2],"\"")[[1]][2]
+              cat(crayon::bold(paste0(
+                "Hmmm. It looks like some variables were not passed to the parallel processes.\n",
+                "Maybe add   ' ",firstpb," = ",firstpb," '  to spaMM_boot()'s 'fit_env' argument?\n"
+              )))
+            } else cat(crayon::bold(condmess))
+          }
+          #
           if (showpbar) close(progrbar_setup$pb)
         } else { # no doSNOW
           # in that case, ## We will use pbapply, with argument cl=cl; a direct call to foreach would require doParallel::registerDoParallel(cl)
@@ -230,6 +247,7 @@ dopar <- local({
             doSNOW_warned <<- TRUE
           } 
           pb_char <- "p"
+          parallel::clusterCall(cl, Sys.setenv, LANG = "en")
           if ( ! is.null(iseed) ) parallel::clusterSetRNGStream(cl = cl, iseed) 
           packages2export <- control$.packages
           if (is.null(packages2export)) packages2export <- "spaMM"
@@ -245,6 +263,15 @@ dopar <- local({
           bootreps <- try(pbapply(X=newresp,MARGIN = 2L,FUN = fn, cl=cl, ...))
           parallel::stopCluster(cl)
           pboptions(pbopt)
+          if (inherits(bootreps,"try-error") &&
+              grep("could not find",(condmess <- conditionMessage(attr(bootreps,"condition"))))
+              ) {
+            firstpb <- strsplit(condmess,"\"")[[1]][2]
+            cat(crayon::bold(paste0(
+              "Hmmm. It looks like some variables were not passed to the parallel processes.\n",
+              "Maybe add    ",firstpb," = ",firstpb,"   to spaMM_boot()'s 'fit_env' argument?\n"
+            )))
+          }
           if (identical(control$.combine,"rbind")) bootreps <- t(bootreps)
         } # has_doSNOW ... else
       } # FORK ... else

@@ -59,12 +59,18 @@ scotlip$verif <- scotlip$expec/2
 testthat::expect_true(abs(ranSlope2$lambda-4*ranSlope1$lambda)<1e-5)
 
 # test dfs
+data("wafers")
 testthat::expect_true(sum(unlist(HLfit(y~X1+(X2|batch), data=wafers)$dfs))==6L) # 3 df in p_lambda for ranCoefs
 testthat::expect_true(sum(unlist(fitme(y~X1+(X2|batch)+(X2|batch), # stupid formula but effective test
                                        data=wafers, fixed=list(ranCoefs=list("1"=c(NA, -0.1, NA))))$dfs))==8L) # 5 df in p_lambda for ranCoefs
+# check with mixed inner and outer-estimated ranefs (=> bug before v3.12.4):
+testthat::expect_true(fitme(y~X1+(X2|batch)+(1|batch), 
+                            data=wafers, fixed=list(ranCoefs=list("1"=c(NA, -0.1, NA))))$dfs$p_lambda==3L) # 2 df in p_lambda for ranCoefs
+testthat::expect_true(fitme(y~X1+(X2|batch)+(1|batch), 
+                            data=wafers)$dfs$p_lambda==4L) # 3 df in p_lambda for ranCoefs
+# testthat::expect_true(HLfit(y~X1+(X2|batch)+(1|batch), data=wafers)$dfs$p_lambda==4L) # 3 df in p_lambda for ranCoefs (slow)
 
 if (FALSE) { # examples from update.Rd in handy test form
-  data("wafers")
   ## First the fit to be updated:
   wFit <- HLfit(y ~X1*X3+X2*X3+I(X2^2)+(1|batch),family=Gamma(log),
                 resid.model = ~ X3+I(X3^2) ,data=wafers)

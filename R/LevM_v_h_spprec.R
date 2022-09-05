@@ -56,14 +56,16 @@
                                           cum_n_u_h=processed$cum_n_u_h #,H_global_scale=H_global_scale
                                           ) 
     sXaug_arglist <- c(update_sXaug_constant_arglist,
-                       list(w.ranef=wranefblob$w.ranef, 
-                            w.resid=w.resid))
+                       list(w.ranef=wranefblob$w.ranef))
     sXaug_arglist$H_w.resid <- .calc_H_w.resid(w.resid, muetablob=muetablob, processed=processed) 
     # .HLfit_body_augZXy has called .init_AUGI0_ZX_envir_spprec_info(processed,LMatrices)...
-    if (trace) cat(stylefn(".")) ## hmff blue (vloop) F I X M E
     sXaug <- do.call(processed$AUGI0_ZX$envir$method, # ie, def_AUGI0_ZX_sparsePrecision
                      sXaug_arglist)
-
+    if (trace) {
+      tracechar <- ifelse(sXaug$BLOB$nonSPD,"!",".")
+      cat(stylefn(tracechar)) # hmff blue (vloop) F I X M E
+    }
+    
     Vscaled_beta <- list(v_h=v_h/ZAL_scaling,beta_eta=beta_eta)
     
     break_info <- list()
@@ -90,16 +92,9 @@
       zInfo <- do.call(".calc_zAug_not_LMM",calc_zAug_args) 
       if (GLMMbool) zInfo$z2 <- NULL 
       etamo <- muetablob$sane_eta - off
-      zInfo$z1_eta <- zInfo$z1-etamo
-      z1_sscaled_eta <- zInfo$z1_sscaled - etamo # zAug[-seq_n_u_h]-etamo # z_1-sscaled-etamo
-      if (GLMMbool) {
-        zInfo$dlogfvdv <-  - v_h * wranefblob$w.ranef
-      } else zInfo$dlogfvdv <- (zInfo$z2 - v_h) * wranefblob$w.ranef
-      ## the gradient for -p_v (or -h), independent of the scaling
-      zInfo$m_grad_obj <- c( ## drop() avoids c(Matrix..); attr(sXaug,"w.resid") presumably correct for truncated models too.
-        m_grad_v <- drop(.crossprod(ZAL, sXaug$BLOB$H_w.resid * zInfo$z1_eta) + zInfo$dlogfvdv), # Z'W(z_1-eta)+ dlogfvdv
-        drop(.crossprod(X.pv, attr(sXaug,"w.resid") * z1_sscaled_eta)) # X'W(z_1-sscaled-eta)
-      )
+      zInfo$m_grad_obj <- .calc_m_grad_obj(zInfo, z1_eta=zInfo$z1-etamo, z1_sscaled_eta=zInfo$z1_sscaled - etamo, GLMMbool, v_h, wranefblob, 
+                                           H_w.resid=.BLOB(sXaug)$H_w.resid, ZAL, X.pv)
+      
       zInfo$gainratio_grad <- zInfo$m_grad_obj # needed for .do_damped_WLS_v_in_b_spprec()
       zInfo$scaled_grad <- zInfo$m_grad_obj # used as LM_z=zInfo["scaled_grad"] in .do_damped_WLS_v_in_b_spprec
       if (trace>1L) {
@@ -110,6 +105,7 @@
       }
       constant_APHLs_args <- list(processed=processed, which="hlik", sXaug=sXaug, phi_est=phi_est, lambda_est=lambda_est)
       # the following block needs m_grad_v the new m_grad_v hence its position
+      m_grad_v <- zInfo$m_grad_obj[seq_n_u_h]
       pot4improv <- get_from_MME(sXaug=sXaug, which="Mg_invH_g", B=m_grad_v)
       low_pot <- (pot4improv < pot_tol)
       damped_WLS_blob <- .do_damped_WLS_v_in_b_spprec(sXaug=sXaug, zInfo=zInfo, 

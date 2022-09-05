@@ -9,12 +9,12 @@
 Extractors for information criteria such as AIC
 }
 \description{
-\code{get_any_IC} computes model selection/information criteria such as AIC. See Details for more information about these criteria. The other extractors \code{AIC} and \code{extractAIC} are methods for \code{HLfit} objects of generic functions defined in other packages: \code{AIC} is equivalent to \code{get_any_IC}, and \code{extractAIC} returns the marginal AIC and the number of degrees of freedom for the fixed effects. 
+\code{get_any_IC} computes model selection/information criteria such as AIC. See Details for more information about these criteria. The other extractors \code{AIC} and \code{extractAIC} are methods for \code{HLfit} objects of generic functions defined in other packages: \code{AIC} is equivalent to \code{get_any_IC} (for a single fitted-model object), and \code{extractAIC} returns the marginal AIC and the number of degrees of freedom for the fixed effects. 
 }
 \usage{
 get_any_IC(object, nsim=0L, ..., verbose=interactive(),
            also_cAIC=TRUE, short.names=NULL)
-\method{AIC}{HLfit}(object, nsim=0L, ..., k, verbose=interactive(),
+\method{AIC}{HLfit}(object, ..., nsim=0L, k, verbose=interactive(),
                     also_cAIC=TRUE, short.names=NULL)
 \method{extractAIC}{HLfit}(fit, scale, k, ..., verbose=FALSE)
 }
@@ -26,7 +26,7 @@ get_any_IC(object, nsim=0L, ..., verbose=interactive(),
   \item{also_cAIC}{Whether to include the plug-in estimate of conditional AIC in the result (its computation may be slow).}
   \item{nsim}{Controls whether to include the bootstrap estimate of conditional AIC (see Details) in the result. If positive, \code{nsim} gives the number of bootstrap replicates.}
   \item{short.names}{NULL, or boolean; controls whether the return value uses short names (\code{mAIC}, etc., as shown by screen output if \code{verbose} is TRUE), or the descriptive names (\code{"   marginal AIC:"}, etc.) also shown in the screen output. Short names are more appropriate for programming but descriptive names may be needed for back-compatibility. The default (NULL) ensures back-compatibility by using descriptive names unless the bootstrap estimate of conditional AIC is reported.}
-  \item{\dots}{Other arguments that may be needed by some method. If \code{nsim} is positive, a \code{seed} argument may be passed to \code{simulate}, and the other \dQuote{\dots} will be used in a call to \code{\link{dopar}} to control the optional parallel execution of the bootstrap computations.
+  \item{\dots}{For \code{AIC.HLfit}: may include more fitted-model objects, consistently with the generic. For this and the other functions: other arguments that may be needed by some method. For example, if \code{nsim} is positive, a \code{seed} argument may be passed to \code{simulate}, and the other \dQuote{\dots} may be used to control the optional parallel execution of the bootstrap computations (by providing arguments to \code{\link{dopar}}).
   }
 }
 \details{
@@ -44,8 +44,11 @@ By default, the plug-in estimate of both the conditional AIC and of \eqn{n-p_D} 
 The dispersion AIC has been defined from restricted likelihood by Ha et al (2007; eq.10). The present implementation will use restricted likelihood only if made available by an REML fit, otherwise marginal likelihood is used.
 }
 \value{
-  For \code{AIC} and \code{get_any_IC}, a numeric vector whose possible elements are described in the Details, and whose names are controlled by the \code{short.names} argument. Note that the bootstrap computation actually makes sense and works also for fixed-effect models (although it is not clear how useful it is in that case). The return value will still refer to its results as conditional AIC.
+
+  \code{get_any_IC}, a numeric vector whose possible elements are described in the Details, and whose names are controlled by the \code{short.names} argument. Note that the bootstrap computation actually makes sense and works also for fixed-effect models (although it is not clear how useful it is in that case). The return value will still refer to its results as conditional AIC.
   
+  For \code{AIC}, If just one fobject is provided, the same return value as for \code{get_any_IC}. If multiple objects are provided, a data.frame built from such vectors, with rows corresponding to the objects.
+
   For \code{extractAIC}, a numeric vector of length 2, with first and second elements giving
 
   \item{edf}{the degree of freedom of the fixed-effect terms of the model

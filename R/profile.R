@@ -72,7 +72,8 @@ spaMM.getOption <- function (x) {spaMM.options(x, warn=FALSE)[[1]]}
     #  str(environment(spaMM:::.Rcpp_COMP_Z)$"_cache"$keys()) to get info on the cache...
     ..trDiagonal <<- memoise(f=..trDiagonal, cache = .do_call_wrap("cache_mem", arglist=list(max_size = 1024^2), pack="cachem"))
     .get_phantom_map <<- memoise(f=.get_phantom_map, cache = .do_call_wrap("cache_mem", arglist=list(max_size = 1024^2), pack="cachem"))
-  } 
+  } # ___F I X M E___ try to minimise usage of memoise
+  .spaMM.data$options$Matrix_old <- (packageVersion("Matrix")<"1.4-2")
 }
 
 ".onUnload" <- function (libpath) {

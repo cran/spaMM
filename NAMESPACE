@@ -26,7 +26,7 @@ importFrom("utils", "relist", "txtProgressBar", "setTxtProgressBar", "modifyList
            "write.table", "packageVersion", "packageDescription", "capture.output", "tail")
 importFrom("Matrix", "Matrix", "drop", "isDiagonal", "diag", "t", "solve", "Diagonal", "crossprod", "tcrossprod", "rowSums", "colSums",
            "sparseMatrix", "qr", "qrR", "qr.R", "qr.Q", "qr.coef", "isSymmetric", "forceSymmetric", "Cholesky","determinant",
-           "chol2inv", "drop0", ".symDiagonal",".trDiagonal","chol", "kronecker","nnzero", "sparse.model.matrix", "bandSparse")
+           "chol2inv", "drop0", ".symDiagonal",".trDiagonal","chol", "kronecker","nnzero", "sparse.model.matrix", "bandSparse",".sparseDiagonal")
 importFrom("proxy", "dist", "pr_DB")
 importFrom("Rcpp", "evalCpp")
 importFrom("MASS", "ginv", "gamma.shape", "mvrnorm") ## gamma.shape is actually a generic with a 'glm' method.
@@ -37,6 +37,7 @@ importFrom("crayon","green","blue","cyan","yellow","red","underline")
 importFrom("minqa","bobyqa")
 importFrom("ROI", "L_constraint", "OP", "ROI_solve", "V_bound", "bounds<-", "constraints<-", "leq", "solution")
 importFrom("boot", "boot.ci")
+importFrom("numDeriv", "hessian")
 export(coef) ## from stats namespace
 # From nlme namespace:
 export("fixef", "ranef", "corMatrix", "Initialize", "Variogram", "coef<-", "corFactor", "getCovariate", "logDet", "recalc", "VarCorr") 
@@ -113,7 +114,8 @@ S3method(get_from_MME,sXaug_EigenDense_QRP_Chol_scaled)
 #S3method(get_from_MME,sXaug_EigenSparse_LLP_scaled)
 #S3method(get_from_MME,sXaug_Matrix_QRP_scaled)
 S3method(get_from_MME,sXaug_Matrix_QRP_CHM_scaled)
-S3method(get_from_MME,sXaug_Matrix_cholP_scaled)
+#S3method(get_from_MME,sXaug_Matrix_cholP_scaled)
+S3method(get_from_MME,sXaug_Matrix_CHM_H_scaled)
 S3method(get_from_MME,AUGI0_ZX_sparsePrecision)
 #S3method(get_from_MME,AUGI0_ZX_sparsePrecision_scaled)
 S3method(get_from_MME,sparseMatrix)

@@ -121,14 +121,15 @@
 
 
 # same algo as .eval_gain_LevM_etaGLM() but with different input, use of .calc_clik(mu=muCOUNT) instead of family$dev.resids(mu=muFREQS)...
-.eval_gain_LevM_spaMM_GLM <- function(LevenbergMstep_result,family, x ,coefold,devold, offset,y,weights) { 
+.eval_gain_LevM_spaMM_xLM <- function(LevenbergMstep_result,family, x ,coefold,devold, offset,y,weights,
+                                      dev.resids=family$dev.resids) { 
   dbeta <- LevenbergMstep_result$dbetaV
   beta <- coefold + dbeta
   eta <- drop(x %*% beta) + offset
   eta <- .sanitize_eta(eta, y=y, family=family, max=40) 
   mu <- family$linkinv(eta) # muFREQS
   # for binomial fam, $family(initialize) has redefined y as a frequency and the weights as binomial weights
-  dev <- suppressWarnings(sum(family$dev.resids(y, mu, weights)))
+  dev <- suppressWarnings(sum(dev.resids(y, mu=mu, wt=weights)))
   if (is.infinite(dev) || is.na(dev)) {  
     gainratio <- -1
     conv_dev <- Inf
@@ -270,6 +271,7 @@ spaMM_glm.fit <- local({
       boundary <- conv <- FALSE
       damping <- 1e-7 ## as suggested by Madsen-Nielsen-Tingleff... # Smyth uses abs(mean(diag(XtWX)))/nvars
       dampingfactor <- 2
+      goodinit <- weights > 0 
       for (iter in 1L:control$maxit) {
         ## this uses WLS in the first iteration and Levenberg Marquardt in later ones. 
         if (iter==1L) {
@@ -277,7 +279,6 @@ spaMM_glm.fit <- local({
           # so that initial dev is >= the ML deviance under the ftted model, suitable for LM iterations; 
           # while initialize() is typically mustart <- y, not  compatible with the model. => low control$epsilon necessary
           # Conversely, if all y's are quite small, a low control$epsilon may raise spurious warnings => inmportant to control it in .calc_dispGammaGLM()
-          goodinit <- weights > 0 
           varmu <- variance(mu)[goodinit]
           if (anyNA(varmu)) stop("NAs in V(mu): consult the package maintainer.")
           if (any(varmu == 0)) 
@@ -369,7 +370,7 @@ spaMM_glm.fit <- local({
             ## LevenbergMstep_result contains rhs, the gradient of the objective, essentially  crossprod(wX,LM_wz)
             #
             ## Use a function call to keep the change in beta->start,eta,mu,dev private:
-            levMblob <- .eval_gain_LevM_spaMM_GLM(LevenbergMstep_result,family, x ,coefold,devold, offset,y,weights) 
+            levMblob <- .eval_gain_LevM_spaMM_xLM(LevenbergMstep_result,family, x ,coefold,devold, offset,y,weights) 
             gainratio <- levMblob$gainratio
             if (beta_bounded) {
               conv_crit <- levMblob$conv_dev ## (dev crit in glm.fit style, vs $dbeta in auglinmodfit style)
@@ -384,7 +385,7 @@ spaMM_glm.fit <- local({
               if (control$trace) cat("!")
               break
             } else if (gainratio>0) { ## success
-              damping <- damping * max(1/3,1-(2*gainratio-1)^3)  
+              damping <- max(damping * max(1/3,1-(2*gainratio-1)^3), 1e-7) # lower bound as in .get_new_damping() for MMs    
               dampingfactor <- 2
               start <- levMblob$beta 
               eta <- levMblob$eta ## FR->FR 1 -col matrix without names....
@@ -476,7 +477,7 @@ spaMM_glm.fit <- local({
         if (anyNA(w)) stop("NA/NaN in 'w': consult the package maintainer.") # suggests too large 'mu'
         wX <- .calc_wAugX(XZ_0I=x[good, , drop = FALSE],sqrt.ww=w)
         LM_wz <- z*w - (wX %*% coefold) ## FIXME? if coefold diverges, LM_wz diverges and increasing damping may not be sufficient
-      } ## end main loop (either a break or control$maxit reached)
+      } ######### end MAIN loop (either a break or control$maxit reached)
       if (any(good) & ! conv) {
         if (getOption("warn")==2L) { # immediate stop() ...
           warning("spaMM_glm.fit() did not converge") # rather than stop() so it's tagged as converted from warning

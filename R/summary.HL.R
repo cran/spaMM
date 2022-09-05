@@ -16,7 +16,7 @@
     if ( any(object$lambda.object$type=="outer")) optimEsts <- c(optimEsts,"lambda")
     if ( any(object$lambda.object$type=="inner")) iterativeEsts <- c(iterativeEsts,"lambda")
   }
-  if ( ! (family$family %in% c("binomial","poisson","COMPoisson","negbin"))) {
+  if ( (family$family %in% c("gaussian","Gamma"))) { # exponential families with a "phi" dispesion parameter
     if ( ! is.null(phi.object$fixef) ) {
       iterativeEsts <- c(iterativeEsts,"phi")
     } else if ( identical(attr(phi.object$phi_outer,"type"),"var")) {
@@ -28,7 +28,7 @@
   }
   optimNames <- names(attr(object,"optimInfo")$LUarglist$canon.init) ## will contain eg NB_shape
   corrPars <- get_ranPars(object,which="corrPars")
-  optimEsts <- c(optimEsts,intersect(optimNames,c(names(corrPars),"COMP_nu","NB_shape")))
+  optimEsts <- c(optimEsts,intersect(optimNames,c(names(corrPars),"COMP_nu","NB_shape","beta_prec")))
   iterativeEsts <- c(iterativeEsts,setdiff(optimNames,optimEsts))
   return(list(iterativeEsts=iterativeEsts,optimEsts=optimEsts))
 }
@@ -85,6 +85,17 @@
   invisible(NULL)
 }
 
+# .degree <- rawToChar(as.raw(c(194L,176L))) # cf HelpersMG::char(). 
+# with integers returned by HelpersMG::asc(), which is strtoi(charToRaw(x), 16L) also using only primitive fns.
+## string compar by swithch) appears to fail:
+# .ML_with_Lap_obs <- paste0("by ML (p",.degree,"_v approximation of logL).")
+# .REML_with_Lap_obs <- paste0("by REML (p",.degree,"_bv approximation of Re.logL).")
+
+.get_obsInfo <- function(object) { # back-compatibility utility
+  obsInfo <- object$how$obsInfo
+  if (is.null(obsInfo)) obsInfo <- FALSE
+  obsInfo
+}
 
 .MLmess <- function(object,ranef=FALSE) {
   if (object$models[["eta"]]=="etaGLM") {
@@ -99,11 +110,15 @@
   } else {
     if (object$HL[1]=='SEM')  {
       return("by stochastic EM.")
-    } else if (object$HL[1]==1L)  {
-      return("by Laplace ML approximation (p_v).")
-    } else if (object$HL[1]==0L)  {
-      if (ranef) {
-        return("by Laplace ML approximation (p_v).")
+    } else if (object$HL[1L]==1L)  {
+      if (.get_obsInfo(object)) {
+        return("by ML (P_v approximation of logL).")
+      } else return("by ML (p_v approximation of logL).")
+    } else if (object$HL[1L]==0L)  {
+      if (ranef) { # info for inner-estimated ranPars objective fn
+        if (.get_obsInfo(object)) {
+          return("by ML (P_v approximation of logL).")
+        } else return("by ML (p_v approximation of logL).")
       } else return("by h-likelihood approximation.")
     } 
   }
@@ -126,7 +141,9 @@
                  object$family$link=="identity" && 
                  all(attr(object$rand.families,"lcrandfamfam")=="gaussian")) {
         resu <- ("by REML.")
-      } else resu <- ("by Laplace REML approximation (p_bv).") 
+      } else if (.get_obsInfo(object)) {
+        resu <- "by REML (P_bv approximation of Re.logL)."
+      } else resu <- "by REML (p_bv approximation of Re.logL)." 
     } else {
       if (identical(attr(object$REMLformula,"isML"),TRUE)) { ## FALSE also if object created by spaMM <1.9.15 
         resu <- (.MLmess(object, ranef=TRUE))
@@ -512,7 +529,7 @@ summary.HLfitlist <- function(object, ...) {
   details <- as.list(details)
   if (is.null(details[["ranCoefs"]])) details["ranCoefs"] <- FALSE
   if (is.null(details[["p_value"]])) details["p_value"] <- "" ## a string such as "Wald"
-  if (is.null(details[["digits"]])) details["digits"] <- 4 # ___F I X M E___ document this
+  if (is.null(details[["digits"]])) details["digits"] <- 4 # __F I X M E__ document this? Only used in .print_lambda_table() so rather cryptic.
   models <- object$models
   famfam <- object$family$family ## response !
   lcrandfamfam <- attr(object$rand.families,"lcrandfamfam") 
@@ -587,8 +604,8 @@ summary.HLfitlist <- function(object, ...) {
       ## but no optimInfo in the refit.
     } else {
       objString <- switch(objective,
-                          p_bv= "'outer' REML, maximizing p_bv",
-                          p_v= "'outer' ML, maximizing p_v",
+                          p_bv= "'outer' REML, maximizing Re.logL",
+                          p_v= "'outer' ML, maximizing logL",
                           cAIC= "'outer' minimization of cAIC",
                           paste("'outer' maximization of",objective)
       )
@@ -678,10 +695,14 @@ summary.HLfitlist <- function(object, ...) {
     likelihoods <- unlist(object$APHLs[validnames]) # NULL if no validnames
     if ( models[["eta"]]=="etaHGLM"){
       APHLlegend <- c(hlik="       h-likelihood:",
-                      p_v="p_v(h) (marginal L):",
-                      p_bv="  p_beta,v(h) (ReL):")
-    } else APHLlegend <- c(p_v="p(h)   (Likelihood):",
-                           p_bv="  p_beta(h)   (ReL):")
+                      p_v= if (.get_obsInfo(object)) {
+                             paste0("logL      (P_v(h)):")
+                      } else "logL       (p_v(h)):",
+                      p_bv= if (.get_obsInfo(object)) {
+                             paste0("Re.logL (P_b,v(h)):")
+                      } else "Re.logL  (p_b,v(h)):")
+    } else APHLlegend <- c(p_v="logL         (p(h)):",
+                           p_bv="Re.logL (p_beta(h)):")
     names(likelihoods) <- APHLlegend[validnames]
     if ( is.null(object$distinctX.Re)) {
       ## standard REML 

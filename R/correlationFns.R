@@ -255,7 +255,9 @@ as_precision <- function(corrMatrix, condnum=1e12) {
     }
     corrMatrix <- (1-diagcorr)*corrMatrix
     diag(corrMatrix) <- diag(corrMatrix) + diagcorr ## # all diag is corrected => added a constant diagonal matrix 
+    # oldMDCopt <- options(Matrix.warnDeprecatedCoerce = 0) # chol2inv(<dtC>) problem in Matrix v1.4.2
     precmat <- chol2inv(chol(corrMatrix)) # as explained in first version
+    # options(oldMDCopt)
   }
   colnames(precmat) <- rownames(precmat) <- colnames(corrMatrix) 
   # drop0 useful to convert to sparseMarix even if no 0 to drop

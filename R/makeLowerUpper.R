@@ -234,7 +234,20 @@
       if (is.null(NB_shape <- user.upper$NB_shape)) NB_shape <- max(100*canon.init$NB_shape,1e6)
       upper$trNB_shape <- .NB_shapeFn(NB_shape)
     }
-    
+  }
+  if (! is.null(canon.init$beta_prec)) { 
+    if (length(canon.init$beta_prec)>1L) { # mv case with >1 beta_resp submodels
+      # then all vectors mus be named and canon.init must have values for all beta_resp submodels
+      beta_prec <- .modify_list(rep(1e-6, length(canon.init$beta_prec)), user.lower$beta_prec)
+      lower$trbeta_prec <- .beta_precFn(beta_prec)
+      beta_prec <- .modify_list(pmax(100*canon.init$beta_prec,1e6), user.upper$beta_prec)
+      upper$trbeta_prec <- .beta_precFn(beta_prec)
+    } else {
+      if (is.null(beta_prec <- user.lower$beta_prec)) beta_prec <- 1e-6
+      lower$trbeta_prec <- .beta_precFn(beta_prec)
+      if (is.null(beta_prec <- user.upper$beta_prec)) beta_prec <- max(100*canon.init$beta_prec,1e6)
+      upper$trbeta_prec <- .beta_precFn(beta_prec)
+    }
   }
   if ( ! is.null( ranCoefs <- canon.init$ranCoefs)) { ## whenever there are ranCoefs to outer-optimize 
     upper$trRanCoefs <- lower$trRanCoefs <- ranCoefs # so that assignments such as lower$trRanCoefs[[it]] <- ... will not fail

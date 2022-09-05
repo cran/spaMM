@@ -19,11 +19,13 @@ options(error=recover)
   cat(crayon::yellow("MaternIMRFa; ")) 
   { # create IMRF model
     ## Creating the mesh 
+    oldMDCopt <- options(Matrix.warnDeprecatedCoerce = 0) # # INLA issue
     mesh <- INLA::inla.mesh.2d(loc = blackcap[, c("longitude", "latitude")], 
                                cutoff=30,
                                max.edge = c(3, 20)) 
     mesh$n ## 40
     matern <- INLA::inla.spde2.matern(mesh)
+    options(oldMDCopt)
   }
   { # first corrFamily mv fit
     (zut_cF <- fitmv(submodels=list(mod1=list(migStatus ~ 1),

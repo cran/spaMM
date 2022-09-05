@@ -155,7 +155,8 @@
     Lunique <- Q_CHMfactor # representation of Lunique, not Lunique itself
     # note that this has an attribute "type" !  
   } else {
-    Lunique <- solve(Q_CHMfactor,system="Lt") #  L_Q^{-\top}=LMatrix_correlation 
+    # Q_CHMfactor of corr matrix: no direct relation to the Xaug nor to processed$AUGIO_ZX$I...
+    Lunique <- solve(Q_CHMfactor,system="Lt", b=.sparseDiagonal(n=ncol(Q_CHMfactor), shape="g")) #  L_Q^{-\top}=LMatrix_correlation 
     ## Lunique is a dtCMatrix; it is for single correlated effect, and still used in HLfit_body; 
     #  Keeping it as dtCMatrix might be faster for some operations (but not .tcrossprod) (F I X M E test)
     ## whether it is used or not in MME_method (sXaug_...), a lot of other code still expects it
@@ -649,7 +650,7 @@
           is_incid <- attr(Zlist[[char_rd]],"is_incid")
           if (inherits(Amatrix,"pMatrix")) {
             # subsetting by rownames does not generally work on permutation matrices
-            Amatrix <- as(Amatrix,"ngTMatrix")
+            Amatrix <- as(as(Amatrix, "nMatrix"), "TsparseMatrix") # => ngTMatrix 
           } else if ( ! is.null(is_incid)) {
             if (is_incid) is_incid <- attr(Amatrix,"is_incid") # .spaMM_spde.make.A() provides this attr. Otherwise, may be NULL, in which case ./.
             # ./. a later correct message may occur ("'is_incid' attribute missing, which suggests inefficient code in .calc_new_X_ZAC().)
@@ -673,7 +674,7 @@
   delayedAssign("kron_Y_chol_Q", {drop0(as(blob$Q_CHMfactor,"sparseMatrix"),1e-17)}, assign.env = blob ) 
   # the drop0 levels affects "4th decimals" and computation time 
   delayedAssign("Lunique", {
-    Lunique <- drop0(solve(blob$Q_CHMfactor,system="Lt"),1e-17) # ___TAG___ note that .Lunique_info_from_Q_CHM() does not back permute
+    Lunique <- drop0(solve(blob$Q_CHMfactor,system="Lt", b=.sparseDiagonal(n=ncol(blob$Q_CHMfactor), shape="g")),1e-17) # ___TAG___ note that .Lunique_info_from_Q_CHM() does not back permute
     # so if we want code consistent with that fn...  but potential divergent uses of this Lunique?
     colnames(Lunique) <- rownames(Lunique) <- colnames(cov_info_mat[["matrix"]])
     attr(Lunique,"Q_CHMfactor") <- blob$Q_CHMfactor 

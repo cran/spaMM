@@ -232,7 +232,7 @@ HLCor_body <- function(processed, ## single environment
   designL.formals <- names(formals(mat_sqrt))
   makescaled.formals <- names(formals(make_scaled_dist))
   HLnames <- (c(HLCor.formals,names_formals_HLfit,designL.formals,makescaled.formals))  ## cf parallel code in corrHLfit
-  HLCor.call <- mc[c(1,which(names(mc) %in% HLnames))] ## keep the call structure
+  HLCor.call <- mc[c(1L,which(names(mc) %in% HLnames))] ## keep the call structure
   ranefParsList <- relist(ranefParsVec,skeleton) # converts back a vector of variable parameters to a structured list of variable parameters
   print_phiHGLM_info <- ( ! is.null(processed$residProcessed) && processed$verbose["phifit"]) 
   if (print_phiHGLM_info) {

@@ -1,6 +1,7 @@
 .spaMM.data <- new.env(parent = emptyenv())
 .spaMM.data$options <- list(
   F_I_X_M_E=FALSE,
+  obsInfo=FALSE,
   store_data_as_mf=FALSE, # Surely many issues.
   Rcpp_crossprod=TRUE, # integer with usual bool interp., and >1: .crossprod() prints types when .Rcpp_crossprod() not called; >2: always prints types;
   update_CHM=TRUE, # measurable benefits only if Cholesky(., perm=TRUE)
@@ -13,12 +14,16 @@
   separation_max=10,
   sep_solver="glpk",
   spprec_method="def_AUGI0_ZX_sparsePrecision", 
-  matrix_method="def_sXaug_EigenDense_QRP_Chol_scaled", 
+  matrix_method="def_sXaug_EigenDense_QRP_Chol_scaled", # handling negative weights  
   Matrix_method= "def_sXaug_Matrix_QRP_CHM_scaled", 
+  #Hobs_Matrix_method= "def_sXaug_Matrix_QRP_CHM_scaled", # may have a patch for handling negative weights, but not exactly.  
+  Hobs_Matrix_method= "def_sXaug_Matrix_CHM_H_scaled", # handling negative weights  
+  force_LLF_CHM_QRP=FALSE, # if set to TRUE, LevM no longer uses the exact Hessian with signs (CHM_H methods) when this Hessian is SPD.
+  force_LLM_nosigns_CHM_H=FALSE, # set it to TRUE to test CHM_H methods when there are no $signs (quite slow)
   EigenDense_QRP_method=".lmwithQR", # .lmwithQR seems fast cf bootstrap
   use_spprec_QR=FALSE, # TRUE visibly slows several of the long tests (incl fitar1) 
   presolve_cond=quote(ncol(BLOB$R_scaled)>20000L), # may be slightly faster and more memory efficient for huge data (nested-Matern 40000L subset) 
-  #Matrix_method="def_sXaug_Matrix_cholP_scaled", 
+  #Matrix_method="sXaug_Matrix_CHM_H_scaled", 
   #Matrix_method= "def_sXaug_Matrix_QRP_scaled", 
   ## possible values: matches to def_sXaug_
   #
@@ -36,7 +41,7 @@
   X_scaling=TRUE,
   minLambda=1e-8,
   maxLambda=1e8,
-  regul_lev_lambda=1e-16, # ____F I X M E____
+  regul_lev_lambda=1e-16, # ___F I X M E___
   ############## augZXy stuff (see also ranCoefs settings)
   allow_augZXy=NULL, ## interpreted as TRUE if phiScal (=>not phiFix) before further conditions are applied, and FALSE otherwise 
   # allow_augZXy=2L forces augZXy usage with non-constant prior weights, if other conditions for its usage are satisfied.
@@ -127,7 +132,6 @@
   qrTolerance=1e-10, ## private, used by select qr() calls for predVar computation
   # , sparse_X=NULL## private
   uGeo_levels_type="data_order", # same type to be used by .calc_AMatrix_IMRF() and .calc_Zmatrix() for IMRFs. Explicit names, useful for debugging.
-  INLA_A=TRUE,
   #
   stylefns=list(v_in_loop=crayon::green, 
                 v_in_last=crayon::green$underline, # final output of v_h .do_damped_WLS_v_in_b

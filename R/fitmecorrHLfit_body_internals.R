@@ -286,7 +286,7 @@
       if (inherits(M,c("matrix", "dgeMatrix", "dgCMatrix"))) {
         if (symmetric) {
           eigrange <- suppressWarnings(RSpectra::eigs_sym(M, k=2, which="BE", opts=list(retvec=FALSE))$values)
-          if ( length(eigrange)==2) {
+          if ( length(eigrange)==2L) {
             resu <- list(eigrange=range(eigrange)) # only the extreme eigenvalues;  range() for consistent ordering but is the reverse of the eigen one...
           } else resu <- NULL
         } else { # "eigs() with matrix types "matrix", "dgeMatrix", "dgCMatrix" and "dgRMatrix" can use "LM", "SM", "LR", "SR", "LI" and "SI"" =>hence not "BE"
@@ -567,10 +567,10 @@
     phantom_X <- lower.tri(map_X, diag=TRUE)
     map_X <- map_X*phantom_X
     #
-    phantom_Y <- as(envir$kron_Y_chol_Q,"ltCMatrix") # sparse logical matrix...
+    phantom_Y <- as(as(as(envir$kron_Y_chol_Q,"lMatrix"),"triangularMatrix"),"CsparseMatrix") # sparse logical matrix...
     LHS <- .makelong_kronprod(map_X, kron_Y=phantom_Y) # dropping O's but others values are integers in numeric format
     #
-    phantom_X <- as(phantom_X,"ltCMatrix")
+    phantom_X <- as(as(as(phantom_X,"lMatrix"),"triangularMatrix"),"CsparseMatrix")
     envir$long_chol_Q_phantom_map <- list(
       phantom_X=phantom_X,
       LHS_x= as.integer(LHS@x), # OK bc with a tolerance of .Machine$double.eps
@@ -585,9 +585,9 @@
   if (is.null(envir$long_precmat_phantom_map)) {
     #
     map_X <- forceSymmetric(matrix(seq(Xi_ncol^2),nrow=Xi_ncol,ncol=Xi_ncol))
-    phantom_Y <- as(cov_info_mat$matrix,"lsCMatrix") # sparse logical matrix...
+    phantom_Y <- as(as(as(cov_info_mat$matrix,"lMatrix"),"symmetricMatrix"),"CsparseMatrix")# sparse logical matrix...
     LHS <- .makelong_kronprod(map_X, kron_Y=phantom_Y) 
-    phantom_X <- as(map_X,"lsyMatrix") # (why does conversion to lsC does not work?) 
+    phantom_X <- as(as(map_X,"lMatrix"),"symmetricMatrix") # (why does conversion to lsC does not work?) 
     #
     envir$long_precmat_phantom_map <- list(
       LHS_x= as.integer(LHS@x), # OK bc with a tolerance of .Machine$double.eps
@@ -612,9 +612,9 @@
   list(
     lsyLHS_x= as.integer(lsyLHS@x), 
     ltCLHS_x= as.integer(ltCLHS@x), 
-    lsyRHS=.makelong_kronprod(as(map_X,"lsyMatrix"), 
+    lsyRHS=.makelong_kronprod(as(as(map_X,"lMatrix"),"symmetricMatrix"),  # lsy
                               kron_Y=phantom_Y_lsC), 
-    ltCRHS=.makelong_kronprod(as(lower.tri(map_X, diag=TRUE),"ltCMatrix"), 
+    ltCRHS=.makelong_kronprod(as(as(lower.tri(map_X, diag=TRUE),"lMatrix"),"CsparseMatrix"), # ltC
                               kron_Y=phantom_Y_ltC) 
   )
 }
@@ -769,7 +769,11 @@
     if ( ! is.null(processed$families)) {
       which_mv <- attr(processed$ZAlist[[rd]],"which_mv")
       link_ <- .unlist(lapply(processed$families[which_mv],`[[`,i="link")) 
-    } else link_ <- processed$family$link
+      trunc_ <- .unlist(lapply(processed$families[which_mv],`[[`,i="zero_truncated")) 
+    } else {
+      link_ <- processed$family$link
+      trunc_ <- processed$family$zero_truncated
+    }
     if (is.null(ZAL)) {
       ZA <- processed$ZAlist[[rd]]
     } else if (inherits(ZAL,"ZAXlist")) {
@@ -783,7 +787,7 @@
     denom <- denom[denom!=0] ## so that same result in dense and sparse if ZA has empty cols in sparse
     ZA_corrected_guess <- guess_from_glm_lambda/sqrt(mean(denom)) 
     #if (corr_types[it]=="AR1") ZA_corrected_guess <- log(1.00001+ZA_corrected_guess) ## ad hoc fix but a transformation for ARphi could be better FIXME
-    fam_corrected_guess <- .calc_fam_corrected_guess(guess=ZA_corrected_guess, link_=link_, For=For, processed=processed, nrand=nrand)
+    fam_corrected_guess <- .calc_fam_corrected_guess(guess=ZA_corrected_guess, link_=link_, trunc_=trunc_, For=For, processed=processed, nrand=nrand)
     init_lambda[rd] <- .preprocess_valuesforNAs(rd, lcrandfamfam=lcrandfamfam, 
                                                 rand.families=rand.families, init.lambda=fam_corrected_guess)
   }
@@ -809,7 +813,8 @@
                                      (is.na(optim_lambda_with_NAs) & ! is.nan(optim_lambda_with_NAs)) & ## explicit NaN's will be inner-optimized
                                      ! ranCoefs_blob$isRandomSlope) ## exclude random slope whether set or not
     if (length(which_NA_simplelambda)) { # user's explicit lambda=NaN have been removed from the count, but explicit NA count
-      init_lambda <- .eval_init_lambda_guess(proc1, stillNAs=which_NA_simplelambda, For="optim")
+      init_lambda <- .eval_init_lambda_guess(proc1, stillNAs=which_NA_simplelambda, For="optim") #calls .get_inits_by_glm 
+                    # and .calc_fam_corrected_guess (with arguments handling mv families)
       optim_lambda_with_NAs[which_NA_simplelambda] <- init_lambda[which_NA_simplelambda]
       init.optim$lambda <- optim_lambda_with_NAs[ ! is.na(optim_lambda_with_NAs)] ## NaN now rmoved if still there (cf is.na(c(1,NA,NaN))) BUT
       # ... it's dubious that we have augZXy_cond || other_reasons_for_outer_lambda if we requested inner estimation of lambda by a NaN                                                  
@@ -826,6 +831,7 @@
   if (any(var_ranCoefs)) {
     # Not super clear why I considered nranterms (user level ??) instead of nrand. FIXME.
     nranterms <- sum(var_ranCoefs | is.na(lFix)) ## var_ranCoefs has FALSE elements for non-ranCoefs (hence it is full-length)
+    # Use .eval_init_lambda_guess() rather than the two next lines ? possibly better for mv fits ___F I X M E___
     guess_from_glm_lambda <- .get_inits_by_glm(proc1)$lambda * (3L*nranterms)/((nranterms+1L)) # +1 for residual
     fam_corrected_guess <- .calc_fam_corrected_guess(guess=guess_from_glm_lambda, For="optim", processed=proc1) ## divides by nrand...
     for (rt in which(var_ranCoefs)) {
@@ -876,7 +882,7 @@
       (has_corr_pars && calc_dvdlogdisp_needed_for_inner_ML) || # should be TRUE for Loaloa fit used gentle intro'scomparisons, 
                                                                 #       and FALSE for fit_REML in test-devel-predVar-AR1
       # *** next case ad hoc but motivated by 'ahzut' example in private test-COMPoisson-difficult.R ***
-    ( has_family_par <- (( ! is.null(init.optim$COMP_nu)) || ( ! is.null(init.optim$NB_shape))) ) # lambda + family pars 
+    ( has_family_par <- (( ! is.null(init.optim$COMP_nu)) || ( ! is.null(init.optim$NB_shape)) || ( ! is.null(init.optim$beta_prec))) ) # lambda + family pars 
   ) 
   other_reasons_to_chech_inner_costs <- ( # when there are other outer-estimated parameters ## 
     has_corr_pars ||
@@ -952,6 +958,39 @@
   return(init.optim)
 }
 
+.calc_init.optim_family_par <- function(family, init.optim) {
+  if (family$family=="COMPoisson") {
+    if (inherits(substitute(nu, env=environment(family$aic)),"call")) {
+      if (is.null(init.optim$COMP_nu)) init.optim$COMP_nu <- 1 # template: .calc_inits will modify it according to lower, upper 
+    } else {
+      if ( ! is.null(init.optim$COMP_nu)) {
+        warning("initial value is ignored when 'COMP_nu' is fixed.") # i.e. anything but Intercept model
+        init.optim$COMP_nu <- NULL
+      } # and this should have the effect that user lower and upper values should be ignored too.
+    }  
+  } else if (family$family=="beta_resp") {
+    if (inherits(substitute(prec, env=environment(family$aic)),"call")) {
+      if (is.null(init.optim$beta_prec)) init.optim$beta_prec <- 1 # template: .calc_inits will modify it according to lower, upper 
+    } else {
+      if ( ! is.null(init.optim$beta_prec)) {
+        warning("initial value is ignored when 'beta_prec' is fixed.") # i.e. anything but Intercept model
+        init.optim$beta_prec <- NULL
+      } # and this should have the effect that user lower and upper values should be ignored too.
+    }  
+  } else if (family$family  %in% c("negbin","negbin1")) {
+    if (inherits(substitute(shape, env=environment(family$aic)),"call")) {
+      if (is.null(init.optim$NB_shape)) init.optim$NB_shape <- 1 # idem
+    } else {
+      if ( ! is.null(init.optim$NB_shape)) {
+        warning("initial value is ignored when 'NB_shape' is fixed.") # i.e. anything but Intercept model
+        init.optim$NB_shape <- NULL
+      } # and this should have the effect that user lower and upper values should be ignored too.
+    }  
+  }
+  init.optim
+}
+
+
 # called by fitme_body/corrHLfit_body/(fitmv_body on individual models) hence no multivariate input except possibly through 'processed'
 .calc_optim_args <- function(proc_it, 
                              processed, # multi() and mv
@@ -973,25 +1012,7 @@
   init.HLfit <- proc_it$init_HLfit #to be modified below ## dhglm uses fitme_body not (fitme-> .preprocess) => dhglm code modifies processed$init_HLfit
   # used by .more_init_optim:
   family <- proc_it$family
-  if (family$family=="COMPoisson") {
-    if (inherits(substitute(nu, env=environment(family$aic)),"call")) {
-      if (is.null(init.optim$COMP_nu)) init.optim$COMP_nu <- 1 # template: .calc_inits will modify it according to lower, upper 
-    } else {
-      if ( ! is.null(init.optim$COMP_nu)) {
-        warning("initial value is ignored when 'COMP_nu' is fixed.") # i.e. anything but Intercept model
-        init.optim$COMP_nu <- NULL
-      } # and this should have the effect that user lower and upper values should be ignored too.
-    }  
-  } else if (family$family == "negbin") {
-    if (inherits(substitute(shape, env=environment(family$aic)),"call")) {
-      if (is.null(init.optim$NB_shape)) init.optim$NB_shape <- 1 # idem
-    } else {
-      if ( ! is.null(init.optim$NB_shape)) {
-        warning("initial value is ignored when 'NB_shape' is fixed.") # i.e. anything but Intercept model
-        init.optim$NB_shape <- NULL
-      } # and this should have the effect that user lower and upper values should be ignored too.
-    }  
-  }
+  init.optim <- .calc_init.optim_family_par(family, init.optim)
   #
   ##### init.optim$phi/lambda will affect calc_inits -> calc_inits_dispPars.
   # outer estim seems useful when we can suppress all inner estim (thus the hatval calculations). 
@@ -1123,6 +1144,7 @@
   trNames <- gsub("trPhi","phi",trNames)
   trNames <- gsub("trLambda","lambda",trNames)
   trNames <- gsub("trNB_shape","NB_shape",trNames)
+  trNames <- gsub("trbeta_resp","beta_resp",trNames)
   trNames
 }
 
