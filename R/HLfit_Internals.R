@@ -106,28 +106,28 @@ if (FALSE) {
     } 
     return(X)
   }
+  
+  .m_Matrix_llblock_times_Dvec <- function(X, Dvec) {
+    n_u_h <- length(Dvec)
+    if (inherits(X,"ddiMatrix")) {
+      warning("Suspect call to .Matrix_ZAL_ulblock_times_Dvec()") # the matrix is square hence X.pv not NULL, and ZAL is a zero block !
+    } else if (inherits(X,c("dgCMatrix","dsCMatrix", "dtCMatrix"))) { 
+      which_i_affected_rows <- X@i>(n_u_h-1L) # couldn't we use a precomputed which_i_affected_rows as elesewhere?
+      col_indices <- rep(1L:(ncol(X)),diff(X@p)) ## from 1!
+      which_affected_col_inds <- col_indices<=n_u_h
+      which_affected_x <- (which_i_affected_rows & which_affected_col_inds)
+      X@x[which_affected_x ] <- X@x[which_affected_x]* Dvec[col_indices[which_affected_x]]    
+      ## A triangular matrix with unitary diagonal may be stored as @diag=="U" and only non-diag elements specified...
+      #   but we dont expec't a triangular matrix here.
+      if ( methods::.hasSlot(X, "diag") && X@diag=="U") warning("Suspect call to .Matrix_ZAL_ulblock_times_Dvec()")
+    } else { # dense matrix either _m_atrix or eg dgeMatrix in the S4 Matrix representation
+      whichrows <- (n_u_h+1L):nrow(X)
+      whichcols <- seq_len(n_u_h)
+      X[whichrows,whichcols] <- .m_Matrix_times_Dvec(X[whichrows,whichcols],Dvec)
+    } 
+    return(X)
+  }
 } ## end if (FALSE)
-
-.m_Matrix_llblock_times_Dvec <- function(X, Dvec) {
-  n_u_h <- length(Dvec)
-  if (inherits(X,"ddiMatrix")) {
-    warning("Suspect call to .Matrix_ZAL_ulblock_times_Dvec()") # the matrix is square hence X.pv not NULL, and ZAL is a zero block !
-  } else if (inherits(X,c("dgCMatrix","dsCMatrix", "dtCMatrix"))) { 
-    which_i_affected_rows <- X@i>(n_u_h-1L)
-    col_indices <- rep(1L:(ncol(X)),diff(X@p)) ## from 1!
-    which_affected_col_inds <- col_indices<=n_u_h
-    which_affected_x <- (which_i_affected_rows & which_affected_col_inds)
-    X@x[which_affected_x ] <- X@x[which_affected_x]* Dvec[col_indices[which_affected_x]]    
-    ## A triangular matrix with unitary diagonal may be stored as @diag=="U" and only non-diag elements specified...
-    #   but we dont expec't a triangular matrix here.
-    if ( methods::.hasSlot(X, "diag") && X@diag=="U") warning("Suspect call to .Matrix_ZAL_ulblock_times_Dvec()")
-  } else { # dense matrix either _m_atrix or eg dgeMatrix in the S4 Matrix representation
-    whichrows <- (n_u_h+1L):nrow(X)
-    whichcols <- seq_len(n_u_h)
-    X[whichrows,whichcols] <- .m_Matrix_times_Dvec(X[whichrows,whichcols],Dvec)
-  } 
-  return(X)
-}
 
 .Dvec_times_Matrix <- function(Dvec,X) {
   if (inherits(X,"ddiMatrix")) {
@@ -159,7 +159,7 @@ if (FALSE) {
     } else X@x <- X@x * c(rep(1,min_row),Dvec) ## raw diag matrix
   } else if (inherits(X,c("dgCMatrix", "dtCMatrix"))) { 
     Xi <- X@i
-    which_i_affected_rows <- Xi>(min_row-1L)
+    which_i_affected_rows <- Xi>(min_row-1L) 
     X@x[which_i_affected_rows] <- X@x[which_i_affected_rows]*Dvec[Xi[which_i_affected_rows]-min_row+1L]
     ## a triangular matrix with unitary diagonal may be stored as @diag=="U" and only non-diag elements specified...
     if ( methods::.hasSlot(X, "diag") && X@diag=="U") Matrix::diag(X) <- c(rep(1,min_row),Dvec)
@@ -178,7 +178,7 @@ if (FALSE) {
         X <- Diagonal(x=c(Dvec,rep(1,more_rows)))
       } else X@x <- X@x * c(Dvec,rep(1,more_rows)) ## raw diag matrix
     } else if (inherits(X,c("dgCMatrix", "dtCMatrix"))) { 
-      which_i_affected_rows <- X@i<length(Dvec)
+      which_i_affected_rows <- X@i<length(Dvec) 
       X@x[which_i_affected_rows] <- X@x[which_i_affected_rows]*Dvec[X@i[which_i_affected_rows]+1L]
       ## a triangular matrix with unitary diagonal may be stored as @diag=="U" and only non-diag elements specified...
       if ( methods::.hasSlot(X, "diag") && X@diag=="U") Matrix::diag(X) <- c(Dvec,rep(1,more_rows))
@@ -764,8 +764,8 @@ if (FALSE) {
   warningList
 }
 
-
-.calc_w_resid <- function(GLMweights,phi_est) { ## One should not correct this phi_est argument by prior.weights (checked)
+# always retrun a list in mv obsInfo case.
+.calc_w_resid <- function(GLMweights,phi_est, obsInfo) { ## One should not correct this phi_est argument by prior.weights (checked)
   if (inherits(GLMweights,"mvlist")) { # an mvlist of lists
     mv_res <- vector("list",length(GLMweights))
     islist <- logical(length(GLMweights))
@@ -785,16 +785,22 @@ if (FALSE) {
           WU_WT[[mv_it]] <- rep(1, length( mv_res[[mv_it]]))  
         }
       }
-      w_resid <- .unlist(w_resid)
-      attr(w_resid,"unique") <- attr(w_resid,"is_unit") <- FALSE 
+      if ( ! obsInfo) {
+        w_resid <- .unlist(w_resid)
+        attr(w_resid,"unique") <- attr(w_resid,"is_unit") <- FALSE 
+      }
       return(list(w_resid=w_resid, WU_WT=.unlist(WU_WT), mvlist=mv_res)) # mvlist being a list with elements of two possible types as described above
       # each element of 'mvlist' has all the info in the expected info for a single response
     } else {
-      w_resid <- .unlist(mv_res) # vector
-      attr(w_resid,"unique") <- attr(w_resid,"is_unit") <- FALSE 
-      # .calc_H_global_scale() assumes the "unique" attribute is here, for mv or not.
-      # is_unit expected to be true only for augZXy hence not for mv 
-      return(w_resid) # mvlist being a list with elements of tow possible types as described above
+      if (obsInfo) {
+        return(list(w_resid="non", mvlist=mv_res))
+      } else {
+        w_resid <- .unlist(mv_res) # vector
+        attr(w_resid,"unique") <- attr(w_resid,"is_unit") <- FALSE 
+        # .calc_H_global_scale() assumes the "unique" attribute is here, for mv or not.
+        # is_unit expected to be true only for augZXy hence not for mv 
+        return(w_resid) # mvlist being a list with elements of tow possible types as described above
+      }
     }
     # in mv model w_resid are not 'unique' although blocks may be so, for gaussian submodels.
   }
@@ -845,7 +851,7 @@ if (FALSE) {
   # .D_dlWdmu_Deta() has no fallback so it is the limiting factor in implementing obsInfo.
   switch(family$family,
          # "Gamma" log not needed but others missing ?
-         "negbin" = family$d_dlWdmu_detafun(mu), # using the shape parameter
+         "negbin2" = family$d_dlWdmu_detafun(mu), # using the shape parameter
          "poisson" = family$d_dlWdmu_detafun(mu), 
          "binomial" = {
            switch(family$link,
@@ -900,7 +906,8 @@ if (FALSE) {
 
 
 
-# .dlW_Hexp__dmu used in obsInfo for GLM-family objects, in conjunction with the Hratio_actors, to compute Hobs_w.resid ***when there is NO MD2logcLdeta2 function*** in the family object.
+# .dlW_Hexp__dmu used in obsInfo by NON-LLgeneric algo  to compute Hobs_w.resid.
+# But note that the therein-called function dlW_Hexp__detafun() is also used for expInfo 
 #
 # Similar to  ..calc_dlW_deta(obsInfo=FALSE), but not needing to handle mv, and as fn of mu, not eta.
 # Indeed calls ..calc_dlW_deta() when there is no ad-hoc code.
@@ -915,7 +922,6 @@ if (FALSE) {
                      dmu.deta=family$mu.eta(family$linkfun(mu)), # for binomial, differ from dumdeta=dmu.deta*BinomialDen
                      ### (possibly) needed for generic fallback code.
                      muetablob, # always needed for generic fallback code. 
-                                # ___F I X M E___ make promises in .muetafn ?
                      BinomialDen # May be needed for generic fallback code, which should use it only in binomial cases.
                      ) {
   dlW_dmu <- switch( # dlW_deta * [deta.dmu written as 1/dmu.deta|_eta=eta(mu)
@@ -929,7 +935,7 @@ if (FALSE) {
       )
     } 
     ,
-    "negbin" = family$dlW_Hexp__detafun(mu)/dmudeta, # family member fn for access to the shape parameter... 
+    "negbin2" = family$dlW_Hexp__detafun(mu)/dmudeta, # family member fn for access to the shape parameter... 
     "poisson" = family$dlW_Hexp__detafun(mu)/dmudeta, # Poisson family member. Maybe I could move the code here 
     #      (design decision to avoid replacing poisson with Poisson unless for truncated which oes not use this code)
     "binomial" = {
@@ -973,14 +979,10 @@ if (FALSE) {
                             BinomialDen=processed$BinomialDen
                             ) {
   if (obsInfo &&  ! is.null(cum_nobs <- attr(families,"cum_nobs"))) {
-    Hobs_w.resid <- yMmu <- partials <- numeric(length(muetablob$mu))
+    Hobs_w.resid <- numeric(length(muetablob$mu))
     for (mv_it in seq_along(families)) {
       resp_range <- .subrange(cumul=cum_nobs, it=mv_it)
-      # in the mv case w.resid is a list only when there are zero-truncated families
-      if (is.list(w.resid)) {
-        w.resid_it <- w.resid[["mvlist"]][[mv_it]]
-      } else w.resid_it <- w.resid[resp_range] 
-      Hobs_w.resid_it <- .calc_H_w.resid(w.resid=w.resid_it, 
+      Hobs_w.resid_it <- .calc_H_w.resid(w.resid="ignore", 
                                          muetablob=muetablob$mv[[mv_it]],
                                          y=y[resp_range],
                                          obsInfo=obsInfo,
@@ -989,11 +991,10 @@ if (FALSE) {
                                          families=NULL
       )
       Hobs_w.resid[resp_range] <- Hobs_w.resid_it
-      Hratio_factors <- attr(Hobs_w.resid_it,"Hratio_factors")
-      yMmu[resp_range] <- Hratio_factors$yMmu
-      partials[resp_range] <- Hratio_factors$partials
     }
-    attr(Hobs_w.resid,"Hratio_factors") <- list("yMmu"=yMmu, "partials"= partials)
+    if (any(Hobs_w.resid<0)) { # absence of attribute meaning that all signs are >0;
+      attr(Hobs_w.resid,"signs") <- as.vector(sign(Hobs_w.resid)) # as.vector drops the attribute own attributes, as sign() keeps them (...)
+    }
     attr(Hobs_w.resid,"unique") <- FALSE # presumably
     attr(Hobs_w.resid,"is_unit") <- FALSE # presumably; used by spprec
     return(Hobs_w.resid)
@@ -1039,8 +1040,10 @@ if (FALSE) {
         # if (any(Hobs_w.resid<0)) browser()
         attr(Hobs_w.resid,"Hratio_factors") <- list("yMmu"=yMmu, "partials"= partials)
       }
-    } else { # LLF
-      if (any(Hobs_w.resid<0)) attr(Hobs_w.resid,"signs") <- sign(Hobs_w.resid) # a NULL attribute meaning that all signs are >0
+    } else { # generic LLF procedure
+      if (any(Hobs_w.resid<0)) { # absence of attribute meaning that all signs are >0;
+        attr(Hobs_w.resid,"signs") <- as.vector(sign(Hobs_w.resid)) # as.vector drops the attribute own attributes, as sign() keeps them (...)
+      }
     }
     attr(Hobs_w.resid,"unique") <- FALSE # presumably
     attr(Hobs_w.resid,"is_unit") <- FALSE # presumably; for spprec
@@ -1052,7 +1055,7 @@ if (FALSE) {
 }
 
 .calc_weight_X <- function(Hobs_w.resid, H_global_scale, obsInfo) {
-  scaled_H_w.resid  <- H_global_scale*Hobs_w.resid # signed ! 
+  scaled_H_w.resid  <- as.vector(H_global_scale*Hobs_w.resid) # signed ! ; as.vector todrop attributes (but attributes of "H_w.resid" attribute below must remain) 
   if ( ! is.null(attr(Hobs_w.resid,"signs"))) {
     weight_X <- sqrt(abs(scaled_H_w.resid)) # keeps the "signs" and other attributes
   } else weight_X <- sqrt(scaled_H_w.resid)
@@ -1180,6 +1183,13 @@ spaMM_Gamma <- local({
            }
            -family$aic(y=y, mu=mu, wt=1)/2 ## handles truncation from given untruncated mu
          },
+         negbin2 = function(theta,y,nu) { ## theta is the canonical param, -log(1+shape/mu)
+           if (is.null(mu <- attr(theta,"mu"))) {
+             NB_shape <- environment(family$aic)$shape
+             mu <- NB_shape/(exp(-theta)-1) # note that NB_shape/(exp(log(1 + NB_shape/x)) - 1) numerically fails to be x for large x
+           }
+           -family$aic(y=y, mu=mu, wt=1)/2 ## handles truncation from given untruncated mu
+         },
          negbin1 = function(theta,y,nu) { ## theta is a pseudo-canonical parameter... defined as mu (pseudo canonical link def as identity)
            -family$aic(y=y, mu=theta, wt=1)/2 ## Should handle truncation from given untruncated mu
          },
@@ -1190,7 +1200,7 @@ spaMM_Gamma <- local({
 }
 
 
-`.theta.mu.canonical` <- function(mu,family) { 
+`.theta.mu.canonical` <- function(mu,family) { # essential for all families; and LLF-GLM ones must has ad-hoc case in the switch
   ## the (fixed) canonical link between theta and mu, not the family link between eta and mu 
   if (inherits(family,"family")) {
     famfam <- family$family
@@ -1230,19 +1240,25 @@ spaMM_Gamma <- local({
            attr(th,"mu") <- mu ## keep mu b/c useful for clik_fn, as attr(theta,"mu")
            th
          },
+         negbin2 = { #structure(-log(1+(environment(family$aic)$shape)/mu),mu=mu)
+           th <- -log(1+(environment(family$aic)$shape)/mu)
+           attr(th,"mu") <- mu ## keep mu b/c useful for clik_fn, as attr(theta,"mu")
+           th
+         },
          # For 'LLM' families outside the exponential class, let the 'canonical' link be the identity link => theta=mu  
-         if (inherits(family,"LLF")) {
+         if ( ! family$flags$exp ) {
            mu
          } else stop("code missing for this family") 
   )
 } ## returns values for given mu
 
+# For families which do not have specific Md*logcLdeta* functions for obsInfo code (cf call in ..calc_dlW_deta() excluding case where these fns are available)
+# In particular for the Hexp case of standard GLMs
 .thetaMuDerivs <- function(mu, family, 
                            muFREQS, # for Binomial 
                            muetablob # for COMPoisson
                            ) { ## used for non-canonical links
   familyfam <- family$family
-  if (familyfam == "COMPoisson") return(.CMP_thetaMuDerivs(mu, family, muetaenv=muetablob))
   ## these definitions depend only on the canonical link
   Dtheta.Dmu <- switch(familyfam,
                        gaussian = rep(1,length(mu)) ,
@@ -1250,10 +1266,11 @@ spaMM_Gamma <- local({
                        binomial = 1/(muFREQS*(1-muFREQS)),
                        Gamma = 1/mu^2,
                        negbin = family$Dtheta.Dmu(mu), # 1/(mu*(1+mu/NB_shape)),
-                       # COMPoisson = 1/CMP_env$variance(mu), # dealt as special case above 
+                       COMPoisson = muetablob$thetaMuDerivs_2$Dtheta.Dmu,  
+                       # nothing for non-GLM families
                        stop("code missing") # Dtheta.Dmu deriv(body(<family(<canonical link>)>$linkfun),"mu") but see binomial() or Gamma() for various issues
   ) ## values for given mu
-  if (familyfam=="binomial") Dtheta.Dmu <- Dtheta.Dmu # /BinomialDen removed 2022/05/01. No bug anytime, but change of design:
+  # if (familyfam=="binomial") Dtheta.Dmu <- Dtheta.Dmu/BinomialDen removed 2022/05/01. No bug anytime, but change of design:
   # up to that time the calling code used the present results in combination with muetablob$dmudeta which has a BinomialDen factor. 
   # The calling code has now been modified. 
   D2theta.Dmu2 <- switch(familyfam,
@@ -1262,10 +1279,10 @@ spaMM_Gamma <- local({
                          binomial = -(1-2*muFREQS)/(muFREQS*(1-muFREQS))^2,
                          Gamma = -2/mu^3,
                          negbin = family$D2theta.Dmu2(mu), # -(1+2*mu/NB_shape)/(mu*(1+mu/NB_shape))^2,
-                         # COMPoisson dealt as special case above
+                         COMPoisson = muetablob$thetaMuDerivs_2$D2theta.Dmu2,  
                          stop("code missing") 
   ) ## values for given mu
-  if (familyfam=="binomial") D2theta.Dmu2 <- D2theta.Dmu2 #/(BinomialDen^2) removed 2022/05/01. Cf comment above.
+  # if (familyfam=="binomial") D2theta.Dmu2 <- D2theta.Dmu2/(BinomialDen^2) removed 2022/05/01. Cf comment above.
   return(list(Dtheta.Dmu=Dtheta.Dmu,D2theta.Dmu2=D2theta.Dmu2))
 }
 
@@ -1329,11 +1346,21 @@ spaMM_Gamma <- local({
     # this should be consistent with poisson(log) when nu=1, except that we may wish to avoid the computational burden of large eta values
     COMP_nu <- environment(family$aic)$nu 
     eta <- .sanitize_eta_log_link(eta, max=max, y=y, nu=COMP_nu) ## will use log(mu) ~ eta/nu for large eta and small nu
-  } else if (family$link=="inverse" && family$family=="Gamma") {
-    etamin <- sqrt(.Machine$double.eps)
-    neg_eta <- (eta<etamin)
-    eta[neg_eta] <- etamin ## both eta and mu must be >0
-    attr(eta,"any_neg_eta") <- any(neg_eta) ## actually 'not strictly positive'
+  } else if (family$link=="inverse") {
+    if (family$family=="Gamma") {
+      etamin <- sqrt(.Machine$double.eps)
+      neg_eta <- (eta<etamin)
+      eta[neg_eta] <- etamin ## both eta and mu must be >0
+      attr(eta,"any_neg_eta") <- any(neg_eta) ## actually 'not strictly positive'
+    } else if (family$family=="gaussian") {
+      absetamax <- 1/.Machine$double.eps # GLMweights ~ -1/eta^3...
+      huge_eta <- (abs(eta)>absetamax)
+      eta[huge_eta] <- sign(eta[huge_eta]) * absetamax # a smooth correction as for log link would be better...
+      absetamin <- sqrt(.Machine$double.eps)
+      tiny_eta <- (abs(eta)<absetamin)
+      eta[tiny_eta] <- sign(eta[tiny_eta]) * absetamin ## both eta and mu must be !=0
+      attr(eta,"any_tiny_eta") <- any(tiny_eta) ## actually 'not strictly positive'
+    }
   } else if (family$link=="sqrt") {
     etamax <- sqrt(1/.Machine$double.eps)
     big_eta <- (eta>etamax)
@@ -1379,7 +1406,7 @@ spaMM_Gamma <- local({
       d2logMthdth2 <- -(1 + expmu * (mu-1))* mu/((expmu-1)^2)  # (d2logMthdth2 -> 0 for Infinite mu) 
       exp2mu <- expmu^2
       d3logMthdth3 <- mu * (1 + 3 * mu *(expmu - exp2mu) + (mu^2) *(expmu + exp2mu) + exp2mu - 2 * expmu )/(expmu-1)^3
-    } else if (family$family=="negbin") { ## computations in TruncatedNegBin.nb
+    } else if (family$family=="negbin2") { ## computations in TruncatedNegBin.nb
       ## D[Log[1 - E^-E^theta], {theta, 2}] /. {theta -> Log[mu...]} // Simplify
       shape <- .get_family_par(family)
       p0 <- .negbin2_p0(mu,shape) ## (1-p)^r
@@ -1406,7 +1433,7 @@ spaMM_Gamma <- local({
     } 
     truncGLMweights <- GLMweights*(1+d2logMthdth2/Vmu) 
     if (any(wrong <- (truncGLMweights<=0))) {
-      if (family$family=="negbin") { 
+      if (family$family=="negbin2") { 
         has_Rmpfr <- suppressWarnings(do.call("require",list(package="Rmpfr", quietly = TRUE))) # given it's not in DESCRIPTION
         if (has_Rmpfr) {
           dnlogMthdthn <- .DlogM_Tnegbin_mpfr(mu[wrong],shape)
@@ -1425,7 +1452,7 @@ spaMM_Gamma <- local({
     }
     WU_WT <- GLMweights/truncGLMweights 
     return(list(mu=mu, p0=p0,
-                GLMweights=list(truncGLMweights=truncGLMweights,WU_WT=WU_WT,dlogMthdth=dlogMthdth, 
+                GLMweights=list(truncGLMweights=truncGLMweights,WU_WT=WU_WT,dlogMthdth=dlogMthdth, # this where the w.resid list is created
                                 d2logMthdth2=d2logMthdth2, d3logMthdth3=d3logMthdth3)))
   }
 })
@@ -1444,36 +1471,123 @@ spaMM_Gamma <- local({
   GLMweights
 }
 
-.add_Md_logcLdeta_terms <- function(resu, family, y, mu, pw, dmudeta, eta) { # obsInfo code:standard code for LLF, but also used for truncated non-LLF Hobs  
+# elements to be added to the .muetafn output for LLgeneric method:
+.add_Md_logcLdeta_terms <- function(muetablob, family, y, mu, pw, dmudeta, eta, phi) { # obsInfo code:standard code for LLgeneric, but also used for truncated non-generic code  
 
-  dlogLdmu <- family$DlogLDmu(mu=mu,y=y,wt=pw)
-  
-  resu$dlogcLdeta <- dlogLdmu*dmudeta #  rename as dclikdeta ?
-  
-  d2logLdmu2 <- family$D2logLDmu2(mu=mu,y=y,wt=pw) 
+  dlogLdmu <- family$DlogLDmu(mu=mu,y=y,wt=pw, phi=phi)
+  muetablob$dlogcLdeta <- dlogLdmu*dmudeta  #                                                               1st
+  d2logLdmu2 <- family$D2logLDmu2(mu=mu,y=y,wt=pw, phi=phi) 
   d2mudeta2 <- family$D2muDeta2(eta)
-  
-  resu$Md2logcLdeta2 <- - (d2logLdmu2*dmudeta^2+dlogLdmu*d2mudeta2)
-  
-  d3logLdmu3 <- family$D3logLDmu3(mu=mu,y=y,wt=pw) 
+  muetablob$Md2logcLdeta2 <- - (d2logLdmu2*dmudeta^2+dlogLdmu*d2mudeta2) #                                  2nd 
+  d3logLdmu3 <- family$D3logLDmu3(mu=mu,y=y,wt=pw, phi=phi) 
   d3mudeta3 <- family$D3muDeta3(eta)
-  
   # high precision necessary for d3logLdmu3 as the dmudeta^3 weight may be largest 
-  resu$Md3logcLdeta3 <- - drop(d3logLdmu3*dmudeta^3 + 3* d2logLdmu2*d2mudeta2*dmudeta + dlogLdmu*d3mudeta3)
+  muetablob$Md3logcLdeta3 <- - drop(d3logLdmu3*dmudeta^3 + 3* d2logLdmu2*d2mudeta2*dmudeta + dlogLdmu*d3mudeta3)
+  muetablob
+}
+
+.binom_add_Md_logcLdeta_terms <- function(muetablob, family, y, mu, 
+                                          dmudeta, # muFREQS !
+                                          eta, BinomialDen) { 
   
-  # if (anyNA(resu$Md3logcLdeta3)) stop()
-  
-  resu
+  y <- drop(y)
+  muFREQS <- mu/BinomialDen 
+  dlogLdmu <- family$DlogLDmu(muCOUNT=mu, muFREQS=muFREQS , y=y,BinomialDen=BinomialDen)
+  muetablob$dlogcLdeta <- dlogLdmu*dmudeta #                                                                1st
+  d2logLdmu2 <- family$D2logLDmu2(muFREQS=muFREQS, y=y,BinomialDen=BinomialDen) 
+  d2mudeta2 <- family$D2muDeta2(eta)
+  muetablob$Md2logcLdeta2 <- - (d2logLdmu2*dmudeta^2+dlogLdmu*d2mudeta2) #                                  2nd                
+  d3logLdmu3 <- family$D3logLDmu3(muFREQS=muFREQS, y=y,BinomialDen=BinomialDen) 
+  d3mudeta3 <- family$D3muDeta3(eta)
+  muetablob$Md3logcLdeta3 <- - drop(d3logLdmu3*dmudeta^3 + 3* d2logLdmu2*d2mudeta2*dmudeta + dlogLdmu*d3mudeta3)
+  muetablob
 }
 
 
+.COMP_add_Md_logcLdeta_terms <- function(muetaenv, family, y, mu=muetaenv$mu, 
+                                         dmudeta=muetaenv$dmudeta, eta=muetaenv$sane_eta) {
+
+  derivs <- muetaenv$thetaMuDerivs_3 # 3rd deriv needed in family$D3logLDmu3
+  dlogLdmu <- family$DlogLDmu(mu=mu,y=y, thetaMuDerivs=derivs)                                        
+  muetaenv$dlogcLdeta <- dlogLdmu*dmudeta #  rename as dclikdeta ?                                          1st 
+  d2logLdmu2 <- family$D2logLDmu2(mu=mu,y=y, thetaMuDerivs=derivs) 
+  d2mudeta2 <- family$D2muDeta2(eta)
+  muetaenv$Md2logcLdeta2 <- - (d2logLdmu2*dmudeta^2+dlogLdmu*d2mudeta2) #                                   2nd
+  d3logLdmu3 <- family$D3logLDmu3(mu=mu,y=y, thetaMuDerivs=derivs) 
+  d3mudeta3 <- family$D3muDeta3(eta)
+  # high precision necessary for d3logLdmu3 as the dmudeta^3 weight may be largest 
+  muetaenv$Md3logcLdeta3 <- - drop(d3logLdmu3*dmudeta^3 + 3* d2logLdmu2*d2mudeta2*dmudeta + dlogLdmu*d3mudeta3)
+  muetaenv
+}
+
+.muetafn_LLgeneric <- function(family, LMbool, processed, pw, dmudeta, eta, mu, BinomialDen, y, phi_est) {
+  # The <stats:: family>2LLF functions have set LLgeneric to TRUE, so they must have added the member functions required by .add_Md_logcLdeta_terms() 
+  
+  # if ( family$family %in% c("gaussian","Gamma")  ) { 
+  #   GLMweights <- .calc_GLMweights(LMbool, processed, pw, dmudeta, Vmu)
+  #   # this was previously needed for w.resid gradient weights used in .hatvals2std_lev -> dh0deta, thus for GLMs with phi param
+  #   # but now I use dlogcLikdeta there in all distinct obsInfo cases.
+  # } else 
+    GLMweights <- "Not supposed to use GLMweights"  # (or GLMs without phi param) for devel : negbin2() may be declared as not using GLM methods. =
+    #   # _F I X M E_ try to use unit_GLMweights concept for dlogcLikdeta ? would be limited though (not even Gamma(log))
+    
+  if ( family$family=="binomial") {
+    mu <- mu * BinomialDen
+    muetablob <- list(mu=mu, 
+                      dmudeta=dmudeta * BinomialDen, # muCOUNTS here
+                      GLMweights=GLMweights, sane_eta=eta)
+    muetablob <- .binom_add_Md_logcLdeta_terms(muetablob=muetablob, family, y, mu, 
+                                               dmudeta, # muFREQS here 
+                                               eta, BinomialDen=BinomialDen)
+  } else {
+    muetablob <- list(mu=mu, dmudeta=dmudeta, GLMweights=GLMweights, sane_eta=eta)
+    # p0 computation as in .muetafn_truncated_GLM:
+    if (identical(family$zero_truncated,TRUE)) { 
+      if (family$family=="poisson") { 
+        ## D[Log[1 - E^-E^theta], {theta, 2}] /. {theta -> Log[mu]} // Simplify
+        muetablob$p0 <- 1/exp(pmin(mu,log(.Machine$double.xmax*1e-8)/2))
+      } else if (family$family=="negbin2") { ## computations in TruncatedNegBin.nb
+        ## D[Log[1 - E^-E^theta], {theta, 2}] /. {theta -> Log[mu...]} // Simplify
+        shape <- .get_family_par(family)
+        muetablob$p0 <- .negbin2_p0(mu,shape) ## (1-p)^r
+      } 
+    } 
+    muetablob <- .add_Md_logcLdeta_terms(muetablob=muetablob, family, y, mu, pw, dmudeta, eta, phi = phi_est)
+  }
+  # With the derivatives added by the ...add_Md_logcLdeta_terms(),  ..calc_dlW_deta() uses its LLgeneric code and ignores the LLadhoc code 
+  return(muetablob) 
+  
+}
+
+
+.muetafn_expInfo <- function(family, eta, Vmu, BinomialDen, mu, dmudeta, LMbool, processed, pw) {
+  if (family$family=="binomial") {
+    if ( family$link=="probit") { ## _F I X M E_ other links need correction too (same Vmu function of mu), but eta-mu link not even symmetric for cloglog
+      islarge <- abs(eta)>8
+      etalarge <- eta[islarge]
+      Vmu[islarge] <- pnorm(etalarge,lower.tail = FALSE)*pnorm(etalarge)
+    }
+    Vmu <- Vmu * BinomialDen 
+    mu <- mu * BinomialDen
+    dmudeta <- dmudeta * BinomialDen
+  } 
+  GLMweights <- .calc_GLMweights(LMbool, processed, pw, dmudeta, Vmu)
+  if (identical(family$zero_truncated,TRUE)) { 
+    muetablob <- .muetafn_truncated_GLM(family, mu, GLMweights, Vmu) # list(mu, p0, GLMweights=list(truncGLMweights, WU_WT, dlogMthdth, d2logMthdth2, d3logMthdth3))
+    muetablob$dmudeta <- dmudeta
+    muetablob$sane_eta <- eta
+  } else muetablob <- list(mu=mu,dmudeta=dmudeta,GLMweights=GLMweights, sane_eta=eta)
+  return(muetablob) 
+  
+}
 
 .muetafn <-   function(eta, BinomialDen, processed, family=processed$family, 
                        #LMbool=.is_LM(family),  # reevaluates in a backward compatible way is needed # but not called post-fit ?
                        LMbool=family$flags$LMbool,
                        pw=processed$prior.weights, 
                        vec_nobs=processed$vec_nobs,
-                       y=processed$y
+                       y=processed$y,
+                       phi_est # added in v3.13.2 for Gamma and gaussian obsInfo. (-> .add_Md_logcLdeta_terms() -> D*logLdmu* functions). Not quite elegant. 
                        ) { ## note outer var BinomialDen 
   ### if ( ! is.null(names(eta))) stop(" ! is.null(names(eta))")
   # names(eta) <- NULL ## no longer useful because rownames(X.pv) <- NULL and rownames(ZAL) <- NULL
@@ -1482,24 +1596,34 @@ spaMM_Gamma <- local({
     mu <- dmudeta <- sane_eta <- numeric(tail(cum_nobs,1L))
     mv <- vector("list",length(vec_nobs))
     GLMweights <- structure(vector("list",length(vec_nobs)), class="mvlist")
+    any_neg_eta <- any_tiny_eta <- NULL
     for (mv_it in seq_along(vec_nobs)) {
       resp_range <- .subrange(cumul=cum_nobs, it=mv_it)
-      mv[[mv_it]] <- muetablob <- .muetafn(eta[resp_range],BinomialDen[resp_range],processed, family=processed$families[[mv_it]], 
-                            pw=pw[[mv_it]],
-                            vec_nobs=NULL)
+      fam_it <- processed$families[[mv_it]]
+      mv[[mv_it]] <- muetablob <- .muetafn(eta[resp_range],BinomialDen[resp_range],processed, family=fam_it, 
+                                           LMbool=fam_it$flags$LMbool, pw=pw[[mv_it]], y=y[resp_range],
+                                           vec_nobs=NULL, phi_est=phi_est[[mv_it]])
       mu[resp_range] <- muetablob$mu
       dmudeta[resp_range] <- muetablob$dmudeta
-      # basic GLMweights may be a list. ANd  it must have a 'unique' attr. Cf .calc_w.resid()
+      # basic GLMweights may be a list. And  it must have a 'unique' attr. Cf .calc_w.resid()
       GLMweights[[mv_it]] <- muetablob$GLMweights 
-      sane_eta[resp_range] <- muetablob$sane_eta
+      sane_eta[resp_range] <- sane_eta_it <- muetablob$sane_eta
+      any_neg_eta <- c(any_neg_eta, attr(sane_eta_it,"any_neg_eta"))
+      any_tiny_eta <- c(any_tiny_eta, attr(sane_eta_it,"any_tiny_eta"))
     }
+    attr(sane_eta,"any_neg_eta") <- any(any_neg_eta)
+    attr(sane_eta,"any_tiny_eta") <- any(any_tiny_eta)
     return(list(mu=mu,dmudeta=dmudeta,GLMweights=GLMweights, sane_eta=sane_eta, mv=mv))
     # : a redundant object with a list 'mv' of sub-muetablob's added to a synthetic muetablob with itself a list of sub-GLMweights'
   } 
+  ############### single family code:
   eta <- .sanitize_eta(eta, family=family) #, bin_mu_tol=processed$envir$bin_mu_tol)
   if (family$family=="COMPoisson") {
-    return(.CMP_muetaenv(family, pw, eta))
+    muetaenv <- .CMP_muetaenv(family, pw, eta)
+    if (processed$how$obsInfo) muetaenv <- .COMP_add_Md_logcLdeta_terms(muetaenv=muetaenv, family=family, y=y)
+    return(muetaenv) # possibly including obsInfo extra definitions 
   } 
+  
   if (family$family == "binomial") { ## 
     #for binomial cases stats::binomial(...)$linkinv corrects eta for all links so that mu is always .Machine$double.eps from 0 or 1
     # This may not be enough... or inconsistent with corrections used elsewhere, so we overcome the stats:: correction
@@ -1511,32 +1635,20 @@ spaMM_Gamma <- local({
   # if (any(is.infinite(mu))) stop()
   dmudeta <- family$mu.eta(eta) 
   Vmu <- family$variance(mu) 
-  if (family$family=="binomial") {
-    if ( family$link=="probit") { ## _F I X M E_ other links need correction too (same Vmu function of mu), but eta-mu link not even symmetric for cloglog
-      islarge <- abs(eta)>8
-      etalarge <- eta[islarge]
-      Vmu[islarge] <- pnorm(etalarge,lower.tail = FALSE)*pnorm(etalarge)
+  
+  if (processed$how$obsInfo) {
+    if (family$flags$LLgeneric) { # routine obsInfo case. 
+      # The <stats:: family>2LLF functions have set LLgeneric to TRUE, so they must have added the member functions required by .add_Md_logcLdeta_terms() 
+      # With the derivatives added by .muetafn_LLgeneric -> ...add_Md_logcLdeta_terms(),  
+      #       ..calc_dlW_deta() uses its LLgeneric code and ignores the LLadhoc code 
+      muetablob <- .muetafn_LLgeneric(family, LMbool, processed, pw, dmudeta, eta, mu, BinomialDen, y, phi_est)
+    } else { #  LL  ad-hoc case. To maintain functionality of code for experimental obsInfo via H_ratio factors
+      muetablob <- .muetafn_expInfo(family, eta, Vmu, BinomialDen, mu, dmudeta, LMbool, processed, pw) 
     }
-    Vmu <- Vmu * BinomialDen 
-    mu <- mu * BinomialDen
-    dmudeta <- dmudeta * BinomialDen
-  } 
-  if (inherits(family,"LLF")) {
-    if ( family$family=="negbin" && family$flags$GLMalgo) { # being an LLF, its the negbin2-dvl
-      GLMweights <- .calc_GLMweights(LMbool, processed, pw, dmudeta, Vmu)
-    } else GLMweights <- "Not a GLM family object"  # for devel : negbin2() may be declared as not using GLM methods. =
-    resu <- list(mu=mu, dmudeta=dmudeta, GLMweights=GLMweights, sane_eta=eta)
-    resu <- .add_Md_logcLdeta_terms(resu, family, y, mu, pw, dmudeta, eta)
-  } else { 
-    GLMweights <- .calc_GLMweights(LMbool, processed, pw, dmudeta, Vmu)
-    if (identical(family$zero_truncated,TRUE)) { # NOT LLF object: negbin() or Tpoisson
-      resu <- .muetafn_truncated_GLM(family, mu, GLMweights, Vmu) # list(mu, p0, GLMweights=list(truncGLMweights, WU_WT, dlogMthdth, d2logMthdth2, d3logMthdth3))
-      resu$dmudeta <- dmudeta
-      resu$sane_eta <- eta
-      if (processed$how$obsInfo) resu <- .add_Md_logcLdeta_terms(resu, family, y, mu, pw, dmudeta, eta) # truncated obsInfo case for GLM: use LLF-like code
-    } else resu <- list(mu=mu,dmudeta=dmudeta,GLMweights=GLMweights, sane_eta=eta)
+  } else { # 
+    muetablob <- .muetafn_expInfo(family, eta, Vmu, BinomialDen, mu, dmudeta, LMbool, processed, pw)
   }
-  return(resu) 
+  return(muetablob)
 } ## end def .muetafn
 
 .updateWranef <- function(rand.family,lambda,u_h,v_h) {
@@ -1723,7 +1835,7 @@ spaMM_Gamma <- local({
 ## Called for LLM- and GLM-family objects. Returns derivatives of W_Hobs when the objective is Laplace-obs, 
 ## whether for LLM or for GLM with obsInfo implemented through Hratio factors, for untruncated only.
 #### meaning of code:
-# if (inherits(family,"LLF")) {
+# if (LLgeneric) {
 #   dlW_deta <- is directly dlW_obs/deta
 # } else if ( ! is.null(dlW_Hexp__detafun <- family$dlW_Hexp__detafun)) {
 #   dlW_deta <- dlW_Hexp__detafun gives dlW_exp/deta 
@@ -1744,7 +1856,7 @@ spaMM_Gamma <- local({
   # But optimizatiosn are of limited interest in the truncated case.
   # if negbin() is faster than negbin2(), we could arrage for negbin2() to return negbin()? -- Would make debugging more difficult? 
   
-  if ( ! is.null(muetablob$Md3logcLdeta3)) {  # ie, LLF || (obsInfo && identical(family$zero_truncated,TRUE)) 
+  if ( ! is.null(muetablob$Md3logcLdeta3)) {  # obsInfo by LLgeneric method
     res <- list(dlW_deta=muetablob$Md3logcLdeta3/muetablob$Md2logcLdeta2) # coef2 
     if (calcCoef1) res$coef1 <- res$dlW_deta/muetablob$Md2logcLdeta2 # Hobs_w.resid <-  muetablob$Md2logcLdeta2
     return(res) # and this means no $WU_WT is included in the result, contrary to Hexp truncated case
@@ -1822,26 +1934,22 @@ spaMM_Gamma <- local({
       dlW_deta <- rep(0L,length(mu)) ## because they both involve dW.resid/dmu= 0
       if (calcCoef1) coef1 <- dlW_deta
     }
-  } else if (family$family %in% c("negbin","poisson")) { # having reached this point, it's not an LLF so it's an upgraded GLM family
-    if (obsInfo) {
-      if (is.null(muetablob$Md3logcLdeta3)) { # UNtruncated => has dlW_Hexp__detafun available. Use it instead of the generic fallback code.
-        dlW_deta <- family$dlW_Hexp__detafun(mu) # that is only the ad-hoc version of the more general code (below) for the Hexp weights
-        dlW_deta <- dlW_deta + .dlog_HratioDeta(Hratio_factors, mu, family) # and now this is the d log w_Hobs 
-        if (calcCoef1) {
-          Hobs_w.resid <- ..calc_H_w.resid(w.resid, Hratio_factors=Hratio_factors,BinomialDen=1)
-          coef1 <- dlW_deta/Hobs_w.resid # (with BinomialDen in denom)
-        }
-      } else { # truncated obsInfo: use more direct LLF approach => means that the truncated GLM family object must have additional functions
-        dlW_deta <- muetablob$Md3logcLdeta3/muetablob$Md2logcLdeta2 # coef2 
-        if (calcCoef1) coef1 <- dlW_deta/muetablob$Md2logcLdeta2 # Hobs_w.resid <-  muetablob$Md2logcLdeta2
+  } else if (family$family %in% c("negbin2","poisson")) { # 
+    dlW_deta <- family$dlW_Hexp__detafun(mu) 
+    if (obsInfo) { # by Hratio-factors method
+      # UNtruncated => has dlW_Hexp__detafun available. Use it instead of the generic fallback code.
+      dlW_deta <- dlW_deta + .dlog_HratioDeta(Hratio_factors, mu, family) # and now this is the d log w_Hobs 
+      if (calcCoef1) {
+        Hobs_w.resid <- ..calc_H_w.resid(w.resid, Hratio_factors=Hratio_factors,BinomialDen=1)
+        coef1 <- dlW_deta/Hobs_w.resid # (with BinomialDen in denom)
       }
-      
-    } else {
-      dlW_deta <- family$dlW_Hexp__detafun(mu) # that is only the ad-hoc version of the more general code (below) for the Hexp weights
+    } else { # Hexp ! 
       if (calcCoef1) coef1 <- family$coef1fun(mu)
     }
     # Function not present for truncated models
-  } else { # general code for GLM H_exp or Hobs. LLF-family never reach this point, see first lines of the fn.
+  } else { # Has been general code for GLM H_exp or Hobs. LLF-family never reach this point, see first lines of the fn.
+    # Should become only Hexp for GLMs 
+    #
     ## we need to update more functions of mu...
     # Now (2022/05/01) in terms of derivatives of functions of eta and muFREQS so there is no BinomialDen factor in them.
     # Instead yMmu/BinomialDen is used in obsInfo case and in denom of coef1 generally.
@@ -2235,10 +2343,15 @@ spaMM_Gamma <- local({
   }
 }
 
+.is_spprec_fit <- function(object) {
+  if (is.null(MME_method <- object$how$MME_method)) MME_method <- object$MME_method
+  length(intersect(c("AUGI0_ZX_sparsePrecision","AUGI0_ZX_spprec"), MME_method))>0L
+}
 
+# Post-fit fn
 .get_tcrossfac_beta_w_cov <- function(fit) { 
   if (is.null(fit$envir$tcrossfac_beta_w_cov)) { ## tcrossfac...w stored under $envir while tcrossfac...v is under $beta_v_cov
-    if ("AUGI0_ZX_sparsePrecision" %in% fit$MME_method) {
+    if (.is_spprec_fit(fit)) {
       tcrossfac_beta_v_cov <- .get_tcrossfac_beta_v_cov(fit$X.pv, fit$envir) ## typically permuted from triangular
       pforpv <- ncol(fit$X.pv)
       lhs <- fit$envir$chol_Q
@@ -2341,7 +2454,7 @@ spaMM_Gamma <- local({
               # the control$fix_predVar values used by these packages should be taken from these packages' options. 
               # That would also avoid checking the call stack by .check_frames(); more generally, for this reason,
               # calling predict() with explicit control$fix_predVar is recommended in programming.
-              # But I doubt I have implemented this anywhere (but _F I X M E_ wait for a 'pb' to rethink this)
+              # An effective example is given by the objectivefn() definition in Infusion::MSL()
               if (is.null(fix_predVar <- control$fix_predVar)) {
                 predVar_exceptions <- .spaMM.data$options$fix_predVar
                 # Either 
@@ -3036,8 +3149,8 @@ if (FALSE) { # that's not used.
   names(lambda_list) <- names(print_namesTerms)
   attr(lambda_list,"cum_n_u_h") <- cum_n_u_h
   lambda.object <- list(lambda_est = lambda_est,  ## full vector for simulate() calc_logdisp_cov()
-                        lambda_list=lambda_list)  ## nrand-elements list, multiple uses beyond unlisting it into hlfit's $lambda. 
-  lambda.object$type <- lambdaType
+                        lambda_list=lambda_list, ## nrand-elements list, multiple uses beyond unlisting it into hlfit's $lambda. 
+                        type = lambdaType)  
   if (any(lambdaType=="inner")) { ## modifies default namesTerms
     coefficients_lambdaS <- process_resglm_blob$coefficients_lambdaS
     for (it in seq_len(length(coefficients_lambdaS))) { ## detect exceptions
@@ -3177,8 +3290,8 @@ if (FALSE) { # that's not used.
     eta <- eta + drop(ZAL  %id*id%  etaFix$v_h) ## updated at each iteration
   } ## FREQS
   ## conversion to mean of response variable (COUNTS for binomial)
-  muetablob <- .muetafn(eta=eta,BinomialDen=BinomialDen,processed=processed) 
-  w.resid <- .calc_w_resid(muetablob$GLMweights,phi_est) ## 'weinu', must be O(n) in all cases
+  muetablob <- .muetafn(eta=eta,BinomialDen=BinomialDen,processed=processed, phi_est=phi_est) 
+  w.resid <- .calc_w_resid(muetablob$GLMweights,phi_est, obsInfo=processed$how$obsInfo) ## 'weinu', must be O(n) in all cases
   if (models[[1]]=="etaHGLM") { ## linear predictor for mean with ranef
     wranefblob <- processed$updateW_ranefS(u_h=u_h,v_h=v_h,lambda=lambda_est)
     # at this point w.resid is always the result of .calc_w_resid()
@@ -3188,12 +3301,35 @@ if (FALSE) { # that's not used.
     weight_X <- .calc_weight_X(H_w.resid, H_global_scale, obsInfo=processed$how$obsInfo) ## sqrt(s^2 W.resid)  # -> .... sqrt(w.resid * H_global_scale)
     ZAL_scaling <- 1/sqrt(wranefblob$w.ranef*H_global_scale) ## Q^{-1/2}/s
     Xscal <- .make_Xscal(ZAL, ZAL_scaling, processed=processed)
-    sXaug <- do.call(processed$mMatrix_method,
+    sXaug <- do.call(processed$corr_method,
                      list(Xaug=Xscal, weight_X=weight_X, w.ranef=wranefblob$w.ranef, H_global_scale=H_global_scale))
   } else sXaug <- NULL 
   res <- list(APHLs=.calc_APHLs_from_ZX(processed=processed, which="p_v", sXaug=sXaug, phi_est=phi_est, 
                                         lambda_est=lambda_est, dvdu=wranefblob$dvdu, u_h=u_h, muetablob=muetablob))
   return(res)
+}
+
+.calc_APHLs_from_params <- function(muetablob, phi_est, lambda_est, u_h,v_h, ZAL, processed, which, ad_hoc_corrPars) {
+  w.resid <- .calc_w_resid(muetablob$GLMweights,phi_est, obsInfo=processed$how$obsInfo) ## 'weinu', must be O(n) in all cases
+  wranefblob <- processed$updateW_ranefS(u_h=u_h,v_h=v_h,lambda=lambda_est)
+  # at this point w.resid is always the result of .calc_w_resid()
+  # and when it is a list with info about mv model it has a complete vector $w_resid.
+  H_w.resid <- .calc_H_w.resid(w.resid, muetablob=muetablob, processed=processed) # for LLF w.resid is not generally defined.
+  H_global_scale <- .calc_H_global_scale(H_w.resid)
+  weight_X <- .calc_weight_X(H_w.resid, H_global_scale, obsInfo=processed$how$obsInfo) ## sqrt(s^2 W.resid)  # -> .... sqrt(w.resid * H_global_scale)
+  ZAL_scaling <- 1/sqrt(wranefblob$w.ranef*H_global_scale) ## Q^{-1/2}/s
+  if (processed$is_spprec) {
+    sXaug <- do.call(processed$spprec_method, # ie, def_AUGI0_ZX_spprec
+                     list(AUGI0_ZX=processed$AUGI0_ZX, corrPars=ad_hoc_corrPars, 
+                          cum_n_u_h=processed$cum_n_u_h, w.ranef=wranefblob$w.ranef, H_w.resid=H_w.resid))
+  } else {
+    Xscal <- .make_Xscal(ZAL, ZAL_scaling, processed=processed, as_matrix=.eval_as_mat_arg(processed))
+    sXaug <- do.call(processed$corr_method, 
+                          list(Xaug=Xscal, weight_X=weight_X, w.ranef=wranefblob$w.ranef, H_global_scale=H_global_scale)) 
+  }
+  APHLs <- .calc_APHLs_from_ZX(processed=processed, which=which, sXaug=sXaug, phi_est=phi_est, 
+                                        lambda_est=lambda_est, dvdu=wranefblob$dvdu, u_h=u_h, muetablob=muetablob)
+  return(APHLs)
 }
 
 .adhoc_rbind_dgC_dvec <- function(X, dvec) { 
@@ -3707,18 +3843,12 @@ if (FALSE) { # that's not used.
   } else return(.Rcpp_backsolve(r=r, x=x, upper_tri = upper.tri, transpose=transpose))
 }
 
+# Called by .add_phi_returns():
 .get_phi_object <- function(phi.Fix, PHIblob, dev_res, prior.weights, phi.preFix, nobs=length(dev_res), control) {
-  if (is.null(phi.Fix)) { # here it is not a list
+  if (is.null(phi.Fix)) { # (ie not "fix" nor "outer") In mv case, this is called for each submodel, phi.Fix is not an mv-list
     beta_phi <- PHIblob$beta_phi 
-    names_beta_phi <- names(beta_phi)
-    # for (it in seq_len(length(names_beta_phi))) {
-    #   if (substr(names_beta_phi[[it]],1,1)=="X") names_beta_phi[[it]] <- substring(names_beta_phi[[it]],2)
-    # } ## removes "X" without guessing any order or length
-    # : no longer clear when it's needed. (If put back, will removes initial X's for resid model of wafers fits, where it shouldn't... ) 
-    names(beta_phi) <- names_beta_phi 
-    # FR->FR redundant info for summary, a nettoyer 
-    phi.object <- list(fixef=beta_phi)
-    phi.object$glm_phi <- PHIblob$glm_phi
+    # I deleted some long-obsolete beta_phi renaming code and comments from 3.13.22 -> .23 here
+    phi.object <- list(fixef=beta_phi, glm_phi=PHIblob$glm_phi, fittedPars=beta_phi)
     if (is.null(phi.object[["glm_phi"]])) {
       # delays computation of glm_phi
       glm_phi_args <- list(dev.res=dev_res*prior.weights,
@@ -3726,28 +3856,29 @@ if (FALSE) { # that's not used.
                            etastart=rep(PHIblob$beta_phi,nobs)) ## no glm <=> formula was ~1
       phi.object <- c(phi.object, list(glm_phi_args=glm_phi_args ) )
     } 
-  } else {
-    ## important distinction for (summary, df or LRTs:
+  } else { ## "fix" nor "outer" => important distinction for (summary, df or LRTs:
     if (is.null(phi.preFix)) { ## absent from original call
-      phi.object <- list(phi_outer=structure(phi.Fix,type="var")) ## hlcor call of corrHLfit / HLfit call post fitme ?
+      phi.object <- list(phi_outer=structure(phi.Fix,type="var"), 
+                         fittedPars=phi.Fix) 
     } else phi.object <- list(phi_outer=structure(phi.Fix,type="fix"))
   }
   return(phi.object)
 }
 
-.get_multi_phi_object <- function(phi.Fix, multiPHI, dev_res, prior.weights, processed, vec_nobs) {
-  multi_phi_object <- vector("list",length(vec_nobs))
-  cum_nobs <- c(0L,cumsum(vec_nobs))
-  for (mv_it in seq_along(vec_nobs)) {
-    resp_range <- .subrange(cumul=cum_nobs, it=mv_it)
-    multi_phi_object[[mv_it]] <- .get_phi_object(phi.Fix[[mv_it]], PHIblob=multiPHI[[mv_it]], dev_res[resp_range], 
-                                              prior.weights[[mv_it]], 
-                                              phi.preFix=processed$phi.Fix[[mv_it]], 
-                                              vec_nobs[mv_it],
-                                              control=processed[["control.glm"]])
-  }
-  return(multi_phi_object)
-}
+## not used.
+# .get_multi_phi_object <- function(phi.Fix, multiPHI, dev_res, prior.weights, processed, vec_nobs) {
+#   multi_phi_object <- vector("list",length(vec_nobs))
+#   cum_nobs <- c(0L,cumsum(vec_nobs))
+#   for (mv_it in seq_along(vec_nobs)) {
+#     resp_range <- .subrange(cumul=cum_nobs, it=mv_it)
+#     multi_phi_object[[mv_it]] <- .get_phi_object(phi.Fix[[mv_it]], PHIblob=multiPHI[[mv_it]], dev_res[resp_range], 
+#                                               prior.weights[[mv_it]], 
+#                                               phi.preFix=processed$phi.Fix[[mv_it]], 
+#                                               vec_nobs[mv_it],
+#                                               control=processed[["control.glm"]])
+#   }
+#   return(multi_phi_object)
+# }
 
 .update_phifitarglist <- function(processed, 
                                   residProcessed,
@@ -4022,11 +4153,10 @@ if (FALSE) { # that's not used.
     for (mv_it in seq_along(vec_nobs)) {
       res$residModels[[mv_it]] <- list(formula=processed$residModels[[mv_it]]$formula,
                                        family=attr(processed$residModels[[mv_it]]$family,"quoted"))
+      if (is.null(res[["resid_fits"]])) res[["resid_fits"]] <- vector("list", length(vec_nobs))
       if (models[["phi"]][mv_it]=="phiHGLM") {
-        if (is.null(res[["resid_fits"]])) res[["resid_fits"]] <- vector("list", length(vec_nobs))
         res[["resid_fits"]][[mv_it]] <- PHIblob$multiPHI[[mv_it]]$phifit
       } else {
-        if (is.null(res[["phi.object"]])) res[["phi.object"]] <- vector("list", length(vec_nobs))
         resp_range <- .subrange(cumul=cum_nobs, it=mv_it)
         res[["phi.object"]][[mv_it]] <- .get_phi_object(phi.Fix[[mv_it]], PHIblob=PHIblob$multiPHI[[mv_it]], dev_res[resp_range], 
                                                         prior.weights=res$prior.weights[[mv_it]], 
@@ -4051,13 +4181,25 @@ if (FALSE) { # that's not used.
   res
 }
 
+.broom_corrMatrices <- function(sub_corr_info, processed) { # the *aim* is to keep here only full corrMatrices with more levels than levels that in ZA. 
+  for (rd in seq_along(sub_corr_info$corrMatrices)) {
+    if ( ! is.null(fullcorrmat <- sub_corr_info$corrMatrices[[rd]]) && # ___F I X M E___ test surely imperfect
+         ncol(processed$ZAlist[[rd]]) == ncol(fullcorrmat)){ sub_corr_info$corrMatrices[rd] <- list(NULL)
+    } else if (inherits(fullcorrmat,"dist")) {
+      sub_corr_info$corrMatrices[[rd]] <- proxy::as.matrix(fullcorrmat, diag=1) 
+    } 
+  }
+  sub_corr_info
+}
+
 .add_ranef_returns <- function(res, processed, wranefblob, 
                                lambda_est, process_resglm_blob, LMatrices, init.lambda, v_h, u_h, ranCoefs_blob,
                                #
                                models=processed$models, nrand=length(processed$ZAlist), cum_n_u_h=processed$cum_n_u_h) {
   res$ZAlist <- processed$ZAlist ## needed for prediction variance
   #
-  sub_corr_info <- mget(c("corr_families","corr_types", "AMatrices"),  processed$corr_info) 
+  sub_corr_info <- mget(c("corr_families","corr_types", "AMatrices", "corrMatrices"),  processed$corr_info)
+  sub_corr_info <- .broom_corrMatrices(sub_corr_info, processed)
   kron_Y_LMatrices <- vector("list", nrand)
   for (it in seq_len(nrand)) kron_Y_LMatrices[it] <- list(attr(processed$corr_info$cov_info_mats[[it]],"blob")$Lunique)
   sub_corr_info$kron_Y_LMatrices <- kron_Y_LMatrices
@@ -4081,7 +4223,7 @@ if (FALSE) { # that's not used.
 
 .wrap_IRLS <- function(nrand, intervalInfo, processed, beta_eta,
                        ZAL, y, lambda_est, muetablob, maxit.mean, etaFix, 
-                       wranefblob, u_h, v_h, w.resid, phi_est, H_global_scale, pforpv, verbose,
+                       wranefblob, u_h, v_h, w.resid, H_w.resid, phi_est, pforpv, verbose,
                        ad_hoc_corrPars) {
   if (nrand) { # (models[["eta"]]=="etaHGLM") {
     auglinmodblob <- processed$solve_IRLS_fn(ZAL=ZAL, y=y, 
@@ -4091,12 +4233,12 @@ if (FALSE) { # that's not used.
                                  ## supplement for LevenbergM
                                  beta_eta=beta_eta,
                                  ## supplement for ! GLMM
-                                 wranefblob=wranefblob, u_h=u_h, v_h=v_h, w.resid=w.resid, phi_est=phi_est,
-                                 for_init_z_args=list(nrand=nrand, psi_M=processed$psi_M), 
+                                 wranefblob=wranefblob, u_h=u_h, v_h=v_h, w.resid=w.resid, H_w.resid=H_w.resid,
+                                 phi_est=phi_est,
+                                 # for_init_z_args=list(nrand=nrand, psi_M=processed$psi_M), 
                                  for_intervals=intervalInfo,
                                  ##
                                  processed=processed,
-                                 H_global_scale=H_global_scale, # ignored tby .solve_IRLS_as_spprec
                                  corrPars=ad_hoc_corrPars # ignored by .solve_IRLS_as_ZX
     )
   } else if (pforpv>0L  && maxit.mean) {

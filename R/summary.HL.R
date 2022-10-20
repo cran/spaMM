@@ -1,5 +1,6 @@
 ## FR->FR accessors : http://glmm.wikidot.com/pkg-comparison
 
+# lists of parameter names estimated by the two methods
 .get_methods_disp <- function(object, family=object$family, families=object$families, phi.object=object$phi.object, mv_it=NULL) {
   iterativeEsts <- character(0)
   optimEsts <- character(0)
@@ -16,7 +17,7 @@
     if ( any(object$lambda.object$type=="outer")) optimEsts <- c(optimEsts,"lambda")
     if ( any(object$lambda.object$type=="inner")) iterativeEsts <- c(iterativeEsts,"lambda")
   }
-  if ( (family$family %in% c("gaussian","Gamma"))) { # exponential families with a "phi" dispesion parameter
+  if ( (family$family %in% c("gaussian","Gamma"))) { # exponential families with a "phi" dispersion parameter
     if ( ! is.null(phi.object$fixef) ) {
       iterativeEsts <- c(iterativeEsts,"phi")
     } else if ( identical(attr(phi.object$phi_outer,"type"),"var")) {
@@ -42,7 +43,12 @@
   beta_se <- sqrt(diag(betaOri_cov))
   fixef_z <- object$fixef/beta_se
   beta_table <- cbind(Estimate=object$fixef,"Cond. SE"=beta_se,"t-value"=fixef_z)
-  if (p_value=="Wald") {beta_table <- cbind(beta_table,"p-value"=1-pchisq(fixef_z^2,df=1))} ## FIXME F_test: need to extract dfs
+  if (p_value=="Wald") {
+    beta_table <- cbind(beta_table,"p-value"=1-pchisq(fixef_z^2,df=1))
+  } else if (p_value) { # t-test for each coefficient
+    dft <- df.residual(object)
+    beta_table <- cbind(beta_table,"p-value"=2*(1-pt(abs(fixef_z), df=dft)))
+  }
   rownames(beta_table) <- names(object$fixef)
   return(beta_table)
 }
@@ -89,7 +95,7 @@
 # with integers returned by HelpersMG::asc(), which is strtoi(charToRaw(x), 16L) also using only primitive fns.
 ## string compar by swithch) appears to fail:
 # .ML_with_Lap_obs <- paste0("by ML (p",.degree,"_v approximation of logL).")
-# .REML_with_Lap_obs <- paste0("by REML (p",.degree,"_bv approximation of Re.logL).")
+# .REML_with_Lap_obs <- paste0("by REML (p",.degree,"_bv approximation of restricted logL).")
 
 .get_obsInfo <- function(object) { # back-compatibility utility
   obsInfo <- object$how$obsInfo
@@ -142,8 +148,8 @@
                  all(attr(object$rand.families,"lcrandfamfam")=="gaussian")) {
         resu <- ("by REML.")
       } else if (.get_obsInfo(object)) {
-        resu <- "by REML (P_bv approximation of Re.logL)."
-      } else resu <- "by REML (p_bv approximation of Re.logL)." 
+        resu <- "by REML (P_bv approximation of restricted logL)."
+      } else resu <- "by REML (p_bv approximation of restricted logL)." 
     } else {
       if (identical(attr(object$REMLformula,"isML"),TRUE)) { ## FALSE also if object created by spaMM <1.9.15 
         resu <- (.MLmess(object, ranef=TRUE))
@@ -253,7 +259,7 @@ summary.HLfitlist <- function(object, ...) {
   names(cum_nrows) <- NULL
   row_map <- lapply(nrows,seq)
   for (it in seq_len(length(row_map))) row_map[[it]] <- row_map[[it]]+cum_nrows[it]
-  # first construct a table including NA's for some coeeficients (not "inner" estimated), then remove these rows
+  # first construct a table including NA's for some coefficients (not "inner" estimated), then remove these rows
   repGroupNames <- rep(names(namesTerms),sapply(namesTerms,length))
   ## i.e. for namesTerms = list(Subject=c("(Intercept)", "Days")), repGroupNames[[1]] is c("Subject", "Subject")
   lambda_table <- data.frame(Group=repGroupNames,Term=unlist(namesTerms))
@@ -320,9 +326,12 @@ summary.HLfitlist <- function(object, ...) {
   if ( length(cov.mats)) lambda_table <- cbind(lambda_table, summ_corr_cols)
   lambda_table <- structure(lambda_table, 
                             class=c("lambda_table",class(lambda_table)), info_rows=info_rows,
-                            random_slope_ncol_geq_1_rows=random_slope_ncol_geq_1_rows,
-                            random_slope_ncol_geq_1_pos=random_slope_ncol_geq_1_pos, # not used
-                            in_pointLambda=in_pointLambda,row_map=row_map, in_table=in_table)
+                            random_slope_ncol_geq_1_rows=random_slope_ncol_geq_1_rows, # rows of terms with Xi_ncol>1
+                            random_slope_ncol_geq_1_pos=random_slope_ncol_geq_1_pos, 
+                            in_pointLambda=in_pointLambda, # defines which ranefs in the "Variance parameters ('lambda')" table in summary 
+                                                           # (not adjd nor Xi_ncol>1-ranCoefs)
+                            row_map=row_map, 
+                            in_table=in_table)
   return(lambda_table)
 }
 
@@ -514,6 +523,19 @@ summary.HLfitlist <- function(object, ...) {
   return(summ)
 }
 
+.check_inverse_pred <- function(object, family=object$family) {
+  if (family$link=="inverse") {
+    if (family$family=="Gamma" && 
+        identical(attr(object$eta,"any_neg_eta"),TRUE) 
+    ) {
+      "Non-positive predictions implied by final fitted coefficients in Gamma(inverse)-response model.\n"
+    } else if (family$family=="gaussian" && 
+               identical(attr(object$eta,"any_tiny_eta"),TRUE) 
+    ) {
+      "Practically zero predictions implied by final fitted coefficients in gaussian(inverse)-response model.\n"
+    }
+  }
+} # returns NULL or message
 
 
 `summary.HLfit` <- function(object, details=FALSE, max.print=100L, verbose=TRUE, ...) { 
@@ -531,7 +553,6 @@ summary.HLfitlist <- function(object, ...) {
   if (is.null(details[["p_value"]])) details["p_value"] <- "" ## a string such as "Wald"
   if (is.null(details[["digits"]])) details["digits"] <- 4 # __F I X M E__ document this? Only used in .print_lambda_table() so rather cryptic.
   models <- object$models
-  famfam <- object$family$family ## response !
   lcrandfamfam <- attr(object$rand.families,"lcrandfamfam") 
   randfamfamlinks <- unlist(lapply(object$rand.families, .prettify_family))
   randfamlinks <- unlist(lapply(object$rand.families, getElement, name="link"))
@@ -604,7 +625,7 @@ summary.HLfitlist <- function(object, ...) {
       ## but no optimInfo in the refit.
     } else {
       objString <- switch(objective,
-                          p_bv= "'outer' REML, maximizing Re.logL",
+                          p_bv= "'outer' REML, maximizing restricted logL",
                           p_v= "'outer' ML, maximizing logL",
                           cAIC= "'outer' minimization of cAIC",
                           paste("'outer' maximization of",objective)
@@ -615,13 +636,22 @@ summary.HLfitlist <- function(object, ...) {
   }
   if (is.null(object$family)) {
     cat("Families: ")
-    famst <- character(length(object$families))
+    nfam <- length(object$families)
+    famst <- character(nfam)
+    inverse_pred_mess <- vector("list", nfam)
     for (mv_it in seq_along(object$families)) {
       famst[mv_it] <- paste0(mv_it,": ", .prettify_family(object$families[[mv_it]], linkstring = "") , sep="") 
+      inverse_pred_mess[[mv_it]] <- .check_inverse_pred(object=object, family=object$families[[mv_it]]) 
+      # : not elegant: assumes that .muetafn() passes the attrs checked by .check_inverse_pred (OK so far...),
+      # and that they correspond to a single family-link combination (OK so far...).
     }
+    inverse_pred_mess <- .unlist(inverse_pred_mess) # NULL of "character" vector
     cat(paste0(famst, collapse="; ")) 
     cat("\n")
-  } else cat("family:", .prettify_family(object$family, linkstring = "link = ") , "\n") 
+  } else {
+    inverse_pred_mess <- .check_inverse_pred(object)
+    cat("family:", .prettify_family(object$family, linkstring = "link = ") , "\n") 
+  }
   summ$family <- object$family
   if (length(object$fixef)==0L) {
     cat("No fixed effect\n")
@@ -701,8 +731,8 @@ summary.HLfitlist <- function(object, ...) {
                       p_bv= if (.get_obsInfo(object)) {
                              paste0("Re.logL (P_b,v(h)):")
                       } else "Re.logL  (p_b,v(h)):")
-    } else APHLlegend <- c(p_v="logL         (p(h)):",
-                           p_bv="Re.logL (p_beta(h)):")
+    } else APHLlegend <- c(p_v="logL               :",
+                           p_bv="log restricted-lik :")
     names(likelihoods) <- APHLlegend[validnames]
     if ( is.null(object$distinctX.Re)) {
       ## standard REML 
@@ -724,15 +754,8 @@ summary.HLfitlist <- function(object, ...) {
   astable <- as.matrix(likelihoods);colnames(astable)<-"logLik";
   print(astable)
   summ$likelihoods <- likelihoods
-  if (length(object$warnings) ) { 
-    silent <- sapply(object$warnings, cat, "\n") 
-  }
-  if (object$family$family=="Gamma" && 
-      object$family$link=="inverse" &&
-      identical(attr(object$eta,"any_neg_eta"),TRUE) 
-  ) {
-    cat("Non-positive predictions implied by final fitted coefficients in Gamma(inverse)-response model.\n")
-  }
+  if (length(object$warnings) ) silent <- sapply(object$warnings, cat, "\n") 
+  cat(paste(inverse_pred_mess, collapse="\n"))
   options(oldopt)
   invisible(summ)
 }

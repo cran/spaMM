@@ -6,7 +6,7 @@ if(requireNamespace("pedigreemm", quietly=TRUE)) {
             sire = as.integer(c(NA,NA,1, 1,4,5)),
             dam  = as.integer(c(NA,NA,2,NA,3,2)),
             label = as.character(1:6))
-  oldMDCopt <- options(Matrix.warnDeprecatedCoerce = 0) # ____F I X M E___
+  oldMDCopt <- options(Matrix.warnDeprecatedCoerce = 0) # ___F I X M E___
   A <- pedigreemm::getA(p1) ## relationship matrix 
   options(oldMDCopt)
   ## data simulation
@@ -35,5 +35,5 @@ if(requireNamespace("pedigreemm", quietly=TRUE)) {
   verif4 <- HLCor(y01 ~ 1+ corrMatrix(1|IDgen)+(1|IDenv) , covStruct=list(precision=prec_mat),
                   data=obs,family=binomial(), HLmethod="ML")
   crit <- diff(range((c(logLik(verif2),logLik(verif3),logLik(verif4),-13.943504068))))
-  testthat::test_that(paste0("criterion was ",signif(crit,6)," from -13.943504068"), testthat::expect_true(crit<1e-6))
+  testthat::test_that(paste0("criterion was ",signif(crit,6)," from -13.943504068"), testthat::expect_true(crit<2e-6))
 }

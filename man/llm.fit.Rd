@@ -16,7 +16,9 @@ Mixed-effect models fitted by such methods cannot use expected-Hessian approxima
 ## See also 'beta_resp', 'negbin1', and possibly later additions.
 }
 \details{
-These family objects are lists, formally of class \code{c("LLF", "family")}. Compared to a \code{\link[stats]{family}} object, they have additional elements, not documented here. They provide deviance residuals, defined as \dQuote{2*(saturated_logLik - logLik)}, through the \code{dev.resids} member function. The likelihood for the saturated model is the likelihood maximized wrt to the mean parameter \eqn{\mu} for each observation \code{y} independently, were the maximizing  \eqn{\mu} is not equal to the observation, in contrast to the standard result for GLMs.   
+These family objects are lists, formally of class \code{c("LLF", "family")}. Compared to a \code{\link[stats]{family}} object, they have additional elements, not documented here. 
+
+As \code{stats::} GLM family objects do, they provide deviance residuals through the \code{dev.resids} member function. There are various definitions of deviance residuals for non-GLM families in the literature. Here they are defined as \dQuote{2*(saturated_logLik - logLik)}, where the likelihood for the saturated model is the likelihood maximized wrt to the mean parameter \eqn{\mu} for each observation \code{y} independently. The maximizing  \eqn{\mu} is not equal to the observation, in contrast to the standard result for GLMs.   
 }
 \examples{
 data(scotlip)

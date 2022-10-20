@@ -114,8 +114,8 @@ and should be used as far as possible as they should be backward-compatible from
 
 Elements include \bold{descriptors of the fit}:
 
-\item{eta}{Fitted values on the linear scale  (including the predicted random effects);}
-\item{fv}{Fitted values (\eqn{\mu=}<inverse-link>(\eqn{\eta})) of the response variable (returned by the \code{fitted} function);}
+\item{eta}{Fitted values on the linear scale  (including the predicted random effects). \code{predict(.,type="link")} can be used as a formal extractor;}
+\item{fv}{Fitted values (\eqn{\mu=}<inverse-link>(\eqn{\eta})) of the response variable. \code{fitted(.)} or \code{predict(.)} can be used as formal extractors;}
 \item{fixef}{The fixed effects coefficients, \eqn{\beta} (returned by the \code{fixef} function);}
 \item{v_h}{The random effects on the linear scale, \eqn{v}, with atttribute the random effects \eqn{u} (returned by \code{ranef(*,type="uncorrelated")};}
 \item{phi}{The residual variance \eqn{\phi};}
@@ -124,7 +124,7 @@ Elements include \bold{descriptors of the fit}:
 \item{lambda.object}{A possibly more complex object describing \eqn{\lambda};}
 \item{ranef_info}{environment where information about the structure of random effects is stored;}
 \item{corrPars}{Agglomerates information on correlation parameters, either fixed, or estimated by \code{HLfit}, \code{corrHLfit} or \code{fitme};}
-\item{APHLs}{A list which elements are various likelihood components, include conditional likelihood, h-likelihood, and the two adjusted profile h-likelihoods: the (approximate) marginal \bold{likelihood} \code{p_v} and the (approximate) \bold{restricted likelihood} \code{p_bv} (the latter two available through the \code{logLik} function). See the extractor function \code{\link{get_any_IC}} for information criteria (\dQuote{AIC}) and effective degrees of freedom;}
+\item{APHLs}{A list which elements are various likelihood components, include conditional likelihood, h-likelihood, and the Laplace approximations: the (approximate) marginal \bold{likelihood} \code{p_v} and the (approximate) \bold{restricted likelihood} \code{p_bv} (the latter two available through the \code{logLik} function). See the extractor function \code{\link{get_any_IC}} for information criteria (\dQuote{AIC}) and effective degrees of freedom;}
 
 The covariance matrix of \eqn{\beta} estimates is not included as such, but can be extracted by \code{\link{vcov}}.
 
@@ -144,6 +144,7 @@ The covariance matrix of \eqn{\beta} estimates is not included as such, but can 
 \item{HL}{A set of indices that characterize the approximations used for likelihood;}
 \item{leve_phi,lev_lambda}{Leverages;}
 \item{dfs}{list (possibly structured): degrees of freedom for different components of the model;}
+\item{how}{A list containing the information properly extracted by the \code{\link{how}} function.}
 \item{warnings}{A list of warnings for events that may have occurred during the fit.}
 
 Finally, the object includes programming tools: \code{call, spaMM.version, fit_time} and \code{envir}.

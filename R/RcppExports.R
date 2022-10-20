@@ -53,14 +53,6 @@
     .Call(`_spaMM_RcppMatrixCb2`, matrix1, matrix2)
 }
 
-.bessel_lnKnu_e <- function(nu, x) {
-    .Call(`_spaMM_bessel_lnKnu_e`, nu, x)
-}
-
-.nuln_plus_bessel_lnKnu_e <- function(nu, x) {
-    .Call(`_spaMM_nuln_plus_bessel_lnKnu_e`, nu, x)
-}
-
 `.lower.tri<-` <- function(A, diag, value) {
     .Call(`_spaMM_lowertri`, A, diag, value)
 }
@@ -99,6 +91,10 @@
 
 .is_promise <- function(name, env) {
     .Call(`_spaMM_is_promise2`, name, env)
+}
+
+.nuln_plus_bessel_lnKnu <- function(x, nu) {
+    .Call(`_spaMM_nuln_plus_bessel_lnKnu`, x, nu)
 }
 
 .rankinfo <- function(x, tol) {

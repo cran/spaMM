@@ -8,9 +8,9 @@ data("Loaloa")
           init.corrHLfit=list(Nugget=0.1),ranFix=list(nu=0.5))) 
 corrpars <- get_ranPars(loafit,which="corrPars")
 testthat::expect_equal(attr(corrpars,"type")[["1"]],list(nu="fix",Nugget="outer",rho="outer"))
-crit <- diff(range(corrpars[["1"]]$Nugget,0.04575572))
+crit <- diff(range(corrpars[["1"]]$Nugget,0.04582706)) # p_bv -95.76159 is more robust (hence less able to detect changes)
 if (spaMM.getOption("fpot_tol")>0) {
-  testthat::test_that(paste0("criterion was ",signif(crit,6)," from 0.04575572"), testthat::expect_true(crit<5e-5)) # bobyqa finds 0.04582924 ('flat' p_bv)
+  testthat::test_that(paste0("criterion was ",signif(crit,6)," from 0.04582706"), testthat::expect_true(crit<5e-5)) # bobyqa finds 0.04581046 ('flat' p_bv; decimals variable over version)
 } else testthat::expect_true(crit<5e-5)
 ## NB flat p_bv for Nugget; 
 # with fitme() too, .safe_opt, nloptr and bobyqa reach slightly diff values and bobyqa is poor wrt optimization of p_bv 

@@ -104,7 +104,7 @@ setMethod("crossprod", c(x = "ZAXlist", y= "numeric"),
 
 if (FALSE) {
   ## This method was not needed until Kronfacto was introduced. But then, using 
-  ## ZAL <- get_ZALMatrix(object, force_bind = ! ("AUGI0_ZX_sparsePrecision" %in% object$MME_method) ) appeared better.
+  ## ZAL <- get_ZALMatrix(object, force_bind = ! (.is_spprec_fit(object)) ) appeared better.
   setMethod("crossprod", c(x = "ZAXlist", y= "missingOrNULL"), 
             # Occurs in get_predVar(fit1) -> ... -> .calcD2hDv2 ->  crossprodZAL <- .crossprod(ZAL)
             # There are cross-block products, so... 
@@ -178,7 +178,7 @@ dim.Kronfacto <- function(x) return(x@BLOB$DIM)
 # t.Kronfacto <- function(x) .def_Kronfacto(lhs=t(x@BLOB$lhs),rhs=t(x@BLOB$rhs))
 
 .def_Kronfacto <- function(lhs, rhs) {
-  BLOB <- list2env(list(lhs=lhs, rhs=rhs), parent=environment(.AUGI0_ZX_sparsePrecision))
+  BLOB <- list2env(list(lhs=lhs, rhs=rhs), parent=environment(.AUGI0_ZX_spprec))
   delayedAssign("long", {.makelong_kronprod(Lcompact=lhs,kron_Y=rhs)}, eval.env = BLOB, assign.env = BLOB)
   delayedAssign("DIM", {
     diml <- dim(lhs)

@@ -5,7 +5,7 @@
                                off=processed$off
                                ) {
   ## if .get_inits_by_glm is called prior to optimization the family parameters may not be assigned, so: 
-  if (family$family %in% c("negbin","negbin1")) {
+  if (family$family %in% c("negbin1","negbin2")) {
     if (inherits(substitute(shape, env=environment(family$aic)),"call")) family <- Poisson(family$link, trunc=environment(family$aic)$trunc) 
   } else if (family$family=="beta_resp") {
     if (inherits(substitute(prec, env=environment(family$aic)),"call")) { # only if beta_prec not assigned
@@ -32,7 +32,7 @@
         # 1st condition => includes cases where original family was (T)negbin with free disp param (and pforpv=0)L, a *poisson* GLM *with* an Intercept is fitted (the resulting beta is ignored);
         # 2nd condition => if original family was negbin with FIXED disp param, a negbin GLM is fitted; it must have an intercept otherwise 
         #                                                  eta=0=> mu untruncated=1 => y>1 is impossible (and returns negative deviance=> negative init lambda)
-        (family$family  %in% c("negbin","negbin1") && # with FIXED shape
+        (family$family  %in% c("negbin1","negbin2") && # with FIXED shape
          family$zero_truncated) 
     )) X.pv <- matrix(1,ncol=1, nrow=nrow(X.pv))
   n_lambda <- sum(attr(processed$ZAlist,"Xi_cols"))
@@ -49,21 +49,14 @@
     if (is.nan(guess)) { # resglm$df.residual=0, possibly wider issue with requested fit, cannot be resolved from here.
       resu$lambda <- resu$phi_est <- 1e-04
     } else resu$lambda <- resu$phi_est <- sum(dev)/resglm$df.residual # /lam_fac
-  } else if (inherits(family,"LLF")) { # at init by fixed-effect model: beta_resp
+  } else if ( family$family %in% c("negbin1", "beta_resp")) { # I cannot use $flags bc e.g. for COMPoisson, the local family may be stats::poisson 
     resglm <- llm.fit(x=X.pv, 
                             y=drop(Y), 
                             weights = eval(prior.weights), 
                             offset = off, family = family, 
                             control = processed[["control.glm"]])
-    if ( ! resglm$converged && family$family=="negbin") { # quick patch, but that points to something to fix in llm.fit or in the family.
-      resglm <- spaMM_glm.fit(x=X.pv, 
-                              y=drop(Y), 
-                              weights = eval(prior.weights), 
-                              offset = off, family = family, 
-                              control = processed[["control.glm"]])
-    }
-    resu$phi_est <- resu$lambda <- as.numeric(deviance(resglm)/resglm$df.residual) # ___F I X M E___ a bit large in the 1st beta_resp example
-  } else { ## GLM
+    resu$lambda <- as.numeric(deviance(resglm)/resglm$df.residual) # (___F I X M E__)_ a bit large in the 1st beta_resp example
+  } else { ## GLM, even when fitted by obsInfo
     # (1) This handles truncated fams (since glm -> glm.fit handles Tpoisson() etc)
     # (2) This ignores obsInfo so results will differ from the equivalent LLF family
     if (family$family=="COMPoisson") glm.fit <- glm.nodev.fit 

@@ -13,7 +13,7 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug, # already ZAL_scaled
   attr(Xaug, "get_from") <- "get_from_MME.sXaug_EigenDense_QRP_Chol_scaled"
   H_w.resid <- attr(weight_X,"H_w.resid")
   BLOB <- list2env(list(H_w.resid=H_w.resid,
-               signs=attr(weight_X,"signs")), 
+               signs=attr(H_w.resid,"signs")), 
           parent=emptyenv())
   if ( BLOB$nonSPD <- ! is.null(BLOB$signs)) {
     augsigns <- c(rep(1,n_u_h), BLOB$signs)
@@ -187,7 +187,7 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug, # already ZAL_scaled
       }
     } else { # NULL $signs
       EigenDense_QRP_method <- .spaMM.data$options$EigenDense_QRP_method ## pre-09/2018 used .lmwithQRP
-      if (EigenDense_QRP_method==".lmwithQR") {     # .lmwithQR() is fast - much faster than qr() and even than chol(crossprod())... 
+      if (EigenDense_QRP_method==".lmwithQR") {     # DEFAULT .lmwithQR() is fast - much faster than qr() and even than chol(crossprod())... 
         lmwithqr <- .lmwithQR(sXaug,yy=szAug,returntQ=FALSE,returnR=TRUE) ## using RcppEigen; szAug may be NULL
         ## we don't request (t) Q from Eigen bc it is comparatively slow 
         # for (st in names(lmwithqr)) BLOB[[st]] <- lmwithqr[[st]] ## "R_scaled" and optionally "coef"
@@ -219,7 +219,7 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug, # already ZAL_scaled
   ###
   
   if ( ! is.null(szAug)) { # then reach within this block when $R_scaled was already available, so the coefs were not provided by the previous block
-    # ___F I X M E___ I've long forgotten why I don't try to use invR tQ szAug here...
+    # Not using inv(R) %*% tQ %*% szAug here... presumably bc tQ not computed by default, spec. with default .lmwithQR method.
     if (is.null(BLOB$signs)) {
       rhs <- .crossprodCpp_d(sXaug, szAug)
       if ( ! is.null(BLOB$perm)) rhs <- rhs[BLOB$perm,,drop=FALSE]
@@ -348,7 +348,7 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug, # already ZAL_scaled
       rhs <- backsolve(BLOB$R_scaled, rhs, transpose = TRUE)
     } else rhs <- backsolve(BLOB$R_scaled, rhs[BLOB$perm], transpose = TRUE)
     ## Same comment as on "inv_d2hdv2"...
-    return(sum(rhs^2))
+    return(sum(rhs^2)) # correct even in the signed SPD case (no invIm2Q... correction is implemented bc "EigenDense_QRP" actually uses chol in that case)
   } 
   if (which=="Mg_invXtWX_g") { ## 
     if (is.null(BLOB$XtWX)) BLOB$XtWX <- .crossprod(sXaug[-BLOB$seq_n_u_h,-BLOB$seq_n_u_h])
@@ -357,7 +357,8 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug, # already ZAL_scaled
   } 
   if (which=="logdet_R_scaled_b_v") {return(BLOB$logdet_R_scaled_b_v)} 
   if (which=="beta_cov_info_from_sXaug") {  
-    return(.calc_beta_cov_info_from_sXaug(BLOB=BLOB, sXaug=sXaug, tcrossfac=solve(BLOB$R_scaled)))
+    # backsolve() more robust numerically than solve(). Avoids stop on an otherwise quite poor fit.
+    return(.calc_beta_cov_info_from_sXaug(BLOB=BLOB, sXaug=sXaug, tcrossfac=backsolve(BLOB$R_scaled, diag(ncol(sXaug))))) 
   } 
   if (which=="beta_cov_info_from_wAugX") { ## using a weighted Henderson's augmented design matrix, not a true sXaug  
     if (TRUE) {

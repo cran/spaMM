@@ -3,11 +3,37 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 4.0.0}{ 
+\subsection{NEW FEATURES}{
+\itemize{
+\item Laplace approximation using observed, rather than expected, information matrix (see help("method")) is no longer "experimental". It is now available for all response families, including in multivariate-response fits, and is now the default method, changing the results of fits using response family with non-canonical link (hence the new "major" version number).
+\item anova.HLfit() can now return traditional ANOVA tables, with specific procedures for LMs, GLMs and LMMs. The LMM case is handled by interfacing the Satterthwaite method in \code{lmerTest::anova}. The whole functionality is experimental and unstable as later versions might considered alternative default procedures.
+\item Access to procedures implemented in the lmerTest package (contrast tests with effective degrees of freedom, and anova tables) is also possible through new function as_LMLT() allowing conversion of a spaMM fit object to input suitable for these procedures. 
+\item Prediction for levels of a 'corrMatrix' random effect that were not present in the fitted data is now possible (if these levels are present in the input corrMatrix). Previously this was not possible because only the subset of the corrMatrix for levels present in the fitted data was kept in the fitted model object.   
+\item Additional extractors have been implemented ('df.residual' method) or extended ('weights', 'residuals').
+}
+}
+\subsection{USER-LEVEL CHANGES}{
+\itemize{
+\item 'negbin2' is the new preferred names of the negative-binomial GLM family (to better distinguish it from the non-GLM 'negbin1' family). 'negbin' and 'Tnegbin' are now aliases for negbin2.  
+\item logLik(., which="logL_Lap") is deprecated.
+\item revised get_ranPars(), including new which="fitted" option.
+}
+}
+\subsection{BUG FIXES}{
+\itemize{
+\item A bug was introduced in version 3.12.0 affecting the fits of nested random effects using the (. | . \%in\% .) syntax. The examples in help("GxE") no longer returned correct results.
+\item Fit results may be modified for some non-GLM response family models by sparse-correlation methods (although so far the fixed bug affected only the progress of the fit but not its final result, except in a case where the information matrix is not positive definite at the attained maximum, so that the fit result is suspect anyway).
+\item the get_ranPars() extractor did not handle well random-coefficient parameters
+\item Fitting beta family models could fail when some response value was exactly 1/2.  
+}
+}
+}
 \section{CHANGES UP TO VERSION 3.13.0}{ 
 \subsection{NEW FEATURES}{
 \itemize{
 \item Non-GLM response families can now be fitted, the first two implemented being the 'negbin1' and 'beta_resp'. This is experimental and are limitations (notably, this is not yet possible in multivariate-response fits).
-\item plot_effects() new handles the case where the focal variable is a factor.
+\item plot_effects() now handles the case where the focal variable is a factor.
 \item AIC.HLfit() now handles several fitted-model objects as described for the stats::AIC generic (the AIC.HLfit formals have been modified for that purpose but no backward-incompatibility should result). 
 \item New 'which' value "fixef_left_ginv" handled by get_matrix() extractor.
 }

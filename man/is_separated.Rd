@@ -37,11 +37,11 @@ is_separated.formula(formula, ..., separation_max=spaMM.getOption("separation_ma
   character: name of linear programming solver used to assess separation; passed to \code{\link[ROI]{ROI_solve}}'s \code{solver} argument. One can select other solvers if the corresponding ROI plugin is installed. 
 }
 \item{verbose}{
-  Whether to print some messages or not.
+  Whether to print some messages (e.g., pointing model terms that cause separation) or not.
 }
 }
 \value{
-Returns a boolean; \code{TRUE} means there is (quasi-)separation.
+Returns a boolean; \code{TRUE} means there is (quasi-)separation. Screen output may give further information, such as pointing model terms that cause separation.
 }
 \references{
 The method accessible by \code{solver="glpk"} implements algorithms described by

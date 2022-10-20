@@ -171,6 +171,7 @@ negbin2 <- function (shape = stop("negbin2's 'shape' must be specified"), link =
     }
   }
   
+  #
   aic <- function(y, n, mu, wt, dev) { - 2 * sum(logl(y, mu, wt)) }
   
   linkfun <- function(mu,mu_truncated=FALSE) { ## mu_truncated gives type of I N put
@@ -205,7 +206,8 @@ negbin2 <- function (shape = stop("negbin2's 'shape' must be specified"), link =
   Dtheta.Dmu <- function(mu) 1/(mu*(1+mu/shape))
   D2theta.Dmu2 <- function(mu) -(1+2*mu/shape)/(mu*(1+mu/shape))^2
   #
-
+  ##########################################################
+  
   # for all obsInfo code:
   D2muDeta2 <- .D2muDeta2(linktemp)
   D3muDeta3 <- .D3muDeta3(linktemp)
@@ -263,6 +265,7 @@ negbin2 <- function (shape = stop("negbin2's 'shape' must be specified"), link =
                  dlW_Hexp__detafun=dlW_Hexp__detafun, coef1fun=coef1fun, # always available (needed for expInfo as well as NON-generic obsInfo) 
                  d_dlWdmu_detafun=d_dlWdmu_detafun, # NULL in most cases (except NON-generic obsInfo => untruncated)
                  DlogLDmu = DlogLDmu, D2logLDmu2 = D2logLDmu2, D3logLDmu3 = D3logLDmu3, D2muDeta2 = D2muDeta2, D3muDeta3 = D3muDeta3, # NULL if not LLgeneric
+                 coef1fun=coef1fun,
                  flags=list(obs=TRUE, exp=TRUE, canonicalLink=FALSE, LLgeneric=LLgeneric),
                  zero_truncated=(trunc==0L)), 
             class = c("LLF","family"))

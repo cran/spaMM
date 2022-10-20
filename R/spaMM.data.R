@@ -1,7 +1,7 @@
 .spaMM.data <- new.env(parent = emptyenv())
 .spaMM.data$options <- list(
   F_I_X_M_E=FALSE,
-  obsInfo=FALSE,
+  obsInfo=TRUE, # !! Don't forget to inactivate .obsInfo_warn() when the default is TRUE !!
   store_data_as_mf=FALSE, # Surely many issues.
   Rcpp_crossprod=TRUE, # integer with usual bool interp., and >1: .crossprod() prints types when .Rcpp_crossprod() not called; >2: always prints types;
   update_CHM=TRUE, # measurable benefits only if Cholesky(., perm=TRUE)
@@ -13,13 +13,14 @@
   spprec_threshold=50, # ohio small by correlation algo, large by spprec: threshold is n>=140 has crit 'near' 62 (varying betw replicates). 
   separation_max=10,
   sep_solver="glpk",
-  spprec_method="def_AUGI0_ZX_sparsePrecision", 
+  spprec_method="def_AUGI0_ZX_spprec", 
   matrix_method="def_sXaug_EigenDense_QRP_Chol_scaled", # handling negative weights  
   Matrix_method= "def_sXaug_Matrix_QRP_CHM_scaled", 
   #Hobs_Matrix_method= "def_sXaug_Matrix_QRP_CHM_scaled", # may have a patch for handling negative weights, but not exactly.  
   Hobs_Matrix_method= "def_sXaug_Matrix_CHM_H_scaled", # handling negative weights  
   force_LLF_CHM_QRP=FALSE, # if set to TRUE, LevM no longer uses the exact Hessian with signs (CHM_H methods) when this Hessian is SPD.
   force_LLM_nosigns_CHM_H=FALSE, # set it to TRUE to test CHM_H methods when there are no $signs (quite slow)
+  LLgeneric=TRUE,
   EigenDense_QRP_method=".lmwithQR", # .lmwithQR seems fast cf bootstrap
   use_spprec_QR=FALSE, # TRUE visibly slows several of the long tests (incl fitar1) 
   presolve_cond=quote(ncol(BLOB$R_scaled)>20000L), # may be slightly faster and more memory efficient for huge data (nested-Matern 40000L subset) 
@@ -122,10 +123,11 @@
                  loose_fac=5, # need to test whether is useful or not
                  loose_resc=0.1,
                  dampings_env_v=list(v=list("b"=1e-7,"v"=1e-7,"v_b"=1e-7,"V_IN_B"=1e-7,"v_in_b"=1e-7, 
-                                            "strict_v|b"=1e-7, "b_&_v_in_b"=1e-7, "b_from_v_b"=1e-7))
+                                            "strict_v|b"=1e-7, "b_&_v_in_b"=1e-7, "b_from_v_b"=1e-7)),
                  # residues from devel, NO IMPACT:
                  #,Ftol_v_in_b=1e-6, # NO IMPACT on current fits : only for diagnosis of not_moving in IRLS_v_h fns
                  #Ftol_LM=1e-5 # some not_moving diagnostics 
+                 logL_tol=5e-5 # heuristic but effective (precision ~2*logL_tol )
   ), 
   rankMethod="qr", ## private
   rankTolerance=quote(max(1e-7,.Machine$double.eps*10*ncol(X.pv))), ## private, used  by preprocess
@@ -190,4 +192,14 @@ register_cF <- function(corrFamilies=NULL, reset=FALSE) {
     }
   }
 }
+
+unregister_cF <- function(corrFamilies) {
+  keywords <- .spaMM.data$keywords
+  corrFamilies <- setdiff(corrFamilies, keywords$built_in_keywords)
+  keywords$user_defined <- setdiff(keywords$user_defined, corrFamilies)
+  keywords$all_ranefs <- setdiff(keywords$all_ranefs, corrFamilies)
+  keywords$all_cF <- setdiff(keywords$all_cF, corrFamilies)
+  keywords$all_keywords <- setdiff(keywords$all_keywords, corrFamilies)
+}
  
+.spaMM.data$class_cache <- new.env(parent = emptyenv())

@@ -1,4 +1,4 @@
-def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
+def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
                                          # w.resid, 
                                          H_w.resid 
                                          #,weight_X ## currently ignored
@@ -15,7 +15,7 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
     # w.resid= if (is.list(w.resid)) {w.resid$w_resid} else w.resid,
     corrPars=corrPars
     )
-  class(resu) <- c("AUGI0_ZX_sparsePrecision","list") # (## )do not define recursively if object is an envir...)
+  class(resu) <- c("AUGI0_ZX_spprec","list") # (## )do not define recursively if object is an envir...)
   .init_spprec(resu)
   return( resu ) 
 }
@@ -334,8 +334,8 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
 .calc_G_dG <- function(BLOB, damping) {
   spprec_LevM_D <- .spaMM.data$options$spprec_LevM_D
   ################
-  as_sym <- FALSE # If as_sym is TRUE, the final operation BLOB$Gmat + dampdG is dsC + dsC = forceSymmetric(callGeneric(as(e1, "dgCMatrix"), as(e2, "dgCMatrix"))) (with generic for '+')
-  # so having previously forced symmetry on dG is a waste of time=> as_sym=FALSE # ___F I X M E___ retry now that we have .dsCsum
+  as_sym <- TRUE # OK it we eval G_dG <- .dsCsum(.,.). Otherwise dsC + dsC involves e.g. forceSymmetric(callGeneric(as(e1, "dgCMatrix"), as(e2, "dgCMatrix"))) (with generic for '+')
+  # as_sym <- FALSE => does not sum dsC may be a bit longer than .dsCsum(dsC,dsC) (tests adjacency long LevM => 101.74s vs 102.49s )
   if (spprec_LevM_D=="update") { # experimental. Effect dependent a priori on .spaMM.data$options$perm_G. OK but not faster with default permG (TRUE) 01/2020 
     BLOB$D_Md2hdv2 <- diag(chol2inv(BLOB$chol_Q))
     BLOB$dG <- NaN ## To detect problems in further usages
@@ -645,7 +645,7 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
   if (inherits(ZtWZ,"dsCMatrix") && inherits(precisionMatrix,"dsCMatrix") ) { # test introduced 02/2020. 
     .dsCsum(ZtWZ, precisionMatrix) # faster than tmp + precisionMatrix where '+' calls forceSymmetric(callGeneric(as(e1, "dgCMatrix"), as(e2, "dgCMatrix")))
   } else { 
-    stop("Unexpected matrix types in .AUGI0_ZX_sparsePrecision(). Please report to the package maintainer.") 
+    stop("Unexpected matrix types in .AUGI0_ZX_spprec(). Please report to the package maintainer.") 
     # actually there is some other step that is silently wrong if both matrices are not dsC...
     ZtWZ + precisionMatrix
   }
@@ -665,7 +665,7 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
 }
 
 
-.AUGI0_ZX_sparsePrecision <- function(sXaug,which="",z=NULL,B=NULL,
+.AUGI0_ZX_spprec <- function(sXaug,which="",z=NULL,B=NULL,
                                       damping,LM_z) {
   BLOB <- sXaug$BLOB
   if (which=="initialize") return(NULL)
@@ -857,11 +857,11 @@ def_AUGI0_ZX_sparsePrecision <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
   stop(cat(paste0("'which=\"",which,"\"' is invalid.")))
 }
 
-get_from_MME.AUGI0_ZX_sparsePrecision <- function(sXaug, 
+get_from_MME.AUGI0_ZX_spprec <- function(sXaug, 
                                                   which="",szAug=NULL,B=NULL,
                                                   damping=NULL, LM_z=NULL, ...) {
   if (which=="LevMar_step" && damping==0L) {
-    resu <- get_from_MME.AUGI0_ZX_sparsePrecision(sXaug=sXaug, szAug=LM_z)
-  } else resu <- .AUGI0_ZX_sparsePrecision(sXaug=sXaug,which=which,z=szAug,B=B,damping=damping,LM_z=LM_z)
+    resu <- get_from_MME.AUGI0_ZX_spprec(sXaug=sXaug, szAug=LM_z)
+  } else resu <- .AUGI0_ZX_spprec(sXaug=sXaug,which=which,z=szAug,B=B,damping=damping,LM_z=LM_z)
   resu
 }

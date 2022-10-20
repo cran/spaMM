@@ -6,3 +6,7 @@
 # But it cannot be put into the package' Makevars bc CRAN checks would complain.
 # use usethis::edit_r_makevars() to edit the local file.
 PKG_CXXFLAGS= -fno-omit-frame-pointer
+
+PKG_CPPFLAGS = -I$(LIB_GSL)/include
+PKG_LIBS = -L$(LIB_GSL)/lib -lgsl -lgslcblas 
+

@@ -204,7 +204,7 @@
       as_call <- call(family$family, link=family$link) ## need a substitute() ? 
     } else if (get_param) { ## param values are constant or dynamically assigned to processed$family
       famfam <- family$family 
-      if (famfam %in% c("negbin","negbin1")) {
+      if (famfam %in% c("negbin1","negbin2")) {
         as_call$shape <- environment(family$aic)$shape
       } else if (famfam=="beta_resp") {
         as_call$prec <- environment(family$aic)$prec
@@ -489,12 +489,10 @@
     LMMbool <- (family$family=="gaussian" && family$flags$canonicalLink ) 
     LLM_const_w <- (LMMbool && const_Hobs_wresid) 
   } else LMMbool <- LLM_const_w <- GLGLLM_const_w <- FALSE
-  LLFbool <- inherits(family,"LLF")
   return(structure(models, LMMbool=LMMbool, GLMMbool=GLMMbool, LLM_const_w=LLM_const_w,  
                    GLGLLM_const_w=GLGLLM_const_w, const_Hobs_wresid=const_Hobs_wresid, 
                    unit_GLMweights=unit_GLMweights, # for .muetafn()
-                   unit_Hobs_weights=unit_Hobs_weights, # for .vecdisneeded()
-                   LLFbool=LLFbool)
+                   unit_Hobs_weights=unit_Hobs_weights) # for .vecdisneeded()
          )
 }
 
@@ -965,7 +963,7 @@
     # NCOL(.$X.Re) identifies all REML cases
     if (is.null(objective)) {
       if (NCOL(processed$X.Re)) { ## standard or non-standard REML
-        processed$objective <- "p_bv"  ## info for fitme_body and corrHLfit_body, while HLfit instead may use return_only="p_bvAPHLs"
+        processed$objective <- "p_bv"  ## info for fitme_body and corrHLfit_body, HLfit may return_only="p_bvAPHLs" but use $objective in logL_tol convergence test
       } else processed$objective <- "p_v"
     } else {
       if ( ! obj_warned) {
@@ -1066,22 +1064,22 @@
   
   ##### some family processing
   canonicalLink <- .is_link_canonical(family)
-  if (is.null(family$flags)) { # standard stats:: family or perhaps from 3rd package
+  if (not_spaMM_fam <- is.null(family$flags)) { # standard stats:: family or perhaps from 3rd package
     obs <- ( # According to the documentation:
       canonicalLink || 
       family$family=="binomial" ||## implemented through ad hoc bit of code outside the family object so perhaps that could have been done for Poisson)
         (family$family %in% c("Gamma","gaussian") && family$link=="log") #" Same remark...
     )
-    family$flags <- list(exp=TRUE,obs=obs) # represent capacity for these method, through code in the family object or not
-  }
-  obsInfo <- .obsInfo(HLmethod, family, canonicalLink) 
-  if (obsInfo && ! family$flags$obs) { # standard stats:: family or perhaps from 3rd package
-    if (family$family=="poisson") { # stats::poisson here ([T]Poisson would have TRUE $obs)
-      family <- Poisson(link=family$link) # untruncated here since was stats::poisson
-    } else stop("This family cannot yet be fitted using observed Hessian.") 
+    family$flags <- list(exp=TRUE,obs=obs, LLgeneric=FALSE) # represent capacity for these method, through code in the family object or not
   }
   family$flags$canonicalLink <- canonicalLink
   family$flags$LMbool <- (canonicalLink && family$family=="gaussian")
+  obsAlgo_needed <- .need_obsAlgo(HLmethod, family, canonicalLink) 
+  # : is .spaMM option set to FALSE, then only ad hoc obsInfo algos are available, in principle as follows:
+  # binomial(), negbin() and poisson() (all links, and including zero-truncated variants), Gamma(log), and gaussian(log).
+  # At least that was so in version 3.13.0. For poisson(), one may need to use *P*oisson(., LLgeneric=FALSE).
+  # Maintaining this feature is not a priority.
+  if (not_spaMM_fam && obsAlgo_needed && .spaMM.data$options$LLgeneric) family <- .statsfam2LLF(family)
   #####
   
   processed <- list2env(list(family=family, clik_fn=.get_clik_fn(family), For=For,
@@ -1089,7 +1087,7 @@
                              port_env=new.env(parent=emptyenv()),
                              verbose=.reformat_verbose(verbose,For=For),
                              control.glm=do.call("glm.control", control.glm),
-                             how=list(obsInfo=obsInfo)
+                             how=list(obsInfo=obsAlgo_needed)
                              ))
   #
   if (is.null(main_terms_info <- attr(data,"updated_terms_info"))) { # standard case
@@ -1340,8 +1338,8 @@
     } else {
       processed$QRmethod <- .choose_QRmethod(processed$ZAlist, corr_info=corr_info,
                                              is_spprec=processed$is_spprec, processed=processed, control.HLfit=control.HLfit)
-      algebra <- .set_mMatrix_method(processed)
-      .check_time_G_diagnosis(.provide_G_diagnosis, processed, algebra)  # sets processed$mMatrix_method for [sp|de]corr
+      algebra <- .set_augX_methods(processed) # sets processed$corr_method In spprec case, both this and processed$spprec_method may be needed so must be distinct.
+      .check_time_G_diagnosis(.provide_G_diagnosis, processed, algebra)  
       nrd <- processed$cum_n_u_h[nrand+1L]
       if (nrd==1L) warning("Found a single random effect with a *single level*. Check formula?", immediate.=TRUE)
           processed$AUGI0_ZX <- .init_AUGI0_ZX(X.pv, vec_normIMRF, processed$ZAlist, nrand, n_u_h=nrd, sparse_precision, 
@@ -1362,7 +1360,7 @@
                         processed$control.glm, family) # assigns things to 'processed' (incl $models, $residModel)
   #
   processed$models <- .setattr_G_LMMbool(models, processed=processed) # after modif by .preprocess_phi_model()
-  if (attr(processed$models,"LLFbool")) {
+  if (obsAlgo_needed) {
     processed$etaxLM_fn <- .calc_etaLLMblob
   } else processed$etaxLM_fn <- .calc_etaGLMblob
   
@@ -1398,7 +1396,7 @@
 # (2) where this is to be called and as function of argument found there, un a delayedAssign calling this function, e.g.
 # delayedAssign("inits_by_glm", {
 #   processed$envir$get_inits_by_glm$get_inits_by_glm(processed, family=family,
-#                       reset=quote(family$family %in% c("COMPoisson","negbin")) )
+#                       reset=quote(family$family %in% c("COMPoisson","negbin2")) )
 #   }
 
 .eval.update.call <- function(mc,...) { # not currently used

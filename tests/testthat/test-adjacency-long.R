@@ -4,7 +4,7 @@ if (spaMM.getOption("example_maxtime")>61) { # actually faster <30s
   ## example suggested by Jeroen van den Ochtend jeroenvdochtend@gmail.com Jeroen.vandenochtend@business.uzh.ch
   data("adjlg")
   fit.Frailty <- fitme(BUY ~ factor(month) + AGE + GENDER + X1*X2 + adjacency(1|ID),
-                          data=adjlg,family = binomial(link = cloglog),method = "ML",
+                          data=adjlg,family = binomial(link = cloglog),method = c("ML","exp"),
                           #control.HLfit=list(LevenbergM=FALSE), 
                           verbose=c(TRACE=interactive()), # to trace convergence 
                           adjMatrix=adjlgMat) ## _F I X M E_ refitting lambda (by request) gives a lower lik... (-1552.946 v2.7.19 & v3.1.2) (point estimates are clearly different)
@@ -20,11 +20,10 @@ if (spaMM.getOption("example_maxtime")>61) { # actually faster <30s
   # 239.57util in v3.0.42; 244.64util in v3.0.35 
   ## v3.0.25-3.0.35 redefine the LevM controls:
   ## ~359 (v.2.4.102) => 250 in v.2.5.34; 242.44 in v2.6.53 # 156.44util in v2.7.1 # 152.23util in v2.7.6 # 146.38util in v.2.7.27
-  expectedMethod <- "AUGI0_ZX_sparsePrecision" 
   if (interactive()) {
-    if (! (expectedMethod %in% fit.Frailty$MME_method)) {
-      message(paste('! ("',expectedMethod,'" %in% IRLS.Frailty$MME_method): was a non-default option selected?'))
+    if (! .is_spprec_fit(fit.Frailty)) {
+      message(paste('! .is_spprec_fit(fit.Frailty): was a non-default option selected?'))
     }
-  } else testthat::expect_true(expectedMethod %in% IRLS.Frailty$MME_method) 
+  } else testthat::expect_true(expectedMethod %in% how(IRLS.Frailty, verbose=FALSE)$MME_method) 
   # Older comment: spprec_LevM_D=="colSums" gives the highest lik, but "1" is fastest; "rowSums" may be slowest.
 } else if (spaMM.getOption("example_maxtime")>20) cat(crayon::bgGreen("\nIncrease maxtime above 61 to run the adjacency-long test !"))

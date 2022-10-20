@@ -3,7 +3,7 @@
            ZAL, y, ## could be taken fom processed ? 
            n_u_h, 
            #H_global_scale, 
-           lambda_est, muetablob=NULL, off, maxit.mean, etaFix,
+           lambda_est, off, maxit.mean, etaFix,
            wranefblob, processed,
            ## supplement for ! LMM
            phi_est, 
@@ -12,7 +12,7 @@
            ## supplement for LevenbergM
            beta_eta,
            ## supplement for ! GLMM (??)
-           u_h, v_h, for_init_z_args, 
+           u_h, v_h, # for_init_z_args, 
            #
            trace=FALSE,
            stylefn=.spaMM.data$options$stylefns$vloop,
@@ -35,34 +35,30 @@
     pot_tol <- processed$spaMM_tol$v_pot_tol * looseness
     d_relV_tol <- processed$spaMM_tol$d_relV_tol * looseness
     constant_zAug_args <- list(n_u_h=n_u_h, nobs=nobs, pforpv=pforpv, y=y, off=off, ZAL=ZAL, processed=processed)
-    if ( ! GLMMbool) {
-      constant_init_z_args <- c(list(lcrandfamfam=lcrandfamfam, nobs=nobs, lambda_est=lambda_est, ZAL=ZAL),  
-                                # fit_as_ZX args specific for ! GLMM:
-                                for_init_z_args,
-                                #
-                                mget(c("cum_n_u_h","rand.families"),envir=processed))
-    } 
+    # if ( ! GLMMbool) {
+    #   constant_init_z_args <- c(list(lcrandfamfam=lcrandfamfam, nobs=nobs, lambda_est=lambda_est, ZAL=ZAL),  
+    #                             # fit_as_ZX args specific for ! GLMM:
+    #                             for_init_z_args,
+    #                             #
+    #                             mget(c("cum_n_u_h","rand.families"),envir=processed))
+    # } 
     
     ##### initial sXaug
     ZAL_scaling <- 1  ## TAG: scaling for spprec
-    if (is.null(muetablob)) { ## NULL input eta allows NULL input muetablob
-      eta  <- off + drop(processed$AUGI0_ZX$X.pv %*% beta_eta) + drop(ZAL %id*% v_h) 
-      muetablob <- .muetafn(eta=eta,BinomialDen=processed$BinomialDen,processed=processed) 
-    }
+    eta  <- off + drop(processed$AUGI0_ZX$X.pv %*% beta_eta) + drop(ZAL %id*% v_h) 
+    muetablob <- .muetafn(eta=eta,BinomialDen=processed$BinomialDen,processed=processed, phi_est=phi_est) 
     ## weight_X and Xscal varies within loop if ! LMM since at least the GLMweights in w.resid change
-    if ( is.null(w.resid) ) w.resid <- .calc_w_resid(muetablob$GLMweights,phi_est)
+    w.resid <- .calc_w_resid(muetablob$GLMweights,phi_est, obsInfo=processed$how$obsInfo)
     ## needs adjMatrix and corrPars to define Qmat
-    update_sXaug_constant_arglist <- list(AUGI0_ZX=processed$AUGI0_ZX, corrPars=corrPars, 
-                                          cum_n_u_h=processed$cum_n_u_h #,H_global_scale=H_global_scale
-                                          ) 
+    update_sXaug_constant_arglist <- list(AUGI0_ZX=processed$AUGI0_ZX, corrPars=corrPars, cum_n_u_h=processed$cum_n_u_h) 
     sXaug_arglist <- c(update_sXaug_constant_arglist,
-                       list(w.ranef=wranefblob$w.ranef))
-    sXaug_arglist$H_w.resid <- .calc_H_w.resid(w.resid, muetablob=muetablob, processed=processed) 
+                       list(w.ranef=wranefblob$w.ranef,
+                            H_w.resid=.calc_H_w.resid(w.resid, muetablob=muetablob, processed=processed)))
     # .HLfit_body_augZXy has called .init_AUGI0_ZX_envir_spprec_info(processed,LMatrices)...
-    sXaug <- do.call(processed$AUGI0_ZX$envir$method, # ie, def_AUGI0_ZX_sparsePrecision
+    sXaug <- do.call(processed$spprec_method, # ie, def_AUGI0_ZX_spprec
                      sXaug_arglist)
     if (trace) {
-      tracechar <- ifelse(sXaug$BLOB$nonSPD,"!",".")
+      tracechar <- ifelse(.BLOB(sXaug)$nonSPD,"!",".")
       cat(stylefn(tracechar)) # hmff blue (vloop) F I X M E
     }
     
@@ -77,24 +73,25 @@
                                         lambda_est=lambda_est, dvdu=wranefblob$dvdu, u_h=u_h, muetablob=muetablob)
       } 
       if ( ! GLMMbool) {
-        # arguments for init_resp_z_corrections_new called in calc_zAug_not_LMM
-        init_z_args <- c(constant_init_z_args,
-                         list(w.ranef=wranefblob$w.ranef, u_h=u_h, v_h=v_h, dvdu=wranefblob$dvdu, 
-                              sXaug=sXaug, w.resid=w.resid))
-      } else init_z_args <- NULL
+        # # arguments for init_resp_z_corrections_new called in calc_zAug_not_LMM
+        # init_z_args <- c(constant_init_z_args,
+        #                  list(w.ranef=wranefblob$w.ranef, u_h=u_h, v_h=v_h, dvdu=wranefblob$dvdu, 
+        #                       sXaug=sXaug))  # H_w.resid provided by sXaug!
+        # z2 <- do.call(".init_resp_z_corrections_new",init_z_args)$z20
+        z2 <- .calc_z2(lcrandfamfam=lcrandfamfam, psi_M=processed$psi_M, cum_n_u_h=processed$cum_n_u_h, rand.families=processed$rand.families, 
+                       u_h=u_h, lambda_est=lambda_est, v_h=v_h, dvdu=wranefblob$dvdu)
+      } else z2 <- rep(0,n_u_h)
       calc_zAug_args <- c(constant_zAug_args,
                           list(muetablob=muetablob, dlogWran_dv_h=wranefblob$dlogWran_dv_h, 
-                               sXaug=sXaug, 
+                               sXaug=sXaug,  # H_w.resid provided by sXaug!
                                w.ranef=wranefblob$w.ranef, 
                                w.resid=w.resid,
-                               ############################# ZAL_scaling=ZAL_scaling,
-                               init_z_args=init_z_args) )
+                               z2=z2) )
       zInfo <- do.call(".calc_zAug_not_LMM",calc_zAug_args) 
       if (GLMMbool) zInfo$z2 <- NULL 
-      etamo <- muetablob$sane_eta - off
-      zInfo$m_grad_obj <- .calc_m_grad_obj(zInfo, z1_eta=zInfo$z1-etamo, z1_sscaled_eta=zInfo$z1_sscaled - etamo, GLMMbool, v_h, wranefblob, 
-                                           H_w.resid=.BLOB(sXaug)$H_w.resid, ZAL, X.pv)
-      
+      zInfo$m_grad_obj <- .calc_m_grad_obj(zInfo, GLMMbool=GLMMbool, v_h=v_h, 
+                                     wranefblob=wranefblob, H_w.resid=.BLOB(sXaug)$H_w.resid, ZAL=ZAL, X.pv=X.pv, etamo=muetablob$sane_eta - off)
+
       zInfo$gainratio_grad <- zInfo$m_grad_obj # needed for .do_damped_WLS_v_in_b_spprec()
       zInfo$scaled_grad <- zInfo$m_grad_obj # used as LM_z=zInfo["scaled_grad"] in .do_damped_WLS_v_in_b_spprec
       if (trace>1L) {
@@ -134,7 +131,7 @@
       #              "w.resid", 
       #              "sXaug")) assign(st,damped_WLS_blob[[st]]) 
       if ( ! GLMMbool ) {
-        #Xscal <- damped_WLS_blob$Xscal ## contains ZAL with new scaling, but weight_X is not applied since it is applied only locally in the mMatrix_method.
+        #Xscal <- damped_WLS_blob$Xscal ## contains ZAL with new scaling, but weight_X is not applied since it is applied only locally in the corr_method
         ZAL_scaling <- damped_WLS_blob$ZAL_scaling # presumably the TAGged 1
       }
       

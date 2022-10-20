@@ -68,7 +68,7 @@
     sXaug_arglist <- list(AUGI0_ZX=processed$AUGI0_ZX, corrPars=ranFix$corrPars,w.ranef=w.ranef,
                           cum_n_u_h=cum_n_u_h,H_w.resid=w.resid)
     if (trace) cat(".")
-    sXaug <- do.call(processed$AUGI0_ZX$envir$method, # ie, def_AUGI0_ZX_sparsePrecision
+    sXaug <- do.call(processed$spprec_method, # ie, def_AUGI0_ZX_spprec
                      sXaug_arglist)
   } else {
     ZAL_scaling <- 1/sqrt(w.ranef*H_global_scale) ## Q^{-1/2}/s
@@ -89,7 +89,7 @@
         attr(Xscal,"AUGI0_ZX") <- processed$AUGI0_ZX # originally for .sXaug_Matrix_CHM_H_scaled. But ... this block is not currently used
       } 
       if (trace) cat(".")
-      sXaug <- do.call(processed$mMatrix_method,
+      sXaug <- do.call(processed$corr_method,
                        list(Xaug=Xscal, weight_X=weight_X, w.ranef=w.ranef, H_global_scale=H_global_scale))
     }
   }

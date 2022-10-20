@@ -4,7 +4,7 @@
     family_par <- environment(family$aic)$nu
   } else if (famfam =="beta_resp") {
     family_par <- environment(family$aic)$prec
-  } else if (famfam  %in% c("negbin","negbin1")) {
+  } else if (famfam  %in% c("negbin","negbin1","negbin2")) {
     family_par <- environment(family$aic)$shape
   }
   family_par
@@ -20,7 +20,7 @@
 
 
 ## hides stats::poisson (check poisson()$zero_truncated)
-Poisson <- function (link = "log", trunc=-1L) {
+Poisson <- function (link = "log", trunc=-1L, LLgeneric=TRUE) {
   linktemp <- substitute(link)  # if link was char LHS is char ; else deparse will create a char from a language object 
   if ( ! is.character(linktemp)) linktemp <- deparse(linktemp)
   okLinks <- c("log", "identity", "sqrt")
@@ -39,35 +39,28 @@ Poisson <- function (link = "log", trunc=-1L) {
   if ( ! is.integer(trunc)) {trunc <- round(trunc)}
   variance <- function(mu) mu
   validmu <- function(mu) all(is.finite(mu)) && all(mu > 0)
+  
+  # Derivatives of Hexp, all being the limit cases of the negbin when shape -> infty
+  dlW_Hexp__detafun <- switch(  # of *Hexp* weights, used for expInfo, as well as obsInfo (as explained for the calling function .dlW_Hexp__dmu in the latter case)
+    linktemp,
+    "log"= function(mu) 1,
+    "identity"= function(mu) -1/mu,
+    "sqrt"= function(mu) rep(0, length(mu))
+  )
+  coef1fun <- switch(
+    linktemp,
+    "log"= function(mu) 1/mu,
+    "identity"= function(mu) rep(-1, length(mu)),
+    "sqrt"= function(mu) rep(0, length(mu))
+  )
+  
   if (trunc==0L) { # If truncated: 
-    D2muDeta2 <- .D2muDeta2(linktemp)
-    D3muDeta3 <- .D3muDeta3(linktemp)
-    DlogLDmu <- function(mu, y, wt, n) { # dlogL/dmu
-      term <- -1+drop(y)/mu
-      p0 <- exp(-mu) # useful to avoir overflows of exp(mu)
-      Mdlog1mp0 <- - p0/(1-p0)
-      term + Mdlog1mp0
-    }
-    D2logLDmu2 <- function(mu, y, wt, n) { 
-      term <-  -drop(y)/mu^2
-      p0 <- exp(-mu) # useful to avoir overflows of exp(mu)
-      Md2log1mp0 <- p0/(1-p0)^2
-      term + Md2log1mp0
-    }
-    D3logLDmu3 <- function(mu, y, wt, n) { # element of computation of D3logLDeta3 for d logdet Hessian
-      term <- 2*drop(y)/mu^3
-      p0 <- exp(-mu) # useful to avoir overflows of exp(mu)
-      Md3log1mp0 <- - p0*(1+p0)/(1-p0)^3
-      term + Md3log1mp0
-    }
 
     logl <- function(y, mu, wt) {
       resu <- dpois(y, mu, log = TRUE)-log(1-exp(-mu)) # I decided to ignore wt
       resu[y==1L & mu==0] <- 0
       resu
     }
-    
-    aic <- function(y, n, mu, wt, dev) -2 * sum(logl(y, mu)) 
     
     sat_logL <- function(y, wt) { 
       uniqy <- unique(y)
@@ -91,18 +84,22 @@ Poisson <- function (link = "log", trunc=-1L) {
     #   r <- (wt * (y * log(y/mu) - (y - mu)  + log( (1-exp(-mu))/(1-exp(-y)) ) )) # MolasL p. 3309 (here and there, fn of latent mu, not mu of truncated response)
     #   2 * r
     # }
-    dHobs_trunc_aux_funs <- list(D2muDeta2=D2muDeta2, D3muDeta3=D3muDeta3, DlogLDmu=DlogLDmu, D2logLDmu2=D2logLDmu2, D3logLDmu3=D3logLDmu3,
-                                 logl=logl, sat_logL=sat_logL)
   } else {
+    
+    logl <- function(y, mu, wt) dpois(y, mu, log = TRUE) # I decided to ignore wt
+    
+    sat_logL <- NULL
+
     dev.resids <- function(y, mu, wt) {
       r <- mu * wt
       p <- which(y > 0)
       r[p] <- (wt * (y * log(y/mu) - (y - mu)))[p]
       2 * r
     }
-    aic <- function(y, n, mu, wt, dev) -2 * sum(dpois(y, mu, log = TRUE) * wt)
-    dHobs_trunc_aux_funs <- NULL
   }
+  
+  aic <- function(y, n, mu, wt, dev) -2 * sum(logl(y, mu)) 
+  
   linkfun <- function(mu,mu_truncated=FALSE) { ## mu_truncated gives type of I N put
     if (mu_truncated) { ## ie if input mu_T
       mu_U <- attr(mu,"mu_U")
@@ -134,43 +131,73 @@ Poisson <- function (link = "log", trunc=-1L) {
   
   Dtheta.Dmu <- function(mu) 1/mu
   D2theta.Dmu2 <- function(mu) -1/mu^2
-  #
-  #####################################################
-  # Derivatives of Hexp for computation of those of Hobs by GLM ad-hoc algo
-  # all being the imit cases of the negbin when shape -> infty
-  dlW_Hexp__detafun <- switch( # of *Hexp* weights, as explained for the calling function .dlW_Hexp__dmu
-    linktemp,
-    "log"= function(mu) 1,
-    "identity"= function(mu) -1/mu,
-    "sqrt"= function(mu) rep(0, length(mu))
-  )
-  d_dlWdmu_detafun <- switch( # see Hessian_weights.nb # also W_H_exp
-    linktemp,
-    "log"= function(mu) -1/mu,
-    "identity"= function(mu) 1/mu^2, 
-    "sqrt"= function(mu) rep(0, length(mu))
-  )
-  coef1fun <- switch(
-    linktemp,
-    "log"= function(mu) 1/mu,
-    "identity"= function(mu) rep(-1, length(mu)),
-    "sqrt"= function(mu) rep(0, length(mu))
-  )
   
+  # for all obsInfo code:
+  D2muDeta2 <- .D2muDeta2(linktemp)
+  D3muDeta3 <- .D3muDeta3(linktemp)
+  
+  
+  #
+  if (LLgeneric) {
+    d_dlWdmu_detafun <- NULL
+    if (trunc==0L) {
+      DlogLDmu <- function(mu, y, wt, n, phi) { # dlogL/dmu
+        term <- -1+drop(y)/mu
+        p0 <- exp(-mu) # useful to avoir overflows of exp(mu)
+        Mdlog1mp0 <- - p0/(1-p0)
+        term + Mdlog1mp0
+      }
+      D2logLDmu2 <- function(mu, y, wt, n, phi) { 
+        term <-  -drop(y)/mu^2
+        p0 <- exp(-mu) # useful to avoir overflows of exp(mu)
+        Md2log1mp0 <- p0/(1-p0)^2
+        term + Md2log1mp0
+      }
+      D3logLDmu3 <- function(mu, y, wt, n, phi) { # element of computation of D3logLDeta3 for d logdet Hessian
+        term <- 2*drop(y)/mu^3
+        p0 <- exp(-mu) # useful to avoir overflows of exp(mu)
+        Md3log1mp0 <- - p0*(1+p0)/(1-p0)^3
+        term + Md3log1mp0
+      }
+    } else {
+      ## link-independent function #####################
+      DlogLDmu <- function(mu, y, wt, n, phi) -1+drop(y)/mu
+      
+      D2logLDmu2 <- function(mu, y, wt, n, phi) -drop(y)/mu^2
+      
+      D3logLDmu3 <- function(mu, y, wt, n, phi) 2*drop(y)/mu^3
+    }
+    environment(DlogLDmu) <- environment(D2logLDmu2) <- environment(D3logLDmu3) <- environment(aic) 
+  } else {
+    DlogLDmu <- D2logLDmu2 <- D3logLDmu3 <- NULL
+    if (trunc==0L) {
+      d_dlWdmu_detafun <- NULL # never available for truncated model
+    } else {
+      # This one is for Hobs by ad-hoc Hratio_factors method: (not available for truncated case)
+      d_dlWdmu_detafun <- switch( # see Hessian_weights.nb # also W_H_exp
+        linktemp,
+        "log"= function(mu) -1/mu,
+        "identity"= function(mu) 1/mu^2, 
+        "sqrt"= function(mu) rep(0, length(mu))
+      )
+      
+    }
+  }
   
   parent.env(environment(aic)) <- environment(stats::poisson) ## parent = <environment: namespace:stats>
-  structure(c(
-    list(family = structure("poisson", patch="spaMM's *P*oisson"), 
-         link = linktemp, linkfun = linkfun, 
-         linkinv = linkinv, variance = variance, dev.resids = dev.resids, 
-         aic = aic, mu.eta = stats$mu.eta, initialize = initialize, 
-         validmu = validmu, valideta = stats$valideta, simulate = simfun, 
-         Dtheta.Dmu=Dtheta.Dmu, D2theta.Dmu2=D2theta.Dmu2,
-         dlW_Hexp__detafun=dlW_Hexp__detafun, coef1fun=coef1fun, d_dlWdmu_detafun=d_dlWdmu_detafun,
-         flags=list(obs=TRUE, exp=TRUE, canonicalLink=(linktemp=="log")),
-         zero_truncated=(trunc==0L)),
-    dHobs_trunc_aux_funs), 
-    class = "family")
+  structure(
+    list(
+      family = structure("poisson", patch="spaMM's *P*oisson"), 
+      link = linktemp, linkfun = linkfun, 
+      linkinv = linkinv, variance = variance, dev.resids = dev.resids, 
+      aic = aic, mu.eta = stats$mu.eta, initialize = initialize, 
+      validmu = validmu, valideta = stats$valideta, simulate = simfun, 
+      dlW_Hexp__detafun=dlW_Hexp__detafun, coef1fun=coef1fun, # always available (needed for expInfo as well as NON-generic obsInfo) 
+      d_dlWdmu_detafun=d_dlWdmu_detafun, # NULL in most cases (except NON-generic obsInfo => untruncated)
+      DlogLDmu = DlogLDmu, D2logLDmu2 = D2logLDmu2, D3logLDmu3 = D3logLDmu3, D2muDeta2 = D2muDeta2, D3muDeta3 = D3muDeta3, # NULL if not LLgeneric
+      flags=list(obs=TRUE, exp=TRUE, canonicalLink=(linktemp=="log"), LLgeneric=LLgeneric),
+      zero_truncated=(trunc==0L)
+    ), class = "family")
 }
 
 Tpoisson <- function(link="log") {

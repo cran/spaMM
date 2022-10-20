@@ -180,6 +180,12 @@
   rhs <- x[[3]]
   txt <- .DEPARSE(rhs) ## should be the rhs of (|) cleanly converted to a string by terms(formula,data) in .get_terms_info()
   has_.in. <- length(grep("%in%",txt))
+  ## converts '%in%' to ':' 
+  if (has_.in.) { # Bug introduced in [v3.11.38 up to 3.13.33] where this block was removed. Understand why => ___F I X M E____
+    splittxt <- strsplit(txt,"%in%")[[1]]
+    rhs <- as.formula(paste("~",splittxt[1],":",splittxt[2]))[[2]]
+    txt <- .DEPARSE(rhs)
+  } 
   ## if sparse_precision is not yet determined
   #  this build the design matrix as if it was TRUE,
   #  but adds the info dataordered_levels that allows a later modif of the design matrix if sparse_precision is set to FALSE

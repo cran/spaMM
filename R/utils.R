@@ -162,7 +162,8 @@ projpath <- local({
             pp <<- readline(prompt="Enter path: ")
           } else {
             message('Need to start in the projpath, say "C:/home/francois/travail/stats/spaMMplus/spaMM", so that getwd() finds it.')
-            pp <<- getwd()
+            pp <<- getwd()                  # would reach here in an R CMD check session (but in principle projpath() is never called in this context, 
+                                            # except perhaps wrapped in a if (file_exists())
           }
         } else pp <<- projpathinRstudio
       }
@@ -177,7 +178,7 @@ projpath <- local({
   vec
 }
 
-.get_bare_fnname <- function(fun) {
+..get_bare_fnname <- function(fun) { #Back compat. function => can ignore spaMM::fitmv
   if (is.function(fun)) { # from do.call(spaMM::fitme, args = args) => it's a closure
     fnname <- names(which(sapply(list(fitme=spaMM::fitme,
                                       HLfit=spaMM::HLfit,
@@ -206,7 +207,7 @@ projpath <- local({
 }
 
 .get_bare_fnname.HLfit <- function(object, call.=getCall(object)) {
-  if (is.null(fnname <- object$how$fnname)) fnname <- .get_bare_fnname(fun=call.[[1L]])
+  if (is.null(fnname <- object$how$fnname)) fnname <- ..get_bare_fnname(fun=call.[[1L]])
   return(fnname)
 }
 
@@ -322,7 +323,7 @@ projpath <- local({
 ### conceived for default values shown in formals, may need non-default values otherwise (sure for ZAL)
 .spprec2spcorr <- function(spprec, obsInfo=TRUE, ZAL=spprec$AUGI0_ZX$ZAfix, zInfo=NULL) {
   AUGI0_ZX <- spprec$AUGI0_ZX
-  H_w.resid <- spprec$BLOB$H_w.resid
+  H_w.resid <- .BLOB(spprec)$H_w.resid
   H_global_scale <- .calc_H_global_scale(H_w.resid)
   weight_X <- .calc_weight_X(H_w.resid, H_global_scale, obsInfo=obsInfo) ## sqrt(s^2 W.resid)  # -> .... sqrt(w.resid * H_global_scale)
   w.ranef <- attr(spprec,"w.ranef")

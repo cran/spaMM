@@ -8,9 +8,10 @@ adjfit <- fitme(cases~I(prop.ag/10) +adjacency(1|gridcode)+(1|gridcode)+offset(l
                 fixed=list(rho=0.1), 
                 family=poisson(),data=scotlip)
 expectedMethod <- "sXaug_EigenDense_QRP_Chol_scaled" ## bc data too small to switch to sparse
+actualMethods <- how(adjfit, verbose=FALSE)$MME_method
 if (interactive()) {
-  if (! (expectedMethod %in% adjfit$MME_method)) {
-    message(paste('! ("',expectedMethod,'" %in% adjfit$MME_method): was a non-default option selected?'))
+  if (! (expectedMethod %in% actualMethods)) {
+    message(paste('Actual method for adjfit differs from expected ("',expectedMethod,'"): was a non-default option selected?'))
   }
 } else testthat::expect_true(expectedMethod %in% adjfit$MME_method) 
 adjfitsp <- fitme(cases~I(prop.ag/10) +adjacency(1|gridcode)+(1|gridcode)+offset(log(expec)),
@@ -19,7 +20,7 @@ adjfitsp <- fitme(cases~I(prop.ag/10) +adjacency(1|gridcode)+(1|gridcode)+offset
                   fixed=list(rho=0.1), 
                   family=poisson(),data=scotlip, 
                   control.HLfit=list(sparse_precision=TRUE))
-testthat::expect_true("AUGI0_ZX_sparsePrecision" %in% adjfitsp$MME_method)
+testthat::expect_true(.is_spprec_fit(adjfitsp))
 if (spaMM.getOption("EigenDense_QRP_method")==".lmwithQR") {
   crit <- diff(range(logLik(adjfit),logLik(adjfitsp)))
   if (spaMM.getOption("fpot_tol")>0) {
@@ -45,7 +46,7 @@ if (spaMM.getOption("example_maxtime")>6.90) {
                    rand.family=list(gaussian(),Gamma(log)), #verbose=c(TRACE=1L),
                    #fixed=list(lambda=c(0.1,0.05)), 
                    family=poisson(),data=scotlip,control.HLfit=list(LevenbergM=FALSE))
-  testthat::expect_true("AUGI0_ZX_sparsePrecision" %in% precfit$MME_method)
+  testthat::expect_true(.is_spprec_fit(precfit))
   precfitLM <- fitme(cases~I(prop.ag/10) +corrMatrix(1|gridcode)+(1|gridcode)+offset(log(expec)),
                      covStruct=list(precision=precmat),
                      rand.family=list(gaussian(),Gamma(log)), #verbose=c(TRACE=1L),
@@ -56,7 +57,7 @@ if (spaMM.getOption("example_maxtime")>6.90) {
                   rand.family=list(gaussian(),Gamma(log)), #verbose=c(TRACE=1L),
                   #fixed=list(lambda=c(0.1,0.05)), 
                   family=poisson(),data=scotlip)
-  testthat::expect_true("matrix" %in% covfit$MME_method)
+  testthat::expect_true("matrix" %in% how(covfit, verbose=FALSE)$MME_method)
   testthat::expect_equal(logLik(covfit),c(p_v=-168.12966973),tol=5e-5) ## all methods are equally sensitive to the initial value (note that one lambda->0)
   testthat::expect_true(max(abs(range(get_predVar(covfit)-get_predVar(precfit))))<9e-6)  
   if (spaMM.getOption("EigenDense_QRP_method")==".lmwithQR") {

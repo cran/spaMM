@@ -328,19 +328,23 @@
   return(QRmethod)
 }
 
-.set_mMatrix_method <- function(processed) {
+.set_augX_methods <- function(processed) {
+  # sets algebra and possibly *two* methods...
   if (.eval_as_mat_arg(processed)) {
     algebra <- "decorr"
-    processed$mMatrix_method <- .spaMM.data$options$matrix_method
+    processed$corr_method <- .spaMM.data$options$matrix_method
   } else {
     algebra <- "spcorr"
     if (processed$how$obsInfo) {
-      processed$mMatrix_method <- .spaMM.data$options$Hobs_Matrix_method
+      processed$corr_method <- .spaMM.data$options$Hobs_Matrix_method
     } else {
-      processed$mMatrix_method <- .spaMM.data$options$Matrix_method
+      processed$corr_method <- .spaMM.data$options$Matrix_method
     }
+  } # NOT alternative to first block (in spprec we still need  processed$corr_method for .MakecovEst1)
+  if (processed$is_spprec) {
+    algebra <-"spprec" 
+    processed$spprec_method <- .spaMM.data$options$spprec_method 
   }
-  if (processed$is_spprec) algebra <-"spprec" # subtlety: in spprec we still need  processed$mMatrix_method for .MakecovEst1
   algebra
 }
 
@@ -353,6 +357,17 @@
                    '  see help("algebra"). "',algebra,'" has been selected here.')) 
     environment(.provide_G_diagnosis)$time_warned <- TRUE
   }
+}
+
+.any_gaussian_inverse <- function(processed) {
+  if (is.null(family <- processed$family)) {
+    families <- processed$families
+    for (mv_it in seq_along(families)) {
+      fam <- families[[mv_it]]
+      if (fam$link=="inverse" && fam$family=="gaussian") return(TRUE) 
+    }
+    return(FALSE)
+  } else return(family$link=="inverse" && family$family=="gaussian")
 }
 
 .preprocess_LevM <- function(user_LM, processed, nrand) {
@@ -374,6 +389,8 @@
           ## adjlg has 1000 levels and is faster without LevM 
           LM_start <- (tail(processed$cum_n_u_h,n=1)<500L)[[1]] # drop the automatic name from cum_n_u_h...
         } else LM_start <- FALSE  ## BINARYboot test to assess effect on timings
+      } else if (.any_gaussian_inverse(processed)) {
+        LM_start <- TRUE # maximum safety in numerically difficult case. test-devel-LLM example shows this is necessary.
       } else LM_start <- FALSE
     } else LM_start <- user_LM[[1L]] # important to drop name else the names of the vector are wrong
     return(c(user_LM=user_LM[[1L]], LM_start=LM_start) ) 
@@ -394,14 +411,14 @@
   #   }
   # }
   # 
-  # In the nested RHS case he ZAnames ahve additional :1, :2 in comparison to the corrnames. So the next test is FALSE and no subsetting/reordering is performed.
+  # In the nested RHS case the ZAnames have additional :1, :2 in comparison to the corrnames. So the next test is FALSE and no subsetting/reordering is performed.
   if ( ! length(extraZAnames <- setdiff(ZAnames,corrnames))) { ## i.e. if all ZAnames in corrnames
     if ( inherits(corrMatrix,"precision")) { 
       # do not subset a precmat => nothing here but the corresponding Z matrix may be modified (.addrightcols) by .init_assign_geoinfo() 
       # and then the precision matrix may be reordered according to the cols of this possibly augmented Z. 
     } else {
       uZAnames <- unique(ZAnames)
-      if ( length(setdiff(corrnames,uZAnames)) || any(corrnames!=uZAnames) ) { # reordering and subsetting
+      if ( length(setdiff(corrnames,uZAnames)) || any(corrnames!=uZAnames) ) { # reordering and subsetting. corr_info$corrMatrices still contains the full matrix
         perm <- pmatch(uZAnames, corrnames)
         if (inherits(corrMatrix,"dist")) {
           corrMatrix <- (proxy::as.matrix(corrMatrix,diag=1)[perm,perm]) ## IF diag missing in input corrMatrix THEN assume a correlation matrix
@@ -550,7 +567,7 @@
     for (rd in problems) {
       mess <- paste0("Only ",vec_n_u_h[rd]," level for random effect ",
                      attr(processed$ZAlist,"exp_ranef_strings")[rd],
-                     ";\n   this model cannot be fitted unless phi is fixed.")
+                     ";\n   its variance may be confounded with phi.")
       warning(mess, immediate.=TRUE)
     }
   }
@@ -870,9 +887,7 @@
     # That latter code would deserve to be checked (whether some FALSE could become TRUE) since it has been used only by aug_ZXy's .get_absdiagR_blocks() procedure .
     # For SPPREC, it is rebuilt by .init_AUGI0_ZX_envir_spprec_info()
     # For CORR methods, this paves the way for extended usage, but won't solve what prevents using permuted Cholesky for which="R_scaled_v_h_blob" in QRP_CHM. 
-    if (sparse_precision) {
-      AUGI0_ZX$envir$method <- .spaMM.data$options$spprec_method  
-    } else { 
+    if ( ! sparse_precision) {
       if (inherits(AUGI0_ZX$ZeroBlock,"sparseMatrix")) {
         AUGI0_ZX$Zero_sparseX <- rbind2(AUGI0_ZX$ZeroBlock, as(AUGI0_ZX$X.pv,"CsparseMatrix"))
       } else AUGI0_ZX$Zero_sparseX <- rbind2(AUGI0_ZX$ZeroBlock, AUGI0_ZX$X.pv)
@@ -962,10 +977,10 @@
   obsInfo_warned <- FALSE
   function() {
     if ( ! environment(.obsInfo_warn)$obsInfo_warned) {
-      warning(paste("Expected Hessian matrix is used by default for GLM families with non-canonical link.\n",
-                    'Use spaMM.options(obsInfo=TRUE) to use observed Hessian globally in Laplace approximation,\n', 
-                    'or method=c("ML","obs") to use it on a specific fit. The default may well be reversed\n', 
-                    'in a future version, so use method=c("ML","exp") to prevent any future change in results.'),
+      warning(paste("From version 4.0, observed  Hessian matrix is used by default\n",
+                    'for GLM families with non-canonical link. Use spaMM.options(obsInfo=FALSE)\n',
+                    'to use expected Hessian globally in Laplace approximation (past default),\n', 
+                    'or (say) method=c("ML","exp") to use it on a specific fit.'),
               call.=FALSE)
       obsInfo_warned <<- TRUE
     }
@@ -973,10 +988,10 @@
 })
 
 
-.obsInfo <- function(HLmethod, family, canonicalLink=family$flags$canonicalLink) {
-  # LLF -> always obsInfo
+.need_obsAlgo <- function(HLmethod, family, canonicalLink=family$flags$canonicalLink) {
+  # not GLM -> always obsInfo
   # GLM fam with canonical link -> this is indifferent. here obsInfo set to false, 
-  if ( ! family$flags$exp ) { # LLF family; not GLM
+  if ( ! family$flags$exp ) { # no expected-info capacity; not GLM
     obsInfo <- TRUE
   } else if (canonicalLink) {
     obsInfo <- 0L # let's try to have two kinds of false; used in how.HLfit()
@@ -986,8 +1001,11 @@
                        "exp" = FALSE,
                        stop("Unhandled second specifier in 'method' argument"))
   } else {
-    obsInfo <- .spaMM.data$options$obsInfo # use default method
-    if (!obsInfo) .obsInfo_warn() 
+    obsInfo <- (
+      HLmethod[[1L]]!="SEM" &&
+      .spaMM.data$options$obsInfo
+    ) # use .spaMM.data's default method is not SEM
+    # if (!obsInfo) .obsInfo_warn() 
   }
   obsInfo
 }

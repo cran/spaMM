@@ -4,12 +4,12 @@ export(".evalWrapper", ".wrap_Ltri_t_chol", ".calc_CARdispGammaGLM", ".calc_disp
        ".crossprod", ".tcrossprod",  ".stripOffset", ".stripRanefs", ".modify_list") ## probitgem
 export(".HLfit_body_augZXy", ".solve_IRLS_as_ZX", ".solve_IRLS_as_spprec") ## must be exported to be traceable
 export(".safe_opt") ## Infusion
-export(".unloads4spaMM") ## devel convenience
+export(".unloads4spaMM",".is_spprec_fit") ## devel convenience
 importFrom("graphics", ".filled.contour", "Axis", "abline", "axis", "box", "hist", "layout", 
            "lcm", "lines", "par", "plot.new", "plot.window", "points", "polygon", "rect", "title")
 importFrom("graphics", "plot")
 importFrom("grDevices", "devAskNewPage", "topo.colors", "adjustcolor", "col2rgb", "rgb", "dev.new")
-importFrom("methods", "as", "is", "cbind2", "rbind2", "new", "slot")
+importFrom("methods", "as", "is", "cbind2", "rbind2", "new", "slot", "getClassDef", "setClass")
 importFrom("stats", "as.formula", "coefficients", "dgamma", "dnorm", "family", "formula", "getCall", 
            "glm", "lm", "make.link", "model.frame", "model.matrix", "model.offset", "model.response", 
            "optim", "optimize", "pchisq", 
@@ -21,7 +21,8 @@ importFrom("stats", "as.formula", "coefficients", "dgamma", "dnorm", "family", "
            "simulate", "anova", "confint", "fitted", "predict", "update", "logLik", "vcov", "coef",
            "gaussian", "binomial", "dpois", "Gamma", "resid", "uniroot", "deviance", "dbinom", "plogis", 
            "as.dist", "AIC", "qnbinom", "qpois", "rnbinom", "integrate", "poisson",".getXlevels", "na.omit",
-           "cov2cor", "pcauchy", "pnorm","model.weights", "setNames")
+           "cov2cor", "pcauchy", "pnorm","model.weights", "setNames", "pf", "df.residual", "drop.terms", 
+           "stat.anova", "residuals", "pt", "reformulate")
 importFrom("utils", "relist", "txtProgressBar", "setTxtProgressBar", "modifyList", "strOptions", "str",
            "write.table", "packageVersion", "packageDescription", "capture.output", "tail")
 importFrom("Matrix", "Matrix", "drop", "isDiagonal", "diag", "t", "solve", "Diagonal", "crossprod", "tcrossprod", "rowSums", "colSums",
@@ -66,6 +67,7 @@ S3method(model.frame, HLfit)
 S3method(formula, HLfit)
 S3method(terms, HLfit)
 S3method(model.matrix, HLfit)
+S3method(model.matrix, LMLTslots)
 S3method(nobs, HLfit)
 S3method(logLik, HLfit)
 S3method(logLik, HLfitlist)
@@ -74,6 +76,8 @@ S3method(fixef, HLfit)
 S3method(ranef, HLfit)
 S3method(fitted, HLfitlist)
 S3method(residuals, HLfit)
+S3method(df.residual, HLfit)
+S3method(weights, HLfit)
 S3method(hatvalues, HLfit)
 S3method(plot, HLfit)
 S3method(predict, HLfit)
@@ -116,8 +120,7 @@ S3method(get_from_MME,sXaug_EigenDense_QRP_Chol_scaled)
 S3method(get_from_MME,sXaug_Matrix_QRP_CHM_scaled)
 #S3method(get_from_MME,sXaug_Matrix_cholP_scaled)
 S3method(get_from_MME,sXaug_Matrix_CHM_H_scaled)
-S3method(get_from_MME,AUGI0_ZX_sparsePrecision)
-#S3method(get_from_MME,AUGI0_ZX_sparsePrecision_scaled)
+S3method(get_from_MME,AUGI0_ZX_spprec)
 S3method(get_from_MME,sparseMatrix)
 S3method(get_from_MME,default)
 S3method(get_from_MME_default,matrix)

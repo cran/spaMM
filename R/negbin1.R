@@ -70,7 +70,7 @@ negbin1 <- function (shape = stop("negbin1's 'shape' must be specified"), link =
                                   2*lsh*(3+mushape*l1sh) - l1sh*(6+mushape*l1sh) +
                                   6*mushape* (2*trigamma(y)+mushape*(psigamma(y, deriv=2)+2.404113806319188))  )/12
     }
-    DlogLDmu <- function(mu, y, wt, n) { # dlogL/dmu 
+    DlogLDmu <- function(mu, y, wt, n, phi) { # dlogL/dmu 
       # shape (Log[mu shape] - Log[mu (1 + shape)] - PolyGamma[0, mu shape] + PolyGamma[0, mu shape + y])
       mushape <- mu*shape
       term <- shape * (log(shape/(1 + shape)) - digamma(mushape) + digamma(mushape + y))
@@ -101,7 +101,7 @@ negbin1 <- function (shape = stop("negbin1's 'shape' must be specified"), link =
                   20*log(shape/(1 + shape))^2 + mushape^2 *log(shape/(1 + shape))^4 + 240*trigamma(y) +
                   120* mushape*(2*psigamma(y, deriv=2)+mushape*psigamma(y, deriv=3)))/240
     }
-    D2logLDmu2 <- function(mu, y, wt, n) { 
+    D2logLDmu2 <- function(mu, y, wt, n, phi) { 
       # shape^2 (-PolyGamma[1, mu shape] + PolyGamma[1, mu shape + y])
       mushape <- mu*shape
       term <- shape^2 * (- trigamma(mushape) + trigamma(mushape + y))
@@ -118,7 +118,7 @@ negbin1 <- function (shape = stop("negbin1's 'shape' must be specified"), link =
       }
       d2logl
     }
-    D3logLDmu3 <- function(mu, y, wt, n) { 
+    D3logLDmu3 <- function(mu, y, wt, n, phi) { 
       # shape^2 (-PolyGamma[1, mu shape] + PolyGamma[1, mu shape + y])
       mushape <- mu*shape
       term <- shape^3 * (- psigamma(mushape, deriv=2) + psigamma(mushape + y, deriv=2))
@@ -136,17 +136,17 @@ negbin1 <- function (shape = stop("negbin1's 'shape' must be specified"), link =
       term[y==0L & mu==0] <- 0 # replaces NaN's with correct answer
       - term * wt
     }
-    DlogLDmu <- function(mu, y, wt, n) { # dlogL/dmu
+    DlogLDmu <- function(mu, y, wt, n, phi) { # dlogL/dmu
       # shape (Log[mu shape] - Log[mu (1 + shape)] - PolyGamma[0, mu shape] + PolyGamma[0, mu shape + y])
       mushape <- mu*shape
       drop(shape * (log(shape/(1 + shape)) - digamma(mushape) + digamma(mushape + y)))
     }
-    D2logLDmu2 <- function(mu, y, wt, n) { 
+    D2logLDmu2 <- function(mu, y, wt, n, phi) { 
       # shape^2 (-PolyGamma[1, mu shape] + PolyGamma[1, mu shape + y])
       mushape <- mu*shape
       drop(shape^2 * (- trigamma(mushape) + trigamma(mushape + y)))
     }
-    D3logLDmu3 <- function(mu, y, wt, n) { 
+    D3logLDmu3 <- function(mu, y, wt, n, phi) { 
       # shape^2 (-PolyGamma[1, mu shape] + PolyGamma[1, mu shape + y])
       mushape <- mu*shape
       drop(shape^3 * (- psigamma(mushape, deriv=2) + psigamma(mushape + y, deriv=2)))
@@ -246,7 +246,7 @@ negbin1 <- function (shape = stop("negbin1's 'shape' must be specified"), link =
                  validmu = validmu, valideta = stats$valideta, simulate = simfun, 
                  DlogLDmu = DlogLDmu, D2logLDmu2 = D2logLDmu2, D3logLDmu3 = D3logLDmu3, 
                  D2muDeta2 = D2muDeta2, D3muDeta3 = D3muDeta3,
-                 flags=list(obs=TRUE, exp=FALSE, canonicalLink=FALSE),
+                 flags=list(obs=TRUE, exp=FALSE, canonicalLink=FALSE, LLgeneric=TRUE),
                  zero_truncated=(trunc==0L)), 
             class = c("LLF","family"))
 }

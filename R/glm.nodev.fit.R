@@ -58,8 +58,7 @@ glm.nodev.fit <- function (x, y, weights = rep.int(1, nobs), start = NULL, etast
       stop("invalid fitted means in empty model", call. = FALSE)
     dev <- .Machine$double.xmax
     w <- sqrt((weights * mu.eta(eta)^2)/variance(mu))
-    residuals <- (y - mu)/mu.eta(eta)
-    good <- rep_len(TRUE, length(residuals))
+    good <- rep_len(TRUE, length(mu))
     boundary <- conv <- TRUE
     coef <- numeric()
     iter <- 0L
@@ -212,7 +211,6 @@ glm.nodev.fit <- function (x, y, weights = rep.int(1, nobs), start = NULL, etast
     if (fit$rank < nvars) 
       coef[fit$pivot][seq.int(fit$rank + 1, nvars)] <- NA
     xxnames <- xnames[fit$pivot]
-    residuals <- (y - mu)/mu.eta(eta)
     fit$qr <- as.matrix(fit$qr)
     nr <- min(sum(good), nvars)
     if (nr < nvars) {
@@ -226,6 +224,7 @@ glm.nodev.fit <- function (x, y, weights = rep.int(1, nobs), start = NULL, etast
     colnames(fit$qr) <- xxnames
     dimnames(Rmat) <- list(xxnames, xxnames)
   }
+  residuals <- (y - mu)/mu.eta(eta) # residuals(., type="working")
   names(residuals) <- ynames
   names(mu) <- ynames
   names(eta) <- ynames

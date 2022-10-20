@@ -60,14 +60,22 @@
     for (char_rd in names(trRanCoefs)) ranPars$ranCoefs[[char_rd]] <- 
       .constr_ranCoefsInv(trRanCoef=trRanCoefs[[char_rd]], constraint=constraints[[char_rd]], rC_transf=rC_transf)
     ranPars$trRanCoefs <- NULL
+    ## But:
+    #attr(ranPars,"type")$ranCoefs <- attr(ranPars,"type")$trRanCoefs
+    #attr(ranPars,"type")$trRanCoefs <- NULL
+    ## => would break the count of dfs... [cf test that ends as ... fixed=list(ranCoefs=list("1"=c(NA, -0.1, NA))))$dfs))==8L ]  
   }
   if ( length(ranPars$trNB_shape)) { # rather than 'is.null() bc in mv_case the fampars are suppressed from a fampars vector in post_process_family_it() => final value numeric(0)
     ranPars$NB_shape <- .NB_shapeInv(ranPars$trNB_shape)
     ranPars$trNB_shape <- NULL
+    attr(ranPars,"type")$NB_shape <- attr(ranPars,"type")$trNB_shape
+    attr(ranPars,"type")$trNB_shape <- NULL
   }
   if ( length(ranPars$trbeta_prec)) {
     ranPars$beta_prec <- .beta_precInv(ranPars$trbeta_prec)
     ranPars$trbeta_prec <- NULL
+    attr(ranPars,"type")$beta_prec <- attr(ranPars,"type")$trbeta_prec
+    attr(ranPars,"type")$trbeta_prec <- NULL
   }
   attr(ranPars,"init.HLfit") <- init.HLfit  
   return(ranPars)

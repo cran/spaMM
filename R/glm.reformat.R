@@ -44,8 +44,7 @@
       stop("invalid fitted means in empty model", call. = FALSE)
     dev <- sum(dev.resids(y, mu, weights))
     w <- ((weights * mu.eta(eta)^2)/variance(mu))^0.5
-    residuals <- (y - mu)/mu.eta(eta)
-    good <- rep_len(TRUE, length(residuals))
+    good <- rep_len(TRUE, length(mu))
     boundary <- conv <- TRUE
     coef <- numeric()
     iter <- 0L
@@ -109,7 +108,6 @@
     dev <- sum(dev.resids(y, mu, weights))
     if (fit$rank < nvars) 
       coef[fit$pivot][seq.int(fit$rank + 1, nvars)] <- NA
-    residuals <- (y - mu)/mu.eta(eta)
     nr <- min(sum(good), nvars)
     if (nr < nvars) {
       Rmat <- diag(nvars)
@@ -121,6 +119,7 @@
     xxnames <- xnames[fit$pivot]
     dimnames(Rmat) <- list(xxnames, xxnames)
   }
+  residuals <- (y - mu)/mu.eta(eta)
   names(residuals) <- ynames
   names(mu) <- ynames
   names(eta) <- ynames

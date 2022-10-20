@@ -21,7 +21,7 @@
       checkprec <- substitute(prec, env=environment(family$aic)) 
       if (inherits(checkprec,"call")) eval(checkprec)
     }
-  } else if (family$family %in% c("negbin","negbin1")) {
+  } else if (family$family %in% c("negbin1","negbin2")) {
     if ( ! is.null(ranFix$NB_shape) && ! is.na(NB_shape <- ranFix$NB_shape[char_mv_it])) { ## fitme -> HLCor -> HLfit
       assign("shape",NB_shape,envir=environment(family$aic))
       ranFix$NB_shape[char_mv_it] <- NA
@@ -52,7 +52,7 @@
   if (family$family=="COMPoisson") {
     if ( ! is.null(ranFix$COMP_nu)) { ## optimisation call
       assign("nu",ranFix$COMP_nu,envir=environment(family$aic))
-      ranFix$COMP_nu <- NULL
+      ranFix$COMP_nu <- attr(ranFix,"type")$COMP_nu <- NULL
     } else {
       checknu <- substitute(nu, env=environment(family$aic)) 
       if (inherits(checknu,"call")) eval(checknu)
@@ -60,21 +60,21 @@
   } else if (family$family=="beta_resp") {
     if ( ! is.null(ranFix$beta_prec)) { ## optimisation call
       assign("prec",ranFix$beta_prec,envir=environment(family$aic))
-      ranFix$beta_prec <- NULL
+      ranFix$beta_prec <- attr(ranFix,"type")$beta_prec <- NULL
     } else if ( ! is.null(ranFix$trbeta_prec)) { ## fitme -> HLfit directly (FIXME: unify both cases ?)
       assign("prec",.beta_precInv(ranFix$trbeta_prec),envir=environment(family$aic))
-      ranFix$trbeta_prec <- NULL
+      ranFix$trbeta_prec <- attr(ranFix,"type")$trbeta_prec <- NULL
     } else {
       checkprec <- substitute(prec, env=environment(family$aic)) 
       if (inherits(checkprec,"call")) eval(checkprec)
     }
-  } else if (family$family  %in% c("negbin","negbin1")) {
+  } else if (family$family  %in% c("negbin1","negbin2")) {
     if ( ! is.null(ranFix$NB_shape)) { ## fitme -> HLCor -> HLfit
       assign("shape",ranFix$NB_shape,envir=environment(family$aic))
-      ranFix$NB_shape <- NULL
+      ranFix$NB_shape <- attr(ranFix,"type")$NB_shape <- NULL
     } else if ( ! is.null(ranFix$trNB_shape)) { ## fitme -> HLfit directly (FIXME: unify both cases ?)
       assign("shape",.NB_shapeInv(ranFix$trNB_shape),envir=environment(family$aic))
-      ranFix$trNB_shape <- NULL
+      ranFix$trNB_shape <- attr(ranFix,"type")$trNB_shape <- NULL
     } else {
       checktheta <- substitute(shape, env=environment(family$aic)) 
       if (inherits(checktheta,"call")) eval(checktheta)
@@ -150,13 +150,14 @@
   } else return(sum(cliks))
 }
 
-.eval_gain_LevM_etaGLM <- function(LevenbergMstep_result,family, X.pv ,coefold,clikold,phi_est,processed, offset) {  
+# this is used for LLM too
+.eval_gain_clik_LevM <- function(LevenbergMstep_result,family, X.pv ,coefold,clikold, phi_est, processed, offset) {  
   dbeta <- LevenbergMstep_result$dbetaV
   beta <- coefold + dbeta
   eta <- drop(X.pv %*% beta) + offset
   eta <- .sanitize_eta(eta, y=processed$y, family=family, max=40) 
   ## Here I can use 
-  muetablob <- .muetafn(eta=eta, BinomialDen=processed$BinomialDen, processed=processed) 
+  muetablob <- .muetafn(eta=eta, BinomialDen=processed$BinomialDen, processed=processed, phi_est=phi_est) 
   ## which returns a $mu=muCOUNT in all cases.   
   # if (family$family=="binomial") {
   #   muFREQS <- family$linkinv(eta)
@@ -183,6 +184,8 @@
               conv_clik=conv_clik))
 }  
 
+# fixed-effect main response
+# HLfit_body -> .calc_etaGLMblob -> this fn
 .do_damped_WLS_glm <- function(wX, LM_wz, damping, X.pv, clik, family, old_beta_eta, phi_est, off, processed, verbose) {
   restarted <- FALSE
   dampingfactor <- 2
@@ -190,7 +193,7 @@
     if (inherits(wX,"Matrix")) {
       LevenbergMstep_result <- .LevenbergMsolve_Matrix(wAugX=wX,LM_wAugz=LM_wz,damping=damping) 
     } else LevenbergMstep_result <- .LevenbergMstepCallingCpp(wAugX=wX,LM_wAugz=LM_wz,damping=damping) 
-    levMblob <- .eval_gain_LevM_etaGLM(LevenbergMstep_result=LevenbergMstep_result,
+    levMblob <- .eval_gain_clik_LevM(LevenbergMstep_result=LevenbergMstep_result,
                                        X.pv=X.pv, clikold=clik, family=family,
                                        coefold=old_beta_eta,
                                        phi_est=phi_est, offset=off,
@@ -252,6 +255,7 @@
     y <- processed$y
     family <- processed$family
     LM_called <- FALSE
+    qr_X <- NA
     damping <- 1e-7 ## as suggested by Madsen-Nielsen-Tingleff... # Smyth uses abs(mean(diag(XtWX)))/nvars
     newclik <- .calc_clik(mu=mu,phi_est=phi_est,processed=processed) ## handles the prior.weights from processed
     for (innerj in seq_len(maxit.mean)) {
@@ -295,7 +299,7 @@
         names(beta_eta) <- colnames(X.pv)
         # # PROBLEM is that NaN/Inf test does not catch all divergence cases so we need this :
         eta <- off + drop(X.pv %*% beta_eta) ## updated at each inner iteration
-        muetablob <- .muetafn(eta=eta,BinomialDen=BinomialDen,processed=processed) 
+        muetablob <- .muetafn(eta=eta,BinomialDen=BinomialDen,processed=processed, phi_est=phi_est) 
         newclik <- .calc_clik(mu=muetablob$mu, phi_est=phi_est,processed=processed) 
       }  
       if ( is.null(for_intervals) &&
@@ -313,7 +317,7 @@
         dbetaV <- damped_WLS_blob$dbetaV
       } else dbetaV <- beta_eta - old_beta_eta
       mu <- muetablob$mu ## needed to update z1
-      w.resid <- .calc_w_resid(muetablob$GLMweights,phi_est) ## 'weinu', must be O(n) in all cases
+      w.resid <- .calc_w_resid(muetablob$GLMweights,phi_est, obsInfo=processed$how$obsInfo) ## 'weinu', must be O(n) in all cases
       if (verbose["trace"]) {
         print(paste0("Inner iteration ",innerj))
         print_err <- c(beta_eta=beta_eta)
@@ -328,7 +332,7 @@
     } ## end for (innerj in 1:maxit.mean)
     names(beta_eta) <- colnames(X.pv)
     return(list(eta=muetablob$sane_eta, muetablob=muetablob, beta_eta=beta_eta, w.resid=w.resid, innerj=innerj,
-                sXaug=structure(NA,class="(G)LM")))
+                sXaug=structure(NA,class="(G)LM"), qr_X=qr_X))
   }
 
 .calc_std_leverages <- function(models, need_ranefPars_estim, phi.Fix, auglinmodblob, n_u_h, nobs, processed, w.resid, u_h, 

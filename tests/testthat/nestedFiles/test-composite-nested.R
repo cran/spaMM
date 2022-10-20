@@ -178,7 +178,7 @@ if (FALSE) { # that was devel scratch, not tidy tests
   }
   
   ZUT <- function(fit, caveat="assuming lambda=1") {
-    if (how(fit)$MME_method=="AUGI0_ZX_sparsePrecision") {
+    if (.is_spprec_fit(fit)) {
       if (FALSE) {
         Lmat <- t(Matrix::kronecker(chol(attr(fit$strucList[[1]],"latentL_blob")$compactcovmat),
                                     t(as(Cholesky(as(proxy::as.matrix(MLcorMat2,diag=1),"sparseMatrix")),"sparseMatrix")))) # 

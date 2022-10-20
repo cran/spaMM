@@ -1,12 +1,16 @@
-.calc_dlogL_blob <- function(eta, mu, y, weights, family) {
+.calc_dlogL_blob <- function(eta, mu, y, weights, family, phi, muetaenv) {
+  if (family$family=="COMPoisson")  {
+    dlogLdmu <- family$DlogLDmu(mu=mu, y=y, thetaMuDerivs=muetaenv$thetaMuDerivs_2) #[good]  
+    d2logLdmu2 <- family$D2logLDmu2(mu=mu, y=y, thetaMuDerivs=muetaenv$thetaMuDerivs_2) #[good]
+  } else {
+    dlogLdmu <- family$DlogLDmu(mu=mu, y=y, wt=weights, phi=phi) #[good]  
+    d2logLdmu2 <- family$D2logLDmu2(mu=mu, y=y, wt=weights, phi=phi) #[good]
+  }
   dmudeta <- family$mu.eta(eta)
-  dlogLdmu <- family$DlogLDmu(mu=mu, y=y, wt=weights) #[good]
-  dlogcLdeta <- dlogLdmu*dmudeta
-  
-  d2logLdmu2 <- family$D2logLDmu2(mu=mu, y=y, wt=weights) #[good]
   d2mudeta2 <- family$D2muDeta2(eta) #[good]
+  dlogcLdeta <- dlogLdmu*dmudeta
   d2logcLdeta2 <- d2logLdmu2*dmudeta^2+dlogLdmu*d2mudeta2
-  list(dlogcLdeta=dlogcLdeta, d2logcLdeta2=d2logcLdeta2)
+  list(dlogcLdeta=as.vector(dlogcLdeta), d2logcLdeta2=as.vector(d2logcLdeta2)) # as.vector() to drop attributes inherited from y or weights  
 }
 
 
@@ -38,11 +42,11 @@
       diag(negHess) <- diag(negHess)+dampDpD
       cholH <- chol(negHess)
       dbeta <- backsolve(cholH, backsolve(cholH, grad, transpose = TRUE)) # solve(mH, mH beta + grad) = beta + mH grad = beta - D2logLDbeta2 . DlogLDbeta
-      return(list(dbetaV=dbeta, dampDpD=dampDpD, rhs=grad)) 
+      return(list(dbetaV=drop(dbeta), dampDpD=dampDpD, rhs=grad)) 
     } else {
       Hbeta_grad <- crossprod(X,  - d2logcLdeta2 * (eta-offset))+ grad # (H beta = X' W X beta= X' W (eta-off)) + (grad = X .dlogcLdeta)
       beta <- backsolve(cholH, backsolve(cholH, Hbeta_grad, transpose = TRUE)) # solve(mH, mH beta + grad) = beta + mH grad = beta - D2logLDbeta2 . DlogLDbeta
-      return(beta) # new beta, or dbeta, depending on rhs.
+      return(drop(beta)) # new beta, or dbeta, depending on rhs.
     }
     
   } else { # standard QR is safe
@@ -107,15 +111,27 @@ llm.fit <- local({
     D2logLDmu2 <- family$D2logLDmu2
     D2muDeta2 <- family$D2muDeta2
     dev.resids <- family$dev.resids
-    if (is.null(family$sat_logL)) {
-      dev.resids <- family$dev.resids
+    if (family$family=="COMPoisson") {
+      muetaenv <- NULL
+      dev.resids <- function(y, mu, wt) {family$dev.resids(y, mu, wt, muetaenv=muetaenv)}
+      if (family$link=="loglambda") {
+        linkinv <- function(eta) {family$linkinv(eta,muetaenv=muetaenv)}
+        mu.eta <- function(eta) {family$mu.eta(eta,muetaenv=muetaenv)}
+      } else {
+        linkinv <- family$linkinv
+        mu.eta <- family$mu.eta
+      }
     } else {
-      satlogl <- family$sat_logL(y, wt=weights)
-      if (anyNA(satlogl)) stop("family$sat_logL() returns invalid results.") # catch otherwise hard to trace bug, typically pb logl(y=1, mu=0)
-      dev.resids <- function(y,mu,wt) { 2*(satlogl-family$logl(y,mu=mu,wt=wt)) } # cannot use $aic() which is already a sum...
+      if (is.null(family$sat_logL)) {
+        dev.resids <- family$dev.resids
+      } else {
+        satlogl <- family$sat_logL(y, wt=weights)
+        if (anyNA(satlogl)) stop("family$sat_logL() returns invalid results.") # catch otherwise hard to trace bug, typically pb logl(y=1, mu=0)
+        dev.resids <- function(y,mu,wt) { 2*(satlogl-family$logl(y,mu=mu,wt=wt)) } # cannot use $aic() which is already a sum...
+      }
+      linkinv <- family$linkinv
+      mu.eta <- family$mu.eta
     }
-    linkinv <- family$linkinv
-    mu.eta <- family$mu.eta
     if ( !is.function(linkinv)) 
       stop("'family' argument seems not to be a valid family object", 
            call. = FALSE)
@@ -148,6 +164,7 @@ llm.fit <- local({
     eta <- .sanitize_eta(eta, y=y, family=family)   
     ##
     
+    if (family$family=="COMPoisson") muetaenv <- .CMP_muetaenv(family, pw=weights, eta)
     mu <- linkinv(eta)
     if (!(validmu(mu) && valideta(eta))) 
       stop("cannot find valid starting values: please specify some", 
@@ -161,7 +178,7 @@ llm.fit <- local({
     ## This allows for changes in the dimensions of the design matrix over loop iterations... We remove this.
     goodinit <- weights > 0 
     for (iter in 1L:control$maxit) {
-      ## this uses WLS in the first iteration and Levenberg Marquardt in later ones. # ___F I X M E___ less systematic LevM ?
+      ## this uses WLS in the first iteration and Levenberg Marquardt in later ones. # __F I X M E__ less systematic LevM ? LevM reamins cheap for fied-effect models.
       if (iter==1L) {
         if (all(!goodinit)) {
           conv <- FALSE
@@ -173,12 +190,15 @@ llm.fit <- local({
         # so that initial dev is >= the ML deviance under the ftted model, suitable for LM iterations; 
         # while initialize() is typically mustart <- y, not  compatible with the model. => low control$epsilon necessary
         # Conversely, if all y's are quite small, a low control$epsilon may raise spurious warnings => inmportant to control it in .calc_dispGammaGLM()
-        dlogL_blob <- .calc_dlogL_blob(eta, mu, y, weights, family)
+        dlogL_blob <- .calc_dlogL_blob(eta, mu, y, weights, family, phi=1, muetaenv) # phi=1: either the dispersion param is distinct from phi and available in environment(family$aic)
+                                                                           # or, for GLMs, only the relative phi values may matter for beta estimates. 
+                                                                           # There should be no variation among phi values here, only possibly of prior weights.
         if (EMPTY) break # no model term except possibly an offset. return value still useful ( dev -> disperion estimate...)
         start <- .llm_step_solver(dlogL_blob, eta=eta, offset=offset, X=x, start=start, control=control, damping=0L)
         
         eta <- drop(x %*% start) + offset
         if ( ! beta_bounded) eta <- .sanitize_eta(eta, y=y, family=family, max=40) # else we use .get_valid_beta_coefs()
+        if (family$family=="COMPoisson") muetaenv <- .CMP_muetaenv(family, pw=weights, eta)
         mu <- linkinv(eta) 
         dev <- suppressWarnings(sum(dev.resids(y, mu, weights)))
         boundary <- FALSE
@@ -194,6 +214,7 @@ llm.fit <- local({
             if (requireNamespace("rcdd",quietly=TRUE)) {
               start <- .get_valid_beta_coefs(X=x,offset=offset,family,y,weights)
               eta <- drop(x %*% start) + offset
+              if (family$family=="COMPoisson") muetaenv <- .CMP_muetaenv(family, pw=weights, eta)
               mu <- linkinv(eta) # could sanitize it, perhaps ?
               dev <- suppressWarnings(sum(dev.resids(y, mu, weights)))
             } else if ( ! identical(spaMM.getOption("rcdd_warned"),TRUE)) {
@@ -216,6 +237,7 @@ llm.fit <- local({
             ii <- ii + 1
             start <- (start + coefold)/2
             eta <- drop(x %*% start) + offset
+            if (family$family=="COMPoisson") muetaenv <- .CMP_muetaenv(family, pw=weights, eta)
             mu <- linkinv(eta)
             dev <- suppressWarnings(sum(dev.resids(y, mu, weights)))
           }
@@ -234,8 +256,9 @@ llm.fit <- local({
           LevenbergMstep_result <- .llm_step_solver(dlogL_blob, eta=eta, offset=offset, X=x, start=start, control=control, damping=damping)
           #
           ## Use a function call to keep the change in beta->start,eta,mu,dev private:
-          levMblob <- .eval_gain_LevM_spaMM_xLM(LevenbergMstep_result,family, x ,coefold,devold, offset,y,weights,
-                                                dev.resids=dev.resids) 
+          levMblob <- .eval_gain_dev_LevM(LevenbergMstep_result,family, x ,coefold,devold, offset,y,
+                                                weights) # with default value of dev.resids argument => use the family$dev.resids function, 
+                                                         # not the llm.fit-local one => the llm.fit-local muetaenv won't be sought
           gainratio <- levMblob$gainratio
           
           if (beta_bounded) {
@@ -255,7 +278,14 @@ llm.fit <- local({
             damping <- max(damping * max(1/3,1-(2*gainratio-1)^3), 1e-7) # lower bound as in .get_new_damping() for MMs    
             dampingfactor <- 2
             start <- levMblob$beta 
-            eta <- levMblob$eta ## FR->FR 1 -col matrix without names....
+            if (family$family=="COMPoisson") {
+              muetaenv <- levMblob$muetaenv
+              eta <- muetaenv$sane_eta
+              mu <- muetaenv$mu
+            } else {
+              eta <- levMblob$eta ## FR->FR 1 -col matrix without names....
+              mu <- levMblob$mu # muFREQS
+            }
             mu <- levMblob$mu # muFREQS
             dev <- levMblob$dev 
             if (control$trace) cat("|")
@@ -313,6 +343,7 @@ llm.fit <- local({
           start <- (start + coefold)/2
           eta <- drop(x %*% start)
           eta <- eta + offset
+          if (family$family=="COMPoisson") muetaenv <- .CMP_muetaenv(family, pw=weights, eta)
           mu <- linkinv(eta)
         } ## stop()s or exits loop with valideta and mu
         boundary <- TRUE
@@ -321,7 +352,7 @@ llm.fit <- local({
       }
       
       ## update WLS system for next step 
-      dlogL_blob <- .calc_dlogL_blob(eta, mu, y, weights, family)
+      dlogL_blob <- .calc_dlogL_blob(eta, mu, y, weights, family, phi=1, muetaenv)
     } ## end main loop (either a break or control$maxit reached)
     
     if (! conv) {
@@ -347,7 +378,7 @@ llm.fit <- local({
       #
       if (fit$rank < nvars) coef[fit$pivot][seq.int(fit$rank + 1, nvars)] <- NA
       xxnames <- xnames[fit$pivot]
-      # residuals <- (y - mu)/mu.eta(eta) # workin residuals for a GLM
+      # residuals <- (y - mu)/mu.eta(eta) # working residuals for a GLM
       fit$qr <- as.matrix(fit$qr)
       nr <- min(sum(goodinit), nvars)
       if (nr < nvars) {
@@ -380,9 +411,12 @@ llm.fit <- local({
       rank <- ncol(x)
       fit_qr <- effects <- R <- NULL
     }
+    ##  residuals(., type="working"), analogous to (y - mu)/mu.eta(eta): 
+    #      RHS of .lm.fit eqn for GLMs is [sqrt_]w {(etamo) + working-residuals}
+    #      RHS of .lm.fit eqn is here sqrt_wHess (etamo) + dlogL_blob$dlogcLdeta/sqrt_wHess => working-res= dlogcLdeta/wHess, i.e.
+    residuals <- - dlogL_blob$dlogcLdeta/dlogL_blob$d2logcLdeta2 
     wt <- - dlogL_blob$d2logcLdeta2 # speculative
-    names(wt) <- ynames # the 'GLM weights'
-    names(weights) <- ynames # the prior.weights
+    names(residuals) <- names(wt) <- names(weights) <- ynames
     n.ok <- nobs - sum(weights == 0)
     nulldf <- n.ok - as.integer(intercept)
     wtdmu <- if (intercept) 
@@ -390,12 +424,15 @@ llm.fit <- local({
     nulldev <- sum(dev.resids(y, wtdmu, weights))
     resdf <- n.ok - rank
     aic.model <- aic(y, n, mu, weights, dev) + 2 * rank
-    list(coefficients = coef, #residuals = residuals, 
+    list(coefficients = coef, 
          fitted.values = mu, 
          effects = effects, R = R, 
          rank = rank, qr = fit_qr, family = family, 
          linear.predictors = eta, deviance = sum(dev.resids(y, mu, weights)), aic = aic.model, 
-         null.deviance = nulldev, iter = iter, weights = wt, prior.weights = weights, 
+         null.deviance = nulldev, iter = iter, 
+         residuals = residuals, # "working" weights
+         weights = wt,  # 'GLM' weights
+         prior.weights = weights, # as name says
          df.residual = resdf, df.null = nulldf, y = y, converged = conv, 
          boundary = boundary)
   }

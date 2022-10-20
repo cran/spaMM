@@ -10,8 +10,10 @@ if (rngcheck) RNGkind("Mersenne-Twister", "Inversion", "Rejection"  )
 #somegrp <- cbind(blackcap,grp=c(rep(1,7),rep(2,7))) ## to test cov mat with nonzero var of grp effect
 tworanefs <- corrHLfit(migStatus ~ 1 +  (1|grp) +Matern(1|longitude+latitude),data=somegrp,
                        ranFix=list(nu=4,rho=0.4,phi=0.05))
-expected <- c("Gibraltar"=0.04880579, "CapeVerde"=0.04884620, "SouthernFrance"=0.04197530, 
-              "LaPalma"=0.03337928, "Madeira"=0.04360190)
+# expected <- c("Gibraltar"=0.04880579, "CapeVerde"=0.04884620, "SouthernFrance"=0.04197530, 
+#               "LaPalma"=0.03337928, "Madeira"=0.04360190)   # before change of convergence crit in HLfit_body v3.13.17
+expected <- c("Gibraltar"=0.04941506, "CapeVerde"=0.04891898, "SouthernFrance"=0.04479092, 
+              "LaPalma"=0.03877590, "Madeira"=0.04361358)
 p1 <- get_predVar(tworanefs)[1:5]
 crit <- diff(range(p1 - expected))
 testthat::test_that(paste0("get_predVar(tworanefs)[1:5]: criterion was ",signif(crit,4)," >1e-8"),

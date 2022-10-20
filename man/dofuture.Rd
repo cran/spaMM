@@ -14,10 +14,10 @@ dofuture(newresp, fn, nb_cores=NULL, fit_env, control=list(),
 }
 \arguments{
   \item{newresp}{
-A matrix on whose columns \code{fn} will be applied (e.g., as used internally in spaMM, the return value of a \code{simulate.HLfit()} call). 
+A matrix on whose columns \code{fn} will be applied (e.g., as used internally in \pkg{spaMM}, the return value of a \code{simulate.HLfit()} call); or an integer, then converted to a trivial matrix \code{matrix(seq(newresp),ncol=newresp,nrow=1)}.
 }
   \item{fn}{
-Function, whose first argument is named \code{y}, to be applied to each column of \code{newresp}.
+Function whose first argument is named \code{y}. The function will be applied for \code{y} taken to be each column of \code{newresp}.
 }
   \item{nb_cores}{
 Integer. Number of cores to use for parallel computations. If >1, a cluster of \code{nb_cores} nodes is used. Otherwise, no parallel computation is performed.

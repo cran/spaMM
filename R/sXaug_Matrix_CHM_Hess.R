@@ -1,13 +1,12 @@
 # 'constructor' for sXaug_Matrix_CHM_H_scaled object
 # from Xaug which already has a *scaled* ZAL 
 def_sXaug_Matrix_CHM_H_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale, force_QRP=.spaMM.data$options$force_LLF_CHM_QRP) {
-  signs <- attr(weight_X,"signs")
+  H_w.resid <- attr(weight_X,"H_w.resid")
+  signs <- attr(H_w.resid,"signs")
   if ( is.null(signs) &&  ! .spaMM.data$options$force_LLM_nosigns_CHM_H) {
-    attr(weight_X,"nonSPD") <- FALSE 
-    return(def_sXaug_Matrix_QRP_CHM_scaled(Xaug,weight_X,w.ranef,H_global_scale)) 
+    return(def_sXaug_Matrix_QRP_CHM_scaled(Xaug,weight_X,w.ranef,H_global_scale, nonSPD=FALSE)) 
   }
   n_u_h <- length(w.ranef)
-  H_w.resid <- attr(weight_X,"H_w.resid")
   BLOB <- list2env(list(H_w.resid=H_w.resid, # the unscaled version,
                      #weight_X=weight_X, # only for debugging
                      signs=signs), # may be NULL,
@@ -25,8 +24,8 @@ def_sXaug_Matrix_CHM_H_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale, 
   # have a $AUGI0_ZX (for stable info cross sXaug) and a $BLOB.  
   if (is.null(template <- AUGI0_ZX_envir$template_CHM_negHess)) { 
     BLOB$CHMfactor <- suppressWarnings(try(Matrix::Cholesky(negHess,LDL=FALSE, perm=TRUE), silent=TRUE))
-    if ((attr(weight_X,"nonSPD") <- inherits(BLOB$CHMfactor, "try-error")) || force_QRP) {
-      return(def_sXaug_Matrix_QRP_CHM_scaled(Xaug,weight_X,w.ranef,H_global_scale)) 
+    if ((nonSPD <- inherits(BLOB$CHMfactor, "try-error")) || force_QRP) {
+      return(def_sXaug_Matrix_QRP_CHM_scaled(Xaug,weight_X,w.ranef,H_global_scale, nonSPD=nonSPD)) 
       ## lowest <- RSpectra::eigs(as(negHess,"dgCMatrix"), k=1, which="SR", opts=list(retvec=FALSE))$values
       # EEV <- extreme_eig(as(negHess,"dgCMatrix"), symmetric=TRUE, required=TRUE)
       # BLOB$CHMfactor <- Matrix::Cholesky(negHess,LDL=FALSE, perm=TRUE, Imult= (1e-10*EEV[1]-EEV[2])/(1-1e-10) )
@@ -36,7 +35,7 @@ def_sXaug_Matrix_CHM_H_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale, 
     }
   } else {
     BLOB$CHMfactor <- suppressWarnings(try(Matrix::.updateCHMfactor(template, negHess, mult=0), silent=TRUE)) 
-    if ((attr(weight_X,"nonSPD") <- inherits(BLOB$CHMfactor, "try-error")) || 
+    if ((nonSPD <- inherits(BLOB$CHMfactor, "try-error")) || 
         force_QRP
         # if I force QRP at this stage, in LevM case with signs, the exact H is never used (current QRP_CHM method; modifying its LevM algo seems difficult).
         # Without force_QRP, LevM uses the exact H with signs as long as the H is SPD (CHM_H methods).
@@ -45,7 +44,7 @@ def_sXaug_Matrix_CHM_H_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale, 
         # Allowing QRP in those cases was useful to avoid the (then quite costly) hatval computation by .CHM2uhatvals_by_subsetinv: 
         # this is effective when there are signs, as otherwise QRP_CHM is already used by default.
       ) {
-      return(def_sXaug_Matrix_QRP_CHM_scaled(Xaug,weight_X,w.ranef,H_global_scale)) 
+      return(def_sXaug_Matrix_QRP_CHM_scaled(Xaug,weight_X,w.ranef,H_global_scale, nonSPD=nonSPD)) 
       ## lowest <- RSpectra::eigs(as(negHess,"dgCMatrix"), k=1, which="SR", opts=list(retvec=FALSE))$values
       # EEV <- extreme_eig(as(negHess,"dgCMatrix"), symmetric=TRUE, required=TRUE)
       # BLOB$CHMfactor <- Matrix::.updateCHMfactor(template, negHess, mult= (1e-10*EEV[1]-EEV[2])/(1-1e-10))
@@ -71,7 +70,7 @@ def_sXaug_Matrix_CHM_H_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale, 
   qrX <- qr(IZ) 
   R_scaled <- qrR(qrX,backPermute = FALSE)
   t_Q <- crossprod(solve(R_scaled),t(IZ[,qrX@q+1]))
-  if (is.null(BLOB$sign)) { # if I (stupidly) avoid QRP in that case...
+  if (is.null(BLOB$signs)) { # if I (stupidly) avoid QRP in that case...
     x <- t_Q@x
     t_Q@x <- x*x
     return(colSums(t_Q))
@@ -81,6 +80,28 @@ def_sXaug_Matrix_CHM_H_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale, 
     invIm2QtdQ_ZX <- .Rcpp_adhoc_shermanM_sp(t_Q, c(rep(0L,ncol(IZ)),BLOB$signs<0))
     colSums(( invIm2QtdQ_ZX %*% t_Q) * t_Q)
   }  
+}
+
+.calc_hatval_Z_by_subsetinv <- function(BLOB, sXaug, n_u_h) {
+  
+  # tmp <- colSums(t(sXaug[,seq_n_u_h]) * tcrossprod(subsetinv, sXaug[,seq_n_u_h]))
+  # faster:
+  # tmp <- rowSums(tcrossprod(sXaug[,seq_n_u_h],subsetinv) * sXaug[,seq_n_u_h])
+  # tmp <- rowSums(.sparse_cwiseprod(sXaug[,seq_n_u_h], 
+  #                                  (sXaug[,seq_n_u_h] %*% subsetinv)))
+  seq_n_u_h <- seq(n_u_h)
+  lev_Z <- .CHM2uhatval(BLOB=BLOB, IZ=sXaug[, seq_n_u_h]) # \bG corresponds to the true Hessian and sXaug to the absolute weights,
+  # and the BLOB$signs are not factored in .CHM2uhatval), so its return value corresponds to the QQ' term in my doc, 
+  # and the signs must be added to get the leverages of the true Hessian:
+  hatval_Z_ <- list()
+  if  ( ! is.null(BLOB$signs)) {
+    hatval_Z_$lev_phi <- lev_Z[-seq_n_u_h]  * BLOB$signs
+  } else hatval_Z_$lev_phi <- lev_Z[-seq_n_u_h]
+  # if ("lambda" %in% B) 
+  hatval_Z_$lev_lambda <- lev_Z[seq_n_u_h]
+  # if ("phi" %in% B) 
+  hatval_Z_
+  
 }
 
 # if factorization not previously available, szAug=NULL: constructs the factorization, return value depends on 'which'
@@ -108,25 +129,7 @@ def_sXaug_Matrix_CHM_H_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale, 
     delayedAssign("sortPerm", sort.list(BLOB$perm), assign.env = BLOB ) # never NULL
     delayedAssign("u_h_cols_on_left", (max(BLOB$sortPerm[seq_len(n_u_h)])==n_u_h), assign.env = BLOB ) # but currently a single use
     # ! L to be used a tcrossfactor of permuted Hessian, in contract to the crossfact provided by chol() !
-    delayedAssign("hatval_Z_by_subsetinv", {
-      # tmp <- colSums(t(sXaug[,seq_n_u_h]) * tcrossprod(subsetinv, sXaug[,seq_n_u_h]))
-      # faster:
-      # tmp <- rowSums(tcrossprod(sXaug[,seq_n_u_h],subsetinv) * sXaug[,seq_n_u_h])
-      # tmp <- rowSums(.sparse_cwiseprod(sXaug[,seq_n_u_h], 
-      #                                  (sXaug[,seq_n_u_h] %*% subsetinv)))
-      seq_n_u_h <- seq(n_u_h)
-      lev_Z <- .CHM2uhatval(BLOB=BLOB, IZ=sXaug[, seq_n_u_h]) # \bG corresponds to the true Hessian and sXaug to the absolute weights,
-      # and the BLOB$signs are not factored in .CHM2uhatval), so its return value corresponds to the QQ' term in my doc, 
-      # and the signs must be added to get the leverages of the true Hessian:
-      hatval_Z_ <- list()
-      if  ( ! is.null(BLOB$signs)) {
-        hatval_Z_$lev_phi <- lev_Z[-seq_n_u_h]  * BLOB$signs
-      } else hatval_Z_$lev_phi <- lev_Z[-seq_n_u_h]
-      # if ("lambda" %in% B) 
-        hatval_Z_$lev_lambda <- lev_Z[seq_n_u_h]
-      # if ("phi" %in% B) 
-      hatval_Z_
-    }, assign.env = BLOB )
+    delayedAssign("hatval_Z_by_subsetinv",  .calc_hatval_Z_by_subsetinv(BLOB, sXaug, n_u_h), assign.env = BLOB )
     delayedAssign("t_Q_scaled", {
       warning("Inefficient code in .sXaug_Matrix_CHM_H_scaled", immediate. = TRUE)
       Matrix::drop0(Matrix::solve(BLOB$CHMfactor,t(sXaug[,BLOB$perm]),system="L")) # quite slow...

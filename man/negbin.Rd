@@ -4,23 +4,23 @@
 \alias{Tnegbin}
 %- Also NEED an '\alias' for EACH other topic documented here.
 \title{
-Family function for GLMs and mixed models with negative binomial and zero-truncated negative binomial response.
+Family function for negative binomial \dQuote{2} response (including truncated variant).
 }
 \description{
-Returns a GLM \code{\link[stats]{family}} object for negative-binomial model with variance quadratically related to the mean \eqn{\mu}: variance=\eqn{\mu+\mu^2}/shape, with known or unknown underlying Gamma shape parameter. The zero-truncated variant can be specified either as \code{Tnegbin(.)} or as \code{negbin(., trunc = 0L)}. See \code{\link{negbin1}} for the alternative negative-binomial model with variance \dQuote{linearly} related to the mean. 
+Returns a GLM \code{\link[stats]{family}} object for negative-binomial model with variance quadratically related to the mean \eqn{\mu}: variance=\eqn{\mu+\mu^2}/shape, with known or unknown underlying Gamma shape parameter. The zero-truncated variant can be specified as \code{negbin2(., trunc = 0L)}. See \code{\link{negbin1}} for the alternative negative-binomial model with variance \dQuote{linearly} related to the mean. 
 
-\code{negbin2} can be used instead of \cr 
-\code{[T]negbin} - together - with - \code{method=c(<"ML"|"REML">,"obs")}.\cr 
-The results should be similar, so please report any difference to the package maintainer. \code{negbin2} is implemented as an \code{\link{LL-family}}, so it cannot be used to obtain results equivalent to \code{[T]negbin} - together - with - \code{method=c(<"ML"|"REML">,"exp")} (i.e., expected-Hessian approximation, see \code{\link{method}}). 
+\code{negbin(.)} is an alias for \code{negbin2(.)} (truncated or not), and \code{Tnegbin(.)} is an alias for \code{negbin2(., trunc = 0L)}.    
 }
 \usage{
-negbin(shape = stop("negbin's 'shape' must be specified"), link = "log", trunc = -1L)
-Tnegbin(shape = stop("negbin's 'shape' must be specified"), link = "log")
 # (the shape parameter is actually not requested unless this is used in a glm() call)
 #
 negbin2(shape = stop("negbin2's 'shape' must be specified"), link = "log", trunc = -1L, 
-        LLF_only = TRUE)
-# Same comment about shape, but method="llm.fit" will further be needed in a glm() call.  
+        LLgeneric = TRUE)
+
+# For use with glm(), both negbin2's 'shape' and glm's method="llm.fit" are needed.  
+
+# alias with distinct arguments:
+Tnegbin(shape = stop("Tnegbin's 'shape' must be specified"), link = "log")
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -33,12 +33,12 @@ negbin2(shape = stop("negbin2's 'shape' must be specified"), link = "log", trunc
   \item{trunc}{
   Either \code{0L} for zero-truncated distribution, or \code{-1L} for default untruncated distribution.
   }
-  \item{LLF_only}{
-  Boolean: whether to use some generic methods or methods specific for GLM response families. Mostly for development purpose, hence better ignored.
+  \item{LLgeneric}{
+  For development purposes, not documented. %Boolean: whether to use some generic methods or methods specific for GLM response families. 
   }
 }
 \details{
-\code{shape} is the \eqn{k} parameter of McCullagh and Nelder (1989, p.373) and the \code{theta} parameter of Venables and Ripley (2002, section 7.4). The latent Gamma variable has mean 1 and variance 1/shape, and the negbin with mean \eqn{\mu} has variance \eqn{\mu+\mu^2}/shape. %The \code{negbin} family is sometimes called the NegBin1 model (as the first, historically) in the literature on negative binomial models, and sometimes the NegBin2 model (because its variance is a quadratic function of its mean). 
+\code{shape} is the \eqn{k} parameter of McCullagh and Nelder (1989, p.373) and the \code{theta} parameter of Venables and Ripley (2002, section 7.4). The latent Gamma variable has mean 1 and variance 1/shape. %The \code{negbin} family is sometimes called the NegBin1 model (as the first, historically) in the literature on negative binomial models, and sometimes the NegBin2 model (because its variance is a quadratic function of its mean). 
 
 The name \code{NB_shape} should be used to set values of shape in control arguments of the fitting functions (e.g., \code{fitme(.,init=list(NB_shape=1))}). 
 }

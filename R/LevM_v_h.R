@@ -2,8 +2,7 @@
   function(X.pv, 
            ZAL, y, ## could be taken fom processed ? 
            n_u_h, 
-           H_global_scale, 
-           lambda_est, muetablob=NULL, off, maxit.mean, etaFix,
+           lambda_est, off, maxit.mean, etaFix,
            wranefblob, processed,
            ## supplement for ! LMM
            phi_est, 
@@ -12,7 +11,7 @@
            ## supplement for LevenbergM
            beta_eta,
            ## supplement for ! GLMM (??)
-           u_h, v_h, for_init_z_args, 
+           u_h, v_h, # for_init_z_args, 
            #
            trace=FALSE,
            stylefn=.spaMM.data$options$stylefns$vloop,
@@ -35,45 +34,40 @@
     d_relV_tol <- processed$spaMM_tol$d_relV_tol * looseness
 
     constant_zAug_args <- list(n_u_h=n_u_h, nobs=nobs, pforpv=pforpv, y=y, off=off, ZAL=ZAL, processed=processed)
-    if ( ! GLMMbool) {
-      constant_init_z_args <- c(list(lcrandfamfam=lcrandfamfam, nobs=nobs, lambda_est=lambda_est, ZAL=ZAL),  
-                                # fit_as_ZX args specific for ! GLMM:
-                                for_init_z_args,
-                                #
-                                mget(c("cum_n_u_h","rand.families"),envir=processed))
-    } 
+    # if ( ! GLMMbool) {
+    #   constant_init_z_args <- c(list(lcrandfamfam=lcrandfamfam, nobs=nobs, lambda_est=lambda_est, ZAL=ZAL),  
+    #                             # fit_as_ZX args specific for ! GLMM:
+    #                             for_init_z_args,
+    #                             #
+    #                             mget(c("cum_n_u_h","rand.families"),envir=processed))
+    # } 
     
-    ##### initial sXaug
-    ZAL_scaling <- 1/sqrt(wranefblob$w.ranef*H_global_scale) ## Q^{-1/2}/s
-    Xscal <- .make_Xscal(ZAL, ZAL_scaling = ZAL_scaling, processed=processed, as_matrix=.eval_as_mat_arg(processed))
-    if (inherits(Xscal,"Matrix")) { # same type as ZAL
-      #@p[c] must contain the index _in @x_ of the first nonzero element of column c, x[p[c]] in col c and row i[p[c]])  
-      elmts_affected_cols <- seq_len(Xscal@p[n_u_h+1L]) ## corresponds to cols seq_n_u_h
-      which_i_affected_rows <- which(Xscal@i[elmts_affected_cols]>(n_u_h-1L))    
-    } else {
-      which_i_affected_rows <- NULL
-    }
-    if (is.null(muetablob)) { ## NULL input eta allows NULL input muetablob
-      eta  <- off + (Xscal %*% c(v_h/ZAL_scaling ,beta_eta))[ypos]
-      muetablob <- .muetafn(eta=eta,BinomialDen=processed$BinomialDen,processed=processed) 
-    }
+    eta  <- off + drop(ZAL %*% v_h + processed$AUGI0_ZX$X.pv %*% beta_eta)
+    muetablob <- .muetafn(eta=eta,BinomialDen=processed$BinomialDen,processed=processed, phi_est=phi_est) 
     ## weight_X and Xscal varies within loop if ! LMM since at least the GLMweights in w.resid change
-    if ( is.null(w.resid) ) w.resid <- .calc_w_resid(muetablob$GLMweights,phi_est)
+    w.resid <- .calc_w_resid(muetablob$GLMweights,phi_est, obsInfo=processed$how$obsInfo)
     # at this point w.resid is always the result of .calc_w_resid()
     # and when it is a list with info about mv model it has a complete vector $w_resid.
     H_w.resid <- .calc_H_w.resid(w.resid, muetablob=muetablob, processed=processed) # for LLF w.resid is not generally defined.
+    H_global_scale <- .calc_H_global_scale(H_w.resid)
+    ##### initial sXaug
+    ZAL_scaling <- 1/sqrt(wranefblob$w.ranef*H_global_scale) ## Q^{-1/2}/s
+    Xscal <- .make_Xscal(ZAL, ZAL_scaling = ZAL_scaling, processed=processed, as_matrix=.eval_as_mat_arg(processed))
     weight_X <- .calc_weight_X(Hobs_w.resid=H_w.resid, H_global_scale=H_global_scale, obsInfo=processed$how$obsInfo) ## sqrt(s^2 W.resid)  
-    sXaug <- do.call(processed$mMatrix_method,
+    sXaug <- do.call(processed$corr_method, # H_w.resid provided as attr(weight_X,"H_w.resid")!
                      list(Xaug=Xscal, weight_X=weight_X, w.ranef=wranefblob$w.ranef, H_global_scale=H_global_scale))
     if (trace) {
-      tracechar <- ifelse(identical(attr(sXaug,"BLOB")$nonSPD,TRUE),"!",".")
+      tracechar <- ifelse(.BLOB(sXaug)$nonSPD,"!",".")
       cat(stylefn(tracechar)) # hmff blue (vloop) F I X M E
     }
     
     Vscaled_beta <- c(v_h/ZAL_scaling ,beta_eta)
     
     break_info <- list()
+    which_i_llblock <- .which_i_llblock(Xscal, n_u_h) # preprocessing for faster updating of (sparse) Xscal when scaling changes
+    
     ################ L O O P ##############
+    
     for (innerj in 1:maxit.mean) {
       ##### get the lik of the current state
       if (is.null(damped_WLS_blob)) { ## innerj=1
@@ -82,23 +76,24 @@
       }
       if ( ! GLMMbool) {
         # arguments for init_resp_z_corrections_new called in calc_zAug_not_LMM
-        init_z_args <- c(constant_init_z_args,
-                         list(w.ranef=wranefblob$w.ranef, u_h=u_h, v_h=v_h, dvdu=wranefblob$dvdu, 
-                              sXaug=sXaug, w.resid=w.resid))
-      } else init_z_args <- NULL
+        # init_z_args <- c(constant_init_z_args,
+        #                  list(w.ranef=wranefblob$w.ranef, u_h=u_h, v_h=v_h, dvdu=wranefblob$dvdu, 
+        #                       sXaug=sXaug))  # H_w.resid provided by sXaug!
+        # z2 <- do.call(".init_resp_z_corrections_new",init_z_args)$z20
+        z2 <- .calc_z2(lcrandfamfam=lcrandfamfam, psi_M=processed$psi_M, cum_n_u_h=processed$cum_n_u_h, rand.families=processed$rand.families, 
+                       u_h=u_h, lambda_est=lambda_est, v_h=v_h, dvdu=wranefblob$dvdu)
+      } else z2 <- rep(0,n_u_h)
       calc_zAug_args <- c(constant_zAug_args,
                           list(muetablob=muetablob, dlogWran_dv_h=wranefblob$dlogWran_dv_h, 
-                               sXaug=sXaug, 
+                               sXaug=sXaug,  # H_w.resid provided by sXaug!
                                w.ranef=wranefblob$w.ranef, 
                                w.resid=w.resid,
-                               ############################# ZAL_scaling=ZAL_scaling,
-                               init_z_args=init_z_args) )
+                               z2=z2) )
       zInfo <- do.call(".calc_zAug_not_LMM",calc_zAug_args) 
       wzAug <- c(zInfo$y2_sscaled/ZAL_scaling, (zInfo$z1_sscaled)*weight_X) 
-      etamo <- muetablob$sane_eta - off
       ## the gradient for -p_v (or -h), independent of the scaling
-      m_grad_obj <- .calc_m_grad_obj(zInfo, z1_eta=zInfo$z1-etamo, z1_sscaled_eta=zInfo$z1_sscaled - etamo, GLMMbool, v_h, wranefblob, 
-                                     H_w.resid=.BLOB(sXaug)$H_w.resid, ZAL, X.pv)
+      m_grad_obj <- .calc_m_grad_obj(zInfo,GLMMbool=GLMMbool, v_h=v_h, 
+                                     wranefblob=wranefblob, H_w.resid=.BLOB(sXaug)$H_w.resid, ZAL=ZAL, X.pv=X.pv, etamo=muetablob$sane_eta - off)
       ## amounts to 
       # m_grad_obj <- c( ## drop() avoids c(Matrix..) 
       #   m_grad_v <- drop(.crossprod(ZAL, WLS_mat_weights * zInfo$z1_eta) + dlogfvdv), # Z'W(z_1-eta)+ dlogfvdv 
@@ -133,7 +128,7 @@
                                         wranefblob=wranefblob,seq_n_u_h=seq_n_u_h,ZAL_scaling=ZAL_scaling,
                                         processed=processed, Xscal=Xscal,
                                         phi_est=phi_est, H_global_scale=H_global_scale, n_u_h=n_u_h, ZAL=ZAL,
-                                        which_i_affected_rows=which_i_affected_rows,
+                                        which_i_llblock=which_i_llblock,
                                         which_LevMar_step = "v",
                                         low_pot = structure(low_pot,pot_tol=pot_tol),
                                         stylefn=stylefn, # i.e., .spaMM.data$options$stylefns$vloop
@@ -146,7 +141,7 @@
       #              "weight_X", 
       #              "sXaug")) assign(st,damped_WLS_blob[[st]]) 
       if ( ! GLMMbool ) {
-        Xscal <- damped_WLS_blob$Xscal ## contains ZAL with new scaling, but weight_X is not applied since it is applied only locally in the mMatrix_method.
+        Xscal <- damped_WLS_blob$Xscal ## contains ZAL with new scaling, but weight_X is not applied since it is applied only locally in the corr_method
         ZAL_scaling <- damped_WLS_blob$ZAL_scaling
       }
       

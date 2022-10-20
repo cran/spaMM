@@ -176,42 +176,78 @@
   return(list(fullfit=fullm,nullfit=nullm,test_obj=testlik,df=df))
 }
 
-.get_outer_inits_from_fit <- function(fitobject, keep_canon_user_inits) {
-  canon.init <- attr(fitobject,"optimInfo")$LUarglist$canon.init ## includes user init
-  #
-  outer_ests <- get_ranPars(fitobject) ## CorrEst_and_RanFix only
-  names_u_o_ests <- names(unlist(outer_ests))
-  names_u_c_inits <- names(unlist(canon.init))
+.add_famPars_outer <- function(parlist, fitobject, names_u_c_inits=NULL, type_attr) { 
+  if (is.null(names_u_c_inits)) {
+    canon.init <- attr(fitobject,"optimInfo")$LUarglist$canon.init ## includes user init
+    names_u_c_inits <- names(unlist(canon.init))
+  }
   # For each of the following family param there may already be attr(outer_ests,"type")$tr<fam par> but let's not assume that messy thing
+  if ( ! is.null(families <- fitobject$families)) {
+    for (mv_it in seq_along(families)) {
+      fam_it <- families[[mv_it]]
+      char_mv_it <- as.character(mv_it)
+      if ((parname <- paste("NB_shape",mv_it,sep=".")) %in% names_u_c_inits) {
+        parlist[["NB_shape"]][char_mv_it] <- environment(fam_it)$shape # <vector element> <- 
+        if (type_attr) attr(parlist,"type")[["NB_shape"]][char_mv_it] <- "outer" 
+      } else if ((parname <- paste("COMP_nu",mv_it,sep=".")) %in% names_u_c_inits) {
+        parlist[["COMP_nu"]][char_mv_it] <- environment(fam_it)$nu # <vector element> <- 
+        if (type_attr) attr(parlist,"type")[["COMP_nu"]][char_mv_it] <- "outer" 
+      } else if ((parname <- paste("beta_prec",mv_it,sep=".")) %in% names_u_c_inits) {
+        parlist[["beta_prec"]][char_mv_it] <- environment(fam_it)$prec # <vector element> <- 
+        if (type_attr) attr(parlist,"type")[["beta_prec"]][char_mv_it] <- "outer" 
+      } 
+    }
+  }
+  ##
   if ("NB_shape" %in% names_u_c_inits) {
-    outer_ests$NB_shape <- environment(fitobject$family$aic)$shape
-    attr(outer_ests,"type")$NB_shape <- "outer" 
+    parlist$NB_shape <- environment(fitobject$family$aic)$shape
+    if (type_attr) attr(parlist,"type")$NB_shape <- "outer" 
   }
   if ("COMP_nu" %in% names_u_c_inits) {
-    outer_ests$COMP_nu <- environment(fitobject$family$aic)$nu
-    attr(outer_ests,"type")$COMP_nu <- "outer" 
+    parlist$COMP_nu <- environment(fitobject$family$aic)$nu
+    if (type_attr) attr(parlist,"type")$COMP_nu <- "outer" 
   }
   if ("beta_prec" %in% names_u_c_inits) {
-    outer_ests$beta_prec <- environment(fitobject$family$aic)$prec
-    attr(outer_ests,"type")$beta_prec <- "outer" 
+    parlist$beta_prec <- environment(fitobject$family$aic)$prec
+    if (type_attr) attr(parlist,"type")$beta_prec <- "outer" 
   }
-  if (keep_canon_user_inits) { # keep them (as interpreted in canon.init: minimum phi is 1e-4, etc) in return value
+  parlist
+}
+
+# Construct new outer inits from outer fitted values and/or initial outer values of input fit.
+.get_outer_inits_from_fit <- function(fitobject, keep_canon_user_inits) {
+  canon.init <- attr(fitobject,"optimInfo")$LUarglist$canon.init ## includes sanitized user init
+  if (FALSE) {
+    outer_ests <- get_ranPars(fitobject,lambda_names = "") ## "CorrEst_and_RanFix only" 
+    #   which means that only these params were conceived to be controlled in the new outer inits.
+    #    But get_ranPars(, which=NULL) is not formally defined, so has been changing... the original comment is no longer true.
+    ## If the alternative not valid in the long run, this get_ranPars(.) calls should be modified.
+  } else {
+    outer_ests <- attr(fitobject,"optimInfo")$optim.pars # transparent (but potentially more comprehensive set of params)
+    if ( ! is.null(outer_ests)) {
+      attr(outer_ests,"moreargs") <- attr(fitobject,"optimInfo")$LUarglist$moreargs # necess to canonize Matern params...
+      outer_ests <- .canonizeRanPars(outer_ests, corr_info=fitobject$ranef_info$sub_corr_info, 
+                                     checkComplete=FALSE,  rC_transf=.spaMM.data$options$rC_transf)
+    }
+  }
+  if (keep_canon_user_inits &&
+      length(user_inits <- .reformat_corrPars(getCall(fitobject)$init,corr_families=fitobject$corr_info$corr_families))
+      ) { # keep them (as interpreted in canon.init: minimum phi is 1e-4, etc) in return value
     # => remove the fitted values from the nullranPars used to modify_list
     # => keep them in 'removand' list of pars to remove from nullranPars
     # => exclude them from 'not_user_inits_names' to remove from 'removand' !
-    user_inits <- .reformat_corrPars(getCall(fitobject)$init,corr_families=fitobject$corr_info$corr_families)
-    names_u_u_inits <- names(unlist(user_inits))
-    not_user_inits_names <- setdiff(names_u_c_inits, names_u_u_inits) # names, excluding those of parameters with user inits
-    removand <- setdiff(names_u_o_ests, not_user_inits_names) ## removand: user_inits, fixed, or inner optimized corrPars
+    in_init_not_user_inits <- setdiff(names(unlist(canon.init)),  names(unlist(user_inits))) # names, excluding those of parameters with user inits
+    in_user_inits <- setdiff(names(unlist(outer_ests)), in_init_not_user_inits) ## it rem
     ## removand: user_inits, fixed, or inner optimized corrPars
     # locinit will retain parameters that were outer optimized without an explicit user init
-  } else removand <- setdiff(names_u_o_ests, names_u_c_inits)
-  if ( is.null(removand)) {
-    locinit <- .modify_list(canon.init, outer_ests)
-  } else { ## leaves user_inits as there are in LUarglist$canon.init, and do not add any fixed or inner-optimized par
-    locinit <- .modify_list(canon.init,
-                            .remove_from_cP(outer_ests, u_names=removand)) ## loses attributes
-  }
+    if ( is.null(in_user_inits)) {
+      locinit <- outer_ests 
+    } else { # replace initial value by [fitted values, except those that had a user_init]
+      # => the locinit retains the sanitized user init
+      not_in_user_inits <- .remove_from_cP(outer_ests, u_names=in_user_inits)
+      locinit <- .modify_list(canon.init, not_in_user_inits) ## loses attributes
+    }
+  } else locinit <- outer_ests
   return(locinit)
 }
 
@@ -229,7 +265,7 @@
     }
     names(reinit) <- paste(seq_rd)
     if ( ! is.null(type)) {
-      reinit[hlfit$lambda.object$type!=type] <- NA
+      reinit[ ! hlfit$lambda.object$type %in% type] <- NA
       reinit <- reinit[ ! is.na(reinit)] # otherwise for "outer" type the NA ends in the optimizer's init...
     }
   }
@@ -279,9 +315,9 @@ get_inits_from_fit <- function(from, template=NULL, to_fn=NULL, inner_lambdas=FA
     ## ad hoc fix for residModel: fitme_body is called directly so the final object's call is to HLCor of HLfit
     fromfn <- "fitme"
   } else fnname <- .get_bare_fnname.HLfit(from)
-  # Inner-estimated lambda and ranCoefs (FIXME could add phi)
+  # Inner-estimated lambda and ranCoefs (__F I X M E__ could add phi: amusing has this was never done... inner estimated mv phi exist, incidentally)
   init.HLfit <- NULL
-  rC_inner_inits <- .get_rC_inits_from_hlfit(from, type="inner")
+  rC_inner_inits <- .get_rC_inits_from_hlfit(from, type="inner") # (yes, inner, not inner_ranCoefs)
   if (length(rC_inner_inits) ) init.HLfit <- list(ranCoefs=rC_inner_inits)
   if (inner_lambdas) {
     lambda_inner_inits <- .get_lambdas_notrC_from_hlfit(from, type="inner")
@@ -545,12 +581,362 @@ LRT <- function(object,object2,boot.repl=0,# nb_cores=NULL,
   return(resu)
 }
 
-## anova treated as alias for LRT
-anova.HLfit <- function(object, object2=NULL, ..., method="") {
-  # if (method=="anova.lm" && is.null(object2)) {
-  #   #identical(fullm$models[c("eta","lambda","phi")],list(eta="etaGLM",lambda="",phi="phiScal"))
-  #   .anova_HLfit_lm(object, ...) ## may now handle factors but not continuosu variance => source in 'ignored' directory
-  # } else 
+.anova.lm <- function (object, ...) {
+  if (!inherits(object, "HLfit")) 
+    warning("calling anova.lm(<fake-HLfit-object>) ...")
+  w <- weights(object, type="prior")
+  ssr <- sum(if (is.null(w)) residuals.HLfit(object,type="response")^2 else w * residuals.HLfit(object,type="response")^2)
+  mss <- sum(if (is.null(w)) fitted(object)^2 else w * 
+               fitted(object)^2)
+  if (ssr < 1e-10 * mss) 
+    warning("ANOVA F-tests on an essentially perfect fit are unreliable")
+  dfr <- df.residual(object)
+  p <- object$dfs$pforpv
+  if (p > 0L) {
+    p1 <- 1L:p
+    qr_sXaug <- object$envir$qr_X
+    comp <- crossprod(qr.Q(qr_sXaug),object$y) # object$effects[p1] # the better tibco doc says it is t(Q) %*% y 
+    #  but given it is the QR for scaled X varaibles, 
+    if (is.null(qr_sXaug))  stop("HLfit object does not have a 'qr' factorization of the model matrix.")
+    asgn <- attr(object$X.pv,"assign")[qr_sXaug$pivot][p1]
+    nmeffects <- c("(Intercept)", attr(terms(object), "term.labels"))
+    tlabels <- nmeffects[1 + unique(asgn)]
+    ss <- c(vapply(split(comp^2, asgn), sum, 1), ssr)
+    df <- c(lengths(split(asgn, asgn)), dfr)
+  }
+  else {
+    ss <- ssr
+    df <- dfr
+    tlabels <- character()
+  }
+  ms <- ss/df
+  f <- ms/(ssr/dfr)
+  P <- pf(f, df, dfr, lower.tail = FALSE)
+  
+  table <- data.frame(df, ss, ms, f, P)
+  table[length(P), 4:5] <- NA ## row of residual SS
+  dimnames(table) <- list(c(tlabels, "Residuals"), c("Df", 
+                                                     "Sum Sq", "Mean Sq", "F value", "Pr(>F)"))
+  #if (attr(object$terms, "intercept")) table <- table[-1, ]
+  table <- table[ ! rownames(table) == "(Intercept)", ]
+  structure(table, heading = c("Analysis of Variance Table\n", 
+                               paste("Response:", deparse((formula(object))[[2L]]))),  ## formula ## FIXME use formula.HLfit()
+            class = c("anova", "data.frame"))
+  
+}
+
+.null.deviance <- function(object, intercept=attr(terms(object), "intercept")) { # see glm.fit
+  if (length(offset <- model.offset(model.frame(object))) && intercept > 0L) {
+    # in that case it is necessary to fit the model with intercept and offset to obtain the sensible null deviance. 
+    # This is what glm() does, calling [if (length(offset) && attr(mt, "intercept") > 0L) { fit2 <- ...]
+    termsv <- terms(object) # sufficient for fixed-effect model
+    offset_term <- (as.character(attr(termsv, "variables"))[-1L])[[attr(termsv, "offset")]]
+    newform <- as.formula(paste(" . ~ 1 +",offset_term))
+    null_dev_fit <- update(object, formula.= newform )
+    deviance(null_dev_fit)
+  } else {
+    # that's what is returned as $null.deviance by glm.fit, 
+    pw <- weights(object, type="prior")
+    wtdmu <- if (intercept) {
+      sum(pw * object$y)/sum(pw)
+    } else object$family$linkinv(model.offset(model.frame(object)))
+    sum(object$family$dev.resids(object$y, wtdmu, pw))
+  }
+}
+
+.df.null <- function(object, intercept=attr(terms(object), "intercept")) {
+  n.ok <- length(object$y) - sum(weights(object, type="prior") == 0)
+  nulldf <- n.ok - as.integer(intercept)
+}
+
+.drop.terms <- function (termobj, dropx = NULL, keep.response = FALSE) {
+  if (is.null(dropx)) {
+    termobj
+  } else {
+    if (!inherits(termobj, "terms")) 
+      stop(gettextf("'termobj' must be a object of class %s", 
+                    dQuote("terms")), domain = NA)
+    itcp <- attr(termobj, "intercept")
+    if ( ( ! length(dropped <- attr(termobj, "term.labels")[-dropx])) && 
+         itcp) dropped <- '1'
+    newformula <- reformulate(dropped, response = if (keep.response) termobj[[2L]], 
+                              intercept = itcp, env = environment(termobj))
+    result <- terms(newformula, specials = names(attr(termobj, "specials")))
+    response <- attr(termobj, "response")
+    dropOpt <- if (response && !keep.response) 
+      c(response, dropx + length(response))
+    else dropx + max(response)
+    if (!is.null(predvars <- attr(termobj, "predvars"))) {
+      attr(result, "predvars") <- predvars[-(dropOpt + 
+                                               1)]
+    }
+    if (!is.null(dataClasses <- attr(termobj, "dataClasses"))) {
+      attr(result, "dataClasses") <- dataClasses[-dropOpt]
+    }
+    result
+  }
+}
+
+.anova.glm <- function(object, ..., dispersion = NULL, test = NULL) {
+  doscore <- !is.null(test) && test == "Rao"
+  x <- model.matrix(object)
+  varseq <- attr(object$X.pv,"assign")
+  nvars <- max(0, varseq)
+  resdev <- resdf <- NULL
+  termsv <- terms(object)
+  if (doscore) {
+    score <- numeric(nvars) # misnomer: regressors, not variables
+    subx <- x[, varseq == 0, drop = FALSE]
+    # E.g., the design matrix 'x' may have a col for intercept, two cols for a first factor, two cols for a second factor
+    # varseq is 0 1 1 2 2 and there are 3 terms in the euation. dropterns removes the terms from the equation 
+    #   and x[, varseq <= i, drop = FALSE] removes the corresponding blocs of cols
+    # 0 always stands for the Intercept, not for the first term.
+    # This first doscore fit uses the original GLM family ect to generate residuals used in the next doscore fits which are LMs 
+    # x = x[, varseq == 0, drop = FALSE], y = y, weights = object$prior.weights, 
+    # start = object$start, offset = object$offset, family = object$family,     
+    # drop.terms fails to remove all terms because because attr(,"term.labels") does not include the intercept
+    # hence calling the patch fn .drop.terms()
+    newform <- .drop.terms(termsv, seq_len(nvars), keep.response = TRUE) 
+    refit <- update(object, formula.= newform)
+    r <- residuals(refit, type="working")
+    w <- weights(refit, type="working")
+    icpt <- attr(termsv, "intercept")
+  }
+  if (nvars > 1 || doscore) {
+    method <- object$method
+    for (i in seq_len(max(nvars - 1L, 0))) {
+      newform <- drop.terms(termsv, (i+1L):nvars, keep.response = TRUE) 
+      refit <- update(object, formula.= newform)
+      if (doscore) {
+        subx <- x[, varseq <= i, drop = FALSE]
+        zz <- glm.fit(x=subx, y = r, weights = w, intercept = icpt)
+        score[i] <- zz$null.deviance - zz$deviance
+        r <- residuals(refit, type="working")
+        w <- weights(refit, type="working")
+      }
+      resdev <- c(resdev, deviance(refit))
+      resdf <- c(resdf, df.residual(refit))
+    }
+    if (doscore) {
+      zz <- glm.fit(x=x, y = r, weights = w, intercept = icpt)
+      score[nvars] <-  zz$null.deviance - zz$deviance
+    }
+  }
+  resdf <- c(.df.null(object), resdf, df.residual(object))
+  resdev <- c(.null.deviance(object), resdev, deviance(object))
+  table <- data.frame(c(NA, -diff(resdf)), c(NA, pmax(0, -diff(resdev))), 
+                      resdf, resdev)
+  tl <- attr(termsv, "term.labels")
+  if (length(tl) == 0L) 
+    table <- table[1, , drop = FALSE]
+  dimnames(table) <- list(c("NULL", tl), c("Df", "Deviance", 
+                                           "Resid. Df", "Resid. Dev"))
+  if (doscore) 
+    table <- cbind(table, Rao = c(NA, score))
+  varlist <- attr(termsv, "variables")
+  title <- paste0("Analysis of Deviance Table", "\n\nModel: ", 
+                  object$family$family, ", link: ", object$family$link, 
+                  "\n\nResponse: ", as.character(varlist[-1L])[1L], "\n\nTerms added sequentially (first to last)\n\n")
+  df.dispersion <- Inf
+  if (is.null(dispersion)) {
+    # ____F I X M E____ see comments in devel/ANOVAs/MEMO.txt for fam_pars ETC
+    dispersion <- residVar(object,"fit")
+    # for Gamma GLM anova.glm uses the MME estimate based on Pearson residuals, dispersion <- summary(object, dispersion = dispersion)$dispersion
+    df.dispersion <- if (object$dfs$p_fixef_phi==0L) {
+      # we actually tested phi model = phiScal in the calling function
+      Inf
+    } else df.residual(object)
+  }
+  if (!is.null(test)) {
+    if (test == "F" && df.dispersion == Inf) {
+      fam <- object$family$family
+      if (fam == "binomial" || fam == "poisson") 
+        warning(gettextf("using F test with a '%s' family is inappropriate", 
+                         fam), domain = NA)
+      else warning("using F test with a fixed dispersion is inappropriate")
+    }
+    table <- stat.anova(table = table, test = test, scale = dispersion, 
+                        df.scale = df.residual(object), n = NROW(x))
+  }
+  structure(table, heading = title, class = c("anova", "data.frame"))
+}
+
+# LU facto with 1 on diag of L (Doolittle's scheme)
+.lu_doo <- function(x, eps = 1e-06) {
+  stopifnot(ncol(x) > 1L)
+  n <- nrow(x)
+  L <- U <- matrix(0, nrow = n, ncol = n)
+  diag(L) <- rep(1, n)
+  for (i in 1:n) {
+    ip1 <- i + 1
+    im1 <- i - 1
+    for (j in 1:n) {
+      U[i, j] <- x[i, j]
+      if (im1 > 0) {
+        for (k in 1:im1) {
+          U[i, j] <- U[i, j] - L[i, k] * U[k, j]
+        }
+      }
+    }
+    if (ip1 <= n) {
+      for (j in ip1:n) {
+        L[j, i] <- x[j, i]
+        if (im1 > 0) {
+          for (k in 1:im1) {
+            L[j, i] <- L[j, i] - L[j, k] * U[k, i]
+          }
+        }
+        L[j, i] <- if (abs(U[i, i]) < eps) 
+          0
+        else L[j, i]/U[i, i]
+      }
+    }
+  }
+  L[abs(L) < eps] <- 0
+  U[abs(U) < eps] <- 0
+  list(L = L, U = U)
+}
+
+.term2colX <- function (term_names, itcp, asgn) {
+  col_terms <- if (itcp) 
+    c("(Intercept)", term_names)[asgn + 1L]
+  else term_names[asgn[asgn > 0L]]
+  nm <- union(unique(col_terms), term_names)
+  res <- lapply(setNames(as.list(nm), nm), function(x) numeric(0L))
+  map <- split(seq_along(col_terms), col_terms)
+  res[names(map)] <- map
+  res[nm]
+}
+
+.get_type1_contrasts <- function (model, 
+                                  termsv=terms(model),
+                                  X=model.matrix(model)) {
+  p <- ncol(X)
+  if (p == 0L) 
+    return(list(matrix(numeric(0L), nrow = 0L)))
+  itcp <- attr(termsv, "intercept")
+  if (p == 1L && itcp) 
+    return(list(matrix(numeric(0L), ncol = 1L)))
+  L <- if (p == 1L) 
+    matrix(1L)
+  else t(.lu_doo(crossprod(X))$L)
+  dimnames(L) <- list(colnames(X), colnames(X))
+  term_names <- attr(termsv, "term.labels")
+  ind.list <- .term2colX(term_names=term_names, itcp=itcp, asgn= attr(X, "assign"))[term_names]
+  lapply(ind.list, function(rows) L[rows, , drop = FALSE])
+}
+
+.term_contain <- function (term, factors, dataClasses, term_names) 
+{
+  get_vars <- function(term) rownames(factors)[factors[, term] == 1L]
+  contain <- function(F1, F2) {
+    all(vars[[F1]] %in% vars[[F2]]) && 
+      length(setdiff(vars[[F2]], vars[[F1]])) > 0L && setequal(numerics[[F1]], numerics[[F2]])
+  }
+  vars <- lapply(setNames(term_names, term_names), get_vars)
+  numerics <- lapply(vars, function(varnms) varnms[which(dataClasses[varnms] == "numeric")])
+  sapply(term_names, function(term_nm) contain(term, term_nm))
+}
+
+.containment <- function (termsv) {
+  data_classes <- attr(termsv, "dataClasses")
+  term_names <- attr(termsv, "term.labels")
+  factor_mat <- attr(termsv, "factors")
+  lapply(setNames(term_names, term_names), function(term) {
+    term_names[.term_contain(term, factor_mat, data_classes, 
+                            term_names)]
+  })
+}
+
+.get_type2_contrasts <- function (model, 
+                                  termsv=terms(model),
+                                  X=model.matrix(model)) {
+  data_classes <- attr(termsv, "dataClasses")
+  asgn <- attr(X, "assign")
+  term_names <- attr(termsv, "term.labels")
+  #
+  which <- term_names
+  if (ncol(X) <= 1L || length(term_names) <= 1L) 
+    return(.get_type1_contrasts(model))
+  #
+  else stopifnot(is.character(which), all(which %in% term_names))
+  which <- setNames(as.list(which), which)
+  is_contained <- .containment(model)
+  itcp <- attr(termsv, "intercept") > 0
+  col_terms <- if (itcp) 
+    c("(Intercept)", term_names)[asgn + 1]
+  else term_names[asgn[asgn > 0]]
+  term2colX <- split(seq_along(col_terms), col_terms)[unique(col_terms)]
+  lapply(which, function(term) {
+    cols_term <- unlist(term2colX[c(term, is_contained[[term]])])
+    Xnew <- cbind(X[, -cols_term, drop = FALSE], X[, cols_term, drop = FALSE])
+    newXcol_terms <- c(col_terms[-cols_term], col_terms[cols_term])
+    Lc <- t(.lu_doo(crossprod(Xnew))$L)
+    dimnames(Lc) <- list(colnames(Xnew), colnames(Xnew))
+    Lc[newXcol_terms == term, colnames(X), drop = FALSE]
+  })
+}
+
+.anova_fallback <- function(fitobject, type="2", rhs=NULL, test="Chisq.", ...) {
+  beta <- fixef(fitobject)
+  beta_cov <- vcov(fitobject)
+  Llist <- switch(type,
+                  "I" = .get_type1_contrasts(fitobject),
+                  "1" = .get_type1_contrasts(fitobject),
+                  "II" = .get_type2_contrasts(fitobject),
+                  "2" = .get_type2_contrasts(fitobject),
+                  "III" = stop("type-3 contrasts not implemented (and may never be)"),
+                  "3" = stop("type-3 contrasts not implemented (and may never be)"),
+                  stop("Unknown ANOVA 'type' speification")
+  )
+  # no line for Intercept: as in lmerTest output
+  numtable <- matrix(NA,nrow=length(Llist), ncol = 3)
+  colnames(numtable) <- c("Df", test, paste("Pr(>", test, ")", sep = ""))
+  for (it in seq_along(Llist)) {
+    L <- Llist[[it]]
+    if (is.null(dim(L))) L <- t(L)
+    if (is.null(rhs)) rhs <- rep(0, nrow(L))
+    q <- NROW(L)
+    Lbeta <- L %*% beta - rhs
+    vcov_Lbeta <- L %*% tcrossprod(beta_cov,L)
+    waldX2 <- as.vector(t(Lbeta) %*% solve(vcov_Lbeta,Lbeta))
+    p <- pchisq(waldX2, q, lower.tail = FALSE)
+    numtable[it, ] <- c(q, waldX2, p)
+  }
+  resu <- as.data.frame(numtable)
+  rownames(resu) <-  names(Llist)
+  attr(resu, "heading") <- paste(test, "tests for each term (type", utils::as.roman(as.integer(type)), "contrasts)")
+  attr(resu, "hypotheses") <- Llist
+  class(resu) <-  c("anova", "data.frame")
+  resu
+}
+
+
+
+anova.HLfit <- function(object, object2=NULL, type="2", method="", ...) {
+  if (is.null(object2)) {
+    if (method != "t.Chisq") {
+      models <- object$models[c("eta","phi")]
+      if (length(models$phi)==1L && models$phi %in% c("phiScal","")) {
+        if (models$eta=="etaGLM") { 
+          if (object$family$family=="gaussian" && object$family$link=="identity") {
+            return(.anova.lm(object, ...))
+          } else return(.anova.glm(object, ...))
+        } else if (object$family$family=="gaussian" && object$family$link=="identity") { # LMM
+          if (requireNamespace("lmerTest",quietly=TRUE)) {
+            lmlt <-  as_LMLT(object, ...)
+            return(anova(lmlt, type=type)) # other possible arguments not currently meaningful
+          } else if ( ! identical(spaMM.getOption("lmerTest_warned"),TRUE)) {
+            message("If the lmerTest package were installed, a traditional anova table could be computed.")
+            .spaMM.data$options$rcdd_warned <- TRUE
+          } 
+        } 
+      }
+    }
+    return(.anova_fallback(fitobject=object, type=type, ...)) # dots ma contain 'rhs' and (later) 'test'
+  } else {
+    ## anova treated as alias for LRT()
     LRT(object,object2, ...)
+  }
 }
 

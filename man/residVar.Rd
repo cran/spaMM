@@ -18,7 +18,7 @@ residVar(object, which = "var", submodel = NULL, newdata = NULL)
     \item{newdata}{\bold{Either} NULL, a matrix or data frame, or a numeric vector. See \code{\link{predict.HLfit}} for details.}
 }
 \value{
-Default \code{which="var"} (or \code{"phi"}) always return a vector of residual variances (or, alternatively, phi values) of length the number of responses of the fit (or only the number of responses for a submodel, if relevant). \code{which="fit"} returns an object of class \code{HLfit}, \code{glm}, or a single scalar depending on the residual dispersion model. Other \code{which} values return an object of class \code{family} or \code{formula} as expected. 
+Default \code{which="var"} (or \code{"phi"}) always return a vector of residual variances (or, alternatively, phi values) of length the number of responses of the fit (or only the number of responses for a submodel, if relevant). \code{which="fit"} returns an object of class \code{HLfit}, \code{glm}, or a single scalar depending on the residual dispersion model (\code{which="fit"} is the option to be used to extract the scalar phi value). Other \code{which} values return an object of class \code{family} or \code{formula} as expected. 
 }
 \seealso{
 \code{\link{get_residVar}} is a alternative extractor of residual variances with different features inherited from \code{get_predVar}. In particular, it is more suited for computing the residual variances of new realizations of a fitted model, not accounting for prior weights used in fitting the model (basic examples of using the \code{IsoriX} package provide a context where this is the appropriate design decision). By contrast, \code{residVar} aims to account for prior weights.

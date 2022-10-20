@@ -111,17 +111,28 @@
   return(damped_WLS_blob)
 }
 
-.calc_Xscal_newscaled <- function(newXscal, newZAL_scaling, ZAL, which_i_affected_rows, n_u_h, seq_n_u_h, processed) {
+.which_i_llblock <- function(Xscal, n_u_h) {
+  if (inherits(Xscal,"Matrix")) { # same type as ZAL
+    #@p[c] must contain the index _in @x_ of the first nonzero element of column c, x[p[c]] in col c and row i[p[c]])  
+    elmts_affected_cols <- seq_len(Xscal@p[n_u_h+1L]) ## corresponds to cols seq_n_u_h
+    which_i_llblock <- which(Xscal@i[elmts_affected_cols]>(n_u_h-1L))    # rows i>... for previously selected cols.
+  } else {
+    which_i_llblock <- NULL
+  }
+  which_i_llblock
+}
+
+.calc_Xscal_newscaled <- function(newXscal, newZAL_scaling, ZAL, which_i_llblock, n_u_h, seq_n_u_h, processed) {
   if (inherits(ZAL,"ZAXlist")) ZAL <- .ad_hoc_cbind(ZAL@LIST, as_matrix=.eval_as_mat_arg(processed) )
   if (TRUE) { ## alternative clause shows the meaning, but this version is distinctly faster. 
     scaledZAL <- .m_Matrix_times_Dvec(ZAL, newZAL_scaling)
     if (inherits(ZAL,"Matrix")) {
       # Next line assumes Xscal (IO_ZX) has no @diag component
-      newXscal@x[which_i_affected_rows] <- scaledZAL@x ## should create an error if some elements are stored in @diag
+      newXscal@x[which_i_llblock] <- scaledZAL@x ## should create an error if some elements are stored in @diag
     } else {
       newXscal[n_u_h+seq(nrow(scaledZAL)),seq_n_u_h] <- scaledZAL
     }
-    attr(newXscal,"AUGI0_ZX") <- processed$AUGI0_ZX # environment => cheap access to its 'envir$updateable' variable or anything else 
+    # This must keep the attributes, in particular attr(newXscal,"AUGI0_ZX") 
   } else newXscal <- .make_Xscal(ZAL, ZAL_scaling = newZAL_scaling, processed=processed)
   return(newXscal) 
 }

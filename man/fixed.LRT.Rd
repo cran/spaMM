@@ -86,7 +86,7 @@ and, if a bootstrap was performed, the additional elements described in \code{\l
 }
 %% ~Make other sections like Warning with \section{Warning }{....} ~
 \seealso{
-See also \code{\link{corrHLfit}} and \code{\link{LRT}}.
+See \code{\link{LRT}} for simular tests with a different interface, and perhaps \code{\link{as_LMLT}} for access to a different testing approach for LMMs, implemented in \code{lmerTest::contest}.
 }
 \examples{
 if (spaMM.getOption("example_maxtime")>1.9) {

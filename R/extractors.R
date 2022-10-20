@@ -196,7 +196,7 @@ fitted.HLfit <- function(object,...) {
   drop(res)
 }
 
-residuals.HLfit <- function(object, type = c("deviance", "pearson", "response", "std_dev_res"), force=FALSE, ...) {
+residuals.HLfit <- function(object, type = c("deviance", "pearson", "response", "working", "std_dev_res"), force=FALSE, ...) {
   object <- .getHLfit(object)
   type <- match.arg(type)
   BinomialDen <- .get_BinomialDen(object) 
@@ -205,13 +205,16 @@ residuals.HLfit <- function(object, type = c("deviance", "pearson", "response", 
   mu <- object$fv # on 0-1 probability scale for binomial models
   if (type=="response") {
     return(drop(y-mu))
+  } else if (type=="working") { # residuals in glm.fit
+    family <- object$family
+    return(drop(y - mu)/family$mu.eta(family$linkfun(mu))) 
   } else if (type=="std_dev_res") {
     if (force || is.null(res <- object$std_dev_res[,1])) {
       std_dev_res <- .std_dev_resids(object, phi_est=residVar(object, which="phi"), 
                                      lev_phi=hatvalues(object, type="std"))$std_dev_res
       res <- (sign(y-mu) * std_dev_res)[,1]
     }
-  } else {
+  } else { # deviance and pearson residuals.
     pw <- object$prior.weights
     family <- object$family
     if (is.null(family)) {
@@ -353,11 +356,12 @@ residVar <- function(object, which="var", submodel=NULL, newdata=NULL) {
       return(environment(family$aic)$nu)
     } else if (family$family %in% c("beta_resp")) {
       return(environment(family$aic)$prec)
-    } else if (family$family %in% c("negbin","negbin1")) {
+    } else if (family$family %in% c("negbin","negbin1","negbin2")) {
       return(environment(family$aic)$shape)
     } else return(NA)
   } else if (which=="fit") {
     if (length(phi_model)>1L && is.null(submodel)) stop("'submodel' index required to extract residual-model fit") 
+    #                                          # We could return a list of objects but too heterogeneous to be convenient at user level.
     .get_phi_fit(object, mv_it=submodel)
   } else if (which %in% c("phi","var")) {
     mu <- predict(object, newdata=newdata) # 1-col matrix
@@ -471,12 +475,12 @@ residVar <- function(object, which="var", submodel=NULL, newdata=NULL) {
                   "by stochastic EM."= "logLapp",
                   "by Laplace ML approximation (p_v)."= "p_v", # old objects before distinction p|p^\circ
                   "by ML (p_v approximation of logL)."= "p_v",
-                  "by ML (P_v approximation of logL)."= "p_v",
+                  "by ML (P_v approximation of logL)."= "P_v",
                   "by h-likelihood approximation."= "p_v",
                   "by ML."= "p_v",
                   "by Laplace REML approximation (p_bv)."= "p_bv", # old objects before distinction p|^\circ
-                  "by REML (p_bv approximation of Re.logL)."= "p_bv",
-                  "by REML (P_bv approximation of Re.logL)."= "p_bv",
+                  "by REML (p_bv approximation of restricted logL)."= "p_bv",
+                  "by REML (P_bv approximation of restricted logL)."= "P_bv",
                   "by REML."= "p_bv",
                   "by non-standard REML"= "p_bv",
                   stop(paste0("No default '",which,"' value for '",mess,"' estimation method."))
@@ -487,18 +491,7 @@ residVar <- function(object, which="var", submodel=NULL, newdata=NULL) {
 logLik.HLfit <- function(object, which=NULL, ...) {
   object <- .getHLfit(object)
   if (is.null(which)) which <- .get_objLik(object)
-  if (which=="logL_Lap") { # using observed Hessian
-    if (all(unlist(object$family[c("family","link")]==c("Gamma","log")))) {
-      ZAL <- .compute_ZAL(XMatrix=object$strucList, ZAlist=object$ZAlist,as_matrix=.eval_as_mat_arg.HLfit(object)) 
-      w.obs <- structure(.get_H_w.resid(object) * (object$y/object$fv)[,1],unique=FALSE)
-      d2hdv2 <- .calcD2hDv2(ZAL,w.obs,object$w.ranef) ## update d2hdv2= - t(ZAL) %*% diag(w.resid) %*% ZAL - diag(w.ranef)
-      hlik <- object$APHLs$hlik
-      resu <- hlik -determinant(d2hdv2)$modulus[1L]/2 + ncol(d2hdv2)* log(2*pi)/2
-    } else if (.is_link_canonical(object$family)) {
-      message("logL_Lap = p_v because the response-family link is canonical")
-      resu  <- object$APHLs[["p_v"]]
-    } else stop("logL_Lap computation not yet implemented for this (family,link) combination.")
-  } else if (which=="cliks") { ## *undoc* and the summand=TRUE non-default has no effect when clik_fn uses family()$aic (__F I X M E__) 
+  if (which=="cliks") { ## *undoc* and the summand=TRUE non-default has no effect when clik_fn uses family()$aic (__F I X M E__) 
     if (object$family$family=="binomial") {
       muFREQS <- predict(object)
       mu <- muFREQS * object$BinomialDen
@@ -508,7 +501,7 @@ logLik.HLfit <- function(object, which=NULL, ...) {
     reweiclik <- .calc_clik(mu=mu,phi_est=phi_est,object, clik_fn=clik_fn, summand=TRUE, ...) # ... allows to overcome the default prior.weights
     colnames(reweiclik) <- "clik"
     return(reweiclik) ## currently 1-col matrix; avoids names(resu) <- which !
-  } else resu  <- object$APHLs[[which]]
+  } else resu  <- object$APHLs[[tolower(which)]]
   names(resu) <- which
   return(resu)
 }
@@ -603,17 +596,17 @@ VarCorr.HLfit <- function(x, sigma=1, add_residVars=TRUE, verbose=TRUE, ...) {
     linklam_coeff_list <- lambda.object$coefficients_lambdaS ## used beyond the next line
     lamtable <- .lambda_table_fn(namesTerms, x, lambda.object,linklam_coeff_list)
     nonunique_colnames <- colnames(lamtable)
-    lamtable <- lamtable[,seq_len(ncol(lamtable))] # subsetting automatically generates unique names for the Corr. columns
-    for (it in seq_len(nrow(lamtable))) {
+    loctable <- lamtable[,seq_len(ncol(lamtable))] # subsetting automatically generates unique names for the Corr. columns, but attributes are dropped
+    for (it in seq_len(nrow(loctable))) {
       # That's not good bc the two lines for Group 'gridcode' are filled with the Intercept ($lambda_list never contains the adjd...)
       # if (is.na(lamtable[[it,"Var."]])) lamtable[[it,"Var."]] <- lambda.object$lambda_list[[lamtable[[it,"Group"]]]][[lamtable[[it,"Term"]]]]
-      if (is.na(lamtable[[it,"Var."]])) {
-        if ((term. <- lamtable[[it,"Term"]])=="(Intercept)") {
-          lamtable[[it,"Var."]] <- lambda.object$lambda_list[[lamtable[[it,"Group"]]]][[lamtable[[it,"Term"]]]] # not a glm coef (cf inverse link)
+      if (is.na(loctable[[it,"Var."]])) {
+        if ((term. <- loctable[[it,"Term"]])=="(Intercept)") {
+          loctable[[it,"Var."]] <- lambda.object$lambda_list[[loctable[[it,"Group"]]]][[loctable[[it,"Term"]]]] # not a glm coef (cf inverse link)
         } # else do nothing bc it's not clear what to do
       }
     }
-    loctable <- data.frame(Group=lamtable[,"Group"],Term=lamtable[,"Term"],Variance=lamtable[,"Var."],"Std.Dev."=sqrt(lamtable[,"Var."]))
+    loctable <- data.frame(Group=loctable[,"Group"],Term=loctable[,"Term"],Variance=loctable[,"Var."],"Std.Dev."=sqrt(loctable[,"Var."]))
     if ("Corr." %in% colnames(lamtable)) {
       corrFill <- lamtable[, nonunique_colnames=="Corr.", drop=FALSE]
       loctable <- cbind(loctable, corrFill, row.names=NULL)
@@ -623,7 +616,13 @@ VarCorr.HLfit <- function(x, sigma=1, add_residVars=TRUE, verbose=TRUE, ...) {
   } 
   if (add_residVars) loctable <- .add_varCorr_phi_lines(x, loctable, corrFill)
   rownames(loctable) <- NULL
-  if (is.null(loctable) && verbose) message("VarCorr() found no variance to report.")
+  if (is.null(loctable)) {
+    if (verbose) message("VarCorr() found no variance to report.")
+  } else {
+    attr(loctable,"random_slope_ncol_geq_1_pos") <- attr(lamtable,"random_slope_ncol_geq_1_pos") # indices are rows in table
+    attr(loctable,"random_slope_ncol_geq_1_rows") <- attr(lamtable,"random_slope_ncol_geq_1_rows") # indices are rows in table
+    attr(loctable,"row_map") <- attr(lamtable,"row_map") # map from ranef indices to rows
+  }
   return(loctable)
 } 
 
@@ -779,42 +778,120 @@ get_RLRTSim_args <- function(object, verbose=TRUE, ...) get_RLRsim_args(fullfit=
 
 get_rankinfo <- function(object) return(attr(object$X.pv,"rankinfo")) 
 
+.rm_Xi_ncol_geq_1 <- function(varcorr) {
+  if ( ! is.null(row_map <- attr(varcorr,"row_map"))) {
+    ranef_indices <- seq_along(row_map)
+    if (  length(corr_rC_rows <- attr(varcorr,"random_slope_ncol_geq_1_rows"))) {
+      varcorr <- varcorr[ - corr_rC_rows,,drop=FALSE] # previously this line was missing and the next code line
+      ranef_indices <- ranef_indices[ - attr(varcorr,"random_slope_ncol_geq_1_pos")]
+      ranef_map <- row_map[ranef_indices]
+    } else   ranef_map <- row_map
+    names(ranef_map) <- ranef_indices
+    for (rd in ranef_indices) ranef_map[[rd]] <- rep(rd, length(ranef_map[[rd]]))
+    # removed rows with a NA "Corr." value , which was nonsense. Now all Xi_ncol>1-ranCoefs are removed before the next code line.
+    varcorr$ranef <- .unlist(ranef_map)
+  } else varcorr$ranef <- seq(nrow(varcorr))
+  varcorr
+}
+
+.get_fitted_ranPars <- function(object) {
+  CorrEst_and_RanFix <- object$CorrEst_and_RanFix
+  resu <- CorrEst_and_RanFix$corrPars
+  resu <- .remove_from_cP(resu, u_names=names(which(unlist(attr(CorrEst_and_RanFix,"type")$corrPars)=="fix")))
+  # Overwrite any fixed lambda or phi in all cases:
+  if (length(lambda_list <- object$lambda.object$lambda_list)) {
+    which_fitted_simple_lam <- which(sapply(lambda_list, length)==1L &  # removes (most) ranCoefs params [separate component of return value]
+                                       object$lambda.object$type!="fixed") 
+    resu$lambda <- .unlist(lambda_list[which_fitted_simple_lam]) 
+    if (length(resu$lambda)) names(resu$lambda) <- which_fitted_simple_lam
+  }
+  resu$ranCoefs <-  .get_rC_inits_from_hlfit(object,type=c("inner","outer_ranCoefs")) # overlap with Xi_ncol ranCoefs?
+  # ___F I X M E___ part of the pb is that of recovering info about the different types of rC from an HLfit object.
+  resu
+} 
+
+.get_fittedPars_ran_phi <- function(object) { ## ___F I X M E___ ultimately a get_fittedPars extractor; 
+                                              ## main pb may be heterogeneous structure of mv phi
+  resu <- .get_fitted_ranPars(object)
+  resu <- .add_famPars_outer(resu, fitobject=object)
+  if ( is.null(object$families)) {
+    phi <- residVar(object, which="fit") # the syntax to get a single scalar when it's appropriate; 
+                                              #  object$phi.object$fittedPars may contain Gamma GLM coefs.
+    if ( ! identical(attr(phi,"constr_phi"),TRUE)) resu$phi <- phi
+  } else {
+    phi <- list()
+    for (mv_it in seq_along(object$families)) {
+      phi_it <- residVar(object, which="fit", submodel = mv_it)
+      if ( ! identical(attr(phi_it,"constr_phi"),TRUE)) phi[as.character(mv_it)] <- list(phi_it)
+    }
+    resu$phi <- phi
+  }
+  resu
+} 
+
 get_ranPars <- function(object, which=NULL, 
                         verbose=TRUE, # does not control all verbosity, only that which is TRUE by default.
+                        lambda_names="Group.Term",
                         ...) {
   CorrEst_and_RanFix <- object$CorrEst_and_RanFix
   if (is.null(which)) {
     resu <- CorrEst_and_RanFix
-    lambdatable <- na.omit(VarCorr(object, add_residVars=FALSE, verbose=FALSE))
-    if ( ! is.null(lambdatable)) {
-      resu$lambda <- structure(lambdatable[,"Variance"], 
-                               names=paste(lambdatable[,"Group"],lambdatable[,"Term"],sep="."))
+    ## #resu <- .add_famPars_outer(parlist=resu, fitobject=object, type_attr=FALSE)  # adds only estimated ones. Are fixed ones in CorrEst_and_RanFix?
+    varcorr <- VarCorr(object, add_residVars=FALSE, verbose=FALSE) 
+    if ( ! is.null(varcorr)) {
+      varcorr <- .rm_Xi_ncol_geq_1(varcorr) # removes (most) ranCoefs params [not part of return value]
+      lambdatable <- na.omit(varcorr)
+      if ( ! is.null(lambdatable)) {
+        resu$lambda <- lambdatable[,"Variance"] 
+        if (lambda_names=="Group.Term") {
+          names(resu$lambda) <- paste(lambdatable[,"Group"],lambdatable[,"Term"],sep=".")
+        } else names(resu$lambda) <- lambdatable$ranef
+      }
     }
     return(resu)
+  } else if (which=="fitted") {
+    resu <- .get_fitted_ranPars(object)
+    resu$phi <- NULL
+    return(resu) # no type attribute
   } else if (which=="corrPars") {
     resu <- CorrEst_and_RanFix$corrPars
     if ( ! is.null(resu)) resu <- structure(resu, type=attr(CorrEst_and_RanFix,"type")$corrPars)
     return(resu)
-  } else if (which=="lambda") {
-    resu <- na.omit(VarCorr(object, add_residVars=FALSE, verbose=verbose))
-    resu <- structure(resu[,"Variance"], names=paste(resu[,"Group"],resu[,"Term"],sep="."))
-    return(resu)
+  } else if (which=="lambda") { 
+    varcorr <- VarCorr(object, add_residVars=FALSE, verbose=FALSE)
+    if ( ! is.null(varcorr)) {
+      if ( length(corr_rC_rows <- attr(varcorr,"random_slope_ncol_geq_1_rows"))) varcorr <- varcorr[-corr_rC_rows,,drop=FALSE] # previously this line was missing and the next code line
+      # removed rows with a NA "Corr." value , which was nonsense. Now all Xi_ncol>1-ranCoefs are removed before the next code line.  
+      varcorr <- na.omit(varcorr)
+      varcorr <- .rm_Xi_ncol_geq_1(varcorr)
+      resu <- structure(varcorr[,"Variance"], names=paste(varcorr[,"Group"],varcorr[,"Term"],sep="."))
+      return(resu)
+    }   # else returns NULL
   } else if (which=="outer_lambda") { 
     resu <- CorrEst_and_RanFix$lambda
     if ( ! is.null(resu)) resu <- structure(resu, type=attr(CorrEst_and_RanFix,"type")$lambda)
     return(resu)
   } else if (which=="ranef_var") {
-    lambdatable <- na.omit(VarCorr(object, add_residVars=FALSE, verbose=verbose))
-    if ( ! is.null(lambdatable)) {
-      resu <- list(Var=structure(lambdatable[,"Variance"], names=paste(lambdatable[,"Group"],resu[,"Term"],sep=".")))
-      resu$outer <- CorrEst_and_RanFix$lambda
-      resu$lambda_est <- object$lambda.object$lambda_est # long version: one value for each level of each ranef
-      resu$lambda_list <-  object$lambda.object$lambda_list
-      resu <- structure(resu, type=attr(CorrEst_and_RanFix,"type")$lambda)
-      return(resu)
-    }   # else returns NULL
+    varcorr <- VarCorr(object, add_residVars=FALSE, verbose=verbose)
+    if ( ! is.null(varcorr)) {
+      varcorr <- .rm_Xi_ncol_geq_1(varcorr)
+      lambdatable <- na.omit(varcorr)
+      if ( ! is.null(lambdatable)) {
+        lambda <- lambdatable[,"Variance"] 
+        if (lambda_names=="Group.Term") {
+          names(lambda) <- paste(lambdatable[,"Group"],lambdatable[,"Term"],sep=".")
+        } else names(lambda) <- lambdatable$ranef
+        resu <- list(Var=lambda,
+                     outer=CorrEst_and_RanFix$lambda,
+                     lambda_est=object$lambda.object$lambda_est, # long version: one value for each level of each ranef
+                     lambda_list=object$lambda.object$lambda_list)
+        attr(resu, "type") <- attr(CorrEst_and_RanFix,"type")$lambda
+        return(resu)
+      }   # else returns NULL
+    } # else return NULL
   } else warning("'which' value not handled.")
 }
+
 
 .get_from_ranef_info <- function(object,which="sub_corr_info") {
   if (is.null(object$ranef_info)) { ## occurs for < v2.6.15
@@ -974,7 +1051,7 @@ get_ZALMatrix <- function(object, force_bind=TRUE) {
 
 
 .get_ZAfix <- function(object, as_matrix) {
-  if (inherits(object$envir$sXaug,"AUGI0_ZX_sparsePrecision")) { 
+  if (.is_spprec_fit(object)) { 
     return(object$envir$sXaug$AUGI0_ZX$ZAfix) # using new (v3.2.19) spprec object$envir$sXaug
   }  else { # (( !spprec) || older spaMM) 
     if (is.null(object$envir$ZAfix)) object$envir$ZAfix <- .ad_hoc_cbind(object$ZAlist, as_matrix=as_matrix)  
@@ -1074,10 +1151,11 @@ model.matrix.HLfit <- function(object, ...) object$X.pv
   if (by_y_augm) {
     for (it in seq_along(MME_method)) {
       MME_method[it] <- switch(MME_method[it],
-                               AUGI0_ZX_sparsePrecision = "sparse-precision method for y-augmented matrix",
-                               sXaug_EigenDense_QRP_Chol_scaled = "dense-correlation method for y-augmented matrix (chol with QR fallback)",
+                               AUGI0_ZX_spprec = "sparse-precision method for y-augmented matrix",
                                sXaug_Matrix_QRP_CHM_scaled = "sparse-correlation method for y-augmented matrix (Cholesky)", # get_absdiagR_blocks, not sXaug method
                                #sXaug_Matrix_cholP_scaled = "sparse-correlation method for y-augmented matrix (Cholesky)", # get_absdiagR_blocks, not sXaug method
+                               AUGI0_ZX_sparsePrecision = "sparse-precision method for y-augmented matrix",
+                               sXaug_EigenDense_QRP_Chol_scaled = "dense-correlation method for y-augmented matrix (chol with QR fallback)",
                                dgCMatrix = NA,
                                matrix = NA,
                                array = NA,
@@ -1085,10 +1163,11 @@ model.matrix.HLfit <- function(object, ...) object$X.pv
     }
   } else for (it in seq_along(MME_method)) {
     MME_method[it] <- switch(MME_method[it],
-                             AUGI0_ZX_sparsePrecision = "sparse-precision methods",
-                             sXaug_EigenDense_QRP_Chol_scaled = "dense-correlation (QR) methods",
                              sXaug_Matrix_QRP_CHM_scaled = "sparse-correlation (QR) methods",
                              sXaug_Matrix_CHM_H_scaled = "sparse-correlation (Cholesky) methods",
+                             AUGI0_ZX_spprec = "sparse-precision methods",
+                             AUGI0_ZX_sparsePrecision = "sparse-precision methods",
+                             sXaug_EigenDense_QRP_Chol_scaled = "dense-correlation (QR) methods",
                              #sXaug_Matrix_cholP_scaled = "sparse-correlation (Cholesky) methods (experimental)",
                              "(G)LM" = "methods for (G)LMs",
                              LLF = "methods for LLMs",
@@ -1273,3 +1352,17 @@ model.frame.HLfit <- function(formula, # the generic was poorly conceived... for
   }
   info
 }
+
+df.residual.HLfit <- function(object, ...) {
+  dfs <- object$dfs
+  dfs$p_fixef_phi <- NULL # For dhglms the dfs of the residual model is more generally given by .calc_p_phi().... 
+  length(object$y) - sum(.unlist(dfs)) # ... But the aim of the present fn is precisely to remove dfs of other parameters.
+}
+
+weights.HLfit <- function(object, type, ...) {
+  if (type=="prior") {
+    object$prior.weights
+  } else object$envir$H_w.resid*residVar(object,which="phi")
+}
+
+

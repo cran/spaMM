@@ -47,6 +47,7 @@
   resu
 }
 
+# ___F I X M E___ can only return the fixef term. Makes it the default of a more general extractor.
 # Initially [for for MSFDR -> stats::step(); not directly called in spaMM code]
 terms.HLfit <- function(x, ...) { ## the full formula with the attributes for the fixed effects only (OK for MSFDR -> stats::step())
   # distinct attributes for ranefs would surely work.

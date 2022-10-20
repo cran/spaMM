@@ -203,7 +203,6 @@
 .makeCovEst1 <- function(u_h,ZAlist,cum_n_u_h,prev_LMatrices,
                          var_ranCoefs,
                          H_w.resid, 
-                         H_global_scale,
                          processed,phi_est,
                          #family, ## ignored
                         as_matrix,v_h, MakeCovEst_pars_not_ZAL_or_lambda,
@@ -226,6 +225,7 @@
   test <- FALSE
   #test <- TRUE
   pars_for_conv_corr <- vector("list",nrand)
+  H_global_scale <- .calc_H_global_scale(H_w.resid)
   for (rt in seq_len(nrand)) {
     if ( var_ranCoefs[rt]) { ## inner estimation of cov mat of u_h 
       Xi_ncol <- Xi_cols[rt]
@@ -253,7 +253,7 @@
           Xscal <- .make_Xscal(ZAL=locZAL, ZAL_scaling = ZAL_scaling, processed=processed)
           weight_X <- .calc_weight_X(Hobs_w.resid=H_w.resid,
                                      H_global_scale=H_global_scale, obsInfo=processed$how$obsInfo) ## sqrt(s^2 W.resid) ## should not affect the result up to precision
-          sXaug <- do.call(processed$mMatrix_method,
+          sXaug <- do.call(processed$corr_method,
                            list(Xaug=Xscal, weight_X=weight_X, w.ranef=w.ranef, H_global_scale=H_global_scale))
           ####################################################################################################
         } else sXaug <- NULL

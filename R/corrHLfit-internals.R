@@ -286,7 +286,7 @@ if (FALSE) {
   compactcovmat <- matrix(0,nrow=Xi_ncol,ncol=Xi_ncol)
   .lower.tri(compactcovmat,diag=TRUE) <- ranCoef
   diagPos <- seq.int(1L,Xi_ncol^2,Xi_ncol+1L)
-  lambdas <- pmin(1e12,compactcovmat[diagPos]) # motivated by \ref{ares_bobyqa_ssprec}
+  lambdas <- pmin(1e12,compactcovmat[diagPos]) # motivated by \ref{ares_bobyqa_spprec}
   # lambdas <- lambdas + 1e-10 # here that would affect the conversion from correlation to covariances
   sigmas <- sqrt(lambdas) 
   compactcovmat <- (compactcovmat+t(compactcovmat))
@@ -503,7 +503,7 @@ if (FALSE) {
       # } else distMatrix[[lit]] <- as(as(as(as.matrix(w_dist), "dMatrix"), "symmetricMatrix"), "CsparseMatrix") 
       nc <- ncol(w_dist)
       distMatrix[[lit]] <- sparseMatrix(x=w_dist[], 
-                   i=unlist(rev(sapply(seq(nc-1), function(it) {nc-it+seq(it)}))), # ___F I X M E___ precompute something?
+                   i={ ili <- vector("list",nc-1L); for (it in 1L:(nc-1L)) {ili[[it]] <- (it+1L):nc}; .unlist(ili)},
                    j=rep(seq(nc-1),(nc-1):1),
                    dims=c(nc,nc),symmetric=TRUE, repr="C") 
     }

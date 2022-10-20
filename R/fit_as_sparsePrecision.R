@@ -109,8 +109,8 @@
     v_h <- Vscaled_beta$v_h #### * ZAL_scaling =1 here
     eta <- off + drop(processed$AUGI0_ZX$X.pv %*% Vscaled_beta$beta_eta) + drop(ZAL %id*% v_h) ## length nobs 
     
-    newmuetablob <- .muetafn(eta=eta,BinomialDen=processed$BinomialDen,processed=processed) 
-    neww.resid <- .calc_w_resid(newmuetablob$GLMweights,phi_est)
+    newmuetablob <- .muetafn(eta=eta,BinomialDen=processed$BinomialDen,processed=processed, phi_est=phi_est) 
+    neww.resid <- .calc_w_resid(newmuetablob$GLMweights,phi_est, obsInfo=processed$how$obsInfo)
     newH_w.resid <- .calc_H_w.resid(neww.resid, muetablob=newmuetablob, processed=processed) # for LLF w.resid is not generally defined.
 
     if (is.null(etaFix$v_h)) { 
@@ -139,10 +139,10 @@
         newsXaug <- NULL
         APHLs_args$sXaug <- sXaug
       } else {
-        newsXaug <- do.call(processed$AUGI0_ZX$envir$method, # ie, def_AUGI0_ZX_sparsePrecision
+        newsXaug <- do.call(processed$spprec_method, # ie, def_AUGI0_ZX_spprec
                             sXaug_arglist)
         if (Trace) {
-          tracechar <- ifelse(identical(attr(newsXaug,"BLOB")$nonSPD,TRUE),"!",".")
+          tracechar <- ifelse(.BLOB(newsXaug)$nonSPD,"!",".")
           cat(stylefn(tracechar)) # yellow in V_IN_B case
         }
         APHLs_args$sXaug <- newsXaug
@@ -272,9 +272,9 @@
     if (GLGLLM_const_w) {
       APHLs_args$sXaug <- newsXaug <- sXaug
     } else {
-      newsXaug <- do.call(processed$AUGI0_ZX$envir$method, sXaug_arglist)
+      newsXaug <- do.call(processed$spprec_method, sXaug_arglist)
       if (Trace) { 
-        tracechar <- ifelse(identical(attr(newsXaug,"BLOB")$nonSPD,TRUE),"!",".")
+        tracechar <- ifelse(.BLOB(newsXaug)$nonSPD,"!",".")
         if (processed$p_v_obj=="p_v") { # v estimation within HL11
           cat(stylefn_v(tracechar))
         } else  cat(stylefn(tracechar)) # PQL/L, vb extimation
@@ -312,14 +312,14 @@
 .updates_from_w.resid <- function(RESU, phi_est, update_sXaug_constant_arglist, 
                                   wranefblob, processed, Trace, stylefn) {
   
-  RESU$w.resid <- .calc_w_resid(RESU$muetablob$GLMweights,phi_est)
+  RESU$w.resid <- .calc_w_resid(RESU$muetablob$GLMweights,phi_est, obsInfo=processed$how$obsInfo)
   sXaug_arglist <- c(update_sXaug_constant_arglist, # contained H_global_scale but not longer so
                      list(w.ranef=wranefblob$w.ranef))
   sXaug_arglist$H_w.resid <- .calc_H_w.resid(RESU$w.resid, muetablob=RESU$muetablob, processed=processed) 
-  RESU$sXaug <- do.call(processed$AUGI0_ZX$envir$method, # ie, def_AUGI0_ZX_sparsePrecision
+  RESU$sXaug <- do.call(processed$spprec_method, # ie, def_AUGI0_ZX_spprec
                         sXaug_arglist)
   if (Trace) {
-    tracechar <- ifelse(identical(attr(RESU$sXaug,"BLOB")$nonSPD,TRUE),"!",".")
+    tracechar <- ifelse(.BLOB(RESU$sXaug)$nonSPD,"!",".")
     cat(stylefn(tracechar)) # yellow in V_IN_B case 
   }
   RESU
@@ -350,7 +350,7 @@
       # } 
     }
   }
-  RESU$muetablob <- .muetafn(eta=eta,BinomialDen=processed$BinomialDen,processed=processed) 
+  RESU$muetablob <- .muetafn(eta=eta,BinomialDen=processed$BinomialDen,processed=processed, phi_est=phi_est) 
   if ( (! mod_attr$LLM_const_w) && (! mod_attr$GLGLLM_const_w) ) {
     RESU <- .updates_from_w.resid(RESU, phi_est, update_sXaug_constant_arglist,
                                   wranefblob, # do NOT try to use RESU$wranefblob bc it does not necessarily exists (if no updated)
@@ -372,7 +372,8 @@
            beta_eta,
            ## supplement for ! GLMM
            u_h, v_h, w.resid=NULL, 
-           for_init_z_args,
+           H_w.resid,
+           # for_init_z_args,
            for_intervals,
            ##
            corrPars, # corrPars needed together with adjMatrix to define Qmat
@@ -417,24 +418,25 @@
     dampings_env <- list2env(.spaMM.data$options$spaMM_tol$dampings_env_v)
   } 
   if ( ! LMMbool) {
+    checkpot_min_it <- as.integer(maxit.mean/4L) # reconsider all usage of this and possibly extend to spprec (see ref to pot4improv in test-mv-nested for a test)
     constant_zAug_args <- list(n_u_h=n_u_h, nobs=nobs, pforpv=pforpv, y=y, off=off, ZAL=ZAL, processed=processed)
-    if ( ! GLMMbool) {
-      constant_init_z_args <- c(list(lcrandfamfam=lcrandfamfam, nobs=nobs, lambda_est=lambda_est, ZAL=ZAL),  
-                                # fit_as_ZX args specific for ! GLMM:
-                                for_init_z_args,
-                                #
-                                mget(c("cum_n_u_h","rand.families"),envir=processed))
-    } 
+    # if ( ! GLMMbool) {
+    #   constant_init_z_args <- c(list(lcrandfamfam=lcrandfamfam, nobs=nobs, lambda_est=lambda_est, ZAL=ZAL),  
+    #                             # fit_as_ZX args specific for ! GLMM:
+    #                             for_init_z_args,
+    #                             #
+    #                             mget(c("cum_n_u_h","rand.families"),envir=processed))
+    # } 
   } 
   
   ##### initial sXaug
   ZAL_scaling <- 1  ## TAG: scaling for spprec
   if (is.null(muetablob)) { ## NULL input eta allows NULL input muetablob
     eta <- off + drop(processed$AUGI0_ZX$X.pv %*% beta_eta) + drop(ZAL %id*% v_h) 
-    muetablob <- .muetafn(eta=eta,BinomialDen=processed$BinomialDen,processed=processed) 
+    muetablob <- .muetafn(eta=eta,BinomialDen=processed$BinomialDen,processed=processed, phi_est=phi_est) 
   }
   ## varies within loop if ! LMM since at least the GLMweights in w.resid change
-  if ( is.null(w.resid) ) w.resid <- .calc_w_resid(muetablob$GLMweights,phi_est)
+  if ( is.null(w.resid) ) w.resid <- .calc_w_resid(muetablob$GLMweights,phi_est, obsInfo=processed$how$obsInfo)
   ## needs adjMatrix and corrPars to define Qmat
   update_sXaug_constant_arglist <- list(AUGI0_ZX=processed$AUGI0_ZX, corrPars=corrPars, 
                                         cum_n_u_h=processed$cum_n_u_h #,H_global_scale=H_global_scale
@@ -442,7 +444,7 @@
   sXaug_arglist <- c(update_sXaug_constant_arglist,
                      list(w.ranef=wranefblob$w.ranef))
   sXaug_arglist$H_w.resid <- .calc_H_w.resid(w.resid, muetablob=muetablob, processed=processed) 
-  sXaug <- do.call(processed$AUGI0_ZX$envir$method, # ie, def_AUGI0_ZX_sparsePrecision
+  sXaug <- do.call(processed$spprec_method, # ie, def_AUGI0_ZX_spprec
                    sXaug_arglist)
   if (trace) {
     stylefn <- switch(which_LevMar_step,
@@ -450,7 +452,7 @@
                       V_IN_B=.spaMM.data$options$stylefns$v_in_loop,
                       .spaMM.data$options$stylefns$betaloop )
     if (LevenbergM) cat("LM")
-    tracechar <- ifelse(sXaug$BLOB$nonSPD,"!",".")
+    tracechar <- ifelse(.BLOB(sXaug)$nonSPD,"!",".")
     cat(stylefn(tracechar)) # yellow in V_IN_B case
   }
   
@@ -465,17 +467,18 @@
     X.pv=processed$AUGI0_ZX$X.pv, 
     ZAL=ZAL, y=y, n_u_h=n_u_h, #H_global_scale=H_global_scale,
     lambda_est=lambda_est, off=off,maxit.mean=maxit.mean,etaFix=etaFix,
-    processed=processed, phi_est=phi_est, for_init_z_args=for_init_z_args,
+    processed=processed, phi_est=phi_est, # for_init_z_args=for_init_z_args,
     trace=trace, corrPars=corrPars, dampings_env=dampings_env))
   ## Loop controls:
   allow_LM_restart <- ( ! LMMbool && ! LevenbergM && is.null(for_intervals) && is.na(processed$LevenbergM["user_LM"]) )
   if (allow_LM_restart) {
     keep_init <- new.env()
-    names_keep <- c("sXaug","wranefblob","muetablob","u_h","w.resid","v_h","beta_eta","Vscaled_beta")
+    names_keep <- c("sXaug","wranefblob","muetablob","u_h","H_w.resid","w.resid","v_h","beta_eta","Vscaled_beta")
     for (st in names_keep) keep_init[[st]] <- environment()[[st]]
   }
   LMcond <- - 10. # also for hlik LM algo
   best_HL1_lik <- -Inf
+  pot4improv <- NULL
   ################ L O O P ##############
   for (innerj in 1:maxit.mean) {
     # if (sanitize <- FALSE) {        
@@ -495,7 +498,9 @@
         LMcond <- LMcond + mean(sqrt(crit))^2 
         ## cat(mean(abs_d_relV_beta/old_abs_d_relV_beta)," ")
         # cat(LMcond/innerj," ")
-        if (LMcond/innerj>0.5) {
+        if (LMcond/innerj>0.5 || 
+            (innerj> checkpot_min_it && pot4improv > max(10,old_pot4improv))
+        ) {
           if (trace) cat("!LM") # ie, LevenbergM!
           for (st in names_keep) assign(st,keep_init[[st]])
           LevenbergM <- TRUE
@@ -516,7 +521,10 @@
           }
         }
       }
-      if (innerj>2L) old_abs_d_relV_beta <- abs_d_relV_beta
+      if (innerj>2L) { 
+        old_abs_d_relV_beta <- abs_d_relV_beta
+        old_pot4improv <- pot4improv
+      }
     }
     ##### get the lik of the current state
     if ( ! is.null(for_intervals)) {
@@ -547,17 +555,20 @@
                                           ZAL, X.pv=processed$AUGI0_ZX$X.pv)
     } else {
       if ( ! GLMMbool) {
-        # arguments for init_resp_z_corrections_new called in calc_zAug_not_LMM
-        init_z_args <- c(constant_init_z_args,
-                         list(w.ranef=wranefblob$w.ranef, u_h=u_h, v_h=v_h, dvdu=wranefblob$dvdu, 
-                              sXaug=sXaug, w.resid=w.resid))
-      } else init_z_args <- NULL
+        # # arguments for init_resp_z_corrections_new called in calc_zAug_not_LMM
+        # init_z_args <- c(constant_init_z_args,
+        #                  list(w.ranef=wranefblob$w.ranef, u_h=u_h, v_h=v_h, dvdu=wranefblob$dvdu, 
+        #                       sXaug=sXaug))  # H_w.resid provided by sXaug!
+        # z2 <- do.call(".init_resp_z_corrections_new",init_z_args)$z20
+        z2 <- .calc_z2(lcrandfamfam=lcrandfamfam, psi_M=processed$psi_M, cum_n_u_h=processed$cum_n_u_h, rand.families=processed$rand.families, 
+                       u_h=u_h, lambda_est=lambda_est, v_h=v_h, dvdu=wranefblob$dvdu)
+      } else z2 <- rep(0,n_u_h)
       calc_zAug_args <- c(constant_zAug_args,
                           list(muetablob=muetablob, dlogWran_dv_h=wranefblob$dlogWran_dv_h, 
                                sXaug=sXaug, 
                                w.ranef=wranefblob$w.ranef, 
                                w.resid=w.resid,
-                               init_z_args=init_z_args) )
+                               z2=z2) )
       zInfo <- do.call(".calc_zAug_not_LMM",calc_zAug_args)
       if (GLMMbool) zInfo$z2 <- NULL
       etamo <- muetablob$sane_eta - off
@@ -621,7 +632,7 @@
           # } else if (max(abs(m_grad_v)) > max(abs(old_m_grad_v))) which_LevMar_step <- "v" # test is fausse bonne idee...
           } else {
             v_parent_info <- c(from=which_LevMar_step, breakcond=damped_WLS_blob$breakcond)
-            # Tried this from [v3.12.34 -> 54] with poor effect on test-nloptr #362... (___F I X M E___ rethink)
+            # Tried this from [v3.12.34 -> 54] with poor effect on test-nloptr #362... (spcorr)
             # if (damped_WLS_blob$breakcond=="stuck_obj") {
             #   which_LevMar_step <- "V_IN_B" 
             # } else 
@@ -719,7 +730,7 @@
           if ( ! ((breakcond <- damped_WLS_blob$breakcond)=="low_pot" && attr(breakcond,"very_low_pot"))) {
             damped_WLS_blob <- NULL
             .diagnose_conv_problem_LevM( beta_cov_info=.calc_beta_cov_info_spprec(X.pv = sXaug$AUGI0_ZX$X.pv,envir = sXaug$BLOB), 
-                                         w.resid, processed) # writes into 'processed'
+                                         processed) # writes into 'processed'
             dVscaled_beta <- get_from_MME(sXaug,szAug=zInfo) ################### FIT
             Vscaled_beta <- list(v_h=Vscaled_beta$v_h+dVscaled_beta$dv_h,
                                  beta_eta=Vscaled_beta$beta_eta+dVscaled_beta$dbeta_eta)
@@ -766,6 +777,9 @@
       ##################
       
       damped_WLS_blob <- NULL
+      if ( ! LMMbool && innerj>= checkpot_min_it) {
+        pot4improv <- get_from_MME(sXaug=sXaug, which="Mg_solve_g", B=zInfo$m_grad_obj)
+      }
     }
     if (trace>5L) .prompt()
     ##### Everything that is needed for 
@@ -858,7 +872,7 @@
             break 
           } else if ( which_LevMar_step=="v_b" && 
                       damped_WLS_blob$breakcond=="stuck_obj" ) { 
-            # I removed this break from [v3.12.34 -> 54] with poor effect on test-nloptr #362... (___F I X M E___ rethink)
+            # I removed this break from [v3.12.34 -> 54] with poor effect on test-nloptr #362... (spcorr)
             break # this case occurs in the test-nloptr tests
             # not an obvious termination condition, but seems OK following "v"&&"low_pot" (and stops the alternation between these two states)
             # but if previous steps were "V_IN_B" & OK_gain, it may be worth returning to such a step
@@ -966,7 +980,7 @@
   i_etamo <- drop(ZAL %*% oovb[seq_n_u_h] +
                    sXaug$AUGI0_ZX$X.pv[,-(parmcol_X),drop=FALSE] %*%  oovb[-seq_n_u_h]) # 
   #
-  rhs <- sXaug$BLOB$WLS_mat_weights*(etamo-off_newparm- i_etamo) # probably correct for obsInfo too... ___F I X M E___  seems OK but do I use this variable consistently?
+  rhs <- sXaug$BLOB$WLS_mat_weights*(etamo-off_newparm- i_etamo) #__F I X M E__  this block code looks inefficient and unclear... 
   zInfo$m_grad_obj <- zInfo$m_grad_obj[-parmcol_ZX]+
     c(drop(crossprod(ZAL,rhs)),
       drop(crossprod(sXaug$AUGI0_ZX$X.pv[,-parmcol_X,drop=FALSE],rhs))) # tjrs zInfoo$m_grad_obj
@@ -984,7 +998,7 @@
   .init_promises_spprec(sXaug=int_sXaug) # reinit X.pv promises (ZtWX XtWX r12 qrXa DpD LZtWX...)
   #    and non-X.Pv promises (Md2hdv2 tcrossfac_Md2hdv2 inv_L_G_ZtsqrW invL_G.P sortPerm...), which may not be needed. 
   # This won't use the original fit promises anyway (as .confint_LRT_single_par() -> get_HLCorcall() -> .preprocess() -> fresh .init_promises_spprec)
-  # This attr(.,"pforpv") is used to determined whether there are beta coeffs to compute in .AUGI0_ZX_sparsePrecision()
+  # This attr(.,"pforpv") is used to determined whether there are beta coeffs to compute in .AUGI0_ZX_spprec()
   attr(int_sXaug,"pforpv") <- attr(int_sXaug,"pforpv") - length(parmcol_X) # a priori  -1
   v_h_beta_vec[-(parmcol_ZX)] <- old_v_h_beta_vec[-(parmcol_ZX)]+ unlist(get_from_MME(int_sXaug,szAug=zInfo)) 
   return(list(v_h_beta=relist(v_h_beta_vec,old_v_h_beta))) 

@@ -9,22 +9,6 @@
   return(out)
 }
 
-.HL_strictify <- function (val, status) { ## from gsl package
-    val[status < 0] <- NaN ##FR inverted the test // gsl package !!
-    return(val)
-}
-
-.nuln_plus_bessel_lnKnu <- function (nu, x) { 
-  jj <- .HL_process.args(nu, x) ## converts (nu, distance matrice to (nu vector, distance vector)
-  nu.vec <- jj$arg1
-  x.vec <- jj$arg2
-  jj <- .nuln_plus_bessel_lnKnu_e(jj$arg1,jj$arg2) 
-  # jj <- .nuln_plus_bessel_lnKnu_e_boost(jj$arg1,jj$arg2)  # boost attempt (v3.8.11) was quite correct but slower
-  val <- .HL_strictify(jj$val, jj$status)
-  attributes(val) <- attributes(x) ## FIXME is this useful here ?
-  return(val)
-}
-
 "MaternCorr" <- function(d, rho=1, smoothness, nu=smoothness, Nugget=0L) UseMethod("MaternCorr") 
 
 #Matern.corr <- MaternCorr ## for back compat as it is in spMMjob.R
@@ -40,14 +24,15 @@ MaternCorr.default <- function (d, rho=1, smoothness, nu=smoothness, Nugget=NULL
   ## base::besselK() is fast but not very accurate; 
   ## gsl::bessel_lnKnu() [v2.1-6] is sensitively slower; I derived from an older version .bessel_lnKnu() which is in-between;
   ## Bessel::BesselK() is much slower
-  # corrvals <- - logcon + nu*log(dscal)+ log(gsl::bessel_lnKnu(x=dscal, nu=nu)) 
+  # corrvals <- - logcon + nu*log(dscal)+ gsl::bessel_lnKnu(x=dscal, nu=nu)  
   # corrvals <- - logcon + nu*log(dscal)+ log(Bessel::BesselK(z=dscal,nu=nu,expon.scaled = TRUE))-dscal 
   # corrvals <- - logcon + nu*log(dscal)+ .bessel_lnKnu(x=dscal, nu=nu) 
-  corrvals <- - logcon + .nuln_plus_bessel_lnKnu(x=dscal, nu=nu) 
+  corrvals <- - logcon + .nuln_plus_bessel_lnKnu(x=dscal, nu=nu) # dist of matrix dscal -> still vector return value
   corrvals <- exp(corrvals) 
   if ( ! is.null(Nugget)) corrvals[!isd0] <- (1-Nugget)* corrvals[!isd0]
   corrvals[isd0] <- 1 ## 
   corrvals[corrvals < 1e-16] <- 0 ## an attempt to deal with problem in chol/ldl/svd which don't like 'nearly-identity' matrices
+  attributes(corrvals) <- attributes(dscal) ## subtle :-) handling of both matrix and dist objects 
   attr(corrvals,"corr.model") <- "Matern"
   return(corrvals)
 }

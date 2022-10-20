@@ -78,3 +78,8 @@ HLCor(migStatus ~ means+ corrMatrix(1|name),data=blackcap,
 ## (3) Other grouping terms (note the messages):
 HLCor(migStatus ~ means+ corrMatrix(1|longitude+latitude),data=blackcap,
       corrMatrix=MLcorMat,method="ML")
+
+# incidentally, check that prediction runs for levels new relative to the data, not reltive to the corrMatrix
+subfit <- HLCor(migStatus ~ means+ corrMatrix(1|name),data=blackcap[1:12,],
+                corrMatrix=MLcorMat,method="ML")
+predict(subfit,newdata=blackcap[13:14,])

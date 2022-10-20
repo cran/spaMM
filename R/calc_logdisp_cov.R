@@ -56,7 +56,7 @@
 # .traceDB(dD,lB,rB)
 
 .calc_lhs_invV.dVdlam <- function(object, ZALd, invV_factors) { 
-  if ("AUGI0_ZX_sparsePrecision" %in% object$MME_method) { # alternative code is always valid! BUT....
+  if (.is_spprec_fit(object)) { # alternative code is always valid! BUT....
     # dgeMatrix is more efficient in products using the result 'lhs_invV.dVdlam':
     # Further, we have dgeMatrices where the alternative code produces dgCMatrices, 
     # W_ZinvG_ZtW_ZA <- invV_factors$n_x_r =W Z       
@@ -118,7 +118,7 @@
     }
   }
   RES$lambda_list <- lambda_list
-  if ("AUGI0_ZX_sparsePrecision" %in% object$MME_method) {
+  if (.is_spprec_fit(object)) {
     RES$lhs_invV.dVdlam <- .calc_lhs_invV.dVdlam(object, invV_factors=invV_factors) ## invV %*% ZA
     RES$envir <- object$envir # to use $chol_Q and $ZAfix without any copy here 
     RES$ZAL_to_ZALd_vec <- ZAL_to_ZALd_vec
@@ -353,7 +353,7 @@
     # lambda and phi factors enter in dV/dlog(.), computed instead of dV/d(.) to match dwdlog(.) vectors.
     #
     # use repres of two matrices large A and B, each as (thin) lhs %*% (flat) rhs   
-    ZAL <- get_ZALMatrix(object, force_bind = ! ("AUGI0_ZX_sparsePrecision" %in% object$MME_method) )
+    ZAL <- get_ZALMatrix(object, force_bind = ! (.is_spprec_fit(object)) )
     if ("loglambda" %in% names(dispcolinfo) || "rho" %in% names(dispcolinfo)) {
       invV.dV_info <- .calc_invV.dV_info(object, checklambda, invV_factors=invV_factors, ZAL=ZAL) ## $lhs= invV %*% ZALd and $lhs= t(ZALd)
       sublambda <- .unlist(invV.dV_info$lambda_list[checklambda])
@@ -405,7 +405,7 @@
     if ("logphi" %in% dispnames) { ## more transparent, but error if mismatch of conditions
       ## next lines assume that  the design matrix for the residual error is I
       # using the pattern (D-nXr.rXn)^2 = D^2 - 2 D nXr.rXn + (nXr.rXn)^2
-      if ("AUGI0_ZX_sparsePrecision" %in% object$MME_method) {
+      if (.is_spprec_fit(object)) {
         #A <- solve(object$envir$G_CHMfactor, .tcrossprod(object$envir$ZtW), system="A")
         A <- invV_factors$r_x_n %*% invV_factors$n_x_r
         trAB <- sum(A^2)

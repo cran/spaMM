@@ -50,7 +50,7 @@ fitme(y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch), data=wafers, family=Gamma(log), me
 # The fixed-effect coeffcitents in this example are 'fixef(remlfit)' from 
 (remlfit <- fitme(y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch), data=wafers, 
                   family=Gamma(log), method="REML") )
-This should give the same maraginal and estricted likelihoods 
+# This should give the same marginal and restricted likelihoods 
 
 ## Hence, same effect by HLfit():      
 #

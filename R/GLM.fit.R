@@ -120,16 +120,24 @@
 })
 
 
-# same algo as .eval_gain_LevM_etaGLM() but with different input, use of .calc_clik(mu=muCOUNT) instead of family$dev.resids(mu=muFREQS)...
-.eval_gain_LevM_spaMM_xLM <- function(LevenbergMstep_result,family, x ,coefold,devold, offset,y,weights,
+# same algo as .eval_gain_clik_LevM() but with different input, use of family$dev.resids(mu=muFREQS) instead of .calc_clik(mu=muCOUNT)...
+# Only used to fit fixed-effect models
+.eval_gain_dev_LevM <- function(LevenbergMstep_result,family, x ,coefold,devold, offset,y,weights,
                                       dev.resids=family$dev.resids) { 
   dbeta <- LevenbergMstep_result$dbetaV
   beta <- coefold + dbeta
   eta <- drop(x %*% beta) + offset
   eta <- .sanitize_eta(eta, y=y, family=family, max=40) 
-  mu <- family$linkinv(eta) # muFREQS
+  if (family$family=="COMPoisson") {
+    muetaenv <- .CMP_muetaenv(family, pw=weights, eta)
+    mu <- muetaenv$mu
+    dev <- suppressWarnings(sum(dev.resids(y, mu=mu, wt=weights, muetaenv=muetaenv)))
+  } else {
+    mu <- family$linkinv(eta) # muFREQS
+    dev <- suppressWarnings(sum(dev.resids(y, mu=mu, wt=weights)))
+    muetaenv <- NULL
+  }
   # for binomial fam, $family(initialize) has redefined y as a frequency and the weights as binomial weights
-  dev <- suppressWarnings(sum(dev.resids(y, mu=mu, wt=weights)))
   if (is.infinite(dev) || is.na(dev)) {  
     gainratio <- -1
     conv_dev <- Inf
@@ -146,6 +154,7 @@
   }
   return(list(gainratio=gainratio,dev=dev,beta=beta,eta=eta,
               mu=mu, # muFREQS
+              muetaenv=muetaenv,
               conv_dev=conv_dev))
 }  
 
@@ -207,7 +216,7 @@ spaMM_glm.fit <- local({
     #
     # delayedAssign("positive_eta", {
     #   pos_eta <- (family$family=="Gamma" && family$link %in% c("identity","inverse"))
-    #   (pos_eta || (family$family %in% c("poisson","negbin") && family$link %in% c("identity","sqrt"))) 
+    #   (pos_eta || (family$family %in% c("poisson","negbin2") && family$link %in% c("identity","sqrt"))) 
     # })
     n <- NULL ## to avoid an R CMD check NOTE which cannot see that n will be set by eval(family$initialize)
     if (family$family=="gaussian" && family$link!="identity") family$initialize <- .gauss_initialize_in_Xbeta_image
@@ -237,8 +246,7 @@ spaMM_glm.fit <- local({
         stop("invalid fitted means in empty model", call. = FALSE)
       dev <- suppressWarnings(sum(dev.resids(y, mu, weights)))
       w <- ((weights * mu.eta(eta)^2)/variance(mu))^0.5
-      residuals <- (y - mu)/mu.eta(eta)
-      good <- rep_len(TRUE, length(residuals))
+      good <- rep_len(TRUE, length(mu))
       boundary <- conv <- TRUE
       coef <- numeric()
       iter <- 0L
@@ -311,19 +319,17 @@ spaMM_glm.fit <- local({
           if (!singular.ok && fit$rank < nvars) stop("singular fit encountered")
           ## calculate updated values of eta and mu with the new coef:
           start[fit$pivot] <- fit$coefficients
-          eta <- (x %*% start)[]
-          eta <- eta + offset
+          eta <- drop(x %*% start) + offset 
           if ( ! beta_bounded) eta <- .sanitize_eta(eta, y=y, family=family, max=40) # else we use .get_valid_beta_coefs()
           if (family$family=="COMPoisson") muetaenv <- .CMP_muetaenv(family, pw=weights, eta)
-          mu <- linkinv(eta) # automatically using the muetaenv in the COMPoisson case
+          mu <- linkinv(eta) # automatically using the muetaenv in the COMPoisson case (cf locally defined linkinv fn)
           dev <- suppressWarnings(sum(dev.resids(y, mu, weights)))
           boundary <- FALSE
           if (beta_bounded && !is.finite(dev)) { ## NaN or Inf
             if (is.null(coefold)) {
               if (requireNamespace("rcdd",quietly=TRUE)) {
                 start <- .get_valid_beta_coefs(X=x,offset=offset,family,y,weights)
-                eta <- (x %*% start)[]
-                eta <- eta + offset
+                eta <- drop(x %*% start) + offset
                 if (family$family=="COMPoisson") muetaenv <- .CMP_muetaenv(family, pw=weights, eta)
                 mu <- linkinv(eta) # could sanitze it, perhaps ?
                 dev <- suppressWarnings(sum(dev.resids(y, mu, weights)))
@@ -370,7 +376,7 @@ spaMM_glm.fit <- local({
             ## LevenbergMstep_result contains rhs, the gradient of the objective, essentially  crossprod(wX,LM_wz)
             #
             ## Use a function call to keep the change in beta->start,eta,mu,dev private:
-            levMblob <- .eval_gain_LevM_spaMM_xLM(LevenbergMstep_result,family, x ,coefold,devold, offset,y,weights) 
+            levMblob <- .eval_gain_dev_LevM(LevenbergMstep_result,family, x ,coefold,devold, offset,y,weights) # cf remark in llm.fit on using default family$dev.resids here
             gainratio <- levMblob$gainratio
             if (beta_bounded) {
               conv_crit <- levMblob$conv_dev ## (dev crit in glm.fit style, vs $dbeta in auglinmodfit style)
@@ -388,8 +394,14 @@ spaMM_glm.fit <- local({
               damping <- max(damping * max(1/3,1-(2*gainratio-1)^3), 1e-7) # lower bound as in .get_new_damping() for MMs    
               dampingfactor <- 2
               start <- levMblob$beta 
-              eta <- levMblob$eta ## FR->FR 1 -col matrix without names....
-              mu <- levMblob$mu # muFREQS
+              if (family$family=="COMPoisson") {
+                muetaenv <- levMblob$muetaenv
+                eta <- muetaenv$sane_eta
+                mu <- muetaenv$mu
+              } else {
+                eta <- levMblob$eta ## FR->FR 1 -col matrix without names....
+                mu <- levMblob$mu # muFREQS
+              }
               dev <- levMblob$dev 
               if (control$trace) cat("|")
               break
@@ -510,7 +522,6 @@ spaMM_glm.fit <- local({
       if (fit$rank < nvars) 
         coef[fit$pivot][seq.int(fit$rank + 1, nvars)] <- NA
       xxnames <- xnames[fit$pivot]
-      residuals <- (y - mu)/mu.eta(eta)
       fit$qr <- as.matrix(fit$qr)
       nr <- min(sum(good), nvars)
       if (nr < nvars) {
@@ -524,6 +535,7 @@ spaMM_glm.fit <- local({
       colnames(fit$qr) <- xxnames
       dimnames(Rmat) <- list(xxnames, xxnames)
     }
+    residuals <- (y - mu)/mu.eta(eta)
     names(residuals) <- ynames
     names(mu) <- ynames
     names(eta) <- ynames

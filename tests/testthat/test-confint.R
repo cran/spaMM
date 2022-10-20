@@ -11,6 +11,7 @@ wfit <- HLfit(y ~ X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch), family=Gamma(log),HLmetho
               rand.family=inverse.Gamma(log),
               resid.model = ~ X3+I(X3^2) , data=wafers)
 ci <- confint(wfit,"X1",verbose=FALSE)
+# values originally set for "ML","exp" fit but sufficiently closer to the "obs" ones, as many others in this script. 
 testthat::expect_equal(ci$interval[[1]],0.0361157,tolerance=1e-4)
 testthat::expect_equal(ci$interval[[2]],0.1313484,tolerance=1e-4)
 

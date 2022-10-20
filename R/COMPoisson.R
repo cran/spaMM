@@ -41,7 +41,7 @@
       warning(paste0("maxn truncated to ",res," for (lambda,nu)= (",lambda,",",nu,") and possibly other values."))
       .spaMM.data$options$COMP_maxn_warned <- TRUE
       ### This is first called through 
-      # .get_inits_by_glm(processed, reset = quote(family$family %in% c("COMPoisson", "negbin")))
+      # .get_inits_by_glm(processed, reset = quote(family$family %in% c("COMPoisson", "negbin2")))
       # -> .calc_inits_by_glm(processed)
       # -> .tryCatch_W_E(glm.fit ...)
       ### so the first warning is suppressed, and no further ones will be emitted UNLESS... 
@@ -145,17 +145,21 @@
   resu <- rep(NA,length(moments))
   names(resu) <- moments
   if (use_asympto) {
-    # using Gaunt et al.:
+    # using Gaunt et al.: ...3.22...
     c1 <- (nu^2-1)/24
     mu1 <- pow_lam_nu*( 1 -(nu-1)/(2*nu*pow_lam_nu) - c1/((nu*pow_lam_nu)^2)- c1/((nu*pow_lam_nu)^3))
     if ("1" %in% moments) resu["1"] <- mu1
-    if ("2" %in% moments || "3" %in% moments) {
+    if ("2" %in% moments || "3" %in% moments || "4" %in% moments) {
       Var <- (pow_lam_nu/nu)*( 1 + c1/((nu*pow_lam_nu)^2) + 2*c1/((nu*pow_lam_nu)^3)) # >0 when nu>1
       if ("2" %in% moments) resu["2"] <- mu1^2 + Var # supp to mu1^2 when nu>1
     }
-    if ("3" %in% moments) {
+    if ("3" %in% moments || "4" %in% moments) {
       k3 <- (pow_lam_nu/nu^2)*( 1 - c1/((nu*pow_lam_nu)^2) -4*c1/((nu*pow_lam_nu)^3))
       resu["3"] <- mu1^3 + 3*mu1*Var +k3
+    }
+    if ("4" %in% moments) {
+      k4 <- (pow_lam_nu/nu^3)*( 1 + c1/((nu*pow_lam_nu)^2) +8*c1/((nu*pow_lam_nu)^3))
+      resu["4"] <- mu1^4 + 6*Var*mu1^2 + 3*Var^2 + 4*k3*mu1 + k4
     }
   } else {
     denum <- .COMP_Z(lambda=lambda,nu=nu) # -> calling .COMP_Pr_moments( use_asympto=TRUE) ... 
@@ -180,6 +184,13 @@
       # cotinuity correction wrt poisson: 
       corr <- .COMP_Z_ratio(.COMP_Z_n3(lambda=lambda,nu=1), denum_corr) ## poisson value by general approx
       resu["3"] <- resu["3"]+(lambda*(1+lambda*(3+lambda))-corr) ## approx_any_nu+(exact_poi-approx_poi): exact in nu=1
+    }
+    if ("4" %in% moments) {
+      num <- .COMP_Z_n4(lambda=lambda,nu=nu)
+      resu["4"] <- .COMP_Z_ratio(num,denum)
+      # cotinuity correction wrt poisson: 
+      corr <- .COMP_Z_ratio(.COMP_Z_n4(lambda=lambda,nu=1), denum_corr) ## poisson value by general approx
+      resu["4"] <- resu["4"]+(lambda*(1+lambda*(7+lambda*(6+lambda)))-corr) ## approx_any_nu+(exact_poi-approx_poi): exact in nu=1
     }
   }
   return(resu)
@@ -287,6 +298,14 @@
   # return(c(logScaleFac=logScaleFac,scaled=scaled)) ## Z_n3 = exp(logScaleFac)*scaled
 }
 
+.COMP_Z_n4 <- function(eta,nu,lambda=exp(eta),maxn=.COMP_maxn(lambda,nu)){
+  if (missing(eta)) eta <- log(lambda)
+  resu <- .COMP_Z_moment(moment=4,eta=eta,nu=nu,lambda=lambda,maxn=maxn, use_asympto=FALSE)
+  return(resu)
+}
+
+
+
 .COMP_Z_lfacn <- function(eta,nu,lambda=exp(eta),maxn=.COMP_maxn(lambda,nu)){
   floorn <- floor(maxn)
   epsn <- maxn - floorn
@@ -343,6 +362,7 @@
   return(sum(summand))
 }
 
+# for .r_resid_var():
 .dCOMP <- function(x, mu, family_env,
                    nu=family_env$nu,
                    lambda= family_env$mu2lambda(mu), # COMPoisson(nu=nu)$linkfun(mu,log=FALSE),
@@ -416,7 +436,7 @@
 }
 
 
-
+# called by the next two functions
 ..CMP_mu2lambda <- function(mu,nu, CMP_linkfun_objfn) { 
   if (nu==1) {
     lambda <- mu ## pb du code general est qu'objfn n'est alors que l'erreur numérique de linkinv()
@@ -466,7 +486,6 @@
     if (nu==0) {
       lambdas <- mu/(1+mu) 
     } else {
-      #lambdas <- sapply(mu, ..CMP_mu2lambda,nu=nu, CMP_linkfun_objfn=parent.env(environment())$CMP_linkfun_objfn)
       lambdas <- numeric(length(mu))
       for (it in seq_along(mu)) lambdas[it] <- ..CMP_mu2lambda(mu[it],nu=nu, CMP_linkfun_objfn=parent.env(environment())$CMP_linkfun_objfn)
     }
@@ -477,6 +496,7 @@
 
 
 # different return value
+# Defines COMPoisson(link="loglambda")$linkfun 
 .CMP_loglambda_linkfun <- function(mu) {## scalar or vector
   lambdas <- attr(mu,"lambda")
   if ( is.null(lambdas)) {
@@ -484,7 +504,6 @@
     if (nu==0) {
       lambdas <- mu/(1+mu) 
     } else {
-      #lambdas <- sapply(mu, ..CMP_mu2lambda,nu=nu, CMP_linkfun_objfn=parent.env(environment())$CMP_linkfun_objfn)
       lambdas <- numeric(length(mu))
       for (it in seq_along(mu)) lambdas[it] <- ..CMP_mu2lambda(mu[it],nu=nu, CMP_linkfun_objfn=parent.env(environment())$CMP_linkfun_objfn)
     }
@@ -535,7 +554,9 @@
 .CMP_dev_resids <- function(y, mu, wt, muetaenv=NULL){
   # must accept, among others, vector y and scalar mu.
   familyenv <- parent.env(environment()) # parent envir of COMPoisson()$dev.resids
-  lambdas <- familyenv$mu2lambda(mu=mu) 
+  if (is.null(muetaenv)) {
+    lambdas <- familyenv$mu2lambda(mu=mu) 
+  } else lambdas <- muetaenv$lambdas
   nu <- familyenv$nu
   n <- length(y)
   #
@@ -662,52 +683,71 @@
   }
 }
 
-.CMP_thetaMuDerivs <- function(mu,family, muetaenv=NULL) { # computation of derivatives of inverse of .CMP_calc_dlW_deta_locfn...
-  if (is.null(muetaenv)) {
-    CMP_env <- environment(family$aic)
-    COMP_nu <- CMP_env$nu
-    if (COMP_nu==1) return(list(Dtheta.Dmu=1/mu, D2theta.Dmu2= - 1/mu^2))
-    # ELSE
-    lambdas <- CMP_env$mu2lambda(mu)
-    len <- length(mu)
-    Dtheta.Dmu <- D2theta.Dmu2 <- numeric(len)
-    for (i in seq_len(len)) {
-      lambdai <- lambdas[[i]]
-      if (lambdai==0) {
-        Dtheta.Dmu <- 1e8 # 1/lambda
-        D2theta.Dmu2 <- - 1e16 # -1/lambda^2
-      } else {
-        moments <- .COMP_Pr_moments(lambda=lambdai,nu=COMP_nu,moments=c("2","3"))
-        mui <- mu[[i]]
-        V <- moments[["2"]] - mui^2 # ...that's the family $variance()...
-        Dtheta.Dmu[i] <- 1/V
-        D2theta.Dmu2[i] <- (moments[["2"]] * (1 + mui) - moments[["3"]] - V*(1-2*mui) - mui^2)/V^3 # computation appended to COMP_Z.nb
-      }
-    }
-  } else {
-    # computation of derivatives of inverse of .CMP_calc_dlW_deta_locfn...
-    if (muetaenv$nu==1) return(list(Dtheta.Dmu=1/mu, D2theta.Dmu2= - 1/mu^2))
-    # ELSE
-    len <- muetaenv$len
-    lambdas <- muetaenv$lambdas
-    EX <- muetaenv$EX
-    EX2 <- muetaenv$EX2
-    EX3 <- muetaenv$EX3
-    Dtheta.Dmu <- D2theta.Dmu2 <- numeric(len)
-    for (i in seq_len(len)) {
-      lambdai <- lambdas[[i]]
-      if (lambdai==0) {
-        Dtheta.Dmu <- 1e8 # 1/lambda
-        D2theta.Dmu2 <- - 1e16 # -1/lambda^2
-      } else {
-        EXi <- EX[[i]]
-        V <- EX2[[i]] - EXi^2 # ...that's the family $variance()...
-        Dtheta.Dmu[i] <- 1/V
-        D2theta.Dmu2[i] <- (EX2[[i]] * (1 + EXi) - EX3[[i]] - V*(1-2*EXi) - EXi^2)/V^3 # computation appended to COMP_Z.nb
-      }
+.CMP_thetaMuDerivs_2 <- function(muetaenv) { # computation of derivatives of inverse of .CMP_calc_dlW_deta_locfn...
+  
+  # computation of derivatives of inverse of .CMP_calc_dlW_deta_locfn...
+  if (muetaenv$nu==1) {
+    mu <- muetaenv$mu
+    return(list(Dtheta.Dmu=1/mu, D2theta.Dmu2= - 1/mu^2))
+  }
+  # ELSE
+  len <- muetaenv$len
+  lambdas <- muetaenv$lambdas
+  EX <- muetaenv$EX
+  EX2 <- muetaenv$EX2
+  EX3 <- muetaenv$EX3
+  Dtheta.Dmu <- D2theta.Dmu2 <- numeric(len)
+  for (i in seq_len(len)) {
+    lambdai <- lambdas[[i]]
+    if (lambdai==0) {
+      Dtheta.Dmu[i] <- 1e8 # 1/lambda
+      D2theta.Dmu2[i] <- - 1e16 # -1/lambda^2
+    } else {
+      EXi <- EX[[i]]
+      V <- EX2[[i]] - EXi^2 # ...that's the family $variance()...
+      Dtheta.Dmu[i] <- 1/V
+      # D2theta.Dmu2[i] <- (EX2[[i]] * (1 + EXi) - EX3[[i]] - V*(1-2*EXi) - EXi^2)/V^3 # Same as:
+      D2theta.Dmu2[i] <- (3*V*EXi - EX3[[i]] + EXi^3)  /V^3 # computation to COMP_Z.nb
     }
   }
+  
   return(list(Dtheta.Dmu=Dtheta.Dmu,D2theta.Dmu2=D2theta.Dmu2))
+}
+
+.CMP_thetaMuDerivs_3 <- function(muetaenv) { # computation of derivatives of inverse of .CMP_calc_dlW_deta_locfn... 
+  # code redundancy with previous fn seems acceptable (OK from efficiency viewpoint: functions not called on the same muetaenv)
+  
+  # computation of derivatives of inverse of .CMP_calc_dlW_deta_locfn...
+  if (muetaenv$nu==1) {
+    mu <- muetaenv$mu
+    return(list(Dtheta.Dmu=1/mu, D2theta.Dmu2= - 1/mu^2, D3theta.Dmu3= 2/mu^3)) # for theta= log(mu)
+  }
+  # ELSE
+  len <- muetaenv$len
+  lambdas <- muetaenv$lambdas
+  EX <- muetaenv$EX
+  EX2 <- muetaenv$EX2
+  EX3 <- muetaenv$EX3
+  EX4 <- muetaenv$EX4
+  Dtheta.Dmu <- D2theta.Dmu2 <- D3theta.Dmu3 <- numeric(len)
+  for (i in seq_len(len)) {
+    lambdai <- lambdas[[i]]
+    if (lambdai==0) {
+      Dtheta.Dmu[i] <- 1e8 # 1/lambda
+      D2theta.Dmu2[i] <- - 1e16 # -1/lambda^2
+      D3theta.Dmu3[i] <- - 2e24 # 2/lambda^3
+    } else {
+      EXi <- EX[[i]]
+      V <- EX2[[i]] - EXi^2 # ...that's the family $variance()...
+      Dtheta.Dmu[i] <- 1/V
+      # D2theta.Dmu2[i] <- (EX2[[i]] * (1 + EXi) - EX3[[i]] - V*(1-2*EXi) - EXi^2)/V^3 # Same as:
+      D2theta.Dmu2[i] <- (3*V*EXi - EX3[[i]] + EXi^3)  /V^3 # computation in COMP_Z.nb
+      D3theta.Dmu3[i] <- 3*V*D2theta.Dmu2[i]^2 +
+        (3*V*EX2[[i]]- EX4[[i]]+EX3[[i]]*EXi-3*EXi*D2theta.Dmu2[i]*V^3)/V^4
+    }
+  }
+  
+  return(list(Dtheta.Dmu=Dtheta.Dmu, D2theta.Dmu2=D2theta.Dmu2, D3theta.Dmu3=D3theta.Dmu3))
 }
 
 
@@ -762,18 +802,31 @@ COMPoisson <- function(nu = stop("COMPoisson's 'nu' must be specified"),
     n <- rep.int(1, nobs)
     mustart <- y + 0.1
   })
+  DlogLDmu <- function(mu, y, thetaMuDerivs) { drop((y-mu)*thetaMuDerivs$Dtheta.Dmu) } # inefficiency as optional muetaenv not available # also (y-mu)*.CMP_thetaMuDerivs(mu, family,muetaenv, )$Dtheta.Dmu
+  D2logLDmu2 <- function(mu, y, thetaMuDerivs) { drop( -thetaMuDerivs$Dtheta.Dmu +(y-mu)*thetaMuDerivs$D2theta.Dmu2) }
+  D3logLDmu3 <- function(mu, y, thetaMuDerivs) { drop( -2*thetaMuDerivs$D2theta.Dmu2 + (y-mu)*thetaMuDerivs$D3theta.Dmu3) }
+  D2muDeta2 <- .D2muDeta2(linktemp)
+  D3muDeta3 <- .D3muDeta3(linktemp)
   simfun <- .CMP_simfun 
+
   environment(dev.resids) <- environment(aic) <- environment(simfun) <- environment(mu2lambda) <- 
     environment(variance) <- environment(lambda2mu) <- environment() ## containing nu
+  
   ## Change the parent.env of all functions that have the same envir as aic(): 
   parent.env(environment(aic)) <- environment(.dCOMP) ## gives access to spaMM:::.dCOMP and other .COMP_ fns
-  structure(list(family = structure("COMPoisson",
-                                    withArgs=quote(paste0("COMPoisson(nu=",signif(nu,4),")"))), 
-                 link = linktemp, linkfun = linkfun,           mu2lambda=mu2lambda,
-                 linkinv = linkinv, variance = variance, dev.resids = dev.resids, 
-                 aic = aic, mu.eta = mu.eta, initialize = initialize, 
-                 validmu = validmu, valideta = valideta, simulate = simfun), 
-            class = "family")
+  structure(
+    list(
+      family = structure("COMPoisson",
+                         withArgs=quote(paste0("COMPoisson(nu=",signif(nu,4),")"))), 
+      link = linktemp, linkfun = linkfun,           mu2lambda=mu2lambda,
+      linkinv = linkinv, variance = variance, dev.resids = dev.resids, 
+      aic = aic, mu.eta = mu.eta, initialize = initialize, 
+      validmu = validmu, valideta = valideta, simulate = simfun, 
+      DlogLDmu = DlogLDmu, D2logLDmu2 = D2logLDmu2, D3logLDmu3 = D3logLDmu3, 
+      D2muDeta2 = D2muDeta2, D3muDeta3 = D3muDeta3,
+      flags =list(obs=TRUE, exp=TRUE, canonicalLink=(linktemp=="loglambda"), LLgeneric=TRUE) 
+    ), class = c("LLF","family")  
+  )
 }
 
 # A lot of small function so that their variables are local
@@ -790,6 +843,10 @@ COMPoisson <- function(nu = stop("COMPoisson's 'nu' must be specified"),
 
 .CMP_asympto_k3 <- function(pow_lam_nu, nu, c1) {
   (pow_lam_nu/nu^2)*( 1 - c1/((nu*pow_lam_nu)^2) -4*c1/((nu*pow_lam_nu)^3))
+}
+
+.CMP_asympto_k4 <- function(pow_lam_nu, nu, c1) {
+  (pow_lam_nu/nu^3)*( 1 + c1/((nu*pow_lam_nu)^2) +8*c1/((nu*pow_lam_nu)^3))
 }
 
 
@@ -818,9 +875,18 @@ COMPoisson <- function(nu = stop("COMPoisson's 'nu' must be specified"),
   uncorr + (lambda*(1+lambda*(3+lambda))-corr) ## approx_any_nu+(exact_poi-approx_poi): exact in nu=1
 }
 
+.CMP_series_EX4 <- function(lambda, nu, denum_Z, denum_corr) {
+  num <- .COMP_Z_n4(lambda=lambda,nu=nu)
+  uncorr <- .COMP_Z_ratio(num,denum_Z)
+  # cotinuity correction wrt poisson: 
+  corr <- .COMP_Z_ratio(.COMP_Z_n4(lambda=lambda,nu=1), denum_corr) ## poisson value by general approx
+  uncorr + (lambda*(1+lambda*(7+lambda*(6+lambda)))-corr) ## approx_any_nu+(exact_poi-approx_poi): exact in nu=1
+}
+
 .CMP_muetaenv <- function(family, pw, eta) {
   # cat(crayon::bgRed("NEW muetaenv"))
-  EX <- c1 <- denum_Z <- lambdas <- pow_lams_nu <- this <- use_asympto <- Vmu <- dmudeta <- mu <- sane_eta <- NULL 
+  EX <- c1 <- denum_Z <- lambdas <- pow_lams_nu <- this <- use_asympto <- Vmu <- dmudeta <- mu <- 
+    sane_eta <- NULL 
   nu <- environment(family$aic)$nu
   len <- length(eta)
   muetaenv <- list2env(list(pw=eval(pw), 
@@ -879,14 +945,15 @@ COMPoisson <- function(nu = stop("COMPoisson's 'nu' must be specified"),
     EX2 <- numeric(len)
     for (EX2_it in seq_len(len)) {
       if (lambdas[[EX2_it]]==0) {
-        resu[[EX2_it]] <- 0
+        EX2[[EX2_it]] <- 0
       } else {
         if (use_asympto[[EX2_it]]) {      
-          Var[[EX2_it]] <- .CMP_asympto_Var(pow_lam_nu=pow_lams_nu[[EX2_it]], nu=nu, c1=c1)
+          vari <- .CMP_asympto_Var(pow_lam_nu=pow_lams_nu[[EX2_it]], nu=nu, c1=c1)
           EXi <- EX[[EX2_it]]
-          EX2[[EX2_it]] <- EXi*EXi + Var[[EX2_it]] # supp to mu1^2 when nu>1
+          EX2[[EX2_it]] <- EXi*EXi + vari # supp to mu1^2 when nu>1
         } else {
-          EX2[[EX2_it]] <- .CMP_series_EX2(lambda=lambdas[[EX2_it]], nu=nu, denum_Z=denum_Z[[EX2_it]], denum_corr=denum_corr[[EX2_it]])
+          EX2[[EX2_it]] <- .CMP_series_EX2(lambda=lambdas[[EX2_it]], nu=nu, denum_Z=denum_Z[[EX2_it]], 
+                                           denum_corr=denum_corr[[EX2_it]])
         }
       }
     } 
@@ -896,13 +963,13 @@ COMPoisson <- function(nu = stop("COMPoisson's 'nu' must be specified"),
     EX3 <- numeric(len)
     for (EX3_it in seq_len(len)) {
       if (lambdas[[EX3_it]]==0) {
-        resu[[EX3_it]] <- 0
+        EX3[[EX3_it]] <- 0
       } else {
         if (use_asympto[[EX3_it]]) {      
           k3 <-  .CMP_asympto_k3(pow_lam_nu=pow_lams_nu[[EX3_it]], nu=nu, c1=c1)
-          Var[[EX3_it]] <- .CMP_asympto_Var(pow_lam_nu=pow_lams_nu[[EX3_it]], nu=nu, c1=c1) # __F I X M E__ slight inefficiency: this is computed in several places (hence the storing vector is useless)
+          vari <- .CMP_asympto_Var(pow_lam_nu=pow_lams_nu[[EX3_it]], nu=nu, c1=c1) # __F I X M E__ slight inefficiency: this is computed in several places (hence the storing vector is useless)
           EXi <- EX[[EX3_it]]
-          EX3[[EX3_it]] <- EXi*EXi*EXi + 3*EXi*Var[[EX3_it]] + k3
+          EX3[[EX3_it]] <- EXi*EXi*EXi + 3*EXi*vari + k3
         } else {
           EX3[[EX3_it]] <- .CMP_series_EX3(lambda=lambdas[[EX3_it]], nu=nu, denum_Z=denum_Z[[EX3_it]], denum_corr=denum_corr[[EX3_it]])
         }
@@ -910,8 +977,36 @@ COMPoisson <- function(nu = stop("COMPoisson's 'nu' must be specified"),
     } 
     EX3
   }, assign.env = muetaenv, eval.env = muetaenv)
+  delayedAssign("EX4", {
+    EX4 <- numeric(len)
+    for (EX4_it in seq_len(len)) {
+      if (lambdas[[EX4_it]]==0) {
+        EX4[[EX4_it]] <- 0
+      } else {
+        if (use_asympto[[EX4_it]]) {      
+          k4 <-  .CMP_asympto_k4(pow_lam_nu=pow_lams_nu[[EX4_it]], nu=nu, c1=c1)
+          k3 <-  .CMP_asympto_k3(pow_lam_nu=pow_lams_nu[[EX4_it]], nu=nu, c1=c1)
+          vari <- .CMP_asympto_Var(pow_lam_nu=pow_lams_nu[[EX4_it]], nu=nu, c1=c1) # __F I X M E__ slight inefficiency: this is computed in several places (hence the storing vector is useless)
+          EXi <- EX[[EX4_it]]
+          EXi_sq <- EXi*EXi
+          EX4[[EX4_it]] <- EXi_sq*EXi_sq + 6*vari*EXi_sq + 3*vari^2 + 4*k3*EXi + k4
+        } else {
+          EX4[[EX4_it]] <- .CMP_series_EX4(lambda=lambdas[[EX4_it]], nu=nu, denum_Z=denum_Z[[EX4_it]],
+                                           denum_corr=denum_corr[[EX4_it]])
+        }
+      }
+    } 
+    EX4
+  }, assign.env = muetaenv, eval.env = muetaenv)
   delayedAssign("Vmu", {family$variance(mu, muetaenv=this)}, assign.env = muetaenv, eval.env = muetaenv)
-  delayedAssign("GLMweights", {pw * dmudeta^2 /Vmu}, assign.env = muetaenv, eval.env = muetaenv)
+  
+  delayedAssign("GLMweights", {
+    GLMweights <- pw * dmudeta^2 /Vmu
+    attr(GLMweights, "unique") <- FALSE ## might actually be true sometimes
+    attr(GLMweights, "is_unit") <- FALSE
+    GLMweights
+  }, assign.env = muetaenv, eval.env = muetaenv)
+  
   if (family$link=="loglambda") {
     muetaenv$lambdas <- exp(muetaenv$sane_eta)
     muetaenv$mu <- family$linkinv(eta, muetaenv=muetaenv) # calls muetaenv$EX hence must be after its definition
@@ -923,6 +1018,13 @@ COMPoisson <- function(nu = stop("COMPoisson's 'nu' must be specified"),
       family$mu2lambda(mu) }, assign.env = muetaenv, eval.env = muetaenv)
     delayedAssign("dmudeta", {family$mu.eta(sane_eta)}, assign.env = muetaenv, eval.env = muetaenv)
   }
+  
+  delayedAssign("thetaMuDerivs_2", { # which are derivatives of loglambda needed for fixed-effect models
+    .CMP_thetaMuDerivs_2(muetaenv=this)
+  }, assign.env = muetaenv, eval.env = muetaenv)
+  delayedAssign("thetaMuDerivs_3", { # which are derivatives of loglambda needed for Mixed-effect models
+    .CMP_thetaMuDerivs_3(muetaenv=this)
+  }, assign.env = muetaenv, eval.env = muetaenv)
   return(muetaenv)
 }
 

@@ -56,7 +56,7 @@ An optional (sub)list of values of the parameters specified through \code{init},
   \item{processed}{ For programming purposes, not documented.}
   \item{objective}{ For development purpose, not documented.}
   \item{\dots}{
-Optional arguments passed to (or operating as if passed to) \code{\link{HLCor}}, \code{\link{HLfit}} or  \code{\link{mat_sqrt}}, for example \code{rand.family}, \code{control.HLfit} , \code{verbose} or the \code{distMatrix} argument of \code{HLCor} (so that estimation of Matern or Cauchy parameters can be combined with use of an ad hoc distance matrix). In a \code{fitme} call, the \code{verbose} vector of booleans may include a \code{TRACE=TRUE} element, in which case information is displayed for each set of correlation and dispersion parameter values considered by the optimiser. Non-boolean values of \code{TRACE} are meaningful, but the source code of \code{spaMM:::.do_TRACE} should be consulted for their meaning. 
+Optional arguments passed to (or operating as if passed to) \code{\link{HLCor}}, \code{\link{HLfit}} or  \code{\link{mat_sqrt}}, for example \code{rand.family}, \code{control.HLfit} , \code{verbose} or the \code{distMatrix} argument of \code{HLCor} (so that estimation of Matern or Cauchy parameters can be combined with use of an ad hoc distance matrix). In a \code{fitme} call, the \code{verbose} vector of booleans may include a \code{TRACE=TRUE} element, in which case information is displayed for each set of correlation and dispersion parameter values considered by the optimiser (see \code{\link{verbose}} for further information, mostly useless except for development purposes). 
 % FIXME : ? :
 %Arguments that do not fit within these functions are detected and a warning is issued.
 }

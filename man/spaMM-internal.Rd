@@ -1,7 +1,6 @@
 \name{spaMM-internal}
 
-% TODO ___F I X M E___ check vignette for comments on glmer; document recent changes
-% * implement outer optim of beta starting from the etaFix (+ REMLformula) code => avoid LevM costs for COMP ? also allowing ome non-linear modelling
+% TODO ___F I X M E___ % * retry outer beta estim ? I have something that runs, see 'outerbetaML' test
 % * Something about .predictions methods when predict returns a data frame ?
 
 \alias{gridIMRF} % ___F I X M E___
@@ -16,6 +15,7 @@
 \alias{.HLfit_body_augZXy} % alias bc exported bc it must be exported to be traceable
 \alias{.solve_IRLS_as_ZX} %  alias bc exported bc it must be exported to be traceable
 \alias{.solve_IRLS_as_spprec} % alias bc exported bc it must be exported to be traceable
+\alias{.is_spprec} % exported bc widely used in tests
 
 \alias{dimnames.bigq} % hidden method for base:: generic
 

@@ -91,7 +91,7 @@ hatvalues.HLfit <- function(model, type="projection", which="resid", force=FALSE
         if (which=="ranef") lev <- lev$ranef
       } else {
         lev <- get_from_MME(sXaug,which=loctype, B=c("phi", "lambda")) # loctype=hatval or hatval_Z
-        if (is.list(lev)) { # depedns on mMatrix_method
+        if (is.list(lev)) { # depends on corr_method
           if (which=="resid") lev <- lev$lev_phi
           if (which=="ranef") lev <- lev$lev_lambda 
         } else {
@@ -159,8 +159,17 @@ hatvalues.HLfit <- function(model, type="projection", which="resid", force=FALSE
         hatvals$ranef <- hatvals$ranef - dleve  
       } 
       ## 
-      if (anynull_phi.Fix) { # hence not binomial hence BinomialDen (which is in w.resid anyway) is 1. No further BinomialDen here.
-        dh0deta <- ( w.resid *(y-mu)/muetablob$dmudeta ) # wafers test appears to imply that it is w.resid, not H_w.resid here.
+      if (anynull_phi.Fix) { # => *there is some Gamma or gaussian *GLM* hence not binomial hence BinomialDen (which is in w.resid anyway) is 1. No further BinomialDen here.
+        if (processed$how$obsInfo) { 
+          if (is.list(w.resid)) { # mv obsInfo case. Can still be GLM but no special code for that case => always as if no GLM
+            dh0deta <- .unlist(lapply(muetablob$mv, getElement, name="dlogcLdeta")) # =  drop(.unlist(w.resid$mvlist)*(y-mu)/muetablob$dmudeta) when only GLMs
+          } else {
+            dh0deta <- muetablob$dlogcLdeta # test code: gaussian(inverse) fit of wafers data in test-devel-LLM
+            # it happens that this is a single Gamma or gaussian *GLM* so drop(.unlist(w.resid$mvlist)*(y-mu)/muetablob$dmudeta) would be correct if GLMweights and w.resid where computed.
+          }
+        } else { # => single *there is some Gamma or gaussian GLM*. Whether obsInfo or not, we still have w.resid vector (but in obsInfo case, we could use muetablob$dlogcLdeta)
+          dh0deta <- ( w.resid *(y-mu)/muetablob$dmudeta ) #  muetablob$dlogcLdeta # 
+        }
         dvdlogphiMat <- .calc_dvdlogphiMat_new(dh0deta=dh0deta,ZAL=ZAL, 
                                                sXaug=sXaug)  # not d2hdv2_info
         dleve <- as.vector(leve__dlW_deta_or_v__ZALI %*% dvdlogphiMat) # (r+n) . (r+n)Xr . rXn = n (each element is a sum over r+n terms= a trace)

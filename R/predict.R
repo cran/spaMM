@@ -485,8 +485,28 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
     names(tmp) <- oldlevels
     newLv_env$diag_cov_newLv_newLv_list[[new_rd]] <- tmp[newlevels]
   }
-  # no reurn value, the newLv_env ahs been modified
-}
+}   # no return value, the newLv_env has been modified
+
+.assign_newLv_for_newlevels_fullcorrMatrix <- function(newoldC, 
+                                                   oldlevels, # those in the data
+                                                   newlevels, newLv_env, new_rd, corr.model, which_mats, ranefs) {
+  ## this is called if re.form... or pdep_effects() but need for newdata too (test by permuting data)
+  # "test-predVar-Matern-corrMatrix" shows newdata working with corrMatrix, when newlevels are within oldlevels 
+  fulllevels <- rownames(newoldC) # full allowing some not in the data
+  if (is.null(fulllevels)) stop("is.null(rownames(newoldC))")
+  if (length(setdiff(newlevels,fulllevels))) stop(paste0("Found new levels for a '",corr.model,"' random effect."))
+  if (which_mats$no) newLv_env$cov_newLv_oldv_list[[new_rd]] <- structure(newoldC[newlevels, oldlevels,drop=FALSE],
+                                                                          ranefs=ranefs[[new_rd]])
+  if (which_mats$nn[new_rd]) {
+    newLv_env$cov_newLv_newLv_list[[new_rd]] <- newoldC[newlevels, newlevels ,drop=FALSE]
+  } else {
+    fulldiag <- diag(x=newoldC)
+    names(fulldiag) <- fulllevels
+    newLv_env$diag_cov_newLv_newLv_list[[new_rd]] <- fulldiag[newlevels]
+  }
+}  # no return value, the newLv_env has been modified
+
+
 
 .make_new_corr_lists <- function(object,
                                  locdata, ## a list of arrays for selected ranefs, with selected coordinates, if 'preprocessed' by get_predCov_var_fix(), 
@@ -611,11 +631,27 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
             }
             #cat(crayon::red("newoldC"));str(newoldC)
           }
-        } else if (corr.model %in% c("corrMatrix","adjacency")) {
+        } else if (corr.model =="adjacency") {
           newoldC <- .tcrossprod(object$strucList[[old_rd]], perm=TRUE) ##  Can reconstruct permuted (consistent with perm of cols of Z) corrMatrix from its CHM factor
-          colnames(newoldC) <- rownames(newoldC) <- .get_oldlevels(object, old_rd, fix_info)
+          colnames(newoldC) <- rownames(newoldC) <- .get_oldlevels(object, old_rd, fix_info) # those in the data
           .assign_newLv_for_newlevels_corrMatrix(newoldC, newlevels=colnames(newZAlist[[new_rd]]), 
                                                  newLv_env, new_rd, corr.model, which_mats, ranefs)
+          # assign to newLv_env$cov_newLv_oldv_list, cov_newLv_newLv_list, diag_cov_newLv_newLv_list
+        } else if (corr.model=="corrMatrix") {
+          if (corr.model=="corrMatrix" && is.null(newoldC <- object$ranef_info$sub_corr_info$corrMatrices[[old_rd]])) {
+            newoldC <- .tcrossprod(object$strucList[[old_rd]], perm=TRUE) ##  Can reconstruct permuted (consistent with perm of cols of Z) corrMatrix from its CHM factor
+            colnames(newoldC) <- rownames(newoldC) <- .get_oldlevels(object, old_rd, fix_info)  # those in the data
+            .assign_newLv_for_newlevels_corrMatrix(newoldC, 
+                                                   newlevels=colnames(newZAlist[[new_rd]]), 
+                                                   newLv_env, new_rd, corr.model, which_mats, ranefs)
+          } else {
+            # the tentative newoldC in the test condition should exist when the full corrMatrix has more levels than the ZA. Cf .add_ranef_returns().
+            .assign_newLv_for_newlevels_fullcorrMatrix(newoldC, # has more than oldlevels
+                                                   oldlevels=.get_oldlevels(object, old_rd, fix_info), # those in the data
+                                                   newlevels=colnames(newZAlist[[new_rd]]), 
+                                                   newLv_env, new_rd, corr.model, which_mats, ranefs)
+          }
+          
           # assign to newLv_env$cov_newLv_oldv_list, cov_newLv_newLv_list, diag_cov_newLv_newLv_list
         } else if (corr.model == "IMRF") {
           ## in this case a new A matrix (by .get_new_AMatrices()) must be computed (elsewhere: it goes in newZAlist)
@@ -1203,9 +1239,12 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
   # at this precise point 'respVar' is the predVar rather that the response variance (since residual variance is added next). 
   # For interval computations we always use the predVar on the linear predictor scale, already stored as a an attribute of 'resu'.
   # rather than the result of .to_respScale_var:
-  if ( ! is.null(respVar)) respVar <- .to_respScale_var(respVar, ppblob, object) 
-                                                                                 # which is 
-  if (variances$residVar) resu <- .add_residVar(object, resu, fv=ppblob$fv, locdata, respVar, variances)
+  # ___F I X M E___ maybe we can remove the variable name ambiguity (and even define smaller functions...)
+  if (variances$respVar) {
+    respVar <- .to_respScale_var(respVar, ppblob, object) 
+  } else respVar <- NULL # remove any ambiguity
+  # 
+  if (variances$residVar) resu <- .add_residVar(object, resu, fv=ppblob$fv, locdata, respVar, variances) # may affect attributes residVar AND respVar
   if ( is.matrix(resu) && NCOL(resu)==1L) {
     class(resu) <- c("predictions",class(resu))
   } ## for print.predictions method which expects a 1-col matrix

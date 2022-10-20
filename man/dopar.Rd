@@ -4,7 +4,7 @@
 Interface for parallel computations
 }
 \description{
-An interface to apply some function \code{fn} in parallel on columns of a matrix. \code{dopar} is used internally in spaMM, but is not logically restricted to mixed-effect applications, hence it can be used more widely. Depending on the \code{nb_cores} argument, parallel or serial computation is performed. A socket cluster is used by default for parallel computations, but a fork cluster can be requested on linux and alike operating systems by using argument \code{cluster_args=list(type="FORK")}.
+An interface primarily designed to apply some function \code{fn} in parallel on columns of a matrix, although other uses are possible. Depending on the \code{nb_cores} argument, parallel or serial computation is performed. A socket cluster is used by default for parallel computations, but a fork cluster can be requested on linux and alike operating systems by using argument \code{cluster_args=list(type="FORK")}.
 }
 \usage{
 dopar(newresp, fn, nb_cores = NULL, fit_env, control = list(), 
@@ -14,10 +14,10 @@ dopar(newresp, fn, nb_cores = NULL, fit_env, control = list(),
 }
 \arguments{
   \item{newresp}{
-A matrix on whose columns \code{fn} will be applied (e.g., as used internally in spaMM, the return value of a \code{simulate.HLfit()} call). 
+A matrix on whose columns \code{fn} will be applied (e.g., as used internally in \pkg{spaMM}, the return value of a \code{simulate.HLfit()} call); or an integer, then converted to a trivial matrix \code{matrix(seq(newresp),ncol=newresp,nrow=1)}.
 }
   \item{fn}{
-Function, whose first argument is named \code{y}, to be applied to each column of \code{newresp}.
+Function whose first argument is named \code{y}. The function will be applied for \code{y} taken to be each column of \code{newresp}.
 }
   \item{nb_cores}{
 Integer. Number of cores to use for parallel computations. If >1, a cluster of \code{nb_cores} nodes is used. Otherwise, no parallel computation is performed.

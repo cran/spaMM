@@ -333,7 +333,7 @@
     # lambda and phi factors enter in dV/dlog(.), computed instead of dV/d(.) to match dwdlog(.) vectors.
     #
     # use repres of two matrices large A and B, each as (thin) lhs %*% (flat) rhs   
-    ZAL <- get_ZALMatrix(object, force_bind = ! ("AUGI0_ZX_sparsePrecision" %in% object$MME_method) )
+    ZAL <- get_ZALMatrix(object, force_bind = ! (.is_spprec_fit(object)) )
     if ("loglambda" %in% names(dispcolinfo) || "rho" %in% names(dispcolinfo)) {
       invV.dV_info <- .calc_invV.dV_info(object, checklambda, invV_factors=invV_factors, ZAL=ZAL) ## $lhs= invV %*% ZALd and $lhs= t(ZALd)
       sublambda <- .unlist(invV.dV_info$lambda_list[checklambda])
@@ -385,7 +385,7 @@
     if ("logphi" %in% dispnames) { ## more transparent, but error if mismatch of conditions
       logphiInfo_blob <- .calc_logphiInfo(invV_factors, which=which(is_phiScalS), cum_nobs=cum_nobs, 
                                             phi_est=phi_est, w.resid=.get_H_w.resid(object),
-                                            spprec="AUGI0_ZX_sparsePrecision" %in% object$MME_method)
+                                            spprec=.is_spprec_fit(object))
       logdispInfo[dispcols$logphi,dispcols$logphi] <- logphiInfo_blob$logphiInfo 
       wresid_list <- logphiInfo_blob$wresid_list
       if ("loglambda" %in% dispnames) {

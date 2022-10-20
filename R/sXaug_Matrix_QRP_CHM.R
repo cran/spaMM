@@ -1,6 +1,7 @@
 # 'constructor' 
 # from Xaug which already has a *scaled* ZAL 
 def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale, 
+                                            nonSPD=NULL,
                                             force_QRP=NULL # ignored
                                             ) {
   n_u_h <- length(w.ranef)
@@ -11,8 +12,8 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
   attr(Xaug, "get_from") <- "get_from_MME.sXaug_Matrix_QRP_CHM_scaled"
   H_w.resid <- attr(weight_X,"H_w.resid")
   BLOB <- list2env(list(H_w.resid=H_w.resid,
-                                      signs=attr(weight_X,"signs"),
-                                      nonSPD=identical(attr(weight_X,"nonSPD"),TRUE)), parent=emptyenv())
+                                      signs=attr(H_w.resid,"signs"),
+                                      nonSPD=identical(nonSPD,TRUE)), parent=emptyenv())
   if (BLOB$nonSPD) {
     BLOB$WLS_mat_weights <- abs(H_w.resid)
   } else BLOB$WLS_mat_weights <- H_w.resid # same as in CHM_H methods when the two can be compared (all SPD cases => do not condition on BLOB$signs)
@@ -302,13 +303,13 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
     seq_n_u_h <- BLOB$seq_n_u_h
     rhs <- B
     rhs[seq_n_u_h] <- BLOB$invsqrtwranef * rhs[seq_n_u_h]
-    # Originally forgot to transpose; fixed 2022/08/05 v3.12.38" and retested between v3.12.54--3.13.0.
+    # Originally forgot to transpose; fixed 2022/08/05 v3.12.38" and retested between v[3.12.54--3.13.0[.
     # General impact of bug was a much larger value than the true Mg_solve_g, with confusing effects on nloptr tests (eg #362) wrongly suggesting old code was better. 
     # Had to adjust pot4improv by Mg_solve_g_fac to compensate this effect.
     if (.is_evaluated("solve_R_scaled", BLOB)) {
       rhs <- .crossprod(BLOB$solve_R_scaled, rhs[BLOB$perm]) # sum(crossprod(BLOB$solve_R_scaled,B[BLOB$perm])^2) = sum(crossprod(BLOB$solve_R_scaled[BLOB$sortPerm,],B)^2)
     } else rhs <- Matrix::solve(t(BLOB$R_scaled),rhs[BLOB$perm]) 
-    if  (is.null(BLOB$signs) || BLOB$nonSPD) { # ___F I X M E___ will need to compare this to other 'algebra's
+    if  (is.null(BLOB$signs) || BLOB$nonSPD) { # two cases where the WLS matrix is crossprod(R) 
       return(sum(rhs^2))
     } else return( sum((rhs)* drop(BLOB$invIm2QtdQ_ZX %*% (rhs)))) 
   } 
@@ -389,7 +390,7 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
         # Thus, when I reach here, I may or may not have inv_factor_wd2hdv2w available
         if ( ! is.null(BLOB$signs)) {
           if (.is_evaluated("inv_factor_wd2hdv2w",BLOB)) {
-            rhs <-  .Matrix_times_Dvec(BLOB$inv_factor_wd2hdv2w, rhs)
+            rhs <- BLOB$inv_factor_wd2hdv2w %*% rhs
             rhs <- BLOB$invIm2QtdQ_Z %*% rhs
             rhs <- .crossprod(BLOB$inv_factor_wd2hdv2w, rhs) 
           } else {

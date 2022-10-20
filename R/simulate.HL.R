@@ -72,8 +72,7 @@
   resu
 } ## vector-valued function from vector input
 
-.r_resid_var_over_cols <- function(needed, 
-                                   mu,  # a list over nsim !
+.r_resid_var_over_cols <- function(mu,  # a list over nsim !
                                    phiW, sizes, family, families, resp_range=NULL, is_mu_fix_btwn_sims,
                                    is_phiW_fix_btwn_sims=attr(phiW,"is_phiW_fix_btwn_sims"), nsim=1L, as_matrix=FALSE, mv_it=NULL) {
   if ( ! is.null(families)) {
@@ -81,7 +80,7 @@
     rowS <- vector("list", length(families))
     for (mv_it in seq_along(families)) {
       resp_range <- .subrange(cumul=cum_nobs, it=mv_it)
-      rowS[[mv_it]] <- .r_resid_var_over_cols(needed, mu, phiW=phiW[resp_range,,drop=FALSE], sizes=sizes[resp_range], 
+      rowS[[mv_it]] <- .r_resid_var_over_cols(mu, phiW=phiW[resp_range,,drop=FALSE], sizes=sizes[resp_range], 
                                               family=families[[mv_it]], families=NULL, resp_range=resp_range,
                                               is_mu_fix_btwn_sims=is_mu_fix_btwn_sims,
                                               is_phiW_fix_btwn_sims=is_phiW_fix_btwn_sims[mv_it], nsim=nsim, as_matrix=TRUE, mv_it=mv_it)
@@ -106,13 +105,13 @@
       family_par <- environment(family$aic)$nu
     } else if (famfam =="beta_resp") {
       family_par <- environment(family$aic)$prec
-    } else if (famfam  %in% c("negbin","negbin1")) {
+    } else if (famfam  %in% c("negbin","negbin1","negbin2")) {
       family_par <- environment(family$aic)$shape
       zero_truncated <- identical(family$zero_truncated,TRUE) 
     } else if (famfam == "poisson") {
       zero_truncated <- identical(family$zero_truncated,TRUE) 
     }
-    for (sim_it in seq_len(needed)) {
+    for (sim_it in seq_len(nsim)) {
       if (is.null(resp_range)) {
         mu_it <- mu[[sim_it]]
       } else mu_it <- structure(mu[[sim_it]][resp_range], p0=attr(mu[[sim_it]],"p0")[[mv_it]], mu_U=attr(mu[[sim_it]],"mu_U")[[mv_it]])
@@ -300,7 +299,7 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
         eta_fixed <- predict(object, newdata=newdata, type="link",
                              re.form=re.form,binding=NA,control=list(fix_predVar=FALSE), verbose=verbose)
         if (is.null(newdata)) { ## we simulate with all ranefs (treated conditionally|ranef or marginally) hence no selection of matrix
-          ZAL <- get_ZALMatrix(object, force_bind = ! ("AUGI0_ZX_sparsePrecision" %in% object$MME_method) )
+          ZAL <- get_ZALMatrix(object, force_bind = ! (.is_spprec_fit(object)) )
           cum_n_u_h <- attr(object$lambda,"cum_n_u_h")
           vec_n_u_h <- diff(cum_n_u_h)
         } else {
@@ -354,8 +353,8 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
     #    to avoid computing the distribution (cumprodfacs in .COMP_simulate()) nsim times.
     # The updated .r_resid_var() -> appears to manage that too (without calling COMPoisson()$simulate()), 
     #  .r_resid_var_over_cols() too (a distinct issue is that multivariate mu may loose the (COMP)-lambda attribute: __FIXME__?)
-    block <- .r_resid_var_over_cols(needed, mu, phiW, sizes, family=object$family, families=object$families, is_mu_fix_btwn_sims=is_mu_fix_btwn_sims,
-                                    nsim=nsim)
+    block <- .r_resid_var_over_cols(mu, phiW, sizes, family=object$family, families=object$families, is_mu_fix_btwn_sims=is_mu_fix_btwn_sims,
+                                    nsim=needed)
     if (is.null(resp_testfn)) {
       if (nsim==1L) block <- drop(block)
       return(block) 

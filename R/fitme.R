@@ -107,6 +107,7 @@
     }
     fixed$ranCoefs <- ranCoefs
   }
+  if (! is.null(fixed$lambda) && is.null(names(fixed$lambda))) names(fixed$lambda) <- seq_along(fixed$lambda)
   fixed
 }
 

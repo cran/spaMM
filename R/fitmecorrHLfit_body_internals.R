@@ -1,4 +1,5 @@
 .reformat_lambda <- function(user_lFix, nrand, namesTerms=NULL, full_lambda) {
+  if ( ! nrand) return(NULL) # ignores extra lambda # ___F I X M E___ add a warning in that case ?
   seq_nrand <- seq_len(nrand)
   if (full_lambda) { # 
     template <- rep(NA,nrand)
@@ -977,7 +978,7 @@
         init.optim$beta_prec <- NULL
       } # and this should have the effect that user lower and upper values should be ignored too.
     }  
-  } else if (family$family  %in% c("negbin","negbin1")) {
+  } else if (family$family  %in% c("negbin1","negbin2")) {
     if (inherits(substitute(shape, env=environment(family$aic)),"call")) {
       if (is.null(init.optim$NB_shape)) init.optim$NB_shape <- 1 # idem
     } else {
@@ -1112,7 +1113,7 @@
 
 .is.multi <- function(family) {
   # Where call at the end of fitting fn, 'family' is the evaluated argument of the call, possibly not yet interpreted as final family()
-  # i.e,, "negbin" -> character, negbin-> function, negbin() -> family (which is also a list!)
+  # i.e,, "negbin2" -> character, negbin2-> function, negbin2() -> family (which is also a list!)
   # EXCEPT that multi(...) -> list but not family
   return(
     is.list(family) && # i.e. value of multi(...), or value of <family>() 

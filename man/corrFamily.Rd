@@ -4,7 +4,7 @@
 Using corrFamily constructors and descriptors.
 }
 \description{
-One can declare and fit correlated random effects belonging to a user-defined correlation (or covariance) model (i.e., a parametric family of correlation matrices). This documentation is a first introduction to this feature. It is experimental in the sense that its design has been formalized only from a limited number of corrFamily examples, and that the documentation is not mature. Implementing prediction for random-effects defined in this way may be tricky. A distinct documentation \code{\link{corrFamily-design}} provides more information for the efficient design of new correlation models to be fitted in this way.  
+One can declare and fit correlated random effects belonging to a user-defined correlation (or covariance) model (i.e., a parametric family of correlation matrices, although degenerate case with no parameter are also possible). This documentation is a first introduction to this feature. It is experimental in the sense that its design has been formalized only from a limited number of corrFamily examples, and that the documentation is not mature. Implementing prediction for random-effects defined in this way may be tricky. A distinct documentation \code{\link{corrFamily-design}} provides more information for the efficient design of new correlation models to be fitted in this way.  
 
 A simple example of random-effect model implemented in this way is the autoregressive model of order \eqn{p} (AR(p) in the literature; specifically documented elsewhere, see \code{\link{ARp}}). It can be used as a formula term like other autocorrelated random-effects predefined in \pkg{spaMM}, to be fitted by \code{fitme}
 or \code{fitmv}:
@@ -38,7 +38,7 @@ List of 5
 }
 The meaning of these elements and some additional ones is explained below. 
 
-Only \code{Cf} and \code{tpar} are needed in all cases. If one designs a new descriptor where some other elements are absent, \pkg{spaMM} will try to provide plausible defaults for these elements. Further, if the descriptor does not provide parameter names (as the names of \code{tpar}, or in some more cryptic way), default names \code{"p1"}, \code{"p2"}... will be provided.    
+Only \code{Cf} and \code{tpar} are necessary elements of a corrFamily object. If one designs a new descriptor where some other elements are absent, \pkg{spaMM} will try to provide plausible defaults for these elements. Further, if the descriptor does not provide parameter names (as the names of \code{tpar}, or in some more cryptic way), default names \code{"p1"}, \code{"p2"}... will be provided.    
 }
 
 \usage{
@@ -85,9 +85,9 @@ These may be ad libitum, as design rules are defined only for the returned descr
 
 For prediction of autocorrelated random effects, one must first assess whether levels of the random effect not represented in the fit are possible in new data (corresponding to new spatial locations in geostatistical models, or new time steps in time series). In that case \code{need_Cnn} must be TRUE (Interpolated MRFs do not require this as all required random-effect levels are determined by the IMRF \code{mesh} argument rather than by the fitted data or new data).
 
-Next, for autocorrelated random effects where \code{need_Cnn} is TRUE, a \code{make_new_corr_lists} function must be provided, except when a \code{calc_corr_from_dist} function is instead provided (which may sufficient for models that construct the correlation from a spatial distance matrix). When \code{need_Cnn} is FALSE, a \code{make_new_corr_lists} function may still be needed. 
+Next, for autocorrelated random effects where \code{need_Cnn} is TRUE, a \code{make_new_corr_lists} function must be provided, except when a \code{calc_corr_from_dist} function is instead provided (which may be sufficient for models that construct the correlation from a spatial distance matrix). When \code{need_Cnn} is FALSE, a \code{make_new_corr_lists} function may still be needed. 
 
-Currently, there is (unfortunately) no better documentation about the design such functions than the source code of the \code{ARp} or \code{ARMA} constructors. It shows that the \code{make_new_corr_lists} function may assign matrices or vectors as elements of three lists contained in a \code{newLv_env} environment. A matrix is assigned in the \code{cov_newLv_oldv_list}, specifying correlations between \dQuote{new} levels of the random effect (implied by the new data) and \dQuote{old} levels (those already included in the design matrix of the random effect for the fit). If \code{need_Cnn} is TRUE, a second matrix may be assigned in the \code{cov_newLv_newLv_list}, specifying correlation between \dQuote{new} levels, and the diagonal of this matrix is assigned in the \code{diag_cov_newLv_newLv_list}. The overall structure of the code (the conditions where these assignments are performed, and the list indices), should be conserved. 
+The Examples section provides a simple example of such design, and the source code of the \code{ARp} or \code{ARMA} constructors provide further examples. They show that the \code{make_new_corr_lists} function may assign matrices or vectors as elements of three lists contained in a \code{newLv_env} environment. A matrix is assigned in the \code{cov_newLv_oldv_list}, specifying correlations between \dQuote{new} levels of the random effect (implied by the new data) and \dQuote{old} levels (those already included in the design matrix of the random effect for the fit). If \code{need_Cnn} is TRUE, a second matrix may be assigned in the \code{cov_newLv_newLv_list}, specifying correlation between \dQuote{new} levels, and the diagonal of this matrix is assigned in the \code{diag_cov_newLv_newLv_list}. The overall structure of the code (the conditions where these assignments are performed, and the list indices), should be conserved. 
 
 
 \bold{* Fitting a \code{corrFamily} without a constructor:}
@@ -110,4 +110,60 @@ This syntax is more complex than the one using a registered constructor, but it 
 }
 \seealso{
 See \code{\link{ARp}}, \code{\link{diallel}}, and \code{\link{MaternIMRFa}} for basic examples of using a predefined corrFamily descriptor, and \code{\link{corrFamily-design}} for more geeky stuff including examples of implementing simple new correlation families. 
+}
+\examples{
+\dontrun{
+### Minimal (with many features missing) reimplementation 
+#     of corrMatrix() terms as a corrFamily 
+
+
+corrMatrix_cF <- function(corrMatrix) {
+  
+  force(corrMatrix) # Makes it available in the environment of the functions next defined.
+  oldZlevels <- NULL
+  
+  initialize <- function(Zmatrix, ...) {
+    oldZlevels <<- colnames(Zmatrix) # Pass info about levels of the random effect in the data.
+  }
+  
+  Cf <- function(newlevels=oldZlevels ) {
+    if (length(newlevels)) {
+      corrMatrix[newlevels,newlevels]
+    } else corrMatrix[oldZlevels,oldZlevels] # for Cf(tpar=numeric(0L))
+  }
+  
+  calc_moreargs <- function(corrfamily, ...) {
+    list(init=c(),lower=c(),upper=c())
+  }
+  
+  make_new_corr_lists <- function(newLv_env, which_mats, newZAlist, new_rd, ...) {
+    newlevels <- colnames(newZAlist[[new_rd]])
+    newLv_env$cov_newLv_oldv_list[[new_rd]] <- corrMatrix[newlevels,oldZlevels, drop=FALSE]
+    if (which_mats$nn[new_rd]) {
+      newLv_env$cov_newLv_newLv_list[[new_rd]] <- corrMatrix[newlevels,newlevels, drop=FALSE]
+    } else { 
+      newLv_env$diag_cov_newLv_newLv_list[[new_rd]] <- rep(1,length(newlevels)) 
+    }
+  }
+  
+  list(Cf=Cf, tpar=numeric(0L), initialize=initialize, calc_moreargs=calc_moreargs, 
+       make_new_corr_lists=make_new_corr_lists,
+       tag="corrMatrix_cF") 
+}
+
+register_cF("corrMatrix_cF")
+
+# usage:
+
+data("blackcap") 
+MLcorMat <- MaternCorr(proxy::dist(blackcap[,c("latitude","longitude")]),
+                       nu=0.6285603,rho=0.0544659)
+corrmat <- proxy::as.matrix(MLcorMat, diag=1)
+
+fitme(migStatus ~ means+ corrMatrix_cF(1|name, corrMatrix=corrmat),data=blackcap,
+      corrMatrix=MLcorMat,method="ML")
+      
+unregister_cF("corrMatrix_cF") # Tidy things before leaving.         
+
+}
 }

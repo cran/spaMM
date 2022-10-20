@@ -12,7 +12,7 @@ if(requireNamespace("pedigreemm", quietly=TRUE)) {
            sire = as.integer(c(NA,NA,1, 1,4,5)),
            dam  = as.integer(c(NA,NA,2,NA,3,2)),
            label = as.character(1:6))
-  oldMDCopt <- options(Matrix.warnDeprecatedCoerce = 0) % ____F I X M E___
+  oldMDCopt <- options(Matrix.warnDeprecatedCoerce = 0) % ___F I X M E___
   A <- pedigreemm::getA(p1) ## relationship matrix 
   options(oldMDCopt)
   ## data simulation

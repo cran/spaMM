@@ -18,7 +18,8 @@ It is one of several extractors for fixed or estimated parameters of  different 
 \code{remove_from_parlist} removes elements from a list of parameters, and from its \code{type} attribute. 
 }
 \usage{
-get_ranPars(object, which=NULL, verbose=TRUE, ...)
+get_ranPars(object, which=NULL, verbose=TRUE, 
+            lambda_names = "Group.Term", ...)
 remove_from_parlist(parlist, removand=NULL, rm_names=names(unlist(removand)))
 }
 %- maybe also 'usage' for other objects documented here.
@@ -30,6 +31,7 @@ remove_from_parlist(parlist, removand=NULL, rm_names=names(unlist(removand)))
   \item{parlist}{A list of parameters. see Details.}
   \item{removand}{Optional. A list of parameters to be removed from \code{parlist}.}
   \item{rm_names}{Names of parameters to be removed from \code{parlist}. Mandatory if \code{removand} is not given.}
+  \item{lambda_names}{By default the names of the \code{lambda} vector are built from the Group (RHS of random effect term of the for (LHS|RHS)) and Term (variable from LHS). By setting a non-default value of \code{lambda_names} the names will be integer indices of the random-effect term in the model formula (currently, for \code{which="ranef_var"} or NULL.}
 }
 \details{
 For heteroscedastic models, such as conditional autoregressive models, the variance parameter \dQuote{lambda} refers to a common scaling coefficient. For other random-effect models, \dQuote{lambda} typically refers to the single variance parameter.
@@ -41,11 +43,13 @@ If a corrFamily parameter is fixed through the formula term, as in \code{ARp(1|t
 \value{
 \code{get_ranPars(.,which="corrPars")} returns a (possibly nested) list of correlation parameters (or NULL if there is no such parameter). Top-level elements correspond to the different random effects. The list has a \code{"type"} attribute having the same nested-list structure and describing whether and how the parameters where fitted: \code{"fix"} means they where fixed, not fitted; \code{"var"} means they were fitted by \code{HLfit}'s specific algorithms; \code{"outer"} means they were fitted by a generic optimization method. 
 
-\code{get_ranPars(.,which="lambda")} returns a vector of variance values, one per random effect, including both \dQuote{outer}- and \dQuote{inner}-optimized ones.
+\code{get_ranPars(.,which="lambda")} returns a vector of variance values, one per random effect, including both fixed, \dQuote{outer}- and \dQuote{inner}-optimized ones. The variances of random-coefficients terms with correlation parameters are not included.
 
 \code{get_ranPars(.,which="outer_lambda")} returns only \dQuote{outer}-optimized variance parameters, ignoring those fitted by \code{HLfit}'s specific algorithms. 
 
 \code{get_ranPars(.,which=NULL)} (the default) is not fully defined. It returns a list including the results of \code{which="lambda"} and \code{which="corrPars"}, but possibly other elements too. 
+
+\code{get_ranPars(.,which="fitted")} is designed to provide fitted parameters with respect to which an information matrix is to be calculated (using \pkg{numDeriv}. It excludes fiexed values, and has no \code{type} attribute. 
 
 \code{get_ranPars(. which="ranef_var")} (experimental) returns a list with elements
 \describe{

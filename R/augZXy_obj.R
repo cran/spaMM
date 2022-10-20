@@ -76,7 +76,7 @@
                               H_w.resid=.calc_H_w.resid(w.resid, muetablob=muetablob, processed=processed)) 
         # .HLfit_body_augZXy has called .init_AUGI0_ZX_envir_spprec_info(processed,LMatrices)...
         if (trace) cat(".")
-        sXaug <- do.call(processed$AUGI0_ZX$envir$method, # ie, def_AUGI0_ZX_sparsePrecision
+        sXaug <- do.call(processed$spprec_method, # ie, def_AUGI0_ZX_spprec
                          sXaug_arglist)
         
       } else {
@@ -95,7 +95,7 @@
         } else {
           Xscal <- .make_Xscal(ZAL=ZAL, ZAL_scaling = ZAL_scaling, processed=processed) # does not weights the I
           if (trace) cat(".")
-          sXaug <- do.call(processed$mMatrix_method,
+          sXaug <- do.call(processed$corr_method,
                            list(Xaug=Xscal, weight_X=weight_X, w.ranef=w.ranef, H_global_scale=H_global_scale))
         }
       }

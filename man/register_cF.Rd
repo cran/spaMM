@@ -1,13 +1,15 @@
 \name{register_cF}
 \alias{register_cF}
+\alias{unregister_cF}
 \title{
 Declare corrFamily constructor for use in formula
 }
 \description{
-This function registers the name of a new corrFamily constructor so that it can be used as the keyword of a random effect in a formula (as in \code{y ~ 1 + ARp()})
+\code{register_cF} registers the name of a new corrFamily constructor so that it can be used as the keyword of a random effect in a formula (as in \code{y ~ 1 + ARp()}). \code{unregister_cF} cancels this.
 }
 \usage{
 register_cF(corrFamilies = NULL, reset = FALSE)
+unregister_cF(corrFamilies)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -53,6 +55,6 @@ fitme(lh ~ 1 + myARp(1|time, p=3), data=ts, method="REML")
 fitme(lh ~ 1 + corrFamily(1|time), data=ts, method="REML",
                   covStruct=list(corrFamily=ARp(p=3)))
                   
-register_cF(reset=TRUE) # Tidy things before leaving.                  
+unregister_cF("myARp") # Tidy things before leaving.                  
                   
 }

@@ -53,7 +53,7 @@ An optional (sub)list of values of the parameters specified through \code{init.c
   \item{nb_cores}{\bold{Not yet operative}, only for development purposes. Number of cores to use for parallel computations. }
   \item{\dots}{
 Optional arguments passed to \code{\link{HLCor}}, \code{\link{HLfit}} or  \code{\link{mat_sqrt}}, for example the \code{distMatrix} argument 
-of \code{HLCor}, or the \code{verbose} argument of \code{HLfit}. Arguments that do not fit within these functions are detected and a warning is issued. In a \code{corrHLfit} call, the \code{verbose} vector of booleans may include a \code{TRACE=TRUE} element, in which case information is displayed for each set of correlation and dispersion parameter values considered by the optimiser. Non-boolean values of \code{TRACE} are meaningful, but the source code of \code{spaMM:::.do_TRACE} should be consulted for their meaning.
+of \code{HLCor}, or the \code{verbose} argument of \code{HLfit}. Arguments that do not fit within these functions are detected and a warning is issued. In a \code{corrHLfit} call, the \code{verbose} vector of booleans may include a \code{TRACE=TRUE} element, in which case information is displayed for each set of correlation and dispersion parameter values considered by the optimiser (see \code{\link{verbose}} for further information, mostly useless except for development purposes).
 }
 }
 \details{

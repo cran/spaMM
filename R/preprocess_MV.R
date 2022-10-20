@@ -707,7 +707,6 @@
   for (st in c("off","y","BinomialDen","main_terms_info","iter_mean_dispVar","iter_mean_dispFix",
                "max.iter","models","vecdisneeded","bin_all_or_none")) assign(st,value=unmerged[[1L]][[st]])
   # Operatiosn on 'models' form the first submodel:
-  LLFbool  <- attr(models,"LLFbool")
   LMMbool  <- attr(models,"LMMbool")
   GLMMbool  <- attr(models,"GLMMbool")
   LLM_const_w  <- attr(models,"LLM_const_w")
@@ -773,8 +772,8 @@
     const_Hobs_wresid  <- const_Hobs_wresid && const_Hobs_wresid_it
     GLMbool <- GLMbool && GLMbool_it
     LMbool <- LMbool && LMbool_it
-    LLFbool <- LLFbool || modattrs_it[["LLFbool"]]
-    obsInfo < obsInfo || p_i[["how"]][["obsInfo"]]
+    # LLFbool <- LLFbool || modattrs_it[["LLFbool"]]
+    obsInfo <- obsInfo || p_i[["how"]][["obsInfo"]] # it beign TRUE only for 'distinctly obsInfo' submodels
     iter_mean_dispVar <- max(iter_mean_dispVar, p_i[["iter_mean_dispVar"]])
     iter_mean_dispFix <- max(iter_mean_dispFix, p_i[["iter_mean_dispFix"]])
     max.iter <- max(max.iter, p_i[["max.iter"]])
@@ -809,10 +808,10 @@
   attr(models,"unit_GLMweights") <- unit_GLMweights
   attr(models,"unit_Hobs_weights") <- unit_Hobs_weights
   attr(models,"const_Hobs_wresid") <- const_Hobs_wresid
-  attr(models,"LLFbool") <- LLFbool
   merged[["models"]] <- models
   models <- NULL # make sure we work on only one 'models'
-  if (LLFbool) {
+  if (merged$how$obsInfo) { # at least one 'distinctly obsInfo' submodel
+    for (mv_it in seq_along(families)) if ( ! families[[mv_it]]$flags$LLgeneric) families[[mv_it]]  <- .statsfam2LLF(families[[mv_it]])
     merged$etaxLM_fn <- .calc_etaLLMblob
   } else merged$etaxLM_fn <- .calc_etaGLMblob
   
@@ -830,7 +829,7 @@
   has_estim_families_par <- FALSE
   for (mv_it in seq_along(unmerged)) {
     family_it <- families[[mv_it]]
-    has_estim_families_par <- ((family_it$family %in% c("negbin", "negbin1") && 
+    has_estim_families_par <- ((family_it$family %in% c("negbin1","negbin2") && 
                                   inherits(substitute(shape, env=environment(family_it$aic)),"call")) ||
                                  (family_it$family=="beta_resp" && inherits(substitute(prec, env=environment(family_it$aic)),"call"))||
                                  (family_it$family=="COMPoisson" && inherits(substitute(nu, env=environment(family_it$aic)),"call")))
@@ -1006,7 +1005,7 @@
   
   merged$QRmethod <- .choose_QRmethod(ZAlist, corr_info=merged$corr_info, 
                                       is_spprec=merged$is_spprec, processed=merged, control.HLfit=control.HLfit)
-  algebra <- .set_mMatrix_method(merged) # sets processed$mMatrix_method for [sp|de]corr
+  algebra <- .set_augX_methods(merged) # sets processed$corr_method nd $spprec method
   .check_time_G_diagnosis(.provide_G_diagnosis, processed=merged, algebra)
   #
   # merged_X <- .scale(merged_X) not necessary since the merged X's are already scaled

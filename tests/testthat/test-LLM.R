@@ -7,11 +7,10 @@ if (spaMM.getOption("example_maxtime")>39) {
   data(scotlip)
   
   { cat("check negbin2...")
-    (nb <- fitme(cases~1+offset(log(expec))+(1|id),family=negbin(), data=scotlip, method=c("ML","obs")) )# -181.3871
-    (nb2 <- fitme(cases~1+offset(log(expec))+(1|id),family=negbin2(), data=scotlip) )# -181.3871 LLF family ########################################################################""
-    (nb2strict <- fitme(cases~1+offset(log(expec))+(1|id),family=negbin2(LLF_only = FALSE), data=scotlip)) # -181.3871 LLF family ########################################################################""
+    (nb2 <- fitme(cases~1+offset(log(expec))+(1|id),family=negbin2(), data=scotlip, method=c("ML","obs")) )# -181.3871 
+    (nb2strict <- fitme(cases~1+offset(log(expec))+(1|id),family=negbin2(LLgeneric = FALSE), data=scotlip, method=c("ML","obs"))) # -181.3871 
     testthat::test_that("check negbin(2) mixed model",
-                        testthat::expect_true(diff(c(range(logLik(nb),logLik(nb2),logLik(nb2strict),-181.3870997165374)))<1e-10))
+                        testthat::expect_true(diff(c(range(logLik(nb2),logLik(nb2strict),-181.3870997165374)))<1e-10))
     
     if (FALSE) { # slow
       confint(nb,parm="(Intercept)") # with two fits approaching logLik(nb)-1.92073=-183.3078
@@ -20,42 +19,28 @@ if (spaMM.getOption("example_maxtime")>39) {
     
     tp <- fitme(I(1+cases)~1+(1|id),family=Tpoisson(), data=scotlip, method=c("ML")) # -182.0702 # that the canonical link so "obs" is not distinct.
     testthat::test_that("check Tpoisson() mixed model",
-                        testthat::expect_true(diff(c(range(logLik(tp),-182.0702237414218 )))<1e-6))
+                        testthat::expect_true(diff(c(range(logLik(tp),-182.07022358 )))<1e-5))
     # small numerical issues for Tnegbin with large shape, which should converge to Tpoisson irrespective of obsInfo since log is canonical for poisson:
     fitme(I(1+cases)~1+(1|id),family=negbin(trunc=0, shape=1e10), data=scotlip, method=c("ML")) # -182.0711 after -182.0691 and -182.0708 (Hexp must be ~Hobs as shape -> infty)
-    fitme(I(1+cases)~1+(1|id),family=negbin(trunc=0, shape=1e10), data=scotlip, method=c("ML","obs")) # -182.0691
-    fitme(I(1+cases)~1+(1|id),family=negbin2(trunc=0, shape=1e10), data=scotlip) # -182.0691
+    fitme(I(1+cases)~1+(1|id),family=negbin2(trunc=0, shape=1e10), data=scotlip, method=c("ML","obs")) # -182.0691
     
-    (tnb <- fitme(I(1+cases)~1+(1|id),family=negbin(trunc=0), data=scotlip, method=c("ML","obs"))) # -181.7404 
-    (tnb2 <- fitme(I(1+cases)~1+(1|id),family=negbin2(trunc=0), data=scotlip)) # # -181.7404 
+    (tnb2 <- fitme(I(1+cases)~1+(1|id),family=negbin2(trunc=0), data=scotlip, method=c("ML","obs"))) # # -181.7404 
     testthat::test_that("check truncated negbin(2) mixed model",
-                        testthat::expect_true(diff(c(range(logLik(tnb),logLik(tnb2),-181.7403819160504 )))<1e-10))
+                        testthat::expect_true(diff(c(range(logLik(tnb2),-181.7403819160504 )))<1e-10))
     
     (psqrt <- fitme(cases~1+(1|id),family=Poisson(link="sqrt"), data=scotlip, method=c("ML","obs"))) # -181.9246
     testthat::test_that("check poisson(sqrt) mixed model",
-                        testthat::expect_true(diff(c(range(logLik(psqrt),-181.9246107944136  )))<1e-6))
+                        testthat::expect_true(diff(c(range(logLik(psqrt),-181.9246119586463  )))<1e-6))
     
-    (tnbsqrt <- fitme(I(1+cases)~1+(1|id),family=negbin(link="sqrt", trunc=0), data=scotlip, method=c("ML","obs"))) #     -181.2723
     tnb2sqrt <- fitme(I(1+cases)~1+(1|id),family=negbin2(link="sqrt", trunc=0), data=scotlip, method=c("ML","obs")) #     -181.2723
     testthat::test_that("check truncated negbin(2)(sqrt) mixed model",
-                        testthat::expect_true(diff(c(range(logLik(tnbsqrt),logLik(tnb2sqrt),-181.272264836057 )))<1e-10))
+                        testthat::expect_true(diff(c(range(logLik(tnb2sqrt),-181.272264836057 )))<1e-10))
     tpsqrt <- fitme(I(1+cases)~1+(1|id),family=Tpoisson(link="sqrt"), data=scotlip, method=c("ML","obs")) #             -182.2697
-    tpsqrtnb <- fitme(I(1+cases)~1+(1|id),family=negbin(link="sqrt", trunc=0, shape=1e6), data=scotlip, method=c("ML","obs")) #     -182.2697 
     tpsqrtnb2 <- fitme(I(1+cases)~1+(1|id),family=negbin2(link="sqrt", trunc=0, shape=1e6), data=scotlip, method=c("ML","obs")) #     -182.2697 
     testthat::test_that("check truncated negbin(2)(sqrt) mixed model",
-                        testthat::expect_true(diff(c(range(logLik(tpsqrt),logLik(tpsqrtnb),logLik(tpsqrtnb2),-182.269735148878  )))<1e-4))
+                        testthat::expect_true(diff(c(range(logLik(tpsqrt),logLik(tpsqrtnb2),-182.269735148878  )))<1e-4))
   }
   
-  { cat("check glm.fit vs llm.fit... ") 
-    # * Useful to check for stopping bugs in code and other problems in .get_inits_by_glm() -> LLM fits, because
-    # NB_shape is the single outer-estimated param so .get_inits_by_glm() is called only for fixed NB_shape within HLfit body (for init beta presumably);
-    # it in turn calls either glm.fit (=> Hexp) for negbin(), or llm.fit (=> Hobs) for negbin2()
-    (fitme(I(1+cases)~1+offset(log(expec))+(1|id),family=negbin(trunc=0L), fixed=list(lambda=0.1), 
-           data=scotlip, method=c("ML","obs"), verbose=c(TRACE=TRACEv)) ) # 183.2028
-    (fitme(I(1+cases)~1+offset(log(expec))+(1|id),family=negbin2(trunc=0L), fixed=list(lambda=0.1), 
-           data=scotlip, method=c("ML","obs"), verbose=c(TRACE=TRACEv)) ) # 183.2028
-  }
-
   { cat("check negbin1...")
     ### negbin 1 
     ## Fixed-effect model

@@ -4,7 +4,9 @@
 \title{Using a corrMatrix argument}
 
 \description{
-\code{corrMatrix} is an argument of \code{HLCor}, of class \code{dist} or \code{matrix}, with is used if the model formula contains a term of the form \code{corrMatrix(1|<...>)}. It describes a correlation matrix, possibly as a \code{dist} object. A covariance matrix can actually be passed through this argument, but then it must be a full matrix, not a \code{dist} object. The way the rows and columns of the matrix are matched to the rows of the \code{data} depends on the nature of the grouping term {<...>}.
+\code{corrMatrix} is an argument of \code{HLCor}, of class \code{dist} or \code{matrix}, with can be used if the model formula contains a term of the form \code{corrMatrix(1|<...>)}. It describes a correlation matrix, possibly as a \code{dist} object. A covariance matrix can actually be passed through this argument, but then it must be a full matrix, not a \code{dist} object. The way the rows and columns of the matrix are matched to the rows of the \code{data} depends on the nature of the grouping term {<...>}.
+
+The \code{\link{covStruct}} argument can be used for the same purpose and is much more general, in particular allowing to specify several correlation matrices.
 }
 \details{
 The simplest case is illustrated in the first two examples below: the grouping term is identical to a single variable which is present in the \code{data}, whose levels match the rownames of the \code{corrMatrix}. As illustrated by the second example, the order of the data does not matter in that case, because the factor levels are used to match the \code{data} rows to the appropriate row and columns of the \code{corrMatrix}. The \code{corrMatrix} may even contain rows (and columns) in excess of the levels of the grouping term, in  which case these rows are ignored. 
@@ -18,16 +20,29 @@ data("blackcap")
 MLcorMat <- MaternCorr(proxy::dist(blackcap[,c("longitude","latitude")]),
                         nu=0.6285603,rho=0.0544659)
 blackcap$name <- as.factor(rownames(blackcap))                
+#
+
 ## (1) Single variable present in the data 
+#
 HLCor(migStatus ~ means+ corrMatrix(1|name),data=blackcap,
       corrMatrix=MLcorMat,method="ML")
+
 ## (2) Same, permuted: still gives correct result
+#
 perm <- sample(14)
-# Permuted matrix (with permuted names)
-pmat <- as.matrix(MLcorMat)[perm,perm]
+# Permuted matrix (with permuted names) as 'dist' object
+pmat <- as.matrix(MLcorMat)[perm,perm] 
 HLCor(migStatus ~ means+ corrMatrix(1|name),data=blackcap,
       corrMatrix=as.dist(pmat),method="ML")
+#
+# Permuted matrix (with permuted names) as correlation matrix
+pcorr <- proxy::as.matrix(MLcorMat, diag=1)[perm,perm] 
+HLCor(migStatus ~ means+ corrMatrix(1|name),data=blackcap,
+      corrMatrix=pcorr,method="ML")
+#
+
 ## (3) Other grouping terms (note the messages):
+#
 HLCor(migStatus ~ means+ corrMatrix(1|longitude+latitude),data=blackcap,
       corrMatrix=MLcorMat,method="ML")
 }

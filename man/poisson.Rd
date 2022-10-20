@@ -9,7 +9,7 @@ Family function for GLMs and mixed models with Poisson and zero-truncated Poisso
 \code{Poisson} (with a capital P) is a \code{\link[stats]{family}} that specifies the information required to fit a Poisson generalized linear model. Differs from the base version \code{stats::poisson} only in that it handles the zero-truncated variant, which can be specified either as \code{Tpoisson(<link>)} or as \code{Poisson(<link>, trunc = 0L)}. The truncated poisson with mean \eqn{\mu_T} is defined from the un-truncated poisson with mean \eqn{\mu_U}, by restricting its response strictly positive value. \eqn{\mu_T=\mu_U/(1-p0)}, where \eqn{p0:=\exp(-\mu_U)} is the probability that the response is 0. 
 }
 \usage{
-Poisson(link = "log", trunc = -1L)
+Poisson(link = "log", trunc = -1L, LLgeneric=TRUE)
 Tpoisson(link="log")
 # <Poisson object>$linkfun(mu, mu_truncated = FALSE)
 # <Poisson object>$linkinv(eta, mu_truncated = FALSE)
@@ -23,6 +23,10 @@ Tpoisson(link="log")
   }
   \item{eta,mu}{Numeric (scalar or array). The linear predictor; and the expectation of response, truncated or not depending on \code{mu_truncated} argument. }
   \item{mu_truncated}{Boolean. For \code{linkinv}, whether to return the expectation of truncated (\eqn{\mu_T}) or un-truncated (\eqn{\mu_U}) response. For \code{linkfun}, whether the \code{mu} argument is \eqn{\mu_T}, or is \eqn{\mu_U}  but has \eqn{\mu_T}  as attribute (\eqn{\mu_U} without the attribute is not sufficient). }
+    \item{LLgeneric}{
+  For development purposes, not documented. %Boolean: whether to use some generic methods or methods specific for GLM response families. 
+  }
+
 }
 \value{
 A \code{family} object suitable for use with \code{glm}, as \code{stats::} family objects.

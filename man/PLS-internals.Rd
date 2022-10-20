@@ -1,15 +1,13 @@
 \name{PLS-internals}
 \alias{PLS-internals}
 
-%\alias{def_AUGI0_ZX_sparsePrecision_scaled}
-\alias{def_AUGI0_ZX_sparsePrecision}
+\alias{def_AUGI0_ZX_spprec}
 \alias{def_sXaug_EigenDense_QRP_Chol_scaled}
 \alias{def_sXaug_Matrix_QRP_CHM_scaled}
 %\alias{def_sXaug_Matrix_cholP_scaled}
 \alias{def_sXaug_Matrix_CHM_H_scaled}
 \alias{get_from_MME}
-\alias{get_from_MME.AUGI0_ZX_sparsePrecision}
-%\alias{get_from_MME.AUGI0_ZX_sparsePrecision_scaled}
+\alias{get_from_MME.AUGI0_ZX_spprec}
 \alias{get_from_MME.sXaug_EigenDense_QRP_Chol_scaled}
 \alias{get_from_MME.sXaug_Matrix_QRP_CHM_scaled}
 %\alias{get_from_MME.sXaug_Matrix_cholP_scaled}

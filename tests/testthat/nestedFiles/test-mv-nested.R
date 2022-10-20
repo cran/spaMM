@@ -2,6 +2,9 @@ cat(crayon::yellow(" -> test-mv-nested:")) # not part of the testthat.R tests (n
 
 library(spaMM)
 options(error=recover)
+spaMM_tol <- local_tol <- spaMM.getOption("spaMM_tol")
+local_tol$logL_tol <- 5e-07
+spaMM.options(spaMM_tol=local_tol) # to control strictness of checks in independent-fit tests
 { # test missing data
   set.seed(1)
   
@@ -120,7 +123,7 @@ options(error=recover)
   (zut2 <- fitmv(submodels=list(mod2=list(formula=y2 ~ 1+(1|batch2), family=Gamma(log)),
                                   mod1=list(formula=y ~ 1+(1|batch), family=Gamma(log),resid.model= ~ X3+I(X3^2))), 
                           data=wafmv))
-  testthat::expect_true(diff(range(logLik(zut1),logLik(zut2), logLik(mod1)+logLik(mod2)))<1e-7)
+  testthat::expect_true(diff(range(logLik(zut1),logLik(zut2), logLik(mod1)+logLik(mod2)))<2e-7)
   # permutation test 
   (zut1 <- fitmv(submodels=list(mod1=list(formula=y ~ 1+(1|batch), family=Gamma(log),resid.model= ~ X3+I(X3^2)),
                                   mod2=list(formula=y2 ~ 1+(1|batch), family=Gamma(log))), 
@@ -259,7 +262,7 @@ options(error=recover)
   (zut2 <- fitmv(submodels=list(mod2=list(formula=np2~treatment+(1|clinic2),family=poisson()),
                                 mod1=list(formula=npos~treatment+(1|clinic),family=gaussian())), 
                  data=climv))
-  testthat::expect_true(diff(range(logLik(zut1),logLik(zut2),logLik(fg)+logLik(fp)))<1e-10)
+  testthat::expect_true(diff(range(logLik(zut1),logLik(zut2),logLik(fg)+logLik(fp)))<3e-7)
   testthat::expect_true(diff(range(get_predVar(zut1)-c(get_predVar(fg),get_predVar(fp))))<1e-5)
   testthat::expect_true(diff(range(get_predVar(zut2)-c(get_predVar(fp),get_predVar(fg))))<1e-5)
   testthat::expect_true(diff(range( get_predVar(zut1, newdata=zut1$data)-get_predVar(zut1)))<1e-14) 
@@ -309,7 +312,7 @@ options(error=recover)
                          init=list(lambda=c("clinic2"=2.2,"clinic"=1.1)), data=climv, method=meth) 
   testthat::expect_true(identical(attr(zut4,"optimInfo")$LUarglist$canon.init, list(lambda=c("1"=1.1,"2"=2.2)))) # inits heeded 
   
-  testthat::expect_true(diff(range(logLik(zut1),logLik(zut2), logLik(zut3), logLik(zut4), logLik(fb)+logLik(fp)))<1e-10) # 1e-5 for REML
+  testthat::expect_true(diff(range(logLik(zut1),logLik(zut2), logLik(zut3), logLik(zut4), logLik(fb)+logLik(fp)))<1e-6) # 1e-5 for REML # stricter conv check decreased the precision of the comparison.
   pfb <- get_predVar(fb)
   pfp <- get_predVar(fp)
   pzut1 <- get_predVar(zut1)
@@ -337,7 +340,7 @@ options(error=recover)
   (fb <- fitme(formula=cbind(npos,nneg)~treatment+(1|clinic),family=binomial(), data=climv))
   (fg <- fitme(formula=np2~treatment+(1|clinic2),family=poisson(), data=climv, rand.family=Gamma(log)))
   logLik(zut)-logLik(fb)-logLik(fg)
-  testthat::expect_true(diff(range(logLik(zut1), logLik(fb)+logLik(fg)))<1e-9)
+  testthat::expect_true(diff(range(logLik(zut1), logLik(fb)+logLik(fg)))<1e-6) # stricter conv check decreased the precision of the comparison.
   
   cat(crayon::yellow("some extractors; ")) 
   testthat::expect_true(diff(range(residuals(zut1)-c(residuals(fb),residuals(fg))))<1e-5)
@@ -384,7 +387,7 @@ options(error=recover)
                          data=climv))
   (fb <- fitme(formula=cbind(npos,nneg)~treatment+(1|clinic),family=binomial(), data=climv))
   (fTp <- fitme(formula=I(1L+np2)~treatment+(1|clinic2),family=Tpoisson(), data=climv))
-  testthat::expect_true(diff(range(logLik(zut), logLik(fb)+logLik(fTp)))<1e-10)
+  testthat::expect_true(diff(range(logLik(zut), logLik(fb)+logLik(fTp)))<1e-6) # stricter conv check decreased the precision of the comparison.
   
   ## negbin(): outer-optimized dispersion parameters. 
   meth <- "ML(1,1)" 
@@ -404,7 +407,7 @@ options(error=recover)
     (fn <- fitme(formula=I(20*np2)~0+(1|clinic2),family=negbin(),  
                  method=meth,
                  data=climv))
-    testthat::expect_true(diff(range(logLik(zut1), logLik(zut2), logLik(fb)+logLik(fn)))<1e-05)
+    testthat::expect_true(diff(range(logLik(zut1), logLik(zut2), logLik(fb)+logLik(fn)))<1e-06)
   }
   
   cat(crayon::yellow("Tnegbin; "))## independent-fit test Tnegbin; outer-optimized dispersion parameters
@@ -416,7 +419,8 @@ options(error=recover)
                          data=climv))
   (fb <- fitme(formula=cbind(npos,nneg)~treatment+(1|clinic),family=binomial(), data=climv))
   (fTn <- fitme(formula=I(1L+20*np2)~treatment+(1|clinic2),family=Tnegbin(), data=climv))
-  testthat::expect_true(diff(range(logLik(zut1), logLik(zut2), logLik(fb)+logLik(fTn)))<6e-04) 
+  testthat::expect_true(diff(range(logLik(zut1), logLik(zut2), logLik(fb)+logLik(fTn)))<1e-06) # This did not work at first by obsInfo bc
+  # there were convergence problems for IRLS but LevM crit was not true => change in crit using pot4improv.
 
     
   ## permutation test Tnegbin; outer-optimized dispersion parameters
@@ -426,7 +430,7 @@ options(error=recover)
   (zut2 <- fitmv(submodels=list(mod1=list(formula=cbind(npos,nneg)~treatment+(1|clinic),family=binomial()),
                                  mod2=list(formula=I(1L+20*np2)~treatment+(1|clinic),family=Tnegbin())), 
                          data=climv))
-  testthat::expect_true(diff(range(logLik(zut1), logLik(zut2)))<2e-5)
+  testthat::expect_true(diff(range(logLik(zut1), logLik(zut2)))<1e-06)
   simulate(zut1,nsim=3) # checks that mv simulate Tnegbin keeps required attributes 
   
   { 
@@ -453,7 +457,7 @@ options(error=recover)
     (zut2 <- fitmv(submodels=list(mod2=list(brok2 ~ transfers+(1|id),family=poisson()),
                                   mod1=list(broken ~ transfers+(1|id),family=COMPoisson())), 
                    data=freimv))
-    testthat::expect_true(diff(range(logLik(zut1), logLik(zut2)))<1e-4)
+    testthat::expect_true(diff(range(logLik(zut1), logLik(zut2)))<1e-6)
     simulate(zut1,nsim=3) # checks that mv simulate COMPoisson 
     
     (zutxx <- fitmv(submodels=list(mod2=list(brok2 ~ transfers+(1|id),family=COMPoisson()),
@@ -1168,6 +1172,6 @@ if (FALSE) {
     #summary(glht(asMM,mcp("varld" = "Tukey"), coef.=fixef.HLfit)) # documented limitation
   }
 }
-
+spaMM.options(spaMM_tol=spaMM_tol) 
 summary(warnings())
   

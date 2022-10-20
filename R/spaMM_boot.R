@@ -133,6 +133,7 @@ dopar <- local({
     nb_cores <- cluster_args$spec
     if (debug. && nb_cores>1L ) debug. <- 1L 
     assign("debug.", debug., environment(fn))
+    if (is.null(dim(newresp))) newresp <- matrix(seq(newresp),ncol=newresp,nrow=1) # assuming newresp is an integer
     nsim <- ncol(newresp)
     time1 <- Sys.time() 
     if (nb_cores>1L) {

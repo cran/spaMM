@@ -14,6 +14,8 @@
                                       (1-expeta)*exp(eta-expeta)
                                     }, 
                                     "cauchit" = function(eta) { -2 *eta/(pi * (1+eta^2)^2)},
+                                    "inverse" = function(eta) { 2/eta^3 }, # for gaussian(inverse) -> does not mean -1/...
+                                    "loglambda" = function(eta) {stop("this function should not be called")},
                                     stop("link not yet handled in .D2muDeta2() [but easy to fix]")
 )
 
@@ -32,9 +34,12 @@
                                       (1-3*expeta + expeta^2)*exp(eta-expeta)
                                     }, 
                                     "cauchit" = function(eta) { (-2+6*eta^2)/(pi * (1+eta^2)^3)},
+                                    "inverse" = function(eta) { -6/eta^4 }, # for gaussian(inverse) -> does not mean -1/...
+                                    "loglambda" = function(eta) {stop("this function should not be called")},
                                     stop("link not yet handled in .D3muDeta3() [but easy to fix]")
 )
 
+# fixed-effect models only
 .do_damped_WLS_llm <- function(grad, damping, negHess, X.pv, clik, family, old_beta_eta, phi_est, off, processed, verbose) {
   restarted <- FALSE
   dampingfactor <- 2
@@ -44,7 +49,7 @@
     diagPos <- seq.int(1L,nc^2,nc+1L)
     negHess[diagPos] <- negHess[diagPos] + dampDpD
     dbetaV <- as.vector(solve(negHess,grad)) # perturbation of solve(mH, grad) = - solve(D2logLDbeta2) . DlogLDbeta
-    levMblob <- .eval_gain_LevM_etaGLM(LevenbergMstep_result=list(dbetaV=dbetaV, dampDpD=dampDpD, rhs=grad),
+    levMblob <- .eval_gain_clik_LevM(LevenbergMstep_result=list(dbetaV=dbetaV, dampDpD=dampDpD, rhs=grad),
                                        X.pv=X.pv, clikold=clik, family=family,
                                        coefold=old_beta_eta,
                                        phi_est=phi_est, offset=off,
@@ -129,7 +134,10 @@
 }
 
 
-# called by HLfit_body for true LLFbool
+# fixed-effect main response
+# uses gradient and negHess, while .calc_etaLLMblob uses z1 and w_resid
+# Maybe not quite different otherwise (___F I X M E___ merge ?)
+# condition for either seems to be if(obsInfo) => $obs methods used (so requested, and non canonical)
 .calc_etaLLMblob <- function(processed, muetablob, 
                              mu=muetablob$mu, eta=muetablob$sane_eta, 
                              old_beta_eta, ## scaled since X.pv is scaled; same for return beta_eta. An init.HLfit$fixef would be (.)/attr(spaMM:::.scale(zut$X.pv),"scaled:scale")
@@ -153,7 +161,7 @@
     # Historical oddity: the fit has worked with code which was OK for solving, but not for CI as the CI code suppresses 
     # a column of the design matrix, which is not sufficient on the premultiplied (scaled X) system.
 
-    dlogL_blob <- .calc_dlogL_blob(eta, mu, y, weights=processed$prior.weights, family)
+    dlogL_blob <- .calc_dlogL_blob(eta, mu, y, weights=processed$prior.weights, family, phi=phi_est, muetaenv=muetablob)
     negHess <- crossprod(X.pv, .Dvec_times_m_Matrix( - dlogL_blob$d2logcLdeta2, X.pv))
     
     # names(szAug) <- colnames(X.pv) ## also important for intervalStep_glm
@@ -181,7 +189,7 @@
       names(beta_eta) <- colnames(X.pv)
       # # PROBLEM is that NaN/Inf test does not catch all divergence cases so we need this :
       eta <- off + drop(X.pv %*% beta_eta) ## updated at each inner iteration
-      muetablob <- .muetafn(eta=eta,BinomialDen=BinomialDen,processed=processed) 
+      muetablob <- .muetafn(eta=eta,BinomialDen=BinomialDen,processed=processed, phi_est=phi_est) 
       newclik <- .calc_clik(mu=muetablob$mu, phi_est=phi_est,processed=processed) 
     }  
     if ( is.null(for_intervals) &&
@@ -194,7 +202,7 @@
       damped_WLS_blob <- .do_damped_WLS_llm(grad, damping, negHess, X.pv, clik, family, old_beta_eta, phi_est, off, processed, verbose)
       beta_eta <- damped_WLS_blob$beta 
       eta <- damped_WLS_blob$eta #off + drop(X.pv %*% beta_eta) ## updated at each inner iteration
-      muetablob <- damped_WLS_blob$muetablob # .muetafn(eta=eta,BinomialDen=BinomialDen,processed=processed) 
+      muetablob <- damped_WLS_blob$muetablob # .muetafn(eta=eta,BinomialDen=BinomialDen,processed=processed, phi_est=phi_est) 
       newclik <- damped_WLS_blob$clik
       damping <- damped_WLS_blob$damping
       dbetaV <- damped_WLS_blob$dbetaV
@@ -214,6 +222,6 @@
   } ## end for (innerj in 1:maxit.mean)
   names(beta_eta) <- colnames(X.pv)
   return(list(eta=muetablob$sane_eta, muetablob=muetablob, beta_eta=beta_eta, w.resid= - dlogL_blob$d2logcLdeta2, innerj=innerj,
-              sXaug=structure(NA,class="LLF") 
+              sXaug=structure(NA,info="no sXaug returned by .calc_etaLLMblob().") 
               ))
 }

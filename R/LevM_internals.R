@@ -1,7 +1,7 @@
 .pot4improv <- function(which_LevMar_step, sXaug, gainratio_grad, seq_n_u_h) {
   Mg_solve_g_fac <- 250 # in selected hard 21-subset of nloptr tests, increasing to 1000 this reduced inner time but increases outer one (& opposite when reducing to 100)
                         # <- 1 would be very poor.
-                        # (___F I X M E___ revisit these controls, adjusted under time pressure...)
+                        # (__F I X M E__ revisit these controls, adjusted under time pressure... but 250 gives good results in nloptr tests)
   switch(which_LevMar_step,
          "v_b"= Mg_solve_g_fac*get_from_MME(sXaug=sXaug, which="Mg_solve_g", B=gainratio_grad), # 0 at full solution (althoug B is not full gradient everywhere)
          "v"= get_from_MME(sXaug=sXaug, which="Mg_invH_g", B=gainratio_grad[seq_n_u_h]),  # 0 on the manifold
@@ -58,8 +58,7 @@
   cat(stylefn(";"))
 }
 
-.diagnose_conv_problem_LevM <- function(beta_cov_info, # __F I X M E__ redefine it to use tcrossfac_beta_v_cov rather than it tcrossprod? But RSpectra may be more efficient on symmetric matrices...
-                                        w.resid, processed) {
+.diagnose_conv_problem_LevM <- function(beta_cov_info,  processed) {# ?__F I X M E__? redefine it to use tcrossfac_beta_v_cov rather than it tcrossprod? But RSpectra may be more efficient on symmetric matrices...
   condnum <- decomp <- NULL
   if ( ncol(beta_cov_info$tcrossfac_beta_v_cov)<2000L) { # for larger matrices the crossprod itself may be slow, perhaps the slowest step ?
     tc <- tcrossprod(beta_cov_info$tcrossfac_beta_v_cov) # hm. it's fairly dense

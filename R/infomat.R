@@ -19,7 +19,7 @@ get_infomat <- function(object, # currenty assumed to be fitme() result
                              corrPars=pt$corrPars), # => *fitme* results
                   etaFix=list(beta=pt$fixef)))
   }
-  infomat <- - hessian(func=update_wrap, x=unlist(skeleton), ...)
+  infomat <- - hessian(func=update_wrap, x=unlist(skeleton), ...) # ___F I X M E___ rethink this...
   if (verbose) cat("\n")
   rownames(infomat) <- colnames(infomat) <- names(unlist(skeleton)) 
   infomat # a matrix

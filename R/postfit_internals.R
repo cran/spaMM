@@ -128,14 +128,15 @@
 # Consistent with Saefken et al, only in terms of theta and mu. The linear predictor eta and link do not appear.
 # Simulations for that paper use predictions eta only in the poisson(log) case;
 # In the exponential (->Gamma(log)) they do use the theta deduced as -1/mu, not the eta. => cAIC4:::conditionalBootstrap is odd...
-.calc_AIC_dfs <- function (object, nsim, type="residual", seed=NULL, 
+.calc_boot_AIC_dfs <- function (object, nsim, type="residual", seed=NULL, # (___F I X M E___) The whole boot procedure does not handle mv fits ?
                            nb_cores=NULL, fit_env=NULL) {
-  if (inherits(object$family,"LLF")) stop("Bootstrap bias correction not implemented for families not from GLM (exponential family) class.")
+  if ( ! object$family$flags$exp) 
+    stop("Bootstrap bias correction not implemented for families not from GLM (exponential family) class.") # assuming $exp methods are always available for GLMs (but see negbin2_dvl)
   bootsims <- simulate(object, nsim = nsim, type = type, verbose=FALSE, seed=seed) # the corresponding lmer code returns a data frame
   muFREQS <- dopar(bootsims, function(x) {
     predict(update_resp(object, newresp=x), type="response") # predict(refit(object, newresp = x))
   }, nb_cores=nb_cores, fit_env=fit_env)
-  thetas <- .theta.mu.canonical(muFREQS,family(object))
+  thetas <- .theta.mu.canonical(muFREQS,family(object)) # would return mu for non-GLMs
   # if (is.factor(bootsims[1])) dataMatrix <- as.numeric(dataMatrix) - 1 # in cAIC4:::conditionalBootstrap
   bootsims <- bootsims - rowMeans(bootsims)
   phis <- residVar(object, which="phi") # For Gamma(), the phis are still those of he canonical form of the exponential family, 
@@ -210,7 +211,7 @@
       info_crits$dAIC <- -2*forAIC$p_bv + 2 * (p_lambda+p_phi+p_corrPars) ## HaLM07 (eq 10) focussed for dispersion params
       #                                                                             including the rho param of an AR model
       if (also_cAIC) {
-        if ( "AUGI0_ZX_sparsePrecision" %in% object$MME_method) {
+        if (.is_spprec_fit(object)) {
           pd <- .calc_cAIC_pd_spprec(object)
         } else if ( ! is.null(object$envir$sXaug)) { 
           pd <- .calc_cAIC_pd_from_sXaug(object)
@@ -232,7 +233,7 @@
   } else p_phi <- NULL
   if ( nsim>0L ) {
     if (is.null(p_phi)) p_phi <- .calc_p_phi(object)
-    b_pd <- .calc_AIC_dfs(object, nsim=nsim, ...)
+    b_pd <- .calc_boot_AIC_dfs(object, nsim=nsim, ...)
     if (object$models[[1]]=="etaHGLM") {
       object$envir$info_crits$b_cAIC <- -2*object$APHLs$clik + 2*(b_pd+p_phi)
     } else object$envir$info_crits$b_cAIC <- -2*object$APHLs$p_v + 2*(b_pd+p_phi) # as documented
@@ -252,7 +253,7 @@
                               any((phimodel <- object$models[["phi"]])=="phiScal")) 
     dvdlogphiMat_needed <- dvdlogphiMat_needed || identical(envir$forcePhiComponent,TRUE) ## hack for code testing !
     if (dvdloglamMat_needed || dvdlogphiMat_needed) {
-      ZAL <- get_ZALMatrix(object, force_bind = ! ("AUGI0_ZX_sparsePrecision" %in% object$MME_method) )     
+      ZAL <- get_ZALMatrix(object, force_bind = ! (.is_spprec_fit(object)) )     
       d2hdv2_info <- .calc_d2hdv2_info(object, ZAL) # may be a qr object, or not (SPPREC). F I X M E a gentle message for long computations ? 
     } 
     if (dvdloglamMat_needed) { 
@@ -305,7 +306,7 @@
 .calc_invV_factors <- function(object) { ## used by .get_logdispObject
   ## Store inv( G=[{precmat=inv(L invWranef Lt)} +ZtWZ] ) as two matrix nXr and rXn rather than their nXn product
   # F I X M E yet there will be cases where n<r and then it's better to store the n x n product !  
-  if ("AUGI0_ZX_sparsePrecision" %in% object$MME_method) {
+  if (.is_spprec_fit(object)) {
     envir <- object$envir
     ## code clearly related to .Sigsolve_sparsePrecision() algorithm:
     if (is.null(envir$invG_ZtW)) {
@@ -394,13 +395,13 @@
     }
   } ## wAugX is in XZ_OI order 
   if (inherits(wAugX,"Matrix")) {
-    mMatrix_method <- .spaMM.data$options$Matrix_method 
-  } else mMatrix_method <- .spaMM.data$options$matrix_method
-  suppressMessages(try(untrace(mMatrix_method, where=asNamespace("spaMM")),silent=TRUE)) # try() bc this fails when called by Infusion 
+    corr_method <- .spaMM.data$options$Matrix_method 
+  } else corr_method <- .spaMM.data$options$matrix_method
+  suppressMessages(try(untrace(corr_method, where=asNamespace("spaMM")),silent=TRUE)) # try() bc this fails when called by Infusion 
   # test: Infusion tests -> ... -> .predict_body -> ;.. -> .calc_beta_cov_info_others -> untrace -> def_sXaug_EigenDense_QRP_Chol_scaled not found
   # Note that the function is in exportPattern, explicitly exporting/impporting it does not help; attaching spaMM seems required to avoid untrace's error..
-  # hack to recycle sXaug code; all weights are 1 or unit vectors as the order is not that assumed by mMatrix_method. 
-  wAugX <- do.call(mMatrix_method,list(Xaug=wAugX, weight_X=rep(1,nrow(AUGI0_ZX$X.pv)), 
+  # hack to recycle sXaug code; all weights are 1 or unit vectors as the order is not that assumed by corr_method. 
+  wAugX <- do.call(corr_method,list(Xaug=wAugX, weight_X=rep(1,nrow(AUGI0_ZX$X.pv)), 
                                        w.ranef=rep(1,ncol(AUGI0_ZX$I)), ## we need at least its length for get_from Matrix methods
                                        H_global_scale=1))
   beta_cov_info <- get_from_MME(wAugX,"beta_cov_info_from_wAugX") 
@@ -440,7 +441,7 @@
 
 .get_beta_cov_info <- function(res) { 
   # Provide list(beta_cov=., tcrossfac_beta_v_cov=.)
-  if ( "AUGI0_ZX_sparsePrecision" %in% res$MME_method) {
+  if (.is_spprec_fit(res)) {
     return(.calc_beta_cov_info_spprec(X.pv=res$X.pv, envir=res$envir)) 
   } else if (! is.null(res$envir$sXaug)) { # excludes SEM *and* fixed-effect models 
     if (prod(dim(res$envir$sXaug))>1e7) message("[one-time computation of covariance matrix, which may be slow]")

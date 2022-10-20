@@ -45,7 +45,7 @@ if (spaMM.getOption("example_maxtime")>1) {
       it <- it+1L
       dat$wei <- wei 
     }
-    testthat::expect_equal(mfit$lambda[1],c(id.wei=1.4710451324)) 
+    testthat::test_that("Whether test neg.bin.1 by negbin[2] had normal termination", expect_true(abs(mfit$lambda[1]-1.47105020738)<1e-8)) # test depends on logL_tol
     ## estimation of the Gamma variance is not precise, but approaches disp=2 in larger samples
   }
   simulate(mfit)

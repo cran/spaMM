@@ -7,13 +7,13 @@ cat(crayon::yellow("\ntest obIinfo:"))
 data(scotlip)
 (foo <- fitme(cases ~ I(prop.ag/10)+(1|gridcode),
       family=negbin(link=log), data=scotlip, method=c("ML","obs")))
-testthat::expect_equal(logLik(foo), c(p_v=-181.60802361 ))
+testthat::expect_equal(logLik(foo), c(P_v=-181.60802361 ))
 
 
 data(wafers)
 (foo <- fitme(y ~1+(1|batch),family=Gamma(log),  #fixed=list(lambda=c("1"=0.01213306), phi=0.2255785), 
        data=wafers,method=c("ML","obs"), verbose=c(TRACE=F)))
-testthat::expect_equal(logLik(foo), c(p_v=-1224.65219293 ))
+testthat::expect_equal(logLik(foo), c(P_v=-1224.65219293 ))
 
 {
   npos <- c(11,16,14,2,6,1,1,4,10,22,7,1,0,0,1,6)
@@ -24,7 +24,7 @@ testthat::expect_equal(logLik(foo), c(p_v=-1224.65219293 ))
   
   (foo <- fitme(cbind(npos,nneg)~1+(1|clinic), method=c("ML","obs"),
                 family=binomial(cloglog),data=clinics))
-  testthat::expect_equal(logLik(foo), c(p_v=-40.4244077585))
+  testthat::expect_equal(logLik(foo), c(P_v=-40.4244068868))
 }
 
 {
