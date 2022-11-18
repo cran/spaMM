@@ -3,6 +3,26 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 4.1.0}{ 
+\subsection{NEW FEATURES}{
+\itemize{
+\item drop1.HLfit method implemented, to return tables of comparisons of a model with single-term deletions from it, with specific procedures for LMs, GLMs and LMMs. The LMM case is handled by interfacing the Satterthwaite method in \code{lmerTest}.
+\item New function numInfo() to compute the information matrix for (ideally) all parameters for main response model, using numerical derivatives.
+\item New antisym(<.>|<.>) random effect to fit anti-symmetric dyadic interactions, as in Bradley-Terry models.
+\item Pseudo-R2 computation has been implemented, see help("pseudoR2"). Please don't (ab)use it.
+}
+}
+\subsection{USER-LEVEL CHANGES}{
+\itemize{
+\item 'fixed' argument now available, to fix model parameters, in all fitting functions; older 'ranFix' and 'ranPars' arguments of some functions are still available.
+}
+}
+\subsection{FIXED BUGS}{
+\itemize{
+\item Deviance computation for the 'negbin1' family was broken, though the effect could be unnoticeable in fits of mixed-effect models (where this was only used to provide some initial values, and not even for all 'negbin1' fits). 
+}
+}
+}
 \section{CHANGES UP TO VERSION 4.0.0}{ 
 \subsection{NEW FEATURES}{
 \itemize{

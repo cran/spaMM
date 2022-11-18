@@ -674,7 +674,7 @@ summary.HLfitlist <- function(object, ...) {
     corrPars <- corrPars[sort(names(corrPars))]
     cP <- unlist(corrPars)
     if ( ! is.null(cP) ) {
-      moreargs <- attr(object,"optimInfo")$LUarglist$moreargs
+      moreargs <- .get_moreargs(object)
       control_dists <- lapply(moreargs,getElement,name="control.dist")
       dist_methods <- lapply(control_dists,getElement,name="dist.method")
       if (any((udm <- unlist(dist_methods))!="Euclidean")) {

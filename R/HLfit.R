@@ -19,9 +19,10 @@ HLfit <- function(formula,
                   control.HLfit=list(),
                   control.glm=list(),
                   init.HLfit = list(), 
-                  ranFix=list(), ## phi, lambda, possibly nu, rho if not in init.HLfit
+                  fixed=list(), ## phi, lambda, possibly nu, rho if not in init.HLfit
                   # FR->FR ranFix should be able to handle full phi.object and lambda.object ./.
                   # ./. that could be copied in return value.
+                  ranFix,
                   etaFix=list(), ## beta, v_h (or even u_h)
                   prior.weights=NULL, 
                   weights.form= NULL,
@@ -31,6 +32,11 @@ HLfit <- function(formula,
   time1 <- Sys.time()
   oricall <- match.call()  ## there is no dots in HLfit
   oricall$control.HLfit <- eval(oricall$control.HLfit, parent.frame()) # to evaluate variables in the formula_env, otherwise there are bugs in waiting 
+  if ( ! missing(ranFix)) { 
+    oricall$fixed <- ranFix
+    oricall$ranFix <- NULL
+  }
+  oricall$fixed <- eval(oricall$fixed, parent.frame()) # allows modif in post-fit code (cf get_HLCorcall) 
   mc <- oricall
   if (is.null(processed)) { 
     if (missing(data)) {
@@ -82,6 +88,7 @@ HLfit <- function(formula,
       names_nondefault  <- intersect(names(mc),names(preprocess_args)) ## mc including dotlist
       preprocess_args[names_nondefault] <- mc[names_nondefault] 
       preprocess_args$family <- family ## checked version of 'family'
+      preprocess_args$ranFix <- oricall$fixed ## because preprocess expects ranFix
       if ( ! is.null(mc$rand.family)) preprocess_args$rand.families <- mc$rand.family ## because preprocess expects $rand.families 
       preprocess_args$predictor <- mc$formula ## because preprocess still expects $predictor 
 #      preprocess_args$HLmethod <- HLmethod ## forces evaluation
@@ -110,10 +117,10 @@ HLfit <- function(formula,
   # pnames <- c("data","family","formula","prior.weights", "weights.form", "HLmethod","method","rand.family","control.glm","REMLformula",
   #             "resid.model","verbose")
   pnames <- c("data","family","formula","prior.weights", "weights.form","HLmethod","method","rand.family","control.glm","REMLformula",
-              "resid.model", "verbose") 
+              "resid.model", "verbose","ranFix") 
   for (st in pnames) mc[st] <- NULL ## info in processed
   mc[[1L]] <- get("HLfit_body", asNamespace("spaMM"), inherits=FALSE) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
-  if (identical(mc$processed[["verbose"]]["getCall"][[1L]],TRUE)) return(mc) ## returns a call if verbose["getCall"'"] is TRUE
+  if (.safe_true(mc$processed[["verbose"]]["getCall"][[1L]])) return(mc) ## returns a call if verbose["getCall"'"] is TRUE or 1
   hlfit <- eval(mc,parent.frame())
   .check_conv_glm_reinit()
   if ( ! is.null(processed$return_only)) {
@@ -131,7 +138,7 @@ HLfit <- function(formula,
   return(hlfit)
 }
 
-`HLfit.obj` <- function(ranefParsVec, skeleton, objective=processed$objective, processed, ranFix=list(), ...) { ## name of first arg MUST differ from names in dotlist...
+`HLfit.obj` <- function(ranefParsVec, skeleton, objective=processed$objective, processed, fixed=list(), ...) { ## name of first arg MUST differ from names in dotlist...
 
   if (  is.list(processed))  { ## "multiple" processed list 
     mc <- match.call(expand.dots=TRUE) 
@@ -146,17 +153,26 @@ HLfit <- function(formula,
     resu <- sum(unlist(fitlist))
     return(resu)
   } #else there is one processed for a single data set 
+  
+  mc <- match.call(expand.dots=TRUE) 
+  HLnames <- names(formals(HLfit))
+  HLfit.call <- mc[c(1L,which(names(mc) %in% HLnames))] ## keep the call structure
 
   ranefParsList <- relist(ranefParsVec, skeleton)
-  if ( ! is.null(trBeta <- ranefParsList$trBeta)) { # outer beta
-    ranefParsList$trBeta <- NULL
-    processed$off <- processed$X_off_fn(.betaInv(trBeta))
+  if ( ! is.null(processed$X_off_fn)) { # beta outer-optimisation
+    if ( ! is.null(trBeta <- ranefParsList$trBeta)) { # outer beta
+      ranefParsList$trBeta <- NULL
+      HLfit.call$etaFix$beta <- .betaInv(trBeta)
+    } else if ( ! is.null(beta <- ranefParsList$beta)) { # outer beta
+      ranefParsList$beta <- NULL
+      HLfit.call$etaFix$beta <- beta
+    }
   }
-  ranFix <- .modify_list(ranFix, ranefParsList)
-  rpType <- .modify_list(attr(ranFix, "type"), attr(skeleton, "type"))
-  attr(ranFix, "type") <- rpType
+  fixed <- .modify_list(fixed, ranefParsList)
+  rpType <- .modify_list(attr(fixed, "type"), attr(skeleton, "type"))
+  attr(fixed, "type") <- rpType
   if (processed$augZXy_cond) { 
-    hlfit <- eval(call(.spaMM.data$options$augZXy_fitfn, processed=processed, ranFix=ranFix)) # .HLfit_body_augZXy has only these two arguments
+    hlfit <- eval(call(.spaMM.data$options$augZXy_fitfn, processed=processed, fixed=fixed)) # .HLfit_body_augZXy has only these two arguments
     aphls <- hlfit$APHLs
     resu <- aphls[[objective]]
     if (objective=="cAIC") resu <- - resu ## for minimization of cAIC (private & experimental)
@@ -178,10 +194,7 @@ HLfit <- function(formula,
     # since there is a $processed, we can call HLfit_body here (with HLnames <- names(formals(HLfit_body))), rather than HLfit
     # The main difference is a more definite selection of arguments in the HLfit_body() call through HLfit()
     # and the call to .check_conv_glm_reinit()
-    mc <- match.call(expand.dots=TRUE) 
-    HLnames <- names(formals(HLfit))
-    HLfit.call <- mc[c(1L,which(names(mc) %in% HLnames))] ## keep the call structure
-    HLfit.call$ranFix <- ranFix
+    HLfit.call$fixed <- fixed
     HLfit.call[[1L]] <- get("HLfit", asNamespace("spaMM"), inherits=FALSE) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
     hlfit <- eval(HLfit.call)
     resu <- hlfit$APHLs[[objective]]

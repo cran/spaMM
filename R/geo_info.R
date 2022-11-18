@@ -172,6 +172,9 @@
 .calc_Lunique_for_correl_algos <- function(processed, symSVD, rho, adj_rho_is_inner_estimated, argsfordesignL, 
                                            cov_info_mat, condnum=1) {
   if ( ! is.null(symSVD)) {
+    if (! is.numeric(rho)) { # protection from crashing bug...
+      stop("Invalid rho value passed to .calc_Lunique_for_correl_algos()")
+    }
     symSVD$d <- 1/(1-rho*symSVD$adjd) ## from adjMatrix to correlation matrix
     # outer optim, not spprec -> LMatrix recomputed from this for each rho  
     Lunique <- mat_sqrt(symSVD=symSVD) ## using $d not $adjd : $d=NaN should catch erroneous calls to mat_sqrt.
@@ -472,7 +475,7 @@
           #.init_AUGI0_ZX_envir_spprec_info() -> .calc_corrMatrix_precisionFactor__assign_Lunique() has done the work
           # earlier in this function
         } else { ## General spprec code that should be correct for AR1 and corrMatrix too
-          ## (1) Provide sparse_Qmat for all parameteric correlation models 
+          ## (1) Provide sparse_Qmat for all parametric correlation models 
           if (corr_type %in% c("Matern","Cauchy")) {
             ## at this point cov_info_mat is a dist object !
             cov_info_mat <- proxy::as.matrix(cov_info_mat, diag=1)
@@ -488,7 +491,11 @@
             # sparse_Qmat already computed before in this fn
             ## Cholesky gives proper LL' (think LDL')  while chol() gives L'L...
           } else if (corr_type=="corrFamily") {
-            if (inherits(cov_info_mat,"precision")) {
+            if (is.null(cov_info_mat)) { # e.g., ranGCA...
+              nc <- ncol(processed$ZAlist[[rd]])
+              sparse_Qmat <- .symDiagonal(n=nc)
+              # chol_Q=new("dtCMatrix",i= 0:(nc-1L), p=0:(nc), Dim=c(nc,nc),x=rep(1,nc)) )
+            } else if (inherits(cov_info_mat,"precision")) {
               sparse_Qmat <- cov_info_mat$matrix
             } else sparse_Qmat <- as_precision(cov_info_mat)$matrix 
           } else if (corr_type== "IMRF") {

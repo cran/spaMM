@@ -1,14 +1,30 @@
 cat(crayon::yellow("\ntest pedigree:\n"))
 
-if(requireNamespace("pedigreemm", quietly=TRUE)) {
-  ## derived from help("pedigreemm")
-  p1 <- new("pedigree",
-            sire = as.integer(c(NA,NA,1, 1,4,5)),
-            dam  = as.integer(c(NA,NA,2,NA,3,2)),
-            label = as.character(1:6))
-  oldMDCopt <- options(Matrix.warnDeprecatedCoerce = 0) # ___F I X M E___
-  A <- pedigreemm::getA(p1) ## relationship matrix 
-  options(oldMDCopt)
+{
+  if(FALSE) {
+    # if(requireNamespace("pedigreemm", quietly=TRUE)) {
+    #   # derived from help("pedigreemm")
+    #   p1 <- new("pedigree",
+    #             sire = as.integer(c(NA,NA,1, 1,4,5)),
+    #             dam  = as.integer(c(NA,NA,2,NA,3,2)),
+    #             label = as.character(1:6))
+    #   oldMDCopt <- options(Matrix.warnDeprecatedCoerce = 0) # pedigreemm not updated for Matrix 1.5.0
+    #   A <- pedigreemm::getA(p1) ## relationship matrix
+    #   options(oldMDCopt)
+    # }
+  }
+  { ## by package 'kinship':
+    # kinship2 package looks more 'active' but it seems to assume that one parent is known, both are known, 
+    # which is not the case for 4th individual in the above example (=Table 2.1 or Mrode 2005). The syntax is
+    # ped2 <- kinship2::pedigree(1:6, c(0,0,1, 1,4,5), c(0,0,2,2,3,2), c(1,2,2,1,1,3))
+    # A_for_fixed4_th <- 2 * kinship2::kinship(ped2)
+  }
+  { # Manual version to avoid external dependencies:
+    A <- matrix(NA, ncol=6,nrow=6)
+    A[lower.tri(A,diag=TRUE)] <- c(8,0,4,4,4,2, 8,4,0,2,5, 8,2,5,4.5, 8,5,2.5, 9,5.5, 9)/8
+    A <- forceSymmetric(A,uplo = "L")
+    colnames(A) <- rownames(A) <- 1:6
+  }
   ## data simulation
   cholA <- chol(A)  
   varU <- 0.4; varE <- 0.6; rep <- 20

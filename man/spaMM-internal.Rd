@@ -36,6 +36,7 @@
 \alias{corrHLfit_body}
 \alias{corrMM.LRT} % in Ecography code, redefined as a stop()
 \alias{getCall.HLfit} 
+\alias{model.offset.HLfit} % not an S3 method
 \alias{getPar}
 \alias{HLCor_body}
 \alias{HLfit_body}

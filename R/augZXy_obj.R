@@ -4,7 +4,7 @@
   rpType <- .modify_list(attr(ranFix, "type"), attr(skeleton, "type"))
   attr(ranFix, "type") <- rpType
   if (FALSE) {
-    hlfit <- eval(call(.spaMM.data$options$augZXy_fitfn, processed=processed, ranFix=ranFix))
+    hlfit <- eval(call(.spaMM.data$options$augZXy_fitfn, processed=processed, fixed=ranFix))
   } else {
     ranFix <- .canonizeRanPars(ranPars = ranFix, corr_info = NULL, 
                                checkComplete = FALSE, rC_transf = .spaMM.data$options$rC_transf)

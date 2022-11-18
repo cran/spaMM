@@ -241,10 +241,17 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
   } else {
     if( is.matrix(newdata) ) newdata <- as.data.frame(newdata)  
     # so that matrix 'newdata' arguments can be used as in some other predict methods.
-    locdata <- try(newdata[ , locvars,drop=FALSE]) ## allvars checks only RHS variables
-    if (inherits(locdata,"try-error")) stop(paste0("Variable(s) ",
-                                                   paste(setdiff(locvars,colnames(newdata)), collapse=","),
-                                                   " appear to be missing from newdata."))
+    # ## allvars checks only RHS variables...
+    locdata <- tryCatch(newdata[ , locvars,drop=FALSE],
+                        error= function(e) {
+                          if (e$message==gettext("undefined columns selected", domain="R-base")) {
+                            more_info <- paste0("; variable(s) ",
+                                                paste(setdiff(locvars,colnames(newdata)), collapse=","),
+                                                " appear to be missing from 'newdata'.")
+                            e$message <- paste0(e$message, more_info)
+                          }
+                          stop(e)
+                        }) 
   }
   # => for any non-NULL newdata, locadta is a data.frame with valid variables. Check NAs:
   checkNAs <- apply(locdata,1L,anyNA)

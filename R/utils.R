@@ -65,12 +65,23 @@ overcat <- function(msg, prevmsglength) {
   if (res=='b') browser("To debug, run options(error=recover); stop()" )
 }
 
-# must work on S4 objects but we avoid defining a new S4 class... hence e don't manipulate class
+# must work on S4 objects but we avoid defining a new S4 class... hence we don't manipulate class
+# This is called on 'A'matrices and on X.pv. In the latter case for an mv fit colnames MUST be present.
 .subcol_wAttr <- function(X, j, drop) {
   Xattr <- attributes(X)
   X <- X[,j=j,drop=drop]
   names_lostattrs <- setdiff(names(Xattr), names(attributes(X)))
   attributes(X)[names_lostattrs] <- Xattr[names_lostattrs] ## not mostattributes hich messes S4 objects ?!
+  if ( ! is.null(cum_ncol <- Xattr$cum_ncol)) { # mv model
+    n_subm <- length(cum_ncol)-1L
+    ncol_vec <- integer(n_subm)
+    colmatches <- match(Xattr$dimnames[[2]], colnames(X))
+    for (mv_it in seq_len(n_subm)) {
+      colrange <- (cum_ncol[mv_it]+1L):cum_ncol[mv_it+1L]  
+      ncol_vec[mv_it] <- length(na.omit(colmatches[colrange]))  
+    }
+    attr(X,"cum_ncol") <- c(0L,cumsum(ncol_vec))
+  }
   return(X)
 }
 
@@ -213,6 +224,8 @@ projpath <- local({
 
 .unlist <- function(x) unlist(x, recursive=FALSE, use.names = FALSE)
 
+.relist_rep <- function(x, skeleton) relist(rep(x,length(unlist(skeleton,use.names = FALSE))),skeleton)
+
 ..trDiagonal <- function(n) .trDiagonal(n=n, unitri = FALSE)
 
 .rawsolve <- function(A) Matrix::solve(A, ..trDiagonal(n=ncol(A))) 
@@ -353,3 +366,4 @@ projpath <- local({
   }
 }
 
+.safe_true <- function(cond) {( identical(cond,TRUE) ||       (( ! is.na(cond)) && is.numeric(cond) && cond>0) )   } # must exclude NA_real_ and allow 1 or 1L...

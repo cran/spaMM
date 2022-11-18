@@ -1100,6 +1100,61 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
   return(resu)
 }
 
+.wrap_calcPredVar <- function(newnrand, newdata, re.form, new_X_ZACblob, variances, newX.pv, 
+                             object, blockSize, invCov_oldLv_oldLv_list, showpbar, locdata) {
+  if (newnrand) { # if there are ranefs in 'new' formula (which may be orig formula)
+    loc_tcrossfac_beta_w_cov <- .get_tcrossfac_beta_w_cov(object) 
+    if (inherits(re.form,"formula")) {
+      # identifies and selects columns for the [retained ranefs, which are given by newinold 
+      re_form_col_indices <- .re_form_col_indices(new_X_ZACblob$newinold, cum_n_u_h=attr(object$lambda,"cum_n_u_h"), 
+                                                  Xi_cols=attr(object$ZAlist, "Xi_cols"))
+      Xncol <- ncol(object$X.pv)
+      subrange <- c(seq_len(Xncol),re_form_col_indices$subrange + Xncol)
+      loc_tcrossfac_beta_w_cov <- loc_tcrossfac_beta_w_cov[subrange,]
+    } else re_form_col_indices <- NULL
+    #
+    if ( is.null(newdata) && ! inherits(re.form,"formula")) {
+      newZAlist <- new_X_ZACblob$subZAlist ## (subset of) the original object$ZAlist 
+    } else { ## 
+      newZAlist <- new_X_ZACblob$newZAlist ## a new ZAlist built using .calc_Zlist(new formula...) 
+    }
+    if (variances$cancel_X.pv) newX.pv[] <- 0 
+    predVar <- .calcPredVar(X.pv=newX.pv,tcrossfac_beta_w_cov=loc_tcrossfac_beta_w_cov,
+                            covMatrix=variances$cov,object=object,
+                            newinold=new_X_ZACblob$newinold,blockSize=blockSize, 
+                            newZAlist=newZAlist, re_form_col_indices=re_form_col_indices,
+                            invCov_oldLv_oldLv_list=if (is.null(newdata)) {
+                              NULL} else {invCov_oldLv_oldLv_list}, # promise for newdata
+                            logdispObject=if (variances$disp) {
+                              .get_logdispObject(object)} else {NULL}, # promise for variances$disp
+                            cov_newLv_oldv_list=new_X_ZACblob$cov_newLv_oldv_list,
+                            ## list for Cnewnew, which enters in  newZA %*% Cnewnew %*% tnewZA, hence should not represent newZA itself 
+                            cov_newLv_newLv_list=new_X_ZACblob$cov_newLv_newLv_list,
+                            diag_cov_newLv_newLv_list=new_X_ZACblob$diag_cov_newLv_newLv_list,
+                            as_tcrossfac_list=variances$as_tcrossfac_list,
+                            showpbar=showpbar) 
+    if ( ! is.list(predVar)) {
+      if (inherits(locdata,"list")) { # mv
+        respVnames <- .unlist(lapply(locdata,rownames))
+      } else respVnames <- rownames(locdata)
+      if (variances$cov) {
+        predVar <- as.matrix(predVar) ## matrix, not Matrix (assumed below)
+        rownames(predVar) <- colnames(predVar) <- respVnames
+      } else {
+        names(predVar) <- respVnames
+      }
+    } 
+  } else { # no ranefs
+    if (inherits(locdata,"list")) { # mv
+      respVnrow <- sum(.unlist(lapply(locdata,nrow)))
+    } else respVnrow <- nrow(locdata)
+    if (variances$cov) {
+      predVar <- matrix(0,nrow=respVnrow,ncol=respVnrow)
+    } else predVar <- rep(0,respVnrow)
+  }
+  predVar
+}
+
 
 .predict_body <- function(object, newdata, re.form, type,
                           variances, binding, intervals, level, blockSize, control, showpbar) {
@@ -1157,67 +1212,15 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
   newnrand <- length(new_X_ZACblob$newZAlist) ## may be reduced if non trivial re.form
   newX.pv <- new_X_ZACblob$newX.pv
   #
-  beta_w_cov_needed <- (# inherits(re.form,"formula") || 
-                          (variances$linPred && newnrand)
-                        )
-  if (beta_w_cov_needed) loc_tcrossfac_beta_w_cov <- .get_tcrossfac_beta_w_cov(object) 
-  if (beta_w_cov_needed && inherits(re.form,"formula")) {
-    # identifies and selects columns for the [retained ranefs, which are given by newinold 
-    re_form_col_indices <- .re_form_col_indices(new_X_ZACblob$newinold, cum_n_u_h=attr(object$lambda,"cum_n_u_h"), Xi_cols=attr(object$ZAlist, "Xi_cols"))
-    Xncol <- ncol(object$X.pv)
-    subrange <- c(seq_len(Xncol),re_form_col_indices$subrange + Xncol)
-    loc_tcrossfac_beta_w_cov <- loc_tcrossfac_beta_w_cov[subrange,]
-  } else re_form_col_indices <- NULL
-  #
   if(variances$linPred) {
-    if (newnrand) {
-      if ( is.null(newdata) && ! inherits(re.form,"formula")) {
-        newZAlist <- new_X_ZACblob$subZAlist ## (subset of) the original object$ZAlist 
-      } else { ## 
-        newZAlist <- new_X_ZACblob$newZAlist ## a new ZAlist built using .calc_Zlist(new formula...) 
-      }
-    }
-    if (newnrand) { # if there are ranefs in 'new' formula (which may be orig formula)
-      if (variances$cancel_X.pv) newX.pv[] <- 0 
-      respVar <- .calcPredVar(X.pv=newX.pv,tcrossfac_beta_w_cov=loc_tcrossfac_beta_w_cov,
-                              covMatrix=variances$cov,object=object,
-                              newinold=new_X_ZACblob$newinold,blockSize=blockSize, 
-                              newZAlist=newZAlist, re_form_col_indices=re_form_col_indices,
-                              invCov_oldLv_oldLv_list=if (is.null(newdata)) {
-                                NULL} else {invCov_oldLv_oldLv_list}, # promise for newdata
-                              logdispObject=if (variances$disp) {
-                                .get_logdispObject(object)} else {NULL}, # promise for variances$disp
-                              cov_newLv_oldv_list=new_X_ZACblob$cov_newLv_oldv_list,
-                              ## list for Cnewnew, which enters in  newZA %*% Cnewnew %*% tnewZA, hence should not represent newZA itself 
-                              cov_newLv_newLv_list=new_X_ZACblob$cov_newLv_newLv_list,
-                              diag_cov_newLv_newLv_list=new_X_ZACblob$diag_cov_newLv_newLv_list,
-                              as_tcrossfac_list=variances$as_tcrossfac_list,
-                              showpbar=showpbar) 
-      if ( ! is.list(respVar)) {
-        if (inherits(locdata,"list")) { # mv
-          respVnames <- .unlist(lapply(locdata,rownames))
-        } else respVnames <- rownames(locdata)
-        if (variances$cov) {
-          respVar <- as.matrix(respVar) ## matrix, not Matrix (assumed below)
-          rownames(respVar) <- colnames(respVar) <- respVnames
-        } else {
-          names(respVar) <- respVnames
-        }
-      } 
-    } else { # no ranefs
-      if (inherits(locdata,"list")) { # mv
-        respVnrow <- sum(.unlist(lapply(locdata,nrow)))
-      } else respVnrow <- nrow(locdata)
-      if (variances$cov) {
-        respVar <- matrix(0,nrow=respVnrow,ncol=respVnrow)
-      } else respVar <- rep(0,respVnrow)
-    }
+    predVar <- .wrap_calcPredVar(newnrand, newdata, re.form, new_X_ZACblob, variances, newX.pv, 
+                                 object, blockSize, invCov_oldLv_oldLv_list, showpbar, locdata)
   } else if (any(unlist(variances))) {
     if (inherits(locdata,"list")) { # mv
       respVnrow <- sum(.unlist(lapply(locdata,nrow)))
     } else respVnrow <- nrow(locdata)
-    respVar <- rep(0,respVnrow)
-  } else respVar <- NULL 
+    predVar <- rep(0,respVnrow)
+  } else predVar <- NULL 
   if ( variances$fixefVar || (newnrand==0L && variances$linPred) ) {
     beta_cov <- .get_beta_cov_any_version(object)
     if (! is.null(beta_cov)) {
@@ -1226,22 +1229,20 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
         attr(resu,"fixefVar") <- fixefcov 
       } else attr(resu,"fixefVar") <- diag(fixefcov) # if beta_cov is a Matrix, fixefcov is too, and diag loses names -> detected by tests.
       if (newnrand==0L) { ## otherwise there is already such a term in predVar
-        respVar <- respVar + attr(resu,"fixefVar") 
+        predVar <- predVar + attr(resu,"fixefVar") 
       }
     }
   }
-  if ( is.list(respVar)) {
-    attr(resu,"predVar") <- respVar 
+  if ( is.list(predVar)) {
+    attr(resu,"predVar") <- predVar 
   } else {
-    if (variances$cov) respVar <- (respVar+t(respVar))/2 ## if numerically asym, rand_eta <- mvrnorm(.,Sigma=attr(point_pred_eta,"predVar")) fails
-    attr(resu,"predVar") <- respVar ## vector or matrix
+    if (variances$cov) predVar <- (predVar+t(predVar))/2 ## if numerically asym, rand_eta <- mvrnorm(.,Sigma=attr(point_pred_eta,"predVar")) fails
+    attr(resu,"predVar") <- predVar ## vector or matrix
   }
-  # at this precise point 'respVar' is the predVar rather that the response variance (since residual variance is added next). 
   # For interval computations we always use the predVar on the linear predictor scale, already stored as a an attribute of 'resu'.
   # rather than the result of .to_respScale_var:
-  # ___F I X M E___ maybe we can remove the variable name ambiguity (and even define smaller functions...)
   if (variances$respVar) {
-    respVar <- .to_respScale_var(respVar, ppblob, object) 
+    respVar <- .to_respScale_var(predVar, ppblob, object) 
   } else respVar <- NULL # remove any ambiguity
   # 
   if (variances$residVar) resu <- .add_residVar(object, resu, fv=ppblob$fv, locdata, respVar, variances) # may affect attributes residVar AND respVar
@@ -1278,7 +1279,7 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
       pv <- 1-(1-level)/2
       ## special case for simple LM
       if (length(object$rand.families)==0L && # not mixed
-          object$family$family=="gaussian" && ## __F I X M E__ so calling this on a mv-GLM will bug.
+          object$family$family=="gaussian" && ## on a mv-GLM, evaluates to FALSE => t-test not performed when there are several phi's (*OK*).
           .DEPARSE(.get_phiform(object))=="~1" # not heteroscedastic
       ) { 
         nobs <- length(object$y)

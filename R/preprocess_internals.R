@@ -699,7 +699,7 @@
           }
         } else traced_fn <- quote(HLfit_body)
         if (level >= 1L ) {
-          tracing_op <- quote(try(.TRACE_fn(ranFix, processed)))
+          tracing_op <- quote(try(.TRACE_fn(fixed, processed))) # the closure of the traced function must have a 'fixed' variable
           if (is.null(processed$REMLformula)) { ## default REML case
             if (processed$HL[[1L]]=='SEM')  {
               objLik <- "logLapp"

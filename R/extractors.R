@@ -618,7 +618,7 @@ VarCorr.HLfit <- function(x, sigma=1, add_residVars=TRUE, verbose=TRUE, ...) {
   rownames(loctable) <- NULL
   if (is.null(loctable)) {
     if (verbose) message("VarCorr() found no variance to report.")
-  } else {
+  } else if ( ! is.null(lambda.object)) {
     attr(loctable,"random_slope_ncol_geq_1_pos") <- attr(lamtable,"random_slope_ncol_geq_1_pos") # indices are rows in table
     attr(loctable,"random_slope_ncol_geq_1_rows") <- attr(lamtable,"random_slope_ncol_geq_1_rows") # indices are rows in table
     attr(loctable,"row_map") <- attr(lamtable,"row_map") # map from ranef indices to rows
@@ -794,40 +794,110 @@ get_rankinfo <- function(object) return(attr(object$X.pv,"rankinfo"))
   varcorr
 }
 
-.get_fitted_ranPars <- function(object) {
+.get_fitted_ranPars <- function(object) { # phi not handled b this fn
   CorrEst_and_RanFix <- object$CorrEst_and_RanFix
-  resu <- CorrEst_and_RanFix$corrPars
-  resu <- .remove_from_cP(resu, u_names=names(which(unlist(attr(CorrEst_and_RanFix,"type")$corrPars)=="fix")))
+  if (length(resu <- CorrEst_and_RanFix$corrPars)) {
+    resu <- .remove_from_cP(resu, u_names=names(which(unlist(attr(CorrEst_and_RanFix,"type")$corrPars)=="fix")))
+    resu <- list(corrPars=resu)
+  } else resu <- list()
+  
   # Overwrite any fixed lambda or phi in all cases:
   if (length(lambda_list <- object$lambda.object$lambda_list)) {
     which_fitted_simple_lam <- which(sapply(lambda_list, length)==1L &  # removes (most) ranCoefs params [separate component of return value]
                                        object$lambda.object$type!="fixed") 
-    resu$lambda <- .unlist(lambda_list[which_fitted_simple_lam]) 
-    if (length(resu$lambda)) names(resu$lambda) <- which_fitted_simple_lam
+    
+    if (length(hyper <- CorrEst_and_RanFix$hyper)) {
+      ranges <- object$ranef_info$hyper_info$ranges
+      for (char_hyper_it in names(ranges)) {
+        ## remove the lambda elements corresponding to hy_lam, whether fixed or not:
+        # hy_lam_fixed <- attr(CorrEst_and_RanFix,"type")$hyper[[char_hyper_it]]$hy_lam=="fix"
+        #if (hy_lam_fixed) 
+          which_fitted_simple_lam <- setdiff(which_fitted_simple_lam, ranges[[char_hyper_it]])
+      }
+      hyper <- .remove_from_cP(hyper, u_names=names(which(unlist(attr(CorrEst_and_RanFix,"type")$hyper)=="fix")))
+    }
+    
+    lambda <- .unlist(lambda_list[which_fitted_simple_lam]) 
+    if (length(lambda)) {
+      names(lambda) <- which_fitted_simple_lam
+      resu$lambda <- lambda
+    }  
+    
+    if (length(hyper)) { # expecting CorrEst_and_RanFix to have redundant info.
+      ranges <- object$ranef_info$hyper_info$ranges
+      for (char_hyper_it in names(ranges)) {
+        rd_range <- ranges[[char_hyper_it]]
+        char_rd_range <- as.character(rd_range)
+        for (char_rd in char_rd_range) resu$corrPars[[char_rd]]$kappa <- NULL
+        resu$lambda <- resu$lambda[setdiff(names(resu$lambda),char_rd_range)]
+        
+        hyper_rd <- hyper[[char_hyper_it]]
+        if ( ! is.null(hyper_rd$hy_trK)) {
+          hyper_rd$hy_kap <- .kappaInv(hyper_rd$hy_trK,KAPPAMAX = attr(CorrEst_and_RanFix,"moreargs")[[char_hyper_it]]$KAPPAMAX)
+          hyper_rd$hy_trK <- NULL
+        } 
+        if ( ! is.null(hyper_rd$hy_trL)) {
+          hyper_rd$hy_lam <- .dispInv(hyper_rd$hy_trL)
+          hyper_rd$hy_trL <- NULL
+        } 
+        hyper[[char_hyper_it]] <- hyper_rd
+      }
+      resu$hyper <- hyper
+    } 
   }
+  
   resu$ranCoefs <-  .get_rC_inits_from_hlfit(object,type=c("inner","outer_ranCoefs")) # overlap with Xi_ncol ranCoefs?
   # ___F I X M E___ part of the pb is that of recovering info about the different types of rC from an HLfit object.
   resu
 } 
 
-.get_fittedPars_ran_phi <- function(object) { ## ___F I X M E___ ultimately a get_fittedPars extractor; 
-                                              ## main pb may be heterogeneous structure of mv phi
+.get_fittedPars_ran_phi <- function(object) {
   resu <- .get_fitted_ranPars(object)
-  resu <- .add_famPars_outer(resu, fitobject=object)
+  resu <- .add_famPars_outer(resu, fitobject=object, type_attr = FALSE)
+  #
+  phi_model <- object$models[["phi"]]
   if ( is.null(object$families)) {
-    phi <- residVar(object, which="fit") # the syntax to get a single scalar when it's appropriate; 
-                                              #  object$phi.object$fittedPars may contain Gamma GLM coefs.
-    if ( ! identical(attr(phi,"constr_phi"),TRUE)) resu$phi <- phi
+    if (phi_model=="") {
+      # phi <- NULL # implicit NULL in resu
+    } else {
+      phi <- residVar(object, which="fit") # the syntax to get a single scalar when it's appropriate; 
+      #                                       object$phi.object$fittedPars may contain Gamma GLM coefs.
+      if ( ! identical(attr(phi,"constr_phi"),TRUE)) resu$phi <- phi # plenty of case where the attribute is absent.
+    }
   } else {
     phi <- list()
     for (mv_it in seq_along(object$families)) {
-      phi_it <- residVar(object, which="fit", submodel = mv_it)
-      if ( ! identical(attr(phi_it,"constr_phi"),TRUE)) phi[as.character(mv_it)] <- list(phi_it)
+      if (phi_model[mv_it]=="") {
+        phi[mv_it] <- list(NULL)
+      } else {
+        phi_it <- residVar(object, which="fit", submodel = mv_it)
+        if ( ! identical(attr(phi_it,"constr_phi"),TRUE)) phi[as.character(mv_it)] <- list(phi_it)
+      }
     }
     resu$phi <- phi
   }
   resu
 } 
+
+.get_fittedPars <- function(object, ## ___F I X M E___ ultimately a public extractor; 
+                            ## main pb may be heterogeneous structure of mv phi which may mix and types of phi models
+                            which=c("lambda","phi","beta", "beta_prec", "NB_shape","corrPars","hyper", "ranCoefs"),
+                            # Setting any of the booleans to FALSE overrides the default which:
+                            fixef=TRUE, ranef=TRUE, resid=TRUE,
+                            verbose=TRUE) {
+  if ( ! fixef) which <- setdiff(which, "beta")
+  if ( ! resid) which <- setdiff(which, c("beta_prec", "NB_shape", "phi"))
+  if ( ! ranef) which <- setdiff(which, c("lambda", "ranCoefs", "corrPars", "hyper"))
+  
+  skeleton <- .get_fittedPars_ran_phi(object)
+  if (verbose && length(extrapars <- setdiff(names(skeleton), which))) {
+    message(paste0("Parameter(s) '",paste(extrapars,collapse="','"),"' ignored in this computation."))
+  }
+  skeleton <- skeleton[intersect(names(skeleton), which)]
+  
+  if ("beta" %in% which) {skeleton$etaFix$beta <- fixef(object)} 
+  skeleton
+}
 
 get_ranPars <- function(object, which=NULL, 
                         verbose=TRUE, # does not control all verbosity, only that which is TRUE by default.
@@ -1109,6 +1179,19 @@ if (FALSE) { # permuted QR example - but singular too, so notexactly what we wan
   solve(R.[, qI] %*% t(Q.)) %*% X # bad
 }
 
+
+.get_moreargs <- function(fitobject) {
+  moreargs <- fitobject$ranef_info$moreargs
+  if (is.null(moreargs)) {
+    if (how(fitobject,verbose=FALSE)$spaMM.version > "4.0.0") {
+      # warning("fit object seems defective. Check fitobject$ranef_info$moreargs") # relevant if it is a random-effect model...
+      # warning would be pertinent for fitme() but not for HLCor() fits. That does not seem worth a .get_bare_fnname.HLfit() to further check.
+      moreargs <- attr(fitobject,"optimInfo")$LUarglist$moreargs
+    }
+  }
+  moreargs
+}
+
 .get_control_dist <- function(fitobject, char_rd) {
   if (is.null(optimInfo <- attr(fitobject,"optimInfo"))) {
     # HLCor, or fitme with nothing to optimize... (corrHLfit with nothing to optimize has an optimInfo...)
@@ -1365,4 +1448,59 @@ weights.HLfit <- function(object, type, ...) {
   } else object$envir$H_w.resid*residVar(object,which="phi")
 }
 
+LR2R2 <- function(fitobject, nullfit) {
+  Chi2_LR <- 2* (logLik(fitobject, "p_v")-logLik(nullfit, "p_v"))[[1]]
+  nobs <- length(fitobject$y)
+  pseudoR2 <- 1- exp( - Chi2_LR/nobs)
+  if (fitobject$models$eta=="etaGLM" && identical(fitobject$family$flags$LMbool,TRUE)) {
+    df.int <- if (attr(terms(fitobject), "intercept")) {1L} else 0L
+    adjR2 <- 1-(1-pseudoR2)*(nobs-df.int)/df.residual(fitobject)
+    c(R2=pseudoR2, adjR2=adjR2)
+  } else c(R2=pseudoR2)
+}
 
+pseudoR2 <- function(fitobject, nullform= . ~ 1, R2fun=LR2R2, rescale=FALSE, verbose=TRUE) {
+  if (is.null(match.call()$nullform)) {
+    if (verbose && fitobject$models$eta!="etaGLM") {
+      warning("Default null model formula may not be appropriate for mixed-effect models.")
+    } 
+  } else if (deparse(nullform[[2]])==".") {
+    nullform <- .update_formula(formula(fitobject), nullform)
+    if (verbose) {
+      cat("Null model formula:   ")
+      print(nullform, showEnv=FALSE)
+    } 
+  }
+  nullfit <- update(fitobject, formula=nullform)
+  resu <- R2fun(fitobject, nullfit)
+  
+  if ( ! identical(rescale,FALSE)) {
+    if ( ! inherits(rescale,"formula")) { # default rescaling method appropriate for binar regression
+      respvar <- deparse(formula(fitobject)[[2]])
+      satform <- as.formula(paste(respvar,"~ I(",respvar,")")) 
+      satfit <- suppressWarnings(suppressMessages(update(fitobject, formula=satform, verbose=FALSE)))
+    } else {
+      satform <- rescale
+      satfit <- update(fitobject, formula=satform, verbose=verbose)
+    }
+    satR2 <- R2fun(satfit, nullfit)
+    resu[["R2"]] <- resu[["R2"]]/satR2[["R2"]]
+  }
+  
+  resu
+}
+
+model.offset.HLfit <- function(fitobject) { # NOT a method bc model.offset() is NOT a S3 generic
+  # as the model frame is not kept in the object, it has to be rebuilt
+  termsv <- terms(fitobject)
+  if (is.list(termsv)) { # mv fit
+    moff <- vector("list", length(termsv))
+    cum_nobs <- attr(fitobject$X.pv,"cum_nobs")
+    for (mv_it in seq_along(moff)) {
+      moff_it <- model.offset(model.frame(termsv[[mv_it]], fitobject$data))
+      if (is.null(moff_it)) moff_it <- rep(0, cum_nobs[mv_it+1L]-cum_nobs[mv_it])
+      moff[[mv_it]] <- moff_it
+    }
+    .unlist(moff)
+  } else model.offset(model.frame(terms(fitobject), fitobject$data))
+}

@@ -1,7 +1,7 @@
 # y-augmented method withOUT precomputation of R_aug_ZXy
-.HLfit_body_augZXy <- function(processed, ranFix=list()) { 
+.HLfit_body_augZXy <- function(processed, fixed=list()) { 
   trace <- processed$verbose["TRACE"]
-  ranFix <- .canonizeRanPars(ranPars=ranFix,corr_info=NULL, checkComplete = FALSE, rC_transf=.spaMM.data$options$rC_transf)## including full-size lambda
+  ranFix <- .canonizeRanPars(ranPars=fixed,corr_info=NULL, checkComplete = FALSE, rC_transf=.spaMM.data$options$rC_transf)## including full-size lambda
   nobs <- length(processed$y) ## before prior.weights is evaluated
   nrand <- length(processed$ZAlist)
   cum_n_u_h <- processed$cum_n_u_h

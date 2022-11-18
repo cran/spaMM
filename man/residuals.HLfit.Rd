@@ -22,11 +22,11 @@ Extracts several types of residuals from an object of class \code{HLfit}. Note t
   \item{\dots}{For consistency with the generic.}
 }
 \details{
-The four types \code{"deviance"} (default), \code{"pearson"}, \code{"response"} are \code{"working"} are, for GLM families, the same that are returned by \code{\link[stats]{residuals.glm}}. \code{"working"} residuals may be returned only for fixed-effect models.
+The four types \code{"deviance"} (default), \code{"pearson"}, \code{"response"} are \code{"working"} are, for GLM families, the same that are returned by \code{\link[stats]{residuals.glm}}. \code{"working"} residuals may be returned only for fixed-effect models. \code{"deviance"} residuals are the signed square root of those returned by \code{\link{dev_resids}}.
 
   Following Lee et al. (2006, p.52), the standardized deviance residuals returned for \code{type="std_dev_res"} are defined as the deviance residuals divided by \eqn{\phi\sqrt(1-q)}, where the deviance residuals are defined as for a GLM, \eqn{\phi} is the dispersion parameter of the response family (a vector of values, for heteroscedastic cases), and \eqn{q} is a vector of leverages given by \code{hatvalues(., type="std")} (see \code{\link{hatvalues}} for details about these specific standardizing leverages).
   
-  These definitiosn are special cases of more general ones holding for non-GLM response families. In the latter case, the deviance residuals are as defined in Details of \code{\link{llm.fit}}, and \code{"std_dev_res"} residuals are defined from them as above for GLM response families, with the additional convention that \eqn{\phi=1}.  Pearson residuals and response residuals are defined as in \code{stats:::residuals.glm}.  The \code{"working"} residuals are defined for each response as \eqn{- [d \log(clik)/d \eta]/[d^2 \log(clik)/d \eta^2]} where clik is the conditional likelihood.
+  These definitions are special cases of more general ones holding for non-GLM response families. In the latter case, the deviance residuals are as defined in Details of \code{\link{llm.fit}}, and \code{"std_dev_res"} residuals are defined from them as above for GLM response families, with the additional convention that \eqn{\phi=1}.  Pearson residuals and response residuals are defined as in \code{stats:::residuals.glm}.  The \code{"working"} residuals are defined for each response as \eqn{- [d \log(clik)/d \eta]/[d^2 \log(clik)/d \eta^2]} where clik is the conditional likelihood.
 }
 \value{ A vector of residuals}
 \references{

@@ -8,9 +8,8 @@
   This was the first function for fitting all spatial models in spaMM, and is still fully functional, but it is recommended to use \code{\link{fitme}} which has different defaults and generally selects more efficient fitting methods, and will handle all classes of models that spaMM can fit, including non-spatial ones. \code{corrHLfit} performs the joint estimation of correlation parameters, fixed effect and dispersion parameters. 
 }
 \usage{
-corrHLfit(formula, data, init.corrHLfit = list(), 
-          init.HLfit = list(), ranFix = list(), lower = list(), 
-          upper = list(), 
+corrHLfit(formula, data, init.corrHLfit = list(), init.HLfit = list(), 
+          ranFix, fixed=list(), lower = list(),  upper = list(), 
           objective = NULL, resid.model = ~1, 
           control.dist = list(), control.corrHLfit = list(),
           processed = NULL, family = gaussian(), method="REML",
@@ -33,7 +32,7 @@ a dispersion parameter changes the ways it is estimated (see Details).
   \item{init.HLfit}{See identically named \code{\link{HLfit}} argument.
 %- FR->FR more to say (if corr estim within HLfit becomes public ?)...
   }
-  \item{ranFix}{A list similar to \code{init.corrHLfit}, but specifying fixed values of the parameters not estimated. See \code{\link{ranFix}} for further information.}
+  \item{fixed, ranFix}{A list similar to \code{init.corrHLfit}, but specifying fixed values of the parameters not estimated. \code{ranFix} is the old argument, maintained for back compatibility; \code{fixed} is the new argument, uniform across \pkg{spaMM} fitting functions. See \code{\link{ranFix}} for further information.}
   \item{lower}{
 An optional (sub)list of values of the parameters specified through \code{init.corrHLfit}, in the same format as \code{init.corrHLfit}, used as lower values in calls to \code{optim}. See Details for default values.
 }

@@ -26,7 +26,7 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") { ## set in <R_HOME>/etc/Renviron.site 
         print(sums <- colSums(timings))
       }
       if (FALSE) { # long mv tests, not really for the timings; important tests, mv_nested notably
-        if (FALSE) { # 'pattern' should work, but doesn't
+        if (TRUE) { # 'pattern' should work, but didn't in Rstudio. Fixed in Rstudio version 2022.07.2+576
           nested_testfiles <- dir(paste0(projpath(),"/package/tests/testthat/nestedFiles/"),pattern="*.R",full.names = TRUE)
         } else {
           nested_testfiles <- dir(paste0(projpath(),"/package/tests/testthat/nestedFiles/"),full.names = TRUE)
@@ -46,13 +46,13 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") { ## set in <R_HOME>/etc/Renviron.site 
       if (FALSE) { ## tests not included in package (using unpublished data, etc.)
         # install.packages("FactoMineR")
         # see also includes in tests_private/test-back-compat.R
-        if (FALSE) { # 'pattern' should work, but doesn't
+        if (TRUE) { # see above comment about Rstudio
           priv_testfiles <- dir(paste0(projpath(),"/package/tests_private/"),pattern="*.R",full.names = TRUE)
         } else {
           priv_testfiles <- dir(paste0(projpath(),"/package/tests_private/"),full.names = TRUE)
-          priv_testfiles <- setdiff(priv_testfiles,paste0(projpath(),"/package/tests_private/knit_LM2GLMM.R"))
           priv_testfiles <- priv_testfiles[grep("*.R$",priv_testfiles)]
         }
+        priv_testfiles <- setdiff(priv_testfiles,paste0(projpath(),"/package/tests_private/knit_LM2GLMM.R"))
         priv_timings <- t(sapply(priv_testfiles, function(fich){
           cat(crayon::green(paste0("\n",fich)))
           gc()

@@ -718,7 +718,7 @@
 }
 
 
-.preprocess_augZXy <- function(processed, intervalInfo, init, ranFix) {
+.preprocess_augZXy <- function(processed, intervalInfo, init, ranFix) { # ___F I X M E___ add a condition on etaFix
   augZXy_cond_inner <- augZXy_cond <- spaMM.getOption("allow_augZXy")
   if (is.null(augZXy_cond)) {
     augZXy_cond <- (processed$models[["phi"]]=="phiScal") ## allows prior weights, but there must be a single phi scaling factor
@@ -1025,8 +1025,9 @@
 .def_off_fn <- function(X_off, ori_off) { # outer beta
   force(X_off)
   force(ori_off)
+  if (is.null(ori_off)) ori_off <- 0
   function(beta) {
-    off <- ori_off + X_off %*% beta
+    off <- drop(ori_off + X_off %*% beta)
     attr(off,"beta") <- beta
     off
   }

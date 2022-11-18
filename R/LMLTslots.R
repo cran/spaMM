@@ -1,66 +1,34 @@
-.infofn_fixed <- function(x, fitobject, skeleton, transf) {
-  ranpars <- relist(x, skeleton)
-  if (transf) ranpars <- .canonizeRanPars(ranpars, corr_info=fitobject$ranef_info$sub_corr_info, checkComplete=FALSE, rC_transf=.spaMM.data$options$rC_transf)
-  # a merge parlists may be necessary
-  # print(ranpars)
-  refit <- update(fitobject, fixed=ranpars ) # ___F I X M E___ a way to save time by update returning only a logLik?
-  - logLik(refit)  
-}
 
-.infofn_ranFix <- function(x, fitobject, skeleton, transf) {
-  ranpars <- relist(x, skeleton)
-  if (transf) ranpars <- .canonizeRanPars(ranpars, corr_info=fitobject$ranef_info$sub_corr_info, checkComplete=FALSE, rC_transf=.spaMM.data$options$rC_transf)
-  # a merge parlists may be necessary
-  refit <- update(fitobject, ranFix=ranpars ) 
-  - logLik(refit)  
-}
-
-.numInfo <- function(fitobject, skeleton=.get_fittedPars_ran_phi(fitobject), transf) {
-  fittingfn <- .get_bare_fnname.HLfit(fitobject)
-  if ("fixed" %in% names(formals(fittingfn))) {
-    infofn <- .infofn_fixed
-  } else infofn <- .infofn_ranFix
-  numDeriv::hessian(func = infofn, x = unlist(skeleton), skeleton=skeleton, fitobject=fitobject, transf=transf)
-}
-
-.get_covbeta <- function(x, fitobject, skeleton, transf) {
-  ranpars <- relist(x, skeleton)
-  if (transf) ranpars <- .canonizeRanPars(ranpars, corr_info=fitobject$ranef_info$sub_corr_info, checkComplete=FALSE, rC_transf=.spaMM.data$options$rC_transf)
-  # a merge parlists may be necessary?
-  refit <- update(fitobject, fixed=ranpars )
-  vcov(refit)
-}
-
-## (yet partial) inverse of .canonizeRanpars 
-.ad_hoc_trRanpars <- function(ranPars,
-                              moreargs=NULL, rC_transf=.spaMM.data$options$rC_transf) {
-  trRanpars <- ranPars
-  if ( ! is.null(ranPars$lambda)) {
-    trRanpars$trLambda <-.dispFn(ranPars$lambda)
-    trRanpars$lambda <- NULL
+.get_covbeta <- function(x, hlcorcall, skeleton, transf, fitobject) {
+  if (E_S_S_A_I <- TRUE) {
+    refit <- .numInfo_objfn(x, hlcorcall=hlcorcall, skeleton=skeleton, 
+                            transf, # signals transformed input. T or F when called from numInfo(), 
+                            # TRUE when called from as_LMLT <- function(., transf=TRUE) as the argument is passed all the way down to here
+                            objective=NULL)
+    vcov(refit)
+  } else {
+    ranpars <- relist(x, skeleton)
+    if (transf) ranpars <- .canonizeRanPars(ranpars, corr_info=fitobject$ranef_info$sub_corr_info, checkComplete=FALSE, rC_transf=.spaMM.data$options$rC_transf)
+    # a merge parlists may be necessary?
+    fittingfn <- .get_bare_fnname.HLfit(fitobject)
+    refit <- update(fitobject, fixed=ranpars )    
+    vcov(refit)
   }
-  if ( ! is.null(phi <- ranPars$phi)) {
-    if (is.list(phi)) {
-      trRanpars$trPhi <- lapply(phi, .dispFn)
-    } else trRanpars$trPhi <-.dispFn(ranPars$phi)
-    trRanpars$phi <- NULL
-  }
-  if ( ! is.null(ranPars$ranCoefs)) {
-    trRanpars$trRanCoefs <- lapply(ranPars$ranCoefs, .ranCoefsFn, rC_transf=rC_transf)
-    trRanpars$ranCoefs <- NULL
-  }
-  trRanpars
 }
 
 # reproduces the elements added to the lmerMod object by lmerTest:
 .calc_numderivs_LMLT <- function(fitobject, tol = 1e-08, skeleton=NULL, transf) {
   if (is.null(skeleton)) skeleton <- .get_fittedPars_ran_phi(fitobject)
   if ( ! length(skeleton)) stop("No fitted (co-)variance parameters whose information matrix could be evaluated.")
+  #
+  hlcorcall <- get_HLCorcall(fitobject, fixed=skeleton) # using skeleton on canonical scale
+  proc_info <- .post_process_hlcorcall(hlcorcall, ranpars=skeleton) # modifies the $processed environment
+  
   nuisance <- skeleton
   if (transf) skeleton <- .ad_hoc_trRanpars(skeleton)
   res <- list(skeleton=skeleton, nuisance=nuisance, # nuisance should be on canonical scale as it is displayed; skeleton is typically transformed.
               vcov_beta=vcov(fitobject))
-  h <- .numInfo(fitobject, skeleton = skeleton, transf=transf)
+  h <- hessian(func = .numInfo_objfn, x = unlist(skeleton), skeleton=skeleton, hlcorcall=hlcorcall, transf=transf, objective=proc_info$objective)
   eig_h <- eigen(h, symmetric = TRUE)
   evals <- eig_h$values
   neg <- evals < -tol
@@ -89,8 +57,10 @@
                                           nrow = q) %*% t(vectors[, pos, drop = FALSE])
   })
   res$vcov_varpar <- h_inv 
-  Jac <- numDeriv::jacobian(func = .get_covbeta, x = unlist(skeleton), skeleton=skeleton, 
-                            fitobject=fitobject, transf=transf)
+  .assignWrapper(hlcorcall$processed, paste0("return_only <- NULL"))  # currently we call vcov() in .get_covbeta() so we need a full return object (but this could be improved) 
+  Jac <- jacobian(func = .get_covbeta, x = unlist(skeleton), hlcorcall=hlcorcall, skeleton=skeleton, 
+                            # fitobject=fitobject, 
+                            transf=transf)
   res$Jac_list <- lapply(1:ncol(Jac), function(i) array(Jac[, i], dim = rep(length(fixef(fitobject)), 2)))
   res
 }
@@ -136,13 +106,20 @@ as_LMLT <- function(fitobject, nuisance=NULL, verbose=TRUE, transf=TRUE, ...) {
               sigma=sigma )
   #
   # Got inspiration from https://github.com/r-dbi/odbc/commit/992d9070e51590d709483a248d119a1b70117c85 to avoid "cannot add bindings to a locked environment" stuff
-  if (is.null(getClassDef("LMLT", where = .spaMM.data$class_cache, inherits = FALSE))) 
-    setClass(Class="LMLT", contains = c("LMLTslots","lmerModLmerTest"), where=.spaMM.data$class_cache)
+  if (is.null(getClassDef("LMLT", where = .spaMM.data$class_cache, inherits = FALSE))) {
+    # if (requireNamespace("lmerTest",quietly=TRUE)) { 
+      # I wrote comments to the effect that this block failed if lmerTest is not loaded (hence the projected requireNamespace()).  
+      # The "glitch" would occur running  "test-anova-contest.R" (now a block in test-ANOVA-&-lmerTest?) without its requireNamespace...
+      # but currently unable to reproduce the problem...
+      setClass(Class="LMLT", contains = c("LMLTslots","lmerModLmerTest"), where=.spaMM.data$class_cache)
+      setClass(Class="LMLTinternal", contains = c("LMLTslots","lmerModLmerTest"), where=.spaMM.data$class_cache) # to avoid infinite recursions see e.g. anova.LMLT
+    #} 
+  }
   #
   if (verbose) {
     cat("Result accounting for uncertainty for the following estimates of nuisance parameters:\n")
     print(unlist(resu@nuisance))
   }
-  resu <- as(resu, "LMLT")
+  resu <- as(resu, "LMLT") # (___F I X M E___) alternative would be to recode the lmerTest algo for the contrast matrix 'L', the rest seeming straightforward.
   invisible(resu)
 }

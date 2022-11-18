@@ -8,6 +8,23 @@ set.seed(123)
 somegrp <- cbind(blackcap,grp=sample(2,14,replace=TRUE))
 if (rngcheck) RNGkind("Mersenne-Twister", "Inversion", "Rejection"  )
 #somegrp <- cbind(blackcap,grp=c(rep(1,7),rep(2,7))) ## to test cov mat with nonzero var of grp effect
+
+{ # Checks that <processed>$phi.Fix was correctly set up (otherwise phi might still be fixed in fit but not considered as such in post-fit)
+  chkphiFix <- corrHLfit(migStatus ~ 1 +  (1|grp) +Matern(1|longitude+latitude),data=somegrp,
+                         fixed=list(nu=4,rho=0.4,phi=0.05))
+  testthat::expect_true(attr(chkphiFix$phi.object$phi_outer,"type")=="fix")
+  chkphiFix <- fitme(migStatus ~ 1 +  (1|grp) +Matern(1|longitude+latitude),data=somegrp,
+                     fixed=list(nu=4,rho=0.4,phi=0.05))
+  testthat::expect_true(attr(chkphiFix$phi.object$phi_outer,"type")=="fix")
+  chkphiFix <- HLCor(migStatus ~ 1 +  (1|grp) +Matern(1|longitude+latitude),data=somegrp,
+                     fixed=list(nu=4,rho=0.4,phi=0.05))
+  testthat::expect_true(attr(chkphiFix$phi.object$phi_outer,"type")=="fix")
+  chkphiFix <- HLfit(migStatus ~ 1 +  (1|grp) ,data=somegrp,
+                     fixed=list(nu=4,rho=0.4,phi=0.05))
+  testthat::expect_true(attr(chkphiFix$phi.object$phi_outer,"type")=="fix")
+  ## I added a similar test in test-mv-nested
+}
+
 tworanefs <- corrHLfit(migStatus ~ 1 +  (1|grp) +Matern(1|longitude+latitude),data=somegrp,
                        ranFix=list(nu=4,rho=0.4,phi=0.05))
 # expected <- c("Gibraltar"=0.04880579, "CapeVerde"=0.04884620, "SouthernFrance"=0.04197530, 

@@ -3860,7 +3860,9 @@ if (FALSE) { # that's not used.
     if (is.null(phi.preFix)) { ## absent from original call
       phi.object <- list(phi_outer=structure(phi.Fix,type="var"), 
                          fittedPars=phi.Fix) 
-    } else phi.object <- list(phi_outer=structure(phi.Fix,type="fix"))
+    } else phi.object <- list(phi_outer=structure(phi.Fix,type="fix", 
+                                                  constr_phi=attr(phi.preFix,"constr_phi"), 
+                                                  constr_fit=attr(phi.preFix,"constr_fit")))
   }
   return(phi.object)
 }
@@ -4195,7 +4197,7 @@ if (FALSE) { # that's not used.
 .add_ranef_returns <- function(res, processed, wranefblob, 
                                lambda_est, process_resglm_blob, LMatrices, init.lambda, v_h, u_h, ranCoefs_blob,
                                #
-                               models=processed$models, nrand=length(processed$ZAlist), cum_n_u_h=processed$cum_n_u_h) {
+                               models=processed$models, nrand=length(processed$ZAlist), cum_n_u_h=processed$cum_n_u_h, moreargs) {
   res$ZAlist <- processed$ZAlist ## needed for prediction variance
   #
   sub_corr_info <- mget(c("corr_families","corr_types", "AMatrices", "corrMatrices"),  processed$corr_info)
@@ -4205,7 +4207,7 @@ if (FALSE) { # that's not used.
   sub_corr_info$kron_Y_LMatrices <- kron_Y_LMatrices
   # 
   res$ranef_info <- list(sub_corr_info=sub_corr_info, hyper_info=processed$hyper_info,
-                         vec_normIMRF=processed$AUGI0_ZX$vec_normIMRF)
+                         vec_normIMRF=processed$AUGI0_ZX$vec_normIMRF, moreargs=moreargs)
   res$w.ranef <- wranefblob$w.ranef ## useful for .get_info_crits() and get_LSmatrix()
   #
   res$lambda.object <- .make_lambda_object(nrand, lambda_models=models[["lambda"]], cum_n_u_h, lambda_est, 

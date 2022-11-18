@@ -1,3 +1,4 @@
+# Called by [fitme|fitmv]_body
 .get_refit_args <- function(fixed, optPars, processed, moreargs, proc1, refit_info, HLCor.args, augZXy_phi_est) {
   ufixed <- unlist(fixed)
   fixtyp <- rep("fix",length(ufixed)) 
@@ -7,7 +8,7 @@
   # so we use the presence of both ranCoefs and trRanCoefs to distinguish the user setting and the internal optim over 3 params
   ranPars_in_refit <- structure(.modify_list(fixed,optPars),
                                 type=.modify_list(relist(fixtyp,fixed), #attr(fixed,"type"),
-                                                  relist(rep("outer",length(unlist(optPars))),optPars)))
+                                                  .relist_rep("outer",optPars)))
   ranPars_in_refit <- .expand_hyper(ranPars_in_refit, processed$hyper_info,moreargs=moreargs)
   
   #any_nearly_singular_covmat <- FALSE

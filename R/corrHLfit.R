@@ -5,9 +5,9 @@
   if (!is.null(mc$ranPars)) {
     stop("incorrect 'ranPars' argument in corrHLfit call. Use ranFix (ranPars is for HLCor only)")
   }
-  if (!is.null(mc$fixed)) {
-    stop("incorrect 'fixed' argument in corrHLfit call: fixed is for fitme only.")
-  }
+  # if (!is.null(mc$fixed)) {
+  #   stop("incorrect 'fixed' argument in corrHLfit call: fixed is for fitme only.")
+  # }
   if ( ! (is.list(lower) && is.list(upper))) {
     wrongclass <- setdiff(unique(c(class(lower),class(upper))),"list")
     stop(paste("'lower' and 'upper' must be of class list, not",paste(wrongclass,collapse=" or ")))
@@ -32,7 +32,7 @@
 .preprocess_corrHLfit <- function(formula,data, ## matches minimal call of HLfit
                                        family=gaussian(),
                                        init=list(),
-                                       ranFix=list(), ## replaces ranFix
+                                       fixed=list(), ## currentl ignored
                                        lower=list(),upper=list(),
                                        resid.model=~1,
                                        init.HLfit=list(),
@@ -53,6 +53,7 @@
     preprocess_args$family <- family ## already checked 
     if ( ! is.null(mc$rand.family)) preprocess_args$rand.families <- mc$rand.family ## because preprocess expects $rand.families 
     preprocess_args$predictor <- mc$formula ## because preprocess stll expects $predictor 
+    preprocess_args$ranFix <- mc$fixed ## because preprocess expects ranFix
     preprocess_args$init <- mc$init.corrHLfit ## because preprocess init
     if ( ! missing(method)) preprocess_args$HLmethod <- method
     if ( identical(family$family,"multi")) {
@@ -85,7 +86,8 @@
 corrHLfit <- function(formula,data, ## matches minimal call of HLfit
                       init.corrHLfit=list(),
                       init.HLfit=list(),
-                      ranFix=list(), 
+                      ranFix, 
+                      fixed=list(),
                       lower=list(),upper=list(),
                       objective=NULL, ## return value of HLCor.obj for optim calls... FR->FR meaningless for full SEM
                       resid.model=~1, 
@@ -101,8 +103,12 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
   assign("spaMM_glm_conv_crit",list(max=-Inf) , envir=environment(spaMM_glm.fit))
   time1 <- Sys.time()
   oricall <- match.call(expand.dots=TRUE) ## mc including dotlist
-  oricall$control.HLfit <- eval(oricall$control.HLfit, parent.frame()) # to evaluate variables in the formula_env, otherwise there are bugs in waiting 
-  
+  oricall$control.HLfit <- eval(oricall$control.HLfit, parent.frame()) # to evaluate variables in the formula_env, otherwise there are bugs in waiting
+  if ( ! missing(ranFix)) {
+    oricall$fixed <- ranFix
+    oricall$ranFix <- NULL
+  }
+  oricall$fixed <- eval(oricall$fixed, parent.frame()) # allows modif in post-fit code (cf get_HLCorcall) 
   mc <- oricall
   #
   if ( ! is.null(weights.form)) {

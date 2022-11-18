@@ -1,6 +1,7 @@
 HLCor <- function(formula,
                   data,family=gaussian(),
-                  ranPars=NULL, ## all dispersion and correlation params ideally provided through ranPars
+                  fixed=NULL, ## all dispersion and correlation params 
+                  ranPars,
                   distMatrix, adjMatrix, corrMatrix, covStruct=NULL,
                   method="REML",
                   verbose=c(inner=FALSE), 
@@ -11,7 +12,7 @@ HLCor <- function(formula,
   time1 <- Sys.time()
   oricall <- match.call(expand.dots = TRUE) 
   if ( ! is.null(oricall$ranFix)) { ## avoiding user's confusion
-    stop("!From HLCor: ranFix found in '...'. Make sure to use ranPars only")
+    stop("!From HLCor: 'ranFix' found in '...'. Make sure to use 'fixed' or 'ranPars' only")
   }
   if (!is.null(oricall$LamFix)) {
     stop("argument 'LamFix' of HLCor is obsolete")
@@ -21,6 +22,11 @@ HLCor <- function(formula,
   }  
   oricall$control.HLfit <- eval(oricall$control.HLfit, parent.frame()) # to evaluate variables in the formula_env, otherwise there are bugs in waiting 
   # frst steps as in HLFit: (no need to test missing(data) in several functions)
+  if ( ! missing(ranPars)) { 
+    oricall$fixed <- ranPars
+    oricall$ranPars <- NULL
+  }
+  oricall$fixed <- eval(oricall$fixed, parent.frame()) # allows modif in post-fit code (cf get_HLCorcall) 
   mc <- oricall
   if (is.null(processed <- oricall$processed)) { ## no 'processed'
     ## FR->FR suggests we should add processed as argument of HLCor...
@@ -72,7 +78,7 @@ HLCor <- function(formula,
       preprocess_args$predictor <- mc$formula ## because preprocess stll expects $predictor 
       preprocess_args$init <- mc$init.corrHLfit ## because preprocess init
       if ( ! missing(method)) preprocess_args$HLmethod <- method
-      preprocess_args$ranFix <- ranPars ## because preprocess expects ranFix
+      preprocess_args$ranFix <- oricall$fixed ## because preprocess expects ranFix
       mc$processed <- do.call(.preprocess, preprocess_args, envir=parent.frame(1L))
       # HLCor() DOES expect a DISTINCT control.dist argument in a call with a 'processed' argument so we extract it:
       oricall$control.dist <- mc$processed$control_dist ## fix bug 26/12/2018 (wrong name) => v2.5.32.
@@ -94,7 +100,7 @@ HLCor <- function(formula,
     }
   }
   ################# single processed, single data analysis: 
-  if (identical(mc$processed[["verbose"]]["getCall"][[1L]],TRUE)) return(oricall) ## returns a call is verbose["getCall"'"] is TRUE
+  if (.safe_true(mc$processed[["verbose"]]["getCall"][[1L]])) return(mc) ## returns a call is verbose["getCall"'"] is TRUE or 1
   #
   # In a call from fitme -> fitme_body -> .new_locoptim -> .safe_opt -> nloptr::nloptr -> HLcallfn.obj -> HLCor.obj -> here,
   # the mc elements are "ranPars"      "processed" and possibly "control.dist" ... which correspond to the formals of HLCor_body:
@@ -103,7 +109,7 @@ HLCor <- function(formula,
   #  and ... for HLfit.
   # Removing control.dist > bug in fixedLRT routine test, which has a rho mapping.
   pnames <- c("data","family","formula","prior.weights", "weights.form","HLmethod","method","rand.family","control.glm","REMLformula",
-              "resid.model", "verbose","distMatrix","adjMatrix", "corrMatrix","covStruct") 
+              "resid.model", "verbose","distMatrix","adjMatrix", "corrMatrix","covStruct", "ranPars") 
   for (st in pnames) mc[st] <- NULL 
   mc[[1L]] <- get("HLCor_body", asNamespace("spaMM"), inherits=FALSE) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
   hlcor <- eval(mc,parent.frame())

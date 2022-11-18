@@ -1,6 +1,7 @@
 \name{multIMRF}
 \alias{IMRF}
 \alias{multIMRF}
+\alias{hyper}
 \alias{str.inla.spde2}
 \alias{inla.spde2.matern}
 \alias{inla.spde2.pcmatern}

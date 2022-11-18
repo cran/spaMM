@@ -418,7 +418,7 @@ IMRF <- function(...) {
       init.optim$lambda[char_rd_range] <- NA # tag for removal below
       canon.init$lambda[char_rd_range] <- NA # tag for removal below
     } # but for fiXed values, expanded values are still in init.optim hence remove_from_parlist() below
-    if (length(unlist(hyper))) init.optim$hyper <- hyper # if some hyper_params are not fixed
+    if (length(unlist(hyper, use.names = FALSE))) init.optim$hyper <- hyper # if some hyper_params are not fixed
     # 'fixed' must have expanded values for use in remove_from_parlist and for all further purposes
     # 'init.optim' must still have expanded values for use in remove_from_parlist
     init.optim <- remove_from_parlist(init.optim, inits$ranFix) # removes fixed 'hyper', for example
@@ -515,22 +515,21 @@ IMRF <- function(...) {
         hy_kap <- hyper_el$hy_kap
         if (!is.null(hy_kap)) {
           KAPPAMAX <- moreargs[[char_rd_range[1L]]]$KAPPAMAX
-          if ( hy_kap > KAPPAMAX - 5e-7) {
+          if ( hy_kap > KAPPAMAX - 5e-07) {
             warning("Fixed value of IMRF's kappa appears above allowed upper value. I reduce it to the allowed maximum. ")
-            hy_kap <- KAPPAMAX - 1e-6
+            hy_kap <- KAPPAMAX - 1e-06
           }
           hy_trK <- .kappaFn(hy_kap,KAPPAMAX=KAPPAMAX)
         }
       }
       if (! is.null(hy_trK)) {
-        # this syntax does not work:
-        #ranPars$corrPars[char_rd_range]$trKappa <- hyper_el$hy_trK ## same SAR parameter for all levels
         for (char_rd in char_rd_range) {
           ranPars$corrPars[[char_rd]]$trKappa <- hy_trK ## same SAR parameter for all levels
         }
       } 
     }
-    ranPars$trLambda <- trLam # [ ! is.na(trLam)] ... removing NA's would be a problem for .modify_list()...
+    trLam <- trLam[ ! is.na(trLam)]
+    if (length(trLam)) ranPars$trLambda <- trLam
   } 
   return(ranPars) ## with trLambda, $corrPars modified with TRANSFORMED values
 }

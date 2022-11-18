@@ -9,7 +9,10 @@
 Conversion to input for procedures from lmerTest package
 }
 \description{
-The \code{lmerTest::contest} function and \code{::anova} method implement a number of tests for linear mixed models, e.g. using effective degrees of freeedom based on (a generalization of) Satterthwaite's method. These tests can be performed using \pkg{spaMM} fits through the conversion of the fit object, by the \code{as_LMLT} function. Only the tests using \pkg{lmerTest}'s default method \code{ddf="Satterthwaite"} are formally supported, as the converted object do not have therequired format for the other methods. Only LMMs are handled by \pkg{lmerTest}, and residual-dispersion models are not yet handled by the conversion.  
+The \code{lmerTest::contest} function, \code{drop1} and \code{anova} methods implement a number of tests for linear mixed models, e.g. using effective degrees of freeedom based on (a generalization of) Satterthwaite's method. These tests can be performed using \pkg{spaMM} fits through the conversion of the fit object, by the \code{as_LMLT} function, to an ad-hoc format acceptable as input to \pkg{lmerTest}'s internal procedures. The separately documented \code{\link{drop1.HLfit}} and (optionally) \code{\link{anova.HLfit}} methods, when called on a single LMM fit object, perform the conversion by \code{as_LMLT} and call \code{drop1} or \code{anova} methods defined by \pkg{lmerTest}.
+
+Only the tests using \pkg{lmerTest}'s default method \code{ddf="Satterthwaite"} are formally supported, as the converted object do not have the required format for the other methods. Only LMMs are handled by \pkg{lmerTest}, and residual-dispersion models are not yet handled by the conversion. However, the conversion extends \pkg{lmerTest}'s functionality by handling all random-effect parameters handled by \code{\link{numInfo}}, therefore including (e.g.) spatial-correlation parameters not handled by \pkg{lme4}.  
+
 }
 \usage{
 as_LMLT(fitobject, nuisance=NULL, verbose=TRUE, transf=TRUE, ...)
@@ -54,6 +57,7 @@ Alexandra Kuznetsova, Per B. Brockhoff and Rune H. B. Christensen (2017) lmerTes
   lmerTest::contest(spfit_lmlt, L=diag(3)[2:3, ])   # Test of 'Days + I(Days^2)'.
   #
   anova(spfit_lmlt, type="1")         # : using lmerTest:::anova.lmerModLmerTest()
+  drop1(spfit_lmlt)                   # : using lmerTest:::drop1.lmerModLmerTest()
 
 }
 }

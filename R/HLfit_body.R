@@ -2,11 +2,11 @@ HLfit_body <- function(processed,
          control.HLfit=list(), ## used both by preprocess and HLfit_body
          init.HLfit = list(), ## not from processed: this is affected by HLCor_body -> .canonizeRanPars(ranPars) post .preprocess()ing
          #                       Thus if in a HLCor call we can expect a $corrPars in sp3 code.
-         ranFix=list(), ##  possibly trLambda but not necessarily.
+         fixed=list(), ##  possibly trLambda but not necessarily.
          etaFix=list() ## beta, v_h (or even u_h)
 ) {
-  processed$envir$ranFix <- ranFix # for diagnostics reported by div_info() (seek '$ranFixes') [_F I X M E_ rethink] 
-  ranFix <- .post_process_respfamilies(processed$family, ranFix, processed$families) ## assign 'extra' COMPoisson or negbin pars and cleans ranFix of them
+  processed$envir$ranFix <- fixed # for diagnostics reported by div_info() (seek '$ranFixes') [_F I X M E_ rethink] 
+  ranFix <- .post_process_respfamilies(processed$family, fixed, processed$families) ## assign 'extra' COMPoisson or negbin pars and cleans ranFix of them
   # next line to be called before we extract anything (lambda, ranCoefs... ) from ranFix:
   ranFix <- .canonizeRanPars(ranPars=ranFix,corr_info=NULL, checkComplete = FALSE, rC_transf=.spaMM.data$options$rC_transf)## including full-size lambda
   #data <- processed$data
@@ -73,8 +73,6 @@ HLfit_body <- function(processed,
   if (any(ranFix$lambda==0,na.rm=TRUE)) stop("lambda cannot be fixed to 0.")
   lam_fix_or_outer_or_NA <- processed$reserve$repNAnrand
   lam_fix_or_outer_or_NA[names(ranFix$lambda)] <- ranFix$lambda # .getPar(ranFix,"lambda") ## should already have length 'nrand' or else be NULL
-  ###
-  off <- processed$off
   ##################
   valid_inits <- c("fixef","phi","lambda","v_h","rho","nu","Nugget","ARphi","corrPars","ranCoefs")
   unknowns <- setdiff(names(init.HLfit),valid_inits) ## in spaMM 3.0 several names should disappear   
@@ -91,8 +89,16 @@ HLfit_body <- function(processed,
     need_ranefPars_estim <-  (need_simple_lambda || ! is.null(corr_est))
   } 
   #
-  whichadj <- which(attr(ZAlist,"exp_ranef_types")=="adjacency") ## bug presumably corrected here 30/12/2107
-  if (.anyNULL(phi.Fix <- processed$phi.Fix)) phi.Fix <- .modify_list(phi.Fix,.getPar(ranFix,"phi")) 
+  whichadj <- which(attr(ZAlist,"exp_ranef_types")=="adjacency") ## bug presumably corrected here 30/12/2017
+  
+  #
+  # ranFix overrides $phi.Fix so that the HLCorcall can be used in post-fit code to compute numerical info matrix:
+  # but... the constr_phi and constr_fit attributes of $phi.Fix are lost, while constr_fit (at least) is needed in post-fit
+  # So they must be put back by .add_phi_returns() -> .get_phi_object(() in a full fit object.
+  if (is.list(phi.Fix <- processed$phi.Fix)) {
+    phi.Fix <- .modify_list(phi.Fix,.getPar(ranFix,"phi"))
+  } else if (is.null(phi.Fix <- .getPar(ranFix,"phi"))) phi.Fix <- processed$phi.Fix
+
   ## => initial value is preprocessed value. If the latter is NULL, this remains NULL, 
   # except when  RHS was set in final call of outer estimation 
   # (it would be misleading to compute leverages in such a final call)
@@ -104,6 +110,7 @@ HLfit_body <- function(processed,
   ### case where nothing to fit #############################################
   if ( nothing_to_fit ) { 
     fixed_adjacency_info <- .get_fixed_adjacency_info(whichadj, LMatrices, cum_n_u_h, corr_est, ranFix, init.HLfit)
+    # only APHLs:
     return(.nothing_to_fit(phi.Fix, off, models, etaFix, processed$rand.families, cum_n_u_h, 
                            lam_fix_or_outer_or_NA, vec_n_u_h, n_u_h, fixed_adjacency_info, ZAL, BinomialDen, processed)) 
     # => error with .do_TRACE bc the exit tracing code does not find the 'res' variable, not locally defined in the case. I could add res <- ... here.
@@ -114,8 +121,6 @@ HLfit_body <- function(processed,
   ##########################################################################################
   
   ### Initial values  for lambda, phi and beta from lam_fix_or_outer_or_NA, phi.Fix, or init.HLfit ##### 
-  ## Initial estimate for beta  (etaFix acts directly in auglinmodfit)
-  beta_eta <- .get_init_beta(processed, pforpv, init.HLfit) # __F I X M E__ what do we exactly need for LMMs (?) (note that this correctly avoids is.null(beta_eta) when pforpv=0) 
   ## Initial estimate for phi 
   vec_nobs <- processed$vec_nobs
   phi_est <- phi.Fix
@@ -140,14 +145,26 @@ HLfit_body <- function(processed,
     init.lambda <- NULL
   }
   ###
+  ## Initial estimate for beta  (etaFix does NOT act directly in .wrap_IRLS -> .solve_IRLS...)
+  ###
+  if ( ! is.null(processed$X_off_fn)) { # (___F I X M E___?) currently X_off_fn does not allow partial beta's (with potential mess with initial beta_eta )
+    beta_eta <- numeric(0)
+    processed$off <- off <- processed$X_off_fn(etaFix$beta) # .solve_IRLS_as_ZX() uses processed$off
+    # AUGI0_ZX$X.pv must correspondly have been reduced by .preprocess
+  } else {
+    off <- processed$off
+    beta_eta <- .get_init_beta(processed, pforpv, init.HLfit) # (note that this correctly avoids is.null(beta_eta) ***when*** pforpv=0) 
+                                                              # __F I X M E__ what do we exactly need for LMMs (?) 
+  }
   ######### missing Initial estimates for mu, phi, lambda by GLM ####################
-  if (  is.null(beta_eta) || .anyNULL(phi_est) || anyNA(init.lambda) ) { 
+  if ( is.null(beta_eta) ||  # occurs when pforpv>0 and .get_init_beta() did not find anything
+       .anyNULL(phi_est) || anyNA(init.lambda) ) { 
     inits_by_glm <- .get_inits_by_glm(processed, 
                                       reset=quote(family$family %in% c("COMPoisson","negbin1","negbin2", "beta_prec")) ) # quoted to be applied to each family in mv case
     ## : uses processed$y, $BinomialDen, [["control.glm"]]
   }
-  ## Finalize initial values for beta_eta
   if (is.null(beta_eta) ) beta_eta <- inits_by_glm$beta_eta # from .lm.fit or lm.fit using scaled X.pv, hence result is scaled value.
+  #
   intervalInfo <- processed$intervalInfo
   if (!is.null(intervalInfo)) {
     parmcol <- attr(intervalInfo$parm,"col")
@@ -253,7 +270,7 @@ HLfit_body <- function(processed,
                                   list(rho=adj_rho)
                                 })
     if ( ! is.null(auglinmodblob)) { # may be NULL if formula was ~ 0 (or ~ offset, presumably)
-      beta_eta <- auglinmodblob$beta_eta
+      if ( is.null(processed$X_off_fn)) beta_eta <- auglinmodblob$beta_eta
       muetablob <- auglinmodblob$muetablob 
       mu <- muetablob$mu ## necess dans test COMPoisson HLfit...
       w.resid <- auglinmodblob$w.resid # updated only if !LMM
@@ -535,7 +552,8 @@ HLfit_body <- function(processed,
     #
     process_resglm_blob <- do.call(".bloc_lambda",bloc_lambda_args)
     coefficients_lambdaS <- process_resglm_blob$coefficients_lambdaS # list
-    p_lambda <- length(.unlist(coefficients_lambdaS[ which( ! attr(init.lambda,"type") %in% c("fixed", "outer_ranCoefs", "outer_hyper", "fix_hyper"))]))
+    p_lambda <- length(unlist(coefficients_lambdaS[ which( ! attr(init.lambda,"type") %in% c("fixed", "outer_ranCoefs", "outer_hyper", "fix_hyper"))],
+                              use.names=FALSE))
     # for a 3-par ranCoef estimated internally (type "inner"), 2 pars are counted at this step of p_lambda computation, 
     # from the coefficients_lambdaS, and one by p_corr added to p_lambda.
     # For outer-estimated ranCoefs,  (type "outer_ranCoefs") see     p_lambda <- p_lambda + .dfs_ranCoefs(...) below
@@ -705,8 +723,9 @@ HLfit_body <- function(processed,
   # if (is.null(attr(res$w.resid,"unique"))) attr(res$w.resid,"unique") <- length(unique(res$w.resid))==1L # is.null() => for mv    
   # #
   if (nrand) { # (models[["eta"]]=="etaHGLM") {
-    res <- .add_ranef_returns(res, processed, wranefblob, lambda_est, process_resglm_blob, 
-                              LMatrices, init.lambda, v_h, u_h, ranCoefs_blob)
+    res <- .add_ranef_returns(res, processed=processed, wranefblob=wranefblob, lambda_est=lambda_est, 
+                              process_resglm_blob=process_resglm_blob, LMatrices=LMatrices, init.lambda=init.lambda, 
+                              v_h=v_h, u_h=u_h, ranCoefs_blob=ranCoefs_blob, moreargs=attr(fixed,"moreargs"))
   } ## else various res$ elements are NULL
   ###################
   ## ALL other PHI returns

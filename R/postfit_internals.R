@@ -164,7 +164,7 @@
   p_phi
 }
 
-.get_info_crits <- function(object, also_cAIC=TRUE, nsim=0L, ...) {
+.get_info_crits <- function(object, also_cAIC=TRUE, nsim=0L, ...) { # ____F I X M E___ read DonohueOXV12...
   if (is.null(info_crits <- object$envir$info_crits) || (also_cAIC && is.null(info_crits[["cAIC"]]))) { 
     dfs <- object$dfs
     if ( ! inherits(dfs,"list")) dfs <- as.list(dfs) ## back compatibility
@@ -215,7 +215,7 @@
           pd <- .calc_cAIC_pd_spprec(object)
         } else if ( ! is.null(object$envir$sXaug)) { 
           pd <- .calc_cAIC_pd_from_sXaug(object)
-        } else { # GLM and SEM
+        } else { # SEM
           ZAL <- .compute_ZAL(XMatrix=object$strucList, ZAlist=object$ZAlist,as_matrix=.eval_as_mat_arg.HLfit(object)) 
           d2hdv2 <- .calcD2hDv2(ZAL,H_w.resid,object$w.ranef) ## update d2hdv2= - t(ZAL) %*% diag(w.resid) %*% ZAL - diag(w.ranef)
           pd <- .calc_cAIC_pd_others(X.pv, ZAL, H_w.resid, d2hdv2)
@@ -227,7 +227,8 @@
       # print(c(pd,p_phi))
       # but Yu and Yau then suggest caicc <- -2*clik + ... where ... involves d2h/db d[disp params] and d2h/d[disp params]2
     } else { ## fixed effect model
-      info_crits$mAIC <- -2*forAIC$p_v+2*(pforpv+p_phi) 
+      info_crits$cAIC <- info_crits$mAIC <- -2*forAIC$p_v+2*(pforpv+p_phi) 
+      # => sets cAIC so that (also_cAIC && is.null(info_crits[["cAIC"]])) becomes FALSE although also_cAIC is true by default...
     }
     object$envir$info_crits <- info_crits
   } else p_phi <- NULL
@@ -481,9 +482,11 @@
 .get_CorrEst_and_RanFix <- function(ranFix, ## has "fix", "outer", and also "var" values ! code corrently assumes "var" <=> corr_est
                                     corr_est 
 ) {
+  # When fitting function was HLCor, the type attribute has not been added to the corrPars
+  if (is.null(attr(ranFix,"type"))) attr(ranFix,"type") <- .relist_rep("fix", ranFix)
   if ( ! is.null(corr_est)) {
     ranFix <- structure(.modify_list(ranFix,corr_est), 
-                        type=.modify_list(attr(ranFix,"type"),relist(rep("var",length(unlist(corr_est))),corr_est)))
+                        type=.modify_list(attr(ranFix,"type"),.relist_rep("var",corr_est)))
   } 
   return(ranFix) ## correlation params + whatever else was in ranFix
 }

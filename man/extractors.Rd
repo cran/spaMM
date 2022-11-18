@@ -40,7 +40,7 @@ Functions to extract various components of a fit.
 \code{terms} extracts the formula, with attributes describing the \bold{fixed-effect} terms.\cr 
 \code{nobs} returns the length of the response vector.\cr
 \code{logLik} extracts the log-likelihood (exact or approximated).\cr
-\code{dev_resids} returns a vector of squared (unscaled) deviance residuals (the summands defined for GLMs in McCullagh and Nelder 1989, p. 34; see Details of \code{\link{LL-family}} for other response families). \cr
+\code{dev_resids} returns a vector of squared (unscaled) deviance residuals (the summands defined for GLMs in McCullagh and Nelder 1989, p. 34; see Details of \code{\link{LL-family}} for other response families; these are also the squares of residuals returned by \code{\link[spaMM]{residuals}(., "deviance")}.). \cr
 \code{deviance} returns the sum of squares of these (unscaled) deviance residuals, that is (consistently with \code{stats::deviance}) the unscaled deviance.\cr
 \code{fitted} extracts fitted values.\cr
 \code{response} extracts the response (as a vector).\cr
@@ -74,7 +74,7 @@ dev_resids(object,...)
   \item{type}{For \code{ranef}, use \code{type="correlated"} (default) to display the correlated random effects (\bold{Lv}), whether in a spatial model, or a random- coefficient model. Use \code{type="uncorrelated"} to pretty-print the elements of the \code{<object>$ranef} vector (\bold{u}).\cr
   For \code{weights}, either \code{"prior"} or \code{"working"}, with the same meaning as for \code{\link{weights.glm}}: respectively the prior weights, or the weights used in the final iteration of the IRLS algorithm.
   }
-  \item{which}{* For \code{logLik}, the name of the element of the \code{APHLs} list to return (see Details for any further possibility). The default depends on the fitting method. In particular, if it was REML or one of its variants, the function returns the log restricted likelihood (exact or approximated).\cr
+  \item{which}{* For \code{logLik}, the name of the element of the \code{APHLs} list to return (see Details for any further possibility). The default depends on the fitting method. In particular, if it was REML or one of its variants, the default is to return the log restricted likelihood (exact or approximated).\cr
   * For \code{getDistMat}, an integer, to select a random effect from several for which a distance matrix may be constructed.\cr
   * For \code{formula}, by default the model formula with non-expanded \code{multIMRF} random-effect terms is returned, while for \code{which=""} a formula with \code{multIMRF} terms expanded as \code{IMRF} terms is returned.}
   \item{scaled}{If \code{FALSE}, the function ignores the scale parameter \eqn{rho} and returns unscaled distance.}
@@ -88,9 +88,6 @@ dev_resids(object,...)
 \code{terms} returns an object of class \code{c("terms", "formula")} which contains the \emph{terms} representation of a symbolic model.  See \code{\link[stats]{terms.object}} for its structure. \code{terms(<fitmv() result>)} returns a list of such terms.
 
 Other return values are numeric (for \code{logLik}), vectors (most cases), matrices or dist objects (for \code{getDistMat}), or a family object (for \code{family}). \code{ranef} returns a list of vectors or matrices (the latter for random-coefficient terms). 
-}
-\details{
- With \code{which="LogL_Lap"}, \code{logLik()} returns a Laplace approximation of log-likelihood based on the observed Hessian, rather than the expected Hessian. This is implemented only for the case \code{family=Gamma(log)}, for demonstration purposes.
 }
 \seealso{
 See \code{\link{summary.HLfit}} whose return value include the tables of fixed-effects coefficients and random-effect variances displayed by the summary, \code{\link{residuals.HLfit}} to extract various residuals, \code{\link{residVar}} to extract residual variances or information about residual variance models, \code{\link{hatvalues}} to extract leverages, \code{\link{get_matrix}} to extract the model matrix and derived matrices, and \code{\link{vcov.HLfit}} to extract covariances matrices from a fit, \code{\link{get_RLRsim_args}} to extract arguments for (notably) tests of random effects in LMMs.

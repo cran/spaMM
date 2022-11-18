@@ -1,7 +1,6 @@
 corrHLfit_body <- function(processed, ## possibly a list of environments
                            init.corrHLfit=list(),
-#                      init.HLfit=list(),
-                      ranFix=list(), 
+                      fixed=list(),
                       lower=list(),upper=list(),
                       #control.dist=list(), ## info in processed
                       control.corrHLfit=list(), ## optim.scale, optimizer, <optimizer controls>
@@ -40,7 +39,7 @@ corrHLfit_body <- function(processed, ## possibly a list of environments
   user_init_optim <- init.corrHLfit 
   
   optim_blob <- .calc_optim_args(proc_it=proc1, processed=processed,
-                                 user_init_optim=init.corrHLfit, fixed=ranFix, lower=lower, upper=upper, 
+                                 user_init_optim=init.corrHLfit, fixed=fixed, lower=lower, upper=upper, 
                                  verbose=verbose, optim.scale=optim.scale, For="corrHLfit") 
   init.corrHLfit <- NaN ## make clear it's not to be used
   # #  code correct mais opaque pour l'utilisateur: init.optim va être ignore en cas de 1D optimization... (OK in fitme)
@@ -59,7 +58,7 @@ corrHLfit_body <- function(processed, ## possibly a list of environments
   LowUp <- optim_blob$LowUp
   lower <- LowUp$lower ## list ! which elements may have length >1 !
   upper <- LowUp$upper ## list !
-  HLCor.args$ranPars <- fixed
+  HLCor.args$fixed <- fixed
   #
   ## maximization VIA HLCor.obj
   ## by maxim over (corrpars,phi,lambda, (beta)_[corrpars,phi,lambda])
@@ -82,7 +81,7 @@ corrHLfit_body <- function(processed, ## possibly a list of environments
   anyHLCor_obj_args <- HLCor.args
   ## HLCor.obj uses a vector + skeleton
   initvec <- unlist(init.optim)
-  anyHLCor_obj_args$skeleton <- structure(init.optim, moreargs=moreargs, 
+  anyHLCor_obj_args$skeleton <- structure(init.optim,  
                                           type=relist(rep("fix",length(initvec)),init.optim),
                                           moreargs=moreargs)
   .assignWrapper(anyHLCor_obj_args$processed,
@@ -98,7 +97,7 @@ corrHLfit_body <- function(processed, ## possibly a list of environments
     optPars <- relist(optr$par,init.optim)
     if (!is.null(optPars)) attr(optPars,"method") <-"optimthroughSmooth"
   } else { ## this is also called if length(lower)=0 by  (SEM or not) and optPars is then null
-    if (identical(verbose["getCall"][[1L]],TRUE)) {
+    if (.safe_true(verbose["getCall"][[1L]])) {
       optPars <- init.optim
     } else {
       optPars <- .new_locoptim(init.optim, LowUp=LowUp,anyHLCor_obj_args=anyHLCor_obj_args,
@@ -108,17 +107,18 @@ corrHLfit_body <- function(processed, ## possibly a list of environments
     }
   }
   if (!is.null(optPars)) {
-    ranPars_in_refit <- structure(.modify_list(HLCor.args$ranPars,optPars),
+    ranPars_in_refit <- structure(.modify_list(HLCor.args$fixed,optPars),
                                     # I write "F I X" as a TAG for this modif type attribute:
-                                    type=.modify_list(relist(rep("fix",length(unlist(HLCor.args$ranPars))),HLCor.args$ranPars), #attr(HLCor.args$ranPars,"type"),
-                                                      relist(rep("outer",length(unlist(optPars))),optPars)),
+                                    type=.modify_list(.relist_rep("fix",HLCor.args$fixed), #attr(HLCor.args$fixed,"type"),
+                                                      .relist_rep("outer",optPars)),
                                     moreargs=moreargs)
   } else {
-    ranPars_in_refit <- structure(HLCor.args$ranPars,
-                                      type = relist(rep("fix", length(unlist(HLCor.args$ranPars))), HLCor.args$ranPars))
+    ranPars_in_refit <- structure(HLCor.args$fixed,
+                                  type = .relist_rep("fix", HLCor.args$fixed),
+                                  moreargs=moreargs)
   }
   ranPars_in_refit <- .expand_hyper(ranPars_in_refit, processed$hyper_info, moreargs=moreargs)
-  HLCor.args$ranPars <- ranPars_in_refit
+  HLCor.args$fixed <- ranPars_in_refit
   # not local to anyHLCor_obj_args$processed: change processed globally
   .assignWrapper(HLCor.args$processed,"return_only <- NULL") 
   .assignWrapper(HLCor.args$processed,"verbose['warn'] <- TRUE") ## important!
@@ -129,6 +129,7 @@ corrHLfit_body <- function(processed, ## possibly a list of environments
   attr(hlcor,"optimInfo") <- list(LUarglist=LUarglist, optim.pars=optPars, 
                                   #augZXy_phi_est=NULL, # implicit NULL
                                   objective=proc1$objective)
+  # hlcor <- .update_ranef_info(hlcor, moreargs=LUarglist$moreargs)
   if ( ! is.null(optPars)) {
     locoptr <- attr(optPars,"optr")
     if (attr(optPars,"method")=="nloptr") {

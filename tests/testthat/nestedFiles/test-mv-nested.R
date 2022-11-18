@@ -54,6 +54,20 @@ spaMM.options(spaMM_tol=local_tol) # to control strictness of checks in independ
   #  # test equivalence of the two paremtrization, and that they are indeed distinguished by the code. 
   testthat::expect_true(diff(range(ranef(zut0)[[1]][,2]-rowSums(ranef(zut1)[[1]]))/(max(abs(ranef(zut0)[[1]]))))<1e-4)
   
+  (numinfo <- numInfo(zut0)) 
+  (numSEs <- sqrt(diag(solve(numinfo)))) 
+  # Not independently derived values, but close enough to the cond.SEs:
+  testthat::expect_true(diff(range(numSEs[6:9]-c(0.06114231, 0.04073465, 0.05688579, 0.03909198)))<1e-6) 
+  # => non-orthogonality between the (fixef) Intercepts and the ranCoefs correlation param: Matrix::drop0(numinfo,tol=1e-6). 
+  #  This explains small difference after solve() although the beta block is unchanged:
+  (numinfo <- numInfo(zut0, which="beta"))
+  crit <- max(abs(sqrt(diag(solve(numinfo))) - summary(zut0,verbose=FALSE)$beta_table[,"Cond. SE"]))
+  testthat::test_that("numInfo() consistent with cond.SEs",
+                      testthat::expect_true(crit<1e-8))
+  
+  numInfo(zut0, which=c("lambda", "ranCoefs", "phi"))
+  #  anova(zut0) # ____F I X M E___ this one not yet working (see other ____F I X M E___s)
+
   { # missing data
     afers <- wafmv
     afers$y3[71:140] <- NA
@@ -160,6 +174,8 @@ spaMM.options(spaMM_tol=local_tol) # to control strictness of checks in independ
   (zut1 <- fitmv(submodels=list(mod1=list(formula=y ~ 1+(1|batch), family=Gamma(log), fixed=list(phi=0.001)),
                          mod2=list(formula=y2 ~ 1+(1|batch), family=Gamma(log), fixed=list(phi=0.002))), 
                  data=wafmv, fixed=list(lambda=0.1))) 
+  # Check that <processed>$phi.Fix was correctly set up otherwise phi might still be fixed in fit but not considered as such in post-fit)
+  testthat::expect_true(all(sapply(zut1$phi.object, function(v) attr(v$phi_outer,"type"))==rep("fix",2))) 
   (zut2 <- fitmv(submodels=list(mod1=list(formula=y ~ 1+(1|batch), family=Gamma(log)),
                          mod2=list(formula=y2 ~ 1+(1|batch), family=Gamma(log))), 
                  data=wafmv, fixed=list(phi=list("1"=0.001,"2"=0.002), lambda=0.1)))

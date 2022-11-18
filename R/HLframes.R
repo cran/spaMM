@@ -25,7 +25,8 @@
   }
   nb
 }
-  
+
+# cf .remove_all_fixef() for opposite effect  
 .stripRanefs_ <- function (term) { ## compare to lme4:::nobars_ ; 'term is formula or any term, recursively
   if ( ! ("|" %in% all.names(term))) return(term) ## no bar => not a ranef term
   termname <- term[[1L]]

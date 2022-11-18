@@ -89,7 +89,7 @@ fitmv_body <- function(processed,
   }
   #
   processedHL1 <- proc1$HL[1] 
-  needHLCor_specific_args <- (length(unlist(lower$corrPars)) || 
+  needHLCor_specific_args <- (length(unlist(lower$corrPars, use.names = FALSE)) || 
                                 length(intersect(corr_types,c("Matern","Cauchy","adjacency","AR1","corrMatrix", "IMRF","corrFamily"))))
   if (needHLCor_specific_args) {
     HLcallfn.obj <- "HLCor.obj" 
@@ -97,12 +97,11 @@ fitmv_body <- function(processed,
     control.dist <- vector("list",length(moreargs))
     for (nam in names(moreargs)) control.dist[[nam]] <- moreargs[[nam]]$control.dist 
     HLCor.args[["control.dist"]] <- control.dist ## always reconstructed locally, not in the fitme_body call
-    HLCor.args$ranPars <- fixed ## to be modified by objective function
   } else {
     HLcallfn.obj <- "HLfit.obj"
     HLcallfn <- "HLfit"
-    HLCor.args$ranFix <- fixed  
   }
+  HLCor.args$fixed <- fixed ## to be modified by objective function (at least in HLCor case)
   HLCor.args$init.HLfit <- init.HLfit
   HLCor.args$processed <- processed ## for the <...>.obj and <...>_body functions  
   ## 
@@ -120,11 +119,11 @@ fitmv_body <- function(processed,
                  paste0("return_only <- \"",proc1$objective,"APHLs\""))
   if (length(initvec)) {
     augZXy_phi_est <- NULL ## the value assumed by later code when augZXy was not used  
-    if (identical(verbose["getCall"][[1L]],TRUE)) { ## toget an optim call with its initial value. Then HLcallfn is called and its call returned.
+    if (.safe_true(verbose["getCall"][[1L]])) { ## to get an optim call with its initial value. Then HLcallfn is called and its call returned.
       ## confint -> get_HLCorcall needs an HLCor call with the following ranFix
       ranPars_in_refit <- structure(.modify_list(fixed,init.optim),
                                     # I label this "F I X" as a TAG for this modif type attribute:
-                                    type=.modify_list(relist(rep("fix",length(unlist(fixed))),fixed), #attr(fixed,"type"), 
+                                    type=.modify_list(.relist_rep("fix",fixed), #attr(fixed,"type"), 
                                                       relist(rep("outer",length(initvec)),init.optim)) )
     } else {
       use_SEM <- (!is.null(processedHL1) && processedHL1=="SEM")
@@ -162,13 +161,11 @@ fitmv_body <- function(processed,
     } ## end if ...getCall... else
     #
     # refit_info is list if so provided by user, else typically boolean. An input NA should have been converted to something else (not documented).
-    if (needHLCor_specific_args) {
-      attr(ranPars_in_refit,"moreargs") <- moreargs 
-      HLCor.args$ranPars <- ranPars_in_refit 
-    } else HLCor.args$ranFix <- ranPars_in_refit 
-  } else if (len_ranPars <- length(unlist(HLCor.args$ranPars))){ ## Set attribute
-    HLCor.args$ranPars <- structure(HLCor.args$ranPars,
-                                    type = relist(rep("fix", len_ranPars), HLCor.args$ranPars),
+    if (needHLCor_specific_args) attr(ranPars_in_refit,"moreargs") <- moreargs 
+    HLCor.args$fixed <- ranPars_in_refit 
+  } else if (len_ranPars <- length(unlist(HLCor.args$fixed, use.names = FALSE))){ ## Set attribute
+    HLCor.args$fixed <- structure(HLCor.args$fixed,
+                                    type = relist(rep("fix", len_ranPars), HLCor.args$fixed),
                                     moreargs=moreargs) ## moreargs needed if user handles fixed(<transformed params>) ('hyper' tests)
   }
   #
@@ -181,6 +178,7 @@ fitmv_body <- function(processed,
     ## see def of get_HLCorcall() for further explanation
     return(hlcor) ## HLCorcall
   }
+  # hlcor<- .update_ranef_info(hlcor, moreargs=moreargs)
   if (length(initvec)) {
     attr(hlcor,"optimInfo") <- list(LUarglist=optim_blob$LUarglist, optim.pars=optPars, 
                                     objective=proc1$objective,

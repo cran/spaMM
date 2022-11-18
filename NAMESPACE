@@ -22,7 +22,7 @@ importFrom("stats", "as.formula", "coefficients", "dgamma", "dnorm", "family", "
            "gaussian", "binomial", "dpois", "Gamma", "resid", "uniroot", "deviance", "dbinom", "plogis", 
            "as.dist", "AIC", "qnbinom", "qpois", "rnbinom", "integrate", "poisson",".getXlevels", "na.omit",
            "cov2cor", "pcauchy", "pnorm","model.weights", "setNames", "pf", "df.residual", "drop.terms", 
-           "stat.anova", "residuals", "pt", "reformulate")
+           "stat.anova", "residuals", "pt", "reformulate", "drop.scope", "drop1", "update.formula")
 importFrom("utils", "relist", "txtProgressBar", "setTxtProgressBar", "modifyList", "strOptions", "str",
            "write.table", "packageVersion", "packageDescription", "capture.output", "tail")
 importFrom("Matrix", "Matrix", "drop", "isDiagonal", "diag", "t", "solve", "Diagonal", "crossprod", "tcrossprod", "rowSums", "colSums",
@@ -38,7 +38,7 @@ importFrom("crayon","green","blue","cyan","yellow","red","underline")
 importFrom("minqa","bobyqa")
 importFrom("ROI", "L_constraint", "OP", "ROI_solve", "V_bound", "bounds<-", "constraints<-", "leq", "solution")
 importFrom("boot", "boot.ci")
-importFrom("numDeriv", "hessian")
+importFrom("numDeriv", "hessian", "grad", "jacobian")
 export(coef) ## from stats namespace
 # From nlme namespace:
 export("fixef", "ranef", "corMatrix", "Initialize", "Variogram", "coef<-", "corFactor", "getCovariate", "logDet", "recalc", "VarCorr") 
@@ -58,6 +58,9 @@ S3method(VarCorr, HLfit)
 S3method(getCall, HLfit)
 S3method(deviance, HLfit)
 S3method(anova, HLfit)
+S3method(drop1, HLfit)
+S3method(anova, LMLT)
+S3method(drop1, LMLT)
 S3method(coef,corMatern)
 S3method(AIC, HLfit)
 S3method(extractAIC, HLfit)

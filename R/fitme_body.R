@@ -41,7 +41,8 @@ fitme_body <- function(processed,
   fixed <- optim_blob$fixed
   corr_types <- optim_blob$corr_types
   LUarglist <- optim_blob$LUarglist
-  moreargs <- LUarglist$moreargs
+  moreargs <- LUarglist$moreargs #   # Whether there will be an initvec -> outer optim or not, this should be avaibable and copied in the return object
+  # even when the is no optimInfo attribute. The non-trivial case without initvec is the case where hyper params where fixed in a fitme call..
   LowUp <- optim_blob$LowUp
   lower <- LowUp$lower ## list ! which elements may have length >1 !
   upper <- LowUp$upper ## list !
@@ -70,7 +71,7 @@ fitme_body <- function(processed,
   
   
   processedHL1 <- proc1$HL[1] 
-  needHLCor_specific_args <- (length(unlist(lower$corrPars)) || 
+  needHLCor_specific_args <- (length(unlist(lower$corrPars, use.names = FALSE)) || 
                                 length(intersect(corr_types,c("Matern","Cauchy","adjacency","AR1","corrMatrix", "IMRF","corrFamily"))))
   if (needHLCor_specific_args) {
     HLcallfn.obj <- "HLCor.obj" 
@@ -78,16 +79,15 @@ fitme_body <- function(processed,
     control.dist <- vector("list",length(moreargs))
     for (nam in names(moreargs)) control.dist[[nam]] <- moreargs[[nam]]$control.dist 
     HLCor.args[["control.dist"]] <- control.dist ## always reconstructed locally, not in the fitme_body call
-    HLCor.args$ranPars <- fixed ## to be modified by objective function
   # } else if (processed$augZXy_cond) { # an interesting experiment, but not consistently used as replacement for HLfit.obj throughout spaMM)
   #   HLcallfn.obj <- ".augZXy_obj"
   #   HLcallfn <- "HLfit"
-  #   HLCor.args$ranFix <- fixed  
+  #   HLCor.args$fixed <- fixed  
   } else {
     HLcallfn.obj <- "HLfit.obj"
     HLcallfn <- "HLfit"
-    HLCor.args$ranFix <- fixed  
   }
+  HLCor.args$fixed <- fixed ## to be modified by objective function
   HLCor.args$init.HLfit <- init.HLfit
   HLCor.args$processed <- processed ## for the <...>.obj and <...>_body functions  
   ## 
@@ -105,12 +105,12 @@ fitme_body <- function(processed,
                    paste0("return_only <- \"",proc1$objective,"APHLs\""))
   if (length(initvec)) {
     augZXy_phi_est <- NULL
-    if (identical(verbose["getCall"][[1L]],TRUE)) { ## to get an optim call with its initial value. Then HLcallfn is called and its call returned.
+    if (.safe_true(verbose["getCall"][[1L]])) { ## to get an optim call with its initial value. Then HLcallfn is called and its call returned.
       ## confint -> get_HLCorcall needs an HLCor call with the following ranFix
       ranPars_in_refit <- structure(.modify_list(fixed,init.optim),
                                     # I label this "F I X" as a TAG for this modif type attribute:
-                                    type=.modify_list(relist(rep("fix",length(unlist(fixed))),fixed), #attr(fixed,"type"), 
-                                                     relist(rep("outer",length(initvec)),init.optim)) )
+                                    type=.modify_list(.relist_rep("fix",fixed),  
+                                                      relist(rep("outer",length(initvec)),init.optim)) )
     } else {
       use_SEM <- (!is.null(processedHL1) && processedHL1=="SEM")
       time2 <- Sys.time()
@@ -146,26 +146,31 @@ fitme_body <- function(processed,
       refit_args <- .get_refit_args(fixed, optPars, processed, moreargs, proc1, refit_info, HLCor.args, augZXy_phi_est)
       HLCor.args <- refit_args$HLCor.args
       ranPars_in_refit <- refit_args$ranPars_in_refit
-      if ( ! is.null(trBeta <- ranPars_in_refit$trBeta)) { # outer beta
+      if ( ! is.null(processed$X_off_fn)) { # beta outer-optimization => switch to inner optim for this refit
         processed$off <- environment(processed$X_off_fn)$ori_off
         processed$X.pv <- environment(processed$X_off_fn)$X_off
         processed$AUGI0_ZX <- .init_AUGI0_ZX(processed$X.pv, processed$AUGI0_ZX$vec_normIMRF, processed$ZAlist, nrand=length(processed$ZAlist), n_u_h=nrow(processed$AUGI0_ZX$ZeroBlock), 
                                              sparse_precision=processed$is_spprec, 
                                              as_mat=.eval_as_mat_arg(processed))
-        HLCor.args$init.HLfit$fixef <- .betaInv(trBeta)
-        ranPars_in_refit$trBeta <- NULL
+        if ( ! is.null(trBeta <- ranPars_in_refit$trBeta)) { # on transformed scale
+          HLCor.args$init.HLfit$fixef <- .betaInv(trBeta)
+          ranPars_in_refit$trBeta <- NULL
+        } else {
+          HLCor.args$init.HLfit$fixef <- ranPars_in_refit$beta
+          ranPars_in_refit$beta <- NULL
+        }
         processed$port_env$port_fit_values$fixef <- NULL
+        processed$X_off_fn <- NULL
       }
     } ## end if ...getCall... else
     #
     # refit_info is list if so provided by user, else typically boolean. An input NA should have been converted to something else (not documented).
-    if (needHLCor_specific_args) {
-      attr(ranPars_in_refit,"moreargs") <- moreargs 
-      HLCor.args$ranPars <- ranPars_in_refit 
-    } else HLCor.args$ranFix <- ranPars_in_refit 
-  } else if (len_ranPars <- length(unlist(HLCor.args$ranPars))) { ## Set attribute
-    HLCor.args$ranPars <- structure(HLCor.args$ranPars,
-                                  type = relist(rep("fix", len_ranPars), HLCor.args$ranPars),
+    if (needHLCor_specific_args) attr(ranPars_in_refit,"moreargs") <- moreargs 
+    HLCor.args$fixed <- structure(ranPars_in_refit,
+                                  moreargs=moreargs) 
+  } else if (len_ranPars <- length(unlist(HLCor.args$fixed, use.names = FALSE))) { ## Set attribute
+    HLCor.args$fixed <- structure(HLCor.args$fixed,
+                                  type = relist(rep("fix", len_ranPars), HLCor.args$fixed),
                                   moreargs=moreargs) ## moreargs needed if user handles fixed(<transformed params>) ('hyper' tests)
   }
   #
@@ -179,6 +184,8 @@ fitme_body <- function(processed,
     ## see def of get_HLCorcall() for further explanation
     return(hlcor) ## HLCorcall
   }
+  # hlcor <- .update_ranef_info(hlcor, moreargs=moreargs)# make this independent of the 'optimInfo' attr, for reason explained where 'moreargs' is assigned
+  # (alternative would be to set an 'optimInfo' attr even when there is no outer optim)
   if (length(initvec)) {
     attr(hlcor,"optimInfo") <- list(LUarglist=LUarglist, optim.pars=optPars, 
                                     objective=proc1$objective,

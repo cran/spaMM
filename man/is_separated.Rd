@@ -8,7 +8,7 @@ Checking for (quasi-)separation in binomial-response model.
 \description{
 Separation occurs in binomial response models when a combination of the predictor variables perfectly predict a level of the response. In such a case the estimates of the coefficients for these variables diverge to (+/-)infinity, and the numerical algorithms typically fail. To anticipate such a problem, the fitting functions in \code{spaMM} try to check for separation by default. The check may take much time, and is skipped if the \dQuote{problem size} exceeds a threshold defined by \code{spaMM.options(separation_max=<.>)}, in which case a message will tell users by how much they should increase \code{separation_max} to force the check (its exact meaning and default value are subject to changes without notice but the default value aims to correspond to a separation check time of the order of 1s on the author's computer). 
 
-\code{is_separated} is a convenient interface to procedures from the \code{ROI} package, which can be called explicitly by the user to check bootstrap samples (see Example in \code{\link{anova}}). 
+\code{is_separated} is a convenient interface to procedures from the \code{ROI} package, allowing them to be called explicitly by the user to check bootstrap samples (see Example in \code{\link{anova}}). 
 \code{is_separated.formula} is a variant (not yet a formal S3 method) that performs the same check, but using arguments similar to those of \code{fitme(., family=binomial())}.
 }
 \usage{
@@ -34,7 +34,7 @@ is_separated.formula(formula, ..., separation_max=spaMM.getOption("separation_ma
   numeric: non-default value allow for easier local control of this spaMM option.  
 }
 \item{solver}{
-  character: name of linear programming solver used to assess separation; passed to \code{\link[ROI]{ROI_solve}}'s \code{solver} argument. One can select other solvers if the corresponding ROI plugin is installed. 
+  character: name of linear programming solver used to assess separation; passed to \code{\link[ROI]{ROI_solve}}'s \code{solver} argument. One can select another solver if the corresponding ROI plugin is installed. 
 }
 \item{verbose}{
   Whether to print some messages (e.g., pointing model terms that cause separation) or not.

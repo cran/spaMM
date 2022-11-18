@@ -11,12 +11,13 @@
   if (type=="seq_len") { ## does not try to find redundant levels. Used by predict.HLfit() for spatial terms
     splt <- NULL
     raw_levels <- seq_len(nrow(mf))
-    # ___TAG___ look for potential problem for future devel of <correlated>(mv(.)|.)
+    # ___F I X M E___ (was 'TAG') look for potential problem for future devel of <correlated>(mv(.)|.)
     return(list(factor=as.factor(raw_levels),splt=splt))
   } else if (type=="data_order" || ## all <keyword>() ranefs, including those with "nested nesting" for AR1 spprec || raneftype=="corrMatrix"
              type=="time_series") {
     
     splt <- strsplit(txt,c("%in%|:|\\+| "))[[1L]] ## things to be removed so that only variable names remain
+    # splt <- strsplit(txt,c("%in%|:|\\+|-| "))[[1L]]  would allow '-' in an RHS but this is confusing (think about '-' in model formulas)
     splt <- splt[splt!=""]
     if ( ! all(splt %in% names(mf)) ) stop(" ! all(splt %in% names(mf))")
     if (has_.in.) {
@@ -181,7 +182,8 @@
   txt <- .DEPARSE(rhs) ## should be the rhs of (|) cleanly converted to a string by terms(formula,data) in .get_terms_info()
   has_.in. <- length(grep("%in%",txt))
   ## converts '%in%' to ':' 
-  if (has_.in.) { # Bug introduced in [v3.11.38 up to 3.13.33] where this block was removed. Understand why => ___F I X M E____
+  if (has_.in.) { # Bug introduced in [v3.11.38 up to 3.13.33] where this block was removed. Important to convert %in% to ':' so that 
+    # .rhs2factor(data, rhs=block %in% year) does not interpret rhs as a test (evaluated to FALSE)
     splittxt <- strsplit(txt,"%in%")[[1]]
     rhs <- as.formula(paste("~",splittxt[1],":",splittxt[2]))[[2]]
     txt <- .DEPARSE(rhs)

@@ -496,7 +496,7 @@
       for (mv_it in seq_along(unmerged)) in_submodel[mv_it] <- rd %in% map_rd_mv[[mv_it]]
       which_submodels <- which(in_submodel)
       LMMbools <- unlist(lapply(unmerged[which_submodels], function(v) attr(v[["models"]], "LMMbool")))
-      if (all(LMMbools) && ! length(.unlist(processed$phi.Fix[which_submodels]))) {
+      if (all(LMMbools) && ! length(unlist(processed$phi.Fix[which_submodels], use.names = FALSE))) {
         mess <- paste0("Only ",vec_n_u_h[rd]," level for random effect ",
                        attr(processed$ZAlist,"exp_ranef_strings")[rd],
                        ";\n   this model cannot be fitted unless phi is fixed in a submodel where the random effect appears.")
@@ -656,10 +656,27 @@
 }
 
 
+.process_betaFix <- function(X.pv, betaFix, merged) { 
+  namesbetafix <- names(betaFix)
+  if (is.null(namesbetafix)) {
+    message("The elements of etaFix$beta should be named and the names should match the column names of the design matrix.")
+  }
+  if (length(setdiff(namesbetafix,colnames(X.pv)))==0L) { ## if no incorrect name
+    offFromEtaFix <- drop(X.pv[ ,namesbetafix,drop=FALSE] %*% betaFix) # must be vector not matrix
+    namesbetavar <- setdiff(colnames(X.pv),namesbetafix)
+    X.pv <- .subcol_wAttr(X.pv, j=namesbetavar, drop=FALSE)
+    if (is.null(merged$off)) {
+      merged$off <- offFromEtaFix
+    } else merged$off <- merged$off + offFromEtaFix
+  } else {
+    stop("The names of elements of etaFix$beta should all match column names of the design matrix.")
+  }
+  X.pv
+}
 
 
 .merge_processed <- function(calls_W_processed, data, init=list(), control.HLfit=list(), method="ML", verbose=NULL, init.HLfit=list(),
-                             covStruct=NULL, corrMatrix=NULL, adjMatrix=NULL, distMatrix=NULL, control.dist=list()) {
+                             covStruct=NULL, corrMatrix=NULL, adjMatrix=NULL, distMatrix=NULL, control.dist=list(), etaFix=list()) {
   # this fn passes no '...' so has no '...'
   nmodels <- length(calls_W_processed)
   namedlist <- structure(vector("list",nmodels), names=seq_len(nmodels))
@@ -855,7 +872,17 @@
   # processing of merged_X and other elements of AUGI0_ZX:
   attr(merged_X,"cum_ncol") <- cumsum(c(0L,vec_ncol_X))
   attr(merged_X,"cum_nobs") <- cum_nobs
+  
+  #### replacement for .preprocess_X_XRe_off():
+  if ( length(betaFix <- etaFix$beta)>0 ) merged_X <- .process_betaFix(X.pv=merged_X, betaFix=betaFix, merged)
   #
+  ### Following block replaces, at least partially,
+  #   .assign_X.Re_objective(processed, XReinput=XReinput, processed$REMLformula, data, X.pv, objective) ##] assigns processed$X.Re and processed$objective
+  ## in mv fit, the merged 'objective' is set by copying the one of the first submodel, and X.Re is first set by merging submodels' X.Re's.
+  ## In principle this should be modified following the above modif of X.pv. HOWEVER:
+  ## if standard ML: ... processed$X.Re is 0-col matrix: unchanged
+  ## if standard REML: processed$X.Re is NULL: unchanged
+  ## non standard REML: case where X.Re would have to be modified: 
   if ( ! is.null(merged_X.Re) && ncol(merged_X.Re)) { # non-standard REML... 
     # attr(., "extra_vars") has aleardy been updated by .merge_Xs(., REML=TRUE), but unrestricting_cols culd not as it refers to X.pv cols 
     unrestricting_cols <- which(colnames(merged_X) %in% setdiff(colnames(merged_X),colnames(merged_X.Re))) ## not in X.Re
@@ -864,7 +891,8 @@
     if ( distinct.X.ReML[1L]) attr(merged_X.Re,"unrestricting_cols") <- unrestricting_cols # cols of X.pv not in X.Re
   }
   merged[["X.Re"]] <- merged_X.Re
-  #
+  ####
+  
   dim(y) <- c(length(y),1L) # cf comments in .preprocess(); but vector format worked in all tests for fitmv up to version 3.5.115; 
   merged[["y"]] <- y
   merged[["BinomialDen"]] <- BinomialDen
@@ -1081,6 +1109,7 @@ fitmv <- function(submodels, data, fixed=NULL, init=list(), lower=list(), upper=
     call_["submodels"] <- NULL # so that it remains in call_ the arguments others than mv.
     ## I need to match the names of mv[[mit]] to those of a fitme call to make sure that they all named...
     call_["fixed"] <- NULL ## so that the lambda fixing (in particular) is not the default value for each processed call
+    call_["etaFix"] <- NULL ## not the right step for fixing coefficients.
     ## *** global arguments => avoid mixing them with local arguments 
     ##     (although this is stricly necessary only for covStruct since...) ***  
     call_["corrMatrix"] <- NULL # not strictly necess since single matrix so never a problem of matching ranefs: The global corrMatrix is a locally usable corrMatrix, 

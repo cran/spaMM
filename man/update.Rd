@@ -20,7 +20,7 @@ Early versions of \code{spaMM}'s \code{update} method relied on \code{stats::upd
 Various post-fit functions from base R may use \code{update.formula} directly, rather than using automatic method selection for \code{update}. \code{update.formula} is not itself a generic, which leads to the following problem. To make \code{update.formula()} work on multivariate-response fits, one would like to be able to redefine it as a generic, with an \code{HLfit} method that would perform what \code{update_formulas} does, but such a redefinition appears to be forbidden in a package distributed on CRAN. Instead it is suggested to define a new generic \code{spaMM::update}, which could have a \code{spaMM::update.formula} as a method (possibly itself a generic). This would be of limited interest as the new \code{spaMM::update.formula} would be visible to \code{spaMM::update} but not to \code{stats::update}, and thus the post-fit functions from base R would still not use this method.  
 
 \code{update(<fit>, ...)}, as a general rule, is tricky. \code{update} methods are easily affected in a non-transparent way by changes in variables used in the original call. For example
-\code{
+\preformatted{
 foo <- rep(1,10)
 m <- lm(rnorm(10)~1, weights=foo)
 rm(foo)

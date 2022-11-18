@@ -1,4 +1,4 @@
-cat(crayon::yellow("\ntest obIinfo:"))
+cat(crayon::yellow("\ntest obsInfo:"))
 
 # data("Salamanders", package = "glmmTMB") 
 # (foo <- fitme(count  ~  spp  *  mined  +  (1  |site), data=Salamanders, family=negbin(link=log), method=c("ML","obs"), verbose=c(TRACE=F)))

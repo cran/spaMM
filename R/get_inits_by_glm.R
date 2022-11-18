@@ -4,41 +4,44 @@
                                prior.weights=processed$prior.weights,   ## do not try to eval() it outside of the .wfit function call; else nasty crashes may occur.
                                off=processed$off
                                ) {
-  ## if .get_inits_by_glm is called prior to optimization the family parameters may not be assigned, so: 
-  if (family$family %in% c("negbin1","negbin2")) {
-    if (inherits(substitute(shape, env=environment(family$aic)),"call")) family <- Poisson(family$link, trunc=environment(family$aic)$trunc) 
-  } else if (family$family=="beta_resp") {
-    if (inherits(substitute(prec, env=environment(family$aic)),"call")) { # only if beta_prec not assigned
+  ## Prior to optimization the family parameters may not be assigned, so: 
+  orifamfam <- family$family
+  if (orifamfam %in% c("negbin1","negbin2")) {
+    if (variable_fampar <- inherits(substitute(shape, env=environment(family$aic)),"call")) family <- Poisson(family$link, trunc=environment(family$aic)$trunc) 
+  } else if (orifamfam=="beta_resp") {
+    if (variable_fampar <- inherits(substitute(prec, env=environment(family$aic)),"call")) { # only if beta_prec not assigned
       loc_link <- family$link
       family <- beta_resp(link=loc_link, prec=1) 
     }
-  } else if (family$family=="COMPoisson") {
+  } else if (orifamfam=="COMPoisson") {
     loc_link <- family$link
     if (loc_link=="loglambda") loc_link <- "log"
-    if (inherits(substitute(nu, env=environment(family$aic)),"call")) family <- poisson(loc_link) # only if COMP_nu not assigned
+    if (variable_fampar <- inherits(substitute(nu, env=environment(family$aic)),"call")) family <- poisson(loc_link) # only if COMP_nu not assigned
     # problem with test glmmTMB: most of the time is spent on inits for glm when nu<1
     # if (inherits(nuchk <- substitute(nu, env=environment(family$aic)),"call") || nuchk >0.25) family <- poisson(loc_link)
     # : This helps for he GLM but not much otherwise. Other ideas ? __F I X M E__
   }
-  
-  if (family$family=="binomial" && NCOL(y)==1L) { 
+  locfamfam <- family$family
+  if (locfamfam=="binomial" && NCOL(y)==1L) { 
     BinomialDen <- processed$BinomialDen ## requested by the formula
     begform <-"cbind(y,BinomialDen-y)~"  
   } else {begform <-"y~"}
   ###################################################if (pforpv==0) {endform <-"0"} else 
   pforpv <- ncol(X.pv)
   if( ! pforpv && # no predictor variable
-      (family$family %in% c("binomial","poisson","beta_resp") || 
-        # 1st condition => includes cases where original family was (T)negbin with free disp param (and pforpv=0)L, a *poisson* GLM *with* an Intercept is fitted (the resulting beta is ignored);
-        # 2nd condition => if original family was negbin with FIXED disp param, a negbin GLM is fitted; it must have an intercept otherwise 
-        #                                                  eta=0=> mu untruncated=1 => y>1 is impossible (and returns negative deviance=> negative init lambda)
-        (family$family  %in% c("negbin1","negbin2") && # with FIXED shape
-         family$zero_truncated) 
-    )) X.pv <- matrix(1,ncol=1, nrow=nrow(X.pv))
+      (locfamfam %in% c("binomial","poisson","beta_resp") || 
+       # 1st condition => includes cases where original family was (T)negbin with free disp param (and pforpv=0)L, a *poisson* GLM *with* an Intercept is fitted (the resulting beta is ignored);
+       # 2nd condition => if original family was negbin with FIXED disp param, a negbin GLM is fitted; it must have an intercept otherwise 
+       #                                                  eta=0=> mu untruncated=1 => y>1 is impossible (and returns negative deviance=> negative init lambda)
+       (locfamfam  %in% c("negbin1","negbin2") && # with FIXED shape
+        family$zero_truncated) 
+      )) X.pv <- matrix(1,ncol=1, nrow=nrow(X.pv))
   n_lambda <- sum(attr(processed$ZAlist,"Xi_cols"))
-  if (family$family %in% c("Gamma","gaussian")) {lam_fac <- 1/(n_lambda+1L)} else lam_fac <- 1/n_lambda
+  if (locfamfam %in% c("Gamma","gaussian")) {lam_fac <- 1/(n_lambda+1L)} else lam_fac <- 1/n_lambda
   resu <- list() 
-  if (family$family=="gaussian" && family$link=="identity") {
+  
+  if (locfamfam=="gaussian" && family$link=="identity") {
+    
     if (inherits(X.pv,"sparseMatrix")) {
       resglm <- .spaMM_lm.wfit(x=X.pv,y=y,offset=off,w=eval(prior.weights))
     } else resglm <- lm.wfit(x=X.pv,y=y,offset=off,w=eval(prior.weights))
@@ -49,17 +52,37 @@
     if (is.nan(guess)) { # resglm$df.residual=0, possibly wider issue with requested fit, cannot be resolved from here.
       resu$lambda <- resu$phi_est <- 1e-04
     } else resu$lambda <- resu$phi_est <- sum(dev)/resglm$df.residual # /lam_fac
-  } else if ( family$family %in% c("negbin1", "beta_resp")) { # I cannot use $flags bc e.g. for COMPoisson, the local family may be stats::poisson 
-    resglm <- llm.fit(x=X.pv, 
-                            y=drop(Y), 
-                            weights = eval(prior.weights), 
-                            offset = off, family = family, 
-                            control = processed[["control.glm"]])
-    resu$lambda <- as.numeric(deviance(resglm)/resglm$df.residual) # (___F I X M E__)_ a bit large in the 1st beta_resp example
-  } else { ## GLM, even when fitted by obsInfo
+    
+  } else if ( locfamfam %in% c("negbin1", "beta_resp")) { # with variable dispersion param; I cannot use $flags bc e.g. for COMPoisson, the local family may be stats::poisson
+    
+    resglm <- llm.fit(x=X.pv,  y=drop(Y),  weights = eval(prior.weights),  offset = off, 
+                      family = family,  control = processed[["control.glm"]])
+    # if ( ( ! .spaMM.data$options$spaMM_glm_conv_silent)
+    #      && (conv_crit <- environment(spaMM_glm.fit)$spaMM_glm_conv_crit$max>0) # note the read and write into that other function's defining envir...
+    # ) {
+    #   resu$conv_info <- paste(".calc_inits_by_glm() -> spaMM_glm.fit or llm.fit did not yet converge at iteration",
+    #                           resglm$iter,"(criterion:",
+    #                           paste(names(conv_crit),"=",signif(unlist(conv_crit),3),collapse=", "),").\n",
+    #                           "Use <fitting function>(., control.glm=list(maxit=<larger value>,..)) to control this.")
+    #   assign("spaMM_glm_conv_crit",list(max=-Inf) , envir=environment(spaMM_glm.fit)) # So that no-convergence in later call (dispGammaGLM) can be independently assessed
+    # } 
+    ## => ___F I X M E___ need to comment the obscure code for GLMs, used as template, first...
+    overdisp <- as.numeric(deviance(resglm)/df.residual(resglm)) # that's the way the dispersion param is estimated in GLMs
+    # ... since resglm is not a glm nor an HLfit object, this uses the stats:::<>.default method of the two extractors ...
+    if (locfamfam=="beta_resp") {
+      resu$lambda <- min(1,overdisp) # think of binary logistic model... but # (___F I X M E__)_ still a bit large  (0.2767528) in the 1st beta_resp example. Quick patch:
+      if (variable_fampar) resu$beta_prec <- min(10, max(0.15, 1/(2*overdisp)))
+    } else resu$lambda <- overdisp
+    
+    ## ____F I X M E___ fact is that init may diverge (more likely than from spaMM_glm.fit) and I have no alternative...
+    # Depending on $converged I could use overdisp or something else ?
+    
+    ## I tried weird things here in version 4.0.14
+
+  } else { ## LOCfamily is GLM, even when fitted by obsInfo
     # (1) This handles truncated fams (since glm -> glm.fit handles Tpoisson() etc)
     # (2) This ignores obsInfo so results will differ from the equivalent LLF family
-    if (family$family=="COMPoisson") glm.fit <- glm.nodev.fit 
+    if (locfamfam=="COMPoisson") glm.fit <- glm.nodev.fit 
     tryglm <- .tryCatch_W_E(glm.fit(x=X.pv, 
                                     y=Y, 
                                     weights = eval(prior.weights), 
@@ -68,7 +91,7 @@
     if (inherits((resglm <- tryglm$value),"error") || 
         ( ! resglm$converged && any(fitted(resglm)>1e20)) # this occurred in Gamma(log) models or negbin(log)
     ) {
-      # if (family$family=="gaussian" && family$link %in% c("log","inverse")) family$initialize <- .gauss_initialize_in_Xbeta_image
+      # if (locfamfam=="gaussian" && family$link %in% c("log","inverse")) family$initialize <- .gauss_initialize_in_Xbeta_image
       resglm <- spaMM_glm.fit(x=X.pv, # ->LevM -> COMP bottleneck
                               y=Y, 
                               weights = eval(prior.weights), 
@@ -76,7 +99,7 @@
                               control = processed[["control.glm"]])
       if ( ( ! .spaMM.data$options$spaMM_glm_conv_silent)
            && (conv_crit <- environment(spaMM_glm.fit)$spaMM_glm_conv_crit$max>0)) {
-        resu$conv_info <- paste(".get_inits_by_glm() -> spaMM_glm.fit did not yet converge at iteration",
+        resu$conv_info <- paste(".calc_inits_by_glm() -> spaMM_glm.fit or llm.fit did not yet converge at iteration",
                                 resglm$iter,"(criterion:",
                                 paste(names(conv_crit),"=",signif(unlist(conv_crit),3),collapse=", "),").\n",
                                 "Use <fitting function>(., control.glm=list(maxit=<larger value>,..)) to control this.")
@@ -86,8 +109,14 @@
                 substring(tryglm$warning$message,0,14)=="maxn truncated") .spaMM.data$options$COMP_maxn_warned <- FALSE
     ## -> see explanations in .COMP_maxn()
     #
-    resu$phi_est <- as.numeric(deviance(resglm)/resglm$df.residual) #/n_lambda 
-    if (family$family=="binomial" && max(resglm$prior.weights)==1L) { ## binary response
+    overdisp <- as.numeric(deviance(resglm)/resglm$df.residual)
+    if (orifamfam == "negbin1") {
+      resu$NB_shape <- min(10, max(0.15, 2/overdisp)) # test: negbin1 in test-LLM, notably tnb1
+    } else if (orifamfam == "negbin2") {
+      resu$NB_shape <- min(20, max(0.15, 4/overdisp)) # test: spaMMintro's HLnegbin case; fit_05 of twinR back-compat check
+    }
+    resu$phi_est <- overdisp #/n_lambda 
+    if (locfamfam=="binomial" && max(resglm$prior.weights)==1L) { ## binary response
       resu$lambda <- 1
     } else {
       # fv <- fitted(resglm)
@@ -98,7 +127,7 @@
       # but this leads to 
       resu$lambda <- resu$phi_est
     }
-  } ## end else ('GLM')
+  } ## end else (LOCfamily is 'GLM')
   if (pforpv) {
     ## Two potential problems (1) NA's pour param non estimables (cas normal); 
     ## (2) "glm.fit: fitted probabilities numerically 0 or 1 occurred" which implies separation or large offset

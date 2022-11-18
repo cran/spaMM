@@ -8,7 +8,7 @@ Beta-response family object
 Returns a \code{family} object for beta-response models.
 The model described by such a family is characterized by a linear predictor, a link function, and the beta density for the residual variation.
 
-The precision parameter \code{prec} of this family is such that the variance of the response given its mean \eqn{\mu} is \eqn{\mu(1-\mu)/(1+}\code{prec}). \code{prec} is thus the precision parameter \eqn{\phi} of Ferrari & Cribari-Neto (2004) and of the \pkg{betareg} package (Cribari-Neto & Zeileis 2010).  
+The precision parameter \code{prec} of this family is a positive value such that the variance of the response given its mean \eqn{\mu} is \eqn{\mu(1-\mu)/(1+}\code{prec}). \code{prec} is thus the precision parameter \eqn{\phi} of Ferrari & Cribari-Neto (2004) and of the \pkg{betareg} package (Cribari-Neto & Zeileis 2010).  
 
 Prior weights are meaningful for this family and handled as a factor of the precision parameter (as for GLM families) hence here not as a divisor of the variance (in contrast to GLM families): the variance of the response become \eqn{\mu(1-\mu)/(1+}\code{prec*<prior weigths>}).
 }
@@ -18,7 +18,7 @@ beta_resp(prec = stop("beta_resp's 'prec' must be specified"), link = "logit")
 %- maybe also 'usage' for other objects documented here.
 \arguments{
   \item{prec}{
-  Parameter controlling the variance of the beta distribution.  
+  Scalar (or left unspecified): precision parameter of the beta distribution. 
 }
   \item{link}{
   logit, probit, cloglog or cauchit link, specified by any of the available ways for GLM links (name, character string, one-element character vector, or object of class \code{link-glm} as returned by \code{\link[stats]{make.link}}). 

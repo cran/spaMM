@@ -14,6 +14,8 @@ getCall.HLfit <- function(x,...) { ## FIXME ? getCall()$resid.model does not loo
   }
 }
 
+
+##### OLD comment before I use fixed <- .modify_list(.)
 ## to get a call with the structure of the final HLCorcall in fitme or corrHLfit
 ## fixed is mandatory: Do not set a default value, so that one has to think about the correct value.
 ## Therefore, the original ranFix of the outer_object is replaced, unless it is explicitly set to getCall(object)$ranFix or $fixed... (in confint.HLfit)
@@ -26,14 +28,9 @@ get_HLCorcall <- function(outer_object, ## accepts fit object, or call, or list 
   
   outer_call <- getCall(outer_object) ## corrHLfit/fitme/HLCor/HLfit/fitmv call
   outer_call$data <- outer_object$data ## removes dependence on promise
-  outer_fn <-.get_bare_fnname.HLfit(outer_object, call.=outer_call)
-  if (outer_fn=="fitme" || outer_fn=="fitmv" ) {
-    outer_call$fixed <- fixed
-  } else if (outer_fn=="HLCor") {
-    outer_call$ranPars <- fixed
-  } else outer_call$ranFix <- fixed
+  outer_call$fixed <- .modify_list(outer_call$fixed, fixed)
   verbose <- outer_call$verbose
-  verbose["getCall"] <- TRUE
+  verbose["getCall"] <- TRUE # but this is automatically converted to an integer if there are integer elsewhere in the vector...
   outer_call$verbose <- verbose
   ## compare to update.default, commented in R language Definition.
   extras <- match.call(expand.dots = FALSE)$...
@@ -48,13 +45,23 @@ get_HLCorcall <- function(outer_object, ## accepts fit object, or call, or list 
   #
   HLCorcall <- eval(as.call(outer_call)) ## calls outer fn and bypasses any optimization to get the inner call HLCor/HLfit... / fitmv?
   HLCorcall$call <- NULL ## $call kept the outer call! 
-  if (outer_fn=="HLfit") {
-    HLCorcall[[1L]] <- quote(HLfit)
-  } else if (outer_fn=="fitme" || outer_fn=="fitmv" ) {
-    if (is.null(HLCorcall$ranPars)) {
+  if (inherits(HLCorcall[[1]], "function")) { # if it is of class "name", no need for this block
+    outer_fn <-.get_bare_fnname.HLfit(outer_object, call.=outer_call)
+    if (outer_fn=="HLfit") {
       HLCorcall[[1L]] <- quote(HLfit)
+    } else if (outer_fn=="fitme" || outer_fn=="fitmv" ) {
+      if ("control.dist" %in% names(formals(HLCorcall[[1]]))) {
+        HLCorcall[[1L]] <- quote(HLCor)
+      } else HLCorcall[[1L]] <- quote(HLfit)
     } else HLCorcall[[1L]] <- quote(HLCor)
-  } else HLCorcall[[1L]] <- quote(HLCor)
+  }
+  if ("hyper" %in% names(HLCorcall$fixed)) {
+    # then some of the steps performed by HLCor.obj in the original unconstrained fit 
+    # are not performed when generating the HLCorcall with fixed params
+    # notably .merge_fixed() -> .expand_hyper()
+    HLCorcall$fixed <- .expand_hyper(HLCorcall$fixed, HLCorcall$processed$hyper_info,
+                                     moreargs=.get_moreargs(outer_object)) 
+  }
   .assignWrapper(HLCorcall$processed,"verbose['getCall'] <- NA")
   return(HLCorcall)
 }

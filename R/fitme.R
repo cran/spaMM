@@ -132,6 +132,7 @@ fitme <- function(formula,data, ## matches minimal call of HLfit
   time1 <- Sys.time()
   oricall <- match.call(expand.dots=TRUE) ## mc including dotlist
   oricall$"control.HLfit" <- eval(oricall$control.HLfit, parent.frame()) # to evaluate variables in the formula_env, otherwise there are bugs in waiting 
+  oricall$fixed <- eval(oricall$fixed, parent.frame()) # allows modif in post-fit code (cf get_HLCorcall) 
   mc <- oricall
   #
   if ( ! is.null(weights.form)) {

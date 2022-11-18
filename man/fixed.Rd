@@ -7,15 +7,24 @@
 \alias{corrPars}
 
 \title{Fixing some parameters}
-\description{The fitting functions allow some parameters to be fixed rather than estimated. Fixed-effect coefficients can be set by by way of the \code{etaFix} argument (linear predictor coefficients) for all fitting functions. Random-effect parameters can be set by an argument with a different name for the different fitting functions: \code{fixed} for \code{fitme}, \code{ranFix} for \code{HLfit} and \code{corrHLfit}, and \code{ranPars} for \code{HLCor}. This diversity of names may be confusing, but keep in mind that \code{ranFix} allows one to fix parameters that \code{HLfit} and \code{corrHLfit} would otherwise estimate, while \code{ranPars} can be used to set correlation parameters that \code{HLCor} does not estimate but nevertheless requires (e.g., Matérn parameters).
-
+\description{The fitting functions allow all parameters to be fixed rather than estimated:\cr 
+* Fixed-effect coefficients can be set by way of the \code{etaFix} argument (linear predictor coefficients) for all fitting functions.\cr 
+* Random-effect parameters and the \code{phi} parameter of the gaussian and Gamma response families can be set for all fitting function by the \code{fixed} argument, or for some fitting functions by an alternative argument with the same effect (see Details for this confusing feature, but using \code{fixed} uniformly is simpler).\cr
+* The ad-hoc dispersion parameter of some response families (\code{COMPoisson}, \code{negbin1}, \code{negbin2}, \code{beta_resp} and possibly future ones) can be fixed using the ad-hoc argument of such families rather than by \code{fixed}.
 }
 \details{
-\bold{etaFix} is a list with principal element \code{beta}, which should be a vector of (a subset of) the coefficients (\eqn{\beta}) of the fixed effects, with names as shown in a fit without such given values. If REML is used to fit random effect parameters, then \code{etaFix} affects by default the REML correction for estimation of dispersion parameters, which depends only on which \eqn{\beta} coefficients are estimated rather than given. This default behaviour will be overridden whenever a non-null \code{REMLformula} is provided to the fitting functions (see Example). \code{REMLformula} is the preferred way to control non-standard REML fits. Alternatively, with a non-NULL \code{etaFix$beta}, REML can also be performed as if all \eqn{\beta} coefficients were estimated, by adding attribute \code{keepInREML=TRUE} to \code{etaFix$beta}. Using an  \code{REMLformula} will override such a specification.  
+\bold{etaFix} is a list with single documented element \code{beta}, which should be a vector of (a subset of) the coefficients (\eqn{\beta}) of the fixed effects, with names as shown in a fit without such given values. If REML is used to fit random effect parameters, then \code{etaFix} affects by default the REML correction for estimation of dispersion parameters, which depends only on which \eqn{\beta} coefficients are estimated rather than given. This default behaviour will be overridden whenever a non-null \code{REMLformula} is provided to the fitting functions (see Example). \code{REMLformula} is the preferred way to control non-standard REML fits. Alternatively, with a non-NULL \code{etaFix$beta}, REML can also be performed as if all \eqn{\beta} coefficients were estimated, by adding attribute \code{keepInREML=TRUE} to \code{etaFix$beta}. Using an  \code{REMLformula} will override such a specification.  
 
-Despite its different name for different fitting functions, the argument for fixing random-effect parameters has a common syntax for all functions. It is a list, with the following possible elements, whose nature is further detailed below: \bold{phi} (variance of residual error, for gaussian and Gamma HGLMs), \bold{lambda} (random-effect variances, except for random-coefficient terms), \bold{ranCoefs} (random-coefficient parameters), and \bold{corrPars} (correlation parameters, when handled by the fitting function). Individual correlation parameters such as \bold{rho, nu, Nugget, ARphi}... are also possible When there is no ambiguity as to which random effect these correlation parameters apply. This was the original syntax, conceived when \code{spaMM} handled a single spatial random effect, and it is still convenient when applicable, but it should not be mixed with \code{corrPars} usage. 
+The older equivalent for the \code{fixed} argument is \code{ranFix} for \code{HLfit} and \code{corrHLfit}, and \code{ranPars} for \code{HLCor}. Do not use both one such argument and \code{fixed} in a call. This older diversity of names was confusing, but its logic was that \code{ranFix} allows one to fix parameters that \code{HLfit} and \code{corrHLfit} would otherwise estimate, while \code{ranPars} can be used to set correlation parameters that \code{HLCor} does not estimate but nevertheless requires (e.g., Matérn parameters).
 
-\bold{phi} may be a single value or a vector of the same length as the response vector (the number of rows in the \code{data}, once non-informative rows are removed). 
+Despite its different names, the argument for fixing random-effect parameters has a common syntax for all functions. It is a list, with the following possible elements, whose nature is further detailed below:\cr 
+* \bold{phi} (variance of residual error, for gaussian and Gamma HGLMs),\cr
+* \bold{lambda} (random-effect variances, except for random-coefficient terms), \cr
+* \bold{ranCoefs} (random-coefficient parameters),\cr 
+* \bold{corrPars} (correlation parameters, when handled by the fitting function).\cr 
+* Individual correlation parameters such as \bold{rho, nu, Nugget, ARphi}... are also possible top-level elements of the list when there is no ambiguity as to which random effect these correlation parameters apply. This syntax was conceived when \code{spaMM} handled a single spatial random effect, and it is still convenient when applicable, but it should not be mixed with \code{corrPars} element usage. 
+
+\bold{phi} may be a single value or a vector of the same length as the response vector (the number of rows in the \code{data}, once non-informative rows are removed).
 
 \bold{lambda} may be a single value (if there is a single random effect, or a vector allowing to specify unambiguously variance  values for some random effect(s). It can thus take the form \code{lambda=c(NA,1)} or \code{lambda=c("2"=1)} (note the name) to assign a value only to the variance of the second of two random effects.
 
@@ -40,24 +49,29 @@ fitme(y~X1+(X2|batch), data=wafers, fixed=list(ranCoefs=list("1"=c(2760, -0.1, 1
 # HLfit(y~X1+(X2|batch), data=wafers, ranFix=list(ranCoefs=list("1"=c(2760, -0.1, 1844))))
 
 
-# Fixing coefficients of the linear predictor, but with REML as if they were not fixed:
+### Fixing coefficients of the linear predictor:
 #
-fitme(y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch), data=wafers, family=Gamma(log), method="REML",
-      etaFix=list(beta=c("(Intercept)"=5.61208, X1=0.08818, X2=-0.21163, X3=-0.13948,                         
-                         "I(X2^2)"=-0.10378, "X1:X3"=-0.08987, "X2:X3"=-0.08779)),
+## ML fit
+#
+fitme(y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch), data=wafers, family=Gamma(log), 
+      etaFix=list(beta=c("(Intercept)"=5.61208)))
+#      
+## REML fit
+# Evaluation of restricted likelihood depends on which fixed effects are estimated,
+# so simply fixing the coefficients to their REML estimates will not yield 
+# the same REML fits, as see by comparing the next two fits:
+#
+unconstr <- fitme(y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch), data=wafers, 
+                  family=Gamma(log), method="REML")
+#  
+# Second fit is different from 'unconstr' despite the same fixed-effects:     
+naive <- fitme(y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch), data=wafers, family=Gamma(log), 
+               method="REML", etaFix=list(beta=fixef(unconstr)))    
+#
+# Using REMLformula to obtain the same REML fit as the unconstrained one:
+fitme(y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch), data=wafers, family=Gamma(log), 
+      method="REML", etaFix=list(beta=fixef(unconstr)),
       REMLformula=y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch))
-#
-# The fixed-effect coeffcitents in this example are 'fixef(remlfit)' from 
-(remlfit <- fitme(y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch), data=wafers, 
-                  family=Gamma(log), method="REML") )
-# This should give the same marginal and restricted likelihoods 
-
-## Hence, same effect by HLfit():      
-#
-# remlfit <- HLfit(y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch), data=wafers, family=Gamma(log)) 
-# HLfit(y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch), data=wafers, family=Gamma(log),
-#       etaFix=list(beta=fixef(remlfit)),
-#       REMLformula=y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch))
 
 data("Loaloa")
 # Fixing some Matern correlation parameters, in fitme():

@@ -20,8 +20,8 @@
           return(NULL)
         }
       } else { ## package not declared in DESCRIPTION
-        if (pack=="INLA") {
-          success <- suppressMessages(do.call("require",list(package=pack))) # messge might suggest that the fit is by INLE...
+        if (pack=="INLA") { # case no longer necessary
+          success <- suppressMessages(do.call("require",list(package=pack))) # message might suggest that the fit is by INLA...
           if ( ! inla_already) {
             message("INLA::inla.spde.make.A() will be used to construct the IMRF models fitted by spaMM.")
             inla_already <<- TRUE

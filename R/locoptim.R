@@ -55,7 +55,7 @@
                          factors=.spaMM.data$options$xtol_abs_factors, rC_transf=.spaMM.data$options$rC_transf) {
   parnames <- names(LowUp$lower)
   if ("trRanCoefs" %in% parnames) {
-    xtol_abs <- relist(rep(NA,length(.unlist(LowUp$lower))),LowUp$lower)
+    xtol_abs <- .relist_rep(NA,LowUp$lower)
     for (st in parnames) {
       if (st=="trRanCoefs") {
         trRanCoefs <- LowUp$lower$trRanCoefs
@@ -67,7 +67,7 @@
           # } else 
           xtol_abs$trRanCoefs[[rc]] <- c(rep(factors["rcLam"],Xi_ncol),rep(factors["rcCor"],len-Xi_ncol)) # "sph" etc
         }
-      } else {xtol_abs[[st]] <- rep(factors["others"],length(.unlist(LowUp$lower[[st]])))}
+      } else {xtol_abs[[st]] <- rep(factors["others"],length(unlist(LowUp$lower[[st]], use.names = FALSE)))}
     }
     rng <- unlist(LowUp$upper, use.names = FALSE)-unlist(LowUp$lower, use.names = FALSE)
     xtol_abs <- unlist(xtol_abs, use.names = FALSE)

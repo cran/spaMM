@@ -421,6 +421,7 @@ llm.fit <- local({
     nulldf <- n.ok - as.integer(intercept)
     wtdmu <- if (intercept) 
       sum(weights * y)/sum(weights)
+    else linkinv(offset)
     nulldev <- sum(dev.resids(y, wtdmu, weights))
     resdf <- n.ok - rank
     aic.model <- aic(y, n, mu, weights, dev) + 2 * rank

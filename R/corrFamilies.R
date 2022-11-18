@@ -186,12 +186,17 @@ ARMA <- function(p=1L, q=1L, fixed=NULL, tpar=c(1/(1+seq_len(p)),1/(1+seq_len(q)
        tag="ARMA")
 }
 
-.ranGCA_Z2A <- function(Zlevels) {
+# Construct A matrix from dyad levels (cols of Z = rows of A) to individual levels (cols of A)
+.dyad_Z2A <- function(Zlevels, ord_pairs) {
   Z2A <- strsplit(Zlevels,":") 
   Z2A <- do.call(rbind,Z2A)
-  which_sort <- which(Z2A[,1]>Z2A[,2])
-  Z2A[which_sort,c(1L,2L)] <- Z2A[which_sort,c(2L,1L)]
-  Afactor <- factor(unique(unlist(Z2A)))
+  if ( ! ord_pairs) { # ordered for antisym(), not ordered for ranGCA()
+    which_reord <- which(Z2A[,1]>Z2A[,2])
+    Z2A[which_reord,c(1L,2L)] <- Z2A[which_reord,c(2L,1L)]
+  }
+  Afactor <- factor(unique(unlist(Z2A))) # sort() on string => order in A will then be "1" "10" ... which is ugly, but
+  #  we cannot always assume that the strings represent numbers , so defining a better sorting is not immediate.
+  # see gtools::mixedsort if this becomes an important issue.
   Alevels <- levels(Afactor)
   Z2A <- data.frame(ID1=factor(Z2A[,1], levels=Alevels),
                     ID2=factor(Z2A[,2], levels=Alevels))
@@ -199,7 +204,7 @@ ARMA <- function(p=1L, q=1L, fixed=NULL, tpar=c(1/(1+seq_len(p)),1/(1+seq_len(q)
 }
 
 
-ranGCA <- function() {
+ranGCA <- function() { # Z has O(nlevels^2) cols and A has O(nlevels) cols. No need for a correl mat.
   
   oldZlevels <- NULL
 
@@ -219,12 +224,12 @@ ranGCA <- function() {
       RHS_info <- .as_factor(txt=txt,mf=newdata, type=parent.env(environment())$levels_type) # 'levels_type' as provided there by .preprocess_corrFamily
       Zlevels <- levels(RHS_info$factor)
     }
-    Z2Ablob <- .ranGCA_Z2A(Zlevels)
+    Z2Ablob <- .dyad_Z2A(Zlevels, ord_pairs=FALSE)
     Z2A <- Z2Ablob$Z2A
     Afactor <- Z2Ablob$Afactor
     Alevels <- levels(Z2Ablob$Afactor)
     if (length(Alevels)==1L) { # that must be a single 'homozygote'
-      Amatrix <- .trivial_incidMat[,rep(1L,2L), drop=FALSE] 
+      Amatrix <- .trivial_incidMat*2
     } else {
       Amatrix <- sparse.model.matrix(~ID1-1,Z2A)+sparse.model.matrix(~ID2-1,Z2A) # *sum* of the two individual random effects
     }
@@ -239,7 +244,7 @@ ranGCA <- function() {
   Cf <- function(tpar) NULL 
   
   make_new_corr_lists <- function(newLv_env, which_mats, newZAlist, new_rd, ...) { 
-    # see code for (.|.) ranefs: (twhere the spaceial case for fix_info does not seem to require any adaptation here)
+    # Cf code for (.|.) ranefs: (OK even for fix_info)
     newLv_env$cov_newLv_oldv_list[new_rd] <- list(NULL) # .calc_sub_diagmat_cov_newLv_oldv() will be called as for (.|.)
     if (which_mats$nn[new_rd]) {
       newLv_env$cov_newLv_newLv_list[new_rd] <- list(NULL) 

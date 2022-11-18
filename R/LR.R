@@ -113,10 +113,16 @@
   } else Rnest <- NULL
   nest <- c(Xnest,Rnest)
   unest <- unique(nest)
-  if (length(unest)==2L) stop("Models not nested (opposite nestings for fixed and random terms). ")
+  if (length(unest)==2L) {
+    warning("Models not nested (opposite nestings for fixed and random terms). No test performed.")
+    return(list(fullfit=NULL,nullfit=NULL,test_obj=NULL,df=NA))
+  }
   # ELSE
-  if (length(unest)==0L) stop(paste("The two models appear equivalent (except perhaps for residual dispersion models).\n", 
-                                    "This case is not handled."))
+  if (length(unest)==0L) {
+    warning(paste("The two models appear equivalent (except perhaps for residual dispersion models).\n", 
+                                    "No test performed."))
+    return(list(fullfit=NULL,nullfit=NULL,test_obj=NULL,df=0))
+  }
   # if (length(Rnest)) return(.process_ranef_case(object, object2, nest=Rnest)) # Possibly nested models, differing at least by their random effects.
   ###############################
   # # ELSE nested fixef, identical ranefs
@@ -124,14 +130,14 @@
   # df2 <- length(X2[!is.na(fixef(object2))])
   # if (!is.null(Rnest)) {
   #   lambda.object <- object$lambda.object
-  #   if (!is.null(lambda.object)) df1 <- df1+length(unlist(lambda.object$coefficients_lambdaS))
+  #   if (!is.null(lambda.object)) df1 <- df1+length(unlist(lambda.object$coefficients_lambdaS, use.names=FALSE))
   #   cov.mats <- .get_compact_cov_mats(object$strucList)
   #   if (length(cov.mats)) {
   #     nrows <- unlist(lapply(cov.mats,NROW))
   #     df1 <- df1+sum(nrows*(nrows-1)/2)
   #   }
   #   lambda.object <- object2$lambda.object
-  #   if (!is.null(lambda.object)) df2 <- df2+length(unlist(lambda.object$coefficients_lambdaS))
+  #   if (!is.null(lambda.object)) df2 <- df2+length(unlist(lambda.object$coefficients_lambdaS, use.names=FALSE))
   #   cov.mats <- .get_compact_cov_mats(object2$strucList)
   #   if ( length(cov.mats)) {
   #     nrows <- unlist(lapply(cov.mats,NROW))
@@ -164,7 +170,8 @@
           df.n.Re <- ncol(nullm$distinctX.Re)
         } else df.n.Re <- ncol(nullm$`X.pv`)
         if ( df.f.Re !=  df.n.Re ) {
-          warning("LRT comparing REML fits with different fixed-effect conditions is highly suspect")
+          warning("LRT comparing REML fits with different fixed-effect conditions is highly suspect", 
+                  immediate.=TRUE)
         }
       }
       testlik <- "p_v"
@@ -223,9 +230,10 @@
     #    But get_ranPars(, which=NULL) is not formally defined, so has been changing... the original comment is no longer true.
     ## If the alternative not valid in the long run, this get_ranPars(.) calls should be modified.
   } else {
-    outer_ests <- attr(fitobject,"optimInfo")$optim.pars # transparent (but potentially more comprehensive set of params)
+    optimInfo <- attr(fitobject,"optimInfo")
+    outer_ests <- optimInfo$optim.pars # transparent (but potentially more comprehensive set of params)
     if ( ! is.null(outer_ests)) {
-      attr(outer_ests,"moreargs") <- attr(fitobject,"optimInfo")$LUarglist$moreargs # necess to canonize Matern params...
+      attr(outer_ests,"moreargs") <- optimInfo$LUarglist$moreargs # necess to canonize Matern params...
       outer_ests <- .canonizeRanPars(outer_ests, corr_info=fitobject$ranef_info$sub_corr_info, 
                                      checkComplete=FALSE,  rC_transf=.spaMM.data$options$rC_transf)
     }
@@ -598,7 +606,7 @@ LRT <- function(object,object2,boot.repl=0,# nb_cores=NULL,
     comp <- crossprod(qr.Q(qr_sXaug),object$y) # object$effects[p1] # the better tibco doc says it is t(Q) %*% y 
     #  but given it is the QR for scaled X varaibles, 
     if (is.null(qr_sXaug))  stop("HLfit object does not have a 'qr' factorization of the model matrix.")
-    asgn <- attr(object$X.pv,"assign")[qr_sXaug$pivot][p1]
+    asgn <- attr(object$X.pv,"assign")[qr_sXaug$pivot][p1]   # ____F I X M E____ use model.matrix() extractor everywhere for object$X.pv  ? 
     nmeffects <- c("(Intercept)", attr(terms(object), "term.labels"))
     tlabels <- nmeffects[1 + unique(asgn)]
     ss <- c(vapply(split(comp^2, asgn), sum, 1), ssr)
@@ -615,8 +623,7 @@ LRT <- function(object,object2,boot.repl=0,# nb_cores=NULL,
   
   table <- data.frame(df, ss, ms, f, P)
   table[length(P), 4:5] <- NA ## row of residual SS
-  dimnames(table) <- list(c(tlabels, "Residuals"), c("Df", 
-                                                     "Sum Sq", "Mean Sq", "F value", "Pr(>F)"))
+  dimnames(table) <- list(c(tlabels, "Residuals"), c("Df", "Sum Sq", "Mean Sq", "F value", "Pr(>F)"))
   #if (attr(object$terms, "intercept")) table <- table[-1, ]
   table <- table[ ! rownames(table) == "(Intercept)", ]
   structure(table, heading = c("Analysis of Variance Table\n", 
@@ -739,7 +746,6 @@ LRT <- function(object,object2,boot.repl=0,# nb_cores=NULL,
                   "\n\nResponse: ", as.character(varlist[-1L])[1L], "\n\nTerms added sequentially (first to last)\n\n")
   df.dispersion <- Inf
   if (is.null(dispersion)) {
-    # ____F I X M E____ see comments in devel/ANOVAs/MEMO.txt for fam_pars ETC
     dispersion <- residVar(object,"fit")
     # for Gamma GLM anova.glm uses the MME estimate based on Pearson residuals, dispersion <- summary(object, dispersion = dispersion)$dispersion
     df.dispersion <- if (object$dfs$p_fixef_phi==0L) {
@@ -809,7 +815,7 @@ LRT <- function(object,object2,boot.repl=0,# nb_cores=NULL,
 }
 
 .get_type1_contrasts <- function (model, 
-                                  termsv=terms(model),
+                                  termsv=terms(model), # ____F I X M E___ rework fn for mv fits
                                   X=model.matrix(model)) {
   p <- ncol(X)
   if (p == 0L) 
@@ -849,8 +855,15 @@ LRT <- function(object,object2,boot.repl=0,# nb_cores=NULL,
 }
 
 .get_type2_contrasts <- function (model, 
-                                  termsv=terms(model),
+                                  termsv=terms(model), # ____F I X M E___ rework fn for mv fits. Set assign attribute first...
                                   X=model.matrix(model)) {
+  # if (inherits(termsv,"list")) {
+  #   resu <- vector("list",length(termsv))
+  #   for (mv_it in seq_along(termsv)) {
+  #     resu[[mv_it]] <- .get_type2_contrasts(model, termsv=termsv[[mv_it]], X=X)
+  #   }
+  #   return(unlist(resu,use.names = FALSE, recursive = FALSE))
+  # }
   data_classes <- attr(termsv, "dataClasses")
   asgn <- attr(X, "assign")
   term_names <- attr(termsv, "term.labels")
@@ -928,7 +941,7 @@ anova.HLfit <- function(object, object2=NULL, type="2", method="", ...) {
             return(anova(lmlt, type=type)) # other possible arguments not currently meaningful
           } else if ( ! identical(spaMM.getOption("lmerTest_warned"),TRUE)) {
             message("If the lmerTest package were installed, a traditional anova table could be computed.")
-            .spaMM.data$options$rcdd_warned <- TRUE
+            .spaMM.data$options$lmerTest_warned <- TRUE
           } 
         } 
       }
@@ -938,5 +951,22 @@ anova.HLfit <- function(object, object2=NULL, type="2", method="", ...) {
     ## anova treated as alias for LRT()
     LRT(object,object2, ...)
   }
+}
+
+# anova is an S3 class, LMLT an S4 class
+## Aim of this method is to ensure that the lmerTest package is loaded when anova() is called
+# bc it may be called when object has class LMLT, but no def may yet be accessible for such objects.
+## See the 'ZZZ' version for detailed explanations of the code.
+anova.LMLT <- function(object, ...) { 
+  if (is.null(getClassDef("LMLT", where = .spaMM.data$class_cache, inherits = FALSE))) {
+    # is as_LMLT has not been called since restarting R session-> lmerTest presumably not loaded
+    if (requireNamespace("lmerTest",quietly=TRUE)) {
+      # Hack to define object not of class LMLT (-> infinite recursion) but with similar "contains", using only default coerce methods
+      setClass(Class="LMLT", contains = c("LMLTslots","lmerModLmerTest"), where=.spaMM.data$class_cache) 
+      setClass(Class="LMLTinternal", contains = c("LMLTslots","lmerModLmerTest"), where=.spaMM.data$class_cache) 
+    } else message("If the lmerTest package were installed, a traditional anova table could be computed.")
+  } 
+  object <- as(as(object,"LMLTslots"),"LMLTinternal")
+  anova(object, ...)
 }
 

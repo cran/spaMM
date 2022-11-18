@@ -6,15 +6,15 @@ if (FALSE) {  ## DOC:
   
   ## idiom for merging parameters
   varNames <- setdiff(names(init.HLfit),c("fixef","v_h")) ## maybe also corrPars ? empty list in init.HLfit...
-  HLCor.args$ranPars <- structure(.modify_list(fixed,init.HLfit[varNames]),
-                                  type=.modify_list(relist(rep("fix",length(unlist(fixed))),fixed),
+  HLCor.args$fixed <- structure(.modify_list(fixed,init.HLfit[varNames]),
+                                  type=.modify_list(.relist_rep("fix",fixed),
                                                     attr(init.HLfit,"type")[varNames]))  
   
   ## idiom for splitting parameters
   rPtype <- attr(ranPars,"type")
   if (is.null(rPtype) && length(ranPars)) { ## direct HLCor call
     HL.info$ranFix <- structure(ranPars,
-                                type=relist(rep("fix",length(unlist(ranPars))),ranPars))
+                                type=.relist_rep("fix",ranPars))
     #HL.info$init.HLfit previously filled by dotlist[good_dotnames]
   } else { ## through corrHLfit or fitme call: ranPars inherits values from <'corrfitme'> (...,init.HLfit(...))
     u_rPtype <- unlist(rPtype)

@@ -7,7 +7,7 @@
 A fitting function acting as a convenient interface for \code{\link{HLfit}}, constructing the correlation matrix of random effects from the arguments, then estimating fixed effects and dispersion parameters using \code{HLfit}. Various arguments are available to constrain the correlation structure, \code{covStruct} and \code{distMatrix} being the more general ones (for any number of random effects), and \code{adjMatrix} and \code{corrMatrix} being alternatives to \code{covStruct} for a single correlated random effect. \code{uniqueGeo} is deprecated.
 }
 \usage{
-HLCor(formula, data, family = gaussian(), ranPars = NULL, distMatrix,
+HLCor(formula, data, family = gaussian(), fixed=NULL, ranPars, distMatrix,
       adjMatrix, corrMatrix, covStruct=NULL,
       method = "REML", verbose = c(inner=FALSE),
       control.dist = list(), weights.form = NULL, ...)
@@ -17,9 +17,9 @@ HLCor(formula, data, family = gaussian(), ranPars = NULL, distMatrix,
   \item{formula}{
    A \code{predictor}, i.e. a formula with attributes (see \code{\link{Predictor}}), or possibly simply a simple \code{formula} if an offset is not required.
   }
-  \item{ranPars}{
-  A list of values for correlation parameters (some of which are mandatory), and possibly also dispersion parameters 
-  (optional, but passed to HLfit if present). See \code{\link{ranPars}} for further information.
+  \item{fixed, ranPars}{
+  A list of given values for correlation parameters (some of which are mandatory), and possibly also dispersion parameters 
+  (optional, but passed to HLfit if present). \code{ranPars} is the old argument, maintained for back compatibility; \code{fixed} is the new argument, uniform across \pkg{spaMM} fitting functions. See \code{\link{ranPars}} for further information.
 }
   \item{data}{
    The data frame to be analyzed.

@@ -82,6 +82,9 @@
   return(resu)
 }
 
+# This rests on .confint_LRT_single_par() which hacks the 'inner' fitting algo for fixed effects to optimize the CI bound over all other parameters 
+# and returns the parameters that optimize this bound, so that no numerical profiling of the likelihood has to be performed.
+# ___F I X M E___ consider implementing numerical profiling so that profile LRTs are available for other class of parameters 
 .confint_LRT <- function(level, parm, object, verbose) {
   if ((np <- length(parm))>1L) {
     resu <- vector("list",np)
@@ -119,15 +122,8 @@
     attr(parm,"col") <- parmcol
   }
   llc <- getCall(object)
-  fnname <-.get_bare_fnname.HLfit(object, call.=llc)
-  lc <- switch(fnname,
-               "corrHLfit" = get_HLCorcall(object,fixed=llc$ranFix),
-               "fitme" = get_HLCorcall(object,fixed=llc$fixed), # HLfit or HLCor call
-               "HLCor" = get_HLCorcall(object,fixed=llc$ranPars),
-               "HLfit" = get_HLCorcall(object,fixed=llc$ranFix),
-               "fitmv" = get_HLCorcall(object,fixed=llc$fixed), 
-               stop("Unhandled getCall(object) in confint.HLfit()")
-  ) # uniformly calls get_HLCorcall() -> .preprocess() so that $processed is always available, 
+  lc <- get_HLCorcall(object,fixed=llc$fixed) # (The fixed value is overwritten in objfn(); see further comments in numInfo())
+  # ?___F I X M E___? potential interference with prior etaFix...
     # .makeLowerUpper() is called. THe optimInfo$LUarglist is used only later 
     # For fitmv, .makeLowerUpper() is called several times.
   HL <- object$HL
@@ -175,31 +171,16 @@
     olc <- lc ## olc is working copy
     LUarglist <- optimInfo$LUarglist
     attr(trTemplate,"method") <- NULL
-    if (paste(lc[[1]])=="HLCor") {
-      ## good starting values are important... important to use canonizeRanPars as in HLCor
-      attr(trTemplate,"moreargs") <- LUarglist$moreargs
-      ## locoptim expects a fn with first arg ranefParsVec
-      ## ca serait mieux de pas avoir de contrainte la dessus et de pvr nommer l'arg trParsVec
-      ## bc HLCor call uses transformed scale for ranPars
-      objfn <- function(ranefParsVec, anyHLCor_obj_args=NULL, HLcallfn.obj=NULL) { 
-        ranefParsList <- relist(ranefParsVec,trTemplate)
-        olc$ranPars <- structure(.modify_list(olc$ranPars,ranefParsList)) ## replaces ! some elements and keeps the "type" !
-        locfit <- eval(as.call(olc)) ## HLCor call with given ranefParsVec
-        resu <- (posforminimiz)* locfit$fixef[parm]
-        attr(resu,"info") <- locfit$APHLs$p_v 
-        ## attribute lost by optim but otherwise useful for debugging 
-        return(resu) ## return value to be optimized is a parameter value, not a likelihood
-      }
-    } else if (paste(lc[[1]])=="HLfit") {
-      objfn <- function(ranefParsVec, anyHLCor_obj_args=NULL, HLcallfn.obj=NULL) { 
-        ranefParsList <- relist(ranefParsVec,trTemplate)
-        olc$ranFix <- structure(.modify_list(olc$ranFix,ranefParsList)) ## replaces ! some elements and keeps the "type" !
-        locfit <- eval(as.call(olc)) ## HLfit call with given ranefParsVec
-        resu <- (posforminimiz)*locfit$fixef[parm]
-        attr(resu,"info") <- locfit$APHLs$p_v 
-        ## attribute lost by optim but otherwise useful for debugging 
-        return(resu) ## return value to be optimized is a parameter value, not a likelihood
-      }
+    if (paste(lc[[1]])=="HLCor") attr(trTemplate,"moreargs") <- .get_moreargs(object)
+    ## locoptim expects a fn with first arg ranefParsVec
+    objfn <- function(ranefParsVec, anyHLCor_obj_args=NULL, HLcallfn.obj=NULL) { ## ___F I X M E___ compare to numInfo procedure 
+      ranefParsList <- relist(ranefParsVec,trTemplate)
+      olc$fixed <- structure(.modify_list(olc$fixed,ranefParsList)) ## replaces ! some elements and keeps the "type" !
+      locfit <- eval(as.call(olc)) ## HLfit call with given ranefParsVec
+      resu <- (posforminimiz)*locfit$fixef[parm]
+      attr(resu,"info") <- locfit$APHLs$p_v 
+      ## attribute lost by optim but otherwise useful for debugging 
+      return(resu) ## return value to be optimized is a parameter value, not a likelihood
     }
     rC_transf <- .spaMM.data$options$rC_transf
     LUarglist$canon.init <- .canonizeRanPars(ranPars=trTemplate,
@@ -207,6 +188,7 @@
                                              checkComplete=FALSE, rC_transf=rC_transf)
     LowUp <- do.call(.makeLowerUpper,LUarglist)
     optim_bound_over_nuisance_pars <- function(posforminimiz) { ## optimize the CI bound and returns the parameters that optimize this bound
+      fnname <-.get_bare_fnname.HLfit(object, call.=llc)
       user_init_optim <- switch(fnname,
                                 "corrHLfit" = llc[["init.corrHLfit"]],
                                 "fitme" = llc[["init"]], 
@@ -246,14 +228,16 @@
       olc <- lc ## that's olc that is used in the objective fn !
       posforminimiz <- 1 ## defined in the envir where objfn is defined... (bad style)
       bound <- optim_bound_over_nuisance_pars()
-      if (paste(lc[[1]])=="HLCor") {
-        olc$ranPars <- structure(.modify_list(olc$ranPars,bound)) ## replaces ! some elements and keeps the "type" (lazyness)!
-      } else {
-        olc$ranFix <- structure(.modify_list(olc$ranFix,bound)) ## replaces ! some elements and keeps the "type" !
-      }
+      # if (paste(lc[[1]])=="HLCor") {
+      #   olc$fixed <- structure(.modify_list(olc$fixed,bound)) ## replaces ! some elements and keeps the "type" (lazyness)!
+      # } else {
+      #   olc$ranFix <- structure(.modify_list(olc$ranFix,bound)) ## replaces ! some elements and keeps the "type" !
+      # }
+      olc$fixed <- structure(.modify_list(olc$fixed,bound)) ## replaces ! some elements and keeps the "type" !
       ## recover fit for optimized params (must use call with intervalInfo and LevenbergM=FALSE)
       lowerfit <- eval(as.call(olc)) ## full HLfit objectobject
       attr(lowerfit,"optimInfo") <- optimInfo ## expected by summary.HLfit
+      # lowerfit <- .update_ranef_info(lowerfit, moreargs=LUarglist$moreargs)
       ##
     } else lowerfit <- eval(as.call(lc))
     if (is.null(lowerfit$warnings$innerNotConv)) {
@@ -280,13 +264,15 @@
       olc <- lc
       posforminimiz <- -1 ## maximization
       bound <- optim_bound_over_nuisance_pars()
-      if (paste(lc[[1]])=="HLCor") {
-        olc$ranPars <- structure(.modify_list(olc$ranPars,bound)) ## replaces ! some elements and keeps the "type" !
-      } else {
-        olc$ranFix <- structure(.modify_list(olc$ranFix,bound)) ## replaces ! some elements and keeps the "type" !
-      }
+      # if (paste(lc[[1]])=="HLCor") {
+      #   olc$fixed <- structure(.modify_list(olc$fixed,bound)) ## replaces ! some elements and keeps the "type" !
+      # } else {
+      #   olc$ranFix <- structure(.modify_list(olc$ranFix,bound)) ## replaces ! some elements and keeps the "type" !
+      # }
+      olc$fixed <- structure(.modify_list(olc$fixed,bound)) ## replaces ! some elements and keeps the "type" !
       upperfit <- eval(as.call(olc))
       attr(upperfit,"optimInfo") <- optimInfo ## expected by summary.HLfit
+      # upperfit <- .update_ranef_info(upperfit, moreargs=LUarglist$moreargs)
       ##
     } else upperfit <- eval(as.call(lc))
     if (is.null(upperfit$warnings$innerNotConv)) {

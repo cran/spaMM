@@ -166,7 +166,7 @@ negbin1 <- function (shape = stop("negbin1's 'shape' must be specified"), link =
     getmu <- function(y) {
       if (trunc==0L) {
         if (y==1L) return(0)
-        if (DlogLDmu_0(y)) return(0) # DlogL < 0 in mu->0   => return mu=0
+        if (DlogLDmu_0(y)<0) return(0) # DlogL < 0 in mu->0   => return mu=0
         if (shape >= 1) {
           lower <-  y-1
         } else {

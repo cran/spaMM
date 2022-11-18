@@ -70,15 +70,14 @@ Only \code{Cf} and \code{tpar} are necessary elements of a corrFamily object. If
 \item{need_Cnn}{optional: a boolean; default is TRUE. Controls prediction computations (see Details).}
 \item{public}{An environment where some variables can be saved, typically by the \code{initialize} expression, for inspection at user level and for re-use. See \code{\link{diallel}} for an example.}
 
-\bold{Optional \emph{fitting-function} arguments}:
+\bold{\emph{fitting-function} arguments}:
 
-\item{lower,upper,init}{(possibly incomplete) parameter vectors to control parameter estimation. Parameter names (consistent with those to be used for the \code{tpar} argument) may be required to disambiguate incomplete vectors. Any parameter value not specified in this way will be sought in the return value of the \code{calc_moreargs} function, if provided in the descriptor.} 
+\code{lower, upper, init} and \code{fixed} optimization controls can be used to control optimization of continuous parameters as for other random-effect parameters. They are specified as numeric vectors, themselves being element of the \code{corrPars} list (see Examples in \code{\link{corrFamily-design}}). Parameter names (consistent with those to be used for the \code{tpar} argument) may be required to disambiguate incomplete vectors (e.g., to specify only its second element). Apart from \code{fixed} ones, any of the values not specified through the fitting-function arguments will be sought in the return value of the \code{calc_moreargs} function, if provided in the descriptor. If the \code{lower} or \code{upper} information is missing there, it must be provided throught the fitting-function call. If the \code{init} information is missing, a default value will be deduced from the bounds. The \code{init} specification is thus always optional while the bounds specification is optional only if the descriptor provides default values.  
 %(given the distinctive use of \code{tpar}, \code{spaMM} never tries to use it as initial value).
-\item{fixed}{(optional): vector of fixed values. Parameter names may be needed as for \code{lower,upper,init}.}
 
 \bold{\emph{Arguments} of the corrFamily \emph{constructor}}
 
-These may be ad libitum, as design rules are defined only for the returned descriptor. However, arguments \code{tpar}, \code{fixed}, and \code{public}  predefined constructors, such as \code{ARp}, are designed to match the above respective elements of the descriptor. 
+These may be ad libitum, as design rules are defined only for the returned descriptor. However, arguments \code{tpar}, \code{fixed}, and \code{public} of predefined constructors, such as \code{ARp}, are designed to match the above respective elements of the descriptor. 
 }
 \details{
 \bold{* Constructor elements for prediction:}

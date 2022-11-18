@@ -119,21 +119,22 @@
 }
 
 HLCor_body <- function(processed, ## single environment
-                  ranPars=NULL, ## all dispersion and correlation params ideally provided through ranPars
+                  #ranPars=NULL, ## all dispersion and correlation params ideally provided through ranPars
                   control.dist=list(), # possibly distinct from processed info bc corrHLfit_body/fitme_body may have modified it => 
                                        # this one is used, not the one from processed
+                  fixed=NULL,
                   ...) { ## dots for HLfit
   dotlist <- list(...)
   spatial_terms <- attr(processed$ZAlist,"exp_spatial_terms")
   corr_types <- processed$corr_info$corr_types
   ## convert back ranPars to canonical scale:
-  ranPars <- .reformat_corrPars(ranPars,corr_families=processed$corr_info$corr_families) 
-  ranPars <- .canonizeRanPars(ranPars=ranPars, corr_info=processed$corr_info, rC_transf=.spaMM.data$options$rC_transf) ## with init.HLfit as attribute # expands hyper params.
+  fixed <- .reformat_corrPars(fixed,corr_families=processed$corr_info$corr_families) 
+  fixed <- .canonizeRanPars(ranPars=fixed, corr_info=processed$corr_info, rC_transf=.spaMM.data$options$rC_transf) ## with init.HLfit as attribute # expands hyper params.
   ########################################################################################################################
   # * assigns geo_envir <- .get_geo_info(...)
   # * modifies processed$AUGI0_ZX$envir by .init_AUGI0_ZX_envir_spprec_info(...) 
   # * computes processed$AUGI0_ZX$envir$LMatrices except for ranCoefs (the latter being filled in HLfit_body)
-  .assign_geoinfo_and_LMatrices_but_ranCoefs(processed, corr_types, spatial_terms, ranPars, control.dist, 
+  .assign_geoinfo_and_LMatrices_but_ranCoefs(processed, corr_types, spatial_terms, ranPars=fixed, control.dist, 
                                 argsfordesignL=dotlist[intersect(names(dotlist),names(formals(mat_sqrt)))] )
   if (any(vec_normIMRF <- processed$AUGI0_ZX$vec_normIMRF ) ) {
     processed$ZAlist <- .normalize_IMRF(processed, 
@@ -145,7 +146,7 @@ HLCor_body <- function(processed, ## single environment
   ########################################################################################################################
   ###
   if ( (! is.null(processed$return_only)) && processed$augZXy_cond) {
-    hlfit <- do.call(.spaMM.data$options$augZXy_fitfn,list(processed=processed, ranFix=ranPars))
+    hlfit <- do.call(.spaMM.data$options$augZXy_fitfn,list(processed=processed, fixed=fixed))
     if (FALSE) { # check consistency of aug_ZXy and non-aug_ZXy procedures
       # This code works: reused 01/2022 to check corrFamily model. 
       ## this test has previously interfered with the results (fitme3, fitme6 tests), presumably bc of the inner attribute (now added here, ignored during the test):
@@ -157,8 +158,8 @@ HLCor_body <- function(processed, ## single environment
       } else HL.info <- list()
       ## all printing in HLfit is suppressed by default
       HL.info$processed <- processed
-      HL.info$init.HLfit <- .modify_list(HL.info$init.HLfit, attr(ranPars,"init.HLfit")) 
-      locrp <- ranPars
+      HL.info$init.HLfit <- .modify_list(HL.info$init.HLfit, attr(fixed,"init.HLfit")) 
+      locrp <- fixed
       attr(locrp,"init.HLfit") <- NULL
       locrp$phi <- hlfit$APHLs$phi_est # Imporant: if we don't fix that, 'vanilla' and 'hlfit' will be inconsistent. This is expected: 
       # "vanilla" estimates phi for lambda fixed, while "hlfit" estimate a (phi+lambda) parameter for fixed phi/lambda ratio (a given lambda being a lambda factor)
@@ -187,9 +188,10 @@ HLCor_body <- function(processed, ## single environment
     } else HL.info <- list()
     ## all printing in HLfit is suppressed by default
     HL.info$processed <- processed
-    HL.info$init.HLfit <- .modify_list(HL.info$init.HLfit, attr(ranPars,"init.HLfit")) 
-    attr(ranPars,"init.HLfit") <- NULL
-    HL.info$ranFix <- ranPars
+    HL.info$init.HLfit <- .modify_list(HL.info$init.HLfit, attr(fixed,"init.HLfit")) 
+    attr(fixed,"init.HLfit") <- NULL
+    HL.info$fixed <- fixed
+    HL.info$ranFix <- NULL
     hlfit <- do.call("HLfit",HL.info) 
   }  
   ## Here there was debug code that saved HL.info in case of error; before 1.8.5
@@ -204,6 +206,20 @@ HLCor_body <- function(processed, ## single environment
   return(hlfit) ## 
 }
 
+# Called by HLCor.obj():
+.merge_fixed <- function(fixed, ranefParsList, skeleton, processed, HLCor.call) {
+  fixed <- .modify_list(fixed, ranefParsList) # merges variable and fixed params, 
+  # but result may be messy (lambda+trLambda... corrFamily parameters in wrong order...) it will be
+  # HLfit|HLCor_body -> .canonizeRanPars 's task to put this in order.
+  rpType <- .modify_list(attr(fixed,"type"),attr(skeleton,"type"))
+  moreargs <- attr(skeleton,"moreargs")
+  fixed <- .expand_hyper(fixed, processed$hyper_info,moreargs=moreargs) ## input ranPars contains both unconstrained ranPars and $hyper
+  # => failing to expand leads to unconstrained optimization
+  # removed 'ranPars$resid' code here [ v3.5.52
+  attr(fixed,"type") <- rpType
+  attr(fixed,"moreargs") <- moreargs
+  fixed
+}
 
 ## wrapper for HLCor, suitable input and output for optimization
 `HLCor.obj` <- function(ranefParsVec,skeleton,objective=processed$objective,processed,...) { ## name of first arg MUST differ from names in dotlist...
@@ -244,18 +260,8 @@ HLCor_body <- function(processed, ## single environment
     urP <- unlist(.canonizeRanPars(ranefParsList, corr_info=processed$corr_info,checkComplete=FALSE, rC_transf=.spaMM.data$options$rC_transf))
     processed$port_env$prefix <- paste0("HLCor for ", paste(signif(urP,6), collapse=" "), ": ")
   } 
-  ranPars <- .modify_list(HLCor.call$ranPars, ranefParsList) # merges variable and fixed params, 
-  # but result may be messy (lambda+trLambda... corrFamily parameters in wrong order...) it will be
-  # HLfit|HLCor_body -> .canonizeRanPars 's task to put this in order.
-  rpType <- .modify_list(attr(HLCor.call$ranPars,"type"),attr(skeleton,"type"))
-  moreargs <- attr(skeleton,"moreargs")
-  ranPars <- .expand_hyper(ranPars, processed$hyper_info,moreargs=moreargs) ## input ranPars contains both unconstrained ranPars and $hyper
-  # => failing to expand leads to unconstrained optimization
-  # removed 'ranPars$resid' code here [ v3.5.52
-  HLCor.call$ranPars <- structure(ranPars, ## adds given values of the optimized variables 
-                                  type=rpType, ## adds "fix"'s... somewhat confusing 
-                                  moreargs=moreargs )
-  # ranPars may have $trLambda (from notlambda) for what is optimized,
+  HLCor.call$fixed <- .merge_fixed(HLCor.call$fixed, ranefParsList, skeleton, processed, HLCor.call)
+  # 'fixed' may have $trLambda (from notlambda) for what is optimized,
   #              and $lambda (from ranPars$lambda) for what was fixed in the whole outer fit  
   HLCor.call[[1L]] <- get("HLCor", asNamespace("spaMM"), inherits=FALSE) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
   #HLCor.call[[1L]] <- quote(spaMM::HLCor)

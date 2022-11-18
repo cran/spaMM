@@ -287,7 +287,7 @@
     } ## end bootstrap
   } else { ## nothing operativ yet
     warning("code missing here")
-    #bootreps <- matrix(NA,nrow=boot.repl,ncol=length(unlist(fullfit$APHLs))) 
+    #bootreps <- matrix(NA,nrow=boot.repl,ncol=length(unlist(fullfit$APHLs, use.names=FALSE))) 
     ## more needed here ?
     resu <- list(fullfit=fullfit)
     resu$bootInfo <- list()

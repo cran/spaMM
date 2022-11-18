@@ -275,8 +275,13 @@
     }
   }
   if ( ! is.null( beta <- canon.init$beta)) { # outer beta
-    lower$trBeta[names(beta)] <- -Inf
-    upper$trBeta[names(beta)] <- Inf
+    if (.spaMM.data$options$tr_beta) {
+      lower$trBeta[names(beta)] <- -Inf
+      upper$trBeta[names(beta)] <- Inf
+    } else {
+      lower$beta[names(beta)] <- -Inf
+      upper$beta[names(beta)] <- Inf
+    }
   }
   ## names() to make sure the order of elements match; remove any extra stuff (which?... hmmm erroneous inclusion of some pars...) 
   return(list(lower=lower[names(init.optim)],upper=upper[names(init.optim)])) 

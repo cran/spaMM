@@ -40,20 +40,22 @@ An optional (sub)list of values of the parameters specified through \code{init},
   \item{upper}{Same as \code{lower}, but for upper values.}
 \item{resid.model}{ See identically named \code{\link{HLfit}} argument. }
   \item{init.HLfit}{ See identically named \code{\link{HLfit}} argument. }
-  \item{control}{   A list of control parameters, with two possible elements: 
-  \itemize{
-    \item \code{nloptr}, itself a list of control parameters to be copied in the \code{opts} argument of \code{\link[nloptr]{nloptr}}. Default controls are given by \code{spaMM.getOption('nloptr')}
-    \item \code{refit}, a boolean, or a list of booleans with possible elements \code{$phi}, \code{$lambda} and \code{$ranCoefs}. If either element is set to TRUE, then the corresponding parameters are refitted by the internal \code{HLfit} methods (see Details). If \code{$refit} is a single boolean, it affects of parameters. By default only \code{lambda} is refitted, but this default may change in the future. 
-  }   
-}
   \item{control.dist}{ See \code{control.dist} in \code{\link{HLCor}} }
-  \item{method, HLmethod}{Character: the fitting method to be used, such as \code{"ML"}, \code{"REML"} or \code{"PQL/L"}. \code{"ML"} is the default, in contrast to \code{"REML"} for \code{HLfit}, \code{HLCor} and \code{corrHLfit}. Other possible values of \code{HLfit}'s \code{method} argument are handled.
+  \item{method, HLmethod}{Character: the fitting method to be used, such as \code{"ML"}, \code{"REML"} or \code{"PQL/L"}. \code{"ML"} is the default, in contrast to \code{"REML"} for \code{HLfit}, \code{HLCor} and \code{corrHLfit}. Other possible values of \code{HLfit}'s \code{\link{method}} argument are handled.
 }
   \item{weights.form}{
   Specification of prior weights by a one-sided formula: use \code{weights.form = ~ pw} instead of \code{prior.weights = pw}. The effect will be the same except that such an argument, known to evaluate to an object of class \code{"formula"}, is suitable to enforce safe programming practices (see \code{\link{good-practice}}).  
  }
-  \item{nb_cores}{\bold{Not yet operative}, only for development purposes. Number of cores to use for parallel computations.}
-  \item{processed}{ For programming purposes, not documented.}
+   \item{control}{   A list of (rarely needed) control parameters, with possible elements: 
+  \itemize{
+    \item \code{refit}, a boolean, or a \code{list} of booleans with possible elements \code{phi}, \code{lambda} and \code{ranCoefs}. If either element is set to TRUE, then the corresponding parameters are refitted by the internal \code{HLfit} methods (see Details), unless these methods were already selected for such parameters in the main fitting step. If \code{refit} is a single boolean, it affects all parameters. By default no parameter is refitted. 
+    \item \code{optimizer}, the numerical optimizer, specified as a string and whose default is controlled by the global \pkg{spaMM} option \code{"optimizer"}. Possible values are \code{"nloptr"}, \code{"bobyqa"}, \code{"L-BFGS-B"} and \code{".safe_opt"}, whose meanings are detailed in the documentation for the \code{optimizer} argument of \code{\link{spaMM.options}}. Better left unchanged unless suspect fits are obtained. 
+    \item \code{nloptr}, itself a list of control parameters to be copied in the \code{opts} argument of \code{\link[nloptr]{nloptr}}. Default value is given by \code{spaMM.getOption('nloptr')} and possibly other global \pkg{spaMM} options. Better left unchanged unless you are ready to inspect source code.
+    \item \code{bobyqa, optim}, lists of controls similar to \code{nloptr} but for methods \code{"bobyqa"} and \code{"L-BFGS-B"}, respectively.
+  }   
+}
+  \item{nb_cores}{ For development purpose, not documented.} % that's for probitgem: Number of cores to use for parallel computations
+  \item{processed}{ For programming purpose, not documented.}
   \item{objective}{ For development purpose, not documented.}
   \item{\dots}{
 Optional arguments passed to (or operating as if passed to) \code{\link{HLCor}}, \code{\link{HLfit}} or  \code{\link{mat_sqrt}}, for example \code{rand.family}, \code{control.HLfit} , \code{verbose} or the \code{distMatrix} argument of \code{HLCor} (so that estimation of Matern or Cauchy parameters can be combined with use of an ad hoc distance matrix). In a \code{fitme} call, the \code{verbose} vector of booleans may include a \code{TRACE=TRUE} element, in which case information is displayed for each set of correlation and dispersion parameter values considered by the optimiser (see \code{\link{verbose}} for further information, mostly useless except for development purposes). 

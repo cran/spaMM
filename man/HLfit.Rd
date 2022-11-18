@@ -14,7 +14,7 @@
 HLfit(formula, data, family = gaussian(), rand.family = gaussian(), 
       resid.model = ~1, REMLformula = NULL, verbose = c(inner = FALSE), 
       HLmethod = "HL(1,1)", method="REML", control.HLfit = list(), 
-      control.glm = list(), init.HLfit = list(), ranFix = list(), 
+      control.glm = list(), init.HLfit = list(), fixed=list(), ranFix, 
       etaFix = list(), prior.weights = NULL, weights.form = NULL, processed = NULL)
 ## see 'rand.family' argument for inverse.Gamma
 }
@@ -79,8 +79,8 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
   However, this argument can be ignored in routine use. 
 }
 % F I X M E Break this doc in smaller docs !!!
-  \item{ranFix}{
-  A list of fixed values of random effect parameters. See \code{\link{ranFix}} for further information.
+  \item{fixed, ranFix}{
+  A list of fixed values of random effect parameters. \code{ranFix} is the old argument, maintained for back compatibility; \code{fixed} is the new argument, uniform across \pkg{spaMM} fitting functions. See \code{\link{ranFix}} for further information.
  }
   \item{etaFix}{
    A list of given values of the coefficients of the linear predictor. See \code{\link{etaFix}} for further information.     

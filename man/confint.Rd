@@ -6,7 +6,10 @@
 Confidence intervals
 }
 \description{
-This computes confidence intervals for given parameter(s), based either on parametric bootstrap or, for \bold{fixed-effect} parameters, on the \code{p_v}-based approximation of the profile likelihood ratio for this parameter. The profiling is over all other fitted parameters, including fixed effects, as well as variances of random effects and spatial correlations if these were fitted. The bootstrap is performed if the \code{parm} argument is a function or a quoted expression or if the \code{boot_args} argument is a list. The profile confidence interval is computed if neither of these conditions is true; in that case \code{parm} must be the name(s) of some \bold{fixed-effect} coefficient.
+This function interfaces two procedures: a profile confidence interval procedure implemented for fixed-effects coefficients only; and a parametric bootstrap procedure that can be used to provide confidence interval for any parameter, whether a canonical parameter of the model or any function of one or several such parameters. 
+The bootstrap is performed if the \code{parm} argument is a function or a quoted expression or if the \code{boot_args} argument is a list. The profile confidence interval is computed if neither of these conditions is true. In that case \code{parm} must be the name(s) of some \bold{fixed-effect} coefficient, and the (\code{p_v} approximation of the) profile likelihood ratio for the given parameter is used to define the interval, where the profiling is over all other fitted parameters, including other fixed-effects coefficients, as well as variances of random effects and spatial correlations if these were fitted. 
+
+Of related interest, see \code{\link{numInfo}} which evaluates numerically the information matrix for given sets of canonical model parameters, from which asymptotic confidence intervals can be deduced.   
 }
 \usage{
 \method{confint}{HLfit}(object, parm, level=0.95, verbose=TRUE, 
@@ -35,6 +38,7 @@ If a bootstrap was performed, for a single parameter the result of the \code{boo
 
 The \code{boot.ci} return value for each parameter includes the call to \code{boot.ci}. This call is typically shown including a long \code{t} vector, which makes a bulky display. spaMM hacks the printing to abbreviate long \code{t}s.
 }
+\seealso{\code{\link{numInfo}} for information matrix.}
 \examples{
 % checked in test-confint.R
 data("wafers")

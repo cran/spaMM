@@ -1,6 +1,7 @@
 \name{LRT}
 \alias{anova}
 \alias{anova.HLfit}
+\alias{anova.LMLT}
 \alias{LRT}
 %- Also NEED an '\alias' for EACH other topic documented here.
 \title{
@@ -29,7 +30,8 @@ LRT(object, object2, boot.repl = 0, resp_testfn = NULL,
     ...)    
 }
 \arguments{
-\item{object,object2}{Two models fits being compared (their order does not matter).}
+\item{object}{Fit object returned by a \pkg{spaMM} fitting function.}
+\item{object2}{Optional second model fit to be be compared to the first (their order does not matter).}
 \item{type}{ANOVA type for LMMs. Note that the default (single-term deletion ANOVA) differs from that of \pkg{lmerTest}.} 
 %
 \item{boot.repl}{the number of bootstrap replicates. }
@@ -38,7 +40,7 @@ LRT(object, object2, boot.repl = 0, resp_testfn = NULL,
   a function, passed to \code{\link{spaMM_boot}}. See argument \code{\link{eval_replicate}} for default value and requirements.
 }
 \item{method}{
-  Only non-default value is \code{"t.Chisq"} which forces evaluation of a table of of chi-squared tests for each fixed-effect term, using the classical \dQuote{Wald} test (see Details).
+  Only non-default value is \code{"t.Chisq"} which forces evaluation of a table of chi-squared tests for each fixed-effect term, using the classical \dQuote{Wald} test (see Details).
 } 
 %
 \item{\dots}{
@@ -50,9 +52,9 @@ LRT(object, object2, boot.repl = 0, resp_testfn = NULL,
   
   If random effects are tested, only the raw p-value is computed. Its null distribution may include a probability mass in 1 (the discussion in Details of \code{\link{get_RLRsim_args}} applies).
   
-  * \bold{ANOVA} tables for LMs and GLMs are conceived to replicate the functionality, output format and details of base R \code{anova}, with at least one exception. Because the dispersion estimates for Gamma GLMs differ between \code{stats::glm} and \pkg{spaMM} fits (see Details in \code{\link{method}}), F tests and Mallows' Cp differ too; results from \pkg{spaMM} REML fits being closer than ML fits to those from \code{glm()} fits. \bold{For LMMs}, ANOVA tables are provided by interfacing \code{lmerTest::anova} (with non-default \code{type}). 
+  * \bold{ANOVA} tables for LMs and GLMs are conceived to replicate the functionality, output format and details of base R \code{anova}, with at least one exception. Because the dispersion estimates for Gamma GLMs differ between \code{stats::glm} and \pkg{spaMM} fits (see Details in \code{\link{method}}), F tests and Mallows' Cp differ too; results from \pkg{spaMM} REML fits being closer than ML fits to those from \code{glm()} fits. \bold{For LMMs}, ANOVA tables are provided by interfacing \code{lmerTest::anova} (with non-default \code{type}); this currently does not work for multivariate-response fits. % ( ____F I X M E___)
   
-  The ANOVA-table functionality has been included here mainly to provide access to F tests (including, for LMMs, the \dQuote{Satterthwaite method} as developed by Fai and Cornelius, 196), using pre-existing procedures as template or backend for expediency and familiarity. The procedures for specific classes of models have various limitations, e.g., none of them handle models with variable dispersion parameter. The LM and GLM procedures only perform sequential analysis (\dQuote{type 1}) in the same way as \code{anova.lm} and \code{anova.glm}. The interface for LMMs is experimental in the sense of (presumably) not yet best handling all types of LMMs that can be fitted by \pkg{spaMM} beyond those that can be fitted by \code{lme4} (some fitted random-effect parameters may be ignored when constructing information for the Satterthwaite method: check the displayed information). 
+  The ANOVA-table functionality has been included here mainly to provide access to F tests (including, for LMMs, the \dQuote{Satterthwaite method} as developed by Fai and Cornelius, 1996), using pre-existing procedures as template or backend for expediency and familiarity. The procedures for specific classes of models have various limitations, e.g., none of them handle models with variable dispersion parameter. The LM and GLM procedures only perform sequential analysis (\dQuote{type 1}) in the same way as \code{anova.lm} and \code{anova.glm}. The interface for LMMs is experimental in the sense of (presumably) not yet best handling all types of LMMs that can be fitted by \pkg{spaMM} beyond those that can be fitted by \code{lme4} (some fitted random-effect parameters may be ignored when constructing information for the Satterthwaite method: check the displayed information). 
   
   For classes of models not well handled by these procedures (by design or due to the experimental nature of the recent implementation), the classical \dQuote{Wald} chi-squared test based on coefficient values and their conditional standard error estimates can still be applied (and will be applied by default for GLMMs). LRTs (moreover, with bootstrap correction) are more reliable than such tests and, as calling them requires a second model to be explicitly specified, they help users thinking about the hypothesis they are testing. 
 }
@@ -113,8 +115,8 @@ anova(spglm, test = "Rao")
 ## ANOVA table for LMM
 if(requireNamespace("lmerTest", quietly=TRUE)) {
   lmmfit <- fitme(y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch),data=wafers)
-  anova(lmmfit) # => Satterthwaite method here giving p-values quite close to 
-                #    traditional t-tests given by:
+  print(anova(lmmfit)) # => Satterthwaite method, here giving p-values 
+                       #   quite close to traditional t-tests given by:
   summary(lmmfit, details=list(p_value=TRUE))
 }
 

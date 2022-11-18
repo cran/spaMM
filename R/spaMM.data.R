@@ -54,7 +54,8 @@
   optimizer=".safe_opt", ## "nloptr", ##  "bobyqa", ## "L-BFGS-B",
   optim_boot=".safe_opt",
   #
-  fpot_tol= - Inf, #newer criterion for IRLS NOT LevM # cf implicit ftol_abs for coherence
+  fpot_tol= - Inf, #newer criterion for IRLS NOT LevM; coherent with the following (implicit) ftol_abs:
+  # ftol_abs= - Inf, # distinct from nloptr potential control; could be made explicit whereas is implicit NULL as-is. 
   optimize_tol=.Machine$double.eps^0.25, ## default tol value for optimize
   bobyqa_margin=1e-14, # horrors may happen if bobyqa's init is precisely at a boundary
   bobyqa_rhofn= function(lower,upper) min(155.2475, 0.1*min(upper-lower)), # min() to avoid infiniy here; 155.2475 is diff(spaMM:::.dispFn(c(1e-6,1e6)))/10
@@ -154,13 +155,14 @@
   wrap_parallel="dopar",
   #        add control=list(fix_predVar=NA) in predict() calls in the following calls? Probably not worth the mess.
   fix_predVar=list("NA"="MSL|bboptim|isoscape|isofit|calibfit|optimthroughSmooth|spaMM_rhullByEI|sampleByResp",
-                   "TRUE"=NULL,"FALSE"=NULL) 
+                   "TRUE"=NULL,"FALSE"=NULL), 
+  tr_beta=FALSE # whether to optim on transformed scale in speculative outer-optimization of beta
   #thr_backsolve=0L # for devel testing of .backsolve(); 0L means that .Rcpp_backsolve may be called irrespective of matrix dimension
 )
 
 .spaMM.data$keywords <- new.env(parent = emptyenv())
 .spaMM.data$keywords$special_ranefs <- c("adjacency", "Matern", "Cauchy", "AR1", "corrMatrix", "IMRF", "corrFamily") 
-.spaMM.data$keywords$all_cF <- .spaMM.data$keywords$built_in_cF <- c("ARp", "ARMA", "diallel", "ranGCA", "MaternIMRFa") 
+.spaMM.data$keywords$all_cF <- .spaMM.data$keywords$built_in_cF <- c("ARp", "ARMA", "diallel", "ranGCA", "MaternIMRFa", "antisym") 
 .spaMM.data$keywords$all_ranefs <- .spaMM.data$keywords$built_in_ranefs <- 
   unlist(c(.spaMM.data$keywords$special_ranefs,.spaMM.data$keywords$built_in_cF),recursive = FALSE, use.names = FALSE) 
 .spaMM.data$keywords$all_keywords <- .spaMM.data$keywords$built_in_keywords <- c(.spaMM.data$keywords$built_in_ranefs,

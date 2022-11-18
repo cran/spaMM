@@ -108,7 +108,7 @@
 #   if (is.null(fixed)) return(NULL)
 #   fixed <- .reformat_corrPars(fixed,corr_families=corr_families) ## standardize use of corrPars in the parlist
 #   # I write "F I X" as a TAG for this modif type attribute:
-#   #attr(fixed,"type") <- relist(rep("fix",length(unlist(fixed))),fixed) ## on veut une list pour pouvoir supp des elements par <- NULL
+#   #attr(fixed,"type") <- .relist_rep("fix",fixed) ## on veut une list pour pouvoir supp des elements par <- NULL
 #   # if ( ! is.null(fixed$hyper)) {
 #   #   for (char_rd in as.character(unlist(hyper_info$ranges))) {
 #   #     if (is.null(fixed$corrPars[[char_rd]])) fixed$corrPars[[char_rd]] <- list() ## seems no longer necessary for .expand_hyper()
@@ -438,24 +438,26 @@
   }
 }
 
+.back2hyperpars <- function(ranPars, ranges) {
+  for (char_hyper_it in names(ranges)) {
+    rd_range <- ranges[[char_hyper_it]]
+    char_rd_range <- as.character(rd_range)
+    first_char_rd <- char_rd_range[1L]
+    ranPars$hyper[[char_hyper_it]] <- list(hy_kap=ranPars$corrPars[[first_char_rd]]$kappa,
+                                           hy_lam=sum(ranPars$lambda[char_rd_range]))
+    for (char_rd in char_rd_range) {
+      ranPars$corrPars[[char_rd]]$kappa <- NULL
+    }
+    ranPars$lambda <- ranPars$lambda[setdiff(names(ranPars$lambda),char_rd_range)]
+  }
+  if ( ! length(ranPars$lambda)) ranPars$lambda <- NULL # numeric vector of length zero not handled by some replacement code
+  ranPars
+}
+
 .TRACE_fn <- function(ranFix, processed) {
   ranPars <- .canonizeRanPars(ranFix,corr_info=NULL,checkComplete = FALSE, rC_transf=.spaMM.data$options$rC_transf)
   #
-  if ( ! is.null(ranPars$hyper)) {
-    ranges <- processed$hyper_info$ranges
-    for (char_hyper_it in names(ranPars$hyper)) {
-      rd_range <- ranges[[char_hyper_it]]
-      char_rd_range <- as.character(rd_range)
-      first_char_rd <- char_rd_range[1L]
-      ranPars$hyper[[char_hyper_it]] <- list(hy_kap=ranPars$corrPars[[first_char_rd]]$kappa,
-                                             hy_lam=sum(ranPars$lambda[char_rd_range]))
-      for (char_rd in char_rd_range) {
-        ranPars$corrPars[[char_rd]]$kappa <- NULL
-      }
-      ranPars$lambda <- ranPars$lambda[setdiff(names(ranPars$lambda),char_rd_range)]
-    }
-    if ( ! length(ranPars$lambda)) ranPars$lambda <- NULL
-  }
+  if ( ! is.null(ranPars$hyper)) ranPars <- .back2hyperpars(ranPars, ranges=processed$hyper_info$ranges) 
   #
   if (length(ranPars$phi)>1) {
     if (is.null(processed$vec_nobs)) { # Is this to catch the case where a full phi vector is provided ? 
@@ -959,7 +961,7 @@
   return(init.optim)
 }
 
-.calc_init.optim_family_par <- function(family, init.optim) {
+.calc_init.optim_family_par <- function(family, init.optim, processed) {
   if (family$family=="COMPoisson") {
     if (inherits(substitute(nu, env=environment(family$aic)),"call")) {
       if (is.null(init.optim$COMP_nu)) init.optim$COMP_nu <- 1 # template: .calc_inits will modify it according to lower, upper 
@@ -971,7 +973,7 @@
     }  
   } else if (family$family=="beta_resp") {
     if (inherits(substitute(prec, env=environment(family$aic)),"call")) {
-      if (is.null(init.optim$beta_prec)) init.optim$beta_prec <- 1 # template: .calc_inits will modify it according to lower, upper 
+      if (is.null(init.optim$beta_prec)) init.optim$beta_prec <- .get_inits_by_glm(processed)$beta_prec # template: .calc_inits will modify it according to lower, upper 
     } else {
       if ( ! is.null(init.optim$beta_prec)) {
         warning("initial value is ignored when 'beta_prec' is fixed.") # i.e. anything but Intercept model
@@ -980,7 +982,14 @@
     }  
   } else if (family$family  %in% c("negbin1","negbin2")) {
     if (inherits(substitute(shape, env=environment(family$aic)),"call")) {
-      if (is.null(init.optim$NB_shape)) init.optim$NB_shape <- 1 # idem
+      # If NB_shape init is 5 :
+      # => trShape is 1 given current .NB_shapeFn) 
+      #    => the next points tried are 2 and 0 on transformed scale (=> NB_shape=1e6 and 1)
+      # which does not wor kell in all cases 
+      # test cases are the twinR fit_05 case, some in test-LLM, and negbin example in gentle intro (using optimize() -> initial value cannot be controlled)
+      #
+      # Overall, finding the good starting value for shape seems important.
+      if (is.null(init.optim$NB_shape)) init.optim$NB_shape <- .get_inits_by_glm(processed)$NB_shape # template: .calc_inits will modify it according to lower, upper 
     } else {
       if ( ! is.null(init.optim$NB_shape)) {
         warning("initial value is ignored when 'NB_shape' is fixed.") # i.e. anything but Intercept model
@@ -1013,7 +1022,7 @@
   init.HLfit <- proc_it$init_HLfit #to be modified below ## dhglm uses fitme_body not (fitme-> .preprocess) => dhglm code modifies processed$init_HLfit
   # used by .more_init_optim:
   family <- proc_it$family
-  init.optim <- .calc_init.optim_family_par(family, init.optim)
+  init.optim <- .calc_init.optim_family_par(family, init.optim, processed=proc_it)
   #
   ##### init.optim$phi/lambda will affect calc_inits -> calc_inits_dispPars.
   # outer estim seems useful when we can suppress all inner estim (thus the hatval calculations). 
@@ -1075,7 +1084,7 @@
                                #     (3) Even the structure of ranefs of mv-processed$unmerged differs from that of multi()-processed.
                                corr_types=corr_types, fixed=fixed, init.optim=init.optim, control_dist=proc_it$control_dist, 
                                init.HLfit=init.HLfit, corr_info=corr_info, verbose=verbose, lower=lower, upper=upper)  
-  } else moreargs <- .calc_moreargs(processed=processed, # possibly a list of environments -> .calc_range_info -> scans then to compute a mean(nbUnique) 
+  } else moreargs <- .calc_moreargs(processed=processed, 
                              corr_types=corr_types, fixed=fixed, init.optim=init.optim, control_dist=proc_it$control_dist, 
                              init.HLfit=init.HLfit, corr_info=corr_info, verbose=verbose, lower=lower, upper=upper)
   fixed <- .expand_hyper(fixed, hyper_info=proc_it$hyper_info, moreargs=moreargs)
@@ -1175,4 +1184,14 @@
   locmess
 }
 
-
+# Conceived to add 'moreargs' to $ranef_info, then found a way to avoid this post-HLfit_body() operation. 
+# The better way requires that 'fixed' attributes are not lost on the way from [fitme|fitmv|corrHLfit]_body to HLfit_body... looks OK.
+.update_ranef_info <- function(object, ...) {
+  if (inherits(object,"HLfitlist")) {
+    for (it in seq_along(object)) object[[it]] <- .update_ranef_info(object[[it]], ...)
+  } else {
+    dotlist <- list(...)
+    for (st in names(dotlist)) object$ranef_info[[st]] <- dotlist[[st]] # $ranef_info is a list, not an envir
+  }
+  object
+}
