@@ -164,7 +164,7 @@
   p_phi
 }
 
-.get_info_crits <- function(object, also_cAIC=TRUE, nsim=0L, ...) { # ____F I X M E___ read DonohueOXV12...
+.get_info_crits <- function(object, also_cAIC=TRUE, nsim=0L, ...) { 
   if (is.null(info_crits <- object$envir$info_crits) || (also_cAIC && is.null(info_crits[["cAIC"]]))) { 
     dfs <- object$dfs
     if ( ! inherits(dfs,"list")) dfs <- as.list(dfs) ## back compatibility
@@ -242,62 +242,72 @@
   return(object$envir$info_crits)
 }
 
+.calc_logdispObject <- function(object, envir=object$envir, force_fixed) {
+  
+  dvdloglamMat <- envir$dvdloglamMat
+  dvdloglamMat_needed <- ( is.null(dvdloglamMat) && 
+                             # (comment this => allows random slope)  all(unlist(attr(object$ZAlist,"namesTerms"))=="(Intercept)") && ## (1|.) or CAR or Matern
+                             (force_fixed || 
+                                any( ! object$lambda.object$type %in% c("fixed","fix_ranCoefs","fix_hyper"))) ) ## some lambda params were estimated
+  dvdlogphiMat <- envir$dvdlogphiMat
+  dvdlogphiMat_needed <- (is.null(dvdlogphiMat) && 
+                           ( any((phimodel <- object$models[["phi"]])=="phiScal") ||
+                               force_fixed)) 
+  dvdlogphiMat_needed <- dvdlogphiMat_needed || identical(envir$forcePhiComponent,TRUE) ## hack for code testing !
+  if (dvdloglamMat_needed || dvdlogphiMat_needed) {
+    ZAL <- get_ZALMatrix(object, force_bind = ! (.is_spprec_fit(object)) )     
+    d2hdv2_info <- .calc_d2hdv2_info(object, ZAL) # may be a qr object, or not (SPPREC). F I X M E a gentle message for long computations ? 
+  } 
+  if (dvdloglamMat_needed) { 
+    cum_n_u_h <- attr(.get_u_h(object),"cum_n_u_h")
+    psi_M <- rep(attr(object$rand.families,"unique.psi_M"),diff(cum_n_u_h))
+    dlogfthdth <- (psi_M - .get_u_h(object))/object$lambda.object$lambda_est ## the d log density of th(u)
+    neg.d2f_dv_dloglam <- .calc_neg_d2f_dv_dloglam(dlogfthdth, cum_n_u_h, 
+                                                   lcrandfamfam=attr(object$rand.families,"lcrandfamfam"), 
+                                                   rand.families=object$rand.families, u_h=.get_u_h(object))
+    dvdloglamMat <- .calc_dvdloglamMat_new(neg.d2f_dv_dloglam,
+                                           d2hdv2_info=d2hdv2_info) ## d2hdv2_info is either a qr factor or the inverse as a matrix or an environment
+  }
+  if (dvdlogphiMat_needed) {
+    muetablob <- object$muetablob
+    # .get_H_w.resid() rather than .get_w.resid here. See section mentioning "dvdloglamMat" in the long doc. 
+    if ( ! is.null(envir$G_CHMfactor)) { # spprec; possibly generalisable code not using math-dense ZAL
+      # rhs <- .Matrix_times_Dvec(t(envir$sXaug$AUGI0_ZX$ZAfix), - dh0deta) # efficient
+      # rhs <- solve(envir$G_CHMfactor,rhs,system="A") # efficient
+      unW_dh0deta <- (object$y-muetablob$mu)/muetablob$dmudeta ## (soit Bin -> phi fixe=1, soit BinomialDen=1)
+      if (is.null(envir$invG_ZtW)) {
+        if (is.null(envir$ZtW)) {
+          # cf comments in .old_calc_Md2hdvb2_info_spprec_by_r22()
+          envir$ZtW <- t(.Dvec_times_m_Matrix(.get_H_w.resid(envir=envir), envir$sXaug$AUGI0_ZX$ZAfix))
+        }
+        envir$invG_ZtW <- solve(envir$G_CHMfactor, 
+                                envir$ZtW, system="A") # hardly avoidable has there is no comparable operation elsewhere (check "A")
+      }
+      rhs <- .Matrix_times_Dvec(envir$invG_ZtW, -unW_dh0deta) # efficient
+      dvdlogphiMat <- .crossprod(envir$chol_Q, rhs) # _FIXME_ bottleneck in large spprec but .crossprodCpp_d not useful here 
+    } else {
+      dh0deta <- ( .get_H_w.resid(object) *(object$y-muetablob$mu)/muetablob$dmudeta ) ## (soit Bin -> phi fixe=1, soit BinomialDen=1) 
+      dvdlogphiMat  <- .calc_dvdlogphiMat_new(dh0deta=dh0deta, ZAL=ZAL,
+                                              d2hdv2_info=d2hdv2_info ## either a qr factor or a matrix inverse or envir
+      )
+    }
+  }
+  invV_factors <- .calc_invV_factors(object) ## n_x_r and r_x_n in repres of invV as diag(w.resid)- [n_x_r %*% r_x_n]
+  if (length(phimodel)>1L) {
+    .calc_logdisp_cov_mv(object, dvdloglamMat=dvdloglamMat, ## square matrix, by  the formulation of the algo 
+                                                dvdlogphiMat=dvdlogphiMat, invV_factors=invV_factors,
+                         force_fixed=force_fixed)
+  } else
+    .calc_logdisp_cov(object, dvdloglamMat=dvdloglamMat, ## square matrix, by  the formulation of the algo 
+                                             dvdlogphiMat=dvdlogphiMat, invV_factors=invV_factors,
+                      force_fixed=force_fixed)
+  
+}
+
 .get_logdispObject <- function(object) { ## 
   envir <- object$envir
-  if (is.null(envir$logdispObject) && object$models[["eta"]]=="etaHGLM" ) { 
-    dvdloglamMat <- envir$dvdloglamMat
-    dvdloglamMat_needed <- ( is.null(dvdloglamMat) && 
-                               # (comment this => allows random slope)  all(unlist(attr(object$ZAlist,"namesTerms"))=="(Intercept)") && ## (1|.) or CAR or Matern
-                               any( ! object$lambda.object$type %in% c("fixed","fix_ranCoefs","fix_hyper")) ) ## some lambda params were estimated
-    dvdlogphiMat <- envir$dvdlogphiMat
-    dvdlogphiMat_needed <- (is.null(dvdlogphiMat) && 
-                              any((phimodel <- object$models[["phi"]])=="phiScal")) 
-    dvdlogphiMat_needed <- dvdlogphiMat_needed || identical(envir$forcePhiComponent,TRUE) ## hack for code testing !
-    if (dvdloglamMat_needed || dvdlogphiMat_needed) {
-      ZAL <- get_ZALMatrix(object, force_bind = ! (.is_spprec_fit(object)) )     
-      d2hdv2_info <- .calc_d2hdv2_info(object, ZAL) # may be a qr object, or not (SPPREC). F I X M E a gentle message for long computations ? 
-    } 
-    if (dvdloglamMat_needed) { 
-      cum_n_u_h <- attr(.get_u_h(object),"cum_n_u_h")
-      psi_M <- rep(attr(object$rand.families,"unique.psi_M"),diff(cum_n_u_h))
-      dlogfthdth <- (psi_M - .get_u_h(object))/object$lambda.object$lambda_est ## the d log density of th(u)
-      neg.d2f_dv_dloglam <- .calc_neg_d2f_dv_dloglam(dlogfthdth, cum_n_u_h, 
-                                                     lcrandfamfam=attr(object$rand.families,"lcrandfamfam"), 
-                                                     rand.families=object$rand.families, u_h=.get_u_h(object))
-      dvdloglamMat <- .calc_dvdloglamMat_new(neg.d2f_dv_dloglam,
-                                             d2hdv2_info=d2hdv2_info) ## d2hdv2_info is either a qr factor or the inverse as a matrix or an environment
-    }
-    if (dvdlogphiMat_needed) {
-      muetablob <- object$muetablob
-      # .get_H_w.resid() rather than .get_w.resid here. See section mentioning "dvdloglamMat" in the long doc. 
-      if ( ! is.null(envir$G_CHMfactor)) { # spprec; possibly generalisable code not using math-dense ZAL
-        # rhs <- .Matrix_times_Dvec(t(envir$sXaug$AUGI0_ZX$ZAfix), - dh0deta) # efficient
-        # rhs <- solve(envir$G_CHMfactor,rhs,system="A") # efficient
-        unW_dh0deta <- (object$y-muetablob$mu)/muetablob$dmudeta ## (soit Bin -> phi fixe=1, soit BinomialDen=1)
-        if (is.null(envir$invG_ZtW)) {
-          if (is.null(envir$ZtW)) {
-            # cf comments in .old_calc_Md2hdvb2_info_spprec_by_r22()
-            envir$ZtW <- t(.Dvec_times_m_Matrix(.get_H_w.resid(envir=envir), envir$sXaug$AUGI0_ZX$ZAfix))
-          }
-          envir$invG_ZtW <- solve(envir$G_CHMfactor, 
-                                  envir$ZtW, system="A") # hardly avoidable has there is no comparable operation elsewhere (check "A")
-        }
-        rhs <- .Matrix_times_Dvec(envir$invG_ZtW, -unW_dh0deta) # efficient
-        dvdlogphiMat <- .crossprod(envir$chol_Q, rhs) # _FIXME_ bottleneck in large spprec but .crossprodCpp_d not useful here 
-      } else {
-        dh0deta <- ( .get_H_w.resid(object) *(object$y-muetablob$mu)/muetablob$dmudeta ) ## (soit Bin -> phi fixe=1, soit BinomialDen=1) 
-        dvdlogphiMat  <- .calc_dvdlogphiMat_new(dh0deta=dh0deta, ZAL=ZAL,
-                                                d2hdv2_info=d2hdv2_info ## either a qr factor or a matrix inverse or envir
-                                                )
-      }
-    }
-    invV_factors <- .calc_invV_factors(object) ## n_x_r and r_x_n in repres of invV as diag(w.resid)- [n_x_r %*% r_x_n]
-    if (length(phimodel)>1L) {
-      envir$logdispObject <- .calc_logdisp_cov_mv(object, dvdloglamMat=dvdloglamMat, ## square matrix, by  the formulation of the algo 
-                                               dvdlogphiMat=dvdlogphiMat, invV_factors=invV_factors)
-    } else
-      envir$logdispObject <- .calc_logdisp_cov(object, dvdloglamMat=dvdloglamMat, ## square matrix, by  the formulation of the algo 
-                                                      dvdlogphiMat=dvdlogphiMat, invV_factors=invV_factors)
+  if (is.null(envir$logdispObject) && object$models[["eta"]]=="etaHGLM" ) {
+    envir$logdispObject <- .calc_logdispObject(object, envir=envir, force_fixed=FALSE)
   } 
   return(envir$logdispObject)
 } # if dvdloglamMat or dvdlogphiMat were computed ex-tempo, they are NOT saved.

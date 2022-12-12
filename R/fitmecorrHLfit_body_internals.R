@@ -88,6 +88,13 @@
   return(parlist)
 }
 
+# 3rd argument needed if second not present
+.reformat_ranPars <- function(parlist, fitobject, corr_families=fitobject$ranef_info$sub_corr_info$corr_families) {
+  if (length(parlist$lambda)) parlist$lambda <- .reformat_lambda(parlist$lambda,nrand = length(corr_families),
+                                                                 namesTerms = NULL,full_lambda = FALSE)
+  parlist <- .reformat_corrPars(parlist, corr_families=corr_families)
+}
+
 .reformat_init_lambda_with_NAs <- function(init_lambda, nrand, default=NA) {
   if ( ! is.null(init_lambda)) {
     if (length(init_lambda)==nrand) {

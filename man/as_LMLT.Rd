@@ -15,7 +15,7 @@ Only the tests using \pkg{lmerTest}'s default method \code{ddf="Satterthwaite"} 
 
 }
 \usage{
-as_LMLT(fitobject, nuisance=NULL, verbose=TRUE, transf=TRUE, ...)
+as_LMLT(fitobject, nuisance=NULL, verbose=TRUE, transf=TRUE, check_deriv=NULL, ...)
 }
 \arguments{
 \item{fitobject}{
@@ -31,7 +31,8 @@ as_LMLT(fitobject, nuisance=NULL, verbose=TRUE, transf=TRUE, ...)
 \item{transf}{
   boolean: whether to evaluate numerical derivatives on a transformed parameter scale, or not (may affect numerical precision).
 }
-  \item{\dots}{Other arguments that may be needed by some method (currently ignored).}
+\item{check_deriv}{See same-named argument of \code{\link{numInfo}}} 
+\item{\dots}{Other arguments that may be needed by some method (currently ignored).}
 }
 \value{
 The value is returned invisibly. It is an S4 object of class \code{"LMLT"} with slots matching those required in objects of S4 class \code{"lmerModLmerTest"} when used by package \pkg{lmerTest} with \code{ddf="Satterthwaite"} (many additional slots of a formal \code{"lmerModLmerTest"} object are missing). The additional \code{nuisance} slot contains the \code{nuisance} list.

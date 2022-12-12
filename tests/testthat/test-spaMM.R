@@ -106,6 +106,22 @@ if (FALSE) { # examples from update.Rd in handy test form
   testthat::expect_true(diff(range(fixef(rerewFit)))<1e-14)
 }
 
+{ # check of REMLformula and keepInREML
+  l1 <- logLik(unconstr <- fitme(y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch), data=wafers, family=Gamma(log), 
+        method="REML"))
+  l2 <- logLik(fitme(y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch), data=wafers, family=Gamma(log), 
+        method="REML", etaFix=list(beta=structure(fixef(unconstr), keepInREML=TRUE))))
+  testthat::test_that("whether keepInREML uses model formula as default REMLformula",testthat::expect_true(l1-l2<1e-14))
+  
+  l3 <- logLik(suppressMessages(fitme(y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch), data=wafers, family=Gamma(log), 
+        method="REML", etaFix=list(beta=structure(fixef(unconstr), keepInREML=TRUE)),
+        REMLformula=y ~(1|batch))))
+  l4 <- logLik(fitme(y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch), data=wafers, family=Gamma(log), 
+                    method="ML"))
+  testthat::test_that("whether keepInREML correctly handles nondefault REMLformula",
+                      testthat::expect_true(l3-l4<1e-14))
+}
+
 # Code added to check model frame issues when updating a model with variable in resid model not in main response model (+ syntax I() ). 
 data("wafers")
 ## Gamma GLMM with log link

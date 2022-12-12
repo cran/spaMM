@@ -486,7 +486,8 @@ if (FALSE) {
                           verbose,
                           control,
                           iter, ## ajustement gamma(identity...)
-                          maxLambda
+                          maxLambda,
+                          warningEnv
 ) {
   ## Build pseudo response for lambda GLM/HGLM
   glm_lambda <- NULL
@@ -495,7 +496,6 @@ if (FALSE) {
   ranefs <- attr(ranefEstargs$ZAlist,"exp_ranef_strings")
   nrand <- length(ranefEstargs$ZAlist) ## Cf notes du 3/6/2015
   done <- rep(FALSE,nrand)
-  anyVanishLam <- NULL
   u_h <- ranefEstargs$u_h
   cum_n_u_h <- ranefEstargs$cum_n_u_h
   resp_lambda <- matrix(0,cum_n_u_h[nrand+1L],1L)
@@ -503,6 +503,7 @@ if (FALSE) {
   #########################
   isRandomSlope <- ranCoefs_blob$isRandomSlope
   lcrandfamfam <- attr(rand.families,"lcrandfamfam")
+  allLeveLam1 <- rep(FALSE, nrand)
   if (any(isRandomSlope)) {
     is_set <- ranCoefs_blob$is_set
     done[is_set] <- TRUE
@@ -560,6 +561,8 @@ if (FALSE) {
       safe_dev.res_it <- rand.families[[it]]$dev.resids(u_h[u.range],psi_M[u.range],wt=wt) ## must give d1 in table p 989 de LeeN01
       denom <- 1-lev_lambda[u.range]
       unique_lambda <- sum(safe_dev.res_it)/sum(denom) ## NOT in linkscale 
+      allLeveLam1_it <- (warningEnv$leveLam1 && all(warningEnv$whichleveLam1[u.range]))
+      if (allLeveLam1_it) warningEnv$allLeveLam1[it] <- TRUE
       if (lcrandfamfam[it]=="gamma" && rand.families[[it]]$link=="identity") { ## Gamma(identity)
         # unique_lambda <- pmin(unique_lambda,1-1/(2^(iter+1)))  ## impose lambda<1 dans ce cas 
         while(unique_lambda>1) {
@@ -572,7 +575,7 @@ if (FALSE) {
           # Different type of correction to avoid infinite loop when min dev.res=0...
           safe_dev.res_it <- safe_dev.res_it+denom*(minLambda-unique_lambda) # to lower-bound the lambda near 1e-8
           unique_lambda <- sum(safe_dev.res_it)/sum(denom) ## NOT in linkscale 
-          anyVanishLam <- TRUE
+          if ( ! allLeveLam1_it) warningEnv$anyVanishLam <- TRUE
         } else while (unique_lambda>maxLambda[it]) { # processed$maxLambda depending on response-family link
           localmax <- max(safe_dev.res_it)*0.9999*maxLambda[it]/unique_lambda
           safe_dev.res_it <- pmin(safe_dev.res_it,localmax) # to upper-bound the lambda near max lambda=1
@@ -596,8 +599,7 @@ if (FALSE) {
               HLfit_corrPars=HLfit_corrPars,
               next_lambda_est=next_lambda_est, ## heterosc
               glm_lambda=glm_lambda, ## potentially to be replaced by a list of glms later
-              isRandomSlope=isRandomSlope,
-              anyVanishLam=anyVanishLam
+              isRandomSlope=isRandomSlope
               ))
 }
 
@@ -749,19 +751,19 @@ if (FALSE) {
                    iter=iter, prev_PHIblob=prev_PHIblob) # => list(next_phi_est=next_phi_est, glm_phi=glm_phi, beta_phi=beta_phi)
 }
 
-.addPhiGLMwarning <- function(PHIblob, models, warningList) {
+.addPhiGLMwarning <- function(PHIblob, models, warningEnv) {
   if ( ! is.null(multiPHI <- PHIblob$multiPHI)) { # fitmv case
     for (mv_it in seq_along(multiPHI)) {
       if (models[["phi"]][mv_it]=="phiHGLM") {
       } else {
-        if (! is.null(locw <- multiPHI[[mv_it]]$glm_phi$warnmess)) warningList$innerPhiGLM <- locw
+        if (! is.null(locw <- multiPHI[[mv_it]]$glm_phi$warnmess)) warningEnv$innerPhiGLM <- locw
       }
     }
   } else if (models[["phi"]]=="phiHGLM") {
   } else {
-    if (! is.null(locw <- PHIblob$glm_phi$warnmess)) warningList$innerPhiGLM <- locw
+    if (! is.null(locw <- PHIblob$glm_phi$warnmess)) warningEnv$innerPhiGLM <- locw
   }
-  warningList
+  # warningEnv # no need to return
 }
 
 # always retrun a list in mv obsInfo case.
@@ -4073,23 +4075,32 @@ if (FALSE) { # that's not used.
   MME_method
 }
 
-.post_process_warningList <- function(warningList, processed, maxit.mean,  pforpv, innerj, 
+.post_process_warningEnv <- function(warningEnv, processed, maxit.mean,  pforpv, innerj, 
                                       nonSPD,
                                       conv_logL, iter, conv.lambda, conv.phi, conv.corr,
                                       #
                                       HL=processed$HL, models=processed$models, LMMbool=attr(models,"LMMbool"), max.iter=processed$max.iter
                                       ) {
   ## translation of warnings in user-more friendly form 
+  warningList <- as.list(warningEnv)
   if (identical(nonSPD, TRUE)) {
     warningList$regularizedHess <- "The negative-Hessian was not positive definite at the final estimates. Likelihood may not be maximized."
   }
   if ( ! is.null(warningList$anyVanishLam) && warningList$anyVanishLam) {
     warningList$anyVanishLam <- "Some lambda estimates may actually be zero (lower bound controlled by option 'minLambda')"
   }
-  if (! is.null(warningList$leveLam1) && warningList$leveLam1) {
-    warningList$leveLam1 <- paste("lambda leverages numerically 1 were replaced by 1-",
-                                  .spaMM.data$options$regul_lev_lambda,"(as controlled by option 'regul_lev_lambda')")
+  if (any(warningList$allLeveLam1)) {
+    warningList$allLeveLam1 <- paste("Random effect term(s)",
+                                     paste(which(warningList$allLeveLam1), collapse=", "),
+                                     "seem redundant with some fixed effects,\n  so that parameters are not uniquely determined.")
+    warningList$leveLam1 <- NULL
+  } else if (! is.null(warningList$leveLam1)) {
+    if (warningList$leveLam1) {
+      warningList$leveLam1 <- paste("lambda leverages numerically 1 were replaced by 1-",
+                                    .spaMM.data$options$regul_lev_lambda,"(as controlled by option 'regul_lev_lambda')")
+    } else warningList$leveLam1 <- NULL
   }
+  warningList$whichleveLam1 <- NULL
   if (! is.null(locw <- warningList$innerPhiGLM)) {
     warningList$innerPhiGLM <- paste0("'",locw,"' in some sub-final iteration(s) of phi estimation;")
   }

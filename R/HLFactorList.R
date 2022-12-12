@@ -215,13 +215,14 @@
       levels_type <- "data_order" # otherwise in prediction, any set of levels=location indices is reduced to 1 2 3... 
     } else if ( identical(corr_info$corr_types[[lit]],"corrFamily")) { 
       # So far I had a collection of ad-hoc cases, now I need more, first when there is an A matrix. 
-      if( ! is.null(lty_cF <- corr_info$corr_families[[lit]]$levels_type)) {
-        levels_type <- lty_cF 
-      } else {
-        warning("No 'levels_type' in corrFamily. Earlier error? Or, if fitmv() is being called, 'corrFamily(.|.)' term used instead of registered corrFamily?") 
+      lty_cF <- corr_info$corr_families[[lit]]$levels_type
+      if (is.null(lty_cF)) {
+        warning("No 'levels_type' in corrFamily. Earlier error? Or, if fitmv() is being called, 'corrFamily(.|.)' term used instead of registered corrFamily?")
         #warning("$corr_families[[lit]]$levels_type not available for .calc_Zmatrix.")
         # could distingusih cases of incomplete corrfamily (should not occur) and case of fitmv without register_cF => more informative message. 
-      }
+      } else if (lty_cF!="stub") { 
+        levels_type <- lty_cF 
+      } # for "stub" (reached by preprocessing of submodels of mv fits), levels_type keeps this function's default value 
     } else { # e.g. ranefType="adjacency", NOT assuming_spprec (immediate in the tests)
       # uses .calc_Zlist()'s default levels_type: "data_order"; or "seq_len" in post-fit calls (permuted newdata tests important here)
     }

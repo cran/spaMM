@@ -56,7 +56,7 @@ if (spaMM.getOption("example_maxtime")>39) {
     nb1QRP <- fitme(cases~1+(1|id),family=negbin1(), data=scotlip, verbose=c(TRACE=TRACEv)) #  -181.6869
     spaMM.options(Hobs_Matrix_method= "def_sXaug_Matrix_CHM_H_scaled") # default
     testthat::test_that("check negbin1 mixed model",
-                        testthat::expect_true(diff(c(range(logLik(nb1spc),logLik(nb1spp),logLik(nb1dec),logLik(nb1QRP),-181.6869459852397   )))<1e-9))
+                        testthat::expect_true(diff(c(range(logLik(nb1spc),logLik(nb1spp),logLik(nb1dec),logLik(nb1QRP),-181.6869459852397   )))<2e-6))
     
     logLik(glm(cases~I(prop.ag/10)+offset(log(expec)),family=poisson(), data=scotlip, method="spaMM_glm.fit", control=list(trace=FALSE)))
     logLik(glm(cases~I(prop.ag/10)+offset(log(expec)),family=negbin1(shape=10000), data=scotlip, method="llm.fit", control=list(trace=FALSE))) 
@@ -84,7 +84,7 @@ if (spaMM.getOption("example_maxtime")>39) {
     tnb1sp <- fitme(I(1+cases)~1+(1|id),family=negbin1(trunc=0), data=scotlip, verbose=c(TRACE=TRACEv), 
                     init=list(),control.HLfit=list(algebra="spprec")) # -181.7984  
     testthat::test_that("check truncated negbin1()",
-                        testthat::expect_true(diff(c(range(logLik(tnb1),logLik(tnb1de),logLik(tnb1sp),-181.7984443645773  )))<1e-9))
+                        testthat::expect_true(diff(c(range(logLik(tnb1),logLik(tnb1de),logLik(tnb1sp),-181.7984443645773  )))<2e-6))
     
     {
       # Low-shape torture test: many nonSPD 

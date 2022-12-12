@@ -3,11 +3,34 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 4.1.20}{ 
+\subsection{NEW FEATURES}{
+\itemize{
+\item LRT() can now perform comparisons of fits differing only by their residual-dispersion models, when the latter are fixed-effect models.
+\item Change in the default return value of the fixef() extractor for rank-deficient mixed-effect models, creating a potential incompatibility with some code using this extractor, but actually helpful for the next feature:
+\item Various improvements of the procedure for anova() tables, in particular (1) handling of models with rank-deficient model matrices; (2) handling of multivariate-response models; (3) handling of various possible problems in computation or use of numerical information matrix (LMM case).
+\item numInfo() is more robust, in particular by checking whether some parameter estimates are at boundary of their possible range (see Details of the function documentation). 
+}
+}
+\subsection{USER-LEVEL CHANGES}{
+\itemize{
+\item 'check' argument of drop1.HLfit() renamed as 'check_marg'.
+}
+}
+\subsection{FIXED BUGS}{
+\itemize{
+\item A change in Matrix v1.5-3 has exposed a bug in the code for sparse-precision methods, which would result in incorrect or even failed (stop) fits. spaMM results with previous versions of Matrix were correct.
+\item A 'new feature' in Matrix v1.5-2 ("Products of diagonalMatrix with [RT]sparseMatrix now preserve storage...") also broke a procedure for IMRF models.
+\item Requesting prediction variances with the (awkward, but formally correct) argument 'variances=list(linPred=FALSE, cov=TRUE)' generated nonsense.  
+\item predict(., {large newdata,> 2000 rows}, binding= < some name >, ...) retained only the first 2000 element of any attribute for variances or intervals. 
+}
+}
+}
 \section{CHANGES UP TO VERSION 4.1.0}{ 
 \subsection{NEW FEATURES}{
 \itemize{
 \item drop1.HLfit method implemented, to return tables of comparisons of a model with single-term deletions from it, with specific procedures for LMs, GLMs and LMMs. The LMM case is handled by interfacing the Satterthwaite method in \code{lmerTest}.
-\item New function numInfo() to compute the information matrix for (ideally) all parameters for main response model, using numerical derivatives.
+\item New function numInfo() to compute the information matrix for (ideally) all parameters for main response model, using numerical derivatives. Experimental.
 \item New antisym(<.>|<.>) random effect to fit anti-symmetric dyadic interactions, as in Bradley-Terry models.
 \item Pseudo-R2 computation has been implemented, see help("pseudoR2"). Please don't (ab)use it.
 }

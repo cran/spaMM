@@ -215,7 +215,7 @@ corrMatrix <- function(...) {
 
 # The result is what stays in the processed $corr_info for a submodel from a fitmv call.
 corrFamily <- function(corrfamily=NULL, ...) { 
-  list(title="Stub for the corrFamily before .preprocess_corrFamily() provides all required info."
+  list(title="Stub for the corrFamily before .preprocess_corrFamily() provides all required info.", levels_type="stub"
        # ,
        # calc_moreargs= function(...) {return(NULL)}, # so that calling .calc_moreargs() on a submodel does not generate an error.
        # canonize = function(...) {return(NULL)}, # so that calling .calc_moreargs() on a submodel does not generate an error.

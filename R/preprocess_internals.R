@@ -923,7 +923,11 @@
       ## TRUE by default:
       if ( is.null( keepInREML <- attr(betaFix,"keepInREML") ) ||  ( ! keepInREML) ) {
         XReinput <- X.pv # If X.pv is modified, XReinput is too
-      } # else (keepInREML TRUE)=> XReinput and X.pv are now different, XReinput being the X.pv before .subcol_wAttr()ing
+      } else { # (keepInREML TRUE)=> XReinput and X.pv are now different, XReinput being the X.pv before .subcol_wAttr()ing
+        if (is.null(processed$REMLformula)) processed$REMLformula <- predictor # fix 2022/12/08; 
+        # without that .assign_X.Re_objective does not set up the correct design matrix for REML correction.
+        # Test is by numInfo(<REML fit>, which=..."beta") not failing the gradient check and replicating the likelihood (use verbose to check that)
+      }
     } else {
       stop("The names of elements of etaFix$beta should all match column names of the design matrix.")
     }

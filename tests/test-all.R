@@ -12,7 +12,7 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") { ## set in <R_HOME>/etc/Renviron.site 
       # spaMM.options(use_ZA_L=NULL)
       # abyss <- matrix(runif(2e7),nrow=1000); gc(reset=TRUE) ## partial control of gc trigger...
       {
-        testfiles <- dir(paste0(projpath(),"/package/tests/testthat/"),pattern="*.R",full.names = TRUE)
+        testfiles <- dir(paste0(projpath(),"/package/tests/testthat/"),pattern="*.R$",full.names = TRUE)
         #  testfiles <- dir(paste0(projpath(),"/package/tests/testthat/"),full.names = TRUE)[-1L] # temporary fix for Rstudio problem
         tfun <- function(x) {
           gc()# cf doc of system.time(., gcFirst) => but if gc timings are highly variable, gcFirst=TRUE is pointless (and the whole is misleading). 
@@ -27,11 +27,12 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") { ## set in <R_HOME>/etc/Renviron.site 
       }
       if (FALSE) { # long mv tests, not really for the timings; important tests, mv_nested notably
         if (TRUE) { # 'pattern' should work, but didn't in Rstudio. Fixed in Rstudio version 2022.07.2+576
-          nested_testfiles <- dir(paste0(projpath(),"/package/tests/testthat/nestedFiles/"),pattern="*.R",full.names = TRUE)
+          nested_testfiles <- dir(paste0(projpath(),"/package/tests/testthat/nestedFiles/"),pattern="*.R$",full.names = TRUE)
         } else {
           nested_testfiles <- dir(paste0(projpath(),"/package/tests/testthat/nestedFiles/"),full.names = TRUE)
           nested_testfiles <- nested_testfiles[grep("*.R$",nested_testfiles)]
         }
+        nested_testfiles <- nested_testfiles[ - grep("isoscape",nested_testfiles)] # alread called in the 'regular' long tests  
         # nested_testfiles <- dir(paste0(projpath(),"/package/tests/testthat/nestedFiles/"),full.names = TRUE)
         nested_timings <- t(sapply(nested_testfiles, function(fich){
           cat(crayon::green(paste0("\n",fich)))
@@ -47,7 +48,7 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") { ## set in <R_HOME>/etc/Renviron.site 
         # install.packages("FactoMineR")
         # see also includes in tests_private/test-back-compat.R
         if (TRUE) { # see above comment about Rstudio
-          priv_testfiles <- dir(paste0(projpath(),"/package/tests_private/"),pattern="*.R",full.names = TRUE)
+          priv_testfiles <- dir(paste0(projpath(),"/package/tests_private/"),pattern="*.R$",full.names = TRUE)
         } else {
           priv_testfiles <- dir(paste0(projpath(),"/package/tests_private/"),full.names = TRUE)
           priv_testfiles <- priv_testfiles[grep("*.R$",priv_testfiles)]

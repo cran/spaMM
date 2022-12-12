@@ -2,7 +2,7 @@
   if ( ( ! .spaMM.data$options$spaMM_glm_conv_silent)
        && (conv_crit <- environment(spaMM_glm.fit)$spaMM_glm_conv_crit$max)>0) { 
     # This should arise from .calc_dispGammaGLM() ; $max potentially comes from any call to spaMM_glm.fit(), 
-    # but .get_inits_by_glm() reinitializes it. Info from .get_inits_by_glm is tracked through processed$envir$inits_by_glm$conv_info -> HLfit's warningList
+    # but .get_inits_by_glm() reinitializes it. Info from .get_inits_by_glm is tracked through processed$envir$inits_by_glm$conv_info -> HLfit's warningEnv
     warning(paste(".calc_dispGammaGLM() -> spaMM_glm.fit() did not always converge (criterion:",
                   paste(names(conv_crit),"=",signif(unlist(conv_crit),3),collapse=", "),")"))
     assign("spaMM_glm_conv_crit",list(max=-Inf) , envir=environment(spaMM_glm.fit))

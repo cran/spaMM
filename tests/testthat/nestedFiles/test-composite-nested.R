@@ -149,7 +149,7 @@ testthat::test_that(paste0("ranef corrMatrix(mv()...): criterion was ",signif(cr
     (fit1fix_nest <- fitme(migStatus ~ grp + corrMatrix(grp|loc %in% grp), data=toy, init=list(phi=1e-5), corrMatrix=corMat, fixed=list(ranCoefs=list("1"=rC))))
     (fit1fix <- fitme(migStatus ~ grp + corrMatrix(grp|loc), data=toy, init=list(phi=1e-5), corrMatrix=corMat, fixed=list(ranCoefs=list("1"=rC)))) 
     
-    testthat::expect_true(diff(range(logLik(fit1),logLik(fit1fix_nest),logLik(fit1fix)))<1e-09) 
+    testthat::expect_true(diff(range(logLik(fit1),logLik(fit1fix_nest),logLik(fit1fix)))<3e-09) 
     
   }
   

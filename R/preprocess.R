@@ -718,7 +718,7 @@
 }
 
 
-.preprocess_augZXy <- function(processed, intervalInfo, init, ranFix) { # ___F I X M E___ add a condition on etaFix
+.preprocess_augZXy <- function(processed, intervalInfo, init, ranFix) { # ___F I X M E___ add a condition on etaFix?
   augZXy_cond_inner <- augZXy_cond <- spaMM.getOption("allow_augZXy")
   if (is.null(augZXy_cond)) {
     augZXy_cond <- (processed$models[["phi"]]=="phiScal") ## allows prior weights, but there must be a single phi scaling factor
@@ -826,21 +826,30 @@
   return(resid.model)
 }
 
-.rankTrim <- function(X.pv, rankinfo, verbose=FALSE) {
+.rankTrim <- function(X.pv, rankinfo, verbose=FALSE) {  # tests in /test-rank.R
   if (verbose)  str(rankinfo)
   if (rankinfo$rank < ncol(X.pv)) {   
-    X.pv <- structure(X.pv[,rankinfo$whichcols,drop=FALSE], namesOri=colnames(X.pv)) 
+    X.pv <- structure(X.pv[,rankinfo$whichcols,drop=FALSE], namesOri=colnames(X.pv),
+                      assign=attr(X.pv, "assign")[rankinfo$whichcols], # that's the trimmed value that what lmerTest:::term2colX expect
+                      assignOri=attr(X.pv, "assign") # this one only for .anova.glm() ...
+                      ) 
     # etaFix$beta |         variables 
     #             |  valid vars | invalid vars
     #     (1)           (2)           (3)
     # (2): colnames(<HLfit>$envir$beta_cov_info$beta_cov) = colnames (<HLfit>$X.pv)
     # (1+2+3): namesOri, names(<HLfit>$fixef)
-  } else attr(X.pv,"namesOri") <- colnames(X.pv)  
+  } else {
+    attr(X.pv,"namesOri") <- colnames(X.pv)
+  }  
   attr(X.pv,"rankinfo") <- rankinfo
   return(X.pv)
 }
 
-.post_process_X <- function(X.pv, HL, rankinfo=NULL, sparse_X) {
+.post_process_X <- function(X.pv, HL, 
+                            rankinfo=NULL, # NULL default => compute it locally and trim matrix
+                                           # <pre-existing list> => use it to trim matrix
+                                           # FALSE => don't trim matrix, in .merge_processed() for mv fits
+                            sparse_X) {
   Xattr <- attributes(X.pv)
   if ( ncol(X.pv)) {
     if (sparse_X) { ## sparse_X is useful for rankinfo bc Matrix::qr can be much faster
@@ -850,8 +859,11 @@
     }
   } 
   if (ncol(X.pv)) {
-    if (is.null(rankinfo)) rankinfo <- .calc_rankinfo(X.pv, tol=spaMM.getOption("rankTolerance"))
-    if (is.list(rankinfo)) X.pv <- .rankTrim(X.pv,rankinfo = rankinfo)
+    if (is.null(rankinfo)) rankinfo <- .calc_rankinfo(X.pv, tol=spaMM.getOption("rankTolerance")) # always return a list
+    if (is.list(rankinfo)) {
+      X.pv <- .rankTrim(X.pv,rankinfo = rankinfo)
+    } else attr(X.pv,"namesOri") <- colnames(X.pv) # input 'rankinfo' was FALSE.
+    # the unmodified "assign" attribute refers to the cols of the untrimmed matrix.
   }
   names_lostattrs <- setdiff(names(Xattr), c(names(attributes(X.pv)),"dim","dimnames"))
   attributes(X.pv)[names_lostattrs] <- Xattr[names_lostattrs] # as in .subcol_wAttr(). 
@@ -931,8 +943,9 @@
 .assign_X.Re_objective <- local({
   obj_warned <- FALSE
   function(processed, 
-           XReinput, REMLformula, data, 
-           X.pv, # may be different from XReinput: seek cases where 'keepInREML' is TRUE 
+           XReinput, # used only if  ! is.null(REMLformula)  && identical(attr(REMLformula,"isML"),TRUE)
+           REMLformula, data, 
+           X.pv, # used only if  ! is.null(REMLformula) !! may be different from XReinput: seek cases where 'keepInREML' is TRUE 
            objective) {
     if ( ! is.null(REMLformula) ) { # ML or non-standard REML... 
       if (identical(attr(REMLformula,"isML"),TRUE)) {
@@ -952,7 +965,7 @@
             if (attr(X.Re,"distinct.X.ReML")[1L]) attr(X.Re,"unrestricting_cols") <- unrestricting_cols # cols of X.pv not in X.Re
             if (attr(X.Re,"distinct.X.ReML")[2L]) attr(X.Re,"extra_vars") <- extra_vars # cols of X.Re not in X.pv ## example("update") tests this.
           } 
-        } else warning("Inefficient code: REMLformula not recognized as representing an ML fit.") 
+        } else message("Possibly inefficient code: REMLformula not recognized as representing an REML specification.") 
         processed$X.Re <- X.Re 
       }
     } ## else this should be standard REML; let effectively processed$X.Re <- NULL 
@@ -975,14 +988,6 @@
   }
 })
 
-.old_assign_corr_types_families <- function(corr_info, exp_ranef_types) {
-  true_corr_types <- c("adjacency","Matern","Cauchy","AR1","corrMatrix", "IMRF", "corrFamily")
-  corr_info$corr_types <- corr_types <- true_corr_types[match(exp_ranef_types, true_corr_types)] ## full length with NA's when no match
-  corr_families <- vector('list',length(corr_types)) # full list and no char_rd so far
-  for (rd in which( ! is.na(corr_types))) corr_families[[rd]] <- do.call(corr_types[[rd]],list()) # corr_types' elements are function names!
-  corr_info$corr_families <- corr_families
-}
-
 .assign_corr_types_families <- function(covStruct, # may be NULL on input
                                           corr_info, exp_ranef_types, exp_barlist) {
   
@@ -1003,14 +1008,16 @@
     #   cov_term[[1L]] <- as.name("gridIMRF")
     #   covStruct[rd] <- list(corrFamily=cov_term) # see two comments below
     #   is_cF_internally[rd] <- TRUE 
-    } else if ( ! is.na(corr_types[[rd]])) {
+    } else if ( ! is.na(corr_types[[rd]])) { # those not implemented as corrFamily: Matern, AR1... but not ARp
       corr_families[[rd]] <- do.call(corr_types[[rd]],list()) # corr_types' elements are function names!
     } else { # ranef_type is NA
-      if (ranef_type %in% .spaMM.data$keywords$all_cF) {
+      if (ranef_type %in% .spaMM.data$keywords$all_cF) { # registered corrFamily
         corr_types[[rd]] <- "corrFamily" # replaces NA
         term <- exp_barlist[[rd]]
         covStruct[rd] <- list(corrFamily=term[-2L]) # name is lost when covStruct was NULL... does it occur given condition on ranef_type? 
         is_cF_internally[rd] <- TRUE 
+        corr_families[[rd]] <- do.call(corr_types[[rd]],list()) # well this calls corrFamily() which is a stub...
+        # For these ones, corr_families[[rd]] will be set later by .preprocess_corrFamily() (though possibly delayed in fitmv case)
       } else stop("Unknown or unregsitered correlation model.")
     }
   }

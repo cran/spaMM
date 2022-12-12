@@ -325,7 +325,7 @@
 
 
 
-drop1.HLfit <- function(object, scope=NULL, method="", check = NULL, check_time=60, ...) {
+drop1.HLfit <- function(object, scope=NULL, method="", check_marg = NULL, check_time=60, ...) { # there may also be a 'check_deriv' argument to be passed to as_LMLT
   if (method != "LRT") {
     models <- object$models[c("eta","phi")]
     if (length(models$phi)==1L && models$phi %in% c("phiScal","")) {
@@ -335,7 +335,7 @@ drop1.HLfit <- function(object, scope=NULL, method="", check = NULL, check_time=
         } else return(.drop1.glm(object, scope, ...))
       } else if (object$family$family=="gaussian" && object$family$link=="identity") { # LMM
         if (requireNamespace("lmerTest",quietly=TRUE)) {
-          scope <- .preprocess_scope(scope, object=object, check=check)
+          scope <- .preprocess_scope(scope, object=object, check=check_marg)
           if ((fit_time <- how(object, verbose=FALSE)$fit_time)*length(scope)>check_time ) {
             message(paste0("Fitting the original model took ",fit_time,"s and drop1() may take a few times longer."))
           }
@@ -349,7 +349,7 @@ drop1.HLfit <- function(object, scope=NULL, method="", check = NULL, check_time=
     }
   }
   # Fallback if no earlier return:
-  return(.drop1_fallback(object=object, scope=scope, check=check, check_time=check_time, ...))
+  return(.drop1_fallback(object=object, scope=scope, check=check_marg, check_time=check_time, ...))
 }
 
 drop1.LMLT <- function(object, scope, ...) { 

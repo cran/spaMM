@@ -1,26 +1,38 @@
-if (FALSE) {
-  .dispFn <- function(x) log(0.9+x)
-  .dispInv <- function(x) exp(x)-0.9
+# lower bound always useful to avoid optimization at -Inf
+if (TRUE) {
+  .dispFn <- function(x) {100*(-log(0.1) + log(0.1 + 0.11*sqrt(x)))}
+  .dispInv <- function(x) {
+    ex <- exp(x/100 - log(10))
+    z <- (ex-0.1)/0.11
+    z*z
+  }
+} else if (TRUE) { # OO-ly derivable approx of the old, complex transformation
+  .dispFn <- function(x) {100*(-log(0.1) + log(0.1 + 0.11*sqrt(x) + x))}
+  .dispInv <- function(x) {
+    ex <- exp(x/100 - log(10))
+    z <- (-11 + sqrt(40000*ex - 3879))/200
+    z*z
+  }
 } else {
   ## see control_nloptr.nb for alternatives
   ## generic .dispInv for devel
   # .dispInv <- function(x,xref=1e-4,xreff=1e-2,xm=1e-3) {
   #   uniroot(function(v) dispFn(v)-x,lower=1e-6,upper=1e6,tol=1e-7)$root
   # }
-  ## Still derivable at the threshold xm: 
+  ## Still derivable at the threshold xm:  ... but not twice...
   .dispFn <- function(x,xref=5e-5,xreff=1e-1,xm=1e-3) { 
     num <- x
     x_lo_xm <- (x<=xm)
     num[which(x_lo_xm)] <- log(xref+x[which(x_lo_xm)])
     num[which( ! x_lo_xm)] <- log(xref+xm)+log((xreff+x[which( ! x_lo_xm)])/(xreff+xm))*(xreff+xm)/(xref+xm)
     #print(num)
-    num
+    num-log(xref) # always higher than 0 (input x may be << xref)
   } 
   .dispInv <- function(x,xref=5e-5,xreff=1e-1,xm=1e-3) {
-    num <- x
-    x_lo_xm <- (x<log(xref+xm))
-    num[which(x_lo_xm)] <- exp(x[which(x_lo_xm)])-xref
-    fac <- exp((x[which( ! x_lo_xm)]-log(xref+xm))*(xm+xref)/(xm+xreff))
+    num <- x+log(xref)
+    x_lo_xm <- (num<log(xref+xm))
+    num[which(x_lo_xm)] <- exp(num[which(x_lo_xm)])-xref # => all input values must be > log(xref), the lower bound of .dispFn(x)
+    fac <- exp((num[which( ! x_lo_xm)]-log(xref+xm))*(xm+xref)/(xm+xreff))
     num[which( ! x_lo_xm)] <-  xm*fac + xreff*(fac-1)
     #print(num)
     num

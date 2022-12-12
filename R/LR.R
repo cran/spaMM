@@ -119,10 +119,41 @@
   }
   # ELSE
   if (length(unest)==0L) {
-    warning(paste("The two models appear equivalent (except perhaps for residual dispersion models).\n", 
-                                    "No test performed."))
-    return(list(fullfit=NULL,nullfit=NULL,test_obj=NULL,df=0))
-  }
+    phimodel1 <- object$models[["phi"]]
+    phimodel2 <- object2$models[["phi"]]
+    if (all(phimodel1 == "phiScal" | phimodel1 == "phiGLM") &&
+        all(phimodel2 == "phiScal" | phimodel2 == "phiGLM")) {
+      df1 <- .unlist(object$dfs$p_fixef_phi)
+      df2 <- .unlist(object2$dfs$p_fixef_phi)
+      if (all(df1>df2)) {
+        fullfit <- object
+        nullfit <- object2
+      } else if (all(df1<df2)) {
+        fullfit <- object2
+        nullfit <- object
+      } else if (all(df1==df2)) {
+        warning(paste("The two models appear equivalent (except perhaps for offsets). No test performed.")) # I forgot checking differences of offset on main-response models...
+        return(list(fullfit=NULL,nullfit=NULL,test_obj=testlik,df=0))
+      } else {
+        warning(paste("The two models appear non-nested (opposite nesting of residual dispersion models?). No test performed.")) 
+        return(list(fullfit=NULL,nullfit=NULL,test_obj=testlik,df=0))
+      }
+      message(paste("The two models appear equivalent except for residual dispersion models.")) 
+      if ( ! REML) warning("ML fits used to compare different residual-dispersion models...")
+      testlik <- "p_bv" ## used in both case, identical to p_v in the non-standard case
+      return(list(fullfit=fullfit,nullfit=nullfit,test_obj=testlik,df=abs(df1-df2)))
+    } else { # POSSIBLE mixed-effect resid model(s). Need to .compare_model_structures() on them, but objects are heterogeneous if one is not MM (___F I X M E___)
+      if (any(phimodel1 == "phiHGLM") | any(phimodel2 == "phiHGLM")) { # => problem is to compute 'df'
+        warning(paste("Nestedness of these models structures cannot yet be checked. No test performed."))
+        return(list(fullfit=NULL,nullfit=NULL,test_obj=testlik,df=0))
+        # warning(paste("Nestedness of these models structures cannot yet be checked.\n *Tentatively* assuming 'object2' is nested in 'object'..."))
+        # if ( ! REML) warning("ML fits used to compare different residual-dispersion models...")
+        # testlik <- "p_bv" ## used in both case, identical to p_v in the non-standard case
+        # return(list(fullfit=object,nullfit=object2,test_obj=testlik,df=NA))
+      }
+    }
+  } #  ELSE we found nestedness on the main-response models and processe this case ( ! ignoring the residual disp models ! )    
+  
   # if (length(Rnest)) return(.process_ranef_case(object, object2, nest=Rnest)) # Possibly nested models, differing at least by their random effects.
   ###############################
   # # ELSE nested fixef, identical ranefs
@@ -259,7 +290,9 @@
   return(locinit)
 }
 
-.get_rC_inits_from_hlfit <- function(hlfit, type) {
+.get_rC_inits_from_hlfit <- function(hlfit, 
+                                     type # set type=NULL to retain all types
+                                     ) {
   reinit <- .get_compact_cov_mats(hlfit$strucList)
   seq_rd <- seq_along(reinit)
   if (length(seq_rd)) {
@@ -302,7 +335,7 @@
     lambdas <- lambdas[ ! is.na(lambdas)] # otherwise for "outer" type the NA ends in the optimizer's init...
     # for "inner" NA's are harmless but not necessary when names are paste(seq_rd)
     if (any_ranCoef && type=="adhoc") lambdas <- structure(lambdas,
-                                           message="Random-coefficient variances removed. Use e.g. VarCorr() to get them.")
+                                           message="Random-coefficient variances removed. Use e.g. VarCorr() to get them.") # ___F I X M E___ more convenient message or een extractor?
   }
   return(lambdas) # vector wwith NAs for everything not wanted
 }
@@ -601,12 +634,12 @@ LRT <- function(object,object2,boot.repl=0,# nb_cores=NULL,
   dfr <- df.residual(object)
   p <- object$dfs$pforpv
   if (p > 0L) {
-    p1 <- 1L:p
     qr_sXaug <- object$envir$qr_X
     comp <- crossprod(qr.Q(qr_sXaug),object$y) # object$effects[p1] # the better tibco doc says it is t(Q) %*% y 
     #  but given it is the QR for scaled X varaibles, 
     if (is.null(qr_sXaug))  stop("HLfit object does not have a 'qr' factorization of the model matrix.")
-    asgn <- attr(object$X.pv,"assign")[qr_sXaug$pivot][p1]   # ____F I X M E____ use model.matrix() extractor everywhere for object$X.pv  ? 
+    # sub_pivot_ori_X <- attr(object$X.pv,"rankinfo")$whichcols
+    asgn <- attr(object$X.pv,"assign")# [sub_pivot_ori_X]     # ____F I X M E____ use model.matrix() extractor everywhere for object$X.pv  ?
     nmeffects <- c("(Intercept)", attr(terms(object), "term.labels"))
     tlabels <- nmeffects[1 + unique(asgn)]
     ss <- c(vapply(split(comp^2, asgn), sum, 1), ssr)
@@ -687,19 +720,19 @@ LRT <- function(object,object2,boot.repl=0,# nb_cores=NULL,
 .anova.glm <- function(object, ..., dispersion = NULL, test = NULL) {
   doscore <- !is.null(test) && test == "Rao"
   x <- model.matrix(object)
-  varseq <- attr(object$X.pv,"assign")
-  nvars <- max(0, varseq)
+  if (is.null(asgn <- attr(object$X.pv,"assignOri"))) asgn <- attr(object$X.pv,"assign")
+  nvars <- max(0, asgn)
   resdev <- resdf <- NULL
   termsv <- terms(object)
   if (doscore) {
     score <- numeric(nvars) # misnomer: regressors, not variables
-    subx <- x[, varseq == 0, drop = FALSE]
+    subx <- x[, asgn == 0L, drop = FALSE]
     # E.g., the design matrix 'x' may have a col for intercept, two cols for a first factor, two cols for a second factor
-    # varseq is 0 1 1 2 2 and there are 3 terms in the euation. dropterns removes the terms from the equation 
-    #   and x[, varseq <= i, drop = FALSE] removes the corresponding blocs of cols
+    # asgn is 0 1 1 2 2 and there are 3 terms in the euation. dropterns removes the terms from the equation 
+    #   and x[, asgn <= i, drop = FALSE] removes the corresponding blocs of cols
     # 0 always stands for the Intercept, not for the first term.
     # This first doscore fit uses the original GLM family ect to generate residuals used in the next doscore fits which are LMs 
-    # x = x[, varseq == 0, drop = FALSE], y = y, weights = object$prior.weights, 
+    # x = x[, asgn == 0, drop = FALSE], y = y, weights = object$prior.weights, 
     # start = object$start, offset = object$offset, family = object$family,     
     # drop.terms fails to remove all terms because because attr(,"term.labels") does not include the intercept
     # hence calling the patch fn .drop.terms()
@@ -715,7 +748,7 @@ LRT <- function(object,object2,boot.repl=0,# nb_cores=NULL,
       newform <- drop.terms(termsv, (i+1L):nvars, keep.response = TRUE) 
       refit <- update(object, formula.= newform)
       if (doscore) {
-        subx <- x[, varseq <= i, drop = FALSE]
+        subx <- x[, asgn <= i, drop = FALSE]
         zz <- glm.fit(x=subx, y = r, weights = w, intercept = icpt)
         score[i] <- zz$null.deviance - zz$deviance
         r <- residuals(refit, type="working")
@@ -815,21 +848,33 @@ LRT <- function(object,object2,boot.repl=0,# nb_cores=NULL,
 }
 
 .get_type1_contrasts <- function (model, 
-                                  termsv=terms(model), # ____F I X M E___ rework fn for mv fits
-                                  X=model.matrix(model)) {
-  p <- ncol(X)
-  if (p == 0L) 
-    return(list(matrix(numeric(0L), nrow = 0L)))
+                                  termsv=terms(model), 
+                                  X=model.matrix(model),
+                                  asgn=attr(X,"assign"), ## "for each column in the matrix ... the term in the formula which gave rise to the column"
+                                  rankinfo=attr(X,"rankinfo"),
+                                  colrange=seq_len(ncol(X))) {
+  if (inherits(termsv,"list")) {
+    resu <- vector("list",length(termsv))
+    cum_ncol <- attr(X,"cum_ncol")
+    for (mv_it in seq_along(termsv)) {
+      colrange <- (cum_ncol[mv_it]+1L):cum_ncol[mv_it+1L] 
+      resu[[mv_it]] <- .get_type1_contrasts(model, termsv=termsv[[mv_it]], X=X, asgn=asgn[[mv_it]], 
+                                            rankinfo=rankinfo[[mv_it]], colrange=colrange)
+      names(resu[[mv_it]]) <- paste0(names(resu[[mv_it]]),"_",mv_it)
+    }
+    return(unlist(resu,use.names = TRUE, recursive = FALSE))
+  }
+  
+  p <- length(colrange)
+  if (p == 0L) return(list(matrix(numeric(0L), nrow = 0L)))
   itcp <- attr(termsv, "intercept")
-  if (p == 1L && itcp) 
-    return(list(matrix(numeric(0L), ncol = 1L)))
-  L <- if (p == 1L) 
-    matrix(1L)
-  else t(.lu_doo(crossprod(X))$L)
+  if (p == 1L && itcp) return(NULL) # return(list(matrix(numeric(0L), ncol = ncol(X))))    # if only an intercept term
+  L <- if (p == 1L) { matrix(1L,, ncol = ncol(X)) } else t(.lu_doo(crossprod(X))$L)
   dimnames(L) <- list(colnames(X), colnames(X))
   term_names <- attr(termsv, "term.labels")
-  ind.list <- .term2colX(term_names=term_names, itcp=itcp, asgn= attr(X, "assign"))[term_names]
-  lapply(ind.list, function(rows) L[rows, , drop = FALSE])
+  term_names <-  term_names[unique(asgn[rankinfo$whichcols])] # line handling singular design matrix (the present X already being reduced) 
+  ind.list <- .term2colX(term_names=term_names, itcp=itcp, asgn= asgn)[term_names]
+  lapply(ind.list, function(rows) L[colrange[rows], , drop = FALSE])
 }
 
 .term_contain <- function (term, factors, dataClasses, term_names) 
@@ -849,49 +894,57 @@ LRT <- function(object,object2,boot.repl=0,# nb_cores=NULL,
   term_names <- attr(termsv, "term.labels")
   factor_mat <- attr(termsv, "factors")
   lapply(setNames(term_names, term_names), function(term) {
-    term_names[.term_contain(term, factor_mat, data_classes, 
-                            term_names)]
+    term_names[.term_contain(term, factor_mat, data_classes, term_names)]
   })
 }
 
 .get_type2_contrasts <- function (model, 
-                                  termsv=terms(model), # ____F I X M E___ rework fn for mv fits. Set assign attribute first...
-                                  X=model.matrix(model)) {
-  # if (inherits(termsv,"list")) {
-  #   resu <- vector("list",length(termsv))
-  #   for (mv_it in seq_along(termsv)) {
-  #     resu[[mv_it]] <- .get_type2_contrasts(model, termsv=termsv[[mv_it]], X=X)
-  #   }
-  #   return(unlist(resu,use.names = FALSE, recursive = FALSE))
-  # }
+                                  termsv=terms(model), 
+                                  X=model.matrix(model),
+                                  asgn=attr(X,"assign"),
+                                  rankinfo=attr(X,"rankinfo"),
+                                  colrange=seq_len(ncol(X))) {
+  if (inherits(termsv,"list")) {
+    resu <- vector("list",length(termsv))
+    cum_ncol <- attr(X,"cum_ncol")
+    for (mv_it in seq_along(termsv)) {
+      colrange <- (cum_ncol[mv_it]+1L):cum_ncol[mv_it+1L] 
+      resu[[mv_it]] <- .get_type2_contrasts(model, termsv=termsv[[mv_it]], X=X, asgn=asgn[[mv_it]], 
+                                            rankinfo=rankinfo[[mv_it]],colrange=colrange)
+      names(resu[[mv_it]]) <- paste0(names(resu[[mv_it]]),"_",mv_it)
+    }
+    return(unlist(resu,use.names = TRUE, recursive = FALSE))
+  }
   data_classes <- attr(termsv, "dataClasses")
-  asgn <- attr(X, "assign")
   term_names <- attr(termsv, "term.labels")
   #
   which <- term_names
-  if (ncol(X) <= 1L || length(term_names) <= 1L) 
-    return(.get_type1_contrasts(model))
+  if (length(colrange) <= 1L || length(term_names) <= 1L) 
+    return(.get_type1_contrasts(model, termsv=termsv, X=X, asgn=asgn, rankinfo=rankinfo, colrange=colrange)) # possibly the arguments for the mv_it submodel
   #
   else stopifnot(is.character(which), all(which %in% term_names))
   which <- setNames(as.list(which), which)
   is_contained <- .containment(model)
   itcp <- attr(termsv, "intercept") > 0
-  col_terms <- if (itcp) 
-    c("(Intercept)", term_names)[asgn + 1]
-  else term_names[asgn[asgn > 0]]
-  term2colX <- split(seq_along(col_terms), col_terms)[unique(col_terms)]
-  lapply(which, function(term) {
-    cols_term <- unlist(term2colX[c(term, is_contained[[term]])])
-    Xnew <- cbind(X[, -cols_term, drop = FALSE], X[, cols_term, drop = FALSE])
-    newXcol_terms <- c(col_terms[-cols_term], col_terms[cols_term])
+  asgn <- unique(asgn[rankinfo$whichcols])
+  term_names <- term_names[asgn]
+  which <- if (itcp) {c("(Intercept)", term_names)} else term_names
+  term2colX <- split(seq_along(which), which)[unique(which)]
+  Llist <- lapply(which, function(term) {
+    subX_termcols <- unlist(term2colX[c(term, is_contained[[term]])])
+    X_termcols <- colrange[subX_termcols]
+    colperm <- c(setdiff(seq_len(ncol(X)),X_termcols), X_termcols)
+    Xnew <- X[,colperm]
     Lc <- t(.lu_doo(crossprod(Xnew))$L)
     dimnames(Lc) <- list(colnames(Xnew), colnames(Xnew))
-    Lc[newXcol_terms == term, colnames(X), drop = FALSE]
+    Lc[colperm %in% X_termcols, colnames(X), drop = FALSE]
   })
+  names(Llist) <- which
+  Llist
 }
 
 .anova_fallback <- function(fitobject, type="2", rhs=NULL, test="Chisq.", ...) {
-  beta <- fixef(fitobject)
+  beta <- na.omit(fixef(fitobject))
   beta_cov <- vcov(fitobject)
   Llist <- switch(type,
                   "I" = .get_type1_contrasts(fitobject),
@@ -918,7 +971,8 @@ LRT <- function(object,object2,boot.repl=0,# nb_cores=NULL,
   }
   resu <- as.data.frame(numtable)
   rownames(resu) <-  names(Llist)
-  attr(resu, "heading") <- paste(test, "tests for each term (type", utils::as.roman(as.integer(type)), "contrasts)")
+  roman.type <- if (type %in% c("1","2","3")) {utils::as.roman(as.integer(type))} else type
+  attr(resu, "heading") <- paste(test, "tests for each term (type", roman.type, "contrasts)")
   attr(resu, "hypotheses") <- Llist
   class(resu) <-  c("anova", "data.frame")
   resu
@@ -926,19 +980,25 @@ LRT <- function(object,object2,boot.repl=0,# nb_cores=NULL,
 
 
 
-anova.HLfit <- function(object, object2=NULL, type="2", method="", ...) {
+anova.HLfit <- function(object, object2=NULL, type="2", method="",  ...) {
   if (is.null(object2)) {
-    if (method != "t.Chisq") {
+    if (method == "") { # defaults
       models <- object$models[c("eta","phi")]
-      if (length(models$phi)==1L && models$phi %in% c("phiScal","")) {
+      if (length(models$phi)==1L &&   # exclude mv fits => all in .anova_fallback() 
+          models$phi %in% c("phiScal","")) { 
         if (models$eta=="etaGLM") { 
           if (object$family$family=="gaussian" && object$family$link=="identity") {
             return(.anova.lm(object, ...))
           } else return(.anova.glm(object, ...))
         } else if (object$family$family=="gaussian" && object$family$link=="identity") { # LMM
-          if (requireNamespace("lmerTest",quietly=TRUE)) {
-            lmlt <-  as_LMLT(object, ...)
-            return(anova(lmlt, type=type)) # other possible arguments not currently meaningful
+          if (requireNamespace("lmerTest",quietly=TRUE)) { # if the package is available
+            # if (length(attr(object$X.pv,"namesOri")) == ncol(object$X.pv)) {
+              lmlt <-  as_LMLT(object, ...)
+              return(anova(lmlt, type=type)) # other possible arguments not currently meaningful
+            # } else {
+            #   message(paste("Original model has a singular design matrix: lmerTest's F tests cannot be computed\n",
+            #                 "(you can fix this by correcting the model formula)"))
+            # }
           } else if ( ! identical(spaMM.getOption("lmerTest_warned"),TRUE)) {
             message("If the lmerTest package were installed, a traditional anova table could be computed.")
             .spaMM.data$options$lmerTest_warned <- TRUE
@@ -946,7 +1006,7 @@ anova.HLfit <- function(object, object2=NULL, type="2", method="", ...) {
         } 
       }
     }
-    return(.anova_fallback(fitobject=object, type=type, ...)) # dots ma contain 'rhs' and (later) 'test'
+    return(.anova_fallback(fitobject=object, type=type, ...)) # dots may contain 'rhs' and (later) 'test'
   } else {
     ## anova treated as alias for LRT()
     LRT(object,object2, ...)

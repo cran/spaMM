@@ -228,7 +228,7 @@
 
 
 
-.calc_logdisp_cov_mv <- function(object, dvdloglamMat=NULL, dvdlogphiMat=NULL, invV_factors=NULL) { 
+.calc_logdisp_cov_mv <- function(object, dvdloglamMat=NULL, dvdlogphiMat=NULL, invV_factors=NULL, force_fixed=FALSE) { 
   lambda.object <- object$lambda.object
   strucList <- object$strucList
   dispcolinfo <- list()
@@ -237,7 +237,9 @@
   col_info <- list(nrand=nrand, phi_cols=NULL) 
   Xi_cols <- attr(object$ZAlist, "Xi_cols")
   dwdloglam <- matrix(0,ncol=sum(Xi_cols),nrow=length(object$v_h)) # cols will remain 0 for fixed lambda params
-  checklambda <- ( ! (lambda.object$type %in% c("fixed","fix_ranCoefs","fix_hyper"))) 
+  if (force_fixed) {
+    checklambda <- rep(TRUE, length(lambda.object$type))
+  } else checklambda <- ( ! (lambda.object$type %in% c("fixed","fix_ranCoefs","fix_hyper"))) 
   if (any(checklambda)) {
     exp_ranef_types <- attr(object$ZAlist,"exp_ranef_types")
     checkadj <- (exp_ranef_types=="adjacency")
@@ -291,7 +293,7 @@
   } else ranef_ids <- NULL
   ###
   phimodel <- object$models[["phi"]]
-  is_phiScalS <- phimodel=="phiScal" # vector !
+  is_phiScalS <- (phimodel=="phiScal" | force_fixed) # vector !
   if (any(is_phiScalS) ||  
       identical(object$envir$forcePhiComponent,TRUE) ## hack for code testing: force dispVar computation as if phi was not fixed.
   ) { ## semble impliquer pas outer phi.Fix... => no need to test object$phi.object$phi_outer,"type")

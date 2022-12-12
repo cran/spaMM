@@ -242,7 +242,7 @@ projpath <- local({
     return(as(alis[[1]], "CsparseMatrix"))
   #
   nl <- length(alis)
-  for (it in seq_len(nl)) alis[[it]] <- Matrix::.diagU2N(alis[[it]], cl="CsparseMatrix") # using Matrix::.diagU2N() as public version of Matrix:::as_Csp2()
+  for (it in seq_len(nl)) if (alis[[it]]@diag=="U") alis[[it]] <- Matrix::.diagU2N(alis[[it]], cl="CsparseMatrix") # using Matrix::.diagU2N() as public version of Matrix:::as_Csp2()
   i_off <- c(0L, cumsum(vapply(alis, nrow, 1L)))
   i <- p <- x <- vector("list", nl)
   cumsum_p <- 0L
@@ -274,8 +274,7 @@ projpath <- local({
   #
   nl <- length(alis)
   Tlst <- vector("list", nl)
-  for (it in seq_len(nl)) alis[[it]] <- Matrix::.diagU2N(alis[[it]], cl="CsparseMatrix") # using Matrix::.diagU2N() as public version of Matrix:::as_Csp2()
-  #
+  # 2022/12/04: Removed a faulty line  here, copied from .bdiag_dtC, exposed as a spaMM bug with Matrix 1.5-3, as could be expected from the .diagU2N doc
   uplos <- vapply(alis, slot, ".", "uplo")
   tLU <- table(uplos)
   if (length(tLU) == 1) {

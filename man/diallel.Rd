@@ -59,12 +59,12 @@ NULL or fixed value of the correlation coefficient.
 \item{public}{NULL, or an environment. When an empty environment is provided, a template \code{CorNA} for the correlation matrix (with NA's in place of \eqn{\rho}) will be copied therein, for inspection at user level.}
 }
 \value{
-The functions return corrFamily descriptors whose general format is described in \code{\link{corrFamily}}. The ones produced by \code{ranGCA} and\code{antisym} are atypical in that only their \code{Af} element is non-trivial.
+The functions return corrFamily descriptors whose general format is described in \code{\link{corrFamily}}. The ones produced by \code{ranGCA} and \code{antisym} are atypical in that only their \code{Af} element is non-trivial.
 }
 \references{
 Lynch, M., Walsh, B. (1998) Genetics and analysis of quantitative traits. Sinauer, Sunderland, Mass.
 
-Onofri A., Terzaroli N. (2021) lmDiallel:  Linear Fixed Effects Models for Diallel Crosses. Version 0.9.4. \url{https://cran.r-project.org/package=lmDiallel}.
+Onofri A., Terzaroli N. (2021) lmDiallel:  Linear fixed effects models for diallel c,<rosses. Version 0.9.4. \url{https://cran.r-project.org/package=lmDiallel}.
 }
 \examples{
 

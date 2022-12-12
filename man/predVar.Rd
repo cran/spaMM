@@ -18,7 +18,7 @@ By default the returned components are vectors of variances (with exceptions for
 Computations implying \code{linPred=TRUE} will take into account the variances of the linear predictor \eqn{\eta}, i.e. the uncertainty in fixed effects (\bold{X}\eqn{\beta}) and random effects (\bold{ZLv}), \bold{for given dispersion parameters} (see Details).
 For fixed-effect models, the \code{fixefVar} calculations reduces to the \code{linPred} one.
 
-Computations implying \code{disp=TRUE} additionally include the effect of uncertainty in estimates of dispersion parameters (\eqn{\lambda} and \eqn{\phi}), with some limitations: this effect can be computed for a scalar residual variance (\eqn{\phi}) and for several random effects with scalar variances (\eqn{\lambda}). Thus, the argument \code{variances=list(predVar=TRUE)} implies that uncertainty if linear predictor, including uncertainty in dispersion parameters, is taken into account, and the argument \code{variances=list(respVar=TRUE)} additionally includes residual variance.
+Computations implying \code{disp=TRUE} additionally include the effect of uncertainty in estimates of dispersion parameters (\eqn{\lambda} and \eqn{\phi}), with some limitations: this effect can be computed for a scalar residual variance (\eqn{\phi}) and for several random effects with scalar variances (\eqn{\lambda}). Thus, the argument \code{variances=list(predVar=TRUE)} implies that uncertainty of linear predictor, including uncertainty in dispersion parameters, is taken into account, and the argument \code{variances=list(respVar=TRUE)} additionally includes residual variance.
 
 }
 

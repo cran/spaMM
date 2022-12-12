@@ -220,7 +220,7 @@
   ))
 } 
 
-.merge_Xs <- function(X1,X2, mv_it, REML=FALSE) {
+.merge_Xs <- function(X1,X2, mv_it, REML=FALSE) { # ____F I X M E____ implement "B matrices"
   if ( ! is.null(colnames(X2))) colnames(X2) <- paste0(colnames(X2),"_",mv_it)
   if (is.null(X1)) { 
     X <- X2
@@ -267,9 +267,11 @@
     } # else if (len_lam==0L) lambda_merger[char_rd] <- NULL
   }
   lambda_merger <- unlist(lambda_merger)
-  lambda_merger <- list(inits=list(init=list(lambda=lambda_merger),
-                                   init.optim=list(trLambda=.dispFn(lambda_merger))))
-  .modify_list(optim_blob,lambda_merger, obey_NULLs=FALSE) 
+  if (length(lambda_merger)) {
+    lambda_merger <- list(inits=list(init=list(lambda=lambda_merger),
+                                     init.optim=list(trLambda=.dispFn(lambda_merger))))
+    .modify_list(optim_blob,lambda_merger, obey_NULLs=FALSE) 
+  } else optim_blob
 }
 
 .calc_optim_args_mv <- function(processed, map_rd_mv, user_init_optim, fixedS, user.lower, user.upper, verbose, optim.scale) {
@@ -403,7 +405,7 @@
   exp_barlist
 }
 
-.determine_sparse_X_mv <- function(terms_info, X.pv, vec_nobs, unmerged) {
+.determine_sparse_X_mv <- function(terms_info, X.pv, vec_nobs) {
   sparse_X <- spaMM.getOption("sparse_X") 
   ## forcing sparse_X may (1) be slow for small problems 
   ## (2) entails the use of Matrix::Cholesky, which is less accurate => small bu visible effect on predVar in singular 'twolambda' case
@@ -412,7 +414,7 @@
     col_heuristic_densenesseS <- vector("list", nmodels)
     rel_nobs <- vec_nobs/sum(vec_nobs)
     for (mv_it in seq_along(nmodels)) {
-      asgn <- attr(unmerged[[mv_it]][["AUGI0_ZX"]]$X.pv,"assign") ## "for each column in the matrix ... the term in the formula which gave rise to the column"
+      asgn <- attr(X.pv,"assign")[[mv_it]] ## "for each column in the matrix ... the term in the formula which gave rise to the column"
       col_heuristic_denseness_it <- rep(rel_nobs[mv_it],length(asgn))
       if ( length(fixef_levels <- .get_from_terms_info(terms_info=terms_info, which="fixef_levels", mv_it=mv_it)) ) {
         terms_densenesses_it <- rel_nobs[mv_it] * 
@@ -681,7 +683,8 @@
   nmodels <- length(calls_W_processed)
   namedlist <- structure(vector("list",nmodels), names=seq_len(nmodels))
   ### Fill lists for further processing:
-  unmerged <- predictors <- families <- prior.weights <- clik_fns <- phiFixs <- Ys <- pS_fixef_phi <- namedlist
+  unmerged <- predictors <- families <- prior.weights <- clik_fns <- phiFixs <- Ys <- pS_fixef_phi <- 
+    assign_attr <- rankinfo_attr <- namedlist
   AMatrices <- adjMatrices <- corrMatrices <- fixef_off_termsS <- fixef_termsS <- fixef_levelsS <- validrownames <- namedlist
   for (mv_it in seq_len(nmodels)) {
     unmerged[[mv_it]] <- calls_W_processed[[mv_it]][["processed"]]
@@ -696,6 +699,8 @@
     fixef_termsS[mv_it] <- list(terms_info_it[["fixef_terms"]]) 
     fixef_levelsS[mv_it] <- list(terms_info_it[["fixef_levels"]]) 
     pS_fixef_phi[[mv_it]] <- unmerged[[mv_it]][["p_fixef_phi"]] 
+    assign_attr[[mv_it]] <- attr(unmerged[[mv_it]][["AUGI0_ZX"]]$X.pv,"assign") ## "for each column in the matrix ... the term in the formula which gave rise to the column"
+    rankinfo_attr[[mv_it]] <- attr(unmerged[[mv_it]][["AUGI0_ZX"]]$X.pv,"rankinfo") 
     #geo_infos[mv_it] <- list(unmerged[[mv_it]][["geo_info"]]) # each geo_info is a ranef-list of environments,  ou NULL; le list() est pourle second cas
   }
   #attr(phiFixs,"anyNULL") <- .anyNULL(phiFixs); attr(phiFixs,"allNULL") <- .allNULL(phiFixs) ## not a good idea bc its too easy to change the elements withouth changing the attributes
@@ -867,14 +872,33 @@
   #     }
   #   }
   # }
-  merged_X <- .post_process_X(X.pv=merged_X, HL=merged$HL, rankinfo=NULL, 
-                              sparse_X=.determine_sparse_X_mv(merged$main_terms_info, X.pv= merged_X, vec_nobs=vec_nobs, unmerged=unmerged) ) 
+  
+  attr(merged_X,"assign") <- assign_attr   
+  attr(merged_X,"rankinfo") <- rankinfo_attr   
+  
+  merged_X <- .post_process_X(X.pv=merged_X, HL=merged$HL, rankinfo=FALSE, 
+                              sparse_X=.determine_sparse_X_mv(merged$main_terms_info, X.pv= merged_X, vec_nobs=vec_nobs) ) 
   # processing of merged_X and other elements of AUGI0_ZX:
   attr(merged_X,"cum_ncol") <- cumsum(c(0L,vec_ncol_X))
   attr(merged_X,"cum_nobs") <- cum_nobs
   
   #### replacement for .preprocess_X_XRe_off():
-  if ( length(betaFix <- etaFix$beta)>0 ) merged_X <- .process_betaFix(X.pv=merged_X, betaFix=betaFix, merged)
+  if ( length(betaFix <- etaFix$beta)>0 ) {
+    if (is.null(merged_X.Re)) { # standard REML were it not for betaFix:
+      # in standard REML the correction is based on the cols of X.pv (were it not for betaFix) 
+      keepInREML <- attr(betaFix,"keepInREML") 
+      if (is.null(keepInREML)) keepInREML <- FALSE
+      if (keepInREML) merged_X.Re <- merged_X # keep cols of full X.pv in X.Re (as in std REML without betaFix)
+      merged_X <- .process_betaFix(X.pv=merged_X, betaFix=betaFix, merged)
+      if ( ! keepInREML) {
+        merged_X.Re <- merged_X # keeps only cols of sub X in X.pv
+      } else { 
+        # (keepInREML TRUE)=> merged_X has been modified by .process_betaFix, but we don't update 'XReinput', so the two are now different, 
+        # 'XReinput' being the merged_X before .process_betaFix -> .subcol_wAttr()ing
+        # 'XReinput' is the name in .preprocess() of what is here merged_X.Re. Maybe tidy .preprocess()? 
+      }
+    } else merged_X <- .process_betaFix(X.pv=merged_X, betaFix=betaFix, merged)
+  }
   #
   ### Following block replaces, at least partially,
   #   .assign_X.Re_objective(processed, XReinput=XReinput, processed$REMLformula, data, X.pv, objective) ##] assigns processed$X.Re and processed$objective
@@ -882,7 +906,11 @@
   ## In principle this should be modified following the above modif of X.pv. HOWEVER:
   ## if standard ML: ... processed$X.Re is 0-col matrix: unchanged
   ## if standard REML: processed$X.Re is NULL: unchanged
-  ## non standard REML: case where X.Re would have to be modified: 
+  ## non standard REML: case where X.Re would have to be modified, per the following block:
+  ##    which may handle correctly only a few subcases of non-std REML
+  ##    I wrote it before trying to implement the keepInREML case in this fn, so it must havehad some previous usage...
+  ##    In the the keepInREML case, merged.X.Re retains columns removed from merged_X.
+  ##    The REMLformula, needed to handle more general cases, is not defined here.
   if ( ! is.null(merged_X.Re) && ncol(merged_X.Re)) { # non-standard REML... 
     # attr(., "extra_vars") has aleardy been updated by .merge_Xs(., REML=TRUE), but unrestricting_cols culd not as it refers to X.pv cols 
     unrestricting_cols <- which(colnames(merged_X) %in% setdiff(colnames(merged_X),colnames(merged_X.Re))) ## not in X.Re
@@ -1205,7 +1233,7 @@ fitmv <- function(submodels, data, fixed=NULL, init=list(), lower=list(), upper=
   mc[["fixedS"]] <- fixedS # to build and merge the inits
   mc$processed <- merged
   pnames <- c("data","family",# "formula",
-              "prior.weights", "weights.form", # mwouairf. They shoudl have been elements of submodels...
+              "prior.weights", "weights.form", # mwouairf. They should have been elements of submodels...
               "HLmethod","method","rand.family","control.glm","REMLformula",
               "resid.model", "verbose","distMatrix","adjMatrix", "control.dist", "corrMatrix","covStruct") 
   # c("corrMatrix","distMatrix" ,"covStruct" ,"method" ,"HLmethod" ,"formula" ,"data" ,"family" ,"rand.family",

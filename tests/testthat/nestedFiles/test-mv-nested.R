@@ -56,18 +56,23 @@ spaMM.options(spaMM_tol=local_tol) # to control strictness of checks in independ
   
   (numinfo <- numInfo(zut0)) 
   (numSEs <- sqrt(diag(solve(numinfo)))) 
-  # Not independently derived values, but close enough to the cond.SEs:
-  testthat::expect_true(diff(range(numSEs[6:9]-c(0.06114231, 0.04073465, 0.05688579, 0.03909198)))<1e-6) 
-  # => non-orthogonality between the (fixef) Intercepts and the ranCoefs correlation param: Matrix::drop0(numinfo,tol=1e-6). 
-  #  This explains small difference after solve() although the beta block is unchanged:
-  (numinfo <- numInfo(zut0, which="beta"))
-  crit <- max(abs(sqrt(diag(solve(numinfo))) - summary(zut0,verbose=FALSE)$beta_table[,"Cond. SE"]))
-  testthat::test_that("numInfo() consistent with cond.SEs",
-                      testthat::expect_true(crit<1e-8))
+  condSEs <- summary(zut0,verbose=FALSE)$beta_table[,"Cond. SE"]
+  crit <- max(abs(numSEs[5:8]-condSEs))
+  testthat::test_that("numInfo() consistent with cond.SEs", testthat::expect_true(crit<1e-10))
   
-  numInfo(zut0, which=c("lambda", "ranCoefs", "phi"))
-  #  anova(zut0) # ____F I X M E___ this one not yet working (see other ____F I X M E___s)
-
+  { # check of anova
+    zutLM <- fitmv(submodels=list(mod1=list(formula=ly~X1+batch),
+                                  mod2=list(formula=y3~1+batch, family=gaussian())), 
+                   data=wafmv)
+    crit <- max(abs(c(anova(fitme(ly~X1+batch,  data=wafmv), method = "t.Chisq")[,3],
+                      anova( fitme(y3~1+batch,  data=wafmv), method = "t.Chisq")[,3]) - 
+                      anova(zutLM, type = "2")[,3]))
+    testthat::test_that("anova() OK on mv-LM",
+                        testthat::expect_true(crit<1e-8))
+  }
+  #
+  anova(zut0, type = "2") 
+  
   { # missing data
     afers <- wafmv
     afers$y3[71:140] <- NA
@@ -138,6 +143,20 @@ spaMM.options(spaMM_tol=local_tol) # to control strictness of checks in independ
                                   mod1=list(formula=y ~ 1+(1|batch), family=Gamma(log),resid.model= ~ X3+I(X3^2))), 
                           data=wafmv))
   testthat::expect_true(diff(range(logLik(zut1),logLik(zut2), logLik(mod1)+logLik(mod2)))<2e-7)
+  
+  { # check of anova
+    mod1 <- fitme(formula=y ~ X1+(1|batch), family=Gamma(log),resid.model= ~ X3+I(X3^2), data=wafmv)
+    mod2 <- fitme(formula=y2 ~ X1+(1|batch2), family=Gamma(log), data=wafmv)
+    zut1 <- fitmv(submodels=list(mod1=list(formula=y ~ X1+(1|batch), family=Gamma(log),resid.model= ~ X3+I(X3^2)),
+                                 mod2=list(formula=y2 ~ X1+(1|batch2), family=Gamma(log))), 
+                  data=wafmv)
+    crit <- max(abs(c(anova(mod1, method = "t.Chisq")[,3],
+                      anova(mod2, method = "t.Chisq")[,3]) - 
+                      anova(zut1, type = "2")[,3]))
+    testthat::test_that("anova() OK on mv-GLMM",
+                        testthat::expect_true(crit<1e-6))
+  }
+  
   # permutation test 
   (zut1 <- fitmv(submodels=list(mod1=list(formula=y ~ 1+(1|batch), family=Gamma(log),resid.model= ~ X3+I(X3^2)),
                                   mod2=list(formula=y2 ~ 1+(1|batch), family=Gamma(log))), 
@@ -168,7 +187,7 @@ spaMM.options(spaMM_tol=local_tol) # to control strictness of checks in independ
   testthat::expect_true(diff(range( predict(zut1, newdata=zut1$data)-predict(zut1)))<1e-14)
   testthat::expect_true(diff(range( get_predVar(zut1, newdata=zut1$data)-get_predVar(zut1)))<1e-14) ## there a resid.model so nothin is done with phi
   spaMM_boot(zut1, function(v) var(v), nsim=3L, type ="marginal")$bootreps
-  confint(zut1,"(Intercept)_1") # __FIXME__ messy display
+  confint(zut1,"(Intercept)_1") # ___F I X M E___ messy display
 
   cat(crayon::yellow("fixing phi: four different ways; "))# 
   (zut1 <- fitmv(submodels=list(mod1=list(formula=y ~ 1+(1|batch), family=Gamma(log), fixed=list(phi=0.001)),
@@ -328,7 +347,7 @@ spaMM.options(spaMM_tol=local_tol) # to control strictness of checks in independ
                          init=list(lambda=c("clinic2"=2.2,"clinic"=1.1)), data=climv, method=meth) 
   testthat::expect_true(identical(attr(zut4,"optimInfo")$LUarglist$canon.init, list(lambda=c("1"=1.1,"2"=2.2)))) # inits heeded 
   
-  testthat::expect_true(diff(range(logLik(zut1),logLik(zut2), logLik(zut3), logLik(zut4), logLik(fb)+logLik(fp)))<1e-6) # 1e-5 for REML # stricter conv check decreased the precision of the comparison.
+  testthat::expect_true(diff(range(logLik(zut1),logLik(zut2), logLik(zut3), logLik(zut4), logLik(fb)+logLik(fp)))<2e-6) # 1e-5 for REML # stricter conv check decreased the precision of the comparison.
   pfb <- get_predVar(fb)
   pfp <- get_predVar(fp)
   pzut1 <- get_predVar(zut1)
@@ -355,8 +374,7 @@ spaMM.options(spaMM_tol=local_tol) # to control strictness of checks in independ
                          data=climv))
   (fb <- fitme(formula=cbind(npos,nneg)~treatment+(1|clinic),family=binomial(), data=climv))
   (fg <- fitme(formula=np2~treatment+(1|clinic2),family=poisson(), data=climv, rand.family=Gamma(log)))
-  logLik(zut)-logLik(fb)-logLik(fg)
-  testthat::expect_true(diff(range(logLik(zut1), logLik(fb)+logLik(fg)))<1e-6) # stricter conv check decreased the precision of the comparison.
+  testthat::expect_true(diff(range(logLik(zut1), logLik(fb)+logLik(fg)))<5e-6) # stricter conv check decreased the precision of the comparison.
   
   cat(crayon::yellow("some extractors; ")) 
   testthat::expect_true(diff(range(residuals(zut1)-c(residuals(fb),residuals(fg))))<1e-5)
@@ -403,7 +421,7 @@ spaMM.options(spaMM_tol=local_tol) # to control strictness of checks in independ
                          data=climv))
   (fb <- fitme(formula=cbind(npos,nneg)~treatment+(1|clinic),family=binomial(), data=climv))
   (fTp <- fitme(formula=I(1L+np2)~treatment+(1|clinic2),family=Tpoisson(), data=climv))
-  testthat::expect_true(diff(range(logLik(zut), logLik(fb)+logLik(fTp)))<1e-6) # stricter conv check decreased the precision of the comparison.
+  testthat::expect_true(diff(range(logLik(zut), logLik(fb)+logLik(fTp)))<2e-6) # stricter conv check decreased the precision of the comparison.
   
   ## negbin(): outer-optimized dispersion parameters. 
   meth <- "ML(1,1)" 

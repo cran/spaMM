@@ -143,7 +143,7 @@ if (spaMM.getOption("example_maxtime")>8) {
                    control=list(refit=list(ranCoefs=TRUE))))
     (crit <- diff(range(c(logLik(fit1),logLik(fit2),logLik(fit3),logLik(fit4)))))
     FIXME <- testthat::test_that(paste0("Orthodont spprec F/T and refit F/T: criterion was ",signif(crit,4)," >1e-09"),
-                        testthat::expect_true(crit<3e-09) ) # was <1e09 until I changed as_precision to use chol2inv(chol()). Hmmm (__F I X M E__?)
+                        testthat::expect_true(crit<1e-09) ) # was <1e09 until I changed as_precision to use chol2inv(chol()). Back to excellent precision much later
     if ( ! FIXME) doSeeMe("Do see me!") 
     if (FALSE) {
       trace(spaMM:::.makeCovEst1,print=TRUE)
@@ -233,8 +233,8 @@ if (spaMM.getOption("example_maxtime")>8) {
     (fit4 <- fitme(distance ~ age+(age||Subject), data = Orthodont, 
                    fixed=list(),control.HLfit=list(sparse_precision=TRUE)))
     (crit <- diff(range(c(logLik(fit1),logLik(fit2),logLik(fit3),logLik(fit4)))))
-    testthat::test_that(paste0("two uncorr corrMatrix() terms by ranCoefs: spprec F/T: criterion was ",signif(crit,4)," >1e-10"),
-                        testthat::expect_true(crit<1e-10) )
+    testthat::test_that(paste0("two uncorr corrMatrix() terms by ranCoefs: spprec F/T: criterion was ",signif(crit,4)," >5e-10"),
+                        testthat::expect_true(crit<5e-10) )
     
     
   }

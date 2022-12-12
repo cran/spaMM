@@ -1219,7 +1219,9 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
     if (inherits(locdata,"list")) { # mv
       respVnrow <- sum(.unlist(lapply(locdata,nrow)))
     } else respVnrow <- nrow(locdata)
-    predVar <- rep(0,respVnrow)
+    if (variances$cov) {
+      predVar <- matrix(0, ncol=respVnrow, nrow=respVnrow)
+    } else predVar <- rep(0,respVnrow)
   } else predVar <- NULL 
   if ( variances$fixefVar || (newnrand==0L && variances$linPred) ) {
     beta_cov <- .get_beta_cov_any_version(object)
@@ -1326,6 +1328,21 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
   return(res)
 }
 
+.rbind_with_attributes <- function(somelist) {
+  res <- do.call(rbind,somelist)
+  mostAttrs <- names(attributes(somelist[[1L]]))
+  mostAttrs <- setdiff(mostAttrs,c("class","dim","dimnames","names","row.names","fittedName")) # fittedName is name provided by 'binding' argument
+  # and this function is called when such a name is provided. (=> the bound data.frame will still have this attribute, but not several copies in a vector).
+  tmpattr <- vector("list",length(somelist))
+  for (attrname in mostAttrs) {
+    for (it in seq_along(somelist)) tmpattr[[it]] <- attr(somelist[[it]],attrname)
+    if (is.matrix(tmpattr[[1L]])) {
+      attr(res,attrname) <- do.call(rbind,tmpattr)
+    } else attr(res,attrname) <- unlist(tmpattr)
+  }
+  return(res)
+}
+
 ## (1) for surface prediction: (developed in InferentialSimulation/InferentialSimulation.R)
 ## (2) But also for generation of fixed effects in simulation of nested-effects models
 predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
@@ -1375,7 +1392,7 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
     }
     if (showpbar) close(progrbar_setup$pb)
     if (is.character(binding)) {
-      res <- do.call(rbind, res) # rbind data frames
+      res <- .rbind_with_attributes(res) # rbind data frames and their attributes
     } else res <- .unlist_with_attributes(res) # vector for binding=NA, 1-col matrix for binding=FALSE
   } else if (type=="marginal") {
     res <- .predict_marg(object=object, newdata=newdata, re.form = re.form, control=control)

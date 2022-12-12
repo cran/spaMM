@@ -1,4 +1,5 @@
 cat(crayon::yellow("\ntest lmerTest interface and other ANOVA tables:")) 
+# See test-rank for additional tests of anova()
 
 { 
   { # LM (more LMs with sleepstudy data below)
@@ -74,9 +75,8 @@ cat(crayon::yellow("\ntest lmerTest interface and other ANOVA tables:"))
         ano2 <- lmerTest::contest(spfit_lmlt, L=c(1,0))
         fm <- lme4::lmer(Reaction ~ Days + (1|Subject), sleepstudy, REML=FALSE)
         ano1 <- lmerTest::contest(fm, L=c(1,0))
-        crit <- abs(ano1[,"F value"]-ano2[,"F value"]) # p-value too low for informative comparison
-        testthat::test_that("contest() results unchanged",
-                            testthat::expect_true(crit<1e-4))
+        crit <- abs(1-ano1[,"F value"]/ano2[,"F value"]) # p-value too low for informative comparison; compar of relative F values
+        testthat::test_that("contest() results unchanged", testthat::expect_true(crit<1e-6)) 
         
         spfit <- fitme(Reaction ~ Days + (1+Days|Subject), sleepstudy)
         spfit_lmlt <- as_LMLT(spfit) 

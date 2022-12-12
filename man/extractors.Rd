@@ -57,7 +57,7 @@ Functions to extract various components of a fit.
 \method{nobs}{HLfit}(object, ...)
 \method{logLik}{HLfit}(object, which, ...)
 \method{fitted}{HLfit}(object, ...)
-\method{fixef}{HLfit}(object, ...)
+\method{fixef}{HLfit}(object, na.rm=NULL, ...)
 \method{ranef}{HLfit}(object, type = "correlated", ...)
 \method{print}{ranef}(x, max.print = 40L, ...)
 \method{deviance}{HLfit}(object, ...)
@@ -77,11 +77,13 @@ dev_resids(object,...)
   \item{which}{* For \code{logLik}, the name of the element of the \code{APHLs} list to return (see Details for any further possibility). The default depends on the fitting method. In particular, if it was REML or one of its variants, the default is to return the log restricted likelihood (exact or approximated).\cr
   * For \code{getDistMat}, an integer, to select a random effect from several for which a distance matrix may be constructed.\cr
   * For \code{formula}, by default the model formula with non-expanded \code{multIMRF} random-effect terms is returned, while for \code{which=""} a formula with \code{multIMRF} terms expanded as \code{IMRF} terms is returned.}
+  \item{na.rm}{Whether to include NA values for missing coefficients of rank-deficient model matrices. Default is to exclude them for mixed models and to include them for other ones. See Details for the underlying reason.}
   \item{scaled}{If \code{FALSE}, the function ignores the scale parameter \eqn{rho} and returns unscaled distance.}
   \item{x}{For \code{print.ranef}: the return value of \code{ranef.HLfit}.}
   \item{max.print}{Controls \code{options("max.print")} locally.}
   \item{\dots}{Other arguments that may be needed by some method.}
 }
+\details{For rank-deficient model matrices, base R procedures \code{lm} and \code{glm} estimate coefficients for a rank-trimmed matrix and \code{coefficient()} returns a full-length vector completed with NA values for coefficients not estimated, while the \pkg{lme4} \code{fixef} method returns a trimmed vector. \pkg{spaMM} has long followed the base R convention for all models but this may impede use of some post-fit procedures initially conceived for \pkg{lme4} objects (such as \pkg{lmerTest} procedures for LMMs). So now \code{fixef.HLfit} trims the vector by default for mixed-effect models only. The default is thus to maximize consistency/compatibility with preexisting procedures despite their inconsistencies with each other.}
 \value{
 \code{formula} returns a \code{formula}, except a list of them from \code{fitmv()} output.
 

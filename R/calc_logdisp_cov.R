@@ -254,7 +254,9 @@
   return(list(logdisp_cov=logdisp_cov, problem=problem))
 }
 
-.calc_logdisp_cov <- function(object, dvdloglamMat=NULL, dvdlogphiMat=NULL, invV_factors=NULL) { 
+.calc_logdisp_cov <- function(object, dvdloglamMat=NULL, dvdlogphiMat=NULL, invV_factors=NULL,
+                              force_fixed=FALSE # if TRUE -> force computation for fixed pars too 
+                              ) { 
   if (object$spaMM.version<="1.11.60") stop("objects created with spaMM versions <= 1.11.60 are no longer supported.")
   lambda.object <- object$lambda.object
   strucList <- object$strucList
@@ -264,7 +266,9 @@
   col_info <- list(nrand=nrand, phi_cols=NULL) 
   Xi_cols <- attr(object$ZAlist, "Xi_cols")
   dwdloglam <- matrix(0,ncol=sum(Xi_cols),nrow=length(object$v_h)) # cols will remain 0 for fixed lambda params
-  checklambda <- ( ! (lambda.object$type %in% c("fixed","fix_ranCoefs","fix_hyper"))) 
+  if (force_fixed) {
+    checklambda <- rep(TRUE, length(lambda.object$type))
+  } else checklambda <- ( ! (lambda.object$type %in% c("fixed","fix_ranCoefs","fix_hyper"))) 
   if (any(checklambda)) {
     exp_ranef_types <- attr(object$ZAlist,"exp_ranef_types")
     checkadj <- (exp_ranef_types=="adjacency")
@@ -318,8 +322,9 @@
   } else ranef_ids <- NULL
   ###
   phimodel <- object$models[["phi"]]
-  if (phimodel=="phiScal" ||  
-      identical(object$envir$forcePhiComponent,TRUE) ## hack for code testing: force dispVar computation as if phi was not fixed.
+  if (force_fixed ||
+      phimodel=="phiScal" ||  
+      identical(object$envir$forcePhiComponent,TRUE) ## old hack for code testing: force dispVar computation as if phi was not fixed.
       ) { ## semble impliquer pas outer phi.Fix... => no need to test object$phi.object$phi_outer,"type")
     phi_est <- object$phi ## no need to get object$phi.object$phi_outer
     if (length(phi_est)!=1L) problems$stopphi <- warning("phimodel=\"phiScal\" but length(phi_est)!=1L.")

@@ -15,7 +15,7 @@ HLfit_body <- function(processed,
   predictor <- attr(processed$predictor,"no_offset") 
   prior.weights <- processed$prior.weights
   
-  warningList <- list()
+  warningEnv <- new.env(parent=emptyenv())
   ## when adding verbose elements, remind that these might be lost through corrHLfit -> HLCor cf dotlist$verbose <- verbose[intersect(...]
   ##
   y <- processed$y
@@ -301,7 +301,7 @@ HLfit_body <- function(processed,
                            iter=iter, prev_PHIblob=PHIblob)
       next_phi_est <- PHIblob$next_phi_est # value of *phi* (not phi_i:= phi/prior.weights as pw are used in GLMweights, not here)  
       
-      warningList <- .addPhiGLMwarning(PHIblob, models, warningList)
+      .addPhiGLMwarning(PHIblob, models, warningEnv)
       
       # phi_est may be (a single value|a long vector| a list of such values, for mv).
       conv.phi <- .eval_conv.phi(phi_est, next_phi_est, spaMM_tol=processed$spaMM_tol)
@@ -313,10 +313,10 @@ HLfit_body <- function(processed,
     
     if (need_ranefPars_estim) { ## lambda must be estimated 
       levlam_bound <- 1 - .spaMM.data$options$regul_lev_lambda
-      if (any(abs(leverages$ranef) > levlam_bound)) { ## abs... not commented when written...
-        leverages$ranef[leverages$ranef>levlam_bound] <- levlam_bound
-        warningList$leveLam1 <- TRUE
-      }      
+      if (warningEnv$leveLam1 <- any(whichleveLam1 <- (leverages$ranef > levlam_bound))) { 
+        leverages$ranef[whichleveLam1] <- levlam_bound
+        warningEnv$whichleveLam1 <- whichleveLam1 
+      } 
       ################## ranefEstargs mustcontain arguments for makeCoveEst1 => its names are constrained
       ####
       ranefEstargs <- list(u_h=u_h,ZAlist=processed$ZAlist,cum_n_u_h=cum_n_u_h,
@@ -352,9 +352,9 @@ HLfit_body <- function(processed,
                                            verbose=verbose,
                                            iter=iter,
                                            control=processed[["control.glm"]],
-                                           maxLambda=processed$maxLambda)
+                                           maxLambda=processed$maxLambda,
+                                           warningEnv)
       ####
-      warningList$anyVanishLam <- calcRanefPars_blob$anyVanishLam # NULL or TRUE
       HLfit_corrPars <- calcRanefPars_blob$HLfit_corrPars
       next_info_for_conv_rC <- calcRanefPars_blob$HLfit_corrPars$info_for_conv_rC ## vector
       old_lambda_est <- lambda_est
@@ -787,10 +787,10 @@ HLfit_body <- function(processed,
   ###################
   .hack_options_error(message=NULL)
   ## translation of warnings in user-more friendly form 
-  res$warnings <- .post_process_warningList(warningList, processed, maxit.mean,  pforpv, innerj,
+  res$warnings <- .post_process_warningEnv(warningEnv, processed, maxit.mean,  pforpv, innerj,
                                                            nonSPD=.BLOB(res$envir$sXaug)$nonSPD, 
                                                            conv_logL, iter, conv.lambda, conv.phi, conv.corr)
-  .verbose_warnings(verbose, res$warningList) # immediate, emphatic messages
+  .verbose_warnings(verbose, res$warnings) # immediate, emphatic messages
   ###
   ### experimental cAIC minimization (completely experimental)
   if (FALSE && identical(processed$return_only,"cAICAPHLs")) {

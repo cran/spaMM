@@ -17,7 +17,7 @@ Drop single terms from the model. The \code{drop1} method for \pkg{spaMM} fit ob
 For other classes of models, a table of likelihood ratio tests is returned, each test resulting from a call to \code{\link{LRT}}. 
 }
 \usage{
-\method{drop1}{HLfit}(object, scope, method="", check=NULL, check_time, ...)
+\method{drop1}{HLfit}(object, scope, method="", check_marg=NULL, check_time=60, ...)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -29,8 +29,8 @@ For other classes of models, a table of likelihood ratio tests is returned, each
 \item{method}{
   Only non-default value is \code{"LRT"} which forces evaluation of a likelihood ratio tests by \code{\link{LRT}}, instead of specific methods for specific classes of models.
 } 
-\item{check}{
-  NULL or boolean: whether effects should be checked for marginality. By default, this check is performed when a non-default scope is specified, and then no test is reported for terms that do not satisfy the marginality condition. If \code{check=FALSE}, marginality is not checked and tests are always performed.
+\item{check_marg}{
+  NULL or boolean: whether effects should be checked for marginality. By default, this check is performed when a non-default scope is specified, and then no test is reported for terms that do not satisfy the marginality condition. If \code{check_marg=FALSE}, marginality is not checked and tests are always performed.
 } 
 \item{check_time}{
   numeric: whether to output some information when the execution time of \code{drop1} may be of the order of the time specified by \code{check_time}, or more. This is checked only when random effect are present. Such output can thus be suppressed by \code{check_time=Inf}.

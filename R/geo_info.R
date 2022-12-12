@@ -65,13 +65,14 @@
     stop("spaMM only supports some internal inla models 'spde2'")
   }
   # matches formula for Q p.5 of https://www.jstatsoft.org/article/view/v063i19 (Lindgren & Rue 2015)
-  D0 = Diagonal(spde$n.spde, phi0) # T
-  D1 = Diagonal(spde$n.spde, phi1) # K^2
-  D12 = Diagonal(spde$n.spde, phi1 * phi2) # K^2 ....
+  D0 <- Diagonal(spde$n.spde, phi0) # T
+  D1 <- Diagonal(spde$n.spde, phi1) # K^2
+  D12 <- Diagonal(spde$n.spde, phi1 * phi2) # K^2 ....
   # for $MO = C, $M1 = G_1, $M2 = G_2
-  Q = (D0 %*% (D1 %*% spde$param.inla$M0 %*% D1 + D12 %*% spde$param.inla$M1 + 
+  Q <- (D0 %*% (D1 %*% spde$param.inla$M0 %*% D1 + D12 %*% spde$param.inla$M1 + 
                  t(spde$param.inla$M1) %*% D12 + spde$param.inla$M2) %*% D0)
-  return(Q)
+  # => Starting with Matrix 1.5-2, the above Q is dgT, no longer dgC... argh
+  return(as(Q,"CsparseMatrix"))
 }
 
 .calc_IMRF_Qmat <- function(pars, grid_arglist, kappa, test=FALSE) {
@@ -940,7 +941,10 @@
                   if (processed$is_spprec) {
                     # spprec => possible extension/permutation of *ZA*
                     is_incid <- attr(ZAlist[[it]],"is_incid") 
-                    ZAlist[[it]] <- .addrightcols_Z(Z=ZAlist[[it]], corrnames)
+                    ZAlist[[it]] <- .addrightcols_Z(Z=ZAlist[[it]], corrnames, 
+                                                    # warning about additional levels in the prec mat is not always pertinent;
+                                                    # this inhibitsthe warning for time_series:
+                                                    verbose=( ! identical(corrfamily$levels_type,"time_series")))
                     # now we are sure that they have the same names, only the orders are uncertain, so we can test order by any( != )
                     uZAnames <- unique(colnames(ZAlist[[it]])) # ! updated names
                     if (any(corrnames!=uZAnames)) .corrfamily_permute(corrfamily, perm=uZAnames)

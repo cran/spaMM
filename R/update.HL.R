@@ -29,6 +29,15 @@ get_HLCorcall <- function(outer_object, ## accepts fit object, or call, or list 
   outer_call <- getCall(outer_object) ## corrHLfit/fitme/HLCor/HLfit/fitmv call
   outer_call$data <- outer_object$data ## removes dependence on promise
   outer_call$fixed <- .modify_list(outer_call$fixed, fixed)
+  #
+  outer_fn <-.get_bare_fnname.HLfit(outer_object, call.=outer_call)
+  if (outer_fn=="corrHLfit" && length(init <- eval(outer_call[["init.corrHLfit"]]))) {
+    init <- .reformat_ranPars(init, fitobject = outer_object)
+    outer_call[["init.corrHLfit"]] <- remove_from_parlist(init, removand=fixed)
+  } else if (length(init <- eval(outer_call[["init"]]))) { # user-level => Need to standardize it before trimming it.
+    init <- .reformat_ranPars(init, fitobject = outer_object)
+    outer_call[["init"]] <- remove_from_parlist(init, removand=fixed)
+  }
   verbose <- outer_call$verbose
   verbose["getCall"] <- TRUE # but this is automatically converted to an integer if there are integer elsewhere in the vector...
   outer_call$verbose <- verbose
@@ -46,7 +55,6 @@ get_HLCorcall <- function(outer_object, ## accepts fit object, or call, or list 
   HLCorcall <- eval(as.call(outer_call)) ## calls outer fn and bypasses any optimization to get the inner call HLCor/HLfit... / fitmv?
   HLCorcall$call <- NULL ## $call kept the outer call! 
   if (inherits(HLCorcall[[1]], "function")) { # if it is of class "name", no need for this block
-    outer_fn <-.get_bare_fnname.HLfit(outer_object, call.=outer_call)
     if (outer_fn=="HLfit") {
       HLCorcall[[1L]] <- quote(HLfit)
     } else if (outer_fn=="fitme" || outer_fn=="fitmv" ) {

@@ -22,7 +22,7 @@ cat(crayon::yellow("\ntest pedigree:\n"))
   { # Manual version to avoid external dependencies:
     A <- matrix(NA, ncol=6,nrow=6)
     A[lower.tri(A,diag=TRUE)] <- c(8,0,4,4,4,2, 8,4,0,2,5, 8,2,5,4.5, 8,5,2.5, 9,5.5, 9)/8
-    A <- forceSymmetric(A,uplo = "L")
+    A <- Matrix::forceSymmetric(A,uplo = "L")
     colnames(A) <- rownames(A) <- 1:6
   }
   ## data simulation

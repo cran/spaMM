@@ -294,9 +294,12 @@ print.ranef <- function(x, max.print=40L, ...) {
   options(oldopt)
 }
 
-fixef.HLfit <- function(object,...) {
+fixef.HLfit <- function(object, na.rm=NULL, ...) {
   object <- .getHLfit(object)
-  object$fixef    
+  if (is.null(na.rm)) na.rm <- (object$models[["eta"]]=="etaHGLM")
+  if (na.rm) {
+    na.omit(object$fixef)
+  } else object$fixef    
 }
 
 .get_phi_fit <- function(object, mv_it=NULL) {
@@ -794,14 +797,18 @@ get_rankinfo <- function(object) return(attr(object$X.pv,"rankinfo"))
   varcorr
 }
 
-.get_fitted_ranPars <- function(object) { # phi not handled b this fn
+.get_ranPars <- function(object, # ___F I X M E___ API?
+                         wo_fixed=TRUE # whether to exclude fixed ones or not. Fn 1st dvl for wo_fixed=TRUE, the FALSE case may not always work. 
+                         ) { # phi not handled by this fn
   CorrEst_and_RanFix <- object$CorrEst_and_RanFix
-  if (length(resu <- CorrEst_and_RanFix$corrPars)) {
-    resu <- .remove_from_cP(resu, u_names=names(which(unlist(attr(CorrEst_and_RanFix,"type")$corrPars)=="fix")))
-    resu <- list(corrPars=resu)
-  } else resu <- list()
+  if (wo_fixed) {
+    if (length(resu <- CorrEst_and_RanFix$corrPars)) {
+      resu <- .remove_from_cP(resu, u_names=names(which(unlist(attr(CorrEst_and_RanFix,"type")$corrPars)=="fix")))
+      resu <- list(corrPars=resu)
+    } else resu <- list()
+  } else resu <- CorrEst_and_RanFix
   
-  # Overwrite any fixed lambda or phi in all cases:
+  # Overwrite any fixed lambda in all cases:
   if (length(lambda_list <- object$lambda.object$lambda_list)) {
     which_fitted_simple_lam <- which(sapply(lambda_list, length)==1L &  # removes (most) ranCoefs params [separate component of return value]
                                        object$lambda.object$type!="fixed") 
@@ -814,7 +821,7 @@ get_rankinfo <- function(object) return(attr(object$X.pv,"rankinfo"))
         #if (hy_lam_fixed) 
           which_fitted_simple_lam <- setdiff(which_fitted_simple_lam, ranges[[char_hyper_it]])
       }
-      hyper <- .remove_from_cP(hyper, u_names=names(which(unlist(attr(CorrEst_and_RanFix,"type")$hyper)=="fix")))
+      if (wo_fixed) hyper <- .remove_from_cP(hyper, u_names=names(which(unlist(attr(CorrEst_and_RanFix,"type")$hyper)=="fix")))
     }
     
     lambda <- .unlist(lambda_list[which_fitted_simple_lam]) 
@@ -846,13 +853,15 @@ get_rankinfo <- function(object) return(attr(object$X.pv,"rankinfo"))
     } 
   }
   
-  resu$ranCoefs <-  .get_rC_inits_from_hlfit(object,type=c("inner","outer_ranCoefs")) # overlap with Xi_ncol ranCoefs?
+  if (wo_fixed) {
+    resu$ranCoefs <- .get_rC_inits_from_hlfit(object,type=c("inner","outer_ranCoefs")) # overlap with Xi_ncol ranCoefs?
+  } else resu$ranCoefs <-  .get_rC_inits_from_hlfit(object,type=NULL)
   # ___F I X M E___ part of the pb is that of recovering info about the different types of rC from an HLfit object.
   resu
 } 
 
-.get_fittedPars_ran_phi <- function(object) {
-  resu <- .get_fitted_ranPars(object)
+.get_ranPars_phi <- function(object, wo_fixed) {
+  resu <- .get_ranPars(object, wo_fixed=wo_fixed)
   resu <- .add_famPars_outer(resu, fitobject=object, type_attr = FALSE)
   #
   phi_model <- object$models[["phi"]]
@@ -862,7 +871,7 @@ get_rankinfo <- function(object) return(attr(object$X.pv,"rankinfo"))
     } else {
       phi <- residVar(object, which="fit") # the syntax to get a single scalar when it's appropriate; 
       #                                       object$phi.object$fittedPars may contain Gamma GLM coefs.
-      if ( ! identical(attr(phi,"constr_phi"),TRUE)) resu$phi <- phi # plenty of case where the attribute is absent.
+      if ( ( ! wo_fixed) || ! identical(attr(phi,"constr_phi"),TRUE)) resu$phi <- phi # plenty of case where the attribute is absent.
     }
   } else {
     phi <- list()
@@ -871,7 +880,7 @@ get_rankinfo <- function(object) return(attr(object$X.pv,"rankinfo"))
         phi[mv_it] <- list(NULL)
       } else {
         phi_it <- residVar(object, which="fit", submodel = mv_it)
-        if ( ! identical(attr(phi_it,"constr_phi"),TRUE)) phi[as.character(mv_it)] <- list(phi_it)
+        if ( ( ! wo_fixed) || ! identical(attr(phi_it,"constr_phi"),TRUE)) phi[as.character(mv_it)] <- list(phi_it)
       }
     }
     resu$phi <- phi
@@ -889,7 +898,7 @@ get_rankinfo <- function(object) return(attr(object$X.pv,"rankinfo"))
   if ( ! resid) which <- setdiff(which, c("beta_prec", "NB_shape", "phi"))
   if ( ! ranef) which <- setdiff(which, c("lambda", "ranCoefs", "corrPars", "hyper"))
   
-  skeleton <- .get_fittedPars_ran_phi(object)
+  skeleton <- .get_ranPars_phi(object, wo_fixed=TRUE)
   if (verbose && length(extrapars <- setdiff(names(skeleton), which))) {
     message(paste0("Parameter(s) '",paste(extrapars,collapse="','"),"' ignored in this computation."))
   }
@@ -920,7 +929,7 @@ get_ranPars <- function(object, which=NULL,
     }
     return(resu)
   } else if (which=="fitted") {
-    resu <- .get_fitted_ranPars(object)
+    resu <- .get_ranPars(object, wo_fixed=TRUE)
     resu$phi <- NULL
     return(resu) # no type attribute
   } else if (which=="corrPars") {
