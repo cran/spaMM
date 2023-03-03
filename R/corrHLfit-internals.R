@@ -934,10 +934,10 @@ if (FALSE) {
   }
   inits <- .calc_inits_hyper(inits, hyper_info=hyper_info, fixed=inits$ranFix, moreargs=moreargs)
   # phi, lambda
-  inits <- .calc_inits_dispPars(init=inits$init,init.optim=inits$init.optim,init.HLfit=inits$init.HLfit,ranFix=inits$ranFix,
+  inits <- .calc_inits_dispPars(init=inits[["init"]],init.optim=inits$init.optim,init.HLfit=inits$init.HLfit,ranFix=inits$ranFix,
                                 user.lower=user.lower,user.upper=user.upper)
   # random coefficients
-  inits <- .calc_inits_ranCoefs(init=inits$init,init.optim=inits$init.optim,init.HLfit=inits$init.HLfit,ranFix=inits$ranFix,
+  inits <- .calc_inits_ranCoefs(init=inits[["init"]],init.optim=inits$init.optim,init.HLfit=inits$init.HLfit,ranFix=inits$ranFix,
                                 user.lower=user.lower,user.upper=user.upper)
   # If inits are not forced to be in user bounds at this step, .safe_opt() will detect that init is 'too close to bounds',
   # and will use bobyqa with locally corrected init that happen to satisfy the bounds. The optimInfo bears hardly any trace of that:
@@ -969,6 +969,7 @@ if (FALSE) {
     inits[["init.optim"]]$trbeta_prec <- .beta_precFn(inits[["init"]]$beta_prec)
     inits[["init.optim"]]$beta_prec <- NULL
   }
+  if (is.null(inits[["init"]]$rdisPars)) inits[["init"]]$rdisPars <- inits[["init.optim"]]$rdisPars # 'if user did not provide any, use the default one present in init.optim'
   
   # Currently there is no default beta; only a user_init_optim one:
   if (! is.null(beta <- inits[["init.optim"]]$beta)) { # at this point inits[["init.optim"]] = user's, + automatically added inits (none yet for beta)

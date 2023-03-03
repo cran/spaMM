@@ -1,6 +1,5 @@
 fitme_body <- function(processed,
                        init=list(),
-                       #                       init.HLfit=list(),
                        fixed=list(), ## NULL not valid (should be handled in preprocess?)
                        lower=list(),upper=list(),
                        # control.dist=list(), ## info in processed
@@ -21,7 +20,7 @@ fitme_body <- function(processed,
     HLCor.args <- dotlist[good_dotnames] # may contain the user's init.HLfit
   } else HLCor.args <- list() 
   ## replace some HLCor.args members  
-  if (  is.list(processed) ) {
+  if ( is.list(processed)) { ## list of environments
     pnames <- names(processed[[1]])
   } else pnames <- names(processed) # there's an "init_HLfit" but no "init.HLfit"
   for (st in pnames) HLCor.args[st] <- NULL 
@@ -41,11 +40,11 @@ fitme_body <- function(processed,
   fixed <- optim_blob$fixed
   corr_types <- optim_blob$corr_types
   LUarglist <- optim_blob$LUarglist
-  moreargs <- LUarglist$moreargs #   # Whether there will be an initvec -> outer optim or not, this should be avaibable and copied in the return object
-  # even when the is no optimInfo attribute. The non-trivial case without initvec is the case where hyper params where fixed in a fitme call..
   LowUp <- optim_blob$LowUp
   lower <- LowUp$lower ## list ! which elements may have length >1 !
   upper <- LowUp$upper ## list !
+  moreargs <- LUarglist$moreargs #   # Whether there will be an initvec -> outer optim or not, this should be available and copied in the return object
+  # even when the is no optimInfo attribute. The non-trivial case without initvec is the case where hyper params where fixed in a fitme call..
   #
 
   #
@@ -53,7 +52,7 @@ fitme_body <- function(processed,
     ## Problem is that outer optim at the mean model level is useful if we can avoid computation of the leverages 
     ## But here anyway we need the leverages of the 'mean' model to define the resid model response.
     resid_optim_blob <- .calc_optim_args(proc_it=residproc1, processed=proc1,
-                                         user_init_optim=proc1$residModel$init, fixed=proc1$residModel$fixed, ## all user input must be in proc1$residModel
+                                         user_init_optim=proc1$residModel[["init"]], fixed=proc1$residModel$fixed, ## all user input must be in proc1$residModel
                                          lower=proc1$residModel$lower, upper=proc1$residModel$upper, ## all user input must be in proc1$residModel
                                          verbose=c(SEM=FALSE), optim.scale=optim.scale, For="fitme") 
     resid_init.optim <- resid_optim_blob$inits$`init.optim` ## list; subset of all estimands, as name implies, and in transformed scale
@@ -70,7 +69,6 @@ fitme_body <- function(processed,
   }
   
   
-  processedHL1 <- proc1$HL[1] 
   needHLCor_specific_args <- (length(unlist(lower$corrPars, use.names = FALSE)) || 
                                 length(intersect(corr_types,c("Matern","Cauchy","adjacency","AR1","corrMatrix", "IMRF","corrFamily"))))
   if (needHLCor_specific_args) {
@@ -95,7 +93,8 @@ fitme_body <- function(processed,
   ## HLCor.obj uses a vector + skeleton
   initvec <- unlist(init.optim)
   if (needHLCor_specific_args) {
-    anyHLCor_obj_args$skeleton <- structure(init.optim, moreargs=moreargs, ## moreargs is a list over ranefs 
+    anyHLCor_obj_args$skeleton <- structure(init.optim, 
+                                            moreargs=moreargs, ## moreargs is a list over ranefs 
                                             type=relist(rep("fix",length(initvec)),init.optim) )
   } else {
     anyHLCor_obj_args$skeleton <- structure(init.optim,
@@ -112,20 +111,20 @@ fitme_body <- function(processed,
                                     type=.modify_list(.relist_rep("fix",fixed),  
                                                       relist(rep("outer",length(initvec)),init.optim)) )
     } else {
+      processedHL1 <- proc1$HL[1] 
       use_SEM <- (!is.null(processedHL1) && processedHL1=="SEM")
       time2 <- Sys.time()
       if (use_SEM) {
-        optimMethod <- "iterateSEMSmooth"
         if (is.null(proc1$SEMargs$control_pmvnorm$maxpts)) {
           .assignWrapper(processed,"SEMargs$control_pmvnorm$maxpts <- quote(250L*nobs)") 
         } ## else default visible in SEMbetalambda
         ## its names should match the colnames of the data in Krigobj = the  parameters of the likelihood surface. Current code maybe not general.
-        loclist <- list(anyHLCor_obj_args=anyHLCor_obj_args,  ## contains $processed
-                        LowUp=LowUp,init.corrHLfit=init.optim, ## F I X M E usage of user_init_optim probably not definitive
-                        control.corrHLfit=control,
-                        verbose=verbose[["iterateSEM"]],
-                        nb_cores=nb_cores)
-        optr <- .probitgemWrap("iterateSEMSmooth",arglist=loclist, pack="probitgem") # do.call("iterateSEMSmooth",loclist) 
+        iterateSEMSmooth <- get("iterateSEMSmooth",envir = asNamespace("probitgem"), inherits=FALSE)
+        optr <- iterateSEMSmooth(anyHLCor_obj_args=anyHLCor_obj_args,  ## contains $processed
+                                 LowUp=LowUp,init.corrHLfit=init.optim, ## F I X M E usage of user_init_optim probably not definitive
+                                 control.corrHLfit=control,
+                                 verbose=verbose[["iterateSEM"]],
+                                 nb_cores=nb_cores) 
         optPars <- relist(optr$par,init.optim)
         if (!is.null(optPars)) attr(optPars,"method") <-"optimthroughSmooth"
         refit_info <- control[["refit"]] ## may be a NULL/ NA/ boolean or a list of booleans 
@@ -148,17 +147,18 @@ fitme_body <- function(processed,
       ranPars_in_refit <- refit_args$ranPars_in_refit
       if ( ! is.null(processed$X_off_fn)) { # beta outer-optimization => switch to inner optim for this refit
         processed$off <- environment(processed$X_off_fn)$ori_off
-        processed$X.pv <- environment(processed$X_off_fn)$X_off
-        processed$AUGI0_ZX <- .init_AUGI0_ZX(processed$X.pv, processed$AUGI0_ZX$vec_normIMRF, processed$ZAlist, nrand=length(processed$ZAlist), n_u_h=nrow(processed$AUGI0_ZX$ZeroBlock), 
+        X.pv <- environment(processed$X_off_fn)$X_off # the full matrix, scaled
+        processed$AUGI0_ZX <- .init_AUGI0_ZX(X.pv, processed$AUGI0_ZX$vec_normIMRF, processed$ZAlist, nrand=length(processed$ZAlist), n_u_h=nrow(processed$AUGI0_ZX$ZeroBlock), 
                                              sparse_precision=processed$is_spprec, 
                                              as_mat=.eval_as_mat_arg(processed))
         if ( ! is.null(trBeta <- ranPars_in_refit$trBeta)) { # on transformed scale
-          HLCor.args$init.HLfit$fixef <- .betaInv(trBeta)
+          sc_fixef <- .betaInv(trBeta)
           ranPars_in_refit$trBeta <- NULL
         } else {
-          HLCor.args$init.HLfit$fixef <- ranPars_in_refit$beta
+          sc_fixef <- ranPars_in_refit$beta
           ranPars_in_refit$beta <- NULL
         }
+        HLCor.args$init.HLfit$fixef <- .unscale(X.pv, sc_fixef)
         processed$port_env$port_fit_values$fixef <- NULL
         processed$X_off_fn <- NULL
       }
@@ -168,6 +168,12 @@ fitme_body <- function(processed,
     if (needHLCor_specific_args) attr(ranPars_in_refit,"moreargs") <- moreargs 
     HLCor.args$fixed <- structure(ranPars_in_refit,
                                   moreargs=moreargs) 
+    if (is.null(processed$data$.phi)) { # we're in a mean-response fit)
+      if (length(residinfo <- processed$residProcessed$port_env$port_fit_values)) { # implies that there was a phi-resid.model 
+        HLCor.args$init.HLfit$phi <- residinfo$fv # The phi of the mean-response model is initiated by fitted values of the resid.model
+        processed$residModel$init.HLfit <- residinfo$init_HLfit # may have fixef, v_h, and more generally the elements of get_inits_from_fit(phifit,inner_lambdas = TRUE)$init.HLfit
+      }
+    }
   } else if (len_ranPars <- length(unlist(HLCor.args$fixed, use.names = FALSE))) { ## Set attribute
     HLCor.args$fixed <- structure(HLCor.args$fixed,
                                   type = relist(rep("fix", len_ranPars), HLCor.args$fixed),
@@ -178,16 +184,25 @@ fitme_body <- function(processed,
   .assignWrapper(HLCor.args$processed,"return_only <- NULL") 
   .assignWrapper(HLCor.args$processed,"verbose['warn'] <- TRUE") ## important!
   # Run in all cases to produce the full object (rather than only the optimization result):
-  hlcor <- do.call(HLcallfn,HLCor.args) ## recomputation post optimization, or only computation if length(initvec)=0
+  hlcor <- do.call(HLcallfn,HLCor.args) ## recomputation post optimization, or only computation if length(initvec)=0, or simple getHLCorCall
   if (is.call(hlcor)) {
-    ## then do.call(HLcallfn,HLCor.args) has retuned the call, not the fit. 
+    ## then do.call(HLcallfn,HLCor.args) has returned the call, not the fit. 
     ## see def of get_HLCorcall() for further explanation
+    # confint can use this info:
+    if (length(initvec)) {
+      attr(hlcor,"optimInfo") <- list(LUarglist=LUarglist, init.optim=init.optim,
+                                      objective=proc1$objective,
+                                      augZXy_phi_est=augZXy_phi_est)
+    }
     return(hlcor) ## HLCorcall
+  } else {
+    if ( proc1$fitenv$prevmsglength) { # there was output for a phi-resid.model. The fit object may then be printed...
+      cat("\n")
+      proc1$fitenv$prevmsglength <- 0L
+    }
   }
-  # hlcor <- .update_ranef_info(hlcor, moreargs=moreargs)# make this independent of the 'optimInfo' attr, for reason explained where 'moreargs' is assigned
-  # (alternative would be to set an 'optimInfo' attr even when there is no outer optim)
   if (length(initvec)) {
-    attr(hlcor,"optimInfo") <- list(LUarglist=LUarglist, optim.pars=optPars, 
+    attr(hlcor,"optimInfo") <- list(LUarglist=LUarglist, optim.pars=optPars,
                                     objective=proc1$objective,
                                     augZXy_phi_est=augZXy_phi_est, ## gives info to interpret optim.pars in confint.HLfit()
                                     optim_time=optim_time) ## processed was erased for safety

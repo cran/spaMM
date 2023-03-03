@@ -137,8 +137,11 @@
       ## correlation algos can still be selected and are better (ohio small and many scotlip tests)
       ## SPPREC and CORREL roughly as fast for fitNF in test-devel-predVar-AR1; which has crit=43
       updated <- FALSE
+      LHS_nlev <- length(attr(ZAlist[[rd]],"namesTerm"))
+      
       if (exp_ranef_types[rd] %in% c("AR1", "IMRF", "adjacency") ) { # If the user provided e.g. a huge adjmatrix it's risky to compute a huge inverse
         nc <- ncol(ZAlist[[rd]])
+        if (LHS_nlev>1L) nc <- nc %/% LHS_nlev # opaquely not needed in corrMatrix case (checked by long tests)
         corrlist[[rd]] <- lower.tri(matrix(TRUE,ncol=nc,nrow=nc),diag = TRUE) # template matrix created in faster way than diag()
         updated <- TRUE
       } else if (exp_ranef_types[rd] == "corrMatrix" && fast && is.null(corrlist[[rd]]) &&  ! is.null(preclist[[rd]])) {
@@ -157,7 +160,7 @@
         } else corrlist[[rd]] <- t(solve(tcrossfac_adj)) # quick patch when another facto used.  
         updated <- TRUE
       }
-      if (updated && (LHS_nlev <- length(attr(ZAlist[[rd]],"namesTerm")))>1L ) {
+      if (updated && LHS_nlev>1L ) {
         corrlist[[rd]] <- kronecker(lower.tri(matrix(1,ncol=LHS_nlev,nrow=LHS_nlev),diag=TRUE), corrlist[[rd]])
       } 
     }
@@ -608,9 +611,15 @@
                                   control.glm, family) {
   residFrames <- NULL
   resid.formula <- resid.model$formula
+  is_mixed <- ! is.null(.parseBars(resid.formula))
+  has_etaFix <- ! is.null(resid.model$etaFix)
+  mainfamfam <- family$family
   if ( is.null(processed$phi.Fix)) {
-    if ( ! is.null(.parseBars(resid.formula))) { # mixed model
-      if (is.null(resid.model$rand.family)) resid.model$rand.family <- gaussian() # avoids rand.families being NULL in .preprocess_resid() -> .preprocess()
+    if (is_mixed && is.null(resid.model$rand.family)) resid.model$rand.family <- gaussian() # avoids rand.families being NULL in .preprocess_resid() -> .preprocess()
+    if (is_mixed || 
+        has_etaFix # GLM with etaFix: a fixed etaFix can be fitted by an offset (alternative below)
+                   # but a variable etaFix (outer optim) will be fitted using an HLfit (useful at least for devel purposes)
+        ) { 
       preprocess_arglist <- list(control.HLfit=control.HLfit, ## constrained
                                  ranFix=resid.model$fixed, 
                                  HLmethod=HLmethod, ## constrained
@@ -618,7 +627,7 @@
                                  resid.model=resid.model$resid.model, # potentially allows nested resid.model's... 
                                  REMLformula=NULL, # constrained
                                  data=data, # obvious (?) 
-                                 family=resid.model$family, # obvious
+                                 family=resid.model$family, # obvious, gaussian
                                  BinomialDen=NULL, # obviously no binomial response
                                  rand.families=resid.model$rand.family, # (NULL not handled by preprocess); 
                                  #   outer preprocess calls *receive* a default value from formals(HLfit)
@@ -633,10 +642,17 @@
       other_preprocess_args <- setdiff(names(formals(.preprocess)),names(preprocess_arglist))
       preprocess_arglist[other_preprocess_args] <- resid.model[other_preprocess_args]
       processed$residProcessed <- .preprocess_resid(preprocess_arglist)
-      if (identical(names(resid.model$fixed$phi),"default")) message("'phi' of residual dispersion model set to 1 by default")
-      models[["phi"]] <- "phiHGLM" 
-      p_phi <- NA
-    } else { # no random effect in resid.formula
+      # message is a nuisance for bootstraps
+      # if (processed$verbose["phifit"] && # should be FALSE in bootstraps bc the message is a nuisance in that context
+      #     identical(names(resid.model$fixed$phi),"default")) message("'phi' of residual dispersion model set to 1 by default")
+      if (is_mixed) {
+        models[["phi"]] <- "phiHGLM" 
+        p_phi <- NA
+      } else {
+        models[["phi"]] <- "phiGLM" 
+        p_phi <- NCOL(processed$residProcessed$AUGI0_ZX$X.pv) # without the etaFix ones; info for .more_init_optim() to eval allPhiScalorFix which must be non-NA
+      }
+    } else { # NOT mixed-effect model NOR etaFix. Still allows a fixed offset that should give result equivalent ot a fixed etaFix
       residFrames <- .get_terms_info(formula=resid.formula, data=data, famfam=resid.model$family$family)
       attr(resid.formula,"off") <- model.offset(residFrames$mf) ## only for summary.HLfit() (and below)
       attr(resid.formula,"has_intercept") <- (attr(residFrames$fixef_off_terms,"intercept")!=0L) ## for identifiability checks
@@ -657,13 +673,42 @@
       }
       resid.model$formula <- resid.formula  ## put it back after attributes have been added (no equivalent if phiHGLM has been detected?)
     } 
-    processed$p_fixef_phi <- p_phi # no X_disp is saved in processed
-  } else {
-    processed$p_fixef_phi <- 0L
-    if ( ( ! family$family %in% c("gaussian","Gamma")) && .DEPARSE(resid.formula) != "~1") {
-      warning(paste0("resid.model is ignored in ",family$family,"-response models"))
-    }
+  } else { # phi.Fix was not NULL. In particular for rdisPars it is presumably 1. models[["phi"]] remains ""
+    if ( ( ! mainfamfam %in% c("gaussian","Gamma")) && .DEPARSE(resid.formula) != "~1") {
+      if ( ! mainfamfam %in% c("beta_resp","negbin1","negbin2")) warning(paste0("resid.model may be ignored in ",mainfamfam,"-response models"))
+
+      resid.formula <- resid.model$formula
+      if ( ! is.null(.parseBars(resid.formula))) stop("Random effects are not allowed in model for family parameter.")
+      # NOT mixed-effect model NOR etaFix. Still allows a fixed offset that should give result equivalent ot a fixed etaFix
+      residFrames <- .get_terms_info(formula=resid.formula, data=data, famfam="")
+      off <- model.offset(residFrames$mf)
+      # attr(resid.formula,"has_intercept") <- (attr(residFrames$fixef_off_terms,"intercept")!=0L) ## for identifiability checks
+      ## if formula= ~1 and data is an environment, there is no info about nobs, => fr_disp$X has zero rows, which is a problem later
+      X <- residFrames$X
+      p_phi <- NCOL(X)
+      if (p_phi==1L && colnames(X)[1]=="(Intercept)"
+          && is.null(off) ## added 06/2016 (bc phiScal does not handle offset in a phi formula) 
+      ) {
+        models[["rdispar"]] <- "rdiScal"
+      } else {
+        disp_env <- family$resid.model # virgin envir
+        disp_env$resid.formula <- resid.formula
+        if ( ! is.null(off)) disp_env$off <- off
+        if (p_phi==0L) { # resid.formula has only an offset term.
+          # processed$phi.Fix <- resid.model$family$linkinv(model.offset(residFrames$mf)) # fitting fns see this as phi.Fix
+          models[["rdispar"]] <- "rdiOff" # meaningful: see how new offset values are predicted in .calcResidVar()
+          # resid.model <- list(formula=resid.formula, off=off)  ## put it back after attributes have been added (no equivalent if phiHGLM has been detected?)
+        } else { 
+          models[["rdispar"]] <- "rdiForm"
+          disp_env$colnames_X <- colnames(X)
+          disp_env$X <- X
+          # disp_env$init <- resid.model$init
+          # disp_env$etaFix <- resid.model$etaFix # finally NOT used by .init_rdisPars().
+        }
+      }
+    } else p_phi <- 0L
   }
+  processed$p_fixef_phi <- p_phi # no X_disp is saved in processed
   processed$residModel <- resid.model 
   models
 }
@@ -692,12 +737,11 @@
     if ("package:spaMM" %in% search()) {
       if ( level ) {
         if (processed$augZXy_cond) {
-          traced_fn <- quote(.HLfit_body_augZXy)
           if (! mess_scaling && level>=1L) {
             message("'y-augmented' algorithm: in TRACE displays, variable lambda values are shown relative to phi values.")
             mess_scaling <<- TRUE
           }
-        } else traced_fn <- quote(HLfit_body)
+        } 
         if (level >= 1L ) {
           tracing_op <- quote(try(.TRACE_fn(fixed, processed))) # the closure of the traced function must have a 'fixed' variable
           if (is.null(processed$REMLformula)) { ## default REML case
@@ -721,7 +765,12 @@
           tracing_op <- quote({})
           exit_op <- quote({})
         }
-        suppressMessages(trace(traced_fn, where=asNamespace("spaMM"), print=FALSE, 
+        if ( ! is.null(processed$HLfit_body_fn2)) {
+          suppressMessages(trace(processed$HLfit_body_fn2, where=asNamespace("spaMM"), print=FALSE, 
+                                 tracer=tracing_op, # shows the parameters
+                                 exit=exit_op)) # shows the objective fn
+        }
+        suppressMessages(trace(processed$HLfit_body_fn, where=asNamespace("spaMM"), print=FALSE, 
                                tracer=tracing_op, # shows the parameters
                                exit=exit_op)) # shows the objective fn
         # if (processed$is_spprec) {
@@ -741,8 +790,10 @@
           }
         }
       } else { # TRACE=0
-        suppressMessages(try(untrace(HLfit_body, where=asNamespace("spaMM")), silent=TRUE))      
-        suppressMessages(try(untrace(.HLfit_body_augZXy, where=asNamespace("spaMM")), silent=TRUE))      
+        if ( ! is.null(processed$HLfit_body_fn2)) {
+          suppressMessages(try(untrace(processed$HLfit_body_fn2, where=asNamespace("spaMM")), silent=TRUE))   
+        }
+        suppressMessages(try(untrace(processed$HLfit_body_fn, where=asNamespace("spaMM")), silent=TRUE))   
         for (method_st in c("matrix_method","Matrix_method","spprec_method","Hobs_Matrix_method")) {
           fn <- paste("get_from_MME",strsplit(spaMM.getOption(method_st),"def_")[[1L]][2],sep=".") 
           suppressMessages(untrace(fn, where=asNamespace("spaMM")))
@@ -867,12 +918,13 @@
 
 .init_AUGI0_ZX <- function(X.pv, vec_normIMRF, ZAlist, nrand, n_u_h, sparse_precision, as_mat) {
   if (nrand) {
+    pforpv <- ncol(X.pv)
     if ( ! as_mat) {
       AUGI0_ZX <- list2env( list(I=.sparseDiagonal(n=n_u_h, shape="g"), ## to avoid repeated calls to as() through rbind2...; previously used .trDiagonal()
-                                 ZeroBlock= Matrix(0,nrow=n_u_h,ncol=ncol(X.pv)), X.pv=X.pv) )
+                                 ZeroBlock= Matrix(0,nrow=n_u_h,ncol=pforpv), X.pv=X.pv) )
       # delayedAssign("Ilarge", .trDiagonal(n=ncol(I)+ncol(X.pv), unitri = FALSE), eval.env = AUGI0_ZX, assign.env = AUGI0_ZX) # hmf: .trDiagonal  ~ 8e-4 s. (but delayedA is 500 times faster)
     } else {
-      AUGI0_ZX <- list2env( list(I=diag(nrow=n_u_h),ZeroBlock= matrix(0,nrow=n_u_h,ncol=ncol(X.pv)), X.pv=X.pv) )
+      AUGI0_ZX <- list2env( list(I=diag(nrow=n_u_h),ZeroBlock= matrix(0,nrow=n_u_h,ncol=pforpv), X.pv=X.pv) )
     } ## $ZAfix added later   and   X.pv scaled below  !!
     AUGI0_ZX$vec_normIMRF <- vec_normIMRF
     AUGI0_ZX$envir <- list2env(list(finertypes=attr(ZAlist,"exp_ranef_types"), ## to be modified later
@@ -887,8 +939,11 @@
     # That latter code would deserve to be checked (whether some FALSE could become TRUE) since it has been used only by aug_ZXy's .get_absdiagR_blocks() procedure .
     # For SPPREC, it is rebuilt by .init_AUGI0_ZX_envir_spprec_info()
     # For CORR methods, this paves the way for extended usage, but won't solve what prevents using permuted Cholesky for which="R_scaled_v_h_blob" in QRP_CHM. 
-    if ( ! sparse_precision) {
+    if (sparse_precision) {
+      AUGI0_ZX$trDiag <- ..trDiagonal(n=n_u_h)
+    } else {
       if (inherits(AUGI0_ZX$ZeroBlock,"sparseMatrix")) {
+        AUGI0_ZX$trDiag <- ..trDiagonal(n=n_u_h+pforpv)
         AUGI0_ZX$Zero_sparseX <- rbind2(AUGI0_ZX$ZeroBlock, as(AUGI0_ZX$X.pv,"CsparseMatrix"))
       } else AUGI0_ZX$Zero_sparseX <- rbind2(AUGI0_ZX$ZeroBlock, AUGI0_ZX$X.pv)
     }
@@ -992,7 +1047,8 @@
 })
 
 
-.need_obsAlgo <- function(HLmethod, family, canonicalLink=family$flags$canonicalLink) {
+.need_obsAlgo <- function(HLmethod, family, canonicalLink=family$flags$canonicalLink, 
+                          nrand, opt=.spaMM.data$options$obsInfo) {
   # not GLM -> always obsInfo
   # GLM fam with canonical link -> this is indifferent. here obsInfo set to false, 
   if ( ! family$flags$exp ) { # no expected-info capacity; not GLM
@@ -1006,10 +1062,9 @@
                        stop("Unhandled second specifier in 'method' argument"))
   } else {
     obsInfo <- (
-      HLmethod[[1L]]!="SEM" &&
-      .spaMM.data$options$obsInfo
+      HLmethod[[1L]]!="SEM" && 
+        opt && (nrand || opt>1L) # so that default is "obs" for MM and "exp" in fixed-effect models, when not determined by previous conditions.
     ) # use .spaMM.data's default method is not SEM
-    # if (!obsInfo) .obsInfo_warn() 
   }
   obsInfo
 }

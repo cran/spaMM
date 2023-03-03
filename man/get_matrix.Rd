@@ -34,7 +34,8 @@ Model coefficients estimates of a (weighted) linear model can be written as \bol
 \code{"wAugX"}: \eqn{\sqrt{}}{\sqrt}(\bold{W})\bold{X};\cr 
 \code{"left_ginv"}: \bold{(X'WX)}\eqn{^{-1}}\bold{X'W} (the name stems from the fact that it is generalized inverse, denoted \bold{X}\eqn{^-}, since \bold{X}\bold{X}\eqn{^-}\bold{X}=\bold{X}, and it is a left one, since \bold{X}\eqn{^-}\bold{X} is an identity matrix when \bold{X} has full rank);\cr 
 \code{"hat_matrix"}: \bold{XX}\eqn{^-}=\bold{X }\bold{(X'WX)}\eqn{^{-1}}\bold{X'W};\cr 
-\code{"fixef_left_ginv"}: same as \code{"left_ginv"} but for the fixed-effect design matrix only (not to be confused with the corresponding block of \code{"left_ginv"}). 
+\code{"fixef_left_ginv"}: same as \code{"left_ginv"} but for the fixed-effect design matrix only (not to be confused with the corresponding block of \code{"left_ginv"});\cr 
+\code{"beta_v_cov"}: joint covariance matrix of estimates/predictions of fixed effect coefficients and random effects. 
 
 
 }

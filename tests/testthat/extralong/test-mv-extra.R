@@ -1,4 +1,4 @@
-cat(crayon::yellow(" -> test-mv-nested:")) # not part of the testthat.R tests (neither test-composite-nested.R)
+cat(crayon::yellow("\ntest-mv-extra:")) # not part of the testthat.R tests (neither test-composite-extra.R)
 
 library(spaMM)
 options(error=recover)
@@ -12,8 +12,9 @@ spaMM.options(spaMM_tol=local_tol) # to control strictness of checks in independ
   d_y_missing <- d
   d_y_missing[1, "y1"] <- NA
   blaNA <- fitmv(submodels = list(one = list(y1 ~ x), two = list(y2 ~ x)), 
+                 # X2X=matrix(c(1,0,1,0,0,1,0,0,0,0,0,1),ncol=3,nrow=4,dimnames=list(NULL,c("(Intercept)","x_1","x_2"))),
                  data = d_y_missing)
-  testthat::expect_true(diff(range(predict(blaNA)[,1] - predict(blaNA, newdata=blaNA$data)[-1,1]))< 2e-16)
+  testthat::expect_true(diff(range(predict(blaNA)[,1] - predict(blaNA, newdata=blaNA$data)[-1,1]))< 2e-16) # must work with X2X too
 }
 
 {
@@ -176,6 +177,11 @@ spaMM.options(spaMM_tol=local_tol) # to control strictness of checks in independ
                                   mod1=list(formula=y ~ 1+(1|batch), family=Gamma(log),resid.model= ~ 1+(1|batch))), 
                           data=wafmv))
   testthat::expect_true(diff(range(logLik(zut1),logLik(zut2), logLik(mod1)+logLik(mod2)))<1e-4)
+  ## To 'cover' the init procedure of refits in fitmv_body when there is a mixed-effect phi-resid.model:
+  # Here one must force some outer optimization for the mean-response model hence the lambda init:
+  cover_residM_reinit <- fitmv(submodels=list(mod2=list(formula=y2 ~ 1+(1|batch2), family=Gamma(log)),
+                                mod1=list(formula=y ~ 1+(1|batch), family=Gamma(log),resid.model= ~ 1+(1|batch))), 
+                 data=wafmv, init=list(lambda=c(0.01,0.01)))
   # permutation test 
   (zut1 <- fitmv(submodels=list(mod1=list(formula=y ~ 1+(1|batch), family=Gamma(log),resid.model= ~  1+(1|batch)),
                                   mod2=list(formula=y2 ~ 1+(1|batch), family=Gamma(log))), 
@@ -187,7 +193,7 @@ spaMM.options(spaMM_tol=local_tol) # to control strictness of checks in independ
   testthat::expect_true(diff(range( predict(zut1, newdata=zut1$data)-predict(zut1)))<1e-14)
   testthat::expect_true(diff(range( get_predVar(zut1, newdata=zut1$data)-get_predVar(zut1)))<1e-14) ## there a resid.model so nothin is done with phi
   spaMM_boot(zut1, function(v) var(v), nsim=3L, type ="marginal")$bootreps
-  confint(zut1,"(Intercept)_1") # ___F I X M E___ messy display
+  confint(zut1,"(Intercept)_1")
 
   cat(crayon::yellow("fixing phi: four different ways; "))# 
   (zut1 <- fitmv(submodels=list(mod1=list(formula=y ~ 1+(1|batch), family=Gamma(log), fixed=list(phi=0.001)),
@@ -834,7 +840,7 @@ testthat::expect_true(diff(range(logLik(zut1), logLik(zut2)))<1e-08)
     try(testthat::test_that(paste0("criterion was ",signif(crit,6)," from -6.48830317593"), # affected by use_ZA_L or .calc_r22()  ... and minKappa...
                         testthat::expect_true(crit<1e-08)))
   }
-  if (spaMM.getOption("example_maxtime")>119) { cat(crayon::yellow("multIMRF indep-fit tests; "))
+  if (spaMM.getOption("example_maxtime")>87) { cat(crayon::yellow("multIMRF indep-fit tests; "))
     (mrf1fixx <- fitme(migStatus ~ 1 + (1|pos) + 
                     multIMRF(1|longitude+latitude,margin=5,levels=2), 
                   data=blackcap, fixed=list(phi=1,lambda=c("1"=0.5),
@@ -899,14 +905,14 @@ testthat::expect_true(diff(range(logLik(zut1), logLik(zut2)))<1e-08)
       # inits to try to speed the fit () (and lambda=c("3"=.) works as it should)
       (zut1 <- fitmv(submodels=list(mod1=list(migStatus ~ 1 + multIMRF(1|longitude+latitude,margin=5,levels=2)), 
                                     mod2=list(status2 ~ 1+ IMRF(1|longitude+latitude, model=matern))), 
-                     data=cap_mv, init=list(lambda=c("3"=5),phi=list("1"=1e-4,"2"=0.05)),verbose=c(TRACE=TRUE)))
+                     data=cap_mv, init=list(lambda=c("3"=5),phi=list("1"=1e-4,"2"=0.05)),verbose=c(TRACE=0.5)))
       (zut2 <- fitmv(submodels=list(mod2=list(status2 ~ 1+ IMRF(1|longitude+latitude, model=matern)),
                                     mod1=list(migStatus ~ 1 + multIMRF(1|longitude+latitude,margin=5,levels=2))), 
                      data=cap_mv, init=list(lambda=c("1"=5),phi=list("1"=0.05,"2"=1e-4)))) 
       testthat::expect_true(diff(range(logLik(zut1), logLik(zut2), logLik(mrf1T)+logLik(mrf3)))<1e-5)
     }
     
-  } else cat(crayon::bgGreen("\n multIMRF indep-fit tests are slow (~119s). Run them once in a while; "))
+  } else cat(crayon::bgGreen("\n multIMRF indep-fit tests are slow (~87s). Run them once in a while; "))
   
   { cat(crayon::yellow("multIMRF permutation tests; ")) # ~ 13s
     # reason for init phi as above: to avoid a local maximum

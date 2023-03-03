@@ -1,5 +1,5 @@
 .future_apply <- function(newresp, cluster_args, nb_cores, fn, iseed, steps, ...) {
-  has_progressr <- ("package:progressr" %in% search())
+  has_progressr <- ("progressr" %in% loadedNamespaces())
   if (has_progressr) {
     # progressor is the only progress function that 'works' with mclapply
     # although not with load-balancing (mc.preschedule=FALSE)
@@ -52,7 +52,7 @@ dofuture <- function(newresp, fn, nb_cores=NULL,
       if (cluster_args$type=="FORK") {
         cl <- parallel::makeForkCluster(nnodes = nb_cores) 
         future::plan(future::cluster, workers=cl)
-        bootreps <- .future_apply(newresp, cluster_args, nb_cores, fn, iseed, steps=ceiling(ncol(newresp)/nb_cores), ...)
+        bootreps <- .future_apply(newresp, cluster_args, nb_cores, fn, iseed, steps=ceiling(nsim/nb_cores), ...)
       } else { # PSOCK
         cl <- do.call(parallel::makeCluster, cluster_args) # create a *socket* cluster
         future::plan(future::cluster, workers=cl)
@@ -62,12 +62,12 @@ dofuture <- function(newresp, fn, nb_cores=NULL,
                               function(packages) {for (p in packages) library(p, character.only = TRUE)}, 
                               packages2export)
         if (is.environment(fit_env)) try(parallel::clusterExport(cl=cl, varlist=ls(fit_env), envir=fit_env)) 
-        bootreps <- .future_apply(newresp, cluster_args, nb_cores, fn, iseed, steps=ceiling(ncol(newresp)/nb_cores), ...)
+        bootreps <- .future_apply(newresp, cluster_args, nb_cores, fn, iseed, steps=ceiling(nsim/nb_cores), ...)
       } # FORK ... else
       parallel::stopCluster(cl)
     } else { ## nb_cores=1L
       future::plan("sequential")
-      bootreps <- .future_apply(newresp, cluster_args, nb_cores, fn, iseed, steps=ncol(newresp), ...)
+      bootreps <- .future_apply(newresp, cluster_args, nb_cores, fn, iseed, steps=nsim, ...)
     }
     if (identical(control$.combine,"rbind")) bootreps <- t(bootreps)
     cat(paste(" bootstrap took",.timerraw(time1),"s.\n")) 

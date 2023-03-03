@@ -132,7 +132,7 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
 .sXaug_Matrix_QRP_CHM_scaled <- function(sXaug,which="",szAug=NULL,B=NULL) {
   BLOB <- attr(sXaug,"BLOB") ## an environment
   # attr(sXaug,"AUGI0_ZX") was always present in in .solve_IRLS_as_ZX(), being inherited from the Xaug argument of def_sXaug_Matrix_QRP_CHM_scaled
-  # but was not present in .solve_v_h_IRLS(). Now it should be always present, so we could use it => so use it eg instead of the .rawsolve()? tried=> BOF)
+  # but was not present in .solve_v_h_IRLS(). Now it should be always present.
   if (is.null(BLOB$QRsXaug)) {
     BLOB$QRsXaug <- qr(sXaug) ##  Matrix::qr
     # sXaug = t(tQ) %*% R[,sP] but then also sXaug = t(tQ)[,sP'] %*% R[sP',sP] for any sP'
@@ -160,8 +160,8 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
     delayedAssign("invsqrtwranef", 1/sqrt(attr(sXaug,"w.ranef")), assign.env = BLOB )
     delayedAssign("solve_R_scaled", 
       # solve(BLOB$R_scaled) is as(.Call(dtCMatrix_sparse_solve, a, .trDiagonal(n, unitri = FALSE)), "dtCMatrix")
-      # as(solve(BLOB$R_scaled, attr(sXaug,"AUGI0_ZX")$Ilarge),"dtCMatrix"), 
-      as(.rawsolve(BLOB$R_scaled),"triangularMatrix"), 
+      # as(.rawsolve(BLOB$R_scaled),"triangularMatrix"), 
+      as(Matrix::solve(BLOB$R_scaled, attr(sXaug,"AUGI0_ZX")$trDiag),"triangularMatrix"), 
       assign.env = BLOB ) # Matrix::solve
     delayedAssign("t_Q_scaled", .calc_t_Q_scaled(BLOB, sXaug), assign.env = BLOB )
     # 
@@ -402,9 +402,9 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
           rhs <- .crossprod(BLOB$inv_factor_wd2hdv2w, drop(BLOB$inv_factor_wd2hdv2w %*% rhs)) # typical case when solve_d2hdv2 follows hatval_Z in .calc_sscaled_new()
         } else rhs <- Matrix::solve(BLOB$CHMfactor_wd2hdv2w,rhs,system="A") ## dge (if rhs is dense, or a vector), or dgC...
         if (not_vector) { ## is.matrix(rhs) is not the correct test 
-          rhs <- .Dvec_times_m_Matrix(BLOB$invsqrtwranef,rhs)
-        } else rhs <- BLOB$invsqrtwranef * rhs
-        return( - rhs)
+          rhs <- .Dvec_times_m_Matrix( - BLOB$invsqrtwranef,rhs)
+        } else rhs <- - BLOB$invsqrtwranef * rhs
+        return(rhs) # note the minus sign on the vector, - BLOB$invsqrtwranef, rather than the final, possibly matrix, rhs.
       }
     } 
   } 
@@ -462,7 +462,6 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
     tPmat <- sparseMatrix(seq_along(BLOB$sortPerm), BLOB$sortPerm, x=1)
     tcrossfac_beta_v_cov <- as.matrix(tPmat %*% BLOB$solve_R_scaled)
     rownames(tcrossfac_beta_v_cov) <- colnames(sXaug) ## necessary for summary.HLfit, already lost in BLOB$R_scaled
-    #beta_v_cov <- .tcrossprod(tcrossfac_beta_v_cov)
     pforpv <- attr(sXaug,"pforpv")
     seqp <- seq_len(pforpv)
     beta_cov <- .tcrossprod(tcrossfac_beta_v_cov[seqp,,drop=FALSE])

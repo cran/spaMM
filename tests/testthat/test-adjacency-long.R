@@ -1,6 +1,6 @@
 cat(crayon::yellow("\nTest of adjacency (long fits):"))
 
-if (spaMM.getOption("example_maxtime")>61) { # actually faster <30s
+if (spaMM.getOption("example_maxtime")>61) { # actually faster ~23s
   ## example suggested by Jeroen van den Ochtend jeroenvdochtend@gmail.com Jeroen.vandenochtend@business.uzh.ch
   data("adjlg")
   fit.Frailty <- fitme(BUY ~ factor(month) + AGE + GENDER + X1*X2 + adjacency(1|ID),
@@ -8,7 +8,7 @@ if (spaMM.getOption("example_maxtime")>61) { # actually faster <30s
                           #control.HLfit=list(LevenbergM=FALSE), 
                           verbose=c(TRACE=interactive()), # to trace convergence 
                           adjMatrix=adjlgMat) ## _F I X M E_ refitting lambda (by request) gives a lower lik... (-1552.946 v2.7.19 & v3.1.2) (point estimates are clearly different)
-  how(fit.Frailty) # 26.4.s on 3.9.56
+  how(fit.Frailty) # 23s on 4.1.73; 26.4.s on 3.9.56
   # timings previously using system.time()  [how() reports longer times ?! mysteries...]
   # v3.9.6   20.27        4.37       24.59
   # v3.6.7   21.36util ; 

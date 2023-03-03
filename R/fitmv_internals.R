@@ -26,15 +26,21 @@
 }
 
 
-.makeLowUp_stuff_mv <- function(optim_blob, user.lower, user.upper, optim.scale, processed, verbose) {
+.makeLowUp_stuff_mv <- function(optim_blob, user.lower, user.upper, optim.scale, processed, verbose, famdisp_lowupS=list()) {
   init.optim <- optim_blob$inits$`init.optim` ## list; subset of all estimands, as name implies, and in transformed scale
-  LUarglist <- list(canon.init=optim_blob$inits$`init`, # this has template values for all required residual dispersion parameters (phi's, negbin scale's, COMPnu's):
+  for (char_mv_it in names(init.optim$rdisPars)) {
+    famdisp_lowupS[[char_mv_it]] <- .wrap_calc_famdisp_lowup(family=processed$families[[char_mv_it]],
+                                                            prior.weights=processed$prior.weights[[char_mv_it]])
+  }
+  LUarglist <- list(canon.init=optim_blob$inits[["init"]], # this has template values for all required residual dispersion parameters (phi's, negbin scale's, COMPnu's):
                     # one or more values depending on submodel families.  
                     init.optim=init.optim,
                     user.lower=user.lower,user.upper=user.upper, # those directly in the fitmv_body() call
                     corr_types=processed$corr_info$corr_types,
                     ranFix=optim_blob$fixed, # inits$ranFix, # Any change in $ranFix would be ignored 
-                    optim.scale=optim.scale) 
+                    optim.scale=optim.scale,
+                    famdisp_lowup=famdisp_lowupS,
+                    fixef_lowup=NULL) 
   LUarglist$moreargs <- .calc_moreargs(processed=processed, 
                                        corr_types=processed$corr_info$corr_types, fixed=optim_blob$fixed, init.optim=init.optim, 
                                        control_dist=processed$control_dist, NUMAX=50, LDMAX=50, 

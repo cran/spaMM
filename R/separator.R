@@ -3,10 +3,11 @@
     warned_dcw <- list()
     inla_already <- FALSE
     function(chr_fnname,arglist, pack, info_mess) {
-      if (length(grep(pack,packageDescription("spaMM")$Imports))) {
+      spaMMDescr <- packageDescription("spaMM")
+      if (length(grep(pack,spaMMDescr$Imports))) {
         ## then the necessary functions are imported-from in the NAMESPACE  
         do.call(chr_fnname,arglist) 
-      } else if (length(grep(pack,packageDescription("spaMM")$Suggests))) {
+      } else if (length(grep(pack,spaMMDescr$Suggests))) {
         ## then the necessary functions are not imported-from in the NAMESPACE  (and the package must be written in an appropriate way)
         ##  stats:::confint.glm likewise handles an 'undeclared dependency'
         if ( requireNamespace(pack, quietly = TRUE)) {
@@ -35,7 +36,7 @@
             # seek "svm" for instance of possible use of e1071. Fairly obsolete but maybe needed for full back-compat.
             if (pack=="e1071") message("If the 'e1071' package were installed, spaMM could check separation in binary regression problem.")
             if (pack=="cubature") message("If the 'cubature' package were installed, spaMM could compute a requested marginal prediction.")
-            if (pack=="pracma") message(info_mess)
+            if (pack=="pracma") message(info_mess) # but see faster, ad hoc fn .get_quadinf() 
             warned_dcw[[pack]] <<- TRUE
           }
           return(NULL)

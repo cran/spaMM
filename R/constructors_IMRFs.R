@@ -209,7 +209,7 @@ gridIMRF <- function(..., fixed=NULL) {  # internal family constructor, not desc
   }
   
   calc_inits <- function(inits, char_rd, moreargs_rd, user.lower, user.upper, optim.scale, init.optim, ...) {
-    inits <- .calc_inits_IMRF(init=inits$init,init.optim=inits$init.optim,init.HLfit=inits$init.HLfit,ranFix=inits$ranFix,
+    inits <- .calc_inits_IMRF(init=inits[["init"]],init.optim=inits$init.optim,init.HLfit=inits$init.HLfit,ranFix=inits$ranFix,
                               user.lower=user.lower,user.upper=user.upper,optim.scale=optim.scale,
                               moreargs_rd=moreargs_rd,char_rd=char_rd)
     ### There is no documented Nugget for IMRF models...

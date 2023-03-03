@@ -9,7 +9,10 @@ Family function for negative binomial \dQuote{2} response (including truncated v
 \description{
 Returns a GLM \code{\link[stats]{family}} object for negative-binomial model with variance quadratically related to the mean \eqn{\mu}: variance=\eqn{\mu+\mu^2}/shape, with known or unknown underlying Gamma shape parameter. The zero-truncated variant can be specified as \code{negbin2(., trunc = 0L)}. See \code{\link{negbin1}} for the alternative negative-binomial model with variance \dQuote{linearly} related to the mean. 
 
-\code{negbin(.)} is an alias for \code{negbin2(.)} (truncated or not), and \code{Tnegbin(.)} is an alias for \code{negbin2(., trunc = 0L)}.    
+A \bold{fixed-effect} residual-dispersion model can be fitted, using the \code{\link{resid.model}} argument, which is used to specify the form of the logarithm of the shape parameter. Thus the variance of the response become \eqn{\mu+\mu^2}/\code{exp(<specified linear expression>)}.
+
+\code{negbin(.)} is an alias for \code{negbin2(.)} (truncated or not), and \code{Tnegbin(.)} is an alias for \code{negbin2(., trunc = 0L)}.  
+
 }
 \usage{
 # (the shape parameter is actually not requested unless this is used in a glm() call)

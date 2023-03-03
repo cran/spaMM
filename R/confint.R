@@ -84,7 +84,6 @@
 
 # This rests on .confint_LRT_single_par() which hacks the 'inner' fitting algo for fixed effects to optimize the CI bound over all other parameters 
 # and returns the parameters that optimize this bound, so that no numerical profiling of the likelihood has to be performed.
-# ___F I X M E___ consider implementing numerical profiling so that profile LRTs are available for other class of parameters 
 .confint_LRT <- function(level, parm, object, verbose) {
   if ((np <- length(parm))>1L) {
     resu <- vector("list",np)
@@ -103,12 +102,45 @@
   }
   rownames(table.) <- parm
   marg <- (1-level)*50
+  oldopt <- options(OutDec = ".")
   colnames(table.) <- paste(c(marg, 100-marg),"%")
+  options(oldopt)
   attr(resu,"table") <- table.
   return(resu)
 }
 
+.old_hack_trTemplate <- function(optimInfo, object) {
+  trTemplate <- optimInfo$`optim.pars` ## may be NULL if optimInfo is NULL or if  optimInfo is not NULL but no par as outer optimized
+  # For partial ranCoefs, optimInfo$`optim.pars` contains a full vector 
+  # when HLfit_body() -> .canonizeRanPars() is reached, there must be ranCoefs with the constraints and 
+  # trRancoefs with a fully varying vector
+  if ( ! is.null(trTemplate)) { # ... not from HLfit()...
+    attr(trTemplate,"optr") <- NULL 
+    attr(trTemplate,"method") <- NULL 
+    if ( ! is.null(augZXy_phi_est <- optimInfo$augZXy_phi_est )) {## augZXy not used for confint but may have been used in the original fit.
+      warning("confint() called on this LMM fit obtained with spaMM < 4.1.42 may be unreliable.\n It would be safer to refit the model.",
+              immediate. = TRUE)
+      fittedpars <- .get_fittedPars(object, partial_rC="rm", phiPars=FALSE, phifits=FALSE, verbose=FALSE)
+      if ( ! is.null(trTemplate$trLambda)) { ## could be NULL for random-coef model
+        trTemplate$trLambda <- .dispFn(fittedpars$lambda) 
+      } 
+      if ( ! is.null(rC <- fittedpars$ranCoefs)) { # partially fixed ranCoefs are not fitted by augZXy...
+        for (char_rd in names(trTemplate$trRanCoefs)) {
+          rC[[char_rd]] <- .ranCoefsFn(rC[[char_rd]], rC_transf = .spaMM.data$options$rC_transf)
+        }
+        trTemplate$trRanCoefs <- rC 
+      } 
+    }
+  }
+  trTemplate
+}
+
+
 .confint_LRT_single_par <- function(level, parm, object, verbose) {
+  if (length(.unlist(.get_rC_inits_from_hlfit(object, type="inner")))) {
+    # inner-estimation of ranCoefs is incompatible with the confint hack.
+    stop("confint() attempted on fit with inner-estimated random-coefficient model: use a fit by fitme() instead.")
+  }
   dlogL <- qchisq(level,df=1)/2
   znorm <- qnorm((1+level)/2)
   if (is.character(parm)) {
@@ -122,10 +154,6 @@
     attr(parm,"col") <- parmcol
   }
   llc <- getCall(object)
-  lc <- get_HLCorcall(object,fixed=llc$fixed) # (The fixed value is overwritten in objfn(); see further comments in numInfo())
-  # ?___F I X M E___? potential interference with prior etaFix...
-    # .makeLowerUpper() is called. THe optimInfo$LUarglist is used only later 
-    # For fitmv, .makeLowerUpper() is called several times.
   HL <- object$HL
   fixeflik <- switch(paste(HL[1L]),
                 "0"=if (object$models[["eta"]]=="etaGLM") "p_v" else "hlik", # if the user fitted a GLM by PQL/L there is no hlik 
@@ -135,8 +163,6 @@
   beta_cov <- .get_beta_cov_any_version(object)
   beta_se <- sqrt(diag(x=beta_cov))[parm]
   asympto_abs_Dparm <- znorm* beta_se
-  X.pv <- lc$processed$AUGI0_ZX$X.pv
-  X_is_scaled <- ( ! is.null(attr(X.pv,"scaled:scale")))
   #
   # FIXME test processed nature to prevent multinom stuff here
   warnlik <- "p_v" # bc calling on an REML fit is poor anyway.
@@ -152,25 +178,48 @@
                        parmcol_ZX=length(object$lambda.object$lambda_est)+parmcol, 
                        no_phi_pred= ! ("phiHGLM" %in% object$models[["phi"]]), # %in% for mv
                        asympto_abs_Dparm=asympto_abs_Dparm)
-  oldopt <- .options.processed(lc$processed, intervalInfo=intervalinfo, augZXy_cond=FALSE)
-  if (X_is_scaled) {
-    lc$processed$intervalInfo$MLparm <- .scale(beta=object$fixef,X=X.pv)[parm]
-  } else lc$processed$intervalInfo$MLparm <- object$fixef[parm]   
-  #
-  .assignWrapper(lc$processed,"LevenbergM['force'] <- FALSE") ## inhibits LevM for confint 
-  optimInfo <- attr(object,"optimInfo") ## may be NULL
-  trTemplate <- optimInfo$`optim.pars` ## may be NULL if optimInfo is NULL or if  optimInfo is not NULL but no par as outer optimized
-  attr(trTemplate,"optr") <- NULL 
-  attr(trTemplate,"method") <- NULL 
-  if ( ! is.null(augZXy_phi_est <- optimInfo$augZXy_phi_est)) { ## augZXy not used for confint but may have been used in the original fit.
-    lambda <- .dispInv(trTemplate$trLambda) ## assuming $trLambda exists...
-    lambda <- lambda * augZXy_phi_est 
-    trTemplate$trLambda <- .dispFn(lambda) 
+  ### In previous versions of this fn I hacked 'processed' after creation but nw I can avoid that
+  ###  + get suitable optimInfo's trTemplate rather than need to hack the one of the original fit 
+  ###         (=> was causing pbs if original augZXy phi scaling) 
+  ## modif control.HLfit for intervalInfo to be taken into account eg to inhibit augZXy
+  control.HLfit <- llc$control.HLfit
+  control.HLfit$intervalInfo <- intervalinfo
+  control.HLfit$LevenbergM <- FALSE # maybe tat could be automatic too
+  # 
+  fittingFunction <- .get_bare_fnname.HLfit(object) 
+  if (fittingFunction %in% c("HLfit","HLCor")) {
+    lc <- get_HLCorcall(object,fixed=llc$fixed, control.HLfit=control.HLfit) # (The fixed value is overwritten in objfn(); see further comments in numInfo())
+  } else {
+    init <- .get_fittedPars(object, partial_rC="keep", # "keep" important: tested by test-confint's block with partially fixed ranCoefs
+                            phifits=TRUE, # not sure they are used, but they are not harmuful 
+                            phiPars=FALSE, verbose=FALSE) 
+    init$etaFix <- NULL
+    # ?___F I X M E___? potential interference with prior etaFix...
+    # old obscure comment: "For fitmv, .makeLowerUpper() is called several times."
+    if (fittingFunction == c("corrHLfit")) {
+      lc <- get_HLCorcall(object,fixed=llc$fixed, control.HLfit=control.HLfit, init.corrHLfit=init) # (The fixed value is overwritten in objfn(); see further comments in numInfo())
+    } else lc <- get_HLCorcall(object,fixed=llc$fixed, control.HLfit=control.HLfit, init=init) # (The fixed value is overwritten in objfn(); see further comments in numInfo())
   }
-  if ( ! is.null(trTemplate)) {
+  processed <- lc$processed
+  X.pv <- processed$AUGI0_ZX$X.pv
+  X_is_scaled <- ( ! is.null(attr(X.pv,"scaled:scale")))
+  if (X_is_scaled) {
+    processed$intervalInfo$MLparm <- .scale(beta=object$fixef,X=X.pv)[parm]
+  } else processed$intervalInfo$MLparm <- object$fixef[parm]   
+  if (object$spaMM.version < "4.1.42") {
+    optimInfo <- attr(object,"optimInfo") ## may be NULL
+    trTemplate <- .old_hack_trTemplate(optimInfo, object)
+  } else {
+    # attr(object,"optimInfo") still exists but is much ess suitable that the new one from 'lc'.
+    optimInfo <- attr(lc,"optimInfo") ## may be NULL (from HLCor, HLfit, or length(initvec)=0 in other fitting fns)
+    trTemplate <- optimInfo$`init.optim` ## may be NULL if optimInfo is NULL or if  optimInfo is not NULL but no par as outer optimized
+  }  
+  # For partial ranCoefs, it should contains a full vector 
+  # when HLfit_body() -> .canonizeRanPars() is reached, there must be ranCoefs with the constraints and 
+  # trRancoefs with a fully varying vector
+  if ( ! is.null(trTemplate)) { # ... not from HLfit()...
     olc <- lc ## olc is working copy
     LUarglist <- optimInfo$LUarglist
-    attr(trTemplate,"method") <- NULL
     if (paste(lc[[1]])=="HLCor") attr(trTemplate,"moreargs") <- .get_moreargs(object)
     ## locoptim expects a fn with first arg ranefParsVec
     objfn <- function(ranefParsVec, anyHLCor_obj_args=NULL, HLcallfn.obj=NULL) { ## ___F I X M E___ compare to numInfo procedure 
@@ -180,6 +229,8 @@
       resu <- (posforminimiz)*locfit$fixef[parm]
       attr(resu,"info") <- locfit$APHLs$p_v 
       ## attribute lost by optim but otherwise useful for debugging 
+      #print(olc$fixed)
+      #print(resu)
       return(resu) ## return value to be optimized is a parameter value, not a likelihood
     }
     rC_transf <- .spaMM.data$options$rC_transf
@@ -188,8 +239,7 @@
                                              checkComplete=FALSE, rC_transf=rC_transf)
     LowUp <- do.call(.makeLowerUpper,LUarglist)
     optim_bound_over_nuisance_pars <- function(posforminimiz) { ## optimize the CI bound and returns the parameters that optimize this bound
-      fnname <-.get_bare_fnname.HLfit(object, call.=llc)
-      user_init_optim <- switch(fnname,
+      user_init_optim <- switch(fittingFunction,
                                 "corrHLfit" = llc[["init.corrHLfit"]],
                                 "fitme" = llc[["init"]], 
                                 NULL)
@@ -219,8 +269,8 @@
   while(fac < 1e6) {
     init_beta <- object$fixef-asympto_abs_Dparm/fac
     if (X_is_scaled) init_beta <- .scale(beta=init_beta,X=X.pv) ## using locally saved X.pv
-    lc$processed$intervalInfo$init <- init_beta[parm]
-    lc$processed$intervalInfo$init_v_h <- object$v_h
+    processed$intervalInfo$init <- init_beta[parm]
+    processed$intervalInfo$init_v_h <- object$v_h
     if (! is.null(trTemplate)) {
       anyObjfnCall.args <- as.list(lc[-1L]) ## includes processed, ranPars, controlS.dist, control.HLfit...
       anyObjfnCall.args$skeleton <- trTemplate
@@ -259,7 +309,7 @@
     if (X_is_scaled) {
       init_beta <- .scale(beta=init_beta,X=X.pv)
     }
-    lc$processed$intervalInfo$init <- init_beta[parm]
+    processed$intervalInfo$init <- init_beta[parm]
     if (! is.null(trTemplate)) {
       olc <- lc
       posforminimiz <- -1 ## maximization
@@ -285,12 +335,18 @@
   }
   if (verbose && prevmsglength) cat("\n")
   options(warnori)
-  .options.processed(lc$processed, oldopt)
+  # .options.processed(lc$processed, oldopt)
   interval <- c(lowerfit$fixef[parm],upperfit$fixef[parm])
   names(interval) <- paste(c("lower","upper"),parm)
-  if (verbose) print(interval)
+  if (verbose) {
+    if (any(object$models[["phi"]]=="phiHGLM") && processed$verbose["phifit"]) { 
+      cat("\n")
+      processed$fitenv$prevmsglength <- 0L
+    } # newline after the phifit progress mess before printing CIs
+    print(interval)
+  }
   resu <- list(lowerfit=lowerfit,upperfit=upperfit,interval=interval)
-  if (! is.null(resu$confint_best_fit <- lc$processed$envir$confint_best)) {
+  if (! is.null(resu$confint_best_fit <- processed$envir$confint_best)) {
     locmess <- paste("Element 'confint_best_fit' of the return object contain information about a possible better fit to the data",
                      "\nYou can for example refit the model using the parameter values shown in that element as initial values.")
     message(locmess)

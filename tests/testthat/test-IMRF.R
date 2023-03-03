@@ -54,11 +54,11 @@ if (spaMM.getOption("example_maxtime")>6) {
   # (type="predVar" is not statistically meaningful here, but this makes a test of its code)
 }
 
-if (file.exists((privtest <- paste0(projpath(),"/package/tests_other_pack/test-LatticeKrig.R")))) {
+if (file.exists((privtest <- paste0(spaMM::projpath(),"/package/tests_other_pack/test-LatticeKrig.R")))) {
   source(privtest) 
 }
 
 if (spaMM.getOption("example_maxtime")>1 &&
-    file.exists((privtest <- paste0(projpath(),"/package/tests_private/test-spde-perm_Q.R")))) {
+    file.exists((privtest <- paste0(spaMM::projpath(),"/package/tests_private/test-spde-perm_Q.R")))) {
   source(privtest) 
 }

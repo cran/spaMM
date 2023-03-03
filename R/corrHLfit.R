@@ -100,7 +100,7 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
                       weights.form=NULL,
                       ... ## pb est risque de passer des args mvs genre HL.method et non HLmethod...
 ) {
-  assign("spaMM_glm_conv_crit",list(max=-Inf) , envir=environment(spaMM_glm.fit))
+  .spaMM.data$options$xLM_conv_crit <- list(max=-Inf)
   time1 <- Sys.time()
   oricall <- match.call(expand.dots=TRUE) ## mc including dotlist
   oricall$control.HLfit <- eval(oricall$control.HLfit, parent.frame()) # to evaluate variables in the formula_env, otherwise there are bugs in waiting
@@ -130,7 +130,7 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
   mc <- eval(mc,parent.frame()) # returns modified call including an element 'processed'
   mc[[1L]] <- get("corrHLfit_body", asNamespace("spaMM"), inherits=FALSE) 
   hlcor <- eval(mc,parent.frame()) 
-  .check_conv_glm_reinit()
+  .check_conv_dispGammaGLM_reinit()
   if (inherits(hlcor,"HLfitlist")) {
     attr(hlcor,"call") <- oricall
   } else {

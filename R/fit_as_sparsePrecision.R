@@ -361,7 +361,7 @@
 
 .solve_IRLS_as_spprec <- 
   function(
-           ZAL, y, 
+           ZAL, y=processed$y, 
            n_u_h=length(u_h), 
            #H_global_scale, 
            lambda_est, muetablob=NULL, off=processed$off, maxit.mean, etaFix,
@@ -373,7 +373,6 @@
            ## supplement for ! GLMM
            u_h, v_h, w.resid=NULL, 
            H_w.resid,
-           # for_init_z_args,
            for_intervals,
            ##
            corrPars, # corrPars needed together with adjMatrix to define Qmat
@@ -418,15 +417,8 @@
     dampings_env <- list2env(.spaMM.data$options$spaMM_tol$dampings_env_v)
   } 
   if ( ! LMMbool) {
-    checkpot_min_it <- as.integer(maxit.mean/4L) # reconsider all usage of this and possibly extend to spprec (see ref to pot4improv in test-mv-nested for a test)
+    checkpot_min_it <- as.integer(maxit.mean/4L) # reconsider all usage of this and possibly extend to spprec (see ref to pot4improv in test-mv-extra for a test)
     constant_zAug_args <- list(n_u_h=n_u_h, nobs=nobs, pforpv=pforpv, y=y, off=off, ZAL=ZAL, processed=processed)
-    # if ( ! GLMMbool) {
-    #   constant_init_z_args <- c(list(lcrandfamfam=lcrandfamfam, nobs=nobs, lambda_est=lambda_est, ZAL=ZAL),  
-    #                             # fit_as_ZX args specific for ! GLMM:
-    #                             for_init_z_args,
-    #                             #
-    #                             mget(c("cum_n_u_h","rand.families"),envir=processed))
-    # } 
   } 
   
   ##### initial sXaug
@@ -467,7 +459,7 @@
     X.pv=processed$AUGI0_ZX$X.pv, 
     ZAL=ZAL, y=y, n_u_h=n_u_h, #H_global_scale=H_global_scale,
     lambda_est=lambda_est, off=off,maxit.mean=maxit.mean,etaFix=etaFix,
-    processed=processed, phi_est=phi_est, # for_init_z_args=for_init_z_args,
+    processed=processed, phi_est=phi_est, 
     trace=trace, corrPars=corrPars, dampings_env=dampings_env))
   ## Loop controls:
   allow_LM_restart <- ( ! LMMbool && ! LevenbergM && is.null(for_intervals) && is.na(processed$LevenbergM["user_LM"]) )

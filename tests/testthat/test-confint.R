@@ -70,14 +70,43 @@ ci <- confint(HLM,"pred",verbose=FALSE) ## practically identical in the two fits
 testthat::expect_equal(ci$interval[[1]],0.06483437,tolerance=1e-4)  
 testthat::expect_equal(ci$interval[[2]],0.10567543,tolerance=1e-4)
 
-# compar to lme4
+# compar to lme4, and tests with ranCoefs
 if(requireNamespace("lme4", quietly = TRUE)) {
   data("sleepstudy",package = "lme4")
-  mlfit <- fitme(Reaction ~ Days + (1|Subject), data = sleepstudy)
-  fitci <- confint(mlfit, parm = "Days",verbose=FALSE)$interval
+  (mlfit <- fitme(Reaction ~ Days + (1|Subject), data = sleepstudy))
+  (fitci <- confint(mlfit, parm = "Days",verbose=FALSE)$interval)
   rl_mer <- lme4::lmer(Reaction ~ Days + (1|Subject), data = sleepstudy)
   ci_mer <- suppressMessages(suppressWarnings(confint(rl_mer)))[4, ] ## suppress bobyqa conv warning in lme4:::optwrap, and message "Computing profile confidence intervals ..."
   testthat::expect_true(diff(range(ci_mer-fitci))<1e-5) 
+  
+  if (spaMM.getOption("example_maxtime")>15) { # indeed a bit slow
+    (mlfit <- fitme(Reaction ~ Days + (Days|Subject), data = sleepstudy, method="ML"))
+    (fitci <- (zut <- confint(mlfit, parm = "Days",verbose=FALSE))$interval) # Now OK, (failed before v4.1.41)
+    testthat::expect_true(diff(range(c(7.358652, 13.575920)-fitci))<1e-5) 
+    (mlfit <- fitme(Reaction ~ Days + (Days|Subject), data = sleepstudy, method="ML", fixed=list(ranCoefs=list("1"=c(600,-0.1,140)))))
+    (fitci <- (zut <- confint(mlfit, parm = "Days",verbose=FALSE))$interval) # seems correct
+    testthat::expect_true(diff(range(c(4.849028, 16.085544)-fitci))<1e-5) 
+    if (TRUE) {
+      ## not sure what to think about these checks for partially fixed ranCoefs but there is no obvious error: 
+      # The checked values are those from v4.1.41 and 4.1.50. In between, a stopping bug was introduced.
+      (mlfit <- fitme(Reaction ~ Days + (Days|Subject), data = sleepstudy, method="ML", fixed=list(ranCoefs=list("1"=c(NA,-0.1,140)))))
+      (fitci <- (zut <- confint(mlfit, parm = "Days",verbose=FALSE))$interval) 
+      testthat::expect_true(diff(range(c(4.848926, 16.085646)-fitci))<1e-5) 
+      (mlfit <- fitme(Reaction ~ Days + (Days|Subject), data = sleepstudy, method="ML", fixed=list(ranCoefs=list("1"=c(600,NA,140)))))
+      (fitci <- (zut <- confint(mlfit, parm = "Days",verbose=FALSE))$interval) 
+      testthat::expect_true(diff(range(c(4.848961, 16.085611)-fitci))<1e-5) 
+      (mlfit <- fitme(Reaction ~ Days + (Days|Subject), data = sleepstudy, method="ML", fixed=list(ranCoefs=list("1"=c(200,NA,140)))))
+      (fitci <- (zut <- confint(mlfit, parm = "Days",verbose=FALSE))$interval) 
+      testthat::expect_true(diff(range(c(4.840307, 16.094265)-fitci))<1e-5) 
+    }
+    (mlfit <- HLfit(Reaction ~ Days + (Days|Subject), data = sleepstudy, method="ML", family=Gamma(log)))
+    cat(crayon::yellow("\n[try()-]error EXPECTED here for confint(<*HLfit() return value with ranCoefs*>):"))
+    try(zut <- confint(mlfit, parm = "Days",verbose=FALSE)) # catch inappropriate request.
+    (mlfit <- fitme(Reaction ~ Days + (Days|Subject), data = sleepstudy, method="ML", family=Gamma(log)))
+    (fitci <- (zut <- confint(mlfit, parm = "Days",verbose=FALSE))$interval) 
+    testthat::expect_true(diff(range(c(0.02427526, 0.04343179)-fitci))<1e-5) 
+  }
+  
 }
 
 # GLM with a 'method'...

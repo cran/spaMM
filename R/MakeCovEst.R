@@ -42,7 +42,7 @@
   ) ## and one might use (solve(design_u)) as a $crossfac_Q precision factor
 }
 
-.calc_latentL <- function(compactcovmat, use_tri_CORREL=TRUE, spprecBool) {
+.calc_latentL <- function(compactcovmat, use_tri_CORREL=TRUE, spprecBool, trDiag) {
   # returns a *t*crossfactor 
   ## L and L_Q are distinct matrices used jointly in a fit (L in ZAL...) and must be deduced from each other.
   if (spprecBool) {
@@ -60,6 +60,7 @@
     ## (1) direct conversion from matrix to dtC is remarkably slower than going through the as(.,"sparseMatrix") step !
     ## (2) Even with two steps as(.,"dtCMatrix") is costly hence the spprecBool condition (dtCMatrix useful only for chol_Q)
     blob$compactchol_Q <- as(as(blob$compactchol_Q,"sparseMatrix"),"triangularMatrix") # precision factor for sparse_precision algo; # compactcovmat=.ZtWZwrapper(solve(compactchol_Q),d  )
+    blob$trDiag <- trDiag
     #  We also want chol_Q it to be lower triangular (dtCMatrix can be Up or Lo) 
     #    to obtain a dtCMatrix by bdiag(list of lower tri dtCMatrices). It already is lower tri.
     # Beyond this, design_u may be lower or upper tri
@@ -205,9 +206,10 @@
                          H_w.resid, 
                          processed,phi_est,
                          #family, ## ignored
-                        as_matrix,v_h, MakeCovEst_pars_not_ZAL_or_lambda,
-                        init_ranCoefs,
-                        prev_lambda_est
+                         as_matrix,v_h, MakeCovEst_pars_not_ZAL_or_lambda,
+                         init_ranCoefs,
+                         prev_lambda_est,
+                         w.resid
 ) {
   rC_transf_inner <- .spaMM.data$options$rC_transf_inner
   nrand <- length(ZAlist)
@@ -234,10 +236,11 @@
       ##prevL <- attr(prev_LMatrices[[rt]],"latentL_blob")$design_u
       u.range <- (cum_n_u_h[rt]+1L):(cum_n_u_h[rt+1L])
       loc_lambda_est[u.range] <- 1 # not so on first call of .makeCovEst1() at least. Could it be set before calling .makeCovEst1()? 
+      ranCoefs_blob <- processed$ranCoefs_blob
       ########## brute force optimization
       objfn <- function(trRancoef) { ## to be MINimized
         compactcovmat <- .calc_cov_from_trRancoef(trRancoef, Xi_ncol, rC_transf=rC_transf_inner)
-        latentL_blob <- .calc_latentL(compactcovmat, use_tri_CORREL=use_tri_CORREL, spprecBool=spprecBool)
+        latentL_blob <- .calc_latentL(compactcovmat, use_tri_CORREL=use_tri_CORREL, spprecBool=spprecBool, trDiag=ranCoefs_blob$trDiags[[rt]])
         # Build Xscal
         working_LMatrices[[rt]] <- .makelong(latentL_blob$design_u,longsize=ncol(ZAlist[[rt]]), 
                                              template=processed$ranCoefs_blob$longLv_templates[[rt]], 
@@ -261,7 +264,8 @@
           ####################################################################################################
           locw.ranefSblob <- processed$updateW_ranefS(u_h=u_h,v_h=v_h,lambda=loc_lambda_est)
           locarglist <- c(MakeCovEst_pars_not_ZAL_or_lambda, 
-                          list(ZAL=locZAL, lambda_est=loc_lambda_est, wranefblob=locw.ranefSblob, H_global_scale=H_global_scale))
+                          list(ZAL=locZAL, lambda_est=loc_lambda_est, wranefblob=locw.ranefSblob, H_global_scale=H_global_scale, 
+                               H_w.resid=H_w.resid, w.resid=w.resid))
           # it would be really nonsense to compute the objective for constant u_h;
           ## the u_h should be evaluated at the BLUPs (or equivalent) for given parameters
           auglinmodblob <- do.call(".solve_IRLS_as_ZX",locarglist)
@@ -317,7 +321,7 @@
       ################# 
       ## reproduces representation in objfn
       compactcovmat <- .calc_cov_from_trRancoef(optr$solution, Xi_ncol, rC_transf=rC_transf_inner)
-      latentL_blob <- .calc_latentL(compactcovmat, use_tri_CORREL=use_tri_CORREL, spprecBool=spprecBool)
+      latentL_blob <- .calc_latentL(compactcovmat, use_tri_CORREL=use_tri_CORREL, spprecBool=spprecBool, trDiag=ranCoefs_blob$trDiags[[rt]])
       next_LMatrix <- .makelong(latentL_blob$design_u,longsize=ncol(ZAlist[[rt]]), 
                                 template=processed$ranCoefs_blob$longLv_templates[[rt]], 
                                 kron_Y=attr(processed$corr_info$cov_info_mats[[rt]],"blob")$Lunique 

@@ -8,7 +8,7 @@ Random-effect structures for diallel experiments and other dyadic interactions
 \description{
 \code{ranGCA} and \code{diallel} are random-effect structures designed to represent the effet of symmetric interactions between pairs of individuals (order of individuals in the pair does not matter), while \code{antisym} represents anti-symmetric interactions (the effect of reciprocal ordered pairs on the outcome are opposite, as in the so-called Bradley-Terry models). These random-effect structures all account for multiple membership, i.e., the fact that the same individual may act as the first or the second individual among different pairs, or even within one pair if this makes sense).   
 
-More formally, the outcome of a interaction between a pair \eqn{i,j} of agents is subject to a symmetric overall random effect \eqn{v_{ij}} when the effect  \dQuote{on} individual \eqn{i} (or viewed from the perspective of individual \eqn{i}) equals the effect on \eqn{j}: \eqn{v_{ij}=v_{ji}}. This may result from the additive effect of individual random effects \eqn{v_{i}} and \eqn{v_{j}}:  \eqn{v_{ij}=v_i+v_j}, but also from non-additive effects \eqn{v_{ij}=v_i+v_j+a_{ij}} if the interaction term  \eqn{a_{ij}} is itself symmetric (\eqn{a_{ij}=a_{ji}}). \code{ranGCA} and \code{diallel} effects represent such symmetric effects, additive or non-additive respectively, in a model formula (see Details for the semantic origin of these names and how they can be changed). Conversely, antisymmetry is characterized by \eqn{v_{ij}=v_i-v_j=-v_{ji}} and is represented by the \code{antisym} formula term.  
+More formally, the outcome of an interaction between a pair \eqn{i,j} of agents is subject to a symmetric overall random effect \eqn{v_{ij}} when the effect  \dQuote{on} individual \eqn{i} (or viewed from the perspective of individual \eqn{i}) equals the effect on \eqn{j}: \eqn{v_{ij}=v_{ji}}. This may result from the additive effect of individual random effects \eqn{v_{i}} and \eqn{v_{j}}:  \eqn{v_{ij}=v_i+v_j}, but also from non-additive effects \eqn{v_{ij}=v_i+v_j+a_{ij}} if the interaction term  \eqn{a_{ij}} is itself symmetric (\eqn{a_{ij}=a_{ji}}). \code{ranGCA} and \code{diallel} effects represent such symmetric effects, additive or non-additive respectively, in a model formula (see Details for the semantic origin of these names and how they can be changed). Conversely, antisymmetry is characterized by \eqn{v_{ij}=v_i-v_j=-v_{ji}} and is represented by the \code{antisym} formula term.  
 
 If individual-level random effects of the form (1|ID1)+ (1|ID2) were included in the model formula instead of \code{ranGCA(1|ID1+ID2)} for symmetric additive interactions, this would result in different variances being fitted for each random effect (breaking the assumption of symmetry), and the value of the random effect would differ for an individual whether it appears as a level of the first random effect or of the second (which is also inconsistent with the idea that the random effect represents a property of the individual). 
 
@@ -31,8 +31,7 @@ register_cF("symAdd")
 
 In diallel experiments, one analyzes the phenotypes of offspring from multiple crosses among which the mother in a cross can be the father in another, so this is an example of multiple-membership. The additive genetic effects of each parent's genotypes are described as \dQuote{general combining abilities} (GCA). In case of non-additive effect, the half-sib covariance is not half the full-sib covariance and this is represented by the interaction \eqn{a_{ij}} described as \dQuote{specific combining abilities} (SCA). The sum of GCA and SCA defines a synthetic random effect \dQuote{received} by the offspring, with distinct levels for each unordered parental pair, and with correlation \eqn{\rho} between effects received by half-sibs (one shared parent). \eqn{\rho} corresponds to var(GCA)/[2*var(GCA)+var(SCA)] and is necessarily \eqn{\le 0.5}. 
 
-GCAs and SCAs can also be fitted as fixed effects. \pkg{spaMM} has no specific syntax for that purpose, but it seems that the fixed-effect terms defined in the \pkg{lmDiallel} package (Onofri & Terzaroli, 2021) work in a formula for a \pkg{spaMM} fit. 
-
+See the \code{\link{X.GCA}} documentation for similar constructs for fixed effects.
 }
 \usage{
 ## formula terms:
@@ -63,8 +62,6 @@ The functions return corrFamily descriptors whose general format is described in
 }
 \references{
 Lynch, M., Walsh, B. (1998) Genetics and analysis of quantitative traits. Sinauer, Sunderland, Mass.
-
-Onofri A., Terzaroli N. (2021) lmDiallel:  Linear fixed effects models for diallel c,<rosses. Version 0.9.4. \url{https://cran.r-project.org/package=lmDiallel}.
 }
 \examples{
 

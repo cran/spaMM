@@ -7,7 +7,7 @@
 
 Default is \code{TRACE=FALSE} (or 0) which is self-explanatory. \code{TRACE=TRUE} (or 1) shows values of outer-estimated parameters (and possibly fixed values of parameters that would be outer-estimated), some cryptic progress bar, and the attained value of the likelihood objective function (but when there inner-estimated dispersion parameters, the output is more difficult to describe concisely). Other values have effect may change in later versions without notice see Details).
 
-If the fitted model includes a residual-dispersion mdoel, some tracing output for the latter may be confusingly intermingled with tracing output of the main-response model. The Details are valid only for the main-response model.
+If the fitted model includes a residual-dispersion mdoel, some tracing output for the latter may be confusingly intermingled with tracing output of the mean-response model. The Details are valid only for the mean-response model.
 }
 
 \details{

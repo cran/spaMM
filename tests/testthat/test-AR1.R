@@ -112,4 +112,8 @@ if (spaMM.getOption("example_maxtime")>0.5) {
   # consistent with 
   # lme(distance ~ age + factor(Sex),random = ~ 1 | Subject, cor=corCAR1(form=~age|Subject),data = Orthodont)
   # which is faster (FIXME: .assign_geoinfo_and_LMatrices_but_ranCoefs() for AR1 not efficient; more work needed to handle nested AR1 efficiently)
+  
+  # check of nested non-composite AR1:
+  fitme(distance ~ age + AR1(0+age|age %in% Subject), fixed=list(phi=1e-6), 
+        data = Orthodont,method="REML") 
 }

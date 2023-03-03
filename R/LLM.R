@@ -134,7 +134,7 @@
 }
 
 
-# fixed-effect main response
+# fixed-effect mean response
 # uses gradient and negHess, while .calc_etaLLMblob uses z1 and w_resid
 # Maybe not quite different otherwise (___F I X M E___ merge ?)
 # condition for either seems to be if(obsInfo) => $obs methods used (so requested, and non canonical)
@@ -155,13 +155,13 @@
   LM_called <- FALSE
   damping <- 1e-7 ## as suggested by Madsen-Nielsen-Tingleff... # Smyth uses abs(mean(diag(XtWX)))/nvars
   newclik <- .calc_clik(mu=mu,phi_est=phi_est,processed=processed) ## handles the prior.weights from processed
+  dlogL_blob <- .calc_dlogL_blob(eta, mu, y, weights=processed$prior.weights, family, phi=phi_est, muetaenv=muetablob)
   for (innerj in seq_len(maxit.mean)) {
     ## breaks when Xtol_rel is reached
     clik <- newclik
     # Historical oddity: the fit has worked with code which was OK for solving, but not for CI as the CI code suppresses 
     # a column of the design matrix, which is not sufficient on the premultiplied (scaled X) system.
 
-    dlogL_blob <- .calc_dlogL_blob(eta, mu, y, weights=processed$prior.weights, family, phi=phi_est, muetaenv=muetablob)
     negHess <- crossprod(X.pv, .Dvec_times_m_Matrix( - dlogL_blob$d2logcLdeta2, X.pv))
     
     # names(szAug) <- colnames(X.pv) ## also important for intervalStep_glm
@@ -169,17 +169,22 @@
     if ( ! is.null(for_intervals) || ! LM_called) {
       if ( ! is.null(for_intervals)) {
         currentDy <- (for_intervals$fixeflik-newclik)
-        if (currentDy < -1e-4 && 
-            (is.null(bestlik <- processed$envir$confint_best$lik) || newclik > bestlik)) {
-          if (is.null(bestlik)) {
-            locmess <- paste("A higher",names(for_intervals$fixeflik),"was found than for the original fit.",
-                             "\nThis suggests the original fit did not fully maximize",names(for_intervals$fixeflik),
-                             "\nExpect more information at end of computation.")
-            message(locmess)
-          }
-          processed$envir$confint_best$lik <- newclik
-          processed$envir$confint_best$beta_eta <- .unscale(X.pv, old_beta_eta)
-        }
+        # The following check was previously performed at each iteration of etaxLM_fn: fixed-effect mean response but possibly mixed-effect residual response.
+        # However, as long as the the random effects of the residual model have not converged (along with other estimates), likelihood calculations based of the predicted phi
+        # are not appropriate for comparison. Hence one would have to condition the check on ! any(processed$models[["phi"]]=="phiHGLM")
+        # But then the check is not very useful. It should be elsewhere, in cases where the v_h have converged but not other params.
+        # = > REMOVE
+        # if (currentDy < -1e-4 &&
+        #     (is.null(bestlik <- processed$envir$confint_best$lik) || newclik > bestlik)) {
+        #   if (is.null(bestlik)) {
+        #     locmess <- paste("A higher",names(for_intervals$fixeflik),"was found than for the original fit.",
+        #                      "\nThis suggests the original fit did not fully maximize",names(for_intervals$fixeflik),
+        #                      "\nExpect more information at end of computation.")
+        #     message(locmess)
+        #   }
+        #   processed$envir$confint_best$lik <- newclik
+        #   processed$envir$confint_best$beta_eta <- .unscale(X.pv, old_beta_eta)
+        # }
         intervalBlob <- .intervalStep_llm(old_beta=old_beta_eta, X.pv=X.pv, dlogcLdeta=dlogL_blob$dlogcLdeta, d2logcLdeta2=dlogL_blob$d2logcLdeta2, 
                                           currentlik=newclik, for_intervals=for_intervals,currentDy=currentDy) 
         beta_eta <- intervalBlob$beta
@@ -197,9 +202,11 @@
           newclik < clik-1e-5 || anyNA(beta_eta) || any(is.infinite(beta_eta))) ) { 
       ## more robust LevM
       LM_called <- TRUE
-      grad <- crossprod(X.pv, dlogL_blob$dlogcLdeta) # H beta + grad
+      # a pure crossprod(*M*atrix) would return grad as a (1-col) Matrix, not well handled by .do_damped_WLS_llm
+      grad <- .crossprod(X.pv, dlogL_blob$dlogcLdeta, eval_dens = FALSE, as_mat=TRUE) # H beta + grad
       
-      damped_WLS_blob <- .do_damped_WLS_llm(grad, damping, negHess, X.pv, clik, family, old_beta_eta, phi_est, off, processed, verbose)
+      damped_WLS_blob <- .do_damped_WLS_llm(grad, # 1-col *m*atrix
+                                             damping, negHess, X.pv, clik, family, old_beta_eta, phi_est, off, processed, verbose)
       beta_eta <- damped_WLS_blob$beta 
       eta <- damped_WLS_blob$eta #off + drop(X.pv %*% beta_eta) ## updated at each inner iteration
       muetablob <- damped_WLS_blob$muetablob # .muetafn(eta=eta,BinomialDen=BinomialDen,processed=processed, phi_est=phi_est) 
@@ -207,7 +214,8 @@
       damping <- damped_WLS_blob$damping
       dbetaV <- damped_WLS_blob$dbetaV
     } else dbetaV <- beta_eta - old_beta_eta
-    mu <- muetablob$mu ## needed to update z1
+    mu <- muetablob$mu
+    dlogL_blob <- .calc_dlogL_blob(eta, mu, y, weights=processed$prior.weights, family, phi=phi_est, muetaenv=muetablob)
     if (verbose["trace"]) {
       print(paste0("Inner iteration ",innerj))
       print_err <- c(beta_eta=beta_eta)

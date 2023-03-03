@@ -15,7 +15,7 @@ pseudoR2(fitobject, nullform = . ~ 1, R2fun = LR2R2, rescale=FALSE, verbose=TRUE
   The fitted model object, obtained as the return value of a \pkg{spaMM} fitting function.
 }
   \item{nullform}{
-  Main-response formula for the null model. The default value (including only an intercept) represents the traditional choice in R2 computation for linear models. Alternative formulas (including, e.g., random effects) can be specified using either the \code{\link{update.formula}} syntax (e.g., with a \code{'.'} on the right hand side; note that \pkg{spaMM}'s updating conventions differ from those implemented by \code{stats::update.formula}, see \code{\link{update.HLfit}}), or a full formula (which may be a safer syntax).
+  Mean-response formula for the null model. The default value (including only an intercept) represents the traditional choice in R2 computation for linear models. Alternative formulas (including, e.g., random effects) can be specified using either the \code{\link{update.formula}} syntax (e.g., with a \code{'.'} on the right hand side; note that \pkg{spaMM}'s updating conventions differ from those implemented by \code{stats::update.formula}, see \code{\link{update.HLfit}}), or a full formula (which may be a safer syntax).
 }
   \item{R2fun}{
   The backend function computing R2 given the fitted and null model. The default implements the pseudo-R2. For linear models, it reduces to the canonical R2 and the value adjusted as in \code{summary.lm} is also returned.

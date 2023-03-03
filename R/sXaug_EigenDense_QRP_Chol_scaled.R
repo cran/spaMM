@@ -293,9 +293,9 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug, # already ZAL_scaled
           rhs <- .crossprod(BLOB$inv_factor_wd2hdv2w, drop(BLOB$inv_factor_wd2hdv2w %*% rhs)) # typical sscaled computation
         } else rhs <- backsolve(BLOB$R_R_v, backsolve(BLOB$R_R_v, rhs, transpose = TRUE))
         if (is.matrix(rhs)) {
-          rhs <- .Dvec_times_matrix(BLOB$invsqrtwranef,rhs)
-        } else rhs <- BLOB$invsqrtwranef * rhs
-        return( - rhs)
+          rhs <- .Dvec_times_matrix( - BLOB$invsqrtwranef,rhs)
+        } else rhs <- - BLOB$invsqrtwranef * rhs
+        return( rhs) # note the minus sign on the vector, - BLOB$invsqrtwranef, rather than the final, possibly matrix, rhs
       }
     }
   } 

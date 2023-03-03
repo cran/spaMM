@@ -8,9 +8,10 @@ fitmv_body <- function(processed,
                        ... ## cf dotnames processing below 
 ) {
   dotlist <- list(...) ## forces evaluations, which makes programming easier...
-  if (is.list(processed)) {
-    proc1 <- processed[[1L]]
-  } else proc1 <- processed
+  # if (is.list(processed)) { # actually FALSE in mv fits 
+  #   proc1 <- processed[[1L]]
+  # } else 
+  proc1 <- processed
   verbose <-  proc1$verbose
   HLnames <- (c(names(formals(HLCor)),names(formals(HLfit)),
                 names(formals(mat_sqrt)),names(formals(make_scaled_dist))))  ## cf parallel code in HLCor.obj
@@ -64,7 +65,9 @@ fitmv_body <- function(processed,
   lower <- LowUp$lower ## list ! which elements may have length >1 !
   upper <- LowUp$upper ## list !
   #
-  if ( ! is.null(residproc1 <- proc1$residProcessed) && 
+  if ( FALSE && # following is a block for fitme_body which is not suited for mv fits (with proc1$residProcesseds, not proc1$residProcessed !)
+       # This means that outer_optim_resid is far from ready in mv fits
+       ! is.null(residproc1 <- proc1$residProcessed) && 
        identical(spaMM.getOption("outer_optim_resid"),TRUE)) { 
     #
     # spaMM.getOption("outer_optim_resid") being a private option, NULL By default, THIS IS NOT RUN 
@@ -72,7 +75,7 @@ fitmv_body <- function(processed,
     ## Problem is that outer optim at the mean model level is useful if we can avoid computation of the leverages 
     ## But here anyway we need the leverages of the 'mean' model to define the resid model response.
     resid_optim_blob <- .calc_optim_args(proc_it=residproc1, processed=proc1,
-                                         user_init_optim=proc1$residModel$init, fixed=proc1$residModel$fixed, ## all user input must be in proc1$residModel
+                                         user_init_optim=proc1$residModel[["init"]], fixed=proc1$residModel$fixed, ## all user input must be in proc1$residModel
                                          lower=proc1$residModel$lower, upper=proc1$residModel$upper, ## all user input must be in proc1$residModel
                                          verbose=c(SEM=FALSE), optim.scale=optim.scale, For="fitme") 
     resid_init.optim <- resid_optim_blob$inits$`init.optim` ## list; subset of all estimands, as name implies, and in transformed scale
@@ -129,7 +132,6 @@ fitmv_body <- function(processed,
       use_SEM <- (!is.null(processedHL1) && processedHL1=="SEM")
       time2 <- Sys.time()
       if (use_SEM) {
-        optimMethod <- "iterateSEMSmooth"
         if (is.null(proc1$SEMargs$control_pmvnorm$maxpts)) {
           .assignWrapper(processed,"SEMargs$control_pmvnorm$maxpts <- quote(250L*nobs)") 
         } ## else default visible in SEMbetalambda
@@ -163,6 +165,17 @@ fitmv_body <- function(processed,
     # refit_info is list if so provided by user, else typically boolean. An input NA should have been converted to something else (not documented).
     if (needHLCor_specific_args) attr(ranPars_in_refit,"moreargs") <- moreargs 
     HLCor.args$fixed <- ranPars_in_refit 
+    # initiate *phi*  and resid models for refit, up to random effect
+    residProcesseds <- processed$residProcesseds
+    for (mv_it in seq_along(residProcesseds)) {
+      if (length(residinfo_it <- residProcesseds[[mv_it]]$port_env$port_fit_values)) { # implies that there was a phi-resid.model 
+        # next line typically creates a list, from possibly nonfirst element... untidy, but this seems OK. 
+        HLCor.args$init.HLfit$phi[[mv_it]] <- residinfo_it$fv # The phi of the mean-response model is initiated by fitted values of the resid.model
+        processed$residModels[[mv_it]]$init.HLfit <- residinfo_it$init_HLfit # may have fixef, v_h, and more generally the elements of get_inits_from_fit(phifit,inner_lambdas = TRUE)$init.HLfit
+      }
+    }
+    # At this point there may be null elements in the init.HLfit$phi list, but .denullify() should handle this.
+    # 'cover_residM_reinit' fit in test-mv-extra covers this code.
   } else if (len_ranPars <- length(unlist(HLCor.args$fixed, use.names = FALSE))){ ## Set attribute
     HLCor.args$fixed <- structure(HLCor.args$fixed,
                                     type = relist(rep("fix", len_ranPars), HLCor.args$fixed),
@@ -172,11 +185,19 @@ fitmv_body <- function(processed,
   # not local to anyHLCor_obj_args$processed: change processed globally
   .assignWrapper(HLCor.args$processed,"return_only <- NULL") 
   .assignWrapper(HLCor.args$processed,"verbose['warn'] <- TRUE") ## important!
-  hlcor <- do.call(HLcallfn,HLCor.args) ## recomputation post optimization, or only computation if length(initvec)=0
+  hlcor <- do.call(HLcallfn,HLCor.args) ## recomputation post optimization, or only computation if length(initvec)=0, or the HLCorcall
   if (is.call(hlcor)) {
-    ## then do.call(HLcallfn,HLCor.args) has retuned the call, not the fit. 
-    ## see def of get_HLCorcall() for further explanation
+    if (length(initvec)) {
+      attr(hlcor,"optimInfo") <- list(LUarglist=LUarglist, init.optim=init.optim,
+                                      objective=proc1$objective,
+                                      augZXy_phi_est=augZXy_phi_est)
+    }
     return(hlcor) ## HLCorcall
+  } else {
+    if ( processed$fitenv$prevmsglength) { # there was output for a phi-resid.model. The fit object may then be printed...
+      cat("\n")
+      processed$fitenv$prevmsglength <- 0L
+    }
   }
   # hlcor<- .update_ranef_info(hlcor, moreargs=moreargs)
   if (length(initvec)) {

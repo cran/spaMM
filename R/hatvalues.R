@@ -124,8 +124,8 @@ hatvalues.HLfit <- function(model, type="projection", which="resid", force=FALSE
   ## (HL[2]=0, HL[3]=1): notEQL -> tilde(p), (HL[2]=1 && ): full correction -> q 
   ## (HL[2]=1, HL[3]=1): full correction -> q 
   #### contribution from GLM weights
-  if (HL[2L]>0L && models[[1L]]=="etaHGLM" 
-      && (need_simple_lambda || anynull_phi.Fix) ) { ## LeeN01 HL(.,1) ie the + in 'EQL+'
+  if (HL[2L]>0L && models[["eta"]]=="etaHGLM" && 
+      (need_simple_lambda || anynull_phi.Fix) ) { ## LeeN01 HL(.,1) ie the + in 'EQL+'
     ## first the d log hessian / d log lambda or phi corrections
     ### For the d log hessian first the derivatives of GLM weights wrt eta 
     ##################### noter que c'est le coef2 de HL(1,.), but mu,eta may have been updated since coef2 was computed

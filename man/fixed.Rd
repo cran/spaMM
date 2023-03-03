@@ -5,6 +5,7 @@
 \alias{etaFix}
 \alias{ranCoefs}
 \alias{corrPars}
+\alias{keepInREML}
 
 \title{Fixing some parameters}
 \description{The fitting functions allow all parameters to be fixed rather than estimated:\cr 
@@ -17,7 +18,7 @@
 
 The older equivalent for the \code{fixed} argument is \code{ranFix} for \code{HLfit} and \code{corrHLfit}, and \code{ranPars} for \code{HLCor}. Do not use both one such argument and \code{fixed} in a call. This older diversity of names was confusing, but its logic was that \code{ranFix} allows one to fix parameters that \code{HLfit} and \code{corrHLfit} would otherwise estimate, while \code{ranPars} can be used to set correlation parameters that \code{HLCor} does not estimate but nevertheless requires (e.g., Matérn parameters).
 
-Despite its different names, the argument for fixing random-effect parameters has a common syntax for all functions. It is a list, with the following possible elements, whose nature is further detailed below:\cr 
+Theses arguments for fixing random-effect parameters all have a common syntax. They is a list, with the following possible elements, whose nature is further detailed below:\cr 
 * \bold{phi} (variance of residual error, for gaussian and Gamma HGLMs),\cr
 * \bold{lambda} (random-effect variances, except for random-coefficient terms), \cr
 * \bold{ranCoefs} (random-coefficient parameters),\cr 
@@ -28,11 +29,12 @@ Despite its different names, the argument for fixing random-effect parameters ha
 
 \bold{lambda} may be a single value (if there is a single random effect, or a vector allowing to specify unambiguously variance  values for some random effect(s). It can thus take the form \code{lambda=c(NA,1)} or \code{lambda=c("2"=1)} (note the name) to assign a value only to the variance of the second of two random effects.
 
-\bold{ranCoefs} is a \code{list} of numeric vectors, each numeric vector specifying the variance and correlation parameters for a random-coefficient term. As for \code{lambda}, it may be incomplete, using names to specify the random effect to which the parameters apply. For example, to assign variances values 3 and 7, and correlation value -0.05, to a second random effect, one can use \code{ranCoefs=list("2"=c(3,-0.05,7))} (note the name). The elements of each vector are variances and correlations, matching those of the printed summary of a fit. The order of these elements must be the order of the \code{\link{lower.tri}} of a covariance matrix, as shown e.g. by\cr
+\bold{ranCoefs} is a \code{list} of numeric vectors, each numeric vector specifying the variance and correlation parameters for a random-coefficient term. As for \code{lambda}, it may be incomplete, using names to specify the random effect to which the parameters apply. For example, to assign variances values 3 and 7, and correlation value -0.05, to the second random effect in a model formula, one can use \code{ranCoefs=list("2"=c(3,-0.05,7))} (note the name). The elements of each vector are variances and correlations, matching those of the printed summary of a fit. The order of these elements must be the order of the \code{\link{lower.tri}} of a covariance matrix, as shown e.g. by\cr
   \code{m2 <- matrix(NA, ncol=2,nrow=2); m2[lower.tri(m2,diag=TRUE)] <- seq(3); m2}.\cr 
 \code{fitme} accepts partially fixed parameters for a random coefficient term, e.g.,\cr 
 \code{ranCoefs=list("2"=c(NA,-0.05,NA))}, although this may not mix well with some obscure options, such as\cr 
-\code{control=list(refit=list(ranCoefs=TRUE))} which will ignore the fixed values. \code{help("GxE")} shows how to use this to fit different variances for different levels of a factor.   
+\code{control=list(refit=list(ranCoefs=TRUE))} which will ignore the fixed values. 
+\code{help("GxE")} shows how to use partially-fixed \code{ranCoefs} to fit different variances for different levels of a factor.   
   
 \bold{corrPars} is a list, and it may also be incomplete, using names to specify the affected random effect as shown for \code{lambda} and \code{ranCoefs}. For example, \code{ranFix=list(corrPars=list("1"=list(nu=0.5)))} makes explicit that \code{nu=0.5} applies to the first (\code{"1"}) random effect in the model formula. Its elements may be the correlation parameters of the given random effect. For the Matérn model, these are the correlation parameters \code{rho} (scale parameter(s)), \code{nu} (smoothness parameter), and (optionally) \code{Nugget} (see \code{\link{Matern}}). The \code{rho} parameter can itself be a vector with different values for different geographic coordinates. %
   For the \code{adjacency} model, the only correlation parameter is a scalar \code{rho} (see \code{\link{adjacency}}).

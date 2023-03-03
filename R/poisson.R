@@ -1,15 +1,3 @@
-.get_family_par <- function(family) {
-  famfam <- family$family
-  if (famfam =="COMPoisson") {
-    family_par <- environment(family$aic)$nu
-  } else if (famfam =="beta_resp") {
-    family_par <- environment(family$aic)$prec
-  } else if (famfam  %in% c("negbin","negbin1","negbin2")) {
-    family_par <- environment(family$aic)$shape
-  }
-  family_par
-}
-
 .rpois <- function(n,mu_str,zero_truncated=FALSE){ ## mu is either the standard mean (lambda) or a structure depending on trunc
   if (zero_truncated) {
     p0 <- attr(mu_str,"p0") ## or recompute it ? (p0= ppois(0, lambda= attr(ftd,"mu_U")))
@@ -121,7 +109,7 @@ Poisson <- function (link = "log", trunc=-1L, LLgeneric=TRUE) {
     n <- rep.int(1, nobs)
     mustart <- y + 0.1
   })
-  simfun <- function(object, nsim,zero_truncated=identical(object$family$zero_truncated,TRUE)) { 
+  simulate <- function(object, nsim,zero_truncated=identical(object$family$zero_truncated,TRUE)) { # cf comments on the beta_resp's simulate
     wts <- object$prior.weights
     if (any(wts != 1)) 
       warning("ignoring prior weights")
@@ -191,7 +179,7 @@ Poisson <- function (link = "log", trunc=-1L, LLgeneric=TRUE) {
       link = linktemp, linkfun = linkfun, 
       linkinv = linkinv, variance = variance, dev.resids = dev.resids, 
       aic = aic, mu.eta = stats$mu.eta, initialize = initialize, 
-      validmu = validmu, valideta = stats$valideta, simulate = simfun, 
+      validmu = validmu, valideta = stats$valideta, simulate = simulate, 
       dlW_Hexp__detafun=dlW_Hexp__detafun, coef1fun=coef1fun, # always available (needed for expInfo as well as NON-generic obsInfo) 
       d_dlWdmu_detafun=d_dlWdmu_detafun, # NULL in most cases (except NON-generic obsInfo => untruncated)
       DlogLDmu = DlogLDmu, D2logLDmu2 = D2logLDmu2, D3logLDmu3 = D3logLDmu3, D2muDeta2 = D2muDeta2, D3muDeta3 = D3muDeta3, # NULL if not LLgeneric

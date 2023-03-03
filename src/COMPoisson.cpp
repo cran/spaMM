@@ -4,6 +4,16 @@
 using namespace Rcpp;
 using namespace std;
 
+// Actually slightly slower than the pure R version...
+// // [[Rcpp::export(.Rcpp_COMP_Z_ratio)]]
+// double Rcpp_COMP_Z_ratio(Rcpp::NumericVector Z1, Rcpp::NumericVector Z2, bool log_=false) {
+//   double logratio;
+//   logratio = Z1[0]-Z2[0]+log(Z1[1]/Z2[1]);
+//   if (log_) {
+//     return(logratio);
+//   } else return(exp(logratio));
+// }
+
 // [[Rcpp::export(.Rcpp_COMP_Z)]]
 SEXP Rcpp_COMP_Z(int moment,double nu, double lambda, int maxn) {
   //COMP_Z <- function(eta,nu,lambda=exp(eta),maxn=.COMP_maxn(lambda,nu)){

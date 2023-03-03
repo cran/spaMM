@@ -239,7 +239,7 @@ glm.nodev.fit <- function (x, y, weights = rep.int(1, nobs), start = NULL, etast
   wtdmu <- if (intercept) 
     sum(weights * y)/sum(weights)
   else linkinv(offset)
-  dev <- suppressWarnings(sum(dev.resids(y, mu, weights))) # "nodev" for the fit, but dev for post-fit: .calc_inits_by_glm() uses it
+  dev <- suppressWarnings(sum(dev.resids(y, mu, weights))) # "nodev" for the fit, but dev for post-fit: .calc_inits_by_xLM() uses it
   # nulldev <- sum(dev.resids(y, wtdmu, weights))
   n.ok <- nobs - sum(weights == 0)
   nulldf <- n.ok - as.integer(intercept)

@@ -252,7 +252,7 @@ HLCor_body <- function(processed, ## single environment
   ranefParsList <- relist(ranefParsVec,skeleton) # converts back a vector of variable parameters to a structured list of variable parameters
   print_phiHGLM_info <- ( ! is.null(processed$residProcessed) && processed$verbose["phifit"]) 
   if (print_phiHGLM_info) {
-    # set a 'prefix' for the line to be printed for each iteration of the phi fit when outer optimization is used for the main response. 
+    # set a 'prefix' for the line to be printed for each iteration of the phi fit when outer optimization is used for the mean response. 
     # In that case a *distinct line* of the form HLCor for <outer opt pars>: phi fit's iter=<say up to 6>, .phi[1]=... 
     # is written for each call of the outer objfn (=> multi-line output).
     # Currently there is no such 'prefix' for mv (_F I X M E_)
@@ -260,10 +260,19 @@ HLCor_body <- function(processed, ## single environment
     urP <- unlist(.canonizeRanPars(ranefParsList, corr_info=processed$corr_info,checkComplete=FALSE, rC_transf=.spaMM.data$options$rC_transf))
     processed$port_env$prefix <- paste0("HLCor for ", paste(signif(urP,6), collapse=" "), ": ")
   } 
+  if ( ! is.null(processed$X_off_fn)) { # beta outer-optimisation
+    if ( ! is.null(trBeta <- ranefParsList$trBeta)) { # outer beta
+      ranefParsList$trBeta <- NULL
+      HLCor.call$etaFix$beta <- .betaInv(trBeta)
+    } else if ( ! is.null(beta <- ranefParsList$beta)) { # outer beta
+      ranefParsList$beta <- NULL
+      HLCor.call$etaFix$beta <- beta
+    }
+  }
   HLCor.call$fixed <- .merge_fixed(HLCor.call$fixed, ranefParsList, skeleton, processed, HLCor.call)
   # 'fixed' may have $trLambda (from notlambda) for what is optimized,
   #              and $lambda (from ranPars$lambda) for what was fixed in the whole outer fit  
-  HLCor.call[[1L]] <- get("HLCor", asNamespace("spaMM"), inherits=FALSE) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
+  HLCor.call[[1L]] <- processed$HLCor
   #HLCor.call[[1L]] <- quote(spaMM::HLCor)
   hlfit <- eval(HLCor.call) ## returns fit or call 
   #

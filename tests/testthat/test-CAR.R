@@ -35,7 +35,7 @@ if (how(blob1, verbose=FALSE)$obsInfo) {
 }
 
 #AIC(blob1)
-VarCorr(blob1)
+VarCorr(blob1) # with one coefficient removed as described in the VarCorr doc. 
 
 if (FALSE) { ## HLCor/corrHlfit already compared on scotlip by test-spaMM.R
   # corrHLfit without corners was poor here

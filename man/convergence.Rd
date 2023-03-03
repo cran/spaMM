@@ -4,9 +4,13 @@
 Assessing convergence for fitted models
 }
 \description{
-spaMM fits may produce convergence warnings coming from \code{.check_conv_glm_reinit()}. These can generally be ignored (particularly when they show a small criterion, <1e-5).
+spaMM fits can produce various convergence warnings or messages. 
 
-spaMM fits may also produce messages pointing to slow convergence and drawing users here. These do not necessarily mean the fit is incorrect. Rather, they suggest that another fitting strategy could be tried. Keep in mind that several parameters (notably the dispersion parameters: the variance of random effects and the residual variance parameter, if any) can be estimated either by the iterative algorithms, or by generic optimization methods. In my experience, slow convergence happens in certain cases where a large random-effect variance is considered by the algorithm used. 
+Messages referring to convergence issues in initialization can generally be ignored but may help to diagnose other apparent problems, if any. 
+
+Warnings referring to \code{.calc_dispGammaGLM} (for residual-dispersion fits) can generally be ignored when they show a small criterion (say <1e-5) but may otherwise suggest that the final fit did not optimize its objective. 
+
+Messages pointing to slow convergence and drawing users to this doscumentation do not necessarily mean the fit is incorrect. Rather, they suggest that another fitting strategy could be tried. Keep in mind that several parameters (notably the dispersion parameters: the variance of random effects and the residual variance parameter, if any) can be estimated either by the iterative algorithms, or by generic optimization methods. In my experience, slow convergence happens in certain cases where a large random-effect variance is considered by the algorithm used. 
 
 How to know which algorithm has been selected for each parameter? \code{fitme(., verbose=c(TRACE=TRUE))} shows successive values of the variables estimated by optimization (See Examples; if no value appears, then all are estimated by iterative methods). The first lines of the summary of a fit object should tell which variances are estimated by the \dQuote{outer} method.
 

@@ -34,7 +34,7 @@ The approximate running time of given examples on one author's laptop is compare
 \item{\code{maxLambda=1e10}:}{The maximum value of lambda: higher fitted lambda values in HLfit are reduced to this. Since version 3.1.0, a much smaller lambda bound is deduced from \code{maxLambda} for COMPoisson and log-link response families.}
 \item{\code{regul_lev_lambda}}{Numeric (default: 1e-8); lambda leverages numerically 1 are replaced by 1- \code{regul_lev_lambda}}  
 \item{\code{COMP_maxn}:}{Number of terms for truncation of infinite sums that are evaluated in the fitting of \code{\link{COMPoisson}} models.}
-\item{\code{CMP_asympto_cond}:}{Condition for applying an approximation or the COMPoisson response family, as detailed in \code{\link{COMPoisson}}.} 
+\item{\code{CMP_asympto_cond}:}{Function returning the condition for applying an approximation or the COMPoisson response family, as detailed in \code{\link{COMPoisson}}.} 
 \item{\code{Gamma_min_y=1e-10}:}{A minimum response value in Gamma-response models; used to check data, and in \code{simulate()} to correct the simulation results.} 
 
 \item{\code{QRmethod}:}{A character string, to control whether dense matrix or sparse matrix methods are used in intensive matrix computations, overcoming the defaults choices made by \code{spaMM} in this respect. Possible values are \code{"dense"} and \code{"sparse"}.}

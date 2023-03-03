@@ -1,5 +1,5 @@
 .reformat_lambda <- function(user_lFix, nrand, namesTerms=NULL, full_lambda) {
-  if ( ! nrand) return(NULL) # ignores extra lambda # ___F I X M E___ add a warning in that case ?
+  if ( ! nrand) return(NULL) # ignores extra lambda # __F I X M E__ add a warning in that case ?
   seq_nrand <- seq_len(nrand)
   if (full_lambda) { # 
     template <- rep(NA,nrand)
@@ -239,10 +239,12 @@
     if (is.null(uniqueGeo) ) { ## then construct it from the data ## this should be the routine case, except for AR1
       uniqueGeo <- .calcUniqueGeo(data=data[,coord_within,drop=FALSE])
       if ( ! is.null(dist.method) && 
-           dist.method %in% c("Earth","EarthChord") ) .check_Earth_coords(coord_within, uniqueGeo) 
-      # activelevels are data-ordered levels whose ranef values affect the likelihood
-      # .calcUniqueGeo must produce data-ordered values.
-      if (!is.null(geo_envir$activelevels)) uniqueGeo <- uniqueGeo[geo_envir$activelevels,,drop=FALSE]
+           dist.method %in% c("Earth","EarthChord") ) .check_Earth_coords(coord_within, uniqueGeo)
+      #
+      ## Attempt to reduce the size of matrices for nested ranefs using 'activelevels' never worked. See comments in .init_assign_geoinfo()
+      # activelevels were data-ordered levels; .calcUniqueGeo must produce data-ordered values.
+      # if (!is.null(geo_envir$activelevels)) uniqueGeo <- uniqueGeo[geo_envir$activelevels,,drop=FALSE]
+      #
       # Setting 'raw_levels' as row names to allow levels check in .calc_ZAlist(): 
       x <- t(uniqueGeo)
       # pastestring <- paste("list(",paste("x","[",seq_len(nrow(x)),",]",sep="",collapse=","),")",sep="") 
@@ -633,8 +635,9 @@
 .precisionFactorize <- function(latentL_blob, rt, 
                                 longsize, # from LMatrices or ZAlist
                                 processed,
-                                cov_info_mat,
-                                template=processed$ranCoefs_blob$longLv_templates[[rt]]) {
+                                cov_info_mat
+                                # template=processed$ranCoefs_blob$longLv_templates[[rt]]
+                                ) {
   
   if ( ! is.null(attr(cov_info_mat,"blob")) # &&                       ## *fixed* corrMatrix => use "blob" envir with chol_Q (etc) of kron_Y corrMatrix
        # inherits(cov_info_mat$matrix, "dsCMatrix")
@@ -652,22 +655,22 @@
     asmat_cpm <- as.matrix(latentL_blob$compactprecmat) # as.matrix() before subsetting.
     precmat@x <- precmat@x * asmat_cpm[phantasmapic$LHS_x]
     # if (any(asmat_cpm==0)) precmat <- drop0(precmat) 
-  } else if (is.null(cov_info_mat)) { # no kronecker product. Same result as .makelong() [except that explicit zeros remain]
-    # ___F I X M E___ generalize to other uses of .makelong()?
+  } else if (is.null(cov_info_mat)) { # kronecker product hiden in the def of the phantom_map. Called in (indeed elementary) ranCoefs cases. 
     Xi_ncol <- ncol(latentL_blob$compactchol_Q)
-    phantasmapic <- .get_phantom_map(longsize=longsize, Xi_ncol = Xi_ncol) # *memoized*
+    phantasmapic <- processed$ranCoefs_blob$phantom_maps[[rt]] # => .get_phantom_map(longsize=longsize, Xi_ncol = Xi_ncol) => list with elements as used below
     chol_Q <- phantasmapic$ltCRHS
     asmat_ccQ <- as.matrix(latentL_blob$compactchol_Q) # as.matrix() before subsetting.
     chol_Q@x <- chol_Q@x * asmat_ccQ[phantasmapic$ltCLHS_x] 
     precmat <- phantasmapic$lsyRHS
     asmat_cpm <- as.matrix(latentL_blob$compactprecmat) # as.matrix() before subsetting.
     precmat@x <- precmat@x * asmat_cpm[phantasmapic$lsyLHS_x]
-  } else {
-    chol_Q <- .makelong(latentL_blob$compactchol_Q, longsize=longsize, template=template, 
-                        kron_Y=attr(cov_info_mat,"blob")$kron_Y_chol_Q) ## from promise created by .init_assign_geoinfo()
-    precmat <- .makelong(latentL_blob$compactprecmat,longsize=longsize, template=template, 
-                         kron_Y=cov_info_mat$matrix )  
-  }
+  } # else if (is.character(cov_info_mat)){ # i.e. "'cov_info_mat' not (yet) stored" 
+  # } else { # This seems fictitious; not tested by long tests; "template" is not triangular but compactchol_Q is, so first .makelong() call fails. 
+  #   chol_Q <- .makelong(latentL_blob$compactchol_Q, longsize=longsize, template=template, 
+  #                       kron_Y=attr(cov_info_mat,"blob")$kron_Y_chol_Q) ## from promise created by .init_assign_geoinfo()
+  #   precmat <- .makelong(latentL_blob$compactprecmat,longsize=longsize, template=template, 
+  #                        kron_Y=cov_info_mat$matrix )  
+  # }
   
   if ( ! inherits(chol_Q,"dtCMatrix")) stop("chol_Q should be a 'dtCMatrix'.") ## and lower tri
   #
@@ -676,7 +679,8 @@
 
 
 ## updates precisionFactorList with LMatrices info for outer ranCoefs.
-.wrap_precisionFactorize_ranCoefs <- function(processed, LMatrices=NULL) { # called by <HLfit_body> functions
+.wrap_precisionFactorize_ranCoefs <- function(processed, LMatrices=NULL,
+                                              corr_types=processed$corr_info$corr_types) { # called by <HLfit_body> functions
   if ( ! is.null(LMatrices)) {
     AUGI0_ZX_envir <- processed$AUGI0_ZX$envir
     precisionFactorList <- AUGI0_ZX_envir$precisionFactorList
@@ -690,30 +694,35 @@
       
       if (ranCoefs_blob$is_composite[rt]) { 
         cov_info_mat <- processed$corr_info$cov_info_mats[[rt]]
-        if (use_corrMatrix_fast_code <- TRUE) { # ____TAG___ OK bc unpermuted Chol for corrMatrix
-          # only makelongs and ranCoefs's compact-matrix operations 
-          
-          precisionFactorList[[rt]] <- 
-            .precisionFactorize(latentL_blob=latentL_blob,
-                                rt=rt, processed=processed,
-                                cov_info_mat=cov_info_mat)
-          
-          updateable[rt] <- necess4updateable
-        } else { # allowing permuted cholesky:
-          # use possible structures of Lmatrix for ranCoefs spprec (cf .Lunique_info_from_Q_CHM()):
-          long_Q_CHMfactor <- LMatrices[[rt]]
-          if ( ! inherits(long_Q_CHMfactor, "dCHMsimpl")) long_Q_CHMfactor <- attr(long_Q_CHMfactor,"Q_CHMfactor")  
-
-          precisionFactorList[[rt]] <- list(
-            chol_Q= as(long_Q_CHMfactor,"sparseMatrix"), 
-            precmat=.makelong(latentL_blob$compactprecmat,
-                              template= ranCoefs_blob$longLv_templates[[rt]],
-                              kron_Y=cov_info_mat$matrix, # should be dsC
-                              drop0template=FALSE # assuming the template is sparse and that compactprecmat won't be sparse most of the time
+        if (corr_types[rt]=="corrMatrix") {
+          if (use_corrMatrix_fast_code <- TRUE) { # ____TAG___ OK bc unpermuted Chol for corrMatrix
+            # only makelongs and ranCoefs's compact-matrix operations 
+            
+            precisionFactorList[[rt]] <- 
+              .precisionFactorize(latentL_blob=latentL_blob,
+                                  rt=rt, longsize=ncol(LMatrices[[rt]]), processed=processed,
+                                  cov_info_mat=cov_info_mat)
+            
+            updateable[rt] <- necess4updateable
+          } else { # allowing permuted cholesky:
+            # use possible structures of Lmatrix for ranCoefs spprec (cf .Lunique_info_from_Q_CHM()):
+            long_Q_CHMfactor <- LMatrices[[rt]]
+            if ( ! inherits(long_Q_CHMfactor, "dCHMsimpl")) long_Q_CHMfactor <- attr(long_Q_CHMfactor,"Q_CHMfactor")  
+            
+            precisionFactorList[[rt]] <- list(
+              chol_Q= as(long_Q_CHMfactor,"sparseMatrix"), 
+              precmat=.makelong(latentL_blob$compactprecmat,
+                                template= ranCoefs_blob$longLv_templates[[rt]],
+                                kron_Y=cov_info_mat$matrix, # should be dsC
+                                drop0template=FALSE # assuming the template is sparse and that compactprecmat won't be sparse most of the time
+              )
             )
-          )
-          updateable[rt] <- necess4updateable ## ___TAG___   corrMatrix specific ! additional conditions needed for parametric correlation models
+            updateable[rt] <- necess4updateable ## ___TAG___   corrMatrix specific ! additional conditions needed for parametric correlation models
+          }
         }
+        # for other corr_types, do nothing here: e.g. AR1 case, dealt in two steps,
+        # (1) produce the RHS Qmat in .assign_geoinfo_and_LMatrices_but_ranCoefs()
+        # (2) produce the composite-model precisionFactorList[.] in .process_ranCoefs() 
       } else {
         precisionFactorList[[rt]] <- 
           .precisionFactorize(latentL_blob=latentL_blob,
@@ -747,7 +756,7 @@
   } else not_inner_phi <- FALSE ## complex phi model, we weed inner optim
   if (not_inner_phi) {
     if (is.null(init.optim$phi)) { 
-      init.optim$phi <- .get_inits_by_glm(processed)$phi_est/(nrand+1L) ## at least one initial value should represent high guessed variance
+      init.optim$phi <- .get_inits_by_xLM(processed)$phi_est/(nrand+1L) ## at least one initial value should represent high guessed variance
       # if init.optim$phi too low (as in min(.,2)) then fitme(Reaction ~ Days + AR1(1|Days) + (Days|Subject), data = sleepstudy) is poor
     }  
   } else {
@@ -757,7 +766,7 @@
   return(list(not_inner_phi=not_inner_phi, init.optim=init.optim))
 }
 
-.eval_init_lambda_guess <- function(processed, stillNAs, ZAL=NULL, cum_n_u_h,For) {
+.eval_init_lambda_guess <- function(processed, stillNAs, ZAL=NULL, cum_n_u_h, For) {
   nrand <-  length(processed$ZAlist)
   if (is.null(processed$main_terms_info$Y)) { ## for resid model
     if (For=="optim") { 
@@ -766,10 +775,10 @@
       #                               init.optim$lambda <- optim_lambda_with_NAs[!is.na(optim_lambda_with_NAs)]
     } else guess_from_glm_lambda <- NA
   } else {
-    inits_by_glm <- .get_inits_by_glm(processed) 
+    inits_by_xLM <- .get_inits_by_xLM(processed) 
     if (For=="optim") { 
-      guess_from_glm_lambda <- inits_by_glm$lambda*(3L*nrand)/((nrand+1L)) # +1 for residual
-    } else guess_from_glm_lambda <- inits_by_glm$lambda*(3L*nrand+2L)/((nrand+1L)) # +1 for residual  ## old code was *5/(nr+1) ## f i x m e super ad hoc
+      guess_from_glm_lambda <- inits_by_xLM$lambda*(3L*nrand)/((nrand+1L)) # +1 for residual
+    } else guess_from_glm_lambda <- inits_by_xLM$lambda*(3L*nrand+2L)/((nrand+1L)) # +1 for residual  ## old code was *5/(nr+1) ## f i x m e super ad hoc
   }
   init_lambda <- rep(NA,nrand)
   rand.families <- processed$rand.families
@@ -823,7 +832,7 @@
                                      (is.na(optim_lambda_with_NAs) & ! is.nan(optim_lambda_with_NAs)) & ## explicit NaN's will be inner-optimized
                                      ! ranCoefs_blob$isRandomSlope) ## exclude random slope whether set or not
     if (length(which_NA_simplelambda)) { # user's explicit lambda=NaN have been removed from the count, but explicit NA count
-      init_lambda <- .eval_init_lambda_guess(proc1, stillNAs=which_NA_simplelambda, For="optim") #calls .get_inits_by_glm 
+      init_lambda <- .eval_init_lambda_guess(proc1, stillNAs=which_NA_simplelambda, For="optim") #calls .get_inits_by_xLM 
                     # and .calc_fam_corrected_guess (with arguments handling mv families)
       optim_lambda_with_NAs[which_NA_simplelambda] <- init_lambda[which_NA_simplelambda]
       init.optim$lambda <- optim_lambda_with_NAs[ ! is.na(optim_lambda_with_NAs)] ## NaN now rmoved if still there (cf is.na(c(1,NA,NaN))) BUT
@@ -841,8 +850,10 @@
   if (any(var_ranCoefs)) {
     # Not super clear why I considered nranterms (user level ??) instead of nrand. FIXME.
     nranterms <- sum(var_ranCoefs | is.na(lFix)) ## var_ranCoefs has FALSE elements for non-ranCoefs (hence it is full-length)
-    # Use .eval_init_lambda_guess() rather than the two next lines ? possibly better for mv fits ___F I X M E___
-    guess_from_glm_lambda <- .get_inits_by_glm(proc1)$lambda * (3L*nranterms)/((nranterms+1L)) # +1 for residual
+    # Use .eval_init_lambda_guess() rather than the next lines ? possibly better for mv fits ___F I X M E___
+    # but the logic in .eval_init_lambda_guess is different: (1) get inits by xLM (2) adjust according to ZA (3) adjust according to family
+    # Here it is (1) get inits by xLM (2) adjust according to family (3) (sort of) adjust according to ZA 
+    guess_from_glm_lambda <- .get_inits_by_xLM(proc1)$lambda * (3L*nranterms)/((nranterms+1L)) # +1 for residual
     fam_corrected_guess <- .calc_fam_corrected_guess(guess=guess_from_glm_lambda, For="optim", processed=proc1) ## divides by nrand...
     for (rt in which(var_ranCoefs)) {
       char_rt <- as.character(rt)
@@ -892,7 +903,8 @@
       (has_corr_pars && calc_dvdlogdisp_needed_for_inner_ML) || # should be TRUE for Loaloa fit used gentle intro'scomparisons, 
                                                                 #       and FALSE for fit_REML in test-devel-predVar-AR1
       # *** next case ad hoc but motivated by 'ahzut' example in private test-COMPoisson-difficult.R ***
-    ( has_family_par <- (( ! is.null(init.optim$COMP_nu)) || ( ! is.null(init.optim$NB_shape)) || ( ! is.null(init.optim$beta_prec))) ) # lambda + family pars 
+    ( has_family_par <- (( ! is.null(init.optim$COMP_nu)) || ( ! is.null(init.optim$NB_shape)) || 
+                           ( ! is.null(init.optim$beta_prec)) || ( ! is.null(init.optim$rdisPars))) ) # lambda + family pars 
   ) 
   other_reasons_to_chech_inner_costs <- ( # when there are other outer-estimated parameters ## 
     has_corr_pars ||
@@ -953,8 +965,8 @@
       )
     } 
     if (anyNA(beta <- user_init_optim$beta)) {
-      inits_by_glm <- .get_inits_by_glm(processed)  
-      beta[names(is.na(beta))] <- inits_by_glm$beta_eta[names(is.na(beta))]
+      inits_by_xLM <- .get_inits_by_xLM(processed)  
+      beta[names(is.na(beta))] <- inits_by_xLM$beta_eta[names(is.na(beta))]
       init.optim$beta <- beta      
     }
     if (length(init.optim$lambda) > nrand1) {
@@ -968,10 +980,58 @@
   return(init.optim)
 }
 
-.calc_init.optim_family_par <- function(family, init.optim, processed) {
+.init_rdisPars <- function(rdisPars_init, # from inits$init.optim
+                           fixed,  disp_env, init_by_glm=1) {
+  fullnames <- disp_env$colnames_X
+  
+  rdisPars <- rep(0, length(fullnames))
+  names(rdisPars) <- fullnames  
+  if ("(Intercept)" %in% fullnames) {
+    rdisPars["(Intercept)"] <- log(init_by_glm)
+  }
+  if ( length(rdisPars_init)) rdisPars[names(rdisPars_init)] <- rdisPars_init
+  fixd1 <- fixed$rdisPars
+  if (is.list(fixd1)) fixd1 <- fixd1[[1]] # cf comments in .rename_ranPars(). But prehaps this should no longer be a list here ?
+  # fixd2 <- disp_env$etaFix
+  if ( ! is.null(fixd1) #  || ! is.null(fixd2) 
+       ) {
+    fixnames1 <- names(fixd1)
+    if (length(setdiff(fixnames1,fullnames))) {
+      stop(paste("names for rdisPars' 'fixed' value not within:", paste(fullnames, collapse=" ")))
+    }
+    # fixnames2 <- names(fixd2)
+    # if (length(setdiff(fixnames1,fullnames))) {
+    #   stop(paste("names for resid.model's $etaFix value not within:", paste(fullnames, collapse=" ")))
+    # }
+    # remove the user-level fixed values
+    rdisPars[fixnames1] <- NA
+    # rdisPars[fixnames2] <- NA
+  }  
+  # if ( ! is.null(init <- disp_env$init)) {
+  #   initnames <- names(init)
+  #   varnames <- names(na.omit(rdisPars))
+  #   if (length(setdiff(initnames,varnames))) {
+  #     stop(paste("names for resid.model's $init value not within (not fixed) coefficients:", paste(varnames, collapse=" ")))
+  #   }
+  #   rdisPars[initnames] <- init
+  # }  
+  rdisPars <- na.omit(rdisPars)
+  if ( length(rdisPars)) { # if estimation is needed, do it on sclaed matrix
+    disp_env$scaled_X <- .scale(disp_env$X)
+    disp_env$X <- NULL
+    rdisPars <- .scale(disp_env$scaled_X, rdisPars)
+  } else rdisPars <- NULL
+  rdisPars
+}
+
+
+.calc_init.optim_family_par <- function(family, init.optim, fixed, processed, 
+                                        inits_by_xLM=.get_inits_by_xLM(processed)) {
   if (family$family=="COMPoisson") {
     if (inherits(substitute(nu, env=environment(family$aic)),"call")) {
-      if (is.null(init.optim$COMP_nu)) init.optim$COMP_nu <- 1 # template: .calc_inits will modify it according to lower, upper 
+      if (processed$models$rdispar=="rdiForm") {
+        init.optim$rdisPars <- .init_rdisPars(init.optim$rdisPars, fixed=fixed, disp_env=family$resid.model)
+      } else if (is.null(init.optim$COMP_nu)) init.optim$COMP_nu <- 1 # template: .calc_inits will modify it according to lower, upper 
     } else {
       if ( ! is.null(init.optim$COMP_nu)) {
         warning("initial value is ignored when 'COMP_nu' is fixed.") # i.e. anything but Intercept model
@@ -980,7 +1040,12 @@
     }  
   } else if (family$family=="beta_resp") {
     if (inherits(substitute(prec, env=environment(family$aic)),"call")) {
-      if (is.null(init.optim$beta_prec)) init.optim$beta_prec <- .get_inits_by_glm(processed)$beta_prec # template: .calc_inits will modify it according to lower, upper 
+      if (processed$models$rdispar=="rdiForm") {
+        init.optim$rdisPars <- .init_rdisPars(init.optim$rdisPars, fixed=fixed, disp_env=family$resid.model,
+                                              init_by_glm=inits_by_xLM$beta_prec)
+      } else if (is.null(init.optim$beta_prec)) {
+        init.optim$beta_prec <- inits_by_xLM$beta_prec # template: .calc_inits will modify it according to lower, upper 
+      }
     } else {
       if ( ! is.null(init.optim$beta_prec)) {
         warning("initial value is ignored when 'beta_prec' is fixed.") # i.e. anything but Intercept model
@@ -996,7 +1061,10 @@
       # test cases are the twinR fit_05 case, some in test-LLM, and negbin example in gentle intro (using optimize() -> initial value cannot be controlled)
       #
       # Overall, finding the good starting value for shape seems important.
-      if (is.null(init.optim$NB_shape)) init.optim$NB_shape <- .get_inits_by_glm(processed)$NB_shape # template: .calc_inits will modify it according to lower, upper 
+      if (processed$models$rdispar=="rdiForm") {
+        init.optim$rdisPars <- .init_rdisPars(init.optim$rdisPars, fixed=fixed, disp_env=family$resid.model,
+                                              init_by_glm=inits_by_xLM$NB_shape)
+      } else if (is.null(init.optim$NB_shape)) init.optim$NB_shape <- inits_by_xLM$NB_shape # template: .calc_inits will modify it according to lower, upper 
     } else {
       if ( ! is.null(init.optim$NB_shape)) {
         warning("initial value is ignored when 'NB_shape' is fixed.") # i.e. anything but Intercept model
@@ -1026,10 +1094,10 @@
     }
   }
   init.optim <- .reformat_corrPars(user_init_optim, corr_families=corr_info$corr_families)
-  init.HLfit <- proc_it$init_HLfit #to be modified below ## dhglm uses fitme_body not (fitme-> .preprocess) => dhglm code modifies processed$init_HLfit
+  init.HLfit <- proc_it$init_HLfit #to be modified below ## dhglm uses fitme_body not (fitme-> .preprocess) => .update_phifitarglist() and .update_port_fit_values_residModel code $init_HLfit
   # used by .more_init_optim:
   family <- proc_it$family
-  init.optim <- .calc_init.optim_family_par(family, init.optim, processed=proc_it)
+  init.optim <- .calc_init.optim_family_par(family, init.optim, fixed=fixed, processed=proc_it)
   #
   ##### init.optim$phi/lambda will affect calc_inits -> calc_inits_dispPars.
   # outer estim seems useful when we can suppress all inner estim (thus the hatval calculations). 
@@ -1057,7 +1125,8 @@
       phi_by_augZXy <- ( augZXy_cond && is.null(user.lower$phi) && is.null(user.upper$phi)) 
       if (augZXy_cond && ! phi_by_augZXy) {
         proc_it$augZXy_cond <- structure(phi_by_augZXy, inner=attr(proc_it$augZXy_cond, "inner"))
-        .do_TRACE(processed)
+        .do_TRACE(processed) # all the more hypothetical as this might no longer work if .do_TRACE() is called twice. 
+                             # .do_TRACE() now expects a string in processed$HLfit_body_fn, and this is no longer a string after .do_TRACE() has been called once.  
       }
     }
     # Now create a template for optimization, deciding for outer/inner optimisations:
@@ -1114,13 +1183,25 @@
     # Instead, .makeLowUp_stuff_mv() will compute mv-LUarglist and mv-LowUp from the global "processed"  and the merged other arguments
     return(list(inits=inits, fixed=fixed, corr_types=corr_types))
   } else {
+
+    if ( ! is.null(inits$`init`$rdisPars)) {
+      famdisp_lowup <- .wrap_calc_famdisp_lowup(processed)
+    } else famdisp_lowup <- NULL
+    
+    if (FALSE && ! is.null(inits$`init`$beta)) { # outer beta... FALSE && ...because the effect is not convincing (___F I X M E___). 
+      # The COMP example currently works only without this and with a vector of O's as initial values.
+      fixef_lowup <- .calc_fixef_lowup(processed)
+    } else fixef_lowup <- NULL
+    
     LUarglist <- list(canon.init=inits$`init`, 
                       init.optim=inits$init.optim,
                       user.lower=user.lower,user.upper=user.upper,
                       corr_types=corr_types,
                       ranFix=fixed, # inits$ranFix, # Any change in $ranFix would be ignored 
                       optim.scale=optim.scale, 
-                      moreargs=moreargs) ## list needed as part of attr(,"optimInfo")
+                      moreargs=moreargs,
+                      famdisp_lowup=famdisp_lowup,
+                      fixef_lowup=fixef_lowup) ## list needed as part of attr(,"optimInfo")
     LowUp <- do.call(".makeLowerUpper",LUarglist) 
     return(list(inits=inits, fixed=fixed, corr_types=corr_types, LUarglist=LUarglist,LowUp=LowUp))
    ## LowUp: a list with elements lower and upper that inherits names from init.optim, must be optim.scale as init.optim is by construction

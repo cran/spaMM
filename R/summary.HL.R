@@ -470,6 +470,12 @@ summary.HLfitlist <- function(object, ...) {
   return(summ)
 }
 
+.is_unit <- function(pw) {
+  if (is.null(is_unit <- attr(pw, "is_unit"))) {
+    is_unit <- (identical(attr(pw,"unique"),TRUE) && pw[1]==1L)
+  }
+  is_unit
+}
 
 .summary_phi_object <- function(object, phi.object=object$phi.object, family=object$family, 
                                 pw=object$prior.weights, summ, phimodel, mv_it=NULL) { # 'mv_it' needed for non-trivial  .get_glm_phi(object, it=it)
@@ -485,9 +491,9 @@ summary.HLfitlist <- function(object, ...) {
         cat("-- Residual variation ( var = phi * mu^2 )  --\n")
       } else cat("------------- Residual variance  ------------\n")    
     }
-    if ( ! (identical(attr(pw,"unique"),TRUE) && pw[1]==1L)) cat(paste("Prior weights:",
-                                                                       paste(signif(pw[1:min(5,length(pw))],6),collapse=" "),
-                                                                       "...\n"))
+    if ( ! .is_unit(pw)) cat(paste("Prior weights:",
+                                   paste(signif(pw[1:min(5,length(pw))],6),collapse=" "),
+                                   "...\n"))
     if ( ! is.null(phi_outer <- phi.object$phi_outer)) {
       if ( identical(attr(phi_outer,"type"),"fix") ) {
         if (length(phi_outer)==1L) {
@@ -497,7 +503,7 @@ summary.HLfitlist <- function(object, ...) {
           if (length(phiform)==2) phiform <- as.formula(paste('"phi"',paste(phiform,collapse=" "))) 
           cat(paste("phi was fixed [through ",deparse(phiform),"] to", 
                     paste(signif(phi_outer[1:min(5,length(phi_outer))],6),collapse=" "),"...\n"))
-        } else cat(paste("phi was fixed to",paste(signif(phi_outer[1:min(5,length(phi_outer))],6),collapse=" "),"...\n"))
+        } else cat(paste("phi was fixed to",paste(signif(phi_outer[1:min(5L,length(phi_outer))],6),collapse=" "),"...\n"))
       } else {
         if (length(phi_outer)==1L) {
           cat(paste("phi estimate was",signif(phi_outer,6),"\n"))
@@ -506,10 +512,17 @@ summary.HLfitlist <- function(object, ...) {
       #summ$phi_outer <- phi.object$phi_outer ## mv: {actually from phi.object[[mv_it]]; overwrites previous mv_it} 
                                               # spaMM does nothing of it anyway so I remove
     } else {
-      if (phimodel=="phiHGLM") {
-        if (! is.null(mv_it)) {
-          cat(paste0("Residual dispersion model includes random effects:\n  use summary(<fit object>$resid_fits[[",mv_it,"]]) to display results.\n"))
-        } else cat("Residual dispersion model includes random effects:\n  use summary(<fit object>$resid_fit) to display results.\n")       
+      if (! is.null(mv_it)) {
+        is_hlfit <- ! is.null(object$resid_fits[[mv_it]])
+      } else  is_hlfit <- ! is.null(object$resid_fit)
+      if (is_hlfit) {
+        if (phimodel=="phiHGLM") {
+          if (! is.null(mv_it)) {
+            cat(paste0("Residual dispersion model includes random effects:\n  use summary(<fit object>$resid_fits[[",mv_it,"]]) to display results.\n"))
+          } else cat("Residual dispersion model includes random effects:\n  use summary(<fit object>$resid_fit) to display results.\n")       
+        } else  if (! is.null(mv_it)) {
+          cat(paste0("Residual dispersion model is HLfit object:\n  use summary(<fit object>$resid_fits[[",mv_it,"]]) to display results.\n"))
+        } else cat("Residual dispersion model is HLfit object:\n  use summary(<fit object>$resid_fit) to display results.\n") # __F I X M E__ that is reasonable output but try extracting info from the fits?       
       } else if ((loc_p_phi <- length(phi.object$fixef))) { # there are phi params (possibly outer estimated), 
         glm_phi <- .get_glm_phi(object, mv_it=mv_it) 
         summ <- .table_glm_phi(glm_phi, loc_p_phi, phi.object, summ, object, family=family,
@@ -519,7 +532,47 @@ summary.HLfitlist <- function(object, ...) {
         warning("Unexpected case in .summary_phi_object(): maybe harmless, but please contact the maintainer.") # warning set on 3.7.24 03/2021
       }                                                 
     }
-  } ## else binomial or poisson, no dispersion param
+  } else if (family$family %in% c("beta_resp","COMPoisson", "negbin1", "negbin2")) {
+    not_pw_1 <- ! .is_unit(pw) 
+    has_dispenv_beta <- ( ! is.null(beta <- (disp_env <- family$resid.model)$beta)) 
+    if (not_pw_1 || has_dispenv_beta) {
+      if (! is.null(mv_it)) {
+        cat(crayon::underline("* response", mv_it))
+        info <- switch(family$family,
+                       "beta_resp" = " dispersion model for beta_resp\n",
+                       "COMPoisson"= " dispersion model for COMPoisson\n",
+                       "negbin1"   = " dispersion model for negbin1\n",
+                       "negbin2"   = " dispersion model for negbin2\n",
+                       "family dispersion parameter"
+        )
+      } else info <- switch(family$family,
+                     "beta_resp" = "------- Dispersion model for beta_resp --------\n",
+                     "COMPoisson"= "------- Dispersion model for COMPoisson -------\n",
+                     "negbin1"   = "------- Dispersion model for negbin1 ----------\n",
+                     "negbin2"   = "------- Dispersion model for negbin2 ----------\n",
+                     "family dispersion parameter"
+      )
+      cat(info)
+    }
+    if (not_pw_1) cat(paste("Prior weights:",
+                    paste(signif(pw[1:min(5,length(pw))],6),collapse=" "),
+                    "...\n"))
+    if (has_dispenv_beta) {
+      info <- switch(family$family,
+                     "beta_resp" = "prec",
+                     "COMPoisson"= "nu",
+                     "negbin1"="shape",
+                     "negbin2"="shape",
+                     "family dispersion parameter"
+      )
+      info <- paste0("Coefficients for log(",info,")", deparse(disp_env$resid.formula)," :\n")     
+      dispcoef_table <- cbind(disp_env$beta, NA)
+      colnames(dispcoef_table) <- c("Estimate", "Cond. SE")
+      summ$dispcoef_table <- dispcoef_table
+      cat(info)
+      print(dispcoef_table,6)
+    }
+  }  ## else binomial or poisson, no dispersion param
   return(summ)
 }
 
@@ -708,7 +761,9 @@ summary.HLfitlist <- function(object, ...) {
   }
   ##
   if (length(vec_nobs <- object$vec_nobs)) { # fitmv case; then object$phi.object must be a list of phi objects 
-    if (any(.unlist(lapply(object$families,`[[`, "family")) %in% c("gaussian","Gamma"))) {
+    if (any(.unlist(lapply(object$families,`[[`, "family")) %in% c("gaussian","Gamma")) ||
+        ! all(sapply(object$prior.weights, attr, "is_unit")) ||
+        length(setdiff(object$models$rdispar, c("","rdiOff")))) {
       cat("-------------- Residual variation -------------\n")    
       for (mv_it in seq_along(form)) {
         summ <- .summary_phi_object(object, phi.object=object$phi.object[[mv_it]], 

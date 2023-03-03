@@ -1,58 +1,85 @@
 .CMP_use_asympto <- function(pow_lam_nu, nu, lambda) {
   ## Gaunt et al suggest lambda>1.5 and pow_lam_nu>1.5
   ## this ensures that nu*pow_lam_nu>1.1 but the expansion is clearly better for nu*pow_lam_nu >> 1 
-  return(eval(.spaMM.data$options$CMP_asympto_cond))
+  return(.spaMM.data$options$CMP_asympto_cond(pow_lam_nu, nu, lambda))
 }
 
 .COMP_maxn <- function(lambda,nu) { ## this uses the simplest asympto approx to determine the discrete sum bound 
-  # most pbatic case is nu->0, lambda->1^- where E -> lambda/(1-lambda) ->Inf while the first En approx <1 or <<1
+  # => This is so often called as to become quite time consuming... I rewrote it notably to avoid .COMP_Pr_moments() calls 
+  # but without changing the results except at (*)
   pow_lam_nu  <- lambda^(1/nu)
-  Pr_moments <- .COMP_Pr_moments(pow_lam_nu=pow_lam_nu, lambda, nu, moments=c(1,2),use_asympto=TRUE)
-  res <- app_En <- Pr_moments[1]
-  opt_maxn <- .spaMM.data$options$COMP_maxn
-  if (res< opt_maxn) { 
-    app_En2 <- Pr_moments[2]
-    app_Vn <- app_En2-app_En^2 # should be positive when nu>1, see comment in source fro the asympto approx
-    # BUT: app_En can be negative for lambda <<1, nu moderately > 1
-    app_Vn <- max(app_Vn,pow_lam_nu/nu)
-    app_En <- max(app_En,pow_lam_nu)
-    # the max() ensures continuity in nu=1 as the .COMP_Pr_moments equals the simpler approx there  
-    res <- 4+app_En+6*sqrt(app_Vn)  ## real, to allow continuity correction 
-    # VAGUELY inspired from 6*sqrt(app_Vn) to keep all but 1e-6 of the distrib (Feller p.245). 
-    # But in fact this uses Gaussian approx and fails for e.g. y=0, mu=0.09568245 => visible diff between dpois and .dCOMP
-    # => add 4. 
-    # 1-ppois(4+1+6*sqrt(1),lambda = 1)=8.316108e-10 ; 1-ppois(4+10000+6*sqrt(10000),lambda = 10000)=1.067214e-09
-    #   For same <small-value ~ 1e-N >= 1-pgeom(maxn,prob = 1-<lambda>) one needs maxn=-N/log10(lambda) 
-    # here N ~ 9 
-    # 1-pgeom(-9/log10(0.01),prob = 1-0.01)= 1e-10, 1-pgeom(-9/log10(0.99),prob = 1-0.99)=9.994734e-10
-    # and with log(lambda)~lambda-1 we need N*sqrt(app_Vn)~ N/[log(10)*(1-lambda)] To ensure continuity ( & with log10() argument always <1):
-    # N ~ 
-    if (nu-1< -1e-12 && lambda<1) { # fatally, testing more simply nu<1 failed to prevent a ~ (-1e-16)/log10(1) calculation...  
-      res <- -((1-nu)^2)*9/log10(nu+(1-nu)*lambda)+(1-(1-nu)^2)*res  ## real, not integer, to allow continuity correction 
-      # => in nu->1 the correction is zero for all 1>lambda>0, in nu->0 res is -9/log10(lambda)
-    }
+  safe_maxn <- .spaMM.data$options$COMP_maxn
+  nu_pow_lam_nu <- nu*pow_lam_nu
+  c1 <- (nu^2-1)/24
+  c1_nu_pow2 <- c1/(nu_pow_lam_nu^2)
+  c1_app <- pow_lam_nu*( 1 -(nu-1)/(2*nu_pow_lam_nu) - c1_nu_pow2- c1_nu_pow2/nu_pow_lam_nu) # asympto approx in .COMP_Pr_moments()
+  if (nu<1) { # <=> c1_app > pow_lam_nu
+    # most pbatic case is nu->0, lambda->1^- where E -> lambda/(1-lambda) ->Inf while the c1_app approx <1 or <<1
+    app_Vn <- pow_lam_nu/nu
+    if (c1_app < safe_maxn) {
+      res <- 4+c1_app+6*sqrt(app_Vn)  ## real rather than integer, to allow continuity correction 
+      # VAGUELY inspired from 6*sqrt(app_Vn) to keep all but 1e-6 of the distrib (Feller p.245). 
+      # But in fact this uses Gaussian approx and fails for e.g. y=0, mu=0.09568245 => visible diff between dpois and .dCOMP
+      # => add 4. 
+      # 1-ppois(4+1+6*sqrt(1),lambda = 1)=8.316108e-10 ; 1-ppois(4+10000+6*sqrt(10000),lambda = 10000)=1.067214e-09
+      #   For same <small-value ~ 1e-N >= 1-pgeom(maxn,prob = 1-<lambda>) one needs maxn=-N/log10(lambda) 
+      # here N ~ 9 
+      # 1-pgeom(-9/log10(0.01),prob = 1-0.01)= 1e-10, 1-pgeom(-9/log10(0.99),prob = 1-0.99)=9.994734e-10
+      # and with log(lambda)~lambda-1 we need N*sqrt(app_Vn)~ N/[log(10)*(1-lambda)] To ensure continuity ( & with log10() argument always <1):
+      # N ~ 
+      if (nu-1< -1e-12 && lambda<1) { # fatally, testing more simply nu<1 failed to prevent a ~ (-1e-16)/log10(1) calculation...  
+        res <- -((1-nu)^2)*9/log10(nu+(1-nu)*lambda)+(1-(1-nu)^2)*res  ## real, not integer, to allow continuity correction 
+        # => in nu->1 the correction is zero for all 1>lambda>0, in nu->0 res is -9/log10(lambda)
+      }
+    } else {  # the initial 'c1_app' may be way off, it is Inf if lambda -> 0, nu small, and second moment is NaN
+      ## Now using a quick Chebyshev-like approx to recover "at least" ~0.999999 of the distribution: 
+      # res <- app_En + 1e3*sqrt(app_Vn) # so that tail beyond upper has proba ~ var/guess^2 =1e-6 # but .COMP_maxn() should produce appropriate guesses
+      ## I've had some sort of continuity and derivability concern here and the actual code meant
+      # res <- 4+pow_lam_nu+(6+994*(1-1/sqrt(1+(c1_app/safe_maxn-1)^2)))*sqrt(app_Vn)  ## real, to allow continuity correction
+      ## which is perhaps not continuous in the way I first thought about it. Continuity with the c1_app < safe_maxn case requires
+      res <- 4+c1_app+(6+994*(1-1/sqrt(1+(c1_app/safe_maxn-1)^2)))*sqrt(app_Vn) # (*) ## real, to allow continuity correction
+      # which remains > safe_maxn so the returned value may be structure(safe_maxn, upper=res) 
+      # maintaining some info in the attribute, but no form of derivability.
+    }  
+  } else { # mu >=1  => app_Vn will be >= pow_lam_nu/nu
+    app_En <- pow_lam_nu
+    if (c1_app < safe_maxn) {
+      app_Vn <- (pow_lam_nu/nu)*( 1 + c1_nu_pow2 + 2*c1_nu_pow2/nu_pow_lam_nu) # asympto approx in .COMP_Pr_moments()
+      res <- 4+app_En+6*sqrt(app_Vn)  ## real rather than integer, to allow continuity correction 
+    } else {  # the initial res may be way off, that first 'res' is Inf if lambda -> 0, nu small, and second moment is NaN
+      ## Same idea as in the nu<1 case, but now one may have c1_app < safe_maxn <- aap
+      app_Vn <- pow_lam_nu/nu
+      res <- 4+c1_app+(6+994*(1-1/sqrt(1+(c1_app/safe_maxn-1)^2)))*sqrt(app_Vn)  ## again a real to allow continuity correction 
+    }  
+  }
+  
+  if (nu-1< -1e-12 && lambda<1) { # fatally, testing more simply nu<1 failed to prevent a ~ (-1e-16)/log10(1) calculation...  
+    res <- -((1-nu)^2)*9/log10(nu+(1-nu)*lambda)+(1-(1-nu)^2)*res  ## real, not integer, to allow continuity correction 
+    # => in nu->1 the correction is zero for all 1>lambda>0, in nu->0 res is -9/log10(lambda)
   }
   # this may still be far off if initial app_En, app_Vn were far too great, which occurs 
   #  as the asympto approx is not valid (and diverges) for low lambda and low nu. So we add another simple correction: 
   if (lambda<0.98) res <- min(res, -9/log10(lambda)) # always <= than the value for the geometric
-  if (res>opt_maxn) {
-    res <- opt_maxn
+  
+  if (res>safe_maxn) {
+    attr(safe_maxn,"upper") <- res
+    res <- safe_maxn
     if ( ! identical(.spaMM.data$options$COMP_maxn_warned,TRUE)) {
       warning(paste0("maxn truncated to ",res," for (lambda,nu)= (",lambda,",",nu,") and possibly other values."))
       .spaMM.data$options$COMP_maxn_warned <- TRUE
       ### This is first called through 
-      # .get_inits_by_glm(processed, reset = quote(family$family %in% c("COMPoisson", "negbin2")))
-      # -> .calc_inits_by_glm(processed)
+      # .get_inits_by_xLM(processed, reset = quote(family$family %in% c("COMPoisson", "negbin2")))
+      # -> .calc_inits_by_xLM(processed)
       # -> .tryCatch_W_E(glm.fit ...)
       ### so the first warning is suppressed, and no further ones will be emitted UNLESS... 
       # unless we reset .spaMM.data$options$COMP_maxn_warned <- FALSE after the .tryCatch_W_E()
-      # and as .get_inits_by_glm() is called repeatedly for COMPoisson, we do so only if a warning was emitted by the glm
-      # which means that COMP_maxn_warned was FALSE in entry to .get_inits_by_glm()
-      # which means that COMP_maxn_warned is not set to FALSE by .get_inits_by_glm() when it was TRUE in entry to it.
-      if (.spaMM.data$options$need_memoise_warning) {
-        warning("If the memoise package had been installed (prior to loading spaMM), faster computation could be possible.")
-        .spaMM.data$options$need_memoise_warning <- FALSE
-      }
+      # and as .get_inits_by_xLM() is called repeatedly for COMPoisson, we do so only if a warning was emitted by the glm
+      # which means that COMP_maxn_warned was FALSE in entry to .get_inits_by_xLM()
+      # which means that COMP_maxn_warned is not set to FALSE by .get_inits_by_xLM() when it was TRUE in entry to it.
+      # if (.spaMM.data$options$need_memoise_warning) {
+      #   warning("If the memoise package had been installed (prior to loading spaMM), faster computation could be possible.")
+      #   .spaMM.data$options$need_memoise_warning <- FALSE
+      # }
     }
   }
   res
@@ -69,67 +96,114 @@
   res
 }
 
+## pure documentation for Rcpp version:
+.pure_R_COMP_Z_asympto <- function(nu, pow_lam_nu) {
+  logScaleFac <- nu*pow_lam_nu[[1L]] ## drop any name ! otherwise return value has wrong names
+  # using Gaunt et al.:
+  c1 <- (nu^2-1)/24
+  c2 <- (nu^2-1)*(nu^2+23)/1152
+  # c3 <- (nu^2-1)*(5*nu^4-298*nu^2+11237)/414720
+  # c4 <- (nu^2-1)*(5*nu^6-1887*nu^4-241041*nu^2+2482411)/39813120
+  # c5 <- (nu^2-1)*(7*nu^8-7420*nu^6+1451274*nu^4-220083004*nu^2+1363929895)/6688604160
+  # c6 <- (nu^2-1)*(35*nu^10 - 78295*nu^8 + 76299326*nu^6 + 25171388146*nu^4 
+  #                 - 915974552561*nu^2 + 4175309343349)/4815794995200
+  # c7 <- (nu^2-1)*(5*nu^12- 20190*nu^10 + 45700491*nu^8 - 19956117988*nu^6
+  #                 +7134232164555*nu^4-142838662997982*nu^2 + 525035501918789)/115579079884800
+  # scaled <- (1+c1/logScaleFac+c2/logScaleFac^2+c3/logScaleFac^3+c4/logScaleFac^4+
+  #              c5/logScaleFac^5+c6/logScaleFac^6+c7/logScaleFac^7)
+  scaled <- (1+c1/logScaleFac+c2/logScaleFac^2)
+  scaled <- (scaled/((2*pi*pow_lam_nu)^((nu-1)/2)*sqrt(nu)))[[1L]] ## drop any name !
+  resu <- c(logScaleFac=logScaleFac, scaled=scaled)
+  resu
+} 
+
+.get_quadinf <- local(
+  {
+    success <- quadinf <- NULL
+    function() {
+      if (is.null(success)) {
+        tryres <- suppressWarnings(do.call("require",list(package="pracma", quietly = TRUE)))  ## package not declared in DESCRIPTION
+        if (success <<- ! inherits(tryres,"try-error")) {
+          quadinf <<- get("quadinf",envir = asNamespace("pracma"))
+        } else {
+          message(paste0("If the 'pracma' package were available,\n", "more accurate evaluation of an integral would be possible."))
+          # quadinf remains NULL
+        }
+      }
+      quadinf # NULL or the pracma::quadinf function
+    }
+  }
+)
+
+if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") {
+  .COMP_local_check <- function(test) {
+    if(test) browser("devel check for COMP ('___F I X M E___' tag: .COMP_Z_moment() includes check only conditionally on _LOCAL_TESTS_)")
+    # from version 4.1.26, 2022/12/25 upwards
+  }
+} else {
+  .COMP_local_check <- function(test) NULL # promise ignored...
+}
+
 ## N O T the moments of the proba distr, Rather the 'num' for a moment obtained by .COMP_Z_ratio(num,denum)
 # we call it repeatedly for nu=1 (and variable lambda) but this may be needed to get the continuity correction in nu=1
 .COMP_Z_moment <- function(eta,nu,lambda=exp(eta), moment, 
                            pow_lam_nu = exp(eta/nu),
                            maxn=.COMP_maxn(lambda,nu),
                            use_asympto=.CMP_use_asympto(pow_lam_nu,nu,lambda)) {
-  if (use_asympto) { 
+  if (use_asympto) { # for moment=0
     if (moment) {
       stop("Execution should not reach this point.")  
-    } else { ## moment=0
-      if (FALSE) {
-        logScaleFac <- nu*pow_lam_nu[[1L]] ## drop any name ! otherwise return value has wrong names
-        # using Gaunt et al.:
-        c1 <- (nu^2-1)/24
-        c2 <- (nu^2-1)*(nu^2+23)/1152
-        # c3 <- (nu^2-1)*(5*nu^4-298*nu^2+11237)/414720
-        # c4 <- (nu^2-1)*(5*nu^6-1887*nu^4-241041*nu^2+2482411)/39813120
-        # c5 <- (nu^2-1)*(7*nu^8-7420*nu^6+1451274*nu^4-220083004*nu^2+1363929895)/6688604160
-        # c6 <- (nu^2-1)*(35*nu^10 - 78295*nu^8 + 76299326*nu^6 + 25171388146*nu^4 
-        #                 - 915974552561*nu^2 + 4175309343349)/4815794995200
-        # c7 <- (nu^2-1)*(5*nu^12- 20190*nu^10 + 45700491*nu^8 - 19956117988*nu^6
-        #                 +7134232164555*nu^4-142838662997982*nu^2 + 525035501918789)/115579079884800
-        # scaled <- (1+c1/logScaleFac+c2/logScaleFac^2+c3/logScaleFac^3+c4/logScaleFac^4+
-        #              c5/logScaleFac^5+c6/logScaleFac^6+c7/logScaleFac^7)
-        scaled <- (1+c1/logScaleFac+c2/logScaleFac^2)
-        scaled <- (scaled/((2*pi*pow_lam_nu)^((nu-1)/2)*sqrt(nu)))[[1L]] ## drop any name !
-        resu <- c(logScaleFac=logScaleFac, scaled=scaled)
-      } else resu <- .Rcpp_COMP_Z_asympto(nu, pow_lam_nu)
+    } else { 
+      # resu <- .pure_R_COMP_Z_asympto(nu, pow_lam_nu)
+      resu <- .Rcpp_COMP_Z_asympto(nu, pow_lam_nu)
     }
   } else {
     resu <- .Rcpp_COMP_Z(moment=moment,nu=nu,lambda=lambda,maxn=maxn)
-    k_maxim <- ceiling(pow_lam_nu) ## practically locates the mode 
-    lfac <- lfactorial(k_maxim)
-    if (is.infinite(lfac)) { ## Should not occur as the asymptotic approx for the moments of the *PDF* should have been used 
+    Z_mode <- ceiling(pow_lam_nu) ## practically locates the mode 
+    lfac_Z_mode <- lfactorial(Z_mode)
+    if (is.infinite(lfac_Z_mode)) { ## Should not occur as the asymptotic approx for the moments of the *PDF* should have been used 
       stop(paste("Practically infinite sum for COMPoisson's nu=",nu,". The asymptotic approx for the moments of the *PDF* should have been used."))
     } 
-    if (maxn>.spaMM.data$options$COMP_maxn-1) {
-      logScaleFac <- (k_maxim*eta - nu*lfac)[[1L]] ## drop any name !
-      ## Add approximation for tail beyond summation from zero to maxn: 
-      ## integrating directly from maxn to Inf may not work, as integrate() may then miss the mode of the integrand. So:
-      # (1) Always add tail beyond the highest of maxn and k_maxim
-      taildef <- max(k_maxim,maxn)
-      if (taildef>1e10) {
-        # nintegrate behaves more poorly that what can be handled by max(0,.)
-        # E.g., compare the value of 'scaled' in (spaMM:::.COMP_Z_n(lambda=exp(7.321), nu=0.25)) verss (spaMM:::.COMP_Z_n(lambda=exp(7.32), nu=0.25))
-        scaled <- .do_call_wrap("quadinf", 
-                                arglist=list(f=.COMP_Z_integrand, xa = taildef, xb = Inf, 
-                                             eta = eta, nu = nu, moment = 1,logScaleFac = logScaleFac),
-                                pack="pracma",
-                                info_mess=paste0("If the 'pracma' package were available,\n",
-                                                 "more accurate evaluation of an integral would be possible.")
-        )$Q
-        if (is.null(scaled)) scaled <- max(0,integrate(.COMP_Z_integrand,lower=taildef,upper=Inf,eta=eta,nu=nu,moment=moment,
-                                                       logScaleFac=logScaleFac)$value)
-      } else {
-        scaled <- max(0,integrate(.COMP_Z_integrand,lower=taildef,upper=Inf,eta=eta,nu=nu,moment=moment,
-                                  logScaleFac=logScaleFac)$value)
-      }
-      if (maxn<k_maxim) { ## then add integral from maxn to k_maxim 
-        scaled <- scaled + max(0,integrate(.COMP_Z_integrand,lower=maxn,upper=k_maxim,eta=eta,nu=nu,moment=moment,
+    if ( ! is.null(upper <- attr(maxn,"upper"))) { # If the NSum upper bound maxn was truncated by the safety control => 
+      ## Add approximation for tail beyond summation from zero to maxn, using numerical integration.
+      ## But integrating directly from maxn to Inf may not work, as integrate() may then miss the mode of the integrand. 
+      ## So will be done in 2 stpes.
+      logScaleFac <- (Z_mode*eta - nu*lfac_Z_mode)[[1L]] ## drop any name !
+      ## (1) Optionally add integral from maxn to Z_mode, if Z_mode is higher 
+      if (maxn<Z_mode) {  
+        scaled <- max(0,integrate(.COMP_Z_integrand,lower=maxn,upper=Z_mode,eta=eta,nu=nu,moment=moment,
                                            logScaleFac=logScaleFac)$value)
+        lower <- Z_mode # maxn < Z_mode < upper   (upper>maxn must be ensured by .COMP_maxn())
+      } else {
+        scaled <- 0
+        lower <- maxn # Z_mode < maxn < upper
+      }
+      # (2) Always add tail beyond lower := the highest of maxn and Z_mode
+      if (lower>1e7) { # has been >1e10
+        
+        # checking that the integrand is not more that numerical imprecision at upper bound:
+        .COMP_local_check(test= {
+          crit <- ((upper)^moment) *
+            .COMP_Z_integrand(upper, eta = eta, lambda = NULL, nu = nu, moment = moment, logScaleFac = logScaleFac)
+          crit > 1e-12
+        }) 
+        # E.g., compare the value of integral in (spaMM:::.COMP_Z_n(lambda=exp(7.321), nu=0.25)) verss (spaMM:::.COMP_Z_n(lambda=exp(7.32), nu=0.25))
+        
+        if (is.null(quadinf <- .get_quadinf())) {
+          # nintegrate behaves more poorly that what can be handled by max(0,.)
+          ## With upper=Inf, integrate once failed, with a message suggesting a diverging integrand, which it was not. 
+          scaled <- max(0,integrate(.COMP_Z_integrand,lower=lower,upper=upper, # has been # , upper=Inf # => cf above comment
+                                    eta=eta,nu=nu,moment=moment,
+                                    logScaleFac=logScaleFac)$value)
+        } else {
+          scaled <- quadinf(f=.COMP_Z_integrand, xa = lower, xb = upper,    # has been # , xb=Inf #
+                            eta = eta, nu = nu, moment = moment, logScaleFac = logScaleFac)$Q #Bug fixed in v4.1.25 here
+        }
+        # quadinf_res <- .do_call_wrap("quadinf", 
+        #                         pack="pracma",
+        #                         info_mess=paste0("If the 'pracma' package were available,\n",
+        #                                          "more accurate evaluation of an integral would be possible.")
+        # )$Q
       }
       scaled <- pmin(.Machine$double.xmax,scaled)
       resu <- .COMP_Z_sum(resu, c(logScaleFac=logScaleFac,scaled=scaled))
@@ -142,50 +216,51 @@
 
 .COMP_Pr_moments <- function(pow_lam_nu=lambda^(1/nu), lambda, nu, moments,
                              use_asympto=.CMP_use_asympto(pow_lam_nu,nu, lambda)) {
-  resu <- rep(NA,length(moments))
-  names(resu) <- moments
+  whichM <- which(moments)
+  resu <- rep(NA,length(whichM))
+  names(resu) <- whichM
   if (use_asympto) {
     # using Gaunt et al.: ...3.22...
     c1 <- (nu^2-1)/24
     mu1 <- pow_lam_nu*( 1 -(nu-1)/(2*nu*pow_lam_nu) - c1/((nu*pow_lam_nu)^2)- c1/((nu*pow_lam_nu)^3))
-    if ("1" %in% moments) resu["1"] <- mu1
-    if ("2" %in% moments || "3" %in% moments || "4" %in% moments) {
+    if (moments[1L]) resu["1"] <- mu1
+    if (moments[2L] || moments[3L] || moments[4L]) {
       Var <- (pow_lam_nu/nu)*( 1 + c1/((nu*pow_lam_nu)^2) + 2*c1/((nu*pow_lam_nu)^3)) # >0 when nu>1
-      if ("2" %in% moments) resu["2"] <- mu1^2 + Var # supp to mu1^2 when nu>1
+      if (moments[2L]) resu["2"] <- mu1^2 + Var # supp to mu1^2 when nu>1
     }
-    if ("3" %in% moments || "4" %in% moments) {
+    if (moments[3L] || moments[4L]) {
       k3 <- (pow_lam_nu/nu^2)*( 1 - c1/((nu*pow_lam_nu)^2) -4*c1/((nu*pow_lam_nu)^3))
       resu["3"] <- mu1^3 + 3*mu1*Var +k3
     }
-    if ("4" %in% moments) {
+    if (moments[4L]) {
       k4 <- (pow_lam_nu/nu^3)*( 1 + c1/((nu*pow_lam_nu)^2) +8*c1/((nu*pow_lam_nu)^3))
       resu["4"] <- mu1^4 + 6*Var*mu1^2 + 3*Var^2 + 4*k3*mu1 + k4
     }
   } else {
     denum <- .COMP_Z(lambda=lambda,nu=nu) # -> calling .COMP_Pr_moments( use_asympto=TRUE) ... 
     denum_corr <- .COMP_Z(lambda=lambda,nu=1) # for continuity correction in nu=1
-    if ("1" %in% moments) {
+    if (moments[1L]) {
       num <- .COMP_Z_n(lambda=lambda,nu=nu)
       resu["1"] <- .COMP_Z_ratio(num,denum)
       # continuity correction wrt poisson: corr =lambda + error of the COMP_Z... functions
       corr <- .COMP_Z_ratio(.COMP_Z_n(lambda=lambda,nu=1), denum_corr) ## poisson value by general approx
       resu["1"] <- resu["1"]+(lambda-corr) ## approx_any_nu+(exact_poi-approx_poi): exact in nu=1
     }
-    if ("2" %in% moments) {
+    if (moments[2L]) {
       num <- .COMP_Z_n2(lambda=lambda,nu=nu)
       resu["2"] <- .COMP_Z_ratio(num,denum)
       # cotinuity correction wrt poisson: 
       corr <- .COMP_Z_ratio(.COMP_Z_n2(lambda=lambda,nu=1), denum_corr) ## poisson value by general approx
       resu["2"] <- resu["2"]+(lambda*(1+lambda)-corr) ## approx_any_nu+(exact_poi-approx_poi): exact in nu=1
     }
-    if ("3" %in% moments) {
+    if (moments[3L]) {
       num <- .COMP_Z_n3(lambda=lambda,nu=nu)
       resu["3"] <- .COMP_Z_ratio(num,denum)
       # cotinuity correction wrt poisson: 
       corr <- .COMP_Z_ratio(.COMP_Z_n3(lambda=lambda,nu=1), denum_corr) ## poisson value by general approx
       resu["3"] <- resu["3"]+(lambda*(1+lambda*(3+lambda))-corr) ## approx_any_nu+(exact_poi-approx_poi): exact in nu=1
     }
-    if ("4" %in% moments) {
+    if (moments[4L]) {
       num <- .COMP_Z_n4(lambda=lambda,nu=nu)
       resu["4"] <- .COMP_Z_ratio(num,denum)
       # cotinuity correction wrt poisson: 
@@ -390,7 +465,7 @@
   if (lambda==0) {
     return(1e-8)  
   } else {
-    mu <- .COMP_Pr_moments(lambda=lambda, nu=nu, moments="1")
+    mu <- .COMP_Pr_moments(lambda=lambda, nu=nu, moments=c(TRUE, FALSE, FALSE, FALSE))
     return(mu) #(max(mu,1e-8)) would avoid mu=0 which fails validmu(mu) (as for poisson family)
     # but it's better to use a consistent code to sanitize the input lambda than to fix the return value.
   }
@@ -486,8 +561,10 @@
     if (nu==0) {
       lambdas <- mu/(1+mu) 
     } else {
-      lambdas <- numeric(length(mu))
-      for (it in seq_along(mu)) lambdas[it] <- ..CMP_mu2lambda(mu[it],nu=nu, CMP_linkfun_objfn=parent.env(environment())$CMP_linkfun_objfn)
+      uniqmu <- unique(mu)
+      uniqlambda <- numeric(length(uniqmu))
+      for (it in seq_along(uniqmu)) uniqlambda[it] <- ..CMP_mu2lambda(uniqmu[it],nu=nu, CMP_linkfun_objfn=parent.env(environment())$CMP_linkfun_objfn)
+      lambdas <- uniqlambda[match(mu, uniqmu)]
     }
   } 
   attributes(mu) <- NULL ## avoids 'mise en abime'
@@ -504,8 +581,10 @@
     if (nu==0) {
       lambdas <- mu/(1+mu) 
     } else {
-      lambdas <- numeric(length(mu))
-      for (it in seq_along(mu)) lambdas[it] <- ..CMP_mu2lambda(mu[it],nu=nu, CMP_linkfun_objfn=parent.env(environment())$CMP_linkfun_objfn)
+      uniqmu <- unique(mu)
+      uniqlambda <- numeric(length(uniqmu))
+      for (it in seq_along(uniqmu)) uniqlambda[it] <- ..CMP_mu2lambda(uniqmu[it],nu=nu, CMP_linkfun_objfn=parent.env(environment())$CMP_linkfun_objfn)
+      lambdas <- uniqlambda[match(mu, uniqmu)]
     }
   } 
   attributes(mu) <- NULL ## avoids 'mise en abime'
@@ -644,7 +723,7 @@
         if (lambdai==0) {
           resu[[it]] <- .Machine$double.eps
         } else {
-          moments <- .COMP_Pr_moments(lambda=lambdai, nu=nu, moments=c("1","2"))
+          moments <- .COMP_Pr_moments(lambda=lambdai, nu=nu, moments=c(TRUE, TRUE, FALSE, FALSE))
           res <- moments["2"] - moments["1"]^2
           resu[[it]] <- pmax(res, .Machine$double.eps)
         }
@@ -671,7 +750,7 @@
         if (lambdai==0) {
           resu[[it]] <- 1e-8
         } else {
-          moments <- .COMP_Pr_moments(lambda=lambdai,nu=nu,moments=c("1","2"))
+          moments <- .COMP_Pr_moments(lambda=lambdai,nu=nu,moments=c(TRUE, TRUE, FALSE, FALSE))
           resu[[it]] <- max(moments["2"] -moments["1"]^2,1e-8) ## pmax otherwise for low mu, Vmu=0, -> ... -> w.resid=0
         }
       } 
@@ -757,6 +836,7 @@ COMPoisson <- function(nu = stop("COMPoisson's 'nu' must be specified"),
 ) { 
   .spaMM.data$options$COMP_maxn_warned <- FALSE # much better here than in .preprocess(); works with glm()
   .spaMM.data$options$COMP_geom_approx_warned <- FALSE
+  resid.model <- list2env(list(off=0)) # env so that when we assign to it we don't create a new instance of the family object
   if (inherits(nuch <- substitute(nu),"character") ||
       (inherits(nuch,"name") && inherits(nu, "function")) # "name" is for e.g. COMPoisson(log)
       # (but testing only "name" would catch e.g. COMPoisson(nu=nu) )
@@ -807,9 +887,9 @@ COMPoisson <- function(nu = stop("COMPoisson's 'nu' must be specified"),
   D3logLDmu3 <- function(mu, y, thetaMuDerivs) { drop( -2*thetaMuDerivs$D2theta.Dmu2 + (y-mu)*thetaMuDerivs$D3theta.Dmu3) }
   D2muDeta2 <- .D2muDeta2(linktemp)
   D3muDeta3 <- .D3muDeta3(linktemp)
-  simfun <- .CMP_simfun 
+  simulate <- .CMP_simfun 
 
-  environment(dev.resids) <- environment(aic) <- environment(simfun) <- environment(mu2lambda) <- 
+  environment(dev.resids) <- environment(aic) <- environment(simulate) <- environment(mu2lambda) <- 
     environment(variance) <- environment(lambda2mu) <- environment() ## containing nu
   
   ## Change the parent.env of all functions that have the same envir as aic(): 
@@ -821,9 +901,9 @@ COMPoisson <- function(nu = stop("COMPoisson's 'nu' must be specified"),
       link = linktemp, linkfun = linkfun,           mu2lambda=mu2lambda,
       linkinv = linkinv, variance = variance, dev.resids = dev.resids, 
       aic = aic, mu.eta = mu.eta, initialize = initialize, 
-      validmu = validmu, valideta = valideta, simulate = simfun, 
+      validmu = validmu, valideta = valideta, simulate = simulate, 
       DlogLDmu = DlogLDmu, D2logLDmu2 = D2logLDmu2, D3logLDmu3 = D3logLDmu3, 
-      D2muDeta2 = D2muDeta2, D3muDeta3 = D3muDeta3,
+      D2muDeta2 = D2muDeta2, D3muDeta3 = D3muDeta3, resid.model=resid.model, 
       flags =list(obs=TRUE, exp=TRUE, canonicalLink=(linktemp=="loglambda"), LLgeneric=TRUE) 
     ), class = c("LLF","family")  
   )
@@ -885,117 +965,153 @@ COMPoisson <- function(nu = stop("COMPoisson's 'nu' must be specified"),
 
 .CMP_muetaenv <- function(family, pw, eta) {
   # cat(crayon::bgRed("NEW muetaenv"))
-  EX <- c1 <- denum_Z <- lambdas <- pow_lams_nu <- this <- use_asympto <- Vmu <- dmudeta <- mu <- 
-    sane_eta <- NULL 
+  EX <- uniqEX <- c1 <- denum_Z <- uniqdenum_Z <-lambdas <- uniqlambdas <- uniqpow_lams_nu <- this <- use_asympto <- 
+    uniquse_asympto <- Vmu <- dmudeta <- mu <- sane_eta <- etamatch <- uniq_asympto_var <- uniq_asympto_k3 <- NULL 
   nu <- environment(family$aic)$nu
+  uniqeta <- unique(eta)
+  uniqlen <- length(uniqeta)
   len <- length(eta)
   muetaenv <- list2env(list(pw=eval(pw), 
                             family=family, 
                             sane_eta=eta, 
+                            uniqeta=uniqeta,
+                            uniqlen=uniqlen,
+                            len=len,
+                            etamatch=match(eta,uniqeta),
                             nu=nu,
                             c1=(nu^2-1)/24,
-                            len=len,
                             denum= vector("list", len),
                             denum_corr= vector("list", len), # each element being a vector with elements (logScaleFac, scaled)
+                            uniqdenum= vector("list", uniqlen),
+                            uniqdenum_corr= vector("list", uniqlen), # each element being a vector with elements (logScaleFac, scaled)
                             Var= numeric(len)
   ), parent=environment(.muetafn))
   muetaenv$this <- muetaenv
   delayedAssign("pow_lams_nu", {
     # cat(crayon::bgRed("pow_lams_nu"))
     lambdas^(1/nu)}, assign.env = muetaenv, eval.env = muetaenv)
-  delayedAssign("use_asympto", {
-    # cat(crayon::bgRed("use_asympto"))
-    use_asympto <- logical(len)
-    for (it_ua in seq_len(len)) use_asympto[[it_ua]] <- .CMP_use_asympto(pow_lams_nu[[it_ua]],nu, lambdas[[it_ua]])
-    use_asympto
+  delayedAssign("uniqpow_lams_nu", {
+    # cat(crayon::bgRed("pow_lams_nu"))
+    uniqlambdas^(1/nu)}
+    , assign.env = muetaenv, eval.env = muetaenv)
+  delayedAssign("uniquse_asympto", {
+    uniquse_asympto <- logical(uniqlen)
+    for (it_ua in seq_len(uniqlen)) uniquse_asympto[[it_ua]] <- .CMP_use_asympto(uniqpow_lams_nu[[it_ua]],nu, uniqlambdas[[it_ua]])
+    uniquse_asympto
   }, assign.env = muetaenv, eval.env = muetaenv)
-  delayedAssign("denum_Z", {
+  delayedAssign("use_asympto", { uniquse_asympto[etamatch] }, assign.env = muetaenv, eval.env = muetaenv)
+  delayedAssign("uniqdenum_Z", {
     # cat(crayon::bgRed("denum_Z"))
-    for (den_it in seq_len(len)) {
-      if (use_asympto[[den_it]]) {
+    for (den_it in seq_len(uniqlen)) {
+      if (uniquse_asympto[[den_it]]) {
         # that should not be used in this case
-        denum[[den_it]] <- .Rcpp_COMP_Z_asympto(nu, pow_lams_nu[[den_it]])
-        denum_corr[[den_it]] <- "denum_corr sought despite use_asympto"
+        uniqdenum[[den_it]] <- .Rcpp_COMP_Z_asympto(nu, uniqpow_lams_nu[[den_it]])
+        uniqdenum_corr[[den_it]] <- "denum_corr sought despite use_asympto"
       } else {
-        denum[[den_it]] <- .COMP_Z(lambda=lambdas[[den_it]],nu=nu)
-        denum_corr[[den_it]] <- .COMP_Z(lambda=lambdas[[den_it]],nu=1)
+        uniqdenum[[den_it]] <- .COMP_Z(lambda=uniqlambdas[[den_it]],nu=nu)
+        uniqdenum_corr[[den_it]] <- .COMP_Z(lambda=uniqlambdas[[den_it]],nu=1)
       }
     }
-    denum
+    uniqdenum
   }, assign.env = muetaenv, eval.env = muetaenv)
-  delayedAssign("EX", {
+  delayedAssign("denum_Z", { uniqdenum_Z[etamatch] }, assign.env = muetaenv, eval.env = muetaenv)
+  delayedAssign("uniqEX", {
     # cat(crayon::bgRed("EX"))
-    EX <- numeric(len)
-    for (EX_it in seq_len(len)) {
-      if (lambdas[[EX_it]]==0) {
-        EX[[EX_it]] <- 0
+    uniqEX <- numeric(uniqlen)
+    for (EX_it in seq_len(uniqlen)) {
+      if (uniqlambdas[[EX_it]]==0) {
+        uniqEX[[EX_it]] <- 0
       } else {
-        if (use_asympto[[EX_it]]) {
+        if (uniquse_asympto[[EX_it]]) {
           # using Gaunt et al.:
-          EX[[EX_it]] <- .CMP_asympto_EX(pow_lam_nu=pow_lams_nu[[EX_it]], nu=nu, c1=c1)
+          uniqEX[[EX_it]] <- .CMP_asympto_EX(pow_lam_nu=uniqpow_lams_nu[[EX_it]], nu=nu, c1=c1)
         } else {
-          EX[[EX_it]] <-  .CMP_series_EX(lambda=lambdas[[EX_it]], nu=nu, denum_Z=denum_Z[[EX_it]], denum_corr=denum_corr[[EX_it]])
+          uniqEX[[EX_it]] <-  .CMP_series_EX(lambda=uniqlambdas[[EX_it]], nu=nu, denum_Z=uniqdenum_Z[[EX_it]], 
+                                             denum_corr=uniqdenum_corr[[EX_it]])
         }
       }
     } 
-    EX
+    uniqEX
+  }, assign.env = muetaenv, eval.env = muetaenv)
+  delayedAssign("EX", { uniqEX[etamatch] }, assign.env = muetaenv, eval.env = muetaenv)
+  delayedAssign("uniq_asympto_var", {
+    uniq_asympto_var <- numeric(uniqlen)
+    for (var_it in seq_len(uniqlen)) {
+      if (uniqlambdas[[var_it]]>0 && uniquse_asympto[[var_it]]) {      
+        uniq_asympto_var[[var_it]] <- .CMP_asympto_Var(pow_lam_nu=uniqpow_lams_nu[[var_it]], nu=nu, c1=c1) 
+      }
+    } 
+    uniq_asympto_var
+  }, assign.env = muetaenv, eval.env = muetaenv)
+  delayedAssign("uniq_asympto_k3", {
+    uniq_asympto_k3 <- numeric(uniqlen)
+    for (k3_it in seq_len(uniqlen)) {
+      if (uniqlambdas[[k3_it]]>0 && uniquse_asympto[[k3_it]]) {      
+        uniq_asympto_k3[[k3_it]] <- .CMP_asympto_k3(pow_lam_nu=uniqpow_lams_nu[[k3_it]], nu=nu, c1=c1)
+      }
+    } 
+    uniq_asympto_k3
   }, assign.env = muetaenv, eval.env = muetaenv)
   delayedAssign("EX2", {
     # cat(crayon::bgRed("EX2"))
-    EX2 <- numeric(len)
-    for (EX2_it in seq_len(len)) {
-      if (lambdas[[EX2_it]]==0) {
-        EX2[[EX2_it]] <- 0
+    uniqEX2 <- numeric(uniqlen)
+    for (EX2_it in seq_len(uniqlen)) {
+      if (uniqlambdas[[EX2_it]]==0) {
+        uniqEX2[[EX2_it]] <- 0
       } else {
-        if (use_asympto[[EX2_it]]) {      
-          vari <- .CMP_asympto_Var(pow_lam_nu=pow_lams_nu[[EX2_it]], nu=nu, c1=c1)
-          EXi <- EX[[EX2_it]]
-          EX2[[EX2_it]] <- EXi*EXi + vari # supp to mu1^2 when nu>1
+        if (uniquse_asympto[[EX2_it]]) {      
+          vari <- uniq_asympto_var[[EX2_it]]
+          EXi <- uniqEX[[EX2_it]]
+          uniqEX2[[EX2_it]] <- EXi*EXi + vari # supp to mu1^2 when nu>1
         } else {
-          EX2[[EX2_it]] <- .CMP_series_EX2(lambda=lambdas[[EX2_it]], nu=nu, denum_Z=denum_Z[[EX2_it]], 
-                                           denum_corr=denum_corr[[EX2_it]])
+          uniqEX2[[EX2_it]] <- .CMP_series_EX2(lambda=uniqlambdas[[EX2_it]], nu=nu, denum_Z=uniqdenum_Z[[EX2_it]], 
+                                               denum_corr=uniqdenum_corr[[EX2_it]])
         }
       }
     } 
+    EX2 <- uniqEX2[etamatch]
     EX2
   }, assign.env = muetaenv, eval.env = muetaenv)
   delayedAssign("EX3", {
-    EX3 <- numeric(len)
-    for (EX3_it in seq_len(len)) {
-      if (lambdas[[EX3_it]]==0) {
-        EX3[[EX3_it]] <- 0
+    uniqEX3 <- numeric(uniqlen)
+    for (EX3_it in seq_len(uniqlen)) {
+      if (uniqlambdas[[EX3_it]]==0) {
+        uniqEX3[[EX3_it]] <- 0
       } else {
-        if (use_asympto[[EX3_it]]) {      
-          k3 <-  .CMP_asympto_k3(pow_lam_nu=pow_lams_nu[[EX3_it]], nu=nu, c1=c1)
-          vari <- .CMP_asympto_Var(pow_lam_nu=pow_lams_nu[[EX3_it]], nu=nu, c1=c1) # __F I X M E__ slight inefficiency: this is computed in several places (hence the storing vector is useless)
-          EXi <- EX[[EX3_it]]
-          EX3[[EX3_it]] <- EXi*EXi*EXi + 3*EXi*vari + k3
+        if (uniquse_asympto[[EX3_it]]) {    
+          k3 <-  uniq_asympto_k3[[EX3_it]]
+          vari <- uniq_asympto_var[[EX3_it]]
+          EXi <- uniqEX[[EX3_it]]
+          uniqEX3[[EX3_it]] <- EXi*EXi*EXi + 3*EXi*vari + k3
         } else {
-          EX3[[EX3_it]] <- .CMP_series_EX3(lambda=lambdas[[EX3_it]], nu=nu, denum_Z=denum_Z[[EX3_it]], denum_corr=denum_corr[[EX3_it]])
+          uniqEX3[[EX3_it]] <- .CMP_series_EX3(lambda=uniqlambdas[[EX3_it]], nu=nu, denum_Z=uniqdenum_Z[[EX3_it]], 
+                                               denum_corr=uniqdenum_corr[[EX3_it]])
         }
       }
     } 
+    EX3 <- uniqEX3[etamatch]
     EX3
   }, assign.env = muetaenv, eval.env = muetaenv)
   delayedAssign("EX4", {
-    EX4 <- numeric(len)
-    for (EX4_it in seq_len(len)) {
-      if (lambdas[[EX4_it]]==0) {
-        EX4[[EX4_it]] <- 0
+    uniqEX4 <- numeric(len)
+    for (EX4_it in seq_len(uniqlen)) {
+      if (uniqlambdas[[EX4_it]]==0) {
+        uniqEX4[[EX4_it]] <- 0
       } else {
-        if (use_asympto[[EX4_it]]) {      
-          k4 <-  .CMP_asympto_k4(pow_lam_nu=pow_lams_nu[[EX4_it]], nu=nu, c1=c1)
-          k3 <-  .CMP_asympto_k3(pow_lam_nu=pow_lams_nu[[EX4_it]], nu=nu, c1=c1)
-          vari <- .CMP_asympto_Var(pow_lam_nu=pow_lams_nu[[EX4_it]], nu=nu, c1=c1) # __F I X M E__ slight inefficiency: this is computed in several places (hence the storing vector is useless)
-          EXi <- EX[[EX4_it]]
+        if (uniquse_asympto[[EX4_it]]) {      
+          k4 <-  .CMP_asympto_k4(pow_lam_nu=uniqpow_lams_nu[[EX4_it]], nu=nu, c1=c1)
+          k3 <-  uniq_asympto_k3[[EX4_it]]
+          vari <- uniq_asympto_var[[EX4_it]]
+          EXi <- uniqEX[[EX4_it]]
           EXi_sq <- EXi*EXi
-          EX4[[EX4_it]] <- EXi_sq*EXi_sq + 6*vari*EXi_sq + 3*vari^2 + 4*k3*EXi + k4
+          uniqEX4[[EX4_it]] <- EXi_sq*EXi_sq + 6*vari*EXi_sq + 3*vari^2 + 4*k3*EXi + k4
         } else {
-          EX4[[EX4_it]] <- .CMP_series_EX4(lambda=lambdas[[EX4_it]], nu=nu, denum_Z=denum_Z[[EX4_it]],
-                                           denum_corr=denum_corr[[EX4_it]])
+          uniqEX4[[EX4_it]] <- .CMP_series_EX4(lambda=uniqlambdas[[EX4_it]], nu=nu, denum_Z=uniqdenum_Z[[EX4_it]],
+                                               denum_corr=uniqdenum_corr[[EX4_it]])
         }
       }
     } 
+    EX4 <- uniqEX4[etamatch]
     EX4
   }, assign.env = muetaenv, eval.env = muetaenv)
   delayedAssign("Vmu", {family$variance(mu, muetaenv=this)}, assign.env = muetaenv, eval.env = muetaenv)
@@ -1008,14 +1124,14 @@ COMPoisson <- function(nu = stop("COMPoisson's 'nu' must be specified"),
   }, assign.env = muetaenv, eval.env = muetaenv)
   
   if (family$link=="loglambda") {
-    muetaenv$lambdas <- exp(muetaenv$sane_eta)
+    muetaenv$uniqlambdas <- exp(uniqeta)
+    muetaenv$lambdas <- muetaenv$uniqlambdas[muetaenv$etamatch]
     muetaenv$mu <- family$linkinv(eta, muetaenv=muetaenv) # calls muetaenv$EX hence must be after its definition
     delayedAssign("dmudeta", {family$mu.eta(sane_eta, muetaenv=this)}, assign.env = muetaenv, eval.env = muetaenv)
   } else {
     muetaenv$mu <- family$linkinv(eta)
-    delayedAssign("lambdas", { 
-      # cat(crayon::bgRed("lambdas"))
-      family$mu2lambda(mu) }, assign.env = muetaenv, eval.env = muetaenv)
+    delayedAssign("lambdas", { family$mu2lambda(mu) }, assign.env = muetaenv, eval.env = muetaenv)
+    delayedAssign("uniqlambdas", {unique(lambdas)}, assign.env = muetaenv, eval.env = muetaenv) #TEMPO
     delayedAssign("dmudeta", {family$mu.eta(sane_eta)}, assign.env = muetaenv, eval.env = muetaenv)
   }
   

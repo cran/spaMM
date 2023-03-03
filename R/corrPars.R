@@ -33,7 +33,8 @@ if (FALSE) {  ## DOC:
 
 }
 
-.modify_list <- function (x, val, obey_NULLs=TRUE) { ## derived from utils::modifyList  # obey_NULLs = FALSE => NULL elements in val are ignored, as if inexistent
+## derived from utils::modifyList ... works on named vectors! 
+.modify_list <- function (x, val, obey_NULLs=TRUE) { # obey_NULLs = FALSE => NULL elements in val are ignored, as if inexistent
   if( is.null(x)) {
     if (is.null(val)) {
       return(NULL)

@@ -56,7 +56,7 @@ get_from_MME_default.Matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
 }
 
 ## pure solve, not returning decomp
-get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
+get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL, tol=1e-7, ...) {
   if (which=="" && ! is.null(szAug)) {
     if (FALSE) {
       if (FALSE) {
@@ -70,7 +70,12 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL,...) {
         # betaV <- RcppEigen::fastLmPure(X=sXaug,y=szAug,method=1)$coefficients
         # return(betaV)
         ######
-      } else return(.lm.fit(x=sXaug,y=szAug)$coefficients) ## 
+      } else {
+        fit <- .lm.fit(x=sXaug,y=szAug, tol=tol)
+        if (fit$pivoted) {
+          return(fit$coefficients[sort.list(fit$pivot)])
+        } else return(fit$coefficients)
+      } ## 
     } else { 
       ## according to https://eigen.tuxfamily.org/dox/group__DenseDecompositionBenchmark.html
       ## HouseholderQR is faster thanColPivHouseholderQR. There are precision trade-offs.

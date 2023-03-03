@@ -1,7 +1,7 @@
-.bloc_lambda <- function(models, #init.lambda, 
-                         SEMblob=NULL, 
-                        calcRanefPars_blob=NULL, ## contains $next_lambda_est (one step ahead of the last updated lambda_est)
-                        processed, lam_fix_or_outer_or_NA, cum_n_u_h, lev_lambda=NULL, next_LMatrices) {
+.bloc_lambda <- function(HL, SEMblob=NULL, loopout_blob, processed, lam_fix_or_outer_or_NA, cum_n_u_h=processed$cum_n_u_h,
+                         models=processed$models, next_LMatrices=loopout_blob$LMatrices,
+                         calcRanefPars_blob=loopout_blob$calcRanefPars_blob, ## contains $next_lambda_est (one step ahead of the last updated lambda_est)
+                         lev_lambda=loopout_blob$leverages$ranef) {
   nrand <- length(processed$ZAlist)
   rand_to_glm_map <- integer(nrand)
   resglm_lambdaS <- list()
@@ -9,7 +9,7 @@
   ## je peux avoir SEM sans adjacency (SEM-Matern) et adjacency sans SEM (Poisson-adjacency)
   if (all(models[["lambda"]]=="lamScal")) { # includes ranCoefs
     ####### includes SEM
-    if ( ! is.null(SEMblob)) {
+    if (HL[1]=="SEM") {
       glm_lambda <- SEMblob$glm_lambda
       if ( ! is.null(glm_lambda)) {
         attr(glm_lambda,"whichrand") <- done <- 1L

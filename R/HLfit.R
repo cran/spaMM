@@ -24,11 +24,11 @@ HLfit <- function(formula,
                   # ./. that could be copied in return value.
                   ranFix,
                   etaFix=list(), ## beta, v_h (or even u_h)
-                  prior.weights=NULL, 
-                  weights.form= NULL,
+                  prior.weights=NULL, weights.form= NULL, # See comments in Z_variants/prior.weights.R
+                  X2X=NULL, #  (implemented, but possibly useless, and not tried... remove with care as this would affect preprocessing. See v4.1.23)
                   processed=NULL
 ) {
-  assign("spaMM_glm_conv_crit",list(max=-Inf) , envir=environment(spaMM_glm.fit))
+  .spaMM.data$options$xLM_conv_crit <- list(max=-Inf)
   time1 <- Sys.time()
   oricall <- match.call()  ## there is no dots in HLfit
   oricall$control.HLfit <- eval(oricall$control.HLfit, parent.frame()) # to evaluate variables in the formula_env, otherwise there are bugs in waiting 
@@ -61,8 +61,7 @@ HLfit <- function(formula,
       }
     }    
     #
-    if ( ! is.null(weights.form)) mc[["prior.weights"]] <-  weights.form[[2]]
-    #
+    if ( ! is.null(weights.form)) mc[["prior.weights"]] <-  weights.form[[2]] # then prior.weights is evaluated to a 'name' and substitute(prior.weights) (elsewhere) does not try to evaluate the variable
     if ( inherits(data,"list")) {
       ## RUN THIS LOOP and return
       multiHLfit <- function() {
@@ -93,7 +92,7 @@ HLfit <- function(formula,
       preprocess_args$predictor <- mc$formula ## because preprocess still expects $predictor 
 #      preprocess_args$HLmethod <- HLmethod ## forces evaluation
       if ( ! missing(method)) preprocess_args$HLmethod <- method
-      mc$processed <- do.call(.preprocess, preprocess_args, envir=parent.frame(1L))
+      mc$processed <- processed <- do.call(.preprocess, preprocess_args, envir=parent.frame(1L))
    }
   } else { ## 'processed' is available
     if (  is.list(processed))  { ## "multiple" processed list 
@@ -119,12 +118,16 @@ HLfit <- function(formula,
   pnames <- c("data","family","formula","prior.weights", "weights.form","HLmethod","method","rand.family","control.glm","REMLformula",
               "resid.model", "verbose","ranFix") 
   for (st in pnames) mc[st] <- NULL ## info in processed
-  mc[[1L]] <- get("HLfit_body", asNamespace("spaMM"), inherits=FALSE) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
-  if (.safe_true(mc$processed[["verbose"]]["getCall"][[1L]])) return(mc) ## returns a call if verbose["getCall"'"] is TRUE or 1
+  mc[[1L]] <- processed$HLfit_body_fn2
+  if (.safe_true(processed[["verbose"]]["getCall"][[1L]])) return(mc) ## returns a call if verbose["getCall"'"] is TRUE or 1
   hlfit <- eval(mc,parent.frame())
-  .check_conv_glm_reinit()
+  .check_conv_dispGammaGLM_reinit()
   if ( ! is.null(processed$return_only)) {
     return(hlfit)    ########################   R E T U R N   a list with $APHLs
+  }
+  if ( processed$fitenv$prevmsglength) { # there was output for a phi-resid.model. The fit object may then be printed...
+    cat("\n")
+    processed$fitenv$prevmsglength <- 0L
   }
   hlfit$call <- oricall ## potentially used by getCall(object) in update.HL
   if ( inherits(hlfit,"HLfitlist") ) {
@@ -183,22 +186,26 @@ HLfit <- function(formula,
   } else {
     print_phiHGLM_info <- ( ! is.null(processed$residProcessed) && processed$verbose["phifit"])  
     if (print_phiHGLM_info) {
-      # set a 'prefix' for the line to be printed for each iteration of the phi fit when outer optimization is used for the main response. 
+      # set a 'prefix' for the line to be printed for each iteration of the phi fit when outer optimization is used for the mean response. 
       # In that case a *distinct line* of the form HLfit for <outer opt pars>: phi fit's iter=<say up to 6>, .phi[1]=... 
       # is written for each call of the outer objfn (=> multi-line output).
-      # Currently there is no such 'prefix' for mv (_F I X M E_)
+      # Currently there is no such 'prefix' for mv (_F I X M E_)                           (?)
       # That would require checking processed$residProcesseds (with -'s') and some further effort.
-      urP <- unlist(.canonizeRanPars(ranefParsList, corr_info=processed$corr_info,checkComplete=FALSE, rC_transf=.spaMM.data$options$rC_transf))
+      urP <- unlist(c(HLfit.call$etaFix['beta'], # handles the outer-beta case (spec. when its the only parameter here)
+                      .canonizeRanPars(ranefParsList, corr_info=processed$corr_info,checkComplete=FALSE, rC_transf=.spaMM.data$options$rC_transf)))
       processed$port_env$prefix <- paste0("HLfit for ", paste(signif(urP,6), collapse=" "), ": ")
     } 
     # since there is a $processed, we can call HLfit_body here (with HLnames <- names(formals(HLfit_body))), rather than HLfit
     # The main difference is a more definite selection of arguments in the HLfit_body() call through HLfit()
-    # and the call to .check_conv_glm_reinit()
+    # and the call to .check_conv_dispGammaGLM_reinit()
     HLfit.call$fixed <- fixed
-    HLfit.call[[1L]] <- get("HLfit", asNamespace("spaMM"), inherits=FALSE) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
+    HLfit.call[[1L]] <- processed$HLfit
     hlfit <- eval(HLfit.call)
     resu <- hlfit$APHLs[[objective]]
-    if (print_phiHGLM_info) cat(paste0(objective,"=",resu)) # verbose["phifit"]
+    if (print_phiHGLM_info && processed$verbose["phifit"]>1L) {
+      cat(paste0(objective,"=",resu,"\n"))
+      processed$fitenv$prevmsglength <- 0L
+    }
     if (objective=="cAIC") resu <- - resu ## for minimization of cAIC (private & experimental)
   } 
   return(resu) #

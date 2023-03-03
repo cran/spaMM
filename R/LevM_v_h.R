@@ -11,7 +11,7 @@
            ## supplement for LevenbergM
            beta_eta,
            ## supplement for ! GLMM (??)
-           u_h, v_h, # for_init_z_args, 
+           u_h, v_h,  
            #
            trace=FALSE,
            stylefn=.spaMM.data$options$stylefns$vloop,
@@ -34,14 +34,7 @@
     d_relV_tol <- processed$spaMM_tol$d_relV_tol * looseness
 
     constant_zAug_args <- list(n_u_h=n_u_h, nobs=nobs, pforpv=pforpv, y=y, off=off, ZAL=ZAL, processed=processed)
-    # if ( ! GLMMbool) {
-    #   constant_init_z_args <- c(list(lcrandfamfam=lcrandfamfam, nobs=nobs, lambda_est=lambda_est, ZAL=ZAL),  
-    #                             # fit_as_ZX args specific for ! GLMM:
-    #                             for_init_z_args,
-    #                             #
-    #                             mget(c("cum_n_u_h","rand.families"),envir=processed))
-    # } 
-    
+
     eta  <- off + drop(ZAL %*% v_h + processed$AUGI0_ZX$X.pv %*% beta_eta)
     muetablob <- .muetafn(eta=eta,BinomialDen=processed$BinomialDen,processed=processed, phi_est=phi_est) 
     ## weight_X and Xscal varies within loop if ! LMM since at least the GLMweights in w.resid change

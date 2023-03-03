@@ -8,7 +8,7 @@
 Fitting autoregressive models
 }
 \description{
-Diverse autoregressive (AR) models are implemented in spaMM. This documentation describe the \code{adjacency} model (a conditional AR, i.e., CAR), and the \code{AR1} model for time series. Other documentation deals with more or less distantly related models: \code{\link{ARp}} for a more general AR(p) model for time series, and \code{\link{IMRF}} and \code{\link{MaternIMRFa}} for mesh-based approximations of geostatistical models.
+Diverse autoregressive (AR) models are implemented in spaMM. This documentation describe the \code{adjacency} model (a conditional AR, i.e., CAR), and the \code{AR1} model for time series. Other documentation deals with more or less distantly related models: \code{\link{ARp}} for more general AR(p) and ARMA(p,q) models for time series, and \code{\link{IMRF}} and \code{\link{MaternIMRFa}} for mesh-based approximations of geostatistical models.
 
 An AR1 random effect is specified as \code{AR1(1|<grouping factor>)}. It describes correlations between realizations of the random effect for (typically) successive time-steps by a correlation \eqn{\phi}, denoted \code{ARphi} in function calls. Nested AR1 effects can be specified by a nested grouping factor, as in \code{AR1(1|<time index> \%in\% <nesting factor>)}.
 

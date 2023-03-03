@@ -2,7 +2,9 @@ cat(crayon::yellow("\ntest-composite.R: "))
 
 # more tests of composite in 
 # "tests_private/VarCorr.R" (numeric LHS); 
-# "nested/test-composite-nested.R" (mv()); 
+# "extralong/test-composite-extra.R" (mv()); 
+
+# spaMM.options(example_maxtime=21)
 
 if (FALSE) { # __F I X M E__ Interesting alternative numerical setings: only small effects on numerical precision, and some effects on speed (visibly on spherical fit)
   spaMM.options(
@@ -238,4 +240,5 @@ if (spaMM.getOption("example_maxtime")>8) {
     
     
   }
-} 
+  
+}

@@ -2,10 +2,12 @@
 # with -O3 (or -UNDEBUG?) for windows 32bit:
 # see https://github.com/RcppCore/RcppEigen/issues/34
 # 
-# -Wno-ignored-attributes to ignore insane mess when compiling Eigen code. 
+# Add -Wno-ignored-attributes to ignore insane mess when compiling Eigen code. 
 # But it cannot be put into the package' Makevars bc CRAN checks would complain.
-# use usethis::edit_r_makevars() to edit the local file.
-PKG_CXXFLAGS= -fno-omit-frame-pointer
+# use usethis::edit_r_makevars() to edit the local file 
+# and ADD the flag by += : PKG_CXXFLAGS += -Wno-ignored-attributes
+
+PKG_CXXFLAGS = -fno-omit-frame-pointer 
 
 PKG_CPPFLAGS = -I$(LIB_GSL)/include
 PKG_LIBS = -L$(LIB_GSL)/lib -lgsl -lgslcblas 

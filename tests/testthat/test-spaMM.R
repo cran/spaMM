@@ -122,12 +122,24 @@ if (FALSE) { # examples from update.Rd in handy test form
                       testthat::expect_true(l3-l4<1e-14))
 }
 
-# Code added to check model frame issues when updating a model with variable in resid model not in main response model (+ syntax I() ). 
+# Code added to check model frame issues when updating a model with variable in resid model not in mean response model (+ syntax I() ). 
 data("wafers")
 ## Gamma GLMM with log link
 m1 <- HLfit(y ~X1+X2+I(X2^2),family=Gamma(log),
             resid.model = ~ X3+I(X3^2) ,data=wafers,method="ML") 
 update_resp(m1,newresp=simulate(m1))
+
+# residual dispersion model with partial etaFix
+(wfit <- fitme(y ~ X1+X2+X1*X3+X2*X3+I(X2^2), family=Gamma(log),
+               rand.family=inverse.Gamma(log), 
+               resid.model = list(formula= ~ X3+I(X3^2)+(1|batch), 
+                                  fixed=list(lambda=0.4), # let's check that too
+                                  etaFix=list(beta=c("(Intercept)"=-2.93))) ,
+               data=wafers))
+testthat::test_that("whether partially-fixed etaFix works in resid.model",
+                    testthat::expect_equal(fixef(wfit$resid_fit)[[1L]],-2.93))
+testthat::test_that("whether fixed lambda works in resid.model",
+                    testthat::expect_equal((wfit$resid_fit$lambda)[[1L]],0.4))
 
 # Handling of ~ . :
 testthat::test_that(

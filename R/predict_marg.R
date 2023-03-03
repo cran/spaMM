@@ -96,7 +96,7 @@
       )
     }
     eta <- eta_fix + sum(newZAXrow*v)
-    fv <- .fv_linkinv(eta=eta, family=object$family, families=object$families)
+    fv <- .fv_linkinv(eta=eta, family=object$family, families=object$families, cum_nobs=new_X_ZACblob$cum_nobs)
     return(fv * prod(u_densities)) ## predicted value|u * density(u)
   }
   #

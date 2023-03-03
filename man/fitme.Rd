@@ -41,7 +41,7 @@ An optional (sub)list of values of the parameters specified through \code{init},
 \item{resid.model}{ See identically named \code{\link{HLfit}} argument. }
   \item{init.HLfit}{ See identically named \code{\link{HLfit}} argument. }
   \item{control.dist}{ See \code{control.dist} in \code{\link{HLCor}} }
-  \item{method, HLmethod}{Character: the fitting method to be used, such as \code{"ML"}, \code{"REML"} or \code{"PQL/L"}. \code{"ML"} is the default, in contrast to \code{"REML"} for \code{HLfit}, \code{HLCor} and \code{corrHLfit}. Other possible values of \code{HLfit}'s \code{\link{method}} argument are handled.
+  \item{method, HLmethod}{Character: the fitting method to be used, such as \code{"ML"}, \code{"REML"} or \code{"PQL/L"}. \code{"ML"} is the default, in contrast to \code{"REML"} for \code{HLfit}, \code{HLCor} and \code{corrHLfit}. Other possible values of \code{HLfit}'s \code{\link{method}} argument are handled. \code{method=c(<"ML" or "REML">,"exp")} can be distinctly useful for slow fits of models with \code{Gamma(log)} response family (see \code{\link{method}}). 
 }
   \item{weights.form}{
   Specification of prior weights by a one-sided formula: use \code{weights.form = ~ pw} instead of \code{prior.weights = pw}. The effect will be the same except that such an argument, known to evaluate to an object of class \code{"formula"}, is suitable to enforce safe programming practices (see \code{\link{good-practice}}).  

@@ -1,9 +1,27 @@
+.safe_eval_dispval <- function(disp_env, lo, up) {
+  if ( ! is.null(disp_env$scaled_X)) {
+    dispvals <- drop(disp_env$scaled_X %*% disp_env$scaled_beta + disp_env$off)
+  } else dispvals <- drop(disp_env$X %*% disp_env$beta + disp_env$off)
+  dispvals <- exp(unname(dispvals))
+  dispvals <- pmin(up, pmax(lo, dispvals))
+  dispvals
+}
+
 .post_process_family_it <- function(family, ranFix, char_mv_it) {
   if (family$family=="COMPoisson") {
-    if ( ! is.null(ranFix$COMP_nu) && ! is.na(COMP_nu <- ranFix$COMP_nu[char_mv_it])) { ## optimisation call 
+    if ( ! is.null(rdisPars <- ranFix$rdisPars[[char_mv_it]])) { ## resid.model, fixed or optimized rdisPars 
+      disp_env <- family$resid.model
+      if (is.null(disp_env$scaled_X)) {
+        disp_env$beta <- rdisPars # fixed rdisPars
+      } else disp_env$scaled_beta <- rdisPars # optimized rdisPars
+      assign("nu", 
+             .safe_eval_dispval(disp_env=disp_env, lo=0.05,up=10), 
+             envir=environment(family$aic))
+      ranFix$rdisPars[[char_mv_it]] <- NULL
+    } else if ( ! is.null(ranFix$COMP_nu) && ! is.na(COMP_nu <- ranFix$COMP_nu[char_mv_it])) { ## optimisation call single scalar fam_parm
       #  COMP_nu[char_mv_it] to get a NA where [[char_mv_it]] generates an error
       #  But it is important to drop the name that, if present, would mess names of return values of .COMPxxx() fns
-      assign("nu",COMP_nu[[1]],envir=environment(family$aic))
+      assign("nu",unname(COMP_nu),envir=environment(family$aic))
       ranFix$COMP_nu[char_mv_it] <- NA
       ranFix$COMP_nu <- na.omit(ranFix$COMP_nu)
     } else {
@@ -11,18 +29,40 @@
       if (inherits(checknu,"call")) eval(checknu)
     }
   } else if (family$family=="beta_resp") {
-    if ( ! is.null(ranFix$beta_prec) && ! is.na(beta_prec <- ranFix$beta_prec[char_mv_it])) { ## optimisation call 
+    if ( ! is.null(rdisPars <- ranFix$rdisPars[[char_mv_it]])) { ## resid.model, fixed or optimized rdisPars
+      disp_env <- family$resid.model
+      if (is.null(disp_env$scaled_X)) {
+        disp_env$beta <- rdisPars
+      } else disp_env$scaled_beta <- rdisPars
+      assign("prec", 
+             .safe_eval_dispval(disp_env=disp_env, lo=1e-6,up=1e6), 
+             envir=environment(family$aic))
+      ranFix$rdisPars[[char_mv_it]] <- NULL
+    } else if ( ! is.null(ranFix$beta_prec) && ! is.na(beta_prec <- ranFix$beta_prec[char_mv_it])) { ## optimisation call 
       #  COMP_nu[char_mv_it] to get a NA where [[char_mv_it]] generates an error
       #  But it is important to drop the name that, if present, would mess names of return values of .COMPxxx() fns
-      assign("prec",beta_prec[[1]],envir=environment(family$aic))
+      assign("prec",unname(beta_prec),envir=environment(family$aic))
       ranFix$beta_prec[char_mv_it] <- NA
       ranFix$beta_prec <- na.omit(ranFix$beta_prec)
+    } else if ( ! is.null(ranFix$trbeta_prec) && ! is.na(trbeta_prec <- ranFix$trbeta_prec[char_mv_it])) { ## optimisation call 
+      assign("prec",.beta_precInv(unname(trbeta_prec)),envir=environment(family$aic))
+      ranFix$trbeta_prec[char_mv_it] <- NA
+      ranFix$trbeta_prec <- na.omit(ranFix$trbeta_prec)
     } else {
       checkprec <- substitute(prec, env=environment(family$aic)) 
       if (inherits(checkprec,"call")) eval(checkprec)
     }
   } else if (family$family %in% c("negbin1","negbin2")) {
-    if ( ! is.null(ranFix$NB_shape) && ! is.na(NB_shape <- ranFix$NB_shape[char_mv_it])) { ## fitme -> HLCor -> HLfit
+    if ( ! is.null(rdisPars <- ranFix$rdisPars[[char_mv_it]])) { ## resid.model, fixed or optimized rdisPars
+      disp_env <- family$resid.model
+      if (is.null(disp_env$scaled_X)) {
+        disp_env$beta <- rdisPars
+      } else disp_env$scaled_beta <- rdisPars
+      assign("shape", 
+             .safe_eval_dispval(disp_env=disp_env, lo=1e-6,up=1e6), 
+             envir=environment(family$aic))
+      ranFix$rdisPars[[char_mv_it]] <- NULL
+    } else if ( ! is.null(ranFix$NB_shape) && ! is.na(NB_shape <- ranFix$NB_shape[char_mv_it])) { ## fitme -> HLCor -> HLfit
       assign("shape",NB_shape,envir=environment(family$aic))
       ranFix$NB_shape[char_mv_it] <- NA
       ranFix$NB_shape <- na.omit(ranFix$NB_shape)
@@ -45,12 +85,22 @@
 .post_process_respfamilies <- function(family, ranFix, families=NULL) {
   if ( ! is.null(families)) {
     for (mv_it in seq_along(families)) {
+      # subsetting of ranFix is performed within each .post_process_family_it() call. [ABOVE, not below...]
       ranFix <- .post_process_family_it(family=families[[mv_it]], ranFix, char_mv_it=as.character(mv_it)) 
     }
     return(ranFix)
   }
   if (family$family=="COMPoisson") {
-    if ( ! is.null(ranFix$COMP_nu)) { ## optimisation call
+    if ( ! is.null(rdisPars <- ranFix$rdisPars)) { ## optimisation call
+      disp_env <- family$resid.model
+      if (is.null(disp_env$scaled_X)) {
+        disp_env$beta <- rdisPars
+      } else disp_env$scaled_beta <- rdisPars
+      assign("nu", 
+             .safe_eval_dispval(disp_env=disp_env, lo=0.05,up=10), 
+             envir=environment(family$aic))
+      ranFix$rdisPars <- attr(ranFix,"type")$rdisPars <- NULL
+    } else if ( ! is.null(ranFix$COMP_nu)) { ## optimisation call
       assign("nu",ranFix$COMP_nu,envir=environment(family$aic))
       ranFix$COMP_nu <- attr(ranFix,"type")$COMP_nu <- NULL
     } else {
@@ -58,7 +108,16 @@
       if (inherits(checknu,"call")) eval(checknu)
     }
   } else if (family$family=="beta_resp") {
-    if ( ! is.null(ranFix$beta_prec)) { ## optimisation call
+    if ( ! is.null(rdisPars <- ranFix$rdisPars)) { ## optimisation call
+      disp_env <- family$resid.model
+      if (is.null(disp_env$scaled_X)) {
+        disp_env$beta <- rdisPars
+      } else disp_env$scaled_beta <- rdisPars
+      assign("prec", 
+             .safe_eval_dispval(disp_env=disp_env, lo=1e-6,up=1e6), 
+             envir=environment(family$aic))
+      ranFix$rdisPars <- attr(ranFix,"type")$rdisPars <- NULL
+    } else if ( ! is.null(ranFix$beta_prec)) { ## optimisation call
       assign("prec",ranFix$beta_prec,envir=environment(family$aic))
       ranFix$beta_prec <- attr(ranFix,"type")$beta_prec <- NULL
     } else if ( ! is.null(ranFix$trbeta_prec)) { ## fitme -> HLfit directly (FIXME: unify both cases ?)
@@ -69,7 +128,16 @@
       if (inherits(checkprec,"call")) eval(checkprec)
     }
   } else if (family$family  %in% c("negbin1","negbin2")) {
-    if ( ! is.null(ranFix$NB_shape)) { ## fitme -> HLCor -> HLfit
+    if ( ! is.null(rdisPars <- ranFix$rdisPars)) { ## resid.model, fixed or optimized rdisPars 
+      disp_env <- family$resid.model
+      if (is.null(disp_env$scaled_X)) { 
+        disp_env$beta <- rdisPars # fixed rdisPars
+      } else disp_env$scaled_beta <- rdisPars # optimized rdisPars
+      assign("shape", 
+             .safe_eval_dispval(disp_env=disp_env, lo=1e-6,up=1e6), 
+             envir=environment(family$aic))
+      ranFix$rdisPars <- attr(ranFix,"type")$rdisPars <- NULL
+    } else if ( ! is.null(ranFix$NB_shape)) { ## fitme -> HLCor -> HLfit
       assign("shape",ranFix$NB_shape,envir=environment(family$aic))
       ranFix$NB_shape <- attr(ranFix,"type")$NB_shape <- NULL
     } else if ( ! is.null(ranFix$trNB_shape)) { ## fitme -> HLfit directly (FIXME: unify both cases ?)
@@ -184,7 +252,7 @@
               conv_clik=conv_clik))
 }  
 
-# fixed-effect main response
+# fixed-effect mean response
 # HLfit_body -> .calc_etaGLMblob -> this fn
 .do_damped_WLS_glm <- function(wX, LM_wz, damping, X.pv, clik, family, old_beta_eta, phi_est, off, processed, verbose) {
   restarted <- FALSE
@@ -258,6 +326,7 @@
     qr_X <- NA
     damping <- 1e-7 ## as suggested by Madsen-Nielsen-Tingleff... # Smyth uses abs(mean(diag(XtWX)))/nvars
     newclik <- .calc_clik(mu=mu,phi_est=phi_est,processed=processed) ## handles the prior.weights from processed
+    nophiHGLM <- ! any(processed$models[["phi"]]=="phiHGLM")
     for (innerj in seq_len(maxit.mean)) {
       ## breaks when Xtol_rel is reached
       clik <- newclik
@@ -274,17 +343,22 @@
       if ( ! is.null(for_intervals) || ! LM_called) {
         if ( ! is.null(for_intervals)) {
           currentDy <- (for_intervals$fixeflik-newclik)
-          if (currentDy < -1e-4 && 
-              (is.null(bestlik <- processed$envir$confint_best$lik) || newclik > bestlik)) {
-            if (is.null(bestlik)) {
-              locmess <- paste("A higher",names(for_intervals$fixeflik),"was found than for the original fit.",
-                               "\nThis suggests the original fit did not fully maximize",names(for_intervals$fixeflik),
-                               "\nExpect more information at end of computation.")
-              message(locmess)
-            }
-            processed$envir$confint_best$lik <- newclik
-            processed$envir$confint_best$beta_eta <- .unscale(X.pv, old_beta_eta)
-          }
+          # The following check was previously performed at each iteration of etaxLM_fn: fixed-effect mean response but possibly mixed-effect residual response.
+          # However, as long as the the random effects of the residual model have not converged (along with other estimates), likelihood calculations based of the predicted phi
+          # are not appropriate for comparison. Hence one would have to condition the check on ! any(processed$models[["phi"]]=="phiHGLM")
+          # But then the check is not very useful. It should be elsewhere, in cases where the v_h have converged but not other params.
+          # = > REMOVE
+          # if (currentDy < -1e-4 &&
+          #     (is.null(bestlik <- processed$envir$confint_best$lik) || newclik > bestlik)) {
+          #   if (is.null(bestlik)) {
+          #     locmess <- paste("A higher",names(for_intervals$fixeflik),"was found than for the original fit.",
+          #                      "\nThis suggests the original fit did not fully maximize",names(for_intervals$fixeflik),
+          #                      "\nExpect more information at end of computation.")
+          #     message(locmess)
+          #   }
+          #   processed$envir$confint_best$lik <- newclik
+          #   processed$envir$confint_best$beta_eta <- .unscale(X.pv, old_beta_eta)
+          # }
           intervalBlob <- .intervalStep_glm(old_beta=old_beta_eta,
                                             sXaug=wX,
                                             szAug=szAug,
@@ -335,8 +409,10 @@
                 sXaug=structure(NA,class="(G)LM"), qr_X=qr_X))
   }
 
-.calc_std_leverages <- function(models, need_ranefPars_estim, phi.Fix, auglinmodblob, n_u_h, nobs, processed, w.resid, u_h, 
-                                need_simple_lambda, muetablob, wranefblob, ZAL, lambda_est, cum_n_u_h, 
+.calc_std_leverages <- function(models, need_ranefPars_estim, phi.Fix, auglinmodblob, n_u_h, nobs, processed, 
+                                w.resid=auglinmodblob$w.resid, 
+                                u_h=auglinmodblob$u_h, need_simple_lambda, muetablob=auglinmodblob$muetablob, 
+                                wranefblob=auglinmodblob$wranefblob, ZAL, lambda_est, cum_n_u_h, 
                                 lcrandfamfam=attr(processed$rand.families,"lcrandfamfam"), phi_est) {
   hatvals <- NULL 
   if (models[[1]]=="etaHGLM") {
@@ -364,7 +440,7 @@
   leverages
 }
 
-.calc_APHLs_GLM <- function(processed, w.resid, clik) {
+.calc_APHLs_XLM <- function(processed, w.resid, clik) {
   ## ML: X.Re non NULL mais ncol(X.Re)=0
   X.REML <- processed$X.Re
   if (is.null(X.REML)) {X.REML <- processed$AUGI0_ZX$X.pv} ## REML standard
@@ -398,7 +474,7 @@
       if ( ! is.null(beta_eta) && ! is.null(attr(X.pv,"scaled:scale"))) {
         beta_eta <- .scale(beta=beta_eta,X=X.pv)
       }
-    } else beta_eta <- numeric(0L) # don't leave it NULL so that we don't try to get it from inits_by_glm.
+    } else beta_eta <- numeric(0L) # don't leave it NULL so that we don't try to get it from inits_by_xLM
   } 
   beta_eta
 }

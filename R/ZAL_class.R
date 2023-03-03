@@ -199,7 +199,10 @@ setMethod("%*%", c(x = "Kronfacto", y= "numeric"),
             } else {
               yy <- y
               dim(yy) <- c(ncol(BLOB$rhs),ncol(BLOB$lhs)) # nc_r, nc_l
-              tmp <- BLOB$rhs %*% yy # nr_r * nc_l
+              # if (inherits(BLOB$rhs,"dCHMsimpl")) { # untested code
+              #   tmp <- .tcrossprod(BLOB$rhs, yy) # using the special meaning of .tcrossprod for dCHMsimpl objects
+              # } else 
+                tmp <- BLOB$rhs %*% yy # nr_r * nc_l
               tmp <- tcrossprod(tmp,BLOB$lhs) # nr_r * nr_l
               dim(tmp) <- c(nrow(x),1L)
               tmp

@@ -60,6 +60,14 @@
                            dphilist
                          } else grad(.dispFn, parlist[[st]])
                        },
+                       "rdisPars"= {
+                         if (inherits(parlist[[st]],"list")) { # mv fit
+                           dphilist <- parlist[[st]]
+                           for (it in seq_along(dphilist)) dphilist[[it]] <- rep(1, length(dphilist[[it]]))
+                           if (bdiag.) dphilist <- diag(x=.unlist(dphilist))
+                           dphilist
+                         } else rep(1, length(parlist[[st]]))
+                       },
                        #
                        "etaFix" = {
                          dbeta <- grad(.betaFn, parlist[[st]][["beta"]])
@@ -80,7 +88,14 @@
                          if (bdiag.) dcorrlist <- Matrix::bdiag(dcorrlist)
                          dcorrlist
                        }, # to identically process the "corrPars" sublist
-                       stop("element not yet handled in .ad_hoc_grad()")
+                       # no transfo for other params =>
+                       if (inherits(parlist[[st]],"list")) { 
+                         dvec <- rep(1, length(.unlist(parlist[[st]])))
+                         if ( ! bdiag.) {
+                           dvec
+                         } else relist(dvec, parlist[[st]])
+                       } else rep(1, length(parlist[[st]]))
+                       #                       stop(paste("Parameter transformation for",st,"not yet handled in .ad_hoc_grad()")) # COMP_nu would be most problematic to implement; but NB_sape and beta_prec easy ?
     )
   }
   if (bdiag.) gr <- Matrix::bdiag(gr) # "inefficient"
@@ -120,6 +135,11 @@
                        diag(x=h)
                      } else grad_list$trPhi*hessian(.dispFn, parlist[[st]])
                    },
+                   "rdisPars"= {
+                     if (inherits(parlist[[st]],"list")) { # mv fit
+                       diag(0, nrow=length(.unlist(parlist[[st]])))
+                     } else diag(0,nrow=length(parlist[[st]]))
+                   },
                    #
                    "etaFix" = {
                      ghbetas <- parlist[[st]]$beta
@@ -150,7 +170,11 @@
                      if (length(ghcorrlist)>1L) ghcorrlist <- diag(x=ghcorrlist)     
                      ghcorrlist
                    }, 
-                   stop("element not yet handled in .ad_hoc_diag_hess()")
+                   # no transfo for other params =>
+                   if (inherits(parlist[[st]],"list")) {
+                     diag(0, nrow=length(.unlist(parlist[[st]])))
+                   } else diag(0,nrow=length(parlist[[st]]))
+                   #                       stop(paste("Parameter transformation for",st,"not yet handled in .ad_hoc_grad()")) # COMP_nu would be most problematic to implement; but NB_sape and beta_prec easy ?
     )
     resu[[st]] <- hess 
   }
@@ -206,11 +230,28 @@
   info
 }
 
+.calc_grad_thr <- function(skeleton, fitobject, beta_eta=skeleton$etaFix$beta) {
+  thr <- relist(rep(0.1, length(unlist(skeleton, recursive = TRUE, use.names = FALSE))), skeleton)
+  if (fitobject$how$spaMM.version>"4.1.58") { # => made scale_info available afterwards 
+    if (length(beta_eta)) thr$etaFix$beta <- 0.1* attr(fitobject$X.pv,"scale_info")
+    if (length(rdisPars <- skeleton$rdisPars)) {
+      if (is.list(rdisPars)) {
+        for (mv_it in names(rdisPars)) {
+          thr$rdisPars[[mv_it]] <- 0.1*attr(fitobject$families[[mv_it]]$resid.model$X,"scale_info")
+        }
+      } else thr$rdisPars <- 0.1*attr(fitobject$family$resid.model$X,"scale_info")
+    }
+  }
+  thr # structured list...
+}
+
 numInfo <- function(fitobject, 
                     transf=FALSE, 
                     which=NULL,
                     check_deriv=TRUE,       # outer estim without refit = no leverages checks... => it seems better to always check them
+                    sing=1e-05,
                     verbose=FALSE,
+                    refit_hacks=list(),
                     # method.args=list(eps=1e-4, d=0.0001, zero.tol=sqrt(.Machine$double.eps/7e-7), r=4, v=2, show.details=FALSE),
                     ...) {
   ## We need an X_off_fn so that the etaFix is used to build an offset. 
@@ -230,25 +271,37 @@ numInfo <- function(fitobject,
   is_REML <- .REMLmess(fitobject,return_message=FALSE)
   if (is.null(which)) {
     if (is_REML) {
-      which <- c("lambda", "ranCoefs", "corrPars", "hyper", "phi", "NB_shape", "beta_prec")
-    } else which <- c("lambda", "ranCoefs", "corrPars", "hyper", "phi", "NB_shape", "beta_prec", "beta")
+      which <-      c("lambda", "ranCoefs", "corrPars", "hyper", "phi", "NB_shape", "COMP_nu", "beta_prec", "rdisPars")
+    } else which <- c("lambda", "ranCoefs", "corrPars", "hyper", "phi", "NB_shape", "COMP_nu", "beta_prec", "rdisPars", 
+                      "beta")
   }
   # if (is_REML && "beta" %in% which) {
   #   REMLformula <- formula(fitobject)
   # } else REMLformula <- NULL
-  
-  where_rP <- .get_fittedPars(fitobject, fixef=FALSE, verbose=verbose) 
-  for_which_rP <- .get_fittedPars(fitobject, which=which, fixef=FALSE, verbose=verbose) # may be zero-length
+
+  # but the skeleton understood by hlcorcall is already a re-merging of fixed and oprimized values, 
+  # so it also needs a full ranCoefs, the hessian must first be computed on full ranCoefs, 
+  # and fixed columns be removed afterwards 
+
+  where_rP <- .get_fittedPars(fitobject, fixef=FALSE, verbose=verbose, partial_rC="keep", phifits=FALSE, phiPars=FALSE) 
+  for_which_rP <- .get_fittedPars(fitobject, which=which, fixef=FALSE, verbose=verbose, partial_rC="keep", phifits=FALSE, phiPars=FALSE) # may be zero-length
   if ("beta" %in% which) {beta_eta <- structure(fixef(fitobject), keepInREML=TRUE)} else beta_eta <- NULL
+  outer_call <- getCall(fitobject)
+  if ( ! is.null(refit_verbose <- refit_hacks$verbose)) {
+    refit_verbose <- .modify_list(outer_call$verbose, refit_verbose)
+  } else refit_verbose <- outer_call$verbose
+  
   hlcorcall <- get_HLCorcall(fitobject, 
                              fixed=where_rP, # If one use 'for_which_rP' here, parameters still get fixed cf (hlcorcall$fixed),
                                              # but to what is usually  default initial values (of not interest here)
                                              # This is a "feature", not a design decision....
- # fitmv() does not handle REMLformula *outside* the submodels, so either fitmv should be modified, or
- # the correct REMLformula must be automatically set as side effect of the keepInREML attribute,
- # or (chosen solution) the required effect must be achieved by keepInREML => cf .preprocess_X_XRe_off(), and related code for fitmv()
- #                           REMLformula=REMLformula,
-                             etaFix=list(beta=beta_eta)) # => the etaFix argument means that processed$off is modified by it 
+                             # fitmv() does not handle REMLformula *outside* the submodels, so either fitmv should be modified, or
+                             # the correct REMLformula must be automatically set as side effect of the keepInREML attribute,
+                             # or (chosen solution) the required effect must be achieved by keepInREML => cf .preprocess_X_XRe_off(), and related code for fitmv()
+                             #                           REMLformula=REMLformula,
+                             etaFix=list(beta=beta_eta),  # => the etaFix argument means that processed$off is modified by it
+                             verbose=refit_verbose
+  ) 
   proc_info <- .post_process_hlcorcall(hlcorcall, ranpars=for_which_rP, beta_eta=beta_eta, fitobject=fitobject)
   if (is.null(check_deriv)) check_deriv <- (
       length(for_which_rP$lambda) && any(for_which_rP$lambda<1e-6) ||
@@ -258,16 +311,48 @@ numInfo <- function(fitobject,
   skeleton <- for_which_rP
   if (length(beta_eta)) skeleton$etaFix$beta <- beta_eta
   if (verbose) print(skeleton)
-  if (check_deriv) skeleton <- .check_numDeriv_task(skeleton, .numInfo_objfn, hlcorcall, transf, proc_info, 
-                                                        moreargs=.get_moreargs(fitobject), ...) # assumes untransformed param
-  partially_fixed <- attr(skeleton, "partially_fixed") # may be zero-length (___F I X M E use this info to more elegantly fix thos pars in the numDeriv:: calls?)
+  
+  # cannot remove partially-fixed ranCoefs too early. They must be kept in skeleton in all cases
+  ufixed <- na.omit(unlist(outer_call$fixed))
+  fixednames <- names(ufixed) # .preprocess_fixed() removed any fancy names given by users.
+  uskeleton <- unlist(skeleton)
+  removand_rC <- intersect(fixednames,names(uskeleton))
+  
+  if (check_deriv) {
+    thr <- .calc_grad_thr(skeleton, fitobject, beta_eta) # effect visible on numInfo(fitme(cases~1+(1|id),family=negbin1(), data=scotlip, resid.model = ~ population))
+    removand <- .check_numDeriv_task(skeleton, .numInfo_objfn, hlcorcall, transf, proc_info, 
+                                     moreargs=.get_moreargs(fitobject), 
+                                     thr=unlist(thr), ...) # assumes untransformed param
+    tmp <- uskeleton
+    tmp[removand] <- NaN
+    # (1) check on finally retained parameters
+    if ( ! length(unlist(.rmNaN(relist(tmp,skeleton))))) {
+      warning("No fitted (co-)variance parameters whose information matrix could be evaluated.", immediate. = TRUE)
+      return(NULL)
+    }
+    # (2) but put back rC parameters than cannot yet be removed:
+    # Actually we cannot yet remove other elements of ranCoefs:
+    # the only ambiguous case would be the case where .check_numDeriv_task() and partial_rC together flag
+    # a full ranCoef for removal. In that case a more efficient numInfo computation would be possible by removing the ranCoef.
+    # That does not seem worth the effort.
+    check_rC <- intersect(names(tmp[which(removand)]), names(unlist(skeleton["ranCoefs"])))
+    removand_rC <- unique(c(removand_rC, check_rC))
+    tmp[removand_rC] <- uskeleton[removand_rC] 
+    tmp <- relist(tmp,skeleton)
+    skeleton <- .rmNaN(tmp)
+  } else if ( ! length(skeleton)) {
+    warning("No fitted (co-)variance parameters whose information matrix could be evaluated.", immediate. = TRUE)
+    return(NULL)
+  } 
+  
   # Final value always refer to untransformed params:
   parnames <- c(names(unlist(skeleton[setdiff(names(skeleton), "etaFix")])), names(skeleton$etaFix$beta))
-  if (transf) {
+  if (transf) { # from CANON to TRANSF
     canon_skeleton <- skeleton
-    skeleton <- .ad_hoc_trRanpars(for_which_rP)
+    skeleton <- .ad_hoc_trRanpars(skeleton)
     if (length(beta_eta)) {
       skeleton$etaFix$trBeta <- .betaFn(beta_eta)
+      skeleton$etaFix$beta <- NULL
     }
     #  and the .numInfo_objfn must back-transform parameters
   }
@@ -281,7 +366,7 @@ numInfo <- function(fitobject,
   # .assignWrapper(processed, paste0("return_only <- NULL")) # Not necess bc $processed is created by the local get_HLCorcall() and freed when this fn is exited. 
   if (transf) {
     jacTransf <- .ad_hoc_jac_transf(canon_skeleton)
-    resu <- crossprod(jacTransf, resu %*% jacTransf)
+    resu <- as.matrix(crossprod(jacTransf, resu %*% jacTransf))
     is_REML <- .REMLmess(fitobject,return_message = FALSE) # used anyway, say gradient comput.
     if (is_REML) { # grad_obj should be ~ 0 , for ML fits at least, so this computation should not be necessary
       grad_obj <- grad(func = .numInfo_objfn, x = unlist(skeleton), # on transformed scale
@@ -295,222 +380,30 @@ numInfo <- function(fitobject,
     }
   }
   dimnames(resu) <- list(parnames, parnames)
-  if ( length(partially_fixed)) { 
-    parnames <- setdiff(parnames, partially_fixed)
+  
+  # remove partially-fixed ranCoefs and those identified by check deriv
+  if ( length(removand_rC)) {
+    parnames <- setdiff(parnames, removand_rC) 
     resu <- resu[parnames, parnames, drop=FALSE]
   }
-  resu
-}
-
-
-# call by (private) .score_test and should presumably notbe called on REML fits; otherwise  (___F I X M E___) rethink the REML case
-# currently tested by tests-private/test-score-test.R
-.score <- function(fitobject, 
-                   fixed_H0=list(),
-                   etaFix_H0=list(),
-                   refit_H0=update(fitobject, fixed=fixed_H0, etaFix=etaFix_H0),
-                   transf, 
-                   which=c("lambda", "ranCoefs", "corrPars", "hyper", "phi", "NB_shape", "beta_prec", "beta"),
-                   verbose=FALSE,
-                   ...) {
-  where_rP <- .get_fittedPars(refit_H0, fixef=FALSE, verbose=verbose) # ma be NULL if all are fixed
-  where_rP <- .modify_list(where_rP,fixed_H0) # merge fixed and fitted ones
-  if ("beta" %in% which) {beta_eta <- structure(fixef(refit_H0), keepInREML=TRUE)} else beta_eta <- NULL 
-  hlcorcall <- get_HLCorcall(fitobject, 
-                             fixed=where_rP, 
-                             etaFix=list(beta=beta_eta)) 
-  for_which_rP <- where_rP[intersect(names(where_rP),which)]
-  proc_info <- .post_process_hlcorcall(hlcorcall, ranpars=for_which_rP, beta_eta=beta_eta, fitobject=fitobject)
   
-  skeleton <- for_which_rP
-  if (length(beta_eta)) skeleton$etaFix$beta <- beta_eta
-  if (verbose) print(skeleton)
-  side <- .calc_grad_side_arg(skeleton)
-
-  if (transf) {
-    canon_skeleton <- skeleton
-    skeleton <- .ad_hoc_trRanpars(for_which_rP)
-    if (length(beta_eta)) {
-      skeleton$etaFix$trBeta <- .betaFn(beta_eta)
+  if (sing) {
+    ev <- eigen(resu, only.values = TRUE)$values
+    if (any(ev < sing)) {
+      attr(ev,"sing") <- sing
+      class(ev) <- c(class(ev),"singeigs")
+      if (verbose) message("Information matrix has suspiciously small eigenvalues.")
     }
-    #  and the .numInfo_objfn must back-transform parameters
+    attr(resu,"eigvals") <- ev
   }
-
-  resu <- grad(func = .numInfo_objfn, x = unlist(skeleton), side=unlist(side), skeleton=skeleton, hlcorcall=hlcorcall, 
-             transf=transf, objective=proc_info$objective, 
-             moreargs= .get_moreargs(fitobject), ...)
-  
-  if (transf) {
-    jacTransf <- .ad_hoc_jac_transf(canon_skeleton)
-    resu <- resu %*% jacTransf
-  }
-  names(resu) <- c(names(unlist(for_which_rP)), names(beta_eta))
   resu
 }
 
-if (FALSE) {
-  # using a 'singfit' from test-rank.R
-  spaMM:::.score(singfit,fixed_H0=list(lambda=c("1"=0.01)), etaFix_H0 = list(beta=fixef(singfit)+1),transf=FALSE)
-  spaMM:::.score(singfit,fixed_H0=list(lambda=c("1"=0.01)), etaFix_H0 = list(beta=fixef(singfit)+1),transf=TRUE)
+print.singeigs <- function(x, ...) {
+  sing <- attr(x,"sing")
+  xx <- sapply(x, function(v) {
+    ifelse(v<sing, crayon::underline(signif(v)), signif(v))
+  })
+  cat(paste(xx))
 }
 
-# Currently not used:
-.numInfo_at <- function(fitobject, 
-                   fixed_H0=list(),
-                   etaFix_H0=list(),
-                   transf, 
-                   which=NULL,
-                   verbose=FALSE,
-                   ...) {
-  refit_H0 <- update(fitobject, fixed=fixed_H0, etaFix=etaFix_H0)
-  where_rP <- .get_fittedPars(refit_H0, fixef=FALSE, verbose=verbose) # ma be NULL if all are fixed
-  where_rP <- .modify_list(where_rP,fixed_H0) # merge fixed and fitted ones
-  if ("beta" %in% which) {beta_eta <- structure(fixef(refit_H0), keepInREML=TRUE)} else beta_eta <- NULL
-  is_REML <- .REMLmess(fitobject,return_message=FALSE)
-  if (is.null(which)) {
-    if (is_REML) {
-      which <- c("lambda", "ranCoefs", "corrPars", "hyper", "phi", "NB_shape", "beta_prec")
-    } else which <- c("lambda", "ranCoefs", "corrPars", "hyper", "phi", "NB_shape", "beta_prec", "beta")
-  }
-  if (is_REML && "beta" %in% which) {
-    REMLformula <- formula(fitobject)
-  } else REMLformula <- NULL
-  
-  hlcorcall <- get_HLCorcall(fitobject, 
-                             fixed=where_rP,
-                             REMLformula=REMLformula,
-                             etaFix=list(beta=beta_eta)) 
-  for_which_rP <- where_rP[intersect(names(where_rP),which)]
-  proc_info <- .post_process_hlcorcall(hlcorcall, ranpars=for_which_rP, beta_eta=beta_eta, fitobject=fitobject)
-  
-  skeleton <- for_which_rP
-  if (length(beta_eta)) skeleton$etaFix$beta <- beta_eta
-  if (verbose) print(skeleton)
-  
-  side <- relist(rep(NA,length(.unlist(skeleton))),skeleton) 
-  side$lambda[skeleton$lambda<5e-5] <- 1
-  
-  if (transf) {
-    canon_skeleton <- skeleton
-    skeleton <- .ad_hoc_trRanpars(for_which_rP)
-    if (length(beta_eta)) {
-      skeleton$etaFix$trBeta <- .betaFn(beta_eta)
-    }
-    #  and the .numInfo_objfn must back-transform parameters
-  }
-  
-  ###### finishes as numInfo... except test on is_REML removed...
-  
-  resu <- hessian(func = .numInfo_objfn, x = unlist(skeleton), 
-                  skeleton=skeleton, hlcorcall=hlcorcall, 
-                  transf=transf, # whether x is on untransformed scale
-                  objective=proc_info$objective, 
-                  moreargs=.get_moreargs(fitobject), ...)
-  # .assignWrapper(processed, paste0("return_only <- NULL")) # Not necess bc $processed is created by the local get_HLCorcall() and freed when this fn is exited. 
-  if (transf) {
-    # Assuming each tr_i is function of a cn_i only:
-    #   d2_cn1,cn2 logL(cn) = (d2_tr logL(tr)) (d_cn1 tr1) (d_cn2 tr2) + (d_tr1 logL(tr)) (d2_cn1,cn2 tr1)  
-    #                  =                  .                            + nonzero only for cn1 ~ cn2  =>   (d_tr1 logL(tr)) (d2_cn1 tr1)  
-    # otherwise second term is rather d_cn2 ((grad_tr logL).(jac_cn1 tr)) => overall (grad_tr logL) %*% hessian(transfo)
-    jacTransf <- .ad_hoc_jac_transf(canon_skeleton)
-    resu <- crossprod(jacTransf, resu %*% jacTransf) # (d2_tr logL(tr)) (d_cn1 tr1) (d_cn2 tr2)
-    grad_obj <- grad(func = .numInfo_objfn, x = unlist(skeleton), # on transformed scale
-                     skeleton=skeleton, hlcorcall=hlcorcall, 
-                     transf=transf, 
-                     objective=proc_info$objective, 
-                     moreargs=.get_moreargs(fitobject), ...)
-    grad_list <- relist(grad_obj, skeleton) 
-    diag_hess_transf <- .ad_hoc_grXhessians_transf(canon_skeleton, grad_list) # 2nd deriv of each parameter transform.
-    resu <- resu+diag(x=diag_hess_transf*grad_obj) 
-  }
-  parnames <- c(names(unlist(for_which_rP)), names(beta_eta))
-  dimnames(resu) <- list(parnames, parnames)
-  resu
-  
-}
-
-if (FALSE) {
-  (null_numInfo <-   spaMM:::.numInfo_at(spfit,fixed_H0 = list(lambda=c(0.2084315, 0.0342933), phi=spfit$phi), etaFix_H0 = list(beta=fixef(spfit)), transf=TRUE))
-  (null_numInfo <-   spaMM:::.numInfo_at(spfit,fixed_H0 = list(lambda=spfit$lambda, phi=spfit$phi), etaFix_H0 = list(beta=fixef(spfit)), transf=TRUE))
-}
-
-# Compare to solve(merDeriv::vcov(., full=TRUE, information="expected"))
-.expInfo <- function (object) {
-  beta_expI <- solve(vcov(object)) # well there's nothing here when beta is fixed...
-  logdisp_cov <- .get_logdispObject(object)$logdisp_cov
-  logdisp_expI <- solve(logdisp_cov)
-  ranpars_phi <- .get_ranPars_phi(object, wo_fixed=FALSE)
-  precs <- 1/c(ranpars_phi$lambda,ranpars_phi$phi) # for ranCoefs, this fails bc the logdisp_cov hass elements fro the 'lambda' but there is no $lambda
-  precmat <- diag(x=precs, ncol=length(precs))
-  disp_expI <- precmat %*% logdisp_expI %*% precmat
-  Matrix::bdiag(beta_expI,disp_expI)
-}
-
-.expInfo_at <- function(fitobject, 
-                        fixed_H0=list(),
-                        etaFix_H0=list(),
-                        transf, 
-                        which=c("lambda", "ranCoefs", "corrPars", "hyper", "phi", "NB_shape", "beta_prec", "beta"),
-                        verbose=FALSE,
-                        ...) {
-  refit4beta_expI <- update(fitobject, fixed=fixed_H0)
-  beta_expI <- solve(vcov(refit4beta_expI))
-  refit_H0 <- update(fitobject, fixed=fixed_H0, etaFix=etaFix_H0)
-  logdisp_cov <- .calc_logdispObject(refit_H0, force_fixed=TRUE)$logdisp_cov
-  logdisp_expI <- solve(logdisp_cov)
-  ranpars_phi <- .get_ranPars_phi(refit_H0, wo_fixed=FALSE)
-  precs <- 1/unlist(ranpars_phi[c("lambda","phi")]) # for ranCoefs, this fails bc the logdisp_cov hass elements fro the 'lambda' but there is no $lambda
-  precmat <- diag(x=precs, ncol=length(precs))
-  disp_expI <- precmat %*% logdisp_expI %*% precmat
-  resu <- Matrix::bdiag(beta_expI,disp_expI)
-  rownames(resu) <- colnames(resu) <- c(colnames(beta_expI), names(precs))
-  resu
-}
-
-.score_test <- function(fitobject, # ___F I X M E___ API through LRT option ? protect against calling it on REML fits?
-                        y=response(fitobject), 
-                        X=fitobject$X.pv, 
-                        Z=get_ZALMatrix(fitobject), 
-                        fixed_H0=list(),
-                        etaFix_H0=list(), ...){
-  fixed_H0$lambda <- pmax(1e-6,fixed_H0$lambda)
-  fixed_H0$lambda <- .reformat_lambda(fixed_H0$lambda, nrand=length(fixed_H0$lambda), full_lambda=FALSE)
-  nullfit <- update(fitobject, fixed=fixed_H0, etaFix=etaFix_H0)
-  null_beta <- fixef(nullfit)
-  full_lam_phi <- .get_ranPars_phi(fitobject, wo_fixed=FALSE)[c("lambda","phi")] # order lambda,phi reversed // lmmstest !
-  triv_scale <- rep(c(1,2,2), c(length(null_beta), length(full_lam_phi$lambda), length(full_lam_phi$phi) )) # order lambda,phi !
-  
-  varnames <- c(names(null_beta),names(unlist(full_lam_phi)))
-  
-  score <-  .score(fitobject, refit_H0=nullfit, fixed_H0 = fixed_H0, etaFix_H0 = list(beta=null_beta), transf=FALSE)[varnames]
-  
-  null_expInfo <- .expInfo_at(fitobject,fixed_H0 = fixed_H0, etaFix_H0 = list(beta=null_beta), transf=FALSE)[varnames,varnames]
-  diag_scale <- diag(triv_scale)
-  
-  # lmmstest's 'loglik' component is logLik(nullfit); it is not used here.
-  scaled_score <- - score * triv_scale
-  scaled_inf <- diag_scale %*% null_expInfo %*% diag_scale
-  
-  np <- length(varnames)
-  testnames <- (varnames %in% c(names(unlist(fixed_H0)), names(etaFix_H0$beta)))
-  test_idx <- which(testnames)
-  fitted_lam_phi <- .get_ranPars_phi(fitobject, wo_fixed=TRUE)[c("lambda","phi")] # order lambda,phi !
-  
-  fixedpars <- setdiff(names(unlist(full_lam_phi)),names(unlist(fitted_lam_phi)))
-  fix_idx <- which(varnames %in% fixedpars)
-  if (length(pb <- intersect(fix_idx,test_idx))) {
-    stop(paste("Parameters",paste(varnames[pb],collapse=", "),"fixed both by 'fixed_H0' and in the full model."))
-  }
-  no_idx <- (1L:np)[-c(test_idx, fix_idx)]
-  s <- scaled_score[test_idx]
-  I_block <- scaled_inf[test_idx, test_idx]
-  if(length(no_idx)){
-    I_block <- I_block -
-      scaled_inf[test_idx, no_idx] %*% solve(scaled_inf[no_idx, no_idx], scaled_inf[no_idx, test_idx])
-  }
-  test_stat <- sum(s * qr.solve(I_block, s))
-  df <- length(test_idx)
-  p_val <- stats::pchisq(q = test_stat, df = df, lower.tail = FALSE)
-  c("chi_sq" = test_stat, "df" = df, "p_val" = p_val)
-}
-  

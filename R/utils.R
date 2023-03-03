@@ -71,17 +71,17 @@ overcat <- function(msg, prevmsglength) {
   Xattr <- attributes(X)
   X <- X[,j=j,drop=drop]
   names_lostattrs <- setdiff(names(Xattr), names(attributes(X)))
-  attributes(X)[names_lostattrs] <- Xattr[names_lostattrs] ## not mostattributes hich messes S4 objects ?!
-  if ( ! is.null(cum_ncol <- Xattr$cum_ncol)) { # mv model
-    n_subm <- length(cum_ncol)-1L
+  if ( ! is.null(col_ranges <- Xattr$col_ranges)) { # mv model; tested but numInfo(zut0) in test-mv-extra which is NOT part of long tests.
+    n_subm <- length(col_ranges)
     ncol_vec <- integer(n_subm)
     colmatches <- match(Xattr$dimnames[[2]], colnames(X))
     for (mv_it in seq_len(n_subm)) {
-      colrange <- (cum_ncol[mv_it]+1L):cum_ncol[mv_it+1L]  
-      ncol_vec[mv_it] <- length(na.omit(colmatches[colrange]))  
+      colrange <- col_ranges[[mv_it]]  
+      col_ranges[[mv_it]] <- na.omit(colmatches[colrange])  
     }
-    attr(X,"cum_ncol") <- c(0L,cumsum(ncol_vec))
+    Xattr$col_ranges <- col_ranges
   }
+  attributes(X)[names_lostattrs] <- Xattr[names_lostattrs] ## not mostattributes hich messes S4 objects ?!
   return(X)
 }
 
@@ -228,7 +228,7 @@ projpath <- local({
 
 ..trDiagonal <- function(n) .trDiagonal(n=n, unitri = FALSE)
 
-.rawsolve <- function(A) Matrix::solve(A, ..trDiagonal(n=ncol(A))) 
+# .rawsolve <- function(A) Matrix::solve(A, ..trDiagonal(n=ncol(A))) # wrapper useful only when ..trDiagonal() was memoised.
 
 ## specializations of Matrix::bdiag() and ::.bdiag():
 .bdiag_dtC <- function(..., uplo="L") {  # if not all matrices are not consistently lower triangular (resp upper triangular) we should transpose some

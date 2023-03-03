@@ -38,17 +38,18 @@
   side
 }
 
-.check_numDeriv_task <- function(skeleton, .numInfo_objfn, hlcorcall, transf, proc_info, moreargs, ...) {
+.check_numDeriv_task <- function(skeleton, .numInfo_objfn, hlcorcall, transf, proc_info, moreargs, 
+                                 thr=0.1, # ideally the threshold should depend on the internal steps of grad, which are O(1e-6) but "complicated" and not available in output
+                                 ...) {
   side <- .calc_grad_side_arg(skeleton)
   uside <- unlist(side)
   gr_neg_APHL <- grad(func = .numInfo_objfn, x = unlist(skeleton), side=uside, skeleton=skeleton, hlcorcall=hlcorcall, 
-             transf=transf, objective=proc_info$objective, moreargs=moreargs, ...)
+                      transf=transf, objective=proc_info$objective, moreargs=moreargs, ...)
   
   removand <- rep(FALSE, length(uside))
   uside[is.na(uside)] <- 0
-  thr <- 0.1 # ideally the threshold should depend on the internal steps of grad, which are O(1e-6) but "complicated" and not available in output
   # so a gradient of -1 for a change of 1e-6 of the argument means the APHL appears to increase by ~ 1e-6. Lower values may be negligible 
-  if (any(nonzero_grad <- abs(gr_neg_APHL)>thr)) {
+  if (any(nonzero_grad <- abs(gr_neg_APHL)>thr)) { #___F I X M E___ redefine check by compar to hessian? was motivated Cf negbin1 resid.model example. 
     max_at_bound <- (uside==-1L & gr_neg_APHL < -thr) | (uside==1L & gr_neg_APHL > thr)
     if (any(max_at_bound)) {
       warning(paste(proc_info$objective, "has nonzero gradient for",
@@ -77,46 +78,50 @@
             immediate. = TRUE)
     removand[which(other_pb_at_bound)] <- TRUE
   } 
-
-  tmp <- unlist(skeleton)
-  tmp[removand] <- NaN
-  tmp <- relist(tmp,skeleton)
-  partially_fixed_rC <- tmp["ranCoefs"]
-  if ( ! is.null(rCs <- tmp$ranCoefs)) {
-    for (rc_it in seq_along(rCs)) {
-      nans <- is.nan(rCs[[rc_it]])
-      if (any(nans) && ! all(nans)) { # partially fixed ranCoefs: as in fits, we keep them in the variable params 
-        rCs[[rc_it]] <- skeleton$ranCoefs[[rc_it]] # won't be removed by .rmNaN()
-      }
-    }
-    tmp$ranCoefs <- rCs
-  }
-  skeleton <- .rmNaN(tmp)
-  if ( ! length(skeleton)) stop("No fitted (co-)variance parameters whose information matrix could be evaluated.")
-  # In some case we might need to regerate hlcorcall and proc_info...
-  
-  attr(skeleton,"partially_fixed") <- names(which(is.nan(unlist(partially_fixed_rC))))
-  skeleton
+  removand
 }
-
 
 # reproduces the elements added to the lmerMod object by lmerTest:
 .calc_numderivs_LMLT <- function(fitobject, tol = 1e-08, skeleton=NULL, transf, check_deriv=NULL) {
-  if (is.null(skeleton)) skeleton <- .get_ranPars_phi(fitobject, wo_fixed=TRUE)
+  if (is.null(skeleton)) skeleton <- .get_ranef_resid_Pars(fitobject, wo_fixed=TRUE)
   if ( ! length(skeleton)) stop("No fitted (co-)variance parameters whose information matrix could be evaluated.")
   hlcorcall <- get_HLCorcall(fitobject, fixed=skeleton) # using skeleton on canonical scale
   #
   proc_info <- .post_process_hlcorcall(hlcorcall, ranpars=skeleton) # modifies the $processed environment
+  tmp <- unlist(skeleton)
+  
   if (is.null(check_deriv)) check_deriv <- (length(skeleton$lambda) && any(skeleton$lambda<1e-6)) 
-  if (check_deriv) skeleton <- .check_numDeriv_task(skeleton, .numInfo_objfn, hlcorcall, transf, proc_info, 
-                                                    moreargs=.get_moreargs(fitobject))
-  #
+  if (check_deriv) {
+    thr <- .calc_grad_thr(skeleton, fitobject)
+    removand <- .check_numDeriv_task(skeleton, .numInfo_objfn, hlcorcall, transf, proc_info, 
+                                     moreargs=.get_moreargs(fitobject), thr=unlist(thr))
+    tmp[removand] <- NaN
+    tmp <- relist(tmp,skeleton)
+    skeleton <- .rmNaN(tmp)
+    if ( ! length(skeleton)) stop("No fitted (co-)variance parameters whose information matrix could be evaluated.")
+  }
   
   nuisance <- skeleton
   if (transf) skeleton <- .ad_hoc_trRanpars(skeleton)
   res <- list(skeleton=skeleton, nuisance=nuisance, # nuisance should be on canonical scale as it is displayed; skeleton is typically transformed.
               vcov_beta=vcov(fitobject))
   h <- hessian(func = .numInfo_objfn, x = unlist(skeleton), skeleton=skeleton, hlcorcall=hlcorcall, transf=transf, objective=proc_info$objective)
+  # h is possibly is transformed space so it would be confusing to name it by canonNames
+  outer_call <- getCall(fitobject)
+  ufixed <- na.omit(unlist(outer_call$fixed))
+  fixednames <- names(ufixed)
+  if ( length(fixednames)) {
+    canonNames <- names(unlist(nuisance))
+    isfixed <- canonNames %in% fixednames # this is the way to catch partially-fixed ranCoefs
+    goodcols <- which( ! isfixed)
+    h <- h[goodcols, goodcols, drop=FALSE]
+    tmp <- unlist(nuisance)
+    tmp[isfixed] <- NaN
+    tmp <- relist(tmp,nuisance)
+    res$nuisance <- .rmNaN(tmp) # about names, see comment on as_LMLT() -> print(unlist(resu@nuisance))
+  }
+  
+  
   eig_h <- eigen(h, symmetric = TRUE)
   evals <- eig_h$values
   neg <- evals < -tol
@@ -148,7 +153,12 @@
   .assignWrapper(hlcorcall$processed, paste0("return_only <- NULL"))  # currently we call vcov() in .get_covbeta() so we need a full return object (but this could be improved) 
   Jac <- jacobian(func = .get_covbeta, x = unlist(skeleton), hlcorcall=hlcorcall, skeleton=skeleton, 
                             # fitobject=fitobject, 
-                            transf=transf)
+                            transf=transf) # with one col for each element of skeleton
+  
+  if ( length(fixednames)) {
+    Jac <- Jac[, goodcols, drop=FALSE]
+  }
+  
   res$Jac_list <- lapply(1:ncol(Jac), function(i) array(Jac[, i], dim = rep(length(fixef(fitobject, na.rm=TRUE)), 2)))
   res
 }
@@ -206,8 +216,12 @@ as_LMLT <- function(fitobject, nuisance=NULL, verbose=TRUE, transf=TRUE, check_d
   #
   if (verbose) {
     cat("Result accounting for uncertainty for the following estimates of nuisance parameters:\n")
-    print(unlist(resu@nuisance))
+    print(unlist(resu@nuisance)) # the names of the unlisted are effectively built from seq_along each terminal vector 
+    # on partial ranCoefs these names ranCoefs.11 ranCoefs.12 can be confusing. 
+    # Adding explicit names to nuisance would be (1) clumsy; with another distinct format ranCoefs.1.1 ranCoefs.1.3
+    # So forget it...
   }
-  resu <- as(resu, "LMLT") # (___F I X M E___) alternative would be to recode the lmerTest algo for the contrast matrix 'L', the rest seeming straightforward.
+  resu <- as(resu, "LMLT") #to call spaMM::anova.LMLT() -> anova.lmerModLmerTest -> single_anova -> get_contrasts_type1|2|3
+  # I now have my get_type[]_contrasts for .anova_fallback() so could I avoid using lmerTest (__F I X M E__?)
   invisible(resu)
 }

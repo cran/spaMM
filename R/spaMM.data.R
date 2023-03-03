@@ -13,6 +13,7 @@
   spprec_threshold=50, # ohio small by correlation algo, large by spprec: threshold is n>=140 has crit 'near' 62 (varying betw replicates). 
   separation_max=10,
   sep_solver="glpk",
+  HLfit_body="HLfit_body",
   spprec_method="def_AUGI0_ZX_spprec", 
   matrix_method="def_sXaug_EigenDense_QRP_Chol_scaled", # handling negative weights  
   Matrix_method= "def_sXaug_Matrix_QRP_CHM_scaled", 
@@ -28,7 +29,6 @@
   #Matrix_method= "def_sXaug_Matrix_QRP_scaled", 
   ## possible values: matches to def_sXaug_
   #
-  spaMM_glm_conv_silent=FALSE,
   LevenbergM=NULL, 
   LevM_HL11_method=list(b_step="v_b", # [1]= "v_b" or "b", or "v_in_b",
                         rescue_thr_null=c(rescue=TRUE,strictv=0L,V_IN_B=2L,re_V_IN_B=Inf), ## affects LevM.negbin test
@@ -97,12 +97,13 @@
   # and [pow_lam_nu] >= 1.5 to hold (the absolute error was always less than 0.5% in our tests),
   #
   # but this is only for the limited set of  values in the Table.
-  CMP_asympto_cond=quote((pow_lam_nu > 3 && lambda>5)),
+  CMP_asympto_cond=function(pow_lam_nu, nu, lambda){pow_lam_nu > 3 && lambda>5},
   # CMP_asympto_cond=quote((#nu<1 && ## affects test-COMPoisson
   #   pow_lam_nu > 10/nu) || 1+pow_lam_nu+6*sqrt(pow_lam_nu/nu) > .spaMM.data$options$COMP_maxn),
   COMP_maxn=1e4,
   sanitize_eta=c(gauslog=20,COMPlog=16,otherlog=20), # otherlog value affects difficult Gamma(log) fits (cf Leucadendron_hard.R)
   Gamma_min_y = 1e-10, ## for warnings in .preprocess(), and automatic correction in simulate() -> .r_resid_var(); .calc_dispGammaGLM() has indep, and much less strict, correction
+  beta_min_y = 1e-8, ##  for warnings in .preprocess(), and automatic correction in simulate() -> .r_resid_var();  ____F I X M E____ value is quick ad hoc fix
   ###############
   example_maxtime=0.7,
   bin_mu_tol=.Machine$double.eps, # was 1e12 for a long time
@@ -156,8 +157,10 @@
   #        add control=list(fix_predVar=NA) in predict() calls in the following calls? Probably not worth the mess.
   fix_predVar=list("NA"="MSL|bboptim|isoscape|isofit|calibfit|optimthroughSmooth|spaMM_rhullByEI|sampleByResp",
                    "TRUE"=NULL,"FALSE"=NULL), 
-  tr_beta=FALSE # whether to optim on transformed scale in speculative outer-optimization of beta
+  tr_beta=FALSE, # whether to optim on transformed scale in speculative outer-optimization of beta
   #thr_backsolve=0L # for devel testing of .backsolve(); 0L means that .Rcpp_backsolve may be called irrespective of matrix dimension
+  xLM_conv_silent=FALSE,
+  xLM_conv_crit=list(max=-Inf)
 )
 
 .spaMM.data$keywords <- new.env(parent = emptyenv())

@@ -35,7 +35,7 @@ ranCoefs_for_diag <- function(nlevels) {
  # diagmat <- matrix(NA, ncol=nlevels,nrow=nlevels)
  # diagmat[lower.tri(diagmat,diag=FALSE)] <- 0
  # return(diagmat[lower.tri(diagmat,diag=TRUE)])
- ## which amount to:
+ ## which amounts to:
  vec <- rep(0,nlevels*(nlevels+1L)/2L)
  vec[cumsum(c(1L,rev(seq(nlevels-1L)+1L)))] <- NA
  vec

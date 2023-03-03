@@ -2,11 +2,11 @@
 \alias{ARp}
 \alias{ARMA}
 \title{
-corrFamily constructors for random effect with AR(p) (autoregressive of order p) or ARMA(p,q) structure.
+Random effect with AR(p) (autoregressive of order p) or ARMA(p,q) structure.
 }
 \description{
+These times-series correlation models can be declared as correlation models for random effect. 
 The AR(p) model is here parametrized by the \bold{partial} correlation coefficients of the levels of the random effect, \{U_t\}, corr(U_s,U_t|U_(s+1),...,U_(t-1)), with valid values in the hypercube ]-1,,1[^p (Barndorff-Nielsen and Schou, 1973). 
-
 In the autoregressive-moving average ARMA(p,q) model, the AR part is parametrized in the same way. AR parameters are named \code{"p1"}, \code{"p2"}..., and MA parameters are named \code{"q1"}, \code{"q2"}... .
 
 Implementation of the AR(p) model uses the sparsity of the inverse covariance matrix. In the ARMA(p,q) model, neither the covariance nor its inverse are sparse, so fits are expected to be more time- and memory-consuming. 
@@ -32,7 +32,7 @@ ARMA(p=1L, q=1L, fixed=NULL, tpar=c(1/(1+seq_len(p)),1/(1+seq_len(q))))
 Barndorff-Nielsen 0. and Schou G., 1973 On the parametrization of autoregressive models by partial autocorrelations. J. Multivariate Analysis 3: 408-419. \doi{10.1016/0047-259X(73)90030-4}
 }
 \value{
-The \code{ARp} and \code{ARMA} functions return a \code{corrFamily} descriptor, hence a \code{list} including element \code{Cf}, a function returning, for given ARMA or AR parameters, the correlation matrix for \code{ARMA}, or its \bold{inverse} for \code{ARp}.
+The \code{ARp} and \code{ARMA} functions return a \code{\link{corrFamily}} descriptor, hence a \code{list} including element \code{Cf}, a function returning, for given ARMA or AR parameters, the correlation matrix for \code{ARMA}, or its \bold{inverse} for \code{ARp}.
 
 The fitted correlation matrix can be extracted from a fit object, as for any autocorrelated random effect, by \code{Corr(}<fit object>\code{)[[}<random-effect index>\code{]]}. 
 }
@@ -65,6 +65,9 @@ ts <- data.frame(lh=lh,time=seq(48)) ## using 'lh' data from 'stats' package
 #
 get_ranPars(AR3fix)$corrPars     # p2 was not a parameter of the model
 get_ranPars(AR3_fix)$corrPars    # p2 was a fixed parameter of the model
+#
+# get_fittefPars() expectedly ignores 'p2' whichever way it was fixed.    
+
 
 ## Same as 'AR3fix' but with an additional MA(1) component
 #

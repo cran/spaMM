@@ -6,6 +6,8 @@ Alternative negative-binomial family
 \description{
 Returns a \code{family} object suitable as a \code{fitme} argument for fitting negative-binomial models with variance linearly (affinely) related to the mean \eqn{\mu}: variance=\eqn{\mu+\mu}/shape, with known or unknown underlying Gamma shape parameter. 
 The model described by such a family is characterized by a linear predictor, a link function, and such a negative-binomial model for the residual variation. The zero-truncated variant of this family is also handled.
+
+A \bold{fixed-effect} residual-dispersion model can be fitted, using the \code{\link{resid.model}} argument, which is used to specify the form of the logarithm of the shape parameter. Thus the variance of the response become \eqn{\mu+\mu}/\code{exp(<specified linear expression>)}.
 }
 \usage{
 negbin1(shape = stop("negbin1's 'shape' must be specified"), link = "log", trunc = -1L)
@@ -30,4 +32,4 @@ The name \code{NB_shape} should be used to set values of shape in control argume
 \value{
 A list, formally of class \code{c("LLF", "family")}. See \code{\link{LL-family}} for details about the structure and usage of such objects.
 }
-\seealso{Examples in \code{\link{LL-family}}.}
+\seealso{Examples in \code{\link{LL-family}}. \code{\link{resid.model}} for an example with a residual-dispersion model.}

@@ -8,6 +8,7 @@
 
 negbin1 <- function (shape = stop("negbin1's 'shape' must be specified"), link = "log", trunc=-1L) {
   mc <- match.call()
+  resid.model <- list2env(list(off=0)) # env so that when we assign to it we don't create a new instance of the family object
   if (inherits(shch <- substitute(shape),"character") ||
       (inherits(shch,"name") && inherits(shape, "function")) # "name" is for e.g. negbin(log)
       # (but testing only "name" would catch e.g. negbin(shape=shape) )
@@ -40,7 +41,10 @@ negbin1 <- function (shape = stop("negbin1's 'shape' must be specified"), link =
   }
 
   if ( ! is.integer(trunc)) {trunc <- round(trunc)}
-  variance <- function(mu) mu + mu/shape
+  variance <- function(mu, new_fampar=NULL) {
+    if ( ! is.null(new_fampar)) shape <- new_fampar # for .calcResidVar with newdata an a resid.model 
+    mu + mu/shape
+  }
   validmu <- function(mu) all(mu > 0)
   # logl and derived functions  derived from negbin[2] b replacing shape by shape*mu
   # - negbin1(shape=3)$aic(y,NA,mu,wt=1)/2  = dnbinom(x=y,size=shape*mu,mu=mu,log=TRUE)
@@ -70,7 +74,8 @@ negbin1 <- function (shape = stop("negbin1's 'shape' must be specified"), link =
                                   2*lsh*(3+mushape*l1sh) - l1sh*(6+mushape*l1sh) +
                                   6*mushape* (2*trigamma(y)+mushape*(psigamma(y, deriv=2)+2.404113806319188))  )/12
     }
-    DlogLDmu <- function(mu, y, wt, n, phi) { # dlogL/dmu 
+    DlogLDmu <- function(mu, y, wt, n, phi, shape_it=NULL) { # dlogL/dmu 
+      if ( ! is.null(shape_it)) shape <- shape_it
       # shape (Log[mu shape] - Log[mu (1 + shape)] - PolyGamma[0, mu shape] + PolyGamma[0, mu shape + y])
       mushape <- mu*shape
       term <- shape * (log(shape/(1 + shape)) - digamma(mushape) + digamma(mushape + y))
@@ -127,7 +132,31 @@ negbin1 <- function (shape = stop("negbin1's 'shape' must be specified"), link =
       Md3log1mp0 <- p0*(1+p0)*(shape*log(shape/(1 + shape))/(1-p0))^3
       term + Md3log1mp0
     }
-  } else {
+    
+    sat_logL <- function(y, wt, return_logL=TRUE) { 
+      shapeconst <- - 1/(shape * log(shape/(1 + shape))) # in the vector case, a slight optim would be to compute it only for y>0L and shape>1 ?
+      if (length(shape)>1L) {
+        muv <- rep(NA, length(y))
+        ygt1 <- (y > 1L)
+        muv[ ! ygt1 ] <- 0
+        for (it in which(ygt1)) muv[it] <- getmu(y[it], shape_it=shape[it], shapeconst_it=shapeconst[it])
+        if (return_logL) {
+          loglv <- logl(y,mu=muv,wt=1) # on vector y, muv and shape 
+        } else muv
+      } else {
+        uniqy <- unique(y)
+        uniqmu <- rep(NA, length(uniqy))
+        ygt1 <- (uniqy > 1L)
+        uniqmu[ ! ygt1 ] <- 0
+        for (it in which(ygt1)) uniqmu[it] <- getmu(uniqy[it], shapeconst_it=shapeconst)
+        if (return_logL) {
+          uniqlogl <- logl(uniqy,mu=uniqmu,wt=1)
+          uniqlogl[match(y, uniqy)]
+        } else uniqmu[match(y, uniqy)]
+      }
+    } 
+    
+  } else { # UNtruncated
     logl <- function(y, mu, wt) {
       mushape <- mu*shape
       term <- (y + mushape) * log(mu + mushape) - y * log(mu) + 
@@ -136,7 +165,8 @@ negbin1 <- function (shape = stop("negbin1's 'shape' must be specified"), link =
       term[y==0L & mu==0] <- 0 # replaces NaN's with correct answer
       - term * wt
     }
-    DlogLDmu <- function(mu, y, wt, n, phi) { # dlogL/dmu
+    DlogLDmu <- function(mu, y, wt, n, phi, shape_it=NULL) { # dlogL/dmu 
+      if ( ! is.null(shape_it)) shape <- shape_it      
       # shape (Log[mu shape] - Log[mu (1 + shape)] - PolyGamma[0, mu shape] + PolyGamma[0, mu shape + y])
       mushape <- mu*shape
       drop(shape * (log(shape/(1 + shape)) - digamma(mushape) + digamma(mushape + y)))
@@ -151,46 +181,75 @@ negbin1 <- function (shape = stop("negbin1's 'shape' must be specified"), link =
       mushape <- mu*shape
       drop(shape^3 * (- psigamma(mushape, deriv=2) + psigamma(mushape + y, deriv=2)))
     }
+    
+    sat_logL <- function(y, wt, return_logL=TRUE) { 
+      shapeconst <- - 1/(shape * log(shape/(1 + shape))) # in the vector case, a slight optim would be to compute it only for y>0L ?
+      if (length(shape)>1L) {
+        muv <- rep(NA, length(y))
+        muv[y == 0L] <- 0
+        y.eq.1 <- y == 1L
+        muv[y.eq.1] <- shapeconst[y.eq.1]
+        ygt1 <- (y > 1L)
+        for (it in which(ygt1)) muv[it] <- getmu(y[it], shape_it=shape[it], shapeconst_it=shapeconst[it])
+        if (return_logL) {
+          loglv <- logl(y,mu=muv,wt=1) # on vector y, muv and shape 
+        } else muv
+      } else {
+        uniqy <- unique(y)
+        ygt1 <- (uniqy > 1L)
+        uniqmu <- rep(NA, length(uniqy))
+        uniqmu[uniqy == 0L] <- 0
+        uniqmu[uniqy == 1L] <- shapeconst
+        for (it in which(ygt1)) uniqmu[it] <- getmu(uniqy[it], shapeconst_it=shapeconst)
+        if (return_logL) {
+          uniqlogl <- logl(uniqy,mu=uniqmu,wt=1)
+          uniqlogl[match(y, uniqy)]
+        } else uniqmu[match(y, uniqy)]
+      }
+    } 
   }
   
-  DlogLDmu_0 <- function(y) { #  dlogL in mu=0
-    shape*digamma(y) + shape*(0.57721566490+log(shape)/2 - log(1+shape)/2)
+  getmu <- function(y, shape_it=NULL, shapeconst_it) {
+    if ( ! is.null(shape_it)) shape <- shape_it
+    if (trunc==0L) {
+      if (y==1L) return(0)
+      # oddly incorrect previous version of dlogLDmu_0: see comments in negbin1.nb notebook
+      dlogLDmu_0 <- shape*(0.57721566490 - 2 * atanh(1/(1+2*shape)) -log(shape/(1+shape))/2 +digamma(y)) #  dlogL in mu=0
+      if (dlogLDmu_0<0) return(0) # DlogL < 0 in mu->0   => return mu=0
+      # however the evaluation of dlogl near mu=0 is remarkably imprecise for vanishing shape. The notebook illustrates the huge amplitude of the numerical noise.
+      # Hence 'quickpatch' in dev.resids(). ____F I X M E___ rethink: restrict the shape lower bound?
+      if (shape >= 1) {
+        lower <-  y-1
+      } else {
+        # joint series for dlogl for small mu and shape yields the following solution for mu
+        # (6 (2 EulerGamma - th + Log[th] + 2 PolyGamma[0, y]))/(th (2 \[Pi]^2 + Log[th]^2 - 12 PolyGamma[1, y]))
+        sol_approx <- 6*(2*0.57721566490 - shape +log(shape)+2* digamma(y) )/(shape * (2*pi^2+log(shape)^2-12*trigamma(y)))
+        # seems to be either very close (low shape) or an underestimate of the solution, but let's play safe:
+        lower <- 0.99 * max(0,sol_approx)
+      }
+    } else if (shape >= 1) {
+      lower <-  y/shape
+    } else lower <-  y
+    interval <- c(lower, y * shapeconst_it)
+    uniroot(DlogLDmu, interval=interval, y = y, shape_it=shape)$root
   }
   
-  sat_logL <- function(y, wt, return_logL=TRUE) { 
-    shapeconst <- - 1/(shape * log(shape/(1 + shape)))
-    uniqy <- unique(y)
-    uniqmu <- rep(NA, length(uniqy))
-    uniqmu[uniqy == 0L] <- 0
-    uniqmu[uniqy == 1L] <- shapeconst
-    getmu <- function(y) {
-      if (trunc==0L) {
-        if (y==1L) return(0)
-        if (DlogLDmu_0(y)<0) return(0) # DlogL < 0 in mu->0   => return mu=0
-        if (shape >= 1) {
-          lower <-  y-1
-        } else {
-          # joint series for dlogl for small mu and shape yields the following solution for mu
-          # (6 (2 EulerGamma - th + Log[th] + 2 PolyGamma[0, y]))/(th (2 \[Pi]^2 + Log[th]^2 - 12 PolyGamma[1, y]))
-          sol_approx <- 6*(2*0.57721566490 - shape +log(shape)+2* digamma(y) )/(shape * (2*pi^2+log(shape)^2-12*trigamma(y)))
-          # seems to be either very close (low shape) or an underestimate of the solution, but let's play safe:
-          lower <- 0.99 * max(0,sol_approx)
-        }
-      } else if (shape >= 1) {
-        lower <-  y/shape
-      } else lower <-  y
-      interval <- c(lower, y * shapeconst)
-      uniroot(DlogLDmu, interval=interval, y = y)$root
+  dev.resids <- function(y,mu,wt) { 
+    resu <- 2*(sat_logL(y, wt=wt)-logl(y,mu=mu,wt=wt))
+    if (any(shape<1e-4)) {
+      if (length(shape)>1L) {
+        quickpatch <- shape<1e-5 & resu<0
+      } else quickpatch <- resu<0
+      resu[quickpatch] <- 1e-8
     }
-    ygt1 <- (uniqy > 1L)
-    uniqmu[ygt1] <- sapply(uniqy[ygt1], getmu)
-    if (return_logL) {
-      uniqlogl <- logl(uniqy,mu=uniqmu,wt=1)
-      uniqlogl[match(y, uniqy)]
-    } else uniqmu[match(y, uniqy)]
-  } 
-  
-  dev.resids <- function(y,mu,wt) { 2*(sat_logL(y, wt=wt)-logl(y,mu=mu,wt=wt)) } # cannot use $aic() which is already a sum...
+    resu
+    # sat_mu <- sat_logL(y, wt=wt,return_logL = FALSE)
+    # sat_logls <- logl(y,mu=sat_mu,wt=wt)
+    # logls <- logl(y,mu=mu,wt=wt)
+    # quickpatch <- sat_mu==0 & sat_logls<logls
+    # sat_logls[quickpatch] <- logls[quickpatch] + 1e-8
+    # 2*(sat_logls-logls) 
+  } # cannot use $aic() which is already a sum...
   
   aic <- function(y, n, mu, wt, dev) {
     - 2 * sum(logl(y, mu, wt))
@@ -219,7 +278,7 @@ negbin1 <- function (shape = stop("negbin1's 'shape' must be specified"), link =
     # more like:
     # mustart <- y + 1/(6*environment(aic)$shape)                 + (y == 0)/6 # but still add the y==0 correction otherwie this fails badly
   })
-  simfun <- function(object, nsim,zero_truncated=identical(object$family$zero_truncated,TRUE)) {
+  simulate <- function(object, nsim,zero_truncated=identical(object$family$zero_truncated,TRUE)) { # cf comments on the beta_resp's simulate
     wts <- object$prior.weights
     if (any(wts != 1)) 
       warning("ignoring prior weights")
@@ -235,17 +294,21 @@ negbin1 <- function (shape = stop("negbin1's 'shape' must be specified"), link =
   D2muDeta2 <- .D2muDeta2(linktemp)
   D3muDeta3 <- .D3muDeta3(linktemp)
   ## all closures defined here have parent.env <environment: namespace:spaMM>
-  ## => Change the parent.env of all these functions (aic, dev.resids, simfun, validmu, variance): 
+  ## => Change the parent.env of all these functions (aic, dev.resids, simulate, validmu, variance): 
   # parent.env(environment(aic)) <- environment(stats::binomial) ## parent = <environment: namespace:stats>; 
   # before the change this is <environment: namespace:spaMM>, necessary to access .D2muDeta2...
   structure(list(family = structure("negbin1",
-                                    withArgs=quote(paste0("negbin1(shape=",signif(shape,4),")"))), 
+                                    withArgs=quote({
+                                      if ( ! is.null(resid.model$beta)) {
+                                        paste0("negbin1(shape=",paste0(signif(shape[1:min(3L,length(shape))],4),collapse=" "),"...)")
+                                      } else paste0("negbin1(shape=",signif(shape,4),")")
+                                    })), 
                  link = linktemp, linkfun = linkfun, 
                  linkinv = linkinv, variance = variance, sat_logL=sat_logL, logl=logl, dev.resids=dev.resids,
                  aic = aic, mu.eta = stats$mu.eta, initialize = initialize, 
-                 validmu = validmu, valideta = stats$valideta, simulate = simfun, 
+                 validmu = validmu, valideta = stats$valideta, simulate = simulate, 
                  DlogLDmu = DlogLDmu, D2logLDmu2 = D2logLDmu2, D3logLDmu3 = D3logLDmu3, 
-                 D2muDeta2 = D2muDeta2, D3muDeta3 = D3muDeta3,
+                 D2muDeta2 = D2muDeta2, D3muDeta3 = D3muDeta3, resid.model=resid.model, 
                  flags=list(obs=TRUE, exp=FALSE, canonicalLink=FALSE, LLgeneric=TRUE),
                  zero_truncated=(trunc==0L)), 
             class = c("LLF","family"))

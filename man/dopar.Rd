@@ -1,16 +1,27 @@
 \name{dopar}
 \alias{dopar}
+\alias{combinepar}
 \title{
 Interface for parallel computations
 }
 \description{
-An interface primarily designed to apply some function \code{fn} in parallel on columns of a matrix, although other uses are possible. Depending on the \code{nb_cores} argument, parallel or serial computation is performed. A socket cluster is used by default for parallel computations, but a fork cluster can be requested on linux and alike operating systems by using argument \code{cluster_args=list(type="FORK")}.
+\code{dopar} and \code{combinepar} are interfaces primarily designed to apply some function \code{fn} in parallel on columns of a matrix, although other uses are possible. Depending on the \code{nb_cores} argument, parallel or serial computation is performed. A socket cluster is used by default for parallel computations, but a fork cluster can be requested on linux and alike operating systems by using argument \code{cluster_args=list(type="FORK")}.
+
+\code{dopar} has been designed to provide by default a progress bar in all evaluations contexts. A drawback is that different procedures are called depending e.g. on the type of cluster, with different possible controls. In particular, \code{foreach} is called in some cases but not others, so non-trivial values of its \code{.combine} control are not always enforced. The alternative interface \code{combinepar} will always use \code{foreach}, and will still try to provide by default a progress bar but may fail to do so in some cases (see Details).     
+
 }
 \usage{
-dopar(newresp, fn, nb_cores = NULL, fit_env, control = list(), 
-      cluster_args = NULL, debug. = FALSE, iseed = NULL, 
+dopar(newresp, fn, nb_cores = NULL, 
+      fit_env, control = list(), cluster_args = NULL, 
+      debug. = FALSE, iseed = NULL, 
       showpbar = eval(spaMM.getOption("barstyle")), 
       pretest_cores =NULL, ...)
+combinepar(newresp, fn, nb_cores = NULL, cluster=NULL,
+      fit_env, control = list(), cluster_args = NULL, 
+      debug. = FALSE, iseed = NULL, 
+      showpbar = eval(spaMM.getOption("barstyle")), 
+      pretest_cores =NULL, ...)
+
 }
 \arguments{
   \item{newresp}{
@@ -20,19 +31,23 @@ A matrix on whose columns \code{fn} will be applied (e.g., as used internally in
 Function whose first argument is named \code{y}. The function will be applied for \code{y} taken to be each column of \code{newresp}.
 }
   \item{nb_cores}{
-Integer. Number of cores to use for parallel computations. If >1, a cluster of \code{nb_cores} nodes is used. Otherwise, no parallel computation is performed.
+Integer. Number of cores to use for parallel computations. If >1 (and no cluster is provided by the \code{cluster} argument), a cluster of \code{nb_cores} nodes is created, used, and stopped on completion of the computation. Otherwise, no parallel computation is performed.
+}
+  \item{cluster}{
+(for \code{combinepar} only): a cluster object (as returned by \code{parallel::makeCluster} or \code{parallel::makeForkCluster}). If this is used, the \code{nb_cores} and \code{cluster_args} arguments are ignored. The cluster is not stopped  on completion of the computation
 }
   \item{fit_env}{
 (for socket clusters only:)  An environment, or a list, containing variables to be exported on the nodes of the cluster (by \code{parallel::clusterExport}); e.g., \code{list(bar=bar)} to pass object \code{bar} to each node. The argument \code{control(.errorhandling = "pass")}, below, is useful to find out missing variables.
 }
   \item{control}{
- A list following the \code{foreach} control syntax, even if \code{foreach} is not used. In particular,
- \itemize{
+ A list following the \code{foreach} control syntax, even if \code{foreach} is not used. There are limitations when \code{dopar} (but not \code{combinepar}) is used, in all but the first case below:
+ \enumerate{
  \item for socket clusters, with \code{doSNOW} attached, \code{foreach} is called with default arguments including
  \code{i = 1:ncol(newresp), .combine = "cbind", .inorder = TRUE, .errorhandling = "remove", .packages = "spaMM"}.
 \code{control} may be used to provide non-default values of these arguments. For example, \code{.errorhandling = "pass"} is useful to get error messages from the nodes, and therefore \bold{strongly recommended} when first experimenting with this function. 
- \item for socket clusters, with \code{doSNOW} \bold{not} attached, \code{control$.packages} is still handled. The  result is still in the format returned by \code{foreach} with default \code{.combine="cbind"} or possible non-default \code{.combine="rbind"}. 
- \item if a fork cluster is used, \code{control$mc.silent} can be used to control the \code{mc.silent} argument of \code{\link[parallel]{mclapply}}.
+ \item for socket clusters, with \code{doSNOW} \bold{not} attached, \code{dopar} calls \code{pbapply} instead of \code{foreach} but \code{control$.packages} is still handled. The  result is still in the format returned by \code{foreach} with default \code{.combine="cbind"} or possible non-default \code{.combine="rbind"}. \code{pbapply} arguments may be passed through the \dots argument. 
+ \item if a fork cluster is used, \code{dopar} calls \code{mclapply} instead of \code{foreach}. \code{control$mc.silent} can be used to control the \code{mc.silent} argument of \code{\link[parallel]{mclapply}}.
+ \item (if \code{nb_cores=1} \code{dopar} calls \code{mclapply}).
  }
 }
   \item{cluster_args}{
@@ -51,18 +66,20 @@ Integer. Number of cores to use for parallel computations. If >1, a cluster of \
 (for socket clusters only:) A function to run on the cores before running \code{fn}. It may be used to check that all arguments of the \code{fn} can be evaluated in the cores' environments (the internal function \code{.pretest_fn_on_cores} provides an example).   
 }
   \item{\dots}{
-Further arguments to be passed (unevaluated) to \code{fn}.
+Further arguments to be passed (unevaluated) to \code{fn}, if not caught on the way by \code{pbapply} (which means that different results may in principle be obtained depending on the mode of parallelisation, which is the kind of design issues that \code{combinepar} aims to resolve by always calling \code{foreach}).
 }
 }
 \value{
-The result of calling \code{foreach}, \code{pbapply} or \code{mclapply}, as dependent on the \code{control} argument. A side-effect of \code{dopar} is to show a progress bar that informs about the type of parallelisation performed: a default \code{"="} character for fork clusters, and otherwise\code{"P"} for parallel computation via \code{foreach} and \code{doSNOW}, \code{"p"} for parallel computation via \code{pbapply}, and \code{"s"} for serial computation  via \code{pbapply}.
+The result of calling \code{foreach}, \code{pbapply} or \code{mclapply}, as dependent on the \code{control} argument and the interface used. A side-effect of either interface is to show a progress bar whose character informs about the type of parallelisation performed: a \code{"F"} or default \code{"="} character for fork clusters, a \code{"P"} for parallel computation via \code{foreach} and \code{doSNOW}, a \code{"p"} for parallel computation via \code{foreach} and \code{doFuture} or via \code{pbapply}, and \code{"s"} for serial computation \code{foreach} and \code{doParallel} or via \code{pbapply}.
 }
 \details{
 Control of random numbers through the \code{"L'Ecuyer-CMRG"} generator and the \code{iseed} argument is not sufficient for consistent results when the \code{doSNOW} parallel backend is used, so if you really need such control in a \code{fn} using random numbers, do not use \code{doSNOW}. Yet, it is fine to use \code{doSNOW} for bootstrap procedures in spaMM, because the fitting functions do not use random numbers: only sample simulation uses them, and it is not performed in parallel.
 %  (alternative function \code{\link{dofuture}} has no doSNOW related code: why?) __F I X M E__
+
+\code{combinepar} calls \code{foreach::\%dopar\%} which assumes that a cluster has been declared using a suitable backend such as \code{doSNOW}, \code{doFuture} or \code{doParallel}. If only the latter is available, no progress bar is displayed. A method to render a bar when \code{doParallel} is used can be found on the Web, but that bar is not a valid progress bar as it is displayed only after all the processes have been run.     
 }
 \seealso{
-\code{\link{dofuture}} for an alternative implementation of (essentially) the same functionalities, and \code{\link{wrap_parallel}} for its differences from \code{dopar}.
+\code{\link{dofuture}} is yet another interface with (essentially) the same functionalities as \code{dopar}. See the documentation of the \code{\link{wrap_parallel}} option for its differences from \code{dopar}.
 }
 \examples{
 ## See source code of spaMM_boot()

@@ -279,9 +279,9 @@ def_sXaug_Matrix_CHM_H_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale, 
           rhs <- Matrix::solve(BLOB$CHMfactor_wd2hdv2w,rhs,system="A") ## dge (if rhs is dense, or a vector), or dgC...
         } else rhs <- .crossprod(BLOB$inv_factor_wd2hdv2w, drop(BLOB$inv_factor_wd2hdv2w %*% rhs)) # typical case when solve_d2hdv2 follows hatval_Z in .calc_sscaled_new()
         if (not_vector) {
-          rhs <- .Dvec_times_m_Matrix(BLOB$invsqrtwranef,rhs)
-        } else rhs <- BLOB$invsqrtwranef * rhs
-        return( - rhs)
+          rhs <- .Dvec_times_m_Matrix( - BLOB$invsqrtwranef,rhs)
+        } else rhs <- - BLOB$invsqrtwranef * rhs
+        return( rhs) # note the minus sign on the vector, - BLOB$invsqrtwranef, rather than the final, possibly matrix, rhs
       }
     } 
   } 
@@ -341,7 +341,6 @@ def_sXaug_Matrix_CHM_H_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale, 
       tPmat <- sparseMatrix(seq_along(BLOB$sortPerm), BLOB$sortPerm, x=1)
       tcrossfac_beta_v_cov <- as.matrix(tPmat %*% tcrossfac_beta_v_cov)
       rownames(tcrossfac_beta_v_cov) <- colnames(sXaug) ## necessary for summary.HLfit, already lost in BLOB$R_scaled
-      #beta_v_cov <- .tcrossprod(tcrossfac_beta_v_cov)
       pforpv <- attr(sXaug,"pforpv")
       seqp <- seq_len(pforpv)
       beta_cov <- .tcrossprod(tcrossfac_beta_v_cov[seqp,,drop=FALSE])

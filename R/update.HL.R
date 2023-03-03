@@ -38,9 +38,6 @@ get_HLCorcall <- function(outer_object, ## accepts fit object, or call, or list 
     init <- .reformat_ranPars(init, fitobject = outer_object)
     outer_call[["init"]] <- remove_from_parlist(init, removand=fixed)
   }
-  verbose <- outer_call$verbose
-  verbose["getCall"] <- TRUE # but this is automatically converted to an integer if there are integer elsewhere in the vector...
-  outer_call$verbose <- verbose
   ## compare to update.default, commented in R language Definition.
   extras <- match.call(expand.dots = FALSE)$...
   if (length(extras) > 0) {
@@ -51,6 +48,10 @@ get_HLCorcall <- function(outer_object, ## accepts fit object, or call, or list 
       outer_call <- c(as.list(outer_call), dotlist[!existing])
     }
   }
+  # *After* modifications by "extras" arguments, which may contain a user-provided 'verbose':
+  verbose <- outer_call$verbose
+  verbose["getCall"] <- TRUE # but this is automatically converted to an integer if there are integer elsewhere in the vector...
+  outer_call$verbose <- verbose
   #
   HLCorcall <- eval(as.call(outer_call)) ## calls outer fn and bypasses any optimization to get the inner call HLCor/HLfit... / fitmv?
   HLCorcall$call <- NULL ## $call kept the outer call! 

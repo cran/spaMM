@@ -8,7 +8,7 @@ HLCor <- function(formula,
                   control.dist=list(), ## provided by <corrfitme>_body if called through this function. Otherwise processed in not available and control.dist will be preprocessed.
                   weights.form=NULL,
                   ...) { # may contain processed
-  assign("spaMM_glm_conv_crit",list(max=-Inf) , envir=environment(spaMM_glm.fit))
+  .spaMM.data$options$xLM_conv_crit <- list(max=-Inf)
   time1 <- Sys.time()
   oricall <- match.call(expand.dots = TRUE) 
   if ( ! is.null(oricall$ranFix)) { ## avoiding user's confusion
@@ -80,6 +80,7 @@ HLCor <- function(formula,
       if ( ! missing(method)) preprocess_args$HLmethod <- method
       preprocess_args$ranFix <- oricall$fixed ## because preprocess expects ranFix
       mc$processed <- do.call(.preprocess, preprocess_args, envir=parent.frame(1L))
+      mc$processed$fitenv <- list2env(list(prevmsglength=0L))
       # HLCor() DOES expect a DISTINCT control.dist argument in a call with a 'processed' argument so we extract it:
       oricall$control.dist <- mc$processed$control_dist ## fix bug 26/12/2018 (wrong name) => v2.5.32.
     }
@@ -111,9 +112,10 @@ HLCor <- function(formula,
   pnames <- c("data","family","formula","prior.weights", "weights.form","HLmethod","method","rand.family","control.glm","REMLformula",
               "resid.model", "verbose","distMatrix","adjMatrix", "corrMatrix","covStruct", "ranPars") 
   for (st in pnames) mc[st] <- NULL 
-  mc[[1L]] <- get("HLCor_body", asNamespace("spaMM"), inherits=FALSE) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
+  # mc[[1L]] <- get("HLCor_body", asNamespace("spaMM"), inherits=FALSE) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
+  mc[[1L]] <- mc$processed$HLCor_body
   hlcor <- eval(mc,parent.frame())
-  .check_conv_glm_reinit()
+  .check_conv_dispGammaGLM_reinit()
   if ( ! is.null(processed$return_only)) {
     return(hlcor)    ########################   R E T U R N   a list with $APHLs
   }

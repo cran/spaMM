@@ -4,7 +4,7 @@ cat(crayon::yellow("\ntest of COMPoisson family:"))
 data("freight")
 # estimation of nu in COMPoisson GLM (Sellers & Shmueli 2010):
 (fitfit <- fitme(broken ~ transfers, data=freight, family = COMPoisson(),method="ML"))
-crit <- diff(range(residVar(fitfit,"fam_parm"),5.781798)) # more public extractor: get_inits_from_fit(fitfit)$init$COMP_nu
+crit <- diff(range(residVar(fitfit,"fam_parm"),5.781798)) 
 try(testthat::test_that(paste0("criterion was ",signif(crit,4)," from 5.781798"), testthat::expect_true(crit<1e-6))) # decimals depend on optimizer|COMPoisson approxs
 
 (fitfitlog <- fitme(broken ~ transfers, data=freight, family = COMPoisson(link="log"),method="ML"))

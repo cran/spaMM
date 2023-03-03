@@ -1,8 +1,77 @@
+.get_rdisPars_LowUp <- function(disp_env, 
+                                X={ if (is.null(XX <- disp_env$X)) {XX <- disp_env$scaled_X} ; XX }, 
+                                off=disp_env$off,lo, hi) { # lo and hi on 'response' scale for dispersion param
+  if (length(off)==1L) off <- rep(off,nrow(X))
+  # makeH represent the constraints a1 %*% beta <= b1
+  # here X beta < log(hi) -off and [X beta >= log(lo) -off => - X beta <= off- log(lo) ]
+  if (requireNamespace("rcdd",quietly=TRUE)) {
+    vrepr <- rcdd::scdd(rcdd::makeH(a1=rbind(X,-X),b1=c(log(hi)-off,off-log(lo))))$output ## convex hull of feasible coefs
+    if (nrow(vrepr)==0L) {
+      warning("The dispersion model appear to impose extreme dispersion values so may be difficult to fit.")
+      list(lower=rep(log(.Machine$double.xmin),ncol(X)), upper=rep(log(.Machine$double.xmax),ncol(X)))
+    } else {
+      verticesRows <- (vrepr[,2]==1)
+      betaS <- vrepr[verticesRows, -c(1:2), drop = FALSE] ## row vectors of boundary beta values
+      # The convex hull cannot be directly used. Hopefully the enclosing rectangle is good enough:
+      list(lower=apply(betaS, 2L, min),
+           upper=apply(betaS, 2L, max))
+    }
+  } else if ( ! identical(spaMM.getOption("rcdd_warned"),TRUE)) {
+    message("If the 'rcdd' package were installed, spaMM could find a good range for the family dispersion parameters.")
+    .spaMM.data$options$rcdd_warned <- TRUE
+    list(lower=rep(log(.Machine$double.xmin),ncol(X)), upper=rep(log(.Machine$double.xmax),ncol(X)))
+  }
+}
+
+
+.wrap_calc_famdisp_lowup <- function(processed, family=processed$family, prior.weights=processed$prior.weights) {
+  
+  # provide famdisp_lowup bc LUarglist, which is returned in the fit object, should not include 'processed'
+  lo <- switch(family$family,
+               "COMPoisson" = 0.05, # no prior.weights handling for COMPoisson 
+               "beta_resp" = 1e-6/prior.weights, # '/'pw bc the disp param is here a prec param: precision =prec*pw must be within 1e-6, 1e6
+               1e-6) #.Machine$double.xmin) # 1e-6 is typical lower bound for NB_shape
+  hi <- switch(family$family,
+               "COMPoisson" = 10, # no prior.weights handling for COMPoisson 
+               "beta_resp" = 1e6/prior.weights,
+               1e6) # .Machine$double.xmax) # 1e6 is typical upper bound for NB_shape
+  .get_rdisPars_LowUp(disp_env=family$resid.model, lo=lo, hi=hi)
+}
+
+
+
+.calc_fixef_lowup <- function(processed) {
+  eta_range <- .sanitize_eta(eta=c(-Inf,Inf),family = processed$family)
+  lo <- eta_range[1]
+  hi <- eta_range[2]
+  X <- environment(processed$X_off_fn)$X_off # should be the scaled version. rcdd is not robust to extreme values
+  off <- environment(processed$X_off_fn)$ori_off
+  # makeH represent the constraints a1 %*% beta <= b1
+  # here X beta < (hi) -off and [X beta >= (lo) -off => - X beta <= off- (lo) ]
+  if (requireNamespace("rcdd",quietly=TRUE)) {
+    vrepr <- rcdd::scdd(rcdd::makeH(a1=rbind(X,-X),b1=c((hi)-off,off-(lo))))$output ## convex hull of feasible coefs
+    if (nrow(vrepr)==0L) {
+      warning("The fixed-effect model appears to impose extreme 'eta' values so may be difficult to fit.")
+      NULL
+    } else {
+      verticesRows <- (vrepr[,2]==1)
+      betaS <- vrepr[verticesRows, -c(1:2), drop = FALSE] ## row vectors of boundary beta values
+      colnames(betaS) <- colnames(X)
+      # The convex hull cannot be directly used. Hopefully the enclosing rectangle is good enough:
+      list(lower=apply(betaS, 2L, min),
+           upper=apply(betaS, 2L, max))
+    }
+  } else NULL
+}
+
+
 .makeLowerUpper <- function(canon.init, ## cf calls: ~ in user scale, must be a full list of relevant params
-                                init.optim, ## ~in transformed scale : is has all pars to be optimized
-                                user.lower=list(),user.upper=list(),
-                                corr_types=NULL, ranFix=list(),
-                                optim.scale, moreargs=NULL, rC_transf=.spaMM.data$options$rC_transf) {
+                            init.optim, ## ~in transformed scale : is has all pars to be optimized
+                            user.lower=list(),user.upper=list(),
+                            corr_types=NULL, ranFix=list(),
+                            optim.scale, moreargs=NULL, rC_transf=.spaMM.data$options$rC_transf,
+                            famdisp_lowup=NULL,
+                            fixef_lowup=NULL) {
   lower <- upper <- init.optim   
   for (it in seq_along(corr_types)) {
     corr_type <- corr_types[[it]]
@@ -248,7 +317,18 @@
       if (is.null(beta_prec <- user.upper$beta_prec)) beta_prec <- max(100*canon.init$beta_prec,1e6)
       upper$trbeta_prec <- .beta_precFn(beta_prec)
     }
-  }
+  } 
+  if (length(fd <- canon.init$rdisPars)) { 
+    if (is.list(fd)) { # mv case with >1 submodels
+      for (char_mv_it in names(fd)) {
+        lower$rdisPars[[char_mv_it]] <-  .modify_list(famdisp_lowup[[char_mv_it]]$lower, user.lower$rdisPars[[char_mv_it]])
+        upper$rdisPars[[char_mv_it]] <-  .modify_list(famdisp_lowup[[char_mv_it]]$upper, user.upper$rdisPars[[char_mv_it]])
+      }
+    } else { # single vector...
+      lower$rdisPars <-  .modify_list(famdisp_lowup$lower, user.lower$rdisPars)
+      upper$rdisPars <-  .modify_list(famdisp_lowup$upper, user.upper$rdisPars)
+    } 
+  } 
   if ( ! is.null( ranCoefs <- canon.init$ranCoefs)) { ## whenever there are ranCoefs to outer-optimize 
     upper$trRanCoefs <- lower$trRanCoefs <- ranCoefs # so that assignments such as lower$trRanCoefs[[it]] <- ... will not fail
     for (char_rd in names(ranCoefs)) {
@@ -256,13 +336,13 @@
       init_trRancoef <- .constr_ranCoefsFn(ranCoefs[[char_rd]], constraint=constraint, rC_transf=rC_transf)
       if ( ! is.null(constraint) && attr(constraint,"isDiagFamily")) {
         if (! is.null(rC <- canon.init$ranCoefs[[char_rd]])) { # then same algo as for lambda; rC is vector
-          ranCoef <- user.lower$ranCoefs[[char_rd]]
+          ranCoef <- na.omit(user.lower$ranCoefs[[char_rd]]) # na.omit() means that users _may_ include NA in bounds for partially-fixed ranCoefs. 
           if (is.null(ranCoef)) ranCoef <- pmax(1e-6,rC/1e5)
-          names(ranCoef) <- names(rC) # hmm non names...
+          # names(ranCoef) <- names(rC) # hmm no names...
           lower$trRanCoefs[[char_rd]] <- .dispFn(ranCoef)
-          ranCoef <- user.upper$ranCoefs[[char_rd]]
+          ranCoef <- na.omit(user.upper$ranCoefs[[char_rd]])
           if (is.null(ranCoef)) ranCoef <- pmin(1e8,rC*1e7)
-          names(ranCoef) <- names(rC) 
+          # names(ranCoef) <- names(rC) 
           upper$trRanCoefs[[char_rd]] <- .dispFn(ranCoef)
         }
       } else {
@@ -278,9 +358,11 @@
     if (.spaMM.data$options$tr_beta) {
       lower$trBeta[names(beta)] <- -Inf
       upper$trBeta[names(beta)] <- Inf
-    } else {
+    } else { # using template presumably defined by the explicit init that the user gave to select outer beta estimation
       lower$beta[names(beta)] <- -Inf
       upper$beta[names(beta)] <- Inf
+      lower$beta[names(fixef_lowup$lower)] <- fixef_lowup$lower # (all wrt scaled X)
+      upper$beta[names(fixef_lowup$upper)] <- fixef_lowup$upper
     }
   }
   ## names() to make sure the order of elements match; remove any extra stuff (which?... hmmm erroneous inclusion of some pars...) 

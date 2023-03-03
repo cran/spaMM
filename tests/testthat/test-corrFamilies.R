@@ -124,7 +124,7 @@ if (spaMM.getOption("example_maxtime")>10) {
       {
         # good test-data because they are not ordered by time in the data.frame (min year= 1932)
         # But the rho estimate is effectively 1, so there are numerical problems
-        load(file = paste0(projpath(),"/../tests_misc/misc/Sel_T.rda"))
+        load(file = paste0(spaMM::projpath(),"/../tests_misc/misc/Sel_T.rda"))
         
         Phen_Sel <- droplevels(subset(Sel_T, Trait_Categ == 'Phenological'))
         

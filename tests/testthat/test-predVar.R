@@ -22,7 +22,7 @@ if (rngcheck) RNGkind("Mersenne-Twister", "Inversion", "Rejection"  )
   chkphiFix <- HLfit(migStatus ~ 1 +  (1|grp) ,data=somegrp,
                      fixed=list(nu=4,rho=0.4,phi=0.05))
   testthat::expect_true(attr(chkphiFix$phi.object$phi_outer,"type")=="fix")
-  ## I added a similar test in test-mv-nested
+  ## I added a similar test in test-mv-extra
 }
 
 tworanefs <- corrHLfit(migStatus ~ 1 +  (1|grp) +Matern(1|longitude+latitude),data=somegrp,

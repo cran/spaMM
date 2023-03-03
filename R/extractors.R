@@ -306,7 +306,11 @@ fixef.HLfit <- function(object, na.rm=NULL, ...) {
   phi_model <- object$models[["phi"]]
   if (is.null(mv_it)) {
     phi_fit <- switch(phi_model,
-                      "phiGLM" = object$phi.object$glm_phi, ## glm
+                      "phiGLM" = {
+                         fit <- object$resid_fit ## hlfit
+                         if (is.null(fit)) fit <- object$phi.object$glm_phi ## glm
+                         fit
+                      },
                       "phiHGLM" = object$resid_fit, ## hlfit
                       "phiScal" = object$phi, ## scalar
                       # "" = object$phi, ## scalar for the count families, or user-given phi  # but switch does not handle ""
@@ -315,7 +319,11 @@ fixef.HLfit <- function(object, na.rm=NULL, ...) {
     )  
   } else {
     phi_fit <- switch(phi_model[[mv_it]],
-                      "phiGLM" = object$phi.object[[mv_it]]$glm_phi, ## glm
+                      "phiGLM" = {
+                        fit <- object$resid_fits[[mv_it]] ## hlfit
+                        if (is.null(fit)) fit <- object$phi.object[[mv_it]]$glm_phi ## glm
+                        fit
+                      },
                       "phiHGLM" = object$resid_fits[[mv_it]], ## hlfit        
                       "phiScal" = object$phi[[mv_it]], ## scalar 
                       object$phi[[mv_it]] ## scalar for the count families, or user-given phi...
@@ -352,16 +360,11 @@ residVar <- function(object, which="var", submodel=NULL, newdata=NULL) {
   } else if (which=="fam_parm") {
     family <- object$family
     if (is.null(family)) {
-      if (is.null(submodel)) stop("'submodel' index required to extract residual-model family parameter") 
-      family <- object$families[[submodel]]
+      if (is.null(submodel)) {
+        return(.get_family_parlist(object, newdata=newdata))
+      } else family <- object$families[[submodel]]
     }
-    if (family$family=="COMPoisson") {
-      return(environment(family$aic)$nu)
-    } else if (family$family %in% c("beta_resp")) {
-      return(environment(family$aic)$prec)
-    } else if (family$family %in% c("negbin","negbin1","negbin2")) {
-      return(environment(family$aic)$shape)
-    } else return(NA)
+    return(.get_family_par(family, newdata=newdata))
   } else if (which=="fit") {
     if (length(phi_model)>1L && is.null(submodel)) stop("'submodel' index required to extract residual-model fit") 
     #                                          # We could return a list of objects but too heterogeneous to be convenient at user level.
@@ -373,29 +376,24 @@ residVar <- function(object, which="var", submodel=NULL, newdata=NULL) {
       resp_range <- .subrange(cumul=cum_nobs, it=submodel)
       phi <- .get_phiW(object=object, newdata=newdata, dims=c(length(resp_range), 1L),
                        phi_type="predict",prior.weights=object$prior.weights[[submodel]],
-                       phi_mod_class=phi_model[submodel], mv_it=submodel)
-      if (which=="var" && object$families[[submodel]]$family=="Gamma") {
-        return(as.vector(phi * mu[resp_range]^2)) # var
-      } else return(as.vector(phi)) # phi
+                       phimodel.=phi_model[submodel], mv_it=submodel)
+      if (which=="var") {
+        return(as.vector(phi * as.vector(object$families[[submodel]]$variance(mu[resp_range])))) # submodel var # valid for ...any family
+      } else return(as.vector(phi)) # submodel phi
     } else {
-      phi <- .get_phiW(object=object, newdata=newdata, 
-                            dims=dim(mu), phi_type="predict")
+      phi <- as.vector(.get_phiW(object=object, newdata=newdata, dims=dim(mu), phi_type="predict"))
       if (which=="var") {
         if ( ! is.null(cum_nobs)) {
           var <- phi
           for (mv_it in seq_len(length(cum_nobs)-1L)) {
-            if (object$families[[mv_it]]$family=="Gamma") {
-              resp_range <- .subrange(cumul=cum_nobs, it=mv_it)
-              var[resp_range] <- var[resp_range] * mu[resp_range]^2
-            }
+            resp_range <- .subrange(cumul=cum_nobs, it=mv_it)
+            var[resp_range] <- var[resp_range] * as.vector(object$families[[mv_it]]$variance(mu[resp_range])) # valid for ...any family
           }
-          return(as.vector(var)) # var
+          return(var) # mv var
         } else {
-          if (object$family$family=="Gamma") {
-            return(phi * mu^2) # var
-          } else return(as.vector(phi)) # var
+          return(phi * as.vector(object$family$variance(mu))) #var; valid for ...any family (phi=1 except for Gamma & gaussian)
         }
-      } else return(as.vector(phi)) 
+      } else return(phi) # phi, mv or not
     }
   } else stop("Unknown 'which' type")
 } 
@@ -405,18 +403,18 @@ residVar <- function(object, which="var", submodel=NULL, newdata=NULL) {
 .get_phiW <- function(object, newdata, 
                       dims, 
                       prior.weights=object$prior.weights, phi_type, needed,
-                      phi_mod_class=object$models[["phi"]],
-                      mv_it=NULL
+                      phimodel.=object$models[["phi"]],
+                      mv_it=NULL,
+                      cum_nobs=attr(object$families,"cum_nobs")
                       ) { # returns phi/prior.weights
-  if (length(phi_mod_class)>1L) {
-    cum_nobs <- attr(object$families,"cum_nobs")
-    phiWs <- vector("list", length(phi_mod_class)) # will be a list of MATRICES
+  if ((nmodels <- length(phimodel.))>1L) {
+    phiWs <- vector("list", nmodels) # will be a list of MATRICES
     for (mv_it in seq_along(phiWs)) {
       resp_range <- .subrange(cumul=cum_nobs, it=mv_it)
       phiWs[[mv_it]] <- .get_phiW(object, newdata, 
                                   dims=c(length(resp_range),dims[2]), 
                                   prior.weights=prior.weights[[mv_it]], phi_type, needed,
-                                  phi_mod_class=phi_mod_class[mv_it],
+                                  phimodel.=phimodel.[mv_it],
                                   mv_it=mv_it)
     }
     vec_is_phiW_fix_btwn_sims <- lapply(phiWs, attr, which="is_phiW_fix_btwn_sims")
@@ -424,8 +422,8 @@ residVar <- function(object, which="var", submodel=NULL, newdata=NULL) {
     return(structure(do.call(rbind,phiWs), # the phiWs should be 1- or nsim-col matrices
                      is_phiW_fix_btwn_sims=vec_is_phiW_fix_btwn_sims))
   }
-  is_phiW_fix_btwn_sims <- FALSE
-  if (phi_mod_class == "") { ## the count families, or user-given phi
+  is_phiW_fix_btwn_sims <- FALSE # FALSE by default, until proved otherwise
+  if (phimodel. == "") { ## the count families, even those with a resid.model; or user-given phi
     phi_fit <- .get_phi_fit(object, mv_it=mv_it)
     if (length(phi_fit)>1L) {
       if (is.null(newdata)) {
@@ -436,34 +434,40 @@ residVar <- function(object, which="var", submodel=NULL, newdata=NULL) {
     newphiMat <- matrix(phi_fit, nrow=dims[1], ncol=dims[2]) # n_repl is typically 1, or nsim
     if (identical(attr(prior.weights,"unique"),TRUE)) {
       phiW <- newphiMat/prior.weights[1L]
-      is_phiW_fix_btwn_sims <- TRUE
-    } else phiW <- .Dvec_times_matrix(1/prior.weights, newphiMat)  ## warnings or errors if something suspect
+      is_phiW_fix_btwn_sims <- TRUE # subcase of phimodel. == ""
+    } else { # is_phiW_fix_btwn_sims remains FALSE, which looks like an inefficiency (___F I X M E___?)
+      phiW <- .Dvec_times_matrix(1/prior.weights, newphiMat)  ## warnings or errors if something suspect. 
+    }  
   } else {
-    if (phi_mod_class=="phiGLM") {
-      phi_fit <- .get_glm_phi(object, mv_it=mv_it) # object of class "glm"
-    } else phi_fit <- .get_phi_fit(object, mv_it=mv_it) # more diverse object
+    phi_fit <- .get_phi_fit(object, mv_it=mv_it) # diverse object; for phiGLM, may be hlfit or glm or NULL
+    # the NULL case seems to refer to cases were an outer algo is used to fit a phiGLM. Quite obscure.
+    if (phimodel.=="phiGLM" && is.null(phi_fit)) phi_fit <- .get_glm_phi(object, mv_it=mv_it) # construct a glm object if needed
     if (phi_type=="predict") {
-      newphiVec <- switch(phi_mod_class,
-                          "phiGLM" = predict(phi_fit, newdata=newdata, type="response"), ## vector
+      newphiVec <- switch(phimodel.,
+                          "phiGLM" = drop(predict(phi_fit, newdata=newdata, type="response")), ## vector (drop needed when phi_fit is hlfit object)
                           "phiHGLM" = predict(phi_fit, newdata=newdata, type="response")[ ,1L],
                           "phiScal" = rep(phi_fit, dims[1]),
                           stop('Unhandled object$models[["phi"]]')
       ) ## VECTOR in all cases, becomes matrix later
       if (identical(attr(prior.weights,"unique"),TRUE)) {
         phiW <- newphiVec/prior.weights[1L]
-        if (phi_mod_class %in% c("phiScal","phiGLM")) is_phiW_fix_btwn_sims <- TRUE
+        if (phimodel. %in% c("phiScal","phiGLM")) is_phiW_fix_btwn_sims <- TRUE
       } else phiW <- newphiVec/prior.weights  ## warnings or errors if something suspect
       phiW <- matrix(phiW,nrow=length(phiW), ncol=dims[2])  # vector -> matrix
     } else { # any other phi_type 
-      newphiMat <- switch(phi_mod_class,
-                          "phiGLM" = as.matrix(simulate(phi_fit, newdata=newdata, nsim=needed)), ## data frame -> matrix
+      newphiMat <- switch(phimodel.,
+                          "phiGLM" = {
+                            if (inherits(phi_fit,"HLfit")) {
+                              simulate(phi_fit, newdata=newdata, type=phi_type, nsim=needed)
+                            } else as.matrix(simulate(phi_fit, newdata=newdata, nsim=needed))
+                          }, ## data frame -> matrix
                           "phiHGLM" = simulate(phi_fit, newdata=newdata, type=phi_type, nsim=needed),
                           "phiScal" = matrix(phi_fit,nrow=dims[1],ncol=dims[2]),
                           stop('Unhandled object$models[["phi"]]')
       ) ## already MATRIX in all cases
       if (identical(attr(prior.weights,"unique"),TRUE)) {
         phiW <- newphiMat/prior.weights[1L]
-        if (phi_mod_class=="phiScal") is_phiW_fix_btwn_sims <- TRUE
+        if (phimodel.=="phiScal") is_phiW_fix_btwn_sims <- TRUE
       } else phiW <- .Dvec_times_matrix(1/prior.weights,newphiMat)  ## warnings or errors if something suspect
       # F I X M E add diagnostics ?
     } # phiW is always a matrix
@@ -606,7 +610,7 @@ VarCorr.HLfit <- function(x, sigma=1, add_residVars=TRUE, verbose=TRUE, ...) {
       if (is.na(loctable[[it,"Var."]])) {
         if ((term. <- loctable[[it,"Term"]])=="(Intercept)") {
           loctable[[it,"Var."]] <- lambda.object$lambda_list[[loctable[[it,"Group"]]]][[loctable[[it,"Term"]]]] # not a glm coef (cf inverse link)
-        } # else do nothing bc it's not clear what to do
+        } # else do nothing bc it's not clear what to do (test CAR -> VarCorr(blob1): no Var. for adjd coef)
       }
     }
     loctable <- data.frame(Group=loctable[,"Group"],Term=loctable[,"Term"],Variance=loctable[,"Var."],"Std.Dev."=sqrt(loctable[,"Var."]))
@@ -625,6 +629,15 @@ VarCorr.HLfit <- function(x, sigma=1, add_residVars=TRUE, verbose=TRUE, ...) {
     attr(loctable,"random_slope_ncol_geq_1_pos") <- attr(lamtable,"random_slope_ncol_geq_1_pos") # indices are rows in table
     attr(loctable,"random_slope_ncol_geq_1_rows") <- attr(lamtable,"random_slope_ncol_geq_1_rows") # indices are rows in table
     attr(loctable,"row_map") <- attr(lamtable,"row_map") # map from ranef indices to rows
+  }
+  if (anyNA(loctable$Variance)) {
+    is_na_var <- is.na(loctable$Variance)
+    if (verbose) {
+      removed <- loctable[is_na_var,] 
+      locmess <- paste0("Coefficients for [", paste(removed$Group, removed$Term, sep="::", collapse=" , "),"] were removed from result.")
+      message(locmess)
+    }
+    loctable <- loctable[ ! is_na_var,]
   }
   return(loctable)
 } 
@@ -797,7 +810,7 @@ get_rankinfo <- function(object) return(attr(object$X.pv,"rankinfo"))
   varcorr
 }
 
-.get_ranPars <- function(object, # ___F I X M E___ API?
+.get_ranPars_notPhi <- function(object, 
                          wo_fixed=TRUE # whether to exclude fixed ones or not. Fn 1st dvl for wo_fixed=TRUE, the FALSE case may not always work. 
                          ) { # phi not handled by this fn
   CorrEst_and_RanFix <- object$CorrEst_and_RanFix
@@ -853,15 +866,17 @@ get_rankinfo <- function(object) return(attr(object$X.pv,"rankinfo"))
     } 
   }
   
-  if (wo_fixed) {
+  # ___F I X M E___ ugly: part of the pb is that of recovering info about the different types of rC from an HLfit object.
+  if (wo_fixed) { # [..]get_fittedPars() reaches here... so the nice function still depends on the ugly code. 
     resu$ranCoefs <- .get_rC_inits_from_hlfit(object,type=c("inner","outer_ranCoefs")) # overlap with Xi_ncol ranCoefs?
   } else resu$ranCoefs <-  .get_rC_inits_from_hlfit(object,type=NULL)
-  # ___F I X M E___ part of the pb is that of recovering info about the different types of rC from an HLfit object.
   resu
 } 
 
-.get_ranPars_phi <- function(object, wo_fixed) {
-  resu <- .get_ranPars(object, wo_fixed=wo_fixed)
+# boht get_ranPars and get_fittedPars depend on this extractor
+.get_ranef_resid_Pars <- function(object, wo_fixed) { 
+  #this cannot call [..]get_fittedPars() as the latter calls .get_ranef_resid_Pars() ! 
+  resu <- .get_ranPars_notPhi(object, wo_fixed=wo_fixed)
   resu <- .add_famPars_outer(resu, fitobject=object, type_attr = FALSE)
   #
   phi_model <- object$models[["phi"]]
@@ -871,41 +886,126 @@ get_rankinfo <- function(object) return(attr(object$X.pv,"rankinfo"))
     } else {
       phi <- residVar(object, which="fit") # the syntax to get a single scalar when it's appropriate; 
       #                                       object$phi.object$fittedPars may contain Gamma GLM coefs.
-      if ( ( ! wo_fixed) || ! identical(attr(phi,"constr_phi"),TRUE)) resu$phi <- phi # plenty of case where the attribute is absent.
+      is_fixed <- (
+        ( ! is.null(phi_outer <- object$phi.object$phi_outer)) &&
+          identical(attr(phi_outer,"type"),"fix") 
+      )
+      if ( ( ! wo_fixed) || ! is_fixed) resu$phi <- phi 
+      # I previously assessed is_fixed as identical(attr(phi,"constr_phi"),TRUE) but, at least in mv case (alternative below)
+      # the attr is missing even when phi is fixed. A test with one phi fixed globally and the other in a submodel caught some issues.
     }
   } else {
     phi <- list()
     for (mv_it in seq_along(object$families)) {
       if (phi_model[mv_it]=="") {
-        phi[mv_it] <- list(NULL)
+        phi[mv_it] <- list(NULL) # phi is always a complete list; no char_mv_it
       } else {
         phi_it <- residVar(object, which="fit", submodel = mv_it)
-        if ( ( ! wo_fixed) || ! identical(attr(phi_it,"constr_phi"),TRUE)) phi[as.character(mv_it)] <- list(phi_it)
+        is_fixed <- (
+          ( ! is.null(phi_outer_it <- object$phi.object[[mv_it]]$phi_outer)) &&
+            identical(attr(phi_outer_it,"type"),"fix") 
+        )
+        if ( ( ! wo_fixed) || ! is_fixed) phi[as.character(mv_it)] <- list(phi_it)
       }
     }
-    resu$phi <- phi
+    if ( ! is.null(.unlist(phi))) resu$phi <- phi
   }
   resu
 } 
 
-.get_fittedPars <- function(object, ## ___F I X M E___ ultimately a public extractor; 
-                            ## main pb may be heterogeneous structure of mv phi which may mix and types of phi models
-                            which=c("lambda","phi","beta", "beta_prec", "NB_shape","corrPars","hyper", "ranCoefs"),
+..get_fittedPars <- function(object, 
+                            which=c("lambda","phi","beta", "beta_prec", "NB_shape", "COMP_nu",
+                                    "corrPars","hyper", "ranCoefs", "rdisPars"),
                             # Setting any of the booleans to FALSE overrides the default which:
-                            fixef=TRUE, ranef=TRUE, resid=TRUE,
+                            fixef=TRUE, # include beta
+                            ranef=TRUE, # include all random effect (ss) parameters 
+                            resid=TRUE, # include all residual dispersion parameters
+                            partial_rC,
                             verbose=TRUE) {
   if ( ! fixef) which <- setdiff(which, "beta")
-  if ( ! resid) which <- setdiff(which, c("beta_prec", "NB_shape", "phi"))
+  if ( ! resid) which <- setdiff(which, c("beta_prec", "NB_shape", "COMP_nu", "phi", "rdisPars"))
   if ( ! ranef) which <- setdiff(which, c("lambda", "ranCoefs", "corrPars", "hyper"))
   
-  skeleton <- .get_ranPars_phi(object, wo_fixed=TRUE)
+  skeleton <- .get_ranef_resid_Pars(object, wo_fixed=TRUE)
   if (verbose && length(extrapars <- setdiff(names(skeleton), which))) {
     message(paste0("Parameter(s) '",paste(extrapars,collapse="','"),"' ignored in this computation."))
   }
   skeleton <- skeleton[intersect(names(skeleton), which)]
   
   if ("beta" %in% which) {skeleton$etaFix$beta <- fixef(object)} 
+  
+  if ("ranCoefs" %in% names(skeleton)) {
+    fixed <- getCall(object)$fixed
+    if ("ranCoefs" %in% names(fixed) && partial_rC!="keep") {
+      fixednames <- names(na.omit(unlist(fixed)))
+      tmp <- unlist(skeleton)
+      isfixed <- names(tmp) %in% fixednames # this is the way to catch partially-fixed ranCoefs
+      if (is.na(partial_rC)) {
+        tmp[isfixed] <- NA
+        skeleton <- relist(tmp,skeleton)
+      } else if (partial_rC=="rm") {
+        tmp[which(isfixed)] <- NaN
+        tmp <- relist(tmp,skeleton)
+        skeleton <- .rmNaN(tmp)
+      } # else doc mentions partial_rC="keep" to keep the fixed values 
+    }
+  }
+  
   skeleton
+}
+
+.get_fittedPars <- function(object, 
+                            which=c("lambda","phi","beta", "beta_prec", "NB_shape", "COMP_nu",
+                                    "corrPars","hyper", "ranCoefs", "rdisPars"),
+                            # Setting any of the booleans to FALSE overrides the default which:
+                            fixef=TRUE, # include beta
+                            ranef=TRUE, # include all random effect (ss) parameters 
+                            resid=TRUE, # include all residual dispersion parameters
+                            partial_rC,
+                            phifits,
+                            phiPars, # put resid.model parameters in the rdisPars
+                            verbose=TRUE) {
+  resu <- ..get_fittedPars(object, which=which, fixef=fixef, ranef=ranef, 
+                          resid=resid, partial_rC=partial_rC, verbose=verbose) # includes the phi fits but not yet the phiPars in rdisPars
+  if (phiPars) { ## modify resu[["rdisPars"]]
+    phi_info <- resu$phi
+    if (length(phimodels <- object$models[["phi"]])>1L) {
+      which <- intersect(which, c("lambda", "beta", "corrPars","hyper", "ranCoefs")) # fam_par and phi not useful here
+      for (mv_it in seq_along(phimodels)) {
+        if (inherits(phi_info[[mv_it]], "HLfit")) {
+          resu[["rdisPars"]][[as.character(mv_it)]] <- 
+            ..get_fittedPars(object=phi_info[[mv_it]], which=which, fixef=fixef, ranef=ranef, 
+                             resid=resid, partial_rC=partial_rC, verbose=verbose)
+        } else if (inherits(phi_info[[mv_it]], "glm")) {
+          resu[["rdisPars"]][as.character(mv_it)] <- list(fixef=coef(phi_info[[mv_it]]))
+        }
+      }
+    } else if (inherits(phi_info, "HLfit")) {
+      resu[["rdisPars"]] <- ..get_fittedPars(object=phi_info, which=which, fixef=fixef, ranef=ranef, 
+                                             resid=resid, partial_rC=partial_rC, verbose=verbose)
+    } else if (inherits(phi_info, "glm")) resu[["rdisPars"]] <- list(fixef=coef(phi_info[[mv_it]]))
+  }
+  
+  if ( ! phifits) { # then remove fits from resu[["phi"]]
+    phi_info <- resu$phi
+    if (length(phimodels <- object$models[["phi"]])>1L) {
+      for (mv_it in seq_along(phimodels)) {
+        if (inherits(phi_info[[mv_it]], "HLfit")) {
+          resu[["phi"]][[as.character(mv_it)]] <- NULL 
+        } else if (inherits(phi_info[[mv_it]], "glm")) {
+          resu[["phi"]][[as.character(mv_it)]] <- NULL
+        }
+      }
+    } else if (inherits(phi_info, "HLfit")) {
+      resu[["phi"]] <- NULL
+    } else if (inherits(phi_info, "glm")) resu[["phi"]] <- NULL
+  }
+  resu
+}
+
+# depends on .get_ranef_resid_Pars(object, wo_fixed=TRUE)
+get_fittedPars <- function(object, partial_rC="rm", phiPars=TRUE) {
+  .get_fittedPars(object, partial_rC=partial_rC, phifits=TRUE, phiPars=phiPars, verbose=FALSE)
 }
 
 get_ranPars <- function(object, which=NULL, 
@@ -929,7 +1029,7 @@ get_ranPars <- function(object, which=NULL,
     }
     return(resu)
   } else if (which=="fitted") {
-    resu <- .get_ranPars(object, wo_fixed=TRUE)
+    resu <- .get_ranPars_notPhi(object, wo_fixed=TRUE)
     resu$phi <- NULL
     return(resu) # no type attribute
   } else if (which=="corrPars") {
@@ -1138,16 +1238,21 @@ get_ZALMatrix <- function(object, force_bind=TRUE) {
   }
 }
 
+# private extractor
+.get_beta_v_cov <- function(object) {
+  if (is.null(tcrossfac_beta_v_cov <- object$envir$beta_cov_info$tcrossfac_beta_v_cov)) {
+    tcrossfac_beta_v_cov <- .get_beta_cov_info(object)$tcrossfac_beta_v_cov
+  }
+  .tcrossprod(tcrossfac_beta_v_cov)
+}
+
 # left pseudo inverse of (augmented) design matrix, (X_a' W X_a)^{-1} X_a' W
 .get_WLS_ginv <- function(object, augmented, XZ_0I=NULL) { 
   ## gets inv(tX_a invSig_a X_a).tX_a invSig_a that gives hat(beta,v_h)
   if (is.null(XZ_0I))  XZ_0I <- .get_XZ_0I(object)
   ww <- c(.get_H_w.resid(object), object$w.ranef) ## NOT sqrt()
   Wei_XZ_0I <- .calc_wAugX(XZ_0I=XZ_0I, sqrt.ww=ww) ## 2nd argument name misleading
-  if (is.null(tcrossfac_beta_v_cov <- object$envir$beta_cov_info$tcrossfac_beta_v_cov)) {
-    tcrossfac_beta_v_cov <- .get_beta_cov_info(object)$tcrossfac_beta_v_cov
-  }
-  beta_v_cov <- .tcrossprod(tcrossfac_beta_v_cov)
+  beta_v_cov <-.get_beta_v_cov(object)
   augXWXXW <- tcrossprod(beta_v_cov, Wei_XZ_0I) ## = solve(crossprod(wAugX)) %*% crossprod(wAugX, diag(x=sqrt.ww))
   if (augmented) {
     return(augXWXXW)
@@ -1233,6 +1338,7 @@ get_matrix <- function(object, which="model.matrix", augmented=TRUE, ...) {
            XZ_0I %*% WLS_ginv 
           },
          "fixef_left_ginv"= .get_fixef_WLS_ginv(object, ...), ## X^- = (X' W X)^{-1} X' W    # use the dots to pass an alternative X.pv
+         "beta_v_cov"= .get_beta_v_cov(object), 
          stop("Unhandled 'which' value in get_matrix()")
   )
 }
@@ -1352,7 +1458,7 @@ family.HLfit <- function(object, ...) {
   family <- object$family
   if (is.null(family)) {
     if ( ! is.null(object$families)) stop(paste("post-fit functions looking for 'family' in a multivariate-response fit should fail.\n", 
-                                                "Contact the package maintainer for these post-fit functions if you wish extended functionality"))
+                                                "Contact the package maintainer for these post-fit functions if you wish extended functionality."))
   }
   family
 }

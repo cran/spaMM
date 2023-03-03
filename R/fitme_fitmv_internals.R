@@ -18,7 +18,7 @@
     for (char_rd in names(ranCoefs)) {
       ranCoefs[[char_rd]] <- 
         .constr_ranCoefsInv(trRanCoef=ranCoefs[[char_rd]], constraint=constraints[[char_rd]], rC_transf=.spaMM.data$options$rC_transf)
-      covmat <- .C_calc_cov_from_ranCoef(ranCoefs[[char_rd]])
+      # covmat <- .C_calc_cov_from_ranCoef(ranCoefs[[char_rd]])
       #if (kappa(covmat)>1e14 || min(eigen(covmat,only.values = TRUE)$values)<1e-6) any_nearly_singular_covmat <- TRUE # use of this removed 2019/12/16
     }
   }
@@ -53,7 +53,7 @@
       names(lambda) <- paste(seq_len(length(lambda)))
       lambda[lambdapos] <- .dispInv(optPars$trLambda)
       if ( ! is.null(augZXy_phi_est)) { lambda <- lambda * augZXy_phi_est }
-      if (identical(refit_info$lambda,TRUE)) {
+      if (identical(refit_info$lambda,TRUE)) { # then modify init_refit too
         init_refit$lambda <- lambda
         ranPars_in_refit$trLambda <- NULL
         attr(ranPars_in_refit,"type")$trLambda <- NULL

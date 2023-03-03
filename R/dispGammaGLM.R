@@ -82,9 +82,8 @@
     control$maxit <- 1000L ## convergence is very slow when fitting y ~ 1 where most y values are <1e-12 and one is ~1e-10. 
     # Further, if all y are very small, a strict control may give spurious warnings:
     if (all(Y<1e-12)) control$epsilon <- 1e-7 # rather than 1e-8
-    fit <- eval(call("spaMM_glm.fit", 
-                     x = X, y = Y, weights = weights, offset = offset, family = family, 
-                     control = control, intercept = intercept))
+    fit <- spaMM_glm.fit(x = X, y = Y, weights = weights, offset = offset, family = family, 
+                     control = control, intercept = intercept)
     warnmess <- NULL
   }
   if (model) fit$model <- mf

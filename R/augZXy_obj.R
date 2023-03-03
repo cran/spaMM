@@ -17,9 +17,9 @@
       cum_n_u_h <- processed$cum_n_u_h
       n_u_h <- cum_n_u_h[nrand+1L] 
       sparse_precision <- processed$is_spprec
-      ranCoefs.Fix <- .getPar(ranFix,"ranCoefs") ## may be NULL
       # Updates processed$ranCoefs_blob which contains no globally fixed ranCoefs as this has been excluded by .preprocess_augZXy() 
-      ranCoefs_blob <- .process_ranCoefs(processed, ranCoefs.Fix,use_tri_CORREL=.spaMM.data$options$use_tri_for_augZXy) ## *updates* *locally* a preexisting object
+      ranCoefs_blob <- .process_ranCoefs(processed, ranCoefs=.getPar(ranFix,"ranCoefs"), ## may be NULL, 
+                                         use_tri_CORREL=.spaMM.data$options$use_tri_for_augZXy) ## *updates* *locally* a preexisting object
       LMatrices <- processed$AUGI0_ZX$envir$LMatrices
       # HLCor_body has prefilled $LMatrices for :
       #    for Matern...

@@ -220,7 +220,7 @@
   ))
 } 
 
-.merge_Xs <- function(X1,X2, mv_it, REML=FALSE) { # ____F I X M E____ implement "B matrices"
+.merge_Xs <- function(X1,X2, mv_it, REML=FALSE) { 
   if ( ! is.null(colnames(X2))) colnames(X2) <- paste0(colnames(X2),"_",mv_it)
   if (is.null(X1)) { 
     X <- X2
@@ -252,7 +252,21 @@
   if ( ! is.null(parlist$NB_shape)) names(parlist$NB_shape) <- mv_it
   if ( ! is.null(parlist$trNB_shape)) names(parlist$trNB_shape) <- mv_it
   if ( ! is.null(parlist$beta_prec)) names(parlist$beta_prec) <- mv_it
-  if ( ! is.null(parlist$trbeta_prec)) names(parlist$beta_prec) <- mv_it
+  if ( ! is.null(parlist$trbeta_prec)) names(parlist$trbeta_prec) <- mv_it
+  # The input parlist$rdisPars may be a vector, or a list (even an empty one)
+  # Notably: parlist may be provided by .calc_optim_args(): for each submodel that function provides 
+  #           inits$init and other parlists as for a single resp fit -> parlist$rdisPars is a vector
+  # but    : parlist may also be provided by .subPars() -> parlist$rdisPars is a list.
+  # and... if a phimodel, its parameters can also end as a list in rdisPars... I should be careful thta it does not reaches here.
+  # Changing the .calc_optim_args() return format looks bad: For clarity, it should be consistent with the single-response case.
+  # Changing the .subPars() return format would make even less sense: it is a rather generic algorithm not distinguishing 
+  # between different classes of parameters (or whatever its input means).
+  if ( length(.unlist(parlist$rdisPars))) { # parlist has element "rdisPars"... not being an empty list...
+    rdisPars <- parlist[["rdisPars"]] # either a vector or a single-element list
+    if (is.numeric(rdisPars)) rdisPars <- list("1"=rdisPars) # -> single-element list, the element being the input rdisPars vector
+    names(rdisPars) <- as.character(mv_it) # -> list with single element named <char_mv_it> being the input rdisPars vector
+    parlist$rdisPars <- rdisPars # -> parlist has element "rdisPars" itself being a list with single element named <char_mv_it> being the input rdisPars vector
+  } else parlist$rdisPars <- NULL
   if ( ! is.null(parlist$phi)) names(parlist$phi) <- mv_it #parlist$phi <- list(parlist$phi, names=mv_it)
   if ( ! is.null(parlist$trPhi)) names(parlist$trPhi) <- mv_it #parlist$trPhi <- list(parlist$trPhi, names=mv_it)
   
@@ -292,6 +306,7 @@
                  lambda=rd_in_submv,   
                  trLambda=rd_in_submv,
                  corrPars=rd_in_submv,# fake skeleton (not sublist here) but appears sufficient # contains kappa...
+                 rdisPars=structure(list(NULL),names=mv_it), # Another fake skeleton
                  beta_prec=phistr,
                  NB_shape=phistr, 
                  COMP_nu=phistr)
@@ -307,9 +322,23 @@
     user_init_optim_it <- .subPars(user_init_optim,skeleton = skel)
     # : works on phi only if phi is a named list. result is a named sub*list*
     user_init_optim_it <- .rename_ranPars(user_init_optim_it, rd_in_submv, 1L, hy_in_mv=hy_in_mv)
-    # we want user_init_optim_it[["phi"]] to be an unnamed scalar, or NULL, starting from any user input (input unnamed vector got names by .reformat_phi()) 
-    # user_init_optim_it[["phi"]] <- user_init_optim[["phi"]][[as.character(mv_it)]] # OK for phi list or complete vector, but not incomplete vector 
-    user_init_optim_it[["phi"]] <- as.vector(.unlist(user_init_optim_it[["phi"]])) 
+    #
+    if (is.list(user_init_optim_it[["phi"]][[1L]])) {
+      # at this point if we had a resid.model user_init_optim_it[["phi"]] 
+      # contains phi$`1` (`1` for any mv_it) being a list of (fitted) parameters of the resid.model, 
+      # which is sort-of not too bad but should not be used here
+      user_init_optim_it[["phi"]] <- NULL # (___F I X M E___ perhaps we could better use the resid.model info?
+      # how to pass info from here to init the resid.model ?
+      # some test code would be test-mv -> confint(zut1,"(Intercept)_1") )
+    } else {
+      # we want user_init_optim_it[["phi"]] to be an unnamed scalar, or NULL, starting from any user input (input unnamed vector got names by .reformat_phi()) 
+      # user_init_optim_it[["phi"]] <- user_init_optim[["phi"]][[as.character(mv_it)]] # OK for phi list or complete vector, but not incomplete vector
+      user_init_optim_it[["phi"]] <- as.vector(.unlist(user_init_optim_it[["phi"]])) # replaces the trivial `1`
+      # replaces
+      # $ phi   :List of 1
+      #  ..$ 1: num <num>
+      # by num <num>
+    }
     #
     user_lower_it <- .subPars(user.lower,skeleton = skel) # 
     user_upper_it <- .subPars(user.upper,skeleton = skel)
@@ -326,8 +355,13 @@
     # and .calc_optim_args() -> {init.optim <- .more_init_optim(proc1=proc1, corr_types=corr_types, init.optim=init.optim)}  ./.
     #  ./. -> .init_optim_lambda_ranCoefs() has to check not globally fixed lambdas ;
     # Maybe not optimal but need to distinguish globally fixed param at some point? (_F I X M E_) 
+    ## TRY:
+    ##   fixed_it[["phi"]] <- as.vector(.unlist(fixed_it[["phi"]])) # ___F I X M E___ why wasn't it necess (was it?) by compar with user_init_optim_it[["phi"]]...
     optim_blob_it <- .calc_optim_args(proc_it=unmerged[[mv_it]], processed=processed,
-                                      user_init_optim=user_init_optim_it, fixed=fixed_it, lower=user_lower_it, upper=user_upper_it, 
+                                      # (___F I X M E___): intriguing heterogeneity of formats:
+                                      user_init_optim=user_init_optim_it, # from .subPars + .rename_ranPars + ad hoc hack for phi... 
+                                      fixed=fixed_it,  # from .subPars + .rename_ranPars; no ad hoc hack for phi
+                                      lower=user_lower_it, upper=user_upper_it, # from .subPars
                                       verbose=verbose, optim.scale=optim.scale, For="fitmv") 
     # operation requiring full model indices:
     # .modify_list() requires that all vectors are named; and moreover, that ranef indices are those of the mv model, not of each sub-model
@@ -385,7 +419,6 @@
     }
   }
   ###
-  
   optim_blob <- .makeLowUp_stuff_mv(optim_blob, user.lower=user.lower, user.upper=user.upper, optim.scale, processed, verbose)
   optim_blob
 }
@@ -405,7 +438,7 @@
   exp_barlist
 }
 
-.determine_sparse_X_mv <- function(terms_info, X.pv, vec_nobs) {
+.determine_sparse_X_mv <- function(terms_info, X.pv, vec_nobs, assign.=attr(X.pv,"assign")) {
   sparse_X <- spaMM.getOption("sparse_X") 
   ## forcing sparse_X may (1) be slow for small problems 
   ## (2) entails the use of Matrix::Cholesky, which is less accurate => small bu visible effect on predVar in singular 'twolambda' case
@@ -414,7 +447,7 @@
     col_heuristic_densenesseS <- vector("list", nmodels)
     rel_nobs <- vec_nobs/sum(vec_nobs)
     for (mv_it in seq_along(nmodels)) {
-      asgn <- attr(X.pv,"assign")[[mv_it]] ## "for each column in the matrix ... the term in the formula which gave rise to the column"
+      asgn <- assign.[[mv_it]] ## "for each column in the matrix ... the term in the formula which gave rise to the column"
       col_heuristic_denseness_it <- rep(rel_nobs[mv_it],length(asgn))
       if ( length(fixef_levels <- .get_from_terms_info(terms_info=terms_info, which="fixef_levels", mv_it=mv_it)) ) {
         terms_densenesses_it <- rel_nobs[mv_it] * 
@@ -430,6 +463,24 @@
   }
   return(sparse_X)
 }
+
+.designX_prod_mv <- function(merged_X, X2X, merged, vec_nobs, assign_attr) {
+  
+  if (is.null(colnames(X2X))) stop("'X2X' *must* have column names")
+  
+  # determine sparse_X on X 'L'HS:
+  sparse_X <- .determine_sparse_X_mv(merged$main_terms_info, X.pv= merged_X, vec_nobs=vec_nobs, assign.=assign_attr)
+  
+  rescale. <- ! is.null(attr(merged_X, "scaled:scale"))
+  if (rescale.) merged_X <- .unscale(merged_X)
+  merged_X <- merged_X %*% X2X # loss of attributes, "assign" notably
+  if (rescale.) merged_X <- .scale(merged_X)
+  merged_X <- .post_process_X(X.pv=merged_X, HL=merged$HL, rankinfo=FALSE, sparse_X = sparse_X) 
+  
+  merged_X
+  
+}
+
 
 .correct_ZA_mv_ranCoefs <- function(ZAlist, mv_it) { # for the ZAlist of aubmodel mv_it...
   # the mv_it argument serves to avoid unnecessary operations, but it seems the block depending on it could be run in all cases
@@ -678,14 +729,16 @@
 
 
 .merge_processed <- function(calls_W_processed, data, init=list(), control.HLfit=list(), method="ML", verbose=NULL, init.HLfit=list(),
-                             covStruct=NULL, corrMatrix=NULL, adjMatrix=NULL, distMatrix=NULL, control.dist=list(), etaFix=list()) {
+                             covStruct=NULL, corrMatrix=NULL, adjMatrix=NULL, distMatrix=NULL, control.dist=list(), etaFix=list(),
+                             X2X=NULL) {
   # this fn passes no '...' so has no '...'
   nmodels <- length(calls_W_processed)
   namedlist <- structure(vector("list",nmodels), names=seq_len(nmodels))
   ### Fill lists for further processing:
   unmerged <- predictors <- families <- prior.weights <- clik_fns <- phiFixs <- Ys <- pS_fixef_phi <- 
     assign_attr <- rankinfo_attr <- namedlist
-  AMatrices <- adjMatrices <- corrMatrices <- fixef_off_termsS <- fixef_termsS <- fixef_levelsS <- validrownames <- namedlist
+  AMatrices <- adjMatrices <- corrMatrices <- fixef_off_termsS <- fixef_termsS <- fixef_levelsS <- 
+    specials_levelsS <- validrownames <- namedlist
   for (mv_it in seq_len(nmodels)) {
     unmerged[[mv_it]] <- calls_W_processed[[mv_it]][["processed"]]
     predictors[[mv_it]] <- unmerged[[mv_it]][["predictor"]]
@@ -698,6 +751,7 @@
     fixef_off_termsS[[mv_it]] <- terms_info_it[["fixef_off_terms"]]
     fixef_termsS[mv_it] <- list(terms_info_it[["fixef_terms"]]) 
     fixef_levelsS[mv_it] <- list(terms_info_it[["fixef_levels"]]) 
+    specials_levelsS[mv_it] <- list(terms_info_it[["specials_levels"]]) 
     pS_fixef_phi[[mv_it]] <- unmerged[[mv_it]][["p_fixef_phi"]] 
     assign_attr[[mv_it]] <- attr(unmerged[[mv_it]][["AUGI0_ZX"]]$X.pv,"assign") ## "for each column in the matrix ... the term in the formula which gave rise to the column"
     rankinfo_attr[[mv_it]] <- attr(unmerged[[mv_it]][["AUGI0_ZX"]]$X.pv,"rankinfo") 
@@ -714,7 +768,7 @@
     # => no attempt to look REMLformula over models below (But  is built iteratively). 
     "verbose","control.glm","HL","p_v_obj",#"rand.families",
     "spaMM_tol",
-    "break_conv_logL",
+    "break_conv_logL","intervalInfo",
     "objective","port_env")
   ) assign(st,value=unmerged[[1L]][[st]],envir=merged)
   
@@ -738,8 +792,9 @@
   unit_GLMweights  <- attr(models,"unit_GLMweights")
   unit_Hobs_weights  <- attr(models,"unit_Hobs_weights")
   const_Hobs_wresid  <- attr(models,"const_Hobs_wresid")
-  phi_models <- character(nmodels)
+  phi_models <- rdispar_models <- character(nmodels)
   phi_models[[1L]] <- models[["phi"]]
+  rdispar_models[[1L]] <- models[["rdispar"]]
   #
   vec_nobs <- integer(nmodels)
   vec_nobs[1L] <- length(y)  
@@ -801,6 +856,7 @@
     max.iter <- max(max.iter, p_i[["max.iter"]])
     vecdisneeded <- (vecdisneeded | p_i[["vecdisneeded"]])
     phi_models[[mv_it]] <- p_i[["models"]][["phi"]]
+    rdispar_models[[mv_it]] <- p_i[["models"]][["rdispar"]]
   }
   .check_mv_in_submodels(ZAlist)
   attr(data,"validrownames") <- validrownames
@@ -822,7 +878,8 @@
   merged$augZXy_cond <- structure(FALSE, inner=augZXy_cond_inner) # augZXy_cond would impose a unique phi across submodels
   #
   attr(phi_models,"anyHGLM") <- any(phi_models=="phiHGLM")
-  models[["phi"]] <- phi_models # som 'models' is a list whose element 'phi' is a vector
+  models[["phi"]] <- phi_models # 'models' is a list whose element 'phi' is a vector
+  models[["rdispar"]] <- rdispar_models # 'models' is a list whose element 'rdispar' is a vector
   attr(models, "LMMbool") <- LMMbool # add more attributes to avoid clumsy tests later
   attr(models,"GLMMbool") <- GLMMbool 
   attr(models,"LLM_const_w") <- LLM_const_w 
@@ -837,9 +894,10 @@
     merged$etaxLM_fn <- .calc_etaLLMblob
   } else merged$etaxLM_fn <- .calc_etaGLMblob
   
-  residProcesseds <- residModels <- vector("list", length(merged[["models"]][["phi"]]))
-  for (mv_it in seq_along(phi_models)) {
-    residModels[mv_it] <- list(unmerged[[mv_it]]$residModel)
+  residProcesseds <- residModels <- vector("list", nmodels)
+  for (mv_it in seq_len(nmodels)) { 
+    residModels[mv_it] <- list(unmerged[[mv_it]]$residModel) # (allows list(NULL) but generally non-NULL even if trivial;  
+                                                             # *!* for non-GLM the resid.model is in the family closure environment)
     residProcesseds[mv_it] <- list(unmerged[[mv_it]]$residProcessed)
   }
   merged$residProcesseds <- residProcesseds 
@@ -873,13 +931,23 @@
   #   }
   # }
   
-  attr(merged_X,"assign") <- assign_attr   
-  attr(merged_X,"rankinfo") <- rankinfo_attr   
+  col_ranges <- vector("list", nmodels)
+  cum_ncol_X <- cumsum(c(0L,vec_ncol_X))
+  for (mv_it in seq_len(nmodels)) col_ranges[[mv_it]] <- cum_ncol_X[mv_it]+seq_len(cum_ncol_X[mv_it+1L]-cum_ncol_X[mv_it]) # avoid (n+1:n) problem
   
-  merged_X <- .post_process_X(X.pv=merged_X, HL=merged$HL, rankinfo=FALSE, 
-                              sparse_X=.determine_sparse_X_mv(merged$main_terms_info, X.pv= merged_X, vec_nobs=vec_nobs) ) 
-  # processing of merged_X and other elements of AUGI0_ZX:
-  attr(merged_X,"cum_ncol") <- cumsum(c(0L,vec_ncol_X))
+  if  (! is.null(X2X)) {
+    merged_X <- .designX_prod_mv( merged_X, X2X, merged,vec_nobs, assign_attr)
+    abs_X_RHS <- abs(X2X)
+    for (mv_it in seq_len(nmodels)) col_ranges[[mv_it]] <- which(colSums(abs_X_RHS[col_ranges[[mv_it]],,drop=FALSE])>0)
+  } else {
+    merged_X <- .post_process_X(X.pv=merged_X, HL=merged$HL, rankinfo=FALSE, 
+                                sparse_X=.determine_sparse_X_mv(merged$main_terms_info, X.pv= merged_X, 
+                                                                vec_nobs=vec_nobs, assign.=assign_attr) ) 
+    # processing of merged_X and other elements of AUGI0_ZX:
+  }
+  attr(merged_X,"assign") <- assign_attr       # notably used by anova()
+  attr(merged_X,"rankinfo") <- rankinfo_attr   # notably used by anova()
+  attr(merged_X,"col_ranges") <- col_ranges
   attr(merged_X,"cum_nobs") <- cum_nobs
   
   #### replacement for .preprocess_X_XRe_off():
@@ -928,6 +996,7 @@
   main_terms_info[["fixef_off_terms"]] <- fixef_off_termsS
   main_terms_info[["fixef_terms"]] <- fixef_termsS
   main_terms_info[["fixef_levels"]] <- fixef_levelsS
+  main_terms_info[["specials_levels"]] <- specials_levelsS
   merged[["main_terms_info"]] <- structure(main_terms_info, vec_nobs=vec_nobs)
   attr(ZAlist,"map_rd_mv") <- map_rd_mv <- .map_rd_mv(ZAlist, unmerged)
   #
@@ -1102,7 +1171,13 @@
   merged[["LevenbergM"]] <- .preprocess_LevM(control.HLfit$LevenbergM, merged, nrand=length(ZAlist)) # uses $models, $HL & optionally $bin_all_or_none & $cum_n_u_h
   #
   merged$verbose <- .reformat_verbose(verbose,For="fitme") 
+  merged$HLfit_body_fn <- .spaMM.data$options$HLfit_body
   .do_TRACE(merged)
+  merged$HLfit_body_fn <- merged$HLfit_body_fn2 <- get(merged$HLfit_body_fn, asNamespace("spaMM"), inherits=FALSE) 
+  delayedAssign("HLCor_body", get("HLCor_body", asNamespace("spaMM"), inherits=FALSE), assign.env = merged) 
+  delayedAssign("HLCor", get("HLCor", asNamespace("spaMM"), inherits=FALSE), assign.env = merged) 
+  merged$HLfit <- get("HLfit", asNamespace("spaMM"), inherits=FALSE) 
+  merged$fitenv <- list2env(list(prevmsglength=0L))
   class(merged) <- c("mvarglist", class(merged))
   return(merged)
   # models <- NULL # prevents a R CMD check NOTE: .merge_processed: no visible binding for global variable 'models' (!)
@@ -1123,8 +1198,9 @@
 
 fitmv <- function(submodels, data, fixed=NULL, init=list(), lower=list(), upper=list(),
                   control=list(), # needed to avoid partial matching of explicit 'control' argument with 'control.dist' one (bug when the latter is used) 
-                  control.dist = list(), method="ML", init.HLfit=list(), ...) { # explicit arguments or dots depending on what requires specific documentation.
-  assign("spaMM_glm_conv_crit",list(max=-Inf) , envir=environment(spaMM_glm.fit))
+                  control.dist = list(), method="ML", init.HLfit=list(), 
+                  X2X=NULL, ...) { # explicit arguments or dots depending on what requires specific documentation.
+  .spaMM.data$options$xLM_conv_crit <- list(max=-Inf)
   time1 <- Sys.time()
   oricall <- match.call(expand.dots=TRUE) ## mc including dotlist
   oricall$"control.HLfit" <- eval(oricall$control.HLfit, parent.frame()) # to evaluate variables in the formula_env, otherwise there are bugs in waiting
@@ -1137,6 +1213,7 @@ fitmv <- function(submodels, data, fixed=NULL, init=list(), lower=list(), upper=
     call_["submodels"] <- NULL # so that it remains in call_ the arguments others than mv.
     ## I need to match the names of mv[[mit]] to those of a fitme call to make sure that they all named...
     call_["fixed"] <- NULL ## so that the lambda fixing (in particular) is not the default value for each processed call
+    call_["X2X"] <- NULL ## otherwise detected as suspect arg by .preprocess_fitme()
     call_["etaFix"] <- NULL ## not the right step for fixing coefficients.
     ## *** global arguments => avoid mixing them with local arguments 
     ##     (although this is stricly necessary only for covStruct since...) ***  
@@ -1235,7 +1312,7 @@ fitmv <- function(submodels, data, fixed=NULL, init=list(), lower=list(), upper=
   pnames <- c("data","family",# "formula",
               "prior.weights", "weights.form", # mwouairf. They should have been elements of submodels...
               "HLmethod","method","rand.family","control.glm","REMLformula",
-              "resid.model", "verbose","distMatrix","adjMatrix", "control.dist", "corrMatrix","covStruct") 
+              "resid.model", "verbose","distMatrix","adjMatrix", "control.dist", "corrMatrix","covStruct","X2X") 
   # c("corrMatrix","distMatrix" ,"covStruct" ,"method" ,"HLmethod" ,"formula" ,"data" ,"family" ,"rand.family",
   #   "resid.model", "REMLformula")
   for (st in pnames) mc[st] <- NULL 

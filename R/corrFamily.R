@@ -120,7 +120,7 @@
                                                                         user.upper,
                                                                         ...) { # possibly add moreargs_rd
     # This calls a default generic function that should provide valid inits
-    inits <- .calc_inits_corrFamily(corrfamily=corrfamily, init=inits$init, char_rd=char_rd, optim.scale="", 
+    inits <- .calc_inits_corrFamily(corrfamily=corrfamily, init=inits[["init"]], char_rd=char_rd, optim.scale="", 
                                     init.optim=inits$init.optim, init.HLfit=inits$init.HLfit, ranFix=inits$ranFix, 
                                     user.lower=user.lower,user.upper=user.upper)
     return(inits)

@@ -1,6 +1,6 @@
 # spaMM.options(example_maxtime=60) # keep it handy...
 # spaMM.options(projpath="C:/home/francois/travail/stats/spaMMplus/spaMM")
-if (file.exists((privdata <- paste0(projpath(),"/../tests_misc/ranCoefs/all_fitness.txt")))) {
+if (file.exists((privdata <- paste0(spaMM::projpath(),"/../tests_misc/ranCoefs/all_fitness.txt")))) {
   cat(crayon::yellow("\ntest ranCoefs:"))
   my.data <- read.table(privdata, header = TRUE, sep = "\t",dec = ".")
   my.data$line <- factor(as.character(my.data$line))
@@ -36,7 +36,7 @@ if (file.exists((privdata <- paste0(projpath(),"/../tests_misc/ranCoefs/all_fitn
     #
   }
   if (spaMM.getOption("example_maxtime")>20) {
-    if (file.exists((privtest <- paste0(projpath(),"/package/tests_private/test-rc_transf.R")))) {
+    if (file.exists((privtest <- paste0(spaMM::projpath(),"/package/tests_private/test-rc_transf.R")))) {
       source(privtest)
     }
     (HLfit3 <- HLfit(total_red ~ sex*env + (1|rep) + (0 + env|line),

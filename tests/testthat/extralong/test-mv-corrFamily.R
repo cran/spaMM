@@ -1,4 +1,4 @@
-cat(crayon::yellow(" -> test-mv-corrFamily:")) # not part of the testthat.R tests (neither test-composite-nested.R)
+cat(crayon::yellow(" -> test-mv-corrFamily:")) # not part of the testthat.R tests (neither test-composite-extra.R)
 
 library(spaMM)
 options(error=recover)
@@ -42,8 +42,8 @@ options(error=recover)
                                      data=cap_mv)) 
     
     (zut_cF_alpha_est <- fitmv(submodels=list(mod1=list(migStatus ~ 1),
-                                              mod2=list(status2 ~ 1+ corrFamily(1|longitude+latitude))), 
+                                              mod2=list(status2 ~ 1+ corrFamily(1|longitude+latitude))), # verbose=c(TRACE=TRUE), 
                                fixed=list(phi=c(0.02,0.02)), covStruct=list(corrFamily=MaternIMRFa(mesh=mesh)),
-                               data=cap_mv, verbose=c(TRACE=TRUE))) 
+                               data=cap_mv)) 
   }
 }

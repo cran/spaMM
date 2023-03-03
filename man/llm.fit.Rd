@@ -5,7 +5,7 @@
 Link-linear regression models (LLMs)
 }
 \description{
-Some \dQuote{family} objects in \pkg{spaMM} describe models with non-GLM response families, such as the \code{\link{negbin1}} or \code{\link{beta_resp}} families already widely considered in previous works and other packages. These models are characterized by a linear predictor, a link function, and a distribution for residual variation that does not belong to the exponential family. 
+Some \dQuote{family} objects in \pkg{spaMM} describe models with non-GLM response families, such as the \code{\link{negbin1}} or \code{\link{beta_resp}} families already widely considered in previous works and other packages. These models are characterized by a linear predictor, a link function, and a distribution for residual variation that does not belong to the exponential family from which GLMs are defined. 
 
 These family objects are conceived for use with \pkg{spaMM}'s fitting functions. They cannot generally be used as argument to the \code{glm} function, except when this function is highjacked by use of the \code{method="llm.fit"} argument, where llm stands for Link-Linear (as in \dQuote{log-linear}, say) regression Model. 
 

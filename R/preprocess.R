@@ -718,7 +718,7 @@
 }
 
 
-.preprocess_augZXy <- function(processed, intervalInfo, init, ranFix) { # ___F I X M E___ add a condition on etaFix?
+.preprocess_augZXy <- function(processed, init, ranFix) { 
   augZXy_cond_inner <- augZXy_cond <- spaMM.getOption("allow_augZXy")
   if (is.null(augZXy_cond)) {
     augZXy_cond <- (processed$models[["phi"]]=="phiScal") ## allows prior weights, but there must be a single phi scaling factor
@@ -726,12 +726,13 @@
     augZXy_cond_inner <- TRUE ## for .makeCovEst1() ## I have not thought about ths case with [phi fixed but overcome by allow_augZXy=TRUE]
   }
   # Conditions common to outer and inner optim
+  if (augZXy_cond_inner) augZXy_cond_inner <- (is.null(processed$intervalInfo)) 
   if (augZXy_cond_inner) augZXy_cond_inner <-   attr(processed$models,"LMMbool")
   if (augZXy_cond_inner) augZXy_cond_inner <- ( is.null(processed$X.Re) || ! ncol(processed$X.Re)) ## exclude non-standard REML (avoiding NCOL(NULL)=1)
+  if (augZXy_cond_inner) augZXy_cond_inner <- is.null(processed$X_off_fn) # not outer beta estimation
   augZXy_cond <- (augZXy_cond_inner && augZXy_cond) 
   # Conditions specific to outer optim
   if (augZXy_cond) augZXy_cond <- (processed$For=="fitme")
-  if (augZXy_cond) augZXy_cond <- (is.null(intervalInfo)) 
   if (augZXy_cond) augZXy_cond <- (length(processed$init_HLfit)==0L) ## excludes (among others) internal rho estimation
   # Fixed lambda must be excluded (bc then augZXy would fit a model with another lambda that the declared one)
   # And then we should not forget to exclude (partially)-fixed lambda in ranCoefs, and fixed hy_lam in multIMRF.
@@ -952,7 +953,7 @@
         processed$X.Re <- matrix(ncol=0, nrow=nrow(XReinput))
       } else {# non-standard REML... 
         if (length(REMLformula)==3L) REMLformula <- REMLformula[-2] # no need to handle any complicated LHS, which moreover is pb for reusing a previous terms_info
-        REMLFrames <- .get_terms_info(formula=REMLformula, data=data, famfam="") ## design matrix X, Y...
+        REMLFrames <- .get_terms_info(formula=REMLformula, data=data, famfam="") ## design matrix X, offset...
         # where we don't need famfam since we don't use REMLFrames$Y
         X.Re <- REMLFrames$X
         if (ncol(X.Re)) { 
@@ -1045,13 +1046,14 @@
                        REMLformula, data, family,
                        BinomialDen, rand.families, etaFix, prior.weights,
                        objective=NULL, 
-                       control.glm, # under user control! => impacts inits_by_glm
+                       control.glm, # under user control! => impacts inits_by_xLM
                        adjMatrix=NULL, verbose=NULL, For,
                        init.HLfit=list(), # user's init.HLfit here
                        corrMatrix=NULL,covStruct=NULL,
                        distMatrix=NULL, 
                        control.dist=NULL,
-                       init=NULL # for .preprocess_augZXy()
+                       init=NULL, # for .preprocess_augZXy()
+                       X2X
                        ) {
   callargs <- match.call() 
   #
@@ -1078,11 +1080,18 @@
       family$family=="binomial" ||## implemented through ad hoc bit of code outside the family object so perhaps that could have been done for Poisson)
         (family$family %in% c("Gamma","gaussian") && family$link=="log") #" Same remark...
     )
-    family$flags <- list(exp=TRUE,obs=obs, LLgeneric=FALSE) # represent capacity for these method, through code in the family object or not
+    family$flags <- list(exp=TRUE,obs=obs, LLgeneric=FALSE) # represent capacity for these exp or obs methods, resp., 
+                                                            # whether through code in the family object or not
   }
   family$flags$canonicalLink <- canonicalLink
   family$flags$LMbool <- (canonicalLink && family$family=="gaussian")
-  obsAlgo_needed <- .need_obsAlgo(HLmethod, family, canonicalLink) 
+  #
+  # nrand now needed early...
+  exp_barlist <- .process_bars(predictor,as_character=FALSE) ## but default expand =TRUE; also -> .parseBars() -> .process_IMRF_bar() parses RHS info
+  exp_ranef_strings <- .process_bars(barlist=exp_barlist,expand=FALSE, as_character=TRUE) ## no need to expand again 
+  nrand <- length(exp_ranef_strings)
+  # ...for...
+  obsAlgo_needed <- .need_obsAlgo(HLmethod, family, canonicalLink, nrand=nrand) 
   # : is .spaMM option set to FALSE, then only ad hoc obsInfo algos are available, in principle as follows:
   # binomial(), negbin() and poisson() (all links, and including zero-truncated variants), Gamma(log), and gaussian(log).
   # At least that was so in version 3.13.0. For poisson(), one may need to use *P*oisson(., LLgeneric=FALSE).
@@ -1095,10 +1104,11 @@
                              port_env=new.env(parent=emptyenv()),
                              verbose=.reformat_verbose(verbose,For=For),
                              control.glm=do.call("glm.control", control.glm),
-                             how=list(obsInfo=obsAlgo_needed)
+                             how=list(obsInfo=obsAlgo_needed),
+                             intervalInfo = control.HLfit$intervalInfo # used by .preprocess_augZXy and beyond
                              ))
   #
-  if (is.null(main_terms_info <- attr(data,"updated_terms_info"))) { # standard case
+  if (is.null(main_terms_info <- attr(data,"updated_terms_info"))) { # standard case for primary fit
     if ( inherits(data,"data.frame")) {
       if (length(class(data))>1L) {
         data <- as.data.frame(data) # The pb addressed by this line is that the test data Orthodont is a 'groupedData' object and that 
@@ -1125,7 +1135,7 @@
       stop("'data' is not a data.frame.")
     }
     main_terms_info <- .get_terms_info(formula=predictor,data=data, famfam=family$family, weights=validData_info$weights) ## design matrix X, Y... 
-  } else { # results from update response -> .update_main_terms_info() provide response-update model frame for main response.
+  } else { # results from update response -> .update_main_terms_info() provide response-update model frame for mean response.
     # The data (although not any response variable) may still be needed for other purposes (=> the resid model) 
     # (what if the response of the main model were a predictor for the residual dispersion model?)
     attr(data,"updated_terms_info") <- NULL # immediately clean the 'data' attribute to avoid mix-ups.
@@ -1166,7 +1176,7 @@
   # fixef_off_terms for .calc_terms_heuristic_denseness() (we need the full attr(fixef_off_terms,"factors"))
   # fixef_terms was used above to rebuild the main_terms_info$X
   # fixef_levels for .determine_sparse_X() and .calc_terms_heuristic_denseness() ; [but also in postfit: .calc_newFrames_fixed() -> model.frame(., xlev=...)]
-  processed$main_terms_info <- main_terms_info[c("Y","fixef_off_terms","fixef_terms","fixef_levels")] 
+  processed$main_terms_info <- main_terms_info[c("Y","fixef_off_terms","fixef_terms","fixef_levels","specials_levels")] 
   #
   ### class(processed$main_terms_info) <- "HLframes" # Convenience: when we update its $mf, the class is kept
   #####
@@ -1182,19 +1192,7 @@
   # ... when some disp param is inner estimated: (HLfit_body() tells cases apart) 
   processed$iter_mean_dispVar <- .calc_iter_mean_dispVar(control.HLfit, family, y)
   #
-  exp_barlist <- .process_bars(predictor,as_character=FALSE) ## but default expand =TRUE; also -> .parseBars() -> .process_IMRF_bar() parses RHS info
-  
-  # Not wrong per se, but unsufficient for posisbly a lot of ad-hockeries 
-  # if (FALSE) {
-  #   attempt <- .as_corrFamily(exp_barlist, covStruct)
-  #   exp_barlist <- attempt$exp_barlist
-  #   covStruct <- attempt$covStruct
-  # }
-
-  exp_ranef_strings <- .process_bars(barlist=exp_barlist,expand=FALSE, as_character=TRUE) ## no need to expand again 
-  #
-  nrand <- length(exp_ranef_strings)
-  if (nrand <- length(exp_ranef_strings)) {
+  if (nrand) {
     if (family$link %in% c("log","loglambda"))  {
       maxLambda <- log(sqrt(.spaMM.data$options$maxLambda))^2
     } else maxLambda <- .spaMM.data$options$maxLambda
@@ -1272,16 +1270,26 @@
 
   } else processed$rand.families <- list() ## ## corrects the default [gaussian()] when nrand=0
   #
-  HLmethod <- .preprocess_HLmethod(HLmethod[[1L]], family, processed$lcrandfamfam) ## not a member of the 'processed' object
-  .preprocess_HL_REMLformula(HLmethod, processed, BinomialDen, nobs, control.HLfit, y, REMLformula) # $HL, $REMLformula
+  HLmethod1 <- .preprocess_HLmethod(HLmethod[[1L]], family, processed$lcrandfamfam) ## not a member of the 'processed' object
+  .preprocess_HL_REMLformula(HLmethod1, processed, BinomialDen, nobs, control.HLfit, y, REMLformula) # $HL, $REMLformula
   ####
   ####
   ## determine true # cols before determining sparse_precision (!= sparse_X)
   ## X.pv post-processing; later extract column for fixed coefficients, but we will need the offset for that
-  X.pv <- .post_process_X(X.pv=main_terms_info$X, HL=processed$HL, rankinfo=control.HLfit$rankinfo,
-                          sparse_X=.determine_sparse_X(main_terms_info) )
+  if  (! is.null(X2X)) {
+    if (is.null(colnames(X2X))) stop("'X2X' *must* have column names")
+    
+    merged_X <- .post_process_X(X.pv=main_terms_info$X %*% X2X,  # loss of attributes, "assign" notably
+                                HL=processed$HL, rankinfo=control.HLfit$rankinfo,
+                            sparse_X=.determine_sparse_X(main_terms_info) )
+  } else {
+    X.pv <- .post_process_X(X.pv=main_terms_info$X, HL=processed$HL, rankinfo=control.HLfit$rankinfo,
+                            sparse_X=.determine_sparse_X(main_terms_info) )
+  }
   # .post_process_X() calls .rankTrim() which adds attributes "namesOri" and "rankinfo"
   #
+  ##################
+  .check_init.HLfit(init.HLfit)
   if (nrand) {
     # Standardize init.HLfit in the one case where it may have corrPars (simplified version of .reformat_corrPars)
     processed$init_HLfit <-  .preprocess_init.HLfit(init.HLfit, corr_info) 
@@ -1290,7 +1298,7 @@
     if (For_fitmv) {
       sparse_precision <- FALSE
     } else {
-      sparse_precision <- .wrap_determine_spprec(control.HLfit, ZAlist, processed, X.pv)
+      sparse_precision <- .wrap_determine_spprec(control.HLfit, ZAlist, processed, X.pv) # -> .-> uses init_HLfit
       ## F I X M E: ZAL diagnosis uses elements that may be modified afterwards and before .choose_QRmethod() reuses $G_diagnosis
       ## post-processing of corr_info depending on sparse_precision
       .process_corr_info_spprec(corr_info=corr_info, For=processed$For,sparse_precision=sparse_precision)
@@ -1313,20 +1321,21 @@
   } else if (family$family == "binomial" && processed$bin_all_or_none) {
     abyss <- (ncol(X.pv) && is_separated(X.pv, as.numeric(y)))
   }
-  if ( ! is.null(init$beta)) { # outer beta
-    betanames <- names(init$beta)
-    X_off <-.subcol_wAttr(X.pv, j=betanames, drop=FALSE)
-    X.pv <- .subcol_wAttr(X.pv, j=setdiff(colnames(X.pv),betanames), drop=FALSE)
-    processed$X_off_fn <- .def_off_fn(X_off, ori_off=processed$off)
-  }
   ## Now X.pv has its final ncol := pforpv
   #
   if (.spaMM.data$options$X_scaling) { ## use scaled X.pv by default v.2.4.83
     ##       standard REML    ||      ML 
     if ( is.null(processed$REMLformula) || ncol(processed$X.Re)==0L) X.pv <- .scale(X.pv) # scales and adds "scaled:scale" attribute
   }
+
+  if ( ! is.null(init$beta)) { # outer beta
+    betanames <- names(init$beta)
+    X_off <-.subcol_wAttr(X.pv, j=betanames, drop=FALSE)
+    X.pv <- .subcol_wAttr(X.pv, j=setdiff(colnames(X.pv),betanames), drop=FALSE)
+    processed$X_off_fn <- .def_off_fn(X_off, ori_off=processed$off)
+  }
   
-  models <- list(eta="",lambda="",phi="")
+  models <- list(eta="",lambda="",phi="", rdispar="")
   if ( nrand) {
     models[["eta"]] <- "etaHGLM" 
     ZAlist <- .init_assign_geoinfo(processed=processed, ZAlist=ZAlist, For=callargs$For,
@@ -1364,8 +1373,11 @@
   models <- .preprocess_lam_rC_models(processed, models, ranFix, nrand, ZAlist=processed$ZAlist)
   #processed$fixed <- ranFix # always a list() # would be used as proc1$fixed... ## : difficult to use since fitme_body(.,fixed=...) can be called.
   processed$phi.Fix <- .check_phi_Fix(phi.Fix=.getPar(ranFix,"phi"), family)
-  models <- .preprocess_phi_model(processed, models, resid.model, control.HLfit, HLmethod, data, 
-                        processed$control.glm, family) # assigns things to 'processed' (incl $models, $residModel)
+  control.HLfit$intervalInfo <- NULL # because control.HLfit will be passed to .preprocess_resid() where we don't want this info.
+  models <- .preprocess_phi_model(processed, models, resid.model, 
+                                  control.HLfit, # elements controlling may fit are by default passed to resid fit !!!!
+                                  HLmethod=HLmethod, # that's the user-level input not the processed value => can keep "exp"
+                                  data, processed$control.glm, family) # assigns things to 'processed' (incl $models, $residModel)
   #
   processed$models <- .setattr_G_LMMbool(models, processed=processed) # after modif by .preprocess_phi_model()
   if (obsAlgo_needed) {
@@ -1381,11 +1393,27 @@
   # confint on a GLM assumes processed$LevenbergM exists
   processed$LevenbergM <- .preprocess_LevM(control.HLfit$LevenbergM, processed, nrand=nrand) # uses $models, $HL & optionally $bin_all_or_non & $cum_n_u_h
   #####
-  .preprocess_augZXy(processed, intervalInfo=control.HLfit$intervalInfo, init=init, ranFix=ranFix)  # may be modified later.
+  .preprocess_augZXy(processed, init=init, ranFix=ranFix)  # may be modified later.
   # the problem of changing augZXy_cond later would be that .do_TRACE() -> may then be tracing the wrong function
   # So we minimize such later changes. But see handling of phi user controls in .calc_optim_args()
   #####
-  if ( ! For_fitmv) .do_TRACE(processed)
+  if ( ! For_fitmv) {
+    if (processed$augZXy_cond) {
+      processed$HLfit_body_fn <- ".HLfit_body_augZXy"
+      processed$HLfit_body_fn2 <- .spaMM.data$options$HLfit_body
+      .do_TRACE(processed)
+      processed$HLfit_body_fn <- get(processed$HLfit_body_fn, asNamespace("spaMM"), inherits=FALSE) 
+      processed$HLfit_body_fn2 <- get(processed$HLfit_body_fn2, asNamespace("spaMM"), inherits=FALSE) 
+    } else {
+      processed$HLfit_body_fn <- .spaMM.data$options$HLfit_body
+      .do_TRACE(processed)
+      processed$HLfit_body_fn <- processed$HLfit_body_fn2 <- get(processed$HLfit_body_fn, asNamespace("spaMM"), inherits=FALSE) 
+    }
+    delayedAssign("HLCor_body", get("HLCor_body", asNamespace("spaMM"), inherits=FALSE), assign.env = processed) 
+    delayedAssign("HLCor", get("HLCor", asNamespace("spaMM"), inherits=FALSE), assign.env = processed) 
+    processed$HLfit <- get("HLfit", asNamespace("spaMM"), inherits=FALSE) 
+  }
+  processed$fitenv <- list2env(list(prevmsglength=0L))
   class(processed) <- c("arglist",class(processed))
   return(processed)
 }
@@ -1396,7 +1424,7 @@
 #   envir$inits_by_glm <- NULL
 #   envir$get_inits_by_glm <- function(processed,
 #                                X.pv=processed$AUGI0_ZX$X.pv, family=processed$family, reset=FALSE) {
-#     #if (is.null(envir$inits_by_glm) || eval(reset)) envir$inits_by_glm <<- .calc_inits_by_glm(processed=processed)
+#     #if (is.null(envir$inits_by_glm) || eval(reset)) envir$inits_by_glm <<- .calc_inits_by_xLM(processed=processed)
 #     
 #     envir$inits_by_glm
 #   }

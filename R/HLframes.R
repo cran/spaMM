@@ -422,12 +422,16 @@ if (FALSE) { # seems correct, but ultimately not needed
   } else call2mf <- call("model.frame", data = data, formula= chkterms, drop.unused.levels = TRUE, 
                          weights=prior.weights # we don't want to evaluate it since we want its variables to be included in the data.
                          )
-  call2mf <- try(eval(call2mf)) ## # directly calling model.frame failed to handle the prior weights tried again 03/2022).
-  if (inherits(call2mf,"try-error")) {
+  resu <- try(eval(call2mf), silent=TRUE) ## # "directly calling model.frame failed to handle the prior weights (tried again 03/2022)."
+                                          ## => A bit opaque. Problem handling promises in a programming context where prior weights
+                                          ## are not specified by the user but by spaMM procedures ?
+  if (inherits(resu,"try-error")) { # => try to diagnose a case that is otherwise difficult for even the developer to guess.
     verif <- try(eval(prior.weights,data),silent=TRUE)
-    if (inherits(verif,"try-error")) stop("All variables should be in the 'data', including those for prior weights.")
+    if (inherits(verif,"try-error")) {
+      stop("All variables should be in the 'data', including those for prior weights.")
+    } else return(verif) 
   }
-  return(list(rownames=rownames(call2mf), weights=model.weights(call2mf))) # so that valid rows and weights always have the same length.
+  return(list(rownames=rownames(resu), weights=model.weights(resu))) # so that valid rows and weights always have the same length.
 }
 
 .find_validname <- function(formula, data) {
@@ -479,6 +483,15 @@ if (FALSE) { # seems correct, but ultimately not needed
         #y[which(is_low_y)] <- Gamma_min_y
         warning(paste0("Found Gamma response > (1/Gamma_min_y=",1/Gamma_min_y,") . Troubles may happen."), immediate. = TRUE)
       }
+    }else if (famfam=="beta_resp") {
+      if (any(y < 0 | y > 1)) {
+        stop("Found Beta responses outside valid (0,1) range.")
+      }
+      beta_min_y <- .spaMM.data$options$beta_min_y
+      if (any(y < beta_min_y | y > 1 - beta_min_y)) {
+        #y[which(is_low_y)] <- Gamma_min_y
+        warning(paste0("Found Beta responses close to 0 or 1 by less than ",beta_min_y,") . Troubles may happen."), immediate. = TRUE)
+      }
     }
     return(y)
   }
@@ -494,7 +507,7 @@ if (FALSE) { # seems correct, but ultimately not needed
       Y <- as.matrix(Y) ## to cope with array1d, and see $y <- ... code in .preprocess
       respname <- colnames(full_frame)[1]
     } else respname <- colnames(full_frame[[1]])[1] ## binomial, full_frame[[1]] is a matrix with cols for npos and nneg
-    Y <- .sanitize_Y(Y, famfam) # sanitize Y, rather than processed$y which is not used by .get_inits_by_glm()
+    Y <- .sanitize_Y(Y, famfam) # sanitize Y, rather than processed$y which is not used by .get_inits_by_xLM()
     Y <- structure(Y, respname=respname) # respname drops automatically when processed$y is evaluated
   }
   Y
@@ -543,6 +556,12 @@ if (FALSE) { # seems correct, but ultimately not needed
         res$X <- model.matrix(fixef_terms, full_frame, contrasts.arg = NULL) ## always valid, but slower
       } 
       res$fixef_levels <- .getXlevels(fixef_terms, fe_frame) ## added 2015/12/09 useful for .calc_newFrames()
+      #
+      specials_levels <- list()
+      labs <- names(fe_frame)
+      for (it in seq_along(fe_frame)) specials_levels[[labs[it]]] <- attr(fe_frame[[labs[it]]],"spec_levs")
+      res$specials_levels <- specials_levels
+      #
     } else { ## only an offset in formula, not even an explicit 0: .stripOffset_(fixef_off_form) produced a 'name'
       message("Note: formula without explicit fixed effects is interpreted
               as formula without fixed effects [i.e.,  as .~ 0 + offset + (random effect)].

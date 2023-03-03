@@ -3,6 +3,50 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 4.2.0}{  
+\subsection{NEW FEATURES}{
+\itemize{
+\item New fixed-effect terms defined by functions X.GCA() and X.antisym() for dyadic interactions. 
+\item Residual dispersion models can be fitted for the negbin1, negbin2 and beta response family. 
+\item Most restrictions on composite random-effect terms have been removed. For example, composite AR1 or ARp random effects can now be fitted. 
+\item fitmv() gets new argument 'X2X' allowing to fit shared fixed-effect coefficients among different submodels of a multivariate-response fit. 
+\item LRT() now handles comparisons of models with any form of residual-dispersion model. 
+\item (Hopefully) improved control of starting values for fixed-effect coefficients, relevant for some difficult cases with log link.   
+\item numInfo() more correctly handles partially-fixed random-coefficient parameters.
+\item anova() when used as interface to lmerTest methods, more correctly handles partially-fixed random-coefficient parameters.
+\item numInfo() gets new 'sing' argument controlling the computation and display of small eigenvalues of the information matrix.
+\item Extended handling, by predict() and simulate() for multivariate-response models, of missing information in 'newdata'.
+\item New get_fittedPars() extractor.
+\item The range of response values is now checked for beta response family.
+\item New combinepar() interface for parallel computations, always calling foreach to handle any 'control$.combine' argument.
+\item Faster COMPoisson-response fits (from a few to more the 50 percent depending on arguments).
+\item New 'Leuca' data set.
+}
+}
+\subsection{USER-LEVEL CHANGES}{
+\itemize{
+\item Some names in output of prediction intervals and of confidence intervals depend on confidence levels, whose conversion to string depends on the 'OutDec' global option. The relevant spaMM code now locally ensures that OutDec is '.' irrespective of any globally-set value, to favour portability of spaMM results.    
+\item The package option 'CMP_asympto_cond' should now be a function rather than a (quoted) expression. Formally, this is a backward-incompatible change as the options is documented (though changing it was not encouraged).   
+}
+}
+\subsection{FIXED BUGS}{
+\itemize{
+\item Binomial GLMs with non-canonical link could no longer be fitted (! -- mixed-effect models were OK). 
+\item For some response family, fixed-effect models could not, or no longer, handle design matrices in sparse Matrix format. 
+\item A computation was incorrect for COMPoisson distribution with huge expectation. Fixing it has had no visible effect so far. 
+\item Fits of simple mixed-effect models with random-coefficient terms were subject to two potential problems:\cr
+{ * } When fitted by "inner" estimation methods [in particular, by HLfit() or HLCor() rather than fitme()], the fit could stop in cases where the observed information matrix differs from the expected one (e.g, for the Gamma(log) response family). \cr
+{ * } Using fitme() to fit such models worked for all response families, but a profile confint() procedure for fixed-effect coefficients on the resulting fit object could then stop.\cr \cr
+Although using HLfit() to fit such models now works for all response families, the confint() procedure does not work on the resulting fit object. This problem is cleanly reported, with a suggestion to fit the model by fitme(). 
+\item All problems with deviance computations for the 'negbin1' family had not been solved in the previous version, more specifically for the zero-truncated family, where it has been corrected in this version (numerical inaccuracies can still occur in the case of jointly vanishing 'scale' and 'mu'). Even more than previously, the imperfections of these computations may be unnoticeable in practice. 
+}
+}
+\subsection{DEPENDENCIES}{
+\itemize{
+\item 'memoise' suggested dependency has been removed.
+}
+}
+}
 \section{CHANGES UP TO VERSION 4.1.20}{ 
 \subsection{NEW FEATURES}{
 \itemize{
@@ -30,7 +74,7 @@
 \subsection{NEW FEATURES}{
 \itemize{
 \item drop1.HLfit method implemented, to return tables of comparisons of a model with single-term deletions from it, with specific procedures for LMs, GLMs and LMMs. The LMM case is handled by interfacing the Satterthwaite method in \code{lmerTest}.
-\item New function numInfo() to compute the information matrix for (ideally) all parameters for main response model, using numerical derivatives. Experimental.
+\item New function numInfo() to compute the information matrix for (ideally) all parameters for mean response model, using numerical derivatives. Experimental.
 \item New antisym(<.>|<.>) random effect to fit anti-symmetric dyadic interactions, as in Bradley-Terry models.
 \item Pseudo-R2 computation has been implemented, see help("pseudoR2"). Please don't (ab)use it.
 }
@@ -787,7 +831,7 @@ due to a bug introduced in v3.7.48 (i.e., CRAN versions 3.8.0 and 3.8.9)
 \item More efficient computation of conditional AIC. Users can also control whether it should be computed along with other information criteria. 
 \item New extractor how() to cleanly extract information about how a model fit was obtained.
 \item An hidden memory-dependent constraint on the size of data that could be fit by fixed-effect models by ML has been alleviated.
-\item Numerous improvements for residual dispersion models with random effects makes fitting of the joint residual and main-response models more likely to converge in reasonable time when both models contain spatial terms. 
+\item Numerous improvements for residual dispersion models with random effects makes fitting of the joint residual and mean-response models more likely to converge in reasonable time when both models contain spatial terms. 
 }
 }
 \subsection{USER-LEVEL CHANGES}{

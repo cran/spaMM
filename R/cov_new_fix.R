@@ -221,7 +221,33 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
   return(locform)
 }
 
-.get_locdata <- function(newdata, locvars=NULL, locform, object, variances) {
+..get_locdata <- function(newdata, locvars, na.rm) {
+  # so that matrix 'newdata' arguments can be used as in some other predict methods.
+  # ## allvars checks only RHS variables...
+  locdata <- tryCatch(newdata[ , locvars,drop=FALSE],
+                      error= function(e) {
+                        if (e$message==gettext("undefined columns selected", domain="R-base")) {
+                          more_info <- paste0("; variable(s) ",
+                                              paste(setdiff(locvars,colnames(newdata)), collapse=","),
+                                              " appear to be missing from 'newdata'.")
+                          e$message <- paste0(e$message, more_info)
+                        }
+                        stop(e)
+                      }) 
+  # => for any non-NULL newdata, locdata is a data.frame with valid variables. Check NAs:
+  if (na.rm) {
+    locdata <- na.omit(locdata)
+    if (length(attr(locdata,"na.action"))) {
+      message("NA's in required variables: prediction not possible for all 'newdata' rows.")
+    }
+  }
+  locdata
+}
+
+
+.get_locdata <- function(newdata, locvars=NULL, locform, object, variances, na.rm=TRUE ) {
+  # In the univariate-response case, .calc_new_X_ZAC() -> .get_locdata() with a locform containing ranefs
+  # In the mv case, .calc_new_X_ZAC_mv() -> ..get_locdata() directly ('..' not '.') with suitably hacked locvars
   if (is.null(newdata)) {
     return(object$data)
   } 
@@ -229,6 +255,7 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
   if (is.null(locvars)) {
     locvars <- all.vars(.strip_cF_args(locform)) ## strip to avoid e.g. 'stuff' being retained as a var from IMRF(..., model=stuff)
     if (variances$residVar) locvars <- unique(c(locvars,all.vars(.strip_cF_args(.get_phiform(object)))))  
+    if (variances$residVar) locvars <- unique(c(locvars,all.vars(object$family$resid.model$resid.formula)))  
   }
   #
   if (is.vector(newdata)) { ## ## less well controlled case, but useful for maximization
@@ -240,24 +267,7 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
     }
   } else {
     if( is.matrix(newdata) ) newdata <- as.data.frame(newdata)  
-    # so that matrix 'newdata' arguments can be used as in some other predict methods.
-    # ## allvars checks only RHS variables...
-    locdata <- tryCatch(newdata[ , locvars,drop=FALSE],
-                        error= function(e) {
-                          if (e$message==gettext("undefined columns selected", domain="R-base")) {
-                            more_info <- paste0("; variable(s) ",
-                                                paste(setdiff(locvars,colnames(newdata)), collapse=","),
-                                                " appear to be missing from 'newdata'.")
-                            e$message <- paste0(e$message, more_info)
-                          }
-                          stop(e)
-                        }) 
-  }
-  # => for any non-NULL newdata, locadta is a data.frame with valid variables. Check NAs:
-  checkNAs <- apply(locdata,1L,anyNA)
-  if (any(checkNAs)) {
-    message("NA's in required variables from 'newdata'. Prediction not always possible.")
-    locdata <- locdata[!checkNAs, ]
+    locdata <- ..get_locdata(newdata, locvars, na.rm=na.rm) 
   }
   locdata
 }
@@ -280,7 +290,10 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
         attr(Terms,"intercept") <- 0L # removes offset that terms() assumes if there is no explicit '0'.
       }
       # handles offset:  (without the small shortcut used in .get_terms_info())
-      fixef_mf <- model.frame(Terms, data, xlev = .get_from_terms_info(object=fitobject, which="fixef_levels", mv_it=mv_it)) ## xlev gives info about the original levels
+      fixef_mf <- model.frame(Terms, data, 
+                              xlev = .get_from_terms_info(object=fitobject, which="fixef_levels", mv_it=mv_it)) ## xlev gives info about the original levels
+      fixef_mf <- .hack.model.frame(fixef_mf, data, 
+                                    spec_levs = .get_from_terms_info(object=fitobject, which="specials_levels", mv_it=mv_it))
       # :here for a poly(age,.) Terms and age=Inf in the 'data', fixef_mf had zero rows and linkinv will fail on numeric(0) 'eta'
       if (nrow(fixef_mf)!=nrow(data)) {
         if (any(pb <- which( ! sapply(lapply(data,is.finite), all)))) {
@@ -290,8 +303,7 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
       X <- model.matrix(Terms, fixef_mf, contrasts.arg=attr(fitobject$X.pv,"contrasts")) 
       ## : where original contrasts definition is used to define X cols that match those of original X, whatever was the contrast definition when the model was fitted
       if ( ! is.null(mv_it)) {
-        cum_ncol_X <- attr(fitobject$X.pv,"cum_ncol")
-        col_range <- cum_ncol_X[mv_it]+seq_len(cum_ncol_X[mv_it+1L]-cum_ncol_X[mv_it]) # avoid (n+1:n) problem 
+        col_range <-  attr(fitobject$X.pv,"col_ranges")[[mv_it]]
         colnames(X) <- colnames(fitobject$X.pv)[col_range]
       }
     } else {

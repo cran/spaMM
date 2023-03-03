@@ -1,6 +1,6 @@
 .DlogLDmu_trunc_nb2 <- local({
-  shape <- NaN # The function-definition environment will be replaced by the family env where this def is used.
-  function(y, mu, wt, n, phi) { # dlogL/dmu
+  function(y, mu, wt, n, phi, shape_it=NULL) { # dlogL/dmu
+    if ( ! is.null(shape_it)) shape <- shape_it
     term <- shape*(y-mu)/(mu*(mu + shape))
     term <- drop(term)
     p0 <- .negbin2_p0(mu,shape)
@@ -76,6 +76,7 @@
 
 negbin2 <- function (shape = stop("negbin2's 'shape' must be specified"), link = "log", trunc=-1L, LLgeneric=TRUE) {
   mc <- match.call()
+  resid.model <- list2env(list(off=0)) # env so that when we assign to it we don't create a new instance of the family object
   if (inherits(shch <- substitute(shape),"character") ||
       (inherits(shch,"name") && inherits(shape, "function")) # "name" is for e.g. negbin(log)
       # (but testing only "name" would catch e.g. negbin(shape=shape) )
@@ -107,7 +108,10 @@ negbin2 <- function (shape = stop("negbin2's 'shape' must be specified"), link =
                        linktemp))
   }
   if ( ! is.integer(trunc)) {trunc <- round(trunc)}
-  variance <- function(mu) mu + mu^2/shape
+  variance <- function(mu, new_fampar=NULL) {
+    if ( ! is.null(new_fampar)) shape <- new_fampar # for .calcResidVar with newdata an a resid.model 
+    mu + mu^2/shape
+  }
   validmu <- function(mu) all(mu > 0)
   
   dlW_Hexp__detafun <- switch( # of *Hexp* weights, used for expInfo, as well as obsInfo (as explained for the calling function .dlW_Hexp__dmu in the latter case)
@@ -135,22 +139,30 @@ negbin2 <- function (shape = stop("negbin2's 'shape' must be specified"), link =
       drop(- mlogl * wt)
     }
     
-    sat_logL <- function(y, wt) { 
-      uniqy <- unique(y)
-      uniqmu <- rep(NA, length(uniqy))
-      uniqmu[uniqy == 1L] <- 0
-      getmu <- function(y) {
-        if (y==1L) return(0)
-        if (shape >= 1) {
-          lower <-  (y-1)*0.999
-        } else lower <-  ( y-1 )*shape*0.999
-        interval <- c(lower, y) # derivative always <0 in mu=y. For shape<1, perhaps a stricter upper bound could be found
-        uniroot(DlogLDmu, interval=interval, y = y)$root
+    getmu <- function(y, shape_it=NULL) { # it's useful to keep shape_it=NULL fro the call to DlogLDmu() ? not sure, the latter
+      if ( ! is.null(shape_it)) shape <- shape_it
+      if (y==1L) return(0)
+      if (shape >= 1) {
+        lower <-  (y-1)*0.999
+      } else lower <-  ( y-1 )*shape*0.999
+      interval <- c(lower, y) # derivative always <0 in mu=y. For shape<1, perhaps a stricter upper bound could be found
+      uniroot(DlogLDmu, interval=interval, y = y, shape_it=shape_it)$root
+    }
+    
+    sat_logL <- function(y, wt) { # This is for the 0--truncated family so no y=0L case
+      if (length(shape)>1L) {
+        muv <- rep(NA, length(y))
+        muv[y == 1L] <- 0
+        for (it in which(y > 1L)) muv[it] <- getmu(y[it], shape_it=shape[it])
+        logl(y,mu=muv,wt=1) # on vector y, muv and shape 
+      } else {
+        uniqy <- unique(y)
+        uniqmu <- rep(NA, length(uniqy))
+        uniqmu[uniqy == 1L] <- 0
+        for (it in which(uniqy > 1L)) uniqmu[it] <- getmu(uniqy[it])
+        uniqlogl <- logl(uniqy,mu=uniqmu,wt=1)
+        uniqlogl[match(y, uniqy)]
       }
-      ygt1 <- (uniqy > 1L)
-      uniqmu[ygt1] <- sapply(uniqy[ygt1], getmu)
-      uniqlogl <- logl(uniqy,mu=uniqmu,wt=1)
-      uniqlogl[match(y, uniqy)]
     } 
     
     ## the dev.resids serves in llm.fit...
@@ -164,14 +176,13 @@ negbin2 <- function (shape = stop("negbin2's 'shape' must be specified"), link =
       drop(- term * wt)
     }
     
-    sat_logL <- NULL
+    sat_logL <- NULL # its a standard GLM case where saturated mu = y
     
     dev.resids <- function(y, mu, wt) {
       2 * wt * (y * log(pmax(1, y)/mu) - (y + shape) * log((y + shape)/(mu + shape)))
     }
   }
   
-  #
   aic <- function(y, n, mu, wt, dev) { - 2 * sum(logl(y, mu, wt)) }
   
   linkfun <- function(mu,mu_truncated=FALSE) { ## mu_truncated gives type of I N put
@@ -196,7 +207,7 @@ negbin2 <- function (shape = stop("negbin2's 'shape' must be specified"), link =
     mustart <- y + (y == 0)/6
   })
   #
-  simfun <- function(object, nsim,zero_truncated=identical(object$family$zero_truncated,TRUE)) {
+  simulate <- function(object, nsim,zero_truncated=identical(object$family$zero_truncated,TRUE)) { # cf comments on the beta_resp's simulate
     wts <- object$prior.weights
     if (any(wts != 1)) 
       warning("ignoring prior weights")
@@ -206,8 +217,7 @@ negbin2 <- function (shape = stop("negbin2's 'shape' must be specified"), link =
   Dtheta.Dmu <- function(mu) 1/(mu*(1+mu/shape))
   D2theta.Dmu2 <- function(mu) -(1+2*mu/shape)/(mu*(1+mu/shape))^2
   #
-  ##########################################################
-  
+
   # for all obsInfo code:
   D2muDeta2 <- .D2muDeta2(linktemp)
   D3muDeta3 <- .D3muDeta3(linktemp)
@@ -221,7 +231,12 @@ negbin2 <- function (shape = stop("negbin2's 'shape' must be specified"), link =
       D3logLDmu3 <- .D3logLDmu3_trunc_nb2
     } else {
       ## link-independent function #####################
-      DlogLDmu <- function(mu, y, wt, n, phi) drop(shape*(y-mu)/(mu*(mu + shape)))
+      DlogLDmu <- function(mu, y, wt, n, phi,shape_it=NULL) { 
+        # The DlogLDmu() code, and higher derivatives, typically work and returns a vector, when shape is a vector taken from the function efinition environment
+        # The shape_it argument is only needed when solving for DlogL=0 (uniroot) call; that's why it is not needed in functiosn for higher derivatives.
+        if ( ! is.null(shape_it)) shape <- shape_it
+        drop(shape*(y-mu)/(mu*(mu + shape)))
+      }
       
       D2logLDmu2 <- function(mu, y, wt, n, phi) { # element of computation of Hobs weights, (-) D2logcLdeta2
         # (\[Theta] (\[Mu]^2 - y (\[Theta] + 2 \[Mu])))/(\[Mu]^2 (\[Theta] + \[Mu])^2)
@@ -253,19 +268,25 @@ negbin2 <- function (shape = stop("negbin2's 'shape' must be specified"), link =
   
   #
   ## all closures defined here have parent.env the environment(spaMM_Gamma) ie <environment: namespace:spaMM>
-  ## changes the parent.env of all these functions (aic, dev.resids, simfun, validmu, variance): 
+  ## changes the parent.env of all these functions (aic, dev.resids, simulate, validmu, variance): 
   # parent.env(environment(aic)) <- environment(stats::binomial) ## parent = <environment: namespace:stats>
   
   structure(list(family = structure("negbin2",
-                                    withArgs=quote(paste0("negbin2(shape=",signif(shape,4),")"))), 
+                                    withArgs=quote({
+                                      if ( ! is.null(resid.model$beta)) {
+                                        paste0("negbin2(shape=",paste0(signif(shape[1:min(3L,length(shape))],4),collapse=" "),"...)")
+                                      } else paste0("negbin2(shape=",signif(shape,4),")")
+                                    })), 
                  link = linktemp, linkfun = linkfun, 
                  linkinv = linkinv, variance = variance, dev.resids = dev.resids, 
                  aic = aic, mu.eta = stats$mu.eta, initialize = initialize, 
-                 validmu = validmu, valideta = stats$valideta, simulate = simfun, 
-                 dlW_Hexp__detafun=dlW_Hexp__detafun, coef1fun=coef1fun, # always available (needed for expInfo as well as NON-generic obsInfo) 
+                 validmu = validmu, valideta = stats$valideta, simulate = simulate, 
+                 dlW_Hexp__detafun=dlW_Hexp__detafun, 
+                 coef1fun=coef1fun, # always available (needed for expInfo as well as NON-generic obsInfo) 
                  d_dlWdmu_detafun=d_dlWdmu_detafun, # NULL in most cases (except NON-generic obsInfo => untruncated)
-                 DlogLDmu = DlogLDmu, D2logLDmu2 = D2logLDmu2, D3logLDmu3 = D3logLDmu3, D2muDeta2 = D2muDeta2, D3muDeta3 = D3muDeta3, # NULL if not LLgeneric
-                 coef1fun=coef1fun,
+                 DlogLDmu = DlogLDmu, D2logLDmu2 = D2logLDmu2, D3logLDmu3 = D3logLDmu3, 
+                 D2muDeta2 = D2muDeta2, D3muDeta3 = D3muDeta3, # NULL if not LLgeneric
+                 resid.model=resid.model, 
                  flags=list(obs=TRUE, exp=TRUE, canonicalLink=FALSE, LLgeneric=LLgeneric),
                  zero_truncated=(trunc==0L)), 
             class = c("LLF","family"))

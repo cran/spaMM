@@ -26,6 +26,7 @@ stripHLfit <- function(object,...) {
         assign("stats",NULL,environment(object$family$aic))
         ## let's assign NULL to all others, though.
         assign("simfun",NULL,environment(object$family$aic))
+        assign("simulate",NULL,environment(object$family$aic))
         assign("okLinks",NULL,environment(object$family$aic))
         assign("linktemp",NULL,environment(object$family$aic))
         ## but this does not work on phi.object$glm_phi$family (eg first example(HLfit))

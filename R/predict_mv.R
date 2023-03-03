@@ -1,6 +1,6 @@
-# __FIXME__ try to merge with to .calc_new_X_ZAC()?
 .calc_new_X_ZAC_mv <- function(object, newdata=NULL, re.form = NULL,
-                            variances=list(residVar=FALSE, cov=FALSE),invCov_oldLv_oldLv_list) {
+                            variances=list(residVar=FALSE, cov=FALSE),invCov_oldLv_oldLv_list,
+                            control=list()) {
   locformS <- formula.HLfit(object, which="")
   if (inherits(re.form, "formula")) {
     re.formS <- vector("list", length(locformS))
@@ -13,16 +13,22 @@
   # checking variables in the data
   allvarsS <- vector("list", length(locformS))
   for (mv_it in seq_along(locformS)) {
-    allvarsS[[mv_it]] <- all.vars(.strip_cF_args(locformS[[mv_it]])) ## strip to avoid e.g. 'stuff' being retained as a var from IMRF(..., model=stuff)
-    if (variances$residVar) allvarsS[[mv_it]] <- unique(c(allvarsS[[mv_it]], all.vars(.strip_cF_args(.get_phiform(object, mv_it))))) 
+    allvars_it <- all.vars(.strip_cF_args(locformS[[mv_it]])) ## strip to avoid e.g. 'stuff' being retained as a var from IMRF(..., model=stuff)
+    if (variances$residVar || control$simulate) {
+      allvars_it <- unique(c(allvars_it, all.vars(.strip_cF_args(.get_phiform(object, mv_it)))))
+      allvars_it <- unique(c(allvars_it, all.vars(object$families[[mv_it]]$resid.model$resid.formula)))
+    } 
+    allvarsS[[mv_it]] <- allvars_it
   }
   #
-  allvars <- unique(.unlist(allvarsS))
-  locdata <- .get_locdata(newdata=newdata, locvars=allvars, object=object, variances=variances) # *seems* always required (cf when newdata is not a data frame)
   ## matching ranef terms of re.form
   if (length(object$ZAlist)) { 
-    re.form_allows_ranefs <- ( is.null(re.form) || any( ! sapply(re.formS, .noRanef))) # but there may still be no ranef if no ranef in object's formula
-    if (re.form_allows_ranefs) { 
+    if (identical(control$keep_ranef_vars_for_simulate, TRUE) || # : condition for the case 
+                      # where only eta_fixed is predicted for marginal simulation, hence re.form is NA ("no  prediction for ranef") BUT 
+                      # we will need the locdataS with the variables for ranefs, to simulate these ranefs.
+         ( re.form_allows_ranefs <- ( is.null(re.form) || # : this condition means that re.form_allows_ranefs may be TREU despite no ranef in model formula 
+                                      any( ! sapply(re.formS, .noRanef))) )
+       ) { 
       map_rd_mv <- attr(object$ZAlist, "map_rd_mv")
       ori_exp_ranef_strings <- attr(object$ZAlist,"exp_ranef_strings")
       #
@@ -38,31 +44,31 @@
     ranef_form <- as.formula(paste("~",(paste(new_exp_ranef_strings,collapse="+")))) ## effective '.noFixef'
     ranefvars <- all.vars(.strip_cF_args(ranef_form))
   } else ranefvars <- c()
+  locdata <- .get_locdata(newdata=newdata, locvars=unique(c(.unlist(allvarsS),ranefvars)), 
+                          object=object, variances=variances, na.rm=FALSE) # see comment on evaluation of RESU$newuniqueGeo
   #
+  locdataS <- vector("list", length(allvarsS))
   need_new_design <- ( ( ! is.null(newdata) ) || ! is.null(re.form)) ## newdata or new model
   if (need_new_design) {
-    locdataS <- vector("list", length(allvarsS))
     newX.pv <- eta_fix <- NULL
     for (mv_it in seq_along(locformS)) {
       allvars_it <- unique(c(allvarsS[[mv_it]], ranefvars)) # all ranefvars + mv_it-specific fixefvars: note difference if ! need_new_design
       # presence of ranefvars for all ranefs in each allvars_it allows do.call(rbind, locdataS) later in this fn after selecting them
-      locdataS[[mv_it]] <- locdata[,allvars_it, drop=FALSE] # .get_locdata(newdata, allvars_it, object)
+      locdataS[[mv_it]] <- ..get_locdata(locdata, allvars_it, na.rm=TRUE)
       newX_info <- .get_newX_info(locformS[[mv_it]], locdataS[[mv_it]], object, mv_it=mv_it)
       newX.pv <- .merge_Xs(newX.pv, newX_info$newX.pv, mv_it)
       eta_fix <- c(eta_fix, newX_info$eta_fix)
     }
-    loc_cum_nobs <- cumsum(c(0L,lapply(locdataS, nrow)))
-    RESU <- list(locdata=structure(locdataS, # locdata in RESU for cbind()ing the predictions in .predict_body();
-                                   allvarsS=allvarsS), # allVarsS (used by map_ranef()) tells which variables were needed for which submodel predictions.
-                 cum_nobs= loc_cum_nobs, # more widely used by .fv_linkinv()
+    attr(locdataS,"allvarsS") <- allvarsS # allVarsS (used by map_ranef()) tells which variables were needed for which submodel predictions.
+    RESU <- list(locdata=locdataS, # locdata in RESU for cbind()ing the predictions in .predict_body();
+                 cum_nobs= cumsum(c(0L,lapply(locdataS, nrow))), # more widely used by .fv_linkinv()
                  newX.pv=newX.pv, eta_fix=eta_fix) 
   } else {
-    locdataS <- vector("list", length(allvarsS))
-    for (mv_it in seq_along(allvarsS)) locdataS[[mv_it]] <- locdata[, allvarsS[[mv_it]], drop=FALSE] #.get_locdata(newdata, allvarsS[[mv_it]], object) # newdata presumably NULL 
+    for (mv_it in seq_along(allvarsS)) locdataS[[mv_it]] <-  ..get_locdata(locdata, allvarsS[[mv_it]], na.rm=TRUE)
     RESU <- list(locdata=locdataS, # locdata in RESU allowing (potential) cbind() with predictions in .predict_body(). (maybe not implemented for mv)
                  cum_nobs= cumsum(c(0L,lapply(locdataS, nrow))), # more widely used by .fv_linkinv()
                  newX.pv=object$X.pv) 
-  }
+  } 
   ## so we save 'locdata=locdataS' in RESU, but we will locally modify 'locdataS' by selecting columns in locdataS[[mv_it]]
   ## and will create a local 'ranefdata' from this locally modified 'locdataS'.
   #
@@ -70,119 +76,121 @@
   ## subZAlist is a subset of the old ZA, newZAlist contains new ZA
   #
   if (nrand <- length(newinold)) {  
+    if (length( info_olduniqueGeo <- .get_old_info_uniqueGeo(object) )) {
+      RESU$newuniqueGeo <- .update_newuniqueGeo(info_olduniqueGeo, newinold, need_new_design, locdata)
+      # Despite the $newuniqueGeo name, it may be necess without newdata; 
+      # cf preprocess_fix_corr() with NULL 'fixdata' providing info_olduniqueGeo <- fix_info$newuniqueGeo (univariate case).
+      # There may be a slight suboptimality as it uses 'locdata' produced with na.rm=FALSE. 
+      # But na.rm=TRUE would remove rows used in a submodel, if they have NA's in variables not used in that submodel. 
+    }
     RESU$subZAlist <- object$ZAlist[newinold] ## and reordered
     RESU$newinold <- newinold
     ori_exp_ranef_types <- attr(object$ZAlist,"exp_ranef_types") 
     RESU$spatial_old_rd <- which(ori_exp_ranef_types != "(.|.)") 
-    if (nrand <- length(newinold)) {
-      strucList <- object$strucList
-      if (need_new_design) {
-        ## with newdata we need Evar and then we need nn... if newdata=ori data the Evar (computed with the proper nn) should be 0
-        # barlist <- .process_bars_mv(predictors=formula.HLfit(object,which = ""),
-        #                             map_rd_mv=map_rd_mv,
-        #                             as_character=FALSE) ## but default expand =TRUE 
-        # barlist <- structure(barlist[newinold], type=attr(barlist,"type")[newinold])
-        
-        for (mv_it in seq_along(locdataS)) locdataS[[mv_it]] <- locdataS[[mv_it]][,ranefvars, drop=FALSE]
-        ranefdata <- do.call(rbind, locdataS)
-        ori_exp_ranef_terms <- attr(object$ZAlist,"exp_ranef_terms")
-        new_exp_ranef_terms <- structure(ori_exp_ranef_terms[newinold], type=attr(ori_exp_ranef_terms,"type")[newinold])
-        newZlist <- .calc_Zlist(exp_ranef_terms=new_exp_ranef_terms, # .process_bars(barlist=barlist,as_character=FALSE, which.="exp_ranef_terms"), # != barlist, for IMRF notably
-                                data=ranefdata, 
-                                rmInt=0L, drop=TRUE,sparse_precision=FALSE, 
-                                corr_info=.get_from_ranef_info(object),
-                                levels_type= "seq_len", ## superseded in specific cases: notably, 
-                                ## the same type has to be used by .calc_AMatrix_IMRF() -> .as_factor() 
-                                ##  as by .calc_Zmatrix() -> .as_factor() for IMRFs.
-                                ## This is controlled by package option 'uGeo_levels_type' (default = "data_order" as the most explicit).
-                                ## The sames functions are called with the same arguments for predict with newdata.
-                                ##
-                                ## This means that if there are repeated geo positions in the newdata 
-                                ## we save the time of trying to find them (which perhaps is less justifiable in mv case? __FIXME__)
-                                sub_oldZAlist=object$ZAlist[newinold],  
-                                lcrandfamfam=attr(object$rand.families,"lcrandfamfam"))
-        # Each Z in newZlist then has non-zero rows even for response levels that are not affected by the ranef
-        # bc it's built from 'ranefdata' built as if all submodels were affected by each (new) ranef
-        # => need to correct this
-        newrd_in_obsS <- vector("list", length(newinoldS))
-        for(new_rd in seq_along(newinold)) {
-          for (mv_it in seq_along(newinoldS)) {
-            nobs_it <- loc_cum_nobs[[mv_it+1L]] - loc_cum_nobs[[mv_it]]
-            newrd_in_obsS[[mv_it]] <- rep((newinold[new_rd] %in% newinoldS[[mv_it]]), nobs_it)
-          }
-          newrd_in_obs <- 1L * .unlist(newrd_in_obsS)
-          newZlist[[new_rd]] <- structure(.Dvec_times_Matrix(newrd_in_obs, newZlist[[new_rd]]),
-                                          is_incid=attr(newZlist[[new_rd]],"is_incid"))
+    
+    strucList <- object$strucList
+    if (need_new_design) {
+      ## with newdata we need Evar and then we need nn... if newdata=ori data the Evar (computed with the proper nn) should be 0
+      # barlist <- .process_bars_mv(predictors=formula.HLfit(object,which = ""),
+      #                             map_rd_mv=map_rd_mv,
+      #                             as_character=FALSE) ## but default expand =TRUE 
+      # barlist <- structure(barlist[newinold], type=attr(barlist,"type")[newinold])
+      
+      for (mv_it in seq_along(locdataS)) locdataS[[mv_it]] <- locdataS[[mv_it]][,ranefvars, drop=FALSE]
+      ranefdata <- do.call(rbind, locdataS)
+      ori_exp_ranef_terms <- attr(object$ZAlist,"exp_ranef_terms")
+      new_exp_ranef_terms <- structure(ori_exp_ranef_terms[newinold], type=attr(ori_exp_ranef_terms,"type")[newinold])
+      newZlist <- .calc_Zlist(exp_ranef_terms=new_exp_ranef_terms, # .process_bars(barlist=barlist,as_character=FALSE, which.="exp_ranef_terms"), # != barlist, for IMRF notably
+                              data=ranefdata, 
+                              rmInt=0L, drop=TRUE,sparse_precision=FALSE, 
+                              corr_info=.get_from_ranef_info(object),
+                              levels_type= "seq_len", ## superseded in specific cases: notably, 
+                              ## the same type has to be used by .calc_AMatrix_IMRF() -> .as_factor() 
+                              ##  as by .calc_Zmatrix() -> .as_factor() for IMRFs.
+                              ## This is controlled by package option 'uGeo_levels_type' (default = "data_order" as the most explicit).
+                              ## The sames functions are called with the same arguments for predict with newdata.
+                              ##
+                              ## This means that if there are repeated geo positions in the newdata 
+                              ## we save the time of trying to find them (which perhaps is less justifiable in mv case? __FIXME__)
+                              sub_oldZAlist=object$ZAlist[newinold],  
+                              lcrandfamfam=attr(object$rand.families,"lcrandfamfam"))
+      # Each Z in newZlist then has non-zero rows even for response levels that are not affected by the ranef
+      # bc it's built from 'ranefdata' built as if all submodels were affected by each (new) ranef
+      # => need to correct this
+      newrd_in_obsS <- vector("list", length(newinoldS))
+      loc_cum_nobs <- RESU$cum_nobs
+      for(new_rd in seq_along(newinold)) {
+        for (mv_it in seq_along(newinoldS)) {
+          nobs_it <- loc_cum_nobs[[mv_it+1L]] - loc_cum_nobs[[mv_it]]
+          newrd_in_obsS[[mv_it]] <- rep((newinold[new_rd] %in% newinoldS[[mv_it]]), nobs_it)
         }
-        amatrices <- .get_new_AMatrices(object, newdata=ranefdata) # .calc_newFrames_ranef(formula=ranef_form,data=ranefdata,fitobject=object)$mf)
-        ## ! complications:
-        ## even if we used perm_Q for *fitting* Matern , the permutation A matrix should not be necessary in building the new correlation matrix, bc ./.
-        ## explicit colnames should handle both cases, so that
-        ## newZAlist <- .calc_normalized_ZAlist( ignoring those A matrices)
-        ## and 
-        ## newZAlist <- object$ZAlist
-        ## should be OK.
-        ## But the other Amatrices should be processed before newZACpplist <- .compute_ZAXlist(.) is called
-        requires_ZCpL <- (attr(newZlist,"exp_ranef_types") %in% c("Matern","Cauchy"))
-        newZAlist <- .calc_normalized_ZAlist(Zlist=newZlist,
-                                             # newZlist has names not necessarily starting at "1"
-                                             AMatrices=amatrices[names(newZlist)[ ! requires_ZCpL]],
-                                             vec_normIMRF=object$ranef_info$vec_normIMRF, 
-                                             strucList=strucList)
-        ## must be ordered as parseBars result for the next line to be correct.
-        attr(newZAlist,"exp_ranef_strings") <- new_exp_ranef_strings ## required pour .compute_ZAXlist to match the ranefs of LMatrix
-        newZAlist <- .correct_newZAlist_mv_ranCoefs(ZAlist=newZAlist, 
-                                                    cum_nobs=cumsum(c(0L,sapply(locdataS,nrow))))
-        # : distinct .correct_...() function needed here bc [
-        #   we cannot run an outer loop on mv_it, calling.merge_ZAlists(., ZAlist2 = newZAlist_i...) bc
-        #     expected format of final newZAlist differs from that for the fit: for some ranef types
-        #     we do not try to match the columns of ZA_i's different submodels, instead building larger but diagonal ZA's 
-        #  ]
-      } else {
-        newZAlist <- object$ZAlist
-        ranefdata <- object$data
+        newrd_in_obs <- 1L * .unlist(newrd_in_obsS)
+        newZlist[[new_rd]] <- structure(.Dvec_times_Matrix(newrd_in_obs, newZlist[[new_rd]]),
+                                        is_incid=attr(newZlist[[new_rd]],"is_incid"))
       }
-      RESU$newZAlist <- newZAlist
-      # We determine which matrices we need for computation of Evar:
-      need_Cnn <- .calc_need_Cnn(object, newinold, ori_exp_ranef_types, variances, newZAlist)
-      which_mats <- list(no= need_new_design, 
-                         ## cov_newLv_newLv_list used in .calc_Evar() whenever newdata, but elements may remain NULL if $cov not requested
-                         ## However, for ranCoefs, we need Xi_cols rows for each response's predVar. (FIXME) we store the full matrix.
-                         nn= need_Cnn ) 
-      #nrand <- length(newinold)
-      #
-      ## AT this point both newZAlist and subZAlist may have been reduced to 'newnrand' elements relative to ori object$ZAlist.
-      ## .match_old_new_levels will use it running over newnrand values
-      ## The cov_ lists are reduced too. newinold should be used to construct them
-      ## newZACpplist is reduced.
-      if (any(unlist(which_mats)) 
-          || any(unlist(variances)) # cov_newLv_oldv_list is always needed for cbind(X.pv,newZAC [which may be ori ZAC]); should ~corr_list when newdata=ori data
-      ) {
-        blob <- .make_new_corr_lists(object=object,locdata=ranefdata, which_mats=which_mats, 
-                                     newZAlist=newZAlist, newinold=newinold,
-                                     invCov_oldLv_oldLv_list=invCov_oldLv_oldLv_list)
-        RESU <- .update_cov_no_nn(RESU, blob, which_mats, newZAlist)
-        RESU$newZACpplist <- .compute_ZAXlist(XMatrix=RESU$cov_newLv_oldv_list, ZAlist=newZAlist) ## build from reduced list, returns a reduced list
-        ## This $newZACpplist serves to compute new _point predictions_.
-        #  # this comment may be obsolete : .compute_ZAXlist affects elements of ZAlist that have a ranefs attribute. 
-        #  It builds a design matrix to all oldv levels. It does not try to reduce levels. 
-        #  But it use newZlist <- .calc_Zlist(...) which may consider a reduced number of levels.
-        #  The function .match_old_new_levels() will perform the match with 'w_h_coeffs' for point prediction.
-        #  it assign values psi_M to new levels of ranefs.
-        ## _Alternatively_ one may construct a newZACvar for _predVar_ 
-        #  Here we have a slice mechanism (contrary for point pred) hence new ZA with different rows, and the columns of the 
-        #  newZACvar constructed there must match those of beta_w_cov for  ZWZt_mat_or_diag( <cbind(newX,newZAC)> ,beta_w_cov)
-        #  cov_newLv_oldv_list() provides the info for the expansion from the newZA cols to the oldZA cols.
-        #  In that case one does not need to match levels. .calc_newZACvar() performs a simpler operation than .compute_ZAXlist.
-        if (need_new_design) RESU$newZACpplist <- .calc_ZAlist(Zlist=RESU$newZACpplist, AMatrices=amatrices[names(newZAlist)[requires_ZCpL]])
-      }
-      #
-      if (length( info_olduniqueGeo <- .get_old_info_uniqueGeo(object) )) {
-        # Despite the $newuniqueGeo name, it may be necess without newdata; 
-        # cf preprocess_fix_corr() with NULL 'fixdata' providing info_olduniqueGeo <- fix_info$newuniqueGeo (univariate case).
-        RESU$newuniqueGeo <- .update_newuniqueGeo(info_olduniqueGeo, newinold, need_new_design, locdata)
-      }
+      amatrices <- .get_new_AMatrices(object, newdata=ranefdata) # .calc_newFrames_ranef(formula=ranef_form,data=ranefdata,fitobject=object)$mf)
+      ## ! complications:
+      ## even if we used perm_Q for *fitting* Matern , the permutation A matrix should not be necessary in building the new correlation matrix, bc ./.
+      ## explicit colnames should handle both cases, so that
+      ## newZAlist <- .calc_normalized_ZAlist( ignoring those A matrices)
+      ## and 
+      ## newZAlist <- object$ZAlist
+      ## should be OK.
+      ## But the other Amatrices should be processed before newZACpplist <- .compute_ZAXlist(.) is called
+      requires_ZCpL <- (attr(newZlist,"exp_ranef_types") %in% c("Matern","Cauchy"))
+      newZAlist <- .calc_normalized_ZAlist(Zlist=newZlist,
+                                           # newZlist has names not necessarily starting at "1"
+                                           AMatrices=amatrices[names(newZlist)[ ! requires_ZCpL]],
+                                           vec_normIMRF=object$ranef_info$vec_normIMRF, 
+                                           strucList=strucList)
+      ## must be ordered as parseBars result for the next line to be correct.
+      attr(newZAlist,"exp_ranef_strings") <- new_exp_ranef_strings ## required pour .compute_ZAXlist to match the ranefs of LMatrix
+      newZAlist <- .correct_newZAlist_mv_ranCoefs(ZAlist=newZAlist, 
+                                                  cum_nobs=cumsum(c(0L,sapply(locdataS,nrow))))
+      # : distinct .correct_...() function needed here bc [
+      #   we cannot run an outer loop on mv_it, calling.merge_ZAlists(., ZAlist2 = newZAlist_i...) bc
+      #     expected format of final newZAlist differs from that for the fit: for some ranef types
+      #     we do not try to match the columns of ZA_i's different submodels, instead building larger but diagonal ZA's 
+      #  ]
+    } else {
+      newZAlist <- object$ZAlist
+      ranefdata <- object$data
     }
+    RESU$newZAlist <- newZAlist
+    # We determine which matrices we need for computation of Evar:
+    need_Cnn <- .calc_need_Cnn(object, newinold, ori_exp_ranef_types, variances, newZAlist)
+    which_mats <- list(no= need_new_design, 
+                       ## cov_newLv_newLv_list used in .calc_Evar() whenever newdata, but elements may remain NULL if $cov not requested
+                       ## However, for ranCoefs, we need Xi_cols rows for each response's predVar. (FIXME) we store the full matrix.
+                       nn= need_Cnn ) 
+    #nrand <- length(newinold)
+    #
+    ## AT this point both newZAlist and subZAlist may have been reduced to 'newnrand' elements relative to ori object$ZAlist.
+    ## .match_old_new_levels will use it running over newnrand values
+    ## The cov_ lists are reduced too. newinold should be used to construct them
+    ## newZACpplist is reduced.
+    if (any(unlist(which_mats)) 
+        || any(unlist(variances)) # cov_newLv_oldv_list is always needed for cbind(X.pv,newZAC [which may be ori ZAC]); should ~corr_list when newdata=ori data
+    ) {
+      blob <- .make_new_corr_lists(object=object,locdata=ranefdata, which_mats=which_mats, 
+                                   newZAlist=newZAlist, newinold=newinold,
+                                   invCov_oldLv_oldLv_list=invCov_oldLv_oldLv_list)
+      RESU <- .update_cov_no_nn(RESU, blob, which_mats, newZAlist)
+      RESU$newZACpplist <- .compute_ZAXlist(XMatrix=RESU$cov_newLv_oldv_list, ZAlist=newZAlist) ## build from reduced list, returns a reduced list
+      ## This $newZACpplist serves to compute new _point predictions_.
+      #  # this comment may be obsolete : .compute_ZAXlist affects elements of ZAlist that have a ranefs attribute. 
+      #  It builds a design matrix to all oldv levels. It does not try to reduce levels. 
+      #  But it use newZlist <- .calc_Zlist(...) which may consider a reduced number of levels.
+      #  The function .match_old_new_levels() will perform the match with 'w_h_coeffs' for point prediction.
+      #  it assign values psi_M to new levels of ranefs.
+      ## _Alternatively_ one may construct a newZACvar for _predVar_ 
+      #  Here we have a slice mechanism (contrary for point pred) hence new ZA with different rows, and the columns of the 
+      #  newZACvar constructed there must match those of beta_w_cov for  ZWZt_mat_or_diag( <cbind(newX,newZAC)> ,beta_w_cov)
+      #  cov_newLv_oldv_list() provides the info for the expansion from the newZA cols to the oldZA cols.
+      #  In that case one does not need to match levels. .calc_newZACvar() performs a simpler operation than .compute_ZAXlist.
+      if (need_new_design) RESU$newZACpplist <- .calc_ZAlist(Zlist=RESU$newZACpplist, AMatrices=amatrices[names(newZAlist)[requires_ZCpL]])
+    }
+    #
   } 
   return(RESU)
 }

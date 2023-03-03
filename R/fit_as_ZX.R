@@ -429,7 +429,7 @@
 
 .solve_IRLS_as_ZX <- 
   function(X.pv=processed$AUGI0_ZX$X.pv, 
-           ZAL, y, ## could be taken from processed ? 
+           ZAL, y=processed$y,  
            n_u_h=length(u_h), 
            H_global_scale, # from the initial w.resid: not updated when w.resid is locally updated
            lambda_est, muetablob, off=processed$off, maxit.mean, etaFix,
@@ -442,7 +442,7 @@
            ## supplement for LevenbergM
            beta_eta,
            ## supplement for ! GLMM
-           u_h, v_h, # for_init_z_args, 
+           u_h, v_h,  
            ## supplement for intervals
            for_intervals,
            verbose=processed$verbose,
@@ -485,15 +485,8 @@
     dampings_env <- list2env(.spaMM.data$options$spaMM_tol$dampings_env_v)
   } 
   if ( ! LMMbool) {
-    checkpot_min_it <- as.integer(maxit.mean/4L) # (see ref to pot4improv in test-mv-nested for a test)
+    checkpot_min_it <- as.integer(maxit.mean/4L) # (see ref to pot4improv in test-mv-extra for a test)
     constant_zAug_args <- list(n_u_h=n_u_h, nobs=nobs, pforpv=pforpv, y=y, off=off, ZAL=ZAL, processed=processed)
-    # if ( ! GLMMbool) {
-    #   constant_init_z_args <- c(list(lcrandfamfam=lcrandfamfam, nobs=nobs, lambda_est=lambda_est, ZAL=ZAL),  
-    #                             # fit_as_ZX args specific for ! GLMM:
-    #                             for_init_z_args,
-    #                             #
-    #                             mget(c("cum_n_u_h","rand.families"),envir=processed))
-    # } 
   } 
   
   ##### initial sXaug
@@ -525,7 +518,7 @@
     lambda_est=lambda_est, off=off,
     maxit.mean=maxit.mean, # i.e. maxit.mean affects also .solve_v_h_IRLS() calls
     etaFix=etaFix,
-    processed=processed, phi_est=phi_est, # for_init_z_args=for_init_z_args,
+    processed=processed, phi_est=phi_est, 
     trace=trace, dampings_env=dampings_env))
   ## Loop controls:
   allow_LM_restart <- ( ! LMMbool && ! LevenbergM && is.null(for_intervals) && is.na(processed$LevenbergM["user_LM"]) )
@@ -1015,7 +1008,7 @@
   }
   if (trace>1L && (LevenbergM))  {
     stylefn <- .spaMM.data$options$stylefns$betalast
-    if (pforpv) { # outer beta
+    if (pforpv) { # (not?) outer beta
       maxs_grad <- c(max(abs(m_grad_obj[seq_n_u_h])),max(abs(m_grad_obj[-seq_n_u_h])))
     } else maxs_grad <- c(max(abs(m_grad_obj[seq_n_u_h])), 0)
     cat(stylefn("iter=",innerj,", max(|grad|): v=",maxs_grad[1L],"beta=",maxs_grad[2L],";\n"))

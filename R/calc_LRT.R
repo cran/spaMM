@@ -78,7 +78,7 @@
     re_locinit <- get_inits_from_fit(from=nullfit, template=fullfit, to_fn=fittingFunction )# to initiate next fullfit
     if ( ! identical(locinit,re_locinit)) {
       if (fittingFunction=="fitme") {
-        fullm_call$init <- locinit$init
+        fullm_call$init <- locinit[["init"]]
       } else if (fittingFunction=="corrHLfit") {
         fullm_call[["init.corrHLfit"]] <- locinit[["init.corrHLfit"]]
       }

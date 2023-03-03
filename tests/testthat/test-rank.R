@@ -38,7 +38,7 @@ testthat::test_that("whether nlme::lme does not handle singular X, as stated in 
 )
 
 if (spaMM.getOption("example_maxtime")>0.7) { # a check accumulating possible causes of problems
-  { # check on minipal pathological case
+  { # check on minimal pathological case
     ## b1 is redundant with | dummy ...
     trivml <- fitme(y~b1 + (1 | dummy), data = donn, #verbose=c(TRACE=interactive()), 
                     method="ML") # There is info about lambda, which is estimated as zero
@@ -53,12 +53,13 @@ if (spaMM.getOption("example_maxtime")>0.7) { # a check accumulating possible ca
   }
   
   ## Each of b1 and b2 are redundant with | dummy ...
-  # Here lambda appears unidentifiable by *RE*ML: RE.L is 'completely' flat wrt it (marginal L is not). It would be nice if a message pointed that (___F I X M E___):
-  # There is one only for singfitT bc refit=TRUE -> leverages are computed -> detection of unit leverages.
+  # Here lambda appears unidentifiable by *RE*ML: RE.L is 'completely' flat wrt it (marginal L is not). 
   (singfitF <- fitme(y~int+ b1+b2+c1+c2+c3 + (1 | dummy), data = donn, method="REML", 
                     # verbose=c(TRACE=TRUE), # quite useful to check what's going on in numInfo computation too
                     init=list(lambda=0.01), 
                     control=list(refit=FALSE))) ## Final value of lambda dependent on initial value
+  # The unit SE for the phi coef is also surprizing but may also be a far-fetched consequence of idiosyncrasies of data and model,
+  # combined with the approxs of the SmythHV method (by contrast, cond.SE is not 1 when formula= y~int + (1 | dummy)).
   suppressWarnings(anova(singfitF, type="2")) # lambda not low enough for removal, but numInfo singular since no info on lambda => warning (suppressed here)
   ranef(singfitF) #  =0, which is consistent with the refit below. The latter de facto replaces an undefined lambda estimate ((v=0)/(1-lev=0)) by v/(tiny value) = 0
   (singfitT <- fitme(y~int+ b1+b2+c1+c2+c3 + (1 | dummy), data = donn, method="REML", 
@@ -98,7 +99,7 @@ if (spaMM.getOption("example_maxtime")>0.7) { # Test of correct handling of sing
                       testthat::expect_true(crit<1e8))
   #
   anova(okfit, type="1", method="t.Chisq")
-  # Remarkably, the X2 stats are identical to the previous F statz. 
+  # Remarkably, the X2 stats are identical to the previous F stats. 
   # The X2 stat comes from .anova_fallback -> Wald's method, hard to mess with.
   # The F stat is the square of the t-stat computed by lmerTest:::anova.lmerModlmerTest() -> single_anova() -> contest1D() -> [locally defined]mk_ttable()
   

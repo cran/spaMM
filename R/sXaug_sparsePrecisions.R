@@ -218,7 +218,7 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
 
 .solve_crossr22 <- function(BLOB, # must include $r12
                             AUGI0_ZX, sXaug, dbeta_rhs, 
-                            use_crossr22=FALSE) { #use_crossr22=TRUE affects mv test 'zut2_testr22' (test-mv-nested, v3.6.46, l.768)
+                            use_crossr22=FALSE) { #use_crossr22=TRUE affects mv test 'zut2_testr22' (test-mv-nested, v3.6.46, l.768) [the file is now test-mv-extra]
   if (use_crossr22 && ! .is_evaluated("r22",BLOB) ) { # FALSE, hence currently BLOB$r22 is always used 
     dbeta_eta <- solve(BLOB$crossr22, dbeta_rhs)
   } else dbeta_eta <- backsolve(BLOB$r22, backsolve(BLOB$r22, dbeta_rhs, transpose = TRUE)) # ie (chol2inv(BLOB$r22) %*% dbeta_rhs)[,1L]
@@ -435,7 +435,7 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
 
 .factor_inv_Md2hdv2_times_rhs <- function(BLOB, B) { 
   ## get_from_MME(., "solve_d2hdv2", .) => B generally vector but may be diag, Diagonal 
-  ## cf HLfit_body -> .hatvals2std_lev -> -> .calc_dvdloglamMat_new()
+  ## cf HLfit_body -> .calc_std_leverages() -> .hatvals2std_lev -> .calc_dvdloglamMat_new()
   ## or even fuller matrices (neg.d2h0_dv_dlogphi <- .m_Matrix_times_Dvec(t(ZAL), drop(dh0deta)) in .calc_dvdlogphiMat_new())
   if (.is_evaluated("factor_inv_Md2hdv2", BLOB)) {
     BLOB$factor_inv_Md2hdv2 %*% B # __F I X M E__ optimize for diagonal matrices? Not easy (info to be passed efficiently from get_from_MME call)
@@ -540,7 +540,7 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
         X.pv <- as(AUGI0_ZX$X.pv,"dgCMatrix")#  .Rcpp_as_dgCMatrix(AUGI0_ZX$X.pv)
       } else X.pv <- as(X.pv <- as(AUGI0_ZX$X.pv,"generalMatrix"),"CsparseMatrix")
       Xscal <- with(sXaug,rbind(cbind(AUGI0_ZX$I, AUGI0_ZX$ZeroBlock), # I0_ZX order
-                                cbind(AUGI0_ZX$ZAfix %*% t(.rawsolve(BLOB$chol_Q)), X.pv)))
+                                cbind(.tcrossprod(AUGI0_ZX$ZAfix, Matrix::solve(BLOB$chol_Q, AUGI0_ZX$trDiag)), X.pv)))
       Xscal <- .Dvec_times_Matrix(c(sqrt(attr(sXaug,"w.ranef")),BLOB$sqrtW),Xscal)
       qrXa <- qr(Xscal)
     }, assign.env = BLOB )
@@ -571,7 +571,7 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
         crossr22 <- BLOB$XtWX - crossprod(BLOB$r12) 
         # .Rcpp_crossprod(r12,NULL,as_mat=TRUE) may be faster but less accurate numerically. Numerical precision important here.
         # + see https://stackoverflow.com/questions/52888650/eigenselfadjointviewrankupdate-slower-than-a-ww-transpose
-        # A test is in test-mv-nested: logLik(mrf1T <- fitme(migStatus ~ 1 +multIMRF(1... should give phi=1e-6 and p_v=-11.24422
+        # A test is in test-mv-extra: logLik(mrf1T <- fitme(migStatus ~ 1 +multIMRF(1... should give phi=1e-6 and p_v=-11.24422
         # 
         # Different numerics for the same pb: 
         #  .calc_inv_beta_cov(sXaug) computes crossr22 from sXaug, handling some complication, 
@@ -597,10 +597,10 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
         R_scaled  <- qrR(BLOB$qrXa,backPermute = FALSE)
         sum(log(abs(diag(x=R_scaled))))
       }, assign.env = BLOB)
-      delayedAssign("logdet_r22", { # X_scaled_H_unscaled_logdet_r22
+      delayedAssign("logdet_r22", { # X_scaled_H_unscaled_logdet_r22   # "REML"
         # some fun here. A QR facto is needed.... I wrote p_bv comput for all methods as a correction of p_v computation
         # by the logdet of an r22 bloc which is not really available in nonSPD case. But we have a similar subcase in the alternative to nonSPD.
-        # However, this implies two QR facto ___F I X M E___ is it possible to optimze to a single one?
+        # However, this implies two QR facto ___F I X M E___ is it possible to optimize to a single one?
         logdet_sqrt_d2hdbv2 <- determinant(qrR(BLOB$qrXa,backPermute = FALSE))$modulus[1] - determinant(BLOB$invIm2QtdQ_ZX)$modulus[1]/2
         logdet_sqrt_d2hdbv2 - BLOB$logdet_sqrt_d2hdv2
       }, assign.env = BLOB) 

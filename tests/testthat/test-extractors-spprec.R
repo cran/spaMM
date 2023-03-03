@@ -9,7 +9,7 @@ cat(crayon::yellow("test-extractors-spprec.R (notably ranCoefs)"))
   fake$ID <- gl(7,2)
   fake$grp <- factor(fake$grp)
   (dd <- fitme(migStatus ~ 1 +  (0+grp|ID),data=fake, control.HLfit=list(sparse_precision=FALSE), fixed=list(phi=0.1)))
-  (ss <- fitme(migStatus ~ 1 +  (0+grp|ID),data=fake, control.HLfit=list(sparse_precision=T), fixed=list(phi=0.1)))
+  (ss <- fitme(migStatus ~ 1 +  (0+grp|ID),data=fake, control.HLfit=list(sparse_precision=TRUE), fixed=list(phi=0.1)))
   ranef(ss)
   ranef(dd)
   

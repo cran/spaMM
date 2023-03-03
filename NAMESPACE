@@ -3,7 +3,7 @@ export(".evalWrapper", ".wrap_Ltri_t_chol", ".calc_CARdispGammaGLM", ".calc_disp
        ".dispFn", ".dispInv", ".nuFn", ".nuInv", ".rhoFn", ".rhoInv", ".NB_shapeFn", ".NB_shapeInv", 
        ".crossprod", ".tcrossprod",  ".stripOffset", ".stripRanefs", ".modify_list") ## probitgem
 export(".HLfit_body_augZXy", ".solve_IRLS_as_ZX", ".solve_IRLS_as_spprec") ## must be exported to be traceable
-export(".safe_opt") ## Infusion
+export(".safe_opt", ".setCluster") ## Infusion
 export(".unloads4spaMM",".is_spprec_fit") ## devel convenience
 importFrom("graphics", ".filled.contour", "Axis", "abline", "axis", "box", "hist", "layout", 
            "lcm", "lines", "par", "plot.new", "plot.window", "points", "polygon", "rect", "title")
@@ -22,7 +22,7 @@ importFrom("stats", "as.formula", "coefficients", "dgamma", "dnorm", "family", "
            "gaussian", "binomial", "dpois", "Gamma", "resid", "uniroot", "deviance", "dbinom", "plogis", 
            "as.dist", "AIC", "qnbinom", "qpois", "rnbinom", "integrate", "poisson",".getXlevels", "na.omit",
            "cov2cor", "pcauchy", "pnorm","model.weights", "setNames", "pf", "df.residual", "drop.terms", 
-           "stat.anova", "residuals", "pt", "reformulate", "drop.scope", "drop1", "update.formula")
+           "stat.anova", "residuals", "pt", "reformulate", "drop.scope", "drop1", "update.formula", "contrasts<-")
 importFrom("utils", "relist", "txtProgressBar", "setTxtProgressBar", "modifyList", "strOptions", "str",
            "write.table", "packageVersion", "packageDescription", "capture.output", "tail")
 importFrom("Matrix", "Matrix", "drop", "isDiagonal", "diag", "t", "solve", "Diagonal", "crossprod", "tcrossprod", "rowSums", "colSums",
@@ -99,6 +99,7 @@ S3method(print, ranef)
 S3method(print, predictions)
 S3method(print, corr_family)
 S3method(print, bootci4print)
+S3method(print, singeigs)
 S3method(update, HLfit)
 S3method(vcov, HLfit)
 S3method(MaternCorr, default)

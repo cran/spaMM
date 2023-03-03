@@ -157,7 +157,9 @@ makeTicks <- function(x, ## in canonical scale...
   mar.orig <- (par.orig <- par(c("mar", "las", "mfrow")))$mar
   on.exit(par(par.orig))
   wmaphmap <- .calc_plot_dims(x,y,xrange=xrange,yrange=yrange,margin=margin,map.asp=map.asp)  
-  layout(matrix(c(2, 1), ncol = 2L), widths = c(lcm(wmaphmap[1]),lcm(wmaphmap[3])),heights=c(lcm(wmaphmap[2])),respect=TRUE)
+  layout(matrix(c(2, 1), ncol = 2L), widths = c(lcm(wmaphmap[1]),lcm(wmaphmap[3])),
+         # heights=c(lcm(wmaphmap[2])), # problem in DIYABC2Infusion devel...
+         respect=TRUE)
   
   par(las = las)
   mar <- mar.orig

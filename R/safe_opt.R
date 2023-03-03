@@ -32,13 +32,15 @@
   prevmin <- Inf
   delayedAssign("bobyqa_controls", .get_bobyqa_controls(init, upper, lower, maxeval_corr))
   delayedAssign("nloptr_controls", .get_nloptr_controls(init, LowUp, maxeval_corr))
-  use_bobyqa <- (min(c(init-lower,upper-init))<1e-4)
+  dx <- upper-lower
+  dx[is.infinite(dx)] <- 1
+  use_bobyqa <- any(c(init-lower,upper-init)/dx<1e-4)
   while (TRUE) {
     if (use_bobyqa) {
       if (verbose) cat("bobyqa: ")
       # This only bc bobyqa is more sensitive to the 14th decimal than nloptr at the boundaries  
       bobyqa_margin <- .spaMM.data$options$bobyqa_margin
-      margin <- (upper-lower)*bobyqa_margin # test_rC_transf (sph) was a test of (this together with rhoend) but in that case adjust_init is a better fix
+      margin <- dx*bobyqa_margin # test_rC_transf (sph) was a test of (this together with rhoend) but in that case adjust_init is a better fix
       margin <- pmin(bobyqa_margin,margin) # handles infinite ranges (but not only)
       init <- pmax(lower+margin,pmin(upper-margin,init))
       # And this is a more substantial adjustment at the margin

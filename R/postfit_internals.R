@@ -128,7 +128,7 @@
 # Consistent with Saefken et al, only in terms of theta and mu. The linear predictor eta and link do not appear.
 # Simulations for that paper use predictions eta only in the poisson(log) case;
 # In the exponential (->Gamma(log)) they do use the theta deduced as -1/mu, not the eta. => cAIC4:::conditionalBootstrap is odd...
-.calc_boot_AIC_dfs <- function (object, nsim, type="residual", seed=NULL, # (___F I X M E___) The whole boot procedure does not handle mv fits ?
+.calc_boot_AIC_dfs <- function (object, nsim, type="residual", seed=NULL, # (__F I X M E__) does not handle mv fits ? Could be docu'ed at least
                            nb_cores=NULL, fit_env=NULL) {
   if ( ! object$family$flags$exp) 
     stop("Bootstrap bias correction not implemented for families not from GLM (exponential family) class.") # assuming $exp methods are always available for GLMs (but see negbin2_dvl)
@@ -147,7 +147,7 @@
 
 .calc_p_phi <- function(object, dfs=object$dfs) {
   p_phi <- dfs[["p_fixef_phi"]]
-  if  ( ! is.null(resid_fits <- object$resid_fits)) { 
+  if  ( ! is.null(resid_fits <- object$resid_fits)) { # i.e mv fit =>$resid_fit*s*
     p_phi <- sum(na.omit(unlist(p_phi)),
                  sum(unlist(lapply(resid_fits, `[[`, x="dfs"), recursive = TRUE, use.names = FALSE)) )
   } else if  ( ! is.null(resid_fit <- object$resid_fit)) { 
@@ -441,7 +441,6 @@
   beta_v_order <- c(beta_pos,seq(attr(sXaug,"n_u_h")))
   tcrossfac_beta_v_cov <- tcrossfac_v_beta_cov[beta_v_order,,drop=FALSE]
   if (inherits(sXaug,"dtCMatrix")) tcrossfac_beta_v_cov <- as(tcrossfac_beta_v_cov, "sparseMatrix")
-  #beta_v_cov <- .tcrossprod(tcrossfac_beta_v_cov)
   beta_cov <- as.matrix(.tcrossprod(tcrossfac_beta_v_cov[seqp,,drop=FALSE])) ## assignment in .make_beta_table() assumes a dense matrix
   return( list(beta_cov=beta_cov, 
                #beta_v_cov=beta_v_cov,

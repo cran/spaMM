@@ -72,7 +72,7 @@ IMRF <- function(...) {
     return(list(corrPars_rd=corrPars_rd, cP_type_rd=cP_type_rd))
   }
   calc_inits <- function(inits, char_rd, moreargs_rd, user.lower, user.upper, optim.scale, init.optim, ...) {
-    inits <- .calc_inits_IMRF(init=inits$init,init.optim=inits$init.optim,init.HLfit=inits$init.HLfit,ranFix=inits$ranFix,
+    inits <- .calc_inits_IMRF(init=inits[["init"]],init.optim=inits$init.optim,init.HLfit=inits$init.HLfit,ranFix=inits$ranFix,
                              user.lower=user.lower,user.upper=user.upper,optim.scale=optim.scale,
                              moreargs_rd=moreargs_rd,char_rd=char_rd)
     # # Nugget: remains NULL through all computations if NULL in init.optim
@@ -386,7 +386,7 @@ IMRF <- function(...) {
   if ( ! is.null(hyper_info)) {
     init.optim <- inits$init.optim ## currently mixes the canon.init and the user init, with conflicting info. 
     ##                                The following code rsolves such conflicts
-    canon.init <- inits$init
+    canon.init <- inits[["init"]]
     ranges <- hyper_info$ranges
     hyper <- hyper_info$template
     for (char_hyper_it in names(hyper)) {

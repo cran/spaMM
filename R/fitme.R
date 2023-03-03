@@ -97,6 +97,7 @@
   if (! is.null(ranCoefs <- fixed$ranCoefs)) {
     for (it in seq_along(ranCoefs)) {
       ranCoef <- ranCoefs[[it]]
+      names(ranCoef) <- NULL # In case the users added fancy names to the vector elements, which could break some post-fit name-matching code
       Xi_ncol <- floor(sqrt(length(ranCoef)*2))
       vdiagPos <- cumsum(c(1L,rev(seq(Xi_ncol-1L)+1L))) # diagpos on vector repre of half matrix, not on matrix
       if (is.null(attr(ranCoefs[[it]],"isDiagFamily"))) {
@@ -128,12 +129,12 @@ fitme <- function(formula,data, ## matches minimal call of HLfit
                   weights.form=NULL,
                   ... # control.HLfit passed through the dots to .preprocess_fitme() -> .preprocess()
 ) {
-  assign("spaMM_glm_conv_crit",list(max=-Inf) , envir=environment(spaMM_glm.fit))
+  .spaMM.data$options$xLM_conv_crit <- list(max=-Inf)
   time1 <- Sys.time()
   oricall <- match.call(expand.dots=TRUE) ## mc including dotlist
   oricall$"control.HLfit" <- eval(oricall$control.HLfit, parent.frame()) # to evaluate variables in the formula_env, otherwise there are bugs in waiting 
   oricall$fixed <- eval(oricall$fixed, parent.frame()) # allows modif in post-fit code (cf get_HLCorcall) 
-  oricall$init <- eval(oricall$init, parent.frame()) # allows modif in post-fit code (cf get_HLCorcall). Better way ? One should be in principle able 
+  oricall$init <- eval(oricall[["init"]], parent.frame()) # allows modif in post-fit code (cf get_HLCorcall). Better way ? One should be in principle able 
                                                      # to provide the arguments again to the post-fit call => argument o post-fit fn to provide control of eval envir.
                                                      # cf also alternative strategy of trying 3 envirs in lme4:::update.merMod(), incl. sys.frames()[[1]]
   mc <- oricall
@@ -161,7 +162,7 @@ fitme <- function(formula,data, ## matches minimal call of HLfit
   mc <- eval(mc,parent.frame()) # returns modified call including an element 'processed'
   mc[[1L]] <- get("fitme_body", asNamespace("spaMM"), inherits=FALSE) 
   hlcor <- eval(mc,parent.frame()) 
-  .check_conv_glm_reinit()
+  .check_conv_dispGammaGLM_reinit()
   if (inherits(hlcor,"HLfitlist")) {
     attr(hlcor,"call") <- oricall
   } else {

@@ -65,7 +65,7 @@
     #attr(ranPars,"type")$trRanCoefs <- NULL
     ## => would break the count of dfs... [cf test that ends as ... fixed=list(ranCoefs=list("1"=c(NA, -0.1, NA))))$dfs))==8L ]  
   }
-  if ( length(ranPars$trNB_shape)) { # rather than 'is.null() bc in mv_case the fampars are suppressed from a fampars vector in post_process_family_it() => final value numeric(0)
+  if ( length(ranPars$trNB_shape)) { # rather than 'is.null() bc in mv_case the rdispars are suppressed from a rdispars vector in post_process_family_it() => final value numeric(0)
     ranPars$NB_shape <- .NB_shapeInv(ranPars$trNB_shape)
     ranPars$trNB_shape <- NULL
     attr(ranPars,"type")$NB_shape <- attr(ranPars,"type")$trNB_shape

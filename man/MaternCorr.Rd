@@ -63,21 +63,19 @@ randpts <- matrix(rnorm(20),nrow=5)
 distMatrix <- as.matrix(proxy::dist(randpts))
 MaternCorr(distMatrix,nu=2)
 
-## Group-specific random effects
+## Group-specific random effects: 
 if (spaMM.getOption("example_maxtime")>1.6) {
-   data("blackcap")
- # grouped effect using the '\%in\%' syntax:
-   fm <- cbind(blackcap,sex=c(rep(TRUE,7),rep(FALSE,7))) 
-   fitme(migStatus ~ 1 + Matern(1|longitude+latitude \%in\% sex),data=fm)
-    
- # Superficially similar aim for distinct random effects for each sex,
- # but here with distinct covariance parameters for each of them:
-   fm$female <- fm$sex; fm$male <- ! fm$female
-   fitme(migStatus ~ 1 + Matern(female|longitude+latitude)+ 
-                         Matern(male|longitude+latitude),data=fm)
- # Although the results of these fits do not explicitly call for it,
- # adding a group-specific intercept may make more sense, as in e.g. 
-   fitme(migStatus ~ sex + Matern(1|longitude+latitude \%in\% sex), data=fm)
+  data(Leuca)
+  subLeuca <- Leuca[c(1:10,79:88),] # subset of 10 feamels and 10 males, for faster examples.
+
+  # Independent Matern random effect with different covariance parameters for each sex:
+  fitme(fec_div ~ sex + Matern(female|x + y) + Matern(male|x + y),  data = subLeuca) 
+
+  # Independent Matern random effect with the same covariance parameters for each sex:
+  fitme(fec_div ~ sex + Matern(1|x+y \%in\% sex),data=subLeuca)
+
+  # Matern models with random-effects distinct but correlated across sexes 
+  # can also be fitted: see Matern examples in help("composite-ranef").   
 } 
 }
 \keyword{ models }% use one of  RShowDoc("KEYWORDS")

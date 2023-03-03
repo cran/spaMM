@@ -49,7 +49,7 @@ if (spaMM.getOption("example_maxtime")>18) { ## user time + system.time for para
   #            what=quote(fixef(ReSu)[2L]), lrt=lrt,nb_cores=4L)[["bootreps"]]
   # unloadNamespace("doSNOW")
   
-  ## parallel pbapply 
+  ## no doSNOW => parallel pbapply 
   set.seed(123)
   # if (exists("ReSu")) rm(ReSu) ## otherwise any error in the following code may result in a confusing message
   spaMM_boot(lrt$nullfit, simuland = myfun, nsim=4, control.foreach = list(.errorhandling="pass"),

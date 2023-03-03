@@ -6,7 +6,7 @@
 \alias{VarCorr}
 \alias{VarCorr.HLfit}
 \title{
-Extract covariance or correlation components from a fitted model object}
+Extract covariance or correlation components from a fitted model object} 
 \description{
 \code{summary(<fit object>)$beta_table} returns the table of fixed-effect coefficients as it is printed by \code{summary}, including standard errors and t-values.
 \code{vcov} returns the variance-covariance matrix of the fixed-effects coefficients.
@@ -35,10 +35,13 @@ Corr(object, ...)
 \value{
 \code{vcov} returns a matrix. \code{Corr} returns a list, for the different random effect terms. For each random-effect term, the returned element is a non-trivial unconditional correlation matrix of the vector \dQuote{\bold{v}} of random effects (\bold{v} as defined in see Details of \code{\link{HLfit}}) for this term, if there is any such matrix. Otherwise the returned element is a information message. 
 
-\code{VarCorr} returns either NULL (if no variance to report, as for a poisson GLM) or a data frame with columns for the grouping factor, term, variance of random effect,  standard deviation (the root of the variance), and optionally for correlation of random effect in random-coefficient terms.  Information about the residual variance is optionally included as the last row(s) of the data frame, when relevant (gaussian- or Gamma-response models with single scalar parameter; beware the meaning of the residual variance parameter for Gamma-response models).
+\code{VarCorr} returns either NULL (if no variance to report, as for a poisson GLM) or a data frame with columns for the grouping factor, term, variance of random effect,  standard deviation (the root of the variance), and optionally for correlation of random effect in random-coefficient terms.  Information about the residual variance is optionally included as the last row(s) of the data frame, when relevant (gaussian- or Gamma-response models with single scalar parameter; beware the meaning of the residual variance parameter for Gamma-response models). 
+
+Some variance parameters may be removed \code{VarCorr}, with a message, such as the slope of the linear predictor describing the correlation model of an \code{adjacency} term (see \code{autoregressive}). The rare user of such parametrization should not consider this as a stable feature.   
 }
 \seealso{
 \code{\link{get_inits_from_fit}} and \code{\link{get_ranPars}}.
+\code{\link{get_matrix}(., which="beta_v_cov")} for the joint covariance matrix of estimates/predictions of fixed effect coefficients and random effects.
 }
 \examples{
 data("wafers")

@@ -15,7 +15,8 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
       resid.model = ~1, REMLformula = NULL, verbose = c(inner = FALSE), 
       HLmethod = "HL(1,1)", method="REML", control.HLfit = list(), 
       control.glm = list(), init.HLfit = list(), fixed=list(), ranFix, 
-      etaFix = list(), prior.weights = NULL, weights.form = NULL, processed = NULL)
+      etaFix = list(), prior.weights = NULL, weights.form = NULL, X2X=NULL, 
+      processed = NULL)
 ## see 'rand.family' argument for inverse.Gamma
 }
 %- maybe also 'usage' for other objects documented here.
@@ -38,26 +39,15 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
   and the link gives \code{v} as function of \eqn{u} (see Details).
   If there are several random effects and only one family is given, this family holds for all random effects.
 }
-  \item{resid.model}{
-  \bold{Either} a formula (without left-hand side) for the dispersion parameter \code{phi} of the residual error. A log link is assumed by default;\cr 
-  \bold{or} a list, with at most three possible elements if its formula involves only fixed effects:
-  \describe{
-    \item{formula}{model formula as in formula-only case, without left-hand side}
-    \item{family}{Always Gamma, with by default a log link. \code{Gamma(identity)} can be tried but may fail because only the log link ensures that the fitted \eqn{\phi} is positive.}
-    \item{fixed}{can be used to specify the residual dispersion parameter of the residual dispersion model itself. The default value is 1; this argument can be used to set another value, and \code{fixed=list(phi=NA)} will force estimation of this parameter.} 
-  }
-  and additional possible elements (all named as \code{fitme} arguments) if its formula involves random effects:  see \code{\link{phiHGLM}}.
-}
+  \item{resid.model}{Used to specify a model for the dispersion parameter of the mean-response family. See the \code{\link{resid.model}} documentation, and the more specific \code{\link{phi-resid.model}} one for the \eqn{phi} parameter of gaussian and Gamma response families.}
   \item{REMLformula}{
   A model \code{formula} that controls the estimation of dispersion parameters and the computation of restricted likelihood (\code{p_bv}), where the conditioning inherent in REML is defined by a model different from the predictor \code{formula}. A simple example (useless in practice) of its effect is to replicate an ML fit by specifying \code{method="REML"} and an \code{REMLformula} with no fixed effect. The latter implies that no conditioning is performed and that \code{p_bv} equals the marginal likelihood (or its approximation), \code{p_v}. One of the examples in \code{\link{update.HLfit}} shows how \code{REMLformula} can be useful, but otherwise this argument may never be needed for standard REML or ML fits. For non-standard likelihood ratio tests using \code{REMLformula}, see \code{\link{fixedLRT}}.    
 }
   \item{verbose}{
-    A vector of booleans. The \code{inner} element controls various diagnostic messages (possibly messy) about the iterations. This should be distinguished from the \code{TRACE} element, meaningful in \code{fitme} or \code{corrHLfit} calls, and much more useful. \code{phifit} (which defaults to \code{TRUE}) controls messages about the progress of residual dispersion fits in DHGLMs. 
+    A vector of booleans or integers. The \code{inner} element controls various diagnostic messages (possibly messy) about the iterations. This should be distinguished from the \code{TRACE} element, meaningful in \code{fitme} or \code{corrHLfit} calls, and much more useful. The \code{phifit} element controls messages about the progress of \code{\link{phi-resid.model}} fits (see the latter documentation). 
   }
   \item{method}{Character: the fitting method. 
-  allowed values are \code{"REML"}, \code{"ML"}, \code{"EQL-"} and \code{"EQL+"} for all models;  
-  \code{"PQL"} (=\code{"REPQL"}) and \code{"PQL/L"} for GLMMs only; and further values 
-  for those curious to experiment (see \code{\link{method}}). \bold{The default is REML} (standard REML for LMMs, 
+  allowed values include \code{"REML"}, \code{"ML"}, \code{"EQL-"} and \code{"EQL+"} for all models, and \code{"PQL"} (=\code{"REPQL"}) and \code{"PQL/L"} for GLMMs only. \code{method=c(<"ML" or "REML">,"exp")} can be distinctly useful for slow fits of models with \code{Gamma(log)} response family. See (see \code{\link{method}}) for details, and further possible values for those curious to experiment. \bold{The default is REML} (standard REML for LMMs, 
   an extended definition for other models). REML can be viewed as a form of conditional inference, and non-standard conditionings can be called by using a non-standard \code{REMLformula}.
 }
   \item{HLmethod}{Same as \code{method}. It is useless to specify \code{HLmethod} when \code{method} is specified. The default value \code{"HL(1,1)"} means the same as \code{method="REML"}, but more accurately relates to definitions of approximations of likelihood in the \eqn{h}-likelihood literature.}
@@ -91,8 +81,11 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
   \item{weights.form}{
   Specification of prior weights by a one-sided formula: use \code{weights.form = ~ pw} instead of \code{prior.weights = pw}. The effect will be the same except that such an argument, known to evaluate to an object of class \code{"formula"}, is suitable to enforce safe programming practices (see \code{\link{good-practice}}).  
   }
+  \item{X2X}{
+    For development purposes, not documented.
+ }
   \item{processed}{
-    A list of preprocessed arguments, for programming purposes only (as in \code{corrHLfit}).
+    A list of preprocessed arguments, for programming purposes only.
  }
 }
 \details{

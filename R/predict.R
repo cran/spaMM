@@ -420,22 +420,20 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
 # This ignores prior weights. I wrote a function using them => code_doc/calcResidVar_phiW.R
 .calcResidVar <- function(object,newdata=NULL, phi.object=object$phi.object, families=object$families, 
                           mv_it=NULL, #  used to pass non-default to .get_glm_phi()
+                          cum_nobs,
                           family=object$family, fv,
                           nobs_info=nrow(object$X.pv)) {
   if ( ! is.null(families)) {
     residVars <- vector("list", length(families))
-    cum_nobs <- attr(families,"cum_nobs")
     for (mv_it in seq_along(families)) {
-      residVars[[mv_it]] <- .calcResidVar(object, newdata=newdata, phi.object=phi.object[[mv_it]], families=NULL, 
+      residVars[[mv_it]] <- .calcResidVar(object, newdata=newdata[[mv_it]], phi.object=phi.object[[mv_it]], families=NULL, 
                                           mv_it=mv_it, 
                                           family=families[[mv_it]], fv=fv[.subrange(cumul=cum_nobs, it=mv_it)],
                                           nobs_info=object$vec_nobs[mv_it])
     }
     residVar <- unlist(residVars, recursive = FALSE, use.names = FALSE)
   } else {
-    if (! family$family %in% c("gaussian","Gamma")) {
-      residVar <- family$variance(fv)
-    } else {
+    if ( family$family %in% c("gaussian","Gamma")) {
       if (is.null(phi_outer <- phi.object$phi_outer)) { ## valid whether newdata are NULL or not:      
         glm_phi <- .get_glm_phi(object, mv_it)
         residVar <- predict(glm_phi, newdata=newdata, type="response")
@@ -456,8 +454,13 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
           } else residVar <- predict(glm_phi, newdata=newdata, type="response")
         }
       }
+      if (family$family=="Gamma") residVar <- residVar * fv^2
+    } else {
+      family_par <- .get_family_par(family, famfam=family$family, newdata=newdata)
+      if (is.null(family_par)) { # family without resid.model OR [with resid.model but newdata were NULL]
+        residVar <- family$variance(fv)
+      } else residVar <- family$variance(fv, new_fampar=family_par)
     }
-    if (family$family=="Gamma") residVar <- residVar * fv^2
   }
   residVar
 } 
@@ -835,6 +838,8 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
     if (is.null(variances$cov)) variances$cov <- variances$as_tcrossfac_list
     if (is.null(variances$naive)) variances$naive <- FALSE
     if (is.null(variances$cancel_X.pv)) variances$cancel_X.pv <- FALSE
+    # there is a test any(unlist(variances)) somewhere so care is needed before adding new elements... 
+    #    This test happens to be OK when cancel_X.pv is TRUE as some other elements are also TRUE in that case.
     return(variances)
   }
 })
@@ -869,9 +874,8 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
 }
 
 .eta_linkfun <- function(mu_T, # must be vector, even in mv case 
-                         family, families=NULL) { 
+                         family, families=NULL, cum_nobs) { 
   if (! is.null(families)) {
-    cum_nobs <- attr(families,"cum_nobs")
     eta <- vector("list", length(cum_nobs)-1L)
     for (mv_it in seq_along(eta)) {
       resp_range <- .subrange(cumul=cum_nobs, it=mv_it)
@@ -888,8 +892,10 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
 .subrange <- function(cumul, it) {cumul[it]+ seq_len(cumul[it+1L]-cumul[it])}
 
 .fv_linkinv <- function(eta, # vector, not matrix : simulate(., nsim) -> .fv_linkinv(eta[, it], ...)
-                        family, families=NULL, cum_nobs= attr(families,"cum_nobs")) {
+                        family, families=NULL, 
+                        cum_nobs=attr(families,"cum_nobs")) { # cum_nobs must be controllable for newdata
   if (! is.null(families)) {
+#    if (is.null(cum_nobs)) cum_nobs <- attr(families,"cum_nobs") # should not occur when coding is OK. 
     fv <- p0 <- mu_U <- vector("list", length(cum_nobs)-1L)
     for (mv_it in seq_along(fv)) {
       resp_range <- .subrange(cumul=cum_nobs, it=mv_it)
@@ -955,8 +961,9 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
     if (type=="link") { # in those cases, we return eta but no useful $fv 
       fv <- NULL 
     } else {
-      fv <- .fv_linkinv(eta_fix, object$family, object$families) ## ! freqs for binomial, counts for poisson
-      fv <- .mvize(fv=fv, cum_nobs=new_X_ZACblob$cum_nobs)
+      cum_nobs <- new_X_ZACblob$cum_nobs # must be available when eta_fix is
+      fv <- .fv_linkinv(eta_fix, object$family, object$families, cum_nobs=cum_nobs) ## ! freqs for binomial, counts for poisson
+      fv <- .mvize(fv=fv, cum_nobs=cum_nobs)
     }
     return(list(fv=fv,eta=eta_fix))
   } else if ( is.null(newdata) && ! inherits(re.form,"formula")) {
@@ -1001,8 +1008,9 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
     if (type=="link") {
       fv <- NULL # but eta will be returned
     } else {
-      fv <- .fv_linkinv(eta, object$family, object$families, cum_nobs=new_X_ZACblob$cum_nobs) ## ! freqs for binomial, counts for poisson
-      fv <- .mvize(fv=fv, cum_nobs=new_X_ZACblob$cum_nobs)
+      cum_nobs <- new_X_ZACblob$cum_nobs # must be available when eta_fix is
+      fv <- .fv_linkinv(eta, object$family, object$families, cum_nobs=cum_nobs) ## ! freqs for binomial, counts for poisson
+      fv <- .mvize(fv=fv, cum_nobs=cum_nobs)
     }
     return(list(fv=fv,eta=eta))
   }
@@ -1025,15 +1033,14 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
   } else object$residModels[[mv_it]]$family
 }
 
-.to_respScale_var <- function(respVar, ppblob, object) {
+.to_respScale_var <- function(respVar, ppblob, object, cum_nobs) {
   dmudeta <- NULL
   if ( ! is.null(families <- object$families)) {
     nonid_linkS <- logical(length(families))
     for (mv_it in seq_along(families)) nonid_linkS[mv_it] <- (families[[mv_it]]$link!="identity")
     if (any(nonid_linkS)) {
-      cum_nobs <- attr(families,"cum_nobs")
       dmudetaS <- vector("list", length(nonid_linkS))
-      if (is.null(eta <- ppblob$eta)) eta <- .eta_linkfun(ppblob$fv, family = NULL, families=families) 
+      if (is.null(eta <- ppblob$eta)) eta <- .eta_linkfun(ppblob$fv, family = NULL, families=families, cum_nobs=cum_nobs) 
       for (mv_it in seq_along(families)) {
         resp_range <- .subrange(cumul=cum_nobs, it=mv_it)
         if (nonid_linkS[mv_it] && length(resp_range)) {
@@ -1084,11 +1091,11 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
 })
  
 
-.add_residVar <- function(object, resu, fv, locdata, respVar, variances) {
+.add_residVar <- function(object, resu, fv, locdata, respVar, variances, cum_nobs) {
   .warn_pw(object) # residVar() wraps .get_phiW() that can handle prior weights 
   # .get_phiW() must be wrapped bc it is not OK for all objects, It can handle new data, but residVar() cannot =>
   # need other wrapper or new argument
-  attr(resu,"residVar") <- .calcResidVar(object,newdata=locdata, fv=fv) 
+  attr(resu,"residVar") <- .calcResidVar(object,newdata=locdata, fv=fv,cum_nobs=cum_nobs) 
   if (inherits(respVar,"matrix")) {
     nc <- ncol(respVar)
     diagPos <- seq.int(1L,nc^2,nc+1L)
@@ -1157,14 +1164,16 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
 
 
 .predict_body <- function(object, newdata, re.form, type,
-                          variances, binding, intervals, level, blockSize, control, showpbar) {
+                          variances, binding, intervals, level, blockSize, control, showpbar, new_X_ZACblob=NULL) {
+  # This promise applies to newdata= newdata_slice if relevant, so cannot be defined on the unsliced data (hence new_X_ZACblob cannot as well).
   delayedAssign("invCov_oldLv_oldLv_list", .get_invColdoldList(object, control=control))
-  if ( ! is.null(object$vec_nobs)) {
-    new_X_ZACblob <- .calc_new_X_ZAC_mv(object=object, newdata=newdata, re.form = re.form,
-                                     variances=variances, invCov_oldLv_oldLv_list=invCov_oldLv_oldLv_list)
-  } else new_X_ZACblob <- .calc_new_X_ZAC(object=object, newdata=newdata, re.form = re.form,
-                                   variances=variances, invCov_oldLv_oldLv_list=invCov_oldLv_oldLv_list
-                                   ) 
+  if (is.null(new_X_ZACblob)) { # may have been precomputed and provided in mv case. Otherwise:
+    if ( is.null(object$vec_nobs)) {
+      new_X_ZACblob <- .calc_new_X_ZAC(object=object, newdata=newdata, re.form = re.form,
+                                       variances=variances, invCov_oldLv_oldLv_list=invCov_oldLv_oldLv_list)
+    } else new_X_ZACblob <- .calc_new_X_ZAC_mv(object=object, newdata=newdata, re.form = re.form,
+                                        variances=variances, invCov_oldLv_oldLv_list=invCov_oldLv_oldLv_list, control=control)
+  }
   #
   ## (1) computes fv (2) compute predVar
   ##### fv
@@ -1244,10 +1253,11 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
   # For interval computations we always use the predVar on the linear predictor scale, already stored as a an attribute of 'resu'.
   # rather than the result of .to_respScale_var:
   if (variances$respVar) {
-    respVar <- .to_respScale_var(predVar, ppblob, object) 
+    respVar <- .to_respScale_var(predVar, ppblob, object, cum_nobs=new_X_ZACblob$cum_nobs) 
   } else respVar <- NULL # remove any ambiguity
   # 
-  if (variances$residVar) resu <- .add_residVar(object, resu, fv=ppblob$fv, locdata, respVar, variances) # may affect attributes residVar AND respVar
+  if (variances$residVar) resu <- .add_residVar(object, resu, fv=ppblob$fv, locdata, respVar, variances,
+                                                cum_nobs=new_X_ZACblob$cum_nobs) # may affect attributes residVar AND respVar
   if ( is.matrix(resu) && NCOL(resu)==1L) {
     class(resu) <- c("predictions",class(resu))
   } ## for print.predictions method which expects a 1-col matrix
@@ -1267,8 +1277,8 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
       } else {eta <- resu; dim(eta) <- NULL} # matrix -> vector
     } else {
       if (is.character(binding)) { # then resu is data.frame
-        eta <- .eta_linkfun(resu[[binding]] , object$family, object$families) # with possible mu attribute
-      } else eta <- .eta_linkfun(resu , object$family, object$families)  # with possible mu attribute
+        eta <- .eta_linkfun(resu[[binding]] , object$family, object$families, cum_nobs=new_X_ZACblob$cum_nobs) # with possible mu attribute
+      } else eta <- .eta_linkfun(resu , object$family, object$families, cum_nobs=new_X_ZACblob$cum_nobs)  # with possible mu attribute
       ## mv: 'resu' ('center' of intervals) still a single column 
       eta <- eta[seq(nrow(resu))] ## [] with explicit indices, needed here to drop possible mu attribute otherwise linkinv(eta+/-sd) uses it! 
       #                           #   and so -> vector in all case  
@@ -1298,17 +1308,19 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
         # for GLMMs a better bound might be obtained by convolution of residual error distrib and of predVar  ~gaussian on linear scale
       }
       if (variances$respVar) { # sd is already on response scale
-        mu <- .fv_linkinv(eta=eta, family=object$family, families=object$families)
+        mu <- .fv_linkinv(eta=eta, family=object$family, families=object$families, cum_nobs=new_X_ZACblob$cum_nobs)
         interval <- cbind(mu-sd,mu+sd)
       } else if (type=="link") {
         interval <- cbind(eta-sd,eta=eta+sd)
-      } else interval <- cbind(.fv_linkinv(eta=eta-sd, family=object$family, families=object$families),
-                               .fv_linkinv(eta=eta+sd, family=object$family, families=object$families))
+      } else interval <- cbind(.fv_linkinv(eta=eta-sd, family=object$family, families=object$families, cum_nobs=new_X_ZACblob$cum_nobs),
+                               .fv_linkinv(eta=eta+sd, family=object$family, families=object$families, cum_nobs=new_X_ZACblob$cum_nobs))
       colnames(interval) <- paste(st,c(signif(1-pv,4),signif(pv,4)),sep="_")
       intervalresu <- cbind(intervalresu,interval) # recursive cbind over types of intervals
     }
     attr(resu,"intervals") <- intervalresu
-  }
+  } 
+  attr(resu,"nobs") <- diff(new_X_ZACblob$cum_nobs)
+  if (control$simulate)   attr(resu,"new_X_ZACblob") <- new_X_ZACblob
   return(resu)
 }
 
@@ -1356,6 +1368,7 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
                                                         '"link" and "response". Anything else is equivalent to "response".'), immediate. = TRUE)
   ## the final components returned as attributes have names ...Var, other terms should be named differently
   #
+  if (is.null(control$simulate)) control$simulate <- control$keep_ranef_vars_for_simulate <- FALSE
   if ( ! is.null(intervals)) {
     if ( ! inherits(intervals,"character")) stop("'intervals' arguments should inherit from class 'character'.")
     checkIntervals <- (substr(x=intervals, nchar(intervals)-2L, nchar(intervals))=="Var")
@@ -1373,7 +1386,7 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
   if (!is.null(re.form) && inherits(re.form,"formula")) re.form <- .preprocess_formula(re.form)
   showpbar <- verbose[["showpbar"]]
   ############################## if (nrX>0L) newdata <- droplevels(newdata) FIXME perhaps here ? 
-  if ( (! variances$cov) && nrX > blockSize) {
+  if ( (! variances$cov) && ! control$simulate && nrX > blockSize) {
     ### this part of code is tested by the test-predVar code on Loaloa data
     # et par test geostat dans probitgem (iterateSEMSmooth -> .sampleNextPars -> .spaMM_rhullByEI)
     ## newdata <- droplevels(newdata) ## potential gain of time for droplevels(newdata_slice)
@@ -1399,7 +1412,7 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
   } else res <- .predict_body(object=object, newdata=newdata, re.form = re.form,
                 variances=variances, binding=binding, type=type,
                 intervals=intervals, level=level, blockSize=blockSize, ## but blockSize could be useful *here* if newdata was NULL
-                control=control, showpbar=showpbar)
+                control=control, showpbar=showpbar) # if control$simulate is TRUE, and new_X_ZACblob was evaluated, there is attr(resu,"new_X_ZACblob")
   return(res)
 }
 
