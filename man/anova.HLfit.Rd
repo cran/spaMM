@@ -5,7 +5,7 @@
 \alias{LRT}
 %- Also NEED an '\alias' for EACH other topic documented here.
 \title{
-  Tests of fixed effects (LRTs and ANOVA tables).
+  ANOVA tables, and likelihood ratio tests of fixed and random effects.
 }
 \description{
 The \code{anova} method for fit objects from \pkg{spaMM} has two uses: if a single fit object is provided, ANOVA tables may be returned, with specific procedures for univariate-response LMs, GLMs and LMMs (see Details). Alternatively, if a second fit object is provided (\code{object2} argument), \code{anova} performs as an alias for \code{LRT}. 

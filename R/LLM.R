@@ -135,8 +135,8 @@
 
 
 # fixed-effect mean response
-# uses gradient and negHess, while .calc_etaLLMblob uses z1 and w_resid
-# Maybe not quite different otherwise (___F I X M E___ merge ?)
+# uses gradient and negHess, while .calc_etaGLMblob uses z1 and w_resid
+# Maybe not quite different otherwise (__F I X M E__ merge ?? pbbly not a good idea)
 # condition for either seems to be if(obsInfo) => $obs methods used (so requested, and non canonical)
 .calc_etaLLMblob <- function(processed, muetablob, 
                              mu=muetablob$mu, eta=muetablob$sane_eta, 
@@ -155,7 +155,8 @@
   LM_called <- FALSE
   damping <- 1e-7 ## as suggested by Madsen-Nielsen-Tingleff... # Smyth uses abs(mean(diag(XtWX)))/nvars
   newclik <- .calc_clik(mu=mu,phi_est=phi_est,processed=processed) ## handles the prior.weights from processed
-  dlogL_blob <- .calc_dlogL_blob(eta, mu, y, weights=processed$prior.weights, family, phi=phi_est, muetaenv=muetablob)
+  dlogL_blob <- .calc_dlogL_blob(eta, mu, y, weights=processed$prior.weights, family, phi=phi_est, muetaenv=muetablob,
+                                 BinomialDen=BinomialDen)
   for (innerj in seq_len(maxit.mean)) {
     ## breaks when Xtol_rel is reached
     clik <- newclik
@@ -214,8 +215,9 @@
       damping <- damped_WLS_blob$damping
       dbetaV <- damped_WLS_blob$dbetaV
     } else dbetaV <- beta_eta - old_beta_eta
-    mu <- muetablob$mu
-    dlogL_blob <- .calc_dlogL_blob(eta, mu, y, weights=processed$prior.weights, family, phi=phi_est, muetaenv=muetablob)
+    dlogL_blob <- .calc_dlogL_blob(eta, mu=muetablob$mu, # muCOUNT 
+                                   y, weights=processed$prior.weights, family, phi=phi_est, muetaenv=muetablob,
+                                   BinomialDen=BinomialDen)
     if (verbose["trace"]) {
       print(paste0("Inner iteration ",innerj))
       print_err <- c(beta_eta=beta_eta)

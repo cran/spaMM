@@ -7,8 +7,8 @@
 # use usethis::edit_r_makevars() to edit the local file 
 # and ADD the flag by += : PKG_CXXFLAGS += -Wno-ignored-attributes
 
-PKG_CXXFLAGS = -fno-omit-frame-pointer 
+PKG_CXXFLAGS = -fno-omit-frame-pointer $(SHLIB_OPENMP_CXXFLAGS)
 
 PKG_CPPFLAGS = -I$(LIB_GSL)/include
-PKG_LIBS = -L$(LIB_GSL)/lib -lgsl -lgslcblas 
+PKG_LIBS = -L$(LIB_GSL)/lib -lgsl -lgslcblas $(SHLIB_OPENMP_CXXFLAGS)
 

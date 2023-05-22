@@ -282,7 +282,7 @@ HLfit_body <- function(processed,
   CorrEst_and_RanFix <- .get_CorrEst_and_RanFix(ranFix, corr_est) # corr_est parameters are inner-estimated and of type "var"
   how <- list(spaMM.version=packageVersion("spaMM"),
                   MME_method=.get_MME_method(loopout_blob$auglinmodblob, HL=HL),
-                  switches=c(augZXy_cond=processed$augZXy_cond,
+                  switches=c(augZXy_cond=processed$augZXy_cond, ADFun=processed$ADFun,
                              use_spprec_QR=.spaMM.data$options$use_spprec_QR),
                   obsInfo=processed$how$obsInfo )
   
@@ -320,7 +320,7 @@ HLfit_body <- function(processed,
   
   res <- .add_unscaled_X.pv_fixef(res=res, processed=processed, beta_eta=loopout_blob$beta_eta, etaFix=etaFix)  ## FIXEF, UNSCALED X
   
-  if (is.null(processed$family) || processed$family$family=="binomial") { # null for mv case
+  if (is.null(processed$family) || processed$family$family %in% c("binomial","betabin")) { # null for mv case
     res$BinomialDen <- BinomialDen # we could put it in all cases...
   }
   

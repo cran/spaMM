@@ -84,7 +84,7 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
   }
   if (BLOB$nonSPD) {
     BLOB$signs_in_WLS_mat <- FALSE
-    # BLOB$WLS_mat_weights arleady defined
+    # BLOB$WLS_mat_weights already defined
   } else {
     BLOB$signs_in_WLS_mat <- ( ! is.null(BLOB$signs)) # sufficient condition HERE given we are in SPD case
     BLOB$WLS_mat_weights <- BLOB$H_w.resid
@@ -379,7 +379,7 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
 }
 
 .provide_BLOB_hatval_Z_ <- function(sXaug, BLOB=sXaug$BLOB, w.ranef=attr(sXaug,"w.ranef") , AUGI0_ZX=sXaug$AUGI0_ZX , needed=c("lambda","phi")) {
-  if (BLOB$nonSPD) { # __F I X M E__ componentwise product presumably not efficient
+  if (BLOB$nonSPD) { # ___F I X M E___ componentwise product presumably not efficient + does not "memoise" as alternative code does.
     hatval_Z_ <- colSums(( BLOB$invIm2QtdQ_Z %*% BLOB$t_Qq) * BLOB$t_Qq)
     seq_n_u_h <- seq_len(ncol(BLOB$Gmat))
     BLOB$hatval_Z_ <- list(lev_lam=hatval_Z_[seq_n_u_h], lev_phi=hatval_Z_[-seq_n_u_h]*BLOB$signs)
@@ -400,9 +400,10 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
           ## invL_G.P presumably needed for lev_lambda from factor_inv_Md2hdv2
           ## (...lev_phi from invL_G.P, lev_lambda from invL_G.P %*% chol_Q ) 
           lev_phi <- colSums(BLOB$invL_G.P^2)
-          # __F I X M E__ as.vector() otherwise next line puts the weights' attributes on the lev_phi result. this is ugly 
-          # here SPD case, H_w.resid=WLS_mat_weights are signed so they contain BLOB$signs 
-          lev_phi <- as.vector(drop(AUGI0_ZX$ZAfix %*% lev_phi) *sXaug$BLOB$WLS_mat_weights) # signs here are checked by compar with SPD spcorr sign() QQ' 
+          # here SPD case, H_w.resid=WLS_mat_weights are signed so they contain BLOB$signs.  # signs here are checked by compar with SPD spcorr sign() QQ'  
+          lev_phi <- as.vector(AUGI0_ZX$ZAfix %*% lev_phi * sXaug$BLOB$WLS_mat_weights)
+          # as.vector() drop all attributes: any attribute from WLS_mat_weights 
+          # (such as those inherited from prior weights, if not already removed, and the colnames from lev_phi <- colSums(.)). 
         } else {
           # inv_L_G_ZtsqrW arises as simplif of BLOB$factor_inv_Md2hdv2 %*% t(sqrtwZL) (L and chol_Q cancel each other)
           lev_phi <- BLOB$inv_L_G_ZtsqrW ## solve(as(BLOB$G_CHMfactor,"sparseMatrix"), t(sqrtwZ))
@@ -419,19 +420,19 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
   BLOB$hatval_Z_ 
 }
 
-.provide_BLOB_factor_inv_Md2hdv2 <- function(BLOB) { ## Code encapsulated in a function for easier profiling
-  # .calc_sscaled_new() -> (Pdiag <- get_from_MME(sXaug,"hatval_Z", B=...)) -> appears to be the last big bottleneck for fitme(). 
-  # We need a diag(crossprod(factor)) =colSums(factor$x^2) needing the full factor
-  LL <- BLOB$invL_G.P %*% BLOB$chol_Q ## dgCMatrix 
-  # Even is BLOB$chol_Q is Identity, this this hardly slower than Matrix::solve(BLOB$G_CHMfactor, system="L") so cannot be improved.
-  # The pattern Matrix::solve(BLOB$G_CHMfactor, as(BLOB$G_CHMfactor,"pMatrix") %*% ., system="L")  occurs repeatedly and is costly
-  #                        late discovery: as(BLOB$G_CHMfactor,"pMatrix") is quite costly
-  # so the Q is whether to store the (rel dense) invL_G.P= solve(BLOB$G_CHMfactor, as(BLOB$G_CHMfactor,"pMatrix"))
-  # Currently it is computed and stored only for several leverage computation and for factor_inv_Md2hdv2
-  #factor_Md2hdv2 <- as.matrix(Matrix::solve(BLOB$chol_Q,as(BLOB$G_CHMfactor,"sparseMatrix")))
-  #BLOB$chol_Md2hdv2 <- Rcpp_chol_R(tcrossprod(factor_Md2hdv2)) #A = R'.R as in R's chol()
-  factor_inv_Md2hdv2 <- drop0(LL,tol=.Machine$double.eps) ## crossfactor
-} # *returns* the factor
+# .calc_sscaled_new() -> (Pdiag <- get_from_MME(sXaug,"hatval_Z", B=...)) -> appears to be the last big bottleneck for fitme(). 
+#                        late discovery: even as(BLOB$G_CHMfactor,"pMatrix") is quite costly
+# We need a diag(crossprod(factor)) =colSums(factor$x^2) needing the full factor.
+# One Q is whether to store the (rel dense) invL_G.P= solve(BLOB$G_CHMfactor, as(BLOB$G_CHMfactor,"pMatrix"))
+.provide_BLOB_factor_inv_Md2hdv2 <- function(BLOB) { # crossfactor
+  if (.is_evaluated("invL_G.P", BLOB)) { 
+    # invL_G.P currently evaluated for some leverage computations if is_unitary_ZAfix, and the odd nonSPD t_Qq computation
+    factor_inv_Md2hdv2 <- BLOB$invL_G.P %*% BLOB$chol_Q ## dgCMatrix 
+    # Even is BLOB$chol_Q is Identity, this this hardly slower than Matrix::solve(BLOB$G_CHMfactor, system="L") so cannot be improved.
+  } else factor_inv_Md2hdv2 <- Matrix::solve(BLOB$G_CHMfactor, BLOB$chol_Q[BLOB$pMat_G@perm, ], system="L") ## R_11^{-T}.Ztw.pwy_o
+  # formerly:
+  # drop(factor_inv_Md2hdv2,tol=.Machine$double.eps)
+} 
 
 .factor_inv_Md2hdv2_times_rhs <- function(BLOB, B) { 
   ## get_from_MME(., "solve_d2hdv2", .) => B generally vector but may be diag, Diagonal 
@@ -457,7 +458,6 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
 }
 
 .calc_r12 <- function(BLOB, X.pv) {
-  
   # Element of the WLS_mat, even in nonSPD case. if there are signs in WLS_mat weights we must recover them.  
   # Use inv_L_G_ZtsqrW when it's available (as needed for certain leverage computations) 
   # Otherwise use ZtWX which is typically much smaller, so that solve(., ZtWX) is faster than solve(., ZtsqrW)
@@ -469,7 +469,7 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
   } else if (.is_evaluated("invL_G.P", BLOB)) { 
     r12 <- BLOB$invL_G.P %*% BLOB$ZtWX
   } else r12 <-  Matrix::solve(BLOB$G_CHMfactor, BLOB$ZtWX[BLOB$pMat_G@perm, ], system="L")
-  # : not computing invL_G.P here is big improvement for test IMRF rawGNIPdataEU.1, and also for pcmatern LMM
+  # : not computing invL_G.P here is a big improvement for test IMRF rawGNIPdataEU.1, and also for pcmatern LMM
   as.matrix(r12) # it tends to be dense (dge) and is used in a few crossprod operations that are faster on matrix (Matrix::crossprod time ~time crossprod(as.matrix)).
   # Using .Rcpp_crossprod() on the result may be even faster, but overall a notable waste of time by loss of numerical precision
   # => DON'T use .crossprod() not .Rcpp_crossprod on it.
@@ -490,6 +490,20 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
   }
 })
 
+.invL_G.P <- function(BLOB) {
+  Matrix::solve(BLOB$G_CHMfactor, BLOB$pMat_G, system="L")
+}
+
+.inv_L_G_ZtsqrW <- function(BLOB, AUGI0_ZX) {
+  sqrtwZ <- .Dvec_times_Matrix(BLOB$sqrtW, AUGI0_ZX$ZAfix)
+  if (.is_evaluated("invL_G.P", BLOB)) { # condition has drastic effect on IMFwrap timings in useR2021_spatial_timings... 
+    # invL_G.P currently evaluated for some leverage computations if is_unitary_ZAfix, and the odd nonSPD t_Qq computation
+    tcrossprod(BLOB$invL_G.P, sqrtwZ)
+  } else Matrix::solve(BLOB$G_CHMfactor, tcrossprod(BLOB$pMat_G, sqrtwZ), system="L")
+  
+}
+
+
 .init_promises_spprec <- function(sXaug, non_X_ones=TRUE, nullify_X_ones =FALSE, intervalInfo=NULL) {  
   BLOB <- sXaug$BLOB # environment that should contain  'G_CHMfactor', 'chol_Q', 'perm', optionally 'signs' when promises are evaluated;
   AUGI0_ZX <- sXaug$AUGI0_ZX # envir (prime fit) or list (converted to list by confint)
@@ -497,11 +511,12 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
   if ( non_X_ones ) {
     ### What does NOT depend on X
     delayedAssign("sortPerm", sort.list(BLOB$pMat_G@perm), assign.env = BLOB ) # never NULL
-    delayedAssign("invL_G.P", drop0(Matrix::solve(BLOB$G_CHMfactor, BLOB$pMat_G, system="L")), assign.env = BLOB ) # never NULL
-    delayedAssign("inv_L_G_ZtsqrW", {
-      sqrtwZ <- .Dvec_times_Matrix(BLOB$sqrtW, AUGI0_ZX$ZAfix)
-      inv_L_G_ZtsqrW <- tcrossprod(BLOB$invL_G.P, sqrtwZ)
-    }, assign.env = BLOB )
+    delayedAssign("invL_G.P", 
+                  .invL_G.P(BLOB), # drop0() removed here; effect seems marginal
+                  assign.env = BLOB ) 
+    delayedAssign("inv_L_G_ZtsqrW", 
+                  .inv_L_G_ZtsqrW(BLOB, AUGI0_ZX), 
+                  assign.env = BLOB )
     delayedAssign("factor_inv_Md2hdv2",.provide_BLOB_factor_inv_Md2hdv2(BLOB), assign.env = BLOB )
     #delayedAssign("half_logdetQ",  sum(log(diag(x=BLOB$chol_Q))), assign.env = BLOB ) ## currently not used (in variant of LevMar step)
     #delayedAssign("half_logdetG", Matrix::determinant(BLOB$G_CHMfactor)$modulus[1], assign.env = BLOB ) ## currently not used (in variant of LevMar step)

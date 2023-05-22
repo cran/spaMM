@@ -37,7 +37,7 @@ Corr(object, ...)
 
 \code{VarCorr} returns either NULL (if no variance to report, as for a poisson GLM) or a data frame with columns for the grouping factor, term, variance of random effect,  standard deviation (the root of the variance), and optionally for correlation of random effect in random-coefficient terms.  Information about the residual variance is optionally included as the last row(s) of the data frame, when relevant (gaussian- or Gamma-response models with single scalar parameter; beware the meaning of the residual variance parameter for Gamma-response models). 
 
-Some variance parameters may be removed \code{VarCorr}, with a message, such as the slope of the linear predictor describing the correlation model of an \code{adjacency} term (see \code{autoregressive}). The rare user of such parametrization should not consider this as a stable feature.   
+Some variance parameters may be removed from the \code{VarCorr} output, with a message, such as the slope of the linear predictor describing the correlation model of an \code{adjacency} term (see \code{autoregressive}). The rare user of such parametrization should not consider this as a stable feature.   
 }
 \seealso{
 \code{\link{get_inits_from_fit}} and \code{\link{get_ranPars}}.

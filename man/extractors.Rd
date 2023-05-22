@@ -40,8 +40,8 @@ Functions to extract various components of a fit.
 \code{terms} extracts the formula, with attributes describing the \bold{fixed-effect} terms.\cr 
 \code{nobs} returns the length of the response vector.\cr
 \code{logLik} extracts the log-likelihood (exact or approximated).\cr
-\code{dev_resids} returns a vector of squared (unscaled) deviance residuals (the summands defined for GLMs in McCullagh and Nelder 1989, p. 34; see Details of \code{\link{LL-family}} for other response families; these are also the squares of residuals returned by \code{\link[spaMM]{residuals}(., "deviance")}.). \cr
-\code{deviance} returns the sum of squares of these (unscaled) deviance residuals, that is (consistently with \code{stats::deviance}) the unscaled deviance.\cr
+\code{dev_resids} returns a vector of squared (unscaled) deviance residuals (the summands defined for GLMs in McCullagh and Nelder 1989, p. 34; see Details of \code{\link{LL-family}} for other response families. \cr
+\code{deviance} returns the sum of squares of these deviance residuals, possibly weighted by prior weights (consistently with \code{stats::deviance}. See \code{\link{residuals.HLfit}} for details and comparison with related extractors.\cr
 \code{fitted} extracts fitted values.\cr
 \code{response} extracts the response (as a vector).\cr
 \code{fixef} extracts the fixed effects coefficients, \eqn{\beta}.\cr
@@ -78,7 +78,7 @@ dev_resids(object,...)
   * For \code{getDistMat}, an integer, to select a random effect from several for which a distance matrix may be constructed.\cr
   * For \code{formula}, by default the model formula with non-expanded \code{multIMRF} random-effect terms is returned, while for \code{which=""} a formula with \code{multIMRF} terms expanded as \code{IMRF} terms is returned.}
   \item{na.rm}{Whether to include NA values for missing coefficients of rank-deficient model matrices. Default is to exclude them for mixed models and to include them for other ones. See Details for the underlying reason.}
-  \item{scaled}{If \code{FALSE}, the function ignores the scale parameter \eqn{rho} and returns unscaled distance.}
+  \item{scaled}{If \code{FALSE}, the function ignores the scale parameter \eqn{\rho} and returns unscaled distance.}
   \item{x}{For \code{print.ranef}: the return value of \code{ranef.HLfit}.}
   \item{max.print}{Controls \code{options("max.print")} locally.}
   \item{\dots}{Other arguments that may be needed by some method.}

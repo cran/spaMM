@@ -56,8 +56,8 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
   See \code{\link{control.HLfit}} for possible controls.
 }
   \item{control.glm}{
-    List of parameters controlling GLM fits, passed to \code{glm.control}; e.g.\cr 
-    \code{control.glm=list(maxit=100)}. See \code{\link{glm.control}} for further details.  
+    List of parameters controlling calls to \code{glm}-\dQuote{like} fits, passed to \code{glm.control}; e.g.\cr 
+    \code{control.glm=list(maxit=100)}. See \code{\link{glm.control}} for further details. \code{glm}-\dQuote{like} fits may be performed as part of mixed-effect model fitting procedures, in particular to provide initial values (possibly using \code{\link{llm.fit}} for non-GLM families), and for \dQuote{inner} estimation of dispersion parameters.  
   }
 
   \item{init.HLfit}{
@@ -96,8 +96,7 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
 
   \bold{III. The standard errors} reported may sometimes be misleading. For each set of parameters among \eqn{\beta}, \eqn{\lambda}, and \eqn{\phi} parameters these are computed assuming that the other parameters are known without error. This is why they are labelled \code{Cond. SE} (conditional standard error). This is most uninformative in the unusual case where \eqn{\lambda} and \eqn{\phi} are not separately estimable parameters. Further, the SEs for \eqn{\lambda} and \eqn{\phi} are rough approximations as discussed in particular by Smyth et al. (2001; \eqn{V_1} method).    
   
-  \bold{IV. prior weights}. This controls the likelihood analysis of heteroscedastic models. In particular, changing the weights by a constant factor \emph{f} should, and will, yield a fit with unchanged likelihood and (Intercept) estimates of \code{phi} also increased by \emph{f} (except if a non-trivial \code{resid.formula} with log link is used). This is consistent with what \code{glm} does, but other packages may not follow this logic (whatever their documentation may say: check by yourself by changing the weights by a constant factor).
-
+  \bold{IV. prior weights}. This controls the likelihood analysis of heteroscedastic models. In particular, changing the weights by a constant factor \emph{f} should, and will, yield a fit with unchanged likelihood and (Intercept) estimates of \code{phi} also increased by \emph{f} (except if a non-trivial \code{resid.formula} with log link is used). This is consistent with what \code{glm} does, but other packages may not follow this logic (whatever their documentation may say: check by yourself by changing the weights by a constant factor). Further, post-fit functiosn (in particular those extracting various forms of residuals) may be inconsistent in their handling of prior weights.
 }
 \value{
 An object of class \code{HLfit}, which is a list with many elements, not all of which are documented. 

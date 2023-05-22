@@ -54,6 +54,8 @@
 .xtol_abs_fn <- function(LowUp, # must be a structured list, not simply a list of two vectors, for it to have some effect.
                          factors=.spaMM.data$options$xtol_abs_factors, rC_transf=.spaMM.data$options$rC_transf) {
   parnames <- names(LowUp$lower)
+  rng <- unlist(LowUp$upper, use.names = FALSE)-unlist(LowUp$lower, use.names = FALSE)
+  rng_finite <- is.finite(rng)
   if ("trRanCoefs" %in% parnames) {
     xtol_abs <- .relist_rep(NA,LowUp$lower)
     for (st in parnames) {
@@ -69,20 +71,68 @@
         }
       } else {xtol_abs[[st]] <- rep(factors["others"],length(unlist(LowUp$lower[[st]], use.names = FALSE)))}
     }
-    rng <- unlist(LowUp$upper, use.names = FALSE)-unlist(LowUp$lower, use.names = FALSE)
     xtol_abs <- unlist(xtol_abs, use.names = FALSE)
-    rng_finite <- is.finite(rng)
-    xtol_abs[rng_finite] <- xtol_abs[rng_finite] * rng[rng_finite]
-  } else xtol_abs <- factors["abs"]
+  } else {
+    # For a long time factors$abs has been 1e-7 and there was no scaling by finite range
+    # With sclaing, 1e-7 is too large.
+    xtol_abs <- rep(factors[["abs"]],length(unlist(LowUp$lower, recursive=TRUE, use.names = FALSE)))
+  }
+  xtol_abs[rng_finite] <- xtol_abs[rng_finite] * rng[rng_finite]
   return(xtol_abs)
 }
+
+# This function wraps TMB::MakeADFun():  It converts a 'processed' to input for this function, and return the 
+# AD structure suitable for inputs to nlminb().
+# The spaMM_ADFun DLL must be loaded as in devel/TMB/generic: this DLL may have very limited functionality,
+# being first developed for the diagnosis [see devel/TMB/diagnosis_poly6.R] 
+# of [discrepancies between packages on poly(cbind(age, parity), 6) fit in test-back-compat.R]
+.wrap_MakeADFun <- function(processed, init.optim, DLL) {
+  y <- processed$y
+  if (is.null(scX <- environment(processed$X_off_fn)$X_off)) { # this scX is available if an init beta was given; then $AUGI0_ZX$X.pv has zero cols
+    stop("won't work bc processed init, upper and lower do not have beta.")
+    scX <- processed$AUGI0_ZX$X.pv
+  }
+  ZAlist <- processed$ZAlist
+  nrand <- length(ZAlist)
+  
+  parlist <- list(b=.scale(scX, 0))
+  
+  Z <- vector("list", nrand)
+  if (nrand) {
+    for (rd in seq_len(nrand)) {
+      Zrd <- ZAlist[[rd]]
+      attr(Zrd,"is_incid") <- NULL
+      attr(Zrd,"namesTerm") <- NULL
+      Z[[rd]] <- Zrd
+    }
+    parlist$trLambda <- c(init.optim$trLambda) # c() dropping attributes 
+    cum_n_u_h <- processed$cum_n_u_h 
+    parlist$u <- rep(0,tail(cum_n_u_h,1L))
+  }
+  
+  famfam <- processed$family$family
+  if (famfam %in% c("negbin1","negbin2")) {
+    parlist$trShape <- init.optim$trNB_shape
+  } else stop("family not yet handled.")
+  
+  template_order <- c("b","trLambda","trShape","u")
+  parlist <- parlist[intersect(template_order,names(parlist))]
+  MakeADFun <- get("MakeADFun", envir = asNamespace("TMB") ) 
+  adfun <- MakeADFun(data = list(n=length(y), y=y, scX=scX, ZAlist=Z, nrand=nrand),
+                     parameters=parlist,
+                     DLL = DLL,
+                     random = "u")
+  adfun
+}
+
 
 # returns optPars which is a list given by relist(.,init.optim), with attributes the optimMethod and (+:- raw) optr 
 .new_locoptim <- function(init.optim, LowUp, control, objfn_locoptim, 
                           anyHLCor_obj_args, HLcallfn.obj="HLCor.obj", 
                           user_init_optim, ## only purpose is to make sure that if the user provides an explicit init in 1D, optimize() is not used.
                           grad_locoptim=NULL,
-                          verbose
+                          verbose,
+                          ADFun=anyHLCor_obj_args$processed$ADFun # 
 ) {
   initvec <- unlist(init.optim) 
   if ( ! length(initvec)) return(NULL)
@@ -92,20 +142,39 @@
   Optimizer <- control[["optimizer"]] ## consistent with control.corrHLfit
   # If user provides an explicit init in 1D, optimize() is not used:
   if (is.null(Optimizer)) {
-    if (use_optimizer1D <- (length(initvec)==1L)) {
-      uuinit <- unlist(user_init_optim)
-      uuinit_not_nan <- uuinit[ ! is.nan(uuinit)]
-      use_optimizer1D <- (! length(uuinit_not_nan))
-    }
-    if (use_optimizer1D) { 
-      Optimizer <- spaMM.getOption("optimizer1D")
-      if (Optimizer=="default") Optimizer <- "optimize" ## no control of initial value (but it _is_ faster that the other optimizers)
+    if ( ! is.null(ADFun)) {
+      Optimizer <- "nlminb"
+      use_optimizer1D <- FALSE
+      if ( ! is.list(ADFun)) { # presumably user input ADFun=TRUE or =<a DLL name>; TMB::makeADFun returns a list
+        if ( ! is.character(ADFun)) ADFun <- "spaMM_ADFun"
+        ADFun <- .wrap_MakeADFun(anyHLCor_obj_args$processed, init.optim=init.optim, DLL=ADFun)
+      }
     } else {
-      Optimizer <- spaMM.getOption("optimizer")
-      if (Optimizer=="default") Optimizer <- ".safe_opt" # in case "default" would be used; but the latter case looks obsolete.
+      if (use_optimizer1D <- (length(initvec)==1L)) {
+        uuinit <- unlist(user_init_optim)
+        uuinit_not_nan <- uuinit[ ! is.nan(uuinit)]
+        use_optimizer1D <- (! length(uuinit_not_nan))
+      }
+      if (use_optimizer1D) { 
+        Optimizer <- spaMM.getOption("optimizer1D")
+        ## if (Optimizer=="default") Optimizer <- "optimize" ## no control of initial value (but it _is_ faster that the other optimizers)
+      } else {
+        Optimizer <- spaMM.getOption("optimizer")
+        ## if (Optimizer=="default") Optimizer <- ".safe_opt" # in case "default" would be used; but the latter case looks obsolete.
+      }
     }
   }
-  if (Optimizer=="optimize") {
+  
+  if (is.function(Optimizer)) { # user provided optimizer; private for devel purposes: cf # cf devel/TMB/spatial_poisson/spatial_TMB_python_devel.R
+    # Then this function should have the same interface as .optim_by_nloptr()
+    user_def_optimizer <- Optimizer
+    Optimizer <- "user-defined" # used to build returned structure, whose API assumes it compares to a character string.
+    optr <- user_def_optimizer(lowerb=lowerb, upperb=upperb, initvec=initvec, objfn_locoptim=objfn_locoptim, 
+                                      local_control=control[["nloptr"]], grad_locoptim = grad_locoptim, LowUp=LowUp,
+                                      anyHLCor_obj_args=anyHLCor_obj_args, HLcallfn.obj=HLcallfn.obj) 
+    optPars <- relist(optr$solution,init.optim)
+    attr(optPars,"optr") <- optr  
+  } else if (Optimizer=="optimize") {
     # since explicit init by user is heeded, the following message is only helpful to me in a tracing session...
     if (verbose) message(paste("1D optimization by optimize(): spaMM's *default* initial value is ignored.\n",
                   "Provide explicit initial value, or change spaMM option 'optimizer1D' for initial value to be taken into account."))
@@ -138,10 +207,26 @@
                              HLcallfn.obj=HLcallfn.obj) ## does not use gradients
     optPars <- relist(optr$par,init.optim)
     optr$objective <- optr$fval # for easy tests on the results, e.g. test-ranCoefs.R
-  } else if (Optimizer=="nlminb") { # quick experiment
-    # nlminb code removed 11/2016 ## maxcorners code removed in v2.1.94
-    optr <- stats::nlminb(initvec,objfn_locoptim, lower=lowerb,upper=upperb,
-                   anyHLCor_obj_args=anyHLCor_obj_args, HLcallfn.obj=HLcallfn.obj)
+  } else if (Optimizer=="nlminb") { 
+    nlminb_controls <- .get_nlminb_controls(init=initvec, upper=upperb, lower=lowerb)
+    local_control <- control[["nlminb"]]
+    nlminb_controls[names(local_control)] <- local_control ## Overwrite defaults with any element of $nlminb
+    if ( ! is.null(ADFun)) { 
+      # cf devel/TMB/spatial_poisson/spatial_TMB_python_devel.R 
+      #    devel/TMB/generic.R
+      #    devel/TMB/diagnosis_poly6.R
+      objfn <- function(x, ...) ADFun$fn(x) # -logL
+      gr <- function(x, ...) ADFun$gr(x) # gradient of -logL
+      optr <- stats::nlminb(initvec, objfn, lower=lowerb,upper=upperb, gradient=gr,
+                            anyHLCor_obj_args=anyHLCor_obj_args, HLcallfn.obj=HLcallfn.obj, 
+                            control=nlminb_controls)
+    } else optr <- stats::nlminb(initvec, objfn_locoptim, lower=lowerb,upper=upperb, 
+                   anyHLCor_obj_args=anyHLCor_obj_args, HLcallfn.obj=HLcallfn.obj, 
+                   control=nlminb_controls)
+    if ( ! optr$iterations < nlminb_controls$iter.max) warning(paste0("nlminb() reached control$iter.max=", 
+                                                                      nlminb_controls$iter.max))
+    if ( ! sum(optr$evaluations) < nlminb_controls$eval.max) warning(paste0("nlminb() reached control$eval.max=", 
+                                                                            nlminb_controls$eval.max))
     ## with the same arguments one can try BB::spg() and dfoptim:hjkb, both unconvincing
     optPars <- relist(optr$par,init.optim)
   } else if (Optimizer=="L-BFGS-B") { # legacy

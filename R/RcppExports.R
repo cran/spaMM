@@ -97,6 +97,10 @@
     .Call(`_spaMM_nuln_plus_bessel_lnKnu`, x, nu)
 }
 
+.setNbThreads <- function(thr) {
+    .Call(`_spaMM_set_thread_nbr`, thr)
+}
+
 .rankinfo <- function(x, tol) {
     .Call(`_spaMM_rankinfo`, x, tol)
 }

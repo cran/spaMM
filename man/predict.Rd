@@ -14,7 +14,11 @@
   Prediction from a model fit
 }
 \description{
-The following functions can be used to compute point predictions and/or various measures of uncertainty associated to such predictions. \code{predict} can be used for prediction of the response variable by its expected value obtained as (the inverse link transformation of) the linear predictor (\eqn{\eta}) and more generally for terms of the form \bold{X}_n\eqn{\beta}+\bold{Z}_n\bold{L}\bold{v}, for new design matrices \bold{X}_n and \bold{Z}_n. Various components of prediction variances and predictions intervals can also be computed using \code{predict}. The \code{get_}... functions are convenient extractors for such components. \code{get_predCov_var_fix} extracts a block of a prediction covariance matrix. It was conceived for the specific purpose of computing the spatial prediction covariances between two \dQuote{new} sets of geographic locations, without computing the full covariance matrix for both the new locations and the original (fitted) locations. When one of the two sets of new locations is fixed while the other varies, some expensive computations can be performed once for all sets of new locations, and be provided as the \code{fix_X_ZAC.object} argument. The \code{preprocess_fix_corr} extractor is designed to compute this argument. 
+The following functions can be used to compute point predictions and/or various measures of uncertainty associated to such predictions:\cr 
+{ * }\code{predict} can be used for prediction of the response variable by its expected value obtained as (the inverse link transformation of) the linear predictor (\eqn{\eta}) and more generally for terms of the form \bold{X}_n\eqn{\beta}+\bold{Z}_n\bold{L}\bold{v}, for new design matrices \bold{X}_n and \bold{Z}_n.\cr 
+{ * }Various components of prediction variances and predictions intervals can also be computed using \code{predict}. 
+The \code{get_}... functions are convenient extractors for such components;\cr 
+{ * }\code{get_predCov_var_fix} extracts a block of a prediction covariance matrix. It was conceived for the specific purpose of computing the spatial prediction covariances between two \dQuote{new} sets of geographic locations, without computing the full covariance matrix for both the new locations and the original (fitted) locations. When one of the two sets of new locations is fixed while the other varies, some expensive computations can be performed once for all sets of new locations, and be provided as the \code{fix_X_ZAC.object} argument. The \code{preprocess_fix_corr} extractor is designed to compute this argument. 
 }
 \usage{
 \method{predict}{HLfit}(object, newdata = newX, newX = NULL, re.form = NULL,
@@ -51,8 +55,7 @@ get_intervals(..., intervals="predVar")
  }
  \item{variances}{
    A list whose elements control the computation of different estimated variances. 
-   \code{predict} can return four components of prediction variance: \code{fixefVar}, \code{predVar}, \code{residVar} and \code{respVar}. 
-   They are all returned as attributes of the point predictions. 
+   \code{predict} can return four components of prediction variance: \code{fixefVar}, \code{predVar}, \code{residVar} and \code{respVar}, whose definitions is detailed in \code{\link{predVar}}. They are all returned as attributes of the point predictions. 
    
    In particular, \code{variances=list(predVar=TRUE)} is suitable for uncertainty in point prediction, distinguished from the response variance given by \code{list(respVar=TRUE)}. See the \code{\link{predVar}} help page for further explanations and other options. 
  }
@@ -101,7 +104,7 @@ In the \bold{point prediction} of the linear predictor, the unconditional expect
 
 }
 \seealso{
-\code{\link{predVar}} for information specific to prediction variances sensu lato;
+\code{\link{predVar}} for information specific to prediction variances sensu lato, including the definitions of the four components of prediction variance, \code{fixefVar}, \code{predVar}, \code{residVar} and \code{respVar}, that can be requested through the \code{variances} argument;
 \code{\link{get_cPredVar}} for a bootstrap-corrected version of \code{get_predVar};
 \code{\link{residVar}} for an alternative extractor for residual variances, more general than \code{get_residVar}.
 }

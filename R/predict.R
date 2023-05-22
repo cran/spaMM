@@ -342,10 +342,11 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
   }
   ############################################################
   newZACvar <- .calc_newZACvar(newZAlist,cov_newLv_oldv_list)
-  if (ncol(X.pv)>ncol(object$X.pv)) { # detection etaFix$beta case
+  X_ori <- model.matrix(object)
+  if (ncol(X.pv)>ncol(X_ori)) { # detection etaFix$beta case
     if (is.matrix(newZACvar)) {
-      XZAC <- cbind2(as.matrix(X.pv)[,colnames(object$X.pv),drop=FALSE],newZACvar)
-    } else XZAC <- cbind2(X.pv[,colnames(object$X.pv),drop=FALSE],newZACvar) ## no such thing in point pred as fix vs. estim does not matter there.
+      XZAC <- cbind2(as.matrix(X.pv)[,colnames(X_ori),drop=FALSE],newZACvar)
+    } else XZAC <- cbind2(X.pv[,colnames(X_ori),drop=FALSE],newZACvar) ## no such thing in point pred as fix vs. estim does not matter there.
   } else if (is.matrix(newZACvar)) { # when C is dense, cbind2(X.pv,newZACvar) is quite dense and further operations from it may handle inefficient dge
     XZAC <- cbind2(as.matrix(X.pv),newZACvar)
   } else XZAC <- cbind2(X.pv,newZACvar) ## uses C (in C.w) rather than L (in L.v)
@@ -422,22 +423,35 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
                           mv_it=NULL, #  used to pass non-default to .get_glm_phi()
                           cum_nobs,
                           family=object$family, fv,
-                          nobs_info=nrow(object$X.pv)) {
+                          nobs_info=nrow(model.matrix(object)),
+                          phimodel.=object$models$phi) {
   if ( ! is.null(families)) {
     residVars <- vector("list", length(families))
     for (mv_it in seq_along(families)) {
       residVars[[mv_it]] <- .calcResidVar(object, newdata=newdata[[mv_it]], phi.object=phi.object[[mv_it]], families=NULL, 
                                           mv_it=mv_it, 
                                           family=families[[mv_it]], fv=fv[.subrange(cumul=cum_nobs, it=mv_it)],
-                                          nobs_info=object$vec_nobs[mv_it])
+                                          nobs_info=object$vec_nobs[mv_it],
+                                          phimodel.=phimodel.[mv_it])
     }
     residVar <- unlist(residVars, recursive = FALSE, use.names = FALSE)
   } else {
     if ( family$family %in% c("gaussian","Gamma")) {
-      if (is.null(phi_outer <- phi.object$phi_outer)) { ## valid whether newdata are NULL or not:      
-        glm_phi <- .get_glm_phi(object, mv_it)
-        residVar <- predict(glm_phi, newdata=newdata, type="response")
-      } else { ## phi, but not glm_phi
+      phi_fit <- .get_phi_fit(object, mv_it=mv_it) # diverse object; may be hlfit or glm or scalar or NULL
+      # the NULL case seems to refer to cases were an outer algo is used to fit a phiGLM. Quite obscure.
+      if (phimodel.=="phiGLM" && is.null(phi_fit)) {
+        phi_fit <- .get_glm_phi(object, mv_it=mv_it) # construct a glm object if needed
+        # e.g. resid.model = list(formula=~0+offset(logphi)) example => there is a phi_outer vector,
+        # so .get_glm_phi() was not previously called. But even for such offset .get_glm_phi() can return an object of class "glm"
+        # so that one can predict() from it. This recycles existing code caring for links, prior weights etc...
+        # Otherwise a more direct call to model.frame(.get_phiform(object, mv_it), data=newdata) might perhaps be used.
+      }
+      if (phimodel.=="phiHGLM") {
+        residVar <- predict(phi_fit, newdata=newdata, type="response")
+      } else if (is.null(phi_outer <- phi.object$phi_outer)) { ## valid whether newdata are NULL or not: e.g. phiScal, inner-estim
+        phi_fit <- .get_glm_phi(object, mv_it)
+        residVar <- predict(phi_fit, newdata=newdata, type="response")
+      } else { ## phi, but not glm_phi ;  e.g. phiScal, inner-estim
         if (length(phi_outer)==1L) {
           if (is.null(newdata)) {
             nobs <- nobs_info            
@@ -447,19 +461,36 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
           # so .get_glm_phi() was not previously called. But even for such offset .get_glm_phi() can return an object of class "glm"
           # so that one can predict() from it. This recycles existing code caring for links, prior weights etc...
           # Otherwise a more direct call to model.frame(.get_phiform(object, mv_it), data=newdata) might perhaps be used.
-          glm_phi <- .get_glm_phi(object, mv_it) # look whether phi.Fix was set by a phiGLM with only an offset
-          if (is.null(glm_phi)) {
-            stop(paste0("Unable to compute 'residVar' given length(<fixed phi>)!=1L.\n", 
-                        "A 'resid.model' argument, perhaps with only an offset term, might be the only way forward.")) 
-          } else residVar <- predict(glm_phi, newdata=newdata, type="response")
+          phi_fit <- .get_glm_phi(object, mv_it) # look whether phi.Fix was set by a phiGLM with only an offset
+          if (is.null(phi_fit)) {
+            stop(paste0("Unable to compute 'residVar' given length(<fixed phi>)!=1L.\n",
+                        "A 'resid.model' argument, perhaps with only an offset term, might be the only way forward."))
+          } else residVar <- predict(phi_fit, newdata=newdata, type="response")
         }
       }
+      
+      ### tried this similarly to .get_phiW() but the phiScal case should have subcases...
+      # residVar <- switch(phimodel.,
+      #                    "phiGLM" = drop(predict(phi_fit, newdata=newdata, type="response")), ## vector (drop needed when phi_fit is hlfit object)
+      #                    "phiHGLM" = predict(phi_fit, newdata=newdata, type="response")[ ,1L],
+      #                    "phiScal" = {rep(phi_fit, nrow(newdata))},
+      #                    # a priori the case of fixed phi, phimodel.= "" (but phi_fit should then not be NULL) :
+      #                    if (is.null(phi_fit)) {
+      #                      if (phimodel.=="") { # fixed phi
+      #                        stop(paste0("Unable to compute 'residVar'. Was length(<fixed phi>)!=1L?\n",
+      #                                    "If so, a 'resid.model' argument, perhaps with only an offset term, might be the only way forward."))
+      #                      } else stop("Unable to compute 'residVar' (hint: 'phi_fit' not properly extracted)")
+      #                    } else { # standard case for fixed phi
+      #                      rep(phi_outer, nobs)
+      #                    } )## VECTOR in all cases, becomes matrix later
+      
       if (family$family=="Gamma") residVar <- residVar * fv^2
     } else {
-      family_par <- .get_family_par(family, famfam=family$family, newdata=newdata)
-      if (is.null(family_par)) { # family without resid.model OR [with resid.model but newdata were NULL]
-        residVar <- family$variance(fv)
-      } else residVar <- family$variance(fv, new_fampar=family_par)
+      famvarfun <- family$variance
+      if ("new_fampar" %in% names(formals(famvarfun))) {
+        family_par <- .get_family_par(family, famfam=family$family, newdata=newdata)
+        residVar <- famvarfun(fv, new_fampar=family_par)
+      } else residVar <- famvarfun(fv)
     }
   }
   residVar
@@ -1026,11 +1057,14 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
 }
 
 .get_phifam <- function(object, mv_it=NULL) { 
+  # note that object$resid_fit or $resid_fits[[mv_it]] may be empty: indeed so when one reaches here through .get_glm_phi()
   if (object$spaMM.version < "3.5.23") {
     object$resid.family
   } else if (is.null(mv_it)) {
     object$residModel$family
-  } else object$residModels[[mv_it]]$family
+  } else {
+    object$residModels[[mv_it]]$family # typically a language object
+  }
 }
 
 .to_respScale_var <- function(respVar, ppblob, object, cum_nobs) {
@@ -1115,7 +1149,7 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
       # identifies and selects columns for the [retained ranefs, which are given by newinold 
       re_form_col_indices <- .re_form_col_indices(new_X_ZACblob$newinold, cum_n_u_h=attr(object$lambda,"cum_n_u_h"), 
                                                   Xi_cols=attr(object$ZAlist, "Xi_cols"))
-      Xncol <- ncol(object$X.pv)
+      Xncol <- ncol(model.matrix(object))
       subrange <- c(seq_len(Xncol),re_form_col_indices$subrange + Xncol)
       loc_tcrossfac_beta_w_cov <- loc_tcrossfac_beta_w_cov[subrange,]
     } else re_form_col_indices <- NULL
@@ -1162,17 +1196,22 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
   predVar
 }
 
+.get_new_X_ZAC_blob <- function(object, newdata, re.form, variances, invCov_oldLv_oldLv_list, control) {
+  if ( is.null(object$vec_nobs)) {
+    .calc_new_X_ZAC(object=object, newdata=newdata, re.form = re.form, variances=variances, 
+                                     invCov_oldLv_oldLv_list=invCov_oldLv_oldLv_list)
+  } else .calc_new_X_ZAC_mv(object=object, newdata=newdata, re.form = re.form, variances=variances, 
+                                             invCov_oldLv_oldLv_list=invCov_oldLv_oldLv_list, control=control)
+}
+
 
 .predict_body <- function(object, newdata, re.form, type,
                           variances, binding, intervals, level, blockSize, control, showpbar, new_X_ZACblob=NULL) {
   # This promise applies to newdata= newdata_slice if relevant, so cannot be defined on the unsliced data (hence new_X_ZACblob cannot as well).
   delayedAssign("invCov_oldLv_oldLv_list", .get_invColdoldList(object, control=control))
   if (is.null(new_X_ZACblob)) { # may have been precomputed and provided in mv case. Otherwise:
-    if ( is.null(object$vec_nobs)) {
-      new_X_ZACblob <- .calc_new_X_ZAC(object=object, newdata=newdata, re.form = re.form,
-                                       variances=variances, invCov_oldLv_oldLv_list=invCov_oldLv_oldLv_list)
-    } else new_X_ZACblob <- .calc_new_X_ZAC_mv(object=object, newdata=newdata, re.form = re.form,
-                                        variances=variances, invCov_oldLv_oldLv_list=invCov_oldLv_oldLv_list, control=control)
+    new_X_ZACblob <- .get_new_X_ZAC_blob(object, newdata=newdata, re.form=re.form, 
+                                         variances=variances, invCov_oldLv_oldLv_list=invCov_oldLv_oldLv_list, control=control)
   }
   #
   ## (1) computes fv (2) compute predVar
@@ -1295,7 +1334,7 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
           .DEPARSE(.get_phiform(object))=="~1" # not heteroscedastic
       ) { 
         nobs <- length(object$y)
-        resdf <- nobs - ncol(object$X.pv) ## don't use fixef here, that contains bot NAs and argument etaFix$beta! 
+        resdf <- nobs - ncol(model.matrix(object)) ## don't use fixef here, that contains bot NAs and argument etaFix$beta! 
         if (resdf==0L) warning("Zero residual degrees of freedom. No feasible interval computation.", immediate. = TRUE)
         is_REML <- ( .REMLmess(object,return_message=FALSE))
         if ( ! is_REML) {

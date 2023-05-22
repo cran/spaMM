@@ -7,7 +7,7 @@ beta_resp <- function (prec = stop("beta_resp's 'prec' must be specified"), link
       # (but testing only "name" would catch e.g. negbin(prec=prec) )
   ) { 
     if (inherits(shch,"character")) shch <- paste0('"',shch,'"')
-    errmess <- paste0('It looks like beta_resp(',shch,') was called, which absurdly means betaresp(prec=',shch,
+    errmess <- paste0('It looks like beta_resp(',shch,') was called, which absurdly means beta_resp(prec=',shch,
                       ').\n  Use named argument: beta_resp(link=',shch,') instead.')
     stop(errmess)
   }
@@ -46,7 +46,7 @@ beta_resp <- function (prec = stop("beta_resp's 'prec' must be specified"), link
     lgamma(prec) - lgamma(mu*prec) - 
       lgamma((1 - mu)*prec) + (mu*prec - 1)*log(y) + ((1 - mu)*prec - 1)*log(1 - y)
   }
-  DlogLDmu <- function(y, mu, wt, n, phi, prec_it=NULL) { # dlogL/dmu
+  DlogLDmu <- function(y, mu, wt, phi, prec_it=NULL) { # dlogL/dmu
     y <- drop(y)
     if ( ! is.null(prec_it)) {
       prec <- prec_it*wt
@@ -54,13 +54,13 @@ beta_resp <- function (prec = stop("beta_resp's 'prec' must be specified"), link
     # prec (-Log[1 - y] + Log[y] - PolyGamma[0, prec mu] + PolyGamma[0, prec - prec mu])
     prec *( log(y)-log(1-y) - digamma(prec * mu) + digamma(prec * (1-mu)))
   }
-  D2logLDmu2 <- function(y, mu, wt, n, phi) { 
+  D2logLDmu2 <- function(y, mu, wt, phi) { 
     y <- drop(y)
     prec <- prec*wt 
     # prec^2 (PolyGamma[1, prec mu] + PolyGamma[1, prec - prec mu])
     - prec^2 *(trigamma(prec*mu)+trigamma(prec * (1-mu)))
   }
-  D3logLDmu3 <- function(y, mu, wt, n, phi) { 
+  D3logLDmu3 <- function(y, mu, wt, phi) {
     y <- drop(y)
     prec <- prec*wt 
     prec^3 *(- psigamma(prec*mu, deriv=2)+psigamma(prec * (1-mu), deriv=2)) # deriv=2 -> tetragamma, cf doc
@@ -84,7 +84,7 @@ beta_resp <- function (prec = stop("beta_resp's 'prec' must be specified"), link
   
   dev.resids <- function(y,mu,wt) { 2*(sat_logL(y, wt=wt)-logl(y,mu=mu,wt=wt)) } # cannot use $aic() which is already a sum...
   
-  aic <- function(y, n, mu, wt, dev) {
+  aic <- function(y, mu, wt, ...) {
     - 2 * sum(logl(y, mu, wt))
   }
   initialize <- expression({

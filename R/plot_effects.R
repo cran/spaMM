@@ -71,7 +71,7 @@ plot_effects <- function(object, focal_var, newdata=object$data, # doc as a data
   #             but this entails other graphic decisions... 
   if (is.null(effects)) effects <- pdep_effects(object, newdata=newdata, focal_var=focal_var, indiv=FALSE, focal_values=focal_values, ...) # 'predict on hacked values'
   # : could imagine plotting the results of indiv=TRUE (requires more code)
-  if (object$family$family=="binomial") {
+  if (object$family$family %in% c("binomial","betabin")) {
     resp <- object$y/object$BinomialDen
     if (is.null(ylab)) {
       form <- formula.HLfit(object,which="")

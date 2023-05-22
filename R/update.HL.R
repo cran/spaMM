@@ -1,9 +1,11 @@
-getCall.HLfit <- function(x,...) { ## FIXME ? getCall()$resid.model does not look like a language object (cf DHGLM)
+getCall.HLfit <- function(x, NbThreads=1L, ...) { ## FIXME ? getCall()$resid.model does not look like a language object (cf DHGLM)
   # The [stats::: !]getCall.default method cannot be called b/c it is not exported from stats.
   # stats::getCall() with only call getCall.HLfit in an infinite recursion.
   #
   if (x$spaMM.version> "2.4.62") {
-    return(x$call)
+    call <- x$call
+    call[["control.HLfit"]]$NbThreads <- NbThreads
+    call
   } else {
     # O L D E R version
     # only one of these call may be present in the object: HLCorcall is removed by fitme and corrHLfit
@@ -21,6 +23,8 @@ getCall.HLfit <- function(x,...) { ## FIXME ? getCall()$resid.model does not loo
 ## Therefore, the original ranFix of the outer_object is replaced, unless it is explicitly set to getCall(object)$ranFix or $fixed... (in confint.HLfit)
 ## Parameters not in ranFix are set to the initial value of of the optimization call.
 ##   
+## NB to get the $processed, it suffices to call a fitting function with verbose=c(getCall=TRUE)>...
+#
 get_HLCorcall <- function(outer_object, ## accepts fit object, or call, or list of call arguments
                           fixed, ## see comments above
                           ... # anything needed to overcome promises in the call

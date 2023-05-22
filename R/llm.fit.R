@@ -1,13 +1,40 @@
-.calc_dlogL_blob <- function(eta, mu, y, weights, family, phi, muetaenv) {
-  if (family$family=="COMPoisson")  {
-    dlogLdmu <- family$DlogLDmu(mu=mu, y=y, thetaMuDerivs=muetaenv$thetaMuDerivs_2) #[good]  
-    d2logLdmu2 <- family$D2logLDmu2(mu=mu, y=y, thetaMuDerivs=muetaenv$thetaMuDerivs_2) #[good]
+# called by .calc_inits_by_xLM() -> llm.fit() ; or by .calc_etaXLMblob()
+# BinomialDen is distinctly handled between these two cases. 
+.calc_dlogL_blob <- function(eta, mu, y, weights, family, phi, muetaenv, BinomialDen) {
+  famfam <- family$family
+  if (famfam=="COMPoisson")  {
+    dlogLdmu <- family$DlogLDmu(mu=mu, y=y, thetaMuDerivs=muetaenv$thetaMuDerivs_2) 
+    d2logLdmu2 <- family$D2logLDmu2(mu=mu, y=y, thetaMuDerivs=muetaenv$thetaMuDerivs_2)
+  } else if (famfam=="betabin")  {
+    if (missing(BinomialDen)) { # The missingness currently means that this has been called through llm.fit, 
+      # AND that mu is muFREQS 
+      BinomialDen <- environment(family$aic)$.BinomialDen 
+      muFREQS <- mu
+    } else muFREQS <- mu/BinomialDen # call from .calc_etaXLMblob: mu is muCOUNT, BinomialDen provided, $.BinomialDen not initialized
+    dlogLdmu <- family$DlogLDmu(muFREQS=muFREQS, y, BinomialDen=BinomialDen, wt=weights) 
+    d2logLdmu2 <- family$D2logLDmu2(muFREQS=muFREQS, y, BinomialDen=BinomialDen, wt=weights) 
+  } else if (famfam=="binomial")  { 
+    # if (missing(BinomialDen)) { # The missingness currently means that this has been called through llm.fit 
+    #   ## AND that mu is muFREQS.
+    # 
+    #   ## glm(., family=spaMM:::.statsfam2LLF(stats::binomial), method="llm.fit") could lead here.
+    #   ## fitme(., family=spaMM:::.statsfam2LLF(stats::binomial)) -> .calc_inits_by_xLM presumably 
+    #   ## does not lead here bc .calc_inits_by_xLM should still call glm.fit() rather that llm.fit() for binomial models
+    #
+    #   BinomialDen <- environment(family$aic)$.BinomialDen #  It evaluates to NULL currently
+    #   dlogLdmu <- family$DlogLDmu(muFREQS=mu, y, BinomialDen=BinomialDen, muCOUNT=mu*BinomialDen) 
+    #   d2logLdmu2 <- family$D2logLDmu2(muFREQS=mu, y, BinomialDen=BinomialDen) 
+    # } else { # call from .calc_etaXLMblob: mu is muCOUNT, BinomialDen provided, ...$.BinomialDen not initialized
+      muFREQS <- mu/BinomialDen 
+      dlogLdmu <- family$DlogLDmu(muFREQS=muFREQS, y, BinomialDen=BinomialDen, muCOUNT=mu) 
+      d2logLdmu2 <- family$D2logLDmu2(muFREQS=muFREQS, y, BinomialDen=BinomialDen) 
+    # }
   } else {
-    dlogLdmu <- family$DlogLDmu(mu=mu, y=y, wt=weights, phi=phi) #[good]  
-    d2logLdmu2 <- family$D2logLDmu2(mu=mu, y=y, wt=weights, phi=phi) #[good]
+    dlogLdmu <- family$DlogLDmu(mu=mu, y=y, wt=weights, phi=phi) 
+    d2logLdmu2 <- family$D2logLDmu2(mu=mu, y=y, wt=weights, phi=phi) 
   }
   dmudeta <- family$mu.eta(eta)
-  d2mudeta2 <- family$D2muDeta2(eta) #[good]
+  d2mudeta2 <- family$D2muDeta2(eta)
   dlogcLdeta <- dlogLdmu*dmudeta
   d2logcLdeta2 <- d2logLdmu2*dmudeta^2+dlogLdmu*d2mudeta2
   list(dlogcLdeta=as.vector(dlogcLdeta), d2logcLdeta2=as.vector(d2logcLdeta2)) # as.vector() to drop attributes inherited from y or weights  
@@ -108,7 +135,20 @@ llm.fit <- function (x,
   D2logLDmu2 <- family$D2logLDmu2
   D2muDeta2 <- family$D2muDeta2
   dev.resids <- family$dev.resids
-  if (family$family=="COMPoisson") {
+  #
+  # for binomial and betabin, family$initialize changes y 2 col -> 1 col; redefines y as a frequency and the weights as binomial weights
+  # for betabin, this also redefines sat_logL to handle its BinomialDen argument 
+  if (is.null(mustart)) {
+    eval(family$initialize) 
+  } else {
+    mukeep <- mustart
+    eval(family$initialize) 
+    mustart <- mukeep
+  }
+  
+  if (fam_is_COMP <- (family$family=="COMPoisson")) { # This *can* occur e.g.
+    # glm(eggs ~ humans_eaten, family = COMPoisson(link=log, nu = 1), data = AliensMix, method="llm.fit")
+    # Not that loglambda link is prevented bc .D2muDeta2() (etc) does not handle this link.
     muetaenv <- NULL
     dev.resids <- function(y, mu, wt) {family$dev.resids(y, mu, wt, muetaenv=muetaenv)}
     if (family$link=="loglambda") {
@@ -119,30 +159,16 @@ llm.fit <- function (x,
       mu.eta <- family$mu.eta
     }
   } else {
-    if (is.null(family$sat_logL)) {
-      dev.resids <- family$dev.resids
-    } else {
-      satlogl <- family$sat_logL(y, wt=weights)
-      if (anyNA(satlogl)) stop("family$sat_logL() returns invalid results.") # catch otherwise hard to trace bug, typically pb logl(y=1, mu=0)
-      dev.resids <- function(y,mu,wt) { 2*(satlogl-family$logl(y,mu=mu,wt=wt)) } # cannot use $aic() which is already a sum...
-    }
     linkinv <- family$linkinv
     mu.eta <- family$mu.eta
   }
   if ( !is.function(linkinv)) 
     stop("'family' argument seems not to be a valid family object", 
          call. = FALSE)
-  # Check whether beta will be constrained by the need for postive eta
+  # Check whether beta will be constrained by the need for positive eta
   beta_bounded <- ( ( ! valideta(-1e-8) )|| # test not sufficient! next test needed for Gamma(inverse of identity)
                       ( ! validmu(linkinv(-1e-8)) ))
   n <- NULL ## to avoid an R CMD check NOTE which cannot see that n will be set by eval(family$initialize)
-  if (is.null(mustart)) {
-    eval(family$initialize) ## changes y 2 col -> 1 col   
-  } else {
-    mukeep <- mustart
-    eval(family$initialize) ## or binomial fam, changes y 2 col -> 1 col; redefines y as a frequency and the weights as binomial weights
-    mustart <- mukeep
-  }
   
   coefold <- NULL
   
@@ -161,13 +187,13 @@ llm.fit <- function (x,
   eta <- .sanitize_eta(eta, y=y, family=family)   
   ##
   
-  if (family$family=="COMPoisson") muetaenv <- .CMP_muetaenv(family, pw=weights, eta)
+  if (fam_is_COMP) muetaenv <- .CMP_muetaenv(family, pw=weights, eta)
   mu <- linkinv(eta)
   if (!(validmu(mu) && valideta(eta))) 
     stop("cannot find valid starting values: please specify some", 
          call. = FALSE)
   
-  devold <- sum(dev.resids(y, mu, weights))
+  devold <- sum(dev.resids(y, mu=mu, wt=weights))
   boundary <- conv <- FALSE
   damping <- 1e-7 ## as suggested by Madsen-Nielsen-Tingleff... # Smyth uses abs(mean(diag(XtWX)))/nvars
   dampingfactor <- 2
@@ -175,7 +201,7 @@ llm.fit <- function (x,
   ## This allows for changes in the dimensions of the design matrix over loop iterations... We remove this.
   goodinit <- weights > 0 
   for (iter in 1L:control$maxit) {
-    ## this uses WLS in the first iteration and Levenberg Marquardt in later ones. # __F I X M E__ less systematic LevM ? LevM reamins cheap for fied-effect models.
+    ## this uses WLS in the first iteration and Levenberg Marquardt in later ones. # __F I X M E__ less systematic LevM ? LevM remains cheap for fied-effect models.
     if (iter==1L) {
       if (all(!goodinit)) {
         conv <- FALSE
@@ -195,9 +221,9 @@ llm.fit <- function (x,
       
       eta <- drop(x %*% start) + offset
       if ( ! beta_bounded) eta <- .sanitize_eta(eta, y=y, family=family, max=40) # else we use .get_valid_beta_coefs()
-      if (family$family=="COMPoisson") muetaenv <- .CMP_muetaenv(family, pw=weights, eta)
+      if (fam_is_COMP) muetaenv <- .CMP_muetaenv(family, pw=weights, eta)
       mu <- linkinv(eta) 
-      dev <- suppressWarnings(sum(dev.resids(y, mu, weights)))
+      dev <- suppressWarnings(sum(dev.resids(y, mu=mu, wt=weights)))
       boundary <- FALSE
       if (beta_bounded && 
           ( ! is.finite(dev) ||  ## NaN or Inf; 
@@ -206,14 +232,13 @@ llm.fit <- function (x,
           # so this test remains as a tempo fix (___F I X M E___)
       ) {
         
-        
         if (is.null(coefold)) {
           if (requireNamespace("rcdd",quietly=TRUE)) {
             start <- .get_valid_beta_coefs(X=x,offset=offset,family,y,weights)
             eta <- drop(x %*% start) + offset
-            if (family$family=="COMPoisson") muetaenv <- .CMP_muetaenv(family, pw=weights, eta)
+            if (fam_is_COMP) muetaenv <- .CMP_muetaenv(family, pw=weights, eta)
             mu <- linkinv(eta) # could sanitize it, perhaps ?
-            dev <- suppressWarnings(sum(dev.resids(y, mu, weights)))
+            dev <- suppressWarnings(sum(dev.resids(y, mu=mu, wt=weights)))
           } else if ( ! identical(spaMM.getOption("rcdd_warned"),TRUE)) {
             message("llm.fit() failed. If the 'rcdd' package were installed, llm.fit() could automatically find a good starting value.")
             .spaMM.data$options$rcdd_warned <- TRUE
@@ -236,7 +261,7 @@ llm.fit <- function (x,
           eta <- drop(x %*% start) + offset
           if (family$family=="COMPoisson") muetaenv <- .CMP_muetaenv(family, pw=weights, eta)
           mu <- linkinv(eta)
-          dev <- suppressWarnings(sum(dev.resids(y, mu, weights)))
+          dev <- suppressWarnings(sum(dev.resids(y, mu=mu, wt=weights)))
         }
         boundary <- TRUE
         if (control$trace) cat("Step halved: new deviance = ", dev, "\n", sep = "")
@@ -275,7 +300,7 @@ llm.fit <- function (x,
           damping <- max(damping * max(1/3,1-(2*gainratio-1)^3), 1e-7) # lower bound as in .get_new_damping() for MMs    
           dampingfactor <- 2
           start <- levMblob$beta 
-          if (family$family=="COMPoisson") {
+          if (fam_is_COMP) {
             muetaenv <- levMblob$muetaenv
             eta <- muetaenv$sane_eta
             mu <- muetaenv$mu
@@ -311,7 +336,18 @@ llm.fit <- function (x,
           dampingfactor <- dampingfactor*2
           if (control$trace) cat("+")
         } 
-        if (damping>1e10) break ## but an error may occur (NaN mu) (we should not reach this point except if gainratio<0?)
+        if (damping>1e10) {
+          break ## but an error may occur (NaN mu) (we should not reach this point except if gainratio<0?)
+          #
+          # A potential persistent pb is when there is a flat region of gainratio=0 for large damping, gainratio<0 for low damping,
+          # and a narrow window of progress in between. No current example (a suspected one was a bug in .calc_dlogL_blob). 
+          # A standard 1D optimizer would also easily miss it even when bracketing by bounds implied by previous iterations.
+          # 
+          # This breaks the inner loop. Alternatives could be:
+          # * also break the outer loop (time gain, no drawback?)
+          # * reset the damping controls? (In suspected example, they were reset in every other of the subsequent iterations of the outer loop)
+          # Again, there is no current example good for testing altenatives. 
+        }
       } ## end of inner loop over damping values
       
       if ( conv_crit < control$epsilon) { 
@@ -344,7 +380,7 @@ llm.fit <- function (x,
         mu <- linkinv(eta)
       } ## stop()s or exits loop with valideta and mu
       boundary <- TRUE
-      dev <- suppressWarnings(sum(dev.resids(y, mu, weights)))
+      dev <- suppressWarnings(sum(dev.resids(y, mu=mu, wt=weights)))
       if (control$trace) cat("Step halved: new deviance = ", dev, "\n", sep = "")
     }
     
@@ -416,21 +452,35 @@ llm.fit <- function (x,
   names(residuals) <- names(wt) <- names(weights) <- ynames
   n.ok <- nobs - sum(weights == 0)
   nulldf <- n.ok - as.integer(intercept)
-  wtdmu <- if (intercept) 
-    sum(weights * y)/sum(weights)
-  else linkinv(offset)
-  nulldev <- sum(dev.resids(y, wtdmu, weights))
+  # wtdmu <- if (intercept) 
+  #   sum(weights * y)/sum(weights) #   BUT generally best-fitting mu!=y
+  # else linkinv(offset)
+  # if (fam_is_COMP) { # The alternative code would use the existing muetaenv and wtdmu would be effectively ignored...
+  #   nulldev <- sum(family$dev.resids(y, wtdmu, weights, muetaenv = NULL)) 
+  # } else if (family$family %in% "betabin") { # The alternative code would use the existing muetaenv and wtdmu would be effectively ignored...
+  #   nulldev <- NA # sum(family$dev.resids(y, wtdmu, weights, muetaenv = NULL)) # wtdmu should be a muFREQS... but which ? 
+  # } else nulldev <- sum(family$dev.resids(y, mu=wtdmu, wt=weights))
   resdf <- n.ok - rank
-  aic.model <- aic(y, n, mu, weights, dev) + 2 * rank
+  #
+  if (family$family =="binomial") { ## for the sake of compatibility... base GLM code is what it is... 
+    # all (base) aic functions have 'n' argument but only binomial appears to use it.
+    # glm.fit calls $aic with five unnamed argument so all families that can be used with glm.fit() need these five arguments, dots being useless
+    aic.model <- aic(y, n, mu, weights, dev) + 2 * rank
+    # families that canNOT be used with glm.fit() can use a better API
+  } else aic.model <- aic(y=y, mu=mu, wt=weights, dev=dev) + 2 * rank # with implicit default n=.BinomialDen for betabin
+  # = hack so that .BinomialDen does not appear in the body of llm.fit...
+  #
   list(coefficients = coef, 
        fitted.values = mu, 
        effects = effects, R = R, 
        rank = rank, qr = fit_qr, family = family, 
-       linear.predictors = eta, deviance = sum(dev.resids(y, mu, weights)), aic = aic.model, 
-       null.deviance = nulldev, iter = iter, 
+       linear.predictors = eta, deviance = sum(dev.resids(y, mu=mu, wt=weights)), aic = aic.model, 
+       null.deviance = NA,   #   # Since best-fitting mu !=y, computing the null model would require a non-trivial fit...
+       iter = iter, 
        residuals = residuals, # "working" weights
        weights = wt,  # 'GLM' weights
        prior.weights = weights, # as name says
+       BinomialDen=environment(family$aic)$.BinomialDen, # used by simulate() for glm(., method="llm.fit")
        df.residual = resdf, df.null = nulldf, y = y, converged = conv, 
        boundary = boundary)
 }

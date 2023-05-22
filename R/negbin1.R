@@ -74,7 +74,7 @@ negbin1 <- function (shape = stop("negbin1's 'shape' must be specified"), link =
                                   2*lsh*(3+mushape*l1sh) - l1sh*(6+mushape*l1sh) +
                                   6*mushape* (2*trigamma(y)+mushape*(psigamma(y, deriv=2)+2.404113806319188))  )/12
     }
-    DlogLDmu <- function(mu, y, wt, n, phi, shape_it=NULL) { # dlogL/dmu 
+    DlogLDmu <- function(mu, y, wt, phi, shape_it=NULL) { # dlogL/dmu 
       if ( ! is.null(shape_it)) shape <- shape_it
       # shape (Log[mu shape] - Log[mu (1 + shape)] - PolyGamma[0, mu shape] + PolyGamma[0, mu shape + y])
       mushape <- mu*shape
@@ -106,7 +106,7 @@ negbin1 <- function (shape = stop("negbin1's 'shape' must be specified"), link =
                   20*log(shape/(1 + shape))^2 + mushape^2 *log(shape/(1 + shape))^4 + 240*trigamma(y) +
                   120* mushape*(2*psigamma(y, deriv=2)+mushape*psigamma(y, deriv=3)))/240
     }
-    D2logLDmu2 <- function(mu, y, wt, n, phi) { 
+    D2logLDmu2 <- function(mu, y, wt, phi) { 
       # shape^2 (-PolyGamma[1, mu shape] + PolyGamma[1, mu shape + y])
       mushape <- mu*shape
       term <- shape^2 * (- trigamma(mushape) + trigamma(mushape + y))
@@ -123,7 +123,7 @@ negbin1 <- function (shape = stop("negbin1's 'shape' must be specified"), link =
       }
       d2logl
     }
-    D3logLDmu3 <- function(mu, y, wt, n, phi) { 
+    D3logLDmu3 <- function(mu, y, wt, phi) { 
       # shape^2 (-PolyGamma[1, mu shape] + PolyGamma[1, mu shape + y])
       mushape <- mu*shape
       term <- shape^3 * (- psigamma(mushape, deriv=2) + psigamma(mushape + y, deriv=2))
@@ -165,24 +165,24 @@ negbin1 <- function (shape = stop("negbin1's 'shape' must be specified"), link =
       term[y==0L & mu==0] <- 0 # replaces NaN's with correct answer
       - term * wt
     }
-    DlogLDmu <- function(mu, y, wt, n, phi, shape_it=NULL) { # dlogL/dmu 
+    DlogLDmu <- function(mu, y, wt, phi, shape_it=NULL) { # dlogL/dmu 
       if ( ! is.null(shape_it)) shape <- shape_it      
       # shape (Log[mu shape] - Log[mu (1 + shape)] - PolyGamma[0, mu shape] + PolyGamma[0, mu shape + y])
       mushape <- mu*shape
       drop(shape * (log(shape/(1 + shape)) - digamma(mushape) + digamma(mushape + y)))
     }
-    D2logLDmu2 <- function(mu, y, wt, n, phi) { 
+    D2logLDmu2 <- function(mu, y, wt, phi) { 
       # shape^2 (-PolyGamma[1, mu shape] + PolyGamma[1, mu shape + y])
       mushape <- mu*shape
       drop(shape^2 * (- trigamma(mushape) + trigamma(mushape + y)))
     }
-    D3logLDmu3 <- function(mu, y, wt, n, phi) { 
+    D3logLDmu3 <- function(mu, y, wt, phi) { 
       # shape^2 (-PolyGamma[1, mu shape] + PolyGamma[1, mu shape + y])
       mushape <- mu*shape
       drop(shape^3 * (- psigamma(mushape, deriv=2) + psigamma(mushape + y, deriv=2)))
     }
     
-    sat_logL <- function(y, wt, return_logL=TRUE) { 
+    sat_logL <- function(y, wt, return_logL=TRUE) { # wt ignored
       shapeconst <- - 1/(shape * log(shape/(1 + shape))) # in the vector case, a slight optim would be to compute it only for y>0L ?
       if (length(shape)>1L) {
         muv <- rep(NA, length(y))
@@ -217,7 +217,7 @@ negbin1 <- function (shape = stop("negbin1's 'shape' must be specified"), link =
       dlogLDmu_0 <- shape*(0.57721566490 - 2 * atanh(1/(1+2*shape)) -log(shape/(1+shape))/2 +digamma(y)) #  dlogL in mu=0
       if (dlogLDmu_0<0) return(0) # DlogL < 0 in mu->0   => return mu=0
       # however the evaluation of dlogl near mu=0 is remarkably imprecise for vanishing shape. The notebook illustrates the huge amplitude of the numerical noise.
-      # Hence 'quickpatch' in dev.resids(). ____F I X M E___ rethink: restrict the shape lower bound?
+      # Hence 'quickpatch' in dev.resids(). (___F I X M E__) rethink: restrict the shape lower bound?
       if (shape >= 1) {
         lower <-  y-1
       } else {
@@ -235,7 +235,7 @@ negbin1 <- function (shape = stop("negbin1's 'shape' must be specified"), link =
   }
   
   dev.resids <- function(y,mu,wt) { 
-    resu <- 2*(sat_logL(y, wt=wt)-logl(y,mu=mu,wt=wt))
+    resu <- 2*(sat_logL(y, wt=wt)-logl(y,mu=mu,wt=wt)) # pw are not formally supported. sat_logL() (and possibly other fns) ignores them but logl() does not... (___F I X M E___ fix logl fo safety?)
     if (any(shape<1e-4)) {
       if (length(shape)>1L) {
         quickpatch <- shape<1e-5 & resu<0
@@ -251,7 +251,7 @@ negbin1 <- function (shape = stop("negbin1's 'shape' must be specified"), link =
     # 2*(sat_logls-logls) 
   } # cannot use $aic() which is already a sum...
   
-  aic <- function(y, n, mu, wt, dev) {
+  aic <- function(y, mu, wt, ...) {
     - 2 * sum(logl(y, mu, wt))
   }
   linkfun <- function(mu,mu_truncated=FALSE) { ## mu_truncated gives type of I N put

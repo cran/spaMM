@@ -13,6 +13,13 @@ using Eigen::VectorXd;
 
 bool printDebug=false;
 
+// [[Rcpp::export(.setNbThreads)]]
+int set_thread_nbr(int thr) {
+  Eigen::setNbThreads(thr);
+  return(Eigen::nbThreads());
+}
+
+
 // [[Rcpp::export(.rankinfo)]] // called only if spaMM.getOption("rankMethod") is NULL (non-default)
 SEXP rankinfo( SEXP x, SEXP tol){
   const Map<MatrixXd> X(as<Map<MatrixXd> >(x));

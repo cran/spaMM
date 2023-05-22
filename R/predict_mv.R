@@ -67,7 +67,7 @@
     for (mv_it in seq_along(allvarsS)) locdataS[[mv_it]] <-  ..get_locdata(locdata, allvarsS[[mv_it]], na.rm=TRUE)
     RESU <- list(locdata=locdataS, # locdata in RESU allowing (potential) cbind() with predictions in .predict_body(). (maybe not implemented for mv)
                  cum_nobs= cumsum(c(0L,lapply(locdataS, nrow))), # more widely used by .fv_linkinv()
-                 newX.pv=object$X.pv) 
+                 newX.pv=model.matrix(object)) 
   } 
   ## so we save 'locdata=locdataS' in RESU, but we will locally modify 'locdataS' by selecting columns in locdataS[[mv_it]]
   ## and will create a local 'ranefdata' from this locally modified 'locdataS'.

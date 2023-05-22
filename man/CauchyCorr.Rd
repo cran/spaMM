@@ -24,7 +24,7 @@ Cauchy correlation function and Cauchy formula term
   \item{Nugget}{(Following the jargon of Kriging) a parameter describing a discontinuous decrease in 
     correlation at zero distance. Correlation will always be 1 at \eqn{d=0}, and from which it immediately drops to 
     (1-Nugget). Defaults to zero.}
-  \item{\dots}{Names of coordinates, using \dQuote{+} as separator (e.g., \code{Matern(1|longitude+latitude)}}
+  \item{\dots}{Names of coordinates, using \dQuote{+} as separator (e.g., \code{Matern(1|longitude+latitude)}. The coordinates are numeric values found in the \code{data} data frame provided to the fitting function. No additional declaration of groups, factors, or other specific formatting is required.}
 }
 \details{
 The correlation at distance \eqn{d>0} is 

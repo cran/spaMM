@@ -30,10 +30,12 @@
   lo <- switch(family$family,
                "COMPoisson" = 0.05, # no prior.weights handling for COMPoisson 
                "beta_resp" = 1e-6/prior.weights, # '/'pw bc the disp param is here a prec param: precision =prec*pw must be within 1e-6, 1e6
+               "betabin" = 1e-6/prior.weights, # '/'pw bc the disp param is here a prec param: precision =prec*pw must be within 1e-6, 1e6
                1e-6) #.Machine$double.xmin) # 1e-6 is typical lower bound for NB_shape
   hi <- switch(family$family,
                "COMPoisson" = 10, # no prior.weights handling for COMPoisson 
                "beta_resp" = 1e6/prior.weights,
+               "betabin" = 1e6/prior.weights,
                1e6) # .Machine$double.xmax) # 1e6 is typical upper bound for NB_shape
   .get_rdisPars_LowUp(disp_env=family$resid.model, lo=lo, hi=hi)
 }
@@ -305,16 +307,18 @@
     }
   }
   if (! is.null(canon.init$beta_prec)) { 
+    # for betabin in particular, logL is flat for high lambda, low beta var => max beta_prec 1e4.
+    # It might be useful to distinguish beta_resp here but the info is not available.
     if (length(canon.init$beta_prec)>1L) { # mv case with >1 beta_resp submodels
       # then all vectors mus be named and canon.init must have values for all beta_resp submodels
       beta_prec <- .modify_list(rep(1e-6, length(canon.init$beta_prec)), user.lower$beta_prec)
       lower$trbeta_prec <- .beta_precFn(beta_prec)
-      beta_prec <- .modify_list(pmax(100*canon.init$beta_prec,1e6), user.upper$beta_prec)
+      beta_prec <- .modify_list(pmax(100*canon.init$beta_prec,1e4), user.upper$beta_prec)
       upper$trbeta_prec <- .beta_precFn(beta_prec)
     } else {
       if (is.null(beta_prec <- user.lower$beta_prec)) beta_prec <- 1e-6
       lower$trbeta_prec <- .beta_precFn(beta_prec)
-      if (is.null(beta_prec <- user.upper$beta_prec)) beta_prec <- max(100*canon.init$beta_prec,1e6)
+      if (is.null(beta_prec <- user.upper$beta_prec)) beta_prec <- max(100*canon.init$beta_prec,1e4)
       upper$trbeta_prec <- .beta_precFn(beta_prec)
     }
   } 

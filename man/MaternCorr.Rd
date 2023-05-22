@@ -36,7 +36,7 @@ The \code{MaternCorr} function may be used to vizualise these correlations, usin
   \item{Nugget}{(Following the jargon of Kriging) a parameter describing a discontinuous decrease in 
     correlation at zero distance. Correlation will always be 1 at \eqn{d=0}, and from which it immediately drops to 
     (1-Nugget)}
-  \item{\dots}{Names of coordinates, using \dQuote{+} as separator (e.g., \code{Matern(1|longitude+latitude)}}
+  \item{\dots}{Names of coordinates, using \dQuote{+} as separator (e.g., \code{Matern(1|longitude+latitude)}. The coordinates are numeric values found in the \code{data} data frame provided to the fitting function. No additional declaration of groups, factors, or other specific formatting is required.}
 }
 \details{
 The correlation at distance \eqn{d>0} is 
@@ -66,7 +66,7 @@ MaternCorr(distMatrix,nu=2)
 ## Group-specific random effects: 
 if (spaMM.getOption("example_maxtime")>1.6) {
   data(Leuca)
-  subLeuca <- Leuca[c(1:10,79:88),] # subset of 10 feamels and 10 males, for faster examples.
+  subLeuca <- Leuca[c(1:10,79:88),] # subset of 10 females and 10 males, for faster examples.
 
   # Independent Matern random effect with different covariance parameters for each sex:
   fitme(fec_div ~ sex + Matern(female|x + y) + Matern(male|x + y),  data = subLeuca) 

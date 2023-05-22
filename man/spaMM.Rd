@@ -13,7 +13,7 @@ Both maximum likelihood (ML) and restricted likelihood (REML) can be used for li
 }
 
 \details{
-  The standard response families \code{gaussian}, \code{binomial}, \code{poisson}, and \code{Gamma} are handled, as well as negative binomial (see \code{\link{negbin1}} and \code{\link{negbin2}}), zero-truncated poisson and negative binomial, beta (\code{\link{beta_resp}}) and Conway-Maxwell-Poisson response (see \code{\link{Tpoisson}}, \code{\link{Tnegbin}} and \code{\link{COMPoisson}}). A \code{multi} family look-alike is also available for \code{\link{multinomial}} response, with some constraints. 
+  The standard response families \code{gaussian}, \code{binomial}, \code{poisson}, and \code{Gamma} are handled, as well as negative binomial (see \code{\link{negbin1}} and \code{\link{negbin2}}), beta (\code{\link{beta_resp}}), beta-binomial (\code{\link{betabin}}), zero-truncated poisson and negative binomial and Conway-Maxwell-Poisson response (see \code{\link{Tpoisson}}, \code{\link{Tnegbin}} and \code{\link{COMPoisson}}). A \code{multi} family look-alike is also available for \code{\link{multinomial}} response, with some constraints. 
   
   The variance parameter of residual error is denoted \eqn{\phi} (\code{phi}): this is the residual variance for gaussian response, but for Gamma-distributed response, the residual variance is \eqn{\phi}\eqn{\mu^2} where \eqn{\mu} is expected response. A (possibly mixed-effects) linear predictor for \eqn{\phi}, modeling heteroscedasticity, can be considered (see Examples). 
   

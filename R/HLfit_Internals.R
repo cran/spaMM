@@ -1279,11 +1279,11 @@ spaMM_Gamma <- local({
            ## uses C code:
            -family$aic(y=y, mu=exp(theta), wt=1)/2 ## handles truncation from given untruncated mu
          },
-         binomial = function(theta,freqs,sizes,nu) {
+         binomial = function(theta,y,sizes,nu) {
            #nu*sizes*(freqs*theta-log(1+exp(theta))) +lchoose(sizes,round(sizes*freqs)) :
            ## uses stats:: C code:
            muFREQS <- plogis(theta)
-           nu * dbinom(round(sizes * freqs), sizes, prob=muFREQS, log = TRUE)
+           nu * dbinom(y, sizes, prob=muFREQS, log = TRUE) 
           },
          # gamma = function(theta,y,nu) {nu*(y*theta+log(-theta))+nu*(log(nu*y))-lgamma(nu)-log(y)} ## mean mu=-1/th, **** var = mu^2 / vu ****
          # same by using ad hoc C library...
@@ -1294,25 +1294,28 @@ spaMM_Gamma <- local({
            COMP_nu <- environment(family$aic)$nu # using the (variable nu) from the family captured in this fn's definition envir 
            .CMP_clik_fn(theta, y, nu, COMP_nu, muetaenv=muetaenv)
          },
-         negbin = function(theta,y,nu) { ## theta is the canonical param, -log(1+shape/mu)
-           if (is.null(mu <- attr(theta,"mu"))) {
-             NB_shape <- environment(family$aic)$shape
-             mu <- NB_shape/(exp(-theta)-1) # note that NB_shape/(exp(log(1 + NB_shape/x)) - 1) numerically fails to be x for large x
-           }
-           -family$aic(y=y, mu=mu, wt=1)/2 ## handles truncation from given untruncated mu
-         },
          negbin2 = function(theta,y,nu) { ## theta is the canonical param, -log(1+shape/mu)
            if (is.null(mu <- attr(theta,"mu"))) {
              NB_shape <- environment(family$aic)$shape
              mu <- NB_shape/(exp(-theta)-1) # note that NB_shape/(exp(log(1 + NB_shape/x)) - 1) numerically fails to be x for large x
            }
-           -family$aic(y=y, mu=mu, wt=1)/2 ## handles truncation from given untruncated mu
+           sum(family$logl(y=y, mu=mu, wt=1))  ## Should handle truncation from given untruncated mu
          },
          negbin1 = function(theta,y,nu) { ## theta is a pseudo-canonical parameter... defined as mu (pseudo canonical link def as identity)
-           -family$aic(y=y, mu=theta, wt=1)/2 ## Should handle truncation from given untruncated mu
+           sum(family$logl(y=y, mu=theta, wt=1))  ## Should handle truncation from given untruncated mu
          },
          beta_resp= function(theta,y,pw) # note how prior weights are passed by .calc_clik -> clik_fn(theta, y, pw=eval(prior.weights))
-           -family$aic(y=y, mu=theta, wt=pw)/2,
+           sum(family$logl(y=y, mu=theta, wt=pw)), 
+         betabin= function(theta,y,sizes,pw) # note how prior weights are passed by .calc_clik -> clik_fn(theta, y, pw=eval(prior.weights))
+           sum(family$logl(y=y, n=sizes, mu=theta, wt=pw)), 
+         negbin = function(theta,y,nu) { ## theta is the canonical param, -log(1+shape/mu)
+           ## This one is de facto not used as negbin() produces family$family="negbin2"
+           if (is.null(mu <- attr(theta,"mu"))) {
+             NB_shape <- environment(family$aic)$shape
+             mu <- NB_shape/(exp(-theta)-1) # note that NB_shape/(exp(log(1 + NB_shape/x)) - 1) numerically fails to be x for large x
+           }
+           -family$aic(y=y, mu=mu, wt=1)/2  ## Should handle truncation from given untruncated mu
+         },
          stop("code missing for this family")
   )
 }
@@ -1486,7 +1489,7 @@ spaMM_Gamma <- local({
     etamin <- 1/etamax
     neg_eta <- (eta<etamin)
     eta[neg_eta] <- etamin 
-  } else if (family$family == "binomial") { ## y ignored here: important as there would be ambiguity whether y is counts or frequencies in calling function.
+  } else if (family$family  %in% c("binomial","betabin")) { ## y ignored here: important as there would be ambiguity whether y is counts or frequencies in calling function.
     #for binomial cases stats::binomial(...)$linkinv corrects eta for all links so that mu is always .Machine$double.eps from 0 or 1
     # This may not be enough... or inconsistent with corrections used elsewhere, so we overcome the stats:: correction
     # by correcting eta differently here and by computing mu <- .binomial_raw_linkinv(eta,link=family$link) (in .muetafn and possibly elsewhere)
@@ -1606,18 +1609,33 @@ spaMM_Gamma <- local({
   muetablob
 }
 
-.binom_add_Md_logcLdeta_terms <- function(muetablob, family, y, mu, 
+.binom_add_Md_logcLdeta_terms <- function(muetablob, family, y, muFREQS, 
                                           dmudeta, # muFREQS !
                                           eta, BinomialDen) { 
   
   y <- drop(y)
-  muFREQS <- mu/BinomialDen 
-  dlogLdmu <- family$DlogLDmu(muCOUNT=mu, muFREQS=muFREQS , y=y,BinomialDen=BinomialDen)
+  dlogLdmu <- family$DlogLDmu(muCOUNT=muetablob$mu, muFREQS=muFREQS , y=y,BinomialDen=BinomialDen)
   muetablob$dlogcLdeta <- dlogLdmu*dmudeta #                                                                1st
   d2logLdmu2 <- family$D2logLDmu2(muFREQS=muFREQS, y=y,BinomialDen=BinomialDen) 
   d2mudeta2 <- family$D2muDeta2(eta)
   muetablob$Md2logcLdeta2 <- - (d2logLdmu2*dmudeta^2+dlogLdmu*d2mudeta2) #                                  2nd                
   d3logLdmu3 <- family$D3logLDmu3(muFREQS=muFREQS, y=y,BinomialDen=BinomialDen) 
+  d3mudeta3 <- family$D3muDeta3(eta)
+  muetablob$Md3logcLdeta3 <- - drop(d3logLdmu3*dmudeta^3 + 3* d2logLdmu2*d2mudeta2*dmudeta + dlogLdmu*d3mudeta3)
+  muetablob
+}
+
+.betabin_add_Md_logcLdeta_terms <- function(muetablob, family, y, muFREQS, 
+                                          dmudeta, # muFREQS !
+                                          eta, BinomialDen, pw) { 
+  
+  y <- drop(y)
+  dlogLdmu <- family$DlogLDmu(muFREQS=muFREQS, y=y,BinomialDen=BinomialDen, wt=pw)
+  muetablob$dlogcLdeta <- dlogLdmu*dmudeta #                                                                1st
+  d2logLdmu2 <- family$D2logLDmu2(muFREQS=muFREQS, y=y,BinomialDen=BinomialDen, wt=pw) 
+  d2mudeta2 <- family$D2muDeta2(eta)
+  muetablob$Md2logcLdeta2 <- - (d2logLdmu2*dmudeta^2+dlogLdmu*d2mudeta2) #                                  2nd                
+  d3logLdmu3 <- family$D3logLDmu3(muFREQS=muFREQS, y=y,BinomialDen=BinomialDen, wt=pw) 
   d3mudeta3 <- family$D3muDeta3(eta)
   muetablob$Md3logcLdeta3 <- - drop(d3logLdmu3*dmudeta^3 + 3* d2logLdmu2*d2mudeta2*dmudeta + dlogLdmu*d3mudeta3)
   muetablob
@@ -1652,13 +1670,21 @@ spaMM_Gamma <- local({
     #   # _F I X M E_ try to use unit_GLMweights concept for dlogcLikdeta ? would be limited though (not even Gamma(log))
     
   if ( family$family=="binomial") {
-    mu <- mu * BinomialDen
-    muetablob <- list(mu=mu, 
+    muetablob <- list(mu=mu * BinomialDen, # muCOUNTS here 
                       dmudeta=dmudeta * BinomialDen, # muCOUNTS here
                       GLMweights=GLMweights, sane_eta=eta)
-    muetablob <- .binom_add_Md_logcLdeta_terms(muetablob=muetablob, family, y, mu, 
+    muetablob <- .binom_add_Md_logcLdeta_terms(muetablob=muetablob, family, y, 
+                                               muFREQS=mu,
                                                dmudeta, # muFREQS here 
                                                eta, BinomialDen=BinomialDen)
+  } else if ( family$family=="betabin") {
+    muetablob <- list(mu=mu * BinomialDen, # muCOUNTS here 
+                      dmudeta=dmudeta * BinomialDen, # muCOUNTS here
+                      GLMweights=GLMweights, sane_eta=eta)
+    muetablob <- .betabin_add_Md_logcLdeta_terms(muetablob=muetablob, family, y, 
+                                                 muFREQS=mu, 
+                                                 dmudeta, # muFREQS here 
+                                                 eta, BinomialDen=BinomialDen, pw)
   } else {
     muetablob <- list(mu=mu, dmudeta=dmudeta, GLMweights=GLMweights, sane_eta=eta)
     # p0 computation as in .muetafn_truncated_GLM:
@@ -2703,85 +2729,6 @@ spaMM_Gamma <- local({
   return(invX)
 }
 
-.old_calc_d2hdv2_info <- function(object, ZAL) {
-  envir <- object$envir
-  if (is.null(factor_inv_Md2hdv2 <- envir$factor_inv_Md2hdv2)) { ## old code not using promises
-    if ( ! is.null(envir$G_CHMfactor)) {
-      if (length(object$y) > ncol(envir$chol_Q)) { # We precompute inverse(d2hdv2) so that .calc_dvdlogphiMat_new() has ONE costly (r*r) %*% (r*n).
-        if ( is.null(envir$invL_G.P)) { # allowing for old objects that did not have this element
-          LL <- Matrix::solve(envir$G_CHMfactor, as(envir$G_CHMfactor,"pMatrix") %*% envir$chol_Q,system="L") ## dgCMatrix 
-        } else  LL <- envir$invL_G.P %*% envir$chol_Q ## dgCMatrix 
-        envir$factor_inv_Md2hdv2 <- Matrix::drop0(LL,tol=.Machine$double.eps)
-        d2hdv2_info <- - .crossprod(envir$factor_inv_Md2hdv2) 
-      } else d2hdv2_info <- envir # then .calc_dvdlogphiMat_new() has TWO  (r*r) %*% (r*n) (plus an efficient solve())
-    } else {
-      d2hdv2 <- .calcD2hDv2(ZAL,.get_H_w.resid(object),object$w.ranef) 
-      if (inherits(d2hdv2,"sparseMatrix")) {
-        d2hdv2_info <- suppressWarnings(try(Cholesky( - d2hdv2,LDL=FALSE,perm=TRUE ), silent=TRUE )) #  '-' ! 
-        if (inherits(d2hdv2_info, "CHMfactor")) {
-          #d2hdv2_info <- structure(d2hdv2_info, BLOB=list2env(list(), parent=environment(.solve_CHM)))
-          rank <- ncol(d2hdv2)
-        } else {
-          # oldMDCopt <- options(Matrix.warnDeprecatedCoerce = 0) # qr(<dsC>) problem in Matrix v1.4.2
-          d2hdv2_info <- qr(d2hdv2, tol=spaMM.getOption("qrTolerance")) # sparseQR
-          # options(oldMDCopt)
-          rank <- sum(abs(diag(qrR(d2hdv2_info,backPermute=FALSE)))>1e-7)
-        }
-      } else { # d2hdv2 was a matrix or a Matrix in dense format (dgeMatrix...)
-        d2hdv2_info <- qr(d2hdv2, tol=spaMM.getOption("qrTolerance")) # qr 
-        rank <- d2hdv2_info$rank
-      }
-      if (rank<ncol(d2hdv2)) {
-        d2hdv2_info <- .force_solve(d2hdv2) # inverse(d2hdv2)
-      } # else we keep the QR facto.
-    }
-  } else d2hdv2_info <- - .crossprodCpp_d(as.matrix(factor_inv_Md2hdv2), yy=NULL) # inverse(d2hdv2) # much faster than Matrix::crossprod(dsCMatrix...)
-  #                       and still faster than any of the as_mat variants, eg .Rcpp_crossprod(factor_inv_Md2hdv2, BB = NULL, as_mat=TRUE) 
-  #                       bc .crossprodCpp_d(dense) is fast relative to .Rcpp_crossprod(sparse), irrespective of as_mat
-  return(d2hdv2_info)
-}
-
-.calc_d2hdv2_info <- function(object, ZAL) {
-  if (TRUE) return(.old_calc_d2hdv2_info(object, ZAL)) # rediscovered ong afterwards... so ./.
-  ## The code below first checks for a "factor_inv_Md2hdv2" promise. But 
-  ##   there is no such promise in the current object bc HLfit_body() has run  
-  ##   .init_promises_spprec(sXaug, non_X_ones=FALSE, nullify_X_ones =TRUE) 
-  ##   and non_X_ones=FALSE implies that there is no "factor_inv_Md2hdv2" promise.
-  #
-  # ELSE
-  envir <- object$envir
-  if ( ! is.null(envir$G_CHMfactor)) { ## spprec code
-    if (! .is_evaluated("factor_inv_Md2hdv2", envir)) {
-      if (length(object$y) > ncol(envir$chol_Q)) { # We precompute inverse(d2hdv2) so that .calc_dvdlogphiMat_new() has ONE costly (r*r) %*% (r*n).
-        d2hdv2_info <- - .crossprod(envir$factor_inv_Md2hdv2) 
-      } else d2hdv2_info <- envir # then .calc_dvdlogphiMat_new() has TWO  (r*r) %*% (r*n) (plus an efficient solve())
-    } else d2hdv2_info <- - .crossprodCpp_d(as.matrix(envir$factor_inv_Md2hdv2), yy=NULL)
-  } else {
-    if (is.null(factor_inv_Md2hdv2 <- envir$factor_inv_Md2hdv2)) { 
-      d2hdv2 <- .calcD2hDv2(ZAL,object$w.resid,object$w.ranef) 
-      if (inherits(d2hdv2,"sparseMatrix")) {
-        d2hdv2_info <- suppressWarnings(try(Cholesky( - d2hdv2,LDL=FALSE,perm=TRUE ), silent=TRUE )) #  '-' ! 
-        if (inherits(d2hdv2_info, "CHMfactor")) {
-          #d2hdv2_info <- structure(d2hdv2_info, BLOB=list2env(list(), parent=environment(.solve_CHM)))
-          rank <- ncol(d2hdv2)
-        } else {
-          d2hdv2_info <- qr(d2hdv2, tol=spaMM.getOption("qrTolerance")) # sparseQR
-          rank <- sum(abs(diag(qrR(d2hdv2_info,backPermute=FALSE)))>1e-7)
-        }
-      } else { # d2hdv2 was a matrix or a Matrix in dense format (dgeMatrix...)
-        d2hdv2_info <- qr(d2hdv2, tol=spaMM.getOption("qrTolerance")) # qr 
-        rank <- d2hdv2_info$rank
-      }
-      if (rank<ncol(d2hdv2)) {
-        d2hdv2_info <- .force_solve(d2hdv2) # inverse(d2hdv2)
-      } # else we keep the QR facto.
-    } else d2hdv2_info <- - .crossprodCpp_d(as.matrix(envir$factor_inv_Md2hdv2), yy=NULL) # inverse(d2hdv2) # much faster than Matrix::crossprod(dsCMatrix...)
-    #                       and still faster than any of the as_mat variants, eg .Rcpp_crossprod(factor_inv_Md2hdv2, BB = NULL, as_mat=TRUE) 
-    #                  
-  }
-  return(d2hdv2_info)
-}
-
 .get_glm_phi <- function(fitobject, mv_it=NULL) { 
   # gets always a single glm fit, not the list of the mv case
   if ( ! is.null(mv_it)) { # fitmv case. Then glm_phi may be (1) an element of phi.object[[mv_it]] (2) envir$glmS_phi[[mv_it]]
@@ -2799,11 +2746,24 @@ spaMM_Gamma <- local({
                              lev=rep(0,nobs), dev.res=rep(1,nobs), control=list(), # dummy values
                              data=fitobject$data[validrownames,,drop=FALSE], 
                              family= .get_phifam(fitobject, mv_it))
-      } else glm_phi_args <- c(fitobject$phi.object[[mv_it]]$glm_phi_args, 
+      } else {
+        glm_phi_args <- c(fitobject$phi.object[[mv_it]]$glm_phi_args, # $glm_phi_args -> dev.res, etc, useful when phiScal
+                          # However, one must be careful not to call this code if phi was fixed (bug hard to diagnose)
                         list(formula=.get_phiform(fitobject, mv_it), 
                              lev=fitobject$lev_phi[resp_range], data=fitobject$data[validrownames,,drop=FALSE], 
                              family= .get_phifam(fitobject, mv_it))
-      )
+        )
+        # When no longer understanding this code, I tried 
+        # fitobject$envir$glmS_phi[[mv_it]] <- 
+        #   glm_phi <-.calc_dispGammaGLM(formula=.get_phiform(fitobject, mv_it), 
+        #                                lev=fitobject$lev_phi[resp_range], control=list(), 
+        #                                data=fitobject$data[validrownames,,drop=FALSE], 
+        #                                family= eval(.get_phifam(fitobject, mv_it)), #                    <= eval language object !
+        #                                dev.res=fitobject$families[[mv_it]]$dev.resids(fitobject$y[resp_range],
+        #                                                                               fitobject$fv[resp_range],
+        #                                                                               c(fitobject$prior.weights[[mv_it]])))
+        # which seems correct
+      }
       fitobject$envir$glmS_phi[[mv_it]] <- glm_phi <- do.call(".calc_dispGammaGLM", glm_phi_args)
     }
   } else { # univariate case.  Then glm_phi may be (1) an element of phi.object (2) envir$glm_phi
@@ -2816,7 +2776,7 @@ spaMM_Gamma <- local({
       # So the phi prediction model is added post-fit in fitobject$envir.
       # The summary of the main fit shows phi was fixed [through  "phi" ~ 0 + offset(pred_disp) ] to 440.1 440.1 440.1 440.1 440.1 ...                         
       if (length(fitobject$phi.object$phi_outer)>1L) {
-        nobs <- nrow(fitobject$X.pv)
+        nobs <- nrow(model.matrix(fitobject))
         glm_phi_args <- list(formula=.get_phiform(fitobject), # formula with offset only: see explanations in .calcResidVar()
                              lev=rep(0,nobs), dev.res=rep(1,nobs), control=list(), # dummy values
                              data=fitobject$data, 
@@ -2927,8 +2887,8 @@ spaMM_Gamma <- local({
     }
   } else {
     if (is.null(factor_inv_Md2hdv2 <- envir$factor_inv_Md2hdv2)) {
-      if ( is.null(envir$invL_G.P)) { # allowing for old objects that did not have this element
-        LL <- Matrix::solve(envir$G_CHMfactor, as(envir$G_CHMfactor,"pMatrix") %*% envir$chol_Q,system="L") ## dgCMatrix 
+      if ( is.null(envir$invL_G.P)) { # allowing for old objects that did not have this element. But may envir$perm contain the info in as(envir$G_CHMfactor,"pMatrix")?
+        LL <- Matrix::solve(envir$G_CHMfactor, as(envir$G_CHMfactor,"pMatrix") %*% envir$chol_Q,system="L") ## dgCMatrix  
       } else  LL <- envir$invL_G.P %*% envir$chol_Q ## dgCMatrix 
       envir$factor_inv_Md2hdv2 <- factor_inv_Md2hdv2 <- Matrix::drop0(LL,tol=.Machine$double.eps)
       # such that chol_Md2hdv2 = t(solve(factor_inv_Md2hdv2))
@@ -3600,7 +3560,7 @@ if (FALSE) { # that's not used.
       if (TRUE) { 
         # on test-levM.R arabidopsis example, .lmwithQR faster than .lmwithQRP faster than a firsr .update_R_in_place_essai() (code in givens.R) 
         # Finally a revised .update_R_in_place() may be marginally faster than .lmwithQR()
-        # check: test-spaMM.R#8: try(fitme(I(1 + cases) ~ I(prop.ag/10)...
+        # check: test-spaMM.R#8: try(fitme(I(1+cases)~I(prop.ag/10)...
         if (attr(XDtemplate,"upperTri")) { # The update does not work when ".lmwithQRP() has been used.
           R_scaled <- .update_R_in_place(XD) # bypass QR factorization code to get new R (for unknown new Q) with XD modified in place.
         } else R_scaled <- .lmwithQR(XD,yy=NULL,returntQ=FALSE,returnR=TRUE)$R_scaled ## Eigen QR OK since we don't request Q
@@ -3874,13 +3834,14 @@ if (FALSE) { # that's not used.
   if ( (d_obj <- new_obj-old_obj)>0) {
     ## Use FALSE to inhibit all port_env usage:
     if ( ! identical(control.HLfit$write_port_env,FALSE)) assign("objective",new_obj,envir=processed$port_env) 
-    if (d_obj<1+ncol(processed$AUGI0_ZX$X.pv) ||  # ___F I X M E___ quite ad hoc. a number of fitted params would be better ? but avoid it being zero when no fixef
+    if (d_obj<1+ncol(processed$AUGI0_ZX$X.pv) ||  # ___F I X M E___ quite ad hoc. a number of fitted params+1 would be better ? +1 to avoid it being zero when no fixef
                                                   # was initially '5' based on some old Loaloa IMRF example; 
                                                   # changed to length(port_fit_values$fixef) in v3.11.10, 04/2022 => wrong test, keep being FALSE
         processed$LevenbergM["LM_start"]) { # LM_start condition appears to improve the fit for test negbin difficult.
       # Update port_fit_values and assign it: 
       if (models[["eta"]]=="etaHGLM") {
         port_fit_values$lambda_est <- lambda_est ## mean fit lambda; to be used by .HLfit_finalise_init_lambda
+        # Note that port_fit_values$v_h is already (typically) set by the port_fit_value promise 
         # 
       } # else port_fit_values$makes_.this_not_NULL <- TRUE
       processed$port_env$port_fit_values <- port_fit_values # NOT only for phiHGLM
@@ -3935,7 +3896,11 @@ if (FALSE) { # that's not used.
     attributes(X)[names_lostattrs] <- Xattr[names_lostattrs] ## not mostattributes which messes S4 objects ?!
     return(X) ## center=FALSE keeps sparsity
   } else {
-    return(beta * attr(X,"scaled:scale"))
+    if ( ! is.null(scale <- attr(X,"scaled:scale"))) { # unscaling a scaled beta in a debug session
+      return(beta * scale)
+    } else if ( ! is.null(scale <- attr(X,"scale_info"))) { # unscaling a scaled beta post-fit [beta from optimInfo...]
+      return(beta * scale)                                   
+    } else stop("No scaling info in matrix attributes.")
   }
 }
 
@@ -3948,17 +3913,11 @@ if (FALSE) { # that's not used.
     attr(X,"scale_info") <- attr(X,"scaled:scale")
     attr(X,"scaled:scale") <- NULL ## otherwise there is a non-trivial scale on an unscaled matrix
     return(X)
-  } else {
-    return(beta / attr(X,"scaled:scale"))
-  }
-  # if (is.null(beta)) {
-  #   X <- scale(X, center=FALSE,scale=1/attr(X,"scaled:scale"))
-  #   return(scale(X, center=-attr(X,"scaled:center"),scale=FALSE))
-  # } else {
-  #   beta <- beta / attr(X,"scaled:scale")
-  #   if ( ! is.null(intercept <- beta["(Intercept)"])) beta["(Intercept)"] <- intercept - sum(beta * attr(X,"scaled:center"))
-  #   return(beta)
-  # }
+  } else if ( ! is.null(scale <- attr(X,"scaled:scale"))) { # unscaling a scaled beta in a debug session
+    return(beta / scale)
+  } else if ( ! is.null(scale <- attr(X,"scale_info"))) { # unscaling a scaled beta post-fit [beta from optimInfo...]
+    return(beta / scale)                                   
+  } else stop("No scaling info in matrix attributes.")
 }
 
 ## as(.,"dtCMatrix) is quite slow => this attempt. But even the new() therein is slow.
@@ -4181,7 +4140,7 @@ if (FALSE) { # that's not used.
                      # For binomial: this mu is count, output fv is proba
                      processed, family=processed$family, families=processed$families, data=processed$data) {
   if (is.null(families)) {
-    if (family$family=="binomial") { 
+    if (family$family %in% c("binomial","betabin")) { 
       fv <- mu/BinomialDen ## cf glm(binomial): fitted values are frequencies 
     } else if ( ! is.null(muetablob$p0)) {
       fv <- structure(mu/(1-muetablob$p0), ## mu Truncated from mu Untruncated.
@@ -4285,19 +4244,21 @@ if (FALSE) { # that's not used.
                                        },
                                        " increase 'control.HLfit$max.iter.mean' above ",maxit.mean)
   }
-  if ( (! is.na(conv_logL)) && iter==max.iter) {
+  if (iter==max.iter) {
     maxitmess <- paste0("Estimates did not converge;",
+                        " increase control.HLfit's 'max.iter' above ",max.iter,
                         if ( ! LMMbool && ! processed$LevenbergM["LM_start"] ) {
-                          " try control.HLfit=list(LevenbergM=TRUE), or"
+                          ",\n or try control.HLfit=list(LevenbergM=TRUE)"
                         },
-                        " increase 'max.iter' above ",max.iter,
-                        "\n (see help('HLfit') for details about 'max.iter')")
+                        " (see help('control.HLfit') for details).")
     if (models[["eta"]]=="etaHGLM") {
-      if (conv_logL  && ! conv.lambda) {
-        mainNotConv <- paste0("p_v apparently converged but lambda estimates apparently did not.",
-                              "\n This may indicate that some lambda estimate(s) should be zero.",
-                              "\n Otherwise try increasing 'max.iter' above ",max.iter,
-                              "\n (see help(HLfit) for details about 'max.iter')")          
+      if (! conv.lambda) {
+        if (identical(conv_logL,TRUE)) {
+          mainNotConv <- paste0("p_v apparently converged but lambda estimates apparently did not.",
+                                "\n This may indicate that some lambda estimate(s) should be zero.",
+                                "\n Otherwise try increasing 'max.iter' above ",max.iter,
+                                "\n (see help(HLfit) for details about 'max.iter')")          
+        } else mainNotConv <- maxitmess # By default conv_logL is NA := logL is not used as conv crit. 
       } else mainNotConv <- maxitmess        
     } else mainNotConv <- maxitmess        
     attr(mainNotConv,"diagnostics") <- c( conv.phi=conv.phi , conv.lambda=conv.lambda, 
@@ -4527,6 +4488,9 @@ if (FALSE) { # that's not used.
     if (is.list(w.resid)) { ## truncated 'family', or 'families' with some truncated one(s), but not all mv cases
       H_w.resid <- w.resid$w_resid 
     } else H_w.resid <- w.resid 
+    if (is.character(H_w.resid)) { # fixed-effect model with non-GLM family with etaFix... argh
+      H_w.resid <- .calc_H_w.resid(w.resid, muetablob=loopout_blob$muetablob, processed=processed) # for LLF w.resid is not generally defined.
+    }
     # res$w.resid is always a vector
     if (is.null(attr(H_w.resid,"unique"))) attr(H_w.resid,"unique") <- length(unique(H_w.resid))==1L  # for mv fits    
     attr(H_w.resid,"w.resid") <- w.resid ## potentially the list for mv or truncated; as such, useful for .calc_dlW_deta()

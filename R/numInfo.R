@@ -14,7 +14,7 @@
   parlist <- .expand_hyper(parlist, hlcorcall$processed$hyper_info, moreargs=moreargs) ## input ranPars contains both unconstrained ranPars and $hyper
   if (transf) {
     if ( ! is.null(trBeta <- parlist$etaFix$trBeta)) {
-      hlcorcall$etaFix$beta <- .betaInv(trBeta) 
+      hlcorcall$etaFix$beta <- .spaMM.data$options$.betaInv(trBeta) 
       parlist$etaFix <- NULL
     }
     # print(hlcorcall$etaFix$beta)
@@ -70,7 +70,7 @@
                        },
                        #
                        "etaFix" = {
-                         dbeta <- grad(.betaFn, parlist[[st]][["beta"]])
+                         dbeta <- grad(.spaMM.data$options$.betaFn, parlist[[st]][["beta"]])
                          if (bdiag. && length(dbeta)>1L) dbeta <- diag(x=dbeta)
                          dbeta
                         },
@@ -143,7 +143,7 @@
                    #
                    "etaFix" = {
                      ghbetas <- parlist[[st]]$beta
-                     for (it in seq_along(ghbetas)) ghbetas[it] <- hessian(.betaFn, ghbetas[it])
+                     for (it in seq_along(ghbetas)) ghbetas[it] <- hessian(.spaMM.data$options$.betaFn, ghbetas[it])
                      ghbetas <- grad_list$etaFix$trBeta * ghbetas
                      if (length(ghbetas)>1L) ghbetas <- diag(x=ghbetas)
                      ghbetas
@@ -220,7 +220,7 @@
   }
   if (length(beta_eta)) {
     betanames <- names(fixef(fitobject))
-    X.pv <- fitobject$X.pv
+    X.pv <- model.matrix(fitobject)
     X_off <-.subcol_wAttr(X.pv, j=betanames, drop=FALSE)
     X.pv <- .subcol_wAttr(X.pv, j=setdiff(colnames(X.pv),betanames), drop=FALSE)
     ori_off <- model.offset.HLfit(fitobject) # processed$off differs from it as get_HLCorcall(., etaFix) -> .preprocess(...etaFix) adds the etaFix-derived offset.
@@ -233,7 +233,7 @@
 .calc_grad_thr <- function(skeleton, fitobject, beta_eta=skeleton$etaFix$beta) {
   thr <- relist(rep(0.1, length(unlist(skeleton, recursive = TRUE, use.names = FALSE))), skeleton)
   if (fitobject$how$spaMM.version>"4.1.58") { # => made scale_info available afterwards 
-    if (length(beta_eta)) thr$etaFix$beta <- 0.1* attr(fitobject$X.pv,"scale_info")
+    if (length(beta_eta)) thr$etaFix$beta <- 0.1* attr(model.matrix(fitobject),"scale_info")
     if (length(rdisPars <- skeleton$rdisPars)) {
       if (is.list(rdisPars)) {
         for (mv_it in names(rdisPars)) {
@@ -351,7 +351,7 @@ numInfo <- function(fitobject,
     canon_skeleton <- skeleton
     skeleton <- .ad_hoc_trRanpars(skeleton)
     if (length(beta_eta)) {
-      skeleton$etaFix$trBeta <- .betaFn(beta_eta)
+      skeleton$etaFix$trBeta <- .spaMM.data$options$.betaFn(beta_eta)
       skeleton$etaFix$beta <- NULL
     }
     #  and the .numInfo_objfn must back-transform parameters

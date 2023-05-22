@@ -911,7 +911,7 @@
     family_it <- families[[mv_it]]
     has_estim_families_par <- ((family_it$family %in% c("negbin1","negbin2") && 
                                   inherits(substitute(shape, env=environment(family_it$aic)),"call")) ||
-                                 (family_it$family=="beta_resp" && inherits(substitute(prec, env=environment(family_it$aic)),"call"))||
+                                 (family_it$family %in% c("beta_resp","betabin") && inherits(substitute(prec, env=environment(family_it$aic)),"call"))||
                                  (family_it$family=="COMPoisson" && inherits(substitute(nu, env=environment(family_it$aic)),"call")))
     if (has_estim_families_par) break
   }
@@ -1133,6 +1133,9 @@
   algebra <- .set_augX_methods(merged) # sets processed$corr_method nd $spprec method
   .check_time_G_diagnosis(.provide_G_diagnosis, processed=merged, algebra)
   #
+  thread_nbr <- control.HLfit$NbThreads
+  if (is.null(thread_nbr)) thread_nbr <- .spaMM.data$options$NbThreads # should be 1L by default
+  
   # merged_X <- .scale(merged_X) not necessary since the merged X's are already scaled
   if (nrand) {
     merged$models[["eta"]] <- "etaHGLM" 
@@ -1140,6 +1143,7 @@
     merged[["psi_M"]] <- rep(attr(rand.families,"unique.psi_M"),vec_n_u_h)
     merged[["cum_n_u_h"]] <- cumsum(c(0L, vec_n_u_h))
     nrd <- merged[["cum_n_u_h"]][nrand+1L]
+    if (algebra=="decorr" && nrd>900L && thread_nbr==1L) message('Using paralellisation might be useful. See help("setNBThreads")')
     if (nrd==1L) {
       warning("Found a single random effect with a *single level*. Check formula?", immediate.=TRUE)
     }
@@ -1158,6 +1162,9 @@
       unmerged[[mv_it]]$geo_info <- merged$geo_info[rd_in_mv]
     }
   } else merged$models[["eta"]] <- "etaGLM" 
+  .check_nb_cores(nb_cores = thread_nbr)
+  .setNbThreads(thr=thread_nbr)
+  
   merged[["AUGI0_ZX"]] <- .init_AUGI0_ZX(X.pv=merged_X, vec_normIMRF, ZAlist=merged$ZAlist, nrand, n_u_h=nrd, 
                                          sparse_precision=merged$is_spprec, 
                                          as_mat=.eval_as_mat_arg(merged))
@@ -1333,6 +1340,7 @@ fitmv <- function(submodels, data, fixed=NULL, init=list(), lower=list(), upper=
     hlcor$how$fnname <- "fitmv"
     hlcor$fit_time <- structure(hlcor$how$fit_time,
                                 message="Please use how(<fit object>)[['fit_time']] to extract this information cleanly.")
+    if ( ! is.null(mc$control.HLfit$NbThreads)) .setNbThreads(thr=.spaMM.data$options$NbThreads)
   }
   rm(list=setdiff(lsv,"hlcor")) ## empties the whole local envir except the return value
   return(hlcor)

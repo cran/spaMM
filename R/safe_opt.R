@@ -13,6 +13,17 @@
   bobyqa_controls
 }
 
+.get_nlminb_controls <- function(init, upper, lower, maxeval_corr=.spaMM.data$options$maxeval_corr,
+                                 maxfun=max(2*( eval(.spaMM.data$options$maxeval,envir=list(initvec=init)))*maxeval_corr,
+                                            1+10*length(init)^2)) {
+  nlminb_controls <- .spaMM.data$options$nlminb
+  # Note that nlminb defaults, which are 200 and 150, were too low in some test cases.
+  #    devel/TMB/diagnosis_poly6.R showed the importance of controlling this.
+  if (is.null(nlminb_controls$eval.max)) nlminb_controls$eval.max <- max(maxfun/5,200)
+  if (is.null(nlminb_controls$iter.max)) nlminb_controls$iter.max <- max(maxfun/10,150)
+  nlminb_controls
+}
+
 .get_nloptr_controls <- function(init, LowUp, maxeval_corr=.spaMM.data$options$maxeval_corr) {
   nloptr_controls <- .spaMM.data$options$nloptr
   if (is.null(nloptr_controls$maxeval)) nloptr_controls$maxeval <-  eval(.spaMM.data$options$maxeval,list(initvec=init))*maxeval_corr
@@ -20,6 +31,8 @@
                                                                           list(LowUp=LowUp, rC_transf=.spaMM.data$options$rC_transf))
   if (is.null(nloptr_controls$xtol_abs)) nloptr_controls$xtol_abs <- 1e-12
   #nloptr_controls$print_level <- 3L # can be controlled by spaMM.options()!
+  nloptr_controls$local_opts <- nloptr_controls
+  nloptr_controls$local_opts$algorithm <- "NLOPT_LN_BOBYQA"
   nloptr_controls
 }
 
@@ -34,7 +47,12 @@
   delayedAssign("nloptr_controls", .get_nloptr_controls(init, LowUp, maxeval_corr))
   dx <- upper-lower
   dx[is.infinite(dx)] <- 1
-  use_bobyqa <- any(c(init-lower,upper-init)/dx<1e-4)
+  use_bobyqa <- ( any(c(init-lower,upper-init)/dx<1e-4) || 
+                    "rdisPars" %in% names(LowUp$lower) # Cf bbin_llmm_het ( it's a local max issue, numerical tol's have no effect; ____F I X M E___ how to avoid that?)
+                    # Also (much weaker) effect on test-LLM.R betabin mv numInfo comparison details there).
+                  # See comments on the optim_by_pybobyqa() function defined in devel/TMB/spatial_poisson/spatial_TMB_python_devel.R
+                )
+                                                          
   while (TRUE) {
     if (use_bobyqa) {
       if (verbose) cat("bobyqa: ")

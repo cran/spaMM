@@ -45,7 +45,10 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug, # already ZAL_scaled
   delayedAssign("t_Q_scaled", {
     if ( ! is.null(BLOB$perm)) {
       backsolve(BLOB$R_scaled,t(sXaug[,BLOB$perm]),transpose=TRUE)
-    } else backsolve(BLOB$R_scaled,t(sXaug),transpose=TRUE)}, assign.env = BLOB )  ## but repetitive usage is minimal?
+    } else {
+      backsolve(BLOB$R_scaled,t(sXaug),transpose=TRUE)
+    }
+  }, assign.env = BLOB )  ## but repetitive usage is minimal?
   #
   delayedAssign("t_Qq_scaled", {
     n_u_h <- attr(sXaug,"n_u_h")

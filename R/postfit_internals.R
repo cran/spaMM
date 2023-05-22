@@ -40,15 +40,15 @@
   H_w.resid <- .get_H_w.resid(object)
   #ZAL <- .compute_ZAL(XMatrix=object$strucList, ZAlist=object$ZAlist,as_matrix=.eval_as_mat_arg.HLfit(object)) 
   ZAL <- get_ZALMatrix(object, force_bind=FALSE) # allows ZAXlist; but if a non-ZAXlist is already in the $envir, no effect; + we will solve(chol_Q, Diagonal()) so the gain is not obvious
-  if ( ncol(object$X.pv) ) {
-    M12 <- .crossprod(ZAL, .Dvec_times_m_Matrix(H_w.resid, object$X.pv), as_mat=TRUE)
+  if ( ncol(X_ori <- model.matrix(object)) ) {
+    M12 <- .crossprod(ZAL, .Dvec_times_m_Matrix(H_w.resid, X_ori), as_mat=TRUE)
     Md2clikdvb2 <- rbind2(cbind2(as.matrix(.ZtWZwrapper(ZAL,H_w.resid)), M12), ## this .ZtWZwrapper() takes time
-                          cbind2(t(M12), as.matrix(.ZtWZwrapper(object$X.pv,H_w.resid)))) 
+                          cbind2(t(M12), as.matrix(.ZtWZwrapper(X_ori,H_w.resid)))) 
     # _FIXME_ any way to avoid formation of this matrix ? Or otherwise message() ?           
   } else {
     Md2clikdvb2 <-  as.matrix(.ZtWZwrapper(ZAL,H_w.resid))
   }
-  tcrossfac_v_beta_cov <- .calc_Md2hdvb2_info_spprec(X.pv=object$X.pv, envir=object$envir, 
+  tcrossfac_v_beta_cov <- .calc_Md2hdvb2_info_spprec(X.pv=X_ori, envir=object$envir, 
                                                      which="tcrossfac_v_beta_cov") 
   # not triang if we used sparse QR. Following code should not assume triangularity
   pd <- .calc_pd_product(tcrossfac_v_beta_cov, Md2clikdvb2)
@@ -60,7 +60,8 @@
       is.null(tcrossfac_beta_v_cov <- beta_cov_info$tcrossfac_beta_v_cov)) {
     tcrossfac_beta_v_cov <- .get_beta_cov_info(object)$tcrossfac_beta_v_cov
   }    
-  pforpv <- ncol(object$X.pv)
+  X_ori <- model.matrix(object)
+  pforpv <- ncol(X_ori)
   nc <- ncol(tcrossfac_beta_v_cov)
   n_u_h <- nc - pforpv
   seqp <- seq_len(pforpv)
@@ -70,10 +71,10 @@
   H_w.resid <- .get_H_w.resid(object)
   #ZAL <- .compute_ZAL(XMatrix=obje17ct$strucList, ZAlist=object$ZAlist,as_matrix=.eval_as_mat_arg.HLfit(object)) 
   ZAL <- get_ZALMatrix(object, force_bind=FALSE) # allows ZAXlist; but if a non-ZAXlist is already in the $envir, no effect; + we will solve(chol_Q, Diagonal()) so the gain is not obvious
-  if ( ncol(object$X.pv) ) {
-    M12 <- .crossprod(ZAL, .Dvec_times_m_Matrix(H_w.resid, object$X.pv), as_mat=TRUE)
+  if ( ncol(X_ori) ) {
+    M12 <- .crossprod(ZAL, .Dvec_times_m_Matrix(H_w.resid, X_ori), as_mat=TRUE)
     Md2clikdvb2 <- rbind2(cbind2(as.matrix(.ZtWZwrapper(ZAL,H_w.resid)), M12), ## this .ZtWZwrapper() takes time
-                          cbind2(t(M12), as.matrix(.ZtWZwrapper(object$X.pv,H_w.resid)))) 
+                          cbind2(t(M12), as.matrix(.ZtWZwrapper(X_ori,H_w.resid)))) 
     # _FIXME_ any way to avoid formation of this matrix ? Or otherwise message() ?           
   } else {
     Md2clikdvb2 <-  as.matrix(.ZtWZwrapper(ZAL,H_w.resid))
@@ -197,7 +198,7 @@
       #   Md2clikdbv2 <- as.matrix(rbind2(cbind2(.ZtWZwrapper(X.Re,w.resid), t(hessnondiag)),
       #                                   cbind2(hessnondiag, .ZtWZwrapper(ZAL,w.resid))))            
       # }
-      X.pv <- object$X.pv
+      X.pv <- model.matrix(object)
       if (is.null(p_corrPars <- dfs[["p_corrPars"]])) { ## back compatibility code, 
         # old code, presumably missing inner-estimated adjacency params 
         #corrPars <- get_ranPars(object,which="corrPars")
@@ -241,6 +242,154 @@
   } 
   return(object$envir$info_crits)
 }
+
+# Two ad hoc functions implying large atrix computations post-fit. In-fit .hatvals2std_lev() has comments about avoiding these matrix computations there. Not immediately transposable here.  
+.calc_dvdlogphiMat_new <- function(dh0deta,ZAL,
+                                   sXaug,d2hdv2_info=NULL ## either one
+) {
+  ## cf calcul dhdv, but here we want to keep each d/d phi_i distinct hence not sum over observations i 
+  if (inherits(ZAL,"ZAXlist")) { # appeared in first try gaussian("logit")... with ARp()...
+    neg.d2h0_dv_dlogphi <- .crossprod(ZAL,.sparseDiagonal(x= drop(dh0deta), shape="g"))
+  } else neg.d2h0_dv_dlogphi <- .m_Matrix_times_Dvec(t(ZAL), drop(dh0deta)) # n_u_h*nobs: each ith column is a vector of derivatives wrt v_k# dh0dv <- t(ZAL) %*% diag(as.vector(dh0deta)) 
+  if (is.null(d2hdv2_info)) { # call by HLfit_body
+    dvdlogphiMat <- get_from_MME(sXaug,"solve_d2hdv2",B=neg.d2h0_dv_dlogphi) 
+  } else if (inherits(d2hdv2_info,"CHMfactor")) { # CHM of ***-*** d2hdv2
+    dvdlogphiMat <- solve(d2hdv2_info, - neg.d2h0_dv_dlogphi) # efficient without as.matrix()!        
+  } else if (inherits(d2hdv2_info,"qr") || inherits(d2hdv2_info,"sparseQR") ) {
+    dvdlogphiMat <- solve(d2hdv2_info, as.matrix(neg.d2h0_dv_dlogphi))  # rXn       
+  } else if (is.environment(d2hdv2_info)) {
+    # dvdlogphiMat <- d2hdv2_info %*% neg.d2h0_dv_dlogphi # rXn     
+    rhs <- d2hdv2_info$chol_Q %*% neg.d2h0_dv_dlogphi
+    rhs <- solve(d2hdv2_info$G_CHMfactor,rhs)
+    dvdlogphiMat <- - .crossprod(d2hdv2_info$chol_Q,rhs) # don't forget '-'
+  } else { ## then d2hdv2_info is ginv(d2hdv2) or a sparse matrix inverse of (d2hdv2) (spprec code will provide a dsCMatrix)
+    if (inherits(d2hdv2_info,"dsCMatrix")) {
+      d2hdv2_info <- as(d2hdv2_info,"dgeMatrix") ## more efficient if inv_d2hdv2 is math-dense
+      # It would be nice to store only the half matrix but then as( - d2hdv2_info, "dpoMatrix") and reversing sign afterwards. 
+    }
+    dvdlogphiMat <- d2hdv2_info %*% neg.d2h0_dv_dlogphi # rXn       
+  }
+  return(dvdlogphiMat)
+}
+
+.calc_dvdloglamMat_new <- function(neg.d2f_dv_dloglam,
+                                   sXaug, d2hdv2_info=NULL ## use either one
+) {
+  if(is.null(d2hdv2_info)) {
+    if (TRUE) {
+      if (is.matrix(sXaug)) { # sXaug_EigenDense_QRP_Chol_scaled case
+        dvdloglamMat <- get_from_MME(sXaug,"solve_d2hdv2",B=diag( neg.d2f_dv_dloglam))
+      } else  dvdloglamMat <- get_from_MME(sXaug,"solve_d2hdv2",B=.sparseDiagonal(x= neg.d2f_dv_dloglam, shape="g"))
+    } else {
+      # Avoids the inelegant test is.matrix(sXaug), but... less accurate!
+      inv_d2hdv2 <- get_from_MME(sXaug,"solve_d2hdv2") # slow step ("test negbin1" with large nobs is good example)
+      dvdloglamMat <- .m_Matrix_times_Dvec(inv_d2hdv2, neg.d2f_dv_dloglam)# get_from_MME(sXaug,"solve_d2hdv2",B=diag( neg.d2f_dv_dloglam)) ## square matrix, by  the formulation of the algo 
+    }
+  } else if (inherits(d2hdv2_info,"CHMfactor")) {# CHM of ***-*** d2hdv2
+    dvdloglamMat <- solve(d2hdv2_info, .sparseDiagonal(x= - neg.d2f_dv_dloglam, shape="g"))  # rXr !       
+  } else if (inherits(d2hdv2_info,"qr") || inherits(d2hdv2_info,"sparseQR") ) { ## much slower than using CHMfactor
+    if (length(neg.d2f_dv_dloglam)>5000L) message("[one-time solve()ing of large matrix, which may be slow]") 
+    dvdloglamMat <- solve(d2hdv2_info, diag( neg.d2f_dv_dloglam ))  # rXr !       
+  } else if (is.environment(d2hdv2_info)) {
+    # dvdloglamMat <- solve(d2hdv2_info, diag( neg.d2f_dv_dloglam ))  # rXr !       
+    rhs <- .Matrix_times_Dvec(d2hdv2_info$chol_Q, neg.d2f_dv_dloglam )
+    rhs <- solve(d2hdv2_info$G_CHMfactor, rhs)
+    dvdloglamMat <- - .crossprod(d2hdv2_info$chol_Q, rhs) # don't forget '-'
+  } else { ## then d2hdv2_info is ginv(d2hdv2) or some other form of inverse # This block seems obsolete (not in long tests anyway); 
+    # possibly related to the fact that bigranefs comment a few lines below also refers to computation no longer performed.
+    if (inherits(d2hdv2_info,"dsCMatrix")) {  
+      if (.spaMM.data$options$Matrix_old) { 
+        d2hdv2_info < as(d2hdv2_info, "dgCMatrix")
+      } else d2hdv2_info <- as(d2hdv2_info, "generalMatrix")
+      dvdloglamMat <- .Matrix_times_Dvec(d2hdv2_info, 
+                                         neg.d2f_dv_dloglam) ## sweep(d2hdv2_info,MARGIN=2L,neg.d2f_dv_dloglam,`*`) ## ginv(d2hdv2) %*% diag( as.vector(neg.d2f_dv_dloglam))      
+    } else dvdloglamMat <- .m_Matrix_times_Dvec(d2hdv2_info, # this can be simplified, but do this when the alternative is stable
+                                                neg.d2f_dv_dloglam) ## sweep(d2hdv2_info,MARGIN=2L,neg.d2f_dv_dloglam,`*`) ## ginv(d2hdv2) %*% diag( as.vector(neg.d2f_dv_dloglam))      
+  }
+  # I returned as.matrix(dvdloglamMat) a long time ago, and found it terribly inefficient in bigranefs case; 
+  # but bigranefs example no longer runs calls .calc_dvdloglamMat_new()
+  return(dvdloglamMat) 
+} ## square matrix, by  the formulation of the algo 
+
+..calc_d2hdv2_info <- function(object, ZAL) {
+  envir <- object$envir
+  if (is.null(factor_inv_Md2hdv2 <- envir$factor_inv_Md2hdv2)) { ## old code not using promises
+    if ( ! is.null(envir$G_CHMfactor)) {
+      if (length(object$y) > ncol(envir$chol_Q)) { # We precompute inverse(d2hdv2) so that .calc_dvdlogphiMat_new() has ONE costly (r*r) %*% (r*n).
+        if ( is.null(envir$invL_G.P)) { # allowing for old objects that did not have this element
+          envir$factor_inv_Md2hdv2 <- Matrix::solve(envir$G_CHMfactor, as(envir$G_CHMfactor,"pMatrix") %*% envir$chol_Q,system="L") ## dgCMatrix 
+        } else envir$factor_inv_Md2hdv2 <- envir$invL_G.P %*% envir$chol_Q ## dgCMatrix 
+        # envir$factor_inv_Md2hdv2 <- Matrix::drop0(LL,tol=.Machine$double.eps)
+        d2hdv2_info <- - .crossprod(envir$factor_inv_Md2hdv2) 
+      } else d2hdv2_info <- envir # then .calc_dvdlogphiMat_new() has TWO  (r*r) %*% (r*n) (plus an efficient solve())
+    } else {
+      d2hdv2 <- .calcD2hDv2(ZAL,.get_H_w.resid(object),object$w.ranef) 
+      if (inherits(d2hdv2,"sparseMatrix")) {
+        d2hdv2_info <- suppressWarnings(try(Cholesky( - d2hdv2,LDL=FALSE,perm=TRUE ), silent=TRUE )) #  '-' ! 
+        if (inherits(d2hdv2_info, "CHMfactor")) {
+          #d2hdv2_info <- structure(d2hdv2_info, BLOB=list2env(list(), parent=environment(.solve_CHM)))
+          rank <- ncol(d2hdv2)
+        } else {
+          # oldMDCopt <- options(Matrix.warnDeprecatedCoerce = 0) # qr(<dsC>) problem in Matrix v1.4.2
+          d2hdv2_info <- qr(d2hdv2, tol=spaMM.getOption("qrTolerance")) # sparseQR
+          # options(oldMDCopt)
+          rank <- sum(abs(diag(qrR(d2hdv2_info,backPermute=FALSE)))>1e-7)
+        }
+      } else { # d2hdv2 was a matrix or a Matrix in dense format (dgeMatrix...)
+        d2hdv2_info <- qr(d2hdv2, tol=spaMM.getOption("qrTolerance")) # qr 
+        rank <- d2hdv2_info$rank
+      }
+      if (rank<ncol(d2hdv2)) {
+        d2hdv2_info <- .force_solve(d2hdv2) # inverse(d2hdv2)
+      } # else we keep the QR facto.
+    }
+  } else d2hdv2_info <- - .crossprodCpp_d(as.matrix(factor_inv_Md2hdv2), yy=NULL) # inverse(d2hdv2) # much faster than Matrix::crossprod(dsCMatrix...)
+  #                       and still faster than any of the as_mat variants, eg .Rcpp_crossprod(factor_inv_Md2hdv2, BB = NULL, as_mat=TRUE) 
+  #                       bc .crossprodCpp_d(dense) is fast relative to .Rcpp_crossprod(sparse), irrespective of as_mat
+  return(d2hdv2_info)
+}
+
+.calc_d2hdv2_info <- function(object, ZAL) {
+  if (TRUE) return(..calc_d2hdv2_info(object, ZAL)) # rediscovered long afterwards... so ./.
+  ## The code below first checks for a "factor_inv_Md2hdv2" promise. But 
+  ##   there is no such promise in the current object bc HLfit_body() has run  
+  ##   .init_promises_spprec(sXaug, non_X_ones=FALSE, nullify_X_ones =TRUE) 
+  ##   and non_X_ones=FALSE implies that there is no "factor_inv_Md2hdv2" promise.
+  #
+  # ELSE
+  envir <- object$envir
+  if ( ! is.null(envir$G_CHMfactor)) { ## spprec code
+    if (! .is_evaluated("factor_inv_Md2hdv2", envir)) {
+      if (length(object$y) > ncol(envir$chol_Q)) { # We precompute inverse(d2hdv2) so that .calc_dvdlogphiMat_new() has ONE costly (r*r) %*% (r*n).
+        d2hdv2_info <- - .crossprod(envir$factor_inv_Md2hdv2) 
+      } else d2hdv2_info <- envir # then .calc_dvdlogphiMat_new() has TWO  (r*r) %*% (r*n) (plus an efficient solve())
+    } else d2hdv2_info <- - .crossprodCpp_d(as.matrix(envir$factor_inv_Md2hdv2), yy=NULL)
+  } else {
+    if (is.null(factor_inv_Md2hdv2 <- envir$factor_inv_Md2hdv2)) { 
+      d2hdv2 <- .calcD2hDv2(ZAL,object$w.resid,object$w.ranef) 
+      if (inherits(d2hdv2,"sparseMatrix")) {
+        d2hdv2_info <- suppressWarnings(try(Cholesky( - d2hdv2,LDL=FALSE,perm=TRUE ), silent=TRUE )) #  '-' ! 
+        if (inherits(d2hdv2_info, "CHMfactor")) {
+          #d2hdv2_info <- structure(d2hdv2_info, BLOB=list2env(list(), parent=environment(.solve_CHM)))
+          rank <- ncol(d2hdv2)
+        } else {
+          d2hdv2_info <- qr(d2hdv2, tol=spaMM.getOption("qrTolerance")) # sparseQR
+          rank <- sum(abs(diag(qrR(d2hdv2_info,backPermute=FALSE)))>1e-7)
+        }
+      } else { # d2hdv2 was a matrix or a Matrix in dense format (dgeMatrix...)
+        d2hdv2_info <- qr(d2hdv2, tol=spaMM.getOption("qrTolerance")) # qr 
+        rank <- d2hdv2_info$rank
+      }
+      if (rank<ncol(d2hdv2)) {
+        d2hdv2_info <- .force_solve(d2hdv2) # inverse(d2hdv2)
+      } # else we keep the QR facto.
+    } else d2hdv2_info <- - .crossprodCpp_d(as.matrix(envir$factor_inv_Md2hdv2), yy=NULL) # inverse(d2hdv2) # much faster than Matrix::crossprod(dsCMatrix...)
+    #                       and still faster than any of the as_mat variants, eg .Rcpp_crossprod(factor_inv_Md2hdv2, BB = NULL, as_mat=TRUE) 
+    #                  
+  }
+  return(d2hdv2_info)
+}
+
 
 .calc_logdispObject <- function(object, envir=object$envir, force_fixed) {
   

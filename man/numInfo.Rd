@@ -6,7 +6,7 @@ Information matrix
 }
 \description{
 Computes by numerical derivation the observed information matrix for (ideally) all parameters for mean response model, that is, the matrix of second derivatives of negative log likelihood. 
-The default value of the \code{which} argument shows all classes of parameters that should be handled, including random-effect parameters (\code{lambda}, \code{\link{ranCoefs}}, \code{\link{corrPars}}, and \code{\link{hyper}}), residual dispersion parameters (\code{phi}, \code{NB_shape} for \code{\link{negbin1}} and \code{\link{negbin2}}, and \code{beta_prec} for \code{\link{beta_resp}}), and fixed-effect coefficients (\code{beta}).
+The default value of the \code{which} argument shows all classes of parameters that should be handled, including random-effect parameters (\code{lambda}, \code{\link{ranCoefs}}, \code{\link{corrPars}}, and \code{\link{hyper}}), residual dispersion parameters (\code{phi}, \code{NB_shape} for \code{\link{negbin1}} and \code{\link{negbin2}}, and \code{beta_prec} for \code{\link{beta_resp}} and \code{\link{betabin}}), and fixed-effect coefficients (\code{beta}).
 
 Model fits including a \code{\link{phi-resid.model}} are not fully handled, in two ways: the information matrix does not include their parameters; and if the residual dispersion model include random effects, there is good reason for the \code{numInfo} calculation to detect that the fit has not maximized marginal likelihood with respect to most parameters.
 

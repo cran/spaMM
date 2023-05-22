@@ -23,21 +23,21 @@
 }
 
 .inla_spde2_theta2phi0 <- function (spde, theta) {
-  if (spde$n.theta > 0) {
+  if (spde$n.theta > 0L) {
     return(exp(spde$param.inla$B0[, 1, drop = TRUE] + 
                  spde$param.inla$B0[,-1, drop = FALSE] %*% theta))
   } else return(exp(spde$param.inla$B0[, 1, drop = TRUE]))
 }
 
 .inla_spde2_theta2phi1 <- function (spde, theta) {
-  if (spde$n.theta > 0) {
+  if (spde$n.theta > 0L) {
     return(exp(spde$param.inla$B1[, 1, drop = TRUE] + 
                  spde$param.inla$B1[, -1, drop = FALSE] %*% theta))
   } else return(exp(spde$param.inla$B1[, 1, drop = TRUE]))
 }
 
 .inla_spde2_theta2phi2 <- function (spde, theta) {
-  if (spde$n.theta > 0) {
+  if (spde$n.theta > 0L) {
     phi = ((spde$param.inla$B2[, 1, drop = TRUE] + 
               spde$param.inla$B2[, -1, drop = FALSE] %*% theta))
   } else {
@@ -56,25 +56,43 @@
   }
 }
 
+# called for IMRF() but not for MaternIMRFa
 .inla_spde_precision_inla_spde2 <- function (spde, theta = NULL, 
                                             phi0 = .inla_spde2_theta2phi0(spde, theta), 
                                             phi1 = .inla_spde2_theta2phi1(spde, theta), 
                                             phi2 = .inla_spde2_theta2phi2(spde, theta), ...) 
 {
+  ## Matches formula for Q p.5 of https://www.jstatsoft.org/article/view/v063i19 (Lindgren & Rue 2015)
   if (spde$f$model != "spde2") {
     stop("spaMM only supports some internal inla models 'spde2'")
   }
-  # matches formula for Q p.5 of https://www.jstatsoft.org/article/view/v063i19 (Lindgren & Rue 2015)
-  D0 <- Diagonal(spde$n.spde, phi0) # T
-  D1 <- Diagonal(spde$n.spde, phi1) # K^2
-  D12 <- Diagonal(spde$n.spde, phi1 * phi2) # K^2 ....
-  # for $MO = C, $M1 = G_1, $M2 = G_2
-  Q <- (D0 %*% (D1 %*% spde$param.inla$M0 %*% D1 + D12 %*% spde$param.inla$M1 + 
-                 t(spde$param.inla$M1) %*% D12 + spde$param.inla$M2) %*% D0)
-  # => Starting with Matrix 1.5-2, the above Q is dgT, no longer dgC... argh
-  return(as(Q,"CsparseMatrix"))
+  # if (FALSE) {
+  #   D0 <- Diagonal(spde$n.spde, phi0) # T
+  #   D1 <- Diagonal(spde$n.spde, phi1) # K^2
+  #   D12 <- Diagonal(spde$n.spde, phi1 * phi2) # K^2 ....
+  #   # for $MO = C, $M1 = G_1, $M2 = G_2
+  #   Q <- (D0 %*% (D1 %*% spde$param.inla$M0 %*% D1 + D12 %*% spde$param.inla$M1 + 
+  #                   t(spde$param.inla$M1) %*% D12 + spde$param.inla$M2) %*% D0)
+  #   # 
+  #   # => Starting with Matrix 1.5-2, the above Q is dgT, no longer dgC... argh
+  #   return(as(Q,"CsparseMatrix"))
+  #   # This probably comes fom  $MO, $MA, $M2 as produced by INLA code 
+  #   # But the idea now is to preprocess them in .process_IMRF_bar() by .inla.param_dgT2dgC().
+  # } else {
+    ## This assumes that the matrices are dgC, otherwise see above. 
+    D1M0D1 <- .Dvec_times_Matrix(phi1,spde$param.inla$M0)
+    D1M0D1 <- .Matrix_times_Dvec(D1M0D1,phi1)
+    D12M1 <- .Dvec_times_Matrix(phi1 * phi2,spde$param.inla$M1)
+    Q <- D1M0D1 + D12M1 + t(D12M1) + spde$param.inla$M2
+    Q <- .Dvec_times_Matrix(phi0, Q)
+    Q <- .Matrix_times_Dvec(Q, phi0)
+    ## Currently the phi vectors appear to be constant vectors 
+    ##  so this could be further optimized, but...
+    Q
+  # }
 }
 
+# called for MaternIMRFa
 .calc_IMRF_Qmat <- function(pars, grid_arglist, kappa, test=FALSE) {
   if (is.null(spde_info <- pars$model)) { 
     crossfac_Q <- .IMRFcrossfactor(xstwm=length(grid_arglist[[1]]), ystwm=length(grid_arglist[[2]]),kappa=kappa)

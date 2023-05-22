@@ -58,6 +58,7 @@ MaternIMRFa <- function(mesh, tpar=c(alpha=1.25,kappa=0.1), fixed=NULL) {
     if (is.null(IMRF_design))  {
       oldMDCopt <- options(Matrix.warnDeprecatedCoerce = 0) # # INLA issue
       IMRF_design <- .inla.spde2.matern(mesh, alpha=alpha) # it as been precomputed in the parent envir if alpha was fixed
+      IMRF_design$param.inla <- .param.inla_dgT2dgC(IMRF_design$param.inla)
       options(oldMDCopt)
     }
     kappa <- parvec[2L]

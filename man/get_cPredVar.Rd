@@ -56,17 +56,12 @@ if(requireNamespace("rsae", quietly = TRUE)) {
 }
 
 # GLMM example from Booth & Hobert 1998 JASA
-npos <- c(11,16,14,2,6,1,1,4,10,22,7,1,0,0,1,6)
-ntot <- c(36,20,19,16,17,11,5,6,37,32,19,17,12,10,9,7)
-treatment <- c(rep(1,8),rep(0,8))
-clinic <-c(seq(8),seq(8))
-clinics <- data.frame(npos=npos,nneg=ntot-npos,treatment=treatment,clinic=clinic)
-#
+data(clinics)
 fitClinics <- HLfit(cbind(npos,nneg)~treatment+(1|clinic),family=binomial(),data=clinics)
 #
 (get_cPredVar(fitClinics, newdata=clinics[1:8,], nsim=200L, seed=123))  # serial computation
 (get_cPredVar(fitClinics, newdata=clinics[1:8,], nsim=200L, seed=123, 
-      nb_cores=parallel::detectCores()-1, fit_env=list2env(list(clinics=clinics))))
+      nb_cores=parallel::detectCores()-1L, fit_env=list2env(list(clinics=clinics))))
 }
 }
 

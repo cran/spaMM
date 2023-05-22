@@ -1,8 +1,9 @@
 .check_conv_dispGammaGLM_reinit <- function() {
   if ( ( ! .spaMM.data$options$xLM_conv_silent)
        && (conv_crit <- .spaMM.data$options$xLM_conv_crit$max)>0) { 
-    # This should arise from .calc_dispGammaGLM() ; $max potentially comes from any call to spaMM_glm.fit(), 
-    # but .get_inits_by_xLM() reinitializes it. Info from .get_inits_by_xLM is distinctly tracked through processed$envir$inits_by_xLM$conv_info -> HLfit's warningEnv
+    #  $max info recovered from spaMM_glm.fit() or llm.fit()
+    # But it's relevant only when arising from .calc_dispGammaGLM(), not from .get_inits_by_xLM() ;, 
+    # Hence .get_inits_by_xLM() reinitializes it to a negative value. Info from .get_inits_by_xLM is distinctly tracked through processed$envir$inits_by_xLM$conv_info -> HLfit's warningEnv
     warning(paste(".calc_dispGammaGLM() -> spaMM_glm.fit() did not always converge (criterion:",
                   paste(names(conv_crit),"=",signif(unlist(conv_crit),3),collapse=", "),")"))
     .spaMM.data$options$xLM_conv_crit <- list(max=-Inf)
@@ -144,11 +145,14 @@
     conv_dev <- Inf
   } else {
     summand <- dbeta*(LevenbergMstep_result$rhs+ LevenbergMstep_result$dampDpD * dbeta) 
-    ## In the summand, all terms should be positive. conv_dbetaV*rhs should be positive. 
-    # However, numerical error may lead to <0 or even -Inf
-    #  Further, if there are both -Inf and +Inf elements the sum is NaN and the fit fails.
-    summand[summand<0] <- 0
     denomGainratio <- sum(summand)
+    if (denomGainratio<=0) {
+      ## In the summand, all elements of dbeta*(   LevenbergMstep_result$dampDpD * dbeta) should be positive. 
+      # Inner product dbeta . LevenbergMstep_result$rhs should be positive too 
+      # However, numerical error may lead to <0 or even -Inf
+      #  Further, if there are both -Inf and +Inf elements the sum is NaN and the fit fails.
+      denomGainratio <- denomGainratio-sum(summand[summand<0])
+    }
     ddev <- devold-dev
     conv_dev <- abs(ddev)/(1+abs(dev))
     gainratio <- 2*ddev/denomGainratio 
@@ -186,7 +190,8 @@ spaMM_glm.fit <- function (x, y, weights = rep(1, nobs),
   valideta <- family$valideta
   validmu <- family$validmu
   if (family$family=="COMPoisson") {
-    attr(y,"CMP") <- .CMP_attr_y(y, family)
+    attr(y,"CMP") <- .CMP_attr_y(y, family) # adds mu2lambda(mu=y) and the resulting COMP_Z, useful for $dev.resids computation
+    # however, internal COMPoisson GLM fits will avoid dev calculation by calling glm.nodev.fit. 
     muetaenv <- NULL
     variance <- function(mu) {family$variance(mu,muetaenv=muetaenv)}
     dev.resids <- function(y, mu, wt) {family$dev.resids(y, mu, wt, muetaenv=muetaenv)}

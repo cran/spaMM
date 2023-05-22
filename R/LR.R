@@ -82,8 +82,10 @@
   if (inherits(object,"HLfitlist") || inherits(object2,"HLfitlist")) {
     warning("This does not yet work on HLfitlist objects", immediate.=TRUE)
   }
-  X1 <- attr(object$`X.pv`,"namesOri") ## need to track NA beta's
-  X2 <- attr(object2$`X.pv`,"namesOri")
+  X.pv1 <- model.matrix(object)
+  X.pv2 <- model.matrix(object2)
+  X1 <- attr(X.pv1,"namesOri") ## need to track NA beta's
+  X2 <- attr(X.pv2,"namesOri")
   if (length(X1)==0L) {
     REML1 <- NULL ## compatible with both ML or REML tests
   } else REML1 <- (object$APHLs$p_v != object$APHLs$p_bv)
@@ -106,9 +108,9 @@
   dX12 <- setdiff(X1,X2)
   dX21 <- setdiff(X2,X1)
   if (length(dX12) && length(dX21)) {
-    if (.is_2_in_1(X1=object$X.pv,  X2=object2$X.pv)) {
+    if (.is_2_in_1(X1=X.pv1,  X2=X.pv2)) {
       Xnest <- "2in1"
-    } else if (.is_2_in_1(X1=object2$X.pv,  X2=object$X.pv)) {
+    } else if (.is_2_in_1(X1=X.pv2,  X2=X.pv1)) {
       Xnest <- "1in2"
     } else if (argsRphimodels) {
       stop("Fixed effects seem non-nested for residual-dispersion model.")
@@ -727,7 +729,7 @@ LRT <- function(object,object2,boot.repl=0,# nb_cores=NULL,
     #  but given it is the QR for scaled X varaibles, 
     if (is.null(qr_sXaug))  stop("HLfit object does not have a 'qr' factorization of the model matrix.")
     # sub_pivot_ori_X <- attr(object$X.pv,"rankinfo")$whichcols
-    asgn <- attr(object$X.pv,"assign")# [sub_pivot_ori_X]     # ____F I X M E____ use model.matrix() extractor everywhere for object$X.pv  ?
+    asgn <- attr(model.matrix(object),"assign")# [sub_pivot_ori_X]     
     nmeffects <- c("(Intercept)", attr(terms(object), "term.labels"))
     tlabels <- nmeffects[1 + unique(asgn)]
     ss <- c(vapply(split(comp^2, asgn), sum, 1), ssr)
@@ -808,7 +810,7 @@ LRT <- function(object,object2,boot.repl=0,# nb_cores=NULL,
 .anova.glm <- function(object, ..., dispersion = NULL, test = NULL) {
   doscore <- !is.null(test) && test == "Rao"
   x <- model.matrix(object)
-  if (is.null(asgn <- attr(object$X.pv,"assignOri"))) asgn <- attr(object$X.pv,"assign")
+  if (is.null(asgn <- attr(x,"assignOri"))) asgn <- attr(x,"assign")
   nvars <- max(0, asgn)
   resdev <- resdf <- NULL
   termsv <- terms(object)

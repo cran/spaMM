@@ -54,6 +54,11 @@ if (FALSE) {  ## DOC:
         x[[v]] <- .modify_list(x[[v]], val[[v]])
       } else if ( ! is.null(dim(val[[v]]))) { # if val[[v]] is a matrix names(val[[v]]) is not what we need here
         x[[v]] <- val[[v]]
+      } else if ( is.environment(x[[v]]) && is.environment(val[[v]])) { # before next alternative, bc 
+        # syntax x[[v]][nam] does not work on environments
+        # we could use another syntax to copy from one envir to the other, but currently copying envirs may be sufficient.
+        # This case occur in .get_inits_by_xLM() -> .modify_list(inits_by_xLM$mvlist,new_mvlist) in test-mv-extra (was missed by routine tests).
+        x[[v]] <- val[[v]]
       } else if ( ! is.null(nam <- names(val[[v]]))) { # handles val[[v]] being list, or vector 
         x[[v]][nam] <- val[[v]]
       } else x[[v]] <- val[[v]]

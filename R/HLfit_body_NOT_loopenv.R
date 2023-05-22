@@ -506,7 +506,7 @@ HLfit_body_old <- function(processed,
   ## DATA
   ###################
   res$data <- processed$data
-  if (is.null(processed$family) || processed$family$family=="binomial") { # null for mv case
+  if (is.null(processed$family) || processed$family$family %in% c("binomial","betabin")) { # null for mv case
     res$BinomialDen <- BinomialDen # we could put it in all cases...
   }
   res$y <- y ## counts for Pois/bin
@@ -641,7 +641,7 @@ HLfit_body_old <- function(processed,
     APHLs <- .get_info_crits(res)["cAIC"]
     if ( ! is.null(oldcAIC <- processed$port_env$objective)) {
       .update_port_fit_values(old_obj= - oldcAIC,new_obj= - APHLs[["cAIC"]], 
-                              port_fit_values=list(fixef=beta_eta, # '___F I X M E___' is the unscaled one, should be the scaled one... fixed in 'loopout' version
+                              port_fit_values=list(fixef=beta_eta, # '___F I X M E___' fixed in 'loopout' version) that beta_eta is the unscaled one, should be the scaled one... 
                                                    v_h=v_h,phi_est=phi_est), 
                               models=models, processed=processed, control.HLfit=control.HLfit,
                               lambda_est=lambda_est, 

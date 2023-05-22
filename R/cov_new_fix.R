@@ -300,11 +300,12 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
           stop(paste0("NA/NaN/Inf in 'data' for fixed-effects prediction: check variable(s) '", paste(names(pb), collapse="', '"),"'."))
         } else stop("nrow(fixef_mf)!=nrow(data) for undetermined reason") 
       }
-      X <- model.matrix(Terms, fixef_mf, contrasts.arg=attr(fitobject$X.pv,"contrasts")) 
+      X_ori <- model.matrix(fitobject)
+      X <- model.matrix(Terms, fixef_mf, contrasts.arg=attr(X_ori,"contrasts")) 
       ## : where original contrasts definition is used to define X cols that match those of original X, whatever was the contrast definition when the model was fitted
       if ( ! is.null(mv_it)) {
-        col_range <-  attr(fitobject$X.pv,"col_ranges")[[mv_it]]
-        colnames(X) <- colnames(fitobject$X.pv)[col_range]
+        col_range <-  attr(X_ori,"col_ranges")[[mv_it]]
+        colnames(X) <- colnames(X_ori)[col_range]
       }
     } else {
       fixef_mf <- NULL
@@ -375,15 +376,16 @@ if (FALSE) { # v3.5.121 managed to get rid of it
     RESU <- .get_newX_info(locform, locdata, object) # includes element 'eta_fix' which includes the offset
     RESU$locdata <- locdata
   } else if (! is.null(re.form)) { # then I still need eta_fix
+    X_ori <- model.matrix(object)
     fixef4X.pv <- na.omit(fixef(object)) # there was an etaFix
-    if (ncol(object$X.pv) != length(fixef4X.pv)) {
+    if (ncol(X_ori) != length(fixef4X.pv)) {
       newX_info <- .get_newX_info(locform, locdata, object) 
       eta_fix <- drop(newX_info$newX.pv %*% fixef4X.pv)
-    } else eta_fix <- drop(object$X.pv %*% na.omit(fixef(object)))
+    } else eta_fix <- drop(X_ori %*% na.omit(fixef(object)))
     off <- model.offset(model.frame(object)) # so if I later store the model.frame I would no longer need the raw data here.
     if (!is.null(off)) eta_fix <- eta_fix+off
-    RESU <- list(locdata=locdata,newX.pv=object$X.pv, eta_fix=eta_fix)
-  } else RESU <- list(locdata=locdata,newX.pv=object$X.pv) 
+    RESU <- list(locdata=locdata,newX.pv=X_ori, eta_fix=eta_fix)
+  } else RESU <- list(locdata=locdata,newX.pv= model.matrix(object)) 
   RESU
 }
 
@@ -539,7 +541,7 @@ get_predCov_var_fix <- function(object, newdata = NULL, fix_X_ZAC.object,fixdata
     new_exp_ranef_strings <- .process_bars(re.form,expand=TRUE) 
     newinold <- sapply(lapply(new_exp_ranef_strings, `==`, y= ori_exp_ranef_strings), which) ## e.g 1 4 5
     re_form_col_indices <- .re_form_col_indices(newinold, cum_n_u_h=attr(object$lambda,"cum_n_u_h"), Xi_cols=attr(object$ZAlist, "Xi_cols"))
-    Xncol <- ncol(object$X.pv)
+    Xncol <- ncol(model.matrix(object))
     subrange <- c(seq_len(Xncol),re_form_col_indices$subrange + Xncol)
     loc_tcrossfac_beta_w_cov <- loc_tcrossfac_beta_w_cov[subrange,]
   } else re_form_col_indices <- NULL

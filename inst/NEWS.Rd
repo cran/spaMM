@@ -3,6 +3,33 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 4.3.0}{ %   
+\subsection{NEW FEATURES}{
+\itemize{
+\item Beta-binomial models can be fitted ('betabin' family).
+\item New 'clinics' data set.
+\item The residVar() extractor now handles missing information in its 'newdata' argument 
+}
+}
+\subsection{USER-LEVEL CHANGES}{
+\itemize{
+\item deviance() now returns weighted residuals when relevant, for consistency with stats::deviance. Its documentation now details this distinction, with several examples.
+}
+}
+\subsection{BUG FIXES}{
+\itemize{
+\item Result of dev_resids() and deviance() extractors was not appropriately documented for non-GLM families. 
+\item Residual-variance extractors had not fully taken account of new features of spaMM (such as new response families) for a long time and could fail for some combinations of arguments (e.g., get_residVar() with 'newdata' for a multivariate-response fit with non-GLM families). 
+\item summary.HLfit() failed on fixed-effect models with non-GLM responses families and fixed (by 'etaFix' argument) fixed-effect coefficients.
+\item A fit could fail (stop) when the model formula included a factor with many levels as fixed effect, and a random effect with dense correlation matrix. 
+}
+}
+\subsection{DEPENDENCIES}{
+\itemize{
+\item spaMM now depends on R>=3.5.0.
+}
+}
+}
 \section{CHANGES UP TO VERSION 4.2.0}{  
 \subsection{NEW FEATURES}{
 \itemize{

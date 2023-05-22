@@ -26,7 +26,9 @@ pseudoR2(fitobject, nullform = . ~ 1, R2fun = LR2R2, rescale=FALSE, verbose=TRUE
 }
 }
 \details{
-None of the R2-like computations I am aware of helps in addressing, for the general class of models handled by \pkg{spaMM}, a well-defined inference task (comparable to, say, formally testing goodness of fit, or measuring accuracy of prediction of new data as considered for AIC). This problem has been well-known (e.g., Magee, 1990), and the canonical R2 itself for linear models is not devoid of weaknesses (e.g., \url{https://stats.stackexchange.com/questions/13314/is-r2-useful-or-dangerous}). Ultimately the main reason for computing R2 may be to deal with requests by misguided reviewers. Given these problems, strong statements about the properties that R2 should have are difficult to follow (and this includes the claim that it should always have maximum value 1), and no attempt has been made here to implement the wide diversity of R2-like descriptors discussed in the literature. The \code{LR2R2} backend function implements the pseudo-R2, chosen on the basis that this is the simplest general method that makes at least as much sense as any other computation I have seen, and implementation of rescaling by maximal R2 is minimal (the examples explain some of its details). Adaptation of the R2 definition for mixed-effect models can be performed by including some random effect(s) in the null model, using the  \code{nullform} argument.
+None of the R2-like computations I am aware of helps in addressing, for the general class of models handled by \pkg{spaMM}, a well-defined inference task (comparable to, say, formally testing goodness of fit, or measuring accuracy of prediction of new data as considered for AIC). This problem has been well-known (e.g., Magee, 1990), and the canonical R2 itself for linear models is not devoid of weaknesses from this perspective (e.g., \url{https://stats.stackexchange.com/questions/13314/is-r2-useful-or-dangerous}). As a consequence, strong statements about the properties that R2 should have are difficult to follow (and this includes the claim that it should always have maximum value 1).
+
+Given the above problems, (1) ultimately the main reason for computing R2 may be to deal with requests by misguided reviewers; (2) no attempt has been made here to implement the wide diversity of R2-like descriptors discussed in the literature. The \code{LR2R2} backend function implements the pseudo-R2, chosen on the basis that this is the simplest general method that makes at least as much sense as any other computation I have seen, and implementation of rescaling by maximal R2 is minimal (the examples explain some of its details). Adaptation of the R2 definition for mixed-effect models can be performed by including some random effect(s) in the null model, using the  \code{nullform} argument.
 }
 \value{
 As returned by the function specified by argument \code{R2fun}. The default function returns a numeric vector of length 2 for linear models and a single value otherwise.
@@ -43,7 +45,7 @@ Magee, L. (1990) R2 Measures based on Wald and likelihood ratio joint significan
 also often cited for the pseudo-R2, this paper reformulates some related descriptors and concisely reviews earlier literature. 
 
 Nagelkerke, N.J.D. (1991) A note on a general definition of the coefficient of determination. Biometrika, Vol. 78, No. 3. (Sep., 1991), pp. 691-692. \doi{10.1093/biomet/78.3.691}\cr
-details the properties of pseudo-R2 (including the way it \dQuote{partition} variation). Argues emphatically for its rescaling, for which it is often cited.
+details the properties of pseudo-R2 (including the way it \dQuote{partitions} variation). Argues emphatically for its rescaling, for which it is often cited.
 }
 \examples{
 

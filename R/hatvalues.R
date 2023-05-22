@@ -145,18 +145,26 @@ hatvalues.HLfit <- function(model, type="projection", which="resid", force=FALSE
     ## else we continue the computation of the d log hessian term d2 log dens u/ dv dloglambda
     ## where we ignore the contribution of the log Jacobian, log(dth/du), to log dens u since it is not fn of lambda
     ## hence this is d2 log dens th(u)/ dv dloglambda
+    #
+    # dleve_phi is the vector as.vector(leve__dlW_deta_or_v__ZALI %*% invd2hdv2 %*% t(ZAL) %*% diag(dh0deta))
+    # which has been computed as 
+    # dvdlogphiMat <- .calc_dvdlogphiMat_new(dh0deta=dh0deta,ZAL=ZAL, 
+    #                                        sXaug=sXaug)  # not d2hdv2_info
+    # dleve <- as.vector(leve__dlW_deta_or_v__ZALI %*% dvdlogphiMat) # (r+n) . (r+n)Xr . rXn = n (each element is a sum over r+n terms= a trace)
+    # But it's best computed backward, that is by looking at the transposed expression diag(dh0deta) %*% ZAL %*% invd2hdv2 %*% leve__dlW_deta_or_v__ZALI
+    #  and computing successive matrix product of the transpose leftwards so that its rhs ('t_lhs' in the code) is always a vector.
+    # Same logic for dleve_lam 
+    #
     if (any(dlW_deta_or_v!=0L)) {
       lev_phi_range <- 1L:nobs
       leve__dlW_deta_or_v <- c(hatvals$resid,hatvals$ranef) * dlW_deta_or_v
-      leve__dlW_deta_or_v__ZALI <-  leve__dlW_deta_or_v[lev_phi_range] %*% ZAL +  leve__dlW_deta_or_v[-(lev_phi_range)]
-      
+      leve__dlW_deta_or_v__ZALI <-  drop(leve__dlW_deta_or_v[lev_phi_range] %*% ZAL) +  leve__dlW_deta_or_v[-(lev_phi_range)]
+      t_lhs <- .ad_hoc_solve_d2hdv2_Bvec(B=leve__dlW_deta_or_v__ZALI, sXaug=sXaug) # as.vector() result
       if (need_simple_lambda) {
         neg.d2f_dv_dloglam <- .calc_neg_d2f_dv_dloglam(dlogfthdth=(psi_M - u_h)/lambda_est, ## the d log density of th(u)
                                                        cum_n_u_h, lcrandfamfam, rand.families, u_h)
-        dvdloglamMat <-  .calc_dvdloglamMat_new(neg.d2f_dv_dloglam,
-                                                sXaug=sXaug) # not d2hdv2_info
-        dleve <- as.vector(leve__dlW_deta_or_v__ZALI %*% dvdloglamMat) # (r+n).(r+n)Xr.rXr = r (each element is a sum over r+n terms= a trace)
-        hatvals$ranef <- hatvals$ranef - dleve  
+        dleve_lam <- neg.d2f_dv_dloglam * t_lhs # vector
+        hatvals$ranef <- hatvals$ranef - dleve_lam  
       } 
       ## 
       if (anynull_phi.Fix) { # => *there is some Gamma or gaussian *GLM* hence not binomial hence BinomialDen (which is in w.resid anyway) is 1. No further BinomialDen here.
@@ -170,10 +178,8 @@ hatvalues.HLfit <- function(model, type="projection", which="resid", force=FALSE
         } else { # => single *there is some Gamma or gaussian GLM*. Whether obsInfo or not, we still have w.resid vector (but in obsInfo case, we could use muetablob$dlogcLdeta)
           dh0deta <- ( w.resid *(y-mu)/muetablob$dmudeta ) #  muetablob$dlogcLdeta # 
         }
-        dvdlogphiMat <- .calc_dvdlogphiMat_new(dh0deta=dh0deta,ZAL=ZAL, 
-                                               sXaug=sXaug)  # not d2hdv2_info
-        dleve <- as.vector(leve__dlW_deta_or_v__ZALI %*% dvdlogphiMat) # (r+n) . (r+n)Xr . rXn = n (each element is a sum over r+n terms= a trace)
-        hatvals$resid <- hatvals$resid - dleve  
+        dleve_phi <- dh0deta * as.vector(ZAL %*% t_lhs) # vector
+        hatvals$resid <- hatvals$resid - dleve_phi  
       } 
     }
   }

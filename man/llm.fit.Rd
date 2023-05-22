@@ -13,7 +13,7 @@ Mixed-effect models fitted by such methods cannot use expected-Hessian approxima
 }
 \usage{
 # glm(..., method="llm.fit")
-## See also 'beta_resp', 'negbin1', and possibly later additions.
+## See also 'beta_resp', 'negbin1', 'betabin', and possibly later additions.
 }
 \details{
 These family objects are lists, formally of class \code{c("LLF", "family")}. Compared to a \code{\link[stats]{family}} object, they have additional elements, not documented here. 

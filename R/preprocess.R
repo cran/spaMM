@@ -206,7 +206,7 @@
       famfam <- family$family 
       if (famfam %in% c("negbin1","negbin2")) {
         as_call$shape <- environment(family$aic)$shape
-      } else if (famfam=="beta_resp") {
+      } else if (famfam %in% c("beta_resp","betabin")) {
         as_call$prec <- environment(family$aic)$prec
       } else if (famfam=="COMPoisson") {
         as_call$nu <- environment(family$aic)$nu
@@ -1052,8 +1052,10 @@
                        corrMatrix=NULL,covStruct=NULL,
                        distMatrix=NULL, 
                        control.dist=NULL,
-                       init=NULL, # for .preprocess_augZXy()
-                       X2X
+                       init=NULL, # for .preprocess_augZXy() ... and outer-beta
+                       X2X,
+                       ADFun=NULL # default for private argument; any non-default value input by a user is copied in 'processed';
+                                  # Possible ADFun values are then defined by the .wrap_MakeADFun() code.
                        ) {
   callargs <- match.call() 
   #
@@ -1105,7 +1107,8 @@
                              verbose=.reformat_verbose(verbose,For=For),
                              control.glm=do.call("glm.control", control.glm),
                              how=list(obsInfo=obsAlgo_needed),
-                             intervalInfo = control.HLfit$intervalInfo # used by .preprocess_augZXy and beyond
+                             intervalInfo = control.HLfit$intervalInfo, # used by .preprocess_augZXy and beyond
+                             ADFun=ADFun
                              ))
   #
   if (is.null(main_terms_info <- attr(data,"updated_terms_info"))) { # standard case for primary fit
@@ -1318,7 +1321,7 @@
   #
   if (For=="is_separated") {
     return(ncol(X.pv) && is_separated(X.pv, as.numeric(y),verbose=FALSE)) 
-  } else if (family$family == "binomial" && processed$bin_all_or_none) {
+  } else if (family$family  %in% c("binomial","betabin") && processed$bin_all_or_none) {
     abyss <- (ncol(X.pv) && is_separated(X.pv, as.numeric(y)))
   }
   ## Now X.pv has its final ncol := pforpv
@@ -1330,12 +1333,22 @@
 
   if ( ! is.null(init$beta)) { # outer beta
     betanames <- names(init$beta)
+    if (length(intersect(colnames(X.pv),betanames))!=length(init$beta)) stop("init$beta must have names matching those of the design matrix")
+    # {
+    #   warning("init$beta must have names matching those of the design matrix.\n init$beta names will be automatically set.",
+    #           immediate. = TRUE)
+    #   betanames <- names(init$beta) <- colnames(X.pv)
+    # }
+    # It's useless to rename init$beta here bc init is not preprocessed (___F I X M E___?): the init used later is the one in the call of the parent fn
     X_off <-.subcol_wAttr(X.pv, j=betanames, drop=FALSE)
     X.pv <- .subcol_wAttr(X.pv, j=setdiff(colnames(X.pv),betanames), drop=FALSE)
     processed$X_off_fn <- .def_off_fn(X_off, ori_off=processed$off)
   }
-  
   models <- list(eta="",lambda="",phi="", rdispar="")
+  if ( ! For_fitmv) {
+    thread_nbr <- control.HLfit$NbThreads
+    if (is.null(thread_nbr)) thread_nbr <- .spaMM.data$options$NbThreads # should be 1L by default
+  }
   if ( nrand) {
     models[["eta"]] <- "etaHGLM" 
     ZAlist <- .init_assign_geoinfo(processed=processed, ZAlist=ZAlist, For=callargs$For,
@@ -1361,6 +1374,8 @@
       if (nrd==1L) warning("Found a single random effect with a *single level*. Check formula?", immediate.=TRUE)
           processed$AUGI0_ZX <- .init_AUGI0_ZX(X.pv, vec_normIMRF, processed$ZAlist, nrand, n_u_h=nrd, sparse_precision, 
                                            as_mat=.eval_as_mat_arg(processed))
+      if (algebra=="decorr" && nrd>900L && thread_nbr==1L) message('Using paralellisation might be useful. See help("setNBThreads")')
+      # The larger subsamples (nrd=1000 for the 3rd) in useR2021_spatial_timings.R may be used to test the effect IF method uses obsInfo (otherwise there is in particular no .tcrossprodCpp)
     }
   } else {
     models[["eta"]] <- "etaGLM"
@@ -1412,6 +1427,9 @@
     delayedAssign("HLCor_body", get("HLCor_body", asNamespace("spaMM"), inherits=FALSE), assign.env = processed) 
     delayedAssign("HLCor", get("HLCor", asNamespace("spaMM"), inherits=FALSE), assign.env = processed) 
     processed$HLfit <- get("HLfit", asNamespace("spaMM"), inherits=FALSE) 
+    
+    .check_nb_cores(nb_cores = thread_nbr)
+    .setNbThreads(thr=thread_nbr)
   }
   processed$fitenv <- list2env(list(prevmsglength=0L))
   class(processed) <- c("arglist",class(processed))

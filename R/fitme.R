@@ -19,9 +19,10 @@
   #   warning("'lower' or 'upper' specifications without matching 'init' have no effect",immediate. = TRUE)
   # }
   #
-  HLnames <- (c(names(formals(HLCor)),names(formals(HLfit)),
+  HLnames <- (c(names(formals(HLCor)),names(formals(HLfit)), 
+                "ADFun", # so that this private arg, in the dots, causes no warning and is passed to .preprocess() 
                 names(formals(mat_sqrt)),names(formals(make_scaled_dist))))  
-  dotnames <- setdiff(names(mc)[-1],c(names(formals(fitme)),"what_checked"))
+  dotnames <- setdiff(names(mc)[-1],c(names(formals(fitme)), "what_checked"))
   argcheck <- setdiff(dotnames,HLnames)
   if (length(argcheck)) {
     warning(paste0("suspect argument(s) '",paste(argcheck, sep="'", collapse=","),"' in ",what_checked,"."))
@@ -180,6 +181,7 @@ fitme <- function(formula,data, ## matches minimal call of HLfit
       hlcor$fit_time <- structure(hlcor$how$fit_time,
                                   message="Please use how(<fit object>)[['fit_time']] to extract this information cleanly.")
     }
+    if ( ! is.null(mc$control.HLfit$NbThreads)) .setNbThreads(thr=.spaMM.data$options$NbThreads)
   }
   rm(list=setdiff(lsv,"hlcor")) ## empties the whole local envir except the return value
   return(hlcor)

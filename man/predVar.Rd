@@ -11,7 +11,7 @@ The \code{predict} default value for all elements is \code{NULL}, which jointly 
 
 By default the returned components are vectors of variances (with exceptions for some \code{type} value). To obtain covariance matrices (when applicable), set \code{cov=TRUE}. \code{as_tcrossfac_list=TRUE} can be used to return a list of matrices \eqn{X_i} such that the \code{predVar} covariance matrix equals \eqn{\sum_i X_i X'_i}. It thus provides a representation of the \code{predVar} that may be useful in particular when the \code{predVar} has large dimension, as the component \eqn{X_i}s may require less memory (being possibly non-square or sparse).  
 
-\code{residVar=TRUE} evaluates \code{residVar} the residual variances for Gaussian or Gamma responses. 
+\code{residVar=TRUE} evaluates \code{residVar} the residual variance. For families without a dispersion parameter (e.g., \code{binomial} or \code{poisson}), this is as given by the \code{variance} function of the \code{family} object (in the binomial case, it is thus the variance of a single binary draw). For families with a dispersion parameter (such as \eqn{\phi} for gaussian or Gamma families, negative-binomial, beta), it is the residual variance as function of the dispersion parameter, whether this parameter is a single scalar or follows a more complex residual-dispersion model.  Prior weights are however ignored (see the \code{\link{residVar}} etractor for the opposite feature). For the beta-binomial family, it is also the variance of a single binary draw; although this family has a residual-dispersion parameter the latter variance is not affected by it.
 
 \code{fixefVar=TRUE} evaluates \code{fixefVar}, the variance due to uncertainty in fixed effects (\bold{X}\eqn{\beta}).
 

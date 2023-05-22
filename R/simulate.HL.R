@@ -34,17 +34,17 @@
                          famfam, nsim=1L) { 
   # we cannot use family()$simulate bc it assumes a fit object as input
   resu <- switch(famfam,
-                 gaussian = rnorm(nsim*length(mu),mean=mu,sd=sqrt(phiW)),
-                 poisson = .rpois(nsim*length(mu),mu,zero_truncated=zero_truncated), 
-                 binomial = rbinom(nsim*length(mu),size=sizes,prob=mu),
-                 Gamma = {
+                 "gaussian" = rnorm(nsim*length(mu),mean=mu,sd=sqrt(phiW)),
+                 "poisson" = .rpois(nsim*length(mu),mu,zero_truncated=zero_truncated), 
+                 "binomial" = rbinom(nsim*length(mu),size=sizes,prob=mu),
+                 "Gamma" = {
                    y <- rgamma(nsim*length(mu), shape= 1 / phiW, scale=mu*phiW) # mean=sh*sc=mu, var=sh*sc^2 = mu^2 phiW
                    Gamma_min_y <- .spaMM.data$options$Gamma_min_y
                    is_low_y <- (y < Gamma_min_y)
                    if (any(is_low_y)) y[which(is_low_y)] <- Gamma_min_y 
                    y
                  }, ## ie shape increase with prior weights, consistent with Gamma()$simulate / spaMM_Gamma()$simulate
-                 COMPoisson = {
+                 "COMPoisson" = {
                    lambdas <- attr(mu,"lambda") # F I X M E an environment would keep values ?
                    if (is.null(lambdas)) {
                      sapply(mu, function(muv) {
@@ -55,13 +55,13 @@
                    } else sapply(lambdas,.COMP_simulate,nu=family_par, #= COMP_nu 
                                  nsim=nsim)
                  },
-                 negbin = .rnbinom(nsim*length(mu), size=family_par, #= NB_shape
+                 "negbin" = .rnbinom(nsim*length(mu), size=family_par, #= NB_shape
                                    mu_str=mu, zero_truncated=zero_truncated),
-                 negbin1 = .rnbinom(nsim*length(mu), size=mu*family_par, #= NB_shape
+                 "negbin1" = .rnbinom(nsim*length(mu), size=mu*family_par, #= NB_shape
                                     mu_str=mu, zero_truncated=zero_truncated),
-                 negbin2 = .rnbinom(nsim*length(mu), size=family_par, #= NB_shape
+                 "negbin2" = .rnbinom(nsim*length(mu), size=family_par, #= NB_shape
                                     mu_str=mu, zero_truncated=zero_truncated),
-                 beta_resp = {
+                 "beta_resp" = {
                    # spaMM's phi is here 1, so phiW must be 1/prior.weights and so for the precision parameter:
                    Wfamily_par <- family_par/phiW
                    y <- rbeta(n=nsim * length(mu), 
@@ -74,6 +74,13 @@
                    if (any(is_high_y)) y[which(is_high_y)] <- beta_max_y 
                    y
                  }, # fam_par being the precision parameter in the Cribari-Neto parametrisation 
+                 "betabin" = {
+                   # phiW: same logic as for beta_resp
+                   ntot <- nsim*length(mu) 
+                   Wfamily_par <- family_par/phiW
+                   rmu <- rbeta(n=ntot, shape1=mu*Wfamily_par,shape2=(1-mu)*Wfamily_par)
+                   rbinom(ntot, size=sizes, prob=rmu)
+                 },
                  stop("(!) random sampling from given family not yet implemented")
   )
   if (nsim>1L) dim(resu) <- c(length(mu),nsim)
@@ -98,7 +105,7 @@
     if ( ! is.null(disp_env$beta)) family_par <- family_par + residFrames$X %*% disp_env$beta
   } else if (famfam =="COMPoisson") {   ##  all the next cases are OK whether there is no new data or whether there is no resid.formula
     family_par <- environment(family$aic)$nu
-  } else if (famfam =="beta_resp") {
+  } else if (famfam %in% c("beta_resp","betabin")) {
     family_par <- environment(family$aic)$prec
   } else if (famfam  %in% c("negbin","negbin1","negbin2")) {
     family_par <- environment(family$aic)$shape
@@ -354,7 +361,7 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
         cum_nobs <- attr(mu,"new_X_ZACblob")$cum_nobs # presence expected given control$simulate=TRUE; will be needed for .calc_phiW()
         is_mu_fix_btwn_sims <- TRUE
         mu <- replicate(needed,mu,simplify=FALSE) #matrix(rep(mu,nsim),ncol=nsim)
-      } else if ( inherits(re.form,"formula") || is.na(re.form) ){ ## explicit re.form; or unconditional MIXED MODEL, type= "marginal"
+      } else if ( inherits(re.form,"formula") || is.na(re.form) ) { ## explicit re.form; or unconditional MIXED MODEL, type= "marginal"
         if (verbtype) {
           if (inherits(re.form,"formula")) {
             cat("Simulation conditional on random effect(s) retained in 're.form':\n")
@@ -421,8 +428,8 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
     
     phiW <- .get_phiW(object=object, newdata=newdata, 
                       dims=c(length(mu[[1]]), length(mu)), # (nrow= response length, ncol= # of replicates)
-                      phi_type=phi_type, needed=needed, 
-                      prior.weights=prior.weights, cum_nobs=cum_nobs) # phiW is always a matrix
+                      phi_type=phi_type, nsim=needed, 
+                      prior.weights=prior.weights) # phiW is always a matrix
     # """as""" phiW but will use an mv-list
     family_par <- .get_family_parlist(object, newdata=newdata)
     # up to version 3.5.49, there was ad hoc code calling COMPoisson()$simulate(object, nsim=nsim) when 

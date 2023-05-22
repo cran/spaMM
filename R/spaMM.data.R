@@ -62,11 +62,17 @@
   # For a long time this was effectively min(0.95.2475, 0.1*min(upper-lower)), where 0.95 is mysterious value from minqa doc.                                    
   #                                   0.1 seems the right balance between time (increase with lower value) and effective minimization (cf 21 selected examples from test-nloptr) 
   bobyqa=list(), 
+  nlminb=list(), 
+  # default value for nloptr() 'opts':
   nloptr=list(algorithm="NLOPT_LN_BOBYQA",xtol_rel=5e-6, print_level=0), # nloptr options only control the termination criteria, not the step sizes. Nothing like rhobeg
-  maxeval=quote(10^(3+(log(length(initvec))-log(5))/log(4))), # nloptr; *modified for bobyqa (which recommends > 10 * npar^2)
-  maxeval_corr=1, # devel: for easy control of maxeval in .safe_opt()
-  xtol_abs_factors=c(rcLam=5e-7,rcCor=5e-6,others=5e-11,abs=1e-7), # nloptr! # laxer rcLam=5e-5 strongly affect tests spherical transfo (+minor effect in test-poly)
+  ## further control of nloptr 'opts' (but not suitable input for 'opts'):
+  xtol_abs_factors=c(abs=1e-8, # That's the general one when next ones are not used. # cf comments in .xtol_abs_fn()
+                     rcLam=5e-7,rcCor=5e-6,others=5e-11), # ____F I X M E____ all only when there are ranCoefs...
+  # laxer rcLam=5e-5 strongly affect tests spherical transfo (+minor effect in test-poly)
   xtol_abs=quote(.xtol_abs_fn(LowUp,  rC_transf = rC_transf)), # nloptr; zero's for max precision (?)
+  maxeval=quote(as.integer(10^(3+(log(length(initvec))-log(5))/log(4)))), # nloptr; *modified for bobyqa (which recommends > 10 * npar^2)
+  maxeval_corr=1, # devel: for easy control of maxeval in .safe_opt()
+  ## 
   ############## ranCoefs settings: (see also xtol_abs_factors)
   optim_inner=".safe_opt",
   recheck_at_bound=FALSE, # control of .safe_opt()
@@ -160,7 +166,12 @@
   tr_beta=FALSE, # whether to optim on transformed scale in speculative outer-optimization of beta
   #thr_backsolve=0L # for devel testing of .backsolve(); 0L means that .Rcpp_backsolve may be called irrespective of matrix dimension
   xLM_conv_silent=FALSE,
-  xLM_conv_crit=list(max=-Inf)
+  xLM_conv_crit=list(max=-Inf),
+  NbThreads=1L,
+  #
+  # devl
+  .betaFn=function(v) {sign(v)*log1p(abs(v))},
+  .betaInv=function(v) {sign(v)*(exp(abs(v))-1)}
 )
 
 .spaMM.data$keywords <- new.env(parent = emptyenv())

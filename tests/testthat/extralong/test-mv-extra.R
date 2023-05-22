@@ -173,6 +173,7 @@ spaMM.options(spaMM_tol=local_tol) # to control strictness of checks in independ
   (zut1 <- fitmv(submodels=list(mod1=list(formula=y ~ 1+(1|batch), family=Gamma(log),resid.model= ~ 1+(1|batch)),
                                   mod2=list(formula=y2 ~ 1+(1|batch2), family=Gamma(log))), 
                           data=wafmv))
+  get_residVar(zut1, newdata=zut1$data) # with a phiHGLM: residVar extractor has ignored this case for a long time.
   (zut2 <- fitmv(submodels=list(mod2=list(formula=y2 ~ 1+(1|batch2), family=Gamma(log)),
                                   mod1=list(formula=y ~ 1+(1|batch), family=Gamma(log),resid.model= ~ 1+(1|batch))), 
                           data=wafmv))
@@ -270,11 +271,7 @@ spaMM.options(spaMM_tol=local_tol) # to control strictness of checks in independ
 }
   
 {
-  npos <- c(11,16,14,2,6,1,1,4,10,22,7,1,0,0,1,6)
-  ntot <- c(36,20,19,16,17,11,5,6,37,32,19,17,12,10,9,7)
-  treatment <- c(rep(1,8),rep(0,8))
-  clinic <-c(seq(8),seq(8))
-  clinics <- data.frame(npos=npos,nneg=ntot-npos,treatment=treatment,clinic=clinic)
+  data("clinics")
   #
   (fitClinics <- HLfit(cbind(npos,nneg)~treatment+(1|clinic),family=binomial(),data=clinics))
   set.seed(123)

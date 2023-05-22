@@ -35,7 +35,7 @@
 }
 
 .make_beta_table <- function(object, p_value="") {
-  namesOri <- attr(object$X.pv,"namesOri")
+  namesOri <- attr(model.matrix(object),"namesOri")
   nc <- length(namesOri)
   betaOri_cov <- matrix(NA,ncol=nc,nrow=nc,dimnames=list(rownames=namesOri,colnames=namesOri))
   beta_cov <- .get_beta_cov_any_version(object) 
@@ -532,22 +532,24 @@ summary.HLfitlist <- function(object, ...) {
         warning("Unexpected case in .summary_phi_object(): maybe harmless, but please contact the maintainer.") # warning set on 3.7.24 03/2021
       }                                                 
     }
-  } else if (family$family %in% c("beta_resp","COMPoisson", "negbin1", "negbin2")) {
-    not_pw_1 <- ! .is_unit(pw) 
+  } else if (family$family %in% c("beta_resp","betabin", "COMPoisson", "negbin1", "negbin2")) {
+    not_pw_1 <- ! .is_unit(pw) # But relevant only for beta_resp and betabin ? (___F I X M E___?? Don't confuse with resid.model feature which works for negbin[] models too)
     has_dispenv_beta <- ( ! is.null(beta <- (disp_env <- family$resid.model)$beta)) 
     if (not_pw_1 || has_dispenv_beta) {
       if (! is.null(mv_it)) {
         cat(crayon::underline("* response", mv_it))
         info <- switch(family$family,
                        "beta_resp" = " dispersion model for beta_resp\n",
+                       "betabin"   = " dispersion model for betabin\n",
                        "COMPoisson"= " dispersion model for COMPoisson\n",
                        "negbin1"   = " dispersion model for negbin1\n",
                        "negbin2"   = " dispersion model for negbin2\n",
                        "family dispersion parameter"
         )
       } else info <- switch(family$family,
-                     "beta_resp" = "------- Dispersion model for beta_resp --------\n",
-                     "COMPoisson"= "------- Dispersion model for COMPoisson -------\n",
+                            "beta_resp" = "------- Dispersion model for beta_resp --------\n",
+                            "betabin"   = "------- Dispersion model for betabin ----------\n",
+                            "COMPoisson"= "------- Dispersion model for COMPoisson -------\n",
                      "negbin1"   = "------- Dispersion model for negbin1 ----------\n",
                      "negbin2"   = "------- Dispersion model for negbin2 ----------\n",
                      "family dispersion parameter"
@@ -560,6 +562,7 @@ summary.HLfitlist <- function(object, ...) {
     if (has_dispenv_beta) {
       info <- switch(family$family,
                      "beta_resp" = "prec",
+                     "betabin" = "prec",
                      "COMPoisson"= "nu",
                      "negbin1"="shape",
                      "negbin2"="shape",

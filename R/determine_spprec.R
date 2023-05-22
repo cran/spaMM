@@ -82,15 +82,12 @@
         } else {
           G_diagnosis <- .provide_G_diagnosis(corr_info=corr_info, ZAlist=ZAlist)
           if (G_diagnosis$fast) { # as determined internally by .provide_G_diagnosis()
-            # actually no G diagnosis ; instead compares ZL to a ZL_without_AR, 
+            # actually no true G diagnosis ; instead compares ZL to a ZL_without_AR, 
             # which amounts to assume that the cost of spprec is that of ZL without AR 
             rel_ZAL_denseness <- G_diagnosis$denseness_via_ZL/G_diagnosis$denseness_noAR 
             crit <-  rel_ZAL_denseness*nr/nc # can reach high values (e.g. adjacency-long > 400)
             sparse_precision <- crit >.spaMM.data$options$spprec_threshold ## from numerical experiments on ohio
           } else {
-            rel_ZAL_denseness <- G_diagnosis$denseness_via_ZL/G_diagnosis$denseness_noAR 
-            crit <-  rel_ZAL_denseness*nr/nc # can reach high values (e.g. adjacency-long > 400)
-            sparse_precision <- crit >.spaMM.data$options$spprec_threshold ## from numerical experiments on ohio
             # Gryphon has second criterion below 4e-5 and covfit in test-adjacency-corrMatrix has it >2e-3
             sparse_precision <-  with(G_diagnosis, (dens_G_rel_ZL<1 && density_G*dens_G_rel_ZL<2e-4)) 
             if (FALSE) {

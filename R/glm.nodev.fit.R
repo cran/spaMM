@@ -19,7 +19,7 @@ glm.nodev.fit <- function (x, y, weights = rep.int(1, nobs), start = NULL, etast
   if (family$family=="COMPoisson") {
     muetaenv <- NULL
     variance <- function(mu) {family$variance(mu,muetaenv=muetaenv)}
-    dev.resids <- function(y, mu, wt) {family$dev.resids(y, mu, wt, muetaenv=muetaenv)}
+    # dev.resids <- function(y, mu, wt) {family$dev.resids(y, mu, wt, muetaenv=muetaenv)}
     if (family$link=="loglambda") {
       linkinv <- function(eta) {family$linkinv(eta,muetaenv=muetaenv)}
       mu.eta <- function(eta) {family$mu.eta(eta,muetaenv=muetaenv)}
@@ -236,11 +236,11 @@ glm.nodev.fit <- function (x, y, weights = rep.int(1, nobs), start = NULL, etast
   if (!EMPTY) 
     names(fit$effects) <- c(xxnames[seq_len(fit$rank)], 
                             rep.int("", sum(good) - fit$rank))
-  wtdmu <- if (intercept) 
-    sum(weights * y)/sum(weights)
-  else linkinv(offset)
-  dev <- suppressWarnings(sum(dev.resids(y, mu, weights))) # "nodev" for the fit, but dev for post-fit: .calc_inits_by_xLM() uses it
+  # wtdmu <- if (intercept) 
+  #   sum(weights * y)/sum(weights)
+  # else linkinv(offset)
   # nulldev <- sum(dev.resids(y, wtdmu, weights))
+  # dev <- suppressWarnings(sum(dev.resids(y, mu, weights)))
   n.ok <- nobs - sum(weights == 0)
   nulldf <- n.ok - as.integer(intercept)
   rank <- if (EMPTY) 
@@ -252,7 +252,8 @@ glm.nodev.fit <- function (x, y, weights = rep.int(1, nobs), start = NULL, etast
        effects = if (!EMPTY) fit$effects, R = if (!EMPTY) Rmat, 
        rank = rank, qr = if (!EMPTY) structure(fit[c("qr", 
                                                      "rank", "qraux", "pivot", "tol")], class = "qr"), 
-       family = family, linear.predictors = eta, deviance = dev, 
+       family = family, linear.predictors = eta, # deviance = dev,
+       muetaenv = muetaenv, # allowing simple computation of deviance post-fit
        aic = aic.model, null.deviance = NA, iter = iter, 
        weights = wt, prior.weights = weights, df.residual = resdf, 
        df.null = nulldf, y = y, converged = conv, boundary = boundary)

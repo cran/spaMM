@@ -16,12 +16,8 @@ data(wafers)
 testthat::expect_equal(logLik(foo), c(P_v=-1224.65219293 ))
 
 {
-  npos <- c(11,16,14,2,6,1,1,4,10,22,7,1,0,0,1,6)
-  ntot <- c(36,20,19,16,17,11,5,6,37,32,19,17,12,10,9,7)
-  treatment <- c(rep(1,8),rep(0,8))
-  clinic <- c(seq(8),seq(8))
-  clinics <- data.frame(npos=npos,nneg=ntot-npos,treatment=treatment,clinic=clinic)
-  
+  data("clinics")
+
   (foo <- fitme(cbind(npos,nneg)~1+(1|clinic), method=c("ML","obs"),
                 family=binomial(cloglog),data=clinics))
   testthat::expect_equal(logLik(foo), c(P_v=-40.4244068868))

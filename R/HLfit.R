@@ -138,6 +138,7 @@ HLfit <- function(formula,
     hlfit$fit_time <- structure(hlfit$how$fit_time,
                                 message="Please use how(<fit object>)[['fit_time']] to extract this information cleanly.")
   }
+  if ( ! is.null(mc$control.HLfit$NbThreads)) .setNbThreads(thr=.spaMM.data$options$NbThreads)
   return(hlfit)
 }
 
@@ -165,7 +166,7 @@ HLfit <- function(formula,
   if ( ! is.null(processed$X_off_fn)) { # beta outer-optimisation
     if ( ! is.null(trBeta <- ranefParsList$trBeta)) { # outer beta
       ranefParsList$trBeta <- NULL
-      HLfit.call$etaFix$beta <- .betaInv(trBeta)
+      HLfit.call$etaFix$beta <- .spaMM.data$options$.betaInv(trBeta)
     } else if ( ! is.null(beta <- ranefParsList$beta)) { # outer beta
       ranefParsList$beta <- NULL
       HLfit.call$etaFix$beta <- beta

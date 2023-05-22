@@ -182,6 +182,18 @@
   term
 }
 
+.param.inla_dgT2dgC <- function(param.inla) {
+  if (inherits(M0 <- param.inla$M0,"dgTMatrix")) {
+    param.inla$M0 <- as(M0,"CsparseMatrix")
+  }
+  if (inherits(M1 <- param.inla$M1,"dgTMatrix")) {
+    param.inla$M1 <- as(M1,"CsparseMatrix")
+  }
+  if (inherits(M2 <- param.inla$M2,"dgTMatrix")) {
+    param.inla$M2 <- as(M2,"CsparseMatrix")
+  }
+  param.inla
+}
 
 .process_IMRF_bar <- function(term, env) {
   pars <- paste0(paste0(names(term),"=",term)[-c(1,2)], collapse=",") 
@@ -217,6 +229,7 @@
     # print((c(dim_,pars$SPDE_alpha)))
   } else if (is.null(pars$no)) pars$no <- TRUE
   if (is.null(pars$ce)) pars$ce <- TRUE
+  pars$model$param.inla <- .param.inla_dgT2dgC(pars$model$param.inla)
   attr(term,"type") <- structure("IMRF", pars=pars) # pars as attr to type avoid problems in building the return value.
   return(term) # (lhs|rhs) (language, with the ()); or character string.
 }
@@ -455,7 +468,7 @@ if (FALSE) { # seems correct, but ultimately not needed
 .sanitize_Y <- local({
   #int_warned <- FALSE
   function(y, famfam) {
-    if ( famfam %in% c("binomial","poisson","COMPoisson","negbin1","negbin2")) { # COUNTS
+    if ( famfam %in% c("binomial","poisson","COMPoisson","negbin1","negbin2", "betabin")) { # COUNTS
       ## the response variable should always be Counts
       safe_y <- as.integer(y+0.5) # non-negative values only # non-array from array, hence:
       if (NCOL(y)) dim(safe_y) <- dim(y)

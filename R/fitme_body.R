@@ -151,8 +151,8 @@ fitme_body <- function(processed,
         processed$AUGI0_ZX <- .init_AUGI0_ZX(X.pv, processed$AUGI0_ZX$vec_normIMRF, processed$ZAlist, nrand=length(processed$ZAlist), n_u_h=nrow(processed$AUGI0_ZX$ZeroBlock), 
                                              sparse_precision=processed$is_spprec, 
                                              as_mat=.eval_as_mat_arg(processed))
-        if ( ! is.null(trBeta <- ranPars_in_refit$trBeta)) { # on transformed scale
-          sc_fixef <- .betaInv(trBeta)
+        if ( ! is.null(trBeta <- ranPars_in_refit$trBeta)) { # on transformed scale # trBeta is never used by default (spaMM option tr_beta).... (but check ADFun experiment if modifying this)
+          sc_fixef <- .spaMM.data$options$.betaInv(trBeta)
           ranPars_in_refit$trBeta <- NULL
         } else {
           sc_fixef <- ranPars_in_refit$beta
@@ -161,6 +161,7 @@ fitme_body <- function(processed,
         HLCor.args$init.HLfit$fixef <- .unscale(X.pv, sc_fixef)
         processed$port_env$port_fit_values$fixef <- NULL
         processed$X_off_fn <- NULL
+        processed$vecdisneeded <- .vecdisneeded(pforpv=TRUE, processed$family, processed) # (____F I X M E____) ultimately extend this for outer beta for mv fits 
       }
     } ## end if ...getCall... else
     #

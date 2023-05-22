@@ -3,9 +3,10 @@
 
 .Gamma2LLF <- function(family) {
   # clik is dgamma(y, shape=nu , scale = attr(theta,"mu")/nu, log = TRUE)
-  DlogLDmu <- function(mu, y, wt, n, phi, nu=1/phi) { drop(wt*nu*(y/mu-1)/mu)} # or (y-mu)/V(mu), general result for GLMs
-  D2logLDmu2 <- function(mu, y, wt, n, phi, nu=1/phi) { drop(wt*nu*(-2*y/mu+1)/(mu^2)) }
-  D3logLDmu3 <- function(mu, y, wt, n, phi, nu=1/phi) { drop(wt*nu*(6*y/mu-2)/(mu^3))}
+  # as.vector() to drop the wt attributes (which would be retained by drop())
+  DlogLDmu <- function(mu, y, wt, phi, nu=1/phi) { as.vector(wt*nu*(y/mu-1)/mu)} # or (y-mu)/V(mu), general result for GLMs
+  D2logLDmu2 <- function(mu, y, wt, phi, nu=1/phi) { as.vector(wt*nu*(-2*y/mu+1)/(mu^2)) }
+  D3logLDmu3 <- function(mu, y, wt, phi, nu=1/phi) { as.vector(wt*nu*(6*y/mu-2)/(mu^3))}
   D2muDeta2 <- .D2muDeta2(family$link)
   D3muDeta3 <- .D3muDeta3(family$link)
   #
@@ -23,9 +24,9 @@
 }
 
 .gaussian2LLF <- function(family) {
-  DlogLDmu <- function(mu, y, wt, n, phi, nu=1/phi) { drop(wt*nu*(y-mu))}
-  D2logLDmu2 <- function(mu, y, wt, n, phi, nu=1/phi) { res <- drop(-wt*nu); if(length(res)==1L) {res <- rep(res,length(y))}; res}
-  D3logLDmu3 <- function(mu, y, wt, n, phi, nu=1/phi) { rep(0,length(y))}
+  DlogLDmu <- function(mu, y, wt, phi, nu=1/phi) { drop(wt*nu*(y-mu))}
+  D2logLDmu2 <- function(mu, y, wt, phi, nu=1/phi) { res <- drop(-wt*nu); if(length(res)==1L) {res <- rep(res,length(y))}; res}
+  D3logLDmu3 <- function(mu, y, wt, phi, nu=1/phi) { rep(0,length(y))}
   D2muDeta2 <- .D2muDeta2(family$link)
   D3muDeta3 <- .D3muDeta3(family$link)
   #

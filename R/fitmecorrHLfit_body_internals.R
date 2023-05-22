@@ -486,11 +486,12 @@
     }
   }
   ntC <- names(ranPars)
+  digits <- getOption("digits")
   for (lit in seq_along(ranPars)) {
     urP <- unlist(ranPars[[lit]]) ## ranPars$corrPars can be list() in which case urP is NULL 
-    if (!is.null(urP)) cat(ntC[lit],"=",paste(signif(urP,6),collapse=" ")," ")
+    if (!is.null(urP)) cat(ntC[lit],"=",paste(signif(urP,digits),collapse=" ")," ")
   }
-  if ( ! is.null(beta <- attr(processed$off,"beta"))) cat("beta=",paste(signif(beta,6),collapse=" ")," ") # outer beta
+  if ( ! is.null(beta <- attr(processed$off,"beta"))) cat("beta=",paste(signif(beta,digits),collapse=" ")," ") # outer beta
 }
 
 .calc_corrMatrix_precisionFactor__assign_Lunique <- function(processed, rd) {
@@ -898,7 +899,7 @@
   } else var_ranCoefs <- has_corr_pars <- FALSE
   calc_dvdlogdisp_needed_for_inner_ML <-  (processed$vecdisneeded[2] && processed$HL[2L]) 
   sufficient_reasons_for_outer_lambda <- (
-    anyNA(init.optim$lambda) || # first one meaning that the user explictly set a NA init lambda
+    anyNA(init.optim$lambda) || # first one meaning that the user explicitly set a NA init lambda
       any(var_ranCoefs) || # includes mv()
       (has_corr_pars && calc_dvdlogdisp_needed_for_inner_ML) || # should be TRUE for Loaloa fit used gentle intro'scomparisons, 
                                                                 #       and FALSE for fit_REML in test-devel-predVar-AR1
@@ -910,8 +911,7 @@
     has_corr_pars ||
     ( other_submodel_has_family_par <- identical(attr(processed$families,"has_estim_families_par"), TRUE)) ## identical bc absent in multi() case
   )
-  if ( # TRUE || ## why not always check?
-    sufficient_reasons_for_outer_lambda || other_reasons_to_chech_inner_costs ||  
+  if (sufficient_reasons_for_outer_lambda || other_reasons_to_chech_inner_costs ||  
     var(proc1$y)<1e-3 || # mixed model with low response variance (including case where phi is fixed (phimodel="") )
     # Next two lines of code quite contrived: basic idea is that we might switch to outer lambda estim 
     #  if phi is outer/Fix or if we enforce outer_optim_resid 
@@ -950,8 +950,24 @@
     # so that outer_phiScal_spares_costly_comput = ( outer_spares_costly_dleve_comput || outer_spares_costly_hatval_xx)
     # But is phiGLM/HGLM, these hatval computations cannot be spared => two cases for other_reasons_for_outer_lambda
     if (is.null(proc1$phi.Fix) && ! phi_by_augZXy ) { # Set (or not) outer optimization for phi: 
-      init_optim_phi_blob <- .init_optim_phi(phimodel1, proc1, init.optim, nrand1, 
-                                             reasons_for_outer=outer_phiScal_spares_costly_comput || any(var_ranCoefs)) # outer estim may be numerically more stable for ranCoefs
+      if (nrand1) {
+        # chicken-egg problem for phi and lambda|rC outer estimation => first check whether 
+        # there will be the latter even if not the former. 
+        # => two calls to .init_optim_lambda_ranCoefs(). Some 'elegant' shortcuts might be thought of,
+        # but this is safe.
+        prospective_init.optim <- .init_optim_lambda_ranCoefs(
+          proc1, 
+          other_reasons_for_outer_lambda = (sufficient_reasons_for_outer_lambda), 
+          init.optim, nrand1, proc1$ranCoefs_blob, var_ranCoefs,
+          user_init_optim=user_init_optim
+        )
+        init_optim_will_have_lambda_or_ranCoefs_anyway <- 
+          length(.unlist(prospective_init.optim[c("lambda","ranCoefs")])) #  any(var_ranCoefs) appears to be a sufficient condition here.
+      } else init_optim_will_have_lambda_or_ranCoefs_anyway <- FALSE
+      init_optim_phi_blob <- 
+        .init_optim_phi(phimodel1, proc1, init.optim, nrand1, 
+                        reasons_for_outer=init_optim_will_have_lambda_or_ranCoefs_anyway || 
+                          outer_phiScal_spares_costly_comput)
       other_reasons_for_outer_lambda <- init_optim_phi_blob$not_inner_phi
       init.optim <- init_optim_phi_blob$init.optim
     } else other_reasons_for_outer_lambda <- outer_phiScal_spares_costly_comput
@@ -1038,7 +1054,7 @@
         init.optim$COMP_nu <- NULL
       } # and this should have the effect that user lower and upper values should be ignored too.
     }  
-  } else if (family$family=="beta_resp") {
+  } else if (family$family %in% c("beta_resp","betabin")) {
     if (inherits(substitute(prec, env=environment(family$aic)),"call")) {
       if (processed$models$rdispar=="rdiForm") {
         init.optim$rdisPars <- .init_rdisPars(init.optim$rdisPars, fixed=fixed, disp_env=family$resid.model,
@@ -1242,7 +1258,7 @@
   trNames <- gsub("trPhi","phi",trNames)
   trNames <- gsub("trLambda","lambda",trNames)
   trNames <- gsub("trNB_shape","NB_shape",trNames)
-  trNames <- gsub("trbeta_resp","beta_resp",trNames)
+  trNames <- gsub("trbeta_prec","beta_prec",trNames)
   trNames
 }
 

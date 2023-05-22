@@ -42,8 +42,8 @@ if (TRUE) {
 .rcDispFn <- function(v) log(v) # log(log1p(v)) # .dispFn(v) # 
 .rcDispInv <- function(v) exp(v) #  exp(exp(v))-1 # .dispInv(v) # 
 
-.betaFn <- function(v) {sign(v)*log1p(abs(v))}
-.betaInv <- function(v) {sign(v)*(exp(abs(v))-1)}
+# .betaFn <- function(v) {sign(v)*log1p(abs(v))}
+# .betaInv <- function(v) {sign(v)*(exp(abs(v))-1)}
 
 #sapply(sapply(10^(seq(-6,6)),dispFn),dispInv)
 ## These must be directly applicable to say lambda=c(0.1,0.1) hence need to vectorize the test on x
@@ -371,42 +371,53 @@ if (TRUE) {
   ranCoef # with Xi_ncol attribute too
 }
 
-## drastic handling of flat likelihoods for high shape= LOW variance. .NB_shapeFn(canon_step_x)=1, and .NB_shapeFn(canon_max)=max_transf. 
-#
-# if trshape = 0,  NLOPT_LN_BOBYQA first perturbation is halfway from the maximum trshape:
-# 1 if max is 2, 1.5 if max is 3...
-# Then if one wants trshape=1 to be the first perturbation, the maximum trshape must be 2...
-# One may change max_transf to (say) 10, manke .NB_shapeFn return resu*10/2 and .NB_shapeInv use abs(x*2/10) => the optimizer sequence is unchanged.
-# Actually just changing the last two or max_transf has no effect ??
-.scaleconstfn <- function(canon_step_x=5,canon_max=1e6) {
-  log_sym_x <-  log(canon_step_x+1/canon_step_x-1) 
-  log(2)/log(log(canon_max+1/canon_max-1)/log_sym_x) # always log('max_transf='2)/. , stemming from the halfway step taken by NLOPT_LN_BOBYQA
-}
-
-.scaleconst <- .scaleconstfn(canon_step_x = 5) 
-.log_sym_x <- log(4.2) # log(x+1/x-1) at the target x step 
-
-.NB_shapeFn <- function(x) {
-  resu <- numeric(length(x))
-  for (it in seq_along(x)) {
-    xi <- x[it]
-    if (xi>1) {
-      resu[it] <- (log(xi+1/xi-1)/.log_sym_x)^.scaleconst
-    } else {resu[it] <- -(log(xi+1/xi-1)/.log_sym_x)^.scaleconst}
+if (FALSE) {
+  ## drastic handling of flat likelihoods for high shape= LOW variance. .NB_shapeFn(canon_step_x)=1, and .NB_shapeFn(canon_max)=max_transf. 
+  #
+  # if trshape = 0,  NLOPT_LN_BOBYQA first perturbation is halfway from the maximum trshape:
+  # 1 if max is 2, 1.5 if max is 3...
+  # Then if one wants trshape=1 to be the first perturbation, the maximum trshape must be 2...
+  # One may change max_transf to (say) 10, manke .NB_shapeFn return resu*10/2 and .NB_shapeInv use abs(x*2/10) => the optimizer sequence is unchanged.
+  # Actually just changing the last two or max_transf has no effect ??
+  .scaleconstfn <- function(canon_step_x=5,canon_max=1e6) {
+    log_sym_x <-  log(canon_step_x+1/canon_step_x-1) 
+    log(2)/log(log(canon_max+1/canon_max-1)/log_sym_x) # always log('max_transf='2)/. , stemming from the halfway step taken by NLOPT_LN_BOBYQA
   }
-  resu 
-} 
-
-.NB_shapeInv <- function(x) {
-  t <- exp(.log_sym_x*abs(x)^(1/.scaleconst))
-  resu <- numeric(length(t))
-  for (it in seq_along(t)) {
-    ti <- t[it]
-    if (x[it]>0) {
-      resu[it] <- (1 + ti + sqrt(-3 + 2*ti + ti^2))/2
-    } else  resu[it] <- (1 + ti - sqrt(-3 + 2*ti + ti^2))/2
+  
+  .scaleconst <- .scaleconstfn(canon_step_x = 5) 
+  .log_sym_x <- log(4.2) # log(x+1/x-1) at the target x step 
+  
+  .NB_shapeFn <- function(x) {
+    resu <- numeric(length(x))
+    for (it in seq_along(x)) {
+      xi <- x[it]
+      if (xi>1) {
+        resu[it] <- (log(xi+1/xi-1)/.log_sym_x)^.scaleconst
+      } else {resu[it] <- -(log(xi+1/xi-1)/.log_sym_x)^.scaleconst}
+    }
+    resu 
   }
-  resu
+  
+  .NB_shapeInv <- function(x) {
+    t <- exp(.log_sym_x*abs(x)^(1/.scaleconst))
+    resu <- numeric(length(t))
+    for (it in seq_along(t)) {
+      ti <- t[it]
+      if (x[it]>0) {
+        resu[it] <- (1 + ti + sqrt(-3 + 2*ti + ti^2))/2
+      } else  resu[it] <- (1 + ti - sqrt(-3 + 2*ti + ti^2))/2
+    }
+    resu
+  }
+  
+} else {
+  # Without a  if (), but similar convention that Fn(5) is half Fn(conceptual Inf) (here, 1/4 and 1/2)
+  #  (pnorm(log(Inf),sd=2.386156)-1/2)/(pnorm(log(5),sd=2.386156)-1/2)  =2
+  #  (pnorm(log(Inf),sd=2.386156)-1/2)/(pnorm(log(5),sd=2.386156)-1/2)  =2
+  #.NB_shapeFn <- function(x) {pnorm(log(x),sd=2.386156)-1/2}
+  #.NB_shapeInv <- function(x) {exp(qnorm(x+1/2,sd=2.386156))}
+  .NB_shapeFn <- function(x) {pnorm(log(x),sd=2.386156)-0.49999999}
+  .NB_shapeInv <- function(x) {exp(qnorm(x+0.49999999,sd=2.386156))}
 }
 
 # .NB_shapeInv(.NB_shapeFn(10^6))
@@ -415,7 +426,6 @@ if (TRUE) {
 
 .beta_precFn <- .NB_shapeFn
 .beta_precInv <- .NB_shapeInv
-
 
 ## FR->FR rho/sqrt(nu) scaling => should be fixed nu and transformed rho to handle vectorial rho
 ## thus nu fns should be indep of nu and rho fns should be functions of nu ! :
@@ -974,7 +984,7 @@ if (FALSE) {
   # Currently there is no default beta; only a user_init_optim one:
   if (! is.null(beta <- inits[["init.optim"]]$beta)) { # at this point inits[["init.optim"]] = user's, + automatically added inits (none yet for beta)
     if (.spaMM.data$options$tr_beta) { # for transformed scale
-      inits[["init.optim"]]$trBeta <- .betaFn(beta)
+      inits[["init.optim"]]$trBeta <- .spaMM.data$options$.betaFn(beta)
       inits[["init.optim"]]$beta <- NULL
     }
     inits[["init"]]$beta <- beta # ---> canon.init

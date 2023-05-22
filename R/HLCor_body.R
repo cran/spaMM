@@ -263,7 +263,7 @@ HLCor_body <- function(processed, ## single environment
   if ( ! is.null(processed$X_off_fn)) { # beta outer-optimisation
     if ( ! is.null(trBeta <- ranefParsList$trBeta)) { # outer beta
       ranefParsList$trBeta <- NULL
-      HLCor.call$etaFix$beta <- .betaInv(trBeta)
+      HLCor.call$etaFix$beta <- .spaMM.data$options$.betaInv(trBeta)
     } else if ( ! is.null(beta <- ranefParsList$beta)) { # outer beta
       ranefParsList$beta <- NULL
       HLCor.call$etaFix$beta <- beta

@@ -147,6 +147,7 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
       hlcor$fit_time <- structure(hlcor$how$fit_time,
                                   message="Please use how(<fit object>)[['fit_time']] to extract this information cleanly.")
     }
+    if ( ! is.null(mc$control.HLfit$NbThreads)) .setNbThreads(thr=.spaMM.data$options$NbThreads)
   }
   rm(list=setdiff(lsv,"hlcor")) 
   return(hlcor)

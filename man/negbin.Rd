@@ -7,7 +7,7 @@
 Family function for negative binomial \dQuote{2} response (including truncated variant).
 }
 \description{
-Returns a GLM \code{\link[stats]{family}} object for negative-binomial model with variance quadratically related to the mean \eqn{\mu}: variance=\eqn{\mu+\mu^2}/shape, with known or unknown underlying Gamma shape parameter. The zero-truncated variant can be specified as \code{negbin2(., trunc = 0L)}. See \code{\link{negbin1}} for the alternative negative-binomial model with variance \dQuote{linearly} related to the mean. 
+Returns a GLM \code{\link[stats]{family}} object for negative-binomial model with variance quadratically related to the mean \eqn{\mu}: variance=\eqn{\mu+\mu^2}/shape, where the shape parameter need or need not be specified, depending on usage. The zero-truncated variant can be specified as \code{negbin2(., trunc = 0L)}. See \code{\link{negbin1}} for the alternative negative-binomial model with variance \dQuote{linearly} related to the mean. 
 
 A \bold{fixed-effect} residual-dispersion model can be fitted, using the \code{\link{resid.model}} argument, which is used to specify the form of the logarithm of the shape parameter. Thus the variance of the response become \eqn{\mu+\mu^2}/\code{exp(<specified linear expression>)}.
 
@@ -28,7 +28,7 @@ Tnegbin(shape = stop("Tnegbin's 'shape' must be specified"), link = "log")
 %- maybe also 'usage' for other objects documented here.
 \arguments{
   \item{shape}{
-  Shape parameter of the underlying Gamma distribution, given that the \code{negbin} family can be represented as a Poisson-Gamma mixture, where the conditional Poisson mean is \eqn{\mu} times a Gamma random variable with mean 1 and shape \code{shape} (as produced by \code{rgamma(., shape=shape,scale=1/shape)}). 
+  Shape parameter of the underlying Gamma distribution: the present negative binomial distribution can be represented as a Poisson-Gamma mixture, where the conditional Poisson mean is \eqn{\mu} times a Gamma random variable with mean 1 and variance  \code{1/shape} (as produced by \code{rgamma(., shape=shape,scale=1/shape)}). 
 }
   \item{link}{
   log, sqrt or identity link, specified by any of the available ways for GLM links (name, character string, one-element character vector, or object of class \code{link-glm} as returned by \code{\link[stats]{make.link}}). 
@@ -43,10 +43,12 @@ Tnegbin(shape = stop("Tnegbin's 'shape' must be specified"), link = "log")
 \details{
 \code{shape} is the \eqn{k} parameter of McCullagh and Nelder (1989, p.373) and the \code{theta} parameter of Venables and Ripley (2002, section 7.4). The latent Gamma variable has mean 1 and variance 1/shape. %The \code{negbin} family is sometimes called the NegBin1 model (as the first, historically) in the literature on negative binomial models, and sometimes the NegBin2 model (because its variance is a quadratic function of its mean). 
 
-The name \code{NB_shape} should be used to set values of shape in control arguments of the fitting functions (e.g., \code{fitme(.,init=list(NB_shape=1))}). 
+The name \code{NB_shape} should be used to set values of shape in optimization control arguments of the fitting functions (e.g., \code{fitme(.,init=list(NB_shape=1))}); but fixed values are set by the \code{shape} argument.
+
+The returned family object is formally suitable for usage with \code{glm} if the \code{shape} argument is specified, but such usage is \emph{not} recommended as it will lead to incorrect results for the zero-truncated case.
 }
 \value{
-A family object.
+A family object with structure similar to \code{stats::} family object but with additional member functions for usage with \pkg{spaMM} fitting functions.
 }
 \references{
 McCullagh, P. and Nelder, J.A. (1989) Generalized Linear Models, 2nd edition. London: Chapman & Hall.

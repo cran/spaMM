@@ -213,72 +213,28 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL, tol=1e
   return(as.vector(neg.d2f_dv_dloglam))
 }
 
-.calc_dvdloglamMat_new <- function(neg.d2f_dv_dloglam,
-                                   sXaug, d2hdv2_info=NULL ## use either one
-                                   ) {
-  if(is.null(d2hdv2_info)) {
-    if (TRUE) {
-      if (is.matrix(sXaug)) { # sXaug_EigenDense_QRP_Chol_scaled case
-        dvdloglamMat <- get_from_MME(sXaug,"solve_d2hdv2",B=diag( neg.d2f_dv_dloglam))
-      } else  dvdloglamMat <- get_from_MME(sXaug,"solve_d2hdv2",B=Diagonal(x= neg.d2f_dv_dloglam))
-    } else {
-      # Avoids the inelegant test is.matrix(sXaug), but... less accurate!
-      inv_d2hdv2 <- get_from_MME(sXaug,"solve_d2hdv2") # slow step ("test negbin1" with large nobs is good example)
-      dvdloglamMat <- .m_Matrix_times_Dvec(inv_d2hdv2, neg.d2f_dv_dloglam)# get_from_MME(sXaug,"solve_d2hdv2",B=diag( neg.d2f_dv_dloglam)) ## square matrix, by  the formulation of the algo 
-    }
-  } else if (inherits(d2hdv2_info,"CHMfactor")) {# CHM of ***-*** d2hdv2
-    dvdloglamMat <- solve(d2hdv2_info, .sparseDiagonal(x= - neg.d2f_dv_dloglam, shape="g"))  # rXr !       # .symDiagonal() is equivalent here?
-  } else if (inherits(d2hdv2_info,"qr") || inherits(d2hdv2_info,"sparseQR") ) { ## much slower than using CHMfactor
-    if (length(neg.d2f_dv_dloglam)>5000L) message("[one-time solve()ing of large matrix, which may be slow]") 
-    dvdloglamMat <- solve(d2hdv2_info, diag( neg.d2f_dv_dloglam ))  # rXr !       
-  } else if (is.environment(d2hdv2_info)) {
-    # dvdloglamMat <- solve(d2hdv2_info, diag( neg.d2f_dv_dloglam ))  # rXr !       
-    rhs <- .Matrix_times_Dvec(d2hdv2_info$chol_Q, neg.d2f_dv_dloglam )
-    rhs <- solve(d2hdv2_info$G_CHMfactor, rhs)
-    dvdloglamMat <- - .crossprod(d2hdv2_info$chol_Q, rhs) # don't forget '-'
-  } else { ## then d2hdv2_info is ginv(d2hdv2) or some other form of inverse # This block seems obsolete (not in long tests anyway); 
-    # possibly related to the fact that bigranefs comment a few lines below also refers to computation no longer performed.
-    if (inherits(d2hdv2_info,"dsCMatrix")) {  
-      if (.spaMM.data$options$Matrix_old) { 
-        d2hdv2_info < as(d2hdv2_info, "dgCMatrix")
-      } else d2hdv2_info <- as(d2hdv2_info, "generalMatrix")
-      dvdloglamMat <- .Matrix_times_Dvec(d2hdv2_info, 
-                                         neg.d2f_dv_dloglam) ## sweep(d2hdv2_info,MARGIN=2L,neg.d2f_dv_dloglam,`*`) ## ginv(d2hdv2) %*% diag( as.vector(neg.d2f_dv_dloglam))      
-    } else dvdloglamMat <- .m_Matrix_times_Dvec(d2hdv2_info, # this can be simplified, but do this when the alternative is stable
-                                         neg.d2f_dv_dloglam) ## sweep(d2hdv2_info,MARGIN=2L,neg.d2f_dv_dloglam,`*`) ## ginv(d2hdv2) %*% diag( as.vector(neg.d2f_dv_dloglam))      
-  }
-  # I returned as.matrix(dvdloglamMat) a long time ago, and found it terribly inefficient in bigranefs case; 
-  # but bigranefs example no longer runs calls .calc_dvdloglamMat_new()
-  return(dvdloglamMat) 
-} ## square matrix, by  the formulation of the algo 
-
-
-.calc_dvdlogphiMat_new <- function(dh0deta,ZAL,
-                                   sXaug,d2hdv2_info=NULL ## either one
-                                   ) {
-  ## cf calcul dhdv, but here we want to keep each d/d phi_i distinct hence not sum over observations i 
-  if (inherits(ZAL,"ZAXlist")) { # appeared in first try gaussian("logit")... with ARp()...
-    neg.d2h0_dv_dlogphi <- .crossprod(ZAL,Diagonal(x=drop(dh0deta)))
-  } else neg.d2h0_dv_dlogphi <- .m_Matrix_times_Dvec(t(ZAL), drop(dh0deta)) # n_u_h*nobs: each ith column is a vector of derivatives wrt v_k# dh0dv <- t(ZAL) %*% diag(as.vector(dh0deta)) 
+.ad_hoc_solve_d2hdv2_Bvec <- function(B,
+                                 sXaug, d2hdv2_info=NULL ## either one
+) {
   if (is.null(d2hdv2_info)) { # call by HLfit_body
-    dvdlogphiMat <- get_from_MME(sXaug,"solve_d2hdv2",B=neg.d2h0_dv_dlogphi) 
+    res <- get_from_MME(sXaug,"solve_d2hdv2",B=B) 
   } else if (inherits(d2hdv2_info,"CHMfactor")) { # CHM of ***-*** d2hdv2
-    dvdlogphiMat <- solve(d2hdv2_info, - neg.d2h0_dv_dlogphi) # efficient without as.matrix()!        
+    res <- solve(d2hdv2_info, - B) # efficient without as.matrix()!        
   } else if (inherits(d2hdv2_info,"qr") || inherits(d2hdv2_info,"sparseQR") ) {
-    dvdlogphiMat <- solve(d2hdv2_info, as.matrix(neg.d2h0_dv_dlogphi))  # rXn       
+    res <- solve(d2hdv2_info, B)        
   } else if (is.environment(d2hdv2_info)) {
     # dvdlogphiMat <- d2hdv2_info %*% neg.d2h0_dv_dlogphi # rXn     
-    rhs <- d2hdv2_info$chol_Q %*% neg.d2h0_dv_dlogphi
-    rhs <- solve(d2hdv2_info$G_CHMfactor,rhs)
-    dvdlogphiMat <- - .crossprod(d2hdv2_info$chol_Q,rhs) # don't forget '-'
+    res <- d2hdv2_info$chol_Q %*% B
+    res <- solve(d2hdv2_info$G_CHMfactor, res)
+    res <- - .crossprod(d2hdv2_info$chol_Q, res) # don't forget '-'
   } else { ## then d2hdv2_info is ginv(d2hdv2) or a sparse matrix inverse of (d2hdv2) (spprec code will provide a dsCMatrix)
     if (inherits(d2hdv2_info,"dsCMatrix")) {
       d2hdv2_info <- as(d2hdv2_info,"dgeMatrix") ## more efficient if inv_d2hdv2 is math-dense
       # It would be nice to store only the half matrix but then as( - d2hdv2_info, "dpoMatrix") and reversing sign afterwards. 
     }
-    dvdlogphiMat <- d2hdv2_info %*% neg.d2h0_dv_dlogphi # rXn       
+    res <- d2hdv2_info %*% B # rXn       
   }
-  return(dvdlogphiMat)
+  as.vector(res) 
 }
 
 
@@ -545,7 +501,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL, tol=1e
   # ncol(ZAL)=1L could occur in 'legal' (albeit dubious) use. The total number of levels of random effects has been checked in preprocessing.
   if ( ! is.null(ZAL_scaling)) ZAL <- .m_Matrix_times_Dvec(ZAL,ZAL_scaling)
   AUGI0_ZX <- processed$AUGI0_ZX
-  if (is.null(Zero_sparseX <- AUGI0_ZX$Zero_sparseX)) Zero_sparseX <- rbind2(AUGI0_ZX$ZeroBlock, AUGI0_ZX$X.pv)
+  if (is.null(Zero_sparseX <- AUGI0_ZX$Zero_sparseX)) Zero_sparseX <- rbind2(AUGI0_ZX$ZeroBlock, AUGI0_ZX$X.pv) # ____F I X M E____ when does is.null() occur?
   if (inherits(ZAL,"dgCMatrix")) {
     I_ZAL <- .adhoc_rbind_I_dgC(nrow(AUGI0_ZX$I), ZAL) ## this is faster...
   } else I_ZAL <- rbind2(AUGI0_ZX$I, ZAL)

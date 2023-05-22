@@ -197,7 +197,7 @@ as_LMLT <- function(fitobject, nuisance=NULL, verbose=TRUE, transf=TRUE, check_d
               frame=structure(model.frame(fixef_terms,fitobject$data), # contains  I(Days^2), in contrast to fitobject$data
                               formula=formula(fitobject),
                               predvars.fixed=attr(fixef_terms,"variables")), 
-              X.pv=fitobject$X.pv,
+              X.pv=model.matrix(fitobject),
               vcov_varpar=numderivs$vcov_varpar,
               Jac_list=numderivs$Jac_list,
               vcov_beta=vcov_beta,

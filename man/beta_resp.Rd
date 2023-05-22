@@ -10,9 +10,10 @@ The model described by such a family is characterized by a linear predictor, a l
 
 The precision parameter \code{prec} of this family is a positive value such that the variance of the response given its mean \eqn{\mu} is \eqn{\mu(1-\mu)/(1+}\code{prec}). \code{prec} is thus the precision parameter \eqn{\phi} of Ferrari & Cribari-Neto (2004) and of the \pkg{betareg} package (Cribari-Neto & Zeileis 2010).  
 
-Prior weights are meaningful for this family and handled as a factor of the precision parameter (as for GLM families) hence here not as a divisor of the variance (in contrast to GLM families): the variance of the response become \eqn{\mu(1-\mu)/(1+}\code{prec*<prior weigths>}).
-
 A \bold{fixed-effect} residual-dispersion model can be fitted, using the  \code{\link{resid.model}} argument, which is used to specify the form of the logarithm of the precision parameter (see Examples). Thus the variance of the response become \eqn{\mu(1-\mu)/(1+}\code{exp(<specified linear expression>)}).
+}
+\details{
+Prior weights are meaningful for this family and handled as a factor of the precision parameter (as for GLM families) hence here not as a divisor of the variance (in contrast to GLM families): the variance of the response become \eqn{\mu(1-\mu)/(1+}\code{prec*<prior weights>}). However, this feature is experimental and may be removed in the future. The fitting function's \code{resid.model} argument may be preferred to obtain the same effect, by specifying an \code{offset(log(<prior weights>))} in its formula (given the log link used in that model). As usual in \pkg{spaMM}, the offset(.) argument should be a vector and any variable necessary for evaluating it should be in the \code{data}.
 }
 \usage{
 beta_resp(prec = stop("beta_resp's 'prec' must be specified"), link = "logit")

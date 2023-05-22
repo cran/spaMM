@@ -28,7 +28,7 @@
       checknu <- substitute(nu, env=environment(family$aic)) 
       if (inherits(checknu,"call")) eval(checknu)
     }
-  } else if (family$family=="beta_resp") {
+  } else if (family$family %in% c("beta_resp","betabin")) {
     if ( ! is.null(rdisPars <- ranFix$rdisPars[[char_mv_it]])) { ## resid.model, fixed or optimized rdisPars
       disp_env <- family$resid.model
       if (is.null(disp_env$scaled_X)) {
@@ -70,10 +70,6 @@
       assign("shape",.NB_shapeInv(trNB_shape),envir=environment(family$aic))
       ranFix$trNB_shape[char_mv_it] <- NA
       ranFix$trNB_shape <- na.omit(ranFix$trNB_shape)
-    } else if ( ! is.null(ranFix$trbeta_prec) && ! is.na(trbeta_prec <- ranFix$trbeta_prec[char_mv_it])) { ## fitme -> HLCor -> HLfit
-      assign("prec",.beta_precInv(trbeta_prec),envir=environment(family$aic))
-      ranFix$trbeta_prec[char_mv_it] <- NA
-      ranFix$trbeta_prec <- na.omit(ranFix$trbeta_prec)
     } else {
       checktheta <- substitute(shape, env=environment(family$aic)) 
       if (inherits(checktheta,"call")) eval(checktheta)
@@ -107,7 +103,7 @@
       checknu <- substitute(nu, env=environment(family$aic)) 
       if (inherits(checknu,"call")) eval(checknu)
     }
-  } else if (family$family=="beta_resp") {
+  } else if (family$family %in% c("beta_resp","betabin")) {
     if ( ! is.null(rdisPars <- ranFix$rdisPars)) { ## optimisation call
       disp_env <- family$resid.model
       if (is.null(disp_env$scaled_X)) {
@@ -182,35 +178,38 @@
       fam <- processed$families[[mv_it]]
       resp_range <- .subrange(cumul=cum_nobs, it=mv_it)
       theta <- .theta.mu.canonical(mu[resp_range]/BinomialDen[resp_range],fam)
-      if (fam$family=="binomial") {
-        cliks[[mv_it]] <- clik_fn[[mv_it]](theta, y[resp_range]/BinomialDen[resp_range], BinomialDen[resp_range], eval(prior.weights[[mv_it]])/phi_est[[mv_it]])
-      } else {
-        phi <- phi_est[[mv_it]]
-        phi[phi<1e-12] <- 1e-10
-        cliks[[mv_it]] <- clik_fn[[mv_it]](theta, y[resp_range], eval(prior.weights[[mv_it]])/phi)
-      }
+      cliks[[mv_it]] <- switch(fam$family,
+                      "binomial" = clik_fn[[mv_it]](theta, y[resp_range], BinomialDen[resp_range], eval(prior.weights[[mv_it]])/phi_est[[mv_it]]),
+                      "COMPoisson" = clik_fn[[mv_it]](theta, y[resp_range], eval(prior.weights[[mv_it]])/phi_est[[mv_it]], 
+                                                      muetaenv=muetaenv$mv[[mv_it]]), 
+                      "beta_resp" = clik_fn[[mv_it]](theta, y[resp_range], pw=eval(prior.weights[[mv_it]])),
+                      "betabin" = clik_fn[[mv_it]](theta, y[resp_range], BinomialDen[resp_range], pw=eval(prior.weights[[mv_it]])),
+                      { 
+                        phi <- phi_est[[mv_it]]
+                        phi[phi<1e-12] <- 1e-10
+                        cliks[[mv_it]] <- clik_fn[[mv_it]](theta, y[resp_range], eval(prior.weights[[mv_it]])/phi)
+                      })
     }
     cliks <- unlist(cliks, recursive = FALSE, use.names = FALSE)
   } else {
     # clik_fn has theta as argument (and may indeed may sometimes use the theta value rather than mu) hence uses the canonical link to deduce mu from theta (or gets the mu attribute of theta) 
     # If clik_fn was written in terms of mu the .theta.mu.canonical() call could be avoided. 
-    # Indeed for 'LLM's theta=mu (identity pseudo-canonical lonk).
+    # Indeed for 'LLM's theta=mu (identity pseudo-canonical link).
     # Only other use of clik_fn is for cAIC bootstrap correction, only for GLM families...
     family <- processed$family
     theta <- .theta.mu.canonical(mu/BinomialDen,family)  # Could be a bottleneck for CMP if attr(mu,"lambda") were missing.
-    if (family$family=="binomial") {
-      cliks <- clik_fn(theta, y/BinomialDen, BinomialDen, eval(prior.weights)/phi_est)
-    } else if (family$family=="COMPoisson") {
-      cliks <- clik_fn(theta, y, eval(prior.weights)/phi_est, muetaenv=muetaenv)
-    } else if (family$family=="beta_resp") {
-      cliks <- clik_fn(theta, y, pw=eval(prior.weights))
-    } else {
-      phi_est[phi_est<1e-12] <- 1e-10 ## 2014/09/04 local correction, has to be finer than any test for convergence 
-      ## creates upper bias on clik but should be more than compensated by the lad
-      ## correcting the lad makes an overall upper bias for small (y-theta) at "constant" corrected phi 
-      ## this can be compensated by correcting the lad LESS.
-      cliks <- clik_fn(theta, y, eval(prior.weights)/phi_est)
-    }
+    cliks <- switch(family$family,
+                    "binomial" = clik_fn(theta, y, BinomialDen, eval(prior.weights)/phi_est),
+                    "COMPoisson" = clik_fn(theta, y, eval(prior.weights)/phi_est, muetaenv=muetaenv),
+                    "beta_resp" = clik_fn(theta, y, pw=eval(prior.weights)),
+                    "betabin" = clik_fn(theta, y, BinomialDen, pw=eval(prior.weights)),
+                    {
+                      phi_est[phi_est<1e-12] <- 1e-10 ## 2014/09/04 local correction, has to be finer than any test for convergence 
+                      ## creates upper bias on clik but should be more than compensated by the lad
+                      ## correcting the lad makes an overall upper bias for small (y-theta) at "constant" corrected phi 
+                      ## this can be compensated by correcting the lad LESS.
+                      clik_fn(theta, y, eval(prior.weights)/phi_est)
+                    })
   }
   if (summand) {
     attr(cliks,"unique") <- NULL
@@ -237,11 +236,15 @@
     conv_clik <- Inf
   } else {
     summand <- dbeta*(LevenbergMstep_result$rhs+ LevenbergMstep_result$dampDpD * dbeta) 
-    ## In the summand, all terms should be positive. conv_dbetaV*rhs should be positive. 
-    # However, numerical error may lead to <0 or even -Inf
-    #  Further, if there are both -Inf and +Inf elements the sum is NaN and the fit fails.
-    summand[summand<0] <- 0
     denomGainratio <- sum(summand)
+    if (denomGainratio<=0) {
+      ## In the summand, all elements of dbeta*(   LevenbergMstep_result$dampDpD * dbeta) should be positive. 
+      # Inner product dbeta . LevenbergMstep_result$rhs should be positive too 
+      # ($rhs is grad here (-grad elsewhere) given we use -Hess here; premultiply the solved eq by solution...)
+      # However, numerical error may lead to <0 or even -Inf
+      #  Further, if there are both -Inf and +Inf elements the sum is NaN and the fit fails.
+      denomGainratio <- denomGainratio-sum(summand[summand<0]) # quite rough patch
+    }
     #cat("eval_gain_LM ");print(c(devold,dev,denomGainratio))
     dclik <- clik-clikold
     conv_clik <- abs(dclik)/(1+abs(clik))

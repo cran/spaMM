@@ -675,7 +675,7 @@
     } 
   } else { # phi.Fix was not NULL. In particular for rdisPars it is presumably 1. models[["phi"]] remains ""
     if ( ( ! mainfamfam %in% c("gaussian","Gamma")) && .DEPARSE(resid.formula) != "~1") {
-      if ( ! mainfamfam %in% c("beta_resp","negbin1","negbin2")) warning(paste0("resid.model may be ignored in ",mainfamfam,"-response models"))
+      if ( ! mainfamfam %in% c("beta_resp", "betabin", "negbin1","negbin2")) warning(paste0("resid.model may be ignored in ",mainfamfam,"-response models"))
 
       resid.formula <- resid.model$formula
       if ( ! is.null(.parseBars(resid.formula))) stop("Random effects are not allowed in model for family parameter.")
@@ -817,7 +817,7 @@
 
 
 .calc_Binomial_Den <- function(Y, family, nobs) {
-  if (family$family=="binomial" && NCOL(Y)>1) {
+  if (family$family %in% c("binomial","betabin") && NCOL(Y)>1) {
     BinomialDen <- rowSums(Y)
     if (any(BinomialDen == 0)) {
       stop("please remove missing data (i.e. for which binomial sample size is 0).")
@@ -831,7 +831,7 @@
 }
 
 .check_y <- function(family, y, BinomialDen) {
-  if (family$family=="binomial") {
+  if (family$family %in% c("binomial","betabin")) {
     if (length(y)==1L || (var(y)==0 && var(BinomialDen)==0) ) { warning("var(response) = 0, which may cause errors.") }  
     bin_all_or_none <- all(pmin(y,BinomialDen-y)==0L)
   } else { 
@@ -919,12 +919,26 @@
 .init_AUGI0_ZX <- function(X.pv, vec_normIMRF, ZAlist, nrand, n_u_h, sparse_precision, as_mat) {
   if (nrand) {
     pforpv <- ncol(X.pv)
-    if ( ! as_mat) {
+    if (as_mat) {
+      if (inherits(X.pv,"sparseMatrix"))  { # if X.pv was found to be sparse but decorr was ultimately selected.
+        # sparse X.pv will contaminaes cbind()'s and in not compatible with "decorr" method.
+        # So we have converted X.pv to sparse format and we convert it back...
+        # Not easy to avoi that given that:
+        # * rankinfo was determined by fast sparse QR facto; 
+        # * X.pv sparsity may be used in at least some subcases for choosing the "algebra". 
+        #   One would have to achieve the same effect while keeping X.pv storage dense to avoid a possible back conversion
+        # Overall this back-conversion is quite rare: its first occurrence was in pathological case
+        # (formula with Matern() + location factor as fixed effect...)
+        Xattr <- attributes(X.pv)
+        X.pv <- as.matrix(X.pv)
+        names_lostattrs <- setdiff(names(Xattr), c(names(attributes(X.pv)),"Dim","Dimnames","i","p","x","factors","class"))
+        attributes(X.pv)[names_lostattrs] <- Xattr[names_lostattrs] # as in .subcol_wAttr(). 
+      }
+      AUGI0_ZX <- list2env( list(I=diag(nrow=n_u_h),ZeroBlock= matrix(0,nrow=n_u_h,ncol=pforpv), X.pv=X.pv) )
+    } else {
       AUGI0_ZX <- list2env( list(I=.sparseDiagonal(n=n_u_h, shape="g"), ## to avoid repeated calls to as() through rbind2...; previously used .trDiagonal()
                                  ZeroBlock= Matrix(0,nrow=n_u_h,ncol=pforpv), X.pv=X.pv) )
       # delayedAssign("Ilarge", .trDiagonal(n=ncol(I)+ncol(X.pv), unitri = FALSE), eval.env = AUGI0_ZX, assign.env = AUGI0_ZX) # hmf: .trDiagonal  ~ 8e-4 s. (but delayedA is 500 times faster)
-    } else {
-      AUGI0_ZX <- list2env( list(I=diag(nrow=n_u_h),ZeroBlock= matrix(0,nrow=n_u_h,ncol=pforpv), X.pv=X.pv) )
     } ## $ZAfix added later   and   X.pv scaled below  !!
     AUGI0_ZX$vec_normIMRF <- vec_normIMRF
     AUGI0_ZX$envir <- list2env(list(finertypes=attr(ZAlist,"exp_ranef_types"), ## to be modified later

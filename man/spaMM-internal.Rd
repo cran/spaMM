@@ -18,7 +18,7 @@
 \alias{.solve_IRLS_as_spprec} % alias bc exported bc it must be exported to be traceable
 \alias{.is_spprec} % exported bc widely used in tests
 
-% More aliases of exported internal functions because R CM check (debian at least) otherwise interprets them as undocumented user-level:
+% More aliases of exported internal functions because R CMD check (debian at least) otherwise interprets them as undocumented user-level:
 
 \alias{.NB_shapeFn}
 \alias{.NB_shapeInv}

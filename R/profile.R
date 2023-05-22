@@ -73,6 +73,7 @@ spaMM.getOption <- function (x) {spaMM.options(x, warn=FALSE)[[1]]}
   #   # ..trDiagonal <<- memoise(f=..trDiagonal, cache = .do_call_wrap("cache_mem", arglist=list(max_size = 1024^2), pack="cachem"))
   #   # s.get_phantom_map <<- memoise(f=.get_phantom_map, cache = .do_call_wrap("cache_mem", arglist=list(max_size = 1024^2), pack="cachem"))
   # } # 
+  .setNbThreads(thr=1L)
   .spaMM.data$options$Matrix_old <- (packageVersion("Matrix")<"1.4-2")
 }
 
@@ -82,12 +83,18 @@ spaMM.getOption <- function (x) {spaMM.options(x, warn=FALSE)[[1]]}
   library.dynam.unload("spaMM", libpath)
 } ## testable by calling unloadNamespace("spaMM")
 
+# In contexts where libpath is not available, a syntax is 
+#pd.file <- attr(packageDescription("spaMM"), "file")
+#library.dynam.unload("spaMM", libpath = sub("/Meta.*", '', pd.file))
+
 # unloadNampespace() calls .onUnload only after after checking dependencies, so the following would be useless in .onUnload()
 .unloads4spaMM <- function() {
   unloadNamespace("probitgem")
   unloadNamespace("IsoriX")
+  unloadNamespace("gspace2infr")
   unloadNamespace("Infusion")
   unloadNamespace("blackbox")
+  unloadNamespace("spaMM") 
 }
 
 .Dist.earth.mat <- function (x, y=NULL, radius=6371.009) { # x and y are both matrices. In each, first col is longitude, second is latitude

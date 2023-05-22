@@ -129,19 +129,19 @@ Poisson <- function (link = "log", trunc=-1L, LLgeneric=TRUE) {
   if (LLgeneric) {
     d_dlWdmu_detafun <- NULL
     if (trunc==0L) {
-      DlogLDmu <- function(mu, y, wt, n, phi) { # dlogL/dmu
+      DlogLDmu <- function(mu, y, wt, phi) { # dlogL/dmu
         term <- -1+drop(y)/mu
         p0 <- exp(-mu) # useful to avoir overflows of exp(mu)
         Mdlog1mp0 <- - p0/(1-p0)
         term + Mdlog1mp0
       }
-      D2logLDmu2 <- function(mu, y, wt, n, phi) { 
+      D2logLDmu2 <- function(mu, y, wt, phi) { 
         term <-  -drop(y)/mu^2
         p0 <- exp(-mu) # useful to avoir overflows of exp(mu)
         Md2log1mp0 <- p0/(1-p0)^2
         term + Md2log1mp0
       }
-      D3logLDmu3 <- function(mu, y, wt, n, phi) { # element of computation of D3logLDeta3 for d logdet Hessian
+      D3logLDmu3 <- function(mu, y, wt, phi) { # element of computation of D3logLDeta3 for d logdet Hessian
         term <- 2*drop(y)/mu^3
         p0 <- exp(-mu) # useful to avoir overflows of exp(mu)
         Md3log1mp0 <- - p0*(1+p0)/(1-p0)^3
@@ -149,11 +149,11 @@ Poisson <- function (link = "log", trunc=-1L, LLgeneric=TRUE) {
       }
     } else {
       ## link-independent function #####################
-      DlogLDmu <- function(mu, y, wt, n, phi) -1+drop(y)/mu
+      DlogLDmu <- function(mu, y, wt, phi) -1+drop(y)/mu
       
-      D2logLDmu2 <- function(mu, y, wt, n, phi) -drop(y)/mu^2
+      D2logLDmu2 <- function(mu, y, wt, phi) -drop(y)/mu^2
       
-      D3logLDmu3 <- function(mu, y, wt, n, phi) 2*drop(y)/mu^3
+      D3logLDmu3 <- function(mu, y, wt, phi) 2*drop(y)/mu^3
     }
     environment(DlogLDmu) <- environment(D2logLDmu2) <- environment(D3logLDmu3) <- environment(aic) 
   } else {

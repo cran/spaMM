@@ -630,7 +630,9 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") {
   list(lambdas_y=lambdas_y,Z1_y=Z1_y)
 }
 
-.CMP_dev_resids <- function(y, mu, wt, muetaenv=NULL){
+.CMP_dev_resids <- function(y, mu, 
+                            wt, # currently ignored, see comment below 
+                            muetaenv=NULL){
   # must accept, among others, vector y and scalar mu.
   familyenv <- parent.env(environment()) # parent envir of COMPoisson()$dev.resids
   if (is.null(muetaenv)) {
@@ -639,13 +641,14 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") {
   nu <- familyenv$nu
   n <- length(y)
   #
-  if (is.null(y_CMP <- attr(y,"CMP"))) { # present in spaMM_glm.fit, but missing in HLfit_body(), and in glm.nodev.fit()
-    ### For HLfit_body(): ideally .CMP_attr_y() should be run at most once for each new nu.
-    # Implementing such unique update at the level of HLfit_body calls seems clumsy, though, particularly in the multivariate case.
-    # MOREOVER in HLfit_body $dev.resids seems to be called only the the .calcPHI(), and then it might be an inefficiency to compute COMPoisson deviance residuals (?)
-    ### For glm.nodev.fit(): this is indeed camputed after the main loop, so only once for the input nu
-    ### For spaMM_glm.fit, the attribute is precomputed before the main loop.
-    y_CMP <- .CMP_attr_y(y, family=familyenv) 
+  if (is.null(y_CMP <- attr(y,"CMP"))) { # In spaMM_glm.fit, the attribute is precomputed before the main loop.
+    # But calculation is mostly avoided in internal spaMM procedures HLfit_body() and glm.nodev.fit().
+    # In HLfit_body, $dev.resids seems to be called only by .calcPHIs() for families without a fixed phi.
+    # glm.nodev.fit avoids it.
+    # So a spaMM fit still requests it only optionally post xLM fit in .get_inits_by_xLM() is called, 
+    # notably for the initial lambda value in outer-optimization.
+    # (however, there may still be an inefficiency for mv fits)
+    y_CMP <- .CMP_attr_y(y, family=familyenv)  # adds mu2lambda(mu=y) and the resulting COMP_Z
   }
   lambdas_y <- y_CMP$lambdas_y
   Z1_y <- y_CMP$Z1_y
@@ -665,7 +668,7 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") {
       devs[i] <- 2*(y[i]*log(lambdas_y[[i]]/lambdas[i])-(Z1_yi[["logScaleFac"]]-Z2[["logScaleFac"]]+log(Z1_yi[["scaled"]]/Z2[["scaled"]]))) 
     }
   }
-  devs <- devs*wt
+  # devs <- devs*wt # seems as inappropriate as for other families where the dispersion parameter is not a scaling factor for the logl 
   devs[devs==Inf] <- .Machine$double.xmax/n ## so that total deviance may be finite 
   return(devs) 
 }

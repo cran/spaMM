@@ -183,11 +183,14 @@
     gainratio <- (newlik!=-Inf) ## -Inf occurred in binary probit with extreme eta... 
     if (gainratio) { 
       summand <- .calc_summand_gainratio_spprec(processed, which_LevMar_step, LevMarblob, seq_n_u_h, ZAL_scaling=1, gainratio_grad)
-      ## The two terms of the summand should be positive. In part. dv_h_beta*gainratio_grad should be positive. 
-      ## However, numerical error may lead to <0 or even -Inf
-      ## Further, if there are both -Inf and +Inf elements the sum is NaN.
-      summand[summand<0] <- 0
       denomGainratio <- sum(summand)
+      if (denomGainratio<=0) {
+        ## In the summand, all elements of dbeta*(   LevenbergMstep_result$dampDpD * dbeta) should be positive. 
+        # Inner product dbeta . LevenbergMstep_result$rhs should be positive too 
+        ## However, numerical error may lead to <0 or even -Inf
+        ## Further, if there are both -Inf and +Inf elements the sum is NaN.
+        denomGainratio <- denomGainratio-sum(summand[summand<0]) # quite rough patch
+      }
       dlogL <- newlik-oldlik
       conv_logL <- abs(dlogL)/(1+abs(newlik))
       gainratio <- 2*dlogL/denomGainratio ## cf computation in MadsenNT04 below 3.14, but generalized for D' != I ; numerator is reversed for maximization
