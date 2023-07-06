@@ -530,9 +530,10 @@ if (FALSE) {
       #   distMatrix[[lit]] <- as(as.matrix(w_dist), "dsCMatrix") 
       # } else distMatrix[[lit]] <- as(as(as(as.matrix(w_dist), "dMatrix"), "symmetricMatrix"), "CsparseMatrix") 
       nc <- ncol(w_dist)
+      seqn1 <- seq_len(nc-1L)
       distMatrix[[lit]] <- sparseMatrix(x=w_dist[], 
-                   i={ ili <- vector("list",nc-1L); for (it in 1L:(nc-1L)) {ili[[it]] <- (it+1L):nc}; .unlist(ili)},
-                   j=rep(seq(nc-1),(nc-1):1),
+                   i={ ili <- vector("list",nc-1L); for (it in seqn1) {ili[[it]] <- (it+1L):nc}; .unlist(ili)},
+                   j=rep(seqn1,rev(seqn1)),
                    dims=c(nc,nc),symmetric=TRUE, repr="C") 
     }
     distMatrix <- .bdiag_dsC(distMatrix)
@@ -698,6 +699,10 @@ if (FALSE) {
         nu <- 0.25  
       } else nu <- 0.5 
     }
+    nu <- min(max(nu, ## checking against user-provided min/max
+                   user.lower$corrPars[[char_rd]]$nu*1.000001), 
+               user.upper$corrPars[[char_rd]]$nu/1.000001,
+               NUMAX/1.000001)
     init$corrPars[[char_rd]] <- .modify_list(init$corrPars[[char_rd]], list(nu=nu)) ## canonical scale
     optim_cP <- init.optim$corrPars[[char_rd]]
     if (optim.scale=="transformed") {
@@ -715,6 +720,9 @@ if (FALSE) {
   if (is.null(.get_cP_stuff(ranFix,"shape",which=char_rd))) { 
     shape <- .get_cP_stuff(init.optim,"shape",which=char_rd)
     if (is.null(shape)) shape <- 1
+    shape <- min(max(shape, ## checking against user-provided min/max
+                  user.lower$corrPars[[char_rd]]$shape*1.000001), 
+              user.upper$corrPars[[char_rd]]$shape/1.000001)
     init$corrPars[[char_rd]] <- .modify_list(init$corrPars[[char_rd]], list(shape=shape)) ## canonical scale
     optim_cP <- init.optim$corrPars[[char_rd]]
     optim_cP <- .modify_list(optim_cP, list(shape=shape)) 
@@ -723,6 +731,9 @@ if (FALSE) {
   if (is.null(.get_cP_stuff(ranFix,"longdep",which=char_rd))) { 
     longdep <- .get_cP_stuff(init.optim,"longdep",which=char_rd)
     if (is.null(longdep)) longdep <- 0.5
+    longdep <- min(max(longdep, ## checking against user-provided min/max
+                  user.lower$corrPars[[char_rd]]$longdep*1.000001), 
+              user.upper$corrPars[[char_rd]]$longdep/1.000001)
     init$corrPars[[char_rd]] <- .modify_list(init$corrPars[[char_rd]], list(longdep=longdep)) ## canonical scale
     optim_cP <- init.optim$corrPars[[char_rd]]
     if (optim.scale=="transformed") {
@@ -772,8 +783,9 @@ if (FALSE) {
       rho <- 30/(2*maxrange)
     } else if (any( narho <- is.na(rho))) rho[narho] <- 30/(2*maxrange[narho]) ## 05/2015 allows init.corrHLfit=list(rho=rep(NA,...
     rho <- min(max(rho, ## checking against user-provided min/max
-                   user.lower$corrPars[[char_rd]]$rho)*1.000001, 
-               user.upper$corrPars[[char_rd]]$rho/1.000001)
+                   user.lower$corrPars[[char_rd]]$rho*1.000001), 
+               user.upper$corrPars[[char_rd]]$rho/1.000001,
+               RHOMAX/1.000001)
     # Info in canonical scale:
     init$corrPars[[char_rd]] <- .modify_list(init$corrPars[[char_rd]], list(rho=rho)) ## synthesis of user init and default init
     # Template of what will affect init.optim$corrPars in transformed scale:
@@ -795,7 +807,7 @@ if (FALSE) {
     kappa <- .get_cP_stuff(init.optim,"kappa",which=char_rd)
     if (is.null(kappa)) { kappa <- 0.5 }
     kappa <- min(max(kappa, ## checking against user-provided min/max
-                   user.lower$corrPars[[char_rd]]$kappa)*1.000001, 
+                   user.lower$corrPars[[char_rd]]$kappa*1.000001), 
                user.upper$corrPars[[char_rd]]$kappa/1.000001)
     # Info in canonical scale:
     init$corrPars[[char_rd]] <- .modify_list(init$corrPars[[char_rd]], list(kappa=kappa)) ## synthesis of user init and default init

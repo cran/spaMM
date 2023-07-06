@@ -40,7 +40,7 @@ if (spaMM.getOption("example_maxtime")>18) { ## user time + system.time for para
   
   ## foreach+doSNOW (this was slow until the firewall settings were modified...)
   if ( (! "covr" %in% loadedNamespaces()) && 
-       file.exists((privtest <- "C:/home/francois/travail/stats/spaMMplus/spaMM/package/tests_other_pack/test-doSNOW.R"))) {
+       file.exists((privtest <- "D:/home/francois/travail/stats/spaMMplus/spaMM/package/tests_other_pack/test-doSNOW.R"))) {
     source(privtest)
   } # i.e.: 
   # library("doSNOW")

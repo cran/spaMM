@@ -19,8 +19,8 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug, # already ZAL_scaled
     augsigns <- c(rep(1,n_u_h), BLOB$signs)
     BLOB$signed <- .Dvec_times_matrix(augsigns,Xaug) 
     negHess <- crossprod(BLOB$signed,Xaug)
-    BLOB$R_scaled <- try(chol(negHess), silent=TRUE)
-    if (BLOB$nonSPD <- inherits(BLOB$R_scaled, "try-error")) {
+    BLOB$R_scaled <- tryCatch(chol(negHess),error=function(e) e)
+    if (BLOB$nonSPD <- inherits(BLOB$R_scaled, "simpleError")) {
       BLOB$R_scaled <- BLOB$signed <- NULL
     }
   } 

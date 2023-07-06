@@ -8,19 +8,22 @@
   ANOVA tables, and likelihood ratio tests of fixed and random effects.
 }
 \description{
-The \code{anova} method for fit objects from \pkg{spaMM} has two uses: if a single fit object is provided, ANOVA tables may be returned, with specific procedures for univariate-response LMs, GLMs and LMMs (see Details). Alternatively, if a second fit object is provided (\code{object2} argument), \code{anova} performs as an alias for \code{LRT}. 
+The \code{anova} method for fit objects from \pkg{spaMM} has two uses: if a single fit object is provided, ANOVA tables may be returned, with specific procedures for univariate-response LMs, GLMs and LMMs (see Details). Alternatively, if a second fit object is provided (\code{object2} argument), \code{anova} performs as an alias for \code{LRT}.  The \code{LRT} function here differs from \code{\link{fixedLRT}} by its arguments (model fits for \code{LRT}, but all arguments required to fit the models for \code{fixedLRT}), and by the format of its return value.
 
-\code{LRT} performs a likelihood ratio (LR) test between two model fits, the ``full'' and the ``null'' model fits. It determines which model is the more complete one by comparing model components including the fixed-effect, random-effect, and residual-dispersion model specifications (offsets are ignored). Then, different forms of the test can be performed depending on the differences between the two models:\cr 
- * If the models differ only by their fixed effects, a standard test based on the asymptotic chi-square distribution is performed, with number of degrees of freedom determined by the function. In addition, parametric bootstrap p-values can be computed, either using the raw bootstrap distribution of the likelihood ratio, or a bootstrap estimate of the Bartlett correction of the LR statistic. The \code{LRT} function here differs from \code{\link{fixedLRT}} by its arguments (model fits for \code{LRT}, but all arguments required to fit the models for \code{fixedLRT}), and by the format of its return value.\cr 
- * If the two models differ by their random effects, tests based on the chi-square distribution (including their Bartlett-corrected version) are a priori poorly behaved and are not performed, but a raw bootstrap test can still be performed. This holds whether the mean-response or the residual-dispersion model differ by their random effects (see Examples). \cr
-  * If the fits differ by the fixed effects terms of their residual-dispersion models (but not by any random effect specification), tests based on the chi-square distribution are reported. A bootstrap can be performed as in other cases.
+\code{LRT} performs a likelihood ratio (LR) test between two model fits, the ``full'' and the ``null'' model fits. It determines which model is the more complete one by comparing model components including the fixed-effect, random-effect, residual-dispersion model specifications, and response families (offsets are ignored). Then, a standard test based on the asymptotic chi-square distribution is performed. In addition, parametric bootstrap p-values can be computed, either using the raw bootstrap distribution of the likelihood ratio, or a bootstrap estimate of the Bartlett correction of the LR statistic.
 
- 
+These different tests perform diffferently depending on the differences between the two models:\cr \cr 
+ * If the models differ only by their fixed effects, the asymptotic LRT may be anticonservative, but the Bartlett-corrected one is well-calibrated. \cr \cr
+ * If the two models differ by their random effects, tests based on the chi-square distribution (including their Bartlett-corrected version) may be poorly behaved, as such tests assume unbounded parameters, as contrasted to, e.g., necessarily positive variances. \cr
+ In such cases the raw boostrap may be the only reliable test. The procedure aims to detect and report such issues, but may not report all problems: users remain responsible for applying the tests in valid conditions (see \bold{Caveats} in Details section). In simple cases (such as comparing a fixed-effect to a mixed-effect model with the same fixed-effect term), the chi-square tests may not be reported. In other cases (see Examples) they may otherwise be reported, with a warning when the procedure detects some cases of estimates at the boundary for the full model, or detects cases where the LR statistic of bootstrap replicates is often zero (also suggesting that estimates are at the boundary in such replicates).\cr \cr
+  * If the fits differ by the fixed effects terms of their residual-dispersion models (but not by any random effect specification), tests based on the chi-square distribution are reported. A bootstrap can be performed as in other cases.\cr
+  * Tests for some cases of nested response families (e.g., the Poisson versus its extensions) are tentatively allowed.\cr
+  * The case where residual-dispersion models of either fit include random effects is problematic as, for such fits, the fitting procedure does not maximize the reported likelihood. Currently the test is prevented when the two fits  differ by their random effects, but is still performed otherwise (see Examples). 
 }
 \usage{
 \method{anova}{HLfit}(object, object2, type = "2", method="", ...)
 #
-LRT(object, object2, boot.repl = 0, resp_testfn = NULL, 
+LRT(object, object2, boot.repl = 0L, resp_testfn = NULL, 
     simuland = eval_replicate, 
     #     many further arguments can be passed to spaMM_boot via the '...'
     #     These include arguments for parallel computations, such as
@@ -39,7 +42,7 @@ LRT(object, object2, boot.repl = 0, resp_testfn = NULL,
   a function, passed to \code{\link{spaMM_boot}}. See argument \code{\link{eval_replicate}} for default value and requirements.
 }
 \item{method}{
-  Only non-default value is \code{"t.Chisq"} which forces evaluation of a table of chi-squared tests for each fixed-effect term, using the classical \dQuote{Wald} test (see Details).
+  Only non-default value is \code{"t.Chisq"} which forces evaluation of a table of chi-squared tests for each fixed-effect term, using the classical \dQuote{Wald} test (see Details). Further methods are available through the \dots for specific classes of models.
 } 
 %
 \item{\dots}{
@@ -51,7 +54,7 @@ LRT(object, object2, boot.repl = 0, resp_testfn = NULL,
 \details{
   *   The \bold{ANOVA-table} functionality has been included here mainly to provide access to F tests (including, for LMMs, the \dQuote{Satterthwaite method} as developed by Fai and Cornelius, 1996), using pre-existing procedures as template or backend for expediency and familiarity:\cr 
   \enumerate{
- \item ANOVA tables \bold{for LMs and GLMs} are conceived to replicate the functionality, output format and details of base R \code{anova}, and therefore replicate some of their limitations, e.g., they only perform sequential analysis (\dQuote{type 1}) in the same way as \code{anova.lm} and \code{anova.glm}. However, a difference occurs for Gamma GLMs, because the dispersion estimates for Gamma GLMs differ between \code{stats::glm} and \pkg{spaMM} fits (see Details in \code{\link{method}}). Therefore, F tests and Mallows' Cp differ too; results from \pkg{spaMM} REML fits being closer than ML fits to those from \code{glm()} fits;\cr \item \bold{For LMMs}, ANOVA tables are provided by interfacing \code{lmerTest::anova} (with non-default \code{type}). This procedure should handle all types of LMMs that can be fitted by \pkg{spaMM}; yet, the displayed information should be inspected to check that some fitted random-effect parameters are not ignored when computing information for the Satterthwaite method. 
+ \item ANOVA tables \bold{for LMs and GLMs} have been conceived to replicate the functionality, output format and details of base R \code{anova}, and therefore replicate some of their limitations, e.g., they only perform sequential analysis (\dQuote{type 1}) in the same way as \code{anova.lm} and \code{anova.glm}. However, a difference occurs for Gamma GLMs, because the dispersion estimates for Gamma GLMs differ between \code{stats::glm} and \pkg{spaMM} fits (see Details in \code{\link{method}}). Therefore, F tests and Mallows' Cp differ too; results from \pkg{spaMM} REML fits being closer than ML fits to those from \code{glm()} fits;\cr \item \bold{For LMMs}, ANOVA tables are provided by interfacing \code{lmerTest::anova} (with non-default \code{type}). This procedure should handle all types of LMMs that can be fitted by \pkg{spaMM}; yet, the displayed information should be inspected to check that some fitted random-effect parameters are not ignored when computing information for the Satterthwaite method. 
 \item  For fitted models that do not lay within previous categories, such as \bold{GLMMs}, models with a \bold{residual-dispersion} submodel, and \bold{multivariate-response} models, a table of tests for single-term deletions using the classical \dQuote{Wald} chi-squared test based on coefficient values and their conditional standard error estimates will be returned. LRTs (moreover, with bootstrap correction) are more reliable than such tests and, as calling them requires a second model to be explicitly specified, they may also help users thinking about the hypothesis they are testing. 
   }
 
@@ -59,6 +62,7 @@ LRT(object, object2, boot.repl = 0, resp_testfn = NULL,
   
   When models differ by their random-effect specifications, distinguishing the full from the null model is not easy. In particular, equivalent models can be specified by diverse syntaxes, so a simple textual comparison of the random-effect terms may not be enough, and model specifications that hinder such a comparison should be avoided. When differences in random effects are tested, the null distribution of the LR may include a probability mass in 1: the discussion in Details of \code{\link{get_RLRsim_args}} applies. 
   
+  * \bold{Caveats}: (1) An evaluated log-likelihood ratio can be slightly negative, e.g. when a fixed-effect model is compared to a mixed one, or a spatial random effect to a block effect, if parameters of the more complete model are estimated within bounds (e.g., variance>1e-06, or Matern smoothness>0.005) designed to avoid numerical singularities, while the less complete model corresponds to a boundary case (e.g., variance=0, or smoothness=0). The bootstrap procedure tries to identify these cases and then corrects slightly negative logL ratios to 0. (2) The Bartlett correction is applicable when the true distribution of the LRT departs smoothly from the chi-square distribution, but not in cases where it has a probability mass in zero (at typically occurs in the same boundary cases).     
 }
 \value{
 \code{LRT} returns an object of class \code{fixedLRT}, actually a list with typical elements (depending on the options)
@@ -76,7 +80,7 @@ and, if a bootstrap was performed:
  } %- describe
 } %- item
 
-When ANOVA tables are computed, the return format is that of the function called (\code{lmerTest::anova} for LMMs) or emulated (for LMs or GLMs).
+When ANOVA tables are computed, the return format is that of the function called (\code{lmerTest::anova} for LMMs) or emulated (for LMs or GLMs). For GLMs, by default no test is reported, as has been the default for \code{anova.glm} before R 4.4.0.
 } %- value
 \references{
  Bartlett, M. S. (1937) Properties of sufficiency and statistical tests. Proceedings of the Royal Society (London) A 160: 268-282.
@@ -99,8 +103,10 @@ m1 <- HLfit(y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch),family=Gamma(log),
           resid.model = ~ X3+I(X3^2) ,data=wafers,method="ML")
 m2 <- update(m1,formula.= ~ . -I(X2^2))
 #
-anova(m1,m2)
-try(anova(m1)) # fails because the 'resid.model' is not handled.
+anova(m1,m2) # LRT
+
+## 'anova' (Wald chi-squared tests...) for GLMM or model with a 'resid.model'
+anova(m1) 
 
 ## ANOVA table for GLM
 # Gamma example, from McCullagh & Nelder (1989, pp. 300-2), as in 'glm' doc:
@@ -122,11 +128,6 @@ if(requireNamespace("lmerTest", quietly=TRUE)) {
   summary(lmmfit, details=list(p_value=TRUE))
 }
 
-## 'anova' (Wald chi-squared tests...) for GLMM 
-wfit <- fitme(y ~ X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch), family=Gamma(log),
-              rand.family=inverse.Gamma(log), resid.model = ~ X3+I(X3^2) , data=wafers)
-anova(wfit)              
-
 ## Using resp_testfn argument for bootstrap LRT:
 \dontrun{
 set.seed(1L)
@@ -141,32 +142,39 @@ anova(m_x, m_0, boot.repl = 100,
       resp_testfn=function(y) {! is_separated(xx,as.numeric(y),verbose=FALSE)})
 }
 
-#### Cases where only the raw bootstrap is performed:
+#### Various cases were asymptotic tests may be unreliable:
 
-## Models differing both by fixed and random effects:
-if (spaMM.getOption("example_maxtime")>11) { 
- set.seed(123)
- dat <- data.frame(g = rep(1:10, e = 10), x = (x<-rnorm(100)), 
+set.seed(123)
+dat <- data.frame(g = rep(1:10, e = 10), x = (x<-rnorm(100)), 
                    y = 0.1 * x + rnorm(100))
- m <- fitme(y ~ x + (1|g), data=dat)
- m0 <- fitme(y ~ 1, data=dat) 
- (bootpval <- LRT(m,m0, boot.repl = 199L)$rawBootLRT$p_value)
- ## See help("get_RLRsim_args") for a fast and accurate test procedure
-}
+m0 <- fitme(y ~ 1, data=dat) 
 
-## Models differing both by fixed effects, and by random-effects in resid.model:
-if (spaMM.getOption("example_maxtime")>22) { 
- m <- fitme(y ~ x, data=dat, resid.model= ~1+(1|g))
- m0 <- fitme(y ~ 1, data=dat) 
- (bootpval <- LRT(m,m0, boot.repl = 99L)$rawBootLRT$p_value)
+## (1) Models differing both by fixed and random effects: 
+% so it's not the simple case where only the raw test is computed
+#
+# (note the warning for variance at boundary):
+#
+if (spaMM.getOption("example_maxtime")>11) { 
+  m <- fitme(y ~ x + (1|g), data=dat)
+  LRT(m,m0, boot.repl = 199L)
 }
+## See help("get_RLRsim_args") for a fast and accurate test procedure
 
-## Models differing both in all three components:
+## (2) Models differing also by residual-dispersion models:
+#
+# (Random-effect variance is again at boundary, but now no warning for this 
+#   is issued, due to a different fitting method being used from case). % ___F I X M E___
+#
 if (spaMM.getOption("example_maxtime")>25) { 
- m <- fitme(y ~ x + (1|g), data=dat, resid.model= ~x)
- m0 <- fitme(y ~ 1, data=dat) 
- (bootpval <- LRT(m,m0, boot.repl = 99L)$rawBootLRT$p_value)
+  m <- fitme(y ~ x + (1|g), data=dat, resid.model= ~x)
+  LRT(m,m0, boot.repl = 99L)
 }
+
+## (3) Models differing (also) by their random-effects in resid.model:
+#
+m <- fitme(y ~ x, data=dat, resid.model= ~1+(1|g)) 
+LRT(m,m0) # no test performed
+
 
 }
 \keyword{ htest }

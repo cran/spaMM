@@ -107,8 +107,8 @@ mat_sqrt <- function(m=NULL, # coRRelation matrix
     dim_m <- dim(m)
     if (dim_m[1L]!=dim_m[2L]) { stop("matrix is not square") }
     if (try.chol) {
-      L <- try(.wrap_Ltri_t_chol(m),silent=TRUE) # That's t(Matrix::chol(corrMatrix)) for sparse matrix and an Rcpp_chol otherwise
-      if (inherits(L,"try-error")) {
+      L <- .silent_W_E(.wrap_Ltri_t_chol(m)) # That's t(Matrix::chol(corrMatrix)) for sparse matrix and an Rcpp_chol otherwise
+      if (inherits(L,"simpleError")) {
         # assuming the error is due to high condition number:
         EEV <- extreme_eig(m, symmetric=TRUE, required=TRUE) # bc required=TRUE Is what the old mat_sqrt() effectively did
         e1 <- EEV[1]
@@ -128,9 +128,9 @@ mat_sqrt <- function(m=NULL, # coRRelation matrix
         #diagPos <- seq.int(1L,nc^2,nc+1L)
         #m[diagPos] <- m[diagPos] + diagcorr
         diag(m) <- diag(m) + diagcorr ## # all diag is corrected => added a constant diagonal matrix 
-        L <- try(.wrap_Ltri_t_chol(m),silent=TRUE)
+        L <- .silent_W_E(try(.wrap_Ltri_t_chol(m)))
       } 
-      if ( ! inherits(L,"try-error") ) type <- "cholL_LLt" ## else type remains NULL      
+      if ( ! inherits(L,"simpleError") ) type <- "cholL_LLt" ## else type remains NULL      
     }
     if ( is.null(type) ) { ## no chol or failed chol
       decomp <- eigen(m, symmetric=TRUE) ## such that v= t(u) without any sign issue
@@ -217,8 +217,8 @@ as_precision <- function(corrMatrix, condnum=1e12) {
   # Compared to mat_sqrt: here input in coRR matrix, output too.
   if (inherits(corrMatrix,"dist")) { corrMatrix <- proxy::as.matrix(corrMatrix, diag=1) }
   corrMatrix <- forceSymmetric(corrMatrix)
-  precmat <- try(chol2inv(chol(corrMatrix)), silent=TRUE)
-  if (inherits(precmat,"try-error")) {
+  precmat <- tryCatch(chol2inv(chol(corrMatrix)),error=function(e) e)
+  if (inherits(precmat,"simpleError")) {
     if (TRUE) {
       EEV <- extreme_eig(corrMatrix, symmetric=TRUE, required=TRUE) # bc required=TRUE Is what the old mat_sqrt() effectively did
       e1 <- EEV[1]

@@ -22,6 +22,7 @@
 # public wrapper for more transparent workflow
 preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
                                 variances=list(residVar=FALSE, cov=FALSE), control=list()) {
+  variances <- .process_variances(variances, object)
   delayedAssign("invCov_oldLv_oldLv_list", .get_invColdoldList(object, control=control))
   return(.calc_new_X_ZAC(object=object, newdata=fixdata, re.form = re.form,
                              variances=variances,invCov_oldLv_oldLv_list=invCov_oldLv_oldLv_list) )
@@ -122,10 +123,11 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
   for (new_rd in seq_len(nrand)) { # we don't vectorize to avoid evaluating isDiagonal when it's not needed.  
     old_rd <- newinold[new_rd]
     if ( ori_exp_ranef_types[old_rd] %in% c("IMRF","adjacency","corrMatrix") ) { 
-      # need_Cnn remains FALSE for models where no correlation is definedfor new positions ("adjacency","corrMatrix"),
+      # need_Cnn remains FALSE for models where no correlation is defined for new positions ("adjacency","corrMatrix"),
       # and also for IMRF bc the Evar in nodes is 0 and so is ZA %*% Evar %*% t(ZA) is 0).
     } else {
-      need_Cnn_rd <- (attr(object$strucList,"isRandomSlope")[old_rd] | variances$cov ) 
+      need_Cnn_rd <- ((attr(object$strucList,"isRandomSlope")[old_rd] & variances$linPred )
+                      | variances$cov ) 
       # that is, we need them also for prediction variances (not cov) for random-slope.
       # and we check another condition where we may need them for prediction variances: 
       if ( ! need_Cnn_rd) {
@@ -449,6 +451,7 @@ if (FALSE) { # v3.5.121 managed to get rid of it
                                 ##  as by .calc_Zmatrix() -> .as_factor() for IMRFs.
                                 ## This is controlled by option uGeo_levels_type (default = "data_order" as the most explicit).
                                 ## The sames functions are called with the same arguments for predict with newdata.
+                                ## Same idea for composite nested ranefs...
                                 sub_oldZAlist=object$ZAlist[newinold], 
                                 lcrandfamfam=attr(object$rand.families,"lcrandfamfam")) 
         amatrices <- .get_new_AMatrices(object, newdata=locdata) # .calc_newFrames_ranef(formula=ranef_form,data=locdata,fitobject=object)$mf)

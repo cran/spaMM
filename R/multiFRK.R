@@ -4,8 +4,8 @@
 # expand_hyper() is used (notably) by HLCor.obj to fill $corrPars and $trLambda from [ranPars derived from ranefParsVec] and processed$hyper_info
 
 .CHM_eigrange <- function(Qmat) {
-  chol_k <- suppressWarnings(try(Matrix::chol(Qmat), silent=TRUE)) # (sigh) 'silent' blocks Error in .local(x, ...) : internal_chm_factor; suppressWarning() blocks Cholmod 'not positive definite' [...] t_cholmod_rowfac.c, ligne 430
-  if (inherits(chol_k,"try-error")) {
+  chol_k <- .silent_W_E(Matrix::chol(Qmat)) 
+  if (inherits(chol_k,"simpleError")) {
     c(1e-8,1e4)
   } else range(diag(as(chol_k,"sparseMatrix")))
 }

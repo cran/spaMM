@@ -791,9 +791,9 @@
         }
       } else { # TRACE=0
         if ( ! is.null(processed$HLfit_body_fn2)) {
-          suppressMessages(try(untrace(processed$HLfit_body_fn2, where=asNamespace("spaMM")), silent=TRUE))   
+          .silent_M_E(untrace(processed$HLfit_body_fn2, where=asNamespace("spaMM")))   
         }
-        suppressMessages(try(untrace(processed$HLfit_body_fn, where=asNamespace("spaMM")), silent=TRUE))   
+        .silent_M_E(untrace(processed$HLfit_body_fn, where=asNamespace("spaMM")))   
         for (method_st in c("matrix_method","Matrix_method","spprec_method","Hobs_Matrix_method")) {
           fn <- paste("get_from_MME",strsplit(spaMM.getOption(method_st),"def_")[[1L]][2],sep=".") 
           suppressMessages(untrace(fn, where=asNamespace("spaMM")))
@@ -958,8 +958,8 @@
     } else {
       if (inherits(AUGI0_ZX$ZeroBlock,"sparseMatrix")) {
         AUGI0_ZX$trDiag <- ..trDiagonal(n=n_u_h+pforpv)
-        AUGI0_ZX$Zero_sparseX <- rbind2(AUGI0_ZX$ZeroBlock, as(AUGI0_ZX$X.pv,"CsparseMatrix"))
-      } else AUGI0_ZX$Zero_sparseX <- rbind2(AUGI0_ZX$ZeroBlock, AUGI0_ZX$X.pv)
+        AUGI0_ZX$Zero_X <- rbind2(AUGI0_ZX$ZeroBlock, as(AUGI0_ZX$X.pv,"CsparseMatrix"))
+      } else AUGI0_ZX$Zero_X <- rbind2(AUGI0_ZX$ZeroBlock, AUGI0_ZX$X.pv)
     }
     AUGI0_ZX <- .add_ZAfix_info(AUGI0_ZX, ZAlist, sparse_precision, as_mat=as_mat)
   } else AUGI0_ZX <- list(X.pv=X.pv)

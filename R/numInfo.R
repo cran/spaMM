@@ -33,7 +33,7 @@
   } else ( - refit$APHLs[[objective]])
 }
 
-.ad_hoc_jac_transf <- function(parlist, bdiag.=TRUE) { # acobian: rows for vector-valued function, cols for elements of its argument
+.ad_hoc_jac_transf <- function(parlist, bdiag.=TRUE, moreargs) { # acobian: rows for vector-valued function, cols for elements of its argument
   gr <- parlist
   for (st in names(parlist)) {
     gr[[st]] <- switch(st,
@@ -74,14 +74,15 @@
                          if (bdiag. && length(dbeta)>1L) dbeta <- diag(x=dbeta)
                          dbeta
                         },
-                       "nu" = grad(.nuFn, parlist[[st]]),
-                       "rho" = grad(.rhoFn, parlist[[st]]),
-                       "longdep" = grad(.longdepFn, parlist[[st]]),
-                       "kappa" = grad(.kappaFn, parlist[[st]]),
+                       "nu" = grad(.nuFn, parlist[[st]], NUMAX=moreargs$NUMAX),
+                       "rho" = grad(.rhoFn, parlist[[st]], RHOMAX=moreargs$RHOMAX),
+                       "longdep" = grad(.longdepFn, parlist[[st]], LDMAX=moreargs$LDMAX),
+                       "kappa" = grad(.kappaFn, parlist[[st]], KAPPAMAX=moreargs$KAPPAMAX),
                        "corrPars" = {
                          dcorrlist <- parlist[[st]]
+                         char_rds <- names(dcorrlist)
                          for (it in seq_along(dcorrlist)) {
-                           dcorrlist_it <- .ad_hoc_jac_transf(.dispFn, dcorrlist[[it]])
+                           dcorrlist_it <- .ad_hoc_jac_transf(dcorrlist[[it]], moreargs=moreargs[[char_rds[[it]]]])
                            if (bdiag.  && length(dcorrlist_it)>1L) dcorrlist_it <- diag(x=.unlist(dcorrlist_it))
                            dcorrlist[[it]] <- dcorrlist_it
                          }
@@ -365,7 +366,7 @@ numInfo <- function(fitobject,
                   moreargs=.get_moreargs(fitobject), ...)
   # .assignWrapper(processed, paste0("return_only <- NULL")) # Not necess bc $processed is created by the local get_HLCorcall() and freed when this fn is exited. 
   if (transf) {
-    jacTransf <- .ad_hoc_jac_transf(canon_skeleton)
+    jacTransf <- .ad_hoc_jac_transf(canon_skeleton, moreargs=.get_moreargs(fitobject))
     resu <- as.matrix(crossprod(jacTransf, resu %*% jacTransf))
     is_REML <- .REMLmess(fitobject,return_message = FALSE) # used anyway, say gradient comput.
     if (is_REML) { # grad_obj should be ~ 0 , for ML fits at least, so this computation should not be necessary

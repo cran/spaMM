@@ -1,6 +1,21 @@
-spaMM_boot <- local({
-  doSNOW_warned <- FALSE
-  function(object, simuland, nsim, nb_cores=NULL,
+simulate4boot <- function(object, nsim, seed=NULL, resp_testfn=NULL, type="marginal", showpbar=eval(spaMM.getOption("barstyle"))) {
+  RNGstate <- get(".Random.seed", envir = .GlobalEnv)
+  msg <- "Bootstrap replicates: "
+  msglength <- nchar(msg) ## not used in the parallel case
+  cat(msg)
+  cumul_nsim <- 0L
+  nsim <- as.integer(nsim) 
+  if (nsim<1L) {
+    warning("'nsim' must be at least 1.")
+    return(list())
+  }
+  ####
+  newy_s <- simulate(object,nsim = nsim,verbose=c(type=FALSE,showpbar=showpbar), resp_testfn=resp_testfn, type=type, seed=seed) 
+  if (nsim==1L) dim(newy_s) <- c(length(newy_s),1L)
+  list(bootreps=newy_s,RNGstates=RNGstate)
+}
+
+spaMM_boot <- function(object, simuland, nsim, nb_cores=NULL,
            seed=NULL,
            resp_testfn=NULL, control.foreach=list(),
            debug. = FALSE, 
@@ -8,36 +23,52 @@ spaMM_boot <- local({
            fit_env=NULL,
            cluster_args=NULL,
            showpbar= eval(spaMM.getOption("barstyle")),
+           boot_samples=NULL,
            ...) {
-    if (missing(type)) {
-      warning("'type' is now a mandatory argument of spaMM_boot().\n Assuming type='marginal' for consistency with previous versions.",
-              immediate. = TRUE)
-      type <- "marginal"
-    }
-    RNGstate <- get(".Random.seed", envir = .GlobalEnv)
-    msg <- "Bootstrap replicates:"
-    msglength <- nchar(msg) ## not used in the parallel case
-    cat(msg)
-    cumul_nsim <- 0L
-    nsim <- as.integer(nsim) 
-    if (nsim<1L) {
-      warning("'nsim' must be at least 1.")
-      return(list())
-    }
-    ####
-    newy_s <- simulate(object,nsim = nsim,verbose=c(type=FALSE,showpbar=showpbar), resp_testfn=resp_testfn, type=type, seed=seed) 
-    if (nsim==1L) dim(newy_s) <- c(length(newy_s),1L)
-    #
-    # If the simuland has (say) arguments y, what=NULL, lrt, ...   , we should not have lrt in the dots. Since the dots are not directly manipulable
-    # we have to convert them to a list, and ultimately to use do.call()
-    control.foreach$.combine <- "rbind"
-    wrap_parallel <- get(.spaMM.data$options$wrap_parallel, asNamespace("spaMM"), inherits=FALSE) # dopar
-    bootreps <- wrap_parallel(newresp = newy_s, nb_cores = nb_cores,fn = simuland, fit_env = fit_env, 
-                       control=control.foreach, debug.=debug., pretest_cores = .pretest_fn_on_cores, 
-                      showpbar = showpbar, ...) 
-    return(list(bootreps=bootreps,RNGstates=RNGstate))
+  if (missing(type)) {
+    warning("'type' is now a mandatory argument of spaMM_boot().\n Assuming type='marginal' for consistency with previous versions.",
+            immediate. = TRUE)
+    type <- "marginal"
   }
-})
+  if (is.null(boot_samples)) boot_samples <- simulate4boot(object=object, nsim=nsim, seed=seed, resp_testfn=resp_testfn, type=type, showpbar=showpbar)
+  #
+  # If the simuland has (say) arguments y, what=NULL, lrt, ...   , we should not have lrt in the dots. Since the dots are not directly manipulable
+  # we have to convert them to a list, and ultimately to use do.call()
+  control.foreach$.combine <- "rbind"
+  wrap_parallel <- get(.spaMM.data$options$wrap_parallel, asNamespace("spaMM"), inherits=FALSE) # dopar
+  boot_samples$bootreps <- wrap_parallel(newresp = boot_samples$bootreps, nb_cores = nb_cores, # wrap_parallel() is typically dopar()
+                                         fn = simuland, fit_env = fit_env,   
+                                         control=control.foreach, debug.=debug., pretest_cores = .pretest_fn_on_cores, 
+                                         showpbar = showpbar, ...) 
+  return(boot_samples)
+}
+
+spaMM2boot <- function(object, statFUN, nsim, nb_cores=NULL,
+           seed=NULL,
+           resp_testfn=NULL, control.foreach=list(),
+           debug. = FALSE, 
+           type="marginal",
+           fit_env=NULL,
+           cluster_args=NULL,
+           showpbar= eval(spaMM.getOption("barstyle")),
+           boot_samples=NULL,
+           ...) {
+  if (is.null(boot_samples)) boot_samples <- simulate4boot(object=object, nsim=nsim, seed=seed, resp_testfn=resp_testfn, type=type, showpbar=showpbar)
+  #
+  # If the statFUN has (say) arguments y, what=NULL, lrt, ...   , we should not have lrt in the dots. Since the dots are not directly manipulable
+  # we have to convert them to a list, and ultimately to use do.call()
+  control.foreach$.combine <- "rbind"
+  wrap_parallel <- get(.spaMM.data$options$wrap_parallel, asNamespace("spaMM"), inherits=FALSE) # dopar
+  simuland <- function(y, ...) {
+    .refit <- update_resp(object, y) # pb if '.refit=' is also in the dots
+    statFUN(.refit, ...)  
+  }
+  bootreps <- wrap_parallel(newresp = boot_samples$bootreps, nb_cores = nb_cores, # wrap_parallel() is typically dopar()
+                                         fn = simuland, fit_env = fit_env, 
+                                         control=control.foreach, debug.=debug., pretest_cores = .pretest_fn_on_cores, 
+                                         showpbar = showpbar, ...) 
+  return(list(t=t(bootreps), t0=statFUN(refit=object, ...), R=nsim, sim="parametric", .Random.seed=boot_samples$RNGstate))
+}
 
 .set_progrbar <- function(style, ...) {
   if (style==0L) {
@@ -106,9 +137,7 @@ spaMM_boot <- local({
       }
     } else { # linux alikes
       if (is.null(type_user)) {
-        if (.inRstudio(silent=TRUE)) {
-          cluster_args$type <- "PSOCK"
-        } else cluster_args$type <- "PSOCK" # a way to emphasize that default is socket cluster in all cases (the doc says so)
+        cluster_args$type <- "PSOCK" # default is socket cluster in all cases (the doc says so)
       } else if (type_user=="FORK" && .inRstudio(silent=TRUE)) {
         message('cluster_args$type=="FORK" not feasible when R is called from an Rstudio session.')
         cluster_args$type <- "PSOCK"
@@ -244,7 +273,7 @@ dopar <- local({
           if (showpbar) close(progrbar_setup$pb)
         } else { # no doSNOW
           if ( ! doSNOW_warned) {
-            message("If the 'doSNOW' package were attached, better load-balancing might be possible.")
+            message("Note: If the 'doSNOW' package were attached, better load-balancing might be possible.")
             doSNOW_warned <<- TRUE
           } 
           pb_char <- "p"
@@ -282,7 +311,8 @@ dopar <- local({
               "Hmmm. It looks like some variables were not passed to the parallel processes.\n",
               "Maybe add    ",firstpb," = ",firstpb,"   to spaMM_boot()'s 'fit_env' argument?\n"
             )))
-          }
+          } # LRT -> spaMM_boot -> eval_replicate with debug.=TRUE and not doSNOW can return more elaborate objects in case of error.
+            # But these should not be diagnosed in this generic function.
           if (identical(control$.combine,"rbind")) bootreps <- t(bootreps) # this means the pbapply version handles cbind or rbind but not other 
         } # has_doSNOW ... else
       } # FORK ... else

@@ -501,13 +501,21 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL, tol=1e
   # ncol(ZAL)=1L could occur in 'legal' (albeit dubious) use. The total number of levels of random effects has been checked in preprocessing.
   if ( ! is.null(ZAL_scaling)) ZAL <- .m_Matrix_times_Dvec(ZAL,ZAL_scaling)
   AUGI0_ZX <- processed$AUGI0_ZX
-  if (is.null(Zero_sparseX <- AUGI0_ZX$Zero_sparseX)) Zero_sparseX <- rbind2(AUGI0_ZX$ZeroBlock, AUGI0_ZX$X.pv) # ____F I X M E____ when does is.null() occur?
+  if (is.null(Zero_X <- AUGI0_ZX$Zero_X)) {
+    # Test case is fit4 <- fitme(distance ~ age+corrMatrix(age|Subject), data = Orthodont, corrMatrix=rcov27, 
+    #                            control.HLfit=list(sparse_precision=TRUE), control=list(refit=list(ranCoefs=TRUE)))
+    # in test-composite:
+    # sparse_precision fit so no Zero_X created during preprocessing
+    # refit ranCoefs by inner algo -> .makeCovEst1 -> here. 
+    # Obviously unusual and could perhaps be optimized, but... not worth the effort.
+    AUGI0_ZX$Zero_X <- Zero_X <- rbind2(AUGI0_ZX$ZeroBlock, AUGI0_ZX$X.pv) 
+  }
   if (inherits(ZAL,"dgCMatrix")) {
     I_ZAL <- .adhoc_rbind_I_dgC(nrow(AUGI0_ZX$I), ZAL) ## this is faster...
   } else I_ZAL <- rbind2(AUGI0_ZX$I, ZAL)
-  if (inherits(I_ZAL,"dgCMatrix") &&  inherits(Zero_sparseX,"dgCMatrix") ) {
-    Xscal <- .cbind_dgC_dgC(I_ZAL, Zero_sparseX) # substantially faster than the general alternative 
-  } else Xscal <- cbind2(I_ZAL, Zero_sparseX)
+  if (inherits(I_ZAL,"dgCMatrix") &&  inherits(Zero_X,"dgCMatrix") ) {
+    Xscal <- .cbind_dgC_dgC(I_ZAL, Zero_X) # substantially faster than the general alternative 
+  } else Xscal <- cbind2(I_ZAL, Zero_X)
   attr(Xscal,"AUGI0_ZX") <- AUGI0_ZX # environment => cheap access to its 'envir$updateable' variable or anything else 
   # e.g., for .sXaug_Matrix_CHM_H_scaled() (allows and controls .updateCHM...);
   return(Xscal)
@@ -545,8 +553,8 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL, tol=1e
   nc <- ncol(aug_ZXy)
   solver <- augZXy_solver[1L]
   if (solver =="chol") {
-    R_aug_ZXy <- try(chol(.crossprod(aug_ZXy)), silent=TRUE)
-    if ( ! inherits(R_aug_ZXy,"try-error")) return(R_aug_ZXy)
+    R_aug_ZXy <- tryCatch(chol(.crossprod(aug_ZXy)),error=function(e) e)
+    if ( ! inherits(R_aug_ZXy,"simpleError")) return(R_aug_ZXy)
     solver <- augZXy_solver[2L]
     if (is.na(solver)) solver <- "EigenQR"
   } else if (solver=="QR") solver <- "EigenQR" ## explicitation of current default meaning of "QR"
@@ -628,14 +636,14 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL, tol=1e
       r_Xy <- backsolve(chol_XX, u_of_quadratic_utAu, transpose=TRUE) ## I wrote "transpose since chol() provides a tcrossfac". ?? 
       r_Zy_x <- r_Zy@x
       ryy2 <- sum(pwy_o*pwy_o) - sum(r_Zy_x*r_Zy_x) - sum(r_Xy*r_Xy)
-      absdiagR_terms <- list(logdet_v=determinant(CHM_ZZ)$modulus[1], 
+      absdiagR_terms <- list(logdet_v=determinant(CHM_ZZ, sqrt=TRUE)$modulus[1], 
                              logdet_b=sum(log(abs(.diagfast(chol_XX)))), ryy2=ryy2)
     } else if (use_crossr22 <- TRUE) { # a bit slower (even using .Rcpp_crossprod)
       # No need for the complex Utri_chol computation here, as sum(r_Xy^2) is easy to compute without it.
       # Another place where one can avoid it is also labelled 'use_crossr22' in .solve_crossr22()
       sum_r_Ry_2 <- .crossprod(u_of_quadratic_utAu, solve(cross_Rxx, u_of_quadratic_utAu))
       ryy2 <- sum(pwy_o^2) - sum(r_Zy^2) - sum_r_Ry_2
-      absdiagR_terms <- list(logdet_v=determinant(CHM_ZZ)$modulus[1], 
+      absdiagR_terms <- list(logdet_v=determinant(CHM_ZZ, sqrt=TRUE)$modulus[1], 
                              logdet_b=determinant(cross_Rxx)$modulus[1]/2, ryy2=ryy2)
     } else {
       chol_XX <- .Utri_chol_by_qr(cross_Rxx) # chol(cross_Rxx) # chol_XX matrix is quite small -> same algos as in .calc_r22()
@@ -648,13 +656,13 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL, tol=1e
       # but we still need Rzx and r_Zy 
       r_Zy_x <- r_Zy@x
       ryy2 <- sum(pwy_o*pwy_o) - sum(r_Zy_x*r_Zy_x) - sum(r_Xy*r_Xy)
-      absdiagR_terms <- list(logdet_v=determinant(CHM_ZZ)$modulus[1], 
+      absdiagR_terms <- list(logdet_v=determinant(CHM_ZZ, sqrt=TRUE)$modulus[1], 
                              logdet_b=sum(log(abs(.diagfast(chol_XX)))), ryy2=ryy2)
     }
   } else { # no fixed effects... 
     r_Zy_x <- r_Zy@x
     ryy2 <- sum(pwy_o*pwy_o) - sum(r_Zy_x*r_Zy_x)
-    absdiagR_terms <- list(logdet_v=determinant(CHM_ZZ)$modulus[1], 
+    absdiagR_terms <- list(logdet_v=determinant(CHM_ZZ, sqrt=TRUE)$modulus[1], 
                            logdet_b=0, ryy2=ryy2)
   }
   return(absdiagR_terms)

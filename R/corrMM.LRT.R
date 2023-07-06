@@ -127,24 +127,21 @@ fixedLRT <- function(  ## interface to .LRT or (for devel only) .corrMM_LRT
 corrMM.LRT <- function(...) stop("'corrMM.LRT' is deprecated since version 2.1.66.\n The up-to-date function is 'fixedLRT' (or 'spaMM:::.LRT' for elaborate experiments)")
 
 summary.fixedLRT <- function(object,verbose=TRUE,...) {
-  LRT <- object$basicLRT
-  print(object$basicLRT)
-  #   if (verbose) {
-  #     cat(" ========      'full' model:     ========\n")    
-  #     summary(object$fullfit,...) 
-  #     cat(" ========      'null' model:     ========\n")    
-  #     summary(object$nullfit,...) 
-  #     cat(" ======== Likelihood ratio test: ========\n")    
-  #   }
-  #   outst <- paste0(" LR statistic (",object$df," df): ",signif(object$LRTori,3))    
-  #   cat(outst)
+  basicLRT <- object$basicLRT
+  if (is.na(df <- basicLRT$df)) {
+    if (is.null(object$rawBootLRT)) {
+      message("Asymptotic chi2 too dubious; 'raw' bootstrap p-value\n  would be reported if requested (see 'boot.repl' argument).")
+    } else message("Asymptotic chi2 too dubious; only 'raw' bootstrap p-value is reported.")
+  } else print(basicLRT)
   bootInfo <- object$bootInfo
   if (!is.null(bootInfo)) {
     cat(" ======== Bootstrap: ========\n")    
     outst <- paste0("Raw simulated p-value: ",signif(object$rawBootLRT$p_value,3))    
     cat(outst)
-    cat(paste("\nBartlett-corrected LR test:\n"))
-    print(object$BartBootLRT) ## print data frame
+    if ( ! is.na(df)) {
+      cat(paste("\nBartlett-corrected LR test:\n"))
+      print(object$BartBootLRT) ## print data frame
+    } else cat("\n")
     if ( ! is.null(bootInfo$warnlist)) lapply(bootInfo$warnlist, message)
   } 
 }

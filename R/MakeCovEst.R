@@ -75,8 +75,8 @@
     # } else compactprecmat <- .ZWZtwrapper(evec, 1/esys$values) 
     # blob$compactprecmat <- as(forceSymmetric(compactprecmat),"CsparseMatrix")
   } else { # CORREL algos
-    if (is.null(chol_crossfac <- attr(compactcovmat, "chol_crossfac")))  chol_crossfac <- try(chol(compactcovmat), silent=TRUE)
-    if ( ! inherits(chol_crossfac, "try-error")) {
+    if (is.null(chol_crossfac <- attr(compactcovmat, "chol_crossfac")))  chol_crossfac <- tryCatch(chol(compactcovmat),error=function(e) e)
+    if ( ! inherits(chol_crossfac, "simpleError")) {
       blob <- list(design_u=t(chol_crossfac), 
                    # radical removal of d : v3.9.19
                    compactcovmat=compactcovmat)

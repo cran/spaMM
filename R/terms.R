@@ -35,8 +35,8 @@
       terms_info <- object$HLframes
     } else terms_info <- object$main_terms_info 
   } 
-  if (which=="respname" || which=="respnames") {
-    resu <- terms_info[['Y']]
+  if (which=="respname" || which=="respnames") { # not used through API
+    resu <- terms_info[['Y']] # Y from .preprocess -> main_terms_info$Y <- .get_Y(full_frame=main_terms_info$mf, famfam=family$family)
   } else resu <- terms_info[[which]]
   if (which=="respnames") {
     resu <- sapply(resu, attr, which="respname")

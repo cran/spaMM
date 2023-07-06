@@ -9,6 +9,9 @@
 }
 \description{
   These convenient masks can be added to maps of (parts of) the world to mask map information for these areas. 
+  
+  However, many other tools may be available since this documentation was conceived. See e.g. the \pkg{rnaturalearth} package,
+  used to provide a sea mask in an example for \code{\link{filled.mapMM}}
 }
 \usage{
 data("seaMask")

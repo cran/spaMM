@@ -50,8 +50,8 @@
     
     negHess <- crossprod(X, .Dvec_times_m_Matrix( - d2logcLdeta2, X))
     # it would be nice to devise a QR based solution here (using signs) EXCEPT that the solution of the exact system by QR may not be useful (no logL maxim)  
-    cholH <- try(chol(negHess), silent=TRUE)
-    if (inherits(cholH, "try-error")) { 
+    cholH <- tryCatch(chol(negHess),error=function(e) e)
+    if (inherits(cholH, "simpleError")) { 
       signs <- sign( - d2logcLdeta2)
       sqrtw_hess <- sqrt(abs(d2logcLdeta2))
       wX <- X * sqrtw_hess # x[good, , drop = FALSE] * sqrtw_hess

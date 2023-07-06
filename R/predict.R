@@ -77,7 +77,7 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
   ## bottleneck for large predVar with large n_u_h (W being a matrix in most cases)
   if (returnMat) {
     if (is.null(tcrossfac_W)) {
-      if (inherits(cholW,"try-error")) {
+      if (inherits(cholW,"simpleError")) {
         return(Z %id*% W %*id% t(Z)) ## not ZWZT functions bc W not diag a priori if (returnMat)
       } else { ## better ensures SPDefiniteness
         rhs <- .tcrossprod(cholW,Z) # cW Zt 
@@ -196,7 +196,9 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
             pos_ev <- (eS$values>0)
             tcrossfac <- .m_Matrix_times_Dvec(eS$vectors[,pos_ev,drop=FALSE], sqrt(eS$values[pos_ev]))
             terme <- newZAlist[[new_rd]] %*% tcrossfac
-          } else terme <- .calcZWZt_mat_or_diag(Z=newZAlist[[new_rd]],W=Evar_C, cholW=try(chol(Evar_C), silent=TRUE), returnMat=covMatrix)
+          } else terme <- .calcZWZt_mat_or_diag(Z=newZAlist[[new_rd]],W=Evar_C, 
+                                                cholW=tryCatch(chol(Evar_C),error=function(e) e), 
+                                                returnMat=covMatrix)
         }
       }
     }
@@ -590,8 +592,10 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
             oldlevels <- colnames(fix_info$newZAlist[[old_rd]]) ## old_rd despite the "newZAlist" name: specific to fix_info
           } else oldlevels <- colnames(object$ZAlist[[old_rd]])
           newlevels <- colnames(newZAlist[[new_rd]])
-          oldornew <- unique(c(oldlevels,newlevels))
           numnamesTerms <- length(namesTerms) ## 2 for random-coef
+          n_uniq <- length(oldlevels) %/% numnamesTerms
+          Uoldlevels <- oldlevels[seq_len(n_uniq)]
+          oldornew <- unique(c(Uoldlevels,newlevels))
           repnames <- rep(oldornew, numnamesTerms)
           newcols <- repnames %in% newlevels ## handle replicates (don't `[` newoldC using names !)
           oldcols <- repnames %in% oldlevels
@@ -607,13 +611,13 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
             # kron_Y <- .tcrossprod(kron_Y, perm=TRUE) ##  Can reconstruct permuted (consistent with perm of cols of Z) corrMatrix from its CHM factor
             # colnames(kron_Y) <- rownames(kron_Y) <- oldlevels
             kron_Y <- .tcrossprod(kron_Y, perm=TRUE) ##  Can reconstruct permuted (consistent with perm of cols of Z) corrMatrix from its CHM factor
-            oldlevels <- colnames(kron_Y)
+            rownames(kron_Y) <- colnames(kron_Y) <- Uoldlevels # oldlevels <- colnames(kron_Y)
             newlevels <- unique(colnames(newZAlist[[new_rd]]))
             # "test-predVar-Matern-corrMatrix" shows newdata working with corrMatrix, when newlevels are within oldlevels 
-            if (length(setdiff(newlevels,oldlevels))) stop(paste0("Found new levels for a '",corr.model,"' random effect."))
+            if (length(setdiff(newlevels,Uoldlevels))) stop(paste0("Found new levels for a '",corr.model,"' random effect."))
             # all newlevels must be in oldlevels hence the construction of the matrix is a little simplified
             compactcovmat <- attr(strucList[[old_rd]],"latentL_blob")$compactcovmat
-            newoldC <- .makelong_kronprod(compactcovmat, kron_Y=kron_Y[newlevels,oldlevels]) 
+            newoldC <- .makelong_kronprod(compactcovmat, kron_Y=kron_Y[newlevels,]) 
             #colnames(newoldC) <- rep(oldlevels, numnamesTerms) ## these will be needed by .match_old_new_levels() or .assign_newLv_for_newlevels_corrMatrix()
             #rownames(newoldC) <- rep(newlevels, numnamesTerms)
             if (which_mats$no) {
@@ -1206,13 +1210,15 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
 
 
 .predict_body <- function(object, newdata, re.form, type,
-                          variances, binding, intervals, level, blockSize, control, showpbar, new_X_ZACblob=NULL) {
+                          variances, binding, intervals, level, blockSize, control, showpbar, 
+                          new_X_ZACblob=NULL) {
   # This promise applies to newdata= newdata_slice if relevant, so cannot be defined on the unsliced data (hence new_X_ZACblob cannot as well).
   delayedAssign("invCov_oldLv_oldLv_list", .get_invColdoldList(object, control=control))
   if (is.null(new_X_ZACblob)) { # may have been precomputed and provided in mv case. Otherwise:
-    new_X_ZACblob <- .get_new_X_ZAC_blob(object, newdata=newdata, re.form=re.form, 
-                                         variances=variances, invCov_oldLv_oldLv_list=invCov_oldLv_oldLv_list, control=control)
+    new_X_ZACblob <- .get_new_X_ZAC_blob(object, newdata=newdata, re.form=re.form, variances=variances, 
+                                         invCov_oldLv_oldLv_list=invCov_oldLv_oldLv_list, control=control)
   }
+  locdata <- new_X_ZACblob$locdata # they are added as "frame" attribute even when only object$fv is returned so... new_X_ZACblob is always needed
   #
   ## (1) computes fv (2) compute predVar
   ##### fv
@@ -1232,7 +1238,6 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
   # }
   #\item 'make.names(.,unique= TRUE)' is applied to the input data, so the row names may be modified, if the input data did not contain unique, syntactically valid row names as defined by 'help(make.names)'.
   #rownames(resu) <- make.names(rownames(resu),unique = TRUE)
-  locdata <- new_X_ZACblob$locdata 
   if ( ! is.logical(binding) ) { ## expecting a string
     if (inherits(locdata,"list")) { # mv case
       stop("'binding' operation not yet defined for multivariate-response models. Ask the maintainer.") 
@@ -1247,7 +1252,8 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
   } else { ## alternative expecting binding= FALSE (but also handling binding = NA by doing nothing)
     if (! is.na(binding))  attr(resu,"frame") <- locdata 
   }
-  if (inherits(locdata,"list")) attr(resu,"respnames") <- .get_from_terms_info(object=object, which="respnames")
+  # if (inherits(locdata,"list")) attr(resu,"respnames") <- .get_from_terms_info(object=object, which="respnames") # not used through API ./.
+  # Has only been used in some devel test code in test-mv-extra (in (FALSE) block).
   ##### (2) predVar
   if (variances$naive) { # the 'naive' estimate in BH98 (nu_i, without beta)
     naive <- .calc_Var_given_fixef(object, new_X_ZACblob=new_X_ZACblob, covMatrix=variances$cov, fix_X_ZAC.object=NULL)

@@ -25,6 +25,7 @@ Matern <- function(...) {
                                      user.lower=user.lower,user.upper=user.upper,
                                      maxrange=moreargs_rd$maxrange,optim.scale=optim.scale,RHOMAX=moreargs_rd$RHOMAX,char_rd=char_rd)
     inits <- .calc_inits_nu(init=inits$init,init.optim=inits$init.optim,init.HLfit=inits$init.HLfit,ranFix=inits$ranFix,
+                            user.lower=user.lower,user.upper=user.upper,
                             control_dist_rd=moreargs_rd$control.dist, optim.scale=optim.scale, NUMAX=moreargs_rd$NUMAX,char_rd=char_rd)
     # Nugget: remains NULL through all computations if NULL in init.optim
     if (is.null(.get_cP_stuff(inits$ranFix,"Nugget",which=char_rd))) { ## new spaMM3.0 code

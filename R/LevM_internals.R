@@ -60,7 +60,8 @@
 
 .diagnose_conv_problem_LevM <- function(beta_cov_info,  processed) {# ?__F I X M E__? redefine it to use tcrossfac_beta_v_cov rather than it tcrossprod? But RSpectra may be more efficient on symmetric matrices...
   condnum <- decomp <- NULL
-  if ( ncol(beta_cov_info$tcrossfac_beta_v_cov)<2000L) { # for larger matrices the crossprod itself may be slow, perhaps the slowest step ?
+  nc <- ncol(beta_cov_info$tcrossfac_beta_v_cov)
+  if ( nc <.spaMM.data$options$diagnose_conv) { # for larger matrices the crossprod itself may be slow, perhaps the slowest step ?
     tc <- tcrossprod(beta_cov_info$tcrossfac_beta_v_cov) # hm. it's fairly dense
     if (inherits(tc,"sparseMatrix")) decomp <- .try_RSpectra(tc, symmetric=TRUE) # 1000 -> 0.28s
     if (is.null(decomp)) { # RSpectra was not available or it failed or matrix was not sparse
@@ -71,7 +72,12 @@
         condnum <- kappa(tc)
       } # else condnum remains NULL
     } else condnum <- decomp$eigrange[2]/decomp$eigrange[1]
-  } # else condnum remains NULL
+  } else if (is.null(processed$envir$divinfo_warned)) { # else condnum remains NULL
+    warning(paste0("Increase 'diagnose_conv' threshold above ",nc,
+                   " if you want a (possibly slow)\n diagnosis of non-convergence (see help('div_info'))" ), immediate.=TRUE)
+    processed$envir$divinfo_warned <- TRUE
+  }
+  
   if ( ( ! is.null(condnum)) && condnum>1e08) {
     processed$envir$PQLdivinfo$high_kappa$ranFixes <- c(processed$envir$PQLdivinfo$high_kappa$ranFixes,
                                                         list(processed$envir$ranFix))

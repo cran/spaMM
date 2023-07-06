@@ -129,7 +129,7 @@ statements which draw axes on the plot key.
 }
 }
 \value{
-  \code{filled.mapMM} by default returns invisibly the fit object predicting the interpolated response surface; however, for any non-default \code{return.} argument (\code{return.="raster"} would be recommended to ensure future back-compatibility), it will return a raster of values as a list with elements \code{x}, \code{y} and\code{z}. \code{map_ranef} returns invisibly a 3-column matrix containing the spatial coordinates, and the predicted effect \code{z} on the linear predictor scale (which is also the scale of the plot, unless a \code{Ztransf} is used). \code{mapMM} has no return value. Plots are produced as side-effects. 
+  \code{filled.mapMM} by default returns invisibly the fit object predicting the interpolated response surface; however, for any non-default \code{return.} argument (\code{return.="raster"} would be recommended to ensure future back-compatibility), it will return a raster of values as a list with elements \code{x}, \code{y} and \code{z}. \code{map_ranef} returns invisibly a 3-column matrix containing the spatial coordinates, and the predicted effect \code{z} on the linear predictor scale (which is also the scale of the plot, unless a \code{Ztransf} is used). \code{mapMM} has no return value. Plots are produced as side-effects. 
 }
 \details{
 
@@ -168,6 +168,27 @@ if (spaMM.getOption("example_maxtime")>1) {
              variance="respVar",
              plot.title=title(main="Inferred migration propensity of blackcaps",
                                xlab="longitude",ylab="latitude"))
+                               
+  ## Similar plots by ggplot2:
+  \dontrun{
+   library(rnaturalearth) # provides sea mask through 'ne_download' function
+   library(ggplot2)
+   library(sp)
+  
+   # sea mask 
+   sea <- ne_download(scale = 10, type = 'ocean', category = "physical", returnclass = "sf")
+   
+   # Generation of data.frame for ggplot:
+   rastr <- filled.mapMM(bfit, return.="raster")
+   spdf <- data.frame(Long=rep(rastr$x, nc), Lat=rastr$y[gl(nr,nc)], z = as.vector(rastr$z))
+
+   ggplot(spdf) + 
+     geom_contour_filled(aes(Long,Lat,z=z), bins = 20) +
+     guides(fill = "none") +
+     geom_sf(data = sea, fill = "black") +
+     coord_sf(ylim = range(rastr$y), xlim = range(rastr$x), expand = FALSE)
+  }
+                               
 }
 
 if (spaMM.getOption("example_maxtime")>3) {

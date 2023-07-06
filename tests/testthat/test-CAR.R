@@ -47,7 +47,7 @@ if (FALSE) { ## HLCor/corrHlfit already compared on scotlip by test-spaMM.R
 }
 
 if ( (! "covr" %in% loadedNamespaces()) && 
-     file.exists((privtest <- "C:/home/francois/travail/stats/spaMMplus/spaMM/package/tests_other_pack/test-probitgem.R"))) {
+     file.exists((privtest <- "D:/home/francois/travail/stats/spaMMplus/spaMM/package/tests_other_pack/test-probitgem.R"))) {
   source(privtest)  
 } # including another AIC() check
 

@@ -264,15 +264,12 @@
     if (termname == as.vector("IMRF","symbol")) {
       return(.process_IMRF_bar(term, env=env)) # 
     } else return(term) 
-  } else if (length(term) == 2L) return(NULL) # this occurs. Maybe the extra arguments in IMRF? 
-  # # terms are of class call, so expectedly ',' separates different elements in a term
-  # # E.g., if not handled specifically, <somekeyword>(1,2|.) would be parsed as term[[2]]=1, term[[3]]=2|batch
-  # # That means that the test length(term) == 2 is not appropriate for terms with some ','
-  # # <somekeyword>(1 2|.) does not work natively: R doesn't know what to do about the 2 (unexpected numeric constant).
-  # if (term[[1L]] == as.name("multIMRF") ) { # useful for .findSpatial() before preprocessing, as in filled.mapMM()
-  #   return(term) 
-  # }
-
+  } else if (length(term) == 2L) return(.parseBars(term[[2]], env=env)) # this occurs if, say, 
+  #  a double + + occurs by accident in a formula. If a term was ++(1|RHS) then the next nested call
+  # handles term +(1|RHS) and this says to process (1|RHS), ignoring the second '+'. 
+  # Previous NULL was retruned here and the (1|RHS) was lost. Older (<2023/07/03) comments 
+  # dealt with commas, <somekeyword>(1 2|.) and multIMRF.
+  #
   # This point may not be reached by the outer .parseBars() call, so the following is not consistently terminal code.
   bT2 <- .parseBars(term[[2L]], env=env)
   bT3 <- .parseBars(term[[3L]], env=env)
@@ -428,19 +425,19 @@ if (FALSE) { # seems correct, but ultimately not needed
   environment(frame.form) <- envform
   # model.frame calls terms(formula, data) [if the 'formula' is not already terms]. 
   # Here we call terms(formula) without data to detect use of '.'
-  chkterms <- try(terms(frame.form), silent=TRUE)
-  if (inherits(chkterms,"try-error") && length(grep("'.'",attr(chkterms,"condition")$message))) {
+  chkterms <- tryCatch(terms(frame.form),error=function(e) e)
+  if (inherits(chkterms,"simpleError") && length(grep("'.'",chkterms$message))) {
     warning("It looks like there is a '.' in the RHS of the formula.\n Fitting may be successful, but post-fit functions such as predict() will fail.", immediate.=TRUE)
     call2mf <- call("model.frame", data = data, formula= frame.form, drop.unused.levels = TRUE, weights=prior.weights)
   } else call2mf <- call("model.frame", data = data, formula= chkterms, drop.unused.levels = TRUE, 
                          weights=prior.weights # we don't want to evaluate it since we want its variables to be included in the data.
                          )
-  resu <- try(eval(call2mf), silent=TRUE) ## # "directly calling model.frame failed to handle the prior weights (tried again 03/2022)."
+  resu <- tryCatch(eval(call2mf),error=function(e) e) ## # "directly calling model.frame failed to handle the prior weights (tried again 03/2022)."
                                           ## => A bit opaque. Problem handling promises in a programming context where prior weights
                                           ## are not specified by the user but by spaMM procedures ?
-  if (inherits(resu,"try-error")) { # => try to diagnose a case that is otherwise difficult for even the developer to guess.
-    verif <- try(eval(prior.weights,data),silent=TRUE)
-    if (inherits(verif,"try-error")) {
+  if (inherits(resu,"simpleError")) { # => try to diagnose a case that is otherwise difficult for even the developer to guess.
+    verif <- tryCatch(eval(prior.weights,data),error=function(e) e)
+    if (inherits(verif,"simpleError")) {
       stop("All variables should be in the 'data', including those for prior weights.")
     } else return(verif) 
   }

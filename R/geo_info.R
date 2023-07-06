@@ -140,7 +140,9 @@
   tPmat <- t(as(Q_CHMfactor,"pMatrix"))
   if (any(tPmat@perm!=seq_along(tPmat@perm))) {
     levelnames <- colnames(processed$ZAlist[[rd]])
-    RRsP <- sort.list(tPmat@perm) 
+    if (.hasSlot(tPmat,"margin") && tPmat@margin==2L) { # change introduced in Matrix 1.6.0 (argh)
+      RRsP <- tPmat@perm
+    } else RRsP <- sort.list(tPmat@perm) # older Matrix versions without indMatrix class
     colnames(tPmat) <- levelnames[RRsP]
     if (is.null(Amat)) {
       rownames(tPmat) <- colnames(processed$ZAlist[[rd]])
@@ -332,7 +334,7 @@
   }
   #
   # If we use permuted Chol AND a template, ZA has been permuted (once). Then we must permute each new sparse_Qmat, by 
-  chol_Q <- as(Q_CHMfactor,"sparseMatrix")
+  chol_Q <- as(Q_CHMfactor,"CsparseMatrix")
   permuted_Q <- attr(processed$corr_info$AMatrices[[as.character(rd)]],"permuted_Q") # clumsy but need to get info from one-time code
   if (identical(permuted_Q,TRUE)) sparse_Qmat <- tcrossprod(chol_Q) 
   #
@@ -540,16 +542,22 @@
             if (inherits(Q_CHMfactor, "try-error")) { 
               cP <- unlist(ranPars$corrPars[[char_rd]])
               mess <- paste(names(cP),"=",cP, collapse=", ")
-              stop(paste0("A numerical problem occurred for random effect ",char_rd," with parameter(s) " ,mess,". Try to restrict the parameter range."))
+              mess <- paste0("A numerical problem occurred for random effect ",char_rd,
+                     " with parameter(s) " ,mess,".\n Try to restrict the parameter range")
+              if (corr_type=="IMRF" && 
+                  "kappa" %in% names(cP) && 
+                  environment(.try_RSpectra)$RSpectra_warned
+              ) mess <- paste0(mess, " (installing the 'RSpectra' package may also help)")
+              stop(paste0(mess, "."))
             }
             #
             # If we use permuted Chol AND a template, ZA has been permuted (once). Then we must permute each new sparse_Qmat, by 
             permuted_Q <- attr(processed$corr_info$AMatrices[[as.character(rd)]],"permuted_Q") # clumsy but need to get info from one-time code
-            if (identical(permuted_Q,TRUE)) sparse_Qmat <- tcrossprod(as(Q_CHMfactor,"sparseMatrix")) 
+            if (identical(permuted_Q,TRUE)) sparse_Qmat <- tcrossprod(as(Q_CHMfactor,"CsparseMatrix")) 
             #
             # $Qmat <- sparse_Qmat will be used together with ZA independently from the CHM to construct the Gmat
             AUGI0_ZX_envir$precisionFactorList[[rd]]$Qmat <- sparse_Qmat # should by *dsC*  
-            AUGI0_ZX_envir$precisionFactorList[[rd]]$chol_Q <- as(Q_CHMfactor, "sparseMatrix") # Linv
+            AUGI0_ZX_envir$precisionFactorList[[rd]]$chol_Q <- as(Q_CHMfactor, "CsparseMatrix") # Linv
             
             processed$AUGI0_ZX$envir$LMatrices[[rd]] <- .Lunique_info_from_Q_CHM(
               processed=processed, rd=rd, Q_CHMfactor=Q_CHMfactor, 
@@ -707,7 +715,7 @@
     sparse_Qmat <- drop0(cov_info_mat[["matrix"]])
     Cholesky(sparse_Qmat,LDL=FALSE,perm=FALSE) # automatically saves the dCHMsimpl in the sparse_Qmat
   }, assign.env = blob ) 
-  delayedAssign("kron_Y_chol_Q", {drop0(as(blob$Q_CHMfactor,"sparseMatrix"),1e-17)}, assign.env = blob ) 
+  delayedAssign("kron_Y_chol_Q", {drop0(as(blob$Q_CHMfactor,"CsparseMatrix"),1e-17)}, assign.env = blob ) 
   # the drop0 levels affects "4th decimals" and computation time 
   delayedAssign("Lunique", {
     Lunique <- drop0(solve(blob$Q_CHMfactor,system="Lt", b=.sparseDiagonal(n=ncol(blob$Q_CHMfactor), shape="g")),1e-17) # ___TAG___ note that .Lunique_info_from_Q_CHM() does not back permute

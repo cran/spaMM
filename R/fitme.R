@@ -88,7 +88,7 @@
                 "resid.model", "verbose","distMatrix","adjMatrix", "control.dist", "corrMatrix","covStruct") 
     # control.HLfit" "init.HLfit"    "etaFix"  remain.
     for (st in pnames) mc[st] <- NULL 
-  }  
+  } else mc$processed <- eval(mc$processed) # replace promise [for devel attempt ot recycle $processed in bootstraps]
   return(mc)
 }
 
@@ -161,6 +161,9 @@ fitme <- function(formula,data, ## matches minimal call of HLfit
   mc[["fixed"]] <- .preprocess_fixed(fixed)
   mc[[1L]] <- get(".preprocess_fitme", asNamespace("spaMM"), inherits=FALSE)
   mc <- eval(mc,parent.frame()) # returns modified call including an element 'processed'
+  #
+  if (identical(control$processed_only, TRUE)) return(mc$processed) # [for devel attempt ot recycle $processed in bootstraps]
+  #
   mc[[1L]] <- get("fitme_body", asNamespace("spaMM"), inherits=FALSE) 
   hlcor <- eval(mc,parent.frame()) 
   .check_conv_dispGammaGLM_reinit()

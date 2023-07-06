@@ -3,6 +3,29 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 4.3.20}{ %     
+\subsection{NEW FEATURES}{
+\itemize{
+\item LRT() (a.k.a anova.HLfit() with two input fits) revised to better suggest variants of LR tests suitable for the models compared, and to more accurately (and sometimes rather verbosely) report possible problems.
+\item New simulate4boot() function, useful for precomputing bootstrap samples to be used by spaMM_boot(). The latter function gets a new argument 'boot_samples' to input such precomputed samples.
+\item New spaMM2boot() function, differing from spaMM_boot() by the format of its return value, which is suitable for input for boot::boot.ci().
+\item New simulate_ranef() function.
+\item New lev2bool() convenience function for conversion of factor to 0/1 variable.
+\item div_info() revised to provide more clear information; but this feature is still experimental.
+}
+}
+\subsection{ANTICIPATING VERSION 1.6.0 OF 'Matrix' PACKAGE}{
+\itemize{
+\item Backward-incompatible changes will be introduced in Matrix v1.6.0. spaMM code has been preemptively modified to prevent  bugs that would result from these changes, including a silent one (sigh). Still, users might occasionally need to recompute some fit objects created with older versions of Matrix.
+}
+}
+\subsection{BUG FIXES}{
+\itemize{
+\item Problems with 'composite' Matern random effects: error when a level is found only once in the data, and predict() failures.
+\item LRT(<fit of GLM>, test="F"), and probably a few other cases of the ANOVA tables for fixed-effect models, could fail when the design matrix is singular.
+}
+}
+}
 \section{CHANGES UP TO VERSION 4.3.0}{ %   
 \subsection{NEW FEATURES}{
 \itemize{

@@ -65,7 +65,7 @@ if (spaMM.getOption("example_maxtime")>39) {
     logLik(glm(cases~I(prop.ag/10)+offset(log(expec)),family=poisson(), data=scotlip, method="spaMM_glm.fit", control=list(trace=FALSE)))
     logLik(glm(cases~I(prop.ag/10)+offset(log(expec)),family=negbin1(shape=10000), data=scotlip, method="llm.fit", control=list(trace=FALSE))) 
     
-    if (file.exists((privtest <- "C:/home/francois/travail/stats/spaMMplus/spaMM/package/tests_other_pack/test-resid.model.R"))) {
+    if (file.exists((privtest <- "D:/home/francois/travail/stats/spaMMplus/spaMM/package/tests_other_pack/test-resid.model.R"))) {
       source(privtest)  # negbin1 and negbin2: testing robustness to scaling of predictor variables, + local maximum issue in negbin2 fit
     } 
     

@@ -514,7 +514,7 @@
     permuted_Q <- attr(processed$corr_info$AMatrices[[as.character(rd)]],"permuted_Q") 
     # $Qmat <- sparse_Qmat will be used together with ZA independently from the CHM to construct the Gmat
     # If we use permuted Chol, then we must permute sparse_Qmat, by 
-    if (identical(permuted_Q,TRUE)) sparse_Qmat <- tcrossprod(as(Q_CHMfactor,"sparseMatrix")) 
+    if (identical(permuted_Q,TRUE)) sparse_Qmat <- tcrossprod(as(Q_CHMfactor,"CsparseMatrix")) 
     # precisionFactorList[[rd]]$template <- Q_CHMfactor # No updating ever needed
   }
   
@@ -523,7 +523,7 @@
   attr(processed$AUGI0_ZX$envir$LMatrices,"is_given_by")[rd] <- "from_Q_CHMfactor" 
   
   list(Qmat=sparse_Qmat, # should by *dsC* 
-       chol_Q=as(Q_CHMfactor, "sparseMatrix")) # Linv
+       chol_Q=as(Q_CHMfactor, "CsparseMatrix")) # Linv
 }
 
 
@@ -711,7 +711,7 @@
             if ( ! inherits(long_Q_CHMfactor, "dCHMsimpl")) long_Q_CHMfactor <- attr(long_Q_CHMfactor,"Q_CHMfactor")  
             
             precisionFactorList[[rt]] <- list(
-              chol_Q= as(long_Q_CHMfactor,"sparseMatrix"), 
+              chol_Q= as(long_Q_CHMfactor,"CsparseMatrix"), 
               precmat=.makelong(latentL_blob$compactprecmat,
                                 template= ranCoefs_blob$longLv_templates[[rt]],
                                 kron_Y=cov_info_mat$matrix, # should be dsC
@@ -1135,13 +1135,13 @@
       phi_by_augZXy <- ( augZXy_cond && is.null(init.optim$phi) && is.null(user.lower$phi) && is.null(user.upper$phi)) 
       # NOTHING TO DO to processed$augZXy_cond
       # but 'phi_by_augZXy' still separately needed in call below.
-    } else { # This is for the case where we decide not to use augZXy_cond for lambda whene we cannot use it for phi:
+    } else { # This is for the case where we decide not to use augZXy_cond for lambda when we cannot use it for phi:
       # (yet we seem to do that in .makeCovEst1()... as controlled by the "inner" attribute)
       # In that case .preprocess_augZXy() must have set augZXy to FALSE in the presence of an init phi; and:
       phi_by_augZXy <- ( augZXy_cond && is.null(user.lower$phi) && is.null(user.upper$phi)) 
       if (augZXy_cond && ! phi_by_augZXy) {
         proc_it$augZXy_cond <- structure(phi_by_augZXy, inner=attr(proc_it$augZXy_cond, "inner"))
-        .do_TRACE(processed) # all the more hypothetical as this might no longer work if .do_TRACE() is called twice. 
+#        .do_TRACE(processed) # all the more hypothetical as this might no longer work if .do_TRACE() is called twice. 
                              # .do_TRACE() now expects a string in processed$HLfit_body_fn, and this is no longer a string after .do_TRACE() has been called once.  
       }
     }
@@ -1287,6 +1287,44 @@
   }
   locmess
 }
+
+.check_outer_at_bound <- function(object, thr=1e-05, bool=TRUE) {
+  optimInfo <- attr(object,"optimInfo")
+  if (length(optimInfo)) {
+    optim.pars <- unlist(optimInfo$optim.pars, recursive = TRUE, use.names = FALSE)
+    LowUp <- do.call(.makeLowerUpper, optimInfo$LUarglist)
+    lower <- unlist(LowUp$lower, recursive = TRUE, use.names = TRUE)
+    upper <- unlist(LowUp$upper, recursive = TRUE, use.names = TRUE)
+    lowerAB <- (optim.pars-lower)/(upper-lower) < thr
+    upperAB <- (upper-optim.pars)/(upper-lower) < thr
+    anyAB <- any(c(lowerAB,upperAB))
+    if (anyAB) {
+      if (bool) {
+        return(anyAB)
+      } else {
+        corr_info <- .get_from_ranef_info(object)
+        # .canonizeRanPars() can change the order of elements, so we cannot use the above boolean vectors to get elements from its result => 
+        # ugly but safe solution only requesting that .canonizeRanPars() handles NA's:
+        parlist <- optim.pars
+        parlist[ ! lowerAB] <- NA
+        parlist <- relist(parlist,attr(object,"optimInfo")$LUarglist$init.optim)
+        attr(parlist,"moreargs") <- attr(object,"optimInfo")$LUarglist$moreargs
+        lowerAB <- na.omit(unlist(.canonizeRanPars(parlist, corr_info=corr_info)))
+        parlist <- optim.pars
+        parlist[ ! upperAB] <- NA
+        parlist <- relist(parlist,attr(object,"optimInfo")$LUarglist$init.optim)
+        attr(parlist,"moreargs") <- attr(object,"optimInfo")$LUarglist$moreargs
+        upperAB <- na.omit(unlist(.canonizeRanPars(parlist, corr_info=corr_info)))
+        return(c(lower=lowerAB, upper=upperAB))
+      }
+    } else return(NULL)
+    # ELSE inner optim only:
+  } else if (bool) {
+    return(FALSE)
+  } else return(NULL)   
+}
+
+
 
 # Conceived to add 'moreargs' to $ranef_info, then found a way to avoid this post-HLfit_body() operation. 
 # The better way requires that 'fixed' attributes are not lost on the way from [fitme|fitmv|corrHLfit]_body to HLfit_body... looks OK.

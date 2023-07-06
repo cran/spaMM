@@ -58,10 +58,10 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
     BLOB$Gmat <- .calc_Gmat(ZtWZ=ZtWZ, precisionMatrix) # depends on w.ranef and w.resid
     #
     if (no_template <- is.null(template <- AUGI0_ZX$template_G_CHM)) { ## occurs if $update_CHM is FALSE, OR first comput. of CHM, OR precision factors not yet all $updateable
-      BLOB$G_CHMfactor <- suppressWarnings(try(Cholesky(BLOB$Gmat,LDL=FALSE,perm=.spaMM.data$options$perm_G),silent=TRUE))
-    } else BLOB$G_CHMfactor <- suppressWarnings(try(Matrix::.updateCHMfactor(template, BLOB$Gmat, mult=0),silent=TRUE)) 
+      BLOB$G_CHMfactor <- .silent_W_E(Cholesky(BLOB$Gmat,LDL=FALSE,perm=.spaMM.data$options$perm_G))
+    } else BLOB$G_CHMfactor <- .silent_W_E(Matrix::.updateCHMfactor(template, BLOB$Gmat, mult=0)) 
     #
-    if (BLOB$nonSPD <- inherits(BLOB$G_CHMfactor, "try-error")) {
+    if (BLOB$nonSPD <- inherits(BLOB$G_CHMfactor, "simpleError")) {
       BLOB$WLS_mat_weights <- abs(BLOB$H_w.resid)
       WZ <- .Dvec_times_Matrix(BLOB$WLS_mat_weights, AUGI0_ZX$ZAfix)
       ZtWZ <- .crossprod(WZ,AUGI0_ZX$ZAfix, allow_as_mat=FALSE, as_sym=TRUE)
@@ -447,13 +447,14 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
   }
 } # drop0() might be useful (__F I X M E__? have to wait for profiling to point it...)
 
-.crossprod_factor_inv_Md2hdv2_rhs <- function(BLOB, B) { # B is typically grad_v
+.crossprod_factor_inv_Md2hdv2_rhs <- function(BLOB, Bvec) { # B is typically grad_v
   if (.is_evaluated("factor_inv_Md2hdv2", BLOB)) {
-    .crossprod(BLOB$factor_inv_Md2hdv2, B)
+    .crossprod(BLOB$factor_inv_Md2hdv2, Bvec)
   } else {
-    B <- Matrix::solve(BLOB$G_CHMfactor, B, system="Lt")
-    B <- B[BLOB$sortPerm, ] # t(pMatrix) %*% vec
-    .crossprod(BLOB$chol_Q, B) 
+    B <- Matrix::solve(BLOB$G_CHMfactor, Bvec, system="Lt")
+    Bvec <- drop(B) # B will be automatically a vector when/if Matrix >+ 1.6.0 is enforced
+    Bvec <- Bvec[BLOB$sortPerm] # t(pMatrix) %*% vec
+    .crossprod(BLOB$chol_Q, Bvec) 
   }
 }
 
@@ -519,12 +520,12 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
                   assign.env = BLOB )
     delayedAssign("factor_inv_Md2hdv2",.provide_BLOB_factor_inv_Md2hdv2(BLOB), assign.env = BLOB )
     #delayedAssign("half_logdetQ",  sum(log(diag(x=BLOB$chol_Q))), assign.env = BLOB ) ## currently not used (in variant of LevMar step)
-    #delayedAssign("half_logdetG", Matrix::determinant(BLOB$G_CHMfactor)$modulus[1], assign.env = BLOB ) ## currently not used (in variant of LevMar step)
+    #delayedAssign("half_logdetG", Matrix::determinant(BLOB$G_CHMfactor, sqrt=TRUE)$modulus[1], assign.env = BLOB ) ## currently not used (in variant of LevMar step)
     delayedAssign("logdet_R_scaled_v", { BLOB$logdet_sqrt_d2hdv2 - sum(log(attr(sXaug,"w.ranef")))/2 }, assign.env = BLOB )
     # more or less for speculative code:
     delayedAssign("Md2hdv2", .tcrossprod(BLOB$tcrossfac_Md2hdv2), assign.env = BLOB ) ## currently not used (for H_dH)
     delayedAssign("tcrossfac_Md2hdv2",
-                  Matrix::solve(BLOB$chol_Q, crossprod(BLOB$pMat_G, as(BLOB$G_CHMfactor,"sparseMatrix"))), assign.env = BLOB )
+                  Matrix::solve(BLOB$chol_Q, crossprod(BLOB$pMat_G, as(BLOB$G_CHMfactor,"CsparseMatrix"))), assign.env = BLOB )
     if (BLOB$nonSPD) {
       ## I need the leverages for the gradient, not from the then-unsigned WLS_mat
       # For hatval_Z, construct the t_Qq matrix and invIm2QtdQ_Z, as in sp|decorr nonSPD case
@@ -533,13 +534,13 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
                                     BLOB$inv_L_G_ZtsqrW) }, assign.env = BLOB) 
       delayedAssign("invIm2QtdQ_Z", { .Rcpp_adhoc_shermanM_sp(BLOB$t_Qq, c(rep(0L,ncol(BLOB$Gmat)),BLOB$signs<0)) }, assign.env = BLOB)
       delayedAssign("logdet_sqrt_d2hdv2", { # keep in mind that L, u and hlik will differ from correl algos; Lu, mu, clik and p_v will match  
-        half_logdetG <- Matrix::determinant(BLOB$G_CHMfactor)$modulus[1]
+        half_logdetG <- Matrix::determinant(BLOB$G_CHMfactor, sqrt=TRUE)$modulus[1]
         half_logdetQ <- sum(log(diag(x=BLOB$chol_Q)))
         half_logdetG - half_logdetQ - determinant(BLOB$invIm2QtdQ_Z)$modulus[1]/2 # logdet of WLS_mat + correction to get logdet of true Hessian 
       }, assign.env = BLOB )
     } else {
       delayedAssign("logdet_sqrt_d2hdv2", { # keep in mind that L, u and hlik will differ from correl algos; Lu, mu, clik and p_v will match  
-        half_logdetG <- Matrix::determinant(BLOB$G_CHMfactor)$modulus[1]
+        half_logdetG <- Matrix::determinant(BLOB$G_CHMfactor, sqrt=TRUE)$modulus[1]
         half_logdetQ <- sum(log(diag(x=BLOB$chol_Q)))
         half_logdetG - half_logdetQ 
       }, assign.env = BLOB )
@@ -728,7 +729,8 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
   ## Solving for model coefficients:
   if ( ! is.null(z)) { ## which=""
     grad_v <- z$m_grad_obj[seq(ncol(BLOB$chol_Q))]
-    rhs <- .factor_inv_Md2hdv2_times_rhs(BLOB, grad_v)[,1L]
+    rhs <- .factor_inv_Md2hdv2_times_rhs(BLOB, grad_v)
+    rhs <- drop(rhs)
     if (attr(sXaug,"pforpv")) { ## if there are fixed effect coefficients to estimate
       # rhs for beta
       grad_p_v <- z$m_grad_obj[-seq(ncol(BLOB$chol_Q))]
@@ -739,7 +741,8 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
     } else {
       dbeta_eta <- numeric(0)
     }
-    dv_h <- .crossprod_factor_inv_Md2hdv2_rhs(BLOB, rhs)[,1L]
+    dv_h <- .crossprod_factor_inv_Md2hdv2_rhs(BLOB, rhs)
+    dv_h <- drop(dv_h)
     return(list(dv_h=dv_h,dbeta_eta=dbeta_eta)) # can be checked by .check_stepwise_sol(sXaug, zInfo)
   }
   if (which=="logdet_sqrt_d2hdv2") { return(BLOB$logdet_sqrt_d2hdv2)} 
@@ -766,8 +769,8 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
         dampDpD_1 <- damping*diag(XX_D)
         diag(XX_D) <- diag(XX_D)+dampDpD_1 ## adds D1=damping*diag(XX_D)
         # see INLA_vs_spaMM_Loaloa.R for one case where the matrix is singular.
-        dbeta_eta <- try(solve(XX_D-Xt_X , dbeta_rhs)[,1],silent=TRUE)
-        if (inherits(dbeta_eta,"try-error")) dbeta_eta <- (ginv(XX_D-Xt_X) %*% dbeta_rhs)[,1]
+        dbeta_eta <- tryCatch(solve(XX_D-Xt_X , dbeta_rhs)[,1],error=function(e) e)
+        if (inherits(dbeta_eta,"simpleError")) dbeta_eta <- (ginv(XX_D-Xt_X) %*% dbeta_rhs)[,1]
         L_dv <- L_dv_term_from_grad_v - drop(solve(G_dG, BLOB$ZtWX %*% dbeta_eta)) # - dampDpD_2 %*% LM_z$v_h_beta$v_h
         dv_h <- Matrix::drop(Matrix::crossprod(BLOB$chol_Q, Matrix::drop(L_dv))) ## inner drop() to avoid signature issue with dgeMatrix dv_rhs...
       } else {
@@ -803,8 +806,8 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
         XX_D <- BLOB$XtWX
         diag(XX_D) <- diag(XX_D)*(1+damping) ## adds D1=damping*diag(XX_D)
         #
-        dbeta_eta <- try(solve(XX_D-Xt_X , dbeta_rhs)[,1],silent=TRUE)
-        if (inherits(dbeta_eta,"try-error")) dbeta_eta <- (ginv(XX_D-Xt_X) %*% dbeta_rhs)[,1]
+        dbeta_eta <- tryCatch(solve(XX_D-Xt_X , dbeta_rhs)[,1],error=function(e) e)
+        if (inherits(dbeta_eta,"simpleError")) dbeta_eta <- (ginv(XX_D-Xt_X) %*% dbeta_rhs)[,1]
         dv_h <- dv_term_from_grad_v - drop(thinsolve %*% dbeta_eta) 
       } else {
         dbeta_eta <- numeric(0)
@@ -859,8 +862,8 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
       XX_D <- BLOB$XtWX
       dampDpD <- damping*diag(XX_D)
       diag(XX_D) <- diag(XX_D)+dampDpD
-      dbeta_eta <- try(solve(XX_D , dbeta_rhs)[,1],silent=TRUE)
-      if (inherits(dbeta_eta,"try-error")) dbeta_eta <- (ginv(XX_D) %*% dbeta_rhs)[,1]
+      dbeta_eta <- tryCatch(solve(XX_D , dbeta_rhs)[,1],error=function(e) e)
+      if (inherits(dbeta_eta,"simpleError")) dbeta_eta <- (ginv(XX_D) %*% dbeta_rhs)[,1]
       resu <- list(dbeta_eta=dbeta_eta, dampDpD =dampDpD)
       return(resu)
     } else stop("LevMar_step_beta called with 0-length rhs: pforpv=0?")

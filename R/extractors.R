@@ -6,18 +6,18 @@
 .inv_Lmatrix <- function(lmatrix, type=attr(lmatrix,"type"), regul.threshold) {
   invlmatrix <- NULL
   if (inherits(lmatrix,"dCHMsimpl")) { # before any test on type, because dCHMsimpl has a @type slot
-    invlmatrix <- t(as(lmatrix, "sparseMatrix"))
+    invlmatrix <- t(as(lmatrix, "CsparseMatrix"))
   } else if (type == "from_AR1_specific_code")  {
     invlmatrix <- solve(lmatrix) # cost of solve sparse triangular matrix
     invlmatrix <- as.matrix(invlmatrix) ## for [<-.matrix
   } else if (type == "from_Q_CHMfactor")  {
-    invlmatrix <- t(as(attr(lmatrix,"Q_CHMfactor"),"sparseMatrix")) ## L=Q^{-T} => invL=Q^T ## correct but requires the attribute => numerical issues in computing Q_CHMfactor
+    invlmatrix <- t(as(attr(lmatrix,"Q_CHMfactor"),"CsparseMatrix")) ## L=Q^{-T} => invL=Q^T ## correct but requires the attribute => numerical issues in computing Q_CHMfactor
     invlmatrix <- as.matrix(invlmatrix) ## for [<-.matrix
   } else if (type == "cholL_LLt")  {
     condnum <- kappa(lmatrix,norm="1")
     if (condnum<1/regul.threshold) {
-      invlmatrix <- try(forwardsolve(lmatrix,diag(ncol(lmatrix))),silent=TRUE)
-      if (inherits(invlmatrix,"try-error")) invlmatrix <- NULL
+      invlmatrix <- tryCatch(forwardsolve(lmatrix,diag(ncol(lmatrix))),error=function(e) e)
+      if (inherits(invlmatrix,"simpleError")) invlmatrix <- NULL
     }
     if (is.null(invlmatrix)) Rmatrix <- t(lmatrix)
   } else { ## Rcpp's symSVD, or R's eigen() => LDL (also possible bad use of R's svd, not normally used)
@@ -25,8 +25,8 @@
     if (condnum<1/regul.threshold) {
       decomp <- attr(lmatrix,attr(lmatrix,"type")) ## of corr matrix !
       if ( all(abs(decomp$d) > regul.threshold) ) {
-        invlmatrix <-  try(.ZWZt(decomp$u,sqrt(1/decomp$d)),silent=TRUE) ## try() still allowing for no (0) regul.threshold; not useful ?
-        if (inherits(invlmatrix,"try-error")) invlmatrix <- NULL
+        invlmatrix <-  tryCatch(.ZWZt(decomp$u,sqrt(1/decomp$d)),error=function(e) e) ## try() still allowing for no (0) regul.threshold; not useful ?
+        if (inherits(invlmatrix,"simpleError")) invlmatrix <- NULL
       }
     }
     if (is.null(invlmatrix)) Rmatrix <- .lmwithQR(t(lmatrix),yy=NULL,returntQ=FALSE,returnR=TRUE)$R_scaled # no pivoting compared to qr.R(qr(t(lmatrix))) 
@@ -49,8 +49,8 @@
     # }
     # invLLt <- chol2inv(Rmatrix) ## 
     #
-    invLLt <- try(chol2inv(Rmatrix),silent=TRUE)
-    if (inherits(invLLt,"try-error") || max(abs(range(invLLt)))> 1e12) {
+    invLLt <- tryCatch(chol2inv(Rmatrix),error=function(e) e)
+    if (inherits(invLLt,"simpleError") || max(abs(range(invLLt)))> 1e12) {
       invLLt <- ginv(crossprod(Rmatrix))
     }
     invlmatrix <- .crossprod(lmatrix, invLLt) ## regularized (or not) solve(lmatrix)
@@ -147,7 +147,7 @@
       lmatrix <- strucList[[Lit]]
       if (inherits(lmatrix,"dCHMsimpl")) {
         u.range <- (cum_n_u_h[Lit]+1L):(cum_n_u_h[Lit+1L])
-        newcoeffs[u.range] <- as(lmatrix,"sparseMatrix") %*% newcoeffs[u.range]
+        newcoeffs[u.range] <- as(lmatrix,"CsparseMatrix") %*% newcoeffs[u.range]
       } else if (! is.null(lmatrix)) { ## spatial or random-coef
         u.range <- (cum_n_u_h[Lit]+1L):(cum_n_u_h[Lit+1L])
         ## dense calculation on not necess triangular lmatrix (!?). 
@@ -795,7 +795,8 @@ get_predVar <- function(..., variances=list(), which="predVar") {
   resu <- eval(subcall,parent.frame())
   mc[[1L]] <- get("predict.HLfit", asNamespace("spaMM"), inherits=FALSE) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
   resu <- eval(mc,parent.frame())
-  structure(attr(resu,which), respnames=attr(resu,"respnames"))
+  # structure(attr(resu,which), respnames=attr(resu,"respnames")) # not used through API
+  attr(resu,which)
 }
 
 get_residVar <- function(...) {
@@ -1536,6 +1537,16 @@ family.HLfit <- function(object, ...) {
                                                 "Contact the package maintainer for these post-fit functions if you wish extended functionality."))
   }
   family
+}
+
+lev2bool <- function(fac, lev) {
+  fac <- as.factor(fac)
+  mm <- model.matrix(~0 + fac)
+  if (! lev %in% levels(fac)) 
+    stop("'level 'lev' absent from variable 'fac'")
+  colnames(mm) <- levels(fac)
+  mm <- mm[, lev, drop = FALSE]
+  return(mm)
 }
 
 .model.frame <- function(formula., object, 

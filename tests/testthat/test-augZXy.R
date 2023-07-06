@@ -23,7 +23,7 @@ if (FALSE) { # old tests of functionality. May be useful for later devels
 }
 
 
-if (file.exists((privdata <- "C:/home/francois/travail/stats/spaMMplus/spaMM/package/tests_private/all_fitness.txt"))) {
+if (file.exists((privdata <- "D:/home/francois/travail/stats/spaMMplus/spaMM/package/tests_private/all_fitness.txt"))) {
   my.data <- read.table(privdata, header = TRUE, sep = "\t",dec = ".")
   my.data$line <- factor(as.character(my.data$line))
   my.data <- na.omit(my.data)

@@ -176,7 +176,7 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
       wd2hdv2w <- .crossprod(BLOB$R_scaled[,BLOB$sortPerm_u_h, drop=FALSE], allow_as_mat = FALSE ) # R_scaled is crossfac; CHMfactor ~ tcrossfac
       Cholesky(wd2hdv2w,LDL=FALSE, perm=FALSE ) ## perm=TRUE seems 'simple'(*) to implement except 
       #    for which="R_scaled_v_h_blob". whether perm=TRUE (for updating) might be correct is not obvious:
-      # There, R_scaled_v_h <- t( as(BLOB$CHMfactor_wd2hdv2w,"sparseMatrix") ) must be triangular and without permutation of the v's
+      # There, R_scaled_v_h <- t( as(BLOB$CHMfactor_wd2hdv2w,"CsparseMatrix") ) must be triangular and without permutation of the v's
       # (*) the SPPREC code seems better structured to reach the 'updateable' info.
       #  __F I X M E__? progress is not obvious: would need to make updateable info accessible, and even so it might not be useful.
     }, assign.env = BLOB )
@@ -202,7 +202,7 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
       # so it must be through making CHMfactor_wd2hdv2w available and efficient for other operations... not transparent.
       if (BLOB$use_R_block) { # but BLOB$logdet_R_scaled_v may not be requested in that case
         sum(log(abs(diag(x=BLOB$R_scaled)[BLOB$seq_n_u_h])))
-      } else Matrix::determinant(BLOB$CHMfactor_wd2hdv2w)$modulus[1]
+      } else Matrix::determinant(BLOB$CHMfactor_wd2hdv2w, sqrt=TRUE)$modulus[1]
     }, assign.env = BLOB )
     #
     delayedAssign("logdet_r22", {
@@ -425,7 +425,7 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
       if (BLOB$use_R_block) { # currently FALSE => CHMfactor_wd2hdv2w is used
         R_scaled_v_h <- t(BLOB$R_scaled[BLOB$sortPerm_u_h,BLOB$sortPerm_u_h, drop=FALSE]) ## the t() for .damping_to_solve... (fixme: if we could avoid t()...)
       } else {
-        R_scaled_v_h <- t( as(BLOB$CHMfactor_wd2hdv2w,"sparseMatrix") ) ## the t() for .damping_to_solve... (fixme: if we could avoid t()...)
+        R_scaled_v_h <- t( as(BLOB$CHMfactor_wd2hdv2w,"CsparseMatrix") ) ## the t() for .damping_to_solve... (fixme: if we could avoid t()...)
       }
       tmp <- R_scaled_v_h 
       xx <- tmp@x

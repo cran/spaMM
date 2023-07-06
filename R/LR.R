@@ -27,47 +27,55 @@
   if (dfR1>dfR2) {
     Rnest <- "2in1"
     if (is.null(Xnest)) { # fixed effects are identical
-      message(paste("spaMM could not ascertain whether the models are nested in their random-effect specifications.\n", 
-                    "  You are responsible for that.")) 
-    } else warning(paste("Fixed-effects specifications differ between the models, and spaMM could not ascertain\n",
+      message(paste("spaMM did not ascertain whether the models are nested in their random-effect specifications.\n", 
+                    "  You are responsible for that."))
+      # comparison of random-coefficients, (LHS|RHS), vs (1|RHS) leads here and it's a bit sad that spaMM does not diagnose that, but... not now.
+      # (same in 1in2 case)
+    } else warning(paste("Fixed-effects specifications differ between the models, and spaMM did not ascertain\n",
                          "  whether the models are similarly nested in their random-effect specifications.\n",
                          "  You are responsible for that. spaMM will guess nestedness from number of parameters."), immediate. = TRUE) 
   } else if (dfR1<dfR2) { 
     Rnest <- "1in2"
     if (is.null(Xnest)) { # fixed effects are identical
-      message(paste("spaMM could not ascertain whether the models are nested in their random-effect specifications.\n", 
+      message(paste("spaMM did not ascertain whether the models are nested in their random-effect specifications.\n", 
                     "  You are responsible for that.")) 
-    } else warning(paste("Fixed-effects specifications differ between the models, and spaMM could not ascertain\n",
+    } else warning(paste("Fixed-effects specifications differ between the models, and spaMM did not ascertain\n",
                          "  whether the models are similarly nested in their random-effect specifications.\n",
                          "  You are responsible for that. spaMM will guess nestedness from number of parameters."), immediate. = TRUE) 
   } else if (is.null(Xnest)) { # fixed effects are identical, dfs are identical
-    stop("The models compared appear to have the same number of parameters.") 
+    stop("The models compared appear to have the same number of parameters, hence may be identical or non-nested.",
+         call.=FALSE) 
   } else {
     Rnest <- NULL
-    warning(paste("The models have the same number of parameters except for fixed effects, but spaMM could not ascertain\n",
+    warning(paste("The models have the same number of parameters except for fixed effects, but spaMM did not ascertain\n",
                   "  whether the random-effect specifications are identical. You are responsible for that."), immediate. = TRUE) 
   }
-  Rnest
+  list(Rnest=Rnest, dfs=c(dfR1, dfR2))
 }
 
 .compare_phimodels_structures <- function(phifit1, phifit2, df1, df2, df=abs(df1-df2)) {
   if (inherits(phifit1,"HLfit")) {
     if (inherits(phifit2,"HLfit")) {
       cmp <- .compare_model_structures(phifit1,phifit2, argsRphimodels=TRUE)
+      if (cmp$anyranef) return(list(warning="Mixed-effect residual dispersion model found. No LRT performed.")) # ____F I X M E____ rethink: allow with warning?
+      df <- cmp$df 
       df1 <- cmp$df1
       df2 <- cmp$df2
-      df <- cmp$df # should be NA if models differ by their random effects
     } else { 
       # # phifit2 is a phiScal... the input df2 may be 0 or 1  
       # the input df1 may be object$dfs$p_fixef_phi[[mv_it]] which is then NA
-      if (df2==1L && "(Intercept)" %in% names(fixef(phifit1))) {
+      if (phifit1$models$eta=="etaHGLM") {
+        return(list(warning="Mixed-effect residual dispersion found. No LRT performed.")) # ____F I X M E____ idem
+      } else if (df2==1L && "(Intercept)" %in% names(fixef(phifit1))) {
         df1 <- sum(.unlist(phifit1$dfs)) 
       } else df1 <- NA
       if (length(attr(phifit1$ZAlist,"exp_ranef_strings"))) df <- NA
     }
   } else { # phifit1 is a phiScal...
     if (inherits(phifit2,"HLfit")) {
-      if (df1==1L && "(Intercept)" %in% names(fixef(phifit2))) {
+      if (phifit2$models$eta=="etaHGLM") {
+        return(list(warning="Mixed-effect residual dispersion found. No LRT performed.")) # ____F I X M E____ idem
+      } else if (df1==1L && "(Intercept)" %in% names(fixef(phifit2))) {
         df2 <- sum(.unlist(phifit2$dfs))
       } else df2 <- NA
       if (length(attr(phifit2$ZAlist,"exp_ranef_strings"))) df <- NA
@@ -76,11 +84,22 @@
   return(c(df1,df2,df))
 }
 
+.is_nested_family <- function(famfam, famfam2, object2, mv_it=NULL) {
+  (
+    (famfam=="poisson" && 
+       famfam2 %in% c("negbin1","negbin2","COMPoisson") &&
+       length(intersect(unlist(.get_methods_disp(object2, mv_it=mv_it)), c("NB_shape","COMP_nu","beta_prec"))) # detection fitted par as in .calc_dfs
+    )
+  ) || (
+    famfam=="binomial" && 
+      famfam2=="betabin" &&
+      length(intersect(unlist(.get_methods_disp(object2, mv_it=mv_it)), c("beta_prec")))
+  )
+}
 
-
-.compare_model_structures <- function(object,object2, argsRphimodels=FALSE) {
+.compare_model_structures <- function(object,object2, argsRphimodels=FALSE, boot.repl) {
   if (inherits(object,"HLfitlist") || inherits(object2,"HLfitlist")) {
-    warning("This does not yet work on HLfitlist objects", immediate.=TRUE)
+    warning("This does not yet work on HLfitlist objects", immediate.=TRUE, call.=FALSE)
   }
   X.pv1 <- model.matrix(object)
   X.pv2 <- model.matrix(object2)
@@ -93,16 +112,44 @@
     REML2 <- NULL ## idem
   } else REML2 <- (object2$APHLs$p_v != object2$APHLs$p_bv)
   REML <- unique(c(REML1,REML2))
-  meth1 <- object$HL
-  meth2 <- object2$HL
-  if (! argsRphimodels && ! identical(.unlist(object$family[c("family","link")]), # unlist gets rid of various attributes that identical() fails to  ignore, despite its options.
-                                      .unlist(object2$family[c("family","link")])) 
-      ) {
-    stop("Models may not be nested (distinct families).") ## but COMPoisson vs poisson ?
+  
+  Fnest <- NULL
+  if (! argsRphimodels) {
+    meth1 <- object$HL
+    meth2 <- object2$HL
+    if (! identical(meth1,meth2) || length(REML)>1L ) {
+      stop("object fitted by different methods cannot be compared.", call.=FALSE)
+    }
+    if (mv_model <- is.null(object$family)) {
+      nestedfam <- all(sapply(object$families, `[[`, x="link")==sapply(object2$families, `[[`, x="link"))
+    } else nestedfam <- (object$family$link==object2$family$link) 
+    if ( ! nestedfam) stop("Models not nested (distinct family links).", call.=FALSE) 
+    if (mv_model) {
+      famfams1 <- sapply(object$families, `[[`, x="family")
+      famfams2 <- sapply(object2$families, `[[`, x="family")
+      if ( any(famfams1!=famfams2)) {
+        for (mv_it in seq_along(famfams1)) {
+          if (famfams1[mv_it]!= famfams2[mv_it]) {
+            if (.is_nested_family(famfams1[mv_it], famfams2[mv_it], object2, mv_it=mv_it)) {
+              Fnest <- unique(c(Fnest, "1in2"))
+            } else if (.is_nested_family(famfam2, famfam, object, mv_it=mv_it)) {
+              Fnest <- unique(c(Fnest, "2in1"))
+            }    
+            if (length(Fnest)>1L)  stop("Models may not be nested (distinct families).", call.=FALSE)
+          }
+        }
+      }
+    } else if (object$family$family!=object2$family$family) {
+      famfam <- object$family$family
+      famfam2 <- object2$family$family
+      if (.is_nested_family(famfam, famfam2, object2)) {
+        Fnest <- "1in2"
+      } else if (.is_nested_family(famfam2, famfam, object)) {
+        Fnest <- "2in1"
+      } else stop("Models may not be nested (distinct families).", call.=FALSE)
+    }
   }
-  if (! argsRphimodels && ! identical(meth1,meth2) || length(REML)>1 ) {
-    stop("object fitted by different methods cannot be compared.")
-  }
+  
   if ( ! is.null(X1)) X1 <- sapply(strsplit(X1,':'), function(x) paste(sort(x),collapse=':')) ## JBF 2015/02/23: sort variables in interaction terms before comparison
   if ( ! is.null(X2)) X2 <- sapply(strsplit(X2,':'), function(x) paste(sort(x),collapse=':'))
   dX12 <- setdiff(X1,X2)
@@ -113,8 +160,8 @@
     } else if (.is_2_in_1(X1=X.pv2,  X2=X.pv1)) {
       Xnest <- "1in2"
     } else if (argsRphimodels) {
-      stop("Fixed effects seem non-nested for residual-dispersion model.")
-    } else stop("Fixed effects seem non-nested.") 
+      stop("Fixed effects seem non-nested for residual-dispersion model.", call.=FALSE)
+    } else stop("Fixed effects seem non-nested.", call.=FALSE) 
   } else if (length(dX12)) {
     Xnest <- "2in1"
   } else if (length(dX21)) {
@@ -122,6 +169,7 @@
   } else {
     Xnest <- NULL
   }
+  #
   if (object$spaMM.version < "2.2.116") {
     ranterms1 <- attr(object$ZAlist,"ranefs")
   } else ranterms1 <- attr(object$ZAlist,"exp_ranef_strings")
@@ -130,12 +178,20 @@
   } else ranterms2 <- attr(object2$ZAlist,"exp_ranef_strings")
   randist1 <- lapply(object$rand.families, function(v) paste(paste(v)[1:2],collapse="")) ## makes a string from each $family and $link 
   randist2 <- lapply(object2$rand.families, function(v) paste(paste(v)[1:2],collapse="")) ## makes a string from each $family and $link 
+  if (argsRphimodels && # nested call compare_model_str -> compare_phimodel_str -> compare_model_str
+      (length(randist1) || length(randist2))) {# either of the two residual-disp models is a mixed-effect model
+    # => no objective function maximized => no LRT, not even a bootstrap one
+    # df <- NA # inhibits asymptotic LRT
+    return(list(anyranef=TRUE))
+  }    
+  #
   ranterms1 <- paste(ranterms1,randist1) ## joins each term and its distrib
   ranterms2 <- paste(ranterms2,randist2) ## joins each term and its distrib
   dR12 <- setdiff(ranterms1,ranterms2)
   dR21 <- setdiff(ranterms2,ranterms1)
   if (length(dR12) && length(dR21)) { # no obvious nested structure on ranefs. Trying to guess 'Rnest'
-    Rnest <- .guess_Rnest(object, object2, Xnest)
+    Rnest_blob <- .guess_Rnest(object, object2, Xnest)
+    Rnest <- Rnest_blob$Rnest
     #.process_ranef_case(object, object2, Xnest=Xnest)
   } else if (length(dR12)) {
     Rnest <- "2in1"
@@ -144,10 +200,11 @@
   } else Rnest <- NULL
   XRnest <- c(Xnest,Rnest)
   uXRnest <- unique(XRnest)
-  if (length(uXRnest)==2L) {
-    if (argsRphimodels)  {
-      warning("Models not nested (opposite nestings for fixed and random terms in residual-dispersion model). No test performed.")
-    } else warning("Models not nested (opposite nestings for fixed and random terms). No test performed.")
+  if (length(unique(c(Fnest,uXRnest)))>1L) {
+    # if (argsRphimodels)  {
+    #   warning("Models not nested (opposite nestings for fixed and random terms in residual-dispersion model). No test performed.", call.=FALSE)
+    # } else 
+      warning("Models not nested (opposite nestings for fixed and random terms\n or response families). No test performed.", call.=FALSE)
     return(list(fullfit=NULL,nullfit=NULL,test_obj=NULL,df=NA, df1=NA, df2=NA))
   }
   # ELSE
@@ -162,34 +219,24 @@
                                                 phifit2 = residVar(object2, which="fit", submodel = mv_it),
                                                 df1=object$dfs$p_fixef_phi[[mv_it]],
                                                 df2=object2$dfs$p_fixef_phi[[mv_it]]) 
-        if (anyNA(df_col[1:2])) warning(paste("apparently non-nested residual-dispersion models for submodel",mv_it))
+        if (is.list(df_col)) {
+          warning(df_col$warning, call.=FALSE)
+          return(list(fullfit=NULL,nullfit=NULL,test_obj=NULL,df=NA))
+        } else if (anyNA(df_col[1:2])) warning(paste("apparently non-nested residual-dispersion models for submodel",mv_it), call.=FALSE)
         df_mat[,mv_it] <- df_col
       }
     } else {
-      # if (all(phimodel1 == "phiScal" | phimodel1 == "phiGLM") &&
-      #     all(phimodel2 == "phiScal" | phimodel2 == "phiGLM")) {
-      #   df1 <- .unlist(object$dfs$p_fixef_phi)
-      #   df2 <- .unlist(object2$dfs$p_fixef_phi)
-      #   if (all(df1>df2)) {
-      #     fullfit <- object
-      #     nullfit <- object2
-      #   } else if (all(df1<df2)) {
-      #     fullfit <- object2
-      #     nullfit <- object
-      #   } else if (all(df1==df2)) {
-      #     warning(paste("The two models appear equivalent (except perhaps for offsets). No test performed.")) 
-      #     return(list(fullfit=NULL,nullfit=NULL,test_obj=testlik,df=0))
-      #   } else {
-      #     warning(paste("The two models appear non-nested (opposite nesting of residual dispersion models?). No test performed.")) 
-      #     return(list(fullfit=NULL,nullfit=NULL,test_obj=testlik,df=0))
-      #   }
-      df_mat[,1L] <- .compare_phimodels_structures(phifit1 = residVar(object, which="fit", submodel = NULL),
+      df_col <- .compare_phimodels_structures(phifit1 = residVar(object, which="fit", submodel = NULL),
                                                    phifit2 = residVar(object2, which="fit", submodel = NULL),
                                                    df1=object$dfs$p_fixef_phi,
                                                    df2=object2$dfs$p_fixef_phi) 
+      if (is.list(df_col)) {
+        warning(df_col$warning, call.=FALSE)
+        return(list(fullfit=NULL,nullfit=NULL,test_obj=NULL,df=NA))
+      } else df_mat[,1L] <- df_col
     }
     if (anyNA(df_mat[1:2,])) {
-      warning("apparently non-nested residual-dispersion models")
+      warning("apparently non-nested residual-dispersion models", call.=FALSE)
       return(list(fullfit=NULL,nullfit=NULL,test_obj=NULL,df=NA))
     } else if (all(df_mat[1,]==df_mat[2,])) {
       Pnest <- NULL
@@ -198,16 +245,16 @@
     } else if (all(df_mat[1,]<=df_mat[2,])) {
       Pnest <- "1in2"
     } else {
-      warning(paste("The two models appear non-nested (opposite nesting of residual dispersion models?). No test performed.")) 
+      warning(paste("The two models appear non-nested (opposite nesting of residual dispersion models?).\n No test performed."), call.=FALSE) 
       return(list(fullfit=NULL,nullfit=NULL,test_obj=testlik,df=NA))
     }
     XRPnest <- c(XRnest,Pnest)
     unest <- unique(XRPnest)
     if (length(unest)==2L) {
-      warning("Models not nested (opposite nestings for mean-response and residual-dispersion models). No test performed.")
+      warning("Models not nested (opposite nestings for mean-response and residual-dispersion models).\n No test performed.", call.=FALSE)
       return(list(fullfit=NULL,nullfit=NULL,test_obj=NULL,df=NA))
     } else if (length(unest)==0L) {
-      warning("The two models appear equivalent (except perhaps for offsets). No test performed.")
+      warning("The two models appear equivalent (except perhaps for offsets). No test performed.", call.=FALSE)
       return(list(fullfit=NULL,nullfit=NULL,test_obj=NULL,df=0))
     } else if (length(uXRnest)==0L) {
       message(paste("The two models appear equivalent except for residual dispersion models.")) 
@@ -221,11 +268,7 @@
     dfs2$p_phi <- .calc_p_phi(object2)
     df1 <- sum(unlist(dfs1, use.names=FALSE)) 
     df2 <- sum(unlist(dfs2, use.names=FALSE))
-    if ( ! is.null(Rnest) || # main-resp models differ by their ranefs
-         anyNA(df_mat[3,]) # resid-disp models differ by their ranefs
-       ) { 
-      df <- NA # inhibits asymptotic LRT
-    } else df <- abs(df1-df2)
+    df <- abs(df1-df2)
     if (unest=="1in2") {
       fullm <- object2
       nullm <- object
@@ -236,13 +279,13 @@
     if (length(XRnest)==2L) {
       message("Models differing both by in their fixed and in their random terms. ")
       if (REML) warning("LRT comparing REML fits with different fixed-effect conditions is highly suspect", 
-              immediate.=TRUE)
+              immediate.=TRUE, call.=FALSE)
       testlik <- "p_v" 
-    } else if (length(uXRnest)==0L) {
+    } else if (length(uXRnest)==0L) { # that means that the difference is in Pnest
       if (REML) {
         testlik <- "p_bv" 
       } else {
-        message("ML fits used to compare different residual-dispersion models...")
+        message("Note: ML fits used to compare different residual-dispersion models.")
         testlik <- "p_v" 
       }
     } else {
@@ -257,28 +300,50 @@
           } else df.n.Re <- ncol(nullm$`X.pv`)
           if ( df.f.Re !=  df.n.Re ) {
             warning("LRT comparing REML fits with different fixed-effect conditions is highly suspect", 
-                    immediate.=TRUE)
+                    immediate.=TRUE, call.=FALSE)
           }
         }
         testlik <- "p_v"
-      } else { ## random effect test/ residual disp
-        if ( ! is.null(Rnest)) df <- NA # inhibits asymptotic LRT
+      } else { 
+        if ( ! is.null(Rnest)) {  ## random effect test (case of models differing only through resid.model was captured above )
+          if (length(dR12) && length(dR21) &&
+              # comparing two random-effect models, possibly differing in other components but not in a clearly conflicting way 
+              min(Rnest_blob$dfs)>0L) {
+            warnmess <- "Asymptotic chi-square tests comparing different\n random-effect specifications may be poorly behaved."
+            if (boot.repl) {
+              message(paste("Note:",warnmess))
+            } else warning(warnmess, immediate. = TRUE, call.=FALSE)
+            df <- abs(df1-df2)
+            RLRbool <- FALSE
+          } else {
+            # detect comparison of LM to LMM with single random effect, and no heteroscedasticity:
+            RLRbool <-  (unique(fullm$models$phi)=="phiScal" &&
+                fullm$family$family =="gaussian" &&
+                (fullm$models[["eta"]]=="etaHGLM" &&
+                    all(attr(fullm$rand.families,"lcrandfamfam")=="gaussian")) &&
+                nullm$models[["eta"]]=="etaGLM")
+            df <- NA  # inhibits asymptotic LRT
+          }
+        } else { # no longer sure it can be reached 
+          df <- NA # inhibits asymptotic LRT
+          RLRbool <- FALSE
+        }
         if (REML) {
           testlik <- "p_bv" 
+          if (is.null(Xnest) && RLRbool) message("Note: procedures from package 'RLRsim' may be useful for this test. See help('get_RLRsim_args').")
         } else {
-          if (is.null(Xnest)) message("ML fits used to compare different random-effects or residual-dispersion models...")
           testlik <- "p_v" 
+          if (is.null(Xnest)) message("Note: ML fits used to compare different random-effects or residual-dispersion models.")
+          if (RLRbool) message("Note: procedures from package 'RLRsim' may be useful for this test. See help('get_RLRsim_args').")
         }
       }
     } 
     return(list(fullfit=fullm,nullfit=nullm,test_obj=testlik,df=df, 
                 df1=df1,df2=df2))
-  } else { # argsRphimodels:
+  } else { # argsRphimodels: (fixed-effects only, mixed-effect models caught early above)
     df1 <- sum(unlist(object$dfs, use.names=FALSE)) 
     df2 <- sum(unlist(object2$dfs, use.names=FALSE))
-    if ( ! is.null(Rnest)) {
-      df <- NA # inhibits asymptotic LRT
-    } else df <- abs(df1-df2)
+    df <- abs(df1-df2)
     return(list(df1=df1,df2=df2, df=df))
   }
 }
@@ -355,6 +420,7 @@
       outer_ests <- .canonizeRanPars(outer_ests, corr_info=fitobject$ranef_info$sub_corr_info, 
                                      checkComplete=FALSE,  rC_transf=.spaMM.data$options$rC_transf)
     }
+    couter_est <- c(outer_ests) # drops fancy attributes
   }
   if (keep_canon_user_inits &&
       length(user_inits <- .reformat_corrPars(getCall(fitobject)$init,corr_families=fitobject$corr_info$corr_families))
@@ -559,8 +625,14 @@ eval_replicate <- function(y) { # no additional arguments, to ease parallel prog
       } ## ELSE continue
     }
     logL_re_full <- logLik(re_fullfit,which=test_obj)
-    if (logL_re_full>logL_re_null-1e-04) break # break the for loop
+    if (logL_re_full<logL_re_null && ## re_fullfit poor but ...
+        (logL_re_full>logL_re_null-5e-02 && .check_outer_at_bound(re_fullfit)) # ...'not too poor' if at bound => automatically correct
+       ) logL_re_full <- logL_re_null
+    if (logL_re_full>logL_re_null-1e-04) break # break the for loop.
   }
+  # if the fullfit was even poorer than the 5e-02 threshold the LR stat is still negative. Correct it if outer_at_bound (____F I X M E____ warning?):
+  if (logL_re_full<logL_re_null && 
+      .check_outer_at_bound(re_fullfit)) logL_re_full <- logL_re_null
   resu <- c(full=logL_re_full,null=logL_re_null)
   # if ( ! is.null(.condition)) {
   #   condition <- with(list(nullfit=re_nullfit, fullfit=re_fullfit), eval(.condition))
@@ -667,9 +739,40 @@ eval_replicate <- function(y) { # no additional arguments, to ease parallel prog
   return(resu)
 }
 
+.check_bootreps <- function(bootreps) {
+  if (is.list(bootrep <- bootreps[[1]])) { # debug.=TRUE: 
+    # If error in LRT() with debug.=TRUE and not doSNOW (at least), the replicate result is a list. 
+    if (anyNA(bootrep)) {
+      first_failed <- which(is.na(bootrep))[1] # first of pair of fits
+      failure <- attributes(bootrep[[first_failed]])[[1]]
+      if (inherits(failure,"try-error") &&
+          grep("could not find",(condmess <- conditionMessage(attr(failure,"condition"))))
+      ) {
+        firstpb <- strsplit(condmess,"\"")[[1]][2]
+        cat(crayon::bold(paste0(
+          "Hmmm. It looks like some variables were not passed to the parallel processes.\n",
+          "Maybe add    ",firstpb," = ",firstpb,"   to spaMM_boot()'s 'fit_env' argument?\n"
+        )))
+        stop(condmess)
+      }
+    }
+  } else if (anyNA(bootreps)) {  # debug.=FALSE:
+    bootreps <- na.omit(bootreps)
+    if ( ! nrow(bootreps)) {
+      warnmess <- paste0("All bootstrap replicate(s) apparently failed and are omitted for p-value computations.\n",
+                         "For issues in parallel execution, using 'debug.=TRUE' argument in LRT() or spaMM_boot() call\n may be useful to diagnose them.")
+      warning(warnmess, immediate.=TRUE, call.=FALSE)
+    } else {
+      n_omitted <- length(attr(bootreps,"na.action"))
+      warnmess <- paste0(n_omitted," bootstrap replicate(s) apparently failed and are omitted for p-value computations.")
+    }
+    warnmess
+  } 
+}
 
-# (fixme?) : create as.lm method for HLfit object?
-LRT <- function(object,object2,boot.repl=0,# nb_cores=NULL, 
+
+
+LRT <- function(object,object2,boot.repl=0L,# nb_cores=NULL, 
                 resp_testfn=NULL, simuland=eval_replicate, 
 #                .condition = NULL, ## bc expected by simuland, but not operational,
                 ...) { 
@@ -678,19 +781,28 @@ LRT <- function(object,object2,boot.repl=0,# nb_cores=NULL,
   }
   #if (length(list(...))) warning("...' arguments are currently ignored in LRT()", immediate. = TRUE) 
   #  which is a bit unfortunate ( say ...control=list(optimizer="bobyqa")) but makes parallelisation so much more straightforward...
-  info <- .compare_model_structures(object,object2)
-  nullfit <- info$nullfit
+  info <- .compare_model_structures(object,object2, boot.repl=boot.repl)
   fullfit <- info$fullfit
+  if (is.null(fullfit)) return(NULL)
+  df <- info$df
+  if ( ! is.na(df) &&
+       length(atbound <- .check_outer_at_bound(fullfit, bool=FALSE))) {
+    warnmess <- paste("Full model fitted at bound of parameter ranges, for:\n",
+                  paste(names(atbound),'=',signif(atbound), collapse=", "),"\n",
+                  "=> Asymptotic test is unreliable (even with Bartlett correction).")
+    warning(warnmess, immediate.=TRUE, call.=FALSE)
+  }
+  nullfit <- info$nullfit
   test_obj <- info$test_obj
   LRTori <- 2*(logLik(fullfit,which=test_obj)-logLik(nullfit,which=test_obj))
-  if (is.na(df <- info$df)) {
+  if (is.na(df)) {
     resu <- list(nullfit=nullfit,fullfit=fullfit,basicLRT = data.frame(chi2_LR=LRTori,df=NA,p_value=NA))
   } else {
     pvalue <- 1-pchisq(LRTori,df=df) ## but not valid for testing null components of variance
     resu <- list(nullfit=nullfit,fullfit=fullfit,basicLRT = data.frame(chi2_LR=LRTori,df=df,p_value=pvalue)) ## format appropriate for more tests  
   }
   if (boot.repl) {
-    if (boot.repl<99L && ! is.na(df)) message("It is recommended to set boot.repl>=99 for Bartlett correction")
+    if (boot.repl<99L && ! is.na(df)) message("Note: It is recommended to set boot.repl>=99 for Bartlett correction")
 #    dotargs <- match.call(expand.dots = FALSE)$... ## produce a pairlist of (essentially) promises. No quote() needed
     isdebugd <- isdebugged(simuland) # bc the assignment of environment drops this status
     environment(simuland) <- environment() # enclosing env(simuland) <- evaluation env(LRT)
@@ -706,6 +818,7 @@ LRT <- function(object,object2,boot.repl=0,# nb_cores=NULL,
                            #, control.foreach=list(.errorhandling="pass")
                            ...
     )
+    bootblob$warnings$n_omitted <- .check_bootreps(bootblob$bootreps)
     resu <- .add_boot_results(bootblob, resu, LRTori, df, test_obj)
   }
   class(resu) <- c("fixedLRT",class(resu)) 
@@ -1017,7 +1130,7 @@ LRT <- function(object,object2,boot.repl=0,# nb_cores=NULL,
   which <- setNames(as.list(which), which)
   is_contained <- .containment(model)
   itcp <- attr(termsv, "intercept") > 0
-  asgn <- unique(asgn[rankinfo$whichcols])
+  asgn <- unique(setdiff(asgn,0L)) # unique(asgn[rankinfo$whichcols])
   term_names <- term_names[asgn]
   which <- if (itcp) {c("(Intercept)", term_names)} else term_names
   term2colX <- split(seq_along(which), which)[unique(which)]

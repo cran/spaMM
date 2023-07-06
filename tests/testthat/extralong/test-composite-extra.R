@@ -110,6 +110,7 @@ cat(crayon::yellow("; checks corrMatrix composite"))
   if ( ! compMatfitde$how$MME_method[1]=="sXaug_EigenDense_QRP_Chol_scaled") { # yes, dense...
     stop("default MME_method has changed...")
   }
+  # unscutable numeric changes with Matrix devel v1.6.0 => premature stop, prevented by setting xtol_rel=1e-07 or 4e-6 but not 5e-6.
   (compMatfit <-  fitme(lh ~ 1 + Matern(time|time), data=ts, control.HLfit=list(algebra="spcorr"), 
                         lower=list(phi=1e-4),
                         fixed=list(ranCoefs=list("1"=c(NA,0.1,NA)))))
@@ -210,6 +211,14 @@ testthat::test_that(paste0("ranef corrMatrix(mv()...): criterion was ",signif(cr
     ## => Force non y-augmented algo and then consistently fitted phi across calls:
     (fit1 <- fitme(migStatus ~ grp + Matern(grp|latitude %in% grp), data=toy, init=list(phi=1e-5), fixed=list(ranCoefs=list("1"=c(NA,-0.5,NA)))))
     
+    { # to test for handling of levels found only once in the data (and next, predict() checks found more issues):
+      ttoy <- toy[c(1,2*seq(7)),]
+      fit1t <- fitme(migStatus ~ grp + Matern(grp|latitude %in% grp), data=ttoy, init=list(phi=1e-5), fixed=list())
+      predict(fit1t) 
+      predict(fit1t, newdata=ttoy) 
+      predict(fit1t, newdata=ttoy[rev(seq(8)),])[rev(seq(8)),] 
+    }
+    
     rC <- get_ranPars(fit1)$ranCoefs[[1]]
     corMat <- Corr(fit1)[[1]][1:14,1:14]/rC[1] 
     colnames(corMat) <- rownames(corMat) <- toy$loc 
@@ -249,9 +258,9 @@ if (FALSE) { # that was devel scratch, not tidy tests
     if (.is_spprec_fit(fit)) {
       if (FALSE) {
         Lmat <- t(Matrix::kronecker(chol(attr(fit$strucList[[1]],"latentL_blob")$compactcovmat),
-                                    t(as(Cholesky(as(proxy::as.matrix(MLcorMat2,diag=1),"sparseMatrix")),"sparseMatrix")))) # 
+                                    t(as(Cholesky(as(proxy::as.matrix(MLcorMat2,diag=1),"sparseMatrix")),"CsparseMatrix")))) # 
         Lmat <- t(Matrix::kronecker(chol(attr(fit$strucList[[1]],"latentL_blob")$compactcovmat),
-                                    (solve(as(Cholesky(as(solve(proxy::as.matrix(MLcorMat2,diag=1)),"sparseMatrix")),"sparseMatrix"))))) # 
+                                    (solve(as(Cholesky(as(solve(proxy::as.matrix(MLcorMat2,diag=1)),"sparseMatrix")),"CsparseMatrix"))))) # 
       }
       Lmat <- t(solve(BLOB$chol_Q)) # 
       if (FALSE) {

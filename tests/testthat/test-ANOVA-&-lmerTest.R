@@ -85,9 +85,9 @@ cat(crayon::yellow("\ntest lmerTest interface and other ANOVA tables:"))
         ano2 <- lmerTest::contest(spfit_lmlt, L=c(1,0)) 
         fm <- lme4::lmer(Reaction ~ Days + (1+Days|Subject), sleepstudy, REML=FALSE)
         ano1 <- lmerTest::contest(fm, L=c(1,0))
-        crit <- diff(range(ano3[,"F value"],ano2[,"F value"], 1436.88833634)) # but slight difference with lmer; already observed with brute refit rather than hlcorcall hack
+        crit <- diff(range(ano3[,"F value"],ano2[,"F value"], 1436.88833634)) # but slight difference with lmer; already observed with brute refit rather than hlcorcall hack; affected by xtol_rel
         testthat::test_that("equivalent contest() merMod and fitme()",
-                            testthat::expect_true(crit<1e-6))
+                            testthat::expect_true(crit<1e-3))
         
         fm <- lme4::lmer(Reaction ~ Days + I(Days^2) + (1|Subject) + (0+Days|Subject), sleepstudy)
         spfit <- fitme(Reaction ~ Days + I(Days^2) + (1|Subject) + (0+Days|Subject), sleepstudy, method="REML")
@@ -112,5 +112,23 @@ cat(crayon::yellow("\ntest lmerTest interface and other ANOVA tables:"))
                             testthat::expect_true(crit<1e-6))
       } else message("Package 'lmerTest' not available for testing as_LMLT().")
     } 
+  }
+  
+  { # control of input
+    data("wafers")
+    m1 <- HLfit(y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch),family=Gamma(log),
+                resid.model = ~ X3+I(X3^2) ,data=wafers,method="ML")
+    # m2 <- HLfit(y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch),family=Gamma(log),
+    #             resid.model = ~ X3 ,data=wafers,method="ML")
+    #  # LRT
+    # crit <- diff(range(unlist(anova(m1,m2)$basicLRT)-c(66.33115,  1, 3.330669e-16)))
+    # testthat::test_that("anova(m1,m2) gives expected result", testthat::expect_true(crit<1e-5))
+    
+    m2 <- HLfit(y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch),family=Gamma(log),
+                resid.model = ~ 1 + (1|batch) ,data=wafers,method="ML")
+    # detection of mixed-effect phimodel:
+    testthat::test_that("anova(m1,m2) gives expected result", 
+                        testthat::expect_true(is.null(suppressWarnings(anova(m1,m2)))))
+
   }
 }

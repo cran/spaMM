@@ -683,7 +683,7 @@ testthat::expect_true(diff(range(logLik(zut1), logLik(zut2)))<1e-08)
   get_predVar(zut4, variances=list(cov=TRUE)) 
   if (FALSE) { # may be used to check the mapping, but to have asym off-diag blocks, use migStatus ~ 1+ Matern(1|longitude+latitude)+(1|grp), the latter with fixed large variance
     get_predVar(zut4, variances=list(cov=TRUE)) -> bli
-    nresp <- length(attr(bli, "respnames"))
+    nresp <- length(attr(bli, "respnames")) # but I commented out code providing this odd attribute, see get_predVar() and .predict_body()
     nobs <- nrow(bli)/nresp
     dim(bli) <- c(nobs,nresp,nobs,nresp)
     dimnames(bli)[[2]] <- dimnames(bli)[[4]] <- attr(bli, "respnames")

@@ -293,8 +293,8 @@
     ## dwdloglam will include cols of zeros for fixed lambda; matching with reduced logdisp_cov is performed at the end of the function.
     for (randit in seq_len(nrand)) { ## ALL ranefs!
       range_in_dw <- (cum_n_u_h[randit]+1L):(cum_n_u_h[randit+1L])
-      if ( inherits(strucList[[randit]],"dCHMsimpl")) {
-        for_dw_i <- as(strucList[[randit]], "sparseMatrix") %*% dvdloglamMat[range_in_dw,  ] # i.e L_Q %*% lignes de (t(L_Q) %*% invG %*% L_Q %*% some rhs) 
+      if ( inherits(strucList[[randit]],"dCHMsimpl")) { # e.g. get_predVar(adjfitsp)
+        for_dw_i <- as(strucList[[randit]], "CsparseMatrix") %*% dvdloglamMat[range_in_dw,  ] # i.e L_Q %*% lignes de (t(L_Q) %*% invG %*% L_Q %*% some rhs) 
       } else if ( ! is.null(lmatrix <- strucList[[randit]])) {
         for_dw_i <- solve(t(lmatrix),dvdloglamMat[range_in_dw,]) ## f i x m e for efficiency ? store info about solve(t(lmatrix)) in object ? 
       } else { ## implicit identity lmatrix

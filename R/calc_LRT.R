@@ -107,20 +107,13 @@
   colnames(bootreps)[1:2] <- paste0(c("full.","null."),test_obj) # which may already be the case
   if (is.matrix(bootreps)) {
     bootreps <- data.frame(bootreps)
-    if (anyNA(bootreps)) {
-      bootreps <- na.omit(bootreps)
-      n_omitted <- length(attr(na.omit(bootreps),"na.action"))
-      warnmess <- paste0(n_omitted," bootstrap replicate(s) apparently failed and are omitted for p-value computations.")
-      #warning(warnmess, immediate.=TRUE)
-      bootblob$warnlist$n_omitted <- warnmess
-    } # but thse are retained in the bootblob that is returned
+    # .check_bootreps() has already checked whether some or all replicates failed, but those are always retained in the bootblob that is retuned.
+    if (anyNA(bootreps)) bootreps <- na.omit(bootreps)
     bootdL <- bootreps[,1L]-bootreps[,2L]
-    # if ( ! is.null( .condition )) {
-    #   lrfit <- lm(bootdL ~ condition ,data=bootreps)
-    #   meanbootLRT <- 2*predict(lrfit,newdata=data.frame(condition=eval(.condition))) ## conditional mean
-    #   attr(meanbootLRT,"boot_type") <- "conditional"
-    # } else {
-    if (any(bootdL < -2e-04)) {
+    if (resu$fullfit$models$eta=="etaHGLM" &&
+        resu$nullfit$models$eta!="etaHGLM") { # comparing MM to fixed-effect one
+      # no diagnosis ; but it looks like allowing lambda=0 in the fit would be the solution (sigh ____F I X M E____) 
+    } else if (any(bootdL < -2e-04)) {
       neg_values <- bootdL[bootdL<0]
       diagn_test <- stats::ks.test(x= -neg_values,y=.neg_r_chinorm, alternative = "less")
       ##### .neg_r_chinorm was produced as follows for a quick and dirty test (null hypo: chi2+gaussian noise(SD=1e-4))
@@ -132,13 +125,21 @@
       ## devtools::use_data(.neg_r_chinorm, internal=TRUE) # while directory is set to .../package/ 
       ##### Ideally we would like to have a one-sample test instead.
       # Also, The test ignores the frequency of negatives (length(.neg_r_chinorm)=3284).
-      if (diagn_test$p.value<0.01) {
+      if (is.na(diagn_test$p.value)) { # KS test failed. Occurred for the test statistic =1 (all 'x' values > null values 'y') and 
+        # stats:::ks.test.default()  -> psmirnov() -> naively tests whether it is < -1 or >1 (=bug in psmirnov)
+        warnmess <- paste0("Something suspect; maybe suspiciously large negative values in bootstrap distribution of likelihood ratio\n",
+                           "  (up to ",signif(min(neg_values),3L),"). These are treated as 0.")
+        #warning(warnmess, immediate.=TRUE)
+        bootblob$warnlist$ks.test_failed <- warnmess
+      } else if (diagn_test$p.value<0.01) {
         warnmess <- paste0("Suspiciously large negative values in bootstrap distribution of likelihood ratio\n",
                            "  (up to ",signif(min(neg_values),3L),"). These are treated as 0.")
         #warning(warnmess, immediate.=TRUE)
         bootblob$warnlist$neg_values <- warnmess
       }
     }
+    freq_dL_neq_0 <- (sum(bootdL<=0)+1L)/(length(bootdL)+1L)
+    if ( ! is.na(df) && sum(bootdL<=0) > 0.05*length(bootdL)) bootblob$warnlist$suspectBart <- "Asymptotic test appears unreliable (even with Bartlett correction):\n LRTs of bootstrap replicates often = 0."
     bootdL <- pmax(0,bootdL)
     meanbootLRT <- 2*mean(bootdL)
     attr(meanbootLRT,"boot_type") <- "marginal"
@@ -283,6 +284,7 @@
                              type="marginal", # mandatory arg of spaMM_boot()
                              seed=seed
       )
+      bootblob$warnings$n_omitted <- .check_bootreps(bootblob$bootreps)
       resu <- .add_boot_results(bootblob, resu, LRTori, df, test_obj)
     } ## end bootstrap
   } else { ## nothing operativ yet

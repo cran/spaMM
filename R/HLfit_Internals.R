@@ -462,22 +462,23 @@ if (FALSE) {
             rC_blob_longLvMatrix <- .def_Kronfacto(lhs=solve(t(latentL_blob$compactchol_Q), latentL_blob$trDiag), 
                                                    rhs=attr(processed$corr_info$cov_info_mats[[rt]],"blob")$Lunique)
           } else rC_blob_longLvMatrix <- .wrap_makelong_outer_composite(processed, rt=rt, latentL_blob=latentL_blob) 
-        } else { ## block first develope for AR1(time|time), appears to work more generally.
+        } else { ## block first developed for AR1(time|time), appears to work more generally.
           # There is no info in processed$corr_info$cov_info_mats but in the $precisionFactorList:
           # RHS_Qmat has been provided by .assign_geoinfo_and_LMatrices_but_ranCoefs()
           AUGI0_ZX_envir <- processed$AUGI0_ZX$envir
           long_precmat <- .makelong(latentL_blob$compactprecmat,template=processed$ranCoefs_blob$longLv_templates[[rt]], 
                                kron_Y=AUGI0_ZX_envir$precisionFactorList[[rt]]$RHS_Qmat )  
           # calling/updating Cholesky:
-          long_Q_CHMfactor <- try(.get_Q_CHMfactor__assign_template__perm_ZA(AUGI0_ZX_envir, rt, processed, long_precmat), silent=TRUE) 
-          if (inherits(long_Q_CHMfactor, "try-error")) { 
+          long_Q_CHMfactor <- tryCatch(.get_Q_CHMfactor__assign_template__perm_ZA(AUGI0_ZX_envir, rt, processed, long_precmat)
+                                       ,error=function(e) e) 
+          if (inherits(long_Q_CHMfactor, "simpleError")) { 
             mess <- paste(ranCoefs[[rt]], collapse=", ")
             # __F I X M E__ it would be nice also to have access to corrPars[[as.character(rt)]]
             #This seems to (practically) require keepeing the parameter info in precisionFactorList[[rt]]
             stop(paste0("A numerical problem occurred for random effect ",rt," with parameter(s) " ,mess,". Try to restrict the parameter range."))
           }
           
-          chol_Q <- as(long_Q_CHMfactor,"sparseMatrix")
+          chol_Q <- as(long_Q_CHMfactor,"CsparseMatrix")
           permuted_Q <- attr(processed$corr_info$AMatrices[[as.character(rt)]],"permuted_Q") # clumsy but need to get info from one-time code
           if (identical(permuted_Q,TRUE)) long_precmat <- tcrossprod(chol_Q) # update long_precmat
           # For composite models the matrix is stored as 'precmat' instead of 'Qmat' since it involves the variances. 'chol_Q' is less precise naming.
@@ -2180,8 +2181,8 @@ spaMM_Gamma <- local({
     ## there was a 'Matrix' subcode prior to 10/03/2013; another try on 11/2013
     res <- qr.coef(qr.a,b)
   } else {
-    res <- try(solve.qr(qr.a,b),silent=silent)
-    if (inherits(res,"try-error")) {   ## then some weird code, but...
+    res <- tryCatch(solve.qr(qr.a,b),error=function(e) e)
+    if (inherits(res,"simpleError")) {   ## then some weird code, but...
       ## we try to solve(<original 'a' matrix>) using the QR decomp... this may work when solve.qr fails !
       ## The following is equivalent to solveA <- try(solve(qr.R(qr.a)[,pivI])%*%t(qr.Q(qr.a)),silent=silent) then return solveA %*% b 
       ## but uses only backward mutliplication of vectors and transpose of vectors  
@@ -2288,7 +2289,9 @@ spaMM_Gamma <- local({
   if (ncol(mat)==0) return(0) ## GLM fitted by ML: d2hdbv2 is 0 X 0 matrix 
   # un piege est que mat/(2*pi) conserve les attributes de mat (telle qu'une décomp QR de mat...)
   # il nefaut  dont pas demander LogAbsDetWrap(mat/(2*pi))
-  if (inherits(mat,"Matrix")) {
+  if (inherits(mat,"CHMfactor")) {
+    lad <- Matrix::determinant(mat, sqrt=TRUE)$modulus[1]
+  } else if (inherits(mat,"Matrix")) {
     lad <- Matrix::determinant(mat)$modulus[1]
   } else if (.spaMM.data$options$USEEIGEN) {
     lad <- .LogAbsDetCpp(mat)
@@ -2386,6 +2389,7 @@ spaMM_Gamma <- local({
   }
 }
 
+# return_mat: M vs m atrix
 .Matcrossprod <- function(x,y=NULL,return_mat=FALSE) { # wraps an inefficient bit of code, to be avoided 
   if (is.null(y)) {
     return(Matrix::crossprod(x)) 
@@ -2430,7 +2434,7 @@ spaMM_Gamma <- local({
       #                                         next forceSymmetric() can produce dgC (sp) OR dsy (dense)
       if (as_sym) { txy <- forceSymmetric(txy) } # absolutely necessary for use as .updateCHMfactor(., parent=txy) with a (t)crossprod 'parent'; see ?`CHMfactor-class`
       #                                            BUT:  computing the (t)crossfac in the first place is not needed.
-      if ( ( ! allow_as_mat) && ( ! inherits(txy,"sparseMatrix"))) txy <- as(txy,"sparseMatrix") # fortunately rarely needed but occurs in HLCor(lh~1 +AR1(1|time) example
+      if ( ( ! allow_as_mat) && ( ! inherits(txy,"sparseMatrix"))) txy <- as(txy,"CsparseMatrix") # fortunately rarely needed but occurs in HLCor(lh~1 +AR1(1|time) example
       return(txy)
     } else { ## show unhandled classes (ddi...) and continue (but vector y reaches here - OK - and eval_dens is ignored - OK - )
       if (use_Rcpp_cp>1L) {
@@ -2585,11 +2589,11 @@ spaMM_Gamma <- local({
             } # If kron_Y is NULL invC should be bigq or numeric matrix but not Matrix because:
             invCoo <- .makelong(invC,longsize=ncol(lmatrix),kron_Y=kron_Y) # (no template arg && NULL kron_Y) => .makelong_bigq() or [.C_makelong() => invC must be numeric matrix]
           } else if (inherits(lmatrix,"dCHMsimpl")) { # # before any test on type, because dCHMsimpl has a @type slot
-            invCoo <- tcrossprod(as(lmatrix,"sparseMatrix")) # assuming 'lmatrix' is an unpermuted CHM factor of the precision factor (as for attr(lmatrix,"Q_CHMfactor"))
+            invCoo <- tcrossprod(as(lmatrix,"CsparseMatrix")) # assuming 'lmatrix' is an unpermuted CHM factor of the precision factor (as for attr(lmatrix,"Q_CHMfactor"))
           } else if (type == "from_AR1_specific_code")  {
             invCoo <- crossprod(solve(lmatrix)) # cost of a sparse triangular solve.
           } else if (type == "from_Q_CHMfactor")  {
-            invCoo <- tcrossprod(as(attr(lmatrix,"Q_CHMfactor"),"sparseMatrix")) ## correct but requires the attribute => numerical issues in computing Q_CHMfactor
+            invCoo <- tcrossprod(as(attr(lmatrix,"Q_CHMfactor"),"CsparseMatrix")) ## correct but requires the attribute => numerical issues in computing Q_CHMfactor
           } else if (type %in% c("cholL_LLt","t(Matrix::chol)"))  { # Rmatrix upper tri in both case => suitable for chol2inv
             Rmatrix <- t(lmatrix)
             if (attr(lmatrix,"need_gmp")) {
@@ -2633,16 +2637,16 @@ spaMM_Gamma <- local({
             condnum <- kappa(lmatrix,norm="1")
             if (condnum<1/regul.threshold) {
               decomp <- attr(lmatrix,attr(lmatrix,"type")) ## of corr matrix !
-              invCoo <-  try(.ZWZt(decomp$u,1/decomp$d),silent=TRUE) ## the idea is to use ginv() if this fails, rather than 
+              invCoo <-  tryCatch(.ZWZt(decomp$u,1/decomp$d),error=function(e) e) ## the idea is to use ginv() if this fails, rather than 
               #                                                         to attempt regularization, given that condnum has been tested as not large.
-              if (inherits(invCoo,"try-error")) invCoo <- NULL
+              if (inherits(invCoo,"simpleError")) invCoo <- NULL
             }
             if (is.null(invCoo)) Rmatrix <- .lmwithQR(t(lmatrix),yy=NULL,returntQ=FALSE,returnR=TRUE)$R_scaled # no pivoting compared to qr.R(qr(t(lmatrix))) 
           }
           # The fallback computation:
           if (is.null(invCoo)){ 
-            invCoo <- try(chol2inv(Rmatrix),silent=TRUE)
-            if (inherits(invCoo,"try-error") || max(abs(range(invCoo)))> 1e12) {
+            invCoo <- tryCatch(chol2inv(Rmatrix),error=function(e) e)
+            if (inherits(invCoo,"simpleError") || max(abs(range(invCoo)))> 1e12) {
               invCoo <- ginv(.crossprod(Rmatrix, as_mat=TRUE))
             }
           }
@@ -2860,68 +2864,43 @@ spaMM_Gamma <- local({
   # same if it is called for "R_Md2hdbv2" (as through .get_tcrossfac_beta_w_cov())  
   # if we used it for v_beta_cov, could we simplify the code by only computing crossprod_r22 using $invG_ZtWX ? What about r_12 ?
   
-  if (FALSE) { # if ( ! object$spaMM.version < "3.7.10")  except that "object" not easily accessible
-    #if (is.null(tcrossfac_v_beta_cov <- envir$tcrossfac_v_beta_cov)) # No strong reason to save it. The only re-use is for cAIC_pd
-    # scaled_X <- envir$sXaug$AUGI0_ZX$X.pv # !! use the scaled X.pv to compute quantities consistent with other promises !!
-    # # !!! but then R_invMd2hdvb2 etc will refer to a scaled X !!! 
-    {
-      if (which=="R_Md2hdbv2") { ## not called in the source, and the single occurrence of solve(factor_inv_Md2hdv2)
-        if (ncol(X.pv)) {
-          r22 <- as(envir$r22,"sparseMatrix") # not sure why
-          R_Md2hdbv2 <- rbind(cbind(t(solve(envir$factor_inv_Md2hdv2)), envir$r12), # cbind(chol_Md2hdv2,r12),
-                              cbind(Matrix(0,nrow=ncol(X.pv),ncol=ncol(envir$chol_Q)), r22)) ## R_a in the working doc
-        } else R_Md2hdbv2 <- t(solve(envir$factor_inv_Md2hdv2))
-        return(R_Md2hdbv2) ## such that tcrossprod(R_invMd2hdvb2) = solve(Md2hdbv2) = solve(crossprod(R_Md2hdbv2))
-      } else {
-        if (ncol(X.pv)) {
-          inv11 <- t(envir$factor_inv_Md2hdv2)# solve(chol_Md2hdv2)
-          inv22 <- solve(envir$r22)
-          inv12 <- -1* inv11 %*% (envir$r12 %*% inv22) ## does not seem to understand unary '-' (late PS: in old version of Matrix?)
-          R_invMd2hdvb2 <- rbind(cbind(inv11,inv12),
-                                 cbind(Matrix(0,nrow=ncol(X.pv),ncol=ncol(envir$chol_Q)), inv22))
-        } else R_invMd2hdvb2 <- t(envir$factor_inv_Md2hdv2)# only the inv11 block, solve(chol_Md2hdv2)
-        if (.spaMM.data$options$perm_G) {
-          tcrossfac_v_beta_cov <- as(R_invMd2hdvb2,"sparseMatrix") # not necess. triangular
-        } else tcrossfac_v_beta_cov <- as(R_invMd2hdvb2,"triangularMatrix") ## not sure that being triangular would be of any use.
-      }
-    }
-  } else {
-    if (is.null(factor_inv_Md2hdv2 <- envir$factor_inv_Md2hdv2)) {
-      if ( is.null(envir$invL_G.P)) { # allowing for old objects that did not have this element. But may envir$perm contain the info in as(envir$G_CHMfactor,"pMatrix")?
-        LL <- Matrix::solve(envir$G_CHMfactor, as(envir$G_CHMfactor,"pMatrix") %*% envir$chol_Q,system="L") ## dgCMatrix  
-      } else  LL <- envir$invL_G.P %*% envir$chol_Q ## dgCMatrix 
-      envir$factor_inv_Md2hdv2 <- factor_inv_Md2hdv2 <- Matrix::drop0(LL,tol=.Machine$double.eps)
-      # such that chol_Md2hdv2 = t(solve(factor_inv_Md2hdv2))
-    }
-    if (is.null(r22 <- envir$r22)){ # => post-fit, presumably
-      if (ncol(X.pv)) {
-        # 'object' is not accessible here so its $spaMM.version isn't. This comes at the end of a long stack of calls...
-        H_w.resid <- .get_H_w.resid(envir=envir)
-        if (is.null(envir$ZtW)) envir$ZtW <- t(.Dvec_times_m_Matrix(H_w.resid, envir$sXaug$AUGI0_ZX$ZAfix))
-        r12 <- as(Matrix::solve(envir$G_CHMfactor, as(envir$G_CHMfactor,"pMatrix") %*% envir$ZtW %*% X.pv,system="L"),"sparseMatrix") ## solve(as(envir$G_CHMfactor,"sparseMatrix"), envir$ZtW %*% AUGI0_ZX$X.pv)
-        r22 <- .calc_r22_postfit(X.pv,H_w.resid,r12, XtWX=envir$XtWX) ## both lines as explained in working doc
-        r22 <- as(r22,"sparseMatrix") 
-      } else r22 <- diag(nrow=0L) # don't leave it NULL; + we use its ncol
-    } else r12 <- envir$r12 
-    if (which=="R_Md2hdbv2") { ## not called in the source, and the single occurrence of solve(factor_inv_Md2hdv2)
-      if (ncol(r22)) {
-        R_Md2hdbv2 <- rbind(cbind(t(solve(factor_inv_Md2hdv2)), r12), # cbind(chol_Md2hdv2,r12),
-                            cbind(Matrix(0,nrow=ncol(X.pv),ncol=ncol(envir$chol_Q)), r22)) ## R_a in the working doc
-      } else R_Md2hdbv2 <- t(solve(factor_inv_Md2hdv2))
-      return(R_Md2hdbv2) ## such that tcrossprod(R_invMd2hdvb2) = solve(Md2hdbv2) = solve(crossprod(R_Md2hdbv2))
-    } else {
-      if (ncol(r22)) {
-        inv11 <- t(factor_inv_Md2hdv2)# solve(chol_Md2hdv2)
-        inv22 <- solve(r22, b= .sparseDiagonal(n=ncol(r22), shape="t"))
-        inv12 <- -1* inv11 %*% (r12 %*% inv22) ## does not seem to understand unary '-'
-        R_invMd2hdvb2 <- rbind(cbind(inv11,inv12),
-                               cbind(Matrix(0,nrow=ncol(X.pv),ncol=ncol(envir$chol_Q)), inv22))
-      } else R_invMd2hdvb2 <- t(factor_inv_Md2hdv2)# only the inv11 block, solve(chol_Md2hdv2)
-      if (.spaMM.data$options$perm_G) {
-        tcrossfac_v_beta_cov <- as(R_invMd2hdvb2,"sparseMatrix") # not necess. triangular
-      } else tcrossfac_v_beta_cov <- as(R_invMd2hdvb2,"triangularMatrix") ## not sure that being triangular would be of any use.
-    } 
+  # alternative code removed from [v4.3.6
+  if (is.null(factor_inv_Md2hdv2 <- envir$factor_inv_Md2hdv2)) {
+    if ( is.null(envir$invL_G.P)) { # allowing for old objects that did not have this element. But may envir$perm contain the info in as(envir$G_CHMfactor,"pMatrix")?
+      LL <- Matrix::solve(envir$G_CHMfactor, as(envir$G_CHMfactor,"pMatrix") %*% envir$chol_Q,system="L") ## dgCMatrix  
+    } else  LL <- envir$invL_G.P %*% envir$chol_Q ## dgCMatrix 
+    envir$factor_inv_Md2hdv2 <- factor_inv_Md2hdv2 <- Matrix::drop0(LL,tol=.Machine$double.eps)
+    # such that chol_Md2hdv2 = t(solve(factor_inv_Md2hdv2))
   }
+  if (is.null(r22 <- envir$r22)){ # => post-fit, presumably
+    if (ncol(X.pv)) {
+      # 'object' is not accessible here so its $spaMM.version isn't. This comes at the end of a long stack of calls...
+      H_w.resid <- .get_H_w.resid(envir=envir)
+      if (is.null(envir$ZtW)) envir$ZtW <- t(.Dvec_times_m_Matrix(H_w.resid, envir$sXaug$AUGI0_ZX$ZAfix))
+      r12 <- as(Matrix::solve(envir$G_CHMfactor, as(envir$G_CHMfactor,"pMatrix") %*% envir$ZtW %*% X.pv,system="L"),"sparseMatrix") ## solve(as(envir$G_CHMfactor,"sparseMatrix"), envir$ZtW %*% AUGI0_ZX$X.pv)
+      r22 <- .calc_r22_postfit(X.pv,H_w.resid,r12, XtWX=envir$XtWX) ## both lines as explained in working doc
+      r22 <- as(r22,"sparseMatrix") 
+    } else r22 <- diag(nrow=0L) # don't leave it NULL; + we use its ncol
+  } else r12 <- envir$r12 
+  if (which=="R_Md2hdbv2") { ## not called in the source, and the single occurrence of solve(factor_inv_Md2hdv2)
+    if (ncol(r22)) {
+      R_Md2hdbv2 <- rbind(cbind(t(solve(factor_inv_Md2hdv2)), r12), # cbind(chol_Md2hdv2,r12),
+                          cbind(Matrix(0,nrow=ncol(X.pv),ncol=ncol(envir$chol_Q)), r22)) ## R_a in the working doc
+    } else R_Md2hdbv2 <- t(solve(factor_inv_Md2hdv2))
+    return(R_Md2hdbv2) ## such that tcrossprod(R_invMd2hdvb2) = solve(Md2hdbv2) = solve(crossprod(R_Md2hdbv2))
+  } else {
+    if (ncol(r22)) {
+      inv11 <- t(factor_inv_Md2hdv2)# solve(chol_Md2hdv2)
+      inv22 <- solve(r22, b= .sparseDiagonal(n=ncol(r22), shape="t"))
+      inv12 <- -1* inv11 %*% (r12 %*% inv22) ## does not seem to understand unary '-'
+      R_invMd2hdvb2 <- rbind(cbind(inv11,inv12),
+                             cbind(Matrix(0,nrow=ncol(X.pv),ncol=ncol(envir$chol_Q)), inv22))
+    } else R_invMd2hdvb2 <- t(factor_inv_Md2hdv2)# only the inv11 block, solve(chol_Md2hdv2)
+    if (.spaMM.data$options$perm_G) {
+      tcrossfac_v_beta_cov <- as(R_invMd2hdvb2,"sparseMatrix") # not necess. triangular
+    } else tcrossfac_v_beta_cov <- as(R_invMd2hdvb2,"triangularMatrix") ## not sure that being triangular would be of any use.
+  } 
+  
   if (which=="tcrossfac_v_beta_cov") {
     return(tcrossfac_v_beta_cov)  
   } else { 
@@ -3510,7 +3489,8 @@ if (FALSE) { # that's not used.
           qrr <- qrR(RP,backPermute = FALSE) # must be dtC
           resu <- solve(qrr, solve(t(qrr), rhs[RP@q + 1])) # Matrix::solve for dtC # faster than mess below, test-nloptr's simuland example.
           if (.drop) { # rhs has been converted to vector so is not matrix
-            resu <- resu[RRsP,1]
+            resu <- drop(resu) # compatible with pre-1.6.0 Matrix code where resu is a matrix.
+            resu <- resu[RRsP]
           } else resu <- resu[RRsP,]
         } else { # all attempts compared
           # if (FALSE) { 

@@ -260,7 +260,8 @@ summary.HLfitlist <- function(object, ...) {
   row_map <- lapply(nrows,seq)
   for (it in seq_len(length(row_map))) row_map[[it]] <- row_map[[it]]+cum_nrows[it]
   # first construct a table including NA's for some coefficients (not "inner" estimated), then remove these rows
-  repGroupNames <- rep(names(namesTerms),sapply(namesTerms,length))
+  term_names <- names(namesTerms)
+  repGroupNames <- rep(term_names, sapply(namesTerms,length))
   ## i.e. for namesTerms = list(Subject=c("(Intercept)", "Days")), repGroupNames[[1]] is c("Subject", "Subject")
   lambda_table <- data.frame(Group=repGroupNames,Term=unlist(namesTerms))
   in_table <- rep(FALSE,nrand)
@@ -289,6 +290,11 @@ summary.HLfitlist <- function(object, ...) {
     for (mt in seq_len(length(cov.mats))) { 
       m <- cov.mats[[mt]]
       if ( ! is.null(m)) { # Xi_ncol>1L...
+        # if ( # kappa(m)>1e14 || 
+        #   min(eigen(m,only.values = TRUE)$values)<1e-6) { # lme4:::rePCA.merMod uses svd() [less assuming but beware of sign]
+        #   # Motivations for the check discussed in Bates et al 2015 on arXiv, but other views are possible...  
+        #   message(paste0("Random-coefficient term '",term_names[[mt]],"' has a practically singular covariance matrix")) 
+        # }
         in_table[mt] <- TRUE
         in_pointLambda[mt] <- FALSE
         inrows <-  cum_nrows[mt]+(1:nrow(m))
@@ -830,33 +836,43 @@ print.HLfitlist <- function(x,...) {
 
 div_info <- function(object, ...) { 
   ranges <- NULL # avoid bug when no divinfo
-  if ( ! is.null(ranFixes <- object$divinfo$high_kappa$ranFixes)) {
+  if ( ! is.null(ranFixes <- object$divinfo$high_kappa$ranFixes)) { # remains NULL if problem too large for fast condnum computation
     corr_info <- .get_from_ranef_info(object)
     ranFixes <- lapply(ranFixes, .canonizeRanPars, corr_info=corr_info,checkComplete = FALSE, rC_transf = .spaMM.data$options$rC_transf)
     if (length(ranFixes)>1L) {
       ranges <- t(apply(do.call(rbind,lapply(ranFixes,unlist)),2L,range))
-      message("Numerical issue for the following ranges of parameters:")
-      colnames(ranges) <- c("lower","upper") 
-      print(ranges)
-      message("It may be worth refitting in a constrained parameter space excluding some of these ranges.")
-    } else {
-      message("Numerical issue for the following parameters:")
-      print(ranges <- unlist(ranges[[1L]]))
+      if (is.null(ranges)) {
+        message("Near-singular Hessian matrix, but could not be related to specific parameter values.")
+      } else {
+        message("Near-singular Hessian matrix for the following ranges of parameters:")
+        colnames(ranges) <- c("lower","upper") 
+        print(ranges)
+        message("It may be worth refitting in a constrained parameter space excluding some of these ranges.")
+      }
+    } else if (length(ranFixes)) {
+      message("Near-singular Hessian matrix for the following parameters:")
+      print(unlist(ranFixes))
+      message("It may be worth refitting in a constrained parameter space excluding these parameters.")
     }  
   }
-  if ( ! is.null(ranFixes <- object$divinfo$unknown$ranFixes)) {
+  if ( ! is.null(ranFixes <- object$divinfo$unknown$ranFixes)) { # if processed$envir$ranFix was NULL there are explicit list(NULL) here
     corr_info <- .get_from_ranef_info(object)
     ranFixes <- lapply(ranFixes, .canonizeRanPars, corr_info=corr_info,checkComplete = FALSE, rC_transf = .spaMM.data$options$rC_transf)
     if (length(ranFixes)>1L) {
       ranges <- t(apply(do.call(rbind,lapply(ranFixes,unlist)),2L,range))
-      message("Uncharacterized numerical issue for the following ranges of parameters:")
-      colnames(ranges) <- c("lower","upper") 
-      print(ranges)
-      message("It may be worth refitting in a constrained parameter space excluding some of these ranges.")
-    } else {
-      message("Numerical issue for the following parameters:")
-      print(ranges <- unlist(ranges[[1L]]))
-    }  
+      if (is.null(ranges)) {
+        message("A non-convergence issue was detected but could not be diagnosed\n  nor related to specific parameter values.")
+      } else {
+        message("Uncharacterized numerical issue for the following ranges of parameters:")
+        colnames(ranges) <- c("lower","upper") 
+        print(ranges)
+        message("It may be worth refitting in a constrained parameter space excluding some of these ranges.")
+      }
+    } else if (length(ranFixes)) {
+      message("Uncharacterized numerical issue for the following parameters:")
+      print(unlist(ranFixes))
+      message("It may be worth refitting in a constrained parameter space excluding these parameters.")
+    } 
   }
   invisible(ranges)
 }

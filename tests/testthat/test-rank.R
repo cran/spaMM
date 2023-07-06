@@ -27,8 +27,9 @@ spaMM.options(rankMethod=".rankinfo")
 fv3 <- fitme(y~int+ b1+b2+c1+c2+c3,data=donn, family=Gamma(log))$fv ## fixef is not unique, but fitted values must be equivalent
 spaMM.options(rankMethod="qr")
 testthat::expect_true( max(apply(cbind(fv1,fv2,fv3),1L,var))<1e-9)
-crit <- diff(range(anova(singglm) -anova(singfit), na.rm=TRUE)) #
-testthat::test_that("whether anova.lm and spaMM:::.anova.lm give equivalent results for singular X",
+# stats::anova(singglm) new default is to return the F test, as by spaMM::anova(singfit, test="F"), but with different result as doc'ed.
+crit <- diff(range(anova(singglm, test=FALSE) -anova(singfit), na.rm=TRUE)) 
+testthat::test_that("whether anova.glm and spaMM:::.anova.glm give equivalent results for singular X",
                     testthat::expect_true(crit<1e10))
 
 donn$dummy<- c(0,0,0,1,1,1) # completely équivalent to b1 or b2!

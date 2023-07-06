@@ -230,6 +230,51 @@
   return(newZAlist)
 }
 
+.simulate_ranef <- function(object, rd, newdata, 
+                           cum_n_u_h=attr(object$lambda,"cum_n_u_h"), 
+                           vec_n_u_h=diff(cum_n_u_h), 
+                           fittedLambda=object$lambda.object$lambda_est, 
+                           nsim, 
+                           lcrandfamfam=attr(object$rand.families,"lcrandfamfam")) {
+  nr <- vec_n_u_h[rd]
+  u.range <- (cum_n_u_h[rd]+1L):(cum_n_u_h[rd+1L])
+  if ( ! is.null(object$rand.families[[rd]]$prior_lam_fac) && ! is.null(newdata)) { # prior_lam_fac is the 'design' for non-ranCoef (wei-1|.)
+    leftOfBar_terms <- attr(object$ZAlist,"exp_ranef_terms")[[rd]][[2L]]
+    leftOfBar_mf <- model.frame(as.formula(paste("~",leftOfBar_terms)), newdata, xlev = NULL) 
+    prior_lam_fac <- leftOfBar_mf[,1L]^2 ## assumes simple syntax (wei-1|.)
+    loclambda <- object$lambda.object$lambda_list[[rd]]* prior_lam_fac
+  } else loclambda <- fittedLambda[u.range] ## includes prior_lam_fac
+  newU <- replicate(nsim, {
+    switch(lcrandfamfam[rd], ## remainder of code should be OK for rand.families
+           gaussian = rnorm(nr,sd=sqrt(loclambda)),
+           gamma = rgamma(nr,shape=1/loclambda,scale=loclambda),
+           beta = rbeta(nr,1/(2*loclambda),1/(2*loclambda)),
+           "inverse.gamma" = 1/rgamma(nr,shape=1+1/loclambda,scale=loclambda), ## yields inverse gamma (1+1/object$lambda,1/object$lambda)
+           conditional= rep(0,length(loclambda)), ## conditional random effects already in predictor
+           stop("(!) random sample from given rand.family not yet implemented")
+    )},simplify=TRUE) ## should have nsim columns
+  object$rand.families[[rd]]$linkfun(newU) 
+}
+
+simulate_ranef <- function(object, which=NULL, newdata=NULL, nsim=1L) {
+  cum_n_u_h <- attr(object$lambda,"cum_n_u_h")
+  vec_n_u_h <- diff(cum_n_u_h)
+  if (is.null(which)) which <- seq_along(vec_n_u_h)
+  nwhich <- length(which)
+  newb <- vector("list", nwhich)
+  for (rd in seq_along(which)) {
+    newb[[rd]] <- .simulate_ranef(object=object, rd=which[rd], newdata=newdata, 
+                                  cum_n_u_h=cum_n_u_h, 
+                                  vec_n_u_h=vec_n_u_h, 
+                                  fittedLambda=object$lambda.object$lambda_est, 
+                                  nsim=nsim, 
+                                  lcrandfamfam=attr(object$rand.families,"lcrandfamfam"))
+  }
+  if (nsim>1L) {
+    newb <- do.call(rbind, newb)
+  } else newb <- unlist(newb)
+  newb
+}
 
 # simulate.HLfit(fullm[[2]],newdata=fullm[[1]]$data,size=fullm[[1]]$data$total) for multinomial avec binomial nichées de dimension différentes
 # FR->FR misses the computation of random effects for new spatial positions: cf comments in the code below
@@ -393,27 +438,12 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
         lcrandfamfam <- attr(object$rand.families,"lcrandfamfam") ## unlist(lapply(object$rand.families, function(rf) {tolower(rf$family)}))
         if (inherits(re.form,"formula")) lcrandfamfam[newinold] <- "conditional" ## if is.na(re.form), lcrandfamfam is unchanged
         fittedLambda <- object$lambda.object$lambda_est
-        locfn <- function(it) {
-          nr <- vec_n_u_h[it]
-          u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
-          if ( ! is.null(object$rand.families[[it]]$prior_lam_fac) && ! is.null(newdata)) { # prior_lam_fac is the 'design' for non-ranCoef (wei-1|.)
-            leftOfBar_terms <- attr(object$ZAlist,"exp_ranef_terms")[[it]][[2L]]
-            leftOfBar_mf <- model.frame(as.formula(paste("~",leftOfBar_terms)), newdata, xlev = NULL) 
-            prior_lam_fac <- leftOfBar_mf[,1L]^2 ## assumes simple syntax (wei-1|.)
-            loclambda <- object$lambda.object$lambda_list[[it]]* prior_lam_fac
-          } else loclambda <- fittedLambda[u.range] ## includes prior_lam_fac
-          newU <- replicate(needed,{
-            switch(lcrandfamfam[it], ## remainder of code should be OK for rand.families
-                   gaussian = rnorm(nr,sd=sqrt(loclambda)),
-                   gamma = rgamma(nr,shape=1/loclambda,scale=loclambda),
-                   beta = rbeta(nr,1/(2*loclambda),1/(2*loclambda)),
-                   "inverse.gamma" = 1/rgamma(nr,shape=1+1/loclambda,scale=loclambda), ## yields inverse gamma (1+1/object$lambda,1/object$lambda)
-                   conditional= rep(0,length(loclambda)), ## conditional random effects already in predictor
-                   stop("(!) random sample from given rand.family not yet implemented")
-            )},simplify=TRUE) ## should have nsim columns
-          object$rand.families[[it]]$linkfun(newU) 
-        }
-        newV <- lapply(seq(length(vec_n_u_h)), locfn ) ## one multi-rand.family simulation
+        newV <- vector("list", length(vec_n_u_h))
+        for (rd in seq_along(newV)) {
+          newV[[rd]] <- .simulate_ranef(object, rd=rd, vec_n_u_h=vec_n_u_h, cum_n_u_h=cum_n_u_h, 
+                                        newdata=newdata, fittedLambda=fittedLambda, 
+                                       nsim=needed, lcrandfamfam=lcrandfamfam)
+        } ## one multi-rand.family simulation
         newV <- do.call(rbind,newV) ## each column a simulation
         eta <-  matrix(rep(eta_fixed,needed),ncol=needed) + as.matrix(ZAL %id*% newV) ## nobs rows, nsim col
         mu <- vector("list",needed)

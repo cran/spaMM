@@ -42,7 +42,7 @@
   X_scaling=TRUE,
   minLambda=1e-8,
   maxLambda=1e8,
-  regul_lev_lambda=1e-16, # ___F I X M E___
+  regul_lev_lambda=1e-16, #has now seemed OK since at least v3.12.13 (July 2022)
   ############## augZXy stuff (see also ranCoefs settings)
   allow_augZXy=NULL, ## interpreted as TRUE if phiScal (=>not phiFix) before further conditions are applied, and FALSE otherwise 
   # allow_augZXy=2L forces augZXy usage with non-constant prior weights, if other conditions for its usage are satisfied.
@@ -64,7 +64,9 @@
   bobyqa=list(), 
   nlminb=list(), 
   # default value for nloptr() 'opts':
-  nloptr=list(algorithm="NLOPT_LN_BOBYQA",xtol_rel=5e-6, print_level=0), # nloptr options only control the termination criteria, not the step sizes. Nothing like rhobeg
+  nloptr=list(algorithm="NLOPT_LN_BOBYQA",
+              xtol_rel=4e-6, # cf comment on compMatfit
+              print_level=0), # nloptr options only control the termination criteria, not the step sizes. Nothing like rhobeg
   ## further control of nloptr 'opts' (but not suitable input for 'opts'):
   xtol_abs_factors=c(abs=1e-8, # That's the general one when next ones are not used. # cf comments in .xtol_abs_fn()
                      rcLam=5e-7,rcCor=5e-6,others=5e-11), # ____F I X M E____ all only when there are ranCoefs...
@@ -168,6 +170,7 @@
   xLM_conv_silent=FALSE,
   xLM_conv_crit=list(max=-Inf),
   NbThreads=1L,
+  diagnose_conv=2000L,
   #
   # devl
   .betaFn=function(v) {sign(v)*log1p(abs(v))},

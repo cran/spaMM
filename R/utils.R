@@ -8,8 +8,25 @@
     invokeRestart("muffleWarning")
   }
   list(value = withCallingHandlers(tryCatch(expr, error = function(e) e),
-   				     warning = w.handler),
+                                   warning = w.handler),
        warning = W)
+}
+
+# ~ suppressWarnings(try(, silent=TRUE)) ; try() doc recommends tryCatch() when silent=TRUE
+.silent_W_E <- function(expr) {
+  w.handler <- function(w){ # warning handler
+    invokeRestart("muffleWarning")
+  }
+  withCallingHandlers(tryCatch(expr, error = function(e) e),
+                      warning = w.handler)
+}
+
+.silent_M_E <- function(expr) {
+  m.handler <- function(m){ 
+    invokeRestart("muffleMessage")
+  }
+  withCallingHandlers(tryCatch(expr, error = function(e) e),
+                      message = m.handler)
 }
 
 .minimalErrorHandler <- function(cond) invisible(structure("See 'condition' attribute", class = "try-error", condition = cond))
@@ -150,15 +167,17 @@ print.bootci4print <- function(x, ...) {
   }
 }
 
+# if bool = TRUE, returns test whether in Rstudio session
+# if bool = FALSE  (useful only for devel), returns path of project, or NULL, or a try-error
 .inRstudio <- function(silent=FALSE, bool=TRUE) {
-  trygetfn <- try(get("getActiveProject",envir = asNamespace("rstudioapi")), silent=silent) # fails if rstudioapi not installed
-  if ( tryres <- ( ! inherits(trygetfn,"try-error"))) {
-    tryres <- try(trygetfn(), silent=silent) # fails if rstudioapi not running ie not an Rstudio session
-    # otherwise NULL if no active project, or the path if there is an active project.
-  }
-  if (bool) tryres <- ! inherits(tryres,"try-error") # to return a boolean : whether we are in an Rstudio session or not
-  # otherwise retuen value is (try-error, or NULL, or path).
-  tryres 
+  tryres <- exists("RStudio.Version", envir = globalenv()) # from rstudioapi:::callLauncherFun 
+  if (tryres && ! bool) { # we're in Rstudio
+    trygetfn <- try(get("getActiveProject",envir = asNamespace("rstudioapi")), silent=silent) # fails if rstudioapi not installed
+    if ( tryres <- ( ! inherits(trygetfn,"try-error"))) {
+      tryres <- try(trygetfn(), silent=silent) # NULL if no active project, or the path if there is an active project.
+    }
+    tryres 
+  } else tryres
 }
 
 projpath <- local({
@@ -169,10 +188,10 @@ projpath <- local({
         projpathinRstudio <- .inRstudio(silent=FALSE, bool=FALSE)
         if (inherits(projpathinRstudio,"try-error") || is.null(projpathinRstudio)) { # not an Rstudio session || no active project
           if (interactive()) {
-            message('Need to give the project path, say "C:/home/francois/travail/stats/spaMMplus/spaMM":')
+            message('Need to give the project path, say "D:/home/francois/travail/stats/spaMMplus/spaMM":')
             pp <<- readline(prompt="Enter path: ")
           } else {
-            message('Need to start in the projpath, say "C:/home/francois/travail/stats/spaMMplus/spaMM", so that getwd() finds it.')
+            message('Need to start in the projpath, say "D:/home/francois/travail/stats/spaMMplus/spaMM", so that getwd() finds it.')
             pp <<- getwd()                  # would reach here in an R CMD check session (but in principle projpath() is never called in this context, 
                                             # except perhaps wrapped in a if (file_exists())
           }
@@ -341,9 +360,9 @@ projpath <- local({
   w.ranef <- attr(spprec,"w.ranef")
   ZAL_scaling <- 1/sqrt(w.ranef*H_global_scale) ## Q^{-1/2}/s
   ZAL <- .Matrix_times_Dvec(ZAL,ZAL_scaling) # should use another input ZAL more generally
-  Zero_sparseX <- rbind2(AUGI0_ZX$ZeroBlock, AUGI0_ZX$X.pv)
+  Zero_X <- rbind2(AUGI0_ZX$ZeroBlock, AUGI0_ZX$X.pv)
   I_ZAL <- rbind2(AUGI0_ZX$I, ZAL)
-  Xscal <- cbind2(I_ZAL, Zero_sparseX)
+  Xscal <- cbind2(I_ZAL, Zero_X)
   attr(Xscal,"AUGI0_ZX") <- AUGI0_ZX # environment => cheap access to its 'envir$updateable' variable or anything else 
   spcorr <- do.call(def_sXaug_Matrix_CHM_H_scaled,
                     list(Xaug=Xscal, weight_X=weight_X, w.ranef=w.ranef, H_global_scale=H_global_scale))
@@ -366,3 +385,15 @@ projpath <- local({
 }
 
 .safe_true <- function(cond) {( identical(cond,TRUE) ||       (( ! is.na(cond)) && is.numeric(cond) && cond>0) )   } # must exclude NA_real_ and allow 1 or 1L...
+
+# .pMatrix_perm <- function(pMat) {
+#   if (.hasSlot(pMat, "margin") && pMat@margin==2) {
+#     sort.list(pMat@perm)
+#   } else pMat@perm
+# }
+# 
+# .tpMatrix_perm <- function(tpMat) {
+#   if (.hasSlot(tpMat, "margin") && pMat@margin==2) {
+#     sort.list(pMat@perm)
+#   } else pMat@perm
+# }

@@ -32,7 +32,7 @@ myARp <- ARp                   #  defines 'new' corrFamily from built-in one
 
 # fitme(lh ~ 1 + myARp(1|time), data=ts, method="REML")
 
-# but thisworks if we first register "myARp"
+# but this works if we first register "myARp"
 
 register_cF("myARp")           #  registers it
 

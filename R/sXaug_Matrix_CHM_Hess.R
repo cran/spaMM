@@ -23,8 +23,8 @@ def_sXaug_Matrix_CHM_H_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale, 
   # both to block operations here, and to other sXaug methods, which would thus all 
   # have a $AUGI0_ZX (for stable info cross sXaug) and a $BLOB.  
   if (is.null(template <- AUGI0_ZX_envir$template_CHM_negHess)) { 
-    BLOB$CHMfactor <- suppressWarnings(try(Matrix::Cholesky(negHess,LDL=FALSE, perm=TRUE), silent=TRUE))
-    if ((nonSPD <- inherits(BLOB$CHMfactor, "try-error")) || force_QRP) {
+    BLOB$CHMfactor <- .silent_W_E(Matrix::Cholesky(negHess,LDL=FALSE, perm=TRUE))
+    if ((nonSPD <- inherits(BLOB$CHMfactor, "simpleError")) || force_QRP) {
       return(def_sXaug_Matrix_QRP_CHM_scaled(Xaug,weight_X,w.ranef,H_global_scale, nonSPD=nonSPD)) 
       ## lowest <- RSpectra::eigs(as(negHess,"dgCMatrix"), k=1, which="SR", opts=list(retvec=FALSE))$values
       # EEV <- extreme_eig(as(negHess,"dgCMatrix"), symmetric=TRUE, required=TRUE)
@@ -34,8 +34,8 @@ def_sXaug_Matrix_CHM_H_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale, 
       if (all(AUGI0_ZX_envir$updateable)) AUGI0_ZX_envir$template_CHM_negHess <- BLOB$CHMfactor
     }
   } else {
-    BLOB$CHMfactor <- suppressWarnings(try(Matrix::.updateCHMfactor(template, negHess, mult=0), silent=TRUE)) 
-    if ((nonSPD <- inherits(BLOB$CHMfactor, "try-error")) || 
+    BLOB$CHMfactor <- .silent_W_E(Matrix::.updateCHMfactor(template, negHess, mult=0)) 
+    if ((nonSPD <- inherits(BLOB$CHMfactor, "simpleError")) || 
         force_QRP
         # if I force QRP at this stage, in LevM case with signs, the exact H is never used (current QRP_CHM method; modifying its LevM algo seems difficult).
         # Without force_QRP, LevM uses the exact H with signs as long as the H is SPD (CHM_H methods).
@@ -123,8 +123,11 @@ def_sXaug_Matrix_CHM_H_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale, 
     n_u_h <- attr(sXaug,"n_u_h")
     #
     # : stores the whole CHMfactor object which has useful methods including solve()
-    BLOB$perm <- as(BLOB$CHMfactor,"pMatrix")@perm 
-    delayedAssign("L_scaled", as(BLOB$CHMfactor,"sparseMatrix"), assign.env = BLOB )
+    pMat <- as(BLOB$CHMfactor,"pMatrix")
+    if (.hasSlot(pMat, "margin") && pMat@margin==2) {
+      BLOB$perm <- sort.list(pMat@perm)
+    } else BLOB$perm <- pMat@perm 
+    delayedAssign("L_scaled", as(BLOB$CHMfactor,"CsparseMatrix"), assign.env = BLOB )
     delayedAssign("invsqrtwranef", 1/sqrt(attr(sXaug,"w.ranef")), assign.env = BLOB )
     delayedAssign("sortPerm", sort.list(BLOB$perm), assign.env = BLOB ) # never NULL
     delayedAssign("u_h_cols_on_left", (max(BLOB$sortPerm[seq_len(n_u_h)])==n_u_h), assign.env = BLOB ) # but currently a single use
@@ -145,8 +148,8 @@ def_sXaug_Matrix_CHM_H_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale, 
       } else inv_d2hdv2 <- .Matrix_times_Dvec(.crossprod(BLOB$inv_factor_wd2hdv2w), BLOB$invsqrtwranef) 
       inv_d2hdv2 <- .Dvec_times_Matrix( - BLOB$invsqrtwranef,inv_d2hdv2)
     }, assign.env = BLOB )
-    delayedAssign("logdet_R_scaled_b_v", Matrix::determinant(BLOB$CHMfactor)$modulus[1], assign.env = BLOB )
-    delayedAssign("logdet_R_scaled_v", { Matrix::determinant(BLOB$CHMfactor_wd2hdv2w)$modulus[1] }, assign.env = BLOB ) 
+    delayedAssign("logdet_R_scaled_b_v", Matrix::determinant(BLOB$CHMfactor, sqrt=TRUE)$modulus[1], assign.env = BLOB )
+    delayedAssign("logdet_R_scaled_v", { Matrix::determinant(BLOB$CHMfactor_wd2hdv2w, sqrt=TRUE)$modulus[1] }, assign.env = BLOB ) 
     delayedAssign("logdet_sqrt_d2hdv2", { sum(log(attr(sXaug,"w.ranef")))/2 + BLOB$logdet_R_scaled_v }, assign.env = BLOB )
     delayedAssign("logdet_r22", { BLOB$logdet_R_scaled_b_v - BLOB$logdet_R_scaled_v - attr(sXaug,"pforpv")*log(attr(sXaug,"H_global_scale"))/2 }, assign.env = BLOB )
     delayedAssign("hatval", { # colSums(t_Q_scaled@x^2)
@@ -299,7 +302,7 @@ def_sXaug_Matrix_CHM_H_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale, 
   } 
   if (which=="R_scaled_v_h_blob") {
     if (is.null(BLOB$R_scaled_v_h_blob)) {
-      R_scaled_v_h <- t( as(BLOB$CHMfactor_wd2hdv2w,"sparseMatrix") ) ## the t() for .damping_to_solve... (fixme: if we could avoid t()...)
+      R_scaled_v_h <- t( as(BLOB$CHMfactor_wd2hdv2w,"CsparseMatrix") ) ## the t() for .damping_to_solve... (fixme: if we could avoid t()...)
       tmp <- R_scaled_v_h 
       xx <- tmp@x
       xx <- xx*xx

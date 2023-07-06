@@ -325,7 +325,7 @@
     } else {
       d2hdv2 <- .calcD2hDv2(ZAL,.get_H_w.resid(object),object$w.ranef) 
       if (inherits(d2hdv2,"sparseMatrix")) {
-        d2hdv2_info <- suppressWarnings(try(Cholesky( - d2hdv2,LDL=FALSE,perm=TRUE ), silent=TRUE )) #  '-' ! 
+        d2hdv2_info <- .silent_W_E(Cholesky( - d2hdv2,LDL=FALSE,perm=TRUE )) #  '-' ! 
         if (inherits(d2hdv2_info, "CHMfactor")) {
           #d2hdv2_info <- structure(d2hdv2_info, BLOB=list2env(list(), parent=environment(.solve_CHM)))
           rank <- ncol(d2hdv2)
@@ -368,7 +368,7 @@
     if (is.null(factor_inv_Md2hdv2 <- envir$factor_inv_Md2hdv2)) { 
       d2hdv2 <- .calcD2hDv2(ZAL,object$w.resid,object$w.ranef) 
       if (inherits(d2hdv2,"sparseMatrix")) {
-        d2hdv2_info <- suppressWarnings(try(Cholesky( - d2hdv2,LDL=FALSE,perm=TRUE ), silent=TRUE )) #  '-' ! 
+        d2hdv2_info <- .silent_W_E(Cholesky( - d2hdv2,LDL=FALSE,perm=TRUE )) #  '-' ! 
         if (inherits(d2hdv2_info, "CHMfactor")) {
           #d2hdv2_info <- structure(d2hdv2_info, BLOB=list2env(list(), parent=environment(.solve_CHM)))
           rank <- ncol(d2hdv2)
@@ -520,8 +520,8 @@
     if (inherits(precmat,"dsCMatrix") && inherits(ZtwrZ,"dsCMatrix")) {
       Gmat <- .dsCsum(precmat,ZtwrZ)
     } else Gmat <- precmat + ZtwrZ  
-    invG_ZtW <- try(solve(Gmat, t(wrZ)),silent=TRUE)
-    if (inherits(invG_ZtW,"try-error")) { ## but that should be well behaved when precmat is.
+    invG_ZtW <- tryCatch(solve(Gmat, t(wrZ)),error=function(e) e)
+    if (inherits(invG_ZtW,"simpleError")) { ## but that should be well behaved when precmat is.
       invG <- ginv(as.matrix(Gmat)) ## FIXME quick patch at least
       invG_ZtW <- .tcrossprod(invG, wrZ)
     }  
@@ -536,8 +536,8 @@
     if (is.null(ZAL)) { # GLM... or LLM
       if (any(ww<0)) { # ... LLM
         negHess <- crossprod(AUGI0_ZX$X.pv, .Dvec_times_m_Matrix( ww, AUGI0_ZX$X.pv))
-        cholH <- try(chol(negHess), silent=TRUE)
-        if (inherits(cholH, "try-error")) { # => brute regularization
+        cholH <- tryCatch(chol(negHess),error=function(e) e)
+        if (inherits(cholH, "simpleError")) { # => brute regularization
           warning("logLik presumably not maximized (information matrix is not positive definite at attained estimates).", immediate. = TRUE)
           beta_cov <- tcrossfac_beta_v_cov <- matrix(NA, ncol=ncol(negHess), nrow=ncol(negHess))
         } else {
@@ -557,7 +557,7 @@
   if (inherits(wAugX,"Matrix")) {
     corr_method <- .spaMM.data$options$Matrix_method 
   } else corr_method <- .spaMM.data$options$matrix_method
-  suppressMessages(try(untrace(corr_method, where=asNamespace("spaMM")),silent=TRUE)) # try() bc this fails when called by Infusion 
+  .silent_M_E(untrace(corr_method, where=asNamespace("spaMM"))) # try() bc this fails when called by Infusion 
   # test: Infusion tests -> ... -> .predict_body -> ;.. -> .calc_beta_cov_info_others -> untrace -> def_sXaug_EigenDense_QRP_Chol_scaled not found
   # Note that the function is in exportPattern, explicitly exporting/impporting it does not help; attaching spaMM seems required to avoid untrace's error..
   # hack to recycle sXaug code; all weights are 1 or unit vectors as the order is not that assumed by corr_method. 

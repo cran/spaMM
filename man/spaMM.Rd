@@ -45,7 +45,7 @@ Both maximum likelihood (ML) and restricted likelihood (REML) can be used for li
 
 Different LHS types of \strong{gaussian} \code{(<LHS>|<RHS>)} random-effect terms are handled, with the following effects:
 \preformatted{
-* <logical> (TRUE/FALSE): affects only responses for which <LHS> is TRUE; % equiv O + as.numeric(<logical>)
+* <logical> (TRUE/FALSE): affects only responses for which <LHS> is TRUE. 
 * <factor built from a logical>: same a <logical> case;
 * <factor not built from a logical>: random-coefficient term as in lme4;
 * 0 + <factor not built from a logical>: same but contrasts are not used;
@@ -56,12 +56,10 @@ Different LHS types of \strong{gaussian} \code{(<LHS>|<RHS>)} random-effect term
   with 2*2 covariance matrix of effects on Intercept and slope;
 * 0 + <numeric>: no Intercept so no covariance matrix (random-slope-only 
    term);
-* the "experimental" dummy() specifier described in the lme4 documentation
-  has been found to work with spaMM too. 
 }
 The '0 + <numeric>' effect is achieved by direct control of the elements of the incidence matrix \bold{Z} through the \code{<LHS>} term: for numeric \code{z}, such elements are multiplied by \code{z} values, and thus provide a variance of order O(\code{z} \bold{squared}).
 
-If one wishes to fit uncorrelated group-specific random-effects with distinct variances for different groups or for different response variables, three syntaxes are thus possible. The most general, suitable for fitting several variances (see {help("GxE")} for an example), is to fit a (0 + <factor>| <RHS>) random-coefficient term with correlation(s) fixed to 0. Alternatively, one can define \bold{numeric} (0|1) variables for each group (as \code{as.numeric(<boolean for given group membership>)}), and use each of them in a \verb{0 + <numeric>} LHS (so that the variance of each such random effect is zero for response not belonging to the given group). Using \code{dummy} factors for each level of the original factor can achieve the same effect without coding new variables in the data. These syntaxes are illustrated in the \dQuote{Elementary multivariate-response} example below for two groups (males and females). 
+If one wishes to fit uncorrelated group-specific random-effects with distinct variances for different groups or for different response variables, three syntaxes are thus possible. The most general, suitable for fitting several variances (see {help("GxE")} for an example), is to fit a (0 + <factor>| <RHS>) random-coefficient term with correlation(s) fixed to 0. Alternatively, one can define \bold{numeric} (0|1) variables for each group (as \code{as.numeric(<boolean for given group membership>)}), and use each of them in a \verb{0 + <numeric>} LHS (so that the variance of each such random effect is zero for response not belonging to the given group). See \code{\link{lev2bool}} for various ways of specifying such indicator variables for several levels.
 
 \strong{Gaussian} \code{<prefix>(<LHS not 1>|<RHS>)} random-effect terms may be handled, with two main cases depending on the LHS type, motivated by the following example: independent Matérn effects can be fitted for males and females by using the syntax \code{Matern(male|.) + Matern(female|.)}, where \code{male} and \code{female} are TRUE/FALSE (or a factor with TRUE/FALSE levels). In contrast to a \code{(male|.)} term, no random-coefficient correlation matrix is fitted. However, for some other types of RHS, one can fit \emph{composite random effects} combining a random-coefficient correlation matrix and the correlation model defined by the \dQuote{prefix}. This combination is defined in \code{\link{composite-ranef}}. This leads to the following distinction:\cr 
 \verb{   } * The terms are *not* composite random effects when the non-\sQuote{\code{1}} LHS type is boolean or factor-from-boolean, a just illustrated, but also \code{0+<numeric>}: for example, \code{Matern(0+<numeric>|.)} represents an autocorrelated random-slope (only) term or, equivalently, a direct specification of heteroscedasticity of the Matérn random effect.\cr
@@ -89,7 +87,9 @@ Rousset F., Ferdy, J.-B. (2014) Testing environmental and genetic effects in the
 
 }
 \seealso{
-The \code{test} directory of the package provides many additional examples of \pkg{spaMM} usage beyond those from the formal documentation. 
+See the \code{test} directory of the package for many additional examples of \pkg{spaMM} usage beyond those from the formal documentation. 
+
+See \code{\link{fitme}} for multivariate-response models. 
 }
 
 \examples{
@@ -145,30 +145,6 @@ if (spaMM.getOption("example_maxtime")>1.5) {
         resid.model = ~ 1+(1|batch) ,data=wafers)
 }
 
-## Elementary multivariate-response model (see fitmv() for a more general procedure) 
-# Data preparation
-fam <- rep(c(1,2),rep(6,2)) # define two biological 'families'
-ID <- gl(6,2) # define 6 'individuals'
-resp <- as.factor(rep(c("x","y"),6)) # distinguishes two responses per individual
-set.seed(123)
-toymv <- data.frame(
-  fam = factor(fam), ID = ID, resp = resp, 
-  y = 1 + (resp=="x") + rnorm(4)[2*(resp=="x")+fam] + rnorm(12)[6*(resp=="x")+as.integer(ID)],
-  respX = as.numeric(resp=="x"),
-  respY = as.numeric(resp=="y")
-)
-#
-# fit response-specific variances of random effect and residuals: 
-(fitme(y ~ resp+ (0+respX|fam)+ (0+respY|fam), resid.model = ~ 0+resp ,data=toymv))
-#
-# Same result by different syntaxes:
-#
-(fitme(y ~ resp+ (0+resp|fam), resid.model = ~ 0+resp ,data=toymv, 
-       fixed=list(ranCoefs=list("1"=c(NA,0,NA)))))
-
-# or by the dummy() specifier from lme4:
-# (fitme(y ~ resp+ (0+dummy(resp,"x")|fam)+ (0+dummy(resp,"y")|fam), 
-#        resid.model = ~ 0+resp ,data=toymv))
 }
 \keyword{ package }
 \keyword{spatial}

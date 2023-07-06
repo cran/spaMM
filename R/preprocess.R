@@ -79,9 +79,9 @@
 }
 
 .checkRespFam <- function(family, spaMM.=TRUE) {
-  family <- try(family,silent=TRUE)
-  if (inherits(family, "try-error")) { # presumably 'mgcv::negbin()' ['mgcv::negbin' handled below]
-    if ( attr(family,"condition")$message == "'theta' must be specified") {
+  family <- tryCatch(family,error=function(e) e)
+  if (inherits(family, "simpleError")) { # presumably 'mgcv::negbin()' ['mgcv::negbin' handled below]
+    if ( family$message == "'theta' must be specified") {
       mess <- "spaMM::negbin is masked by mgcv::negbin. Unload mgcv, or use 'family=spaMM::negbin'."
       stop(mess)
       #family <- spaMM::negbin()
