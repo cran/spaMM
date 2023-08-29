@@ -1,3 +1,4 @@
+
 .get_u_h <- function(object) {
   if (is.null(u_h <- object$u_h)) u_h <- attr(object$v_h, "u_h") # non-null $ranef is before v3.8.34
   u_h    
@@ -441,10 +442,10 @@ residVar <- function(object, which="var", submodel=NULL, newdata=NULL) {
     newframes_info=
       .get_new_X_ZAC_blob(object, newdata=newdata, re.form=NULL,  
                           variances=.process_variances(list(residVar=TRUE), object), 
-                          control=list(keep_ranef_vars_for_simulate=FALSE, simulate=FALSE),
+                          control=list(keep_ranef_covs_for_simulate=FALSE, simulate=FALSE),
                           invCov_oldLv_oldLv_list=
                             .get_invColdoldList(object, 
-                                                control=list(keep_ranef_vars_for_simulate=FALSE, simulate=FALSE))), 
+                                                control=list(keep_ranef_covs_for_simulate=FALSE, simulate=FALSE))), 
     mv_it=NULL,
     locdata=newdata,
     dims, 
@@ -589,21 +590,59 @@ vcov.HLfit <- function(object, ...) {
   return(beta_cov)
 }
 
-# addition post 1.4.4
-Corr <- function(object,...) { ## compare ?VarCorr
-  trivial <- "No non-trivial correlation matrix for this random effect"
-  strucList <- object$strucList
-  locfn <- function(it) {
-    resu <- object$cov.mats[[it]]
-    if (is.null(resu)) resu <- .tcrossprod(strucList[[it]],NULL, perm=TRUE)
-    if (is.null(resu)) resu <- trivial 
-    return(resu) ## may still be NULL
+.Corr <- function(object, rd, A, cov2cor., ...) {
+  resu <- object$cov.mats[[rd]] # should NOT contain everything 
+  if (A) {
+    char_rd <- as.character(rd)
+    sub_corr_info <- object$ranef_info$sub_corr_info
+    AMatrix <- sub_corr_info$AMatrices[[char_rd]]
+    if ( ! is.null(AMatrix)) {
+      L <- object$strucList[[rd]]
+      # : it's no longer clear when this L is the tcross factor (with the Q_CHMfactor as attribute...) or is the Q_CHMfactor
+      if (inherits(L,"dCHMsimpl")) L <- solve(L, system="Lt", b=.sparseDiagonal(n=ncol(L), shape="g"))  
+      AL <- AMatrix %*% L 
+      if ( object$ranef_info$vec_normIMRF[rd]) { # normalized IMRF
+        invnorm <- 1/sqrt(rowSums(AL^2)) # diag(tcrossprod...)
+        normAL <- .Dvec_times_Matrix(invnorm, AL)
+        resu <- tcrossprod(normAL) # correlation matrix
+      } else {
+        resu <- tcrossprod(AL) # [IMRF not normalized => not correlation matrix] or not IMRF
+      }
+    } else resu <- .tcrossprod(object$strucList[[rd]],NULL, perm=TRUE) # no A
+  } else resu <- .tcrossprod(object$strucList[[rd]],NULL, perm=TRUE) # A ignored even if it exists.
+  
+  if (is.null(resu)) {
+    resu <- "No non-trivial correlation matrix for this random effect." 
+  } else if (cov2cor.) {
+    exp_ranef_type <- attr(attr(object$ZAlist,"exp_ranef_strings"),"type")[[rd]] 
+    known_homosc <- (exp_ranef_type %in% .spaMM.data$keywords$built_in_ranefs &&
+                       ! exp_ranef_type %in% c("IMRF", "MaternIMRFa"))
+    if ( (! known_homosc) && any(abs(diag(resu)-1)>1e-6)) {
+      # if (inherits(resu,"Matrix") #&& 
+      #     # .calc_denseness(resu, relative = TRUE) < .spaMM.data$options$sparsity_threshold
+      #     ) { 
+      #   resu <- Matrix::cov2cor(resu) # cov2cor is not documented as a generic... but see Matrix::cov2cor
+      # } else resu <- cov2cor(as.matrix(resu)) # Matrix::cov2cor(<dsC>) is slow and we're not specifically interested in returning a dsC
+      #
+      # Potential pb is that although AL may or may not be effectively sparse, 
+      #  it is a sparseMatrix and the crossprod is in sparse dsC format
+      # I decided to keep this sparse Matrix storage  (memory rather than speed optim)
+      resu <- cov2cor(resu) 
+    }
   }
+  return(resu)
+}
+
+Corr <- function(object, A=TRUE, cov2cor.=TRUE, ...) { ## compare ?VarCorr
+  strucList <- object$strucList
   if ( ! is.null(strucList)) {
-    resu <- lapply(seq_len(length(strucList)), locfn) ## list for the different ranefs   
+    resu <- vector("list", length(strucList)) 
+    for (rd in seq_along(strucList)) {
+      resu[[rd]] <- .Corr(object, rd=rd, A=A, cov2cor.=cov2cor., ...)
+    }
   } else {
-    message(trivial)
-    resu <- list(`1`=trivial) 
+    message("No non-trivial correlation matrix for this model.")
+    resu <- list() 
   }
   return(resu)
 }
@@ -1639,7 +1678,7 @@ model.frame.HLfit <- function(formula, # the generic was poorly conceived... for
 
 df.residual.HLfit <- function(object, ...) {
   dfs <- object$dfs
-  dfs$p_fixef_phi <- NULL # For dhglms the dfs of the residual model is more generally given by .calc_p_phi().... 
+  dfs$p_fixef_phi <- NULL # For dhglms the dfs of the residual model is more generally given by .calc_p_rdisp().... 
   length(object$y) - sum(.unlist(dfs)) # ... But the aim of the present fn is precisely to remove dfs of other parameters.
 }
 

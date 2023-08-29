@@ -12,6 +12,11 @@ testthat::expect_equal(dim(simulate(HLC, type = "predVar", nsim=2,
 testthat::expect_equal(dim(simulate(HLC, type = "predVar", nsim=1,
                                     variances=list(linPred=TRUE, disp=FALSE,cov=TRUE))),NULL) ## vector length N -> OK
 
+# check that ZAL is used in marginal simulation (here, further, with new locations):
+set.seed(123)
+check_marg_ZAL <- simulate(HLC, newdata=Loaloa[c(1:3,1:3)+0.1,], sizes=HLC$BinomialDen[1:6])
+crit <- unique(check_marg_ZAL - c(53L, 73L, 68L, 23L, 52L, 55L))
+testthat::expect_equal(crit,0) 
 
 cat("simulate on trivial toy examples:\n") 
 x0 <- c(-1, 1)

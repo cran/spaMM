@@ -383,3 +383,8 @@ confint.HLfit <- function(object, parm, level=0.95, verbose=TRUE,
     } else invisible(resu)
   }
 }
+
+# for a respint() concept, see LawlessF05
+# requires the user to provide a function that simulates the new obs (!= data) to be predicted
+# and a function that evaluates the pdf of such new obs for given parameters (argh)
+

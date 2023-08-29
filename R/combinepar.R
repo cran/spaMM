@@ -6,7 +6,7 @@
     )))
   } else if (foreach_args[[".errorhandling"]]=="stop" && inherits(bootreps,"try-error")) {            
     # foreach alters the condition message => seel '\"' after 'could not find'
-    if (grep("could not find",(condmess <- conditionMessage(attr(bootreps,"condition"))))) {
+    if (length(grep("could not find",(condmess <- conditionMessage(attr(bootreps,"condition")))))) {
       firstpb <- strsplit(strsplit(condmess,"could not find")[[1]][2],"\"")[[1]][2]
       cat(crayon::bold(paste0(
         "Hmmm. It looks like some variables were not passed to the parallel processes.\n",
@@ -318,14 +318,14 @@ combinepar <- function(newresp, fn, nb_cores=NULL, cluster=NULL,
         if (cluster_is_local) .wrap_registerDoParallel(cl, iseed)
         bootreps <- .foreach_PSOCK_nofuture(newresp=newresp, fn=fn, control=control, ...)
       } # has_doSNOW ... else has_doFuture ... else ...
-      if (inherits(bootreps,"try-error") &&
-          grep("could not find",(condmess <- conditionMessage(attr(bootreps,"condition"))))
-      ) {
-        firstpb <- strsplit(condmess,"\"")[[1]][2]
-        cat(crayon::bold(paste0(
-          "Hmmm. It looks like some variables were not passed to the parallel processes.\n",
-          "Maybe add    ",firstpb," = ",firstpb,"   to spaMM_boot()'s 'fit_env' argument?\n"
-        )))
+      if (inherits(bootreps,"try-error") ) {
+        if (length(grep("could not find",(condmess <- conditionMessage(attr(bootreps,"condition")))))) {
+          firstpb <- strsplit(condmess,"\"")[[1]][2]
+          cat(crayon::bold(paste0(
+            "Hmmm. It looks like some variables were not passed to the parallel processes.\n",
+            "Maybe add    ",firstpb," = ",firstpb,"   to spaMM_boot()'s 'fit_env' argument?\n"
+          )))
+        } else cat(crayon::bold(condmess))
       }
     } # FORK ... else
     if (cluster_is_local) {

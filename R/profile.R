@@ -73,7 +73,9 @@ spaMM.getOption <- function (x) {spaMM.options(x, warn=FALSE)[[1]]}
   #   # ..trDiagonal <<- memoise(f=..trDiagonal, cache = .do_call_wrap("cache_mem", arglist=list(max_size = 1024^2), pack="cachem"))
   #   # s.get_phantom_map <<- memoise(f=.get_phantom_map, cache = .do_call_wrap("cache_mem", arglist=list(max_size = 1024^2), pack="cachem"))
   # } # 
-  .setNbThreads(thr=1L)
+  #
+  backports::import(pkgname, "...names") # to ensure back compat as long as spaMM supports R < 4.1
+  .setNbThreads(thr=1L) # at C++ level for Eigen; only initialization, can be modified by control.HLfit$nbTHreads
   .spaMM.data$options$Matrix_old <- (packageVersion("Matrix")<"1.4-2")
 }
 

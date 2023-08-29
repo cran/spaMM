@@ -42,11 +42,11 @@
   ZAL <- get_ZALMatrix(object, force_bind=FALSE) # allows ZAXlist; but if a non-ZAXlist is already in the $envir, no effect; + we will solve(chol_Q, Diagonal()) so the gain is not obvious
   if ( ncol(X_ori <- model.matrix(object)) ) {
     M12 <- .crossprod(ZAL, .Dvec_times_m_Matrix(H_w.resid, X_ori), as_mat=TRUE)
-    Md2clikdvb2 <- rbind2(cbind2(as.matrix(.ZtWZwrapper(ZAL,H_w.resid)), M12), ## this .ZtWZwrapper() takes time
-                          cbind2(t(M12), as.matrix(.ZtWZwrapper(X_ori,H_w.resid)))) 
+    Md2clikdvb2 <- rbind2(cbind2(as.matrix(.safe_ZtWZwrapper(ZAL,H_w.resid)), M12), ## this .ZtWZwrapper() takes time
+                          cbind2(t(M12), as.matrix(.safe_ZtWZwrapper(X_ori,H_w.resid)))) 
     # _FIXME_ any way to avoid formation of this matrix ? Or otherwise message() ?           
   } else {
-    Md2clikdvb2 <-  as.matrix(.ZtWZwrapper(ZAL,H_w.resid))
+    Md2clikdvb2 <-  as.matrix(.safe_ZtWZwrapper(ZAL,H_w.resid))
   }
   tcrossfac_v_beta_cov <- .calc_Md2hdvb2_info_spprec(X.pv=X_ori, envir=object$envir, 
                                                      which="tcrossfac_v_beta_cov") 
@@ -73,11 +73,11 @@
   ZAL <- get_ZALMatrix(object, force_bind=FALSE) # allows ZAXlist; but if a non-ZAXlist is already in the $envir, no effect; + we will solve(chol_Q, Diagonal()) so the gain is not obvious
   if ( ncol(X_ori) ) {
     M12 <- .crossprod(ZAL, .Dvec_times_m_Matrix(H_w.resid, X_ori), as_mat=TRUE)
-    Md2clikdvb2 <- rbind2(cbind2(as.matrix(.ZtWZwrapper(ZAL,H_w.resid)), M12), ## this .ZtWZwrapper() takes time
-                          cbind2(t(M12), as.matrix(.ZtWZwrapper(X_ori,H_w.resid)))) 
+    Md2clikdvb2 <- rbind2(cbind2(as.matrix(.safe_ZtWZwrapper(ZAL,H_w.resid)), M12), ## this .ZtWZwrapper() takes time
+                          cbind2(t(M12), as.matrix(.safe_ZtWZwrapper(X_ori,H_w.resid)))) 
     # _FIXME_ any way to avoid formation of this matrix ? Or otherwise message() ?           
   } else {
-    Md2clikdvb2 <-  as.matrix(.ZtWZwrapper(ZAL,H_w.resid))
+    Md2clikdvb2 <-  as.matrix(.safe_ZtWZwrapper(ZAL,H_w.resid))
   }
   # not triang if we used sparse QR. Following code should not assume triangularity
   pd <- .calc_pd_product(tcrossfac_v_beta_cov, Md2clikdvb2)
@@ -87,13 +87,13 @@
 .calc_cAIC_pd_others <- function(X.pv, ZAL, w.resid, d2hdv2, blockSize=1000L) {
   if ( ncol(X.pv) ) { ## the projection matrix for the response always includes X even for REML!
     hessnondiag <- .crossprod(ZAL, .Dvec_times_m_Matrix(w.resid, X.pv))
-    Md2hdbv2 <- as.matrix(rbind2(cbind2(.ZtWZwrapper(X.pv,w.resid), t(hessnondiag)),
+    Md2hdbv2 <- as.matrix(rbind2(cbind2(.safe_ZtWZwrapper(X.pv,w.resid), t(hessnondiag)),
                                  cbind2(hessnondiag, - d2hdv2))) 
-    Md2clikdbv2 <- as.matrix(rbind2(cbind2(.ZtWZwrapper(X.pv,w.resid), t(hessnondiag)),
-                                    cbind2(hessnondiag, .ZtWZwrapper(ZAL,w.resid))))            
+    Md2clikdbv2 <- as.matrix(rbind2(cbind2(.safe_ZtWZwrapper(X.pv,w.resid), t(hessnondiag)),
+                                    cbind2(hessnondiag, .safe_ZtWZwrapper(ZAL,w.resid))))            
   } else {
     Md2hdbv2 <- - d2hdv2 
-    Md2clikdbv2 <-  as.matrix(.ZtWZwrapper(ZAL,w.resid))
+    Md2clikdbv2 <-  as.matrix(.safe_ZtWZwrapper(ZAL,w.resid))
   }
   if (inherits(Md2hdbv2,"diagonalMatrix")) {
     pd <- sum(diag(Md2clikdbv2)/diag(Md2hdbv2)) ## is sum(diag(solve(Md2hdbv2,Md2clikdbv2)))
@@ -146,7 +146,7 @@
   return(bootBC)
 }
 
-.calc_p_phi <- function(object, dfs=object$dfs) {
+.calc_p_rdisp <- function(object, dfs=object$dfs) {
   p_phi <- dfs[["p_fixef_phi"]]
   if  ( ! is.null(resid_fits <- object$resid_fits)) { # i.e mv fit =>$resid_fit*s*
     p_phi <- sum(na.omit(unlist(p_phi)),
@@ -165,15 +165,29 @@
   p_phi
 }
 
+DoF <- function(object) {
+  dfs <- object$dfs
+  if ( ! inherits(dfs,"list")) dfs <- as.list(dfs) ## back compatibility
+  dfs[["p_fixef"]] <- dfs[["pforpv"]] 
+  dfs[["p_rdisp"]] <- .calc_p_rdisp(object, dfs) 
+  dfs["pforpv"] <- dfs["p_phi"] <- dfs["p_fixef_phi"] <- list(NULL) # make sure to erase any previously pre-existing redundant info
+  if (object$models[[1]]=="etaHGLM") {
+    if (is.null(p_corrPars <- dfs[["p_corrPars"]])) { ## back compatibility code, 
+      dfs[["p_corrPars"]] <- length(which(unlist(attr(object$CorrEst_and_RanFix,"type")$corrPars, use.names = FALSE) %in% c("outer","var")))
+      # This is not the full count for up-to date spaMM (hyper param are missing), 
+      # but should be OK for old objects to which this back compat code applies.
+    } # ELSE up do date objects should already have a correct p_corrPars
+  }
+  unlist(dfs)
+}
+
+
+
 .get_info_crits <- function(object, also_cAIC=TRUE, nsim=0L, ...) { 
   if (is.null(info_crits <- object$envir$info_crits) || (also_cAIC && is.null(info_crits[["cAIC"]]))) { 
-    dfs <- object$dfs
-    if ( ! inherits(dfs,"list")) dfs <- as.list(dfs) ## back compatibility
-    pforpv <- dfs[["pforpv"]]
-    p_phi <- .calc_p_phi(object, dfs)
-    p_lambda <- dfs[["p_lambda"]]
+    dof <- DoF(object)
+    p_rdisp <- dof[["p_rdisp"]]
     APHLs <- object$APHLs
-    H_w.resid <- .get_H_w.resid(object)
     info_crits <- list()
     # poisson-Gamma and negbin should have similar similar mAIC => NB_shape as one df or lambda as one df   
     forAIC <- APHLs
@@ -184,32 +198,10 @@
       # if standard ML: there is an REMLformula ~ 0 (or with ranefs ?); processed$X.Re is 0-col matrix
       # if standard REML: REMLformula is NULL: $X.Re is X.pv, processed$X.Re is NULL
       # non standard REML: other REMLformula: $X.Re and processed$X.Re identical, and may take essentially any value
-      # if (identical(attr(object$REMLformula,"isML"),TRUE)) {
-      #   Md2hdbv2 <- - d2hdv2 
-      #   Md2clikdbv2 <-  as.matrix(.ZtWZwrapper(ZAL,w.resid))
-      # } else {
-      #   ## REML standard || REML non standard
-      #   X.Re <- object$distinctX.Re ## null if not distinct from X.pv
-      #   if (is.null(X.Re)) X.Re <- object$X.pv ## standard REML
-      #   ## diff de d2hdbv2 slmt dans dernier bloc (-> computation pd)
-      #   hessnondiag <- .crossprod(ZAL, .Dvec_times_m_Matrix(w.resid, X.pv))
-      #   Md2hdbv2 <- as.matrix(rbind2(cbind2(.ZtWZwrapper(X.Re,w.resid), t(hessnondiag)),
-      #                                cbind2(hessnondiag, - d2hdv2))) 
-      #   Md2clikdbv2 <- as.matrix(rbind2(cbind2(.ZtWZwrapper(X.Re,w.resid), t(hessnondiag)),
-      #                                   cbind2(hessnondiag, .ZtWZwrapper(ZAL,w.resid))))            
-      # }
       X.pv <- model.matrix(object)
-      if (is.null(p_corrPars <- dfs[["p_corrPars"]])) { ## back compatibility code, 
-        # old code, presumably missing inner-estimated adjacency params 
-        #corrPars <- get_ranPars(object,which="corrPars")
-        #p_corrPars <- length(intersect(names_est_ranefPars,names(corrPars)))
-        # Here inner-estimated adjacency params are in the "vars" 
-        p_corrPars <- length(which(unlist(attr(object$CorrEst_and_RanFix,"type")$corrPars, use.names = FALSE) %in% c("outer","var")))
-        # This is not the full count for up-to date spaMM (hyper param are missing), 
-        # but should be OK for old objects to which this back compat code applies.
-      }
-      info_crits$mAIC <- -2*forAIC$p_v + 2 *(pforpv+p_lambda+p_corrPars+p_phi)
-      info_crits$dAIC <- -2*forAIC$p_bv + 2 * (p_lambda+p_phi+p_corrPars) ## HaLM07 (eq 10) focussed for dispersion params
+      alldfs <- sum(dof)
+      info_crits$mAIC <- -2*forAIC$p_v + 2 *(alldfs)
+      info_crits$dAIC <- -2*forAIC$p_bv + 2 * (alldfs- dof[["p_fixef"]]) ## HaLM07 (eq 10) focussed for dispersion params
       #                                                                             including the rho param of an AR model
       if (also_cAIC) {
         if (.is_spprec_fit(object)) {
@@ -217,28 +209,30 @@
         } else if ( ! is.null(object$envir$sXaug)) { 
           pd <- .calc_cAIC_pd_from_sXaug(object)
         } else { # SEM
+          H_w.resid <- .get_H_w.resid(object)
           ZAL <- .compute_ZAL(XMatrix=object$strucList, ZAlist=object$ZAlist,as_matrix=.eval_as_mat_arg.HLfit(object)) 
           d2hdv2 <- .calcD2hDv2(ZAL,H_w.resid,object$w.ranef) ## update d2hdv2= - t(ZAL) %*% diag(w.resid) %*% ZAL - diag(w.ranef)
           pd <- .calc_cAIC_pd_others(X.pv, ZAL, H_w.resid, d2hdv2)
         }
         info_crits$GoFdf <- length(object$y) - pd ## <- nobs minus # df absorbed in inference of ranefs
         ## eqs 4,7 in HaLM07
-        info_crits$cAIC <- -2*forAIC$clik + 2*(pd+p_phi) ## no p_lambda !
+        info_crits$cAIC <- -2*forAIC$clik + 2*(pd+p_rdisp) ## no p_lambda ! Presumably if resid disp is declared as individual-level ranef,
+        # p_rdisp is reduced to 0 but pd is increased by as much so the result is still correct...
       }
       # print(c(pd,p_phi))
       # but Yu and Yau then suggest caicc <- -2*clik + ... where ... involves d2h/db d[disp params] and d2h/d[disp params]2
     } else { ## fixed effect model
-      info_crits$cAIC <- info_crits$mAIC <- -2*forAIC$p_v+2*(pforpv+p_phi) 
+      info_crits$cAIC <- info_crits$mAIC <- -2*forAIC$p_v+2*(dof[["p_fixef"]]+p_rdisp) 
       # => sets cAIC so that (also_cAIC && is.null(info_crits[["cAIC"]])) becomes FALSE although also_cAIC is true by default...
     }
     object$envir$info_crits <- info_crits
-  } else p_phi <- NULL
+  } else p_rdisp <- NULL
   if ( nsim>0L ) {
-    if (is.null(p_phi)) p_phi <- .calc_p_phi(object)
+    if (is.null(p_rdisp)) p_rdisp <- .calc_p_rdisp(object)
     b_pd <- .calc_boot_AIC_dfs(object, nsim=nsim, ...)
     if (object$models[[1]]=="etaHGLM") {
-      object$envir$info_crits$b_cAIC <- -2*object$APHLs$clik + 2*(b_pd+p_phi)
-    } else object$envir$info_crits$b_cAIC <- -2*object$APHLs$p_v + 2*(b_pd+p_phi) # as documented
+      object$envir$info_crits$b_cAIC <- -2*object$APHLs$clik + 2*(b_pd+p_rdisp)
+    } else object$envir$info_crits$b_cAIC <- -2*object$APHLs$p_v + 2*(b_pd+p_rdisp) # as documented
   } 
   return(object$envir$info_crits)
 }
@@ -498,22 +492,22 @@
     wrZ <- .Dvec_times_m_Matrix(H_w.resid, ZAfix) # suppressMessages(sweep(t(ZA), 2L, w.resid,`*`)) 
     if (TRUE) { 
       ZtwrZ <- .crossprod(ZAfix, wrZ, as_sym=TRUE) ## seems more precise and we must compute wrZ anyway
-    } else ZtwrZ <- .ZtWZwrapper(ZAfix,.get_H_w.resid(object)) ## -> calls .crossprod(., y=NULL) affects numerical precision of twolambda test in test-predVar.R
+    } else ZtwrZ <- .safe_ZtWZwrapper(ZAfix,.get_H_w.resid(object)) ## -> calls .crossprod(., y=NULL) affects numerical precision of twolambda test in test-predVar.R
     ## is general ZtwrZ should be sparse, while invL may not. Large dense invL will away be a problem
     ## for small Z, ZtwrZ may bedsy, but this an un-intersting subcase that does not call for a special treatment
     if (inherits(ZtwrZ,"dsCMatrix") || inherits(ZtwrZ,"dsyMatrix")) {
       # (NB: dsy+dsy faster than dsC+dsy but maybe just because of conversion from dsC to dsy ?) => no obvious improvement
       if (.is_identity(invL)) {
         precmat <- .symDiagonal(x=object$w.ranef) # dsC+dsC
-      } else precmat <- .ZtWZwrapper(invL,object$w.ranef) # dsC+whatever 
+      } else precmat <- .safe_ZtWZwrapper(invL,object$w.ranef) # dsC+whatever 
     } else if (inherits(ZtwrZ,"ddiMatrix")) {
       if (.is_identity(invL)) {
         precmat <- Diagonal(x=object$w.ranef) # ddi+ddi...
-      } else precmat <- .ZtWZwrapper(invL,object$w.ranef) # ddi+whatever
+      } else precmat <- .safe_ZtWZwrapper(invL,object$w.ranef) # ddi+whatever
     } else { # ("matrix") may never occur 
       if (.is_identity(invL)) {
         precmat <- diag(x=object$w.ranef)
-      } else precmat <- .ZtWZwrapper(invL,object$w.ranef)
+      } else precmat <- .safe_ZtWZwrapper(invL,object$w.ranef)
       message("Possibly inefficient code in .calc_invV_factors().")
     } 
     ## try to sum dsC or to sum dense matrix but not to mix types..., and to avoid formation of a large nxn matrix:

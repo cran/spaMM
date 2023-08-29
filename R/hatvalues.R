@@ -1,3 +1,23 @@
+# Only called in hatvalues() post-fit. The fit mostly uses processed$updateW_ranefS()  
+.updateW_ranefS <- function(cum_n_u_h, rand.families, lambda, u_h, v_h, 
+                            w.ranef_list=vector("list", length(rand.families)), 
+                            dlogWran_dv_h_list=vector("list", length(rand.families)), 
+                            dvdu_list=vector("list", length(rand.families))) {
+  nrand <- length(rand.families)
+  for (it in seq_len(nrand)) {
+    u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
+    blob <- .updateWranef(rand.family=rand.families[[it]],lambda[u.range],u_h[u.range],v_h[u.range])
+    w.ranef_list[[it]] <- blob$w.ranef
+    dlogWran_dv_h_list[[it]] <- blob$dlogWran_dv_h
+    dvdu_list[[it]] <- blob$dvdu
+  }
+  resu <- list(w.ranef=.unlist(w.ranef_list),dlogWran_dv_h=.unlist(dlogWran_dv_h_list),dvdu=.unlist(dvdu_list))
+  ## the test is invalid for ranCoefs:
+  # if (nrand==1L && rand.families[[1L]]$family=="gaussian") resu$unique_w.ranef <- w.ranef[[1L]] # used in sparsePrecision code
+  #if (length(unique_w.ranef <- unique(w.ranef))==1L) resu$unique_w.ranef <- unique_w.ranef # used in sparsePrecision code
+  resu
+}
+
 # hatvalues is a generic
 hatvalues.HLfit <- function(model, type="projection", which="resid", force=FALSE, ...) { 
   loctype <- switch(type,

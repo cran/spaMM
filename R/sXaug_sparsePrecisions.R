@@ -656,7 +656,7 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
     #  and  as(tmp,"symmetricMatrix") is dsy not dsC
     # so there is no way to make sure that the result is dsC without adding as(.,"dsCMatrix") in .ZtWZwrapper or .crossprod
     .ad_hoc_dsy_warning()
-    ZtWZ <- as(ZtWZ,"dsCMatrix")
+    ZtWZ <- as(ZtWZ,"CsparseMatrix")
   }
   if (inherits(ZtWZ,"dsCMatrix") && inherits(precisionMatrix,"dsCMatrix") ) { # test introduced 02/2020. 
     .dsCsum(ZtWZ, precisionMatrix) # faster than tmp + precisionMatrix where '+' calls forceSymmetric(callGeneric(as(e1, "dgCMatrix"), as(e2, "dgCMatrix")))

@@ -22,6 +22,6 @@ div_info(object, ...)
 \value{Used mainly for the side effects (printed output) but returns invisibly either a single parameter vector (if a single numerical problem occurred) or a matrix of parameter ranges, or NULL if there is no problem to report.
 }
 \examples{
-# Tragically ;-), no simple example of numerical problems % ____F I X M E____
+# Tragically ;-), no simple example of numerical problems 
 # that can be diagnosed by div_info() is currently available.
 }

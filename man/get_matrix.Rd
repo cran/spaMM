@@ -23,6 +23,9 @@ get_ZALMatrix(object, force_bind=TRUE)
 \value{
 A matrix, possibly in \code{\link[Matrix]{sparseMatrix}} format.
 }
+\seealso{
+\code{\link{vcov}} for the variance-covariance matrix of the fixed-effects coefficients, and \code{\link{Corr}} for correlation matrices of random effects.
+}
 \details{
 (Given the pain that it is to write maths in R documentation files, readers are gently asked to be tolerant about any imperfections of the following).
 

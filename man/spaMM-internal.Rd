@@ -1,6 +1,6 @@
 \name{spaMM-internal}
 
-% TODO ___F I X M E___ % * retry outer beta estim ? I have something that runs, see 'outerbetaML' test
+% TODO % * retry outer beta estim ? Without gradient... hum. see 'outerbetaML' test
 % * Something about .predictions methods when predict returns a data frame ?
 
 \alias{gridIMRF} % ___F I X M E___

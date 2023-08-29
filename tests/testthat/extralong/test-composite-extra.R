@@ -5,16 +5,19 @@ cat(crayon::yellow("checks AR1 composite"))
 { # test different algebras
   ts <- data.frame(lh=lh,time=seq(48)) ## using 'lh' data from 'stats' package
   
-  (compAR1fitde <-  fitme(lh ~ 1 + AR1(time|time), data=ts, # control.HLfit=list(algebra="spcorr"), 
+  (compAR1fitsp <-  fitme(lh ~ 1 + AR1(time|time), data=ts, # control.HLfit=list(algebra="spcorr"), 
                           lower=list(phi=1e-4),
                           fixed=list(ranCoefs=list("1"=c(NA,0.1,NA)))))
-  if ( ! compAR1fitde$how$MME_method[1]=="sXaug_EigenDense_QRP_Chol_scaled") { # yes, dense...
+  # Here dense is slightly faster but currently not selected 
+  # rel_ZAL_denseness*nr/(nc^(2/3)) is 111.0373, rel_ZAL_denseness*nr/(nc) is 24.25, 3/4 -> 75.9066
+  # so values of spprec crit are uniformly larger than in 'orpredcheck' case where sparse is faster. Hummm (___F I X M E___)
+  if ( ! compAR1fitsp$how$MME_method[1]=="AUGI0_ZX_spprec") {
     stop("default MME_method has changed...")
   }
   (compAR1fit <-  fitme(lh ~ 1 + AR1(time|time), data=ts, control.HLfit=list(algebra="spcorr"), 
                         lower=list(phi=1e-4),
                         fixed=list(ranCoefs=list("1"=c(NA,0.1,NA)))))
-  (compAR1fitsp <-  fitme(lh ~ 1 + AR1(time|time), data=ts, control.HLfit=list(algebra="spprec"), 
+  (compAR1fitde <-  fitme(lh ~ 1 + AR1(time|time), data=ts, control.HLfit=list(algebra="decorr"), 
                           #lower=list(phi=1e-4, ranCoefs=list("1"=c(0.001,0.0002))), # with ad hoc lower ranCoefs... 
                           # The ad-hoc 'fixed' and/or 'lower' to avoid singularities (ARphi->1, phi->0) and associated numerical imprecisions
                           lower=list(phi=1e-4),

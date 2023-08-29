@@ -89,7 +89,7 @@ get_any_IC(m1, also_cAIC=FALSE)
 
 if (spaMM.getOption("example_maxtime")>4) {
  get_any_IC(m1, nsim=100L, seed=123) # provides bootstrap estimate of cAIC.
- # (parallelisation options could be used, e.g. nb_cores=detectCores()-1L)
+ # (parallelisation options could be used, e.g. nb_cores=detectCores(logical=FALSE)-1L)
 }
 
 extractAIC(m1)

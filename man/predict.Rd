@@ -71,8 +71,8 @@ get_intervals(..., intervals="predVar")
  }
  \item{fixdata}{A data frame describing reference data whose covariances with variable \code{newdata} may be requested.}
  \item{fix_X_ZAC.object}{The return value of calling \code{preprocess_fix_corr} (see trivial Example). This is a more efficient way of providing information about the \code{fixdata} for repeated calls to \code{get_predCov_var_fix} with variable \code{newdata}.}
- \item{blockSize}{
-   Mainly for development purposes. For original or new data with many rows, it may be more efficient to split these data in small blocks, and this gives the maximum number or rows of the blocks. However, this will be ignored if a prediction covariance matrix is requested.    
+ \item{blockSize}{ Integer, better ignored in normal use.  
+   For data with many rows, it may be more efficient to perform some operations on slices of the data, and this gives the maximum number or rows of the slices used in an internal slicing mechanism. 
  }
 \item{type}{character string; The returned point predictions are on the response scale if \code{type="response"} (the default; for binomial response, a frequency 0<.<1). It is on the linear predictor scale if \code{type="link"}. \cr
 * The \dQuote{prediction variance} (as opposed to the response variance, see \code{\link{predVar}}) that may be returned as a \code{"predVar"}  attribute of the point predictions is always on the linear predictor scale, even when \code{type="response"}. If you want to extract this \code{predVar} transformed to the response scale, use \code{predict(.,variances=list(respVar=TRUE))} and take the difference between the \code{respVar} and \code{residVar} attributes of the result.\cr
@@ -99,6 +99,8 @@ get_intervals(..., intervals="predVar")
   For spatial random effects it constructs a correlation matrix \bold{C} between new locations and locations in the original fit. Then it infers the random effects in the new locations as   \bold{C} (\bold{L}'\eqn{)^{-1}} \bold{v} (see \code{\link{spaMM}} for notation).   For non-spatial random effects, it checks whether any group (i.e., level of a random effect) in the new data was represented in the original data, and it adds the inferred random effect for this group to the prediction for individuals in this group. 
 
 In the \bold{point prediction} of the linear predictor, the unconditional expected value of \eqn{u} is assigned to the realizations of \eqn{u} for unobserved levels of non-spatial random effects (it is zero in GLMMs but not for non-gaussian random effects), and the inferred value of \eqn{u} is assigned in all other cases. Corresponding values of \eqn{v} are then deduced. This computation yields the classical \dQuote{BLUP} or empirical Bayes predictor in LMMs, but otherwise it may yield less well characterized predictors, where \dQuote{unconditional} \eqn{v} may not be its expected value when the \code{rand.family} link is not identity. 
+
+There are cases where prediction without a \code{newdata} argument may give results of different length than prediction with \code{newdata=}<original data>, as for \code{\link{predict}}. Notably, for multivariate-response fits, different subsets of lines of the data may be used for each submodel depending on the availability of all variables (including the response variable) for each submodel, and the resulting fitted values from each submodel will be used from prediction; while prediction with \code{newdata} does not check the availability of a response variable.
 
 \bold{Intervals} computations use the relevant variance estimates plugged in a Gaussian approximation, except for the simple linear model where it uses Student's \emph{t} distribution.   
 

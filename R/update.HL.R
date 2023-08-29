@@ -129,32 +129,23 @@ update.HLfit <- function(object, formula., ..., evaluate = TRUE) {
   } else call
 }
 
-.update_data <- function(object, newresp) {
-  mf <- model.frame(object)
+.update_data <- function(object, re_data=object$data, mf=model.frame(object), newresp, respName=object$respName) {
+  # mf <- model.frame(object)
   #form <- formula.HLfit(object, which="hyper")
   if (inherits(mf,"list")) { # list of data.frames (with attributes): mv case : then newresp is assumed to be the result of simulate, an overlong vector.
-    re_data <- object$data
+    attr(re_data,"validrownames") <- NULL # Will be presumably overwritten anyway, but let's play safe.
     nobs <- nrow(re_data)
     frst <- 0L
+    respNames <- object$respNames
     for (mv_it in seq_along(mf)) {
       lst <- frst+nobs
       resp_i <- newresp[(frst+1L):lst]
+      re_data <- .update_data(object, re_data=re_data, mf=mf[[mv_it]], newresp=newresp[(frst+1L):lst], respName=respNames[mv_it])
       frst <- lst
-      Y <- model.response(mf[[mv_it]])
-      if (NCOL(Y)==2L) {
-        colY <- colnames(Y)
-        if (colY[1L]!="") re_data[,colY[1L]] <- resp_i
-        if (colY[2L]!="") re_data[,colY[2L]] <- rowSums(Y)-resp_i
-      } else { # colnames(Y) is typically NULL
-        if (inherits(mf[[mv_it]][[1L]],"AsIs")) {
-          stop("the response of the original fit is as 'AsIs' term, I(.), which is not handled by code updating response.")
-        } else re_data[colnames(mf[[mv_it]])[1L]] <- resp_i 
-      }
     }
     return(re_data)
   }
-  Y <- model.response(mf)
-  re_data <- object$data
+  Y <- model.response(mf) # its nrow cannot be used (pb in mv zero-truncated models) 
   if (NCOL(Y)==2L) { ## paste(form[[2L]])[[1L]]=="cbind"
     # model.frame is a data frame whose 1st element is a 2-col matrix with unnamed first column
     # model.response() extracts this matrix:
@@ -172,7 +163,17 @@ update.HLfit <- function(object, formula., ..., evaluate = TRUE) {
     if (inherits(mf[[1L]],"AsIs")) {
       stop("the response of the original fit is as 'AsIs' term, I(.), which is not handled by code updating response.")
       # the alternative would be to change internally the lhs of the formula...
-    } else re_data[colnames(mf)[1L]] <- newresp # could use all.vars(formula(object)[-3]) to get a single var from an expression... but if expression has several variabls...
+    } else {
+      if (is.null(respName) || is.na(respName)) {
+        resp_expr <- colnames(mf)[1L]
+        if (resp_expr %in% colnames(re_data)) {
+          re_data[resp_expr] <- newresp 
+        } else stop(paste0("Response, ",resp_expr,", is not a variable in the 'data'.\n",
+                           "See help('respName') for how to handle this case."))
+      } else if (respName %in% colnames(re_data)) {
+        re_data[respName] <- newresp 
+      } else stop(paste0("Variable, ",respName,", is not a variable in the 'data'."))
+    }
   }
   return(re_data)
 }
@@ -224,10 +225,12 @@ update_resp <- function(object, newresp, ...,  evaluate = TRUE) {
       re_call <- as.call(re_call)
     }
   }
-  if (preprocess_handles_terms_info_attr <- TRUE) {
+  if (.spaMM.data$options$use_terms_info_attr && # trying to no longer use:
+      (preprocess_handles_terms_info_attr <- TRUE) # handles it (except for silent mutations... )
+     ) {
+    # the data were not updated, to deal with case now handled by $respName[s] [see Details in help("update.HLfit")], 
+    #      but other variables in the $data may still be used for resid model.
     re_call$data <- structure(object$data, updated_terms_info=.update_main_terms_info(object, newresp=newresp))
-    # the data are not updated [why? => see Details in help("update.HLfit")], but other variables in the $data may still be used for resid model.
-    #if ( ! inherits(re_call$data, "HLframes")) stop("*F I X M E*")
   } else re_call$data <- .update_data(object, newresp=newresp)
   if (evaluate) 
     eval(re_call, parent.frame())

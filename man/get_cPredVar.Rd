@@ -52,7 +52,8 @@ if(requireNamespace("rsae", quietly = TRUE)) {
                                 CountyName=landsat$CountyName))
   (cpredvar <- get_cPredVar(fitCorn, newdata=newXandZ, nsim=200L, seed=123)) # serial computation
   (cpredvar <- get_cPredVar(fitCorn, newdata=newXandZ, nsim=200L, seed=123, 
-        nb_cores=parallel::detectCores()-1L, fit_env=list2env(list(newXandZ=newXandZ))))
+        nb_cores=parallel::detectCores(logical=FALSE)-1L, 
+        fit_env=list2env(list(newXandZ=newXandZ))))
 }
 
 # GLMM example from Booth & Hobert 1998 JASA
@@ -61,7 +62,8 @@ fitClinics <- HLfit(cbind(npos,nneg)~treatment+(1|clinic),family=binomial(),data
 #
 (get_cPredVar(fitClinics, newdata=clinics[1:8,], nsim=200L, seed=123))  # serial computation
 (get_cPredVar(fitClinics, newdata=clinics[1:8,], nsim=200L, seed=123, 
-      nb_cores=parallel::detectCores()-1L, fit_env=list2env(list(clinics=clinics))))
+      nb_cores=parallel::detectCores(logical=FALSE)-1L, 
+      fit_env=list2env(list(clinics=clinics))))
 }
 }
 

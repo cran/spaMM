@@ -187,7 +187,7 @@
     #if (length(unique_w.ranef <- unique(w.ranef))==1L) resu$unique_w.ranef <- unique_w.ranef # used in sparsePrecision code
     resu
   }
-  .updateW_ranefS
+  .updateW_ranefS # carrying required variables in its defining environment. 
 }
 
 
@@ -217,6 +217,29 @@
   }
 }
 
+.Z_times_L_with_attrs <- function(Z, Amatrix) {
+  is_incid <- attr(Z,"is_incid")
+  if (inherits(Amatrix,"pMatrix")) {
+    Amatrix <- as(as(Amatrix, "nMatrix"), "TsparseMatrix") # => ngTMatrix 
+  } else if ( ! is.null(is_incid)) {
+    is01col <- attr(is_incid,"is01col")
+    if (is_incid) is_incid <- attr(Amatrix,"is_incid") # .spaMM_spde.make.A() provides this attr. Otherwise, may be NULL, in which case ./.
+    # ./. a later correct message may occur ("'is_incid' attribute missing, which suggests inefficient code in .calc_new_X_ZAC().)
+    if (is_incid) attr(is_incid,"is01col") <- FALSE # conservative default: ZA no longer 1col anyway...
+  } 
+  ZAnames <- colnames(Z)
+  if ( ! setequal(rownames(Amatrix),ZAnames)) {
+    mess <- paste0("Any 'A' matrix must have row names that match the levels of the random effects\n (",
+                   paste0(ZAnames[1L:min(5L,length(ZAnames))], collapse=" "),if(length(ZAnames)>5L){"...)."} else{")."})
+    stop(mess)
+  }
+  Z <- Z %*% Amatrix[ZAnames,] 
+  rownames(Z) <- NULL
+  attr(Z,"is_incid") <- is_incid
+  Z
+}
+
+
 .calc_ZAlist <- function(Zlist, AMatrices) { 
   if ( length(Zlist) > 0L ) {
     if (length(AMatrices)) {
@@ -225,24 +248,7 @@
       ## logic is Z[nresp,nUniqueRespLoc].A[nUniqueRespLoc,nHiddenv].L[nHiddenv,nHiddenv]
       for (char_rd in Znames) {
         Amatrix <- AMatrices[[char_rd]]
-        if ( ! is.null(Amatrix)) {
-          is_incid <- attr(Zlist[[char_rd]],"is_incid")
-          if (inherits(Amatrix,"pMatrix")) {
-            Amatrix <- as(as(Amatrix, "nMatrix"), "TsparseMatrix") # => ngTMatrix 
-          } else if ( ! is.null(is_incid)) {
-            if (is_incid) is_incid <- attr(Amatrix,"is_incid") # .spaMM_spde.make.A() provides this attr. Otherwise, may be NULL, in which case ./.
-            # ./. a later correct message may occur ("'is_incid' attribute missing, which suggests inefficient code in .calc_new_X_ZAC().)
-          } 
-          ZAnames <- colnames(Zlist[[char_rd]])
-          if ( ! setequal(rownames(Amatrix),ZAnames)) {
-            mess <- paste0("Any 'A' matrix must have row names that match the levels of the random effects\n (",
-                           paste0(ZAnames[1L:min(5L,length(ZAnames))], collapse=" "),if(length(ZAnames)>5L){"...)."} else{")."})
-            stop(mess)
-          }
-          Zlist[[char_rd]] <- Zlist[[char_rd]] %*% Amatrix[ZAnames,] # for the IMRF model, Z must be identity
-          rownames(Zlist[[char_rd]]) <- NULL
-          attr(Zlist[[char_rd]],"is_incid") <- is_incid
-        }
+        if ( ! is.null(Amatrix)) Zlist[[char_rd]] <- .Z_times_L_with_attrs(Z=Zlist[[char_rd]], Amatrix) 
       }
       attr(Zlist,"AMatrices") <- AMatrices 
     } else attr(Zlist,"AMatrices") <- list() # to allow any later fn such as .assign_geoinfo.... to safely set named elements to it. 
@@ -903,20 +909,54 @@
   nrand <- length(exp_ranef_terms)
   vec_normIMRF <- rep(FALSE, nrand)
   for (rd in seq_along(exp_ranef_terms)) { 
-    corr_type <- corr_types[[rd]]
-    if (! is.na(corr_type)) {
-      if (corr_type== "IMRF" ) {
-        useNorm <- attr(attr(exp_ranef_terms[[rd]],"type"),"pars")$no 
-        if (is.null(useNorm)) {
-          stop("is.null(useNorm)")  # DEBUGGING
-        } else vec_normIMRF[rd] <- useNorm
-      } else if (corr_type== "corrFamily" ) {
-        useNorm <- corr_families[[1]]$normIMRF
-        if ( ! is.null(useNorm)) {
-          vec_normIMRF[rd] <- useNorm
-        } # else leave it FALSE 
-      } 
-    }
+    # if (TRUE) {
+      exp_ranef_type <- attr(exp_ranef_terms[[rd]],"type")
+      if (! is.null(exp_ranef_type)) {
+        if (exp_ranef_type=="IMRF") {
+          useNorm <- attr(exp_ranef_type,"pars")$no # default set by .process_IMRF_bar
+          if (is.null(useNorm)) {
+            stop("is.null(useNorm)")  # DEBUGGING
+          } else vec_normIMRF[rd] <- useNorm 
+        } else if (exp_ranef_type=="MaternIMRFa") {
+          vec_normIMRF[rd] <- attr(exp_ranef_type,"pars")$norm # default set by .process_MaternIMRFa_bar
+        } else if (! is.na(corr_type <- corr_types[[rd]])) { # i.e. belongs to .spaMM.data$keywords$special_ranefs, see comments in this variable's definition.
+          # in mv fits, this fn is evaluated while corr_families[[rd]] is still a stub.
+          # This is why the attr(attr(exp_ranef_terms[[rd]],"type"),"pars") must be looked at.
+          # This is special code providing this attrs is needed for some corr_type's. => .process_IMRF_bar() etc.
+          # There is no such special code for a generic|unregisted corrFamily type
+          #  which explains why such type may not work properly in an mv fit.
+          if (corr_type== "corrFamily" ) { # 
+            useNorm <- corr_families[[rd]]$normIMRF # from the <corrFamily>'s definition, e.g., MaternIMRFa
+            if ( ! is.null(useNorm)) {
+              vec_normIMRF[rd] <- useNorm
+            } # else corr_families[[rd]]$normIMRF is NULL (from stub or other) and then vec_normIMRF[rd] remains FALSE. 
+          } 
+        }
+      }
+    # } else { # old code with failure 
+    #   corr_type <- corr_types[[rd]]
+    #   if (! is.na(corr_type)) { # i.e. belongs to .spaMM.data$keywords$special_ranefs, see comments in this variable's definition.
+    #     # in mv fits, this fn is evaluated while corr_families[[rd]] is still a stub.
+    #     # This is why the attr(attr(exp_ranef_terms[[rd]],"type"),"pars") must be looked at.
+    #     # This is special code providing this attrs is needed for some corr_type's. => .process_IMRF_bar() etc.
+    #     # There is no such special code for a generic|unregisted corrFamily type
+    #     #  which explains why such type may not work properly in an mv fit.   
+    #     if (corr_type== "IMRF" ) {
+    #       useNorm <- attr(attr(exp_ranef_terms[[rd]],"type"),"pars")$no # default set by .process_IMRF_bar
+    #       if (is.null(useNorm)) {
+    #         stop("is.null(useNorm)")  # DEBUGGING
+    #       } else vec_normIMRF[rd] <- useNorm 
+    #     # } else if (corr_type== "MaternIMRFa" ) { #THAT WON'T WORK bc "MaternIMRFa" is not a possible value for corr_type
+    #       # The corr_type for a MaternIMRFa is "corrFamily"
+    #     #   vec_normIMRF[rd] <- attr(attr(exp_ranef_terms[[rd]],"type"),"pars")$norm # default set by .process_MaternIMRFa_bar
+    #     } else if (corr_type== "corrFamily" ) {
+    #       useNorm <- corr_families[[rd]]$normIMRF # from the <corrFamily>'s definition, e.g., MaternIMRFa
+    #       if ( ! is.null(useNorm)) {
+    #         vec_normIMRF[rd] <- useNorm
+    #       } # else corr_families[[rd]]$normIMRF is NULL (from stub or other) and then vec_normIMRF[rd] remains FALSE. 
+    #     } 
+    #   }
+    # }
   }
   return(vec_normIMRF)
 }
@@ -1011,13 +1051,13 @@
     #   is_cF_internally[rd] <- TRUE 
     } else if ( ! is.na(corr_types[[rd]])) { # those not implemented as corrFamily: Matern, AR1... but not ARp
       corr_families[[rd]] <- do.call(corr_types[[rd]],list()) # corr_types' elements are function names!
-    } else { # ranef_type is NA
+    } else { # corr_type is NA
       if (ranef_type %in% .spaMM.data$keywords$all_cF) { # registered corrFamily
         corr_types[[rd]] <- "corrFamily" # replaces NA
         term <- exp_barlist[[rd]]
         covStruct[rd] <- list(corrFamily=term[-2L]) # name is lost when covStruct was NULL... does it occur given condition on ranef_type? 
         is_cF_internally[rd] <- TRUE 
-        corr_families[[rd]] <- do.call(corr_types[[rd]],list()) # well this calls corrFamily() which is a stub...
+        corr_families[[rd]] <- do.call(corr_types[[rd]],list()) # well this calls corrFamily() which provides a stub...
         # For these ones, corr_families[[rd]] will be set later by .preprocess_corrFamily() (though possibly delayed in fitmv case)
       } else stop("Unknown or unregsitered correlation model.")
     }
@@ -1087,6 +1127,7 @@
   }
   family$flags$canonicalLink <- canonicalLink
   family$flags$LMbool <- (canonicalLink && family$family=="gaussian")
+  # if (is.null(family$resid.model)) family$resid.model <- list2env(list(off=0))  # "speculative outer phiGLM 2023/07/09" 
   #
   # nrand now needed early...
   exp_barlist <- .process_bars(predictor,as_character=FALSE) ## but default expand =TRUE; also -> .parseBars() -> .process_IMRF_bar() parses RHS info
@@ -1114,13 +1155,18 @@
   if (is.null(main_terms_info <- attr(data,"updated_terms_info"))) { # standard case for primary fit
     if ( inherits(data,"data.frame")) {
       if (length(class(data))>1L) {
-        data <- as.data.frame(data) # The pb addressed by this line is that the test data Orthodont is a 'groupedData' object and that 
+        data <- as.data.frame(data) # such as groupedData or tibble
+        # the problem (well, one problem) with tibbles is that they lose rownames on subsetting 
+        # and one can no longer (easily) assign rownames afterwards.
+        # its a problem for subsetting data (plock prediction...) and for creating uniqueGeo info
+        #
+        # A pb with groupedData such as Orthodont is that 
         # .calc_AR1_sparse_Q_ranges() -> by() -> `[` creates a factor with levels "MO1" and values 1, 2... when the variable was char
         # where `[` on a generic data.frame (be it that data or the model frame created from it) returns a char variable.
         # So (although it inherits(.,"data.frame")) we use as.data.frame() to remove the groupedData class... (grumbles)
         if (length(class(data))>1L) {
-          message(paste0("The data appear to inherit from more classes than 'data.frame'. Unexpected results may happen..."))
-        } else paste0("The data inherited from more classes than 'data.frame' and have been converted to 'data.frame' only.")
+          message("The data appear to inherit from more classes than 'data.frame'.\n Unexpected results may happen...")
+        } # else message("The data inherited from more classes than 'data.frame'\n and have been converted to 'data.frame' only.")
       }
       #
       loccall <- callargs
@@ -1353,9 +1399,14 @@
     models[["eta"]] <- "etaHGLM" 
     ZAlist <- .init_assign_geoinfo(processed=processed, ZAlist=ZAlist, For=callargs$For,
                                exp_barlist=exp_barlist, nrand=nrand, distMatrix=distMatrix)
+    #
+    # For mv fits: attr(ZAlist,"Zlist") won't be available in .merge_processed() 
+    #              if elements of vec_normIMRF that should be TRUE have not been correctly filled.
+    #              .calc_vec_normIMRF() should be careful not to look into the corrFamily stubs.
     vec_normIMRF <- .calc_vec_normIMRF(exp_ranef_terms=attr(ZAlist, "exp_ranef_terms"), corr_info=corr_info)   
     if (any(vec_normIMRF)) attr(ZAlist,"Zlist") <- Zlist
     processed$ZAlist <- ZAlist 
+    #
     # This, together with two commented lines in .is_identity(), is not clearly useful:
     #for (rd in seq_along(ZAlist)) attr(ZAlist[[rd]], "is_identity") <- .is_identity(ZAlist[[rd]], matrixcheck=TRUE)
     vec_n_u_h <- .eval_check_vec_n_u_h(ZAlist, nobs, processed)

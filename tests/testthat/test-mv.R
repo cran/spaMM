@@ -19,6 +19,9 @@ if (FALSE) {
                  data=wafmv))
   testthat::expect_true(diff(range( predict(zut1, newdata=zut1$data)-predict(zut1)))<1e-14)
   testthat::expect_true(diff(range( get_predVar(zut1, newdata=zut1$data)-get_predVar(zut1)))<1e-14) ## there a resid.model so nothing is done with phi
+  simulate(zut1, newdata=wafmv)
+  simulate(zut1, newdata=wafmv, re.form=~(1|batch2))
+  length(unique(predict(zut1, re.form=~(1|batch2))[seq(1,198,18)])) # must 1 as 'batch' effect removed
   update_resp(zut1,newresp = simulate(zut1))
   #
   if (spaMM.getOption("example_maxtime")>0.7) { # confint with resid.model

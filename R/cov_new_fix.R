@@ -208,24 +208,32 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
 }
 
 # Return with original fixed-effect terms + only shared ranefs 
-.update_formula_shared_ranefs <- function(locform, re.form, rm_RHS) {
+.update_formula_shared_ranefs <- function(locform, re.form, rm_LHS) {
   if ( .noRanef(re.form)) { ## i.e. if re.form implies that there is no random effect
-    locform <- .stripRanefs(locform)  
+    locform <- .stripRanefs(locform)  #NA -> NA
   } else if (inherits(re.form,"formula")) { ## ie there is a nontrivial re.form
     ranterms <- intersect(.process_bars(re.form), .process_bars(locform)) # It is convenient to handle re.form with more effects than original formula in mv case  
     if (length(ranterms)) {
       lhs <- .DEPARSE(locform[[2L]]) ## response
       fixterms <- .DEPARSE(.stripRanefs(locform)[[3L]]) ## fixed effect terms
-      locform <- as.formula(paste(lhs,"~", paste(fixterms,"+",paste(ranterms,collapse="+")) )) # orig fixterms + new ranterms
-    } else locform <- .stripRanefs(locform)  
+      if (fixterms !="NULL" ) { # that's ugly but otherwise there is NULL In the formula...
+        locform <- as.formula(paste(lhs,"~", paste(fixterms,"+",paste(ranterms,collapse="+")) )) # orig fixterms + new ranterms
+      } else locform <- as.formula(paste(lhs,"~", paste(ranterms,collapse="+")) ) 
+    } else {
+      locform <- .stripRanefs(locform)
+      if (is.null(locform)) locform <- NA
+    }
   } ## else keep original formula
-  if (rm_RHS && length(locform)==3L) locform <- locform[-2] ## removes RHS for checking  vars on RHS etc
+  if (rm_LHS && length(locform)==3L) locform <- locform[-2] ## removes RHS for checking  vars on RHS etc
   return(locform)
 }
 
-..get_locdata <- function(newdata, locvars, na.rm) {
+..get_locdata <- function(newdata, locvars, na.rm, mv_it=NULL) {
   # so that matrix 'newdata' arguments can be used as in some other predict methods.
-  # ## allvars checks only RHS variables...
+  # ## locvars checks only RHS variables...
+  
+  ##  in multivariate case this fn is called even without newdata nor re.form
+  
   locdata <- tryCatch(newdata[ , locvars,drop=FALSE],
                       error= function(e) {
                         if (e$message==gettext("undefined columns selected", domain="R-base")) {
@@ -236,7 +244,36 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
                         }
                         stop(e)
                       }) 
-  # => for any non-NULL newdata, locdata is a data.frame with valid variables. Check NAs:
+  
+  ## The next block of code was never called.
+  # if ( ! is.null(mv_it) && ! is.null(validrownames <- attr(newdata,"validrownames")[[mv_it]])) {
+  #   ## (mv) case without slicing: the stored $data are expected to have this attribute 
+  #   locdata <- locdata[validrownames,, drop=FALSE]
+  #   ## BUT when we predict on slices of ~2000 the stored validrownames have not be subsetted.
+  #   ## and trying to subset locdata according to (a subset of) validrownames:
+  #   # locdata <- locdata[intersect(validrownames,rownames(locdata)),, drop=FALSE]
+  #   ## may not be the solution. Ultimately this block was made to never be a solution to anything.
+  #   ## A conditiosn for slicing is a condition for slicing is is.null(validrownames <- attr(newdata,"validrownames"))
+  # }
+  ## Context:
+  ## (uni) Univariate, no newdata, no re.form -> $fv taken so lines with missing response variables are removed.
+  ##
+  ## (mv) multivariate,   "            "     -> validrownames attr achieves the same effect, BUT
+  ## NOT through this block of code, as this fn is always called with NULL mv_it in that case 
+  ##
+  ## 'neednewdesign' cases:
+  ## (mv re)    "           "          re.form=NA (even in model without ranefs, cf blaNA !) 
+  ##              rebuilds the frame so -> predictions for add'l lines 
+  ## (mv new)     "          newdata                rebuilds the frame so -> predictions for add'l lines 
+  ## (actually the latter 'neednewdesign' cases are complex: this function is called first
+  ##                potentially with the attr, but with mv_it=NULL so above block of code is not run,
+  ##                Then for each mv_it but without the attr so above block of code is again not run).
+  ## blaNA test is a good one.
+  ##   With the slicing mechanism though, things were not so clear; but a condition for slicing is 
+  ## is.null(validrownames <- attr(newdata,"validrownames"))
+  ## so slicing occurs in mv only when there are newdata (nrX > blockSize) without validrownames.
+  
+  # => for any non-NULL newdata, locdata is a data.frame with columns for required predictor variables. Check NAs:
   if (na.rm) {
     locdata <- na.omit(locdata)
     if (length(attr(locdata,"na.action"))) {
@@ -354,20 +391,28 @@ if (FALSE) { # v3.5.121 managed to get rid of it
 }
 
 .get_newinold <- function(re.form, locform, ori_exp_ranef_strings, rd_in_mv=NULL) {
-  if (is.null(rd_in_mv) || ## assumping that in the univariate-response case, we call .get_newinold() only when we already tested inherits(re.form,"formula")
-      inherits(re.form,"formula")) {
+  if (is.null(rd_in_mv)) {
+    ## assuming that in the univariate-response case, we call .get_newinold() only when we already tested inherits(re.form,"formula")
     new_exp_ranef_strings <- .process_bars(locform,expand=TRUE) ## to be added as attribute to the newZAlist created by .calc_normalized_ZAlist()
     newinold <- unlist(sapply(lapply(new_exp_ranef_strings, `==`, y= ori_exp_ranef_strings), which)) ## e.g 1 4 5
     if ( ! is.null(rd_in_mv)) newinold <- rd_in_mv[newinold]
-    # : unlist bc sapply(list(F), which) return list(numeric(0)), etc.
   } else {
-    new_exp_ranef_strings <- ori_exp_ranef_strings
-    if ( ! is.null(rd_in_mv)) {
-      newinold <- rd_in_mv
-    } else {
-      newinold <- seq_along(new_exp_ranef_strings) ## keep all ranefs
-    }
-  }    
+    # in mv case, there is a distinct call of .get_newinold in .calc_new_X_ZAC_mv (no equivalent in univariate case)
+    if ( inherits(re.form,"formula")) { 
+      new_exp_ranef_strings <- .process_bars(locform,expand=TRUE) ## to be added as attribute to the newZAlist created by .calc_normalized_ZAlist()
+      if (is.null(rd_in_mv)) {
+        newinold <- unlist(sapply(lapply(new_exp_ranef_strings, `==`, y= ori_exp_ranef_strings), which)) 
+        # : unlist bc sapply(list(F), which) return list(numeric(0)), etc.
+      } else {
+        newinold <- unlist(sapply(lapply(new_exp_ranef_strings, `==`, y= ori_exp_ranef_strings[rd_in_mv]), which))  
+        newinold <- rd_in_mv[newinold]
+      }
+    } else { 
+      if (is.null(re.form)) {
+        newinold <- rd_in_mv ## keep all ranefs
+      } else newinold <- numeric(0L) # re.form is NA: keep none 
+    }    
+  }
   newinold
 }
 
@@ -396,14 +441,13 @@ if (FALSE) { # v3.5.121 managed to get rid of it
                             variances=list(residVar=FALSE, cov=FALSE),invCov_oldLv_oldLv_list,
                             locform=formula.HLfit(object, which="")) {
   ## possible change of random effect terms
-  locform <- .update_formula_shared_ranefs(locform, re.form, rm_RHS=TRUE)
-  # checking variables in the data
+  locform <- .update_formula_shared_ranefs(locform, re.form, rm_LHS=TRUE)
   locdata <- .get_locdata(newdata, locform=locform, object=object, variances=variances) # always required (cf when newdata is not a data frame)
   #
   RESU <- .get_newfixef_info(newdata, locform, locdata, object, re.form)
   #
-  ## subZAlist is a subset of the old ZA, newZAlist contains new ZA ; different uses=> computation required under disticnt conditions for each.
-  ## calling .make_corr_list(object,...) is always OK bc the fist argument may be a superset of the required list
+  ## subZAlist is a subset of the old ZA, newZAlist contains new ZA ; different uses=> computation required under distinct conditions for each.
+  ## calling .make_corr_list(object,...) is always OK bc the first argument may be a superset of the required list
   ## all matching in .make_corr_list is through the ranef attributes.
   #
   ## matching ranef terms of re.form
@@ -424,7 +468,7 @@ if (FALSE) { # v3.5.121 managed to get rid of it
     if (inherits(re.form,"formula")) {
       newinold <-.get_newinold(re.form, locform, ori_exp_ranef_strings, rd_in_mv=NULL)
       new_exp_ranef_strings <- ori_exp_ranef_strings[newinold]
-      RESU$subZAlist <- object$ZAlist[newinold] ## and reordered
+      RESU$subZAlist <- object$ZAlist[newinold] ## and reordered . Used by .wrap_calcPredVar
     } else {
       newinold <- seq_along(ori_exp_ranef_strings)
       new_exp_ranef_strings <- ori_exp_ranef_strings

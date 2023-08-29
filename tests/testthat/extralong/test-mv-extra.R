@@ -15,6 +15,17 @@ spaMM.options(spaMM_tol=local_tol) # to control strictness of checks in independ
                  # X2X=matrix(c(1,0,1,0,0,1,0,0,0,0,0,1),ncol=3,nrow=4,dimnames=list(NULL,c("(Intercept)","x_1","x_2"))),
                  data = d_y_missing)
   testthat::expect_true(diff(range(predict(blaNA)[,1] - predict(blaNA, newdata=blaNA$data)[-1,1]))< 2e-16) # must work with X2X too
+  # predict(blaNA) does not predict for the line with NA response 
+  # predict(blaNA, newdata=blaNA$data) predict for this line.
+  # It is important that the locvars provided to ..get_locdata() do not contain the response variable in the second case =>
+  # Cf .strip_cF_args(locformS[[mv_it]][-2]) in .calc_new_X_ZAC_mv()
+  
+  testthat::expect_true(diff(range(predict(blaNA, blockSize=3)[,1] - predict(blaNA, newdata=blaNA$data, blockSize=3)[-1,1]))< 2e-16) 
+  # there is slicing neither in first call (nrX = 0) nor in second (validrownames not NULL): cf conditions in predict.HLfit()
+  
+  # With 'real' newdata without the validrownames attribute, slicing can occur: 
+  testthat::expect_true(diff(range(predict(blaNA, newdata=d)[,1] - predict(blaNA, newdata=d, blockSize=3)[,1]))< 2e-16) 
+  
 }
 
 {
@@ -34,7 +45,8 @@ spaMM.options(spaMM_tol=local_tol) # to control strictness of checks in independ
   testthat::expect_true(diff(range( predict(zut1, newdata=zut1$data)-predict(zut1)))<1e-14)
   testthat::expect_true(diff(range( get_predVar(zut1, newdata=zut1$data)-get_predVar(zut1)))<1e-14) ## there a resid.model so nothing is done with phi
   simulate(zut1)
-
+  simulate(zut1, newdata=wafmv[1:3,])
+  
   cat(crayon::yellow("[ upper, get_ranPars() (-> VarCorr()) ] ; "))
   (zut1 <- fitmv(submodels=list(mod1=list(formula=ly ~ 1+(1|batch), family=gaussian()),
                          mod2=list(formula=y3 ~ 1+(1|batch), family=gaussian())), 
@@ -279,8 +291,7 @@ spaMM.options(spaMM_tol=local_tol) # to control strictness of checks in independ
   climv <- clinics
   climv$np2 <- y2
   climv$nn2 <- climv$npos + climv$nneg - y2
-  climv$clinic2 <- climv$clinic
-  
+
   cat(crayon::yellow("binomial-poisson; "))# permutation test
   (zut1 <- fitmv(submodels=list(mod1=list(formula=cbind(npos,nneg)~treatment+(1|clinic),family=binomial()),
                                   mod2=list(formula=np2~treatment+(1|clinic),family=poisson())), 
@@ -293,11 +304,11 @@ spaMM.options(spaMM_tol=local_tol) # to control strictness of checks in independ
   cat(crayon::yellow("predVar cov gaussian-poisson; "))
   # independent-fits test
   (fg <- fitme(formula=npos~treatment+(1|clinic),family=gaussian(),data=climv))
-  (fp <- fitme(formula=np2~treatment+(1|clinic2),family=poisson(),data=climv))
+  (fp <- fitme(formula=np2~treatment+(1|clinic),family=poisson(),data=climv))
   (zut1 <- fitmv(submodels=list(mod1=list(formula=npos~treatment+(1|clinic),family=gaussian()),
-                                mod2=list(formula=np2~treatment+(1|clinic2),family=poisson())), 
+                                mod2=list(formula=np2~treatment+(+1|clinic),family=poisson())), 
                  data=climv))
-  (zut2 <- fitmv(submodels=list(mod2=list(formula=np2~treatment+(1|clinic2),family=poisson()),
+  (zut2 <- fitmv(submodels=list(mod2=list(formula=np2~treatment+(+1|clinic),family=poisson()),
                                 mod1=list(formula=npos~treatment+(1|clinic),family=gaussian())), 
                  data=climv))
   testthat::expect_true(diff(range(logLik(zut1),logLik(zut2),logLik(fg)+logLik(fp)))<3e-7)
@@ -331,23 +342,23 @@ spaMM.options(spaMM_tol=local_tol) # to control strictness of checks in independ
   meth <- "ML(1,1)" # REML seems to work but the tests are OK only with lower accuracy
   # independent-fit test
   (fb <- fitme(formula=cbind(npos,nneg)~treatment+(1|clinic),family=binomial(), data=climv, method=meth))
-  (fp <- fitme(formula=np2~treatment+(1|clinic2),family=poisson(), data=climv, method=meth))
+  (fp <- fitme(formula=np2~treatment+(1|clinic),family=poisson(), data=climv, method=meth))
   (zut1 <- fitmv(submodels=list(mod1=list(formula=cbind(npos,nneg)~treatment+(1|clinic),family=binomial()),
-                                 mod2=list(formula=np2~treatment+(1|clinic2),family=poisson())), 
+                                 mod2=list(formula=np2~treatment+(+1|clinic),family=poisson())), 
                          data=climv, method=meth))
-  (zut2 <- fitmv(submodels=list(mod2=list(formula=np2~treatment+(1|clinic2),family=poisson()),
+  (zut2 <- fitmv(submodels=list(mod2=list(formula=np2~treatment+(+1|clinic),family=poisson()),
                                  mod1=list(formula=cbind(npos,nneg)~treatment+(1|clinic),family=binomial())), 
                          data=climv, method=meth))
   
   # test simple init
   (zut3 <- fitmv(submodels=list(mod1=list(formula=cbind(npos,nneg)~treatment+(1|clinic),family=binomial()),
-                                 mod2=list(formula=np2~treatment+(1|clinic2),family=poisson())), 
+                                 mod2=list(formula=np2~treatment+(+1|clinic),family=poisson())), 
                          init=list(lambda=c("1"=1.1,"2"=2.2)), data=climv, method=meth)) 
   testthat::expect_true(identical(attr(zut3,"optimInfo")$LUarglist$canon.init, list(lambda=c("1"=1.1,"2"=2.2)))) # inits heeded
   # test fancy names in init
   zut4 <- fitmv(submodels=list(mod1=list(formula=cbind(npos,nneg)~treatment+(1|clinic),family=binomial()),
-                                 mod2=list(formula=np2~treatment+(1|clinic2),family=poisson())), 
-                         init=list(lambda=c("clinic2"=2.2,"clinic"=1.1)), data=climv, method=meth) 
+                                 mod2=list(formula=np2~treatment+(+1|clinic),family=poisson())), 
+                         init=list(lambda=c("clinic.1"=2.2,"clinic"=1.1)), data=climv, method=meth) 
   testthat::expect_true(identical(attr(zut4,"optimInfo")$LUarglist$canon.init, list(lambda=c("1"=1.1,"2"=2.2)))) # inits heeded 
   
   testthat::expect_true(diff(range(logLik(zut1),logLik(zut2), logLik(zut3), logLik(zut4), logLik(fb)+logLik(fp)))<2e-6) # 1e-5 for REML # stricter conv check decreased the precision of the comparison.
@@ -363,20 +374,20 @@ spaMM.options(spaMM_tol=local_tol) # to control strictness of checks in independ
   cat(crayon::yellow("deliberate warnings; ")) # (Deliberately generating warnings:)
   oldopt <- options(warn=0L)
   (zut5 <- fitmv(submodels=list(mod1=list(formula=cbind(npos,nneg)~treatment+(1|clinic),family=binomial(), init=list(lambda=1.1)),
-                                 mod2=list(formula=np2~treatment+(1|clinic2),family=poisson(), init=list(lambda=2.2))), 
+                                 mod2=list(formula=np2~treatment+(+1|clinic),family=poisson(), init=list(lambda=2.2))), 
                          data=climv, method=meth))
   options(oldopt)
   testthat::expect_true(identical(attr(zut5,"optimInfo")$LUarglist$canon.init, NULL)) # inits NOT heeded as init is not preprocessed
 
   cat(crayon::yellow("rand family and many post-fit fns; "))# rand.family independent-fit test
-  (zut2 <- fitmv(submodels=list(mod2=list(formula=np2~treatment+(1|clinic2),family=poisson(), rand.family=Gamma(log)), 
+  (zut2 <- fitmv(submodels=list(mod2=list(formula=np2~treatment+(+1|clinic),family=poisson(), rand.family=Gamma(log)), 
                                  mod1=list(formula=cbind(npos,nneg)~treatment+(1|clinic),family=binomial())), 
                          data=climv))
   (zut1 <- fitmv(submodels=list(mod1=list(formula=cbind(npos,nneg)~treatment+(1|clinic),family=binomial()),
-                                 mod2=list(formula=np2~treatment+(1|clinic2),family=poisson(), rand.family=Gamma(log))), 
+                                 mod2=list(formula=np2~treatment+(+1|clinic),family=poisson(), rand.family=Gamma(log))), 
                          data=climv))
   (fb <- fitme(formula=cbind(npos,nneg)~treatment+(1|clinic),family=binomial(), data=climv))
-  (fg <- fitme(formula=np2~treatment+(1|clinic2),family=poisson(), data=climv, rand.family=Gamma(log)))
+  (fg <- fitme(formula=np2~treatment+(1|clinic),family=poisson(), data=climv, rand.family=Gamma(log)))
   testthat::expect_true(diff(range(logLik(zut1), logLik(fb)+logLik(fg)))<5e-6) # stricter conv check decreased the precision of the comparison.
   
   cat(crayon::yellow("some extractors; ")) 
@@ -416,46 +427,46 @@ spaMM.options(spaMM_tol=local_tol) # to control strictness of checks in independ
   
   
   cat(crayon::yellow("Tpoisson; "))# Tpoisson independent-fit test 
-  (zut <- fitmv(submodels=list(mod2=list(formula=I(1L+np2)~treatment+(1|clinic2),family=Tpoisson()), 
+  (zut <- fitmv(submodels=list(mod2=list(formula=I(1L+np2)~treatment+(+1|clinic),family=Tpoisson()), 
                                  mod1=list(formula=cbind(npos,nneg)~treatment+(1|clinic),family=binomial())), 
                          data=climv))
   (zut <- fitmv(submodels=list(mod1=list(formula=cbind(npos,nneg)~treatment+(1|clinic),family=binomial()),
-                                 mod2=list(formula=I(1L+np2)~treatment+(1|clinic2),family=Tpoisson())), 
+                                 mod2=list(formula=I(1L+np2)~treatment+(+1|clinic),family=Tpoisson())), 
                          data=climv))
   (fb <- fitme(formula=cbind(npos,nneg)~treatment+(1|clinic),family=binomial(), data=climv))
-  (fTp <- fitme(formula=I(1L+np2)~treatment+(1|clinic2),family=Tpoisson(), data=climv))
+  (fTp <- fitme(formula=I(1L+np2)~treatment+(1|clinic),family=Tpoisson(), data=climv))
   testthat::expect_true(diff(range(logLik(zut), logLik(fb)+logLik(fTp)))<2e-6) # stricter conv check decreased the precision of the comparison.
   
   ## negbin(): outer-optimized dispersion parameters. 
   meth <- "ML(1,1)" 
   { # quite slow 2*40s
     # independent-fit test without fixed effects
-    (zut1 <- fitmv(submodels=list(mod2=list(formula=I(20*np2)~0+(1|clinic2),family=negbin()), 
+    (zut1 <- fitmv(submodels=list(mod2=list(formula=I(20*np2)~0+(+1|clinic),family=negbin()), 
                                    mod1=list(formula=cbind(npos,nneg)~0+(1|clinic),family=binomial())), 
                            method=meth,
                            data=climv))
     (zut2 <- fitmv(submodels=list(mod1=list(formula=cbind(npos,nneg)~0+(1|clinic),family=binomial()),
-                                   mod2=list(formula=I(20*np2)~0+(1|clinic2),family=negbin())), 
+                                   mod2=list(formula=I(20*np2)~0+(+1|clinic),family=negbin())), 
                            method=meth,
                            data=climv))
     (fb <- fitme(formula=cbind(npos,nneg)~0+(1|clinic),family=binomial(),  
                  method=meth,
                  data=climv))
-    (fn <- fitme(formula=I(20*np2)~0+(1|clinic2),family=negbin(),  
+    (fn <- fitme(formula=I(20*np2)~0+(+1|clinic),family=negbin(),  
                  method=meth,
                  data=climv))
     testthat::expect_true(diff(range(logLik(zut1), logLik(zut2), logLik(fb)+logLik(fn)))<1e-06)
   }
   
   cat(crayon::yellow("Tnegbin; "))## independent-fit test Tnegbin; outer-optimized dispersion parameters
-  (zut1 <- fitmv(submodels=list(mod2=list(formula=I(1L+20*np2)~treatment+(1|clinic2),family=Tnegbin()), 
+  (zut1 <- fitmv(submodels=list(mod2=list(formula=I(1L+20*np2)~treatment+(+1|clinic),family=Tnegbin()), 
                                  mod1=list(formula=cbind(npos,nneg)~treatment+(1|clinic),family=binomial())), 
                          data=climv))
   (zut2 <- fitmv(submodels=list(mod1=list(formula=cbind(npos,nneg)~treatment+(1|clinic),family=binomial()),
-                                 mod2=list(formula=I(1L+20*np2)~treatment+(1|clinic2),family=Tnegbin())), 
+                                 mod2=list(formula=I(1L+20*np2)~treatment+(+1|clinic),family=Tnegbin())), 
                          data=climv))
   (fb <- fitme(formula=cbind(npos,nneg)~treatment+(1|clinic),family=binomial(), data=climv))
-  (fTn <- fitme(formula=I(1L+20*np2)~treatment+(1|clinic2),family=Tnegbin(), data=climv))
+  (fTn <- fitme(formula=I(1L+20*np2)~treatment+(1|clinic),family=Tnegbin(), data=climv))
   testthat::expect_true(diff(range(logLik(zut1), logLik(zut2), logLik(fb)+logLik(fTn)))<1e-06) # This did not work at first by obsInfo bc
   # there were convergence problems for IRLS but LevM crit was not true => change in crit using pot4improv.
 
@@ -651,6 +662,13 @@ testthat::expect_true(diff(range(logLik(zut1), logLik(zut2)))<1e-08)
                          mod2=list(status2 ~ 1+ (1|grp))), 
                  data=cap_mv))
   map_ranef(zut4)
+  simulate(zut1, newdata=cap_mv[1:3,])
+  simulate(zut1b, newdata=cap_mv[1:3,])
+  simulate(zut1c, newdata=cap_mv[1:3,])
+  simulate(zut2, newdata=cap_mv[1:3,])
+  simulate(zut3, newdata=cap_mv[1:3,])
+  simulate(zut4, newdata=cap_mv[1:3,])
+  
   get_predVar(zut4, variances=list(cov=TRUE)) 
   if (FALSE) {
     get_predVar(zut4, variances=list(cov=TRUE)) -> bla
@@ -774,6 +792,10 @@ testthat::expect_true(diff(range(logLik(zut1), logLik(zut2)))<1e-08)
 }
 
 {cat(crayon::yellow("IMRF; "))# fit IMRF 
+  
+  # There is a check of simulate of a large IMRF + Matern hurdle model
+  
+  
   { # create IMRF model
     ## Creating the mesh 
     oldMDCopt <- options(Matrix.warnDeprecatedCoerce = 0) # INLA issue

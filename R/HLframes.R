@@ -196,10 +196,11 @@
 }
 
 .process_IMRF_bar <- function(term, env) {
-  pars <- paste0(paste0(names(term),"=",term)[-c(1,2)], collapse=",") 
-  pars <- try(eval(parse(text = paste("list(",pars,")")), envir=env))
+  pars <- paste0(paste0(names(term),"=",term)[-c(1,2)], collapse=",") # e.g. the string "model=my_spde_mesh"; the next line then
+  # creates a list with element "model" holding the 'my_spde_mesh' found in the given 'envir':
+  pars <- try(eval(parse(text = paste("list(",pars,")")), envir=env)) # env is formula env, presumably (with possible control by control.HLfit$formula_env 
   if (inherits(pars,"try-error")) {
-    stop("Hmmm... it looks like you should put some object(s) in control.HLfit$formula_env.")
+    stop("Hmmm... it seems that some argument of the IMRF term is not available.")
   }
   if ( ! is.null(pars$spde)) {
     warning("'spde' argument is obsolete. Use 'model' instead.")
@@ -207,7 +208,7 @@
     pars$spde <- NULL
   }
   if ( ! is.null(pars$model)) {
-    pars$no <- FALSE
+    if (is.null(pars$no)) pars$no <- FALSE # default when there IS a 'model'
     # it's hard to guess the alpha parameter from the object!
     # diagnose the object
     if (pars$model$mesh$manifold=="R1") {dim_ <- 1} else dim_ <- 2
@@ -227,10 +228,22 @@
       pars$SPDE_alpha <- dim_/2 + pars$model$param.inla[["BLC"]][["tau.1",2]] 
     }
     # print((c(dim_,pars$SPDE_alpha)))
-  } else if (is.null(pars$no)) pars$no <- TRUE
+  } else if (is.null(pars$no)) pars$no <- TRUE # default when there is NO 'model'
   if (is.null(pars$ce)) pars$ce <- TRUE
   pars$model$param.inla <- .param.inla_dgT2dgC(pars$model$param.inla)
   attr(term,"type") <- structure("IMRF", pars=pars) # pars as attr to type avoid problems in building the return value.
+  return(term) # (lhs|rhs) (language, with the ()); or character string.
+}
+
+.process_MaternIMRFa_bar <- function(term, env) {
+  pars <- paste0(paste0(names(term),"=",term)[-c(1,2)], collapse=",") # e.g. the string "model=my_spde_mesh"; the next line then
+  # creates a list with element "model" holding the 'my_spde_mesh' found in the given 'envir':
+  pars <- try(eval(parse(text = paste("list(",pars,")")), envir=env)) # env is formula env, presumably (with possible control by control.HLfit$formula_env 
+  if (inherits(pars,"try-error")) {
+    stop("Hmmm... it seems that some argument of the MaternIMRFa term is not available.")
+  }
+  if (is.null(pars$norm)) pars$norm <- FALSE 
+  attr(term,"type") <- structure("MaternIMRFa", pars=pars) # pars as attr to type avoid problems in building the return value.
   return(term) # (lhs|rhs) (language, with the ()); or character string.
 }
 
@@ -263,6 +276,8 @@
     attr(term,"type") <- as.character(term[[1L]])
     if (termname == as.vector("IMRF","symbol")) {
       return(.process_IMRF_bar(term, env=env)) # 
+    } else if (termname == as.vector("MaternIMRFa","symbol")) { # this is getting ugly. More elegant coding ? ____F I X M E____
+      return(.process_MaternIMRFa_bar(term, env=env)) # 
     } else return(term) 
   } else if (length(term) == 2L) return(.parseBars(term[[2]], env=env)) # this occurs if, say, 
   #  a double + + occurs by accident in a formula. If a term was ++(1|RHS) then the next nested call
@@ -407,12 +422,6 @@ if (FALSE) { # seems correct, but ultimately not needed
             In particular, one should never need to specify the 'data' in the 'formula'. 
             See help('good-practice') for explanations.")
   }
-  check <- grep('$',frame.form,fixed=TRUE)
-  if (length(check)) {
-    message("'$' detected in formula: suspect and best avoided. 
-            In particular, one should never need to specify the 'data' in the 'formula'. 
-            See help('good-practice') for explanations.")
-  }
   check <- grep('c(',frame.form,fixed=TRUE)
   if (length(check)) {
     if ((inherits(frame.form,"formula") && check[1L]==length(frame.form)-1L) ||
@@ -439,7 +448,10 @@ if (FALSE) { # seems correct, but ultimately not needed
     verif <- tryCatch(eval(prior.weights,data),error=function(e) e)
     if (inherits(verif,"simpleError")) {
       stop("All variables should be in the 'data', including those for prior weights.")
-    } else return(verif) 
+    } else {
+      eval(call2mf) # repets the error without the tryCatch()
+      # return(verif)
+    } 
   }
   return(list(rownames=rownames(resu), weights=model.weights(resu))) # so that valid rows and weights always have the same length.
 }

@@ -472,7 +472,8 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL, tol=1e
   return(leftcols)
 }
 
-.adhoc_rbind_I_dgC <- function(Ilen, ZAL) {
+.adhoc_rbind_I_dgC <- function(ZAL) {
+  Ilen <- ncol(ZAL)
   newlen <- Ilen+length(ZAL@x)
   Iseq <- seq_len(Ilen)
   Ip <- c(0L,Iseq)
@@ -510,9 +511,16 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL, tol=1e
     # Obviously unusual and could perhaps be optimized, but... not worth the effort.
     AUGI0_ZX$Zero_X <- Zero_X <- rbind2(AUGI0_ZX$ZeroBlock, AUGI0_ZX$X.pv) 
   }
+  # singw <- ncol(AUGI0_ZX$I)-ncol(ZAL)
   if (inherits(ZAL,"dgCMatrix")) {
-    I_ZAL <- .adhoc_rbind_I_dgC(nrow(AUGI0_ZX$I), ZAL) ## this is faster...
-  } else I_ZAL <- rbind2(AUGI0_ZX$I, ZAL)
+    I_ZAL <- .adhoc_rbind_I_dgC(ZAL) ## this is faster...
+  } else          # if ( ! singw) {
+    I_ZAL <- rbind2(AUGI0_ZX$I, ZAL)
+  # } else {
+  #   seq_nc <- seq_len(ncol(ZAL))
+  #   I_ZAL <- rbind2(AUGI0_ZX$I[seq_nc,seq_nc], ZAL)
+  # }
+  # if (singw) Zero_X <- Zero_X[-seq_len(singw),]
   if (inherits(I_ZAL,"dgCMatrix") &&  inherits(Zero_X,"dgCMatrix") ) {
     Xscal <- .cbind_dgC_dgC(I_ZAL, Zero_X) # substantially faster than the general alternative 
   } else Xscal <- cbind2(I_ZAL, Zero_X)

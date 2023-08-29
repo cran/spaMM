@@ -106,13 +106,32 @@
   #if (raneftype == "(.|.)") stop("this does not occur") # does not seem to occur here
   if ( ! (is.null(raneftype))) {  ## to exclude (1|.) and ranCoefs! 
     if (ncol(modmat)>1L) { 
-      # allowed: the variable was logical, or numeric (not factor, for which (fac|.) as well as (0+fac|.) generates cols for each level of the factor)
+      # allowed: the variable was logical, or numeric (not factor with >2 levels, for which (fac|.) as well as (0+fac|.) generates cols for each level of the factor)
       # if numeric, should have used (0+z|.)
       classe <- attr(attr(leftOfBar_mf,"terms"),"dataClasses")
-      if (classe=="logical" || ## TRUE/FALSE (not factor) 
-          (classe=="factor" && setequal(levels(leftOfBar_mf[,1L]),c("TRUE","FALSE"))) ## TRUE/FALSE *factor* 
-         ) { # in both cases an has created an intercept column has been created and must be removed
-        modmat <- modmat[,colnames(modmat) != "(Intercept)",drop=FALSE]
+      ##
+      ## Cf test case     (fit1 <- fitme(migStatus ~ bool + corrMatrix(bool|loc), data=toy, corrMatrix=rcov))
+      # ...(bool|.) => classe is "logical", there are no levels, colnames are "(Intercept)" "boolTRUE"
+      ## With default contrasts:
+      # ...(as.factor(bool)|.) => classe is "factor", levels are "FALSE" and "TRUE", colnames are "(Intercept)" and "as.factor(bool)TRUE" 
+      # ...(as.character(bool)|.) => classe is "character", there are no levels, colnames are "(Intercept)" and "as.character(bool)TRUE" 
+      ## With nondefault contrasts: the name of the second column changes, but there is still an "(Intercept)" col.
+      ## So there seems to always be an "(Intercept)" column to remove   ***BUT***
+      ## if <factor>-1 or 0+<factor> is used, there is not Intercept col, only indicators column for each level 
+      ## Likewise if <logical>-1 is used, there is not Intercept col, only indicators column for each level 
+      if (classe=="logical") { ## TRUE/FALSE (not factor) 
+        TRUEcol <- grep(".+TRUE",colnames(modmat))
+        modmat <- modmat[,TRUEcol,drop=FALSE]
+      } else if (classe=="factor") {
+        if (setequal(levels(leftOfBar_mf[,1L]),c("TRUE","FALSE"))) {
+          if ("(Intercept)" %in% colnames(modmat)) { # <factor>-1 or 0+<factor> were NOT used
+            modmat <- modmat[,colnames(modmat) != "(Intercept)",drop=FALSE]
+          } else if (length(TRUEcol <- grep(".+TRUE",colnames(modmat)))) { # these should still be such a column (as implied by levels(leftOfBar_mf[,1L]))
+            modmat <- modmat[,TRUEcol,drop=FALSE]
+          } else warning("Unexpected case in .calc_Z_LHS_model_matrix(). Anything can happen...", immediate. = TRUE) # Reaylly unexpected, but better catch it...
+        } # else the user used a non-logical factor, no reason to remove the intercept; OR the user messed up a F/T factor 
+          #     by changing the levels of the logical factor (say levels(<factor>) <- c("non", "oui") with a strong french accent) 
+          #     and it's not clear how to handle such mess. 
       } else if ( ! raneftype %in% c("corrMatrix","corrFamily")) {# ___TAG___ modify to extend composite ranefs
         # if (classe=="factor") { 
         #   stop(paste0("Unhandled expression in ", raneftype,"(<factor>|.):\n",
@@ -233,6 +252,11 @@
       }
     } else { # post-fit:
       if (raneftype %in% c("Matern","Cauchy") && ! has_.in.) {
+        ## old comment below. But with  newdata, simulate.HLfit() -> 
+        #  .calc_ZAlist_newdata() -> .calc_Zlist() with implicit default levels_type="data_order" 
+        # so with newdata, this is "data_oder" here. Test code: simulate(HLC, newdata=Loaloa[c(1:3,1:3)+0.1,])
+        #
+        ### OLD comment
         # keep the default post-fit levels_type, i.e. seq_len, as fast shortcut sufficient in that case
         # (permuted newdata tests important here)
       } else levels_type <- old_levels_type
@@ -353,15 +377,16 @@
 # incidMat is a incidence matrix with one 1 per COL (it is transposed relative to Z) (~perm but not necess square) hence its @x has nrow(im) elements
 # its # of col is the number of levels of the grouping variable.
 ## modmat stores (<this info>| ...) => numeric for random slope model  
-.calc_raw_ZA <- function(incidMat, modmat) {
-  if (ncol(modmat)==1L && (length(umm <- unique(modmat[,1L]))==1L) && umm==1) { # classic (1|.) case
+.calc_raw_ZA <- function(incidMat, modmat, umm=unique(modmat[,1L])) {
+  has1col <- ncol(modmat)==1L
+  if (has1col && (length(umm)==1L) && umm==1) { # classic (1|.) case but still possibly in eg Matern(1|.) context
     if (nrow(incidMat)>1L && .is_identity(incidMat)) { ## nrow=1 may occur when optimizing an objective function (eg bboptim) and Diagonal is not worth the cost. 
       ZA <- Diagonal(n=nrow(incidMat))
       colnames(ZA) <- rownames(incidMat) 
     } else ZA <- t(incidMat)
     # incidMat has no colnames and modmat does not provide names in the alternative general code
-    attr(ZA,"is_incid") <- TRUE # Misleading name: we use it for predVar that it then has a diagonal tcrossprod. There is no other obvious use, .../...
-    # so actually what we need to know is whether the tcrossprod is diagonal. Elements of this diagonal need not be 1.
+    is_incid <- TRUE
+    attr(is_incid,"is01col") <- FALSE # used for detection of possible sparsity so MUST indicates there are zero's
   } else { ## first conceived for ranCoefs, with ncol(modmat)>1L. But also handles e.g. Matern(0+verif|.) .... Matern(female|.)
     ZA <- vector("list",ncol(modmat))
     for (col in seq_len(ncol(modmat))) {
@@ -371,9 +396,14 @@
       ZA[[col]] <- t(ZA_col)
     }
     ZA <- do.call(cbind, ZA) ## colnames are repeated if modmat has several cols...
-    attr(ZA,"is_incid") <- FALSE # For ranCoefs, it is not incidMat;  neither for Matern(0+verif|.) as the elements are not 0 or 1.
-                                #  Matern(female|.) would be an exception but modmat has no is_incid attribute... B/C ratio not clear...  
+    is_incid <- has1col && (length(umm)==2L) && all(sort(umm)==c(0,1))
+    # For ranCoefs, it is not incidMat;  neither for Matern(0+verif|.) as the elements are not 0 or 1.
+    #  Matern(female|.) would be an exception but modmat has no is_incid attribute... B/C ratio not clear...  
+    attr(is_incid,"is01col") <- is_incid # used for detection of possible sparsity so MUST indicates there are zero's
   }
+  attr(ZA,"is_incid") <- is_incid # We use it in predVar for the property that it has a diagonal tcrossprod. 
+  # The fact that the Elements of this diagonal are 1 might not be necessary there.
+  # But there are some other uses of is_incid...
   attr(ZA, "namesTerm") <- colnames(modmat) ## e.g., "(Intercept)" ".mv2" ;  length=npar # and, consistently, the number of models in an 'mv' term
   return(ZA)
 }
@@ -383,7 +413,7 @@
                          levels_type="data_order", # cf comment for Matern case in .calc_ZMatrix(); there is one non-default use in post-fit code
                          # two alternative ways to provide info about levels in .calc_ZMatrix():
                          corr_info=NULL, # Only pre-fit until corrFamily was introduced
-                         rd_in_mv=NULL,
+                         rd_in_mv=NULL, # for .calc_ZAlist_newdata_mv()
                          sub_oldZAlist=NULL, # post-fit: (subset by newinold of) object$ZAlist
                          lcrandfamfam # for heteroscedastic non-gaussian random effects
                          
@@ -394,16 +424,26 @@
   x3 <- lapply(exp_ranef_terms, `[[`,i=3)
   names(exp_ranef_terms) <- unlist(lapply(x3, .DEPARSE)) ## names are RHS of (.|.)
   #######
+  ids_in_mv <- seq_along(exp_ranef_terms)
+  # in mv fits for the fit, this is called for each submodel, Zlist has submodel length.
+  # Post-fit we must reconstruct a similar submodel list:
+  # map_rd_mv[[2]]=c("1"=2) => rd_in_mv=c("1"=2) for submodel 2 reads as for this submodel the first Z is the second of the full-model Zlist.  
+  if ( ! is.null(rd_in_mv)) {
+    ids_in_mv <- rd_in_mv 
+    type <- attr(exp_ranef_terms,"type")
+    exp_ranef_terms <- exp_ranef_terms[ids_in_mv]
+    attr(exp_ranef_terms,"type") <- type[ids_in_mv]
+    # in that case the sub_oldZAlist is currently the object$ZAlist
+    sub_oldZAlist <- sub_oldZAlist[ids_in_mv]  
+  }
   nrand <- length(exp_ranef_terms)
   Zlist <- structure(vector("list", nrand), names=seq_len(nrand))
-  iterator <- seq_along(exp_ranef_terms)
-  if ( ! is.null(rd_in_mv)) iterator <- iterator[rd_in_mv] 
-  for (lit in iterator) {
-    Zlist[[lit]] <- .calc_Zmatrix(exp_ranef_terms[[lit]], data=data, rmInt=rmInt,
+  for (rd in seq_along(ids_in_mv)) {
+    Zlist[[rd]] <- .calc_Zmatrix(exp_ranef_terms[[rd]], data=data, rmInt=rmInt,
                                   drop=drop, sparse_precision=sparse_precision, 
                                   levels_type=levels_type, 
-                                  corr_info=corr_info, lit=lit,
-                                  oldZA=sub_oldZAlist[[lit]],
+                                  corr_info=corr_info, lit=ids_in_mv[[rd]],
+                                  oldZA=sub_oldZAlist[[rd]], 
                                   lcrandfamfam=lcrandfamfam)
     ## ALL Zlist[[i]] are either 
     #     diagonal matrix (ddiMatrix) with @diag = "U"
@@ -417,7 +457,7 @@
   ## Subject <- list(0) ## keep this as comment; see below
   namesTerms <- vector("list", nrand)
   GrpNames <- names(exp_ranef_terms)
-  for (rd in seq_len(nrand)) {
+  for (rd in seq_along(ids_in_mv)) {
     ###################
     # Subject[[i]] <- as.factor(fl[[i]]$f) # levels of grouping var for all obs ('ff' returned by locfn)
     ## : Subject was used only for random slope model, where ncol(Design) != nlevels(Subject). I tried to get rid of this.

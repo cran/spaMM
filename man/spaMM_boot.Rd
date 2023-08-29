@@ -63,7 +63,7 @@ Number of samples to simulate and analyze.
 Controls display of progress bar. See \code{\link{barstyle}} option for details.
 }
   \item{boot_samples}{
-NULL, or a list as returned by \code{\link{simulate4boot}}. This may be used to provide precomputed bootstrap samples from the fitted model.
+NULL, or precomputed bootstrap samples from the fitted model, provided as a matrix with one column per bootstrap replicate (the format of the result of \code{simulate.HLfit}), or as a list including a \code{bootreps} element with the same matrix format.
 }
   \item{\dots}{
   Further arguments passed to the \code{simuland} function.
@@ -79,10 +79,10 @@ The \code{statFUN} function must take as first argument a fit object, and may ha
 \code{spaMM_boot} calls \code{simulate.HLfit} on the fit \code{object} and applies \code{simuland} on each column of the matrix returned by this call. 
 \code{simulate.HLfit} uses the \code{type} argument, which must be explicitly provided.
 }
-\value{\code{spaMM_boot} returns a list, with two elements (unless \code{debug.} is \code{TRUE}): 
+\value{\code{spaMM_boot} returns a list, with the following element(s) (unless \code{debug.} is \code{TRUE}): 
   \describe{
     \item{bootreps}{\code{nsim} return values in the format returned either by \code{apply} or \code{parallel::parApply} or by \code{foreach::`\%dopar\%`} as controlled by \code{control.foreach$.combine} (which is here \code{"rbind"} by default).}
-    \item{RNGstate}{the state of \code{.Random.seed} at the beginning of the sample simulation}.  
+    \item{RNGstate}{(absent in the case the \code{boot_samples} argument was used to provide the new response values but not the \code{RNGstate}) the state of \code{.Random.seed} at the beginning of the sample simulation}.  
   }
   
   \code{spaMM2boot} returns a list suitable for use by \code{boot.ci}, with elements:  

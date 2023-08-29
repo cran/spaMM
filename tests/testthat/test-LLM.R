@@ -232,16 +232,24 @@ if (spaMM.getOption("example_maxtime")>39) {
         #
         # Same logic for interval computations:
         #
-        dim(attr(predict(mvfit, newdata=misspred, intervals="respVar"),"intervals")) # 5,2  
-        dim(attr(predict(mvfit, newdata=misspred, intervals="predVar"),"intervals")) # 6,2  
+        crit <- dim(attr(predict(mvfit, newdata=misspred, intervals="respVar"),"intervals")) # 5,2  
+        testthat::test_that("check handling of missing data in predict(mvfit... respVar)",
+                            testthat::expect_true(all(crit==c(5L,2L))))
+        crit <- dim(attr(predict(mvfit, newdata=misspred, intervals="predVar"),"intervals")) # 6,2  
+        testthat::test_that("check handling of missing data in predict(mvfit... predVar)",
+                            testthat::expect_true(all(crit==c(6L,2L))))
         #
         # Same logic for simulate():
         #
-        length(simulate(mvfit, newdata=misspred)) # 5 as simulation requires residVar
+        crit <- length(simulate(mvfit, newdata=misspred)) # 5 as simulation requires residVar
+        testthat::test_that("check handling of missing data in simulate(mvfit...)",
+                            testthat::expect_true(crit==5L))
         
-        residVar(mvfit, newdata=misspred) -
+        crit <- residVar(mvfit, newdata=misspred) -
           c(residVar(mvfit, newdata=misspred, submodel=1),
             residVar(mvfit, newdata=misspred, submodel=2)) # vector of 5 zeros 
+        testthat::test_that("check residVar(mvfit...)",
+                            testthat::expect_true(length(crit)==5L && diff(range(crit))<1e-14))
       }
     }
   }

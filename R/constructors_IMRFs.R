@@ -7,7 +7,7 @@
     .inla.spde2.matern <- get("inla.spde2.matern", asNamespace("INLA"), inherits = FALSE)
     if (inherits(.inla.spde2.matern,"try-error")) stop("INLA must be installed in order to design the 'MaternIMRFa' covariance.")
     oldMDCopt <- options(Matrix.warnDeprecatedCoerce = 0) # # INLA issue
-    local_design <- .inla.spde2.matern(mesh, alpha=1)
+    local_design <- .inla.spde2.matern(mesh, alpha=1+1e-8) # shifted by 1e-8 bc inla.spde2.matern() is numerically unstable for 'lambda = alpha - floor(alpha)' ~0
     options(oldMDCopt)
     e1 <- extreme_eig(as(local_design$param.inla$M2,"CsparseMatrix"), symmetric=TRUE, required=EEV_required)[1L]
   } else {
@@ -37,7 +37,7 @@
   # } else newLv_env$diag_cov_newLv_newLv_list[[new_rd]] <- diag(x=uuColdold)
 }
 
-MaternIMRFa <- function(mesh, tpar=c(alpha=1.25,kappa=0.1), fixed=NULL) { 
+MaternIMRFa <- function(mesh, tpar=c(alpha=1.25,kappa=0.1), fixed=NULL, norm=FALSE) { 
   
   force(mesh)
   ZAcolnames <- paste0(mesh$loc[,1],":",mesh$loc[,2]) # match between columns of A and rows of Q
@@ -95,8 +95,16 @@ MaternIMRFa <- function(mesh, tpar=c(alpha=1.25,kappa=0.1), fixed=NULL) {
       # this should match the colnames of the ZMatrix matching the 'newdata'. We could check that, 
       # but it's not clear when this could not be the case (except forgetting type=.spaMM.data$options$uGeo_levels_type...), so the B/C of the  check seems low.
     }
-    Amatrix <- .spaMM_spde.make.A(mesh=mesh, points=as.matrix(uniqueScal))
-    if (fit. && any(rowSums(Amatrix)<0.99)) message("Some 'data' locations appear out of the mesh. Mismatched inputs, or strong mesh cutoff?") # check this only for the fit.
+    Amatrix <- .spaMM_spde.make.A(mesh=mesh, pointsXY=as.matrix(uniqueScal))
+    if (fit. && any((rs <- rowSums(Amatrix))<0.99)) {
+      wbad <- which(rs<0.99)
+      mess <- paste(length(wbad), 
+                    "'data' locations appear out of the mesh: ",
+                    paste(head(wbad), collapse=","), 
+                    if(length(wbad)>6L) "...",
+                    "\n Mismatched inputs, or strong mesh cutoff?")
+      message(mess) # check this only for the fit.
+    }
     # : If all of them are out of the mesh, as the structure of ZA is used to determine initial lambda value, I had a NaN there, 
     #   so no outer init lambda where expected => bug)
     # Amatrix rows are, with the default arguments, ordered as uniqueScal rows
@@ -108,7 +116,7 @@ MaternIMRFa <- function(mesh, tpar=c(alpha=1.25,kappa=0.1), fixed=NULL) {
   calc_moreargs <- function(corrfamily, ...) {
     range_factor <- .kappa_range_factor(mesh, IMRF_design, EEV_required=FALSE) # where IMRF_design may still be NULL
     list(
-      lower=c(alpha=1,kappa=0.01/range_factor), 
+      lower=c(alpha=1+1e-8,kappa=0.01/range_factor), 
       init=c(alpha=1.15,kappa=1/range_factor), 
       upper=c(alpha=2,kappa=200/range_factor) 
     )
@@ -121,7 +129,7 @@ MaternIMRFa <- function(mesh, tpar=c(alpha=1.25,kappa=0.1), fixed=NULL) {
   list(Cf=Cf, tpar=tpar, type="precision", Af=Af, fixed=fixed, calc_moreargs=calc_moreargs, 
        make_new_corr_lists=make_new_corr_lists,
        levels_type=.spaMM.data$options$uGeo_levels_type,
-       need_Cnn=FALSE,
+       need_Cnn=FALSE, normIMRF=norm,
        sparsePrec=TRUE, possiblyDenseCorr=TRUE,
        tag="MaternIMRFa") # the mesh is in the environment of the functions
 }

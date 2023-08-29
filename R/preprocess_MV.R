@@ -112,6 +112,7 @@
       if (is.null(ii1 <- attr(ZA1,"is_incid")) || is.null(ii2 <- attr(ZA2,"is_incid"))) {
         is_incid <- NULL # they can be NULL by design, cf .calc_ZAlist() when there is an A matrix
       } else is_incid <- ii1 && ii2
+      if (is_incid) attr(is_incid,"is01col") <- FALSE # conservative default (might be TRUE in some cases?)
       RHS_info1 <- attr(ZA1,"RHS_info")
       RHS_info2 <- attr(ZA2,"RHS_info")
       RHS_info <- list(splt=RHS_info1$splt,
@@ -396,28 +397,35 @@
   }
   
 ###   Handling of corrFamily inits
-  corr_info <- processed$corr_info
-  if (any(is_cF <- corr_info$is_cF_internally)) {
-    # ad hoc calls of functions devised for other uses:
-    loc.init.optim <- .init_optim_lambda_ranCoefs(
-      processed, 
-      other_reasons_for_outer_lambda = TRUE, 
-      optim_blob$init.optim, nrand=length(which(is_cF)), ranCoefs_blob=list(isRandomSlope =FALSE), var_ranCoefs=FALSE,
-      user_init_optim=user_init_optim
-    ) # seems to take correctly the fixed ones into account
-    # Not brilliant:
-    lam_cF <- .calc_inits_dispPars(optim_blob$inits$init,init.optim=loc.init.optim,init.HLfit=NULL,fixedS,user.lower,user.upper)
-    optim_blob$inits <- .modify_list(optim_blob$inits, list(init=lam_cF$init["lambda"],init.optim=lam_cF$init.optim["trLambda"]) , obey_NULLs=FALSE)
-    corr_types <- corr_info$corr_types
-    for (rd in which(is_cF)) {
-      corr_type <- corr_types[[rd]]
-      char_rd <- as.character(rd)
-      optim_blob$inits <- processed$corr_info$corr_families[[rd]]$calc_inits(
-        inits=optim_blob$inits, char_rd, 
-        # optim.scale, # currently ignored (not passed)
-        user.lower=user.lower, user.upper=user.upper) 
-    }
-  }
+  # This block is actually buggy for at least an mv fit with two ranefs, one 'is_cF' the other not.
+  # In that case the value of nrand passed to .init_optim_lambda_ranCoefs is 1
+  # and this is not properly handled. 
+  # But this block appears to have been made obsolete by some upstream changes.
+  #
+  # corr_info <- processed$corr_info
+  # if (any(is_cF <- corr_info$is_cF_internally)) {
+  #   # ad hoc calls of functions devised for other uses:
+  #   loc.init.optim <- .init_optim_lambda_ranCoefs(
+  #     processed, 
+  #     other_reasons_for_outer_lambda = TRUE, 
+  #     optim_blob$init.optim, 
+  #     nrand=length(which(is_cF)), 
+  #     ranCoefs_blob=list(isRandomSlope =FALSE), var_ranCoefs=FALSE,
+  #     user_init_optim=user_init_optim
+  #   ) # seems to take correctly the fixed ones into account
+  #   # Not brilliant:
+  #   lam_cF <- .calc_inits_dispPars(optim_blob$inits$init,init.optim=loc.init.optim,init.HLfit=NULL,fixedS,user.lower,user.upper)
+  #   optim_blob$inits <- .modify_list(optim_blob$inits, list(init=lam_cF$init["lambda"],init.optim=lam_cF$init.optim["trLambda"]) , obey_NULLs=FALSE)
+  #   corr_types <- corr_info$corr_types
+  #   for (rd in which(is_cF)) {
+  #     corr_type <- corr_types[[rd]]
+  #     char_rd <- as.character(rd)
+  #     optim_blob$inits <- processed$corr_info$corr_families[[rd]]$calc_inits(
+  #       inits=optim_blob$inits, char_rd, 
+  #       # optim.scale, # currently ignored (not passed)
+  #       user.lower=user.lower, user.upper=user.upper) 
+  #   }
+  # }
   ###
   optim_blob <- .makeLowUp_stuff_mv(optim_blob, user.lower=user.lower, user.upper=user.upper, optim.scale, processed, verbose)
   optim_blob
@@ -504,7 +512,9 @@
         ZA <- .Matrix_times_Dvec(ZA, rep(as.numeric(namesTerm %in% c("(Intercept)",paste0(".mv",mv_it))),
                                          rep(n_levels,Xi_ncol)))
         ZA <- drop0(ZA)
-        attr(ZA,"is_incid") <- ! ("(Intercept)" %in% namesTerm) # while is_incid was FALSE for the template...
+        is_incid <- ! ("(Intercept)" %in% namesTerm) # while is_incid was FALSE for the template...
+        attr(is_incid,"is01col") <- FALSE
+        attr(ZA,"is_incid") <- is_incid
         names_lostattrs <- setdiff(names(ZAattr), names(attributes(ZA)))
         attributes(ZA)[names_lostattrs] <- ZAattr[names_lostattrs] 
         ZAlist[[rd]] <- ZA
@@ -529,7 +539,9 @@
                                                                  rep(n_levels,Xi_ncol)))
       }
       ZA <- drop0(ZA)
-      attr(ZA,"is_incid") <- ! ("(Intercept)" %in% namesTerm) # while is_incid was FALSE for the template...
+      is_incid <- ! ("(Intercept)" %in% namesTerm) # while is_incid was FALSE for the template...
+      attr(is_incid,"is01col") <- FALSE
+      attr(ZA,"is_incid") <- is_incid
       names_lostattrs <- setdiff(names(ZAattr), names(attributes(ZA)))
       attributes(ZA)[names_lostattrs] <- ZAattr[names_lostattrs] 
       ZAlist[[rd]] <- ZA
@@ -679,30 +691,14 @@
   }
 }
 
-.update_ZAlist <- function(ZAlist, corr_info, # pass this rather than AMatrices to make sure that the full list is used
+
+.update_ZAlist <- function(ZAlist, corr_info, # 'pass this rather than AMatrices to make sure that the full list is used' : comment is unclear
                            which_ZA=c()) { 
   if ( length(ZAlist) > 0L ) {
     AMatrices <- corr_info$AMatrices
     for (char_rd in names(ZAlist)[which_ZA]) {
       Amatrix <- AMatrices[[char_rd]]
-      if ( ! is.null(Amatrix)) {
-        is_incid <- attr(ZAlist[[char_rd]],"is_incid")
-        if (inherits(Amatrix,"pMatrix")) {
-          Amatrix <- as(as(Amatrix, "nMatrix"), "TsparseMatrix") # => ngTMatrix 
-        } else if ( ! is.null(is_incid)) {
-          if (is_incid) is_incid <- attr(Amatrix,"is_incid") # .spaMM_spde.make.A() provides this attr. Otherwise, may be NULL, in which case ./.
-          # ./. a later correct message may occur ("'is_incid' attribute missing, which suggests inefficient code in .calc_new_X_ZAC().)
-        } 
-        ZAnames <- colnames(ZAlist[[char_rd]])
-        if ( ! setequal(rownames(Amatrix),ZAnames)) {
-          mess <- paste0("Any 'A' matrix must have row names that match the levels of the random effects\n (",
-                         paste0(ZAnames[1L:min(5L,length(ZAnames))], collapse=" "),if(length(ZAnames)>5L){"...)."} else{")."})
-          stop(mess)
-        }
-        ZAlist[[char_rd]] <- ZAlist[[char_rd]] %*% Amatrix[ZAnames,] 
-        rownames(ZAlist[[char_rd]]) <- NULL
-        attr(ZAlist[[char_rd]],"is_incid") <- is_incid
-      }
+      if ( ! is.null(Amatrix)) ZAlist[[char_rd]] <- .Z_times_L_with_attrs(Z=ZAlist[[char_rd]], Amatrix) 
     }
   } 
   return(ZAlist)
@@ -1213,6 +1209,8 @@ fitmv <- function(submodels, data, fixed=NULL, init=list(), lower=list(), upper=
   oricall$"control.HLfit" <- eval(oricall$control.HLfit, parent.frame()) # to evaluate variables in the formula_env, otherwise there are bugs in waiting
   # where oricall[["control.HLfit"]] <- ... wouldn't work when 'control.HLfit' was absent. Same for 'fixed'
   oricall$"fixed" <- .preprocess_fixed(fixed)
+  if (length(class(data))>1L) oricall$"data" <- as.data.frame(data) # such as tibble. 
+      # See explanation in .preprocess() (which rechecks the effect on the data) 
   n_models <- length(submodels) # so the promise is already evaluated here...
   calls_W_processed <- fixedS <- vector("list",n_models)
   for (mv_it in seq_along(calls_W_processed)) { # call .preprocess() on each submodel
@@ -1287,8 +1285,7 @@ fitmv <- function(submodels, data, fixed=NULL, init=list(), lower=list(), upper=
   # when we reuse a call (here mc). E.g. corrMatrix=as_precision(.) would be evaluated twice 
   # => We need to put the evaluated value in the call list. 
   # Next line ad-hoc for corrMatrix (__F I X M E__?: What about other arguments ? Which would benefit from some preprocessing?)
-  # if ("corrMatrix" %in% ...names()) # is an R >= 4.1.0 syntax 
-  if ("corrMatrix" %in% names(mc)) mc["corrMatrix"] <- list(eval(mc[["corrMatrix"]])) 
+  if ("corrMatrix" %in% ...names()) mc["corrMatrix"] <- list(eval(mc[["corrMatrix"]])) 
   mc[[1L]] <-  get(".merge_processed", asNamespace("spaMM"), inherits=FALSE)
   merged <- eval(mc, parent.frame()) # means that arguments of *.merge_processed()* must have default values as mc does not contains defaults of fitmv()
   #
@@ -1343,6 +1340,7 @@ fitmv <- function(submodels, data, fixed=NULL, init=list(), lower=list(), upper=
     if ( ! is.null(mc$control.HLfit$NbThreads)) .setNbThreads(thr=.spaMM.data$options$NbThreads)
   }
   rm(list=setdiff(lsv,"hlcor")) ## empties the whole local envir except the return value
+  class(hlcor) <- c("fitmv", class(hlcor))
   return(hlcor)
 }
 

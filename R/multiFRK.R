@@ -141,6 +141,7 @@ IMRF <- function(...) {
   islowd <- d<1
   lowd <- d[islowd]
   res[islowd] <- (35*lowd^2 + 18*lowd + 3)*(1-lowd)^6 /3 
+  attr(res,"is_incid") <- FALSE
   return(res)
 }
 
@@ -151,28 +152,35 @@ IMRF <- function(...) {
   return(uniqueScal)
 }
 
-.locate_in_tv <- function(points, # the 'points to mesh', p2m in INLA
+# provides the 'points to mesh', p2m in INLA
+.locate_in_tv <- function(pointsXY, 
                           tv, 
                           meshloc
 ) {
-  if (is.data.frame(points)) points <- as.matrix(points)
+  if (is.data.frame(pointsXY)) pointsXY <- as.matrix(pointsXY)
   
   # (1) p2m.t : Identify a triangle to which each point belongs  
-  p2m.t <- geometry::tsearch(meshloc[,1], meshloc[,2], tv, points[,1], points[,2]) 
+  p2m.t <- geometry::tsearch(meshloc[,1], meshloc[,2], tv, pointsXY[,1], pointsXY[,2]) 
   # incidentally, when the data are those used to build the mesh, p2m.t (for redundant lcoations in the data) is in <mesh>$idx$loc
   # so in some case we could skip this first step. But  for generally small benefits, it seems too messy to identify these cases and handle  redundancies... 
-  outofmesh <- is.na(p2m.t)
-  p2m.t[ outofmesh] <- NA_integer_
+  if (any(outofmesh <- is.na(p2m.t))) {
+    w_out <- which(outofmesh)
+    # default method "quadtree" is buggy; check with slower but safer method.
+    p2m.t[w_out] <- geometry::tsearch(meshloc[,1], meshloc[,2], tv, 
+                                      pointsXY[w_out,1], pointsXY[w_out,2], method="orig") 
+    outofmesh <- is.na(p2m.t) # remaining NAs should identify points really out of the mesh. 
+    p2m.t[ outofmesh] <- NA_integer_
+  } 
   
   # (2) p2m.b : compute barycentric coordinates of each point in its triangle 
-  p2m.b <- matrix(NA,nrow=nrow(points),ncol=3)
+  p2m.b <- matrix(NA,nrow=nrow(pointsXY),ncol=3)
   #for (pt_it in which( ! outofmesh )) p2m.b[pt_it,] <- cart2bary(meshloc[tv[p2m.t[pt_it],],1:2], points[pt_it,,drop=FALSE]) # slow pbbly bc many calls to external fn
   pmul <- cbind(-1,diag(nrow =2))
   for (pt_it in which( ! outofmesh )) { #
     simplex <- meshloc[tv[p2m.t[pt_it],],1:2] # coordinate of vertices of identified triangle
     vM <- pmul %*% simplex # is simplex[-1,]-simplex[1,] for each simplex
     detVM <- vM[4]*vM[1]-vM[2]*vM[3]
-    dpt <- (points[pt_it,]-simplex[1L,])
+    dpt <- (pointsXY[pt_it,]-simplex[1L,])
     if (detVM==0) { ## which should not occur if the mesh is OK
       solve_vM <- ginv(vM) 
       p2m.b[pt_it,2:3] <- dpt %*% solve_vM    
@@ -189,20 +197,22 @@ IMRF <- function(...) {
               p2m.b=p2m.b))
 }
 
-.spaMM_spde.make.A <- function(mesh, points) { # replacement for inla.spde.make.A()
-  locations <- .locate_in_tv(points=points, # the 'points to mesh', p2m in INLA
+.spaMM_spde.make.A <- function(mesh, pointsXY) { # replacement for inla.spde.make.A()
+  locations <- .locate_in_tv(pointsXY=pointsXY, # result = the 'points to mesh', p2m in INLA
                              tv = mesh$graph$tv, 
                              meshloc=mesh$loc[,1:2])
   ti <- locations$p2m.t # vector !
   ii <- which(ok <- (! is.na(ti)))
   # rows of A will remain 0 for points out of the mesh:
-  A <- sparseMatrix(dims = c(nrow(points), mesh$n), 
+  A <- sparseMatrix(dims = c(nrow(pointsXY), mesh$n), 
                     i = rep(ii, 3), 
                     j = as.vector(mesh$graph$tv[ti[ii], ]), 
                     x = as.vector(locations$p2m.b[ii, ]))
   A <- drop0(A) ## there is some noise (or at least, there was en using INLA::inla.spde.make.A() )
-  attr(A,"is_incid") <- (length(uAx <- unique(A@x))==1L && 
+  is_incid <- (length(uAx <- unique(A@x))==1L && 
                            uAx==1 )# correct test given constraints on the barycentric coordinates (rows of zero for out-of-mesh points also OK in incidence matrix)
+  attr(is_incid,"is01col") <- FALSE
+  attr(A,"is_incid") <- is_incid
   #list(t = ti, bary = locations$p2m.b, A = A, ok = ok, A = A) # this is what inla.mesh.project.inla.mesh returns
   return(A)
 }
@@ -223,8 +233,17 @@ IMRF <- function(...) {
     # Amatrix <- INLA:::inla.spde.make.A(spde_info$mesh, as.matrix(uniqueScal)) 
     if (inherits(spde_info,"inla.spde2")) {
       Amatrix <- .spaMM_spde.make.A(mesh=spde_info$mesh, 
-                                      points=as.matrix(uniqueScal))
-      if (fit. && any(rowSums(Amatrix)<0.99)) message("Some 'data' locations appear out of the mesh. Mismatched inputs, or strong mesh cutoff?") # check this only for the fit.
+                                    pointsXY=as.matrix(uniqueScal))
+      if (fit. && any((rs <- rowSums(Amatrix))<0.99)) {
+        wbad <- which(rs<0.99)
+        mess <- paste(length(wbad), 
+                      "'data' locations appear out of the mesh: ",
+                      paste(head(wbad), collapse=","), 
+                      if(length(wbad)>6L) "...",
+                      "\n Mismatched inputs, or strong mesh cutoff?")
+        message(mess) # check this only for the fit.
+        
+      }
       # Amatrix rows are, with the default arguments, ordered as uniqueScal rows
       rownames(Amatrix) <- uniqueScal_levels_blob$factor # not levels(.) which are alphanumerically ordered !  
       return(Amatrix)
@@ -259,14 +278,15 @@ IMRF <- function(...) {
   rownames(uniqueScal) <- uniqueScal_levels_blob$factor # these names must be retained in the output (otherwise visible error in .calc_ZAlist())  
   grid <- expand.grid(grid_arglist) ## INTEGER GRID
   #
-  scaldistmat <- proxy::dist(x=uniqueScal,y=grid,method=dist.method) ## coordinates of data in grid units
+  scaldistmat <- .dist_fn(x=uniqueScal,y=grid,method=dist.method) ## coordinates of data in grid units
   if ( ! is.null(old_AMatrix_rd)) {  
     # colnames(scaldistmat) <- colnames(old_AMatrix_rd) # not always true as old_AMatrix_rd cols may have been permuted after original call to .calc_AMatrix_IMRF() 
     return(as(.Wendland(scaldistmat[]/scale),"sparseMatrix")) ## dividing the matrix not most economical but clearer # [] convert crossdist to matrix
   } else {
     colnames(scaldistmat) <- apply(grid,1L,paste0,collapse=":") ## provide colnames(ZA), expected at least by ranef.HLfit 
     return(structure(as(.Wendland(scaldistmat[]/scale),"sparseMatrix"), ## dividing the matrix not most economical but clearer # [] convert crossdist to matrix
-                     grid_arglist=grid_arglist, origin=origin, steplen=steplen, scale=scale)) ## attributes for quick reconstruction in prediction
+                     grid_arglist=grid_arglist, origin=origin, steplen=steplen, scale=scale,
+                     is_incid=FALSE)) ## attributes for quick reconstruction in prediction
   }  
 }
 
@@ -294,6 +314,7 @@ IMRF <- function(...) {
     if (is.null(corr_info$AMatrices)) corr_info$AMatrices <- list()
     for (rd in which(is_corrF)) {
       Af <- corr_info$corr_families[[rd]][["Af"]] # call for fit
+      # In an mv fit the corrFamily is a stub when .preprocess is called. .assign_AMatrices_corrFamily() is called again in .merge_processed()
       if ( ! is.null(Af)) { # The corrFamily depends on an A matrix
         corr_info$AMatrices[[as.character(rd)]] <- Af(newdata=data, 
                                                       term=exp_barlist[[rd]],

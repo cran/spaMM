@@ -80,9 +80,9 @@
         prevmin <- prev_optr$fval
         use_bobyqa <- (min(c(init-lower,upper-init))<1e-4)
         #if (verbose) message("maxeval reached in bobyqa(); optimizer called again until apparent convergence of objective.") 
-      } else { # conversion of bobyqa output to return format
-        optr$solution <- optr$par ## let's stick to the nloptr() return elements (solution, objective)
-        optr$objective <- optr$fval ## let's stick to the optim() return elements (par, value)
+      } else { # conversion of bobyqa output to nloptr() return elements (solution, objective)
+        optr$solution <- optr$par 
+        optr$objective <- optr$fval 
         break 
       }
     } else {

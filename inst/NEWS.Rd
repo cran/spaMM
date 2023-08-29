@@ -3,6 +3,32 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 4.4.0}{  
+\subsection{NEW FEATURES}{
+\itemize{
+\item predict(<multivariate-response fit>, re.form=<formula>, ...) and simulate(<idem>) now more thoroughly implemented. 
+\item Easier control of multivariate-response bootstraps made possible by several changes. Notably, simulate4boot() gets a '...' argument, for additional arguments now passed to simulate.HLfit(). See also help("respName").
+\item Corr() return value is modified for some models, notably IMRF ones. 
+\item Improved choice of sparse versus dense matrix methods for models including several Matern( 0+<indicator for level of factor> | <coords>) terms (and surely also for other correlation models than Matern).
+\item Normalization of 'IMRF' models (including 'MaternIMRFa') on irregular grids, so that the random effect is homoscedastic, is now possible.
+\item New DoF() extractor for degrees of freedom.
+}
+}
+\subsection{FIXED BUGS}{
+\itemize{
+\item Several bugs have been fixed for simulate(., newdata=.) for multivariate-response fits. 
+\item Fixed a stopping bug due to a typo, in rarely executed code handling a case where the Cholesky factorisation of a model matrix failed.
+\item Lower alpha value for 'MaternIMRFa' terms set to 1+1e-08, as inla::inla.spde2.matern() is not numerically stable in alpha=1. 
+\item Multivariate-response fits mixing random effects implemented through corrFamily objects together with random effects not implemented in this way could fail (stop). 
+\item A workaround has been implemented to handle a bug in geometry::tsearch (possibly related to https://github.com/davidcsterratt/geometry/issues/46 and /57) which had the effect that some data located within a mesh defining an IMRF term were treated as if out of the mesh.
+}
+}
+\subsection{DEPENDENCIES}{
+\itemize{
+\item spaMM now imports the 'backports' package.
+}
+}
+}
 \section{CHANGES UP TO VERSION 4.3.20}{ %     
 \subsection{NEW FEATURES}{
 \itemize{

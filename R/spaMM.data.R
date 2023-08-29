@@ -11,6 +11,7 @@
   bind_ZAL=TRUE, # set it to FALSE to use ZAXlist beyond spprec 
   sparsity_threshold=0.05,
   spprec_threshold=50, # ohio small by correlation algo, large by spprec: threshold is n>=140 has crit 'near' 62 (varying betw replicates). 
+                       # 2023/08: such high threshold still relevant (see Nmatrix example in test-spaMM)
   separation_max=10,
   sep_solver="glpk",
   HLfit_body="HLfit_body",
@@ -169,6 +170,7 @@
   #thr_backsolve=0L # for devel testing of .backsolve(); 0L means that .Rcpp_backsolve may be called irrespective of matrix dimension
   xLM_conv_silent=FALSE,
   xLM_conv_crit=list(max=-Inf),
+  use_terms_info_attr=FALSE, # controls data vs model frame updating post fit.
   NbThreads=1L,
   diagnose_conv=2000L,
   #
@@ -178,6 +180,12 @@
 )
 
 .spaMM.data$keywords <- new.env(parent = emptyenv())
+# What is a "special ranef"? Originally, presumably those without a corrFamily constructor. 
+# But more importantly now: $special_ranefs controls corr_info$corr_types and therefore the ad-hoc code for specific corr_type's:
+# .assign_corr_types_families() will call special functions such as IMRF() to evaluate corr_info$corr_families, even in fitmv -> .preprocess() case
+#  While for non-special families, the corr_info$corr_families will be stubs in this case.
+# .canonizeRanPars() assumes that special types have a $canonize() function, for other types it handles transformations using its own code...
+
 .spaMM.data$keywords$special_ranefs <- c("adjacency", "Matern", "Cauchy", "AR1", "corrMatrix", "IMRF", "corrFamily") 
 .spaMM.data$keywords$all_cF <- .spaMM.data$keywords$built_in_cF <- c("ARp", "ARMA", "diallel", "ranGCA", "MaternIMRFa", "antisym") 
 .spaMM.data$keywords$all_ranefs <- .spaMM.data$keywords$built_in_ranefs <- 

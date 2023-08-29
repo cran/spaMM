@@ -177,8 +177,8 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug, # already ZAL_scaled
         } else lmwithqr <- .lmwithQR(sXaug,yy=NULL,returntQ=FALSE,returnR=TRUE) ## szAug may be NULL (but avoid augsigns*NULL =numeric(0) !)
         BLOB$R_scaled <- lmwithqr$R_scaled
         # perm and sortPerm remain NULL
-        if ( ! is.null(szAug)) return(lmwithqrp$coef)   # return solution of regularized system in non-SPD case
-      } else { # there are $signs but negHess was SPD => $R_scaded must already be present => this alternative never occurs.
+        if ( ! is.null(szAug)) return(lmwithqr$coef)   # return solution of regularized system in non-SPD case
+      } else { # there are $signs but negHess was SPD => $R_scaled must already be present => this alternative never occurs.
         # we could imagine forcing QR, for devel purposes, here, as for spcorr case. But this is already complicated enough
         # augsigns <- c(rep(1,attr(sXaug,"n_u_h")), BLOB$signs)
         # coefs <- backsolve( BLOB$R_scaled, BLOB$invIm2QtdQ_ZX %*% (BLOB$t_Q_scaled %*% (augsigns*szAug)))
@@ -393,7 +393,8 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug, # already ZAL_scaled
   # } else if (which=="sortPerm") { 
   #   return(BLOB$sortPerm)
   }
-  if (which=="t_Q_scaled") { # residual call for non-standard REML 
+  if (which=="t_Q_scaled") { # residual call for non-standard REML. 
+    # Retrosp: one might compute Q using solve<Eigen::OnTheRight>( R, X)
     return(BLOB$t_Q_scaled)
   }
   if (which=="d2hdv2") {

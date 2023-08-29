@@ -10,12 +10,12 @@
 \description{
 The \code{anova} method for fit objects from \pkg{spaMM} has two uses: if a single fit object is provided, ANOVA tables may be returned, with specific procedures for univariate-response LMs, GLMs and LMMs (see Details). Alternatively, if a second fit object is provided (\code{object2} argument), \code{anova} performs as an alias for \code{LRT}.  The \code{LRT} function here differs from \code{\link{fixedLRT}} by its arguments (model fits for \code{LRT}, but all arguments required to fit the models for \code{fixedLRT}), and by the format of its return value.
 
-\code{LRT} performs a likelihood ratio (LR) test between two model fits, the ``full'' and the ``null'' model fits. It determines which model is the more complete one by comparing model components including the fixed-effect, random-effect, residual-dispersion model specifications, and response families (offsets are ignored). Then, a standard test based on the asymptotic chi-square distribution is performed. In addition, parametric bootstrap p-values can be computed, either using the raw bootstrap distribution of the likelihood ratio, or a bootstrap estimate of the Bartlett correction of the LR statistic.
+\code{LRT} performs a likelihood ratio (LR) test between two model fits, the ``full'' and the ``null'' model fits. It determines which model is the more complete one by comparing model components including the fixed-effect, random-effect, residual-dispersion model specifications, and response families (offsets are ignored). Then, a standard test based on the asymptotic chi-square distribution is performed. In addition, parametric bootstrap p-values can be computed, either using the \emph{raw bootstrap} distribution of the likelihood ratio, or a bootstrap estimate of the Bartlett correction of the LR statistic.
 
 These different tests perform diffferently depending on the differences between the two models:\cr \cr 
- * If the models differ only by their fixed effects, the asymptotic LRT may be anticonservative, but the Bartlett-corrected one is well-calibrated. \cr \cr
+ * If the models differ only by their fixed effects, the asymptotic LRT may be anticonservative, but the Bartlett-corrected one is generally well-calibrated. \cr \cr
  * If the two models differ by their random effects, tests based on the chi-square distribution (including their Bartlett-corrected version) may be poorly behaved, as such tests assume unbounded parameters, as contrasted to, e.g., necessarily positive variances. \cr
- In such cases the raw boostrap may be the only reliable test. The procedure aims to detect and report such issues, but may not report all problems: users remain responsible for applying the tests in valid conditions (see \bold{Caveats} in Details section). In simple cases (such as comparing a fixed-effect to a mixed-effect model with the same fixed-effect term), the chi-square tests may not be reported. In other cases (see Examples) they may otherwise be reported, with a warning when the procedure detects some cases of estimates at the boundary for the full model, or detects cases where the LR statistic of bootstrap replicates is often zero (also suggesting that estimates are at the boundary in such replicates).\cr \cr
+ In such cases the raw boostrap test may be the only reliable test. The procedure aims to detect and report such issues, but may not report all problems: users remain responsible for applying the tests in valid conditions (see \bold{Caveats} in Details section). In simple cases (such as comparing a fixed-effect to a mixed-effect model with the same fixed-effect term), the chi-square tests may not be reported. In other cases (see Examples) they may otherwise be reported, with a warning when the procedure detects some cases of estimates at the boundary for the full model, or detects cases where the LR statistic of bootstrap replicates is often zero (also suggesting that estimates are at the boundary in such replicates).\cr \cr
   * If the fits differ by the fixed effects terms of their residual-dispersion models (but not by any random effect specification), tests based on the chi-square distribution are reported. A bootstrap can be performed as in other cases.\cr
   * Tests for some cases of nested response families (e.g., the Poisson versus its extensions) are tentatively allowed.\cr
   * The case where residual-dispersion models of either fit include random effects is problematic as, for such fits, the fitting procedure does not maximize the reported likelihood. Currently the test is prevented when the two fits  differ by their random effects, but is still performed otherwise (see Examples). 
@@ -161,9 +161,6 @@ if (spaMM.getOption("example_maxtime")>11) {
 ## See help("get_RLRsim_args") for a fast and accurate test procedure
 
 ## (2) Models differing also by residual-dispersion models:
-#
-# (Random-effect variance is again at boundary, but now no warning for this 
-#   is issued, due to a different fitting method being used from case). % ___F I X M E___
 #
 if (spaMM.getOption("example_maxtime")>25) { 
   m <- fitme(y ~ x + (1|g), data=dat, resid.model= ~x)

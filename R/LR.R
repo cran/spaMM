@@ -57,7 +57,9 @@
   if (inherits(phifit1,"HLfit")) {
     if (inherits(phifit2,"HLfit")) {
       cmp <- .compare_model_structures(phifit1,phifit2, argsRphimodels=TRUE)
-      if (cmp$anyranef) return(list(warning="Mixed-effect residual dispersion model found. No LRT performed.")) # ____F I X M E____ rethink: allow with warning?
+      if (cmp$anyranef) return(list(warning="Mixed-effect residual dispersion model found. No LRT performed.")) 
+      # ____F I X M E____ rethink: allow with warning? One problem is that no single objective function is maximized.
+      # another issue will be comparing residual models in mv fits? 
       df <- cmp$df 
       df1 <- cmp$df1
       df2 <- cmp$df2
@@ -65,7 +67,7 @@
       # # phifit2 is a phiScal... the input df2 may be 0 or 1  
       # the input df1 may be object$dfs$p_fixef_phi[[mv_it]] which is then NA
       if (phifit1$models$eta=="etaHGLM") {
-        return(list(warning="Mixed-effect residual dispersion found. No LRT performed.")) # ____F I X M E____ idem
+        return(list(warning="Mixed-effect residual dispersion model found. No LRT performed.")) # ____F I X M E____ idem
       } else if (df2==1L && "(Intercept)" %in% names(fixef(phifit1))) {
         df1 <- sum(.unlist(phifit1$dfs)) 
       } else df1 <- NA
@@ -74,7 +76,7 @@
   } else { # phifit1 is a phiScal...
     if (inherits(phifit2,"HLfit")) {
       if (phifit2$models$eta=="etaHGLM") {
-        return(list(warning="Mixed-effect residual dispersion found. No LRT performed.")) # ____F I X M E____ idem
+        return(list(warning="Mixed-effect residual dispersion model found. No LRT performed.")) # ____F I X M E____ idem
       } else if (df1==1L && "(Intercept)" %in% names(fixef(phifit2))) {
         df2 <- sum(.unlist(phifit2$dfs))
       } else df2 <- NA
@@ -262,10 +264,10 @@
     # overwrite the p_fixef_phi (with ma further be a list for mv fits) with a single scalar for all params of phi models
     dfs1 <- object$dfs
     dfs1$p_fixef_phi <- NULL
-    dfs1$p_phi <- .calc_p_phi(object)
+    dfs1$p_phi <- .calc_p_rdisp(object)
     dfs2 <- object2$dfs
     dfs2$p_fixef_phi <- NULL
-    dfs2$p_phi <- .calc_p_phi(object2)
+    dfs2$p_phi <- .calc_p_rdisp(object2)
     df1 <- sum(unlist(dfs1, use.names=FALSE)) 
     df2 <- sum(unlist(dfs2, use.names=FALSE))
     df <- abs(df1-df2)
@@ -745,14 +747,14 @@ eval_replicate <- function(y) { # no additional arguments, to ease parallel prog
     if (anyNA(bootrep)) {
       first_failed <- which(is.na(bootrep))[1] # first of pair of fits
       failure <- attributes(bootrep[[first_failed]])[[1]]
-      if (inherits(failure,"try-error") &&
-          grep("could not find",(condmess <- conditionMessage(attr(failure,"condition"))))
-      ) {
-        firstpb <- strsplit(condmess,"\"")[[1]][2]
-        cat(crayon::bold(paste0(
-          "Hmmm. It looks like some variables were not passed to the parallel processes.\n",
-          "Maybe add    ",firstpb," = ",firstpb,"   to spaMM_boot()'s 'fit_env' argument?\n"
-        )))
+      if (inherits(failure,"try-error") ) {
+        if (length(grep("could not find",(condmess <- conditionMessage(attr(failure,"condition")))))) {
+          firstpb <- strsplit(condmess,"\"")[[1]][2]
+          cat(crayon::bold(paste0(
+            "Hmmm. It looks like some variables were not passed to the parallel processes.\n",
+            "Maybe add    ",firstpb," = ",firstpb,"   to spaMM_boot()'s 'fit_env' argument?\n"
+          )))
+        }
         stop(condmess)
       }
     }
@@ -770,6 +772,26 @@ eval_replicate <- function(y) { # no additional arguments, to ease parallel prog
   } 
 }
 
+.warn_ests_at_bound <- function(fitobject) {
+  pars_at_bound <- NULL
+  outer_at_bound <- .check_outer_at_bound(fitobject, bool=FALSE)
+  if (length(outer_at_bound)) pars_at_bound <- paste(names(outer_at_bound),'=',signif(outer_at_bound), collapse=", ")
+  inner_lambdas <-.get_lambdas_notrC_from_hlfit(fitobject, type="inner") # ___F I X M E___ not all inner params checked.
+  # inner ranCoefs not very interesting. Detecting inner phi at bound seems contrived (moreover with mv fits).
+  inner_at_bound <- (inner_lambdas<1e-6)
+  if (any(inner_at_bound)) {
+    inner_at_bound <- inner_lambdas[which(inner_at_bound)]
+    pars_at_bound <- paste(
+      pars_at_bound,
+      paste0("lambda.",names(inner_at_bound),' = ',signif(inner_at_bound), collapse=", "), 
+      collapse=", "
+    )
+    warnmess <- paste("Full model fitted at bound of parameter ranges, for:\n",
+                      pars_at_bound,"\n",
+                      "=> Asymptotic test is unreliable (even with Bartlett correction).")
+    warning(warnmess, immediate.=TRUE, call.=FALSE)
+  }
+}
 
 
 LRT <- function(object,object2,boot.repl=0L,# nb_cores=NULL, 
@@ -785,13 +807,7 @@ LRT <- function(object,object2,boot.repl=0L,# nb_cores=NULL,
   fullfit <- info$fullfit
   if (is.null(fullfit)) return(NULL)
   df <- info$df
-  if ( ! is.na(df) &&
-       length(atbound <- .check_outer_at_bound(fullfit, bool=FALSE))) {
-    warnmess <- paste("Full model fitted at bound of parameter ranges, for:\n",
-                  paste(names(atbound),'=',signif(atbound), collapse=", "),"\n",
-                  "=> Asymptotic test is unreliable (even with Bartlett correction).")
-    warning(warnmess, immediate.=TRUE, call.=FALSE)
-  }
+  if ( ! is.na(df) ) .warn_ests_at_bound(fitobject=fullfit)
   nullfit <- info$nullfit
   test_obj <- info$test_obj
   LRTori <- 2*(logLik(fullfit,which=test_obj)-logLik(nullfit,which=test_obj))

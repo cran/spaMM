@@ -161,7 +161,7 @@ fitme_body <- function(processed,
         HLCor.args$init.HLfit$fixef <- .unscale(X.pv, sc_fixef)
         processed$port_env$port_fit_values$fixef <- NULL
         processed$X_off_fn <- NULL
-        processed$vecdisneeded <- .vecdisneeded(pforpv=TRUE, processed$family, processed) # (____F I X M E____) ultimately extend this for outer beta for mv fits 
+        processed$vecdisneeded <- .vecdisneeded(pforpv=TRUE, processed$family, processed) # (__F I X M E__) ultimately extend this for outer beta for mv fits... except that outer beta without gradient is so bad  
       }
     } ## end if ...getCall... else
     #

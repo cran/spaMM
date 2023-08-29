@@ -275,7 +275,7 @@
       notnumeric <- ! unlist(lapply(uniqueGeo,is.numeric))
       if (any(notnumeric)) stop(paste0("Variables(s) '",paste(names(which(notnumeric)),collapse="' '"),"'",
                                       " are not numeric, hence not suitable for computation of distance matrix."))
-      distMatrix <- proxy::dist(uniqueGeo,method=dist.method)
+      distMatrix <- .dist_fn(uniqueGeo,method=dist.method)
       if (as_matrix) distMatrix <- as.matrix(distMatrix) ## useful to select rows or cols in predict() 
     }
     if (needed["distMatrix"]) geoMats$distMatrix <- distMatrix ## not always computed
@@ -423,7 +423,7 @@
       maxrange <- lapply(unique(rho_mapping), function(idx) {
         ranges <- matrix(unlist(lapply(uniqueGeo, function(uu){
           if (nrow(uu)>1) {
-            range(proxy::dist(uu[,rho_mapping==idx],method=dist.method))
+            range(.dist_fn(uu[,rho_mapping==idx],method=dist.method))
           } else c(Inf,-Inf) ## encore des Inf to handle dist(0)...
         })),ncol=2)
         max(ranges[,2])-min(ranges[,1]) 
@@ -438,7 +438,7 @@
       maxrange <- numeric(length(u_rho_mapping))
       for (uit in u_rho_mapping) {
         idx <- u_rho_mapping[uit]
-        maxrange[uit] <- diff(range(proxy::dist(geo_envir$uniqueGeo[,rho_mapping==idx],method=control_dist_rd$dist.method)))
+        maxrange[uit] <- diff(range(.dist_fn(geo_envir$uniqueGeo[,rho_mapping==idx],method=control_dist_rd$dist.method)))
       }
       nbUnique <- geo_envir$nbUnique
     }
@@ -1087,6 +1087,9 @@
         init.optim$NB_shape <- NULL
       } # and this should have the effect that user lower and upper values should be ignored too.
     }  
+  # } else if (processed$models$rdispar=="rdiForm") { # "speculative outer phiGLM 2023/07/09" 
+  #   init.optim$rdisPars <- .init_rdisPars(init.optim$rdisPars, fixed=fixed, disp_env=family$resid.model,
+  #                                         init_by_glm=inits_by_xLM$phi_est)
   }
   init.optim
 }

@@ -2,8 +2,8 @@ Package: spaMM
 Type: Package
 Title: Mixed-Effect Models, with or without Spatial Random Effects
 Encoding: UTF-8
-Version: 4.3.20
-Date: 2023-07-04
+Version: 4.4.0
+Date: 2023-08-30
 Authors@R: c(person("François", "Rousset", role = c("aut", "cre", "cph"),
                      email = "francois.rousset@umontpellier.fr",
                      comment = c(ORCID = "0000-0003-4670-0371")),
@@ -14,7 +14,7 @@ Authors@R: c(person("François", "Rousset", role = c("aut", "cre", "cph"),
 Maintainer: François Rousset <francois.rousset@umontpellier.fr>
 Imports: methods, stats, graphics, Matrix, MASS, proxy, Rcpp (>=
         0.12.10), nlme, nloptr, minqa, pbapply, crayon, gmp (>= 0.6.0),
-        ROI, boot, geometry (>= 0.4.0), numDeriv
+        ROI, boot, geometry (>= 0.4.0), numDeriv, backports
 LinkingTo: Rcpp, RcppEigen (>= 0.3.3.5.0)
 Depends: R (>= 3.5.0)
 Suggests: maps, testthat, rcdd, foreach, future, future.apply, Infusion
@@ -29,10 +29,10 @@ URL: https://www.r-project.org,
         https://gitlab.mbb.univ-montp2.fr/francois/spamm-ref
 RoxygenNote: 7.1.2
 ByteCompile: true
-Packaged: 2023-07-04 21:21:25 UTC; francois.rousset
+Packaged: 2023-08-29 22:18:49 UTC; francois.rousset
 Author: François Rousset [aut, cre, cph]
     (<https://orcid.org/0000-0003-4670-0371>),
   Jean-Baptiste Ferdy [aut, cph],
   Alexandre Courtiol [aut] (<https://orcid.org/0000-0003-0637-2959>)
 Repository: CRAN
-Date/Publication: 2023-07-06 11:30:02 UTC
+Date/Publication: 2023-08-29 23:00:02 UTC

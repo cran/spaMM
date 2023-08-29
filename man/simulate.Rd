@@ -13,7 +13,7 @@
   and dispersion parameters. Simulation may be unconditional (the default, useful in many applications of parametric bootstrap), or conditional on the predicted values of random effects, or may draw from the conditional distribution of random effects given the observed response.
   Simulations may be run for the original values of fixed-effect predictor variables and of random effect levels (spatial locations for spatial random effects), or for new values of these. 
   
-  \code{simulate4boot} is a wrapper around \code{simulate.HLfit} that can be used to precompute the bootstrap samples to be used by \code{\link{spaMM_boot}} or \code{\link{spaMM2boot}} through their \code{boot_samples} argument (and is called internally by these functions when \code{boot_samples} is NULL).
+  \code{simulate4boot} is a wrapper around \code{simulate.HLfit} that can be used to precompute the bootstrap samples to be used by \code{\link{spaMM_boot}} or \code{\link{spaMM2boot}} through their \code{boot_samples} argument (and is called internally by these functions when \code{boot_samples} is NULL). 
   
   \code{simulate_ranef} will only simulate and return a vector of random effects, more specifically some elements of \bold{b} in the standard form \code{offset}+ \bold{X}\eqn{\beta} + \bold{Z b} for the linear predictor.
 }
@@ -29,7 +29,7 @@
                              newdata = object[[1]]$data, sizes = NULL, ...)
 
 simulate4boot(object, nsim, seed=NULL, resp_testfn=NULL, type="marginal", 
-              showpbar=eval(spaMM.getOption("barstyle")))
+              showpbar=eval(spaMM.getOption("barstyle")), ...)
 simulate_ranef(object, which=NULL, newdata = NULL, nsim = 1L)
 }
 %- maybe also 'usage' for other objects documented here.
@@ -60,10 +60,10 @@ simulate_ranef(object, which=NULL, newdata = NULL, nsim = 1L)
     Either a single boolean (which determines \code{verbose[["type"]]}, or a vector of booleans with possible elements \code{"type"} (to display basic information about the type of simulation) and \code{"showpbar"} (see \code{predict(.,verbose)}). 
   }
   \item{sizes}{
-  A vector of sample sizes to simulate in the case of a binomial fit. Defaults to the sizes in the original data. 
+  A vector of sample sizes to simulate in the case of a binomial fit. Defaults to the sizes in the original data. A non-default value may be needed in particular when \code{newdata} of size different from the original data are provided. For multivariate-response fits, the \code{sizes} argument should then contain elements for response levels for non-binomial submodels (e.g. for submodels with families and response levels \code{poisson: 3} and \code{binomial: 2}, respectively, the \code{sizes} vector sould contain 5 elements, e.g. 1 1 1 5 10, only the last two of which will be used).  
 }
   \item{resp_testfn}{
-  NULL, or a function that tests a condition which simulated samples should satisfy. This function takes a response vector as argument and return a boolean (TRUE indicating that the sample satisfies the condition).     
+  NULL, or a function that tests a condition which simulated samples should satisfy. This function takes a response vector as argument and return a boolean (TRUE indicating that the sample satisfies the condition). 
   }
   \item{phi_type}{
     Character string, either \code{"predict"} or one of the values possible for \code{type}. This controls the residual variance parameter \eqn{\phi}. The default is to use predicted \eqn{\phi} values from the fit, which are the fitted \eqn{\phi} values except when a structured-dispersion model is involved together with non-NULL \code{newdata}. However, when a structured-dispersion model is involved, it is also possible to simulate new \eqn{\phi} values, and for a mixed-effects structured-dispersion model, the same types of simulation controlled by \code{type} for the mean response can be performed as controlled by \code{phi_type}. For a fixed-effects structured-dispersion model, these types cannot be distinguished, and any \code{phi_type} distinct from \code{"predict"} will imply simulation under the fixed-effect model (see Examples). 
@@ -75,7 +75,7 @@ simulate_ranef(object, which=NULL, newdata = NULL, nsim = 1L)
   Used when \code{type="predVar"}: see Details. 
 }  
 \item{\dots}{
-  further arguments passed to or from other methods; currently only passed to \code{predict} in a speculative bit of code (see Details). 
+  For \code{simulate4boot}, further arguments passed to \code{simulate.HLfit} (e.g., \code{newdata}). For \code{simulate.HLfit}, further arguments only passed to \code{predict} in a speculative bit of code (see Details). 
 }
 \item{which}{
   Integer, or integer vector: the random effect(s) (indexed as ordered as in the model formula) to be simulated. If NULL, all of them are simulated. 
@@ -91,9 +91,11 @@ Controls display of progress bar. See \code{\link{barstyle}} option for details.
 \code{variances=list(linPred=TRUE,disp=FALSE)}) and only the uncertainty in the random effects is taken into account.
 
 A full discussion of the merits of the different \code{type}s is beyond the scope of this documentation, but these different types may not all be useful. \code{type="marginal"} is typically used for computation of confidence intervals by parametric bootstrap methods. \code{type="residual"} is used by \code{\link{get_cPredVar}} for its evaluation of a bias term. The other \code{type}s may be used to simulate the uncertainty in the random effects, conditionally on the data, and may therefore be more akin to the computation of prediction intervals conditionally on an (unknown but inferred) realization of the random effects. But these should presumably not be used in a bootstrap computation of such intervals, as this would represent a double accounting of the uncertainty that the boostrap aims to quantify.
+
+There are cases where simulation without a \code{newdata} argument may give results of different length than simulation with \code{newdata=}<original data>, as for \code{\link{predict}}.
 }
 \value{
-  \code{simulate.HLfit} returns a vector (if nsim=1) or a matrix with \code{nsim} columns, each containing simulated responses (or simulated random effects, for \code{simulated_ranef()}).
+  \code{simulate.HLfit} returns a vector (if nsim=1) or a matrix with \code{nsim} columns, each containing simulated responses (or simulated random effects, for \code{simulated_ranef()}). For multivariate-response simulations, an \code{nobs} attribute gives the number of responses for each submodel if no \code{resp_testfn} was applied.
   
   \code{simulate4boot} returns a list with elements 
     \describe{
@@ -102,6 +104,7 @@ A full discussion of the merits of the different \code{type}s is beyond the scop
   }
 
   The \code{simulate.HLfitlist} method returns a list of simulated responses.
+  
 }
 \examples{
 data("Loaloa")

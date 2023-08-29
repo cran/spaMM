@@ -28,12 +28,12 @@ getCovariate.corMatern <- function(object, form = formula(object), data) {
     if (!is.null(nlme::getGroupsFormula(form))) { # by groups
       grps <- getGroups(object, data = data)
       if (is.null(covar)) {
-        distmats <- lapply(split(grps, grps), function(x) (proxy::dist(1:length(x))))
+        distmats <- lapply(split(grps, grps), function(x) (.dist_fn(1:length(x))))
       } else {
         locfn <- function(el, metric) {
           el <- as.matrix(el)
           if (nrow(el) > 1) {
-            (proxy::dist(el, metric))
+            .dist_fn(el, metric)
           } else {
             numeric(0)
           }
@@ -44,10 +44,10 @@ getCovariate.corMatern <- function(object, form = formula(object), data) {
       covar <- covar[sapply(covar, length) > 0]  # no 1-obs groups ## takes only list elements of nonzero length
     } else {				# no groups
       if (is.null(covar)) {
-        distmats <- (proxy::dist(1:nrow(data)))
+        distmats <- .dist_fn(1:nrow(data))
       } else {
-        distmats <- (proxy::dist(as.matrix(covar),
-                                 method = attr(object, "metric")))
+        distmats <- .dist_fn(as.matrix(covar),
+                             method = attr(object, "metric"))
       }
       covar <- lapply(distmats,as.vector)
     }

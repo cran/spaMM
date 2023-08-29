@@ -218,9 +218,8 @@ makeTicks <- function(x, ## in canonical scale...
   
   if (is.null(map.asp)) map.asp <- yspan/xspan
   map.asp <- min(map.asp,max_map.asp)
-  if (map.asp>4) map.asp <- 1
-  #print(paste("map.asp=",map.asp))
-  
+  if (map.asp>4 || map.asp<0.25) map.asp <- 1 # avoid extremely tall || flat plots
+
   hmap <- wplotmap*map.asp + Hmargin
   #   if (hmap>(par("din")[2]*2.54)) {
   #     #print("hmap>(par(\"din\")[2]*2.54)")

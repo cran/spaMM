@@ -1,5 +1,6 @@
 \name{fitmv}
 \alias{fitmv}
+\alias{X2X}
 \title{
 Fitting multivariate responses
 }
@@ -38,18 +39,19 @@ Optional arguments passed to (or operating as if passed to) \code{\link{HLCor}},
 }
 \details{
 \bold{Matching random effects across submodels, and referring to them};\cr
-Random effects are recognized as identical across submodels by matching the formula terms. As shown in the Examples, if the two models formulas share the \code{(1|clinic)} term, this term is recognized as a single random effect shared between the two responses. But the \code{(1|clinic)} and \code{(1|clinic2)} terms are recognized as distinct random effects. In that case, the \code{init} argument \code{init=list(lambda=c('1'=1,'2'=0.5))} is shown to refer to these by names \code{1,2}... where the order is defined as the order of first appearance of the terms across the model formulas in the order of the \code{submodels} list. 
-Alternatively, the syntax \code{fixed=list(lambda=c('clinic2'=0.5,'clinic'=1))} works: this syntax makes order of input irrelevant but assumes that the user guesses names correctly (these are typically the names that appear in the summary of lambda values from the fit object or, more programmatically, \cr
+Random effects are recognized as identical across submodels by matching the formula terms. As shown in the Examples, if the two models formulas share the \code{(1|clinic)} term, this term is recognized as a single random effect shared between the two responses. But the \code{(1|clinic)} and \code{(+1|clinic)} terms are recognized as distinct random effects. In that case, the \code{init} argument \code{init=list(lambda=c('1'=1,'2'=0.5))} is shown to refer to these by names \code{1,2}... where the order is defined as the order of first appearance of the terms across the model formulas in the order of the \code{submodels} list. 
+Alternatively, the syntax \code{fixed=list(lambda=c('clinic.1'=0.5,'clinic'=1))} works: this syntax makes order of input irrelevant but assumes that the user guesses names correctly (these are typically the names that appear in the summary of lambda values from the fit object or, more programmatically, \cr
 \code{names(<fit object>$lambda.object$print_namesTerms)}). Finally, fixed values of parameters can \bold{also} be specified through each sub-model, with indices referring to the order of random effects with each model.
 
 The matching of random-effect terms occurs after expansion of \code{\link{multIMRF}} terms, if any. This may have subtle consequences if two multIMRF terms differ only by their number of levels, as some of the expanded IMRF terms are then shared. 
 
 \bold{Capacities and limitations}:\cr
-Practically all features of models that can be fitted by \code{fitme} should be available: this includes all combinations of GLM response families, residual dispersion models, and all types of random-effect terms, whether autocorrelated or not. Among the arguments handled through the \ldots, \code{covStruct}, \code{distMatrix}, \code{corrMatrix} should be effective; \code{control.HLfit$LevenbergM} and \code{verbose=c(TRACE=TRUE)} will work but some other controls available in \code{fitme} may not. The \code{\link{REMLformula}} argument for non-standard REML is not handled (but the more useful \code{\link{keepInREML}} attribute for fixed fixed-effect coefficients is handled).
+Practically all features of models that can be fitted by \code{fitme} should be available: this includes all combinations of GLM response families, residual dispersion models, and all types of random-effect terms, whether autocorrelated or not. Among the arguments handled through the \ldots, \code{covStruct}, \code{distMatrix}, \code{corrMatrix} should be effective; \code{control.HLfit$LevenbergM} and \code{verbose=c(TRACE=TRUE)} will work but some other controls available in \code{fitme} may not. Usage of the \code{\link{REMLformula}} argument is restricted as it cannot be used to specify a non-standard REML correction (but the more useful \code{\link{keepInREML}} attribute for fixed fixed-effect coefficients is handled).
 
 The \code{\link{multi}} family-like syntax for multinomial models should not be used, but \code{fitmv} could provide other means to model multinomial responses.
 
-Most post-fit functions work, at least with default arguments. This includes point \code{predict}ion and prediction variances calculations sensu lato, including with \code{newdata}; but also \code{simulate}, \code{spaMM_boot}, \code{confint}, \code{anova}, \code{update_resp}, and \code{update}. Usage of the \code{re.form} argument of some of these functions has not been systematically checked. 
+Most post-fit functions work, at least with default arguments. This includes point \code{predict}ion and prediction variances calculations sensu lato, including with \code{newdata}; but also \code{simulate}, \code{spaMM_boot}, \code{confint}, \code{anova}, \code{update_resp}, and \code{update}. The \code{re.form} argument now works for \code{predict} and \code{simulate}. Bootstrap computation may require special care for models where simulation of one response variable may depend on drawns of another one (see Hurdle model example in the \dQuote{Gentle introdution} to \pkg{spaMM},
+\url{https://gitlab.mbb.univ-montp2.fr/francois/spamm-ref/-/blob/master/vignettePlus/spaMMintro.pdf}).
 
 Prediction functions try to handle most forms of missing information in \code{newdata} (including information missing for a residual-dispersion model when predcitiosn fro mit are needed: see Examples). As information may be missing for some submodels but not others, different numbers of predictions are then returned for different submodels. As for univariate-response models, \code{predict} will return point predictions as a single 1-column matrix, here concatenating the prediction results of the different submodels. The \code{nobs} attribute specifies how may values pertain to each submodel. 
   
@@ -58,7 +60,7 @@ Some plotting functions may fail. \code{update.formula} fails (see \code{\link{u
 \code{multcomp::glht} fails. % one mcp2matrix2() wherein factor_contrasts(model) surely does not return correct info
 % get_RLRsim_args also look into family...
 
-A perhaps not entirely satisfying feature is that \code{simulate} by default stacks the results of simulating each model in a single vector. Some non-trivial reformatting may then be required to include such simulation results in a suitable \code{newdata} data frame with (say) sufficient information for prediction of all responses. The syntax \cr
+A perhaps not entirely satisfying feature is that \code{simulate} by default stacks the results of simulating each submodel in a single vector. Some non-trivial reformatting may then be required to include such simulation results in a suitable \code{newdata} data frame with (say) sufficient information for prediction of all responses. The syntax \cr
 \code{update_resp(<fit>, newresp = simulate(<fit>, ...), evaluate = FALSE)$data}\cr 
 may be particularly useful to reformat simulation results in this perspective. 
 
@@ -84,7 +86,6 @@ climv <- clinics
                      family=binomial(),data=clinics))
 set.seed(123)
 climv$np2 <- simulate(fitClinics, type="residual")
-climv$clinic2 <- climv$clinic
 #
 ### fits
 
@@ -99,15 +100,15 @@ climv$clinic2 <- climv$clinic
 # (note how two lambda values are set; same syntax for 'init' values):   
 (mvfitind <- fitmv(
    submodels=list(mod1=list(formula=cbind(npos,nneg)~treatment+(1|clinic),family=binomial()),
-                  mod2=list(formula=np2~treatment+(1|clinic2),family=poisson())), 
-   data=climv, fixed=list(lambda=c('1'=1,'2'=0.5)))) # '1': (1|clinic); '2': (1|clinic2)
+                  mod2=list(formula=np2~treatment+(+1|clinic),family=poisson())), 
+   data=climv, fixed=list(lambda=c('1'=1,'2'=0.5)))) # '1': (1|clinic); '2': (+1|clinic)
 
 #### Specifying fixed (but not init) values in submodels is also possible (maybe not a good idea)
 # (mvfitfix <- fitmv(
 #   submodels=list(mod1=list(formula=cbind(npos,nneg)~treatment+(1|clinic),
 #                            family=binomial(),fixed=list(lambda=c('1'=1))), # '1': (1|clinic) 
-#                  mod2=list(formula=np2~treatment+(1|clinic2),family=poisson(),
-#                            fixed=list(lambda=c('1'=0.5)))),              # '2': (1|clinic2) 
+#                  mod2=list(formula=np2~treatment+(+1|clinic),family=poisson(),
+#                            fixed=list(lambda=c('1'=0.5)))),              # '2': (+1|clinic) 
 #   data=climv))
 
 #### Shared fixed effect
@@ -125,8 +126,12 @@ head(design_X <- model.matrix(mvfit))
 # "(Intercept)" "treatment_1" "treatment_2"
 # We build a matrix that relates the original 4 coefficients to these 3 ones:
 
-X_4to3 <- matrix(c(1,0,1,0,0,1,0,0,0,0,0,1), nrow=4, ncol=3,
-                   dimnames=list(NULL, c("(Intercept)","treatment_1","treatment_2")))
+X_4to3 <- 
+  matrix(c(1,0,0,
+           0,1,0,
+           1,0,0,
+           0,0,1), nrow=4, ncol=3, byrow=TRUE,
+         dimnames=list(NULL, c("(Intercept)","treatment_1","treatment_2")))
                    
 # defined such that design_X \%*\% X_4to3 will be the design matrix for the intended model, 
 # and the single "(Intercept)" coefficient of the three-parameter model will operate as 

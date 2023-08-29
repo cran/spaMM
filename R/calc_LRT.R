@@ -1,6 +1,6 @@
 .check_nb_cores <- function(nb_cores=NULL) {
   if (is.null(nb_cores)) nb_cores <- spaMM.getOption("nb_cores") ## may be NULL
-  machine_cores <- parallel::detectCores()
+  machine_cores <- parallel::detectCores(logical=FALSE)
   if (is.null(nb_cores)) {
     nb_cores <- 1L ## default
     if (machine_cores>1L && interactive()) {
@@ -112,7 +112,7 @@
     bootdL <- bootreps[,1L]-bootreps[,2L]
     if (resu$fullfit$models$eta=="etaHGLM" &&
         resu$nullfit$models$eta!="etaHGLM") { # comparing MM to fixed-effect one
-      # no diagnosis ; but it looks like allowing lambda=0 in the fit would be the solution (sigh ____F I X M E____) 
+      # no diagnosis ; but it looks like allowing lambda=0 in the fit would be the solution (sigh ____F I X M E____ see 'singw' code) 
     } else if (any(bootdL < -2e-04)) {
       neg_values <- bootdL[bootdL<0]
       diagn_test <- stats::ks.test(x= -neg_values,y=.neg_r_chinorm, alternative = "less")

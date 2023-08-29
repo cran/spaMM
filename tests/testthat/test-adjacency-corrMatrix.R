@@ -2,25 +2,25 @@ cat(crayon::yellow("\ntest-adjacency-corrMatrix: adjacency (dense,sparse) vs. co
 
 data("scotlip")
 
-adjfit <- fitme(cases~I(prop.ag/10) +adjacency(1|gridcode)+(1|gridcode)+offset(log(expec)),
+adjfitsp <- fitme(cases~I(prop.ag/10) +adjacency(1|gridcode)+(1|gridcode)+offset(log(expec)),
                 adjMatrix=Nmatrix,
                 rand.family=list(gaussian(),Gamma(log)), #verbose=c(TRACE=1L),
                 fixed=list(rho=0.1), 
                 family=poisson(),data=scotlip)
-expectedMethod <- "sXaug_EigenDense_QRP_Chol_scaled" ## bc data too small to switch to sparse
-actualMethods <- how(adjfit, verbose=FALSE)$MME_method
+#expectedMethod <- "AUGI0_ZX_spprec" ## has been dense for a long time
+#actualMethods <- how(adjfit, verbose=FALSE)$MME_method
 if (interactive()) {
-  if (! (expectedMethod %in% actualMethods)) {
-    message(paste('Actual method for adjfit differs from expected ("',expectedMethod,'"): was a non-default option selected?'))
+  if ( ! .is_spprec_fit(adjfitsp)) {
+    message(paste0('Actual method for adjfitsp differs from expected spprec: was a non-default option selected?'))
   }
 } else testthat::expect_true(expectedMethod %in% adjfit$MME_method) 
-adjfitsp <- fitme(cases~I(prop.ag/10) +adjacency(1|gridcode)+(1|gridcode)+offset(log(expec)),
+adjfit <- fitme(cases~I(prop.ag/10) +adjacency(1|gridcode)+(1|gridcode)+offset(log(expec)),
                   adjMatrix=Nmatrix,
                   rand.family=list(gaussian(),Gamma(log)), #verbose=c(TRACE=1L),
                   fixed=list(rho=0.1), 
                   family=poisson(),data=scotlip, 
-                  control.HLfit=list(sparse_precision=TRUE))
-testthat::expect_true(.is_spprec_fit(adjfitsp))
+                  control.HLfit=list(algebra="decorr"))
+testthat::expect_true( ! .is_spprec_fit(adjfit))
 if (spaMM.getOption("EigenDense_QRP_method")==".lmwithQR") {
   crit <- diff(range(logLik(adjfit),logLik(adjfitsp)))
   if (spaMM.getOption("fpot_tol")>0) {

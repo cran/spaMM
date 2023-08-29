@@ -216,7 +216,7 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
   }
 }
 
-.calc_sliceVar <- function(slice, cov_newLv_oldv_list,
+.calc_sliceVar <- function(cov_newLv_oldv_list,
                            X.pv, newZAlist_slice, 
                            re_form_col_indices=NULL,
                            tcrossfac_beta_w_cov,
@@ -324,7 +324,6 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
       X.pv_slice <- X.pv[slice,,drop=FALSE]
       for (rt in seq_along(newZAlist)) newZAlist_slice[[rt]] <- newZAlist[[rt]][slice,,drop=FALSE]
       predVar[[it]] <- .calc_sliceVar( ## -> recursive call to .calcPredVar 
-                                      slice=slice,
                                       cov_newLv_oldv_list=cov_newLv_oldv_list,
                                       X.pv=X.pv_slice,
                                       newZAlist_slice=newZAlist_slice,
@@ -552,7 +551,8 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
                                  which_mats, 
                                  newZAlist, # apparently under-used in my first corrFamily programming. 
                                  newinold, fix_info=NULL,
-                                 invCov_oldLv_oldLv_list) {
+                                 invCov_oldLv_oldLv_list,
+                                 for_mv=FALSE) {
   newLv_env <- new.env(parent=emptyenv())
   if (which_mats$no) {
     newLv_env$cov_newLv_oldv_list <- vector("list",length(newZAlist)) ## declar-initialization, will be filled in the loop
@@ -719,6 +719,14 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
           if ( is.data.frame(locdata)) {
             geonames <- colnames(olduniqueGeo) 
             newuniqueGeo <- locdata[,geonames,drop=FALSE] ## includes nesting factor
+            
+            # The location in newuniqueGeo may not be unique despite the name. 
+            # In general it is considered better to ignore this rather than seek unique values systematically...
+            if (for_mv) { # ...but for mv fits this will be a problem in .compute_ZAXlist() as locnr>locnc
+              newuniqueGeo <- unique(newuniqueGeo)
+              rownames(newuniqueGeo) <- .pasteCols(t(newuniqueGeo)) 
+            }
+            
           } else { ## locdata is 'preprocessed' list of arrays (tested by get_predCov_var_fix() tests)
             newuniqueGeo <- locdata[[as.character(old_rd)]] ## preprocessed, [,geonames,drop=FALSE] not necess ## includes nesting factor 
             geonames <- colnames(newuniqueGeo)
@@ -1369,12 +1377,13 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
   return(resu)
 }
 
-.unlist_with_attributes <- function(somelist) {
-  if (is.matrix(somelist[[1L]])) {
+.reformat_with_attributes <- function(somelist, reformat) {
+  if (reformat=="rbind" || is.matrix(somelist[[1L]])) {
     res <- do.call(rbind,somelist)
   } else res <- unlist(somelist)
   mostAttrs <- names(attributes(somelist[[1L]]))
-  mostAttrs <- setdiff(mostAttrs,c("class","dim","dimnames","names","row.names"))
+  mostAttrs <- setdiff(mostAttrs,c("class","dim","dimnames","names","row.names","fittedName")) # fittedName is name provided by 'binding' argument
+  #  (=> the bound data.frame will still have this attribute, but not several copies in a vector).
   tmpattr <- vector("list",length(somelist))
   for (attrname in mostAttrs) {
     for (it in seq_along(somelist)) tmpattr[[it]] <- attr(somelist[[it]],attrname)
@@ -1385,20 +1394,58 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
   return(res)
 }
 
-.rbind_with_attributes <- function(somelist) {
-  res <- do.call(rbind,somelist)
+
+.reformat_with_attributes_mv <- function(somelist, reformat) {
+  if (reformat=="rbind" || is.matrix(somelist[[1L]])) {
+    res <- do.call(rbind,somelist)
+  } else res <- unlist(somelist)
   mostAttrs <- names(attributes(somelist[[1L]]))
-  mostAttrs <- setdiff(mostAttrs,c("class","dim","dimnames","names","row.names","fittedName")) # fittedName is name provided by 'binding' argument
-  # and this function is called when such a name is provided. (=> the bound data.frame will still have this attribute, but not several copies in a vector).
+  mostAttrs <- setdiff(mostAttrs,c("class","dim","dimnames","names","row.names","fittedName"))
   tmpattr <- vector("list",length(somelist))
-  for (attrname in mostAttrs) {
-    for (it in seq_along(somelist)) tmpattr[[it]] <- attr(somelist[[it]],attrname)
-    if (is.matrix(tmpattr[[1L]])) {
-      attr(res,attrname) <- do.call(rbind,tmpattr)
-    } else attr(res,attrname) <- unlist(tmpattr)
-  }
-  return(res)
+  nslices <- length(somelist)
+  for (it in seq_along(somelist)) tmpattr[[it]] <- attr(somelist[[it]],"nobs")
+  nobs <- unlist(tmpattr)
+  cum_nobs <- cumsum(c(0L,nobs))
+  subranges <- sapply(seq_along(nobs), function(v) .subrange(cumul=cum_nobs, it=v))
+  subranges <- t(matrix(subranges, ncol=nslices))
+  submodel_ranges <- apply(subranges,2L, unlist)
+  dim(subranges) <- NULL
+  subranges <- .unlist(subranges)
+  if (is.null(dim(res))) {
+    mv_res <- res[subranges]
+  } else mv_res <- res[subranges,, drop=FALSE]
+  attr(mv_res,"mv") <- apply(submodel_ranges, 2, function(v) res[v,], simplify = FALSE) # [v,] to keep names
+  attr(mv_res,"nobs") <- rowSums(matrix(nobs,ncol=nslices))
+  for (st in intersect(mostAttrs,c("mu_U","p0"))) {
+    for (it in seq_along(somelist)) tmpattr[[it]] <- attr(somelist[[it]],st)
+    tmp <- unlist(tmpattr, recursive=FALSE)
+    tmp <- t(matrix(tmp, ncol=nslices))
+    tmp <- apply(tmp,2L, unlist, recursive=FALSE)
+    attr(mv_res,st) <- tmp # NULL (attribute absent) when it would be a list of NULL's in the unsliced computation... is this a problem?
+  } 
+  for (st in intersect(mostAttrs,c("frame"))) {
+    for (it in seq_along(somelist)) tmpattr[[it]] <- attr(somelist[[it]],st)
+    tmp <- unlist(tmpattr, recursive=FALSE)
+    tmp <- t(matrix(tmp, ncol=nslices))
+    tmp <- apply(tmp,2L, function(v) do.call(rbind,v))
+    attr(tmp, "allvarsS") <- attr( tmpattr[[1L]], "allvarsS")
+    attr(mv_res,st) <- tmp
+  } 
+  mostAttrs <- setdiff(mostAttrs,c("mu_U","p0","frame","mv","nobs"))
+  if (length(mostAttrs)) warning(paste0("Attribute(s) '",
+                                        paste0(mostAttrs,collapse="','"),
+                                        "' potentially lost from result.\n Please contact the maintainer."))
+  class(mv_res) <- class(somelist[[1]]) # keeping possible "predictions" class
+  mv_res
 }
+
+# .blockSize <- function(object, newdata, default) {
+#   if (inherits(object,"fitmv") && nrow(newdata)>default) {
+#     warning(paste("Operations on large 'newdata' may be slow, and not optimized by default on multivariate-fit objects.\n",
+#                   "Either split your newdata, or provide a moderate 'blockSize' if you understand the special structure of the output."),
+#             immediate.=TRUE)
+#   } else default
+# }
 
 ## (1) for surface prediction: (developed in InferentialSimulation/InferentialSimulation.R)
 ## (2) But also for generation of fixed effects in simulation of nested-effects models
@@ -1407,13 +1454,15 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
                           level = 0.95, blockSize = 2000L, type = "response", 
                           verbose=c(showpbar=eval(spaMM.getOption("barstyle"))), 
                           control=list(), ...) { ## but not new Y
+  if (inherits(newdata,"tibble"))     newdata <- as.data.frame(newdata) # such as tibble. 
+
   if (is.null(object$envir)) object$envir <- list2env(list(), ## back-compatibility fix for old objects
                                                      parent=environment(HLfit_body))
   if ( ! type %in% c("link", "response")) warning(paste("The two handled prediction 'type's are",
                                                         '"link" and "response". Anything else is equivalent to "response".'), immediate. = TRUE)
   ## the final components returned as attributes have names ...Var, other terms should be named differently
   #
-  if (is.null(control$simulate)) control$simulate <- control$keep_ranef_vars_for_simulate <- FALSE
+  if (is.null(control$simulate)) control$simulate <- control$keep_ranef_covs_for_simulate <- FALSE
   if ( ! is.null(intervals)) {
     if ( ! inherits(intervals,"character")) stop("'intervals' arguments should inherit from class 'character'.")
     checkIntervals <- (substr(x=intervals, nchar(intervals)-2L, nchar(intervals))=="Var")
@@ -1430,10 +1479,11 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
   nrX <-  NROW(newdata)
   if (!is.null(re.form) && inherits(re.form,"formula")) re.form <- .preprocess_formula(re.form)
   showpbar <- verbose[["showpbar"]]
-  ############################## if (nrX>0L) newdata <- droplevels(newdata) FIXME perhaps here ? 
-  if ( (! variances$cov) && ! control$simulate && nrX > blockSize) {
+  if ( (! variances$cov) && ! control$simulate && 
+       is.null(validrownames <- attr(newdata,"validrownames")) &&
+       nrX > blockSize) {
     ### this part of code is tested by the test-predVar code on Loaloa data
-    # et par test geostat dans probitgem (iterateSEMSmooth -> .sampleNextPars -> .spaMM_rhullByEI)
+    # and by test geostat dans probitgem (iterateSEMSmooth -> .sampleNextPars -> .spaMM_rhullByEI)
     ## newdata <- droplevels(newdata) ## potential gain of time for droplevels(newdata_slice)
     slices <- unique(c(seq(0L,nrX,blockSize),nrX))
     nslices <- length(slices)-1L
@@ -1442,16 +1492,21 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
     for (it in seq_len(nslices)) {
       slice <- (slices[it]+1L):slices[it+1L]
       newdata_slice <- newdata[slice,,drop=FALSE]
-      ## newdata_slice <- droplevels(newdata_slice) 
       res[[it]] <- .predict_body(object=object, newdata=newdata_slice, re.form = re.form, variances=variances, 
                                  binding=binding, type=type, intervals=intervals, level=level, blockSize=blockSize, ## blockSize should not be useful *here*
                                  control=control, showpbar=showpbar)
       if (showpbar) progrbar_setup$progress(slices[it+1L]/nrX)  ## update progress bar
     }
     if (showpbar) close(progrbar_setup$pb)
-    if (is.character(binding)) {
-      res <- .rbind_with_attributes(res) # rbind data frames and their attributes
-    } else res <- .unlist_with_attributes(res) # vector for binding=NA, 1-col matrix for binding=FALSE
+    if (inherits(object,"fitmv")) {
+      if (is.character(binding)) {
+        res <- .reformat_with_attributes_mv(res, reformat="rbind") # rbind data frames and their attributes
+      } else res <- .reformat_with_attributes_mv(res, reformat="unlist") # vector for binding=NA, 1-col matrix for binding=FALSE
+    } else {
+      if (is.character(binding)) {
+        res <- .reformat_with_attributes(res, reformat="rbind") # rbind data frames and their attributes
+      } else res <- .reformat_with_attributes(res, reformat="unlist") # vector for binding=NA, 1-col matrix for binding=FALSE
+    }
   } else if (type=="marginal") {
     res <- .predict_marg(object=object, newdata=newdata, re.form = re.form, control=control)
   } else res <- .predict_body(object=object, newdata=newdata, re.form = re.form,

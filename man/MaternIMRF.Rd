@@ -10,7 +10,7 @@ Using this feature requires that the not-on-CRAN package \pkg{INLA} (\url{https:
 }
 \usage{
 # corrFamily constructor:
-MaternIMRFa(mesh, tpar = c(alpha = 1.25, kappa = 0.1), fixed = NULL)
+MaternIMRFa(mesh, tpar = c(alpha = 1.25, kappa = 0.1), fixed = NULL, norm=FALSE)
 }
 \arguments{
   \item{mesh}{
@@ -21,6 +21,7 @@ and consistently with the general format of \code{\link{corrFamily}} constructor
   Named numeric vector: template values of the parameters of the model. Better not modified unless you know what you are doing. 
 }
   \item{fixed}{NULL or numeric vector, to fix the parameters of this model.}
+  \item{norm}{Boolean: whether to apply a normalization so that the random effect is homoscedastic (see \code{\link{IMRF}}) for details.}
 }
 \value{
 A list suitable as input in the \code{covStruct} argument, with the following elements: 

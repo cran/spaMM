@@ -245,6 +245,38 @@
   sparse_precision
 }
 
+if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") {
+  
+  .is01col <- function(ZA) {
+    is01col <- attr(ZA,"is_incid")
+    if (is.null(is01col)) { # But presumably is_incid has been checked previously to .is01col() beign called?
+      warning("(_LOCAL_TESTS_-check only:) 'is_incid' attribute missing.\n Might be correct in some cases but is it here?",
+              immediate. = TRUE)
+      return(FALSE)
+    }
+    if (is01col) {
+      is01col <- attr(is01col,"is01col") 
+      if (is.null(is01col)) {
+        warning("(_LOCAL_TESTS_-check only:) Possible inefficiency: 'is01col' attribute missing.", immediate. = TRUE)
+        return(FALSE)
+      }
+    }
+    is01col
+  }
+  
+} else {
+  
+  .is01col <- function(ZA) {
+    is01col <- attr(ZA,"is_incid")
+    if (is01col) {
+      is01col <- attr(is01col,"is01col") 
+      if (is.null(is01col)) return(FALSE) # ___F I X M E___ See alternative, _LOCAL_TESTS_ definition for devel checks.
+    }
+    is01col
+  }
+  
+}
+
 # even though the Z's were sparse postmultplication by LMatrix leads some of the ZAL's to dgeMatrix (dense)
 .choose_QRmethod <- function(ZAlist, corr_info, is_spprec, processed, control.HLfit) {
   if (is_spprec) return("sparse") # 08/2021: currently QRmethod operates only though .eval_as_mat_arg() 
@@ -266,7 +298,12 @@
                               )
       for (rd in which(is_cF)) possiblydense[rd] <- processed$corr_info$corr_families[[rd]]$possiblyDenseCorr 
       #
-      actuallysparse <- (possiblydense & grepl("%in%", attr(ZAlist, "exp_ranef_string"), fixed=TRUE)) # nested models otherwise with possibly dense *corr*
+      actuallysparse <- (
+        possiblydense & (
+          grepl("%in%", attr(ZAlist, "exp_ranef_string"), fixed=TRUE) | # nested models otherwise with possibly dense *corr*
+            sapply(ZAlist, .is01col) # This should detect <corr_type>( <0/1 LHS> | RHS)
+        )
+      ) 
       stillpossiblydense <- possiblydense & ( ! actuallysparse)
       #
       sparseprecs <- exp_ranef_types %in% c("adjacency", "IMRF", "AR1", "MaternIMRFa", "ARp")
@@ -674,8 +711,9 @@
       resid.model$formula <- resid.formula  ## put it back after attributes have been added (no equivalent if phiHGLM has been detected?)
     } 
   } else { # phi.Fix was not NULL. In particular for rdisPars it is presumably 1. models[["phi"]] remains ""
-    if ( ( ! mainfamfam %in% c("gaussian","Gamma")) && .DEPARSE(resid.formula) != "~1") {
-      if ( ! mainfamfam %in% c("beta_resp", "betabin", "negbin1","negbin2")) warning(paste0("resid.model may be ignored in ",mainfamfam,"-response models"))
+    if ( # ( ! mainfamfam %in% c("gaussian","Gamma")) && 
+         .DEPARSE(resid.formula) != "~1") {
+      if ( ! mainfamfam %in% c("beta_resp", "betabin", "negbin1","negbin2", "gaussian", "Gamma")) warning(paste0("resid.model may be ignored in ",mainfamfam,"-response models"))
 
       resid.formula <- resid.model$formula
       if ( ! is.null(.parseBars(resid.formula))) stop("Random effects are not allowed in model for family parameter.")

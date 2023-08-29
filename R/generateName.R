@@ -17,29 +17,7 @@
   fvname
 }
 
-## does not seem to be used. Infusion has some alternative definitions.
-# generateName <- function(base="tmp",
-#                             oldnames, ## typically for creating name of new variable
-#                             pos=".GlobalEnv" ## typically not used: for creating name of object for debugging
-#                             ) {
-#   if ( ! missing(oldnames)) { ## because presumably the test should be TRUE if preexisting was provided yet is NULL
-#     allmatches <- pmatch(x=base,oldnames)
-#   } else {
-#     pattern <- paste0(base,"*")
-#     allmatches <- ls(pattern=pattern,pos=pos)
-#   }
-#   allremainders <- substring(allmatches,nchar(base)+1) 
-#   allremainders <- as.numeric(allremainders[which( ! is.na(as.numeric(allremainders )))  ]) ## as.numeric("...")
-#   if (length(allremainders) == 0L) {
-#     validname <- base 
-#   } else {
-#     num <- max(allremainders)+1
-#     validname <-paste0( base , num) 
-#   }
-#   return(validname)
-# }
-
-
+## generateName() was defined here for some time but was not used and was poorly conceived. See Infusion version... 
 
 ## generateFileName() was defined here until  1.10.1 (09/2016) but is moved to blackbox
 ##base::tempfile generates more random names

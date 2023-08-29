@@ -55,7 +55,7 @@ summary(fitme(y ~ 0, data = d))
                     family=poisson(), adjMatrix=Nmatrix, data=scotlip))
 scotlip$verif <- scotlip$expec/2
 (ranSlope2 <- fitme(I(1+cases)~I(prop.ag/10)+adjacency(0+verif|gridcode),
-                    family=poisson(), adjMatrix=Nmatrix, data=scotlip)) ## explicit spaMM::negbin() may be needed.
+                    family=poisson(), adjMatrix=Nmatrix, data=scotlip))
 testthat::expect_true(abs(ranSlope2$lambda-4*ranSlope1$lambda)<1e-5)
 
 # test dfs

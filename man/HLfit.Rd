@@ -6,9 +6,10 @@
 \alias{prior.weights}
 \title{Fit mixed models with given correlation matrix}
 \description{
-  This function fits GLMMs as well as some hierarchical generalized linear models (HGLM; Lee and Nelder 2001).
-  \code{HLfit} fits both fixed effects parameters, and dispersion parameters i.e. the variance of the random effects (full covariance for random-coefficient models), and the variance of the residual error. The linear predictor is of the standard form \code{offset+ X beta + Z b}, where X is the design matrix of fixed effects and Z is a design matrix of random effects (typically an incidence matrix with 0s and 1s, but not necessarily). Models are fitted by an iterative algorithm alternating estimation of fixed effects and of dispersion parameters. The residual dispersion may follow a \dQuote{structured-dispersion model} modeling heteroscedasticity. 
-  Estimation of the latter parameters is performed by a form of fit of debiased residuals, which allows fitting a structured-dispersion model (Smyth et al. 2001).  However, evaluation of the debiased residuals can be slow in particular for large datasets. For models without structured dispersion, it is then worth using the \code{\link{fitme}} function (or the \code{\link{corrHLfit}} function with non-default arguments). These functions can optimize the likelihood of \code{HLfit} fits for different given values of the dispersion parameters (\dQuote{outer optimization}), thereby avoiding the need to estimate debiased residuals. 
+  This function fits GL(M)Ms as well as some hierarchical generalized linear models (HGLM; Lee and Nelder 2001). It may be called on its own but is now better seen as a backend for the main fitting function \code{fitme} (or \code{fitmv} for multivariate-response models). This documentation completes the documentation of the latter functions with respect to some arguments they pass to \code{HLfit} and with respect to the structure of the objects they return.
+  
+  On its own, \code{HLfit} fits both fixed effects parameters, and dispersion parameters i.e. the variance of the random effects (full covariance for random-coefficient models), and the variance of the residual error. The linear predictor is of the standard form \code{offset+ X beta + Z b}, where X is the design matrix of fixed effects and Z is a design matrix of random effects (typically an incidence matrix with 0s and 1s, but not necessarily). Models are fitted by an iterative algorithm alternating estimation of fixed effects and of dispersion parameters. The residual dispersion may follow a \dQuote{structured-dispersion model} modeling heteroscedasticity. 
+  Estimation of the latter parameters is performed by a form of fit of debiased residuals, which allows fitting a structured-dispersion model (Smyth et al. 2001).  However, evaluation of the debiased residuals can be slow in particular for large datasets. For models without structured dispersion, it is then worth using the \code{\link{fitme}} function. Ths function (as well as \code{\link{corrHLfit}}) can optimize the likelihood of \code{HLfit} fits for different given values of the dispersion parameters (\dQuote{outer optimization}), thereby avoiding the need to estimate debiased residuals. 
 }
 \usage{
 HLfit(formula, data, family = gaussian(), rand.family = gaussian(), 
@@ -101,8 +102,7 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
 \value{
 An object of class \code{HLfit}, which is a list with many elements, not all of which are documented. 
 
-A few extractor functions are available (see \code{\link{extractors}}), 
-and should be used as far as possible as they should be backward-compatible from version 1.4 onwards, while the structure of the return object may still evolve. The following information will be useful for extracting further elements of the object.
+Various extractor functions are available (see \code{\link{extractors}}, \code{\link{vcov}}, \code{\link{get_fittedPars}}, \code{\link{get_matrix}}, and so on). They should be used as far as possible as they should be backward-compatible from version 2.0.0 onwards, while the structure of the return object may still evolve. The following information may be useful for extracting further elements of the object.
 
 Elements include \bold{descriptors of the fit}:
 
@@ -110,36 +110,36 @@ Elements include \bold{descriptors of the fit}:
 \item{fv}{Fitted values (\eqn{\mu=}<inverse-link>(\eqn{\eta})) of the response variable. \code{fitted(.)} or \code{predict(.)} can be used as formal extractors;}
 \item{fixef}{The fixed effects coefficients, \eqn{\beta} (returned by the \code{fixef} function);}
 \item{v_h}{The random effects on the linear scale, \eqn{v}, with atttribute the random effects \eqn{u} (returned by \code{ranef(*,type="uncorrelated")};}
-\item{phi}{The residual variance \eqn{\phi};}
-\item{phi.object}{A possibly more complex object describing \eqn{\phi};}
+\item{phi}{The residual variance \eqn{\phi}. See \code{\link{residVar}} for one extractor;}
+\item{phi.object}{A possibly more complex object describing \eqn{\phi} (see \code{\link{residVar}} again);}
 \item{lambda}{The random-effect (\eqn{u}) variance(s) \eqn{\lambda} in compact form;}
-\item{lambda.object}{A possibly more complex object describing \eqn{\lambda};}
-\item{ranef_info}{environment where information about the structure of random effects is stored;}
-\item{corrPars}{Agglomerates information on correlation parameters, either fixed, or estimated by \code{HLfit}, \code{corrHLfit} or \code{fitme};}
-\item{APHLs}{A list which elements are various likelihood components, include conditional likelihood, h-likelihood, and the Laplace approximations: the (approximate) marginal \bold{likelihood} \code{p_v} and the (approximate) \bold{restricted likelihood} \code{p_bv} (the latter two available through the \code{logLik} function). See the extractor function \code{\link{get_any_IC}} for information criteria (\dQuote{AIC}) and effective degrees of freedom;}
+\item{lambda.object}{A possibly more complex object describing \eqn{\lambda} (see \code{\link{get_ranPars}(.,which="lambda"))} and \code{\link{VarCorr}} extractors);}
+\item{ranef_info}{environment where information about the structure of random effects is stored (see \code{\link{Corr}});}
+\item{corrPars}{Agglomerates information on correlation parameters, either fixed, or estimated ((see \code{\link{get_ranPars}(.,which="corrPars"))});}
+\item{APHLs}{A list whose elements are various likelihood components, including conditional likelihood, h-likelihood, and the Laplace approximations: the (approximate) marginal \bold{likelihood} \code{p_v} and the (approximate) \bold{restricted likelihood} \code{p_bv} (the latter two available through the \code{logLik} function). See the extractor function \code{\link{get_any_IC}} for information criteria (\dQuote{AIC}) and effective degrees of freedom;}
 
 The covariance matrix of \eqn{\beta} estimates is not included as such, but can be extracted by \code{\link{vcov}}.
 
-\bold{Information about the input} is contained in output elements named as \code{HLfit} or \code{corrHLfit} arguments (\code{data,family,resid.family,ranFix,prior.weights}), with the following notable exceptions or modifications:
+\bold{Information about the input} is contained in output elements named as arguments of the fitting function calls (\code{data,family,resid.family,ranFix,prior.weights}), with the following notable exceptions or modifications:
 
-\item{predictor}{The \code{formula}, possibly reformatted;}
-\item{resid.predictor}{Analogous to \code{predictor}, for the residual variance;}
+\item{predictor}{The \code{formula}, possibly reformatted (returned by the \code{formula} extractor);}
+\item{resid.predictor}{Analogous to \code{predictor}, for the residual variance (see \code{\link{residVar}(., which="formula")});}
 \item{rand.families}{corresponding to the \code{rand.family} input;}
 
 \bold{Further miscellaneous diagnostics and descriptors of model structure:}
 
-\item{X.pv}{The design matrix for fixed effects;}
+\item{X.pv}{The design matrix for fixed effects (returned by the \code{model.matrix} extractor);}
 \item{ZAlist,strucList}{Two lists of matrices, respectively the design matrices \dQuote{\bold{Z}}, and the \dQuote{\bold{L}} matrices, for the different random-effect terms. The extractor \code{\link{get_ZALMatrix}} can be used to reconstruct a single \dQuote{\bold{ZL}} matrix for all terms.}
 \item{BinomialDen}{(binomial data only) the binomial denominators;}
 \item{y}{the response vector; for binomial data, the frequency response.}
 \item{models}{Additional information on model structure for \eqn{\eta}, \eqn{\lambda} and \eqn{\phi};}
 \item{HL}{A set of indices that characterize the approximations used for likelihood;}
-\item{leve_phi,lev_lambda}{Leverages;}
-\item{dfs}{list (possibly structured): degrees of freedom for different components of the model;}
-\item{how}{A list containing the information properly extracted by the \code{\link{how}} function.}
+\item{leve_phi,lev_lambda}{Leverages (see \code{\link{hatvalues}} extractor);}
+\item{dfs}{list (possibly structured): some information about degrees of freedom for different components of the model. But its details may be difficult to interpret and the \code{\link{DoF}} extractor should be used;} 
+\item{how}{A list containing the information properly extracted by the \code{\link{how}} function;}
 \item{warnings}{A list of warnings for events that may have occurred during the fit.}
 
-Finally, the object includes programming tools: \code{call, spaMM.version, fit_time} and \code{envir}.
+Finally, the object includes programming tools: \code{call, spaMM.version, fit_time} and an environment \code{envir} that may contain whatever may be needed in some post-fit operations..
 
 }
 \references{

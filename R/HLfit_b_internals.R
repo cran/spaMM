@@ -143,7 +143,16 @@
       checktheta <- substitute(shape, env=environment(family$aic)) 
       if (inherits(checktheta,"call")) eval(checktheta)
     }
-  }
+  # } else if ( ! is.null(rdisPars <- ranFix$rdisPars)) { ## resid.model   # "speculative outer phiGLM 2023/07/09" 
+  ##   Seek other instances of "speculative outer phiGLM 2023/07/09" for minimal changes required to try this: 
+  ##   The call must include the resid.model and fixed=list(phi=1) for this to more or less work.    
+  #   disp_env <- family$resid.model
+  #   if (is.null(disp_env$scaled_X)) { 
+  #     disp_env$beta <- rdisPars # fixed rdisPars
+  #   } else disp_env$scaled_beta <- rdisPars # optimized rdisPars
+  #   ranFix$rdisPars <- attr(ranFix,"type")$rdisPars <- NULL
+  #   ranFix$phi <- .safe_eval_dispval(family$resid.model, -Inf, Inf)
+  } 
   return(ranFix)
 }
 

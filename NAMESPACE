@@ -24,10 +24,11 @@ importFrom("stats", "as.formula", "coefficients", "dgamma", "dnorm", "family", "
            "cov2cor", "pcauchy", "pnorm","model.weights", "setNames", "pf", "df.residual", "drop.terms", 
            "stat.anova", "residuals", "pt", "reformulate", "drop.scope", "drop1", "update.formula", "contrasts<-")
 importFrom("utils", "relist", "txtProgressBar", "setTxtProgressBar", "modifyList", "strOptions", "str",
-           "write.table", "packageVersion", "packageDescription", "capture.output", "tail")
+           "write.table", "packageVersion", "packageDescription", "capture.output", "tail", "head")
 importFrom("Matrix", "Matrix", "drop", "isDiagonal", "diag", "t", "solve", "Diagonal", "crossprod", "tcrossprod", "rowSums", "colSums",
            "sparseMatrix", "qr", "qrR", "qr.R", "qr.Q", "qr.coef", "isSymmetric", "forceSymmetric", "Cholesky","determinant",
-           "chol2inv", "drop0", ".symDiagonal",".trDiagonal","chol", "kronecker","nnzero", "sparse.model.matrix", "bandSparse",".sparseDiagonal")
+           "chol2inv", "drop0", ".symDiagonal",".trDiagonal","chol", "kronecker","nnzero", "sparse.model.matrix", "bandSparse",
+           ".sparseDiagonal", "cov2cor")
 importFrom("proxy", "dist", "pr_DB")
 importFrom("Rcpp", "evalCpp")
 importFrom("MASS", "ginv", "gamma.shape", "mvrnorm") ## gamma.shape is actually a generic with a 'glm' method.

@@ -397,3 +397,5 @@ projpath <- local({
 #     sort.list(pMat@perm)
 #   } else pMat@perm
 # }
+
+.dist_fn <- proxy::dist   #  see Zvariants/parallelDist.R for alternatives ...

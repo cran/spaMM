@@ -492,7 +492,7 @@ if (FALSE) {
   for (lit in seq_len(length(rows_bynesting))) {
     blockrows <- rows_bynesting[[lit]]
     within_values <- e_uniqueGeo[blockrows,coord_within]
-    w_dist <- proxy::dist(within_values,method=dist.method)
+    w_dist <- .dist_fn(within_values,method=dist.method)
     distMatrix[blockrows,blockrows] <- as.matrix(w_dist)
   }
   return(list(distMatrix=distMatrix))
@@ -511,36 +511,29 @@ if (FALSE) {
   ## Remarkably the next line works only if the cols are not factors ! Unless we have a fix for this,
   #  uniqueGeo classes should be integer not factor: see instances of as.numeric(levels(fac)) in the sources.
   rows_bynesting <- by(e_uniqueGeo ,e_uniqueGeo[,coords_nesting],rownames) # disjoint subsets of rownames since rownames are unique
-  if (FALSE) { # assignments to blockrows (not in sequential order!) of sparse matrices is quite inefficient
-    distMatrix <- Matrix(0,ncol=nrow(e_uniqueGeo),nrow =nrow(e_uniqueGeo)) 
-    rownames(distMatrix) <- colnames(distMatrix) <- rownames(e_uniqueGeo) ## same trivial rownames
-    for (lit in seq_len(length(rows_bynesting))) {
-      blockrows <- rows_bynesting[[lit]]
-      within_values <- e_uniqueGeo[blockrows,coord_within]
-      w_dist <- proxy::dist(within_values,method=dist.method)
-      distMatrix[blockrows,blockrows] <- as.matrix(w_dist)
-    }
-  } else {
-    distMatrix <- vector("list", length(rows_bynesting))
-    for (lit in seq_along(rows_bynesting)) {
-      blockrows <- rows_bynesting[[lit]]
-      within_values <- e_uniqueGeo[blockrows,coord_within]
-      w_dist <- proxy::dist(within_values,method=dist.method)
-      # if (.spaMM.data$options$Matrix_old) { # ugly... but such versions do not handle as(, "dMatrix"))
-      #   distMatrix[[lit]] <- as(as.matrix(w_dist), "dsCMatrix") 
-      # } else distMatrix[[lit]] <- as(as(as(as.matrix(w_dist), "dMatrix"), "symmetricMatrix"), "CsparseMatrix") 
-      nc <- ncol(w_dist)
-      seqn1 <- seq_len(nc-1L)
-      distMatrix[[lit]] <- sparseMatrix(x=w_dist[], 
-                   i={ ili <- vector("list",nc-1L); for (it in seqn1) {ili[[it]] <- (it+1L):nc}; .unlist(ili)},
-                   j=rep(seqn1,rev(seqn1)),
-                   dims=c(nc,nc),symmetric=TRUE, repr="C") 
-    }
-    distMatrix <- .bdiag_dsC(distMatrix)
-    rowperm <- sort.list(as.integer(.unlist(rows_bynesting)))
-    distMatrix <- distMatrix[rowperm,rowperm]
-    rownames(distMatrix) <- colnames(distMatrix) <- rownames(e_uniqueGeo) ## trivial rownames -- not sure we need them now
+  
+  # assignments to blockrows (not in sequential order!) as in .expand_GeoMatrices 
+  # is quite inefficient for sparse matrices
+  distMatrix <- vector("list", length(rows_bynesting))
+  for (lit in seq_along(rows_bynesting)) {
+    blockrows <- rows_bynesting[[lit]]
+    within_values <- e_uniqueGeo[blockrows,coord_within]
+    w_dist <- .dist_fn(within_values,method=dist.method)
+    # if (.spaMM.data$options$Matrix_old) { # ugly... but such versions do not handle as(, "dMatrix"))
+    #   distMatrix[[lit]] <- as(as.matrix(w_dist), "dsCMatrix") 
+    # } else distMatrix[[lit]] <- as(as(as(as.matrix(w_dist), "dMatrix"), "symmetricMatrix"), "CsparseMatrix") 
+    nc <- ncol(w_dist)
+    seqn1 <- seq_len(nc-1L)
+    distMatrix[[lit]] <- sparseMatrix(x=w_dist[], 
+                                      i={ ili <- vector("list",nc-1L); for (it in seqn1) {ili[[it]] <- (it+1L):nc}; .unlist(ili)},
+                                      j=rep(seqn1,rev(seqn1)),
+                                      dims=c(nc,nc),symmetric=TRUE, repr="C") 
   }
+  distMatrix <- .bdiag_dsC(distMatrix)
+  rowperm <- sort.list(as.integer(.unlist(rows_bynesting)))
+  distMatrix <- distMatrix[rowperm,rowperm]
+  rownames(distMatrix) <- colnames(distMatrix) <- rownames(e_uniqueGeo) ## trivial rownames -- not sure we need them now
+  
   if( ! inherits(distMatrix,"dsCMatrix")) stop("code missing in .sparse_expand_GeoMatrices()")
   if (allow_DIST) { # should be TRUE when the @x is to be used directly for conversion from distances to correlations
     diag(distMatrix) <- NA

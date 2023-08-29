@@ -239,6 +239,13 @@ if (FALSE) {
   } else return(.ZtWZ(ZAL,w)) ## but this uses sqrt() hence assumes w>0
 } # Matrix result is always of symmetric type (dsC or ddi)
 
+.safe_ZtWZwrapper <- function(ZAL,w, allow_as_mat=TRUE, sqrtW=sqrt(w)) {
+  if ( ! is.null(signs <- attr(w,"signs")) && any(signs<0)) {
+    signed <- .Dvec_times_m_Matrix(w,ZAL) 
+    crossprod(signed,ZAL)
+  } else .ZtWZwrapper(ZAL=ZAL,w=w, allow_as_mat=allow_as_mat, sqrtW=sqrt(w))
+}
+
 .sapply <- function(liste, FUN, ...) {
   resu <- lapply(X = liste, FUN = FUN, ...)
   .unlist(resu)
@@ -1836,28 +1843,9 @@ spaMM_Gamma <- local({
   }
   ## dudv/V_M may be 1 as both diverge: 
   w.ranef <- as.numeric((dudv/V_M)*(dudv/lambda)) ## semble valide quand v=g(u) = th(u): not previous return()
-  w.ranef[w.ranef>1e10] <- 1e10 ## patch useful to avoid singular d2hdv2 in PLoG model
+  # w.ranef[w.ranef >1e10  & ! is.infinite(w.ranef)] <- 1e10 ## Attempt to allow lambda=0 (see 'singw' code)
+  w.ranef[w.ranef >1e10] <- 1e10 ## patch useful to avoid singular d2hdv2 in PLoG model
   return(list(w.ranef=w.ranef,dlogWran_dv_h=dlogWran_dv_h,dvdu=1/dudv))
-}
-
-
-.updateW_ranefS <- function(cum_n_u_h, rand.families, lambda, u_h, v_h, 
-                            w.ranef_list=vector("list", length(rand.families)), 
-                            dlogWran_dv_h_list=vector("list", length(rand.families)), 
-                            dvdu_list=vector("list", length(rand.families))) {
-  nrand <- length(rand.families)
-  for (it in seq_len(nrand)) {
-    u.range <- (cum_n_u_h[it]+1L):(cum_n_u_h[it+1L])
-    blob <- .updateWranef(rand.family=rand.families[[it]],lambda[u.range],u_h[u.range],v_h[u.range])
-    w.ranef_list[[it]] <- blob$w.ranef
-    dlogWran_dv_h_list[[it]] <- blob$dlogWran_dv_h
-    dvdu_list[[it]] <- blob$dvdu
-  }
-  resu <- list(w.ranef=.unlist(w.ranef_list),dlogWran_dv_h=.unlist(dlogWran_dv_h_list),dvdu=.unlist(dvdu_list))
-  ## the test is invalid for ranCoefs:
-  # if (nrand==1L && rand.families[[1L]]$family=="gaussian") resu$unique_w.ranef <- w.ranef[[1L]] # used in sparsePrecision code
-  #if (length(unique_w.ranef <- unique(w.ranef))==1L) resu$unique_w.ranef <- unique_w.ranef # used in sparsePrecision code
-  resu
 }
 
 .calc_d2mudeta2 <- function(link,mu=NULL,eta=NULL,muFREQS=NULL) { ## d2 MuCOUNTS d etaFREQS^2 
@@ -3013,13 +3001,16 @@ spaMM_Gamma <- local({
           locnc <- ncol(ZA)
           locnr <- nrow(xmatrix)
           if ( locnc %% locnr !=0L) {
-            # then names are needed to match the row and columns
+            # then names are needed to match the row and columns (this occurs in mv fits where typically locnr>locnc)
             if (length(setdiff(colnames(ZA),rownames(xmatrix)))) { # some names missing from xmatrix 
               mess <- "Cannot match the correlation matrix:\n"
               mess <- paste0(mess, "The number of levels of the grouping variable in random term ", 
                              attr(ZAlist,"exp_ranef_strings")[Lit])
               mess <- paste0(mess,"\n  is not a multiple of the dimension of the correlation matrix;") ## by distMatrix checking in corrHLfit or no.info check somewhere...
               mess <- paste0(mess,"\n  and levels of the grouping variable cannot all be matched by name to dimnames of the correlation matrix.")
+              if (locnr > locnc && Sys.getenv("_LOCAL_TESTS_")=="TRUE") {
+                mess <- paste0(mess,"\n  If for prediction from fitmv result, checking usage of 'for_mv' argument in .make_new_corr_lists() could be useful.") ## by distMatrix checking in corrHLfit or no.info check somewhere...
+              }
               stop(mess) # for spprec,  this may mean something wrong occurred in .init_assign_geoinfo() when cols where added to Z (eg non-unique names in input)
             } else {
               xmatrix <- xmatrix[colnames(ZA),colnames(ZA),drop=FALSE]
@@ -4530,9 +4521,9 @@ if (FALSE) { # that's not used.
   # if (models[["phi"]]=="phiHGLM") {
   #   ## nothing to be done since we store a full fitme'd object storing its own count of dfs. We could same some time by hacking _fitme_ 
   #   ##  so that it does not perform its final call but still returns the phi_est (ie its mu). Not urgent.
-  # } # else nothing to do here, as the phi_GLM is built one request from summary() if missing 
+  # } # else nothing to do here, as the phi_GLM is built on request from summary() if missing 
   p_fixef_phi <- processed$p_fixef_phi
-  attr(p_fixef_phi,"NOTE") <- "! not full dfs: see .calc_p_phi() for them"
+  attr(p_fixef_phi,"NOTE") <- "! not always full dfs: see .calc_p_rdisp() for them"
   dfs <- list(pforpv=pforpv, p_lambda=p_lambda, p_fixef_phi=p_fixef_phi, p_corrPars=p_corrPars)
   dfs
 }

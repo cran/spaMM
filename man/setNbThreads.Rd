@@ -6,7 +6,7 @@ Parallel computations in fits
 \description{
 A few steps of fitting can be parallelized. Currently it is possible to control the use of multiple threads by OpenMP by the Eigen library. By default only one thread will be used, but this may be modified by using \code{control.HLfit$NbThreads} in a fitting function's arguments, as in\cr
 \preformatted{
-avail_thr <- parallel::detectCores() - 1L 
+avail_thr <- parallel::detectCores(logical=FALSE) - 1L 
 fitme(., control.HLfit=list(NbThreads=max(avail_thr, 1L)))
 }
 This control is distinct from that of post-fit steps such as bootstraps where some parallel computations are controlled e.g. the \code{nb_cores} argument of \code{spaMM_boot}. In cases where post-fits computation imply refits of models (as is typical of parametric bootstraps), the two parallelizations should not be combined, and the \pkg{spaMM} code for post-fit operations will in principle automatically take care of this.  

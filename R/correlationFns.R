@@ -280,18 +280,18 @@ make_scaled_dist <- local({
       } else {
         uniqueScal2 <- NULL
       }
-      scaled.dist <- proxy::dist(x=uniqueScal,y=uniqueScal2, method=dist.method) 
+      scaled.dist <- .dist_fn(x=uniqueScal,y=uniqueScal2, method=dist.method) 
     } else { ## not Euclidean
       if (dist.method=="Chord" && (! Chord_warned) ) {
         warning("NB: using dist's Chord distance on a circle, not EarthChord on a sphere", immediate. = TRUE )
         Chord_warned <<- TRUE
       }
-      scaled.dist <- rho * proxy::dist(uniqueGeo,y=uniqueGeo2,method=dist.method)  
+      scaled.dist <- rho * .dist_fn(uniqueGeo,y=uniqueGeo2,method=dist.method)  
     }
   } else { ## distMatrix provided
     scaled.dist <- rho * distMatrix
   }
-  ## Here proxy::dist always returns a dist object, maybe dist(0) 
+  ## Here .dist_fn must always returns a dist object, maybe dist(0) 
   ## but rho * dist(0) is numeric(0); we standardise it:
   if ( identical(scaled.dist, numeric(0))) scaled.dist <- dist(0)
   if (return_matrix) {

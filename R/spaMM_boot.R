@@ -1,4 +1,5 @@
-simulate4boot <- function(object, nsim, seed=NULL, resp_testfn=NULL, type="marginal", showpbar=eval(spaMM.getOption("barstyle"))) {
+simulate4boot <- function(object, nsim, seed=NULL, resp_testfn=NULL, type="marginal", showpbar=eval(spaMM.getOption("barstyle")),
+                          ...) {
   RNGstate <- get(".Random.seed", envir = .GlobalEnv)
   msg <- "Bootstrap replicates: "
   msglength <- nchar(msg) ## not used in the parallel case
@@ -10,7 +11,7 @@ simulate4boot <- function(object, nsim, seed=NULL, resp_testfn=NULL, type="margi
     return(list())
   }
   ####
-  newy_s <- simulate(object,nsim = nsim,verbose=c(type=FALSE,showpbar=showpbar), resp_testfn=resp_testfn, type=type, seed=seed) 
+  newy_s <- simulate(object,nsim = nsim,verbose=c(type=FALSE,showpbar=showpbar), resp_testfn=resp_testfn, type=type, seed=seed, ...) 
   if (nsim==1L) dim(newy_s) <- c(length(newy_s),1L)
   list(bootreps=newy_s,RNGstates=RNGstate)
 }
@@ -25,12 +26,17 @@ spaMM_boot <- function(object, simuland, nsim, nb_cores=NULL,
            showpbar= eval(spaMM.getOption("barstyle")),
            boot_samples=NULL,
            ...) {
-  if (missing(type)) {
-    warning("'type' is now a mandatory argument of spaMM_boot().\n Assuming type='marginal' for consistency with previous versions.",
+  if (missing(type) && is.null(boot_samples)) {
+    warning("'type' is now a mandatory argument of spaMM_boot() when 'boot_samples' remains NULL.\n Assuming type='marginal' for consistency with previous versions.",
             immediate. = TRUE)
     type <- "marginal"
   }
-  if (is.null(boot_samples)) boot_samples <- simulate4boot(object=object, nsim=nsim, seed=seed, resp_testfn=resp_testfn, type=type, showpbar=showpbar)
+  if ("fn" %in% ...names()) warning("spaMM_boot() expects 'simuland', not 'fn'.", immediate. = TRUE)
+  if (is.null(boot_samples)) {
+    boot_samples <- simulate4boot(object=object, nsim=nsim, seed=seed, resp_testfn=resp_testfn, type=type, showpbar=showpbar)
+  } else if ( ! (is.list(boot_samples) && ! is.null(boot_samples$bootreps))) { # if not like a simulate4boot() result
+    boot_samples <- list(bootreps=boot_samples)
+  }
   #
   # If the simuland has (say) arguments y, what=NULL, lrt, ...   , we should not have lrt in the dots. Since the dots are not directly manipulable
   # we have to convert them to a list, and ultimately to use do.call()
@@ -53,7 +59,12 @@ spaMM2boot <- function(object, statFUN, nsim, nb_cores=NULL,
            showpbar= eval(spaMM.getOption("barstyle")),
            boot_samples=NULL,
            ...) {
-  if (is.null(boot_samples)) boot_samples <- simulate4boot(object=object, nsim=nsim, seed=seed, resp_testfn=resp_testfn, type=type, showpbar=showpbar)
+  if ("fn" %in% ...names()) warning("spaMM2boot() expects 'simuland', not 'fn'.", immediate. = TRUE)
+  if (is.null(boot_samples))  {
+    boot_samples <- simulate4boot(object=object, nsim=nsim, seed=seed, resp_testfn=resp_testfn, type=type, showpbar=showpbar)
+  } else if ( ! (is.list(boot_samples) && ! is.null(boot_samples$bootreps))) { # if not like a simulate4boot() result
+    boot_samples <- list(bootreps=boot_samples)
+  }
   #
   # If the statFUN has (say) arguments y, what=NULL, lrt, ...   , we should not have lrt in the dots. Since the dots are not directly manipulable
   # we have to convert them to a list, and ultimately to use do.call()
@@ -261,8 +272,9 @@ dopar <- local({
             )))
           } else if (foreach_args[[".errorhandling"]]=="stop" && inherits(bootreps,"try-error")) {            
             # foreach alters the condition message => seel '\"' after 'could not find'
-            if (grep("could not find",(condmess <- conditionMessage(attr(bootreps,"condition"))))) {
-              firstpb <- strsplit(strsplit(condmess,"could not find")[[1]][2],"\"")[[1]][2]
+            if (length(grep("could not find",(condmess <- conditionMessage(attr(bootreps,"condition")))))) {
+              firstpb <- strsplit(condmess,"could not find")[[1]][2]
+              firstpb <- strsplit(firstpb,"\"")[[1]][2]
               cat(crayon::bold(paste0(
                 "Hmmm. It looks like some variables were not passed to the parallel processes.\n",
                 "Maybe add   ' ",firstpb," = ",firstpb," '  to spaMM_boot()'s 'fit_env' argument?\n"
@@ -303,16 +315,17 @@ dopar <- local({
           bootreps <- try(pbapply(X=newresp,MARGIN = 2L,FUN = fn, cl=cl, ...))
           parallel::stopCluster(cl)
           pboptions(pbopt)
-          if (inherits(bootreps,"try-error") &&
-              grep("could not find",(condmess <- conditionMessage(attr(bootreps,"condition"))))
-          ) {
-            firstpb <- strsplit(condmess,"\"")[[1]][2]
-            cat(crayon::bold(paste0(
-              "Hmmm. It looks like some variables were not passed to the parallel processes.\n",
-              "Maybe add    ",firstpb," = ",firstpb,"   to spaMM_boot()'s 'fit_env' argument?\n"
-            )))
-          } # LRT -> spaMM_boot -> eval_replicate with debug.=TRUE and not doSNOW can return more elaborate objects in case of error.
-            # But these should not be diagnosed in this generic function.
+          if (inherits(bootreps,"try-error")) {
+            if (length(grep("could not find",(condmess <- conditionMessage(attr(bootreps,"condition")))))) {
+              firstpb <- strsplit(condmess,"\"")[[1]][2]
+              cat(crayon::bold(paste0(
+                "Hmmm. It looks like some variables were not passed to the parallel processes.\n",
+                "Maybe add   ' ",firstpb," = ",firstpb," '  to spaMM_boot()'s 'fit_env' argument?\n"
+              )))
+            } else cat(crayon::bold(condmess))
+          }
+          # LRT -> spaMM_boot -> eval_replicate with debug.=TRUE and not doSNOW can return more elaborate objects in case of error.
+          # But these should not be diagnosed in this generic function.
           if (identical(control$.combine,"rbind")) bootreps <- t(bootreps) # this means the pbapply version handles cbind or rbind but not other 
         } # has_doSNOW ... else
       } # FORK ... else

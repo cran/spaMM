@@ -85,7 +85,13 @@
             # actually no true G diagnosis ; instead compares ZL to a ZL_without_AR, 
             # which amounts to assume that the cost of spprec is that of ZL without AR 
             rel_ZAL_denseness <- G_diagnosis$denseness_via_ZL/G_diagnosis$denseness_noAR 
-            crit <-  rel_ZAL_denseness*nr/nc # can reach high values (e.g. adjacency-long > 400)
+            crit <-  rel_ZAL_denseness*nr/(nc^(2/3)) # tentatively introducing the power 2023/08, motivated by orpredcheck/forpredcheck test:
+               # => give more weight to nr>nc... BUT (zut1 <- fitmv(list(list(y ~1+(1|grp) in test LLM 
+               # has nr=200, nc=2 and rel_ZAL_denseness=0.01. Z'Z is dense 2*2 and G will be 2*2 too showing we don"t want to 
+               # select spprec when nr is small and When rel_ZAL_denseness is nr/nc  => no power on nc  =>   new criterion.
+               # nc^(3/4) possible too.
+               # 
+               # older comment: rel_ZAL_denseness*(nr/nc) can reach high values (e.g. adjacency-long > 400)
             sparse_precision <- crit >.spaMM.data$options$spprec_threshold ## from numerical experiments on ohio
           } else {
             # Gryphon has second criterion below 4e-5 and covfit in test-adjacency-corrMatrix has it >2e-3

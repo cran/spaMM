@@ -647,6 +647,22 @@
   } # rd loop
 }
 
+# Recomputes ZA with A modified as function of L such that AL is tcrossfac of correlation matrix 
+.normalize_IMRF_ZA <- function(Z, A, L, colnams=colnames(Z)) {
+  if (is.null(Z)) return(NULL) #this occurs in mv fits .calc_ZAlist_newdata_mv() -> .calc_normalized_ZAlist(Zlist ...) -> here
+                               # where Zlist may have some NULL elements.
+  # : it's no longer clear when this L is the tcross factor (with the Q_CHMfactor as attribute...) or is the Q_CHMfactor
+  # Maybe it is the Q_CHMfactor post-fit.
+  if (inherits(L,"dCHMsimpl")) L <- solve(L, system="Lt", b=.sparseDiagonal(n=ncol(L), shape="g"))  
+  AL <- A %*% L
+  invnorm <- 1/sqrt(rowSums(AL^2)) # diag(tcrossprod...)
+  normAL <- .Dvec_times_Matrix(invnorm, A)
+  ZA <- Z %id*% normAL[colnams,,drop=FALSE]
+  attr(ZA,"is_incid") <- FALSE
+  ZA
+}
+
+#call by HLCor_body
 .normalize_IMRF <- function(processed, # with $ZAList already ZA in non-IMRF input (or even IMRF input not to be normalized), 
                                     #   in contrast to .calc_normalized_ZAlist()
                             vec_normIMRF, 
@@ -658,19 +674,19 @@
     if (vec_normIMRF[rd]) { 
       char_rd <- as.character(rd)
       colnams <- colnames(Zlist[[char_rd]]) 
-      if ( ! setequal(rownames(AMatrices[[char_rd]]), colnams)) {
-        stop(paste0("Any 'A' matrix must have row names that match the levels of the random effects\n",
+      Amatrix <- AMatrices[[char_rd]]
+      if ( ! setequal(rownames(Amatrix), colnams)) {
+        # col Z must be = rows of A
+        stop(paste0("Any 'A' matrix must have row names that match all the levels of the random effects\n",
                     "(i.e. the colnames of the 'Z' design matrix)"))
       } # ELSE:       
-      AL <- AMatrices[[char_rd]] %*% strucList[[rd]]
-      invnorm <- 1/sqrt(rowSums(AL^2)) # diag(tcrossprod...)
-      normAL <- .Dvec_times_Matrix(invnorm, AMatrices[[char_rd]])
-      ZAlist[[char_rd]] <- Zlist[[char_rd]] %id*% normAL[colnams,]
+      ZAlist[[char_rd]] <- .normalize_IMRF_ZA(Z=Zlist[[char_rd]], A=Amatrix, L=strucList[[rd]], colnams=colnams)
     }
   }
   return(ZAlist) ## with unchanged attributes
 }
 
+# colled post fit... 
 .calc_normalized_ZAlist <- function(Zlist, # creates ZA from Z and A, even for non-IMRF
                             AMatrices,
                             vec_normIMRF, 
@@ -680,16 +696,13 @@
       if ( ! is.null(Amatrix <- AMatrices[[char_rd]])) {
         colnams <- colnames(Zlist[[char_rd]]) # must be coordinates in the form "-5.3469:36.1291"...
         if (length(setdiff(colnams,rownames(Amatrix)))) {
+          # col new Z must be 'in' rows of old A
           stop(paste0("Any 'A' matrix must have row names that match the levels of the random effects\n", 
                       "(i.e. the colnames of the 'Z' design matrix)"))
         } ## ELSE
         rd <- as.integer(char_rd) # I cannot yet assume strucList[[char_rd]] (nor vec_normIMRF[char_rd])
-        if (vec_normIMRF[rd]) { 
-          AL <- Amatrix %*% strucList[[rd]]
-          invnorm <- 1/sqrt(rowSums(AL^2)) # diag(tcrossprod...)
-          normAL <- .Dvec_times_Matrix(invnorm, Amatrix)
-          Zlist[[char_rd]] <- Zlist[[char_rd]] %id*% normAL[colnams,,drop=FALSE]
-          attr(Zlist[[char_rd]],"is_incid") <- FALSE
+        if (vec_normIMRF[rd]) {
+          Zlist[[char_rd]] <- .normalize_IMRF_ZA(Z=Zlist[[char_rd]], A=Amatrix, L=strucList[[rd]], colnams=colnams)
         } else {
           is_incid <- attr(Zlist[[char_rd]],"is_incid")
           if (inherits(Amatrix,"pMatrix")) {

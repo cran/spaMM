@@ -494,12 +494,26 @@
   
   ##### initial sXaug
   H_global_scale <- .calc_H_global_scale(H_w.resid)
-  ZAL_scaling <- 1/sqrt(wranefblob$w.ranef*H_global_scale) ## Q^{-1/2}/s
+  w.ranef <- wranefblob$w.ranef
+  ## see w.ranef[w.ranef >1e10  & ! is.infinite(w.ranef)] <- 1e10 :    But this is not enough to allow lambda=0
+  # singw <- is.infinite(w.ranef)
+  # if (any(singw)) {
+  #   w.ranef <- w.ranef[!singw]
+  ## Next line: ideally the code that produces wranefblob would perform that and would add a 'singw' member to its return value.
+  #   wranefblob <- list(w.ranef=w.ranef, dlogWran_dv_h=wranefblob$dlogWran_dv_h[ ! singw], dvdu = wranefblob$dvdu[ ! singw])
+  #   ZAL <- ZAL[, !singw]
+  #   n_u_h <- n_u_h-sum(singw) 
+  #   ypos <- n_u_h+seq_len(nobs)
+  #   u_h <- u_h[ ! singw]
+  #   v_h <- v_h[ ! singw]
+  #   lambda_est <- lambda_est[ ! singw]
+  # }
+  ZAL_scaling <- 1/sqrt(w.ranef*H_global_scale) ## Q^{-1/2}/s
   Xscal <- .make_Xscal(ZAL, ZAL_scaling = ZAL_scaling, processed=processed, as_matrix=.eval_as_mat_arg(processed))
   which_i_llblock <- .which_i_llblock(Xscal, n_u_h) # preprocessing for faster updating of (sparse) Xscal when scaling changes
   weight_X <- .calc_weight_X(Hobs_w.resid=H_w.resid, H_global_scale=H_global_scale, obsInfo=processed$how$obsInfo) ## sqrt(s^2 [H_]W.resid) # -> .... sqrt([H_]w.resid * H_global_scale)
   corr_method_fn <- get(processed$corr_method,asNamespace("spaMM"), inherits=FALSE)
-  sXaug <- corr_method_fn(Xaug=Xscal, weight_X=weight_X, w.ranef=wranefblob$w.ranef, H_global_scale=H_global_scale,
+  sXaug <- corr_method_fn(Xaug=Xscal, weight_X=weight_X, w.ranef=w.ranef, H_global_scale=H_global_scale,
                              force_QRP= ! LevenbergM)
   if (trace) {
     stylefn <- switch(which_LevMar_step,

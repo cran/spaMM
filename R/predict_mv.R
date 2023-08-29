@@ -4,16 +4,20 @@
   locformS <- formula.HLfit(object, which="")
   if (inherits(re.form, "formula")) {
     re.formS <- vector("list", length(locformS))
-    for (mv_it in seq_along(locformS)) re.formS[[mv_it]] <- .update_formula_shared_ranefs(re.form, locformS[[mv_it]], rm_RHS=TRUE)
+    for (mv_it in seq_along(locformS)) {
+      # As the doc says... simulate.HLfit(., type="marginal")  -> default re.form = NA -> does not mean that the ranef is absent, 
+      # but that simulation is unconditional on it. re.forms[[mv_it]] = NA should have the same meaning.
+      re.formS[[mv_it]] <- .update_formula_shared_ranefs(locform=re.form, re.form=locformS[[mv_it]], rm_LHS=TRUE)
+    }
   } else if (length(re.form)==1L && is.na(re.form)) {
     re.formS <- rep(NA, length(locformS))
   } else re.formS <- re.form # a list or NULL. 
-  ## possible change of random effect terms
-  for (mv_it in seq_along(locformS)) locformS[[mv_it]] <- .update_formula_shared_ranefs(locformS[[mv_it]], re.formS[[mv_it]], rm_RHS=TRUE)
-  # checking variables in the data
+  # checking variables in the data BEFORE removing "marginalized upon" ranefs.
+  # These variables are needed in newdata_it <- locdataS[[mv_it]] in simulate.HLfit() -> .calc_ZAlist_newdata_mv() 
   allvarsS <- vector("list", length(locformS))
   for (mv_it in seq_along(locformS)) {
-    allvars_it <- all.vars(.strip_cF_args(locformS[[mv_it]])) ## strip to avoid e.g. 'stuff' being retained as a var from IMRF(..., model=stuff)
+    ## [-2] important to ignore response variables
+    allvars_it <- all.vars(.strip_cF_args(locformS[[mv_it]][-2])) ## strip to avoid e.g. 'stuff' being retained as a var from IMRF(..., model=stuff)
     if (variances$residVar || control$simulate) {
       allvars_it <- unique(c(allvars_it, all.vars(.strip_cF_args(.get_phiform(object, mv_it)))))
       allvars_it <- unique(c(allvars_it, all.vars(object$families[[mv_it]]$resid.model$resid.formula)))
@@ -21,11 +25,15 @@
     allvarsS[[mv_it]] <- allvars_it
   }
   #
+  ## possible change of random effect terms (removing "marginalized upon" ranefs)
+  for (mv_it in seq_along(locformS)) locformS[[mv_it]] <- .update_formula_shared_ranefs(locformS[[mv_it]], re.formS[[mv_it]], rm_LHS=FALSE)
   ## matching ranef terms of re.form
   if (length(object$ZAlist)) { 
-    if (identical(control$keep_ranef_vars_for_simulate, TRUE) || # : condition for the case 
+    if (identical(control$keep_ranef_covs_for_simulate, TRUE) || # : condition for the case 
                       # where only eta_fixed is predicted for marginal simulation, hence re.form is NA ("no  prediction for ranef") BUT 
                       # we will need the locdataS with the variables for ranefs, to simulate these ranefs.
+                      # We will need ALSO marginal covariance matrices for the ranefs !! The ZAL in simulate.HLfit() has been correct
+                      # before and after changes in the simulate.HLfit() code 2023/07/23
          ( re.form_allows_ranefs <- ( is.null(re.form) || # : this condition means that re.form_allows_ranefs may be TREU despite no ranef in model formula 
                                       any( ! sapply(re.formS, .noRanef))) )
        ) { 
@@ -33,6 +41,11 @@
       ori_exp_ranef_strings <- attr(object$ZAlist,"exp_ranef_strings")
       #
       newinoldS <- vector("list", length(locformS))
+      # As the doc says... simulate.HLfit(., type="marginal")  -> default re.form = NA -> does not mean that the ranef is absent, 
+      # but that simulation is unconditional on it. re.forms[[mv_it]] = NA should have the same meaning.
+      # In the present step we retain only the ranefs conditioned upon. The Zlist computed here will be used to put then in  
+      # 'eta_fixed_cond' (in simulate.HLfit).
+      # The 'marginalized upon' ones are handled by simulate.HLfit -> (get_ZALMatrix or .calc_ZAlist_newdata) + .simulate_ranefs
       for (mv_it in seq_along(locformS)) newinoldS[[mv_it]] <- .get_newinold(re.formS[[mv_it]], locformS[[mv_it]], 
                                                                              ori_exp_ranef_strings, rd_in_mv=map_rd_mv[[mv_it]])
       newinold <- unique(.unlist(newinoldS))
@@ -54,7 +67,7 @@
     for (mv_it in seq_along(locformS)) {
       allvars_it <- unique(c(allvarsS[[mv_it]], ranefvars)) # all ranefvars + mv_it-specific fixefvars: note difference if ! need_new_design
       # presence of ranefvars for all ranefs in each allvars_it allows do.call(rbind, locdataS) later in this fn after selecting them
-      locdataS[[mv_it]] <- ..get_locdata(locdata, allvars_it, na.rm=TRUE)
+      locdataS[[mv_it]] <- ..get_locdata(locdata, allvars_it, na.rm=TRUE, mv_it=mv_it)
       newX_info <- .get_newX_info(locformS[[mv_it]], locdataS[[mv_it]], object, mv_it=mv_it)
       newX.pv <- .merge_Xs(newX.pv, newX_info$newX.pv, mv_it)
       eta_fix <- c(eta_fix, newX_info$eta_fix)
@@ -83,7 +96,7 @@
       # There may be a slight suboptimality as it uses 'locdata' produced with na.rm=FALSE. 
       # But na.rm=TRUE would remove rows used in a submodel, if they have NA's in variables not used in that submodel. 
     }
-    RESU$subZAlist <- object$ZAlist[newinold] ## and reordered
+    RESU$subZAlist <- object$ZAlist[newinold] ## and reordered # a priori for .wrap_calcPredVar
     RESU$newinold <- newinold
     ori_exp_ranef_types <- attr(object$ZAlist,"exp_ranef_types") 
     RESU$spatial_old_rd <- which(ori_exp_ranef_types != "(.|.)") 
@@ -99,22 +112,36 @@
       for (mv_it in seq_along(locdataS)) locdataS[[mv_it]] <- locdataS[[mv_it]][,ranefvars, drop=FALSE]
       ranefdata <- do.call(rbind, locdataS)
       ori_exp_ranef_terms <- attr(object$ZAlist,"exp_ranef_terms")
-      new_exp_ranef_terms <- structure(ori_exp_ranef_terms[newinold], type=attr(ori_exp_ranef_terms,"type")[newinold])
-      newZlist <- .calc_Zlist(exp_ranef_terms=new_exp_ranef_terms, # .process_bars(barlist=barlist,as_character=FALSE, which.="exp_ranef_terms"), # != barlist, for IMRF notably
+      # new_exp_ranef_terms <- structure(ori_exp_ranef_terms[newinold], type=attr(ori_exp_ranef_terms,"type")[newinold])
+      
+      #
+      # This will first construct a list ipossibly with excess nonzero elements in the Z's 
+      # This will be corrected in the next loop, cf .Dvec_times_Matrix(newrd_in_obs, newZlist[[new_rd]])
+      #
+      newZlist <- .calc_Zlist(exp_ranef_terms=ori_exp_ranef_terms, # subsetting -> new_exp_ranef_terms will be made internally using rd_in_mv arg
                               data=ranefdata, 
+                              rd_in_mv=newinold, # here, must be "conditioned upon" ranefs
                               rmInt=0L, drop=TRUE,sparse_precision=FALSE, 
                               corr_info=.get_from_ranef_info(object),
-                              levels_type= "seq_len", ## superseded in specific cases: notably, 
-                              ## the same type has to be used by .calc_AMatrix_IMRF() -> .as_factor() 
-                              ##  as by .calc_Zmatrix() -> .as_factor() for IMRFs.
-                              ## This is controlled by package option 'uGeo_levels_type' (default = "data_order" as the most explicit).
-                              ## The sames functions are called with the same arguments for predict with newdata.
-                              ##
-                              ## This means that if there are repeated geo positions in the newdata 
-                              ## we save the time of trying to find them (which perhaps is less justifiable in mv case? __FIXME__)
-                              sub_oldZAlist=object$ZAlist[newinold],  
+                              #
+                              # ! use levels_type default as is required for simulation !
+                              # In (at least, marginal sim for) univariate case, .calc_new_X_ZAC is not where new Zlist is computed, levels_type= "seq_len" can be used;
+                              # In simulation for mv case, .calc_new_X_ZAC_mv() provides new Zlist, the explicit levels_type arg should not be used.
+                              #
+                              ## Old comment:
+                              # levels_type= "seq_len", ## superseded in specific cases: notably, 
+                              # ## the same type has to be used by .calc_AMatrix_IMRF() -> .as_factor() 
+                              # ##  as by .calc_Zmatrix() -> .as_factor() for IMRFs.
+                              # ## This is controlled by package option 'uGeo_levels_type' (default = "data_order" as the most explicit).
+                              # ## The sames functions are called with the same arguments for predict with newdata.
+                              # ##
+                              # ## This means that if there are repeated geo positions in the newdata 
+                              # ## we save the time of trying to find them (which perhaps is less justifiable in mv case? __FIXME__)
+                              sub_oldZAlist=object$ZAlist,  # subsetting will be made internally
                               lcrandfamfam=attr(object$rand.families,"lcrandfamfam"))
-      # Each Z in newZlist then has non-zero rows even for response levels that are not affected by the ranef
+      
+      # As explained above,
+      # each Z in newZlist then has non-zero rows even for response levels that are not affected by the ranef
       # bc it's built from 'ranefdata' built as if all submodels were affected by each (new) ranef
       # => need to correct this
       newrd_in_obsS <- vector("list", length(newinoldS))
@@ -174,7 +201,8 @@
     ) {
       blob <- .make_new_corr_lists(object=object,locdata=ranefdata, which_mats=which_mats, 
                                    newZAlist=newZAlist, newinold=newinold,
-                                   invCov_oldLv_oldLv_list=invCov_oldLv_oldLv_list)
+                                   invCov_oldLv_oldLv_list=invCov_oldLv_oldLv_list,
+                                   for_mv=TRUE)
       RESU <- .update_cov_no_nn(RESU, blob, which_mats, newZAlist)
       RESU$newZACpplist <- .compute_ZAXlist(XMatrix=RESU$cov_newLv_oldv_list, ZAlist=newZAlist) ## build from reduced list, returns a reduced list
       ## This $newZACpplist serves to compute new _point predictions_.
