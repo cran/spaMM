@@ -15,9 +15,9 @@
   \code{map_ranef} is free of the limitations of \code{filled.mapMM}. 
 }
 \usage{
-spaMMplot2D(x, y, z,xrange=range(x, finite = TRUE),
-  yrange=range(y, finite = TRUE), margin=1/20,add.map= FALSE, 
-  nlevels = 20, color.palette = spaMM.colors,map.asp=NULL,
+spaMMplot2D(x, y, z, xrange=range(x, finite = TRUE),
+  yrange=range(y, finite = TRUE), margin=1/20, add.map= FALSE, 
+  nlevels = 20, color.palette = spaMM.colors, map.asp=NULL,
   col = color.palette(length(levels) - 1), plot.title=NULL, plot.axes=NULL, 
   decorations=NULL, key.title=NULL, key.axes=NULL, xaxs = "i", 
   yaxs = "i", las = 1, axes = TRUE, frame.plot = axes, ...) 
@@ -29,7 +29,7 @@ filled.mapMM(
   fitobject, Ztransf = NULL, coordinates, xrange = NULL, yrange = NULL, 
   margin = 1/20, map.formula, phi = 1e-05, gridSteps = 41, 
   decorations = quote(points(pred[, coordinates], cex = 1, lwd = 2)),
-  add.map = FALSE, axes = TRUE, plot.title = NULL,plot.axes = NULL, 
+  add.map = FALSE, axes = TRUE, plot.title = NULL, plot.axes = NULL, 
   map.asp = NULL, variance = NULL, var.contour.args = list(), 
   smoothObject = NULL, return.="smoothObject", ...)
 
@@ -129,7 +129,7 @@ statements which draw axes on the plot key.
 }
 }
 \value{
-  \code{filled.mapMM} by default returns invisibly the fit object predicting the interpolated response surface; however, for any non-default \code{return.} argument (\code{return.="raster"} would be recommended to ensure future back-compatibility), it will return a raster of values as a list with elements \code{x}, \code{y} and \code{z}. \code{map_ranef} returns invisibly a 3-column matrix containing the spatial coordinates, and the predicted effect \code{z} on the linear predictor scale (which is also the scale of the plot, unless a \code{Ztransf} is used). \code{mapMM} has no return value. Plots are produced as side-effects. 
+  \code{filled.mapMM} by default returns invisibly the fit object predicting the interpolated response surface; however, for any non-default \code{return.} argument (\code{return.="raster"} would be recommended to ensure future back-compatibility), it will return a raster of values as a list with elements \code{x}, \code{y} and \code{z}. \code{map_ranef} returns invisibly a 3-column matrix containing the spatial coordinates, and the predicted effect \code{z} on the linear predictor scale (which is also the scale of the plot, unless a \code{Ztransf} is used). \code{mapMM} returns invisibly a list with elements \code{x}, \code{y} and \code{z}. Plots are produced as side-effects. 
 }
 \details{
 

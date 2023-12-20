@@ -15,4 +15,5 @@ The \code{nloptr} package requires the external \code{NLopt} library. Windows us
  \code{pacman -S mingw-w64-x86_64-nlopt} in the Rtools40 bash shell (but again I have not fully tested this; see also the README of \code{nloptr}). 
 %\url{https://github.com/aadler/nloptr/blob/Windows_2.6_plus/INSTALL_Windows.md}.
 To install nloptr 2.0.0 from sources on Debian one may have to install libnlopt-dev: \code{sudo apt-get install libnlopt-dev}
+Likewise for gmp one may need to install \code{libgmp3-dev}.
 }

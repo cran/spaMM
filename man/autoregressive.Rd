@@ -21,7 +21,7 @@ A CAR random effect is specified as \code{adjacency(1|<grouping factor>)}. The c
 \details{
 Efficient algorithms for CAR models have been widely discussed in particular in the econometric literature (e.g., LeSage and Pace 2009), but these models are not necessarily recommended for irregular lattices (see Wall, 2004 and Martellosio, 2012 for some insights on the implications of autoregressive models). 
 
-In \bold{CAR} models, the covariance matrix of random effects \bold{u} can be described as \eqn{\lambda}(\bold{I}\eqn{-\rho} \bold{W}\eqn{)^{-1}} where \bold{W} is the (symmetric) adjacency matrix. \code{HLCor} uses the spectral decomposition of the adjacency matrix, written as bold{W=VDV'} where \bold{D} is a diagonal matrix of eigenvalues \eqn{d_i}. The covariance of \bold{V'u} is 
+In \bold{CAR} models, the covariance matrix of random effects \bold{u} can be described as \eqn{\lambda}(\bold{I}\eqn{-\rho} \bold{W}\eqn{)^{-1}} where \bold{W} is the (symmetric) adjacency matrix. \code{HLCor} uses the spectral decomposition of the adjacency matrix, written as \bold{W=VDV'} where \bold{D} is a diagonal matrix of eigenvalues \eqn{d_i}. The covariance of \bold{V'u} is 
 \eqn{\lambda}(\bold{I}\eqn{-\rho} \bold{D}\eqn{)^{-1}}, which is a diagonal matrix with elements 
 \eqn{\lambda_i}=\eqn{\lambda}/(1\eqn{-\rho d_i}). Hence \eqn{1/\lambda_i} is in the linear predictor form \eqn{\alpha}+\eqn{\beta d_i} This can be used to fit \eqn{\lambda} and \eqn{\rho} efficiently. A call to \code{corrHLfit} with the additional argument 
 \code{init.HLfit=list(rho=0)} should be equivalent in speed and result to the \code{HLCor} call. 

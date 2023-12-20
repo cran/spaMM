@@ -734,7 +734,7 @@
   # Conditions common to outer and inner optim
   if (augZXy_cond_inner) augZXy_cond_inner <- (is.null(processed$intervalInfo)) 
   if (augZXy_cond_inner) augZXy_cond_inner <-   attr(processed$models,"LMMbool")
-  if (augZXy_cond_inner) augZXy_cond_inner <- ( is.null(processed$X.Re) || ! ncol(processed$X.Re)) ## exclude non-standard REML (avoiding NCOL(NULL)=1)
+  if (augZXy_cond_inner) augZXy_cond_inner <- ( is.null(processed$X.Re) || ! ncol(processed$X.Re)) ## exclude only non-standard REML 
   if (augZXy_cond_inner) augZXy_cond_inner <- is.null(processed$X_off_fn) # not outer beta estimation
   augZXy_cond <- (augZXy_cond_inner && augZXy_cond) 
   # Conditions specific to outer optim
@@ -1014,9 +1014,12 @@
     # if standard REML: REMLformula is NULL: $X.Re is X.pv, processed$X.Re is NULL
     # non standard REML: other REMLformula: $X.Re and processed$X.Re identical, and may take essentially any value
     # So a testing pattern is if ( is.null(X.Re)) {<REML standard>} else if ( ncol(X.Re)==0L) {<ML standard>} else {<non-standard REML>}
-    # NCOL(.$X.Re) identifies all REML cases
+    # .old_NCOL(.$X.Re) identifies all REML cases
     if (is.null(objective)) {
-      if (NCOL(processed$X.Re)) { ## standard or non-standard REML
+      # .old_NCOL(NULL) = 1 (~TRUE) identifiying (standard) REML
+      # likewise NCOL(actual matrix with >0 col) identifies non-standard REML
+      # While NCOL(0-col matrix) identified ML
+      if (.old_NCOL(processed$X.Re)) { ## standard or non-standard REML
         processed$objective <- "p_bv"  ## info for fitme_body and corrHLfit_body, HLfit may return_only="p_bvAPHLs" but use $objective in logL_tol convergence test
       } else processed$objective <- "p_v"
     } else {
@@ -1425,11 +1428,18 @@
       if (nrd==1L) warning("Found a single random effect with a *single level*. Check formula?", immediate.=TRUE)
           processed$AUGI0_ZX <- .init_AUGI0_ZX(X.pv, vec_normIMRF, processed$ZAlist, nrand, n_u_h=nrd, sparse_precision, 
                                            as_mat=.eval_as_mat_arg(processed))
-      if (algebra=="decorr" && nrd>900L && thread_nbr==1L) message('Using paralellisation might be useful. See help("setNBThreads")')
+      if (algebra=="decorr" && nrd>900L && thread_nbr==1L) message('Using paralellisation might be useful. See help("setNbThreads")')
       # The larger subsamples (nrd=1000 for the 3rd) in useR2021_spatial_timings.R may be used to test the effect IF method uses obsInfo (otherwise there is in particular no .tcrossprodCpp)
     }
   } else {
     models[["eta"]] <- "etaGLM"
+    processed$QRmethod <- .choose_QRmethod(processed$ZAlist, corr_info=corr_info,
+                                           is_spprec=FALSE, processed=processed, control.HLfit=control.HLfit)
+    # Setting 'control.HLfit$algebra' is sufficient to control QRmethod!
+    # Using de|sp'corr' is not intuitive but straightforward
+    if (processed$QRmethod=="decorr") { 
+      X.pv <- .as_mat_wAttr(X.pv)
+    } else if (processed$QRmethod=="spcorr") X.pv <- .as_spMat_wAttr(X.pv)
     processed$AUGI0_ZX <- list(X.pv=X.pv)
   }
   #

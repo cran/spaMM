@@ -79,6 +79,7 @@
   ############## ranCoefs settings: (see also xtol_abs_factors)
   optim_inner=".safe_opt",
   recheck_at_bound=FALSE, # control of .safe_opt()
+  reuse_bobyqa=FALSE, # whether to reuse bobyqa when it reached its maxit at a boundary
   rC_unbounded=FALSE, # unbounded parametrization as in PinheiroB96
   rC_transf="chol", 
   rC_transf_inner="chol", 

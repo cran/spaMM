@@ -3115,7 +3115,7 @@ if (FALSE) { # that's not used.
     if (is.null(X.Re) ) { ## processed$X.Re should be NULL => actual X.Re=X.pv => standard REML 
       corrEst.args$REMLformula <- predictor ## standard REML 
     } else corrEst.args$REMLformula <- REMLformula ## _ML_ _or_ non-standard REML
-    if (NCOL(X.Re)) { ## some REML correction (ie not ML)
+    if (.old_NCOL(X.Re)) { ## some REML correction (ie not ML)
       corrEst.args$objective <- "p_bv" ## standard or non-standard REML
     } else corrEst.args$objective <- "p_v" ## ML
     corrEst.args$ranFix <- ranFix ## maybe not very useful

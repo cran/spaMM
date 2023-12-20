@@ -399,3 +399,7 @@ projpath <- local({
 # }
 
 .dist_fn <- proxy::dist   #  see Zvariants/parallelDist.R for alternatives ...
+
+# "someone suggested on the R-devel mailing list that maybe NCOL(NULL) would better give 0 instead of 1 as it currently does."
+# This function is designed to reproduce the old NCOL() behaviour whatever the current NCOL() does.
+.old_NCOL <- function(x) if (is.null(x)) {1L} else NCOL(x)

@@ -186,10 +186,13 @@ mat_sqrt <- function(m=NULL, # coRRelation matrix
 
 extreme_eig <- function(M, symmetric, required=TRUE) {
   EEV <- decomp <- NULL
-  if (required ||
-      (inherits(M,"sparseMatrix") &&  ncol(M)<2000L) ||
-      ncol(M)<1000L) decomp <- .try_RSpectra(M,symmetric=symmetric) # 1000 -> 0.28s   # but increases fast: squirrels...
-  if (is.null(decomp)) {  # RSpectra was not available or it failed or problem was too large
+  if (ncol(M)>2L && (
+    required ||
+    (inherits(M,"sparseMatrix") &&  ncol(M)<2000L) ||
+    ncol(M)<1000L
+    ) 
+  ) decomp <- .try_RSpectra(M,symmetric=symmetric) # 1000 -> 0.28s   # but increases fast: squirrels...
+  if (is.null(decomp)) {  # RSpectra was not available or it failed or problem was too large ... or 2x2 matrix...
     # we cannot use kappa() or Matrix::condest() here since we really want the two extreme eigenvalues, not simply the condnum
     if (required ||
         ncol(M)<1000L) {
@@ -200,11 +203,14 @@ extreme_eig <- function(M, symmetric, required=TRUE) {
   EEV # in eigen order: largest first. remains NULL only if not 'required' and problem too large
 }
 
-regularize <- function(A, EEV=extreme_eig(A,symmetric=TRUE), maxcondnum=1e12) {
+regularize <- function(A, EEV=extreme_eig(A,symmetric=TRUE), maxcondnum=1e12#, minmax=0
+                       ) {
   if (EEV[1]/EEV[2] > maxcondnum || EEV[2]<0)  {
-    diagcorr <- (EEV[1] - maxcondnum * EEV[2])/(-1 + maxcondnum + EEV[1] - maxcondnum * EEV[2]) ## so that 
+    diagcorr <- (EEV[1] - maxcondnum * EEV[2])/(-1 + maxcondnum + EEV[1] - maxcondnum * EEV[2])  
     A <- (1-diagcorr)*A
     diag(x=A) <- diag(x=A) + diagcorr ## # all diag is corrected => added a constant diagonal matrix 
+#  } else if (EEV[1]<minmax) { ## matrix very close to zero matrix (default is not to correct)
+#    diag(x=A) <-  diag(x=A)+1/maxcondnum # effect is different. condnum ~ 1
   }
   A
 }

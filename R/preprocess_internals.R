@@ -687,14 +687,14 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") {
         p_phi <- NA
       } else {
         models[["phi"]] <- "phiGLM" 
-        p_phi <- NCOL(processed$residProcessed$AUGI0_ZX$X.pv) # without the etaFix ones; info for .more_init_optim() to eval allPhiScalorFix which must be non-NA
+        p_phi <- .old_NCOL(processed$residProcessed$AUGI0_ZX$X.pv) # without the etaFix ones; info for .more_init_optim() to eval allPhiScalorFix which must be non-NA
       }
     } else { # NOT mixed-effect model NOR etaFix. Still allows a fixed offset that should give result equivalent ot a fixed etaFix
       residFrames <- .get_terms_info(formula=resid.formula, data=data, famfam=resid.model$family$family)
       attr(resid.formula,"off") <- model.offset(residFrames$mf) ## only for summary.HLfit() (and below)
       attr(resid.formula,"has_intercept") <- (attr(residFrames$fixef_off_terms,"intercept")!=0L) ## for identifiability checks
       ## if formula= ~1 and data is an environment, there is no info about nobs, => fr_disp$X has zero rows, which is a problem later 
-      p_phi <- NCOL(residFrames$X)
+      p_phi <- .old_NCOL(residFrames$X)
       namesX_disp <- colnames(residFrames$X)
       if (p_phi==1L && namesX_disp[1]=="(Intercept)"
           && is.null(attr(resid.formula,"off")) ## added 06/2016 (bc phiScal does not handle offset in a phi formula) 
@@ -723,7 +723,7 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") {
       # attr(resid.formula,"has_intercept") <- (attr(residFrames$fixef_off_terms,"intercept")!=0L) ## for identifiability checks
       ## if formula= ~1 and data is an environment, there is no info about nobs, => fr_disp$X has zero rows, which is a problem later
       X <- residFrames$X
-      p_phi <- NCOL(X)
+      p_phi <- .old_NCOL(X)
       if (p_phi==1L && colnames(X)[1]=="(Intercept)"
           && is.null(off) ## added 06/2016 (bc phiScal does not handle offset in a phi formula) 
       ) {
@@ -954,24 +954,47 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") {
   processed$REMLformula <- REMLformula  
 }
 
+.as_mat_wAttr <- function(X) {
+  if (inherits(X,"sparseMatrix"))  { # if X.pv was found to be sparse but decorr was ultimately selected.
+    # sparse X.pv will contaminaes cbind()'s and in not compatible with "decorr" method.
+    # So we have converted X.pv to sparse format and we convert it back...
+    # Not easy to avoi that given that:
+    # * rankinfo was determined by fast sparse QR facto; 
+    # * X.pv sparsity may be used in at least some subcases for choosing the "algebra". 
+    #   One would have to achieve the same effect while keeping X.pv storage dense to avoid a possible back conversion
+    # Overall this back-conversion is quite rare: its first occurrence was in pathological case
+    # (formula with Matern() + location factor as fixed effect...)
+    Xattr <- attributes(X)
+    X <- as.matrix(X)
+    names_lostattrs <- setdiff(names(Xattr), c(names(attributes(X)),"Dim","Dimnames","i","p","x","factors","class"))
+    attributes(X)[names_lostattrs] <- Xattr[names_lostattrs] # as in .subcol_wAttr(). 
+  }
+  X
+}
+
+.as_spMat_wAttr <- function(X) {
+  if (is.matrix(X))  { # if X.pv was found to be sparse but decorr was ultimately selected.
+    # sparse X.pv will contaminaes cbind()'s and in not compatible with "decorr" method.
+    # So we have converted X.pv to sparse format and we convert it back...
+    # Not easy to avoi that given that:
+    # * rankinfo was determined by fast sparse QR facto; 
+    # * X.pv sparsity may be used in at least some subcases for choosing the "algebra". 
+    #   One would have to achieve the same effect while keeping X.pv storage dense to avoid a possible back conversion
+    # Overall this back-conversion is quite rare: its first occurrence was in pathological case
+    # (formula with Matern() + location factor as fixed effect...)
+    Xattr <- attributes(X)
+    X <- as(X, "sparseMatrix")
+    names_lostattrs <- setdiff(names(Xattr), c(names(attributes(X)),"dim","dimnames","class"))
+    attributes(X)[names_lostattrs] <- Xattr[names_lostattrs] # as in .subcol_wAttr(). 
+  }
+  X
+}
+
 .init_AUGI0_ZX <- function(X.pv, vec_normIMRF, ZAlist, nrand, n_u_h, sparse_precision, as_mat) {
   if (nrand) {
     pforpv <- ncol(X.pv)
     if (as_mat) {
-      if (inherits(X.pv,"sparseMatrix"))  { # if X.pv was found to be sparse but decorr was ultimately selected.
-        # sparse X.pv will contaminaes cbind()'s and in not compatible with "decorr" method.
-        # So we have converted X.pv to sparse format and we convert it back...
-        # Not easy to avoi that given that:
-        # * rankinfo was determined by fast sparse QR facto; 
-        # * X.pv sparsity may be used in at least some subcases for choosing the "algebra". 
-        #   One would have to achieve the same effect while keeping X.pv storage dense to avoid a possible back conversion
-        # Overall this back-conversion is quite rare: its first occurrence was in pathological case
-        # (formula with Matern() + location factor as fixed effect...)
-        Xattr <- attributes(X.pv)
-        X.pv <- as.matrix(X.pv)
-        names_lostattrs <- setdiff(names(Xattr), c(names(attributes(X.pv)),"Dim","Dimnames","i","p","x","factors","class"))
-        attributes(X.pv)[names_lostattrs] <- Xattr[names_lostattrs] # as in .subcol_wAttr(). 
-      }
+      X.pv <- .as_mat_wAttr(X.pv)
       AUGI0_ZX <- list2env( list(I=diag(nrow=n_u_h),ZeroBlock= matrix(0,nrow=n_u_h,ncol=pforpv), X.pv=X.pv) )
     } else {
       AUGI0_ZX <- list2env( list(I=.sparseDiagonal(n=n_u_h, shape="g"), ## to avoid repeated calls to as() through rbind2...; previously used .trDiagonal()

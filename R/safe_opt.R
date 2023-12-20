@@ -74,13 +74,19 @@
         }
         break ## no measurable minimization progress in <= maxeval iterations (indeed, stop if small regression)
       }
+      ## ELSE: progress was higher
       if (optr$ierr==1L) { #maximum number of function evaluations exceeded
         init <- optr$par
         prev_optr <- optr
         prevmin <- prev_optr$fval
-        use_bobyqa <- (min(c(init-lower,upper-init))<1e-4)
+        # test of Infusion E_17pars suggests that it may not be a good idea to use bobyqa systematically in next iter
+        # Now providing some control over this by option 'reuse_bobyqa':
+        use_bobyqa <- (.spaMM.data$options$reuse_bobyqa && 
+                         optr$fval > prevmin-1e-4 &&
+                         min(c(init-lower,upper-init))<1e-4)
         #if (verbose) message("maxeval reached in bobyqa(); optimizer called again until apparent convergence of objective.") 
-      } else { # conversion of bobyqa output to nloptr() return elements (solution, objective)
+      } else { # bobyqa has found an improvement out of the optimisation bounds. 
+        # conversion of bobyqa output to nloptr() return elements (solution, objective)
         optr$solution <- optr$par 
         optr$objective <- optr$fval 
         break 

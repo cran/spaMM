@@ -187,7 +187,10 @@
   combine_with_pb <- function() {
     count <-0L
     function(...) {
-      count <<- count + length(list(...))
+      # list(...) is HERE a two-element list whose first element is the vector of combined previous values, and the second is presumably
+      # the single value to be added. (But the API for this combine function is not clear).
+      # In parallel runs, there are presumably additional elements to the list
+      count <<- count + length(list(...)) -1L # I derived this from code on the internet. But...
       setTxtProgressBar(pb, count)
       .combine(...) 
     }
@@ -248,7 +251,7 @@
     } else { # PSOCK
       cl <- do.call(parallel::makeCluster, cluster_args) # note that _this_ line would make sense for fork clusters too. BUT
       # ... the foreach = dot args combination may not work for FORK type. Only pbapply would work with makeCluster+FORK, 
-      # but pbmcapply is a better way to get a pb one a fork cluster as [pb]mclapply have better load balancing than pbapply. 
+      # but pbmcapply is a better way to get a pb on a fork cluster as [pb]mclapply have better load balancing than pbapply. 
       if (is.environment(fit_env)) parallel::clusterExport(cl=cl, varlist=ls(fit_env), envir=fit_env)
       backend <- .find_socket_backend()
       if (backend=="doSNOW") {

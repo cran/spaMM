@@ -228,7 +228,7 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
   return(locform)
 }
 
-..get_locdata <- function(newdata, locvars, na.rm, mv_it=NULL) {
+..get_locdata <- function(newdata, locvars, na.action, mv_it=NULL) {
   # so that matrix 'newdata' arguments can be used as in some other predict methods.
   # ## locvars checks only RHS variables...
   
@@ -274,17 +274,15 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
   ## so slicing occurs in mv only when there are newdata (nrX > blockSize) without validrownames.
   
   # => for any non-NULL newdata, locdata is a data.frame with columns for required predictor variables. Check NAs:
-  if (na.rm) {
-    locdata <- na.omit(locdata)
-    if (length(attr(locdata,"na.action"))) {
-      message("NA's in required variables: prediction not possible for all 'newdata' rows.")
-    }
+  locdata <- na.action(locdata)
+  if (length(attr(locdata,"na.action"))) {
+    message("NA's in required variables: prediction not possible for all 'newdata' rows.")
   }
   locdata
 }
 
 
-.get_locdata <- function(newdata, locvars=NULL, locform, object, variances, na.rm=TRUE ) {
+.get_locdata <- function(newdata, locvars=NULL, locform, object, variances, na.action=na.omit ) {
   # In the univariate-response case, .calc_new_X_ZAC() -> .get_locdata() with a locform containing ranefs
   # In the mv case, .calc_new_X_ZAC_mv() -> ..get_locdata() directly ('..' not '.') with suitably hacked locvars
   if (is.null(newdata)) {
@@ -306,7 +304,7 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
     }
   } else {
     if( is.matrix(newdata) ) newdata <- as.data.frame(newdata)  
-    locdata <- ..get_locdata(newdata, locvars, na.rm=na.rm) 
+    locdata <- ..get_locdata(newdata, locvars, na.action=na.action) 
   }
   locdata
 }
@@ -377,10 +375,14 @@ if (FALSE) { # v3.5.121 managed to get rid of it
   ## preparation for fixed effects
   newX.pv <- newFrames_fixed$X ## contains columns for the offset and columns for the other variables
   # newX.pv must intersect non-NA elements of fixef; see comment and code in newetaFix
-  est_and_fix <- names(which(!is.na(object$fixef)))
-  validnames <- intersect(est_and_fix,colnames(newX.pv)) ## we don't want the etaFix cols (detected by bboptim)
+  colnames_newX.pv <- colnames(newX.pv)
+  isNAfixef <- is.na(object$fixef)
+  NAcols <- names(which(isNAfixef))
+  nonNAcols <- setdiff(colnames_newX.pv, NAcols)
+  est_and_fix <- names(which( ! isNAfixef))
+  validnames <- intersect(est_and_fix,nonNAcols) ## we don't want the etaFix cols (detected by bboptim) neither the NA cols
   if (length(validnames)==0L) validnames <- c() ## without this, validnames could be character(0) and [,validnames,drop=FALSE] fails.
-  if (length(notfound <- setdiff(colnames(newX.pv), est_and_fix))) {
+  if (length(notfound <- setdiff(nonNAcols, est_and_fix))) {
     # capture case where the newX.pv has colnames  not in object$X.pv (including weird case of mis-naming)
     stop(paste0("No fitted coefficient(s) for variables\n",paste(notfound,collapse=", "),"\nin the design matrix derived from 'newdata'."))
   }
@@ -439,10 +441,11 @@ if (FALSE) { # v3.5.121 managed to get rid of it
 # Currently never called for mv: cf .calc_new_X_ZAC_mv() instead
 .calc_new_X_ZAC <- function(object, newdata=NULL, re.form = NULL,
                             variances=list(residVar=FALSE, cov=FALSE),invCov_oldLv_oldLv_list,
-                            locform=formula.HLfit(object, which="")) {
+                            locform=formula.HLfit(object, which=""), na.action=na.omit) {
   ## possible change of random effect terms
   locform <- .update_formula_shared_ranefs(locform, re.form, rm_LHS=TRUE)
-  locdata <- .get_locdata(newdata, locform=locform, object=object, variances=variances) # always required (cf when newdata is not a data frame)
+  locdata <- .get_locdata(newdata, locform=locform, object=object, variances=variances,
+                          na.action=na.action) # always required (cf when newdata is not a data frame)
   #
   RESU <- .get_newfixef_info(newdata, locform, locdata, object, re.form)
   #

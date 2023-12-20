@@ -20,7 +20,8 @@ importFrom("stats", "as.formula", "coefficients", "dgamma", "dnorm", "family", "
            "hatvalues", ## bc spaMM defines an HLfit method, 
            "simulate", "anova", "confint", "fitted", "predict", "update", "logLik", "vcov", "coef",
            "gaussian", "binomial", "dpois", "Gamma", "resid", "uniroot", "deviance", "dbinom", "plogis", 
-           "as.dist", "AIC", "qnbinom", "qpois", "rnbinom", "integrate", "poisson",".getXlevels", "na.omit",
+           "as.dist", "AIC", "qnbinom", "qpois", "rnbinom", "integrate", "poisson",".getXlevels", 
+           "na.omit", "na.exclude", "na.pass",
            "cov2cor", "pcauchy", "pnorm","model.weights", "setNames", "pf", "df.residual", "drop.terms", 
            "stat.anova", "residuals", "pt", "reformulate", "drop.scope", "drop1", "update.formula", "contrasts<-")
 importFrom("utils", "relist", "txtProgressBar", "setTxtProgressBar", "modifyList", "strOptions", "str",
@@ -34,7 +35,7 @@ importFrom("Rcpp", "evalCpp")
 importFrom("MASS", "ginv", "gamma.shape", "mvrnorm") ## gamma.shape is actually a generic with a 'glm' method.
 importFrom("nlme", "getGroups", "fixef", "ranef", "corMatrix", "Initialize", "Variogram", "coef<-", "corFactor", 
            "getCovariate", "logDet", "recalc", "VarCorr")
-importFrom("pbapply", "pbapply", "pboptions")
+importFrom("pbapply", "pbapply", "pblapply", "pboptions", "pbreplicate")
 importFrom("crayon","green","blue","cyan","yellow","red","underline")
 importFrom("minqa","bobyqa")
 importFrom("ROI", "L_constraint", "OP", "ROI_solve", "V_bound", "bounds<-", "constraints<-", "leq", "solution")

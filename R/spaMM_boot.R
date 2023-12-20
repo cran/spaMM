@@ -120,11 +120,11 @@ spaMM2boot <- function(object, statFUN, nsim, nb_cores=NULL,
   errors_null <- errors_full <- NULL
   pbopt <- pboptions(type="none") 
   nullfit <- environment(fn)$nullfit
-  if ( ! is.null(nullfit)) errors_null <- pbapply::pbreplicate(1, .check_call_on_core(fitobject = nullfit), cl=cluster)
+  if ( ! is.null(nullfit)) errors_null <- pbreplicate(1, .check_call_on_core(fitobject = nullfit), cl=cluster)
   #foreach_blob <- foreach::foreach(i=1)
   #if ( ! is.null(nullfit)) errors_null <- foreach::`%dopar%`(foreach_blob, .check_call_on_core(fitobject = nullfit))
   fullfit <- environment(fn)$fullfit
-  if ( ! is.null(fullfit)) errors_full <- pbapply::pbreplicate(1, .check_call_on_core(fitobject = fullfit), cl=cluster)
+  if ( ! is.null(fullfit)) errors_full <- pbreplicate(1, .check_call_on_core(fitobject = fullfit), cl=cluster)
   #if ( ! is.null(fullfit)) errors_null <- foreach::`%dopar%`(foreach_blob, .check_call_on_core(fitobject = fullfit))
   errors <- unique(unlist(c(errors_null,errors_full)))
   if (length(errors)) { 
@@ -183,6 +183,7 @@ dopar <- local({
       }
       if (cluster_args$type=="FORK") {
         if (is.null(mc.silent <- control$mc.silent)) mc.silent <- TRUE 
+        if (is.null(mc.preschedule <- control$mc.preschedule)) mc.preschedule <- TRUE 
         has_progressr <- ("progressr" %in% loadedNamespaces())
         seq_nr <- seq_len(nsim)
         if (has_progressr) {
@@ -199,7 +200,8 @@ dopar <- local({
               res
             }
             bootreps <- try(
-              parallel::mclapply(seq_nr, FUN = p_fn, mc.silent=mc.silent, mc.cores=nb_cores)
+              parallel::mclapply(seq_nr, FUN = p_fn, mc.silent=mc.silent, mc.cores=nb_cores,
+                                 mc.preschedule = mc.preschedule)
             )
           })
           
@@ -354,7 +356,7 @@ dopar <- local({
             count <- 0
             force(pb)
             function(...) {
-              count <<- count + length(list(...))
+              count <<- count + length(list(...)) - 1L
               setTxtProgressBar(pb, count)
               flush.console()
               cbind(...) # this can feed into .combine option of foreach
@@ -387,3 +389,122 @@ dopar <- local({
     return(bootreps)
   }
 })
+
+
+.init_cores <- local({
+  doSNOW_warned <- FALSE
+  function(cluster_args=list()) { 
+    cluster_args$spec <- .check_nb_cores(nb_cores=cluster_args$spec) # if cluster_args was NULL it is converted to list here => no need for special handling code.
+    cores_info <- list(nb_cores=cluster_args$spec)
+    #
+    if (cluster_args$spec > 1L) {
+      cores_info$cl <- do.call(parallel::makeCluster, cluster_args) 
+      #dotenv <- list2env(list(...))
+      #parallel::clusterExport(cl=cores_info$cl, as.list(ls(dotenv)),envir=dotenv) 
+      ## foreach is NOT a parallel backend so there is no point using it if doSNOW is not available
+      if (cluster_args$type!="FORK") {
+        if (cores_info$has_doSNOW <- (isNamespaceLoaded("doSNOW"))) {
+          R.seed <- get(".Random.seed", envir = .GlobalEnv)
+          ## allows progressbar but then requires foreach
+          assign(".Random.seed", R.seed, envir = .GlobalEnv) # loading (?) the namespace of 'snow' changes the global RNG state!
+          fn <- get("registerDoSNOW", asNamespace("doSNOW"))
+          do.call(fn,list(cl=cores_info$cl)) 
+        } else {
+          if ( ! doSNOW_warned) {
+            message("If the 'doSNOW' package were attached, better load-balancing might be possible (at the expense of control of RNG).")
+            doSNOW_warned <<- TRUE
+          } 
+        }
+      } else cores_info$has_doSNOW <- FALSE
+    }
+    return(cores_info)
+  }
+})
+
+.close_cores <- function(cores_info) {
+  if ( cores_info$nb_cores > 1L) {
+    if (cores_info$has_doSNOW) foreach::registerDoSEQ() ## https://stackoverflow.com/questions/25097729/un-register-a-doparallel-cluster
+    parallel::stopCluster(cores_info$cl)
+  }
+}
+
+# This one is derived from the Infusion code, not from spaMM::dopar(). 
+# It has no serial subcase. (___F I X M E___)
+# There is more control of the iterator, which needs not be a seq of integers
+# and this this can apply easily to non-matrix objects.
+# .dopar() needs more testing before going public ____F I X M E____
+.dopar <- function(iterator, FUN, cluster_args = cluster_args, # required argS
+                   # FUN args passed as the \dots, apart from its FUN argument (each element of 'iterator'):
+                   ...) {
+  
+  cluster_args <- .set_cluster_type(cluster_args=cluster_args) # PSOCK vs FORK
+  cores_info <- .init_cores(cluster_args=cluster_args)
+  if (cluster_args$type=="FORK") {
+    nb_cores <- cores_info$nb_cores
+    # if (is.null(mc.silent <- control$mc.silent)) # conflict with 'control' arg of FUN=..slice_n_predict_body(). Other name needed
+      mc.silent <- TRUE 
+    # if (is.null(mc.preschedule <- control$mc.preschedule)) 
+      mc.preschedule <- TRUE 
+    has_progressr <- ("package:progressr" %in% search())
+    if (has_progressr) {
+      # progressor is the only progress function that 'works' with mclapply
+      # although not with load-balancing (mc.preschedule=FALSE)
+      # Here we use the default (no balancing), and it is the steps with max value shown below that are reported.  
+      prog_fn <- get("progressor", asNamespace("progressr"), inherits=FALSE) # syntax for using an undeclared package (cf stats:::confint.glm)
+      with_fn <- get("with_progress", asNamespace("progressr"), inherits=FALSE) # syntax for using an undeclared package (cf stats:::confint.glm)
+      with_fn({
+        p <- prog_fn(steps=length(iterator))
+        p_FUN <- function(it, ...) {
+          res <- FUN(it, ...)
+          p() # p() call necessary for actual progress report 
+          res
+        }
+        RESU <- try(
+          parallel::mclapply(iterator, FUN = p_FUN, ...)
+        )
+      })
+    } else {
+      .warn_once_progressr()
+      RESU <- try(
+        parallel::mclapply(iterator, FUN = FUN, ...)
+      )
+    }
+  } else { # PSOCK
+    cl <- cores_info$cl
+    packages <- "Infusion"
+    parallel::clusterExport(cl, "packages",envir=environment()) ## passes the list of packages to load
+    abyss <- parallel::clusterEvalQ(cl, {sapply(packages,library,character.only=TRUE)}) ## snif
+    if (cores_info$has_doSNOW) {
+      show_pb <- (# verbose$most && 
+        ! isTRUE(getOption('knitr.in.progress')))
+      if (show_pb) {
+        pb <- txtProgressBar(max = length(iterator), style = 3, char="P")
+        progress <- function(n) setTxtProgressBar(pb, n)
+        parallel::clusterExport(cl=cl, "progress",envir=environment()) ## slow?
+        .options.snow = list(progress = progress)
+      } else .options.snow = NULL
+      it <- NULL ## otherwise R CMD check complains that no visible binding for global variable 'st'
+      foreach_args <- list(
+        it = iterator, 
+        .packages= packages,
+        .options.snow = .options.snow,
+        .inorder = TRUE, .errorhandling = "remove"
+        #                                 "pass"## "pass" to see error messages
+      )
+      foreach_blob <- do.call(foreach::foreach,foreach_args)
+      RESU <- foreach::`%dopar%`(
+        foreach_blob,
+        FUN(it, ...) )
+      if (show_pb) close(pb)
+    } else { # PSOCK without doSNOW
+      pbopt <- pboptions(nout=min(100L,2L*length(iterator)),type="timer", char="p")
+      RESU <- pblapply(X=iterator, FUN = FUN, cl= cl, ...)
+      pboptions(pbopt)
+    }
+  }
+  .close_cores(cores_info)
+  RESU
+} 
+
+
+

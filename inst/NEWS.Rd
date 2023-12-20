@@ -3,6 +3,25 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 4.4.16}{  
+\subsection{NEW FEATURES}{
+\itemize{
+\item New predict.HLfit(., na.action) argument to control handling of missing predictors in the 'newdata'.
+\item Some computations in predict.HLfit() may be performed in parallel, as controlled by new argument 'cluster_args'.
+\item mapMM() and spaMM.filled.contour() now return some graphic elements of the plot.
+\item Code made compatible with anticipated change in result of NCOL(NULL) in base R. 
+}
+}
+\subsection{FIXED BUGS}{
+\itemize{
+\item Several issues with post-fit functions on LMs with sparse design matrix (as may happen by default when the predictor variable is a factor with many levels).
+\item Internal default value of 'map.asp' in spaMMplot2D() was not always appropriate, resulting in a failure of the plot.
+\item pdep_effects() and plot_effects() did not handle factors well enough, and did not handle fits with non-estimable fixed-effect coefficients.
+\item Some fits could fail with recent versions of the Matrix package.
+\item Some prediction varaince computation could fail for AR1 models.
+}
+}
+}
 \section{CHANGES UP TO VERSION 4.4.0}{  
 \subsection{NEW FEATURES}{
 \itemize{
@@ -111,8 +130,8 @@
 \item For some response family, fixed-effect models could not, or no longer, handle design matrices in sparse Matrix format. 
 \item A computation was incorrect for COMPoisson distribution with huge expectation. Fixing it has had no visible effect so far. 
 \item Fits of simple mixed-effect models with random-coefficient terms were subject to two potential problems:\cr
-{ * } When fitted by "inner" estimation methods [in particular, by HLfit() or HLCor() rather than fitme()], the fit could stop in cases where the observed information matrix differs from the expected one (e.g, for the Gamma(log) response family). \cr
-{ * } Using fitme() to fit such models worked for all response families, but a profile confint() procedure for fixed-effect coefficients on the resulting fit object could then stop.\cr \cr
+\verb{ * } When fitted by "inner" estimation methods [in particular, by HLfit() or HLCor() rather than fitme()], the fit could stop in cases where the observed information matrix differs from the expected one (e.g, for the Gamma(log) response family). \cr
+\verb{ * } Using fitme() to fit such models worked for all response families, but a profile confint() procedure for fixed-effect coefficients on the resulting fit object could then stop.\cr \cr
 Although using HLfit() to fit such models now works for all response families, the confint() procedure does not work on the resulting fit object. This problem is cleanly reported, with a suggestion to fit the model by fitme(). 
 \item All problems with deviance computations for the 'negbin1' family had not been solved in the previous version, more specifically for the zero-truncated family, where it has been corrected in this version (numerical inaccuracies can still occur in the case of jointly vanishing 'scale' and 'mu'). Even more than previously, the imperfections of these computations may be unnoticeable in practice. 
 }
@@ -142,7 +161,7 @@ Although using HLfit() to fit such models now works for all response families, t
 \item A change in Matrix v1.5-3 has exposed a bug in the code for sparse-precision methods, which would result in incorrect or even failed (stop) fits. spaMM results with previous versions of Matrix were correct.
 \item A 'new feature' in Matrix v1.5-2 ("Products of diagonalMatrix with [RT]sparseMatrix now preserve storage...") also broke a procedure for IMRF models.
 \item Requesting prediction variances with the (awkward, but formally correct) argument 'variances=list(linPred=FALSE, cov=TRUE)' generated nonsense.  
-\item predict(., {large newdata,> 2000 rows}, binding= < some name >, ...) retained only the first 2000 element of any attribute for variances or intervals. 
+\item predict(., <\emph{large newdata (> 2000 rows)}>, binding= < \emph{some name} >, ...) retained only the first 2000 element of any attribute for variances or intervals. 
 }
 }
 }

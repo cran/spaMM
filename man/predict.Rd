@@ -15,17 +15,17 @@
 }
 \description{
 The following functions can be used to compute point predictions and/or various measures of uncertainty associated to such predictions:\cr 
-{ * }\code{predict} can be used for prediction of the response variable by its expected value obtained as (the inverse link transformation of) the linear predictor (\eqn{\eta}) and more generally for terms of the form \bold{X}_n\eqn{\beta}+\bold{Z}_n\bold{L}\bold{v}, for new design matrices \bold{X}_n and \bold{Z}_n.\cr 
-{ * }Various components of prediction variances and predictions intervals can also be computed using \code{predict}. 
+\verb{ * }\code{predict} can be used for prediction of the response variable by its expected value obtained as (the inverse link transformation of) the linear predictor (\eqn{\eta}) and more generally for terms of the form \bold{X}_n\eqn{\beta}+\bold{Z}_n\bold{L}\bold{v}, for new design matrices \bold{X}_n and \bold{Z}_n.\cr 
+\verb{ * }Various components of prediction variances and predictions intervals can also be computed using \code{predict}. 
 The \code{get_}... functions are convenient extractors for such components;\cr 
-{ * }\code{get_predCov_var_fix} extracts a block of a prediction covariance matrix. It was conceived for the specific purpose of computing the spatial prediction covariances between two \dQuote{new} sets of geographic locations, without computing the full covariance matrix for both the new locations and the original (fitted) locations. When one of the two sets of new locations is fixed while the other varies, some expensive computations can be performed once for all sets of new locations, and be provided as the \code{fix_X_ZAC.object} argument. The \code{preprocess_fix_corr} extractor is designed to compute this argument. 
+\verb{ * }\code{get_predCov_var_fix} extracts a block of a prediction covariance matrix. It was conceived for the specific purpose of computing the spatial prediction covariances between two \dQuote{new} sets of geographic locations, without computing the full covariance matrix for both the new locations and the original (fitted) locations. When one of the two sets of new locations is fixed while the other varies, some expensive computations can be performed once for all sets of new locations, and be provided as the \code{fix_X_ZAC.object} argument. The \code{preprocess_fix_corr} extractor is designed to compute this argument. 
 }
 \usage{
 \method{predict}{HLfit}(object, newdata = newX, newX = NULL, re.form = NULL,
                         variances=list(), binding = FALSE, intervals = NULL,
                         level = 0.95, blockSize = 2000L, type = "response", 
                         verbose=c(showpbar=eval(spaMM.getOption("barstyle"))), 
-                        control=list(), ...)
+                        control=list(), na.action=na.omit, cluster_args=list(), ...)
 get_predCov_var_fix(object, newdata = NULL, fix_X_ZAC.object, fixdata, re.form = NULL,
                     variances=list(disp=TRUE,residVar=FALSE,cov=FALSE), 
                     control=list(),  ...)    
@@ -71,14 +71,24 @@ get_intervals(..., intervals="predVar")
  }
  \item{fixdata}{A data frame describing reference data whose covariances with variable \code{newdata} may be requested.}
  \item{fix_X_ZAC.object}{The return value of calling \code{preprocess_fix_corr} (see trivial Example). This is a more efficient way of providing information about the \code{fixdata} for repeated calls to \code{get_predCov_var_fix} with variable \code{newdata}.}
- \item{blockSize}{ Integer, better ignored in normal use.  
-   For data with many rows, it may be more efficient to perform some operations on slices of the data, and this gives the maximum number or rows of the slices used in an internal slicing mechanism. 
+ \item{blockSize}{  
+   For data with many rows, it may be more efficient to perform some operations on slices of the data, and this gives the maximum number or rows of each slice. Further, parallelisation of computations over the slices is possible, as controlled by the \code{cluster_args} argument. Slicing and parallelisation may operate only if covariance matrices are not requested. 
  }
 \item{type}{character string; The returned point predictions are on the response scale if \code{type="response"} (the default; for binomial response, a frequency 0<.<1). It is on the linear predictor scale if \code{type="link"}. \cr
 * The \dQuote{prediction variance} (as opposed to the response variance, see \code{\link{predVar}}) that may be returned as a \code{"predVar"}  attribute of the point predictions is always on the linear predictor scale, even when \code{type="response"}. If you want to extract this \code{predVar} transformed to the response scale, use \code{predict(.,variances=list(respVar=TRUE))} and take the difference between the \code{respVar} and \code{residVar} attributes of the result.\cr
 * Prediction intervals (as opposed to the response intervals) will be on the linear predictor or response scale depending on \code{type} (new to versions more recent than 3.12.0).}
-\item{control}{A list; a warning will direct you to relevant usage when needed.}
-\item{verbose}{A vector of booleans; it single currently used element is \code{"showpbar"}, which controls whether to show a progress bar in certain prediction variance computations.}
+\item{control}{
+A list; a warning will direct you to relevant usage when needed.
+}
+\item{cluster_args}{
+Passed to \code{\link[parallel]{makeCluster}}. Parallel computations are possible if the slicing mechanism (as controlled by argument \code{blockSize}) is effective.
+}
+\item{verbose}{
+A vector of booleans; it single currently used element is \code{"showpbar"}, which controls whether to show a progress bar in certain prediction variance computations.
+}
+\item{na.action}{
+One of the functions dealing with \code{NA}s in data frames (see \code{\link{na.omit}}). if this is set to \code{na.exclude}, \code{NA}s will be included in the returned point predictions, for rows of the \code{newdata} which do not provide information for all required predictor variables. The effect of the default \code{na.omit} is to not include such \code{NA}s (this differs from the default of, e.g., \code{predict.lm}). Implementation is limited; in particular, \code{na.exclude} currently does not have the effect of including \code{NA}s in the optional attributes providing (co-)variance information, except the \code{"mv"} attribute for predictions of multivariate-response fits.
+}
 \item{\dots}{
   further arguments passed to or from other methods. For the \code{get_}... functions, they are passed to \code{predict}. 
 }
@@ -86,7 +96,7 @@ get_intervals(..., intervals="predVar")
 \value{
   See Details in \code{\link{Tpoisson}} for questions specific to truncated distributions.
   
-  For \code{predict}, a matrix or data frame (according to the \code{binding} argument), with optional attributes \code{frame}, \code{intervals}, \code{predVar}, \code{fixefVar}, \code{residVar}, and/or \code{respVar}, the last four holding one or more variance vector or covariance matrices. The further attribute \code{fittedName} contains the binding name, if any.  
+  For \code{predict}, a matrix or data frame (according to the \code{binding} argument), with optional attributes \code{frame}, \code{intervals}, \code{predVar}, \code{fixefVar}, \code{residVar}, and/or \code{respVar}, the last four holding one or more variance vector or covariance matrices. The further attribute \code{fittedName} contains the binding name, if any. The \code{frame} attribute includes information about any \code{na.action} effect on the new data. 
   
   The \code{get_}... extractor functions call \code{predict} and extract from its result the attribute implied by the name of the extractor. By default, \code{get_intervals} will return prediction intervals using \code{predVar}.
   \code{get_predVar} with non-default \code{which} argument has the same effect as the \code{get_}... function whose name is implied by \code{which}.

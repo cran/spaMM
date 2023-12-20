@@ -191,7 +191,7 @@ as_LMLT <- function(fitobject, nuisance=NULL, verbose=TRUE, transf=TRUE, check_d
   class(vcov_beta) <- "matrix"
   sigma <- sqrt(residVar(fitobject, which="fit"))
   fixef_terms <- fitobject$main_terms_info$fixef_terms
-  resu <- new("LMLTslots", 
+  resu <- new("LMLTslots", # contains stuff needed for the generalized Satterthwaite correction.
               nuisance=numderivs$nuisance,
               beta=fixef(fitobject, na.rm=TRUE),  
               frame=structure(model.frame(fixef_terms,fitobject$data), # contains  I(Days^2), in contrast to fitobject$data

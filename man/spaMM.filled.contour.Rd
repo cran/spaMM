@@ -8,7 +8,7 @@ spaMM.filled.contour(x = seq(0, 1, length.out = nrow(z)),
                z,
                xrange = range(x, finite = TRUE),
                yrange = range(y, finite = TRUE),
-               zrange = range(z, finite = TRUE),
+               zrange = range(z, finite = TRUE, na.rm=TRUE),
                margin=1/20,
                levels = pretty(zrange, nlevels), nlevels = 20,
                color.palette = spaMM.colors,
@@ -86,6 +86,9 @@ the y/x aspect ratio of the 2D plot area (not of the full figure including the s
   Values to be plotted can be infinite: the effect is similar to that
   described for \code{NA} values.
 
+}
+\value{
+This returns invisibly a list with elements of the plot, the  \code{x},  \code{y},  \code{z} coordinates and the contour \code{levels}.
 }
 \references{
   Cleveland, W. S. (1993)

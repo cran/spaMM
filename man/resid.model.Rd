@@ -11,7 +11,7 @@ The \code{resid.model} argument of fitting functions can be used to specify a mo
 This documentation is more specifically for case (2). Case (1) is more specifically documented as \code{\link{phi-resid.model}}.
 
 In case (2) the model for the dispersion parameter is constrained as a fixed-effect model, of the form\cr
-dispersion parameter{ }=\code{ exp(}\bold{X}\eqn{\beta}\code{+offset}),\cr 
+dispersion parameter =\code{ exp(}\bold{X}\eqn{\beta}\code{+offset}),\cr 
 and specified using the standard \code{formula} syntax. Random effects cannot be included, in contrast to dispersion models for case (1).
 }
 \usage{

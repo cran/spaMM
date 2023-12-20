@@ -4,7 +4,7 @@
 \title{Using a corrMatrix argument}
 
 \description{
-\code{corrMatrix} is an argument of \code{HLCor}, of class \code{dist} or \code{matrix}, with can be used if the model formula contains a term of the form \code{corrMatrix(1|<...>)}. It describes a correlation matrix, possibly as a \code{dist} object. A covariance matrix can actually be passed through this argument, but then it must be a full matrix, not a \code{dist} object. The way the rows and columns of the matrix are matched to the rows of the \code{data} depends on the nature of the grouping term {<...>}.
+\code{corrMatrix} is an argument of \code{HLCor}, of class \code{dist} or \code{matrix}, with can be used if the model formula contains a term of the form \code{corrMatrix(1|<...>)}. It describes a correlation matrix, possibly as a \code{dist} object. A covariance matrix can actually be passed through this argument, but then it must be a full matrix, not a \code{dist} object. The way the rows and columns of the matrix are matched to the rows of the \code{data} depends on the nature of the grouping term \code{<...>}.
 
 The \code{\link{covStruct}} argument can be used for the same purpose and is much more general, in particular allowing to specify several correlation matrices.
 }

@@ -870,7 +870,7 @@
   augZXy_cond_inner <- spaMM.getOption("allow_augZXy")
   if (is.null(augZXy_cond_inner)) augZXy_cond_inner <- TRUE ## for .makeCovEst1()
   if (augZXy_cond_inner) augZXy_cond_inner <-   LMMbool
-  if (augZXy_cond_inner) augZXy_cond_inner <- ( is.null(merged_X.Re) || ! ncol(merged_X.Re)) ## exclude non-standard REML (avoiding NCOL(NULL)=1)
+  if (augZXy_cond_inner) augZXy_cond_inner <- ( is.null(merged_X.Re) || ! ncol(merged_X.Re)) ## exclude only non-standard REML 
   merged$augZXy_cond <- structure(FALSE, inner=augZXy_cond_inner) # augZXy_cond would impose a unique phi across submodels
   #
   attr(phi_models,"anyHGLM") <- any(phi_models=="phiHGLM")
@@ -1139,7 +1139,7 @@
     merged[["psi_M"]] <- rep(attr(rand.families,"unique.psi_M"),vec_n_u_h)
     merged[["cum_n_u_h"]] <- cumsum(c(0L, vec_n_u_h))
     nrd <- merged[["cum_n_u_h"]][nrand+1L]
-    if (algebra=="decorr" && nrd>900L && thread_nbr==1L) message('Using paralellisation might be useful. See help("setNBThreads")')
+    if (algebra=="decorr" && nrd>900L && thread_nbr==1L) message('Using paralellisation might be useful. See help("setNbThreads")')
     if (nrd==1L) {
       warning("Found a single random effect with a *single level*. Check formula?", immediate.=TRUE)
     }

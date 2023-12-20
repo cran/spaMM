@@ -54,7 +54,7 @@
   hasnorm <- "norm" %in% boot.ci_args$type
   hasperc <- "perc" %in% boot.ci_args$type
   hasbasic <- "basic" %in% boot.ci_args$type
-  np <- NCOL(ts)
+  np <- .old_NCOL(ts)
   template <- matrix(NA,ncol=2,nrow=np)
   marg <- (1-level)*50
   colnames(template) <- paste(c(marg, 100-marg),"%")

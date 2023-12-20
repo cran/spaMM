@@ -126,7 +126,7 @@ makeTicks <- function(x, ## in canonical scale...
 
 `spaMM.filled.contour` <- function (x = seq(0, 1, length.out = nrow(z)), y = seq(0, 1, 
                                                        length.out = ncol(z)), z, xrange = range(x, finite = TRUE), 
-          yrange = range(y, finite = TRUE), zrange = range(z, finite = TRUE), 
+          yrange = range(y, finite = TRUE), zrange = range(z, finite = TRUE, na.rm=TRUE), 
           margin=1/20,
           levels = pretty(zrange, nlevels), nlevels = 20, color.palette = spaMM.colors, 
           col = color.palette(length(levels) - 1), plot.title, plot.axes, 
@@ -189,7 +189,8 @@ makeTicks <- function(x, ## in canonical scale...
   if (missing(plot.title)) 
     title(...) ## not that this function does not know 'coordinates'
   else plot.title
-  invisible()
+  resu <- list(x=x, y=y, z=z, levels=levels)
+  invisible(resu)
 } ## spaMM.filled.contour
 
 
@@ -207,7 +208,7 @@ makeTicks <- function(x, ## in canonical scale...
   margey <- yspan * margin
   yrange  <- yrange+margey*c(-1,1)
 
-  # consequences of par()
+  # consequences of par() for max_map.asp
   wscale <- (3 + par("mar")[2]) * par("csi") * 2.54
   wmap <- par("din")[1]*2.54 - wscale
   Wmargin <- (par("din")[1]-par("pin")[1])*2.54
@@ -216,9 +217,14 @@ makeTicks <- function(x, ## in canonical scale...
   max_map.asp <- ( par("din")[2]*2.54 -Hmargin)/wplotmap
   #print(paste("max_map.asp=",max_map.asp))
   
-  if (is.null(map.asp)) map.asp <- yspan/xspan
-  map.asp <- min(map.asp,max_map.asp)
-  if (map.asp>4 || map.asp<0.25) map.asp <- 1 # avoid extremely tall || flat plots
+  if (is.null(map.asp)) {
+    map.asp <- yspan/xspan
+    lma <- log(map.asp) 
+    lma < sign(lma)*min(abs(lma),abs(log(max_map.asp)))
+    map.asp <- exp(lma)
+    if (map.asp>4 || map.asp<0.25) map.asp <- 1 # avoid extremely tall || flat plots in case max_map.asp allowed them 
+      # (which was still the case before I fixed the map.asp<1 case)
+  }
 
   hmap <- wplotmap*map.asp + Hmargin
   #   if (hmap>(par("din")[2]*2.54)) {
@@ -236,8 +242,7 @@ makeTicks <- function(x, ## in canonical scale...
 }
 
 .plotScale <- function(z,levels,key.axes=NULL,key.title=NULL,axes,col) {
-  zrange <- range(z)
-  plot.window(xlim = c(0, 1), ylim = range(z),xaxs = "i", 
+  plot.window(xlim = c(0, 1), ylim = range(z, na.rm=TRUE, finite=TRUE),xaxs = "i", 
               yaxs = "i")
   rect(0, levels[-length(levels)], 1, levels[-1L], col = col)
   
@@ -264,7 +269,7 @@ spaMMplot2D <- function (x,y,z,
   par.orig <- par(c(dotlist[intersect(names(dotlist),names(par()))],c("mar", "las", "mfrow"))) 
   on.exit(par(par.orig))
   mar.orig <- par.orig$mar
-  levels <- pretty(range(z), nlevels) ## moved up to here post 1.4.4 otherwise discrepancy between main plot and scale bar 
+  levels <- pretty(range(z, na.rm=TRUE, finite=TRUE), nlevels) ## moved up to here post 1.4.4 otherwise discrepancy between main plot and scale bar 
   nlevels <- length(levels)-1
   zscaled <- 1 + floor(nlevels*(0.000001+0.999998*(z-min(z))/(max(z)-min(z)))) ## makes sure its floor( ]1,nlevels+1[ ) 
   ZColor <- color.palette(n=nlevels) ## bug corrected (spaMM.colors -> color.palette) post 1.4.4  
@@ -281,6 +286,12 @@ spaMMplot2D <- function (x,y,z,
   par(mar = mar)
   ## SCALE
   plot.new()
+  # with Rstudio, the plot.new() may fail. One has to clear all plots 
+  #   and repeat from the layout() call to repeat the problem cleanly. 
+  # One could wrap the code from the layout() to the plot.new() in error handling code.
+  # Wrapping the user-level plot call in a try(), on an ad-hoc basis, 
+  #   may be simpler (plot(slik) -> mapMM -> here, in test-Infusion.R).
+  # More systematically, one can wrap the internal spaMMplot2D() calls. 
   .plotScale(z,levels,key.axes,key.title,axes,col)
   #
   mar <- mar.orig
@@ -339,11 +350,12 @@ mapMM <- function (fitobject,Ztransf=NULL,coordinates,
   #dotlist <- list(...) 
   #arglist <- c(list(x=x,y=y,z=Zvalues,add.points={eval(add.points,-2)}),dotlist)
   #do.call("spaMMplot2D",arglist) # *** les eval ne passent pas dans une liste *** (PS: bc of "spaMMplot2D" instead of spaMMplot2D?)
-  spaMMplot2D(x=x,y=y,z=Zvalues,
+  try(spaMMplot2D(x=x,y=y,z=Zvalues,
               decorations=eval(decorations,envir),
               plot.title=eval(plot.title,envir),
               plot.axes=eval(plot.axes,envir),  ## -3 -> envir in which mapMM was called.   
-              ...)
+              ...))
+  invisible(list(x=x,y=y,z=Zvalues))
 }
 ## but list(...) has add.points=NULL for add.points originally {points.....}
 

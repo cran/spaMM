@@ -257,9 +257,9 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
 # called only for spprec "hatval", given conditions calling for the use of qrXa 
 .calc_spprec_hatval_ZX_by_QR <- function(BLOB, sXaug, AUGI0_ZX, w.ranef) { ## sparse qr is fast
   n_u_h <- ncol(AUGI0_ZX$I)
-  phipos <- n_u_h+seq_len(length(tmp)-n_u_h)
   if (BLOB$nonSPD) {
     tmp <- colSums(( BLOB$invIm2QtdQ_ZX %*% BLOB$t_Q) * BLOB$t_Q)
+    phipos <- n_u_h+seq_len(length(tmp)-n_u_h)
     tmp[phipos] <- tmp[phipos]*BLOB$signs
   } else {
     t_Q <- BLOB$t_Q
@@ -267,6 +267,7 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
     xx <- xx*xx
     t_Q@x <- xx
     tmp <- colSums(t_Q)
+    phipos <- n_u_h+seq_len(length(tmp)-n_u_h)
   }
   list(lev_lambda=tmp[-phipos],lev_phi=tmp[phipos]) # BLOB$hatval , formely hatval_ZX, for REML
 }
@@ -560,6 +561,7 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
       Xscal <- .Dvec_times_Matrix(c(sqrt(attr(sXaug,"w.ranef")),BLOB$sqrtW),Xscal)
       qrXa <- qr(Xscal)
     }, assign.env = BLOB )
+    delayedAssign("t_Q", { t(qr.Q(BLOB$qrXa)) }, assign.env = BLOB) # (In QRP factos, crossprod X is always eqauld to crossprod Q)
   }
   if (nullify_X_ones) {
     if (.is_evaluated("r22", BLOB)) {
@@ -758,7 +760,7 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
       ## sequel recomputed for each new damping value...
       grad_v <- LM_z$scaled_grad[seq(ncol(BLOB$chol_Q))] 
       G_dG <- G_dG_blob$G_dG
-      L_dv_term_from_grad_v <- Matrix::drop(Matrix::solve(G_dG, Matrix::tcrossprod(BLOB$chol_Q, grad_v))) # part from grad_h, to be completed
+      L_dv_term_from_grad_v <- Matrix::drop(Matrix::solve(G_dG, BLOB$chol_Q %*% grad_v)) # part from grad_h, to be completed
       if (attr(sXaug,"pforpv")) { ## if there are fixed effect coefficients to estimate
         # rhs for beta
         grad_beta <- LM_z$scaled_grad[-seq(ncol(BLOB$chol_Q))]

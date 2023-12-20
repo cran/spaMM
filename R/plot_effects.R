@@ -5,22 +5,23 @@ pdep_effects <- function(object, focal_var, newdata =object$data, length.out=20L
     stop("'focal_var' is not found in the data.")
   }
   ori_values <- newdata[, focal_var,drop=TRUE] # drop[] bc tibbles do not automatically drop 
+  if (is.character(ori_values)) ori_values <- factor(ori_values)
   if (is.logical(ori_values)) {
     if (is.null(focal.values <- focal_values)) focal.values <- c(FALSE,TRUE) 
   } else if (is.factor(ori_values)) {
     if (is.null(levels)) {
       if (is.null(focal_values)) {
-        focal.values <- levels(ori_values)
+        focal.values <- levels(droplevels(ori_values))
       } else {
         if ( ! inherits(focal_values,"factor")) focal_values <- factor(focal_values)
         focal.values <- levels(focal_values)
-        if (!all(focal.values %in% levels(ori_values))) {
-          stop("Some of the levels of 'focal_values' are absent from the data.")
+        if (!all(focal.values %in% levels(droplevels(ori_values)))) {
+          stop("Some of the levels of 'focal_values' are absent from the fitted data.")
         }
       }
     } else {
-      if (!all(levels %in% levels(ori_values))) {
-        stop("Some of the 'levels' are absent from the data.")
+      if (!all(levels %in% levels(droplevels(ori_values)))) {
+        stop("Some of the 'levels' are absent from the fitted data.")
       }
       focal.values <- levels
     }
@@ -90,19 +91,19 @@ plot_effects <- function(object, focal_var, newdata=object$data, # doc as a data
   rgb.args$alpha <- rgb.args$maxColorValue*0.1 ## should be able to control the alpha factor
   colshd <- do.call(rgb,rgb.args)
   new.x <- effects[,"focal_var"]
+  if (inherits(new.x,"factor")) {asnum.x <- seq_along(new.x)} else asnum.x <- new.x
   if (!add) {
     if (inherits(new.x,"factor")) {
-      asnum.x <- as.numeric(new.x)
       plot(NULL, type = "l", xaxt="n",
            ylab = ylab, xlab = xlab, xlim = range(asnum.x), ylim = ylim)
       axis(1,at=asnum.x, labels=new.x)
     } else plot(NULL, type = "l",
        ylab = ylab, xlab = xlab, xlim = range(new.x), ylim = ylim)
   }
-  polygon(c(new.x,rev(new.x)),c(effects[,"low"],rev(effects[,"up"])),border=NA,col=colshd)
+  polygon(c(asnum.x,rev(asnum.x)),c(effects[,"low"],rev(effects[,"up"])),border=NA,col=colshd)
   if (inherits(new.x,"numeric")) {
     lines(new.x,effects[,"pointp"],lwd=2,col=colpts)
-  } else points(new.x,effects[,"pointp"],col=colpts,pch=19)
+  } else points(asnum.x,effects[,"pointp"],col=colpts,pch=19)
   graphics::rug(effects[, "focal_var"], side = 1, col = colpts) ## should be able to control the side
   graphics::rug(resp, side = 2, col = colpts, quiet= ! is.null(focal_values)) ## idem
   invisible(effects)

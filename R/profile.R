@@ -31,13 +31,13 @@ spaMM.getOption <- function (x) {spaMM.options(x, warn=FALSE)[[1]]}
 ".onAttach" <- function (lib, pkg) {
   version <- utils::packageVersion("spaMM")
   packageStartupMessage("spaMM (Rousset & Ferdy, 2014, version ", version, 
-                          ## not sure this will always work and makes sense only for devel version :
-                          # ", packaged ", utils::packageDescription("spaMM")$Packaged,
+                        ## not sure this will always work and makes sense only for devel version :
+                        # ", packaged ", utils::packageDescription("spaMM")$Packaged,
                         ") is loaded.", 
-    "\nType 'help(spaMM)' for a short introduction,",
-    "\n'news(package='spaMM')' for news,",
-    "\nand 'citation('spaMM')' for proper citation.",
-    "\nFurther infos, slides, etc. at https://gitlab.mbb.univ-montp2.fr/francois/spamm-ref.\n")
+                        "\nType 'help(spaMM)' for a short introduction,",
+                        "\n'news(package='spaMM')' for news,",
+                        "\nand 'citation('spaMM')' for proper citation.",
+                        "\nFurther infos, slides, etc. at https://gitlab.mbb.univ-montp2.fr/francois/spamm-ref.\n")
   #unlockBinding(".SpaMM", asNamespace("spaMM")) ## required when a .SpaMM list was used instead of an envir
   
 }

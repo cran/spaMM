@@ -37,7 +37,7 @@ The approximate running time of given examples on one author's laptop is compare
 \item{\code{CMP_asympto_cond}:}{Function returning the condition for applying an approximation or the COMPoisson response family, as detailed in \code{\link{COMPoisson}}.} 
 \item{\code{Gamma_min_y=1e-10}:}{A minimum response value in Gamma-response models; used to check data, and in \code{simulate()} to correct the simulation results.} 
 
-\item{\code{QRmethod}:}{A character string, to control whether dense matrix or sparse matrix methods are used in intensive matrix computations, overcoming the defaults choices made by \code{spaMM} in this respect. Possible values are \code{"dense"} and \code{"sparse"}.}
+\item{\code{QRmethod}:}{A character string, to control whether dense matrix or sparse matrix methods are used in intensive matrix computations, overcoming the default choices made by \code{spaMM} in this respect. Possible values are \code{"dense"} and \code{"sparse"}.}
 
 \item{\code{matrix_method}:}{A character string, to control the factorization of dense model matrices. Default value is \code{"def_sXaug_EigenDense_QRP_scaled"}. The source code should be consulted for further information.}
 

@@ -525,7 +525,7 @@ if (FALSE) { # seems correct, but ultimately not needed
     if (is.factor(Y)) { 
       Y <- (Y != levels(Y)[1L]) ## cf ?glm: 'success' is interpreted as the factor not having the first level
     } ## indeed as in  binomial()$initialize
-    if (NCOL(Y)==1L) { ## test on NCOL excludes the case cbind-LHS -> matrix Y (with any array1d stuff already erased)
+    if (NCOL(Y)==1L) { ## identifies NCOL(<vector>)=1, excluding  the case cbind-LHS -> matrix Y (with any array1d stuff already erased)
       Y <- as.matrix(Y) ## to cope with array1d, and see $y <- ... code in .preprocess
       respname <- colnames(full_frame)[1]
     } else respname <- colnames(full_frame[[1]])[1] ## binomial, full_frame[[1]] is a matrix with cols for npos and nneg

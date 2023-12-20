@@ -558,6 +558,7 @@ DoF <- function(object) {
   wAugX <- do.call(corr_method,list(Xaug=wAugX, weight_X=rep(1,nrow(AUGI0_ZX$X.pv)), 
                                        w.ranef=rep(1,ncol(AUGI0_ZX$I)), ## we need at least its length for get_from Matrix methods
                                        H_global_scale=1))
+  attr(wAugX,"AUGI0_ZX") <- AUGI0_ZX #  cf use of trDiag in .sXaug_Matrix_QRP_CHM_scaled -> solve_R_scaled
   beta_cov_info <- get_from_MME(wAugX,"beta_cov_info_from_wAugX") 
   return(beta_cov_info)
 }
@@ -607,14 +608,18 @@ DoF <- function(object) {
       # F I X M E test useless if call to .get_beta_cov_info() already dependent on the test
       # Further, can $tcrossfac_beta_v_cov be NULL if $beta_cov_info is list ?
       ZAL <- get_ZALMatrix(res, force_bind=FALSE) # note that .calc_beta_cov_info_others -> ... -> rbind2() but ZAL should not be a ZAXlist here
-      nrd <- length(res$w.ranef)
+      n_u_h <- length(res$w.ranef) # may be 0: this code may be run for LMs.
       pforpv <- ncol(res$X.pv)
+      
       if (inherits(ZAL,"Matrix")) {
-        AUGI0_ZX <- list(I=.trDiagonal(n=nrd), # Ilarge=.trDiagonal(n=nrd+pforpv),
-                         ZeroBlock=Matrix(0,nrow=nrd,ncol=pforpv),X.pv=res$X.pv)
-      } else {
-        AUGI0_ZX <- list(I=diag(nrow=nrd),ZeroBlock=matrix(0,nrow=nrd,ncol=pforpv),X.pv=res$X.pv)
+        AUGI0_ZX <- list(I=.trDiagonal(n=n_u_h), # Ilarge=.trDiagonal(n=nrd+pforpv),
+                         ZeroBlock=Matrix(0,nrow=n_u_h,ncol=pforpv),X.pv=res$X.pv)
+      } else { # ZAL is dense or is NULL (what if itis dense and X.pv is sparse?)
+        AUGI0_ZX <- list(I=diag(nrow=n_u_h),ZeroBlock=matrix(0,nrow=n_u_h,ncol=pforpv),X.pv=res$X.pv)
+        if (inherits(res$X.pv,"Matrix")) AUGI0_ZX$trDiag <- ..trDiagonal(n=n_u_h+pforpv) # useful for LM with sparse X,
+        # cf use of trDiag in .sXaug_Matrix_QRP_CHM_scaled -> solve_R_scaled
       }
+      
       res$envir$beta_cov_info <- .calc_beta_cov_info_others(AUGI0_ZX=AUGI0_ZX,ZAL=ZAL,ww=c(.get_H_w.resid(res),res$w.ranef)) ## with beta_v_cov attribute
     }
   }

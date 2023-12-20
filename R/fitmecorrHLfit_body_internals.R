@@ -405,6 +405,8 @@
       if ( inherits(geo_envir$distMatrix,"dsCMatrix") ) { # "dsCDIST" case
         maxrange <- diff(range( na.omit(geo_envir$distMatrix@x) ))
       } else maxrange <- max(geo_envir$distMatrix[! is.infinite(geo_envir$distMatrix)])-min(geo_envir$distMatrix)
+      if (maxrange<1e-6) warning(paste("Check whether there are only two distinct locations in the data:\n",
+                                       "if so, the spatial model cannot be fitted."), immediate. = TRUE)
       nbUnique <- geo_envir$nbUnique
     }
     return(list(maxrange=maxrange,nbUnique=nbUnique))
@@ -941,8 +943,6 @@
                                 (nrand1>0L && processed$cum_n_u_h[length(processed$cum_n_u_h)]>200L))
       outer_phiScal_spares_costly_comput <- outer_spares_costly_hatval_xx <- ( ## "but inner requires it"
         hatval_xx_is_costly && allPhiScalorFix && (
-        #   hatval_Z_needed_for_inner_ML <-  (! NCOL(processed$X.Re)) ## X.Re is a 0-col matrix
-        # ) && ( 
           hatval_xx_not_needed_for_sscaled <- ! (processed$HL[1L] && any(processed$vecdisneeded)) 
         )  
       )
@@ -1320,6 +1320,8 @@
         upperAB <- na.omit(unlist(.canonizeRanPars(parlist, corr_info=corr_info)))
         return(c(lower=lowerAB, upper=upperAB))
       }
+    } else if (bool) {
+      return(FALSE)
     } else return(NULL)
     # ELSE inner optim only:
   } else if (bool) {

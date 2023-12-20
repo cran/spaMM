@@ -29,7 +29,7 @@ A data set from Tonnabel et al. (2021) to be fitted by models with sex-specific 
 \source{
 Tonnabel, J., Klein, E.K., Ronce, O., Oddou-Muratorio, S., Rousset, F., Olivieri, I., Courtiol, A. and Mignot, A. (2021), Sex-specific spatial variation in fitness in the highly dimorphic Leucadendron rubrum. Mol Ecol, 30: 1721-1735. \doi{10.1111/mec.15833}
 }
-\seealso{\code{\link{MaternCorr}} and code{\link{composite-ranef}} for examples using these data.}
+\seealso{\code{\link{MaternCorr}} and \code{\link{composite-ranef}} for examples using these data.}
 \examples{
 data(Leuca)
 }

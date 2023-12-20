@@ -238,6 +238,11 @@ if (spaMM.getOption("example_maxtime")>39) {
         crit <- dim(attr(predict(mvfit, newdata=misspred, intervals="predVar"),"intervals")) # 6,2  
         testthat::test_that("check handling of missing data in predict(mvfit... predVar)",
                             testthat::expect_true(all(crit==c(6L,2L))))
+        # na.exclude...
+        crit <- dim(predict(mvfit, newdata=misspred, intervals="respVar", 
+                            na.action=na.exclude)) # 6,1 
+        testthat::test_that("check handling of missing data in predict(mvfit... respVar)",
+                            testthat::expect_true(all(crit==c(6L,1L))))
         #
         # Same logic for simulate():
         #

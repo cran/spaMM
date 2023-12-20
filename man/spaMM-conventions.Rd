@@ -8,7 +8,7 @@
 function, with the exception of the \code{prior.weights} argument, which is simply \code{weights} in the other packages.
 The name \code{prior.weights} seems more consistent, since e.g. \code{glm} returns its input \code{weights} as output \code{prior.weights}, while its output \code{weights} are instead the weights in the final iteration of an iteratively weighted least-square fit.
 
-The \\bold{default likelihood target} for dispersion parameters is restricted likelihood (REML estimation) for \code{corrHLfit} and (marginal) likelihood (ML estimation) for \code{fitme}. 
+The \bold{default likelihood target} for dispersion parameters is restricted likelihood (REML estimation) for \code{corrHLfit} and (marginal) likelihood (ML estimation) for \code{fitme}. 
 Model fits may provide restricted likelihood values(\code{ReL}) even if restricted likelihood is is not used as an objective function at any step in the analysis.   
 
 See \code{\link{good-practice}} for advice about the proper syntax of \code{formula}.

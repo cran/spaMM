@@ -23,8 +23,8 @@ For other classes of models, a table of likelihood ratio tests is returned, each
 \arguments{
 \item{object}{Fit object returned by a \pkg{spaMM} fitting function.}
   \item{scope}{
-  Default \dQuote{scope} (terms to be tested) is determined by applying \code{stats::drop.scope} on fixed-effect terms.
-  Non-default scope can be specified a formula giving the terms to be considered for dropping. It is also possible to specify them as a character vector, but then oen has to make sure that the elements are consistent with term labels produced by \code{terms}, as inconsistent elements will be ignored.
+  Default \dQuote{scope} (terms to be tested, specified as a formula, see Examples) is determined by applying \code{stats::drop.scope} on fixed-effect terms.
+  Non-default scope can be specified a formula giving the terms to be considered for dropping. It is also possible to specify them as a character vector, but then one has to make sure that the elements are consistent with term labels produced by \code{terms}, as inconsistent elements will be ignored.
 }
 \item{method}{
   Only non-default value is \code{"LRT"} which forces evaluation of a likelihood ratio tests by \code{\link{LRT}}, instead of specific methods for specific classes of models.

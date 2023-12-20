@@ -1,6 +1,6 @@
 .is_2_in_1 <- function(X1,X2, tol=1e-10) {
   qrX <- qr(X1)
-  proj2in1 <- X1 %*% qr.solve(qrX,X2)
+  proj2in1 <- X1 %*% solve(qrX,X2) # is.qr.solve()
   return(all(abs(proj2in1 -X2)<tol))
 }
 

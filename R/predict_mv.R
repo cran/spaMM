@@ -1,6 +1,6 @@
 .calc_new_X_ZAC_mv <- function(object, newdata=NULL, re.form = NULL,
                             variances=list(residVar=FALSE, cov=FALSE),invCov_oldLv_oldLv_list,
-                            control=list()) {
+                            control=list(), na.action=na.omit) {
   locformS <- formula.HLfit(object, which="")
   if (inherits(re.form, "formula")) {
     re.formS <- vector("list", length(locformS))
@@ -57,17 +57,18 @@
     ranef_form <- as.formula(paste("~",(paste(new_exp_ranef_strings,collapse="+")))) ## effective '.noFixef'
     ranefvars <- all.vars(.strip_cF_args(ranef_form))
   } else ranefvars <- c()
+  need_new_design <- ( ( ! is.null(newdata) ) || ! is.null(re.form)) ## newdata or new model
   locdata <- .get_locdata(newdata=newdata, locvars=unique(c(.unlist(allvarsS),ranefvars)), 
-                          object=object, variances=variances, na.rm=FALSE) # see comment on evaluation of RESU$newuniqueGeo
+                          object=object, variances=variances, 
+                          na.action= if (need_new_design) {na.pass} else {na.action}) # see comment on evaluation of RESU$newuniqueGeo
   #
   locdataS <- vector("list", length(allvarsS))
-  need_new_design <- ( ( ! is.null(newdata) ) || ! is.null(re.form)) ## newdata or new model
   if (need_new_design) {
     newX.pv <- eta_fix <- NULL
     for (mv_it in seq_along(locformS)) {
       allvars_it <- unique(c(allvarsS[[mv_it]], ranefvars)) # all ranefvars + mv_it-specific fixefvars: note difference if ! need_new_design
       # presence of ranefvars for all ranefs in each allvars_it allows do.call(rbind, locdataS) later in this fn after selecting them
-      locdataS[[mv_it]] <- ..get_locdata(locdata, allvars_it, na.rm=TRUE, mv_it=mv_it)
+      locdataS[[mv_it]] <- ..get_locdata(locdata, allvars_it, na.action=na.action, mv_it=mv_it)
       newX_info <- .get_newX_info(locformS[[mv_it]], locdataS[[mv_it]], object, mv_it=mv_it)
       newX.pv <- .merge_Xs(newX.pv, newX_info$newX.pv, mv_it)
       eta_fix <- c(eta_fix, newX_info$eta_fix)
@@ -77,7 +78,7 @@
                  cum_nobs= cumsum(c(0L,lapply(locdataS, nrow))), # more widely used by .fv_linkinv()
                  newX.pv=newX.pv, eta_fix=eta_fix) 
   } else {
-    for (mv_it in seq_along(allvarsS)) locdataS[[mv_it]] <-  ..get_locdata(locdata, allvarsS[[mv_it]], na.rm=TRUE)
+    for (mv_it in seq_along(allvarsS)) locdataS[[mv_it]] <-  ..get_locdata(locdata, allvarsS[[mv_it]], na.action=na.action)
     RESU <- list(locdata=locdataS, # locdata in RESU allowing (potential) cbind() with predictions in .predict_body(). (maybe not implemented for mv)
                  cum_nobs= cumsum(c(0L,lapply(locdataS, nrow))), # more widely used by .fv_linkinv()
                  newX.pv=model.matrix(object)) 
@@ -486,3 +487,28 @@
     ## more compact than storing ww %*% logdisp_cov %*% t(ww) which is nobs*nobs 
   }
 }
+
+
+.ugly_na.action_mv <- function(res) {
+  frames <- attr(res,"frame")
+  mv_res <- attr(res,"mv")
+  anyexclude <- FALSE
+  for (mv_it in seq_along(frames)) {
+    na.action_it <- attr(frames[[mv_it]],"na.action")
+    if (inherits(na.action_it,"exclude") ) {
+      anyexclude <- TRUE
+      mv_res[[mv_it]] <- .naresid.exclude(na.action_it, mv_res[[mv_it]] )     # INSERT NA's... 
+    }
+  }
+  if (anyexclude) {
+    old_res <- res
+    res <- as.matrix(unlist(mv_res))
+    attrs <- attributes(old_res)
+    attrs <- attrs[setdiff(names(attrs), names(attributes(res)))]
+    attrs[names(attributes(res))] <- attributes(res)
+    attrs[["mv"]] <- mv_res
+    attributes(res) <- attrs
+  }
+  res
+}
+
