@@ -7,7 +7,7 @@ Residual variance extractor
 \description{
 Extracts from a fit object the residual variance or, depending on the \code{which} argument, a family dispersion parameter phi (which is generally not the residual variance itself except for gaussian-response models without prior weights), or a vector of values of the dispersion parameter, or further information about the residual variance model. 
 
-For gaussian and Gamma response families, the \code{which = "var"} and \code{"phi"} cases are distinctive as prior weights, if any, are included in the return value. 
+For gaussian and Gamma response families, the return values  for \code{which = "var"} and \code{"phi"} include prior weights, if any. 
 }
 \usage{
 residVar(object, which = "var", submodel = NULL, newdata = NULL)

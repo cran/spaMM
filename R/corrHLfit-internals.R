@@ -106,7 +106,7 @@ if (TRUE) {
   # i.e.:
   v[v<2*epsi] <- (4*epsi)*v[v<2*epsi]^2+epsi ## inverse is w[w<2*epsi] <- sqrt( (4*epsi)*(w[w<2*epsi]-epsi) )
   es$d_regul <- v
-  covmat <- .ZWZt(es$vector,v)
+  covmat <- .ZWZt(es$vectors,v)
   return(structure(covmat, esys=es))
 }
 
@@ -115,7 +115,7 @@ if (TRUE) {
   if (is.null(Xi_ncol)) Xi_ncol <- floor(sqrt(length(covpars)*2))
   svdv <- diag(Xi_ncol)
   .lower.tri(svdv,diag = TRUE) <- covpars
-  svdv[upper.tri(svdv)] <- t(svdv)[upper.tri(svdv)] ## __F I X M E__ ugly...
+  svdv[upper.tri(svdv)] <- t(svdv)[upper.tri(svdv)] ## _F I X M E__ ugly...
   crossfac <- .Utri_chol_by_qr(svdv) ## upper.tri crossfac
   return(crossfac[upper.tri(crossfac,diag = TRUE)]) ## returned as vector 
 }
@@ -126,7 +126,7 @@ if (TRUE) {
   if (is.null(Xi_ncol)) Xi_ncol <- floor(sqrt(length(covpars)*2))
   svdv <- diag(Xi_ncol)
   .lower.tri(svdv,diag = TRUE) <- covpars
-  svdv[upper.tri(svdv)] <- t(svdv)[upper.tri(svdv)] ## __F I X M E__ ugly...
+  svdv[upper.tri(svdv)] <- t(svdv)[upper.tri(svdv)] ## _F I X M E__ ugly...
   logvars <- .rcDispFn(diag(svdv))
   svdv <- cov2cor(svdv)
   svdv <- eigen(svdv)
@@ -239,7 +239,7 @@ if (TRUE) {
 }
 
 
-# __F I X M E__ C version ? inelegant + repetitive call in ..process_ranCoefs() could be avoided sometimes... but profiling shows it's a non-issue
+# _F I X M E__ C version ? inelegant + repetitive call in ..process_ranCoefs() could be avoided sometimes... but profiling shows it's a non-issue
 .ranCoefsFn <- function(vec, rC_transf) { # from canonical vector (var+corr) space in lower.tri order
   if ( ! is.null(vec)) {
     transf <- attr(vec,"transf")
@@ -709,7 +709,9 @@ if (FALSE) {
   return(list(init=init,init.optim=init.optim,init.HLfit=init.HLfit,ranFix=ranFix))
 }
 
-.calc_inits_cauchy <- function(init,init.optim,init.HLfit,ranFix,control_dist_rd,optim.scale,LDMAX,user.lower,user.upper,char_rd) {
+.calc_inits_cauchy <- function(init,init.optim,init.HLfit,ranFix,control_dist_rd,
+                               optim.scale,LDMAX,
+                               user.lower,user.upper,char_rd) {
   if (is.null(.get_cP_stuff(ranFix,"shape",which=char_rd))) { 
     shape <- .get_cP_stuff(init.optim,"shape",which=char_rd)
     if (is.null(shape)) shape <- 1

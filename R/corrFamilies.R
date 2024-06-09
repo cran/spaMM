@@ -1,6 +1,6 @@
 # The parvec are the partial autocorrelation coefficients  corr(X_s,X_s+t | X_s+1,..., X_s+t-1), in the hypercube (-1,1)^p,
 # They are converted to the phi parameters of the autoregression (Barndorff-Nielsen & Schou 1973 eq.10 and various papers cited in Jones 1987...)
-# Then the inverse covariance matrix is built from the phi coeffs (Verbyla 1985; seems to have Verbyla seems to have mixed i and j in the G_i,i+j terms)
+# Then the inverse covariance matrix is built from the phi coeffs (Verbyla 1985; =Verbyla seems to have mixed i and j in the G_i,i+j terms)
 # Finally this matrix is normalized as an inverse correlation matrix by correcting by the stationary variance, given by B-N & S eq 7 (with unit innovation variance)
 # Possibly nonzero elements of the matrix are built in the 'xvec'  vector. Direct operations on the matrix in dense format would look like:
 # Qmat <- diag(nc)
@@ -21,6 +21,16 @@
 # } 
 # The chol crossfac is almost Toeplitz(c(1,-phivec)) except for the lower right block. Is there a way to write it directly? 
 # There is a strand of litt ignoring this, but then the cov mat is not toeplitz
+
+.fill_parvec <- function(parvec, fixed, npar, fullnames=paste0("p",seq(npar))) {
+  if (length(parvec)!=npar) {
+    fullparvec <- setNames(rep(NA_real_, npar), fullnames)
+    fullparvec[names(parvec)] <- parvec
+    fullparvec[names(fixed)] <- fixed
+    fullparvec
+  } else parvec
+}
+
 
 
 .condcorr2canonARpar <- function(condcorr) {
@@ -83,17 +93,22 @@ ARp <- function(p=1L, fixed=NULL, corr=TRUE, tpar=1/(1+seq(p))) {
     list(init=init, lower=lower, upper=upper)
   }
   
-  ..calc_corr_from_dist <- function(ranFix, char_rd, distmat, ...) { # The AR1 code use distance matrices to handle the nested AR1 case...
-    # function not used, but may be a useful template
-    parvec <- ranFix$corrPars[[char_rd]]
-    levelrange <- range(as.integer(.unlist(dimnames(distmat))))
+  calc_corr_from_dist <- function(ranFix, char_rd, distmat, ...) { # The AR1 code use distance matrices to handle the nested AR1 case...
+    parvec <- .fill_parvec(parvec=ranFix$corrPars[[char_rd]], fixed=fixed, npar=p)
+    dimnams <- dimnames(distmat)
+    levelrange <- range(as.integer(.unlist(dimnams)))
     Qmat <- calc_Qmat_ARp(parvec=parvec, newlevels=seq(levelrange[1L],levelrange[2L]))
-    corr <- .precision2cov(Qmat) 
-    corr[rownames(distmat),colnames(distmat)] 
+    corr_mat <- chol2inv(chol(Qmat)) # .precision2cov(Qmat) 
+    if (inherits(distmat,"dist")) {
+      corr_mat[dimnams,dimnams]
+    } else {
+      corr_mat[dimnams[[1]],dimnams[[2]]]
+    }
   }
   
   make_new_corr_lists <- function(newLv_env, which_mats, ranFix, newZAlist, new_rd, old_rd, ...) { 
-    parvec <- ranFix$corrPars[[as.character(new_rd)]] 
+    char_rd <- as.character(old_rd)
+    parvec <- .fill_parvec(parvec=ranFix$corrPars[[char_rd]], fixed=fixed, npar=p)
     newlevels <- colnames(newZAlist[[new_rd]])
     newrange <- range(as.integer(newlevels))
     levelrange <- range(c(oldZrange,newrange))   
@@ -114,7 +129,7 @@ ARp <- function(p=1L, fixed=NULL, corr=TRUE, tpar=1/(1+seq(p))) {
   
   list(Cf=Cf, tpar=tpar, type="precision", initialize=initialize, fixed=fixed, calc_moreargs=calc_moreargs, 
        levels_type="time_series",
-        #calc_corr_from_dist=calc_corr_from_dist,
+       calc_corr_from_dist=calc_corr_from_dist,
        make_new_corr_lists=make_new_corr_lists,
        sparsePrec=TRUE, possiblyDenseCorr=TRUE,
        tag="ARp")
@@ -155,12 +170,17 @@ ARMA <- function(p=1L, q=1L, fixed=NULL, tpar=c(1/(1+seq_len(p)),1/(1+seq_len(q)
     list(init=init, lower=lower, upper=upper)
   }
 
-  ..calc_corr_from_dist <- function(ranFix, char_rd, distmat, ...) {
-    # function not used, but may be a useful template
-    parvec <- ranFix$corrPars[[char_rd]]
-    levelrange <- range(as.integer(.unlist(dimnames(distmat))))
-    corr <- calc_Cmat_from_dist(parvec=parvec, levelrange)
-    corr[rownames(distmat),colnames(distmat)] 
+  calc_corr_from_dist <- function(ranFix, char_rd, distmat, ...) { # use of distmat is far-fetched here
+    # The AR1 code use distance matrices to handle the nested AR1 case...
+    parvec <- .fill_parvec(parvec=ranFix$corrPars[[char_rd]], fixed=fixed, npar=p)
+    dimnams <- dimnames(distmat)
+    levelrange <- range(as.integer(.unlist(dimnams)))
+    corr_mat <- calc_Cmat_from_dist(parvec=parvec, levelrange)
+    if (inherits(distmat,"dist")) {
+      corr_mat[dimnams,dimnams]
+    } else {
+      corr_mat[dimnams[[1]],dimnams[[2]]]
+    }
   }
   
   make_new_corr_lists <- function(newLv_env, which_mats, ranFix, newZAlist, new_rd, old_rd, ...) { 
@@ -180,7 +200,7 @@ ARMA <- function(p=1L, q=1L, fixed=NULL, tpar=c(1/(1+seq_len(p)),1/(1+seq_len(q)
   
   list(Cf=Cf, tpar=tpar, initialize=initialize, fixed=fixed, calc_moreargs=calc_moreargs, 
        levels_type="time_series",
-       # calc_corr_from_dist=calc_corr_from_dist,
+       calc_corr_from_dist=calc_corr_from_dist,
        make_new_corr_lists=make_new_corr_lists,
        sparsePrec=FALSE, possiblyDenseCorr=TRUE,
        tag="ARMA")

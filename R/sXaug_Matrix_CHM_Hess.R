@@ -140,7 +140,7 @@ def_sXaug_Matrix_CHM_H_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale, 
     delayedAssign("CHMfactor_wd2hdv2w", {
       seq_n_u_h <- seq_len(n_u_h)
       wd2hdv2w <- Matrix::tcrossprod(BLOB$L_scaled[BLOB$sortPerm[ seq_n_u_h ],] ) # L_scaled is tcrossfac; CHMfactor too
-      Cholesky(wd2hdv2w,LDL=FALSE, perm=FALSE ) ##  __F I X M E__?  see comments on updateable etc in QRP_CHM version
+      Cholesky(wd2hdv2w,LDL=FALSE, perm=FALSE ) ##  _F I X M E__?  see comments on updateable etc in QRP_CHM version
     }, assign.env = BLOB )
     delayedAssign("inv_d2hdv2", {        
       if (is.null(BLOB$inv_factor_wd2hdv2w)) {

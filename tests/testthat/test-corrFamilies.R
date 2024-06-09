@@ -42,7 +42,7 @@ if (spaMM.getOption("example_maxtime")>10) {
       (fit_cF <- fitme(status2 ~ 1+ corrFamily(1|longitude+latitude), # verbose=c(TRACE=TRUE), 
                        fixed=list(phi=c(0.02)), covStruct=list(corrFamily=MaternIMRFa(mesh=mesh, fixed=c(alpha=2))),
                        data=cap_mv))
-      testthat::test_that("fitme MaternIMRFa OK",
+      testthat::test_that("fitme MaternIMRFa OK", # loglik is -14.33072
                           testthat::expect_true(diff(range(logLik(fit_IMRF), logLik(fit_cF), logLik(fit_reg)))<1e-5))
       p1 <- predict(fit_IMRF)[c(3,1,3),]
       p2 <- predict(fit_reg, newdata=cap_mv[c(3,1,3),])
@@ -54,7 +54,7 @@ if (spaMM.getOption("example_maxtime")>10) {
       p3 <- get_predVar(fit_cF, newdata=cap_mv[c(3,1,3),])
       testthat::test_that("get_predVar MaternIMRFa OK",
                           testthat::expect_true(diff(range(p1-p2, p1-p3))<1e-6))
-      cat(crayon::blue("Two expected warnings bc fitmv with unregistered corrFamily:"))
+      cat# (crayon::blue("Two expected warnings bc fitmv with unregistered corrFamily:"))
       (zut_IMRF <- fitmv(submodels=list(mod1=list(migStatus ~ 1),
                                         mod2=list(status2 ~ 1+ IMRF(1|longitude+latitude, model=matern))), # verbose=c(TRACE=TRUE), 
                          fixed=list(phi=c(0.02,0.02)), covStruct=list(corrFamily=MaternIMRFa(mesh=mesh, fixed=c(alpha=2))),
@@ -136,22 +136,28 @@ if (spaMM.getOption("example_maxtime")>10) {
                           prior.weights = 1/Selection_SE^2,
                           upper=list(corrPars=list("1"=list(ARphi=0.999))),
                           data=Phen_Sel))
+        
         (zut_AR1 <- fitmv(submodels=list(mod1=list(Selection_mean ~ 1),
                                          mod2=list(Selection_mean ~ Year+AR1(1|Year), 
                                                    prior.weights = quote(1/Selection_SE^2))), 
                           data=Phen_Sel))
-        cat(crayon::blue("One expected warning bc fitmv with unregistered corrFamily:"))
-        (zut_cF <- fitmv(submodels=list(mod1=list(Selection_mean ~ 1),
-                                        mod2=list(Selection_mean ~ Year+corrFamily(1|Year), 
-                                                  prior.weights = quote(1/Selection_SE^2))), # verbose=c(TRACE=TRUE), 
+        (crit <- diff(range(fixef(zut_AR1)["Year_2"],fixef(sub_AR1)["Year"])))
+        testthat::test_that("fitmv cF AR1 fixef OK", testthat::expect_true(crit<1e-6))
+        
+        # Note optional argument in corrFamily(., levels_type="time_series"),
+        # necessary here. (not doc'ed, but the doc says that corrFamily() does not always work in mv fits)
+        (zut_cF_lty <- fitmv(submodels=list(mod1=list(Selection_mean ~ 1),
+                                        mod2=list(Selection_mean ~ Year+corrFamily(1|Year, levels_type="time_series"),
+                                                  prior.weights = quote(1/Selection_SE^2))), # verbose=c(TRACE=TRUE),
                          covStruct=list(corrFamily=ARp()),
                          data=Phen_Sel))
         (zut_cF_reg <- fitmv(submodels=list(mod1=list(Selection_mean ~ 1),
                                             mod2=list(Selection_mean ~ Year+ARp(1|Year), 
                                                       prior.weights = quote(1/Selection_SE^2))), # verbose=c(TRACE=TRUE), 
                              data=Phen_Sel))
-        try(testthat::test_that("fitmv cF AR1 OK",
-                                testthat::expect_true(diff(range(logLik(zut_AR1), logLik(zut_cF), logLik(zut_cF_reg)))<1e-5)))
+        (crit <- diff(range(logLik(zut_AR1), logLik(zut_cF_lty), logLik(zut_cF_reg))))
+        testthat::test_that("consistency of fitmv cF AR1, ARp, and corrFamily+covStruct OK",
+                                testthat::expect_true(crit<1e-6))
       }
       
     }

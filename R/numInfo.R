@@ -40,7 +40,7 @@
                        "lambda"= {
                          dLam <- parlist[[st]]
                          for (it in seq_along(dLam)) {
-                           if (dLam[it]<2e-4) {side <- 1} else side <- NA # ____F I X M E____ rethink
+                           if (dLam[it]<2e-4) {side <- 1} else side <- NA # ___F I X M E____ rethink
                            dLam[it] <- grad(.dispFn, dLam[it], side=side)
                          } 
                          if (bdiag. && length(dLam)>1L) dLam <- diag(x=dLam)
@@ -246,6 +246,11 @@
   thr # structured list...
 }
 
+# ___F I X M E____ I should enable numInfo() on resid models, [but then see comment on FIXME in ..calcPHI()]
+# working on GLMs ($phi.object$glm_phi) and HGLMs ($resid_fit)
+# while not a joint numInfo it would not be worse than other implementations.
+# ___F I X M E____ store the result in the fitobject along which 'which' and perhaps a few other attrs, 
+# so that it can be reused conditionnally on such attrs...
 numInfo <- function(fitobject, 
                     transf=FALSE, 
                     which=NULL,

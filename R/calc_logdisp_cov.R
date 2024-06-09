@@ -131,7 +131,7 @@
       #
       ZAphant <- object$ZAlist
       for (rd in seq_along(ZAphant)) ZAphant[[rd]] <- Diagonal(n=ncol(ZAphant[[rd]]))
-      ZAXlist <- .compute_ZAXlist(XMatrix=object$strucList, ZAlist=ZAphant, force_bindable=TRUE)
+      ZAXlist <- .compute_ZAXlist(ZAlist=ZAphant, XMatrix=object$strucList, force_bindable=TRUE)
       RES$Lmatrix <- do.call(Matrix::bdiag,ZAXlist) # it would be nice to avoid this
       #
       .get_ZAfix(object) ## makes sure that ZAfix is in the object's environment
@@ -386,7 +386,7 @@
       #logdispInfo["rho","rho"] <- sum(invV.dVdrho*t(invV.dVdrho))
       logdispInfo[dispcols$rho,dispcols$rho] <- .traceAB(lhs_invV.dVdrho,rhs_invV.dVdrho,t(rhs_invV.dVdrho),t(lhs_invV.dVdrho))
       if ("loglambda" %in% dispnames) {
-        sublambda <- .unlist(invV.dV_info$lambda)
+        sublambda <- .unlist(invV.dV_info$lambda_list)
         logdispInfoBlock <- numeric(nrand)
         cum_n_u_h <- invV.dV_info$cum_n_u_h
         zerotemplate <- rep(0,cum_n_u_h[nrand+1L])
@@ -427,7 +427,7 @@
         ) # phi_est^2 * sum(invV^2)
       }
       if ("loglambda" %in% dispnames) {
-        sublambda <- .unlist(invV.dV_info$lambda)
+        sublambda <- .unlist(invV.dV_info$lambda_list)
         logdispInfoBlock <- numeric(nrand)
         cum_n_u_h <- invV.dV_info$cum_n_u_h
         zerotemplate <- rep(0,cum_n_u_h[nrand+1L])

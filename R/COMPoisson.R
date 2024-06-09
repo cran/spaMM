@@ -137,7 +137,7 @@
 
 if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") {
   .COMP_local_check <- function(test) {
-    if(test) browser("devel check for COMP ('___F I X M E___' tag: .COMP_Z_moment() includes check only conditionally on _LOCAL_TESTS_)")
+    if(test) browser("devel check for COMP ('__F I X M E___' tag: .COMP_Z_moment() includes check only conditionally on _LOCAL_TESTS_)")
     # from version 4.1.26, 2022/12/25 upwards
   }
 } else {

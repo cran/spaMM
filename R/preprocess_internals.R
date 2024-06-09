@@ -22,7 +22,7 @@
 ##     (except for NULL-for-noAR RHS, which are left NULL-for-noAR). 
 ## For (.|.)...) the elements for noAR and ZL are left NULL. 
 ## For other ranef types (AR1, IMRF) the elements for noAR are left NULL,  Dummy dense triangular matrices are build for ZL (if the preclist was NULL)
-## The unexpected time-consuming step may then be compute_ZAL on potentially huge dummy dense triangular matrices. (__F I X M E__)
+## The unexpected time-consuming step may then be compute_ZAL on potentially huge dummy dense triangular matrices. (_F I X M E__)
 .provide_G_diagnosis <- local({
   time_warned <- FALSE
   diagnosis_time <- 0
@@ -151,7 +151,7 @@
       } else  if ( is.null(corrlist[[rd]]) &&  ! is.null(preclist[[rd]])) { 
         # presumably for the never used .provide_G_diagnosis(., fast=FALSE), case;
         # not clear whether this can occur for fast=TRUE. But then computing the mat_sqrt, next solve(t(.)) may be inefficient
-        warning("Possibly inefficient code in .provide_G_diagnosis(). Please contact the maintainer.") # __F I X M E__
+        warning("Possibly inefficient code in .provide_G_diagnosis(). Please contact the maintainer.") # _F I X M E__
         tcrossfac_adj <- mat_sqrt(preclist[[rd]]) # tcrossfac hence t(solve()) is the tcrossfac of the corr mat (<=> Lunique) which is the following backsolve
         if ( attr(tcrossfac_adj,"type")=="cholL_LLt") {
           if (inherits(tcrossfac_adj,"dtCMatrix")) {
@@ -270,7 +270,7 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") {
     is01col <- attr(ZA,"is_incid")
     if (is01col) {
       is01col <- attr(is01col,"is01col") 
-      if (is.null(is01col)) return(FALSE) # ___F I X M E___ See alternative, _LOCAL_TESTS_ definition for devel checks.
+      if (is.null(is01col)) return(FALSE) # __F I X M E___ See alternative, _LOCAL_TESTS_ definition for devel checks.
     }
     is01col
   }
@@ -300,7 +300,7 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") {
       #
       actuallysparse <- (
         possiblydense & (
-          grepl("%in%", attr(ZAlist, "exp_ranef_string"), fixed=TRUE) | # nested models otherwise with possibly dense *corr*
+          grepl("%in%", attr(ZAlist, "exp_ranef_strings"), fixed=TRUE) | # nested models otherwise with possibly dense *corr*
             sapply(ZAlist, .is01col) # This should detect <corr_type>( <0/1 LHS> | RHS)
         )
       ) 
@@ -751,19 +751,6 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") {
   models
 }
 
-.preprocess_lam_rC_models <- function(processed, models, ranFix, nrand, ZAlist=processed$ZAlist) {
-  if (nrand) {  
-    ranFix$lambda <- processed$lambda.Fix # a way of checking and standardizing names if nothing else
-    models[["lambda"]] <- rep("lamScal",nrand) ## even for adjacency, random slope...
-    processed$X_lamres <- .calc_X_lamres(processed, models=models, ZAlist=ZAlist, nrand=nrand) ## for glm for lambda, and SEMbetalambda
-    ranCoefs <- .getPar(ranFix,"ranCoefs") ## may be NULL
-    processed$ranCoefs_blob <- .process_ranCoefs(processed, ranCoefs, use_tri_CORREL=TRUE) 
-    processed$AUGI0_ZX$envir$finertypes[processed$ranCoefs_blob$isRandomSlope] <- "ranCoefs" #
-  }
-  models
-} 
-
-
 .do_TRACE <- local({
   mess_scaling <- FALSE
   function(processed) { ## no need for an 'unTRACE' call at the end of each fit since the next fit will cope with everything.
@@ -1015,7 +1002,7 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") {
     # For SPPREC, it is rebuilt by .init_AUGI0_ZX_envir_spprec_info()
     # For CORR methods, this paves the way for extended usage, but won't solve what prevents using permuted Cholesky for which="R_scaled_v_h_blob" in QRP_CHM. 
     if (sparse_precision) {
-      AUGI0_ZX$trDiag <- ..trDiagonal(n=n_u_h)
+      AUGI0_ZX$trDiag <- ..trDiagonal(n=n_u_h) # -> ... .sparseDiagonal(n=n_u_h, shape="t")
     } else {
       if (inherits(AUGI0_ZX$ZeroBlock,"sparseMatrix")) {
         AUGI0_ZX$trDiag <- ..trDiagonal(n=n_u_h+pforpv)

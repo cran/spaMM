@@ -1,6 +1,7 @@
 \name{plot.HLfit}
 \alias{plot}
 \alias{plot.HLfit}
+\alias{`DHARMa-on-HLfit`}
 \title{
 Model checking plots for mixed models
 }

@@ -1,4 +1,5 @@
-.check_args_fitme <- function(...,HLmethod, ranPars=NULL,ranFix=NULL, fixed=list(), init=list(), lower=list(),upper=list(), what_checked="fitme() call") {
+.check_args_fitme <- function(...,HLmethod, ranPars=NULL,ranFix=NULL, fixed=list(), 
+                              init=list(), lower=list(),upper=list(), what_checked="fitme() call") {
   mc <- match.call(expand.dots = TRUE)
   if ( missing(HLmethod)) {
     mc$HLmethod <- mc$method
@@ -19,11 +20,9 @@
   #   warning("'lower' or 'upper' specifications without matching 'init' have no effect",immediate. = TRUE)
   # }
   #
-  HLnames <- (c(names(formals(HLCor)),names(formals(HLfit)), 
-                "ADFun", # so that this private arg, in the dots, causes no warning and is passed to .preprocess() 
-                names(formals(mat_sqrt)),names(formals(make_scaled_dist))))  
   dotnames <- setdiff(names(mc)[-1],c(names(formals(fitme)), "what_checked"))
-  argcheck <- setdiff(dotnames,HLnames)
+  argcheck <- setdiff(dotnames, .spaMM.data$options$HLnames)
+  if (length(argcheck) && what_checked=="fitmv() call") argcheck <- setdiff(argcheck,"X2X")
   if (length(argcheck)) {
     warning(paste0("suspect argument(s) '",paste(argcheck, sep="'", collapse=","),"' in ",what_checked,"."))
     if ("offset" %in% argcheck) {
@@ -113,6 +112,22 @@
   fixed
 }
 
+# This is tested by tests_private/test-.fix..n.R
+..n_names2expr <- function(oricall) {
+  if (.spaMM.data$options$n_names2expr) {
+    for (argname in names(oricall)[-1]) { 
+      putative_..n <- oricall[[argname]] # does not eval() objects of class "name"
+      if ( inherits(putative_..n, "name") && # paste() would fail on an environment 
+           length(grep("\\.\\.[0-9]+$", paste(putative_..n)))) {
+        foo <- eval(str2lang(paste0("substitute(",argname,")")), 
+                    parent.frame())
+        if ( ! inherits(foo,"name")) oricall[[argname]] <- foo 
+      }
+    }
+  }
+  oricall
+}
+
 fitme <- function(formula,data, ## matches minimal call of HLfit
                   family=gaussian(),
                   init=list(),
@@ -128,18 +143,20 @@ fitme <- function(formula,data, ## matches minimal call of HLfit
                   nb_cores = NULL, # to be used by SEM...
                   objective=NULL,
                   weights.form=NULL,
+#                  verbose=NULL,
                   ... # control.HLfit passed through the dots to .preprocess_fitme() -> .preprocess()
 ) {
   .spaMM.data$options$xLM_conv_crit <- list(max=-Inf)
   time1 <- Sys.time()
   oricall <- match.call(expand.dots=TRUE) ## mc including dotlist
+  oricall <- ..n_names2expr(oricall) # 
   oricall$"control.HLfit" <- eval(oricall$control.HLfit, parent.frame()) # to evaluate variables in the formula_env, otherwise there are bugs in waiting 
-  oricall$fixed <- eval(oricall$fixed, parent.frame()) # allows modif in post-fit code (cf get_HLCorcall) 
+  oricall$fixed <- eval(oricall$fixed, parent.frame()) # allows modif in post-fit code (cf get_HLCorcall: .modify_list needs a list, not a promise) 
   oricall$init <- eval(oricall[["init"]], parent.frame()) # allows modif in post-fit code (cf get_HLCorcall). Better way ? One should be in principle able 
                                                      # to provide the arguments again to the post-fit call => argument o post-fit fn to provide control of eval envir.
                                                      # cf also alternative strategy of trying 3 envirs in lme4:::update.merMod(), incl. sys.frames()[[1]]
   mc <- oricall
-  #
+  
   if ( ! is.null(weights.form)) {
     mc[["prior.weights"]] <-  weights.form[[2]]
   #} else if ("prior.weights" %in%  evalq(names(substitute(...())))) { # ~ R >= 4.1's ...names() 

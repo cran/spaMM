@@ -69,7 +69,7 @@
   tcrossfac_v_beta_cov <- tcrossfac_beta_v_cov[perm,,drop=FALSE] # useful to keep it for predVar computations?
   
   H_w.resid <- .get_H_w.resid(object)
-  #ZAL <- .compute_ZAL(XMatrix=obje17ct$strucList, ZAlist=object$ZAlist,as_matrix=.eval_as_mat_arg.HLfit(object)) 
+  #ZAL <- .compute_ZAL(XMatrix=object$strucList, ZAlist=object$ZAlist,as_matrix=.eval_as_mat_arg.HLfit(object)) 
   ZAL <- get_ZALMatrix(object, force_bind=FALSE) # allows ZAXlist; but if a non-ZAXlist is already in the $envir, no effect; + we will solve(chol_Q, Diagonal()) so the gain is not obvious
   if ( ncol(X_ori) ) {
     M12 <- .crossprod(ZAL, .Dvec_times_m_Matrix(H_w.resid, X_ori), as_mat=TRUE)
@@ -129,7 +129,7 @@
 # Consistent with Saefken et al, only in terms of theta and mu. The linear predictor eta and link do not appear.
 # Simulations for that paper use predictions eta only in the poisson(log) case;
 # In the exponential (->Gamma(log)) they do use the theta deduced as -1/mu, not the eta. => cAIC4:::conditionalBootstrap is odd...
-.calc_boot_AIC_dfs <- function (object, nsim, type="residual", seed=NULL, # (__F I X M E__) does not handle mv fits ? Could be docu'ed at least
+.calc_boot_AIC_dfs <- function (object, nsim, type="residual", seed=NULL, # (_F I X M E__) does not handle mv fits ? Could be docu'ed at least
                            nb_cores=NULL, fit_env=NULL) {
   if ( ! object$family$flags$exp) 
     stop("Bootstrap bias correction not implemented for families not from GLM (exponential family) class.") # assuming $exp methods are always available for GLMs (but see negbin2_dvl)
@@ -401,14 +401,15 @@ DoF <- function(object) {
     ZAL <- get_ZALMatrix(object, force_bind = ! (.is_spprec_fit(object)) )     
     d2hdv2_info <- .calc_d2hdv2_info(object, ZAL) # may be a qr object, or not (SPPREC). F I X M E a gentle message for long computations ? 
   } 
-  if (dvdloglamMat_needed) { 
+  if (dvdloglamMat_needed) { # $\partial_\tau \bv$ in latex doc.
     cum_n_u_h <- attr(.get_u_h(object),"cum_n_u_h")
     psi_M <- rep(attr(object$rand.families,"unique.psi_M"),diff(cum_n_u_h))
     dlogfthdth <- (psi_M - .get_u_h(object))/object$lambda.object$lambda_est ## the d log density of th(u)
     neg.d2f_dv_dloglam <- .calc_neg_d2f_dv_dloglam(dlogfthdth, cum_n_u_h, 
                                                    lcrandfamfam=attr(object$rand.families,"lcrandfamfam"), 
                                                    rand.families=object$rand.families, u_h=.get_u_h(object))
-    dvdloglamMat <- .calc_dvdloglamMat_new(neg.d2f_dv_dloglam,
+    # TAG rc_dispcov # cf Details of predVar.Rd; made comparisons in devel/predVar_ranCoefs/predVar_mv_spprec.R
+    dvdloglamMat <- .calc_dvdloglamMat_new(neg.d2f_dv_dloglam, 
                                            d2hdv2_info=d2hdv2_info) ## d2hdv2_info is either a qr factor or the inverse as a matrix or an environment
   }
   if (dvdlogphiMat_needed) {
@@ -612,7 +613,8 @@ DoF <- function(object) {
       pforpv <- ncol(res$X.pv)
       
       if (inherits(ZAL,"Matrix")) {
-        AUGI0_ZX <- list(I=.trDiagonal(n=n_u_h), # Ilarge=.trDiagonal(n=nrd+pforpv),
+        AUGI0_ZX <- list(I=.sparseDiagonal(n=n_u_h, shape="g"),
+                         trDiag=..trDiagonal(n=n_u_h+pforpv), # trDiag needed by solve_R_scaled promise (from summary(<probitgem fit>)).
                          ZeroBlock=Matrix(0,nrow=n_u_h,ncol=pforpv),X.pv=res$X.pv)
       } else { # ZAL is dense or is NULL (what if itis dense and X.pv is sparse?)
         AUGI0_ZX <- list(I=diag(nrow=n_u_h),ZeroBlock=matrix(0,nrow=n_u_h,ncol=pforpv),X.pv=res$X.pv)

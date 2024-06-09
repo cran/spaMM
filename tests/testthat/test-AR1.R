@@ -8,7 +8,7 @@ if (spaMM.getOption("example_maxtime")>4) { #
   cholm <- t(chol(m))
   eta <- 1+ cholm %*% rnorm(nobs) ## hglm_lambda=1
   obs <- rpois(nobs,exp(eta))
-  plot(obs)
+  try(plot(obs))
   fake <- data.frame(obs=obs,age=1:nobs)
   fitar1 <- fitme(obs ~ 1+AR1(1|age),family=poisson(),data=fake,verbose=c(TRACE=0.5),method="REML")
   crit <- diff(range(logLik(fitar1), c(p_bv=-1269.060222885349)))

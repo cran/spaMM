@@ -10,19 +10,21 @@
     (inherits(re.form,"formula") && length(re.form)==2 && is.null(.parseBars(re.form)))
 }
 
-.newetaFix <- function(object, newMeanFrames,validnames=NULL) { # newMeanFrames must have cols for the fixed beta's, absent from the object's $X.pv 
+.newetaFix <- function(object, newMeanFrames,validnames=NULL,
+                       X=newMeanFrames$X,
+                       mf=newMeanFrames$mf) { # newMeanFrames must have cols for the fixed beta's, absent from the object's $X.pv 
   ## newdata -> offset must be recomputed. 
   ## dans l'état actuel $fixef et complet, incluant les etaFix$beta: pas besoin de les separer
   ## mais il peut contenir des NA ! à enlever
   # le newMeanFrames$X contient a priori les cols des etaFix$beta, contrairement à object$X.pv => don't use the latter cols 
   if (is.null(validnames)) {
     est_and_fix <- names(which(!is.na(object$fixef))) ## estimated + etaFix$beta
-    validnames <- intersect(colnames(newMeanFrames$X) ,est_and_fix) # would be colnames(newMeanFrames$X) when there is no NA if object$fixef. would validnames=est_and_fix suffice ?
+    validnames <- intersect(colnames(X) ,est_and_fix) # would be colnames(newMeanFrames$X) when there is no NA if object$fixef. would validnames=est_and_fix suffice ?
   }
   if (length(validnames)) {
-    etaFix <-  drop(newMeanFrames$X[,validnames,drop=FALSE] %*% object$fixef[validnames]) ## valid even if ncol(newMeanFrames$X) = 0
-  } else etaFix <- rep(0, nrow(newMeanFrames$X))
-  off <- model.offset( newMeanFrames$mf) ### look for offset from (ori)Formula 
+    etaFix <-  drop(X[,validnames,drop=FALSE] %*% object$fixef[validnames]) ## valid even if ncol(newMeanFrames$X) = 0
+  } else etaFix <- rep(0, nrow(X))
+  off <- model.offset( mf) ### look for offset from (ori)Formula 
   if ( ! is.null(off)) etaFix <- etaFix + off   
   return(etaFix)
 }
@@ -33,56 +35,58 @@
                          zero_truncated=identical(family$zero_truncated,TRUE), 
                          famfam, nsim=1L) { 
   # we cannot use family()$simulate bc it assumes a fit object as input
-  resu <- switch(famfam,
-                 "gaussian" = rnorm(nsim*length(mu),mean=mu,sd=sqrt(phiW)),
-                 "poisson" = .rpois(nsim*length(mu),mu,zero_truncated=zero_truncated), 
-                 "binomial" = rbinom(nsim*length(mu),size=sizes,prob=mu),
-                 "Gamma" = {
-                   y <- rgamma(nsim*length(mu), shape= 1 / phiW, scale=mu*phiW) # mean=sh*sc=mu, var=sh*sc^2 = mu^2 phiW
-                   Gamma_min_y <- .spaMM.data$options$Gamma_min_y
-                   is_low_y <- (y < Gamma_min_y)
-                   if (any(is_low_y)) y[which(is_low_y)] <- Gamma_min_y 
-                   y
-                 }, ## ie shape increase with prior weights, consistent with Gamma()$simulate / spaMM_Gamma()$simulate
-                 "COMPoisson" = {
-                   lambdas <- attr(mu,"lambda") # F I X M E an environment would keep values ?
-                   if (is.null(lambdas)) {
-                     sapply(mu, function(muv) {
-                       lambda <- family$mu2lambda(muv)
-                       .COMP_simulate(lambda=lambda,nu=family_par, #= COMP_nu 
-                                      nsim=nsim)
-                     })
-                   } else sapply(lambdas,.COMP_simulate,nu=family_par, #= COMP_nu 
-                                 nsim=nsim)
-                 },
-                 "negbin" = .rnbinom(nsim*length(mu), size=family_par, #= NB_shape
-                                   mu_str=mu, zero_truncated=zero_truncated),
-                 "negbin1" = .rnbinom(nsim*length(mu), size=mu*family_par, #= NB_shape
-                                    mu_str=mu, zero_truncated=zero_truncated),
-                 "negbin2" = .rnbinom(nsim*length(mu), size=family_par, #= NB_shape
-                                    mu_str=mu, zero_truncated=zero_truncated),
-                 "beta_resp" = {
-                   # spaMM's phi is here 1, so phiW must be 1/prior.weights and so for the precision parameter:
-                   Wfamily_par <- family_par/phiW
-                   y <- rbeta(n=nsim * length(mu), 
-                         shape1=mu*Wfamily_par,shape2=(1-mu)*Wfamily_par)
-                   beta_min_y <- .spaMM.data$options$beta_min_y
-                   is_low_y <- (y < beta_min_y)
-                   if (any(is_low_y)) y[which(is_low_y)] <- beta_min_y 
-                   beta_max_y <- 1- beta_min_y
-                   is_high_y <- (y > beta_max_y)
-                   if (any(is_high_y)) y[which(is_high_y)] <- beta_max_y 
-                   y
-                 }, # fam_par being the precision parameter in the Cribari-Neto parametrisation 
-                 "betabin" = {
-                   # phiW: same logic as for beta_resp
-                   ntot <- nsim*length(mu) 
-                   Wfamily_par <- family_par/phiW
-                   rmu <- rbeta(n=ntot, shape1=mu*Wfamily_par,shape2=(1-mu)*Wfamily_par)
-                   rbinom(ntot, size=sizes, prob=rmu)
-                 },
-                 stop("(!) random sampling from given family not yet implemented")
-  )
+  if (length(mu)) {
+    resu <- switch(famfam,
+                   "gaussian" = rnorm(nsim*length(mu),mean=mu,sd=sqrt(phiW)),
+                   "poisson" = .rpois(nsim*length(mu),mu,zero_truncated=zero_truncated), 
+                   "binomial" = rbinom(nsim*length(mu),size=sizes,prob=mu),
+                   "Gamma" = {
+                     y <- rgamma(nsim*length(mu), shape= 1 / phiW, scale=mu*phiW) # mean=sh*sc=mu, var=sh*sc^2 = mu^2 phiW
+                     Gamma_min_y <- .spaMM.data$options$Gamma_min_y
+                     is_low_y <- (y < Gamma_min_y)
+                     if (any(is_low_y)) y[which(is_low_y)] <- Gamma_min_y 
+                     y
+                   }, ## ie shape increase with prior weights, consistent with Gamma()$simulate / spaMM_Gamma()$simulate
+                   "COMPoisson" = {
+                     lambdas <- attr(mu,"lambda") # F I X M E an environment would keep values ?
+                     if (is.null(lambdas)) {
+                       sapply(mu, function(muv) {
+                         lambda <- family$mu2lambda(muv)
+                         .COMP_simulate(lambda=lambda,nu=family_par, #= COMP_nu 
+                                        nsim=nsim)
+                       })
+                     } else sapply(lambdas,.COMP_simulate,nu=family_par, #= COMP_nu 
+                                   nsim=nsim)
+                   },
+                   "negbin" = .rnbinom(nsim*length(mu), size=family_par, #= NB_shape
+                                       mu_str=mu, zero_truncated=zero_truncated),
+                   "negbin1" = .rnbinom(nsim*length(mu), size=mu*family_par, #= NB_shape
+                                        mu_str=mu, zero_truncated=zero_truncated),
+                   "negbin2" = .rnbinom(nsim*length(mu), size=family_par, #= NB_shape
+                                        mu_str=mu, zero_truncated=zero_truncated),
+                   "beta_resp" = {
+                     # spaMM's phi is here 1, so phiW must be 1/prior.weights and so for the precision parameter:
+                     Wfamily_par <- family_par/phiW
+                     y <- rbeta(n=nsim * length(mu), 
+                                shape1=mu*Wfamily_par,shape2=(1-mu)*Wfamily_par)
+                     beta_min_y <- .spaMM.data$options$beta_min_y
+                     is_low_y <- (y < beta_min_y)
+                     if (any(is_low_y)) y[which(is_low_y)] <- beta_min_y 
+                     beta_max_y <- 1- beta_min_y
+                     is_high_y <- (y > beta_max_y)
+                     if (any(is_high_y)) y[which(is_high_y)] <- beta_max_y 
+                     y
+                   }, # fam_par being the precision parameter in the Cribari-Neto parametrisation 
+                   "betabin" = {
+                     # phiW: same logic as for beta_resp
+                     ntot <- nsim*length(mu) 
+                     Wfamily_par <- family_par/phiW
+                     rmu <- rbeta(n=ntot, shape1=mu*Wfamily_par,shape2=(1-mu)*Wfamily_par)
+                     rbinom(ntot, size=sizes, prob=rmu)
+                   },
+                   stop("(!) random sampling from given family not yet implemented")
+    )
+  } else resu <- mu # i.e. numeric(0); such mu is possible in mv-fit if predictor variables are missing for one submodel.
   if (nsim>1L) dim(resu) <- c(length(mu),nsim)
   resu
 } ## vector-valued function from vector input
@@ -143,12 +147,17 @@
   if (is_mu_fix_btwn_sims && is_phiW_fix_btwn_sims) { # 2nd condition should be trivially true for count models without prior.weights,
                                                       # even those with a resid.model as it has fixed effects only.  
                                                       # and "presumably" also even for count models with prior weights (in beta_resp, at least):
-                                                      # only variable prior weights btwn_sims (how?) should make it FALSE but the coe ignores that possibility.
-    if (is.null(resp_range)) {
+                                                      # only variable prior weights btwn_sims (how?) should make it FALSE but the code ignores that possibility.
+    if (is.null(resp_range)) { # univariate
       mu_all <- mu[[1L]] 
-    } else mu_all <- structure(mu[[1L]][resp_range], p0=attr(mu[[1L]],"p0")[[mv_it]], mu_U=attr(mu[[1L]],"mu_U")[[mv_it]])
-    # : subsetting otherwise loses crucial p0 and mu_U attributes for Tnegbin
-    # These attributes also exists for Tpoisson
+    } else {
+      mu_all <- attr(mu[[1L]],"mv")[[mv_it]]
+      if (is.null(mu_all)) {
+        # this should no longer occur. See comments above the .r_resid_var_over_cols() call.
+        warning("Suspect structure of .r_resid_var_over_cols()'s mu argument. Zero-truncation info may be lost.")
+        mu_all <- structure(mu[[1L]][resp_range], p0=attr(mu[[1L]],"p0")[[mv_it]], mu_U=attr(mu[[1L]],"mu_U")[[mv_it]])
+      }
+    }
     block <- .r_resid_var(mu_all, phiW=phiW[,1L],sizes=sizes, 
                           zero_truncated=zero_truncated, 
                           # cases where family_par is not needed but the is a promise available... => it may be possible to merge the codes?
@@ -158,7 +167,12 @@
     for (sim_it in seq_len(nsim)) {
       if (is.null(resp_range)) {
         mu_it <- mu[[sim_it]]
-      } else mu_it <- structure(mu[[sim_it]][resp_range], p0=attr(mu[[sim_it]],"p0")[[mv_it]], mu_U=attr(mu[[sim_it]],"mu_U")[[mv_it]])
+      } else {
+        mu_it <- attr(mu[[sim_it]],"mv")[[mv_it]]
+        if (is.null(mu_it)) mu_it <- structure(mu[[sim_it]][resp_range], 
+                                               p0=attr(mu[[sim_it]],"p0")[[mv_it]], 
+                                               mu_U=attr(mu[[sim_it]],"mu_U")[[mv_it]])
+      }
       block[ ,sim_it] <- .r_resid_var(mu_it, 
                                       phiW=phiW[ ,sim_it], # rlevant rowas have been selected in the mv case 
                                       sizes=sizes, 
@@ -179,23 +193,25 @@
   for (mv_it in seq_along(map_rd_mv)) {
     rd_in_mv <- map_rd_mv[[mv_it]]
     exp_ranef_strings_it <- ori_exp_ranef_strings[rd_in_mv]
-    old_ranef_form <- as.formula(paste("~",(paste(exp_ranef_strings_it,collapse="+")))) 
-    #exp_ranef_terms_it <- structure(ori_exp_ranef_terms[rd_in_mv], type=attr(ori_exp_ranef_terms,"type")[rd_in_mv])
-    if ( is.null(newdata_it <- locdataS[[mv_it]])) newdata_it <- newdata
-    Zlist <- .calc_Zlist(exp_ranef_terms=ori_exp_ranef_terms, data=newdata_it, 
-                         rmInt=0L, drop=TRUE,sparse_precision=FALSE,
-                         corr_info=.get_from_ranef_info(object), 
-                         rd_in_mv=rd_in_mv,
-                         sub_oldZAlist=object$ZAlist, # OK if we use only colnames, not attributes of the list...
-                         lcrandfamfam=attr(object$rand.families,"lcrandfamfam"))
-    amatrices <- .get_new_AMatrices(object,newdata=newdata_it) # .calc_newFrames_ranef(formula=old_ranef_form,data=newdata, fitobject=object)$mf)[rd_in_mv]
-    ZAlist_it <- .calc_normalized_ZAlist(Zlist=Zlist,
-                                         AMatrices=amatrices,
-                                         vec_normIMRF=object$ranef_info$vec_normIMRF,
-                                         strucList=object$strucList[rd_in_mv])
-    # In the *fit* preprocessing, .merge_ZAlists is called on ZA lists for each submodel, named in ref to the submodels only;
-    # .merge_ZAlists uses "exp_ranef_strings" or similar info to match the lists, not list names. 
-    names(ZAlist_it) <- rd_in_mv
+    if (length(exp_ranef_strings_it)) {
+      old_ranef_form <- as.formula(paste("~",(paste(exp_ranef_strings_it,collapse="+")))) 
+      #exp_ranef_terms_it <- structure(ori_exp_ranef_terms[rd_in_mv], type=attr(ori_exp_ranef_terms,"type")[rd_in_mv])
+      if ( is.null(newdata_it <- locdataS[[mv_it]])) newdata_it <- newdata
+      Zlist <- .calc_Zlist(exp_ranef_terms=ori_exp_ranef_terms, data=newdata_it, 
+                           rmInt=0L, drop=TRUE,sparse_precision=FALSE,
+                           corr_info=.get_from_ranef_info(object), 
+                           rd_in_mv=rd_in_mv,
+                           sub_oldZAlist=object$ZAlist, # OK if we use only colnames, not attributes of the list...
+                           lcrandfamfam=attr(object$rand.families,"lcrandfamfam"))
+      amatrices <- .get_new_AMatrices(object,newdata=newdata_it) # .calc_newFrames_ranef(formula=old_ranef_form,data=newdata, fitobject=object)$mf)[rd_in_mv]
+      ZAlist_it <- .calc_normalized_ZAlist(Zlist=Zlist,
+                                           AMatrices=amatrices,
+                                           vec_normIMRF=object$ranef_info$vec_normIMRF,
+                                           strucList=object$strucList[rd_in_mv])
+      # In the *fit* preprocessing, .merge_ZAlists is called on ZA lists for each submodel, named in ref to the submodels only;
+      # .merge_ZAlists uses "exp_ranef_strings" or similar info to match the lists, not list names. 
+      names(ZAlist_it) <- rd_in_mv
+    } else ZAlist_it <- list()
     attr(ZAlist_it,"exp_ranef_strings") <- exp_ranef_strings_it
     if (mv_it>1L) {
       newZAlist <- .merge_ZAlists(newZAlist, ZAlist_it, 
@@ -284,51 +300,136 @@ simulate_ranef <- function(object, which=NULL, newdata=NULL, nsim=1L) {
   newb
 }
 
-.guess_new_BinomialDen <- function(object, cum_nobs, sizes, mu) {
-  # ____F I X M E____ maybe I should warn in cases of matching by multiple copy
-  #  and stop instead of current warning when there is no match even by multiple copy.
-  if ( inherits(object,"fitmv") ) {
-    ori_cum_nobs <- attr(object$vec_nobs,"cum_nobs")
-    ori_vec_nobs <- diff(ori_cum_nobs)
-    vec_nobs <- diff(cum_nobs)
-    newsizes <- vector("list", length(object$families))
-    for (fam_it in seq_along(object$families)) {
-      if (object$families[[fam_it]]$family=="binomial") {
-        if (vec_nobs[fam_it] %% ori_vec_nobs[fam_it]) {
-          famfams <- sapply(object$families, `[[`, x="family")
-          warning(paste0("'sizes' argument does not match 'newdata' one.\n",
-                         "'sizes' should match counts for succesive submodels\n",
-                         paste0(famfams,": ", vec_nobs,collapse=", "),"."),
-                  immediate. = TRUE)
-        } else {
-          ncopy <- vec_nobs[fam_it] %/% ori_vec_nobs[fam_it]
-          newsizes[[fam_it]] <- rep(sizes[.subrange(ori_cum_nobs,fam_it)], ncopy)
-        }
-      } else newsizes[[fam_it]] <- rep(1L, diff(cum_nobs)[fam_it]) 
-    }
-    sizes <- unlist(newsizes)
+.warn_size_mismatch <- function(expected, isNullnewData, orisizes, vec_nobs) {
+  # Providing a right-sized value facilitates automated tests => warning rather than stop
+  # But __F I X M E___ make this despendent on _LOCAL_TESTS_ ?
+  if (length(vec_nobs)>1L) {
+    warnmess <- paste0("Specifying 'sizes' of length ", expected, " (",
+                       paste(vec_nobs,collapse="+")," for respective submodels) is necessary")
+  } else warnmess <- paste0("Specifying 'sizes' of length ", expected, " is necessary")
+  if ( ! isNullnewData) warnmess <- paste0(warnmess, " for these 'newdata'.\n")
+  if (is.null(orisizes))  {
+    warnmess <- paste0(warnmess, " NULL")
+  } else warnmess <- paste0(warnmess, " Wrong-sized")
+  warning(paste0(warnmess, " value is replaced by unit sizes"),
+          immediate. = TRUE) 
+}
+
+# the previous version made more effort to re-use fit values using a vec_nobs[fam_it] %% ori_vec_nobs[fam_it] test
+.guess_new_BinomialDen <- function(sizes, mu, cum_nobs, isNullnewData,
+                                   famfams,
+                                   size_control=famfams %in% c("binomial","betabin")) {
+  if (length(famfams)>1L) { # mvfit
+    expected <- cum_nobs[length(cum_nobs)]
+    size_mismatch <- length(sizes) != expected
+    if (size_mismatch) {
+      if (any(size_control)) .warn_size_mismatch(expected=expected, isNullnewData, 
+                                                 orisizes=sizes, vec_nobs=diff(cum_nobs))
+      sizes <- rep(1L, expected) 
+    } 
   } else {
-    if (object$family$family=="binomial") {
-      if (length(mu[[1]]) %% length(sizes)) {
-        warning(paste0("'sizes' argument does not match expected length=", length(mu[[1]])),
-                immediate. = TRUE)
-      } # else automatic recycling of sizes presumably works {
-      #   ncopy <- length(mu) %/% length(sizes)
-      #   newsizes[[fam_it]] <- rep(sizes, ncopy)
-      # } 
-    } else sizes <- rep(1L, length(mu[[1]])) 
+    expected <- length(mu[[1]])
+    size_mismatch <-  ! length(sizes) %in% c(expected,1L) # looser non-API control for univariate (unify?)
+    if (size_mismatch) {
+      if (any(size_control)) .warn_size_mismatch(expected=expected, isNullnewData, 
+                                                 orisizes=sizes, vec_nobs=expected)
+      sizes <- rep(1L, expected) 
+    } 
   }
   sizes
 }
 
+.warn_pw_mismatch <- function(chr_expected, isNullnewData, default_pw) {
+  # Providing a right-sized value facilitates automated tests => warning rather than stop
+  # But __F I X M E___ make this despendent on _LOCAL_TESTS_ ?
+  warnmess <- paste0("Specifying 'prior.weights' list (lengths=", chr_expected, " is necessary")
+  if ( ! isNullnewData) warnmess <- paste0(warnmess, " for these 'newdata'.\n")
+  warnmess <- paste0(warnmess, "Missing of invalid values are replaced by ")
+  if (length(default_pw)>1L) {
+    warnmess <- paste0(warnmess,"(",paste(default_pw,collapse=","), ") for respective submodels.")
+  } else warnmess <- paste0(warnmess, default_pw,".")
+  warning(warnmess, immediate. = TRUE) 
+}
+
+.check_simulate_pw <- function(prior.weights, mu, cum_nobs, famfams,
+                               fit_pw, isNullnewData, 
+                               pw_control= ! famfams %in% c("binomial", "poisson", "COMPoisson", 
+                                                            "negbin1", "negbin2") # the latter ones have no pw but still a resid disp param
+) {
+  # Providing a right-sized value facilitates automated tests
+  n_mv <- length(famfams)
+  if (n_mv>1L) { # mvfit
+    if ( ! is.list(prior.weights)) prior.weights <- vector("list", length(famfams))
+    vec_nobs <- diff(cum_nobs)
+    pw_mismatch <- sapply(prior.weights, length)!=vec_nobs
+    if (any(pw_mismatch)) {
+      ambiguous_pw <- pw_mismatch & pw_control
+      if ( any(ambiguous_pw)) {
+        are_units <- sapply(fit_pw, attr, which="is_unit")
+        if (is.list(are_units)) are_units <- sapply(are_units, identical, y=TRUE)
+        defaults <- rep(NA_real_, n_mv)
+        defaults[are_units] <- 1
+        if (anyNA(defaults)) {
+          are_unique <- sapply(fit_pw, attr, which="is_unique")
+          if (is.list(are_unique)) are_unique <- sapply(are_unique, identical, y=TRUE)
+          for (mv_it in seq_along(n_mv)) {
+            if (is.na(defaults[mv_it]) && are_unique[mv_it]) defaults[mv_it] <- fit_pw[[mv_it]][1]
+          }
+        }
+        if (anyNA(defaults)) {
+          defaults[is.na(defaults)] <- 1
+          .warn_pw_mismatch(chr_expected=paste(vec_nobs, collapse=","), isNullnewData, 
+                            default_pw=defaults)
+        }
+      } else defaults <- rep(1, n_mv)
+      for (mv_it in which(pw_mismatch)) {
+        prior.weights[[mv_it]] <- structure(rep(defaults[mv_it],vec_nobs[mv_it]), unique=TRUE)
+      }
+    }
+  } else { # univariate
+    if ( length(prior.weights) != length(mu[[1]])) {
+      if (pw_control &&
+          ! identical(attr(fit_pw,"is_unit"),TRUE) ) { # -> warn
+        if (identical(attr(fit_pw,"unique"),TRUE)) {
+          default_pw <- fit_pw[1]
+        } else default_pw <- 1
+        .warn_pw_mismatch(chr_expected=length(mu[[1]]), isNullnewData, default_pw=default_pw)
+      } else default_pw <- 1 # no pw_control or pw is unit
+      prior.weights <- structure(rep(default_pw,length(mu[[1]])), unique=TRUE)
+    }
+  }
+  prior.weights
+}
+
+.wrap_compute_ZALlist4simulate <- function(new_X_ZACblob, newZAlist, strucList) {
+  L_newLv_newLv_list <- new_X_ZACblob$L_newLv_newLv_list
+  newinold <- new_X_ZACblob$newinold
+  for (new_rd in seq_along(newinold)) {
+    if (is.null(L_newLv_newLv_list[[new_rd]])) {
+      if (! is.null(new_X_ZACblob$cov_newLv_newLv_list[[new_rd]])) {
+        # One would wish to check whether
+        # corr.model <- attr(object$strucList[[old_rd]],"corr.model")
+        # is a corrFamily, but old_rf info is not available. Wait for pb to occur...
+        warning("Contact the maintainer about presumably inefficient code for computation of L_newLv_newLv_list...")
+        L_newLv_newLv_list[[new_rd]] <- mat_sqrt(new_X_ZACblob$cov_newLv_newLv_list[[new_rd]])
+      } else { # e.g. for IMRF *no Cnn*, no Lnn
+        old_rd <- newinold[new_rd]
+        L_newLv_newLv_list[[new_rd]] <- strucList[[old_rd]]
+      }
+    }
+  }
+  .compute_ZAXlist(ZAlist=newZAlist, XMatrix = L_newLv_newLv_list) # may be "notBindable"
+}
 
 # simulate.HLfit(fullm[[2]],newdata=fullm[[1]]$data,size=fullm[[1]]$data$total) for multinomial avec binomial nichées de dimension différentes
 # FR->FR misses the computation of random effects for new spatial positions: cf comments in the code below
 simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
                            type = "marginal", re.form, conditional=NULL, 
                            verbose=c(type=TRUE, showpbar= eval(spaMM.getOption("barstyle"))),
-                           sizes=NULL , resp_testfn=NULL, phi_type="predict", prior.weights=object$prior.weights, 
+                           sizes=if (is.null(newdata)) object$BinomialDen , resp_testfn=NULL, phi_type="predict", 
+                           prior.weights= if (is.null(newdata)) object$prior.weights, 
                            variances=list(), ...) { ## object must have class HLfit; corr pars are not used, but the ZAL matrix is.
+  
   if (inherits(newdata,"tibble")) newdata <- as.data.frame(newdata) 
   ## RNG stuff copied from simulate.lm
   control <- list(simulate=TRUE,
@@ -365,7 +466,7 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
     pred_type <- "predVar_s.lato" 
     variances <- list(linPred=TRUE, disp=FALSE, cancel_X.pv=TRUE, cov=TRUE) # mandatory, overriding any user's variance argument
   } else pred_type <- ""
-  if (is.null(sizes)) sizes <- .get_BinomialDen(object)
+  if (isNullUserSizes <- is.null(sizes)) sizes <- .get_BinomialDen(object)
   nrand <- length(object$ZAlist)
   # delayedAssign("cum_nobs", {
   #   if ( is.null(newdata)) {
@@ -398,6 +499,11 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
   done <- 0L
   verbtype <- verbose[["type"]]
   is_mu_fix_btwn_sims <- FALSE
+  
+  if (length(object$families)) {
+    famfams <- sapply(object$families, `[[`, x="family")
+  } else famfams <- object$family$family
+  
   while((needed <- nsim-done)) { ## loop operates only for resp_testfn
     if (nrand==0L) { ## note that replicate mu's can still be variable for non-standard pred_type
       if (pred_type=="predVar_s.lato") { ## re.form ignored so de facto NULL
@@ -414,12 +520,12 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
         if (needed>1L) rand_eta <- t(rand_eta) ## else mvrnorn value is a vector
         cum_nobs <- attr(point_pred_eta,"new_X_ZACblob")$cum_nobs # presence expected given control$simulate=TRUE
         mu <- .fv_linkinv(eta=rand_eta, family=object$family, families=object$families, cum_nobs=cum_nobs) 
-      } else {
+      } else { # standard simulation withOUT ranefs
         control$fix_predVar <- FALSE
         mu <- predict(object,newdata=newdata,binding=NA,control=control, verbose=verbose)
         is_mu_fix_btwn_sims <- TRUE
         mu <- replicate(needed,mu,simplify=FALSE) # always a list at this stage
-        cum_nobs <- attr(mu,"new_X_ZACblob")$cum_nobs # presence expected given control$simulate=TRUE
+        cum_nobs <- attr(mu[[1]],"new_X_ZACblob")$cum_nobs # presence expected given control$simulate=TRUE
       }
     } else { ## MIXED MODEL
       if (pred_type=="predVar_s.lato") { ## re.form ignored so de facto NULL
@@ -461,7 +567,6 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
         is_mu_fix_btwn_sims <- TRUE
         mu <- replicate(needed,mu,simplify=FALSE) #matrix(rep(mu,nsim),ncol=nsim)
       } else if ( inherits(re.form,"formula") || is.na(re.form) ) { ## explicit re.form; or {unconditional MIXED MODEL, type= "marginal" }
-      # } else if (type=="marginal") { ## explicit re.form; or unconditional MIXED MODEL, type= "marginal"
         if (verbtype) {
           if (inherits(re.form,"formula")) {
             cat("Simulation conditional on random effect(s) retained in 're.form':\n")
@@ -485,17 +590,18 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
           ZAL <- get_ZALMatrix(object, force_bind = ! (.is_spprec_fit(object)) )
           cum_n_u_h <- attr(object$lambda,"cum_n_u_h")
           vec_n_u_h <- diff(cum_n_u_h)
-        } else {
+        } else { # new sampling design
           new_X_ZACblob <- attr(eta_fixed_cond,"new_X_ZACblob")
           # new_X_ZACblob provided design matrices for ranefs conditioned upon (as controlled by re.form)
           # .calc_ZAlist_newdata() adds design matrices for ranefs treated marginally ( <=> ranefs NOT set to zero, but drawn marginally )
           newZAlist <-  .calc_ZAlist_newdata(object, newdata, new_X_ZACblob=new_X_ZACblob) # new_X_ZACblob$newZAlist not clearly used
-          # if ( ! is.null(cum_nobs <- new_X_ZACblob$cum_nobs)) { # mv_fit...
-          #   ZALlist <- new_X_ZACblob$newZACpplist
-          # } else 
-            ZALlist <- .compute_ZAXlist(object$strucList,newZAlist) # not only products:
-          ZAL <- .ad_hoc_cbind(ZALlist, as_matrix=FALSE ) 
-          vec_n_u_h <- unlist(lapply(ZALlist,ncol)) ## nb cols each design matrix = nb realizations each ranef
+          ## Here is the big change of (presumably) future version 4.5.0: (__F I X M E___ might be worth re-profiling the backends)
+          ZALlist <- .wrap_compute_ZALlist4simulate(new_X_ZACblob, newZAlist, object$strucList)       
+          ##   
+          # ZAL <- .ad_hoc_cbind(ZALlist, as_matrix=FALSE ) # inappropriate for IMRF andother ZAXlist stuff
+          ZAL <- .compute_ZAL(XMatrix=NULL, ZAlist=ZALlist, as_matrix=FALSE, bind.=TRUE)  # may be a ZAXlist if ZALlist is "notBindable"
+          #
+          vec_n_u_h <- unlist(lapply(ZALlist,.ncol)) ## nb cols each design matrix = nb realizations each ranef
           cum_n_u_h <- cumsum(c(0,vec_n_u_h))
         }
         cum_nobs <- attr(eta_fixed_cond,"new_X_ZACblob")$cum_nobs # presence expected given control$simulate=TRUE
@@ -519,7 +625,11 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
     if ( ! inherits(mu,"list")) mu <- data.frame(mu) ## makes it always a list
     if (length(mu) != needed) stop("Programming error in simulate.HLfit() (ncol(mu) != needed).")
     #
-    
+    prior.weights <- .check_simulate_pw(prior.weights, mu, cum_nobs, famfams, 
+                                        fit_pw=object$prior.weights, isNullnewData=is.null(newdata))
+    # It might make sense to remove the missing(prior.weights) condition
+    # But in that case .check_simulate_pw() may fail if fit is mv and user provided a non-list...
+    #
     phiW <- .get_phiW(object=object, newdata=newdata, 
                       dims=c(length(mu[[1]]), length(mu)), # (nrow= response length, ncol= # of replicates)
                       phi_type=phi_type, nsim=needed, 
@@ -530,13 +640,31 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
     #    the mu and phi vectors are constant across the nsim simulations, 
     #    to avoid computing the distribution (cumprodfacs in .COMP_simulate()) nsim times.
     # The updated .r_resid_var() -> appears to manage that too (without calling COMPoisson()$simulate()), 
-    #  .r_resid_var_over_cols() too (a distinct issue is that multivariate mu may loose the (COMP)-lambda attribute: __FIXME__?)
+    #  .r_resid_var_over_cols() too (a distinct issue is that multivariate mu may have lost 
+    #     the (COMP)-lambda attribute in some cases, but this should no longer occur or else cause an error).
     
-    if (! is.null(newdata) && 
-        ! is.null(sizes) && # may be NULL when not needed
-        length(mu[[1]]) != length(sizes)
-       ) sizes <- .guess_new_BinomialDen(object=object, cum_nobs=cum_nobs, sizes=sizes, mu=mu) 
-    
+    sizes <- .guess_new_BinomialDen(sizes=sizes, mu=mu, cum_nobs=cum_nobs, 
+                                    isNullnewData=is.null(newdata), famfams=famfams) 
+    # ((For nsim>1 at least)) the mu has been expanded as a list, 
+    # each element of which is the mu for a simulation replicate.
+    # *Each such element* is expected by .r_resid_var_over_cols() to bear attributes, 
+    # incl. for mv fits an "mv" attribute that stores a list of mu's per submodel, 
+    #  each possibly with ZT attributes:
+    # List of 1          <=  example of mu list 
+    # $ : Named num [1:3057] 0.494 0.514 0.535 0.555 0.575 ...     <= a simulation replicate
+    # ..- attr(*, "names")= chr [1:3057] "1.ld02" "2.ld02" "3.ld02" "4.ld02" ...
+    # ..- attr(*, "mv")=List of 3        <= list of mu's per submodel
+    # .. ..$ : Named num [1:1374] 0.494 0.514 0.535 0.555 0.575 ...
+    # .. .. ..- attr(*, "names")= chr [1:1374] "1.ld02" "2.ld02" "3.ld02" "4.ld02" ...
+    # .. ..$ : Named num [1:1182] 0.185 0.226 0.248 0.26 0.325 ...
+    # .. .. ..- attr(*, "names")= chr [1:1182] "2.fl02" "6.fl02" "8.fl02" "9.fl02" ...
+    # .. ..$ : Named num [1:501] 1.73 1.72 1.74 1.59 1.86 ...
+    # .. .. ..- attr(*, "mu_U")= num [1:501] 1.22 1.2 1.23 1.01 1.4 ...     <= third sumbodel is ZT
+    # .. .. ..- attr(*, "p0")= num [1:501] 0.295 0.301 0.292 0.362 0.247 ...
+    # .. .. ..- attr(*, "names")= chr [1:501] "16.hdct02" "18.hdct02" "19.hdct02" "24.hdct02" ...
+    #
+    # For some time, marginal simulation of newV's followed by mu[[it]] <- .fv_linkinv(eta[,it]...)
+    # lost the "mv" attribute (and thus the included ZT info). This has been corrected.
     block <- .r_resid_var_over_cols(mu, 
                                     phiW,
                                     family_par=family_par,

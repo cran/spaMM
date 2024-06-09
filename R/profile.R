@@ -77,6 +77,9 @@ spaMM.getOption <- function (x) {spaMM.options(x, warn=FALSE)[[1]]}
   backports::import(pkgname, "...names") # to ensure back compat as long as spaMM supports R < 4.1
   .setNbThreads(thr=1L) # at C++ level for Eigen; only initialization, can be modified by control.HLfit$nbTHreads
   .spaMM.data$options$Matrix_old <- (packageVersion("Matrix")<"1.4-2")
+  .spaMM.data$options$HLnames <- unique(c(names(formals(HLCor)),names(formals(HLfit)), 
+                                   "ADFun", # so that this private arg, in the dots, causes no warning and is passed to .preprocess() 
+                                   names(formals(mat_sqrt)),names(formals(make_scaled_dist))))
 }
 
 ".onUnload" <- function (libpath) {

@@ -103,7 +103,7 @@
     loc_link <- family$link
     if (loc_link=="loglambda") loc_link <- "log"
     if (variable_rdispar <- inherits(substitute(nu, env=environment(family$aic)),"call")) family <- poisson(loc_link) # only if COMP_nu not assigned
-    # old __F I X M E__ : much time is spent on inits for glm when nu<1
+    # old _F I X M E__ : much time is spent on inits for glm when nu<1
     # if (inherits(nuchk <- substitute(nu, env=environment(family$aic)),"call") || nuchk >0.25) family <- poisson(loc_link)
     # : This helps for he GLM but not much otherwise. Other ideas ?
   }
@@ -213,7 +213,7 @@
     # } else 
     if (orifamfam == "negbin2") {
       delayedAssign("NB_shape", {
-        # ___F I X M E___? try  something like       min(10, max(0.15, 2/(2e-4+overdisp))) ?
+        # __F I X M E___? try  something like       min(10, max(0.15, 2/(2e-4+overdisp))) ?
         min(20, max(0.15, 4/overdisp)) # test: spaMMintro's HLnegbin case; fit_05 of twinR back-compat check
       }, eval.env = resu, assign.env = resu)
     } else  delayedAssign("phi_est", {
@@ -281,7 +281,7 @@
                                                   Y=.get_from_terms_info(terms_info=processed$main_terms_info, which="Y", mv_it=mv_it), 
                                                   prior.weights=processed$prior.weights[[mv_it]], ## do not try to eval() it outside of the .wfit function call; else nasty crashes may occur.
                                                   off=processed$off[resp_range] )
-        # in mv cases the benefits of promises in .calc_inits_by_xLM() return value are lost (___F I X M E___):
+        # in mv cases the benefits of promises in .calc_inits_by_xLM() return value are lost (__F I X M E___):
         beta_eta[col_range] <- new_mvlist[[mv_it]]$beta_eta
         lambdas[mv_it] <- new_mvlist[[mv_it]]$lambda
         if (processed$families[[mv_it]]$family %in% c("gaussian","Gamma")) {

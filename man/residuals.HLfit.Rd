@@ -74,6 +74,6 @@ deviance(spfit3) #           6...                       (i) ~ (g)
 sum(residuals(spfit3)^2) #   6...                       (k) ~ (h)
 sum(dev_resids(spfit3)) #    3...                         
 
-% __F I X M E__ need exemple showing lack of effect of pw for non-GLM family?
+% _F I X M E__ need exemple showing lack of effect of pw for non-GLM family?
 }
 }

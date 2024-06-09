@@ -37,8 +37,8 @@
   }
   
   cov_newLv_oldv_list <- new_X_ZACblob$cov_newLv_oldv_list
-  cov_newLv_newLv_list <- new_X_ZACblob$cov_newLv_newLv_list
-  diag_cov_newLv_newLv_list <- new_X_ZACblob$diag_cov_newLv_newLv_list
+  #cov_newLv_newLv_list <- new_X_ZACblob$cov_newLv_newLv_list
+  #diag_cov_newLv_newLv_list <- new_X_ZACblob$diag_cov_newLv_newLv_list
   newZAlist <- new_X_ZACblob$newZAlist # the one of the newdata
   ZAL <- get_ZALMatrix(object, force_bind = ! (.is_spprec_fit(object)) ) # the one of the fitted data
   cov_fixLv_oldv_list <- fix_X_ZAC.object$cov_newLv_oldv_list

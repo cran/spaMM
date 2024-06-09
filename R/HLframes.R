@@ -270,15 +270,18 @@
   if (!is.call(term)) stop("term must be of class call")
   if (termname == as.vector("|","symbol")) { ## i.e.  .|. expression
     attr(term,"type") <- rep("(.|.)",length(paste(c(term)))) ## paste is the simplest way to count terms (rather than elements of a single term)
-    return(term)
-  } ## le c() donne .|. et non |..
-  if (as.vector(termname,"character") %in% .spaMM.data$keywords$all_ranefs) {
-    attr(term,"type") <- as.character(term[[1L]])
-    if (termname == as.vector("IMRF","symbol")) {
+    return(term) ## le c() donne .|. et non |..
+  } 
+  type <- as.character(termname) # presumably ~ as.vector(termname,"character")
+  if (type %in% .spaMM.data$keywords$all_ranefs) {
+    if (type=="IMRF") { # (termname == as.vector("IMRF","symbol")) {
       return(.process_IMRF_bar(term, env=env)) # 
-    } else if (termname == as.vector("MaternIMRFa","symbol")) { # this is getting ugly. More elegant coding ? ____F I X M E____
+    } else if (type=="MaternIMRFa") { # (termname == as.vector("MaternIMRFa","symbol")) { 
       return(.process_MaternIMRFa_bar(term, env=env)) # 
-    } else return(term) 
+    } else {
+      attr(term,"type") <- type 
+      return(term)
+    }
   } else if (length(term) == 2L) return(.parseBars(term[[2]], env=env)) # this occurs if, say, 
   #  a double + + occurs by accident in a formula. If a term was ++(1|RHS) then the next nested call
   # handles term +(1|RHS) and this says to process (1|RHS), ignoring the second '+'. 

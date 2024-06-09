@@ -24,6 +24,11 @@ lev2bool(fac, lev)
 \value{
 A one-column matrix.
 }
+\seealso{
+Example in \code{\link{GxE}} for alternative to using \code{lev2bool} in specification of 
+random effects with heteroscedasticity, useful when the latter is controlled 
+by a factor with many levels. 
+}
 \examples{
 ## Elementary bivariate-response model
 
@@ -53,6 +58,15 @@ toymv <- cbind(toymv, model.matrix( ~ resp - 1, data = toymv)) % also ade4::acm.
 #  * or by random-coefficient model using 'resp' factor:    
 (fitme(y ~ resp+ (0+resp|fam), resid.model = ~ 0+resp ,data=toymv, 
        fixed=list(ranCoefs=list("1"=c(NA,0,NA)))))
+#       
+# For factors with more levels, the following function may be useful to specify 
+# through partially fixed ranCoefs that covariances are fixed to zero:
+ranCoefs_for_diag <- function(nlevels) { 
+  vec <- rep(0,nlevels*(nlevels+1L)/2L)
+  vec[cumsum(c(1L,rev(seq(nlevels-1L)+1L)))] <- NA
+  vec
+}
+# see application in help("GxE").
        
 #  * or by the dummy() specifier from lme4:
 # (fitme(y ~ resp+ (0+dummy(resp,"x")|fam)+ (0+dummy(resp,"y")|fam), 

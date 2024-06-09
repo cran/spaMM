@@ -6,7 +6,8 @@ grouped <- cbind(blackcap,grp=c(rep(1,7),rep(2,7)))
 (fit1 <- fitme(migStatus ~ 1 + Matern(1|longitude+latitude %in% grp),data=grouped,
                fixed=list(nu=4,rho=0.4,phi=0.05)))
 (crit <- abs(diff(c(-13.02094, logLik(fit1)))))
-testthat::test_that("Check whether any bug is being introduced in nested-geostat code (fit)",testthat::expect_true(crit<1e-05)) 
+testthat::test_that("Check whether any bug is being introduced in nested-geostat code (fit)",
+                    testthat::expect_true(crit<1e-05)) 
 
 p1 <- predict(fit1,newdata=fit1$data)[,1]
 p2 <- predict(fit1)[,1]

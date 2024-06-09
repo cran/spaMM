@@ -43,7 +43,7 @@ if (FALSE) {
   # Only the v_h's of the resid model are inferred, and the beta and resid-v_h are not jointly consistent with each other (since outer beta-> no new beta from new resid-v_h)
   # The  initial likelihood = the final, and logL rises above in between (only the final refit brings it back. But this final refit does not use outer-beta)
   
-  # Note also that may not work on outer-beta fits: numInfo(outer_lm_mix)  (___F I X M E___)
+  # Note also that may not work on outer-beta fits: numInfo(outer_lm_mix)  (__F I X M E___)
   
   # outer-beta results are insensitive to the family link... which makes sense.
   (outer_loglm_mix <- fitme(formula=y ~ 1, family=gaussian(log), 

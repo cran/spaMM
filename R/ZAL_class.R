@@ -11,96 +11,99 @@ setClass("ZAXlist", slots = list( LIST = "list"))
 t.ZAXlist <- function(x) { # for the few uses of t(ZAL) that may occur on a ZAXlist (<-> spprec)
   # such as .hatvals2std_lev() -> .m_Matrix_times_Dvec(t(ZAL), drop(dh0deta))
   # A test code is wfit <- HLfit(..., resid.model = ~ X3+I(X3^2) , data=wafers) with forced spprec (through test-confint-spprec.R)
-  t(.ad_hoc_cbind(x@LIST,as_matrix=FALSE)) # wastes the benefits of ZALlist in spprec __F I X M E__
+  t(.ad_hoc_cbind(x@LIST,as_matrix=FALSE)) # wastes the benefits of ZALlist in spprec _F I X M E__
 } 
 
-
-setMethod("%*%", c(x = "ZAXlist", y= "numeric"),
-          definition = function(x, y) {
-            nrand <- length(x@LIST)
-            res <- vector("list", nrand)
-            sum_nc <- 0L
-            for (rd in seq_len(nrand)) {
-              if (inherits(zax_rd <- x@LIST[[rd]],"ZA_QCHM")) {
-                nc <- ncol(zax_rd$Q_CHMfactor)
-                lastcol <- sum_nc+nc
-                res[[rd]] <- drop(zax_rd$ZA %*% solve(zax_rd$Q_CHMfactor, b=y[(sum_nc+1L):(lastcol)], system="Lt"))
-              } else if (inherits(zax_rd,"ZA_Kron")) {
-                nc <- ncol(zax_rd$Kronfacto)
-                lastcol <- sum_nc+nc
-                rhs <- zax_rd$Kronfacto %*% y[(sum_nc+1L):(lastcol)]
-                res[[rd]] <- drop(zax_rd$ZA %*% rhs)
-              } else {
-                nc <- ncol(zax_rd)
-                lastcol <- sum_nc+nc
-                res[[rd]] <- drop(zax_rd %*% y[(sum_nc+1L):(lastcol)])
-              }
-              sum_nc <- lastcol
-            }
-            Reduce("+",res)
-          })
-
-for (.inh_y in c("matrix","Matrix")) {
-  setMethod("%*%", c(x = "ZAXlist", y= .inh_y),
-            definition = function(x, y) {
-              nrand <- length(x@LIST)
-              res <- vector("list", nrand)
-              sum_nc <- 0L
-              for (rd in seq_len(nrand)) {
-                if (inherits(zax_rd <- x@LIST[[rd]],"ZA_QCHM")) {
-                  nc <- ncol(zax_rd$Q_CHMfactor)
-                  lastcol <- sum_nc+nc
-                  res[[rd]] <- (zax_rd$ZA %*% solve(zax_rd$Q_CHMfactor, b=y[(sum_nc+1L):(lastcol),,drop=FALSE ], system="Lt"))
-                } else if (inherits(zax_rd,"ZA_Kron")) {
-                  nc <- ncol(zax_rd$Kronfacto)
-                  lastcol <- sum_nc+nc
-                  stop("code missing in %*%,Kronfacto,<m|M>atrix-method") # 
-                  rhs <- zax_rd$Kronfacto %*% y[(sum_nc+1L):(lastcol)]
-                  res[[rd]] <- drop(zax_rd$ZA %*% rhs)
-                } else {
-                  nc <- ncol(zax_rd)
-                  lastcol <- sum_nc+nc
-                  res[[rd]] <- (zax_rd %*% y[(sum_nc+1L):(lastcol), , drop=FALSE ])
-                }
-                sum_nc <- lastcol
-              }
-              Reduce("+",res)
-            })
+.ZAX_num_prod <- function(x, y) {
+  nrand <- length(x@LIST)
+  res <- vector("list", nrand)
+  sum_nc <- 0L
+  for (rd in seq_len(nrand)) {
+    if (inherits(zax_rd <- x@LIST[[rd]],"ZA_QCHM")) {
+      nc <- ncol(zax_rd$Q_CHMfactor)
+      lastcol <- sum_nc+nc
+      res[[rd]] <- drop(zax_rd$ZA %*% solve(zax_rd$Q_CHMfactor, b=y[(sum_nc+1L):(lastcol)], system="Lt"))
+    } else if (inherits(zax_rd,"ZA_Kron")) {
+      nc <- ncol(zax_rd$Kronfacto)
+      lastcol <- sum_nc+nc
+      rhs <- zax_rd$Kronfacto %*% y[(sum_nc+1L):(lastcol)]
+      res[[rd]] <- drop(zax_rd$ZA %*% rhs)
+    } else {
+      nc <- ncol(zax_rd)
+      lastcol <- sum_nc+nc
+      res[[rd]] <- drop(zax_rd %*% y[(sum_nc+1L):(lastcol)])
+    }
+    sum_nc <- lastcol
+  }
+  Reduce("+",res)
 }
 
-setMethod("%*%", c(x = "numeric", y= "ZAXlist"),
-          definition = function(x, y) {
-            nrand <- length(y@LIST)
-            res <- vector("list", nrand)
-            for (rd in seq_len(nrand)) {
-              if (inherits(zax_rd <- y@LIST[[rd]],"ZA_QCHM")) {
-                lhs <- drop(x %*% zax_rd$ZA) # lhs in x . ZA . solve(Q_,"Lt") is rhs in next line:
-                res[[rd]] <- drop(solve(zax_rd$Q_CHMfactor, b=lhs, system="L"))
-              } else if (inherits(zax_rd,"ZA_Kron")) {
-                stop("code missing in %*%,numeric,ZAXlist-method")
-              } else {
-                res[[rd]] <- drop(x %*% zax_rd)
-              }
-            }
-            unlist(res) # cbind for a matrix x
-          })
+setMethod("%*%", c(x = "ZAXlist", y= "numeric"), definition = .ZAX_num_prod)
 
-setMethod("crossprod", c(x = "ZAXlist", y= "numeric"),
-          definition = function(x, y) {
-            nrand <- length(x@LIST)
-            res <- vector("list", nrand)
-            for (rd in seq_len(nrand)) {
-              if (inherits(zax_rd <- x@LIST[[rd]],"ZA_QCHM")) {
-                rhs <- .crossprod(zax_rd$ZA, y)
-                res[[rd]] <- drop(solve(zax_rd$Q_CHMfactor, b=rhs, system="L"))
-              } else if (inherits(zax_rd,"ZA_Kron")) {
-                stop("code missing in crossprod,ZAXlist,numeric-method")
-              } else {
-                res[[rd]] <- drop(.crossprod(zax_rd, y))
-              }
-            }
-            unlist(res)
-          })
+.ZAX_mMat_prod <- function(x, y) {
+  nrand <- length(x@LIST)
+  res <- vector("list", nrand)
+  sum_nc <- 0L
+  for (rd in seq_len(nrand)) {
+    if (inherits(zax_rd <- x@LIST[[rd]],"ZA_QCHM")) {
+      nc <- ncol(zax_rd$Q_CHMfactor)
+      lastcol <- sum_nc+nc
+      res[[rd]] <- (zax_rd$ZA %*% solve(zax_rd$Q_CHMfactor, b=y[(sum_nc+1L):(lastcol),,drop=FALSE ], system="Lt"))
+    } else if (inherits(zax_rd,"ZA_Kron")) {
+      nc <- ncol(zax_rd$Kronfacto)
+      lastcol <- sum_nc+nc
+      stop("code missing in %*%,Kronfacto,<m|M>atrix-method") # 
+      rhs <- zax_rd$Kronfacto %*% y[(sum_nc+1L):(lastcol)]
+      res[[rd]] <- drop(zax_rd$ZA %*% rhs)
+    } else {
+      nc <- ncol(zax_rd)
+      lastcol <- sum_nc+nc
+      res[[rd]] <- (zax_rd %*% y[(sum_nc+1L):(lastcol), , drop=FALSE ])
+    }
+    sum_nc <- lastcol
+  }
+  Reduce("+",res)
+}
+
+for (.inh_y in c("matrix","Matrix")) {
+  setMethod("%*%", c(x = "ZAXlist", y= .inh_y), definition = .ZAX_mMat_prod)
+}
+
+.num_ZAX_prod <- function(x, y) {
+  nrand <- length(y@LIST)
+  res <- vector("list", nrand)
+  for (rd in seq_len(nrand)) {
+    if (inherits(zax_rd <- y@LIST[[rd]],"ZA_QCHM")) {
+      lhs <- drop(x %*% zax_rd$ZA) # lhs in x . ZA . solve(Q_,"Lt") is rhs in next line:
+      res[[rd]] <- drop(solve(zax_rd$Q_CHMfactor, b=lhs, system="L"))
+    } else if (inherits(zax_rd,"ZA_Kron")) {
+      stop("code missing in %*%,numeric,ZAXlist-method")
+    } else {
+      res[[rd]] <- drop(x %*% zax_rd)
+    }
+  }
+  unlist(res) # cbind for a matrix x
+}
+
+setMethod("%*%", c(x = "numeric", y= "ZAXlist"), definition = .num_ZAX_prod)
+
+.ZAX_num_crossprod <- function(x, y) {
+  nrand <- length(x@LIST)
+  res <- vector("list", nrand)
+  for (rd in seq_len(nrand)) {
+    if (inherits(zax_rd <- x@LIST[[rd]],"ZA_QCHM")) {
+      rhs <- .crossprod(zax_rd$ZA, y)
+      res[[rd]] <- drop(solve(zax_rd$Q_CHMfactor, b=rhs, system="L"))
+    } else if (inherits(zax_rd,"ZA_Kron")) {
+      stop("code missing in crossprod,ZAXlist,numeric-method")
+    } else {
+      res[[rd]] <- drop(.crossprod(zax_rd, y))
+    }
+  }
+  unlist(res)
+}
+
+setMethod("crossprod", c(x = "ZAXlist", y= "numeric"), definition = .ZAX_num_crossprod)
 
 if (FALSE) {
   ## This method was not needed until Kronfacto was introduced. But then, using 
@@ -114,41 +117,42 @@ if (FALSE) {
             })
 }
 
-
-for (.inh_y in c("matrix","Matrix")) {
-  setMethod("crossprod", c(x = "ZAXlist", y= .inh_y),
-            definition = function(x, y) {
-              nrand <- length(x@LIST)
-              res <- vector("list", nrand)
-              for (rd in seq_len(nrand)) {
-                if (inherits(zax_rd <- x@LIST[[rd]],"ZA_QCHM")) {
-                  rhs <- .crossprod(zax_rd$ZA, y)
-                  res[[rd]] <- (solve(zax_rd$Q_CHMfactor, b=rhs, system="L"))
-                } else if (inherits(zax_rd,"ZA_Kron")) {
-                  rhs <- .crossprod(zax_rd$ZA, y)
-                  res[[rd]] <- as.matrix(crossprod(zax_rd$Kronfacto, rhs))
-                } else {
-                  res[[rd]] <- (.crossprod(zax_rd, y))
-                }
-              }
-              do.call(rbind,res)
-            })
+.ZAX_mMat_crossprod <- function(x, y) {
+  nrand <- length(x@LIST)
+  res <- vector("list", nrand)
+  for (rd in seq_len(nrand)) {
+    if (inherits(zax_rd <- x@LIST[[rd]],"ZA_QCHM")) {
+      rhs <- .crossprod(zax_rd$ZA, y)
+      res[[rd]] <- (solve(zax_rd$Q_CHMfactor, b=rhs, system="L"))
+    } else if (inherits(zax_rd,"ZA_Kron")) {
+      rhs <- .crossprod(zax_rd$ZA, y)
+      res[[rd]] <- as.matrix(crossprod(zax_rd$Kronfacto, rhs))
+    } else {
+      res[[rd]] <- (.crossprod(zax_rd, y))
+    }
+  }
+  do.call(rbind,res)
 }
 
-setMethod("tcrossprod", c(x = "ZAXlist", y= "missingOrNULL"),
-          definition = function(x, y=NULL) {
-            nrand <- length(x@LIST)
-            tcrossfac <- x@LIST
-            for (rd in seq_len(nrand)) {
-              if (inherits(zax_rd <- tcrossfac[[rd]],"ZA_QCHM")) {
-                tcrossfac[[rd]] <- t(solve(zax_rd$Q_CHMfactor, b=t(zax_rd$ZA), system="L")) # but if $ZA were NULL, solve(,"A)
-              } else if (inherits(zax_rd,"ZA_Kron")) {
-                stop("code missing in tcrossprod,ZAXlist,missingOrNULL-method")
-              }
-            } 
-            tcrossfac <- do.call(cbind,tcrossfac) # ad_hoc_cbind ??
-            .tcrossprod(tcrossfac) # y is NULL
-          })
+for (.inh_y in c("matrix","Matrix")) {
+  setMethod("crossprod", c(x = "ZAXlist", y= .inh_y), definition = .ZAX_mMat_crossprod)
+}
+
+.ZAX_tcrossprod <- function(x, y=NULL) {
+  nrand <- length(x@LIST)
+  tcrossfac <- x@LIST
+  for (rd in seq_len(nrand)) {
+    if (inherits(zax_rd <- tcrossfac[[rd]],"ZA_QCHM")) {
+      tcrossfac[[rd]] <- t(solve(zax_rd$Q_CHMfactor, b=t(zax_rd$ZA), system="L")) # but if $ZA were NULL, solve(,"A)
+    } else if (inherits(zax_rd,"ZA_Kron")) {
+      stop("code missing in tcrossprod,ZAXlist,missingOrNULL-method")
+    }
+  } 
+  tcrossfac <- do.call(cbind,tcrossfac) # ad_hoc_cbind ??
+  .tcrossprod(tcrossfac) # y is NULL
+}
+
+setMethod("tcrossprod", c(x = "ZAXlist", y= "missingOrNULL"), definition = .ZAX_tcrossprod)
 
 .ZAXlist_times_Dvec <- function(X, Dvec) { # Derived from %*%
   nrand <- length(X@LIST)
@@ -191,39 +195,41 @@ dim.Kronfacto <- function(x) return(x@BLOB$DIM)
   new("Kronfacto", BLOB=BLOB)
 }
 
-setMethod("%*%", c(x = "Kronfacto", y= "numeric"),
-          definition = function(x, y) {
-            BLOB <- x@BLOB
-            if (.is_evaluated("long",BLOB)) {
-              BLOB$long %*% y
-            } else {
-              yy <- y
-              dim(yy) <- c(ncol(BLOB$rhs),ncol(BLOB$lhs)) # nc_r, nc_l
-              # if (inherits(BLOB$rhs,"dCHMsimpl")) { # untested code
-              #   tmp <- .tcrossprod(BLOB$rhs, yy) # using the special meaning of .tcrossprod for dCHMsimpl objects
-              # } else 
-                tmp <- BLOB$rhs %*% yy # nr_r * nc_l
-              tmp <- tcrossprod(tmp,BLOB$lhs) # nr_r * nr_l
-              dim(tmp) <- c(nrow(x),1L)
-              tmp
-            }
-          })
+.Kronfacto_num_prod <- function(x, y) {
+  BLOB <- x@BLOB
+  if (.is_evaluated("long",BLOB)) {
+    BLOB$long %*% y
+  } else {
+    yy <- y
+    dim(yy) <- c(ncol(BLOB$rhs),ncol(BLOB$lhs)) # nc_r, nc_l
+    # if (inherits(BLOB$rhs,"dCHMsimpl")) { # untested code
+    #   tmp <- .tcrossprod(BLOB$rhs, yy) # using the special meaning of .tcrossprod for dCHMsimpl objects
+    # } else 
+    tmp <- BLOB$rhs %*% yy # nr_r * nc_l
+    tmp <- tcrossprod(tmp,BLOB$lhs) # nr_r * nr_l
+    dim(tmp) <- c(nrow(x),1L)
+    tmp
+  }
+}
 
-setMethod("crossprod", c(x = "Kronfacto", y= "numeric"),
-          definition = function(x, y) {
-            BLOB <- x@BLOB
-            if (.is_evaluated("long",BLOB)) {
-              .crossprod(BLOB$long, y)
-            } else {
-              yy <- y
-              dim(yy) <- c(nrow(BLOB$rhs),nrow(BLOB$lhs)) # nr_r, nr_l
-              tmp <- .crossprod(BLOB$rhs, yy, chk_sparse2mat=FALSE) # nc_r * nr_l
-              tmp <- tmp %*% BLOB$lhs # nc_r * nc_l
-              dim(tmp) <- c(ncol(x),1L) 
-              dimnames(tmp) <- list(NULL,NULL)
-              tmp
-            }
-          })
+setMethod("%*%", c(x = "Kronfacto", y= "numeric"), definition = .Kronfacto_num_prod)
+
+.Kronfacto_num_crossprod <- function(x, y) {
+  BLOB <- x@BLOB
+  if (.is_evaluated("long",BLOB)) {
+    .crossprod(BLOB$long, y)
+  } else {
+    yy <- y
+    dim(yy) <- c(nrow(BLOB$rhs),nrow(BLOB$lhs)) # nr_r, nr_l
+    tmp <- .crossprod(BLOB$rhs, yy, chk_sparse2mat=FALSE) # nc_r * nr_l
+    tmp <- tmp %*% BLOB$lhs # nc_r * nc_l
+    dim(tmp) <- c(ncol(x),1L) 
+    dimnames(tmp) <- list(NULL,NULL)
+    tmp
+  }
+}
+
+setMethod("crossprod", c(x = "Kronfacto", y= "numeric"), definition = .Kronfacto_num_crossprod)
 
 if (FALSE) { # rethink when the need appears
   setMethod("crossprod", c(x = "Kronfacto", y= "missingOrNULL"),
@@ -239,22 +245,22 @@ if (FALSE) { # rethink when the need appears
             })
 }
 
+.Kronfacto_mMat_crossprod <- function(x, y) {
+  BLOB <- x@BLOB
+  if (.is_evaluated("long",BLOB)) {
+    .crossprod(BLOB$long, y)
+  } else if (ncol(y)==1L) {
+    crossprod(x,y[,1L]) 
+  } else {
+    tmp <- matrix(NA,nrow=nrow(x),ncol=ncol(y))
+    for (jt in seq_len(ncol(y))) tmp[,jt] <- crossprod(x,y[,jt])
+    dimnames(tmp) <- list(NULL,NULL)
+    tmp
+  }
+}
 
 for (.inh_y in c("matrix","Matrix")) {
-  setMethod("crossprod", c(x = "Kronfacto", y= .inh_y),
-            definition = function(x, y) {
-              BLOB <- x@BLOB
-              if (.is_evaluated("long",BLOB)) {
-                .crossprod(BLOB$long, y)
-              } else if (ncol(y)==1L) {
-                crossprod(x,y[,1L]) 
-              } else {
-                tmp <- matrix(NA,nrow=nrow(x),ncol=ncol(y))
-                for (jt in seq_len(ncol(y))) tmp[,jt] <- crossprod(x,y[,jt])
-                dimnames(tmp) <- list(NULL,NULL)
-                tmp
-              }
-            })
+  setMethod("crossprod", c(x = "Kronfacto", y= .inh_y), definition = .Kronfacto_mMat_crossprod)
 }
 
 
@@ -265,4 +271,12 @@ if (FALSE) {
   kronecker(a,b) %*% c(7,11,13,17) # 340 448 492 648
   Kf <- spaMM:::.def_Kronfacto(a,b)
   Kf %*%  c(7,11,13,17)
+}
+
+# Quite late additional, single use: __F I X M E___ rethink ?
+# ncol is not a generic (it is dim()[2] where dim is a primitive)
+.ncol <- function(x) {
+  if (inherits(x,"ZA_QCHM")) {
+    ncol(x$Q_CHMfactor)
+  } else ncol(x)
 }

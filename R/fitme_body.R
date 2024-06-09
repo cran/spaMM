@@ -161,7 +161,7 @@ fitme_body <- function(processed,
         HLCor.args$init.HLfit$fixef <- .unscale(X.pv, sc_fixef)
         processed$port_env$port_fit_values$fixef <- NULL
         processed$X_off_fn <- NULL
-        processed$vecdisneeded <- .vecdisneeded(pforpv=TRUE, processed$family, processed) # (__F I X M E__) ultimately extend this for outer beta for mv fits... except that outer beta without gradient is so bad  
+        processed$vecdisneeded <- .vecdisneeded(pforpv=TRUE, processed$family, processed) # (_F I X M E__) ultimately extend this for outer beta for mv fits... except that outer beta without gradient is so bad  
       }
     } ## end if ...getCall... else
     #
@@ -193,7 +193,8 @@ fitme_body <- function(processed,
     if (length(initvec)) {
       attr(hlcor,"optimInfo") <- list(LUarglist=LUarglist, init.optim=init.optim,
                                       objective=proc1$objective,
-                                      augZXy_phi_est=augZXy_phi_est)
+                                      augZXy_phi_est=augZXy_phi_est,
+                                      rC_transf=.spaMM.data$options$rC_transf)
     }
     return(hlcor) ## HLCorcall
   } else {
@@ -206,7 +207,8 @@ fitme_body <- function(processed,
     attr(hlcor,"optimInfo") <- list(LUarglist=LUarglist, optim.pars=optPars,
                                     objective=proc1$objective,
                                     augZXy_phi_est=augZXy_phi_est, ## gives info to interpret optim.pars in confint.HLfit()
-                                    optim_time=optim_time) ## processed was erased for safety
+                                    optim_time=optim_time,
+                                    rC_transf=.spaMM.data$options$rC_transf) ## processed was erased for safety
     locoptr <- attr(optPars,"optr")
     if (attr(optPars,"method")=="nloptr") {
       if (locoptr$status<0L) hlcor$warnings$optimMessage <- paste0("nloptr() message: ",

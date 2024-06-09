@@ -1,5 +1,5 @@
 .reformat_lambda <- function(user_lFix, nrand, namesTerms=NULL, full_lambda) {
-  if ( ! nrand) return(NULL) # ignores extra lambda # __F I X M E__ add a warning in that case ?
+  if ( ! nrand) return(NULL) # ignores extra lambda # _F I X M E__ add a warning in that case ?
   seq_nrand <- seq_len(nrand)
   if (full_lambda) { # 
     template <- rep(NA,nrand)
@@ -229,9 +229,10 @@
   if (is.na(needed["notSameGrp"])) needed["notSameGrp"] <- FALSE 
   coordinates <- .get_coordinates(spatial_term=spatial_term, data=data)
   geoMats <- list(coordinates=coordinates)
-  if (is.null(distMatrix) || needed["notSameGrp"]) { # In principle we avoid computing anything new if 
-    #                     distMatrix (implying uniqueGeo too )has been computed
-    #                     but for grouped effects, defining the optim range may have used distMatrix in a case where we now need notSameGrp.
+  if (is.null(distMatrix) || needed["notSameGrp"]|| needed["uniqueGeo"]) { 
+    # In principle we avoid computing anything new if distMatrix has been computed
+    # but for grouped effects, defining the optim range may have used distMatrix in a case where we now need notSameGrp.
+    # ANd if we used distMatrix for a Matern term, we will need uniqueGeo post-fit
     coord_within <- .extract_check_coords_within(spatial_term=spatial_term) 
     coords_nesting <- setdiff(coordinates,coord_within)
     coord_within <- setdiff(coordinates, coords_nesting)
@@ -283,6 +284,8 @@
     geoMats$uniqueGeo <- uniqueGeo ## always computed (needed for distMatrix)
   } else { ## there is a distMatrix, this is what will be used by HLCor
     if (needed["nbUnique"]) geoMats$nbUnique <- .checkDistMatrix(distMatrix,data,coordinates)
+    # Matern+distMatrix: uniqueGeo may be needed post-fit
+    if (needed["uniqueGeo"]) geoMats$nbUnique <- .checkDistMatrix(distMatrix,data,coordinates)
   }
   return(geoMats)
 }
@@ -294,9 +297,12 @@
     if (requireNamespace("RSpectra",quietly=TRUE)) { # https://scicomp.stackexchange.com/questions/26786/eigen-max-and-minimum-eigenvalues-of-a-sparse-matrix
       # may generate (Rcpp::warning): only 1 eigenvalue(s) converged, less than k = 2  
       if (inherits(M,c("matrix", "dgeMatrix", "dgCMatrix"))) {
-        if (symmetric) {
-          eigrange <- suppressWarnings(RSpectra::eigs_sym(M, k=2, which="BE", opts=list(retvec=FALSE))$values)
-          if ( length(eigrange)==2L) {
+        if (symmetric) { # unfortunately eigs_sym not quite robust numerically.
+          eigrange <- try(suppressWarnings(RSpectra::eigs_sym(M, k=2, which="BE", opts=list(retvec=FALSE))$values),
+                          silent=TRUE)
+          if (inherits(eigrange,"try-error")) { 
+            resu <- .try_RSpectra(M, symmetric=FALSE)
+          } else if ( length(eigrange)==2L) {
             resu <- list(eigrange=range(eigrange)) # only the extreme eigenvalues;  range() for consistent ordering but is the reverse of the eigen one...
           } else resu <- NULL
         } else { # "eigs() with matrix types "matrix", "dgeMatrix", "dgCMatrix" and "dgRMatrix" can use "LM", "SM", "LR", "SR", "LI" and "SI"" =>hence not "BE"
@@ -843,7 +849,7 @@
     }
     init.optim$lambda <- init.optim$lambda[ ! is.nan(init.optim$lambda)] ## removes users's explicit NaN, which effect is documented in help(fitme)
   } else { ## else use inner optimization  for simple lambdas if inner_phi is necessary
-    if (identical(attr(proc1$family,"multi"),TRUE)) { # __F I X M E__ more elegant test?
+    if (identical(attr(proc1$family,"multi"),TRUE)) { # _F I X M E__ more elegant test?
       warning("No initial lambda provided: the model fitted may change over spaMM versions. See help('multi') for how to avoid that.")
     }
     init.optim$lambda <- user_init_optim$lambda # we reach here when there was no NA in user's init lambda
@@ -853,7 +859,7 @@
   if (any(var_ranCoefs)) {
     # Not super clear why I considered nranterms (user level ??) instead of nrand. FIXME.
     nranterms <- sum(var_ranCoefs | is.na(lFix)) ## var_ranCoefs has FALSE elements for non-ranCoefs (hence it is full-length)
-    # Use .eval_init_lambda_guess() rather than the next lines ? possibly better for mv fits ___F I X M E___
+    # Use .eval_init_lambda_guess() rather than the next lines ? possibly better for mv fits __F I X M E___
     # but the logic in .eval_init_lambda_guess is different: (1) get inits by xLM (2) adjust according to ZA (3) adjust according to family
     # Here it is (1) get inits by xLM (2) adjust according to family (3) (sort of) adjust according to ZA 
     guess_from_glm_lambda <- .get_inits_by_xLM(proc1)$lambda * (3L*nranterms)/((nranterms+1L)) # +1 for residual
@@ -1207,7 +1213,7 @@
       famdisp_lowup <- .wrap_calc_famdisp_lowup(processed)
     } else famdisp_lowup <- NULL
     
-    if (FALSE && ! is.null(inits$`init`$beta)) { # outer beta... FALSE && ...because the effect is not convincing (___F I X M E___). 
+    if (FALSE && ! is.null(inits$`init`$beta)) { # outer beta... FALSE && ...because the effect is not convincing (__F I X M E___). 
       # The COMP example currently works only without this and with a vector of O's as initial values.
       fixef_lowup <- .calc_fixef_lowup(processed)
     } else fixef_lowup <- NULL
@@ -1308,16 +1314,20 @@
         corr_info <- .get_from_ranef_info(object)
         # .canonizeRanPars() can change the order of elements, so we cannot use the above boolean vectors to get elements from its result => 
         # ugly but safe solution only requesting that .canonizeRanPars() handles NA's:
+        optimInfo <- attr(object,"optimInfo")
         parlist <- optim.pars
         parlist[ ! lowerAB] <- NA
-        parlist <- relist(parlist,attr(object,"optimInfo")$LUarglist$init.optim)
-        attr(parlist,"moreargs") <- attr(object,"optimInfo")$LUarglist$moreargs
-        lowerAB <- na.omit(unlist(.canonizeRanPars(parlist, corr_info=corr_info)))
+        parlist <- relist(parlist, optimInfo$LUarglist$init.optim)
+        attr(parlist,"moreargs") <- optimInfo$LUarglist$moreargs
+        lowerAB <- na.omit(unlist(.canonizeRanPars(parlist, corr_info=corr_info, 
+                                                   rC_transf=optimInfo$rC_transf)))
         parlist <- optim.pars
         parlist[ ! upperAB] <- NA
-        parlist <- relist(parlist,attr(object,"optimInfo")$LUarglist$init.optim)
-        attr(parlist,"moreargs") <- attr(object,"optimInfo")$LUarglist$moreargs
-        upperAB <- na.omit(unlist(.canonizeRanPars(parlist, corr_info=corr_info)))
+        parlist <- relist(parlist, optimInfo$LUarglist$init.optim)
+        attr(parlist,"moreargs") <- optimInfo$LUarglist$moreargs
+        lowerAB <- na.omit(unlist(.canonizeRanPars(parlist, corr_info=corr_info, 
+                                                   rC_transf=optimInfo$rC_transf)))
+        
         return(c(lower=lowerAB, upper=upperAB))
       }
     } else if (bool) {

@@ -83,16 +83,29 @@
         if ( ! is.null(lmatrix)) {
           type <-  attr(lmatrix,"type")
           if ( ! is.null(latentL_blob <- attr(lmatrix,"latentL_blob"))) { ## from .process_ranCoefs
-            if (is.null(compactchol_Q_w <- latentL_blob$compactchol_Q_w)) { # object$spaMM.version < "3.8.33"
-              latent_d <- latentL_blob[["d"]] # will be needed for back compat whatever future devel
+            if (is.null(compactchol_Q_w <- latentL_blob$compactchol_Q_w)) { # FALSE for object$spaMM.version < "3.8.33"
+              latent_d <- latentL_blob[["d"]] # => back compatibility code (see further comments in .post_process_v_h_LMatrices()).
               compactchol_Q_w <- .Matrix_times_Dvec(latentL_blob$compactchol_Q, 1/sqrt(latent_d)) # tcrossfac of full precision matrix
             }
-            if ( ! is.null(kron_Y <- object$ranef_info$sub_corr_info$kron_Y_LMatrices[[Lit]])) {
-              # longL = solve(t(compactchol_Q_w)) \otimes Lunique
-              # invL =solve(A=t(compactchol_Q_w) \otimes B=Lunique) = solve(A) \otimes solve(B)
-              # see comments about in kron_Y_LMatrices in .get_invColdoldList()
-              kron_Y <- .inv_Lmatrix(kron_Y, regul.threshold=regul.threshold)
-            }
+            if (object$ranef_info$is_composite[Lit]) {
+              #  ___F I X M E____ the different cases could be implemented as kron_Y promises
+              # in a list of environnments stored in the sub_corr_info.
+              if ( ! is.null(kron_Y <- object$ranef_info$sub_corr_info$kron_Y_LMatrices[[Lit]])) {
+                # This includes some SPPREC cases
+                # see comments about in kron_Y_LMatrices in .get_invColdoldList()
+                # longL = solve(t(compactchol_Q_w)) \otimes Lunique
+                # invL =solve(A=t(compactchol_Q_w) \otimes B=Lunique) = solve(A) \otimes solve(B)
+                kron_Y <- .inv_Lmatrix(kron_Y, regul.threshold=regul.threshold)
+              } else if (! is.null(kron_Y_Qmat <- object$ranef_info$sub_corr_info$kron_Y_Qmats[[Lit]])) {
+                # subcases of SPPREC case: I assume RHS_Qmat, copied in kron_Y_Qmat, will be present (__F I X M E___) IF previous kron_Y is not
+                ## .process_ranCoefs() is instructive about the precise meaning of matrices in spprec cases
+                kron_Y <- Cholesky(kron_Y_Qmat, perm=FALSE) # 
+                kron_Y <- t(as(kron_Y,"CsparseMatrix")) # as the code for lmatrix in .inv_Lmatrix()
+                #warnmess <- paste0("This computation might fail for some sparse-precision fits\n",
+                #                   "containing composite random effects.") 
+                #warning(warnmess, immediate. = TRUE)
+              } 
+            } else kron_Y <- NULL
             invlmatrix <- .makelong(t(compactchol_Q_w),longsize=ncol(lmatrix),as_matrix=TRUE, kron_Y=kron_Y) # ___FIXME___ allow kron_long=FALSE ?
             # as_matrix=TRUE necessary for resu[u.range, u.range] <- invlmatrix
           } else invlmatrix <- .inv_Lmatrix(lmatrix, regul.threshold=regul.threshold)
@@ -155,11 +168,17 @@
         ## solve( _t_(lmatrix)) may not allow the efficient use of solveWrap. 
         ## But this is a one-time calculation whose results are saved. No optimization attempted.
         # Ugly, BUT only back-compat code since now all latent_d's are nullified for post-fit computations: 
-        if (! is.null(latent_d <- attr(lmatrix,"latentL_blob")[["d"]])) { # should be FALSE in current spaMM version
-          # if I changed the meaning of strucList[[]] between the fit and the postfit (in .post_process_v_h_LMatrices)
-          # I must adjust accordingly here. This is uglier.
-          # and here we used the compact 'd' for testing and use the already expanded one next:
-          newcoeffs[u.range] <- newcoeffs[u.range]/sqrt(object$envir$sXaug$AUGI0_ZX$envir$latent_d_list[[Lit]])   
+        if (! is.null(latent_d <- attr(lmatrix,"latentL_blob")[["d"]])) { 
+          if (object$spaMM.version>"3.9.18") {
+            warning(paste('.calc_invL_coeffs() found attr(lmatrix,"latentL_blob")[["d"]]\n',
+                    'in an object that should not contain it.'),immediate. = TRUE)
+            # as explained in .post_process_v_h_LMatrices()
+            # where I changed the meaning of strucList[[]] between the fit and the postfit (in .post_process_v_h_LMatrices)
+          } else {
+            ## Imperfect code for older objects: 
+            # here we used the compact 'd' for testing and use the already expanded one next:
+            newcoeffs[u.range] <- newcoeffs[u.range]/sqrt(object$envir$sXaug$AUGI0_ZX$envir$latent_d_list[[Lit]])   
+          } 
         }
         newcoeffs[u.range] <- solve(t(lmatrix),newcoeffs[u.range])   ## newcoeffs must be a _vector_
       }
@@ -268,17 +287,21 @@ ranef.HLfit <- function(object,type="correlated",...) {
     if ((nr <- length(print_namesTerms[[it]]))>1L) { # random-coef term
       n_cols <- length(colNames[[it]])/length(print_namesTerms[[it]])
       if (type == "correlated") {
-        res <- strucList[[it]] %*% res ## matrix
+        lmatrix <- strucList[[it]]
+        if (inherits(lmatrix, "dCHMsimpl")) {
+          res <- as.vector(as(lmatrix,"pMatrix") %*% solve(lmatrix, res, system="Lt"))
+        } else res <- lmatrix %*% res ## matrix
         res <- structure(matrix(res, ncol=n_cols,byrow=TRUE), dimnames=list(print_namesTerms[[it]],colNames[[it]][1:n_cols]))
         res <- t(res) # despite the t() it makes it ~ to the vector in the alternative case (both operate as n_u_h-row matrices) 
       } else {
         res <- structure(matrix(res, ncol=n_cols,byrow=TRUE), dimnames= list(NULL, colNames[[it]][1:n_cols])) ## matrix
       }
-    } else {
-      if (type == "correlated" && ! is.null(strucList[[it]])) {
-        if (inherits(strucList[[it]], "dCHMsimpl")) {
-          res <- as.vector(solve(strucList[[it]], res, system="Lt"))
-        } else res <- as.vector(strucList[[it]] %*% res) ## vector
+    } else { # not random coef
+      lmatrix <- strucList[[it]]
+      if (type == "correlated" && ! is.null(lmatrix)) { # __F I X M E___ why the second test ?
+        if (inherits(lmatrix, "dCHMsimpl")) {
+          res <- as.vector(solve(lmatrix, res, system="Lt"))
+        } else res <- as.vector(lmatrix %*% res) ## vector
       } 
       names(res) <- colNames[[it]]
     }
@@ -286,7 +309,7 @@ ranef.HLfit <- function(object,type="correlated",...) {
   }
   names(RESU) <- ranefs
   class(RESU) <- c("ranef", "list")
-  RESU ## __F I X M E__ TODO: ~lme4:::ranef.merMod(mod, condVar = TRUE) & ajouter des arguments "variances" et "intervals" à ta fonction ranef() (Alex 7/5/2018)
+  RESU ## _F I X M E__ TODO: ~lme4:::ranef.merMod(mod, condVar = TRUE) & ajouter des arguments "variances" et "intervals" à ta fonction ranef() (Alex 7/5/2018)
 }
 
 print.ranef <- function(x, max.print=40L, ...) {
@@ -433,7 +456,7 @@ residVar <- function(object, which="var", submodel=NULL, newdata=NULL) {
   } else stop("Unknown 'which' type")
 } 
 
-# __F I X M E__: from R v3.3.0: New S3 generic function sigma() with methods for extracting the estimated standard deviation aka “residual standard deviation” from a fitted model. 
+# _F I X M E__: from R v3.3.0: New S3 generic function sigma() with methods for extracting the estimated standard deviation aka “residual standard deviation” from a fitted model. 
 
 
 # Default newframes_info value reproduces .get_new_X_ZAC_blob() call from residVar(object, newdata=newdata, variances=list(residVar=TRUE))
@@ -493,7 +516,7 @@ residVar <- function(object, which="var", submodel=NULL, newdata=NULL) {
     if (identical(attr(prior.weights,"unique"),TRUE)) {
       phiW <- newphiMat/prior.weights[1L]
       is_phiW_fix_btwn_sims <- TRUE # subcase of phimodel. == ""
-    } else { # is_phiW_fix_btwn_sims remains FALSE, which looks like an inefficiency (___F I X M E___?)
+    } else { # is_phiW_fix_btwn_sims remains FALSE, which looks like an inefficiency (__F I X M E___?)
       phiW <- .Dvec_times_matrix(1/prior.weights, newphiMat)  ## warnings or errors if something suspect. 
     }  
   } else {
@@ -556,7 +579,7 @@ residVar <- function(object, which="var", submodel=NULL, newdata=NULL) {
 logLik.HLfit <- function(object, which=NULL, ...) {
   object <- .getHLfit(object)
   if (is.null(which)) which <- .get_objLik(object)
-  if (which=="cliks") { ## *undoc* and the summand=TRUE non-default has no effect when clik_fn uses family()$aic (__F I X M E__) 
+  if (which=="cliks") { ## *undoc* and the summand=TRUE non-default has no effect when clik_fn uses family()$aic (_F I X M E__) 
     if (object$family$family %in% c("binomial","betabin")) {
       muFREQS <- predict(object)
       mu <- muFREQS * object$BinomialDen
@@ -978,7 +1001,7 @@ get_rankinfo <- function(object) return(attr(model.matrix(object),"rankinfo"))
     } 
   }
   
-  # ___F I X M E___ ugly: part of the pb is that of recovering info about the different types of rC from an HLfit object.
+  # __F I X M E___ ugly: part of the pb is that of recovering info about the different types of rC from an HLfit object.
   if (wo_fixed) { # [..]get_fittedPars() reaches here... so the nice function still depends on the ugly code. 
     resu$ranCoefs <- .get_rC_inits_from_hlfit(object,type=c("inner","outer_ranCoefs")) # overlap with Xi_ncol ranCoefs?
   } else resu$ranCoefs <-  .get_rC_inits_from_hlfit(object,type=NULL)
@@ -1333,7 +1356,7 @@ get_ZALMatrix <- function(object, force_bind=TRUE) {
     if (is.null(object$envir$LMatrix)) {
       for (rd in seq_along(ZAlist)) ZAlist[[rd]] <- .symDiagonal(n = ncol(ZAlist[[rd]])) #  strucList elements may be null and then we need this.
       object$envir$LMatrix <- .compute_ZAL(XMatrix=object$strucList, ZAlist=ZAlist, as_matrix=FALSE, 
-                                           bind.=TRUE, force_bindable=FALSE) # reproduces old defaults; __F I X M E__ set force_bindable=TRUE? 
+                                           bind.=TRUE, force_bindable=FALSE) # reproduces old defaults; _F I X M E__ set force_bindable=TRUE? 
     }
     return(object$envir$LMatrix)
   } else return(NULL) 
@@ -1426,6 +1449,17 @@ if (FALSE) { # permuted QR example - but singular too, so notexactly what we wan
   } else return(optimInfo$LUarglist$moreargs[[char_rd]]$control.dist)
 } # F I X M E but the two are not equivalent since the moreargs version has gone through .provide_rho_mapping() which converts NULL rho.mapping into explicit rho_mappings
 
+.get_v_condcov <- function(object) {
+  beta_v_cov <- get_matrix(object,which="beta_v_cov")
+  fixefcols <- seq_len(object$dfs$pforpv)
+  if (length(fixefcols)) {
+    sig11 <- beta_v_cov[-fixefcols,-fixefcols, drop=FALSE]
+    sig12 <- beta_v_cov[-fixefcols, fixefcols, drop=FALSE]
+    sig22 <- beta_v_cov[ fixefcols, fixefcols, drop=FALSE]
+    sig11 - sig12 %*% solve(sig22,t(sig12))
+  } else beta_v_cov
+}
+
 get_matrix <- function(object, which="model.matrix", augmented=TRUE, ...) {
   switch(which,
          "model.matrix"= model.matrix(object),                    ## X
@@ -1451,6 +1485,7 @@ get_matrix <- function(object, which="model.matrix", augmented=TRUE, ...) {
           },
          "fixef_left_ginv"= .get_fixef_WLS_ginv(object, ...), ## X^- = (X' W X)^{-1} X' W    # use the dots to pass an alternative X.pv
          "beta_v_cov"= .get_beta_v_cov(object), 
+         "v_condcov"= .get_v_condcov(object),
          stop("Unhandled 'which' value in get_matrix()")
   )
 }

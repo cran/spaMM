@@ -178,7 +178,7 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
       #    for which="R_scaled_v_h_blob". whether perm=TRUE (for updating) might be correct is not obvious:
       # There, R_scaled_v_h <- t( as(BLOB$CHMfactor_wd2hdv2w,"CsparseMatrix") ) must be triangular and without permutation of the v's
       # (*) the SPPREC code seems better structured to reach the 'updateable' info.
-      #  __F I X M E__? progress is not obvious: would need to make updateable info accessible, and even so it might not be useful.
+      #  _F I X M E__? progress is not obvious: would need to make updateable info accessible, and even so it might not be useful.
     }, assign.env = BLOB )
     #
     delayedAssign("inv_factor_wd2hdv2w", {   # alwas unpermuted user's column order, notably bc CHMfactor_wd2hdv2w is Cholesky(permuted back to user order,,perm=FALSE)

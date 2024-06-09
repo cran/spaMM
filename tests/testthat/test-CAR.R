@@ -57,6 +57,8 @@ if (spaMM.getOption("example_maxtime")>0.7) {
   scotli$cases[1] <- NA
   rownames(Nmatrix) <- colnames(Nmatrix) <- scotli$gridcode # needed here
   mdfit <- fitme(cases~I(prop.ag/10)+adjacency(1|gridcode)+offset(log(expec)), data=scotli, adjMatrix=Nmatrix, family=poisson)
-  predict(mdfit, newdata=scotlip) # on 56 positions
+  (p1 <- predict(mdfit)) # on 55 positions
+  (p2 <- predict(mdfit, newdata=scotlip)) # on 56 positions
+  testthat::expect_true(  max(abs(range(p1-p2[-1])))<1e-12) 
 } 
 

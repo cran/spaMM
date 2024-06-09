@@ -14,7 +14,7 @@
   # build $template$parnames, $diagpars, $poslist from user input $map, $fixed ; a corr CHM template may by added by other functions  
   map <- corrfamily$map
   if ( ! inherits(map,"dgCMatrix")) map <- as(map,"dgCMatrix") # for sp|de corr algo early conversion to dsC leads to 
-  #  call of calc_Lunique_for_correl_algos -> mat_sqrt_dsCMatrix on unregularized matrix. Rethink later (__F I X M E__)
+  #  call of calc_Lunique_for_correl_algos -> mat_sqrt_dsCMatrix on unregularized matrix. Rethink later (_F I X M E__)
   corrfamily$map <- map
   fixed <- corrfamily$fixed
   if ( ! is.null(fixed)) {

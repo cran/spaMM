@@ -48,7 +48,7 @@
   dx <- upper-lower
   dx[is.infinite(dx)] <- 1
   use_bobyqa <- ( any(c(init-lower,upper-init)/dx<1e-4) || 
-                    "rdisPars" %in% names(LowUp$lower) # Cf bbin_llmm_het ( it's a local max issue, numerical tol's have no effect; ____F I X M E___ how to avoid that?)
+                    "rdisPars" %in% names(LowUp$lower) # Cf bbin_llmm_het ( it's a local max issue, numerical tol's have no effect; ___F I X M E___ how to avoid that?)
                     # Also (much weaker) effect on test-LLM.R betabin mv numInfo comparison details there).
                   # See comments on the optim_by_pybobyqa() function defined in devel/TMB/spatial_poisson/spatial_TMB_python_devel.R
                 )

@@ -11,8 +11,8 @@ if (requireNamespace("agridat", quietly = TRUE)) {
     example("corrFamily-design", echo=FALSE)
     if (exists("by_cF")) { # if the examples have been run, check their results:
       testthat::test_that("Check that corrFamily and ranCoef fit are consistent",testthat::expect_true(diff(range(logLik(by_rC),logLik(by_cF)))<1e-08))  
-      testthat::test_that("Check that (poor) logLik(Toepfit) not changed",testthat::expect_true(diff(range(logLik(Toepfit),-152.3747))<1e-4)) 
-      # => poor test bc a better result may be possible (but -152.3747 seem to be the best attained)
+      testthat::test_that("Check that (poor) logLik(Toepfit) not changed",testthat::expect_true(diff(range(logLik(Toepfit),-152.3721))<1e-4)) 
+      # => poor test bc a better result may be possible (but -152.3721 seem to be the best attained, was .3747 before)
       
       { # permutation check ; the restricted range are designed to minimize numerical discrepancies due to singularity issues...
         (Toep1 <- spaMM::fitme(

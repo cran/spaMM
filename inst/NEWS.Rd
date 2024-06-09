@@ -3,6 +3,43 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 4.5.0}{  
+\subsection{NEW FEATURES}{
+\itemize{
+\item A form of comparison of two fits by a bootstrap likelihood-ratio test has been enabled in a case where the chi-square test is prevented (as likely to give meaningless result), namely when at least one of the fits involves a random-effect residual dispersion model and the dispersion models differ between the two fits. 
+\item Although simulate(.,type="marginal", newdata=<non-NULL>) was formally allowed, it worked only in a few cases. It is now more thoroughly implemented.
+\item Although predict(<fit with composite random-effect term>, newdata=<non-NULL>) does not yet work for all forms of composite random effects, an advanced experimental implementation is now available for composite geostatistical (Matern, Cauchy), time-series, adjacency and IMRF terms (corrMatrix terms were already previously handled). 
+\item Composite 'MaternIMRFa' random effects can now be fitted.  
+\item New 'which' value "v_condcov" handled by get_matrix() extractor.
+}
+}
+\subsection{USER-LEVEL CHANGES}{
+\itemize{
+\item The default simulation 'type' for the optional bootstrap procedure in confint() is now "marginal", which is the default simulate() type used in several other bootstrap procedures in spaMM. Previously the default simulation type in confint() was "conditional"; this was not documented and it implied that a non-default specification of 'type' in the confint() call was generally needed to obtain meaningful bootstrap confidence intervals. 
+\item Revised default values for 'prior.weights' and binomial 'sizes' arguments for simulate.HLfit(), and improved warnings when non-trivial defaults are used. The simulated values themselves will be modified only in the case where both 'newdata' are provided and constant non-unit 'prior.weights' were used in the fit. In this case as in some others a warning will show the values used. 
+\item The anova method for GLMs fitted by spaMM procedures has been modified to tentatively track the changes in stats:::anova.glm (quoting the Rnews: The "glm" method for anova() computes test statistics and p-values by default, using a chi-squared test or an F test depending on whether the dispersion is fixed or free. Test statistics can be suppressed by giving argument test a false logical value).
+\item pdep_effects() gets a new explicit argument 'level' [passed to predict.HLfit()], to spare users  from having to find the way to circumvent its partial-matching with the 'levels' argument.
+\item dopar(), when calling foreach(), now uses by default the foreach '.final' control rather than '.combine'. 
+\item Efforts to better document, through warnings in particular, the limitations of the current prediction-variance computations, for random-coefficient and composite random effects in particular. 
+}
+}
+\subsection{FIXED BUGS}{
+\itemize{
+\item combinepar() could fail in some non-interactive sessions (a quite minor issue since it is an experiment in progress, and not called by other spaMM procedures but by the Infusion package). 
+\item LRT() [or equivalently anova() with two fits as input] could fail when one fit included a random-coefficient term.
+\item Calls to RSpectra::eigs_sym() can fail for numerical (floating-point) reasons. This is now handled by the calling spaMM procedure.  
+\item simulate.HLfit() with 'newdata' on models including Markov Random Field terms (IMRF and so on) could fail.
+\item simulate.HLfit() on some multivariate-response models including zero-truncated families could fail.
+\item predict(<multivariate-response fit>, newdata=<non-NULL>) failed for rank-deficient fixed-effect design matrices, and/or when the fitting-function 'X2X' argument had been used to modify the design matrix for fixed effects. 
+\item Fits with Cauchy() random effects only worked for fixed values of its 'longdep' and 'shape' correlation parameters, due to a bug in the code for optimization bounds. 
+}
+}
+\subsection{DEPENDENCIES}{
+\itemize{
+\item New dependency 'RANN' (as a suggested package, optionally used for control of fits with IMRF terms).
+}
+}
+}
 \section{CHANGES UP TO VERSION 4.4.16}{  
 \subsection{NEW FEATURES}{
 \itemize{
@@ -18,7 +55,7 @@
 \item Internal default value of 'map.asp' in spaMMplot2D() was not always appropriate, resulting in a failure of the plot.
 \item pdep_effects() and plot_effects() did not handle factors well enough, and did not handle fits with non-estimable fixed-effect coefficients.
 \item Some fits could fail with recent versions of the Matrix package.
-\item Some prediction varaince computation could fail for AR1 models.
+\item Some prediction variance computations could fail for AR1 models.
 }
 }
 }

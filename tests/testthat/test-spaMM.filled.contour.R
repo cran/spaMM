@@ -1,7 +1,7 @@
 cat(crayon::yellow("\ntest spaMM.filled.contour:"))
 # spaMM.filled.contour
 
-spaMM.filled.contour(volcano, color = spaMM.colors) # simple
+spaMM.filled.contour(volcano, color.palette = spaMM.colors) # simple
 
 ## Comparing the layout with that of filled.contour:
 #  (except that it does not achieve the intended effect 
@@ -9,7 +9,7 @@ spaMM.filled.contour(volcano, color = spaMM.colors) # simple
 
 x <- 10*1:nrow(volcano)
 y <- 10*1:ncol(volcano)
-spaMM.filled.contour(x, y, volcano, color = terrain.colors,
+spaMM.filled.contour(x, y, volcano, color.palette = terrain.colors,
                      plot.title = title(main = "The Topography of Maunga Whau",
                                         xlab = "Meters North", ylab = "Meters West"),
                      plot.axes = { axis(1, seq(100, 800, by = 100))
@@ -21,7 +21,7 @@ mtext(paste("spaMM.filled.contour(.) from", R.version.string),
 
 ## compare with      
 
-filled.contour(x, y, volcano, color = terrain.colors,
+filled.contour(x, y, volcano, color.palette = terrain.colors,
                plot.title = title(main = "The Topography of Maunga Whau",
                                   xlab = "Meters North", ylab = "Meters West"),
                plot.axes = { axis(1, seq(100, 800, by = 100))

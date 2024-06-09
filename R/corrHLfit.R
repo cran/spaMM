@@ -103,6 +103,7 @@ corrHLfit <- function(formula,data, ## matches minimal call of HLfit
   .spaMM.data$options$xLM_conv_crit <- list(max=-Inf)
   time1 <- Sys.time()
   oricall <- match.call(expand.dots=TRUE) ## mc including dotlist
+  oricall <- ..n_names2expr(oricall) 
   oricall$control.HLfit <- eval(oricall$control.HLfit, parent.frame()) # to evaluate variables in the formula_env, otherwise there are bugs in waiting
   if ( ! missing(ranFix)) {
     oricall$fixed <- ranFix

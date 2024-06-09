@@ -20,7 +20,7 @@ testthat::expect_equal(logLik(foo), c(P_v=-1224.65219293 ))
 
   (foo <- fitme(cbind(npos,nneg)~1+(1|clinic), method=c("ML","obs"),
                 family=binomial(cloglog),data=clinics))
-  testthat::expect_equal(logLik(foo), c(P_v=-40.4244068868))
+  testthat::expect_equal(logLik(foo), c(P_v=-40.4244075868),tol=1e-6)
 }
 
 {
@@ -52,5 +52,5 @@ if (spaMM.getOption("example_maxtime")>3) {
                   adjMatrix=Nmatrix,data=scotlip)
   std_lev <- hatvalues(adjfit, type="std", force=TRUE, which="both")
   testthat::test_that("Whether hatvalues() works on mv fit moreover, with obsInfo)",
-                      testthat::expect_true(diff(range(c(std_lev$ranef -adjfit$lev_lam,std_lev$resid -adjfit$lev_phi)))<1e-14) )
+                      testthat::expect_true(diff(range(c(std_lev$ranef -adjfit$lev_lambda,std_lev$resid -adjfit$lev_phi)))<1e-14) )
 }

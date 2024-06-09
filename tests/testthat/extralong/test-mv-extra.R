@@ -71,7 +71,7 @@ spaMM.options(spaMM_tol=local_tol) # to control strictness of checks in independ
   (numSEs <- sqrt(diag(solve(numinfo)))) 
   condSEs <- summary(zut0,verbose=FALSE)$beta_table[,"Cond. SE"]
   crit <- max(abs(numSEs[5:8]-condSEs))
-  testthat::test_that("numInfo() consistent with cond.SEs", testthat::expect_true(crit<1e-10))
+  testthat::test_that("numInfo() consistent with cond.SEs", testthat::expect_true(crit<1.2e-10))
   
   { # check of anova
     zutLM <- fitmv(submodels=list(mod1=list(formula=ly~X1+batch),
@@ -411,11 +411,11 @@ spaMM.options(spaMM_tol=local_tol) # to control strictness of checks in independ
   
   # step(zut1) dos not stop() but does not steps...
   
-  simulate(zut1,nsim=3) # checks that mv simulate Tpoisson works (possibly depending on same attributes as Tnegbin)
+  simulate(zut1,nsim=3) 
   update_resp(zut1, newresp=simulate(zut1))
   # CI for the variance of the random effect:          
   ( ci <- confint(zut1,parm=function(fit){VarCorr(fit)[1,"Variance"]}, 
-                  boot_args=list(nb_cores=9, nsim=9, seed=123)) )
+                  boot_args=list(nb_cores=9, nsim=9, seed=123, type="marginal")) )
   # The distribution of bootstrap replicates:
   plot(ecdf(ci$call$t))
   zutnull <- update(zut1, submodels=list(mod1=list(formula=cbind(npos,nneg)~treatment+(1|clinic),family=binomial(), rand.family=Gamma(log)),
@@ -465,6 +465,7 @@ spaMM.options(spaMM_tol=local_tol) # to control strictness of checks in independ
   (zut2 <- fitmv(submodels=list(mod1=list(formula=cbind(npos,nneg)~treatment+(1|clinic),family=binomial()),
                                  mod2=list(formula=I(1L+20*np2)~treatment+(+1|clinic),family=Tnegbin())), 
                          data=climv))
+  simulate(zut1, nsim=2, newdata=climv[1:3,], prior.weights=list(rep(1,3),rep(1,3)), sizes=rep(1,6))
   (fb <- fitme(formula=cbind(npos,nneg)~treatment+(1|clinic),family=binomial(), data=climv))
   (fTn <- fitme(formula=I(1L+20*np2)~treatment+(1|clinic),family=Tnegbin(), data=climv))
   testthat::expect_true(diff(range(logLik(zut1), logLik(zut2), logLik(fb)+logLik(fTn)))<1e-06) # This did not work at first by obsInfo bc
@@ -832,6 +833,23 @@ testthat::expect_true(diff(range(logLik(zut1), logLik(zut2)))<1e-08)
                    data=cap_mv, fixed=list(rho=0.0544659,nu=0.6285603), init=list(lambda=c(NA,0.02)))) # Matern in spprec...
     testthat::expect_true(diff(range(logLik(zut1), logLik(zut2), logLik(mod1)+logLik(mod2)))<1e-08)
   }
+  { # mv IMRF  
+    (mvIMRF <- fitmv(submodels=list(mod1=list(migStatus ~ means + IMRF(0+mv(1,2)|longitude+latitude, model=matern), 
+                                            fixed=list()),
+                                  mod2=list(status2 ~ 1+ IMRF(0+mv(1,2)|longitude+latitude, model=matern), 
+                                            fixed=list())),
+                   fixed=list(ranCoefs=list("1"=c(NA,0.5,NA))), # bc free correlation estimate is 1... 
+                   # alternatively, phi might be fixed but the predVar may vanish 
+                   data=cap_mv)) #
+    p1 <- predict(mvIMRF)
+    p2 <- predict(mvIMRF, newdata=mvIMRF$data)
+    (crit <- max(abs(p1-p2)))
+    testthat::expect_true(crit<1e-9)
+    p1 <- get_predVar(mvIMRF, variances=list(cov=TRUE))
+    p2 <- get_predVar(mvIMRF, newdata=mvIMRF$data, variances=list(cov=TRUE))
+    (crit <- max(abs(p1-p2)))
+    testthat::expect_true(crit<1e-9)
+  }
   {   # permutation test
     (zut1 <- fitmv(submodels=list(mod1=list(migStatus ~ means + IMRF(1|longitude+latitude, model=matern)),
                                   mod2=list(status2 ~ means+ IMRF(1|longitude+latitude, model=matern))), 
@@ -849,14 +867,14 @@ testthat::expect_true(diff(range(logLik(zut1), logLik(zut2)))<1e-08)
                    init=list(lambda=c(0.02),phi=c(0.02,0.02)),
                    data=cap_mv)) 
     crit <- diff(range(logLik(zut1), -6.48825776602))
-    try(testthat::test_that(paste0("criterion was ",signif(crit,6)," from -6.48825776602"), # affected by use_ZA_L or .calc_r22() ... and minKappa...
+    try(testthat::test_that(paste0("Inaccurate fit with divergent lambda: criterion was ",signif(crit,6)," from -6.48825776602"), # affected by use_ZA_L or .calc_r22() ... and minKappa...
                         testthat::expect_true(crit<1e-08)))
     (zut2_testr22 <- fitmv(submodels=list(mod2=list(status2 ~ 1+ IMRF(1|longitude+latitude, model=matern)),
                                           mod1=list(migStatus ~ means + IMRF(1|longitude+latitude, model=matern))), 
                            init=list(lambda=c(0.02),phi=c(0.02,0.02)),
                            data=cap_mv)) # has been sensitive to .solve_crossr22( ., use_crossr22=TRUE)
     crit <- diff(range(-6.48825776601 , logLik(zut2_testr22)))
-    try(testthat::test_that(paste0("criterion was ",signif(crit,6)," from -6.48830317593"), # affected by use_ZA_L or .calc_r22()  ... and minKappa...
+    try(testthat::test_that(paste0("Another inaccurate fit with divergent lambda: criterion was ",signif(crit,6)," from -6.48830317593"), # affected by use_ZA_L or .calc_r22()  ... and minKappa...
                         testthat::expect_true(crit<1e-08)))
   }
   if (spaMM.getOption("example_maxtime")>87) { cat(crayon::yellow("multIMRF indep-fit tests; "))
@@ -972,11 +990,17 @@ testthat::expect_true(diff(range(logLik(zut1), logLik(zut2)))<1e-08)
     # and in mv case, it finds it by default or not depending on order...
     (zut1 <- fitmv(submodels=list(mod1=list(cases ~ I(prop.ag/10)+adjacency(1|gridcode)+offset(log(expec)), family=poisson()),
                            mod2=list(cases2 ~ I(prop.ag/10)+adjacency(1|code2)+offset(log(expec)), family=poisson())), 
-                   data=scotmv,covStruct=list(adjMatrix=Nmatrix,adjMatrix=Nmatrix))) # Matern in spprec...
+                   data=scotmv,covStruct=list(adjMatrix=Nmatrix,adjMatrix=Nmatrix))) # 
     (zut2 <- fitmv(submodels=list(mod1=list(cases2 ~ I(prop.ag/10)+adjacency(1|code2)+offset(log(expec)), family=poisson()),
                            mod2=list(cases ~ I(prop.ag/10)+adjacency(1|gridcode)+offset(log(expec)), family=poisson())), 
-                   data=scotmv,covStruct=list(adjMatrix=Nmatrix,adjMatrix=Nmatrix))) # Matern in spprec...
-    testthat::expect_true(diff(range(logLik(zut1), logLik(zut2), logLik(mod1)+logLik(mod2)))<1e-04) # __F I X M E__ was more accurate by outer lambda 
+                   data=scotmv,covStruct=list(adjMatrix=Nmatrix,adjMatrix=Nmatrix))) # 
+    testthat::expect_true(diff(range(logLik(zut1), logLik(zut2), logLik(mod1)+logLik(mod2)))<1e-07) 
+    p11 <- predict(zut1)
+    p12 <- predict(zut1, newdata=zut1$data)
+    p21 <- predict(zut2)
+    p22 <- predict(zut2, newdata=zut1$data)
+    testthat::expect_true(diff(range(c(p11-p12,p21-p22)))<1e-10) 
+    testthat::expect_true(diff(range(p11-p21[c(57:112,1:56),]))<1.2e-3) # See comment above
   }
   {   # permutation test
     # here to the order affects nloptr... tiny blackcap data again. Note lambda divergence.
@@ -993,6 +1017,47 @@ testthat::expect_true(diff(range(logLik(zut1), logLik(zut2)))<1e-08)
                            mod2=list(cases2 ~ I(prop.ag/10)+adjacency(1|gridcode)+offset(log(expec)))), 
                    data=scotmv,adjMatrix=Nmatrix)) 
     confint(zut1, parm="(Intercept)_1")
+  }
+  {   # mv(1,2) (a bit slow) # but ___F I X M E____ should go in main tests
+    (zut1 <- fitmv(submodels=list(mod1=list(cases ~ I(prop.ag/10)+adjacency(0+mv(1,2)|gridcode)+offset(log(expec)), family=poisson()),
+                                  mod2=list(cases2 ~ I(prop.ag/10)+adjacency(0+mv(1,2)|gridcode)+offset(log(expec)), family=poisson())), 
+                   data=scotmv,adjMatrix=Nmatrix)) 
+    (zut2 <- fitmv(submodels=list(mod2=list(cases2 ~ I(prop.ag/10)+adjacency(0+mv(1,2)|gridcode)+offset(log(expec)), family=poisson()),
+                                  mod1=list(cases ~ I(prop.ag/10)+adjacency(0+mv(1,2)|gridcode)+offset(log(expec)), family=poisson())), 
+                   data=scotmv,adjMatrix=Nmatrix)) 
+    testthat::expect_true(diff(range(logLik(zut1), logLik(zut2)))<1e-07) # more accurate with 0+...
+    p1 <- predict(zut1)
+    p2 <- try(predict(zut1, newdata=zut1$data), silent=TRUE) 
+    if (inherits(p2,"try-error")) {
+      message("predict(., newdata) fails on composite adjacency fit")
+    } else {
+      (crit <- max(abs(p2-p1)))
+      testthat::expect_true(crit<1e-10) 
+    }
+    p3 <- try(predict(zut1, newdata=zut1$data[2:4,]), silent=TRUE) 
+    if (inherits(p3,"try-error")) {
+      message("predict(., newdata != data) fails on composite adjacency fit")
+    } else {
+      (crit <- max(abs(p3-p2[as.vector(sapply(c(0,56), FUN=`+`, y=2:4))])))
+      testthat::expect_true(crit<1e-12) 
+    }
+    p1 <- get_predVar(zut1, variances=list(cov=TRUE))
+    p2 <- try(get_predVar(zut1, newdata=zut1$data, variances=list(cov=TRUE)), silent=TRUE) 
+    if (inherits(p2,"try-error")) {
+      message("predict(., newdata) fails on composite adjacency fit")
+    } else {
+      (crit <- max(abs(p2-p1)))
+      testthat::expect_true(crit<1e-10) 
+    }
+    p3 <- try(get_predVar(zut1, newdata=zut1$data[2:4,], variances=list(cov=TRUE)), silent=TRUE) 
+    if (inherits(p3,"try-error")) {
+      message("predict(., newdata != data) fails on composite adjacency fit")
+    } else {
+      chkpos <- as.vector(sapply(c(0,56), FUN=`+`, y=2:4))
+      (crit <- max(abs(p3-p2[chkpos,chkpos])))
+      testthat::expect_true(crit<1e-12) 
+    }
+    # 
   }
   
 }

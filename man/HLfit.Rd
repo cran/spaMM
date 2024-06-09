@@ -16,7 +16,7 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
       resid.model = ~1, REMLformula = NULL, verbose = c(inner = FALSE), 
       HLmethod = "HL(1,1)", method="REML", control.HLfit = list(), 
       control.glm = list(), init.HLfit = list(), fixed=list(), ranFix, 
-      etaFix = list(), prior.weights = NULL, weights.form = NULL, X2X=NULL, 
+      etaFix = list(), prior.weights = NULL, weights.form = NULL, 
       processed = NULL)
 ## see 'rand.family' argument for inverse.Gamma
 }
@@ -82,9 +82,6 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
   \item{weights.form}{
   Specification of prior weights by a one-sided formula: use \code{weights.form = ~ pw} instead of \code{prior.weights = pw}. The effect will be the same except that such an argument, known to evaluate to an object of class \code{"formula"}, is suitable to enforce safe programming practices (see \code{\link{good-practice}}).  
   }
-  \item{X2X}{
-    For development purposes, not documented.
- }
   \item{processed}{
     A list of preprocessed arguments, for programming purposes only.
  }

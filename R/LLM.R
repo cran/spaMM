@@ -136,7 +136,7 @@
 
 # fixed-effect mean response
 # uses gradient and negHess, while .calc_etaGLMblob uses z1 and w_resid
-# Maybe not quite different otherwise (__F I X M E__ merge ?? pbbly not a good idea)
+# Maybe not quite different otherwise (_F I X M E__ merge ?? pbbly not a good idea)
 # condition for either seems to be if(obsInfo) => $obs methods used (so requested, and non canonical)
 .calc_etaLLMblob <- function(processed, muetablob, 
                              mu=muetablob$mu, eta=muetablob$sane_eta, 

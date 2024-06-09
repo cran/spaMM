@@ -90,7 +90,7 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
     BLOB$WLS_mat_weights <- BLOB$H_w.resid
   }
   ## with perm=TRUE G=P'LL'P and the P'L (non-triangular) factor is given by solve(<G_CHM>,as(<G_CHM>,"sparseMatrix"),system="Pt")
-  # (?__F I X M E__?) It's theo. possible to call .updateCHMfactor on the tcrossfac of Gmat...
+  # (?_F I X M E__?) It's theo. possible to call .updateCHMfactor on the tcrossfac of Gmat...
   BLOB$pMat_G <- as(BLOB$G_CHMfactor, "pMatrix") # used itself or for its @perm slot, with indices from 1L
   .init_promises_spprec(sXaug)
 }
@@ -110,7 +110,8 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
       if (inherits(envir$precisionFactorList[[rd]],c("Matrix","matrix"))) stop("list expected here in .reformat_Qmat_info()") 
       chol_Q_list[[rd]] <- envir$precisionFactorList[[rd]]$chol_Q
       if (envir$finertypes[rd]=="ranCoefs") {
-        precisionBlocks[[rd]] <- envir$precisionFactorList[[rd]]$precmat ## full already including lambda
+        precisionBlocks[[rd]] <- envir$precisionFactorList[[rd]]$precmat ## full already including lambda, 
+        # and possibly permuted (matching precisionFactorList[[rd]]$chol_Q).
       } else { ## both Q and factorization provided (see .assign_geoinfo_and_LMatrices_but_ranCoefs())
         precisionBlocks[[rd]] <- envir$precisionFactorList[[rd]]$Qmat ## indep of w.ranef (lambda); should be dsC at this point
       }
@@ -125,7 +126,7 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
   if (attr(WLS_mat_weights,"is_unit")) {
     ZtWX <- as.matrix(crossprod(AUGI0_ZX$ZAfix, X.pv)) 
   } else {
-    if (methods::.hasSlot(AUGI0_ZX$ZAfix, "x") && # 1st condition is true in all tests. But not clearly enforced. (__F I X M E__ ?) 
+    if (methods::.hasSlot(AUGI0_ZX$ZAfix, "x") && # 1st condition is true in all tests. But not clearly enforced. (_F I X M E__ ?) 
         length(AUGI0_ZX$ZAfix@x)>prod(dim(X.pv))) {
       ZtWX <- .Dvec_times_m_Matrix(WLS_mat_weights, X.pv) 
       ZtWX <- as.matrix(crossprod(AUGI0_ZX$ZAfix, ZtWX)) 
@@ -219,7 +220,13 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
 .solve_crossr22 <- function(BLOB, # must include $r12
                             AUGI0_ZX, sXaug, dbeta_rhs, 
                             use_crossr22=FALSE) { #use_crossr22=TRUE affects mv test 'zut2_testr22' (test-mv-nested, v3.6.46, l.768) [the file is now test-mv-extra]
-  if (use_crossr22 && ! .is_evaluated("r22",BLOB) ) { # FALSE, hence currently BLOB$r22 is always used 
+  ##  The computation of $r22 uses 
+  # crossr22 <- BLOB$XtWX - crossprod(BLOB$r12) # the crossr22 delayedAssign is not currently called.
+  # r22 <- .wrap_Utri_chol(crossr22) # rather than (Matrix::)chol()
+  ## but the double backsolve() although fast does not seem numerically accurate
+  ## Is .wrap_Utri_chol() accurate ?
+  
+  if (use_crossr22 && ! .is_evaluated("r22",BLOB)) { # FALSE, hence currently BLOB$r22 is always used 
     dbeta_eta <- solve(BLOB$crossr22, dbeta_rhs)
   } else dbeta_eta <- backsolve(BLOB$r22, backsolve(BLOB$r22, dbeta_rhs, transpose = TRUE)) # ie (chol2inv(BLOB$r22) %*% dbeta_rhs)[,1L]
   dbeta_eta
@@ -380,7 +387,7 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
 }
 
 .provide_BLOB_hatval_Z_ <- function(sXaug, BLOB=sXaug$BLOB, w.ranef=attr(sXaug,"w.ranef") , AUGI0_ZX=sXaug$AUGI0_ZX , needed=c("lambda","phi")) {
-  if (BLOB$nonSPD) { # ___F I X M E___ componentwise product presumably not efficient + does not "memoise" as alternative code does.
+  if (BLOB$nonSPD) { # __F I X M E___ componentwise product presumably not efficient + does not "memoise" as alternative code does.
     hatval_Z_ <- colSums(( BLOB$invIm2QtdQ_Z %*% BLOB$t_Qq) * BLOB$t_Qq)
     seq_n_u_h <- seq_len(ncol(BLOB$Gmat))
     BLOB$hatval_Z_ <- list(lev_lam=hatval_Z_[seq_n_u_h], lev_phi=hatval_Z_[-seq_n_u_h]*BLOB$signs)
@@ -440,13 +447,13 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
   ## cf HLfit_body -> .calc_std_leverages() -> .hatvals2std_lev -> .calc_dvdloglamMat_new()
   ## or even fuller matrices (neg.d2h0_dv_dlogphi <- .m_Matrix_times_Dvec(t(ZAL), drop(dh0deta)) in .calc_dvdlogphiMat_new())
   if (.is_evaluated("factor_inv_Md2hdv2", BLOB)) {
-    BLOB$factor_inv_Md2hdv2 %*% B # __F I X M E__ optimize for diagonal matrices? Not easy (info to be passed efficiently from get_from_MME call)
+    BLOB$factor_inv_Md2hdv2 %*% B # _F I X M E__ optimize for diagonal matrices? Not easy (info to be passed efficiently from get_from_MME call)
   } else {
     B <- BLOB$chol_Q %*% B # => which typically yields a dge, so [] is OK:
     B <- B[BLOB$pMat_G@perm, ] # BLOB$pMat_G %*% B
     Matrix::solve(BLOB$G_CHMfactor, B, system="L")  
   }
-} # drop0() might be useful (__F I X M E__? have to wait for profiling to point it...)
+} # drop0() might be useful (_F I X M E__? have to wait for profiling to point it...)
 
 .crossprod_factor_inv_Md2hdv2_rhs <- function(BLOB, Bvec) { # B is typically grad_v
   if (.is_evaluated("factor_inv_Md2hdv2", BLOB)) {
@@ -505,6 +512,44 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
   
 }
 
+.eval_qrXa <- function(AUGI0_ZX, sXaug, BLOB) {
+  ## used for "hatval" in case of failure of computation of BLOB$r22... and for BLOB$nonSPD
+  if (.spaMM.data$options$Matrix_old) { # this block appears to evade the long tests
+    X.pv <- as(AUGI0_ZX$X.pv,"dgCMatrix")#  .Rcpp_as_dgCMatrix(AUGI0_ZX$X.pv)
+  } else X.pv <- as(as(AUGI0_ZX$X.pv,"generalMatrix"),"CsparseMatrix")
+  ZAL <- .tcrossprod(AUGI0_ZX$ZAfix, Matrix::solve(BLOB$chol_Q, AUGI0_ZX$trDiag), 
+              chk_sparse2mat = FALSE) # avoid conversion to dge in which case Xscal becomes dge 
+  #        -> qrR(BLOB$qrXa, backPermute = FALSE) will fail (test is fit_REML in test-devel-predVar-AR1)
+  #        but the solve(chol_Q) may indeed be dense (__F I X M E___ something to optimize?)
+  Xscal <- with(sXaug,rbind(cbind(AUGI0_ZX$I, AUGI0_ZX$ZeroBlock), # I0_ZX order
+                            cbind(ZAL, X.pv)))
+  # if (inherits(Xscal,"dgeMatrix")) Xscal <- drop0(Xscal,tol=1e-16) # back to sparse because there are many tue zero's fro mthe other blocks
+  Xscal <- .Dvec_times_Matrix(c(sqrt(attr(sXaug,"w.ranef")),BLOB$sqrtW),Xscal)
+  qrXa <- qr(Xscal)
+  qrXa
+}
+
+.eval_X_scaled_H_unscaled_logdet_r22_SPD <- function(BLOB, sXaug, AUGI0_ZX) { 
+  if (.is_evaluated("r22",BLOB)) {
+    logdet_r22 <- determinant(BLOB$r22)$modulus[1]
+  } else {
+    if (attr(sXaug,"pforpv")==0L) {
+      logdet_r22 <- 0 
+    } else if (inherits(AUGI0_ZX$X.pv,"sparseMatrix")) { ## sparse qr is fast... 
+      ## This case is not in the long tests! But was checked in browser session.
+      logdet_r22 <-  BLOB$logdet_R_qrXa - BLOB$logdet_sqrt_d2hdv2
+      # logdet_r22 <- BLOB$logdet_R_scaled_b_v - BLOB$logdet_sqrt_d2hdv2
+      ## would not work in two ways:
+      ## BLOB$logdet_R_scaled_b_v is not the same thing as BLOB$logdet_R_qrXa in SPD case !!
+      ## BLOB$logdet_R_scaled_b_v leads to recursive eval since its eval requires logdet_r22 in SPD case.
+    } else { # tested by test-AR1
+      #cat("cross_r22:") # FIXME should use X.Re for non-standard REML? (don't modify this but code which may call for it)
+      crossprod_r22 <- .calc_inv_beta_cov(sXaug) # inv_beta_cov is crossprod_r22 as shown in working doc.
+      logdet_r22 <- determinant(crossprod_r22)$modulus[1]/2
+    }
+  } 
+  logdet_r22
+}
 
 .init_promises_spprec <- function(sXaug, non_X_ones=TRUE, nullify_X_ones =FALSE, intervalInfo=NULL) {  
   BLOB <- sXaug$BLOB # environment that should contain  'G_CHMfactor', 'chol_Q', 'perm', optionally 'signs' when promises are evaluated;
@@ -550,18 +595,10 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
   #
   ### What DOES depend on X:
   #  Most of them assuming unscaled X (for confint code: lost columns; and predVar computations currently all based on unscaled beta's), BUT
-  # one exception is qrXa. Ggiven it's needed sometimes in-fit, the post-fit code using it takes the rescaling into account, so we treat it as the non-X ones, 
+  # one exception is qrXa. Given it's needed sometimes in-fit, the post-fit code using it takes the rescaling into account, so we treat it as the non-X ones, 
   if ( non_X_ones ) {
-    delayedAssign("qrXa", { ## used for "hatval" in case of failure of computation of BLOB$r22... and for BLOB$nonSPD
-      if (.spaMM.data$options$Matrix_old) { # this block appears to evade the long tests
-        X.pv <- as(AUGI0_ZX$X.pv,"dgCMatrix")#  .Rcpp_as_dgCMatrix(AUGI0_ZX$X.pv)
-      } else X.pv <- as(X.pv <- as(AUGI0_ZX$X.pv,"generalMatrix"),"CsparseMatrix")
-      Xscal <- with(sXaug,rbind(cbind(AUGI0_ZX$I, AUGI0_ZX$ZeroBlock), # I0_ZX order
-                                cbind(.tcrossprod(AUGI0_ZX$ZAfix, Matrix::solve(BLOB$chol_Q, AUGI0_ZX$trDiag)), X.pv)))
-      Xscal <- .Dvec_times_Matrix(c(sqrt(attr(sXaug,"w.ranef")),BLOB$sqrtW),Xscal)
-      qrXa <- qr(Xscal)
-    }, assign.env = BLOB )
-    delayedAssign("t_Q", { t(qr.Q(BLOB$qrXa)) }, assign.env = BLOB) # (In QRP factos, crossprod X is always eqauld to crossprod Q)
+    delayedAssign("qrXa", { .eval_qrXa(AUGI0_ZX, sXaug, BLOB) }, assign.env = BLOB )
+    delayedAssign("t_Q", { t(qr.Q(BLOB$qrXa)) }, assign.env = BLOB) # (In QRP factos, crossprod X is always equal to crossprod Q)
   }
   if (nullify_X_ones) {
     if (.is_evaluated("r22", BLOB)) {
@@ -603,42 +640,35 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
     # more or less for speculative code:
     delayedAssign("LZtWX", as(solve(BLOB$chol_Q, BLOB$ZtWX),"matrix"), assign.env = BLOB ) ## currently not used (in variant of LevMar step)
     delayedAssign("crossr22", { # NOT currently used: Used only in-fit -> .calc_sum_pwt_Q_y_o_2() ->  .solve_crossr22(., use_crossr22=TRUE), but use_crossr22 set to FALSE:
-      if (ncol(X.pv)) { 
+      if (ncol(AUGI0_ZX$X.pv)) { 
         crossr22 <- BLOB$XtWX - crossprod(as.matrix(BLOB$r12),NULL,as_mat=TRUE) 
       } else crossr22 <- diag(nrow=0L)
     } , assign.env = BLOB )
     
+    delayedAssign("logdet_R_qrXa", {
+      R_scaled  <- qrR(BLOB$qrXa,backPermute = FALSE)
+      # sum(log(abs(diag(x=R_scaled))))
+      determinant(R_scaled)$modulus[1]
+    }, assign.env = BLOB)
+    
     if (BLOB$nonSPD) {
       delayedAssign("t_Q", { t(qr.Q(BLOB$qrXa)) }, assign.env = BLOB) # (In QRP factos, crossprod X is always eqauld to crossprod Q)
       delayedAssign("invIm2QtdQ_ZX", { .Rcpp_adhoc_shermanM_sp(BLOB$t_Q, c(rep(0L,ncol(BLOB$Gmat)),BLOB$signs<0)) }, assign.env = BLOB)
-      delayedAssign("logdet_R_scaled_b_v", {
-        R_scaled  <- qrR(BLOB$qrXa,backPermute = FALSE)
-        sum(log(abs(diag(x=R_scaled))))
-      }, assign.env = BLOB)
+      delayedAssign("logdet_R_scaled_b_v", { BLOB$logdet_R_qrXa }, assign.env = BLOB)
       delayedAssign("logdet_r22", { # X_scaled_H_unscaled_logdet_r22   # "REML"
         # some fun here. A QR facto is needed.... I wrote p_bv comput for all methods as a correction of p_v computation
         # by the logdet of an r22 bloc which is not really available in nonSPD case. But we have a similar subcase in the alternative to nonSPD.
-        # However, this implies two QR facto ___F I X M E___ is it possible to optimize to a single one?
-        logdet_sqrt_d2hdbv2 <- determinant(qrR(BLOB$qrXa,backPermute = FALSE))$modulus[1] - determinant(BLOB$invIm2QtdQ_ZX)$modulus[1]/2
+        # However, this implies two QR facto __F I X M E___ is it possible to optimize to a single one?
+        logdet_sqrt_d2hdbv2 <- BLOB$logdet_R_qrXa - determinant(BLOB$invIm2QtdQ_ZX)$modulus[1]/2
         logdet_sqrt_d2hdbv2 - BLOB$logdet_sqrt_d2hdv2
       }, assign.env = BLOB) 
     } else {
-      delayedAssign( "logdet_R_scaled_b_v", { BLOB$logdet_R_scaled_v + BLOB$logdet_r22} , assign.env = BLOB )
-      delayedAssign("logdet_r22", { # X_scaled_H_unscaled_logdet_r22
-        if (.is_evaluated("r22",BLOB)) {
-          logdet_r22 <- determinant(BLOB$r22)$modulus[1]
-        } else {
-          if (attr(sXaug,"pforpv")==0L) {
-            logdet_r22 <- 0 
-          } else if (inherits(AUGI0_ZX$X.pv,"sparseMatrix")) { ## sparse qr is fast
-            logdet_r22 <- determinant(qrR(BLOB$qrXa,backPermute = FALSE))$modulus[1] - BLOB$logdet_sqrt_d2hdv2
-          } else {
-            #cat("cross_r22:") # FIXME should use X.Re for non-standard REML? (don't modify this but code which may call for it)
-            crossprod_r22 <- .calc_inv_beta_cov(sXaug) # inv_beta_cov is crossprod_r22 as shown in working doc.
-            logdet_r22 <- determinant(crossprod_r22)$modulus[1]/2
-          }
-        } 
-        logdet_r22
+      delayedAssign( "logdet_R_scaled_b_v", { 
+        BLOB$logdet_R_scaled_v + BLOB$logdet_r22
+        ## logdet_R_qrXa cannot be used here: it is definitely not the same thing as logdet_R_scaled_b_v in SPD case.
+      }, assign.env = BLOB) 
+      delayedAssign("logdet_r22", {
+        .eval_X_scaled_H_unscaled_logdet_r22_SPD(BLOB, sXaug, AUGI0_ZX)
       } , assign.env = BLOB )
     }
 
@@ -718,6 +748,8 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
     } else if (.is_evaluated("factor_inv_Md2hdv2", BLOB)) {
       sol <- - .crossprod(BLOB$factor_inv_Md2hdv2, BLOB$factor_inv_Md2hdv2 %*% B)
     } else {
+      # $chol_Q is .bdiag_dtC(chol_Q_list) and nt the direct result of a (permuted) Cholesky.
+      # Beware how permutations are taken into account in the creation of the chol_Q_list.
       B <- BLOB$chol_Q %*% B
       B <- Matrix::solve(BLOB$G_CHMfactor, B, system="A")  
       sol <- - .crossprod(BLOB$chol_Q, B) 

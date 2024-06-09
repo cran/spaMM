@@ -48,7 +48,7 @@
 # which_in_subm <- which(map_rd_mv[[mv_it]] %in% corr_info$is_cF_internally ) # so eg from (c("1"=1,"2"=3)) %in% 3), rd_in_mv is 2 
 # pos_in_sub <- map_rd_mv[[mv_it]][which_in_subm]
 # pos_in_merged <- as.integer(names(pos_in_sub)) 
-# but pos_in_merged is more directly provided by map_rd_mv[[mv_it]] (__F I X M E__ rename?)
+# but pos_in_merged is more directly provided by map_rd_mv[[mv_it]] (_F I X M E__ rename?)
 
 .merge_rand_families <- function(unmerged, map_rd_mv=attr(ZAlist, "map_rd_mv"), nrand=length(ZAlist), ZAlist) {
   n_submodels <- length(unmerged)
@@ -202,7 +202,7 @@
                                   which_mv=which_mv, 
                                   namesTerm=namesTerm, 
                                   is_incid=is_incid,
-                                  RHS_info=RHS_info, 
+                                  RHS_info=RHS_info, # RHS_info (here coming from one matrix) may not be appropriate for all models
                                   LHS_levels=LHS_levels)
     namesTerms[ran_it] <- attr(Zlistori,"namesTerms")[ori] # namesTerms is a *named* list... but pathetically that does not copy the name
     names(namesTerms)[ran_it] <- names(attr(Zlistori,"namesTerms")[ori])
@@ -221,17 +221,53 @@
   ))
 } 
 
+# The matrices to be merged by .merge_Xs() have been individually rank-trimmed and scaled.
+#
+## Attributes have been added to each matrix, in the following order:
+# Added typically by .post_process_X() -> .rankTrim() submodel matrices: {
+#   namesOri attr, , gives before-trimming colnames
+#   assign, modified by .rankTrim() from the assign attr given by model.matrix(). 
+#   assignOri, added by .rankTrim() copies the assign attr given by model.matrix().
+# }
+# scaled:scale attr, added by .scale(),
+#
+## Merging steps:
+# As seen below, .merge_Xs() takes care of the namesOri and scaled:scale attrs
+#    The info from assign and assignOri attrs appear to be lost in the merged return value, but
+#      some attributes have been preprocessed and are put back after the .merge_Xs() call: cf
+# attr(merged_X,"assign") <- assign_attr       # notably used by anova()
+# attr(merged_X,"rankinfo") <- rankinfo_attr   # notably used by anova()
+# attr(merged_X,"col_ranges") <- col_ranges
+# attr(merged_X,"cum_nobs") <- cum_nobs
+#
+# The assignOri attr is apparently lost, (.anova.glm() will use it if present, and use "assign" otherwise)
+#
+## X2X product, if any, comes after merging in mv fits :.merge_processed() -> .designX_prod_mv(),
+# which adds attr cols_lhs_X2X: the colnames of the merged_X before the X2X product. 
 .merge_Xs <- function(X1,X2, mv_it, REML=FALSE) { 
   if ( ! is.null(colnames(X2))) colnames(X2) <- paste0(colnames(X2),"_",mv_it)
   if (is.null(X1)) { 
-    X <- X2
+    X <- X2 # X can be NULL when merging REML matrices...
+    if ( ! is.null(X)) {
+      scale2 <- attr(X2,"scaled:scale")
+      if ( length(scale2)) { # avoids scale2 being NULL or numeric(0) (why do bother of these cases occur?)
+        names(scale2) <- paste0(names(scale2),"_",mv_it)
+        attr(X,"scaled:scale") <- scale2
+      }
+      attr(X,"namesOri") <- paste0(attr(X2,"namesOri"),"_",mv_it)
+    }
   } else {
     XX1 <- cbind(X1,matrix(0, nrow=nrow(X1), ncol=ncol(X2)))
     colnames(XX1) <- c(colnames(X1),colnames(X2))
     XX2 <- cbind(matrix(0, nrow=nrow(X2), ncol=ncol(X1)),X2)
     X <- rbind(XX1,XX2)
-    attr(X,"scaled:scale") <- c(attr(X1,"scaled:scale"),attr(X2,"scaled:scale"))
-    # we ignore the 'assign' attribute which is used only for preprocessing => .determine_sparse_X_mv() will directly use those from 'unmerged'.
+    scale2 <- attr(X2,"scaled:scale")
+    if ( length(scale2)) {
+      names(scale2) <- paste0(names(scale2),"_",mv_it)
+      attr(X,"scaled:scale") <- c(attr(X1,"scaled:scale"), scale2 )
+    }
+    attr(X,"namesOri") <- 
+      c(attr(X1,"namesOri"),  paste0(attr(X2,"namesOri"),"_",mv_it))
   }
   #
   if (REML) {
@@ -328,7 +364,7 @@
       # at this point if we had a resid.model user_init_optim_it[["phi"]] 
       # contains phi$`1` (`1` for any mv_it) being a list of (fitted) parameters of the resid.model, 
       # which is sort-of not too bad but should not be used here
-      user_init_optim_it[["phi"]] <- NULL # (___F I X M E___ perhaps we could better use the resid.model info?
+      user_init_optim_it[["phi"]] <- NULL # (__F I X M E___ perhaps we could better use the resid.model info?
       # how to pass info from here to init the resid.model ?
       # some test code would be test-mv -> confint(zut1,"(Intercept)_1") )
     } else {
@@ -357,9 +393,9 @@
     #  ./. -> .init_optim_lambda_ranCoefs() has to check not globally fixed lambdas ;
     # Maybe not optimal but need to distinguish globally fixed param at some point? (_F I X M E_) 
     ## TRY:
-    ##   fixed_it[["phi"]] <- as.vector(.unlist(fixed_it[["phi"]])) # ___F I X M E___ why wasn't it necess (was it?) by compar with user_init_optim_it[["phi"]]...
+    ##   fixed_it[["phi"]] <- as.vector(.unlist(fixed_it[["phi"]])) # __F I X M E___ why wasn't it necess (was it?) by compar with user_init_optim_it[["phi"]]...
     optim_blob_it <- .calc_optim_args(proc_it=unmerged[[mv_it]], processed=processed,
-                                      # (___F I X M E___): intriguing heterogeneity of formats:
+                                      # (__F I X M E___): intriguing heterogeneity of formats:
                                       user_init_optim=user_init_optim_it, # from .subPars + .rename_ranPars + ad hoc hack for phi... 
                                       fixed=fixed_it,  # from .subPars + .rename_ranPars; no ad hoc hack for phi
                                       lower=user_lower_it, upper=user_upper_it, # from .subPars
@@ -481,10 +517,11 @@
   
   rescale. <- ! is.null(attr(merged_X, "scaled:scale"))
   if (rescale.) merged_X <- .unscale(merged_X)
+  cols_lhs_X2X <- colnames(merged_X)
   merged_X <- merged_X %*% X2X # loss of attributes, "assign" notably
   if (rescale.) merged_X <- .scale(merged_X)
   merged_X <- .post_process_X(X.pv=merged_X, HL=merged$HL, rankinfo=FALSE, sparse_X = sparse_X) 
-  
+  attr(merged_X,"cols_lhs_X2X") <- cols_lhs_X2X # info used for predict(<mv with X2X factor>,newdata), about RHS of X2X product 
   merged_X
   
 }
@@ -535,6 +572,7 @@
       namesTerm <- attr(ZA,"namesTerm") # "(Intercept)" ".mv2" or ".mv1" ".mv2" for all relevant matrices depending on absence/presence of 0+
       for (mv_it in as.integer(model_ids)) { 
         obs.range <- (cum_nobs[mv_it]+1L):cum_nobs[mv_it+1L]
+        # Dvec is a rep(.,  rep(n_levels,Xi_ncol)) of a vector of booleans and distinguishes absence/presence of 0+
         ZA[obs.range,] <- .Matrix_times_Dvec(ZA[obs.range,], rep(as.numeric(namesTerm %in% c("(Intercept)",paste0(".mv",mv_it))),
                                                                  rep(n_levels,Xi_ncol)))
       }
@@ -637,29 +675,31 @@
   umap <- unique(na.omit(merged_map))
   for (idx in seq_along(umap)) merged_map[merged_map==umap[idx]] <- idx
   umap <- unique(na.omit(merged_map))
-  merged_ranges <- template <- structure(vector("list", length(umap)), names=seq_along(umap)) 
-  for (idx in seq_along(umap)) {
-    which_rds <- names(which(merged_map==idx))
-    merged_ranges[[idx]] <- structure(as.integer(which_rds), names=which_rds)
-  }
-  summingMat <- .calc_summingMat_hyper(nrand, merged_map, merged_ranges)
-  map_hy_mv <- vector("list", length(map_rd_mv))
-  for (mv_it in seq_along(map_rd_mv)) {
-    rd_in_mv <- map_rd_mv[[mv_it]]
-    inverse_map <- structure(names(rd_in_mv), names=rd_in_mv)
-    map_it <- unmerged[[mv_it]][["hyper_info"]]$map
-    # merged_map[rd_in_mv] gives NA's or full-model hyper indices of [ranefs in submodel mv_it]
-    # names(.) goes back to the names, ie the full-model indices of [ranefs in submodel mv_it] once the NA have been removed, 
-    #                                     ie keeping only ranefs in hyper terms
-    hy_full_indices <- na.omit(merged_map[rd_in_mv])
-    # rd_in_mv[names(.)] thus gives the sub-model indices of ranefs in hyper terms
-    # unique(map_it[.]) Then gives the submodel hyper indices of these ranefs
-    hy_in_submv <- unique(map_it[inverse_map[names(hy_full_indices)]])
-    map_hy_mv[[mv_it]] <- structure(unique(hy_full_indices), names=hy_in_submv) # values are full-model hyper-indices, names are submodel hyper indices
-    # same value/names relationship as for map_rd_mv 
-  }
-  return(list2env(list(map=merged_map,ranges=merged_ranges, template= template, summingMat=summingMat, map_hy_mv=map_hy_mv),
-                  parent=emptyenv()))
+  if (length(umap)) {
+    merged_ranges <- template <- structure(vector("list", length(umap)), names=seq_along(umap)) 
+    for (idx in seq_along(umap)) {
+      which_rds <- names(which(merged_map==idx))
+      merged_ranges[[idx]] <- structure(as.integer(which_rds), names=which_rds)
+    }
+    summingMat <- .calc_summingMat_hyper(nrand, merged_map, merged_ranges)
+    map_hy_mv <- vector("list", length(map_rd_mv))
+    for (mv_it in seq_along(map_rd_mv)) {
+      rd_in_mv <- map_rd_mv[[mv_it]]
+      inverse_map <- structure(names(rd_in_mv), names=rd_in_mv)
+      map_it <- unmerged[[mv_it]][["hyper_info"]]$map
+      # merged_map[rd_in_mv] gives NA's or full-model hyper indices of [ranefs in submodel mv_it]
+      # names(.) goes back to the names, ie the full-model indices of [ranefs in submodel mv_it] once the NA have been removed, 
+      #                                     ie keeping only ranefs in hyper terms
+      hy_full_indices <- na.omit(merged_map[rd_in_mv])
+      # rd_in_mv[names(.)] thus gives the sub-model indices of ranefs in hyper terms
+      # unique(map_it[.]) Then gives the submodel hyper indices of these ranefs
+      hy_in_submv <- unique(map_it[inverse_map[names(hy_full_indices)]])
+      map_hy_mv[[mv_it]] <- structure(unique(hy_full_indices), names=hy_in_submv) # values are full-model hyper-indices, names are submodel hyper indices
+      # same value/names relationship as for map_rd_mv 
+    }
+    return(list2env(list(map=merged_map,ranges=merged_ranges, template= template, summingMat=summingMat, map_hy_mv=map_hy_mv),
+                    parent=emptyenv()))
+  } else NULL # predVar computations check this and the alternative code would cause a bug.
 }
 
 .add_cov_matrices__from_mv_global <- function(corr_info, covStruct=NULL, corrMatrix=NULL, adjMatrix=NULL) {
@@ -673,12 +713,7 @@
         if ( is.null(adjMatrix) ) adjMatrix <- .get_adjMatrix_from_covStruct(covStruct,it)
         if (is.null(adjMatrix)) {
           # should probably check that the adjMatrix is already in. (_FIXME_)
-        } else {
-          nc <- ncol(adjMatrix)
-          dsCdiag <- .symDiagonal(nc, x = rep.int(1,nc), uplo = "U",   kind="d")
-          corr_info$adjMatrices[[it]] <- structure(.sym_checked(adjMatrix,"adjMatrix"), # dsCMatrix
-                                                   dsCdiag=dsCdiag)
-        }
+        } else corr_info$adjMatrices[[it]] <-  .reformat_adjMatrix(adjMatrix)
       } else if (corr_type=="corrMatrix") {
         if (is.null(corrMatrix)) corrMatrix <- .get_corr_prec_from_covStruct(covStruct,it, required=FALSE) 
         if ( is.null(corrMatrix)) {
@@ -698,7 +733,7 @@
     AMatrices <- corr_info$AMatrices
     for (char_rd in names(ZAlist)[which_ZA]) {
       Amatrix <- AMatrices[[char_rd]]
-      if ( ! is.null(Amatrix)) ZAlist[[char_rd]] <- .Z_times_L_with_attrs(Z=ZAlist[[char_rd]], Amatrix) 
+      if ( ! is.null(Amatrix)) ZAlist[[char_rd]] <- .ZxA_with_attrs(Z=ZAlist[[char_rd]], Amatrix) 
     }
   } 
   return(ZAlist)
@@ -1019,14 +1054,19 @@
     
     
     ## Some corrFamily stuff (next TWO loops)
+    levels_types <- rep("", nrand)
     for (rd in which(corr_info$is_cF_internally)) { # (allows NA in $corr_types)
       # For the hard coded Matern(), AR1() etc. $corr_families[[it]] is already a list of functions $calc_moreargs, $canonize...
       # for corrFamily() by the next line it will be the corrFamily descriptor as an *environment* with $f, $tpar, $type, $template, $Af... $calc_moreargs, $canonize...
       corr_info$corr_families[[rd]] <- .preprocess_corrFamily(corrfamily=eval(covStruct[[rd]])) 
+      levels_types[[rd]] <- corr_info$corr_families[[rd]]$levels_type 
       # For the hard coded Matern(), AR1() etc. $corr_families[[it]] is already a list of functions $calc_moreargs, $canonize...
       # for corrFamily() by the next line it will be the corrFamily descriptor as an *environment* with $Cf, $tpar, $type, $template, $Af... $calc_moreargs, $canonize...
       .initialize_corrFamily(corr_info$corr_families[[rd]], Zmatrix=ZAlist[[rd]])
     }
+    corr_info$levels_types <- levels_types # so that this info can be looked up efficiently post-fit
+    
+    # copy some of the info in each submodel's corr_info
     for (mv_it in seq_along(unmerged)) {
       which_in_subm <- which(map_rd_mv[[mv_it]] %in% corr_info$is_cF_internally ) # so eg from (c("1"=1,"2"=3)) %in% 3), rd_in_mv is 2 
       pos_in_sub <- map_rd_mv[[mv_it]][which_in_subm]
@@ -1206,6 +1246,7 @@ fitmv <- function(submodels, data, fixed=NULL, init=list(), lower=list(), upper=
   .spaMM.data$options$xLM_conv_crit <- list(max=-Inf)
   time1 <- Sys.time()
   oricall <- match.call(expand.dots=TRUE) ## mc including dotlist
+  oricall <- ..n_names2expr(oricall) 
   oricall$"control.HLfit" <- eval(oricall$control.HLfit, parent.frame()) # to evaluate variables in the formula_env, otherwise there are bugs in waiting
   # where oricall[["control.HLfit"]] <- ... wouldn't work when 'control.HLfit' was absent. Same for 'fixed'
   oricall$"fixed" <- .preprocess_fixed(fixed)
@@ -1284,7 +1325,7 @@ fitmv <- function(submodels, data, fixed=NULL, init=list(), lower=list(), upper=
   # the fact that promises are evaluated within a call-execution is "local": they will appear not evaluated
   # when we reuse a call (here mc). E.g. corrMatrix=as_precision(.) would be evaluated twice 
   # => We need to put the evaluated value in the call list. 
-  # Next line ad-hoc for corrMatrix (__F I X M E__?: What about other arguments ? Which would benefit from some preprocessing?)
+  # Next line ad-hoc for corrMatrix (_F I X M E__?: What about other arguments ? Which would benefit from some preprocessing?)
   if ("corrMatrix" %in% ...names()) mc["corrMatrix"] <- list(eval(mc[["corrMatrix"]])) 
   mc[[1L]] <-  get(".merge_processed", asNamespace("spaMM"), inherits=FALSE)
   merged <- eval(mc, parent.frame()) # means that arguments of *.merge_processed()* must have default values as mc does not contains defaults of fitmv()
@@ -1333,6 +1374,7 @@ fitmv <- function(submodels, data, fixed=NULL, init=list(), lower=list(), upper=
   }
   lsv <- c("lsv",ls())
   if ( ! inherits(hlcor,"HLfitlist") && ! is.call(hlcor) ) {
+    hlcor$X2X <- eval(oricall[["X2X"]], parent.frame())
     hlcor$how$fit_time <- .timerraw(time1)
     hlcor$how$fnname <- "fitmv"
     hlcor$fit_time <- structure(hlcor$how$fit_time,

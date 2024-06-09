@@ -11,6 +11,7 @@ HLCor <- function(formula,
   .spaMM.data$options$xLM_conv_crit <- list(max=-Inf)
   time1 <- Sys.time()
   oricall <- match.call(expand.dots = TRUE) 
+  oricall <- ..n_names2expr(oricall) 
   if ( ! is.null(oricall$ranFix)) { ## avoiding user's confusion
     stop("!From HLCor: 'ranFix' found in '...'. Make sure to use 'fixed' or 'ranPars' only")
   }

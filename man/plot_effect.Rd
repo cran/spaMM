@@ -5,11 +5,11 @@
 Partial-dependence effects and plots
 }
 \description{
-The following functions evaluate or plot \emph{partial-dependence} effects. 
+The function \code{pdep_effects} evaluates, and the function \code{plot_effects} plots, \emph{partial-dependence} effects. 
   
 \code{pdep_effects} evaluates the effect of a given fixed-effect variable, as (by default, the average of) predicted values on the response scale, over the empirical distribution of all other fixed-effect variables in the data, and of inferred random effects. This can be seen as the result of an experiment where specific treatments (given values of the focal variable) are applied over all conditions defined by the other fixed effects and by the inferred random effects. Thus, apparent dependencies induced by associations between predictor variables are avoided (see Friedman, 2001, from which the name \dQuote{partial dependence plot} is taken; or Hastie et al., 2009, Section 10.13.2). This also avoids biases of possible alternative ways of plotting effects. In particular, such biases occur if the response link is not identity, and if averaging is performed on the linear-predictor scale or when other variables are set to some conventional value other than its average. 
 
-\code{pdep_effects} also compute intervals of the type defined by its \code{intervals} argument (by default, prediction intervals). By default, it returns a data frame of average values of point predictions and interval bounds for each value of the focal variable, but it can also return lists of all predictions.
+\code{pdep_effects} also compute intervals of the type defined by its \code{intervals} argument (by default, prediction intervals) and of nominal coverage defined by the \code{level} argument (it may make particular sense to choose a \code{level}<0.95 to better visualize effects). By default, it returns a data frame of average values of point predictions and interval bounds for each value of the focal variable (so the intervals may briefly be described as mean prediction intervals, for want of better), but it can also return lists of all predictions.
   
 A plot function is available for numeric or factor predictors: \code{plot_effects} calls \code{pdep_effects} and produces a simple plot (using only base graphic functions) of its results, including prediction bands representing the two average one-sided widths of intervals. The last section of the Examples shows how to obtain more elaborate plots including the same information using \pkg{ggplot2}. 
 
@@ -17,8 +17,8 @@ If added to the plot, the raw data may appear to depart from the partial-depende
 }
 \usage{
 pdep_effects(object, focal_var, newdata = object$data, length.out = 20, 
-             focal_values=NULL, levels = NULL, intervals = "predVar", indiv = FALSE, 
-             ...)
+             focal_values=NULL, level=0.95, levels = NULL, 
+             intervals = "predVar", indiv = FALSE, ...)
 plot_effects(object, focal_var, newdata = object$data, focal_values=NULL, 
              effects = NULL, xlab = focal_var, ylab = NULL, 
              rgb.args = col2rgb("blue"), add = FALSE,  ylim=NULL, ...)
@@ -52,11 +52,11 @@ plot_effects(object, focal_var, newdata = object$data, focal_values=NULL,
   \item{length.out}{
     Integer: for a numeric predictor variable, this controls the number of values at which predictions are evaluated. By default, predictions are made at regular intervals over the range of the predictor variable. If \code{length.out=0}, predictions are made for the actual values of the focal predictor in the data. The default behaviour is also overriden by using \code{focal_values}, in which case predictions are evaluated at the given \code{focal_values} (as if \code{length.out=0}), unless a non-zero \code{length.out} is also specified. In the latter case, predictions are evaluated at regular intervals over the range of \code{focal_values}.
 }
-  \item{focal_values, levels}{ \code{focal_values} may be used to specify the values of the focal variable at which predictions are evaluated. For factor variables, \code{levels} is an older implementation of this control, and is now redundant.
- }
-  \item{intervals}{
+\item{intervals, level}{
    Passed to \code{predict.HLfit}, whose documentation should be consulted for further details.
 }
+  \item{focal_values, levels}{ \code{focal_values} may be used to specify the values of the focal variable at which predictions are evaluated. For factor variables, \code{levels} is an older implementation of this control, and is now redundant.
+ }
   \item{indiv}{
    Boolean: whether to return all predictions given the values of other predictors in the \code{newdata}, or only their means.
 }
@@ -113,9 +113,10 @@ tmp <- na.omit(Gryphon_df)
 spfit <- spaMM::fitme(TARSUS ~ BWT*sex, data = tmp)
 
 tmp$sex <- "1"
-pdep_1 <- pdep_effects(spfit,"BWT", newdata=tmp)
+pdep_1 <- pdep_effects(spfit,"BWT", newdata=tmp, level=qnorm(0.75))
+#                   qnorm(0.75)  to get the so-called 'probable error'.
 tmp$sex <- "2"
-pdep_2 <- pdep_effects(spfit,"BWT", newdata=tmp)
+pdep_2 <- pdep_effects(spfit,"BWT", newdata=tmp, level=qnorm(0.75))
 pdep_1$sex <- "1" ; pdep_2$sex <- "2"  
 pdep <- rbind(pdep_1,pdep_2)
 

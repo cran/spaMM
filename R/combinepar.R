@@ -63,6 +63,7 @@
   parallel::clusterCall(cl, Sys.setenv, LANG = "en")
 }
 
+
 .foreach_try_progressr <- function(newresp, fn, control, cluster_args, ...) {
   # some example at     # https://stackoverflow.com/questions/75252629/error-when-making-a-fork-cluster-and-registerdosnow-in-r
   nsim <- ncol(newresp)
@@ -70,7 +71,7 @@
   i <- NULL ## otherwise R CMD check complains that no visible binding for global variable 'i' (in expression newy_s[,i])
   foreach_args <- list( 
     i = 1:nsim, 
-    .combine = "cbind", # may be overwritten by control$.combine
+    # .combine = "cbind", # may be overwritten by control$.combine
     .inorder = TRUE, 
     # .packages = "spaMM", # added by default in control.packages 
     .errorhandling = "remove", ## use "pass" to see problems
@@ -134,7 +135,7 @@
   i <- NULL ## otherwise R CMD check complains that no visible binding for global variable 'i' (in expression newy_s[,i])
   foreach_args <- list( 
     i = 1:nsim, 
-    .combine = "cbind",  # may be overwritten by control$.combine
+    # .combine = "cbind",  # may be overwritten by control$.combine
     .inorder = TRUE, 
     # .packages = "spaMM", # added by default in control.packages 
     .errorhandling = "remove" ## use "pass" to see problems
@@ -156,12 +157,13 @@
 .foreach_snow_bar <- function(newresp, fn, control, ...) {
   
   # define the progress bar:
-  progrbar_setup <- .set_progrbar(max = ncol(newresp), style = eval(spaMM.getOption("barstyle")), char="P") # pb_char
+  barstyle <- eval(spaMM.getOption("barstyle")) # 0L for no bar...
+  progrbar_setup <- .set_progrbar(max = ncol(newresp), style = barstyle, char="P") # pb_char
   control$.options.snow <- progrbar_setup["progress"]
   
   bootreps <- .foreach_PSOCK_nofuture(newresp=newresp, fn=fn, control=control, ...)
   
-  close(progrbar_setup$pb)
+  if (barstyle) close(progrbar_setup$pb)
   bootreps
 }
 
@@ -172,7 +174,7 @@
   i <- NULL
   foreach_args <- list( 
     i = 1:nsim, 
-    .combine = "cbind",  # may be overwritten by control$.combine
+    # .combine = "cbind",  # may be overwritten by control$.combine
     .inorder = TRUE, 
     # .packages = "spaMM", # added by default in control.packages 
     .errorhandling = "remove" ## use "pass" to see problems
@@ -187,12 +189,17 @@
   combine_with_pb <- function() {
     count <-0L
     function(...) {
-      # list(...) is HERE a two-element list whose first element is the vector of combined previous values, and the second is presumably
+      # list(...) is HERE a two-element list whose first element is the [vector... 
+      # not necessarily: it may be a list] of combined previous values, and the second is presumably
       # the single value to be added. (But the API for this combine function is not clear).
       # In parallel runs, there are presumably additional elements to the list
       count <<- count + length(list(...)) -1L # I derived this from code on the internet. But...
       setTxtProgressBar(pb, count)
-      .combine(...) 
+      if (is.null(.combine)) { # then the combined previous values are in a list
+        list2 <- list(...)
+        c(list[[1]],  # the combined previous values (a list)
+          list(list[[2]]))
+      } else .combine(...) 
     }
   }
   foreach_args$.combine <- combine_with_pb()
@@ -238,10 +245,11 @@
   }
 })
 
+# This is an EXPORTED function:
 .setCluster <- function(nb_cores, cluster_args, iseed, fit_env=NULL) {
   
   cluster_args <- .set_cluster_type(cluster_args, nb_cores=cluster_args$spec) # If I extract this call from the .setCluster() 
-  #   I must make sure that spaMM:::.set_cluster_type is accessible (VERSUS: here in the EXPORTED spaMM:::.setCluster())
+  #   I must make sure that spaMM:::.set_cluster_type is accessible in other packages willing to use .setCluster()
   nb_cores <- cluster_args$spec
   
   if (nb_cores>1L) {
@@ -267,10 +275,10 @@
 }
 
 
-combinepar <- function(newresp, fn, nb_cores=NULL, cluster=NULL,
-           fit_env, control=list(), cluster_args=NULL,
-           debug.=FALSE, iseed=NULL, showpbar=eval(spaMM.getOption("barstyle")),
-           pretest_cores=NULL, 
+combinepar <- function(newresp, fn, nb_cores=NULL, cluster=NULL, fit_env, 
+                       control=list(.final=function(v) if( ! is.list(v[[1]])) {do.call(cbind,v)} else v), 
+                       cluster_args=NULL, debug.=FALSE, iseed=NULL, 
+                       showpbar=eval(spaMM.getOption("barstyle")), pretest_cores=NULL, 
            ... # passed to fn... unless captured by pbapply (in which case 'simplify' may have a distinct effect)
 ) {
   if (is.list(fit_env)) fit_env <- list2env(fit_env)

@@ -40,8 +40,10 @@ Gneiting T. (2013) Strictly and non-strictly positive definite functions on sphe
 }
 \examples{
 data("blackcap")
-fitme(migStatus ~ means+ Cauchy(1|longitude+latitude),data=blackcap,
-      fixed=list(longdep=0.5,shape=0.5,rho=0.05))
+fitme(migStatus ~ means+ Cauchy(1|longitude+latitude),
+      data=blackcap,
+      #  fixed=list(longdep=0.5,shape=0.5,rho=0.05)
+     )
 ## The Cauchy family can be used in Euclidean spaces of any dimension:
 set.seed(123)
 randpts <- matrix(rnorm(20),nrow=5)

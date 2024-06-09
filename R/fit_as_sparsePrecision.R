@@ -975,7 +975,7 @@
   i_etamo <- drop(ZAL %*% oovb[seq_n_u_h] +
                    sXaug$AUGI0_ZX$X.pv[,-(parmcol_X),drop=FALSE] %*%  oovb[-seq_n_u_h]) # 
   #
-  rhs <- sXaug$BLOB$WLS_mat_weights*(etamo-off_newparm- i_etamo) #__F I X M E__  this block code looks inefficient and unclear... 
+  rhs <- sXaug$BLOB$WLS_mat_weights*(etamo-off_newparm- i_etamo) #_F I X M E__  this block code looks inefficient and unclear... 
   zInfo$m_grad_obj <- zInfo$m_grad_obj[-parmcol_ZX]+
     c(drop(crossprod(ZAL,rhs)),
       drop(crossprod(sXaug$AUGI0_ZX$X.pv[,-parmcol_X,drop=FALSE],rhs))) # tjrs zInfoo$m_grad_obj

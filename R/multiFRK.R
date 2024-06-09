@@ -270,7 +270,9 @@ IMRF <- function(...) {
         origin[dt] <- ranges[[dt]][1L] - (diffs[[dt]] %% steplen)/2 ## or using trunc... ## 0 for the wide dimension
       } else origin[dt] <- ranges[[dt]][1L] # ce=FALSE reproduces the LatticeKrig results
       nd_dt <- (diffs[[dt]] %/% steplen) +1L ## central grid node for dim dt
-      grid_arglist[[dt]] <- (-pars$m):(nd_dt+pars$m-1L) ## sequence of nodes in grid coordinates for dim dt
+      marg_name <- match.arg("m", names(pars)) # pars may contain 'm' or 'margin' (cf formal defs of IMRF vs multIMRF... )
+      margin <- pars[[marg_name]] # ...this avoids use of partial matching.
+      grid_arglist[[dt]] <- (-margin):(nd_dt+margin-1L) ## sequence of nodes in grid coordinates for dim dt
     }
     #
     uniqueScal <- .to_grid_coord(uniqueScal, origin=origin, steplen=steplen)
@@ -290,6 +292,18 @@ IMRF <- function(...) {
   }  
 }
 
+.bdiag_Amatrix <- function(Amat_rd, Xi_ncol) {
+  # contrary to rbind(), Matrix::bdiag() drops dimnames.
+  # Thefollowing names may not be optimal, but .ZxA_with_attrs() checks names
+  dimnams <- list(rep(rownames(Amat_rd), Xi_ncol),
+                  rep(colnames(Amat_rd), Xi_ncol))
+  Amat_rd <- do.call(Matrix::bdiag, replicate(Xi_ncol, Amat_rd, simplify = FALSE))
+  dimnames(Amat_rd) <- dimnams 
+  attr(Amat_rd,"Xi_ncol") <- Xi_ncol # used for ZA product 
+  Amat_rd
+}
+
+
 .assign_AMatrices_IMRF <- function(corr_info, Zlist, exp_barlist, data, control_dist,
                                   scale=2.5, ## scale value from Nychka et al 2015 http://dx.doi.org/10.1080/10618600.2014.914946, p. 584
                                   centered=TRUE) { 
@@ -298,9 +312,12 @@ IMRF <- function(...) {
   if (any(isIMRF, na.rm=TRUE)) {
     if (is.null(corr_info$AMatrices)) corr_info$AMatrices <- list()
     for (rd in which(isIMRF)) {
-      corr_info$AMatrices[[as.character(rd)]] <- .calc_AMatrix_IMRF(
+      Amat_rd <- .calc_AMatrix_IMRF(
         term=exp_barlist[[rd]], # its attr(.,"pars") carries grid parameters
         data=data, dist.method=control_dist[[rd]][["dist.method"]], scale=scale, fit.=TRUE)
+      if ((Xi_ncol <- attr(Zlist,"Xi_cols")[rd])>1L) Amat_rd <- 
+          .bdiag_Amatrix(Amat_rd, Xi_ncol)
+      corr_info$AMatrices[[as.character(rd)]] <- Amat_rd
     }
   }
 }
@@ -316,10 +333,13 @@ IMRF <- function(...) {
       Af <- corr_info$corr_families[[rd]][["Af"]] # call for fit
       # In an mv fit the corrFamily is a stub when .preprocess is called. .assign_AMatrices_corrFamily() is called again in .merge_processed()
       if ( ! is.null(Af)) { # The corrFamily depends on an A matrix
-        corr_info$AMatrices[[as.character(rd)]] <- Af(newdata=data, 
-                                                      term=exp_barlist[[rd]],
-                                                      dist.method=control_dist[[rd]][["dist.method"]],
-                                                      fit.=TRUE, scale=scale)
+        Amat_rd <- Af(newdata=data, 
+                      term=exp_barlist[[rd]],
+                      dist.method=control_dist[[rd]][["dist.method"]],
+                      fit.=TRUE, scale=scale)
+        if ((Xi_ncol <- attr(Zlist,"Xi_cols")[rd])>1L) Amat_rd <- 
+            .bdiag_Amatrix(Amat_rd, Xi_ncol)
+        corr_info$AMatrices[[as.character(rd)]] <- Amat_rd
       }
     }
   }
@@ -355,7 +375,7 @@ IMRF <- function(...) {
                                             term=exp_spatial_terms[[rd]])
         if ( ! is.null(perm)) amatrices[[char_rd]] <- .subcol_wAttr(amatrices[[char_rd]], j=perm, drop=FALSE)
       } else if ( ! is.null(amatrices[[char_rd]])) # check presence of Amatrix in original fit object =>
-        warning('is.null(corr_families[[rd]][["Af"]]) is suspect here in .get_new_AMatrices()') # __F I X M E__ remove check? might be helpful to catch pb if I change the interface for AMatrix
+        warning('is.null(corr_families[[rd]][["Af"]]) is suspect here in .get_new_AMatrices()') # _F I X M E__ remove check? might be helpful to catch pb if I change the interface for AMatrix
     }
   }
   return(amatrices)

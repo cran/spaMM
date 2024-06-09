@@ -11,14 +11,14 @@ Interface for parallel computations
 
 }
 \usage{
-dopar(newresp, fn, nb_cores = NULL, 
-      fit_env, control = list(), cluster_args = NULL, 
-      debug. = FALSE, iseed = NULL, 
+dopar(newresp, fn, nb_cores = NULL, fit_env, 
+      control = list(.final=function(v) if( ! is.list(v[[1]])) {do.call(cbind,v)} else v), 
+      cluster_args = NULL, debug. = FALSE, iseed = NULL, 
       showpbar = eval(spaMM.getOption("barstyle")), 
       pretest_cores =NULL, ...)
-combinepar(newresp, fn, nb_cores = NULL, cluster=NULL,
-      fit_env, control = list(), cluster_args = NULL, 
-      debug. = FALSE, iseed = NULL, 
+combinepar(newresp, fn, nb_cores = NULL, cluster=NULL, fit_env, 
+      control = list(.final=function(v) if( ! is.list(v[[1]])) {do.call(cbind,v)} else v), 
+      cluster_args = NULL, debug. = FALSE, iseed = NULL, 
       showpbar = eval(spaMM.getOption("barstyle")), 
       pretest_cores =NULL, ...)
 
@@ -43,9 +43,8 @@ Integer. Number of cores to use for parallel computations. If >1 (and no cluster
  A list following the \code{foreach} control syntax, even if \code{foreach} is not used. There are limitations when \code{dopar} (but not \code{combinepar}) is used, in all but the first case below:
  \enumerate{
  \item for socket clusters, with \code{doSNOW} attached, \code{foreach} is called with default arguments including
- \code{i = 1:ncol(newresp), .combine = "cbind", .inorder = TRUE, .errorhandling = "remove", .packages = "spaMM"}.
-\code{control} may be used to provide non-default values of these arguments. For example, \code{.errorhandling = "pass"} is useful to get error messages from the nodes, and therefore \bold{strongly recommended} when first experimenting with this function. 
- \item for socket clusters, with \code{doSNOW} \bold{not} attached, \code{dopar} calls \code{pbapply} instead of \code{foreach} but \code{control$.packages} is still handled. The  result is still in the format returned by \code{foreach} with default \code{.combine="cbind"} or possible non-default \code{.combine="rbind"}. \code{pbapply} arguments may be passed through the \dots argument. 
+ \code{i = 1:ncol(newresp), .inorder = TRUE, .errorhandling = "remove", .packages = "spaMM"}, and further arguments taken from the present function's \code{control} argument, which may also be used to override the defaults. For example, \code{.errorhandling = "pass"} is useful to get error messages from the nodes, and therefore \bold{strongly recommended} when first experimenting with this function.     
+ \item for socket clusters, with \code{doSNOW} \bold{not} attached, \code{dopar} calls \code{pbapply} instead of \code{foreach} but \code{control$.packages} is still handled. The  result is still in the format returned in the first case, i.e. by \code{foreach}, taking the \code{control} argument into account. \code{pbapply} arguments may be passed through the \dots argument. 
  \item if a fork cluster is used, \code{dopar} calls \code{mclapply} instead of \code{foreach}. \code{control$mc.silent} can be used to control the \code{mc.silent} argument of \code{\link[parallel]{mclapply}}.
  \item (if \code{nb_cores=1} \code{dopar} calls \code{mclapply}).
  }
@@ -74,7 +73,7 @@ The result of calling \code{foreach}, \code{pbapply} or \code{mclapply}, as depe
 }
 \details{
 Control of random numbers through the \code{"L'Ecuyer-CMRG"} generator and the \code{iseed} argument is not sufficient for consistent results when the \code{doSNOW} parallel backend is used, so if you really need such control in a \code{fn} using random numbers, do not use \code{doSNOW}. Yet, it is fine to use \code{doSNOW} for bootstrap procedures in spaMM, because the fitting functions do not use random numbers: only sample simulation uses them, and it is not performed in parallel.
-%  (alternative function \code{\link{dofuture}} has no doSNOW related code: why?) __F I X M E__
+%  (alternative function \code{\link{dofuture}} has no doSNOW related code: why?) _F I X M E__
 
 \code{combinepar} calls \code{foreach::\%dopar\%} which assumes that a cluster has been declared using a suitable backend such as \code{doSNOW}, \code{doFuture} or \code{doParallel}. If only the latter is available, no progress bar is displayed. A method to render a bar when \code{doParallel} is used can be found on the Web, but that bar is not a valid progress bar as it is displayed only after all the processes have been run.     
 }

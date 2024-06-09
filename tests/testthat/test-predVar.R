@@ -171,13 +171,13 @@ vphifit <- corrHLfit(migStatus ~ 1 + Matern(1|longitude+latitude),
                      resid.model = list(formula=~0+offset(logphi)),
                      data=varphi,  ranFix=list(nu=4,rho=0.4))
 # eg  to catch catch problems with wrong application of a-la-Bates formula:
-testthat::expect_equal(logLik(vphifit),c(p_bv=-20.04856),tol=1e-5) 
+testthat::expect_equal(logLik(vphifit),c(p_bv=-20.04856),tolerance=1e-5) 
 p1 <- suppressWarnings(get_respVar(vphifit,newdata=data.frame(latitude=1,longitude=1,logphi=1)))
-testthat::expect_equal(p1,c(`1`=2.844421),tol=1e-5)
+testthat::expect_equal(p1,c(`1`=2.844421),tolerance=1e-5)
 # for predVar computation, phi is not needed 
 #     (and could have been specified through ranFix):  
 p1 <- suppressWarnings(get_predVar(vphifit,newdata=data.frame(latitude=1,longitude=1)))
-testthat::expect_equal(p1,c(`1`=0.1261386),tol=1e-5) ## exact value sensitive to spaMM_tol$Xtol_abs
+testthat::expect_equal(p1,c(`1`=0.1261386),tolerance=1e-5) ## exact value sensitive to spaMM_tol$Xtol_abs
 # verif get_predCov_var_fix()
 p1 <- get_predVar(vphifit,variances=list(cov=TRUE))[14,]
 fix_X_ZAC.object <- preprocess_fix_corr(vphifit,fixdata=blackcap)

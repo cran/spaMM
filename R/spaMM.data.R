@@ -39,6 +39,7 @@
   use_G_dG=TRUE, # meaningful only for spprec
   spprec_LevM_D="1", # form of the perturbation of Md2hdv2 in .calc_G_dG() (alternatives are "colSums" or "rowSums")
   #
+  Utri_chol_method="RcppEigen", # 
   USEEIGEN=TRUE, # Whether to use the Eigen C++ library for some matrix computations. The source code should be consulted for further information. 
   X_scaling=TRUE,
   minLambda=1e-8,
@@ -70,7 +71,7 @@
               print_level=0), # nloptr options only control the termination criteria, not the step sizes. Nothing like rhobeg
   ## further control of nloptr 'opts' (but not suitable input for 'opts'):
   xtol_abs_factors=c(abs=1e-8, # That's the general one when next ones are not used. # cf comments in .xtol_abs_fn()
-                     rcLam=5e-7,rcCor=5e-6,others=5e-11), # ____F I X M E____ all only when there are ranCoefs...
+                     rcLam=5e-7,rcCor=5e-6,others=5e-11), # ___F I X M E____ all only when there are ranCoefs...
   # laxer rcLam=5e-5 strongly affect tests spherical transfo (+minor effect in test-poly)
   xtol_abs=quote(.xtol_abs_fn(LowUp,  rC_transf = rC_transf)), # nloptr; zero's for max precision (?)
   maxeval=quote(as.integer(10^(3+(log(length(initvec))-log(5))/log(4)))), # nloptr; *modified for bobyqa (which recommends > 10 * npar^2)
@@ -83,13 +84,13 @@
   rC_unbounded=FALSE, # unbounded parametrization as in PinheiroB96
   rC_transf="chol", 
   rC_transf_inner="chol", 
-  rC_transf_fac=1, # should be made dependent on link __F I X M E__ # >1 to reduce effect in canon sp of steps in transf sp
+  rC_transf_fac=1, # should be made dependent on link _F I X M E__ # >1 to reduce effect in canon sp of steps in transf sp
   tol_ranCoefs_inner=c(inner=TRUE,
                        cholmax=Inf, # in "chol" case # so it's always Inf... 
                        lo_lam=1e-6,up_lam=1e6,corr=1e-12,tol=1e-5 # in "sph" case ## corr must be < 1 ! 
                        ,regul=1e-09
                        ), # controls .makeCovEst1() bounds (and .calc_latentL(.)$lambda_est)
-  tol_ranCoefs_outer=c(inner=FALSE,lo_lam=1e-4,up_lam=1e5,corr=1e-4, # controls fitme() bounds in "sph" case, not in default rc_transf="chol"; corr must be < 1 ! 
+  tol_ranCoefs_outer=c(inner=FALSE,lo_lam=1e-4,up_lam=1e5,corr=1e-4, # controls fitme() bounds in "sph" case, not in default rC_transf="chol"; corr must be < 1 ! 
                        regul=1e-08), ## regul used also for chol. 
   max_bound_ranCoefs=1, # adjustment in transformed coordinates; 1 means no adjustment# previously 0.99999, affects HLfit(Reaction ~ Days + (Days|Subject), data = sleepstudy)
   regul_ranCoefs=c(10*.Machine$double.eps), ## used to avoid zero eigenvalue after correction in .smooth_regul()
@@ -113,7 +114,7 @@
   COMP_maxn=1e4,
   sanitize_eta=c(gauslog=20,COMPlog=16,otherlog=20), # otherlog value affects difficult Gamma(log) fits (cf Leucadendron_hard.R)
   Gamma_min_y = 1e-10, ## for warnings in .preprocess(), and automatic correction in simulate() -> .r_resid_var(); .calc_dispGammaGLM() has indep, and much less strict, correction
-  beta_min_y = 1e-8, ##  for warnings in .preprocess(), and automatic correction in simulate() -> .r_resid_var();  ____F I X M E____ value is quick ad hoc fix
+  beta_min_y = 1e-8, ##  for warnings in .preprocess(), and automatic correction in simulate() -> .r_resid_var();  ___F I X M E____ value is quick ad hoc fix
   ###############
   example_maxtime=0.7,
   bin_mu_tol=.Machine$double.eps, # was 1e12 for a long time
@@ -177,7 +178,8 @@
   #
   # devl
   .betaFn=function(v) {sign(v)*log1p(abs(v))},
-  .betaInv=function(v) {sign(v)*(exp(abs(v))-1)}
+  .betaInv=function(v) {sign(v)*(exp(abs(v))-1)},
+  n_names2expr=FALSE # I fail to reproduce the problem that motivated the devel of ..n_names2expr()
 )
 
 .spaMM.data$keywords <- new.env(parent = emptyenv())

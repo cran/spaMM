@@ -50,7 +50,7 @@ Practically all features of models that can be fitted by \code{fitme} should be 
 
 The \code{\link{multi}} family-like syntax for multinomial models should not be used, but \code{fitmv} could provide other means to model multinomial responses.
 
-Most post-fit functions work, at least with default arguments. This includes point \code{predict}ion and prediction variances calculations sensu lato, including with \code{newdata}; but also \code{simulate}, \code{spaMM_boot}, \code{confint}, \code{anova}, \code{update_resp}, and \code{update}. The \code{re.form} argument now works for \code{predict} and \code{simulate}. Bootstrap computation may require special care for models where simulation of one response variable may depend on drawns of another one (see Hurdle model example in the \dQuote{Gentle introdution} to \pkg{spaMM},
+Most post-fit functions work, at least with default arguments. This includes point \code{predict}ion and prediction variances calculations sensu lato, including with \code{newdata}; but also \code{simulate}, \code{spaMM_boot}, \code{confint}, \code{anova}, \code{update_resp}, and \code{update}. The \code{re.form} argument now works for \code{predict} and \code{simulate}. Bootstrap computation may require special care for models where simulation of one response variable may depend on draws of another one (see Hurdle model example in the \dQuote{Gentle introdution} to \pkg{spaMM},
 \url{https://gitlab.mbb.univ-montp2.fr/francois/spamm-ref/-/blob/master/vignettePlus/spaMMintro.pdf}).
 
 Prediction functions try to handle most forms of missing information in \code{newdata} (including information missing for a residual-dispersion model when predcitiosn fro mit are needed: see Examples). As information may be missing for some submodels but not others, different numbers of predictions are then returned for different submodels. As for univariate-response models, \code{predict} will return point predictions as a single 1-column matrix, here concatenating the prediction results of the different submodels. The \code{nobs} attribute specifies how may values pertain to each submodel. 
@@ -65,7 +65,7 @@ A perhaps not entirely satisfying feature is that \code{simulate} by default sta
 may be particularly useful to reformat simulation results in this perspective. 
 
 \bold{Which arguments belong to \code{submodels}?}:\cr 
-Overall, arguments specifying individuals submodels should go into \code{submodels}, while other arguments of \code{fitmv} should be those potentially affecting several submodels (notably, random-effect structures, \code{lower}, and \code{upper}) and fitting controls (such as \code{init} and \code{init.HLfit}). One rarely-used exception is \code{\link{REMLformula}} which controls the fitting method but should be specified through the \code{submodels}.    
+Overall, arguments specifying individual submodels should go into \code{submodels}, while other arguments of \code{fitmv} should be those potentially affecting several submodels (notably, random-effect structures, \code{lower}, and \code{upper}) and fitting controls (such as \code{init} and \code{init.HLfit}). One rarely-used exception is \code{\link{REMLformula}} which controls the fitting method but should be specified through the \code{submodels}.    
 
 The function proceeds by first preprocessing all submodels independently, before merging the resulting information by matching random effects across submodels. The merging operation includes some checks of consistency across submodels, implying that redundant arguments may be needed across submodels (e.g. specifying twice a non-default \code{rand.family} for a random effect shared by two submodels). 
 
@@ -137,6 +137,9 @@ X_4to3 <-
 # and the single "(Intercept)" coefficient of the three-parameter model will operate as 
 # a shared estimate of the "(Intercept)_1" and "(Intercept)_2" coefficients
 # of the original 4-coefficients model, as intended. 
+
+# To define such matrices, it is *strongly advised* to fit the unconstrained model first,
+# and to examine the structure of its model matrix (as shown above). 
 
 # The new fit is obtained by providing the matrix as the 'X2X' argument:
 

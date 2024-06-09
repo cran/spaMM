@@ -157,9 +157,12 @@ Cauchy <- function(...) {
   calc_inits <- function(inits, user.lower, user.upper, moreargs_rd, optim.scale, char_rd, init.optim, ...) {
     inits <- .calc_inits_geostat_rho(init=inits$init,init.optim=inits$init.optim,init.HLfit=inits$init.HLfit,ranFix=inits$ranFix,
                                      user.lower=user.lower,user.upper=user.upper,
-                                     maxrange=moreargs_rd$maxrange,optim.scale=optim.scale,RHOMAX=moreargs_rd$RHOMAX,char_rd=char_rd)
-    inits <- .calc_inits_cauchy(init=inits$init,init.optim=inits$init.optim,init.HLfit=inits$init.HLfit,ranFix=inits$ranFix,
-                                control_dist_rd=moreargs_rd$control.dist, optim.scale=optim.scale, LDMAX=moreargs_rd$LDMAX,char_rd=char_rd)
+                                     maxrange=moreargs_rd$maxrange,optim.scale=optim.scale,
+                                     RHOMAX=moreargs_rd$RHOMAX,char_rd=char_rd)
+    inits <- .calc_inits_cauchy(init=inits$init,init.optim=inits$init.optim,init.HLfit=inits$init.HLfit,
+                                ranFix=inits$ranFix, control_dist_rd=moreargs_rd$control.dist, 
+                                user.lower=user.lower,user.upper=user.upper,
+                                optim.scale=optim.scale, LDMAX=moreargs_rd$LDMAX,char_rd=char_rd)
     # Nugget: remains NULL through all computations if NULL in init.optim
     if (is.null(.get_cP_stuff(inits$ranFix,"Nugget",which=char_rd))) { ## new spaMM3.0 code
       inits$init$corrPars[[char_rd]] <- .modify_list(inits$init$corrPars[[char_rd]],
@@ -210,18 +213,19 @@ corrMatrix <- function(...) {
 }
 
 # called by .preprocess -> .assign_corr_types_families(corr_info, exp_ranef_types) -> do.call(corr_types[rd], list()) -> corrFamily().
-# NOT called by (earlier) .preprocess -> GetValidData_info() -> model.frame(< formula gone through  .subbarsMM(formula) >)
+# NOT called by (earlier) [.preprocess ->] GetValidData_info() -> model.frame(< formula gone through  .subbarsMM(formula) >)
 #  bc .subbarsMM() is aware of the corrFamily keyword.
 # $___ F I X M E___ this means that any "unknown" keyword should have been converted to corrFamily before this model.frame() call.
 
 # The result is what stays in the processed $corr_info for a submodel from a fitmv call.
 corrFamily <- function(corrfamily=NULL, ...) { 
-  list(title="Stub for the corrFamily before .preprocess_corrFamily() provides all required info.", levels_type="stub"
-       # ,
-       # calc_moreargs= function(...) {return(NULL)}, # so that calling .calc_moreargs() on a submodel does not generate an error.
-       # canonize = function(...) {return(NULL)}, # so that calling .calc_moreargs() on a submodel does not generate an error.
-       # calc_inits= function(...) {return(NULL)} # same idea for .calc_inits...
-       )
+  resu <- list(...)
+  if (is.null(resu$title)) resu$title <- "Stub for the corrFamily before .preprocess_corrFamily() provides all required info."
+  if (is.null(resu$levels_type)) resu$levels_type <- "stub"
+  # calc_moreargs= function(...) {return(NULL)}, # so that calling .calc_moreargs() on a submodel does not generate an error.
+  # canonize = function(...) {return(NULL)}, # so that calling .calc_moreargs() on a submodel does not generate an error.
+  # calc_inits= function(...) {return(NULL)} # same idea for .calc_inits...
+  resu
 }
 
 AR1 <- function(...) {
@@ -252,6 +256,7 @@ AR1 <- function(...) {
   }
   #
   structure(list(corr_family="AR1",
+                 levels_type="time_series",
                  names_for_post_process_parlist=c("ARphi"),
                  canonize=canonize, calc_inits=calc_inits,
                  calc_corr_from_dist=calc_corr_from_dist,

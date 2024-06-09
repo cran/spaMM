@@ -10,7 +10,7 @@ Extract covariance or correlation components from a fitted model object}
 \description{
 \code{summary(<fit object>)$beta_table} returns the table of fixed-effect coefficients as it is printed by \code{summary}, including standard errors and t-values.
 
-\code{vcov} returns the variance-covariance matrix of the fixed-effects coefficients.
+\code{vcov} returns the variance-covariance matrix of the fixed-effects coefficients (cf See Also for related computations involving random effects).
 
 \code{Corr} by default returns correlation matrices of random effects (though see Details for user-defined correlation models).
 
@@ -51,8 +51,10 @@ But it may also be an heteroscedastic matrix for some random effects if \code{co
 Some variance parameters may be removed from the \code{VarCorr} output, with a message, such as the slope of the linear predictor describing the correlation model of an \code{adjacency} term (see \code{autoregressive}). The rare user of such parametrization should not consider this as a stable feature.   
 }
 \seealso{
-\code{\link{get_inits_from_fit}} and \code{\link{get_ranPars}}.
-\code{\link{get_matrix}(., which="beta_v_cov")} for the joint covariance matrix of estimates/predictions of fixed effect coefficients and random effects.
+\code{\link{get_inits_from_fit}} and \code{\link{get_ranPars}}. \cr
+
+\code{\link{get_matrix}(., which="beta_v_cov")} for the joint covariance matrix of estimates/predictions of fixed-effect coefficients and random effects; and \cr
+\code{\link{get_matrix}(., which="v_condcov")} for the covariance matrix of predictions of random effects given fixed effects (the variances corresponding to the \code{condsd} reported in some \pkg{lme4} output). Both of these computations refer to the random effects \bold{v} as defined in \code{\link{random-effects}}.
 }
 \examples{
 data("wafers")

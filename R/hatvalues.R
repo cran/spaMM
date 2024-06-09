@@ -49,9 +49,9 @@ hatvalues.HLfit <- function(model, type="projection", which="resid", force=FALSE
     lev <- NULL
     if ( ( ! force) && look_object_lev) {
       if (which=="resid") lev <- model$lev_phi 
-      if (which=="ranef") lev <- model$lev_lam 
+      if (which=="ranef") lev <- model$lev_lambda 
       if (which=="both") {
-        lev <- list(ranef=model$lev_lam,resid=model$lev_phi) 
+        lev <- list(ranef=model$lev_lambda,resid=model$lev_phi) 
         if (any(sapply(lev, is.null))) lev <- NULL
       }
     }

@@ -217,7 +217,7 @@ negbin1 <- function (shape = stop("negbin1's 'shape' must be specified"), link =
       dlogLDmu_0 <- shape*(0.57721566490 - 2 * atanh(1/(1+2*shape)) -log(shape/(1+shape))/2 +digamma(y)) #  dlogL in mu=0
       if (dlogLDmu_0<0) return(0) # DlogL < 0 in mu->0   => return mu=0
       # however the evaluation of dlogl near mu=0 is remarkably imprecise for vanishing shape. The notebook illustrates the huge amplitude of the numerical noise.
-      # Hence 'quickpatch' in dev.resids(). (___F I X M E__) rethink: restrict the shape lower bound?
+      # Hence 'quickpatch' in dev.resids(). (__F I X M E__) rethink: restrict the shape lower bound?
       if (shape >= 1) {
         lower <-  y-1
       } else {
@@ -235,7 +235,7 @@ negbin1 <- function (shape = stop("negbin1's 'shape' must be specified"), link =
   }
   
   dev.resids <- function(y,mu,wt) { 
-    resu <- 2*(sat_logL(y, wt=wt)-logl(y,mu=mu,wt=wt)) # pw are not formally supported. sat_logL() (and possibly other fns) ignores them but logl() does not... (___F I X M E___ fix logl fo safety?)
+    resu <- 2*(sat_logL(y, wt=wt)-logl(y,mu=mu,wt=wt)) # pw are not formally supported. sat_logL() (and possibly other fns) ignores them but logl() does not... (__F I X M E___ fix logl fo safety?)
     if (any(shape<1e-4)) {
       if (length(shape)>1L) {
         quickpatch <- shape<1e-5 & resu<0

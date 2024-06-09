@@ -201,7 +201,7 @@ llm.fit <- function (x,
   ## This allows for changes in the dimensions of the design matrix over loop iterations... We remove this.
   goodinit <- weights > 0 
   for (iter in 1L:control$maxit) {
-    ## this uses WLS in the first iteration and Levenberg Marquardt in later ones. # __F I X M E__ less systematic LevM ? LevM remains cheap for fied-effect models.
+    ## this uses WLS in the first iteration and Levenberg Marquardt in later ones. # _F I X M E__ less systematic LevM ? LevM remains cheap for fied-effect models.
     if (iter==1L) {
       if (all(!goodinit)) {
         conv <- FALSE
@@ -229,7 +229,7 @@ llm.fit <- function (x,
           ( ! is.finite(dev) ||  ## NaN or Inf; 
             ! valideta(eta))             # I met the case sqrt link, eta<0 but dev OK (as function of mu=eta^2)) => stop("inner loop 2...)
           # I fixed .sanitize_eta in that case. But per se this does not protect from stop("inner loop 2; cannot correct...  below
-          # so this test remains as a tempo fix (___F I X M E___)
+          # so this test remains as a tempo fix (__F I X M E___)
       ) {
         
         if (is.null(coefold)) {

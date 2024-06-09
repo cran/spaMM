@@ -528,7 +528,7 @@ summary.HLfitlist <- function(object, ...) {
           } else cat("Residual dispersion model includes random effects:\n  use summary(<fit object>$resid_fit) to display results.\n")       
         } else  if (! is.null(mv_it)) {
           cat(paste0("Residual dispersion model is HLfit object:\n  use summary(<fit object>$resid_fits[[",mv_it,"]]) to display results.\n"))
-        } else cat("Residual dispersion model is HLfit object:\n  use summary(<fit object>$resid_fit) to display results.\n") # __F I X M E__ that is reasonable output but try extracting info from the fits?       
+        } else cat("Residual dispersion model is HLfit object:\n  use summary(<fit object>$resid_fit) to display results.\n") # _F I X M E__ that is reasonable output but try extracting info from the fits?       
       } else if ((loc_p_phi <- length(phi.object$fixef))) { # there are phi params (possibly outer estimated), 
         glm_phi <- .get_glm_phi(object, mv_it=mv_it) 
         summ <- .table_glm_phi(glm_phi, loc_p_phi, phi.object, summ, object, family=family,
@@ -539,7 +539,7 @@ summary.HLfitlist <- function(object, ...) {
       }                                                 
     }
   } else if (family$family %in% c("beta_resp","betabin", "COMPoisson", "negbin1", "negbin2")) {
-    not_pw_1 <- ! .is_unit(pw) # But relevant only for beta_resp and betabin ? (___F I X M E___?? Don't confuse with resid.model feature which works for negbin[] models too)
+    not_pw_1 <- ! .is_unit(pw) # But relevant only for beta_resp and betabin (which have pw)? (__F I X M E___?? Don't confuse with resid.model feature which works for negbin[] models too)
     has_dispenv_beta <- ( ! is.null(beta <- (disp_env <- family$resid.model)$beta)) 
     if (not_pw_1 || has_dispenv_beta) {
       if (! is.null(mv_it)) {
@@ -613,7 +613,7 @@ summary.HLfitlist <- function(object, ...) {
   details <- as.list(details)
   if (is.null(details[["ranCoefs"]])) details["ranCoefs"] <- FALSE
   if (is.null(details[["p_value"]])) details["p_value"] <- "" ## a string such as "Wald"
-  if (is.null(details[["digits"]])) details["digits"] <- 4 # __F I X M E__ document this? Only used in .print_lambda_table() so rather cryptic.
+  if (is.null(details[["digits"]])) details["digits"] <- 4 # _F I X M E__ document this? Only used in .print_lambda_table() so rather cryptic.
   models <- object$models
   lcrandfamfam <- attr(object$rand.families,"lcrandfamfam") 
   randfamfamlinks <- unlist(lapply(object$rand.families, .prettify_family))
@@ -720,7 +720,12 @@ summary.HLfitlist <- function(object, ...) {
   } else {
     cat(" ------------ Fixed effects (beta) ------------\n")
     beta_table <- .make_beta_table(object, p_value=details$p_value)
-    print(beta_table,4)
+    print(beta_table,4) 
+    if (prod(dim(beta_table))>max.print && missing(max.print) ) {
+      cat(' [ Use the summary.HLfit() "max.print" argument\n   to control getOption("max.print") at this point ].\n')
+      #: problem dealt here is that the print() message referring to getOption("max.print") suggests  
+      # that the user can control this by setting the option globally, but this will fail 'locally'.
+    }
     summ$beta_table <- beta_table
   }
   if (models[["eta"]]=="etaHGLM") {

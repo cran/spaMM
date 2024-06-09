@@ -49,7 +49,7 @@
   removand <- rep(FALSE, length(uside))
   uside[is.na(uside)] <- 0
   # so a gradient of -1 for a change of 1e-6 of the argument means the APHL appears to increase by ~ 1e-6. Lower values may be negligible 
-  if (any(nonzero_grad <- abs(gr_neg_APHL)>thr)) { #___F I X M E___ redefine check by compar to hessian? was motivated Cf negbin1 resid.model example. 
+  if (any(nonzero_grad <- abs(gr_neg_APHL)>thr)) { #__F I X M E___ redefine check by compar to hessian? was motivated Cf negbin1 resid.model example. 
     max_at_bound <- (uside==-1L & gr_neg_APHL < -thr) | (uside==1L & gr_neg_APHL > thr)
     if (any(max_at_bound)) {
       warning(paste(proc_info$objective, "has nonzero gradient for",
@@ -222,6 +222,6 @@ as_LMLT <- function(fitobject, nuisance=NULL, verbose=TRUE, transf=TRUE, check_d
     # So forget it...
   }
   resu <- as(resu, "LMLT") #to call spaMM::anova.LMLT() -> anova.lmerModLmerTest -> single_anova -> get_contrasts_type1|2|3
-  # I now have my get_type[]_contrasts for .anova_fallback() so could I avoid using lmerTest (__F I X M E__?)
+  # I now have my get_type[]_contrasts for .anova_fallback() so could I avoid using lmerTest (_F I X M E__?)
   invisible(resu)
 }

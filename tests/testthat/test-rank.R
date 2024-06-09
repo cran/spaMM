@@ -115,3 +115,31 @@ if (spaMM.getOption("example_maxtime")>0.7) { # Test of correct handling of sing
   anova(okfit, type="2", method="t.Chisq")
   
 }
+
+{ cat(crayon::yellow("Testing rank-deficient fitmv... "))
+  (singfitmv <- fitmv(list(y~int+ b1+b2+c1+c2+c3, b1~b2+c1+c2+c3),data=donn))
+  mvfv1 <- predict(singfitmv)[,1]
+  mvfv2 <- predict(singfitmv, newdata=donn)[,1]
+  testthat::test_that("whether predict(<mv,rank-def>, newdata) is correct:",
+                      testthat::expect_true( max(apply(cbind(mvfv1,mvfv2),1L,var))<1e-16))
+
+  cat(crayon::yellow("  and additionally with X2X argument: "))
+  mm <- model.matrix(singfitmv)
+  X_8to7 <- 
+    matrix(c(1,0,0,0,0,0,0,
+             0,1,0,0,0,0,0,
+             0,0,1,0,0,0,0,
+             0,0,0,1,0,0,0,
+             1,0,0,0,0,0,0,
+             0,0,0,0,1,0,0,
+             0,0,0,0,0,1,0,
+             0,0,0,0,0,0,1), nrow=8, ncol=7, byrow=TRUE,
+           dimnames=list(NULL, c("(Intercept)",colnames(mm)[c(2:4,6:8)])))
+  
+  (singfitmvX2X <- fitmv(list(y~int+ b1+b2+c1+c2+c3, b1~b2+c1+c2+c3),data=donn, X2X=X_8to7))
+  (mvfv1 <- predict(singfitmvX2X)[,1])
+  (mvfv2 <- predict(singfitmvX2X, newdata=donn)[,1])
+  testthat::test_that("whether predict(<mv,rank-def,X2X>, newdata) is correct:",
+                      testthat::expect_true( max(apply(cbind(mvfv1,mvfv2),1L,var))<1e-16))
+
+}

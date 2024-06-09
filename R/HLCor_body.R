@@ -94,7 +94,9 @@
   
   # for old builtin types:
   is_uniqueGeo_needed <- ( (! is.na(corr_types)) & 
-                             (corr_types=="Matern" | corr_types=="Cauchy" | corr_types=="AR1" |
+                             (corr_types=="Matern" | corr_types=="Cauchy" | 
+                                corr_types=="AR1" | # probably redundant with next condition
+                                processed$corr_info$levels_types=="time_series" | # includes ARp
                                 corr_types=="IMRF" ## IMRF: mapMM expects it.
                              )
   ) 
@@ -257,7 +259,8 @@ HLCor_body <- function(processed, ## single environment
     # is written for each call of the outer objfn (=> multi-line output).
     # Currently there is no such 'prefix' for mv (_F I X M E_)
     # That would require checking processed$residProcesseds (with -'s') and some further effort.
-    urP <- unlist(.canonizeRanPars(ranefParsList, corr_info=processed$corr_info,checkComplete=FALSE, rC_transf=.spaMM.data$options$rC_transf))
+    urP <- unlist(.canonizeRanPars(ranefParsList, corr_info=processed$corr_info,checkComplete=FALSE, 
+                                   rC_transf=.spaMM.data$options$rC_transf))
     processed$port_env$prefix <- paste0("HLCor for ", paste(signif(urP,6), collapse=" "), ": ")
   } 
   if ( ! is.null(processed$X_off_fn)) { # beta outer-optimisation

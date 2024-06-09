@@ -217,8 +217,11 @@
   }
 }
 
-.Z_times_L_with_attrs <- function(Z, Amatrix) {
-  is_incid <- attr(Z,"is_incid")
+
+.ZxA_with_attrs <- function(Z, Amatrix) {
+  mostAttrs <- attributes(Z)
+  is_incid <- mostAttrs[["is_incid"]]
+  mostAttrs <- mostAttrs[setdiff(names(mostAttrs), c("class","is_incid", slotNames(Z)))]
   if (inherits(Amatrix,"pMatrix")) {
     Amatrix <- as(as(Amatrix, "nMatrix"), "TsparseMatrix") # => ngTMatrix 
   } else if ( ! is.null(is_incid)) {
@@ -228,14 +231,24 @@
     if (is_incid) attr(is_incid,"is01col") <- FALSE # conservative default: ZA no longer 1col anyway...
   } 
   ZAnames <- colnames(Z)
-  if ( ! setequal(rownames(Amatrix),ZAnames)) {
-    mess <- paste0("Any 'A' matrix must have row names that match the levels of the random effects\n (",
-                   paste0(ZAnames[1L:min(5L,length(ZAnames))], collapse=" "),if(length(ZAnames)>5L){"...)."} else{")."})
-    stop(mess)
-  }
-  Z <- Z %*% Amatrix[ZAnames,] 
+  ### replaced by call to .check_fix_user_AMatrices() in preprocessing:
+  # if ( ! all(ZAnames == rownames(Amatrix))) {
+  #   if ( ! setequal(rownames(Amatrix),ZAnames)) {
+  #     mess <- paste0("Any 'A' matrix must have row names that match the levels of the random effects\n (",
+  #                    paste0(ZAnames[1L:min(5L,length(ZAnames))], collapse=" "),if(length(ZAnames)>5L){"...)."} else{")."})
+  #     stop(mess)
+  #   } else warning("(!) Possible problem with Amatrix permutation.", immediate.=TRUE)
+  #   if ( ! is.null(Xi_ncol <- attr(Amatrix,"Xi_ncol"))) { # composite ranef...
+  #     #### ZAnames <- ZAnames[1:(ncol(Amatrix) %/% Xi_ncol)] 
+  #     Z <- Z %*% Amatrix # [ZAnames,], for repeated ZAnames, appears to lead to a bug  
+  #     # but now in case of problem we have a warning but no stop
+  #   } else Z <- Z %*% Amatrix[ZAnames,] # OK here, but .calc_normalized_ZAlist() no longer
+  #   # uses permutations (see its commented code), so predictions may still be wrong. 
+  # } else 
+    Z <- Z %*% Amatrix
   rownames(Z) <- NULL
   attr(Z,"is_incid") <- is_incid
+  for (st in names(mostAttrs)) attr(Z,st) <- mostAttrs[[st]] 
   Z
 }
 
@@ -248,10 +261,9 @@
       ## logic is Z[nresp,nUniqueRespLoc].A[nUniqueRespLoc,nHiddenv].L[nHiddenv,nHiddenv]
       for (char_rd in Znames) {
         Amatrix <- AMatrices[[char_rd]]
-        if ( ! is.null(Amatrix)) Zlist[[char_rd]] <- .Z_times_L_with_attrs(Z=Zlist[[char_rd]], Amatrix) 
+        if ( ! is.null(Amatrix)) Zlist[[char_rd]] <- .ZxA_with_attrs(Z=Zlist[[char_rd]], Amatrix) 
       }
-      attr(Zlist,"AMatrices") <- AMatrices 
-    } else attr(Zlist,"AMatrices") <- list() # to allow any later fn such as .assign_geoinfo.... to safely set named elements to it. 
+    } 
   } 
   return(Zlist)
 }
@@ -596,16 +608,33 @@
 }
 
 .sym_checked <- function(mMatrix, mname="matrix") { ## should return a dsCMatrix; user input may be a matrix
-  if (ncol(mMatrix)!=nrow(mMatrix)) {stop(paste0("Some ",mname," that should be symmetric is found to be not even square."))}
+  nc <- ncol(mMatrix)
+  if (nc != nrow(mMatrix)) {stop(paste0("Some ",mname," that should be symmetric is found to be not even square."))}
   if ( ! identical(colnames(mMatrix), rownames(mMatrix))) {
-    warning("Forcing colnames(mMatrix) <- rownames(mMatrix) before calling isSymmetric().")
-    colnames(mMatrix) <- rownames(mMatrix)
+    if ( (null1 <- is.null(colnames(mMatrix))) != is.null(colnames(mMatrix))) { # either one is NULL
+      if (null1) {
+        colnames(mMatrix) <- rownames(mMatrix)
+      } else rownames(mMatrix) <- colnames(mMatrix)
+    } else {
+      warning("Forcing colnames(mMatrix) <- rownames(mMatrix) before calling isSymmetric().")
+      colnames(mMatrix) <- rownames(mMatrix)
+    }
   }
   if (isSymmetric(mMatrix)) {
     return(forceSymmetric(drop0(mMatrix))) # dsCMatrix! spaMM:::.sym_checked(diag(3)) is dsCMatrix
   } else {
     stop(paste0("Some ",mname," appears not to be symmetric."))
   }
+}
+
+.reformat_adjMatrix <- function(adjMatrix) {
+  nc <- ncol(adjMatrix)
+  adjMatrix <- .sym_checked(adjMatrix,"adjMatrix") # dsCMatrix
+  if (is.null(colnames(adjMatrix))) { # .sym_checked() has already enforced symmetry of dimnames
+    rownames(adjMatrix) <- colnames(adjMatrix) <- seq_len(nc)
+  }
+  attr(adjMatrix,"dsCdiag") <- .symDiagonal(nc, x = rep.int(1,nc), uplo = "U",   kind="d")
+  adjMatrix
 }
 
 .assign_cov_matrices__from_covStruct <- function(corr_info, covStruct=NULL, corrMatrix=NULL, adjMatrix=NULL,
@@ -622,11 +651,8 @@
     if ( ! is.na(corr_type)) {
       if (corr_type=="adjacency" || corr_type=="SAR_WWt") {
         if ( is.null(adjMatrix) ) adjMatrix <- .get_adjMatrix_from_covStruct(covStruct,it, required=required)
-        if (required) {
-          nc <- ncol(adjMatrix)
-          dsCdiag <- .symDiagonal(nc, x = rep.int(1,nc), uplo = "U",   kind="d")
-          corr_info$adjMatrices[[it]] <- structure(.sym_checked(adjMatrix,"adjMatrix"), # dsCMatrix
-                                                   dsCdiag=dsCdiag)
+        if (required) { # ie ! For_fitmv... for fitmv, see .add_cov_matrices__from_mv_global()
+          corr_info$adjMatrices[[it]] <-  .reformat_adjMatrix(adjMatrix)
         }
       } else if (corr_type=="corrMatrix") {
         if (is.null(corrMatrix)) corrMatrix <- .get_corr_prec_from_covStruct(covStruct,it, required=required) 
@@ -869,8 +895,11 @@
     if (is.null(rankinfo)) rankinfo <- .calc_rankinfo(X.pv, tol=spaMM.getOption("rankTolerance")) # always return a list
     if (is.list(rankinfo)) {
       X.pv <- .rankTrim(X.pv,rankinfo = rankinfo)
-    } else attr(X.pv,"namesOri") <- colnames(X.pv) # input 'rankinfo' was FALSE.
-    # the unmodified "assign" attribute refers to the cols of the untrimmed matrix.
+    } else { # input 'rankinfo' was FALSE.
+      if (is.null(attr(X.pv,"namesOri"))) attr(X.pv,"namesOri") <- colnames(X.pv)
+      # ... but this typically occurs through .merge_processed() in which case the attribute should be present,
+      # and we want to keep it as colnames(X.pv) instead refers to the trimmed matrix.
+    } # The unmodified "assign" attribute likewise refers to the cols of the untrimmed matrix.
   }
   names_lostattrs <- setdiff(names(Xattr), c(names(attributes(X.pv)),"dim","dimnames"))
   attributes(X.pv)[names_lostattrs] <- Xattr[names_lostattrs] # as in .subcol_wAttr(). 
@@ -1034,14 +1063,13 @@
 
 .assign_corr_types_families <- function(covStruct, # may be NULL on input
                                           corr_info, exp_ranef_types, exp_barlist) {
-  
-  corr_families <- vector('list',length(exp_ranef_types)) # full list and no char_rd so far
+  nrand <- length(exp_ranef_types)
+  corr_families <- vector('list',nrand) # full list and no char_rd so far
   special_ranefs <- .spaMM.data$keywords$special_ranefs # c("adjacency","Matern","Cauchy","AR1","corrMatrix", "IMRF", "corrFamily")
   # But note special case for IMRF... except that I commented it out...
   corr_types <- special_ranefs[match(exp_ranef_types, special_ranefs)] ## full length with (so far) NA's when no match
   is_cF_internally <- exp_ranef_types=="corrFamily" # unregistered ones; registered ones set to TRUE below 
-  
-  for (rd in seq_along(exp_ranef_types)) {
+  for (rd in seq_len(nrand)) {
     ranef_type <- exp_ranef_types[rd]
     if (ranef_type=="(.|.)") {
       # do nothing
@@ -1052,24 +1080,47 @@
     #   cov_term[[1L]] <- as.name("gridIMRF")
     #   covStruct[rd] <- list(corrFamily=cov_term) # see two comments below
     #   is_cF_internally[rd] <- TRUE 
-    } else if ( ! is.na(corr_types[[rd]])) { # those not implemented as corrFamily: Matern, AR1... but not ARp
-      corr_families[[rd]] <- do.call(corr_types[[rd]],list()) # corr_types' elements are function names!
-    } else { # corr_type is NA
-      if (ranef_type %in% .spaMM.data$keywords$all_cF) { # registered corrFamily
-        corr_types[[rd]] <- "corrFamily" # replaces NA
+      covStruct[rd] <- list(NULL) 
+    } else if ( ! is.na(corr_types[[rd]])) { # those implemented as 'special_ranefs':
+      # "adjacency"  "Matern"     "Cauchy"     "AR1"        "corrMatrix" "IMRF"       "corrFamily"
+      # but not ARp ...
+      if (corr_types[[rd]]=="corrFamily") {
+        # allow special handling of '...'
         term <- exp_barlist[[rd]]
+        # term[-2] removes the .|. of the term, leaving the explicit arguments of the corrFamily function
+        # if term is AcorrFamily(1 | Year, levels_type = "time_series")
+        # # term[-2] is corrFamily(levels_type = "time_series")
+        corr_families[[rd]] <- eval(term[-2L]) 
+      } else {
+        # call with default arguments (actual construction will come later)
+        corr_families[[rd]] <- do.call(corr_types[[rd]],list()) # corr_types' elements are function names!
+      }
+      if (is.null(covStruct)) covStruct[rd] <- list(NULL) # but do not erase the covStruct input!
+    } else { # corr_type is NA: not a 'special_ranefs' (BUT note that "corrFamily" may be 
+      # called above as a "special_ranefs" and below as a replacement for the ranef_type.
+      # These two cases can be distinguished by the value of covStruct[rd]
+      if (ranef_type %in% .spaMM.data$keywords$all_cF) { # registered corrFamily
+        # corr_families[[rd]] will be a stub, but covStruct[rd] may contain more information.
+        corr_types[[rd]] <- "corrFamily" # replaces NA
+        corr_families[[rd]] <- do.call(corr_types[[rd]],list()) # well this calls corrFamily() ./.
+        #  ./. which provides a stub... so don't try to use the result yet.
+        # For these ones, corr_families[[rd]] will be set later by .preprocess_corrFamily() (though possibly delayed in fitmv case)
+        #
+        term <- exp_barlist[[rd]]
+        # term[-2] removes the .|. of the term, leaving the explicit arguments of the corrFamily function
+        # if term is ARp(age | age, p = 1, fixed = c(p1 = 0.1))
+        # # term[-2] is ARp(p = 1, fixed = c(p1 = 0.1))
         covStruct[rd] <- list(corrFamily=term[-2L]) # name is lost when covStruct was NULL... does it occur given condition on ranef_type? 
         is_cF_internally[rd] <- TRUE 
-        corr_families[[rd]] <- do.call(corr_types[[rd]],list()) # well this calls corrFamily() which provides a stub...
-        # For these ones, corr_families[[rd]] will be set later by .preprocess_corrFamily() (though possibly delayed in fitmv case)
-      } else stop("Unknown or unregsitered correlation model.")
+      } else stop("Unknown or unregistered correlation model.")
     }
   }
   corr_info$is_cF_internally <- is_cF_internally
   corr_info$corr_types <- corr_types
   corr_info$corr_families <- corr_families
   
-  covStruct
+  covStruct # revised so that the return value is always a list of length nrand
+  # so that covStruct[[nrand]] does not yield 'indice hors limites'
 }
 
 
@@ -1084,6 +1135,31 @@
   }
 }
 
+# This fn is called but its code is virtual in the sense that I currently have no example of user-defined A matrix.
+.check_fix_user_AMatrices <- function(corr_info, Zlist) {
+  if ( length(corr_info$AMatrices)) {
+    for (rd in seq_along(Zlist)) {
+      if ( ! is.null(Amatrix <- corr_info$AMatrices[[as.character(rd)]])) {
+        ZAnames <- colnames(Zlist[[rd]])
+        if ( ! all(ZAnames == rownames(Amatrix))) {
+          if ( ! setequal(rownames(Amatrix),ZAnames)) {
+            mess <- paste0("Any 'A' matrix must have row names that match the levels of the random effects\n (",
+                           paste0(ZAnames[1L:min(5L,length(ZAnames))], collapse=" "),if(length(ZAnames)>5L){"...)."} else{")."})
+            stop(mess)
+          } else {
+            # warning("(!) Possible problem with Amatrix permutation.", immediate.=TRUE)
+            if ( ! is.null(Xi_ncol <- attr(Amatrix,"Xi_ncol"))) { # composite ranef...
+              ZAnames <- ZAnames[1:(ncol(Amatrix) %/% Xi_ncol)] 
+            } 
+            corr_info$AMatrices[[as.character(rd)]] <- Amatrix[ZAnames,]
+          }
+        }
+      }
+    }
+  }
+}
+
+
 .preprocess <- function(control.HLfit, ranFix=NULL, HLmethod, 
                        predictor, resid.model,
                        REMLformula, data, family,
@@ -1096,7 +1172,6 @@
                        distMatrix=NULL, 
                        control.dist=NULL,
                        init=NULL, # for .preprocess_augZXy() ... and outer-beta
-                       X2X,
                        ADFun=NULL # default for private argument; any non-default value input by a user is copied in 'processed';
                                   # Possible ADFun values are then defined by the .wrap_MakeADFun() code.
                        ) {
@@ -1244,6 +1319,9 @@
   # ... when some disp param is inner estimated: (HLfit_body() tells cases apart) 
   processed$iter_mean_dispVar <- .calc_iter_mean_dispVar(control.HLfit, family, y)
   #
+  if (is.null(ranFix)) ranFix <- list()
+  ## models: ## progressively add info to 'processed' and to 'models' before storing final 'models' in 'processed.'
+  models <- list(eta="",lambda="",phi="", rdispar="")
   if (nrand) {
     if (family$link %in% c("log","loglambda"))  {
       maxLambda <- log(sqrt(.spaMM.data$options$maxLambda))^2
@@ -1281,28 +1359,68 @@
     processed$lcrandfamfam <- attr(rand.families,"lcrandfamfam") ## else remains NULL
     #
     #
-    # (1) preprocess to make sure of the $levels_type:
-    if ( ! For_fitmv) for (rd in which(corr_info$is_cF_internally)) { # (allows NA in $corr_types)
-      # For the hard coded Matern(), AR1() etc. $corr_families[[it]] is already a list of functions $calc_moreargs, $canonize...
-      # for corrFamily() by the next line it will be the corrFamily descriptor as an *environment* with $f, $tpar, $type, $template, $Af... $calc_moreargs, $canonize...
-      corr_info$corr_families[[rd]] <- .preprocess_corrFamily(corrfamily=eval(covStruct[[rd]])) 
-    } 
-    # (2) Create Z matrices using corrFamilies' levels_type:
-    Zlist <- .calc_Zlist(exp_ranef_terms=exp_ranef_terms, data=data, rmInt=0L, drop=TRUE, 
-                         corr_info=corr_info,
-                         lcrandfamfam=processed$lcrandfamfam) 
-    # (3) initialize things in the corrFamilies using the Z matrices:
-    if ( ! For_fitmv) for (rd in which(corr_info$is_cF_internally)) {
-      .initialize_corrFamily(corr_info$corr_families[[rd]], Zmatrix=Zlist[[rd]])
-    } 
+    if (For_fitmv) {
+      c_i_cF <- corr_info$corr_families
+      # (1) preprocess to make sure of the $levels_type:
+      levels_types <- rep("", nrand)
+      # A local covStruct has been built from the submodel formula terms, 
+      # (see above call to .assign_corr_types_families())
+      # ignoring the covStruct argument of fitmv. Thus, formula terms such as ARp()
+      # can provide nontrivial info, while no info is available 
+      # for corrFamily() terms whose actual constructor is specified by the covStruct argument. 
+      for (rd in which(corr_info$is_cF_internally)) { # (allows NA in $corr_types)
+        # For the hard coded 'special_ranefs' Matern(), AR1() etc. $corr_families[[it]] is already a list of functions $calc_moreargs, $canonize...
+        # and covStruct[[rd]] should be NULL (see .assign_corr_types_families())
+        # for other registered corrFamilies, by the next line $corr_families[[it]] should be the result of 
+        # eval(covStruct[[rd]]) : an *environment* with $f, $tpar, $type, $template, $Af... $calc_moreargs, $canonize...
+        if ( ! is.null(covStruct[[rd]])) { # registered corrFamily not in the special_ranefs,
+          # info provided by LOCAL covStruct built from submodel formula
+          corr_info$corr_families[[rd]] <- .preprocess_corrFamily(corrfamily=eval(covStruct[[rd]]))
+          levels_types[[rd]] <- corr_info$corr_families[[rd]]$levels_type
+        } # else this may (should?) be a special_ranefs
+      }
+      corr_info$levels_types <- levels_types 
+      # (2) Create Z matrices using corrFamilies' levels_type:
+      Zlist <- .calc_Zlist(exp_ranef_terms=exp_ranef_terms, data=data, rmInt=0L, drop=TRUE, 
+                           corr_info=corr_info,
+                           lcrandfamfam=processed$lcrandfamfam) 
+      corr_info$corr_families <- c_i_cF
+    } else {
+      # (1) preprocess to make sure of the $levels_type:
+      levels_types <- rep("", nrand)
+      for (rd in which(corr_info$is_cF_internally)) { # (allows NA in $corr_types)
+        # For the hard coded Matern(), AR1() etc. $corr_families[[it]] is already a list of functions $calc_moreargs, $canonize...
+        # for corrFamily() by the next line it will be the corrFamily descriptor as an *environment* with $f, $tpar, $type, $template, $Af... $calc_moreargs, $canonize...
+        if ( ! is.null(covStruct[[rd]])) { # e.g. for ARp()
+          # in univariate-resp fit, formula terms for these elements have been copied in the covStruct
+          # So if the formula was distance ~ age + ARp(age|age,p=1, fixed=c(p1=0.1)),
+          # next line will evaluate ARp(age|age,p=1, fixed=c(p1=0.1)) 
+          corr_info$corr_families[[rd]] <- .preprocess_corrFamily(corrfamily=eval(covStruct[[rd]])) 
+          levels_types[[rd]] <- corr_info$corr_families[[rd]]$levels_type 
+        }
+      } 
+      corr_info$levels_types <- levels_types # so that this info can be looked up efficiently. Used at least as soon as 
+      # (post-optim) HLCor_body() -> .reformat_info_uniqueGeo() and thus before .get_ranef_info() call.
+      
+      # (2) Create Z matrices using corrFamilies' levels_type:
+      Zlist <- .calc_Zlist(exp_ranef_terms=exp_ranef_terms, data=data, rmInt=0L, drop=TRUE, 
+                           corr_info=corr_info,
+                           lcrandfamfam=processed$lcrandfamfam) 
+      # (3) initialize things in the corrFamilies using the Z matrices:
+      for (rd in which(corr_info$is_cF_internally)) {
+        .initialize_corrFamily(corr_info$corr_families[[rd]], Zmatrix=Zlist[[rd]])
+      } 
+    }
     #
     #
     # rand.fam.fam info needed for Zlist and Zlist needed for next line => prevents merging it in .preprocess_rand_families()
     for (rd in seq_len(nrand)) rand.families[[rd]]$prior_lam_fac <- attr(Zlist[[rd]],"prior_lam_fac")
     processed$rand.families <- rand.families
     #####
+    .check_fix_user_AMatrices(corr_info, Zlist)
+    
     ## Assigns $corr_info$AMatrices for IMRFs:
-    # __F I X M E__ there's an inefficiency: blob$uniqueGeo etc is computed twice : 
+    # _F I X M E__ there's an inefficiency: blob$uniqueGeo etc is computed twice : 
     # once for the new Z and once for the new A.
     # processed$geo_info does not appear to be used for IMRF nor corrFamily. 
     # If we were to use geo_envir <- .get_geo_info(processed, which_ranef=rd, which=c("uniqueGeo")) :
@@ -1312,7 +1430,6 @@
     # with the .preprocess_mv() workflow, for reasons detailed in the source of .init_assign_geoinfo().
     # Moreover, to take advantage of an early-defined geo_info, the formals of .assign_AMatrices_IMRF() and 
     # .calc_AMatrix_IMRF() would need to be modified. This seems a bit too messy currently. 
-    
     .assign_AMatrices_IMRF(corr_info, Zlist, exp_barlist=exp_barlist, processed$data, control_dist=processed$control_dist) 
     ## Same for corrFamilies that have some:
     .assign_AMatrices_corrFamily(corr_info, Zlist, exp_barlist=exp_barlist, processed$data, control_dist=processed$control_dist)
@@ -1328,16 +1445,8 @@
   ####
   ## determine true # cols before determining sparse_precision (!= sparse_X)
   ## X.pv post-processing; later extract column for fixed coefficients, but we will need the offset for that
-  if  (! is.null(X2X)) {
-    if (is.null(colnames(X2X))) stop("'X2X' *must* have column names")
-    
-    merged_X <- .post_process_X(X.pv=main_terms_info$X %*% X2X,  # loss of attributes, "assign" notably
-                                HL=processed$HL, rankinfo=control.HLfit$rankinfo,
-                            sparse_X=.determine_sparse_X(main_terms_info) )
-  } else {
-    X.pv <- .post_process_X(X.pv=main_terms_info$X, HL=processed$HL, rankinfo=control.HLfit$rankinfo,
-                            sparse_X=.determine_sparse_X(main_terms_info) )
-  }
+  X.pv <- .post_process_X(X.pv=main_terms_info$X, HL=processed$HL, rankinfo=control.HLfit$rankinfo,
+                          sparse_X=.determine_sparse_X(main_terms_info) )
   # .post_process_X() calls .rankTrim() which adds attributes "namesOri" and "rankinfo"
   #
   ##################
@@ -1375,31 +1484,30 @@
   }
   ## Now X.pv has its final ncol := pforpv
   #
-  if (.spaMM.data$options$X_scaling) { ## use scaled X.pv by default v.2.4.83
-    ##       standard REML    ||      ML 
-    if ( is.null(processed$REMLformula) || ncol(processed$X.Re)==0L) X.pv <- .scale(X.pv) # scales and adds "scaled:scale" attribute
-  }
+  if (.spaMM.data$options$X_scaling && ## use scaled X.pv by default v.2.4.83
+      ( is.null(processed$REMLformula) || ncol(processed$X.Re)==0L)
+  ) X.pv <- .scale(X.pv) # scales and adds "scaled:scale" attribute
 
-  if ( ! is.null(init$beta)) { # outer beta
-    betanames <- names(init$beta)
-    if (length(intersect(colnames(X.pv),betanames))!=length(init$beta)) stop("init$beta must have names matching those of the design matrix")
+  if ( ! is.null(init_beta <- init[["beta"]])) { # outer beta
+    betanames <- names(init_beta)
+    if (length(intersect(colnames(X.pv),betanames))!=length(init_beta)) stop("init[['beta']] must have names matching those of the design matrix")
     # {
-    #   warning("init$beta must have names matching those of the design matrix.\n init$beta names will be automatically set.",
+    #   warning("init[['beta']] must have names matching those of the design matrix.\n Its names will be automatically set.",
     #           immediate. = TRUE)
-    #   betanames <- names(init$beta) <- colnames(X.pv)
+    #   betanames <- names(init_beta) <- colnames(X.pv)
     # }
-    # It's useless to rename init$beta here bc init is not preprocessed (___F I X M E___?): the init used later is the one in the call of the parent fn
+    # It's useless to rename init_beta here bc init is not preprocessed (__F I X M E___?): the init used later is the one in the call of the parent fn
     X_off <-.subcol_wAttr(X.pv, j=betanames, drop=FALSE)
     X.pv <- .subcol_wAttr(X.pv, j=setdiff(colnames(X.pv),betanames), drop=FALSE)
     processed$X_off_fn <- .def_off_fn(X_off, ori_off=processed$off)
   }
-  models <- list(eta="",lambda="",phi="", rdispar="")
   if ( ! For_fitmv) {
     thread_nbr <- control.HLfit$NbThreads
     if (is.null(thread_nbr)) thread_nbr <- .spaMM.data$options$NbThreads # should be 1L by default
   }
   if ( nrand) {
     models[["eta"]] <- "etaHGLM" 
+    # The Z matrices may be reduced by next call, for AR1 in particular:
     ZAlist <- .init_assign_geoinfo(processed=processed, ZAlist=ZAlist, For=callargs$For,
                                exp_barlist=exp_barlist, nrand=nrand, distMatrix=distMatrix)
     #
@@ -1431,6 +1539,17 @@
       if (algebra=="decorr" && nrd>900L && thread_nbr==1L) message('Using paralellisation might be useful. See help("setNbThreads")')
       # The larger subsamples (nrd=1000 for the 3rd) in useR2021_spatial_timings.R may be used to test the effect IF method uses obsInfo (otherwise there is in particular no .tcrossprodCpp)
     }
+    processed$ranCoefs_blob <- .process_ranCoefs(processed, #  uses ZAlist, cum_n_u_h...
+                                                 ranCoefs=.getPar(ranFix,"ranCoefs"), ## may be NULL 
+                                                 use_tri_CORREL=TRUE) 
+    processed$AUGI0_ZX$envir$finertypes[processed$ranCoefs_blob$isRandomSlope] <- "ranCoefs" #
+    
+    #
+    ranFix$lambda <- # this copy is a way of checking and standardizing names if nothing else
+      processed$lambda.Fix <- 
+      .reformat_lambda(.getPar(ranFix,"lambda"), nrand, namesTerms=attr(ZAlist,"namesTerms"), full_lambda = TRUE) # should always have nrand elements
+    models[["lambda"]] <- rep("lamScal",nrand) ## even for adjacency, random slope...
+    processed$X_lamres <- .calc_X_lamres(processed, models=models, ZAlist=ZAlist, nrand=nrand) ## for glm for lambda, and SEMbetalambda
   } else {
     models[["eta"]] <- "etaGLM"
     processed$QRmethod <- .choose_QRmethod(processed$ZAlist, corr_info=corr_info,
@@ -1442,11 +1561,6 @@
     } else if (processed$QRmethod=="spcorr") X.pv <- .as_spMat_wAttr(X.pv)
     processed$AUGI0_ZX <- list(X.pv=X.pv)
   }
-  #
-  ## models: ## progressively add info to 'processed' and to 'models' before storing final 'models' in 'processed.'
-  if (is.null(ranFix)) ranFix <- list()
-  processed$lambda.Fix <- .reformat_lambda(.getPar(ranFix,"lambda"), nrand, namesTerms=attr(ZAlist,"namesTerms"), full_lambda = TRUE) # should always have nrand elements
-  models <- .preprocess_lam_rC_models(processed, models, ranFix, nrand, ZAlist=processed$ZAlist)
   #processed$fixed <- ranFix # always a list() # would be used as proc1$fixed... ## : difficult to use since fitme_body(.,fixed=...) can be called.
   processed$phi.Fix <- .check_phi_Fix(phi.Fix=.getPar(ranFix,"phi"), family)
   control.HLfit$intervalInfo <- NULL # because control.HLfit will be passed to .preprocess_resid() where we don't want this info.

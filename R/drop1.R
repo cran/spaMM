@@ -95,7 +95,7 @@
   if (check) {
     marg_ok <- .is_marginal(scope, tl)
     if (any( ! marg_ok)) {
-      message("Some test(s) removed as not satisfying marginalit condition. See 'check' argument.")
+      message("Some test(s) removed as not satisfying marginality condition. See drop1.HLfit()'s 'check_marg' argument.")
       scope <- scope[marg_ok]
     }
   }
@@ -303,7 +303,7 @@
     message(paste0("Fitting the original model took ",fit_time,"s and drop1() may take a few times longer."))
   }
   progbar <- (is_long && length(scope>2L))
-  basicLRTs <- vector("list", length(scope)) # ___F I X M E___ other variants of LR test? bootstrap, etc
+  basicLRTs <- vector("list", length(scope)) # __F I X M E___ other variants of LR test? bootstrap, etc
   names(basicLRTs) <- scope
   nofixef <- .remove_all_fixef(object$predictor, keep_offset=TRUE)
   if (progbar) cat("\nProgress: ")
@@ -331,8 +331,8 @@ drop1.HLfit <- function(object, scope=NULL, method="", check_marg = NULL, check_
     if (length(models$phi)==1L && models$phi %in% c("phiScal","")) {
       if (models$eta=="etaGLM") { 
         if (object$family$family=="gaussian" && object$family$link=="identity") {
-          return(.drop1.lm(object, scope, ...))
-        } else return(.drop1.glm(object, scope, ...))
+          return(.drop1.lm(object, scope, check=check_marg, ...))
+        } else return(.drop1.glm(object, scope, check=check_marg, ...))
       } else if (object$family$family=="gaussian" && object$family$link=="identity") { # LMM
         if (requireNamespace("lmerTest",quietly=TRUE)) {
           scope <- .preprocess_scope(scope, object=object, check=check_marg)

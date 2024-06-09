@@ -16,7 +16,9 @@
   spaMM_boot_args <- boot_args[spaMM_boot_args]
   spaMM_boot_args$object <- object
   if (is.null(spaMM_boot_args$type)) {
-    spaMM_boot_args$type <- "residual"
+    spaMM_boot_args$type <- "marginal"
+    message("Missing 'type' in 'boot_args' is set to '",
+            spaMM_boot_args$type,"'\n (this default type has been changed in version 4.4.23).")
   } else if (length(intersect(spaMM_boot_args$type,c("basic","perc","norm")))) {
     warning(
       paste0("Hmmm. It looks like you are using 'boot_args$type' to pass\n", 
@@ -194,7 +196,7 @@
                             phifits=TRUE, # not sure they are used, but they are not harmuful 
                             phiPars=FALSE, verbose=FALSE) 
     init$etaFix <- NULL
-    # ?___F I X M E___? potential interference with prior etaFix...
+    # ?__F I X M E___? potential interference with prior etaFix...
     # old obscure comment: "For fitmv, .makeLowerUpper() is called several times."
     if (fittingFunction == c("corrHLfit")) {
       lc <- get_HLCorcall(object,fixed=llc$fixed, control.HLfit=control.HLfit, init.corrHLfit=init) # (The fixed value is overwritten in objfn(); see further comments in numInfo())
@@ -222,7 +224,7 @@
     LUarglist <- optimInfo$LUarglist
     if (paste(lc[[1]])=="HLCor") attr(trTemplate,"moreargs") <- .get_moreargs(object)
     ## locoptim expects a fn with first arg ranefParsVec
-    objfn <- function(ranefParsVec, anyHLCor_obj_args=NULL, HLcallfn.obj=NULL) { ## ___F I X M E___ compare to numInfo procedure 
+    objfn <- function(ranefParsVec, anyHLCor_obj_args=NULL, HLcallfn.obj=NULL) { ## __F I X M E___ compare to numInfo procedure 
       ranefParsList <- relist(ranefParsVec,trTemplate)
       olc$fixed <- structure(.modify_list(olc$fixed,ranefParsList)) ## replaces ! some elements and keeps the "type" !
       locfit <- eval(as.call(olc)) ## HLfit call with given ranefParsVec

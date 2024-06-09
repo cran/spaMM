@@ -18,8 +18,7 @@ By default the returned components are vectors of variances (with exceptions for
 Computations implying \code{linPred=TRUE} will take into account the variances of the linear predictor \eqn{\eta}, i.e. the uncertainty in fixed effects (\bold{X}\eqn{\beta}) and random effects (\bold{ZLv}), \bold{for given dispersion parameters} (see Details).
 For fixed-effect models, the \code{fixefVar} calculations reduces to the \code{linPred} one.
 
-Computations implying \code{disp=TRUE} additionally include the effect of uncertainty in estimates of dispersion parameters (\eqn{\lambda} and \eqn{\phi}), with some limitations: this effect can be computed for a scalar residual variance (\eqn{\phi}) and for several random effects with scalar variances (\eqn{\lambda}). Thus, the argument \code{variances=list(predVar=TRUE)} implies that uncertainty of linear predictor, including uncertainty in dispersion parameters, is taken into account, and the argument \code{variances=list(respVar=TRUE)} additionally includes residual variance.
-
+Computations implying \code{disp=TRUE} additionally include the effect of uncertainty in estimates of dispersion parameters (\eqn{\lambda} and \eqn{\phi}), with some limitations (see Details). \code{variances=list(predVar=TRUE)}, which evaluates the uncertainty of linear predictor, implies \code{disp=TRUE} by default, meaning that it includes such effects of uncertainty in dispersion parameters on the linear predictor. \code{variances=list(respVar=TRUE)} performs similarly but additionally includes the residual variance in the returned variance.
 }
 
 \details{
@@ -29,7 +28,9 @@ Computations implying \code{disp=TRUE} additionally include the effect of uncert
   \code{linPred} is the prediction (co)variance of \eqn{\eta}=\bold{X}\eqn{\beta}+\bold{Z}\bold{v} (see \code{\link{HLfit}} Details for notation, and keep in mind that new matrices may replace the ones from the fit object when \code{newdata} are used), by default computed for given dispersion parameters. It takes into account the joint uncertainty in estimation of \eqn{\beta} and prediction of \bold{v}. 
 In particular, for new levels of the random effects, \code{predVar} computation takes into account uncertainty in prediction of \bold{v} for these new levels. For \bold{prediction covariance} with a new \bold{Z}, it matters whether a single or multiple new levels are used: see Examples.
 
-For computations implying \code{disp=TRUE}, prediction variance may also include a term accounting for uncertainty in \eqn{\phi} and \eqn{\lambda}, computed following Booth and Hobert (1998, eq. 19). This computation ignores uncertainties in spatial correlation parameters. 
+For computations implying \code{disp=TRUE}, prediction variance may also include a term accounting for uncertainty in \eqn{\phi} and \eqn{\lambda}, computed following Booth and Hobert (1998, eq. 19). This computation acheives its originally described purpose for a scalar residual variance (\eqn{\phi}) and for several random effects with scalar variances (\eqn{\lambda}). This computation ignores uncertainties in spatial correlation parameters. 
+
+The (1998) formulas for the effect of uncertainty in dispersion parameters are here also applied to the variance parameters in random-coefficient terms, but with a one-time warning. Not only this is not expected to account for the uncertainty of the correlation parameter(s) of such terms, but the result will depend on the internal representation (the \dQuote{square root}) of the covariance matrix, which may differ among the different fitting algorithms that may be used by \pkg{spaMM}. % ___F I X M E____ TAG rc_dispcov 
 
 \code{respVar} is the sum of \code{predVar} (pre- and post-multiplied by \eqn{\partial\mu/\partial\eta}{d\mu/d\eta} for models with non-identity link) and of \code{residVar}. 
   

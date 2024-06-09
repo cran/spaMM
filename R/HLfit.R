@@ -25,12 +25,12 @@ HLfit <- function(formula,
                   ranFix,
                   etaFix=list(), ## beta, v_h (or even u_h)
                   prior.weights=NULL, weights.form= NULL, # See comments in Z_variants/prior.weights.R
-                  X2X=NULL, #  (implemented, but possibly useless, and not tried... remove with care as this would affect preprocessing. See v4.1.23)
                   processed=NULL
 ) {
   .spaMM.data$options$xLM_conv_crit <- list(max=-Inf)
   time1 <- Sys.time()
   oricall <- match.call()  ## there is no dots in HLfit
+  oricall <- ..n_names2expr(oricall) 
   oricall$control.HLfit <- eval(oricall$control.HLfit, parent.frame()) # to evaluate variables in the formula_env, otherwise there are bugs in waiting 
   if ( ! missing(ranFix)) { 
     oricall$fixed <- ranFix

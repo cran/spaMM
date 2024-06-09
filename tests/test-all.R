@@ -8,7 +8,9 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") { ## set in <R_HOME>/etc/Renviron.site 
     # options(error = quote({dump.frames(to.file = TRUE)})) # useful for bugs in .do_TRACE()
     if (interactive()) {
       # **** see # see AAA_install_INLA.memo.txt: to install INLA ****
-      # install.packages(c("DHARMa", "inlabru")) # + private pakg "probitgem"
+      # install.packages(c("DHARMa", "inlabru")) # + private pkg "probitgem"
+      # + packages in requireNamespace(.)... and install_git[...]
+      # + optional but important dependencies of Infusion... aster... hglm...
       # options(error=recover)
       # spaMM.options(use_ZA_L=NULL)
       # abyss <- matrix(runif(2e7),nrow=1000); gc(reset=TRUE) ## partial control of gc trigger...
@@ -25,9 +27,13 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") { ## set in <R_HOME>/etc/Renviron.site 
         }
         while (dev.cur()>1L) dev.off()
         op <- devAskNewPage(ask=FALSE)
+        oldWarnOpt <- options(warnPartialMatchArgs = TRUE, # Hornik, R-devel, 2024/04/23
+                              warnPartialMatchAttr = TRUE,
+                              warnPartialMatchDollar = TRUE)
         # oldmaxt <- spaMM.options(example_maxtime=60)
         timings <- t(sapply(testfiles, function(fich){tfun(fich)}))
         # spaMM.options(oldmaxt)
+        options(oldWarnOpt)
         print(sums <- colSums(timings))
       }
       if (FALSE) { # long mv tests, not really for the timings; important tests, mv_nested notably
@@ -49,6 +55,7 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") { ## set in <R_HOME>/etc/Renviron.site 
       }
       ## testthat::test_package(pkg) ## for an installed package
       if (FALSE) { ## tests not included in package (using unpublished data, etc.)
+        cat(crayon::green("Widen the plot panel!\n"))
         # install.packages("FactoMineR")
         # see also includes in tests_private/test-back-compat.R
         if (TRUE) { # see above comment about Rstudio

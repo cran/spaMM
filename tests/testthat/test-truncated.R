@@ -4,15 +4,16 @@ data(scotlip)
 
 fitT <- fitme(I(1+cases)~1+(1|id),family=Tnegbin(),fixed=list(lambda=0.1),data=scotlip)
 fitTf <- fitme(I(1+cases)~1+(1|id),family=Tnegbin(get_inits_from_fit(fitT)$init$NB_shape),fixed=list(lambda=0.1),data=scotlip) 
-testthat::expect_equal(logLik(fitT),logLik(fitTf),tol=1e-6) ## difference may detect error in .get_clik_fn() -> aic()  
+testthat::expect_equal(logLik(fitT),logLik(fitTf),tolerance=1e-6) ## difference may detect error in .get_clik_fn() -> aic()  
 fitTf <- fitme(I(1+cases)~1+(1|id),family=Tnegbin(get_inits_from_fit(fitT)$init$NB_shape+0.1),fixed=list(lambda=0.1),data=scotlip) 
-testthat::expect_equal(residVar(fitTf, which="fam_parm"),get_inits_from_fit(fitT)$init$NB_shape+0.1,tol=1e-6) ## to check proper handling of shape= <call>  
+testthat::expect_equal(residVar(fitTf, which="fam_parm"),
+                       get_inits_from_fit(fitT)$init$NB_shape+0.1,tolerance=1e-6) ## to check proper handling of shape= <call>  
 
 fit1 <- glm(I(1+cases)~1,family=Tpoisson(),data=scotlip)
 fit2 <- fitme(I(1+cases)~1+(1|id),family=Tpoisson(),fixed=list(lambda=1e-8),data=scotlip)
-testthat::expect_equal(logLik(fit1)[[1L]],logLik(fit2)[[1L]],tol=2e-5) ## logL2 converges to logL1 as lambda -> 0 
+testthat::expect_equal(logLik(fit1)[[1L]],logLik(fit2)[[1L]],tolerance=2e-5) ## logL2 converges to logL1 as lambda -> 0 
 ## Check ZT-enabled specific code of prediction intervals (modified in v.3.0.1; better test ?):
-testthat::expect_equal(attr(predict(fit2, intervals="predVar"),"intervals")[1,1],  9.753461, tol=2e-5)
+testthat::expect_equal(attr(predict(fit2, intervals="predVar"),"intervals")[1,1],  9.753461, tolerance=2e-5)
 set.seed(123)
 simulate(fit2,nsim=3)
 

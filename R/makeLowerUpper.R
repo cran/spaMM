@@ -358,7 +358,7 @@
       }
     }
   }
-  if ( ! is.null( beta <- canon.init$beta)) { # outer beta
+  if ( ! is.null( beta <- canon.init[["beta"]])) { # outer beta
     if (.spaMM.data$options$tr_beta) {
       lower$trBeta[names(beta)] <- -Inf
       upper$trBeta[names(beta)] <- Inf

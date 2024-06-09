@@ -23,6 +23,7 @@ if (spaMM.getOption("example_maxtime")>0.7) { ##  not based on real timing
                 control.HLfit=list(sparse_precision=FALSE)))
     (f4 <- corrHLfit(migStatus ~ means+ Matern(1|longitude+latitude),data=blackcap,
                     ranFix=list(corrPars=list("1"=list(nu=4,rho=0.4))),method="ML"))
+    cat(crayon::yellow("message expected here: "))
     (f5 <- HLCor(migStatus ~ means+ corrMatrix(1|longitude+latitude),data=blackcap,
                 corrMatrix=MLcorMat,method="ML")) # Check that order of data is respected in the Zmatrix for this "unsafe" input.
     # imput as precision matrix
@@ -76,6 +77,7 @@ pmat <- as.matrix(MLcorMat)[perm,perm]
 HLCor(migStatus ~ means+ corrMatrix(1|name),data=blackcap,
       corrMatrix=as.dist(pmat),method="ML")
 ## (3) Other grouping terms (note the messages):
+cat(crayon::yellow("message expected here: "))
 HLCor(migStatus ~ means+ corrMatrix(1|longitude+latitude),data=blackcap,
       corrMatrix=MLcorMat,method="ML")
 

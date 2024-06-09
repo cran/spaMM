@@ -13,9 +13,6 @@
       trace <- processed$verbose["TRACE"]
       ranFix <- .canonizeRanPars(ranPars=ranFix,corr_info=NULL, checkComplete = FALSE, rC_transf=.spaMM.data$options$rC_transf)## including full-size lambda
       nobs <- length(processed$y) ## before prior.weights is evaluated
-      nrand <- length(processed$ZAlist)
-      cum_n_u_h <- processed$cum_n_u_h
-      n_u_h <- cum_n_u_h[nrand+1L] 
       sparse_precision <- processed$is_spprec
       # Updates processed$ranCoefs_blob which contains no globally fixed ranCoefs as this has been excluded by .preprocess_augZXy() 
       ranCoefs_blob <- .process_ranCoefs(processed, ranCoefs=.getPar(ranFix,"ranCoefs"), ## may be NULL, 
@@ -48,8 +45,11 @@
       ###
       off <- processed$off
       ##################
+      cum_n_u_h <- processed$cum_n_u_h
+      n_u_h <- tail(cum_n_u_h,1L) 
       ## Initial estimate for lambda in 'compact" form
-      init.lambda <- .calc_initial_init_lambda(lam_fix_or_outer_or_NA, nrand, processed, ranCoefs_blob, 
+      init.lambda <- .calc_initial_init_lambda(lam_fix_or_outer_or_NA, # already the right size 'nrand' with NA's or non-fixed ones"
+                                               processed=processed, ranCoefs_blob=ranCoefs_blob, 
                                                init.HLfit=NULL, fixed=ranFix)
       # expand:
       lambda_est <- .HLfit_finalize_init_lambda(processed$models, init.lambda, processed, ZAL=ZAL, cum_n_u_h, 

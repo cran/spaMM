@@ -56,18 +56,17 @@
 .compare_phimodels_structures <- function(phifit1, phifit2, df1, df2, df=abs(df1-df2)) {
   if (inherits(phifit1,"HLfit")) {
     if (inherits(phifit2,"HLfit")) {
-      cmp <- .compare_model_structures(phifit1,phifit2, argsRphimodels=TRUE)
-      if (cmp$anyranef) return(list(warning="Mixed-effect residual dispersion model found. No LRT performed.")) 
-      # ____F I X M E____ rethink: allow with warning? One problem is that no single objective function is maximized.
-      # another issue will be comparing residual models in mv fits? 
-      df <- cmp$df 
-      df1 <- cmp$df1
-      df2 <- cmp$df2
+      cmp <- .compare_model_structures(phifit1,phifit2, args_are_phimodels=TRUE)
+      if (cmp$anyranef) return(list(warning="Mixed-effect residual dispersion model found. No chi2 LRT performed.")) 
+      # df <- cmp$df 
+      # df1 <- cmp$df1
+      # df2 <- cmp$df2
+      ## boostrap tests still possible
     } else { 
       # # phifit2 is a phiScal... the input df2 may be 0 or 1  
       # the input df1 may be object$dfs$p_fixef_phi[[mv_it]] which is then NA
       if (phifit1$models$eta=="etaHGLM") {
-        return(list(warning="Mixed-effect residual dispersion model found. No LRT performed.")) # ____F I X M E____ idem
+        return(list(warning="Mixed-effect residual dispersion model found. No chi2 LRT performed.")) 
       } else if (df2==1L && "(Intercept)" %in% names(fixef(phifit1))) {
         df1 <- sum(.unlist(phifit1$dfs)) 
       } else df1 <- NA
@@ -76,7 +75,7 @@
   } else { # phifit1 is a phiScal...
     if (inherits(phifit2,"HLfit")) {
       if (phifit2$models$eta=="etaHGLM") {
-        return(list(warning="Mixed-effect residual dispersion model found. No LRT performed.")) # ____F I X M E____ idem
+        return(list(warning="Mixed-effect residual dispersion model found. No chi2 LRT performed.")) 
       } else if (df1==1L && "(Intercept)" %in% names(fixef(phifit2))) {
         df2 <- sum(.unlist(phifit2$dfs))
       } else df2 <- NA
@@ -99,7 +98,8 @@
   )
 }
 
-.compare_model_structures <- function(object,object2, argsRphimodels=FALSE, boot.repl) {
+# Handles mv fits, their resid models included. 
+.compare_model_structures <- function(object,object2, args_are_phimodels, boot.repl) {
   if (inherits(object,"HLfitlist") || inherits(object2,"HLfitlist")) {
     warning("This does not yet work on HLfitlist objects", immediate.=TRUE, call.=FALSE)
   }
@@ -116,7 +116,7 @@
   REML <- unique(c(REML1,REML2))
   
   Fnest <- NULL
-  if (! argsRphimodels) {
+  if (! args_are_phimodels) {
     meth1 <- object$HL
     meth2 <- object2$HL
     if (! identical(meth1,meth2) || length(REML)>1L ) {
@@ -161,7 +161,7 @@
       Xnest <- "2in1"
     } else if (.is_2_in_1(X1=X.pv2,  X2=X.pv1)) {
       Xnest <- "1in2"
-    } else if (argsRphimodels) {
+    } else if (args_are_phimodels) {
       stop("Fixed effects seem non-nested for residual-dispersion model.", call.=FALSE)
     } else stop("Fixed effects seem non-nested.", call.=FALSE) 
   } else if (length(dX12)) {
@@ -169,6 +169,7 @@
   } else if (length(dX21)) {
     Xnest <- "1in2"
   } else {
+    message("Fixed effects terms appear identical for both models.")
     Xnest <- NULL
   }
   #
@@ -180,7 +181,7 @@
   } else ranterms2 <- attr(object2$ZAlist,"exp_ranef_strings")
   randist1 <- lapply(object$rand.families, function(v) paste(paste(v)[1:2],collapse="")) ## makes a string from each $family and $link 
   randist2 <- lapply(object2$rand.families, function(v) paste(paste(v)[1:2],collapse="")) ## makes a string from each $family and $link 
-  if (argsRphimodels && # nested call compare_model_str -> compare_phimodel_str -> compare_model_str
+  if (args_are_phimodels && # nested call compare_model_str -> compare_phimodel_str -> compare_model_str
       (length(randist1) || length(randist2))) {# either of the two residual-disp models is a mixed-effect model
     # => no objective function maximized => no LRT, not even a bootstrap one
     # df <- NA # inhibits asymptotic LRT
@@ -203,14 +204,14 @@
   XRnest <- c(Xnest,Rnest)
   uXRnest <- unique(XRnest)
   if (length(unique(c(Fnest,uXRnest)))>1L) {
-    # if (argsRphimodels)  {
+    # if (args_are_phimodels)  {
     #   warning("Models not nested (opposite nestings for fixed and random terms in residual-dispersion model). No test performed.", call.=FALSE)
     # } else 
       warning("Models not nested (opposite nestings for fixed and random terms\n or response families). No test performed.", call.=FALSE)
     return(list(fullfit=NULL,nullfit=NULL,test_obj=NULL,df=NA, df1=NA, df2=NA))
   }
   # ELSE
-  if ( ! argsRphimodels) { #check their residual-dispersion models    ##################################### ( length(unest)==0L) { # no difference between models found yet. Check residual dispersion models 
+  if ( ! args_are_phimodels) { #check their residual-dispersion models    ##################################### ( length(unest)==0L) { # no difference between models found yet. Check residual dispersion models 
     phimodel1 <- object$models[["phi"]]
     phimodel2 <- object2$models[["phi"]]
     n_mv <- length(phimodel1)
@@ -223,7 +224,8 @@
                                                 df2=object2$dfs$p_fixef_phi[[mv_it]]) 
         if (is.list(df_col)) {
           warning(df_col$warning, call.=FALSE)
-          return(list(fullfit=NULL,nullfit=NULL,test_obj=NULL,df=NA))
+          return(list(fullfit=NULL,nullfit=NULL,test_obj=NULL,df=NA,
+                      warning=df_col$warning))
         } else if (anyNA(df_col[1:2])) warning(paste("apparently non-nested residual-dispersion models for submodel",mv_it), call.=FALSE)
         df_mat[,mv_it] <- df_col
       }
@@ -342,7 +344,7 @@
     } 
     return(list(fullfit=fullm,nullfit=nullm,test_obj=testlik,df=df, 
                 df1=df1,df2=df2))
-  } else { # argsRphimodels: (fixed-effects only, mixed-effect models caught early above)
+  } else { # args_are_phimodels: (fixed-effects only, mixed-effect models caught early above)
     df1 <- sum(unlist(object$dfs, use.names=FALSE)) 
     df2 <- sum(unlist(object2$dfs, use.names=FALSE))
     df <- abs(df1-df2)
@@ -511,7 +513,7 @@ get_inits_from_fit <- function(from, template=NULL, to_fn=NULL, inner_lambdas=FA
     ## ad hoc fix for residModel: fitme_body is called directly so the final object's call is to HLCor of HLfit
     fromfn <- "fitme"
   } else fnname <- .get_bare_fnname.HLfit(from)
-  # Inner-estimated lambda and ranCoefs (__F I X M E__ could add phi: amusing has this was never done... inner estimated mv phi exist, incidentally)
+  # Inner-estimated lambda and ranCoefs (_F I X M E__ could add phi: amusing has this was never done... inner estimated mv phi exist, incidentally)
   init.HLfit <- NULL
   rC_inner_inits <- .get_rC_inits_from_hlfit(from, type="inner") # (yes, inner, not inner_ranCoefs)
   if (length(rC_inner_inits) ) init.HLfit <- list(ranCoefs=rC_inner_inits)
@@ -580,15 +582,17 @@ eval_replicate <- function(y) { # no additional arguments, to ease parallel prog
   } else new_args <- list(verbose=verbose)
   # pbbly never good not to use try(). It's the handling of try-error that may vary
   # debug(pbapply) (or pblapply ?) may be useful to 
-  if (debug.==2) {# Shuld be prevented by spaMM's calling fns in a parallel session   
+  if (debug.==2L) {# Shuld be prevented by spaMM's calling fns in a parallel session   
     re_nullfit <- do.call(update_resp, c(list(object=nullfit, newresp = y),new_args))
   } else {
     re_nullfit <- try(do.call(update_resp, c(list(object=nullfit, newresp = y),new_args)))
     if (inherits(re_nullfit,"try-error")) { ## (debug.= TRUE or 1L) to return error info in parallel mode: return the try-error object
       if (debug.) {
         utils::dump.frames(dumpto="dump_on_re_nullfit", to.file=TRUE) # but doesn't stop
-        return(list(full=structure(NA,info="no fullfit"), 
-                    null=structure(NA,re_nullfit=re_nullfit)))
+        # .check_bootreps() checks the first attr of the first element of the returned list,
+        # looking for a try-error => 'null' should be thefirst element here.
+        return(list(null=structure(NA,re_nullfit=re_nullfit),
+                    full=structure(NA,info="no fullfit")))
       } else return(c(full=NA, null=NA)) # attributes would be lost at the level of the pbapply() closure. 
       # cf apply -> array -> as.vector -> loses all attributes as doc'ed in apply and as.vector
     } ## ELSE continue
@@ -632,7 +636,7 @@ eval_replicate <- function(y) { # no additional arguments, to ease parallel prog
        ) logL_re_full <- logL_re_null
     if (logL_re_full>logL_re_null-1e-04) break # break the for loop.
   }
-  # if the fullfit was even poorer than the 5e-02 threshold the LR stat is still negative. Correct it if outer_at_bound (____F I X M E____ warning?):
+  # if the fullfit was even poorer than the 5e-02 threshold the LR stat is still negative. Correct it if outer_at_bound (___F I X M E____ warning?):
   if (logL_re_full<logL_re_null && 
       .check_outer_at_bound(re_fullfit)) logL_re_full <- logL_re_null
   resu <- c(full=logL_re_full,null=logL_re_null)
@@ -744,25 +748,35 @@ eval_replicate <- function(y) { # no additional arguments, to ease parallel prog
 .check_bootreps <- function(bootreps) {
   if (is.list(bootrep <- bootreps[[1]])) { # debug.=TRUE: 
     # If error in LRT() with debug.=TRUE and not doSNOW (at least), the replicate result is a list. 
-    if (anyNA(bootrep)) {
+    if (anyNA(bootrep)) { # ...and the list contains NA
       first_failed <- which(is.na(bootrep))[1] # first of pair of fits
       failure <- attributes(bootrep[[first_failed]])[[1]]
-      if (inherits(failure,"try-error") ) {
-        if (length(grep("could not find",(condmess <- conditionMessage(attr(failure,"condition")))))) {
+      if (inherits(failure,"try-error") ) { # ...and ideally the first attr is a try error
+        condmess <- conditionMessage(attr(failure,"condition"))
+        if (length(grep("could not find",condmess))) {
           firstpb <- strsplit(condmess,"\"")[[1]][2]
           cat(crayon::bold(paste0(
             "Hmmm. It looks like some variables were not passed to the parallel processes.\n",
             "Maybe add    ",firstpb," = ",firstpb,"   to spaMM_boot()'s 'fit_env' argument?\n"
           )))
+        } else {
+          message(crayon::bold("If debug.=TRUE was used, a dump file may have been saved."))
         }
-        stop(condmess)
+        stop(condmess,call. = FALSE)
+      } else { # ideally this does not happen, but just in case...
+        cat(crayon::bold(
+          "Hmmm. An unanticipated issue occurred. Here is the struture of the first replicate:\n",
+        ))
+        str(bootrep)
       }
-    }
+    } 
   } else if (anyNA(bootreps)) {  # debug.=FALSE:
     bootreps <- na.omit(bootreps)
     if ( ! nrow(bootreps)) {
-      warnmess <- paste0("All bootstrap replicate(s) apparently failed and are omitted for p-value computations.\n",
-                         "For issues in parallel execution, using 'debug.=TRUE' argument in LRT() or spaMM_boot() call\n may be useful to diagnose them.")
+      warnmess <- paste0("All bootstrap replicate(s) apparently failed.\n",
+                         "To diagnose issues specific to parallel execution, argument\n",
+                         "'debug.=TRUE' in LRT() or spaMM_boot() call may be useful\n",
+                         "(it may generate a dump file from a child process for inspection).")
       warning(warnmess, immediate.=TRUE, call.=FALSE)
     } else {
       n_omitted <- length(attr(bootreps,"na.action"))
@@ -776,7 +790,7 @@ eval_replicate <- function(y) { # no additional arguments, to ease parallel prog
   pars_at_bound <- NULL
   outer_at_bound <- .check_outer_at_bound(fitobject, bool=FALSE)
   if (length(outer_at_bound)) pars_at_bound <- paste(names(outer_at_bound),'=',signif(outer_at_bound), collapse=", ")
-  inner_lambdas <-.get_lambdas_notrC_from_hlfit(fitobject, type="inner") # ___F I X M E___ not all inner params checked.
+  inner_lambdas <-.get_lambdas_notrC_from_hlfit(fitobject, type="inner") # __F I X M E___ not all inner params checked.
   # inner ranCoefs not very interesting. Detecting inner phi at bound seems contrived (moreover with mv fits).
   inner_at_bound <- (inner_lambdas<1e-6)
   if (any(inner_at_bound)) {
@@ -803,12 +817,24 @@ LRT <- function(object,object2,boot.repl=0L,# nb_cores=NULL,
   }
   #if (length(list(...))) warning("...' arguments are currently ignored in LRT()", immediate. = TRUE) 
   #  which is a bit unfortunate ( say ...control=list(optimizer="bobyqa")) but makes parallelisation so much more straightforward...
-  info <- .compare_model_structures(object,object2, boot.repl=boot.repl)
+  info <- .compare_model_structures(object,object2, 
+                                    args_are_phimodels=FALSE,
+                                    boot.repl=boot.repl)
   fullfit <- info$fullfit
-  if (is.null(fullfit)) return(NULL)
+  fix_neg_LRT <- TRUE
+  if (is.null(fullfit)) { # could not determine which is nullfit and which is fullfit
+    # => nested resid models involving resid HGLM(s); or possibly non nested models.
+    if (boot.repl) {
+      fix_neg_LRT <- FALSE
+      fullfit <- object
+      nullfit <- object2
+      # (__F I X M E___ afficher la promise pour object2? mais alors in faut resoudre les ..n potentiels)
+      message(crayon::bold(paste0("Tentatively using 'object2' as \"null\" model\n",
+                              " of the test, and thus as sample-generating model for bootstrap:")))
+    } else return(NULL)
+  } else nullfit <- info$nullfit
   df <- info$df
   if ( ! is.na(df) ) .warn_ests_at_bound(fitobject=fullfit)
-  nullfit <- info$nullfit
   test_obj <- info$test_obj
   LRTori <- 2*(logLik(fullfit,which=test_obj)-logLik(nullfit,which=test_obj))
   if (is.na(df)) {
@@ -835,7 +861,7 @@ LRT <- function(object,object2,boot.repl=0L,# nb_cores=NULL,
                            ...
     )
     bootblob$warnings$n_omitted <- .check_bootreps(bootblob$bootreps)
-    resu <- .add_boot_results(bootblob, resu, LRTori, df, test_obj)
+    resu <- .add_boot_results(bootblob, resu, LRTori, df, test_obj, fix_neg_LRT=fix_neg_LRT)
   }
   class(resu) <- c("fixedLRT",class(resu)) 
   return(resu)
@@ -997,20 +1023,39 @@ LRT <- function(object,object2,boot.repl=0L,# nb_cores=NULL,
                   object$family$family, ", link: ", object$family$link, 
                   "\n\nResponse: ", as.character(varlist[-1L])[1L], "\n\nTerms added sequentially (first to last)\n\n")
   df.dispersion <- Inf
-  if (is.null(dispersion)) {
-    dispersion <- residVar(object,"fit")
-    # for Gamma GLM anova.glm uses the MME estimate based on Pearson residuals, dispersion <- summary(object, dispersion = dispersion)$dispersion
-    df.dispersion <- if (object$dfs$p_fixef_phi==0L) {
-      # we actually tested phi model = phiScal in the calling function
-      Inf
-    } else df.residual(object)
+  if (is.null(test)) {
+    # Trying to integrate new default in stats:::anova.glm
+    fam <- object$family
+    if (is.null(dispersion)) {
+      dispersion <- residVar(object,"fit")
+      # for Gamma GLM anova.glm uses the MME estimate based on Pearson residuals, dispersion <- summary(object, dispersion = dispersion)$dispersion
+      if (object$dfs$p_fixef_phi==0L) { # __F I X M E___ too narrow conditions for test <- FALSE ?
+        df.dispersion <- Inf
+        test <- "Chisq" 
+        # We actually tested phi model = phiScal in the calling function
+      } else if (is.null(fam$dispersion)) { # cautious when not a stats:: family
+        test <- FALSE
+      } else { # 
+        test <- "F"
+        df.dispersion <- df.residual(object)
+      }
+    } else test <- "Chisq" # if dispersion explicitly fixed by user
+  } else {
+    if (is.null(dispersion)) {
+      dispersion <- residVar(object,"fit")
+      # for Gamma GLM anova.glm uses the MME estimate based on Pearson residuals, dispersion <- summary(object, dispersion = dispersion)$dispersion
+      df.dispersion <- if (object$dfs$p_fixef_phi==0L) {
+        # we actually tested phi model = phiScal in the calling function
+        Inf
+      } else df.residual(object)
+    }
   }
-  if (!is.null(test)) {
+  if (!isFALSE(test)) {
     if (test == "F" && df.dispersion == Inf) {
-      fam <- object$family$family
-      if (fam == "binomial" || fam == "poisson") 
+      famfam <- object$family$family
+      if (famfam == "binomial" || fam == "poisson") 
         warning(gettextf("using F test with a '%s' family is inappropriate", 
-                         fam), domain = NA)
+                         famfam), domain = NA)
       else warning("using F test with a fixed dispersion is inappropriate")
     }
     table <- stat.anova(table = table, test = test, scale = dispersion, 
@@ -1163,16 +1208,66 @@ LRT <- function(object,object2,boot.repl=0L,# nb_cores=NULL,
   Llist
 }
 
+# Not well tested
+.get_type3_contrasts <- function(model, 
+                                 termsv=terms(model), 
+                                 Xorig=model.matrix(model),
+                                 asgn=attr(Xorig,"assign"),
+                                 rankinfo=attr(Xorig,"rankinfo"),
+                                 colrange=seq_len(ncol(Xorig))) {
+  
+  if (inherits(termsv,"list")) {
+    resu <- vector("list",length(termsv))
+    col_ranges <- attr(Xorig,"col_ranges")
+    for (mv_it in seq_along(termsv)) {
+      colrange <- col_ranges[[mv_it]]
+      resu[[mv_it]] <- .get_type3_contrasts(model, termsv=termsv[[mv_it]], Xorig=Xorig, asgn=asgn[[mv_it]], 
+                                            rankinfo=rankinfo[[mv_it]],colrange=colrange)
+      names(resu[[mv_it]]) <- paste0(names(resu[[mv_it]]),"_",mv_it)
+    }
+    return(unlist(resu,use.names = TRUE, recursive = FALSE))
+  }
+  data_classes <- attr(termsv, "dataClasses")
+  term_names <- attr(termsv, "term.labels")
+  
+  which <- term_names
+  if (length(colrange) <= 1L || length(term_names) <= 1L) 
+    return(.get_type1_contrasts(model, termsv=termsv, X=Xorig, asgn=asgn, rankinfo=rankinfo, colrange=colrange)) # possibly the arguments for the mv_it submodel
+  #
+  else stopifnot(is.character(which), all(which %in% term_names))
+  codings <- unlist(attr(Xorig, "contrast"))
+  if (length(codings) > 0 && all(is.character(codings)) && 
+      all(codings %in% c("contr.treatment"))) {
+    .extract_contrasts_type3 <- get("extract_contrasts_type3", asNamespace("lmerTest"))
+    return(.extract_contrasts_type3(model, X = Xorig))
+  }
+  .get_contrast_coding <- get("get_contrast_coding", asNamespace("lmerTest"))
+  Contrasts <- .get_contrast_coding(model, contrasts = "contr.treatment")
+  X <- model.matrix(terms(model), data = model.frame(model), contrasts.arg = Contrasts)
+  .ensure_full_rank <- get("ensure_full_rank", asNamespace("lmerTest"))
+  X <- .ensure_full_rank(X, silent = TRUE, test.ans = FALSE)
+  .extract_contrasts_type3 <- get("extract_contrasts_type3", asNamespace("lmerTest"))
+  type3ctr <- .extract_contrasts_type3(model, X = X)
+  map <- zapsmall(ginv(X) %*% Xorig)
+  rownames(map) <- colnames(X)
+  lapply(type3ctr[which], function(L) L %*% map)
+}
+
 .anova_fallback <- function(fitobject, type="2", rhs=NULL, test="Chisq.", ...) {
   beta <- na.omit(fixef(fitobject))
   beta_cov <- vcov(fitobject)
+  # Note that 'type' is formally documented for LMMs only, which do not use this code.
+  # So the following  switches are not part of API, and not formally tested.
+  # (The original idea behing the .get_type[]_contrasts() was to perform the LMM tests using spaMM code rather than lmerTest)
   Llist <- switch(type,
                   "I" = .get_type1_contrasts(fitobject),
                   "1" = .get_type1_contrasts(fitobject),
                   "II" = .get_type2_contrasts(fitobject),
                   "2" = .get_type2_contrasts(fitobject),
-                  "III" = stop("type-3 contrasts not implemented (and may never be)"),
-                  "3" = stop("type-3 contrasts not implemented (and may never be)"),
+                  "III" = stop("type-3 contrasts not implemented (and may never be)"), 
+                          # .get_type3_contrasts(fitobject), # 
+                  "3" = stop("type-3 contrasts not implemented (and may never be)"), 
+                         # .get_type3_contrasts(fitobject), # 
                   stop("Unknown ANOVA 'type' speification")
   )
   # no line for Intercept: as in lmerTest output
@@ -1207,6 +1302,9 @@ anova.HLfit <- function(object, object2=NULL, type="2", method="",  ...) {
       if (length(models$phi)==1L &&   # exclude mv fits => all in .anova_fallback() 
           models$phi %in% c("phiScal","")) { 
         if (models$eta=="etaGLM") { 
+          if ( ! type %in% c("2","II")) {
+            warning("anova.HLfit() for (G)LMs ignores 'type' consistently with anova.[g]lm().")
+          }
           if (object$family$family=="gaussian" && object$family$link=="identity") {
             return(.anova.lm(object, ...))
           } else return(.anova.glm(object, ...))
@@ -1214,6 +1312,9 @@ anova.HLfit <- function(object, object2=NULL, type="2", method="",  ...) {
           if (requireNamespace("lmerTest",quietly=TRUE)) { # if the package is available
             # if (length(attr(object$X.pv,"namesOri")) == ncol(object$X.pv)) {
               lmlt <-  as_LMLT(object, ...)
+              # next line calls spaMM:::anova.LMLT -> 
+              #   as(as(object,"LMLTslots"),"LMLTinternal")
+              #   and lmerTest:::anova.lmerModLmerTest as LMLTinternal contains = c("LMLTslots","lmerModLmerTest")
               return(anova(lmlt, type=type)) # other possible arguments not currently meaningful
             # } else {
             #   message(paste("Original model has a singular design matrix: lmerTest's F tests cannot be computed\n",
@@ -1226,6 +1327,7 @@ anova.HLfit <- function(object, object2=NULL, type="2", method="",  ...) {
         } 
       }
     }
+    # Fallback for non-LM, GLM or LMM fits: (only case where spaMM's contrast code is used).
     return(.anova_fallback(fitobject=object, type=type, ...)) # dots may contain 'rhs' and (later) 'test'
   } else {
     ## anova treated as alias for LRT()

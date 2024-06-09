@@ -164,7 +164,7 @@
 ## Build Lmatrix between all pairs of u_h (nr*nr) from parameter estimates (2*2) for the design matrix, longsize is final dim of matrix
 .makelong <- function(Lcompact, ## may also be a compact precmat, symmetric rather than triangular
                       longsize,as_matrix=FALSE,template=NULL, kron_Y, kron_long=TRUE,
-                      drop0template =TRUE # ___F I X M E___ use =FALSE more
+                      drop0template =TRUE # __F I X M E___ use =FALSE more
                       ) { ## always returns a Matrix unless explicitly as_matrix
   if ( ! is.null(kron_Y)) {
     if (kron_long) {

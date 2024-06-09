@@ -184,7 +184,7 @@
     if (is.null(tol)) tol <- spaMM.getOption("optimize_tol")
     locarglist$tol <- tol
     optr <- do.call("optimize",locarglist) ## MAXimization of +logL <- HLcallfn.obj(...)
-    optPars <- relist(optr$m,init.optim)
+    optPars <- relist(optr$maximum,init.optim)
   } else if (Optimizer=="nloptr") { 
     optr <- .optim_by_nloptr(lowerb=lowerb, upperb=upperb, initvec=initvec, objfn_locoptim=objfn_locoptim, 
                              local_control=control[["nloptr"]], grad_locoptim = grad_locoptim, LowUp=LowUp,

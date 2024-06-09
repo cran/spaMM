@@ -11,7 +11,7 @@
   if (type=="seq_len") { ## does not try to find redundant levels. Used by predict.HLfit() for spatial terms
     splt <- NULL
     raw_levels <- seq_len(nrow(mf))
-    # ___F I X M E___ (was 'TAG') look for potential problem for future devel of <correlated>(mv(.)|.)
+    # __F I X M E___ (was 'TAG') look for potential problem for future devel of <correlated>(mv(.)|.)
     return(list(factor=as.factor(raw_levels),splt=splt))
   } else if (type=="data_order" || ## all <keyword>() ranefs, including those with "nested nesting" for AR1 spprec || raneftype=="corrMatrix"
              type=="time_series") {
@@ -101,70 +101,78 @@
   }
 }
 
-.calc_Z_LHS_model_matrix <- function(leftOfBar_terms, leftOfBar_mf, raneftype,lcrandfamfam) {
+.calc_Z_LHS_model_matrix <- function(leftOfBar_terms, leftOfBar_mf, raneftype, lcrandfamfam) {
   modmat <- model.matrix(leftOfBar_terms, leftOfBar_mf) ## contrasts.arg not immed useful, maybe later.
-  #if (raneftype == "(.|.)") stop("this does not occur") # does not seem to occur here
-  if ( ! (is.null(raneftype))) {  ## to exclude (1|.) and ranCoefs! 
-    if (ncol(modmat)>1L) { 
-      # allowed: the variable was logical, or numeric (not factor with >2 levels, for which (fac|.) as well as (0+fac|.) generates cols for each level of the factor)
-      # if numeric, should have used (0+z|.)
+  
+  # special handling of two cases: 
+  #   TRUE|FALSE LHS (either logical, or factor with TRUE|FALSE levels),
+  #   and non-gaussian ranef with numeric LHS. 
+  # In the first case we removes cols of modmat (Note the tests to not remove cols in the case of factor with >2 levels, 
+  #   for which (fac|.) as well as (0+fac|.) generates cols for each level of the factor).
+  # In the second we check that LHS is 0+numeric.
+  if ( ! (is.null(raneftype))) {
+    # => quickly excludes (1|.) and simple ranCoefs. It would be nice to quickly exclude composite ranCoefs here too,
+    # but passing the is_composite info (pre- and post-fit) seems a bit laborious. Instead we apply the tests on 'classe' 
+    # which will de facto exclude composite ranCoefs. However some of the tests assume 
+    # that 'classe' is a single value, as it should be for the target TRUE|FALSE cases, 
+    # but which may be false for ranCoefs => additional test on length(classe).
+    if (ncol(modmat)>1L) { # Don't put such condition(s) in parent test bc 
+      # otherwise the 'parent alternative' for non-gaussian ranefs would be evaluated for such cases.
       classe <- attr(attr(leftOfBar_mf,"terms"),"dataClasses")
-      ##
-      ## Cf test case     (fit1 <- fitme(migStatus ~ bool + corrMatrix(bool|loc), data=toy, corrMatrix=rcov))
-      # ...(bool|.) => classe is "logical", there are no levels, colnames are "(Intercept)" "boolTRUE"
-      ## With default contrasts:
-      # ...(as.factor(bool)|.) => classe is "factor", levels are "FALSE" and "TRUE", colnames are "(Intercept)" and "as.factor(bool)TRUE" 
-      # ...(as.character(bool)|.) => classe is "character", there are no levels, colnames are "(Intercept)" and "as.character(bool)TRUE" 
-      ## With nondefault contrasts: the name of the second column changes, but there is still an "(Intercept)" col.
-      ## So there seems to always be an "(Intercept)" column to remove   ***BUT***
-      ## if <factor>-1 or 0+<factor> is used, there is not Intercept col, only indicators column for each level 
-      ## Likewise if <logical>-1 is used, there is not Intercept col, only indicators column for each level 
-      if (classe=="logical") { ## TRUE/FALSE (not factor) 
-        TRUEcol <- grep(".+TRUE",colnames(modmat))
-        modmat <- modmat[,TRUEcol,drop=FALSE]
-      } else if (classe=="factor") {
-        if (setequal(levels(leftOfBar_mf[,1L]),c("TRUE","FALSE"))) {
-          if ("(Intercept)" %in% colnames(modmat)) { # <factor>-1 or 0+<factor> were NOT used
-            modmat <- modmat[,colnames(modmat) != "(Intercept)",drop=FALSE]
-          } else if (length(TRUEcol <- grep(".+TRUE",colnames(modmat)))) { # these should still be such a column (as implied by levels(leftOfBar_mf[,1L]))
-            modmat <- modmat[,TRUEcol,drop=FALSE]
-          } else warning("Unexpected case in .calc_Z_LHS_model_matrix(). Anything can happen...", immediate. = TRUE) # Reaylly unexpected, but better catch it...
-        } # else the user used a non-logical factor, no reason to remove the intercept; OR the user messed up a F/T factor 
+      if (length(classe==1L)) { # as explained above. Alternative would be to be able to test is_composite in this fn,
+        # but .process_ranCoefs() depends on info provided later (by the ZAlist construction) 
+        ##
+        ## Cf test case     (fit1 <- fitme(migStatus ~ bool + corrMatrix(bool|loc), data=toy, corrMatrix=rcov))
+        # ...(bool|.) => classe is "logical", there are no levels, colnames are "(Intercept)" "boolTRUE"
+        ## With default contrasts:
+        # ...(as.factor(bool)|.) => classe is "factor", levels are "FALSE" and "TRUE", colnames are "(Intercept)" and "as.factor(bool)TRUE" 
+        # ...(as.character(bool)|.) => classe is "character", there are no levels, colnames are "(Intercept)" and "as.character(bool)TRUE" 
+        ## With nondefault contrasts: the name of the second column changes, but there is still an "(Intercept)" col.
+        ## So there seems to always be an "(Intercept)" column to remove   ***BUT***
+        ## if <factor>-1 or 0+<factor> is used, there is not Intercept col, only indicators column for each level 
+        ## Likewise if <logical>-1 is used, there is not Intercept col, only indicators column for each level 
+        if (classe=="logical") { ## TRUE/FALSE (not factor) 
+          TRUEcol <- grep(".+TRUE",colnames(modmat))
+          modmat <- modmat[,TRUEcol,drop=FALSE]
+        } else if (classe=="factor") {
+          if (setequal(levels(leftOfBar_mf[,1L]),c("TRUE","FALSE"))) {
+            if ("(Intercept)" %in% colnames(modmat)) { # <factor>-1 or 0+<factor> were NOT used
+              modmat <- modmat[,colnames(modmat) != "(Intercept)",drop=FALSE]
+            } else if (length(TRUEcol <- grep(".+TRUE",colnames(modmat)))) { # these should still be such a column (as implied by levels(leftOfBar_mf[,1L]))
+              modmat <- modmat[,TRUEcol,drop=FALSE]
+            } else warning("Unexpected case in .calc_Z_LHS_model_matrix(). Anything can happen...", immediate. = TRUE) # Reaylly unexpected, but better catch it...
+          } # else the user used a non-logical factor, no reason to remove the intercept; OR the user messed up a F/T factor 
           #     by changing the levels of the logical factor (say levels(<factor>) <- c("non", "oui") with a strong french accent) 
           #     and it's not clear how to handle such mess. 
-      } else if ( ! raneftype %in% c("corrMatrix","corrFamily")) {# ___TAG___ modify to extend composite ranefs
-        # if (classe=="factor") { 
-        #   stop(paste0("Unhandled expression in ", raneftype,"(<factor>|.):\n",
-        #               " only TRUE/FALSE factor is allowed; '0 + <factor>' syntax is not allowed."))
-        # } else 
-        # if (classe=="numeric") { ## true for integer variables  
-        #   stop(paste0("Unhandled expression in ", raneftype,"(<numeric>|.): use explicit '0 + .' syntax to remove Intercept."))
-        # } else 
-        #   stop(paste0("Unhandled expression in ", raneftype, "(<LHS>|.) for this type of random effect"))
+        } 
       }
     }
-  } else if (ncol(leftOfBar_mf)==1L) { ## ncol=0L is for (1|.) ## single variable, but modmat may have an intercept col
-    if (lcrandfamfam != "gaussian" && 
-        (attr(attr(leftOfBar_mf,"terms"),"dataClasses"))=="numeric"
-    ) { ## Gamma(wei|.)
-      if (ncol(modmat)>1L) stop(paste0("Unhandled expression in ", raneftype,"(<numeric>|.): use explicit '0 + .' syntax to remove Intercept."))
-      prior_lam_fac <- modmat[,1]^2
-      modmat[] <- 1
-      attr(modmat,"prior_lam_fac") <- prior_lam_fac
+  } else { # raneftype is NULL... we have something like (0+wei|.) 
+    if (ncol(leftOfBar_mf)==1L) { ## single variable; ncol=0L would be for (1|.) 
+      if (lcrandfamfam != "gaussian" && 
+          (attr(attr(leftOfBar_mf,"terms"),"dataClasses"))=="numeric" ) { 
+        if (ncol(modmat)>1L) # we must guard against <Gamma ranef>(wei|), where modmat also has an intercept col
+          stop(paste0("Unhandled expression in (<numeric>|.): use explicit '0 + .' syntax to remove Intercept."))
+        prior_lam_fac <- modmat[,1]^2
+        modmat[] <- 1
+        attr(modmat,"prior_lam_fac") <- prior_lam_fac
+      }
     }
   } 
   return(modmat)
 }
 
-.add_levels <- function(ff, adj_or_prec, old_ZA) {
-  if (is.null(old_ZA)) {
-    RHS_levels <- colnames(adj_or_prec) # may well be NULL (=> later error only if automatic matching of ZA and 'L' is not possible)
-  } else RHS_levels <- colnames(old_ZA)
-  if ( ! is.null(RHS_levels)) {  # factor() does not satisfactorily handle levels=NULL
-    ff <- factor(ff, levels=RHS_levels)
-  }
-  ff
-}
+# .add_levels <- function(ff, RHS_levels) {
+#   if (is.null(RHS_levels)) RHS_levels <- colnames(old_ZA) 
+#   # !! for composite ranefs the RHS_info is important bc old_ZA will have repeated names
+#   # may (both) well be NULL (=> later error only if automatic matching of ZA and 'L' is not possible)
+#   if ( ! is.null(RHS_levels)) {  # factor() does not satisfactorily handle levels=NULL.
+#     ff <- factor(ff, levels=RHS_levels) # this add the RHS_levels to the ff
+#     # the opposite is not possible: 'levels' specifies the possible values. 
+#     # new levels in 'ff' generate NA's.
+#   }
+#   ff
+# }
 
 .rhs2factor <- function(data, rhs) { 
   ## standard ( | ) rhs: automatically converts grouping variables to factors as in lme4::mkBlist (10/2014)
@@ -186,15 +194,33 @@
 
 .trivial_incidMat <- sparseMatrix(i=1L,j=1L,x=1L, dimnames=list("1",NULL)) 
 
+.get_levels_type <- function(corr_info, it, corr_family=corr_info$corr_families[[it]],
+                              corr_type=corr_info$corr_types[[it]], default) {
+  if ( identical(corr_type,"corrFamily")) {
+    lty_cF <- corr_family$levels_type
+    if (is.null(lty_cF)) { # Should not occur  
+      # even when 'corrFamily(.|.)' is called in fitmv (cf next alternative)
+      warning("No 'levels_type' in corrFamily, or earlier error?")
+      ""
+    } else if (lty_cF=="stub") { # can be reached by preprocessing of submodels of mv fits,
+      default
+    } else lty_cF    
+  } else ""
+}
+
 .calc_Zmatrix <- function(x, # a term (element of exp_ranef_terms)
                           data, 
                           rmInt, ## remove Intercept
                           drop, 
                           sparse_precision, 
-                          levels_type, # note that "data_order" and "seq_len" are all data-ordered, and others are not handled...
+                          levels_type, # note that "data_order" and "seq_len" are all data-ordered, 
+                          # and other input values are not handled, but other values may be taken from cF_levels_type
+                          # but now there is also cF_levels_type
                           corr_info, lit,
                           oldZA=NULL, # post_fit
-                          lcrandfamfam) {
+                          lcrandfamfam,
+                          cF_levels_type=.get_levels_type(corr_info=corr_info, 
+                                                          it=lit, default=levels_type)) {
   ## le bidule suivant evalue le bout de formule x[[3]] et en fait un facteur. 
   ## but fac may be any vector returned by the evaluation of x[[3]] in the envir 
   rhs <- x[[3]]
@@ -215,38 +241,44 @@
   # For corrFamilies, e.g., "MaternIMRFa"     "MaternIMRFa" vs "corrFamily"
   # and for (.|.),                                     NULL vs NA
   # All code long based on attr(x,"type")... switching to corr_type would require further changes as e.g. .calc_Z_LHS_model_matrix also tests ( ! is.null(raneftype)) "## exclude (1|.) and ranCoefs! "
-  # so currently we stick to attr(x,"type") and test raneftype %in% .spaMM.data$keywords$all_cF   (__F I X M E__?)
+  # so currently we stick to attr(x,"type") and test raneftype %in% .spaMM.data$keywords$all_cF   (_F I X M E__?)
   raneftype <- attr(x,"type") 
   #if (identical(raneftype, "(.|.)")) stop("this does not occur") # does not occurs here, as explained in calling fn, .calc_Zlist()
-  if ( ! is.null(raneftype)) { ## Any term with a 'spatial' keyword (incl. corrMatrix); cf comment in last case
-    
+  if ( ! is.null(raneftype)) { ## Any term with a 'spatial' keyword (incl. corrMatrix, corrFamilies); cf comment in last case
+    is_time_series_s.l. <- (raneftype=="AR1" || cF_levels_type=="time_series" )
+    ## In the mv case, .calc_Zlist() is called 
+    ## for each submodel while .preprocess_corrFamily has been called
+    ## on a LOCAL covStruct contructed from the submodel formula.
+    ## AR1(), ARp() or corrFamily(), will all have been processed 
+    ## but corrFamily() will not have used the fitmv call's covStruct argument, 
+    ## so appropriate levels_type info may be missing in that case,
+    ## and the appropriate RHS_info may not be produced.
+    ## Next, the levels_type from fitmv call's covStruct argument will be tested, 
+    ## and then RHS_info will be needed. => To force its generation, I implemented the private hack 
+    ## corrFamily(., levels_type="time_series")
+    ## [not, doc'ed, but the doc correctly say that corrFamily() may not work in fitmv()]
+    #
     old_levels_type <- attr(oldZA,"Z_levels_type")
-    if (is.null(old_levels_type)) { # pre-fit or post-fit fitted with old version of spaMM, before 'old_levels_type' info has been introduced
+    if (is.null(old_levels_type)) { # pre-fit; or post-fit fitted with old version of spaMM before 'old_levels_type' info has been introduced
       ## if sparse not yet determined for AR1, we generate the required info for sparse (and non-sparse) and thus assume spprec: 
       ## this block however does not correctly sets post-fit 'levels_type' to "data_order" for some composite nested ranefs,
       ## which is why old_levels_type is now used.
-      if (is.null(assuming_spprec <- sparse_precision)) assuming_spprec <- (raneftype=="AR1")  
+      if (is.null(assuming_spprec <- sparse_precision)) assuming_spprec <- is_time_series_s.l.
       ## for AR1_sparse and corrMatrix, we cannot use dummy levels as created by .ULI() of factor(). The level names have special meaning
       #   matching a time concept, or user-provided names for the corrMatrix.
       ## Further, we can drop rows/cols of a correlation matrix, but not of a precision matrix
       if (raneftype %in% c("Matern","Cauchy")) { ## even in sparse case, so this must be checked here, rather than be default final case
-        # uses .calc_Zlist()'s default levels_type: "data_order";
+        # Do notchange the current .calc_Zlist()'s levels_type, typically "data_order" at this point.
       } else if (raneftype =="IMRF") {
         # for IMRF Z matches geo to uniqueGeo and A matches uniqueGeo to nodes
         levels_type <- .spaMM.data$options$uGeo_levels_type # $uGeo_levels_type used to make sure 
         #                                               that same type is used in .calc_AMatrix_IMRF() -> .as_factor()
-      } else if (assuming_spprec || raneftype %in% c("corrMatrix","adjacency")) {
+      } else if (is_time_series_s.l. || raneftype %in% c("corrMatrix","adjacency")) {
         levels_type <- "data_order" # otherwise in prediction, any set of levels=location indices is reduced to 1 2 3... 
-      } else if ( identical(corr_info$corr_types[[lit]],"corrFamily")) { 
-        # So far I had a collection of ad-hoc cases, now I need more, first when there is an A matrix. 
-        lty_cF <- corr_info$corr_families[[lit]]$levels_type
-        if (is.null(lty_cF)) {
-          warning("No 'levels_type' in corrFamily. Earlier error? Or, if fitmv() is being called, 'corrFamily(.|.)' term used instead of registered corrFamily?")
-          #warning("$corr_families[[lit]]$levels_type not available for .calc_Zmatrix.")
-          # could distingusih cases of incomplete corrfamily (should not occur) and case of fitmv without register_cF => more informative message. 
-        } else if (lty_cF!="stub") { 
-          levels_type <- lty_cF 
-        } # for "stub" (reached by preprocessing of submodels of mv fits), levels_type keeps this function's default value 
+      } else if ( identical(corr_info$corr_types[[lit]],"corrFamily")) {
+        levels_type <- cF_levels_type # notably, "time_series"
+        # But not the previous test on assuming_spprec, which will typically catch the ARp case
+        # in which case levels_type ("data_order") remains distinct from cF_levels_type ("time_series")   
       } else { # e.g. ranefType="adjacency", NOT assuming_spprec (immediate in the tests)
         # uses .calc_Zlist()'s default levels_type: "data_order"; or "seq_len" in post-fit calls (permuted newdata tests important here)
       }
@@ -272,15 +304,36 @@
         # The user provided a precision matrix for a ranef of type corrMatrix
         ## we have to keep all levels of the precision matrix even those absent from the data
         # this info is in corr_info$corrMatrices, not in $adjMatrices (a prec mat is not an adj mat)
-        ff <- .add_levels(ff=RHS_info$factor, adj_or_prec=corrMat_info$matrix, old_ZA=NULL)
+        if ( ! is.null(RHS_levels <- colnames(corrMat_info$matrix))) {  
+          RHS_info$factor <- factor(RHS_info$factor, levels=RHS_levels) # this add the RHS_levels to the ff
+        }
         drop <- FALSE
-      } else {
-        ff <- RHS_info$factor
-      }
+      } 
+      ff <- RHS_info$factor
     } else if (raneftype=="adjacency") { ## pre-fit AND post-fit: we have to keep all levels even those absent from the data
-      ff <- .add_levels(ff=RHS_info$factor, adj_or_prec=corr_info$adjMatrices[[lit]], old_ZA=oldZA)
+      
+      RHS_levels <- colnames(corr_info$adjMatrices[[lit]]) # in-fit
+      # Post-fit we should presumably reconstruct the Z as in the fit, then the ZA,
+      # then apply the ZA_update permutation?
+      # The ZA colnames cannot be used anyway (they are typically permuted, and
+      #   for composite ranefs, old_ZA has repeated colnames, whose order is
+      #   determined by the permutation in .ZA_update(), where the cols for the ranCoefs blocks
+      #   are completely scrambled).
+      ##  presumptive____F I X M E____: Next line presumably fails if a non-trivial (permutation) A matrix was declared by the user... 
+      ## But I have no test for this odd case.
+      if (is.null(RHS_levels)) RHS_levels <- colnames(corr_info$kron_Y_Qmats[[lit]]) # composite post-fit
+      # Next line should be clean for remaining case
+      if (is.null(RHS_levels)) RHS_levels <- levels(attr(oldZA,"RHS_info")$factor) # of the original Z, as should be kept in ZA
+      
+      if ( ! is.null(RHS_levels)) {  # factor() does not satisfactorily handle levels=NULL.
+        # this add the RHS_levels to the ff
+        # the opposite is not possible: 'levels' specifies the possible values. 
+        # new levels in 'ff' generate NA's.
+        RHS_info$factor <- factor(RHS_info$factor, levels=RHS_levels) 
+      }
+      ff <- RHS_info$factor 
       drop <- FALSE
-    } else if (assuming_spprec && (raneftype=="AR1" || levels_type=="time_series")) { 
+    } else if (assuming_spprec && is_time_series_s.l.) { 
       RHS_info <- c(RHS_info, .calc_AR1_sparse_Q_ranges(mf=data,RHS_info)) # info for 'all time steps' for t_chol_Q computation for AR1 by spprec
       seq_levelrange <- .seq_levelrange(RHS_info)
       ff <- factor(RHS_info$factor,levels=seq_levelrange) ## rebuild a new factor with new levels; seq_levelrange is  # integer vec, or character vec from apply(.,paste0,collapse=":")
@@ -298,7 +351,10 @@
   #   browser('length(grep("c\\(\\w*\\)",txt))')
   #   aslocator <-  parse(text=gsub("c\\(", ".ULI(", txt)) ## slow pcq ULI() est slow
   #   ff <- as.factor(eval(expr=aslocator,envir=data))
-  } else ff <- .rhs2factor(data, rhs) # standard ( | ), including ranCoefs case
+  } else {
+    ff <- .rhs2factor(data, rhs) # standard ( | ), including ranCoefs case
+    is_time_series_s.l. <- FALSE
+  }
   ## If info_mat was corr then it must have the levels that a precision matrix would need
   ## If info_mat_is_prec we drop nothing
   ## if assuming_spprec (i.e. if spprec already determined, or AR1) we drop nothing.
@@ -312,8 +368,8 @@
     im <- sparseMatrix(i=as.integer(ff),j=seq(length(ff)),x=1L, # ~ as(ff, "sparseMatrix") except that empty levels are not dropped
                        dims=c(nlevels(ff),length(ff)), dimnames=list(levels(ff),NULL)) # names important for corrMatrix case at least
     # : this is faster than   im <- Matrix::fac2sparse(ff,drop.unused.levels = (drop && ! (AR1_sparse_Q || info_mat_is_prec)))
-    # Matrix::sparse.model.matrix(< rhs formula>, data) might have been used in some cases? __F I X M E__
-    if (!isTRUE(methods::validObject(im, test = TRUE))) stop("invalid conditioning factor in random effect: ", format(rhs)) #__F I X M E__ find a more economical check ?
+    # Matrix::sparse.model.matrix(< rhs formula>, data) might have been used in some cases? _F I X M E__
+    if (!isTRUE(methods::validObject(im, test = TRUE))) stop("invalid conditioning factor in random effect: ", format(rhs)) #_F I X M E__ find a more economical check ?
   }
   ## model matrix for LHS in [...](LHS|rhs) (Intercept if ...(1|.)) 
   tempexp <- x[[2]] ## LHS
@@ -338,7 +394,8 @@
     #   and the [value of model.frame(), with monomials]. Then one cannot call recursively model.frame() on a mf.  
     leftOfBar_mf <- model.frame(leftOfBar_terms, data, drop.unused.levels=TRUE, xlev = attr(oldZA,"LHS_levels")) 
     # note the test of contrasts on predict with ranCoefs with factors, in test-ranCoefs.R
-    modmat <- .calc_Z_LHS_model_matrix(leftOfBar_terms, leftOfBar_mf, raneftype, lcrandfamfam[[lit]]) ## handles non-trivial LHS in e.g. Matern(LHS|rhs)
+    modmat <- .calc_Z_LHS_model_matrix(leftOfBar_terms, leftOfBar_mf, raneftype, 
+                                       lcrandfamfam[[lit]]) ## handles non-trivial LHS in e.g. Matern(LHS|rhs)
   }
   if (rmInt) { ## remove intercept column
     if ( ! is.na(icol <- match("(Intercept)", colnames(modmat)))) {
@@ -352,13 +409,17 @@
     attr(Z_,"LHS_levels") <- .getXlevels(attr(leftOfBar_mf,"terms"), leftOfBar_mf)
     # : a list as defined for xlev argument of model.matrix().
   }  
-  if (identical(raneftype,"AR1") || levels_type=="time_series") {
+  
+  if (is_time_series_s.l.) {
     ## Following is different from levels(RHS_info$factor) which are reordered as character
     #  Effect in first fit in test-AR1, when spprec goes from NULL to FALSE
     # Same as colnames but ordered as in the data, while colnames Z are ordered (blocking var ordered, and within-var ordered within block)
     RHS_info$dataordered_unique_levels <- unique(as.character(RHS_info$factor))
     attr(Z_,"RHS_info") <- RHS_info ## allow reformatting for ! sparse prec
-  } 
+  # } else if (identical(raneftype,"adjacency") && is.null(oldZA)) {
+  # RHS_info$all_grid_levels <- levels(ff) # all levels even those not in the data
+  } else if (identical(raneftype,"adjacency")) attr(Z_,"RHS_info") <- RHS_info
+  
   attr(Z_,"Z_levels_type") <- levels_type # 'Z_...' as it describes cols of Z, rather than levels of a component factor 
   attr(Z_,"prior_lam_fac") <- attr(modmat,"prior_lam_fac") 
   if (has_.in. &&  ! is.null(raneftype)) {

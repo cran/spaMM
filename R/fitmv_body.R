@@ -190,7 +190,8 @@ fitmv_body <- function(processed,
     if (length(initvec)) {
       attr(hlcor,"optimInfo") <- list(LUarglist=LUarglist, init.optim=init.optim,
                                       objective=proc1$objective,
-                                      augZXy_phi_est=augZXy_phi_est)
+                                      augZXy_phi_est=augZXy_phi_est,
+                                      rC_transf=.spaMM.data$options$rC_transf)
     }
     return(hlcor) ## HLCorcall
   } else {
@@ -204,7 +205,8 @@ fitmv_body <- function(processed,
     attr(hlcor,"optimInfo") <- list(LUarglist=optim_blob$LUarglist, optim.pars=optPars, 
                                     objective=proc1$objective,
                                     augZXy_phi_est=augZXy_phi_est, ## gives info to interpret optim.pars in confint.HLfit()
-                                    optim_time=optim_time) ## processed was erased for safety
+                                    optim_time=optim_time,
+                                    rC_transf=.spaMM.data$options$rC_transf) ## processed was erased for safety
     locoptr <- attr(optPars,"optr")
     if (attr(optPars,"method")=="nloptr") {
       if (locoptr$status<0L) hlcor$warnings$optimMessage <- paste0("nloptr() message: ",

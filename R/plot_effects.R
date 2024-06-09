@@ -1,4 +1,5 @@
-pdep_effects <- function(object, focal_var, newdata =object$data, length.out=20L, focal_values=NULL, levels = NULL, 
+pdep_effects <- function(object, focal_var, newdata =object$data, length.out=20L, focal_values=NULL, 
+                         level=0.95, levels = NULL,
                          intervals = "predVar", indiv=FALSE,...) {
   was_invColdoldList_NULL <- is.null(object$envir$invColdoldList) # to be able to restore initial state 
   if (!focal_var %in% colnames(newdata)) {
@@ -47,7 +48,8 @@ pdep_effects <- function(object, focal_var, newdata =object$data, length.out=20L
   }
   for (it in seq_along(focal.values)) {
     newdata[,focal_var] <- focal.values[it]
-    pred <- predict(object,newdata,intervals = intervals, control=list(fix_predVar=NA), ...)
+    pred <- predict(object,newdata,intervals = intervals, control=list(fix_predVar=NA), 
+                    level=level, ...)
     CIs <- attr(pred,"intervals") ## not intervals <- ... within the loop!...
     if (indiv) {
       resu[[it]]$pointp <- pred[,1]
@@ -70,7 +72,8 @@ plot_effects <- function(object, focal_var, newdata=object$data, # doc as a data
                         xlab = focal_var, ylab=NULL, rgb.args=col2rgb("blue"), add=FALSE, ylim=NULL, ...) {
   # If focal_var remains NULL, the idea is probably to run over all predictor variables (not all regressors), 
   #             but this entails other graphic decisions... 
-  if (is.null(effects)) effects <- pdep_effects(object, newdata=newdata, focal_var=focal_var, indiv=FALSE, focal_values=focal_values, ...) # 'predict on hacked values'
+  if (is.null(effects)) effects <- pdep_effects(object, newdata=newdata, focal_var=focal_var, 
+                                                indiv=FALSE, focal_values=focal_values, ...) # 'predict on hacked values'
   # : could imagine plotting the results of indiv=TRUE (requires more code)
   if (object$family$family %in% c("binomial","betabin")) {
     resp <- object$y/object$BinomialDen

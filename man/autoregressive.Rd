@@ -14,7 +14,7 @@ An AR1 random effect is specified as \code{AR1(1|<grouping factor>)}. It describ
 
 A CAR random effect is specified as \code{adjacency(1|<grouping factor>)}. The correlations among levels of the random effect form a 
     matrix (\bold{I}\eqn{-\rho} \code{adjMatrix}\eqn{)^{-1}}, in terms of an \code{adjMatrix} matrix which must be provided, and of the scalar \eqn{\rho}, denoted \code{rho} in function calls. 
-    The rows and columns of \code{adjMatrix} must have names matching those of levels of the random effect \bold{or else} be ordered as increasing values of the levels of the geographic location index specifying the spatial random effect. For example, if the model formula 
+    The rows and columns of \code{adjMatrix} must have names matching those of levels of the random effect \bold{or else} are assumed to match a sequence, from 1 to the number of columns, of values of the geographic location index specifying the spatial random effect. For example, if the model formula 
     is\cr 
     \code{y ~ adjacency(1|geo.loc)} and \code{<data>$geo.loc} is 2,4,3,1,... the first row/column of the matrix refers to \code{geo.loc}=1, i.e. to the fourth row of the data. 
 }

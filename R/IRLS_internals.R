@@ -84,7 +84,7 @@
                                  v=.spaMM.data$options$stylefns$vloop,
                                  "strict_v|b"=.spaMM.data$options$stylefns$strictv,
                                  .spaMM.data$options$stylefns$betaloop ),
-                  ...), # ... important args in the ... (which __F I X M E__ is a debugging issue as list(...) in a browser fails...)
+                  ...), # ... important args in the ... (which _F I X M E__ is a debugging issue as list(...) in a browser fails...)
     step=which_LevMar_step
   )
   # optional *single* "v_in_b" IRLS for given beta REPLACES the previous one

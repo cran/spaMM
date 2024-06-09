@@ -246,7 +246,7 @@ if (spaMM.getOption("example_maxtime")>39) {
         #
         # Same logic for simulate():
         #
-        crit <- length(simulate(mvfit, newdata=misspred)) # 5 as simulation requires residVar
+        crit <- length(simulate(mvfit, newdata=misspred, sizes=rep(1L,5))) # 5 as simulation requires residVar
         testthat::test_that("check handling of missing data in simulate(mvfit...)",
                             testthat::expect_true(crit==5L))
         

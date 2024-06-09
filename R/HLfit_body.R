@@ -29,20 +29,23 @@ HLfit_body <- function(processed,
   models <- processed$models
   LMMbool <- attr(models,"LMMbool")
   #### Note that HLCor modifies the L matrix (=> ZAL cannot be preprocessed by corrHLfit and must be recomputed each time 
-  ZAlist <- processed$ZAlist ## : ZAlist is a list of design matrices 
-  nrand <- length(ZAlist)
   cum_n_u_h <- processed$cum_n_u_h
-  n_u_h <- cum_n_u_h[nrand+1L] 
+  n_u_h <- tail(cum_n_u_h,1L) 
   vec_n_u_h <- diff(cum_n_u_h)
+  nrand <- length(vec_n_u_h)
   if (nrand) { 
     ranCoefs_blob <- .process_ranCoefs(processed, ranCoefs=.getPar(ranFix,"ranCoefs"), ## may be NULL, 
                                        use_tri_CORREL=TRUE) ## UPDATES preexisting object # no augZXy pb here
     LMatrices <- .process_LMatrices(processed, ranCoefs_blob)
     which_inner_ranCoefs <- attr(LMatrices,"which_inner_ranCoefs") # needed & non-NULL only for spprec
-    ZAL <- .process_ZAL(processed, LMatrices, ZAlist, HL)
+    ZAL <- .process_ZAL(processed, LMatrices, HL)
   } else ZAL <- NULL 
+  # The above .process_ranCoefs() call may permute cols of ZAlist, 
+  #   hence any local copy of ZAlist should come after that call. (but local copy removed)
   ## 
-  ranFix$lambda <- .reformat_lambda(ranFix$lambda, nrand, namesTerms=attr(ZAlist,"namesTerms"), full_lambda=TRUE) # necessary to standardize names before next line
+  ranFix$lambda <- 
+    .reformat_lambda(ranFix$lambda, nrand, 
+                     namesTerms=attr(processed$ZAlist,"namesTerms"), full_lambda=TRUE) # necessary to standardize names before next line
   if (any(ranFix$lambda==0,na.rm=TRUE)) stop("lambda cannot be fixed to 0.")
   lam_fix_or_outer_or_NA <- processed$reserve$repNAnrand
   lam_fix_or_outer_or_NA[names(ranFix$lambda)] <- ranFix$lambda # .getPar(ranFix,"lambda") ## should already have length 'nrand' or else be NULL
@@ -67,7 +70,7 @@ HLfit_body <- function(processed,
   nothing_to_fit <-  ((! need_ranefPars_estim) && pforpv==0L && (! .anyNULL(phi.Fix)) 
                       && (nrand && (! is.null(etaFix$v_h))) )
   if ( nothing_to_fit ) { 
-    whichadj <- which(attr(ZAlist,"exp_ranef_types")=="adjacency") ## bug presumably corrected here 30/12/2017
+    whichadj <- which(attr(processed$ZAlist,"exp_ranef_types")=="adjacency") ## bug presumably corrected here 30/12/2017
     fixed_adjacency_info <- .get_fixed_adjacency_info(whichadj, LMatrices, cum_n_u_h, corr_est, ranFix, init.HLfit)
     # only APHLs:
     return(.nothing_to_fit(phi.Fix, off, models, etaFix, processed$rand.families, cum_n_u_h, 
@@ -100,14 +103,14 @@ HLfit_body <- function(processed,
   ###
   ## Initial estimate for beta  (etaFix does NOT act directly in .wrap_IRLS -> .solve_IRLS...)
   ###
-  if ( ! is.null(processed$X_off_fn)) { # (___F I X M E___?) currently X_off_fn does not allow partial beta's (with potential mess with initial beta_eta )
+  if ( ! is.null(processed$X_off_fn)) { # (__F I X M E___?) currently X_off_fn does not allow partial beta's (with potential mess with initial beta_eta )
     beta_eta <- numeric(0)
     processed$off <- off <- processed$X_off_fn(etaFix$beta) # .solve_IRLS_as_ZX() uses processed$off
     # AUGI0_ZX$X.pv must correspondly have been reduced by .preprocess
   } else {
     off <- processed$off
     beta_eta <- .get_init_beta(processed, pforpv, init.HLfit) # (note that this correctly avoids is.null(beta_eta) ***when*** pforpv=0) 
-                                                              # __F I X M E__ what do we exactly need for LMMs (?) 
+                                                              # _F I X M E__ what do we exactly need for LMMs (?) 
   }
   ######### missing Initial estimates for mu, phi, lambda by GLM ####################
   if ( is.null(beta_eta) ||  # occurs when pforpv>0 and .get_init_beta() did not find anything
@@ -365,7 +368,7 @@ HLfit_body <- function(processed,
       }
       res$std_dev_res <- sign(y-mu) * dev_res_blob$std_dev_res
       
-      if (need_simple_lambda) res$lev_lambda <- loopout_blob$leverages$ranef # __F I X M E__ remove the local condition ?
+      if (need_simple_lambda) res$lev_lambda <- loopout_blob$leverages$ranef # _F I X M E__ remove the local condition ?
       
       # res$diagnostics$m_grad_obj <- auglinmodblob$m_grad_obj # typically NULL for LMM
       if (nrand && is.null(warningEnv$leveLam1)) { # .calcRanefPars was not called

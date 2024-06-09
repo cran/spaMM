@@ -249,7 +249,7 @@
       prev_conv_logL <- conv_logL
       damping <- damping*dampingfactor
       dampingfactor <- dampingfactor*2
-      if (damping>1e10) { # endpoint for large negative gainratio (i.e. v overfit as starting point) => ___F I X M E___ do something clever in that case ?
+      if (damping>1e10) { # endpoint for large negative gainratio (i.e. v overfit as starting point) => __F I X M E___ do something clever in that case ?
         breakcond <- "div_damp"
         break 
       }
@@ -541,7 +541,7 @@
   allow_LM_restart <- ( ! LMMbool && ! LevenbergM && is.null(for_intervals) && is.na(processed$LevenbergM["user_LM"]) )
   LMcond <- - 10. 
   if (allow_LM_restart) {
-    keep_init <- new.env() # ___F I X M E___ that remains an ugly bit of code...
+    keep_init <- new.env() # __F I X M E___ that remains an ugly bit of code...
     names_keep <- c("sXaug","wranefblob","muetablob","u_h","w.resid","H_w.resid","v_h","ZAL_scaling","weight_X","Xscal","beta_eta",
                     "old_relV_beta")
     for (st in names_keep) keep_init[[st]] <- environment()[[st]]
@@ -576,7 +576,7 @@
         LMcond <- LMcond + mean(sqrt(crit))^2 
         #previously, mean(crit) could be upset by *one* small old_abs_d_relV_beta() value ()eg glmmTMB COMPoisson example)
         # conversely, median is too insensitive (long tests globally)
-        # we could adapt the "norm()" to the expected costs/benefit of different thresholds (higher cost for COMPoisson) __F I X M E__ 
+        # we could adapt the "norm()" to the expected costs/benefit of different thresholds (higher cost for COMPoisson) _F I X M E__ 
         if (LMcond/innerj>0.5 || 
             (innerj> checkpot_min_it && pot4improv > max(10,old_pot4improv))
             ) {
@@ -934,7 +934,7 @@
       ## abs_d_relV_beta is needed outside this block, and old_relV_beta updated after v_h updating.
       ## Attempt: strongly degrades the perf of nloptr/bobyqa in nloptr test 
       # dlogLdvb <- crossprod(sXaug,wzAug) # is that correct ?
-      # abs_d_relV_beta <- drop(100*abs_d_relV_beta*dlogLdvb) # that would actually be d_logL... OK we may need to sum() it... (__F I X M E__)
+      # abs_d_relV_beta <- drop(100*abs_d_relV_beta*dlogLdvb) # that would actually be d_logL... OK we may need to sum() it... (_F I X M E__)
       if (is_HL1_1 && LevenbergM) {
         # if((which_LevMar_step %in% c("v", "V_IN_B","strict_v|b") || default_b_step=="v_in_b") &&
         #    ! is.null(old_relV_beta)) {

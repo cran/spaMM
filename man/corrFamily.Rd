@@ -86,7 +86,9 @@ For prediction of autocorrelated random effects, one must first assess whether l
 
 Next, for autocorrelated random effects where \code{need_Cnn} is TRUE, a \code{make_new_corr_lists} function must be provided, except when a \code{calc_corr_from_dist} function is instead provided (which may be sufficient for models that construct the correlation from a spatial distance matrix). When \code{need_Cnn} is FALSE, a \code{make_new_corr_lists} function may still be needed. 
 
-The Examples section provides a simple example of such design, and the source code of the \code{ARp} or \code{ARMA} constructors provide further examples. They show that the \code{make_new_corr_lists} function may assign matrices or vectors as elements of three lists contained in a \code{newLv_env} environment. A matrix is assigned in the \code{cov_newLv_oldv_list}, specifying correlations between \dQuote{new} levels of the random effect (implied by the new data) and \dQuote{old} levels (those already included in the design matrix of the random effect for the fit). If \code{need_Cnn} is TRUE, a second matrix may be assigned in the \code{cov_newLv_newLv_list}, specifying correlation between \dQuote{new} levels, and the diagonal of this matrix is assigned in the \code{diag_cov_newLv_newLv_list}. The overall structure of the code (the conditions where these assignments are performed, and the list indices), should be conserved. 
+The Examples section provides a simple example of such design, and the source code of the \code{ARp} or \code{ARMA} constructors provide further examples. They show that the \code{make_new_corr_lists} function may assign matrices or vectors as elements of several lists contained in a \code{newLv_env} environment. A matrix is assigned in the \code{cov_newLv_oldv_list}, specifying correlations between \dQuote{new} levels of the random effect (implied by the new data) and \dQuote{old} levels (those already included in the design matrix of the random effect for the fit). If \code{need_Cnn} is TRUE, a second matrix may be assigned in the \code{cov_newLv_newLv_list}, specifying correlation between \dQuote{new} levels, and the diagonal of this matrix is assigned in the \code{diag_cov_newLv_newLv_list}. The overall structure of the code (the conditions where these assignments are performed, and the list indices), should be conserved. 
+
+When calling \code{simulate(., newdata=<non-NULL>, type="marginal"}, a fourth matrix may be useful, assigned into a \code{L_newLv_newLv_list}, specifying the matrix root (as a \code{tcrossprod} factor) of the correlation matrix stored in \code{cov_newLv_newLv_list}. The relevant \pkg{spaMM} procedure will however try to compute it on the fly when it has not been provided by the \code{make_new_corr_lists} function.  
 
 
 \bold{* Fitting a \code{corrFamily} without a constructor:}
@@ -106,6 +108,7 @@ Here the fit only uses a descriptor list, not a constructor function. This descr
 \code{corrFamily(1|<grouping factor>)}. 
 
 This syntax is more complex than the one using a registered constructor, but it might be useful for development purposes (one only has to code the descriptor, not the constructor function). However, it is not general; in particular, using registered constructors may be required to obtain correct results when fitting multivariate-response models by \code{fitmv}.
+% Trick to make it work in non-trivial case: cf zut_cF_lty in test-corrFamilies.R
 }
 \seealso{
 See \code{\link{ARp}}, \code{\link{diallel}}, and \code{\link{MaternIMRFa}} for basic examples of using a predefined corrFamily descriptor, and \code{\link{corrFamily-design}} for more geeky stuff including examples of implementing simple new correlation families. 

@@ -162,10 +162,11 @@ spaMM2boot <- function(object, statFUN, nsim, nb_cores=NULL,
 # foreach or pbapply, and not specifically for bootstrap computations.
 dopar <- local({
   doSNOW_warned <- FALSE
-  function(newresp, fn, nb_cores=NULL, 
-           fit_env, control=list(), cluster_args=NULL,
+  function(newresp, fn, nb_cores=NULL, fit_env, 
+           control=list(.final=function(v) if( ! is.list(v[[1]])) {do.call(cbind,v)} else v), 
+           cluster_args=NULL,
            debug.=FALSE, iseed=NULL, showpbar=eval(spaMM.getOption("barstyle")),
-           pretest_cores=NULL,
+           pretest_cores=NULL, 
            ... # passed to fn... unless captured by pbapply (in which case 'simplify' may have a distinct effect).
   ) {
     if (is.list(fit_env)) fit_env <- list2env(fit_env)
@@ -245,7 +246,6 @@ dopar <- local({
           # :where opts are needed to define a second foreach_blob
           foreach_args <- list( 
             i = 1:nsim, 
-            .combine = "cbind", 
             .inorder = TRUE, .packages = "spaMM", 
             .errorhandling = "remove", ## use "pass" to see problems
             .options.snow = progrbar_setup["progress"]
@@ -258,7 +258,7 @@ dopar <- local({
               # Add an enclosing quote():
               if ( is.language(fn_dots[[st]])) fn_dots[[st]] <- substitute(quote(what),list(what=fn_dots[[st]]))
             }
-            bootreps <- try(foreach::`%dopar%`(foreach_blob, do.call(fn, c(list(newresp[, i]), fn_dots)))) 
+            bootreps <- try(foreach::`%dopar%`(foreach_blob, do.call(fn, c(list(newresp[, i]), fn_dots))))
           } else {
             # Standard passing of the dots with foreach does not seem to work. (good test is the doSNOW case nested within test-LRT-boot.R)
             # bootreps <- try(foreach::`%dopar%`(foreach_blob, fn(newresp[, i], ...)))
@@ -429,10 +429,10 @@ dopar <- local({
 }
 
 # This one is derived from the Infusion code, not from spaMM::dopar(). 
-# It has no serial subcase. (___F I X M E___)
+# It has no serial subcase. (__F I X M E___)
 # There is more control of the iterator, which needs not be a seq of integers
 # and this this can apply easily to non-matrix objects.
-# .dopar() needs more testing before going public ____F I X M E____
+# .dopar() needs more testing before going public ___F I X M E____
 .dopar <- function(iterator, FUN, cluster_args = cluster_args, # required argS
                    # FUN args passed as the \dots, apart from its FUN argument (each element of 'iterator'):
                    ...) {

@@ -26,7 +26,7 @@ antisym <- function() {
     if (length(Alevels)==1L) { # that must be a single 'homozygote'
       Amatrix <- .trivial_incidMat * 0  # different from ranGCA
     } else {
-      # __F I X M E__ A formula like interface would be nice, such as  
+      # _F I X M E__ A formula like interface would be nice, such as  
       # rhs <- term[[2L]][[3L]]
       # txt <- .DEPARSE(rhs) ## should be the rhs of (|) cleanly converted to a string by terms(formula,data) in .get_terms_info()
       # sparse.model.matrix(as.formula(paste("~","I(",txt,")")), newdata)

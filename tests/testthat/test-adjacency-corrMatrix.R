@@ -26,7 +26,7 @@ if (spaMM.getOption("EigenDense_QRP_method")==".lmwithQR") {
   if (spaMM.getOption("fpot_tol")>0) {
     testthat::test_that(paste0("criterion was ",signif(crit,6)," from -168.1298"), testthat::expect_true(crit<2e-6) )
   } else testthat::expect_true(crit<2e-6)
-  testthat::expect_true(max(abs(range(get_predVar(adjfit)-get_predVar(adjfitsp))))<1.8e-5)
+  testthat::expect_true(max(abs(range(get_predVar(adjfit)-get_predVar(adjfitsp))))<4e-7)
 } else {
   testthat::expect_true(diff(range(logLik(adjfit),logLik(adjfitsp)))<2e-8) 
   testthat::expect_true(max(abs(range(get_predVar(adjfit)-get_predVar(adjfitsp))))<8e-6)
@@ -58,7 +58,7 @@ if (spaMM.getOption("example_maxtime")>6.90) {
                   #fixed=list(lambda=c(0.1,0.05)), 
                   family=poisson(),data=scotlip)
   testthat::expect_true("matrix" %in% how(covfit, verbose=FALSE)$MME_method)
-  testthat::expect_equal(logLik(covfit),c(p_v=-168.12966973),tol=5e-5) ## all methods are equally sensitive to the initial value (note that one lambda->0)
+  testthat::expect_equal(logLik(covfit),c(p_v=-168.12966973),tolerance=5e-5) ## all methods are equally sensitive to the initial value (note that one lambda->0)
   testthat::expect_true(max(abs(range(get_predVar(covfit)-get_predVar(precfit))))<9e-6)  
   if (spaMM.getOption("EigenDense_QRP_method")==".lmwithQR") {
     testthat::expect_true(max(abs(range(get_predVar(adjfit)-get_predVar(covfit))))<9e-6) 

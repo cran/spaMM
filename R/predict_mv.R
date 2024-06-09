@@ -1,3 +1,16 @@
+.composite_pred_warn <- local({
+  composite_pred_warned <- FALSE
+  function() {
+    if ( ! environment(.composite_pred_warn)$composite_pred_warned) {
+      warning(paste("predictions combining 'newdata' and composite random effects\n",
+                    "may fail for most corrFamily and perhaps other terms."), 
+              call.=FALSE)
+      composite_pred_warned <<- TRUE
+    }
+  }
+})
+
+
 .calc_new_X_ZAC_mv <- function(object, newdata=NULL, re.form = NULL,
                             variances=list(residVar=FALSE, cov=FALSE),invCov_oldLv_oldLv_list,
                             control=list(), na.action=na.omit) {
@@ -34,7 +47,7 @@
                       # we will need the locdataS with the variables for ranefs, to simulate these ranefs.
                       # We will need ALSO marginal covariance matrices for the ranefs !! The ZAL in simulate.HLfit() has been correct
                       # before and after changes in the simulate.HLfit() code 2023/07/23
-         ( re.form_allows_ranefs <- ( is.null(re.form) || # : this condition means that re.form_allows_ranefs may be TREU despite no ranef in model formula 
+         ( re.form_allows_ranefs <- ( is.null(re.form) || # : this condition means that re.form_allows_ranefs may be TRUE despite no ranef in model formula 
                                       any( ! sapply(re.formS, .noRanef))) )
        ) { 
       map_rd_mv <- attr(object$ZAlist, "map_rd_mv")
@@ -73,6 +86,7 @@
       newX.pv <- .merge_Xs(newX.pv, newX_info$newX.pv, mv_it)
       eta_fix <- c(eta_fix, newX_info$eta_fix)
     }
+    if ( ! is.null(X2X <- object$X2X)) newX.pv <- newX.pv %*% object$X2X
     attr(locdataS,"allvarsS") <- allvarsS # allVarsS (used by map_ranef()) tells which variables were needed for which submodel predictions.
     RESU <- list(locdata=locdataS, # locdata in RESU for cbind()ing the predictions in .predict_body();
                  cum_nobs= cumsum(c(0L,lapply(locdataS, nrow))), # more widely used by .fv_linkinv()
@@ -116,9 +130,13 @@
       # new_exp_ranef_terms <- structure(ori_exp_ranef_terms[newinold], type=attr(ori_exp_ranef_terms,"type")[newinold])
       
       #
-      # This will first construct a list ipossibly with excess nonzero elements in the Z's 
+      # This will first construct a list possibly with excess nonzero elements in the Z's 
       # This will be corrected in the next loop, cf .Dvec_times_Matrix(newrd_in_obs, newZlist[[new_rd]])
       #
+      raneftypes <- attr(ori_exp_ranef_terms,"type")
+      if (any(raneftypes[newinold] %in% c("MaternIMRFa","corrFamily") & # tentative  
+              object$ranef_info$is_composite[newinold]) # does not distinguish (0+(mv())) from other composite
+          ) .composite_pred_warn()
       newZlist <- .calc_Zlist(exp_ranef_terms=ori_exp_ranef_terms, # subsetting -> new_exp_ranef_terms will be made internally using rd_in_mv arg
                               data=ranefdata, 
                               rd_in_mv=newinold, # here, must be "conditioned upon" ranefs
@@ -205,7 +223,7 @@
                                    invCov_oldLv_oldLv_list=invCov_oldLv_oldLv_list,
                                    for_mv=TRUE)
       RESU <- .update_cov_no_nn(RESU, blob, which_mats, newZAlist)
-      RESU$newZACpplist <- .compute_ZAXlist(XMatrix=RESU$cov_newLv_oldv_list, ZAlist=newZAlist) ## build from reduced list, returns a reduced list
+      RESU$newZACpplist <- .compute_ZAXlist(ZAlist=newZAlist, XMatrix=RESU$cov_newLv_oldv_list) ## build from reduced list, returns a reduced list
       ## This $newZACpplist serves to compute new _point predictions_.
       #  # this comment may be obsolete : .compute_ZAXlist affects elements of ZAlist that have a ranefs attribute. 
       #  It builds a design matrix to all oldv levels. It does not try to reduce levels. 
@@ -301,30 +319,61 @@
     ## dwdloglam will include cols of zeros for fixed lambda; matching with reduced logdisp_cov is performed at the end of the function.
     for (randit in seq_len(nrand)) { ## ALL ranefs!
       range_in_dw <- (cum_n_u_h[randit]+1L):(cum_n_u_h[randit+1L])
-      if ( inherits(strucList[[randit]],"dCHMsimpl")) { 
-        # previous comment: (not expected in default use in mv, for reasons explained in mv, sinc AUG_ZXy presumably FALSE )
-        # BUT: occurs in univariate case with fget_predVar(adjfitsp), where augZXy algo does not appear to be used
-        for_dw_i <- as(strucList[[randit]], "CsparseMatrix") %*% dvdloglamMat[range_in_dw,  ] # i.e L_Q %*% lignes de (t(L_Q) %*% invG %*% L_Q %*% some rhs) 
-      } else if ( ! is.null(lmatrix <- strucList[[randit]])) {
-        for_dw_i <- solve(t(lmatrix),dvdloglamMat[range_in_dw,]) ## f i x m e for efficiency ? store info about solve(t(lmatrix)) in object ? 
-      } else { ## implicit identity lmatrix
-        for_dw_i <- dvdloglamMat[range_in_dw,] ## assuming each lambda_i = lambda in each block
-      }
-      nblocks_randit <- Xi_cols[randit]
-      rowranges_in_dw_i <- matrix(seq(n_u_h[randit]),ncol=nblocks_randit) ## this _splits_ seq(n_u_h[randit]) over two columns for a random-slope model
-      for (row_block in seq_len(nblocks_randit)) { ## half-ranges for random-slope model
-        rowrange_in_dw_i <- rowranges_in_dw_i[,row_block]
-        cum_rowrange_in_dw <- rowrange_in_dw_i + cum_n_u_h[randit]
-        for (randjt in which(checklambda)) { ## NOT all ranefs!
-          nblocks_randjt <- Xi_cols[randjt]
-          cum_colrange_in_dw_i <- (cum_n_u_h[randjt]+1L):(cum_n_u_h[randjt+1L])
-          cum_colranges_in_dw_i <- matrix(cum_colrange_in_dw_i,ncol=nblocks_randjt) ## this _splits_ seq(n_u_h[randit]) over two columns for a random-slope model
-          for (col_in_colranges_dw_i in nblocks_randjt) { ## half-ranges for random-slope model
-            cum_col_in_dw <- cum_Xi_cols[randjt]+col_in_colranges_dw_i
-            cum_cols_in_dw_i <- cum_colranges_in_dw_i[,col_in_colranges_dw_i] 
-            dwdloglam[cum_rowrange_in_dw, cum_col_in_dw] <- rowSums(for_dw_i[rowrange_in_dw_i, cum_cols_in_dw_i,drop=FALSE])  
+      if (OLD <- TRUE) {         # what about inverting the two operations ? ___F I X M E____
+        # solve(t(lmatrix) bc to be used as factor to ZAC, not ZA
+        if ( inherits(strucList[[randit]],"dCHMsimpl")) { 
+          # previous comment: (not expected in default use in mv, for reasons explained in mv, sinc AUG_ZXy presumably FALSE )
+          # BUT: occurs in univariate case with get_predVar(adjfitsp), where augZXy algo does not appear to be used
+          for_dw_i <- as(strucList[[randit]], "CsparseMatrix") %*% dvdloglamMat[range_in_dw,  ] # i.e L_Q %*% lignes de (t(L_Q) %*% invG %*% L_Q %*% some rhs) 
+        } else if ( ! is.null(lmatrix <- strucList[[randit]])) {
+          for_dw_i <- solve(t(lmatrix),dvdloglamMat[range_in_dw,]) ## f i x m e for efficiency ? store info about solve(t(lmatrix)) in object ? 
+        } else { ## implicit identity lmatrix
+          for_dw_i <- dvdloglamMat[range_in_dw,] ## assuming each lambda_i = lambda in each block
+        }
+        nblocks_randit <- Xi_cols[randit]
+        rowranges_in_dw_i <- matrix(seq(n_u_h[randit]),ncol=nblocks_randit) ## this _splits_ seq(n_u_h[randit]) over two columns for a random-slope model
+        for (row_block in seq_len(nblocks_randit)) { ## half-ranges for random-slope model
+          rowrange_in_dw_i <- rowranges_in_dw_i[,row_block]
+          cum_rowrange_in_dw <- rowrange_in_dw_i + cum_n_u_h[randit]
+          for (randjt in which(checklambda)) { ## NOT all ranefs!
+            nblocks_randjt <- Xi_cols[randjt]
+            cum_colrange_in_dw_i <- (cum_n_u_h[randjt]+1L):(cum_n_u_h[randjt+1L])
+            cum_colranges_in_dw_i <- matrix(cum_colrange_in_dw_i,ncol=nblocks_randjt) ## this _splits_ seq(n_u_h[randit]) over two columns for a random-slope model
+            for (col_in_colranges_dw_i in nblocks_randjt) { ## half-ranges for random-slope model
+              cum_col_in_dw <- cum_Xi_cols[randjt]+col_in_colranges_dw_i
+              cum_cols_in_dw_i <- cum_colranges_in_dw_i[,col_in_colranges_dw_i] 
+              dwdloglam[cum_rowrange_in_dw, cum_col_in_dw] <- rowSums(for_dw_i[rowrange_in_dw_i, cum_cols_in_dw_i,drop=FALSE])  
+            }
           }
         }
+        
+      } else {
+        for_dw_i <- dvdloglamMat[range_in_dw,]
+        nblocks_randit <- Xi_cols[randit]
+        rowranges_in_dw_i <- matrix(seq(n_u_h[randit]),ncol=nblocks_randit) ## this _splits_ seq(n_u_h[randit]) over two columns for a random-slope model
+        for (row_block in seq_len(nblocks_randit)) { ## half-ranges for random-slope model
+          rowrange_in_dw_i <- rowranges_in_dw_i[,row_block]
+          cum_rowrange_in_dw <- rowrange_in_dw_i + cum_n_u_h[randit]
+          for (randjt in which(checklambda)) { ## NOT all ranefs!
+            nblocks_randjt <- Xi_cols[randjt]
+            cum_colrange_in_dw_i <- (cum_n_u_h[randjt]+1L):(cum_n_u_h[randjt+1L])
+            cum_colranges_in_dw_i <- matrix(cum_colrange_in_dw_i,ncol=nblocks_randjt) ## this _splits_ seq(n_u_h[randit]) over two columns for a random-slope model
+            for (col_in_colranges_dw_i in nblocks_randjt) { ## half-ranges for random-slope model
+              cum_col_in_dw <- cum_Xi_cols[randjt]+col_in_colranges_dw_i
+              cum_cols_in_dw_i <- cum_colranges_in_dw_i[,col_in_colranges_dw_i] 
+              dwdloglam[cum_rowrange_in_dw, cum_col_in_dw] <- rowSums(for_dw_i[rowrange_in_dw_i, cum_cols_in_dw_i,drop=FALSE])  
+            }
+          }
+        }
+        if ( inherits(strucList[[randit]],"dCHMsimpl")) { 
+          # previous comment: (not expected in default use in mv, for reasons explained in mv, sinc AUG_ZXy presumably FALSE )
+          # BUT: occurs in univariate case with get_predVar(adjfitsp), where augZXy algo does not appear to be used
+          dwdloglam[range_in_dw,  ] <- as.matrix(as(strucList[[randit]], "CsparseMatrix") %*% 
+            dwdloglam[range_in_dw,  ]) # i.e L_Q %*% lignes de (t(L_Q) %*% invG %*% L_Q %*% some rhs) 
+        } else if ( ! is.null(lmatrix <- strucList[[randit]])) {
+          dwdloglam[range_in_dw,  ] <- as.matrix(solve(t(lmatrix),dwdloglam[range_in_dw,])) ## f i x m e for efficiency ? store info about solve(t(lmatrix)) in object ? 
+        } 
+
       }
     }
     ## dwdloglam includes cols of zeros for fixed lambda; matching with reduced logdisp_cov is performed at the end of the function.
@@ -402,7 +451,7 @@
       #logdispInfo["rho","rho"] <- sum(invV.dVdrho*t(invV.dVdrho))
       logdispInfo[dispcols$rho,dispcols$rho] <- .traceAB(lhs_invV.dVdrho,rhs_invV.dVdrho,t(rhs_invV.dVdrho),t(lhs_invV.dVdrho))
       if ("loglambda" %in% dispnames) {
-        sublambda <- .unlist(invV.dV_info$lambda)
+        sublambda <- .unlist(invV.dV_info$lambda_list)
         logdispInfoBlock <- numeric(nrand)
         cum_n_u_h <- invV.dV_info$cum_n_u_h
         zerotemplate <- rep(0,cum_n_u_h[nrand+1L])
@@ -430,17 +479,20 @@
       logdispInfo[dispcols$logphi,dispcols$logphi] <- logphiInfo_blob$logphiInfo 
       wresid_list <- logphiInfo_blob$wresid_list
       if ("loglambda" %in% dispnames) {
-        sublambda <- .unlist(invV.dV_info$lambda)
-        logdispInfoBlock <- matrix( nrow=nrand, ncol=length(wresid_list)) # a 
+        sublambda <- .unlist(invV.dV_info$lambda_list)
+        # ncol_whichlambda <- sum(Xi_cols[which(checklambda)])
+        logdispInfoBlock <- matrix( nrow=sum(Xi_cols), ncol=length(wresid_list)) #
         cum_n_u_h <- invV.dV_info$cum_n_u_h
         zerotemplate <- rep(0,cum_n_u_h[nrand+1L])
-        for (randit in which(checklambda)) {
+        col_ids <- rep(FALSE,sum(Xi_cols))
+        for (randit in which(checklambda)) {  # subset of ranefs
           u.range <- (cum_n_u_h[randit]+1L):(cum_n_u_h[randit+1L])
           Xi_ncol <- Xi_cols[randit] # say '1 2' for ranCoefs
           uirange <- matrix(u.range,ncol=Xi_ncol)
           for (ilam in seq_len(Xi_ncol)) { 
             i_rhs_invV.dVdlam <- loglamInfo_blob$rhs_invV.dVdlam_list[[paste0(randit,"_",ilam)]] #.fill_rhs_invV.dVdlam(template=zerotemplate, urange=uirange[,ilam], invV.dV_info)
             colit <- cum_Xi_cols[randit]+ilam
+            col_ids[colit] <- TRUE
             # sum(diag(diag(w.resid) %*% lhs_invV.dVdlam)) - sum(diag(lhs_invV.dVdlam %*% invV_factors))
             char_mv_jtS <- names(wresid_list)
             for (block_jt in seq_along(char_mv_jtS)) { 
@@ -452,7 +504,7 @@
             }
           }
         }
-        logdispInfoBlock <- .Dvec_times_matrix(sublambda, logdispInfoBlock[which(checklambda),,drop=FALSE])  
+        logdispInfoBlock <- .Dvec_times_matrix(sublambda, logdispInfoBlock[which(col_ids),,drop=FALSE])  
         logdispInfo[dispcols$loglambda,dispcols$logphi] <- logdispInfoBlock
         logdispInfo[dispcols$logphi,dispcols$loglambda] <- t(logdispInfoBlock)
       }
@@ -512,3 +564,356 @@
   res
 }
 
+# modification from .make_new_corr_mats_NOT_ranCoef (which cannot be used natively)
+.make_new_corr_mats_rhs_composite <- function(
+    newLv_env, 
+    sub_corr_info,
+    corr.model=sub_corr_info$corr_types[[old_rd]], # here the one of the RHS ! 
+    newZAlist,
+    old_rd, fix_info,
+    object, new_rd, which_mats, 
+    ranefs=attr(newZAlist,"exp_ranef_strings"), # "(.|.)" "adjacency" ..., 
+    corrfamily_old_rd=.get_from_ranef_info(object)$corr_families[[old_rd]], 
+    Lnn_not_Cnn, locdata, 
+    for_mv, 
+    spatial_terms=attr(object$ZAlist,"exp_spatial_terms"), 
+    invCov_oldLv_oldLv_list,
+    latentL_blob) {
+  # tricky ___F I X M E____
+  # Previously I used old_kron_Y_Lmat=sub_corr_info$kron_Y_LMatrices[[old_rd]] as the Lmatrix for most of the cases below
+  # this was OK when newdata=NULL (cf commented code after this function)
+  # Now I try to construct properly new matrices, but this will fail insome of thecases where it worked.
+  # Try to identify cases where newdata=NULL (at least when univariate-response...)
+  namesTerms <- attr(newZAlist,"namesTerms")[[new_rd]]
+  if ( ! is.null(fix_info)) {
+    oldlevels <- colnames(fix_info$newZAlist[[old_rd]]) ## old_rd despite the "newZAlist" name: specific to fix_info
+  } else oldlevels <- colnames(object$ZAlist[[old_rd]])
+  newlevels <- colnames(newZAlist[[new_rd]]) # may have replicate at this point...
+  numnamesTerms <- length(namesTerms) ## 2 for random-coef
+  n_uniq <- length(oldlevels) %/% numnamesTerms
+  Uoldlevels <- oldlevels[seq_len(n_uniq)]
+  oldornew <- unique(c(Uoldlevels,newlevels))
+  repnames <- rep(oldornew, numnamesTerms)
+  newcols <- repnames %in% newlevels ## handle replicates (don't `[` newoldC using names !)
+  oldcols <- repnames %in% oldlevels
+  
+  Unewlevels <- unique(colnames(newZAlist[[new_rd]]))
+  ## rhs_C and compactcovmat for newoldC or newnewC
+  compactcovmat <- latentL_blob$compactcovmat
+  
+  if (corr.model =="adjacency") { 
+    if (length(setdiff(Unewlevels,Uoldlevels))) stop(paste0("Found new levels for a '",corr.model,"' random effect."))
+    ### Context:
+    ## We want to compute Z . C . C^{-1/2} v.
+    ## by reproducing the logic of univariate-resp models where 
+    ## in permuted case that can be written
+    ##   ZP .        P' C P     .  P' C^{-1/2} v             [where the P is P_Q]
+    ## = ZP . L_Q^(-T) L_Q^{-1} .  L_Q v
+    ## so newZAlist contains permuted ZP, newoldC contains L_Q^(-T) L_Q^{-1} which is permuted, 
+    ## and L_Q v is always provided by .calc_invL_coeffs() 
+    ### distinct features of this composite adjacency case is that 
+    ## (1) difference from composite corrMatrix is that there is no old_kron_Y_Lmat;
+    ## (2) the strucList element represents the Kronecker product, not its LHS =>
+    ##     using dimnames is bound to fail since they are repeated.
+    uuC <- .tcrossprod(object$strucList[[old_rd]], perm=TRUE) ##  Might eventually reconstruct permuted (consistent with perm of cols of Z) corrMatrix from its CHM factor
+    if (which_mats$no) newLv_env$cov_newLv_oldv_list[[new_rd]] <- structure(uuC,
+                                                                            ranefs=ranefs[[new_rd]])
+    # assign to newLv_env$cov_newLv_oldv_list, cov_newLv_newLv_list, diag_cov_newLv_newLv_list
+    # although newnew code seems missing, it is not needed (there is a test of predVar cov=TRUE) 
+  } else if (corr.model=="corrMatrix") {
+    # # "test-predVar-Matern-corrMatrix" shows newdata working with corrMatrix, when newlevels are within oldlevels 
+    # see also test-composite-extra
+    if (length(setdiff(Unewlevels,Uoldlevels))) stop(paste0("Found new levels for a '",corr.model,"' random effect."))
+    # all newlevels must be in oldlevels hence the construction of the matrix is a little simplified
+    uuC <- .tcrossprod(sub_corr_info$kron_Y_LMatrices[[old_rd]], perm=TRUE) ##  Can reconstruct permuted (consistent with perm of cols of Z) corrMatrix from its CHM factor
+    rownames(uuC) <- colnames(uuC) <- Uoldlevels 
+    
+    #if (TRUE) {
+      .assign_newLv_for_newlevels_corrMatrix(uuC, latentL_blob=latentL_blob,
+                                             newlevels=Unewlevels, 
+                                             newLv_env, new_rd, corr.model, which_mats, ranefs,
+                                             Lnn_not_Cnn=Lnn_not_Cnn)
+    # } else {
+    #   newoldC <- .makelong_kronprod(compactcovmat, kron_Y=uuC[Unewlevels,,drop=FALSE])
+    #   #colnames(newoldC) <- rep(oldlevels, numnamesTerms) ## these will be needed by .match_old_new_levels() or .assign_newLv_for_newlevels_corrMatrix()
+    #   if (which_mats$no) {
+    #     newLv_env$cov_newLv_oldv_list[[new_rd]] <- structure(newoldC, ranefs=ranefs[[new_rd]])
+    #     # if (inherits(newoldC,"bigq")) attr(newLv_env$cov_newLv_oldv_list[[new_rd]],
+    #     #                                    "DIMNAMES") <- list(repnames[newcols],repnames[oldcols]) ## these will be needed by .match_old_new_levels()
+    #   }
+    #   
+    #   if (which_mats$nn[new_rd]) {
+    #     if (Lnn_not_Cnn) {
+    #       compactL <- latentL_blob$design_u
+    #       if (is.null(compactL)) compactL <- # on compAR1fit example
+    #           .wrap_solve_warn(X=t(as.matrix(latentL_blob$compactchol_Q_w)),
+    #                            warnmess="Forcing inversion of singular precision matrix.")
+    #       newnewL <- .makelong(compactL,
+    #                            longsize=length(Unewlevels)*numnamesTerms,
+    #                            kron_Y=old_kron_Y_Lmat[Unewlevels,Unewlevels, drop=FALSE])
+    #       newLv_env$L_newLv_newLv_list[[new_rd]] <- newnewL
+    #     } else {
+    #       newnewC <- .makelong(compactcovmat,
+    #                            longsize=length(Unewlevels)*numnamesTerms,
+    #                            kron_Y=uuC[Unewlevels,Unewlevels])
+    #       newLv_env$cov_newLv_newLv_list[[new_rd]] <- newnewC #names presumably not used
+    #       #if (inherits(newoldC,"bigq")) attr(diag_cov_newLv_newLv_list[[new_rd]], "DIMNAMES") <- list(repnames[newcols],repnames[newcols])
+    #     }
+    #   } else {
+    #     newnewC <- .makelong(compactcovmat, longsize=length(Unewlevels)*numnamesTerms, 
+    #                          kron_Y=uuC[Unewlevels,Unewlevels ,drop=FALSE])
+    #     nc <- ncol(newnewC)
+    #     diagPos <- seq.int(1L,nc^2,nc+1L) ## it's not only an efficient syntax, that's the only way to extract the diag from bigq...
+    #     #if (inherits(newoldC,"bigq")) {
+    #     #  newLv_env$diag_cov_newLv_newLv_list[[new_rd]] <- newoldC[[]][diagPos[newcols]] ## with the [[]] to access the raw vector
+    #     #} else
+    #     newLv_env$diag_cov_newLv_newLv_list[[new_rd]] <- newnewC[diagPos]
+    #   }
+    # }
+
+  } else if (corr.model == "IMRF") {
+    # stop("code missing for composite IMRF ranef") #  ___F I X M E____ that will indeed fail. Let the actual problem occur
+    ## in this case a new A matrix (by .get_new_AMatrices()) must be computed (elsewhere: it goes in newZAlist)
+    ## but the corr matrix between the nodes is unchanged as node positions do not depend on response position => nn=no
+    .make_new_corr_lists_IMRFs(newLv_env, which_mats,
+                               object, # shows that direct access to $strucList[[old_rd]] may be useful in generic code
+                               ranefs, new_rd, old_rd)
+  } else if ((corr.model == "corrFamily" && ! identical(corrfamily_old_rd$levels_type,"time_series")) && 
+             ! is.null(corrfamily_old_rd$make_new_corr_lists)) { 
+    # User must provide corrfamily_old_rd$make_new_corr_lists() code that handles composite ranefs
+    corrfamily_old_rd$make_new_corr_lists(newLv_env=newLv_env, which_mats=which_mats, ranFix=object$ranFix,
+                                          ranefs=ranefs, 
+                                          newZAlist=newZAlist, new_rd=new_rd, old_rd=old_rd, 
+                                          corrfamily=corrfamily_old_rd, # easy access to elements added by .preprocess_corrFamily 
+                                          object=object, # avoid using it... but see comment on IMRFs above
+                                          Lnn_not_Cnn=Lnn_not_Cnn # may not be handled in any useful way.
+    ) # Should write in newLv_env
+  } else if ( ! is.null(corrfamily_old_rd$calc_corr_from_dist) ) { 
+    ## all models where a correlation matrix must be computed from a distance matrix => $calc_corr_from_dist() needed
+    ## Notably, Matern...
+    old_char_rd <- as.character(old_rd)
+    # olduniqueGeo needed in all cases
+    if ( ! is.null(fix_info)) {
+      olduniqueGeo <- fix_info$newuniqueGeo[[old_char_rd]]
+    } else {
+      olduniqueGeo <- .get_old_info_uniqueGeo(object, char_rd=old_char_rd) 
+    }
+    if ( is.data.frame(locdata)) {
+      geonames <- colnames(olduniqueGeo) 
+      newuniqueGeo <- locdata[,geonames,drop=FALSE] ## includes nesting factor
+      
+      if (for_mv) { # ...but for mv fits this will be a problem in .compute_ZAXlist() as locnr>locnc
+        # mv fit
+        newuniqueGeo <- unique(newuniqueGeo)
+        rownames(newuniqueGeo) <- .pasteCols(t(newuniqueGeo)) 
+      } else if (attr(newZAlist[[new_rd]],"Z_levels_type") != "seq_len") {
+        # univariate-response model such as Matern(LHS implies ranCoefs|.) 
+        ## The location in newuniqueGeo may not be unique despite the name. 
+        ## The costs of reducing to unique values may outweight the benefits. 
+        ## The 'decision' has been made when creating the new ZA, through its levels type.
+        ## Simple test case where levels_type is seq_len: 
+        ## example(bboptim) [Matern with replicate pairs in some locations; locations are not unique in 'newuniqueGeo']
+        ## conversely the  predVar computations in block 
+        ##   'verif .calc_Evar() with ranCoefs...' in test-devel-predVar-ranCoefs
+        ## stop if unique() is not applied (for the AR1 ranef). 
+        ## The Z_levels_type attr should have been used more to secure the code...
+        newuniqueGeo <- unique(newuniqueGeo)
+      }
+      
+    } else { ## locdata is 'preprocessed' list of arrays (tested by get_predCov_var_fix() tests)
+      newuniqueGeo <- locdata[[as.character(old_rd)]] ## preprocessed, [,geonames,drop=FALSE] not necess ## includes nesting factor 
+      geonames <- colnames(newuniqueGeo)
+    }
+    
+    ## ... distance matrix and then call to correl fn ...
+    
+    control_dist_rd <- .get_control_dist(object, old_char_rd)
+    if (corr.model=="AR1" || 
+        identical(corrfamily_old_rd$levels_type,"time_series") # identical because Matern, etc. are corrfamily_old_rd without levels_type
+        # ARp) and ARMA() previously reached here, but no longer as they have a $make_new_corr_lists now (but this does not handle nesting)
+    ) { 
+      # Does not use a kron_Y stored (or not even stored for spprec) in the object: reconstructs matrix from 'distance' matrix. 
+
+      ### older, non nested code:
+      # if (which$no) resu$uuCnewold <- proxy::dist(newuniqueGeo,olduniqueGeo) 
+      # if (which$nn) resu$uuCnewnew <- proxy::dist(newuniqueGeo)
+      ### new code recycling .get_dist_nested_or_not, but not fastest nor most transparent (fixme?)
+      onGeo <- rbind(newuniqueGeo,olduniqueGeo) # includes nesting factor
+      if (object$spaMM.version < "2.2.118") {
+        blob <- .get_dist_nested_or_not(object$spatial_term, data=onGeo, distMatrix=NULL, uniqueGeo=NULL, 
+                                        dist.method=control_dist_rd$dist.method, as_matrix=TRUE,
+                                        needed=c(distMatrix=TRUE), geo_envir=NULL)
+      } else {
+        blob <- .get_dist_nested_or_not(spatial_terms[[old_rd]], data=onGeo, distMatrix=NULL, 
+                                        uniqueGeo=NULL, ## FIXME provide uniqueGeo 'to save time'(??) ?
+                                        dist.method=control_dist_rd$dist.method, as_matrix=TRUE,
+                                        needed=c(distMatrix=TRUE), geo_envir=NULL) 
+      }
+      ## we merged old and new so need to get the respective cols (which may overlap) 
+      uli_onGeo <- .ULI(onGeo) # this should give row and columns in the blob ## FIXME how to make sure of that? .get_dist_nested_or_not must use .ULI()
+      uli_new <- uli_onGeo[seq(nrow(newuniqueGeo))]
+      uli_old <- uli_onGeo[-seq(nrow(newuniqueGeo))]
+      if (which_mats$no) uuCnewold <- blob$distMatrix[uli_new,uli_old,drop=FALSE] ## rows match the newZAlist, cols match th u_h 
+      if (which_mats$nn[new_rd]) {
+        uuCnewnew <- blob$distMatrix[uli_new,uli_new,drop=FALSE]
+      }
+    } else if (corr.model %in% c("Cauchy", "Matern")) {
+      ### rho only used to compute scaled distances
+      rho <- .get_cP_stuff(object$ranFix,"rho", which=old_char_rd)
+      if ( ! is.null(rho_mapping <- control_dist_rd$rho.mapping) 
+           && length(rho)>1L ) rho <- .calc_fullrho(rho=rho,coordinates=geonames,rho_mapping=rho_mapping)
+      # : if control_dist_rd comme from the call (vs from moreargs) rho_mapping may still be NULL 
+      #     and then the code assumes that calling  .calc_fullrho() is not necessary (that seems OK) 
+      ## rows from newuniqueGeo, cols from olduniqueGeo:
+      txt <- paste(c(spatial_terms[[old_rd]][[2]][[3]])) ## the RHS of the ( . | . ) # c() to handle very long RHS
+      if (length(grep("%in%",txt))) { # nested geostatistical effect
+        coord_within <- .extract_check_coords_within(spatial_term=spatial_terms[[old_rd]]) 
+        msd.arglist <- list(uniqueGeo=newuniqueGeo[,coord_within,drop=FALSE],
+                            uniqueGeo2=olduniqueGeo[,coord_within,drop=FALSE],
+                            rho=rho,return_matrix=TRUE)
+      } else msd.arglist <- list(uniqueGeo=newuniqueGeo,uniqueGeo2=olduniqueGeo,
+                                 rho=rho,return_matrix=TRUE)
+      # If control_dist_rd$dist.method is NULL, do not over-write the non-NULL default of make_scaled_dist():
+      if ( ! is.null(dist.method <- control_dist_rd$dist.method)) msd.arglist$dist.method <- dist.method 
+      if (which_mats$no) {
+        uuCnewold <- do.call(make_scaled_dist,msd.arglist)
+        dimnames(uuCnewold) <- list(Unewlevels, Uoldlevels)
+      } ## ultimately allows products with Matrix ## '*cross*dist' has few methods, not even as.matrix
+      if (which_mats$nn[new_rd])  {
+        msd.arglist$uniqueGeo2 <- NULL
+        if (nrow(msd.arglist$uniqueGeo)==1L) {
+          uuCnewnew <- matrix(0) ## trivial _distance_ matrix for single point (converted to trivial cov below!)
+        } else uuCnewnew <- do.call(make_scaled_dist,msd.arglist) 
+        dimnames(uuCnewnew) <- list(Unewlevels, Unewlevels)
+      }
+      if (length(grep("%in%",txt))) { # nested geostatistical effect
+        onGeo <- rbind(newuniqueGeo,olduniqueGeo) # includes nesting factor
+        isInf <- .get_dist_nested_or_not(spatial_term=spatial_terms[[old_rd]], 
+                                         data=onGeo, distMatrix=NULL, 
+                                         uniqueGeo=NULL, 
+                                         dist.method = dist.method,needed=c(notSameGrp=TRUE),
+                                         geo_envir=NULL)$notSameGrp
+        ## we merged old and new so need to get the respective cols (which may overlap) 
+        uli_onGeo <- .ULI(onGeo) # this should give row and columns in the blob ## FIXME how to make sure of that? .get_dist_nested_or_not must use .ULI()
+        uli_new <- uli_onGeo[seq(nrow(newuniqueGeo))]
+        uli_old <- uli_onGeo[-seq(nrow(newuniqueGeo))]
+        if (which_mats$no) {
+          isInfno <- isInf[uli_new,uli_old,drop=FALSE]
+          uuCnewold[isInfno] <- Inf ## ultimately allows products with Matrix ## '*cross*dist' has few methods, not even as.matrix
+        }
+        if (which_mats$nn[new_rd]) {
+          isInfnn <- isInf[uli_new,uli_new,drop=FALSE]
+          uuCnewnew[isInfnn] <- Inf
+        }
+      }
+    } else stop("Unhandled 'corr.model' (make_new_corr_lists() missing from corrFamily descriptor?).")
+    
+    # ... Finally fill the cov lists ...
+    
+    if (object$spaMM.version<"2.4.49") {
+      if (which_mats$no) newLv_env$cov_newLv_oldv_list[[new_rd]] <- structure(.calc_corr_from_dist(uuCnewold, object, corr.model,char_rd=old_char_rd),
+                                                                              corr.model=corr.model,
+                                                                              ranefs=ranefs[[new_rd]])
+      if (which_mats$nn[new_rd]) newLv_env$cov_newLv_newLv_list[[new_rd]] <- .calc_corr_from_dist(uuCnewnew, object, corr.model,char_rd=old_char_rd)
+    } else {
+      if (which_mats$no) {
+        cov_newLv_oldv <- corrfamily_old_rd$calc_corr_from_dist(
+          ranFix=object$ranFix, char_rd=old_char_rd, distmat=uuCnewold)
+        # if (attr(strucList[[old_rd]],"need_gmp") && 
+        if (inherits(invCov_oldLv_oldLv_list[[old_rd]],"bigq")) cov_newLv_oldv <- structure(gmp::as.bigq(cov_newLv_oldv),
+                                                                                            DIMNAMES=dimnames(cov_newLv_oldv))
+        cov_newLv_oldv <- .makelong_kronprod(compactcovmat, kron_Y=cov_newLv_oldv[Unewlevels,]) 
+        newLv_env$cov_newLv_oldv_list[[new_rd]] <- structure(cov_newLv_oldv, corr.model=corr.model, ranefs=ranefs[[new_rd]])
+      }
+      if (which_mats$nn[new_rd]) {
+        uuCnewnew <- corrfamily_old_rd$calc_corr_from_dist(
+          ranFix=object$ranFix, char_rd=old_char_rd, distmat=uuCnewnew)
+        if (Lnn_not_Cnn) {
+          Lmat <- mat_sqrt(m=uuCnewnew)
+          raw_levels <- .pasteCols(x=t(newuniqueGeo))
+          rownames(Lmat) <- colnames(Lmat) <- raw_levels # same levels in .as_factor. 
+          
+          compactL <- latentL_blob$design_u
+          if (is.null(compactL)) compactL <- # on compAR1fit example
+            .wrap_solve_warn(X=t(as.matrix(latentL_blob$compactchol_Q_w)),
+                             warnmess="Forcing inversion of singular precision matrix.")
+          newnewL <- .makelong(compactL, 
+                               longsize=length(Unewlevels)*numnamesTerms, 
+                               kron_Y=Lmat[Unewlevels,Unewlevels]) 
+          newLv_env$L_newLv_newLv_list[[new_rd]] <- newnewL 
+        } else {
+          newnewC <- .makelong(compactcovmat, 
+                               longsize=length(Unewlevels)*numnamesTerms, 
+                               kron_Y=uuCnewnew) 
+          newLv_env$cov_newLv_newLv_list[[new_rd]] <- newnewC #names presumably not used
+        }
+      } else { # (__F I X M E___ ugly inefficient block of code: compute full matrix to get its diag)
+        uuC <- .tcrossprod(sub_corr_info$kron_Y_LMatrices[[old_rd]], perm=TRUE) ##  Can reconstruct permuted (consistent with perm of cols of Z) corrMatrix from its CHM factor
+        rownames(uuC) <- colnames(uuC) <- Uoldlevels 
+        # uuC <- corrfamily_old_rd$calc_corr_from_dist(
+        #   ranFix=object$ranFix, char_rd=old_char_rd, distmat=uuC)
+        newnewC <- .makelong(compactcovmat, longsize=length(Unewlevels)*numnamesTerms, 
+                             kron_Y=uuC) 
+        nc <- ncol(newnewC)
+        diagPos <- seq.int(1L,nc^2,nc+1L) ## it's not only an efficient syntax, that's the only way to extract the diag from bigq...
+        newLv_env$diag_cov_newLv_newLv_list[[new_rd]] <- newnewC[diagPos]
+      }
+    }
+  } # END all models where a correlation matrix must be computed from a distance matrix
+}
+
+{ ##############  Memo old code:
+  # namesTerms <- attr(newZAlist,"namesTerms")[[new_rd]]
+  # # if ( ! is.null(fix_info)) {
+  # #   oldlevels <- colnames(fix_info$newZAlist[[old_rd]]) ## old_rd despite the "newZAlist" name: specific to fix_info
+  # # } else oldlevels <- colnames(object$ZAlist[[old_rd]])
+  # # oldlevels <- unique(oldlevels)
+  # # newlevels <- unique(colnames(newZAlist[[new_rd]]))
+  # # # "test-predVar-Matern-corrMatrix" shows newdata working with corrMatrix, when newlevels are within oldlevels 
+  # # if (length(setdiff(newlevels,oldlevels))) stop(paste0("Found new levels for a '",corr.model,"' random effect."))
+  # # kron_Y <- .tcrossprod(kron_Y, perm=TRUE) ##  Can reconstruct permuted (consistent with perm of cols of Z) corrMatrix from its CHM factor
+  # # colnames(kron_Y) <- rownames(kron_Y) <- oldlevels
+  # kron_Y <- .tcrossprod(kron_Y, perm=TRUE) ##  Can reconstruct permuted (consistent with perm of cols of Z) corrMatrix from its CHM factor
+  # rownames(kron_Y) <- colnames(kron_Y) <- Uoldlevels # oldlevels <- colnames(kron_Y)
+  # newlevels <- unique(colnames(newZAlist[[new_rd]]))
+  # # "test-predVar-Matern-corrMatrix" shows newdata working with corrMatrix, when newlevels are within oldlevels 
+  # if (length(setdiff(newlevels,Uoldlevels))) stop(paste0("Found new levels for a '",corr.model,"' random effect."))
+  # # all newlevels must be in oldlevels hence the construction of the matrix is a little simplified
+  # compactcovmat <- latentL_blob$compactcovmat
+  # newoldC <- .makelong_kronprod(compactcovmat, kron_Y=kron_Y[newlevels,]) 
+  # #colnames(newoldC) <- rep(oldlevels, numnamesTerms) ## these will be needed by .match_old_new_levels() or .assign_newLv_for_newlevels_corrMatrix()
+  # #rownames(newoldC) <- rep(newlevels, numnamesTerms)
+  # if (which_mats$no) {
+  #   newLv_env$cov_newLv_oldv_list[[new_rd]] <- structure(newoldC, ranefs=ranefs[[new_rd]])
+  #   # if (inherits(newoldC,"bigq")) attr(newLv_env$cov_newLv_oldv_list[[new_rd]], 
+  #   #                                    "DIMNAMES") <- list(repnames[newcols],repnames[oldcols]) ## these will be needed by .match_old_new_levels()
+  # }
+  # 
+  # if (which_mats$nn[new_rd]) {
+  #   if (Lnn_not_Cnn) {
+  #     compactL <- latentL_blob$design_u
+  #     if (is.null(compactL)) compactL <- # on compAR1fit example
+  #         .wrap_solve_warn(X=t(as.matrix(latentL_blob$compactchol_Q_w)),
+  #                          warnmess="Forcing inversion of singular precision matrix.")
+  #     newnewL <- .makelong(compactL, 
+  #                          longsize=length(newlevels)*numnamesTerms, 
+  #                          kron_Y=kron_Y[newlevels,newlevels]) 
+  #     newLv_env$L_newLv_newLv_list[[new_rd]] <- newnewL 
+  #   } else {
+  #     newnewC <- .makelong(compactcovmat, 
+  #                          longsize=length(newlevels)*numnamesTerms, 
+  #                          kron_Y=kron_Y[newlevels,newlevels]) 
+  #     newLv_env$cov_newLv_newLv_list[[new_rd]] <- newnewC #names presumably not used
+  #     #if (inherits(newoldC,"bigq")) attr(diag_cov_newLv_newLv_list[[new_rd]], "DIMNAMES") <- list(repnames[newcols],repnames[newcols])
+  #   }
+  # } else {
+  #   newnewC <- .makelong(compactcovmat, longsize=length(newlevels)*numnamesTerms, kron_Y=kron_Y[newlevels,newlevels]) 
+  #   nc <- ncol(newnewC)
+  #   diagPos <- seq.int(1L,nc^2,nc+1L) ## it's not only an efficient syntax, that's the only way to extract the diag from bigq...
+  #   #if (inherits(newoldC,"bigq")) {
+  #   #  newLv_env$diag_cov_newLv_newLv_list[[new_rd]] <- newoldC[[]][diagPos[newcols]] ## with the [[]] to access the raw vector
+  #   #} else 
+  #   newLv_env$diag_cov_newLv_newLv_list[[new_rd]] <- newnewC[diagPos]
+  # }
+
+}

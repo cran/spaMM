@@ -17,7 +17,7 @@
                 extreme_eig(as(IMRF_design$param.inla$M2,"CsparseMatrix"), symmetric=TRUE, required=EEV_required)[1L])
     }
   }
-  if ( ! is.null(e1)) range_factor <- min(range_factor, 0.01/sqrt((e1 - 1e5 * 0)/(-1 + 1e5 + e1 - 1e5 * 0)))
+  if ( ! is.null(e1)) range_factor <- min(range_factor, 0.01/sqrt(e1/(-1 + 1e5 + e1)))
   range_factor
 }
 
@@ -115,10 +115,14 @@ MaternIMRFa <- function(mesh, tpar=c(alpha=1.25,kappa=0.1), fixed=NULL, norm=FAL
   
   calc_moreargs <- function(corrfamily, ...) {
     range_factor <- .kappa_range_factor(mesh, IMRF_design, EEV_required=FALSE) # where IMRF_design may still be NULL
+    mindist <- min(RANN::nn2(mesh$loc,k=2L)$nn.dists[,2])
+    # Presumably, range_factor =O(max dist) >> min dist, so this is already ordered, 
+    # but range_factor is a bit more complicated, so playing safe:
+    kappa_range <- range(0.01/range_factor,200/mindist) 
     list(
-      lower=c(alpha=1+1e-8,kappa=0.01/range_factor), 
-      init=c(alpha=1.15,kappa=1/range_factor), 
-      upper=c(alpha=2,kappa=200/range_factor) 
+      lower=c(alpha=1+1e-8,kappa=kappa_range[1]), 
+      init=c(alpha=1.15,kappa=sqrt(prod(kappa_range))), 
+      upper=c(alpha=2,kappa=kappa_range[2]) 
     )
   }
   

@@ -72,7 +72,7 @@ NULL, or precomputed bootstrap samples from the fitted model, provided as a matr
 \details{
 The \code{simuland} function must take as first argument a vector of response values, and may have other arguments including \sQuote{\ldots}. When required, these additional arguments must be passed through the \sQuote{\ldots} arguments of \code{spaMM_boot}. Variables needed to evaluate them must be available from within the \code{simuland} function or otherwise provided as elements of \code{fit_env}.
 
-The \code{statFUN} function must take as first argument a fit object, and may have other arguments including \sQuote{\ldots} handled as for \code{simuland}.
+The \code{statFUN} function must take as first argument (named \code{refit}) a fit object, and may have other arguments including \sQuote{\ldots} handled as for \code{simuland}.
 
 \code{spaMM_boot} handles parallel backends with different features. \code{pbapply::pbapply} has a very simple interface (essentially equivalent to \code{apply}) and provides progress bars, but (in version 1.4.0, at least) does not have efficient load-balancing. \code{doSNOW} also provides a progress bar and allows more efficient load-balancing, but its requires \code{foreach}. \code{foreach} handles errors differently from \code{pbapply} (which will simply stop if fitting a model to a bootstrap replicate fails): see the \code{foreach} documentation.
 

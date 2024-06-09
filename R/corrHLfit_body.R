@@ -122,7 +122,8 @@ corrHLfit_body <- function(processed, ## possibly a list of environments
   if (is.call(hlcor)) { 
     if (length(initvec)) { # always TRUE ?
       attr(hlcor,"optimInfo") <- list(LUarglist=LUarglist, init.optim=init.optim,
-                                      objective=proc1$objective)
+                                      objective=proc1$objective,
+                                      rC_transf=.spaMM.data$options$rC_transf)
     }
     return(hlcor) ## HLCorcall
   } else {
@@ -134,7 +135,8 @@ corrHLfit_body <- function(processed, ## possibly a list of environments
   #
   if (length(initvec)) { # always TRUE ?
     attr(hlcor,"optimInfo") <- list(LUarglist=LUarglist, optim.pars=optPars,
-                                    objective=proc1$objective
+                                    objective=proc1$objective,
+                                    rC_transf=.spaMM.data$options$rC_transf
                                     #augZXy_phi_est=NULL, # implicit NULL bc augZXy in prevented for outer optim by corrHLfit
                                     )
     locoptr <- attr(optPars,"optr")

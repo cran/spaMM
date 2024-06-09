@@ -3,12 +3,12 @@
 % TODO % * retry outer beta estim ? Without gradient... hum. see 'outerbetaML' test
 % * Something about .predictions methods when predict returns a data frame ?
 
-\alias{gridIMRF} % ___F I X M E___
-%\alias{.setCluster} % ___F I X M E___ document ? It is exported for Infusion
+\alias{gridIMRF} % __F I X M E___
+%\alias{.setCluster} % __F I X M E___ document ? It is exported for Infusion
 
 \alias{projpath} % for local tests
 
-\alias{glm.nodev.fit} % __F I X M E__ special version for COMPoisson
+\alias{glm.nodev.fit} % _F I X M E__ special version for COMPoisson
 
 \alias{fitme_body}
 \alias{fitmv_body}

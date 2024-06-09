@@ -254,6 +254,7 @@ get_from_MME_default.matrix <- function(sXaug,which="",szAug=NULL,B=NULL, tol=1e
       coef2 <- coef12$dlW_deta # coef2 is the factor between P_jj and K1 in d2
       vecdi2 <- get_from_MME(sXaug,"solve_d2hdv2",B=as.vector((Pdiag$lev_phi * coef2) %*id% ZAL))
       vecdi2 <- as.vector(ZAL %*% vecdi2) ## equiv  post-multiplication by Z^T in the expression for D p.3307 bottom.
+      ## DOCUMENTATION FOR vecdi2 computation to be found in package/doc_code/vecdi2.R.
       if (devel <- FALSE) { # devel code
         if (inherits(sXaug,"list")) {
           sXau <- .spprec2spcorr(sXaug)
