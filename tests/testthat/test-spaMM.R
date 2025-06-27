@@ -1,4 +1,4 @@
-cat(crayon::yellow("\ntest old examples and new tests:\n"))
+cat(cli::col_yellow("\ntest old examples and new tests:\n"))
 # spaMM
 
 data("scotlip") ## loads 'scotlip' data frame, but also 'Nmatrix'

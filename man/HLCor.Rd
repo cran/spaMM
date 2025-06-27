@@ -60,7 +60,7 @@ HLCor(formula, data, family = gaussian(), fixed=NULL, ranPars, distMatrix,
    }
 }
   \item{\dots}{
-    Further parameters passed to \code{HLfit} or to \code{\link{mat_sqrt}}.
+    Further arguments passed to \code{HLfit} or to \code{\link{mat_sqrt}}.
 }
 }
 \details{

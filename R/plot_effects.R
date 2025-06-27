@@ -1,7 +1,10 @@
 pdep_effects <- function(object, focal_var, newdata =object$data, length.out=20L, focal_values=NULL, 
-                         level=0.95, levels = NULL,
+                         level=0.95, levels = NULL, submodel=NULL,
                          intervals = "predVar", indiv=FALSE,...) {
   was_invColdoldList_NULL <- is.null(object$envir$invColdoldList) # to be able to restore initial state 
+  if (inherits(object,"fitme") && is.null(submodel)) 
+    stop("'submodel' argument required for multivariate-response fits.")
+  
   if (!focal_var %in% colnames(newdata)) {
     stop("'focal_var' is not found in the data.")
   }
@@ -50,7 +53,18 @@ pdep_effects <- function(object, focal_var, newdata =object$data, length.out=20L
     newdata[,focal_var] <- focal.values[it]
     pred <- predict(object,newdata,intervals = intervals, control=list(fix_predVar=NA), 
                     level=level, ...)
-    CIs <- attr(pred,"intervals") ## not intervals <- ... within the loop!...
+    CIs <- attr(pred,"intervals") ## not intervals <- ... within the loop!... as this would modify the argument of predict()
+    if ( ! is.null(submodel)) {
+      cumnobs <- cumsum(c(0L,attr(pred,"nobs")))
+      minmax <- cumnobs[submodel+c(0L,1L)]+c(1L,0L)
+      predrange <- seq((minmax[1L]),minmax[2L])
+      pred <- pred[predrange,,drop=FALSE]
+      # if (is.null(CIs)) {
+      #   CIs <- matrix(NA_real_, ncol=2,nrow=1) # was a fix for result from pois4mlogit but no longer necess
+      # } else 
+        CIs <- CIs[predrange,,drop=FALSE]
+      attr(resu,"range") <- minmax
+    }
     if (indiv) {
       resu[[it]]$pointp <- pred[,1]
       resu[[it]]$low <- CIs[,1]
@@ -68,14 +82,16 @@ pdep_effects <- function(object, focal_var, newdata =object$data, length.out=20L
 #pdep_effects(simple1_ML,"diamZ")
 
 plot_effects <- function(object, focal_var, newdata=object$data, # doc as a data frame, but a matrix may be sufficient
-                         focal_values=NULL, effects=NULL, 
+                         focal_values=NULL, effects=NULL, submodel=NULL,
                         xlab = focal_var, ylab=NULL, rgb.args=col2rgb("blue"), add=FALSE, ylim=NULL, ...) {
+  
   # If focal_var remains NULL, the idea is probably to run over all predictor variables (not all regressors), 
   #             but this entails other graphic decisions... 
   if (is.null(effects)) effects <- pdep_effects(object, newdata=newdata, focal_var=focal_var, 
-                                                indiv=FALSE, focal_values=focal_values, ...) # 'predict on hacked values'
+                                                indiv=FALSE, focal_values=focal_values, submodel=submodel,
+                                                ...) # 'predict on hacked values'
   # : could imagine plotting the results of indiv=TRUE (requires more code)
-  if (object$family$family %in% c("binomial","betabin")) {
+  if (family(object, submodel=submodel)$family %in% c("binomial","betabin")) {
     resp <- object$y/object$BinomialDen
     if (is.null(ylab)) {
       form <- formula.HLfit(object,which="")
@@ -87,6 +103,7 @@ plot_effects <- function(object, focal_var, newdata=object$data, # doc as a data
     resp <- object$y
     if (is.null(ylab)) ylab <- paste(formula.HLfit(object,which="")[[2L]])
   }
+  if ( ! is.null(submodel)) resp <- resp[attr(effects,"range")]
   if (is.null(ylim)) ylim <- stats::quantile(resp, c(0.025, 0.975))
   rgb.args <- as.list(rgb.args)
   if (is.null(rgb.args$maxColorValue)) rgb.args$maxColorValue <- 255

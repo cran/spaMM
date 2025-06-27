@@ -102,7 +102,9 @@ overcat <- function(msg, prevmsglength) {
   return(X)
 }
 
-.call4print <- function (x, max.print=10L) {
+.call4print <- function (x, max.print=10L) { 
+  # This does not handle the case where 'boot.out' is provided in the call
+  # Cf Infusion:::.call4print() for more elaborate version
   x <- as.list(x)
   for (it in seq_along(x)) {
     xx <- x[[it]]
@@ -301,9 +303,9 @@ projpath <- local({
   } else {
     useU <- diff(tLU) >= 0L
     if (useU && (hasL <- tLU[1] > 0L)) {
-      for (it in which(hasL)) Tlst[[hasL]] <- t(Tlst[[hasL]])
+      for (it in which(hasL)) Tlst[[hasL]] <- t(alis[[it]])
     } else if (!useU && (hasU <- tLU[2] > 0L)) {
-      for (it in which(hasU)) Tlst[[hasU]] <- t(Tlst[[hasU]])
+      for (it in which(hasU)) Tlst[[hasU]] <- t(alis[[it]])
     }
   }
   i_off <- c(0L, cumsum(vapply(alis, nrow, 1L)))
@@ -403,3 +405,25 @@ projpath <- local({
 # "someone suggested on the R-devel mailing list that maybe NCOL(NULL) would better give 0 instead of 1 as it currently does."
 # This function is designed to reproduce the old NCOL() behaviour whatever the current NCOL() does.
 .old_NCOL <- function(x) if (is.null(x)) {1L} else NCOL(x)
+
+# cf http://adv-r.had.co.nz/Performance.html ... sigh
+.pmax <- function(x, mini) {
+  x[x<mini] <- mini
+  x
+}
+
+.safe_exp <- function(eta, mini=.Machine$double.eps) {
+  mu <- exp(eta)
+  mu[mu<mini] <- mini
+  mu
+}
+
+# It seems easy to get wrong with environments, 
+# so that .safe_exp might not be found in some contexts of evaluation
+.make.link <- function(link) {
+  stats <- make.link(link=link)
+  if (link=="log") {
+    stats$linkinv <- stats$mu.eta <- .safe_exp
+  }
+  stats
+}

@@ -213,11 +213,6 @@ SEXP logit(NumericVector mu) {
 // [[Rcpp::export(.is_evaluated)]]
 bool is_evaluated(Symbol name, Environment env) {
   SEXP object = Rf_findVar(name, env);
-  return PRVALUE(object) != R_UnboundValue;
-}
+  return CAR(object) != R_UnboundValue; // CAR() replacement for PRVALUE()
+} // false if not promise or not evaluated 
 
-// [[Rcpp::export(.is_promise)]]
-bool is_promise2(Symbol name, Environment env) {
-  SEXP object = Rf_findVar(name, env);
-  return (TYPEOF (object) == PROMSXP);
-}

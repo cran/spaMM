@@ -302,6 +302,11 @@
       } else X.pv <- processed$AUGI0_ZX$X.pv
       processed$envir$inits_by_xLM <- .calc_inits_by_xLM(processed, X.pv=X.pv) # univariate response case: 
                                       # returns an environment with promises for deviance-dependent elements
+      # This occurs for mv fits in context
+      # .calc_optim_args_mv() - .calc_optim_args() - .more_init_optim(proc_it, processed) -
+      #  .init_optim_outer_phiGLM(proc1) for a submodel - .get_res_inits_by_xLM('processed'=proc1) - 
+      # .get_inits_by_xLM('processed'=proc1)  here, 
+      
     }
   }
   return(processed$envir$inits_by_xLM)

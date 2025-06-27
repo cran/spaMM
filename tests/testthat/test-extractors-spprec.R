@@ -1,4 +1,4 @@
-cat(crayon::yellow("test-extractors-spprec.R (notably ranCoefs)"))
+cat(cli::col_yellow("test-extractors-spprec.R (notably ranCoefs)"))
 {
   data("blackcap")
   ## make sure phi estimates are high.

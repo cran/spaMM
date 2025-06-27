@@ -1,4 +1,4 @@
-cat(crayon::yellow("\nTest of adjacency (long fits):"))
+cat(cli::col_yellow("\nTest of adjacency (long fits):"))
 
 if (spaMM.getOption("example_maxtime")>61) { # actually faster ~23s
   ## example suggested by Jeroen van den Ochtend jeroenvdochtend@gmail.com Jeroen.vandenochtend@business.uzh.ch
@@ -26,4 +26,4 @@ if (spaMM.getOption("example_maxtime")>61) { # actually faster ~23s
     }
   } else testthat::expect_true(expectedMethod %in% how(IRLS.Frailty, verbose=FALSE)$MME_method) 
   # Older comment: spprec_LevM_D=="colSums" gives the highest lik, but "1" is fastest; "rowSums" may be slowest.
-} else if (spaMM.getOption("example_maxtime")>20) cat(crayon::bgGreen("\nIncrease maxtime above 61 to run the adjacency-long test !"))
+} else if (spaMM.getOption("example_maxtime")>20) cat(cli::bg_green(cli::col_black("\nIncrease maxtime above 61 to run the adjacency-long test !")))

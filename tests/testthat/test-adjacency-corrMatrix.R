@@ -1,4 +1,4 @@
-cat(crayon::yellow("\ntest-adjacency-corrMatrix: adjacency (dense,sparse) vs. corrMatrix() (dense,sparse * LevM or not), for HGLM with offset:\n"))
+cat(cli::col_yellow("\ntest-adjacency-corrMatrix: adjacency (dense,sparse) vs. corrMatrix() (dense,sparse * LevM or not), for HGLM with offset:\n"))
 
 data("scotlip")
 
@@ -26,7 +26,8 @@ if (spaMM.getOption("EigenDense_QRP_method")==".lmwithQR") {
   if (spaMM.getOption("fpot_tol")>0) {
     testthat::test_that(paste0("criterion was ",signif(crit,6)," from -168.1298"), testthat::expect_true(crit<2e-6) )
   } else testthat::expect_true(crit<2e-6)
-  testthat::expect_true(max(abs(range(get_predVar(adjfit)-get_predVar(adjfitsp))))<4e-7)
+  # precision has apparently changed in [dependencies installed with?] R devel-to-become-v4.6.0 
+  testthat::expect_true(max(abs(range(get_predVar(adjfit)-get_predVar(adjfitsp))))<3e-6) 
 } else {
   testthat::expect_true(diff(range(logLik(adjfit),logLik(adjfitsp)))<2e-8) 
   testthat::expect_true(max(abs(range(get_predVar(adjfit)-get_predVar(adjfitsp))))<8e-6)
@@ -89,4 +90,3 @@ if (spaMM.getOption("example_maxtime")>6.90) {
                   family=poisson(),data=scotlip,control.HLfit=list(LevenbergM=TRUE,sparse_precision=FALSE))
   }
 }
-

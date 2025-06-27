@@ -25,7 +25,7 @@ A data frame containing the variables in the response and the model formula.
   Either a response \code{\link{family}} or a \code{\link{multi}} value. 
 }
   \item{init}{
-An optional list of initial values for correlation and/or dispersion parameters and/or response family parameters, e.g. 
+An optional list of initial values for correlation and/or dispersion parameters for distribution family, e.g. 
 \code{list(rho=1,nu=1,lambda=1,phi=1)} where \code{rho} and \code{nu} are parameters of the Matérn family (see \code{\link{Matern}}), and 
 \code{lambda} and \code{phi} are dispersion parameters (see Details in \code{\link{spaMM}} for the meaning of these parameters). 
  All are optional, but giving values for a dispersion parameter changes the ways it is estimated (see Details and Examples).
@@ -41,7 +41,7 @@ An optional (sub)list of values of the parameters specified through \code{init},
 \item{resid.model}{ See identically named \code{\link{HLfit}} argument. }
   \item{init.HLfit}{ See identically named \code{\link{HLfit}} argument. }
   \item{control.dist}{ See \code{control.dist} in \code{\link{HLCor}} }
-  \item{method, HLmethod}{Character: the fitting method to be used, such as \code{"ML"}, \code{"REML"} or \code{"PQL/L"}. \code{"ML"} is the default, in contrast to \code{"REML"} for \code{HLfit}, \code{HLCor} and \code{corrHLfit}. Other possible values of \code{HLfit}'s \code{\link{method}} argument are handled. \code{method=c(<"ML" or "REML">,"exp")} can be distinctly useful for slow fits of models with \code{Gamma(log)} response family (see \code{\link{method}}). 
+  \item{method, HLmethod}{Character: the fitting method to be used, such as \code{"ML"}, \code{"REML"} or \code{"PQL/L"}. \code{"ML"} is the default, in contrast to \code{"REML"} for \code{HLfit}, \code{HLCor} and \code{corrHLfit}. Other possible values of \code{HLfit}'s \code{\link{method}} argument are handled. \code{method=c(<"ML" or "REML">,"exp")} can be distinctly useful for slow fits of models with \code{Gamma(log)} family (see \code{\link{method}}). 
 }
   \item{weights.form}{
   Specification of prior weights by a one-sided formula: use \code{weights.form = ~ pw} instead of \code{prior.weights = pw}. The effect will be the same except that such an argument, known to evaluate to an object of class \code{"formula"}, is suitable to enforce safe programming practices (see \code{\link{good-practice}}).  

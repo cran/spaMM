@@ -1,4 +1,4 @@
-cat(crayon::yellow("\ntest HLfit:\n"))
+cat(cli::col_yellow("\ntest HLfit:\n"))
 # HLfit
 
 data("wafers")

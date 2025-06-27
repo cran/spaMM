@@ -46,7 +46,7 @@ Returns a boolean; \code{TRUE} means there is (quasi-)separation. Screen output 
 \references{
 The method accessible by \code{solver="glpk"} implements algorithms described by
 
-Konis, K. 2007. Linear Programming Algorithms for Detecting Separated Data in Binary Logistic Regression Models. DPhil Thesis, Univ. Oxford. \url{https://ora.ox.ac.uk/objects/uuid:8f9ee0d0-d78e-4101-9ab4-f9cbceed2a2a}.
+Konis, K. 2007. Linear Programming Algorithms for Detecting Separated Data in Binary Logistic Regression Models. DPhil Thesis, Univ. Oxford. 
 }
 \seealso{
 See also the 'safeBinaryRegression' and 'detectseparation' package.

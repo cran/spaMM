@@ -7,9 +7,11 @@ Partial-dependence effects and plots
 \description{
 The function \code{pdep_effects} evaluates, and the function \code{plot_effects} plots, \emph{partial-dependence} effects. 
   
-\code{pdep_effects} evaluates the effect of a given fixed-effect variable, as (by default, the average of) predicted values on the response scale, over the empirical distribution of all other fixed-effect variables in the data, and of inferred random effects. This can be seen as the result of an experiment where specific treatments (given values of the focal variable) are applied over all conditions defined by the other fixed effects and by the inferred random effects. Thus, apparent dependencies induced by associations between predictor variables are avoided (see Friedman, 2001, from which the name \dQuote{partial dependence plot} is taken; or Hastie et al., 2009, Section 10.13.2). This also avoids biases of possible alternative ways of plotting effects. In particular, such biases occur if the response link is not identity, and if averaging is performed on the linear-predictor scale or when other variables are set to some conventional value other than its average. 
+\code{pdep_effects} evaluates the effect of a given fixed-effect variable, as (by default, the average of) predicted values on the response scale, over the empirical distribution of all other fixed-effect variables in the data, and of inferred random effects. This can be seen as the result of an experiment where specific treatments (given values of the focal variable) are applied over all conditions defined by the other fixed effects and by the inferred random effects. Thus, apparent dependencies induced by associations between focal and non-variables are avoided (see Friedman, 2001, from which the name \dQuote{partial dependence plot} is taken; or Hastie et al., 2009, Section 10.13.2). This also avoids biases of possible alternative ways of plotting effects. In particular, such biases occur if the response link is not identity, and if averaging is performed on the linear-predictor scale or when other variables are set to some conventional value other than its average. 
 
-\code{pdep_effects} also compute intervals of the type defined by its \code{intervals} argument (by default, prediction intervals) and of nominal coverage defined by the \code{level} argument (it may make particular sense to choose a \code{level}<0.95 to better visualize effects). By default, it returns a data frame of average values of point predictions and interval bounds for each value of the focal variable (so the intervals may briefly be described as mean prediction intervals, for want of better), but it can also return lists of all predictions.
+Ignoring dependencies between the focal and non-focal variables, as described above, is not always appropriate. In particular, when such dependencies are inherent consequences of the data-generating process, it may make sense to perform predictions that take such dependencies into account. 
+
+\code{pdep_effects} also compute intervals of the type defined by its \code{intervals} argument (by default, \dQuote{prediction intervals}, but see \code{\link{predVar}} for the diverse interpretations of this concept) and of nominal coverage defined by the \code{level} argument (it may make particular sense to choose a \code{level}<0.95 to better visualize effects as a prediction interval can be much larger than a confidence interval for, say, the fixed-effect terms). By default, it returns a data frame of average values of point predictions and interval bounds for each value of the focal variable (so the intervals may briefly be described as mean prediction intervals, for want of better), but it can also return lists of all predictions.
   
 A plot function is available for numeric or factor predictors: \code{plot_effects} calls \code{pdep_effects} and produces a simple plot (using only base graphic functions) of its results, including prediction bands representing the two average one-sided widths of intervals. The last section of the Examples shows how to obtain more elaborate plots including the same information using \pkg{ggplot2}. 
 
@@ -17,10 +19,10 @@ If added to the plot, the raw data may appear to depart from the partial-depende
 }
 \usage{
 pdep_effects(object, focal_var, newdata = object$data, length.out = 20, 
-             focal_values=NULL, level=0.95, levels = NULL, 
+             focal_values=NULL, level=0.95, levels = NULL, submodel=NULL,
              intervals = "predVar", indiv = FALSE, ...)
 plot_effects(object, focal_var, newdata = object$data, focal_values=NULL, 
-             effects = NULL, xlab = focal_var, ylab = NULL, 
+             effects = NULL, submodel=NULL, xlab = focal_var, ylab = NULL, 
              rgb.args = col2rgb("blue"), add = FALSE,  ylim=NULL, ...)
 }
 \arguments{
@@ -34,6 +36,9 @@ plot_effects(object, focal_var, newdata = object$data, focal_values=NULL,
   \item{effects}{
     If non-NULL, a data frame to substitute to the one produced by default by \code{pdep_effects}.
   }
+\item{submodel}{
+  Integer, required for multivariate-response fits (it should remain NULL otherwise): the submodel for which predictions are computed.
+}
   \item{xlab}{
    If non-NULL, a character string: X-axis label for the plot.
 }

@@ -490,11 +490,14 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
   function() {
     if ( ! dsy_warned) {
       dsy_warned <<- TRUE
-      if (is.null(.spaMM.data$options$sparse_precision)) {
-        warning("Sparse-precision algorithm (automatically selected) possibly inefficient. Please report to the package maintainer.", immediate.=TRUE)
-      } else {
-        warning("Sparse-precision algorithm (selected by user) possibly inefficient.", immediate.=TRUE)
-      }
+      # if (is.null(.spaMM.data$options[[".algebra"]])) { # check whether 'algebra' was user-given.
+      #   warning("Sparse-precision algorithm (automatically selected) possibly inefficient. Please report to the package maintainer.", immediate.=TRUE)
+      # } else {
+      #   warning("Sparse-precision algorithm (selected by user) possibly inefficient.", immediate.=TRUE)
+      # }
+      warning(paste0("Sparse-precision algorithm possibly inefficient. Please report to the \n", 
+                     "package maintainer, *if* you were not responsible for selecting algebra='spprec'."), 
+              immediate.=TRUE)
     }
   }
 })
@@ -605,7 +608,15 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
       # Then we use it for beta_cov but must be careful not to mix it with the other objects bc it is the r22 for a scaled X while the new promises for post fit
       # refer to an unscaled version of X.pv. ./.
       unsc_r22 <-  .m_Matrix_times_Dvec(BLOB$r22, attr(AUGI0_ZX$X.pv,"scaled:scale")) 
-      beta_cov <- solve(crossprod(unsc_r22))
+      beta_cov <- try(solve(crossprod(unsc_r22)), silent=TRUE)
+      if (inherits(beta_cov,"try_error")) {
+        # this occurred for test-difficult_AR1_from_adRes 
+        # with the change in .update_port_fit_values() introduced in v4.5.52
+        # and removed in v4.5.56.
+        warning("Cov matrix of fixed effect estimates appears singular.\n Fit results should be examined for further problems.",
+                immediate. = TRUE)
+        beta_cov <- .force_solve(crossprod(unsc_r22), try_gmp = TRUE)
+      }
       colnames(beta_cov) <- rownames(beta_cov) <- setdiff(colnames(AUGI0_ZX$X.pv), intervalInfo$parm)
       BLOB$beta_cov <- beta_cov # distinct variable from $beta_cov_info$beta_cov
     } # ./. When BLOB$r22 is present and then $r12 is also expected by .old_calc_Md2hdvb2_info_spprec_by_r22() 
@@ -641,7 +652,7 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
     delayedAssign("LZtWX", as(solve(BLOB$chol_Q, BLOB$ZtWX),"matrix"), assign.env = BLOB ) ## currently not used (in variant of LevMar step)
     delayedAssign("crossr22", { # NOT currently used: Used only in-fit -> .calc_sum_pwt_Q_y_o_2() ->  .solve_crossr22(., use_crossr22=TRUE), but use_crossr22 set to FALSE:
       if (ncol(AUGI0_ZX$X.pv)) { 
-        crossr22 <- BLOB$XtWX - crossprod(as.matrix(BLOB$r12),NULL,as_mat=TRUE) 
+        crossr22 <- BLOB$XtWX - crossprod(as.matrix(BLOB$r12),NULL) 
       } else crossr22 <- diag(nrow=0L)
     } , assign.env = BLOB )
     
@@ -673,7 +684,9 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
     }
 
     delayedAssign( "hatval", { # hatval_ZX
-      if (identical(.spaMM.data$options$use_spprec_QR,TRUE) || is.null(dim(BLOB$r22)) || BLOB$nonSPD) { # ((currently FALSE) || failure of comput of r22 || nonSPD)
+      if (.spaMM.data$options$use_spprec_QR || # (currently FALSE) 
+          is.null(dim(BLOB$r22)) || BLOB$nonSPD # failure of comput of r22 || nonSPD
+        ) { 
         .calc_spprec_hatval_ZX_by_QR(BLOB=BLOB, AUGI0_ZX=AUGI0_ZX, sXaug=sXaug, w.ranef=attr(sXaug,"w.ranef"))
       } else .calc_spprec_hatval_ZX_by_r22(BLOB=BLOB, AUGI0_ZX=AUGI0_ZX, sXaug=sXaug, w.ranef=attr(sXaug,"w.ranef")) ## fragile bc  BLOB$r22 <- .calc_r22() is fragile...
     } , assign.env = BLOB )
@@ -684,11 +697,12 @@ def_AUGI0_ZX_spprec <- function(AUGI0_ZX, corrPars, w.ranef, cum_n_u_h,
 .calc_Gmat <- function(ZtWZ, precisionMatrix) {
   if (inherits(ZtWZ,"dsyMatrix")) { 
     # if tmp is small (2*2 and diagonal: ranef with two levels...), then it may have been returned by .ZtWZwrapper -> .crossprod as dsy, not dsC.
-    # then, as(tmp,"sparseMatrix") is dgC not dsC
-    #  and  as(tmp,"symmetricMatrix") is dsy not dsC
-    # so there is no way to make sure that the result is dsC without adding as(.,"dsCMatrix") in .ZtWZwrapper or .crossprod
+    # so there is no way to make sure that the result is dsC without adding an as(., ...) in .ZtWZwrapper or .crossprod. 
+    # Instead, we use a faster local & ad-hoc alternative.
     .ad_hoc_dsy_warning()
     ZtWZ <- as(ZtWZ,"CsparseMatrix")
+    # Previously as(tmp,"sparseMatrix") WAS dgC not dsC (this appears to have changed)
+    #  and  as(tmp,"symmetricMatrix") is dsy not dsC
   }
   if (inherits(ZtWZ,"dsCMatrix") && inherits(precisionMatrix,"dsCMatrix") ) { # test introduced 02/2020. 
     .dsCsum(ZtWZ, precisionMatrix) # faster than tmp + precisionMatrix where '+' calls forceSymmetric(callGeneric(as(e1, "dgCMatrix"), as(e2, "dgCMatrix")))

@@ -52,7 +52,7 @@ setMethod("%*%", c(x = "ZAXlist", y= "numeric"), definition = .ZAX_num_prod)
     } else if (inherits(zax_rd,"ZA_Kron")) {
       nc <- ncol(zax_rd$Kronfacto)
       lastcol <- sum_nc+nc
-      stop("code missing in %*%,Kronfacto,<m|M>atrix-method") # 
+      # rhs <- zax_rd$Kronfacto@BLOB$long %*% y[(sum_nc+1L):(lastcol)]
       rhs <- zax_rd$Kronfacto %*% y[(sum_nc+1L):(lastcol)]
       res[[rd]] <- drop(zax_rd$ZA %*% rhs)
     } else {
@@ -77,7 +77,8 @@ for (.inh_y in c("matrix","Matrix")) {
       lhs <- drop(x %*% zax_rd$ZA) # lhs in x . ZA . solve(Q_,"Lt") is rhs in next line:
       res[[rd]] <- drop(solve(zax_rd$Q_CHMfactor, b=lhs, system="L"))
     } else if (inherits(zax_rd,"ZA_Kron")) {
-      stop("code missing in %*%,numeric,ZAXlist-method")
+      lhs <- drop(x %*% zax_rd$ZA)
+      res[[rd]] <- drop(lhs %*% zax_rd$Kronfacto)
     } else {
       res[[rd]] <- drop(x %*% zax_rd)
     }
@@ -95,7 +96,10 @@ setMethod("%*%", c(x = "numeric", y= "ZAXlist"), definition = .num_ZAX_prod)
       rhs <- .crossprod(zax_rd$ZA, y)
       res[[rd]] <- drop(solve(zax_rd$Q_CHMfactor, b=rhs, system="L"))
     } else if (inherits(zax_rd,"ZA_Kron")) {
-      stop("code missing in crossprod,ZAXlist,numeric-method")
+      # browser()
+      rhs <- .crossprod(zax_rd$ZA, y)
+      # res[[rd]] <- drop(.crossprod(zax_rd$Kronfacto@BLOB$long,rhs))
+      res[[rd]] <- drop(crossprod(zax_rd$Kronfacto, rhs))
     } else {
       res[[rd]] <- drop(.crossprod(zax_rd, y))
     }
@@ -213,6 +217,26 @@ dim.Kronfacto <- function(x) return(x@BLOB$DIM)
 }
 
 setMethod("%*%", c(x = "Kronfacto", y= "numeric"), definition = .Kronfacto_num_prod)
+
+.num_Kronfacto_prod <- function(x, y) {
+  BLOB <- y@BLOB
+  if (.is_evaluated("long",BLOB)) {
+    x %*% BLOB$long
+  } else {
+    nr_lhs <- nrow(BLOB$lhs)
+    blocksize <- length(x) %/% nr_lhs
+    tmp  <- numeric(length(x))
+    ## ad hoc simplif of the more generic code from v4.5.36
+    for (jt in seq_len(nr_lhs)) {
+      colrange  <- ((jt-1L)*blocksize+1L):(jt*blocksize)
+      tmp[colrange] <- (sum(BLOB$lhs[,jt]) * x[colrange]) %*% BLOB$rhs
+    }
+    tmp
+  }
+}
+
+setMethod("%*%", c(x= "numeric", y = "Kronfacto"), definition = .num_Kronfacto_prod)
+
 
 .Kronfacto_num_crossprod <- function(x, y) {
   BLOB <- x@BLOB

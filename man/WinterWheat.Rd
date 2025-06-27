@@ -1,6 +1,7 @@
 \name{WinterWheat}
 \alias{WinterWheat}
 \alias{GxE}
+\alias{ranCoefs_for_diag}
 \title{
 Example of yield stability analysis
 }

@@ -1,4 +1,4 @@
-cat(crayon::yellow("\ntest spaMM::corMatern for lme():"))
+cat(cli::col_yellow("\ntest spaMM::corMatern for lme():"))
 
 data("blackcap")
 blackcapD <-cbind(blackcap,dummy=1) ## obscure, isn't it? 

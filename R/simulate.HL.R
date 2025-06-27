@@ -198,7 +198,7 @@
       #exp_ranef_terms_it <- structure(ori_exp_ranef_terms[rd_in_mv], type=attr(ori_exp_ranef_terms,"type")[rd_in_mv])
       if ( is.null(newdata_it <- locdataS[[mv_it]])) newdata_it <- newdata
       Zlist <- .calc_Zlist(exp_ranef_terms=ori_exp_ranef_terms, data=newdata_it, 
-                           rmInt=0L, drop=TRUE,sparse_precision=FALSE,
+                           rmInt=0L, sparse_precision=FALSE,
                            corr_info=.get_from_ranef_info(object), 
                            rd_in_mv=rd_in_mv,
                            sub_oldZAlist=object$ZAlist, # OK if we use only colnames, not attributes of the list...
@@ -237,7 +237,7 @@
   if (is.null(vec_nobs <- object$vec_nobs)) { #  *univariate*-resp model 
     old_ranef_form <- as.formula(paste("~",(paste(attr(object$ZAlist,"exp_ranef_strings"),collapse="+")))) 
     exp_ranef_terms <- attr(object$ZAlist, "exp_ranef_terms")
-    Zlist <- .calc_Zlist(exp_ranef_terms=exp_ranef_terms, data=newdata, rmInt=0L, drop=TRUE,sparse_precision=FALSE,
+    Zlist <- .calc_Zlist(exp_ranef_terms=exp_ranef_terms, data=newdata, rmInt=0L, sparse_precision=FALSE,
                          corr_info=.get_from_ranef_info(object),
                          sub_oldZAlist=object$ZAlist,
                          # Note no levels_type="seq_len" here: important to get correct matrix for Matern...
@@ -595,7 +595,6 @@ simulate.HLfit <- function(object, nsim = 1, seed = NULL, newdata=NULL,
           # new_X_ZACblob provided design matrices for ranefs conditioned upon (as controlled by re.form)
           # .calc_ZAlist_newdata() adds design matrices for ranefs treated marginally ( <=> ranefs NOT set to zero, but drawn marginally )
           newZAlist <-  .calc_ZAlist_newdata(object, newdata, new_X_ZACblob=new_X_ZACblob) # new_X_ZACblob$newZAlist not clearly used
-          ## Here is the big change of (presumably) future version 4.5.0: (__F I X M E___ might be worth re-profiling the backends)
           ZALlist <- .wrap_compute_ZALlist4simulate(new_X_ZACblob, newZAlist, object$strucList)       
           ##   
           # ZAL <- .ad_hoc_cbind(ZALlist, as_matrix=FALSE ) # inappropriate for IMRF andother ZAXlist stuff

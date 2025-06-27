@@ -13,14 +13,14 @@ Poisson <- function (link = "log", trunc=-1L, LLgeneric=TRUE) {
   if ( ! is.character(linktemp)) linktemp <- deparse(linktemp)
   okLinks <- c("log", "identity", "sqrt")
   if (linktemp %in% okLinks) {
-    stats <- make.link(linktemp) # from char to make.link() return value
+    stats <- .make.link(linktemp) # from char to make.link() return value
   } else if (is.character(link)) { # does not seem useful
-    stats <- make.link(link)
+    stats <- .make.link(link)
     linktemp <- link
   } else if (inherits(link, "link-glm")) { # a make.link() object was provided
     stats <- link
     if (!is.null(stats$name)) linktemp <- stats$name
-  } # at this point 'stats' is always the result of make.link and 'linktemp' is always char. 
+  } # at this point 'stats' is always the result of [.]make.link and 'linktemp' is always char. 
   # In stats:: families, the following check is in an else statement that is never reached !!
   if ( ! linktemp %in% okLinks) stop(gettextf("link \"%s\" not available for poisson family; available links are %s", 
                                               linktemp, paste(sQuote(okLinks), collapse = ", ")),       domain = NA)

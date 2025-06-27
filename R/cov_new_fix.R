@@ -231,7 +231,7 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
   return(locform)
 } 
 
-..get_locdata <- function(newdata, locvars, na.action, mv_it=NULL) {
+..get_locdata <- function(newdata, locvars, na.action, vars=NULL) {
   # so that matrix 'newdata' arguments can be used as in some other predict methods.
   # ## locvars checks only RHS variables...
   
@@ -277,7 +277,10 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
   ## so slicing occurs in mv only when there are newdata (nrX > blockSize) without validrownames.
   
   # => for any non-NULL newdata, locdata is a data.frame with columns for required predictor variables. Check NAs:
-  locdata <- na.action(locdata)
+  # if (! is.null(vars)) {
+  #   locdata <- na.action(locdata, vars=vars)
+  # } else 
+    locdata <- na.action(locdata, vars=vars) # 'vars' might be ignored by na.omit etc... but not by na.action=loc.na.action
   if (length(attr(locdata,"na.action"))) {
     message("NA's in required variables: prediction not possible for all 'newdata' rows.")
   }
@@ -323,7 +326,7 @@ preprocess_fix_corr <- function(object, fixdata, re.form = NULL,
     if (inherits(fixef_off_form, "formula")) {
       if (is.character(formula[[2L]])) fixef_off_form <- fixef_off_form[-2L] ## something like ".phi" ....
       Terms <- terms(fixef_off_form)
-      Terms <- stats::delete.response(Terms)
+      Terms <- delete.response(Terms)
       attr(Terms,"predvars") <- .calc_newpredvars(fitobject, fixef_off_form) ## for poly()
       fixef_form <- .stripOffset_(fixef_off_form) # formula if something remains after the offset has been removed
       if ( ! inherits(fixef_form, "formula")) { ## only an offset in formula, not even an explicit 0: .stripOffset_(fixef_off_form) produced a 'name'
@@ -367,7 +370,7 @@ if (FALSE) { # v3.5.121 managed to get rid of it
     plusForm <- .subbarsMM(formula) ## this comes from lme4 and converts (.|.) terms to (.+.) form 
     environment(plusForm) <- environment(formula)
     Terms <- terms(plusForm) ## assumes an Intercept implicitly
-    Terms <- stats::delete.response(Terms)
+    Terms <- delete.response(Terms)
     #attr(Terms,"predvars") <- .calc_newpredvars(fitobject$main_terms_info$all_terms, Terms) ## for poly in ranefs ? 
     mf <- model.frame(Terms, data, drop.unused.levels=TRUE) 
     return(list(mf = mf))
@@ -532,7 +535,7 @@ if (FALSE) { # v3.5.121 managed to get rid of it
         ranef_form <- as.formula(paste("~",(paste(new_exp_ranef_strings,collapse="+")))) ## effective '.noFixef'
         newZlist <- .calc_Zlist(exp_ranef_terms=new_exp_ranef_terms, # .process_bars(barlist=barlist,as_character=FALSE, which.="exp_ranef_terms"), # != barlist, for IMRF notably
                                 #locform, 
-                                data=locdata, rmInt=0L, drop=TRUE,sparse_precision=FALSE, 
+                                data=locdata, rmInt=0L, sparse_precision=FALSE, 
                                 corr_info=.get_from_ranef_info(object),
                                 levels_type= "seq_len", ## superseded in specific cases: notably, 
                                 ## the same type has to be used by .calc_AMatrix_IMRF() -> .as_factor() 

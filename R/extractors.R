@@ -212,11 +212,12 @@ fitted.HLfit <- function(object,...) {
 .residuals_bare <- function(type, y, mu, family, wts) {
   if (type=="deviance") {
     res <- sign(y-mu)*sqrt(pmax((family$dev.resids)(y, mu, wts), 0))
-  } else if (type=="pearson") res <- (y - mu) * sqrt(wts)/sqrt(family$variance(mu)) # also for LLMs, cf e.g. Cribary-Neta & Zeileis
+  } else if (type=="pearson") res <- (y - mu) * sqrt(wts)/sqrt(family$variance(mu)) # also for LLMs, cf e.g. Cribari-Neto & Zeileis
   drop(res)
 }
 
-residuals.HLfit <- function(object, type = c("deviance", "pearson", "response", "working", "std_dev_res"), force=FALSE, ...) {
+residuals.HLfit <- function(object, type = c("deviance", "pearson", "response", "working", "std_dev_res", "RQR"), 
+                            force=FALSE, ...) {
   object <- .getHLfit(object)
   type <- match.arg(type)
   BinomialDen <- .get_BinomialDen(object) 
@@ -234,6 +235,8 @@ residuals.HLfit <- function(object, type = c("deviance", "pearson", "response", 
                                      lev_phi=hatvalues(object, type="std"))$std_dev_res
       res <- (sign(y-mu) * std_dev_res)[,1]
     }
+  } else if (type=="RQR") {
+    return(.qresiduals(object)$norm)
   } else { # deviance and pearson residuals.
     pw <- object$prior.weights
     family <- object$family
@@ -326,13 +329,27 @@ fixef.HLfit <- function(object, na.rm=NULL, ...) {
   } else object$fixef    
 }
 
+fixef.HLfitlist <- function(object, na.rm=NULL, ...) {
+  lapply(object,fixef)
+}
+
+
+# coef.default returns the object $coefficients (vector,  ~ fixef() for a LM).
+# coef.merMod   "Computes the sum of the random and fixed effects coefficients for each explanatory variable for each level of each grouping factor."
+#   which is not really consistent with the generic... 
+#   and the output format (list) is not really defined by the API.
+# So very shaky base to generalize upon.
+coef.HLfit <- function(object, ...) { 
+  summary(object, details=c(p_value=TRUE), verbose=FALSE)$beta_table
+}
+
 .get_phi_fit <- function(object, mv_it=NULL) {
   phi_model <- object$models[["phi"]]
   if (is.null(mv_it)) {
     phi_fit <- switch(phi_model,
                       "phiGLM" = {
                          fit <- object$resid_fit ## hlfit
-                         if (is.null(fit)) fit <- object$phi.object$glm_phi ## glm
+                         if (is.null(fit)) fit <- object$phi.object[["glm_phi"]] ## glm
                          fit
                       },
                       "phiHGLM" = object$resid_fit, ## hlfit
@@ -407,7 +424,16 @@ residVar <- function(object, which="var", submodel=NULL, newdata=NULL) {
     .get_phi_fit(object, mv_it=submodel)
   } else if (which %in% c("phi","var")) {
     nmodels <- length(object$models[["phi"]])
-    muFREQS_wAttr <- predict(object, newdata=newdata, variances=list(residVar=TRUE)) # 1-col matrix with attributes
+    muFREQS_wAttr <- predict(object, newdata=newdata, 
+                             variances=list(residVar=TRUE, warn_pw_once=FALSE)) # 1-col matrix with attributes 
+    # residVar=TRUE is confusing but required:
+    # confusing, as the returned values of residVar() come from elsewhere and are pw-invariant, 
+    # contrary to the residVar attr of predict();
+    # required, as  variances=list(residVar=TRUE) has the correct effect that predict values are produced only for
+    # newdata with all the required variables for residVar computation... cf "check residVar(mvfit...)" in test-LLM.R
+    #
+    # Further, one then has to suppress the .warn_pw() warning that is relevant for the residVar attr 
+    # but not for the return value of residVar()!
     if (nmodels>1L) cum_nobs <- c(0L, cumsum(attr(muFREQS_wAttr,"nobs")))
     if ( ! is.null(submodel)) {
       resp_range <- .subrange(cumul=cum_nobs, it=submodel)
@@ -713,8 +739,7 @@ Corr <- function(object, A=TRUE, cov2cor.=TRUE, ...) { ## compare ?VarCorr
   return(loctable)
 }
 
-# for a lme4::VarCorr() equivalent; generic is nlme::VarCorr 
-VarCorr.HLfit <- function(x, sigma=1, add_residVars=TRUE, verbose=TRUE, ...) {
+.VarCorr_df_lmelike <- function(x, sigma=1, add_residVars=TRUE, verbose=TRUE, ...) {
   loctable <- NULL
   if ( ! is.null(lambda.object <- x$lambda.object)) {
     #.legend_lambda(object, type = "family")
@@ -761,10 +786,53 @@ VarCorr.HLfit <- function(x, sigma=1, add_residVars=TRUE, verbose=TRUE, ...) {
   return(loctable)
 } 
 
+.VarCorr_as_lmer <- function(x, sigma=1, ...) { # ____F I X M E____ needs more testing
+  if ( ! is.null(lambda.object <- x$lambda.object)) { # possibly always true...
+    grpnames <- names(attr(x$ZAlist,"Xi_cols")) # ___F I X M E___ more standard location?
+    resu <- vector("list", length(grpnames))
+    if (nrand <- length(grpnames)) {
+      names(resu) <- grpnames
+      cov.mats <- .get_compact_cov_mats(x$strucList)
+      ## fixme ? rename cov.mats to refer to ranCoefs ?
+      #.varcorr <- function(nrows, maxnrow, cov.mats, in_table, in_pointLambda, cum_nrows) {
+      for (mt in seq_len(nrand)) { 
+        m <- cov.mats[[mt]]
+        if ( ! is.null(m)) { # Xi_ncol>1L...
+          locterms <- lambda.object$print_namesTerms[[mt]]
+          dimnames(m) <- list(locterms,locterms)
+        } else {
+          m <- lambda.object$lambda_list[[mt]]
+          locterm <- names(m)
+          dim(m) <- c(1L,1L)
+          dimnames(m) <- list(locterm,locterm)
+        }
+        attr(m,"correlation") <- cov2cor(m) 
+        attr(m,"stddev") <- sqrt(diag(m)) 
+        resu[[mt]] <- m
+      }
+    }
+    phi_info  <- .add_varCorr_phi_lines(x, NULL, 0L)
+    if ( ! is.null(phi_info)) {
+      attr(resu,"sc") <- sqrt(phi_info$Variance[[1]]) 
+    }
+    attr(resu,"useSc") <- (family(x)$family=="gaussian") # ____F I X M E____ Quick&D
+  } else resu <- list()
+  class(resu) <- c("VarCorr.merMod") # so that lme4() print() and as.data.frame() methods will work. 
+  resu
+}
 
+VarCorr.HLfit <- function(x, sigma=1, add_residVars=TRUE, verbose=TRUE, format="lmelike", ...) {
+  if (format=="lmelike") {
+    .VarCorr_df_lmelike(x=x, sigma=sigma, add_residVars=add_residVars, verbose=verbose, ...)
+  } else if (format=="merMod") {
+    .VarCorr_as_lmer(x=x, sigma=sigma, ...)
+  }
+} 
+
+# This is called by dev_resids(), deviance(), and .std_dev_resids() with different default 'pw'
 .dev_resids <- function(object, fv=object$fv, y=object$y, BinomialDen=object$BinomialDen, family=object$family, 
                         families=object$families, phi_est=NULL, lev_phi, scaling_pw=FALSE, 
-                        pw=object$prior.weights,...) {
+                        pw, unlist.=TRUE, ...) { 
   if ( ! is.null(families)) { # mv case, list of families
     cum_nobs <- attr(families,"cum_nobs")
     dev_res <- vector("list",length(families))
@@ -772,13 +840,15 @@ VarCorr.HLfit <- function(x, sigma=1, add_residVars=TRUE, verbose=TRUE, ...) {
     for (mv_it in seq_along(families)) {
       resp_range <- .subrange(cumul=cum_nobs, it=mv_it)
       if (is.null(phi_est)) {
-        dev_res[[mv_it]] <- .dev_resids(fv=fvs[[mv_it]], y=y[resp_range], BinomialDen=BinomialDen[resp_range], 
-                                        family=families[[mv_it]], families=NULL, scaling_pw=FALSE, 
-                                        pw=object$prior.weights[[mv_it]], ...) 
-      } else dev_res[[mv_it]] <- .dev_resids(fv=fvs[[mv_it]], y=y[resp_range], BinomialDen=BinomialDen[resp_range], 
-                                             family=families[[mv_it]], families=NULL, scaling_pw=FALSE, # pw are in phi_est anyway
-                                             phi_est=phi_est[[mv_it]], lev_phi=lev_phi[resp_range],
-                                             pw=object$prior.weights[[mv_it]], ...) 
+        dev_res[[mv_it]] <- 
+          .dev_resids(fv=fvs[[mv_it]], y=y[resp_range], BinomialDen=BinomialDen[resp_range], 
+                      family=families[[mv_it]], families=NULL, scaling_pw=scaling_pw, 
+                      pw=object$prior.weights[[mv_it]], ...) 
+      } else dev_res[[mv_it]] <- 
+          .dev_resids(fv=fvs[[mv_it]], y=y[resp_range], BinomialDen=BinomialDen[resp_range], 
+                      family=families[[mv_it]], families=NULL, scaling_pw=scaling_pw, # old comment: "pw are in phi_est anyway" pbbly obsolete
+                      phi_est=phi_est[[mv_it]], lev_phi=lev_phi[resp_range],
+                      pw=object$prior.weights[[mv_it]], ...) 
     }
     if ( ! is.null(phi_est)) {
       matlist <- do.call("rbind", dev_res)
@@ -812,13 +882,15 @@ VarCorr.HLfit <- function(x, sigma=1, add_residVars=TRUE, verbose=TRUE, ...) {
   dev_res
 }
 
-dev_resids <- function(object, ...) .dev_resids(object, ...) # hides the default argument of .dev_resids()
+dev_resids <- function(object, ...) .dev_resids(object, pw=rep(1,length(object$prior.weights)), ...) # hides the default argument of .dev_resids()
 
-.std_dev_resids <- function(object, phi_est, lev_phi, ...) .dev_resids(object, phi_est=phi_est,lev_phi=lev_phi, ...) # idem and more
+.std_dev_resids <- 
+  function(object, phi_est, lev_phi, ...) .dev_resids(object, phi_est=phi_est,lev_phi=lev_phi, 
+                                                      pw=object$prior.weights, ...) # idem and more
 
 
 deviance.HLfit <- function(object,...) {
-  sum(dev_resids(object=object, scaling_pw=TRUE, ...))
+  sum(.dev_resids(object=object, scaling_pw=TRUE, pw=object$prior.weights,...))
 }  
 
 .check_predVar_type_confusion <- local({
@@ -1309,9 +1381,10 @@ AIC.HLfit <- function(object, ..., nsim=0L, k, verbose=interactive(), also_cAIC=
       rownames(ICs) <- c(objectname, dotfitnames)
       colnames(ICs) <- colnams
       if (verbose) {return(ICs)} else {invisible(ICs)}
-    } else { # back -compatibility fix for case were second argument was unnamed, which was previously matched to the nsim argument
+    } else { 
       mc <- match.call()
-      names(mc)[[3L]] <- "nsim"
+      # back -compatibility fix for case were second argument was unnamed, which was previously matched to the nsim argument
+      if (names(mc)[[3L]]=="") names(mc)[[3L]] <- "nsim"
       mc[[1L]] <- get("get_any_IC", asNamespace("spaMM"), inherits=FALSE)
       eval(mc)
     }
@@ -1460,6 +1533,19 @@ if (FALSE) { # permuted QR example - but singular too, so notexactly what we wan
   } else beta_v_cov
 }
 
+.get_d2hdv2 <- function(object) { 
+  ZAL <- get_ZALMatrix(object, force_bind=TRUE) # force bind for rbind2()  
+  if (is.null(ZAL)) {
+    matrix(ncol=0,nrow=0)
+  } else {
+    nrd <- length(object$w.ranef)
+    Z_I <- rbind2(ZAL, diag(nrow=nrd))
+    ww <- c(.get_H_w.resid(object), object$w.ranef)
+    - crossprod(.calc_wAugX(Z_I, sqrt.ww=sqrt(ww))) #  * - *
+  }
+}
+
+
 get_matrix <- function(object, which="model.matrix", augmented=TRUE, ...) {
   switch(which,
          "model.matrix"= model.matrix(object),                    ## X
@@ -1476,7 +1562,8 @@ get_matrix <- function(object, which="model.matrix", augmented=TRUE, ...) {
            XZ_0I <- .get_XZ_0I(object)
            ww <- c(.get_H_w.resid(object), object$w.ranef) ## NOT sqrt()
            Wei_XZ_0I <- .calc_wAugX(XZ_0I=XZ_0I, sqrt.ww=ww) ## 2nd argument name misleading
-         },                               
+         },                
+         "d2hdv2"= .get_d2hdv2(object),
          "left_ginv"= .get_WLS_ginv(object, augmented=augmented), ## X_a^- = (X_a' W X_a)^{-1} X_a' W
          "hat_matrix"= { ## hat projection matrix                 ## P_a = X_a X_a^- = X_a (X_a' W X_a)^{-1} X_a' W
            XZ_0I <- .get_XZ_0I(object) 
@@ -1604,12 +1691,10 @@ how.HLfitlist <- function(object, devel=FALSE, verbose=TRUE, format=print, ...) 
 
 response <- function(object, ...) object$y[,1L]
 
-family.HLfit <- function(object, ...) {
+family.HLfit <- function(object, submodel=NULL, ...) {
   family <- object$family
-  if (is.null(family)) {
-    if ( ! is.null(object$families)) stop(paste("post-fit functions looking for 'family' in a multivariate-response fit should fail.\n", 
-                                                "Contact the package maintainer for these post-fit functions if you wish extended functionality."))
-  }
+  if (is.null(family)) family <- object$families
+  if ( ! is.null(submodel)) family <- family[[submodel]]
   family
 }
 
@@ -1765,17 +1850,20 @@ pseudoR2 <- function(fitobject, nullform= . ~ 1, R2fun=LR2R2, rescale=FALSE, ver
   resu
 }
 
-model.offset.HLfit <- function(fitobject) { # NOT a method bc model.offset() is NOT a S3 generic
+# stats::model.offset() is NOT a generic.
+# Non-default use of data argument is a hack for case where offset-defining variable
+# is modified internally (cf pois4mlogit()'s .dynoffset)
+model.offset.HLfit <- function(fitobject, data=fitobject$data) { # NOT a method bc model.offset() is NOT a S3 generic
   # as the model frame is not kept in the object, it has to be rebuilt
   termsv <- terms(fitobject)
   if (is.list(termsv)) { # mv fit
     moff <- vector("list", length(termsv))
     cum_nobs <- attr(model.matrix(fitobject),"cum_nobs")
     for (mv_it in seq_along(moff)) {
-      moff_it <- model.offset(model.frame(termsv[[mv_it]], fitobject$data))
+      moff_it <- model.offset(model.frame(termsv[[mv_it]], data))
       if (is.null(moff_it)) moff_it <- rep(0, cum_nobs[mv_it+1L]-cum_nobs[mv_it])
       moff[[mv_it]] <- moff_it
     }
     .unlist(moff)
-  } else model.offset(model.frame(terms(fitobject), fitobject$data))
+  } else model.offset(model.frame(terms(fitobject), data))
 }

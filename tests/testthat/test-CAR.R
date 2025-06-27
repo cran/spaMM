@@ -1,4 +1,4 @@
-cat(crayon::yellow("\ntest CAR and SEM:\n"))
+cat(cli::col_yellow("\ntest CAR and SEM:\n"))
 
 data("scotlip")
 

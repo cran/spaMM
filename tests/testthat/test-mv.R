@@ -1,4 +1,4 @@
-cat(crayon::yellow("\ntest-mv:"))
+cat(cli::col_yellow("\ntest-mv:"))
 
 if (FALSE) {
   source(paste0(spaMM::projpath(),"/package/tests/testthat/extralong/test-mv-extra.R"))

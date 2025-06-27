@@ -23,11 +23,17 @@
 .D3logLDmu3_trunc_nb2 <- local({
   shape <- NaN
   function(y, mu, wt, phi) { # element of computation of D3logcLdeta3 for d logdet Hessian
-    term <- ( 2*shape*(-mu^3 + y *(shape^2 + 3*shape*mu + 3*mu^2)) ) / (mu^3 *(shape + mu)^3)
+    mu2 <- mu*mu
+    mu3 <- mu2*mu
+    denom_fac <- shape + mu
+    denom_fac <- denom_fac*denom_fac*denom_fac
+    term <- ( 2*shape*(-mu3 + y *(shape*shape + 3*shape*mu + 3*mu2)) ) / (mu3 *denom_fac)
     term <- drop(term)
     p0 <- .negbin2_p0(mu,shape)
-    Md3log1mp0 <- -shape*p0*(3*shape*(1 - p0) + 2*(1 - p0)^2 + 
-                               shape^2*(1 + p0))/((shape + mu)*(1 - p0))^3
+    m1p0 <- 1 - p0
+    denom_fac <- (shape + mu)*m1p0
+    Md3log1mp0 <- -shape*p0*(3*shape*m1p0 + 2*m1p0*m1p0 + 
+                               shape*shape*(1 + p0))/(denom_fac*denom_fac*denom_fac)
     term + Md3log1mp0
   }
 })
@@ -93,9 +99,9 @@ negbin2 <- function (shape = stop("negbin2's 'shape' must be specified"), link =
   if (!is.character(linktemp)) 
     linktemp <- deparse(linktemp)
   if (linktemp %in% c("log", "identity", "sqrt")) ## all non-canonical
-    stats <- make.link(linktemp)
+    stats <- .make.link(linktemp)
   else if (is.character(link)) {
-    stats <- make.link(link)
+    stats <- .make.link(link)
     linktemp <- link
   }
   else {
@@ -182,7 +188,7 @@ negbin2 <- function (shape = stop("negbin2's 'shape' must be specified"), link =
     sat_logL <- NULL # its a standard GLM case where saturated mu = y
     
     dev.resids <- function(y, mu, wt) {
-      2 * wt * (y * log(pmax(1, y)/mu) - (y + shape) * log((y + shape)/(mu + shape)))
+      2 * wt * (y * log(.pmax(y,1L)/mu) - (y + shape) * log((y + shape)/(mu + shape)))
     }
   }
   
@@ -218,7 +224,11 @@ negbin2 <- function (shape = stop("negbin2's 'shape' must be specified"), link =
     .rnbinom(n=nsim * length(ftd), size=shape, mu_str=ftd, zero_truncated=zero_truncated)
   }
   Dtheta.Dmu <- function(mu) 1/(mu*(1+mu/shape))
-  D2theta.Dmu2 <- function(mu) -(1+2*mu/shape)/(mu*(1+mu/shape))^2
+  D2theta.Dmu2 <- function(mu) {
+    mu_shape <- mu/shape
+    denom_fac <- mu*(1+mu_shape)
+    -(1+2*mu_shape)/(denom_fac*denom_fac)
+  }
   #
 
   # for all obsInfo code:
@@ -236,19 +246,23 @@ negbin2 <- function (shape = stop("negbin2's 'shape' must be specified"), link =
       ## link-independent function #####################
       DlogLDmu <- function(mu, y, wt, phi,shape_it=NULL) { 
         # The DlogLDmu() code, and higher derivatives, typically work and returns a vector, when shape is a vector taken from the function efinition environment
-        # The shape_it argument is only needed when solving for DlogL=0 (uniroot) call; that's why it is not needed in functiosn for higher derivatives.
+        # The shape_it argument is only needed when solving for DlogL=0 (uniroot) call; that's why it is not needed in functions for higher derivatives.
         if ( ! is.null(shape_it)) shape <- shape_it
         drop(shape*(y-mu)/(mu*(mu + shape)))
       }
       
       D2logLDmu2 <- function(mu, y, wt, phi) { # element of computation of Hobs weights, (-) D2logcLdeta2
         # (\[Theta] (\[Mu]^2 - y (\[Theta] + 2 \[Mu])))/(\[Mu]^2 (\[Theta] + \[Mu])^2)
-        drop(shape *(mu^2 - y* (shape+2*mu))/(mu*(shape+mu))^2) 
+        denom_fac <- mu*(shape+mu)
+        drop(shape *(mu*mu - y* (shape+2*mu))/(denom_fac*denom_fac)) 
       }
       
       D3logLDmu3 <- function(mu, y, wt, phi) { # element of computation of D3logcLdeta3 for d logdet Hessian
         # (2 \[Theta] (-\[Mu]^3 + y (\[Theta]^2 + 3 \[Theta] \[Mu] + 3 \[Mu]^2)))/(\[Mu]^3 (\[Theta] + \[Mu])^3)
-        drop( 2*shape*(-mu^3 + y *(shape^2 + 3*shape*mu + 3*mu^2)) ) / (mu^3 *(shape + mu)^3)
+        mu2 <- mu*mu
+        denom_fac <- mu*(shape + mu)
+        drop( 2*shape*(-mu2*mu + y *(shape*shape + 3*shape*mu + 3*mu2)) ) / 
+          (denom_fac*denom_fac*denom_fac)
       }
     }
     environment(DlogLDmu) <- environment(D2logLDmu2) <- environment(D3logLDmu3) <- environment(aic) 

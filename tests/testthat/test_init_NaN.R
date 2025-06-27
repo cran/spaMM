@@ -1,4 +1,4 @@
-cat(crayon::yellow("test NaN's in init\n")) 
+cat(cli::col_yellow("test NaN's in init\n")) 
 
 if (spaMM.getOption("example_maxtime")>1.6) {
   data("blackcap")

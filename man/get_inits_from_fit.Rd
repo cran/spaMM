@@ -32,6 +32,8 @@ A list with elements
 \describe{
 \item{\code{fixef}}{for the coefficients of the linear predictor, adjusted to the format of the coefficients of the linear predictor of the \code{template} object, if available;}
 \item{\code{ranCoefs}}{random-coefficients parameters (if \bold{not} outer-optimized).}
+
+Undocumented attributes may be attached, and some of the parameters may be transformed. 
 }
 }
 }

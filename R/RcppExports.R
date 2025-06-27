@@ -89,10 +89,6 @@
     .Call(`_spaMM_is_evaluated`, name, env)
 }
 
-.is_promise <- function(name, env) {
-    .Call(`_spaMM_is_promise2`, name, env)
-}
-
 .nuln_plus_bessel_lnKnu <- function(x, nu) {
     .Call(`_spaMM_nuln_plus_bessel_lnKnu`, x, nu)
 }

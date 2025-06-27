@@ -291,18 +291,6 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// is_promise2
-bool is_promise2(Symbol name, Environment env);
-RcppExport SEXP _spaMM_is_promise2(SEXP nameSEXP, SEXP envSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< Symbol >::type name(nameSEXP);
-    Rcpp::traits::input_parameter< Environment >::type env(envSEXP);
-    rcpp_result_gen = Rcpp::wrap(is_promise2(name, env));
-    return rcpp_result_gen;
-END_RCPP
-}
 // nuln_plus_bessel_lnKnu
 NumericVector nuln_plus_bessel_lnKnu(Rcpp::NumericVector x, double nu);
 RcppExport SEXP _spaMM_nuln_plus_bessel_lnKnu(SEXP xSEXP, SEXP nuSEXP) {
@@ -647,7 +635,6 @@ static const R_CallMethodDef CallEntries[] = {
     {"_spaMM_C_dispInv", (DL_FUNC) &_spaMM_C_dispInv, 1},
     {"_spaMM_logit", (DL_FUNC) &_spaMM_logit, 1},
     {"_spaMM_is_evaluated", (DL_FUNC) &_spaMM_is_evaluated, 2},
-    {"_spaMM_is_promise2", (DL_FUNC) &_spaMM_is_promise2, 2},
     {"_spaMM_nuln_plus_bessel_lnKnu", (DL_FUNC) &_spaMM_nuln_plus_bessel_lnKnu, 2},
     {"_spaMM_set_thread_nbr", (DL_FUNC) &_spaMM_set_thread_nbr, 1},
     {"_spaMM_rankinfo", (DL_FUNC) &_spaMM_rankinfo, 2},

@@ -1,4 +1,4 @@
-cat(crayon::yellow("\ntest Nugget:"))
+cat(cli::col_yellow("\ntest Nugget:"))
 
 data("Loaloa")
 ## use 1st 30 obs as this is slow:

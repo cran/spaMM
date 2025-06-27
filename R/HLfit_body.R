@@ -201,8 +201,7 @@ HLfit_body <- function(processed,
                      off=off,
                      which_inner_ranCoefs=which_inner_ranCoefs,
                      whichAPHLs=whichAPHLs,
-                     ranCoefs_blob=ranCoefs_blob,
-                     ZAL=ZAL # possibly modified in the loop but to used afterwards
+                     ranCoefs_blob=ranCoefs_blob
     ) 
 
     # trying2avoidlocalvars <- c("APHLs", "conv.phi", "conv.lambda", "conv.corr","conv_logL", "iter", "w.resid",
@@ -356,27 +355,50 @@ HLfit_body <- function(processed,
   ###################
   if (HL[1L]=="SEM") {
     res$SEM_info <- SEMblob$SEM_info ## info
+    dev_res_blob <- NULL
   } else { ## both lev_phi and deviance_residual missing otherwise
-    if (std_dev_res_needed_4_inner_estim) { ## ll model leverages are computed and it makes sense to consider the residuals
+    ## (1) Provide leverages 
+    leverages <- loopout_blob$leverages # may be NULL, but 
+    # not NULL if std_dev_res_needed_4_inner_estim (typically phiHGLM, inner-estimated phiGLM)
+    outer_phiGLM <- (length(models$phi)==1L && models$phi=="phiGLM" && 
+                       is.null(processed$phi.Fix))
+    if (outer_phiGLM) {
+      leverages <- .calc_std_leverages(
+        models, 
+        processed=processed, 
+        loopout_blob=loopout_blob, 
+        n_u_h=n_u_h, 
+        need_ranefPars_estim=need_ranefPars_estim, 
+        need_simple_lambda=need_simple_lambda, 
+        phi.Fix=NULL, # key to get leverages
+        phi_est=phi_est # presumably unchanged in loop otherwise leverages computed within it (whole point here)
+      )
+    } 
+    if (nrand && is.null(warningEnv$leveLam1)) { # .calcRanefPars was not called
+      # Cf singfitF test in test-rank: outer estim without refit => reaches this point
+      #But we want to diagnose possible non-identifiability of lambda => add info to warningEnv:
+      .diagnose_lev_lambda(leverages, warningEnv, nrand, cum_n_u_h=cum_n_u_h)
+    }
+    ## (2) Provide dev_res_blob
+    if (std_dev_res_needed_4_inner_estim) { ## All model leverages are computed and it makes sense to consider the residuals
+      # typical for phiHGLM and presumably for inner-estimated phiGLM
       # possible outputs from this block: res$lev_phi; res$lev_lambda; res$std_dev_res; dev_res_blob (also needed out of this block); and info in warningEnv
-      res$lev_phi <- loopout_blob$leverages$resid
-      dev_res_blob <- .std_dev_resids(res, phi_est=loopout_blob$phi_est, lev_phi=loopout_blob$leverages$resid)  # also needed out of this block
+      dev_res_blob <- .std_dev_resids(res, phi_est=loopout_blob$phi_est, lev_phi=leverages$resid)  # also needed out of this block
+    } else if (outer_phiGLM) { # outer estimated phi GLM...
+      dev_res_blob <- .std_dev_resids(res, phi_est=phi_est, lev_phi=leverages$resid)  # needed by .add_ranef_returns()
+    } else dev_res_blob <- NULL # not sure about this one. Do as for outer_phiGLM? (-> always Gamma GLM summary ? ___F I X M E___)
+    ## (3) Copies in 'res'
+    if (need_simple_lambda) res$lev_lambda <- leverages$ranef # _F I X M E__ remove the local condition ?
+    res$lev_phi <- leverages$resid
+    if ( ! is.null(phi_est)) { ## Then dev_res_blob$std_dev_res must be present. Copy a signed version of them:
       mu <- res$muetablob$mu
       if (inherits(mu,"Matrix")) {
         warning("inefficiency detected. Please contact the package maintainer.", immediate. = TRUE) # it's inefficient if true in the loop...
         mu <- drop(mu) ## Old comment: "pb calcul deviance_residual" which is why I moved the test from the main loop to here.
       }
       res$std_dev_res <- sign(y-mu) * dev_res_blob$std_dev_res
-      
-      if (need_simple_lambda) res$lev_lambda <- loopout_blob$leverages$ranef # _F I X M E__ remove the local condition ?
-      
-      # res$diagnostics$m_grad_obj <- auglinmodblob$m_grad_obj # typically NULL for LMM
-      if (nrand && is.null(warningEnv$leveLam1)) { # .calcRanefPars was not called
-        # Cf singfitF test in test-rank: outer estim without refit => reaches this point
-        #But we want to diagnose possible non-identifiability of lambda => add info to warningEnv:
-        .diagnose_lev_lambda(loopout_blob$leverages, warningEnv, nrand, cum_n_u_h=processed$cum_n_u_h)
-      }
-    }
+    } 
+    # res$diagnostics$m_grad_obj <- auglinmodblob$m_grad_obj # typically NULL for LMM
   }  
   ###################
   ## ALL other LAMBDA returns
@@ -396,7 +418,8 @@ HLfit_body <- function(processed,
   ###################
   ## ALL other PHI returns
   ###################
-  res <- .add_phi_returns(res=res, processed=processed, loopout_blob=loopout_blob, phi.Fix=phi.Fix, dev_res=dev_res_blob$dev_res)
+  res <- .add_phi_returns(res=res, processed=processed, loopout_blob=loopout_blob, phi.Fix=phi.Fix, 
+                          dev_res=dev_res_blob$dev_res)
   ################### the magic environment
   res$envir <- .add_fitobject_envir(nrand=nrand, HL=HL, loopout_blob=loopout_blob, processed=processed)
   ###################

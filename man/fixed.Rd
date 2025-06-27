@@ -34,7 +34,9 @@ Theses arguments for fixing random-effect parameters all have a common syntax. T
 \code{fitme} accepts partially fixed parameters for a random coefficient term, e.g.,\cr 
 \code{ranCoefs=list("2"=c(NA,-0.05,NA))}, although this may not mix well with some obscure options, such as\cr 
 \code{control=list(refit=list(ranCoefs=TRUE))} which will ignore the fixed values. 
-\code{\link{GxE}} shows how to use partially-fixed \code{ranCoefs} to fit different variances for different levels of a factor.   
+Several examples in the package documentation illustrate the use of the convenience function 
+\code{\link{ranCoefs_for_diag}} to fit only the variances.
+\code{\link{GxE}} further shows how to use partially-fixed \code{ranCoefs} to fit different variances for different levels of a factor.   
   
 \bold{corrPars} is a list, and it may also be incomplete, using names to specify the affected random effect as shown for \code{lambda} and \code{ranCoefs}. For example, \code{ranFix=list(corrPars=list("1"=list(nu=0.5)))} makes explicit that \code{nu=0.5} applies to the first (\code{"1"}) random effect in the model formula. Its elements may be the correlation parameters of the given random effect. For the Matérn model, these are the correlation parameters \code{rho} (scale parameter(s)), \code{nu} (smoothness parameter), and (optionally) \code{Nugget} (see \code{\link{Matern}}). The \code{rho} parameter can itself be a vector with different values for different geographic coordinates. %
   For the \code{adjacency} model, the only correlation parameter is a scalar \code{rho} (see \code{\link{adjacency}}).
@@ -42,6 +44,7 @@ Theses arguments for fixing random-effect parameters all have a common syntax. T
   Consult the documentation for other types of random effects, such as \code{\link{Cauchy}} or \code{\link{IMRF}}, for any information missing here. 
 
 }
+\seealso{Convenience functions for specifying constraints on  random-coefficient terms: \code{\link{ranCoefs_for_diag}}, \code{\link{lev2bool}}.}
 \examples{
 \dontrun{
 data("wafers")

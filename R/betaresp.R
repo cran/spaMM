@@ -29,7 +29,7 @@ beta_resp <- function (prec = stop("beta_resp's 'prec' must be specified"), link
       if (!is.null(stats$name)) 
         linktemp <- stats$name
     }
-    else stop(gettextf("\"%s\" link not available for beta response family; available links are \"logit\", \"probit\", \"cloglog\" and \"cauchit\"", 
+    else stop(gettextf("\"%s\" link not available for beta family; available links are \"logit\", \"probit\", \"cloglog\" and \"cauchit\"", 
                        linktemp))
   }
 

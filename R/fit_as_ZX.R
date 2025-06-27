@@ -343,9 +343,10 @@
     # and when it is a list with info about mv model it has a complete vector $w_resid.
     H_w.resid <- .calc_H_w.resid(RESU$w.resid, muetablob=muetablob, processed=processed) # for LLF w.resid is not generally defined.
     RESU$weight_X <- .calc_weight_X(Hobs_w.resid=H_w.resid, H_global_scale=H_global_scale, obsInfo=processed$how$obsInfo) ## sqrt(s^2 W.resid)  
-    RESU$sXaug <- do.call(corr_method, 
-                     list(Xaug=Xscal, weight_X=RESU$weight_X, w.ranef=wranefblob$w.ranef, H_global_scale=H_global_scale,
-                          force_QRP=TRUE))
+    RESU$sXaug <- do.call(
+      corr_method, 
+      list(Xaug=Xscal, weight_X=RESU$weight_X, w.ranef=wranefblob$w.ranef, H_global_scale=H_global_scale,
+           force_QRP_global=.spaMM.data$options$no_SPD_assessmt_when_no_signs)) # i.e. =TRUE in this NOT-LevM case
     if (Trace)  if(.BLOB(RESU$sXaug)$nonSPD) {cat(stylefn("!"))} else cat(stylefn("."))
   } ## ergo sXaug is not updated for LMM (no need to)
   return(RESU) ## contains only updated quantities
@@ -514,7 +515,7 @@
   weight_X <- .calc_weight_X(Hobs_w.resid=H_w.resid, H_global_scale=H_global_scale, obsInfo=processed$how$obsInfo) ## sqrt(s^2 [H_]W.resid) # -> .... sqrt([H_]w.resid * H_global_scale)
   corr_method_fn <- get(processed$corr_method,asNamespace("spaMM"), inherits=FALSE)
   sXaug <- corr_method_fn(Xaug=Xscal, weight_X=weight_X, w.ranef=w.ranef, H_global_scale=H_global_scale,
-                             force_QRP= ! LevenbergM)
+                          force_QRP_global= ! LevenbergM) # do not force QRP when LevM!
   if (trace) {
     stylefn <- switch(which_LevMar_step,
                       v=.spaMM.data$options$stylefns$vloop,
@@ -794,7 +795,7 @@
 
       #old_m_grad_v <- m_grad_v
       #damping_barring_rescue <- damped_WLS_blob$damping
-      #cat(crayon::yellow(paste0(names(damping_barring_rescue),"=",damping_barring_rescue[[1]])))
+      #cat(cli::col_yellow(paste0(names(damping_barring_rescue),"=",damping_barring_rescue[[1]])))
       #dampings_env$v[[names(damping_barring_rescue)]] <- damping_barring_rescue[[1]]
       dampings_env$v[[attr(damped_WLS_blob,"step")]] <- damped_WLS_blob$damping 
       # : when step is rescue the rescued step does not provide an updated damping; dampings_env$v[["rescue"]] is ignored. 
@@ -887,7 +888,7 @@
         (which_LevMar_step =="V_IN_B" && damped_WLS_blob$breakcond=="OK_gain") ||
         (which_LevMar_step =="v" && damped_WLS_blob$breakcond=="low_pot")
       ) && damped_WLS_blob$APHLs$p_v>best_HL1_lik ) {
-        #cat(crayon::red("ICI!\n"))
+        #cat(cli::col_red("ICI!\n"))
         best_HL1_damped_WLS_blob <- damped_WLS_blob
         best_HL1_lik <- best_HL1_damped_WLS_blob$APHLs$p_v
         #print(best_HL1_lik)
@@ -918,7 +919,7 @@
         } ## but by default the local 'LevenbergM' is FALSE and will not become true until divergence is detected
         # print(c(which_LevMar_step,damped_WLS_blob$breakcond))
         if (trace) {
-          cat(crayon::red("!"))
+          cat(cli::col_red("!"))
         } else if ( ! identical(processed$warned_maxit_mean, TRUE)) {
           processed$warned_maxit_mean <- TRUE
           if (!is.null(for_intervals)) {
@@ -928,7 +929,7 @@
       }
       break
     } else {    
-      # if (innerj==maxit.mean-1L)  cat(crayon::yellow(c(which_LevMar_step,damped_WLS_blob$breakcond))) # browser()
+      # if (innerj==maxit.mean-1L)  cat(cli::col_yellow(c(which_LevMar_step,damped_WLS_blob$breakcond))) # browser()
       relV_beta <- c(v_h*sqrt(wranefblob$w.ranef),beta_eta)  ## convergence on v_h relative to sqrt(w.ranef)
       abs_d_relV_beta <- abs(relV_beta - old_relV_beta) ## for ML, comparison between estimates when ( hlik_stuck || ! need_v_step )
       ## abs_d_relV_beta is needed outside this block, and old_relV_beta updated after v_h updating.

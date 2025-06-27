@@ -1,10 +1,9 @@
 .spaMM.data <- new.env(parent = emptyenv())
 .spaMM.data$options <- list(
   F_I_X_M_E=FALSE,
-  obsInfo=TRUE, # !! Don't forget to inactivate .obsInfo_warn() when the default is TRUE !!
-  store_data_as_mf=FALSE, # Surely many issues.
+  obsInfo=TRUE, # setting it to >1L will enforce use of obs algo in cases not needed, such as fixed-effect models.
   Rcpp_crossprod=TRUE, # integer with usual bool interp., and >1: .crossprod() prints types when .Rcpp_crossprod() not called; >2: always prints types;
-  update_CHM=TRUE, # measurable benefits only if Cholesky(., perm=TRUE)
+  update_CHM=TRUE, # measurable benefits only if Cholesky(., perm=TRUE) as controlled by next two options:
   perm_G=TRUE, 
   perm_Q=NULL,  
   use_ZA_L=TRUE, # NULL may act as TRUE when augZxy_cond=TRUE
@@ -15,16 +14,23 @@
   separation_max=10,
   sep_solver="glpk",
   HLfit_body="HLfit_body",
+  #
   spprec_method="def_AUGI0_ZX_spprec", 
   matrix_method="def_sXaug_EigenDense_QRP_Chol_scaled", # handling negative weights  
   Matrix_method= "def_sXaug_Matrix_QRP_CHM_scaled", 
-  #Hobs_Matrix_method= "def_sXaug_Matrix_QRP_CHM_scaled", # may have a patch for handling negative weights, but not exactly.  
-  Hobs_Matrix_method= "def_sXaug_Matrix_CHM_H_scaled", # handling negative weights  
-  force_LLF_CHM_QRP=FALSE, # if set to TRUE, LevM no longer uses the exact Hessian with signs (CHM_H methods) when this Hessian is SPD.
-  force_LLM_nosigns_CHM_H=FALSE, # set it to TRUE to test CHM_H methods when there are no $signs (quite slow)
-  LLgeneric=TRUE,
+  Hobs_Matrix_method= "def_sXaug_Matrix_CHM_H_scaled", # handling negative weights, while def_sXaug_Matrix_QRP_CHM_scaled" does not, despite early attempts.     
+  force_QRP_global=FALSE, # if set to TRUE, and H_w.resid is signed, 
+    # the exact Hessian with signs (CHM_H methods) is not used when possible (SPD Hessian)
+    # This may be a problem for LevM, so the default is FALSE and may be overridden
+    # when LevM is NOT used.
+  no_SPD_assessmt_when_no_signs=TRUE, # set it to FALSE to allow 
+    # some testing of CHM_H methods when H_w.resid is not signed (slow?)
+    # although even if so allowed, whether CHM_H is actually used also depend 
+    #on the values taken by 'force_QRP_global'.
+  #
+  LLgeneric=TRUE, # looks like a devel/debug switch
   EigenDense_QRP_method=".lmwithQR", # .lmwithQR seems fast cf bootstrap
-  use_spprec_QR=FALSE, # TRUE visibly slows several of the long tests (incl fitar1) 
+  use_spprec_QR=FALSE, # control of hatval computation. TRUE visibly slows several of the long tests (incl fitar1) 
   presolve_cond=quote(ncol(BLOB$R_scaled)>20000L), # may be slightly faster and more memory efficient for huge data (nested-Matern 40000L subset) 
   #Matrix_method="sXaug_Matrix_CHM_H_scaled", 
   #Matrix_method= "def_sXaug_Matrix_QRP_scaled", 
@@ -77,6 +83,7 @@
   maxeval=quote(as.integer(10^(3+(log(length(initvec))-log(5))/log(4)))), # nloptr; *modified for bobyqa (which recommends > 10 * npar^2)
   maxeval_corr=1, # devel: for easy control of maxeval in .safe_opt()
   ## 
+  allow_outer_phiGLM=TRUE,
   ############## ranCoefs settings: (see also xtol_abs_factors)
   optim_inner=".safe_opt",
   recheck_at_bound=FALSE, # control of .safe_opt()
@@ -100,7 +107,7 @@
   use_tri_for_makeCovEst=FALSE, # *NOT-spprec*; TRUE WAS required for acceptable result in HLfit3 rC_transf_inner="sph" test! Affects numerical precision of calc_latentL() in .makeCovEst1() [ultimately using sXaug, not augZXy method].
   #•
   invL_threshold=1e6, ## for devel code .HLfit_body_augZXy_invL(); compare to prod(sqrt(lambda)) ## F I X_invL but test "set.seed(666)" fails for invL_threshold>100
-  ## Family-speific numerical controls
+  ## Family-specific numerical controls
   # Gaunt et al:
   # Based on the numerical results
   # of Section 4, we consider that a safe rule of thumb for obtaining accurate approximations
@@ -148,18 +155,18 @@
   # , sparse_X=NULL## private
   uGeo_levels_type="data_order", # same type to be used by .calc_AMatrix_IMRF() and .calc_Zmatrix() for IMRFs. Explicit names, useful for debugging.
   #
-  stylefns=list(v_in_loop=crayon::green, 
-                v_in_last=crayon::green$underline, # final output of v_h .do_damped_WLS_v_in_b
-                rescue=crayon::red,
-                strictv=crayon::blue,
-                vloop=crayon::cyan,
-                v_out_last=crayon::cyan$underline, # seen a lot for v steps... # old comment : final output of v_h .do_damped_WLS_outer; also also bracketing each .solve_v_h_IRLS loop for v_h( tentative beta(damping) ) 
+  stylefns=list(v_in_loop=cli::col_green, 
+                v_in_last=cli::combine_ansi_styles("green", "underline"), # final output of v_h .do_damped_WLS_v_in_b
+                rescue=cli::col_red,
+                strictv=cli::col_blue,
+                vloop=cli::col_cyan,
+                v_out_last=cli::combine_ansi_styles("cyan", "underline"), # seen a lot for v steps... # old comment : final output of v_h .do_damped_WLS_outer; also also bracketing each .solve_v_h_IRLS loop for v_h( tentative beta(damping) ) 
                 # colors tell what the numbers are for: grad of objective for v, versus grad of objective for beta (or joint beta,v) 
-                betaloop=crayon::yellow, # also bracketing the damped_WLS loop for new beta when  which_LevMar_step=="b_&_v_in_b"
-                betalast=crayon::yellow$underline,
+                betaloop=cli::col_yellow, # also bracketing the damped_WLS loop for new beta when  which_LevMar_step=="b_&_v_in_b"
+                betalast=cli::combine_ansi_styles("yellow", "underline"),
                 # 
                 # not for LevM:
-                hardwarn=crayon::bold),
+                hardwarn=cli::style_bold),
   H_scale_regul=1e-4,
   ## only to avoid warnings when using spaMM.options()
   nb_cores=NULL,
@@ -179,7 +186,8 @@
   # devl
   .betaFn=function(v) {sign(v)*log1p(abs(v))},
   .betaInv=function(v) {sign(v)*(exp(abs(v))-1)},
-  n_names2expr=FALSE # I fail to reproduce the problem that motivated the devel of ..n_names2expr()
+  n_names2expr=FALSE, # I fail to reproduce the problem that motivated the devel of ..n_names2expr()
+  doSeeMe = function(...) {NULL} # or warning or function(x,...) {if (inherits(x,"try-error") x)}
 )
 
 .spaMM.data$keywords <- new.env(parent = emptyenv())
@@ -193,8 +201,9 @@
 .spaMM.data$keywords$all_cF <- .spaMM.data$keywords$built_in_cF <- c("ARp", "ARMA", "diallel", "ranGCA", "MaternIMRFa", "antisym") 
 .spaMM.data$keywords$all_ranefs <- .spaMM.data$keywords$built_in_ranefs <- 
   unlist(c(.spaMM.data$keywords$special_ranefs,.spaMM.data$keywords$built_in_cF),recursive = FALSE, use.names = FALSE) 
-.spaMM.data$keywords$all_keywords <- .spaMM.data$keywords$built_in_keywords <- c(.spaMM.data$keywords$built_in_ranefs,
-                                                                                 "multIMRF", "mv")
+.spaMM.data$keywords$all_keywords <- 
+  .spaMM.data$keywords$built_in_keywords <- 
+  c(.spaMM.data$keywords$built_in_ranefs, "multIMRF", "mv","mm", "mr") # part of code handling "mv(", "mm(", "mr("...
 .spaMM.data$keywords$user_defined <- character(0L)
 # For comparing names and strings:
 # as.name if fastest (~8e-7 s versus as.vector(, "character") ~ 3e-6 and paste() ~ 4e-6)

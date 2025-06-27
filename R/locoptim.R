@@ -51,7 +51,9 @@
   return(optr)
 }
 
-.xtol_abs_fn <- function(LowUp, # must be a structured list, not simply a list of two vectors, for it to have some effect.
+.xtol_abs_fn <- function(LowUp, # must be a structured list; 
+                         # a list of two vectors will be handled but the result may be far from optimal
+                         # For an empty list, numeric(0) is returned, which may segfault nloptr...
                          factors=.spaMM.data$options$xtol_abs_factors, rC_transf=.spaMM.data$options$rC_transf) {
   parnames <- names(LowUp$lower)
   rng <- unlist(LowUp$upper, use.names = FALSE)-unlist(LowUp$lower, use.names = FALSE)
@@ -201,6 +203,8 @@
                       anyHLCor_obj_args=anyHLCor_obj_args, HLcallfn.obj=HLcallfn.obj , LowUp=LowUp
                       ) ## does not use gradients
     optPars <- relist(optr$solution,init.optim)
+    attr(Optimizer,"use_bobyqa") <- optr$use_bobyqa
+    optr$use_bobyqa <- NULL
   } else if (Optimizer=="bobyqa") { ## May more narrowly approach lowerb and upperb, ~> longer computation times
     optr <- .optim_by_bobyqa(lowerb, upperb, initvec, objfn_locoptim,
                              local_control=control[["bobyqa"]], anyHLCor_obj_args=anyHLCor_obj_args, 

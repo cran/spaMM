@@ -80,7 +80,7 @@
   # if (n_u>1L) diag(t_chol_Q[,-1,drop=FALSE]) <- -ARphi/denom 
   # return(t_chol_Q) # equivalent to nlme's AR1_fact() in corStruct.c
   seqn <- seq(n_u)
-  denom <- sqrt(1-ARphi^2)
+  denom <- sqrt(1-ARphi*ARphi)
   list(i=c(seqn,seqn[-n_u]),
        j=c(seqn,seqn[-1L]),
        x=c(rep(1/denom, n_u-1L),1,rep(-ARphi/denom, n_u-1L))
@@ -252,7 +252,7 @@ HLCor_body <- function(processed, ## single environment
   HLnames <- (c(HLCor.formals,names_formals_HLfit,designL.formals,makescaled.formals))  ## cf parallel code in corrHLfit
   HLCor.call <- mc[c(1L,which(names(mc) %in% HLnames))] ## keep the call structure
   ranefParsList <- relist(ranefParsVec,skeleton) # converts back a vector of variable parameters to a structured list of variable parameters
-  print_phiHGLM_info <- ( ! is.null(processed$residProcessed) && processed$verbose["phifit"]) 
+  print_phiHGLM_info <- processed$verbose["print_phiHGLM_info"]
   if (print_phiHGLM_info) {
     # set a 'prefix' for the line to be printed for each iteration of the phi fit when outer optimization is used for the mean response. 
     # In that case a *distinct line* of the form HLCor for <outer opt pars>: phi fit's iter=<say up to 6>, .phi[1]=... 
@@ -283,7 +283,11 @@ HLCor_body <- function(processed, ## single environment
   #
   aphls <- hlfit$APHLs
   resu <- aphls[[objective]]
-  if (print_phiHGLM_info) cat(paste0(objective,"=",resu)) # verbose["phifit"]
+  if (print_phiHGLM_info && processed$verbose["phifit"]>1L) {
+    processed$fitenv$prevmsglength <- overcat(
+      paste0(objective,"=",resu,"\n"), 
+      prevmsglength = processed$fitenv$prevmsglength)
+  }
   if (objective=="cAIC") resu <- - resu ## for minimization of cAIC (private & experimental)
   if (processed$augZXy_cond && resu>processed$augZXy_env$objective) {
     processed$augZXy_env$objective <- resu

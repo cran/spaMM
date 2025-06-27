@@ -1,4 +1,4 @@
-cat(crayon::yellow("\ntest spaMM.filled.contour:"))
+cat(cli::col_yellow("\ntest spaMM.filled.contour:"))
 # spaMM.filled.contour
 
 spaMM.filled.contour(volcano, color.palette = spaMM.colors) # simple

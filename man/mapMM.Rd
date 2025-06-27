@@ -18,7 +18,7 @@
 spaMMplot2D(x, y, z, xrange=range(x, finite = TRUE),
   yrange=range(y, finite = TRUE), margin=1/20, add.map= FALSE, 
   nlevels = 20, color.palette = spaMM.colors, map.asp=NULL,
-  col = color.palette(length(levels) - 1), plot.title=NULL, plot.axes=NULL, 
+  col = (color.palette)(n = nlevels), plot.title=NULL, plot.axes=NULL, 
   decorations=NULL, key.title=NULL, key.axes=NULL, xaxs = "i", 
   yaxs = "i", las = 1, axes = TRUE, frame.plot = axes, ...) 
 
@@ -37,7 +37,7 @@ map_ranef(fitobject, re.form, Ztransf=NULL, xrange = NULL, yrange = NULL,
   margin = 1/20, gridSteps = 41, 
   decorations = quote(points(fitobject$data[, coordinates], cex = 1, lwd = 2)), 
   add.map = FALSE, axes = TRUE, plot.title=NULL, plot.axes=NULL, 
-  map.asp = NULL, ...)
+  map.asp = NULL, mv_it=NULL, ...)
 }
 \arguments{
   \item{fitobject}{
@@ -78,9 +78,6 @@ map_ranef(fitobject, re.form, Ztransf=NULL, xrange = NULL, yrange = NULL,
 \item{add.map}{
   Either a boolean or an explicit expression, enclosed in \code{quote} (see Examples).
   If \code{TRUE}, the \code{map} function from the \code{maps} package (which much therefore the loaded) is used to add a map from its default \code{world} database. \code{xrange} and \code{yrange} are used to select the area, so it is most convenient if the \code{coordinates} are longitude and latitude (in this order and in standard units). An explicit expression can also be used for further control.  
-}
-\item{levels}{  
-a set of levels which are used to partition the range of z. Must be strictly increasing (and finite). Areas with z values between consecutive levels are painted with the same color.
 }
 \item{nlevels}{	
 if \code{levels} is not specified, the range of z, values is divided into *approximately* this many levels (a call to \code{\link{pretty}} determines the actual number of levels).
@@ -123,6 +120,7 @@ statements which draw axes on the plot key.
 
 \item{smoothObject}{Either NULL, or an object inheriting from class \code{HLfit} (hence, an object on which \code{predict.HLfit} can be called), predicting the response surface in any coordinates. See Details for typical usages.}
 \item{return.}{character string: see Value}
+\item{mv_it}{NULL or integer: for multivariate-response fits, specify a submodel. }
 
 \item{\dots}{
   further arguments passed to or from other methods. For \code{mapMM}, all such arguments are passed to \code{spaMMplot2D}; for \code{spaMMplot2D}, currently only additional graphical parameters passed to \code{title()} (see Details).  For \code{filled.mapMM} and \code{map_ranef}, these parameters are those that can be passed to \code{\link{spaMM.filled.contour}}. 

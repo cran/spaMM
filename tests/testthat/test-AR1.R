@@ -1,4 +1,4 @@
-cat(crayon::yellow("\ntest AR1:\n"))
+cat(cli::col_yellow("\ntest AR1:\n"))
 
 if (spaMM.getOption("example_maxtime")>4) { # 
   set.seed(123)

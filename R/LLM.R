@@ -1,11 +1,13 @@
 # cf .calc_d2mudeta2 with different arguments
+
 .D2muDeta2 <- function(link) switch(link,
-                                    "log" = function (eta) pmax(exp(eta), .Machine$double.eps),
+                                    "log" = .safe_exp,
                                     "identity" = function (eta) rep.int(0, length(eta)),
                                     "sqrt" = function (eta) rep.int(2, length(eta)),
                                     "logit" = function(eta) {
                                       expeta <- exp(eta)
-                                      expeta*(1-expeta)/(1+expeta)^3
+                                      denom_fac <- 1+expeta # to be raised ^3
+                                      expeta*(1-expeta)/(denom_fac*denom_fac*denom_fac)
                                     }, 
                                     "probit" = function(eta) - eta * dnorm(eta, 0,1), 
                                     "cloglog" = function(eta) {
@@ -13,28 +15,41 @@
                                       expeta <- exp(eta)
                                       (1-expeta)*exp(eta-expeta)
                                     }, 
-                                    "cauchit" = function(eta) { -2 *eta/(pi * (1+eta^2)^2)},
-                                    "inverse" = function(eta) { 2/eta^3 }, # for gaussian(inverse) -> does not mean -1/...
+                                    "cauchit" = function(eta) {
+                                      eta2 <- eta*eta
+                                      denom_fac <- 1+eta2
+                                      -2 *eta/(pi * (denom_fac*denom_fac))
+                                    },
+                                    "inverse" = function(eta) { 2/(eta*eta*eta) }, # for gaussian(inverse) -> does not mean -1/...
                                     "loglambda" = function(eta) {stop("this function should not be called")},
                                     stop("link not yet handled in .D2muDeta2() [but easy to fix]")
 )
 
 .D3muDeta3 <- function(link) switch(link,
-                                    "log" = function (eta) pmax(exp(eta), .Machine$double.eps),
+                                    "log" = .safe_exp,
                                     "identity" = function (eta) rep.int(0, length(eta)),
                                     "sqrt" = function (eta) rep.int(0, length(eta)),
                                     "logit" = function(eta) {
                                       eta <- pmin(eta,700) ## as in binomial(cloglog)$mu.eta
                                       expeta <- exp(eta)
-                                      expeta*(1-4*expeta+expeta^2)/(1+expeta)^4
+                                      denom_fac <- 1+expeta # to be raised ^4
+                                      denom_fac <- denom_fac*denom_fac
+                                      expeta*(1-4*expeta+expeta*expeta)/(denom_fac*denom_fac)
                                     }, 
-                                    "probit" = function(eta) (eta^2-1) * dnorm(eta, 0,1), 
+                                    "probit" = function(eta) (eta*eta-1) * dnorm(eta, 0,1), 
                                     "cloglog" = function(eta) {
                                       expeta <- exp(eta)
-                                      (1-3*expeta + expeta^2)*exp(eta-expeta)
+                                      (1-3*expeta + expeta*expeta)*exp(eta-expeta)
                                     }, 
-                                    "cauchit" = function(eta) { (-2+6*eta^2)/(pi * (1+eta^2)^3)},
-                                    "inverse" = function(eta) { -6/eta^4 }, # for gaussian(inverse) -> does not mean -1/...
+                                    "cauchit" = function(eta) {
+                                      eta2 <- eta*eta
+                                      denom_fac <- 1+eta2
+                                      (-2+6*eta2)/(pi * denom_fac*denom_fac*denom_fac)
+                                    },
+                                    "inverse" = function(eta) { 
+                                      eta2 <- eta*eta
+                                      -6/(eta2*eta2)
+                                    }, # for gaussian(inverse) -> does not mean -1/...
                                     "loglambda" = function(eta) {stop("this function should not be called")},
                                     stop("link not yet handled in .D3muDeta3() [but easy to fix]")
 )

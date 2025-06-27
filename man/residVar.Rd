@@ -29,6 +29,8 @@ Other \code{which} values return an object of class \code{family} or \code{formu
 \code{\link{get_residVar}} is a alternative extractor of residual variances with different features inherited from \code{get_predVar}. In particular, it is more suited for computing the residual variances of new realizations of a fitted model, not accounting for prior weights used in fitting the model (basic examples of using the \pkg{IsoriX} package provide a context where this is the appropriate design decision). By contrast, \code{residVar} aims to account for prior weights.
 }
 \examples{
+## residVar optional arguments:
+
 # data preparation: simulated trivial life-history data
 set.seed(123)
 nind <- 20L
@@ -49,4 +51,20 @@ residVar(fitlfh, submodel=2)
 residVar(fitlfh, which="family", submodel=2)
 residVar(fitlfh, which="formula", submodel=2)
 residVar(fitlfh, which="fit", submodel=2) # Fit here characterized by a single scalar
+
+## Prior weights in residVar() vs. get_residVar():
+  data(wafers)
+  spfit <- fitme(I(y/1000)~X1, family=gaussian(), data=wafers)
+  residVar(spfit)[1] #      0.015...
+  get_residVar(spfit)[1] #  0.015...
+  
+  spfit2 <- fitme(I(y/1000)~X1, family=gaussian(), data=wafers, prior.weights=rep(2,198))
+  head(residVar(spfit2)) #     0.015... = phi/prior.weights
+  head(get_residVar(spfit2)) # 0.030... = phi
+  
+  spfit3 <- fitme(I(y/1000)~X1, family=gaussian(), data=wafers, fixed=list(phi=2),
+                  prior.weights=rep(2,198))
+  residVar(spfit3)[1] #     1 = phi/prior.weights
+  get_residVar(spfit3)[1] # 2 = phi
+
 }

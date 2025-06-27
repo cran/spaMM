@@ -488,7 +488,8 @@ spaMM_glm.fit <- function (x, y, weights = rep(1, nobs),
       }
       ##
       z <- (eta - offset)[good] + (y - mu)[good]/mu.eta.val[good]
-      w <- sqrt((weights[good] * mu.eta.val[good]^2)/variance(mu)[good])
+      mu_eta_good <- mu.eta.val[good]
+      w <- sqrt((weights[good] * mu_eta_good*mu_eta_good)/variance(mu)[good])
       if (anyNA(z)) stop("NA/NaN in 'z': consult the package maintainer.")
       if (anyNA(w)) stop("NA/NaN in 'w': consult the package maintainer.") # suggests too large 'mu'
       wX <- .calc_wAugX(XZ_0I=x[good, , drop = FALSE],sqrt.ww=w)
@@ -544,7 +545,7 @@ spaMM_glm.fit <- function (x, y, weights = rep(1, nobs),
   names(mu) <- ynames
   names(eta) <- ynames
   wt <- rep.int(0, nobs)
-  wt[good] <- w^2
+  wt[good] <- w^w
   names(wt) <- ynames
   names(weights) <- ynames
   names(y) <- ynames

@@ -6,7 +6,7 @@
 The \code{resid.model} argument of fitting functions can be used to specify a model for a residual-dispersion parameter of various response families, that is, either\cr
 (1) the \eqn{\phi} parameter of the gaussian and Gamma GLM families;\cr
 (2a) the dispersion parameter of some other GLM families, such as the shape parameter of the negbin1 and negbin2 families; or\cr
-(2b) the dispersion parameter of some other (non-GLM) response families, such as the precision parameter of the beta response family.
+(2b) the dispersion parameter of some other (non-GLM) distribution families, such as the precision parameter of the beta family.
 
 This documentation is more specifically for case (2). Case (1) is more specifically documented as \code{\link{phi-resid.model}}.
 

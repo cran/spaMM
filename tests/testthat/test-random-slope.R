@@ -1,4 +1,4 @@
-cat(crayon::yellow("\ntest of random-slope model:"))
+cat(cli::col_yellow("\ntest of random-slope model:"))
 if(requireNamespace("lme4", quietly = TRUE)) {
   data("sleepstudy",package = "lme4")
   (res <- HLfit(Reaction ~ Days + (Days|Subject), data = sleepstudy)) 

@@ -1,4 +1,4 @@
-cat(crayon::yellow("\ntest distMatrix:\n"))
+cat(cli::col_yellow("\ntest distMatrix:\n"))
 
 data("blackcap")
 MLdistMat <- as.matrix(proxy::dist(blackcap[,c("latitude","longitude")]))

@@ -665,18 +665,18 @@
                   is.null(corr_info$corr_families[[rd]]$corr_CHM_template)) {
                 corr_info$corr_families[[rd]]$corr_CHM_template <- corr_CHMfactor
                 if (processed$QRmethod=="sparse" && .calc_denseness(r$L,relative=TRUE) > 0.15) { 
-                  cat(crayon::green("Sparse-matrix methods have been selected, but it seems that setting algebra='decorr' would be better.\n"))
+                  cat(cli::col_green("Sparse-matrix methods have been selected, but it seems that setting algebra='decorr' would be better.\n"))
                   ## If r$L has high denseness, the slow step by "spcorr" will be the Matrix::qr(<sXaug>) step, not the Cholesky updates for corr_CHMfactor 
                   ## The follwing fix does not really work bc previous $QRmethod has been used by 
                   ## .preprocess -> .init_AUGI0_ZX(.,as_mat=.eval_as_mat_arg(processed)) with some irreversible effects (see e.g. comments on
                   ## type of Xscal <- .make_Xscal(...) in .solve_IRLS_as_ZX()).
                   ## so we would have to reevaluate this preprocessing step (which seems risky (but when do we first need it ?)).
                   #
-                  # cat(crayon::green("Using algebra='decorr' instead\n"))
+                  # cat(cli::col_green("Using algebra='decorr' instead\n"))
                   # processed$QRmethod <- "dense"
                   # processed$as_matrix <- NULL # will be recomputed by  .eval_as_mat_arg()
                 } else if (processed$QRmethod=="dense" && .calc_denseness(r$L,relative=TRUE) < 0.15) {
-                  cat(crayon::green("Dense-matrix methods have been selected, but it seems that setting algebra='spcorr' would be better.\n"))
+                  cat(cli::col_green("Dense-matrix methods have been selected, but it seems that setting algebra='spcorr' would be better.\n"))
                 }
               }
               # Other cases typically not dsC, (except hacked type dscDIST). But any 'atypical" case worth considering ? 
@@ -878,10 +878,12 @@
                     paste0(ZAnames[1L:min(5L,length(ZAnames))], collapse=" "),if(length(ZAnames)>5L){"...,"} else{","},
                     "\n are matched in this order to rows and columns of corrMatrix, without further check.",
                     "\n This may cause later visible errors (notably, wrongly dimensioned matrices)",
-                    "\n or even silent errors. See help(\"corrMatrix\") for a safer syntax.")
+                    "\n or even",cli::style_bold(cli::style_underline("silent errors")),
+                    ". See help(\"corrMatrix\") for a safer syntax.")
       warning(mess, immediate. = TRUE)
     }
   } else if (length(extraZAnames <- setdiff(ZAnames,corrnames))) { # There are ZAnames without matching corrnames. 
+    # In principle .subset_corrFamily() has matched corrnames and unique(ZAnames) 
     if  (For=="corrFamily$Cf") {
       ## i.e. if not all ZAnames in corrnames
       mess <- paste("The row names provided by corrFamily$Cf() do not include all levels",
@@ -1107,6 +1109,7 @@
                                                     verbose=( ! identical(corrfamily$levels_type,"time_series")))
                     # now we are sure that they have the same names, only the orders are uncertain, so we can test order by any( != )
                     uZAnames <- unique(colnames(ZAlist[[it]])) # ! updated names
+                    # ____F I X M E____ check that repeated ZAnames are in coherent order among blocks of cols?
                     if (any(corrnames!=uZAnames)) .corrfamily_permute(corrfamily, perm=uZAnames)
                     for (st in names(mostAttrs)) attr(ZAlist[[it]],st) <- mostAttrs[[st]] # "is_incid", etc. 
                   } else { 

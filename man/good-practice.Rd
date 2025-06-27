@@ -32,8 +32,8 @@ HLfit(y ~ x1 + seq10+(1|grp), data = d2,
 HLfit(y ~ x1 + I(seq_len(nrow(data)))+(1|grp), data = d2, 
       control.HLfit = list(formula_env=list2env(list(data=d2))))
 #
-# Internal imprementation exploits partial matching of argument names
-#  so that this can also be in 'control' if 'control.HLfit' is absent:      
+# Internal implementation allows formula_env to be 
+#   in 'control' if 'control.HLfit' is absent:      
 fitme(y ~ x1 + I(seq_len(nrow(data)))+(1|grp), data = d2, 
       control = list(formula_env=list2env(list(data=d2))))
       

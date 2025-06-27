@@ -42,13 +42,14 @@
   ) ## and one might use (solve(design_u)) as a $crossfac_Q precision factor
 }
 
-.calc_latentL <- function(compactcovmat, use_tri_CORREL=TRUE, spprecBool, trDiag) {
+.calc_latentL <- function(compactcovmat, use_tri_CORREL=TRUE, spprecBool, trDiag, fixeds=NULL) {
   # returns a *t*crossfactor 
   ## L and L_Q are distinct matrices used jointly in a fit (L in ZAL...) and must be deduced from each other.
   if (spprecBool) {
     if (regularize <- TRUE) {
       # always regularize first
-      compactcovmat <- .smooth_regul(compactcovmat, epsi=.spaMM.data$options$tol_ranCoefs_inner["regul"]) 
+      compactcovmat <- .smooth_regul(compactcovmat, epsi=.spaMM.data$options$tol_ranCoefs_inner["regul"],
+                                     fixeds=fixeds) 
       #   value of epsi ultimately also affects whether bobyqa has to be run 
       esys <- attr(compactcovmat,"esys") 
       blob <- .upper_tri_tcrossfactorize( esys, d_regul=esys$d_regul, compactcovmat=compactcovmat)
@@ -83,23 +84,20 @@
     } else { # RESCUE CODE
       if (regularize <- TRUE) { # necess bc eigensystem is not accurate enough (it may have slightly negative eigenvalues)
         # regularize the matrix, then choose between different representations of it.
-        compactcovmat <- .smooth_regul(compactcovmat, epsi=.spaMM.data$options$tol_ranCoefs_inner["regul"]) 
+        compactcovmat <- .smooth_regul(compactcovmat, epsi=.spaMM.data$options$tol_ranCoefs_inner["regul"],
+                                       fixeds=fixeds) 
         #   value of epsi utlmately also affects whether bobyqa has to be run 
         esys <- attr(compactcovmat,"esys")
-        if (use_tri_CORREL) {  
-          blob <- .upper_tri_tcrossfactorize( esys, d_regul=esys$d_regul, compactcovmat=compactcovmat)
-        } else { ## # LOWER tri tcrossprod factor. 
-          blob <- .lower_tri_tcrossfactorize( esys, d_regul=esys$d_regul, compactcovmat=compactcovmat)
-        } 
+        d_regul <- esys$d_regul
       } else {
         esys <- .eigen_sym(compactcovmat)
-        if (use_tri_CORREL) {  
-          blob <- .upper_tri_tcrossfactorize( esys, d_regul=esys$values, compactcovmat=compactcovmat)
-        } else { ## # LOWER tri tcrossprod factor. 
-          blob <- .lower_tri_tcrossfactorize( esys, d_regul=esys$values, compactcovmat=compactcovmat)
-        } 
+        d_regul <- esys$values
       }
-      #
+      if (use_tri_CORREL) {  
+        blob <- .upper_tri_tcrossfactorize( esys, d_regul=d_regul, compactcovmat=compactcovmat)
+      } else { ## # LOWER tri tcrossprod factor. 
+        blob <- .lower_tri_tcrossfactorize( esys, d_regul=d_regul, compactcovmat=compactcovmat)
+      } 
     }
   }
   

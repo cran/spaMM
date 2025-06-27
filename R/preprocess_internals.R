@@ -232,8 +232,11 @@
 
 
 
+# Does not set 'algebra' (see .set_augX_methods() instead); 
+# sets spprec boolean depending on two optional user inputs, 'algebra' and 'sparse_precision'
 .wrap_determine_spprec <- function(control.HLfit, ZAlist, processed, X.pv) {
-  algebra <- control.HLfit$algebra
+  # .spaMM.data$options[[".algebra"]] <- # ugly but convenient to check user input in .ad_hoc_dsy_warning()
+    algebra <- control.HLfit$algebra
   if (is.null(algebra)) {
     sparse_precision <- control.HLfit$sparse_precision
     if (is.null(sparse_precision)) {
@@ -277,14 +280,18 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") {
   
 }
 
-# even though the Z's were sparse postmultplication by LMatrix leads some of the ZAL's to dgeMatrix (dense)
+# Does *not* set 'algebra' (see .set_augX_methods() instead): 
+# sets dense/sparse for the case where "corr"elation method will be chosen.
+# Return value when is_spprec is TRUE (as previously set by .wrap_determine_spprec()) may be ignored.
+# When is_spprec is FALSE the function addresses the issue that 
+# even when the Z's are sparse postmultplication by LMatrix leads some of the ZAL's to dgeMatrix (dense).
 .choose_QRmethod <- function(ZAlist, corr_info, is_spprec, processed, control.HLfit) {
   if (is_spprec) return("sparse") # 08/2021: currently QRmethod operates only though .eval_as_mat_arg() 
   # which ignores QRmethod when is_spprec is TRUE (so returning NULL or NaN should have the same effect).
   if ( ! is.null(algebra <- control.HLfit$algebra)) {
     if (algebra=="decorr") return("dense")
     if (algebra=="spcorr") return("sparse")
-    # other case ignred => continue:
+    # other case ignored => continue:
   }
   if ( is.null(QRmethod <- .spaMM.data$options$QRmethod) ) { ## user setting. The code should NOT write into it. 
     nrand <- length(ZAlist)
@@ -644,80 +651,98 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") {
   return(phi.Fix)
 }
 
+.get_residProcessed <- function(processed, control.HLfit, resid.model, HLmethod, 
+                                resid.formula, data, control.glm, print_phiHGLM_info) {
+  preprocess_arglist <- list(control.HLfit=control.HLfit, ## constrained
+                             ranFix=resid.model$fixed, 
+                             HLmethod=HLmethod, ## constrained
+                             predictor=resid.formula, ## obvious
+                             resid.model=resid.model$resid.model, # potentially allows nested resid.model's... 
+                             REMLformula=NULL, # constrained
+                             data=data, # obvious (?) 
+                             family=resid.model$family, # obvious, gaussian
+                             BinomialDen=NULL, # obviously no binomial response
+                             rand.families=resid.model$rand.family, # (NULL not handled by preprocess); 
+                             #   outer preprocess calls *receive* a default value from formals(HLfit)
+                             etaFix=resid.model$etaFix, ## not constrained, but should rather use 'resid.model$fixed'
+                             prior.weights=NULL, ## currently defined  dynamically using lev_phi...
+                             control.glm=control.glm, ## constrained
+                             verbose=c(print_phiHGLM_info=print_phiHGLM_info), ## TRACE would be overriden by the final do_TRACE call of the parent .preprocess()
+                             For="fitme", ## constrained: preprocess must allow spatial and non-spatial models
+                             init.HLfit=as.list(resid.model$init.HLfit) ## converts NULL to list() as exp'd by .preprocess()
+  )
+  ## preprocess formal arguments that were ignored up to v.2.4.30 14/05/2018:
+  other_preprocess_args <- setdiff(names(formals(.preprocess)),names(preprocess_arglist))
+  preprocess_arglist[other_preprocess_args] <- resid.model[other_preprocess_args]
+  .preprocess_resid(preprocess_arglist)
+}
+
 .preprocess_phi_model <- function(processed, models, resid.model, control.HLfit, HLmethod, data, 
                                   control.glm, family) {
   residFrames <- NULL
+  resid.model$fixed <- .preprocess_fixed(resid.model$fixed)
   resid.formula <- resid.model$formula
-  is_mixed <- ! is.null(.parseBars(resid.formula))
-  has_etaFix <- ! is.null(resid.model$etaFix)
+  is_mixed <- ! is.null(.parseBars(resid.formula)) # will be identified as "phiHGLM"
+  has_etaFix <- ! is.null(resid.model$etaFix) # NOT to be confused with variable etaFix used for outer optim.
   mainfamfam <- family$family
-  if ( is.null(processed$phi.Fix)) {
+  if ( is.null(processed$phi.Fix) ) {
     if (is_mixed && is.null(resid.model$rand.family)) resid.model$rand.family <- gaussian() # avoids rand.families being NULL in .preprocess_resid() -> .preprocess()
-    if (is_mixed || 
-        has_etaFix # GLM with etaFix: a fixed etaFix can be fitted by an offset (alternative below)
-                   # but a variable etaFix (outer optim) will be fitted using an HLfit (useful at least for devel purposes)
+    
+    if (is_mixed || # phiHGLM
+        has_etaFix # resid (phiGLM) with etaFix: we use the residProcessed interface as a quick implementation of this case
+                   # Such a fixed etaFix can, and should better, be fitted by an offset (alternative below).
         ) { 
-      preprocess_arglist <- list(control.HLfit=control.HLfit, ## constrained
-                                 ranFix=resid.model$fixed, 
-                                 HLmethod=HLmethod, ## constrained
-                                 predictor=resid.formula, ## obvious
-                                 resid.model=resid.model$resid.model, # potentially allows nested resid.model's... 
-                                 REMLformula=NULL, # constrained
-                                 data=data, # obvious (?) 
-                                 family=resid.model$family, # obvious, gaussian
-                                 BinomialDen=NULL, # obviously no binomial response
-                                 rand.families=resid.model$rand.family, # (NULL not handled by preprocess); 
-                                 #   outer preprocess calls *receive* a default value from formals(HLfit)
-                                 etaFix=resid.model$etaFix, ## not constrained, but should rather use 'resid.model$fixed'
-                                 prior.weights=NULL, ## currently defined  dynamically using lev_phi...
-                                 control.glm=control.glm, ## constrained
-                                 verbose=NULL, ## TRACE would be overriden by the final do_TRACE call of the parent .preprocess()
-                                 For="fitme", ## constrained: preprocess must allow spatial and non-spatial models
-                                 init.HLfit=as.list(resid.model$init.HLfit) ## converts NULL to list() as exp'd by .preprocess()
-      )
-      ## preprocess formal arguments that were ignored up to v.2.4.30 14/05/2018:
-      other_preprocess_args <- setdiff(names(formals(.preprocess)),names(preprocess_arglist))
-      preprocess_arglist[other_preprocess_args] <- resid.model[other_preprocess_args]
-      processed$residProcessed <- .preprocess_resid(preprocess_arglist)
-      # message is a nuisance for bootstraps
+      processed$residProcessed <- .get_residProcessed(processed=processed,
+        control.HLfit=control.HLfit, resid.model=resid.model, HLmethod=HLmethod, 
+        resid.formula=resid.formula, data=data, control.glm=control.glm, 
+        print_phiHGLM_info=processed$verbose["phifit"] && is_mixed)
+      # Message is a nuisance for bootstraps:
       # if (processed$verbose["phifit"] && # should be FALSE in bootstraps bc the message is a nuisance in that context
       #     identical(names(resid.model$fixed$phi),"default")) message("'phi' of residual dispersion model set to 1 by default")
-      if (is_mixed) {
-        models[["phi"]] <- "phiHGLM" 
-        p_phi <- NA
-      } else {
+    } 
+    
+    if (is_mixed) {
+      models[["phi"]] <- "phiHGLM" 
+      p_phi <- NA
+    } else {
+      residFrames <- .get_terms_info(formula=resid.formula, data=data, famfam=resid.model$family$family)
+      attr(resid.formula,"off") <- off <- model.offset(residFrames$mf) ## only for summary.HLfit() (and below)
+      attr(resid.formula,"has_intercept") <- (attr(residFrames$fixef_off_terms,"intercept")!=0L) ## check_identifiability_LMM looks for it
+      resid.model$formula <- resid.formula  ## put it back after attributes have been added (no equivalent if phiHGLM)
+      if (has_etaFix) {
         models[["phi"]] <- "phiGLM" 
         p_phi <- .old_NCOL(processed$residProcessed$AUGI0_ZX$X.pv) # without the etaFix ones; info for .more_init_optim() to eval allPhiScalorFix which must be non-NA
-      }
-    } else { # NOT mixed-effect model NOR etaFix. Still allows a fixed offset that should give result equivalent ot a fixed etaFix
-      residFrames <- .get_terms_info(formula=resid.formula, data=data, famfam=resid.model$family$family)
-      attr(resid.formula,"off") <- model.offset(residFrames$mf) ## only for summary.HLfit() (and below)
-      attr(resid.formula,"has_intercept") <- (attr(residFrames$fixef_off_terms,"intercept")!=0L) ## for identifiability checks
-      ## if formula= ~1 and data is an environment, there is no info about nobs, => fr_disp$X has zero rows, which is a problem later 
-      p_phi <- .old_NCOL(residFrames$X)
-      namesX_disp <- colnames(residFrames$X)
-      if (p_phi==1L && namesX_disp[1]=="(Intercept)"
-          && is.null(attr(resid.formula,"off")) ## added 06/2016 (bc phiScal does not handle offset in a phi formula) 
-      ) {
-        models[["phi"]] <- "phiScal"
-      } else if (p_phi==0L) { # resid.formula has only an offset term.
-        # set phi.Fix so that it is used by fitting functions, instead of running phiGLM code : 
-        #   leverages, dev.res , .calc_dispGammaGLM() -> model.frame(), model.matrix()... to find that there is nothing to fit!
-        processed$phi.Fix <- resid.model$family$linkinv(model.offset(residFrames$mf)) # fitting fns see this as phi.Fix
-        models[["phi"]] <- "phiGLM" # meaningful: see how new offset values are predicted in .calcResidVar()
-      } else { 
-        models[["phi"]] <- "phiGLM"
-      }
-      resid.model$formula <- resid.formula  ## put it back after attributes have been added (no equivalent if phiHGLM has been detected?)
-    } 
-  } else { # phi.Fix was not NULL. In particular for rdisPars it is presumably 1. models[["phi"]] remains ""
+      } else { # NOT mixed-effect model NOR etaFix. Still allows a fixed offset that should give result equivalent to a fixed etaFix (but with different X)
+        ## if formula= ~1 and data is an environment, there is no info about nobs, => fr_disp$X has zero rows, which is a problem later 
+        X <- residFrames$X
+        p_phi <- .old_NCOL(X)
+        namesX_disp <- colnames(X)
+        if (p_phi==1L && namesX_disp[1]=="(Intercept)"
+            && is.null(off) ## added 06/2016 (bc phiScal does not handle offset in a phi formula) 
+        ) {
+          models[["phi"]] <- "phiScal"
+        } else if (p_phi==0L) { # resid.formula has only an offset term.
+          # set phi.Fix so that it is used by fitting functions, instead of running phiGLM code : 
+          #   leverages, dev.res , .calc_dispGammaGLM() -> model.frame(), model.matrix()... to find that there is nothing to fit!
+          processed$phi.Fix <- resid.model$family$linkinv(model.offset(residFrames$mf)) # fitting fns see this as phi.Fix
+          models[["phi"]] <- "phiGLM" # meaningful: see how new offset values are predicted in .calcResidVar()
+        } else { 
+          models[["phi"]] <- "phiGLM"
+          disp_env <- family$resid.model # virgin envir distinct from the processed$residModel list
+          disp_env$resid.formula <- resid.formula 
+          if ( ! is.null(off)) disp_env$off <- off
+          disp_env$colnames_X <- namesX_disp
+          disp_env$X <- X
+        }
+      } 
+    }
+  } else { # Typically when phi.Fix was not NULL. In particular for rdisPars it is presumably 1. models[["phi"]] remains ""
     if ( # ( ! mainfamfam %in% c("gaussian","Gamma")) && 
          .DEPARSE(resid.formula) != "~1") {
       if ( ! mainfamfam %in% c("beta_resp", "betabin", "negbin1","negbin2", "gaussian", "Gamma")) warning(paste0("resid.model may be ignored in ",mainfamfam,"-response models"))
-
       resid.formula <- resid.model$formula
       if ( ! is.null(.parseBars(resid.formula))) stop("Random effects are not allowed in model for family parameter.")
-      # NOT mixed-effect model NOR etaFix. Still allows a fixed offset that should give result equivalent ot a fixed etaFix
+      # NOT mixed-effect model NOR etaFix. Still allows a fixed offset that should give result equivalent to a fixed etaFix
       residFrames <- .get_terms_info(formula=resid.formula, data=data, famfam="")
       off <- model.offset(residFrames$mf)
       # attr(resid.formula,"has_intercept") <- (attr(residFrames$fixef_off_terms,"intercept")!=0L) ## for identifiability checks
@@ -729,7 +754,7 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") {
       ) {
         models[["rdispar"]] <- "rdiScal"
       } else {
-        disp_env <- family$resid.model # virgin envir
+        disp_env <- family$resid.model # virgin envir distinct from the processed$residModel list
         disp_env$resid.formula <- resid.formula
         if ( ! is.null(off)) disp_env$off <- off
         if (p_phi==0L) { # resid.formula has only an offset term.
@@ -844,8 +869,10 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") {
 .calc_Binomial_Den <- function(Y, family, nobs) {
   if (family$family %in% c("binomial","betabin") && NCOL(Y)>1) {
     BinomialDen <- rowSums(Y)
-    if (any(BinomialDen == 0)) {
-      stop("please remove missing data (i.e. for which binomial sample size is 0).")
+    if (any(chk <- BinomialDen == 0L)) {
+      # if (For_fitmv) {
+        return(chk)
+      # } else stop("please remove missing data (i.e. for which binomial sample size is 0).")
     }
     ## It's not really possible to remove data at this stage as this may not match the dimension of the distance matrices
     ## moreover one cannot simply remove rows of a matrix "root"...
@@ -917,7 +944,7 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") {
 }
 
 .preprocess_HL_REMLformula <- function(HLmethod, processed, BinomialDen, nobs, control.HLfit, y, REMLformula) {
-  HL <- eval(parse(text=paste0("c",substr(HLmethod,3,100)))) ## extracts the (...) part into a vector
+  HL <- eval(str2lang(paste0("c",substr(HLmethod,3,100)))) ## extracts the (...) part into a vector
   if (length(HL)==2) HL <- c(HL,1)
   processed$HL <- HL ## ! this may be modified locally !!
   if (HL[1L]=="SEM") processed$SEMargs <- .preprocess_SEMargs(BinomialDen, nobs, control.HLfit, y)
@@ -1093,21 +1120,6 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") {
   } else vecdisneeded <- rep(FALSE,3L)
   vecdisneeded
 }
-
-.obsInfo_warn <- local({
-  obsInfo_warned <- FALSE
-  function() {
-    if ( ! environment(.obsInfo_warn)$obsInfo_warned) {
-      warning(paste("From version 4.0, observed  Hessian matrix is used by default\n",
-                    'for GLM families with non-canonical link. Use spaMM.options(obsInfo=FALSE)\n',
-                    'to use expected Hessian globally in Laplace approximation (past default),\n', 
-                    'or (say) method=c("ML","exp") to use it on a specific fit.'),
-              call.=FALSE)
-      obsInfo_warned <<- TRUE
-    }
-  }
-})
-
 
 .need_obsAlgo <- function(HLmethod, family, canonicalLink=family$flags$canonicalLink, 
                           nrand, opt=.spaMM.data$options$obsInfo) {

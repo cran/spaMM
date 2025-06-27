@@ -798,7 +798,7 @@
         (which_LevMar_step =="V_IN_B" && damped_WLS_blob$breakcond=="OK_gain") ||
         (which_LevMar_step =="v" && damped_WLS_blob$breakcond=="low_pot")
       ) && damped_WLS_blob$APHLs$p_v>best_HL1_lik ) {
-        #cat(crayon::red("ICI!\n"))
+        #cat(cli::col_red("ICI!\n"))
         best_HL1_damped_WLS_blob <- damped_WLS_blob
         best_HL1_lik <- best_HL1_damped_WLS_blob$APHLs$p_v
         #print(best_HL1_lik)
@@ -818,7 +818,7 @@
       if (maxit.mean>1L) {
         if (LevenbergM) processed$LevenbergM["LM_start"] <- TRUE
         if (trace) {
-          cat(crayon::red("!"))
+          cat(cli::col_red("!"))
         } else if ( ! identical(processed$warned_maxit_mean, TRUE)) {
           processed$warned_maxit_mean <- TRUE
           if (!is.null(for_intervals)) {

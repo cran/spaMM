@@ -5,7 +5,7 @@
 #
 def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug, # already ZAL_scaled
                                                  weight_X,w.ranef,H_global_scale,
-                                                 force_QRP=NULL # ignored
+                                                 force_QRP_global=NULL # ignored by this sXaug type
                                                  ) {
   n_u_h <- length(w.ranef)
   Xrows <- n_u_h+seq(length(weight_X)) 
@@ -159,7 +159,7 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug, # already ZAL_scaled
   }
 }
 
-# trace(get_from_MME, print=FALSE, tracer=quote(cat("'",crayon::yellow(which),"'")))
+# trace(get_from_MME, print=FALSE, tracer=quote(cat("'",cli::col_yellow(which),"'")))
 # trace(spaMM:::.sXaug_EigenDense_QRP_Chol_scaled, print=FALSE, tracer=quote(cat("'",which,"'")))
 #
 .sXaug_EigenDense_QRP_Chol_scaled <- function(sXaug,which="",szAug=NULL,B=NULL) { 
@@ -341,7 +341,7 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug, # already ZAL_scaled
     # nonSPD => we use the regularized WLS_mat so do not consider invIm2QtdQ_Z factor here even though it is defined
     # sign SPD => we currently use a Chol facto here so no invIm2QtdQ_Z factor.
     #if (is.null(BLOB$signs) || BLOB$nonSPD) {
-      return(sum(rhs^2))
+      return(sum(rhs*rhs))
     #} else return(sum(rhs * drop(BLOB$invIm2QtdQ_Z %*% rhs))) 
   } 
   if (which=="Mg_solve_g") {
@@ -351,7 +351,7 @@ def_sXaug_EigenDense_QRP_Chol_scaled <- function(Xaug, # already ZAL_scaled
       rhs <- backsolve(BLOB$R_scaled, rhs, transpose = TRUE)
     } else rhs <- backsolve(BLOB$R_scaled, rhs[BLOB$perm], transpose = TRUE)
     ## Same comment as on "inv_d2hdv2"...
-    return(sum(rhs^2)) # correct even in the signed SPD case (no invIm2Q... correction is implemented bc "EigenDense_QRP" actually uses chol in that case)
+    return(sum(rhs*rhs)) # correct even in the signed SPD case (no invIm2Q... correction is implemented bc "EigenDense_QRP" actually uses chol in that case)
   } 
   if (which=="Mg_invXtWX_g") { ## 
     if (is.null(BLOB$XtWX)) BLOB$XtWX <- .crossprod(sXaug[-BLOB$seq_n_u_h,-BLOB$seq_n_u_h])

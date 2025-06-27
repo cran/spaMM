@@ -5,7 +5,9 @@
 \description{
 A model can be specified for the residual-dispersion parameter \eqn{\phi} of gaussian and Gamma response families. This model may or may not include random effects. The \code{resid.model} argument of all fitting functions is used to specify this model and to control its fit.   \code{resid.model} is \bold{either} a formula (without left-hand side) for the dispersion parameter \code{phi} of the residual error (a log link is assumed); \bold{or} a list of arguments similar to those of a standard \code{fitme} call. 
 
-The residual-dispersion model is fitted by a specific method (see Details) involving estimation of its parameters by the fit of a Gamma-response model to response values computed by the parent fitting function (i.e., the fitting function called to fit the joint models for main response and for residual dispersion). For mixed-effect residual-dispersion models, the \code{fitme} function is used internally to fit this Gamma-response model (irrespective of the parent fitting function used, which may not be \code{fitme}). 
+The residual-dispersion model may be fitted by a specific method (see Details) involving estimation of its parameters by the fit of a Gamma-response model to response values computed by the parent fitting function (i.e., the fitting function called to fit the joint models for main response and for residual dispersion). For mixed-effect residual-dispersion models, the \code{fitme} function is used internally to fit this Gamma-response model (irrespective of the parent fitting function used, which may not be \code{fitme}). 
+
+For fixed-effect residual-dispersion models, this specific method may be slower than a more generic optimization method. By default, \pkg{spaMM} now uses the latter when it guesses it is faster and safe. However, this feature is recent and all extractor methods may not have yet been updated to handle its results. So its use can be prevented by setting \code{spaMM.options(allow_outer_phiGLM=FALSE)}.
 }
 \usage{
 # 'resid.model' argument of fitting functions (fitme(), HLfit(), etc)

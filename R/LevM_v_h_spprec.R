@@ -155,7 +155,7 @@
       dampings_env$v[["v_in_b"]] <- damped_WLS_blob$damping
     } ################ E N D LOOP ##############
     if (innerj==maxit.mean) {
-      if (trace) cat(crayon::red("!"))
+      if (trace) cat(cli::col_red("!"))
       breakcond <- "maxit"
     }
     break_info$IRLS_breakcond <- breakcond

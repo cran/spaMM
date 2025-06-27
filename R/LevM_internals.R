@@ -66,9 +66,11 @@
     if (inherits(tc,"sparseMatrix")) decomp <- .try_RSpectra(tc, symmetric=TRUE) # 1000 -> 0.28s
     if (is.null(decomp)) { # RSpectra was not available or it failed or matrix was not sparse
       if (ncol(tc)<1000L) { # 1000 -> 0.5s
+        ## according to the doc:
         # kappa() computes by default (an estimate of) the 2-norm condition number of a matrix or of 
         # the R matrix of a QR decomposition, perhaps of a linear fit. The 2-norm condition number can 
         # be shown to be the ratio of the largest to the smallest *non-zero* singular value of the matrix.
+        ## However,  kappa(diag(c(1,1,0))) is Inf, so stating "*non-zero*" seems wrong. 
         condnum <- kappa(tc)
       } # else condnum remains NULL
     } else condnum <- decomp$eigrange[2]/decomp$eigrange[1]

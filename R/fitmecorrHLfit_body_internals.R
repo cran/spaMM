@@ -775,6 +775,68 @@
   return(list(not_inner_phi=not_inner_phi, init.optim=init.optim))
 }
 
+# Context for mv fits is:
+# .calc_optim_args_mv() - .calc_optim_args() - .more_init_optim(proc_it, processed) -
+#  .init_optim_outer_phiGLM(proc1) for a submodel - .get_res_inits_by_xLM('processed'=proc1) here, 
+#
+# ____F I X M E____ I could also try to extend this logic to not-phiGLM residual-disp models
+# In that case the .init_rdisPars() call (providing $scaled_X) should be followed by 
+# a call to .get_res_inits_by_xLM().
+# The context would be 
+# .calc_optim_args_mv() - .calc_optim_args() - 
+#   [.calc_init.optim_family_par() instead of .more_init_optim()] -
+# .init_rdisPars() followed by .get_res_inits_by_xLM()
+.get_res_inits_by_xLM <- function(processed) {
+  resxlm <- .get_inits_by_xLM(processed)$resxlm 
+  ##
+  ..res_sq <- resxlm$residuals^2
+  XX <- (processed$family$resid.model$scaled_X)
+  locfit <- spaMM_glm(..res_sq ~ 0+XX, family=Gamma(log))
+  coef(locfit)
+  ## giving directly scaled values, rather than (say)
+  # locdata <- cbind(processed$data, ..res_sq=resxlm$residuals^2)
+  # locform <- as.formula(paste("..res_sq", deparse(processed$residModel$formula)))
+  # locfit <- glm(locform, data=locdata, family=Gamma(log))
+}
+
+# attempt to define an initial value for outer phiGLM
+.init_optim_outer_phiGLM <- function(processed, init.optim, nrand, 
+                                     reasons_for_outer, # may depend on option 'allow_outer_phiGLM'
+                                     rdisp) {
+  if (processed$family$flags$LMbool # restrictive, but a first start. (___F I X M E___)
+      # only a test on the family = gaussian(identity), not the whole model...
+      ) { 
+    if (reasons_for_outer) {
+      ## default method will then be outer but can be reversed if init is NaN
+      ## So check that there is no reversal to inner  (and to test NaN we need to test NULL):
+      outer_rdisp <- is.null(init.optim$rdisPars) || ! is.nan(init.optim$rdisPars) ## outer if NULL, NA or numeric
+    } else {
+      ## default will then be inner but can be reversed if numeric or NA (hence neither NULL nor NaN)
+      outer_rdisp <- ! (is.null(init.optim$rdisPars) || is.nan(init.optim$rdisPars))
+    }
+  } else outer_rdisp <- FALSE ## other families: outer for LLMs
+  if (outer_rdisp) {
+    XX <- processed$family$resid.model$scaled_X
+    if (NCOL(XX)>4L) outer_rdisp <- FALSE # 4L chosen based on varying the 'dat_small' in 'mod_dvl_outer_phiGLM' 
+  }
+  if (outer_rdisp) {
+    if (NCOL(XX)) {
+      if (is.null(init.optim$rdisPars)) { 
+        ## if NULL user init (which must therefore be complete if present)
+        ## the next line no longer works bc the 'xLM' ignores the residual-dispersion formula, fitting only a Intercept for dispersion
+        # init.optim$rdisPars <- .get_inits_by_xLM(processed)$phi_est/(nrand+1L) ## at least one initial value should represent high guessed variance
+        ## => quick patch implemented in .get_res_inits_by_xLM()
+        coefs <- .get_res_inits_by_xLM(processed)
+        init.optim$rdisPars <- setNames(coefs/(nrand+1L), colnames(XX))
+      } else init.optim$rdisPars <- .scale(XX, init.optim$rdisPars)
+    }
+  } else {
+    init.optim$rdisPars <- init.optim$rdisPars[ ! is.nan(init.optim$rdisPars)]
+    if ( ! length(init.optim$rdisPars)) init.optim["rdisPars"] <- NULL
+  }
+  return(list(not_inner_rdisp=outer_rdisp, init.optim=init.optim))
+}
+
 .eval_init_lambda_guess <- function(processed, stillNAs, ZAL=NULL, cum_n_u_h, For) {
   nrand <-  length(processed$ZAlist)
   if (is.null(processed$main_terms_info$Y)) { ## for resid model
@@ -897,7 +959,8 @@
   ## trying to guess all cases where optimization is useful. But FIXME: create all init and decide afterwardsS
   phimodel1 <- proc1$models[['phi']]
   allPhiScalorFix <- all(processed$models[['phi']] == "phiScal" | 
-                         (processed$models[['phi']] == "phiGLM" & .unlist(processed$p_fixef_phi)==0L) | # identify offset-only phi models. 
+                         # (processed$models[['phi']] == "phiGLM" & .unlist(processed$p_fixef_phi)==0L) | # identify offset-only phi models.../...
+                           processed$models[['phi']] == "phiGLM" | # .../...but now phiGLM can be outer-optimized 
                            processed$models[['phi']] == "")
   ranCoefs_blob <- processed$ranCoefs_blob
   is_MixedM <- ( ! is.null(ranCoefs_blob) )
@@ -970,12 +1033,22 @@
         init_optim_will_have_lambda_or_ranCoefs_anyway <- 
           length(.unlist(prospective_init.optim[c("lambda","ranCoefs")])) #  any(var_ranCoefs) appears to be a sufficient condition here.
       } else init_optim_will_have_lambda_or_ranCoefs_anyway <- FALSE
-      init_optim_phi_blob <- 
-        .init_optim_phi(phimodel1, proc1, init.optim, nrand1, 
-                        reasons_for_outer=init_optim_will_have_lambda_or_ranCoefs_anyway || 
-                          outer_phiScal_spares_costly_comput)
-      other_reasons_for_outer_lambda <- init_optim_phi_blob$not_inner_phi
-      init.optim <- init_optim_phi_blob$init.optim
+      if (phimodel1=="phiGLM") {
+        init_optim_outer_phiGLM_blob <- # This is where "outer phiGLM" is allowed.
+          .init_optim_outer_phiGLM(proc1, init.optim, nrand1, 
+                                   reasons_for_outer=(init_optim_will_have_lambda_or_ranCoefs_anyway || 
+                                                        outer_phiScal_spares_costly_comput) &&
+                                     .spaMM.data$options$allow_outer_phiGLM)
+        init.optim <- init_optim_outer_phiGLM_blob$init.optim
+        other_reasons_for_outer_lambda <- init_optim_outer_phiGLM_blob$not_inner_rdisp
+      } else {
+        init_optim_phi_blob <- 
+          .init_optim_phi(phimodel1, proc1, init.optim, nrand1, 
+                          reasons_for_outer=init_optim_will_have_lambda_or_ranCoefs_anyway || 
+                            outer_phiScal_spares_costly_comput)
+        init.optim <- init_optim_phi_blob$init.optim
+        other_reasons_for_outer_lambda <- init_optim_phi_blob$not_inner_phi
+      }
     } else other_reasons_for_outer_lambda <- outer_phiScal_spares_costly_comput
     if (nrand1) {
       # Set outer optimization for lambda and ranCoefs (handling incomplete ranFix$lambda vectors) through call to .init_optim_lambda_ranCoefs()
@@ -1038,7 +1111,7 @@
   #   rdisPars[initnames] <- init
   # }  
   rdisPars <- na.omit(rdisPars)
-  if ( length(rdisPars)) { # if estimation is needed, do it on sclaed matrix
+  if ( length(rdisPars)) { # if estimation is needed, do it on scaled matrix
     disp_env$scaled_X <- .scale(disp_env$X)
     disp_env$X <- NULL
     rdisPars <- .scale(disp_env$scaled_X, rdisPars)
@@ -1046,7 +1119,7 @@
   rdisPars
 }
 
-
+# Called only on individual submodels:
 .calc_init.optim_family_par <- function(family, init.optim, fixed, processed, 
                                         inits_by_xLM=.get_inits_by_xLM(processed)) {
   if (family$family=="COMPoisson") {
@@ -1093,9 +1166,16 @@
         init.optim$NB_shape <- NULL
       } # and this should have the effect that user lower and upper values should be ignored too.
     }  
-  # } else if (processed$models$rdispar=="rdiForm") { # "speculative outer phiGLM 2023/07/09" 
-  #   init.optim$rdisPars <- .init_rdisPars(init.optim$rdisPars, fixed=fixed, disp_env=family$resid.model,
-  #                                         init_by_glm=inits_by_xLM$phi_est)
+  } else if (processed$models$phi=="phiGLM") { # "outer phiGLM" 
+    abyss <- .init_rdisPars(init.optim$rdisPars, fixed=fixed, disp_env=family$resid.model,
+                            init_by_glm=inits_by_xLM$phi_est)
+    ## the return value of .init_rdisPars is not used bc, as for phi but not as for the previous family dispersion parameters,
+    ## inner vs outer optimization will be chosen later and depends on presence/absence of $rdisPars here.
+    ## However .init_rdisPars() is called bc it first checks whether there are coefs to estimate,
+    ## and if so, it adds essential info (scaled_X instead of X) in the disp_env. 
+    init.optim$rdisPars <- processed$residModel$init$beta ## user init, which .init_optim_outer_phiGLM() will convert to scaled values.
+    ## if this user init is NULL, .init_optim_outer_phiGLM() will use .get_res_inits_by_xLM()
+    ## to provide initial values.
   }
   init.optim
 }
@@ -1209,8 +1289,8 @@
     return(list(inits=inits, fixed=fixed, corr_types=corr_types))
   } else {
 
-    if ( ! is.null(inits$`init`$rdisPars)) {
-      famdisp_lowup <- .wrap_calc_famdisp_lowup(processed)
+    if ( ! is.null(rdispar <- inits$`init`$rdisPars)) {
+      famdisp_lowup <- .wrap_calc_famdisp_lowup(proc_it) 
     } else famdisp_lowup <- NULL
     
     if (FALSE && ! is.null(inits$`init`$beta)) { # outer beta... FALSE && ...because the effect is not convincing (__F I X M E___). 

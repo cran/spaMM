@@ -30,7 +30,7 @@ betabin <- function (prec = stop("betabin's 'prec' must be specified"), link = "
       if (!is.null(stats$name)) 
         linktemp <- stats$name
     }
-    else stop(gettextf("\"%s\" link not available for beta response family; available links are \"logit\", \"probit\", \"cloglog\" and \"cauchit\"", 
+    else stop(gettextf("\"%s\" link not available for beta family; available links are \"logit\", \"probit\", \"cloglog\" and \"cauchit\"", 
                        linktemp))
   }
 
@@ -61,7 +61,7 @@ betabin <- function (prec = stop("betabin's 'prec' must be specified"), link = "
     } else prec <- prec*c(wt) 
     # Binomial: (y-muCOUNT)/(muFREQS*(1-muFREQS)) 
     muCOUNT <- muFREQS * BinomialDen
-    #cat(crayon::yellow("dL"))
+    #cat(cli::col_yellow("dL"))
     #str((y-muCOUNT)/(muFREQS*(1-muFREQS)))
     ## \[Phi] (-PolyGamma[0, \[Mu] \[Phi]] + PolyGamma[0, \[Phi] - \[Mu] \[Phi]] - PolyGamma[0, n - y + \[Phi] - \[Mu] \[Phi]] + PolyGamma[0, y + \[Mu] \[Phi]])
     #str(prec*(digamma(y+prec * muFREQS) - digamma(BinomialDen-y+prec * (1-muFREQS)) - digamma(prec * muFREQS) + digamma(prec * (1-muFREQS))))
@@ -71,7 +71,7 @@ betabin <- function (prec = stop("betabin's 'prec' must be specified"), link = "
     y <- drop(y)
     prec <- prec*c(wt) 
     # Binomial:  (-BinomialDen + y)/(1 - muFREQS)^2  -  y/muFREQS^2 
-    #cat(crayon::red("d2L"))
+    #cat(cli::col_red("d2L"))
     #str((-BinomialDen + y)/(1 - muFREQS)^2  -  y/muFREQS^2 )
     #str(prec^2 *(trigamma(y+prec * muFREQS) + trigamma(BinomialDen-y+prec * (1-muFREQS)) -trigamma(prec*muFREQS)-trigamma(prec * (1-muFREQS))))
     prec^2 *(trigamma(y+prec * muFREQS) + trigamma(BinomialDen-y+prec * (1-muFREQS)) -trigamma(prec*muFREQS)-trigamma(prec * (1-muFREQS)))

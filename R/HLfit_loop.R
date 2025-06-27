@@ -1,4 +1,6 @@
-.loop_while_TRUE <- function(processed, loopin_blob, loopout_blob, warningEnv, 
+.loop_while_TRUE <- function(processed, 
+                             loopin_blob, # not used: variables potentially taken from it are explicitly provided in the calls   
+                             loopout_blob, warningEnv, 
                              iter=0L, info_for_conv_rC=NULL, prev_lik=-Inf, conv_logL=NA,
                              conv.lambda=FALSE, conv.corr=FALSE, conv.phi=FALSE,
                              #
@@ -13,13 +15,13 @@
                              lambda_est=loopout_blob$lambda_est,
                              phi_est=loopout_blob$phi_est,
                              phiBLOB=loopout_blob$phiBLOB, # something strange: this line has been missing yet 
-                                                          # neither the tests (&long &extras...) nor R CMD check say a problems
+                                                          # neither the tests (&long &extras...) nor R CMD check saw a problem
+                             ZAL=loopout_blob$ZAL,
                              #
                              mu=muetablob$mu,
                              #
                              nrand=loopin_blob$nrand,
                              n_u_h=loopin_blob$n_u_h,
-                             ZAL=loopin_blob$ZAL,
                              ranCoefs_blob=loopin_blob$ranCoefs_blob,
                              intervalInfo=loopin_blob$intervalInfo,
                              pforpv=loopin_blob$pforpv,
@@ -46,7 +48,7 @@
                              models=processed$models,
                              prior.weights=processed$prior.weights
 ) {
-  
+  ZAL_updated <- FALSE
   while ( TRUE ) {
     ##the main loop with steps: new linear predictor, new leverages, new phi, new w.resid, new lambda, new fn(lambda)
     if (nrand) { # (models[["eta"]]=="etaHGLM") {
@@ -93,7 +95,7 @@
     
     ########## LEVERAGES
     if (std_dev_res_needed_4_inner_estim) {
-      leverages <- .calc_std_leverages(models, need_ranefPars_estim=need_ranefPars_estim, phi.Fix=phi.Fix, auglinmodblob=auglinmodblob, 
+      leverages <- .calc_std_leverages(models=models, need_ranefPars_estim=need_ranefPars_estim, phi.Fix=phi.Fix, auglinmodblob=auglinmodblob, 
                                        n_u_h=n_u_h, nobs=length(y), processed=processed, 
                                        # w.resid=w.resid, u_h=u_h, 
                                        need_simple_lambda=need_simple_lambda, 
@@ -143,7 +145,7 @@
         ranefEstargs <- c(ranefEstargs,list(phi_est=phi_est,
                                             as_matrix=( ! inherits(ZAL,"Matrix")),v_h=v_h))
         ## MakeCovEst defines à local ZAL and the eta,mu, w.resid must generally be recomputed locally for this ZAL
-        # Thi is a list of arguments for .makeCovEst1 -> objfn -> .solve_IRLS_as_ZX  
+        # This is a list of arguments for .makeCovEst1 -> objfn -> .solve_IRLS_as_ZX  
         ranefEstargs$MakeCovEst_pars_not_ZAL_or_lambda <- list(
           muetablob=muetablob,
           maxit.mean=maxit.mean, etaFix=etaFix,
@@ -225,6 +227,7 @@
           }
           ZAL <- .compute_ZAL(XMatrix=LMatrices, ZAlist=processed$ZAlist,as_matrix=( ! inherits(ZAL,"Matrix")),
                               bind.= ! processed$is_spprec) 
+          ZAL_updated <- TRUE
           if ( ! LMMbool ) {
             ## ZAL is modified hence wranefblob must be modified (below) but also eta-> mu->GLMweights
             ## .makeCovEst1 may have reestimated beta but we do not take this into account nor any resulting change in the 'blobs'
@@ -282,6 +285,7 @@
   loopout_blob$APHLs <- APHLs
   if (need_ranefPars_estim) loopout_blob$calcRanefPars_blob <- calcRanefPars_blob
   if (std_dev_res_needed_4_inner_estim) loopout_blob$leverages <- leverages
+  if (ZAL_updated) loopout_blob$ZAL <- ZAL
   loopout_blob$auglinmodblob <- auglinmodblob  
   loopout_blob$PHIblob <- PHIblob
   
@@ -370,6 +374,7 @@
                                                            vec_n_u_h, n_u_h, ranCoefs_blob) # mv __FIXME__ ->.calc_fam_corrected_guess() uses total nrand rather than nrand for submodels that contain the ranef
     loopout_blob$u_h <- processed$u_h_v_h_from_v_h(loopout_blob$v_h, lower.v_h=NULL, upper.v_h=NULL)
     loopout_blob$wranefblob <- processed$updateW_ranefS(u_h=loopout_blob$u_h,v_h=loopout_blob$v_h,lambda=loopout_blob$lambda_est) ## initialization !
+    loopout_blob$ZAL <- ZAL
   }
   # loopout_blob # envir, no return needed
 }

@@ -92,6 +92,10 @@ Rousset F., Ferdy, J.-B. (2014) Testing environmental and genetic effects in the
 See the \code{test} directory of the package for many additional examples of \pkg{spaMM} usage beyond those from the formal documentation. 
 
 See \code{\link{fitme}} for multivariate-response models. 
+
+Specific information for installation of \pkg{spaMM} dependencies from source may be found at\cr
+\url{https://gitlab.mbb.univ-montp2.fr/francois/spamm-ref#installation}. % nlopt glpk GSL
+
 }
 
 \examples{

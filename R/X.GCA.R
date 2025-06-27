@@ -3,8 +3,8 @@ X.GCA <- function(term, contr="contr.treatment", ...) {
   mc <- match.call()
   term <- deparse(mc$term)
   varnames <- strsplit(term,":")[[1]]
-  ID1 <- eval(parse(text=varnames[1L]), envir=parent.frame())
-  ID2 <- eval(parse(text=varnames[2L]), envir=parent.frame()) # make sure these are factors, otherwise
+  ID1 <- eval(str2lang(varnames[1L]), envir=parent.frame())
+  ID2 <- eval(str2lang(varnames[2L]), envir=parent.frame()) # make sure these are factors, otherwise
   if (is.factor(ID1) || is.factor(ID2)) {
     # ID1>ID2 is possible if the  two factors are ordered, and have the same levels 
     Afactor <- factor(unique(c(ID1,ID2)))
@@ -50,8 +50,8 @@ X.antisym <- function(term, contr="contr.treatment", ...) {
   mc <- match.call()
   term <- deparse(mc$term)
   varnames <- strsplit(term,":")[[1]]
-  ID1 <- eval(parse(text=varnames[1L]), envir=parent.frame())
-  ID2 <- eval(parse(text=varnames[2L]), envir=parent.frame())   
+  ID1 <- eval(str2lang(varnames[1L]), envir=parent.frame())
+  ID2 <- eval(str2lang(varnames[2L]), envir=parent.frame())   
   if (is.null(xlev <- mc$spec_levs)) {
     Afactor <- factor(unique(c(ID1,ID2))) # primary fit
   } else Afactor <- factor(unique(c(ID1,ID2)), levels=xlev) # post-fit call with levels info from primary fit

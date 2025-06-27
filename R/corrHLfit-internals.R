@@ -98,15 +98,49 @@ if (TRUE) {
   return(trRancoef) 
 }
 
-.smooth_regul <- function(covmat, epsi= .spaMM.data$options$tol_ranCoefs_outer["regul"]) {
+.singular_fixed <- function(covmat, 
+                            fixeds, # 'fixeds' are 0|1 weights rather than a corrmatrix
+                            epsi) {
+  
+  # Simplified version of corrmat <- cov2cor(covmat):
+  nc <- ncol(covmat)
+  D <- diag(covmat, names = FALSE)
+  D <- sqrt(D)
+  Is <- 1/D
+  corrmat <- covmat
+  corrmat[] <- Is * covmat * rep(Is, each = nc)
+  #
+
+  Umat <- matrix(1,ncol=nc,nrow=nc)
+  #                     corrmat * matrix of weights
+  Wcorrfn <- function(wei) {corrmat* (wei*Umat + (1-wei)*fixeds)}
+  eigenfn <- function(wei) {min(.eigen_sym(Wcorrfn(wei),only.values = TRUE)$values-4*epsi)}
+  weisol <- uniroot(eigenfn,lower = 0,upper = 1, tol =epsi)$root # tol is 'x.tol' change in wei over one iteration
+  corrmat <- Wcorrfn(weisol)
+  covmat[] <- D * corrmat * rep(D, each = nc)
+  covmat # variances are unchanged, and fixed correlations are respected.
+}
+
+.smooth_regul <- function(covmat, epsi= .spaMM.data$options$tol_ranCoefs_outer["regul"],
+                          fixeds=NULL) {
   es <- .eigen_sym(covmat)
   v <- es$values
   # correction <- v*(v/(4*epsi)-1)+epsi # goes from epsi to 0 as v goes from 0 to 2*epsi. d/dv = -1 in 0 and =0 in 2*epsi.
   # v[v<2*epsi] <- (v+correction)[v<2*epsi] # *increasing* from epsi to 2*epsi as v goes from 0 to 2*epsi, derivable in 2*epsi.
   # i.e.:
+  if ( ! is.null(fixeds) && min(v)<2*epsi) {
+    # .singular_fixed -> uniroot does not provide enough control of numerical precision.
+    # So we still perform the v correction on the .singular_fixed() result.
+    # But we try to avoid as much as possible the need for the v correction
+    # (as it implies that constraints are visibly not exactly enforced)
+    # So, uniroot() is called with ad hoc controls depending on epsi.
+    covmat <- .singular_fixed(covmat, fixeds=fixeds, epsi)
+    es <- .eigen_sym(covmat)
+    v <- es$values
+  } 
   v[v<2*epsi] <- (4*epsi)*v[v<2*epsi]^2+epsi ## inverse is w[w<2*epsi] <- sqrt( (4*epsi)*(w[w<2*epsi]-epsi) )
-  es$d_regul <- v
   covmat <- .ZWZt(es$vectors,v)
+  es$d_regul <- v # the corrected values
   return(structure(covmat, esys=es))
 }
 
@@ -285,8 +319,26 @@ if (TRUE) {
 }
 
 .constr_ranCoefsFn <- function(vec, constraint, rC_transf) {
-  if ( ! is.null(constraint) && attr(constraint,"isDiagFamily")) { # Then vec should be a vector of variances
-    trRancoef <- .dispFn(vec)
+  if ( ! is.null(constraint)) { 
+    if (attr(constraint,"isDiagFamily")) { 
+      ## occurs in tests with (i) fixed=list(..,ranCoefs=list("1"=c(NA,-0,NA)))
+      ## or (ii) fixed=list(ranCoefs=list("1"=c(NA,0,0.00001)))
+      ## Then vec should be a vector of variances (no elmt for corr)
+      ## moreover vec is only of the length of the variable positions,
+      ## so there is no constraint to put back into it.
+      ## So the following code is incorrect for test (ii):
+      # vdiagPos <- attr(constraint,"vdiagPos")
+      # constrpos <- (! is.na(constraint))
+      # constrposinvec <- constrpos[vdiagPos]
+      # vec[constrposinvec] <- constraint[constrpos]
+      ## rather, this is sufficient:
+      trRancoef <- .dispFn(vec) 
+    } else {
+      ## occurs in tests with fixed=list(ranCoefs=list("1"=c(NA,-0.99,NA))
+      constrpos <- (! is.na(constraint))
+      vec[constrpos] <- constraint[constrpos]
+      trRancoef <- .ranCoefsFn(vec=vec, rC_transf=rC_transf) 
+    }
   } else trRancoef <- .ranCoefsFn(vec=vec, rC_transf=rC_transf)
   trRancoef
 }
@@ -364,7 +416,8 @@ if (TRUE) {
   } else { # general case allowing other forms of constraint
     ranCoef <- .ranCoefsInv(trRanCoef, rC_transf=rC_transf)
     if ( ! is.null(constraint)) {
-      ranCoef[ ! is.na(constraint)] <- constraint[ ! is.na(constraint)]
+      constrpos <- (! is.na(constraint))
+      ranCoef[constrpos] <- constraint[constrpos]
       attr(ranCoef,"transf") <- NULL
     }
   }
@@ -582,6 +635,7 @@ if (FALSE) {
   if (is.na(verbose["SEM"])) verbose["SEM"] <- FALSE
   if (is.na(verbose["iterateSEM"])) verbose["iterateSEM"] <- TRUE ## summary info and plots for each iteration
   if (is.na(verbose["phifit"])) verbose["phifit"] <- TRUE ## DHGLM information
+  if (is.na(verbose["print_phiHGLM_info"])) verbose["print_phiHGLM_info"] <- FALSE # can become TRUE in residProcessed for phiHGLM.
   ## when a fit is by HLCor or HLfit, the serious message at the end of HLfit_body are by default displayed,
   ## but not in the other cases:
   if (is.na(verbose["all_objfn_calls"])) verbose["all_objfn_calls"] <- switch(For, "HLCor" = TRUE, "HLfit" = TRUE, 
@@ -1005,7 +1059,7 @@ if (FALSE) {
   return(inits)
 }
 
-.eigen_sym <- function(X) {
+.eigen_sym <- function(X, only.values=FALSE) {
   if (FALSE) { # transient effort to improve over eigen()
     svdv <- svd(X)
     chk <- with(svdv,sign(u)*sign(v)) 
@@ -1014,7 +1068,7 @@ if (FALSE) {
     }
     esys <- with(svdv,list(values=d,vectors=(u+sign(u*v)*v)/2)) # a bit heuristic, but this appears more accurate than simpler alternatives.
   } else {
-    esys <- eigen(X,symmetric = TRUE) ## COV= .ZwZt(esys$vectors,esys$values) ##
+    esys <- eigen(X,symmetric = TRUE, only.values=only.values) ## COV= .ZwZt(esys$vectors,esys$values) ##
     # => bare-bone version, which R CMD check does not like, but that passes the long tests:
     # z <- .Internal(La_rs(X, FALSE))
     # ord <- rev(seq_along(z$values))

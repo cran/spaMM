@@ -1,4 +1,4 @@
-cat(crayon::yellow("\nAdditional tests for predict():"))
+cat(cli::col_yellow("\nAdditional tests for predict():"))
 
 # test of bug corrected in version 2.6.0 (cf NEWS.Rd: "Bug in predict()'ing with an unusual combination of random effects...")
 data("clinics")

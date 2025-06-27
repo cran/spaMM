@@ -10,6 +10,48 @@
   }
 })
 
+.na.vars <- function(object, na.action, vars, ...) {
+  tmp <- na.action(object[,vars, drop=FALSE])
+  structure(object[rownames(tmp),,drop=FALSE], na.action=attr(tmp,"na.action")) # attr necessary for na.exclude test to work
+}
+
+.get_locdataS_blob <- function(locdata, need_new_design, locformS, no_aliases, allvarsS, na.action,
+                               object, aliases, X2X=object$X2X) {
+  loc.na.action <- function(object, vars, ...) .na.vars(object, na.action=na.action, vars=vars, ...) 
+  n_subm <- length(locformS) 
+  locdataS <- vector("list", n_subm)
+  if (need_new_design) {
+    newX.pv <- eta_fix <- NULL
+    for (mv_it in seq_len(n_subm)) {
+      locdata_it <- ..get_locdata(locdata, no_aliases, na.action=loc.na.action, vars=allvarsS[[mv_it]])
+      if (length(aliases)) {
+        for (varname in names(aliases)) locdata_it[[varname]] <- locdata_it[[aliases[[varname]][mv_it]]]
+      }
+      locdataS[[mv_it]] <- locdata_it
+      newX_info <- .get_newX_info(locformS[[mv_it]], locdata_it, object, mv_it=mv_it)
+      newX.pv <- .merge_Xs(newX.pv, newX_info$newX.pv, mv_it)
+      eta_fix <- c(eta_fix, newX_info$eta_fix)
+    }
+    if ( ! is.null(X2X)) newX.pv <- newX.pv %*% X2X
+    RESU <- list(locdata=locdataS, # locdata in RESU for cbind()ing the predictions in .predict_body();
+                 newX.pv=newX.pv, eta_fix=eta_fix) 
+  } else {
+    for (mv_it in seq_len(n_subm)) {
+      locdata_it <- ..get_locdata(locdata, no_aliases, na.action=loc.na.action, vars=allvarsS[[mv_it]])
+      if (length(aliases)) {
+        for (varname in names(aliases)) locdata_it[[varname]] <- locdata_it[[aliases[[varname]][mv_it]]]
+      }
+      locdataS[[mv_it]] <- locdata_it
+    }
+    RESU <- list(locdata=locdataS, # locdata in RESU allowing (potential) cbind() with predictions in .predict_body(). (maybe not implemented for mv)
+                 newX.pv=model.matrix(object)) 
+  } 
+  nobsS <- integer(n_subm)
+  for (mv_it in seq_len(n_subm)) nobsS[mv_it] <- nrow(locdataS[[mv_it]])
+  RESU$cum_nobs <- cumsum(c(0L,nobsS)) # more widely used by .fv_linkinv()
+  RESU
+}
+
 
 .calc_new_X_ZAC_mv <- function(object, newdata=NULL, re.form = NULL,
                             variances=list(residVar=FALSE, cov=FALSE),invCov_oldLv_oldLv_list,
@@ -28,6 +70,7 @@
   # checking variables in the data BEFORE removing "marginalized upon" ranefs.
   # These variables are needed in newdata_it <- locdataS[[mv_it]] in simulate.HLfit() -> .calc_ZAlist_newdata_mv() 
   allvarsS <- vector("list", length(locformS))
+  aliases <- object$aliases
   for (mv_it in seq_along(locformS)) {
     ## [-2] important to ignore response variables
     allvars_it <- all.vars(.strip_cF_args(locformS[[mv_it]][-2])) ## strip to avoid e.g. 'stuff' being retained as a var from IMRF(..., model=stuff)
@@ -35,6 +78,11 @@
       allvars_it <- unique(c(allvars_it, all.vars(.strip_cF_args(.get_phiform(object, mv_it)))))
       allvars_it <- unique(c(allvars_it, all.vars(object$families[[mv_it]]$resid.model$resid.formula)))
     } 
+    if (length(aliases)) {
+      aliased <- intersect(allvars_it,names(aliases))
+      for (varname in aliased) allvars_it <- c(allvars_it, aliases[[varname]][mv_it])
+      allvars_it <- setdiff(allvars_it, aliased)
+    }
     allvarsS[[mv_it]] <- allvars_it
   }
   #
@@ -65,47 +113,42 @@
     } else newinold <- NULL 
   } else newinold <- NULL
   #
+  no_aliases <- setdiff(unique(.unlist(allvarsS)), names(object$aliases))
   if (length(newinold)) {
     new_exp_ranef_strings <- ori_exp_ranef_strings[newinold]
     ranef_form <- as.formula(paste("~",(paste(new_exp_ranef_strings,collapse="+")))) ## effective '.noFixef'
     ranefvars <- all.vars(.strip_cF_args(ranef_form))
-  } else ranefvars <- c()
-  need_new_design <- ( ( ! is.null(newdata) ) || ! is.null(re.form)) ## newdata or new model
-  locdata <- .get_locdata(newdata=newdata, locvars=unique(c(.unlist(allvarsS),ranefvars)), 
-                          object=object, variances=variances, 
-                          na.action= if (need_new_design) {na.pass} else {na.action}) # see comment on evaluation of RESU$newuniqueGeo
-  #
-  locdataS <- vector("list", length(allvarsS))
-  if (need_new_design) {
-    newX.pv <- eta_fix <- NULL
-    for (mv_it in seq_along(locformS)) {
-      allvars_it <- unique(c(allvarsS[[mv_it]], ranefvars)) # all ranefvars + mv_it-specific fixefvars: note difference if ! need_new_design
+    if (length(aliases)) {
+      aliased <- intersect(ranefvars, names(aliases))
+      for (varname in aliased) ranefvars <- c(ranefvars, aliases[[varname]])
       # presence of ranefvars for all ranefs in each allvars_it allows do.call(rbind, locdataS) later in this fn after selecting them
-      locdataS[[mv_it]] <- ..get_locdata(locdata, allvars_it, na.action=na.action, mv_it=mv_it)
-      newX_info <- .get_newX_info(locformS[[mv_it]], locdataS[[mv_it]], object, mv_it=mv_it)
-      newX.pv <- .merge_Xs(newX.pv, newX_info$newX.pv, mv_it)
-      eta_fix <- c(eta_fix, newX_info$eta_fix)
+      if (length(aliases)) {
+        aliased <- intersect(ranefvars, names(aliases))
+        no_aliases <- setdiff(no_aliases, aliased)
+      }
     }
-    if ( ! is.null(X2X <- object$X2X)) newX.pv <- newX.pv %*% object$X2X
-    attr(locdataS,"allvarsS") <- allvarsS # allVarsS (used by map_ranef()) tells which variables were needed for which submodel predictions.
-    RESU <- list(locdata=locdataS, # locdata in RESU for cbind()ing the predictions in .predict_body();
-                 cum_nobs= cumsum(c(0L,lapply(locdataS, nrow))), # more widely used by .fv_linkinv()
-                 newX.pv=newX.pv, eta_fix=eta_fix) 
-  } else {
-    for (mv_it in seq_along(allvarsS)) locdataS[[mv_it]] <-  ..get_locdata(locdata, allvarsS[[mv_it]], na.action=na.action)
-    RESU <- list(locdata=locdataS, # locdata in RESU allowing (potential) cbind() with predictions in .predict_body(). (maybe not implemented for mv)
-                 cum_nobs= cumsum(c(0L,lapply(locdataS, nrow))), # more widely used by .fv_linkinv()
-                 newX.pv=model.matrix(object)) 
   } 
-  ## so we save 'locdata=locdataS' in RESU, but we will locally modify 'locdataS' by selecting columns in locdataS[[mv_it]]
+  need_new_design <- ( ( ! is.null(newdata) ) || ! is.null(re.form)) ## newdata or new model
+  # 'loclocdata' is distinctly used below
+  loclocdata <- .get_locdata(newdata=newdata, locvars=no_aliases, 
+                             object=object, variances=variances, 
+                             na.action=na.pass) # see comment on evaluation of RESU$newuniqueGeo
+  RESU <- .get_locdataS_blob(locdata=loclocdata, # single data frame
+                             need_new_design=need_new_design, locformS=locformS, 
+                             no_aliases=no_aliases, allvarsS=allvarsS,
+                             na.action=na.action,
+                             object=object,
+                             aliases=object$aliases)
+  ## so we have 'locdata=locdataS' in RESU, but we will locally modify 'locdataS' by selecting columns in locdataS[[mv_it]]
   ## and will create a local 'ranefdata' from this locally modified 'locdataS'.
+  locdataS <- RESU$locdata
   #
   ## newZAlist and subZAlist appear to have distinct usages since they are created under different conditions.
   ## subZAlist is a subset of the old ZA, newZAlist contains new ZA
   #
   if (nrand <- length(newinold)) {  
     if (length( info_olduniqueGeo <- .get_old_info_uniqueGeo(object) )) {
-      RESU$newuniqueGeo <- .update_newuniqueGeo(info_olduniqueGeo, newinold, need_new_design, locdata)
+      RESU$newuniqueGeo <- .update_newuniqueGeo(info_olduniqueGeo, newinold, need_new_design, loclocdata)
       # Despite the $newuniqueGeo name, it may be necess without newdata; 
       # cf preprocess_fix_corr() with NULL 'fixdata' providing info_olduniqueGeo <- fix_info$newuniqueGeo (univariate case).
       # There may be a slight suboptimality as it uses 'locdata' produced with na.rm=FALSE. 
@@ -140,7 +183,7 @@
       newZlist <- .calc_Zlist(exp_ranef_terms=ori_exp_ranef_terms, # subsetting -> new_exp_ranef_terms will be made internally using rd_in_mv arg
                               data=ranefdata, 
                               rd_in_mv=newinold, # here, must be "conditioned upon" ranefs
-                              rmInt=0L, drop=TRUE,sparse_precision=FALSE, 
+                              rmInt=0L, sparse_precision=FALSE, 
                               corr_info=.get_from_ranef_info(object),
                               #
                               # ! use levels_type default as is required for simulation !
@@ -296,86 +339,17 @@
     checklambda <- rep(TRUE, length(lambda.object$type))
   } else checklambda <- ( ! (lambda.object$type %in% c("fixed","fix_ranCoefs","fix_hyper"))) 
   if (any(checklambda)) {
-    exp_ranef_types <- attr(object$ZAlist,"exp_ranef_types")
-    checkadj <- (exp_ranef_types=="adjacency")
-    if(any(checkadj)) {
-      ## several blocks of code are "maintained" below for a future dispVar computation for rho
-      # il me manque dwdrho (et meme dwdloglam pour ce modele ?) donc on inactive les lignes suivantes:
-      #       if (is.null(lambda.object$lambda.fix)) dispnames <- c(dispnames,"loglambda")
-      #       corrFixNames <- names(unlist(object$corrPars[which(attr(corrPars,"type")=="fix")]))
-      #       if (! ("rho" %in% corrFixNames) ) dispnames <- c(dispnames,"rho")
-    }
-    
     if (is.null(dvdloglamMat)) {
       ## note that .get_logdispObject is computed on request by .get_logdispObject()
       problems$stopmiss <- warning("is.null(dvdloglamMat) in a case where it should be available.") 
     }
     dispcolinfo$loglambda <- "loglambda"
-    #dvdloglam <- matrix(0,nrow=NROW(dvdloglamMat), ncol=sum(Xi_cols))
-    strucList <- object$strucList
-    cum_n_u_h <- attr(lambda.object$lambda_list,"cum_n_u_h")
-    n_u_h <- diff(cum_n_u_h)
+    # n_u_h <- diff(cum_n_u_h)
     cum_Xi_cols <- cumsum(c(0,Xi_cols))
-    ## dwdloglam will include cols of zeros for fixed lambda; matching with reduced logdisp_cov is performed at the end of the function.
-    for (randit in seq_len(nrand)) { ## ALL ranefs!
-      range_in_dw <- (cum_n_u_h[randit]+1L):(cum_n_u_h[randit+1L])
-      if (OLD <- TRUE) {         # what about inverting the two operations ? ___F I X M E____
-        # solve(t(lmatrix) bc to be used as factor to ZAC, not ZA
-        if ( inherits(strucList[[randit]],"dCHMsimpl")) { 
-          # previous comment: (not expected in default use in mv, for reasons explained in mv, sinc AUG_ZXy presumably FALSE )
-          # BUT: occurs in univariate case with get_predVar(adjfitsp), where augZXy algo does not appear to be used
-          for_dw_i <- as(strucList[[randit]], "CsparseMatrix") %*% dvdloglamMat[range_in_dw,  ] # i.e L_Q %*% lignes de (t(L_Q) %*% invG %*% L_Q %*% some rhs) 
-        } else if ( ! is.null(lmatrix <- strucList[[randit]])) {
-          for_dw_i <- solve(t(lmatrix),dvdloglamMat[range_in_dw,]) ## f i x m e for efficiency ? store info about solve(t(lmatrix)) in object ? 
-        } else { ## implicit identity lmatrix
-          for_dw_i <- dvdloglamMat[range_in_dw,] ## assuming each lambda_i = lambda in each block
-        }
-        nblocks_randit <- Xi_cols[randit]
-        rowranges_in_dw_i <- matrix(seq(n_u_h[randit]),ncol=nblocks_randit) ## this _splits_ seq(n_u_h[randit]) over two columns for a random-slope model
-        for (row_block in seq_len(nblocks_randit)) { ## half-ranges for random-slope model
-          rowrange_in_dw_i <- rowranges_in_dw_i[,row_block]
-          cum_rowrange_in_dw <- rowrange_in_dw_i + cum_n_u_h[randit]
-          for (randjt in which(checklambda)) { ## NOT all ranefs!
-            nblocks_randjt <- Xi_cols[randjt]
-            cum_colrange_in_dw_i <- (cum_n_u_h[randjt]+1L):(cum_n_u_h[randjt+1L])
-            cum_colranges_in_dw_i <- matrix(cum_colrange_in_dw_i,ncol=nblocks_randjt) ## this _splits_ seq(n_u_h[randit]) over two columns for a random-slope model
-            for (col_in_colranges_dw_i in nblocks_randjt) { ## half-ranges for random-slope model
-              cum_col_in_dw <- cum_Xi_cols[randjt]+col_in_colranges_dw_i
-              cum_cols_in_dw_i <- cum_colranges_in_dw_i[,col_in_colranges_dw_i] 
-              dwdloglam[cum_rowrange_in_dw, cum_col_in_dw] <- rowSums(for_dw_i[rowrange_in_dw_i, cum_cols_in_dw_i,drop=FALSE])  
-            }
-          }
-        }
-        
-      } else {
-        for_dw_i <- dvdloglamMat[range_in_dw,]
-        nblocks_randit <- Xi_cols[randit]
-        rowranges_in_dw_i <- matrix(seq(n_u_h[randit]),ncol=nblocks_randit) ## this _splits_ seq(n_u_h[randit]) over two columns for a random-slope model
-        for (row_block in seq_len(nblocks_randit)) { ## half-ranges for random-slope model
-          rowrange_in_dw_i <- rowranges_in_dw_i[,row_block]
-          cum_rowrange_in_dw <- rowrange_in_dw_i + cum_n_u_h[randit]
-          for (randjt in which(checklambda)) { ## NOT all ranefs!
-            nblocks_randjt <- Xi_cols[randjt]
-            cum_colrange_in_dw_i <- (cum_n_u_h[randjt]+1L):(cum_n_u_h[randjt+1L])
-            cum_colranges_in_dw_i <- matrix(cum_colrange_in_dw_i,ncol=nblocks_randjt) ## this _splits_ seq(n_u_h[randit]) over two columns for a random-slope model
-            for (col_in_colranges_dw_i in nblocks_randjt) { ## half-ranges for random-slope model
-              cum_col_in_dw <- cum_Xi_cols[randjt]+col_in_colranges_dw_i
-              cum_cols_in_dw_i <- cum_colranges_in_dw_i[,col_in_colranges_dw_i] 
-              dwdloglam[cum_rowrange_in_dw, cum_col_in_dw] <- rowSums(for_dw_i[rowrange_in_dw_i, cum_cols_in_dw_i,drop=FALSE])  
-            }
-          }
-        }
-        if ( inherits(strucList[[randit]],"dCHMsimpl")) { 
-          # previous comment: (not expected in default use in mv, for reasons explained in mv, sinc AUG_ZXy presumably FALSE )
-          # BUT: occurs in univariate case with get_predVar(adjfitsp), where augZXy algo does not appear to be used
-          dwdloglam[range_in_dw,  ] <- as.matrix(as(strucList[[randit]], "CsparseMatrix") %*% 
-            dwdloglam[range_in_dw,  ]) # i.e L_Q %*% lignes de (t(L_Q) %*% invG %*% L_Q %*% some rhs) 
-        } else if ( ! is.null(lmatrix <- strucList[[randit]])) {
-          dwdloglam[range_in_dw,  ] <- as.matrix(solve(t(lmatrix),dwdloglam[range_in_dw,])) ## f i x m e for efficiency ? store info about solve(t(lmatrix)) in object ? 
-        } 
-
-      }
-    }
+    dwdloglam <- .fill_dwdloglam(dwdloglam=dwdloglam, dvdloglamMat=dvdloglamMat, 
+                                 cum_n_u_h=attr(lambda.object$lambda_list,"cum_n_u_h"), Xi_cols=Xi_cols, 
+                                 checklambda=checklambda, strucList=strucList, 
+                                 cum_Xi_cols=cum_Xi_cols)
     ## dwdloglam includes cols of zeros for fixed lambda; matching with reduced logdisp_cov is performed at the end of the function.
     ranef_ids <- rep(seq_len(nrand),Xi_cols) ## (repeated for ranCoefs) indices of ranefs, not cols of ranefs
   } else ranef_ids <- NULL
@@ -439,9 +413,20 @@
     logdispInfo <- matrix(NA,nrow=nrc,ncol=nrc)
     colnames(logdispInfo) <- rownames(logdispInfo) <- .unlist(dispcolinfo)
     if ("loglambda" %in% dispnames) { 
-      loglamInfo_blob <- .calc_loglamInfo(invV.dV_info,which=which(checklambda))
+      loglamInfo_blob <- .calc_loglamInfo(invV.dV_info,which=which(checklambda),
+                                          strucList=strucList, object=object)
       logdispInfo[dispcols$loglambda,dispcols$loglambda] <- loglamInfo_blob$loglamInfo 
     }
+    exp_ranef_types <- attr(object$ZAlist,"exp_ranef_types")
+    checkadj <- (exp_ranef_types=="adjacency")
+    if(any(checkadj)) {
+      ## several blocks of code are "maintained" below for a future dispVar computation for rho
+      # il me manque dwdrho (et meme dwdloglam pour ce modele ?) donc on inactive les lignes suivantes:
+      #       if (is.null(lambda.object$lambda.fix)) dispnames <- c(dispnames,"loglambda")
+      #       corrFixNames <- names(unlist(object$corrPars[which(attr(corrPars,"type")=="fix")]))
+      #       if (! ("rho" %in% corrFixNames) ) dispnames <- c(dispnames,"rho")
+    }
+    
     if ("rho" %in% dispnames) { ## will occur only when if (any(checkadj)) {...} block above is fixed and active. 
       # no use of sqrt because adjd can be negative
       #invV.dVdrho <- (invV %id*id% ZAL) %*% ( Diagonal(x=lambda*adjd/(denom^2)) %id*id% t(ZAL))

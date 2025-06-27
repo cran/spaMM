@@ -1,4 +1,4 @@
-cat(crayon::yellow("test cAIC:\n"))
+cat(cli::col_yellow("test cAIC:\n"))
 
 if (spaMM.getOption("example_maxtime")>3) {
   if(requireNamespace("lme4", quietly = TRUE)) { 

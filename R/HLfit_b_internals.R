@@ -78,6 +78,7 @@
   return(ranFix)
 }
 
+# Called at the beginning of HLfit_body to update dispersion values from locally-fixed values
 .post_process_respfamilies <- function(family, ranFix, families=NULL) {
   if ( ! is.null(families)) {
     for (mv_it in seq_along(families)) {
@@ -143,15 +144,14 @@
       checktheta <- substitute(shape, env=environment(family$aic)) 
       if (inherits(checktheta,"call")) eval(checktheta)
     }
-  # } else if ( ! is.null(rdisPars <- ranFix$rdisPars)) { ## resid.model   # "speculative outer phiGLM 2023/07/09" 
-  ##   Seek other instances of "speculative outer phiGLM 2023/07/09" for minimal changes required to try this: 
-  ##   The call must include the resid.model and fixed=list(phi=1) for this to more or less work.    
-  #   disp_env <- family$resid.model
-  #   if (is.null(disp_env$scaled_X)) { 
-  #     disp_env$beta <- rdisPars # fixed rdisPars
-  #   } else disp_env$scaled_beta <- rdisPars # optimized rdisPars
-  #   ranFix$rdisPars <- attr(ranFix,"type")$rdisPars <- NULL
-  #   ranFix$phi <- .safe_eval_dispval(family$resid.model, -Inf, Inf)
+  } else if ( ! is.null(rdisPars <- ranFix$rdisPars)) { ## "outer phiGLM"
+    disp_env <- family$resid.model
+    if (is.null(disp_env$scaled_X)) {
+      disp_env$beta <- rdisPars # fixed rdisPars
+    } else disp_env$scaled_beta <- rdisPars # optimized rdisPars
+    ranFix$rdisPars <- attr(ranFix,"type")$rdisPars <- NULL
+    phi <- .safe_eval_dispval(family$resid.model, -Inf, Inf)
+    ranFix$phi <- .safe_eval_dispval(family$resid.model, -Inf, Inf)
   } 
   return(ranFix)
 }
@@ -231,7 +231,7 @@
   dbeta <- LevenbergMstep_result$dbetaV
   beta <- coefold + dbeta
   eta <- drop(X.pv %*% beta) + offset
-  eta <- .sanitize_eta(eta, y=processed$y, family=family, max=40) 
+  eta <- .sanitize_eta(eta, y=processed$y, family=family, max=40, processed=processed) 
   ## Here I can use 
   muetablob <- .muetafn(eta=eta, BinomialDen=processed$BinomialDen, processed=processed, phi_est=phi_est) 
   ## which returns a $mu=muCOUNT in all cases.   
@@ -421,11 +421,26 @@
                 sXaug=structure(NA,class="(G)LM"), qr_X=qr_X))
   }
 
-.calc_std_leverages <- function(models, need_ranefPars_estim, phi.Fix, auglinmodblob, n_u_h, nobs, processed, 
+.calc_std_leverages <- function(models,
+                                processed, # and by default from processed: 
+                                nobs=length(processed$y), 
+                                lcrandfamfam=attr(processed$rand.families,"lcrandfamfam"),
+                                cum_n_u_h=processed$cum_n_u_h,
+                                n_u_h=tail(cum_n_u_h,1L), 
+                                #
+                                loopout_blob, # only used to provide by default: 
+                                ZAL=loopout_blob$ZAL, 
+                                lambda_est=loopout_blob$lambda_est, 
+                                auglinmodblob=loopout_blob$auglinmodblob,
+                                # and by default from loopout_blob$auglinmodblob: 
                                 w.resid=auglinmodblob$w.resid, 
-                                u_h=auglinmodblob$u_h, need_simple_lambda, muetablob=auglinmodblob$muetablob, 
-                                wranefblob=auglinmodblob$wranefblob, ZAL, lambda_est, cum_n_u_h, 
-                                lcrandfamfam=attr(processed$rand.families,"lcrandfamfam"), phi_est) {
+                                u_h=auglinmodblob$u_h, 
+                                muetablob=auglinmodblob$muetablob, 
+                                wranefblob=auglinmodblob$wranefblob, 
+                                #
+                                need_simple_lambda, need_ranefPars_estim, 
+                                phi_est, phi.Fix
+                                ) {
   hatvals <- NULL 
   if (models[[1]]=="etaHGLM") {
     if (need_ranefPars_estim || .anyNULL(phi.Fix)) {

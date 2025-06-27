@@ -93,7 +93,7 @@ The \code{statFUN} function must take as first argument (named \code{refit}) a f
     \item{R}{\code{nsim}}
     \item{.Random.seed}{the state of \code{.Random.seed} at the beginning of the sample simulation}.  
   }
-  (other elements of an object of class \code{\link{boot}} are currently not included.)
+  (other elements of an object of class \code{\link[boot]{boot}} are currently not included.)
 
 }
 \examples{

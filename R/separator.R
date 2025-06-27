@@ -1,27 +1,35 @@
-.do_call_wrap <- local(
+.get_wrap <- local( # may be sought as .do_call_wrap or .wrap_do_call
   {
     warned_dcw <- list()
     inla_already <- FALSE
-    function(chr_fnname,arglist, pack, info_mess) {
-      spaMMDescr <- packageDescription("spaMM")
+    spaMMDescr <- NULL
+    function(chr_fnname, pack, info_mess, 
+             voidfn=function(...) return(NULL)) {
+      if (is.null(spaMMDescr)) spaMMDescr <<- packageDescription("spaMM")
       if (length(grep(pack,spaMMDescr$Imports))) {
         ## then the necessary functions are imported-from in the NAMESPACE  
-        do.call(chr_fnname,arglist) 
+        get(chr_fnname)
       } else if (length(grep(pack,spaMMDescr$Suggests))) {
         ## then the necessary functions are not imported-from in the NAMESPACE  (and the package must be written in an appropriate way)
         ##  stats:::confint.glm likewise handles an 'undeclared dependency'
         if ( requireNamespace(pack, quietly = TRUE)) {
-          myfun <- get(chr_fnname, asNamespace(pack), inherits=FALSE) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
-          do.call(myfun,arglist) 
+          get(chr_fnname, asNamespace(pack), inherits=FALSE) ## https://stackoverflow.com/questions/10022436/do-call-in-combination-with
         } else {
           if ( ! identical(warned_dcw[[pack]],TRUE)) {
             if (pack=="cubature") message("If the 'cubature' package were installed, spaMM could compute a requested marginal prediction.")
             warned_dcw[[pack]] <<- TRUE
           }
-          return(NULL)
+          return(voidfn)
         }
       } else { ## package not declared in DESCRIPTION
-        if (pack=="INLA") { # case no longer necessary
+        if (pack=="INLA") { # case no longer necessary in this function,
+          ## but note that INLA::inla.spde2.[pc]matern is still accessed at user level, outside .get_wrap().
+          ## General context: 
+          ## mesh <- fmesher::fm_mesh_2d_inla(...) used by two functions with idioms:
+          ## IMRF_design <- .inla.spde2.matern(mesh...), a wrapper calling INLA::, 
+          ## Amatrix <- .spaMM_spde.make.A(mesh=mesh...), NOT calling INLA, to build the A matrix between the mesh and data locations.
+          ## fmesher has experimental code for matern, but it goes as fm_matern_precision(fm_fem(mesh), ...)
+          ## where the fm_fem() value is not an inla.spde2 object in any sense
           success <- suppressMessages(do.call("require",list(package=pack))) # message might suggest that the fit is by INLA...
           if ( ! inla_already) {
             message("INLA::inla.spde.make.A() will be used to construct the IMRF models fitted by spaMM.")
@@ -29,7 +37,7 @@
           }
         } else success <- suppressWarnings(do.call("require",list(package=pack, quietly = TRUE)))
         if (success) { ## 'quietly' only inhibits 'Le chargement a necessite le package :'... 
-          do.call(chr_fnname,arglist) 
+          get(chr_fnname) 
         } else {
           if ( ! identical(warned_dcw[[pack]],TRUE)) {
             if (pack=="INLA") message("If the 'INLA' package were installed, spaMM could use INLA:::inla.spde.make.A().") # but now .spaMM_spde.make.A() is fine.
@@ -39,7 +47,7 @@
             if (pack=="pracma") message(info_mess) # but see faster, ad hoc fn .get_quadinf() 
             warned_dcw[[pack]] <<- TRUE
           }
-          return(NULL)
+          return(voidfn)
         }
       }
     }
@@ -56,8 +64,8 @@
     if (any(varcols)) {
       time1 <- Sys.time()
       if (inherits(x,"sparseMatrix")) x <- as.matrix(x) ## bc next line ->  model.frame.default...
-      arglist <- list(formula= y~x[,varcols,drop=FALSE],type='C-classification', kernel='linear')
-      svmfit <- .do_call_wrap("svm",arglist=arglist, pack="e1071")
+      svm <- .get_wrap("svm",pack="e1071") # availability is checked upstream.
+      svmfit <- svm(formula= y~x[,varcols,drop=FALSE],type='C-classification', kernel='linear') 
       sep_time <- .timerraw(time1)
       if (sep_time>1) message(paste0("Checking separation for binomial-response model took ",sep_time," s."))
       if ( ! is.null(svmfit)) {
@@ -110,19 +118,31 @@
 
 is_separated <- local({
     warned_is <- FALSE
+    has_e1071 <- NULL
     function(x,y, verbose=TRUE, solver=spaMM.getOption("sep_solver")) {
       if (solver!="svm") {
         if (requireNamespace("ROI.plugin.glpk",quietly=TRUE)) {
           pb_size <- (1e-5*prod(dim(x)))
         } else {
+          if (is.null(has_e1071)) has_e1071 <<- suppressWarnings(do.call("require",list(package="e1071", quietly = TRUE))) # given it's not in DESCRIPTION
           if ( ! warned_is) {
-            message(paste0("If the 'ROI.plugin.glpk' package were installed,\n",
-                           "spaMM could properly check (quasi-)separation in binary regression problem.\n",
-                           "See help('external-libraries') if you have troubles installing 'ROI.plugin.glpk'."))
+            locmess <- paste0("If the 'ROI.plugin.glpk' package were installed,\n",
+                   "spaMM could properly check (quasi-)separation in binary regression problem.\n",
+                   "See help('external-libraries') if you have troubles installing 'ROI.plugin.glpk'.\n")
+            if (has_e1071) {
+              locmess <- paste0(locmess,
+                                "Alternative procedure 'e1071::svm()' will be used for checking separation.")
+            } else {
+              locmess <- paste0(locmess,
+                                "Alternative procedure 'e1071::svm()' is also not available for checking separation.")
+            }
+            message(locmess)
             warned_is <<- TRUE
           }
+          if (has_e1071) {
+            solver <- "svm"
+          } else return(FALSE)
           pb_size <- length(y)/100
-          solver <- "svm"
         }
       }
       if (pb_size> spaMM.getOption("separation_max")) {

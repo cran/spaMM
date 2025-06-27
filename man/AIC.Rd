@@ -60,6 +60,7 @@ The dispersion AIC has been defined from restricted likelihood by Ha et al (2007
   
 Likelihood is broadly defined up to a constant, which opens the way for inconsistency between different likelihood and AIC computations. In \pkg{spaMM}, likelihood is nothing else than the probability or probability density of the data as function of model parameters. No constant is ever added, in contrast to \code{stats::extractAIC} output, so there are discrepancies with the latter function (see Examples). 
 }
+\seealso{\code{\link{DoF}}, the extractor for the number of fitted parameters of a model.}
 \references{
 %Cox, D. R. and Donnelly C. A. (2011) Principles of Applied Statistics. Cambridge Univ. Press.
 

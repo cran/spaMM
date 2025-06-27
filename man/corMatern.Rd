@@ -97,7 +97,7 @@ If \code{nugget} is \code{FALSE}, \code{value} should have
 Mixed-Effects Models in S and S-PLUS, José C. Pinheiro and Douglas M. Bates, Statistics and Computing Series, Springer-Verlag, New York, NY, 2000.
 }
 \seealso{
-  \code{\link{glmmPQL}}, \code{\link{lme}}
+  \code{\link[MASS]{glmmPQL}}, \code{\link[nlme]{lme}}
 }
 \examples{
 ## LMM

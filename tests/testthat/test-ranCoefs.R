@@ -1,7 +1,7 @@
 # spaMM.options(example_maxtime=60) # keep it handy...
 # spaMM.options(projpath="D:/home/francois/travail/stats/spaMMplus/spaMM")
 if (file.exists((privdata <- paste0(spaMM::projpath(),"/../tests_misc/ranCoefs/all_fitness.txt")))) {
-  cat(crayon::yellow("\ntest ranCoefs:"))
+  cat(cli::col_yellow("\ntest ranCoefs:"))
   my.data <- read.table(privdata, header = TRUE, sep = "\t",dec = ".")
   my.data$line <- factor(as.character(my.data$line))
   my.data <- na.omit(my.data)

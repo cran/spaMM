@@ -2,7 +2,7 @@
 \alias{beta_resp}
 %- Also NEED an '\alias' for EACH other topic documented here.
 \title{
-Beta-response family object
+Beta-distribution family object
 }
 \description{
 Returns a \code{family} object for beta-response models.

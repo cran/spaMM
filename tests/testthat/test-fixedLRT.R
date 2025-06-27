@@ -1,4 +1,4 @@
-cat(crayon::yellow("\ntest fixedLRT:\n"))
+cat(cli::col_yellow("\ntest fixedLRT:\n"))
 # fixedLRT
 
 data("blackcap")

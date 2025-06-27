@@ -5,9 +5,15 @@
 \alias{print.arglist} 
 \alias{print.predictor}
 \alias{print.vcov.HLfit}
-\alias{print.predictions}
+\alias{print.spaMM_predictions}
 %\alias{print.spcall}
 \alias{print.bootci4print}
+
+% emmeans as special code in its generics to get (even S3method()-undeclared 'methods'
+% from other packages).
+% So the following methods are S3method()-undeclared, and may not need an \alias?
+\alias{recover_data.HLfit}
+\alias{emm_basis.HLfit}
 
 
 

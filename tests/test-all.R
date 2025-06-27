@@ -7,7 +7,8 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") { ## set in <R_HOME>/etc/Renviron.site 
     require(pkg, character.only=TRUE, quietly=TRUE)
     # options(error = quote({dump.frames(to.file = TRUE)})) # useful for bugs in .do_TRACE()
     if (interactive()) {
-      # **** see # see AAA_install_INLA.memo.txt: to install INLA ****
+      # **** see install_all_problems.R for packages to be installed in empty lib****
+      # **** see AAA_install_INLA.memo.txt to install INLA ****
       # install.packages(c("DHARMa", "inlabru")) # + private pkg "probitgem"
       # + packages in requireNamespace(.)... and install_git[...]
       # + optional but important dependencies of Infusion... aster... hglm...
@@ -45,7 +46,7 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") { ## set in <R_HOME>/etc/Renviron.site 
         }
         # extra_testfiles <- dir(paste0(spaMM::projpath(),"/package/tests/testthat/extralong/"),full.names = TRUE)
         extra_timings <- t(sapply(extra_testfiles, function(fich){
-          cat(crayon::green(paste0("\n",fich)))
+          cat(cli::col_green(paste0("\n",fich)))
           gc()
           tps <- system.time(chk <- try(source(fich)), gcFirst=FALSE)
           if (inherits(chk,"try-error")) warning(paste0(fich," generated an error"))
@@ -55,7 +56,7 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") { ## set in <R_HOME>/etc/Renviron.site 
       }
       ## testthat::test_package(pkg) ## for an installed package
       if (FALSE) { ## tests not included in package (using unpublished data, etc.)
-        cat(crayon::green("Widen the plot panel!\n"))
+        cat(cli::col_green("Widen the plot panel!\n"))
         # install.packages("FactoMineR")
         # see also includes in tests_private/test-back-compat.R
         if (TRUE) { # see above comment about Rstudio
@@ -65,8 +66,13 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") { ## set in <R_HOME>/etc/Renviron.site 
           priv_testfiles <- priv_testfiles[grep("*.R$",priv_testfiles)]
         }
         priv_testfiles <- setdiff(priv_testfiles,paste0(spaMM::projpath(),"/package/tests_private/knit_LM2GLMM.R"))
+        if (requireNamespace("knitR", silent=TRUE)) {
+          # knitspaMM.R regenerates spaMMintro.R *and* run it. So spaMMintro.R will be run twice if there was already
+          # such a file when dir() was run. We avoid this by:
+          priv_testfiles <- setdiff(priv_testfiles,paste0(spaMM::projpath(),"/package/tests_private/spaMMintro.R"))
+        }
         priv_timings <- t(sapply(priv_testfiles, function(fich){
-          cat(crayon::green(paste0("\n",fich)))
+          cat(cli::col_green(paste0("\n",fich)))
           gc()
           tps <- system.time(chk <- try(source(fich)), gcFirst=FALSE)
           if (inherits(chk,"try-error")) warning(paste0(fich," generated an error"))
@@ -78,7 +84,7 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") { ## set in <R_HOME>/etc/Renviron.site 
         # abyss <- matrix(runif(2e7),nrow=1000); gc(reset=TRUE) ## partial control of gc trigger... but RESTARTING R appears more efficient.
         useR2021_testfiles <- dir(paste0(spaMM::projpath(),"/package/useR2021/"),pattern="*.R",full.names = TRUE)
         useR2021_timings <- t(sapply(useR2021_testfiles, function(fich){
-          cat(crayon::green(paste0("\n",fich)))
+          cat(cli::col_green(paste0("\n",fich)))
           gc()
           tps <- system.time(chk <- try(source(fich)), gcFirst=FALSE)
           if (inherits(chk,"try-error")) warning(paste0(fich," generated an error"))

@@ -12,7 +12,7 @@ Only a few features available for analysis of univariate response may not yet wo
 \usage{
 fitmv(submodels, data, fixed=NULL, init=list(), lower=list(), upper=list(), 
       control=list(), control.dist = list(), method="ML", init.HLfit=list(), 
-      X2X=NULL, ...)
+      X2X=NULL, aliases=NULL, ...)
 }
 \arguments{
   \item{submodels}{
@@ -34,7 +34,8 @@ Lists of initial values or bounds. The syntax is that of the same arguments in \
 }
 \item{init.HLfit}{ See identically named \code{\link{HLfit}} argument. }
 \item{X2X}{ NULL, or a matrix \bold{M} by which one can specify, as \eqn{\beta=}\bold{M}\eqn{\beta^*}, fixed effects \eqn{\beta} with some coefficients shared between submodels, e.g. as shown in the \dQuote{Shared fixed effect} Example, where \eqn{\beta^*} has three distinct elements, and \eqn{\beta} has four elements including identical Intercept coefficients among the two submodels. The fixed-effect term \bold{X}\eqn{\beta} of the linear predictor thus takes the form \bold{XM}\eqn{\beta^*}, meaning that the default design matrix of the model \bold{X} is replaced by \bold{XM}. \bold{M} must have column names, labeling the \eqn{\beta^*} coefficients.}
-    \item{\dots}{
+\item{aliases}{A list; experimental feature whose usage is explained in a dedicated \code{\link{aliases}} documentation.}
+\item{\dots}{
 Optional arguments passed to (or operating as if passed to) \code{\link{HLCor}}, \code{\link{HLfit}} or  \code{\link{mat_sqrt}}, for example  \code{control.HLfit} or the \code{covStruct}, \code{distMatrix}, \code{corrMatrix} or \code{adjMatrix} arguments of \code{HLCor}. }
 }
 \details{

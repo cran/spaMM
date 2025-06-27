@@ -1,4 +1,4 @@
-cat(crayon::yellow("\ntest of COMPoisson family:"))
+cat(cli::col_yellow("\ntest of COMPoisson family:"))
 ## particularly useful to test permuted sparse algos
 
 data("freight")

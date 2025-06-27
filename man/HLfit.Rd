@@ -40,7 +40,7 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
   and the link gives \code{v} as function of \eqn{u} (see Details).
   If there are several random effects and only one family is given, this family holds for all random effects.
 }
-  \item{resid.model}{Used to specify a model for the dispersion parameter of the mean-response family. See the \code{\link{resid.model}} documentation, and the more specific \code{\link{phi-resid.model}} one for the \eqn{phi} parameter of gaussian and Gamma response families.}
+  \item{resid.model}{Used to specify a model for the dispersion parameter of the mean-response distribution family. See the \code{\link{resid.model}} documentation, and the more specific \code{\link{phi-resid.model}} one for the \eqn{phi} parameter of gaussian and Gamma response families.}
   \item{REMLformula}{
   A model \code{formula} that controls the estimation of dispersion parameters and the computation of restricted likelihood (\code{p_bv}), where the conditioning inherent in REML is defined by a model different from the predictor \code{formula}. A simple example (useless in practice) of its effect is to replicate an ML fit by specifying \code{method="REML"} and an \code{REMLformula} with no fixed effect. The latter implies that no conditioning is performed and that \code{p_bv} equals the marginal likelihood (or its approximation), \code{p_v}. One of the examples in \code{\link{update.HLfit}} shows how \code{REMLformula} can be useful, but otherwise this argument may never be needed for standard REML or ML fits. For non-standard likelihood ratio tests using \code{REMLformula}, see \code{\link{fixedLRT}}.    
 }
@@ -48,7 +48,7 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
     A vector of booleans or integers. The \code{inner} element controls various diagnostic messages (possibly messy) about the iterations. This should be distinguished from the \code{TRACE} element, meaningful in \code{fitme} or \code{corrHLfit} calls, and much more useful. The \code{phifit} element controls messages about the progress of \code{\link{phi-resid.model}} fits (see the latter documentation). 
   }
   \item{method}{Character: the fitting method. 
-  allowed values include \code{"REML"}, \code{"ML"}, \code{"EQL-"} and \code{"EQL+"} for all models, and \code{"PQL"} (=\code{"REPQL"}) and \code{"PQL/L"} for GLMMs only. \code{method=c(<"ML" or "REML">,"exp")} can be distinctly useful for slow fits of models with \code{Gamma(log)} response family. See (see \code{\link{method}}) for details, and further possible values for those curious to experiment. \bold{The default is REML} (standard REML for LMMs, 
+  allowed values include \code{"REML"}, \code{"ML"}, \code{"EQL-"} and \code{"EQL+"} for all models, and \code{"PQL"} (=\code{"REPQL"}) and \code{"PQL/L"} for GLMMs only. \code{method=c(<"ML" or "REML">,"exp")} can be distinctly useful for slow fits of models with \code{Gamma(log)} family. See (see \code{\link{method}}) for details, and further possible values for those curious to experiment. \bold{The default is REML} (standard REML for LMMs, 
   an extended definition for other models). REML can be viewed as a form of conditional inference, and non-standard conditionings can be called by using a non-standard \code{REMLformula}.
 }
   \item{HLmethod}{Same as \code{method}. It is useless to specify \code{HLmethod} when \code{method} is specified. The default value \code{"HL(1,1)"} means the same as \code{method="REML"}, but more accurately relates to definitions of approximations of likelihood in the \eqn{h}-likelihood literature.}
@@ -77,7 +77,7 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
    A list of given values of the coefficients of the linear predictor. See \code{\link{etaFix}} for further information.     
  }
   \item{prior.weights}{
-   An optional vector of prior weights as in \code{\link{glm}}. This fits the data to a probability model with residual variance parameter given as \code{phi/prior.weights} instead of the canonical parameter \code{phi} of the response family, and all further outputs are defined to be consistent with this (see section IV in Details). 
+   An optional vector of prior weights as in \code{\link{glm}}. This fits the data to a probability model with residual variance parameter given as \code{phi/prior.weights} instead of the canonical parameter \code{phi} of the distribution family for the response variable, and all further outputs are defined to be consistent with this (see section IV in Details). 
  }
   \item{weights.form}{
   Specification of prior weights by a one-sided formula: use \code{weights.form = ~ pw} instead of \code{prior.weights = pw}. The effect will be the same except that such an argument, known to evaluate to an object of class \code{"formula"}, is suitable to enforce safe programming practices (see \code{\link{good-practice}}).  
@@ -94,7 +94,7 @@ HLfit(formula, data, family = gaussian(), rand.family = gaussian(),
 
   \bold{III. The standard errors} reported may sometimes be misleading. For each set of parameters among \eqn{\beta}, \eqn{\lambda}, and \eqn{\phi} parameters these are computed assuming that the other parameters are known without error. This is why they are labelled \code{Cond. SE} (conditional standard error). This is most uninformative in the unusual case where \eqn{\lambda} and \eqn{\phi} are not separately estimable parameters. Further, the SEs for \eqn{\lambda} and \eqn{\phi} are rough approximations as discussed in particular by Smyth et al. (2001; \eqn{V_1} method).    
   
-  \bold{IV. prior weights}. This controls the likelihood analysis of heteroscedastic models. In particular, changing the weights by a constant factor \emph{f} should, and will, yield a fit with unchanged likelihood and (Intercept) estimates of \code{phi} also increased by \emph{f} (except if a non-trivial \code{resid.formula} with log link is used). This is consistent with what \code{glm} does, but other packages may not follow this logic (whatever their documentation may say: check by yourself by changing the weights by a constant factor). Further, post-fit functiosn (in particular those extracting various forms of residuals) may be inconsistent in their handling of prior weights.
+  \bold{IV. prior weights}. This controls the likelihood analysis of heteroscedastic models. In particular, changing the weights by a constant factor \emph{f} should, and will, yield a fit with unchanged likelihood and (Intercept) estimates of \code{phi} also increased by \emph{f} (except if a non-trivial \code{resid.formula} with log link is used). This is consistent with what \code{glm} does, but other packages may not follow this logic (whatever their documentation may say: check by yourself by changing the weights by a constant factor). Further, post-fit functions (in particular those extracting various forms of residuals) may be inconsistent in their handling of prior weights.
 }
 \value{
 An object of class \code{HLfit}, which is a list with many elements, not all of which are documented. 

@@ -3,6 +3,47 @@
 \encoding{UTF-8}
 % cf ?news for the format and usage of this file
 %
+\section{CHANGES UP TO VERSION 4.6.1}{   
+\subsection{NEW FEATURES}{
+\itemize{
+\item Multinomial logit models can now be fitted by pois4mlogit(), a function so named because it uses a surrogate multivariate poisson model. 
+\item Randomized quantile residuals can now be returned by residuals.HLfit() and are used by the new procedure gof() for testing goodness of fit.
+\item pdep_effects() and plot_effects() now handle multivariate-response fits, by using their new argument 'submodel'.
+\item An alternative, often much faster procedure is now used by default for fitting some models including a residual dispersion model. To handle possible problems with this procedure, the package option 'allow_outer_phiGLM' can be used to inhibit its use (see help("phi-resid.model")).
+\item Gaps in the implementation of sparse-precision methods to fit *G*LMMs with composite random effects have been resolved. 
+\item For random-coefficients terms, the code that corrected numerically singular covariance matrices did not necessarily respect fixed values in  partially-fixed random-coefficient matrices. An experimental procedure has been implemented to solve this issue.
+\item spaMM_boot() and spaMM2boot() now provide control of the foreach() '.combine' argument through their 'control.foreach' argument (the latter argument is not new, but its '.combine' element was previously ignored).
+\item Lines of data with zero observations in (beta-)binomial models no longer raise an error.
+\item The family() extractor now handles multivariate-response fits, for which it gains an optional argument 'submodel'.
+\item The VarCorr.HLfit() extractor can now optionnally return results in the same format as returned by lme4:::VarCorr.merMod().
+\item Supporting internal procedures are provided for applying emmeans::emmeans() on spaMM fit results.
+}
+}
+\subsection{FIXED BUGS}{
+\itemize{
+\item Fits with multiple precision matrices, or multiple correlation matrices, specified by the covStruct argument for multiple corrMatrix terms, generally returned incorrect results.   
+\item Better control of the size of the plots produced by filled.mapMM(), spaMMplot2D() and related functions, avoiding errors.
+\item Summary() could fail for some multivariate-response models.
+\item An inefficient step in interpretation of nested random effects could prevent some fits (no incorrect fit were returned).
+}
+}
+
+\subsection{USER-LEVEL CHANGES}{
+\itemize{
+\item fmesher::fm_mesh_2d_inla() replaces INLA::inla.mesh.2d() in examples.
+However, INLA::inla.spde2.matern() is still needed to fit IMRF models.
+}
+}
+
+\subsection{DEPENDENCIES}{
+\itemize{
+\item 'cli' replaces 'crayon'.
+\item New dependency 'reformulas' in Imports.
+}
+}
+
+}
+
 \section{CHANGES UP TO VERSION 4.5.0}{  
 \subsection{NEW FEATURES}{
 \itemize{
@@ -139,7 +180,7 @@
 \subsection{NEW FEATURES}{
 \itemize{
 \item New fixed-effect terms defined by functions X.GCA() and X.antisym() for dyadic interactions. 
-\item Residual dispersion models can be fitted for the negbin1, negbin2 and beta response family. 
+\item Residual dispersion models can be fitted for the negbin1, negbin2 and beta families. 
 \item Most restrictions on composite random-effect terms have been removed. For example, composite AR1 or ARp random effects can now be fitted. 
 \item fitmv() gets new argument 'X2X' allowing to fit shared fixed-effect coefficients among different submodels of a multivariate-response fit. 
 \item LRT() now handles comparisons of models with any form of residual-dispersion model. 
@@ -149,9 +190,9 @@
 \item numInfo() gets new 'sing' argument controlling the computation and display of small eigenvalues of the information matrix.
 \item Extended handling, by predict() and simulate() for multivariate-response models, of missing information in 'newdata'.
 \item New get_fittedPars() extractor.
-\item The range of response values is now checked for beta response family.
+\item The range of response values is now checked for beta family.
 \item New combinepar() interface for parallel computations, always calling foreach to handle any 'control$.combine' argument.
-\item Faster COMPoisson-response fits (from a few to more the 50 percent depending on arguments).
+\item Faster COMPoisson-response fits (from a few to more than 50 percent depending on arguments).
 \item New 'Leuca' data set.
 }
 }
@@ -164,10 +205,10 @@
 \subsection{FIXED BUGS}{
 \itemize{
 \item Binomial GLMs with non-canonical link could no longer be fitted (! -- mixed-effect models were OK). 
-\item For some response family, fixed-effect models could not, or no longer, handle design matrices in sparse Matrix format. 
+\item For some distribution families, fixed-effect models could not, or no longer, handle design matrices in sparse Matrix format. 
 \item A computation was incorrect for COMPoisson distribution with huge expectation. Fixing it has had no visible effect so far. 
 \item Fits of simple mixed-effect models with random-coefficient terms were subject to two potential problems:\cr
-\verb{ * } When fitted by "inner" estimation methods [in particular, by HLfit() or HLCor() rather than fitme()], the fit could stop in cases where the observed information matrix differs from the expected one (e.g, for the Gamma(log) response family). \cr
+\verb{ * } When fitted by "inner" estimation methods [in particular, by HLfit() or HLCor() rather than fitme()], the fit could stop in cases where the observed information matrix differs from the expected one (e.g, for the Gamma(log) family). \cr
 \verb{ * } Using fitme() to fit such models worked for all response families, but a profile confint() procedure for fixed-effect coefficients on the resulting fit object could then stop.\cr \cr
 Although using HLfit() to fit such models now works for all response families, the confint() procedure does not work on the resulting fit object. This problem is cleanly reported, with a suggestion to fit the model by fitme(). 
 \item All problems with deviance computations for the 'negbin1' family had not been solved in the previous version, more specifically for the zero-truncated family, where it has been corrected in this version (numerical inaccuracies can still occur in the case of jointly vanishing 'scale' and 'mu'). Even more than previously, the imperfections of these computations may be unnoticeable in practice. 
@@ -225,7 +266,7 @@ Although using HLfit() to fit such models now works for all response families, t
 \section{CHANGES UP TO VERSION 4.0.0}{ 
 \subsection{NEW FEATURES}{
 \itemize{
-\item Laplace approximation using observed, rather than expected, information matrix (see help("method")) is no longer "experimental". It is now available for all response families, including in multivariate-response fits, and is now the default method, changing the results of fits using response family with non-canonical link (hence the new "major" version number).
+\item Laplace approximation using observed, rather than expected, information matrix (see help("method")) is no longer "experimental". It is now available for all distribution families, including in multivariate-response fits, and is now the default method, changing the results of fits using distribution family with non-canonical link (hence the new "major" version number).
 \item anova.HLfit() can now return traditional ANOVA tables, with specific procedures for LMs, GLMs and LMMs. The LMM case is handled by interfacing the Satterthwaite method in \code{lmerTest::anova}. The whole functionality is experimental and unstable as later versions might considered alternative default procedures.
 \item Access to procedures implemented in the lmerTest package (contrast tests with effective degrees of freedom, and anova tables) is also possible through new function as_LMLT() allowing conversion of a spaMM fit object to input suitable for these procedures. 
 \item Prediction for levels of a 'corrMatrix' random effect that were not present in the fitted data is now possible (if these levels are present in the input corrMatrix). Previously this was not possible because only the subset of the corrMatrix for levels present in the fitted data was kept in the fitted model object.   
@@ -242,7 +283,7 @@ Although using HLfit() to fit such models now works for all response families, t
 \subsection{BUG FIXES}{
 \itemize{
 \item A bug was introduced in version 3.12.0 affecting the fits of nested random effects using the (. | . \%in\% .) syntax. The examples in help("GxE") no longer returned correct results.
-\item Fit results may be modified for some non-GLM response family models by sparse-correlation methods (although so far the fixed bug affected only the progress of the fit but not its final result, except in a case where the information matrix is not positive definite at the attained maximum, so that the fit result is suspect anyway).
+\item Fit results may be modified for some models with non-GLM distribution family, fitted by sparse-correlation methods (although so far the fixed bug affected only the progress of the fit but not its final result, except in a case where the information matrix is not positive definite at the attained maximum, so that the fit result is suspect anyway).
 \item the get_ranPars() extractor did not handle well random-coefficient parameters
 \item Fitting beta family models could fail when some response value was exactly 1/2.  
 }
@@ -425,7 +466,7 @@ Although using HLfit() to fit such models now works for all response families, t
 \item residuals.HLfit() can now also return standardized deviance residuals used in fitting methods and in diagnostic plots.
 \item Much more memory-efficient (and faster) fits for 'nested-geostatistical' random effects (e.g., Matern(1|long+lat \%in\% year) ).
 \item The 'control.HLfit' argument of fitting functions now handles an 'algebra' parameter for easier control of matrix-algebraic methods. See help("algebra") for possible usage. 
-\item Procedures which rest on the stats::gaussian(<"log"|"inverse">) family object to fit models with such response family to data with zero(es) in the response may fail to find valid starting values, which is not totally defensible. spaMM now circumvents this obstruction. Whether asking for fits of such data by such families is a good idea is another matter; the principle adopted here is to allow the fit and let its results contribute to answer this question.
+\item Procedures which rest on the stats::gaussian(<"log"|"inverse">) family object to fit models with such family to data with zero(es) in the response may fail to find valid starting values, which is not totally defensible. spaMM now circumvents this obstruction. Whether asking for fits of such data by such families is a good idea is another matter; the principle adopted here is to allow the fit and let its results contribute to answer this question.
 \item pdep_effects() now handles 'length.out=0L' with the effect that predictions are made for actual values of the predictor variables, then allowing for adding informative plots of fit-residuals on the partial-dependence plots. 
 }
 }
@@ -1052,7 +1093,7 @@ due to a bug introduced in v3.7.48 (i.e., CRAN versions 3.8.0 and 3.8.9)
 \itemize{
 \item An error was produced when model formulas included a nested random effect (.|./.) followed by a correlated random effect such as Matern(.).  
 \item Incorrect prediction variance with non-trivial 're.form' with random-coefficient term(s) or permutations of the random effects.
-\item Errors when attempting to fit models with correlated random effects and 'negbin' response family.
+\item Errors when attempting to fit models with correlated random effects and 'negbin' family.
 \item A wrong algorithm could sometimes be selected for 'inner' estimation of the correlation parameter of CAR models.
 \item Wrong documentation for ranef().
 \item anova() failed when a fit had non-estimable coefficients because of collinearity.

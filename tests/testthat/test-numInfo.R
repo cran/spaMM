@@ -1,4 +1,4 @@
-cat(crayon::yellow("\ntest computations of numerical Information matrix:")) 
+cat(cli::col_yellow("\ntest computations of numerical Information matrix:")) 
 
 data("wafers")
 lmmfit <- fitme(y ~X1+X2+X1*X3+X2*X3+I(X2^2)+(1|batch),data=wafers)

@@ -176,8 +176,8 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
           Cno_InvCoo_Con <- cov_newLv_oldv_list[[new_rd]] %gI*gI%  invCov_oldLv_oldLv_list[[old_rd]] %gI*gI%  t(cov_newLv_oldv_list[[new_rd]])
           Evar_C <- loc_lambda * (as.matrix(cov_newLv_newLv_list[[new_rd]]) - 
                                     as.matrix(Cno_InvCoo_Con))
-          #cat(crayon::red("cov_newLv_newLv_list"));str(cov_newLv_newLv_list[[new_rd]])
-          #cat(crayon::red("Cno_InvCoo_Con"));str(Cno_InvCoo_Con)
+          #cat(cli::col_red("cov_newLv_newLv_list"));str(cov_newLv_newLv_list[[new_rd]])
+          #cat(cli::col_red("Cno_InvCoo_Con"));str(Cno_InvCoo_Con)
           if (inherits(Evar_C,"bigq")) Evar_C <- .mMatrix_bigq(Evar_C)
           if (as_tcrossfac_list) {
             eS <- eigen(Evar_C, symmetric = TRUE) # chol() typically fails and mat_sqrt() corrects more than below
@@ -348,7 +348,7 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
     predVar <- .calcZWZt_mat_or_diag(Z=XZAC, W=NULL, 
                                      tcrossfac_W=tcrossfac_beta_w_cov, returnMat=covMatrix) ## component for linPred=TRUE,disp=FALSE when newdata=ori data
   }
-  #cat(crayon::red("predVar"));str(predVar)
+  #cat(cli::col_red("predVar"));str(predVar)
   ## Second component of predVar: 
   # Evar: expect over distrib of (hat(beta),new hat(v)) of [variance of Xbeta+Zb given (hat(beta),old hat(v))]
   # Evar must be 0 when newdata=ori data
@@ -362,7 +362,7 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
       predVar <- c(predVar,Evar) # join lists
     } else predVar <- predVar + Evar ## component for linPred=TRUE,disp=FALSE whether newdata=ori data or not
   }
-  #cat(crayon::red("Evar"));str(Evar)
+  #cat(cli::col_red("Evar"));str(Evar)
   # If components for uncertainty in dispersion params were requested,
   #   logdispObject is not NULL
   # If some components are computable, $$dwdlogdisp should not be NULL
@@ -612,7 +612,7 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
                                        "DIMNAMES") <- list(repnames[newcols],repnames[oldcols]) ## these will be needed by .match_old_new_levels()
   }
   if (which_mats$nn[new_rd]) {
-    if (Lnn_not_Cnn) {
+    if (Lnn_not_Cnn) { # seems to depend on $keep_ranef_covs_for_simulate <- ( ! is.null(newdata)) in simulate.HLfit()
       compactL <- latentL_blob$design_u
       if (is.null(compactL)) compactL <- # on chkfx and HLfit3 examples, the latter with a singularity
           .wrap_solve_warn(X=t(as.matrix(latentL_blob$compactchol_Q_w)),
@@ -631,7 +631,7 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
       newLv_env$diag_cov_newLv_newLv_list[[new_rd]] <- newoldC[[]][diagPos[newcols]] ## with the [[]] to access the raw vector
     } else newLv_env$diag_cov_newLv_newLv_list[[new_rd]] <- newoldC[diagPos[newcols]]
   }
-  #cat(crayon::red("newoldC"));str(newoldC)
+  #cat(cli::col_red("newoldC"));str(newoldC)
 }
 
 .make_new_corr_mats_NOT_ranCoef <- function(newLv_env, corr.model, old_rd, fix_info, 
@@ -659,7 +659,7 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
     # assign to newLv_env$cov_newLv_oldv_list, cov_newLv_newLv_list, diag_cov_newLv_newLv_list
   } else if (corr.model=="corrMatrix") {
     if (is.null(newoldC <- object$ranef_info$sub_corr_info$corrMatrices[[old_rd]])) {
-      # The just-looked-at newoldC is NULL if all the corrMat positiosn are in the data:
+      # The just-looked-at newoldC is NULL if all the corrMat positions are in the data:
       # In that case there is no need to keep a distinct matrix in sub_corr_info.
       newoldC <- .tcrossprod(object$strucList[[old_rd]], perm=TRUE) ##  Can reconstruct permuted (consistent with perm of cols of Z) corrMatrix from its CHM factor
       colnames(newoldC) <- rownames(newoldC) <- .get_oldlevels(object, old_rd, fix_info)  # those in the data
@@ -669,6 +669,8 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
                                              Lnn_not_Cnn=Lnn_not_Cnn)
     } else {
       # the tentative newoldC in the test condition should exist when the full corrMatrix has more levels than the ZA. Cf .add_ranef_returns().
+      # Note a posteriori: the sub_corr_info$corrMatrices is not used. If it were, one would have to check that
+      #it has the correct format: in-fit atleast, corrMatrices can be (or store) precision matrices.
       .assign_newLv_for_newlevels_fullcorrMatrix(newoldC, # has more than oldlevels
                                                  oldlevels=.get_oldlevels(object, old_rd, fix_info), # those in the data
                                                  newlevels=colnames(newZAlist[[new_rd]]), 
@@ -978,6 +980,8 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
     if (is.null(variances$cov)) variances$cov <- variances$as_tcrossfac_list
     if (is.null(variances$naive)) variances$naive <- FALSE
     if (is.null(variances$cancel_X.pv)) variances$cancel_X.pv <- FALSE
+    # Beware of tests if (any(unlist(variances))) => further flags cannot be autom. set to TRUE
+    if (is.null(variances$warn_pw_once)) variances$warn_pw_once <- variances$residVar
     # there is a test any(unlist(variances)) somewhere so care is needed before adding new elements... 
     #    This test happens to be OK when cancel_X.pv is TRUE as some other elements are also TRUE in that case.
     return(variances)
@@ -1247,7 +1251,7 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
  
 
 .add_residVar <- function(object, resu, fv, locdata, respVar, variances, cum_nobs) {
-  .warn_pw(object) # residVar() wraps .get_phiW() that can handle prior weights 
+  if (variances$warn_pw_once) .warn_pw(object) # residVar() wraps .get_phiW() that can handle prior weights 
   # .get_phiW() must be wrapped bc it is not OK for all objects, It can handle new data, but residVar() cannot =>
   # need other wrapper or new argument
   attr(resu,"residVar") <- .calcResidVar(object,newdata=locdata, fv=fv,cum_nobs=cum_nobs) 
@@ -1317,7 +1321,6 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
   predVar
 }
 
-#Not yet used.
 .rc_dispinfo_warn <- local({
   rc_dispinfo_warned <- FALSE
   function() {
@@ -1440,8 +1443,9 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
   if (variances$residVar) resu <- .add_residVar(object, resu, fv=ppblob$fv, locdata, respVar, variances,
                                                 cum_nobs=new_X_ZACblob$cum_nobs) # may affect attributes residVar AND respVar
   if ( is.matrix(resu) && ncol(resu)==1L) {
-    class(resu) <- c("predictions",class(resu))
-  } ## for print.predictions method which expects a 1-col matrix
+    # 'spaMM_predictions' avoids conflicts with marginaleffects:::plot.predictions
+    class(resu) <- c("spaMM_predictions",class(resu))
+  } ## for print.spaMM_predictions method which expects a 1-col matrix
   # intervals
   checkVar <- setdiff(intervals,names(attributes(resu)))
   if (length(checkVar)) {
@@ -1556,14 +1560,15 @@ dimnames.bigq <- function(x) { # colnames() and rownames() will use this for big
     tmp <- unlist(tmpattr, recursive=FALSE)
     tmp <- t(matrix(tmp, ncol=nslices))
     tmp <- apply(tmp,2L, function(v) do.call(rbind,v))
-    attr(tmp, "allvarsS") <- attr( tmpattr[[1L]], "allvarsS")
     attr(mv_res,st) <- tmp
   } 
   mostAttrs <- setdiff(mostAttrs,c("mu_U","p0","frame","mv","nobs"))
-  if (length(mostAttrs)) warning(paste0("Attribute(s) '",
-                                        paste0(mostAttrs,collapse="','"),
-                                        "' potentially lost from result.\n Please contact the maintainer."))
-  class(mv_res) <- class(somelist[[1]]) # keeping possible "predictions" class
+  if (length(mostAttrs)) {
+    warning(paste0("Attribute(s) '",
+                   paste0(mostAttrs,collapse="','"),
+                   "' potentially lost from result.\n Please contact the maintainer."))
+  }
+  class(mv_res) <- class(somelist[[1]]) # keeping possible "spaMM_predictions" class
   mv_res
 }
 
@@ -1744,7 +1749,9 @@ predict.HLfit <- function(object, newdata = newX, newX = NULL, re.form = NULL,
   if ( ! is.null(intervals)) {
     if ( ! inherits(intervals,"character")) stop("'intervals' arguments should inherit from class 'character'.")
     checkIntervals <- (substr(x=intervals, nchar(intervals)-2L, nchar(intervals))=="Var")
-    if (any(!checkIntervals)) warning("Element(s)",intervals[!checkIntervals],"are suspect, not ending in 'Var'.")
+    if (any(!checkIntervals)) warning("Element(s) ",
+                                      intervals[!checkIntervals],
+                                      " are suspect, not ending in 'Var'.")
     # possible elements in return value: fixefVar, predVar, residVar, respVar
     variances[intervals] <- TRUE 
   }
@@ -1860,13 +1867,13 @@ print.vcov.HLfit <- function(x, expanded=FALSE, ...) {
 }
 
 
-`[.predictions` <- local({
+`[.spaMM_predictions` <- local({
   mv_warned <- FALSE # we need special handling for all attributes that become lists in mv code.
                     # => only 'frame' attribute ?
   function (x, i, j, 
             drop = TRUE ## by default, this function will return scalar/vector 
   ) {
-    class(x) <- "matrix" ## avoids recursive call to `[.predictions` 
+    class(x) <- "matrix" ## avoids recursive call to `[.spaMM_predictions` 
     resu <- x[i,j,drop=drop]
     if ( ! drop) {
       fixefVar <- attr(x, "fixefVar")
@@ -1883,14 +1890,14 @@ print.vcov.HLfit <- function(x, expanded=FALSE, ...) {
       }
       frame <- attr(x, "frame")
       if ( ! is.null(frame)) {
-        if (inherits(frame,"list")) {
-          # base unique() -> unique.matrix() -> do.call("[", c(list(x), args, list(drop = FALSE)))
-          # -> bug on mv output where the frame attribute is a list of frames.
-          # 'frame' might be needed only in the context of binding predictions, so best code not yet clear
-          if ( ! mv_warned) {
-            warning("'frame' attribute of predictions not yet handled for predictions from multivariate fits.\n Contact the maintaner if you encounter problems.")
-            mv_warned <<- TRUE
-          }
+        if (inherits(frame,"list")) { # typical for mv predictions
+          # base::unique() -> unique.matrix() -> do.call("[", c(list(x), args, list(drop = FALSE)))
+          nobs <- sapply(frame, NROW)
+          cum_nobs <- cumsum(c(0L, nobs)) 
+          lapply(seq_along(nobs), function(mv_it) {
+            range_it <- intersect(seq_len(nobs[mv_it]), i - cum_nobs[mv_it])
+            frame[[mv_it]][range_it,] ## dataframe => nodrop
+          })
         } else frame <- frame[i,] ## dataframe => nodrop
       }
       residVar <- attr(x, "residVar")
@@ -1901,13 +1908,13 @@ print.vcov.HLfit <- function(x, expanded=FALSE, ...) {
           respVar <- respVar[i]
         } else respVar <- respVar[i,i,drop=FALSE]
       }
-      class(resu) <- c("predictions","matrix")
+      class(resu) <- c("spaMM_predictions","matrix")
       structure(resu,fixefVar=fixefVar,predVar=predVar,residVar=residVar,frame=frame,fittedName=attr(x, "fittedName"))
     } else return(resu)
   } # Use unlist() to remove attributes from the return value
 }) 
 
-print.predictions <- function (x, expanded=FALSE, ...) {
+print.spaMM_predictions <- function (x, expanded=FALSE, ...) {
   asvec <- as.vector(x) ## important to remove names and keep them separately
   rnames <- rownames(x)
   if (is.null(rnames)) rnames <- rownames(attr(x,"frame"))
@@ -1953,10 +1960,10 @@ print.predictions <- function (x, expanded=FALSE, ...) {
 }
 
 # usage: 
-# as.matrix(<1-col matrix inheriting from class "predictions" resulting from predict(, binding=FALSE)>, ...)
+# as.matrix(<1-col matrix inheriting from class "spaMM_predictions" resulting from predict(, binding=FALSE)>, ...)
 # or 
-# as.matrix.predictions(<vector resulting from predict(, binding=NA)>, ...)
-# as.matrix.predictions <- function(x, colnames.=attr(x, "respnames"), ...) {
+# as.matrix.spaMM_predictions(<vector resulting from predict(, binding=NA)>, ...)
+# as.matrix.spaMM_predictions <- function(x, colnames.=attr(x, "respnames"), ...) {
 #   #mv <- attr(x,"mv")
 #   #vec_nobs <- sapply(mv, nrow)
 #   resu <- matrix(x,ncol=length(attr(x,"mv"))) # or do.call(rbind, attr(x,"mv")) ?

@@ -75,8 +75,8 @@
             G_diagnosis <- .provide_G_diagnosis(corr_info=corr_info, ZAlist=ZAlist, fast=FALSE)
             sparse_precision <-  with(G_diagnosis, (dens_G_rel_ZL<1 && density_G*dens_G_rel_ZL<0.05))
             if (FALSE && ! sparse_precision ) {
-              cat(crayon::red(unlist(G_diagnosis)))
-              cat(crayon::red(sparse_precision))
+              cat(cli::col_red(unlist(G_diagnosis)))
+              cat(cli::col_red(sparse_precision))
             }
           } else sparse_precision <- TRUE  # always for IMRF
         } else {
@@ -85,11 +85,16 @@
             # actually no true G diagnosis ; instead compares ZL to a ZL_without_AR, 
             # which amounts to assume that the cost of spprec is that of ZL without AR 
             rel_ZAL_denseness <- G_diagnosis$denseness_via_ZL/G_diagnosis$denseness_noAR 
-            crit <-  rel_ZAL_denseness*nr/(nc^(2/3)) # tentatively introducing the power 2023/08, motivated by orpredcheck/forpredcheck test:
-               # => give more weight to nr>nc... BUT (zut1 <- fitmv(list(list(y ~1+(1|grp) in test LLM 
-               # has nr=200, nc=2 and rel_ZAL_denseness=0.01. Z'Z is dense 2*2 and G will be 2*2 too showing we don"t want to 
-               # select spprec when nr is small and When rel_ZAL_denseness is nr/nc  => no power on nc  =>   new criterion.
-               # nc^(3/4) possible too.
+            crit <-  rel_ZAL_denseness*(max(1.5,nr/nc))^(5/3) # 
+               # tests for criterion:
+               # test-Rasch must select spcorr
+               # orpredcheck/forpredcheck must select spprec => give more weight to nr>nc... 
+               # (zut1 <- fitmv(list(list(y ~1+(1|grp) in test LLM must select decorr
+               #            has nr=200, nc=2 and rel_ZAL_denseness=0.01. Z'Z is dense 2*2 and G will be 2*2 too showing we don"t want to 
+               #            select spprec when nr is small and When rel_ZAL_denseness is nc/nr
+               #            crit is then (nr/nc)^(2/3)=21.5....  
+               # adjfitsp should selection spprec led to using max(1.5,...) [nc > nr here: 112 vs 56]
+               # so the factor (max(1.5,nr/nc))^(5/3) is always > 1.96...
                # 
                # older comment: rel_ZAL_denseness*(nr/nc) can reach high values (e.g. adjacency-long > 400)
             sparse_precision <- crit >.spaMM.data$options$spprec_threshold ## from numerical experiments on ohio
@@ -97,21 +102,21 @@
             # Gryphon has second criterion below 4e-5 and covfit in test-adjacency-corrMatrix has it >2e-3
             sparse_precision <-  with(G_diagnosis, (dens_G_rel_ZL<1 && density_G*dens_G_rel_ZL<2e-4)) 
             if (FALSE) {
-              cat(crayon::yellow(unlist(G_diagnosis)))
-              cat(crayon::yellow(sparse_precision))
+              cat(cli::col_yellow(unlist(G_diagnosis)))
+              cat(cli::col_yellow(sparse_precision))
             }
           }
           if ( FALSE ) {
             old_rel_ZAL_denseness <- (G_diagnosis$denseness_via_ZL-G_diagnosis$denseness_noAR)/(nc^2) # rel_ZAL_denseness=0 for pure block effects
             old_sparse_precision <- old_rel_ZAL_denseness*nc*nr>5000 ## from numerical experiments
             if (sparse_precision!=old_sparse_precision){ # changed spprec
-              cat(crayon::green(c(old_rel_ZAL_denseness,rel_ZAL_denseness)),"\n")
-              cat(crayon::green(c(old_rel_ZAL_denseness*nc*nr,crit)),"\n")
-              cat(crayon::green(c(old_sparse_precision,sparse_precision)),"\n")
+              cat(cli::col_green(c(old_rel_ZAL_denseness,rel_ZAL_denseness)),"\n")
+              cat(cli::col_green(c(old_rel_ZAL_denseness*nc*nr,crit)),"\n")
+              cat(cli::col_green(c(old_sparse_precision,sparse_precision)),"\n")
             } else if (old_sparse_precision) { # always spprec: useful to see criteria
-              cat(crayon::blue(c(old_rel_ZAL_denseness,rel_ZAL_denseness)),"\n")
-              cat(crayon::blue(c(old_rel_ZAL_denseness*nc*nr,crit)),"\n")
-              cat(crayon::blue(c(old_sparse_precision,sparse_precision)),"\n")
+              cat(cli::col_blue(c(old_rel_ZAL_denseness,rel_ZAL_denseness)),"\n")
+              cat(cli::col_blue(c(old_rel_ZAL_denseness*nc*nr,crit)),"\n")
+              cat(cli::col_blue(c(old_sparse_precision,sparse_precision)),"\n")
             }
           } 
         }

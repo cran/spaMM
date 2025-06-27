@@ -1,4 +1,4 @@
-cat(crayon::yellow("\ntest truncated families:\n"))
+cat(cli::col_yellow("\ntest truncated families:\n"))
 
 data(scotlip)
 
@@ -30,4 +30,21 @@ if (spaMM.getOption("example_maxtime")>60) { # (~ and twice longer by spprec)
   # estimand is fixef(tnb) = 0.8398057
   testthat::expect_true(diff(c(mean(ecd),0.8165908))<1e-6) ## test modified in v2.4.0 and again in 2.5.34
   #plot(ecdf(ecd)) ## consistent with the fitted model from which simulations are drawn
+}
+
+if (FALSE) {
+  data("Loaloa")
+  lll <- Loaloa
+  lll$ID <- seq(nrow(lll))
+  lll$resp <- 1+floor(log(1+lll$npos))
+  tnb <- fitme(resp~1+(1|ID), data=lll,family=Tnegbin(2))
+  # simulate and refit under the fitted model => correctly specified; the distribution of p values should be uniform, but it isn't.
+  set.seed(123)
+  pvalues <- replicate(200,
+                       { cat(".")
+                         refit <- update_resp(tnb, newresp = simulate(tnb, verbose=FALSE)) 
+                         gof(refit)$p.value
+                       })
+  plot(ecdf(pvalues))
+  abline(0,1)
 }

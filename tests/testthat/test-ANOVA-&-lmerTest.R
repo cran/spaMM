@@ -1,4 +1,4 @@
-cat(crayon::yellow("\ntest lmerTest interface and other ANOVA tables:")) 
+cat(cli::col_yellow("\ntest lmerTest interface and other ANOVA tables:")) 
 # See test-rank for additional tests of anova()
 
 { 

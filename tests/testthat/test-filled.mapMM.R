@@ -1,4 +1,4 @@
-cat(crayon::yellow("\ntest filled.mapMM:"))
+cat(cli::col_yellow("\ntest filled.mapMM:"))
 # filled.mapMM
 
 data("blackcap")

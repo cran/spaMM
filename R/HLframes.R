@@ -620,6 +620,6 @@ if (FALSE) { # seems correct, but ultimately not needed
     #
     newpredvars <- unique(c(newpredvars_factors,newpredvars_offset))
     newpredvars <- paste0("list(",paste(newpredvars,collapse=","),")")
-    return(parse(text=newpredvars)) ## contains poly(., coefs) information,
+    return(str2lang(newpredvars)) ## contains poly(., coefs) information,
   } else return(NULL)
 }

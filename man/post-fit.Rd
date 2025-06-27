@@ -5,11 +5,14 @@
 \alias{glht}
 \alias{DHARMa}
 \alias{lmerTest}
+\alias{emmeans}
 \title{
-Applying post-fit procedures on spaMM results
+Applying post-fit procedures from other packages on spaMM results
 }
 \description{
   Packages implementing post-fit procedures define helper functions which may not handle \pkg{spaMM}'s fit objects, or which have not always handled them, or which can handle them correctly only with some non-default arguments. This documentation topic gives further directions to apply some such post-fit procedures (from packages \pkg{DHARMa}, \pkg{RLRsim}, \pkg{multcomp} and \pkg{lmerTest}) to these fit objects. 
+  
+  \code{emmeans} can be tentatively applied to \pkg{spaMM}'s fit objects but the underlying code is experimental. It may be safer to use \code{multcomp::glht}.
   
   For other procedures not considered here, diagnosing a failure in a debugging session may suggest a simple solution (as it did for \code{multcomp::glht}). 
 }

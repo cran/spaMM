@@ -36,7 +36,7 @@ Journal of the American Statistical Association: 88 9-25.
 }
 \examples{
 data("scotlip")
-fitme(cases~I(log(expec)), data=scotlip, adjMatrix=Nmatrix, family=poisson)
+fitme(cases~I(log(expec)), data=scotlip, family=poisson)
 
 ## see 'help(autoregressive)' for additional examples involving 'scotlip'.
 }

@@ -1,6 +1,6 @@
 .diagnose_bootreps_pbs <- function(bootreps, foreach_args) {
   if (foreach_args[[".errorhandling"]]=="remove" && is.null(bootreps)) {
-    cat(crayon::bold(paste0(
+    cat(cli::style_bold(paste0(
       "Hmmm. It looks like all parallel processes failed. Maybe rerun spaMM_boot() \n",
       "with  ' control.foreach=list(.errorhandling=\"stop\") '  to diagnose the problem.\n"
     )))
@@ -8,11 +8,11 @@
     # foreach alters the condition message => seel '\"' after 'could not find'
     if (length(grep("could not find",(condmess <- conditionMessage(attr(bootreps,"condition")))))) {
       firstpb <- strsplit(strsplit(condmess,"could not find")[[1]][2],"\"")[[1]][2]
-      cat(crayon::bold(paste0(
+      cat(cli::style_bold(paste0(
         "Hmmm. It looks like some variables were not passed to the parallel processes.\n",
         "Maybe add   ' ",firstpb," = ",firstpb," '  to spaMM_boot()'s 'fit_env' argument?\n"
       )))
-    } else cat(crayon::bold(condmess))
+    } else cat(cli::style_bold(condmess))
   }
 }
 
@@ -245,7 +245,9 @@
   }
 })
 
-# This is an EXPORTED function:
+# This is an EXPORTED function: 
+# but ____F I X M E____ no longer used by Infusion (v2.1.206 2024/09/20)
+# so ultimately we should be able to remove it.
 .setCluster <- function(nb_cores, cluster_args, iseed, fit_env=NULL) {
   
   cluster_args <- .set_cluster_type(cluster_args, nb_cores=cluster_args$spec) # If I extract this call from the .setCluster() 
@@ -276,7 +278,7 @@
 
 
 combinepar <- function(newresp, fn, nb_cores=NULL, cluster=NULL, fit_env, 
-                       control=list(.final=function(v) if( ! is.list(v[[1]])) {do.call(cbind,v)} else v), 
+                       control=list(), 
                        cluster_args=NULL, debug.=FALSE, iseed=NULL, 
                        showpbar=eval(spaMM.getOption("barstyle")), pretest_cores=NULL, 
            ... # passed to fn... unless captured by pbapply (in which case 'simplify' may have a distinct effect)
@@ -306,6 +308,7 @@ combinepar <- function(newresp, fn, nb_cores=NULL, cluster=NULL, fit_env,
       set.seed(iseed)
     }
     if (cluster_args$type=="FORK") {
+      if ( is.null(control$.final)) control$.final <- .dopar.final.other
       if (cluster_is_local) {
         cl <- parallel::makeForkCluster(nnodes = nb_cores)
         .wrap_register_doFuture(cl, iseed=iseed, nb_cores=nb_cores, PSOCK=FALSE)
@@ -320,23 +323,26 @@ combinepar <- function(newresp, fn, nb_cores=NULL, cluster=NULL, fit_env,
       } 
       backend <- .find_socket_backend()
       if (backend=="doSNOW") {
+        if ( is.null(control$.final)) control$.final <- .dopar.final.doSNOW
         if (cluster_is_local) .wrap_registerDoSNOW(cl, iseed, nb_cores)
         bootreps <- .foreach_snow_bar(newresp=newresp, fn=fn, control=control, ...) # wraps .foreach_PSOCK_nofuture() with the added bar
       } else if (backend=="doFuture") { 
+        if ( is.null(control$.final)) control$.final <- .dopar.final.other
         if (cluster_is_local) .wrap_register_doFuture(cl, iseed=iseed, nb_cores=nb_cores, PSOCK=TRUE)
         bootreps <- .foreach_try_progressr(newresp=newresp, fn=fn, control=control, cluster_args=cluster_args, ...)
       } else { # neither doSNOW nor doFuture => doParallel but not bar
+        if ( is.null(control$.final)) control$.final <- .dopar.final.other
         if (cluster_is_local) .wrap_registerDoParallel(cl, iseed)
         bootreps <- .foreach_PSOCK_nofuture(newresp=newresp, fn=fn, control=control, ...)
       } # has_doSNOW ... else has_doFuture ... else ...
       if (inherits(bootreps,"try-error") ) {
         if (length(grep("could not find",(condmess <- conditionMessage(attr(bootreps,"condition")))))) {
           firstpb <- strsplit(condmess,"\"")[[1]][2]
-          cat(crayon::bold(paste0(
+          cat(cli::style_bold(paste0(
             "Hmmm. It looks like some variables were not passed to the parallel processes.\n",
             "Maybe add    ",firstpb," = ",firstpb,"   to spaMM_boot()'s 'fit_env' argument?\n"
           )))
-        } else cat(crayon::bold(condmess))
+        } else cat(cli::style_bold(condmess))
       }
     } # FORK ... else
     if (cluster_is_local) {
@@ -346,6 +352,7 @@ combinepar <- function(newresp, fn, nb_cores=NULL, cluster=NULL, fit_env,
     if ( ! is.null(iseed) ) do.call("RNGkind", as.list(ori)) # restore to state pre-parallel computation 
     # (makes sense if not preset cluster. If preset cluster, it may make more sense to control RNG once when creating and once when closing it)
   } else {
+    if ( is.null(control$.final)) control$.final <- .dopar.final.other
     bootreps <-  .foreach_serial_bar(newresp, fn, control, ...)
   }
   return(bootreps)

@@ -5,7 +5,7 @@
 # spaMM.options(example_maxtime=60)
 
 if (spaMM.getOption("example_maxtime")>10) {
-  cat(crayon::cyan("\ntest-corrFamilies.R"))
+  cat(cli::col_cyan("\ntest-corrFamilies.R"))
   {
     data("blackcap")
     MLdistMat2 <- as.matrix(proxy::dist(blackcap[,c("latitude","longitude")]))
@@ -18,12 +18,12 @@ if (spaMM.getOption("example_maxtime")>10) {
     cap_mv$status2 <- blackcap$migStatus+ rnorm(14,sd=0.001)
   }
   
-  {
-    cat(crayon::yellow("MaternIMRFa; ")) 
+  if(requireNamespace("INLA", quietly = TRUE)) {
+    cat(cli::col_yellow("MaternIMRFa; ")) 
     { # create IMRF model
       ## Creating the mesh 
       oldMDCopt <- options(Matrix.warnDeprecatedCoerce = 0) # INLA issue
-      mesh <- INLA::inla.mesh.2d(loc = blackcap[, c("longitude", "latitude")], 
+      mesh <- fmesher::fm_mesh_2d_inla(loc = blackcap[, c("longitude", "latitude")], 
                                  cutoff=30,
                                  max.edge = c(3, 20)) 
       mesh$n ## 40
@@ -54,7 +54,7 @@ if (spaMM.getOption("example_maxtime")>10) {
       p3 <- get_predVar(fit_cF, newdata=cap_mv[c(3,1,3),])
       testthat::test_that("get_predVar MaternIMRFa OK",
                           testthat::expect_true(diff(range(p1-p2, p1-p3))<1e-6))
-      cat# (crayon::blue("Two expected warnings bc fitmv with unregistered corrFamily:"))
+      cat# (cli::col_blue("Two expected warnings bc fitmv with unregistered corrFamily:"))
       (zut_IMRF <- fitmv(submodels=list(mod1=list(migStatus ~ 1),
                                         mod2=list(status2 ~ 1+ IMRF(1|longitude+latitude, model=matern))), # verbose=c(TRACE=TRUE), 
                          fixed=list(phi=c(0.02,0.02)), covStruct=list(corrFamily=MaternIMRFa(mesh=mesh, fixed=c(alpha=2))),
@@ -79,7 +79,7 @@ if (spaMM.getOption("example_maxtime")>10) {
   }
   
   {
-    cat(crayon::yellow("ARp; ")) 
+    cat(cli::col_yellow("ARp; ")) 
     {
       ts <- data.frame(lh=lh,time=seq(48)) ## using 'lh' data from 'stats' package
       AR1fit <- fitme(lh ~ 1 + AR1(1|time), data=ts, method="REML")
@@ -100,7 +100,7 @@ if (spaMM.getOption("example_maxtime")>10) {
       p4 <- get_predVar(ARpfit, newdata=ts[2:4,])
       testthat::expect_true(diff(range(p1-p2,p1-p3,p1-p4))<1e-8)
     }
-    cat(crayon::yellow("ARMA; ")) 
+    cat(cli::col_yellow("ARMA; ")) 
     {
       ts <- data.frame(lh=lh,time=seq(48)) ## using 'lh' data from 'stats' package
       ARMAfit <- fitme(lh ~ 1 + ARMA(1|time,p=1,q=1), data=ts, method="REML")
@@ -120,7 +120,7 @@ if (spaMM.getOption("example_maxtime")>10) {
     }
     { 
       
-      cat(crayon::yellow("AR1 fitmv; ")) 
+      cat(cli::col_yellow("AR1 fitmv; ")) 
       {
         # good test-data because they are not ordered by time in the data.frame (min year= 1932)
         # But the rho estimate is effectively 1, so there are numerical problems
@@ -181,7 +181,7 @@ if (spaMM.getOption("example_maxtime")>10) {
       
       dyaddf <- dyaddf[- seq.int(1L,nind^2,nind+1L),] 
     }
-    { cat(crayon::yellow("diallel; "))
+    { cat(cli::col_yellow("diallel; "))
       
       (diallel_fit <- fitme(z ~1 +diallel(1|id1+id2), 
                             data=dyaddf)) 
@@ -211,7 +211,7 @@ if (spaMM.getOption("example_maxtime")>10) {
                           testthat::expect_true(diff(range(p1-p2,p1-p3,p1-p4))<1e-8))
     }
     
-    { cat(crayon::yellow("ranGCA; ")) 
+    { cat(cli::col_yellow("ranGCA; ")) 
       
       (ranGCA_fit <- fitme(z ~1 +ranGCA(1|id1+id2), 
                            data=dyaddf)) 
@@ -242,7 +242,7 @@ if (spaMM.getOption("example_maxtime")>10) {
     }
   }
   
-  { cat(crayon::yellow("corrFamily(1 |<nested RHS>); "))
+  { cat(cli::col_yellow("corrFamily(1 |<nested RHS>); "))
     
     data("onofri.winterwheat", package="agridat")
     

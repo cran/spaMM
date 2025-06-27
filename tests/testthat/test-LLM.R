@@ -1,4 +1,4 @@
-cat(crayon::yellow("\ntest LLMs:")) # there is an expanded version test-devel-LMM.R
+cat(cli::col_yellow("\ntest LLMs:")) # there is an expanded version test-devel-LMM.R
 
 TRACEv <- FALSE
 # TRACEv <- interactive()

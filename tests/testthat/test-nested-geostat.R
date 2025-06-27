@@ -1,4 +1,4 @@
-cat(crayon::yellow("\ntest-nested-geostat:"))
+cat(cli::col_yellow("\ntest-nested-geostat:"))
 
 data("blackcap")
 grouped <- cbind(blackcap,grp=c(rep(1,7),rep(2,7))) 

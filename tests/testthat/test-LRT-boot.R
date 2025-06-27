@@ -1,4 +1,4 @@
-cat(crayon::yellow("test LRT with bootstrap, parallel or not:\n"))
+cat(cli::col_yellow("test LRT with bootstrap, parallel or not:\n"))
 if (spaMM.getOption("example_maxtime")>(13.7+24)) { ## user time + system.time for parallel setup
   cat("test LRT()")
   data("salamander")

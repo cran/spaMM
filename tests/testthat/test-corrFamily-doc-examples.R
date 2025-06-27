@@ -1,18 +1,20 @@
-cat(crayon::yellow("\ntest from test-corrFamily-doc-examples.Rd:\n"))
+cat(cli::col_yellow("\ntest from test-corrFamily-doc-examples.Rd:\n"))
 
 if (requireNamespace("agridat", quietly = TRUE)) {
   # spaMM.options(example_maxtime=60) # keep it handy...
   
-  {cat(crayon::yellow("\ntest from corrFamily-design.Rd:\n"))
+  {cat(cli::col_yellow("\ntest from corrFamily-design.Rd:\n"))
     
     method <- "REML"
     
     if (exists("by_cF")) rm("by_cF")
     example("corrFamily-design", echo=FALSE)
     if (exists("by_cF")) { # if the examples have been run, check their results:
-      testthat::test_that("Check that corrFamily and ranCoef fit are consistent",testthat::expect_true(diff(range(logLik(by_rC),logLik(by_cF)))<1e-08))  
-      testthat::test_that("Check that (poor) logLik(Toepfit) not changed",testthat::expect_true(diff(range(logLik(Toepfit),-152.3721))<1e-4)) 
-      # => poor test bc a better result may be possible (but -152.3721 seem to be the best attained, was .3747 before)
+      testthat::test_that("Check that corrFamily and ranCoef fit are consistent",
+                          testthat::expect_true(diff(range(logLik(by_rC),logLik(by_cF)))<1e-08))  
+      testthat::test_that("Check that (poor) logLik(Toepfit) not changed",
+                          testthat::expect_true(diff(range(logLik(Toepfit),-152.3334))<1e-4)) 
+      # Change between tests for v.4.5.0 2024-06-09 and the same version tested 08/2024 (was -152.3721 before)
       
       { # permutation check ; the restricted range are designed to minimize numerical discrepancies due to singularity issues...
         (Toep1 <- spaMM::fitme(
@@ -49,7 +51,7 @@ if (requireNamespace("agridat", quietly = TRUE)) {
     }
   }
   
-  {cat(crayon::yellow("\ntest from ARp.Rd:\n"))
+  {cat(cli::col_yellow("\ntest from ARp.Rd:\n"))
     
     if (exists("AR3_fix")) rm("AR3_fix")
     example("ARp", echo=FALSE)

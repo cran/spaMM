@@ -6,7 +6,7 @@
 
 # see also http://bbolker.github.io/mixedmodels-misc/notes/cloglogsim.html
 
-cat(crayon::yellow("\ntest-cloglog:\n"))
+cat(cli::col_yellow("\ntest-cloglog:\n"))
 
 
 if (spaMM.getOption("example_maxtime")>1.8) {

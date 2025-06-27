@@ -15,7 +15,7 @@
              stats$linkinv <- function(eta) -1/eta
              stats$mu.eta <- function(eta) 1/(eta^2)
              stats$valideta <- function(eta) all(eta!=0)
-        } else stats <- make.link(linktemp)
+        } else stats <- .make.link(linktemp)
     else {
        stop(gettextf("link \"%s\" not available for inverse-gamma family; available links are %s",
                 linktemp, paste(sQuote(okLinks), collapse = ", ")),

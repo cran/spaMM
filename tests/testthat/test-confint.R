@@ -1,4 +1,4 @@
-cat(crayon::yellow("\ntest confint() for HLfit, corrHLfit, and fitme (with sparse_precision=",
+cat(cli::col_yellow("\ntest confint() for HLfit, corrHLfit, and fitme (with sparse_precision=",
                    capture.output(spaMM.getOption("sparse_precision")),"):\n"))
 data("wafers")
 wfit <- HLfit(y ~X1+(1|batch),family=Gamma(log),data=wafers,HLmethod="ML")
@@ -99,12 +99,23 @@ if(requireNamespace("lme4", quietly = TRUE)) {
       (fitci <- (zut <- confint(mlfit, parm = "Days",verbose=FALSE))$interval) 
       testthat::expect_true(diff(range(c(4.840307, 16.094265)-fitci))<1e-5) 
     }
+    #
     (mlfit <- HLfit(Reaction ~ Days + (Days|Subject), data = sleepstudy, method="ML", family=Gamma(log)))
-    cat(crayon::yellow("\n[try()-]error EXPECTED here for confint(<*HLfit() return value with ranCoefs*>):"))
-    try(zut <- confint(mlfit, parm = "Days",verbose=FALSE)) # catch inappropriate request.
+    cat(cli::col_yellow("\n[try()-]error EXPECTED here for confint(<*HLfit() return value with ranCoefs*>):"))
+    error_expected <- try(confint(mlfit, parm = "Days",verbose=FALSE), silent=TRUE) # catch inappropriate request.
+    if ( ! inherits(error_expected,"try-error")) {
+      stop("error was EXPECTED for confint(<*HLfit() return value with ranCoefs*>), but did not occur")
+    }
+    #
     (mlfit <- fitme(Reaction ~ Days + (Days|Subject), data = sleepstudy, method="ML", family=Gamma(log)))
     (fitci <- (zut <- confint(mlfit, parm = "Days",verbose=FALSE))$interval) 
-    testthat::expect_true(diff(range(c(0.02427526, 0.04343179)-fitci))<1e-5) 
+    if (identical(spaMM.getOption("sparse_precision"),TRUE)) { # when sourced from test-confint-spprec
+      testthat::expect_true(diff(range(c(0.02429229, 0.04343179)-fitci))<1e-6)
+    } else testthat::expect_true(diff(range(c(0.02427526, 0.04343179)-fitci))<1e-6) # typos in d2logMthdth2, d3logMthdth3 had an effect
+    ## v4.5.52 to v4.5.55 change in .update_port_fit_values() modified the small numerical inaccuracies:
+    # if (identical(spaMM.getOption("sparse_precision"),TRUE)) { # when sourced from test-confint-spprec
+    #   testthat::expect_true(diff(range(c(0.02427526, 0.04343179)-fitci))<1e-6)
+    # } else testthat::expect_true(diff(range(c(0.02427631, 0.04343179)-fitci))<1e-6) # typos in d2logMthdth2, d3logMthdth3 had an effect 
   }
   
 }

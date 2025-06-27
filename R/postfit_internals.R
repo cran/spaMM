@@ -130,14 +130,39 @@
 # Simulations for that paper use predictions eta only in the poisson(log) case;
 # In the exponential (->Gamma(log)) they do use the theta deduced as -1/mu, not the eta. => cAIC4:::conditionalBootstrap is odd...
 .calc_boot_AIC_dfs <- function (object, nsim, type="residual", seed=NULL, # (_F I X M E__) does not handle mv fits ? Could be docu'ed at least
-                           nb_cores=NULL, fit_env=NULL) {
-  if ( ! object$family$flags$exp) 
+                                fit_env=NULL, ...) {
+  family <- family(object)
+  if ( ! family$flags$exp) {
     stop("Bootstrap bias correction not implemented for families not from GLM (exponential family) class.") # assuming $exp methods are always available for GLMs (but see negbin2_dvl)
+  } else if (family$family %in% c("negbin","negbin2")) {
+    warning("Bootstrap method does not strictly apply for negbin models.")
+    # Ad hoc version of .theta.mu.canonical that gives correct results in Poisson limit:
+    # as if the canonical parm was -log(1+shape/mu) + log(shape)
+    # This is not the commonly used formula, but still seems consistent with general theory
+    # (theta def'ed up to some forms of constants)
+    # devel/negbin_link has a version of HLfit_internals with this 'revised' canonical link.
+    thetafn <- function(x) {
+      refit <- update_resp(object, newresp=x)
+      muFREQS <- predict(refit, type="response") 
+      shape <- environment(family(refit)$aic)$shape # allows shape to depend on refitted value
+      th <- -log(1+shape/muFREQS)+log(shape)
+      th
+    }
+  } else {
+    thetafn <- function(x) {
+      refit <- update_resp(object, newresp=x)
+      muFREQS <- predict(refit, type="response") # predict(refit(object, newresp = x))
+      .theta.mu.canonical(muFREQS,family(object)) # would return mu for non-GLMs
+    }
+  }
   bootsims <- simulate(object, nsim = nsim, type = type, verbose=FALSE, seed=seed) # the corresponding lmer code returns a data frame
-  muFREQS <- dopar(bootsims, function(x) {
-    predict(update_resp(object, newresp=x), type="response") # predict(refit(object, newresp = x))
-  }, nb_cores=nb_cores, fit_env=fit_env)
-  thetas <- .theta.mu.canonical(muFREQS,family(object)) # would return mu for non-GLMs
+  thetas <- dopar(bootsims, thetafn, fit_env=fit_env, ...)
+  if (inherits(thetas[[1]],"simpleError")) {
+    stop(paste("From dopar() call: ",
+               thetas[[1]]$message))
+  } else if (inherits(thetas,"try-error")) {
+    stop('dopar() call failed: use control=list(.errorhandling = "pass")\n  to obtain more informative error message')
+  }
   # if (is.factor(bootsims[1])) dataMatrix <- as.numeric(dataMatrix) - 1 # in cAIC4:::conditionalBootstrap
   bootsims <- bootsims - rowMeans(bootsims)
   phis <- residVar(object, which="phi") # For Gamma(), the phis are still those of he canonical form of the exponential family, 
@@ -266,39 +291,26 @@ DoF <- function(object) {
   return(dvdlogphiMat)
 }
 
-.calc_dvdloglamMat_new <- function(neg.d2f_dv_dloglam,
-                                   sXaug, d2hdv2_info=NULL ## use either one
-) {
-  if(is.null(d2hdv2_info)) {
-    if (TRUE) {
-      if (is.matrix(sXaug)) { # sXaug_EigenDense_QRP_Chol_scaled case
-        dvdloglamMat <- get_from_MME(sXaug,"solve_d2hdv2",B=diag( neg.d2f_dv_dloglam))
-      } else  dvdloglamMat <- get_from_MME(sXaug,"solve_d2hdv2",B=.sparseDiagonal(x= neg.d2f_dv_dloglam, shape="g"))
-    } else {
-      # Avoids the inelegant test is.matrix(sXaug), but... less accurate!
-      inv_d2hdv2 <- get_from_MME(sXaug,"solve_d2hdv2") # slow step ("test negbin1" with large nobs is good example)
-      dvdloglamMat <- .m_Matrix_times_Dvec(inv_d2hdv2, neg.d2f_dv_dloglam)# get_from_MME(sXaug,"solve_d2hdv2",B=diag( neg.d2f_dv_dloglam)) ## square matrix, by  the formulation of the algo 
-    }
-  } else if (inherits(d2hdv2_info,"CHMfactor")) {# CHM of ***-*** d2hdv2
-    dvdloglamMat <- solve(d2hdv2_info, .sparseDiagonal(x= - neg.d2f_dv_dloglam, shape="g"))  # rXr !       
+.calc_dvdloglamMat_new <- function(neg.d2f_dv_dloglam, # a .sparseDiagonal or the result of .bdiag()
+                                   d2hdv2_info) {
+  if (inherits(d2hdv2_info,"CHMfactor")) {# CHM of ***-*** d2hdv2
+    dvdloglamMat <- solve(d2hdv2_info, - neg.d2f_dv_dloglam)  # rXr !       
   } else if (inherits(d2hdv2_info,"qr") || inherits(d2hdv2_info,"sparseQR") ) { ## much slower than using CHMfactor
-    if (length(neg.d2f_dv_dloglam)>5000L) message("[one-time solve()ing of large matrix, which may be slow]") 
-    dvdloglamMat <- solve(d2hdv2_info, diag( neg.d2f_dv_dloglam ))  # rXr !       
+    if (nrow(neg.d2f_dv_dloglam)>5000L) message("[one-time solve()ing of large matrix, which may be slow]") 
+    dvdloglamMat <- solve(d2hdv2_info, neg.d2f_dv_dloglam)  # rXr !       
   } else if (is.environment(d2hdv2_info)) {
     # dvdloglamMat <- solve(d2hdv2_info, diag( neg.d2f_dv_dloglam ))  # rXr !       
-    rhs <- .Matrix_times_Dvec(d2hdv2_info$chol_Q, neg.d2f_dv_dloglam )
+    rhs <- d2hdv2_info$chol_Q %*% neg.d2f_dv_dloglam
     rhs <- solve(d2hdv2_info$G_CHMfactor, rhs)
     dvdloglamMat <- - .crossprod(d2hdv2_info$chol_Q, rhs) # don't forget '-'
-  } else { ## then d2hdv2_info is ginv(d2hdv2) or some other form of inverse # This block seems obsolete (not in long tests anyway); 
-    # possibly related to the fact that bigranefs comment a few lines below also refers to computation no longer performed.
+  } else { ## then d2hdv2_info is ginv(d2hdv2) or some other form of inverse 
+    # This case happens at least in my ressp devel example (tiny ranCoefs spprec)
     if (inherits(d2hdv2_info,"dsCMatrix")) {  
       if (.spaMM.data$options$Matrix_old) { 
         d2hdv2_info < as(d2hdv2_info, "dgCMatrix")
       } else d2hdv2_info <- as(d2hdv2_info, "generalMatrix")
-      dvdloglamMat <- .Matrix_times_Dvec(d2hdv2_info, 
-                                         neg.d2f_dv_dloglam) ## sweep(d2hdv2_info,MARGIN=2L,neg.d2f_dv_dloglam,`*`) ## ginv(d2hdv2) %*% diag( as.vector(neg.d2f_dv_dloglam))      
-    } else dvdloglamMat <- .m_Matrix_times_Dvec(d2hdv2_info, # this can be simplified, but do this when the alternative is stable
-                                                neg.d2f_dv_dloglam) ## sweep(d2hdv2_info,MARGIN=2L,neg.d2f_dv_dloglam,`*`) ## ginv(d2hdv2) %*% diag( as.vector(neg.d2f_dv_dloglam))      
+    } 
+    dvdloglamMat <- d2hdv2_info %*% neg.d2f_dv_dloglam 
   }
   # I returned as.matrix(dvdloglamMat) a long time ago, and found it terribly inefficient in bigranefs case; 
   # but bigranefs example no longer runs calls .calc_dvdloglamMat_new()
@@ -307,7 +319,9 @@ DoF <- function(object) {
 
 ..calc_d2hdv2_info <- function(object, ZAL) {
   envir <- object$envir
-  if (is.null(factor_inv_Md2hdv2 <- envir$factor_inv_Md2hdv2)) { ## old code not using promises
+  if (is.null(factor_inv_Md2hdv2 <- envir$factor_inv_Md2hdv2)) { ## code not using promises
+    # we reach here at least in simple dense-correlation random-slope fit 
+    # (where d2hdv2 may be sparse, and resulting d2hdv2_info too)
     if ( ! is.null(envir$G_CHMfactor)) {
       if (length(object$y) > ncol(envir$chol_Q)) { # We precompute inverse(d2hdv2) so that .calc_dvdlogphiMat_new() has ONE costly (r*r) %*% (r*n).
         if ( is.null(envir$invL_G.P)) { # allowing for old objects that did not have this element
@@ -320,6 +334,7 @@ DoF <- function(object) {
       d2hdv2 <- .calcD2hDv2(ZAL,.get_H_w.resid(object),object$w.ranef) 
       if (inherits(d2hdv2,"sparseMatrix")) {
         d2hdv2_info <- .silent_W_E(Cholesky( - d2hdv2,LDL=FALSE,perm=TRUE )) #  '-' ! 
+        # this d2hdv2_info seems used only in solve(, default system="A") so perm is automatically handled.
         if (inherits(d2hdv2_info, "CHMfactor")) {
           #d2hdv2_info <- structure(d2hdv2_info, BLOB=list2env(list(), parent=environment(.solve_CHM)))
           rank <- ncol(d2hdv2)
@@ -337,9 +352,14 @@ DoF <- function(object) {
         d2hdv2_info <- .force_solve(d2hdv2) # inverse(d2hdv2)
       } # else we keep the QR facto.
     }
-  } else d2hdv2_info <- - .crossprodCpp_d(as.matrix(factor_inv_Md2hdv2), yy=NULL) # inverse(d2hdv2) # much faster than Matrix::crossprod(dsCMatrix...)
-  #                       and still faster than any of the as_mat variants, eg .Rcpp_crossprod(factor_inv_Md2hdv2, BB = NULL, as_mat=TRUE) 
-  #                       bc .crossprodCpp_d(dense) is fast relative to .Rcpp_crossprod(sparse), irrespective of as_mat
+  } else {
+    # we reach here at least in simple ssprec random-slope fit ... so dense result here for spprec
+    d2hdv2_info <- - .crossprodCpp_d(as.matrix(factor_inv_Md2hdv2), yy=NULL) # inverse(d2hdv2) 
+    # .crossprodCpp_d much faster than Matrix::crossprod(dsCMatrix...); 
+    #                           still so for get_predVar(fit.Frailty) 2025/01/12;
+    #     and still faster than any of the as_mat variants, eg .Rcpp_crossprod(factor_inv_Md2hdv2, BB = NULL, as_mat=TRUE) 
+    #     bc .crossprodCpp_d(dense) is fast relative to .Rcpp_crossprod(sparse), irrespective of as_mat
+  }
   return(d2hdv2_info)
 }
 
@@ -350,7 +370,7 @@ DoF <- function(object) {
   ##   .init_promises_spprec(sXaug, non_X_ones=FALSE, nullify_X_ones =TRUE) 
   ##   and non_X_ones=FALSE implies that there is no "factor_inv_Md2hdv2" promise.
   #
-  # ELSE
+  # ELSE older version 
   envir <- object$envir
   if ( ! is.null(envir$G_CHMfactor)) { ## spprec code
     if (! .is_evaluated("factor_inv_Md2hdv2", envir)) {
@@ -385,11 +405,15 @@ DoF <- function(object) {
 }
 
 
-.calc_logdispObject <- function(object, envir=object$envir, force_fixed) {
+.calc_logdispObject <- function(object, envir=object$envir, force_fixed,
+                                # promises:
+                                strucList=object$strucList,
+                                isRandomSlope= attr(strucList,"isRandomSlope")) {
   
   dvdloglamMat <- envir$dvdloglamMat
   dvdloglamMat_needed <- ( is.null(dvdloglamMat) && 
-                             # (comment this => allows random slope)  all(unlist(attr(object$ZAlist,"namesTerms"))=="(Intercept)") && ## (1|.) or CAR or Matern
+                             # The fact that next line is commented allows computation of predVar effect for random slope lambdas):  
+                             # all(unlist(attr(object$ZAlist,"namesTerms"))=="(Intercept)") && ## (1|.) or CAR or Matern
                              (force_fixed || 
                                 any( ! object$lambda.object$type %in% c("fixed","fix_ranCoefs","fix_hyper"))) ) ## some lambda params were estimated
   dvdlogphiMat <- envir$dvdlogphiMat
@@ -404,14 +428,20 @@ DoF <- function(object) {
   if (dvdloglamMat_needed) { # $\partial_\tau \bv$ in latex doc.
     cum_n_u_h <- attr(.get_u_h(object),"cum_n_u_h")
     psi_M <- rep(attr(object$rand.families,"unique.psi_M"),diff(cum_n_u_h))
-    dlogfthdth <- (psi_M - .get_u_h(object))/object$lambda.object$lambda_est ## the d log density of th(u)
+    u_h <- .get_u_h(object)
+    dlogfthdth <- (psi_M - u_h)/object$lambda.object$lambda_est ## the d log density of th(u)
     neg.d2f_dv_dloglam <- .calc_neg_d2f_dv_dloglam(dlogfthdth, cum_n_u_h, 
                                                    lcrandfamfam=attr(object$rand.families,"lcrandfamfam"), 
-                                                   rand.families=object$rand.families, u_h=.get_u_h(object))
-    # TAG rc_dispcov # cf Details of predVar.Rd; made comparisons in devel/predVar_ranCoefs/predVar_mv_spprec.R
+                                                   rand.families=object$rand.families, u_h=u_h)
+
+    ## I tried using the private .fix_RHS_dvdloglamMat() here instead of the following simple conversion.
+    ## See further comments there.
+    neg.d2f_dv_dloglam <- .sparseDiagonal(x= neg.d2f_dv_dloglam, shape="g")
+    
     dvdloglamMat <- .calc_dvdloglamMat_new(neg.d2f_dv_dloglam, 
                                            d2hdv2_info=d2hdv2_info) ## d2hdv2_info is either a qr factor or the inverse as a matrix or an environment
-  }
+    # envir$dvdloglamMat <- dvdloglamMat # needed only for debugging
+  }  
   if (dvdlogphiMat_needed) {
     muetablob <- object$muetablob
     # .get_H_w.resid() rather than .get_w.resid here. See section mentioning "dvdloglamMat" in the long doc. 
@@ -435,8 +465,9 @@ DoF <- function(object) {
                                               d2hdv2_info=d2hdv2_info ## either a qr factor or a matrix inverse or envir
       )
     }
+    # envir$dvdlogphiMat <- dvdlogphiMat # needed only for debugging
   }
-  invV_factors <- .calc_invV_factors(object) ## n_x_r and r_x_n in repres of invV as diag(w.resid)- [n_x_r %*% r_x_n]
+  invV_factors <- .calc_invV_factors(object, r_x_r_needed = any(isRandomSlope)) ## n_x_r and r_x_n in repres of invV as diag(w.resid)- [n_x_r %*% r_x_n]
   if (length(phimodel)>1L) {
     .calc_logdisp_cov_mv(object, dvdloglamMat=dvdloglamMat, ## square matrix, by  the formulation of the algo 
                                                 dvdlogphiMat=dvdlogphiMat, invV_factors=invV_factors,
@@ -458,7 +489,9 @@ DoF <- function(object) {
 
 ## This provides factor n_x_r and r_x_n of the representation of invV as diag(w.resid)- [n_x_r %*% r_x_n = t(Ztw) %*% invG.ZtW]  (nXr  %*% rxn)
 ## slow computation the one time .get_logdispObject() is called, for variances$disp (no need to store the result in an $envir)
-.calc_invV_factors <- function(object) { ## used by .get_logdispObject
+.calc_invV_factors <- function(object, 
+                               # $r_x_r returned for spprec or if 'r_x_r_needed' (set up for ranCoefs):
+                               r_x_r_needed=FALSE) { ## used by .get_logdispObject
   ## Store inv( G=[{precmat=inv(L invWranef Lt)} +ZtWZ] ) as two matrix nXr and rXn rather than their nXn product
   # F I X M E yet there will be cases where n<r and then it's better to store the n x n product !  
   if (.is_spprec_fit(object)) {
@@ -521,7 +554,7 @@ DoF <- function(object) {
       invG_ZtW <- .tcrossprod(invG, wrZ)
     }  
     RES <- list(n_x_r=wrZ, r_x_n=invG_ZtW)
-    #RES$r_x_r <- invG_ZtW %*% ZAfix  ## only for spprec (above) or  TRY_dense_iVZA (FALSE)
+    if (r_x_r_needed) RES$r_x_r <- invG_ZtW %*% ZAfix  
     return(RES)
   }
 }

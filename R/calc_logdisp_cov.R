@@ -2,7 +2,7 @@
 # this function avoids the formation of the large 'n x n' matrices, using a form of commutation of trace arguments.
 # However the computation of 'r x r' matrix by the crossproducts may still be quite long
 # e.g. 792*62388 matrices => (792^2)*62388 = 39 133 746 432 flop'product' and quite a few 'sum'
-# That's something that 'should' be easy to paralellise
+# That's something that 'should' be easy to parallelise
 .traceAB <- function(lA,rA,lB,rB, B_is_tA=FALSE) {
   if (nrow(lA)>ncol(lA)) { # lA is typically nXr so this occurs when more obs than ranef levels
     if (B_is_tA) {
@@ -55,29 +55,31 @@
 # sum(diag(diag(dD) %*% lB %*% rB))
 # .traceDB(dD,lB,rB)
 
+# This function is called without ZALd either for spprec (above) or when any(isRandomSlope...); r_x_r used only in these cases
 .calc_lhs_invV.dVdlam <- function(object, ZALd, invV_factors) { 
   if (.is_spprec_fit(object)) { # alternative code is always valid! BUT....
     # dgeMatrix is more efficient in products using the result 'lhs_invV.dVdlam':
     # Further, we have dgeMatrices where the alternative code produces dgCMatrices, 
-    # W_ZinvG_ZtW_ZA <- invV_factors$n_x_r =W Z       
-    #                                  %*% invV_factors$r_x_n=Matrix::solve(object$envir$G_CHMfactor, object$envir$ZtW) 
-    #                                                          %*% ZA
+    # W_ZinvG_ZtW_ZA <- ($n_x_r =W Z  )     
+    #                           %*% [$r_x_n=Matrix::solve(object$envir$G_CHMfactor, object$envir$ZtW)] 
+    #                               %*% ZA
     if (FALSE) {
       ZAfix <- .get_ZAfix(object)
       W_ZinvG_ZtW_ZA <- invV_factors$n_x_r %*% as(invV_factors$r_x_n %*% ZAfix, "dgeMatrix")
     } else W_ZinvG_ZtW_ZA <- invV_factors$n_x_r %*% invV_factors$r_x_r  # precomput r_x_r controls its type relative to $r_x_n
     lhs_invV.dVdlam <- invV_factors$n_x_r - W_ZinvG_ZtW_ZA # (w.resid- n_x_r %*% r_x_n) %*% ZA 
   } else if (missing(ZALd)) { # To produce "iVZA|L" factorization 
-    # ZALd missing eiher for spprec (above or TRY_dense_iVZA (FALSE)); r_x_r used only in these cases
+    # This function is called without ZALd eiher for spprec (above) or when any(isRandomSlope...); r_x_r used only in these cases
     W_ZinvG_ZtW_ZA <- invV_factors$n_x_r %*% invV_factors$r_x_r  # precomput r_x_r controls its type relative to $r_x_n
     lhs_invV.dVdlam <- invV_factors$n_x_r - W_ZinvG_ZtW_ZA # (w.resid- n_x_r %*% r_x_n) %*% ZA 
   } else {
     ## next lines use invV= w.resid- n_x_r %*% r_x_n
-    # W_ZinvG_ZtW_ <- invV_factors$n_x_r =W Z       
-    #                                  %*% invV_factors$r_x_n=Matrix::solve(object$envir$G_CHMfactor, object$envir$ZtW) 
-    #                                                          %*% ZALd
-    W_ZinvG_ZtW_ <- invV_factors$n_x_r %*% (invV_factors$r_x_n %*% ZALd)  
+    # W_ZinvG_ZtW_ <- ( $n_x_r =W Z )      
+    #                         %*% [ $r_x_n=Matrix::solve(object$envir$G_CHMfactor, object$envir$ZtW) ]
+    #                             %*% ZALd
+    W_ZinvG_ZtW_ <- invV_factors$n_x_r %*% (invV_factors$r_x_n %*% ZALd)   
     lhs_invV.dVdlam <- .Dvec_times_m_Matrix(.get_H_w.resid(object), ZALd) - W_ZinvG_ZtW_ # (w.resid- n_x_r %*% r_x_n) %*% ZALd 
+    # so the ZALd comes from dVdlam.
   }
   
   return(lhs_invV.dVdlam)
@@ -124,21 +126,29 @@
     RES$ZAL_to_ZALd_vec <- ZAL_to_ZALd_vec
     RES$type <- "|L" # "iVZA | (Ld!dL)AZ" 
     ## traceAB will use iVZA as lhs and Ld!dL'A'Z' as rhs: we store iVZA and A'Z and .fill_rhs_invV.dVdlam() factors by (Ld!dL)
-  } else {
-    if (identical(.spaMM.data$options$TRY_dense_iVZA,TRUE)) { # (ZALd argument missing in next call) # only for deve purpose
-      # I may not yet have good tests of the efficiency of this code, but I keep it ready for use ## F I X M E Not convincing. Retry
-      RES$lhs_invV.dVdlam <- .calc_lhs_invV.dVdlam(object, invV_factors=invV_factors) ## invV %*% ZA 
+  } else { # two version for 'correlation' algos:
+    if ( ! is.null(invV_factors$r_x_r)) { 
+      # Then ZALd is NOT used in .calc_lhs_invV.dVdlam(). Ideally only when ZALd is not usable,
+      # so r_x_r must be present only (leaving aside spprec) when there are ranCoefs.
+      # invV_factors was computed by calling .calc_invV_factors() in .calc_logdispObject(), 
+      # and .calc_logdispObject() then called .calc_logdisp_cov() calling this function.
+      RES$lhs_invV.dVdlam <- 
+        .calc_lhs_invV.dVdlam(object, invV_factors=invV_factors) ## invV %*% ZA 
       #
       ZAphant <- object$ZAlist
       for (rd in seq_along(ZAphant)) ZAphant[[rd]] <- Diagonal(n=ncol(ZAphant[[rd]]))
       ZAXlist <- .compute_ZAXlist(ZAlist=ZAphant, XMatrix=object$strucList, force_bindable=TRUE)
       RES$Lmatrix <- do.call(Matrix::bdiag,ZAXlist) # it would be nice to avoid this
       #
-      .get_ZAfix(object) ## makes sure that ZAfix is in the object's environment
+      .get_ZAfix(object) ## makes sure that ZAfix is written in the object's $envir
       RES$envir <- object$envir # to use $ZAfix without any copy here
       RES$ZAL_to_ZALd_vec <- ZAL_to_ZALd_vec
-      RES$type <- "iVZA|L" # "iVZA | (Ld!dL)AZ" 
-    } else {
+      RES$type <- "iVZA|L" # "iVZA | (Ld!dL)AZ" similar to "|L" but for correlation algos with ranCoefs.
+      # It is then necessary bc it allows to use a *non-diagonal matrix* of derivatives of the *covariance matrix*
+      # wrt log lambda as a factor in .calc_loglamInfo() (line covmat <- covmat * locfac)
+      # Then reconstruct ZA times this derivative using .compute_ZAL() in the same fn.
+      # That would not be possible if the n_x_r term, with is "fossilized" L matrix, were used. 
+    } else { #
       ZALd <- .m_Matrix_times_Dvec(ZAL, ZAL_to_ZALd_vec)
       # in invV.dVdlam the rhs of dvdlam = ZALd %*% t(ZALd) is split between lhs_invV.dVdlam and rhs_invV.dVdlam
       #                                                               [               rhs             ]       lhs
@@ -153,7 +163,7 @@
   return(RES) 
 }
 
-.fill_rhs_invV.dVdlam <- function(template, urange, invV.dV_info) { ## to localise template and urange
+.fill_rhs_invV.dVdlam <- function(template, urange, invV.dV_info, ZAfix) { ## to localise template and urange
   template[urange] <- 1L
   if (invV.dV_info$type=="|L") { # only spprec
     if ( ! is.null(latent_d_list <- invV.dV_info$envir$sXaug$AUGI0_ZX$envir$latent_d_list)) {
@@ -165,37 +175,110 @@
     return(as.matrix(.tcrossprod(lhs, invV.dV_info$envir$sXaug$AUGI0_ZX$ZAfix))) # LddL'A'Z'
     #lhs <- .ZWZtwrapper(invV.dV_info$LMatrix, (invV.dV_info$ZAL_to_ZALd_vec^2 * template)) 
     #return(.tcrossprod(lhs, invV.dV_info$ZAfix)) ## effectively dense lhs => slow
-  } else if (invV.dV_info$type=="iVZA|L") { # this is only devel code
-    warning("devel code not tested after redef of structList for ranCoefs")
-    # => now, this seems correct
-    # Further, we won't see any pb as long as the ranCoefs $d are 1, which is so if *!*spprec and chol() worked in .calc_latentL()
-    # Thus this devel code must be OK 
+  } else if (invV.dV_info$type=="iVZA|L") { # this is similar to spprec's "|L" but used for correlation algos with ranCoefs
+    # This is necessary to get the correct predVar (identical to spprec case).
+    # See comments where this type is defined.
     tcrossfac <- .m_Matrix_times_Dvec(invV.dV_info$Lmatrix, invV.dV_info$ZAL_to_ZALd_vec * template) # Ld
     lhs <- .tcrossprod(tcrossfac) # LddL'
-    return(as.matrix(.tcrossprod(lhs, invV.dV_info$envir$sXaug$AUGI0_ZX$ZAfix))) # LddL'A'Z'
+    return(as.matrix(.tcrossprod(lhs, ZAfix))) # LddL'A'Z'
   } else {
     # (FIXME) I could add a drop0 when there are several lambda's and matrices are sparse
     return(.Dvec_times_m_Matrix(template, invV.dV_info$rhs_rhs_invV.dVdlam)) # sweep( invV.dV_info$rhs_invV.dVdlam,1L,iloc,`*`))
   }
 }
 
-.calc_loglamInfo <- function(invV.dV_info,which) { ## called by .calc_logdisp_cov(), using the result of .calc_invV.dV_info()
+.get_Coo_kron_Y <- function(sub_corr_info, randit) {
+  # sub_corr_info$corrMatrices contains matrices only in case described in .broom_corrMatrices
+  # It's not the Coo we need as kron_Y factor (it may be a prcision matrix, or contain extra levels).
+  # Hence this distinct extractor, for the rare case where we need it (predVar ranCoefs).
+  # It should be consistent with code for invCoo in .get_invColdoldList().
+  # However, here I assume this is called only for composite ranefs, 
+  #   so there should be a non-NULL kron_Y
+  if ( ! is.null(tmp <- sub_corr_info$kron_Y_LMatrices[[randit]])) {
+    # for CORREL kron_Y_LMatrices[[]] is the result of mat_sqrt(); 
+    # for SPPREC it is the result of solve(blob$Q_CHMfactor,system="Lt") and the next solve() is not maximally efficient
+    ## but in both cases this is a *t*crossfac so 
+    tmp <- .tcrossprod(tmp)
+  } else {
+    tmp <- sub_corr_info$kron_Y_Qmats[[randit]] # time_series case
+    tmp <- solve(tmp) 
+  }
+  tmp
+}
+
+.calc_i_rhs_invVdV_rC <- function(strucList, Xi_cols, i, focal_rd, cum_n_u_h, object) {
+  zerostruclist <- strucList
+  zerostruclist[seq_along(zerostruclist)] <- list(NULL)
+  locstrucList <- zerostruclist # This effectively sets all lambdas to zero.
+  # we then correct this for the focal rd and lambda: 
+  cum_Xi_cols <- cumsum(c(0L,Xi_cols))
+  i_in_rd <- i - cum_Xi_cols[focal_rd]
+  # For ranCoefs, the perturbation of the compactcovmat is NOT diagonal:
+  if (object$ranef_info$is_composite[focal_rd]) {
+    compactcovmat <- attr(strucList[[focal_rd]],"latentL_blob")$compactcovmat
+    locfac <- compactcovmat * 0
+    locfac[i_in_rd,] <- locfac[,i_in_rd]  <- 0.5
+    locfac[i_in_rd,i_in_rd]  <- 1
+    compactcovmat <- compactcovmat * locfac # derivatives of covariance matrix wrt to log lambda
+    kron_Y_Coo <- .get_Coo_kron_Y(object$ranef_info$sub_corr_info, focal_rd)
+    covmat <- .makelong(compactcovmat, ncol(kron_Y_Coo), kron_Y = kron_Y_Coo)
+  } else {
+    covmat <- tcrossprod(strucList[[focal_rd]])
+    locfac <- covmat * 0
+    seq_u <- seq_len(cum_n_u_h[focal_rd+1L]-cum_n_u_h[focal_rd])
+    ranges_in_rd <- matrix(seq_u,ncol=Xi_cols[focal_rd])
+    range_i_in_rd <- ranges_in_rd[,i_in_rd]
+    locfac[range_i_in_rd,] <- locfac[,range_i_in_rd]  <- 0.5
+    locfac[cbind(range_i_in_rd,range_i_in_rd)]  <- 1
+    covmat <- covmat * locfac # derivatives of covariance matrix wrt to log lambda
+  }
+  locstrucList[[focal_rd]] <- covmat
+  rhs_dV <- .compute_ZAL(XMatrix=locstrucList, ZAlist=object$ZAlist,as_matrix=FALSE, 
+                         bind. = TRUE, force_bindable=TRUE, NULL_X_is_Id=FALSE) 
+  rhs_dV
+}
+
+
+.calc_loglamInfo <- function(invV.dV_info,which, strucList, object) { ## called by .calc_logdisp_cov(), using the result of .calc_invV.dV_info()
   lambda_list <- invV.dV_info$lambda_list ## for ranCoefs, must be a list with Xi_cols-matching elements 
-  Xi_cols <- sapply(lambda_list,length)
+  Xi_cols <- sapply(lambda_list,length)# only those for 'which' ranefs, thus not always = Xi_cols <- attr(object$ZAlist, "Xi_cols")
   n_sublambda <- sum(Xi_cols[which]) 
   loglamInfo <- matrix(ncol=n_sublambda,nrow=n_sublambda)
   cum_n_u_h <- invV.dV_info$cum_n_u_h
   zerotemplate <- rep(0,cum_n_u_h[length(cum_n_u_h)]) 
-  cum_Xi_cols <- cumsum(c(0,Xi_cols))
+  cum_Xi_cols <- cumsum(c(0L,Xi_cols))
   rhs_invV.dVdlam_list <- list()
+  isRandomSlope_vec  <- attr(strucList,"isRandomSlope")
+  is_composite_vec <- object$ranef_info$is_composite
+  zerostruclist <- strucList
+  zerostruclist[seq_along(zerostruclist)] <- list(NULL)
+  sub_corr_info <- object$ranef_info$sub_corr_info
   for (randit in which) { # say '2' for second ranef
-    u.range <- (cum_n_u_h[randit]+1L):(cum_n_u_h[randit+1L])
+    isRandomSlope  <- isRandomSlope_vec[[randit]]
+    is_composite <- is_composite_vec[randit]
     Xi_ncol <- Xi_cols[randit] # say '1 2' for ranCoefs
-    uirange <- matrix(u.range,ncol=Xi_ncol)
+    if (is_composite) { # supposed to be a subcase of isRandomSlope
+      kron_Y_Coo <- .get_Coo_kron_Y(sub_corr_info, randit)
+      compactcovmat <- attr(strucList[[randit]],"latentL_blob")$compactcovmat
+    } else if (isRandomSlope) {
+      # ranges from 1 to index positions in the locfac 
+      facrange <- seq_len(cum_n_u_h[randit+1L]-cum_n_u_h[randit])
+      facirange <- matrix(facrange,ncol=Xi_ncol)
+    } else {
+      u.range <- (cum_n_u_h[randit]+1L):(cum_n_u_h[randit+1L])
+      uirange <- matrix(u.range,ncol=Xi_ncol)
+    }
     for (ilam in seq_len(Xi_ncol)) { 
-      i_rhs_invV.dVdlam <- .fill_rhs_invV.dVdlam(template=zerotemplate, urange=uirange[,ilam], invV.dV_info)
-      rhs_invV.dVdlam_list[[paste0(randit,"_",ilam)]] <- i_rhs_invV.dVdlam
       colit <- cum_Xi_cols[randit]+ilam
+      if (isRandomSlope) {
+        i_rhs <- .calc_i_rhs_invVdV_rC(strucList=strucList, Xi_cols=Xi_cols, 
+                                    i=colit, focal_rd=randit, cum_n_u_h=cum_n_u_h, object=object)
+        i_rhs_invV.dVdlam   <- t(i_rhs)
+      } else {
+        i_rhs_invV.dVdlam <- .fill_rhs_invV.dVdlam(template=zerotemplate, urange=uirange[,ilam], 
+                                                   invV.dV_info, ZAfix=.get_ZAfix(object))
+      }
+      rhs_invV.dVdlam_list[[paste0(randit,"_",ilam)]] <- i_rhs_invV.dVdlam
       loglamInfo[colit,colit] <- .traceAB(lA=invV.dV_info$lhs_invV.dVdlam, rA=i_rhs_invV.dVdlam,
                                           #lB=t(i_rhs_invV.dVdlam), rB=t(invV.dV_info$lhs_invV.dVdlam)
                                           B_is_tA=TRUE # (lA is n x r, rA is r x n, so A is square as this cases requires)
@@ -208,9 +291,9 @@
         loglamInfo[colit,coljt] <- loglamInfo[coljt,colit]
       }
       for (randjt in intersect(which,seq_len(randit-1L))) {
-        u.range <- (cum_n_u_h[randjt]+1L):(cum_n_u_h[randjt+1L])
+        # u.range <- (cum_n_u_h[randjt]+1L):(cum_n_u_h[randjt+1L])
         Xj_ncol <- Xi_cols[randjt] # say '1 2' for ranCoefs
-        ujrange <- matrix(u.range,ncol=Xj_ncol)
+        # ujrange <- matrix(u.range,ncol=Xj_ncol)
         for (jlam in seq_len(Xj_ncol)) {
           j_rhs_invV.dVdlam <- rhs_invV.dVdlam_list[[paste0(randjt,"_",jlam)]] #.fill_rhs_invV.dVdlam(template=zerotemplate, urange=ujrange[,jlam], invV.dV_info)
           coljt <- cum_Xi_cols[randjt]+jlam
@@ -222,7 +305,8 @@
     }
   }
   sub_lambda_vec <- .unlist(lambda_list[which]) 
-  loglamInfo <- loglamInfo * (sub_lambda_vec %*% t(sub_lambda_vec))
+  loglamInfo <- loglamInfo * (sub_lambda_vec %*% t(sub_lambda_vec)) # Obscure code, dependent on implementation choices elsewhere. 
+                                                                    # For rC these lambdas are 1 anyway.
   return(list(loglamInfo=loglamInfo,rhs_invV.dVdlam_list=rhs_invV.dVdlam_list))
 }
 
@@ -230,7 +314,7 @@
   logdisp_cov <- try(solve(logdispInfo), silent = TRUE)
   problem <- inherits(logdisp_cov, "try-error")
   if (!problem) {
-    problem <- any(diag(logdisp_cov) < 0) # strngly suggest major inaccuracy or bug in computing the matrix
+    problem <- any(diag(logdisp_cov) < 0) # strongly suggest major inaccuracy or bug in computing the matrix
     if (problem) {
       warning(paste("Numerical precision issue or something else?\n", 
                     "  Information matrix for dispersion parameters does not seem positive-definite.\n", 
@@ -254,6 +338,40 @@
   return(list(logdisp_cov=logdisp_cov, problem=problem))
 }
 
+.fill_dwdloglam <- function(dwdloglam, dvdloglamMat, cum_n_u_h, Xi_cols, 
+                            checklambda, strucList, cum_Xi_cols) {
+  vec_n_u_h <- diff(cum_n_u_h)
+  ## dwdloglam will include cols of zeros for fixed lambda; matching with reduced logdisp_cov is performed at the end of the function.
+  for (randit in seq_along(strucList)) { ## ALL ranefs!
+    range_in_dw <- (cum_n_u_h[randit]+1L):(cum_n_u_h[randit+1L])
+    if ( inherits(strucList[[randit]],"dCHMsimpl")) { # e.g. get_predVar(adjfitsp); also AUG_ZXy?
+      for_dw_i <- as(strucList[[randit]], "CsparseMatrix") %*% dvdloglamMat[range_in_dw,  ] # i.e L_Q %*% lignes de (t(L_Q) %*% invG %*% L_Q %*% some rhs) 
+    } else if ( ! is.null(lmatrix <- strucList[[randit]])) {
+      for_dw_i <- solve(t(lmatrix),dvdloglamMat[range_in_dw,]) ## f i x m e for efficiency ? store info about solve(t(lmatrix)) in object ? 
+    } else { ## implicit identity lmatrix
+      for_dw_i <- dvdloglamMat[range_in_dw,] ## assuming each lambda_i = lambda in each block
+    }
+    nblocks_randit <- Xi_cols[randit]
+    rowranges_in_dw_i <- matrix(seq(vec_n_u_h[randit]),ncol=nblocks_randit) ## this _splits_ seq(...) over Xi_ncol columns for a random-slope model
+    # One might  use inner (*) product with block matrix rather than all this indexing and subscripting ? Benefits not clear
+    for (row_block in seq_len(nblocks_randit)) { ## half-ranges for random-slope model
+      rowrange_in_dw_i <- rowranges_in_dw_i[,row_block]
+      cum_rowrange_in_dw <- rowrange_in_dw_i + cum_n_u_h[randit]
+      for (randjt in which(checklambda)) { ## NOT all ranefs! # iteraction over ranefs, not lambdas ranCoef: one ranef, several lambdas)
+        nblocks_randjt <- Xi_cols[randjt]
+        cum_colrange_in_dw_i <- (cum_n_u_h[randjt]+1L):(cum_n_u_h[randjt+1L])
+        cum_colranges_in_dw_i <- matrix(cum_colrange_in_dw_i,ncol=nblocks_randjt) ## this _splits_ cum_colrange_in_dw_i over two columns for a random-slope model
+        for (col_in_colranges_dw_i in seq(nblocks_randjt)) { ## half-ranges for random-slope model; trivial bug here detected 08/2021 thanks to test-composite.R
+          cum_col_in_dw <- cum_Xi_cols[randjt]+col_in_colranges_dw_i
+          cum_cols_in_dw_i <- cum_colranges_in_dw_i[,col_in_colranges_dw_i] 
+          dwdloglam[cum_rowrange_in_dw, cum_col_in_dw] <- rowSums(for_dw_i[rowrange_in_dw_i, cum_cols_in_dw_i,drop=FALSE])  
+        }
+      }
+    }
+  }
+  dwdloglam
+}
+
 .calc_logdisp_cov <- function(object, dvdloglamMat=NULL, dvdlogphiMat=NULL, invV_factors=NULL,
                               force_fixed=FALSE # if TRUE -> force computation for fixed pars too 
                               ) { 
@@ -270,53 +388,16 @@
     checklambda <- rep(TRUE, length(lambda.object$type))
   } else checklambda <- ( ! (lambda.object$type %in% c("fixed","fix_ranCoefs","fix_hyper"))) 
   if (any(checklambda)) {
-    exp_ranef_types <- attr(object$ZAlist,"exp_ranef_types")
-    checkadj <- (exp_ranef_types=="adjacency")
-    if(any(checkadj)) {
-      ## several blocks of code are "maintained" below for a future dispVar computation for rho
-      # il me manque dwdrho (et meme dwdloglam pour ce modele ?) donc on inactive les lignes suivantes:
-      #       if (is.null(lambda.object$lambda.fix)) dispnames <- c(dispnames,"loglambda")
-      #       corrFixNames <- names(unlist(object$corrPars[which(attr(corrPars,"type")=="fix")]))
-      #       if (! ("rho" %in% corrFixNames) ) dispnames <- c(dispnames,"rho")
-    }
-    
     if (is.null(dvdloglamMat)) {
-      ## note that .get_logdispObject is computed on request by .get_logdispObject()
+      ## note that logdispObject is computed on request by .get_logdispObject()
       problems$stopmiss <- warning("is.null(dvdloglamMat) in a case where it should be available.") 
     }
     dispcolinfo$loglambda <- "loglambda"
-    #dvdloglam <- matrix(0,nrow=NROW(dvdloglamMat), ncol=sum(Xi_cols))
-    strucList <- object$strucList
-    cum_n_u_h <- attr(lambda.object$lambda_list,"cum_n_u_h")
-    n_u_h <- diff(cum_n_u_h)
     cum_Xi_cols <- cumsum(c(0,Xi_cols))
-    ## dwdloglam will include cols of zeros for fixed lambda; matching with reduced logdisp_cov is performed at the end of the function.
-    for (randit in seq_len(nrand)) { ## ALL ranefs!
-      range_in_dw <- (cum_n_u_h[randit]+1L):(cum_n_u_h[randit+1L])
-      if ( inherits(strucList[[randit]],"dCHMsimpl")) { # e.g. get_predVar(adjfitsp)
-        for_dw_i <- as(strucList[[randit]], "CsparseMatrix") %*% dvdloglamMat[range_in_dw,  ] # i.e L_Q %*% lignes de (t(L_Q) %*% invG %*% L_Q %*% some rhs) 
-      } else if ( ! is.null(lmatrix <- strucList[[randit]])) {
-        for_dw_i <- solve(t(lmatrix),dvdloglamMat[range_in_dw,]) ## f i x m e for efficiency ? store info about solve(t(lmatrix)) in object ? 
-      } else { ## implicit identity lmatrix
-        for_dw_i <- dvdloglamMat[range_in_dw,] ## assuming each lambda_i = lambda in each block
-      }
-      nblocks_randit <- Xi_cols[randit]
-      rowranges_in_dw_i <- matrix(seq(n_u_h[randit]),ncol=nblocks_randit) ## this _splits_ seq(n_u_h[randit]) over two columns for a random-slope model
-      for (row_block in seq_len(nblocks_randit)) { ## half-ranges for random-slope model
-        rowrange_in_dw_i <- rowranges_in_dw_i[,row_block]
-        cum_rowrange_in_dw <- rowrange_in_dw_i + cum_n_u_h[randit]
-        for (randjt in which(checklambda)) { ## NOT all ranefs! # iteraction over ranefs, not lambdas ranCoef: one ranef, several lambdas)
-          nblocks_randjt <- Xi_cols[randjt]
-          cum_colrange_in_dw_i <- (cum_n_u_h[randjt]+1L):(cum_n_u_h[randjt+1L])
-          cum_colranges_in_dw_i <- matrix(cum_colrange_in_dw_i,ncol=nblocks_randjt) ## this _splits_ seq(n_u_h[randit]) over two columns for a random-slope model
-          for (col_in_colranges_dw_i in seq(nblocks_randjt)) { ## half-ranges for random-slope model; trivial bug here detected 08/2021 thanks to test-composite.R
-            cum_col_in_dw <- cum_Xi_cols[randjt]+col_in_colranges_dw_i
-            cum_cols_in_dw_i <- cum_colranges_in_dw_i[,col_in_colranges_dw_i] 
-            dwdloglam[cum_rowrange_in_dw, cum_col_in_dw] <- rowSums(for_dw_i[rowrange_in_dw_i, cum_cols_in_dw_i,drop=FALSE])  
-          }
-        }
-      }
-    }
+    dwdloglam <- .fill_dwdloglam(dwdloglam=dwdloglam, dvdloglamMat=dvdloglamMat, 
+                                 cum_n_u_h=attr(lambda.object$lambda_list,"cum_n_u_h"), Xi_cols=Xi_cols, 
+                                 checklambda=checklambda, strucList=strucList, 
+                                 cum_Xi_cols=cum_Xi_cols)
     ## dwdloglam includes cols of zeros for fixed lambda; matching with reduced logdisp_cov is performed at the end of the function.
     ranef_ids <- rep(seq_len(nrand),Xi_cols) ## (repeated for ranCoefs) indices of ranefs, not cols of ranefs
   } else ranef_ids <- NULL
@@ -352,7 +433,7 @@
   if ((length(dispcolinfo))==0L) {
     return(list(problems=problems))
   } else {
-    dwdlogdisp <- cbind(dwdloglam,dwdlogphi) ## typically nobs * 2
+    dwdlogdisp <- cbind(dwdloglam,dwdlogphi) ## typically n_u_h * [# of dispersion parameters (lambda, phi)]
     attr(dwdlogdisp,"col_info") <- col_info
     # cf my documentation, based on McCullochSN08 6.62 and 6.74
     # lambda and phi factors enter in dV/dlog(.), computed instead of dV/d(.) to match dwdlog(.) vectors.
@@ -366,7 +447,7 @@
     }
     cum_n_disp_pars <- cumsum(c(0,lapply(dispcolinfo,length))) # #ncols for phi, lambda[checklambda], etc.
     dispcols <- lapply(seq_along(dispcolinfo), function(varit) {
-      cum_n_disp_pars[varit]+ seq_along(dispcolinfo[[varit]])
+      cum_n_disp_pars[[varit]]+ seq_along(dispcolinfo[[varit]])
     }) ## col ranges for phi, lambda[checklambda], etc
     names(dispcols) <- dispnames <- names(dispcolinfo) ## list names
     nrc <- cum_n_disp_pars[length(cum_n_disp_pars)]
@@ -374,8 +455,18 @@
     logdispInfo <- matrix(NA,nrow=nrc,ncol=nrc)
     colnames(logdispInfo) <- rownames(logdispInfo) <- .unlist(dispcolinfo)
     if ("loglambda" %in% dispnames) { 
-      loglamInfo_blob <- .calc_loglamInfo(invV.dV_info,which=which(checklambda))
+      loglamInfo_blob <- .calc_loglamInfo(invV.dV_info,which=which(checklambda),
+                                          strucList=strucList, object=object)
       logdispInfo[dispcols$loglambda,dispcols$loglambda] <- loglamInfo_blob$loglamInfo 
+    }
+    exp_ranef_types <- attr(object$ZAlist,"exp_ranef_types")
+    checkadj <- (exp_ranef_types=="adjacency")
+    if(any(checkadj)) {
+      ## several blocks of code are "maintained" below for a future dispVar computation for rho
+      # il me manque dwdrho (et meme dwdloglam pour ce modele ?) donc on inactive les lignes suivantes:
+      #       if (is.null(lambda.object$lambda.fix)) dispnames <- c(dispnames,"loglambda")
+      #       corrFixNames <- names(unlist(object$corrPars[which(attr(corrPars,"type")=="fix")]))
+      #       if (! ("rho" %in% corrFixNames) ) dispnames <- c(dispnames,"rho")
     }
     if ("rho" %in% dispnames) { ## will occur only when if (any(checkadj)) {...} block above is fixed and active. 
       # no use of sqrt because adjd can be negative
@@ -411,9 +502,13 @@
       ## next lines assume that  the design matrix for the residual error is I
       # using the pattern (D-nXr.rXn)^2 = D^2 - 2 D nXr.rXn + (nXr.rXn)^2
       if (.is_spprec_fit(object)) {
-        #A <- solve(object$envir$G_CHMfactor, .tcrossprod(object$envir$ZtW), system="A")
-        A <- invV_factors$r_x_n %*% invV_factors$n_x_r
-        trAB <- sum(A^2)
+        ## I previously used
+        # A <- invV_factors$r_x_n %*% invV_factors$n_x_r
+        # trAB <- sum(A^2)
+        ## But this was a bug, assuming A is symmetric, which is not the case in the
+        ## D:/home/francois/travail/stats/spaMMplus/devel/predVar/devel-predVar-random-slope.R
+        ## ressp predVar computation.
+        trAB  <- .traceAB(lA=invV_factors$n_x_r, rA=invV_factors$r_x_n, lB=NULL, rB=NULL) # ie B=A
         H_w.resid <- .get_H_w.resid(object)
         logdispInfo[dispcols$logphi,dispcols$logphi] <- phi_est^2 * (
           sum(H_w.resid^2) -2 * .traceDB(H_w.resid,invV_factors$n_x_r, invV_factors$r_x_n) + 

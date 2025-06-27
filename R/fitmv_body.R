@@ -49,9 +49,10 @@ fitmv_body <- function(processed,
   #
   user_init_optim <- init # more explicit name; will serve as template for canon.init which will serve as template for names of lewer, upper, initvec
   optim_blob <- .calc_optim_args_mv(processed, map_rd_mv=attr(processed$ZAlist, "map_rd_mv"), 
-                                    user_init_optim=user_init_optim, fixedS=fixedS, user.lower=lower, user.upper=upper, verbose=verbose, optim.scale=optim.scale)
-  # .calc_optim_args() for a familiy with outer disp param (negbin...) may tend to outer optimize lambda when it will tend to inner optimize it for other distribs
-  # so we have a bit incorent choices across submodels, that could be improved __FIXME__  
+                                    user_init_optim=user_init_optim, fixedS=fixedS, user.lower=lower, 
+                                    user.upper=upper, verbose=verbose, optim.scale=optim.scale)
+  # .calc_optim_args() for a family with outer disp param (negbin...) may tend to outer optimize lambda when it will tend to inner optimize it for other distribs
+  # so we have a bit incoherent choices across submodels, that could be improved __FIXME__  
   
   # modify HLCor.args and <>bounds;   ## distMatrix or uniqueGeo potentially added to HLCor.args:
   # init <- optim_blob$inits$`init` ## list; keeps all init values, all in untransformed scale
@@ -227,6 +228,7 @@ fitmv_body <- function(processed,
       warning(hlcor$warnings$divinfo)
     }
   }
+  hlcor$how$fnname <- "fitmv_body" 
   ## substantial effect on object size! :
   lsv <- c("lsv",ls())
   rm(list=setdiff(lsv,"hlcor")) 

@@ -62,7 +62,7 @@ get_intervals(..., intervals="predVar")
  \item{intervals}{
    NULL or character string or vector of strings. Provides prediction intervals with nominal level \code{level}, deduced from the given prediction variance term, e.g. \code{intervals="predVar"}. Currently only intervals from \code{fixefVar} and \code{predVar} (and for LMMs \code{respVar} including the residual variance) may have a probabilistic meaning. Intervals returned in other cases are (currently) meaningless. 
  }
- \item{which}{any of \code{"predVar"},\code{"respVar"},\code{"residVar"}, \code{"fixefVar"}, \code{"intervals"}, or \code{"naive"} }
+ \item{which}{any of \code{"predVar"},\code{"respVar"},\code{"residVar"}, \code{"fixefVar"}, \code{"intervals"}, or \code{"naive"}. }
  \item{level}{Coverage of the intervals.}
  \item{binding}{
   If \code{binding} is a character string, the predicted values are bound with the \code{newdata} and the result is returned as a data frame. The predicted values column name is the given \code{binding}, or a name based on it if the \code{newdata} already include a variable with this name. 
@@ -116,9 +116,11 @@ There are cases where prediction without a \code{newdata} argument may give resu
 
 }
 \seealso{
-\code{\link{predVar}} for information specific to prediction variances sensu lato, including the definitions of the four components of prediction variance, \code{fixefVar}, \code{predVar}, \code{residVar} and \code{respVar}, that can be requested through the \code{variances} argument;
-\code{\link{get_cPredVar}} for a bootstrap-corrected version of \code{get_predVar};
-\code{\link{residVar}} for an alternative extractor for residual variances, more general than \code{get_residVar}.
+The \code{\link{residVar}} function is an alternative extractor for residual variances, with additional functionalities compared to \code{get_residVar}. For example, it can return the \code{phi} dispersion parameter, distinct from the variance in particular for fits with Gamma family.
+
+The \code{\link{predVar}} documentation provides additional information specific to prediction variances sensu lato, including the definitions of the four components of prediction variance, \code{fixefVar}, \code{predVar}, \code{residVar} and \code{respVar}, that can be requested through the \code{variances} argument.
+
+The \code{\link{get_cPredVar}} function returns a bootstrap-corrected version of variances returned by \code{get_predVar}.
 }
 
 \examples{

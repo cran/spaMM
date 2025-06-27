@@ -39,7 +39,8 @@
 .safe_opt <- function(init, objfn, lower, upper, verbose, maxeval_corr=.spaMM.data$options$maxeval_corr, 
                       recheck_at_bound=.spaMM.data$options$recheck_at_bound, 
                       adjust_init=list(), # to constrain the initial value
-                      LowUp,  
+                      LowUp,  # In general, should be a structured list as expected by .xtol_abs_fn()
+                              # Avoid providing empty list() to .xtol_abs_fn()!! (nloptr may segfault).
                       ...) { # minimization
   names_init <- names(init) # may be lost in later operations
   prevmin <- Inf
@@ -112,6 +113,9 @@
     }
     if (verbose>1L) print(c(objective=prevmin,next_init=init))
   }
+  optr$use_bobyqa <- use_bobyqa
   names(optr$solution) <- names_init
   return(optr) # use nloptr format (solution, objective) for return, but $solution is named vector
 }
+
+

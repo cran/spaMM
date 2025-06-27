@@ -30,7 +30,7 @@ The \code{MaternCorr} function may be used to vizualise these correlations, usin
   \item{rho}{A scaling factor for distance. The 'range' considered in some 
             formulations is the reciprocal of this scaling factor}
   \item{smoothness}{The smoothness parameter, >0. \eqn{\nu=0.5} corresponds to the exponential correlation function, 
-   and the limit function when \eqn{\mu} goes to \eqn{\infty} is the squared exponential function (as in a Gaussian).}
+   and the limit function when \eqn{\nu} goes to \eqn{\infty} is the squared exponential function (as in a Gaussian).}
    
   \item{nu}{Same as smoothness}
   \item{Nugget}{(Following the jargon of Kriging) a parameter describing a discontinuous decrease in 

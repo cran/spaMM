@@ -12,12 +12,12 @@ Interface for parallel computations
 }
 \usage{
 dopar(newresp, fn, nb_cores = NULL, fit_env, 
-      control = list(.final=function(v) if( ! is.list(v[[1]])) {do.call(cbind,v)} else v), 
+      control = list(), 
       cluster_args = NULL, debug. = FALSE, iseed = NULL, 
       showpbar = eval(spaMM.getOption("barstyle")), 
       pretest_cores =NULL, ...)
 combinepar(newresp, fn, nb_cores = NULL, cluster=NULL, fit_env, 
-      control = list(.final=function(v) if( ! is.list(v[[1]])) {do.call(cbind,v)} else v), 
+      control = list(), 
       cluster_args = NULL, debug. = FALSE, iseed = NULL, 
       showpbar = eval(spaMM.getOption("barstyle")), 
       pretest_cores =NULL, ...)
@@ -69,7 +69,11 @@ Further arguments to be passed (unevaluated) to \code{fn}, if not caught on the 
 }
 }
 \value{
-The result of calling \code{foreach}, \code{pbapply} or \code{mclapply}, as dependent on the \code{control} argument and the interface used. A side-effect of either interface is to show a progress bar whose character informs about the type of parallelisation performed: a \code{"F"} or default \code{"="} character for fork clusters, a \code{"P"} for parallel computation via \code{foreach} and \code{doSNOW}, a \code{"p"} for parallel computation via \code{foreach} and \code{doFuture} or via \code{pbapply}, and \code{"s"} for serial computation \code{foreach} and \code{doParallel} or via \code{pbapply}.
+The result of calling the \code{foreach}, \code{pbapply} or \code{mclapply} interface, dependent on the \code{control} argument and possibly on the parallelisation backend used. Ideally, the default format should be same whatever the interface and backend used, and the default when \code{foreach} is used is essentially as defined by calling\cr 
+\code{foreach(.final=if( ! is.list(v[[1]])) {do.call(cbind,v)} else v)} \cr
+when a list \code{v} of results (one result for each child process) is given to \code{.final}. Then, if each child process itself returns a list, \code{cbind} is applied.
+
+A side-effect of \code{dopar} is to show a progress bar whose character informs about the type of parallelisation performed: a \code{"F"} or default \code{"="} character for fork clusters, a \code{"P"} for parallel computation via \code{foreach} and \code{doSNOW}, a \code{"p"} for parallel computation via \code{foreach} and \code{doFuture} or via \code{pbapply}, and \code{"s"} for serial computation \code{foreach} and \code{doParallel} or via \code{pbapply}.
 }
 \details{
 Control of random numbers through the \code{"L'Ecuyer-CMRG"} generator and the \code{iseed} argument is not sufficient for consistent results when the \code{doSNOW} parallel backend is used, so if you really need such control in a \code{fn} using random numbers, do not use \code{doSNOW}. Yet, it is fine to use \code{doSNOW} for bootstrap procedures in spaMM, because the fitting functions do not use random numbers: only sample simulation uses them, and it is not performed in parallel.
@@ -79,6 +83,8 @@ Control of random numbers through the \code{"L'Ecuyer-CMRG"} generator and the \
 }
 \seealso{
 \code{\link{dofuture}} is yet another interface with (essentially) the same functionalities as \code{dopar}. See the documentation of the \code{\link{wrap_parallel}} option for its differences from \code{dopar}.
+
+See \code{\link{spaMM_boot}} and \code{\link{spaMM2boot}} for more specialized interfaces for parametric bootstrap computations.
 }
 \examples{
 ## See source code of spaMM_boot()

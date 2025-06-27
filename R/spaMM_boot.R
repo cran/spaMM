@@ -40,7 +40,7 @@ spaMM_boot <- function(object, simuland, nsim, nb_cores=NULL,
   #
   # If the simuland has (say) arguments y, what=NULL, lrt, ...   , we should not have lrt in the dots. Since the dots are not directly manipulable
   # we have to convert them to a list, and ultimately to use do.call()
-  control.foreach$.combine <- "rbind"
+  if (is.null(control.foreach$.combine)) control.foreach$.combine <- "rbind"
   wrap_parallel <- get(.spaMM.data$options$wrap_parallel, asNamespace("spaMM"), inherits=FALSE) # dopar
   boot_samples$bootreps <- wrap_parallel(newresp = boot_samples$bootreps, nb_cores = nb_cores, # wrap_parallel() is typically dopar()
                                          fn = simuland, fit_env = fit_env,   
@@ -68,7 +68,7 @@ spaMM2boot <- function(object, statFUN, nsim, nb_cores=NULL,
   #
   # If the statFUN has (say) arguments y, what=NULL, lrt, ...   , we should not have lrt in the dots. Since the dots are not directly manipulable
   # we have to convert them to a list, and ultimately to use do.call()
-  control.foreach$.combine <- "rbind"
+  if (is.null(control.foreach$.combine)) control.foreach$.combine <- "rbind"
   wrap_parallel <- get(.spaMM.data$options$wrap_parallel, asNamespace("spaMM"), inherits=FALSE) # dopar
   simuland <- function(y, ...) {
     .refit <- update_resp(object, y) # pb if '.refit=' is also in the dots
@@ -158,12 +158,33 @@ spaMM2boot <- function(object, statFUN, nsim, nb_cores=NULL,
   cluster_args
 }
 
+.dopar.final.doSNOW <- function(v) {
+  if (length(v)) { # v expected to be a list of results from each child process.
+    if( is.list(v) && ! is.list(v[[1]])) {do.call(cbind,v)} else v
+  } else if (.inRstudio()) {
+    warning("combining Rstudio, doSNOW and some operating systems may be fatal",
+            immediate. = TRUE)
+    stop('No successful result? use .errorhandling = "pass" to confirm; and see warning for one possible cause.')
+  } else stop('No successful result? use .errorhandling = "pass" to confirm; and see warning for one possible cause.')
+}
+
+# not currently used in dopar since dopar uses foreach only with doSNOW
+.dopar.final.other <- function(v) {
+  if (length(v)) { # v expected to be a list of results from each child process.
+    if( is.list(v) && ! is.list(v[[1]])) {do.call(cbind,v)} else v
+  } else if (.inRstudio()) {
+    warning("Parallel computations under Rstudio and some operating systems may be fatal",
+            immediate. = TRUE)
+    stop('No successful result? use .errorhandling = "pass" to confirm; and see warning for one possible cause.')
+  } else stop('No successful result? use .errorhandling = "pass" to confirm; and see warning for one possible cause.')
+}
+
 # fn more generic than spaMM_boot: there is no call to other spaMM fns such as simulate(object, .) so this acts as a general wrapper for 
 # foreach or pbapply, and not specifically for bootstrap computations.
 dopar <- local({
   doSNOW_warned <- FALSE
   function(newresp, fn, nb_cores=NULL, fit_env, 
-           control=list(.final=function(v) if( ! is.list(v[[1]])) {do.call(cbind,v)} else v), 
+           control=list(), 
            cluster_args=NULL,
            debug.=FALSE, iseed=NULL, showpbar=eval(spaMM.getOption("barstyle")),
            pretest_cores=NULL, 
@@ -248,7 +269,8 @@ dopar <- local({
             i = 1:nsim, 
             .inorder = TRUE, .packages = "spaMM", 
             .errorhandling = "remove", ## use "pass" to see problems
-            .options.snow = progrbar_setup["progress"]
+            .options.snow = progrbar_setup["progress"],
+            .final = .dopar.final.doSNOW
           )
           foreach_args[names(control)] <- control # replaces the above defaults by user controls
           foreach_blob <- do.call(foreach::foreach,foreach_args) 
@@ -268,7 +290,7 @@ dopar <- local({
           parallel::stopCluster(cl)
           #
           if (foreach_args[[".errorhandling"]]=="remove" && is.null(bootreps)) {
-            cat(crayon::bold(paste0(
+            cat(cli::style_bold(paste0(
               "Hmmm. It looks like all parallel processes failed. Maybe rerun spaMM_boot() \n",
               "with  ' control.foreach=list(.errorhandling=\"stop\") '  to diagnose the problem.\n"
             )))
@@ -277,11 +299,11 @@ dopar <- local({
             if (length(grep("could not find",(condmess <- conditionMessage(attr(bootreps,"condition")))))) {
               firstpb <- strsplit(condmess,"could not find")[[1]][2]
               firstpb <- strsplit(firstpb,"\"")[[1]][2]
-              cat(crayon::bold(paste0(
+              cat(cli::style_bold(paste0(
                 "Hmmm. It looks like some variables were not passed to the parallel processes.\n",
                 "Maybe add   ' ",firstpb," = ",firstpb," '  to spaMM_boot()'s 'fit_env' argument?\n"
               )))
-            } else cat(crayon::bold(condmess))
+            } else cat(cli::style_bold(condmess))
           }
           #
           if (showpbar) close(progrbar_setup$pb)
@@ -320,11 +342,11 @@ dopar <- local({
           if (inherits(bootreps,"try-error")) {
             if (length(grep("could not find",(condmess <- conditionMessage(attr(bootreps,"condition")))))) {
               firstpb <- strsplit(condmess,"\"")[[1]][2]
-              cat(crayon::bold(paste0(
+              cat(cli::style_bold(paste0(
                 "Hmmm. It looks like some variables were not passed to the parallel processes.\n",
                 "Maybe add   ' ",firstpb," = ",firstpb," '  to spaMM_boot()'s 'fit_env' argument?\n"
               )))
-            } else cat(crayon::bold(condmess))
+            } else cat(cli::style_bold(condmess))
           }
           # LRT -> spaMM_boot -> eval_replicate with debug.=TRUE and not doSNOW can return more elaborate objects in case of error.
           # But these should not be diagnosed in this generic function.
@@ -376,7 +398,7 @@ dopar <- local({
         # the try() is useful if the user interrupts the %do%, in which case it allows close(pb) to be run.
         
         if (showpbar) close(progrbar_setup$pb)
-      } else { # older version using pbapply
+      } else { # CURRENT version using pbapply
         if (showpbar) {
           pbopt <- pboptions(nout=min(100L,2L*nsim),type="timer",char=pb_char) 
         } else pbopt <- pboptions(type="none") 

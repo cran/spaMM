@@ -1,4 +1,4 @@
-cat(crayon::yellow("\ntest obsInfo:"))
+cat(cli::col_yellow("\ntest obsInfo:"))
 
 # data("Salamanders", package = "glmmTMB") 
 # (foo <- fitme(count  ~  spp  *  mined  +  (1  |site), data=Salamanders, family=negbin(link=log), method=c("ML","obs"), verbose=c(TRACE=F)))
@@ -6,7 +6,7 @@ cat(crayon::yellow("\ntest obsInfo:"))
 
 data(scotlip)
 (foo <- fitme(cases ~ I(prop.ag/10)+(1|gridcode),
-      family=negbin(link=log), data=scotlip, method=c("ML","obs")))
+      family=spaMM::negbin(link=log), data=scotlip, method=c("ML","obs")))
 testthat::expect_equal(logLik(foo), c(P_v=-181.60802361 ))
 
 
@@ -40,6 +40,9 @@ testthat::expect_equal(logLik(foo), c(P_v=-1224.65219293 ))
                  method=c("ML","obs"),
                  data=wafmv))
   testthat::expect_true(diff(range(logLik(me1)+logLik(me2),logLik(zut1)))<1e-5)
+  # ____F I X M E____ if I set spaMM.options(prefer_LLM_nosigns_CHM_H=TRUE)
+  # the zut1 fit is affected (different lambda, distinctively poor logL. Maybe a numerical
+  # issue for vanishing lambda, but worth double checking)
   testthat::expect_true(diff(range( predict(zut1, newdata=zut1$data)-predict(zut1)))<1e-14)
   testthat::expect_true(diff(range( get_predVar(zut1, newdata=zut1$data)-get_predVar(zut1)))<1e-14) 
   update_resp(zut1,newresp = simulate(zut1))

@@ -289,7 +289,7 @@
     if (length(from)>1L) {
       resu <- vector("list",length(from))
       for (id in seq_len(length(from))) {
-        resu[[id]] <- eval(parse(text=element),envir=object[[id]])
+        resu[[id]] <- eval(str2lang(element),envir=object[[id]])
       }
       names(resu) <- names(object[from])
       return(resu) ## a list, e.g a data list
@@ -297,7 +297,7 @@
       object <- object[[from]]
     } 
   } 
-  resu <- eval(parse(text=element),envir=object) ## try(eval(parse(text=element),envir=object),silent = TRUE)
+  resu <- eval(str2lang(element),envir=object) ## try(eval(parse(text=element),envir=object),silent = TRUE)
   ## if (inherits(resu,"try-error")) resu <- NULL
   return(resu)
 }
@@ -314,7 +314,7 @@
 .assignWrapper <- function(object,assignment) { ## not using assign(), to allow eg. verbose['warn'] <- ... instead of simple variable name    # older version ".setProcessed" (<2.2.119) did not use de envir argument; this was tricky
   if (  is.list(object)) {
     for (it in seq_along(object)) eval(parse(text=assignment),envir=object[[it]]) 
-  } else eval(parse(text=assignment),envir=object)
+  } else eval(str2lang(assignment),envir=object)
   ## no need to return the modified environment
 }
 
@@ -650,18 +650,18 @@
     corr_type <- corr_types[[it]]
     if ( ! is.na(corr_type)) {
       if (corr_type=="adjacency" || corr_type=="SAR_WWt") {
-        if ( is.null(adjMatrix) ) adjMatrix <- .get_adjMatrix_from_covStruct(covStruct,it, required=required)
+        if ( is.null(adjMatrix_it <- adjMatrix) ) adjMatrix_it <- .get_adjMatrix_from_covStruct(covStruct,it, required=required)
         if (required) { # ie ! For_fitmv... for fitmv, see .add_cov_matrices__from_mv_global()
-          corr_info$adjMatrices[[it]] <-  .reformat_adjMatrix(adjMatrix)
+          corr_info$adjMatrices[[it]] <-  .reformat_adjMatrix(adjMatrix_it)
         }
       } else if (corr_type=="corrMatrix") {
-        if (is.null(corrMatrix)) corrMatrix <- .get_corr_prec_from_covStruct(covStruct,it, required=required) 
-        if ( (is.matrix(corrMatrix) || inherits(corrMatrix,"Matrix")) && 
+        if (is.null(corrMatrix_it <- corrMatrix)) corrMatrix_it <- .get_corr_prec_from_covStruct(covStruct,it, required=required) 
+        if ( (is.matrix(corrMatrix_it) || inherits(corrMatrix_it,"Matrix")) && 
              # : need to exclude "dist" and "precision" objects
              # (I defined a dim.precision() method) so dim() would not exclude precision
-             .calc_denseness(sparseCorr <- drop0(corrMatrix), relative=TRUE) < 0.15) corrMatrix <- sparseCorr
-        if ( ! is.null(corrMatrix)) corr_info$corrMatrices[[it]] <- corrMatrix 
-        if (required) .check_corrMatrix(corr_info$corrMatrices[[it]], element=1) 
+             .calc_denseness(sparseCorr <- drop0(corrMatrix_it), relative=TRUE) < 0.15) corrMatrix_it <- sparseCorr
+        if ( ! is.null(corrMatrix_it)) corr_info$corrMatrices[[it]] <- corrMatrix_it 
+        if (required) .check_corrMatrix(corr_info$corrMatrices[[it]], element=1L) 
       } # else if (corr_type=="corrFamily")  # handled later.
       # IMRF AMatrices are assigned later from Zlist info, not from covStruct info
     }
@@ -861,8 +861,12 @@
 
 .rankTrim <- function(X.pv, rankinfo, verbose=FALSE) {  # tests in /test-rank.R
   if (verbose)  str(rankinfo)
+  
+  namesOri <- attr(X.pv,"namesOri")
+  if (is.null(namesOri)) namesOri <- colnames(X.pv)
+  
   if (rankinfo$rank < ncol(X.pv)) {   
-    X.pv <- structure(X.pv[,rankinfo$whichcols,drop=FALSE], namesOri=colnames(X.pv),
+    X.pv <- structure(X.pv[,rankinfo$whichcols,drop=FALSE], namesOri=namesOri,
                       assign=attr(X.pv, "assign")[rankinfo$whichcols], # that's the trimmed value that what lmerTest:::term2colX expect
                       assignOri=attr(X.pv, "assign") # this one only for .anova.glm() ...
                       ) 
@@ -872,7 +876,7 @@
     # (2): colnames(<HLfit>$envir$beta_cov_info$beta_cov) = colnames (<HLfit>$X.pv)
     # (1+2+3): namesOri, names(<HLfit>$fixef)
   } else {
-    attr(X.pv,"namesOri") <- colnames(X.pv)
+    attr(X.pv,"namesOri") <- namesOri
   }  
   attr(X.pv,"rankinfo") <- rankinfo
   return(X.pv)
@@ -882,6 +886,7 @@
                             rankinfo=NULL, # NULL default => compute it locally and trim matrix
                                            # <pre-existing list> => use it to trim matrix
                                            # FALSE => don't trim matrix, in .merge_processed() for mv fits
+                                           # 'TRUE' *not* implem as useless (testing NULL better in contexts where control.HLfit$rankinfo is tested) 
                             sparse_X) {
   Xattr <- attributes(X.pv)
   if ( ncol(X.pv)) {
@@ -895,18 +900,20 @@
     if (is.null(rankinfo)) rankinfo <- .calc_rankinfo(X.pv, tol=spaMM.getOption("rankTolerance")) # always return a list
     if (is.list(rankinfo)) {
       X.pv <- .rankTrim(X.pv,rankinfo = rankinfo)
-    } else { # input 'rankinfo' was FALSE.
-      if (is.null(attr(X.pv,"namesOri"))) attr(X.pv,"namesOri") <- colnames(X.pv)
-      # ... but this typically occurs through .merge_processed() in which case the attribute should be present,
-      # and we want to keep it as colnames(X.pv) instead refers to the trimmed matrix.
-    } # The unmodified "assign" attribute likewise refers to the cols of the untrimmed matrix.
+    } else { # input 'rankinfo' was FALSE. Next code maybe no necess
+      if (is.null(attr(X.pv,"namesOri"))) attr(X.pv,"namesOri") <- Xattr$namesOri
+    } 
+    # The unmodified "assign" attribute (added elsewhere...) likewise refers to the cols of the untrimmed matrix.
   }
   names_lostattrs <- setdiff(names(Xattr), c(names(attributes(X.pv)),"dim","dimnames"))
   attributes(X.pv)[names_lostattrs] <- Xattr[names_lostattrs] # as in .subcol_wAttr(). 
   return(X.pv)
 }
 
-.preprocess_formula <- function(formula, control.HLfit=NULL, ...) {
+.preprocess_formula <- function(formula, 
+                                control=NULL, # but avoids partial match with control.HLfit
+                                control.HLfit=control,
+                                ...) {
   if (inherits(formula,"predictor")) { 
     return(formula) ## happens eg in confint
     # stop("Do not call '.preprocess_formula' on a predictor object.")
@@ -1205,7 +1212,7 @@
   }
   family$flags$canonicalLink <- canonicalLink
   family$flags$LMbool <- (canonicalLink && family$family=="gaussian")
-  # if (is.null(family$resid.model)) family$resid.model <- list2env(list(off=0))  # "speculative outer phiGLM 2023/07/09" 
+  if (is.null(family$resid.model)) family$resid.model <- list2env(list(off=0))  # used for "outer phiGLM"
   #
   # nrand now needed early...
   exp_barlist <- .process_bars(predictor,as_character=FALSE) ## but default expand =TRUE; also -> .parseBars() -> .process_IMRF_bar() parses RHS info
@@ -1213,7 +1220,7 @@
   nrand <- length(exp_ranef_strings)
   # ...for...
   obsAlgo_needed <- .need_obsAlgo(HLmethod, family, canonicalLink, nrand=nrand) 
-  # : is .spaMM option set to FALSE, then only ad hoc obsInfo algos are available, in principle as follows:
+  # : is options$LLgeneric set to FALSE, then only ad hoc obsInfo algos are available, in principle as follows:
   # binomial(), negbin() and poisson() (all links, and including zero-truncated variants), Gamma(log), and gaussian(log).
   # At least that was so in version 3.13.0. For poisson(), one may need to use *P*oisson(., LLgeneric=FALSE).
   # Maintaining this feature is not a priority.
@@ -1276,19 +1283,29 @@
   }
   #
   nobs <- NROW(main_terms_info$X) ## not using Y which may be NULL
-  if (nobs==0L) stop("No line in the data have all the variables required to fit the model.")
+  if (nobs==0L) stop("No line in the data has all the variables required to fit the model.")
   #
   ##### processed$data for post-fit, but also to evaluate glm_phi if not previously done... 
-  if (.spaMM.data$options$store_data_as_mf) { ## *FALSE* : TRUE may not be far from working for univariate, but breaks predict(., newdata=<object>$data)
-    # mv might be an issue (it's better to store raw data rather than several mf)
-    # poly (incl. in LHS ranef term) might be a pb (mf stores monomials)
-    processed$data <- structure(main_terms_info$mf, 
-                                # rawvarnames=colnames(data), # not yet used
-                                # fixef_terms=main_terms_info$fixef_terms, #in the main_terms_info
-                                # fixef_levels=main_terms_info$fixef_levels, #in the main_terms_info
-                                fixefvarnames=rownames(attr(main_terms_info$fixef_off_terms,"factors")), 
-                                fixefpredvars=attr(main_terms_info$fixef_off_terms,"predvars"))
-  } else processed$data <- structure(data,  # this will be used by preprocess_phi_model() so we cannot put main_terms_info$mf here. 
+  # if (.spaMM.data$options$store_data_as_mf) { ## *FALSE* : TRUE may not be far from working for univariate, but breaks predict(., newdata=<object>$data)
+  #   # mv might be an issue (it's better to store raw data rather than several mf)
+  #   # poly (incl. in LHS ranef term) might be a pb (mf stores monomials)
+  #   processed$data <- structure(main_terms_info$mf, 
+  #                               # rawvarnames=colnames(data), # not yet used
+  #                               # fixef_terms=main_terms_info$fixef_terms, #in the main_terms_info
+  #                               # fixef_levels=main_terms_info$fixef_levels, #in the main_terms_info
+  #                               fixefvarnames=rownames(attr(main_terms_info$fixef_off_terms,"factors")), 
+  #                               fixefpredvars=attr(main_terms_info$fixef_off_terms,"predvars"))
+  # } else 
+  BinomialDen <- .calc_Binomial_Den(main_terms_info$Y, family, nobs)
+  if (is.logical(BinomialDen)) {
+    data <- data[ ! BinomialDen ,,drop=FALSE]
+    main_terms_info <- .get_terms_info(formula=predictor,data=data, famfam=family$family, weights=validData_info$weights) ## design matrix X, Y... 
+    nobs <- NROW(main_terms_info$X) ## not using Y which may be NULL
+    if (nobs==0L) stop("No line in the data has the information required to fit the model.")
+    BinomialDen <- rowSums(main_terms_info$Y)
+  }
+  processed$BinomialDen <- BinomialDen
+  processed$data <- structure(data,  # this will be used by preprocess_phi_model() so we cannot put main_terms_info$mf here. 
                                      # rawvarnames=main_terms_info(data), # not yet used
                                      # fixef_terms=main_terms_info$fixef_terms, #in the main_terms_info
                                      # fixef_levels=main_terms_info$fixef_levels, #in the main_terms_info
@@ -1307,7 +1324,6 @@
   #
   ### class(processed$main_terms_info) <- "HLframes" # Convenience: when we update its $mf, the class is kept
   #####
-  processed$BinomialDen <- BinomialDen <- .calc_Binomial_Den(main_terms_info$Y, family, nobs)
   processed$y <- y <- main_terms_info$Y[,1L,drop=FALSE] # seems marginally faster as matrix; vector may 'fit' (cf comment in .merge_processed()) but formal extractor response.HLfit() expects a 1-col matrix. 
   processed$bin_all_or_none <- .check_y(family, y, BinomialDen)
   #### Various control parameters
@@ -1381,7 +1397,7 @@
       }
       corr_info$levels_types <- levels_types 
       # (2) Create Z matrices using corrFamilies' levels_type:
-      Zlist <- .calc_Zlist(exp_ranef_terms=exp_ranef_terms, data=data, rmInt=0L, drop=TRUE, 
+      Zlist <- .calc_Zlist(exp_ranef_terms=exp_ranef_terms, data=data, rmInt=0L, 
                            corr_info=corr_info,
                            lcrandfamfam=processed$lcrandfamfam) 
       corr_info$corr_families <- c_i_cF
@@ -1403,7 +1419,7 @@
       # (post-optim) HLCor_body() -> .reformat_info_uniqueGeo() and thus before .get_ranef_info() call.
       
       # (2) Create Z matrices using corrFamilies' levels_type:
-      Zlist <- .calc_Zlist(exp_ranef_terms=exp_ranef_terms, data=data, rmInt=0L, drop=TRUE, 
+      Zlist <- .calc_Zlist(exp_ranef_terms=exp_ranef_terms, data=data, rmInt=0L, 
                            corr_info=corr_info,
                            lcrandfamfam=processed$lcrandfamfam) 
       # (3) initialize things in the corrFamilies using the Z matrices:
@@ -1455,7 +1471,7 @@
     # Standardize init.HLfit in the one case where it may have corrPars (simplified version of .reformat_corrPars)
     processed$init_HLfit <-  .preprocess_init.HLfit(init.HLfit, corr_info) 
     ## : this, as residProcessed[["init_HLfit"]], can be used and modified by dhglm-specific code;
-    ##  and  processed$init_HLfit is used by .deternine_augZXy() and ..calc_optim_args()
+    ##  and  processed$init_HLfit is used by .determine_augZXy() and ..calc_optim_args()
     if (For_fitmv) {
       sparse_precision <- FALSE
     } else {

@@ -1,6 +1,6 @@
-cat(crayon::yellow("test-predVar-Matern-corrMatrix"))
+cat(cli::col_yellow("test-predVar-Matern-corrMatrix"))
 if (spaMM.getOption("example_maxtime")>0.7) { ##  not based on real timing
-  cat(crayon::yellow(': THREE messages "spaMM is not able... " expected\n    (when corrnames are "Gibraltar" ... and ZAnames are "-5.3469:36.1291" ...)\n'))
+  cat(cli::col_yellow(': THREE messages "spaMM is not able... " expected\n    (when corrnames are "Gibraltar" ... and ZAnames are "-5.3469:36.1291" ...)\n'))
   
   # checks predVar w/o permutation, + Matern vs corrMatrix, + spprec T/F  ... + perm_Q
   
@@ -23,7 +23,7 @@ if (spaMM.getOption("example_maxtime")>0.7) { ##  not based on real timing
                 control.HLfit=list(sparse_precision=FALSE)))
     (f4 <- corrHLfit(migStatus ~ means+ Matern(1|longitude+latitude),data=blackcap,
                     ranFix=list(corrPars=list("1"=list(nu=4,rho=0.4))),method="ML"))
-    cat(crayon::yellow("message expected here: "))
+    cat(cli::col_yellow("message expected here: "))
     (f5 <- HLCor(migStatus ~ means+ corrMatrix(1|longitude+latitude),data=blackcap,
                 corrMatrix=MLcorMat,method="ML")) # Check that order of data is respected in the Zmatrix for this "unsafe" input.
     # imput as precision matrix
@@ -56,7 +56,7 @@ if (spaMM.getOption("example_maxtime")>0.7) { ##  not based on real timing
   }
   spaMM.options(perm_Q=old_perm_Q)
 } else {
-  cat(crayon::yellow(': ONE message "spaMM is not able... " expected\n    (when corrnames are "Gibraltar" ... and ZAnames are "-5.3469:36.1291" ...)\n'))
+  cat(cli::col_yellow(': ONE message "spaMM is not able... " expected\n    (when corrnames are "Gibraltar" ... and ZAnames are "-5.3469:36.1291" ...)\n'))
 }
 
 
@@ -77,7 +77,7 @@ pmat <- as.matrix(MLcorMat)[perm,perm]
 HLCor(migStatus ~ means+ corrMatrix(1|name),data=blackcap,
       corrMatrix=as.dist(pmat),method="ML")
 ## (3) Other grouping terms (note the messages):
-cat(crayon::yellow("message expected here: "))
+cat(cli::col_yellow("message expected here: "))
 HLCor(migStatus ~ means+ corrMatrix(1|longitude+latitude),data=blackcap,
       corrMatrix=MLcorMat,method="ML")
 

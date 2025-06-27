@@ -136,9 +136,13 @@
   ## ./. It is an explicit formula if ML was used
   if (return_message) {
     if (is.null(object$REMLformula)) { ## default REML case
+      mv_model <- is.null(object$family) 
       if (object$HL[1]=='SEM')  {
         resu <- ("by stochastic EM.")
-      } else if (object$models[["eta"]]=="etaGLM" && object$family$family =="gaussian") { 
+      } else if (object$models[["eta"]]=="etaGLM" && 
+                 (mv_model && all (sapply(object$families, `[[`, x="family")=="gaussian") ||
+                  ( ! mv_model && object$family$family =="gaussian"))
+                 ) { 
         resu <- ("by REML.") 
       } else if ( identical(attr(object$models,"LMMbool"),TRUE))  {
         resu <- ("by REML.")
@@ -170,8 +174,8 @@ summary.HLfitlist <- function(object, ...) {
   cumlvls <- character(0)
   for (it in seq_along(object)) {
     lvl <- attr(object[[it]]$data,"identifier")
-    cat(crayon::underline(paste0("Category ",lvl," vs. other one(s)")))
-    if (it>1L) cat(crayon::underline(paste0(" except ",paste(cumlvls, collapse=", "))))
+    cat(cli::style_underline(paste0("Category ",lvl," vs. other one(s)")))
+    if (it>1L) cat(cli::style_underline(paste0(" except ",paste(cumlvls, collapse=", "))))
     cumlvls <- c(cumlvls,lvl)
     cat("\n")
     summary.HLfit(object[[it]])
@@ -487,7 +491,7 @@ summary.HLfitlist <- function(object, ...) {
                                 pw=object$prior.weights, summ, phimodel, mv_it=NULL) { # 'mv_it' needed for non-trivial  .get_glm_phi(object, it=it)
   if (family$family %in% c("gaussian","Gamma")) {
     if (! is.null(mv_it)) {
-      cat(crayon::underline("* response", mv_it))
+      cat(cli::style_underline("* response", mv_it))
       if (family$family=="Gamma") {
         cat(" (Gamma) residual var = phi * mu^2:\n")
       } else cat(" (gaussian) residual variance:  \n")    
@@ -510,10 +514,15 @@ summary.HLfitlist <- function(object, ...) {
           cat(paste("phi was fixed [through ",deparse(phiform),"] to", 
                     paste(signif(phi_outer[1:min(5,length(phi_outer))],6),collapse=" "),"...\n"))
         } else cat(paste("phi was fixed to",paste(signif(phi_outer[1:min(5L,length(phi_outer))],6),collapse=" "),"...\n"))
-      } else {
+      } else { # outer phi glm
+        # glm_phi <- .get_glm_phi(object, mv_it=mv_it) ## maybe not needed...
         if (length(phi_outer)==1L) {
           cat(paste("phi estimate was",signif(phi_outer,6),"\n"))
-        } else  cat(paste("phi was estimated.\n"))
+        } else { # "outer phiGLM"
+          phiform <- .get_phiform(object, mv_it)
+          cat(paste0("Estimates for log(phi) ",deparse(phiform),":\n"))
+          print(phi.object$beta_phi)
+        }
       }
       #summ$phi_outer <- phi.object$phi_outer ## mv: {actually from phi.object[[mv_it]]; overwrites previous mv_it} 
                                               # spaMM does nothing of it anyway so I remove
@@ -543,7 +552,7 @@ summary.HLfitlist <- function(object, ...) {
     has_dispenv_beta <- ( ! is.null(beta <- (disp_env <- family$resid.model)$beta)) 
     if (not_pw_1 || has_dispenv_beta) {
       if (! is.null(mv_it)) {
-        cat(crayon::underline("* response", mv_it))
+        cat(cli::style_underline("* response", mv_it))
         info <- switch(family$family,
                        "beta_resp" = " dispersion model for beta_resp\n",
                        "betabin"   = " dispersion model for betabin\n",

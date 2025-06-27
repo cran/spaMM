@@ -199,11 +199,6 @@ if (Sys.getenv("_LOCAL_TESTS_")=="TRUE") {
           scaled <- quadinf(f=.COMP_Z_integrand, xa = lower, xb = upper,    # has been # , xb=Inf #
                             eta = eta, nu = nu, moment = moment, logScaleFac = logScaleFac)$Q #Bug fixed in v4.1.25 here
         }
-        # quadinf_res <- .do_call_wrap("quadinf", 
-        #                         pack="pracma",
-        #                         info_mess=paste0("If the 'pracma' package were available,\n",
-        #                                          "more accurate evaluation of an integral would be possible.")
-        # )$Q
       }
       scaled <- pmin(.Machine$double.xmax,scaled)
       resu <- .COMP_Z_sum(resu, c(logScaleFac=logScaleFac,scaled=scaled))
@@ -864,7 +859,7 @@ COMPoisson <- function(nu = stop("COMPoisson's 'nu' must be specified"),
     mu.eta <- .CMP_mu.eta
     environment(linkfun) <- environment(linkinv) <- environment(mu.eta) <- environment()  ## containing nu
   } else if (linktemp %in% okLinks) {
-    stats <- make.link(linktemp)
+    stats <- .make.link(linktemp)
     linkfun <- stats$linkfun
     linkinv <- stats$linkinv
     mu.eta <- stats$mu.eta
@@ -942,7 +937,7 @@ COMPoisson <- function(nu = stop("COMPoisson's 'nu' must be specified"),
 }
 
 .CMP_series_EX2 <- function(lambda, nu, denum_Z, denum_corr) {
-  # cat(crayon::red(EX2_it)," ")
+  # cat(cli::col_red(EX2_it)," ")
   num <- .COMP_Z_n2(lambda=lambda,nu=nu)
   uncorr <- .COMP_Z_ratio(num,denum_Z)
   # cotinuity correction wrt poisson: 
@@ -967,7 +962,7 @@ COMPoisson <- function(nu = stop("COMPoisson's 'nu' must be specified"),
 }
 
 .CMP_muetaenv <- function(family, pw, eta) {
-  # cat(crayon::bgRed("NEW muetaenv"))
+  # cat(cli::bg_red("NEW muetaenv"))
   EX <- uniqEX <- c1 <- denum_Z <- uniqdenum_Z <-lambdas <- uniqlambdas <- uniqpow_lams_nu <- this <- use_asympto <- 
     uniquse_asympto <- Vmu <- dmudeta <- mu <- sane_eta <- etamatch <- uniq_asympto_var <- uniq_asympto_k3 <- NULL 
   nu <- environment(family$aic)$nu
@@ -991,10 +986,10 @@ COMPoisson <- function(nu = stop("COMPoisson's 'nu' must be specified"),
   ), parent=environment(.muetafn))
   muetaenv$this <- muetaenv
   delayedAssign("pow_lams_nu", {
-    # cat(crayon::bgRed("pow_lams_nu"))
+    # cat(cli::bg_red("pow_lams_nu"))
     lambdas^(1/nu)}, assign.env = muetaenv, eval.env = muetaenv)
   delayedAssign("uniqpow_lams_nu", {
-    # cat(crayon::bgRed("pow_lams_nu"))
+    # cat(cli::bg_red("pow_lams_nu"))
     uniqlambdas^(1/nu)}
     , assign.env = muetaenv, eval.env = muetaenv)
   delayedAssign("uniquse_asympto", {
@@ -1004,7 +999,7 @@ COMPoisson <- function(nu = stop("COMPoisson's 'nu' must be specified"),
   }, assign.env = muetaenv, eval.env = muetaenv)
   delayedAssign("use_asympto", { uniquse_asympto[etamatch] }, assign.env = muetaenv, eval.env = muetaenv)
   delayedAssign("uniqdenum_Z", {
-    # cat(crayon::bgRed("denum_Z"))
+    # cat(cli::bg_red("denum_Z"))
     for (den_it in seq_len(uniqlen)) {
       if (uniquse_asympto[[den_it]]) {
         # that should not be used in this case
@@ -1019,7 +1014,7 @@ COMPoisson <- function(nu = stop("COMPoisson's 'nu' must be specified"),
   }, assign.env = muetaenv, eval.env = muetaenv)
   delayedAssign("denum_Z", { uniqdenum_Z[etamatch] }, assign.env = muetaenv, eval.env = muetaenv)
   delayedAssign("uniqEX", {
-    # cat(crayon::bgRed("EX"))
+    # cat(cli::bg_red("EX"))
     uniqEX <- numeric(uniqlen)
     for (EX_it in seq_len(uniqlen)) {
       if (uniqlambdas[[EX_it]]==0) {
@@ -1056,7 +1051,7 @@ COMPoisson <- function(nu = stop("COMPoisson's 'nu' must be specified"),
     uniq_asympto_k3
   }, assign.env = muetaenv, eval.env = muetaenv)
   delayedAssign("EX2", {
-    # cat(crayon::bgRed("EX2"))
+    # cat(cli::bg_red("EX2"))
     uniqEX2 <- numeric(uniqlen)
     for (EX2_it in seq_len(uniqlen)) {
       if (uniqlambdas[[EX2_it]]==0) {

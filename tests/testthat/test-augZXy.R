@@ -1,4 +1,4 @@
-cat(crayon::yellow("test aug_ZXy:\n"))
+cat(cli::col_yellow("test aug_ZXy:\n"))
 data("blackcap")
 chk <- fitme(migStatus ~ 1+ Matern(1|latitude+longitude), fixed=list(lambda=2), data=blackcap)
 if (how(chk, verbose=FALSE)$switches[["augZXy_cond"]]) stop("y-augmented method used with fixed lambda.")

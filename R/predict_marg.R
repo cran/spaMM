@@ -40,7 +40,9 @@
     }
     locarglist <- list(f=integrand_v, lower=lower, upper=upper, method="hcubature", nVec=2L,
                        eta_fix=eta_fix, newZAXrow=newZAXrow, cum_nactive=cum_nactive, object=object)
-      resu <- .do_call_wrap("cubintegrate",locarglist, pack="cubature")
+    cubintegrate <- .get_wrap("cubintegrate", pack="cubature")
+    resu <- cubintegrate(f=integrand_v, lower=lower, upper=upper, method="hcubature", nVec=2L,
+                       eta_fix=eta_fix, newZAXrow=newZAXrow, cum_nactive=cum_nactive, object=object)
   } else {
     integrand <- Vectorize(integrand,vectorize.args = "u")
     resu <- integrate(f=integrand,lower=lower, upper=upper, eta_fix=eta_fix, newZAXrow=newZAXrow, cum_nactive=cum_nactive,
@@ -108,6 +110,6 @@
   }
   resu <- do.call(rbind,resu)
   resu <- structure(matrix(resu[,1L],ncol=1L,dimnames=list(rownames(newdata),NULL)),
-                    integrate_info=resu[,-1L], class=c("predictions","matrix"))
+                    integrate_info=resu[,-1L], class=c("spaMM_predictions","matrix"))
   return(resu)
 }

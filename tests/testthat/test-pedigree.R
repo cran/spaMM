@@ -1,4 +1,4 @@
-cat(crayon::yellow("\ntest pedigree:\n"))
+cat(cli::col_yellow("\ntest pedigree:\n"))
 
 {
   if(FALSE) {

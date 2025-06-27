@@ -1,4 +1,4 @@
-cat(crayon::yellow(" -> test-mv-corrFamily:")) # not part of the testthat.R tests (neither test-composite-extra.R)
+cat(cli::col_yellow(" -> test-mv-corrFamily:")) # not part of the testthat.R tests (neither test-composite-extra.R)
 
 library(spaMM)
 options(error=recover)
@@ -16,11 +16,11 @@ options(error=recover)
 }
 
 {
-  cat(crayon::yellow("MaternIMRFa; ")) 
+  cat(cli::col_yellow("MaternIMRFa; ")) 
   { # create IMRF model
     ## Creating the mesh 
     oldMDCopt <- options(Matrix.warnDeprecatedCoerce = 0) # # INLA issue
-    mesh <- INLA::inla.mesh.2d(loc = blackcap[, c("longitude", "latitude")], 
+    mesh <- fmesher::fm_mesh_2d_inla(loc = blackcap[, c("longitude", "latitude")], 
                                cutoff=30,
                                max.edge = c(3, 20)) 
     mesh$n ## 40

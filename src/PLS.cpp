@@ -167,30 +167,6 @@ SEXP Rcpp_chol_R( SEXP AA ){ // upper tri as in R chol()
   return out;
 } // such that A = R'.R as in R's chol()
 
-// DEVEL code
-// http://stackoverflow.com/questions/25147577/get-information-about-a-promise-without-evaluating-the-promise
-// ## we can get info about the promise by using pryr::uneval(resid.model)
-// ## class(uneval(resid.model)) may be "bytecode" if the corrHLfit argument was already an evaluated promise
-// ## otherwise class(uneval(resid.model)) may be a "call".
-// ## if needed, uneval is minimal R code  + the C++ code in promise.cpp: promise_code(resid_model) might suffice.
-/*
-  // [[Rcpp::export]]
-bool is_promise2(Symbol name, Environment env) {
-  SEXP object = Rf_findVar(name, env);
-  return (TYPEOF (object) == PROMSXP);
-}
-
-// [[Rcpp::export]]
-SEXP promise_code(Symbol name, Environment env) {
-  SEXP object = Rf_findVar(name, env);
-  return PRCODE(object);
-}
-// [[Rcpp::export]]
-SEXP promise_value(Symbol name, Environment env) {
-  SEXP object = Rf_findVar(name, env);
-  return PRVALUE(object);
-}
-*/
 
 //https://stackoverflow.com/questions/31913437/r-fast-cbind-matrix-using-rcpp
 // [[Rcpp::export(.Rcpp_dense_cbind_mat_mat)]]

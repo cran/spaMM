@@ -12,9 +12,9 @@ Beta <- function(link="logit"){
   }
   okLinks <- c("logit","probit","cloglog","log", "identity")
   if (linktemp %in% okLinks)
-    stats <- make.link(linktemp)
+    stats <- .make.link(linktemp)
   else if (is.character(link))
-    stats <- make.link(link)
+    stats <- .make.link(link)
   else {
     if (inherits(link, "link-glm")) {
       stats <- link

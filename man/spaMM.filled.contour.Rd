@@ -53,7 +53,7 @@ spaMM.filled.contour(x = seq(0, 1, length.out = nrow(z)),
  \item{key.axes}{statements which draw axes on the plot key.
     This overrides the default axis.}
 \item{map.asp}{  
-the y/x aspect ratio of the 2D plot area (not of the full figure including the scale). Default is (plotted y range)/(plotted x range) (i.e., scales for x are identical). 
+the y/x aspect ratio of the 2D plot area (not of the full figure including the scale). Default is (plotted y range)/(plotted x range) (i.e., scales for x and y are identical) as long as this does not conflict too much with the available plot area deduced from the device dimensions. 
 }
  \item{xaxs}{the x axis style.  The default is to use internal
     labeling.}

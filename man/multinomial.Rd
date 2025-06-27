@@ -7,8 +7,10 @@
 %- Also NEED an '\alias' for EACH other topic documented here.
 \title{Analyzing multinomial data}
 \description{
-  These functions facilitate the conversion and analysis of multinomial data as as series of nested binomial data.
-  The main interface is the \code{multi} \dQuote{family}, to be used in the \code{family} argument of the fitting functions.
+  The features described here were implemented to facilitate the analysis of multinomial data, before \code{\link{fitmv}} was developed, 
+  as a series of nested binomial data. \code{fitmv} should now be considered, as well as its wrapper \code{\link{pois4mlogit}} which allows one to fit models known as multinomial logit.
+  
+  The main interface described here is the \code{multi} \dQuote{family}, to be used in the \code{family} argument of the fitting functions.
   Fits using it call \code{binomialize}, which can be called directly to check how the data are converted to nested binomial data, and to use these data directly. 
   The \code{fitted.HLfitlist} method of the \code{fitted} generic function returns a matrix of fitted multinomial probabilities.
   The \code{logLik.HLfitlist} method of the \code{logLik} generic function returns a log-likelihood for the joint fits.

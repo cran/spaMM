@@ -1,4 +1,4 @@
-cat(crayon::yellow("\ntest dyadic fixed-effect constructs:\n"))
+cat(cli::col_yellow("\ntest dyadic fixed-effect constructs:\n"))
 
 if (spaMM.getOption("example_maxtime")>0.7) {
   

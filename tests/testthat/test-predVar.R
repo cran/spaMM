@@ -1,4 +1,4 @@
-cat(crayon::yellow("\ntest of prediction variance:"))
+cat(cli::col_yellow("\ntest of prediction variance:"))
 
 ## two ranefs with estimated lambdas:
 data("blackcap")
@@ -54,9 +54,9 @@ if ("dgCMatrix" %in% how(twolambda, verbose=FALSE)$MME_method) { # if QRmethod="
   testthat::expect_true(diff(range(get_predVar(twolambda)[1:5]-get_predVar(onelambda)[1:5]))<1e-5)
 } else {
   crit <- diff(range(get_predVar(twolambda)[1:5]-get_predVar(onelambda)[1:5]))
-  try(testthat::test_that(paste0("singular 'twolambda' model: criterion was ",signif(crit,4)," >1e-7"),
-                     testthat::expect_true(crit<1e-7) ## affected by .Rcpp_backsolve()
-  ))
+  try(testthat::test_that(paste0("singular 'twolambda' model [Failure unfortunately expected]: criterion was ",signif(crit,4)," >1e-7"),
+                     testthat::expect_true(crit<1e-7)  )) ## affected by .Rcpp_backsolve()
+  # crit has been 0.003231 for some time (v4.5.0...)
 }
 
 

@@ -42,7 +42,7 @@ to those for GLMs. They use \emph{standardized} deviance residuals as described 
   }
 }
 \details{
-  In principle the standardized deviance residuals for the mean model should have a nearly Gaussian distribution hence form a nearly straight line on a Q-Q plot. However this is (trivially) not so for well-specified (nearly-)binary response data nor even for well-specified Poisson response data with moderate expectations. Hence this plot is not so useful. The \code{DHARMa} package proposes better-behaved diagnostic plots (but the p-value that appears on one of these plots may not stand for a valid goodness-of-fit test). The current version of \code{DHARMa} should handle \code{spaMM} fit objects; otherwise, see \url{https://github.com/florianhartig/DHARMa/issues/95} for how to run \code{DHARMa} procedures on \code{spaMM} output.   
+  In principle the standardized deviance residuals for the mean model should have a nearly Gaussian distribution hence form a nearly straight line on a Q-Q plot. However this is (trivially) not so for well-specified (nearly-)binary response data nor even for well-specified Poisson response data with moderate expectations. Hence this plot is not so useful. The \code{DHARMa} package proposes better-behaved diagnostic plots, but the p-value that appears on one of these plots may not stand for a valid goodness-of-fit test; see instead the \code{\link{gof}} procedure. The current version of \code{DHARMa} should handle \code{spaMM} fit objects; otherwise, see \url{https://github.com/florianhartig/DHARMa/issues/95} for how to run \code{DHARMa} procedures on \code{spaMM} output.   
 }
 \value{
   Returns the input object invisibly.

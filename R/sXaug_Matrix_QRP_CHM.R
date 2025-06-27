@@ -2,7 +2,7 @@
 # from Xaug which already has a *scaled* ZAL 
 def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale, 
                                             nonSPD=NULL,
-                                            force_QRP=NULL # ignored
+                                            force_QRP_global=NULL # ignored by this sXaug type
                                             ) {
   n_u_h <- length(w.ranef)
   Xrows <- n_u_h+seq(length(weight_X))
@@ -39,7 +39,10 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
   # base::backsolve() calls as.matrix()... 
   # Do not try Matrix::qr.qty() on large RHS! (not memory efficient).
   # 
-  if (eval(.spaMM.data$options$presolve_cond) && .calc_denseness(sXaug,relative = TRUE)>0.004 ) { # nested_Matern
+  #if (TRUE) { # rqably drop0 is necess and this is not faster than the alternatives
+  #  t(drop0(qr.Q(BLOB$QRsXaug))) # automatically permuted...
+  #} else 
+    if (eval(.spaMM.data$options$presolve_cond) && .calc_denseness(sXaug,relative = TRUE)>0.004 ) { # nested_Matern
     # Below, solve(t(BLOB$R_scaled),t(sXaug[,BLOB$perm])) is slow when the result is rather dense. 
     #   It calls .sortCsparse(.Call(dtCMatrix_sparse_solve, a, b)), and its difficult to see whether the .sortCSparse itself is the culprit
     # nested Matern has denseness = 0.00509... and presolving is better
@@ -126,7 +129,38 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
   .Dvec_times_Matrix( - BLOB$invsqrtwranef,rhs)
 }
 
-# trace(get_from_MME, print=FALSE, tracer=quote(cat("'",crayon::yellow(which),"'")))
+.calc_logdet_sqrt_d2hdv2_QRP_CHM <- function(sXaug, BLOB) {
+    logdet_sqrt_RtR <- sum(log(attr(sXaug,"w.ranef")))/2 + BLOB$logdet_R_scaled_v 
+    logdet_sqrt_RtR - determinant(BLOB$invIm2QtdQ_Z)$modulus[1]/2
+}
+
+.calc_logdet_r22_QRP_CHM <- function(BLOB, sXaug) {
+    # the R's are H-scaled but r22 is H-unscaled... tricky!
+    if (BLOB$u_h_cols_on_left) { # default
+      sum(log(abs(diag(x=BLOB$R_scaled)[-BLOB$seq_n_u_h]))) - attr(sXaug,"pforpv")*log(attr(sXaug,"H_global_scale"))/2 # '-' not '<-'
+    } else {
+      BLOB$logdet_R_scaled_b_v - BLOB$logdet_R_scaled_v - attr(sXaug,"pforpv")*log(attr(sXaug,"H_global_scale"))/2 ## '-', not '<-'
+    }
+}
+
+.calc_logdet_R_scaled_v_QRP_CHM <- function(BLOB) {
+  # logdet_d2hdv2 is easy to compute when  u_h_cols are on the left.
+  # Otherwise we require CHMfactor_wd2hdv2w which is the result of calling Cholesky (slow).
+  # Testing whether inv_factor_wd2hdv2w has been *additionally* computed (from CHMfactor_wd2hdv2w) 
+  # is not useful here.  
+  # THe previous condition was if (BLOB$use_R_block), and old tests 
+  # led to use_R_block being FALSE in all cases (it is still always FALSE). So CHMfactor_wd2hdv2w
+  # was required in all cases.
+  # But a case has now been found where CHMfactor_wd2hdv2w has not yet been computed 
+  # and is not needed here. So the appropriate test here is whether 
+  # we really need to compute it if not already available, i.e. testing  BLOB$u_h_cols_on_left
+  if ( ! .is_evaluated("CHMfactor_wd2hdv2w", BLOB) && 
+       BLOB$u_h_cols_on_left) { 
+    sum(log(abs(diag(x=BLOB$R_scaled)[BLOB$seq_n_u_h])))
+  } else Matrix::determinant(BLOB$CHMfactor_wd2hdv2w, sqrt=TRUE)$modulus[1]
+}
+
+# trace(get_from_MME, print=FALSE, tracer=quote(cat("'",cli::col_yellow(which),"'")))
 # trace(spaMM:::.sXaug_Matrix_QRP_CHM_scaled, print=FALSE, tracer=quote(cat("'",which,"'")))
 #
 .sXaug_Matrix_QRP_CHM_scaled <- function(sXaug,which="",szAug=NULL,B=NULL) {
@@ -181,7 +215,7 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
       #  _F I X M E__? progress is not obvious: would need to make updateable info accessible, and even so it might not be useful.
     }, assign.env = BLOB )
     #
-    delayedAssign("inv_factor_wd2hdv2w", {   # alwas unpermuted user's column order, notably bc CHMfactor_wd2hdv2w is Cholesky(permuted back to user order,,perm=FALSE)
+    delayedAssign("inv_factor_wd2hdv2w", {   # always unpermuted user's column order, notably bc CHMfactor_wd2hdv2w is Cholesky(permuted back to user order,,perm=FALSE)
       if (BLOB$use_R_block) { # always FALSE... 
         sortPerm_u_h <- BLOB$sortPerm_u_h
         # solve(t(BLOB$R_scaled))[sortPerm_u_h,sortPerm_u_h, drop=FALSE] # triangular solve remains sparse...
@@ -197,22 +231,9 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
     #
     delayedAssign("logdet_R_scaled_b_v", sum(log(abs(diag(x=BLOB$R_scaled)))), assign.env = BLOB )  # not .diagfast() on sparse matrix
     #
-    delayedAssign("logdet_R_scaled_v", {
-      # the tests led to use_R_block being FALSE in all cases. Gain is obviously not here, 
-      # so it must be through making CHMfactor_wd2hdv2w available and efficient for other operations... not transparent.
-      if (BLOB$use_R_block) { # but BLOB$logdet_R_scaled_v may not be requested in that case
-        sum(log(abs(diag(x=BLOB$R_scaled)[BLOB$seq_n_u_h])))
-      } else Matrix::determinant(BLOB$CHMfactor_wd2hdv2w, sqrt=TRUE)$modulus[1]
-    }, assign.env = BLOB )
+    delayedAssign("logdet_R_scaled_v", .calc_logdet_R_scaled_v_QRP_CHM(BLOB), assign.env = BLOB )
     #
-    delayedAssign("logdet_r22", {
-      # the R's are H-scaled but r22 is H-unscaled... tricky!
-      if (BLOB$u_h_cols_on_left) { # default
-        sum(log(abs(diag(x=BLOB$R_scaled)[-BLOB$seq_n_u_h]))) - attr(sXaug,"pforpv")*log(attr(sXaug,"H_global_scale"))/2 # '-' not '<-'
-      } else {
-        BLOB$logdet_R_scaled_b_v - BLOB$logdet_R_scaled_v - attr(sXaug,"pforpv")*log(attr(sXaug,"H_global_scale"))/2 ## '-', not '<-'
-      }
-    } , assign.env = BLOB )
+    delayedAssign("logdet_r22", .calc_logdet_r22_QRP_CHM(BLOB, sXaug) , assign.env = BLOB )
     #
     if  (is.null(BLOB$signs)) {
       delayedAssign("inv_d2hdv2", .calc_inv_d2hdv2_QRP_CHM(BLOB), assign.env = BLOB )
@@ -236,10 +257,7 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
       # i.e., switch force_LLF_CHM_QRP.
       delayedAssign("inv_d2hdv2", .calc_inv_d2hdv2_QRP_CHM_signs(BLOB), assign.env = BLOB )
       
-      delayedAssign("logdet_sqrt_d2hdv2", {
-        logdet_sqrt_RtR <- sum(log(attr(sXaug,"w.ranef")))/2 + BLOB$logdet_R_scaled_v 
-        logdet_sqrt_RtR - determinant(BLOB$invIm2QtdQ_Z)$modulus[1]/2
-      }, assign.env = BLOB )
+      delayedAssign("logdet_sqrt_d2hdv2", .calc_logdet_sqrt_d2hdv2_QRP_CHM(sXaug, BLOB), assign.env = BLOB )
       #
       delayedAssign("invIm2QtdQ_Z", { .Rcpp_adhoc_shermanM_sp(BLOB$t_Qq_scaled, c(rep(0L,attr(sXaug,"n_u_h")),BLOB$signs<0)) }, assign.env = BLOB)
       #
@@ -310,7 +328,7 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
       rhs <- .crossprod(BLOB$solve_R_scaled, rhs[BLOB$perm]) # sum(crossprod(BLOB$solve_R_scaled,B[BLOB$perm])^2) = sum(crossprod(BLOB$solve_R_scaled[BLOB$sortPerm,],B)^2)
     } else rhs <- Matrix::solve(t(BLOB$R_scaled),rhs[BLOB$perm]) 
     if  (is.null(BLOB$signs) || BLOB$nonSPD) { # two cases where the WLS matrix is crossprod(R) 
-      return(sum(rhs^2))
+      return(sum(rhs*rhs))
     } else return( sum((rhs)* drop(BLOB$invIm2QtdQ_ZX %*% (rhs)))) 
   } 
   if (which=="Mg_invH_g") {
@@ -322,7 +340,7 @@ def_sXaug_Matrix_QRP_CHM_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale
     # nonSPD => we use the regularized WLS_mat so do not consider invIm2QtdQ_Z factor here even though it is defined
     # sign SPD => still using QR and exact Hessian here so we use the invIm2QtdQ_Z factor. (vs decorr where we use chol)
     if (is.null(BLOB$signs) || BLOB$nonSPD) { # both cases where the WLS_matrix actually used has no invIm2Q... factor
-      return(sum(rhs^2))
+      return(sum(rhs*rhs))
     } else return(sum(rhs * drop(BLOB$invIm2QtdQ_Z %*% rhs)))
   } 
   if (which=="Mg_invXtWX_g") { ## for which_LevMar_step="b", not currently used

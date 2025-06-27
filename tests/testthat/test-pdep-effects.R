@@ -1,4 +1,4 @@
-cat(crayon::yellow("\ntest-pdep-effects.R: "))
+cat(cli::col_yellow("\ntest-pdep-effects.R: "))
 
 # Easily goes wrong with factors -> fixes for the following checks in v4.4.4
 

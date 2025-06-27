@@ -1,6 +1,5 @@
 # maybe a way to reuse base::tempfile  (-> .Internal) ?
 
-# two functions that diverged from a common idea... probably a merged one should remain.
 .makenewname <- function(base,varnames) { ## post CRAN 1.4.1
   varnames <- varnames[which(substring(varnames,1,nchar(base))==base)] 
   allremainders <- substring(varnames,nchar(base)+1) 

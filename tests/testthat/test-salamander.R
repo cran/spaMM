@@ -1,4 +1,4 @@
-cat(crayon::yellow("\ntest salamander:"))
+cat(cli::col_yellow("\ntest salamander:"))
 # salamander
 
 data("salamander")

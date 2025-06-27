@@ -1,4 +1,4 @@
-cat(crayon::yellow("\ntest multinomial:"))
+cat(cli::col_yellow("\ntest multinomial:"))
 
 if (spaMM.getOption("example_maxtime")>1.7) {
   # extended from example in multinomial.Rd

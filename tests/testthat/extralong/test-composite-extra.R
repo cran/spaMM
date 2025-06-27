@@ -1,6 +1,8 @@
-cat(crayon::yellow("\ntest-composite-extra:\n"))
+cat(cli::col_yellow("\ntest-composite-extra:\n"))
 
-cat(crayon::yellow("checks AR1 composite"))
+cat(cli::col_yellow("checks AR1 composite"))
+
+if ( ! exists("doSeeMe")) doSeeMe <- spaMM.getOption("doSeeMe") # in principle provided by parent tests file
 
 { # test different algebras
   ts <- data.frame(lh=lh,time=seq(48)) ## using 'lh' data from 'stats' package
@@ -23,14 +25,14 @@ cat(crayon::yellow("checks AR1 composite"))
                           lower=list(phi=1e-4),
                           fixed=list(ranCoefs=list("1"=c(NA,0.1,NA)))))
   (crit <- diff(range(c(logLik(compAR1fitde),logLik(compAR1fit),logLik(compAR1fitsp),-28.37433))))
-  FIXME <- testthat::test_that(paste0("Whether the three algebras give consistent results for AR1(time|time): crit= ",signif(crit,4)," >1e-05"),
-                               testthat::expect_true(crit<1e-05) )
-  if ( ! FIXME) doSeeMe("Do see me!") 
-  cat(crayon::yellow("Warning expected here:"))
+  FIXME <- try(testthat::test_that(paste0("Whether the three algebras give consistent results for AR1(time|time): crit= ",signif(crit,4)," >1e-05"),
+                                   testthat::expect_true(crit<1e-05) ), silent=TRUE)
+  doSeeMe(FIXME) 
+  cat(cli::col_yellow("Warning expected here:"))
   (p1 <- predict(compAR1fitsp))
   (p2 <- predict(compAR1fit, newdata=compAR1fit$data))
   (p3 <- predict(compAR1fitde, newdata=compAR1fit$data))
-  cat(crayon::yellow("Warning expected here:"))
+  cat(cli::col_yellow("Warning expected here:"))
   (p4 <- predict(compAR1fitsp, newdata=compAR1fit$data)) 
   (crit <- diff(range(c(p1-p2,p1-p3,p1-p4))))
   FIXME <- testthat::test_that(paste0(
@@ -38,7 +40,7 @@ cat(crayon::yellow("checks AR1 composite"))
                                testthat::expect_true(crit<1e-05) )
 }
 
-cat(crayon::yellow("; checks ARp composite"))
+cat(cli::col_yellow("; checks ARp composite"))
 
 { # test different algebras
   ts <- data.frame(lh=lh,time=seq(48)) ## using 'lh' data from 'stats' package
@@ -56,15 +58,15 @@ cat(crayon::yellow("; checks ARp composite"))
                         lower=list(phi=1e-4),
                         fixed=list(ranCoefs=list("1"=c(NA,0.1,NA)))))
   (crit <- diff(range(c(logLik(compARpfitde),logLik(compARpfit),logLik(compARpfitsp),-28.37433))))
-  FIXME <- testthat::test_that(paste0("Whether the three algebras give consistent results for AR1(time|time): crit= ",signif(crit,4)," >1e-05"),
-                               testthat::expect_true(crit<1e-05) )
-  if ( ! FIXME) doSeeMe("Do see me!") 
+  FIXME <- try(testthat::test_that(paste0("Whether the three algebras give consistent results for AR1(time|time): crit= ",signif(crit,4)," >1e-05"),
+                                   testthat::expect_true(crit<1e-05) ), silent=TRUE)
+  doSeeMe(FIXME) 
   #### code missing for composite *corrFamily* ranef: (hard-coded stop())
-  # cat(crayon::yellow("Warning expected here:"))
+  # cat(cli::col_yellow("Warning expected here:"))
   # (p1 <- predict(compARpfitsp))
   # (p2 <- predict(compARpfit, newdata=compAR1fit$data))
   # (p3 <- predict(compARpfitde, newdata=compAR1fit$data))
-  # cat(crayon::yellow("Warning expected here:"))
+  # cat(cli::col_yellow("Warning expected here:"))
   # (p4 <- predict(compARpfitsp, newdata=compAR1fit$data))
   # (crit <- diff(range(c(p1-p2,p1-p3,p1-p4))))
   # FIXME <- testthat::test_that(paste0(
@@ -73,8 +75,9 @@ cat(crayon::yellow("; checks ARp composite"))
   
 }
 
-cat(crayon::yellow("more checks of AR1 and ARp composite"))
+cat(cli::col_yellow("more checks of AR1 and ARp composite"))
 {
+  data("Orthodont",package = "nlme")
   fix_rc <- list("1"=c(0.01,0.5,0.01))
   (fit1 <- fitme(distance ~ age + AR1(age|age), 
                  data = Orthodont,method="REML", 
@@ -141,7 +144,7 @@ cat(crayon::yellow("more checks of AR1 and ARp composite"))
 }
 
 if (TRUE) {
-  cat(crayon::yellow("; check predict mv() not composite first (problem pre-v3.8.34)"))
+  cat(cli::col_yellow("; check predict mv() not composite first (problem pre-v3.8.34)"))
   (basic_rC1 <- fitmv(submodels=list(mod1=list(status ~ 1+ (mv(1,2)|name), fixed=list(phi=0.1)),
                                     mod2=list(status2 ~ 1+ (mv(1,2)|name), fixed=list(phi=0.1))), #verbose=c(TRACE=TRUE),
                      data=cap_mv))
@@ -174,7 +177,7 @@ if (TRUE) {
 
 
 
-cat(crayon::yellow("; checks Matern composite"))
+cat(cli::col_yellow("; checks Matern composite"))
 
 { # test different algebras
   ts <- data.frame(lh=lh,time=seq(48)) ## using 'lh' data from 'stats' package
@@ -192,15 +195,15 @@ cat(crayon::yellow("; checks Matern composite"))
   (compMatfitsp <-  fitme(lh ~ 1 + Matern(time|time), data=ts, control.HLfit=list(algebra="spprec"), 
                           fixed=list(ranCoefs=list("1"=c(NA,0.1,NA)))))
   (crit <- diff(range(c(logLik(compMatfitde),logLik(compMatfit),logLik(compMatfitsp),-26.43478))))
-  FIXME <- testthat::test_that(paste0("Whether the three algebras give consistent results for Matern(time|time): crit= ",signif(crit,4)," >1e-05"),
-                               testthat::expect_true(crit<1e-05) )
-  if ( ! FIXME) doSeeMe("Do see me!") 
-  
-  cat(crayon::yellow("Warning expected here:"))
+  FIXME <- try(testthat::test_that(paste0("Whether the three algebras give consistent results for Matern(time|time): crit= ",signif(crit,4)," >1e-05"),
+                                   testthat::expect_true(crit<1e-05) ), silent=TRUE)
+  doSeeMe(FIXME) 
+
+  cat(cli::col_yellow("Warning expected here:"))
   (p1 <- predict(compMatfitsp))
   (p2 <- predict(compMatfit))
   (p3 <- predict(compMatfit, newdata=compAR1fit$data))
-  cat(crayon::yellow("Warning expected here:"))
+  cat(cli::col_yellow("Warning expected here:"))
   (p4 <- predict(compMatfitsp, newdata=compAR1fit$data))
   (crit <- diff(range(c(p1-p2,p1-p3,p1-p4))))
   FIXME <- testthat::test_that(paste0(
@@ -216,7 +219,7 @@ zuta <- fitme(status ~ 1+ corrMatrix(1|name), #verbose=c(TRACE=TRUE),
 zutb <- fitme(status2 ~ 1+ corrMatrix(1|name), fixed=list(lambda=1,phi=0.1), #verbose=c(TRACE=TRUE),
               data=cap_mv, corrMatrix=MLcorMat2, 
               control.HLfit=list(sparse_precision=FALSE))
-cat(crayon::yellow("; checks corrMatrix composite"))
+cat(cli::col_yellow("; checks corrMatrix composite"))
 (zut0d <- fitmv(submodels=list(mod1=list(status ~ 1+ corrMatrix(0+mv(1,2)|name), fixed=list(phi=0.1)),
                               mod2=list(status2 ~ 1+ corrMatrix(0+mv(1,2)|name), fixed=list(phi=0.1))), #verbose=c(TRACE=TRUE),
                data=cap_mv, corrMatrix=MLcorMat2, 
@@ -310,9 +313,9 @@ testthat::test_that(paste0("ranef corrMatrix(mv()...): criterion was ",signif(cr
   (p2d <- predict(zut1d, newdata=zut1d$data))
   (pVd <- get_predVar(zut1d))
   (pVd <- get_predVar(zut1d, newdata=zut1d$data,variances=list(cov=F)))
-  # cat(crayon::yellow("Warning expected here:"))
+  # cat(cli::col_yellow("Warning expected here:"))
   (p1s <- predict(zut1s))
-  cat(crayon::yellow("Warning expected here:"))
+  cat(cli::col_yellow("Warning expected here:"))
   (p2s <- predict(zut1s, newdata=zut1s$data)) 
   (pVs <- get_predVar(zut1s))
   (pVs <- get_predVar(zut1s, newdata=zut1s$data,variances=list(cov=F)))
@@ -328,7 +331,7 @@ testthat::test_that(paste0("ranef corrMatrix(mv()...): criterion was ",signif(cr
   }
 }
 
-{  cat(crayon::yellow( "Matern(LHS |<nested RHS>) and more corrMatrix(LHS |<nested RHS>)... " ))
+{  cat(cli::col_yellow( "Matern(LHS |<nested RHS>) and more corrMatrix(LHS |<nested RHS>)... " ))
   {
     data("blackcap")
     toy <- blackcap
@@ -379,7 +382,7 @@ testthat::test_that(paste0("ranef corrMatrix(mv()...): criterion was ",signif(cr
 }
 
 if (TRUE) { # 
-  cat(crayon::yellow("; checks IMRF composite"))
+  cat(cli::col_yellow("; checks IMRF composite"))
   
   # test by compar with example in doc for IMRF
   data("blackcap") ## toy examples; but IMRF may be useful only for much larger datasets
@@ -397,29 +400,31 @@ if (TRUE) { #
     testthat::expect_true(crit<1e-8)
     # also close to fit_SPDE since we forced the variance of the slope to 1e-5
     
-    # same comparison for MaternIMRFa with fixed alpha=2 ~ default IMRF
-    spd <- sp::SpatialPointsDataFrame(coords = blackcap[, c("longitude", "latitude")],
-                                      data = blackcap)
-    small_mesh <- INLA::inla.mesh.2d(loc = INLA::inla.mesh.map(sp::coordinates(spd)),
-                                     max.n=100, # only for demonstration purposes
-                                     max.edge = c(3, 20))
-    (fit_SPDE_cF <- fitme(migStatus ~ 1 + MaternIMRFa(1|longitude+latitude, 
-                                                      mesh=small_mesh,
-                                                      fixed=c(alpha=2)), 
-                          data=blackcap, 
-                          fixed=list(phi=1e-6))) # note 'failed' optimisation without this
-    (crit <- diff(range(c(logLik(fit_SPDE_cF),logLik(fit_SPDE)))))
-    testthat::expect_true(crit<1e-5) # just
-    
-    (fit_SPDE_rc_cF <- fitme(migStatus ~ 1 + MaternIMRFa(1+I(means/100)|longitude+latitude, 
-                                                      mesh=small_mesh,
-                                                      fixed=c(alpha=2)), 
-                          data=blackcap, 
-                          fixed=list(ranCoefs=list("1"=c(NA,0,0.00001)),
-                                     phi=1e-6))) 
-    # (crit <- diff(range(c(logLik(fit_SPDE_cF),logLik(fit_SPDE_rc_cF)))))
-    # testthat::expect_true(crit<3e-5) # not quite identical but does have to
-    #    since forcing the variance of the slope to 1e-5 only approximates the simpler model.
+    if ("INLA" %in% installed.packages()) {
+      # same comparison for MaternIMRFa with fixed alpha=2 ~ default IMRF
+      spd <- sp::SpatialPointsDataFrame(coords = blackcap[, c("longitude", "latitude")],
+                                        data = blackcap)
+      small_mesh <- fmesher::fm_mesh_2d_inla(loc = fmesher::fm_mesh_2d_map(sp::coordinates(spd)),
+                                       max.n=100, # only for demonstration purposes
+                                       max.edge = c(3, 20))
+      (fit_SPDE_cF <- fitme(migStatus ~ 1 + MaternIMRFa(1|longitude+latitude, 
+                                                        mesh=small_mesh,
+                                                        fixed=c(alpha=2)), 
+                            data=blackcap, 
+                            fixed=list(phi=1e-6))) # note 'failed' optimisation without this
+      (crit <- diff(range(c(logLik(fit_SPDE_cF),logLik(fit_SPDE)))))
+      testthat::expect_true(crit<1e-5) # just
+      
+      (fit_SPDE_rc_cF <- fitme(migStatus ~ 1 + MaternIMRFa(1+I(means/100)|longitude+latitude, 
+                                                           mesh=small_mesh,
+                                                           fixed=c(alpha=2)), 
+                               data=blackcap, 
+                               fixed=list(ranCoefs=list("1"=c(NA,0,0.00001)),
+                                          phi=1e-6))) 
+      # (crit <- diff(range(c(logLik(fit_SPDE_cF),logLik(fit_SPDE_rc_cF)))))
+      # testthat::expect_true(crit<3e-5) # not quite identical but does have to
+      #    since forcing the variance of the slope to 1e-5 only approximates the simpler model.
+    }
     
   }
 }

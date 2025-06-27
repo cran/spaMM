@@ -1,6 +1,6 @@
 # define save as a generic with method save.HLfit ?
 
-stripHLfit <- function(object,...) {
+stripHLfit <- function(object,...) { # keywords: shrink, reduce, memory.size...
   if (inherits(object,"HLfit")) {
     ######## clean matrices
     stripnames <- names(object$envir)

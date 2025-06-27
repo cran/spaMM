@@ -5,11 +5,11 @@
 Link-linear regression models (LLMs)
 }
 \description{
-Some \dQuote{family} objects in \pkg{spaMM} describe models with non-GLM response families, such as the \code{\link{negbin1}} or \code{\link{beta_resp}} families already widely considered in previous works and other packages. These models are characterized by a linear predictor, a link function, and a distribution for residual variation that does not belong to the exponential family from which GLMs are defined. 
+Some \dQuote{family} objects in \pkg{spaMM} describe models with non-GLM distribution families, such as the \code{\link{negbin1}} or \code{\link{beta_resp}} families already widely considered in previous works and other packages. These models are characterized by a linear predictor, a link function, and a distribution for residual variation that does not belong to the exponential family from which GLMs are defined. 
 
 These family objects are conceived for use with \pkg{spaMM}'s fitting functions. They cannot generally be used as argument to the \code{glm} function, except when this function is highjacked by use of the \code{method="llm.fit"} argument, where llm stands for Link-Linear (as in \dQuote{log-linear}, say) regression Model. 
 
-Mixed-effect models fitted by such methods cannot use expected-Hessian approximations, in contrast to GLM response families. \code{\link{negbin2}} is a family object for a GLM response family (strictly speaking, only for fixed shape and untruncated version) but implemented as an \code{LL-family}, in particular using only the observed Hessian matrix.    
+Mixed-effect models fitted by such methods cannot use expected-Hessian approximations, in contrast to GLM distribution families. \code{\link{negbin2}} is a family object for a GLM distribution family (strictly speaking, only for fixed shape and untruncated version) but implemented as an \code{LL-family}, in particular using only the observed Hessian matrix.    
 }
 \usage{
 # glm(..., method="llm.fit")
@@ -36,7 +36,7 @@ fitted_shape <- residVar(var_shape,which="fam_parm")
 glm(cases~I(prop.ag/10)+offset(log(expec)),family=negbin1(shape=fitted_shape), 
     method="llm.fit", data=scotlip)
 
-### Similar exercice with Beta response family: 
+### Similar exercice with Beta family: 
 
 set.seed(123)
 beta_dat <- data.frame(y=runif(100),grp=sample(2,100,replace = TRUE))

@@ -408,7 +408,7 @@ numInfo <- function(fitobject,
 print.singeigs <- function(x, ...) {
   sing <- attr(x,"sing")
   xx <- sapply(x, function(v) {
-    ifelse(v<sing, crayon::underline(signif(v)), signif(v))
+    ifelse(v<sing, cli::style_underline(signif(v)), signif(v))
   })
   cat(paste(xx))
 }

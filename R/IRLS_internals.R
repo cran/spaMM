@@ -103,7 +103,7 @@
                     which_LevMar_step="strict_v|b", # for v_in_b ! # "v_b" neither handled nor really meaningful when damping=Inf
                     outer=TRUE,
                     damping=Inf, ## there are comparisons of damping to numerical values
-                    stylefn=.spaMM.data$options$stylefns$rescue,  # typically crayon::red
+                    stylefn=.spaMM.data$options$stylefns$rescue,  # typically cli::col_red
                     ...)
     attr(damped_WLS_blob,"step") <- "rescue"
     #damped_WLS_blob$damping <- save_damping

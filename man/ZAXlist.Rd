@@ -25,6 +25,7 @@
 %\alias{\%*\%,Kronfacto,Matrix-method}
 %\alias{\%*\%,Kronfacto,matrix-method}
 \alias{\%*\%,Kronfacto,numeric-method}
+\alias{\%*\%,numeric,Kronfacto-method}
 %\alias{\%*\%,numeric,ZAXlist-method}
 \alias{crossprod,Kronfacto,Matrix-method}
 \alias{crossprod,Kronfacto,matrix-method}

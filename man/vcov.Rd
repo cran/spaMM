@@ -14,7 +14,7 @@ Extract covariance or correlation components from a fitted model object}
 
 \code{Corr} by default returns correlation matrices of random effects (though see Details for user-defined correlation models).
 
-\code{VarCorr} returns (co)variance parameters of random effects, and optionally the residual variance(s), from a fit object, in a data frame format roughly consistent with the method of objects of class \code{"lme"}, in particular including columns with consistent names for easier extraction. One may have to consult the summary of the object to check the meaning of the contents of this data frame (e.g., of 'variance' coefficients for non-gaussian random effects). Other extractors to consider are \code{\link{get_ranPars}} and \code{\link{get_inits_from_fit}}, the latter providing parameters in a form suitable for initializing a fit.
+\code{VarCorr} returns (co)variance parameters of random effects, and optionally the residual variance(s), from a fit object, in different possible formats (see Details). Other extractors to consider are \code{\link{get_ranPars}} and \code{\link{get_inits_from_fit}}, the latter providing parameters in a form suitable for initializing a fit.
 
 The covariance matrix of residuals of a fit can be obtained as a block of the hat matrix\cr 
 (\code{\link{get_matrix}(., which="hat_matrix")}).  
@@ -22,7 +22,7 @@ This is (as other covariances matrices above) a matrix of expected values, gener
 }
 \usage{
 \method{vcov}{HLfit}(object, ...)
-\method{VarCorr}{HLfit}(x, sigma = 1, add_residVars=TRUE, verbose=TRUE, ...)
+\method{VarCorr}{HLfit}(x, sigma = 1, add_residVars=TRUE, verbose=TRUE, format="lmelike",...)
 Corr(object, A=TRUE, cov2cor.=TRUE, ...)
 }
 %- maybe also 'usage' for other objects documented here.
@@ -31,6 +31,7 @@ Corr(object, A=TRUE, cov2cor.=TRUE, ...)
   %\item{which}{not documented, for development purposes}
   \item{add_residVars}{Boolean; whether to include residual variance information in the returned table.}
   \item{sigma}{ ignored argument, included for consistency with the generic function. }
+  \item{format}{Selects the return format. See Details. }
   \item{A}{Boolean: Whether to return the correlation matrix described by the \bold{AL} matrix product, when there is an \bold{A} matrix (as for \code{IMRF} terms; see \code{\link{random-effects}}).}
   \item{cov2cor.}{Boolean: Whether to convert covariance matrices to correlation matrices (see Details).}
   \item{verbose}{Boolean: Whether to print some notes.}
@@ -40,13 +41,20 @@ Corr(object, A=TRUE, cov2cor.=TRUE, ...)
 Any matrix returned by the \code{Corr} extractor is by default the unconditional correlation matrix of a vector \dQuote{\bold{ALv}} of random effects (as defined in  \code{\link{random-effects}}). 
 
 But it may also be an heteroscedastic matrix for some random effects if \code{cov2cor.} is set to FALSE. In particular, the \code{\link{IMRF}} and \code{\link{MaternIMRFa}} models are by default defined in terms of the inverse of an heteroscedastic covariance matrix (with \code{tcrossprod} factor \bold{L}), and of a \bold{A} matrix of weights. The product \bold{AL} will be the \code{tcrossprod} factor of a covariance matrix rather than a correlation matrix, unless a non-default normalization was requested when declaring the random-effect terms. User-defined random-effects models may also be heteroscedastic. In all these cases \code{Corr} will by default return the correlation matrix, by applying \code{cov2cor} to the tcrossproduct. 
+
+For \code{format="lmelike"} (the default), \code{VarCorr.HLfit} returns a data frame whose format is roughly consistent with (although distinct from) that of objects produced by \code{nlme::VarCorr.lme}, in particular including columns with consistent names for easier extraction. 
+
+For the alternative \code{format="merMod"}, \code{VarCorr.HLfit} returns an object whose format is consistent with that of objects produced by \code{lme4:::VarCorr.merMod}, and inheriting from the class \code{"VarCorr.merMod"}, so that the \code{as.data.frame} and \code{print} methods defined in \pkg{lme4} for this class can be selected for this returned object.
+
 }
 \value{
 \code{vcov} returns a matrix. 
 
 \code{Corr} returns a list, for the different random effect terms. For each random-effect term with nontrivial correlation structure, the returned element is a matrix, returned in base matrix format or in some class from \pkg{Matrix}. Otherwise the it is an information message.
 
-\code{VarCorr} returns either NULL (if no variance to report, as for a poisson GLM) or a data frame with columns for the grouping factor, term, variance of random effect,  standard deviation (the root of the variance), and optionally for correlation of random effect in random-coefficient terms.  Information about the residual variance is optionally included as the last row(s) of the data frame, when relevant (gaussian- or Gamma-response models with single scalar parameter; beware the meaning of the residual variance parameter for Gamma-response models). 
+By default, \code{VarCorr} returns either NULL (if no variance to report, as for a poisson GLM) or a data frame with columns for the grouping factor, term, variance of random effect,  standard deviation (the root of the variance), and optionally for correlation of random effect in random-coefficient terms.  Information about the residual variance is optionally included as the last row(s) of the data frame, when relevant (gaussian- or Gamma-response models with single scalar parameter; beware the meaning of the residual variance parameter for Gamma-response models). One may have to consult the summary of the fit object to check the meaning of the contents of this data frame (e.g., of 'variance' coefficients for non-gaussian random effects). 
+
+\code{VarCorr(., format="merMod")} returns a list of the same format as returned by \code{lme4:::VarCorr.merMod}. 
 
 Some variance parameters may be removed from the \code{VarCorr} output, with a message, such as the slope of the linear predictor describing the correlation model of an \code{adjacency} term (see \code{autoregressive}). The rare user of such parametrization should not consider this as a stable feature.   
 }
@@ -65,4 +73,5 @@ vcov(m1)
 data("Orthodont",package = "nlme")
 sp1 <- fitme(distance ~ age+(age|Subject), data = Orthodont, method="REML")
 VarCorr(sp1)
+VarCorr(sp1, format="merMod")
 }

@@ -1,4 +1,4 @@
-cat(crayon::yellow("\ntest poly():\n")) 
+cat(cli::col_yellow("\ntest poly():\n")) 
 
 set.seed(123)
 d <- data.frame(x = 1:10, y = rnorm(10), z=rnorm(10))
@@ -23,14 +23,14 @@ testthat::expect_true(diff(range(c(-7.60735012544,logLik(m4),logLik(m5))))<1e-7)
   # library() or require() additionally attach it to the search list:
   # the latter is required for use in a formula.
   
-  mbs <- fitme(y ~ bs(x), data = d) 
+  mbs <- fitme(y ~ bs(x), data = d) # with knots=NULL, implicitement
   subid <- c(4,3,2)
-  p1 <- predict(mbs)[subid] 
-  p2 <- predict(mbs, newdata = mbs$data)[subid]
-  p3 <- predict(mbs, newdata = mbs$data[subid,])[,1] 
+  (p1 <- predict(mbs)[subid])
+  (p2 <- predict(mbs, newdata = mbs$data)[subid])
+  (p3 <- predict(mbs, newdata = mbs$data[subid,])[,1]) 
   # knots=NULL 'results in a basis for ordinary polynomial regression'
   m4 <- fitme(y ~ poly(x, 3L), data = d)
-  p4 <- predict(m4, newdata = mbs$data[subid,])[,1] # =>
+  (p4 <- predict(m4, newdata = mbs$data[subid,])[,1]) # =>
   # if I use here the bigger data used in modtp <- fitme() LMM below,
   # then the above predict generates a warning while the comparable code using lm() doesn't
   # But the difference seems due only to floating point inaccuracy 

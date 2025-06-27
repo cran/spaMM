@@ -100,11 +100,14 @@
       names(ranCoef) <- NULL # In case the users added fancy names to the vector elements, which could break some post-fit name-matching code
       Xi_ncol <- floor(sqrt(length(ranCoef)*2))
       vdiagPos <- cumsum(c(1L,rev(seq(Xi_ncol-1L)+1L))) # diagpos on vector repre of half matrix, not on matrix
+      # Attributes for use by .constr_ranCoefsFn() or .constr_ranCoefsInv()
       if (is.null(attr(ranCoefs[[it]],"isDiagFamily"))) {
-        attr(ranCoefs[[it]],"isDiagFamily") <-  (! anyNA(ranCoef[ - vdiagPos])) & # If all non-diag pos are set by ranCoef, this may be 'is_diag".
-          (anyNA(ranCoef[vdiagPos]))
-      } # otherwise the user can avoid the ad hoc code for diag family by explitly setting the attribute to FALSE
-      attr(ranCoefs[[it]],"Xi_ncol") <- Xi_ncol # used by .constr_ranCoefsInv()
+        attr(ranCoefs[[it]],"isDiagFamily") <-  
+          (! anyNA(ranCoef[ - vdiagPos]) && all(ranCoef[ - vdiagPos]==0)) && # If all non-diag pos are set to 0 by fixed ranCoef
+          (anyNA(ranCoef[vdiagPos])) # but some diag positions are not fixed.
+      } # otherwise the user can avoid the ad hoc code for diag family by explicitly setting the attribute to FALSE
+      # attr(ranCoefs[[it]],"vdiagPos") <- vdiagPos 
+      attr(ranCoefs[[it]],"Xi_ncol") <- Xi_ncol 
     }
     fixed$ranCoefs <- ranCoefs
   }
@@ -149,7 +152,7 @@ fitme <- function(formula,data, ## matches minimal call of HLfit
   .spaMM.data$options$xLM_conv_crit <- list(max=-Inf)
   time1 <- Sys.time()
   oricall <- match.call(expand.dots=TRUE) ## mc including dotlist
-  oricall <- ..n_names2expr(oricall) # 
+  oricall <- ..n_names2expr(oricall) # does something only if option 'n_names2expr' is TRUE...
   oricall$"control.HLfit" <- eval(oricall$control.HLfit, parent.frame()) # to evaluate variables in the formula_env, otherwise there are bugs in waiting 
   oricall$fixed <- eval(oricall$fixed, parent.frame()) # allows modif in post-fit code (cf get_HLCorcall: .modify_list needs a list, not a promise) 
   oricall$init <- eval(oricall[["init"]], parent.frame()) # allows modif in post-fit code (cf get_HLCorcall). Better way ? One should be in principle able 

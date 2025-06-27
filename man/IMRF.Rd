@@ -98,7 +98,8 @@ Lindgren F., Rue H., Lindström J. (2011) An explicit link between Gaussian fiel
 if (spaMM.getOption("example_maxtime")>6) {
 
 data("blackcap") ## toy examples; but IMRF may be useful only for much larger datasets
-## and when using the 'cutoff' parameter of INLA::inla.mesh.2d()
+## and when using the 'cutoff' argument 
+## of fmesher::fm_mesh_2d_inla() / INLA::inla.mesh.2d()
 
 ########################## Irregular lattice specified by 'model':
 #

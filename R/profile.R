@@ -62,21 +62,13 @@ spaMM.getOption <- function (x) {spaMM.options(x, warn=FALSE)[[1]]}
       distance = TRUE
     )
   } else warning("'EarthChord' entry already present in proxy::pr_DB database.")
-  # success <- suppressMessages(do.call("require",list(package="memoise", quietly=TRUE))) # 'quietly' needed to suppress *warning* when memoise is not attached.
-  # .spaMM.data$options$need_memoise_warning <- ! success
-  # if (success) { # remarkably, no need for special wrapper. R CMD check handling of .onLoad must be special
-  #   # the error ".onLoad failed in loadNamespace() ......`CMP_linkfun_objfn` must be a formula." has been solved at least once by updating the memoise package (=> DESCRIPTION now requests v2.0.0) 
-  #   # ..CMP_mu2lambda <<- memoise(f=..CMP_mu2lambda, omit_args="CMP_linkfun_objfn",
-  #   #                             cache = .do_call_wrap("cache_mem", arglist=list(max_size = 10 * 1024^2), pack="cachem"))
-  #   # .Rcpp_COMP_Z <<- memoise(f=.Rcpp_COMP_Z, cache = .do_call_wrap("cache_mem", arglist=list(max_size = 10 * 1024^2), pack="cachem"))
-  #   #  str(environment(spaMM:::.Rcpp_COMP_Z)$"_cache"$keys()) to get info on the cache...
-  #   # ..trDiagonal <<- memoise(f=..trDiagonal, cache = .do_call_wrap("cache_mem", arglist=list(max_size = 1024^2), pack="cachem"))
-  #   # s.get_phantom_map <<- memoise(f=.get_phantom_map, cache = .do_call_wrap("cache_mem", arglist=list(max_size = 1024^2), pack="cachem"))
-  # } # 
-  #
   backports::import(pkgname, "...names") # to ensure back compat as long as spaMM supports R < 4.1
   .setNbThreads(thr=1L) # at C++ level for Eigen; only initialization, can be modified by control.HLfit$nbTHreads
-  .spaMM.data$options$Matrix_old <- (packageVersion("Matrix")<"1.4-2")
+  .spaMM.data$options$Matrix_old <- (packageVersion("Matrix")<"1.4-2") # 1st Matrix public version 1.5-0 (2022-09-09 r3636)
+  # so if I wait 4 years to tidy Matrix_old: september 2026...
+  # Version 1.7 of Matrix requires R 4.4.0 so if I require it I change my R requirement
+  # earlier Matrix version required R 3.5.0, but this was a bit buggy before Matrix version 1.6-2 (2023-11-05 r4503)
+  # => require version 1.6-2 and don't wait 4 years ?
   .spaMM.data$options$HLnames <- unique(c(names(formals(HLCor)),names(formals(HLfit)), 
                                    "ADFun", # so that this private arg, in the dots, causes no warning and is passed to .preprocess() 
                                    names(formals(mat_sqrt)),names(formals(make_scaled_dist))))

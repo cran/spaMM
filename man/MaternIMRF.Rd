@@ -42,14 +42,14 @@ if(requireNamespace("INLA", quietly = TRUE)) {
 
 data("Loaloa")
 
-mesh <- INLA::inla.mesh.2d(loc = Loaloa[, c("longitude", "latitude")],
+mesh <- fmesher::fm_mesh_2d_inla(loc = Loaloa[, c("longitude", "latitude")],
                      max.edge = c(3, 20)) 
 
 ### Fit with fixed alpha                     
 
 (fit_MaternIMRF <- fitme(
   cbind(npos,ntot-npos) ~ elev1 + elev2 + elev3 + elev4 + maxNDVI1 + 
-        seNDVI +  MaternIMRFa(1|longitude+latitude, mesh, fixed=c(alpha=1.05)),
+        seNDVI +  MaternIMRFa(1|longitude+latitude, mesh=mesh, fixed=c(alpha=1.05)),
   family=binomial(), 
   data=Loaloa, verbose=c(TRACE=interactive())) )
    

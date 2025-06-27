@@ -6,6 +6,8 @@ Pseudo R-squared
 }
 \description{
 Generalization of R-squared based on likelihood ratios, called pseudo-R2 below, and variously attributed to Cragg & Uhler (1970), Cox & Snell (1989), Magee (1990) and some other authors (see comments in the References section). The null model used in the definition of R2 can be modified by the user.
+
+If you are looking for a goodness-of-fit test, the \code{\link{gof}} function may be more interesting that R2 computations.
 }
 \usage{
 pseudoR2(fitobject, nullform = . ~ 1, R2fun = LR2R2, rescale=FALSE, verbose=TRUE)
@@ -46,6 +48,9 @@ also often cited for the pseudo-R2, this paper reformulates some related descrip
 
 Nagelkerke, N.J.D. (1991) A note on a general definition of the coefficient of determination. Biometrika, Vol. 78, No. 3. (Sep., 1991), pp. 691-692. \doi{10.1093/biomet/78.3.691}\cr
 details the properties of pseudo-R2 (including the way it \dQuote{partitions} variation). Argues emphatically for its rescaling, for which it is often cited.
+}
+\seealso{
+\code{\link{gof}}
 }
 \examples{
 

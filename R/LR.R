@@ -500,19 +500,23 @@
 # to initiate a *f*ullfit                                     # , inner_lambdas= TRUE
 get_inits_from_fit <- function(from, template=NULL, to_fn=NULL, inner_lambdas=FALSE) { # 'to_fn' may differ from that of 'from' and 'to'
   new_outer_inits <- .get_outer_inits_from_fit(fitobject=from, keep_canon_user_inits = FALSE)
-  # check fromfn and to_fn
+  
   if (is.null(to_fn)) {
     # recent objects should have how$fnname. Otherwise, .get_bare_fnname() may not return a valid name.
-    fromfn <- .get_bare_fnname.HLfit(from)
-    if (is.null(template)) {
-      to_fn <- fromfn
+    fnname <- from$how$fnname
+    if (is.null(fnname) && inherits(from,"HLfitlist")) {
+      to_fn <- attr(from,"how")$fnname
+    } else if (fnname %in% c("fitme_body","fitmv_body","corrHLfit_body")) { # in programming context
+      # Then .get_bare_fnname.HLfit(from) returns 'inner' function, such as "HLfit"
+      # which is not necessarily appropriate.
+      to_fn <- fnname
+    } else if (is.null(template)) {
+      to_fn <- .get_bare_fnname.HLfit(from) # default user-level case.
     } else if (inherits(template,"HLfit")) {
-      to_fn <- .get_bare_fnname.HLfit(template)
+      to_fn <- .get_bare_fnname.HLfit(template)  # non-default user-level case.
     } else stop("Invalid 'template' argument.")
-  } else if (to_fn=="fitme_body") { ## using to_fn to modify fromfn...
-    ## ad hoc fix for residModel: fitme_body is called directly so the final object's call is to HLCor of HLfit
-    fromfn <- "fitme"
-  } else fnname <- .get_bare_fnname.HLfit(from)
+  } 
+  
   # Inner-estimated lambda and ranCoefs (_F I X M E__ could add phi: amusing has this was never done... inner estimated mv phi exist, incidentally)
   init.HLfit <- NULL
   rC_inner_inits <- .get_rC_inits_from_hlfit(from, type="inner") # (yes, inner, not inner_ranCoefs)
@@ -522,9 +526,9 @@ get_inits_from_fit <- function(from, template=NULL, to_fn=NULL, inner_lambdas=FA
     if (length(lambda_inner_inits)) init.HLfit <- c(init.HLfit, list(lambda=lambda_inner_inits))
   } 
   #
-  if (to_fn %in% c("fitme", "fitmv", "fitme_body")) {
+  if (to_fn %in% c("fitme", "fitmv", "pois4mlogit","fitme_body", "fitmv_body")) {
     new_inits <- list(init=new_outer_inits,init.HLfit=init.HLfit)
-  } else if (to_fn=="corrHLfit") {
+  } else if (to_fn %in% c("corrHLfit","corrHLfit_body")) {
     new_inits <- list(init.corrHLfit=new_outer_inits,init.HLfit=init.HLfit)
   } else new_inits <- list(init.HLfit=init.HLfit)
   # Add initial value for fixed effects
@@ -755,16 +759,16 @@ eval_replicate <- function(y) { # no additional arguments, to ease parallel prog
         condmess <- conditionMessage(attr(failure,"condition"))
         if (length(grep("could not find",condmess))) {
           firstpb <- strsplit(condmess,"\"")[[1]][2]
-          cat(crayon::bold(paste0(
+          cat(cli::style_bold(paste0(
             "Hmmm. It looks like some variables were not passed to the parallel processes.\n",
             "Maybe add    ",firstpb," = ",firstpb,"   to spaMM_boot()'s 'fit_env' argument?\n"
           )))
         } else {
-          message(crayon::bold("If debug.=TRUE was used, a dump file may have been saved."))
+          message(cli::style_bold("If debug.=TRUE was used, a dump file may have been saved."))
         }
         stop(condmess,call. = FALSE)
       } else { # ideally this does not happen, but just in case...
-        cat(crayon::bold(
+        cat(cli::style_bold(
           "Hmmm. An unanticipated issue occurred. Here is the struture of the first replicate:\n",
         ))
         str(bootrep)
@@ -829,7 +833,7 @@ LRT <- function(object,object2,boot.repl=0L,# nb_cores=NULL,
       fullfit <- object
       nullfit <- object2
       # (__F I X M E___ afficher la promise pour object2? mais alors in faut resoudre les ..n potentiels)
-      message(crayon::bold(paste0("Tentatively using 'object2' as \"null\" model\n",
+      message(cli::style_bold(paste0("Tentatively using 'object2' as \"null\" model\n",
                               " of the test, and thus as sample-generating model for bootstrap:")))
     } else return(NULL)
   } else nullfit <- info$nullfit
@@ -1124,7 +1128,7 @@ LRT <- function(object,object2,boot.repl=0L,# nb_cores=NULL,
       colrange <- col_ranges[[mv_it]]
       # here asgn must be a list with elements "for each column in the [sub]matrix ... the term in the [sub]formula which gave rise to the column"
       resu[[mv_it]] <- .get_type1_contrasts(model, termsv=termsv[[mv_it]], X=X, asgn=asgn[[mv_it]], 
-                                            rankinfo=rankinfo[[mv_it]], colrange=colrange)
+                                            rankinfo=rankinfo$mvlist[[mv_it]], colrange=colrange)
       names(resu[[mv_it]]) <- paste0(names(resu[[mv_it]]),"_",mv_it)
     }
     return(unlist(resu,use.names = TRUE, recursive = FALSE))
@@ -1175,7 +1179,7 @@ LRT <- function(object,object2,boot.repl=0L,# nb_cores=NULL,
     for (mv_it in seq_along(termsv)) {
       colrange <- col_ranges[[mv_it]]
       resu[[mv_it]] <- .get_type2_contrasts(model, termsv=termsv[[mv_it]], X=X, asgn=asgn[[mv_it]], 
-                                            rankinfo=rankinfo[[mv_it]],colrange=colrange)
+                                            rankinfo=rankinfo$mvlist[[mv_it]],colrange=colrange)
       names(resu[[mv_it]]) <- paste0(names(resu[[mv_it]]),"_",mv_it)
     }
     return(unlist(resu,use.names = TRUE, recursive = FALSE))
@@ -1222,7 +1226,7 @@ LRT <- function(object,object2,boot.repl=0L,# nb_cores=NULL,
     for (mv_it in seq_along(termsv)) {
       colrange <- col_ranges[[mv_it]]
       resu[[mv_it]] <- .get_type3_contrasts(model, termsv=termsv[[mv_it]], Xorig=Xorig, asgn=asgn[[mv_it]], 
-                                            rankinfo=rankinfo[[mv_it]],colrange=colrange)
+                                            rankinfo=rankinfo$mvlist[[mv_it]],colrange=colrange)
       names(resu[[mv_it]]) <- paste0(names(resu[[mv_it]]),"_",mv_it)
     }
     return(unlist(resu,use.names = TRUE, recursive = FALSE))

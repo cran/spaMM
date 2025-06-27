@@ -158,7 +158,7 @@ makeTicks <- function(x, ## in canonical scale...
   on.exit(par(par.orig))
   wmaphmap <- .calc_plot_dims(x,y,xrange=xrange,yrange=yrange,margin=margin,map.asp=map.asp)  
   layout(matrix(c(2, 1), ncol = 2L), widths = c(lcm(wmaphmap[1]),lcm(wmaphmap[3])),
-         # heights=c(lcm(wmaphmap[2])), # problem in DIYABC2Infusion devel...
+         heights=c(lcm(wmaphmap[2])), # problem in DIYABC2Infusion devel...
          respect=TRUE)
   
   par(las = las)
@@ -168,6 +168,12 @@ makeTicks <- function(x, ## in canonical scale...
   par(mar = mar)
   ## SCALE
   plot.new()
+  # chk <- try(plot.new(), silent=TRUE) 
+  # if (inherits(chk,"try-error")) {
+  #   infomess  <- paste0("plot.new() failed for plot height (cm): ", signif(wmaphmap[2],5),
+  #                       "and layout width*s* ",signif(wmaphmap[1],5),", ",signif(wmaphmap[3],5))
+  #   stop(infomess)
+  # }
   .plotScale(z,levels,key.axes,key.title,axes,col)
   #
   mar <- mar.orig
@@ -195,49 +201,54 @@ makeTicks <- function(x, ## in canonical scale...
 
 
 .calc_plot_dims <- function(x,y,xrange=NULL,yrange=NULL,margin=1/20,map.asp=NULL) {
-  if (is.null(xrange)) {
-    xrange <- range(x)
-  }
-  xspan <- (xrange[2]-xrange[1])
-  margex <- xspan * margin
-  xrange  <- xrange+margex*c(-1,1)
-  if (is.null(yrange)) {
-    yrange <- range(y)
-  }  
-  yspan <- (yrange[2]-yrange[1])
-  margey <- yspan * margin
-  yrange  <- yrange+margey*c(-1,1)
-
-  # consequences of par() for max_map.asp
-  wscale <- (3 + par("mar")[2]) * par("csi") * 2.54
-  wmap <- par("din")[1]*2.54 - wscale
-  Wmargin <- (par("din")[1]-par("pin")[1])*2.54
-  wplotmap <- wmap - Wmargin  ## likely width of plot area
-  Hmargin <- (par("din")[2]-par("pin")[2])*2.54
-  max_map.asp <- ( par("din")[2]*2.54 -Hmargin)/wplotmap
-  #print(paste("max_map.asp=",max_map.asp))
+  wscale <- (3 + par("mar")[2]) * par("csi") * 2.54 # width of the scale on the RHS
+  
+  # par("din") is typically 7 7 (inches) for a pdf() device. It changes dynamically for Rstudio panes.
+  # The final height hmap is ideally the device height, 
+  # and the sum of wmap and wscale is ideally the device width
+  dev_width_in <- par("din")[1]# try a small adjustment to avoid infinitesimal 'overflows'?
+  plt_width_in <- par("pin")[1]
+  Wmargin <- (dev_width_in-plt_width_in)*2.54 # width of device - width of 'plot' area sensu par("pin"), which seems to overlap the two columns
+  dev_height_in <- par("din")[2] 
+  plt_height_in <- par("pin")[2]
+  Hmargin <- (dev_height_in-plt_height_in)*2.54
+  
+  wmap <- dev_width_in*2.54 - wscale # width of device - width of scale area
+  hmap <-  dev_height_in*2.54
+  # at this point hmap and wmap are maximum possible values. They can only be reduced.
+  
+  wplotmap <- wmap - Wmargin  ## width left from device - scale - margins
+  hplotmap <- hmap - Hmargin  ## height left from device  - margins
+  if (wplotmap < 0) message("Graphic device width seems too small.")
+  if (hplotmap < 0) message("Graphic device height seems too small.")
+  # ( : the following modifications do not affect these tests).
   
   if (is.null(map.asp)) {
-    map.asp <- yspan/xspan
-    lma <- log(map.asp) 
-    lma < sign(lma)*min(abs(lma),abs(log(max_map.asp)))
-    map.asp <- exp(lma)
-    if (map.asp>4 || map.asp<0.25) map.asp <- 1 # avoid extremely tall || flat plots in case max_map.asp allowed them 
-      # (which was still the case before I fixed the map.asp<1 case)
+    if (is.null(xrange)) xrange <- range(x)
+    xspan <- (xrange[2]-xrange[1])
+    if (is.null(yrange)) yrange <- range(y)
+    yspan <- (yrange[2]-yrange[1])
+    yx.asp <- min(4,max(0.25,yspan/xspan)) # will keep the yspan/xspan ratio up to certain limits
+    max_map.asp <- hplotmap/wplotmap # height/width of remaining area for plot in left col
+    if (max_map.asp < 1) { # allowed region is 'wide'
+      if (yx.asp < max_map.asp) { # span ratio even wider
+        # we increase the height to width ratio (distort the plot), but we can't increase the height
+        # so we reduce the width
+        wmap <- wplotmap*max_map.asp + Wmargin
+      } 
+    } else { # allowed region is 'tall'
+      if (yx.asp > max_map.asp) { # span ratio even taller
+        # we reduce the height to width ratio (distort the plot), by reducing height
+        hmap <- hplotmap/max_map.asp + Hmargin
+      } 
+    }
+  } else { # explicit map.asp
+    if (map.asp > 1) { # higher map.asp : taller plot
+      wmap <- wplotmap/map.asp + Wmargin
+    } else { 
+      hmap <- hplotmap*map.asp + Hmargin
+    }
   }
-
-  hmap <- wplotmap*map.asp + Hmargin
-  #   if (hmap>(par("din")[2]*2.54)) {
-  #     #print("hmap>(par(\"din\")[2]*2.54)")
-  #     hmap <- (par("din")[2]*2.54)
-  #     #reduction <- (hmap-Hmargin)/wplotmap
-  #     wmap <- (hmap - Hmargin)/map.asp
-  #     ## this new wmap tries to keep the aspect ratio, but it may be too narrow (and if < Wmargin, may generate a 'figure margins too large' error)
-  #     if (wmap < Wmargin) {
-  #       message("Aspect ratio cannot respect x and y ranges. Use 'map.asp' argument to control it directly.")
-  #       wmap <- 1.05 * Wmargin ## 24/12/2014
-  #     }
-  #   }
   return(c(wmap,hmap,wscale))
 }
 
@@ -260,7 +271,7 @@ spaMMplot2D <- function (x,y,z,
                          margin=1/20,add.map= FALSE,
                          nlevels = 20, color.palette = spaMM.colors, 
                          map.asp=NULL,
-                         col = color.palette(length(levels) - 1), 
+                         col = (color.palette)(n=nlevels),
                          plot.title=NULL, plot.axes=NULL, decorations=NULL,
                          key.title=NULL, key.axes=NULL, xaxs = "i", yaxs = "i", las = 1, 
                          axes = TRUE, frame.plot = axes,...) {
@@ -272,7 +283,7 @@ spaMMplot2D <- function (x,y,z,
   levels <- pretty(range(z, na.rm=TRUE, finite=TRUE), nlevels) ## moved up to here post 1.4.4 otherwise discrepancy between main plot and scale bar 
   nlevels <- length(levels)-1
   zscaled <- 1 + floor(nlevels*(0.000001+0.999998*(z-min(z))/(max(z)-min(z)))) ## makes sure its floor( ]1,nlevels+1[ ) 
-  ZColor <- color.palette(n=nlevels) ## bug corrected (spaMM.colors -> color.palette) post 1.4.4  
+  # ZColor <- color.palette(n=nlevels) ## bug corrected (spaMM.colors -> color.palette) post 1.4.4  
   wmaphmap <- .calc_plot_dims(x,y,xrange=xrange,yrange=yrange,margin=margin,map.asp=map.asp)  
   layout(matrix(c(2, 1), ncol = 2L), 
          widths = c(lcm(wmaphmap[1]),lcm(wmaphmap[3])),
@@ -286,7 +297,14 @@ spaMMplot2D <- function (x,y,z,
   par(mar = mar)
   ## SCALE
   plot.new()
-  # with Rstudio, the plot.new() may fail. One has to clear all plots 
+  # chk <- try(plot.new(), silent=TRUE) 
+  # if (inherits(chk,"try-error")) {
+  #   infomess  <- paste0("plot.new() failed for plot height: ", wmaphmap[2],
+  #                       "and layout width*s* ",wmaphmap[1],", ",wmaphmap[3])
+  #   stop(infomess)
+  # }
+  # with Rstudio, the plot.new() may fail. The latest .calc_plot_dims() seems 
+  # to solve this issue. Otherwise, one has to clear all plots 
   #   and repeat from the layout() call to repeat the problem cleanly. 
   # One could wrap the code from the layout() to the plot.new() in error handling code.
   # Wrapping the user-level plot call in a try(), on an ad-hoc basis, 
@@ -304,7 +322,7 @@ spaMMplot2D <- function (x,y,z,
        xlab="",ylab="", # give control to plot.title
        axes=FALSE, ## to retain control in later call
        xlim=xrange,ylim=yrange,xaxs = xaxs, yaxs = yaxs,
-       col=ZColor[zscaled[topontop]],lwd=2)
+       col=col[zscaled[topontop]],lwd=2)
   if (is.logical(add.map)) {
     if(add.map) {
       ## require + :: WAS the way for objects from packages in Suggests:
@@ -466,6 +484,7 @@ map_ranef <- function(fitobject, re.form, Ztransf=NULL, xrange = NULL, yrange = 
                       margin = 1/20, gridSteps = 41, 
                       decorations = quote(points(fitobject$data[, coordinates], cex = 1, lwd = 2)), 
                       add.map = FALSE, axes = TRUE, plot.title=NULL, plot.axes=NULL, map.asp = NULL,
+                      mv_it=NULL,
                       ...) 
 {
   corr_types <- .get_from_ranef_info(fitobject)$corr_types
@@ -509,11 +528,11 @@ map_ranef <- function(fitobject, re.form, Ztransf=NULL, xrange = NULL, yrange = 
   newdata <- cbind(template[rep(1,nrow(newdata)),],newdata) # all coord or levels of 'other' ranefs are fixed over newdata
   pred_noranef <- predict(fitobject, newdata = newdata, re.form=NA, type="link") 
   pred_oneranef <- predict(fitobject, newdata = newdata, re.form=re.form, type="link")
-  if ( ! is.null(allvarsS <- attr(attr(pred_oneranef,"frame"),"allvarsS"))) { # mv case, detected by presence of this attr that we need here.
+  if ( ! is.null(mv_it)) {
+    # This might not always be enough for mv models ('binding' error?) but that works in one test (cf 'map_ranef(zut4, mv_it=1L)' )
     cum_nobs <- cumsum(c(0L, sapply(attr(pred_oneranef,"frame"), nrow)))
-    submod_it <- which(sapply(allvarsS, length)>0)[1] # finds (first) submodel that had the spatial ranef
-    pred_noranef <- pred_noranef[.subrange(cum_nobs, submod_it)]
-    pred_oneranef <- pred_oneranef[.subrange(cum_nobs, submod_it)]
+    pred_noranef <- pred_noranef[.subrange(cum_nobs, mv_it)]
+    pred_oneranef <- pred_oneranef[.subrange(cum_nobs, mv_it)]
   }
   gridpred <- pred_oneranef-pred_noranef 
   if (is.logical(add.map)) {

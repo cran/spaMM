@@ -159,6 +159,7 @@ corrHLfit_body <- function(processed, ## possibly a list of environments
       warning(hlcor$warnings$divinfo)
     }
   }
+  if ( ! inherits(hlcor,"HLfitlist")) hlcor$how$fnname <- "corrHLfit_body" 
   ## substantial effect on object size! :
   lsv <- c("lsv",ls())
   rm(list=setdiff(lsv,"hlcor")) 

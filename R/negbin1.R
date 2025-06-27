@@ -25,9 +25,9 @@ negbin1 <- function (shape = stop("negbin1's 'shape' must be specified"), link =
   if (!is.character(linktemp)) 
     linktemp <- deparse(linktemp)
   if (linktemp %in% c("log", "identity", "sqrt")) ## all non-canonical
-    stats <- make.link(linktemp)
+    stats <- .make.link(linktemp)
   else if (is.character(link)) {
-    stats <- make.link(link)
+    stats <- .make.link(link)
     linktemp <- link
   }
   else {

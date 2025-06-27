@@ -229,6 +229,7 @@ fitme_body <- function(processed,
       warning(hlcor$warnings$divinfo)
     }
   }
+  if ( ! inherits(hlcor,"HLfitlist")) hlcor$how$fnname <- "fitme_body" 
   ## substantial effect on object size! :
   lsv <- c("lsv",ls())
   rm(list=setdiff(lsv,"hlcor")) 

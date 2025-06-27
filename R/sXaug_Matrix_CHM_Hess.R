@@ -1,19 +1,28 @@
 # 'constructor' for sXaug_Matrix_CHM_H_scaled object
 # from Xaug which already has a *scaled* ZAL 
-def_sXaug_Matrix_CHM_H_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale, force_QRP=.spaMM.data$options$force_LLF_CHM_QRP) {
+def_sXaug_Matrix_CHM_H_scaled <- function(
+    Xaug,weight_X,w.ranef,H_global_scale, 
+    force_QRP_global=.spaMM.data$options$force_QRP_global # formal default=FALSE
+      # but set to TRUE for some NON-LevM cases 
+      # control CHM usage when 'signed H_w.resid' & no_SPD_assessmt_when_no_signs is TRUE (joint default)
+      # => joint effective default is:
+      # no CHM usage when no signs, but allow CHM usage when signed (H_w.resid & LevM) 
+  ) {
   H_w.resid <- attr(weight_X,"H_w.resid")
   signs <- attr(H_w.resid,"signs")
-  if ( is.null(signs) &&  ! .spaMM.data$options$force_LLM_nosigns_CHM_H) {
+  if ( is.null(signs) &&  
+       .spaMM.data$options$no_SPD_assessmt_when_no_signs # default is TRUE
+     ) {
     return(def_sXaug_Matrix_QRP_CHM_scaled(Xaug,weight_X,w.ranef,H_global_scale, nonSPD=FALSE)) 
   }
   n_u_h <- length(w.ranef)
   BLOB <- list2env(list(H_w.resid=H_w.resid, # the unscaled version,
                      #weight_X=weight_X, # only for debugging
-                     signs=signs), # may be NULL,
+                     signs=signs), # may still be NULL if $prefer_LLM_nosigns_CHM_H,
                    # not for internal use in MME methods, but for external use of attr(envir$sXaug,"BLOB")$H_w.resid
                    parent=emptyenv())
   sXaug <- .Dvec_times_Matrix_lower_block(weight_X,Xaug,n_u_h) # using signless weights
-  if (is.null(signs))  {
+  if (is.null(signs)) { # may still be NULL if $prefer_LLM_nosigns_CHM_H
     negHess <- .crossprod(sXaug)
   } else {
     BLOB$signed <- .Dvec_times_Matrix_lower_block(signs,sXaug,n_u_h) 
@@ -23,9 +32,12 @@ def_sXaug_Matrix_CHM_H_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale, 
   # both to block operations here, and to other sXaug methods, which would thus all 
   # have a $AUGI0_ZX (for stable info cross sXaug) and a $BLOB.  
   if (is.null(template <- AUGI0_ZX_envir$template_CHM_negHess)) { 
+    # We try Cholesky anyway bc 'nonSPD' is returned in all cases
     BLOB$CHMfactor <- .silent_W_E(Matrix::Cholesky(negHess,LDL=FALSE, perm=TRUE))
-    if ((nonSPD <- inherits(BLOB$CHMfactor, "simpleError")) || force_QRP) {
-      return(def_sXaug_Matrix_QRP_CHM_scaled(Xaug,weight_X,w.ranef,H_global_scale, nonSPD=nonSPD)) 
+    if ((nonSPD <- inherits(BLOB$CHMfactor, "simpleError")) || 
+        force_QRP_global) {
+      return(def_sXaug_Matrix_QRP_CHM_scaled(Xaug,weight_X,w.ranef,H_global_scale, 
+                                             nonSPD=nonSPD)) 
       ## lowest <- RSpectra::eigs(as(negHess,"dgCMatrix"), k=1, which="SR", opts=list(retvec=FALSE))$values
       # EEV <- extreme_eig(as(negHess,"dgCMatrix"), symmetric=TRUE, required=TRUE)
       # BLOB$CHMfactor <- Matrix::Cholesky(negHess,LDL=FALSE, perm=TRUE, Imult= (1e-10*EEV[1]-EEV[2])/(1-1e-10) )
@@ -33,14 +45,14 @@ def_sXaug_Matrix_CHM_H_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale, 
       BLOB$nonSPD <- FALSE
       if (all(AUGI0_ZX_envir$updateable)) AUGI0_ZX_envir$template_CHM_negHess <- BLOB$CHMfactor
     }
-  } else {
+  } else { # CHM template available
     BLOB$CHMfactor <- .silent_W_E(Matrix::.updateCHMfactor(template, negHess, mult=0)) 
     if ((nonSPD <- inherits(BLOB$CHMfactor, "simpleError")) || 
-        force_QRP
+        force_QRP_global
         # if I force QRP at this stage, in LevM case with signs, the exact H is never used (current QRP_CHM method; modifying its LevM algo seems difficult).
-        # Without force_QRP, LevM uses the exact H with signs as long as the H is SPD (CHM_H methods).
-        # so it is presumably better not to force_QRP in LeM case. 
-        # Hence force_QRP should be set to TRUE only in specific, non-LevM cases.
+        # Without force_QRP_global, LevM uses the exact H with signs as long as the H is SPD (CHM_H methods).
+        # so it is presumably better not to force_QRP_global in LeM case. 
+        # Hence force_QRP_global should be set to TRUE only in specific, non-LevM cases.
         # Allowing QRP in those cases was useful to avoid the (then quite costly) hatval computation by .CHM2uhatvals_by_subsetinv: 
         # this is effective when there are signs, as otherwise QRP_CHM is already used by default.
       ) {
@@ -134,6 +146,9 @@ def_sXaug_Matrix_CHM_H_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale, 
     # ! L to be used a tcrossfactor of permuted Hessian, in contract to the crossfact provided by chol() !
     delayedAssign("hatval_Z_by_subsetinv",  .calc_hatval_Z_by_subsetinv(BLOB, sXaug, n_u_h), assign.env = BLOB )
     delayedAssign("t_Q_scaled", {
+      # Old comment suggests that I can force this warning (hence this computation) 
+      # by setting spaMM.options(prefer_LLM_nosigns_CHM_H=TRUE)
+      # and running test-dhglm . 
       warning("Inefficient code in .sXaug_Matrix_CHM_H_scaled", immediate. = TRUE)
       Matrix::drop0(Matrix::solve(BLOB$CHMfactor,t(sXaug[,BLOB$perm]),system="L")) # quite slow...
     } , assign.env = BLOB ) 
@@ -230,14 +245,14 @@ def_sXaug_Matrix_CHM_H_scaled <- function(Xaug,weight_X,w.ranef,H_global_scale, 
     #essai <- solve(BLOB$CHMfactor, rhs, system="A")
     #rhs %*% essai
     rhs <- solve(BLOB$CHMfactor, rhs[BLOB$perm], system="L")
-    return(sum(rhs^2))
+    return(sum(rhs*rhs))
   } 
   if (which=="Mg_invH_g") { # - sum(B %*% inv_d2hdv2 %*% B) # was oddly inconsistent with the Matrix_QRP_CHM code until change in v3.6.4
     rhs <- BLOB$invsqrtwranef * B
     if (is.null(BLOB$inv_factor_wd2hdv2w)) { ## can be assigned elsewhere by lev_lambda <- BLOB$inv_factor_wd2hdv2w <- ....
       rhs <- Matrix::solve(BLOB$CHMfactor_wd2hdv2w,rhs,system="L")
     } else rhs <- BLOB$inv_factor_wd2hdv2w %*% rhs
-    return(sum(rhs^2)) 
+    return(sum(rhs*rhs)) 
   } 
   if (which=="Mg_invXtWX_g") { ## for which_LevMar_step="b", not currently used
     if (is.null(BLOB$XtWX)) BLOB$XtWX <- .crossprod(sXaug[-seq_n_u_h,-seq_n_u_h])

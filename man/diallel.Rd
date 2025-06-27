@@ -3,7 +3,7 @@
 \alias{antisym}
 \alias{diallel}
 \title{
-Random-effect structures for diallel experiments and other dyadic interactions
+Random-effect structures for symmetric or antisymmetric dyadic interactions
 }
 \description{
 \code{ranGCA} and \code{diallel} are random-effect structures designed to represent the effet of symmetric interactions between pairs of individuals (order of individuals in the pair does not matter), while \code{antisym} represents anti-symmetric interactions (the effect of reciprocal ordered pairs on the outcome are opposite, as in the so-called Bradley-Terry models). These random-effect structures all account for multiple membership, i.e., the fact that the same individual may act as the first or the second individual among different pairs, or even within one pair if this makes sense).   
@@ -63,6 +63,7 @@ The functions return corrFamily descriptors whose general format is described in
 \references{
 Lynch, M., Walsh, B. (1998) Genetics and analysis of quantitative traits. Sinauer, Sunderland, Mass.
 }
+\seealso{\code{\link{mmfn}} for asymmetric multi-membership models.}
 \examples{
 
 #### Simulate dyadic data

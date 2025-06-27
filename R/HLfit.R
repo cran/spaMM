@@ -185,7 +185,7 @@ HLfit <- function(formula,
       processed$augZXy_env$phi_est <- aphls[["phi_est"]]
     }
   } else {
-    print_phiHGLM_info <- ( ! is.null(processed$residProcessed) && processed$verbose["phifit"])  
+    print_phiHGLM_info <- processed$verbose["print_phiHGLM_info"]
     if (print_phiHGLM_info) {
       # set a 'prefix' for the line to be printed for each iteration of the phi fit when outer optimization is used for the mean response. 
       # In that case a *distinct line* of the form HLfit for <outer opt pars>: phi fit's iter=<say up to 6>, .phi[1]=... 

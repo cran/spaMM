@@ -1,4 +1,4 @@
-cat(crayon::yellow("\ntest IMRF:")) 
+cat(cli::col_yellow("\ntest IMRF:")) 
 
 data("blackcap")
 (mrf <- HLCor(migStatus ~ 1 + multIMRF(1|longitude+latitude,margin=5,levels=1),data=blackcap,
@@ -58,7 +58,7 @@ if (file.exists((privtest <- paste0(spaMM::projpath(),"/package/tests_other_pack
   source(privtest) 
 }
 
-if (spaMM.getOption("example_maxtime")>1 &&
+if (spaMM.getOption("example_maxtime")>1 && requireNamespace("INLA", quietly = TRUE) &&
     file.exists((privtest <- paste0(spaMM::projpath(),"/package/tests_private/test-spde-perm_Q.R")))) {
   source(privtest) 
 }

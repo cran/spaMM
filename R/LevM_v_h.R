@@ -165,7 +165,7 @@
       dampings_env$v[["v_in_b"]] <- damped_WLS_blob$damping
     } ################ E N D LOOP ##############
     if (innerj==maxit.mean) {
-      if (trace) cat(crayon::red("!")) ## _F I X M E_ I could have tried to assess the speed of convergence in order to decide whether to exit the loop or not...
+      if (trace) cat(cli::col_red("!")) ## _F I X M E_ I could have tried to assess the speed of convergence in order to decide whether to exit the loop or not...
       breakcond <- "maxit"
     }
     break_info$IRLS_breakcond <- breakcond
